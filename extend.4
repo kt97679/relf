@@ -1,0 +1,78 @@
+\ This file contains different extensions for basic kernel.
+\ Based on SOD32 by L.C. Benschop
+\ Copyright 2001 - 2005, Kirill Timofeev, kt97679@gmail.com
+\ The program is released under the GNU General Public License version 2.
+\ There is NO WARRANTY.
+
+: COMPARE ( addr1 u1 addr2 u2 --- diff )
+\ Compare two strings. diff is negative if addr1 u1 is smaller, 0 if it
+\ is equal and positive if it is greater than addr2 u2.
+  ROT 2DUP - >R
+  MIN DUP IF
+   >R
+   BEGIN
+    OVER C@ OVER C@ - IF
+     SWAP C@ SWAP C@ - R> DROP R> DROP EXIT
+    THEN
+    1+ SWAP 1+ SWAP
+    R> 1- DUP >R 0=
+   UNTIL R>
+  THEN DROP
+  DROP DROP R> NEGATE
+;
+
+: THROW ( f --- )
+\ Will abort if f is nonzero, a preliminary substitute for real THROW.
+  ABORT" Throw Exception" ;
+
+: GET-ORDER ( --- w1 w2 ... wn n )
+\ Return all wordlists in the search order, followed by the count.
+  #ORDER @ 0 ?DO CONTEXT I CELLS + @ LOOP #ORDER @ ;
+
+: SET-ORDER ( w1 w2 ... wn n --- )
+\ Set the search order to the n wordlists given on the stack.
+  #ORDER ! 0 #ORDER @ 1- DO CONTEXT I CELLS + ! -1 +LOOP ;
+
+: ALSO ( --- )
+\ Duplicate the last wordlist in the search order.
+  CONTEXT #ORDER @ CELLS + DUP CELL- @ SWAP ! 1 #ORDER +! ;
+
+: PREVIOUS ( --- )
+\ Remove the last wordlist from search order.
+   -1 #ORDER +! ;
+
+: WORDLIST ( --- wid)
+\ Make a new wordlist and give its address.
+  HERE 0 , ;
+
+: DEFINITIONS  ( --- )
+\ Set the definitions wordlist to the last wordlist in the search order.
+  CONTEXT #ORDER @ 1- CELLS + @ CURRENT ! ;
+
+: FORTH ( --- )
+\ REplace the last wordlist in the search order with FORTH-WORDLIST
+  FORTH-WORDLIST CONTEXT #ORDER @ 1- CELLS + ! ;
+
+WORDLIST
+CONSTANT ROOT-WORDLIST ( --- wid )
+\ Minimal wordlist for ONLY
+
+: ONLY ( --- )
+\ Set the search order to the minimal wordlist.
+  1 #ORDER ! ROOT-WORDLIST CONTEXT ! ;
+
+: VOCABULARY ( --- )
+\ Make a definition that will replace the last word in the search order
+\ by its wordlist.
+  WORDLIST CREATE  ,            \ Make a new wordlist and store it in def.
+  DOES> >R                      \ Replace last item in the search order.
+  GET-ORDER SWAP DROP R> @ SWAP SET-ORDER ;
+
+ROOT-WORDLIST CURRENT !
+: FORTH FORTH ;
+: ALSO ALSO ;
+: ONLY ONLY ;
+: PREVIOUS PREVIOUS ;
+: DEFINITIONS DEFINITIONS ;
+DEFINITIONS
+\ Fill the ROOT wordlist.

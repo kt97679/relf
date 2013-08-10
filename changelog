@@ -1,0 +1,7 @@
+0.2
+    1. Added nasm sources of virtual machine:
+        - vm.asm;
+        - vm_tos.asm (top of stack in dedicated cpu register);
+    2. 0= primitive changed to =, since the latter is used more often;
+    3. relfgcc sources slightly updated (donext is now macros);
+    4. Benchamrcs updated using latest gforth (0.6.2).
