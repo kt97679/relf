@@ -33,6 +33,11 @@ gcc -O2 -o relfgcc relfgcc.c
 
 Don't forget to #define BIG_ENDIAN in case your platform is big-endian.
 
+Please note, that all relf development was done on the 32 bit platforms. Relf
+relies on this and if you will compile relf in 64 bit mode it will not work.
+If you are on the 64 bit platform please figure out how to compile 32 bit
+binaries. If you use gcc -m32 option can be helpful.
+
 For x86 platform you can use assembler versions of virtual machine: vm.asm or
 vm_tos.asm. vm_tos.asm has Top Of Stack in dedicated processor register and as
 you can see from benchmarks this version is a little bit faster. Those virtual
