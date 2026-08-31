@@ -11,8 +11,8 @@
 #define BIG_ENDIAN
 */
 #define  UNS8 unsigned char  /*     Virtual    */
-#define INT32 long           /*     machine    */
-#define UNS32 unsigned long  /* internal types */
+#define INT32 int           /*     machine    */
+#define UNS32 unsigned int  /* internal types */
 
 #define MEMSIZE 64 * 1024    /* how much memory do we allocate for VM */
 
