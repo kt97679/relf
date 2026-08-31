@@ -181,3 +181,14 @@ work, not forgotten:
   session to need extra header-inclusion fixes even to compile at
   `-m32`). Low priority — `vm_tos.asm` is the actual performance-relevant
   target per "Why RelF" above, `relfgcc.c` was never the fast path.
+
+### Workflow notes (not project content, but process — logged so future
+iterations don't repeat the mistake)
+
+- `git bundle create <file>.bundle master` alone is **not** enough for a
+  plain `git pull <file>.bundle` to work on the receiving end — `git
+  pull` without an explicit refspec looks for `HEAD` in the bundle, and
+  a bundle created with only `master` named doesn't include a `HEAD`
+  ref. Always bundle with `git bundle create <file>.bundle HEAD master`
+  (or equivalent) so `git pull <file>.bundle` works standalone, without
+  requiring `git pull <file>.bundle master`.
