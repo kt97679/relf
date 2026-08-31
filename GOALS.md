@@ -89,6 +89,9 @@ its relative/relocatable addressing), not a bug to "fix away."
   with both `HEAD` and `master` (`git bundle create f.bundle HEAD
   master`) so a plain `git pull f.bundle` works on the receiving end
   without needing the branch name specified.
+- **Bundle filename convention**: `relf-claude-iterN-YYYYMMDD-HHMMSS.bundle`
+  (UTC). `N` is the iteration number (increments each handoff, not each
+  commit). Example: `relf-claude-iter1-20260831-085821.bundle`.
 - **Target: push back to upstream** `https://github.com/kt97679/relf`
   eventually.
 - **License: GPLv2**, matching both upstream `relf.c` and SOD32 (which
