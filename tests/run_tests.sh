@@ -1,9 +1,11 @@
 #!/bin/bash
 # tests/run_tests.sh — build relf and run the full test suite against it.
 #
-# Requires a 32-bit-capable gcc (gcc -m32) — see PROGRESS.md, Bug 2:
-# RelF's real-pointer addressing model needs the process's own pointer
-# width to match the declared cell width, not just the C type width.
+# relf is a genuine x86-64 process, built -nostdlib -static (no libc, no
+# crt0 — see GOALS.md phase 2). Cells are 8 bytes, matching the process's
+# own pointer width, per RelF's real-pointer addressing model (see
+# PROGRESS.md, Bug 2, for why cell width and host pointer width must
+# match).
 #
 # Test suite = tester.fr (bundled, John Hayes 1993 CORE word suite,
 # already adapted to RelF's own { -> } syntax) + anything in tests/*.fth
@@ -12,15 +14,16 @@
 # themselves) must be loaded before any file in tests/*.fth, since those
 # words are defined inside tester.fr, not the base kernel.
 #
-# The engine does not exit cleanly on stdin EOF without reaching BYE
-# (see PROGRESS.md, Bug 3) — this script appends BYE itself as a
-# workaround.
+# The engine now exits cleanly (code 0) on stdin EOF, even without an
+# explicit BYE (see PROGRESS.md, Bug 3 — fixed in phase 2). This script
+# still appends BYE itself, since that's the normal way to end a Forth
+# session and it costs nothing.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "== Building relf =="
-gcc -m32 -O2 -o relf relf.c
+gcc -O2 -nostdlib -static -o relf relf.c
 
 echo "== Running test suite =="
 TESTFILES=(tester.fr)

@@ -56,22 +56,43 @@ RelF's `CELL(reg)` macro dereferences `reg` **directly as a real host
 pointer**, not as an index into an isolated array (unlike SOD32, which
 does `mem[reg & MEMMASK]`). This means the *process's own pointer width*
 must match the VM's declared cell width — not just the C type width.
-This has caused real, confirmed bugs already (see `PROGRESS.md`, 2026-08-31
-entry) and will matter again for any future 64-bit-cell version of the
-engine. It is a deliberate design property of RelF (it's what gives RelF
-its relative/relocatable addressing), not a bug to "fix away."
+This has caused real, confirmed bugs already (see `PROGRESS.md`,
+2026-08-31 and 2026-09-01 entries). As of phase 2 (2026-09-01), this is
+resolved for good: the engine is a genuine x86-64 process with 8-byte
+cells, so process pointer width and cell width match natively, with no
+`-m32` special-casing required. It is a deliberate design property of
+RelF (it's what gives RelF its relative/relocatable addressing), not a
+bug to "fix away."
+
+A second, less obvious load-bearing fact, discovered while migrating to
+8-byte cells (see `PROGRESS.md`, 2026-09-01): **the *host* used to
+cross-compile a new `kernel.img` must itself have cells at least as wide
+as the *target* cell width being compiled**, because `cross.4`'s
+literal-parsing and `@-T`/`!-T` plumbing does host-cell arithmetic on
+values that end up in target cells. `cross.4`/`kernel.4` also hand-embed
+a handful of raw primitive-dispatch token numbers (for `LIT`, `EXIT`,
+`BRANCH`, `0BRANCH`, `R>`) that must be updated by hand whenever the
+primitive-token stride changes (it's tied to `sizeof(host function
+pointer)` — 8 on x86-64). Both of these are silent, non-obviously-broken
+failure modes if missed: the first quietly truncates/corrupts large or
+negative literals; the second segfaults the *next* engine at whatever
+primitive happens to land on the stale token value. See `PROGRESS.md` for
+the full account and the fixes applied.
 
 ## End state (what "done" looks like)
 
 - **No libraries.** The engine talks to the OS via raw syscalls only —
-  no libc. This applies to the *engine's runtime*, not to build-time
-  bootstrap tooling: `gcc`/`as`/`ld` remain fine to use for building the
-  engine until phase 3 below (a self-hosted assembler) replaces them.
+  no libc. **Done as of phase 2** (`relf.c`, built `-nostdlib -static`,
+  hand-written syscall wrappers, custom `_start`). This applies to the
+  *engine's runtime*, not to build-time bootstrap tooling: `gcc`/`as`/`ld`
+  remain fine to use for building the engine until phase 3 below (a
+  self-hosted assembler) replaces them.
 - **Fully self-hosted.** Forth already compiles the Forth image
-  (`cross.4th` → `kernel.img`). The remaining piece is Forth compiling
-  the *engine itself* (currently `.c`/`.asm`, built by `gcc`/`as`) — a
-  Forth-hosted native-code assembler, in the tradition of the classic
-  Forth `ASSEMBLER` wordset / `CODE ... END-CODE` facility.
+  (`cross.4` → `kernel.img`), now with 8-byte target cells matching the
+  engine's own pointer width. The remaining piece is Forth compiling the
+  *engine itself* (currently `relf.c`, built by `gcc`) — a Forth-hosted
+  native-code assembler, in the tradition of the classic Forth
+  `ASSEMBLER` wordset / `CODE ... END-CODE` facility.
 - **Eventually, JIT/AOT.** Once the self-hosted assembler exists, extend
   it to compile hot colon-word bodies to native code, including
   unwinding (inlining) non-recursive calls. Prior exploratory
@@ -117,10 +138,14 @@ its relative/relocatable addressing), not a bug to "fix away."
    (iteration 1).
 2. **No-libc, syscalls-only x86-64 engine**, replacing `relf.c`/
    `vm.asm`/`vm_tos.asm` in place (not preserved alongside — the goal is
-   a leaner successor, not a fork-with-extras). Not started. A working
-   x86-64/RelF-derived asm reference exists from prior exploratory work
-   (outside this repo) and can inform this, but nothing has been ported
-   in yet.
+   a leaner successor, not a fork-with-extras). **Done** (iteration 2).
+   `relf.c` is now the only engine: built `-nostdlib -static`, raw
+   syscalls, 8-byte cells, no `relfgcc.c`/`vm.asm`/`vm_tos.asm`. Also
+   fixed Bug 3 (EOF hang) as part of this work, since it was directly a
+   syscall-level concern. See `PROGRESS.md`, 2026-09-01, for the full
+   account, including the cross-compiler-side work this dragged in
+   (migrating `cross.4`/`kernel.4` to 8-byte target cells, which turned
+   out to be most of the actual effort).
 3. **Forth-hosted assembler** — a `CODE`/`END-CODE`-style facility so
    the engine itself can eventually be assembled by the running Forth
    system, not `gcc`/`as`. Not started.
@@ -132,5 +157,13 @@ its relative/relocatable addressing), not a bug to "fix away."
 
 - Full ANS/Forth-2012 compliance (see test suite strategy above).
 - Portability beyond x86-64 Linux.
-- Preserving support for the old 32-bit-only build path once phase 2
-  lands — single supported target going forward, not multiple.
+- Preserving support for the old 32-bit-only build path — single
+  supported target as of phase 2 (**done**: no `-m32`, no BIG_ENDIAN
+  switch, no `relfgcc.c`/`vm.asm`/`vm_tos.asm`).
+- gforth (or any other non-RelF Forth) as an alternative cross-compile
+  host. `cross.4`/`extend.4`/`kernel.4` rely on RelF-kernel-specific
+  search-order words (`CONTEXT`, `#ORDER`, `CURRENT`) that gforth
+  doesn't provide — confirmed by trying, see `PROGRESS.md`, 2026-09-01.
+  The README's older claim that gforth works is no longer accurate for
+  the current kernel source and hasn't been re-verified; don't assume
+  it without testing.

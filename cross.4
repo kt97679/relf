@@ -30,7 +30,7 @@ VOCABULARY TRANSIENT
 
 \ Next we need to define the target space and the words to access it.
 
-20000 CONSTANT IMAGE_SIZE
+40000 CONSTANT IMAGE_SIZE
 
 CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
        IMAGE IMAGE_SIZE 0 FILL      \ Initialize it to zero.
@@ -39,14 +39,29 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
 : C@-T ( t-addr --- c) CHARS IMAGE + C@ ;
 : C!-T ( c t-addr ---) CHARS IMAGE + C! ;
 
-\ Fetch and store cells in the target space.
-\ SOD32 is big endian 32 bit so store explicitly big-endian.
+\ Fetch and store cells in the target space, big-endian.
+\ IMPORTANT: this cross-compiler's host may itself have only 32-bit cells
+\ (that's exactly the case for our bootstrap: the OLD relf, still 4-byte
+\ cells, is what runs this file to produce the NEW 8-byte-cell image -
+\ see GOALS.md). A host shift count >= 32 is undefined behaviour on such
+\ a host, so these must never shift by more than 24. @-T therefore reads
+\ back only the low 4 (of 8) target bytes - enough to round-trip any
+\ value that started as a single 32-bit host cell - and !-T sign-extends
+\ that host cell into the high 4 target bytes instead of zero-filling,
+\ so that negative literals (e.g. -1, used as TRUE) still read back as
+\ all-bits-set at the new 8-byte width.
 : @-T  ( t-addr --- x)
-       CHARS IMAGE + DUP C@ 24 LSHIFT OVER 1 CHARS + C@ 16 LSHIFT +
+       4 CHARS + CHARS IMAGE +
+       DUP C@ 24 LSHIFT OVER 1 CHARS + C@ 16 LSHIFT +
        OVER 2 CHARS + C@ 8 LSHIFT + SWAP 3 CHARS + C@ + ;
 : !-T  ( x t-addr ---)
-       CHARS IMAGE + OVER 24 RSHIFT OVER C! OVER 16 RSHIFT OVER 1 CHARS + C!
-       OVER 8 RSHIFT OVER 2 CHARS + C! 3 CHARS + C! ;
+       CHARS IMAGE + >R
+       DUP 0< IF -1 ELSE 0 THEN
+       DUP 24 RSHIFT R@ C! DUP 16 RSHIFT R@ 1 CHARS + C!
+       DUP 8 RSHIFT R@ 2 CHARS + C! R@ 3 CHARS + C!
+       R> 4 CHARS + >R
+       DUP 24 RSHIFT R@ C! DUP 16 RSHIFT R@ 1 CHARS + C!
+       DUP 8 RSHIFT R@ 2 CHARS + C! R> 3 CHARS + C! ;
 
 \ A dictionary is constructed in the target space. Here are the primitives
 \ to maintain the dictionary pointer and to reserve space.
@@ -56,11 +71,11 @@ VARIABLE DP-T                       \ Dictionary pointer for target dictionary.
 : THERE ( --- t-addr) DP-T @ ;      \ Equivalent of HERE in target space.
 : ALLOT-T ( n --- ) DP-T +! ;       \ Reserve n bytes in the dictionary.
 : CHARS-T ( n1 --- n2 ) ;
-: CELLS-T ( n1 --- n2 ) 2 LSHIFT ;  \ Cells are 4 chars.
-: ALIGN-T                           \ SOD only accesses cells at aligned
+: CELLS-T ( n1 --- n2 ) 3 LSHIFT ;  \ Cells are 8 chars.
+: ALIGN-T                           \ Target only accesses cells at aligned
                                     \ addresses.
-  BEGIN THERE 3 AND WHILE 1 ALLOT-T REPEAT ;
-: ALIGNED-T ( n1 --- n2 ) 3 + -4 AND ;
+  BEGIN THERE 7 AND WHILE 1 ALLOT-T REPEAT ;
+: ALIGNED-T ( n1 --- n2 ) 7 + -8 AND ;
 : C,-T  ( c --- )  THERE C!-T 1 CHARS ALLOT-T ;
 : ,-T   ( x --- )  THERE !-T  1 CELLS-T ALLOT-T ;
 
@@ -118,21 +133,25 @@ VARIABLE CSP   \ Stack pointer checking between : and ;
 
 VARIABLE LAST-PRIMITIVE 1 LAST-PRIMITIVE !
 
-: LITERAL-T ( n --- ) 9 ,-T ,-T ;
+\ Primitive tokens below (9/5/17/13/etc) are updated for the stride-8
+\ numbering (see PRIMITIVE above): EXIT=9, LIT=17, BRANCH=25, 0BRANCH=33.
+: LITERAL-T ( n --- ) 17 ,-T ,-T ;
 
 ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Now define the words that do compile code.
 
 : PRIMITIVE ( c --- )
-  LAST-PRIMITIVE @ DUP 4 LAST-PRIMITIVE +!
-  "HEADER DUP , ,-T 5 ,-T          \ Create an executable target definition.
+  \ Primitive tokens stride by sizeof(host function pointer) = 8 bytes on
+  \ the x86-64 no-libc engine, see GOALS.md.
+  LAST-PRIMITIVE @ DUP 8 LAST-PRIMITIVE +!
+  "HEADER DUP , ,-T 9 ,-T          \ Create an executable target definition.
   TLINK @ DUP C@-T 32 OR SWAP C!-T   \ Set the MACRO bit of last name. 
   DOES> @ ,-T
 ;
 
-: : !CSP "HEADER THERE , T] DOES> @ THERE - 4 - ,-T ;
+: : !CSP "HEADER THERE , T] DOES> @ THERE - 8 - ,-T ;
 
-: ; 5 ,-T T[ ?CSP ; \ Compile EXIT (5). Quit compilation state.
+: ; 9 ,-T T[ ?CSP ; \ Compile EXIT (9). Quit compilation state.
 
 FORTH DEFINITIONS
 
@@ -161,7 +180,7 @@ FORTH DEFINITIONS
    DUP -1 -                            \ Traverse all the links until end.
   WHILE
    DUP @-T                             \ Take address of next link from dict.
-   R@ ROT SWAP OVER - 4 - SWAP !-T         \ Set resolved address in dict.
+   R@ ROT SWAP OVER - 8 - SWAP !-T         \ Set resolved address in dict.
   REPEAT DROP R> DROP PREVIOUS
 ;
 
@@ -173,11 +192,11 @@ FORWARD DOVAR \ Dovar is the runtime part of a variable.
 
 : VARIABLE "HEADER THERE , [ TRANSIENT ] DOVAR [ FORTH ]  0 ,-T
 \ Create a variable.
-  DOES> @ THERE - 4 - ,-T ;
+  DOES> @ THERE - 8 - ,-T ;
 
 : CONSTANT "HEADER THERE ,
-  9 ,-T ,-T 5 ,-T \ Assemble the instruction LIT (9) with EXIT (5).
-  DOES> @ 4 + @-T LITERAL-T \ Compile const as a literal for speed.
+  17 ,-T ,-T 9 ,-T \ Assemble the instruction LIT (17) with EXIT (9).
+  DOES> @ 1 CELLS-T + @-T LITERAL-T \ Compile const as a literal for speed.
 ;
 
 FORTH DEFINITIONS
@@ -188,19 +207,25 @@ FORTH DEFINITIONS
 ;
 
 : >BODY-T ( t-addr1 --- t-addr2 ) \ Convert executing token to param address.
-  1 CELLS + ;
+  \ NOTE: this is target-address arithmetic and must use CELLS-T, not the
+  \ host's CELLS. It only worked before because the host (RelF, 4-byte
+  \ cells) and the target (RelF, 4-byte cells) happened to match; see
+  \ GOALS.md for the 8-byte target/host mismatch this now avoids.
+  1 CELLS-T + ;
 
 \ PART 7: COMPILING WORDS
 
 TRANSIENT DEFINITIONS FORTH
 
+\ NOTE: these reserve a target cell, so they must use CELLS-T, not the
+\ host's CELLS (see >BODY-T above for why this distinction now matters).
 : BEGIN THERE ;
-: UNTIL 17 ,-T THERE - ,-T ;        \ 17 - conditional jump
-: IF 17 ,-T THERE 1 CELLS ALLOT-T ; \ 13 - unconditional jump
+: UNTIL 33 ,-T THERE - ,-T ;          \ 33 - 0branch, conditional jump
+: IF 33 ,-T THERE 1 CELLS-T ALLOT-T ; \ 33 - 0branch, conditional jump
 : THEN THERE OVER - SWAP !-T ;
-: ELSE 13 ,-T THERE 1 CELLS ALLOT-T SWAP THERE OVER - SWAP !-T ;
-: WHILE 17 ,-T THERE 1 CELLS ALLOT-T SWAP ;
-: REPEAT 13 ,-T THERE - ,-T THERE OVER - SWAP !-T ;
+: ELSE 25 ,-T THERE 1 CELLS-T ALLOT-T SWAP THERE OVER - SWAP !-T ;
+: WHILE 33 ,-T THERE 1 CELLS-T ALLOT-T SWAP ;
+: REPEAT 25 ,-T THERE - ,-T THERE OVER - SWAP !-T ;
 
 FORWARD (DO)
 FORWARD (LOOP)

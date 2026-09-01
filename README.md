@@ -18,61 +18,22 @@ name - Relative Forth).
 
 2. Compilation.
 
-In order to start playing with RelF you need to compile engine. You can do it
-with virtually any C compiler. I tested RelF with TurboC2.0 under DOS,
-lcc-win32 under Windows and gcc under FreeBSD, Linux and Solaris. Please note,
-that there are 2 .c sources: relf.c and relfgcc.c. The latter uses specific
-gcc features that in theory should result in faster virtual machine. To
-compile virtual machine with gcc just issue
+As of phase 2 (see GOALS.md), RelF targets x86-64 Linux only, and the
+engine (relf.c) talks to the OS via raw syscalls, with no libc and no
+crt0. Build it with:
 
-gcc -O2 -o relf relf.c
+gcc -O2 -nostdlib -static -o relf relf.c
 
-or
+Cells are 8 bytes, matching the process's own pointer width (RelF's
+real-pointer addressing model needs the two to match - see
+PROGRESS.md, Bug 2). There is no 32-bit build, no BIG_ENDIAN switch,
+and no separate relfgcc.c/vm.asm/vm_tos.asm engines any more; relf.c
+is the only engine, and it is the fast path.
 
-gcc -O2 -o relfgcc relfgcc.c
-
-Don't forget to #define BIG_ENDIAN in case your platform is big-endian.
-
-Please note, that all relf development was done on the 32 bit platforms. Relf
-relies on this and if you will compile relf in 64 bit mode it will not work.
-If you are on the 64 bit platform please figure out how to compile 32 bit
-binaries. If you use gcc -m32 option can be helpful.
-
-For x86 platform you can use assembler versions of virtual machine: vm.asm or
-vm_tos.asm. vm_tos.asm has Top Of Stack in dedicated processor register and as
-you can see from benchmarks this version is a little bit faster. Those virtual
-machines are "proof of concept" and at present moment do not include file I/O.
-
-To use vm.asm or vm_tos.asm you need to comment out or rename
-virtual_machine() function in relf.c. After that you should compile assembler
-source using NASM. On FreeBSD I used the following command lines:
-
-nasm -O9 -f elf -o vm.o vm.asm
-
-or
-
-nasm -O9 -f elf -o vm.o vm_tos.asm
-
-After that you should link optimized virtual machine with remaining C code. I
-did this by the following command:
-
-gcc -o relf relf.c vm.o
-
-In case you would like to compile sources on windows platform you would need
-to change external and global names in nasm sources. They should start with
-underscore (e.g. you should change line "extern ip" to "extern _ip" and so
-on).
-
-Compilation command lines are:
-
-nasmw -O9 -f win32 -o vm.obj vm.asm
-
-or
-
-nasm -O9 -f win32 -o vm.obj vm_tos.asm
-
-Machine-independent kernel can be compiled by RelF itself or by virtually
-any ANS forth. I successfuly used gforth.
+Machine-independent kernel can be compiled by RelF itself. gforth is
+not currently usable as an alternative host: cross.4/extend.4/kernel.4
+rely on RelF-kernel-specific search-order words (CONTEXT, #ORDER,
+CURRENT) that gforth doesn't provide.
 
 To compile kernel with RelF you need to do the following:
     a) start RelF with initial kernel: ./relf kernel.img
@@ -83,10 +44,17 @@ After a couple of moments RelF would exit and you'll get new kernel.img.
 Please, backup original kernel.img, since it would be overwritten during 
 crosscompilation.
 
+Note: cross-compiling kernel.4 from source with 8-byte target cells
+needs a 32-bit-safe cross-compiler even when relf itself is 64-bit,
+because bootstrapping the very first 8-byte-cell image has to start
+from some existing engine. See GOALS.md and PROGRESS.md for the
+details of how cross.4's @-T/!-T and the hand-numbered primitive
+tokens in kernel.4 (LIT/EXIT/BRANCH/0BRANCH/R>) account for this.
+
 3. Virtual Machine.
 
 Virtual machine uses 3 internal registers: instruction pointer (IP), data
-stack pointer (SP) and return stack pointer (RP).
+stack pointer (SP) and return stack pointer (RP). Cells are 8 bytes.
 
 IP can point to the cells of 2 types:
 a) containing reference to primitive;
@@ -94,9 +62,9 @@ b) containing shift to high-level definition.
 
 Those 2 cases are distinguished in the following way. Since shift to
 high-level definition is obtained by subtracting one cell address from another
-cell address it should have 2 minor bits set to zeroes. Reference to primitive
+cell address it should have 3 minor bits set to zeroes. Reference to primitive
 is constructed by adding 1 to address of function, implementing primitive, so
-it should look like number_of_primitive * 4 + 1 (4 - sizeof address). If ([IP]
+it should look like number_of_primitive * 8 + 1 (8 - sizeof address). If ([IP]
 & 1) == 1, then IP points to cell, containing reference to primitive. In this
 case we call function at address BASE + [IP], where BASE =
 pointer_to_the_array_of_functions,_implemeting_primitives - 1. Otherwise, if
@@ -122,6 +90,10 @@ it can be used:
     * etc ;).
 
 5. Benchmarks
+
+The numbers below predate phase 2 (32-bit cells, relfgcc/vm.asm/vm_tos.asm
+variants that no longer exist - see GOALS.md) and are kept only as a
+historical record; they are not representative of the current engine.
 
 Benchmarks results were obtained with the only test, calculating fiboncci
 numbers (fib.4). I used gforth-0.5.0 and sod32 from the authors home page
