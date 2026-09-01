@@ -274,3 +274,90 @@ bootstrap again.
 - Did not re-verify the README's old benchmark numbers (they predate
   every engine variant this iteration removed) — left in place but
   flagged as historical/non-representative rather than re-run.
+
+## 2026-09-01 — Design discussion: phase 5 direction, and a rejected byte-opcode idea
+
+### Phase 5 agreed
+
+Discussed and agreed the direction for phase 5 (see `GOALS.md`'s new
+phase 5 section for the actual plan): libc as the portability layer for
+"every architecture `bash` runs on" (phase 2's no-libc x86-64-only
+syscalls don't scale to that), native host endianness for `kernel.img`
+instead of SOD32's portable-on-disk format (no current need for one
+image to run on hosts of differing endianness), computed-goto dispatch
+and cross-compile-time call-flattening for portable, engine-format-
+agnostic speed, and ARM64 Linux as the first non-x86-64 target. All of
+this is planned, not yet implemented — this entry is the design
+discussion that led to it, not an implementation log.
+
+### Byte-granular opcode encoding: proposed, analyzed, rejected
+
+Proposed idea: encode primitive opcodes as single bytes instead of full
+cells (up to 8x denser for the common case of primitive-heavy
+straight-line code), while keeping `CALL`/`BRANCH`/`0BRANCH`/`LIT` as
+cell-width relative values stored at aligned addresses, reached via an
+explicit marker byte (byte-granular positions can't reuse RelF's current
+LSB-parity trick for distinguishing "primitive" from "offset", since
+offsets between arbitrary byte positions don't have guaranteed parity
+the way offsets between cell-aligned positions do).
+
+First-pass analysis (mine) estimated a rough 25-30% image-size win by
+counting the fraction of cells that are primitive-token-shaped (LSB=1)
+in the current `kernel.img` — **this first pass had a real bug**: it
+unpacked the image as little-endian to check the LSB, but `kernel.img`
+is still in the old forced-big-endian on-disk format (see phase 2's
+`swap_mem`/`@-T`/`!-T`) — so it was checking the parity of the wrong
+byte entirely. Both the percentage split and the conclusion drawn from
+it were wrong; corrected below.
+
+The user then identified the actual structural problem directly, before
+any corrected measurement: a plain `CALL` has **zero** opcode overhead
+in the current format (the offset cell *is* the whole instruction, no
+marker needed) but would need marker-byte-plus-alignment-padding under
+the byte-opcode scheme — and that padding is structurally biased toward
+its worst case (7 bytes), not averaged, because the position after any
+aligned instruction is aligned again, which is exactly the worst-case
+starting position for the next one. Back-to-back calls with no
+primitives between them — common in idiomatically-factored, glue-heavy
+Forth code — hit close to the 16-byte worst case (double the current
+8-byte cost) essentially every time, not occasionally.
+
+Redid the measurement correctly (big-endian unpack), and additionally
+separated `LIT`/`BRANCH`/`0BRANCH` operand cells (identifiable exactly,
+since their opcode tokens are fixed values 17/25/33 — see iteration 2)
+from other LSB=0 cells (an upper bound on plain calls + header/link/name
+data, not separable further without a full dictionary walk):
+
+```
+total cells: 2809
+primitives (incl. LIT/BRANCH/0BRANCH opcodes): 1345 (47.9%)
+LIT/BRANCH/0BRANCH operands: 292 (10.4%)
+other LSB=0 (calls + header/link/name data): 1172 (41.7%)
+
+current total:                                     22472 bytes
+byte-format, best-case alignment throughout:       14521 bytes (~35% smaller)
+byte-format, worst-case (steady-state back-to-back calls): 24769 bytes (~10% LARGER)
+```
+
+`LIT`/`BRANCH`/`0BRANCH` operands can only tie or improve under the new
+scheme (they already pay for a full 8-byte opcode cell today). Plain
+calls are the opposite — worse in the typical case, not just the worst
+case — and are very likely the majority of that 41.7% "other" bucket in
+real, call-heavy Forth code. So total image size plausibly *increases*,
+not decreases. Separately, the same marker-fetch + realignment +
+second-fetch overhead lands on `CALL`/`BRANCH`/`0BRANCH`/`LIT` dispatch
+specifically, and those dominate real code's *dynamic* execution trace
+(loops, conditionals, word calls), not just its static size — so a
+performance regression is at least as plausible as a size regression.
+
+**Decision: rejected, not pursuing further.** Computed-goto dispatch
+already gets the well-understood, portable, low-risk dispatch-overhead
+win without touching the image format at all, and call-flattening
+directly reduces the number of `CALL`s in the first place — the exact
+category this scheme handles worst. See `GOALS.md`'s phase 5 section for
+the recorded reasoning (kept there so a future session doesn't re-derive
+this from scratch). A different `CALL` encoding (variable-length
+short/near/far forms, the way real ISAs handle this) could in principle
+recover some of this, but needs assembler relaxation (multi-pass
+encoding) — real, ongoing complexity that isn't justified without a much
+stronger case than exists here, and cuts against goal 3.
