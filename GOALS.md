@@ -167,3 +167,33 @@ the full account and the fixes applied.
   The README's older claim that gforth works is no longer accurate for
   the current kernel source and hasn't been re-verified; don't assume
   it without testing.
+
+## External references (potentially reusable ideas, not yet mined)
+
+Not read/evaluated in depth yet — listed here so a future session knows
+where to look before reinventing something, rather than as an endorsement
+of any specific approach. Update this list with findings (useful or not)
+in `PROGRESS.md` once actually looked at.
+
+- https://github.com/certik/bcompiler — incremental compiler/bootstrap
+  ideas. Possibly relevant to phase 3 (self-hosted assembler) and the
+  general bootstrapping-a-compiler-from-nothing problem this project
+  keeps running into (see the cross-compile-host discussion above).
+- https://github.com/gerryjackson/forth2012-test-suite — Forth semantic
+  tests. Already the source of `tests/core-extra.fth`'s cases (see test
+  suite strategy above); may have more directly-applicable cases to pull
+  in the same way.
+- https://github.com/larsbrinkhoff/lbForth — self-hosting/metacompiled
+  Forth. Relevant to phases 3-4 (self-hosted assembler, JIT/AOT) as a
+  reference for how another project structured metacompilation.
+- https://github.com/rufig/spf — mature Forth implementation reference.
+  Appears (unconfirmed) to be the same `spf` benchmarked in `README.md`'s
+  historical numbers.
+- https://github.com/lennart-benschop/sod32 — minimal Forth/kernel
+  ideas. The SOD32 this project is derived from/compared against (see
+  "Why RelF specifically" above) — this may be the canonical upstream
+  rather than the mirror originally benchmarked against.
+- https://github.com/kragen/stoneknifeforth — small/self-hosting Forth
+  reference. Relevant to the "full self-hosting" end-state goal and
+  phase 3 in particular: a from-nothing bootstrap is exactly the kind of
+  problem this repository is working toward.
