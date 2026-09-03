@@ -35,7 +35,19 @@ order of how directly they matter to *this* project's actual goal:
    gets near-free pointer tracking from the CPU's own stack engine;
    SOD32's manual array-indexed `sp`/`rp` arithmetic pays a real,
    measurable ALU cost that its opcode-packing advantage doesn't fully
-   offset.
+   offset. **Caveat added 2026-09-01**: this specific advantage was
+   measured against the old assembly engines (`vm.asm`/`vm_tos.asm`,
+   removed in phase 2), which used the real CPU stack directly for the
+   data stack. The current portable C engine (phase 2 onward) manages
+   the data stack manually via a `dsp` variable instead - architecturally
+   closer to SOD32's approach than to what was actually benchmarked
+   here. The other two reasons below (JIT-template reusability,
+   metacompiler simplicity) still hold for the portable engine; this
+   specific speed reason may not, and hasn't been re-measured since the
+   asm engines were removed. Phase 5's own computed-goto measurement
+   (~1.30x, see below) came in well under an earlier ~4-4.75x estimate
+   for dispatch-overhead removal alone - consistent with, though not
+   proof of, this gap actually mattering.
 2. **RelF's primitive bodies are individually reusable as JIT code
    templates with no rewriting** — each one only assumes "TOS in one
    register, everything else on the real stack," no shared dispatch
@@ -154,10 +166,13 @@ the full account and the fixes applied.
    started.
 5. **Portability + performance without JIT** — libc-based multi-
    architecture support (all architectures `bash` runs on), native-
-   endianness images, computed-goto dispatch, call-flattening, ARM64 as
-   first proof target. Planned, not started — see the phase 5 section
-   below for the full agreed plan (a byte-granular opcode encoding was
-   also considered for this phase and rejected — see below).
+   endianness images, computed-goto dispatch. **Mostly done** (this
+   iteration): libc port, native-endianness images with a magic header,
+   and computed-goto dispatch are all done and verified on x86-64 and
+   ARM64 (same `kernel.img` on both, confirming the shared-image design).
+   Call-flattening is **not done** — deliberately deferred, see the
+   phase 5 section below for why. See `PROGRESS.md` for the full
+   account, including several real bugs found and fixed along the way.
 
 ## Non-goals (at least for now — revisit if this changes)
 
@@ -175,56 +190,84 @@ the full account and the fixes applied.
   The README's older claim that gforth works is no longer accurate for
   the current kernel source and hasn't been re-verified; don't assume
   it without testing.
-- Big-endian hosts. Images are planned to move to native host
-  endianness (see phase 5 below) rather than SOD32's portable-on-disk
-  big-endian format, since there's no current need for one image to run
-  unmodified on hosts of differing endianness. Little-endian only,
-  documented as such, not configurable.
+- Big-endian hosts. Images are native host endianness as of phase 5
+  (**done**) rather than SOD32's portable-on-disk big-endian format,
+  since there's no current need for one image to run unmodified on
+  hosts of differing endianness. Little-endian only, documented as
+  such, not configurable - a mismatched image's magic header will at
+  least fail cleanly rather than silently misbehave, but there's no
+  attempt to actually support big-endian hosts.
+- 32-bit-cell hosts (ARM32, i386, etc.), for now. Phase 5's multi-
+  architecture work only proved out 64-bit-pointer architectures
+  (x86-64, ARM64) sharing the existing 8-byte-cell image. Adding a
+  32-bit target means reintroducing the dual-cell-width complexity
+  phase 2 deliberately scoped out (a parallel 4-byte-cell `kernel.img`,
+  and an engine whose cell width is a compile-time choice, not a
+  given) - a real, separate piece of work, not a small extension of
+  phase 5. Worth doing if a concrete 32-bit target is ever needed, but
+  not attempted here.
 
-## Phase 5 (planned, not started): portability + performance, without JIT
+## Phase 5: portability + performance, without JIT
 
 Agreed direction as of 2026-09-01 (see `PROGRESS.md` for the full
-discussion this came out of): run on every architecture `bash` runs on,
-prioritizing simplicity/minimalism per goal 3 above, while getting as
-much speed as possible *without* per-architecture native codegen (that
-remains phase 3/4, deliberately kept separate and optional):
+discussion this came out of, and the later 2026-09-02 entry for the
+implementation and the bugs it surfaced): run on every architecture
+`bash` runs on, prioritizing simplicity/minimalism per goal 3 above,
+while getting as much speed as possible *without* per-architecture
+native codegen (that remains phase 3/4, deliberately kept separate and
+optional).
 
-- **libc as the portability layer.** Phase 2's no-libc x86-64-only
-  syscall layer doesn't scale to "every architecture bash supports" —
-  most of those don't have a well-trodden raw-syscall path the way
-  x86-64 Linux does. Rather than write per-architecture syscall shims
-  for a long tail of targets, use libc (just the handful of functions
-  already in use: `read`/`write`/`open`/`close`/`lseek`/`unlink`/
-  `fork`/`execve`/`wait`/`exit`) as the common denominator everywhere.
+- **libc as the portability layer. Done.** Phase 2's no-libc
+  x86-64-only syscall layer doesn't scale to "every architecture bash
+  supports" — most of those don't have a well-trodden raw-syscall path
+  the way x86-64 Linux does. `relf.c` now uses plain libc calls (`read`/
+  `write`/`open`/`close`/`lseek`/`unlink`/`fork`/`execve`/`waitpid`/
+  `exit`) and builds with a plain `cc -O2 -Wall -o relf relf.c` — no
+  special flags, no custom `_start`, no inline assembly for syscalls.
   This is a deliberate reversal of phase 2's "no libc" stance, made for
   portability rather than performance reasons — no-libc bought nothing
   measurable for speed, only architecture lock-in.
-- **Native host endianness for `kernel.img`**, replacing SOD32's
-  portable-on-disk big-endian format. Removes `swap_mem()` from the
-  engine and the explicit byte-assembly in `cross.4`'s `@-T`/`!-T`
-  entirely — a real simplification, not just a policy change. Add a
-  small magic/version marker at the start of the image recording cell
-  width + endianness, so a mismatched image fails clearly at load
-  rather than silently misbehaving. Architectures that agree on cell
-  width and endianness (e.g. x86-64 and ARM64, both LE, both 8-byte
-  pointers) can still share a single image, since nothing in it is
-  architecture-specific below this tier.
-- **Computed-goto threaded dispatch** (GCC/Clang "labels as values"),
-  replacing the current function-pointer-table indirect call per
-  primitive with a direct `goto` to the next primitive's code. Fully
-  portable across every architecture GCC/Clang target. Prior
-  exploratory benchmarking (see `GOALS.md`'s JIT paragraph above) put
-  dispatch-overhead removal alone at ~4-4.75x, though that predates
-  this codebase's current shape (see caveat in `PROGRESS.md`) and
-  should be re-measured here rather than assumed.
-- **Call-flattening at cross-compile time**: `cross.4` inlines a
-  non-recursive colon-word's body directly into its caller instead of
-  emitting a threaded call, when there's no recursion. Build-time only,
-  doesn't touch the engine. Prior benchmarking put this at a further
-  ~2-2.2x on top of the above, same re-measurement caveat.
-- ARM64 Linux as the first concrete non-x86-64 target to prove the
-  whole thing out end-to-end, tested via QEMU user-mode emulation if
-  physical hardware isn't available.
+- **Native host endianness for `kernel.img`. Done.** Replaces SOD32's
+  portable-on-disk big-endian format. Removed `swap_mem()` and the
+  XOR-7 byte-addressing trick from the engine entirely, and simplified
+  `cross.4`'s `@-T`/`!-T` correspondingly — a real simplification, not
+  just a policy change (see `PROGRESS.md` for why byte-level access
+  didn't even need the trick in the first place, once portability
+  wasn't a goal). Images now start with an 8-byte magic header ("RELF"
+  + cell width + reserved) so a mismatched image fails cleanly at load
+  instead of silently misbehaving - confirmed working. Architectures
+  that agree on cell width and endianness (x86-64 and ARM64, both LE,
+  both 8-byte pointers) share a single image, confirmed by running the
+  exact same `kernel.img` on both.
+- **Computed-goto threaded dispatch. Done.** GCC/Clang "labels as
+  values", replacing the function-pointer-table indirect call per
+  primitive with a direct `goto` to the next primitive's code. Measured
+  (not assumed) against an otherwise-identical function-pointer-table
+  build on the same `fib.4` workload: **~1.30x**, consistent across
+  repeated runs - a real, worthwhile win, but nowhere near the ~4-4.75x
+  the JIT-section paragraph above cites from prior exploratory
+  benchmarking. That number should now be treated as unverified for
+  *this* codebase (it likely came from a different baseline or
+  different hardware) rather than a forecast for phase 5's own
+  numbers - see `PROGRESS.md` for the measurement.
+- **Call-flattening at cross-compile time: deferred, not done.**
+  (`cross.4` inlining a non-recursive colon-word's body directly into
+  its caller instead of emitting a threaded call.) Given how much
+  smaller computed-goto's actual win turned out to be versus the prior
+  estimate, and how many non-obvious bugs phase 5's *other* changes
+  surfaced in `cross.4` despite each seeming simple going in (see
+  `PROGRESS.md`), call-flattening - a real change to the compiler's
+  code-generation logic, not just its plumbing - deserves its own
+  focused iteration with its own measurement, not a rushed add-on to an
+  already large one. The ~2-2.2x prior estimate should be treated with
+  the same skepticism as the dispatch number above until it's actually
+  measured on this codebase.
+- **ARM64 Linux as the first non-x86-64 target. Done.** Built with
+  `aarch64-linux-gnu-gcc`, tested under `qemu-aarch64` user-mode
+  emulation (no physical hardware used). Full test suite (1892 `OK`
+  markers) and `fib.4` both pass, using the identical `kernel.img`
+  produced on x86-64 - no ARM64-specific image rebuild needed,
+  confirming the shared-image design above end-to-end.
 - **Byte-granular opcode encoding: considered, rejected.** (Primitives
   as single bytes instead of full cells, with `CALL`/`BRANCH`/
   `0BRANCH`/`LIT` still using cell-width relative values but stored at

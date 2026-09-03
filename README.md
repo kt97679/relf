@@ -18,17 +18,29 @@ name - Relative Forth).
 
 2. Compilation.
 
-As of phase 2 (see GOALS.md), RelF targets x86-64 Linux only, and the
-engine (relf.c) talks to the OS via raw syscalls, with no libc and no
-crt0. Build it with:
+As of phase 5 (see GOALS.md), RelF is portable C targeting every
+architecture its libc supports (verified on x86-64 and ARM64 Linux so
+far). The engine (relf.c) is plain libc-based C, no special flags, no
+custom startup code:
 
-gcc -O2 -nostdlib -static -o relf relf.c
+cc -O2 -Wall -o relf relf.c
 
-Cells are 8 bytes, matching the process's own pointer width (RelF's
-real-pointer addressing model needs the two to match - see
-PROGRESS.md, Bug 2). There is no 32-bit build, no BIG_ENDIAN switch,
-and no separate relfgcc.c/vm.asm/vm_tos.asm engines any more; relf.c
-is the only engine, and it is the fast path.
+For a different architecture, use that architecture's C compiler (e.g.
+aarch64-linux-gnu-gcc for ARM64); nothing else changes.
+
+Cells are 8 bytes, matching the process's own pointer width on every
+64-bit host targeted so far (RelF's real-pointer addressing model needs
+the two to match - see PROGRESS.md, Bug 2). 32-bit-cell hosts (ARM32,
+i386, etc.) aren't currently supported - see GOALS.md's non-goals.
+There is no separate relfgcc.c/vm.asm/vm_tos.asm engine any more;
+relf.c is the only one.
+
+kernel.img is native host endianness (little-endian - see GOALS.md's
+non-goals) with an 8-byte magic header (cell width + a fixed tag), so a
+mismatched image fails cleanly at load rather than silently
+misbehaving. Any two architectures that agree on cell width and
+endianness can share one image unmodified - confirmed by running the
+identical kernel.img, unchanged, on both x86-64 and ARM64.
 
 Machine-independent kernel can be compiled by RelF itself. gforth is
 not currently usable as an alternative host: cross.4/extend.4/kernel.4
@@ -44,12 +56,13 @@ After a couple of moments RelF would exit and you'll get new kernel.img.
 Please, backup original kernel.img, since it would be overwritten during 
 crosscompilation.
 
-Note: cross-compiling kernel.4 from source with 8-byte target cells
-needs a 32-bit-safe cross-compiler even when relf itself is 64-bit,
-because bootstrapping the very first 8-byte-cell image has to start
-from some existing engine. See GOALS.md and PROGRESS.md for the
-details of how cross.4's @-T/!-T and the hand-numbered primitive
-tokens in kernel.4 (LIT/EXIT/BRANCH/0BRANCH/R>) account for this.
+Note: bootstrapping a *new* target cell width (e.g. a future 32-bit
+port) needs a cross-compile host whose own cells are at least as wide
+as the new target's - see GOALS.md and PROGRESS.md for the details of
+how cross.4's @-T/!-T and the hand-numbered primitive tokens in
+kernel.4 (LIT/EXIT/BRANCH/0BRANCH/R>) account for this. This doesn't
+apply to building for a *new architecture* at the *same* cell width
+(e.g. ARM64) - that needs no image rebuild at all, per above.
 
 3. Virtual Machine.
 
@@ -66,8 +79,11 @@ cell address it should have 3 minor bits set to zeroes. Reference to primitive
 is constructed by adding 1 to address of function, implementing primitive, so
 it should look like number_of_primitive * 8 + 1 (8 - sizeof address). If ([IP]
 & 1) == 1, then IP points to cell, containing reference to primitive. In this
-case we call function at address BASE + [IP], where BASE =
-pointer_to_the_array_of_functions,_implemeting_primitives - 1. Otherwise, if
+case we jump (via computed goto - a GCC/Clang extension, not a
+function-pointer call - see GOALS.md phase 5) to the code implementing
+that primitive, indexed the same way: number_of_primitive * 8 + 1 is
+still the addressing scheme, just used to index a table of label
+addresses instead of function pointers. Otherwise, if
 ([IP] & 1) == 0, IP points to cell, containing shift to high-level definition.
 In this case we push current IP to return stack and jump to high-level
 definition: IP = IP + [IP].

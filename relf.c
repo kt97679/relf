@@ -5,13 +5,24 @@
  *  The program is released under the GNU General Public License version 2.
  *  There is NO WARRANTY.
  *
- *  Phase 2 engine: a genuine x86-64 process, talking to the OS via raw
- *  Linux syscalls only (no libc, no crt0). Cells are 8 bytes, matching
- *  the process's own pointer width - see GOALS.md, "load-bearing facts",
+ *  Phase 5 engine (see GOALS.md): portable across every architecture the
+ *  build's libc supports. Cells are 8 bytes, matching the process's own
+ *  pointer width on 64-bit hosts - see GOALS.md, "load-bearing facts",
  *  for why cell width and host pointer width must match in this design.
- *  Built with -nostdlib -static; see tests/run_tests.sh for the exact
- *  command line.
+ *  Images are native host endianness (little-endian only - see GOALS.md
+ *  non-goals), not a portable on-disk format; a magic header lets a
+ *  mismatched image fail cleanly instead of silently misbehaving.
+ *  Dispatch is computed-goto threaded code (GCC/Clang "labels as
+ *  values"), not a function-pointer table - see PROGRESS.md for why.
  */
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern char **environ;
 
 #define  UNS8 unsigned char   /*     Virtual    */
 #define INT64 long            /*     machine    */
@@ -21,12 +32,17 @@
 #define RSTACK_BYTES 2048     /* room reserved for the return stack     */
 
 /*
- *  Macroses for memory access
+ *  Macroses for memory access. Plain native access, both cell- and
+ *  byte-granularity: no byte-order opinion of its own (see GOALS.md,
+ *  phase 5). Correctness of any Forth-level code that compares whole
+ *  cells of byte data (e.g. SEARCH-WORDLIST's name-comparison trick)
+ *  doesn't depend on which convention this is, only that reads and
+ *  writes agree with each other - which they trivially do here, since
+ *  there's only one access path.
  */
 
-#define CELL(reg) (*(UNS64*)(reg)) /* cell (word) memory access macros */
-#define BYTE(reg) (*(UNS8*)((reg) ^ 7)) /* VM is 64-bit, big endian, see  */
-                                         /* swap_mem() below               */
+#define CELL(reg) (*(UNS64*)(reg))
+#define BYTE(reg) (*(UNS8*)(reg))
 
 /*
  *  Macroses for stack access
@@ -60,105 +76,28 @@ static UNS64  rp; /* return stack pointer              */
 static UNS64 dsp; /* data stack pointer                */
 static UNS64   t; /* variable for temporary storage    */
 
-/* argv/envp captured by _start, needed by vmsystem() */
-static char **g_argv;
-static char **g_envp;
-
 /*
- *  Raw Linux x86-64 syscalls. No libc anywhere in this file.
+ *  8-byte magic every image starts with: "RELF" + cell width (8) + 3
+ *  reserved bytes. Plain byte comparison - see cross.4's SAVE-IMAGE for
+ *  why this needs no endianness handling of its own.
  */
 
-static long sys_read(long fd, void *buf, long count) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(0L), "D"(fd), "S"(buf), "d"(count) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_write(long fd, const void *buf, long count) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(1L), "D"(fd), "S"(buf), "d"(count) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_open(const char *path, long flags, long mode) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(2L), "D"(path), "S"(flags), "d"(mode) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_close(long fd) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(3L), "D"(fd) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_lseek(long fd, long offset, long whence) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(8L), "D"(fd), "S"(offset), "d"(whence) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static void sys_exit_group(long code) {
-    __asm__ volatile ("syscall" : : "a"(231L), "D"(code) : "memory");
-    __builtin_unreachable();
-}
-
-static long sys_unlink(const char *path) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(87L), "D"(path) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_fork(void) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(57L) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_execve(const char *path, char *const argv[], char *const envp[]) {
-    long ret;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(59L), "D"(path), "S"(argv), "d"(envp) : "rcx", "r11", "memory");
-    return ret;
-}
-
-static long sys_wait4(long pid, int *status, long options, void *rusage) {
-    long ret;
-    register void *r10 __asm__("r10") = rusage;
-    __asm__ volatile ("syscall" : "=a"(ret)
-        : "a"(61L), "D"(pid), "S"(status), "d"(options), "r"(r10)
-        : "rcx", "r11", "memory");
-    return ret;
-}
+static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', 8, 0, 0, 0 };
 
 /*
- *  Small helpers replacing the bits of libc we no longer link.
+ *  write() wrapper: don't care about partial writes here, only used for
+ *  short fixed error/usage messages before exit.
  */
 
-static long str_len(const char *s) {
-    long n = 0;
-    while (s[n]) n++;
-    return n;
-}
-
-static void write_str(long fd, const char *s) {
-    sys_write(fd, s, str_len(s));
-}
+static void write_str(int fd, const char *s);
 
 /* Read/write the full requested amount, looping over short reads/writes.
  * Returns bytes transferred, or a negative value on a real error. */
-static long full_read(long fd, void *buf, long count) {
+static long full_read(int fd, void *buf, long count) {
     long total = 0, n;
     UNS8 *p = (UNS8*)buf;
     while (total < count) {
-        n = sys_read(fd, p + total, count - total);
+        n = read(fd, p + total, count - total);
         if (n == 0) break;   /* EOF, not an error */
         if (n < 0) return n; /* real error */
         total += n;
@@ -166,11 +105,11 @@ static long full_read(long fd, void *buf, long count) {
     return total;
 }
 
-static long full_write(long fd, const void *buf, long count) {
+static long full_write(int fd, const void *buf, long count) {
     long total = 0, n;
     const UNS8 *p = (const UNS8*)buf;
     while (total < count) {
-        n = sys_write(fd, p + total, count - total);
+        n = write(fd, p + total, count - total);
         if (n < 0) return n;
         if (n == 0) return -1; /* no progress, avoid spinning forever */
         total += n;
@@ -178,17 +117,8 @@ static long full_write(long fd, const void *buf, long count) {
     return total;
 }
 
-/*
- *  Perform byte swap of 64-bit words in region
- *  of memory of virtual machine.
- */
-
-static void swap_mem(UNS64 start, UNS64 len) {
-    UNS64 i;
-
-    for (i = start & ~(UNS64)7; i < len + start; i += 8) {
-        CELL(i) = __builtin_bswap64(CELL(i));
-    }
+static void write_str(int fd, const char *s) {
+    (void)full_write(fd, s, (long)strlen(s));
 }
 
 /*
@@ -197,10 +127,9 @@ static void swap_mem(UNS64 start, UNS64 len) {
  */
 
 static void umul(UNS64 *a, UNS64 *b) {
-    UNS64 x = *a, y = *b, hi, lo;
-    __asm__ ("mulq %3" : "=a"(lo), "=d"(hi) : "a"(x), "rm"(y));
-    *a = hi;
-    *b = lo;
+    unsigned __int128 p = (unsigned __int128)(*a) * (unsigned __int128)(*b);
+    *a = (UNS64)(p >> 64);
+    *b = (UNS64)p;
 }
 
 /*
@@ -209,109 +138,169 @@ static void umul(UNS64 *a, UNS64 *b) {
  */
 
 static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
-    UNS64 divisor = *a, hi = *b, lo = *c, q, r;
-    __asm__ ("divq %4" : "=a"(q), "=d"(r)
-        : "a"(lo), "d"(hi), "rm"(divisor));
-    *b = q;
-    *c = r;
+    unsigned __int128 dividend =
+        ((unsigned __int128)(*b) << 64) | (unsigned __int128)(*c);
+    UNS64 divisor = *a;
+    *b = (UNS64)(dividend / divisor);
+    *c = (UNS64)(dividend % divisor);
 }
 
 /*
- *  Functions, implementing forth virtual machine primitives.
+ *  virtual machine I/O primitives' shared state
  */
 
-static void vmnoop()    {/* noop    */ }
-static void vmexit()    {/* exit    */ ip = RS; rp += 8; }
-static void vmlit()     {/* lit     */ PUSH(CELL(ip)); ip += 8; }
-static void vmbranch()  {/* branch  */ ip += CELL(ip); }
-static void vm0branch() {/* 0branch */ if (DS0) ip += 8; else ip += CELL(ip); dsp += 8; }
-static void vmdrop()    {/* drop    */ dsp += 8; }
-static void vmdup()     {/* dup     */ PUSH(DS1); }
-static void vmswap()    {/* swap    */ t = DS0; DS0 = DS1; DS1 = t; }
-static void vmrot()     {/* rot     */ t = DS2; DS2 = DS1; DS1 = DS0; DS0 = t; }
-static void vmover()    {/* over    */ PUSH(DS2); }
-static void vmcfetch()  {/* C@      */ DS0 = BYTE(DS0); }
-static void vmfetch()   {/* @       */ DS0 = CELL(DS0); }
-static void vmcstore()  {/* c!      */ BYTE(DS0) = (UNS8)DS1; dsp += 16; }
-static void vmstore()   {/* !       */ CELL(DS0) = DS1; dsp += 16; }
-static void vmand()     {/* and     */ DS1 &= DS0; dsp += 8; }
-static void vmor()      {/* or      */ DS1 |= DS0; dsp += 8; }
-static void vmxor()     {/* xor     */ DS1 ^= DS0; dsp += 8; }
-static void vmfromr()   {/* r>      */ PUSH(RS); rp += 8; }
-static void vmtor()     {/* >r      */ RPUSH(DS0); dsp += 8; }
-static void vmrfetch()  {/* r@      */ PUSH(RS); }
-static void vmeq()      {/* =       */ DS1 = - (UNS64)(DS0 == DS1); dsp += 8; }
-static void vmugt()     {/* u<      */ DS1 = - (UNS64)(DS1 < DS0); dsp += 8; }
-static void vmgt()      {/* <       */ DS1 = - (UNS64)((INT64)DS1 < (INT64)DS0); dsp += 8; }
-static void vmplus()    {/* +       */ DS1 += DS0; dsp += 8; }
-static void vmnegate()  {/* negate  */ DS0 = - DS0; }
-static void vmlshift()  {/* lshift  */ DS1 <<= DS0; dsp += 8; }
-static void vmrshift()  {/* rshift  */ DS1 >>= DS0; dsp += 8; }
-static void vmummult()  {/* um*     */ umul(&DS0, &DS1); }
-static void vmumdiv()   {/* um/mod  */ udiv(&DS0, &DS1, &DS2); dsp += 8; }
-static void vmdplus()   {/* d+      */ DS3 += DS1; DS2 += DS0; DS2 += (DS3 < DS1); dsp += 16; }
+static const int open_flags[6] = {
+    O_WRONLY | O_CREAT | O_TRUNC, /* w  */
+    O_WRONLY | O_CREAT | O_TRUNC, /* wb : same, no text/binary distinction */
+    O_RDONLY,                     /* r  */
+    O_RDONLY,                     /* rb */
+    O_RDWR,                       /* r+ */
+    O_RDWR                        /* r+b */
+};
 
-static void vmemit()    {/* emit    */
-    UNS8 c = (UNS8)DS0;
-    sys_write(1, &c, 1);
-    dsp += 8;
+/*
+ *  This function reads binary forth image from file into memory.
+ */
+
+static void load_image(const char *name) {
+    int fd;
+    long len;
+    UNS8 magic[8];
+
+    fd = open(name, O_RDONLY);
+    if (fd < 0) {
+        write_str(2, "Cannot open image file.\n");
+        exit(2);
+    }
+    if (full_read(fd, magic, 8) != 8 || memcmp(magic, IMAGE_MAGIC, 8) != 0) {
+        write_str(2, "kernel.img: not a RelF image, or built for a "
+                 "different cell width.\n");
+        exit(2);
+    }
+    base = (UNS8*)(((UNS64)mem + 7) & ~(UNS64)7);
+    len = full_read(fd, base, MEMSIZE);
+    close(fd);
+    if (len < 0) {
+        write_str(2, "Error reading image file.\n");
+        exit(2);
+    }
 }
 
-static void vmkey()     {/* key     */
+/*
+ *  Virtual machine itself: computed-goto threaded dispatch. Each
+ *  primitive is a labeled block ending in NEXT; primitive tokens are
+ *  (index * 8) + 1, matching cross.4's PRIMITIVE numbering (stride 8 =
+ *  sizeof(void*) on every 64-bit host this targets).
+ */
+
+static void virtual_machine(void) {
+    static const void *const dispatch[] = {
+        &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
+        &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
+        &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
+        &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
+        &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
+        &&L_dplus, &&L_emit, &&L_key, &&L_bye, &&L_spfetch, &&L_spstore,
+        &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
+        &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
+        &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize
+    };
+
+#define NEXT() do { \
+        t = CELL(ip); ip += 8; \
+        if (t & 1) goto *dispatch[(t - 1) >> 3]; \
+        RPUSH(ip); ip += t; \
+        goto next; \
+    } while (0)
+
+next:
+    NEXT();
+
+L_noop:    /* noop    */ NEXT();
+L_exit:    /* exit    */ ip = RS; rp += 8; NEXT();
+L_lit:     /* lit     */ PUSH(CELL(ip)); ip += 8; NEXT();
+L_branch:  /* branch  */ ip += CELL(ip); NEXT();
+L_0branch: /* 0branch */
+    if (DS0) ip += 8; else ip += CELL(ip);
+    dsp += 8;
+    NEXT();
+L_drop:    /* drop    */ dsp += 8; NEXT();
+L_dup:     /* dup     */ PUSH(DS1); NEXT();
+L_swap:    /* swap    */ t = DS0; DS0 = DS1; DS1 = t; NEXT();
+L_rot:     /* rot     */ t = DS2; DS2 = DS1; DS1 = DS0; DS0 = t; NEXT();
+L_over:    /* over    */ PUSH(DS2); NEXT();
+L_cfetch:  /* C@      */ DS0 = BYTE(DS0); NEXT();
+L_fetch:   /* @       */ DS0 = CELL(DS0); NEXT();
+L_cstore:  /* c!      */ BYTE(DS0) = (UNS8)DS1; dsp += 16; NEXT();
+L_store:   /* !       */ CELL(DS0) = DS1; dsp += 16; NEXT();
+L_and:     /* and     */ DS1 &= DS0; dsp += 8; NEXT();
+L_or:      /* or      */ DS1 |= DS0; dsp += 8; NEXT();
+L_xor:     /* xor     */ DS1 ^= DS0; dsp += 8; NEXT();
+L_fromr:   /* r>      */ PUSH(RS); rp += 8; NEXT();
+L_tor:     /* >r      */ RPUSH(DS0); dsp += 8; NEXT();
+L_rfetch:  /* r@      */ PUSH(RS); NEXT();
+L_eq:      /* =       */ DS1 = - (UNS64)(DS0 == DS1); dsp += 8; NEXT();
+L_ugt:     /* u<      */ DS1 = - (UNS64)(DS1 < DS0); dsp += 8; NEXT();
+L_gt:      /* <       */
+    DS1 = - (UNS64)((INT64)DS1 < (INT64)DS0);
+    dsp += 8;
+    NEXT();
+L_plus:    /* +       */ DS1 += DS0; dsp += 8; NEXT();
+L_negate:  /* negate  */ DS0 = - DS0; NEXT();
+L_lshift:  /* lshift  */ DS1 <<= DS0; dsp += 8; NEXT();
+L_rshift:  /* rshift  */ DS1 >>= DS0; dsp += 8; NEXT();
+L_ummult:  /* um*     */ umul(&DS0, &DS1); NEXT();
+L_umdiv:   /* um/mod  */ udiv(&DS0, &DS1, &DS2); dsp += 8; NEXT();
+L_dplus:   /* d+      */
+    DS3 += DS1; DS2 += DS0; DS2 += (DS3 < DS1);
+    dsp += 16;
+    NEXT();
+
+L_emit: { /* emit    */
+    UNS8 c = (UNS8)DS0;
+    full_write(1, &c, 1);
+    dsp += 8;
+    NEXT();
+}
+L_key: { /* key     */
     UNS8 c;
-    long n = sys_read(0, &c, 1);
+    long n = read(0, &c, 1);
     if (n <= 0) {
         /* Clean exit on stdin EOF (or a read error) instead of spinning
          * forever re-reading EOF - see GOALS.md / PROGRESS.md, Bug 3. */
-        sys_exit_group(0);
+        exit(0);
     }
     PUSH((UNS64)c);
+    NEXT();
 }
+L_bye:     /* bye     */ exit(0);
+L_spfetch: /* sp@     */ PUSH(dsp + 8); NEXT();
+L_spstore: /* sp!     */ dsp = DS0; NEXT();
+L_rpfetch: /* rp@     */ PUSH(rp); NEXT();
+L_rpstore: /* rp!     */ rp = DS0; dsp += 8; NEXT();
 
-static void vmbye()     {/* bye     */ sys_exit_group(0); }
-static void vmspfetch() {/* sp@     */ PUSH(dsp + 8); }
-static void vmspstore() {/* sp!     */ dsp = DS0; }
-static void vmrpfetch() {/* rp@     */ PUSH(rp); }
-static void vmrpstore() {/* rp!     */ rp = DS0; dsp += 8; }
-
-/*
- *  virtual machine I/O primitives
- */
-
-static const long open_flags[6] = {
-    0101000, /* w  : O_WRONLY|O_CREAT|O_TRUNC */
-    0101000, /* wb : same, no text/binary distinction on Linux */
-    0,       /* r  : O_RDONLY */
-    0,       /* rb : O_RDONLY */
-    02,      /* r+ : O_RDWR   */
-    02       /* r+b: O_RDWR   */
-};
-
-static void vmopenfile() { /* c-addr u fam --- fid ior */
-    long fd;
+L_openfile: { /* c-addr u fam --- fid ior */
+    int fd;
     t = BYTE(DS2 + DS1);
     BYTE(DS2 + DS1) = 0;
-    swap_mem(DS2, DS1);
-    fd = sys_open((char *)DS2, open_flags[DS0], 0644);
-    swap_mem(DS2, DS1);
+    fd = open((char *)DS2, open_flags[DS0], 0644);
     BYTE(DS2 + DS1) = t;
     DS2 = (UNS64)fd;
     DS1 = (fd >= 0) ? 0 : 200;
     dsp += 8;
+    NEXT();
 }
-
-static void vmclosefile() { /* fid --- ior */
-    DS0 = (UNS64)sys_close((long)DS0);
-}
-
-static void vmreadline() { /* c-addr u1 fid --- u2 flag ior */
-    long fd = (long)DS0;
+L_closefile: /* fid --- ior */
+    DS0 = (UNS64)close((int)DS0);
+    NEXT();
+L_readline: { /* c-addr u1 fid --- u2 flag ior */
+    int fd = (int)DS0;
     UNS64 addr = DS2, max = DS1, count = 0;
     long n, err = 0, got_any = 0;
     UNS8 c;
 
     while (count < max) {
-        n = sys_read(fd, &c, 1);
+        n = read(fd, &c, 1);
         if (n < 0) { err = 1; break; }
         if (n == 0) break;      /* EOF */
         got_any = 1;
@@ -325,16 +314,14 @@ static void vmreadline() { /* c-addr u1 fid --- u2 flag ior */
     DS2 = count;
     DS1 = got_any ? (UNS64)-1 : 0;
     DS0 = err ? (UNS64)-200 : 0;
+    NEXT();
 }
-
-static void vmwriteline() { /* c-addr u fid --- ior */
-    long fd = (long)DS0;
+L_writeline: { /* c-addr u fid --- ior */
+    int fd = (int)DS0;
     UNS64 addr = DS2, len = DS1;
     long n;
 
-    swap_mem(addr, len);
     n = full_write(fd, (void*)addr, len);
-    swap_mem(addr, len);
     if (n == (long)len) {
         n = full_write(fd, "\n", 1);
         DS2 = (n == 1) ? 0 : (UNS64)-200;
@@ -342,16 +329,14 @@ static void vmwriteline() { /* c-addr u fid --- ior */
         DS2 = (UNS64)-200;
     }
     dsp += 16;
+    NEXT();
 }
-
-static void vmreadfile() { /* c-addr u1 fid --- u2 ior */
-    long fd = (long)DS0;
+L_readfile: { /* c-addr u1 fid --- u2 ior */
+    int fd = (int)DS0;
     UNS64 addr = DS2, maxlen = DS1;
     long n;
 
-    swap_mem(addr, maxlen);
     n = full_read(fd, (void*)addr, maxlen);
-    swap_mem(addr, maxlen);
     if (n < 0) {
         DS2 = 0;
         DS1 = (UNS64)-200;
@@ -360,146 +345,85 @@ static void vmreadfile() { /* c-addr u1 fid --- u2 ior */
         DS1 = 0;
     }
     dsp += 8;
+    NEXT();
 }
-
-static void vmwritefile() { /* c-addr u fid --- ior */
-    long fd = (long)DS0;
+L_writefile: { /* c-addr u fid --- ior */
+    int fd = (int)DS0;
     UNS64 addr = DS2, len = DS1;
     long n;
 
-    swap_mem(addr, len);
     n = full_write(fd, (void*)addr, len);
-    swap_mem(addr, len);
     DS2 = (n == (long)len) ? 0 : (UNS64)-200;
     dsp += 16;
+    NEXT();
 }
-
-static void vmsystem() { /* c-addr u --- ior */
+L_system: { /* c-addr u --- ior */
     UNS64 addr = DS1, len = DS0;
     UNS8 saved;
-    long pid, ior;
+    pid_t pid;
+    long ior;
     int status = 0;
     char *argv[4];
 
     saved = BYTE(addr + len);
     BYTE(addr + len) = 0;
-    swap_mem(addr, len);
     argv[0] = "/bin/sh";
     argv[1] = "-c";
     argv[2] = (char*)addr;
     argv[3] = 0;
-    pid = sys_fork();
+    pid = fork();
     if (pid == 0) {
-        sys_execve("/bin/sh", argv, g_envp);
-        sys_exit_group(127);
+        execve("/bin/sh", argv, environ);
+        _exit(127);
     }
     if (pid > 0) {
-        sys_wait4(pid, &status, 0, 0);
+        waitpid(pid, &status, 0);
         ior = (status >> 8) & 0xff;
     } else {
         ior = 200;
     }
-    swap_mem(addr, len);
     BYTE(addr + len) = saved;
     DS1 = (UNS64)ior;
     dsp += 8;
+    NEXT();
 }
-
-static void vmreposfile() { /* offset fid --- ior */
-    DS1 = (UNS64)sys_lseek((long)DS0, (long)DS1, 0 /* SEEK_SET */);
+L_reposfile: /* offset fid --- ior */
+    DS1 = (UNS64)lseek((int)DS0, (long)DS1, SEEK_SET);
     dsp += 8;
-}
-
-static void vmfilepos() { /* fid --- u ior */
-    DS0 = (UNS64)sys_lseek((long)DS0, 0, 1 /* SEEK_CUR */);
+    NEXT();
+L_filepos: /* fid --- u ior */
+    DS0 = (UNS64)lseek((int)DS0, 0, SEEK_CUR);
     dsp -= 8;
     if ((INT64)DS1 == -1) {
         DS0 = 200;
     } else {
         DS0 = 0;
     }
-}
-
-static void vmdelfile() { /* c-addr u --- ior */
+    NEXT();
+L_delfile: { /* c-addr u --- ior */
     t = BYTE(DS1 + DS0);
     BYTE(DS1 + DS0) = 0;
-    swap_mem(DS1, DS0);
-    DS1 = (UNS64)sys_unlink((char*)DS1);
-    swap_mem(DS1, DS0);
+    DS1 = (UNS64)unlink((char*)DS1);
     BYTE(DS1 + DS0) = t;
     dsp += 8;
+    NEXT();
 }
-
-static void vmfilesize() { /* fid --- u ior */
-    long fd = (long)DS0;
-    long cur = sys_lseek(fd, 0, 1  /* SEEK_CUR */);
-    long size = sys_lseek(fd, 0, 2 /* SEEK_END */);
-    sys_lseek(fd, cur, 0 /* SEEK_SET */);
+L_filesize: { /* fid --- u ior */
+    int fd = (int)DS0;
+    long cur = lseek(fd, 0, SEEK_CUR);
+    long size = lseek(fd, 0, SEEK_END);
+    lseek(fd, cur, SEEK_SET);
     DS0 = (UNS64)size;
     PUSH(0);
+    NEXT();
+}
 }
 
 /*
- *  Virtual machine itself.
+ *  Program entry point.
  */
 
-typedef void (*vmop)(void);
-
-static void virtual_machine(void) {
-    static const vmop _vmops[] = {
-        vmnoop, vmexit, vmlit, vmbranch, vm0branch, vmdrop,
-        vmdup, vmswap, vmrot, vmover, vmcfetch, vmfetch, vmcstore, vmstore,
-        vmand, vmor, vmxor, vmfromr, vmtor, vmrfetch, vmeq, vmugt, vmgt,
-        vmplus, vmnegate, vmlshift, vmrshift, vmummult, vmumdiv, vmdplus,
-        vmemit, vmkey, vmbye, vmspfetch, vmspstore, vmrpfetch, vmrpstore,
-        vmopenfile, vmclosefile, vmreadline, vmwriteline, vmreadfile,
-        vmwritefile, vmsystem, vmreposfile, vmfilepos, vmdelfile, vmfilesize
-    };
-    /* Primitive tokens are (index * sizeof(vmop)) + 1; sizeof(vmop) is 8
-     * on x86-64, so cross.4's PRIMITIVE stride (8) must match this. */
-    UNS64 vmops = (UNS64)_vmops - 1;
-
-    while (1) {
-        t = CELL(ip);
-        ip += 8;
-        if (t & 1) {
-            (*(vmop*)(vmops + t))();
-        } else {
-            RPUSH(ip);
-            ip += t;
-        }
-    }
-}
-
-/*
- *  This function reads binary forth image from file into memory.
- */
-
-static void load_image(const char *name) {
-    long fd, len;
-
-    fd = sys_open(name, 0 /* O_RDONLY */, 0);
-    if (fd < 0) {
-        write_str(2, "Cannot open image file.\n");
-        sys_exit_group(2);
-    }
-    base = (UNS8*)(((UNS64)mem + 7) & ~(UNS64)7);
-    len = full_read(fd, base, MEMSIZE);
-    sys_close(fd);
-    if (len < 0) {
-        write_str(2, "Error reading image file.\n");
-        sys_exit_group(2);
-    }
-    swap_mem((UNS64)base, (UNS64)len);
-}
-
-/*
- *  Program entry point (called from _start below).
- */
-
-long relf_main(long argc, char **argv, char **envp) {
-    g_argv = argv;
-    g_envp = envp;
+int main(int argc, char **argv) {
     if (argc < 2) {
         write_str(2, "Usage: relf <filename>\n");
         return 1;
@@ -512,23 +436,3 @@ long relf_main(long argc, char **argv, char **envp) {
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */
 }
-
-/*
- *  Raw process entry point: no crt0, no libc. Extracts argc/argv/envp
- *  from the initial stack layout the kernel sets up, aligns the stack,
- *  and calls relf_main(). See GOALS.md, phase 2.
- */
-
-__asm__ (
-    ".global _start\n"
-    "_start:\n"
-    "    xor %ebp, %ebp\n"
-    "    mov (%rsp), %rdi\n"          /* argc            */
-    "    lea 8(%rsp), %rsi\n"         /* argv            */
-    "    lea 8(%rsi,%rdi,8), %rdx\n"  /* envp = argv+argc+1 */
-    "    and $-16, %rsp\n"
-    "    call relf_main\n"
-    "    mov %eax, %edi\n"
-    "    mov $231, %eax\n"            /* exit_group */
-    "    syscall\n"
-);

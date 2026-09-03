@@ -39,29 +39,35 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
 : C@-T ( t-addr --- c) CHARS IMAGE + C@ ;
 : C!-T ( c t-addr ---) CHARS IMAGE + C! ;
 
-\ Fetch and store cells in the target space, big-endian.
-\ IMPORTANT: this cross-compiler's host may itself have only 32-bit cells
-\ (that's exactly the case for our bootstrap: the OLD relf, still 4-byte
-\ cells, is what runs this file to produce the NEW 8-byte-cell image -
-\ see GOALS.md). A host shift count >= 32 is undefined behaviour on such
-\ a host, so these must never shift by more than 24. @-T therefore reads
-\ back only the low 4 (of 8) target bytes - enough to round-trip any
-\ value that started as a single 32-bit host cell - and !-T sign-extends
-\ that host cell into the high 4 target bytes instead of zero-filling,
-\ so that negative literals (e.g. -1, used as TRUE) still read back as
-\ all-bits-set at the new 8-byte width.
+\ Fetch and store cells in the target space.
+\ As of phase 5 (see GOALS.md), images are native host endianness, not a
+\ portable on-disk format. These build/take apart a little-endian value
+\ byte by byte via C@-T/C!-T (not plain @/! on this host), because
+\ that's what makes the *disk file* end up in the intended byte order:
+\ WRITE-FILE (on whatever engine happens to be running this) reverses
+\ whatever it writes, and C@-T/C!-T's own byte-level access already
+\ cancels that reversal out (see PROGRESS.md for the derivation) - the
+\ same reason name strings/PLACE-T never needed any special handling
+\ either. Safe on this 64-bit host: no narrow-shift concerns like the
+\ ones phase 2 had to work around for a 32-bit bootstrap host.
 : @-T  ( t-addr --- x)
-       4 CHARS + CHARS IMAGE +
-       DUP C@ 24 LSHIFT OVER 1 CHARS + C@ 16 LSHIFT +
-       OVER 2 CHARS + C@ 8 LSHIFT + SWAP 3 CHARS + C@ + ;
+  DUP C@-T
+  OVER 1 CHARS + C@-T 8 LSHIFT OR
+  OVER 2 CHARS + C@-T 16 LSHIFT OR
+  OVER 3 CHARS + C@-T 24 LSHIFT OR
+  OVER 4 CHARS + C@-T 32 LSHIFT OR
+  OVER 5 CHARS + C@-T 40 LSHIFT OR
+  OVER 6 CHARS + C@-T 48 LSHIFT OR
+  SWAP 7 CHARS + C@-T 56 LSHIFT OR ;
 : !-T  ( x t-addr ---)
-       CHARS IMAGE + >R
-       DUP 0< IF -1 ELSE 0 THEN
-       DUP 24 RSHIFT R@ C! DUP 16 RSHIFT R@ 1 CHARS + C!
-       DUP 8 RSHIFT R@ 2 CHARS + C! R@ 3 CHARS + C!
-       R> 4 CHARS + >R
-       DUP 24 RSHIFT R@ C! DUP 16 RSHIFT R@ 1 CHARS + C!
-       DUP 8 RSHIFT R@ 2 CHARS + C! R> 3 CHARS + C! ;
+  OVER OVER C!-T
+  OVER 8 RSHIFT OVER 1 CHARS + C!-T
+  OVER 16 RSHIFT OVER 2 CHARS + C!-T
+  OVER 24 RSHIFT OVER 3 CHARS + C!-T
+  OVER 32 RSHIFT OVER 4 CHARS + C!-T
+  OVER 40 RSHIFT OVER 5 CHARS + C!-T
+  OVER 48 RSHIFT OVER 6 CHARS + C!-T
+  SWAP 56 RSHIFT SWAP 7 CHARS + C!-T ;
 
 \ A dictionary is constructed in the target space. Here are the primitives
 \ to maintain the dictionary pointer and to reserve space.
@@ -82,9 +88,26 @@ VARIABLE DP-T                       \ Dictionary pointer for target dictionary.
 : PLACE-T ( c-addr len t-addr --- ) \ Move counted string to target space.
   OVER OVER C!-T 1+ CHARS IMAGE + SWAP CHARS CMOVE ;
 
+\ 8-byte magic written before the image itself, so a future engine with
+\ a different cell width refuses a mismatched image instead of silently
+\ misbehaving. Plain byte-level writes - byte order doesn't apply to a
+\ byte sequence, so this needs no special handling (same reasoning as
+\ @-T/!-T above). Plain C! (not C!-T): IMAGE-MAGIC is its own buffer,
+\ not part of IMAGE.
+CREATE IMAGE-MAGIC 8 CHARS ALLOT
+: INIT-IMAGE-MAGIC
+  82 IMAGE-MAGIC C! 69 IMAGE-MAGIC 1 CHARS + C!
+  76 IMAGE-MAGIC 2 CHARS + C! 70 IMAGE-MAGIC 3 CHARS + C! \ "RELF"
+  8 IMAGE-MAGIC 4 CHARS + C!                              \ cell width
+  0 IMAGE-MAGIC 5 CHARS + C!
+  0 IMAGE-MAGIC 6 CHARS + C!
+  0 IMAGE-MAGIC 7 CHARS + C! ;
+INIT-IMAGE-MAGIC
+
 \ After the Forth system is constructed, its image must be saved.
 : SAVE-IMAGE ( "name" --- )
   32 WORD COUNT W/O BIN CREATE-FILE ABORT" Can't create file" >R
+  IMAGE-MAGIC 8 R@ WRITE-FILE ABORT" Can't write file"
   IMAGE THERE R@ WRITE-FILE ABORT" Can't write file"
   R> CLOSE-FILE ABORT" Can't close file" ;
 

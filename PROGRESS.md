@@ -361,3 +361,151 @@ short/near/far forms, the way real ISAs handle this) could in principle
 recover some of this, but needs assembler relaxation (multi-pass
 encoding) — real, ongoing complexity that isn't justified without a much
 stronger case than exists here, and cuts against goal 3.
+
+## 2026-09-02 — Iteration 3: phase 5 (libc, native endianness, computed-goto, ARM64)
+
+### Summary
+
+Implemented most of phase 5 from `GOALS.md`: `relf.c` now builds with a
+plain `cc -O2 -Wall -o relf relf.c` against libc (no special flags, no
+custom `_start`, no inline asm for syscalls), `kernel.img` is native
+host endianness with an 8-byte magic header, dispatch is computed-goto
+threaded code, and the same binary + same `kernel.img` were verified
+working on both x86-64 and ARM64 (the latter cross-compiled with
+`aarch64-linux-gnu-gcc` and tested under `qemu-aarch64` user-mode
+emulation — no physical ARM hardware used or available). Full test
+suite (1892 `OK` markers) passes on both architectures, using the
+*identical* `kernel.img`. `fib.4` gives the correct result on both.
+Call-flattening (the other phase-5 item) is deliberately deferred — see
+`GOALS.md`'s phase 5 section for why.
+
+This iteration surfaced more real bugs than expected for what looked
+like a fairly mechanical set of changes going in — three separate ones,
+each documented below, each found by empirical testing after a plausible
+-looking hand derivation turned out to be wrong or incomplete. Worth
+internalizing for next time: this codebase's cross-compiler plumbing
+(`cross.4`) is thin enough that small, seemingly-independent changes
+(byte order, a flag stride, an open() mode table) interact in ways that
+are easy to get wrong by reasoning alone and need to be checked against
+running code, not just re-derived on paper.
+
+### Bug found: wrong `open()` flags in the (now-removed) phase-2 engine
+
+While bootstrapping the new image (which needs `SAVE-IMAGE`, i.e.
+`CREATE-FILE`/`WRITE-FILE`, to actually run), `CREATE-FILE` failed with
+`ENOENT` on a perfectly good path. `strace` showed the actual `open()`
+call used `O_RDONLY|O_TRUNC` instead of `O_WRONLY|O_CREAT|O_TRUNC` — the
+phase-2 engine's `open_flags` table had `0101000` (octal) where it
+should have had `01101`: `O_WRONLY(01) | O_CREAT(0100) | O_TRUNC(01000)
+= 577 decimal = 01101 octal`, not `0101000`. A plain arithmetic slip
+when phase 2 was written, and it was never caught because no test in
+this repo writes a file — everything runs via piped stdin. The
+phase-2 engine (`relf.c` at that point) had never actually created a
+file until this bootstrap tried to. Fixed in a scratch copy just to get
+a working bootstrap host (the real fix is moot: `relf.c` is being
+replaced by the phase-5 engine in the same commit, and the phase-5
+version uses symbolic `O_WRONLY|O_CREAT|O_TRUNC` from `<fcntl.h>`
+instead of a hand-computed octal literal, which is exactly the kind of
+mistake that using named constants prevents). Worth remembering: a
+clean test suite pass doesn't mean every code path has been exercised —
+this one had zero coverage for over a full iteration.
+
+### Bug found (by me, then corrected by more careful design): naive image-wide byte reversal corrupted string data
+
+First attempt at native-endianness images: simplify `cross.4`'s
+`@-T`/`!-T` to plain `@`/`!` (trivial, since this bootstrap's host and
+target now agree on cell width — no 32-bit-host workaround needed this
+time), and add a bulk `BSWAP-IMAGE` pass right before `SAVE-IMAGE`'s
+`WRITE-FILE`, reasoning that the *existing* engine's `WRITE-FILE`
+always reverses byte order on write (a leftover of the old portable
+big-endian format), so a deliberate pre-reversal would cancel it out.
+
+This worked correctly for cell-level data (verified by direct testing:
+wrote known values, checked the resulting file bytes matched native-LE
+expectations exactly) but broke string data — the boot banner came out
+as `mocleW` (`Welcome` reversed) inside 8-byte groups. The bug: `BSWAP
+-IMAGE` reversed the *whole* image uniformly, including name fields and
+string literals written via `C!-T` (byte-level) — but byte-level data
+was *already* coming out correct on disk without any help, because the
+old engine's XOR-7 byte-addressing convention and its `WRITE-FILE`-time
+`swap_mem()` cancel each other out for byte-level access (worked out by
+hand-tracing what physical byte ends up where under each transform —
+see the commit for the full derivation if this needs re-deriving).
+Applying `BSWAP-IMAGE` on top double-reversed that data.
+
+Fix: don't bulk-reverse anything. Instead, make `@-T`/`!-T` go through
+the *same* byte-level path (`C@-T`/`C!-T`) that string data already
+uses successfully, assembling/disassembling a little-endian value one
+byte at a time. This gets the same automatic cancellation as string
+data, for free, with no separate compensation pass needed. Verified
+directly (round-tripped known values including `-1` through an actual
+`SAVE-IMAGE`-style disk write, checked the raw file bytes with Python
+matched native-LE expectations at the expected offsets) before
+integrating it back into the real bootstrap.
+
+### Bug found: `SEARCH-WORDLIST`'s name-comparison mask assumed the old byte order
+
+With cell-level data now byte-assembled little-endian instead of the
+old big-endian convention, `kernel.4`'s `SEARCH-WORDLIST` broke in a way
+that took a moment to diagnose: `COLD`'s own compiled code ran fine
+(banner printed correctly) but *every* interactively-typed word —
+`CR`, `DUP`, `WORDS`, all of them — came back "Undefined word". Compiled
+code doesn't need dictionary lookup (it's already resolved to direct
+jumps at compile time); the interactive interpreter does, via `FIND`/
+`SEARCH-WORDLIST`. That word has a fast-path optimization: compare a
+candidate name's first cell against the search buffer's first cell in
+one shot, masking off the 3 flag bits packed into the count byte first.
+The mask (`1 61 LSHIFT 1 -`, clearing the top 3 bits of the cell) was
+written for the old convention where the count/flag byte was the *most
+significant* byte of the cell. Under native little-endian reads, the
+count/flag byte is the *least significant* byte instead — masking bits
+61-63 was clearing three bits that had nothing to do with the flags,
+while leaving the real flag bits (now in the low byte) untouched, so
+almost no candidate could ever match. Fixed by changing the mask to
+clear the top 3 bits of the *low* byte instead (`-1 224 XOR AND`,
+i.e. all-ones with the low byte's top 3 bits cleared - 224 = 0xE0).
+`2/`'s own sign-bit mask (`1 63 LSHIFT`) didn't need a corresponding fix
+— that one's about the numeric value of a cell as a whole, not about
+which physical byte holds which character within a packed name, so it
+was never sensitive to this distinction in the first place.
+
+### Computed-goto: measured, not assumed
+
+Built a throwaway function-pointer-table variant of the exact same
+engine (same primitives, same everything else, dispatch loop swapped
+back to the old `vmops[idx]()` indirect-call style) specifically to
+isolate computed-goto's own contribution. `fib.4` at n=35, three runs
+each: computed-goto averaged 0.666s, function-pointer averaged 0.866s —
+a consistent **~1.30x**, not the ~4-4.75x the JIT section of `GOALS.md`
+cites from prior exploratory work. See `GOALS.md`'s updated "Why RelF
+specifically" section for a plausible explanation (that old number
+likely came from measuring the removed asm engines, which used the real
+CPU stack directly, not this portable C engine's manually-tracked
+`dsp`). Recorded here so the old ~4-4.75x figure doesn't keep getting
+cited as if it applies to this codebase - it doesn't, as measured.
+
+### What this iteration deliberately did NOT do
+
+- Call-flattening — see `GOALS.md`'s phase 5 section for the reasoning
+  (given how each of the *other* phase-5 changes turned out to have a
+  non-obvious bug despite looking simple going in, and how much smaller
+  computed-goto's actual win was than expected, rushing a real
+  code-generation change into the same iteration seemed like exactly
+  the wrong lesson to take from the above).
+- 32-bit-cell architectures (ARM32, i386, etc.) — see `GOALS.md`'s
+  non-goals for why this is a separate, larger piece of work, not a
+  small extension of what shipped here.
+- Physical ARM64 hardware testing — QEMU user-mode emulation only, no
+  physical device available. Worth spot-checking on real hardware if
+  the opportunity comes up, though QEMU user-mode emulation of a
+  syscall-level Linux binary is normally a reliable proxy for this kind
+  of correctness testing (it's not emulating a different kernel, just
+  translating the instruction stream).
+- A general fix for the mask-computation *pattern* (i.e., auditing
+  whether other bit-packed values elsewhere in `kernel.4` have similar
+  byte-order sensitivity). Only `SEARCH-WORDLIST`'s mask actually turned
+  out to be affected (see above); everything else that touches
+  flag/count bytes already goes through `C@`/`C!` (byte-level, never
+  sensitive to this) rather than treating multiple bytes as one packed
+  cell. Worth keeping in mind as a category of bug if any *future* change
+  introduces another whole-cell bit-packing trick.

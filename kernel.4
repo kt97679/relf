@@ -821,9 +821,11 @@ VARIABLE CURRENT ( --- addr)
   NAME>BUF
   @ DUP IF
   BEGIN
-   \ Mask is computed (1 61 LSHIFT 1 -), not a literal - same 32-bit-host
-   \ reason as in 2/ above.
-   NAMEBUF @ OVER @ 1 61 LSHIFT 1 - AND = \ Compare first cells of names.
+   \ Mask clears the flag bits within the count byte - which, since cells
+   \ are read native-endian (little-endian on every host targeted so
+   \ far - see GOALS.md phase 5), is the LOW byte of the cell, not the
+   \ high byte the old big-endian-packed mask (1 61 LSHIFT 1 -) assumed.
+   NAMEBUF @ OVER @ -1 224 XOR AND = \ Compare first cells of names.
            \ Mask off bits 5-7 of name length, these have special purposes.
    IF
     NAMEBUF CELL+
