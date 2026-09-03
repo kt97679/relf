@@ -28,19 +28,27 @@ cc -O2 -Wall -o relf relf.c
 For a different architecture, use that architecture's C compiler (e.g.
 aarch64-linux-gnu-gcc for ARM64); nothing else changes.
 
-Cells are 8 bytes, matching the process's own pointer width on every
-64-bit host targeted so far (RelF's real-pointer addressing model needs
-the two to match - see PROGRESS.md, Bug 2). 32-bit-cell hosts (ARM32,
-i386, etc.) aren't currently supported - see GOALS.md's non-goals.
-There is no separate relfgcc.c/vm.asm/vm_tos.asm engine any more;
-relf.c is the only one.
+Cells are 8 bytes by default, matching the process's own pointer width
+on every 64-bit host targeted so far (RelF's real-pointer addressing
+model needs the two to match - see PROGRESS.md, Bug 2). Cell width is
+parameterized (see GOALS.md, phase 6): relf.c picks 4 or 8 bytes at
+compile time from the host's own UINTPTR_MAX, so building with a 32-bit
+compiler (e.g. `gcc -m32`) automatically produces a 4-byte-cell engine,
+matching a 32-bit host's own pointer width - no source changes needed
+for the engine itself. i386 is verified working this way (full CORE
+test suite passes on both cell widths from the same cross.4/kernel.4
+source). ARM32 should work the same way in principle but hasn't been
+verified. There is no separate relfgcc.c/vm.asm/vm_tos.asm engine any
+more; relf.c is the only one.
 
 kernel.img is native host endianness (little-endian - see GOALS.md's
 non-goals) with an 8-byte magic header (cell width + a fixed tag), so a
 mismatched image fails cleanly at load rather than silently
-misbehaving. Any two architectures that agree on cell width and
+misbehaving. Any two architectures that agree on *both* cell width and
 endianness can share one image unmodified - confirmed by running the
-identical kernel.img, unchanged, on both x86-64 and ARM64.
+identical kernel.img, unchanged, on both x86-64 and ARM64 (both 8-byte
+cells). A 4-byte-cell image (e.g. for i386) is a *different* image,
+built separately - see below.
 
 Machine-independent kernel can be compiled by RelF itself. gforth is
 not currently usable as an alternative host: cross.4/extend.4/kernel.4
@@ -56,18 +64,26 @@ After a couple of moments RelF would exit and you'll get new kernel.img.
 Please, backup original kernel.img, since it would be overwritten during 
 crosscompilation.
 
-Note: bootstrapping a *new* target cell width (e.g. a future 32-bit
-port) needs a cross-compile host whose own cells are at least as wide
-as the new target's - see GOALS.md and PROGRESS.md for the details of
-how cross.4's @-T/!-T and the hand-numbered primitive tokens in
-kernel.4 (LIT/EXIT/BRANCH/0BRANCH/R>) account for this. This doesn't
-apply to building for a *new architecture* at the *same* cell width
-(e.g. ARM64) - that needs no image rebuild at all, per above.
+To cross-compile a *32-bit* (4-byte-cell) target image instead of the
+8-byte-cell default, edit the "8" in cross.4's own
+"VARIABLE TARGET-CELL-BYTES / 8 TARGET-CELL-BYTES !" lines (near the
+top of the file) to "4", then follow the same three steps above. This
+is a plain, direct source edit rather than something settable before
+including cross.4 - see the comment at that exact spot in cross.4 for
+why (a top-level IF/THEN silently corrupted the dictionary instead of
+erroring; see PROGRESS.md for the full account). Bootstrapping a new
+target cell width needs a cross-compile *host* whose own cells are at
+least as wide as the new target's - i.e. building a 4-byte-cell image
+needs to run on an 8-byte-cell (or wider) host; the reverse doesn't
+work. This doesn't apply to building for a *new architecture* at the
+*same* cell width (e.g. ARM64) - that needs no image rebuild at all,
+per above.
 
 3. Virtual Machine.
 
 Virtual machine uses 3 internal registers: instruction pointer (IP), data
-stack pointer (SP) and return stack pointer (RP). Cells are 8 bytes.
+stack pointer (SP) and return stack pointer (RP). Cells are 8 bytes by
+default, or 4 bytes when built for a 32-bit host (see above).
 
 IP can point to the cells of 2 types:
 a) containing reference to primitive;

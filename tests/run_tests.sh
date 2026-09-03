@@ -1,16 +1,27 @@
 #!/bin/bash
-# tests/run_tests.sh — build relf and run the full test suite against it.
+# tests/run_tests.sh — build relf and run the full test suite against it,
+# for both the default (8-byte) cell width and the 32-bit (4-byte,
+# i386) target.
 #
 # relf is portable, libc-based C (see GOALS.md phase 5) - built with a
-# plain `cc`, no special flags. Cells are 8 bytes, matching the process's
-# own pointer width on every 64-bit host targeted so far, per RelF's
-# real-pointer addressing model (see PROGRESS.md, Bug 2, for why cell
-# width and host pointer width must match).
+# plain `cc`, no special flags. Cell width is parameterized (see
+# GOALS.md phase 6): relf.c picks 4 or 8 bytes at compile time from the
+# host's own UINTPTR_MAX, matching the process's own pointer width, per
+# RelF's real-pointer addressing model (see PROGRESS.md, Bug 2, for why
+# cell width and host pointer width must match). Building with a 32-bit
+# compiler (e.g. `gcc -m32`) therefore automatically produces a
+# 4-byte-cell engine - no source changes needed for the engine itself.
 #
 # Images are native host endianness (see GOALS.md phase 5), not a
 # portable on-disk format, and carry an 8-byte magic header (cell width
 # + a fixed tag) so a mismatched image fails cleanly at load instead of
-# silently misbehaving.
+# silently misbehaving. The 4-byte-cell image is a genuinely different
+# image from kernel.img (not just a different engine build of the same
+# image) - it's cross-compiled separately, each run, from the same
+# cross.4/kernel.4 source with TARGET-CELL-BYTES set to 4 instead of
+# cross.4's own default of 8. That's done here via a temporary copy of
+# cross.4, not by editing the committed one - see README.md for the
+# manual (permanent) equivalent.
 #
 # Test suite = tester.fr (bundled, John Hayes 1993 CORE word suite,
 # already adapted to RelF's own { -> } syntax) + anything in tests/*.fth
@@ -27,29 +38,61 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "== Building relf =="
-cc -O2 -Wall -o relf relf.c
-
-echo "== Running test suite =="
 TESTFILES=(tester.fr)
 for f in tests/*.fth; do
     TESTFILES+=("$f")
 done
 
-OUTPUT=$( { cat "${TESTFILES[@]}"; echo BYE; } | timeout 30 ./relf kernel.img 2>&1 )
-STATUS=$?
+run_suite() {
+    # $1 = engine binary, $2 = image, $3 = label
+    local engine="$1" image="$2" label="$3"
+    local output status ok_count
+    output=$( { cat "${TESTFILES[@]}"; echo BYE; } | timeout 30 "$engine" "$image" 2>&1 )
+    status=$?
 
-echo "$OUTPUT"
+    echo "$output"
 
-if [ "$STATUS" -ne 0 ]; then
-    echo "FAIL: relf exited with status $STATUS (timeout or crash)"
-    exit 1
+    if [ "$status" -ne 0 ]; then
+        echo "FAIL ($label): engine exited with status $status (timeout or crash)"
+        exit 1
+    fi
+
+    if echo "$output" | grep -qiE "incorrect result|wrong number of results|undefined word|segmentation fault"; then
+        echo "FAIL ($label): test suite reported an error (see output above)"
+        exit 1
+    fi
+
+    ok_count=$(echo "$output" | grep -c "^OK" || true)
+    echo "== PASS ($label): $ok_count OK markers, no errors =="
+}
+
+echo "== Building relf (default, 8-byte cells) =="
+cc -O2 -Wall -o relf relf.c
+
+echo "== Running test suite (8-byte cells) =="
+run_suite ./relf kernel.img "8-byte cells"
+
+echo "== Building relf32 (i386, 4-byte cells) =="
+if ! cc -m32 -O2 -Wall -o relf32 relf.c 2>/tmp/relf32_build.log; then
+    echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
+else
+    echo "== Cross-compiling a 4-byte-cell target image =="
+    WORKDIR=$(mktemp -d)
+    trap 'rm -rf "$WORKDIR"' EXIT
+    cp extend.4 cross.4 kernel.4 kernel.img "$WORKDIR/"
+    sed -i 's/^8 TARGET-CELL-BYTES !$/4 TARGET-CELL-BYTES !/' "$WORKDIR/cross.4"
+    cp relf "$WORKDIR/"
+    ( cd "$WORKDIR"
+      printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
+        | timeout 60 ./relf kernel.img > boot.log 2>&1
+      if grep -qiE "undefined word|segmentation fault" boot.log; then
+          echo "FAIL: 4-byte-cell cross-compile failed (see boot.log below)"
+          cat boot.log
+          exit 1
+      fi
+    )
+    cp "$WORKDIR/kernel.img" kernel32.img
+
+    echo "== Running test suite (4-byte cells, i386) =="
+    run_suite ./relf32 kernel32.img "4-byte cells, i386"
 fi
-
-if echo "$OUTPUT" | grep -qiE "incorrect result|wrong number of results|undefined word|segmentation fault"; then
-    echo "FAIL: test suite reported an error (see output above)"
-    exit 1
-fi
-
-OK_COUNT=$(echo "$OUTPUT" | grep -c "^OK" || true)
-echo "== PASS: $OK_COUNT OK markers, no errors =="

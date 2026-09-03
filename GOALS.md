@@ -197,15 +197,9 @@ the full account and the fixes applied.
   such, not configurable - a mismatched image's magic header will at
   least fail cleanly rather than silently misbehave, but there's no
   attempt to actually support big-endian hosts.
-- 32-bit-cell hosts (ARM32, i386, etc.), for now. Phase 5's multi-
-  architecture work only proved out 64-bit-pointer architectures
-  (x86-64, ARM64) sharing the existing 8-byte-cell image. Adding a
-  32-bit target means reintroducing the dual-cell-width complexity
-  phase 2 deliberately scoped out (a parallel 4-byte-cell `kernel.img`,
-  and an engine whose cell width is a compile-time choice, not a
-  given) - a real, separate piece of work, not a small extension of
-  phase 5. Worth doing if a concrete 32-bit target is ever needed, but
-  not attempted here.
+- ~~32-bit-cell hosts (ARM32, i386, etc.), for now.~~ **Done as of
+  phase 6** (i386 specifically - see below and `PROGRESS.md`'s
+  2026-09-03 entry). ARM32 not yet tried; see phase 6's own notes.
 
 ## Phase 5: portability + performance, without JIT
 
@@ -293,6 +287,53 @@ optional).
   further without a fundamentally different encoding for `CALL` (e.g.
   variable-length short/near/far forms, which drags in assembler
   relaxation — real complexity, against goal 3). Not pursuing this.
+
+## Phase 6: 32-bit-cell targets (i386)
+
+Agreed direction as of 2026-09-03 (see `PROGRESS.md`'s 2026-09-03 entry
+for the full account, including every bug found getting here): make
+cell width a genuine parameter - of the engine *and* the cross-compiler
+- rather than an 8-byte-only assumption, so a 32-bit target is a
+build-time choice, not a fork.
+
+- **`relf.c`: cell width from `UINTPTR_MAX`. Done.** 4 or 8 bytes,
+  chosen at compile time to match the host's own pointer width, per
+  RelF's real-pointer addressing model. Building with `gcc -m32`
+  produces a working 4-byte-cell engine with no other source changes.
+- **`cross.4`/`kernel.4`: `TARGET-CELL-BYTES` parameterization. Done.**
+  Every cell-width-dependent computation (primitive token stride,
+  `CELLS`/`CELL+`/`CELL-`, `2/`'s sign mask, `@-T`/`!-T`, alignment, the
+  hand-numbered LIT/EXIT/BRANCH/0BRANCH/R> tokens) now derives from one
+  `TARGET-CELL-BYTES` variable instead of being hardcoded for 8-byte
+  cells. This surfaced a genuinely long chain of independent bugs along
+  the way, the hardest being a pre-existing (not newly introduced)
+  fragility in how `cross.4`'s target-shadow-word-defining `:`/`;`
+  interacts with the base kernel's compile-state tracking - see
+  `PROGRESS.md` for the full diagnosis and fix.
+- **i386, verified working. Done.** Full CORE test suite (1892 `OK`
+  markers, zero errors) passes on both the 8-byte-cell (default) and
+  4-byte-cell (i386) builds, from the identical `cross.4`/`kernel.4`
+  source - only `TARGET-CELL-BYTES` differs between the two
+  cross-compiles. `fib.4` gives the identical correct result on both.
+  `tests/run_tests.sh` builds and tests both automatically.
+- **ARM32: not attempted.** Should work through the same
+  `gcc`-target-picks-`UINTPTR_MAX` mechanism in principle - `relf.c`
+  itself has no i386-specific code, only pointer-width-generic code -
+  but hasn't actually been built or tested, given how many independent,
+  non-obvious bugs turned up getting i386 working despite the design
+  looking straightforward going in. Worth doing, not assumed to already
+  work.
+- **A clean "pre-set `TARGET-CELL-BYTES` before including `cross.4`"
+  mechanism: attempted, reverted.** The natural way to make this
+  convenient - `DEFINED?`-guard the variable's own creation so a person
+  could set it themselves first - used `IF`/`THEN` at the top level
+  (interpret mode), which turned out to silently corrupt the dictionary
+  in this kernel rather than erroring (see `PROGRESS.md`). Reverted to
+  a plain, unconditional default of 8; building for 32-bit means
+  directly editing that one line in `cross.4` (documented in
+  `README.md`). Less convenient, but with no equivalent silent-failure
+  mode - the right tradeoff until/unless a real need for the
+  pre-set-before-including convenience shows up.
 
 ## External references (potentially reusable ideas, not yet mined)
 

@@ -196,7 +196,7 @@ VARIABLE R0 ( --- a-addr)
 
 : DEPTH ( --- n )
 \ n is the number of cells on the stack (before DEPTH was executed).
-  SP@ S0 @ SWAP - 3 RSHIFT ;
+  SP@ S0 @ SWAP - CELLSHIFT-TOK RSHIFT ;
 
 : 2DUP  ( d --- d d)
 \ Duplicate the top double number on the stack.
@@ -224,15 +224,15 @@ VARIABLE R0 ( --- a-addr)
 
 : CELL+ ( a-addr1 --- a-addr2)
 \ a-addr2 is the address of the next cell after a-addr2.
-    8 + ;
+    CELLBYTES-TOK + ;
 
 : CELLS ( n2 --- n1)
 \ n2 is the number of address units occupied by n1 cells.
-   3 LSHIFT ;
+   CELLSHIFT-TOK LSHIFT ;
 
 : CELL- ( a-addr1 --- a-addr2)
 \ a-addr2 is the address of the previous cell before a-addr1.
-   -8 + ;
+   CELLBYTES-TOK - ;
 
 \ The DO LOOP related words use the return stack. The top of the
 \ return stack is the loop counter (I) and the next cell is the limit.
@@ -260,7 +260,7 @@ VARIABLE R0 ( --- a-addr)
 
 : J  ( --- n)
 \ Return the counter (index) of the next loop outer to the innermost DO LOOP
-  RP@ 24 + @ ;
+  RP@ CELLBYTES-TOK CELLBYTES-TOK CELLBYTES-TOK + + + @ ;
 
 : (LEAVE)   ( --- )
 \ Runtime part of LEAVE
@@ -301,7 +301,7 @@ VARIABLE R0 ( --- a-addr)
 
 : ALIGNED ( c-addr --- a-addr )
 \ a-addr is the first aligned address after c-addr.
-  7 + -8 AND ;
+  CELLBYTES-TOK 1 - + CELLBYTES-TOK NEGATE AND ;
 
 : (.") ( --- )
 \ Runtime part of ."
@@ -339,10 +339,11 @@ VARIABLE R0 ( --- a-addr)
 
 : 2/  ( n1 --- n2)
 \ Divide signed number n1 by 2.
-  \ Written as a computed mask (1 63 LSHIFT), not a literal, because the
-  \ cross-compiler's host may itself have 32-bit cells and can't carry a
-  \ 64-bit literal through NUMBER?/LITERAL-T - see GOALS.md.
-  DUP 1 63 LSHIFT AND SWAP 1 RSHIFT OR ;
+  \ Written as a computed mask (1 SIGNSHIFT-TOK LSHIFT), not a literal:
+  \ the cross-compiler's host may itself have narrower cells than the
+  \ target - see PROGRESS.md - and the shift amount itself depends on
+  \ TARGET-CELL-BYTES (63 for 8-byte cells, 31 for 4-byte).
+  DUP 1 SIGNSHIFT-TOK LSHIFT AND SWAP 1 RSHIFT OR ;
 
 : +! ( w a-addr ---)
 \ Add w to the contents of the cell at a-addr.
@@ -830,7 +831,7 @@ VARIABLE CURRENT ( --- addr)
    IF
     NAMEBUF CELL+
     OVER CELL+
-    8 >R
+    CELLBYTES-TOK >R
     BEGIN
      OVER @ OVER @ - >R
      CELL+ SWAP CELL+ SWAP R> R> CELL+ >R \ Compare all of name until different
@@ -842,11 +843,11 @@ VARIABLE CURRENT ( --- addr)
      ELSE
       -1
      THEN
-     SWAP -8 + SWAP EXIT \ Exit with execution token and flag.
+     SWAP CELLBYTES-TOK - SWAP EXIT \ Exit with execution token and flag.
     THEN
     2DROP
    THEN
-   -8 + DUP @ DUP ROT ROT + SWAP 0 =  \ Take address of next word from link field until 0
+   CELLBYTES-TOK - DUP @ DUP ROT ROT + SWAP 0 =  \ Take address of next word from link field until 0
   UNTIL
   THEN
   DROP 0 \ Not found.
@@ -858,7 +859,7 @@ VARIABLE CURRENT ( --- addr)
 \ If found return the execution token xt and -1 if the word is non-immediate
 \ and 1 if the word is immediate.
   #ORDER @ DUP 1 > IF
-   CONTEXT #ORDER @ 1- CELLS + DUP @ SWAP 8 - @ =
+   CONTEXT #ORDER @ 1- CELLS + DUP @ SWAP CELLBYTES-TOK - @ =
   ELSE 0 THEN
   IF 1- THEN \ If last wordlist is double, don't search it twice.
   BEGIN
@@ -957,7 +958,7 @@ VARIABLE CURRENT ( --- addr)
 
 : ALIGN ( --- )
 \ Add as many bytes to the dictionary as needed to align dictionary pointer.
-  BEGIN HERE 07 AND WHILE 0 C, REPEAT ;
+  BEGIN HERE CELLBYTES-TOK 1- AND WHILE 0 C, REPEAT ;
 
 : >NAME ( addr1 --- addr2 )
 \ Convert execution token addr1 (address of code) to address of name.
@@ -999,10 +1000,7 @@ VARIABLE CURRENT ( --- addr)
 : CONSTANT ( x "ccc" ---)
 \ Create a definition that returns x when executed.
 \ Definition contains lit & return in its code field.
-  \ 17=LIT, 9=EXIT, 33=0branch, 25=branch: updated for the new engine's
-  \ stride-8 primitive-token numbering (was 9/5/17/13 with 4-byte cells;
-  \ see PRIMITIVE in cross.4 and GOALS.md).
-  HEADER REVEAL 17 , , 9 , ;
+  HEADER REVEAL LIT-TOK , , EXIT-TOK , ;
 
 
 VARIABLE STATE ( --- a-addr)
@@ -1018,7 +1016,7 @@ VARIABLE STATE ( --- a-addr)
 
 : LITERAL ( n --- )
 \ Add a literal to the current definition.
-  17 , , ; IMMEDIATE
+  LIT-TOK , , ; IMMEDIATE
 
 : COMPILE, ( xt --- )
 \ Add the execution semantics of the definition xt to the current definition.
@@ -1043,7 +1041,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 : ; ( --- )
 \ Finish the current definition by adding a return to it, make it
 \ visible and leave compilation mode.
-  9 , [ ?CSP REVEAL ; IMMEDIATE
+  EXIT-TOK , [ ?CSP REVEAL ; IMMEDIATE
 
 : (POSTPONE) ( --- )
 \ Runtime for POSTPONE.
@@ -1064,7 +1062,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Form a loop with matching BEGIN.
 \ Runtime: A flag is take from the stack
 \ each time UNTIL is encountered and the loop iterates until it is nonzero.
-  33 , HERE - , ; IMMEDIATE
+  0BRANCH-TOK , HERE - , ; IMMEDIATE
 
 : IF    ( --- x)
 \ Start an IF THEN or IF ELSE THEN construction.
@@ -1072,7 +1070,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ the stack and if it is true the part between IF and ELSE is executed,
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
-  33 , HERE 1 CELLS ALLOT ; IMMEDIATE
+  0BRANCH-TOK , HERE 1 CELLS ALLOT ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.
@@ -1080,7 +1078,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 
 : ELSE ( x1 --- x2)
 \ part of IF ELSE THEN construction.
-  25 , HERE 1 CELLS ALLOT SWAP HERE OVER - SWAP ! ; IMMEDIATE
+  BRANCH-TOK , HERE 1 CELLS ALLOT SWAP HERE OVER - SWAP ! ; IMMEDIATE
 
 : WHILE  ( x1 --- x2 x1 )
 \ part of BEGIN WHILE REPEAT construction.
@@ -1091,7 +1089,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 
 : REPEAT ( x1 x2 --- )
 \ part of BEGIN WHILE REPEAT construction.
-  25 , HERE - , HERE OVER - SWAP ! ; IMMEDIATE
+  BRANCH-TOK , HERE - , HERE OVER - SWAP ! ; IMMEDIATE
 
 VARIABLE POCKET ( --- a-addr )
 \ Buffer for S" strings that are interpreted.
@@ -1205,15 +1203,13 @@ VARIABLE POCKET ( --- a-addr )
 : (;CODE) ( --- )
 \ Runtime for DOES>, exit calling definition and make last defined word
 \ execute the calling definition after (;CODE)
-  LAST @ NAME> R> OVER - -8 + SWAP ! ;
+  LAST @ NAME> R> OVER - CELLBYTES-TOK - SWAP ! ;
 
 : DOES>  ( --- )
 \ Word that contains DOES> will change the behavior of the last created
 \ word such that it pushes its parameter field address onto the stack
 \ and then executes whatever comes after DOES>
-  \ 137 is R>'s token under the new stride-8 numbering (was 69); R> is the
-  \ 18th PRIMITIVE, so 1 + 17*8 = 137. See PRIMITIVE in cross.4.
-  POSTPONE (;CODE) 137 , \ Compile the R> primitive, which is the first
+  POSTPONE (;CODE) RFROM-TOK , \ Compile the R> primitive, which is the first
                         \ instruction that the defined word performs.
 ; IMMEDIATE
 

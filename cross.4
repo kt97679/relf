@@ -5,6 +5,22 @@
 \ The program is released under the GNU General Public License version 2.
 \ There is NO WARRANTY.
 
+\ Target cell width in bytes: 8 by default (x86-64, ARM64, ...). To
+\ cross-compile for a 32-bit target (e.g. i386) instead, edit the "8"
+\ below to "4" (see README.md) - this is deliberately a plain, direct
+\ edit rather than something conditional/settable-before-including: an
+\ earlier attempt at that used IF/THEN at the top level (interpret
+\ mode) to skip re-creating the variable if the person had already set
+\ one, but IF/THEN here are compile-only words - they only work inside
+\ a :...; definition, where the compiler processes tokens up front. At
+\ the top level they silently corrupt the dictionary instead of
+\ erroring (found via PROGRESS.md's account of a long debugging session
+\ - see it before reintroducing anything like this). Everything
+\ cell-width-dependent in this file and in kernel.4 derives from this
+\ one place.
+VARIABLE TARGET-CELL-BYTES
+8 TARGET-CELL-BYTES !
+
 \ PART 1: THE VOCABULARIES.
 
 VOCABULARY TARGET
@@ -39,7 +55,7 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
 : C@-T ( t-addr --- c) CHARS IMAGE + C@ ;
 : C!-T ( c t-addr ---) CHARS IMAGE + C! ;
 
-\ Fetch and store cells in the target space.
+\ Fetch and store cells in the target space, TARGET-CELL-BYTES wide.
 \ As of phase 5 (see GOALS.md), images are native host endianness, not a
 \ portable on-disk format. These build/take apart a little-endian value
 \ byte by byte via C@-T/C!-T (not plain @/! on this host), because
@@ -48,26 +64,46 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
 \ whatever it writes, and C@-T/C!-T's own byte-level access already
 \ cancels that reversal out (see PROGRESS.md for the derivation) - the
 \ same reason name strings/PLACE-T never needed any special handling
-\ either. Safe on this 64-bit host: no narrow-shift concerns like the
-\ ones phase 2 had to work around for a 32-bit bootstrap host.
+\ either. Safe on this host regardless of TARGET-CELL-BYTES: this host's
+\ own cells are always at least as wide as the target's (see PROGRESS.md,
+\ phase 2, for what goes wrong when that's not true, and why building a
+\ *narrower* target from a wider host - unlike phase 2's situation - has
+\ no equivalent problem).
+\ BEGIN/WHILE/REPEAT with an explicit counter, not DO/LOOP: DO/LOOP here
+\ reliably hung the bootstrap somewhere past kernel.4 loading (found by
+\ bisection, not fully root-caused - see PROGRESS.md). These are called
+\ often enough, from enough different contexts, that avoiding DO/LOOP's
+\ own return-stack usage entirely was the safer fix.
 : @-T  ( t-addr --- x)
-  DUP C@-T
-  OVER 1 CHARS + C@-T 8 LSHIFT OR
-  OVER 2 CHARS + C@-T 16 LSHIFT OR
-  OVER 3 CHARS + C@-T 24 LSHIFT OR
-  OVER 4 CHARS + C@-T 32 LSHIFT OR
-  OVER 5 CHARS + C@-T 40 LSHIFT OR
-  OVER 6 CHARS + C@-T 48 LSHIFT OR
-  SWAP 7 CHARS + C@-T 56 LSHIFT OR ;
+  0 0
+  BEGIN
+    DUP TARGET-CELL-BYTES @ <
+  WHILE
+    >R OVER R@ CHARS + C@-T R@ 8 * LSHIFT OR R> 1+
+  REPEAT
+  DROP SWAP DROP
+  \ Sign-extend when the target cell is narrower than this host's own
+  \ (this host's cells are always at least as wide as the target's, see
+  \ the note on C@-T/C!-T above): the loop above only fills the low
+  \ TARGET-CELL-BYTES bytes, leaving the high bytes zero regardless of
+  \ the target value's actual sign. Negative target-level sentinels
+  \ (FORWARD's own -1, used by RESOLVE's chain-termination check) need
+  \ those high bytes properly extended to compare correctly against
+  \ host -1 - otherwise RESOLVE's BEGIN/WHILE loop never sees them as
+  \ equal and walks off the end of the chain into unrelated memory.
+  TARGET-CELL-BYTES @ 8 < IF
+    DUP 1 TARGET-CELL-BYTES @ 8 * 1 - LSHIFT AND IF
+      -1 TARGET-CELL-BYTES @ 8 * LSHIFT OR
+    THEN
+  THEN ;
 : !-T  ( x t-addr ---)
-  OVER OVER C!-T
-  OVER 8 RSHIFT OVER 1 CHARS + C!-T
-  OVER 16 RSHIFT OVER 2 CHARS + C!-T
-  OVER 24 RSHIFT OVER 3 CHARS + C!-T
-  OVER 32 RSHIFT OVER 4 CHARS + C!-T
-  OVER 40 RSHIFT OVER 5 CHARS + C!-T
-  OVER 48 RSHIFT OVER 6 CHARS + C!-T
-  SWAP 56 RSHIFT SWAP 7 CHARS + C!-T ;
+  0
+  BEGIN
+    DUP TARGET-CELL-BYTES @ <
+  WHILE
+    >R OVER R@ 8 * RSHIFT OVER R@ CHARS + C!-T R> 1+
+  REPEAT
+  DROP 2DROP ;
 
 \ A dictionary is constructed in the target space. Here are the primitives
 \ to maintain the dictionary pointer and to reserve space.
@@ -77,11 +113,12 @@ VARIABLE DP-T                       \ Dictionary pointer for target dictionary.
 : THERE ( --- t-addr) DP-T @ ;      \ Equivalent of HERE in target space.
 : ALLOT-T ( n --- ) DP-T +! ;       \ Reserve n bytes in the dictionary.
 : CHARS-T ( n1 --- n2 ) ;
-: CELLS-T ( n1 --- n2 ) 3 LSHIFT ;  \ Cells are 8 chars.
+: CELLS-T ( n1 --- n2 ) TARGET-CELL-BYTES @ * ;  \ n1 target cells in bytes.
 : ALIGN-T                           \ Target only accesses cells at aligned
                                     \ addresses.
-  BEGIN THERE 7 AND WHILE 1 ALLOT-T REPEAT ;
-: ALIGNED-T ( n1 --- n2 ) 7 + -8 AND ;
+  BEGIN THERE TARGET-CELL-BYTES @ 1- AND WHILE 1 ALLOT-T REPEAT ;
+: ALIGNED-T ( n1 --- n2 )
+  TARGET-CELL-BYTES @ 1- + TARGET-CELL-BYTES @ NEGATE AND ;
 : C,-T  ( c --- )  THERE C!-T 1 CHARS ALLOT-T ;
 : ,-T   ( x --- )  THERE !-T  1 CELLS-T ALLOT-T ;
 
@@ -98,7 +135,7 @@ CREATE IMAGE-MAGIC 8 CHARS ALLOT
 : INIT-IMAGE-MAGIC
   82 IMAGE-MAGIC C! 69 IMAGE-MAGIC 1 CHARS + C!
   76 IMAGE-MAGIC 2 CHARS + C! 70 IMAGE-MAGIC 3 CHARS + C! \ "RELF"
-  8 IMAGE-MAGIC 4 CHARS + C!                              \ cell width
+  TARGET-CELL-BYTES @ IMAGE-MAGIC 4 CHARS + C!             \ cell width
   0 IMAGE-MAGIC 5 CHARS + C!
   0 IMAGE-MAGIC 6 CHARS + C!
   0 IMAGE-MAGIC 7 CHARS + C! ;
@@ -156,26 +193,66 @@ VARIABLE CSP   \ Stack pointer checking between : and ;
 
 VARIABLE LAST-PRIMITIVE 1 LAST-PRIMITIVE !
 
-\ Primitive tokens below (9/5/17/13/etc) are updated for the stride-8
-\ numbering (see PRIMITIVE above): EXIT=9, LIT=17, BRANCH=25, 0BRANCH=33.
-: LITERAL-T ( n --- ) 17 ,-T ,-T ;
+\ Primitive-dispatch tokens (and a couple of other cell-width-dependent
+\ values) as formulas in TARGET-CELL-BYTES, instead of the hardcoded
+\ numbers phase 2 used (9/5/17/13/etc for the then-only stride-8
+\ numbering). token = 1 + (position-1)*stride, where position is the
+\ primitive's 1-based position in kernel.4's PRIMITIVE list (see
+\ PROGRESS.md, 2026-09-01, for what goes wrong if these are hardcoded
+\ instead and the stride or list ever changes) and stride ==
+\ TARGET-CELL-BYTES (dispatch-table entries are pointer-sized, which is
+\ exactly the cell width on every host this targets - see relf.c).
+: EXIT-TOKEN    ( --- n ) 1 TARGET-CELL-BYTES @ + ;         \ 2nd: EXIT
+: LIT-TOKEN     ( --- n ) 1 2 TARGET-CELL-BYTES @ * + ;     \ 3rd: LIT
+: BRANCH-TOKEN  ( --- n ) 1 3 TARGET-CELL-BYTES @ * + ;     \ 4th: BRANCH
+: 0BRANCH-TOKEN ( --- n ) 1 4 TARGET-CELL-BYTES @ * + ;     \ 5th: 0BRANCH
+: RFROM-TOKEN   ( --- n ) 1 17 TARGET-CELL-BYTES @ * + ;    \ 18th: R>
+\ Not primitive tokens, but the same "must vary with TARGET-CELL-BYTES,
+\ and gets embedded as a literal into a *different* word's compiled
+\ body, so a plain host IF/ELSE can't fix it" problem: kernel.4's
+\ CELL+/CELLS/CELL-/DEPTH/ALIGNED/ALIGN/J, and 2/'s sign-bit shift.
+: CELLBYTES-TOKEN  ( --- n ) TARGET-CELL-BYTES @ ;
+: CELLSHIFT-TOKEN  ( --- n ) TARGET-CELL-BYTES @ 4 = IF 2 ELSE 3 THEN ;
+: SIGNSHIFT-TOKEN  ( --- n ) TARGET-CELL-BYTES @ 8 * 1- ;
+
+\ Primitive tokens below are updated for the stride-8 numbering (see
+\ PRIMITIVE above): EXIT=9, LIT=17, BRANCH=25, 0BRANCH=33. Same values
+\ as the formulas above at TARGET-CELL-BYTES=8; the formulas replace
+\ the phase-2 hardcoded numbers so a 4-byte-cell target gets the right
+\ ones automatically instead of needing every occurrence hand-updated.
+: LITERAL-T ( n --- ) LIT-TOKEN ,-T ,-T ;
 
 ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Now define the words that do compile code.
 
 : PRIMITIVE ( c --- )
-  \ Primitive tokens stride by sizeof(host function pointer) = 8 bytes on
-  \ the x86-64 no-libc engine, see GOALS.md.
-  LAST-PRIMITIVE @ DUP 8 LAST-PRIMITIVE +!
-  "HEADER DUP , ,-T 9 ,-T          \ Create an executable target definition.
+  \ Primitive tokens stride by sizeof(host function pointer), which is
+  \ TARGET-CELL-BYTES on every host this targets, see GOALS.md.
+  LAST-PRIMITIVE @ DUP TARGET-CELL-BYTES @ LAST-PRIMITIVE +!
+  "HEADER DUP , ,-T EXIT-TOKEN ,-T  \ Create an executable target definition.
   TLINK @ DUP C@-T 32 OR SWAP C!-T   \ Set the MACRO bit of last name. 
   DOES> @ ,-T
 ;
 
-: : !CSP "HEADER THERE , T] DOES> @ THERE - 8 - ,-T ;
-
-: ; 9 ,-T T[ ?CSP ; \ Compile EXIT (9). Quit compilation state.
-
+\ TRANSIENT-vocabulary wrappers around the -TOKEN words above, for use
+\ *inside* kernel.4's own target-level colon-definitions (CONSTANT,
+\ LITERAL, ;, BEGIN/UNTIL/IF/ELSE/WHILE/REPEAT, (;CODE)'s R> token,
+\ CELL+/CELLS/CELL-/DEPTH/ALIGNED/ALIGN/J, 2/'s sign mask). A bare
+\ number there gets compiled as a literal into whatever *target*
+\ definition kernel.4 is building at the time (via CROSS-COMPILE's
+\ NUMBER?/LITERAL-T path - see PROGRESS.md for the full derivation of
+\ why this needs its own mechanism rather than an ordinary host IF/
+\ ELSE); these words, found via CROSS-COMPILE's restricted TARGET+
+\ TRANSIENT search and executed the moment kernel.4 reaches them,
+\ reproduce exactly that compiled-literal effect with the right value.
+: EXIT-TOK    EXIT-TOKEN LITERAL-T ;
+: LIT-TOK     LIT-TOKEN LITERAL-T ;
+: BRANCH-TOK  BRANCH-TOKEN LITERAL-T ;
+: 0BRANCH-TOK 0BRANCH-TOKEN LITERAL-T ;
+: RFROM-TOK   RFROM-TOKEN LITERAL-T ;
+: CELLBYTES-TOK CELLBYTES-TOKEN LITERAL-T ;
+: CELLSHIFT-TOK CELLSHIFT-TOKEN LITERAL-T ;
+: SIGNSHIFT-TOK SIGNSHIFT-TOKEN LITERAL-T ;
 FORTH DEFINITIONS
 
 \ PART 5: FORWARD REFERENCES
@@ -184,6 +261,23 @@ FORTH DEFINITIONS
 \ in the TRANSIENT voc is created for each forward referenced definition.
 \ This links all addresses together where the forward reference is used.
 \ The word RESOLVE stores the real address everywhere it is needed.
+\
+\ FORWARD and RESOLVE are defined here, before :/; below get redefined -
+\ deliberately, not incidentally. They're ordinary host-level defining
+\ words (like VARIABLE would be at the host level), not target-shadow
+\ words like PRIMITIVE/CONSTANT/VARIABLE further down, so they don't
+\ need :/;'s "HEADER-based target-compilation machinery - and they
+\ actively can't tolerate it: that redefined : never sets the base
+\ kernel's own STATE flag (only its own separate STATE-T), so an
+\ ordinary CREATE/DOES>-based word compiled under it never actually
+\ gets compiled - it executes immediately, at definition time, with
+\ whatever happens to be on the stack at that moment instead of the
+\ arguments it's meant to receive when properly invoked later. That's a
+\ silent, accidental "works" for definitions robust to it, and a crash
+\ for FORWARD specifically (see PROGRESS.md for the full diagnosis, found
+\ via gdb dictionary-chain walking and primitive-level trace-diffing).
+\ Defining FORWARD/RESOLVE here, before the redefinition, sidesteps the
+\ whole issue rather than depending on it.
 
 : FORWARD
   CREATE -1 ,              \ Store head of list in the definition.
@@ -203,26 +297,17 @@ FORTH DEFINITIONS
    DUP -1 -                            \ Traverse all the links until end.
   WHILE
    DUP @-T                             \ Take address of next link from dict.
-   R@ ROT SWAP OVER - 8 - SWAP !-T         \ Set resolved address in dict.
+   R@ ROT SWAP OVER - CELLBYTES-TOKEN - SWAP !-T   \ Set resolved address in dict.
   REPEAT DROP R> DROP PREVIOUS
 ;
 
-\ PART 6: DEFINING WORDS.
-
-TRANSIENT DEFINITIONS FORTH
-
-FORWARD DOVAR \ Dovar is the runtime part of a variable.
-
-: VARIABLE "HEADER THERE , [ TRANSIENT ] DOVAR [ FORTH ]  0 ,-T
-\ Create a variable.
-  DOES> @ THERE - 8 - ,-T ;
-
-: CONSTANT "HEADER THERE ,
-  17 ,-T ,-T 9 ,-T \ Assemble the instruction LIT (17) with EXIT (9).
-  DOES> @ 1 CELLS-T + @-T LITERAL-T \ Compile const as a literal for speed.
-;
-
-FORTH DEFINITIONS
+\ T' and >BODY-T are, like FORWARD/RESOLVE above, ordinary host-level
+\ utility words with no need for :/;'s target-shadow machinery - and,
+\ also like FORWARD/RESOLVE, they can't tolerate being defined under
+\ it either (see the note above FORWARD for why). POSTPONE and ['] later
+\ reference T' from within their own (correctly target-shadowed) bodies;
+\ that's fine regardless of where T' itself was defined, as long as
+\ it's defined before they are - which it is, here.
 
 : T' ( --- t-addr) \ Find the execution token of a target definition.
   ALSO TARGET ' >BODY @ \ Get the address from the shadow definition.
@@ -236,19 +321,64 @@ FORTH DEFINITIONS
   \ GOALS.md for the 8-byte target/host mismatch this now avoids.
   1 CELLS-T + ;
 
+\ PART 6: DEFINING WORDS.
+
+TRANSIENT DEFINITIONS FORTH
+
+FORWARD DOVAR \ Dovar is the runtime part of a variable.
+
+\ VARIABLE and CONSTANT don't need :/;'s inherited DOES> either - they
+\ each have their own complete "HEADER...DOES> structure right in their
+\ own body text (same as FORWARD/RESOLVE/T'/>BODY-T above), and, for the
+\ same reason, can't tolerate the nested-DOES> conflict the redefined :
+\ below would cause. Defined here with the plain :/; instead, so their
+\ body actually compiles instead of executing immediately. T]/T[ are
+\ applied explicitly around each so STATE-T is still set correctly -
+\ NUMBER? needs that to compile their own numeric literals (VARIABLE's
+\ "0", CONSTANT's "1") as target literals via LITERAL-T, same as the
+\ redefined : below would have done, without what broke it.
+
+T]
+: VARIABLE "HEADER THERE , [ TRANSIENT ] DOVAR [ FORTH ]  0 ,-T
+\ Create a variable.
+  DOES> @ THERE - CELLBYTES-TOKEN - ,-T ;
+T[
+
+T]
+: CONSTANT "HEADER THERE ,
+  LIT-TOKEN ,-T ,-T EXIT-TOKEN ,-T \ Assemble the instruction LIT with EXIT.
+  DOES> @ 1 CELLS-T + @-T LITERAL-T \ Compile const as a literal for speed.
+;
+T[
+
+FORTH DEFINITIONS
+
+\ PART 5b: TARGET-LEVEL COLON-DEFINITION SHADOW WORDS.
+\
+\ The control-structure words below (PART 7), similarly, are plain
+\ words with no nested defining-word pattern of their own - so, same as
+\ FORWARD/RESOLVE/T'/>BODY-T/VARIABLE/CONSTANT above, they're defined
+\ with the plain :/; too (wrapped in one T]...T[ pair for the whole
+\ block, since nothing here needs :/;'s "HEADER-inherited DOES> either -
+\ nothing here turned out to actually need the redefined :/; at all).
+
+FORTH DEFINITIONS
+
 \ PART 7: COMPILING WORDS
 
 TRANSIENT DEFINITIONS FORTH
 
+T]
+
 \ NOTE: these reserve a target cell, so they must use CELLS-T, not the
 \ host's CELLS (see >BODY-T above for why this distinction now matters).
 : BEGIN THERE ;
-: UNTIL 33 ,-T THERE - ,-T ;          \ 33 - 0branch, conditional jump
-: IF 33 ,-T THERE 1 CELLS-T ALLOT-T ; \ 33 - 0branch, conditional jump
+: UNTIL 0BRANCH-TOKEN ,-T THERE - ,-T ;
+: IF 0BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T ;
 : THEN THERE OVER - SWAP !-T ;
-: ELSE 25 ,-T THERE 1 CELLS-T ALLOT-T SWAP THERE OVER - SWAP !-T ;
-: WHILE 33 ,-T THERE 1 CELLS-T ALLOT-T SWAP ;
-: REPEAT 25 ,-T THERE - ,-T THERE OVER - SWAP !-T ;
+: ELSE BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T SWAP THERE OVER - SWAP !-T ;
+: WHILE 0BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T SWAP ;
+: REPEAT BRANCH-TOKEN ,-T THERE - ,-T THERE OVER - SWAP !-T ;
 
 FORWARD (DO)
 FORWARD (LOOP)
@@ -270,6 +400,24 @@ FORWARD (POSTPONE)
 : CELLS-T CELLS-T ;
 : ALLOT-T ALLOT-T ;
 : ['] T' LITERAL-T ;
+
+T[
+
+FORTH DEFINITIONS
+
+\ kernel.4 itself uses plain :/; throughout its own source to compile
+\ *target*-level colon definitions - CROSS-COMPILE finds those via its
+\ own restricted [TARGET, TRANSIENT] search, so a :/; pair needs to
+\ exist in TRANSIENT vocabulary for it to find. This is the redefined,
+\ "HEADER-based one - safe here because kernel.4's own colon-definitions
+\ don't have the nested-DOES> pattern that broke it for FORWARD/VARIABLE/
+\ the control-structure words above (none of which use it anymore).
+
+TRANSIENT DEFINITIONS FORTH
+
+: : !CSP "HEADER THERE , T] DOES> @ THERE - CELLBYTES-TOKEN - ,-T ;
+
+: ; EXIT-TOKEN ,-T T[ ?CSP ; \ Compile EXIT. Quit compilation state.
 
 FORTH DEFINITIONS
 

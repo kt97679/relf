@@ -509,3 +509,276 @@ cited as if it applies to this codebase - it doesn't, as measured.
   sensitive to this) rather than treating multiple bytes as one packed
   cell. Worth keeping in mind as a category of bug if any *future* change
   introduces another whole-cell bit-packing trick.
+
+## 2026-09-03 — Iteration 4: phase 6, i386/32-bit cell width (parameterized, verified working)
+
+### Scope
+
+Two fronts, both necessary: `relf.c` (the engine) parameterized for
+cell width, and `cross.4`/`kernel.4` (the cross-compiler and kernel
+source) also parameterized, since the cross-compiler itself computes
+primitive dispatch tokens and packs/unpacks multi-byte target values -
+it has to know the target's cell width, not just the engine. The engine
+side was comparatively simple and verified early. The cross-compiler
+side surfaced a long chain of real, independent bugs - documented below
+roughly in the order found, since each one blocked visibility into the
+next.
+
+### relf.c: cell width from `UINTPTR_MAX`
+
+Cell width (4 or 8 bytes) is now chosen at compile time from the host's
+own `UINTPTR_MAX`, matching RelF's real-pointer addressing model (same
+constraint as Bug 2, iteration 1). `umul`/`udiv` have separate paths:
+`__int128`-based for 64-bit cells, plain `unsigned long long` for
+32-bit (no extension needed there). `CELL_BYTES`/`CELL_SHIFT` macros
+drive every stack-offset, dispatch-index, and alignment computation.
+Building with `gcc -m32` therefore produces a working 4-byte-cell
+engine with no other source changes. Verified: the 64-bit build regresses
+nothing (full CORE suite still 1892 OK); the 32-bit build correctly
+rejects a mismatched (8-byte) image at load via the magic header, and
+correctly runs a genuine 4-byte-cell image once one exists (see below).
+
+### cross.4/kernel.4: `TARGET-CELL-BYTES` and the hand-numbered tokens
+
+Primitive tokens, `CELLS`/`CELL+`/`CELL-`, `2/`'s sign mask, alignment,
+and the hand-embedded LIT/EXIT/BRANCH/0BRANCH/R> token numbers all
+depend on cell width and were hardcoded for 8-byte cells throughout
+`cross.4`/`kernel.4`. Introduced a single `TARGET-CELL-BYTES` variable
+at the top of `cross.4` that everything else now derives from -
+`CELLS-T`/`ALIGN-T`/`ALIGNED-T` (parameterized), `@-T`/`!-T` (rewritten
+to loop over `TARGET-CELL-BYTES` instead of unrolled 8-byte access), and
+a set of `-TOKEN` words (`EXIT-TOKEN`, `LIT-TOKEN`, `BRANCH-TOKEN`,
+`0BRANCH-TOKEN`, `RFROM-TOKEN`, `CELLBYTES-TOKEN`, `CELLSHIFT-TOKEN`,
+`SIGNSHIFT-TOKEN`) that compute the right value for whatever
+`TARGET-CELL-BYTES` is currently set to, plus `TRANSIENT`-vocabulary
+`-TOK` wrappers so `kernel.4`'s own source can reference them via
+`CROSS-COMPILE`'s restricted `[TARGET, TRANSIENT]` search.
+
+### Bug found — `DEFINED?`/`IF`/`THEN` at the top level silently corrupts the dictionary
+
+First attempt at `TARGET-CELL-BYTES` used a `DEFINED?`-guarded
+conditional (`VARIABLE` only if not already set, so a person could
+pre-set it to 4 before including `cross.4`) at the *top level* -
+outside any `:`...`;` definition. `IF`/`THEN` in this kernel are
+compile-only words: their compiling machinery (`,`-based branch-offset
+patching) only produces something coherent when a real definition is
+being compiled around them. Used at the top level, they write into
+whatever `HERE` happens to be at the time instead - which, depending on
+what's defined nearby, either does nothing visible or corrupts an
+unrelated word. Found via direct `DEPTH` tracing (a stray stack item
+appeared at exactly that line) after this same top-level-`IF` mistake
+had been mis-diagnosed several different ways first (see below). Fixed
+by dropping the "avoid clobbering a pre-set value" cleverness entirely -
+`TARGET-CELL-BYTES` is now a plain, unconditional `VARIABLE` set to 8,
+and building for 32-bit means directly editing that one line to 4 (see
+`README.md`) rather than something settable beforehand. Simpler, and -
+per the immediately preceding paragraph - safer, since anything
+IF/THEN-shaped at that scope is now known to be able to fail silently
+rather than erroring.
+
+### Bug found — the redefined `:` never sets the base kernel's `STATE`, breaking any word whose body isn't a self-contained `"HEADER`-based definition
+
+The deepest and most time-consuming issue this iteration, eventually
+diagnosed with certainty (gdb dictionary-chain walking, primitive-level
+execution tracing via a temporary `TRACE-ON`/`TRACE-OFF`/`DBGDUMP`
+instrumentation of the engine and a purpose-bootstrapped debug host -
+see below) after several earlier, wrong theories.
+
+`cross.4` redefines `:`/`;` (via `"HEADER`, a `>IN`-safe self-contained
+name-parsing word) so that words like `PRIMITIVE`/`VARIABLE`/`CONSTANT`
+can be defined as target-shadow words. This redefined `:` sets its own
+`STATE-T` flag (so `NUMBER?` compiles numeric literals as target
+literals) but never sets the base kernel's own `STATE` flag. Any
+ordinary word compiled under it - one that isn't itself a
+`"HEADER`/`DOES>`-based defining word with its own complete,
+self-contained structure - therefore executes *immediately*, at
+define-time, instead of being compiled to run later. This is a genuine,
+pre-existing fragility in the original (pre-this-session) code, not
+something introduced here: it silently "worked" there only by luck of
+whatever garbage happened to be sitting on the stack at each such
+point. Growing `cross.4` (adding the `TARGET-CELL-BYTES` machinery
+earlier in the file) shifted that layout enough to turn several
+previously-silent instances into visible crashes:
+
+- `FORWARD` (uses plain `CREATE`, which has no `"HEADER`-style `>IN`
+  safety): `CREATE`, executing immediately, consumed the literal text
+  `-1` (the next source token) as its own name instead of as data,
+  confirmed directly via `FIND`. The following `,` then had nothing
+  reliable on the stack to store, and crashed. (An earlier session
+  turn's belief that a bogus word literally named `-1` was somehow
+  intentional/harmless turned out to be built on a broken `FIND` test -
+  `FIND` was found to report "found" for *any* string this early in
+  bootstrap, for reasons not further chased down since it wasn't the
+  actual bug; a `Redefining:`-message-based check was used for
+  everything after that instead, since it's a real signal, not
+  inferred from a possibly-broken primitive.)
+- `RESOLVE`/`T'`/`>BODY-T`: same root cause, same fix.
+- `VARIABLE`/`CONSTANT`: these *do* use `"HEADER` (safe), but their own
+  explicit `"HEADER`/`DOES>` - meant to run later, each time
+  `VARIABLE X`/`CONSTANT X` is actually invoked from `kernel.4` - ran
+  immediately instead, consuming the wrong token as a name and leaving
+  the following store operation without a reliable value again (a
+  clean, gdb-confirmed depth-check abort, not memory corruption - but
+  still wrong).
+- The control-structure words (`BEGIN`/`UNTIL`/`IF`/`THEN`/`ELSE`/
+  `WHILE`/`REPEAT`) and `DO`/`LOOP`/`."`/`POSTPONE`/`ABORT"`: same root
+  cause. Some of these (`BEGIN`/`IF`/`WHILE`) only *push* values and
+  happened to survive running immediately; others (`UNTIL`/`REPEAT`)
+  *consume* a value a real, deferred invocation would have had on the
+  stack (from a matching `BEGIN`) and broke once the surrounding
+  layout no longer left a spare value there by chance.
+
+**Fix**: none of the above actually need the redefined `:`'s inherited
+`DOES>` behavior - `FORWARD`/`RESOLVE`/`T'`/`>BODY-T` are ordinary host
+words with no nested defining-word pattern of their own, and
+`VARIABLE`/`CONSTANT`/the control-structure words each have their own
+complete, self-contained `"HEADER`/`DOES>` (or no defining-word pattern
+at all). All of them are now defined using the plain, original `:`/`;`
+instead (wrapped in `T]`/`T[` where `STATE-T` still needs to be 1, for
+`NUMBER?` to compile their own internal numeric literals correctly) -
+removing the fragility rather than trying to preserve whatever made it
+work by luck before. The redefined `:`/`;` itself is kept, but now
+correctly scoped to its one remaining real purpose: `kernel.4`'s own
+source uses `:`/`;` throughout to compile *target*-level colon
+definitions, found via `CROSS-COMPILE`'s own restricted
+`[TARGET, TRANSIENT]` search - which needs a `:`/`;` pair to exist in
+`TRANSIENT` vocabulary, and that's genuinely safe now since nothing
+else routes through it anymore.
+
+An early, tempting-looking fix attempt - just adding `1 STATE !`/
+`0 STATE !` to the redefined `:`/`;` - was tried and reverted twice,
+for two different reasons worth recording so it isn't retried: first,
+while `FORWARD` still used the redefined `:`, this made `FORWARD`'s own
+`DOES>` (always immediate, by design, in any Forth) fire *during*
+`FORWARD`'s compilation instead of at its later invocation, attaching
+its runtime action to the wrong word and corrupting `FORWARD` itself.
+Second, after moving `FORWARD` but before moving `VARIABLE`/`CONSTANT`,
+the same conflict recurred for them, since they *also* have their own
+`DOES>`. Setting `STATE` is fundamentally incompatible with any word
+whose body itself contains a `DOES>`, when that word is defined via a
+`DOES>`-based defining word - moving affected words off the redefined
+`:` entirely, rather than patching `STATE`, was the only fix that
+didn't just relocate the conflict.
+
+### Bugs found — three unrelated forward-reference/hardcoded-width mistakes introduced earlier this same effort
+
+Once the above was fixed, the bootstrap progressed far enough into
+`kernel.4`'s own compilation to expose three small, independent
+mistakes from this session's *own* earlier parameterization edits (not
+pre-existing):
+
+- **`J`** (`RP@ CELLBYTES-TOK 3 * + @`) used `*`, but `kernel.4` doesn't
+  define `*` until ~150 lines later - a forward reference that never
+  existed before this session (the original was a hardcoded `24`,
+  needing no multiply at all). Fixed by replacing `CELLBYTES-TOK 3 *`
+  with `CELLBYTES-TOK CELLBYTES-TOK CELLBYTES-TOK + + +` (repeated
+  addition), avoiding the not-yet-available word entirely.
+- **`ALIGNED`** (`CELLBYTES-TOK 1- + ...`) used `1-`, defined even
+  later in `kernel.4` than `*`. Same category of mistake, same kind of
+  fix: `CELLBYTES-TOK 1 - + ...` (the primitive `-` with a literal `1`,
+  instead of the compound `1-`).
+- **`2/`** (`DUP SIGNSHIFT-TOK LSHIFT AND SWAP 1 RSHIFT OR`) was missing
+  a `1` before `SIGNSHIFT-TOK`: it shifted `n1` itself left by the sign
+  position instead of shifting `1` left to build the sign-bit mask,
+  computing garbage. Fixed by inserting the missing `1`
+  (`DUP 1 SIGNSHIFT-TOK LSHIFT AND SWAP 1 RSHIFT OR`). Caught by the
+  CORE test suite itself (`WRONG NUMBER OF RESULTS` on several `2/`
+  cases) once the bootstrap finally completed - the first bug in this
+  iteration caught by the test suite rather than by the bootstrap
+  failing outright.
+
+### Bug found — `DEPTH`'s hardcoded `3 RSHIFT`
+
+With the 8-byte build fully passing (1892 OK, confirmed no
+regressions), the first genuine 4-byte-cell (i386) bootstrap produced a
+correctly-sized, correctly-tagged image and ran basic arithmetic
+correctly - but failed the CORE suite extensively, on tests as basic as
+`DUP`/`OVER`/`DEPTH` itself. Traced via direct, isolated manual tests
+(not the test harness, which turned out to itself depend on `DEPTH`
+being correct, making its own failures a symptom rather than a
+separate bug) to `kernel.4`'s `DEPTH`: `SP@ S0 @ SWAP - 3 RSHIFT` -
+the `3` (`log2(8)`) hardcoded, never updated to derive from
+`TARGET-CELL-BYTES` like the rest of this iteration's changes. Fixed by
+replacing it with `CELLSHIFT-TOK` (`log2(TARGET-CELL-BYTES)`, already
+computed correctly elsewhere). A grep for the same `N RSHIFT`/`N
+LSHIFT` pattern elsewhere in `kernel.4` found no other instances.
+
+### Bug found — `@-T` didn't sign-extend for a narrower target
+
+With `DEPTH` fixed, the 4-byte-cell bootstrap itself started crashing
+at the very end (`SAVE-IMAGE`/final resolution), in `RESOLVE`
+specifically. `RESOLVE`'s chain-termination check (`DUP -1 -`, testing
+whether the current link equals the host's own full-width `-1`)
+compares against a value read back via `@-T`, which accumulates only
+`TARGET-CELL-BYTES` bytes and leaves the high bytes zero regardless of
+the target value's actual sign. A target-level `-1` sentinel (stored as
+4 bytes of `0xFF`) read back as `0x00000000FFFFFFFF`, not sign-extended
+`-1` - so `RESOLVE`'s loop never saw the chain end, and walked off into
+unrelated memory. Fixed by extending `@-T` to sign-extend its result
+when `TARGET-CELL-BYTES` is narrower than this host's own cell width
+(guarded so the shift-by-64 this would otherwise need in the "no
+narrowing" 8-byte-cell case is never actually executed - undefined
+behavior in C for a shift equal to the operand's own bit width).
+
+### Verification
+
+Both cell widths pass the full CORE test suite (`tester.fr` + the
+`tests/*.fth` extras) cleanly from the same `cross.4`/`kernel.4`
+source: **1892 OK markers, zero errors, on both the 8-byte-cell and
+4-byte-cell (i386) builds.** `fib.4` (`FIB 34`, via `RECURSE`) also
+gives the identical correct result (`9227465`) on both.
+`tests/run_tests.sh` now builds and runs both automatically (the
+4-byte-cell image is cross-compiled fresh each run, via a temporary
+copy of `cross.4` with `TARGET-CELL-BYTES` set to 4, into a temp
+directory - the committed `cross.4` itself stays at its 8-byte
+default).
+
+### Debugging infrastructure worth remembering for future sessions
+
+Two purpose-built tools made the `STATE`/nested-`DOES>` bug (the
+hardest one this iteration) tractable, after plain reasoning about the
+Forth source repeatedly produced wrong theories:
+
+- **`DBGDUMP`**: a temporary engine primitive (peeks `dsp`/`rp`/`ip`
+  and 8 data-stack cells to stderr, no stack effect) added to a
+  throwaway copy of the engine, with a corresponding
+  `PRIMITIVE DBGDUMP IMMEDIATE` added to a throwaway copy of the
+  *previously-working* `kernel.4` (bootstrapped via the
+  *previously-working* `cross.4`, to get a debug-capable host without
+  depending on the very code under investigation). Marking it
+  `IMMEDIATE` was essential - it let it fire even while compiling,
+  mid-definition, which ordinary `.`/`DEPTH` sequences can't do without
+  changing what's being observed.
+- **`TRACE-ON`/`TRACE-OFF`**: same approach, toggling a global flag the
+  engine's dispatch loop checks on every primitive, logging each one
+  (by name) plus `dsp`/`rp` to stderr. Comparing the primitive sequence
+  between a known-working run and a failing one (`diff` on just the
+  primitive names, ignoring addresses) pinpointed the exact divergence
+  point directly, rather than continuing to guess which stack-state
+  hypothesis to check next.
+
+Both were built as one-off, uncommitted C/kernel.4 changes in scratch
+directories, never merged into the real source - worth reconstructing
+the same way if a similarly opaque bug shows up again, rather than
+trying to keep them permanently wired into the committed engine.
+
+### What this iteration deliberately did NOT do
+
+- **ARM32.** Only i386 was actually built and tested. ARM32 should work
+  through the same `gcc`-target-picks-`UINTPTR_MAX` mechanism in
+  principle, but hasn't been tried - worth doing before claiming it
+  works, given how many independent, non-obvious bugs turned up getting
+  i386 working despite the design looking straightforward going in.
+- **A clean, safe "pre-set `TARGET-CELL-BYTES` before including
+  `cross.4`" mechanism.** The `DEFINED?`/`IF`/`THEN` attempt at this
+  was the first bug found this iteration (see above) and was removed
+  rather than reattempted - building for 32-bit now means directly
+  editing one line in `cross.4` (documented in `README.md`), which is
+  less convenient but has no equivalent failure mode.
+- Auditing `cross.4` for *other* possible instances of the
+  `STATE`-never-set fragility beyond what actually surfaced as
+  failures. Everything that broke did so loudly (a crash or a test
+  failure) once reached; anything that didn't break might still be
+  relying on the same "happens to survive by luck" pattern without it
+  having been exercised yet. Worth keeping in mind if something in this
+  area breaks again after a seemingly-unrelated change.

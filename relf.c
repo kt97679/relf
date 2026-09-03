@@ -6,14 +6,18 @@
  *  There is NO WARRANTY.
  *
  *  Phase 5 engine (see GOALS.md): portable across every architecture the
- *  build's libc supports. Cells are 8 bytes, matching the process's own
- *  pointer width on 64-bit hosts - see GOALS.md, "load-bearing facts",
- *  for why cell width and host pointer width must match in this design.
- *  Images are native host endianness (little-endian only - see GOALS.md
- *  non-goals), not a portable on-disk format; a magic header lets a
- *  mismatched image fail cleanly instead of silently misbehaving.
- *  Dispatch is computed-goto threaded code (GCC/Clang "labels as
- *  values"), not a function-pointer table - see PROGRESS.md for why.
+ *  build's libc supports. Cell width is chosen at compile time to match
+ *  the host's own pointer width (4 bytes on 32-bit hosts, 8 on 64-bit
+ *  ones) - see GOALS.md, "load-bearing facts", for why cell width and
+ *  host pointer width must match in this design. Images are native host
+ *  endianness (little-endian only - see GOALS.md non-goals), not a
+ *  portable on-disk format; a magic header records both cell width and
+ *  a fixed tag, so a mismatched image fails cleanly instead of silently
+ *  misbehaving. Dispatch is computed-goto threaded code (GCC/Clang
+ *  "labels as values"), not a function-pointer table - see PROGRESS.md
+ *  for why. kernel.img itself must be built for the same cell width as
+ *  this binary (see README.md) - a 32-bit build needs its own image,
+ *  cross-compiled with TARGET-CELL-BYTES set to 4 (see cross.4).
  */
 
 #include <unistd.h>
@@ -21,12 +25,25 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 extern char **environ;
 
-#define  UNS8 unsigned char   /*     Virtual    */
-#define INT64 long            /*     machine    */
-#define UNS64 unsigned long   /* internal types */
+#define UNS8 unsigned char /* byte access; width-independent */
+
+#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFFULL
+typedef uint64_t UNS64; /* the VM's cell type - 8 bytes on this host */
+typedef int64_t  INT64;
+#define CELL_BYTES 8
+#define CELL_SHIFT 3     /* log2(CELL_BYTES): primitive dispatch stride */
+#elif UINTPTR_MAX == 0xFFFFFFFFUL
+typedef uint32_t UNS64; /* the VM's cell type - 4 bytes on this host */
+typedef int32_t  INT64;
+#define CELL_BYTES 4
+#define CELL_SHIFT 2
+#else
+#error "relf: unsupported pointer size (only 32-bit and 64-bit hosts are supported)"
+#endif
 
 #define MEMSIZE (256 * 1024)  /* how much memory do we allocate for VM */
 #define RSTACK_BYTES 2048     /* room reserved for the return stack     */
@@ -48,23 +65,25 @@ extern char **environ;
  *  Macroses for stack access
  */
 
-#define RS       CELL(rp)          /* top of return stack               */
-#define DS0      CELL(dsp)         /* top of data stack                 */
-#define DS1      CELL(dsp + 8)     /* 2nd element on data stack         */
-#define DS2      CELL(dsp + 16)    /* 3d element on data stack          */
-#define DS3      CELL(dsp + 24)    /* 4th element on data stack         */
-#define PUSH(x)  dsp -= 8; DS0 = x /* pushes x to data stack            */
-#define RPUSH(x) rp -= 8; RS = x   /* pushes x to return stack          */
+#define RS       CELL(rp)                    /* top of return stack     */
+#define DS0      CELL(dsp)                   /* top of data stack       */
+#define DS1      CELL(dsp + CELL_BYTES)      /* 2nd element on d.stack  */
+#define DS2      CELL(dsp + 2 * CELL_BYTES)  /* 3d element on d.stack   */
+#define DS3      CELL(dsp + 3 * CELL_BYTES)  /* 4th element on d.stack  */
+#define PUSH(x)  dsp -= CELL_BYTES; DS0 = x  /* pushes x to data stack  */
+#define RPUSH(x) rp -= CELL_BYTES; RS = x    /* pushes x to return stack*/
 
 /*
- *  VM memory. +7 is necessary to be able to allocate MEMSIZE bytes from
- *  an 8-aligned address in order to have native word access.
+ *  VM memory. +(CELL_BYTES-1) is necessary to be able to allocate
+ *  MEMSIZE bytes from a CELL_BYTES-aligned address in order to have
+ *  native word access.
  */
 
-static UNS8 mem[MEMSIZE + 7];
+static UNS8 mem[MEMSIZE + CELL_BYTES - 1];
 
 /*
- *  1st 8-aligned address in mem array. This is base address of the system.
+ *  1st CELL_BYTES-aligned address in mem array. Base address of the
+ *  system.
  */
 
 static UNS8 *base;
@@ -77,12 +96,14 @@ static UNS64 dsp; /* data stack pointer                */
 static UNS64   t; /* variable for temporary storage    */
 
 /*
- *  8-byte magic every image starts with: "RELF" + cell width (8) + 3
- *  reserved bytes. Plain byte comparison - see cross.4's SAVE-IMAGE for
- *  why this needs no endianness handling of its own.
+ *  8-byte magic every image starts with: "RELF" + cell width + 3
+ *  reserved bytes. Always 8 bytes on disk regardless of the engine's
+ *  own cell width - it's a fixed file-format constant, not a cell.
+ *  Plain byte comparison - see cross.4's SAVE-IMAGE for why this needs
+ *  no endianness handling of its own.
  */
 
-static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', 8, 0, 0, 0 };
+static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', CELL_BYTES, 0, 0, 0 };
 
 /*
  *  write() wrapper: don't care about partial writes here, only used for
@@ -122,21 +143,23 @@ static void write_str(int fd, const char *s) {
 }
 
 /*
- *  Multiply two 64-bit unsigned numbers *a and *b.
- *  High half of 128-bit result in *a, low half in *b.
+ *  Multiply two cell-width unsigned numbers *a and *b.
+ *  High half of the double-width result in *a, low half in *b.
+ *  Divide a double-width unsigned number (high half *b, low half *c) by
+ *  a cell-width unsigned number in *a. Quotient in *b, remainder in *c.
+ *
+ *  On a 64-bit host this needs a genuine 128-bit intermediate (the
+ *  GCC/Clang __int128 extension); on a 32-bit host a plain "unsigned
+ *  long long" (guaranteed >=64 bits by the C standard) is already wide
+ *  enough for a 64-bit intermediate, no extension needed.
  */
 
+#if CELL_BYTES == 8
 static void umul(UNS64 *a, UNS64 *b) {
     unsigned __int128 p = (unsigned __int128)(*a) * (unsigned __int128)(*b);
     *a = (UNS64)(p >> 64);
     *b = (UNS64)p;
 }
-
-/*
- *  Divide 128-bit unsigned number (high half *b, low half *c) by
- *  64-bit unsigned number in *a. Quotient in *b, remainder in *c.
- */
-
 static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
     unsigned __int128 dividend =
         ((unsigned __int128)(*b) << 64) | (unsigned __int128)(*c);
@@ -144,6 +167,20 @@ static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
     *b = (UNS64)(dividend / divisor);
     *c = (UNS64)(dividend % divisor);
 }
+#else
+static void umul(UNS64 *a, UNS64 *b) {
+    unsigned long long p = (unsigned long long)(*a) * (unsigned long long)(*b);
+    *a = (UNS64)(p >> 32);
+    *b = (UNS64)p;
+}
+static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
+    unsigned long long dividend =
+        ((unsigned long long)(*b) << 32) | (unsigned long long)(*c);
+    UNS64 divisor = *a;
+    *b = (UNS64)(dividend / divisor);
+    *c = (UNS64)(dividend % divisor);
+}
+#endif
 
 /*
  *  virtual machine I/O primitives' shared state
@@ -177,7 +214,8 @@ static void load_image(const char *name) {
                  "different cell width.\n");
         exit(2);
     }
-    base = (UNS8*)(((UNS64)mem + 7) & ~(UNS64)7);
+    base = (UNS8*)(((UNS64)(uintptr_t)mem + CELL_BYTES - 1)
+                    & ~(UNS64)(CELL_BYTES - 1));
     len = full_read(fd, base, MEMSIZE);
     close(fd);
     if (len < 0) {
@@ -189,8 +227,10 @@ static void load_image(const char *name) {
 /*
  *  Virtual machine itself: computed-goto threaded dispatch. Each
  *  primitive is a labeled block ending in NEXT; primitive tokens are
- *  (index * 8) + 1, matching cross.4's PRIMITIVE numbering (stride 8 =
- *  sizeof(void*) on every 64-bit host this targets).
+ *  (index * CELL_BYTES) + 1, matching cross.4's PRIMITIVE numbering
+ *  (stride == sizeof(void*) on this host, since dispatch-table entries
+ *  are pointer-sized - which is exactly CELL_BYTES on every host this
+ *  targets).
  */
 
 static void virtual_machine(void) {
@@ -207,8 +247,8 @@ static void virtual_machine(void) {
     };
 
 #define NEXT() do { \
-        t = CELL(ip); ip += 8; \
-        if (t & 1) goto *dispatch[(t - 1) >> 3]; \
+        t = CELL(ip); ip += CELL_BYTES; \
+        if (t & 1) goto *dispatch[(t - 1) >> CELL_SHIFT]; \
         RPUSH(ip); ip += t; \
         goto next; \
     } while (0)
@@ -217,49 +257,49 @@ next:
     NEXT();
 
 L_noop:    /* noop    */ NEXT();
-L_exit:    /* exit    */ ip = RS; rp += 8; NEXT();
-L_lit:     /* lit     */ PUSH(CELL(ip)); ip += 8; NEXT();
+L_exit:    /* exit    */ ip = RS; rp += CELL_BYTES; NEXT();
+L_lit:     /* lit     */ PUSH(CELL(ip)); ip += CELL_BYTES; NEXT();
 L_branch:  /* branch  */ ip += CELL(ip); NEXT();
 L_0branch: /* 0branch */
-    if (DS0) ip += 8; else ip += CELL(ip);
-    dsp += 8;
+    if (DS0) ip += CELL_BYTES; else ip += CELL(ip);
+    dsp += CELL_BYTES;
     NEXT();
-L_drop:    /* drop    */ dsp += 8; NEXT();
+L_drop:    /* drop    */ dsp += CELL_BYTES; NEXT();
 L_dup:     /* dup     */ PUSH(DS1); NEXT();
 L_swap:    /* swap    */ t = DS0; DS0 = DS1; DS1 = t; NEXT();
 L_rot:     /* rot     */ t = DS2; DS2 = DS1; DS1 = DS0; DS0 = t; NEXT();
 L_over:    /* over    */ PUSH(DS2); NEXT();
 L_cfetch:  /* C@      */ DS0 = BYTE(DS0); NEXT();
 L_fetch:   /* @       */ DS0 = CELL(DS0); NEXT();
-L_cstore:  /* c!      */ BYTE(DS0) = (UNS8)DS1; dsp += 16; NEXT();
-L_store:   /* !       */ CELL(DS0) = DS1; dsp += 16; NEXT();
-L_and:     /* and     */ DS1 &= DS0; dsp += 8; NEXT();
-L_or:      /* or      */ DS1 |= DS0; dsp += 8; NEXT();
-L_xor:     /* xor     */ DS1 ^= DS0; dsp += 8; NEXT();
-L_fromr:   /* r>      */ PUSH(RS); rp += 8; NEXT();
-L_tor:     /* >r      */ RPUSH(DS0); dsp += 8; NEXT();
+L_cstore:  /* c!      */ BYTE(DS0) = (UNS8)DS1; dsp += 2 * CELL_BYTES; NEXT();
+L_store:   /* !       */ CELL(DS0) = DS1; dsp += 2 * CELL_BYTES; NEXT();
+L_and:     /* and     */ DS1 &= DS0; dsp += CELL_BYTES; NEXT();
+L_or:      /* or      */ DS1 |= DS0; dsp += CELL_BYTES; NEXT();
+L_xor:     /* xor     */ DS1 ^= DS0; dsp += CELL_BYTES; NEXT();
+L_fromr:   /* r>      */ PUSH(RS); rp += CELL_BYTES; NEXT();
+L_tor:     /* >r      */ RPUSH(DS0); dsp += CELL_BYTES; NEXT();
 L_rfetch:  /* r@      */ PUSH(RS); NEXT();
-L_eq:      /* =       */ DS1 = - (UNS64)(DS0 == DS1); dsp += 8; NEXT();
-L_ugt:     /* u<      */ DS1 = - (UNS64)(DS1 < DS0); dsp += 8; NEXT();
+L_eq:      /* =       */ DS1 = - (UNS64)(DS0 == DS1); dsp += CELL_BYTES; NEXT();
+L_ugt:     /* u<      */ DS1 = - (UNS64)(DS1 < DS0); dsp += CELL_BYTES; NEXT();
 L_gt:      /* <       */
     DS1 = - (UNS64)((INT64)DS1 < (INT64)DS0);
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
-L_plus:    /* +       */ DS1 += DS0; dsp += 8; NEXT();
+L_plus:    /* +       */ DS1 += DS0; dsp += CELL_BYTES; NEXT();
 L_negate:  /* negate  */ DS0 = - DS0; NEXT();
-L_lshift:  /* lshift  */ DS1 <<= DS0; dsp += 8; NEXT();
-L_rshift:  /* rshift  */ DS1 >>= DS0; dsp += 8; NEXT();
+L_lshift:  /* lshift  */ DS1 <<= DS0; dsp += CELL_BYTES; NEXT();
+L_rshift:  /* rshift  */ DS1 >>= DS0; dsp += CELL_BYTES; NEXT();
 L_ummult:  /* um*     */ umul(&DS0, &DS1); NEXT();
-L_umdiv:   /* um/mod  */ udiv(&DS0, &DS1, &DS2); dsp += 8; NEXT();
+L_umdiv:   /* um/mod  */ udiv(&DS0, &DS1, &DS2); dsp += CELL_BYTES; NEXT();
 L_dplus:   /* d+      */
     DS3 += DS1; DS2 += DS0; DS2 += (DS3 < DS1);
-    dsp += 16;
+    dsp += 2 * CELL_BYTES;
     NEXT();
 
 L_emit: { /* emit    */
     UNS8 c = (UNS8)DS0;
     full_write(1, &c, 1);
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 }
 L_key: { /* key     */
@@ -274,20 +314,20 @@ L_key: { /* key     */
     NEXT();
 }
 L_bye:     /* bye     */ exit(0);
-L_spfetch: /* sp@     */ PUSH(dsp + 8); NEXT();
+L_spfetch: /* sp@     */ PUSH(dsp + CELL_BYTES); NEXT();
 L_spstore: /* sp!     */ dsp = DS0; NEXT();
 L_rpfetch: /* rp@     */ PUSH(rp); NEXT();
-L_rpstore: /* rp!     */ rp = DS0; dsp += 8; NEXT();
+L_rpstore: /* rp!     */ rp = DS0; dsp += CELL_BYTES; NEXT();
 
 L_openfile: { /* c-addr u fam --- fid ior */
     int fd;
     t = BYTE(DS2 + DS1);
     BYTE(DS2 + DS1) = 0;
-    fd = open((char *)DS2, open_flags[DS0], 0644);
+    fd = open((char *)(uintptr_t)DS2, open_flags[DS0], 0644);
     BYTE(DS2 + DS1) = t;
     DS2 = (UNS64)fd;
     DS1 = (fd >= 0) ? 0 : 200;
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 }
 L_closefile: /* fid --- ior */
@@ -321,14 +361,14 @@ L_writeline: { /* c-addr u fid --- ior */
     UNS64 addr = DS2, len = DS1;
     long n;
 
-    n = full_write(fd, (void*)addr, len);
+    n = full_write(fd, (void*)(uintptr_t)addr, len);
     if (n == (long)len) {
         n = full_write(fd, "\n", 1);
         DS2 = (n == 1) ? 0 : (UNS64)-200;
     } else {
         DS2 = (UNS64)-200;
     }
-    dsp += 16;
+    dsp += 2 * CELL_BYTES;
     NEXT();
 }
 L_readfile: { /* c-addr u1 fid --- u2 ior */
@@ -336,7 +376,7 @@ L_readfile: { /* c-addr u1 fid --- u2 ior */
     UNS64 addr = DS2, maxlen = DS1;
     long n;
 
-    n = full_read(fd, (void*)addr, maxlen);
+    n = full_read(fd, (void*)(uintptr_t)addr, maxlen);
     if (n < 0) {
         DS2 = 0;
         DS1 = (UNS64)-200;
@@ -344,7 +384,7 @@ L_readfile: { /* c-addr u1 fid --- u2 ior */
         DS2 = (UNS64)n;
         DS1 = 0;
     }
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 }
 L_writefile: { /* c-addr u fid --- ior */
@@ -352,9 +392,9 @@ L_writefile: { /* c-addr u fid --- ior */
     UNS64 addr = DS2, len = DS1;
     long n;
 
-    n = full_write(fd, (void*)addr, len);
+    n = full_write(fd, (void*)(uintptr_t)addr, len);
     DS2 = (n == (long)len) ? 0 : (UNS64)-200;
-    dsp += 16;
+    dsp += 2 * CELL_BYTES;
     NEXT();
 }
 L_system: { /* c-addr u --- ior */
@@ -369,7 +409,7 @@ L_system: { /* c-addr u --- ior */
     BYTE(addr + len) = 0;
     argv[0] = "/bin/sh";
     argv[1] = "-c";
-    argv[2] = (char*)addr;
+    argv[2] = (char*)(uintptr_t)addr;
     argv[3] = 0;
     pid = fork();
     if (pid == 0) {
@@ -384,16 +424,16 @@ L_system: { /* c-addr u --- ior */
     }
     BYTE(addr + len) = saved;
     DS1 = (UNS64)ior;
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 }
 L_reposfile: /* offset fid --- ior */
     DS1 = (UNS64)lseek((int)DS0, (long)DS1, SEEK_SET);
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 L_filepos: /* fid --- u ior */
     DS0 = (UNS64)lseek((int)DS0, 0, SEEK_CUR);
-    dsp -= 8;
+    dsp -= CELL_BYTES;
     if ((INT64)DS1 == -1) {
         DS0 = 200;
     } else {
@@ -403,9 +443,9 @@ L_filepos: /* fid --- u ior */
 L_delfile: { /* c-addr u --- ior */
     t = BYTE(DS1 + DS0);
     BYTE(DS1 + DS0) = 0;
-    DS1 = (UNS64)unlink((char*)DS1);
+    DS1 = (UNS64)unlink((char*)(uintptr_t)DS1);
     BYTE(DS1 + DS0) = t;
-    dsp += 8;
+    dsp += CELL_BYTES;
     NEXT();
 }
 L_filesize: { /* fid --- u ior */
@@ -429,7 +469,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     load_image(argv[1]);
-    ip = (UNS64)base;
+    ip = (UNS64)(uintptr_t)base;
     rp = ip + MEMSIZE;
     dsp = ip + MEMSIZE - RSTACK_BYTES;
     PUSH(ip);
