@@ -127,6 +127,103 @@ CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
 : EMIT-TOK-CHAR ( c --- )
   TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT ! ;
 
+\ ==================================================================
+\ $VAR expansion: $NAME, ${NAME}, $? (last exit status), $$ (this
+\ shell's own PID). Recognized both outside quotes and inside double
+\ quotes - not inside single quotes, which stay fully literal
+\ (COPY-SINGLE-QUOTED never looks for $ at all, matching POSIX).
+\ Deliberately narrow scope: no ${VAR:-default}-style modifiers, no
+\ positional parameters ($1/$@/$#), no command substitution - just
+\ environment-variable lookup (reusing GETENV, same as everywhere
+\ else in this shell - there's no separate "shell variable" concept)
+\ plus the two special forms. An expanded value is never re-split on
+\ whitespace (unlike a real shell's unquoted expansion) - the whole
+\ expansion becomes part of whichever token it's embedded in, and is
+\ never re-interpreted as an operator/builtin name downstream, same
+\ as quoted/escaped content (see ARGV-QUOTED).
+\ ==================================================================
+
+: NAME-CHAR? ( c --- f )  \ POSIX portable variable-name characters
+  DUP 95 = IF DROP -1 EXIT THEN                  ( underscore )
+  DUP 48 < 0= OVER 58 < AND IF DROP -1 EXIT THEN    ( 0-9 )
+  DUP 65 < 0= OVER 91 < AND IF DROP -1 EXIT THEN    ( A-Z )
+  DUP 97 < 0= OVER 123 < AND IF DROP -1 EXIT THEN   ( a-z )
+  DROP 0 ;
+
+CREATE VARNAME-BUF 64 ALLOT
+VARIABLE VN-LEN
+CREATE DIGIT-BUF 24 ALLOT
+VARIABLE DIGIT-N
+
+: EMIT-DECIMAL ( n --- )
+  \ Appends n's decimal digits via EMIT-TOK-CHAR (used for $? and $$).
+  \ An explicit divide/mod loop rather than the pictured-numeric-output
+  \ words, to keep this self-contained and easy to verify directly.
+  DUP 0< IF 45 EMIT-TOK-CHAR NEGATE THEN
+  DUP 0= IF DROP 48 EMIT-TOK-CHAR EXIT THEN
+  0 DIGIT-N !
+  BEGIN DUP 0 > WHILE
+    DUP 10 MOD 48 +  DIGIT-BUF DIGIT-N @ + C!
+    DIGIT-N @ 1+ DIGIT-N !
+    10 /
+  REPEAT
+  DROP
+  DIGIT-N @ 0 DO
+    DIGIT-BUF DIGIT-N @ 1- I - + C@ EMIT-TOK-CHAR
+  LOOP ;
+
+: TYPE0-TO-TOK ( c-addr --- )  \ copies a NUL-terminated C string's
+                                 \ characters into the token being
+                                 \ built - the expanded value, from GETENV
+  BEGIN DUP C@ DUP WHILE EMIT-TOK-CHAR CHAR+ REPEAT 2DROP ;
+
+: EXPAND-VAR ( --- )
+  \ TOK-POS is at the '$' character.
+  -1 TOK-WAS-QUOTED? !
+  TOK-POS @ 1+ TOK-POS !
+  TOK-POS @ TOK-END @ < 0= IF 36 EMIT-TOK-CHAR EXIT THEN
+  TOK-POS @ C@
+  DUP 63 = IF                     ( $? )
+    DROP TOK-POS @ 1+ TOK-POS !
+    LAST-STATUS @ EMIT-DECIMAL
+    EXIT
+  THEN
+  DUP 36 = IF                     ( $$ )
+    DROP TOK-POS @ 1+ TOK-POS !
+    GETPID EMIT-DECIMAL
+    EXIT
+  THEN
+  DUP 123 = IF                    ( ${NAME} )
+    DROP TOK-POS @ 1+ TOK-POS !
+    0 VN-LEN !
+    BEGIN
+      TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 125 <> ELSE 0 THEN
+    WHILE
+      TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
+      VN-LEN @ 1+ VN-LEN !
+      TOK-POS @ 1+ TOK-POS !
+    REPEAT
+    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
+    0 VARNAME-BUF VN-LEN @ + C!
+    VARNAME-BUF GETENV DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN
+    EXIT
+  THEN
+  DUP NAME-CHAR? 0= IF
+    DROP 36 EMIT-TOK-CHAR          ( $ not followed by a name: literal $ )
+    EXIT
+  THEN
+  DROP
+  0 VN-LEN !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ NAME-CHAR? ELSE 0 THEN
+  WHILE
+    TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
+    VN-LEN @ 1+ VN-LEN !
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  0 VARNAME-BUF VN-LEN @ + C!
+  VARNAME-BUF GETENV DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN ;
+
 : COPY-SINGLE-QUOTED ( --- )
   \ TOK-POS is at the opening '. Copies everything up to (not
   \ including) the matching closing ' verbatim - no escapes at all
@@ -169,10 +266,12 @@ CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
         92 EMIT-TOK-CHAR
         TOK-POS @ 1+ TOK-POS !
       THEN
+    ELSE TOK-POS @ C@ 36 = IF
+      EXPAND-VAR
     ELSE
       TOK-POS @ C@ EMIT-TOK-CHAR
       TOK-POS @ 1+ TOK-POS !
-    THEN
+    THEN THEN
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
 
@@ -198,10 +297,11 @@ CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
     DUP 39 = IF DROP COPY-SINGLE-QUOTED
     ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
     ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
+    ELSE DUP 36 = IF DROP EXPAND-VAR
     ELSE
       EMIT-TOK-CHAR
       TOK-POS @ 1+ TOK-POS !
-    THEN THEN THEN
+    THEN THEN THEN THEN
   REPEAT ;
 
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length

@@ -260,7 +260,7 @@ static void virtual_machine(void) {
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
-        &&L_sysargc, &&L_sysarg
+        &&L_sysargc, &&L_sysarg, &&L_getpid
     };
 
 #define NEXT() do { \
@@ -557,6 +557,9 @@ L_sysarg: { /* n --- c-addr */
     }
     NEXT();
 }
+L_getpid: /* --- pid */
+    PUSH((UNS64)(INT64)getpid());
+    NEXT();
 }
 
 /*

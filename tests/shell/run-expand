@@ -1,0 +1,41 @@
+#!/bin/sh
+# run-expand - $VAR and ${VAR} environment-variable expansion, $?
+# (last exit status), and $$ (this shell's own PID). Also checks that
+# an expansion result matching an operator character isn't
+# re-interpreted as one - the same reasoning as ARGV-QUOTED for
+# quoting (see shell.4 and run-quote).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'export MYVAR=testvalue123\necho $MYVAR\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "\$VAR expands to the exported value" "testvalue123" "$out"
+
+out=$(printf 'export FOO=bar123\necho ${FOO}suffix\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "\${VAR} form delimits the name explicitly" "bar123suffix" "$out"
+
+out=$(printf 'echo $NOSUCHVARIABLEXYZ end\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "unset variable expands to empty" "end" "$out"
+
+out=$(printf 'false\necho $?\ntrue\necho $?\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "\$? is 1 after a failing command" "1" "$out"
+assert_output_contains "\$? is 0 after a succeeding command" "0" "$out"
+
+out=$("$THIS_SH" -c 'echo $$' < /dev/null 2>&1)
+last_line=$(echo "$out" | tail -1 | tr -d '\r')
+case "$last_line" in
+    ''|*[!0-9]*)
+        TESTS_RUN=$((TESTS_RUN + 1))
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        echo "FAIL: \$\$ expands to a plain positive integer (PID)"
+        echo "  actual output:"
+        echo "$out" | sed 's/^/    /'
+        ;;
+    *)
+        TESTS_RUN=$((TESTS_RUN + 1))
+        ;;
+esac
+
+out=$(printf 'export PIPECHAR=|\necho a $PIPECHAR b\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "expansion result matching | is not treated as a pipe" "a | b" "$out"
+
+report

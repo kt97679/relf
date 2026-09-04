@@ -1318,3 +1318,114 @@ assertions across 8 files now, all passing on both x86-64 and i386.
   Iteration 7 scope limit; quoting doesn't change that decision, since
   the two features remain independently untested together regardless
   of what's inside their arguments.
+
+## Iteration 9: $VAR expansion
+
+Goal: the more consequential of the two remaining gaps flagged at the
+end of Iteration 8 - variable expansion, which makes the shell
+substantially more useful day-to-day (control structures matter more
+for scripting than interactive use, and were judged lower priority).
+
+### New primitive: `GETPID`
+
+A single, trivial addition (`GETPID ( --- pid )`, a direct `getpid()`
+wrapper with no arguments and no string handling at all) needed for
+`$$`. Added, rebootstrapped, and regression-checked using the same
+established workflow as every other primitive this project has added.
+
+### `EXPAND-VAR`: `$NAME`, `${NAME}`, `$?`, `$$`
+
+Integrated into the tokenizer as a fifth dispatch case alongside the
+existing quote/escape handling - `SCAN-TOKEN` (outside quotes) and
+`COPY-DOUBLE-QUOTED` (inside double quotes) both now recognize `$` and
+call `EXPAND-VAR`; `COPY-SINGLE-QUOTED` still never looks for it at
+all, so single quotes remain fully literal, matching POSIX. `$NAME`
+reads a maximal run of POSIX-portable name characters (letters,
+digits, underscore, via a new `NAME-CHAR?` predicate) and looks it up
+via `GETENV` - there's no separate "shell variable" concept here,
+same simplification as everywhere else in this shell (`export` already
+went straight to `SETENV`). `${NAME}` is the same lookup with explicit
+`{`/`}` delimiters, useful for e.g. `${FOO}suffix` where the bare form
+would otherwise consume "suffix" as part of the name. `$?` substitutes
+`LAST-STATUS` and `$$` substitutes `GETPID`, both formatted via a new
+`EMIT-DECIMAL` (an explicit divide/mod digit-extraction loop, chosen
+over the pictured-numeric-output words `<#`/`#S`/`#>` to keep this
+self-contained and directly verifiable, consistent with this
+project's general preference for explicit, easy-to-verify constructs
+over relying on words whose exact stack behavior hasn't been directly
+tested here yet). A `$` not followed by anything that forms a valid
+expansion (not a name-start character, not `?`/`$`/`{`) is left as a
+literal `$`, matching POSIX's own fallback.
+
+### Real bug found and fixed: reused a `DUP` pattern in the wrong context
+
+Wiring `$` recognition into `COPY-DOUBLE-QUOTED` initially wrote `DUP
+36 = IF ... ELSE ...` inside that word's existing `ELSE` branch (the
+"character wasn't a backslash" case) - copying the cascading-`DUP`
+dispatch style already proven correct in both `DISPATCH` and
+`SCAN-TOKEN` itself. But this specific `ELSE` branch is different:
+the *outer* `TOK-POS @ C@ 92 = IF` already fully consumed the fetched
+character via `=` before branching, so nothing was left on the stack
+to `DUP` - `DUP` there would duplicate whatever unrelated value
+happened to be sitting underneath from earlier, unconnected code. The
+cascading-`DUP` pattern only works when a value is deliberately kept
+on the stack *specifically* for the next check to consume, which was
+true in `DISPATCH`/`SCAN-TOKEN` (each `DUP N = IF...THEN` explicitly
+preserves the original for the next comparison) but not true here,
+where the outer condition had already resolved and moved on. Fixed by
+re-fetching the character fresh (`TOK-POS @ C@ 36 = IF ...`) instead
+of assuming something reusable was on the stack - a reminder that a
+pattern being correct in one place doesn't mean it transfers safely to
+a structurally different call site without checking what's actually on
+the stack there.
+
+**Also hit the same `>=` mistake as Iteration 7** (this kernel has no
+`>=` word) while writing `NAME-CHAR?`'s range checks - by now a
+familiar-enough mistake that it was caught and fixed (`DUP 48 < 0=` in
+place of `DUP 48 >=`) in the same pass as the load-and-test cycle,
+rather than needing a separate debugging round.
+
+### Quote-awareness extends to expansion results too
+
+`EXPAND-VAR` sets `TOK-WAS-QUOTED?` the same way quoting/escaping do,
+so an expanded value that happens to match an operator character isn't
+re-interpreted as one downstream - verified directly: `export
+PIPECHAR=|` then `echo a $PIPECHAR b` prints `a | b` literally rather
+than starting a pipeline, exactly the same reasoning `ARGV-QUOTED`
+already provides for literal quoted operators (Iteration 8).
+
+Verified end-to-end via `relfsh`: `$VAR` and `${VAR}` both expanding
+correctly (including the delimiter case bare `$VAR` can't handle),
+an unset variable expanding to empty rather than erroring, `$?`
+correctly reflecting both a failing and a subsequent succeeding
+command within one session, `$$` producing a plausible positive
+integer PID, and the pipe-character quote-awareness case above.
+`tests/shell/run-expand` (7 assertions) locks all of this in - 31
+assertions across 9 files now, all passing on both x86-64 and i386.
+
+### What this iteration deliberately did NOT do
+
+- **Word-splitting of an unquoted expansion's result.** A real shell
+  splits an unquoted `$VAR` containing spaces into multiple arguments
+  (subject to `$IFS`); here the entire expanded value always becomes
+  part of whichever single token it's embedded in, regardless of
+  whitespace inside it or whether it was quoted. This is a real,
+  user-visible difference from POSIX behavior, not just an omitted
+  edge case - `echo $VAR` where `VAR="a b c"` produces one argument
+  here (`"a b c"`), not three, unlike a real shell's default behavior.
+- **`${VAR:-default}`/`${VAR:=default}`/`${VAR:+alt}`/`${#VAR}`**
+  and any other parameter-expansion modifier - only bare `${NAME}`
+  lookup is supported.
+- **Positional parameters** (`$1`, `$@`, `$#`, `$0`) - there's no
+  concept of "this invocation's own arguments" to expand yet, since
+  there's no script-file execution or function-call mechanism for
+  them to refer to.
+- **Command substitution** (`` $(...) `` or `` `...` ``) - unrelated
+  to parameter expansion but the other major "$"-adjacent POSIX
+  feature; not attempted.
+- **Nested/recursive expansion** (a variable's value itself containing
+  `$OTHERVAR`) - `TYPE0-TO-TOK` copies `GETENV`'s result verbatim,
+  with no re-scanning for further `$` sequences within it. This
+  matches POSIX for single-quoted-at-source values anyway, but a real
+  shell's parameter-value substitution semantics here are more subtle
+  than what's implemented.
