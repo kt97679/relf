@@ -180,19 +180,25 @@ single command (no ";"/"&&" chaining, and no if/while either, which
 need multiple lines), pipes and redirection can't be combined on the
 same line yet, only a single pipe per line is recognized (no
 a | b | c), and there's no ${VAR:-default}-style modifier or
-positional parameters. See GOALS.md phase 7 and PROGRESS.md's
-Iteration 5 through 13 entries for the current state and what's
-planned next. tests/shell/ has a small test suite (structurally
-modeled on bash's own tests/ directory) exercising all of the above;
-run it directly via `tests/shell/run-all`, or as part of
-`tests/run_tests.sh`.
+positional parameters. relfsh also supports running a script file
+directly (`relfsh script.sh`, matching `sh script.sh`) in addition to
+`-c` and interactive/piped-stdin use, and `exit` takes an optional
+status argument, defaulting to the previous command's own status
+($?) rather than always 0 when none is given. See GOALS.md phase 7
+(and goal 8, a separate, much larger effort to close the gap against
+a more complete reference shell) and PROGRESS.md's Iteration 5
+through 16 entries for the current state and what's planned next.
+tests/shell/ has a small test suite (structurally modeled on bash's
+own tests/ directory) exercising all of the above; run it directly
+via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
 
 Separately, GOALS.md's goal 8 adopts mrsh
 (https://github.com/emersion/mrsh)'s own test suite - vendored
 unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
-`tests/mrsh-suite/run.sh` (current: 0 passed, 21 failed, 3 skipped,
-but crash-free - see PROGRESS.md's Iteration 14 and 15 entries).
+`tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
+crash-free, phase A done - see PROGRESS.md's Iteration 14 through 16
+entries).
 
 5. Possible usage.
 

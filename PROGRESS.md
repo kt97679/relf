@@ -2099,3 +2099,86 @@ more accurate. `GOALS.md`'s goal 8 baseline is updated to match.
 
 Phase A's crash-hardening is now done; its remaining item (real
 file-argument invocation for `relfsh`) is next.
+
+## Iteration 16: goal 8, phase A - script-file invocation (phase A done)
+
+Goal: the last item on phase A's list - `relfsh script.sh` (matching
+`sh script.sh`), needed both as a generally useful capability and to
+remove the stdin-piping asymmetry `tests/mrsh-suite/run.sh` had been
+using as a workaround since Iteration 14.
+
+### `SH-FILE`
+
+A new word alongside `SH`/`SH-C`: opens the given path read-only
+(`R/O OPEN-FOR`, already existed for redirection), reads it with the
+kernel's own `READ-LINE` primitive (its `u2` lines up exactly with
+what `RUN-LINE` already expects - the same per-line shape `SH1` uses
+for one interactively-read line), runs each line via `RUN-LINE` until
+EOF, then exits with the last command's status. `MAIN` now routes any
+invocation with at least one argument that isn't exactly `-c` plus a
+command string to `SH-FILE` (ignoring further arguments beyond the
+path, since positional parameters aren't implemented yet). `relfsh`'s
+own `-c`-vs-else branching collapsed into a single "don't chain `cat`
+when an argument is given" test, since script-file mode has the exact
+same reasoning `-c` mode already had for not touching relfsh's own
+stdin (`SH-FILE` reads from the file's own fd, never stdin).
+
+A missing/unreadable file exits 127 with no error message, matching
+this shell's existing sparse error handling elsewhere (see
+`APPLY-REDIRECTIONS`).
+
+### A pre-existing bug this surfaced: `exit` always hardcoded status 0
+
+Testing `exit` mid-script for real (rather than only via `-c`, where
+nothing after `exit` could matter observably) surfaced that `exit`'s
+own `DISPATCH` entry never looked at any argument at all - `exit 5`
+behaved identically to bare `exit`, both always calling `0 SYS-EXIT`.
+Also not POSIX-correct on its own terms: a bare `exit` should default
+to the *previous* command's status (`$?`), not unconditionally 0.
+Fixed alongside `SH-FILE` since it directly affects exit-status
+correctness, which the whole point of adopting mrsh's suite depends
+on: `PARSE-DECIMAL` (a small, explicit multiply/accumulate loop,
+matching `EMIT-DECIMAL`'s own reasoning for not reaching for the
+standard `>NUMBER` word) parses an optional argument; `exit N` now
+uses it, bare `exit` now uses `LAST-STATUS`. `PARSE-DECIMAL`'s own
+loop needed the same zero-guard treatment as Iteration 15's fixes
+(an empty argument, e.g. `exit ""`, is a legitimate zero-length case).
+
+### A more significant discovery: the *old* invocation method's exit status was always 0, regardless of the script
+
+Updating `tests/mrsh-suite/run.sh` to use real file-argument invocation
+(`"$RELFSH" "$1"` instead of `< "$1"`) changed several results, and
+digging into why surfaced something important: the *old* stdin-piped
+method (used because `relfsh` had no file-argument support yet) fed
+each script into the ordinary interactive `SH` loop, which has no
+natural EOF-driven exit at all on shell.4's own side - `relf`'s own
+top-level interpreter loop is what actually notices EOF on stdin and
+exits, and it always exits 0, never touching `LAST-STATUS`/`SYS-EXIT`
+inside shell.4. Confirmed directly: the same vendored `args.sh`, run
+the old way, reports `status=0` no matter what its last command
+actually did; run through `SH-FILE`, it reports `127` (correctly -
+its last command, `func`, doesn't exist as a real binary, since
+shell.4 has no function support). **The Iteration 14/15 baselines'
+exit-status numbers for every differential test were themselves an
+artifact of this**, not a genuine reflection of `shell.4`'s behavior -
+though it didn't change any pass/fail *verdicts* for the 18
+differential tests, since all 18 were already failing on output
+grounds independent of status. The one place it did change a verdict:
+`2.2.3-alias-expansion.fail.sh` now genuinely passes (status 127,
+confirmed not a crash) - still not exercising the alias-ordering
+question the test actually intends to check, since `shell.4` has no
+`alias` at all, but this time via an honest, correctly-propagated
+status rather than a segfault happening to also be nonzero (Iteration
+14's original mistake) or a piped-stdin artifact always reading 0
+(this iteration's finding).
+
+**Updated baseline: 1 passed, 20 failed, 3 skipped** - all crash-free,
+and now measured through the same invocation method mrsh's own
+harness uses (`relfsh testcase` vs `bash testcase`), no more
+asymmetry. `tests/shell/run-script` (8 assertions) locks in script-file
+invocation and `exit`'s corrected behavior - 67 assertions across 14
+files now, all passing on both x86-64 and i386.
+
+**Phase A is now complete.** Phase B (foundational semantics -
+shell-local variable assignment without `export`, `;`, `&&`/`||`,
+command grouping, if/while nesting) is next.

@@ -19,14 +19,9 @@
 #     tests (not scored - POSIX doesn't specify a required result for
 #     these).
 #
-# relfsh has no file-argument invocation yet (only -c, interactive,
-# and piped stdin - see GOALS.md goal 8, phase A) so each test is fed
-# to it via `< testcase` rather than `relfsh testcase`; bash is run
-# the standard way (`bash testcase`). This is a known, temporary
-# asymmetry - functionally equivalent for every vendored test here
-# (none inspect $0 or script arguments in ways that would matter for
-# output comparison), but worth fixing once relfsh gains real
-# file-argument support.
+# relfsh gained real file-argument invocation in Iteration 16 (phase
+# A's last item), so each vendored test is fed to it the same way
+# bash is: `relfsh testcase` / `bash testcase`, no more asymmetry.
 #
 # This script deliberately reports failures rather than hiding them -
 # the whole point of adopting mrsh's suite is an honest, trackable
@@ -46,12 +41,12 @@ FAILED_NAMES=""
 
 run_relfsh() {
     # $1 = script path; prints stdout, returns relfsh's exit status
-    timeout "$TIMEOUT_SECS" "$RELFSH" < "$1" 2>/dev/null
+    timeout "$TIMEOUT_SECS" "$RELFSH" "$1" < /dev/null 2>/dev/null
 }
 
 run_bash() {
     # $1 = script path; prints stdout, returns bash's exit status
-    timeout "$TIMEOUT_SECS" bash "$1" 2>/dev/null
+    timeout "$TIMEOUT_SECS" bash "$1" < /dev/null 2>/dev/null
 }
 
 record_pass() { PASS=$((PASS + 1)); }

@@ -2,8 +2,11 @@
 # relfsh - convenience wrapper around `relf kernel.img`, giving RelF's
 # shell (shell.4) a normal single-executable invocation:
 #
-#   relfsh -c 'command'   run one command non-interactively, exit with
+#   relfsh -c 'command'    run one command non-interactively, exit with
 #                          its status (matches `sh -c '...'`)
+#   relfsh script.sh       run script.sh's contents line by line, exit
+#                          with the last command's status (matches
+#                          `sh script.sh`)
 #   relfsh                interactive read-eval loop (matches plain `sh`)
 #   ... | relfsh           script commands piped on stdin, read one per
 #                          line by the interactive loop until "exit"
@@ -16,14 +19,15 @@
 # bootstrap.
 #
 # How this works: relf's own argv beyond the image path (e.g. "-c",
-# "command") is exposed to Forth via the SYS-ARGC/SYS-ARG primitives;
-# shell.4's MAIN word inspects those and either runs one command via
-# SH-C or falls through to the ordinary interactive SH loop - see
-# shell.4 for that logic. This script's job is just to feed relf the
-# two-line Forth bootstrap ("load shell.4, then call MAIN") ahead of
-# whatever else is on stdin, via `cat`, so interactive/piped-script use
-# still sees its own input afterward rather than that input being
-# consumed by the bootstrap step.
+# "command", or a script path) is exposed to Forth via the
+# SYS-ARGC/SYS-ARG primitives; shell.4's MAIN word inspects those and
+# either runs one command via SH-C, runs a script file via SH-FILE, or
+# falls through to the ordinary interactive SH loop - see shell.4 for
+# that logic. This script's job is just to feed relf the two-line
+# Forth bootstrap ("load shell.4, then call MAIN") ahead of whatever
+# else is on stdin, via `cat`, so interactive/piped-script use still
+# sees its own input afterward rather than that input being consumed
+# by the bootstrap step.
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 
@@ -33,12 +37,13 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 RELF_BIN=${RELF_BIN:-"$DIR/relf"}
 RELF_IMG=${RELF_IMG:-"$DIR/kernel.img"}
 
-if [ "$1" = "-c" ]; then
-    # -c mode: SH-C runs exactly one command and exits immediately,
-    # never touching stdin again - so don't chain in `cat` here (it
-    # would sit blocked waiting for EOF on relfsh's own stdin even
+if [ -n "$1" ]; then
+    # -c mode or script-file mode: neither ever touches relfsh's own
+    # stdin (SH-C runs a single command from argv; SH-FILE opens and
+    # reads directly from the given file), so don't chain `cat` here -
+    # it would sit blocked waiting for EOF on relfsh's own stdin even
     # after relf itself has already exited, hanging the whole pipeline
-    # under `timeout` or any caller that doesn't close its stdin).
+    # under `timeout` or any caller that doesn't close its stdin.
     printf 'S" %s/shell.4" INCLUDED\nMAIN\n' "$DIR" | exec "$RELF_BIN" "$RELF_IMG" "$@"
 else
     # Interactive or piped-script mode: SH keeps reading lines from

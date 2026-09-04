@@ -714,6 +714,29 @@ VARIABLE PATH-END2
   THEN
   0 LAST-STATUS ! ;
 
+VARIABLE PARSE-N
+
+: PARSE-DECIMAL ( c-addr u --- n )
+  \ Parses a simple non-negative decimal integer from (c-addr u) - no
+  \ sign handling, matching how exit codes are conventionally
+  \ unsigned small integers. An explicit multiply/accumulate loop
+  \ rather than the standard >NUMBER, to keep this self-contained and
+  \ easy to verify directly, matching EMIT-DECIMAL's own reasoning
+  \ above. u can be 0 (e.g. `exit ""`), guarded the same way as
+  \ Iteration 15's crash-hardening fixes - this kernel's DO/LOOP
+  \ doesn't treat start=limit as zero iterations.
+  0 PARSE-N !
+  DUP 0 > IF
+    0 DO
+      DUP I + C@ 48 -
+      PARSE-N @ 10 * + PARSE-N !
+    LOOP
+    DROP
+  ELSE
+    2DROP
+  THEN
+  PARSE-N @ ;
+
 : DO-UNSET ( --- )
   \ unset NAME - removes an exported environment variable. Silently
   \ does nothing if given no argument or a name that was never set
@@ -732,7 +755,13 @@ VARIABLE PATH-END2
     S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
     S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
     S" unset"  ARGV @ STR0= IF DO-UNSET -1 EXIT THEN
-    S" exit"   ARGV @ STR0= IF 0 SYS-EXIT THEN
+    S" exit"   ARGV @ STR0= IF
+      ARGC @ 1 > IF
+        ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SYS-EXIT
+      ELSE
+        LAST-STATUS @ SYS-EXIT
+      THEN
+    THEN
   THEN
   0 ;
 
@@ -1119,6 +1148,35 @@ VARIABLE WHILE-BODY-CUR
 : SH ( --- )
   BEGIN SH1 0 UNTIL ;
 
+VARIABLE SHFILE-FID
+
+: SH-FILE ( c-addr --- )  \ c-addr: a NUL-terminated file path (from
+                            \ SYS-ARG). Opens it read-only, runs each
+                            \ line through RUN-LINE the same way SH1
+                            \ does for one interactively-read line
+                            \ (READ-LINE's own u2 lines up exactly with
+                            \ what RUN-LINE expects), and exits with
+                            \ the last command's status once EOF is
+                            \ reached - matching `sh script.sh`. An
+                            \ "exit" mid-script still exits immediately
+                            \ via SYS-EXIT inside RUN-LINE's own
+                            \ DISPATCH, same as everywhere else. No
+                            \ error message on a missing/unreadable
+                            \ file, just a nonzero exit status -
+                            \ matching this shell's existing sparse
+                            \ error handling elsewhere (see
+                            \ APPLY-REDIRECTIONS).
+  R/O OPEN-FOR 0= IF 127 SYS-EXIT THEN
+  SHFILE-FID !
+  BEGIN
+    LINE-BUF LINE-MAX SHFILE-FID @ READ-LINE DROP
+  WHILE
+    RUN-LINE
+  REPEAT
+  DROP
+  SHFILE-FID @ CLOSE-FILE DROP
+  LAST-STATUS @ SYS-EXIT ;
+
 VARIABLE SHC-LEN
 
 : SH-C ( c-addr --- )  \ c-addr: a NUL-terminated command string (from
@@ -1136,12 +1194,20 @@ VARIABLE SHC-LEN
                   \ "cmd"` (via SYS-ARGC/SYS-ARG, exposing relf's own argv
                   \ beyond the image path) runs one command non-interactively
                   \ and exits with its status - matching invoking any real
-                  \ shell binary as `sh -c "cmd"`. Anything else (no args,
-                  \ or args that aren't exactly "-c" plus one string) falls
-                  \ through to the ordinary interactive loop.
+                  \ shell binary as `sh -c "cmd"`. `relf kernel.img
+                  \ script.sh` (via relfsh) runs script.sh's contents line
+                  \ by line and exits with the last command's status -
+                  \ matching `sh script.sh` (see SH-FILE). Any further
+                  \ arguments beyond the script path are currently ignored
+                  \ (shell.4 has no positional-parameter support yet).
+                  \ No args at all falls through to the ordinary
+                  \ interactive loop.
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG SH-C
     THEN
+  THEN
+  SYS-ARGC 0 > IF
+    0 SYS-ARG SH-FILE
   THEN
   SH ;

@@ -230,51 +230,71 @@ the full account and the fixes applied.
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **0 passed, 21 failed, 3 skipped** (see
-   `PROGRESS.md`'s Iteration 14 and 15 entries). The initial baseline
-   (Iteration 14) showed 1 pass, but that pass turned out to be a
-   false positive caused by the harness conflating "crashed" with
-   "correctly rejected" — see below and Iteration 15's entry for the
-   full account; 0/21 is the honest number.
+   and currently reports **1 passed, 20 failed, 3 skipped** (see
+   `PROGRESS.md`'s Iteration 14 through 16 entries for the full
+   history of how this number was arrived at — it moved around twice
+   for genuinely different reasons before settling here, both times
+   because an *invocation/measurement* bug was found and fixed, not
+   because `shell.4` itself changed).
 
-   **Phase A's crash-hardening is done (Iteration 15).** The initial
-   baseline found four segfaults, not just "wrong output" — root
-   cause: this kernel's `DO`/`LOOP` doesn't treat `start = limit` as
-   zero iterations (the common, expected Forth behavior) but instead
-   wraps around and runs the entire unsigned range, and five places in
-   `shell.4` had a loop count that could legitimately be zero at
-   runtime (most directly, `$(true)` or any command producing no
-   output at all, inside `EXPAND-CMDSUB`'s splice loop). All five are
-   now guarded explicitly. Every failure in the suite now has a clean
-   status — confirmed no crashes remain anywhere in it. Re-running
-   after the fix surfaced a second bug worth remembering: the
-   harness's own expected-failure check couldn't distinguish "crashed"
-   (a nonzero, signal-killed status) from "cleanly rejected the
-   input" (also nonzero) — the one prior "pass" was actually the same
-   crash bug in disguise, not a real conformance win as originally
-   (incorrectly) described. Fixed in the harness itself
-   (`is_crash_status`), not just noted and left in place.
+   **Phase A is done (Iterations 15–16).** It found and fixed two
+   layers of problems before any real feature work could even be
+   measured accurately:
 
-   Four of the (pre-fix) crashes came from — `async.sh` (background
-   jobs, `&`), `function.sh` (shell functions), `pipeline.sh`
-   (subshells/brace groups inside a pipeline), and `read.sh` (the
-   `read` builtin, possibly combined with `while` reading from piped
-   stdin) — all now fail cleanly (a plain nonzero status, no crash)
-   rather than segfaulting, though none of the underlying *features*
-   exist yet, so they remain genuine failures for those reasons.
+   - **Four segfaults** (Iteration 15) — root cause: this kernel's
+     `DO`/`LOOP` doesn't treat `start = limit` as zero iterations (the
+     common, expected Forth behavior) but instead wraps around and
+     runs the entire unsigned range, and five places in `shell.4` had
+     a loop count that could legitimately be zero at runtime (most
+     directly, `$(true)` or any command producing no output at all,
+     inside `EXPAND-CMDSUB`'s splice loop). All five now guarded
+     explicitly; no crashes remain anywhere in the suite.
+   - **`relfsh` had no file-argument invocation** (Iteration 16) —
+     `tests/mrsh-suite/run.sh` had been working around this since
+     Iteration 14 by piping each script into `relfsh`'s stdin instead
+     of passing it as an argument, which fed every script through the
+     ordinary interactive loop rather than the more accurate
+     `sh script.sh` semantics `SH-FILE` (new in Iteration 16) now
+     provides. This surfaced something bigger than the missing
+     feature itself: the old stdin-piped method's exit status was
+     *always 0*, regardless of what the script's last command
+     actually did — `relf`'s own top-level interpreter, not
+     `shell.4`, is what notices EOF on stdin, and it always exits
+     cleanly without ever touching `LAST-STATUS`/`SYS-EXIT`. So the
+     Iteration 14/15 baselines' exit-status numbers for every
+     differential test were themselves partly an artifact of the
+     measurement method, not a genuine reflection of `shell.4`'s
+     behavior (it didn't change any pass/fail *verdicts* for the 18
+     differential tests, all of which were already failing on output
+     grounds regardless — but it did flip the one conformance
+     expected-failure test back to a genuine pass, this time via a
+     correctly-propagated 127 rather than a piped-stdin artifact or a
+     disguised crash).
+
+   Along the way, a real, independent bug got fixed too: `exit` had
+   always hardcoded status 0 regardless of any argument, and didn't
+   default a bare `exit` to `$?` as POSIX requires — both fixed, since
+   correct exit-status propagation is exactly what this whole
+   suite depends on being measured accurately.
+
+   Four of the original segfaults — `async.sh` (background jobs, `&`),
+   `function.sh` (shell functions), `pipeline.sh` (subshells/brace
+   groups inside a pipeline), and `read.sh` (the `read` builtin) —
+   all now fail cleanly rather than crashing, though none of the
+   underlying *features* exist yet, so they remain genuine failures
+   for those reasons, which is exactly the honest state phase A was
+   meant to produce.
 
    The full feature gap, roughly ordered by dependency (each phase
    below is expected to be its own multi-iteration effort, comparable
    in scope to phases 5 or 6 above — this is a large goal, not a
    quick one):
 
-   - **Phase A — infrastructure to run the suite at all.**
-     Crash-hardening: **done (Iteration 15)**. Still open:
-     script-file invocation (`relfsh script.sh`, not just `-c`,
-     interactive, and piped stdin — `tests/mrsh-suite/run.sh` works
-     around this today by piping each vendored script into `relfsh`'s
-     stdin instead, noted as a known, temporary asymmetry in that
-     script's own comments).
+   - **Phase A — infrastructure to run the suite at all: done
+     (Iterations 15–16).** Crash-hardening and script-file invocation
+     both landed; `tests/mrsh-suite/run.sh` now invokes `relfsh` the
+     same way it invokes `bash` (`relfsh testcase` /
+     `bash testcase`), no more asymmetry.
    - **Phase B — foundational semantics needed almost everywhere.**
      Shell-local (non-exported) variable assignment as a standalone
      statement (`VAR=value`, no `export` needed) — currently `shell.4`

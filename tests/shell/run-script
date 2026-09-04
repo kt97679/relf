@@ -1,0 +1,47 @@
+#!/bin/sh
+# run-script - script-file invocation (relfsh script.sh, matching
+# `sh script.sh`), and exit's argument handling: `exit N` sets the
+# exit status to N, and a bare `exit` defaults to the last command's
+# own status ($?), not always 0.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-script-test-$$.sh"
+
+printf 'echo hello-from-script\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "runs a script file's commands" "hello-from-script" "$out"
+
+printf '/bin/true\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "exits with the last command's status (success)" 0 "$?"
+
+printf '/bin/false\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "exits with the last command's status (failure)" 1 "$?"
+
+printf 'echo before\nexit 5\necho after\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+status=$?
+assert_status "exit N sets the exit status to N" 5 "$status"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "after"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: exit stops the script (a later line must not run)"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+printf '/bin/false\nexit\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "a bare exit defaults to \$? rather than always 0" 1 "$?"
+
+"$THIS_SH" -c "exit 42" < /dev/null > /dev/null 2>&1
+assert_status "exit N also works in -c mode" 42 "$?"
+
+"$THIS_SH" /tmp/relf-run-script-test-does-not-exist-xyz.sh < /dev/null > /dev/null 2>&1
+assert_status "a missing script file exits 127" 127 "$?"
+
+rm -f "$TMP_SCRIPT"
+report
