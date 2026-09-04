@@ -1236,6 +1236,7 @@ VARIABLE AO-CONTINUE
     THEN
   REPEAT ;
 
+
 \ ==================================================================
 \ Control structures: if/then/else/fi
 \ Deliberately minimal for v0.5: no nesting support (a body containing
@@ -1263,6 +1264,102 @@ VARIABLE RUN-TOKENIZED-XT
 
 : RUN-TOKENIZED-CALL ( --- )
   RUN-TOKENIZED-XT @ EXECUTE ;
+
+\ ==================================================================
+\ '( list )' subshells and '{ list ; }' brace groups. Both require
+\ whitespace around '(', ')', '{', '}' (this shell's established
+\ convention for every operator so far - '|', ';', '&&', '||' all
+\ need it too - though real POSIX shells don't require it around '('
+\ specifically; a real gap against mrsh's own tests, which write
+\ "(cmd)" with no spaces, but a deliberate, consistent scope choice
+\ here rather than a special-cased tokenizer change). A subshell
+\ forks: the body runs in a child process, so cd/variable/export
+\ changes inside it don't affect this shell, and the parent takes the
+\ child's exit status as its own (same FORK/WAITPID shape
+\ RUN-PIPELINE already uses). A brace group runs its body directly in
+\ this shell instead - no fork - so changes inside it persist
+\ afterward, which is the entire reason it exists as a distinct
+\ construct from a subshell. Neither supports nesting (a body
+\ containing another '(' or '{' will misbehave - the same "no nesting"
+\ scope limit if/while already have, and for the same reason: this
+\ shell doesn't yet have real per-invocation state for control
+\ structures, only shared globals). Detected by ARGV[0] alone (reusing
+\ LINE-IS?, exactly as if/while already are) - this check runs *before*
+\ ';'/'&&'/'||' splitting, since a group's own ';'/'&&'/'||' (used
+\ inside its body) must stay scoped to that body rather than being
+\ split as if it belonged to the outer line.
+\ ==================================================================
+
+CREATE ARGV-GROUP-BODY MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-GROUP-BODY
+VARIABLE GROUP-PID
+
+: AT-CLOSE-PAREN? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" )" STR= ;
+
+: AT-CLOSE-BRACE? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" }" STR= ;
+
+: SPLIT-GROUP-PAREN ( --- f )
+  \ ARGV[0] is assumed to already be "(" (checked by the caller, see
+  \ RUN-TOKENIZED). Scans ARGV[1..] for the matching ")" - if found
+  \ (f = -1), ARGV-GROUP-BODY/ARGC-GROUP-BODY holds everything
+  \ between them (may be empty, e.g. "( )"). If the line ends first
+  \ (f = 0, an unterminated group), nothing is touched - not yet
+  \ reported as an error, matching this shell's sparse error handling
+  \ elsewhere.
+  1 PR-I !
+  0 ARGC-GROUP-BODY !
+  BEGIN AT-END? AT-CLOSE-PAREN? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+  AT-CLOSE-PAREN? 0= IF 0 EXIT THEN
+  -1 ;
+
+: SPLIT-GROUP-BRACE ( --- f )  \ same as SPLIT-GROUP-PAREN, for "{"/"}"
+  1 PR-I !
+  0 ARGC-GROUP-BODY !
+  BEGIN AT-END? AT-CLOSE-BRACE? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+  AT-CLOSE-BRACE? 0= IF 0 EXIT THEN
+  -1 ;
+
+: DO-SUBSHELL ( --- )
+  \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
+  \ body in ARGV-GROUP-BODY/ARGC-GROUP-BODY. Forks; the child copies
+  \ the body into the global ARGV/ARGC (safe - COPY-ARGV inside a
+  \ freshly forked child is the same pattern RUN-PIPELINE's own sides
+  \ already use) and runs it via RUN-TOKENIZED-CALL, so the body's own
+  \ ';'/'&&'/'||'/'|' all work normally, then exits with whatever
+  \ LAST-STATUS that left behind. The parent waits and takes the
+  \ child's exit status as this command's own.
+  FORK DUP GROUP-PID !
+  0 = IF
+    ARGV-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV
+    RUN-TOKENIZED-CALL
+    LAST-STATUS @ SYS-EXIT
+  THEN
+  GROUP-PID @ WAITPID DROP
+  8 RSHIFT 255 AND LAST-STATUS ! ;
+
+: DO-BRACE-GROUP ( --- )
+  \ Same as DO-SUBSHELL, but no fork - the body runs directly in this
+  \ shell, so any cd/variable/export changes inside it persist
+  \ afterward. That's the whole reason a brace group exists as a
+  \ separate construct from a subshell.
+  ARGV-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV
+  RUN-TOKENIZED-CALL ;
 
 : LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
                                  \ equal this literal, exactly, and
@@ -1513,17 +1610,29 @@ VARIABLE WHILE-BODY-CUR
   REPEAT ;
 
 : RUN-TOKENIZED ( --- )
-  \ Acts on the currently-tokenized ARGV/ARGC: ';' splitting first (so
-  \ each ';'-separated piece gets the full treatment below on its own
-  \ - see SPLIT-SEMI), then control-structure keywords, then
-  \ assignment detection, then &&/|| splitting (see SPLIT-ANDOR/
-  \ RUN-AND-OR-CHAIN - POSIX gives '&&'/'||' equal, left-to-right
-  \ precedence, tighter than ';' but looser than '|'), then a plain
-  \ pipeline/simple command (RUN-SIMPLE-OR-PIPELINE, which is what
-  \ each &&/||-separated piece above also runs through). Shared by
-  \ RUN-LINE (after its own TOKENIZE call, below) and DO-IF's own
-  \ body-line handling above (via RUN-TOKENIZED-CALL, patched to this
-  \ word's xt right after it's defined).
+  \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
+  \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
+  \ group's own ';'/'&&'/'||' must stay scoped to its body rather than
+  \ being split as if it belonged to the outer line, so this has to
+  \ run before any of that), then ';' splitting (so each ';'-separated
+  \ piece gets the full treatment below on its own - see SPLIT-SEMI),
+  \ then control-structure keywords, then assignment detection, then
+  \ &&/|| splitting (see SPLIT-ANDOR/RUN-AND-OR-CHAIN - POSIX gives
+  \ '&&'/'||' equal, left-to-right precedence, tighter than ';' but
+  \ looser than '|'), then a plain pipeline/simple command
+  \ (RUN-SIMPLE-OR-PIPELINE, which is what each &&/||-separated piece
+  \ above also runs through). Shared by RUN-LINE (after its own
+  \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
+  \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
+  \ defined).
+  S" (" LINE-IS? IF
+    SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
+    EXIT
+  THEN
+  S" {" LINE-IS? IF
+    SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
+    EXIT
+  THEN
   SPLIT-SEMI IF
     ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
     RUN-TOKENIZED-CALL

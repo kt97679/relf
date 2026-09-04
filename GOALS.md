@@ -236,9 +236,11 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 19's phase B work — expected,
+   including after Iteration 17 through 20's phase B work — expected,
    since no single vendored test file passes purely from variable
-   assignment, `;`, or `&&`/`||` support alone).
+   assignment, `;`, `&&`/`||`, or command-grouping support alone —
+   the last of those in particular doesn't apply to mrsh's own tests
+   at all yet, given the whitespace-around-parens scope limit above).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -333,12 +335,23 @@ the full account and the fixes applied.
      succeeds, but skips `b` and runs `c` if `a` fails) — tighter
      precedence than `;`, looser than `|`.
 
-     Still open: command grouping (`(...)` subshells, `{ ...; }` brace
-     groups). Nesting support for `if`/`while` (removing the "no
+     Command grouping: **done (Iteration 20)** — `( list )` runs its
+     body in a forked subshell (`cd`/variable/`export` changes inside
+     it don't affect this shell); `{ list ; }` runs its body directly
+     in this shell instead, so those changes do persist. Requires
+     whitespace around `(`/`)`/`{`/`}` themselves, matching every
+     other operator's convention here — a real, acknowledged gap
+     against mrsh's own tests, which write `(cmd)` with no spaces (a
+     trailing pipe or redirect after a group is also silently dropped
+     rather than applied, for now); see `PROGRESS.md`'s Iteration 20
+     entry.
+
+     Still open: nesting support for `if`/`while` (removing the "no
      nesting" limitation from Iteration 11 — likely needs a real
      stack/recursion-based redesign rather than the current shared
      globals, which is exactly why nesting was deferred in the first
-     place).
+     place; the same underlying reason `( )`/`{ }` groups don't
+     support nesting either).
    - **Phase C — control structures.** `for`/`in`/`do`/`done`.
      `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
      `|` alternation. Shell functions (definition, invocation,

@@ -1,0 +1,53 @@
+#!/bin/sh
+# run-group - '( list )' runs its body in a forked child (a subshell),
+# so cd/variable/export changes inside it don't affect this shell;
+# '{ list ; }' runs its body directly in this shell instead, so those
+# changes do persist. Both require whitespace around the '(', ')',
+# '{', '}' tokens themselves (this shell's established convention for
+# every operator - '|', ';', '&&', '||' all need it too), and detect
+# the group by ARGV[0] alone (like if/while), which runs before any
+# ';'/'&&'/'||' splitting so a group's own operators stay scoped to
+# its body rather than being treated as the outer line's.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf '( echo a123 ; echo b123 )\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a subshell runs its body's commands" "a123
+b123" "$out"
+
+out=$(printf '{ echo a123 ; echo b123 ; }\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a brace group runs its body's commands" "a123
+b123" "$out"
+
+out=$(printf 'cd /tmp\n( cd / )\npwd\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a subshell's cd does not affect this shell" "/tmp" "$out"
+
+out=$(printf 'cd /tmp\n{ cd / ; }\npwd\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
+TESTS_RUN=$((TESTS_RUN + 1))
+if ! echo "$out" | grep -qx '/'; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a brace group's cd should affect this shell (expected a bare / line)"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+out=$(printf '( FOO=bar123 )\necho $FOO\nexit\n' | "$THIS_SH" 2>&1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "bar123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a variable assigned inside a subshell must not leak out"
+fi
+
+out=$(printf '{ FOO=bar123 ; }\necho $FOO\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a variable assigned inside a brace group does persist" "bar123" "$out"
+
+"$THIS_SH" -c "( /usr/bin/false )" < /dev/null > /dev/null 2>&1
+assert_status "a subshell's exit status reflects its own last command" 1 "$?"
+
+"$THIS_SH" -c "( )" < /dev/null > /dev/null 2>&1
+assert_status "an empty group is a harmless no-op" 0 "$?"
+
+out=$(printf "echo '(' foo\nexit\n" | "$THIS_SH" 2>&1)
+assert_output_contains "a quoted '(' is a literal argument, not a group start" "( foo" "$out"
+
+report

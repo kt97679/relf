@@ -190,7 +190,15 @@ the previous one's exit status - left-associative, equal precedence
 for both, evaluated left to right, correctly carrying the "compound
 status so far" through a skipped segment ("a && b || c" runs b and
 skips c if a succeeds, but skips b and runs c if a fails) - tighter
-precedence than `;`, looser than `|`. An expansion result, or a quoted
+precedence than `;`, looser than `|`. `( list )` runs its body in a
+forked subshell - cd/variable/export changes inside it don't affect
+this shell - while `{ list ; }` runs its body directly in this shell
+instead, so those changes do persist; both require whitespace around
+the `(`/`)`/`{`/`}` tokens themselves, matching every other operator's
+convention here (a real gap against mrsh's own tests, which write
+"(cmd)" with no spaces - a trailing pipe or redirect after a group is
+also silently dropped rather than applied, for now). An expansion
+result, or a quoted
 token, is treated the same way: never re-split on whitespace and never
 re-interpreted as an operator/builtin/keyword, so e.g. a variable
 holding | stays a literal argument and echo 'if' prints "if" rather
@@ -206,7 +214,7 @@ optional status argument, defaulting to the previous command's own
 status ($?) rather than always 0 when none is given. See GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 19 entries for the current state and what's planned next.
+through 20 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -217,7 +225,7 @@ unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A done and phase B underway - see PROGRESS.md's
-Iteration 14 through 19 entries).
+Iteration 14 through 20 entries).
 
 5. Possible usage.
 

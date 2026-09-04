@@ -2419,3 +2419,84 @@ assertions across 17 files now, all passing on both x86-64 and i386.
 `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
 expected, since no single vendored test file passes from `&&`/`||`
 support alone.
+
+## Iteration 20: goal 8, phase B - command grouping ('( )' and '{ ; }')
+
+Goal: the next item on phase B's list - `( list )` runs its body in a
+subshell (a forked child, so `cd`/variable/`export` changes inside it
+don't affect this shell); `{ list ; }` runs its body directly in this
+shell instead, so those changes do persist. That difference is the
+entire reason the two constructs exist separately.
+
+### Design
+
+A deliberate, consistent scope choice up front: both require
+whitespace around `(`, `)`, `{`, `}` themselves - this shell's
+established convention for every operator so far (`|`, `;`, `&&`,
+`||` all need it too), even though real POSIX shells don't require it
+around `(` specifically. This is a real, acknowledged gap against
+mrsh's own tests, which write `(cmd)` with no spaces - verified
+directly that a trailing `| sed s/a/X/` or `> file` after a group is
+currently silently dropped rather than applied (the output is
+unchanged, `X` never appears; the file is never created) - a proper
+fix would need `(` to become a self-delimiting token even when fused
+to adjacent text, a deeper tokenizer change than this iteration
+attempted. Detected by `ARGV[0]` alone (reusing `LINE-IS?`, exactly
+like if/while already are), and critically, this check runs *before*
+`;`/`&&`/`||` splitting - a group's own `;` (used inside its body,
+e.g. `( echo a ; echo b )`) has to stay scoped to that body rather
+than being split as if it belonged to the outer line, which would
+otherwise treat `( echo a` and `echo b )` as two independent, broken
+top-level statements. `SPLIT-GROUP-PAREN`/`SPLIT-GROUP-BRACE` mirror
+`SPLIT-SEMI`'s scanning shape (extract everything between the opening
+and matching closing token into a separate buffer). `DO-SUBSHELL`
+forks (same `FORK`/`WAITPID` shape `RUN-PIPELINE` already uses); the
+child copies the body into the global `ARGV`/`ARGC` and runs it via
+`RUN-TOKENIZED-CALL` (so the body's own `;`/`&&`/`||`/`|` all work
+normally), then exits with whatever `LAST-STATUS` that left behind -
+the parent takes the child's exit status as its own. `DO-BRACE-GROUP`
+does the same without forking. Neither supports nesting (same "no
+nesting" scope limit if/while already have, for the same underlying
+reason: no real per-invocation state for control structures yet, only
+shared globals).
+
+### A placement mistake, caught immediately by a load failure
+
+The new block was first written in the wrong place in the file -
+before `RUN-TOKENIZED-CALL` (the deferred-word stub `DO-SUBSHELL`/
+`DO-BRACE-GROUP` both call) was actually defined, since that
+definition sits further down than where the day's earlier `&&`/`||`
+work had left off. `shell.4` correctly refused to load
+("Undefined word RUN-TOKENIZED-CALL"), and the fix was a precise,
+line-indexed extract-and-reinsert (the same careful approach used for
+Iteration 16's similar unset/cmdsub separation) rather than a
+free-hand edit, to avoid corrupting either the moved block or what
+was left behind.
+
+### A test-writing mistake, self-diagnosed rather than blamed on the feature
+
+`tests/shell/run-group`'s own first draft used `tail -1` to check a
+brace group's `cd` had taken effect, and failed - but a direct,
+manual re-check of the same scenario showed the feature working
+correctly (`pwd` genuinely printed `/`). The test's own `tail -1` was
+grabbing a trailing shell prompt line rather than `pwd`'s actual
+output, not a real bug in the shell - fixed the test (`grep -qx`
+against the whole output, after stripping `\r`) rather than
+mis-diagnosing the feature as broken.
+
+### Verified end-to-end via `relfsh` (and confirmed on i386)
+
+Both `( echo a ; echo b )` and `{ echo a ; echo b ; }` run their
+body's commands; a subshell's `cd` and variable assignment are both
+confirmed **not** to affect this shell, while a brace group's
+versions of the same **are** confirmed to persist; a subshell's exit
+status reflects its own last command; an empty group (`( )`) is a
+harmless no-op; a quoted `'('` stays a literal argument, not a group
+start; a trailing pipe or redirect after a group is silently dropped
+rather than applied (documented, not silently discovered later).
+
+`tests/shell/run-group` (9 assertions) locks all of this in - 103
+assertions across 18 files now, all passing on both x86-64 and i386.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+expected, since mrsh's own tests use `(cmd)` without the whitespace
+this iteration's scope requires, so this doesn't move that number yet.
