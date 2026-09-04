@@ -1429,3 +1429,106 @@ assertions across 9 files now, all passing on both x86-64 and i386.
   matches POSIX for single-quoted-at-source values anyway, but a real
   shell's parameter-value substitution semantics here are more subtle
   than what's implemented.
+
+## Iteration 10: if/then/else/fi
+
+Goal: the last major piece flagged at the end of Iteration 9 - a basic
+control structure, the thing that starts to make this shell usable
+for actual scripting rather than just interactive one-liners.
+
+### Scope decision: `if` only, not `while`/`for`, and no nesting
+
+`if` only ever needs to run each body line *once*, as it's read from
+stdin - so a streaming design works: read a line, check whether it's
+`then`/`else`/`fi`, and if not, either run it immediately or discard
+it depending on which branch is currently active. `while`/`for` are
+fundamentally different: a loop body has to be re-run multiple times,
+which means it can't just be streamed and discarded after one read -
+it needs to be buffered somewhere stable (stdin is a one-pass stream)
+and re-scanned each iteration. That's a genuinely different mechanism,
+not a small extension of `if`'s own approach, so it's deliberately
+deferred rather than attempted here.
+
+Nesting (a body containing another `if`) is also deliberately not
+supported in v0.5. The reason is concrete, not just "not gotten to
+yet": `DO-IF` uses a handful of global variables (`COND-TRUE?`,
+`ARGV-SHIFT`/`ARGC-SHIFT`) to track its own state, and a body line
+that triggers a *recursive* `DO-IF` call would overwrite those same
+globals out from under the outer call once the inner one returns -
+this isn't merely "unrecognized," it's actively broken if attempted.
+Proper nesting support would need each `DO-IF` invocation to save and
+restore its own state (or use its own private storage) rather than
+sharing single global variables - real, additional work, not a free
+side effect of the current design.
+
+### `DO-IF`'s design: streaming, not buffer-and-replay
+
+The condition (whatever follows `if` on the same line) is extracted
+via a new `SHIFT-ARGV-DOWN`/`ARGV-SHIFT` (copies `ARGV[1..]` into a
+fresh array, dropping the `if` token itself - same copy-don't-shift
+discipline as `SPLIT-PIPE`/`PARSE-REDIRECTIONS`) and run through the
+normal command path via a new `RUN-SHIFTED`, so `if cmd1 | cmd2` as a
+condition works correctly too. `then`/`else`/`fi` are matched with a
+new `LINE-IS?` (checks `ARGV[0]` against a literal, respecting
+`ARGV-QUOTED` the same way `DISPATCH`'s builtin checks do - so a
+quoted `'if'` is correctly treated as a literal argument, not the
+keyword, verified directly). Body lines are read one at a time via a
+new `READ-LINE-INTO-ARGV` (just `ACCEPT` + `TOKENIZE`, no
+redirect/pipe parsing or dispatch yet - that's deferred to whichever
+branch actually decides to run the line) and either executed
+immediately or silently discarded depending on whether the condition
+was true and which section (`then` vs `else`) is currently active. A
+missing `then` prints an error and abandons the `if` statement
+gracefully rather than hanging or crashing - a real shell would
+instead treat the unclosed construct as needing more input (a
+secondary prompt); that's not attempted here.
+
+### A genuine mutual-dependency problem, solved with a deferred word
+
+`RUN-TOKENIZED` (the word that inspects already-tokenized `ARGV`/`ARGC`
+and either dispatches to a builtin, runs an external command, or now
+also checks for `if`) needs to call `DO-IF`. But `DO-IF` needs to run
+its own body lines through that same "act on tokenized ARGV" logic -
+a genuine mutual dependency, not resolvable by simply reordering the
+two definitions (Forth requires define-before-use). Resolved with the
+standard deferred-word pattern: a `RUN-TOKENIZED-XT` variable and a
+thin `RUN-TOKENIZED-CALL` stub (`RUN-TOKENIZED-XT @ EXECUTE`) defined
+early, used by everything that needs to call "the real
+`RUN-TOKENIZED`" before it exists yet; once `RUN-TOKENIZED` itself is
+finally defined, `' RUN-TOKENIZED RUN-TOKENIZED-XT !` patches the
+variable to its actual execution token. This is the first use of `'`
+(tick)/`EXECUTE` anywhere in `shell.4` - confirmed both exist in the
+base kernel (they're part of the CORE test suite, "TESTING ' ['] FIND
+EXECUTE...") before committing to this design.
+
+Verified end-to-end via `relfsh`/piped scripts: a true condition
+taking the `then` branch, a false condition correctly skipping it and
+the shell continuing normally with whatever comes after `fi`, a false
+condition taking the `else` branch, a multi-line body running every
+line in order, the condition itself being a real external command
+(`test 1 -eq 1`, not just `true`/`false`), the `if` statement's own
+exit status correctly reflecting the last command actually run inside
+the taken branch (matching real shell semantics - `if true; then
+false; fi; echo $?` reports `1`), a quoted `'if'` staying a literal
+argument rather than triggering the parser, and the missing-`then`
+error path degrading gracefully. `tests/shell/run-if` (8 assertions)
+locks all of this in - 39 assertions across 10 files now, all passing
+on both x86-64 and i386. No engine changes this iteration; purely
+`shell.4`-level, like Iteration 8's quoting work.
+
+### What this iteration deliberately did NOT do
+
+- **`while`/`until`/`for` loops** - see the buffer-and-replay
+  discussion above; a genuinely different mechanism from `if`'s
+  streaming approach, not attempted here.
+- **Nesting** - see above; would need per-invocation state rather than
+  shared globals.
+- **`;`-separated compound forms** (`if cmd; then ...; fi` on fewer
+  lines) - `then`/`else`/`fi` must each be alone on their own line;
+  there's still no `;` statement separator anywhere in this shell.
+- **Multi-line continuation for an unclosed construct** - a missing
+  `then` (or, if it existed, an unclosed loop) just errors out
+  immediately rather than prompting for more input.
+- **`elif`** - only a single `if`/`then`/`else`/`fi`, no
+  `elif`/`then` chains; achievable today only by nesting a second `if`
+  inside the `else` body, which (per above) isn't supported yet either.

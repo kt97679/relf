@@ -646,16 +646,104 @@ VARIABLE RIGHT-PID
                                       side's, matching normal shells )
   8 RSHIFT 255 AND LAST-STATUS ! ;
 
-: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, pull
-                        \ out any redirection, then dispatch to a
-                        \ builtin or run as an external command.
-                        \ Shared by the interactive loop (SH1) and -c
-                        \ mode (SH-C) below, so both go through
-                        \ identical logic. Note: redirection only
-                        \ applies to external commands (see
-                        \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
-                        \ redirect the builtin's own output in v0.2.
-  TOKENIZE
+\ ==================================================================
+\ Control structures: if/then/else/fi
+\ Deliberately minimal for v0.5: no nesting support (a body containing
+\ another if will misbehave - see PROGRESS.md), and then/else/fi must
+\ each be alone on their own line (no ";"-separated forms, since there
+\ is no ";" support at all yet). The condition is whatever follows
+\ "if" on the same line - run via the normal command path, including
+\ its own pipe/redirection handling. then/else bodies are read one
+\ line at a time directly from stdin and executed immediately as
+\ they're read, not buffered and re-scanned - this works for if
+\ precisely because each body line only ever needs running once,
+\ unlike a loop body (which is why while/for aren't attempted here -
+\ they'd need a genuinely different, buffer-and-replay approach).
+\
+\ RUN-TOKENIZED (below) needs to detect "if" and hand off to DO-IF,
+\ but DO-IF needs to run its own body lines through the same "act on
+\ tokenized ARGV" logic RUN-TOKENIZED provides - a genuine mutual
+\ dependency. Broken via a small deferred-word indirection
+\ (RUN-TOKENIZED-CALL, patched to RUN-TOKENIZED's own execution token
+\ once that word is defined below) rather than trying to reorder
+\ around it.
+\ ==================================================================
+
+VARIABLE RUN-TOKENIZED-XT
+
+: RUN-TOKENIZED-CALL ( --- )
+  RUN-TOKENIZED-XT @ EXECUTE ;
+
+: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
+                                 \ equal this literal, exactly, and
+                                 \ unquoted? (a quoted 'if'/'then'/etc
+                                 \ is just a literal argument, same
+                                 \ reasoning as ARGV-QUOTED elsewhere)
+  ARGC @ 0 = IF 2DROP 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
+  ARGV @ STR0= ;
+
+CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-SHIFT
+
+: SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
+                            \ ARGV-SHIFT[0..] - "the rest of this
+                            \ line" as its own command, used to run
+                            \ if's condition (the part after "if").
+  0 ARGC-SHIFT !
+  ARGC @ 1 > IF
+    ARGC @ 1 DO
+      I ARGV@ ARGV-SHIFT ARGC-SHIFT @ CELLS + !
+      ARGC-SHIFT @ 1+ ARGC-SHIFT !
+    LOOP
+  THEN
+  0 ARGV-SHIFT ARGC-SHIFT @ CELLS + ! ;
+
+: RUN-SHIFTED ( --- )  \ runs ARGV-SHIFT/ARGC-SHIFT the same way a
+                        \ normal top-level line would be
+  ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+  RUN-TOKENIZED-CALL ;
+
+: READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
+                                 \ it into ARGV/ARGC - no redirect/pipe
+                                 \ parsing or dispatch, just enough to
+                                 \ inspect ARGV[0] for a keyword
+  LINE-BUF LINE-MAX ACCEPT
+  CR
+  TOKENIZE ;
+
+VARIABLE COND-TRUE?
+
+: DO-IF ( --- )
+  \ ARGV[0] is "if"; the rest of the line is the condition command.
+  SHIFT-ARGV-DOWN
+  RUN-SHIFTED
+  LAST-STATUS @ 0 = COND-TRUE? !
+  READ-LINE-INTO-ARGV
+  S" then" LINE-IS? 0= IF
+    ." if: expected 'then'" CR EXIT
+  THEN
+  BEGIN
+    READ-LINE-INTO-ARGV
+    S" fi" LINE-IS? IF EXIT THEN
+    S" else" LINE-IS? IF
+      BEGIN
+        READ-LINE-INTO-ARGV
+        S" fi" LINE-IS? IF EXIT THEN
+        COND-TRUE? @ 0= IF RUN-TOKENIZED-CALL THEN
+      0 UNTIL
+    THEN
+    COND-TRUE? @ IF RUN-TOKENIZED-CALL THEN
+  0 UNTIL ;
+
+: RUN-TOKENIZED ( --- )
+  \ Acts on the currently-tokenized ARGV/ARGC: control-structure
+  \ keywords first, then redirect/pipe parsing, then builtin dispatch
+  \ or external exec. Shared by RUN-LINE (after its own TOKENIZE call,
+  \ below) and DO-IF's own body-line handling above (via
+  \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
+  \ defined).
+  S" if" LINE-IS? IF DO-IF EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
@@ -665,6 +753,18 @@ VARIABLE RIGHT-PID
       DISPATCH 0= IF RUN-EXTERNAL THEN
     THEN
   THEN ;
+' RUN-TOKENIZED RUN-TOKENIZED-XT !
+
+: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
+                        \ act on it via RUN-TOKENIZED.
+                        \ Shared by the interactive loop (SH1) and -c
+                        \ mode (SH-C) below, so both go through
+                        \ identical logic. Note: redirection only
+                        \ applies to external commands (see
+                        \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
+                        \ redirect the builtin's own output in v0.2.
+  TOKENIZE
+  RUN-TOKENIZED-CALL ;
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way
   SH-PROMPT

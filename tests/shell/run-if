@@ -1,0 +1,42 @@
+#!/bin/sh
+# run-if - if/then/else/fi: condition truthy/falsy (via real true/false
+# commands), taken/not-taken branches, multi-line bodies, exit-status
+# propagation from the last command actually run, and quote-awareness
+# (a quoted 'if' is a literal argument, not the keyword). No nesting
+# support in this shell yet - not exercised here since it's documented
+# as unsupported (see shell.4/PROGRESS.md).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'if true\nthen\necho yes-branch\nfi\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "true condition takes the then branch" "yes-branch" "$out"
+
+out=$(printf 'if false\nthen\necho should-not-print\nfi\necho after\nexit\n' | "$THIS_SH" 2>&1)
+case "$out" in
+    *should-not-print*)
+        TESTS_RUN=$((TESTS_RUN + 1))
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        echo "FAIL: false condition does not run the then branch"
+        echo "  actual output:"
+        echo "$out" | sed 's/^/    /'
+        ;;
+    *)
+        TESTS_RUN=$((TESTS_RUN + 1))
+        ;;
+esac
+assert_output_contains "shell continues normally after a not-taken if" "after" "$out"
+
+out=$(printf 'if false\nthen\necho then-branch\nelse\necho else-branch\nfi\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "false condition takes the else branch" "else-branch" "$out"
+
+out=$(printf 'if true\nthen\necho line1\necho line2\nfi\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "multi-line then body: first line runs" "line1" "$out"
+assert_output_contains "multi-line then body: second line runs" "line2" "$out"
+
+out=$(printf 'if true\nthen\nfalse\nfi\necho $?\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "if's own status is the last command run in the taken branch" "1" "$out"
+
+out=$("$THIS_SH" -c "echo 'if' true" < /dev/null 2>&1)
+assert_output_contains "quoted 'if' is a literal argument, not the keyword" "if true" "$out"
+
+report
