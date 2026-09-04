@@ -1,0 +1,250 @@
+\ shell.4 - a minimal POSIX-flavored shell built on RelF.
+\
+\ Load on top of an already-bootstrapped kernel.img:
+\   S" shell.4" INCLUDED
+\   SH
+\
+\ Scope (v0.1), deliberately limited - see PROGRESS.md for the phased
+\ plan this fits into:
+\   - word-splitting on whitespace only (no quoting/escaping)
+\   - PATH-searched external commands via FORK/EXECVE/WAITPID
+\   - builtins: cd, exit, export, pwd
+\ NOT implemented yet (planned as separate, later increments):
+\   pipes, redirection, $VAR expansion, $(...) command substitution,
+\   control structures, functions, job control, quoting of any kind.
+
+\ ---- sizes ----
+
+256 CONSTANT LINE-MAX
+64  CONSTANT MAX-ARGS
+256 CONSTANT PATH-MAX
+
+\ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
+
+CREATE LINE-BUF   LINE-MAX ALLOT
+CREATE ARGV       MAX-ARGS CELLS ALLOT
+CREATE PATHBUF    PATH-MAX ALLOT
+CREATE CWDBUF     PATH-MAX ALLOT
+CREATE ENVNAMBUF  64 ALLOT
+
+VARIABLE ARGC          ( number of tokens in the current command line )
+VARIABLE LAST-STATUS   ( exit status of the last foreground external command )
+
+\ ==================================================================
+\ C-string helpers
+\ EXECVE/GETENV/SETENV/CHDIR all speak NUL-terminated C strings, not
+\ Forth's own length-prefixed convention - these bridge the two.
+\ ==================================================================
+
+: CSTRLEN ( c-addr --- u )
+  DUP BEGIN DUP C@ WHILE CHAR+ REPEAT SWAP - ;
+
+: TYPE0 ( c-addr --- )
+  DUP CSTRLEN TYPE ;
+
+\ ==================================================================
+\ String builder: append bytes/strings into a buffer via a cursor.
+\ B-RESET points the cursor at a buffer; B-CHAR/B-CSTR/B-STR append;
+\ B-FINISH NUL-terminates. Used for building "dir/cmd" PATH candidates
+\ without any stack-juggling - a plain, explicit cursor is much harder
+\ to get wrong than shuffling multiple addresses/lengths on the stack
+\ (this session's testing of the new primitives found repeated
+\ stack-order mistakes doing exactly that kind of shuffling).
+\ ==================================================================
+
+VARIABLE BUILD-P
+VARIABLE B-SRC
+
+: B-RESET ( addr --- )  BUILD-P ! ;
+: B-CHAR ( c --- )  BUILD-P @ C! BUILD-P @ 1+ BUILD-P ! ;
+: B-CSTR ( c-addr --- )
+  BEGIN DUP C@ DUP WHILE B-CHAR CHAR+ REPEAT 2DROP ;
+: B-STR ( c-addr u --- )
+  SWAP B-SRC ! 0 DO B-SRC @ I + C@ B-CHAR LOOP ;
+: B-FINISH ( --- )  0 B-CHAR ;
+
+\ ==================================================================
+\ Forth-string equality (used for matching builtin names)
+\ ==================================================================
+
+VARIABLE SEQ-A
+VARIABLE SEQ-ALEN
+VARIABLE SEQ-B
+VARIABLE SEQ-BLEN
+VARIABLE SEQ-I
+
+: STR= ( c-addr1 u1 c-addr2 u2 --- f )
+  SEQ-BLEN ! SEQ-B ! SEQ-ALEN ! SEQ-A !
+  SEQ-ALEN @ SEQ-BLEN @ <> IF 0 EXIT THEN
+  0 SEQ-I !
+  BEGIN SEQ-I @ SEQ-ALEN @ < WHILE
+    SEQ-A @ SEQ-I @ + C@
+    SEQ-B @ SEQ-I @ + C@
+    <> IF 0 EXIT THEN
+    SEQ-I @ 1+ SEQ-I !
+  REPEAT
+  -1 ;
+
+\ Compare a Forth string against a NUL-terminated C string (used for
+\ command-name matching, since ARGV entries are C strings post-tokenize).
+: STR0= ( c-addr1 u1 c-addr2 --- f )
+  DUP CSTRLEN STR= ;
+
+\ ==================================================================
+\ Tokenizer: splits LINE-BUF (u chars from ACCEPT) on whitespace, in
+\ place. Each token's trailing whitespace byte is overwritten with a
+\ NUL, and the token's start address is recorded into ARGV. ARGV is
+\ NUL-terminated (last slot holds 0) per EXECVE's own convention.
+\ ==================================================================
+
+VARIABLE TOK-POS
+VARIABLE TOK-END
+
+: WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
+
+: SKIP-WS ( --- )
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? ELSE 0 THEN
+  WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
+
+: SKIP-TOKEN ( --- )
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
+  WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
+
+: TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
+  LINE-BUF + TOK-END !
+  LINE-BUF TOK-POS !
+  0 ARGC !
+  BEGIN
+    SKIP-WS
+    TOK-POS @ TOK-END @ <
+  WHILE
+    ARGC @ MAX-ARGS 1- < IF
+      TOK-POS @ ARGV ARGC @ CELLS + !
+      ARGC @ 1+ ARGC !
+    THEN
+    SKIP-TOKEN
+    \ NUL-terminate this token in place, even if it ran all the way to
+    \ the end of the input with no trailing separator (LINE-BUF has
+    \ room for this one extra byte - LINE-MAX is well past any real
+    \ input length ACCEPT would produce).
+    0 TOK-POS @ C!
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  0 ARGV ARGC @ CELLS + ! ;
+
+: ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
+
+\ ==================================================================
+\ PATH search + exec
+\ ==================================================================
+
+: HAS-SLASH? ( c-addr u --- f )
+  0 DO DUP I + C@ 47 = IF UNLOOP DROP -1 EXIT THEN LOOP DROP 0 ;
+
+VARIABLE PATH-CUR
+VARIABLE PATH-END2
+
+\ Try one PATH directory (c-addr u, no trailing slash) against ARGV[0].
+\ Builds "dir/cmd" into PATHBUF and attempts EXECVE. Only returns if
+\ that attempt failed.
+: TRY-DIR ( c-addr u --- )
+  PATHBUF B-RESET
+  B-STR
+  47 B-CHAR
+  ARGV @ B-CSTR
+  B-FINISH
+  ARGV PATHBUF EXECVE DROP ;
+
+: SEARCH-PATH ( --- )  \ only returns if every PATH candidate failed
+  S" PATH" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!  ( NUL-terminate "PATH" )
+  ENVNAMBUF GETENV
+  DUP 0= IF DROP EXIT THEN
+  DUP CSTRLEN OVER + PATH-END2 !
+  PATH-CUR !
+  BEGIN PATH-CUR @ PATH-END2 @ < WHILE
+    PATH-CUR @             ( start of this dir entry )
+    BEGIN
+      PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ C@ 58 <> ELSE 0 THEN
+    WHILE PATH-CUR @ 1+ PATH-CUR ! REPEAT
+    ( start ) PATH-CUR @ OVER -   ( start len )
+    TRY-DIR
+    PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ 1+ PATH-CUR ! THEN
+  REPEAT ;
+
+: RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; only returns on total failure
+  ARGV @ DUP CSTRLEN HAS-SLASH? IF
+    ARGV @ ARGV @ EXECVE DROP
+  ELSE
+    SEARCH-PATH
+  THEN ;
+
+\ ==================================================================
+\ Builtins - these must run in the shell's own process (not a forked
+\ child), since their whole point is to change *this* process's own
+\ state (cwd, environment) in a way a child's changes couldn't
+\ propagate back from.
+\ ==================================================================
+
+: DO-CD ( --- )
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ CHDIR
+    IF ." cd: no such directory" CR THEN
+  ELSE
+    S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
+    ENVNAMBUF GETENV DUP 0= IF DROP ELSE CHDIR DROP THEN
+  THEN ;
+
+: DO-PWD ( --- )
+  CWDBUF PATH-MAX GETCWD DROP CWDBUF SWAP TYPE CR ;
+
+: DO-EXPORT ( --- )
+  \ export NAME=VALUE - finds '=' in ARGV[1], splits it, SETENVs.
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ DUP CSTRLEN
+    ( c-addr u ) 0 DO
+      DUP I + C@ 61 = IF          ( found '=' at offset I within c-addr )
+        DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
+        DUP I CHARS + CHAR+       ( c-addr value-addr )
+        SWAP SETENV DROP
+        UNLOOP EXIT
+      THEN
+    LOOP DROP
+  THEN ;
+
+: DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
+  ARGC @ 0 > IF
+    S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
+    S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
+    S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
+    S" exit"   ARGV @ STR0= IF 0 SYS-EXIT THEN
+  THEN
+  0 ;
+
+\ ==================================================================
+\ Main loop
+\ ==================================================================
+
+: RUN-EXTERNAL ( --- )
+  FORK
+  DUP 0 = IF
+    DROP RUN-CHILD 127 SYS-EXIT
+  ELSE
+    WAITPID DROP LAST-STATUS !
+  THEN ;
+
+: SH-PROMPT ( --- )
+  ." $ " ;
+
+: SH1 ( --- )  \ process one line; returns normally either way
+  SH-PROMPT
+  LINE-BUF LINE-MAX ACCEPT
+  CR
+  TOKENIZE
+  ARGC @ 0 > IF
+    DISPATCH 0= IF RUN-EXTERNAL THEN
+  THEN ;
+
+: SH ( --- )
+  BEGIN SH1 0 UNTIL ;

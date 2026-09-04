@@ -622,6 +622,20 @@ PRIMITIVE FILE-POSITION
 PRIMITIVE DELETE-FILE
 PRIMITIVE FILE-SIZE
 
+\ Process-control primitives (shell support, see PROGRESS.md). Order
+\ here must match relf.c's dispatch table exactly, since PRIMITIVE
+\ assigns tokens sequentially as each of these lines is processed.
+PRIMITIVE FORK      ( --- pid )
+PRIMITIVE EXECVE    ( argv-addr path-addr --- ior )
+PRIMITIVE WAITPID   ( pid --- status ior )
+PRIMITIVE PIPE      ( --- fd-read fd-write ior )
+PRIMITIVE DUP2      ( oldfd newfd --- ior )
+PRIMITIVE GETENV    ( c-addr --- addr )
+PRIMITIVE SETENV    ( value-addr name-addr --- ior )
+PRIMITIVE SYS-EXIT  ( n --- )
+PRIMITIVE CHDIR     ( c-addr --- ior )
+PRIMITIVE GETCWD    ( addr max-len --- len ior )
+
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.
 \ Return the file-ID and the IO result. (ior=0 if success)

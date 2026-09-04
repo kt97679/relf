@@ -782,3 +782,162 @@ trying to keep them permanently wired into the committed engine.
   relying on the same "happens to survive by luck" pattern without it
   having been exercised yet. Worth keeping in mind if something in this
   area breaks again after a seemingly-unrelated change.
+
+## Iteration 5: POSIX shell, v0.1 (process-control primitives + shell.4)
+
+Goal: a real, working shell built on top of RelF, as a first step
+toward GOALS.md's broader "userland on RelF" ambitions. Scoped
+deliberately small for this iteration - see "What this iteration
+deliberately did NOT do" below - with the plan to grow it in later,
+separate increments rather than attempting full POSIX grammar at once.
+
+### New engine primitives (relf.c / kernel.4)
+
+Ten new primitives, added purely additively (appended to the dispatch
+table and to `kernel.4`'s `PRIMITIVE` declarations, in matching order -
+existing token numbers are unaffected):
+
+`FORK`, `EXECVE`, `WAITPID`, `PIPE`, `DUP2`, `GETENV`, `SETENV`,
+`SYS-EXIT`, `CHDIR`, `GETCWD`. Each is a thin wrapper around the
+matching libc call, following the same string-handling convention as
+the existing `OPEN-FILE`/`SYSTEM` primitives (callers pass real host
+pointers - RelF's addressing model makes this natural - and are
+responsible for NUL-terminating any string handed to libc). `CLOSE-FILE`
+is reused as-is for pipe file descriptors, since `fid` in this engine
+has always been the raw OS fd directly (confirmed by reading
+`L_openfile`/`L_closefile` before adding anything new).
+
+Verified individually, directly at the Forth level, before building any
+shell logic on top - fork/wait/exit semantics, execve with a
+hand-built argv array actually running `/bin/echo`, a full pipe
+round-trip (child's stdout redirected through a pipe via `DUP2`, parent
+reading the result back), and getenv/setenv/chdir/getcwd. Full CORE
+regression suite (1892 OK, both cell widths) re-run after adding the
+primitives, before writing any shell code, and confirmed unaffected.
+
+### shell.4 (v0.1)
+
+A separate, layered `.4` file (not folded into `kernel.4`) - loaded on
+top of an already-bootstrapped image via `S" shell.4" INCLUDED` then
+`SH`. Kept separate deliberately: a shell is a specific application on
+top of the core Forth system, not part of the core interpreter/compiler
+that `kernel.4`/`cross.4` define, and this keeps the base image minimal
+per GOALS.md's own stated preference.
+
+v0.1 scope: whitespace-only tokenizing (no quoting/escaping), PATH-
+searched external command execution via `FORK`/`EXECVE`/`WAITPID`, and
+four builtins (`cd`, `pwd`, `export`, `exit`) that must run in the
+shell's own process rather than a forked child, since their entire
+point is changing *this* process's own state in a way a child's copy
+couldn't propagate back from. Verified end-to-end, interactively, on
+both cell widths: `echo` producing real subprocess output, `ls` on a
+nonexistent path producing the real `ls` error text, `cd`/`pwd`
+genuinely changing and reporting the process's own working directory,
+`export` genuinely setting an environment variable retrievable via
+`GETENV`, and `exit` terminating cleanly. A shell smoke test
+(`run_shell_smoke_test` in `tests/run_tests.sh`) now runs after the
+CORE suite on both engine builds, checking this same flow, so a future
+regression here gets caught automatically rather than requiring someone
+to remember to test the shell by hand.
+
+### Bugs found and fixed this iteration
+
+Getting from "primitives exist" to "the shell actually works" surfaced
+several real bugs, distinct from a larger number of mistakes in the
+*test scripts themselves* while directly exercising the new primitives
+(stack-order confusion, forgetting to `DUP` a value before consuming
+it, `S"`'s shared-pad gotcha when called twice on one line, using
+`COUNT` - for Forth's length-prefixed strings - on a NUL-terminated
+C string instead). Those test-script mistakes are not listed below;
+they cost time but didn't point at anything wrong in the shipped code.
+The real bugs:
+
+- **Tokenizer never NUL-terminated the last token when the input line
+  had no trailing whitespace.** `TOKENIZE`'s per-token NUL-write was
+  guarded by `TOK-POS < TOK-END`, which is false exactly when the last
+  token runs all the way to the end of the input with no separator
+  after it - a completely ordinary case (`ls -la` typed normally, no
+  trailing space). Fixed by removing the guard - `LINE-BUF` always has
+  headroom for the one extra byte, since `LINE-MAX` is far larger than
+  any real input line.
+- **`SEARCH-PATH`'s own env-var-name NUL-termination bug: `4 ENVNAMBUF
+  C!` stores the number 4 at `ENVNAMBUF`'s first byte, overwriting
+  `'P'`, instead of writing a NUL at `ENVNAMBUF+4` (the byte *after*
+  "PATH"'s four characters).** This silently broke every `$PATH`/`$HOME`
+  lookup - `GETENV` was searching for a garbled variable name and
+  correctly reporting "not found". Same bug, same fix, appeared in
+  `DO-CD`'s `$HOME` lookup too. Caught by directly checking `GETENV`'s
+  return value rather than assuming the surrounding logic was fine
+  because it "looked" right.
+- **`B-CSTR` (the C-string-append helper) had a stray `DROP` that
+  discarded the source pointer instead of just advancing it via
+  `CHAR+`**, corrupting the string-builder's walk after the first byte
+  of any appended command name.
+- **`SEARCH-PATH`'s directory-splitting loop had an erroneous `OVER
+  SWAP` before calling `TRY-DIR`**, pushing an extra, uninquired-about
+  stack item that `TRY-DIR` never consumed - the `(start len)` pair was
+  already in the right order for `TRY-DIR`'s own `( c-addr u --- )`
+  signature; the `OVER SWAP` was pure noise, added out of not fully
+  trusting stack order this session's earlier debugging had already
+  made unreliable-feeling.
+- **`DISPATCH` opened with `ARGV @ ARGC @ IF`**, pushing two values but
+  `IF` only consuming the top one - leaving `ARGV @` permanently
+  orphaned on the stack for the rest of that call, corrupting every
+  builtin check downstream. Fixed to just `ARGC @ 0 > IF`.
+- **Every builtin-name comparison in `DISPATCH` called `STR0=` with its
+  arguments backwards** (`ARGV @ S" cd" STR0=` instead of `S" cd" ARGV
+  @ STR0=`) - `STR0=`'s signature is Forth-string-first,
+  C-string-second (`( c-addr1 u1 c-addr2 --- f )`), and every one of
+  the four checks had it the other way around.
+
+Each of these was found by isolating the failing piece with a small,
+targeted test (or `gdb` when the failure was a segfault rather than
+wrong output) rather than trying to debug the whole shell loop at once
+- consistent with the trace-diff/gdb-first approach documented for
+Iteration 4's harder bugs.
+
+### A build mistake worth recording
+
+While setting up an i386 test of the finished shell, `relf32` was
+built from `/home/claude/work/relf_multiarch.c` - a leftover scratch
+copy of the engine from Iteration 4, predating this iteration's ten new
+primitives entirely. The resulting binary's dispatch table was ten
+entries short of what the (correctly rebuilt) `kernel.img` expected,
+so invoking any of the new primitives jumped through a dispatch-table
+read past its actual end, landing on whatever garbage followed in
+memory - a segfault with a nonsensical backtrace (jumping to address
+`0x1`, corrupted-looking frames) that had nothing to do with the
+primitives' own logic. Confirmed via `diff` against the real,
+current `relf.c` before spending time debugging the shell itself.
+Worth remembering: scratch copies made mid-session for one purpose
+(the i386 cell-width work in Iteration 4) silently go stale the moment
+the real source moves on, and a segfault with a dispatch-table-shaped
+signature is worth checking for source/binary mismatch before assuming
+it's a logic bug.
+
+### What this iteration deliberately did NOT do
+
+- **Pipes and redirection (`|`, `<`, `>`, `>>`).** An earlier attempt at
+  this within the same file got tangled - reaching for return-stack
+  tricks (`2>R`/`2R@`) that don't exist in this kernel, and leaving a
+  half-written placeholder mid-function - and was discarded rather than
+  patched. `PIPE`/`DUP2` are already in place and individually verified
+  (see above), so the primitive layer is ready; the shell-side wiring
+  is a separate, focused piece of follow-up work, not attempted again
+  this iteration to avoid repeating the same mistake under the same
+  time pressure.
+- **Any quoting or escaping.** A space always splits tokens, with no
+  way to include one literally in an argument.
+- **`$VAR` expansion, `` $(...) `` command substitution, control
+  structures (`if`/`while`/`for`/`case`), shell functions, job
+  control, or multi-stage pipelines (more than one `|` per line).**
+  All out of scope for v0.1; noted here so the gap is explicit rather
+  than discovered by surprise later.
+- **ARM64/ARM32 verification of the shell.** The new primitives and
+  shell.4 were verified on the 8-byte (x86-64) and 4-byte (i386)
+  builds only, matching Iteration 4's own scope boundary. Nothing in
+  the new primitives is architecture-specific (they're thin libc
+  wrappers, same as the existing file-I/O primitives), so this is
+  expected to work, but "expected to work" undersells how many
+  supposedly-mechanical steps in this project have turned up real bugs
+  on inspection - worth actually checking before relying on it.

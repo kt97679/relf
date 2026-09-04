@@ -173,6 +173,25 @@ the full account and the fixes applied.
    Call-flattening is **not done** — deliberately deferred, see the
    phase 5 section below for why. See `PROGRESS.md` for the full
    account, including several real bugs found and fixed along the way.
+6. **32-bit-cell targets (i386)** — cell width parameterized at compile
+   time (engine) and via `TARGET-CELL-BYTES` (cross-compiler/kernel).
+   **Done**, verified on i386. See the phase 6 section below.
+7. **Userland: a POSIX-flavored shell on RelF** — process-control
+   primitives (`FORK`/`EXECVE`/`WAITPID`/`PIPE`/`DUP2`/`GETENV`/
+   `SETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`) plus `shell.4`, a shell built
+   on top of them. **v0.1 done**: external command execution via PATH
+   search, and `cd`/`pwd`/`export`/`exit` builtins, verified end-to-end
+   on x86-64 and i386 — see `PROGRESS.md`'s Iteration 5 entry for the
+   full account, including several real bugs found getting there.
+   Pipes, redirection, quoting, variable expansion, and control
+   structures are explicitly **not yet done** — see that same entry's
+   "what this iteration deliberately did NOT do". This phase is the
+   first concrete step toward the "busybox-on-RelF" direction discussed
+   under "Non-goals" and in `PROGRESS.md`'s architectural notes; whether
+   it's worth pushing toward a fuller coreutils/shell replacement, versus
+   stopping at "useful enough to drive the system interactively", is an
+   open question to revisit once v0.1's rough edges (pipes/redirection
+   in particular) are smoothed out.
 
 ## Non-goals (at least for now — revisit if this changes)
 

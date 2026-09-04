@@ -112,7 +112,28 @@ RelF works in absolute addresses. During system initialization absolute
 address of system is pushed to the stack. It is used to adjust all system
 addresses, which should be absolute.
 
-4. Possible usage.
+4. Shell.
+
+An optional POSIX-flavored shell, shell.4, is layered on top of an
+already-bootstrapped kernel.img - it is not part of the base kernel
+image, kept separate deliberately so the base image stays minimal (see
+GOALS.md, goal 3). To use it:
+
+    ./relf kernel.img
+    S" shell.4" INCLUDED
+    SH
+
+This loads ten new process-control primitives' worth of shell logic
+(FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/SYS-EXIT/CHDIR/GETCWD are
+already compiled into kernel.img itself, same as any other primitive)
+and starts the read-eval loop. Current (v0.1) scope: external commands
+are resolved via $PATH and run via fork/exec/wait, and cd/pwd/export/
+exit are supported as builtins. Whitespace splits arguments; there is
+no quoting, no $VAR expansion, and no pipes or redirection yet - see
+GOALS.md phase 7 and PROGRESS.md's Iteration 5 entry for the current
+state and what's planned next.
+
+5. Possible usage.
 
 The main advantages of this system is small size of both machine-dependent
 engine and of machine-independent binary system image. Due to those features
@@ -121,7 +142,7 @@ it can be used:
     * as embedded programming language;
     * etc ;).
 
-5. Benchmarks
+6. Benchmarks
 
 The numbers below predate phase 2 (32-bit cells, relfgcc/vm.asm/vm_tos.asm
 variants that no longer exist - see GOALS.md) and are kept only as a
@@ -169,6 +190,6 @@ sod32             | 89.66                          |
 spf               |  2.53                          |
 ------------------+--------------------------------+
 
-6. Contact info.
+7. Contact info.
 
 e-mail: kt97679@gmail.com

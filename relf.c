@@ -243,7 +243,9 @@ static void virtual_machine(void) {
         &&L_dplus, &&L_emit, &&L_key, &&L_bye, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
-        &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize
+        &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
+        &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
+        &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd
     };
 
 #define NEXT() do { \
@@ -455,6 +457,77 @@ L_filesize: { /* fid --- u ior */
     lseek(fd, cur, SEEK_SET);
     DS0 = (UNS64)size;
     PUSH(0);
+    NEXT();
+}
+/*
+ *  Process-control primitives (shell support). Callers are responsible
+ *  for NUL-terminating any string these pass to libc (matching the
+ *  existing OPEN-FILE/DELETE-FILE/SYSTEM convention above - none of
+ *  these do their own save/restore-a-byte trick, since the strings
+ *  they're given - paths, argv entries, env names/values - are usually
+ *  already being built fresh in a scratch buffer, not sliced out of
+ *  live source text the way OPEN-FILE's c-addr/u pair typically is).
+ */
+L_fork: /* --- pid */
+    PUSH((UNS64)(INT64)fork());
+    NEXT();
+L_execve: { /* argv-addr path-addr --- ior */
+    char *path = (char*)(uintptr_t)DS0;
+    char **argv = (char**)(uintptr_t)DS1;
+    execve(path, argv, environ);
+    /* only reached if execve itself failed */
+    DS1 = (UNS64)200;
+    dsp += CELL_BYTES;
+    NEXT();
+}
+L_waitpid: { /* pid --- status ior */
+    int status = 0;
+    pid_t r = waitpid((pid_t)(INT64)DS0, &status, 0);
+    if (r < 0) {
+        DS0 = (UNS64)(INT64)-1;
+        PUSH(200);
+    } else {
+        DS0 = (UNS64)(INT64)status;
+        PUSH(0);
+    }
+    NEXT();
+}
+L_pipe: { /* --- fd-read fd-write ior */
+    int fds[2];
+    if (pipe(fds) < 0) {
+        PUSH(0); PUSH(0); PUSH(200);
+    } else {
+        PUSH((UNS64)fds[0]); PUSH((UNS64)fds[1]); PUSH(0);
+    }
+    NEXT();
+}
+L_dup2: /* oldfd newfd --- ior */
+    DS1 = (UNS64)((dup2((int)DS1, (int)DS0) < 0) ? 200 : 0);
+    dsp += CELL_BYTES;
+    NEXT();
+L_getenv: { /* c-addr --- addr */
+    char *v = getenv((char*)(uintptr_t)DS0);
+    DS0 = (UNS64)(uintptr_t)v;
+    NEXT();
+}
+L_setenv: /* value-addr name-addr --- ior */
+    DS1 = (UNS64)((setenv((char*)(uintptr_t)DS0, (char*)(uintptr_t)DS1, 1) < 0) ? 200 : 0);
+    dsp += CELL_BYTES;
+    NEXT();
+L_sysexit: /* n --- */
+    _exit((int)DS0);
+L_chdir: /* c-addr --- ior */
+    DS0 = (UNS64)((chdir((char*)(uintptr_t)DS0) < 0) ? 200 : 0);
+    NEXT();
+L_getcwd: { /* addr max-len --- len ior */
+    char *r = getcwd((char*)(uintptr_t)DS1, (size_t)DS0);
+    if (r == 0) {
+        DS1 = 0;
+        DS0 = 200;
+    } else {
+        DS1 = (UNS64)strlen(r);
+        DS0 = 0;
+    }
     NEXT();
 }
 }
