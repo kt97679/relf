@@ -1775,3 +1775,53 @@ command's own text (a bare whitespace split only), no nested `$(...)`,
 and no builtins runnable inside `$(...)` (external commands only) -
 all matching established patterns elsewhere in this shell rather than
 being newly-invented gaps.
+
+### Performance benchmark: env-variable manipulations (relfsh vs bash 5.2.21)
+
+An earlier session benchmarked cold-start and sustained throughput for
+`pwd` (builtin dispatch), `/bin/true` (fork+exec), a pipeline, and a
+`while` loop, but that benchmark's numbers were never actually
+recorded in this file (they only exist in that session's own
+transcript) - this entry is the first performance benchmark to make
+it into `PROGRESS.md`, and targets the specific workloads added by
+Iterations 12 and 13: `export`, `unset`, `$VAR` expansion, and
+`$(...)` command substitution. Methodology: single amortized session
+per run (script piped via stdin, not `-c`, so `relf`/`shell.4`
+compilation cost is paid once and N operations run inside that one
+process), 3 runs averaged, cold-start baseline (a script containing
+only `exit`) subtracted out to isolate true per-operation cost. relfsh
+baseline: ~55ms (`shell.4` is recompiled from source on every
+invocation - the same root cause identified in that earlier,
+unrecorded session). bash baseline: ~3ms.
+
+| Workload | relfsh (per-op) | bash (per-op) | ratio |
+|---|---|---|---|
+| `export VAR=value` ×2000 (builtin, no fork) | ~16 μs | ~1.5 μs | ~11x |
+| `pwd $VAR` ×2000 (builtin + `$VAR` expansion) | ~14.5 μs | ~1.5 μs | ~10x |
+| `unset VAR` ×2000 (builtin, no fork) | ~12.5 μs | ~1.5 μs | ~8x |
+| `pwd $(pwd)` ×200 (real fork+pipe+capture) | ~915 μs | ~260 μs | ~3.5x |
+
+**Pure builtin dispatch stays in a low-microsecond regime** matching
+that earlier session's finding of ~10μs/op for bare `pwd`. Adding
+`$VAR` expansion on top of a builtin call costs roughly **+4-5μs/op**
+(14.5μs vs ~10μs) - real, but small, and still nowhere near
+perceptible interactively. `unset` (~12.5μs) is a little cheaper than
+`export` (~16μs): `UNSETENV` is a direct call, while `DO-EXPORT` first
+scans the argument string for `=` before calling `SETENV`. The ~8-11x
+ratio against bash across all three builtin-based workloads is
+consistent with that earlier session's finding that Forth-interpreter
+dispatch overhead is real but stays imperceptible in absolute terms
+(tens of microseconds, not milliseconds).
+
+`$(...)` command substitution is **syscall/fork-dominated**, similar
+in character to that earlier session's pipe and fork+exec figures, and
+the 3.5x gap here isn't purely interpreter overhead - it reflects a
+genuine asymmetry rather than raw slowness: `relfsh`'s `$(...)` only
+supports *external* commands (the documented v0.8 scope limit from
+earlier in this iteration), so `$(pwd)` really execs `/bin/pwd`, while
+bash can run its own *internal* `pwd` builtin inside the forked
+subshell instead. Against that earlier session's bare fork+exec figure
+(~750μs/op for `/bin/true`, syscall-dominated and near 1:1 parity with
+bash), the pipe-creation/read-loop/splice machinery `$(...)` adds on
+top costs roughly **+165μs/op** for relfsh.
+
