@@ -1682,3 +1682,96 @@ own, and doesn't need to wait on the harder problem. The command-
 substitution work is preserved separately and picked back up as its
 own, later effort - see the next section of this file once that's
 resolved, or the commit history if it isn't yet.
+
+## Iteration 13: $(...) command substitution
+
+Goal: the harder half of "extended environment variable support" -
+picked back up after Iteration 12 shipped `unset` alone and set this
+work aside as a documented, not-yet-working WIP.
+
+### The architectural problem
+
+`$(...)` is encountered *during* the outer line's own tokenization
+(`SCAN-TOKEN`/`COPY-DOUBLE-QUOTED` call `EXPAND-VAR`, which now also
+handles `$(`, while `LINE-BUF`/`ARGV`/`ARGC`/`TOK-POS`/`TOK-END`/
+`TOK-OUT` are all still mid-scan for the *outer* line). Reusing the
+main `TOKENIZE`/`ARGV`/`LINE-BUF` for the *inner* substituted
+command's own parsing would corrupt that in-progress outer state, so
+`EXPAND-CMDSUB` uses an entirely separate, dedicated set of buffers
+(`CMDSUB-LINE-BUF`, `CMDSUB-ARGV`, `CMDSUB-ARGC`) and a small,
+deliberately simple whitespace-only tokenizer (`CMDSUB-TOKENIZE`) for
+the inner command's text - no quoting, escaping, expansion, pipes, or
+redirection *within* a `$(...)` command in v0.8, and no nested
+`$(...)` either (the first unescaped `)` found closes it) - the same
+kind of scope limit already accepted for if/while nesting.
+
+`RUN-CMDSUB-CHILD` needs `COPY-ARGV`/`RUN-CHILD`, both defined much
+later in the file (pipe/path-search sections) - broken via the same
+deferred-word pattern already used for `RUN-TOKENIZED-CALL`: a stub
+defined early, patched to the real word's execution token once it's
+available.
+
+The substituted command runs in a forked child (stdout redirected
+into a pipe, same `PIPE`/`FORK`/`DUP2` shape as `RUN-PIPELINE`), the
+parent reads everything from the pipe in a loop, strips all trailing
+newlines (matching POSIX - internal newlines are preserved), and
+splices the result into the token being built via the same
+`EMIT-TOK-CHAR` path `$VAR` expansion already uses - no further
+expansion or quote-processing is applied to the captured output
+itself. Only external commands are supported inside `$(...)` (same
+scope limit as pipe segments not supporting builtins either).
+
+### The bug, and why it took so long to find
+
+`CMDSUB-TOKENIZE` segfaulted on even the simplest input
+(`$(echo hi)`), and a careful hand-trace of its logic looked correct -
+every individual piece tested fine in isolation. The actual bug: `CS-
+END` was stored as `CMDSUB-LINE-BUF + u` (an absolute address), while
+`CS-POS` is a plain offset (0, 1, 2, ...) used consistently everywhere
+else in the function. `CS-POS @ CS-END @ <` was therefore comparing a
+small offset against a huge address - always true, so the bounds
+check never actually bounded anything, and the scan ran past the
+buffer until it happened to hit a byte in whatever followed that
+looked like whitespace. Fix: `CS-END` stores the plain length `u`
+directly, matching `CS-POS`'s own convention (`CMDSUB-LINE-BUF` is
+added explicitly at every point of use, same as `CS-POS` already was).
+
+Two things about *how* this was found, worth recording since they cost
+real time: an isolated "mini-test" reproducing only part of the outer
+loop (omitting the inner scan that advances the cursor) hung forever -
+not a new bug, just an incomplete diagnostic mirroring the function
+rather than exercising the real one. And once a proper, complete
+diagnostic was written, typing it directly at `relf`'s interactive
+stdin threw a spurious `Undefined word TH` - an artifact of a long
+line hitting a different line-buffer path than file-`INCLUDED`
+loading, unrelated to the actual bug. The diagnostic that actually
+worked was a small standalone word, loaded via `INCLUDED` (matching
+how `shell.4` itself loads) rather than typed interactively, with
+`."` trace output at each step - printing the loop's own state showed
+`CS-POS` overshooting its expected stopping point immediately, which
+led straight to the address/offset mismatch above.
+
+### Verified end-to-end via `relfsh`
+
+- `echo $(echo hello)` → `hello`
+- `echo pre_$(echo mid)_post` → `pre_mid_post` (concatenation with
+  literal text, via the same token-building path as `${VAR}suffix`)
+- `echo $(echo hello)_$X` → `hello_world` (concatenation with `$VAR`)
+- `echo '$(echo literal)'` → literal, unexpanded (single quotes)
+- `echo "$(echo quoted)"` → `quoted` (still substituted inside double
+  quotes)
+- `echo $(pwd)` → resolves via `$PATH` like any external command
+- A script printing `line1\nline2\n` spliced as `START-$(...)-END`
+  produces `START-line1\nline2-END` - internal newline kept, only the
+  trailing one stripped.
+
+`tests/shell/run-cmdsub` (7 assertions) locks all of this in - 56
+assertions across 13 files now, all passing on both x86-64 and i386.
+
+### Deliberate v0.8 scope limits
+
+No quoting/escaping/expansion/pipes/redirection *within* a `$(...)`
+command's own text (a bare whitespace split only), no nested `$(...)`,
+and no builtins runnable inside `$(...)` (external commands only) -
+all matching established patterns elsewhere in this shell rather than
+being newly-invented gaps.

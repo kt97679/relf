@@ -181,35 +181,37 @@ the full account and the fixes applied.
    `SETENV`/`UNSETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`/`SYS-ARGC`/`SYS-ARG`/
    `GETPID`) plus `shell.4`, a shell built on top of them, plus
    `relfsh` (a single-executable wrapper) and a real, scoped test suite
-   in `tests/shell/`. **v0.7 done**: external command execution via
+   in `tests/shell/`. **v0.8 done**: external command execution via
    PATH search, `cd`/`pwd`/`export`/`unset`/`exit` builtins, a `-c`
    invocation mode (`relfsh -c 'command'`, matching `sh -c '...'`), a
    single pipe per line (`cmd1 | cmd2`), redirection (`<`/`>`/`>>`),
    quoting (single quotes, double quotes with minimal `\"`/`\\`
    escaping, and backslash-escaping outside quotes), `$VAR`/`${VAR}`/
-   `$?`/`$$` expansion, `if`/`then`/`else`/`fi`, and `while`/`do`/`done`
-   (with the condition and body genuinely re-evaluated fresh each
-   iteration — including fresh `$VAR`/`$?`/`$$` re-expansion, not
-   frozen from the loop's first reading — see `PROGRESS.md`'s Iteration
-   11 entry for why that distinction was the whole design problem) —
-   no nesting for either control structure yet, no `for`/`until`, see
-   that same entry for exactly why those are harder — all with quote-
-   awareness so a literal `'<'`/`'cd'`/`'if'`/`'while'` or an expansion
-   result matching an operator isn't mistaken for the operator/builtin/
-   keyword it happens to spell — all verified end-to-end on x86-64 and
-   i386, with an automated test suite (structurally inspired by bash's
-   own `tests/`, 49 assertions as of this writing) checking all of it
-   on every run. See `PROGRESS.md`'s Iteration 5 through 12 entries for
-   the full account, including several real bugs found getting there —
-   one caught directly by the test suite on its first run. **Command
-   substitution (`$(...)`) is in progress but not yet working** — a
-   substantial attempt hit an unresolved segfault in its own tokenizer
-   and was deliberately kept out of this phase's committed history
-   rather than shipped broken; see `PROGRESS.md`'s Iteration 12 entry.
-   Nesting, word-splitting of unquoted expansion results, parameter-
-   expansion modifiers (`${VAR:-default}` etc.), and positional
-   parameters are also **not yet done**, and pipes and redirection
-   still can't be combined on the same line — see
+   `$?`/`$$` expansion, `$(command)` command substitution (external
+   commands only, no quoting/expansion/pipes within the substituted
+   command's own text yet, no nesting — see `PROGRESS.md`'s Iteration
+   13 entry for the design and for a real bug worth remembering: an
+   absolute address silently compared against a plain offset, making a
+   bounds check always pass), `if`/`then`/`else`/`fi`, and
+   `while`/`do`/`done` (with the condition and body genuinely
+   re-evaluated fresh each iteration — including fresh `$VAR`/`$?`/`$$`
+   re-expansion, not frozen from the loop's first reading — see
+   `PROGRESS.md`'s Iteration 11 entry for why that distinction was the
+   whole design problem) — no nesting for either control structure
+   yet, no `for`/`until`, see that same entry for exactly why those are
+   harder — all with quote-awareness so a literal
+   `'<'`/`'cd'`/`'if'`/`'while'` or an expansion result matching an
+   operator isn't mistaken for the operator/builtin/keyword it happens
+   to spell — all verified end-to-end on x86-64 and i386, with an
+   automated test suite (structurally inspired by bash's own `tests/`,
+   56 assertions as of this writing) checking all of it on every run.
+   See `PROGRESS.md`'s Iteration 5 through 13 entries for the full
+   account, including several real bugs found getting there — one
+   caught directly by the test suite on its first run. Nesting,
+   word-splitting of unquoted expansion results, parameter-expansion
+   modifiers (`${VAR:-default}` etc.), and positional parameters are
+   **not yet done**, and pipes and redirection still can't be combined
+   on the same line — see
    those entries' "what this iteration deliberately did NOT do". This
    phase is the first concrete step toward the "busybox-on-RelF"
    direction discussed under "Non-goals" and in `PROGRESS.md`'s

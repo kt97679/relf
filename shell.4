@@ -177,6 +177,160 @@ VARIABLE DIGIT-N
                                  \ built - the expanded value, from GETENV
   BEGIN DUP C@ DUP WHILE EMIT-TOK-CHAR CHAR+ REPEAT 2DROP ;
 
+\ ==================================================================
+\ $(command) - command substitution
+\ Runs the enclosed text as a single external command (no builtins,
+\ same v0.7 scope limit as pipe segments not supporting builtins
+\ either), captures its stdout via a pipe, strips trailing newlines
+\ (matching POSIX), and splices the captured bytes into the token
+\ being built - literally, with no further expansion or quote
+\ processing applied to the captured output itself.
+\
+\ This runs *during* the outer line's own tokenization (SCAN-TOKEN or
+\ COPY-DOUBLE-QUOTED call EXPAND-VAR, which calls this, while LINE-BUF/
+\ ARGV/ARGC/TOK-POS/TOK-END/TOK-OUT are all still mid-scan for the
+\ *outer* line) - reusing TOKENIZE/ARGV/LINE-BUF for the *inner*
+\ command's own parsing would corrupt that in-progress outer state.
+\ So this uses entirely separate, dedicated buffers and a small,
+\ deliberately simple whitespace-only tokenizer for the inner command
+\ text - no quoting, escaping, expansion, pipes, or redirection
+\ *within* a $(...) command in v0.7 (same "no nesting" scope limit
+\ as if/while), and no nested $(...) either (the first unescaped ")"
+\ found closes it).
+\
+\ RUN-CMDSUB-CHILD needs COPY-ARGV/RUN-CHILD, both defined much later
+\ in this file (in the pipe/path-search sections) - broken via the
+\ same deferred-word pattern already used for RUN-TOKENIZED-CALL: a
+\ stub here, patched to the real word's execution token once it's
+\ defined below.
+\ ==================================================================
+
+CREATE CMDSUB-LINE-BUF LINE-MAX ALLOT
+CREATE CMDSUB-ARGV MAX-ARGS CELLS ALLOT
+VARIABLE CMDSUB-ARGC
+VARIABLE CS-POS
+VARIABLE CS-END
+VARIABLE CS-COPY-I
+
+256 CONSTANT CMDSUB-OUT-MAX
+CREATE CMDSUB-OUT-BUF CMDSUB-OUT-MAX ALLOT
+VARIABLE CMDSUB-OUT-LEN
+
+: CMDSUB-WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
+
+: CMDSUB-SKIP-WS ( --- )
+  BEGIN
+    CS-POS @ CS-END @ < IF CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? ELSE 0 THEN
+  WHILE CS-POS @ 1+ CS-POS ! REPEAT ;
+
+: CMDSUB-TOKENIZE ( u --- )  \ CMDSUB-LINE-BUF holds u raw bytes
+  \ CS-END is a plain length (matching CS-POS's own offset
+  \ convention, added to CMDSUB-LINE-BUF explicitly at every use) -
+  \ NOT an absolute address. Storing "CMDSUB-LINE-BUF + u" here was
+  \ the actual bug: it silently mixed an address into what every
+  \ comparison against CS-POS treats as a plain offset, making the
+  \ "CS-POS @ CS-END @ <" bounds check compare an offset (0, 1, 2...)
+  \ against a huge address - always true, so the scan ran unbounded
+  \ past the buffer until it happened to hit something that looked
+  \ like whitespace in whatever memory followed. Found by tracing a
+  \ diagnostic copy of the inner scan loop (loaded via INCLUDED, not
+  \ typed interactively - a long line typed directly at relf's
+  \ interactive stdin was itself a separate, unrelated pitfall: it
+  \ truncated mid-word and threw an "Undefined word" error).
+  CS-END !
+  0 CS-POS !
+  0 CMDSUB-ARGC !
+  BEGIN
+    CMDSUB-SKIP-WS
+    CS-POS @ CS-END @ <
+  WHILE
+    CMDSUB-ARGC @ MAX-ARGS 1- < IF
+      CMDSUB-LINE-BUF CS-POS @ + CMDSUB-ARGV CMDSUB-ARGC @ CELLS + !
+      CMDSUB-ARGC @ 1+ CMDSUB-ARGC !
+    THEN
+    BEGIN
+      CS-POS @ CS-END @ < IF CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? 0= ELSE 0 THEN
+    WHILE CS-POS @ 1+ CS-POS ! REPEAT
+    \ NUL-terminate this token unconditionally, even if it ran all the
+    \ way to the end of input with no trailing separator - CMDSUB-
+    \ LINE-BUF has room for this one extra byte (LINE-MAX is well past
+    \ any realistic $(...) command). Guarding this write with a bounds
+    \ check here was the exact bug already found and fixed in the main
+    \ TOKENIZE back in Iteration 8 - reintroduced by accident by
+    \ copying the pre-fix pattern as a "simple" reference for this
+    \ separate tokenizer.
+    0 CMDSUB-LINE-BUF CS-POS @ + C!
+    CS-POS @ 1+ CS-POS !
+  REPEAT
+  0 CMDSUB-ARGV CMDSUB-ARGC @ CELLS + ! ;
+
+VARIABLE RUN-CMDSUB-CHILD-XT
+
+: RUN-CMDSUB-CHILD-CALL ( --- )
+  RUN-CMDSUB-CHILD-XT @ EXECUTE ;
+
+VARIABLE CS-FD
+VARIABLE CMDSUB-PIPE-RD
+VARIABLE CMDSUB-PIPE-WR
+VARIABLE CMDSUB-PID
+
+: READ-ALL-CMDSUB-OUTPUT ( fd --- )
+  \ Reads everything available from fd into CMDSUB-OUT-BUF, up to its
+  \ fixed capacity - output beyond that is silently truncated rather
+  \ than overflowing the buffer.
+  CS-FD !
+  0 CMDSUB-OUT-LEN !
+  BEGIN
+    CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ - 0 >
+  WHILE
+    CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ +
+    CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ -
+    CS-FD @ READ-FILE DROP
+    DUP 0 = IF DROP EXIT THEN
+    CMDSUB-OUT-LEN @ + CMDSUB-OUT-LEN !
+  REPEAT ;
+
+: EXPAND-CMDSUB ( --- )
+  \ TOK-POS is at the '(' immediately following '$'.
+  TOK-POS @ 1+ TOK-POS !            ( skip '(' )
+  0 CS-COPY-I !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 41 <> ELSE 0 THEN
+  WHILE
+    CS-COPY-I @ LINE-MAX 1- < IF
+      TOK-POS @ C@ CMDSUB-LINE-BUF CS-COPY-I @ + C!
+      CS-COPY-I @ 1+ CS-COPY-I !
+    THEN
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN   ( skip closing paren )
+  CS-COPY-I @ CMDSUB-TOKENIZE
+  CMDSUB-ARGC @ 0 > IF
+    PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
+    FORK DUP CMDSUB-PID !
+    0 = IF
+      CMDSUB-PIPE-WR @ 1 DUP2 DROP
+      CMDSUB-PIPE-WR @ CLOSE-FILE DROP
+      CMDSUB-PIPE-RD @ CLOSE-FILE DROP
+      RUN-CMDSUB-CHILD-CALL
+      127 SYS-EXIT
+    THEN
+    CMDSUB-PIPE-WR @ CLOSE-FILE DROP
+    CMDSUB-PIPE-RD @ READ-ALL-CMDSUB-OUTPUT
+    CMDSUB-PIPE-RD @ CLOSE-FILE DROP
+    CMDSUB-PID @ WAITPID DROP DROP
+    BEGIN                                    ( strip trailing newlines )
+      CMDSUB-OUT-LEN @ 0 > IF
+        CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 1- + C@ 10 =
+      ELSE 0 THEN
+    WHILE
+      CMDSUB-OUT-LEN @ 1- CMDSUB-OUT-LEN !
+    REPEAT
+    CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
+      DUP I + C@ EMIT-TOK-CHAR
+    LOOP DROP
+  THEN ;
+
 : EXPAND-VAR ( --- )
   \ TOK-POS is at the '$' character.
   -1 TOK-WAS-QUOTED? !
@@ -191,6 +345,10 @@ VARIABLE DIGIT-N
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
     GETPID EMIT-DECIMAL
+    EXIT
+  THEN
+  DUP 40 = IF                     ( $( - command substitution )
+    DROP EXPAND-CMDSUB
     EXIT
   THEN
   DUP 123 = IF                    ( ${NAME} )
@@ -624,6 +782,17 @@ VARIABLE CA-N
     CA-SRC @ I CELLS + @ ARGV I CELLS + !
   LOOP
   0 ARGV CA-N @ CELLS + ! ;
+
+: RUN-CMDSUB-CHILD ( --- )  \ resolves CMDSUB-ARGV[0] and execs it -
+                              \ only returns on total failure. Runs
+                              \ within a freshly forked child (see
+                              \ EXPAND-CMDSUB), so overwriting the
+                              \ global ARGV/ARGC here is safe, same
+                              \ reasoning as RUN-PIPELINE's own use of
+                              \ COPY-ARGV.
+  CMDSUB-ARGV CMDSUB-ARGC @ COPY-ARGV
+  RUN-CHILD ;
+' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !
 
 VARIABLE PIPE-RD
 VARIABLE PIPE-WR

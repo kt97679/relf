@@ -1,0 +1,41 @@
+#!/bin/sh
+# run-cmdsub - $(command) command substitution: basic substitution,
+# concatenation with literal text and with $VAR, quoting interaction
+# (single-quoted stays literal, double-quoted still substitutes), and
+# trailing-newline stripping (matching POSIX: all trailing newlines
+# removed, internal newlines preserved).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'echo $(echo hello123)\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "basic \$(cmd) substitution" "hello123" "$out"
+
+out=$(printf 'echo pre_$(echo mid123)_post\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "concatenation with surrounding literal text" "pre_mid123_post" "$out"
+
+out=$(printf 'export X=world123\necho $(echo hello123)_$X\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "concatenation with \$VAR expansion" "hello123_world123" "$out"
+
+out=$(printf "echo '\$(echo literal123)'\nexit\n" | "$THIS_SH" 2>&1)
+assert_output_contains "single-quoted \$(...) is not substituted" '$(echo literal123)' "$out"
+
+out=$(printf 'echo "$(echo quoted123)"\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "double-quoted \$(...) is still substituted" "quoted123" "$out"
+
+# an external command whose output resolves via PATH search
+out=$(printf 'echo $(pwd)\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "\$(pwd) resolves via PATH like any external command" "$(pwd)" "$out"
+
+# trailing newline(s) stripped, internal newlines preserved
+cat > /tmp/run-cmdsub-multiline.sh << 'SCRIPT_EOF'
+#!/bin/sh
+printf 'line1\nline2\n'
+SCRIPT_EOF
+chmod +x /tmp/run-cmdsub-multiline.sh
+out=$(printf 'echo START-$(/tmp/run-cmdsub-multiline.sh)-END\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "trailing newline stripped, internal newline kept" \
+    "START-line1
+line2-END" "$out"
+rm -f /tmp/run-cmdsub-multiline.sh
+
+report
