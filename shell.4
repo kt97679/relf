@@ -99,6 +99,160 @@ VARIABLE SEQ-I
 : STR0= ( c-addr1 u1 c-addr2 --- f )
   DUP CSTRLEN STR= ;
 
+: CSTR= ( c-addr1 c-addr2 --- f )  \ compares two NUL-terminated C
+                                     \ strings (STR0= compares a
+                                     \ length-prefixed one against a
+                                     \ NUL-terminated one - this is for
+                                     \ two NUL-terminated ones, e.g.
+                                     \ shell-variable names below).
+  SWAP DUP CSTRLEN ROT STR0= ;
+
+VARIABLE SCN-SRC
+VARIABLE SCN-LEN
+VARIABLE SCN-DEST
+VARIABLE SCN-MAX
+
+: SAFE-COPY-NUL ( src-addr u dest-addr dest-max --- ok? )
+  \ Copies u bytes from src-addr into dest-addr and NUL-terminates
+  \ the result, but only if u+1 fits within dest-max - otherwise
+  \ leaves dest-addr untouched and returns false, rather than
+  \ truncating or overflowing a fixed-size slot. Explicit variables
+  \ rather than stack-juggling for all four arguments, matching this
+  \ shell's own established preference (see e.g. CMDSUB-* words).
+  SCN-MAX ! SCN-DEST ! SCN-LEN ! SCN-SRC !
+  SCN-LEN @ 1+ SCN-MAX @ > IF 0 EXIT THEN
+  SCN-SRC @ SCN-DEST @ SCN-LEN @ MOVE
+  0 SCN-DEST @ SCN-LEN @ + C!
+  -1 ;
+
+VARIABLE SCC-SRC
+VARIABLE SCC-DEST
+VARIABLE SCC-MAX
+
+: SAFE-CSTR-COPY ( src-addr dest-addr dest-max --- ok? )
+  \ Same as SAFE-COPY-NUL, but src-addr is already a NUL-terminated
+  \ C string (its own length is computed here) rather than a
+  \ separately-given (addr u) pair.
+  SCC-MAX ! SCC-DEST ! SCC-SRC !
+  SCC-SRC @ SCC-SRC @ CSTRLEN SCC-DEST @ SCC-MAX @ SAFE-COPY-NUL ;
+
+\ ==================================================================
+\ Shell-local variables: POSIX "shell parameters" distinct from the
+\ OS environment - a standalone "NAME=value" line (see ASSIGNMENT-
+\ EQPOS/DO-ASSIGN further down) sets one of these without exporting
+\ it, so it expands via $NAME/${NAME} (see LOOKUP-VAR, used by
+\ EXPAND-VAR below) but a child process never sees it - unlike
+\ `export NAME=value`, which sets both this table and calls SETENV
+\ (see DO-EXPORT). A simple linear table (name/value pairs copied
+\ into fixed-size buffers, not just pointers - ARGV entries point
+\ into LINE-BUF, which gets overwritten on the very next line) -
+\ matches how this shell already avoids hashing/dynamic structures
+\ everywhere else (ARGV, the PATH search, etc).
+\ ==================================================================
+
+32  CONSTANT MAX-SHVARS
+64  CONSTANT SHVAR-NAME-MAX
+256 CONSTANT SHVAR-VALUE-MAX
+CREATE SHVAR-NAMES  MAX-SHVARS SHVAR-NAME-MAX * ALLOT
+CREATE SHVAR-VALUES MAX-SHVARS SHVAR-VALUE-MAX * ALLOT
+VARIABLE SHVAR-COUNT
+0 SHVAR-COUNT !
+
+: SHVAR-NAME-SLOT ( i --- addr )   SHVAR-NAME-MAX * SHVAR-NAMES + ;
+: SHVAR-VALUE-SLOT ( i --- addr )  SHVAR-VALUE-MAX * SHVAR-VALUES + ;
+
+VARIABLE FS-I
+
+: FIND-SHVAR ( name-addr --- i | -1 )  \ linear scan; name-addr is a
+                                         \ NUL-terminated C string.
+  0 FS-I !
+  BEGIN FS-I @ SHVAR-COUNT @ < WHILE
+    DUP FS-I @ SHVAR-NAME-SLOT CSTR= IF
+      DROP FS-I @ EXIT
+    THEN
+    FS-I @ 1+ FS-I !
+  REPEAT
+  DROP -1 ;
+
+: GET-SHVAR ( name-addr --- value-addr | 0 )
+  FIND-SHVAR
+  DUP -1 = IF DROP 0 EXIT THEN
+  SHVAR-VALUE-SLOT ;
+
+VARIABLE SV-NAME
+VARIABLE SV-VALUE
+VARIABLE SV-IDX
+
+: SET-SHVAR ( name-addr value-addr --- )  \ both NUL-terminated C
+                                            \ strings. Updates an
+                                            \ existing slot if the
+                                            \ name is already present,
+                                            \ otherwise appends a new
+                                            \ one - silently does
+                                            \ nothing if the table is
+                                            \ full, or if either
+                                            \ string doesn't fit its
+                                            \ slot (SAFE-CSTR-COPY's
+                                            \ own bounds check),
+                                            \ matching this shell's
+                                            \ sparse error handling
+                                            \ elsewhere. Captures both
+                                            \ arguments into variables
+                                            \ immediately, rather than
+                                            \ carrying them through the
+                                            \ FIND-SHVAR/SHVAR-COUNT
+                                            \ stack logic below them -
+                                            \ the first version of this
+                                            \ word didn't, and ended up
+                                            \ feeding SAFE-CSTR-COPY
+                                            \ the wrong address (found
+                                            \ by testing directly: the
+                                            \ name and value slots came
+                                            \ out swapped).
+  SV-VALUE ! SV-NAME !
+  SV-NAME @ FIND-SHVAR
+  DUP -1 = IF
+    DROP
+    SHVAR-COUNT @ MAX-SHVARS < 0= IF EXIT THEN
+    SHVAR-COUNT @ DUP 1+ SHVAR-COUNT !
+  THEN
+  SV-IDX !
+  SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
+  SV-VALUE @ SV-IDX @ SHVAR-VALUE-SLOT SHVAR-VALUE-MAX SAFE-CSTR-COPY DROP ;
+
+: REMOVE-SHVAR ( name-addr --- )  \ shifts the last entry into the
+                                    \ removed slot rather than
+                                    \ shifting every following entry
+                                    \ down - order doesn't matter for
+                                    \ a lookup-only table. A no-op if
+                                    \ the name isn't present.
+  FIND-SHVAR
+  DUP -1 = IF DROP EXIT THEN
+  DUP SHVAR-COUNT @ 1- = IF
+    DROP SHVAR-COUNT @ 1- SHVAR-COUNT !
+    EXIT
+  THEN
+  SHVAR-COUNT @ 1- SHVAR-NAME-SLOT
+  OVER SHVAR-NAME-SLOT SHVAR-NAME-MAX MOVE
+  SHVAR-COUNT @ 1- SHVAR-VALUE-SLOT
+  OVER SHVAR-VALUE-SLOT SHVAR-VALUE-MAX MOVE
+  DROP
+  SHVAR-COUNT @ 1- SHVAR-COUNT ! ;
+
+: LOOKUP-VAR ( name-addr --- value-addr | 0 )  \ shell-local storage
+                                                 \ first (covers every
+                                                 \ assigned variable,
+                                                 \ exported or not),
+                                                 \ falling back to
+                                                 \ GETENV (covers a
+                                                 \ variable this shell
+                                                 \ never itself
+                                                 \ assigned but
+                                                 \ inherited from its
+                                                 \ own environment,
+                                                 \ e.g. $HOME).
+  DUP GET-SHVAR DUP 0= IF DROP GETENV ELSE SWAP DROP THEN ;
+
 \ ==================================================================
 \ Tokenizer: splits LINE-BUF (u chars from ACCEPT) on whitespace, in
 \ place. Supports single quotes ('...', fully literal, no escapes
@@ -383,7 +537,7 @@ VARIABLE CMDSUB-PID
     REPEAT
     TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
     0 VARNAME-BUF VN-LEN @ + C!
-    VARNAME-BUF GETENV DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN
+    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN
     EXIT
   THEN
   DUP NAME-CHAR? 0= IF
@@ -400,7 +554,7 @@ VARIABLE CMDSUB-PID
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C!
-  VARNAME-BUF GETENV DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN ;
+  VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN ;
 
 : COPY-SINGLE-QUOTED ( --- )
   \ TOK-POS is at the opening '. Copies everything up to (not
@@ -692,7 +846,14 @@ VARIABLE PATH-END2
   0 LAST-STATUS ! ;
 
 : DO-EXPORT ( --- )
-  \ export NAME=VALUE - finds '=' in ARGV[1], splits it, SETENVs.
+  \ export NAME=VALUE - finds '=' in ARGV[1], splits it, records it
+  \ as both a shell-local variable (SET-SHVAR) and an environment
+  \ variable (SETENV) - so subsequently-expanded $NAME sees the same
+  \ value whether or not it's also inherited by a child process.
+  \ export NAME (no '=') exports an already-set shell-local variable
+  \ into the environment too, if there is one - a no-op otherwise (no
+  \ "mark for future export" tracking yet, a real but small gap
+  \ against full POSIX export semantics).
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN
     \ u (ARGV[1]'s length) can be 0 (e.g. `export ""`), guarded for
@@ -702,12 +863,20 @@ VARIABLE PATH-END2
         DUP I + C@ 61 = IF          ( found '=' at offset I within c-addr )
           DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
           DUP I CHARS + CHAR+       ( c-addr value-addr )
+          2DUP SET-SHVAR
           SWAP SETENV DROP
           0 LAST-STATUS !
           UNLOOP EXIT
         THEN
       LOOP
       DROP
+      ( no '=' found: bare NAME - export an existing shell-local value )
+      ARGV 1 CELLS + @ GET-SHVAR
+      DUP 0 <> IF
+        ARGV 1 CELLS + @ SETENV DROP
+      ELSE
+        DROP
+      THEN
     ELSE
       2DROP
     THEN
@@ -738,12 +907,13 @@ VARIABLE PARSE-N
   PARSE-N @ ;
 
 : DO-UNSET ( --- )
-  \ unset NAME - removes an exported environment variable. Silently
-  \ does nothing if given no argument or a name that was never set
+  \ unset NAME - removes an exported environment variable and, if
+  \ present, a shell-local one (REMOVE-SHVAR) too. Silently does
+  \ nothing if given no argument or a name that was never set
   \ (matching real shells: unsetting an already-unset name isn't an
   \ error).
   ARGC @ 1 > IF
-    ARGV 1 CELLS + @ UNSETENV
+    ARGV 1 CELLS + @ DUP REMOVE-SHVAR UNSETENV
     IF 1 ELSE 0 THEN LAST-STATUS !
   ELSE
     0 LAST-STATUS !
@@ -935,6 +1105,76 @@ VARIABLE RUN-TOKENIZED-XT
   0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
   ARGV @ STR0= ;
 
+\ ==================================================================
+\ Shell-local variable assignment: a standalone "NAME=value" line
+\ (the *entire* line - not a command with an assignment-looking
+\ argument, and not "NAME=value command args..." either, which POSIX
+\ treats as a *temporary* assignment scoped to just that one command's
+\ execution - not implemented yet, a real, deliberate scope limit for
+\ now) sets a shell-local variable via SET-SHVAR rather than being
+\ looked up as a command name.
+\ ==================================================================
+
+VARIABLE AW-I
+
+: FIND-EQ-OR-END ( c-addr --- offset )  \ offset of the first '=' in
+                                          \ c-addr, or its CSTRLEN if
+                                          \ none is found before the
+                                          \ terminating NUL.
+  0 AW-I !
+  BEGIN
+    DUP AW-I @ + C@ DUP 0 <> SWAP 61 <> AND
+  WHILE
+    AW-I @ 1+ AW-I !
+  REPEAT
+  DROP AW-I @ ;
+
+: VALID-NAME? ( c-addr u --- f )  \ is (c-addr u) a non-empty,
+                                    \ POSIX-valid variable name? (first
+                                    \ character not a digit, every
+                                    \ character NAME-CHAR? - which
+                                    \ itself does allow digits, correct
+                                    \ for every character *after* the
+                                    \ first).
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ DUP 48 < 0= SWAP 58 < AND IF 2DROP 0 EXIT THEN
+  0 DO
+    DUP I + C@ NAME-CHAR? 0= IF UNLOOP DROP 0 EXIT THEN
+  LOOP
+  DROP -1 ;
+
+: ASSIGNMENT-EQPOS ( c-addr --- eqpos | -1 )  \ c-addr: a NUL-
+                                                \ terminated string
+                                                \ (ARGV[0]). The offset
+                                                \ of its first '=' if
+                                                \ everything before it
+                                                \ forms a valid,
+                                                \ non-empty POSIX name
+                                                \ - else -1 (not an
+                                                \ assignment word at
+                                                \ all).
+  DUP FIND-EQ-OR-END
+  2DUP + C@ 61 <> IF 2DROP -1 EXIT THEN
+  2DUP VALID-NAME? 0= IF 2DROP -1 EXIT THEN
+  SWAP DROP ;
+
+CREATE ASSIGN-NAME-BUF SHVAR-NAME-MAX ALLOT
+CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
+
+: DO-ASSIGN ( eqpos --- )  \ ARGV[0] is a validated "NAME=value"
+                            \ assignment word (see ASSIGNMENT-EQPOS)
+                            \ and eqpos is its '='s offset. Splits it
+                            \ into ASSIGN-NAME-BUF/ASSIGN-VALUE-BUF and
+                            \ records it via SET-SHVAR - does NOT
+                            \ export it (see DO-EXPORT for how export
+                            \ interacts with this).
+  DUP ARGV @ SWAP ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
+  DUP 1+ ARGV @ +
+  SWAP ARGV @ CSTRLEN SWAP - 1-
+  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
+  ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR
+  0 LAST-STATUS ! ;
+
 CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
 VARIABLE ARGC-SHIFT
 
@@ -1113,6 +1353,11 @@ VARIABLE WHILE-BODY-CUR
   \ defined).
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
+  ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
+    ARGV @ ASSIGNMENT-EQPOS
+    DUP -1 <> IF DO-ASSIGN EXIT THEN
+    DROP
+  THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN

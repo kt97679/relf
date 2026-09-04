@@ -235,7 +235,10 @@ the full account and the fixes applied.
    history of how this number was arrived at — it moved around twice
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
-   because `shell.4` itself changed).
+   because `shell.4` itself changed; it hasn't moved again since,
+   including after Iteration 17's phase B work — expected, since no
+   single vendored test file passes purely from variable assignment
+   alone).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -297,13 +300,17 @@ the full account and the fixes applied.
      `bash testcase`), no more asymmetry.
    - **Phase B — foundational semantics needed almost everywhere.**
      Shell-local (non-exported) variable assignment as a standalone
-     statement (`VAR=value`, no `export` needed) — currently `shell.4`
-     has *no* assignment statement outside `export` at all, and
-     mrsh's tests assign bare variables constantly; this likely needs
-     a real shell-parameter table distinct from the OS environment
-     (POSIX distinguishes the two — an unexported assignment
-     shouldn't leak into a child's environment), not just a new case
-     in `DISPATCH`. Multiple commands per line via `;`. `&&`/`||`.
+     statement: **done (Iteration 17)** — `VAR=value` (the whole
+     line) sets a real shell-parameter table distinct from the OS
+     environment, expanding via `$VAR`/`${VAR}` without being
+     inherited by a child process; `export`/`unset` both updated to
+     interact with it correctly (bare `export NAME` now exports an
+     existing shell-local value; `unset` removes both copies). Still
+     open: `NAME=value command args...` (POSIX's temporary,
+     per-command assignment prefix — a real, acknowledged gap, not
+     silently mishandled: it currently falls through to being looked
+     up as a literal, failing command name, since `ARGC` isn't 1 in
+     that shape). Multiple commands per line via `;`. `&&`/`||`.
      Command grouping (`(...)` subshells, `{ ...; }` brace groups).
      Nesting support for `if`/`while` (removing the "no nesting"
      limitation from Iteration 11 — likely needs a real

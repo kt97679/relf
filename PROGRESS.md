@@ -2182,3 +2182,99 @@ files now, all passing on both x86-64 and i386.
 **Phase A is now complete.** Phase B (foundational semantics -
 shell-local variable assignment without `export`, `;`, `&&`/`||`,
 command grouping, if/while nesting) is next.
+
+## Iteration 17: goal 8, phase B - shell-local variable assignment
+
+Goal: the first, most foundational item on phase B's list - a
+standalone `NAME=value` line sets a POSIX "shell parameter" distinct
+from the OS environment, expanding via `$NAME`/`${NAME}` without being
+inherited by a child process (unlike `export NAME=value`). `shell.4`
+previously had no assignment mechanism at all outside `export`.
+
+### Design
+
+A simple linear table (`SHVAR-NAMES`/`SHVAR-VALUES`, name/value pairs
+copied into fixed-size slots, not just pointers - `ARGV` entries point
+into `LINE-BUF`, overwritten on the next line) - matches how this
+shell already avoids hashing/dynamic structures everywhere else.
+`$VAR`/`${VAR}` expansion (`EXPAND-VAR`) now goes through a new
+`LOOKUP-VAR`, which checks the shell-local table first, falling back
+to `GETENV` for anything this shell never itself assigned but
+inherited from its own environment (e.g. `$HOME`). `DO-EXPORT` now
+also calls `SET-SHVAR` (so `export NAME=value` sets both), and a bare
+`export NAME` (no `=`) exports an existing shell-local value if there
+is one. `DO-UNSET` now also calls a new `REMOVE-SHVAR`. Detecting a
+standalone assignment: `ASSIGNMENT-EQPOS` scans `ARGV[0]` for a `=`
+preceded by a valid, non-empty POSIX name (first character not a
+digit, `NAME-CHAR?` throughout - already existed, reused directly),
+wired into `RUN-TOKENIZED` ahead of the normal pipe/redirect/dispatch
+path, but only when `ARGC = 1` and `ARGV[0]` is unquoted (a quoted
+`"FOO=bar"` alone stays a literal command name, same `ARGV-QUOTED`
+reasoning already applied to operators and builtin names elsewhere).
+
+**Deliberately out of scope for now**: `NAME=value command args...`
+(POSIX's *temporary*, per-command assignment prefix) - `ARGC` isn't 1
+in that shape, so it currently falls through to being looked up as a
+literal (and failing) command name. A real, acknowledged gap, not
+silently mishandled.
+
+### Bugs found along the way - several by testing directly, not by inspection
+
+**A real logic bug in `SET-SHVAR`**: the first version didn't capture
+`name-addr`/`value-addr` into variables before running the
+`FIND-SHVAR`/`SHVAR-COUNT` bookkeeping logic underneath them on the
+stack, so by the time `SAFE-CSTR-COPY` finally ran, the wrong address
+was buried at the wrong stack depth - the name slot ended up holding
+the *value* and vice versa. Found by testing directly (checking the
+raw slot contents after a `SET-SHVAR` call showed them swapped), not
+by re-reading the code - re-reading it had looked fine. Fixed by
+capturing both arguments into variables immediately, before any other
+stack operations, matching this shell's own established preference
+for explicit variables over stack-juggling.
+
+**Two more nonexistent-word mistakes**, the same class as `>=` earlier
+in this project (Iteration 15's `HAS-SLASH?` fix) and `NIP` here too -
+this minimal kernel doesn't have `0<>`, `>=`, or `NIP`; fixed to
+`0 <>`, an explicit `< 0=`, and `SWAP DROP` respectively. All three
+were caught immediately by `shell.4` simply failing to load
+("Undefined word ..."), not by silent misbehavior.
+
+**A process mistake, not a code bug, repeated from Iteration 13**:
+testing `GET-SHVAR`'s result with `IF ... ELSE ... THEN` typed
+directly at `relf`'s own interactive stdin (rather than inside a
+`:...;` definition loaded via `INCLUDED`) silently corrupts this
+kernel's dictionary, and looked exactly like a real crash in
+`GET-SHVAR` at first - the same pitfall documented back in Iteration
+13, hit again here before being recognized. `GET-SHVAR` itself turned
+out to be correct on the first attempt; the diagnosis just needed
+redoing properly (a small standalone word, loaded via `INCLUDED`).
+
+**Two integration steps that were designed and written up in this
+session's own planning but never actually applied to the file**: the
+`RUN-TOKENIZED` wiring for `ASSIGNMENT-EQPOS`/`DO-ASSIGN`, and the
+`DO-EXPORT`/`DO-UNSET` shell-local integration, were both fully
+designed (with careful hand-traces) but the actual edits were never
+made before testing began - end-to-end tests correctly showed the
+feature doing nothing at all (`$FOO` stayed empty after `FOO=bar`)
+until this was noticed and the edits actually applied. Worth
+remembering: designing and hand-verifying a change is not the same as
+having made it - test the actual file, not the plan for the file.
+
+### Verified end-to-end via `relfsh`
+
+`FOO=bar` then `echo $FOO` → `bar`; re-assignment (`FOO=bar` then
+`FOO=baz`) updates the value; multiple shell-local variables coexist;
+a plain `FOO=bar` is confirmed **not** inherited by a real child
+process (`/usr/bin/env` doesn't list it) while `export FOO=bar` is;
+bare `export FOO` exports an already-set shell-local value; `unset`
+removes the shell-local copy as well as the environment one; a quoted
+`'FOO=bar'` alone is treated as a (failing, 127) literal command, not
+an assignment; a successful assignment sets `$?` to 0. Confirmed on
+both x86-64 and i386.
+
+`tests/shell/run-assign` (8 assertions) locks all of this in - 75
+assertions across 15 files now, all passing on both architectures.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped for
+now - expected, since no single vendored test file passes purely from
+variable assignment alone; the pass count moves once enough of phase
+B/C accumulates.

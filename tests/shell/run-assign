@@ -1,0 +1,48 @@
+#!/bin/sh
+# run-assign - standalone "NAME=value" assignment (the whole line,
+# no command following) sets a shell-local variable: it expands via
+# $NAME/${NAME} but, unlike `export NAME=value`, is never inherited
+# by a child process. A quoted "NAME=value" is a literal argument,
+# not an assignment - same reasoning ARGV-QUOTED already applies to
+# operators and builtin names elsewhere in this shell.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'FOO=bar123\necho $FOO\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "standalone assignment expands via \$VAR" "bar123" "$out"
+
+out=$(printf 'FOO=bar123\nFOO=baz456\necho $FOO\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "re-assignment updates the value" "baz456" "$out"
+
+out=$(printf 'A=1\nB=2\nC=3\necho $A$B$C\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "multiple shell-local variables coexist" "123" "$out"
+
+out=$(printf 'FOO=bar123\n/usr/bin/env\nexit\n' | "$THIS_SH" 2>&1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "^FOO="; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: an unexported shell-local variable is not inherited by a child"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+out=$(printf 'FOO=bar123\nexport FOO\n/usr/bin/env\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "bare 'export NAME' exports an existing shell-local variable" "FOO=bar123" "$out"
+
+out=$(printf 'FOO=bar123\necho \$FOO\nunset FOO\necho \$FOO\nexit\n' | "$THIS_SH" 2>&1)
+last_echo=$(echo "$out" | tail -1 | tr -d '\r')
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ -n "$last_echo" ] && echo "$last_echo" | grep -q "bar123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: unset also removes the shell-local copy, not just the environment one"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+"$THIS_SH" -c "'FOO=bar123'" < /dev/null > /dev/null 2>&1
+assert_status "a quoted 'NAME=value' alone is a literal command, not an assignment" 127 "$?"
+
+"$THIS_SH" -c "FOO=bar123" < /dev/null > /dev/null 2>&1
+assert_status "a successful standalone assignment exits 0" 0 "$?"
+
+report

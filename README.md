@@ -153,13 +153,18 @@ external commands, arguments can be quoted (single quotes are fully
 literal; double quotes recognize \" and \\ as escapes; a lone
 backslash escapes the next character) so they can contain spaces or
 literal shell metacharacters - echo 'a | b' prints "a | b" rather than
-starting a pipeline - $VAR/${VAR} expand to the named environment
-variable's value (there's no separate "shell variable" concept -
-export already just calls SETENV, and unset calls UNSETENV), with $?
-for the last command's exit status and $$ for this shell's own PID,
-$(command) runs an external command with its stdout captured (all
-trailing newlines stripped, matching POSIX; internal newlines are
-kept) and spliced into the surrounding token - echo pre_$(echo mid)_$X
+starting a pipeline - a standalone "NAME=value" line (the whole line,
+not "NAME=value command args..." yet - a real, documented gap) sets a
+shell-local variable, distinct from the OS environment (POSIX's
+"shell parameter" vs "environment variable" - an unexported one isn't
+inherited by a child process, only export NAME=value calls SETENV as
+well), and $VAR/${VAR} expansion checks shell-local storage first,
+falling back to the inherited environment for anything this shell
+never itself assigned, with $? for the last command's exit status and
+$$ for this shell's own PID, $(command) runs an external command with
+its stdout captured (all trailing newlines stripped, matching POSIX;
+internal newlines are kept) and spliced into the surrounding token -
+echo pre_$(echo mid)_$X
 concatenates with both literal text and $VAR expansion the same way
 ${VAR}suffix already does, single-quoted $(...) stays fully literal
 while double-quoted $(...) still substitutes, but the substituted
@@ -187,7 +192,7 @@ status argument, defaulting to the previous command's own status
 ($?) rather than always 0 when none is given. See GOALS.md phase 7
 (and goal 8, a separate, much larger effort to close the gap against
 a more complete reference shell) and PROGRESS.md's Iteration 5
-through 16 entries for the current state and what's planned next.
+through 17 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -197,8 +202,8 @@ Separately, GOALS.md's goal 8 adopts mrsh
 unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
-crash-free, phase A done - see PROGRESS.md's Iteration 14 through 16
-entries).
+crash-free, phase A done and phase B underway - see PROGRESS.md's
+Iteration 14 through 17 entries).
 
 5. Possible usage.
 
