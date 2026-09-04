@@ -142,41 +142,43 @@ falls through to the ordinary interactive SH loop; calling SH directly
 skips that check and always goes interactive.)
 
 This loads thirteen new process-control primitives' worth of shell
-logic (FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/SYS-EXIT/CHDIR/
-GETCWD/SYS-ARGC/SYS-ARG/GETPID are already compiled into kernel.img
-itself, same as any other primitive). Current (v0.6) scope: external
-commands are resolved via $PATH and run via fork/exec/wait,
-cd/pwd/export/exit are supported as builtins, a single pipe per line
-(cmd1 | cmd2) wires two external commands together via a real pipe,
-redirection (<, >, >>) is supported for external commands, arguments
-can be quoted (single quotes are fully literal; double quotes
-recognize \" and \\ as escapes; a lone backslash escapes the next
-character) so they can contain spaces or literal shell metacharacters
-- echo 'a | b' prints "a | b" rather than starting a pipeline -
-$VAR/${VAR} expand to the named environment variable's value (there's
-no separate "shell variable" concept - export already just calls
-SETENV), with $? for the last command's exit status and $$ for this
-shell's own PID, if/then/else/fi is supported (the condition is a
-normal command, run for its exit status), and so is while/do/done -
-the condition and body are both genuinely re-evaluated fresh every
-iteration (including fresh $VAR/$?/$$ re-expansion, not frozen from
-the loop's first reading - "while test $? -eq 0" behaves the way
-you'd expect, updating each time around). Neither control structure
-supports nesting yet, and there's no for/until. An expansion result,
-or a quoted token, is treated the same way: never re-split on
-whitespace and never re-interpreted as an operator/builtin/keyword, so
-e.g. a variable holding | stays a literal argument and echo 'if'
-prints "if" rather than starting a conditional. `-c` only ever runs a
-single command (no ";"/"&&" chaining, and no if/while either, which
-need multiple lines), pipes and redirection can't be combined on the
-same line yet, only a single pipe per line is recognized (no
-a | b | c), and there's no ${VAR:-default}-style modifier, positional
-parameters, or command substitution. See GOALS.md phase 7 and
-PROGRESS.md's Iteration 5 through 11 entries for the current state and
-what's planned next. tests/shell/ has a small test suite
-(structurally modeled on bash's own tests/ directory) exercising all
-of the above; run it directly via `tests/shell/run-all`, or as part of
-`tests/run_tests.sh`.
+logic (FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/UNSETENV/SYS-EXIT/
+CHDIR/GETCWD/SYS-ARGC/SYS-ARG/GETPID are already compiled into
+kernel.img itself, same as any other primitive). Current (v0.7)
+scope: external commands are resolved via $PATH and run via
+fork/exec/wait, cd/pwd/export/unset/exit are supported as builtins, a
+single pipe per line (cmd1 | cmd2) wires two external commands
+together via a real pipe, redirection (<, >, >>) is supported for
+external commands, arguments can be quoted (single quotes are fully
+literal; double quotes recognize \" and \\ as escapes; a lone
+backslash escapes the next character) so they can contain spaces or
+literal shell metacharacters - echo 'a | b' prints "a | b" rather than
+starting a pipeline - $VAR/${VAR} expand to the named environment
+variable's value (there's no separate "shell variable" concept -
+export already just calls SETENV, and unset calls UNSETENV), with $?
+for the last command's exit status and $$ for this shell's own PID,
+if/then/else/fi is supported (the condition is a normal command, run
+for its exit status), and so is while/do/done - the condition and
+body are both genuinely re-evaluated fresh every iteration (including
+fresh $VAR/$?/$$ re-expansion, not frozen from the loop's first
+reading - "while test $? -eq 0" behaves the way you'd expect, updating
+each time around). Neither control structure supports nesting yet,
+and there's no for/until. An expansion result, or a quoted token, is
+treated the same way: never re-split on whitespace and never
+re-interpreted as an operator/builtin/keyword, so e.g. a variable
+holding | stays a literal argument and echo 'if' prints "if" rather
+than starting a conditional. `-c` only ever runs a single command (no
+";"/"&&" chaining, and no if/while either, which need multiple lines),
+pipes and redirection can't be combined on the same line yet, only a
+single pipe per line is recognized (no a | b | c), and there's no
+${VAR:-default}-style modifier, positional parameters, or command
+substitution (a substantial attempt at $(...) is in progress but not
+yet working - see PROGRESS.md's Iteration 12 entry). See GOALS.md
+phase 7 and PROGRESS.md's Iteration 5 through 12 entries for the
+current state and what's planned next. tests/shell/ has a small test
+suite (structurally modeled on bash's own tests/ directory) exercising
+all of the above; run it directly via `tests/shell/run-all`, or as
+part of `tests/run_tests.sh`.
 
 5. Possible usage.
 

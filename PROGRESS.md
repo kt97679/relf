@@ -1644,3 +1644,41 @@ No engine changes this iteration; purely `shell.4`-level.
   session's accidental buffer overflows caused). Fine for any
   realistic interactive use so far, but a dropped line means that
   iteration's body silently runs incomplete, with no error reported.
+
+## Iteration 12: unset
+
+Goal: the smaller, straightforward half of "extended environment
+variable support" requested to follow up on Iteration 11's shell
+work - discussed and offered at the end of that session, since
+`export` had no way to reverse itself.
+
+### `UNSETENV` primitive + `DO-UNSET` builtin
+
+A single, trivial engine primitive (`UNSETENV ( c-addr --- ior )`,
+wrapping `unsetenv()` directly - no string-length handling needed at
+all, matching how simple `GETPID` was), added and verified with the
+same established rebootstrap-and-regression-check workflow as every
+primitive before it. `DO-UNSET` in `shell.4` follows the exact shape
+of `DO-CD`/`DO-EXPORT`: checks for an argument, calls `UNSETENV`, sets
+`LAST-STATUS` from the result. Wired into `DISPATCH` alongside the
+other builtins. Verified directly: export a variable, confirm it
+expands, `unset` it, confirm the expansion is now empty and a
+subsequently-run external `env` no longer lists it in its inherited
+environment either. Unsetting a name that was never set is not
+treated as an error, matching real shells.
+
+`tests/shell/run-unset` (4 assertions) locks this in - 49 assertions
+across 12 files now, all passing on both x86-64 and i386.
+
+### A process note, not a design note
+
+This iteration was extracted from a single working session that also
+produced a substantial, not-yet-working attempt at `$(...)` command
+substitution. Rather than commit both together (mixing solid,
+verified work with a known, unresolved segfault), the command-
+substitution code was cleanly separated back out of `shell.4` before
+this commit - `unset` is complete and independently valuable on its
+own, and doesn't need to wait on the harder problem. The command-
+substitution work is preserved separately and picked back up as its
+own, later effort - see the next section of this file once that's
+resolved, or the commit history if it isn't yet.

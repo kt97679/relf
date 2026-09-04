@@ -520,11 +520,24 @@ VARIABLE PATH-END2
   THEN
   0 LAST-STATUS ! ;
 
+: DO-UNSET ( --- )
+  \ unset NAME - removes an exported environment variable. Silently
+  \ does nothing if given no argument or a name that was never set
+  \ (matching real shells: unsetting an already-unset name isn't an
+  \ error).
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ UNSETENV
+    IF 1 ELSE 0 THEN LAST-STATUS !
+  ELSE
+    0 LAST-STATUS !
+  THEN ;
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
     S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
     S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
     S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
+    S" unset"  ARGV @ STR0= IF DO-UNSET -1 EXIT THEN
     S" exit"   ARGV @ STR0= IF 0 SYS-EXIT THEN
   THEN
   0 ;

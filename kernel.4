@@ -644,6 +644,7 @@ PRIMITIVE GETCWD    ( addr max-len --- len ior )
 PRIMITIVE SYS-ARGC  ( --- n )
 PRIMITIVE SYS-ARG   ( n --- c-addr )
 PRIMITIVE GETPID    ( --- pid )
+PRIMITIVE UNSETENV  ( c-addr --- ior )
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.
