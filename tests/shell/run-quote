@@ -4,7 +4,11 @@
 # any quotes. Also checks that a quoted token matching an operator or
 # builtin name (e.g. '<', '|', 'cd') is treated as a literal argument,
 # not the special syntax it happens to spell out - this is the whole
-# reason ARGV-QUOTED exists (see shell.4).
+# reason ARGV-QUOTED exists (see shell.4). The final few assertions
+# adapt the subset of mrsh's (https://github.com/emersion/mrsh)
+# test/conformance/2.2-quoted-characters.sh that overlaps with what
+# shell.4 actually implements - see the comment there for why the
+# rest of that test isn't reusable as-is.
 cd "$(dirname "$0")" || exit 1
 . ./lib.sh
 
@@ -25,5 +29,25 @@ assert_output_contains "quoted | is a literal argument, not a pipe" "a | b" "$ou
 
 "$THIS_SH" -c "'cd' /tmp" < /dev/null > /dev/null 2>&1
 assert_status "quoted 'cd' is not treated as the builtin" 127 "$?"
+
+# The following few assertions adapt the overlapping subset of mrsh's
+# (https://github.com/emersion/mrsh) POSIX conformance test
+# test/conformance/2.2-quoted-characters.sh - most of that test
+# exercises features shell.4 doesn't have at all (arithmetic
+# expansion, nested $(...), backquote substitution, and double-quote
+# escape sequences beyond \" and \\), so it isn't reusable wholesale;
+# these are the specific lines that only rely on quoting/escaping
+# behavior shell.4 actually implements, rewritten as assertions using
+# printf (an external command) as mrsh's own test does, rather than
+# the echo builtin.
+
+out=$("$THIS_SH" -c 'printf "%s\n" \|\&\;\<\>\(\)\$' < /dev/null 2>&1)
+assert_output_contains "backslash-escaping a run of shell metacharacters outside quotes" "|&;<>()\$" "$out"
+
+out=$("$THIS_SH" -c 'printf "%s\n" '"'"'|&;<>()$`\\"'"'"'' < /dev/null 2>&1)
+assert_output_contains "single quotes keep metacharacters, \$, backquote, and backslash literal" '|&;<>()$`\' "$out"
+
+out=$("$THIS_SH" -c 'printf "%s\n" "|&;<>()'"'"'\""' < /dev/null 2>&1)
+assert_output_contains "double quotes keep a literal single quote and an escaped double quote" '|&;<>()'"'"'"' "$out"
 
 report

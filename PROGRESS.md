@@ -1825,3 +1825,57 @@ subshell instead. Against that earlier session's bare fork+exec figure
 bash), the pipe-creation/read-loop/splice machinery `$(...)` adds on
 top costs roughly **+165μs/op** for relfsh.
 
+
+## Assessment: reusing mrsh's test suite
+
+Investigated https://github.com/emersion/mrsh (a minimal but far more
+complete POSIX shell than `shell.4`) to see whether its test suite
+could be reused directly.
+
+**Not reusable wholesale.** Every one of mrsh's top-level `test/*.sh`
+files (`case.sh`, `for.sh`, `function.sh`, `loop.sh`, `subshell.sh`,
+`word.sh`, `async.sh`, `read.sh`, `readonly.sh`, `return.sh`, etc.)
+depends on features `shell.4` doesn't have at all: `case`, `for`,
+shell functions, subshells (`(...)`) and brace groups, background jobs
+(`&`/`wait`/`$!`), `break`/`continue`, the `[ ]` test builtin,
+arithmetic expansion (`$((...))`), tilde expansion, `IFS`-based field
+splitting, positional parameters (`$@`/`$*`/`$#`/`set`), parameter-
+expansion modifiers (`${VAR:-default}` etc.), backquote command
+substitution, and multi-line/nested `$(...)`. mrsh's own test harness
+also runs each script as a file argument and differential-tests it
+against a reference shell (`"$MRSH" "$testcase"` vs `"$REF_SH"
+"$testcase"`) rather than piping a script to stdin the way this
+project's own harness does - a structural mismatch on top of the
+feature-scope one.
+
+The `test/conformance/` subdirectory is a better structural fit (one
+file per POSIX spec section, `.stdout` files for exact-diff comparison,
+`.fail.sh`/`.undefined.sh` naming for known-failing or
+spec-undefined-behavior cases) but has only one test registered as
+passing (`2.2-quoted-characters.sh`) plus a handful of `.fail`/
+`.undefined` ones testing alias-expansion and backquote-nesting edge
+cases that don't apply here (`shell.4` has neither aliases nor
+backquotes). Even that one passing file mixes arithmetic expansion,
+recursive `$(echo $(...))`, and backquote substitution in with the
+parts that do overlap.
+
+**What genuinely transferred**: the subset of
+`2.2-quoted-characters.sh` that only exercises quoting/escaping
+behavior `shell.4` actually implements - outside-quote backslash-
+escaping of a run of shell metacharacters, single quotes keeping `$`,
+backquote, and backslash literal, and double quotes keeping a literal
+single quote alongside an escaped double quote. Verified directly
+against `relfsh` before adapting (each of the three isolated lines
+produces the expected output), then folded into `tests/shell/run-quote`
+as three new assertions using `printf` as an external command (mrsh's
+own approach, rather than the `echo` builtin), with a comment crediting
+mrsh and explaining why the rest of that test doesn't transfer.
+`run-quote` is now 9 assertions (up from 6) - 59 assertions across 13
+files total, all still passing on both x86-64 and i386.
+
+The honest summary: mrsh targets a much more complete shell than
+`shell.4` currently is, so its test suite mostly tests things that
+don't exist here yet rather than things that are broken. That's a
+reasonable roadmap of what a next round of features could look like
+(functions, `case`, `for`, arithmetic, positional parameters, IFS
+splitting) more than it is a source of tests to reuse today.
