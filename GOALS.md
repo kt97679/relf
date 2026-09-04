@@ -222,6 +222,100 @@ the full account and the fixes applied.
    once quoting and variable expansion — the next natural gaps — are
    addressed.
 
+8. **Goal: pass the whole mrsh test suite.** mrsh
+   (https://github.com/emersion/mrsh) is a minimal but far more
+   complete POSIX shell than `shell.4` currently is; its test suite
+   (vendored unmodified into `tests/mrsh-suite/vendor/` at commit
+   `4c81598721bc5eeb28f9faa818b3102d0471b7f6` — see that directory's
+   own `README.md`) is adopted here as a concrete, external,
+   trackable target rather than one this project invents its own
+   criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
+   today and reports an honest baseline: **1 passed, 20 failed, 3
+   skipped** (see `PROGRESS.md`'s Iteration 14 entry for the full
+   run). That one pass is hollow, not a real conformance win — it's
+   `2.2.3-alias-expansion.fail.sh`, which only "passes" because
+   `shell.4` has no `alias` at all, so PATH search fails outright
+   (exit 127) before the test's actual question (whether alias
+   expansion incorrectly applies when finding `$(...)`'s closing
+   paren) is ever reached.
+
+   Four of the twenty failures are **segfaults**, not "wrong output"
+   — `async.sh` (background jobs, `&`), `function.sh` (shell
+   functions), `pipeline.sh` (subshells/brace groups inside a
+   pipeline), and `read.sh` (the `read` builtin, possibly combined
+   with `while` reading from a piped stdin) all crash `relfsh`
+   outright rather than failing cleanly. Making unsupported syntax
+   fail cleanly (a parse error or "command not found", not a crash)
+   is worth treating as an early priority independent of implementing
+   the underlying features, since a crash on unrecognized input is a
+   correctness bug regardless of how minimal the shell's scope is.
+
+   The full feature gap, roughly ordered by dependency (each phase
+   below is expected to be its own multi-iteration effort, comparable
+   in scope to phases 5 or 6 above — this is a large goal, not a
+   quick one):
+
+   - **Phase A — infrastructure to run the suite at all.**
+     Script-file invocation (`relfsh script.sh`, not just `-c`,
+     interactive, and piped stdin — `tests/mrsh-suite/run.sh` works
+     around this today by piping each vendored script into `relfsh`'s
+     stdin instead, noted as a known, temporary asymmetry in that
+     script's own comments). Crash-hardening for the four segfaults
+     above, so unsupported syntax fails cleanly instead.
+   - **Phase B — foundational semantics needed almost everywhere.**
+     Shell-local (non-exported) variable assignment as a standalone
+     statement (`VAR=value`, no `export` needed) — currently `shell.4`
+     has *no* assignment statement outside `export` at all, and
+     mrsh's tests assign bare variables constantly; this likely needs
+     a real shell-parameter table distinct from the OS environment
+     (POSIX distinguishes the two — an unexported assignment
+     shouldn't leak into a child's environment), not just a new case
+     in `DISPATCH`. Multiple commands per line via `;`. `&&`/`||`.
+     Command grouping (`(...)` subshells, `{ ...; }` brace groups).
+     Nesting support for `if`/`while` (removing the "no nesting"
+     limitation from Iteration 11 — likely needs a real
+     stack/recursion-based redesign rather than the current shared
+     globals, which is exactly why nesting was deferred in the first
+     place).
+   - **Phase C — control structures.** `for`/`in`/`do`/`done`.
+     `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
+     `|` alternation. Shell functions (definition, invocation,
+     redefinition, recursion) and `return`. `break`/`continue`.
+   - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
+     `$*`, `$#`, `set`). Parameter-expansion modifiers
+     (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
+     `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`).
+     Arithmetic expansion (`$((...))` — a real expression grammar:
+     precedence, associativity, comparison/bitwise/logical operators,
+     assignment forms). Tilde expansion. `IFS`-based field splitting
+     of unquoted expansion results (an explicit non-goal up through
+     Iteration 13 — revisited here since mrsh's tests depend on it).
+   - **Phase E — command substitution completeness.** Nested
+     `$(...)`. Backquote `` `...` `` substitution. A `$(...)` body
+     that supports the full command grammar (pipelines, quoting,
+     expansion) rather than today's bare whitespace-split
+     `CMDSUB-TOKENIZE` — likely requires the "save outer tokenizer
+     state, run the inner command through the real `TOKENIZE`, restore
+     outer state" approach considered and set aside as too complex
+     during Iteration 13, now worth revisiting given the payoff.
+   - **Phase F — builtins.** `[`/`test` (string and numeric
+     comparisons, file tests). `:` (no-op). `read`. `readonly`.
+     `shift`. `getopts`. `command`. Background jobs, `wait`, `$!`.
+     `alias`/`unalias`. `ulimit`. Possibly `trap`, `exec`, `hash`,
+     `type` if a test ends up needing them.
+   - **Phase G — remaining conformance edge cases.** The
+     `2.2.2-nested-single-quotes.fail.sh` case (currently a real,
+     un-hollow failure: `shell.4` should reject unterminated/invalid
+     single-quote nesting rather than silently accepting it) and
+     re-checking `2.2.3-alias-expansion.fail.sh` once `alias` actually
+     exists, so that pass stops being hollow.
+
+   `tests/mrsh-suite/run.sh` is the acceptance criterion for this
+   goal — re-run it after each phase (or each iteration within a
+   phase) and let the pass count go up honestly, the same way
+   `tests/run_tests.sh` and `tests/shell/run-all` already track
+   progress elsewhere in this project.
+
 ## Non-goals (at least for now — revisit if this changes)
 
 - Full ANS/Forth-2012 compliance (see test suite strategy above).

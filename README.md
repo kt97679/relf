@@ -187,6 +187,13 @@ modeled on bash's own tests/ directory) exercising all of the above;
 run it directly via `tests/shell/run-all`, or as part of
 `tests/run_tests.sh`.
 
+Separately, GOALS.md's goal 8 adopts mrsh
+(https://github.com/emersion/mrsh)'s own test suite - vendored
+unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
+target for how much further shell.4 has to go; run it via
+`tests/mrsh-suite/run.sh` (current baseline: 1 passed, 20 failed, 3
+skipped - see PROGRESS.md's Iteration 14 entry).
+
 5. Possible usage.
 
 The main advantages of this system is small size of both machine-dependent

@@ -1879,3 +1879,102 @@ don't exist here yet rather than things that are broken. That's a
 reasonable roadmap of what a next round of features could look like
 (functions, `case`, `for`, arithmetic, positional parameters, IFS
 splitting) more than it is a source of tests to reuse today.
+
+## Iteration 14: adopt mrsh's test suite as goal 8, establish baseline
+
+Goal: turn last session's assessment ("mrsh's tests aren't reusable
+wholesale") into a formal, trackable goal - vendor mrsh's actual test
+files unmodified, build a harness that runs them against `relfsh`,
+and record an honest baseline to work against in future iterations.
+See `GOALS.md`'s goal 8 for the full phased roadmap this produced.
+
+### What got built
+
+`tests/mrsh-suite/vendor/` - mrsh's `test/*.sh` and
+`test/conformance/*.sh`/`*.stdout` files, copied verbatim at commit
+`4c81598721bc5eeb28f9faa818b3102d0471b7f6` (2024-03-10), plus mrsh's
+own MIT `LICENSE` (included per its terms) and a `README.md`
+explaining provenance and - importantly - that these files must not
+be hand-edited to make them pass. mrsh's own `harness.sh`/
+`meson.build` files (its build/test-running tooling, not test
+content) were deliberately not vendored.
+
+`tests/mrsh-suite/run.sh` - a new harness adapted from mrsh's own two
+harnesses (`test/harness.sh` and `test/conformance/harness.sh`),
+categorized the same way mrsh's own `meson.build` categorizes them:
+
+- **Differential tests** (all of `vendor/*.sh`): run the same script
+  through `relfsh` and through `bash` (as the reference shell),
+  PASS only if stdout and exit status both match - stderr is
+  intentionally ignored, matching mrsh's own harness.
+- **Conformance fixed-output test** (`2.2-quoted-characters.sh`):
+  compared against its own vendored `.stdout` file, PASS requires
+  exit status 0 and matching output.
+- **Conformance expected-failure tests** (`*.fail.sh`): PASS means
+  `relfsh`'s own exit status is nonzero - i.e. it correctly rejects
+  invalid input, matching what mrsh's `meson.build` marks
+  `should_fail: true`.
+- **Conformance undefined-behavior tests** (`*.undefined.sh`): not
+  scored at all - POSIX doesn't specify a required result for these,
+  matching mrsh's own gated (`test-undefined-behavior` option)
+  treatment.
+
+`relfsh` has no file-argument invocation yet (only `-c`, interactive,
+and piped stdin), so each vendored script is fed to it via
+`< testcase` rather than `relfsh testcase`; `bash` is invoked the
+standard way (`bash testcase`). Noted in the harness's own comments as
+a known, temporary asymmetry - functionally equivalent for every
+vendored test here (none inspect `$0` or script arguments in ways
+that would affect output comparison), but real file-argument support
+is itself goal 8's first roadmap item.
+
+### The baseline
+
+```
+1 passed, 20 failed, 3 skipped (not scored)
+```
+
+The one pass (`2.2.3-alias-expansion.fail.sh`) is hollow - it only
+"passes" because `shell.4` has no `alias` at all, so PATH search
+fails outright (exit 127) before the test's actual question (whether
+alias expansion incorrectly applies when finding `$(...)`'s closing
+paren) is ever reached. Recorded as a real result of the scoring
+criteria, not hidden, but not claimed as a genuine conformance win
+either.
+
+**Four of the twenty failures are segfaults, not wrong output**:
+`async.sh` (background jobs, `&`), `function.sh` (shell functions),
+`pipeline.sh` (subshells/brace groups inside a pipeline), and
+`read.sh` (the `read` builtin, likely combined with `while` reading
+piped stdin) all crash `relfsh` outright. This is worth treating as
+an early, independent priority (phase A in goal 8) - a shell should
+fail cleanly on syntax it doesn't support, regardless of how minimal
+its scope is; a crash is a correctness bug on its own, separate from
+whichever feature is actually missing.
+
+### The roadmap
+
+Broken into seven phases (A through G) in `GOALS.md`'s goal 8 entry,
+roughly ordered by dependency: infrastructure to run the suite at all
+and crash-hardening (A); foundational semantics needed almost
+everywhere, most importantly shell-local (non-exported) variable
+assignment as a standalone statement, which `shell.4` currently has
+*no* mechanism for at all outside `export` (B); control structures -
+`for`, `case`, functions, `break`/`continue` (C); expansions -
+positional parameters, parameter-expansion modifiers, arithmetic,
+tilde, `IFS` field splitting (D); command substitution completeness -
+nesting, backquotes, and a `$(...)` body that runs the real tokenizer
+instead of today's bare whitespace-split (E, revisiting the
+"save/restore outer tokenizer state" approach set aside as too
+complex during Iteration 13); remaining builtins - `[`/`test`, `read`,
+`readonly`, `getopts`, background jobs, `alias`, `ulimit`, etc. (F);
+and the remaining conformance edge cases (G). Each phase is expected
+to be its own multi-iteration effort, comparable in scope to phases 5
+or 6 of this project's own engine work - this is a large goal, set
+deliberately rather than attempted in one pass.
+
+`tests/mrsh-suite/run.sh` is the acceptance criterion going forward -
+re-run it after each future phase/iteration and let the pass count
+climb honestly, the same way `tests/run_tests.sh` and
+`tests/shell/run-all` already track progress elsewhere in this
+project.
