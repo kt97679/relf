@@ -194,13 +194,19 @@ static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
  *  virtual machine I/O primitives' shared state
  */
 
-static const int open_flags[6] = {
-    O_WRONLY | O_CREAT | O_TRUNC, /* w  */
-    O_WRONLY | O_CREAT | O_TRUNC, /* wb : same, no text/binary distinction */
-    O_RDONLY,                     /* r  */
-    O_RDONLY,                     /* rb */
-    O_RDWR,                       /* r+ */
-    O_RDWR                        /* r+b */
+static const int open_flags[8] = {
+    O_WRONLY | O_CREAT | O_TRUNC,  /* w  */
+    O_WRONLY | O_CREAT | O_TRUNC,  /* wb : same, no text/binary distinction */
+    O_RDONLY,                      /* r  */
+    O_RDONLY,                      /* rb */
+    O_RDWR,                        /* r+ */
+    O_RDWR,                        /* r+b */
+    O_WRONLY | O_CREAT | O_APPEND, /* a  - added for shell.4's ">>" (see
+                                       PROGRESS.md, Iteration 7): none of
+                                       the original six modes create a
+                                       missing file *without* truncating
+                                       it, which append redirection needs */
+    O_WRONLY | O_CREAT | O_APPEND  /* ab : same */
 };
 
 /*

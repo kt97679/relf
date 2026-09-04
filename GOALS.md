@@ -181,23 +181,26 @@ the full account and the fixes applied.
    `SETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`/`SYS-ARGC`/`SYS-ARG`) plus
    `shell.4`, a shell built on top of them, plus `relfsh` (a
    single-executable wrapper) and a real, scoped test suite in
-   `tests/shell/`. **v0.1 done**: external command execution via PATH
-   search, `cd`/`pwd`/`export`/`exit` builtins, and a `-c` invocation
-   mode (`relfsh -c 'command'`, matching `sh -c '...'`) — all verified
+   `tests/shell/`. **v0.2 done**: external command execution via PATH
+   search, `cd`/`pwd`/`export`/`exit` builtins, a `-c` invocation mode
+   (`relfsh -c 'command'`, matching `sh -c '...'`), a single pipe per
+   line (`cmd1 | cmd2`), and redirection (`<`/`>`/`>>`) — all verified
    end-to-end on x86-64 and i386, with an automated test suite
-   (structurally inspired by bash's own `tests/`) now checking this on
-   every run. See `PROGRESS.md`'s Iteration 5 and 6 entries for the
-   full account, including several real bugs found getting there — one
-   caught directly by the new test suite on its first run. Pipes,
-   redirection, quoting, variable expansion, and control structures are
-   explicitly **not yet done** — see those entries' "what this
-   iteration deliberately did NOT do". This phase is the first concrete
-   step toward the "busybox-on-RelF" direction discussed under
-   "Non-goals" and in `PROGRESS.md`'s architectural notes; whether
-   it's worth pushing toward a fuller coreutils/shell replacement, versus
-   stopping at "useful enough to drive the system interactively", is an
-   open question to revisit once v0.1's rough edges (pipes/redirection
-   in particular) are smoothed out.
+   (structurally inspired by bash's own `tests/`, 18 assertions as of
+   this writing) checking all of it on every run. See `PROGRESS.md`'s
+   Iteration 5, 6, and 7 entries for the full account, including
+   several real bugs found getting there — one caught directly by the
+   test suite on its first run. Quoting, variable expansion, and
+   control structures are explicitly **not yet done**, and pipes and
+   redirection deliberately can't be combined on the same line yet —
+   see those entries' "what this iteration deliberately did NOT do".
+   This phase is the first concrete step toward the "busybox-on-RelF"
+   direction discussed under "Non-goals" and in `PROGRESS.md`'s
+   architectural notes; whether it's worth pushing toward a fuller
+   coreutils/shell replacement, versus stopping at "useful enough to
+   drive the system interactively", is an open question to revisit
+   once quoting and variable expansion — the next natural gaps — are
+   addressed.
 
 ## Non-goals (at least for now — revisit if this changes)
 

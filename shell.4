@@ -138,6 +138,102 @@ VARIABLE TOK-END
 : ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
 
 \ ==================================================================
+\ Redirection: <, >, >>
+\ Scans the tokenized ARGV for these operators; each one found records
+\ the filename token that follows it into a dedicated variable, and
+\ both tokens are excluded from the argv the command itself will see.
+\ Built as a fresh copy into a second array (ARGV2/ARGC2) rather than
+\ shifting ARGV in place - an earlier attempt at this (see PROGRESS.md,
+\ Iteration 5) got tangled trying to do in-place index shifting with
+\ unverified stack tricks; a plain copy-excluding-some-entries pass is
+\ far harder to get wrong, at the cost of one extra small buffer.
+\ At most one of each operator is honored per command line (a second
+\ ">" just overwrites the first's recorded filename); combining
+\ multiple output redirections isn't meaningful anyway without pipes.
+\ ==================================================================
+
+CREATE ARGV2 MAX-ARGS CELLS ALLOT
+VARIABLE ARGC2
+VARIABLE REDIR-IN-FILE      ( c-addr, or 0 for none - "<" )
+VARIABLE REDIR-OUT-FILE     ( c-addr, or 0 for none - ">" truncate )
+VARIABLE REDIR-APPEND-FILE  ( c-addr, or 0 for none - ">>" append )
+VARIABLE PR-I
+
+: PARSE-REDIRECTIONS ( --- )
+  0 REDIR-IN-FILE !  0 REDIR-OUT-FILE !  0 REDIR-APPEND-FILE !
+  0 ARGC2 !
+  0 PR-I !
+  BEGIN PR-I @ ARGC @ < WHILE
+    PR-I @ ARGV@ DUP CSTRLEN
+    2DUP S" <" STR= IF
+      2DROP
+      PR-I @ 1+ ARGC @ < IF
+        PR-I @ 1+ ARGV@ REDIR-IN-FILE !
+        PR-I @ 2 + PR-I !
+      ELSE
+        PR-I @ 1+ PR-I !          ( malformed: "<" with no filename )
+      THEN
+    ELSE 2DUP S" >>" STR= IF
+      2DROP
+      PR-I @ 1+ ARGC @ < IF
+        PR-I @ 1+ ARGV@ REDIR-APPEND-FILE !
+        PR-I @ 2 + PR-I !
+      ELSE
+        PR-I @ 1+ PR-I !
+      THEN
+    ELSE 2DUP S" >" STR= IF
+      2DROP
+      PR-I @ 1+ ARGC @ < IF
+        PR-I @ 1+ ARGV@ REDIR-OUT-FILE !
+        PR-I @ 2 + PR-I !
+      ELSE
+        PR-I @ 1+ PR-I !
+      THEN
+    ELSE
+      2DROP
+      PR-I @ ARGV@ ARGV2 ARGC2 @ CELLS + !
+      ARGC2 @ 1+ ARGC2 !
+      PR-I @ 1+ PR-I !
+    THEN THEN THEN
+  REPEAT
+  0 ARGV2 ARGC2 @ CELLS + !
+  \ Copy ARGV2/ARGC2 back into ARGV/ARGC, so nothing downstream (PATH
+  \ search, DISPATCH's builtin-name checks, EXECVE) needs to know
+  \ redirection parsing happened at all.
+  0 PR-I !
+  BEGIN PR-I @ ARGC2 @ < WHILE
+    ARGV2 PR-I @ CELLS + @  ARGV PR-I @ CELLS + !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV ARGC2 @ CELLS + !
+  ARGC2 @ ARGC ! ;
+
+: OPEN-FOR ( c-addr fam --- fid ok? )
+  SWAP DUP CSTRLEN ROT OPEN-FILE 0= ;
+
+: APPLY-REDIRECTIONS ( --- )
+  \ Runs in the forked child, before RUN-CHILD/EXECVE. v0.1/v0.2
+  \ simplification: a redirection that fails to open (e.g. "<" on a
+  \ missing file) is silently skipped rather than aborting the
+  \ command - no error reporting for this yet, matching how sparse
+  \ error handling is everywhere else in this shell so far.
+  REDIR-IN-FILE @ IF
+    REDIR-IN-FILE @ R/O OPEN-FOR IF
+      DUP 0 DUP2 DROP CLOSE-FILE DROP
+    ELSE DROP THEN
+  THEN
+  REDIR-OUT-FILE @ IF
+    REDIR-OUT-FILE @ W/O OPEN-FOR IF
+      DUP 1 DUP2 DROP CLOSE-FILE DROP
+    ELSE DROP THEN
+  THEN
+  REDIR-APPEND-FILE @ IF
+    REDIR-APPEND-FILE @ A/O OPEN-FOR IF
+      DUP 1 DUP2 DROP CLOSE-FILE DROP
+    ELSE DROP THEN
+  THEN ;
+
+\ ==================================================================
 \ PATH search + exec
 \ ==================================================================
 
@@ -237,7 +333,7 @@ VARIABLE PATH-END2
 : RUN-EXTERNAL ( --- )
   FORK
   DUP 0 = IF
-    DROP RUN-CHILD 127 SYS-EXIT
+    DROP APPLY-REDIRECTIONS RUN-CHILD 127 SYS-EXIT
   ELSE
     WAITPID DROP           ( raw wait status )
     8 RSHIFT 255 AND       ( decode WEXITSTATUS - the normal-exit case only;
@@ -250,13 +346,120 @@ VARIABLE PATH-END2
 : SH-PROMPT ( --- )
   ." $ " ;
 
-: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
-                        \ dispatch to a builtin or run as an external command.
-                        \ Shared by the interactive loop (SH1) and -c mode
-                        \ (SH-C) below, so both go through identical logic.
+\ ==================================================================
+\ Pipes: a single "cmd1 | cmd2" per line
+\ Split off into its own pass, run *before* redirection parsing, and
+\ deliberately mutually exclusive with it for v0.2: if a line has a
+\ "|", redirection syntax on either side is left untouched (passed
+\ through as a literal argument) rather than risked - combining the
+\ two correctly (figuring out which side a "<"/">" belongs to) is
+\ real complexity better tackled once each piece is independently
+\ solid, not solved speculatively alongside the first pipe support.
+\ Builtins aren't supported on either side of a pipe in v0.2 either -
+\ both sides always run via RUN-CHILD (PATH search + exec), reusing
+\ that already-proven logic unchanged by copying each side's own argv
+\ into the *global* ARGV/ARGC from within that side's own forked
+\ child - safe, since fork() gives each child an independent copy of
+\ all memory, so overwriting ARGV there can't affect the parent or
+\ the other child.
+\ ==================================================================
+
+CREATE ARGV-L MAX-ARGS CELLS ALLOT
+CREATE ARGV-R MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-L
+VARIABLE ARGC-R
+VARIABLE PIPE-PRESENT?
+
+: AT-END? ( --- f )  PR-I @ ARGC @ < 0= ;
+
+: AT-PIPE? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
+
+: SPLIT-PIPE ( --- )
+  0 PIPE-PRESENT? !
+  0 ARGC-L !  0 ARGC-R !
+  0 PR-I !
+  BEGIN AT-END? AT-PIPE? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-L ARGC-L @ CELLS + !
+    ARGC-L @ 1+ ARGC-L !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-L ARGC-L @ CELLS + !
+  AT-PIPE? IF
+    -1 PIPE-PRESENT? !
+    PR-I @ 1+ PR-I !               ( skip the "|" token itself )
+    BEGIN AT-END? 0= WHILE
+      PR-I @ ARGV@ ARGV-R ARGC-R @ CELLS + !
+      ARGC-R @ 1+ ARGC-R !
+      PR-I @ 1+ PR-I !
+    REPEAT
+    0 ARGV-R ARGC-R @ CELLS + !
+  THEN ;
+
+VARIABLE CA-SRC
+VARIABLE CA-N
+
+: COPY-ARGV ( src-argv src-argc --- )  \ overwrite the global ARGV/ARGC
+  CA-N !  CA-SRC !
+  CA-N @ ARGC !
+  CA-N @ 0 DO
+    CA-SRC @ I CELLS + @ ARGV I CELLS + !
+  LOOP
+  0 ARGV CA-N @ CELLS + ! ;
+
+VARIABLE PIPE-RD
+VARIABLE PIPE-WR
+VARIABLE LEFT-PID
+VARIABLE RIGHT-PID
+
+: RUN-PIPELINE ( --- )
+  PIPE DROP PIPE-WR ! PIPE-RD !
+  FORK DUP LEFT-PID !
+  0 = IF
+    PIPE-WR @ 1 DUP2 DROP
+    PIPE-WR @ CLOSE-FILE DROP
+    PIPE-RD @ CLOSE-FILE DROP
+    ARGV-L ARGC-L @ COPY-ARGV
+    RUN-CHILD
+    127 SYS-EXIT
+  THEN
+  FORK DUP RIGHT-PID !
+  0 = IF
+    PIPE-RD @ 0 DUP2 DROP
+    PIPE-RD @ CLOSE-FILE DROP
+    PIPE-WR @ CLOSE-FILE DROP
+    ARGV-R ARGC-R @ COPY-ARGV
+    RUN-CHILD
+    127 SYS-EXIT
+  THEN
+  PIPE-WR @ CLOSE-FILE DROP
+  PIPE-RD @ CLOSE-FILE DROP
+  LEFT-PID @ WAITPID DROP DROP     ( left side's status isn't reported -
+                                      a real shell exposes it via
+                                      PIPESTATUS/similar; not done here )
+  RIGHT-PID @ WAITPID DROP         ( pipeline's own status is the right
+                                      side's, matching normal shells )
+  8 RSHIFT 255 AND LAST-STATUS ! ;
+
+: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, pull
+                        \ out any redirection, then dispatch to a
+                        \ builtin or run as an external command.
+                        \ Shared by the interactive loop (SH1) and -c
+                        \ mode (SH-C) below, so both go through
+                        \ identical logic. Note: redirection only
+                        \ applies to external commands (see
+                        \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
+                        \ redirect the builtin's own output in v0.2.
   TOKENIZE
-  ARGC @ 0 > IF
-    DISPATCH 0= IF RUN-EXTERNAL THEN
+  SPLIT-PIPE
+  PIPE-PRESENT? @ IF
+    ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
+  ELSE
+    PARSE-REDIRECTIONS
+    ARGC @ 0 > IF
+      DISPATCH 0= IF RUN-EXTERNAL THEN
+    THEN
   THEN ;
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way

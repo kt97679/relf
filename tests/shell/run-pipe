@@ -1,0 +1,23 @@
+#!/bin/sh
+# run-pipe - a single "cmd1 | cmd2" wires the left command's stdout to
+# the right command's stdin via a real pipe between two forked
+# processes. Checked with real data-transforming commands (not just
+# "cat") so this actually exercises data flowing through the pipe,
+# and with both a matching and a non-matching grep to confirm the
+# pipeline's exit status is the right-hand side's, not always 0.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$("$THIS_SH" -c "echo hello world | wc -w" < /dev/null 2>&1)
+assert_output_contains "word count flows through the pipe" "2" "$out"
+
+out=$("$THIS_SH" -c "echo needle-in-haystack | grep needle" < /dev/null 2>&1)
+assert_output_contains "grep sees data piped into it (match)" "needle-in-haystack" "$out"
+
+"$THIS_SH" -c "echo hello | grep xyz-not-present" < /dev/null > /dev/null 2>&1
+assert_status "pipeline status is the right-hand side's (no match)" 1 "$?"
+
+"$THIS_SH" -c "echo hello | grep hello" < /dev/null > /dev/null 2>&1
+assert_status "pipeline status is the right-hand side's (match)" 0 "$?"
+
+report

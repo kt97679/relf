@@ -1,0 +1,26 @@
+#!/bin/sh
+# run-redirect - basic redirection: "<" reads a child's stdin from a
+# file, ">" writes a child's stdout to a file (creating/truncating
+# it), ">>" appends instead of truncating.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMPOUT="/tmp/relf-test-redir-out-$$"
+TMPIN="/tmp/relf-test-redir-in-$$"
+trap 'rm -f "$TMPOUT" "$TMPIN"' EXIT INT TERM
+
+rm -f "$TMPOUT"
+"$THIS_SH" -c "echo redirected > $TMPOUT" < /dev/null > /dev/null 2>&1
+out=$(cat "$TMPOUT" 2>/dev/null)
+assert_output_contains "> creates and writes the file" "redirected" "$out"
+
+"$THIS_SH" -c "echo appended >> $TMPOUT" < /dev/null > /dev/null 2>&1
+out=$(cat "$TMPOUT" 2>/dev/null)
+assert_output_contains ">> preserves earlier content" "redirected" "$out"
+assert_output_contains ">> appends new content" "appended" "$out"
+
+printf 'from-input-file\n' > "$TMPIN"
+out=$("$THIS_SH" -c "cat < $TMPIN" < /dev/null 2>&1)
+assert_output_contains "< redirects stdin from a file" "from-input-file" "$out"
+
+report

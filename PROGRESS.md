@@ -1084,3 +1084,130 @@ widths after all of the above.
   normally-exited ones with the same low byte** in `LAST-STATUS`'s
   decoding - noted above, a real POSIX shell distinguishes these
   (typically via the 128+signum convention); v0.1 doesn't.
+
+## Iteration 7: pipes and redirection
+
+Goal: the two features deliberately deferred out of Iteration 5 after
+an earlier, abandoned attempt within that same session got tangled
+(unverified return-stack tricks, a half-written placeholder - see that
+iteration's "what this iteration deliberately did NOT do"). This
+iteration builds both properly, from a clean slate, with the explicit
+lesson from that earlier attempt in mind: avoid in-place index
+shifting and unverified stack tricks in favor of plain, explicit,
+easy-to-verify constructs, even at the cost of an extra small buffer
+or two.
+
+### New engine capability: `A/O` (append) file mode
+
+Redirection's `>>` needs to create a missing file without truncating
+an existing one - and none of the engine's six existing `open_flags[]`
+entries do that (`W/O` truncates; `R/W` doesn't create). Added a
+seventh/eighth pair of flags (`O_WRONLY | O_CREAT | O_APPEND`, plus
+the binary-mode duplicate matching the existing even/odd convention)
+to `open_flags[]`, and a matching `A/O` constant in kernel.4 alongside
+the existing `W/O`/`R/O`/`R/W`. Verified directly (open the same file
+twice with `A/O`, write to it each time, confirm both writes land
+without the second truncating the first) before using it from shell.4.
+
+### `PARSE-REDIRECTIONS`/`APPLY-REDIRECTIONS` (`<`, `>`, `>>`)
+
+`PARSE-REDIRECTIONS` scans the tokenized `ARGV` for these three
+operators; each one found records the filename token that follows it
+into a dedicated variable (`REDIR-IN-FILE`/`REDIR-OUT-FILE`/
+`REDIR-APPEND-FILE`) and both tokens are excluded from the command's
+own argv. Built as a fresh copy into a second array (`ARGV2`/`ARGC2`),
+then copied back over `ARGV`/`ARGC` - not in-place shifting - exactly
+the choice the earlier abandoned attempt didn't make.
+`APPLY-REDIRECTIONS` runs in the forked child, after `FORK` but before
+`RUN-CHILD`/`EXECVE`: opens each recorded file with the matching mode
+(`R/O`/`W/O`/`A/O`) and `DUP2`s it onto fd 0 or fd 1, closing the
+original fd afterward - the same open-then-dup2-then-close pattern
+already verified working for `PIPE`/`DUP2` in Iteration 5. Only
+applies to external commands, not builtins (`pwd > file` doesn't
+redirect the builtin's own output) - a deliberate v0.2 scope limit,
+not an oversight.
+
+**A real bug found immediately on first load**: a nested parenthesis
+inside a `( ... )` Forth comment - `( c-addr, or 0 for none - ">"
+(truncate) )` - broke parsing. This kernel's `(` comment word just
+reads until the *first* `)`, so the inner `(truncate)` terminated the
+comment early, leaving a stray `)` to be parsed as a word and failing
+with "Undefined word `)`". Fixed by removing the nesting; a quick
+audit confirmed no other new comment had the same problem (one
+pre-existing line has two *sequential* comments on one line, which is
+fine - parsed and reparsed as two separate `( ... )` spans, not one
+nested inside the other).
+
+Verified end-to-end via `relfsh -c`: `>` creates and truncates, `>>`
+genuinely preserves prior content across two separate invocations
+rather than truncating it, `<` feeds a real file's content to a
+child's stdin, and `<`+`>` combined on one line (`cat < in > out`)
+works. `tests/shell/run-redirect` (4 assertions) locks this in.
+
+### `SPLIT-PIPE`/`RUN-PIPELINE` (a single `cmd1 | cmd2` per line)
+
+`SPLIT-PIPE` scans tokenized `ARGV` for a `|` token and splits into
+two fresh argv arrays (`ARGV-L`/`ARGC-L`, `ARGV-R`/`ARGC-R`) - same
+copy-don't-shift discipline as redirection, using two small helper
+predicates (`AT-END?`, `AT-PIPE?`) to keep the scanning loop readable.
+`RUN-PIPELINE` creates a real `PIPE`, forks twice, and wires each side
+up exactly the way Iteration 5's own directly-verified pipe test did
+(`DUP2` the correct end onto fd 0 or fd 1, close both original pipe
+fds in each child, close both in the parent too, `WAITPID` on both
+children). Rather than duplicating or generalizing the PATH-search/
+exec logic to take an arbitrary argv array as a parameter, each side's
+child copies its own argv (`ARGV-L` or `ARGV-R`) into the *global*
+`ARGV`/`ARGC` via a new `COPY-ARGV` helper, then calls the existing,
+already-proven `RUN-CHILD` unchanged. This is safe specifically
+because each side runs in its own forked child: `fork()` gives each
+child an independent copy of all memory, so overwriting the global
+`ARGV` there can't affect the parent or the other child. Deliberately
+reused rather than refactored, to keep the pipe-execution surface area
+small and built entirely from already-verified pieces.
+
+**Scope decision, not a bug**: pipes and redirection are mutually
+exclusive per line in v0.2. If a line contains `|`, `PARSE-REDIRECTIONS`
+is skipped entirely for that line, and any `<`/`>`/`>>` tokens are
+passed through as literal arguments rather than interpreted. Combining
+the two correctly - figuring out *which side* of a pipe a trailing
+redirection belongs to - is real, separate complexity, and risking an
+under-tested guess at it alongside the first pipe support wasn't worth
+it. Also v0.2: builtins aren't supported on either side of a pipe
+(`RUN-PIPELINE` always uses `RUN-CHILD`, never `DISPATCH`) - a
+reasonable limit matching how even real POSIX shells run pipelined
+builtins in a subshell anyway (already more complexity than this
+project's current v0.2 needs). The pipeline's own reported exit status
+is the right-hand side's (matching ordinary, non-`pipefail` shell
+behavior); the left side's status isn't exposed anywhere (a real shell
+would offer this via something like `$PIPESTATUS` - not implemented).
+
+Verified with real multi-process data flow, not just `cat`-based
+plumbing checks: `echo hello world | wc -w` (word count actually
+computed downstream), `echo ... | grep needle` matching and
+`echo ... | grep xyz` not matching (confirming both real data transfer
+through the pipe and correct exit-status propagation - 0 for a match,
+1 for none). `tests/shell/run-pipe` (4 assertions) locks this in.
+
+### Full state after this iteration
+
+`tests/shell/run-all`: 18 assertions across 7 files (`run-cd`,
+`run-echo`, `run-exit-status`, `run-export`, `run-pathsearch`,
+`run-pipe`, `run-redirect`), all passing. Full suite (CORE + shell)
+passes on both x86-64 and i386 after every change in this iteration,
+checked incrementally rather than only at the end.
+
+### What this iteration deliberately did NOT do
+
+- **Combining pipes and redirection on one line** - see above.
+- **Multi-stage pipelines** (`a | b | c`, more than one `|`) - `SPLIT-PIPE`
+  only recognizes a single `|`; a second one is currently left as a
+  literal argument to whichever side it lands in (untested, unspecified
+  behavior - worth an explicit check before anyone relies on it either
+  way).
+- **Builtins on either side of a pipe** - see above.
+- **Exposing the left side's exit status** from a pipeline (no
+  `$PIPESTATUS`-equivalent).
+- **Quoting/escaping** - a literal `|`, `<`, `>` inside a quoted string
+  isn't possible yet, since there's no quoting at all; every occurrence
+  of these characters as a whole token is currently treated as the
+  operator.
