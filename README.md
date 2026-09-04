@@ -191,8 +191,8 @@ Separately, GOALS.md's goal 8 adopts mrsh
 (https://github.com/emersion/mrsh)'s own test suite - vendored
 unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
-`tests/mrsh-suite/run.sh` (current baseline: 1 passed, 20 failed, 3
-skipped - see PROGRESS.md's Iteration 14 entry).
+`tests/mrsh-suite/run.sh` (current: 0 passed, 21 failed, 3 skipped,
+but crash-free - see PROGRESS.md's Iteration 14 and 15 entries).
 
 5. Possible usage.
 

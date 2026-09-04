@@ -1978,3 +1978,124 @@ re-run it after each future phase/iteration and let the pass count
 climb honestly, the same way `tests/run_tests.sh` and
 `tests/shell/run-all` already track progress elsewhere in this
 project.
+
+## Iteration 15: goal 8, phase A - crash-hardening
+
+Goal: the first concrete step on goal 8's roadmap - fix the four
+segfaults found while establishing Iteration 14's baseline, before
+attempting any of the actual missing features.
+
+### Root cause: this kernel's DO/LOOP doesn't skip a degenerate range
+
+ANS Forth leaves `start = limit` at `DO` as implementation-defined,
+but the common, expected behavior (and the one every piece of
+`shell.4` code written so far implicitly assumed) is that it runs
+*zero* iterations - "already done." This kernel does the opposite: it
+wraps around and runs through the *entire unsigned range* instead.
+Confirmed directly with two minimal, standalone words loaded via
+`INCLUDED` (typing long or degenerate cases directly at `relf`'s
+interactive stdin turned out to be its own separate pitfall in
+Iteration 13 - avoided here from the start): `0 0 DO ... LOOP` and
+`1 1 DO ... LOOP` (an equal but nonzero start/limit) both loop
+indefinitely rather than stopping immediately, confirming this is a
+general "index equals limit at entry" gotcha, not something specific
+to zero.
+
+An earlier debugging attempt at this exact question (during Iteration
+13's `CMDSUB-TOKENIZE` bug) tested `0 0 DO ... LOOP` in isolation and
+concluded it correctly ran zero iterations - that conclusion was
+itself wrong, an artifact of the test process exiting before ever
+reaching the loop (the "confirming" output was suspiciously short).
+Worth remembering: a **short, clean-looking output isn't the same as
+a correct one** - re-run to make sure the process actually got where
+it was supposed to before trusting silence as a "pass."
+
+### Reproducing async.sh's segfault down to one command
+
+`async.sh`'s tokenizer stage produced `kill: unknown signal name $?`
+in stderr before crashing - a strong clue, since `async.sh` has no
+line that should invoke `kill` at all. The explanation: **`shell.4`
+has no `#` comment support whatsoever** - a `#`-prefixed line is
+tokenized as an ordinary command (`ARGV[0]` literally starting with
+`#`), which normally just fails PATH search (127) harmlessly. But one
+of `async.sh`'s commented-out lines happens to contain a real
+`$(kill -l $?)` construct, and `$(...)` triggers during tokenization
+regardless of what the token it's embedded in was "supposed" to mean -
+so that substitution actually ran, calling the real `kill` binary
+(which errored, since `$?` inside `$(...)` isn't expanded by the
+simplified `CMDSUB-TOKENIZE` - a separately known, documented
+limitation from Iteration 13). Missing `#` support is itself a real,
+independent gap worth fixing later (not part of this iteration's
+scope - crash-hardening first), but it's what led to the actual
+reproduction: bisecting down through `kill -l $?`'s failure and empty
+output eventually isolated the crash to `echo $(true)` alone - a
+single-word command inside `$(...)` that produces zero bytes of
+output.
+
+### The five vulnerable call sites
+
+Searched every `DO` in `shell.4` for cases where the loop count could
+legitimately be zero at runtime, given the confirmed wraparound bug:
+
+- **`EXPAND-CMDSUB`'s output-splice loop** - `CMDSUB-OUT-LEN` is
+  genuinely 0 whenever the substituted command produces no output at
+  all (`$(true)`, `$(printf)`, any command run purely for its exit
+  status). This was the actual crash.
+- **`HAS-SLASH?`** - an empty `ARGV[0]`.
+- **`B-STR`** (used by `TRY-DIR`) - an empty `$PATH` component
+  (`PATH=:/usr/bin`), which POSIX defines as meaning `.`.
+- **`DO-EXPORT`** - `export ""`.
+- **`COPY-ARGV`** - an empty pipeline segment (`| cmd` or `cmd |`).
+
+One additional `N DO` (`SHIFT-ARGV-DOWN`'s `ARGC @ 1 DO`) turned out to
+already be safe: it's only reached inside `ARGC @ 1 > IF`, which
+guarantees `ARGC >= 2` before the loop, so `start` (1) and `limit`
+(`ARGC`, >= 2) can never coincide.
+
+Each of the five is now guarded with an explicit `DUP 0 > IF ... ELSE
+... THEN` around the loop, rather than relying on this kernel's
+`DO`/`LOOP` to do the right thing on a degenerate range - each
+carefully re-balances the data stack in both branches (`HAS-SLASH?`
+and `DO-EXPORT` need an explicit `2DROP` in the zero-case branch,
+since callers leave an extra item on the stack alongside the address
+being scanned; `B-STR` and `COPY-ARGV` don't, since they consume their
+inputs into variables before the loop rather than referencing the
+stack from within it).
+
+Verified directly, each previously either theoretical or crashing:
+`echo x$(true)y` / `$(printf)` / `$(basename)` (all previously
+crashed, ARGC=1, zero output) now produce clean output; `export ""`
+followed by another command now continues normally instead of
+crashing; `PATH=:/usr/bin` (empty leading component) resolves `pwd`
+correctly instead of crashing on the empty segment; a leading or
+trailing pipe (`| echo foo`, `echo foo |`) now produces empty output
+cleanly rather than crashing on the empty pipeline segment.
+
+### A false positive caught and fixed in the harness itself
+
+Re-running `tests/mrsh-suite/run.sh` after the fix showed the pass
+count go from 1 to 0, not up - `2.2.3-alias-expansion.fail.sh`
+"regressed." Investigated rather than assumed: temporarily swapped
+back the pre-fix `shell.4` and re-ran that one file directly, which
+confirmed the previous "pass" was itself the exact crash bug just
+fixed (status 139, a segfault) - not a clean rejection as Iteration
+14's writeup described. The harness's expected-failure check
+(`relfsh_ret != 0`) couldn't distinguish "crashed" from "correctly
+rejected the input" - a segfault's exit status is nonzero too. Fixed
+the harness itself: `is_crash_status()` now treats any status >= 128
+(the POSIX convention for "killed by a signal," which both a real
+crash and `timeout`'s own kill produce) as a crash, scored as FAIL
+regardless of being nonzero, with the differential tests' own failure
+messages updated to call out a crash explicitly too rather than just
+printing a bare status number.
+
+**Corrected baseline: 0 passed, 21 failed, 3 skipped.** Every failure
+now has a clean status (0, or bash's own 1) - confirmed no crash
+statuses remain anywhere in the suite. The number going down is a
+correct, honest result of removing a false positive, not a
+regression - the actual state of the world (four fewer crashes, zero
+genuinely-passing tests) didn't get worse, the *measurement* of it got
+more accurate. `GOALS.md`'s goal 8 baseline is updated to match.
+
+Phase A's crash-hardening is now done; its remaining item (real
+file-argument invocation for `relfsh`) is next.

@@ -230,25 +230,38 @@ the full account and the fixes applied.
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   today and reports an honest baseline: **1 passed, 20 failed, 3
-   skipped** (see `PROGRESS.md`'s Iteration 14 entry for the full
-   run). That one pass is hollow, not a real conformance win — it's
-   `2.2.3-alias-expansion.fail.sh`, which only "passes" because
-   `shell.4` has no `alias` at all, so PATH search fails outright
-   (exit 127) before the test's actual question (whether alias
-   expansion incorrectly applies when finding `$(...)`'s closing
-   paren) is ever reached.
+   and currently reports **0 passed, 21 failed, 3 skipped** (see
+   `PROGRESS.md`'s Iteration 14 and 15 entries). The initial baseline
+   (Iteration 14) showed 1 pass, but that pass turned out to be a
+   false positive caused by the harness conflating "crashed" with
+   "correctly rejected" — see below and Iteration 15's entry for the
+   full account; 0/21 is the honest number.
 
-   Four of the twenty failures are **segfaults**, not "wrong output"
-   — `async.sh` (background jobs, `&`), `function.sh` (shell
-   functions), `pipeline.sh` (subshells/brace groups inside a
-   pipeline), and `read.sh` (the `read` builtin, possibly combined
-   with `while` reading from a piped stdin) all crash `relfsh`
-   outright rather than failing cleanly. Making unsupported syntax
-   fail cleanly (a parse error or "command not found", not a crash)
-   is worth treating as an early priority independent of implementing
-   the underlying features, since a crash on unrecognized input is a
-   correctness bug regardless of how minimal the shell's scope is.
+   **Phase A's crash-hardening is done (Iteration 15).** The initial
+   baseline found four segfaults, not just "wrong output" — root
+   cause: this kernel's `DO`/`LOOP` doesn't treat `start = limit` as
+   zero iterations (the common, expected Forth behavior) but instead
+   wraps around and runs the entire unsigned range, and five places in
+   `shell.4` had a loop count that could legitimately be zero at
+   runtime (most directly, `$(true)` or any command producing no
+   output at all, inside `EXPAND-CMDSUB`'s splice loop). All five are
+   now guarded explicitly. Every failure in the suite now has a clean
+   status — confirmed no crashes remain anywhere in it. Re-running
+   after the fix surfaced a second bug worth remembering: the
+   harness's own expected-failure check couldn't distinguish "crashed"
+   (a nonzero, signal-killed status) from "cleanly rejected the
+   input" (also nonzero) — the one prior "pass" was actually the same
+   crash bug in disguise, not a real conformance win as originally
+   (incorrectly) described. Fixed in the harness itself
+   (`is_crash_status`), not just noted and left in place.
+
+   Four of the (pre-fix) crashes came from — `async.sh` (background
+   jobs, `&`), `function.sh` (shell functions), `pipeline.sh`
+   (subshells/brace groups inside a pipeline), and `read.sh` (the
+   `read` builtin, possibly combined with `while` reading from piped
+   stdin) — all now fail cleanly (a plain nonzero status, no crash)
+   rather than segfaulting, though none of the underlying *features*
+   exist yet, so they remain genuine failures for those reasons.
 
    The full feature gap, roughly ordered by dependency (each phase
    below is expected to be its own multi-iteration effort, comparable
@@ -256,12 +269,12 @@ the full account and the fixes applied.
    quick one):
 
    - **Phase A — infrastructure to run the suite at all.**
-     Script-file invocation (`relfsh script.sh`, not just `-c`,
+     Crash-hardening: **done (Iteration 15)**. Still open:
+     script-file invocation (`relfsh script.sh`, not just `-c`,
      interactive, and piped stdin — `tests/mrsh-suite/run.sh` works
      around this today by piping each vendored script into `relfsh`'s
      stdin instead, noted as a known, temporary asymmetry in that
-     script's own comments). Crash-hardening for the four segfaults
-     above, so unsupported syntax fails cleanly instead.
+     script's own comments).
    - **Phase B — foundational semantics needed almost everywhere.**
      Shell-local (non-exported) variable assignment as a standalone
      statement (`VAR=value`, no `export` needed) — currently `shell.4`

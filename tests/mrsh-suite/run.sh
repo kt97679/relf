@@ -12,9 +12,12 @@
 #     categories, matching mrsh's own meson.build classification -
 #     a fixed-output test (compared against its own vendored .stdout
 #     file, expects exit status 0), an expected-failure test (PASS
-#     means relfsh's own exit status is nonzero, i.e. it correctly
-#     rejects invalid syntax), and undefined-behavior tests (not
-#     scored - POSIX doesn't specify a required result for these).
+#     means relfsh's own exit status is nonzero *and not a crash* -
+#     i.e. it correctly rejects invalid syntax rather than segfaulting
+#     on it; see is_crash_status below and PROGRESS.md's Iteration 15
+#     entry for why that distinction matters), and undefined-behavior
+#     tests (not scored - POSIX doesn't specify a required result for
+#     these).
 #
 # relfsh has no file-argument invocation yet (only -c, interactive,
 # and piped stdin - see GOALS.md goal 8, phase A) so each test is fed
@@ -58,6 +61,20 @@ record_fail() {
 }
 record_skip() { SKIP=$((SKIP + 1)); }
 
+# A status in 128+signum (POSIX shell convention for "killed by a
+# signal", which is what `timeout` and a crashing process both
+# produce) means relfsh crashed rather than cleanly rejecting the
+# input - these must never be scored as "correctly rejects invalid
+# input" for the *.fail.sh category below, even though a crash's exit
+# status is technically nonzero too. Found the hard way: an earlier
+# run of this harness (see PROGRESS.md's crash-hardening entry) scored
+# 2.2.3-alias-expansion.fail.sh as a pass because relfsh's segfault
+# (status 139) happened to satisfy a cruder "nonzero means pass" check
+# - it wasn't rejecting the input at all, it was crashing on it.
+is_crash_status() {
+    [ "$1" -ge 128 ] 2>/dev/null
+}
+
 echo "=== Differential tests (relfsh vs bash) ==="
 for f in "$VENDOR_DIR"/*.sh; do
     name=$(basename "$f")
@@ -68,6 +85,9 @@ for f in "$VENDOR_DIR"/*.sh; do
     if [ "$relfsh_ret" = "$bash_ret" ] && [ "$relfsh_out" = "$bash_out" ]; then
         echo "PASS: $name"
         record_pass
+    elif is_crash_status "$relfsh_ret"; then
+        echo "FAIL: $name (relfsh CRASHED, status=$relfsh_ret; bash status=$bash_ret)"
+        record_fail "$name"
     else
         echo "FAIL: $name (relfsh status=$relfsh_ret bash status=$bash_ret)"
         record_fail "$name"
@@ -97,13 +117,16 @@ for f in "$VENDOR_DIR"/conformance/*.sh; do
 done
 
 echo ""
-echo "=== Conformance: expected-failure tests (PASS means relfsh rejects the input) ==="
+echo "=== Conformance: expected-failure tests (PASS means relfsh rejects the input cleanly, not by crashing) ==="
 for f in "$VENDOR_DIR"/conformance/*.fail.sh; do
     [ -e "$f" ] || continue
     name=$(basename "$f")
     run_relfsh "$f" > /dev/null
     relfsh_ret=$?
-    if [ "$relfsh_ret" != 0 ]; then
+    if is_crash_status "$relfsh_ret"; then
+        echo "FAIL: $name (relfsh crashed, status=$relfsh_ret - a crash is not a rejection)"
+        record_fail "$name"
+    elif [ "$relfsh_ret" != 0 ]; then
         echo "PASS: $name"
         record_pass
     else

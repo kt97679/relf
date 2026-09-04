@@ -61,7 +61,15 @@ VARIABLE B-SRC
 : B-CSTR ( c-addr --- )
   BEGIN DUP C@ DUP WHILE B-CHAR CHAR+ REPEAT 2DROP ;
 : B-STR ( c-addr u --- )
-  SWAP B-SRC ! 0 DO B-SRC @ I + C@ B-CHAR LOOP ;
+  \ u can be 0 (e.g. TRY-DIR called for an empty PATH component,
+  \ which POSIX treats as meaning "."), guarded for the same reason
+  \ as HAS-SLASH? above.
+  SWAP B-SRC !
+  DUP 0 > IF
+    0 DO B-SRC @ I + C@ B-CHAR LOOP
+  ELSE
+    DROP
+  THEN ;
 : B-FINISH ( --- )  0 B-CHAR ;
 
 \ ==================================================================
@@ -326,9 +334,21 @@ VARIABLE CMDSUB-PID
     WHILE
       CMDSUB-OUT-LEN @ 1- CMDSUB-OUT-LEN !
     REPEAT
-    CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
-      DUP I + C@ EMIT-TOK-CHAR
-    LOOP DROP
+    \ CMDSUB-OUT-LEN can genuinely be 0 here (the substituted command
+    \ produced no output at all, e.g. $(true) or $(printf)) - guarded
+    \ explicitly rather than relying on "0 0 DO ... LOOP" to mean
+    \ zero iterations. It doesn't in this kernel: DO/LOOP here treats
+    \ start=limit as wrapping through the *entire* unsigned range
+    \ rather than skipping the loop, so an unguarded zero-length splice
+    \ here read (and wrote, via EMIT-TOK-CHAR) billions of bytes past
+    \ CMDSUB-OUT-BUF until it hit unmapped memory and segfaulted -
+    \ found via mrsh's async.sh (see PROGRESS.md's crash-hardening
+    \ entry) and reproduced down to a single command: `echo $(true)`.
+    CMDSUB-OUT-LEN @ 0 > IF
+      CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
+        DUP I + C@ EMIT-TOK-CHAR
+      LOOP DROP
+    THEN
   THEN ;
 
 : EXPAND-VAR ( --- )
@@ -599,7 +619,16 @@ VARIABLE PR-I
 \ ==================================================================
 
 : HAS-SLASH? ( c-addr u --- f )
-  0 DO DUP I + C@ 47 = IF UNLOOP DROP -1 EXIT THEN LOOP DROP 0 ;
+  \ u can be 0 in principle (an empty ARGV[0], however unlikely in
+  \ practice) - guarded explicitly, same reasoning as EXPAND-CMDSUB's
+  \ splice loop: this kernel's DO/LOOP doesn't treat start=limit as
+  \ zero iterations.
+  DUP 0 > IF
+    0 DO DUP I + C@ 47 = IF UNLOOP DROP -1 EXIT THEN LOOP
+    DROP 0
+  ELSE
+    2DROP 0
+  THEN ;
 
 VARIABLE PATH-CUR
 VARIABLE PATH-END2
@@ -666,15 +695,22 @@ VARIABLE PATH-END2
   \ export NAME=VALUE - finds '=' in ARGV[1], splits it, SETENVs.
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN
-    ( c-addr u ) 0 DO
-      DUP I + C@ 61 = IF          ( found '=' at offset I within c-addr )
-        DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
-        DUP I CHARS + CHAR+       ( c-addr value-addr )
-        SWAP SETENV DROP
-        0 LAST-STATUS !
-        UNLOOP EXIT
-      THEN
-    LOOP DROP
+    \ u (ARGV[1]'s length) can be 0 (e.g. `export ""`), guarded for
+    \ the same reason as HAS-SLASH?/B-STR above.
+    ( c-addr u ) DUP 0 > IF
+      0 DO
+        DUP I + C@ 61 = IF          ( found '=' at offset I within c-addr )
+          DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
+          DUP I CHARS + CHAR+       ( c-addr value-addr )
+          SWAP SETENV DROP
+          0 LAST-STATUS !
+          UNLOOP EXIT
+        THEN
+      LOOP
+      DROP
+    ELSE
+      2DROP
+    THEN
   THEN
   0 LAST-STATUS ! ;
 
@@ -778,9 +814,14 @@ VARIABLE CA-N
 : COPY-ARGV ( src-argv src-argc --- )  \ overwrite the global ARGV/ARGC
   CA-N !  CA-SRC !
   CA-N @ ARGC !
-  CA-N @ 0 DO
-    CA-SRC @ I CELLS + @ ARGV I CELLS + !
-  LOOP
+  \ CA-N can be 0 (e.g. an empty pipeline segment), guarded for the
+  \ same reason as HAS-SLASH?/B-STR/DO-EXPORT above - nothing else is
+  \ on the data stack around this loop, so no ELSE/2DROP is needed.
+  CA-N @ 0 > IF
+    CA-N @ 0 DO
+      CA-SRC @ I CELLS + @ ARGV I CELLS + !
+    LOOP
+  THEN
   0 ARGV CA-N @ CELLS + ! ;
 
 : RUN-CMDSUB-CHILD ( --- )  \ resolves CMDSUB-ARGV[0] and execs it -
