@@ -1,0 +1,60 @@
+#!/bin/sh
+# run-while - while/do/done: a real, terminating condition re-evaluated
+# fresh each iteration (not frozen from its first reading), a
+# multi-iteration loop (via a 3-file shift-register trick, since this
+# shell has no arithmetic or command substitution to build a simple
+# counter with), $? genuinely re-expanding to reflect each iteration's
+# own last status, quote-awareness, and the missing-"do" error path.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+# Single-iteration: condition true once, body clears it, loop stops
+# and control returns to normal processing afterward.
+rm -f /tmp/relf-test-wl-lock
+touch /tmp/relf-test-wl-lock
+out=$(printf 'while test -f /tmp/relf-test-wl-lock\ndo\necho iterating\nrm -f /tmp/relf-test-wl-lock\ndone\necho after-loop\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "loop body runs while the condition holds" "iterating" "$out"
+assert_output_contains "shell continues normally after the loop ends" "after-loop" "$out"
+rm -f /tmp/relf-test-wl-lock
+
+# Multi-iteration via a 3-file shift register: each pass removes the
+# front file and shifts the other two down, so the condition
+# (checking the front file) is only satisfied for exactly 3 passes -
+# this only works at all if the condition is re-evaluated fresh each
+# time rather than frozen at the loop's first reading.
+rm -f /tmp/relf-test-wc-a /tmp/relf-test-wc-b /tmp/relf-test-wc-c
+touch /tmp/relf-test-wc-a /tmp/relf-test-wc-b /tmp/relf-test-wc-c
+out=$(printf 'while test -f /tmp/relf-test-wc-a\ndo\necho round\nrm -f /tmp/relf-test-wc-a\nmv /tmp/relf-test-wc-b /tmp/relf-test-wc-a\nmv /tmp/relf-test-wc-c /tmp/relf-test-wc-b\ndone\nexit\n' | "$THIS_SH" 2>&1)
+rounds=$(echo "$out" | grep -c '^round$')
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$rounds" != "3" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: loop runs exactly 3 times with a genuinely re-evaluated condition"
+    echo "  expected 3 'round' lines, got: $rounds"
+    echo "$out" | sed 's/^/    /'
+fi
+rm -f /tmp/relf-test-wc-a /tmp/relf-test-wc-b /tmp/relf-test-wc-c
+
+# $? must re-expand fresh each iteration, not freeze at the loop's
+# first reading - checked by using $? itself (set by the last command
+# in the previous iteration's body) as the condition.
+rm -f /tmp/relf-test-wq-a /tmp/relf-test-wq-b /tmp/relf-test-wq-c
+touch /tmp/relf-test-wq-a /tmp/relf-test-wq-b /tmp/relf-test-wq-c
+out=$(printf 'test -f /tmp/relf-test-wq-a\nwhile test $? -eq 0\ndo\necho status-round\nrm -f /tmp/relf-test-wq-a\nmv /tmp/relf-test-wq-b /tmp/relf-test-wq-a\nmv /tmp/relf-test-wq-c /tmp/relf-test-wq-b\ntest -f /tmp/relf-test-wq-a\ndone\nexit\n' | "$THIS_SH" 2>&1)
+status_rounds=$(echo "$out" | grep -c '^status-round$')
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$status_rounds" != "3" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: \$? re-expands fresh each iteration (drives the loop correctly)"
+    echo "  expected 3 'status-round' lines, got: $status_rounds"
+    echo "$out" | sed 's/^/    /'
+fi
+rm -f /tmp/relf-test-wq-a /tmp/relf-test-wq-b /tmp/relf-test-wq-c
+
+out=$("$THIS_SH" -c "echo 'while' true" < /dev/null 2>&1)
+assert_output_contains "quoted 'while' is a literal argument, not the keyword" "while true" "$out"
+
+out=$(printf 'while true\necho oops\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "missing 'do' reports an error" "expected 'do'" "$out"
+
+report

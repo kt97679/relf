@@ -704,12 +704,24 @@ VARIABLE ARGC-SHIFT
   ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
   RUN-TOKENIZED-CALL ;
 
+CREATE RAW-LINE-BUF LINE-MAX ALLOT
+VARIABLE RAW-LINE-LEN
+
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe
                                  \ parsing or dispatch, just enough to
-                                 \ inspect ARGV[0] for a keyword
+                                 \ inspect ARGV[0] for a keyword.
+                                 \ Also stashes a raw (pre-tokenize,
+                                 \ pre-expansion) copy in RAW-LINE-BUF,
+                                 \ needed by DO-WHILE below to capture
+                                 \ a loop's condition/body text so it
+                                 \ can be re-expanded fresh on every
+                                 \ iteration rather than frozen at its
+                                 \ first reading.
   LINE-BUF LINE-MAX ACCEPT
   CR
+  DUP RAW-LINE-LEN !
+  LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   TOKENIZE ;
 
 VARIABLE COND-TRUE?
@@ -736,6 +748,110 @@ VARIABLE COND-TRUE?
     COND-TRUE? @ IF RUN-TOKENIZED-CALL THEN
   0 UNTIL ;
 
+\ ==================================================================
+\ while/do/done
+\ Unlike if, a loop body has to run more than once - stdin is a
+\ one-pass stream, so it can't just be read-and-discarded like if's
+\ body could be. This buffers the RAW (pre-tokenize, pre-expansion)
+\ text of both the condition and the body once, the first time
+\ through, then re-copies and re-tokenizes that saved text into
+\ LINE-BUF fresh on every iteration. Re-tokenizing fresh each time -
+\ rather than reusing the already-tokenized ARGV from the first
+\ reading - matters: it's what lets $?/$$/$VAR in the condition
+\ reflect each iteration's own current state rather than a value
+\ frozen from before the loop even started (e.g. "while test $? -eq
+\ 0" needs $? to update every time to be meaningful at all).
+\ Same v0.5 limitations as if: no nesting, no ";"-separated forms.
+\ ==================================================================
+
+CREATE WHILE-COND-BUF LINE-MAX ALLOT
+VARIABLE WHILE-COND-LEN
+4096 CONSTANT WHILE-BODY-MAX
+CREATE WHILE-BODY-BUF WHILE-BODY-MAX ALLOT   ( raw body lines, NUL-separated )
+VARIABLE WHILE-BODY-LEN
+VARIABLE RAW-SKIP-I
+
+: SAVE-WHILE-COND ( --- )
+  \ RAW-LINE-BUF/RAW-LINE-LEN holds the raw "while ..." line just
+  \ read. Skips its own leading whitespace, the literal "while" (5
+  \ characters), and more whitespace, then saves whatever remains
+  \ into WHILE-COND-BUF (NUL-terminated) - the condition text, with
+  \ no expansion applied yet (that happens fresh each iteration when
+  \ it's re-tokenized).
+  0 RAW-SKIP-I !
+  BEGIN
+    RAW-SKIP-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF RAW-SKIP-I @ + C@ WS? ELSE 0 THEN
+  WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
+  RAW-SKIP-I @ 5 + RAW-SKIP-I !
+  BEGIN
+    RAW-SKIP-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF RAW-SKIP-I @ + C@ WS? ELSE 0 THEN
+  WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
+  RAW-LINE-LEN @ RAW-SKIP-I @ > IF
+    RAW-LINE-LEN @ RAW-SKIP-I @ - WHILE-COND-LEN !
+    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF WHILE-COND-LEN @ MOVE
+  ELSE
+    0 WHILE-COND-LEN !
+  THEN
+  0 WHILE-COND-BUF WHILE-COND-LEN @ + C! ;
+
+: APPEND-RAW-LINE-TO-BODY ( --- )
+  \ Appends the current RAW-LINE-BUF/RAW-LINE-LEN (NUL-terminated) to
+  \ the end of WHILE-BODY-BUF - but only if it fits (+1 for the NUL);
+  \ a body line that would overflow the fixed-size buffer is silently
+  \ dropped rather than corrupting whatever dictionary data follows
+  \ it in memory. A dropped line means that loop iteration's body is
+  \ incomplete - no error is reported for this yet.
+  WHILE-BODY-LEN @ RAW-LINE-LEN @ + 1+ WHILE-BODY-MAX < IF
+    RAW-LINE-BUF WHILE-BODY-BUF WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
+    WHILE-BODY-LEN @ RAW-LINE-LEN @ + WHILE-BODY-LEN !
+    0 WHILE-BODY-BUF WHILE-BODY-LEN @ + C!
+    WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN !
+  THEN ;
+
+VARIABLE RSL-LEN
+
+: RUN-STORED-LINE ( c-addr --- )
+  \ Copies a NUL-terminated stored line into LINE-BUF, tokenizes it
+  \ fresh (including fresh $VAR/$?/$$ expansion), and runs it.
+  DUP CSTRLEN RSL-LEN !
+  LINE-BUF RSL-LEN @ MOVE
+  RSL-LEN @ TOKENIZE
+  RUN-TOKENIZED-CALL ;
+
+VARIABLE WHILE-BODY-I
+VARIABLE WHILE-BODY-CUR
+
+: DO-WHILE-BODY ( --- )
+  \ Runs each stored, NUL-separated body line once, in order.
+  0 WHILE-BODY-I !
+  BEGIN WHILE-BODY-I @ WHILE-BODY-LEN @ < WHILE
+    WHILE-BODY-BUF WHILE-BODY-I @ + WHILE-BODY-CUR !
+    WHILE-BODY-CUR @ RUN-STORED-LINE
+    WHILE-BODY-I @ WHILE-BODY-CUR @ CSTRLEN + 1+ WHILE-BODY-I !
+  REPEAT ;
+
+: DO-WHILE ( --- )
+  \ ARGV[0] is "while"; RAW-LINE-BUF holds the raw line just read.
+  SAVE-WHILE-COND
+  READ-LINE-INTO-ARGV
+  S" do" LINE-IS? 0= IF
+    ." while: expected 'do'" CR EXIT
+  THEN
+  0 WHILE-BODY-LEN !
+  BEGIN
+    READ-LINE-INTO-ARGV
+    S" done" LINE-IS? 0= WHILE
+    APPEND-RAW-LINE-TO-BODY
+  REPEAT
+  BEGIN
+    WHILE-COND-BUF LINE-BUF WHILE-COND-LEN @ MOVE
+    WHILE-COND-LEN @ TOKENIZE
+    RUN-TOKENIZED-CALL
+    LAST-STATUS @ 0 =
+  WHILE
+    DO-WHILE-BODY
+  REPEAT ;
+
 : RUN-TOKENIZED ( --- )
   \ Acts on the currently-tokenized ARGV/ARGC: control-structure
   \ keywords first, then redirect/pipe parsing, then builtin dispatch
@@ -744,6 +860,7 @@ VARIABLE COND-TRUE?
   \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
   \ defined).
   S" if" LINE-IS? IF DO-IF EXIT THEN
+  S" while" LINE-IS? IF DO-WHILE EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
@@ -763,6 +880,10 @@ VARIABLE COND-TRUE?
                         \ applies to external commands (see
                         \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
                         \ redirect the builtin's own output in v0.2.
+                        \ Also stashes a raw copy, same reason as
+                        \ READ-LINE-INTO-ARGV above.
+  DUP RAW-LINE-LEN !
+  LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   TOKENIZE
   RUN-TOKENIZED-CALL ;
 

@@ -1532,3 +1532,115 @@ on both x86-64 and i386. No engine changes this iteration; purely
 - **`elif`** - only a single `if`/`then`/`else`/`fi`, no
   `elif`/`then` chains; achievable today only by nesting a second `if`
   inside the `else` body, which (per above) isn't supported yet either.
+
+## Iteration 11: while/do/done
+
+Goal: the loop mechanism explicitly flagged as unfinished business at
+the end of Iteration 10 - "the buffer-and-replay mechanism" a `while`
+loop needs, unlike `if`'s streaming approach.
+
+### The core design problem, worked through before writing any code
+
+A `while` loop's condition and body have to run more than once, but
+stdin is a one-pass stream - a line, once read, is gone. The naive fix
+(save the *already-tokenized* `ARGV` from the first reading, re-run
+that each iteration) turns out to be nearly useless: by the time
+`RUN-TOKENIZED` detects the `while` keyword, `TOKENIZE` has *already*
+destructively expanded any `$VAR`/`$?`/`$$` in that line, once, and
+in-place. A condition like `while test $? -eq 0` - a completely
+ordinary pattern - would freeze `$?`'s value from *before the loop
+even started* and never update, making the loop either never run or
+run forever regardless of what actually happens each iteration. Real
+loop conditions need genuinely fresh re-evaluation, including fresh
+expansion, every single time.
+
+The fix: capture the *raw*, pre-`TOKENIZE` text of the condition and
+each body line - before any expansion happens to it - into stable
+storage, and re-copy-and-re-`TOKENIZE` that same raw text into
+`LINE-BUF` fresh on every iteration. Since `TOKENIZE` already performs
+expansion as part of tokenizing, "re-tokenize the raw text" and
+"re-expand it" are the same operation - no separate expansion pass
+needed once the raw-capture problem is solved.
+
+This required a small, mechanical change reaching further back than
+`while` itself: both `RUN-LINE` and `READ-LINE-INTO-ARGV` (the two
+places a line ever gets read) now stash a copy of the just-`ACCEPT`ed
+raw bytes, into a new `RAW-LINE-BUF`, *before* calling `TOKENIZE` -
+otherwise there'd be no raw text left to capture by the time `while`
+is even recognized.
+
+### `SAVE-WHILE-COND`/`APPEND-RAW-LINE-TO-BODY`/`DO-WHILE`
+
+`SAVE-WHILE-COND` independently re-scans `RAW-LINE-BUF` (skipping its
+own leading whitespace, the literal `while`, and more whitespace) to
+find where the condition text actually starts within the *raw* line -
+deliberately not relying on `ARGV`'s own (post-`TOKENIZE`) positions,
+since those describe the *compacted, expanded* form, not the raw
+source. The extracted substring is saved into `WHILE-COND-BUF`.
+`APPEND-RAW-LINE-TO-BODY` collects each raw body line (again, straight
+from `RAW-LINE-BUF`, not `ARGV`) into `WHILE-BODY-BUF` as a sequence
+of NUL-terminated strings, one after another - a flat list, walked
+later by `DO-WHILE-BODY` via a running byte offset (`CSTRLEN` on each
+entry to find where the next one starts, same technique used for
+C-string handling throughout `shell.4` already).
+
+`DO-WHILE` itself: save the raw condition, expect `do` on the next
+line (else error out gracefully, same fallback as `if`'s missing
+`then`), collect body lines (raw) until `done`, then loop: copy the
+saved condition text into `LINE-BUF`, `TOKENIZE` it (fresh expansion,
+every time), run it, check `LAST-STATUS`, and if true, run every
+stored body line once (each one *also* freshly re-tokenized via
+`RUN-STORED-LINE`) before looping back to re-check the condition
+again.
+
+### A genuinely thorough verification, since a subtly-wrong loop
+### implementation could easily *look* right on a single pass
+
+Getting real multi-iteration coverage without arithmetic or command
+substitution took a specific, deliberate test design: a **3-file
+shift-register** trick (three lock files; each pass removes the front
+one and renames the other two down one slot via `mv`), which only
+terminates after exactly 3 passes *and only if the condition is
+genuinely re-checked against real, current filesystem state each
+time* - a frozen condition would either never terminate or terminate
+immediately, not after exactly 3. Verified this gives exactly 3
+iterations. Also verified the specific failure mode this whole
+architecture exists to avoid: a condition built entirely from `$?`
+(`while test $? -eq 0`, driven by the last body command's own exit
+status) correctly drives exactly 3 iterations too - directly
+confirming fresh re-expansion, not just re-execution of static text.
+Also verified: a single-iteration loop correctly stopping and control
+returning to normal line processing afterward, quote-awareness (a
+quoted `'while'` stays a literal argument via the same `LINE-IS?`
+mechanism `if` already uses), and the missing-`do` error path.
+`tests/shell/run-while` (6 assertions) locks all of this in - 45
+assertions across 11 files now, all passing on both x86-64 and i386.
+No engine changes this iteration; purely `shell.4`-level.
+
+### What this iteration deliberately did NOT do
+
+- **`for`/`until` loops** - `until` is a trivial variant of the same
+  mechanism (invert the condition check); `for x in ...` is a
+  different shape entirely (iterating over a word list rather than
+  re-checking a condition) and wasn't attempted.
+- **Nesting** - same limitation as `if` (Iteration 10), for the same
+  reason: shared global state (`WHILE-COND-BUF`, `WHILE-BODY-BUF`,
+  etc.) that a recursive call would corrupt. A `while` loop containing
+  an `if` (or vice versa) is untested and likely broken.
+- **`break`/`continue`** - no way to exit a loop early or skip to the
+  next iteration from within the body.
+- **A loop-iteration cap or other infinite-loop safeguard** - a
+  buggy or intentional `while true; do ...; done` will run forever,
+  same as in a real shell (terminated by Ctrl-C or external
+  intervention, not by this shell itself). Not adding an artificial
+  cap was a deliberate choice to match real shell behavior rather than
+  diverge from it.
+- **`WHILE-BODY-BUF`'s fixed size** - a 4096-byte buffer, guarded with
+  a bounds check (a body line that would overflow it is silently
+  dropped rather than corrupting adjacent dictionary memory - the
+  first draft had no such check at all, a real memory-safety gap
+  caught and fixed while writing up this entry rather than left as
+  just a documented limitation, given how much earlier damage this
+  session's accidental buffer overflows caused). Fine for any
+  realistic interactive use so far, but a dropped line means that
+  iteration's body silently runs incomplete, with no error reported.
