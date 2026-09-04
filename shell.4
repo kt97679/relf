@@ -981,6 +981,53 @@ VARIABLE PIPE-PRESENT?
 
 : AT-END? ( --- f )  PR-I @ ARGC @ < 0= ;
 
+\ ==================================================================
+\ ';' - multiple commands per line, run in sequence regardless of
+\ each one's own exit status (unlike '&&'/'||', not yet implemented).
+\ Same whitespace-delimited-token convention as '|' below (';' only
+\ acts as a separator when it's its own token - "a;b" is one literal
+\ argument, same as "a|b" already is). Splits off *only* the first
+\ ';' each call, leaving everything after it (which may itself
+\ contain further ';'s) in ARGV-SEMI-REST for RUN-TOKENIZED to feed
+\ back through this same logic on its next call - see RUN-TOKENIZED
+\ for how the two pieces get run in turn.
+\ ==================================================================
+
+CREATE ARGV-SEMI-LEFT MAX-ARGS CELLS ALLOT
+CREATE ARGV-SEMI-REST MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-SEMI-LEFT
+VARIABLE ARGC-SEMI-REST
+
+: AT-SEMI? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" ;" STR= ;
+
+: SPLIT-SEMI ( --- f )  \ f = -1 if a ';' token was found (the part
+                          \ before it is in ARGV-SEMI-LEFT/ARGC-SEMI-
+                          \ LEFT, the part after in ARGV-SEMI-REST/
+                          \ ARGC-SEMI-REST - either can be empty, e.g.
+                          \ a leading or trailing ';'), 0 otherwise
+                          \ (neither buffer is touched).
+  0 PR-I !
+  0 ARGC-SEMI-LEFT !
+  BEGIN AT-END? AT-SEMI? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
+    ARGC-SEMI-LEFT @ 1+ ARGC-SEMI-LEFT !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
+  AT-SEMI? 0= IF 0 EXIT THEN
+  PR-I @ 1+ PR-I !                    ( skip the ";" token itself )
+  0 ARGC-SEMI-REST !
+  BEGIN AT-END? 0= WHILE
+    PR-I @ ARGV@ ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
+    ARGC-SEMI-REST @ 1+ ARGC-SEMI-REST !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
+  -1 ;
+
 : AT-PIPE? ( --- f )
   AT-END? IF 0 EXIT THEN
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
@@ -1345,12 +1392,21 @@ VARIABLE WHILE-BODY-CUR
   REPEAT ;
 
 : RUN-TOKENIZED ( --- )
-  \ Acts on the currently-tokenized ARGV/ARGC: control-structure
-  \ keywords first, then redirect/pipe parsing, then builtin dispatch
-  \ or external exec. Shared by RUN-LINE (after its own TOKENIZE call,
-  \ below) and DO-IF's own body-line handling above (via
+  \ Acts on the currently-tokenized ARGV/ARGC: ';' splitting first (so
+  \ each ';'-separated piece gets the full treatment below on its own
+  \ - see SPLIT-SEMI), then control-structure keywords, then
+  \ assignment detection, then redirect/pipe parsing, then builtin
+  \ dispatch or external exec. Shared by RUN-LINE (after its own
+  \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
   \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
   \ defined).
+  SPLIT-SEMI IF
+    ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
+    RUN-TOKENIZED-CALL
+    ARGV-SEMI-REST ARGC-SEMI-REST @ COPY-ARGV
+    RUN-TOKENIZED-CALL
+    EXIT
+  THEN
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
   ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF

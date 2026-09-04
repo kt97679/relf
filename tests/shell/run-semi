@@ -1,0 +1,34 @@
+#!/bin/sh
+# run-semi - ';' separates multiple commands on one line, each run in
+# sequence regardless of the previous one's exit status (unlike
+# '&&'/'||', not yet implemented). Same whitespace-delimited-token
+# convention '|' already has - ';' only acts as a separator when it's
+# its own token, and a quoted ';' is a literal argument.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'echo a ; echo b\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "two commands separated by ; both run" "a
+b" "$out"
+
+out=$(printf 'echo a ; echo b ; echo c\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "three commands separated by ; all run" "a
+b
+c" "$out"
+
+out=$(printf '/usr/bin/false ; echo still-ran\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a later command runs regardless of an earlier one's failure" "still-ran" "$out"
+
+out=$(printf 'echo a ;\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a trailing ; with nothing after it is harmless" "a" "$out"
+
+out=$(printf '; echo a\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a leading ; with nothing before it is harmless" "a" "$out"
+
+out=$(printf "echo 'a;b'\nexit\n" | "$THIS_SH" 2>&1)
+assert_output_contains "a quoted ';' is a literal character, not a separator" "a;b" "$out"
+
+"$THIS_SH" -c "/usr/bin/false ; /usr/bin/true" < /dev/null > /dev/null 2>&1
+assert_status "\$? reflects the last segment's own status" 0 "$?"
+
+report

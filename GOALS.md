@@ -236,9 +236,9 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17's phase B work — expected, since no
-   single vendored test file passes purely from variable assignment
-   alone).
+   including after Iteration 17 and 18's phase B work — expected, since
+   no single vendored test file passes purely from variable assignment
+   or `;` support alone).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -310,13 +310,28 @@ the full account and the fixes applied.
      per-command assignment prefix — a real, acknowledged gap, not
      silently mishandled: it currently falls through to being looked
      up as a literal, failing command name, since `ARGC` isn't 1 in
-     that shape). Multiple commands per line via `;`. `&&`/`||`.
-     Command grouping (`(...)` subshells, `{ ...; }` brace groups).
-     Nesting support for `if`/`while` (removing the "no nesting"
-     limitation from Iteration 11 — likely needs a real
-     stack/recursion-based redesign rather than the current shared
-     globals, which is exactly why nesting was deferred in the first
-     place).
+     that shape).
+
+     Multiple commands per line via `;`: **done (Iteration 18)** —
+     `cmd1 ; cmd2 ; ...`, each run in sequence regardless of the
+     previous one's own exit status, recursively handling any number
+     of segments. Surfaced a real, pre-existing architectural
+     limitation rather than introducing one: `FOO=bar ; echo $FOO`
+     doesn't see the just-assigned value, because `$VAR` expansion
+     happens once for the *entire* raw line during the initial
+     tokenize pass, before any `;`-segment has actually run (the same
+     assignment on its own, separate line works correctly) — a proper
+     fix means tokenizing/expanding each `;`-separated piece
+     independently in sequence rather than the whole line up front, a
+     real architectural change left for its own future iteration; see
+     `PROGRESS.md`'s Iteration 18 entry for the full account.
+
+     Still open: `&&`/`||`. Command grouping (`(...)` subshells,
+     `{ ...; }` brace groups). Nesting support for `if`/`while`
+     (removing the "no nesting" limitation from Iteration 11 — likely
+     needs a real stack/recursion-based redesign rather than the
+     current shared globals, which is exactly why nesting was deferred
+     in the first place).
    - **Phase C — control structures.** `for`/`in`/`do`/`done`.
      `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
      `|` alternation. Shell functions (definition, invocation,

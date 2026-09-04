@@ -2278,3 +2278,66 @@ assertions across 15 files now, all passing on both architectures.
 now - expected, since no single vendored test file passes purely from
 variable assignment alone; the pass count moves once enough of phase
 B/C accumulates.
+
+## Iteration 18: goal 8, phase B - ';' (multiple commands per line)
+
+Goal: the next item on phase B's list - `cmd1 ; cmd2 ; ...`, each run
+in sequence regardless of the previous one's own exit status (unlike
+`&&`/`||`, not yet implemented).
+
+### Design
+
+Same whitespace-delimited-token convention `|` already has - `;` only
+acts as a separator when it's its own token (confirmed directly:
+neither `;` nor `|` were ever self-delimiting without surrounding
+whitespace - "a;b" and "a|b" are each one literal token today, a
+pre-existing characteristic, not something new introduced here).
+`AT-SEMI?`/`SPLIT-SEMI` mirror `AT-PIPE?`/`SPLIT-PIPE` exactly, except
+`SPLIT-SEMI` only ever splits off the *first* `;` it finds, leaving
+everything after it (which may itself contain further `;`s) in a
+separate `ARGV-SEMI-REST` buffer for `RUN-TOKENIZED` to feed back
+through the same logic on a follow-up call - unlike a pipeline
+(exactly two sides, always), a `;`-separated line can have any number
+of segments, so this needed to be a loop rather than a fixed split.
+`RUN-TOKENIZED` checks for `;` first now, ahead of the if/while
+keyword checks and the assignment-word check from Iteration 17: if
+found, the left segment is copied into the global `ARGV`/`ARGC` (via
+the already-existing `COPY-ARGV`) and run through `RUN-TOKENIZED-CALL`
+(the same deferred-word recursion mechanism already used for
+if/while's own body-line handling), then the rest is copied in and run
+the same way - recursing naturally handles any number of further
+semicolons. An empty segment (a leading or trailing `;`) safely
+produces `ARGC = 0`, which every downstream check (`LINE-IS?`,
+`SPLIT-PIPE`, `DISPATCH`, etc.) already treats as a no-op.
+
+### A real, discovered limitation - not a bug introduced by this work, but newly visible because of it
+
+`FOO=bar ; echo $FOO` does **not** print `bar` - it prints nothing,
+same as `export FOO=bar ; echo $FOO`. Root cause: `$VAR`/`${VAR}`
+expansion happens once, during the initial `TOKENIZE` pass over the
+*entire* raw line, before any `;`-separated segment has actually run -
+so a variable assigned or exported earlier in the same line via `;`
+isn't visible yet to a `$VAR` expansion later in that same line, even
+though it would be on a subsequent line (confirmed: `FOO=bar` then
+`echo $FOO` as two separate lines correctly prints `bar`). This isn't
+new breakage from adding `;` - it's an existing consequence of how
+expansion was already timed (once per line, up front), just newly
+observable now that a single line can contain multiple sequenced
+statements at all. A proper fix means tokenizing (and thus expanding)
+each `;`-separated piece independently, in sequence, rather than the
+whole line up front - a real architectural change, not a small patch,
+and deliberately left for its own future iteration rather than
+attempted as part of this one. Documented here and in `GOALS.md`
+rather than silently left for someone to rediscover.
+
+### Verified end-to-end via `relfsh`
+
+Two and three commands separated by `;` all run; a later command runs
+regardless of an earlier one's failure; a trailing or leading `;` with
+nothing on the empty side is harmless; a quoted `';'` stays a literal
+character; `$?` reflects the last segment's own status.
+`tests/shell/run-semi` (7 assertions) locks all of this in - 82
+assertions across 16 files now, all passing on both x86-64 and i386.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+expected, since no single vendored test file passes from `;` support
+alone.
