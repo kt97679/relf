@@ -178,16 +178,22 @@ the full account and the fixes applied.
    **Done**, verified on i386. See the phase 6 section below.
 7. **Userland: a POSIX-flavored shell on RelF** — process-control
    primitives (`FORK`/`EXECVE`/`WAITPID`/`PIPE`/`DUP2`/`GETENV`/
-   `SETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`) plus `shell.4`, a shell built
-   on top of them. **v0.1 done**: external command execution via PATH
-   search, and `cd`/`pwd`/`export`/`exit` builtins, verified end-to-end
-   on x86-64 and i386 — see `PROGRESS.md`'s Iteration 5 entry for the
-   full account, including several real bugs found getting there.
-   Pipes, redirection, quoting, variable expansion, and control
-   structures are explicitly **not yet done** — see that same entry's
-   "what this iteration deliberately did NOT do". This phase is the
-   first concrete step toward the "busybox-on-RelF" direction discussed
-   under "Non-goals" and in `PROGRESS.md`'s architectural notes; whether
+   `SETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`/`SYS-ARGC`/`SYS-ARG`) plus
+   `shell.4`, a shell built on top of them, plus `relfsh` (a
+   single-executable wrapper) and a real, scoped test suite in
+   `tests/shell/`. **v0.1 done**: external command execution via PATH
+   search, `cd`/`pwd`/`export`/`exit` builtins, and a `-c` invocation
+   mode (`relfsh -c 'command'`, matching `sh -c '...'`) — all verified
+   end-to-end on x86-64 and i386, with an automated test suite
+   (structurally inspired by bash's own `tests/`) now checking this on
+   every run. See `PROGRESS.md`'s Iteration 5 and 6 entries for the
+   full account, including several real bugs found getting there — one
+   caught directly by the new test suite on its first run. Pipes,
+   redirection, quoting, variable expansion, and control structures are
+   explicitly **not yet done** — see those entries' "what this
+   iteration deliberately did NOT do". This phase is the first concrete
+   step toward the "busybox-on-RelF" direction discussed under
+   "Non-goals" and in `PROGRESS.md`'s architectural notes; whether
    it's worth pushing toward a fuller coreutils/shell replacement, versus
    stopping at "useful enough to drive the system interactively", is an
    open question to revisit once v0.1's rough edges (pipes/redirection

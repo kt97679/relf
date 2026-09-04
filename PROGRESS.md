@@ -941,3 +941,146 @@ it's a logic bug.
   expected to work, but "expected to work" undersells how many
   supposedly-mechanical steps in this project have turned up real bugs
   on inspection - worth actually checking before relying on it.
+
+## Iteration 6: shell `-c` mode + a real test suite for shell.4
+
+Goal: give RelF's shell a normal single-executable invocation
+(`relfsh -c 'command'`, matching `sh -c '...'`), motivated by wanting to
+eventually point a real test harness at it - see the discussion that
+preceded this iteration for why bash's own `tests/` (parameterized via
+a `THIS_SH` env var) is the best-designed reference for this, but
+wasn't directly usable yet (its content assumes far more shell than
+v0.1 has, and its harness itself requires `-c`/script invocation,
+which shell.4 didn't have). This iteration builds that missing piece
+and a first real test suite structured the same way, scoped to what
+shell.4 actually implements.
+
+### New engine primitives: `SYS-ARGC`/`SYS-ARG`
+
+Two new primitives exposing relf's own `argv` (beyond `argv[1]`, the
+kernel-image path) to Forth: `SYS-ARGC ( --- n )` and `SYS-ARG
+( n --- c-addr )`. `main()` now stashes `argc`/`argv` in two static
+globals (`g_argc`/`g_argv`) before doing anything else, so the
+primitives can read them later. Deliberately minimal and
+generic - the engine doesn't know anything about `-c` itself; it just
+exposes argv and lets shell.4 (Forth) decide what any of it means,
+consistent with keeping engine changes small and pushing behavior to
+the Forth layer wherever possible (same philosophy as every other
+primitive added so far). Verified directly (`SYS-ARGC`/`SYS-ARG`
+against `relf kernel.img -c "echo hello world"`) before wiring
+anything into shell.4.
+
+### shell.4: `RUN-LINE`, `SH-C`, `MAIN`
+
+`SH1` (the interactive per-line handler) was refactored to extract its
+tail (tokenize, then dispatch to a builtin or run externally) into a
+shared `RUN-LINE ( u --- )`, so `-c` mode can reuse identical logic
+rather than duplicating it. `SH-C ( c-addr --- )` takes a NUL-terminated
+command string (from `SYS-ARG`), copies it into `LINE-BUF`, runs it via
+`RUN-LINE`, and exits with `LAST-STATUS`. `MAIN` is the new suggested
+entry point: if `SYS-ARGC` is 2 and the first arg is exactly `"-c"`,
+it runs the second arg via `SH-C` (never returns); otherwise it falls
+through to the ordinary `SH` loop. Only ever runs *one* command in
+`-c` mode - no `;`/`&&` chaining, since `TOKENIZE` has no notion of a
+statement separator yet (same scope boundary as always).
+
+**A real bug found and fixed while adding this**: `LAST-STATUS` had
+previously only ever been set by `RUN-EXTERNAL`, and stored the *raw*
+`WAITPID` status rather than a decoded exit code - meaning `-c 'false'`
+would have propagated the wrong status (the raw status's low byte,
+which happens to be 0 for any normal exit, regardless of the actual
+exit code, since the code lives in bits 8-15). Fixed by decoding
+`WEXITSTATUS` (`8 RSHIFT 255 AND`) before storing, and by having every
+builtin (`DO-CD`, `DO-PWD`, `DO-EXPORT`) set `LAST-STATUS` too, so `-c`
+mode reports a sensible status regardless of whether the command it
+ran was a builtin or external. Signal-terminated children aren't
+distinguished from normally-exited ones with the same low byte - a
+known, documented v0.1 simplification, not fixed here.
+
+### `relfsh`: a single-executable wrapper
+
+relf itself needs a kernel-image argument and a two-line Forth
+bootstrap (`load shell.4, then call MAIN`) before it behaves like "a
+shell" - `relfsh` is a small POSIX-`sh` script that hides that,
+piping the bootstrap in ahead of relf's own stdin. Configurable via
+`RELF_BIN`/`RELF_IMG` env vars (defaulting to the wrapper's own
+directory) so one script drives either cell-width build - used this
+way in `tests/run_tests.sh`.
+
+**A real bug found and fixed while building this**: the first version
+unconditionally chained the bootstrap output with `cat` (so
+interactive/piped-script callers would still see their own stdin
+*after* the two bootstrap lines). But `-c` mode's `SH-C` never reads
+stdin again after running its one command and exiting - so `cat` sat
+blocked waiting for EOF on `relfsh`'s own stdin that never came,
+hanging the whole pipeline (surfaced as `timeout` killing the process
+group, exit 124, even though relf itself had already finished and
+printed its output). Fixed by only chaining `cat` when *not* in `-c`
+mode.
+
+### `tests/shell/`: a real, scoped test suite
+
+Structural pattern (individual `run-<feature>` files under a master
+`run-all` driver, a `THIS_SH`-style environment variable pointing at
+whatever shell binary is under test) is deliberately borrowed from
+bash's own `tests/` directory. Content is not borrowed from it - written
+fresh, scoped to what shell.4 actually implements as of this iteration
+(external command execution + exit status, `cd`/`pwd`/`export`), and
+meant to grow feature-by-feature alongside shell.4 rather than testing
+ahead of it. Unlike bash's own suite (which diffs raw output against a
+fixed `.right` file), these use substring/status assertions
+(`assert_output_contains`/`assert_status` in `lib.sh`) rather than
+whole-output diffing - relf's own boot banner and CRLF line endings
+would make literal full-output comparison fragile for little benefit
+here.
+
+Five test files, ten assertions total: `run-echo` (external command
+output + exit status), `run-exit-status` (`true`/`false`/nonexistent
+command → 0/1/127), `run-cd` (persists across a session; reports an
+error for a missing directory), `run-export` (verified via a real `env`
+child process, since shell.4 has no `$VAR` expansion yet to check this
+from within the shell itself), `run-pathsearch` (bare name via `$PATH`
+vs. a `/`-containing path bypassing the search).
+
+**A real, previously-undetected bug caught immediately by `run-pathsearch`**:
+`RUN-CHILD`'s direct-path branch (for a command name containing `/`,
+which should bypass `$PATH` search entirely) called `ARGV @ ARGV @
+EXECVE` - pushing `ARGV[0]` (the command string) as *both* of
+`EXECVE`'s arguments, instead of `ARGV` (the array's own address) and
+`ARGV[0]` (the string). Always failed with exit 127. This had slipped
+through every manual test in Iteration 5, because none of them
+happened to exercise a slash-containing command name - only the
+`$PATH`-search branch got manually exercised. Fixed to `ARGV ARGV @
+EXECVE`, matching the working pattern already used by `TRY-DIR`
+elsewhere in the same file. Directly demonstrates the value of the new
+suite: it caught a real bug in already-"working", already-tested code
+within its very first run.
+
+Wired into `tests/run_tests.sh`, replacing the earlier one-off shell
+smoke test from Iteration 5 (superseded - the new suite covers
+strictly more, and using `relfsh` end-to-end also now exercises the
+new `-c` mode as part of every CI-style run). Runs against both engine
+builds via `relfsh` with `RELF_BIN`/`RELF_IMG` overridden for the
+4-byte-cell build. Full suite (CORE + shell) passes on both cell
+widths after all of the above.
+
+### What this iteration deliberately did NOT do
+
+- **Adopting any of bash's actual test *content*.** Only the
+  structural pattern was borrowed - see above. Pulling in real bash
+  test cases remains blocked on the same gap as before (quoting,
+  `$VAR` expansion, control structures), now joined by a smaller one:
+  even bash's simplest `${THIS_SH} -c '...'` cases often assume more
+  than a single bare command (e.g. `-c 'a; b'`), which `-c` mode here
+  deliberately doesn't support yet (see `RUN-LINE`'s scope note above).
+- **`.right`-style whole-output diffing.** Deliberately using
+  substring/status assertions instead - see above for why.
+- **Script-file invocation (`relfsh script.sh`, as opposed to `-c` or
+  interactive/piped).** Not attempted; `MAIN`'s argv-inspection logic
+  would need extending to recognize a bare filename argument and
+  `INCLUDED`/read it as a sequence of commands rather than Forth
+  source. Worth doing if a future test suite wants it.
+- **Distinguishing signal-terminated commands' exit status from
+  normally-exited ones with the same low byte** in `LAST-STATUS`'s
+  decoding - noted above, a real POSIX shell distinguishes these
+  (typically via the 128+signum convention); v0.1 doesn't.

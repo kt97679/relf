@@ -29,6 +29,14 @@
 
 extern char **environ;
 
+/* Process argv, exposed to Forth via SYS-ARGC/SYS-ARG below - argv[0]
+ * and argv[1] (the program name and kernel-image path) are not part
+ * of this; SYS-ARG(0) is argv[2], the first argument after the image
+ * path, matching a shell's own convention of not exposing its own
+ * name via the primitives that expose *its* arguments. */
+static int g_argc;
+static char **g_argv;
+
 #define UNS8 unsigned char /* byte access; width-independent */
 
 #if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFFULL
@@ -245,7 +253,8 @@ static void virtual_machine(void) {
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
-        &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd
+        &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
+        &&L_sysargc, &&L_sysarg
     };
 
 #define NEXT() do { \
@@ -530,6 +539,18 @@ L_getcwd: { /* addr max-len --- len ior */
     }
     NEXT();
 }
+L_sysargc: /* --- n */
+    PUSH((UNS64)(g_argc > 2 ? g_argc - 2 : 0));
+    NEXT();
+L_sysarg: { /* n --- c-addr */
+    long n = (long)(INT64)DS0;
+    if (n < 0 || n + 2 >= g_argc) {
+        DS0 = 0;
+    } else {
+        DS0 = (UNS64)(uintptr_t)g_argv[n + 2];
+    }
+    NEXT();
+}
 }
 
 /*
@@ -541,6 +562,8 @@ int main(int argc, char **argv) {
         write_str(2, "Usage: relf <filename>\n");
         return 1;
     }
+    g_argc = argc;
+    g_argv = argv;
     load_image(argv[1]);
     ip = (UNS64)(uintptr_t)base;
     rp = ip + MEMSIZE;

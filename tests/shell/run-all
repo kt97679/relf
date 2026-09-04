@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/shell/run-all - runs every run-* test file in this directory
+# against $THIS_SH (default: ../../relfsh, i.e. the repo's own
+# default 8-byte-cell build). See lib.sh for the THIS_SH convention.
+#
+# To test the 4-byte-cell (i386) build instead, point THIS_SH at
+# relfsh with RELF_BIN/RELF_IMG overridden - see tests/run_tests.sh
+# for how the full suite does this.
+set -u
+cd "$(dirname "$0")" || exit 1
+
+TOTAL_FAILED=0
+for t in run-*; do
+    case "$t" in
+        run-all|*.orig|*~) continue ;;
+    esac
+    [ -f "$t" ] && [ -x "$t" ] || continue
+    if ! ./"$t"; then
+        TOTAL_FAILED=$((TOTAL_FAILED + 1))
+    fi
+done
+
+if [ "$TOTAL_FAILED" -eq 0 ]; then
+    echo "tests/shell: all test files passed"
+    exit 0
+else
+    echo "tests/shell: $TOTAL_FAILED test file(s) had failures"
+    exit 1
+fi

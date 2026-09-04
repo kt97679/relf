@@ -117,21 +117,43 @@ addresses, which should be absolute.
 An optional POSIX-flavored shell, shell.4, is layered on top of an
 already-bootstrapped kernel.img - it is not part of the base kernel
 image, kept separate deliberately so the base image stays minimal (see
-GOALS.md, goal 3). To use it:
+GOALS.md, goal 3). The easiest way to use it is via the relfsh wrapper
+script at the repo root, which gives it a normal single-executable
+interface:
+
+    ./relfsh -c 'echo hello'      run one command, exit with its status
+    ./relfsh                      interactive read-eval loop
+    printf 'cd /tmp\npwd\nexit\n' | ./relfsh
+                                   piped multi-line script
+
+relfsh is a thin POSIX-sh wrapper: it feeds relf the two-line Forth
+bootstrap (load shell.4, then call MAIN) ahead of whatever else is on
+its own stdin, so relf itself doesn't need to be invoked interactively
+just to reach the shell. The same two steps done by hand:
 
     ./relf kernel.img
     S" shell.4" INCLUDED
-    SH
+    MAIN
 
-This loads ten new process-control primitives' worth of shell logic
-(FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/SYS-EXIT/CHDIR/GETCWD are
-already compiled into kernel.img itself, same as any other primitive)
-and starts the read-eval loop. Current (v0.1) scope: external commands
-are resolved via $PATH and run via fork/exec/wait, and cd/pwd/export/
-exit are supported as builtins. Whitespace splits arguments; there is
-no quoting, no $VAR expansion, and no pipes or redirection yet - see
-GOALS.md phase 7 and PROGRESS.md's Iteration 5 entry for the current
-state and what's planned next.
+(MAIN checks whether relf was invoked with `-c "command"` - exposed to
+Forth via the SYS-ARGC/SYS-ARG primitives, which read relf's own argv
+beyond the image path - and either runs that one command via SH-C or
+falls through to the ordinary interactive SH loop; calling SH directly
+skips that check and always goes interactive.)
+
+This loads twelve new process-control primitives' worth of shell logic
+(FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/SYS-EXIT/CHDIR/GETCWD/
+SYS-ARGC/SYS-ARG are already compiled into kernel.img itself, same as
+any other primitive). Current (v0.1) scope: external commands are
+resolved via $PATH and run via fork/exec/wait, and cd/pwd/export/exit
+are supported as builtins. Whitespace splits arguments; there is no
+quoting, no $VAR expansion, and no pipes or redirection yet - and `-c`
+only ever runs a single command (no ";"/"&&" chaining). See GOALS.md
+phase 7 and PROGRESS.md's Iteration 5 and 6 entries for the current
+state and what's planned next. tests/shell/ has a small test suite
+(structurally modeled on bash's own tests/ directory) exercising all
+of the above; run it directly via `tests/shell/run-all`, or as part of
+`tests/run_tests.sh`.
 
 5. Possible usage.
 

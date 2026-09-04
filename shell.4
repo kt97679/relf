@@ -28,7 +28,8 @@ CREATE CWDBUF     PATH-MAX ALLOT
 CREATE ENVNAMBUF  64 ALLOT
 
 VARIABLE ARGC          ( number of tokens in the current command line )
-VARIABLE LAST-STATUS   ( exit status of the last foreground external command )
+VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
+0 LAST-STATUS !        ( defensive: don't rely on a VARIABLE's initial content )
 
 \ ==================================================================
 \ C-string helpers
@@ -175,7 +176,7 @@ VARIABLE PATH-END2
 
 : RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; only returns on total failure
   ARGV @ DUP CSTRLEN HAS-SLASH? IF
-    ARGV @ ARGV @ EXECVE DROP
+    ARGV ARGV @ EXECVE DROP
   ELSE
     SEARCH-PATH
   THEN ;
@@ -190,14 +191,19 @@ VARIABLE PATH-END2
 : DO-CD ( --- )
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ CHDIR
-    IF ." cd: no such directory" CR THEN
+    IF ." cd: no such directory" CR 1 LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
   ELSE
     S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
-    ENVNAMBUF GETENV DUP 0= IF DROP ELSE CHDIR DROP THEN
+    ENVNAMBUF GETENV DUP 0= IF
+      DROP 0 LAST-STATUS !
+    ELSE
+      CHDIR IF 1 ELSE 0 THEN LAST-STATUS !
+    THEN
   THEN ;
 
 : DO-PWD ( --- )
-  CWDBUF PATH-MAX GETCWD DROP CWDBUF SWAP TYPE CR ;
+  CWDBUF PATH-MAX GETCWD DROP CWDBUF SWAP TYPE CR
+  0 LAST-STATUS ! ;
 
 : DO-EXPORT ( --- )
   \ export NAME=VALUE - finds '=' in ARGV[1], splits it, SETENVs.
@@ -208,10 +214,12 @@ VARIABLE PATH-END2
         DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
         DUP I CHARS + CHAR+       ( c-addr value-addr )
         SWAP SETENV DROP
+        0 LAST-STATUS !
         UNLOOP EXIT
       THEN
     LOOP DROP
-  THEN ;
+  THEN
+  0 LAST-STATUS ! ;
 
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   ARGC @ 0 > IF
@@ -231,20 +239,58 @@ VARIABLE PATH-END2
   DUP 0 = IF
     DROP RUN-CHILD 127 SYS-EXIT
   ELSE
-    WAITPID DROP LAST-STATUS !
+    WAITPID DROP           ( raw wait status )
+    8 RSHIFT 255 AND       ( decode WEXITSTATUS - the normal-exit case only;
+                              a signal-terminated child isn't distinguished
+                              from one that exited with that same low byte
+                              in v0.1 - see PROGRESS.md )
+    LAST-STATUS !
   THEN ;
 
 : SH-PROMPT ( --- )
   ." $ " ;
 
-: SH1 ( --- )  \ process one line; returns normally either way
-  SH-PROMPT
-  LINE-BUF LINE-MAX ACCEPT
-  CR
+: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
+                        \ dispatch to a builtin or run as an external command.
+                        \ Shared by the interactive loop (SH1) and -c mode
+                        \ (SH-C) below, so both go through identical logic.
   TOKENIZE
   ARGC @ 0 > IF
     DISPATCH 0= IF RUN-EXTERNAL THEN
   THEN ;
 
+: SH1 ( --- )  \ process one interactively-read line; returns either way
+  SH-PROMPT
+  LINE-BUF LINE-MAX ACCEPT
+  CR
+  RUN-LINE ;
+
 : SH ( --- )
   BEGIN SH1 0 UNTIL ;
+
+VARIABLE SHC-LEN
+
+: SH-C ( c-addr --- )  \ c-addr: a NUL-terminated command string (from
+                        \ SYS-ARG). Runs it once and exits with its status -
+                        \ never returns. Only a single command, the same as
+                        \ any one line SH1 would read: no ";"/"&&" chaining,
+                        \ since TOKENIZE has no notion of a statement
+                        \ separator yet (see shell.4's own header comment).
+  DUP CSTRLEN SHC-LEN !
+  LINE-BUF SHC-LEN @ MOVE
+  SHC-LEN @ RUN-LINE
+  LAST-STATUS @ SYS-EXIT ;
+
+: MAIN ( --- )  \ entry point once shell.4 is loaded: `relf kernel.img -c
+                  \ "cmd"` (via SYS-ARGC/SYS-ARG, exposing relf's own argv
+                  \ beyond the image path) runs one command non-interactively
+                  \ and exits with its status - matching invoking any real
+                  \ shell binary as `sh -c "cmd"`. Anything else (no args,
+                  \ or args that aren't exactly "-c" plus one string) falls
+                  \ through to the ordinary interactive loop.
+  SYS-ARGC 2 = IF
+    S" -c" 0 SYS-ARG STR0= IF
+      1 SYS-ARG SH-C
+    THEN
+  THEN
+  SH ;

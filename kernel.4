@@ -635,6 +635,8 @@ PRIMITIVE SETENV    ( value-addr name-addr --- ior )
 PRIMITIVE SYS-EXIT  ( n --- )
 PRIMITIVE CHDIR     ( c-addr --- ior )
 PRIMITIVE GETCWD    ( addr max-len --- len ior )
+PRIMITIVE SYS-ARGC  ( --- n )
+PRIMITIVE SYS-ARG   ( n --- c-addr )
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.

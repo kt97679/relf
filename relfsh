@@ -1,0 +1,52 @@
+#!/bin/sh
+# relfsh - convenience wrapper around `relf kernel.img`, giving RelF's
+# shell (shell.4) a normal single-executable invocation:
+#
+#   relfsh -c 'command'   run one command non-interactively, exit with
+#                          its status (matches `sh -c '...'`)
+#   relfsh                interactive read-eval loop (matches plain `sh`)
+#   ... | relfsh           script commands piped on stdin, read one per
+#                          line by the interactive loop until "exit"
+#
+# Exists mainly so test harnesses that expect a single "the shell under
+# test" executable (e.g. bash's own tests/, parameterized via a THIS_SH
+# environment variable - see PROGRESS.md) can point at RelF the same
+# way they'd point at any other shell binary, rather than needing to
+# know RelF's own two-step "load kernel.img, then load+invoke shell.4"
+# bootstrap.
+#
+# How this works: relf's own argv beyond the image path (e.g. "-c",
+# "command") is exposed to Forth via the SYS-ARGC/SYS-ARG primitives;
+# shell.4's MAIN word inspects those and either runs one command via
+# SH-C or falls through to the ordinary interactive SH loop - see
+# shell.4 for that logic. This script's job is just to feed relf the
+# two-line Forth bootstrap ("load shell.4, then call MAIN") ahead of
+# whatever else is on stdin, via `cat`, so interactive/piped-script use
+# still sees its own input afterward rather than that input being
+# consumed by the bootstrap step.
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+
+# Overridable so the same wrapper can drive either cell-width build
+# (e.g. RELF_BIN=./relf32 RELF_IMG=./kernel32.img for the i386 image -
+# see tests/run_tests.sh) without needing a second copy of this script.
+RELF_BIN=${RELF_BIN:-"$DIR/relf"}
+RELF_IMG=${RELF_IMG:-"$DIR/kernel.img"}
+
+if [ "$1" = "-c" ]; then
+    # -c mode: SH-C runs exactly one command and exits immediately,
+    # never touching stdin again - so don't chain in `cat` here (it
+    # would sit blocked waiting for EOF on relfsh's own stdin even
+    # after relf itself has already exited, hanging the whole pipeline
+    # under `timeout` or any caller that doesn't close its stdin).
+    printf 'S" %s/shell.4" INCLUDED\nMAIN\n' "$DIR" | exec "$RELF_BIN" "$RELF_IMG" "$@"
+else
+    # Interactive or piped-script mode: SH keeps reading lines from
+    # stdin after the bootstrap, so chain the caller's own stdin on
+    # afterward via `cat` rather than letting the bootstrap's pipe
+    # consume/close it.
+    {
+        printf 'S" %s/shell.4" INCLUDED\nMAIN\n' "$DIR"
+        cat
+    } | exec "$RELF_BIN" "$RELF_IMG" "$@"
+fi

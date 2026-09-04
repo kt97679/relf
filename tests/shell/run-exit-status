@@ -1,0 +1,17 @@
+#!/bin/sh
+# run-exit-status - a successful command, a failing command, and a
+# command that can't be found at all should each propagate a
+# distinct, correct exit status out through -c mode.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+"$THIS_SH" -c "true" < /dev/null > /dev/null 2>&1
+assert_status "true exits 0" 0 "$?"
+
+"$THIS_SH" -c "false" < /dev/null > /dev/null 2>&1
+assert_status "false exits nonzero" 1 "$?"
+
+"$THIS_SH" -c "/bin/does-not-exist-relf-test-xyz" < /dev/null > /dev/null 2>&1
+assert_status "nonexistent command exits 127" 127 "$?"
+
+report

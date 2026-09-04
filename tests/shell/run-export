@@ -1,0 +1,12 @@
+#!/bin/sh
+# run-export - export must genuinely set an environment variable that
+# a subsequently-run child process inherits. Verified via a real
+# external command (env) rather than from within the shell itself,
+# since shell.4 has no $VAR expansion yet to check this any other way.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'export RELFTESTVAR=marker12345\nenv\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "exported var is visible to a child process" "RELFTESTVAR=marker12345" "$out"
+
+report

@@ -66,53 +66,23 @@ run_suite() {
     echo "== PASS ($label): $ok_count OK markers, no errors =="
 }
 
-run_shell_smoke_test() {
+run_shell_test_suite() {
     # $1 = engine binary, $2 = image, $3 = label
-    # Exercises shell.4 end-to-end: external command execution (via
-    # FORK/EXECVE/WAITPID + PATH search), and the cd/pwd/export/exit
-    # builtins. Not a substitute for the CORE suite above - this is a
-    # narrow, fast check that the shell layer itself hasn't regressed
-    # (see PROGRESS.md for the bugs this would have caught: the
-    # PATH env-var NUL-termination bug, the DISPATCH stack bug, the
-    # STR0= argument-order bug, etc - each broke this exact flow).
+    # Runs tests/shell/run-all (see that directory's lib.sh for the
+    # bash-tests/-inspired THIS_SH convention this follows) against
+    # this engine/image pair, via relfsh with RELF_BIN/RELF_IMG
+    # overridden so the same wrapper script drives either cell width.
     local engine="$1" image="$2" label="$3"
     local output status
-    local script
-    script=$(cat <<'SCRIPT'
-S" shell.4" INCLUDED
-SH
-echo shell-smoke-test-marker
-pwd
-cd /tmp
-pwd
-export SHELLSMOKEVAR=smokevalue
-exit
-SCRIPT
-)
-    output=$(echo "$script" | timeout 10 "$engine" "$image" 2>&1)
+    output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/relfsh" \
+        timeout 60 tests/shell/run-all 2>&1)
     status=$?
-
+    echo "$output"
     if [ "$status" -ne 0 ]; then
-        echo "FAIL ($label shell smoke test): engine exited with status $status"
-        echo "$output"
+        echo "FAIL ($label shell test suite): see failures above"
         exit 1
     fi
-    if echo "$output" | grep -qiE "stack error|undefined word|segmentation fault"; then
-        echo "FAIL ($label shell smoke test): error detected in output"
-        echo "$output"
-        exit 1
-    fi
-    if ! echo "$output" | grep -q "shell-smoke-test-marker"; then
-        echo "FAIL ($label shell smoke test): external command (echo) did not run"
-        echo "$output"
-        exit 1
-    fi
-    if ! echo "$output" | grep -q "^/tmp"; then
-        echo "FAIL ($label shell smoke test): cd builtin did not change directory"
-        echo "$output"
-        exit 1
-    fi
-    echo "== PASS ($label shell smoke test) =="
+    echo "== PASS ($label shell test suite) =="
 }
 
 echo "== Building relf (default, 8-byte cells) =="
@@ -120,7 +90,7 @@ cc -O2 -Wall -o relf relf.c
 
 echo "== Running test suite (8-byte cells) =="
 run_suite ./relf kernel.img "8-byte cells"
-run_shell_smoke_test ./relf kernel.img "8-byte cells"
+run_shell_test_suite relf kernel.img "8-byte cells"
 
 echo "== Building relf32 (i386, 4-byte cells) =="
 if ! cc -m32 -O2 -Wall -o relf32 relf.c 2>/tmp/relf32_build.log; then
@@ -145,5 +115,5 @@ else
 
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
-    run_shell_smoke_test ./relf32 kernel32.img "4-byte cells, i386"
+    run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
 fi

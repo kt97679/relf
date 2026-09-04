@@ -1,0 +1,17 @@
+#!/bin/sh
+# run-cd - cd is a builtin: it must change *this* process's own
+# working directory, and that change must persist to later commands
+# in the same session (unlike a change made by a forked external
+# command, which wouldn't propagate back). Tested via a small piped
+# script rather than -c, since that needs two commands (cd, then pwd)
+# sharing one process - -c only ever runs a single command.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'cd /tmp\npwd\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "cd then pwd reports the new directory" "/tmp" "$out"
+
+out=$(printf 'cd /no-such-directory-relf-test\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "cd to a missing directory reports an error" "no such directory" "$out"
+
+report

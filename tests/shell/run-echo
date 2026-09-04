@@ -1,0 +1,13 @@
+#!/bin/sh
+# run-echo - external command execution basics: a PATH-resolved
+# command (echo) run with arguments via -c mode, checking both its
+# output and exit status.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$("$THIS_SH" -c "echo hello world" < /dev/null 2>&1)
+status=$?
+assert_output_contains "echo prints its arguments" "hello world" "$out"
+assert_status "echo exits 0" 0 "$status"
+
+report

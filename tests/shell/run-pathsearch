@@ -1,0 +1,14 @@
+#!/bin/sh
+# run-pathsearch - a bare command name (no "/") is resolved by
+# searching $PATH; a name containing "/" is used directly instead,
+# bypassing the search entirely.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$("$THIS_SH" -c "echo hi" < /dev/null 2>&1)
+assert_output_contains "bare command name resolved via PATH" "hi" "$out"
+
+out=$("$THIS_SH" -c "/bin/echo hi-direct" < /dev/null 2>&1)
+assert_output_contains "absolute path bypasses PATH search" "hi-direct" "$out"
+
+report
