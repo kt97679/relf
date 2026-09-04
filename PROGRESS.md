@@ -2500,3 +2500,77 @@ assertions across 18 files now, all passing on both x86-64 and i386.
 `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
 expected, since mrsh's own tests use `(cmd)` without the whitespace
 this iteration's scope requires, so this doesn't move that number yet.
+
+## Iteration 21: fix if/while reading from the wrong input source in script-file mode
+
+Goal: originally set out to tackle if/while nesting (phase B's last
+item), but studying the current implementation in depth first
+surfaced something more urgent - `if`/`while` were **completely
+broken** whenever a script was run via `relfsh script.sh` (Iteration
+16's `SH-FILE`) rather than piped into stdin, since their own
+internal "read the next line" logic (`READ-LINE-INTO-ARGV`, used to
+find `then`/`else`/`fi`/`do`/`done` and the body lines in between)
+always called `ACCEPT` - which reads from the real process stdin
+unconditionally, regardless of where the script's own lines were
+actually coming from. Confirmed directly:
+`if /usr/bin/true\nthen\necho yes\nfi` run via a script file printed
+nothing at all - "then"/"echo yes"/"fi" were silently never read, so
+the entire `if` command was a no-op. This is likely the single most
+common way real scripts use `if`/`while` at all, so this took
+priority over nesting.
+
+### The fix
+
+`READ-LINE`'s C implementation (a byte-by-byte `read()` loop) works
+on any file descriptor, including stdin's own fd 0 - unlike `ACCEPT`
+(a Forth-level word with its own backspace/delete line-editing, which
+matters for a genuinely interactive session but has no notion of
+reading from an arbitrary file). A new `SHFILE-ACTIVE?` flag (set by
+`SH-FILE` right after opening its file) and a new
+`READ-NEXT-INPUT-LINE` word dispatch between the two: `READ-LINE`
+against `SHFILE-FID` when running via a script file, `ACCEPT`
+otherwise - preserving interactive editing for genuinely interactive
+sessions while fixing script-file correctness.
+`READ-LINE-INTO-ARGV` (if/while's own body-line reader) now goes
+through this instead of calling `ACCEPT` directly. A second, related
+detail caught before it could become its own bug: the existing `CR`
+after each line read (needed in interactive/piped-stdin mode, where
+it puts the cursor on a fresh line the way a real terminal echoing
+typed input would) had to become conditional on *not* being in
+script-file mode - unconditionally, it would have printed a spurious
+blank line into the script's own clean output on every body-line
+read, since `SH-FILE`'s own output has no such prompts/echoes mixed
+in at all otherwise.
+
+A file-ordering slip happened again this iteration, same class as
+Iterations 16 and 20: `SHFILE-FID`/`SHFILE-ACTIVE?` were first
+declared right where `SH-FILE` itself lives, but `READ-LINE-INTO-ARGV`
+(which needs them) is defined much earlier in the file - fixed via the
+same precise line-indexed extract-and-reinsert approach used before,
+moving the declarations up rather than restructuring anything else.
+Also repeated - and this time caught *before* testing, having learned
+from Iteration 19's unresolved multi-line-comment breakage - avoided
+writing a new multi-line `( ... )` comment on `SHFILE-ACTIVE?`'s own
+declaration in favor of `\` line-comments from the start.
+
+### Verified end-to-end via `relfsh`
+
+`if /usr/bin/true\nthen\necho yes\nfi` and a `while` loop (`while
+/usr/bin/test $I -eq 1 do ... done`) both now work correctly when
+invoked via a script file, with clean output (no spurious blank
+lines). Confirmed the existing interactive/piped-stdin behavior is
+unaffected: the full regression suite (1892 core assertions plus every
+existing shell test, including the original `run-if`/`run-while`
+suites) still passes unchanged on both x86-64 and i386.
+
+`tests/shell/run-script` gained two new assertions covering exactly
+this - `if`/`while` reading their own body from the script file, not
+stdin - 105 assertions across 18 files now, all passing.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+expected, since `if.sh`/`loop.sh` need considerably more than this fix
+alone (functions, the `[`/`test` builtin as a real built-in rather
+than an external binary, arithmetic) to pass as whole files, even
+though this fix is itself a real, independently valuable correctness
+issue resolved.
+
+Nesting (the item originally intended for this iteration) is next.

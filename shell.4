@@ -1464,6 +1464,37 @@ VARIABLE ARGC-SHIFT
 CREATE RAW-LINE-BUF LINE-MAX ALLOT
 VARIABLE RAW-LINE-LEN
 
+VARIABLE SHFILE-FID
+VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
+                            \ READ-NEXT-INPUT-LINE below knows to read
+                            \ from SHFILE-FID rather than the real
+                            \ process stdin - if/while's own internal
+                            \ body-line reading (READ-LINE-INTO-ARGV)
+                            \ goes through that same word, so this is
+                            \ what makes if/while work at all when a
+                            \ script is run via `relfsh script.sh`
+                            \ rather than piped into stdin - found and
+                            \ fixed as a real, pre-existing bug:
+                            \ without this, DO-IF/DO-WHILE always read
+                            \ from the real stdin regardless of where
+                            \ the script actually came from, so "if"'s
+                            \ own "then"/body/"fi" lines were never
+                            \ seen at all when invoked this way, and
+                            \ the whole command was silently a no-op.
+
+: READ-NEXT-INPUT-LINE ( c-addr max --- u2 )
+  \ Reads one line of "current input" - from the real process stdin
+  \ via ACCEPT (preserving its backspace/delete editing, which matters
+  \ for a genuinely interactive session) when not running via
+  \ SH-FILE, or from the open script file via READ-LINE (discarding
+  \ its own flag/ior - EOF just gives u2=0, the same as running out
+  \ of lines already meant here) when SHFILE-ACTIVE? is true.
+  SHFILE-ACTIVE? @ IF
+    SHFILE-FID @ READ-LINE DROP DROP
+  ELSE
+    ACCEPT
+  THEN ;
+
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe
                                  \ parsing or dispatch, just enough to
@@ -1475,8 +1506,8 @@ VARIABLE RAW-LINE-LEN
                                  \ can be re-expanded fresh on every
                                  \ iteration rather than frozen at its
                                  \ first reading.
-  LINE-BUF LINE-MAX ACCEPT
-  CR
+  LINE-BUF LINE-MAX READ-NEXT-INPUT-LINE
+  SHFILE-ACTIVE? @ 0= IF CR THEN
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   TOKENIZE ;
@@ -1678,8 +1709,6 @@ VARIABLE WHILE-BODY-CUR
 : SH ( --- )
   BEGIN SH1 0 UNTIL ;
 
-VARIABLE SHFILE-FID
-
 : SH-FILE ( c-addr --- )  \ c-addr: a NUL-terminated file path (from
                             \ SYS-ARG). Opens it read-only, runs each
                             \ line through RUN-LINE the same way SH1
@@ -1698,6 +1727,7 @@ VARIABLE SHFILE-FID
                             \ APPLY-REDIRECTIONS).
   R/O OPEN-FOR 0= IF 127 SYS-EXIT THEN
   SHFILE-FID !
+  -1 SHFILE-ACTIVE? !
   BEGIN
     LINE-BUF LINE-MAX SHFILE-FID @ READ-LINE DROP
   WHILE

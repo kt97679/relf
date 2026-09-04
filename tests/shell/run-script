@@ -1,8 +1,10 @@
 #!/bin/sh
 # run-script - script-file invocation (relfsh script.sh, matching
-# `sh script.sh`), and exit's argument handling: `exit N` sets the
-# exit status to N, and a bare `exit` defaults to the last command's
-# own status ($?), not always 0.
+# `sh script.sh`), exit's argument handling (`exit N` sets the exit
+# status to N, and a bare `exit` defaults to the last command's own
+# status ($?), not always 0), and if/while correctly reading their
+# own body lines from the script file itself rather than the real
+# process stdin.
 cd "$(dirname "$0")" || exit 1
 . ./lib.sh
 
@@ -42,6 +44,20 @@ assert_status "exit N also works in -c mode" 42 "$?"
 
 "$THIS_SH" /tmp/relf-run-script-test-does-not-exist-xyz.sh < /dev/null > /dev/null 2>&1
 assert_status "a missing script file exits 127" 127 "$?"
+
+# if/while's own body-line reading has to come from the script file
+# itself, not the real process stdin - found and fixed as a real,
+# pre-existing bug (see PROGRESS.md): before the fix, "if"'s own
+# then/body/fi lines were silently never seen at all when invoked via
+# a script file rather than piped into stdin, so the whole command
+# was a no-op.
+printf 'if /usr/bin/true\nthen\necho if-worked\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "if/then/fi reads its own body from the script file, not stdin" "if-worked" "$out"
+
+printf 'export I=1\nwhile /usr/bin/test $I -eq 1\ndo\necho while-worked\nexport I=0\ndone\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "while/do/done reads its own body from the script file, not stdin" "while-worked" "$out"
 
 rm -f "$TMP_SCRIPT"
 report

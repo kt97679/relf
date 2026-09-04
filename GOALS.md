@@ -236,11 +236,12 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 20's phase B work — expected,
-   since no single vendored test file passes purely from variable
-   assignment, `;`, `&&`/`||`, or command-grouping support alone —
-   the last of those in particular doesn't apply to mrsh's own tests
-   at all yet, given the whitespace-around-parens scope limit above).
+   including after Iteration 17 through 21's work — expected, since no
+   single vendored test file passes purely from variable assignment,
+   `;`, `&&`/`||`, command-grouping, or the if/while script-file fix
+   alone — the command-grouping item in particular doesn't apply to
+   mrsh's own tests at all yet, given the whitespace-around-parens
+   scope limit above).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -299,7 +300,13 @@ the full account and the fixes applied.
      (Iterations 15–16).** Crash-hardening and script-file invocation
      both landed; `tests/mrsh-suite/run.sh` now invokes `relfsh` the
      same way it invokes `bash` (`relfsh testcase` /
-     `bash testcase`), no more asymmetry.
+     `bash testcase`), no more asymmetry. One correctness gap in
+     script-file invocation itself surfaced later, while investigating
+     phase B's if/while nesting item, and was fixed as its own
+     iteration: `if`/`while` were completely broken when run via a
+     script file (their own body-line reading always read from the
+     real process stdin regardless of where the script's lines
+     actually came from) — see `PROGRESS.md`'s Iteration 21 entry.
    - **Phase B — foundational semantics needed almost everywhere.**
      Shell-local (non-exported) variable assignment as a standalone
      statement: **done (Iteration 17)** — `VAR=value` (the whole
