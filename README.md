@@ -178,20 +178,25 @@ the loop's first reading - "while test $? -eq 0" behaves the way
 you'd expect, updating each time around). Neither control structure
 supports nesting yet, and there's no for/until. `;` separates multiple
 commands on one line, each run in sequence regardless of the previous
-one's own exit status (unlike &&/||, not yet implemented) - but a
-variable assigned or exported earlier in the same line via `;` isn't
-visible yet to a $VAR expansion later in that same line ("FOO=bar ;
+one's own exit status - but a variable assigned or exported earlier in
+the same line via `;` isn't visible yet to a $VAR expansion later in
+that same line ("FOO=bar ;
 echo $FOO" prints nothing, though the same assignment on its own,
 separate line works correctly), since $VAR expansion happens once for
 the entire raw line up front, before any `;`-segment has actually run
 - a real, documented architectural gap (see PROGRESS.md's Iteration 18
-entry), not silent breakage. An expansion result, or a quoted token,
-is treated the same way: never re-split on whitespace and never
+entry), not silent breakage. `&&`/`||` chain commands conditionally on
+the previous one's exit status - left-associative, equal precedence
+for both, evaluated left to right, correctly carrying the "compound
+status so far" through a skipped segment ("a && b || c" runs b and
+skips c if a succeeds, but skips b and runs c if a fails) - tighter
+precedence than `;`, looser than `|`. An expansion result, or a quoted
+token, is treated the same way: never re-split on whitespace and never
 re-interpreted as an operator/builtin/keyword, so e.g. a variable
 holding | stays a literal argument and echo 'if' prints "if" rather
 than starting a conditional. `-c` only ever runs commands on one
-logical line (`;`-chaining works, but no if/while, which need multiple
-lines, and no &&/|| yet either), pipes and redirection can't be
+logical line (`;`/`&&`/`||`-chaining all work, but no if/while, which
+need multiple lines), pipes and redirection can't be
 combined on the same line yet, only a single pipe per line is
 recognized (no a | b | c), and there's no ${VAR:-default}-style
 modifier or positional parameters. relfsh also supports running a
@@ -201,7 +206,7 @@ optional status argument, defaulting to the previous command's own
 status ($?) rather than always 0 when none is given. See GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 18 entries for the current state and what's planned next.
+through 19 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -212,7 +217,7 @@ unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A done and phase B underway - see PROGRESS.md's
-Iteration 14 through 18 entries).
+Iteration 14 through 19 entries).
 
 5. Possible usage.
 

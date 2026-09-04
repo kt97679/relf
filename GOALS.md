@@ -236,9 +236,9 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 and 18's phase B work — expected, since
-   no single vendored test file passes purely from variable assignment
-   or `;` support alone).
+   including after Iteration 17 through 19's phase B work — expected,
+   since no single vendored test file passes purely from variable
+   assignment, `;`, or `&&`/`||` support alone).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -326,12 +326,19 @@ the full account and the fixes applied.
      real architectural change left for its own future iteration; see
      `PROGRESS.md`'s Iteration 18 entry for the full account.
 
-     Still open: `&&`/`||`. Command grouping (`(...)` subshells,
-     `{ ...; }` brace groups). Nesting support for `if`/`while`
-     (removing the "no nesting" limitation from Iteration 11 — likely
-     needs a real stack/recursion-based redesign rather than the
-     current shared globals, which is exactly why nesting was deferred
-     in the first place).
+     `&&`/`||` (conditional chaining): **done (Iteration 19)** —
+     left-associative, equal precedence for both, evaluated left to
+     right, correctly carrying the "compound status so far" through a
+     skipped segment (`a && b || c` runs `b` and skips `c` if `a`
+     succeeds, but skips `b` and runs `c` if `a` fails) — tighter
+     precedence than `;`, looser than `|`.
+
+     Still open: command grouping (`(...)` subshells, `{ ...; }` brace
+     groups). Nesting support for `if`/`while` (removing the "no
+     nesting" limitation from Iteration 11 — likely needs a real
+     stack/recursion-based redesign rather than the current shared
+     globals, which is exactly why nesting was deferred in the first
+     place).
    - **Phase C — control structures.** `for`/`in`/`do`/`done`.
      `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
      `|` alternation. Shell functions (definition, invocation,

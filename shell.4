@@ -1116,6 +1116,127 @@ VARIABLE RIGHT-PID
   8 RSHIFT 255 AND LAST-STATUS ! ;
 
 \ ==================================================================
+\ '&&'/'||' - a pipeline runs only if the operator connecting it to
+\ the previous one permits it, based on the previous pipeline's own
+\ exit status: '&&' requires success (0), '||' requires failure
+\ (nonzero). Left-associative, evaluated left to right, same
+\ precedence for both (POSIX gives them equal, left-to-right
+\ precedence, tighter than ';' but looser than '|' - RUN-TOKENIZED
+\ calls SPLIT-ANDOR only after ';' and the assignment-word check have
+\ already ruled themselves out, and RUN-SIMPLE-OR-PIPELINE below,
+\ which SPLIT-PIPE's own '|' handling lives inside of, is what each
+\ &&/||-separated piece is run through). Same whitespace-delimited-
+\ token convention '|'/';' already have - a quoted '&&' or '||' is a
+\ literal argument, not an operator (AT-AND?/AT-OR? both check
+\ ARGV-QUOTED@, same as AT-PIPE?/AT-SEMI?).
+\ ==================================================================
+
+CREATE ARGV-AO-LEFT MAX-ARGS CELLS ALLOT
+CREATE ARGV-AO-REST MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-AO-LEFT
+VARIABLE ARGC-AO-REST
+VARIABLE ANDOR-OP        ( 1 = && was found, 2 = || was found )
+VARIABLE AO-PENDING-OP   \ which of the above applies to the NEXT
+                          \ piece about to be considered
+VARIABLE AO-CONTINUE
+
+: AT-AND? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" &&" STR= ;
+
+: AT-OR? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" ||" STR= ;
+
+: SPLIT-ANDOR ( --- f )  \ f = -1 if a && or || token was found in the
+                          \ *global* ARGV/ARGC (not touched by this
+                          \ word itself, only scanned) - the piece
+                          \ before it is in ARGV-AO-LEFT/ARGC-AO-LEFT,
+                          \ which operator it was in ANDOR-OP, and
+                          \ everything after it (which may itself
+                          \ contain further &&/||, not yet split) in
+                          \ ARGV-AO-REST/ARGC-AO-REST. f = 0 if
+                          \ neither was found at all (nothing touched
+                          \ except ARGC-AO-LEFT, harmlessly reset).
+  0 PR-I !
+  0 ARGC-AO-LEFT !
+  BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
+    ARGC-AO-LEFT @ 1+ ARGC-AO-LEFT !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
+  AT-END? IF 0 EXIT THEN
+  AT-AND? IF 1 ANDOR-OP ! ELSE 2 ANDOR-OP ! THEN
+  PR-I @ 1+ PR-I !                    ( skip the "&&"/"||" token itself )
+  0 ARGC-AO-REST !
+  BEGIN AT-END? 0= WHILE
+    PR-I @ ARGV@ ARGV-AO-REST ARGC-AO-REST @ CELLS + !
+    ARGC-AO-REST @ 1+ ARGC-AO-REST !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-AO-REST ARGC-AO-REST @ CELLS + !
+  -1 ;
+
+: AO-SHOULD-RUN? ( --- f )  \ does AO-PENDING-OP (the operator right
+                              \ before the piece about to be
+                              \ considered) permit running it, given
+                              \ the previous piece's own LAST-STATUS?
+  AO-PENDING-OP @ 0 = IF -1 EXIT THEN
+  AO-PENDING-OP @ 1 = IF LAST-STATUS @ 0= EXIT THEN
+  LAST-STATUS @ 0 <> ;
+
+: RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
+                                    \ global ARGV/ARGC as one pipeline
+                                    \ (or simple command) - the logic
+                                    \ that used to be inline at the end
+                                    \ of RUN-TOKENIZED, factored out
+                                    \ here so RUN-AND-OR-CHAIN below
+                                    \ can call it once per &&/||-
+                                    \ separated piece.
+  SPLIT-PIPE
+  PIPE-PRESENT? @ IF
+    ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
+  ELSE
+    PARSE-REDIRECTIONS
+    ARGC @ 0 > IF
+      DISPATCH 0= IF RUN-EXTERNAL THEN
+    THEN
+  THEN ;
+
+: RUN-AND-OR-CHAIN ( --- )
+  \ Called right after RUN-TOKENIZED's own SPLIT-ANDOR call has
+  \ already found at least one &&/|| in the current segment -
+  \ ARGV-AO-LEFT/ARGC-AO-LEFT holds the first piece, ANDOR-OP the
+  \ operator right after it, ARGV-AO-REST/ARGC-AO-REST everything
+  \ beyond that. The first piece always runs unconditionally - there's
+  \ no operator before it to make it conditional on.
+  ARGV-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV
+  RUN-SIMPLE-OR-PIPELINE
+  ANDOR-OP @ AO-PENDING-OP !
+  ARGV-AO-REST ARGC-AO-REST @ COPY-ARGV
+  -1 AO-CONTINUE !
+  BEGIN AO-CONTINUE @ WHILE
+    SPLIT-ANDOR IF
+      ( more &&/|| ahead: this piece is in ARGV-AO-LEFT, the operator
+        after it in ANDOR-OP, the remainder in ARGV-AO-REST )
+      AO-SHOULD-RUN? IF
+        ARGV-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV
+        RUN-SIMPLE-OR-PIPELINE
+      THEN
+      ANDOR-OP @ AO-PENDING-OP !
+      ARGV-AO-REST ARGC-AO-REST @ COPY-ARGV
+    ELSE
+      ( no more &&/|| - the global ARGV IS the final piece, already
+        copied in by the previous iteration )
+      AO-SHOULD-RUN? IF RUN-SIMPLE-OR-PIPELINE THEN
+      0 AO-CONTINUE !
+    THEN
+  REPEAT ;
+
+\ ==================================================================
 \ Control structures: if/then/else/fi
 \ Deliberately minimal for v0.5: no nesting support (a body containing
 \ another if will misbehave - see PROGRESS.md), and then/else/fi must
@@ -1395,11 +1516,14 @@ VARIABLE WHILE-BODY-CUR
   \ Acts on the currently-tokenized ARGV/ARGC: ';' splitting first (so
   \ each ';'-separated piece gets the full treatment below on its own
   \ - see SPLIT-SEMI), then control-structure keywords, then
-  \ assignment detection, then redirect/pipe parsing, then builtin
-  \ dispatch or external exec. Shared by RUN-LINE (after its own
-  \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
-  \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
-  \ defined).
+  \ assignment detection, then &&/|| splitting (see SPLIT-ANDOR/
+  \ RUN-AND-OR-CHAIN - POSIX gives '&&'/'||' equal, left-to-right
+  \ precedence, tighter than ';' but looser than '|'), then a plain
+  \ pipeline/simple command (RUN-SIMPLE-OR-PIPELINE, which is what
+  \ each &&/||-separated piece above also runs through). Shared by
+  \ RUN-LINE (after its own TOKENIZE call, below) and DO-IF's own
+  \ body-line handling above (via RUN-TOKENIZED-CALL, patched to this
+  \ word's xt right after it's defined).
   SPLIT-SEMI IF
     ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
     RUN-TOKENIZED-CALL
@@ -1414,15 +1538,11 @@ VARIABLE WHILE-BODY-CUR
     DUP -1 <> IF DO-ASSIGN EXIT THEN
     DROP
   THEN
-  SPLIT-PIPE
-  PIPE-PRESENT? @ IF
-    ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
-  ELSE
-    PARSE-REDIRECTIONS
-    ARGC @ 0 > IF
-      DISPATCH 0= IF RUN-EXTERNAL THEN
-    THEN
-  THEN ;
+  SPLIT-ANDOR IF
+    RUN-AND-OR-CHAIN
+    EXIT
+  THEN
+  RUN-SIMPLE-OR-PIPELINE ;
 ' RUN-TOKENIZED RUN-TOKENIZED-XT !
 
 : RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then

@@ -1,0 +1,66 @@
+#!/bin/sh
+# run-andor - '&&' runs the next pipeline only if the previous one
+# succeeded (status 0); '||' only if it failed (nonzero). Left-
+# associative, equal precedence for both, evaluated left to right
+# (POSIX): "a && b || c" runs b (and skips c) if a succeeds, but runs
+# c (skipping b) if a fails - the "compound status so far" carries
+# through a skipped segment unchanged. Tighter precedence than ';',
+# looser than '|'. Same whitespace-delimited-token convention '|'/';'
+# already have - a quoted '&&'/'||' is a literal argument.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf '/usr/bin/true && echo yes123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "&& runs the next command after success" "yes123" "$out"
+
+out=$(printf '/usr/bin/false && echo yes123\nexit\n' | "$THIS_SH" 2>&1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "yes123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: && must not run the next command after a failure"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+out=$(printf '/usr/bin/false || echo yes123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "|| runs the next command after a failure" "yes123" "$out"
+
+out=$(printf '/usr/bin/true || echo yes123\nexit\n' | "$THIS_SH" 2>&1)
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "yes123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: || must not run the next command after a success"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+out=$(printf '/usr/bin/true && echo b123 && echo c123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a chain of && all run when everything succeeds" "b123
+c123" "$out"
+
+out=$(printf '/usr/bin/true && echo b123 || echo c123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a && b || c: a succeeds, b runs, c is skipped" "b123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "c123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a && b || c must skip c when a && b already succeeded"
+fi
+
+out=$(printf '/usr/bin/false && echo b123 || echo c123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a && b || c: a fails, b is skipped, c runs" "c123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "b123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a && b || c must skip b once a has already failed"
+fi
+
+out=$(printf "echo 'a && b'\nexit\n" | "$THIS_SH" 2>&1)
+assert_output_contains "a quoted '&&' is a literal argument, not an operator" "a && b" "$out"
+
+out=$(printf 'echo a | cat && echo done123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a pipe within an &&-segment still works ('|' binds tighter)" "done123" "$out"
+
+"$THIS_SH" -c "/usr/bin/false && echo skip123" < /dev/null > /dev/null 2>&1
+assert_status "\$? after a skipped && segment is the earlier command's own status" 1 "$?"
+
+report

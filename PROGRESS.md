@@ -2341,3 +2341,81 @@ assertions across 16 files now, all passing on both x86-64 and i386.
 `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
 expected, since no single vendored test file passes from `;` support
 alone.
+
+## Iteration 19: goal 8, phase B - '&&'/'||' (conditional chaining)
+
+Goal: the next item on phase B's list - `cmd1 && cmd2` runs `cmd2`
+only if `cmd1` succeeded; `cmd1 || cmd2` only if it failed.
+Left-associative, equal precedence for both, evaluated left to right
+(POSIX): `a && b || c` runs `b` (skipping `c`) if `a` succeeds, but
+runs `c` (skipping `b`) if `a` fails - a skipped segment leaves the
+"compound status so far" unchanged for the next decision. Tighter
+precedence than `;`, looser than `|`.
+
+### Design
+
+Same whitespace-delimited-token convention `|`/`;` already have (a
+quoted `&&`/`||` is a literal argument). `AT-AND?`/`AT-OR?` mirror
+`AT-PIPE?`/`AT-SEMI?`; `SPLIT-ANDOR` mirrors `SPLIT-SEMI` (splits off
+only the *first* `&&`/`||` found, recording which one in `ANDOR-OP`,
+leaving the remainder - which may contain further operators - for a
+follow-up call). The pipe/redirect/dispatch logic that used to sit
+inline at the end of `RUN-TOKENIZED` was factored out into its own
+`RUN-SIMPLE-OR-PIPELINE`, so it can be called once per `&&`/`||`-
+separated piece rather than just once per line. `RUN-AND-OR-CHAIN`
+runs the first piece unconditionally (nothing precedes it), then
+loops: copy the remainder in, `SPLIT-ANDOR` it again, decide via
+`AO-SHOULD-RUN?` (checking the *previous* iteration's remembered
+operator against the *previous* piece's own exit status) whether to
+run the next piece, and repeat until no more `&&`/`||` are found -
+unlike `;`'s recursion-based approach (each segment is fully
+independent), this needed an explicit loop, since whether a piece
+runs depends on the *previous* piece's outcome, not just on splitting.
+`RUN-TOKENIZED` calls `SPLIT-ANDOR` after the `;` and assignment-word
+checks have ruled themselves out, matching POSIX's precedence.
+
+### Two syntax-level mistakes, both caught immediately by load failures - no logic bugs found in testing
+
+A multi-line `( ... )` comment on `AO-PENDING-OP`'s own `VARIABLE`
+declaration caused `shell.4` to fail loading with "Undefined word it"
+- `it` being a mid-comment word that somehow became live code. Root
+cause not fully pinned down (bisected by replacing the comment with
+`\` line-comments instead, which resolved it, rather than fully
+tracing why the `(` form specifically broke) - worth remembering as
+an empirical caution about multi-line `(...)` comments in this
+kernel, alongside the already-documented `0 0 DO` wraparound quirk,
+even though the exact mechanism here wasn't nailed down as precisely.
+Second: `LAST-STATUS @ 0<>` - the third time this project has hit the
+"this minimal kernel doesn't have that two-character word" mistake
+(after `>=` in Iteration 15 and `NIP` in Iteration 17) - fixed to
+`0 <>` (two tokens, `<>` already exists).
+
+Notably, once those two syntax errors were fixed, **the actual
+algorithm worked correctly on the first real test** - all five
+precedence cases tested (`a && b && c` both directions, `a || b || c`,
+and both directions of the trickier `a && b || c`) passed immediately,
+including the subtle "skipped segment carries the previous status
+forward" behavior, without needing any further debugging once the
+file actually loaded. The hand-traces done during design (verifying
+each new word's stack effect on paper before writing it) seem to have
+paid off specifically for the part that's actually hard to get right
+(the conditional-chaining logic itself) - the mistakes that did occur
+were lower-level syntax gotchas specific to this kernel's word set and
+comment parsing, not reasoning errors about the shell semantics being
+implemented.
+
+### Verified end-to-end via `relfsh` (and confirmed on i386)
+
+All four basic cases (`&&`/`||` × success/failure); three-segment `&&`
+and `||` chains; both directions of `a && b || c`; interaction with
+`;` (looser precedence - a skipped `&&` segment doesn't prevent a
+later `;`-separated command from running); a quoted `&&` staying
+literal; a pipe within an `&&`-segment still working (`|` binds
+tighter); a redirect staying scoped to its own segment; `$?` after a
+skipped segment reflecting the earlier command's own status.
+
+`tests/shell/run-andor` (12 assertions) locks all of this in - 94
+assertions across 17 files now, all passing on both x86-64 and i386.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+expected, since no single vendored test file passes from `&&`/`||`
+support alone.
