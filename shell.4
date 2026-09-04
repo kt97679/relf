@@ -93,13 +93,29 @@ VARIABLE SEQ-I
 
 \ ==================================================================
 \ Tokenizer: splits LINE-BUF (u chars from ACCEPT) on whitespace, in
-\ place. Each token's trailing whitespace byte is overwritten with a
-\ NUL, and the token's start address is recorded into ARGV. ARGV is
-\ NUL-terminated (last slot holds 0) per EXECVE's own convention.
+\ place. Supports single quotes ('...', fully literal, no escapes
+\ recognized inside), double quotes ("...", recognizing \" and \\ as
+\ escapes for a literal " or \ - no $/`` handling, since there's no
+\ expansion to apply them to), and backslash-escaping a single
+\ character outside any quotes. Adjacent quoted/unquoted/escaped
+\ spans concatenate into one token, matching real shell behavior
+\ (e.g. 'ab'c"d e"f is one token, "abcd ef"). Quote/escape characters
+\ themselves are stripped; what's left is compacted in place, which
+\ is always safe here since compaction only ever shrinks a token
+\ (removes bytes), never grows it. Each token's start address is
+\ recorded into ARGV (NUL-terminated per EXECVE's own convention);
+\ whether *any* part of a token came from inside quotes or an escape
+\ is recorded in the parallel ARGV-QUOTED array, so a token like '<'
+\ or "cd" that happens to match an operator or builtin name isn't
+\ mistaken for one downstream (see PARSE-REDIRECTIONS, AT-PIPE?,
+\ DISPATCH) - it stays a literal argument, matching real shells.
 \ ==================================================================
 
 VARIABLE TOK-POS
 VARIABLE TOK-END
+VARIABLE TOK-OUT
+VARIABLE TOK-WAS-QUOTED?
+CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
 
 : WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
 
@@ -108,10 +124,85 @@ VARIABLE TOK-END
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? ELSE 0 THEN
   WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
 
-: SKIP-TOKEN ( --- )
+: EMIT-TOK-CHAR ( c --- )
+  TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT ! ;
+
+: COPY-SINGLE-QUOTED ( --- )
+  \ TOK-POS is at the opening '. Copies everything up to (not
+  \ including) the matching closing ' verbatim - no escapes at all
+  \ recognized inside single quotes, matching POSIX. An unterminated
+  \ quote just consumes to the end of the input rather than erroring
+  \ (a real shell would prompt for a continuation line - not done
+  \ here yet).
+  -1 TOK-WAS-QUOTED? !
+  TOK-POS @ 1+ TOK-POS !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 39 <> ELSE 0 THEN
+  WHILE
+    TOK-POS @ C@ EMIT-TOK-CHAR
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
+
+: COPY-DOUBLE-QUOTED ( --- )
+  \ Like COPY-SINGLE-QUOTED, but recognizes \" and \\ as escapes for a
+  \ literal " or \. Any other backslash (e.g. \n) is passed through
+  \ as-is (backslash and the following character both kept), matching
+  \ POSIX's own rule that backslash is only special before specific
+  \ characters inside double quotes.
+  -1 TOK-WAS-QUOTED? !
+  TOK-POS @ 1+ TOK-POS !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 34 <> ELSE 0 THEN
+  WHILE
+    TOK-POS @ C@ 92 = IF
+      TOK-POS @ 1+ TOK-END @ < IF
+        TOK-POS @ 1+ TOK-POS !
+        TOK-POS @ C@
+        DUP 34 = OVER 92 = OR IF
+          EMIT-TOK-CHAR
+        ELSE
+          92 EMIT-TOK-CHAR EMIT-TOK-CHAR
+        THEN
+        TOK-POS @ 1+ TOK-POS !
+      ELSE
+        92 EMIT-TOK-CHAR
+        TOK-POS @ 1+ TOK-POS !
+      THEN
+    ELSE
+      TOK-POS @ C@ EMIT-TOK-CHAR
+      TOK-POS @ 1+ TOK-POS !
+    THEN
+  REPEAT
+  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
+
+: COPY-ESCAPED-CHAR ( --- )
+  \ TOK-POS is at a backslash outside any quotes: makes the next
+  \ character literal (e.g. \| for a literal pipe character).
+  -1 TOK-WAS-QUOTED? !
+  TOK-POS @ 1+ TOK-POS !
+  TOK-POS @ TOK-END @ < IF
+    TOK-POS @ C@ EMIT-TOK-CHAR
+    TOK-POS @ 1+ TOK-POS !
+  THEN ;
+
+: SCAN-TOKEN ( --- )
+  \ Reads from TOK-POS, writing the *unquoted* content via
+  \ EMIT-TOK-CHAR (at TOK-OUT, which only ever trails or equals
+  \ TOK-POS, so writing in place is always safe), until unquoted
+  \ whitespace or the end of input.
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
-  WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
+  WHILE
+    TOK-POS @ C@
+    DUP 39 = IF DROP COPY-SINGLE-QUOTED
+    ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
+    ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
+    ELSE
+      EMIT-TOK-CHAR
+      TOK-POS @ 1+ TOK-POS !
+    THEN THEN THEN
+  REPEAT ;
 
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
   LINE-BUF + TOK-END !
@@ -121,21 +212,33 @@ VARIABLE TOK-END
     SKIP-WS
     TOK-POS @ TOK-END @ <
   WHILE
+    TOK-POS @ TOK-OUT !      ( always safe to compact in place, even
+                                if this token won't end up recorded )
+    0 TOK-WAS-QUOTED? !
     ARGC @ MAX-ARGS 1- < IF
       TOK-POS @ ARGV ARGC @ CELLS + !
+      SCAN-TOKEN
+      0 EMIT-TOK-CHAR
+      TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
       ARGC @ 1+ ARGC !
+    ELSE
+      SCAN-TOKEN
+      0 EMIT-TOK-CHAR
     THEN
-    SKIP-TOKEN
-    \ NUL-terminate this token in place, even if it ran all the way to
-    \ the end of the input with no trailing separator (LINE-BUF has
-    \ room for this one extra byte - LINE-MAX is well past any real
-    \ input length ACCEPT would produce).
-    0 TOK-POS @ C!
-    TOK-POS @ 1+ TOK-POS !
+    \ SCAN-TOKEN stops exactly at the next unquoted-whitespace
+    \ separator (or end of input) without consuming it. Advance past
+    \ it here so the next SKIP-WS actually finds whitespace to skip -
+    \ the NUL-termination write just above lands at TOK-OUT, which for
+    \ an uncompacted/unquoted token coincides with this very separator
+    \ position, overwriting it; without this advance TOK-POS would be
+    \ left sitting on that now-NUL byte, and the next iteration would
+    \ record an empty token there instead of moving on.
+    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
 
 : ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
+: ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 
 \ ==================================================================
 \ Redirection: <, >, >>
@@ -165,7 +268,7 @@ VARIABLE PR-I
   0 PR-I !
   BEGIN PR-I @ ARGC @ < WHILE
     PR-I @ ARGV@ DUP CSTRLEN
-    2DUP S" <" STR= IF
+    2DUP S" <" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
       2DROP
       PR-I @ 1+ ARGC @ < IF
         PR-I @ 1+ ARGV@ REDIR-IN-FILE !
@@ -173,7 +276,7 @@ VARIABLE PR-I
       ELSE
         PR-I @ 1+ PR-I !          ( malformed: "<" with no filename )
       THEN
-    ELSE 2DUP S" >>" STR= IF
+    ELSE 2DUP S" >>" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
       2DROP
       PR-I @ 1+ ARGC @ < IF
         PR-I @ 1+ ARGV@ REDIR-APPEND-FILE !
@@ -181,7 +284,7 @@ VARIABLE PR-I
       ELSE
         PR-I @ 1+ PR-I !
       THEN
-    ELSE 2DUP S" >" STR= IF
+    ELSE 2DUP S" >" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
       2DROP
       PR-I @ 1+ ARGC @ < IF
         PR-I @ 1+ ARGV@ REDIR-OUT-FILE !
@@ -318,7 +421,7 @@ VARIABLE PATH-END2
   0 LAST-STATUS ! ;
 
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
-  ARGC @ 0 > IF
+  ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
     S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
     S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
     S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
@@ -374,6 +477,7 @@ VARIABLE PIPE-PRESENT?
 
 : AT-PIPE? ( --- f )
   AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
 
 : SPLIT-PIPE ( --- )

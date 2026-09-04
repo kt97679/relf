@@ -144,16 +144,20 @@ skips that check and always goes interactive.)
 This loads twelve new process-control primitives' worth of shell logic
 (FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/SYS-EXIT/CHDIR/GETCWD/
 SYS-ARGC/SYS-ARG are already compiled into kernel.img itself, same as
-any other primitive). Current (v0.2) scope: external commands are
+any other primitive). Current (v0.3) scope: external commands are
 resolved via $PATH and run via fork/exec/wait, cd/pwd/export/exit are
 supported as builtins, a single pipe per line (cmd1 | cmd2) wires two
-external commands together via a real pipe, and redirection
-(<, >, >>) is supported for external commands. Whitespace splits
-arguments; there is no quoting or $VAR expansion yet, `-c` only ever
-runs a single command (no ";"/"&&" chaining), pipes and redirection
-can't be combined on the same line yet, and only a single pipe per
-line is recognized (no a | b | c). See GOALS.md phase 7 and
-PROGRESS.md's Iteration 5, 6, and 7 entries for the current state and
+external commands together via a real pipe, redirection (<, >, >>) is
+supported for external commands, and arguments can be quoted (single
+quotes are fully literal; double quotes recognize \" and \\ as
+escapes; a lone backslash escapes the next character) so they can
+contain spaces or literal shell metacharacters - echo 'a | b' prints
+"a | b" rather than starting a pipeline. There is no $VAR expansion
+yet, `-c` only ever runs a single command (no ";"/"&&" chaining),
+pipes and redirection can't be combined on the same line yet, and only
+a single pipe per line is recognized (no a | b | c). See GOALS.md
+phase 7 and
+PROGRESS.md's Iteration 5 through 8 entries for the current state and
 what's planned next. tests/shell/ has a small test suite
 (structurally modeled on bash's own tests/ directory) exercising all
 of the above; run it directly via `tests/shell/run-all`, or as part of

@@ -1,0 +1,29 @@
+#!/bin/sh
+# run-quote - single quotes (fully literal), double quotes (with \"
+# and \\ escapes), and backslash-escaping a single character outside
+# any quotes. Also checks that a quoted token matching an operator or
+# builtin name (e.g. '<', '|', 'cd') is treated as a literal argument,
+# not the special syntax it happens to spell out - this is the whole
+# reason ARGV-QUOTED exists (see shell.4).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$("$THIS_SH" -c "echo 'hello world' with spaces" < /dev/null 2>&1)
+assert_output_contains "single quotes keep spaces together, combine with unquoted args" "hello world with spaces" "$out"
+
+out=$("$THIS_SH" -c "echo hello\\ world" < /dev/null 2>&1)
+assert_output_contains "backslash-escaped space stays in one argument" "hello world" "$out"
+
+out=$("$THIS_SH" -c 'echo a \|not-a-pipe' < /dev/null 2>&1)
+assert_output_contains "backslash-escaped pipe character is literal" "a |not-a-pipe" "$out"
+
+out=$("$THIS_SH" -c "echo a '<' b" < /dev/null 2>&1)
+assert_output_contains "quoted < is a literal argument, not redirection" "a < b" "$out"
+
+out=$("$THIS_SH" -c "echo a '|' b" < /dev/null 2>&1)
+assert_output_contains "quoted | is a literal argument, not a pipe" "a | b" "$out"
+
+"$THIS_SH" -c "'cd' /tmp" < /dev/null > /dev/null 2>&1
+assert_status "quoted 'cd' is not treated as the builtin" 127 "$?"
+
+report

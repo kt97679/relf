@@ -1211,3 +1211,110 @@ checked incrementally rather than only at the end.
   isn't possible yet, since there's no quoting at all; every occurrence
   of these characters as a whole token is currently treated as the
   operator.
+
+## Iteration 8: quoting and escaping
+
+Goal: the next natural gap identified at the end of Iteration 7 -
+single quotes, double quotes (with minimal escape recognition), and
+backslash-escaping - the foundational piece that both combining
+pipes+redirection and any future `$VAR` expansion depend on (you
+can't safely have `$VAR` expansion without a way to prevent it, i.e.
+quoting, and you can't safely combine pipe/redirect syntax with
+literal arguments containing those same characters without it either).
+
+### Tokenizer rewrite: `SCAN-TOKEN` replaces `SKIP-TOKEN`
+
+The old tokenizer only ever needed to find whitespace boundaries -
+`SKIP-TOKEN` just walked forward until whitespace, and the token's
+start/end addresses were exactly the raw input's own bytes. Quoting
+breaks that assumption: `"a b"` should become the two-character
+content `a b`, four bytes shorter than its six-byte raw span. The new
+tokenizer compacts in place via a trailing write cursor (`TOK-OUT`)
+that only ever lags behind or equals the read cursor (`TOK-POS`) -
+safe because unquoting only ever removes bytes (quote marks,
+backslashes), never adds them. Three small, individually-dispatched
+helpers handle the three quoting forms: `COPY-SINGLE-QUOTED` (fully
+literal, no escapes recognized at all inside, matching POSIX),
+`COPY-DOUBLE-QUOTED` (recognizes `\"` and `\\` as escapes for a
+literal `"` or `\` - not `$`/`` ` ``, since there's no expansion to
+guard against yet), and `COPY-ESCAPED-CHAR` (a lone backslash outside
+any quotes makes the next character literal). `SCAN-TOKEN` just reads
+the current character and dispatches to the matching helper, or emits
+it plain - adjacent quoted/unquoted/escaped spans concatenate into one
+token this way, matching real shell behavior (`'ab'c"d e"f` becomes
+one token, `abcd ef`). An unterminated quote consumes to the end of
+input rather than erroring (a real shell would prompt for a
+continuation line - not attempted here).
+
+### Real bug #1: nul-terminator write destroyed the token separator
+
+First working version passed a basic "does 'a b' become two tokens"
+check but then produced an *empty* second token on anything past the
+first. Root cause: the old tokenizer explicitly advanced its cursor
+past the whitespace separator after nul-terminating each token; the
+compacting rewrite's nul-termination now happens at `TOK-OUT`, which
+for a plain unquoted token *coincides* with the separator's own
+position (no compaction occurred, so the write cursor never fell
+behind the read cursor) - so nul-terminating a plain token silently
+overwrote the very whitespace byte the next iteration's `SKIP-WS` was
+relying on to detect a boundary to skip. `SKIP-WS` then found a NUL
+where it expected a space, didn't recognize it as whitespace, and left
+the read cursor sitting exactly on that byte - so the next token
+started life already nul-terminated, i.e. empty. Fixed by explicitly
+advancing the read cursor past the separator after each token,
+independent of the write cursor - the same thing the old tokenizer did
+explicitly, which the rewrite had dropped by assuming SCAN-TOKEN's own
+internal advances would cover it (they cover consuming a token's own
+content, not the boundary after it).
+
+### Real bug #2: leftover duplicate code from a bad edit
+
+While applying the above fix, an `str_replace` left a stray, duplicate
+tail of the old function body appended after the new one - two
+mismatched `REPEAT`s, breaking the word's control-flow structure
+entirely. Caught immediately: loading `shell.4` alone crashed with no
+"OK" even for the load itself. Fixed by viewing the file directly
+around the edit and rewriting the whole word cleanly rather than
+patching around the leftover fragment.
+
+### Quote-awareness for operator/builtin recognition
+
+Stripping quote marks loses the information that a token was quoted -
+without tracking that separately, a literal `'<'` typed by the user
+would come out of `TOKENIZE` looking identical to a real, unquoted `<`
+redirection operator, and `PARSE-REDIRECTIONS` would wrongly treat it
+as one. Fixed with a parallel byte array, `ARGV-QUOTED` (one flag per
+`ARGV` entry, set whenever any part of that token passed through a
+quote or escape), and a `ARGV-QUOTED@` accessor. `PARSE-REDIRECTIONS`,
+`AT-PIPE?` (used by `SPLIT-PIPE`), and `DISPATCH`'s builtin-name
+checks were all updated to require "not quoted" alongside their
+existing string match, so `echo a '<' b`, `echo a '|' b`, and
+`'cd' /tmp` all now behave correctly - the quoted token is treated as
+a literal argument (or, for `'cd'`, as an external command name to
+search `$PATH` for, which doesn't exist as a real binary and correctly
+fails with exit 127) rather than the operator/builtin it happens to
+spell out.
+
+Verified end-to-end via `relfsh -c`: single quotes preserving embedded
+spaces and combining correctly with adjacent unquoted arguments,
+backslash-escaping a space and a pipe character, double-quote escapes
+producing a literal embedded `"`, unterminated quotes degrading
+gracefully rather than crashing, and quoting composing correctly with
+the existing pipe support (`echo 'hello world' | wc -w`).
+`tests/shell/run-quote` (6 assertions) locks all of this in - 24
+assertions across 8 files now, all passing on both x86-64 and i386.
+
+### What this iteration deliberately did NOT do
+
+- **`$` (variable expansion) or `` ` `` (command substitution) inside
+  double quotes** - `COPY-DOUBLE-QUOTED` only recognizes `\"` and `\\`
+  as escapes; `$`/`` ` `` have no special meaning yet at all, quoted or
+  not, since there's no expansion mechanism to guard.
+- **Multi-line quote continuation** - an unterminated quote just
+  consumes to the end of the current input line; a real shell would
+  prompt for more input (a secondary `>` prompt) until the quote
+  closes.
+- **Combining pipes and redirection on one line** - still the same
+  Iteration 7 scope limit; quoting doesn't change that decision, since
+  the two features remain independently untested together regardless
+  of what's inside their arguments.
