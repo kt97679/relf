@@ -171,13 +171,18 @@ while double-quoted $(...) still substitutes, but the substituted
 command's own text only gets a bare whitespace split (no quoting,
 expansion, pipes, or redirection within it yet, and no nested $(...)
 either), if/then/else/fi is supported (the condition is a normal
-command, run for its exit status), and so is while/do/done - the
-condition and body are both genuinely re-evaluated fresh every
-iteration (including fresh $VAR/$?/$$ re-expansion, not frozen from
-the loop's first reading - "while test $? -eq 0" behaves the way
-you'd expect, updating each time around). Neither control structure
-supports nesting yet, and there's no for/until. `;` separates multiple
-commands on one line, each run in sequence regardless of the previous
+command, run for its exit status) and supports nesting - a body line
+that's itself another if works correctly at any depth, regardless of
+whether the enclosing branch actually executes - and so is
+while/do/done, though while does not support nesting yet (its
+condition/body are buffered as raw text across dedicated buffers
+rather than a single scalar, a harder problem left for its own future
+work) - the condition and body are both genuinely re-evaluated fresh
+every iteration (including fresh $VAR/$?/$$ re-expansion, not frozen
+from the loop's first reading - "while test $? -eq 0" behaves the way
+you'd expect, updating each time around), and there's no for/until.
+`;` separates multiple commands on one line, each run in sequence
+regardless of the previous
 one's own exit status - but a variable assigned or exported earlier in
 the same line via `;` isn't visible yet to a $VAR expansion later in
 that same line ("FOO=bar ;
@@ -221,7 +226,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 21 entries for the current state and what's planned next.
+through 22 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -231,8 +236,9 @@ Separately, GOALS.md's goal 8 adopts mrsh
 unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
-crash-free, phase A done and phase B underway - see PROGRESS.md's
-Iteration 14 through 21 entries).
+crash-free, phase A and phase B both done (modulo a couple of
+documented, still-open items within phase B) - see PROGRESS.md's
+Iteration 14 through 22 entries).
 
 5. Possible usage.
 

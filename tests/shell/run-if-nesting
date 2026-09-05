@@ -1,0 +1,75 @@
+#!/bin/sh
+# run-if-nesting - if/then/else/fi supports nesting: a body line that's
+# itself another if is handled correctly regardless of whether the
+# enclosing branch actually executes. Two pieces of state make this
+# work together - COND-TRUE? (this if's own condition result) and
+# SUPPRESS-EXEC? (whether this whole region should execute anything at
+# all, because an enclosing branch already decided not to) - both
+# saved and restored around each nested if via the return stack, and
+# SUPPRESS-EXEC? is checked at every point that would otherwise
+# actually run a command, not just used to decide whether to descend
+# into a body line at all (an earlier, incomplete version of this fix
+# only did the latter, which correctly handled nesting when the
+# enclosing condition was true, but let a nested if's own "fi" get
+# mistaken for the enclosing if's "fi" when the enclosing condition
+# was false - see PROGRESS.md's entry on this).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-if-nesting-test-$$.sh"
+
+printf 'if /usr/bin/true\nthen\nif /usr/bin/true\nthen\necho inner123\nfi\necho outer123\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "outer true, inner true: both bodies run" "inner123
+outer123" "$out"
+
+printf 'if /usr/bin/true\nthen\nif /usr/bin/false\nthen\necho should-not-print-1\nfi\necho outer456\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "outer true, inner false: outer body still runs after the inner if" "outer456" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print-1"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: the inner if's own false body must not run"
+fi
+
+# The case that was actually broken by an earlier, incomplete fix:
+# when the OUTER condition is false, a nested if inside its body must
+# still be correctly consumed (its own then/body/fi) without running
+# anything - including the outer body's own remaining lines after the
+# nested if.
+printf 'if /usr/bin/false\nthen\nif /usr/bin/true\nthen\necho should-not-print-2\nfi\necho should-not-print-3\nfi\necho after789\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "outer false: the line after the nested if is also correctly skipped" "after789" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -qE "should-not-print-2|should-not-print-3"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing inside a skipped outer if should run"
+    echo "  actual output:"
+    echo "$out" | sed 's/^/    /'
+fi
+
+printf 'if /usr/bin/false\nthen\necho should-not-print-4\nelse\nif /usr/bin/true\nthen\necho nested-else123\nfi\necho outer-else123\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a nested if inside an else branch runs correctly" "nested-else123
+outer-else123" "$out"
+
+printf 'if /usr/bin/true\nthen\necho outer-then567\nelse\nif /usr/bin/true\nthen\necho should-not-print-5\nfi\necho should-not-print-6\nfi\necho after567\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a nested if inside a skipped else branch is also correctly skipped" "after567" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -qE "should-not-print-5|should-not-print-6"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing inside a skipped else branch should run, nested if or not"
+fi
+
+printf 'if /usr/bin/true\nthen\nif /usr/bin/false\nthen\nif /usr/bin/true\nthen\necho should-not-print-7\nfi\necho should-not-print-8\nfi\necho level1-999\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "three levels deep: a false middle condition skips only its own body" "level1-999" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -qE "should-not-print-7|should-not-print-8"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a skipped middle level must also skip everything nested inside it"
+fi
+
+rm -f "$TMP_SCRIPT"
+report

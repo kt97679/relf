@@ -236,12 +236,12 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 21's work — expected, since no
+   including after Iteration 17 through 22's work — expected, since no
    single vendored test file passes purely from variable assignment,
-   `;`, `&&`/`||`, command-grouping, or the if/while script-file fix
-   alone — the command-grouping item in particular doesn't apply to
-   mrsh's own tests at all yet, given the whitespace-around-parens
-   scope limit above).
+   `;`, `&&`/`||`, command-grouping, the if/while script-file fix, or
+   if-nesting alone — the command-grouping item in particular doesn't
+   apply to mrsh's own tests at all yet, given the whitespace-around-
+   parens scope limit above).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -353,12 +353,31 @@ the full account and the fixes applied.
      rather than applied, for now); see `PROGRESS.md`'s Iteration 20
      entry.
 
-     Still open: nesting support for `if`/`while` (removing the "no
-     nesting" limitation from Iteration 11 — likely needs a real
-     stack/recursion-based redesign rather than the current shared
-     globals, which is exactly why nesting was deferred in the first
-     place; the same underlying reason `( )`/`{ }` groups don't
-     support nesting either).
+     `if`/`then`/`else`/`fi` nesting: **done (Iteration 22)** — a body
+     line that's itself another `if` works correctly at any nesting
+     depth, regardless of whether the enclosing branch actually
+     executes. A first attempt (saving/restoring `COND-TRUE?` alone)
+     handled nesting correctly whenever the *enclosing* condition was
+     true, but testing the opposite case directly surfaced a deeper
+     gap: when the enclosing condition is false, body lines were never
+     run through the recursive dispatch at all, so a nested if's own
+     `then`/body/`fi` were never parsed as a nested construct, and its
+     `fi` got mistaken for the enclosing if's own. Fixed by always
+     recursing into every body line regardless of whether it should
+     execute, gated instead by a separate `SUPPRESS-EXEC?` state
+     checked at the two actual points that execute anything
+     (`DO-ASSIGN`, `RUN-SIMPLE-OR-PIPELINE`) — see `PROGRESS.md`'s
+     Iteration 22 entry for the full account, including three more
+     file-ordering slips of the same kind Iterations 16/20/21 already
+     hit.
+
+     `while`/`do`/`done` nesting remains **not done** — its condition
+     and body are buffered as raw text across dedicated, fixed-size
+     buffers rather than a single scalar like `if`'s `COND-TRUE?`, so
+     nesting it needs considerably more than what fixed `if` here;
+     left as its own, separate, still-open problem. **Phase B is now
+     complete** apart from that one item and the `NAME=value command`
+     temporary-assignment-prefix form noted above.
    - **Phase C — control structures.** `for`/`in`/`do`/`done`.
      `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
      `|` alternation. Shell functions (definition, invocation,

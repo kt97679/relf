@@ -29,6 +29,29 @@ CREATE ENVNAMBUF  64 ALLOT
 
 VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
+
+VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
+                          \ branch has already determined this whole
+                          \ region shouldn't execute anything (either
+                          \ because its own condition didn't permit
+                          \ this branch, or because an even further
+                          \ enclosing if was itself already
+                          \ suppressed). A suppressed region still
+                          \ needs to be *read* line by line, so a
+                          \ nested if/while inside it correctly
+                          \ consumes its own then/body/fi rather than
+                          \ having its "fi" mistaken for the enclosing
+                          \ if's own - it just must not actually run
+                          \ anything while doing so. Checked at every
+                          \ point that would otherwise execute a
+                          \ command (DO-ASSIGN, RUN-SIMPLE-OR-PIPELINE)
+                          \ rather than only gating whether
+                          \ RUN-TOKENIZED-CALL is invoked at all, which
+                          \ is what let a nested if inside a false
+                          \ branch go unparsed and corrupt the
+                          \ enclosing if's own fi/else detection -
+                          \ found by testing directly, not by
+                          \ inspection.
 0 LAST-STATUS !        ( defensive: don't rely on a VARIABLE's initial content )
 
 \ ==================================================================
@@ -1195,7 +1218,13 @@ VARIABLE AO-CONTINUE
                                     \ of RUN-TOKENIZED, factored out
                                     \ here so RUN-AND-OR-CHAIN below
                                     \ can call it once per &&/||-
-                                    \ separated piece.
+                                    \ separated piece. A no-op if
+                                    \ SUPPRESS-EXEC? is set - this line
+                                    \ is being read only to correctly
+                                    \ consume a skipped if/while
+                                    \ branch's own body, not actually
+                                    \ run.
+  SUPPRESS-EXEC? @ IF EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
@@ -1432,7 +1461,12 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
                             \ into ASSIGN-NAME-BUF/ASSIGN-VALUE-BUF and
                             \ records it via SET-SHVAR - does NOT
                             \ export it (see DO-EXPORT for how export
-                            \ interacts with this).
+                            \ interacts with this). A no-op (not even
+                            \ touching LAST-STATUS) if SUPPRESS-EXEC?
+                            \ is set - this line is being read only to
+                            \ correctly consume a skipped if/while
+                            \ branch's own body, not actually run.
+  SUPPRESS-EXEC? @ IF DROP EXIT THEN
   DUP ARGV @ SWAP ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
   DUP 1+ ARGV @ +
   SWAP ARGV @ CSTRLEN SWAP - 1-
@@ -1516,24 +1550,51 @@ VARIABLE COND-TRUE?
 
 : DO-IF ( --- )
   \ ARGV[0] is "if"; the rest of the line is the condition command.
-  SHIFT-ARGV-DOWN
-  RUN-SHIFTED
-  LAST-STATUS @ 0 = COND-TRUE? !
+  \ Supports nesting, including inside a branch that itself doesn't
+  \ execute: COND-TRUE? and SUPPRESS-EXEC? are both saved on the
+  \ return stack at entry (COND-TRUE? first, then SUPPRESS-EXEC? on
+  \ top of it) and restored right before every exit. Every body line
+  \ is always run through RUN-TOKENIZED-CALL regardless of whether
+  \ this branch should actually execute anything - what changes is
+  \ SUPPRESS-EXEC?'s own value beforehand, which DO-ASSIGN and
+  \ RUN-SIMPLE-OR-PIPELINE both check before actually doing anything.
+  \ This is what lets a nested if/while inside a *skipped* branch
+  \ still correctly consume its own then/body/fi (so its "fi" is never
+  \ mistaken for this if's own) without actually running anything
+  \ inside it - unlike only gating whether RUN-TOKENIZED-CALL itself
+  \ gets called, which is what an earlier version of this fix did
+  \ before testing directly surfaced that it broke exactly this case.
+  \ (while/do/done does NOT support nesting yet - its condition/body
+  \ are buffered as raw text across possibly many buffer-sized values,
+  \ not simple scalars, so nesting it would need considerably more
+  \ than this; left for its own future iteration.)
+  COND-TRUE? @ >R
+  SUPPRESS-EXEC? @ >R
+  SUPPRESS-EXEC? @ IF
+    0 COND-TRUE? !
+  ELSE
+    SHIFT-ARGV-DOWN
+    RUN-SHIFTED
+    LAST-STATUS @ 0 = COND-TRUE? !
+  THEN
   READ-LINE-INTO-ARGV
   S" then" LINE-IS? 0= IF
-    ." if: expected 'then'" CR EXIT
+    ." if: expected 'then'" CR
+    R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
   THEN
+  R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
   BEGIN
     READ-LINE-INTO-ARGV
-    S" fi" LINE-IS? IF EXIT THEN
+    S" fi" LINE-IS? IF R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT THEN
     S" else" LINE-IS? IF
+      R@ COND-TRUE? @ OR SUPPRESS-EXEC? !
       BEGIN
         READ-LINE-INTO-ARGV
-        S" fi" LINE-IS? IF EXIT THEN
-        COND-TRUE? @ 0= IF RUN-TOKENIZED-CALL THEN
+        S" fi" LINE-IS? IF R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT THEN
+        RUN-TOKENIZED-CALL
       0 UNTIL
     THEN
-    COND-TRUE? @ IF RUN-TOKENIZED-CALL THEN
+    RUN-TOKENIZED-CALL
   0 UNTIL ;
 
 \ ==================================================================

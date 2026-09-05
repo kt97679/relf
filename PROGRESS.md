@@ -2574,3 +2574,106 @@ though this fix is itself a real, independently valuable correctness
 issue resolved.
 
 Nesting (the item originally intended for this iteration) is next.
+
+## Iteration 22: goal 8, phase B - if/then/else/fi nesting (phase B done)
+
+Goal: the last item on phase B's list - a body line that's itself
+another `if` should work correctly, at any nesting depth, regardless
+of whether the enclosing branch actually executes.
+
+### First attempt: incomplete, caught by testing directly
+
+The obvious fix: `COND-TRUE?` (the single shared variable tracking
+whether the current `if`'s own condition succeeded) is saved via `>R`
+at `DO-IF`'s entry and restored right before each of its exit points,
+so a nested if can freely overwrite it for its own condition without
+corrupting the enclosing if's value once the inner call returns -
+standard Forth return-stack discipline. Verified directly and
+correctly handled every case where the *enclosing* condition was
+true: `if true; then if true; then ...; fi; ...; fi` and `if true;
+then if false; then ...; fi; echo still-runs; fi` both behaved
+exactly right on the first test.
+
+Testing the *other* direction - enclosing condition false - surfaced
+a deeper problem the >R/R> fix alone didn't touch: when
+`COND-TRUE?` is false, `DO-IF`'s own loop simply never calls
+`RUN-TOKENIZED-CALL` for that body line at all (`COND-TRUE? @ IF
+RUN-TOKENIZED-CALL THEN`) - which is fine for an ordinary command,
+but if that body line is itself the start of a nested `if`, skipping
+the call means the nested if's own `then`/body/`fi` are never
+consumed as a nested construct at all. The outer loop just keeps
+reading line by line, treats the nested if's own `"then"` and body
+lines as ordinary (skipped) body text, and then hits the nested if's
+own `"fi"` - which the outer loop's `S" fi" LINE-IS?` check matches
+just as readily as its own closing `fi`, since nothing distinguishes
+them by depth. The result: the *outer* `DO-IF` exits early, mistaking
+the inner `fi` for its own, and everything meant to still be inside
+the outer construct (the rest of the outer body, and the outer's own
+real `fi`) falls through to ordinary top-level execution instead -
+confirmed directly: a line meant to be skipped along with the whole
+outer body printed anyway, unconditionally, once the outer if had
+already (incorrectly) ended.
+
+### The full fix: always parse, but track a separate "suppress" state
+
+A second variable, `SUPPRESS-EXEC?`, marks "this whole region must be
+read (so nested control structures still correctly consume their own
+`then`/body/`fi`) but must not actually execute anything." `DO-IF` now
+*always* calls `RUN-TOKENIZED-CALL` for each body line, regardless of
+whether this branch should run - what changes is `SUPPRESS-EXEC?`'s
+own value beforehand (computed from the enclosing value, peeked via
+`R@` without disturbing what's saved for `DO-IF`'s own later restore,
+`OR`ed with this branch's own condition). `SUPPRESS-EXEC?` is checked
+at the two actual points where something would otherwise execute -
+`DO-ASSIGN` and `RUN-SIMPLE-OR-PIPELINE` - rather than only gating
+whether the recursive call happens at all, which is exactly the gap
+the first attempt had. Both `COND-TRUE?` and `SUPPRESS-EXEC?` are
+saved via `>R` at entry (`COND-TRUE?` first, `SUPPRESS-EXEC?` on top)
+and both restored via `R>`/`R>` right before every exit point.
+
+A `DO-SUBSHELL`-forked child inherits whatever `SUPPRESS-EXEC?` was at
+fork time as an ordinary consequence of `fork()`'s copy-on-write
+semantics, so a suppressed subshell still forks (a minor, accepted
+inefficiency - one wasted fork) but correctly does nothing once
+inside, since the same `RUN-SIMPLE-OR-PIPELINE`/`DO-ASSIGN` checks
+apply there too. `DO-BRACE-GROUP` doesn't fork and needs no special
+handling of its own - it relies on `DO-IF`'s own >R/R> discipline
+already keeping `SUPPRESS-EXEC?` correctly balanced across whatever
+runs inside it.
+
+Two file-ordering slips happened again this iteration (same class as
+Iterations 16, 20, and 21): `SUPPRESS-EXEC?` was first declared near
+`DO-IF`, but `DO-ASSIGN` (which also needs to check it) is defined
+much earlier in the file, and after moving it once, `RUN-SIMPLE-OR-
+PIPELINE` turned out to be earlier still - both caught immediately by
+load failures and fixed via the same precise line-indexed extract-
+and-reinsert approach used every previous time, ending with the
+declaration moved all the way up next to `LAST-STATUS` near the top
+of the file, the earliest point that works for every caller.
+
+(`while`/`do`/`done` still does *not* support nesting - its condition
+and body are buffered as raw text across dedicated, fixed-size
+buffers rather than a single scalar, so nesting it would need
+considerably more than what fixed `if` here; left as its own,
+separate, still-open problem, not attempted in this iteration.)
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Outer true / inner true (both bodies run); outer true / inner false
+(outer body still runs after the inner `if`); **outer false** (the
+line after a nested `if` is also correctly skipped, along with
+everything inside the nested `if` itself - the case the first attempt
+got wrong); a nested `if` inside a taken `else` branch; a nested `if`
+inside a *skipped* `else` branch; three levels deep with a false
+condition in the middle (only the middle level's own body is skipped,
+the outermost level's remaining body still runs).
+
+`tests/shell/run-if-nesting` (10 assertions) locks all of this in -
+115 assertions across 19 files now, all passing on both x86-64 and
+i386. `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3
+skipped - expected, since `if.sh` needs considerably more than
+nesting alone (shell functions, the `[`/`test` builtin, arithmetic)
+to pass as a whole file.
+
+**Phase B is now complete.** Phase C (control structures - `for`,
+`case`, shell functions, `break`/`continue`) is next.
