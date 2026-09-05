@@ -74,13 +74,21 @@ run_shell_test_suite() {
     # overridden so the same wrapper script drives either cell width.
     local engine="$1" image="$2" label="$3"
     local output status
-    # 180s, not 60s: the shell suite forks a real process per assertion
-    # (relfsh itself, plus whatever external command each test runs), so
-    # its runtime is dominated by fork/exec, not by anything shell.4 does.
-    # It measured 59.3s on the machine this was raised on - close enough
-    # to the old 60s limit to fail intermittently for no real reason.
-    # Confirmed unrelated to Iteration 39's locals conversion: timed at
-    # 59.3s both with the conversion and with it stashed out entirely.
+    # 180s, not 60s. It measured 59.3s on the machine this was raised on,
+    # close enough to the old limit to fail intermittently.
+    #
+    # The reason is NOT fork/exec, which an earlier version of this
+    # comment claimed: measured directly, 50 `relfsh -c true` runs take
+    # 12.68s while 50 bare `relf kernel.img` runs take 0.061s and 50
+    # /bin/true take 0.040s. So ~99.5% of every relfsh invocation is
+    # spent COMPILING locals.4 + shell.4 from source, which relfsh's
+    # bootstrap does afresh every single time it starts. ~253ms per
+    # invocation, against ~1.2ms of actual engine startup.
+    #
+    # A prebuilt shell image would remove essentially all of it - see
+    # GOALS.md. Unrelated to Iteration 39's locals conversion either
+    # way: timed at 59.3s both with the conversion and with it stashed
+    # out entirely.
     output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/relfsh" \
         timeout 180 tests/shell/run-all 2>&1)
     status=$?

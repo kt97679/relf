@@ -4479,12 +4479,19 @@ had slowed the shell down - `STR=` and `COPY-ARGV` are called
 constantly.
 
 Measured instead: 59.272s with the conversion, 59.256s with it stashed
-out entirely. The conversion costs nothing detectable, because the
-suite's runtime is dominated by forking a real process per assertion,
-not by anything inside `shell.4`. The 60s limit had simply always been
-about a second away from failing on this machine. Raised to 180s, with
-the measurement recorded in the comment there so the next person
-doesn't have to redo it.
+out entirely. The conversion costs nothing detectable. The 60s limit
+had simply always been about a second away from failing on this
+machine. Raised to 180s.
+
+**The explanation written here at the time was wrong, and is corrected
+in Iteration 40's entry**: this said the runtime was "dominated by
+forking a real process per assertion, not by anything inside
+`shell.4`". The first half is right that it isn't the locals
+conversion; the causal claim is not. It is dominated by *compiling*
+`shell.4` inside each of those forked processes - ~253ms of every
+~254ms `relfsh` invocation. The lesson: "measured that A didn't change
+it" does not license a story about what B is, and the story cost
+nothing to check.
 
 ### Verified
 
