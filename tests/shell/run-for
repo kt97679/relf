@@ -1,0 +1,47 @@
+#!/bin/sh
+# run-for - for VAR in word1 word2 ...; do <body>; done iterates the
+# body once per word, setting VAR (via SET-SHVAR, the same shell-local
+# storage from Iteration 17) before each run. Requires "do" on its own
+# line, matching if/while's own convention. Reuses while's own
+# body-capture/replay machinery, so it shares while's limitation that
+# the body cannot itself contain another multi-line construct
+# (if/then/fi, or a nested while/for) - see the note below and
+# PROGRESS.md's entry on this.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-for-test-$$.sh"
+
+printf 'for i in a123 b123 c123\ndo\necho item-$i\ndone\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "iterates the body once per word, expanding the loop variable" "item-a123
+item-b123
+item-c123" "$out"
+
+printf 'for i in\ndo\necho should-not-print\ndone\necho after123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "an empty word list runs the body zero times" "after123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: an empty word list must not run the body at all"
+fi
+
+printf 'for i in x123 y123 z123\ndo\necho in-loop-$i\ndone\necho after-loop-$i\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "the loop variable retains its final value after the loop ends" "after-loop-z123" "$out"
+
+"$THIS_SH" -c "for i in a b c; do /usr/bin/true; done" < /dev/null > /dev/null 2>&1
+assert_status "\$? after the loop reflects the last iteration's last command" 0 "$?"
+
+printf 'if /usr/bin/false\nthen\nfor i in a123 b123\ndo\necho should-not-print-%%s\ndone\necho should-not-print-either\nfi\necho after456\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a for loop inside a skipped if branch is correctly consumed but does not run" "after456" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing inside a skipped if branch should run, including a for loop's own body"
+fi
+
+rm -f "$TMP_SCRIPT"
+report

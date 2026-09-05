@@ -180,8 +180,19 @@ rather than a single scalar, a harder problem left for its own future
 work) - the condition and body are both genuinely re-evaluated fresh
 every iteration (including fresh $VAR/$?/$$ re-expansion, not frozen
 from the loop's first reading - "while test $? -eq 0" behaves the way
-you'd expect, updating each time around), and there's no for/until.
-`;` separates multiple commands on one line, each run in sequence
+you'd expect, updating each time around). for VAR in word1 word2 ...
+iterates its body once per word (expanded once, at the for line
+itself, not re-evaluated - matching POSIX), setting VAR each time -
+reusing while's own body-capture/replay mechanics, it shares the same
+limitation: a loop body cannot contain another multi-line construct
+at all (if/then/fi, or a nested while/for) - a body line that's itself
+an if silently misbehaves (its own body runs unconditionally,
+regardless of the if's condition), since the replay mechanism
+dispatches stored body lines independently rather than through a real
+read-ahead stream if/while/for could all share (a real, documented gap
+- see PROGRESS.md's Iteration 23 entry - left for its own future
+work). There's no until. `;` separates multiple commands on one line,
+each run in sequence
 regardless of the previous
 one's own exit status - but a variable assigned or exported earlier in
 the same line via `;` isn't visible yet to a $VAR expansion later in
@@ -226,7 +237,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 22 entries for the current state and what's planned next.
+through 23 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -237,8 +248,8 @@ unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
 target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A and phase B both done (modulo a couple of
-documented, still-open items within phase B) - see PROGRESS.md's
-Iteration 14 through 22 entries).
+documented, still-open items within phase B), phase C underway - see
+PROGRESS.md's Iteration 14 through 23 entries).
 
 5. Possible usage.
 

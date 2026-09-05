@@ -1701,6 +1701,83 @@ VARIABLE WHILE-BODY-CUR
     DO-WHILE-BODY
   REPEAT ;
 
+\ ==================================================================
+\ for VAR in word1 word2 ... / do / <body> / done
+\ Requires "do" on its own, separate line, matching if/while's own
+\ established convention here ("for VAR in ...; do" on one line isn't
+\ supported, same as "if cond; then" isn't). Reuses while's own
+\ body-capture/replay machinery (WHILE-BODY-BUF/APPEND-RAW-LINE-TO-
+\ BODY/DO-WHILE-BODY) - the mechanics of "store body lines, then
+\ replay them" are identical; only the iteration control differs (a
+\ fixed word list, expanded once here at the "for ... in ..." line
+\ itself, matching POSIX - not re-evaluated each iteration the way
+\ while's own condition is). Does NOT support nesting a for/while
+\ inside a for's own body (the same shared buffer would be clobbered,
+\ the same underlying reason while doesn't support nesting either).
+\ Does not validate that ARGV[2] is actually "in" (matching this
+\ shell's sparse error handling elsewhere) - it's simply skipped over.
+\ ==================================================================
+
+256 CONSTANT FOR-WORDS-MAX
+CREATE FOR-WORDS-BUF FOR-WORDS-MAX ALLOT   ( word list, NUL-separated )
+VARIABLE FOR-WORDS-LEN
+CREATE FOR-VARNAME-BUF 64 ALLOT
+VARIABLE FW-I
+VARIABLE FW-WORDLEN
+
+: SAVE-FOR-WORDS ( --- )
+  \ ARGV[1] (the loop variable name) into FOR-VARNAME-BUF; ARGV[3..]
+  \ (the word list, skipping ARGV[2]'s assumed "in") into
+  \ FOR-WORDS-BUF/FOR-WORDS-LEN.
+  ARGV 1 CELLS + @ FOR-VARNAME-BUF 64 SAFE-CSTR-COPY DROP
+  0 FOR-WORDS-LEN !
+  3 FW-I !
+  BEGIN FW-I @ ARGC @ < WHILE
+    FW-I @ ARGV@ DUP CSTRLEN FW-WORDLEN !
+    FW-WORDLEN @
+    FOR-WORDS-BUF FOR-WORDS-LEN @ +
+    FOR-WORDS-MAX FOR-WORDS-LEN @ -
+    SAFE-COPY-NUL IF
+      FOR-WORDS-LEN @ FW-WORDLEN @ + 1+ FOR-WORDS-LEN !
+    THEN
+    FW-I @ 1+ FW-I !
+  REPEAT ;
+
+VARIABLE FOR-WORD-I
+VARIABLE FOR-WORD-CUR
+
+: DO-FOR-ITERATE ( --- )
+  \ For each stored word (NUL-separated in FOR-WORDS-BUF/
+  \ FOR-WORDS-LEN), sets the loop variable (SET-SHVAR) and replays the
+  \ stored body (DO-WHILE-BODY, shared with while - see above). A
+  \ no-op if SUPPRESS-EXEC? is set - this whole for loop sits inside a
+  \ skipped if/else branch, so do/body/done were still correctly
+  \ consumed above, but nothing should actually run.
+  SUPPRESS-EXEC? @ IF EXIT THEN
+  0 FOR-WORD-I !
+  BEGIN FOR-WORD-I @ FOR-WORDS-LEN @ < WHILE
+    FOR-WORDS-BUF FOR-WORD-I @ + FOR-WORD-CUR !
+    FOR-VARNAME-BUF FOR-WORD-CUR @ SET-SHVAR
+    DO-WHILE-BODY
+    FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
+  REPEAT ;
+
+: DO-FOR ( --- )
+  \ ARGV[0] is "for"; ARGV[1] is the loop variable name; ARGV[3..] is
+  \ the word list (ARGV[2], assumed "in", is skipped over).
+  SAVE-FOR-WORDS
+  READ-LINE-INTO-ARGV
+  S" do" LINE-IS? 0= IF
+    ." for: expected 'do'" CR EXIT
+  THEN
+  0 WHILE-BODY-LEN !
+  BEGIN
+    READ-LINE-INTO-ARGV
+    S" done" LINE-IS? 0= WHILE
+    APPEND-RAW-LINE-TO-BODY
+  REPEAT
+  DO-FOR-ITERATE ;
+
 : RUN-TOKENIZED ( --- )
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
@@ -1734,6 +1811,7 @@ VARIABLE WHILE-BODY-CUR
   THEN
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
+  S" for" LINE-IS? IF DO-FOR EXIT THEN
   ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
     ARGV @ ASSIGNMENT-EQPOS
     DUP -1 <> IF DO-ASSIGN EXIT THEN

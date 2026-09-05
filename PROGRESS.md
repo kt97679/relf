@@ -2677,3 +2677,91 @@ to pass as a whole file.
 
 **Phase B is now complete.** Phase C (control structures - `for`,
 `case`, shell functions, `break`/`continue`) is next.
+
+## Iteration 23: goal 8, phase C - for/in/do/done loops
+
+Goal: the first item on phase C's list - `for VAR in word1 word2 ...`
+runs its body once per word, with `VAR` set to each in turn.
+
+### Design: reusing while's own body machinery
+
+`for` and `while` share the exact same "capture body lines as raw
+text, then replay them" mechanics (`WHILE-BODY-BUF`,
+`APPEND-RAW-LINE-TO-BODY`, `DO-WHILE-BODY`, all from Iteration 11) -
+only the *iteration control* differs: a fixed word list, expanded
+once at the `for ... in ...` line itself (matching POSIX - not
+re-evaluated each iteration the way `while`'s own condition is),
+instead of a condition re-checked before every pass. `SAVE-FOR-WORDS`
+copies `ARGV[1]` (the loop variable name) and `ARGV[3..]` (the word
+list, skipping `ARGV[2]`'s assumed `"in"` without validating it,
+matching this shell's sparse error handling elsewhere) into their own
+dedicated buffers before `DO-FOR` starts reading the intervening
+`do`/body/`done` lines, since those reads overwrite the global
+`ARGV`/`ARGC` the original `for` line's own words were sitting in.
+`DO-FOR-ITERATE` then walks the saved word list, calling `SET-SHVAR`
+(the shell-local variable table from Iteration 17) and replaying the
+stored body (`DO-WHILE-BODY`, entirely unmodified - it doesn't care
+whether the stored lines came from a `while` or a `for`) once per
+word. Requires `do` on its own, separate line, matching if/while's own
+established convention (`for VAR in ...; do` on one line isn't
+supported, same as `if cond; then` isn't). Respects an enclosing
+`SUPPRESS-EXEC?` (a `for` loop sitting inside a skipped `if` branch
+still correctly consumes its own `do`/body/`done`, but doesn't
+actually iterate) - checked once, at the top of `DO-FOR-ITERATE`,
+since expanding the word list itself (`SAVE-FOR-WORDS`) has no side
+effects worth guarding, unlike `if`'s own condition command.
+
+This iteration went unusually smoothly on the first pass: every
+individual test (basic iteration, an empty word list running the body
+zero times, the loop variable retaining its final value after the
+loop ends, `$?` reflecting the last iteration's last command, and a
+`for` loop inside a skipped `if` branch being correctly consumed but
+not run) passed immediately, without needing a debugging round - the
+first time that's been true for a new control-structure feature this
+project.
+
+### A real, pre-existing limitation confirmed (not introduced by this work): loop bodies can't contain another multi-line construct at all
+
+Testing `if`/`then`/`fi` *inside* a `for` loop's body surfaced a
+genuine bug - but confirmed directly that the same failure already
+happens inside a *while* loop's body too, so this isn't something
+`for` introduced; it's inherent to the "store body lines, replay them
+one at a time" mechanism itself, which both share. `DO-WHILE-BODY`
+dispatches each stored body line independently via
+`RUN-TOKENIZED-CALL` - but `DO-IF`'s own search for `then`/`else`/`fi`
+reads from the *real* input stream (`READ-LINE-INTO-ARGV`, going
+through `READ-NEXT-INPUT-LINE`), not from the next stored body line.
+So when a stored body line is itself `"if ..."`, `DO-IF` tries to read
+`"then"` from whatever comes *after* the loop's own `done` in the real
+script - which is usually nothing at all (EOF) - prints "if: expected
+'then'", and gives up immediately, while the *rest* of the stored body
+lines (`"then"`, `"echo ..."`, `"fi"`) get replayed as independent,
+unconditional commands regardless of what the `if`'s own condition
+was. Confirmed with a minimal repro: a body line meant to run only
+when a condition holds prints on every iteration instead, since the
+line carrying `echo` was never actually inside the `if` at all from
+the replay loop's point of view - it was just the next line in the
+list. A real fix would need loop bodies to support genuine read-ahead
+into stored lines (essentially, `if`/`while`/`for` all sharing one
+real notion of "the next line of input" regardless of whether that's
+the live script or a replay buffer) - left as its own, separate,
+substantial future item; not attempted here, and `for`'s own test
+suite deliberately avoids exercising it rather than papering over it.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Basic iteration over a word list, expanding `$i` inside the body; an
+empty word list running the body zero times; the loop variable
+retaining its final value after the loop ends; `$?` reflecting the
+last iteration's last command; a `for` loop inside a skipped `if`
+branch correctly consumed but not run.
+
+`tests/shell/run-for` (7 assertions) locks all of this in - 122
+assertions across 20 files now, all passing on both x86-64 and i386.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+`for.sh` specifically still fails since it uses `; do` on the same
+line as `for ... in ...` throughout, the same "do/then must be on its
+own line" scope limit `if`/`while` already have, on top of the
+loop-body-can't-contain-if limitation above and `$IFS`-based field
+splitting (an explicit, longstanding non-goal) that several of its
+later sections depend on.

@@ -236,12 +236,14 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 22's work — expected, since no
+   including after Iteration 17 through 23's work — expected, since no
    single vendored test file passes purely from variable assignment,
-   `;`, `&&`/`||`, command-grouping, the if/while script-file fix, or
-   if-nesting alone — the command-grouping item in particular doesn't
-   apply to mrsh's own tests at all yet, given the whitespace-around-
-   parens scope limit above).
+   `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
+   if-nesting, or `for` loops alone — the command-grouping item in
+   particular doesn't apply to mrsh's own tests at all yet, given the
+   whitespace-around-parens scope limit above, and `for.sh` needs
+   `do` on the same line as `for ... in ...` throughout, a scope limit
+   `for` shares with `if`/`while`).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -378,10 +380,29 @@ the full account and the fixes applied.
      left as its own, separate, still-open problem. **Phase B is now
      complete** apart from that one item and the `NAME=value command`
      temporary-assignment-prefix form noted above.
-   - **Phase C — control structures.** `for`/`in`/`do`/`done`.
-     `case`/`in`/`esac` with glob patterns (`*`, `?`, `[...]`) and
-     `|` alternation. Shell functions (definition, invocation,
-     redefinition, recursion) and `return`. `break`/`continue`.
+   - **Phase C — control structures.**
+     `for`/`in`/`do`/`done`: **done (Iteration 23)** — iterates its
+     body once per word, expanded once at the `for ... in ...` line
+     itself (matching POSIX), reusing `while`'s own body-capture/
+     replay machinery unmodified. Requires `do` on its own, separate
+     line, same as `if`/`while` already do. Went smoothly — every test
+     passed on the first attempt. Testing directly did surface a real,
+     pre-existing, more general limitation (not introduced by this
+     work — confirmed it already affects `while` too): a loop body
+     cannot contain another multi-line construct at all (`if`, or a
+     nested `while`/`for`) — the replay mechanism dispatches each
+     stored body line independently, but `DO-IF`'s own search for
+     `then`/`fi` reads from the real input stream, not the next stored
+     line, so a nested `if` inside a loop body silently misbehaves
+     (its own body lines run unconditionally, regardless of the
+     condition). A real fix needs loop bodies to support genuine
+     read-ahead into stored lines; left as its own, separate,
+     substantial future item — see `PROGRESS.md`'s Iteration 23 entry.
+
+     Still open: `case`/`in`/`esac` with glob patterns (`*`, `?`,
+     `[...]`) and `|` alternation. Shell functions (definition,
+     invocation, redefinition, recursion) and `return`.
+     `break`/`continue`.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`). Parameter-expansion modifiers
      (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
