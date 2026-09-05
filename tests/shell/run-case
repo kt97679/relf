@@ -1,0 +1,91 @@
+#!/bin/sh
+# run-case - case WORD in / PATTERN) <body> ;; / ... / esac. Each
+# pattern (or '|'-separated alternative) is glob-matched (*, ?, [...]
+# with a-z ranges and [!...]/[^...] negation - GLOB-MATCH, the same
+# "pattern matching notation" POSIX pathname expansion also uses)
+# against the case word saved when "case WORD in" was first read.
+# Requires each pattern arm, and ';;' (or the arm ending directly at
+# "esac", for the last item, per POSIX), on its own separate line - no
+# same-line support yet, matching while/for.
+#
+# A real bug was found and fixed getting here (see PROGRESS.md): an
+# earlier version set CASE-MATCHED? once an arm matched but never
+# actually checked it, so every later arm - even a non-matching one -
+# kept being tested and, if it happened to match, ran its body too.
+# Real case statements never fall through the way a C switch can.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-case-test-$$.sh"
+
+printf 'x=hello123\ncase "$x" in\nhello123)\necho exact-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "an exact pattern match runs its body" "exact-match" "$out"
+
+printf 'x=hello123\ncase "$x" in\nworld456)\necho should-not-print\n;;\nesac\necho after789\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "no matching arm runs nothing, script continues after esac" "after789" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a non-matching arm's body must not run"
+fi
+
+# The specific bug: once one arm matches, later ones must be skipped
+# even if their own pattern would also match - no fall-through.
+printf 'x=hello123\ncase "$x" in\nhe*)\necho star-match\n;;\n*)\necho should-not-print-default\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a glob match runs its own body" "star-match" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print-default"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a later arm must not also run once an earlier one already matched"
+fi
+
+printf 'x=hello123\ncase "$x" in\nfoo123)\necho should-not-print\n;;\n*)\necho default-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a '*' default arm matches when nothing earlier does" "default-match" "$out"
+
+printf 'x=hello123\ncase "$x" in\nfoo123)\necho q-fail\n;;\nhe?????3)\necho q-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "'?' matches any single character" "q-match" "$out"
+
+printf 'x=hello123\ncase "$x" in\nworld456|hello123)\necho pipe-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "'|' alternation matches if any one alternative does" "pipe-match" "$out"
+
+printf 'x=hello123\ncase "$x" in\nhell[a-z]123)\necho range-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "'[a-z]' character-range matches correctly" "range-match" "$out"
+
+printf 'y=hello123\ncase "$y" in\nworld456)\necho range-neg-fail\n;;\nhell[!0-9]123)\necho range-neg-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "'[!...]' negated range correctly rejects a digit and falls through" "range-neg-match" "$out"
+
+printf 'x=hello123\ny=hello123\ncase "$x" in\n$y)\necho expand-match\n;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a pattern itself can be a \$VAR expansion" "expand-match" "$out"
+
+printf 'case hello123 in\n*)\necho last-item-match\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "';;' is optional for the last arm before esac" "last-item-match" "$out"
+
+printf 'case a123 in\na123)\n/usr/bin/false\n;;\nesac\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "a matched arm's own exit status is the case statement's own" 1 "$?"
+
+printf 'case zzz999 in\nfoo999)\n/usr/bin/false\n;;\nesac\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "no arm matching at all is a harmless, successful no-op" 0 "$?"
+
+printf 'if /usr/bin/false\nthen\ncase hello123 in\nhello123)\necho should-not-print\n;;\nesac\nfi\necho after-if123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a case statement inside a skipped if branch runs nothing" "after-if123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a case statement inside a suppressed branch must not run its matched arm either"
+fi
+
+rm -f "$TMP_SCRIPT"
+report

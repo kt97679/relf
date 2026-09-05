@@ -2360,7 +2360,13 @@ VARIABLE CASE-MATCHED?
   \ expanded during tokenizing); ARGV[2] is skipped, assumed "in" (not
   \ validated, matching for's own convention). Respects an enclosing
   \ SUPPRESS-EXEC? throughout - a matched arm's body only actually runs
-  \ if the outer context wasn't already suppressed either.
+  \ if the outer context wasn't already suppressed either. Once one arm
+  \ has matched, every later one is skipped without even being tested,
+  \ via CASE-MATCHED? - real case statements never fall through the
+  \ way a C switch can (found and fixed as a real bug: an earlier
+  \ version set CASE-MATCHED? but never actually checked it, so a
+  \ later arm - even a non-matching one - kept right on being tested
+  \ and, if it matched, running its body too).
   SUPPRESS-EXEC? @ >R
   ARGV 1 CELLS + @ DUP CSTRLEN
   DUP CASE-WORD-LEN !
@@ -2370,7 +2376,7 @@ VARIABLE CASE-MATCHED?
     READ-LINE-INTO-ARGV
     S" esac" LINE-IS? 0=
   WHILE
-    CASE-ARM-MATCHES? IF
+    CASE-MATCHED? @ 0= CASE-ARM-MATCHES? AND IF
       -1 CASE-MATCHED? !
       R@ SUPPRESS-EXEC? !
     ELSE

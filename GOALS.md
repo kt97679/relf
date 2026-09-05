@@ -236,15 +236,17 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 26's work — expected, since no
+   including after Iteration 17 through 27's work — expected, since no
    single vendored test file passes purely from variable assignment,
    `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
-   if-nesting, `for` loops, operator-fusion, same-line if/then/fi, or
-   the $VAR-expansion corruption fix alone — the command-grouping item
-   in particular doesn't apply to mrsh's own tests at all yet, given
-   the whitespace-around-parens scope limit above, `while`/`for`
-   (unlike `if`) still need `do` on their own separate line, and
-   `if.sh` itself also needs `$#` and `elif`, neither implemented yet).
+   if-nesting, `for` loops, operator-fusion, same-line if/then/fi, the
+   $VAR-expansion corruption fix, or `case`/`esac` alone — the
+   command-grouping item in particular doesn't apply to mrsh's own
+   tests at all yet, given the whitespace-around-parens scope limit
+   above, `while`/`for` (unlike `if`) still need `do` on their own
+   separate line, `if.sh` itself also needs `$#` and `elif`, and
+   `case.sh` needs `$IFS` splitting and arithmetic in its later
+   sections, none implemented yet).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -437,23 +439,29 @@ the full account and the fixes applied.
      read-ahead into stored lines; left as its own, separate,
      substantial future item — see `PROGRESS.md`'s Iteration 23 entry.
 
-     `case`/`in`/`esac` — **in progress (Iteration 26 was a detour to
-     fix a blocking bug, not the feature itself)**. Glob-pattern
-     matching (`*`, `?`, `[...]` with ranges and `[!...]`/`[^...]`
-     negation, the classic iterative two-pointer backtrack algorithm)
-     is written and tested thoroughly in isolation (22/22 cases).
-     `DO-CASE`/`CASE-ARM-MATCHES?` are written and load cleanly, but
-     testing them end-to-end surfaced a real, independent,
-     pre-existing bug in ordinary `$VAR` expansion that had nothing to
-     do with `case` itself — see the fix below — which blocked
-     accurate testing of `case` until resolved. `case`/`esac` remains
-     not-yet-verified-working; finishing it is the immediate next
-     step. Also fixed along the way: `;;` was tokenizing as two
-     separate `;` tokens rather than its own doubled-operator form
-     (needed for `case`'s own arm terminator), by adding `;` to
-     `NORM-DOUBLED-OP?` alongside `&`/`|`/`>`.
+     `case`/`in`/`esac`: **done (Iteration 27)** — `case WORD in
+     PATTERN) <body> ;; ... esac` with full glob-pattern matching
+     (`*`, `?`, `[...]` ranges and `[!...]`/`[^...]` negation, the
+     classic iterative two-pointer backtrack algorithm, tested
+     thoroughly in isolation, 22/22 cases before ever being wired in)
+     and `|` alternation, matching the first arm whose pattern matches
+     and never falling through to a later one, the way a C `switch`
+     can. Requires each pattern arm on its own separate line, matching
+     while/for's own "no same-line support" scope. A real bug was
+     found and fixed by testing against a realistic, multi-arm script
+     rather than one pattern type at a time: `CASE-MATCHED?` was being
+     *set* once a match was found, but never actually *checked* — so
+     every later arm, even a non-matching one, kept being tested and,
+     if it happened to match too, ran its body as well. Also fixed
+     along the way: `;;` was tokenizing as two separate `;` tokens
+     rather than its own doubled-operator form (needed for `case`'s
+     own arm terminator), by adding `;` to `NORM-DOUBLED-OP?` alongside
+     `&`/`|`/`>`. See `PROGRESS.md`'s Iteration 27 entry for the full
+     account.
 
-     A significant, independent bug found and fixed (Iteration 26):
+     A significant, independent bug found and fixed along the way
+     (Iteration 26, while testing `case` directly rather than
+     something `case` itself caused):
      `TOKENIZE`'s in-place token compaction assumes the write cursor
      (`TOK-OUT`) never advances past the read cursor (`TOK-POS`) after
      an expansion — true for quote-stripping, false for `$VAR`/`$(...)`

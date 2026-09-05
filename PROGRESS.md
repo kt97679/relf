@@ -3125,3 +3125,100 @@ and `DO-CASE`/`CASE-ARM-MATCHES?` are written and load cleanly, but
 hadn't been verified working end-to-end before this expansion bug was
 found blocking accurate testing of them at all. Picking this back up
 is the immediate next step.
+
+## Iteration 27: goal 8 phase C - case/in/esac (with glob-pattern matching)
+
+Goal: finishing what Iteration 26 set out to do but got detoured from
+by a genuine, independent bug - `case WORD in PATTERN) <body> ;; ...
+esac`, with full glob-pattern matching (`*`, `?`, `[...]` ranges and
+negation) and `|` alternation, matching the very first arm whose
+pattern matches and never falling through to any later one, the way a
+C `switch` can.
+
+### Design
+
+`GLOB-MATCH ( pattern-addr pattern-len text-addr text-len --- f )`
+implements the classic iterative two-pointer wildcard-matching
+algorithm - no recursion needed. A `*` remembers where it was seen (in
+both the pattern and the text) and initially matches zero characters;
+if a later mismatch is hit, backtrack to the most recent `*` and let
+it consume one more character of text instead, retrying from there.
+Bracket expressions (`BRACKET-END` finds where one ends in the
+pattern text; `BRACKET-MATCHES?` checks membership, including
+`a-z`-style ranges and a leading `!`/`^` negation, with a `]`
+immediately after the opening `[` or the negation correctly treated as
+a literal member rather than the closer, per POSIX) are handled as a
+single, variable-length unit within the same scan, rather than needing
+their own separate backtrack state. Tested thoroughly in isolation
+first (22 hand-picked cases - exact match, wildcards in every
+position, character sets, ranges, negation, a literal `]` as a set
+member, length-mismatch edges) before ever being wired into `case`
+itself, all passing on the first attempt; the one hiccup along the way
+was an unrelated, pre-existing kernel quirk (an empty `S" "` string
+literal doesn't parse correctly in this dialect), not a bug in the
+matcher.
+
+`DO-CASE` extracts the case word from `ARGV[1]` (already `$VAR`-
+expanded during tokenizing) into a dedicated buffer, then reads one
+pattern-arm line at a time (`READ-LINE-INTO-ARGV`, matching while/for's
+"no same-line support" scope). `CASE-ARM-MATCHES?` handles a real
+tokenization wrinkle: a pattern arm's own trailing `)` isn't its own
+token the way `;`/`|`/`&&` all became in Iteration 24 - `NORMALIZE-
+OPERATORS` deliberately never touches `(`/`)` at all, to avoid breaking
+`$(...)` command substitution - so `"he*)"` tokenizes as one fused
+token, and the trailing `)` has to be stripped from specifically the
+*last* token before testing it as a pattern. Multiple `|`-separated
+alternatives are each tried independently; any one matching selects the
+arm. Respects `SUPPRESS-EXEC?` throughout, the same principle
+established for `if`/`while`/`for`'s own nesting-safety.
+
+A small prerequisite fix, needed for `case`'s own arm terminator:
+`;;` was tokenizing as two separate `;` tokens rather than its own
+token, since `NORMALIZE-OPERATORS`'s doubled-form check only covered
+`&`, `|`, `>` (from Iteration 24). Added `;` alongside them.
+
+### A real bug found and fixed by testing against a realistic, multi-arm script - not by inspection
+
+An early version correctly matched the *first* arm whose pattern
+matched, and correctly ran its body - but then kept right on testing
+*every later arm too*, and ran any of their bodies that also happened
+to match. `CASE-MATCHED?` was being *set* once a match was found, but
+never actually *checked* - a pure oversight, not a logic error in the
+matching itself. Caught by testing all of mrsh's own `case.sh`
+scenarios together in one script rather than one pattern type in
+isolation: `he*)` followed by a `*)` default arm printed *both*
+arms' output, when only the first should have run at all - the same
+shape of bug across every scenario where the *first* arm was the one
+that matched (glob, `|` alternation, bracket, `$VAR`-as-pattern), while
+scenarios where the *second* arm happened to be the match (exact,
+default-only) looked fine by coincidence, since there was nothing
+left afterward to incorrectly run. Fixed by actually checking
+`CASE-MATCHED? @ 0=` before testing a new arm's pattern at all - once
+true, every later arm is still correctly read and discarded (so the
+script's own subsequent lines are consumed properly), just never
+tested or run.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+All of mrsh's own `case.sh`-style scenarios in one script: exact match,
+`*` glob with a non-matching earlier arm and a matching later default,
+`?` single-character wildcards, `[a-z]` ranges, `[!...]` negation,
+`|` alternation, a `$VAR` expansion used as the pattern itself,
+`;;` optional for the item right before `esac`. Also: no arm matching
+at all is a harmless no-op (script continues normally afterward); a
+matched arm's own exit status becomes the whole case statement's;
+`case` inside a skipped `if` branch runs nothing, matching the
+established suppress-propagation principle.
+
+`tests/shell/run-case` (16 assertions) locks all of this in - 151
+assertions across 23 files now, all passing on both x86-64 and i386.
+`tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3 skipped -
+`case.sh` itself still needs other features (arithmetic, `$IFS`
+splitting in its later sections) before it passes as a whole file,
+even though `case`'s own core mechanics are now genuinely correct.
+
+**Phase C is now complete apart from shell functions, `return`, and
+`break`/`continue`** - and the previously-noted loop-body-can't-
+contain-another-multi-line-construct limitation, which likely
+interacts with `break`/`continue` in ways worth thinking through
+before starting them.

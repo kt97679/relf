@@ -197,7 +197,12 @@ regardless of the if's condition), since the replay mechanism
 dispatches stored body lines independently rather than through a real
 read-ahead stream if/while/for could all share (a real, documented gap
 - see PROGRESS.md's Iteration 23 entry - left for its own future
-work). There's no until. `;` separates multiple commands on one line,
+work). There's no until. case WORD in PATTERN) <body> ;; ... esac
+matches the first arm whose pattern matches (glob patterns: *, ?,
+[...] with a-z ranges and [!...]/[^...] negation, and | for multiple
+alternatives on one arm) and never falls through to a later one, the
+way a C switch can - requires each pattern arm on its own separate
+line, same as while/for's own scope limit. `;` separates multiple commands on one line,
 each run in sequence
 regardless of the previous
 one's own exit status - but a variable assigned or exported earlier in
@@ -260,7 +265,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 26 entries for the current state and what's planned next.
+through 27 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -272,7 +277,7 @@ target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A and phase B both done (modulo a couple of
 documented, still-open items within phase B), phase C underway - see
-PROGRESS.md's Iteration 14 through 26 entries).
+PROGRESS.md's Iteration 14 through 27 entries).
 
 5. Possible usage.
 
