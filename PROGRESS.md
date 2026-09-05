@@ -3466,3 +3466,104 @@ pass as a whole file.
 
 **Phase C now has only `break`/`continue` remaining.**
 
+## Iteration 30: goal 8 phase C - `break`/`continue`
+
+`break` exits the innermost enclosing `while`/`for` loop immediately;
+`continue` skips the rest of the current iteration's own body and
+proceeds to the next iteration as usual. Both are recognized even
+when called from within a function that a loop's own body happens to
+call - the trickiest case, thought through carefully before writing
+any code rather than discovered through trial and error, and verified
+directly, not just assumed correct from the design.
+
+### Design: two flags, mirroring and extending `return`'s own approach
+
+`RETURN-PENDING?` (Iteration 29) is "consumed" the moment its
+enclosing function returns - break/continue can't work the same way,
+since the loop they're meant for might be several function-call
+frames further out than wherever they were actually called. This
+needed two flags instead of one, plus a depth counter:
+
+- **`LOOP-CONTROL-PENDING?`** - set by either `break` or `continue`.
+  Checked in the same three places `RETURN-PENDING?` already is
+  (`RUN-SIMPLE-OR-PIPELINE`, so nothing further in the same logical
+  line runs; and both `RUN-FUNC-BODY`'s and `DO-WHILE-BODY`'s own
+  replay loops) - but, unlike `RETURN-PENDING?`, only `DO-WHILE-BODY`
+  ever resets it. `RUN-FUNC-BODY` *checks* it (stopping that
+  function's own body early, the same as for a `return`) but
+  deliberately *leaves it set* - so it keeps propagating outward
+  through however many nested function calls separate the break/
+  continue from the loop iteration it's actually meant for, until it
+  finally reaches a `DO-WHILE-BODY` call, which is what "one loop
+  iteration" actually corresponds to.
+- **`LOOP-BREAK?`** - set only by `break`, not `continue`. Survives
+  past `DO-WHILE-BODY`'s own reset of `LOOP-CONTROL-PENDING?` (which
+  only marks *that iteration* as over), checked by the outer while/for
+  loop itself (`DO-WHILE`/`DO-FOR-ITERATE`) right after each
+  `DO-WHILE-BODY` call: if set, stop iterating entirely; if not
+  (`continue` was called, or the body simply ran to completion),
+  proceed to the next iteration exactly as normal - `continue` needs
+  no special handling of its own beyond this, since "the iteration
+  ended early" and "the iteration ended normally" already lead to the
+  identical next step.
+- **`LOOP-DEPTH`** - incremented/decremented around `DO-WHILE`/
+  `DO-FOR-ITERATE` (the outer loop entry points), mirroring
+  `FUNC-DEPTH`, so break/continue outside any loop can be diagnosed.
+  Doesn't need `>R`/`R>` nesting the way `FUNC-DEPTH`'s own analogues
+  do for recursion: a loop body (or a function called from one) can't
+  yet contain another `while`/`for` construct at all (the existing
+  multi-line-construct limitation), so two loops can never be
+  simultaneously in progress - a plain reset at each loop's own
+  entry/exit is enough.
+
+`DO-WHILE`'s own outer Forth-level loop folds `LOOP-BREAK?` directly
+into its own condition (`LOOP-BREAK? @ 0= IF [re-evaluate the real
+condition] ELSE 0 THEN`), so a break during the previous iteration
+skips even *evaluating* the real condition again, rather than
+evaluating it and then discarding the result. `DO-FOR-ITERATE` does
+the same, `AND`ed into its own "more words remain" check.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Went smoothly given the design was thought through fully first - every
+case passed on the first attempt. Two test-design missteps along the
+way, neither a bug in `break`/`continue` themselves: an early loop
+test tried to update a counter via `$(expr $x + 1)`, hitting the
+already-documented "`$VAR` doesn't expand inside `$(...)`" limitation
+again; and a first attempt at a bounded break condition chained two
+`test ... && set ...` lines in the same iteration, so the flag
+cascaded through both its states within one single pass rather than
+across two - fixed by checking the flag's value *before* setting it
+each iteration, so the check always reflects the previous iteration's
+final state.
+
+Confirmed: `break` stops a `while` loop after the iteration it's
+called in; `continue` skips the rest of that iteration but the loop
+still proceeds; both work equivalently in a `for` loop (stopping
+before, or skipping just, the word being processed when called); and
+critically, `break` called from within a function invoked by a loop
+body correctly stops the outer loop, skipping both the rest of that
+function's own body *and* the rest of the loop iteration's own body
+(the line that called the function) - the exact scenario the two-flag
+design above exists for. A top-level `break`/`continue` (outside any
+loop) is diagnosed and the script continues rather than hanging or
+corrupting later execution.
+
+`tests/shell/run-break-continue` (12 assertions) locks all of this in
+- 182 assertions across 26 files now, all passing on both x86-64 and
+i386. mrsh-suite unchanged (1 passed, 20 failed, 3 skipped) -
+`loop.sh` itself still needs `[ ... ]` bracket-test syntax and `if`
+nested inside a `while` loop's own body (the multi-line-construct
+limitation) before it can pass as a whole file.
+
+**Phase C is now complete: `if`/`while`/`for`/`case`, shell functions,
+`return`, and `break`/`continue` are all implemented.** Remaining,
+carried-over items for future work: the loop-body/function-body
+multi-line-construct limitation (now touched by three separate
+features - `while`/`for` nesting, function bodies, and `break`/
+`continue` - making it an increasingly valuable thing to eventually
+fix properly via genuine read-ahead into stored lines); the unverified
+extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call
+sites fixed in Iteration 28; and, next, Phase D (expansions:
+positional parameters, parameter-expansion modifiers).
+

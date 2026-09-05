@@ -1,0 +1,84 @@
+#!/bin/sh
+# run-break-continue - "break" exits the innermost enclosing while/for
+# loop immediately; "continue" skips the rest of the current
+# iteration's own body and proceeds to the next iteration as usual.
+# Both are recognized even when called from within a function that a
+# loop's own body happens to call - see LOOP-CONTROL-PENDING?'s own
+# comment (declared alongside RETURN-PENDING?) for the full design:
+# checked in RUN-SIMPLE-OR-PIPELINE (so nothing further in the same
+# logical line runs) and in *both* RUN-FUNC-BODY's and DO-WHILE-BODY's
+# own replay loops (so a function called from a loop body, itself
+# calling break/continue, correctly stops that function's own body -
+# but crucially, only DO-WHILE-BODY - never RUN-FUNC-BODY - actually
+# resets the flag, so it keeps propagating outward through however
+# many nested function calls separate the break/continue from the
+# loop iteration it's actually meant for). A separate LOOP-BREAK? flag
+# (set only by break, not continue) survives past DO-WHILE-BODY's own
+# reset, checked by the outer while/for loop itself right after each
+# iteration to decide whether to stop entirely or proceed as normal.
+# LOOP-DEPTH lets break/continue outside any loop be diagnosed rather
+# than silently doing nothing or corrupting later execution.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-break-continue-test-$$.sh"
+
+printf 'seen123=no\nwhile /usr/bin/true\ndo\necho iter-check-$seen123\n/usr/bin/test $seen123 = yes && break\nseen123=yes\ndone\necho after-loop123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "break stops a while loop after the iteration it's called in" "iter-check-no
+iter-check-yes
+after-loop123" "$out"
+
+printf 'seen123=no\nwhile /usr/bin/true\ndo\necho iter-check-$seen123\n/usr/bin/test $seen123 = yes && break\nseen123=yes\ncontinue\necho should-not-print-in-loop123\ndone\necho after-loop123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "continue skips the rest of the current iteration but the loop still proceeds" "iter-check-no
+iter-check-yes
+after-loop123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print-in-loop123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing after continue in the same iteration's body should run"
+fi
+
+printf 'for i123 in a123 b123 c123 d123\ndo\necho item-$i123\n/usr/bin/test $i123 = b123 && break\ndone\necho after-for123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "break stops a for loop before the remaining words" "item-a123
+item-b123
+after-for123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "item-c123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a for loop must not process any word after the one break was called on"
+fi
+
+printf 'for i123 in a123 b123 c123\ndo\n/usr/bin/test $i123 = b123 && continue\necho item-$i123\ndone\necho after-for123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "continue in a for loop skips just that one word's own remaining body" "item-a123
+item-c123
+after-for123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "item-b123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: continue's own word (b123) must not print its own later body lines"
+fi
+
+printf 'maybe_break123() {\n/usr/bin/test $seen123 = yes && break\n}\nseen123=no\nwhile /usr/bin/true\ndo\necho iter-check-$seen123\nmaybe_break123\necho after-maybe-break-$seen123\nseen123=yes\ndone\necho after-loop123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "break called from within a function invoked by a loop body stops the outer loop" "iter-check-no
+after-maybe-break-no
+iter-check-yes
+after-loop123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "after-maybe-break-yes"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: once break fires inside a called function, the loop body's own remaining lines (after the call) must not run either"
+fi
+
+printf 'break\necho after-toplevel-break123\ncontinue\necho after-toplevel-continue123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a top-level break (outside any loop) is diagnosed, not fatal" "not in a loop" "$out"
+assert_output_contains "script execution continues normally after a top-level break" "after-toplevel-break123" "$out"
+assert_output_contains "script execution continues normally after a top-level continue" "after-toplevel-continue123" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

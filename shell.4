@@ -74,8 +74,60 @@ VARIABLE FUNC-DEPTH        \ how many RUN-FUNC-BODY calls are
                            \ level) - "return" outside any function is
                            \ diagnosed rather than silently ignored or
                            \ left to corrupt later execution.
+
+VARIABLE LOOP-CONTROL-PENDING?  \ true from the moment "break" or
+                           \ "continue" runs (see DISPATCH) until the
+                           \ current loop iteration's own
+                           \ DO-WHILE-BODY notices and resets it.
+                           \ Checked in the same three places
+                           \ RETURN-PENDING? is checked - the plain
+                           \ RUN-SIMPLE-OR-PIPELINE guard, so nothing
+                           \ further in the same logical line runs
+                           \ either - PLUS both RUN-FUNC-BODY's and
+                           \ DO-WHILE-BODY's own replay loops, since a
+                           \ loop body can call a function, and that
+                           \ function might be the one that actually
+                           \ calls break/continue meant for the
+                           \ *loop*, several call frames further out.
+                           \ Unlike RETURN-PENDING?, this flag is only
+                           \ ever reset by DO-WHILE-BODY, never by
+                           \ RUN-FUNC-BODY - a function's own body
+                           \ stops early when it sees this set (it has
+                           \ to, the same as for a return), but must
+                           \ leave the flag itself alone so it keeps
+                           \ propagating outward through however many
+                           \ nested function calls separate the
+                           \ break/continue from the loop iteration
+                           \ that actually needs to see it.
+VARIABLE LOOP-BREAK?       \ true only if it was specifically "break"
+                           \ (not "continue") that set
+                           \ LOOP-CONTROL-PENDING? - survives past
+                           \ DO-WHILE-BODY's own reset of that flag
+                           \ (which only marks the *iteration* as
+                           \ over), so the outer while/for loop
+                           \ (DO-WHILE/DO-FOR-ITERATE) can check it
+                           \ right after each DO-WHILE-BODY call and
+                           \ decide whether to stop iterating
+                           \ entirely (break) or just proceed to the
+                           \ next iteration as usual (continue, or a
+                           \ body that simply ran to completion).
+VARIABLE LOOP-DEPTH        \ how many while/for loops are currently
+                           \ active (0 at the top level) - like
+                           \ FUNC-DEPTH, lets break/continue outside
+                           \ any loop be diagnosed. Never needs >R/R>
+                           \ nesting the way FUNC-DEPTH's own
+                           \ analogues do for recursion: a loop body
+                           \ (or a function called from one) can't yet
+                           \ contain another while/for construct at
+                           \ all (see the existing multi-line-
+                           \ construct limitation), so two loops can
+                           \ never be simultaneously in progress.
+
 0 RETURN-PENDING? !
 0 FUNC-DEPTH !
+0 LOOP-CONTROL-PENDING? !
+0 LOOP-BREAK? !
+0 LOOP-DEPTH !
 
 \ ==================================================================
 \ C-string helpers
@@ -1082,6 +1134,27 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
       THEN
       -1 EXIT
     THEN
+    S" break" ARGV @ STR0= IF
+      LOOP-DEPTH @ 0 > IF
+        -1 LOOP-CONTROL-PENDING? !
+        -1 LOOP-BREAK? !
+        0 LAST-STATUS !
+      ELSE
+        ." break: not in a loop" CR
+        1 LAST-STATUS !
+      THEN
+      -1 EXIT
+    THEN
+    S" continue" ARGV @ STR0= IF
+      LOOP-DEPTH @ 0 > IF
+        -1 LOOP-CONTROL-PENDING? !
+        0 LAST-STATUS !
+      ELSE
+        ." continue: not in a loop" CR
+        1 LAST-STATUS !
+      THEN
+      -1 EXIT
+    THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
       RUN-FUNC-BODY-CALL -1 EXIT
     THEN
@@ -1428,8 +1501,15 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
                                     \ (or any later line of that
                                     \ function's own body) should run
                                     \ either, regardless of ';'/'&&'/
-                                    \ '||' structure.
-  SUPPRESS-EXEC? @ RETURN-PENDING? @ OR IF EXIT THEN
+                                    \ '||' structure. Likewise once
+                                    \ LOOP-CONTROL-PENDING? is set (a
+                                    \ "break"/"continue" has run) -
+                                    \ nothing further in the current
+                                    \ loop iteration's own body (or the
+                                    \ body of any function called from
+                                    \ within it) should run either.
+  SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
+  IF EXIT THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
@@ -2284,6 +2364,13 @@ VARIABLE FUNC-BODY-I
   \ invocation returns, so an outer, still-in-progress caller (if this
   \ was a recursive or nested call) never sees a stale, already-
   \ consumed return meant only for the invocation that triggered it.
+  \ Also stops as soon as LOOP-CONTROL-PENDING? is set (a "break"/
+  \ "continue" run somewhere in this invocation's own body, meant for
+  \ a while/for loop dynamically further out that called this
+  \ function from within its own body) - but unlike RETURN-PENDING?,
+  \ that flag is deliberately left untouched here, not reset, so it
+  \ keeps propagating outward until DO-WHILE-BODY - not this word -
+  \ finally consumes it.
   FUNC-DEPTH @ 1+ FUNC-DEPTH !
   FUNC-CUR-I @ >R
   FUNC-BODY-I @ >R
@@ -2292,6 +2379,7 @@ VARIABLE FUNC-BODY-I
   BEGIN
     FUNC-BODY-I @ FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ <
     RETURN-PENDING? @ 0= AND
+    LOOP-CONTROL-PENDING? @ 0= AND
   WHILE
     FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + RUN-STORED-LINE
     FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + CSTRLEN
@@ -2338,13 +2426,29 @@ VARIABLE WHILE-BODY-I
 VARIABLE WHILE-BODY-CUR
 
 : DO-WHILE-BODY ( --- )
-  \ Runs each stored, NUL-separated body line once, in order.
+  \ Runs each stored, NUL-separated body line once, in order - unless
+  \ LOOP-CONTROL-PENDING? is set first (by "break"/"continue", run
+  \ either directly in this body or by a function called from within
+  \ it - see RUN-FUNC-BODY's own comment on why that word checks but
+  \ deliberately never resets this same flag), in which case this
+  \ single iteration stops early. Either way (body ran to completion,
+  \ or stopped early), this word - and only this word, not
+  \ RUN-FUNC-BODY - resets LOOP-CONTROL-PENDING? before returning: the
+  \ iteration this flag was scoped to has now definitely ended, one
+  \ way or another. LOOP-BREAK? (whether the outer while/for loop
+  \ should stop entirely rather than proceed to its own next
+  \ iteration) is deliberately left untouched here - that's the outer
+  \ loop's own check, made right after this word returns.
   0 WHILE-BODY-I !
-  BEGIN WHILE-BODY-I @ WHILE-BODY-LEN @ < WHILE
+  BEGIN
+    WHILE-BODY-I @ WHILE-BODY-LEN @ <
+    LOOP-CONTROL-PENDING? @ 0= AND
+  WHILE
     WHILE-BODY-BUF WHILE-BODY-I @ + WHILE-BODY-CUR !
     WHILE-BODY-CUR @ RUN-STORED-LINE
     WHILE-BODY-I @ WHILE-BODY-CUR @ CSTRLEN + 1+ WHILE-BODY-I !
-  REPEAT ;
+  REPEAT
+  0 LOOP-CONTROL-PENDING? ! ;
 
 : DO-WHILE ( --- )
   \ ARGV[0] is "while"; RAW-LINE-BUF holds the raw line just read.
@@ -2359,14 +2463,28 @@ VARIABLE WHILE-BODY-CUR
     S" done" LINE-IS? 0= WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
+  \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
+  \ LOOP-BREAK? is reset fresh for this loop, then checked *before*
+  \ each re-evaluation of the real condition below - if the previous
+  \ iteration's own DO-WHILE-BODY call set it (via "break"), the real
+  \ condition is skipped entirely rather than needlessly re-run, and
+  \ this Forth-level WHILE simply stops.
+  LOOP-DEPTH @ 1+ LOOP-DEPTH !
+  0 LOOP-BREAK? !
   BEGIN
-    WHILE-COND-BUF LINE-BUF WHILE-COND-LEN @ MOVE
-    WHILE-COND-LEN @ TOKENIZE
-    RUN-TOKENIZED-CALL
-    LAST-STATUS @ 0 =
+    LOOP-BREAK? @ 0= IF
+      WHILE-COND-BUF LINE-BUF WHILE-COND-LEN @ MOVE
+      WHILE-COND-LEN @ TOKENIZE
+      RUN-TOKENIZED-CALL
+      LAST-STATUS @ 0 =
+    ELSE
+      0
+    THEN
   WHILE
     DO-WHILE-BODY
-  REPEAT ;
+  REPEAT
+  0 LOOP-BREAK? !
+  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
 
 \ ==================================================================
 \ for VAR in word1 word2 ... / do / <body> / done
@@ -2419,15 +2537,25 @@ VARIABLE FOR-WORD-CUR
   \ stored body (DO-WHILE-BODY, shared with while - see above). A
   \ no-op if SUPPRESS-EXEC? is set - this whole for loop sits inside a
   \ skipped if/else branch, so do/body/done were still correctly
-  \ consumed above, but nothing should actually run.
+  \ consumed above, but nothing should actually run. LOOP-DEPTH/
+  \ LOOP-BREAK? mirror DO-WHILE's own use of them exactly - see its
+  \ comment for why LOOP-BREAK? is checked before each word rather
+  \ than only at the very end.
   SUPPRESS-EXEC? @ IF EXIT THEN
   0 FOR-WORD-I !
-  BEGIN FOR-WORD-I @ FOR-WORDS-LEN @ < WHILE
+  LOOP-DEPTH @ 1+ LOOP-DEPTH !
+  0 LOOP-BREAK? !
+  BEGIN
+    FOR-WORD-I @ FOR-WORDS-LEN @ <
+    LOOP-BREAK? @ 0= AND
+  WHILE
     FOR-WORDS-BUF FOR-WORD-I @ + FOR-WORD-CUR !
     FOR-VARNAME-BUF FOR-WORD-CUR @ SET-SHVAR
     DO-WHILE-BODY
     FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
-  REPEAT ;
+  REPEAT
+  0 LOOP-BREAK? !
+  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
 
 : DO-FOR ( --- )
   \ ARGV[0] is "for"; ARGV[1] is the loop variable name; ARGV[3..] is

@@ -532,7 +532,31 @@ the full account and the fixes applied.
      smoothly — every case passed on the first attempt. See
      `PROGRESS.md`'s Iteration 29 entry for the full design.
 
-     Still open: `break`/`continue`.
+     `break`/`continue`: **done (Iteration 30)** — `break` exits the
+     innermost enclosing `while`/`for` loop immediately; `continue`
+     skips the rest of the current iteration and proceeds to the
+     next as usual. Both recognized even from within a function
+     called by a loop's own body — the trickiest case — via two flags:
+     `LOOP-CONTROL-PENDING?` (set by either, checked by
+     `RUN-SIMPLE-OR-PIPELINE` and both `RUN-FUNC-BODY`'s and
+     `DO-WHILE-BODY`'s own replay loops, but reset only by
+     `DO-WHILE-BODY`, so it keeps propagating outward through however
+     many function-call frames separate the break/continue from the
+     loop iteration it's actually meant for) and `LOOP-BREAK?` (set
+     only by `break`, surviving past `DO-WHILE-BODY`'s own reset so
+     the outer loop can check it and decide whether to stop entirely
+     or proceed as normal). `LOOP-DEPTH` diagnoses break/continue
+     outside any loop, mirroring `return`'s own `FUNC-DEPTH`. Went
+     smoothly — every case passed on the first attempt, since the
+     design was fully thought through before writing any code. See
+     `PROGRESS.md`'s Iteration 30 entry for the full account.
+
+     **Phase C is now complete.** Carried-over limitations: a
+     loop-body/function-body still can't contain another multi-line
+     construct (now touched by three separate features, making it an
+     increasingly valuable target for a proper fix); the unverified
+     extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two
+     call sites fixed in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`). Parameter-expansion modifiers
      (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
