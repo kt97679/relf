@@ -3567,3 +3567,103 @@ extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call
 sites fixed in Iteration 28; and, next, Phase D (expansions:
 positional parameters, parameter-expansion modifiers).
 
+## Iteration 31: goal 8 phase D - positional parameters (`$1`-`$9`,
+## `$#`, `$@`/`$*`, `set`)
+
+The first Phase D feature. Positional parameters now work at both the
+top level (from a script's own command-line arguments) and within a
+function (from its own call arguments), including correct save/restore
+across nested and recursive function calls.
+
+### Design
+
+Storage: `POS-PARAMS` (9 fixed-size slots - single-digit access only,
+`$1`-`$9`, a documented scope limit; `${10}` and beyond would need
+`EXPAND-VAR`'s own `${NAME}` braced path to accept a decimal name, not
+just POSIX portable name characters, left for later) and
+`POS-PARAM-COUNT`. `EXPAND-VAR` gained: `$1`-`$9` (a digit-range check
+using subtraction rather than `>=`, which doesn't exist as a kernel
+word - `char - 48` in `[1,9]`); `$#` (emits `POS-PARAM-COUNT` as
+decimal); `$@`/`$*` (space-joined via a new `EMIT-ALL-POS-PARAMS` -
+deliberately treated identically for now, since the two only actually
+differ once quoted, and `IFS` field splitting doesn't exist yet to
+make that distinction meaningful).
+
+Three ways positional parameters get set, all funneling through the
+same `SET-POS-PARAMS-FROM-ARGV` (reads whatever's currently in the
+global `ARGV[1..]`/`ARGC`):
+
+- **A function's own call arguments** - `RUN-FUNC-BODY` calls it right
+  as invocation begins, while the global `ARGV` still holds the
+  calling line (before the function's own first body line is replayed
+  and overwrites it).
+- **The `set` builtin** - `SET-POS-PARAMS-FROM-ARGV` already does
+  exactly what `set a b c` needs, since `ARGV[1..]` at that point
+  simply *is* `a b c`. Scope limit: real `set` also supports option
+  flags (`-e`, `-x`, etc.) with no positional-parameter arguments at
+  all - not handled here, so `set -e` would be (mis)treated as setting
+  `$1` to the literal string `-e`.
+- **A script's own command-line arguments** - a sibling,
+  `SET-POS-PARAMS-FROM-SYS-ARGS`, reads `SYS-ARG(1)` onward (relf's
+  own argv, exposed to Forth - `SYS-ARG(0)` is the script path itself,
+  already consumed by `SH-FILE`), called once from the top-level
+  dispatch right before `SH-FILE` runs.
+
+Nesting: a `POS-PARAMS-SAVE`/`POS-PARAM-COUNT-SAVE` stack, indexed by
+`FUNC-DEPTH`'s own current value - mirroring `FUNC-CUR-I`/
+`FUNC-BODY-I`'s own `>R`/`R>` nesting conceptually (each invocation's
+own state saved before going deeper, restored on the way back out),
+just needing an explicit save/restore pair rather than `>R`/`R>` itself
+since a whole parameter list isn't a single cell. `RUN-FUNC-BODY` saves
+the caller's own positional parameters (keyed by `FUNC-DEPTH`'s
+pre-increment value) before setting up the new ones, and restores them
+(keyed by the same value, now post-decrement) right before returning -
+so a function called from within another function, or a function
+calling itself recursively, each see only their own arguments,
+regardless of how deep the nesting goes.
+
+### A file-ordering fix and a real bug found by testing
+
+`ARGV@` was defined much later in the file than needed (after
+`EXPAND-VAR`'s own new callers of it) - moved to right after `ARGV`
+itself is declared, near the top of the file, rather than adding
+another deferred-word indirection for something this trivial.
+
+**Real bug**: `SAVE-POS-PARAMS`'s own `MOVE` call had its source and
+destination backwards - it copied *from* the (stale, often
+uninitialized) save slot *into* the live `POS-PARAMS`, rather than the
+other way around, silently corrupting the current parameters instead
+of preserving them. Invisible in a simple, single-level function-call
+test (where nothing reads `$1` again after a nested call returns) and
+even in a first recursion test (where the recursive call happened to
+be the last line of its own caller's body) - only surfaced once a
+nested (non-recursive) call test explicitly re-checked `$1` *after*
+the inner call returned, expecting to see the outer function's own
+argument still intact. Fixed with a single `SWAP` to correct the
+`MOVE` arguments' order; `RESTORE-POS-PARAMS`'s own direction was
+already correct.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: a function's own call arguments become `$1`/`$2`/`$#`/`$@`
+within its body; an unset positional parameter (`$3` when only two
+were given) expands to empty rather than erroring; a nested function
+call's own arguments don't leak into the caller, and the caller's own
+`$1` is correctly restored once the nested call returns (the case the
+bug above was found in); a recursive function call's own `$1` is
+independent per invocation; the `set` builtin populates `$1..` at the
+top level; and a script's own command-line arguments become `$1..`
+from the very start, without needing an explicit `set` call.
+
+`tests/shell/run-posparams` (6 assertions) locks all of this in - 188
+assertions across 27 files now, all passing on both x86-64 and i386.
+mrsh-suite unchanged (1 passed, 20 failed, 3 skipped) - `args.sh`
+itself needs `getopts` and parenthesized (subshell) function bodies,
+neither related to positional parameters, before it can pass.
+
+**Phase D remaining**: parameter-expansion modifiers (`${VAR:-word}`,
+`${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
+`${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`); arithmetic
+expansion (`$((...))`); tilde expansion; `IFS`-based field splitting of
+unquoted expansion results.
+

@@ -558,8 +558,22 @@ the full account and the fixes applied.
      extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two
      call sites fixed in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
-     `$*`, `$#`, `set`). Parameter-expansion modifiers
-     (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
+     `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
+     call arguments, or a script's own command-line arguments at the
+     top level, become `$1`-`$9` (single-digit access only, a
+     documented scope limit) within its own scope; `set a b c`
+     replaces whichever is currently active. Nested and recursive
+     function calls each see only their own arguments — the caller's
+     own positional parameters are saved (keyed by `FUNC-DEPTH`) and
+     restored once the call returns. A real bug found by testing:
+     `SAVE-POS-PARAMS`'s own `MOVE` call had source/destination
+     backwards, silently corrupting the current parameters instead of
+     preserving them — only surfaced once a nested (non-recursive)
+     call test re-checked `$1` after the inner call returned. See
+     `PROGRESS.md`'s Iteration 31 entry for the full design.
+
+     Still open: parameter-expansion modifiers (`${VAR:-word}`,
+     `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
      `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`).
      Arithmetic expansion (`$((...))` — a real expression grammar:
      precedence, associativity, comparison/bitwise/logical operators,

@@ -1,0 +1,58 @@
+#!/bin/sh
+# run-posparams - positional parameters: $1-$9, $#, $@, $* (single-
+# digit access only, a documented scope limit - see POS-PARAMS' own
+# comment). A script's own command-line arguments (beyond the script
+# path itself) become its own $1.. from the start (SET-POS-PARAMS-
+# FROM-SYS-ARGS, called once from the top-level dispatch); a
+# function's own call arguments become its own $1.. within its body
+# (SET-POS-PARAMS-FROM-ARGV, called by RUN-FUNC-BODY); "set a b c"
+# replaces whichever of those is currently active. Nested/recursive
+# function calls each see only their own arguments - the caller's own
+# positional parameters are saved (keyed by FUNC-DEPTH, mirroring
+# FUNC-CUR-I/FUNC-BODY-I's own >R/R> nesting, just needing an explicit
+# save/restore pair since a whole parameter list isn't a single cell)
+# and restored once the call returns.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-posparams-test-$$.sh"
+
+printf 'greet123() {\necho first=$1\necho second=$2\necho count=$#\necho all=$@\n}\ngreet123 hello123 world123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a function's own call arguments become \$1/\$2 within its body" "first=hello123
+second=world123
+count=2
+all=hello123 world123" "$out"
+
+printf 'greet123() {\necho third=[$3]\n}\ngreet123 hello123 world123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "an unset positional parameter expands to empty" "third=[]" "$out"
+
+printf 'inner123() {\necho inner-arg1=$1\n}\nouter123() {\necho outer-arg1=$1\ninner123 second-level-arg123\necho outer-arg1-again=$1\n}\nouter123 first-level-arg123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a nested function call's own \$1 doesn't leak, and the caller's own \$1 is restored after" "outer-arg1=first-level-arg123
+inner-arg1=second-level-arg123
+outer-arg1-again=first-level-arg123" "$out"
+
+printf 'countdown123() {\necho count-arg=$1\n/usr/bin/test $1 = a123 && countdown123 b123\n}\ncountdown123 a123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a recursive function call's own \$1 is independent per invocation" "count-arg=a123
+count-arg=b123" "$out"
+
+printf 'set alpha123 beta123 gamma123\necho one=$1\necho two=$2\necho three=$3\necho count=$#\necho all=$*\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "the set builtin populates \$1.. at the top level" "one=alpha123
+two=beta123
+three=gamma123
+count=3
+all=alpha123 beta123 gamma123" "$out"
+
+printf 'echo one=$1\necho two=$2\necho count=$#\necho all=$@\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" foo123 bar123 baz123 2>&1)
+assert_output_contains "a script's own command-line arguments become \$1.. from the start" "one=foo123
+two=bar123
+count=3
+all=foo123 bar123 baz123" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

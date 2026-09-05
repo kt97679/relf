@@ -23,6 +23,7 @@
 
 CREATE LINE-BUF   LINE-MAX ALLOT
 CREATE ARGV       MAX-ARGS CELLS ALLOT
+: ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
 CREATE PATHBUF    PATH-MAX ALLOT
 CREATE CWDBUF     PATH-MAX ALLOT
 CREATE ENVNAMBUF  64 ALLOT
@@ -352,6 +353,94 @@ VARIABLE SV-IDX
   DUP GET-SHVAR DUP 0= IF DROP GETENV ELSE SWAP DROP THEN ;
 
 \ ==================================================================
+\ Positional parameters ($1-$9, $#, $@, $*) - a script's own
+\ command-line arguments at the top level, or a function's own call
+\ arguments within its body (see SET-POS-PARAMS-FROM-ARGV/
+\ SAVE-POS-PARAMS/RESTORE-POS-PARAMS, used by RUN-FUNC-BODY). Scope
+\ limit: single-digit access only ($1-$9, not ${10} and beyond) -
+\ POS-PARAM-COUNT is itself clamped to MAX-POS-PARAMS, so $# won't
+\ report a true count past 9 either; a real, if less common, gap this
+\ project may want to close later given the payoff (${10}+ needs
+\ EXPAND-VAR's own ${NAME} braced path to accept a decimal name, not
+\ just POSIX portable name characters).
+\ ==================================================================
+
+9 CONSTANT MAX-POS-PARAMS
+256 CONSTANT POS-PARAM-MAX
+32 CONSTANT MAX-POS-PARAM-DEPTH
+
+CREATE POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * ALLOT
+VARIABLE POS-PARAM-COUNT
+
+CREATE POS-PARAMS-SAVE MAX-POS-PARAM-DEPTH MAX-POS-PARAMS POS-PARAM-MAX * * ALLOT
+CREATE POS-PARAM-COUNT-SAVE MAX-POS-PARAM-DEPTH CELLS ALLOT
+
+: POS-PARAM-SLOT ( i --- addr )  \ i is 0-based: $1 is slot 0, $9 is
+                                   \ slot 8.
+  POS-PARAM-MAX * POS-PARAMS + ;
+
+: POS-PARAMS-SAVE-SLOT ( depth --- addr )
+  MAX-POS-PARAMS POS-PARAM-MAX * * POS-PARAMS-SAVE + ;
+
+: POS-PARAM-COUNT-SAVE-SLOT ( depth --- addr )
+  CELLS POS-PARAM-COUNT-SAVE + ;
+
+VARIABLE SPP-I
+
+: SET-POS-PARAMS-FROM-ARGV ( --- )
+  \ Populates POS-PARAMS/POS-PARAM-COUNT from the *current* global
+  \ ARGV/ARGC, starting at ARGV[1] (skipping ARGV[0], the function
+  \ name itself) - called by RUN-FUNC-BODY right as a function call
+  \ begins, while the global ARGV still holds the calling line (before
+  \ the function's own first body line is replayed and overwrites it).
+  0 SPP-I !
+  BEGIN
+    SPP-I @ 1+ ARGC @ <
+    SPP-I @ MAX-POS-PARAMS < AND
+  WHILE
+    SPP-I @ 1+ ARGV@ SPP-I @ POS-PARAM-SLOT POS-PARAM-MAX
+    SAFE-CSTR-COPY DROP
+    SPP-I @ 1+ SPP-I !
+  REPEAT
+  ARGC @ 1- DUP MAX-POS-PARAMS > IF DROP MAX-POS-PARAMS THEN
+  POS-PARAM-COUNT ! ;
+
+VARIABLE SPFSA-I
+
+: SET-POS-PARAMS-FROM-SYS-ARGS ( --- )
+  \ Populates POS-PARAMS/POS-PARAM-COUNT from relf's own command-line
+  \ arguments beyond the script path itself (SYS-ARG(0)) - so
+  \ "relfsh script.sh arg1 arg2" makes $1/$2 available within the
+  \ script from the very start, without needing an explicit "set"
+  \ call. Called once, from the top-level dispatch, right before
+  \ SH-FILE runs the script.
+  0 SPFSA-I !
+  BEGIN
+    SPFSA-I @ 1+ SYS-ARGC <
+    SPFSA-I @ MAX-POS-PARAMS < AND
+  WHILE
+    SPFSA-I @ 1+ SYS-ARG SPFSA-I @ POS-PARAM-SLOT POS-PARAM-MAX
+    SAFE-CSTR-COPY DROP
+    SPFSA-I @ 1+ SPFSA-I !
+  REPEAT
+  SYS-ARGC 1- DUP 0 < IF DROP 0 THEN
+  DUP MAX-POS-PARAMS > IF DROP MAX-POS-PARAMS THEN
+  POS-PARAM-COUNT ! ;
+
+VARIABLE SPPD-DEPTH
+
+: SAVE-POS-PARAMS ( depth --- )
+  DUP SPPD-DEPTH !
+  POS-PARAMS-SAVE-SLOT
+  POS-PARAMS SWAP MAX-POS-PARAMS POS-PARAM-MAX * MOVE
+  SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT POS-PARAM-COUNT @ SWAP ! ;
+
+: RESTORE-POS-PARAMS ( depth --- )
+  DUP SPPD-DEPTH !
+  POS-PARAMS-SAVE-SLOT POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * MOVE
+  SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT @ POS-PARAM-COUNT ! ;
+
+\ ==================================================================
 \ Tokenizer: splits LINE-BUF (u chars from ACCEPT) on whitespace, in
 \ place. Supports single quotes ('...', fully literal, no escapes
 \ recognized inside), double quotes ("...", recognizing \" and \\ as
@@ -647,6 +736,19 @@ VARIABLE ER-I
     THEN
   THEN ;
 
+VARIABLE EAP-I
+
+: EMIT-ALL-POS-PARAMS ( --- )
+  \ Emits every positional parameter, space-separated - the shared
+  \ implementation for both $@ and $* (see EXPAND-VAR's own comment on
+  \ why they're not yet distinguished).
+  0 EAP-I !
+  BEGIN EAP-I @ POS-PARAM-COUNT @ < WHILE
+    EAP-I @ 0 > IF 32 EMIT-TOK-CHAR THEN
+    EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    EAP-I @ 1+ EAP-I !
+  REPEAT ;
+
 : EXPAND-VAR ( --- )
   \ TOK-POS is at the '$' character.
   -1 TOK-WAS-QUOTED? !
@@ -661,6 +763,34 @@ VARIABLE ER-I
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
     GETPID EMIT-DECIMAL
+    EXIT
+  THEN
+  DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters -
+                                        char-48, the digit value, is
+                                        between 1 and 9 )
+    48 -
+    TOK-POS @ 1+ TOK-POS !
+    1-
+    DUP POS-PARAM-COUNT @ < IF
+      POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    ELSE
+      DROP
+    THEN
+    EXIT
+  THEN
+  DUP 35 = IF                     ( $# )
+    DROP TOK-POS @ 1+ TOK-POS !
+    POS-PARAM-COUNT @ EMIT-DECIMAL
+    EXIT
+  THEN
+  DUP 64 = OVER 42 = OR IF        ( $@ / $* - treated identically for
+                                     now: space-joined, since the two
+                                     only differ once quoted and IFS
+                                     field splitting doesn't exist yet
+                                     to make that distinction
+                                     meaningful )
+    DROP TOK-POS @ 1+ TOK-POS !
+    EMIT-ALL-POS-PARAMS
     EXIT
   THEN
   DUP 40 = IF                     ( $( - command substitution )
@@ -815,7 +945,6 @@ VARIABLE ER-I
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
 
-: ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 
 \ ==================================================================
@@ -1153,6 +1282,22 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
         ." continue: not in a loop" CR
         1 LAST-STATUS !
       THEN
+      -1 EXIT
+    THEN
+    S" set" ARGV @ STR0= IF
+      \ "set a b c" replaces whatever positional parameters are
+      \ currently active (the current function's own, if called from
+      \ within one, or the top level/script's own otherwise) with
+      \ a/b/c - SET-POS-PARAMS-FROM-ARGV already does exactly this,
+      \ since it just populates POS-PARAMS/POS-PARAM-COUNT from
+      \ whatever's currently in ARGV[1..], the same shape "set" itself
+      \ needs. Scope limit: real "set" also supports option flags
+      \ (-e, -x, etc.) with no positional-parameter arguments at all -
+      \ not handled here, so "set -e" would be (mis)treated as setting
+      \ $1 to the literal string "-e" instead. A real, if less
+      \ commonly hit, gap worth closing later.
+      SET-POS-PARAMS-FROM-ARGV
+      0 LAST-STATUS !
       -1 EXIT
     THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
@@ -2370,7 +2515,18 @@ VARIABLE FUNC-BODY-I
   \ function from within its own body) - but unlike RETURN-PENDING?,
   \ that flag is deliberately left untouched here, not reset, so it
   \ keeps propagating outward until DO-WHILE-BODY - not this word -
-  \ finally consumes it.
+  \ finally consumes it. ARGV[1..] (the function's own call
+  \ arguments, still the live global ARGV/ARGC at this point, before
+  \ the first body line's own replay overwrites them) become this
+  \ invocation's own $1.. via SET-POS-PARAMS-FROM-ARGV; the caller's
+  \ own positional parameters are saved (keyed by FUNC-DEPTH's current
+  \ value, unique per nesting level exactly the way FUNC-CUR-I/
+  \ FUNC-BODY-I's own >R/R> save slots are, just needing an explicit
+  \ save/restore pair here since a whole parameter list isn't a single
+  \ cell) and restored once this invocation returns, so recursion and
+  \ nested calls each see only their own arguments.
+  FUNC-DEPTH @ SAVE-POS-PARAMS
+  SET-POS-PARAMS-FROM-ARGV
   FUNC-DEPTH @ 1+ FUNC-DEPTH !
   FUNC-CUR-I @ >R
   FUNC-BODY-I @ >R
@@ -2388,7 +2544,8 @@ VARIABLE FUNC-BODY-I
   0 RETURN-PENDING? !
   R> FUNC-BODY-I !
   R> FUNC-CUR-I !
-  FUNC-DEPTH @ 1- FUNC-DEPTH ! ;
+  FUNC-DEPTH @ 1- FUNC-DEPTH !
+  FUNC-DEPTH @ RESTORE-POS-PARAMS ;
 ' RUN-FUNC-BODY RUN-FUNC-BODY-XT !
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
@@ -2977,6 +3134,7 @@ VARIABLE SHC-LEN
     THEN
   THEN
   SYS-ARGC 0 > IF
+    SET-POS-PARAMS-FROM-SYS-ARGS
     0 SYS-ARG SH-FILE
   THEN
   SH ;
