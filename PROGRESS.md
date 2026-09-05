@@ -3222,3 +3222,175 @@ even though `case`'s own core mechanics are now genuinely correct.
 contain-another-multi-line-construct limitation, which likely
 interacts with `break`/`continue` in ways worth thinking through
 before starting them.
+
+## Iteration 28: goal 8 phase C - shell functions (`name() { ... }`)
+
+Definition, invocation, redefinition, and recursion for shell
+functions. `return` and `break`/`continue` remain (see the end of this
+entry).
+
+### Design
+
+A function's body is stored persistently (unlike `while`/`for`, which
+replay their own body once immediately and discard it) - reuses the
+same "raw text, NUL-separated lines" shape those already use, but each
+function gets its own dedicated table slot keyed by name, sized
+generously (2048 bytes) since a function body can be arbitrarily long.
+`FIND-FUNC`/`SET-FUNC`/`RUN-FUNC-BODY` are the storage/lookup/replay
+primitives; a later `SET-FUNC` call for an existing name overwrites
+its slot in place (the same "update if found, append if not" shape
+`SET-SHVAR` already established for shell variables), which is what
+makes redefinition work for free.
+
+`FUNCDEF-NAME?` detects a definition header: `ARGV[0]` ending in `()`
+(unquoted, at least one character before the parens) - `name()`
+tokenizes as one fused token since `NORMALIZE-OPERATORS` deliberately
+never touches parens (to avoid breaking `$(...)`), so this is a
+straightforward suffix check, not a new tokenization rule. `DO-FUNCDEF`
+then requires a `{` - either later on the same line (the common
+`name() {` style, via the same pending-remainder mechanism if's own
+same-line `then`/`else`/`fi` detection already uses from Iteration 25)
+or on its own line - but, a deliberate, simpler scope cut, each body
+line and the closing `}` must be on their own separate line, not fused
+with other content the way if's own same-line branches can be.
+
+Recursion needed one more piece of care: `RUN-FUNC-BODY`'s own "which
+line of the body am I replaying" position (`FUNC-CUR-I`/`FUNC-BODY-I`)
+is saved via `>R` at entry and restored via `R>` before returning,
+mirroring the exact principle `COND-TRUE?`/`SUPPRESS-EXEC?` already
+established for if's own nesting safety in Iteration 22 - each
+invocation's own position only ever reflects *that* invocation's
+replay, so a function calling itself (directly, or via another
+function) doesn't disturb an outer, still-in-progress call's own
+iteration state.
+
+Invocation is checked in `DISPATCH`, ahead of external `PATH` search
+(`ARGV[0]` looked up via `FIND-FUNC`; if found, `RUN-FUNC-BODY-CALL`
+replays it and reports handled, exactly like a builtin) - existing
+builtins (`cd`/`pwd`/`export`/`unset`/`exit`) still take priority if a
+function happens to share their name, matching POSIX's own treatment
+of these as special builtins.
+
+### A file-ordering complication, solved with the established
+### deferred-word pattern rather than moving code around
+
+`DISPATCH` is defined very early (line ~1000), long before a function
+body's own storage/replay logic naturally wants to live (down near
+`RUN-STORED-LINE`, its main dependency, at ~2100). Rather than
+relocating that machinery earlier and risking new ordering slips
+elsewhere, `RUN-FUNC-BODY-XT`/`RUN-FUNC-BODY-CALL` follow the same
+deferred-word pattern already proven for `RUN-TOKENIZED-CALL`: a
+variable holding an execution token, patched to the real word's own
+`xt` right after it's defined further down, with a trivial stub
+callable from anywhere already loaded. `FIND-FUNC` itself (and its own
+minimal table: `FUNC-NAMES`/`FUNC-COUNT`/`FUNC-NAME-SLOT`) *was* moved
+earlier, ahead of `DISPATCH`, since it has no such dependency problem
+and `DISPATCH` needs to call it directly, not through a deferred stub.
+
+### Two already-documented limitations resurfaced, not new bugs
+
+Recursion needs a base case, which needs a condition, which surfaced
+two limitations already on record rather than anything new:
+
+- A function body can't contain another multi-line construct
+  (`if`/`while`/`for`) - the same Iteration 23 limitation `while`/`for`
+  loop bodies already have, since a function body replays via the
+  identical mechanism (`RUN-STORED-LINE` re-tokenizes and runs each
+  stored line independently - an `if` line has no way to find its own
+  "then"/"fi" from the real input stream, since those aren't part of
+  what's stored).
+- `$VAR` doesn't expand inside `$(...)` - the Iteration 13 scope limit
+  on command substitution's own internal text.
+
+Worked around in testing (and in `tests/shell/run-func`) by using
+`&&`/`||` for single-line conditional logic within a function body
+instead of a nested `if`, and by advancing state across separate
+lines rather than through arithmetic inside a command substitution.
+
+### Two real, independent bugs found while testing recursion - neither specific to functions at all
+
+**1. A standalone assignment inside an `&&`/`||`-chained segment was
+never recognized as an assignment.** `x=hello && echo $x` silently
+failed: `RUN-AND-OR-CHAIN` calls `RUN-SIMPLE-OR-PIPELINE` directly for
+each chained segment, but the assignment-detection check
+(`ARGC @ 1 = ... ASSIGNMENT-EQPOS ... DO-ASSIGN`) had only ever lived in
+`RUN-TOKENIZED`'s own fall-through, never reached from inside a chain -
+`x=hello` was path-searched as a literal, failing command name (status
+127) instead, silently short-circuiting everything chained after it.
+Fixed by moving that check into `RUN-SIMPLE-OR-PIPELINE` itself (the
+one place both the plain, top-level case and every `&&`/`||`-chained
+segment actually pass through) - via the same deferred-word pattern as
+above (`TRY-ASSIGNMENT-XT`/`TRY-ASSIGNMENT-CALL`), since
+`ASSIGNMENT-EQPOS`/`DO-ASSIGN` are themselves defined well after
+`RUN-SIMPLE-OR-PIPELINE`.
+
+**2. `COPY-ARGV` never touched `ARGV-QUOTED`, leaving stale flags that
+could silently hide a real operator token.** Found via a three-segment
+chain (`test ... && flag=second && echo made-it`) where the *second*
+`&&` vanished - traced by direct inspection of `ARGV-QUOTED` at the
+token's own index, which showed `255` (quoted) for a token that was
+never quoted at all. Root cause: `$VAR`/`$(...)` expansion results are
+correctly marked "quoted" (so they're never re-interpreted as an
+operator or keyword) - but that flag is stored in a *global*,
+position-indexed array, and `COPY-ARGV` (used throughout `;`- and
+`&&`/`||`-splitting to swap a piece of a line into the global `ARGV`)
+only ever copied the `ARGV` pointers themselves, never resetting or
+restoring `ARGV-QUOTED` to match. If an earlier piece's own expansion
+result had sat at some index *n*, and a later piece's own real
+operator token later landed at that same index *n* after being copied
+in, the stale "quoted" flag persisted and incorrectly hid it.
+
+  Fixed properly rather than papered over: `SPLIT-SEMI`/`SPLIT-ANDOR`
+  now each mirror every entry's own `ARGV-QUOTED` flag, at the moment
+  they scan it, into a parallel byte array (`ARGQ-SEMI-LEFT`/
+  `ARGQ-SEMI-REST`/`ARGQ-AO-LEFT`/`ARGQ-AO-REST`) alongside their
+  existing pointer buffers. A new `COPY-ARGV-Q` (used in place of plain
+  `COPY-ARGV` at exactly these call sites - `RUN-AND-OR-CHAIN` and
+  `RUN-TOKENIZED`'s own `;`-split) restores the matching flag for each
+  entry as it copies the pointer, so a piece's own genuine quoted-
+  ness (or lack of it) travels with it correctly instead of picking up
+  whatever happened to be at that index beforehand. Plain `COPY-ARGV`
+  itself is untouched, and still used as-is everywhere this specific
+  hazard doesn't apply (e.g. pipeline segments, group bodies) - not
+  because those are known to be safe, just not yet verified, so this
+  is noted here as a possible follow-up area rather than claimed fixed.
+
+### A third bug, found by deliberately testing the interaction with `if`
+
+A function *definition* itself never checked `SUPPRESS-EXEC?` at all -
+`DO-FUNCDEF` always read and stored the body correctly (necessary, so
+the surrounding script's own later lines are consumed properly
+regardless), but also always called `SET-FUNC` unconditionally, even
+when the definition sat inside a false `if` branch. A function defined
+this way was, incorrectly, still callable afterward. Fixed by gating
+only the `SET-FUNC` call itself on `SUPPRESS-EXEC?`, the same
+"always read, only gate the effect" principle `if`/`while`/`for`/`case`
+already established.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Multi-line body definition and invocation; redefinition (a later
+`name()` replaces the earlier one); one function calling another from
+within its own body; a function's own exit status correctly reflecting
+its last command's status; genuine self-recursion with a properly
+gated base case (a bounded flag-progression countdown, avoiding both
+resurfaced limitations above); a function defined inside a skipped
+`if` branch correctly never taking effect; both new, independent bugs
+fixed and confirmed via minimal, isolated reproductions before being
+re-tested in the original failing scenario.
+
+`tests/shell/run-func` (9 assertions) locks all of this in, including
+the two independent `&&`-chain bugs (a standalone assignment as one
+segment of a chain; a three-segment chain with an assignment in the
+middle) directly, not just as incidental support for the recursion
+test that originally surfaced them - 160 assertions across 24 files
+now, all passing on both x86-64 and i386.
+
+**Phase C now has only `return` and `break`/`continue` remaining** -
+plus, still on record: the loop-body/function-body multi-line-
+construct limitation (which `return` may help work around in some
+cases, by giving a function an early-exit that doesn't need a nested
+`if` at all, but `break`/`continue` will likely still need to
+interact with directly), and the unverified extent of the
+`COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call sites fixed here.
+

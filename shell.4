@@ -990,6 +990,51 @@ VARIABLE PARSE-N
     0 LAST-STATUS !
   THEN ;
 
+16 CONSTANT MAX-FUNCS
+64 CONSTANT FUNC-NAME-MAX
+
+CREATE FUNC-NAMES MAX-FUNCS FUNC-NAME-MAX * ALLOT
+VARIABLE FUNC-COUNT
+
+: FUNC-NAME-SLOT ( i --- addr )  FUNC-NAME-MAX * FUNC-NAMES + ;
+
+VARIABLE FF-NAME
+VARIABLE FF-I
+
+: FIND-FUNC ( name-addr --- i | -1 )  \ linear scan, matching
+                                        \ FIND-SHVAR's own style.
+                                        \ Declared here, well before
+                                        \ SET-FUNC/RUN-FUNC-BODY define
+                                        \ the rest of a function's own
+                                        \ storage (a function's body
+                                        \ can be arbitrarily large, so
+                                        \ that part of the table lives
+                                        \ down near RUN-STORED-LINE
+                                        \ instead), since DISPATCH
+                                        \ needs FIND-FUNC to check
+                                        \ whether a command name is
+                                        \ actually a defined function
+                                        \ before falling through to a
+                                        \ builtin or external command.
+  FF-NAME !
+  0 FF-I !
+  BEGIN FF-I @ FUNC-COUNT @ < WHILE
+    FF-I @ FUNC-NAME-SLOT FF-NAME @ CSTR= IF FF-I @ EXIT THEN
+    FF-I @ 1+ FF-I !
+  REPEAT
+  -1 ;
+
+VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
+                              \ after it's defined, much further down -
+                              \ the same deferred-word pattern already
+                              \ used for RUN-TOKENIZED-CALL, needed
+                              \ here for the same reason: DISPATCH is
+                              \ defined long before a function's own
+                              \ body-replay logic is.
+
+: RUN-FUNC-BODY-CALL ( i --- )
+  RUN-FUNC-BODY-XT @ EXECUTE ;
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
     S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
@@ -1003,6 +1048,10 @@ VARIABLE PARSE-N
         LAST-STATUS @ SYS-EXIT
       THEN
     THEN
+    ARGV @ FIND-FUNC DUP -1 <> IF
+      RUN-FUNC-BODY-CALL -1 EXIT
+    THEN
+    DROP
   THEN
   0 ;
 
@@ -1066,6 +1115,8 @@ VARIABLE PIPE-PRESENT?
 
 CREATE ARGV-SEMI-LEFT MAX-ARGS CELLS ALLOT
 CREATE ARGV-SEMI-REST MAX-ARGS CELLS ALLOT
+CREATE ARGQ-SEMI-LEFT MAX-ARGS ALLOT
+CREATE ARGQ-SEMI-REST MAX-ARGS ALLOT
 VARIABLE ARGC-SEMI-LEFT
 VARIABLE ARGC-SEMI-REST
 
@@ -1076,14 +1127,19 @@ VARIABLE ARGC-SEMI-REST
 
 : SPLIT-SEMI ( --- f )  \ f = -1 if a ';' token was found (the part
                           \ before it is in ARGV-SEMI-LEFT/ARGC-SEMI-
-                          \ LEFT, the part after in ARGV-SEMI-REST/
-                          \ ARGC-SEMI-REST - either can be empty, e.g.
-                          \ a leading or trailing ';'), 0 otherwise
-                          \ (neither buffer is touched).
+                          \ LEFT (each entry's own ARGV-QUOTED flag at
+                          \ split time mirrored into ARGQ-SEMI-LEFT,
+                          \ for COPY-ARGV-Q to restore later - see its
+                          \ own comment for why this matters), the
+                          \ part after in ARGV-SEMI-REST/ARGC-SEMI-
+                          \ REST/ARGQ-SEMI-REST - either can be empty,
+                          \ e.g. a leading or trailing ';'), 0
+                          \ otherwise (nothing touched).
   0 PR-I !
   0 ARGC-SEMI-LEFT !
   BEGIN AT-END? AT-SEMI? OR 0= WHILE
     PR-I @ ARGV@ ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ + C!
     ARGC-SEMI-LEFT @ 1+ ARGC-SEMI-LEFT !
     PR-I @ 1+ PR-I !
   REPEAT
@@ -1093,6 +1149,7 @@ VARIABLE ARGC-SEMI-REST
   0 ARGC-SEMI-REST !
   BEGIN AT-END? 0= WHILE
     PR-I @ ARGV@ ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-SEMI-REST ARGC-SEMI-REST @ + C!
     ARGC-SEMI-REST @ 1+ ARGC-SEMI-REST !
     PR-I @ 1+ PR-I !
   REPEAT
@@ -1140,6 +1197,33 @@ VARIABLE CA-N
     LOOP
   THEN
   0 ARGV CA-N @ CELLS + ! ;
+
+VARIABLE CAQ-ARGV
+VARIABLE CAQ-ARGQ
+VARIABLE CAQ-N
+
+: COPY-ARGV-Q ( src-argv src-argq src-argc --- )
+  \ Like COPY-ARGV, but also restores each entry's own ARGV-QUOTED
+  \ flag from a parallel byte array captured at split time -
+  \ COPY-ARGV alone leaves ARGV-QUOTED holding whatever was there from
+  \ a PREVIOUS tokenization at each index, which can incorrectly mark
+  \ a real operator as "quoted" if an earlier line's expansion result
+  \ (always marked quoted, so it's never re-interpreted as an
+  \ operator/keyword) happened to sit at that same index - found as a
+  \ real bug via a three-segment &&-chain, where the second segment's
+  \ own trailing "&&" silently vanished this way (SPLIT-ANDOR's own
+  \ "is this token quoted" check saw a stale flag from the very first
+  \ segment's own $VAR expansion, which had sat at that same index in
+  \ the original, unsplit line). Used by SPLIT-SEMI/SPLIT-ANDOR's own
+  \ callers instead of plain COPY-ARGV wherever the copied-in segment
+  \ might need its own further ';'/'&&'/'||' recognized correctly.
+  CAQ-N ! CAQ-ARGQ ! CAQ-ARGV !
+  CAQ-N @ 0 > IF
+    CAQ-N @ 0 DO
+      CAQ-ARGQ @ I + C@ ARGV-QUOTED I + C!
+    LOOP
+  THEN
+  CAQ-ARGV @ CAQ-N @ COPY-ARGV ;
 
 : RUN-CMDSUB-CHILD ( --- )  \ resolves CMDSUB-ARGV[0] and execs it -
                               \ only returns on total failure. Runs
@@ -1204,6 +1288,8 @@ VARIABLE RIGHT-PID
 
 CREATE ARGV-AO-LEFT MAX-ARGS CELLS ALLOT
 CREATE ARGV-AO-REST MAX-ARGS CELLS ALLOT
+CREATE ARGQ-AO-LEFT MAX-ARGS ALLOT
+CREATE ARGQ-AO-REST MAX-ARGS ALLOT
 VARIABLE ARGC-AO-LEFT
 VARIABLE ARGC-AO-REST
 VARIABLE ANDOR-OP        ( 1 = && was found, 2 = || was found )
@@ -1224,17 +1310,22 @@ VARIABLE AO-CONTINUE
 : SPLIT-ANDOR ( --- f )  \ f = -1 if a && or || token was found in the
                           \ *global* ARGV/ARGC (not touched by this
                           \ word itself, only scanned) - the piece
-                          \ before it is in ARGV-AO-LEFT/ARGC-AO-LEFT,
-                          \ which operator it was in ANDOR-OP, and
-                          \ everything after it (which may itself
-                          \ contain further &&/||, not yet split) in
-                          \ ARGV-AO-REST/ARGC-AO-REST. f = 0 if
+                          \ before it is in ARGV-AO-LEFT/ARGC-AO-LEFT
+                          \ (each entry's own ARGV-QUOTED flag at split
+                          \ time mirrored into ARGQ-AO-LEFT, for
+                          \ COPY-ARGV-Q to restore later - see its own
+                          \ comment for why this matters), which
+                          \ operator it was in ANDOR-OP, and everything
+                          \ after it (which may itself contain further
+                          \ &&/||, not yet split) in ARGV-AO-REST/
+                          \ ARGC-AO-REST/ARGQ-AO-REST. f = 0 if
                           \ neither was found at all (nothing touched
                           \ except ARGC-AO-LEFT, harmlessly reset).
   0 PR-I !
   0 ARGC-AO-LEFT !
   BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
     PR-I @ ARGV@ ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-AO-LEFT ARGC-AO-LEFT @ + C!
     ARGC-AO-LEFT @ 1+ ARGC-AO-LEFT !
     PR-I @ 1+ PR-I !
   REPEAT
@@ -1245,6 +1336,7 @@ VARIABLE AO-CONTINUE
   0 ARGC-AO-REST !
   BEGIN AT-END? 0= WHILE
     PR-I @ ARGV@ ARGV-AO-REST ARGC-AO-REST @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-AO-REST ARGC-AO-REST @ + C!
     ARGC-AO-REST @ 1+ ARGC-AO-REST !
     PR-I @ 1+ PR-I !
   REPEAT
@@ -1258,6 +1350,29 @@ VARIABLE AO-CONTINUE
   AO-PENDING-OP @ 0 = IF -1 EXIT THEN
   AO-PENDING-OP @ 1 = IF LAST-STATUS @ 0= EXIT THEN
   LAST-STATUS @ 0 <> ;
+
+VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
+                               \ after it's defined, further down (the
+                               \ same deferred-word pattern already
+                               \ used for RUN-TOKENIZED-CALL) - needed
+                               \ since RUN-SIMPLE-OR-PIPELINE is
+                               \ defined long before ASSIGNMENT-EQPOS/
+                               \ DO-ASSIGN are. A standalone assignment
+                               \ has to be checked *here*, not only in
+                               \ RUN-TOKENIZED's own fall-through,
+                               \ since RUN-AND-OR-CHAIN calls this word
+                               \ directly for each &&/||-separated
+                               \ piece, bypassing RUN-TOKENIZED's own
+                               \ checks entirely - found as a real bug
+                               \ by testing directly: "x=hello &&
+                               \ echo $x" silently failed, since
+                               \ "x=hello" was never recognized as an
+                               \ assignment at all inside the chain,
+                               \ just path-searched as a literal,
+                               \ failing command name.
+
+: TRY-ASSIGNMENT-CALL ( --- f )
+  TRY-ASSIGNMENT-XT @ EXECUTE ;
 
 : RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
                                     \ global ARGV/ARGC as one pipeline
@@ -1273,6 +1388,7 @@ VARIABLE AO-CONTINUE
                                     \ branch's own body, not actually
                                     \ run.
   SUPPRESS-EXEC? @ IF EXIT THEN
+  TRY-ASSIGNMENT-CALL IF EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
@@ -1289,22 +1405,27 @@ VARIABLE AO-CONTINUE
   \ ARGV-AO-LEFT/ARGC-AO-LEFT holds the first piece, ANDOR-OP the
   \ operator right after it, ARGV-AO-REST/ARGC-AO-REST everything
   \ beyond that. The first piece always runs unconditionally - there's
-  \ no operator before it to make it conditional on.
-  ARGV-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV
+  \ no operator before it to make it conditional on. Uses COPY-ARGV-Q,
+  \ not plain COPY-ARGV, to also restore each copied-in piece's own
+  \ ARGV-QUOTED flags - see COPY-ARGV-Q's own comment for the real bug
+  \ this fixes (a stale "quoted" flag from an earlier piece's own
+  \ $VAR expansion silently hiding a real &&/;/etc. operator in a
+  \ later piece, if it happened to land at the same ARGV index).
+  ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
   RUN-SIMPLE-OR-PIPELINE
   ANDOR-OP @ AO-PENDING-OP !
-  ARGV-AO-REST ARGC-AO-REST @ COPY-ARGV
+  ARGV-AO-REST ARGQ-AO-REST ARGC-AO-REST @ COPY-ARGV-Q
   -1 AO-CONTINUE !
   BEGIN AO-CONTINUE @ WHILE
     SPLIT-ANDOR IF
       ( more &&/|| ahead: this piece is in ARGV-AO-LEFT, the operator
         after it in ANDOR-OP, the remainder in ARGV-AO-REST )
       AO-SHOULD-RUN? IF
-        ARGV-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV
+        ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
         RUN-SIMPLE-OR-PIPELINE
       THEN
       ANDOR-OP @ AO-PENDING-OP !
-      ARGV-AO-REST ARGC-AO-REST @ COPY-ARGV
+      ARGV-AO-REST ARGQ-AO-REST ARGC-AO-REST @ COPY-ARGV-Q
     ELSE
       ( no more &&/|| - the global ARGV IS the final piece, already
         copied in by the previous iteration )
@@ -1521,6 +1642,18 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
   ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
   ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR
   0 LAST-STATUS ! ;
+
+: TRY-ASSIGNMENT ( --- f )  \ f = -1 if ARGV was a standalone
+                              \ "NAME=value" assignment word (already
+                              \ handled via DO-ASSIGN by the time this
+                              \ returns), 0 otherwise (ARGV untouched).
+  ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
+    ARGV @ ASSIGNMENT-EQPOS
+    DUP -1 <> IF DO-ASSIGN -1 EXIT THEN
+    DROP
+  THEN
+  0 ;
+' TRY-ASSIGNMENT TRY-ASSIGNMENT-XT !
 
 CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
 VARIABLE ARGC-SHIFT
@@ -2040,6 +2173,111 @@ VARIABLE RSL-LEN
   RSL-LEN @ TOKENIZE
   RUN-TOKENIZED-CALL ;
 
+\ ==================================================================
+\ Shell functions: name() { <body> } - definition, invocation,
+\ redefinition, and recursion. Each function's body is stored as raw,
+\ NUL-separated lines (the same format while/for's own bodies use),
+\ but persistently, in its own dedicated table slot keyed by name -
+\ unlike while/for's shared WHILE-BODY-BUF, since a function's body
+\ needs to survive and be replayed on every future call, not just
+\ once immediately after being read.
+\ ==================================================================
+
+2048 CONSTANT FUNC-BODY-MAX
+
+CREATE FUNC-BODIES MAX-FUNCS FUNC-BODY-MAX * ALLOT
+CREATE FUNC-BODY-LENS MAX-FUNCS CELLS ALLOT
+
+: FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;
+: FUNC-BODY-LEN-SLOT ( i --- addr )  CELLS FUNC-BODY-LENS + ;
+
+VARIABLE SF-NAME
+VARIABLE SF-BODY-ADDR
+VARIABLE SF-BODY-LEN
+VARIABLE SF-I
+
+: SET-FUNC ( name-addr body-addr body-len --- )
+  \ Defines (or, if name-addr already names a function, redefines) a
+  \ function - a new definition with the same name simply overwrites
+  \ the existing table slot in place, the same "update if found,
+  \ append if not" shape SET-SHVAR already uses for shell variables.
+  \ body-addr/body-len is raw, NUL-separated line data (not a C
+  \ string - it can and does contain embedded NULs as line
+  \ separators), so it's copied via a length-bounded MOVE, not
+  \ SAFE-CSTR-COPY/SAFE-COPY-NUL (which assume a single trailing NUL
+  \ terminator, the wrong shape for this data).
+  DUP FUNC-BODY-MAX 1- > IF DROP FUNC-BODY-MAX 1- THEN
+  SF-BODY-LEN ! SF-BODY-ADDR ! SF-NAME !
+  SF-NAME @ FIND-FUNC
+  DUP -1 = IF
+    DROP
+    FUNC-COUNT @ MAX-FUNCS < 0= IF EXIT THEN
+    FUNC-COUNT @ SF-I !
+    FUNC-COUNT @ 1+ FUNC-COUNT !
+  ELSE
+    SF-I !
+  THEN
+  SF-NAME @ SF-I @ FUNC-NAME-SLOT FUNC-NAME-MAX SAFE-CSTR-COPY DROP
+  SF-BODY-LEN @ SF-I @ FUNC-BODY-LEN-SLOT !
+  SF-BODY-ADDR @ SF-I @ FUNC-BODY-SLOT SF-BODY-LEN @ MOVE ;
+
+VARIABLE FUNC-CUR-I
+VARIABLE FUNC-BODY-I
+
+: RUN-FUNC-BODY ( i --- )
+  \ i is the function's own table index. Iterates through its stored,
+  \ NUL-separated body lines, replaying each via RUN-STORED-LINE,
+  \ matching how while/for replay their own stored bodies. Supports
+  \ recursion: the "current position within THIS invocation's own
+  \ body" is saved via >R at entry and restored via R> before
+  \ returning, so a function calling itself (directly, or indirectly
+  \ via another function) doesn't disturb an outer, still-in-progress
+  \ invocation's own iteration state - the same principle already
+  \ established for if's own COND-TRUE?/SUPPRESS-EXEC? nesting.
+  FUNC-CUR-I @ >R
+  FUNC-BODY-I @ >R
+  FUNC-CUR-I !
+  0 FUNC-BODY-I !
+  BEGIN FUNC-BODY-I @ FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ < WHILE
+    FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + RUN-STORED-LINE
+    FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + CSTRLEN
+    FUNC-BODY-I @ + 1+ FUNC-BODY-I !
+  REPEAT
+  R> FUNC-BODY-I !
+  R> FUNC-CUR-I ! ;
+' RUN-FUNC-BODY RUN-FUNC-BODY-XT !
+
+CREATE FUNCDEF-NAME-BUF 64 ALLOT
+
+: DO-FUNCDEF ( --- )
+  \ ARGV[0] ends with "()" - a function definition header. Requires
+  \ "{" either later on the same line (the common "name() {" style,
+  \ via the same pending-remainder mechanism if's own same-line
+  \ then/else/fi detection uses) or on its own separate line - but the
+  \ body's own lines and the closing "}" must each be on their own
+  \ separate line, not fused with other content the way if's own
+  \ same-line then/else/fi can be; a deliberate, simpler scope cut for
+  \ now. Stores the captured body (raw text, NUL-separated lines, the
+  \ same shape while/for's own bodies use) via SET-FUNC, keyed by the
+  \ name extracted from ARGV[0] - a later definition with the same
+  \ name simply replaces it.
+  0 ARGV@ DUP CSTRLEN 2 - FUNCDEF-NAME-BUF 64 SAFE-COPY-NUL DROP
+  S" {" SPLIT-AT-KEYWORD DROP
+  PENDING-REMAINDER? @ 0= IF
+    READ-NEXT-LOGICAL-LINE
+    S" {" LINE-IS? 0= IF
+      ." function: expected '{'" CR EXIT
+    THEN
+  THEN
+  0 WHILE-BODY-LEN !
+  BEGIN
+    READ-NEXT-LOGICAL-LINE
+    S" }" LINE-IS? 0= WHILE
+    ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
+  REPEAT
+  FUNCDEF-NAME-BUF WHILE-BODY-BUF WHILE-BODY-LEN @
+  SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN ;
+
 VARIABLE WHILE-BODY-I
 VARIABLE WHILE-BODY-CUR
 
@@ -2393,6 +2631,21 @@ VARIABLE CASE-MATCHED?
   REPEAT
   R> SUPPRESS-EXEC? ! ;
 
+VARIABLE FD-ADDR
+VARIABLE FD-LEN
+
+: FUNCDEF-NAME? ( --- f )  \ is ARGV[0] a "NAME()" function-definition
+                             \ header - unquoted, at least 3 characters
+                             \ (a 1-character name plus "()"), and
+                             \ ending in "()"?
+  ARGC @ 0 = IF 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 0 EXIT THEN
+  0 ARGV@ FD-ADDR !
+  FD-ADDR @ CSTRLEN FD-LEN !
+  FD-LEN @ 2 > 0= IF 0 EXIT THEN
+  FD-ADDR @ FD-LEN @ 2 - + C@ 40 = 0= IF 0 EXIT THEN
+  FD-ADDR @ FD-LEN @ 1- + C@ 41 = ;
+
 : RUN-TOKENIZED ( --- )
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
@@ -2427,17 +2680,13 @@ VARIABLE CASE-MATCHED?
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
   S" for" LINE-IS? IF DO-FOR EXIT THEN
   S" case" LINE-IS? IF DO-CASE EXIT THEN
+  FUNCDEF-NAME? IF DO-FUNCDEF EXIT THEN
   SPLIT-SEMI IF
-    ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
+    ARGV-SEMI-LEFT ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV-Q
     RUN-TOKENIZED-CALL
-    ARGV-SEMI-REST ARGC-SEMI-REST @ COPY-ARGV
+    ARGV-SEMI-REST ARGQ-SEMI-REST ARGC-SEMI-REST @ COPY-ARGV-Q
     RUN-TOKENIZED-CALL
     EXIT
-  THEN
-  ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
-    ARGV @ ASSIGNMENT-EQPOS
-    DUP -1 <> IF DO-ASSIGN EXIT THEN
-    DROP
   THEN
   SPLIT-ANDOR IF
     RUN-AND-OR-CHAIN

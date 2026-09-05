@@ -482,8 +482,39 @@ the full account and the fixes applied.
      why five existing, seemingly-relevant tests each individually
      missed it.
 
-     Still open: shell functions (definition, invocation, redefinition,
-     recursion) and `return`. `break`/`continue`.
+     Shell functions (`name() { <body> }`): **done (Iteration 28)** —
+     definition (persistent, named storage, unlike `while`/`for`'s own
+     "replay once, discard" body), redefinition (a later definition
+     with the same name simply replaces the earlier one), invocation
+     (checked in `DISPATCH` ahead of external `PATH` search, existing
+     builtins still take priority on a name collision), and genuine
+     self-recursion (each invocation's own "which body line am I on"
+     position nested via `>R`/`R>`, mirroring `if`'s own
+     `COND-TRUE?`/`SUPPRESS-EXEC?` nesting from Iteration 22). Requires
+     `{` either on the same line as `name()` (the common style) or its
+     own line, but unlike `if`'s own same-line flexibility, each body
+     line and the closing `}` must be on their own separate line — a
+     deliberate, simpler initial scope cut. Shares the same
+     multi-line-construct limitation noted above (a function body
+     can't contain a nested `if`/`while`/`for`, for the identical
+     reason). Recursion testing surfaced two real, independent bugs,
+     neither specific to functions at all: (1) a standalone
+     `NAME=value` assignment used as one segment of an `&&`/`||` chain
+     was never recognized as an assignment, since that check had only
+     ever lived in the non-chained fall-through path; and (2)
+     `COPY-ARGV` never touched `ARGV-QUOTED`, so a stale "quoted" flag
+     left behind by an earlier piece's own `$VAR` expansion could
+     silently hide a real operator token from a later piece, if it
+     happened to land at the same `ARGV` index after being copied in —
+     found via a three-segment `&&` chain where the second `&&`
+     vanished entirely. Both fixed; see `PROGRESS.md`'s Iteration 28
+     entry for the full account, including why the fix restores
+     quoted-flags at exactly two call sites rather than changing plain
+     `COPY-ARGV` itself, and why that leaves the extent of the same
+     hazard at other `COPY-ARGV` call sites (pipeline segments, group
+     bodies) unverified rather than claimed safe.
+
+     Still open: `return`. `break`/`continue`.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`). Parameter-expansion modifiers
      (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,

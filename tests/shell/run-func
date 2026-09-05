@@ -1,0 +1,75 @@
+#!/bin/sh
+# run-func - name() { <body> } defines a shell function: invocation by
+# name (checked in DISPATCH, ahead of external PATH search) replays the
+# stored body, re-tokenizing and re-expanding $VAR fresh each time a
+# line is replayed (the same convention while/for/case already use for
+# their own stored bodies) - see SET-FUNC/RUN-FUNC-BODY. A later
+# definition with the same name replaces the earlier one. Requires "{"
+# either on the same line as "name()" (the common style) or on its own
+# line, but each body line and the closing "}" must be on their own
+# separate line - not fused with other content the way if's own
+# same-line then/else/fi can be (see DO-FUNCDEF's own comment). Shares
+# while/for's own limitation that a function body cannot itself
+# contain another multi-line construct (if/then/fi, while, for) -
+# RUN-STORED-LINE re-tokenizes and runs each stored line independently,
+# so an "if" body line has no way to find its own "then"/"fi" from the
+# real input stream. Recursion is supported (RUN-FUNC-BODY nests its
+# own replay position via >R/R>, mirroring COND-TRUE?/SUPPRESS-EXEC?'s
+# own nesting for if), but needs $VAR expansion across separate lines
+# (not within a single command substitution) and a properly-gated
+# recursive call to terminate, since there's no "return" yet - see
+# PROGRESS.md for the full design discussion and the real, independent
+# bug this uncovered (a standalone assignment inside an &&/||-chained
+# segment was never recognized as an assignment at all, and separately,
+# COPY-ARGV left stale ARGV-QUOTED flags that could hide a real
+# operator token reused at the same ARGV index by a later segment).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-func-test-$$.sh"
+
+printf 'myfunc() {\necho hello123\necho world123\n}\nmyfunc\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a multi-line function body runs each of its own lines in order" "hello123
+world123" "$out"
+
+printf 'greet123() {\necho first-def\n}\ngreet123\ngreet123() {\necho second-def\n}\ngreet123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a later definition with the same name replaces the earlier one" "first-def
+second-def" "$out"
+
+printf 'inner123() {\necho inner-ran\n}\nouter123() {\necho outer-start\ninner123\necho outer-end\n}\nouter123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "one function can call another from within its own body" "outer-start
+inner-ran
+outer-end" "$out"
+
+printf 'myfunc123() {\n/usr/bin/false\n}\nmyfunc123\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" > /dev/null 2>&1
+assert_status "a function's own exit status is its last command's status" 1 "$?"
+
+printf 'flag123=first\ncountdown123() {\necho $flag123\n/usr/bin/test $flag123 = first && flag123=second && countdown123\n}\ncountdown123\necho finished123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a function can recurse into itself, with each invocation's own body-replay position correctly nested" "first
+second
+finished123" "$out"
+
+printf 'if /usr/bin/false\nthen\nmyfunc123() {\necho should-not-print-%%s\n}\nfi\nmyfunc123\necho after123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a function definition inside a skipped if branch does not take effect" "after123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a function defined inside a skipped if branch must not be callable afterward"
+fi
+
+printf 'x123=first\n/usr/bin/true && x123=second\necho $x123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a standalone assignment works as one segment of an &&-chain" "second" "$out"
+
+printf 'x123=first\n/usr/bin/test 1 = 1 && x123=second && echo made-it123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a three-segment &&-chain (test, assignment, command) all run in order" "made-it123" "$out"
+
+rm -f "$TMP_SCRIPT"
+report
