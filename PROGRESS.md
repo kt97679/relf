@@ -5007,3 +5007,97 @@ code.
   `APPEND-RAW-LINE-TO-BODY` always had.
 - **Nested function definitions** are untouched: `DO-FUNCDEF` gets its
   own arena body but its capture still stops at the first `}`.
+## Iteration 44: offset-based growable arena - two hardcoded limits gone
+
+Iteration 43 left `BODY-ARENA-MAX` as a hardcoded 65,536 and I claimed
+growing it needed a *chunked* arena, because `RESIZE` could relocate
+the block and live pointers point into it. You pushed back: doesn't
+`realloc` just extend in place? Worth settling by measurement rather
+than argument, so I wrote the test:
+
+    realloc to      128 bytes MOVED 0x55af879942a0 -> 0x55af87995300
+    realloc to   131072 bytes MOVED 0x55af87995300 -> 0x7f94b3637010
+    ...
+    total moves: 7   (out of 15 calls)
+
+It moves. glibc extends in place when the adjacent chunk is free, which
+is why it usually *looks* like it never does; it can't when something
+is in the way, and past the mmap threshold a grow is a fresh mapping
+nearly every time.
+
+But the conclusion I drew from that was wrong, and your instinct was
+right. Chunking is not the answer - **offsets** are. This project
+already stores offsets rather than addresses everywhere it matters:
+`START`-relative xts, the `BOOT` hook, locals' slot addresses, the
+`BUFFER:` descriptor chain. The arena was the one place still holding
+raw pointers into a relocatable block. Making the buffer variables hold
+offsets and dereference through `BODY@` means `RESIZE` can move the
+arena freely, because nothing outside holds a pointer into it.
+
+That is strictly better than chunking: fewer moving parts, no chunk
+size to pick, and consistent with the rule already written down rather
+than a special case.
+
+### `BODY-ARENA-MAX` is gone
+
+The arena now starts at 4,096 and doubles on demand via `RESIZE`
+(`BODY-GROW`). There is no maximum. It is heap memory, so it costs
+nothing in the image and nothing at runtime until the first loop or
+function is seen, and `MAIN` resets its base at boot because a heap
+address is meaningless after an image is saved and reloaded.
+
+### `WHILE-BODY-MAX` as a per-body cap is gone too
+
+Testing the growable arena with a generated 60-loop script showed
+output that quietly diverged from bash. The cause was not the arena:
+`APPEND-RAW-LINE-TO-BODY` had always dropped any line that would not
+fit a fixed 4,096-byte body, **silently, with no error**. So a
+sufficiently large loop body produced wrong output rather than
+failing - a real correctness bug that predates this work and that no
+existing test was large enough to reach.
+
+Bodies now grow. `BODY-ENSURE` extends the body in place, which works
+because a body being captured is always the topmost arena allocation:
+nothing else allocates while lines are being appended, since a nested
+loop inside the body is still just text at that point and does not
+allocate until it runs. The residual "cannot grow" case is now
+reported instead of ignored.
+
+### Two bugs found along the way, both mine
+
+- **First arena allocation has offset 0**, and
+  `READ-NEXT-INPUT-LINE` used "`REPLAY-SRC` is non-zero" to mean "a
+  replay is in progress". So the outermost loop in any script silently
+  did not replay at all. Fixed with an explicit `REPLAY-ACTIVE?` flag.
+  A good argument against overloading a value with "and zero means
+  absent" when the value's range legitimately includes zero.
+- **File ordering**, again: `BODY@` was defined down with while/for but
+  first used by the replay machinery above it. Moved.
+
+`REPLAY-SRC` needed care of its own: it holds an arena *offset* for a
+loop body but a plain address for a function body, which lives in
+`FUNC-BODIES` and never moves. `REPLAY-ARENA?` distinguishes them, and
+the address is resolved per line rather than cached - necessary,
+because a nested loop inside the body being replayed allocates its own
+storage, and therefore may relocate the arena, before it reads a line.
+
+### A third hardcoded limit, found but NOT fixed
+
+The 60-loop script also exposed `MAX-SHVARS` (32). The script sets 60
+distinct shell variables; from the 33rd on, `SET-SHVAR` silently does
+nothing, so `$b31` onward expanded to empty. Same failure shape as the
+body cap: a fixed table, silently full, producing wrong output rather
+than an error. `MAX-FUNCS` (16), `MAX-POS-PARAM-DEPTH` (32) and
+`MAX-ARGS` (64) are the same pattern.
+
+Deliberately left for its own iteration rather than bundled in here -
+the shell-variable table is on the hot path of every expansion, so
+making it growable wants its own measurement. Recorded in `GOALS.md`.
+
+### Verified
+
+`tests/shell/run-nesting` now 22 assertions, including a >4KB loop body
+diffed against bash (which forces at least one arena `RESIZE`) and
+8-level nesting producing exactly 256 lines. 273 assertions across 35
+files plus 1991 core OK markers, on both cell widths. mrsh-suite
+unchanged.

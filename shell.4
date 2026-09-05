@@ -2731,6 +2731,50 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
                             \ the whole command was silently a no-op.
 
 \ ==================================================================
+\ The body arena
+\ ==================================================================
+\ Defined here rather than down with while/for because the replay
+\ machinery below is its first user - the same file-ordering care the
+\ deferred-word patches elsewhere in this file exist for.
+
+4096 CONSTANT BODY-ARENA-INIT
+
+VARIABLE BODY-ARENA-BASE    \ heap address, 0 until first use
+VARIABLE BODY-ARENA-SIZE    \ current capacity in bytes
+VARIABLE BODY-ARENA-TOP     \ bump pointer, an OFFSET not an address
+VARIABLE BA-NEED
+VARIABLE BA-NEWSIZE
+
+: BODY@ ( offset --- addr )  BODY-ARENA-BASE @ + ;
+
+: BODY-GROW ( needed --- )
+  \ Grow (or first create) the arena to at least `needed` bytes,
+  \ doubling so repeated growth stays amortized. RESIZE is allowed to
+  \ MOVE the block - measured, not assumed: growing a blocked
+  \ allocation past glibc's mmap threshold relocates it nearly every
+  \ time. That is safe here precisely because nothing outside holds a
+  \ raw pointer into the arena; everything holds an offset and goes
+  \ through BODY@.
+  {: BA-NEED :}
+  BODY-ARENA-SIZE @ DUP 0= IF DROP BODY-ARENA-INIT THEN BA-NEWSIZE !
+  BEGIN BA-NEWSIZE @ BA-NEED @ < WHILE
+    BA-NEWSIZE @ 2 * BA-NEWSIZE !
+  REPEAT
+  BODY-ARENA-BASE @ 0= IF
+    BA-NEWSIZE @ ALLOCATE ABORT" shell: body arena out of memory"
+  ELSE
+    BODY-ARENA-BASE @ BA-NEWSIZE @ RESIZE ABORT" shell: body arena out of memory"
+  THEN
+  BODY-ARENA-BASE !
+  BA-NEWSIZE @ BODY-ARENA-SIZE ! ;
+
+: BODY-ALLOC ( n --- offset )
+  BODY-ARENA-TOP @ SWAP OVER +            ( old new )
+  DUP BODY-ARENA-SIZE @ > IF DUP BODY-GROW THEN
+  BODY-ARENA-TOP !                        ( old )
+  ;
+
+\ ==================================================================
 \ Replaying a stored body as an INPUT SOURCE
 \ ==================================================================
 \ A while/for body and a function body are both stored as raw,
@@ -2756,7 +2800,20 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
 \ is active (a nested while reading its own body, say) consumes them
 \ from the outer body and leaves the position correctly advanced.
 
-VARIABLE REPLAY-SRC   \ 0 when not replaying, else the stored lines
+VARIABLE REPLAY-ACTIVE?
+\ Whether a replay is in progress. A separate flag rather than
+\ "REPLAY-SRC is non-zero", because REPLAY-SRC became an arena OFFSET
+\ and the very first allocation legitimately has offset 0 - so the
+\ outermost loop in a script silently did not replay at all.
+VARIABLE REPLAY-SRC   \ the stored lines: offset or address, see below
+VARIABLE REPLAY-ARENA?
+\ True when REPLAY-SRC is an OFFSET into the body arena (a while/for
+\ body), false when it is a plain address (a function body, which
+\ lives in FUNC-BODIES and never moves). The distinction is needed
+\ because the arena can be RESIZEd - and so relocated - part way
+\ through a replay: a nested loop inside the body being replayed
+\ allocates its own storage before it reads a single line. Resolving
+\ the address per line rather than caching it is what makes that safe.
 VARIABLE REPLAY-LEN
 VARIABLE REPLAY-POS
 VARIABLE RNL-DEST
@@ -2767,7 +2824,8 @@ VARIABLE RNL-LEN
 : REPLAY-NEXT-LINE ( c-addr max --- u2 )
   {: RNL-DEST RNL-MAX | RNL-CUR RNL-LEN :}
   REPLAY-POS @ REPLAY-LEN @ < 0= IF 0 EXIT THEN
-  REPLAY-SRC @ REPLAY-POS @ + RNL-CUR !
+  REPLAY-ARENA? @ IF REPLAY-SRC @ BODY@ ELSE REPLAY-SRC @ THEN
+  REPLAY-POS @ + RNL-CUR !
   RNL-CUR @ CSTRLEN RNL-LEN !
   REPLAY-POS @ RNL-LEN @ + 1+ REPLAY-POS !
   RNL-LEN @ RNL-MAX @ > IF RNL-MAX @ RNL-LEN ! THEN
@@ -2781,7 +2839,7 @@ VARIABLE RNL-LEN
   \ SH-FILE, or from the open script file via READ-LINE (discarding
   \ its own flag/ior - EOF just gives u2=0, the same as running out
   \ of lines already meant here) when SHFILE-ACTIVE? is true.
-  REPLAY-SRC @ IF REPLAY-NEXT-LINE EXIT THEN
+  REPLAY-ACTIVE? @ IF REPLAY-NEXT-LINE EXIT THEN
   SHFILE-ACTIVE? @ IF
     SHFILE-FID @ READ-LINE DROP DROP
   ELSE
@@ -3228,21 +3286,6 @@ VARIABLE COND-TRUE?
 \ actually seen.
 
 4096 CONSTANT WHILE-BODY-MAX
-65536 CONSTANT BODY-ARENA-MAX
-BODY-ARENA-MAX BUFFER: BODY-ARENA
-VARIABLE BODY-ARENA-TOP     \ 0 until first use
-
-: BODY-ALLOC ( n --- addr )
-  BODY-ARENA-TOP @ 0= IF BODY-ARENA BODY-ARENA-TOP ! THEN
-  BODY-ARENA-TOP @ SWAP OVER +          ( old new )
-  DUP BODY-ARENA BODY-ARENA-MAX + > IF
-    2DROP
-    ." shell: loop/function nesting too deep" CR
-    BODY-ARENA                          \ degrade rather than corrupt
-  ELSE
-    BODY-ARENA-TOP !                    ( old )
-  THEN ;
-
 VARIABLE WHILE-COND-BUF     \ pointers into the arena, not buffers
 VARIABLE WHILE-COND-LEN
 VARIABLE WHILE-BODY-BUF
@@ -3266,25 +3309,56 @@ VARIABLE RAW-SKIP-I
   WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
   RAW-LINE-LEN @ RAW-SKIP-I @ > IF
     RAW-LINE-LEN @ RAW-SKIP-I @ - WHILE-COND-LEN !
-    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF @ WHILE-COND-LEN @ MOVE
+    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ MOVE
   ELSE
     0 WHILE-COND-LEN !
   THEN
-  0 WHILE-COND-BUF @ WHILE-COND-LEN @ + C! ;
+  0 WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ + C! ;
+
+VARIABLE WHILE-BODY-CAP   \ this body's current arena capacity
+
+: BODY-ENSURE ( n --- ok? )
+  \ Make room for n more bytes in the body being captured, growing it
+  \ if needed. A body can be extended in place exactly when it is the
+  \ TOPMOST arena allocation, which during a capture it always is:
+  \ nothing else allocates while lines are being appended (a nested
+  \ loop inside the body is still just text at this point; it does not
+  \ allocate until it runs). So bumping the arena extends this body.
+  \
+  \ BODY-ALLOC may RESIZE and therefore relocate the arena. Harmless:
+  \ WHILE-BODY-BUF holds an offset, not a pointer.
+  WHILE-BODY-LEN @ + 1+ WHILE-BODY-CAP @ > IF
+    WHILE-BODY-BUF @ WHILE-BODY-CAP @ + BODY-ARENA-TOP @ = IF
+      WHILE-BODY-MAX BODY-ALLOC DROP
+      WHILE-BODY-CAP @ WHILE-BODY-MAX + WHILE-BODY-CAP !
+      -1
+    ELSE
+      0
+    THEN
+  ELSE
+    -1
+  THEN ;
 
 : APPEND-RAW-LINE-TO-BODY ( --- )
   \ Appends the current RAW-LINE-BUF/RAW-LINE-LEN (NUL-terminated) to
-  \ the end of WHILE-BODY-BUF - but only if it fits (+1 for the NUL);
-  \ a body line that would overflow the fixed-size buffer is silently
-  \ dropped rather than corrupting whatever dictionary data follows
-  \ it in memory. A dropped line means that loop iteration's body is
-  \ incomplete - no error is reported for this yet.
-  WHILE-BODY-LEN @ RAW-LINE-LEN @ + 1+ WHILE-BODY-MAX < IF
-    RAW-LINE-BUF WHILE-BODY-BUF @ WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
-    WHILE-BODY-LEN @ RAW-LINE-LEN @ + WHILE-BODY-LEN !
-    0 WHILE-BODY-BUF @ WHILE-BODY-LEN @ + C!
-    WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN !
-  THEN ;
+  \ the end of the body being captured, growing the body as needed so
+  \ there is no fixed maximum body size.
+  \
+  \ It used to drop any line that would not fit in a fixed 4096-byte
+  \ buffer, silently and with no error - which showed up as a script
+  \ producing quietly WRONG output rather than failing, once a body
+  \ was large enough. Found by diffing a generated 60-loop script
+  \ against bash. If a body somehow still cannot be grown (it is not
+  \ the topmost allocation, which should not happen during a capture)
+  \ that is now reported rather than passed over in silence.
+  RAW-LINE-LEN @ BODY-ENSURE 0= IF
+    ." shell: loop body too large to store" CR
+    EXIT
+  THEN
+  RAW-LINE-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
+  WHILE-BODY-LEN @ RAW-LINE-LEN @ + WHILE-BODY-LEN !
+  0 WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @ + C!
+  WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN ! ;
 
 
 VARIABLE BODY-DEPTH
@@ -3389,11 +3463,11 @@ VARIABLE FUNC-CUR-I
   \ positional parameters are saved keyed by FUNC-DEPTH and restored
   \ when this returns, so recursive and nested calls each see only
   \ their own.
-  {: FUNC-CUR-I | REPLAY-SRC REPLAY-LEN REPLAY-POS :}
+  {: FUNC-CUR-I | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS :}
   FUNC-DEPTH @ SAVE-POS-PARAMS
   SET-POS-PARAMS-FROM-ARGV
   FUNC-DEPTH @ 1+ FUNC-DEPTH !
-  FUNC-CUR-I @ FUNC-BODY-SLOT REPLAY-SRC !
+  FUNC-CUR-I @ FUNC-BODY-SLOT REPLAY-SRC !  -1 REPLAY-ACTIVE? !
   FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ REPLAY-LEN !
   BEGIN
     REPLAY-POS @ REPLAY-LEN @ <
@@ -3423,8 +3497,8 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
   \ name extracted from ARGV[0] - a later definition with the same
   \ name simply replaces it.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN :}
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP :}
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 ARGV@ DUP CSTRLEN 2 - FUNCDEF-NAME-BUF 64 SAFE-COPY-NUL DROP
   S" {" SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF
@@ -3439,7 +3513,7 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
     S" }" LINE-IS? 0= WHILE
     ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
   REPEAT
-  FUNCDEF-NAME-BUF WHILE-BODY-BUF @ WHILE-BODY-LEN @
+  FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
   SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN ;
 
 VARIABLE WHILE-BODY-I
@@ -3457,8 +3531,8 @@ VARIABLE WHILE-BODY-CUR
   \ returning: the iteration it was scoped to has now ended.
   \ LOOP-BREAK? is deliberately left alone; that is the outer loop's
   \ own check, made right after this returns.
-  {: | REPLAY-SRC REPLAY-LEN REPLAY-POS :}
-  WHILE-BODY-BUF @ REPLAY-SRC !
+  {: | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS :}
+  WHILE-BODY-BUF @ REPLAY-SRC !  -1 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
   WHILE-BODY-LEN @ REPLAY-LEN !
   BEGIN
     REPLAY-POS @ REPLAY-LEN @ <
@@ -3478,9 +3552,9 @@ VARIABLE WHILE-BODY-CUR
   \ every exit path, releasing both automatically.
   BODY-ARENA-TOP @
   \ One physical line: {: ... :} cannot span lines (see locals.4).
-  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN BODY-DEPTH :}
+  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH :}
   LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   SAVE-WHILE-COND
   READ-LINE-INTO-ARGV
   S" do" LINE-IS? 0= IF
@@ -3504,7 +3578,7 @@ VARIABLE WHILE-BODY-CUR
   0 LOOP-BREAK? !
   BEGIN
     LOOP-BREAK? @ 0= IF
-      WHILE-COND-BUF @ LINE-BUF WHILE-COND-LEN @ MOVE
+      WHILE-COND-BUF @ BODY@ LINE-BUF WHILE-COND-LEN @ MOVE
       WHILE-COND-LEN @ TOKENIZE
       RUN-TOKENIZED-CALL
       LAST-STATUS @ 0 =
@@ -3545,13 +3619,13 @@ VARIABLE FW-WORDLEN
   \ ARGV[1] (the loop variable name) into FOR-VARNAME-BUF; ARGV[3..]
   \ (the word list, skipping ARGV[2]'s assumed "in") into
   \ FOR-WORDS-BUF/FOR-WORDS-LEN.
-  ARGV 1 CELLS + @ FOR-VARNAME-BUF @ 64 SAFE-CSTR-COPY DROP
+  ARGV 1 CELLS + @ FOR-VARNAME-BUF @ BODY@ 64 SAFE-CSTR-COPY DROP
   0 FOR-WORDS-LEN !
   3 FW-I !
   BEGIN FW-I @ ARGC @ < WHILE
     FW-I @ ARGV@ DUP CSTRLEN FW-WORDLEN !
     FW-WORDLEN @
-    FOR-WORDS-BUF @ FOR-WORDS-LEN @ +
+    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ +
     FOR-WORDS-MAX FOR-WORDS-LEN @ -
     SAFE-COPY-NUL IF
       FOR-WORDS-LEN @ FW-WORDLEN @ + 1+ FOR-WORDS-LEN !
@@ -3580,8 +3654,8 @@ VARIABLE FOR-WORD-CUR
     FOR-WORD-I @ FOR-WORDS-LEN @ <
     LOOP-BREAK? @ 0= AND
   WHILE
-    FOR-WORDS-BUF @ FOR-WORD-I @ + FOR-WORD-CUR !
-    FOR-VARNAME-BUF @ FOR-WORD-CUR @ SET-SHVAR
+    FOR-WORDS-BUF @ BODY@ FOR-WORD-I @ + FOR-WORD-CUR !
+    FOR-VARNAME-BUF @ BODY@ FOR-WORD-CUR @ SET-SHVAR
     DO-WHILE-BODY
     FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
   REPEAT
@@ -3596,8 +3670,8 @@ VARIABLE FOR-WORD-CUR
   \ reads these same names, which works because a local IS the
   \ variable and holds this invocation's value for the whole call.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH :}
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH :}
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
   SAVE-FOR-WORDS
@@ -4108,6 +4182,11 @@ VARIABLE SHC-LEN
                   \ (shell.4 has no positional-parameter support yet).
                   \ No args at all falls through to the ordinary
                   \ interactive loop.
+  \ The body arena is heap memory, so its base address is meaningless
+  \ after an image is saved and reloaded. Reset here, at the boot
+  \ word, rather than relying on it happening to be zero because no
+  \ loop ran during the image build.
+  0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG SH-C

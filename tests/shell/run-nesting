@@ -122,4 +122,44 @@ out=$("$THIS_SH" "$t/g.sh" 2>/dev/null)
 assert_output_contains "for inside function, called twice" "hp" "$out"
 assert_output_contains "for inside function, second word" "hq" "$out"
 
+# The body arena must grow past what used to be a fixed 4096-byte cap,
+# and must stay correct across the RESIZE that growth performs (which
+# is allowed to relocate the block - hence offsets, not pointers).
+i=0
+{
+  echo "for a in 1 2"
+  echo "do"
+  while [ $i -lt 60 ]; do
+    echo "  for b in x y"
+    echo "  do"
+    echo "    echo n$i\$b"
+    echo "  done"
+    i=$((i+1))
+  done
+  echo "done"
+} > "$t/h.sh"
+out=$("$THIS_SH" "$t/h.sh" 2>/dev/null)
+want=$(bash "$t/h.sh" 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$out" != "$want" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: large loop body (>4K) matches bash"
+fi
+assert_output_contains "large body: last inner loop ran" "n59y" "$out"
+
+# 8 levels of nesting: 2^8 lines out
+{
+  d=0
+  while [ $d -lt 8 ]; do echo "for v$d in 1 2"; echo "do"; d=$((d+1)); done
+  echo "echo deep"
+  d=0
+  while [ $d -lt 8 ]; do echo "done"; d=$((d+1)); done
+} > "$t/i.sh"
+n=$("$THIS_SH" "$t/i.sh" 2>/dev/null | grep -c deep)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$n" != "256" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: 8-deep nesting expected 256 lines, got $n"
+fi
+
 report

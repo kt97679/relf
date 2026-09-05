@@ -296,8 +296,21 @@ reasoning behind them:
   is the convenient front end: same call site as a `CREATE`d buffer,
   but three cells in the image and the space allocated on first use.
 - **Growable rather than fixed, where the size genuinely varies.**
-  `RESIZE` exists for this. Not yet used - see the concerns below for
-  when it is and isn't safe.
+  The body arena (Iteration 44) is the worked example: it starts at
+  4KB and doubles via `RESIZE`, with no maximum.
+- **Hold offsets, not pointers, into anything growable.** `RESIZE` is
+  allowed to relocate a block and measurably does — 7 moves in 15
+  calls on this machine. That is *safe* as long as nothing outside
+  holds a raw pointer in. Offsets are already the rule everywhere else
+  here (`START`-relative xts, `BOOT`, locals' slots, the `BUFFER:`
+  chain); this is the same rule, and it is what makes growable
+  allocation work without a chunked-arena scheme.
+- **A full fixed table must never fail silently.** Several still do,
+  and each produces wrong output rather than an error: `MAX-SHVARS`
+  (32 shell variables — found in Iteration 44, `SET-SHVAR` just does
+  nothing when full), `MAX-FUNCS` (16), `MAX-POS-PARAM-DEPTH` (32),
+  `MAX-ARGS` (64). Making them growable is the goal; diagnosing
+  overflow is the minimum.
 
 Two concerns worth keeping in view, neither blocking:
 
@@ -841,10 +854,12 @@ This was the blocker in front of the `forth` builtin.
      body (42), and the capture buffers had to become per-invocation
      arena allocations with a nesting-depth count in the capture loop,
      or the outer capture stopped at the inner loop's `done` (43).
-     Still open: `BODY-ARENA-MAX` is a fixed 65,536 (growing it needs
-     a chunked arena, since live pointers point into it — see the
-     memory policy above); `WHILE-BODY-MAX` is still a fixed 4,096 per
-     body; nested function *definitions* are not supported; and the
+     Both fixed limits there are gone as of Iteration 44: the arena
+     grows on demand via `RESIZE` (no maximum), and loop bodies grow
+     too — the old fixed 4,096-byte body cap had been *silently
+     dropping* lines, so a large enough body produced wrong output
+     rather than an error. Still open: nested function *definitions*
+     are not supported; and the
      unverified extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond
      the two call sites fixed in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
