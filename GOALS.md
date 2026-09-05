@@ -230,23 +230,41 @@ the full account and the fixes applied.
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **1 passed, 20 failed, 3 skipped** (see
-   `PROGRESS.md`'s Iteration 14 through 16 entries for the full
-   history of how this number was arrived at — it moved around twice
-   for genuinely different reasons before settling here, both times
-   because an *invocation/measurement* bug was found and fixed, not
-   because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 27's work — expected, since no
-   single vendored test file passes purely from variable assignment,
-   `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
-   if-nesting, `for` loops, operator-fusion, same-line if/then/fi, the
-   $VAR-expansion corruption fix, or `case`/`esac` alone — the
-   command-grouping item in particular doesn't apply to mrsh's own
-   tests at all yet, given the whitespace-around-parens scope limit
-   above, `while`/`for` (unlike `if`) still need `do` on their own
-   separate line, `if.sh` itself also needs `$#` and `elif`, and
-   `case.sh` needs `$IFS` splitting and arithmetic in its later
-   sections, none implemented yet).
+   and currently reports **0 passed, 21 failed, 3 skipped**.
+
+   That number has moved exactly three times, and never yet because a
+   `shell.4` feature carried a vendored test file across the line:
+
+   - Twice during Iterations 14 through 16, when an
+     *invocation/measurement* bug was found and fixed each time (see
+     those `PROGRESS.md` entries), settling at 1 passed, 20 failed, 3
+     skipped.
+   - Once at Iteration 36, **downward**, to the current 0 passed, 21
+     failed, 3 skipped. This is not a regression. The single "pass"
+     was `2.2.3-alias-expansion.fail.sh`, which this file had already
+     flagged as hollow — `alias` isn't implemented at all, so the test
+     passed by accident rather than because the shell handled its
+     actual intent. Iteration 36's `TRY-ASSIGNMENT` fix made the
+     script's own `var="$(myalias arg-two)"` assignment genuinely
+     work, so it now exits 0 instead of being rejected outright, and
+     the accidental pass evaporated. A `git stash` comparison
+     confirmed the difference comes from the assignment now working,
+     not from anything `alias`-related.
+
+   Everything else — Iterations 17 through 35 and 37 — left the count
+   untouched, which is expected: no single vendored file passes purely
+   from variable assignment, `;`, `&&`/`||`, command-grouping, the
+   if/while script-file fix, if-nesting, `for` loops, operator-fusion,
+   same-line if/then/fi, the $VAR-expansion corruption fix,
+   `case`/`esac`, functions, `return`, `break`/`continue`, any single
+   Phase D expansion, or `test`/`[`/`:` alone. Each vendored file needs
+   several still-missing features together. Known specific blockers:
+   command-grouping doesn't apply to mrsh's tests at all yet given the
+   whitespace-around-parens scope limit above; `while`/`for` (unlike
+   `if`) still need `do` on their own separate line; `if.sh` also needs
+   `$#` and `elif`; `case.sh` needs arithmetic and `$IFS` splitting in
+   its later sections (both now implemented as of Iterations 35/36, so
+   this file is worth re-checking specifically).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -689,12 +707,16 @@ the full account and the fixes applied.
      `shift`. `getopts`. `command`. Background jobs, `wait`, `$!`.
      `alias`/`unalias`. `ulimit`. Possibly `trap`, `exec`, `hash`,
      `type` if a test ends up needing them.
-   - **Phase G — remaining conformance edge cases.** The
-     `2.2.2-nested-single-quotes.fail.sh` case (currently a real,
-     un-hollow failure: `shell.4` should reject unterminated/invalid
-     single-quote nesting rather than silently accepting it) and
-     re-checking `2.2.3-alias-expansion.fail.sh` once `alias` actually
-     exists, so that pass stops being hollow.
+   - **Phase G — remaining conformance edge cases.** Both remaining
+     `.fail.sh` cases are now genuine failures, each expecting
+     `shell.4` to *reject* input it currently accepts with status 0:
+     `2.2.2-nested-single-quotes.fail.sh` (should reject
+     unterminated/invalid single-quote nesting) and
+     `2.2.3-alias-expansion.fail.sh` (passed accidentally until
+     Iteration 36 — see the count history above; a real pass here
+     needs `alias` from Phase F first, and then the shell must reject
+     the test's invalid alias usage rather than silently accepting
+     it).
 
    `tests/mrsh-suite/run.sh` is the acceptance criterion for this
    goal — re-run it after each phase (or each iteration within a
