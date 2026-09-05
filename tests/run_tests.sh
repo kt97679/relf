@@ -132,3 +132,24 @@ else
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
 fi
+
+# ------------------------------------------------------------------
+# Size report. Tracked deliberately, not decoratively: shell.4 is going
+# to keep growing through phases E/F, and the point is that growth is
+# visible as it happens rather than discovered later. See GOALS.md's
+# "Tracked numbers" section for the baseline and what the figures mean.
+# ------------------------------------------------------------------
+report_sizes() {
+    local eng="$1" img="$2" label="$3" tmp
+    [ -f "$eng" ] && [ -f "$img" ] || return 0
+    tmp=$(mktemp) || return 0
+    cp "$eng" "$tmp"; strip "$tmp" 2>/dev/null || true
+    printf '   %-16s engine %7d + image %7d = %7d bytes\n' \
+        "$label" "$(stat -c %s "$tmp")" "$(stat -c %s "$img")" \
+        "$(( $(stat -c %s "$tmp") + $(stat -c %s "$img") ))"
+    rm -f "$tmp"
+}
+
+echo "== Sizes (stripped engine + prebuilt shell image) =="
+report_sizes ./relf   kernel-shell.img   "x86-64 (8-byte)"
+report_sizes ./relf32 kernel32-shell.img "i386 (4-byte)"

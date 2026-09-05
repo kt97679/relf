@@ -224,6 +224,57 @@ is `INCLUDED` into an unknown session must not inherit the caller's
 `BASE`** — `tester.fr` leaves it at 16, which turned `locals.4`'s own
 `32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
 
+## Tracked numbers
+
+Three figures are reported on every full test run and are expected to
+move honestly, the same way the mrsh count is:
+
+- `tests/run_tests.sh`: core-suite OK markers and shell-suite
+  assertions, on both cell widths.
+- `tests/mrsh-suite/run.sh`: the acceptance criterion for goal 8.
+- **Size**: stripped engine + prebuilt shell image, both cell widths.
+
+Baseline at Iteration 41:
+
+| | engine | image | total |
+|---|---|---|---|
+| **i386 (4-byte cells)** | 17,808 | 72,528 | **90,336** |
+| x86-64 (8-byte cells) | 22,744 | 131,784 | 154,528 |
+
+For context, on the same machine: `dash` is 121,520; `mrsh` is 183,312
+plus a 15,432-byte shared library. Both are far more complete shells
+than `shell.4` is today, so the comparison currently flatters this
+project — the point of tracking is the trajectory as phases E/F fill
+the functionality gap, not the snapshot.
+
+**The 8-byte build is ~1.8x the 4-byte one, and that is structural.**
+Measured zero-rate by byte position within each cell: byte 0 is 14.8%
+zero, bytes 1-7 are 56-64% zero, and only 13.8% of cells are entirely
+zero. So the image is mostly small values — dispatch tokens, relative
+offsets, small literals — padded out in wide cells, not wasted buffer
+space. RelF dereferences a cell directly as a real host pointer (see
+the load-bearing architectural note above), so cell width must equal
+pointer width and a 64-bit host pays double. No amount of tuning
+reaches that; the genuinely small build is the i386 one.
+
+Size optimization is **deliberately deferred** until POSIX
+functionality is in place and the mrsh suite passes: the code's shape
+will change as phases E/F land and as loop bodies move to an arena, so
+tuning now would be tuning something about to be rewritten. The levers
+that will still be there afterwards, in rough order of value:
+
+1. **Headerless words.** `cross.4` already carries a commented-out
+   alternative `"HEADER` "in case the target system is just an
+   application without headers". Names and headers for ~180 shell
+   words are a real fraction of the image. The cost is that `FIND`
+   stops working for them, which rules out the `forth` builtin and
+   interactive use — a genuine trade, not free.
+2. The ~11K of small hot buffers still declared with `CREATE`, once
+   it is measured whether `BUFFER:`'s extra indirection matters on the
+   tokenizer's hot path.
+3. Nothing else looks large: the compiled code is ~88K and most of it
+   is real.
+
 ## Memory policy — agreed in Iteration 41
 
 Standing requirements for how this project uses memory, and the
