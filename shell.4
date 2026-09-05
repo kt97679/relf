@@ -844,6 +844,23 @@ VARIABLE ER-I
     DROP
   THEN ;
 
+: EMIT-DECIMAL-EXPANDED ( n --- )
+  \ EMIT-DECIMAL, but reserving room in the token buffer first.
+  \
+  \ Every numeric expansion ($?, $$, $#, ${#VAR}, $((...))) writes its
+  \ digits straight into the token being built, and every one of them
+  \ can be LONGER than the text it replaces - "$?" is two characters,
+  \ "127" is three. That is exactly the in-place compaction hazard
+  \ ENSURE-ROOM exists for, and exactly the smear Iteration 26 found
+  \ and fixed... for $VAR only. The numeric paths never called it, so
+  \ they kept the bug: `echo $? x` after a failing command printed
+  \ "12777" instead of "127 x". Found while diagnosing mrsh's
+  \ pipeline.sh, which is what it had been quietly failing on.
+  \
+  \ 21 characters covers any 64-bit value plus a sign. Over-reserving
+  \ is harmless: ENSURE-ROOM only shifts when it actually has to.
+  21 ENSURE-ROOM EMIT-DECIMAL ;
+
 \ ==================================================================
 \ Arithmetic expansion: $((expression)) - a real, precedence-climbing
 \ recursive-descent expression grammar (each level below binds
@@ -1135,7 +1152,7 @@ VARIABLE ARITH-DEPTH
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
-  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL ;
+  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL-EXPANDED ;
 
 : EXPAND-CMDSUB ( --- )
   \ TOK-POS is at the '(' immediately following '$'.
@@ -1285,7 +1302,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     READ-VARNAME
     TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
     VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP 0 ELSE CSTRLEN THEN
-    EMIT-DECIMAL
+    EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
   READ-VARNAME
@@ -1388,12 +1405,12 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   TOK-POS @ C@
   DUP 63 = IF                     ( $? )
     DROP TOK-POS @ 1+ TOK-POS !
-    LAST-STATUS @ EMIT-DECIMAL
+    LAST-STATUS @ EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
-    GETPID EMIT-DECIMAL
+    GETPID EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
   DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
@@ -1409,7 +1426,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   THEN
   DUP 35 = IF                     ( $# )
     DROP TOK-POS @ 1+ TOK-POS !
-    POS-PARAM-COUNT @ EMIT-DECIMAL
+    POS-PARAM-COUNT @ EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
   DUP 64 = OVER 42 = OR IF        ( $@ / $* - both space-joined for now )
@@ -2099,10 +2116,10 @@ VARIABLE TEST-U-OPERAND
 \ the other child.
 \ ==================================================================
 
-CREATE ARGV-L MAX-ARGS CELLS ALLOT
-CREATE ARGV-R MAX-ARGS CELLS ALLOT
-VARIABLE ARGC-L
-VARIABLE ARGC-R
+CREATE PIPE-ARGV MAX-ARGS CELLS ALLOT   \ a private copy of the whole
+CREATE PIPE-ARGQ MAX-ARGS ALLOT         \ tokenized line, so each
+VARIABLE PIPE-ARGC                      \ segment can be extracted
+VARIABLE PIPE-NSEG                      \ without disturbing ARGV
 VARIABLE PIPE-PRESENT?
 
 : AT-END? ( --- f )  PR-I @ ARGC @ < 0= ;
@@ -2167,26 +2184,54 @@ VARIABLE ARGC-SEMI-REST
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
 
+: PIPE-AT-BAR? ( i --- f )   \ is PIPE-ARGV[i] an unquoted "|" ?
+  DUP PIPE-ARGQ + C@ IF DROP 0 EXIT THEN
+  CELLS PIPE-ARGV + @ DUP CSTRLEN S" |" STR= ;
+
+VARIABLE SP-I
+
 : SPLIT-PIPE ( --- )
-  {: | PR-I :}
+  \ Copies the whole tokenized line into PIPE-ARGV/PIPE-ARGQ and counts
+  \ the unquoted "|" tokens. Segments are extracted lazily by
+  \ RUN-PIPELINE rather than being split into fixed left/right arrays,
+  \ which is what lifts the old one-pipe-per-line limit: a line has
+  \ PIPE-NSEG segments for any number of pipes.
+  {: | SP-I :}
   0 PIPE-PRESENT? !
-  0 ARGC-L !  0 ARGC-R !
-  BEGIN AT-END? AT-PIPE? OR 0= WHILE
-    PR-I @ ARGV@ ARGV-L ARGC-L @ CELLS + !
-    ARGC-L @ 1+ ARGC-L !
-    PR-I @ 1+ PR-I !
+  ARGC @ PIPE-ARGC !
+  1 PIPE-NSEG !
+  BEGIN SP-I @ ARGC @ < WHILE
+    SP-I @ ARGV@         PIPE-ARGV SP-I @ CELLS + !
+    SP-I @ ARGV-QUOTED@  PIPE-ARGQ SP-I @ + C!
+    SP-I @ 1+ SP-I !
   REPEAT
-  0 ARGV-L ARGC-L @ CELLS + !
-  AT-PIPE? IF
-    -1 PIPE-PRESENT? !
-    PR-I @ 1+ PR-I !               ( skip the "|" token itself )
-    BEGIN AT-END? 0= WHILE
-      PR-I @ ARGV@ ARGV-R ARGC-R @ CELLS + !
-      ARGC-R @ 1+ ARGC-R !
-      PR-I @ 1+ PR-I !
-    REPEAT
-    0 ARGV-R ARGC-R @ CELLS + !
-  THEN ;
+  0 SP-I !
+  BEGIN SP-I @ PIPE-ARGC @ < WHILE
+    SP-I @ PIPE-AT-BAR? IF
+      PIPE-NSEG @ 1+ PIPE-NSEG !
+      -1 PIPE-PRESENT? !
+    THEN
+    SP-I @ 1+ SP-I !
+  REPEAT ;
+
+VARIABLE PSO-I
+VARIABLE PSO-LEN
+
+: PIPE-SEGMENTS-OK? ( --- f )
+  \ Every segment must be non-empty, matching the old "both sides
+  \ non-empty" guard - "a | | b" or a trailing "|" runs nothing rather
+  \ than misbehaving.
+  {: | PSO-I PSO-LEN :}
+  BEGIN PSO-I @ PIPE-ARGC @ < WHILE
+    PSO-I @ PIPE-AT-BAR? IF
+      PSO-LEN @ 0= IF 0 EXIT THEN
+      0 PSO-LEN !
+    ELSE
+      PSO-LEN @ 1+ PSO-LEN !
+    THEN
+    PSO-I @ 1+ PSO-I !
+  REPEAT
+  PSO-LEN @ 0= 0= ;
 
 VARIABLE CA-SRC
 VARIABLE CA-N
@@ -2242,39 +2287,88 @@ VARIABLE CAQ-N
   RUN-CHILD ;
 ' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
 
-VARIABLE PIPE-RD
-VARIABLE PIPE-WR
-VARIABLE LEFT-PID
-VARIABLE RIGHT-PID
+CREATE PIPE-PIDS MAX-ARGS CELLS ALLOT
+VARIABLE PL-I
+VARIABLE PL-PREV-RD
+VARIABLE PL-RD
+VARIABLE PL-WR
+VARIABLE PL-START
+VARIABLE PL-END
+VARIABLE PL-J
+
+: PIPE-SEG-TO-ARGV ( --- )
+  \ Copy PIPE-ARGV[PL-START .. PL-END) into the global ARGV/ARGC. Only
+  \ ever called inside a freshly forked child, so clobbering the global
+  \ ARGV is safe - the same reasoning RUN-CMDSUB-CHILD and DO-SUBSHELL
+  \ already rely on.
+  0 PL-J !
+  BEGIN PL-START @ PL-J @ + PL-END @ < WHILE
+    PIPE-ARGV PL-START @ PL-J @ + CELLS + @  ARGV PL-J @ CELLS + !
+    PL-J @ 1+ PL-J !
+  REPEAT
+  0 ARGV PL-J @ CELLS + !
+  PL-J @ ARGC ! ;
 
 : RUN-PIPELINE ( --- )
-  PIPE DROP PIPE-WR ! PIPE-RD !
-  FORK DUP LEFT-PID !
-  0 = IF
-    PIPE-WR @ 1 DUP2 DROP
-    PIPE-WR @ CLOSE-FILE DROP
-    PIPE-RD @ CLOSE-FILE DROP
-    ARGV-L ARGC-L @ COPY-ARGV
-    RUN-CHILD
-    127 SYS-EXIT
-  THEN
-  FORK DUP RIGHT-PID !
-  0 = IF
-    PIPE-RD @ 0 DUP2 DROP
-    PIPE-RD @ CLOSE-FILE DROP
-    PIPE-WR @ CLOSE-FILE DROP
-    ARGV-R ARGC-R @ COPY-ARGV
-    RUN-CHILD
-    127 SYS-EXIT
-  THEN
-  PIPE-WR @ CLOSE-FILE DROP
-  PIPE-RD @ CLOSE-FILE DROP
-  LEFT-PID @ WAITPID DROP DROP     ( left side's status isn't reported -
-                                      a real shell exposes it via
-                                      PIPESTATUS/similar; not done here )
-  RIGHT-PID @ WAITPID DROP         ( pipeline's own status is the right
-                                      side's, matching normal shells )
-  8 RSHIFT 255 AND LAST-STATUS ! ;
+  \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
+  \ version handled exactly one pipe; this is the same shape
+  \ generalized to a loop carrying one file descriptor forward.
+  \
+  \ Each iteration: create this segment's outgoing pipe (unless it is
+  \ the last), fork, and in the child wire the previous segment's read
+  \ end onto stdin and this pipe's write end onto stdout. The parent
+  \ closes both ends it no longer needs - which is what makes each
+  \ stage actually see EOF - and carries the read end forward.
+  \
+  \ Builtins still aren't supported in a pipeline: every segment runs
+  \ via RUN-CHILD, the same scope limit as before.
+  {: | PL-I PL-PREV-RD PL-RD PL-WR PL-START PL-END PL-J :}
+  -1 PL-PREV-RD !
+  BEGIN PL-I @ PIPE-NSEG @ < WHILE
+    PL-START @ PL-END !
+    BEGIN
+      PL-END @ PIPE-ARGC @ < IF PL-END @ PIPE-AT-BAR? 0= ELSE 0 THEN
+    WHILE
+      PL-END @ 1+ PL-END !
+    REPEAT
+    PL-I @ 1+ PIPE-NSEG @ < IF
+      PIPE DROP PL-WR ! PL-RD !
+    ELSE
+      -1 PL-RD !  -1 PL-WR !
+    THEN
+    FORK
+    DUP 0 = IF
+      DROP
+      PL-PREV-RD @ 0 < 0= IF
+        PL-PREV-RD @ 0 DUP2 DROP
+        PL-PREV-RD @ CLOSE-FILE DROP
+      THEN
+      PL-WR @ 0 < 0= IF
+        PL-WR @ 1 DUP2 DROP
+        PL-WR @ CLOSE-FILE DROP
+        PL-RD @ CLOSE-FILE DROP
+      THEN
+      PIPE-SEG-TO-ARGV
+      RUN-CHILD
+      127 SYS-EXIT
+    THEN
+    PIPE-PIDS PL-I @ CELLS + !
+    PL-PREV-RD @ 0 < 0= IF PL-PREV-RD @ CLOSE-FILE DROP THEN
+    PL-WR @ 0 < 0= IF PL-WR @ CLOSE-FILE DROP THEN
+    PL-RD @ PL-PREV-RD !
+    PL-END @ 1+ PL-START !
+    PL-I @ 1+ PL-I !
+  REPEAT
+  \ Reap every child, not just the last: leaving them unreaped would
+  \ accumulate zombies for the life of the shell. Only the last
+  \ segment's status becomes the pipeline's, matching POSIX (a real
+  \ shell also exposes the rest via PIPESTATUS; not done here).
+  0 PL-I !
+  BEGIN PL-I @ PIPE-NSEG @ < WHILE
+    PIPE-PIDS PL-I @ CELLS + @ WAITPID DROP
+    PL-I @ 1+ PIPE-NSEG @ < IF DROP ELSE 8 RSHIFT 255 AND LAST-STATUS ! THEN
+    PL-I @ 1+ PL-I !
+  REPEAT ;
 
 \ ==================================================================
 \ '&&'/'||' - a pipeline runs only if the operator connecting it to
@@ -2380,6 +2474,33 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
 : TRY-ASSIGNMENT-CALL ( --- f )
   TRY-ASSIGNMENT-XT @XT EXECUTE ;
 
+\ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
+\ pipeline negation ( ! cmd ).
+: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
+                                 \ equal this literal, exactly, and
+                                 \ unquoted? (a quoted 'if'/'then'/etc
+                                 \ is just a literal argument, same
+                                 \ reasoning as ARGV-QUOTED elsewhere)
+  ARGC @ 0 = IF 2DROP 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
+  ARGV @ STR0= ;
+
+CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-SHIFT
+
+: SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
+                            \ ARGV-SHIFT[0..] - "the rest of this
+                            \ line" as its own command, used to run
+                            \ if's condition (the part after "if").
+  0 ARGC-SHIFT !
+  ARGC @ 1 > IF
+    ARGC @ 1 DO
+      I ARGV@ ARGV-SHIFT ARGC-SHIFT @ CELLS + !
+      ARGC-SHIFT @ 1+ ARGC-SHIFT !
+    LOOP
+  THEN
+  0 ARGV-SHIFT ARGC-SHIFT @ CELLS + ! ;
+
 : RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
                                     \ global ARGV/ARGC as one pipeline
                                     \ (or simple command) - the logic
@@ -2410,9 +2531,19 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
   SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
   IF EXIT THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
+  S" !" LINE-IS? IF
+    \ Pipeline negation: run the rest and invert its status. POSIX
+    \ negates the whole pipeline, which is why this sits here - ahead
+    \ of SPLIT-PIPE - rather than being treated as a command name.
+    SHIFT-ARGV-DOWN
+    ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+    RECURSE
+    LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
+    EXIT
+  THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
-    ARGC-L @ 0 > ARGC-R @ 0 > AND IF RUN-PIPELINE THEN
+    PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
   ELSE
     PARSE-REDIRECTIONS
     ARGC @ 0 > IF
@@ -2582,14 +2713,6 @@ VARIABLE GROUP-PID
   ARGV-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV
   RUN-TOKENIZED-CALL ;
 
-: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
-                                 \ equal this literal, exactly, and
-                                 \ unquoted? (a quoted 'if'/'then'/etc
-                                 \ is just a literal argument, same
-                                 \ reasoning as ARGV-QUOTED elsewhere)
-  ARGC @ 0 = IF 2DROP 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
-  ARGV @ STR0= ;
 
 \ ==================================================================
 \ Shell-local variable assignment: a standalone "NAME=value" line
@@ -2687,21 +2810,6 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
   0 ;
 ' TRY-ASSIGNMENT TRY-ASSIGNMENT-XT !XT
 
-CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
-VARIABLE ARGC-SHIFT
-
-: SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
-                            \ ARGV-SHIFT[0..] - "the rest of this
-                            \ line" as its own command, used to run
-                            \ if's condition (the part after "if").
-  0 ARGC-SHIFT !
-  ARGC @ 1 > IF
-    ARGC @ 1 DO
-      I ARGV@ ARGV-SHIFT ARGC-SHIFT @ CELLS + !
-      ARGC-SHIFT @ 1+ ARGC-SHIFT !
-    LOOP
-  THEN
-  0 ARGV-SHIFT ARGC-SHIFT @ CELLS + ! ;
 
 : RUN-SHIFTED ( --- )  \ runs ARGV-SHIFT/ARGC-SHIFT the same way a
                         \ normal top-level line would be

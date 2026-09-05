@@ -1,0 +1,41 @@
+#!/bin/sh
+# tests/shell/run-pipeline-multi - pipelines of more than two stages
+# (Iteration 46), pipeline negation, and the numeric-expansion smear
+# that diagnosing them uncovered.
+. "$(dirname "$0")/lib.sh"
+
+out=$("$THIS_SH" -c 'echo abc | tr a-z A-Z | tr A-Z a-z' 2>/dev/null)
+assert_output_contains "three-stage pipeline" "abc" "$out"
+
+out=$("$THIS_SH" -c 'printf "c\na\nb\n" | sort | uniq | tr a-z A-Z' 2>/dev/null)
+assert_output_contains "four-stage pipeline, first"  "A" "$out"
+assert_output_contains "four-stage pipeline, last"   "C" "$out"
+
+out=$("$THIS_SH" -c 'echo hi | cat' 2>/dev/null)
+assert_output_contains "two-stage pipeline still works" "hi" "$out"
+
+"$THIS_SH" -c 'echo x | grep -q zzz' 2>/dev/null
+assert_status "pipeline status is the LAST stage's" 1 "$?"
+"$THIS_SH" -c 'false | true' 2>/dev/null
+assert_status "pipeline status ignores earlier stages" 0 "$?"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+printf '! true\necho $?\n! false\necho $?\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "! negation inverts" "1" "$out"
+assert_output_contains "! negation inverts (false)" "0" "$out"
+
+# A numeric expansion longer than the text it replaces used to smear
+# over the rest of the line (Iteration 26 fixed this for \$VAR only).
+printf 'idontexist\necho $? x\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null | tail -1)
+assert_output_contains "\$? does not smear over following text" "127 x" "$out"
+out=$("$THIS_SH" -c 'echo $((2+3)) tail' 2>/dev/null)
+assert_output_contains "\$((...)) does not smear" "5 tail" "$out"
+
+# Repeated pipelines must not leak children.
+printf 'i=0\nwhile [ $i -lt 20 ]; do\n  echo x | cat | cat\n  i=$((i+1))\ndone\necho fin\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "20 pipelines complete" "fin" "$out"
+
+report

@@ -5197,3 +5197,89 @@ Measured, in the order I would take it:
 `args.sh`/`function.sh`/`return.sh` still fail for reasons now hidden
 behind earlier failures; expect the list to shift slightly as the top
 items land.
+## Iteration 46: multi-stage pipelines, `!` negation, and a real
+## pre-existing expansion bug
+
+`SPLIT-PIPE` handled exactly one `|` per line. It now handles any
+number, which was the largest single item on the measured gap list.
+
+### n-stage pipelines
+
+The old code split the line into fixed left/right arrays. Instead of
+generalizing that to an array-of-segments, `SPLIT-PIPE` now copies the
+whole tokenized line into `PIPE-ARGV`/`PIPE-ARGQ` and just counts the
+unquoted `|`s; `RUN-PIPELINE` extracts each segment lazily as it goes.
+That keeps the state to one cursor rather than a two-dimensional
+structure.
+
+`RUN-PIPELINE` is the old two-child shape generalized to a loop
+carrying a single file descriptor forward: create this segment's
+outgoing pipe unless it is the last, fork, and in the child wire the
+previous read end onto stdin and this write end onto stdout. The parent
+closes both ends it no longer needs - which is what makes each stage
+actually see EOF - and carries the read end forward.
+
+**Every child is reaped**, not just the last. The old version waited
+for both of its two; a loop that forgot the middle stages would
+accumulate zombies for the life of the shell. Only the last segment's
+status becomes the pipeline's, matching POSIX. Tested with 20
+consecutive three-stage pipelines.
+
+Empty segments (`a | | b`, a trailing `|`) are rejected by
+`PIPE-SEGMENTS-OK?` rather than misbehaving, matching the old
+"both sides non-empty" guard.
+
+### `!` pipeline negation
+
+`! cmd` runs the rest and inverts the status. Placed ahead of
+`SPLIT-PIPE` because POSIX negates the whole pipeline, not a command.
+Needed by `pipeline.sh`, and three lines given `RECURSE`.
+
+### The bug that was actually blocking pipeline.sh
+
+Diagnosing why `pipeline.sh` still failed after all that turned up
+something much more interesting than a pipeline problem:
+
+    echo $? x     ->  "12777"      (bash: "127 x")
+    echo $((2+3)) tail -> "5tail"-ish smear
+
+**Every numeric expansion was corrupting the rest of its line.** `$?`,
+`$$`, `$#`, `${#VAR}` and `$((...))` all write digits straight into the
+token being built via `EMIT-DECIMAL`, and every one of them can be
+longer than the text it replaces - `$?` is two characters, `127` is
+three. That is precisely the in-place compaction hazard `ENSURE-ROOM`
+exists for, and precisely the self-propagating smear Iteration 26
+found... and fixed for `$VAR` only. The numeric paths never called
+`ENSURE-ROOM` at all, so they kept the bug for twenty iterations.
+
+Fixed with one `EMIT-DECIMAL-EXPANDED` wrapper used at all five sites.
+Confirmed pre-existing, not introduced here - it reproduces with no
+pipeline involved.
+
+Worth drawing the general lesson: Iteration 26 fixed *an instance*
+rather than *the class*. The fix was correct and the analysis was
+right, but nobody checked whether the other writers into the token
+buffer had the same problem. When a bug is found in one path, the
+question to ask is which other paths share the shape.
+
+### Verified
+
+`tests/shell/run-pipeline-multi` (11 assertions): three- and four-stage
+pipelines, two-stage still working, status coming from the last stage
+and ignoring earlier ones, `!` inverting both ways, both smear cases,
+and 20 consecutive pipelines completing. 297 assertions across 37
+files plus 1991 core OK markers, both cell widths.
+
+mrsh-suite stays at 4 passed. `pipeline.sh` now differs only on its
+last case, `(echo "a b"; echo "c d") | sed s/c/C/` - a subshell inside
+a pipeline, which needs both `(cmd)` without surrounding spaces and
+builtins/groups as pipeline segments. Both are on the list already.
+
+### Two file-ordering slips, again
+
+`BODY@`-style ordering problems bit twice more this iteration:
+`LINE-IS?` and `SHIFT-ARGV-DOWN` were defined after
+`RUN-SIMPLE-OR-PIPELINE`, which now uses both. Moved. That is the
+fifth or sixth time this file's ordering has caught something; it is
+the standing cost of a single linear source file with mutual
+dependencies broken by hand.
