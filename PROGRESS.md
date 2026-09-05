@@ -5283,3 +5283,72 @@ builtins/groups as pipeline segments. Both are on the list already.
 fifth or sixth time this file's ordering has caught something; it is
 the standing cost of a single linear source file with mutual
 dependencies broken by hand.
+## Iteration 47: `elif`, and closing a hazard open since Iteration 28
+
+`elif` chains work, at any length, in both the multi-line and
+same-line (`if C; then A; elif D; then B; else E; fi`) forms.
+
+### DO-IF became one flat branch loop
+
+The previous shape had a nested loop: scan for `else` or `fi`, and on
+`else`, enter a second inner loop scanning only for `fi`. That nesting
+existed solely to stop looking for a second `else`, and it does not
+extend to an arbitrary number of `elif`s.
+
+It is now a single loop over the remaining branches, with `COND-TRUE?`
+reinterpreted from "the first condition was true" to **"some branch has
+been taken"**. That one change is what makes chaining work: each `elif`
+evaluates its condition only if nothing has been taken yet, `else` runs
+only if nothing has, and the old nested loop becomes an ordinary
+iteration.
+
+`SPLIT-AT-EITHER-KEYWORD` was generalized to `SPLIT-AT-3` (needed to
+scan for `elif`/`else`/`fi` in one pass, keeping the `if`/`fi` depth
+tracking). The two-keyword form now delegates to it by passing its
+second keyword twice, and `SPLIT-AT-KEYWORD` still delegates to that -
+so all three remain one implementation, as of Iteration 39.
+
+### A bug in my first version, worth recording
+
+`if true; then A; elif true; then B; fi` printed **AB**. The elif's
+body suppression was derived from `COND-TRUE?` alone - but by then
+`COND-TRUE?` is true *precisely because an earlier branch ran*, so the
+body ran too. The skip decision and the body-suppression decision are
+different questions and now use different values. Caught by testing the
+"branch already taken" case explicitly rather than only the cases where
+elif is supposed to fire.
+
+### The hazard from Iteration 28, finally hit
+
+The same-line form printed `two ;` - echoing a literal semicolon.
+
+`READ-NEXT-LOGICAL-LINE` restores a split's pending remainder with
+`COPY-ARGV`, which does not carry `ARGV-QUOTED` with it, so a stale
+"quoted" flag left at that index by an earlier expansion hid the real
+`;` operator from `SPLIT-SEMI`. That is exactly the hazard Iteration 28
+found and fixed for the `;`/`&&` splitters, and exactly the
+"unverified extent at other `COPY-ARGV` call sites" that `GOALS.md` has
+carried as an open item ever since. This was one of those sites.
+
+Fixed at the root: `SPLIT-AT-3` now captures each pending token's
+quoted flag into `ARGQ-PENDING`, and `READ-NEXT-LOGICAL-LINE` uses
+`COPY-ARGV-Q`. Notable that it took nineteen iterations to be hit -
+it needs an expansion and a same-line operator to land at the same
+`ARGV` index - and that when it did surface it looked like an `elif`
+bug rather than a quoting one.
+
+### Verified
+
+`tests/shell/run-elif` (7 assertions): elif taken, all-false reaching
+else, **branch-already-taken not running a later elif**, a two-elif
+chain, the same-line form, and a nested `if` inside `else` still
+working. 304 assertions across 38 files plus 1991 core OK markers,
+both cell widths.
+
+mrsh-suite stays at 4. `if.sh` now gets past its elif section and
+stops at `( exit 10 )` inside an if body followed by
+`[ $# -eq 10 ] || { ...; }` - needing subshells and brace groups as
+ordinary commands, which is the same `(cmd)`/group work `pipeline.sh`
+and `subshell.sh` are waiting on. That is now the single highest-value
+remaining item: it is the last thing standing between three separate
+test files and passing.

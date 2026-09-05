@@ -1,0 +1,83 @@
+#!/bin/sh
+# tests/shell/run-elif - elif chains (Iteration 47). The case that
+# matters most is the third: once a branch has been taken, a later
+# elif must not run its body even though its own condition is true.
+. "$(dirname "$0")/lib.sh"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+run() { printf '%s' "$1" > "$t/x.sh"; "$THIS_SH" "$t/x.sh" 2>/dev/null | tr -d '\n'; }
+
+r=$(run 'if false
+then
+echo A
+elif true
+then
+echo B
+else
+echo C
+fi
+')
+assert_output_contains "elif condition true: elif body runs" "B" "$r"
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "B" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: elif true ran extra branches: $r"; }
+
+r=$(run 'if false
+then
+echo A
+elif false
+then
+echo B
+else
+echo C
+fi
+')
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "C" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: all conditions false should reach else, got: $r"; }
+
+r=$(run 'if true
+then
+echo A
+elif true
+then
+echo B
+fi
+')
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "A" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: branch already taken, elif must not run: $r"; }
+
+r=$(run 'if false
+then
+echo A
+elif false
+then
+echo B
+elif true
+then
+echo C
+else
+echo D
+fi
+')
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "C" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: two-elif chain, got: $r"; }
+
+r=$(run 'x=2
+if [ $x -eq 1 ]; then echo one; elif [ $x -eq 2 ]; then echo two; else echo other; fi
+')
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "two" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: same-line elif, got: '$r'"; }
+
+r=$(run 'if false
+then
+echo A
+else
+if true
+then
+echo B
+fi
+fi
+')
+TESTS_RUN=$((TESTS_RUN + 1))
+[ "$r" = "B" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: nested if inside else still works, got: $r"; }
+
+report

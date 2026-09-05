@@ -3202,6 +3202,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
 \ ==================================================================
 
 CREATE ARGV-PENDING MAX-ARGS CELLS ALLOT
+CREATE ARGQ-PENDING MAX-ARGS ALLOT   \ each pending token's quoted flag
 VARIABLE ARGC-PENDING
 VARIABLE PENDING-REMAINDER?
 
@@ -3211,7 +3212,13 @@ VARIABLE PENDING-REMAINDER?
   \ own then/else/fi search doesn't need to know or care which.
   PENDING-REMAINDER? @ IF
     0 PENDING-REMAINDER? !
-    ARGV-PENDING ARGC-PENDING @ COPY-ARGV
+    \ COPY-ARGV-Q, not COPY-ARGV: the pending remainder must carry its
+    \ tokens' quoted flags with it, or a stale flag left at the same
+    \ index by an earlier expansion hides a real operator. Exactly the
+    \ hazard Iteration 28 found and fixed for the ';'/'&&' splitters -
+    \ this call site was missed, and it surfaced as
+    \ "if ...; then echo two; elif ..." echoing a literal ";".
+    ARGV-PENDING ARGQ-PENDING ARGC-PENDING @ COPY-ARGV-Q
   ELSE
     READ-LINE-INTO-ARGV
   THEN ;
@@ -3227,8 +3234,10 @@ VARIABLE SAEK-KW1-ADDR
 VARIABLE SAEK-KW1-LEN
 VARIABLE SAEK-KW2-ADDR
 VARIABLE SAEK-KW2-LEN
+VARIABLE SAEK-KW3-ADDR
+VARIABLE SAEK-KW3-LEN
 
-: SPLIT-AT-EITHER-KEYWORD ( c-addr1 u1 c-addr2 u2 --- which )
+: SPLIT-AT-3 ( a1 u1 a2 u2 a3 u3 --- which )
   \ Like SPLIT-AT-KEYWORD, but scans for *either* of two keywords in
   \ one pass, splitting at whichever one is actually found first
   \ (which = 1 for the first keyword, 2 for the second, 0 if neither
@@ -3241,7 +3250,7 @@ VARIABLE SAEK-KW2-LEN
   \ a real "else" in between as if it were ordinary body text (found
   \ by testing this exact case directly: both branches of an if/else
   \ on one line silently failed to run at all).
-  {: SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH :}
+  {: SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN SAEK-KW3-ADDR SAEK-KW3-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH :}
   BEGIN SAK-I @ ARGC @ < WHILE
     0 SAEK-WHICH !
     SAK-I @ ARGV-QUOTED@ 0= IF
@@ -3253,7 +3262,11 @@ VARIABLE SAEK-KW2-LEN
           IF 1 SAEK-WHICH !
           ELSE
             SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW2-ADDR @ SAEK-KW2-LEN @ STR=
-            IF 2 SAEK-WHICH ! THEN
+            IF 2 SAEK-WHICH !
+            ELSE
+              SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW3-ADDR @ SAEK-KW3-LEN @ STR=
+              IF 3 SAEK-WHICH ! THEN
+            THEN
           THEN
         ELSE
           SAK-I @ ARGV@ DUP CSTRLEN S" fi" STR= IF
@@ -3267,6 +3280,7 @@ VARIABLE SAEK-KW2-LEN
       SAK-I @ 1+ SAK-J !
       BEGIN SAK-J @ ARGC @ < WHILE
         SAK-J @ ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
+        SAK-J @ ARGV-QUOTED@ ARGQ-PENDING ARGC-PENDING @ + C!
         ARGC-PENDING @ 1+ ARGC-PENDING !
         SAK-J @ 1+ SAK-J !
       REPEAT
@@ -3279,6 +3293,12 @@ VARIABLE SAEK-KW2-LEN
     SAK-I @ 1+ SAK-I !
   REPEAT
   0 ;
+
+: SPLIT-AT-EITHER-KEYWORD ( c-addr1 u1 c-addr2 u2 --- which )
+  \ The two-alternative case of SPLIT-AT-3, passing the second keyword
+  \ twice; a match on the duplicate reports 3, which means the same
+  \ thing as 2 here.
+  2DUP SPLIT-AT-3 DUP 3 = IF DROP 2 THEN ;
 
 : SPLIT-AT-KEYWORD ( c-addr u --- f )
   \ The one-keyword case of SPLIT-AT-EITHER-KEYWORD above, which it
@@ -3294,8 +3314,10 @@ VARIABLE SAEK-KW2-LEN
   2DUP SPLIT-AT-EITHER-KEYWORD 0= 0= ;
 
 VARIABLE COND-TRUE?
+VARIABLE IF-ELIF-SKIP
 
 : DO-IF ( --- )
+  {: | IF-ELIF-SKIP :}
   \ ARGV[0] is "if"; the rest of the line is the condition command,
   \ up to an optional unquoted "then" on the *same* line (checked via
   \ SPLIT-AT-KEYWORD - see the comment above it for the full design).
@@ -3336,31 +3358,62 @@ VARIABLE COND-TRUE?
     THEN
   THEN
   R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
+  \ One flat loop over the remaining branches. COND-TRUE? means "some
+  \ branch has been taken", not just "the first condition was true" -
+  \ that is what lets elif chain: each elif evaluates its condition
+  \ only if nothing has been taken yet, and "else" runs only if
+  \ nothing has. The nested else-loop the previous version used exists
+  \ in this shape as an ordinary iteration.
   BEGIN
     READ-NEXT-LOGICAL-LINE
-    S" else" S" fi" SPLIT-AT-EITHER-KEYWORD
-    DUP 2 = IF
+    S" elif" S" else" S" fi" SPLIT-AT-3
+    DUP 3 = IF                          ( fi )
       DROP
       RUN-TOKENIZED-CALL
       0 PENDING-REMAINDER? !
       R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
     THEN
-    DUP 1 = IF
+    DUP 2 = IF                          ( else )
       DROP
       RUN-TOKENIZED-CALL
       R@ COND-TRUE? @ OR SUPPRESS-EXEC? !
-      BEGIN
+    ELSE DUP 1 = IF                     ( elif COND [; then] )
+      DROP
+      RUN-TOKENIZED-CALL                \ body text preceding the elif
+      R@ COND-TRUE? @ OR IF-ELIF-SKIP !
+      READ-NEXT-LOGICAL-LINE            \ the condition
+      S" then" SPLIT-AT-KEYWORD DROP
+      IF-ELIF-SKIP @ IF
+        \ A branch was already taken, or the whole if is suppressed:
+        \ the condition is still consumed - it may span constructs -
+        \ but must not run, and must not change COND-TRUE?.
+        -1 SUPPRESS-EXEC? !
+        RUN-TOKENIZED-CALL
+      ELSE
+        0 SUPPRESS-EXEC? !
+        RUN-TOKENIZED-CALL
+        LAST-STATUS @ 0 = IF -1 COND-TRUE? ! THEN
+      THEN
+      PENDING-REMAINDER? @ 0= IF
         READ-NEXT-LOGICAL-LINE
-        S" fi" SPLIT-AT-KEYWORD IF
-          RUN-TOKENIZED-CALL
-          0 PENDING-REMAINDER? !
+        S" then" LINE-IS? 0= IF
+          ." if: expected 'then' after 'elif'" CR
           R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
         THEN
-        RUN-TOKENIZED-CALL
-      0 UNTIL
-    THEN
-    DROP
-    RUN-TOKENIZED-CALL
+      THEN
+      IF-ELIF-SKIP @ IF
+        \ A branch was already taken: this elif's body is suppressed
+        \ whatever COND-TRUE? says. Deriving suppression from
+        \ COND-TRUE? alone here was wrong - it is true precisely
+        \ *because* an earlier branch ran, so the body ran too.
+        -1 SUPPRESS-EXEC? !
+      ELSE
+        R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
+      THEN
+    ELSE                                ( ordinary body line )
+      DROP
+      RUN-TOKENIZED-CALL
+    THEN THEN
   0 UNTIL ;
 
 \ ==================================================================
