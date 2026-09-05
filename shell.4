@@ -3198,10 +3198,54 @@ VARIABLE COND-TRUE?
 \ Same v0.5 limitations as if: no nesting, no ";"-separated forms.
 \ ==================================================================
 
-CREATE WHILE-COND-BUF LINE-MAX ALLOT
-VARIABLE WHILE-COND-LEN
+\ ==================================================================
+\ Per-invocation storage for captured bodies
+\ ==================================================================
+\ A while/for body, a for word-list and a function-definition body are
+\ all captured as raw text before being replayed. They used to live in
+\ single shared buffers, which is why a loop nested directly inside
+\ another loop produced no output at all: the inner loop's capture
+\ overwrote the outer's body. Iteration 42 made replay a real input
+\ source, which was the prerequisite; this is the other half.
+\
+\ A bump arena, carved by BODY-ALLOC. Nothing is ever freed
+\ explicitly: DO-WHILE/DO-FOR/DO-FUNCDEF each declare BODY-ARENA-TOP
+\ as a LOCAL, so the bump pointer is restored when the construct ends
+\ - on every exit path, including an early EXIT - which gives exactly
+\ the stack discipline nested constructs need, for free.
+\
+\ Note the idiom for that, since a "|" scratch local is ZEROED rather
+\ than preserved:
+\
+\     BODY-ARENA-TOP @  {: BODY-ARENA-TOP | ... :}
+\
+\ pushing the current value and taking it straight back as an argument
+\ local. Result: saved on entry, unchanged during the body, restored
+\ on exit.
+\
+\ The arena itself is a BUFFER: (pool.4), so it costs nothing in the
+\ image and nothing at runtime until the first loop or function is
+\ actually seen.
+
 4096 CONSTANT WHILE-BODY-MAX
-WHILE-BODY-MAX BUFFER: WHILE-BODY-BUF   ( raw body lines, NUL-separated )
+65536 CONSTANT BODY-ARENA-MAX
+BODY-ARENA-MAX BUFFER: BODY-ARENA
+VARIABLE BODY-ARENA-TOP     \ 0 until first use
+
+: BODY-ALLOC ( n --- addr )
+  BODY-ARENA-TOP @ 0= IF BODY-ARENA BODY-ARENA-TOP ! THEN
+  BODY-ARENA-TOP @ SWAP OVER +          ( old new )
+  DUP BODY-ARENA BODY-ARENA-MAX + > IF
+    2DROP
+    ." shell: loop/function nesting too deep" CR
+    BODY-ARENA                          \ degrade rather than corrupt
+  ELSE
+    BODY-ARENA-TOP !                    ( old )
+  THEN ;
+
+VARIABLE WHILE-COND-BUF     \ pointers into the arena, not buffers
+VARIABLE WHILE-COND-LEN
+VARIABLE WHILE-BODY-BUF
 VARIABLE WHILE-BODY-LEN
 VARIABLE RAW-SKIP-I
 
@@ -3222,11 +3266,11 @@ VARIABLE RAW-SKIP-I
   WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
   RAW-LINE-LEN @ RAW-SKIP-I @ > IF
     RAW-LINE-LEN @ RAW-SKIP-I @ - WHILE-COND-LEN !
-    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF WHILE-COND-LEN @ MOVE
+    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF @ WHILE-COND-LEN @ MOVE
   ELSE
     0 WHILE-COND-LEN !
   THEN
-  0 WHILE-COND-BUF WHILE-COND-LEN @ + C! ;
+  0 WHILE-COND-BUF @ WHILE-COND-LEN @ + C! ;
 
 : APPEND-RAW-LINE-TO-BODY ( --- )
   \ Appends the current RAW-LINE-BUF/RAW-LINE-LEN (NUL-terminated) to
@@ -3236,12 +3280,39 @@ VARIABLE RAW-SKIP-I
   \ it in memory. A dropped line means that loop iteration's body is
   \ incomplete - no error is reported for this yet.
   WHILE-BODY-LEN @ RAW-LINE-LEN @ + 1+ WHILE-BODY-MAX < IF
-    RAW-LINE-BUF WHILE-BODY-BUF WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
+    RAW-LINE-BUF WHILE-BODY-BUF @ WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
     WHILE-BODY-LEN @ RAW-LINE-LEN @ + WHILE-BODY-LEN !
-    0 WHILE-BODY-BUF WHILE-BODY-LEN @ + C!
+    0 WHILE-BODY-BUF @ WHILE-BODY-LEN @ + C!
     WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN !
   THEN ;
 
+
+VARIABLE BODY-DEPTH
+
+: CAPTURE-CONTINUE? ( --- f )
+  \ Called once per line while capturing a while/for body. True if the
+  \ line belongs to the body, false if it is the "done" that closes
+  \ THIS loop.
+  \
+  \ The depth count is what makes a loop nested inside another loop
+  \ work: without it the outer capture stopped at the INNER loop's
+  \ "done", so the outer body was truncated and the outer "done" was
+  \ left to execute as a stray top-level line. Same shape as
+  \ SPLIT-AT-KEYWORD's own if/fi depth tracking, and found the same
+  \ way - by testing a nested loop directly rather than by
+  \ inspection. Only "while"/"for" open a "done"; "do" and "if" do
+  \ not, so they are not counted.
+  \
+  \ BODY-DEPTH is declared as a local by DO-WHILE/DO-FOR, so captures
+  \ nest too.
+  S" done" LINE-IS? IF
+    BODY-DEPTH @ 0 > IF BODY-DEPTH @ 1- BODY-DEPTH ! -1 ELSE 0 THEN
+  ELSE
+    S" while" LINE-IS? S" for" LINE-IS? OR IF
+      BODY-DEPTH @ 1+ BODY-DEPTH !
+    THEN
+    -1
+  THEN ;
 
 \ ==================================================================
 \ Shell functions: name() { <body> } - definition, invocation,
@@ -3351,6 +3422,9 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
   \ same shape while/for's own bodies use) via SET-FUNC, keyed by the
   \ name extracted from ARGV[0] - a later definition with the same
   \ name simply replaces it.
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN :}
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
   0 ARGV@ DUP CSTRLEN 2 - FUNCDEF-NAME-BUF 64 SAFE-COPY-NUL DROP
   S" {" SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF
@@ -3365,7 +3439,7 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
     S" }" LINE-IS? 0= WHILE
     ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
   REPEAT
-  FUNCDEF-NAME-BUF WHILE-BODY-BUF WHILE-BODY-LEN @
+  FUNCDEF-NAME-BUF WHILE-BODY-BUF @ WHILE-BODY-LEN @
   SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN ;
 
 VARIABLE WHILE-BODY-I
@@ -3384,7 +3458,7 @@ VARIABLE WHILE-BODY-CUR
   \ LOOP-BREAK? is deliberately left alone; that is the outer loop's
   \ own check, made right after this returns.
   {: | REPLAY-SRC REPLAY-LEN REPLAY-POS :}
-  WHILE-BODY-BUF REPLAY-SRC !
+  WHILE-BODY-BUF @ REPLAY-SRC !
   WHILE-BODY-LEN @ REPLAY-LEN !
   BEGIN
     REPLAY-POS @ REPLAY-LEN @ <
@@ -3397,15 +3471,27 @@ VARIABLE WHILE-BODY-CUR
 
 : DO-WHILE ( --- )
   \ ARGV[0] is "while"; RAW-LINE-BUF holds the raw line just read.
+  \ The condition text and the body get their own arena storage for
+  \ this invocation, so a while nested inside another loop's body no
+  \ longer overwrites the outer one's. BODY-ARENA-TOP is taken as an
+  \ argument local (see BODY-ALLOC's comment) so it is restored on
+  \ every exit path, releasing both automatically.
+  BODY-ARENA-TOP @
+  \ One physical line: {: ... :} cannot span lines (see locals.4).
+  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN BODY-DEPTH :}
+  LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
   SAVE-WHILE-COND
   READ-LINE-INTO-ARGV
   S" do" LINE-IS? 0= IF
     ." while: expected 'do'" CR EXIT
   THEN
   0 WHILE-BODY-LEN !
+  0 BODY-DEPTH !
   BEGIN
     READ-LINE-INTO-ARGV
-    S" done" LINE-IS? 0= WHILE
+    CAPTURE-CONTINUE?
+  WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
   \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
@@ -3418,7 +3504,7 @@ VARIABLE WHILE-BODY-CUR
   0 LOOP-BREAK? !
   BEGIN
     LOOP-BREAK? @ 0= IF
-      WHILE-COND-BUF LINE-BUF WHILE-COND-LEN @ MOVE
+      WHILE-COND-BUF @ LINE-BUF WHILE-COND-LEN @ MOVE
       WHILE-COND-LEN @ TOKENIZE
       RUN-TOKENIZED-CALL
       LAST-STATUS @ 0 =
@@ -3449,9 +3535,9 @@ VARIABLE WHILE-BODY-CUR
 \ ==================================================================
 
 256 CONSTANT FOR-WORDS-MAX
-CREATE FOR-WORDS-BUF FOR-WORDS-MAX ALLOT   ( word list, NUL-separated )
+VARIABLE FOR-WORDS-BUF   \ pointer into the arena
 VARIABLE FOR-WORDS-LEN
-CREATE FOR-VARNAME-BUF 64 ALLOT
+VARIABLE FOR-VARNAME-BUF \ pointer into the arena
 VARIABLE FW-I
 VARIABLE FW-WORDLEN
 
@@ -3459,13 +3545,13 @@ VARIABLE FW-WORDLEN
   \ ARGV[1] (the loop variable name) into FOR-VARNAME-BUF; ARGV[3..]
   \ (the word list, skipping ARGV[2]'s assumed "in") into
   \ FOR-WORDS-BUF/FOR-WORDS-LEN.
-  ARGV 1 CELLS + @ FOR-VARNAME-BUF 64 SAFE-CSTR-COPY DROP
+  ARGV 1 CELLS + @ FOR-VARNAME-BUF @ 64 SAFE-CSTR-COPY DROP
   0 FOR-WORDS-LEN !
   3 FW-I !
   BEGIN FW-I @ ARGC @ < WHILE
     FW-I @ ARGV@ DUP CSTRLEN FW-WORDLEN !
     FW-WORDLEN @
-    FOR-WORDS-BUF FOR-WORDS-LEN @ +
+    FOR-WORDS-BUF @ FOR-WORDS-LEN @ +
     FOR-WORDS-MAX FOR-WORDS-LEN @ -
     SAFE-COPY-NUL IF
       FOR-WORDS-LEN @ FW-WORDLEN @ + 1+ FOR-WORDS-LEN !
@@ -3494,8 +3580,8 @@ VARIABLE FOR-WORD-CUR
     FOR-WORD-I @ FOR-WORDS-LEN @ <
     LOOP-BREAK? @ 0= AND
   WHILE
-    FOR-WORDS-BUF FOR-WORD-I @ + FOR-WORD-CUR !
-    FOR-VARNAME-BUF FOR-WORD-CUR @ SET-SHVAR
+    FOR-WORDS-BUF @ FOR-WORD-I @ + FOR-WORD-CUR !
+    FOR-VARNAME-BUF @ FOR-WORD-CUR @ SET-SHVAR
     DO-WHILE-BODY
     FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
   REPEAT
@@ -3504,16 +3590,27 @@ VARIABLE FOR-WORD-CUR
 
 : DO-FOR ( --- )
   \ ARGV[0] is "for"; ARGV[1] is the loop variable name; ARGV[3..] is
-  \ the word list (ARGV[2], assumed "in", is skipped over).
+  \ the word list (ARGV[2], assumed "in", is skipped over). Body, word
+  \ list and variable name all get their own arena storage for this
+  \ invocation, same as DO-WHILE - and DO-FOR-ITERATE, called below,
+  \ reads these same names, which works because a local IS the
+  \ variable and holds this invocation's value for the whole call.
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH :}
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !
+  FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
+  64             BODY-ALLOC FOR-VARNAME-BUF !
   SAVE-FOR-WORDS
   READ-LINE-INTO-ARGV
   S" do" LINE-IS? 0= IF
     ." for: expected 'do'" CR EXIT
   THEN
   0 WHILE-BODY-LEN !
+  0 BODY-DEPTH !
   BEGIN
     READ-LINE-INTO-ARGV
-    S" done" LINE-IS? 0= WHILE
+    CAPTURE-CONTINUE?
+  WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
   DO-FOR-ITERATE ;

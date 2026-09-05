@@ -70,4 +70,56 @@ out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
 assert_output_contains "for inside function: first"  "g p" "$out"
 assert_output_contains "for inside function: second" "g q" "$out"
 
+cat > "$t/e.sh" <<'X'
+for x in 1 2
+do
+  for y in a b
+  do
+    echo "$x$y"
+  done
+done
+X
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "for inside for: 1a" "1a" "$out"
+assert_output_contains "for inside for: 1b" "1b" "$out"
+assert_output_contains "for inside for: 2a" "2a" "$out"
+assert_output_contains "for inside for: 2b" "2b" "$out"
+
+cat > "$t/f.sh" <<'X'
+i=0
+while test $i -lt 2
+do
+  for y in a b
+  do
+    if test "$y" = b
+    then
+      echo "$i-$y-hit"
+    else
+      echo "$i-$y"
+    fi
+  done
+  i=$((i+1))
+done
+echo end
+X
+out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
+assert_output_contains "while>for>if: first iteration else"  "0-a"     "$out"
+assert_output_contains "while>for>if: first iteration then"  "0-b-hit" "$out"
+assert_output_contains "while>for>if: second iteration then" "1-b-hit" "$out"
+assert_output_contains "while>for>if: outer loop terminates" "end"     "$out"
+
+cat > "$t/g.sh" <<'X'
+h() {
+  for z in p q
+  do
+    echo "h$z"
+  done
+}
+h
+h
+X
+out=$("$THIS_SH" "$t/g.sh" 2>/dev/null)
+assert_output_contains "for inside function, called twice" "hp" "$out"
+assert_output_contains "for inside function, second word" "hq" "$out"
+
 report

@@ -4912,3 +4912,98 @@ symptom was `Undefined word ':` plus a suddenly reappearing "Welcome to
 Forth" banner. The banner was the useful clue: it only prints on the
 fallback path, so it meant "the image build failed", not "the shell is
 broken". Worth remembering as a diagnostic.
+## Iteration 43: per-invocation body storage - loops nest
+
+The other half of Iteration 42. A loop nested directly inside another
+loop now works, along with every combination tested: `for` in `for`,
+`for` in `while`, `if` inside both, and a loop inside a function body
+called repeatedly. Verified against `bash` on a three-deep
+`while` > `for` > `if` script producing identical output.
+
+### Two independent causes, both real
+
+Iteration 42 fixed the input source. Testing a nested loop directly -
+rather than assuming that fix was sufficient - showed it produced no
+output at all, and the reason turned out to be two separate problems
+stacked on each other.
+
+**1. Shared capture buffers.** `while`/`for` captured into a single
+`WHILE-BODY-BUF`, so an inner loop's capture overwrote the outer's
+body. `WHILE-COND-BUF`, `FOR-WORDS-BUF` and `FOR-VARNAME-BUF` had the
+same problem.
+
+These are now pointers into a bump arena (`BODY-ALLOC`), and
+`DO-WHILE`/`DO-FOR`/`DO-FUNCDEF` each declare `BODY-ARENA-TOP` as a
+**local**, which restores the bump pointer on every exit path
+including an early `EXIT`. Nothing is ever freed explicitly; the
+locals machinery provides exactly the stack discipline nested
+constructs need. The idiom is worth recording, since a `|` scratch
+local is *zeroed* rather than preserved:
+
+    BODY-ARENA-TOP @  {: BODY-ARENA-TOP | ... :}
+
+pushing the current value and taking it straight back as an argument
+local, so it is saved on entry, untouched during the body, and
+restored on exit.
+
+The arena is a `BUFFER:` (Iteration 41), so it costs nothing in the
+image and nothing at runtime until the first loop or function is
+actually seen.
+
+**2. The capture loop had no nesting depth.** Even with private
+buffers, the outer capture stopped at the *inner* loop's `done`, so
+the outer body was truncated and the outer `done` was left to execute
+as a stray top-level line. `CAPTURE-CONTINUE?` now counts: `while` and
+`for` open a `done`, `do` and `if` do not. Same shape as
+`SPLIT-AT-KEYWORD`'s existing if/fi depth tracking, and `BODY-DEPTH`
+is a local too, so captures nest as well as replays do.
+
+Neither cause would have been found by inspection; both surfaced by
+running a nested loop and looking at the actual output.
+
+### A self-inflicted error worth recording
+
+The first attempt failed to compile with `locals: missing :} on this
+line`, because I wrote the declarations across two physical lines -
+violating a restriction `locals.4` documents and diagnoses explicitly,
+which I had written myself in Iteration 38. The diagnostic did its job
+and pointed straight at the cause, which is the argument for
+diagnosing this case rather than letting `WORD` loop or misparse.
+
+Worth noting why the restriction stays rather than being lifted:
+making `{:` refill across lines means calling `REFILL` mid-parse,
+which is exactly the mechanism behind the multi-line `( )` comment
+corruption documented in Iteration 33. Not worth the risk to save a
+line wrap.
+
+### Verified
+
+`tests/shell/run-nesting` grew from 9 to 19 assertions - now covering
+`for` in `for`, `while` > `for` > `if` three deep with the outer loop
+terminating correctly, and a loop inside a function invoked twice
+(which checks the arena is genuinely released, not merely unused).
+270 assertions across 35 files, plus 1991 core OK markers, all passing
+on both cell widths. mrsh-suite unchanged at 2 passed, 19 failed, 3
+skipped.
+
+Size: 158,008 bytes on x86-64, 91,864 on i386 - up ~2,400 from
+Iteration 42, which is the arena machinery and the new tests' worth of
+code.
+
+### What this iteration deliberately did NOT do
+
+- **`BODY-ARENA-MAX` is a hardcoded 65,536**, against the memory
+  policy agreed in Iteration 41. A bump arena needs a size, and
+  growing it with `RESIZE` is precisely the case that policy flags as
+  unsafe: the live `WHILE-BODY-BUF`/`FOR-WORDS-BUF` pointers point
+  *into* the arena, so moving it would invalidate them silently.
+  Growing safely means a chunked arena (allocate a new chunk, never
+  move an existing one), which is real work and wants its own
+  iteration. Overflow is diagnosed (`loop/function nesting too deep`)
+  and degrades rather than corrupting.
+- **`WHILE-BODY-MAX` is still 4,096 per body**, unchanged - now
+  charged against the arena instead of the image, but still a fixed
+  per-loop ceiling with the same silent-drop behavior
+  `APPEND-RAW-LINE-TO-BODY` always had.
+- **Nested function definitions** are untouched: `DO-FUNCDEF` gets its
+  own arena body but its capture still stops at the first `}`.

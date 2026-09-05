@@ -832,20 +832,21 @@ This was the blocker in front of the `forth` builtin.
      design was fully thought through before writing any code. See
      `PROGRESS.md`'s Iteration 30 entry for the full account.
 
-     **Phase C is now complete.** Carried-over limitations: a loop
-     body or function body **can** now contain a nested `if`/`for`
-     (Iteration 42 — replay became a real input source, so a nested
-     construct reads its continuation lines from the stored body),
-     but a loop nested directly inside another loop still does not
-     work: `while`/`for` capture into the single shared
-     `WHILE-BODY-BUF`, so an inner loop's capture overwrites the
-     outer's body. Making those buffers per-invocation is the
-     remaining half and the clear next step — see PROGRESS.md's
-     Iteration 42 entry for the arena design and the
-     `X @ {: X ... :}` idiom that gives locals a "preserve current
-     value" mode. Also still open: the unverified extent of the
-     `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call sites fixed
-     in Iteration 28.
+     **Phase C is now complete, and so is nesting** (Iterations 42
+     and 43). A loop or function body can contain any combination of
+     `if`/`while`/`for`, at any depth — verified against `bash` on a
+     three-deep `while` > `for` > `if` script. Two independent causes
+     had to be fixed: replay had to become a real *input source* so a
+     nested construct reads its continuation lines from the stored
+     body (42), and the capture buffers had to become per-invocation
+     arena allocations with a nesting-depth count in the capture loop,
+     or the outer capture stopped at the inner loop's `done` (43).
+     Still open: `BODY-ARENA-MAX` is a fixed 65,536 (growing it needs
+     a chunked arena, since live pointers point into it — see the
+     memory policy above); `WHILE-BODY-MAX` is still a fixed 4,096 per
+     body; nested function *definitions* are not supported; and the
+     unverified extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond
+     the two call sites fixed in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
      call arguments, or a script's own command-line arguments at the
