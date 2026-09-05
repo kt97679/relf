@@ -3719,3 +3719,100 @@ across 28 files now, all passing on both x86-64 and i386.
 `${VAR##word}` (prefix/suffix removal); arithmetic expansion
 (`$((...))`); tilde expansion; `IFS`-based field splitting.
 
+## Iteration 33: goal 8 phase D - `${VAR%word}`/`${VAR%%word}`/
+## `${VAR#word}`/`${VAR##word}` (prefix/suffix removal), plus a
+## significant kernel-behavior discovery
+
+`${VAR#pattern}`/`${VAR##pattern}` (shortest/longest matching prefix
+removed), `${VAR%pattern}`/`${VAR%%pattern}` (shortest/longest
+matching suffix removed) - the last of the parameter-expansion
+modifiers listed in `GOALS.md`. **Phase D's remaining scope is now
+just arithmetic expansion, tilde expansion, and `IFS` field
+splitting.**
+
+### Design
+
+Built on `GLOB-MATCH` (already existing, from `case`/`esac`'s own
+Iteration 27 pattern matching), but `GLOB-MATCH` only answers "does
+this whole string match this pattern" - prefix/suffix removal needs
+"what's the shortest/longest *partial* prefix/suffix that matches",
+which is new. `FIND-SHORTEST-PREFIX-LEN`/`FIND-LONGEST-PREFIX-LEN`/
+`FIND-SHORTEST-SUFFIX-LEN`/`FIND-LONGEST-SUFFIX-LEN` each try
+candidate lengths one at a time against `GLOB-MATCH` - 0,1,2,...,
+value-len for shortest, value-len,value-len-1,...,0 for longest -
+stopping at the first length that matches (or reporting no match at
+all if none does, all the way down to/up from 0). `TRIM-PARAM` ties
+this together: looks up the variable, picks the right one of the four
+helpers based on flags `EXPAND-BRACED-VAR` sets before calling it, and
+emits either the matched-around remainder or (no match) the value
+unchanged, per POSIX. A new `TYPE-N-TO-TOK ( addr n --- )` fills the
+same role `TYPE0-TO-TOK` does for NUL-terminated strings, but for a
+known-length span - needed because the "remainder after a match" isn't
+itself NUL-terminated at the right point without a separate copy.
+
+Since `GLOB-MATCH` is defined much later in the file than
+`EXPAND-BRACED-VAR` (down near `case`/`esac`, sharing that machinery),
+`TRIM-PARAM` lives there too, reached via the same deferred-word
+pattern used throughout this project (`TRIM-PARAM-XT`/
+`TRIM-PARAM-CALL`) - `EXPAND-BRACED-VAR` detects `%`/`%%`/`#`/`##`
+after a variable name (distinct from `${#VAR}`'s own `#`, which is
+checked before any name is even read), sets `PEW-SUFFIX?`/
+`PEW-LONGEST?`, reads the pattern via the already-existing
+`READ-PEWORD`, and calls through.
+
+### A significant kernel-behavior discovery: multi-line `(...)` comments become unreliable once enough code precedes them in the file
+
+While wiring this up, `shell.4` stopped loading at all, with a
+cascading series of `Undefined word X` errors - X being different,
+unrelated words each time a fix was attempted, which was the first
+clue this wasn't an ordinary syntax mistake in the new code. Isolated
+minimal-file tests of long comments, multi-line comments, and
+comments with special characters all loaded fine on their own. A
+custom Forth-token-aware paren-balance checker found no imbalance in
+the real file. Bisection (truncating `shell.4` at successive, cleanly-
+closed points and forcibly closing the word being tested) narrowed
+the failure to a specific, six-line, unmodified, pre-existing comment
+(the `$@`/`$*` one from Iteration 31) that had never been touched in
+this session at all.
+
+**Confirmed the root cause empirically**: inserting 200 completely
+unrelated, trivial filler word definitions before that comment, in an
+otherwise pristine, last-committed `shell.4`, reproduced the identical
+failure - proving this has nothing to do with the actual feature code
+being added. Collapsing that one, pre-existing multi-line comment onto
+a single line (no content change, purely reformatting) fixed loading
+immediately, with the full regression suite passing clean afterward
+with no other changes needed.
+
+**The empirical rule, going forward**: a `(...)` comment that spans
+multiple physical lines can silently corrupt parsing once enough code
+precedes it earlier in the file - the exact threshold is unclear (line
+count vs. byte count vs. something else was not conclusively
+isolated, and early attempts to pin it down produced inconsistent
+results between test runs that aren't yet understood), but the fix
+that works reliably is simple: **keep every `(...)` comment on a
+single physical line**, however long, and use `\` line comments
+(which are already used pervasively throughout this file, and were
+never observed to have this problem regardless of length or
+position) for anything that needs multiple lines. This is a
+significant, project-wide risk given how many multi-line `(...)`
+comments already exist in `shell.4` from earlier iterations, all
+currently fine only because the dictionary hasn't yet grown enough to
+expose them - **future iterations should watch for this specific
+symptom** (a cascade of unrelated "Undefined word" errors right after
+an edit that "should" be safe) and know to check for multi-line
+`(...)` comments first, rather than assuming a logic bug in whatever
+was just added.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: shortest prefix removal, longest prefix removal, shortest
+suffix removal, longest suffix removal, a non-matching pattern
+leaving the value unchanged, and an unset variable expanding to empty.
+
+`tests/shell/run-param-trim` (6 assertions) - 202 assertions across
+29 files now, all passing on both x86-64 and i386.
+
+**Phase D remaining**: arithmetic expansion (`$((...))`); tilde
+expansion; `IFS`-based field splitting.
+

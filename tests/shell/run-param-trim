@@ -1,0 +1,48 @@
+#!/bin/sh
+# run-param-trim - ${VAR#pattern}/${VAR##pattern} (shortest/longest
+# prefix removal), ${VAR%pattern}/${VAR%%pattern} (shortest/longest
+# suffix removal). Each searches for the shortest or longest prefix/
+# suffix of the variable's own value that GLOB-MATCH accepts as a
+# whole match against the pattern, by trying candidate lengths one at
+# a time until one matches (or none do, in which case the value is
+# emitted unchanged, per POSIX) - see TRIM-PARAM's own comment, and
+# FIND-SHORTEST-PREFIX-LEN/FIND-LONGEST-PREFIX-LEN/
+# FIND-SHORTEST-SUFFIX-LEN/FIND-LONGEST-SUFFIX-LEN for the search
+# itself. An unset variable expands to empty (nothing to trim).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-param-trim-test-$$.sh"
+
+printf 'x123=hello-world123\necho [${x123#hel*-}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR#pattern} removes the shortest matching prefix" "[world123]" "$out"
+
+printf 'x123=aaa-bbb-ccc123\necho [${x123##*-}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR##pattern} removes the longest matching prefix" "[ccc123]" "$out"
+
+cat > "$TMP_SCRIPT" << 'SCRIPTEOF'
+x123=file123.tar.gz
+echo [${x123%.*}]
+SCRIPTEOF
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR%pattern} removes the shortest matching suffix" "[file123.tar]" "$out"
+
+cat > "$TMP_SCRIPT" << 'SCRIPTEOF'
+x123=file123.tar.gz
+echo [${x123%%.*}]
+SCRIPTEOF
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR%%pattern} removes the longest matching suffix" "[file123]" "$out"
+
+printf 'x123=hello123\necho [${x123#xyz123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a non-matching pattern leaves the value unchanged" "[hello123]" "$out"
+
+printf 'echo [${y123#xyz123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "an unset variable expands to empty, nothing to trim" "[]" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

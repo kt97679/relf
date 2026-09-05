@@ -584,14 +584,32 @@ the full account and the fixes applied.
      named `"VAR:-word"`. Went smoothly — every case passed on the
      first attempt. See `PROGRESS.md`'s Iteration 32 entry.
 
-     Still open: `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/
-     `${VAR##word}` (prefix/suffix removal — genuinely new pattern-
-     matching logic, not just string comparison, unlike the above).
-     Arithmetic expansion (`$((...))` — a real expression grammar:
-     precedence, associativity, comparison/bitwise/logical operators,
-     assignment forms). Tilde expansion. `IFS`-based field splitting
-     of unquoted expansion results (an explicit non-goal up through
-     Iteration 13 — revisited here since mrsh's tests depend on it).
+     `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`
+     (prefix/suffix removal): **done (Iteration 33)** — built on
+     `GLOB-MATCH` (from `case`/`esac`), but needed new logic to find
+     the shortest/longest *partial* prefix/suffix match rather than a
+     whole-string match, by trying candidate lengths one at a time.
+     While building this, found and fixed a significant kernel
+     behavior: a `(...)` comment spanning multiple physical lines can
+     silently corrupt parsing once enough code precedes it earlier in
+     the file, surfacing as a cascade of unrelated "Undefined word"
+     errors. Confirmed empirically (200 unrelated filler word
+     definitions reproduced the identical failure in an otherwise
+     pristine file) and fixed by collapsing the affected comment onto
+     one line — no content change. **Future iterations should treat a
+     sudden cascade of unrelated "Undefined word" errors as a signal
+     to check for multi-line `(...)` comments first**, rather than
+     assuming a logic bug in whatever was just edited; prefer `\` line
+     comments (used pervasively already, never observed to have this
+     problem) for anything spanning multiple lines. See `PROGRESS.md`'s
+     Iteration 33 entry for the full investigation.
+
+     Still open: arithmetic expansion (`$((...))` — a real expression
+     grammar: precedence, associativity, comparison/bitwise/logical
+     operators, assignment forms). Tilde expansion. `IFS`-based field
+     splitting of unquoted expansion results (an explicit non-goal up
+     through Iteration 13 — revisited here since mrsh's tests depend
+     on it).
    - **Phase E — command substitution completeness.** Nested
      `$(...)`. Backquote `` `...` `` substitution. A `$(...)` body
      that supports the full command grammar (pipelines, quoting,

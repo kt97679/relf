@@ -4,6 +4,22 @@
 \   S" shell.4" INCLUDED
 \   SH
 \
+\ *** IMPORTANT for anyone editing this file: use only "\" line
+\ *** comments for anything spanning more than one physical line.
+\ *** A "(...)" comment that spans multiple physical lines can
+\ *** silently corrupt parsing once enough code precedes it earlier
+\ *** in this file, surfacing as a cascade of unrelated "Undefined
+\ *** word" errors when the file is next loaded - confirmed
+\ *** empirically in Iteration 33 (see PROGRESS.md), where an
+\ *** unmodified, pre-existing six-line "(...)" comment broke only
+\ *** after unrelated new code was added earlier in the file; 200
+\ *** trivial filler word definitions inserted before it reproduced
+\ *** the identical failure in an otherwise pristine copy. Single-line
+\ *** "(...)" comments, however long, are fine. If you see this
+\ *** symptom (unrelated "Undefined word" errors right after an edit
+\ *** that "should" be safe), check for multi-line "(...)" comments
+\ *** before assuming a logic bug in whatever was just changed.
+
 \ Scope (v0.1), deliberately limited - see PROGRESS.md for the phased
 \ plan this fits into:
 \   - word-splitting on whitespace only (no quoting/escaping)
@@ -767,6 +783,22 @@ VARIABLE EAP-I
 CREATE PEWORD-BUF 256 ALLOT
 VARIABLE PEWORD-LEN
 VARIABLE PEW-COLON?
+VARIABLE PEW-SUFFIX?     \ set by EXPAND-BRACED-VAR before calling
+                          \ TRIM-PARAM-CALL: true for %/%% (suffix
+                          \ removal), false for #/## (prefix removal).
+VARIABLE PEW-LONGEST?    \ true for %%/## (longest match), false for
+                          \ %/# (shortest match).
+VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
+                          \ it's defined, much further down (the same
+                          \ deferred-word pattern already used for
+                          \ RUN-TOKENIZED-CALL/RUN-FUNC-BODY-CALL/
+                          \ TRY-ASSIGNMENT-CALL) - needed since
+                          \ TRIM-PARAM depends on GLOB-MATCH, defined
+                          \ far later in the file than EXPAND-BRACED-
+                          \ VAR is.
+
+: TRIM-PARAM-CALL ( --- )
+  TRIM-PARAM-XT @ EXECUTE ;
 
 : READ-PEWORD ( --- )
   \ Reads from TOK-POS up to (not including) the closing '}' into
@@ -883,10 +915,31 @@ VARIABLE PEW-COLON?
     THEN
     EXIT
   THEN
-  DROP ;                              ( unrecognized modifier - bail
-                                         quietly, matching this
-                                         shell's existing sparse error
-                                         handling elsewhere )
+  DUP 37 = IF                         ( '%' or '%%': suffix removal )
+    DROP TOK-POS @ 1+ TOK-POS !
+    -1 PEW-SUFFIX? !
+    0 PEW-LONGEST? !
+    TOK-POS @ TOK-END @ < TOK-POS @ C@ 37 = AND IF
+      TOK-POS @ 1+ TOK-POS !
+      -1 PEW-LONGEST? !
+    THEN
+    READ-PEWORD
+    TRIM-PARAM-CALL
+    EXIT
+  THEN
+  DUP 35 = IF                         ( '#' or '##': prefix removal )
+    DROP TOK-POS @ 1+ TOK-POS !
+    0 PEW-SUFFIX? !
+    0 PEW-LONGEST? !
+    TOK-POS @ TOK-END @ < TOK-POS @ C@ 35 = AND IF
+      TOK-POS @ 1+ TOK-POS !
+      -1 PEW-LONGEST? !
+    THEN
+    READ-PEWORD
+    TRIM-PARAM-CALL
+    EXIT
+  THEN
+  DROP ;                              ( unrecognized modifier: bail )
 
 : EXPAND-VAR ( --- )
   \ TOK-POS is at the '$' character.
@@ -904,9 +957,7 @@ VARIABLE PEW-COLON?
     GETPID EMIT-DECIMAL
     EXIT
   THEN
-  DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters -
-                                        char-48, the digit value, is
-                                        between 1 and 9 )
+  DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
     48 -
     TOK-POS @ 1+ TOK-POS !
     1-
@@ -922,12 +973,7 @@ VARIABLE PEW-COLON?
     POS-PARAM-COUNT @ EMIT-DECIMAL
     EXIT
   THEN
-  DUP 64 = OVER 42 = OR IF        ( $@ / $* - treated identically for
-                                     now: space-joined, since the two
-                                     only differ once quoted and IFS
-                                     field splitting doesn't exist yet
-                                     to make that distinction
-                                     meaningful )
+  DUP 64 = OVER 42 = OR IF        ( $@ / $* - both space-joined for now )
     DROP TOK-POS @ 1+ TOK-POS !
     EMIT-ALL-POS-PARAMS
     EXIT
@@ -3007,6 +3053,134 @@ VARIABLE GCM-BEND
     GM-P @ 1+ GM-P !
   REPEAT
   GM-P @ GM-PLEN @ = ;
+
+\ ==================================================================
+\ ${VAR%word}/${VAR%%word}/${VAR#word}/${VAR##word} - suffix/prefix
+\ removal, the real implementation behind the deferred TRIM-PARAM-CALL
+\ EXPAND-BRACED-VAR uses (see its own comment for why this is
+\ deferred: GLOB-MATCH, needed here, is defined much later in the file
+\ than EXPAND-BRACED-VAR is). Each of the four modes searches for the
+\ shortest or longest prefix/suffix of the variable's own value that
+\ GLOB-MATCH accepts as a whole match against the pattern, by trying
+\ candidate lengths one at a time - 0,1,2,...,value-len for shortest,
+\ value-len,value-len-1,...,0 for longest - stopping at the first
+\ length that matches. If nothing matches at any length (including 0
+\ and the full value-len), the value is emitted unchanged, per POSIX.
+\ ==================================================================
+
+VARIABLE FPM-PAT-ADDR
+VARIABLE FPM-PAT-LEN
+VARIABLE FPM-VAL-ADDR
+VARIABLE FPM-VAL-LEN
+VARIABLE FPM-I
+
+: FIND-SHORTEST-PREFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
+  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
+  0 FPM-I !
+  BEGIN
+    FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH 0=
+    FPM-I @ FPM-VAL-LEN @ < AND
+  WHILE
+    FPM-I @ 1+ FPM-I !
+  REPEAT
+  FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH IF
+    FPM-I @
+  ELSE
+    -1
+  THEN ;
+
+: FIND-LONGEST-PREFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
+  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
+  FPM-VAL-LEN @ FPM-I !
+  BEGIN
+    FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH 0=
+    FPM-I @ 0 > AND
+  WHILE
+    FPM-I @ 1- FPM-I !
+  REPEAT
+  FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH IF
+    FPM-I @
+  ELSE
+    -1
+  THEN ;
+
+: FIND-SHORTEST-SUFFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
+  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
+  0 FPM-I !
+  BEGIN
+    FPM-PAT-ADDR @ FPM-PAT-LEN @
+    FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH 0=
+    FPM-I @ FPM-VAL-LEN @ < AND
+  WHILE
+    FPM-I @ 1+ FPM-I !
+  REPEAT
+  FPM-PAT-ADDR @ FPM-PAT-LEN @
+  FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH IF
+    FPM-I @
+  ELSE
+    -1
+  THEN ;
+
+: FIND-LONGEST-SUFFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
+  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
+  FPM-VAL-LEN @ FPM-I !
+  BEGIN
+    FPM-PAT-ADDR @ FPM-PAT-LEN @
+    FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH 0=
+    FPM-I @ 0 > AND
+  WHILE
+    FPM-I @ 1- FPM-I !
+  REPEAT
+  FPM-PAT-ADDR @ FPM-PAT-LEN @
+  FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH IF
+    FPM-I @
+  ELSE
+    -1
+  THEN ;
+
+: TYPE-N-TO-TOK ( addr n --- )
+  \ Like TYPE0-TO-TOK, but for a known-length span rather than a
+  \ NUL-terminated C string - the remaining portion after a prefix/
+  \ suffix match isn't itself NUL-terminated at the right point
+  \ without a separate copy. Caller must ENSURE-ROOM(n) first,
+  \ matching TYPE0-TO-TOK's own convention.
+  0 DO
+    DUP I + C@ EMIT-TOK-CHAR
+  LOOP DROP ;
+
+VARIABLE TP-VAL-ADDR
+VARIABLE TP-VAL-LEN
+VARIABLE TP-MATCH-LEN
+
+: TRIM-PARAM ( --- )
+  \ VARNAME-BUF names the variable; PEWORD-BUF/PEWORD-LEN holds the
+  \ already-read pattern; PEW-SUFFIX?/PEW-LONGEST? (set by
+  \ EXPAND-BRACED-VAR before calling TRIM-PARAM-CALL) select which of
+  \ the four removal modes applies. An unset variable expands to
+  \ empty (nothing to trim).
+  VARNAME-BUF LOOKUP-VAR
+  DUP 0= IF DROP EXIT THEN
+  DUP CSTRLEN TP-VAL-LEN ! TP-VAL-ADDR !
+  PEWORD-BUF PEWORD-LEN @ TP-VAL-ADDR @ TP-VAL-LEN @
+  PEW-SUFFIX? @ IF
+    PEW-LONGEST? @ IF FIND-LONGEST-SUFFIX-LEN ELSE FIND-SHORTEST-SUFFIX-LEN THEN
+  ELSE
+    PEW-LONGEST? @ IF FIND-LONGEST-PREFIX-LEN ELSE FIND-SHORTEST-PREFIX-LEN THEN
+  THEN
+  TP-MATCH-LEN !
+  TP-MATCH-LEN @ -1 = IF
+    TP-VAL-LEN @ ENSURE-ROOM
+    TP-VAL-ADDR @ TP-VAL-LEN @ TYPE-N-TO-TOK
+  ELSE
+    PEW-SUFFIX? @ IF
+      TP-VAL-LEN @ TP-MATCH-LEN @ - ENSURE-ROOM
+      TP-VAL-ADDR @ TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
+    ELSE
+      TP-VAL-LEN @ TP-MATCH-LEN @ - ENSURE-ROOM
+      TP-VAL-ADDR @ TP-MATCH-LEN @ + TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
+    THEN
+  THEN ;
+' TRIM-PARAM TRIM-PARAM-XT !
 
 \ ==================================================================
 \ case WORD in / PATTERN1) / <body> / ;; / PATTERN2|PATTERN3) / ... /
