@@ -4348,3 +4348,169 @@ Running `tests/mrsh-suite/run.sh` leaves a stray file literally named
 support, so a trailing `&` is ending up treated as an ordinary word or
 redirect target rather than being rejected. Not investigated here;
 relevant whenever background jobs are picked up in Phase F.
+## Iteration 39: converting `shell.4` to locals, and two real deduplications
+
+Iteration 38 built `locals.4` but deliberately left `shell.4` untouched.
+This iteration wires it in and converts 31 words. **No shell behavior
+changes** - this is a behavior-preserving refactor, and every one of
+the 251 existing assertions passes unchanged throughout, on both cell
+widths.
+
+### Wiring it in
+
+`relfsh`'s bootstrap now loads `locals.4` ahead of `shell.4`. That's
+the only place it needed to go: `shell.4` is `INCLUDED` by absolute
+path, so a relative `S" locals.4" INCLUDED` inside it would resolve
+against whatever the caller's cwd happened to be, and the shell tests
+run from several different directories.
+
+Before converting anything, the suite was run with `locals.4` loaded
+and `shell.4` untouched. All 251 assertions passed, which is the real
+check that the `EXIT`/`;` wrappers are transparent: every word in
+`shell.4` was compiled through them while declaring no locals, and
+none of them changed.
+
+### 31 words converted
+
+The mechanical shape, exactly as designed in Iteration 38 - the body
+is untouched, only the argument-popping line changes:
+
+    : COPY-ARGV ( src-argv src-argc --- )        : COPY-ARGV ( src-argv src-argc --- )
+      CA-N !  CA-SRC !                    -->      {: CA-SRC CA-N :}
+      CA-N @ ARGC ! ...                            CA-N @ ARGC ! ...
+
+Converted: the glob-matching cluster (`GLOB-MATCH`,
+`GLOB-CHAR-MATCHES?`, `BRACKET-MATCHES?` - 17 globals between them),
+`STR=`, `SAFE-COPY-NUL`, `SAFE-CSTR-COPY`, `COPY-ARGV`, `COPY-ARGV-Q`,
+`FIND-SHVAR`, `SET-SHVAR`, `FIND-FUNC`, `TEST-BINARY?`, `TEST-UNARY?`,
+`SET-POS-PARAMS-FROM-ARGV`, `SET-POS-PARAMS-FROM-SYS-ARGS`,
+`SAVE-POS-PARAMS`, `RESTORE-POS-PARAMS`, `EMIT-ALL-POS-PARAMS`,
+`READ-ALL-CMDSUB-OUTPUT`, `FUNCDEF-NAME?`, `CASE-ARM-MATCHES?`,
+`ENSURE-ROOM`, `TRIM-PARAM`, `NORMALIZE-OPERATORS`, and the six words
+sharing the `PR-I` cursor (`PARSE-REDIRECTIONS`, `SPLIT-SEMI`,
+`SPLIT-PIPE`, `SPLIT-ANDOR`, `SPLIT-GROUP-PAREN`, `SPLIT-GROUP-BRACE`).
+
+**The dynamic-scoping property carried its weight immediately.** Many
+of these words share their scratch with helper words that read the
+same variables - `GLOB-MATCH`'s own `GM-PATTERN`/`GM-PLEN` are read by
+`BRACKET-END`, `BRACKET-MATCHES?` and `GLOB-CHAR-MATCHES?`; the six
+`PR-I` words share that cursor with `AT-END?`/`AT-SEMI?`/`AT-PIPE?`/
+`AT-AND?`/`AT-OR?`/`AT-CLOSE-PAREN?`/`AT-CLOSE-BRACE?`. Because a
+local *is* the variable, those helpers keep working untouched: during
+the call the variable holds the caller's value. A conventional locals
+frame with its own namespace would have required rewriting every one
+of those helpers to take parameters. Verified by `run-case` and
+`run-param-trim` passing, which exercise exactly those paths.
+
+### Deduplication 1: four trim searchers become one
+
+`FIND-SHORTEST-PREFIX-LEN`, `FIND-LONGEST-PREFIX-LEN`,
+`FIND-SHORTEST-SUFFIX-LEN` and `FIND-LONGEST-SUFFIX-LEN` were four
+near-identical ~13-line words. They differed in exactly two things:
+which end of the value the candidate substring is taken from, and
+whether candidate lengths are tried upward from 0 or downward from the
+full length. Both are now parameters of a single `FIND-TRIM-LEN
+( pat-addr pat-len val-addr val-len suffix? longest? --- len | -1 )`,
+with `FPM-CANDIDATE`/`FPM-MATCHES?` factored out. `TRIM-PARAM`'s own
+six-line four-way `IF` nest collapses to one line:
+
+    PEW-SUFFIX? @ PEW-LONGEST? @ FIND-TRIM-LEN
+
+Locals are what made this comfortable to write - the unified word
+takes six arguments, which is unpleasant to juggle on the stack and
+trivial to name.
+
+### Deduplication 2: SPLIT-AT-KEYWORD collapses into a wrapper
+
+`SPLIT-AT-KEYWORD` and `SPLIT-AT-EITHER-KEYWORD` carried ~35 lines of
+identical logic between them - the same ARGV scan, the same `if`/`fi`
+nesting-depth tracking, the same truncate-and-stash-the-remainder
+split. The one-keyword case is just the two-keyword case with both
+alternatives the same, so it now is exactly that:
+
+    : SPLIT-AT-KEYWORD ( c-addr u --- f )
+      2DUP SPLIT-AT-EITHER-KEYWORD 0= 0= ;
+
+With both alternatives identical the underlying word can only ever
+answer 0 or 1, so `0= 0=` is just that normalized to this word's own
+-1/0 convention. `SAK-KW-ADDR`/`SAK-KW-LEN` existed only for the old
+implementation and are gone.
+
+`shell.4` is 3997 lines, down from 4072, while gaining 32 locals
+declarations - so the real reduction in logic is larger than the 75
+lines net.
+
+### A hidden blocker found in the acceptance criterion itself
+
+While checking whether the two "Redefining:" lines `locals.4` adds to
+startup would disturb the harnesses, something more important
+surfaced. `tests/mrsh-suite/run.sh`'s differential tests require
+`relfsh`'s stdout to match `bash`'s **byte for byte**. But `relfsh`
+emits `relf`'s own boot output first:
+
+    $ relfsh /tmp/t.sh          $ bash /tmp/t.sh
+    Welcome to Forth \r\n       hello\n
+    OK\r\n
+    hello\n
+
+Both lines come from `kernel.4` (the banner at load, `OK` from
+`QUIT`'s interpreter loop), so they are baked into the committed
+`kernel.img`. **No differential test can pass while they are there,
+regardless of what `shell.4` implements.** That has been true since
+the suite was adopted in Iteration 14.
+
+Before acting on it, this was measured rather than assumed: every
+vendored differential test was re-run with the fixed boot prefix
+stripped from `relfsh`'s output. **Zero would pass.** So the banner is
+a latent blocker, not the binding one - today's failures are genuine
+feature gaps, and removing the banner right now would change the count
+by nothing. Deliberately left alone: fixing it means changing
+`kernel.4` and regenerating the committed `kernel.img`, which deserves
+its own iteration and its own decision, not a drive-by in the middle
+of a refactor. Recorded in `GOALS.md` so the acceptance number is read
+honestly - the count cannot rise above the 2 status-only conformance
+tests until this is dealt with.
+
+### A marginal test timeout, raised after measuring rather than guessing
+
+`tests/run_tests.sh` capped the shell suite at `timeout 60`. It began
+failing at exit 124. The obvious suspicion was that locals' save/restore
+had slowed the shell down - `STR=` and `COPY-ARGV` are called
+constantly.
+
+Measured instead: 59.272s with the conversion, 59.256s with it stashed
+out entirely. The conversion costs nothing detectable, because the
+suite's runtime is dominated by forking a real process per assertion,
+not by anything inside `shell.4`. The 60s limit had simply always been
+about a second away from failing on this machine. Raised to 180s, with
+the measurement recorded in the comment there so the next person
+doesn't have to redo it.
+
+### Verified
+
+1991 OK markers and 251 shell assertions, all passing, on **both**
+8-byte and 4-byte (i386) cell widths. mrsh-suite unchanged at 0 passed,
+21 failed, 3 skipped, as expected for a behavior-preserving refactor.
+
+### What this iteration deliberately did NOT do
+
+- **`while`/`for` still don't nest, and this could not have fixed
+  them.** Their state is `WHILE-BODY-BUF`, a fixed 4096-byte *buffer*,
+  not a cell - and a local saves and restores one cell. Making loop
+  bodies per-invocation needs the buffer to become a pointer into an
+  arena, so that the *pointer* is what locals save. That is a genuine
+  design change to how loop bodies are stored, and it is the natural
+  next iteration now that the tool exists. Same for `CASE-WORD-BUF`,
+  `FUNC-BODIES`, `ARITH-BUF` and the other fixed buffers.
+- **The remaining ~150 globals are untouched.** What is converted here
+  is every word whose scratch is genuinely cell-sized and whose
+  conversion is mechanical. The rest are either real global state
+  (`ARGC`, `LAST-STATUS`, `SUPPRESS-EXEC?`, the shell-variable and
+  function tables) or buffer-backed.
+- **No `forth` builtin yet.** It belongs after `DISPATCH` becomes
+  table-driven - adding one more hand-written `S" name" ARGV @ STR0=`
+  comparison to a chain that is about to be replaced means writing it
+  twice. See GOALS.md's named-locals section for the ordering.
+- **The two "Redefining:" lines are still printed at startup.** Bundled
+  with the banner problem above rather than fixed separately, since
+  both are the same question about `relfsh`'s stdout hygiene.

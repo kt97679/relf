@@ -74,8 +74,15 @@ run_shell_test_suite() {
     # overridden so the same wrapper script drives either cell width.
     local engine="$1" image="$2" label="$3"
     local output status
+    # 180s, not 60s: the shell suite forks a real process per assertion
+    # (relfsh itself, plus whatever external command each test runs), so
+    # its runtime is dominated by fork/exec, not by anything shell.4 does.
+    # It measured 59.3s on the machine this was raised on - close enough
+    # to the old 60s limit to fail intermittently for no real reason.
+    # Confirmed unrelated to Iteration 39's locals conversion: timed at
+    # 59.3s both with the conversion and with it stashed out entirely.
     output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/relfsh" \
-        timeout 60 tests/shell/run-all 2>&1)
+        timeout 180 tests/shell/run-all 2>&1)
     status=$?
     echo "$output"
     if [ "$status" -ne 0 ]; then

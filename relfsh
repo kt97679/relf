@@ -44,14 +44,14 @@ if [ -n "$1" ]; then
     # it would sit blocked waiting for EOF on relfsh's own stdin even
     # after relf itself has already exited, hanging the whole pipeline
     # under `timeout` or any caller that doesn't close its stdin.
-    printf 'S" %s/shell.4" INCLUDED\nMAIN\n' "$DIR" | exec "$RELF_BIN" "$RELF_IMG" "$@"
+    printf 'S" %s/locals.4" INCLUDED\nS" %s/shell.4" INCLUDED\nMAIN\n' "$DIR" "$DIR" | exec "$RELF_BIN" "$RELF_IMG" "$@"
 else
     # Interactive or piped-script mode: SH keeps reading lines from
     # stdin after the bootstrap, so chain the caller's own stdin on
     # afterward via `cat` rather than letting the bootstrap's pipe
     # consume/close it.
     {
-        printf 'S" %s/shell.4" INCLUDED\nMAIN\n' "$DIR"
+        printf 'S" %s/locals.4" INCLUDED\nS" %s/shell.4" INCLUDED\nMAIN\n' "$DIR" "$DIR"
         cat
     } | exec "$RELF_BIN" "$RELF_IMG" "$@"
 fi

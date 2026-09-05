@@ -181,6 +181,27 @@ uses only what the kernel already exposes. That was a deliberate
 constraint given this file's own warning about `cross.4`'s hand-embedded
 primitive-dispatch token numbers.
 
+**In use since Iteration 39**: `relfsh` loads `locals.4` ahead of
+`shell.4`, and 31 words are converted. The dynamic-scoping property
+earned its keep immediately - words like `GLOB-MATCH` share their
+scratch with helper words (`BRACKET-END`, `GLOB-CHAR-MATCHES?`), and
+the six `SPLIT-*`/`PARSE-REDIRECTIONS` words share the `PR-I` cursor
+with the `AT-*?` predicates; because a local *is* the variable, every
+one of those helpers kept working untouched, where a conventional
+locals frame would have forced rewriting them all to take parameters.
+Locals also made two real deduplications comfortable: four
+near-identical prefix/suffix searchers became one six-argument
+`FIND-TRIM-LEN`, and `SPLIT-AT-KEYWORD` collapsed into a two-line
+wrapper over `SPLIT-AT-EITHER-KEYWORD`.
+
+**What locals cannot fix, and what comes next.** A local saves and
+restores one *cell*. `while`/`for` bodies live in `WHILE-BODY-BUF`, a
+fixed 4096-byte *buffer*, which is why they still don't nest. The
+route to nesting is to make those buffers pointers into an arena so
+the pointer is what locals save - a real design change to how loop
+bodies are stored, and the natural next step. The same applies to
+`CASE-WORD-BUF`, `FUNC-BODIES` and `ARITH-BUF`.
+
 Documented scope limits: a local must already be a defined `VARIABLE`
 (so converting `shell.4` makes its globals re-entrant without reducing
 their count); one physical line per declaration; 16 locals per
@@ -278,6 +299,23 @@ is `INCLUDED` into an unknown session must not inherit the caller's
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
    and currently reports **0 passed, 21 failed, 3 skipped**.
+
+   **A structural blocker sits underneath that number, found in
+   Iteration 39.** The 18 differential tests compare `relfsh`'s stdout
+   against `bash`'s *byte for byte*, but `relfsh` emits `relf`'s own
+   boot output first - `Welcome to Forth` (printed at image load) and
+   `OK` (from `QUIT`'s interpreter loop), both from `kernel.4` and so
+   baked into the committed `kernel.img`. **No differential test can
+   pass while those are there, however complete `shell.4` becomes.**
+   This was measured, not assumed: re-running every vendored test with
+   the boot prefix stripped still yields zero passes, so today's
+   failures are genuine feature gaps and the banner is a *latent*
+   blocker rather than the binding one. But it must be cleared before
+   the count can ever rise above the 2 status-only `.fail.sh`
+   conformance tests. Doing so means editing `kernel.4` and
+   regenerating `kernel.img`; that deserves its own iteration. The
+   two `Redefining:` lines `locals.4` adds at startup are the same
+   question and should be handled together.
 
    That number has moved exactly three times, and never yet because a
    `shell.4` feature carried a vendored test file across the line:

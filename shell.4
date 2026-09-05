@@ -224,9 +224,8 @@ VARIABLE SEQ-BLEN
 VARIABLE SEQ-I
 
 : STR= ( c-addr1 u1 c-addr2 u2 --- f )
-  SEQ-BLEN ! SEQ-B ! SEQ-ALEN ! SEQ-A !
+  {: SEQ-A SEQ-ALEN SEQ-B SEQ-BLEN | SEQ-I :}
   SEQ-ALEN @ SEQ-BLEN @ <> IF 0 EXIT THEN
-  0 SEQ-I !
   BEGIN SEQ-I @ SEQ-ALEN @ < WHILE
     SEQ-A @ SEQ-I @ + C@
     SEQ-B @ SEQ-I @ + C@
@@ -260,7 +259,7 @@ VARIABLE SCN-MAX
   \ truncating or overflowing a fixed-size slot. Explicit variables
   \ rather than stack-juggling for all four arguments, matching this
   \ shell's own established preference (see e.g. CMDSUB-* words).
-  SCN-MAX ! SCN-DEST ! SCN-LEN ! SCN-SRC !
+  {: SCN-SRC SCN-LEN SCN-DEST SCN-MAX :}
   SCN-LEN @ 1+ SCN-MAX @ > IF 0 EXIT THEN
   SCN-SRC @ SCN-DEST @ SCN-LEN @ MOVE
   0 SCN-DEST @ SCN-LEN @ + C!
@@ -274,7 +273,7 @@ VARIABLE SCC-MAX
   \ Same as SAFE-COPY-NUL, but src-addr is already a NUL-terminated
   \ C string (its own length is computed here) rather than a
   \ separately-given (addr u) pair.
-  SCC-MAX ! SCC-DEST ! SCC-SRC !
+  {: SCC-SRC SCC-DEST SCC-MAX :}
   SCC-SRC @ SCC-SRC @ CSTRLEN SCC-DEST @ SCC-MAX @ SAFE-COPY-NUL ;
 
 \ ==================================================================
@@ -306,7 +305,7 @@ VARIABLE FS-I
 
 : FIND-SHVAR ( name-addr --- i | -1 )  \ linear scan; name-addr is a
                                          \ NUL-terminated C string.
-  0 FS-I !
+  {: | FS-I :}
   BEGIN FS-I @ SHVAR-COUNT @ < WHILE
     DUP FS-I @ SHVAR-NAME-SLOT CSTR= IF
       DROP FS-I @ EXIT
@@ -350,7 +349,7 @@ VARIABLE SV-IDX
                                             \ by testing directly: the
                                             \ name and value slots came
                                             \ out swapped).
-  SV-VALUE ! SV-NAME !
+  {: SV-NAME SV-VALUE | SV-IDX :}
   SV-NAME @ FIND-SHVAR
   DUP -1 = IF
     DROP
@@ -435,7 +434,7 @@ VARIABLE SPP-I
   \ name itself) - called by RUN-FUNC-BODY right as a function call
   \ begins, while the global ARGV still holds the calling line (before
   \ the function's own first body line is replayed and overwrites it).
-  0 SPP-I !
+  {: | SPP-I :}
   BEGIN
     SPP-I @ 1+ ARGC @ <
     SPP-I @ MAX-POS-PARAMS < AND
@@ -456,7 +455,7 @@ VARIABLE SPFSA-I
   \ script from the very start, without needing an explicit "set"
   \ call. Called once, from the top-level dispatch, right before
   \ SH-FILE runs the script.
-  0 SPFSA-I !
+  {: | SPFSA-I :}
   BEGIN
     SPFSA-I @ 1+ SYS-ARGC <
     SPFSA-I @ MAX-POS-PARAMS < AND
@@ -472,14 +471,14 @@ VARIABLE SPFSA-I
 VARIABLE SPPD-DEPTH
 
 : SAVE-POS-PARAMS ( depth --- )
-  DUP SPPD-DEPTH !
-  POS-PARAMS-SAVE-SLOT
+  {: SPPD-DEPTH :}
+  SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT
   POS-PARAMS SWAP MAX-POS-PARAMS POS-PARAM-MAX * MOVE
   SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT POS-PARAM-COUNT @ SWAP ! ;
 
 : RESTORE-POS-PARAMS ( depth --- )
-  DUP SPPD-DEPTH !
-  POS-PARAMS-SAVE-SLOT POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * MOVE
+  {: SPPD-DEPTH :}
+  SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * MOVE
   SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT @ POS-PARAM-COUNT ! ;
 
 \ ==================================================================
@@ -784,7 +783,7 @@ VARIABLE CMDSUB-PID
   \ Reads everything available from fd into CMDSUB-OUT-BUF, up to its
   \ fixed capacity - output beyond that is silently truncated rather
   \ than overflowing the buffer.
-  CS-FD !
+  {: CS-FD :}
   0 CMDSUB-OUT-LEN !
   BEGIN
     CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ - 0 >
@@ -823,6 +822,7 @@ VARIABLE ER-I
   \ rather than a crash, matching this shell's own "never corrupt
   \ memory, an occasional stale result is an acceptable fallback"
   \ priority elsewhere.
+  {: | ER-SHIFT ER-I :}
   TOK-OUT @ + TOK-POS @ -
   DUP 0 > IF
     ER-SHIFT !
@@ -1192,7 +1192,7 @@ VARIABLE EAP-I
   \ Emits every positional parameter, space-separated - the shared
   \ implementation for both $@ and $* (see EXPAND-VAR's own comment on
   \ why they're not yet distinguished).
-  0 EAP-I !
+  {: | EAP-I :}
   BEGIN EAP-I @ POS-PARAM-COUNT @ < WHILE
     EAP-I @ 0 > IF 32 EMIT-EXPANDED-CHAR THEN
     EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
@@ -1615,9 +1615,9 @@ VARIABLE REDIR-APPEND-FILE  ( c-addr, or 0 for none - ">>" append )
 VARIABLE PR-I
 
 : PARSE-REDIRECTIONS ( --- )
+  {: | PR-I :}
   0 REDIR-IN-FILE !  0 REDIR-OUT-FILE !  0 REDIR-APPEND-FILE !
   0 ARGC2 !
-  0 PR-I !
   BEGIN PR-I @ ARGC @ < WHILE
     PR-I @ ARGV@ DUP CSTRLEN
     2DUP S" <" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
@@ -1842,8 +1842,7 @@ VARIABLE FF-I
                                         \ actually a defined function
                                         \ before falling through to a
                                         \ builtin or external command.
-  FF-NAME !
-  0 FF-I !
+  {: FF-NAME | FF-I :}
   BEGIN FF-I @ FUNC-COUNT @ < WHILE
     FF-I @ FUNC-NAME-SLOT FF-NAME @ CSTR= IF FF-I @ EXIT THEN
     FF-I @ 1+ FF-I !
@@ -1902,7 +1901,7 @@ VARIABLE TEST-A
 VARIABLE TEST-B
 
 : TEST-BINARY? ( a-addr op-addr b-addr --- f )
-  TEST-B ! TEST-OP ! TEST-A !
+  {: TEST-A TEST-OP TEST-B :}
   S" ="   TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= EXIT THEN
   S" !="  TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= 0= EXIT THEN
   S" -eq" TEST-OP @ STR0= IF
@@ -1932,7 +1931,7 @@ VARIABLE TEST-U-OPERAND
   \ -f/-d are approximated as "does this path exist at all" (same as
   \ -e) - this kernel has no real stat/access primitive to actually
   \ distinguish a regular file from a directory, only OPEN-FILE.
-  TEST-U-OPERAND ! TEST-U-OP !
+  {: TEST-U-OP TEST-U-OPERAND :}
   S" -z" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= EXIT THEN
   S" -n" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= 0= EXIT THEN
   S" -e" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
@@ -2137,7 +2136,7 @@ VARIABLE ARGC-SEMI-REST
                           \ REST/ARGQ-SEMI-REST - either can be empty,
                           \ e.g. a leading or trailing ';'), 0
                           \ otherwise (nothing touched).
-  0 PR-I !
+  {: | PR-I :}
   0 ARGC-SEMI-LEFT !
   BEGIN AT-END? AT-SEMI? OR 0= WHILE
     PR-I @ ARGV@ ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
@@ -2164,9 +2163,9 @@ VARIABLE ARGC-SEMI-REST
   PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
 
 : SPLIT-PIPE ( --- )
+  {: | PR-I :}
   0 PIPE-PRESENT? !
   0 ARGC-L !  0 ARGC-R !
-  0 PR-I !
   BEGIN AT-END? AT-PIPE? OR 0= WHILE
     PR-I @ ARGV@ ARGV-L ARGC-L @ CELLS + !
     ARGC-L @ 1+ ARGC-L !
@@ -2188,7 +2187,7 @@ VARIABLE CA-SRC
 VARIABLE CA-N
 
 : COPY-ARGV ( src-argv src-argc --- )  \ overwrite the global ARGV/ARGC
-  CA-N !  CA-SRC !
+  {: CA-SRC CA-N :}
   CA-N @ ARGC !
   \ CA-N can be 0 (e.g. an empty pipeline segment), guarded for the
   \ same reason as HAS-SLASH?/B-STR/DO-EXPORT above - nothing else is
@@ -2219,7 +2218,7 @@ VARIABLE CAQ-N
   \ the original, unsplit line). Used by SPLIT-SEMI/SPLIT-ANDOR's own
   \ callers instead of plain COPY-ARGV wherever the copied-in segment
   \ might need its own further ';'/'&&'/'||' recognized correctly.
-  CAQ-N ! CAQ-ARGQ ! CAQ-ARGV !
+  {: CAQ-ARGV CAQ-ARGQ CAQ-N :}
   CAQ-N @ 0 > IF
     CAQ-N @ 0 DO
       CAQ-ARGQ @ I + C@ ARGV-QUOTED I + C!
@@ -2323,7 +2322,7 @@ VARIABLE AO-CONTINUE
                           \ ARGC-AO-REST/ARGQ-AO-REST. f = 0 if
                           \ neither was found at all (nothing touched
                           \ except ARGC-AO-LEFT, harmlessly reset).
-  0 PR-I !
+  {: | PR-I :}
   0 ARGC-AO-LEFT !
   BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
     PR-I @ ARGV@ ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
@@ -2527,6 +2526,7 @@ VARIABLE GROUP-PID
   \ (f = 0, an unterminated group), nothing is touched - not yet
   \ reported as an error, matching this shell's sparse error handling
   \ elsewhere.
+  {: | PR-I :}
   1 PR-I !
   0 ARGC-GROUP-BODY !
   BEGIN AT-END? AT-CLOSE-PAREN? OR 0= WHILE
@@ -2539,6 +2539,7 @@ VARIABLE GROUP-PID
   -1 ;
 
 : SPLIT-GROUP-BRACE ( --- f )  \ same as SPLIT-GROUP-PAREN, for "{"/"}"
+  {: | PR-I :}
   1 PR-I !
   0 ARGC-GROUP-BODY !
   BEGIN AT-END? AT-CLOSE-BRACE? OR 0= WHILE
@@ -2841,13 +2842,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
                                       \ the caller copies it back.
-  NORM-U !
-  0 NORM-LEN !
-  0 NORM-IN-SQ? !
-  0 NORM-IN-DQ? !
-  0 NORM-IN-ARITH? !
-  0 NORM-ARITH-DEPTH !
-  0 NORM-I !
+  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-I NORM-C :}
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
@@ -2991,59 +2986,11 @@ VARIABLE PENDING-REMAINDER?
   THEN ;
 
 VARIABLE SAK-I
-VARIABLE SAK-KW-ADDR
-VARIABLE SAK-KW-LEN
 VARIABLE SAK-J
 
 VARIABLE SAEK-DEPTH
 VARIABLE SAEK-WHICH
 
-: SPLIT-AT-KEYWORD ( c-addr u --- f )
-  \ Tracks nesting depth via unquoted "if"/"fi" tokens encountered
-  \ along the way, so a *nested* if's own "fi" (or whatever else this
-  \ is searching for, if it happens to also appear inside a nested
-  \ if's own span) is correctly skipped over rather than being
-  \ mistaken for this (outer) if's own - found by testing a same-line
-  \ nested if/then/else/fi directly, where the naive, non-depth-aware
-  \ version found the *inner* if's own "fi" first and treated
-  \ everything up to it (including the outer's real "else") as if it
-  \ were ordinary body text.
-  SAK-KW-LEN ! SAK-KW-ADDR !
-  0 SAEK-DEPTH !
-  0 SAK-I !
-  BEGIN SAK-I @ ARGC @ < WHILE
-    0 SAEK-WHICH !
-    SAK-I @ ARGV-QUOTED@ 0= IF
-      SAK-I @ ARGV@ DUP CSTRLEN S" if" STR= IF
-        SAEK-DEPTH @ 1+ SAEK-DEPTH !
-      ELSE
-        SAEK-DEPTH @ 0 = IF
-          SAK-I @ ARGV@ DUP CSTRLEN SAK-KW-ADDR @ SAK-KW-LEN @ STR=
-          IF -1 SAEK-WHICH ! THEN
-        ELSE
-          SAK-I @ ARGV@ DUP CSTRLEN S" fi" STR= IF
-            SAEK-DEPTH @ 1- SAEK-DEPTH !
-          THEN
-        THEN
-      THEN
-    THEN
-    SAEK-WHICH @ 0 <> IF
-      0 ARGC-PENDING !
-      SAK-I @ 1+ SAK-J !
-      BEGIN SAK-J @ ARGC @ < WHILE
-        SAK-J @ ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
-        ARGC-PENDING @ 1+ ARGC-PENDING !
-        SAK-J @ 1+ SAK-J !
-      REPEAT
-      0 ARGV-PENDING ARGC-PENDING @ CELLS + !
-      -1 PENDING-REMAINDER? !
-      SAK-I @ ARGC !
-      0 ARGV SAK-I @ CELLS + !
-      -1 EXIT
-    THEN
-    SAK-I @ 1+ SAK-I !
-  REPEAT
-  0 ;
 
 VARIABLE SAEK-KW1-ADDR
 VARIABLE SAEK-KW1-LEN
@@ -3063,9 +3010,7 @@ VARIABLE SAEK-KW2-LEN
   \ a real "else" in between as if it were ordinary body text (found
   \ by testing this exact case directly: both branches of an if/else
   \ on one line silently failed to run at all).
-  SAEK-KW2-LEN ! SAEK-KW2-ADDR ! SAEK-KW1-LEN ! SAEK-KW1-ADDR !
-  0 SAEK-DEPTH !
-  0 SAK-I !
+  {: SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH :}
   BEGIN SAK-I @ ARGC @ < WHILE
     0 SAEK-WHICH !
     SAK-I @ ARGV-QUOTED@ 0= IF
@@ -3103,6 +3048,19 @@ VARIABLE SAEK-KW2-LEN
     SAK-I @ 1+ SAK-I !
   REPEAT
   0 ;
+
+: SPLIT-AT-KEYWORD ( c-addr u --- f )
+  \ The one-keyword case of SPLIT-AT-EITHER-KEYWORD above, which it
+  \ now simply defers to by passing the same keyword as both
+  \ alternatives - the two words previously carried ~35 lines of
+  \ identical scanning, splitting and if/fi depth-tracking logic
+  \ between them. f = -1 if the keyword was found (ARGV truncated to
+  \ what came before it, everything after it left in
+  \ ARGV-PENDING/PENDING-REMAINDER? for READ-NEXT-LOGICAL-LINE), 0 if
+  \ not (nothing touched). With both alternatives identical the
+  \ underlying word can only ever answer 0 or 1, so 0= 0= is just
+  \ that normalized to this word's own -1/0 convention.
+  2DUP SPLIT-AT-EITHER-KEYWORD 0= 0= ;
 
 VARIABLE COND-TRUE?
 
@@ -3595,9 +3553,8 @@ VARIABLE BM-MATCHED?
   \ a member of this set - a leading '!'/'^' negates the whole result,
   \ and "x-y" (three characters, a literal '-' in the middle) is a
   \ range rather than three separate members.
-  BM-CHAR ! BM-END ! 1+ BM-I !
-  0 BM-NEG? !
-  0 BM-MATCHED? !
+  {: BM-I BM-END BM-CHAR | BM-NEG? BM-MATCHED? :}
+  BM-I @ 1+ BM-I !
   BM-I @ GM-PATTERN @ + C@ 33 = BM-I @ GM-PATTERN @ + C@ 94 = OR IF
     -1 BM-NEG? !
     BM-I @ 1+ BM-I !
@@ -3629,7 +3586,7 @@ VARIABLE GCM-BEND
   \ pattern scanning next, regardless of match/no-match - a bracket
   \ expression can span many pattern characters, unlike '?' or a
   \ literal, which only ever advance by one.
-  GCM-CHAR ! GCM-P !
+  {: GCM-P GCM-CHAR | GCM-BEND :}
   GCM-P @ GM-PATTERN @ + C@
   DUP 63 = IF
     DROP
@@ -3646,10 +3603,7 @@ VARIABLE GCM-BEND
   THEN ;
 
 : GLOB-MATCH ( pattern-addr pattern-len text-addr text-len --- f )
-  GM-TLEN ! GM-TEXT ! GM-PLEN ! GM-PATTERN !
-  0 GM-S !
-  0 GM-P !
-  0 GM-HAS-STAR? !
+  {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S GM-STAR-P GM-STAR-S GM-HAS-STAR? :}
   BEGIN GM-S @ GM-TLEN @ < WHILE
     GM-P @ GM-PLEN @ < IF
       GM-P @ GM-PATTERN @ + C@ 42 =
@@ -3703,71 +3657,44 @@ VARIABLE FPM-PAT-ADDR
 VARIABLE FPM-PAT-LEN
 VARIABLE FPM-VAL-ADDR
 VARIABLE FPM-VAL-LEN
+VARIABLE FPM-SUFFIX?
+VARIABLE FPM-LONGEST?
 VARIABLE FPM-I
 
-: FIND-SHORTEST-PREFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
-  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
-  0 FPM-I !
-  BEGIN
-    FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH 0=
-    FPM-I @ FPM-VAL-LEN @ < AND
-  WHILE
-    FPM-I @ 1+ FPM-I !
-  REPEAT
-  FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH IF
-    FPM-I @
+: FPM-CANDIDATE ( --- c-addr u )
+  \ The candidate substring of the value that is FPM-I characters long:
+  \ its first FPM-I characters when trimming a prefix, its last FPM-I
+  \ when trimming a suffix. Reads FIND-TRIM-LEN's own locals, which
+  \ hold this invocation's values for as long as the call is running.
+  FPM-SUFFIX? @ IF
+    FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - +
   ELSE
-    -1
-  THEN ;
+    FPM-VAL-ADDR @
+  THEN
+  FPM-I @ ;
 
-: FIND-LONGEST-PREFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
-  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
-  FPM-VAL-LEN @ FPM-I !
-  BEGIN
-    FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH 0=
-    FPM-I @ 0 > AND
-  WHILE
-    FPM-I @ 1- FPM-I !
-  REPEAT
-  FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-VAL-ADDR @ FPM-I @ GLOB-MATCH IF
-    FPM-I @
-  ELSE
-    -1
-  THEN ;
+: FPM-MATCHES? ( --- f )
+  FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-CANDIDATE GLOB-MATCH ;
 
-: FIND-SHORTEST-SUFFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
-  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
-  0 FPM-I !
+: FIND-TRIM-LEN ( pat-addr pat-len val-addr val-len suffix? longest? --- match-len | -1 )
+  \ One word replacing what were four near-identical ones
+  \ (FIND-SHORTEST/LONGEST-PREFIX/SUFFIX-LEN). They only ever differed
+  \ in two things: which end of the value the candidate is taken from,
+  \ and whether candidate lengths are tried upward from 0 or downward
+  \ from the full length. Both are now parameters. Returns the length
+  \ of the first candidate GLOB-MATCH accepts, or -1 if no length
+  \ matches at all - including 0 and the full value length - in which
+  \ case POSIX says the value is emitted unchanged.
+  {: FPM-PAT-ADDR FPM-PAT-LEN FPM-VAL-ADDR FPM-VAL-LEN FPM-SUFFIX? FPM-LONGEST? | FPM-I :}
+  FPM-LONGEST? @ IF FPM-VAL-LEN @ FPM-I ! THEN
   BEGIN
-    FPM-PAT-ADDR @ FPM-PAT-LEN @
-    FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH 0=
-    FPM-I @ FPM-VAL-LEN @ < AND
+    FPM-MATCHES? 0=
+    FPM-LONGEST? @ IF FPM-I @ 0 > ELSE FPM-I @ FPM-VAL-LEN @ < THEN
+    AND
   WHILE
-    FPM-I @ 1+ FPM-I !
+    FPM-LONGEST? @ IF FPM-I @ 1- ELSE FPM-I @ 1+ THEN FPM-I !
   REPEAT
-  FPM-PAT-ADDR @ FPM-PAT-LEN @
-  FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH IF
-    FPM-I @
-  ELSE
-    -1
-  THEN ;
-
-: FIND-LONGEST-SUFFIX-LEN ( pattern-addr pattern-len value-addr value-len --- match-len | -1 )
-  FPM-VAL-LEN ! FPM-VAL-ADDR ! FPM-PAT-LEN ! FPM-PAT-ADDR !
-  FPM-VAL-LEN @ FPM-I !
-  BEGIN
-    FPM-PAT-ADDR @ FPM-PAT-LEN @
-    FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH 0=
-    FPM-I @ 0 > AND
-  WHILE
-    FPM-I @ 1- FPM-I !
-  REPEAT
-  FPM-PAT-ADDR @ FPM-PAT-LEN @
-  FPM-VAL-ADDR @ FPM-VAL-LEN @ FPM-I @ - + FPM-I @ GLOB-MATCH IF
-    FPM-I @
-  ELSE
-    -1
-  THEN ;
+  FPM-MATCHES? IF FPM-I @ ELSE -1 THEN ;
 
 : TYPE-N-TO-TOK ( addr n --- )
   \ Like TYPE0-TO-TOK, but for a known-length span rather than a
@@ -3789,15 +3716,12 @@ VARIABLE TP-MATCH-LEN
   \ EXPAND-BRACED-VAR before calling TRIM-PARAM-CALL) select which of
   \ the four removal modes applies. An unset variable expands to
   \ empty (nothing to trim).
+  {: | TP-VAL-ADDR TP-VAL-LEN TP-MATCH-LEN :}
   VARNAME-BUF LOOKUP-VAR
   DUP 0= IF DROP EXIT THEN
   DUP CSTRLEN TP-VAL-LEN ! TP-VAL-ADDR !
   PEWORD-BUF PEWORD-LEN @ TP-VAL-ADDR @ TP-VAL-LEN @
-  PEW-SUFFIX? @ IF
-    PEW-LONGEST? @ IF FIND-LONGEST-SUFFIX-LEN ELSE FIND-SHORTEST-SUFFIX-LEN THEN
-  ELSE
-    PEW-LONGEST? @ IF FIND-LONGEST-PREFIX-LEN ELSE FIND-SHORTEST-PREFIX-LEN THEN
-  THEN
+  PEW-SUFFIX? @ PEW-LONGEST? @ FIND-TRIM-LEN
   TP-MATCH-LEN !
   TP-MATCH-LEN @ -1 = IF
     TP-VAL-LEN @ ENSURE-ROOM
@@ -3849,7 +3773,7 @@ VARIABLE CASE-MATCHED?
   DUP 0 > IF 1- THEN
   DUP CASE-PATLAST-LEN !
   CASE-PATLAST-BUF 256 SAFE-COPY-NUL DROP
-  0 CA-I !
+  {: | CA-I :}
   BEGIN CA-I @ ARGC @ < WHILE
     CA-I @ ARGV-QUOTED@ 0= IF
       CA-I @ ARGV@ DUP CSTRLEN S" |" STR=
@@ -3911,6 +3835,7 @@ VARIABLE FD-LEN
                              \ header - unquoted, at least 3 characters
                              \ (a 1-character name plus "()"), and
                              \ ending in "()"?
+  {: | FD-ADDR FD-LEN :}
   ARGC @ 0 = IF 0 EXIT THEN
   0 ARGV-QUOTED@ IF 0 EXIT THEN
   0 ARGV@ FD-ADDR !
