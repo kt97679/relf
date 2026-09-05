@@ -35,7 +35,7 @@ case "$last_line" in
         ;;
 esac
 
-out=$(printf 'export PIPECHAR=|\necho a $PIPECHAR b\nexit\n' | "$THIS_SH" 2>&1)
+out=$(printf "export PIPECHAR='|'\necho a \$PIPECHAR b\nexit\n" | "$THIS_SH" 2>&1)
 assert_output_contains "expansion result matching | is not treated as a pipe" "a | b" "$out"
 
 report

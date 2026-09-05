@@ -1824,6 +1824,137 @@ VARIABLE FOR-WORD-CUR
   RUN-SIMPLE-OR-PIPELINE ;
 ' RUN-TOKENIZED RUN-TOKENIZED-XT !
 
+\ ==================================================================
+\ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
+\ forms '&&', '||', '>>') are, in real POSIX shells, self-delimiting
+\ operator characters - "true;echo" and "a>file" parse correctly with
+\ no whitespace needed around the operator at all. Every operator
+\ this shell has implemented so far (Iterations 7, 18, 19) instead
+\ took the shortcut of requiring surrounding whitespace, a deliberate,
+\ consistently-documented scope limit - but re-reading mrsh's own test
+\ files directly showed this blocking real progress: "if true; then",
+\ "( echo hi )" written as "(echo hi)", and similar fused-operator
+\ style are the norm in real scripts, not the exception.
+\
+\ Rather than rewrite SCAN-TOKEN/TOKENIZE's own in-place compaction
+\ logic to recognize operators mid-scan (which turned out to risk a
+\ real hazard: an unquoted word's NUL-termination write lands exactly
+\ where a following fused operator character would sit, destroying it
+\ before it could ever be read as its own token), this runs as a
+\ pre-pass over the raw line text, inserting a literal space before
+\ and after every *unquoted* operator character found (tracking
+\ single/double quote state so an operator character *inside* a quote
+\ is left untouched - quoted operators are literal text, not
+\ operators, matching real shells) - "true;echo" becomes "true ; echo"
+\ before TOKENIZE (entirely unmodified) ever sees it. Re-normalizing
+\ an already-spaced-out operator is harmless (just adds a redundant
+\ extra space either side, which SKIP-WS already tolerates fine) -
+\ relevant since a while loop's condition gets re-tokenized fresh every
+\ iteration, and would otherwise go through this twice.
+\
+\ Deliberately out of scope for now: '(', ')', '{', '}'. Unlike the
+\ five operators above, blindly spacing every unquoted paren/brace
+\ would break $(...) command substitution outright - EXPAND-VAR's own
+\ detection needs "$(" with no space in between - and doing this
+\ correctly needs tracking "am I currently inside a $(...) construct"
+\ during this same pre-pass, which is real additional complexity left
+\ for its own future iteration rather than risking this one.
+\ ==================================================================
+
+: OP-CHAR? ( c --- f )
+  DUP 59 = IF DROP -1 EXIT THEN    ( ; )
+  DUP 124 = IF DROP -1 EXIT THEN   ( | )
+  DUP 38 = IF DROP -1 EXIT THEN    ( & )
+  DUP 60 = IF DROP -1 EXIT THEN    ( < )
+  DUP 62 = IF DROP -1 EXIT THEN    ( > )
+  DROP 0 ;
+
+: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, > - the three operator
+                                  \ characters with a two-character
+                                  \ doubled form (&&, ||, >>)
+  DUP 38 = IF DROP -1 EXIT THEN
+  DUP 124 = IF DROP -1 EXIT THEN
+  62 = ;
+
+512 CONSTANT NORM-MAX
+CREATE NORM-BUF NORM-MAX ALLOT
+VARIABLE NORM-LEN
+VARIABLE NORM-I
+VARIABLE NORM-U
+VARIABLE NORM-IN-SQ?
+VARIABLE NORM-IN-DQ?
+VARIABLE NORM-C
+
+: NORM-EMIT ( c --- )
+  NORM-LEN @ NORM-MAX 1- < IF
+    NORM-BUF NORM-LEN @ + C!
+    NORM-LEN @ 1+ NORM-LEN !
+  THEN ;
+
+: NORM-PEEK ( offset --- c )  \ byte at LINE-BUF[NORM-I + offset], or
+                                \ 0 if that would be beyond NORM-U
+  NORM-I @ + DUP NORM-U @ < IF
+    LINE-BUF SWAP + C@
+  ELSE
+    DROP 0
+  THEN ;
+
+: NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
+                                      \ result (u2 bytes) is in
+                                      \ NORM-BUF, not LINE-BUF itself -
+                                      \ the caller copies it back.
+  NORM-U !
+  0 NORM-LEN !
+  0 NORM-IN-SQ? !
+  0 NORM-IN-DQ? !
+  0 NORM-I !
+  BEGIN NORM-I @ NORM-U @ < WHILE
+    0 NORM-PEEK NORM-C !
+    NORM-IN-SQ? @ IF
+      NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-IN-DQ? @ IF
+      NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 39 = IF
+      -1 NORM-IN-SQ? !
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 34 = IF
+      -1 NORM-IN-DQ? !
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 92 = IF
+      ( a backslash outside quotes escapes the next character -
+        copied verbatim, including if it happens to be an operator
+        character, so it stays unspaced/literal like everywhere else
+        this shell already treats a backslash-escaped char )
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+      NORM-I @ NORM-U @ < IF
+        0 NORM-PEEK NORM-EMIT
+        NORM-I @ 1+ NORM-I !
+      THEN
+    ELSE NORM-C @ OP-CHAR? IF
+      32 NORM-EMIT
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+      NORM-C @ NORM-DOUBLED-OP? IF
+        0 NORM-PEEK NORM-C @ = IF
+          NORM-C @ NORM-EMIT
+          NORM-I @ 1+ NORM-I !
+        THEN
+      THEN
+      32 NORM-EMIT
+    ELSE
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    THEN THEN THEN THEN THEN THEN
+  REPEAT
+  NORM-LEN @ ;
+
 : RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
                         \ act on it via RUN-TOKENIZED.
                         \ Shared by the interactive loop (SH1) and -c
@@ -1833,10 +1964,23 @@ VARIABLE FOR-WORD-CUR
                         \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
                         \ redirect the builtin's own output in v0.2.
                         \ Also stashes a raw copy, same reason as
-                        \ READ-LINE-INTO-ARGV above.
+                        \ READ-LINE-INTO-ARGV above - taken *before*
+                        \ operator normalization, so it holds the
+                        \ line exactly as given, unmodified.
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  TOKENIZE
+  NORMALIZE-OPERATORS
+  DUP LINE-MAX < IF
+    DUP NORM-BUF LINE-BUF ROT MOVE
+    TOKENIZE
+  ELSE
+    ( normalized text wouldn't fit LINE-BUF - fall back to tokenizing
+      the original, unmodified line: operators fused to adjacent text
+      won't be recognized in this rare case, matching the pre-existing
+      behavior rather than truncating or corrupting anything )
+    DROP
+    RAW-LINE-LEN @ TOKENIZE
+  THEN
   RUN-TOKENIZED-CALL ;
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way
@@ -1880,10 +2024,11 @@ VARIABLE SHC-LEN
 
 : SH-C ( c-addr --- )  \ c-addr: a NUL-terminated command string (from
                         \ SYS-ARG). Runs it once and exits with its status -
-                        \ never returns. Only a single command, the same as
-                        \ any one line SH1 would read: no ";"/"&&" chaining,
-                        \ since TOKENIZE has no notion of a statement
-                        \ separator yet (see shell.4's own header comment).
+                        \ never returns. The same one logical line SH1
+                        \ would read - ';'/'&&'/'||' chaining all work
+                        \ (RUN-LINE/RUN-TOKENIZED handle those, not
+                        \ TOKENIZE itself), but no if/while/for, which
+                        \ need multiple lines.
   DUP CSTRLEN SHC-LEN !
   LINE-BUF SHC-LEN @ MOVE
   SHC-LEN @ RUN-LINE

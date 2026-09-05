@@ -1,0 +1,54 @@
+#!/bin/sh
+# run-operator-fusion - ';', '|', '&&', '||', '<', '>', '>>' are all
+# self-delimiting operator characters in real POSIX shells - "true;
+# echo" and "a>file" parse correctly with no whitespace needed around
+# the operator at all. A pre-pass (NORMALIZE-OPERATORS) inserts a
+# literal space before and after every *unquoted* occurrence of one of
+# these, before the existing, unmodified tokenizer ever sees the line
+# - so this is really testing that pre-pass, not new operator
+# semantics (those are already covered by run-semi/run-pipe/run-andor/
+# run-redirect). A quoted operator character stays untouched, matching
+# real shells (quoted operators are literal text).
+#
+# Deliberately not covered here: '(', ')', '{', '}' still require
+# surrounding whitespace (see shell.4's own comment on
+# NORMALIZE-OPERATORS for why - blindly spacing them would break
+# $(...) command substitution), and if/while/for's own then/do still
+# must be on their own separate line even now that a fused ';' before
+# them tokenizes correctly - DO-IF/DO-WHILE/DO-FOR only look for
+# then/do by reading a *new* line, not by checking the remainder of
+# the current line's ARGV. Both are real, separate, still-open items.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+out=$(printf 'echo a123;echo b123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "';' with no surrounding whitespace still separates commands" "a123
+b123" "$out"
+
+out=$(printf 'echo a123|cat\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "'|' with no surrounding whitespace still pipes" "a123" "$out"
+
+out=$(printf '/usr/bin/true&&echo yes123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "'&&' with no surrounding whitespace still chains conditionally" "yes123" "$out"
+
+out=$(printf '/usr/bin/false||echo yes456\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "'||' with no surrounding whitespace still chains conditionally" "yes456" "$out"
+
+TMP_FILE="/tmp/relf-run-operator-fusion-test-$$.txt"
+rm -f "$TMP_FILE"
+printf "echo hello789>%s\nexit\n" "$TMP_FILE" | "$THIS_SH" > /dev/null 2>&1
+assert_output_contains "'>' with no surrounding whitespace still redirects" "hello789" "$(cat "$TMP_FILE" 2>/dev/null)"
+rm -f "$TMP_FILE"
+
+out=$(printf 'echo a123;echo b123;echo c123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a longer chain of fused operators all separate correctly" "a123
+b123
+c123" "$out"
+
+out=$(printf "echo 'a;b|c'\nexit\n" | "$THIS_SH" 2>&1)
+assert_output_contains "a quoted operator-looking string is still untouched" "a;b|c" "$out"
+
+out=$(printf 'echo $(echo hi123)\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "\$(...) command substitution is unaffected (parens aren't normalized)" "hi123" "$out"
+
+report

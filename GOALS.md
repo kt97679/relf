@@ -236,14 +236,15 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 23's work — expected, since no
+   including after Iteration 17 through 24's work — expected, since no
    single vendored test file passes purely from variable assignment,
    `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
-   if-nesting, or `for` loops alone — the command-grouping item in
-   particular doesn't apply to mrsh's own tests at all yet, given the
-   whitespace-around-parens scope limit above, and `for.sh` needs
-   `do` on the same line as `for ... in ...` throughout, a scope limit
-   `for` shares with `if`/`while`).
+   if-nesting, `for` loops, or operator-fusion alone — the command-
+   grouping item in particular doesn't apply to mrsh's own tests at
+   all yet, given the whitespace-around-parens scope limit above, and
+   `for.sh`/`if.sh`/`loop.sh` still need `then`/`do` on the same line
+   as their own `if`/`while`/`for`, a gap operator-fusion (Iteration
+   24) exposed as separate and still open rather than closed).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -380,6 +381,30 @@ the full account and the fixes applied.
      left as its own, separate, still-open problem. **Phase B is now
      complete** apart from that one item and the `NAME=value command`
      temporary-assignment-prefix form noted above.
+   - **Foundational fix (Iteration 24, cuts across every phase):**
+     operators no longer require surrounding whitespace — `;`, `|`,
+     `&&`, `||`, `<`, `>`, `>>` are now self-delimiting (`"true;echo"`
+     and `"a>file"` parse correctly), matching real POSIX shells,
+     rather than needing whitespace on both sides as every earlier
+     operator implementation had shortcut-taken. Implemented as a
+     pre-pass over the raw line (`NORMALIZE-OPERATORS`, inserting
+     synthetic spaces around unquoted operators before the existing
+     tokenizer ever runs) rather than a `SCAN-TOKEN` rewrite, after
+     identifying a real hazard in the more obvious approach (an
+     unquoted word's own NUL-termination write lands exactly where a
+     fused operator would sit, destroying it before it could be read).
+     Deliberately still excludes `(`/`)`/`{`/`}` — blindly spacing
+     those would break `$(...)` command substitution outright; left
+     for its own future iteration. Surfaced a related, separate,
+     *still-open* gap rather than fixing it: `if true; then` still
+     doesn't work, since `DO-IF`/`DO-WHILE`/`DO-FOR` only look for
+     `then`/`do` by reading a *new* line, never by checking the
+     remainder of the current line's already-correctly-tokenized
+     `ARGV` — getting the tokenization right was necessary but not
+     sufficient. See `PROGRESS.md`'s Iteration 24 entry for the full
+     account, including a real regression this surfaced in an
+     *existing test* (not a shell bug — an unquoted `|` inside an
+     assignment value was never actually valid in real shells either).
    - **Phase C — control structures.**
      `for`/`in`/`do`/`done`: **done (Iteration 23)** — iterates its
      body once per word, expanded once at the `for ... in ...` line

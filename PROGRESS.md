@@ -2765,3 +2765,123 @@ own line" scope limit `if`/`while` already have, on top of the
 loop-body-can't-contain-if limitation above and `$IFS`-based field
 splitting (an explicit, longstanding non-goal) that several of its
 later sections depend on.
+
+## Iteration 24: operators no longer require surrounding whitespace
+
+Goal: the highest-leverage remaining gap identified while assessing
+distance to mrsh - every operator implemented so far (`|` from
+Iteration 7, `;`/`&&`/`||` from Iterations 18/19, `(`/`)`/`{`/`}` from
+Iteration 20) took the shortcut of requiring whitespace around it, a
+deliberate, consistently-documented scope limit at each step - but
+re-reading mrsh's own test files directly for the "how far to parity"
+assessment showed this blocking real progress on almost everything:
+`if true; then`, `(echo hi)`, and fused-operator style generally is
+the norm in real scripts, not the exception.
+
+### The hazard that ruled out the obvious approach
+
+The first design considered - making `SCAN-TOKEN` itself recognize an
+unquoted operator character as a token boundary, stopping mid-scan the
+way it already stops at whitespace - has a real hazard: for an
+unquoted word, `TOK-OUT` (the compaction write cursor) always
+coincides with `TOK-POS` by the time `SCAN-TOKEN` returns, so the
+existing NUL-termination write (`0 EMIT-TOK-CHAR`, right after
+`SCAN-TOKEN`, in `TOKENIZE`'s own outer loop) would land exactly on
+top of whatever character follows - destroying a fused operator
+character before the *next* tokenize iteration could ever read it to
+recognize it as its own token. Solving that properly (reading and
+remembering the operator *before* the destructive write) is
+substantially trickier and riskier than it first looks.
+
+### The approach taken instead: a pre-pass, not a tokenizer rewrite
+
+Rather than touch `SCAN-TOKEN`/`TOKENIZE`'s own proven, heavily-used
+in-place compaction logic at all, a new `NORMALIZE-OPERATORS` runs
+*before* `TOKENIZE` ever sees the line: it scans the raw text and
+inserts a literal space before and after every *unquoted* occurrence
+of `;`, `|`, `&`, `<`, `>` (recognizing the two-character doubled
+forms `&&`, `||`, `>>` specially, so they aren't mistaken for two
+separate one-character operators), tracking single/double-quote state
+so an operator character *inside* a quote is left untouched - matching
+real shells, where a quoted operator is literal text. "true;then"
+becomes "true ; then" before the existing, entirely-unmodified
+tokenizer ever sees it. Re-normalizing an already-spaced-out operator
+is harmless (redundant extra spaces, which `SKIP-WS` already
+tolerates) - relevant since a `while` loop's condition gets
+re-tokenized fresh every iteration and would otherwise pass through
+this twice. Wired into `RUN-LINE` (the single shared entry point for
+both interactive/piped-stdin and `-c` mode, since `SH-C` already routes
+through it - one comment fix along the way: `SH-C`'s own comment
+claiming no `;`/`&&` chaining was stale, left over from before
+Iterations 18/19 added those), writing the result into a separate,
+generously-sized `NORM-BUF` and copying it back into `LINE-BUF` (with
+a bounds check - if it wouldn't fit, falls back to tokenizing the
+original, un-normalized text rather than truncating or corrupting
+anything, an exceedingly rare case in practice).
+
+The core logic passed every test on the first attempt, verified via a
+standalone diagnostic (five hand-traced cases: `;`, a quoted `;`
+staying untouched, `&&`/`||`, `>`, `>>`) before ever being wired into
+`RUN-LINE` at all. Wiring it in did catch one real, self-inflicted
+stack bug immediately (an unconsumed leftover value from a `DUP` that
+should have been the sole input to the new normalization call) -
+caught by carefully re-deriving the stack trace by hand before testing
+further, not by a crash.
+
+### Deliberately out of scope: '(', ')', '{', '}'
+
+Unlike the five operators above, blindly spacing every unquoted
+paren/brace would break `$(...)` command substitution outright -
+`EXPAND-VAR`'s own detection needs `"$("` with no space in between.
+Doing this correctly needs tracking "am I currently inside a `$(...)`
+construct" during the same pre-pass, real additional complexity
+deliberately left for its own future iteration rather than risked
+here.
+
+### A real regression found in an *existing test*, not the shell itself
+
+Re-running the full shell suite surfaced one failure:
+`export PIPECHAR=|` (unquoted) no longer worked the way an existing
+Iteration-9-era test expected. Investigated rather than reverted:
+real POSIX shells *also* treat an unquoted `|` inside what looks like
+an assignment as a pipe operator, splitting `PIPECHAR=|` into an
+empty-valued assignment followed by a syntax error (a pipe with
+nothing after it) - `PIPECHAR=|` was never actually valid, unquoted,
+in a real shell either. The *old* behavior (silently treating it as
+part of the assignment's literal value) was itself the divergence from
+real shells; this iteration's fix incidentally corrected it. Confirmed
+directly that the properly-quoted form (`export PIPECHAR='|'`) still
+expands to a literal `|` that stays uninterpreted as an operator -
+the actual guarantee the test cares about - and updated the test to
+use that quoting, matching what a real script would actually need to
+write.
+
+### A related, separate gap this surfaced but does *not* fix
+
+`if true; then true; fi` still doesn't work, even though `;`/`then`
+now tokenize correctly as their own tokens - `DO-IF`/`DO-WHILE`/
+`DO-FOR` only ever look for `then`/`do` by reading a *new* line
+(`READ-LINE-INTO-ARGV`), never by checking whether the remainder of
+the *current* line's `ARGV` already has it. Getting `;`/operators
+right was a necessary but not sufficient condition - the control-
+structure words themselves would need a real redesign to also check
+same-line continuation before falling back to reading another line.
+Left as its own, separate, still-open item; not attempted here.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+`;`, `|`, `&&`, `||`, `>` all work correctly with zero surrounding
+whitespace, individually and chained (`echo a;echo b;echo c`, mixed
+`echo a|cat;echo b`); a quoted operator-looking string
+(`'a;b|c'`) stays untouched; `$(...)` command substitution is
+unaffected, as intended.
+
+`tests/shell/run-operator-fusion` (8 assertions) locks all of this
+in - 130 assertions across 21 files now, all passing on both x86-64
+and i386. `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3
+skipped - expected, since no single vendored test file passes from
+this alone (most also need `then`/`do` on the same line, which this
+doesn't fix, plus various other missing features) - but this removes
+a foundational parsing obstacle that was blocking progress on nearly
+every remaining test file, independent of which specific feature each
+one needs next.

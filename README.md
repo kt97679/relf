@@ -206,7 +206,17 @@ the previous one's exit status - left-associative, equal precedence
 for both, evaluated left to right, correctly carrying the "compound
 status so far" through a skipped segment ("a && b || c" runs b and
 skips c if a succeeds, but skips b and runs c if a fails) - tighter
-precedence than `;`, looser than `|`. `( list )` runs its body in a
+precedence than `;`, looser than `|`. None of these operators need
+surrounding whitespace to be recognized - "true;echo hi", "a|cat", and
+"echo a>file" all parse correctly with no spaces at all, matching real
+shells (a quoted operator character stays literal, as always) -
+though `if true; then` still doesn't work even so, since if/while/for
+only look for then/do by reading a *new* line, not by checking the
+remainder of the current line (a separate, still-open gap this
+surfaced rather than fixed - see PROGRESS.md's Iteration 24 entry).
+`( )`/`{ }` are the one exception still requiring surrounding
+whitespace, since spacing them out unconditionally would break
+$(...) command substitution. `( list )` runs its body in a
 forked subshell - cd/variable/export changes inside it don't affect
 this shell - while `{ list ; }` runs its body directly in this shell
 instead, so those changes do persist; both require whitespace around
@@ -237,7 +247,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 23 entries for the current state and what's planned next.
+through 24 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -249,7 +259,7 @@ target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A and phase B both done (modulo a couple of
 documented, still-open items within phase B), phase C underway - see
-PROGRESS.md's Iteration 14 through 23 entries).
+PROGRESS.md's Iteration 14 through 24 entries).
 
 5. Possible usage.
 
