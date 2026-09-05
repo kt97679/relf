@@ -507,6 +507,25 @@ VARIABLE TOK-END
 VARIABLE TOK-OUT
 VARIABLE TOK-WAS-QUOTED?
 CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
+CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
+                                          \ first character came from
+                                          \ inside a quote - used only
+                                          \ by TRY-ASSIGNMENT, to
+                                          \ reject a fully-quoted
+                                          \ 'NAME=value' (the name
+                                          \ itself quoted, not a real
+                                          \ assignment) while still
+                                          \ accepting NAME="value"
+                                          \ (only the value quoted, a
+                                          \ perfectly valid one).
+                                          \ Distinct from ARGV-QUOTED
+                                          \ itself, which records "was
+                                          \ ANY part of this token
+                                          \ quoted" - using that one
+                                          \ here would incorrectly
+                                          \ reject NAME="value" too,
+                                          \ since it can't distinguish
+                                          \ which part was quoted.
 
 : WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
 
@@ -567,6 +586,102 @@ VARIABLE DIGIT-N
                                  \ characters into the token being
                                  \ built - the expanded value, from GETENV
   BEGIN DUP C@ DUP WHILE EMIT-TOK-CHAR CHAR+ REPEAT 2DROP ;
+
+\ ==================================================================
+\ IFS field splitting: an *unquoted* $VAR/${...}/$(...)/$((...))
+\ expansion result is split into separate ARGV entries wherever a run
+\ of IFS whitespace appears within it - unlike a literal character
+\ copied straight from the input line, or one coming from inside
+\ double quotes (never split, matching POSIX). Scope limit: only
+\ space/tab are treated as IFS here - not yet a customizable $IFS
+\ shell variable, and not newline either (an embedded newline in an
+\ expansion result is left as an ordinary character for now). Whether
+\ TOK-WAS-QUOTED? is currently set is exactly the signal already
+\ available for "am I inside double quotes right now" (COPY-DOUBLE-
+\ QUOTED sets it before calling EXPAND-VAR for a $VAR within "..."),
+\ so no new quote-tracking is needed here at all.
+\ ==================================================================
+
+VARIABLE IFS-SPLIT-PENDING?  \ true once an IFS character has been
+                               \ seen but not yet resolved - the
+                               \ actual split is deferred until the
+                               \ next non-IFS character actually needs
+                               \ writing, so a run of trailing IFS
+                               \ whitespace (at the very end of the
+                               \ expansion, or the token) never
+                               \ produces a spurious empty trailing
+                               \ field, and multiple consecutive IFS
+                               \ characters collapse into a single
+                               \ split rather than several empty ones.
+VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
+                               \ syntactic double-quoted span - set (and
+                               \ later cleared) by COPY-DOUBLE-QUOTED
+                               \ itself around its own body. Distinct
+                               \ from TOK-WAS-QUOTED?, which EXPAND-VAR
+                               \ sets unconditionally for *every*
+                               \ expansion it performs (marking the
+                               \ result as "quoted" so it's never
+                               \ re-interpreted as an operator or
+                               \ keyword later, regardless of whether
+                               \ the expansion is syntactically inside
+                               \ real double quotes or bare/unquoted) -
+                               \ reusing that flag here would make
+                               \ EMIT-EXPANDED-CHAR think *every*
+                               \ expansion is quoted and never split
+                               \ anything at all (found as a real bug
+                               \ by testing directly: a bare, unquoted
+                               \ $x came out completely empty).
+
+: IFS-CHAR? ( c --- f )
+  DUP 32 = SWAP 9 = OR ;
+
+: IFS-SPLIT-HERE ( --- )
+  \ Finishes the current ARGV entry (NUL-terminating at TOK-OUT,
+  \ recording it as unquoted, advancing ARGC) and starts a new one
+  \ right after, if there's still room in ARGV.
+  0 TOK-OUT @ C!
+  0 ARGV-QUOTED ARGC @ + C!
+  ARGC @ MAX-ARGS 1- < IF
+    ARGC @ 1+ ARGC !
+    TOK-OUT @ 1+ ARGV ARGC @ CELLS + !
+  THEN
+  TOK-OUT @ 1+ TOK-OUT ! ;
+
+: EMIT-EXPANDED-CHAR ( c --- )
+  \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
+  \ expansion result, subject to IFS field splitting.
+  IN-DQ-CONTEXT? @ IF
+    EMIT-TOK-CHAR
+    EXIT
+  THEN
+  DUP IFS-CHAR? IF
+    DROP
+    -1 IFS-SPLIT-PENDING? !
+  ELSE
+    IFS-SPLIT-PENDING? @ IF
+      0 IFS-SPLIT-PENDING? !
+      \ Only actually split if the current entry has received some
+      \ content already (TOK-OUT has moved past where it started) -
+      \ otherwise this is leading IFS whitespace at the very start of
+      \ the token, which should be absorbed rather than producing a
+      \ spurious empty leading field.
+      TOK-OUT @ ARGV ARGC @ CELLS + @ <> IF
+        IFS-SPLIT-HERE
+      THEN
+    THEN
+    EMIT-TOK-CHAR
+  THEN ;
+
+: TYPE0-TO-TOK-SPLIT ( c-addr --- )  \ like TYPE0-TO-TOK, but the
+                                       \ copied characters are subject
+                                       \ to IFS field splitting - used
+                                       \ for an *unquoted* $VAR/${...}/
+                                       \ $(...)/$((...)) result;
+                                       \ TYPE0-TO-TOK itself remains
+                                       \ used for GETENV/other paths
+                                       \ that don't go through
+                                       \ expansion at all.
+  BEGIN DUP C@ DUP WHILE EMIT-EXPANDED-CHAR CHAR+ REPEAT 2DROP ;
 
 \ ==================================================================
 \ $(command) - command substitution
@@ -1079,8 +1194,8 @@ VARIABLE EAP-I
   \ why they're not yet distinguished).
   0 EAP-I !
   BEGIN EAP-I @ POS-PARAM-COUNT @ < WHILE
-    EAP-I @ 0 > IF 32 EMIT-TOK-CHAR THEN
-    EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    EAP-I @ 0 > IF 32 EMIT-EXPANDED-CHAR THEN
+    EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !
   REPEAT ;
 
@@ -1155,7 +1270,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   \ value if found, otherwise emits nothing (an unset variable
   \ expands to empty).
   DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : EXPAND-BRACED-VAR ( --- )
@@ -1192,12 +1307,12 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     READ-PEWORD
     VARNAME-BUF LOOKUP-VAR
     DUP 0= IF
-      DROP PEWORD-BUF TYPE0-TO-TOK
+      DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
     ELSE
       DUP CSTRLEN 0= PEW-COLON? @ AND IF
-        DROP PEWORD-BUF TYPE0-TO-TOK
+        DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
       ELSE
-        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
       THEN
     THEN
     EXIT
@@ -1208,13 +1323,13 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     VARNAME-BUF LOOKUP-VAR
     DUP 0= IF
       DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
-      PEWORD-BUF TYPE0-TO-TOK
+      PEWORD-BUF TYPE0-TO-TOK-SPLIT
     ELSE
       DUP CSTRLEN 0= PEW-COLON? @ AND IF
         DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
-        PEWORD-BUF TYPE0-TO-TOK
+        PEWORD-BUF TYPE0-TO-TOK-SPLIT
       ELSE
-        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
       THEN
     THEN
     EXIT
@@ -1229,7 +1344,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
       DUP CSTRLEN 0= PEW-COLON? @ AND IF
         DROP
       ELSE
-        DROP PEWORD-BUF TYPE0-TO-TOK
+        DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
       THEN
     THEN
     EXIT
@@ -1281,7 +1396,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     TOK-POS @ 1+ TOK-POS !
     1-
     DUP POS-PARAM-COUNT @ < IF
-      POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+      POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
     ELSE
       DROP
     THEN
@@ -1328,7 +1443,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C!
   VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : COPY-SINGLE-QUOTED ( --- )
@@ -1355,6 +1470,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   \ POSIX's own rule that backslash is only special before specific
   \ characters inside double quotes.
   -1 TOK-WAS-QUOTED? !
+  -1 IN-DQ-CONTEXT? !
   TOK-POS @ 1+ TOK-POS !
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 34 <> ELSE 0 THEN
@@ -1380,6 +1496,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
       TOK-POS @ 1+ TOK-POS !
     THEN THEN
   REPEAT
+  0 IN-DQ-CONTEXT? !
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
 
 : COPY-ESCAPED-CHAR ( --- )
@@ -1412,7 +1529,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   TOK-POS @ 1+ TOK-POS !
   S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
   ENVNAMBUF LOOKUP-VAR DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : SCAN-TOKEN ( --- )
@@ -1446,8 +1563,12 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     TOK-POS @ TOK-OUT !      ( always safe to compact in place, even
                                 if this token won't end up recorded )
     0 TOK-WAS-QUOTED? !
+    0 IFS-SPLIT-PENDING? !
+    0 IN-DQ-CONTEXT? !
     ARGC @ MAX-ARGS 1- < IF
       TOK-POS @ ARGV ARGC @ CELLS + !
+      TOK-POS @ C@ DUP 39 = SWAP 34 = OR
+      ARGV-NAME-QUOTED ARGC @ + C!
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
@@ -1469,6 +1590,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
   0 ARGV ARGC @ CELLS + ! ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
+: ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
 
 \ ==================================================================
 \ Redirection: <, >, >>
@@ -2414,7 +2536,16 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
                               \ "NAME=value" assignment word (already
                               \ handled via DO-ASSIGN by the time this
                               \ returns), 0 otherwise (ARGV untouched).
-  ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
+  \ Checks ARGV-NAME-QUOTED, not ARGV-QUOTED - the latter records
+  \ whether *any part* of the token was quoted, not whether the name
+  \ portion specifically was, so x="value" (a very common, valid
+  \ assignment - only the value is quoted) would otherwise be wrongly
+  \ rejected just because SOME part of the token happened to go
+  \ through a quote. A real, pre-existing bug found while testing IFS
+  \ field splitting with a quoted, multi-word assignment value, but
+  \ present already in the last committed version too, unrelated to
+  \ that feature itself.
+  ARGC @ 1 = 0 ARGV-NAME-QUOTED@ 0= AND IF
     ARGV @ ASSIGNMENT-EQPOS
     DUP -1 <> IF DO-ASSIGN -1 EXIT THEN
     DROP

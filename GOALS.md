@@ -635,10 +635,32 @@ the full account and the fixes applied.
      mirroring the existing quote-tracking shape exactly. See
      `PROGRESS.md`'s Iteration 35 entry for the full account.
 
-     Still open: `IFS`-based field
-     splitting of unquoted expansion results (an explicit non-goal up
-     through Iteration 13 — revisited here since mrsh's tests depend
-     on it) — the last item in Phase D's own scope.
+     `IFS`-based field splitting of unquoted expansion results: **done
+     (Iteration 36, completing Phase D)** — an unquoted `$VAR`/
+     `${...}`/`$(...)`/`$((...))` result splits into separate `ARGV`
+     entries wherever `IFS` whitespace (space/tab only, not yet a
+     customizable `$IFS`, not newline) appears within it, composing
+     correctly with literal text before/after the expansion in the
+     same word. Built and verified in an isolated diagnostic before
+     touching the real tokenizer. `EMIT-EXPANDED-CHAR`'s own split
+     decision is deferred until the next non-`IFS` character actually
+     needs writing — collapsing consecutive `IFS` runs into one split
+     and avoiding spurious empty leading/trailing fields, both
+     confirmed necessary and correct by direct testing. Two real bugs
+     found: (1) the first attempt reused `TOK-WAS-QUOTED?` to decide
+     whether to split, but that flag is set unconditionally by
+     `EXPAND-VAR` for *every* expansion — fixed with a new, dedicated
+     `IN-DQ-CONTEXT?` flag set only by `COPY-DOUBLE-QUOTED`; (2) a
+     second, independent, *pre-existing* bug (confirmed via `git
+     stash` to already exist in the prior commit) where
+     `TRY-ASSIGNMENT` rejected any `x="value"`-style assignment
+     because it checked the wrong "am I quoted" flag — fixed with a
+     new, more precise `ARGV-NAME-QUOTED` array (true only if a
+     token's own first character came from inside a quote), leaving
+     the existing `ARGV-QUOTED` and its other uses untouched. See
+     `PROGRESS.md`'s Iteration 36 entry for the full account.
+
+     **Phase D is now complete.**
    - **Phase E — command substitution completeness.** Nested
      `$(...)`. Backquote `` `...` `` substitution. A `$(...)` body
      that supports the full command grammar (pipelines, quoting,

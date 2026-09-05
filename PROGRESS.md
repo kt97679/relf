@@ -3969,3 +3969,117 @@ files now, all passing on both x86-64 and i386.
 **Phase D remaining**: `IFS`-based field splitting of unquoted
 expansion results - the last item in Phase D's own scope.
 
+## Iteration 36: goal 8 phase D - `IFS`-based field splitting (Phase D complete)
+
+An unquoted `$VAR`/`${...}`/`$(...)`/`$((...))` expansion result is
+split into separate `ARGV` entries wherever a run of `IFS` whitespace
+appears within it. Scope limits, both deliberate: only space/tab are
+treated as `IFS` (not yet a customizable `$IFS` shell variable, and
+not newline either); the split itself is per-character rather than
+tied to a single, pre-parsed expansion boundary, so it composes
+correctly with literal text before/after the expansion within the
+same word (e.g. `foo$xbar` correctly merges the literal prefix/suffix
+with the first/last split field, matching real shell behavior),
+verified directly rather than assumed.
+
+### Design
+
+Built and verified in an isolated diagnostic first, mirroring a
+minimal version of `TOKENIZE`'s own token-recording shape (`ARGV`/
+`ARGC`/`TOK-OUT`), before touching the real tokenizer. `EMIT-EXPANDED-
+CHAR` is the new per-character emission path used *only* for
+expansion results (in place of `EMIT-TOK-CHAR`, still used for literal
+characters and anything already inside real double quotes): an `IFS`
+character sets `IFS-SPLIT-PENDING?` rather than emitting anything
+immediately - the actual split (`IFS-SPLIT-HERE`: `NUL`-terminate the
+current `ARGV` entry, advance `ARGC`, start the next entry right
+after) is deferred until the *next* non-`IFS` character actually needs
+writing. This single deferral does double duty: a run of consecutive
+`IFS` characters collapses into one split rather than several empty
+ones, and trailing `IFS` whitespace at the very end of the expansion
+(or the token) never produces a spurious empty trailing field, since
+nothing ever gets written to commit it. A parallel check (only split
+if `TOK-OUT` has actually moved past where the current entry started)
+handles the leading-whitespace case the same way, found necessary by
+testing directly - without it, `$x` with `x=" ab"` produced a
+spurious *empty* leading field.
+
+Wired into `TOKENIZE`'s outer loop (resetting `IFS-SPLIT-PENDING?` per
+token, alongside the existing `TOK-WAS-QUOTED?` reset) and every
+expansion-result emission site across `$VAR`/`${...}` (including all
+four parameter-expansion modifiers and prefix/suffix trimming from
+Iterations 32-33), `$1`-`$9`, and `$@`/`$*` (switching their shared
+`TYPE0-TO-TOK` calls to a new `TYPE0-TO-TOK-SPLIT`, and the `$@`/`$*`
+join-separator itself from a plain space to `EMIT-EXPANDED-CHAR`, so
+the separator participates in splitting exactly like any other `IFS`
+character would).
+
+### A real bug found immediately after wiring in: reused the wrong "am I quoted" flag entirely
+
+First attempt checked `TOK-WAS-QUOTED?` to decide whether to split -
+but that flag is set unconditionally by `EXPAND-VAR` for *every*
+expansion it performs, quoted or not (marking the result as "quoted"
+so it's never re-interpreted as an operator or keyword later,
+regardless of real quoting context). Reusing it meant nothing ever
+split at all - caught immediately by testing a bare, unquoted `$x`
+directly. Fixed with a new, dedicated `IN-DQ-CONTEXT?` flag, set (and
+cleared) only by `COPY-DOUBLE-QUOTED` around its own body - the one
+place that actually represents "currently inside a real double-quoted
+span."
+
+### A second, independent, pre-existing bug found while testing with a quoted assignment value
+
+`x="a b c"` (spaces requiring quotes) followed by any use of `$x`
+produced completely empty output - traced not to field splitting at
+all, but to `TRY-ASSIGNMENT` itself: it checked `ARGV-QUOTED@` (which
+records "was *any part* of this token quoted") to reject the
+assignment entirely whenever the value was quoted, since that flag
+can't distinguish "the value happened to be quoted" from "the name
+itself was quoted" (the latter genuinely shouldn't be treated as an
+assignment - `'FOO=bar'`, fully quoted, is meant as a literal command
+name, and an existing, correct test already covered exactly this
+case). Confirmed this predates the current session entirely (`git
+stash` back to the last commit reproduced the identical failure) -
+unrelated to field splitting itself, just newly exposed by finally
+testing a quoted, multi-word assignment value for the first time.
+Fixed with a new, more precise `ARGV-NAME-QUOTED` array - true only if
+a token's own very first character came from inside a quote - checked
+in place of `ARGV-QUOTED@` in `TRY-ASSIGNMENT` specifically, leaving
+`ARGV-QUOTED` itself, and every other place it's already used,
+completely untouched.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: an unquoted multi-word `$VAR` splits into separate
+positional parameters via `set`; the same value quoted does not
+split, even with internal whitespace; multiple consecutive `IFS`
+characters collapse into a single split (via `for`); trailing and
+leading `IFS` whitespace each produce no spurious empty field; a
+quoted assignment value with no whitespace still works correctly; a
+fully-quoted `'NAME=value'` is still correctly rejected as an
+assignment; and a plain, unquoted assignment still succeeds.
+
+`tests/shell/run-ifs` (9 assertions) - 232 assertions across 32 files
+now, all passing on both x86-64 and i386. mrsh-suite: 0 passed, 21
+failed, 3 skipped - `2.2.3-alias-expansion.fail.sh` moved from passing
+to failing, but this isn't a genuine regression: `GOALS.md` already
+flagged that pass as hollow before this session even started (`alias`
+isn't implemented at all, so the pass was accidental, not because
+this shell handled the test's actual intent correctly). The script
+assigns `var="$(myalias arg-two)"` - previously rejected outright by
+the `TRY-ASSIGNMENT` bug fixed above, now correctly recognized and
+executed as an assignment (exiting 0, matching what a real assignment
+of a possibly-empty command-substitution result does) - a `git stash`
+comparison confirms the identical script exits differently only
+because the assignment itself is now genuinely working, not because
+of anything specific to `alias`.
+
+**Phase D is now complete**: positional parameters, all parameter-
+expansion modifiers, arithmetic expansion, tilde expansion, and `IFS`
+field splitting are all implemented. Documented scope limits carried
+forward: single-digit positional parameters only; `$@`/`$*` treated
+identically (no quote-sensitive distinction); the "word"/"pattern"
+portion of a parameter-expansion modifier is a literal string, not
+itself further expanded; only space/tab (not a customizable `$IFS`,
+not newline) trigger field splitting.
+
