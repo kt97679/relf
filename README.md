@@ -161,7 +161,13 @@ inherited by a child process, only export NAME=value calls SETENV as
 well), and $VAR/${VAR} expansion checks shell-local storage first,
 falling back to the inherited environment for anything this shell
 never itself assigned, with $? for the last command's exit status and
-$$ for this shell's own PID, $(command) runs an external command with
+$$ for this shell's own PID - correctly handling a value longer than
+its own $NAME/${NAME} reference text with more text following it on
+the same line (e.g. "echo $x in") is a real, independently-fixed
+correctness issue (see PROGRESS.md's Iteration 26 entry) rather than
+something that was always fine, since this shell's own in-place token
+compaction can otherwise let the write cursor overtake the read
+cursor and corrupt unread input. $(command) runs an external command with
 its stdout captured (all trailing newlines stripped, matching POSIX;
 internal newlines are kept) and spliced into the surrounding token -
 echo pre_$(echo mid)_$X
@@ -254,7 +260,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 25 entries for the current state and what's planned next.
+through 26 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -266,7 +272,7 @@ target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A and phase B both done (modulo a couple of
 documented, still-open items within phase B), phase C underway - see
-PROGRESS.md's Iteration 14 through 25 entries).
+PROGRESS.md's Iteration 14 through 26 entries).
 
 5. Possible usage.
 

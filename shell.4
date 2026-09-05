@@ -475,6 +475,49 @@ VARIABLE CMDSUB-PID
     CMDSUB-OUT-LEN @ + CMDSUB-OUT-LEN !
   REPEAT ;
 
+VARIABLE ER-SHIFT
+VARIABLE ER-I
+
+: ENSURE-ROOM ( n --- )
+  \ About to write n bytes at TOK-OUT (an expansion's value, from
+  \ $VAR or $(cmd)) - if that would advance TOK-OUT past TOK-POS, this
+  \ shell's in-place token compaction has a real hazard: the write
+  \ would land on top of input TOK-POS hasn't read yet, destroying it
+  \ before it's ever seen - and since SCAN-TOKEN's own loop then reads
+  \ that now-overwritten byte as if it were real input, re-emitting it
+  \ one position further along, the corruption self-propagates
+  \ (a "smear" of whatever character was last written) until the line
+  \ ends. Found via $VAR expansion specifically - "x=abc" then
+  \ "echo $x in" produced "abcccc" instead of "abc in", since the
+  \ 3-byte value "abc" is one byte longer than the 2-byte "$x" it
+  \ replaces, letting TOK-OUT overtake TOK-POS by exactly one byte -
+  \ confirmed present since before this session's own changes (a real,
+  \ independent bug, not introduced by anything recent). Shifts
+  \ LINE-BUF[TOK-POS..TOK-END) rightward by just enough to prevent the
+  \ overtake (copying from the end backward, so the shift itself can't
+  \ corrupt the very data it's relocating), updating TOK-POS/TOK-END to
+  \ match. If there's truly no room left in the buffer, the shift (and
+  \ the expansion after it) is skipped rather than overflowing past
+  \ LINE-MAX - the pre-existing corruption bug in that rare case,
+  \ rather than a crash, matching this shell's own "never corrupt
+  \ memory, an occasional stale result is an acceptable fallback"
+  \ priority elsewhere.
+  TOK-OUT @ + TOK-POS @ -
+  DUP 0 > IF
+    ER-SHIFT !
+    TOK-END @ ER-SHIFT @ + LINE-BUF LINE-MAX + < IF
+      TOK-END @ 1- ER-I !
+      BEGIN ER-I @ TOK-POS @ < 0= WHILE
+        ER-I @ C@ ER-I @ ER-SHIFT @ + C!
+        ER-I @ 1- ER-I !
+      REPEAT
+      TOK-POS @ ER-SHIFT @ + TOK-POS !
+      TOK-END @ ER-SHIFT @ + TOK-END !
+    THEN
+  ELSE
+    DROP
+  THEN ;
+
 : EXPAND-CMDSUB ( --- )
   \ TOK-POS is at the '(' immediately following '$'.
   TOK-POS @ 1+ TOK-POS !            ( skip '(' )
@@ -522,6 +565,7 @@ VARIABLE CMDSUB-PID
     \ found via mrsh's async.sh (see PROGRESS.md's crash-hardening
     \ entry) and reproduced down to a single command: `echo $(true)`.
     CMDSUB-OUT-LEN @ 0 > IF
+      CMDSUB-OUT-LEN @ ENSURE-ROOM
       CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
         DUP I + C@ EMIT-TOK-CHAR
       LOOP DROP
@@ -560,7 +604,9 @@ VARIABLE CMDSUB-PID
     REPEAT
     TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
     0 VARNAME-BUF VN-LEN @ + C!
-    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN
+    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
+      DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+    THEN
     EXIT
   THEN
   DUP NAME-CHAR? 0= IF
@@ -577,7 +623,9 @@ VARIABLE CMDSUB-PID
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C!
-  VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE TYPE0-TO-TOK THEN ;
+  VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+  THEN ;
 
 : COPY-SINGLE-QUOTED ( --- )
   \ TOK-POS is at the opening '. Copies everything up to (not
@@ -1575,12 +1623,17 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
   DUP 62 = IF DROP -1 EXIT THEN    ( > )
   DROP 0 ;
 
-: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, > - the three operator
-                                  \ characters with a two-character
-                                  \ doubled form (&&, ||, >>)
+: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, >, ; - the four
+                                  \ operator characters with a
+                                  \ two-character doubled form (&&,
+                                  \ ||, >>, ;; - the last being case's
+                                  \ own "end of arm" marker, needed as
+                                  \ its own single token rather than
+                                  \ two separate ';' ones)
   DUP 38 = IF DROP -1 EXIT THEN
   DUP 124 = IF DROP -1 EXIT THEN
-  62 = ;
+  DUP 62 = IF DROP -1 EXIT THEN
+  59 = ;
 
 512 CONSTANT NORM-MAX
 CREATE NORM-BUF NORM-MAX ALLOT
@@ -2098,6 +2151,242 @@ VARIABLE FOR-WORD-CUR
   REPEAT
   DO-FOR-ITERATE ;
 
+\ ==================================================================
+\ Glob-pattern matching (*, ?, [...] with a-z ranges and [!...]/[^...]
+\ negation) - needed by case/esac below for matching its own patterns
+\ against the case word, the same "pattern matching notation" POSIX
+\ pathname expansion also uses. The classic iterative two-pointer
+\ algorithm (no recursion needed): '*' remembers the pattern/text
+\ positions it was seen at, initially matching zero characters; if a
+\ later mismatch is hit, backtrack to the most recent '*' and let it
+\ consume one more character of text instead, retrying from there.
+\ Bracket expressions are handled as a single, variable-length unit
+\ within this scan (BRACKET-END finds where one ends in the pattern
+\ text; BRACKET-MATCHES? checks membership, including ranges and
+\ negation) rather than needing their own separate backtrack state.
+\ ==================================================================
+
+VARIABLE GM-PATTERN
+VARIABLE GM-PLEN
+VARIABLE GM-TEXT
+VARIABLE GM-TLEN
+VARIABLE GM-P
+VARIABLE GM-S
+VARIABLE GM-STAR-P
+VARIABLE GM-STAR-S
+VARIABLE GM-HAS-STAR?
+
+VARIABLE BM-NEG?
+VARIABLE BM-I
+VARIABLE BM-CHAR
+VARIABLE BM-END
+VARIABLE BM-MATCHED?
+
+: BRACKET-END ( p --- p2 )
+  \ GM-PATTERN[p] is '[' - returns the index right after the matching
+  \ ']'. A leading '!'/'^' (negation) and a ']' immediately after
+  \ that (or right after the '[' itself) are skipped as not being the
+  \ closer - POSIX: "[]abc]" and "[!]abc]" both treat that first ']'
+  \ as a literal member, not the end of the expression.
+  1+
+  DUP GM-PLEN @ < IF
+    DUP GM-PATTERN @ + C@ 33 = OVER GM-PATTERN @ + C@ 94 = OR IF
+      1+
+    THEN
+  THEN
+  DUP GM-PLEN @ < IF
+    DUP GM-PATTERN @ + C@ 93 = IF
+      1+
+    THEN
+  THEN
+  BEGIN
+    DUP GM-PLEN @ < IF DUP GM-PATTERN @ + C@ 93 <> ELSE 0 THEN
+  WHILE
+    1+
+  REPEAT
+  DUP GM-PLEN @ < IF 1+ THEN ;
+
+: BRACKET-MATCHES? ( p p2 char --- f )
+  \ p is GM-PATTERN's index of the opening '[', p2 the index right
+  \ after the matching ']' (from BRACKET-END). Checks whether char is
+  \ a member of this set - a leading '!'/'^' negates the whole result,
+  \ and "x-y" (three characters, a literal '-' in the middle) is a
+  \ range rather than three separate members.
+  BM-CHAR ! BM-END ! 1+ BM-I !
+  0 BM-NEG? !
+  0 BM-MATCHED? !
+  BM-I @ GM-PATTERN @ + C@ 33 = BM-I @ GM-PATTERN @ + C@ 94 = OR IF
+    -1 BM-NEG? !
+    BM-I @ 1+ BM-I !
+  THEN
+  BEGIN BM-I @ BM-END @ 1- < WHILE
+    BM-I @ 1+ BM-END @ 1- < IF
+      BM-I @ 1+ GM-PATTERN @ + C@ 45 =
+      BM-I @ 2 + BM-END @ 1- < AND
+    ELSE 0 THEN
+    IF
+      BM-CHAR @ BM-I @ GM-PATTERN @ + C@ < 0=
+      BM-I @ 2 + GM-PATTERN @ + C@ BM-CHAR @ < 0=
+      AND IF -1 BM-MATCHED? ! THEN
+      BM-I @ 3 + BM-I !
+    ELSE
+      BM-I @ GM-PATTERN @ + C@ BM-CHAR @ = IF -1 BM-MATCHED? ! THEN
+      BM-I @ 1+ BM-I !
+    THEN
+  REPEAT
+  BM-MATCHED? @ BM-NEG? @ IF 0= ELSE THEN ;
+
+VARIABLE GCM-P
+VARIABLE GCM-CHAR
+VARIABLE GCM-BEND
+
+: GLOB-CHAR-MATCHES? ( p-idx char --- match? p-idx-after )
+  \ Does GM-PATTERN[p-idx] (a '?', a bracket expression, or a single
+  \ literal character) match char? p-idx-after is where to resume
+  \ pattern scanning next, regardless of match/no-match - a bracket
+  \ expression can span many pattern characters, unlike '?' or a
+  \ literal, which only ever advance by one.
+  GCM-CHAR ! GCM-P !
+  GCM-P @ GM-PATTERN @ + C@
+  DUP 63 = IF
+    DROP
+    -1 GCM-P @ 1+
+  ELSE
+    91 = IF
+      GCM-P @ BRACKET-END GCM-BEND !
+      GCM-P @ GCM-BEND @ GCM-CHAR @ BRACKET-MATCHES?
+      GCM-BEND @
+    ELSE
+      GCM-P @ GM-PATTERN @ + C@ GCM-CHAR @ =
+      GCM-P @ 1+
+    THEN
+  THEN ;
+
+: GLOB-MATCH ( pattern-addr pattern-len text-addr text-len --- f )
+  GM-TLEN ! GM-TEXT ! GM-PLEN ! GM-PATTERN !
+  0 GM-S !
+  0 GM-P !
+  0 GM-HAS-STAR? !
+  BEGIN GM-S @ GM-TLEN @ < WHILE
+    GM-P @ GM-PLEN @ < IF
+      GM-P @ GM-PATTERN @ + C@ 42 =
+    ELSE 0 THEN
+    IF
+      -1 GM-HAS-STAR? !
+      GM-P @ GM-STAR-P !
+      GM-S @ GM-STAR-S !
+      GM-P @ 1+ GM-P !
+    ELSE
+      GM-P @ GM-PLEN @ < IF
+        GM-P @ GM-TEXT @ GM-S @ + C@ GLOB-CHAR-MATCHES?
+      ELSE 0 0 THEN
+      OVER IF
+        SWAP DROP GM-P !
+        GM-S @ 1+ GM-S !
+      ELSE
+        DROP DROP
+        GM-HAS-STAR? @ IF
+          GM-STAR-P @ 1+ GM-P !
+          GM-STAR-S @ 1+ DUP GM-STAR-S !
+          GM-S !
+        ELSE
+          0 EXIT
+        THEN
+      THEN
+    THEN
+  REPEAT
+  BEGIN
+    GM-P @ GM-PLEN @ < IF GM-P @ GM-PATTERN @ + C@ 42 = ELSE 0 THEN
+  WHILE
+    GM-P @ 1+ GM-P !
+  REPEAT
+  GM-P @ GM-PLEN @ = ;
+
+\ ==================================================================
+\ case WORD in / PATTERN1) / <body> / ;; / PATTERN2|PATTERN3) / ... /
+\ esac
+\ Requires each pattern arm on its own line, and ';;' (or the arm
+\ ending directly at "esac", for the last item, per POSIX) on its own
+\ line too - no same-line support yet, matching while/for. Each
+\ pattern (or '|'-separated alternative) is glob-matched against the
+\ case word saved when "case WORD in" was first read; the first arm
+\ with any matching alternative has its body run, and no further arms
+\ are even inspected afterward - unlike a C switch, there's no
+\ fall-through. A pattern arm's own trailing ')' isn't its own token
+\ (unlike '('/')' used for command grouping, ')' here isn't spaced
+\ out by NORMALIZE-OPERATORS - it stays fused to the last character of
+\ whatever precedes it, e.g. "he*)" tokenizes as one token), so
+\ CASE-ARM-MATCHES? strips it from the *last* ARGV token specifically
+\ before testing it as a pattern.
+\ ==================================================================
+
+CREATE CASE-WORD-BUF 256 ALLOT
+VARIABLE CASE-WORD-LEN
+CREATE CASE-PATLAST-BUF 256 ALLOT
+VARIABLE CASE-PATLAST-LEN
+VARIABLE CA-I
+VARIABLE CASE-MATCHED?
+
+: CASE-ARM-MATCHES? ( --- f )
+  \ ARGV/ARGC hold the current pattern-arm line (e.g. ["hello)"] or
+  \ ["world","|","hello)"]). The last token's own trailing ')' is
+  \ stripped into CASE-PATLAST-BUF; every non-'|' token (including
+  \ that stripped last one) is tried as an independent alternative
+  \ against the saved CASE-WORD-BUF - any one matching is enough to
+  \ select this arm, matching real shells' "PAT1|PAT2|..." semantics.
+  ARGC @ 1- ARGV@ DUP CSTRLEN
+  DUP 0 > IF 1- THEN
+  DUP CASE-PATLAST-LEN !
+  CASE-PATLAST-BUF 256 SAFE-COPY-NUL DROP
+  0 CA-I !
+  BEGIN CA-I @ ARGC @ < WHILE
+    CA-I @ ARGV-QUOTED@ 0= IF
+      CA-I @ ARGV@ DUP CSTRLEN S" |" STR=
+    ELSE 0 THEN
+    0= IF
+      CA-I @ ARGC @ 1- = IF
+        CASE-PATLAST-BUF CASE-PATLAST-LEN @
+      ELSE
+        CA-I @ ARGV@ DUP CSTRLEN
+      THEN
+      CASE-WORD-BUF CASE-WORD-LEN @ GLOB-MATCH IF -1 EXIT THEN
+    THEN
+    CA-I @ 1+ CA-I !
+  REPEAT
+  0 ;
+
+: DO-CASE ( --- )
+  \ ARGV[0] is "case"; ARGV[1] is the case word (already $VAR-
+  \ expanded during tokenizing); ARGV[2] is skipped, assumed "in" (not
+  \ validated, matching for's own convention). Respects an enclosing
+  \ SUPPRESS-EXEC? throughout - a matched arm's body only actually runs
+  \ if the outer context wasn't already suppressed either.
+  SUPPRESS-EXEC? @ >R
+  ARGV 1 CELLS + @ DUP CSTRLEN
+  DUP CASE-WORD-LEN !
+  CASE-WORD-BUF 256 SAFE-COPY-NUL DROP
+  0 CASE-MATCHED? !
+  BEGIN
+    READ-LINE-INTO-ARGV
+    S" esac" LINE-IS? 0=
+  WHILE
+    CASE-ARM-MATCHES? IF
+      -1 CASE-MATCHED? !
+      R@ SUPPRESS-EXEC? !
+    ELSE
+      -1 SUPPRESS-EXEC? !
+    THEN
+    BEGIN
+      READ-LINE-INTO-ARGV
+      S" esac" LINE-IS? IF R> SUPPRESS-EXEC? ! EXIT THEN
+      S" ;;" LINE-IS? IF -1 ELSE
+        RUN-TOKENIZED-CALL
+        0
+      THEN
+    UNTIL
+  REPEAT
+  R> SUPPRESS-EXEC? ! ;
+
 : RUN-TOKENIZED ( --- )
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
@@ -2131,6 +2420,7 @@ VARIABLE FOR-WORD-CUR
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
   S" for" LINE-IS? IF DO-FOR EXIT THEN
+  S" case" LINE-IS? IF DO-CASE EXIT THEN
   SPLIT-SEMI IF
     ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
     RUN-TOKENIZED-CALL

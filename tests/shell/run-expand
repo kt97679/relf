@@ -38,4 +38,29 @@ esac
 out=$(printf "export PIPECHAR='|'\necho a \$PIPECHAR b\nexit\n" | "$THIS_SH" 2>&1)
 assert_output_contains "expansion result matching | is not treated as a pipe" "a | b" "$out"
 
+# A real bug found and fixed (see PROGRESS.md): none of the tests
+# above actually exercise the case that broke - an expansion whose
+# value is *longer* than its own $NAME/${NAME} reference text, with
+# more text following it on the same line. In-place token compaction
+# means the write cursor (TOK-OUT) can overtake the read cursor
+# (TOK-POS) whenever this happens, corrupting - and then, via a
+# self-propagating "smear," destroying - whatever follows. Every case
+# above either had the expansion at the end of the line (nothing
+# after it to corrupt) or a value no longer than its own reference
+# (VAR name length was always >= what it expanded to).
+out=$(printf 'x=hello\necho $x in\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a value longer than its own \$NAME with text following doesn't corrupt it" "hello in" "$out"
+
+out=$(printf 'x=abcdefghij\necho $x end123\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "a much longer value with more text following still works" "abcdefghij end123" "$out"
+
+out=$(printf 'x=abc\ny=def\necho $x $y end456\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "multiple same-length-issue expansions on one line" "abc def end456" "$out"
+
+out=$(printf 'x=hello\necho ${x} in\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "the same issue via \${VAR} form with text following" "hello in" "$out"
+
+out=$(printf 'echo $(echo hello-world-long) in\nexit\n' | "$THIS_SH" 2>&1)
+assert_output_contains "the same issue via \$(...) command substitution" "hello-world-long in" "$out"
+
 report

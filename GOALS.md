@@ -236,15 +236,15 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 25's work — expected, since no
+   including after Iteration 17 through 26's work — expected, since no
    single vendored test file passes purely from variable assignment,
    `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
-   if-nesting, `for` loops, operator-fusion, or same-line if/then/fi
-   alone — the command-grouping item in particular doesn't apply to
-   mrsh's own tests at all yet, given the whitespace-around-parens
-   scope limit above, `while`/`for` (unlike `if`) still need `do` on
-   their own separate line, and `if.sh` itself also needs `$#` and
-   `elif`, neither implemented yet).
+   if-nesting, `for` loops, operator-fusion, same-line if/then/fi, or
+   the $VAR-expansion corruption fix alone — the command-grouping item
+   in particular doesn't apply to mrsh's own tests at all yet, given
+   the whitespace-around-parens scope limit above, `while`/`for`
+   (unlike `if`) still need `do` on their own separate line, and
+   `if.sh` itself also needs `$#` and `elif`, neither implemented yet).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -437,10 +437,45 @@ the full account and the fixes applied.
      read-ahead into stored lines; left as its own, separate,
      substantial future item — see `PROGRESS.md`'s Iteration 23 entry.
 
-     Still open: `case`/`in`/`esac` with glob patterns (`*`, `?`,
-     `[...]`) and `|` alternation. Shell functions (definition,
-     invocation, redefinition, recursion) and `return`.
-     `break`/`continue`.
+     `case`/`in`/`esac` — **in progress (Iteration 26 was a detour to
+     fix a blocking bug, not the feature itself)**. Glob-pattern
+     matching (`*`, `?`, `[...]` with ranges and `[!...]`/`[^...]`
+     negation, the classic iterative two-pointer backtrack algorithm)
+     is written and tested thoroughly in isolation (22/22 cases).
+     `DO-CASE`/`CASE-ARM-MATCHES?` are written and load cleanly, but
+     testing them end-to-end surfaced a real, independent,
+     pre-existing bug in ordinary `$VAR` expansion that had nothing to
+     do with `case` itself — see the fix below — which blocked
+     accurate testing of `case` until resolved. `case`/`esac` remains
+     not-yet-verified-working; finishing it is the immediate next
+     step. Also fixed along the way: `;;` was tokenizing as two
+     separate `;` tokens rather than its own doubled-operator form
+     (needed for `case`'s own arm terminator), by adding `;` to
+     `NORM-DOUBLED-OP?` alongside `&`/`|`/`>`.
+
+     A significant, independent bug found and fixed (Iteration 26):
+     `TOKENIZE`'s in-place token compaction assumes the write cursor
+     (`TOK-OUT`) never advances past the read cursor (`TOK-POS`) after
+     an expansion — true for quote-stripping, false for `$VAR`/`$(...)`
+     whenever the expanded value is *longer* than its own reference
+     text. When that happens, the write destroys unread input before
+     `SCAN-TOKEN` reads it, and `SCAN-TOKEN`'s own loop then re-reads
+     and re-emits that corrupted byte, cascading into a self-
+     propagating "smear" until the line ends — confirmed via `git
+     stash` to already exist in the committed Iteration 25 state, not
+     introduced by anything recent. `echo $x in` with `x=hello`
+     printed `hellollo` instead of `hello in`. Fixed with a new
+     `ENSURE-ROOM`, which shifts the remaining unread line rightward
+     just enough to make room before writing a longer-than-source
+     expansion value. The existing test suite never caught this
+     because no existing test combined "value longer than its own
+     `$NAME` reference" with "more text follows on the same line" — see
+     `PROGRESS.md`'s Iteration 26 entry for the full account, including
+     why five existing, seemingly-relevant tests each individually
+     missed it.
+
+     Still open: shell functions (definition, invocation, redefinition,
+     recursion) and `return`. `break`/`continue`.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`). Parameter-expansion modifiers
      (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,

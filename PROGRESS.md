@@ -2999,3 +2999,129 @@ i386. `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3
 skipped - expected, since `if.sh` itself also needs `$#` (positional
 parameter count) and `elif` (not implemented) before it can pass as a
 whole file, even though this is real, necessary progress toward it.
+
+## Iteration 26: fix a real, pre-existing token-corruption bug in $VAR/$(...) expansion
+
+Goal: originally set out to implement `case`/`esac` (phase C), but while
+testing it directly against a realistic script, found that `case`
+wasn't broken - the *case word itself* was silently corrupted before
+`case` ever saw it. Tracing that down surfaced a genuine, independent,
+pre-existing bug in ordinary `$VAR` expansion, confirmed via `git
+stash` to already exist in the committed Iteration 25 state - not
+introduced by anything in this session's own work. This closes that
+bug; `case`/`esac` itself is still not done and remains for a
+follow-up.
+
+### The bug
+
+`echo $x in` (with `x=hello` set beforehand) printed `hellollo`
+instead of `hello in` - both the trailing text and the token count
+were wrong (`$ARGC` came out one short too). Narrowed down
+methodically: confirmed the *stored* shell-variable value was correct
+(`abc`, not corrupted, when checked directly via
+`SHVAR-VALUE-SLOT`/`CSTRLEN` right after `export x=abc`), so the
+corruption happens during *expansion*, not storage. Confirmed the
+*pre-expansion* text is untouched (`NORMALIZE-OPERATORS`, Iteration
+24's own pre-pass, correctly leaves `$x` alone, since neither `$` nor
+`x` are operator characters) - so the corruption happens specifically
+during `TOKENIZE` itself, inside `EXPAND-VAR`.
+
+### Root cause
+
+`TOKENIZE`'s in-place token compaction relies on an assumption stated
+directly in its own comment: after `SCAN-TOKEN` returns, `TOK-OUT`
+(the write cursor, where compacted/expanded characters get written)
+"coincides with" `TOK-POS` (the read cursor, tracking how far into
+the original line has actually been consumed) - true for quote-
+stripping and escape-processing, since those only ever *remove*
+characters, never add more than were there originally. `$VAR`
+expansion breaks this assumption outright: `TOK-POS` advances by
+`len("$" + name)` (2, for `$x`), while `TOK-OUT` advances by
+`len(value)` (3, for `abc`) - whenever the value is *longer* than its
+own reference text, `TOK-OUT` overtakes `TOK-POS`, and the write
+lands on top of input `TOK-POS` hasn't read yet, destroying it before
+it's ever seen. Worse: `SCAN-TOKEN`'s own loop then reads that
+just-overwritten byte as if it were real input, and re-emits it one
+position further along - which overwrites the *next* character too,
+and the next, cascading in a self-propagating "smear" of whatever
+character was last written, until the line runs out. Traced this
+byte-for-byte against the real failing case (`echo $x in`, `x=abc`)
+and it exactly reproduces `abcccc`: `a`, `b` written correctly at the
+value's own first two bytes, then the third byte (`c`) overwrites the
+line's own separator character, which `SCAN-TOKEN` then re-reads and
+re-emits repeatedly until end of line - four `c`s total, matching
+`abcccc` exactly.
+
+Confirmed the same hazard exists in `$(...)` command substitution too
+(`EXPAND-CMDSUB`'s own output-emitting loop has the identical shape:
+`TOK-POS` is already fully advanced past the whole `$(cmd)` construct
+before the captured output gets emitted character by character, with
+no length check against the original reference text either) - fixed
+both in one pass rather than only the one that was directly observed
+failing.
+
+### Why the existing test suite never caught this
+
+Every existing expansion test happened to avoid the exact combination
+needed to trigger it: either the expansion sat at the very end of the
+line (nothing following it to corrupt, even if `TOK-OUT` did overtake
+`TOK-POS`), or the expanded value was no longer than its own
+`$NAME`/`${NAME}` reference text (an unset variable expanding to
+nothing, `${FOO}suffix` where the value happened to be shorter than
+`${FOO}` itself, `$PIPECHAR` expanding to a single `|` character). Not
+a careless gap so much as an unlucky one - a genuinely common pattern
+(`$VAR` followed by more text, with a value longer than the variable
+reference) that the existing tests simply never happened to combine.
+
+### The fix
+
+A new `ENSURE-ROOM ( n --- )`, called right before writing an
+expansion's value: if writing `n` bytes at `TOK-OUT` would overtake
+`TOK-POS`, shifts `LINE-BUF[TOK-POS..TOK-END)` rightward by just
+enough to prevent it - copying from the end of the range backward, so
+the shift itself can't corrupt the very data it's relocating - and
+updates `TOK-POS`/`TOK-END` to match. Bounds-checked against
+`LINE-MAX`: if there's truly no room left, the shift (and the
+expansion after it) is skipped rather than overflowing the buffer -
+the pre-existing corruption bug would still occur in that rare
+overflow case, but nothing crashes or corrupts memory outside the
+buffer, matching this shell's established priority elsewhere. Wired
+into both of `EXPAND-VAR`'s call sites (`${NAME}` and plain `$NAME`)
+and into `EXPAND-CMDSUB`'s output-emitting loop.
+
+Verified the shift logic itself in isolation first (a standalone
+diagnostic setting up the exact byte layout from the real failing
+case and checking the result byte-by-byte) before wiring it in -
+caught one purely mechanical mistake while doing so (a test that set
+`TOK-POS`/`TOK-OUT` to a small literal number like `5` rather than
+`LINE-BUF + 5`, an actual address - comparing a real address against
+a tiny literal made the shift's own bounds-check loop run far past
+where it should have, corrupting/crashing on invalid memory; fixed by
+correcting the test, not the shift logic, which was right the first
+time once tested properly).
+
+### Verified end-to-end via `relfsh`, confirmed on i386
+
+`echo $x in` now correctly prints `hello in` for `x=hello`, and the
+same fix confirmed across a range of value lengths (`a`, `ab`, `abc`,
+`abcd`, `abcde`, `abcdef` - only length 3+ ever triggered the original
+bug, matching the "value longer than `$x`'s own 2 characters"
+threshold exactly), the `${NAME}` brace form, `$(...)` command
+substitution with a long captured output, and multiple expansions on
+one line.
+
+`tests/shell/run-expand` gained five new assertions targeting this
+specific combination directly - 135 assertions across 22 files now,
+all passing on both x86-64 and i386. `tests/mrsh-suite/run.sh` wasn't
+re-checked this iteration (no new feature added, only a correctness
+fix) - expected to stay at 1 passed, 20 failed, 3 skipped, though this
+fix is a real prerequisite for several of those files to ever pass,
+since `$VAR followed by more text` is an extremely common pattern.
+
+`case`/`esac` (phase C, the item this iteration originally set out to
+implement) is still not done - the glob-matching machinery
+(`GLOB-MATCH`, tested thoroughly and separately, 22/22 cases passing)
+and `DO-CASE`/`CASE-ARM-MATCHES?` are written and load cleanly, but
+hadn't been verified working end-to-end before this expansion bug was
+found blocking accurate testing of them at all. Picking this back up
+is the immediate next step.
