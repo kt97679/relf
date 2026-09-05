@@ -3867,3 +3867,105 @@ files now, all passing on both x86-64 and i386.
 **Phase D remaining**: arithmetic expansion (`$((...))`); `IFS`-based
 field splitting.
 
+## Iteration 35: goal 8 phase D - arithmetic expansion (`$((...))`)
+
+A real, precedence-climbing recursive-descent expression grammar,
+matching C/POSIX precedence: `||` (loosest) → `&&` → `==`/`!=` →
+`<`/`>`/`<=`/`>=` → `+`/`-` → `*`/`/`/`%` → unary `-`/`+`/`!` →
+literals/variables/parenthesized subexpressions (tightest). Scope
+limits, all deliberate: no bitwise operators (`&`, `|`, `^`, `<<`,
+`>>`, `~`), no ternary (`?:`), no assignment forms or `++`/`--` within
+the expression, decimal literals only (no octal/hex). An unset
+variable, or one whose value isn't itself a (possibly `-`-prefixed)
+run of digits, is treated as 0 - this shell's own established
+"harmless fallback over a hard error" style, used throughout for
+`LOOKUP-VAR`/`EMIT-DECIMAL` and friends elsewhere in this file.
+
+### Design
+
+Seven mutually-recursive Forth words (`AE-OR`/`AE-AND`/`AE-EQ`/
+`AE-REL`/`AE-ADD`/`AE-MUL`/`AE-PRIMARY`), each level calling the one
+below it, with `AE-PRIMARY` reaching back up to `AE-OR` for
+parenthesized subexpressions - via the same deferred-word pattern
+used throughout this project (`AE-OR-XT`/`AE-OR-CALL`), since a
+seven-level mutual-recursion chain is far more readable as separate,
+named levels than one giant nested word. Operates on `ARITH-BUF`, a
+private copy of the expression text with its own `AE-POS`/`AE-END`
+position tracking, entirely separate from the main tokenizer's own
+`TOK-POS`/`TOK-END` - the evaluator has no awareness of quoting,
+`$VAR` expansion, or anything else about the outer command line, only
+of the extracted expression text itself. `EXPAND-ARITH` does the
+extraction: scans from right after `$((` for the matching `))`,
+tracking how many extra, unmatched `(` are open *within* the
+expression itself so a nested `$(( (1+2)*3 ))` isn't mistaken for the
+expansion's own closing pair, then calls the evaluator and emits the
+result as a decimal number. `PARSE-DECIMAL`/`PARSE-N` moved much
+earlier in the file (same reasoning as `ARGV@` in Iteration 31) so the
+evaluator's own numeric variable-lookup can call it directly.
+`EXPAND-VAR`'s existing `$(` check now looks one character further
+ahead: a doubled `(` means arithmetic expansion; otherwise, unchanged,
+command substitution.
+
+### Two real bugs found by testing before wiring into `shell.4`
+
+Built and thoroughly verified in an isolated diagnostic first (22
+cases: precedence, associativity, parentheses, unary minus, modulo,
+every comparison operator, logical `&&`/`||`, variable references
+including unset ones, nested parentheses) before touching `shell.4`
+at all - both bugs below were caught and fixed at that stage, not
+after integration:
+
+1. `AE-PRIMARY` called itself by its own name for the unary-operator
+   case - but a Forth colon definition isn't in the dictionary until
+   its own closing `;` is reached, so referencing a word's own name
+   from within its still-being-compiled body fails with "Undefined
+   word". Fixed with `RECURSE`, the standard Forth word for exactly
+   this.
+2. The test harness's own evaluation helper consumed its length
+   argument via `MOVE` before it was needed again to compute the
+   buffer's end position - fixed with a saved-length variable, the
+   same shape `AE-EVAL` itself (the real, shipped word) already uses
+   correctly.
+
+### A third, more significant bug found once wired into `shell.4`: `NORMALIZE-OPERATORS` corrupting arithmetic expressions
+
+`$((2<=2))` returned `0` instead of the correct `1`. Traced to
+`NORMALIZE-OPERATORS` (Iteration 24) running on the *entire* line
+before `$((...))` is even recognized as arithmetic, with no awareness
+of arithmetic-expansion regions at all - it inserted a space around
+the `<` (one of the shell-level operators it normalizes), turning
+`2<=2` into `2 < =2` before the evaluator ever saw it, so what should
+have been a single `<=` comparison was parsed as `<` followed by an
+unrecognized `=2` (evaluating to 0, since `=` isn't a valid start for
+anything in the arithmetic grammar). Confirmed directly by printing
+`NORMALIZE-OPERATORS`'s own output for the literal text `$((2<=2))`.
+
+Fixed the same way quoted regions are already protected: two new
+tracking variables, `NORM-IN-ARITH?`/`NORM-ARITH-DEPTH`, mirroring
+`NORM-IN-SQ?`/`NORM-IN-DQ?`'s own shape exactly. `NORM-AT-ARITH-START?`
+detects `$((` at the current position; once inside, every character
+is copied through completely untouched (no operator spacing at all,
+the same treatment quoted text already gets) until the real closing
+`))` is found, tracking nested-paren depth within the expression the
+same way `EXPAND-ARITH` itself does, independently, moments later in
+the pipeline - the same problem, solved twice, in two different
+places that both need it. Verified directly: `$((2<=2))` now survives
+normalization completely unchanged, and shell-level `&&`/`<` outside
+any `$((...))` region continue to be normalized exactly as before.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: basic arithmetic; `*`/`/`/`%` binding tighter than `+`/`-`;
+parentheses overriding precedence; `-` left-associativity; unary
+minus; modulo; variable references (set and unset); every comparison
+operator; logical `&&`/`||`; nested parentheses within the expression
+itself; plain `$(...)` command substitution still working correctly,
+distinguished from `$((...))`; and arithmetic expansion used directly
+as another command's own argument (e.g. inside a `test` invocation).
+
+`tests/shell/run-arith` (15 assertions) - 223 assertions across 31
+files now, all passing on both x86-64 and i386.
+
+**Phase D remaining**: `IFS`-based field splitting of unquoted
+expansion results - the last item in Phase D's own scope.
+

@@ -618,12 +618,27 @@ the full account and the fixes applied.
      first, the same pattern already used elsewhere in this file for
      this exact need. See `PROGRESS.md`'s Iteration 34 entry.
 
-     Still open: arithmetic expansion (`$((...))` — a real expression
-     grammar: precedence, associativity, comparison/bitwise/logical
-     operators, assignment forms). `IFS`-based field
+     Arithmetic expansion (`$((...))`): **done (Iteration 35)** — a
+     real, precedence-climbing recursive-descent grammar (`||`, `&&`,
+     `==`/`!=`, `<`/`>`/`<=`/`>=`, `+`/`-`, `*`/`/`/`%`, unary
+     `-`/`+`/`!`, parentheses, decimal literals, variables — no
+     bitwise, ternary, assignment forms, or octal/hex). Built and
+     fully verified in an isolated diagnostic (22 cases) before
+     touching `shell.4` at all, catching two bugs early (a missing
+     `RECURSE` for self-reference within a still-compiling definition;
+     a test helper consuming its own length argument before needing
+     it again). A third, more significant bug surfaced only once
+     wired in: `NORMALIZE-OPERATORS` had no awareness of `$((...))`
+     regions, corrupting `2<=2` into `2 < =2` before the evaluator
+     ever saw it — fixed the same way quoted regions are already
+     protected, with new `NORM-IN-ARITH?`/`NORM-ARITH-DEPTH` tracking
+     mirroring the existing quote-tracking shape exactly. See
+     `PROGRESS.md`'s Iteration 35 entry for the full account.
+
+     Still open: `IFS`-based field
      splitting of unquoted expansion results (an explicit non-goal up
      through Iteration 13 — revisited here since mrsh's tests depend
-     on it).
+     on it) — the last item in Phase D's own scope.
    - **Phase E — command substitution completeness.** Nested
      `$(...)`. Backquote `` `...` `` substitution. A `$(...)` body
      that supports the full command grammar (pipelines, quoting,

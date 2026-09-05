@@ -1,0 +1,87 @@
+#!/bin/sh
+# run-arith - $((expression)) arithmetic expansion: a real, precedence-
+# climbing recursive-descent grammar (literals, variables, +-*/%,
+# parens, unary -/+/!, comparisons <, >, <=, >=, ==, !=, logical &&/
+# ||) - see the AE-OR/AE-AND/.../AE-PRIMARY chain and EXPAND-ARITH's
+# own comment for the full grammar and documented scope limits (no
+# bitwise operators, no ternary, no assignment forms or ++/-- within
+# the expression, decimal literals only). An unset variable, or one
+# whose value isn't itself a (possibly "-"-prefixed) run of digits, is
+# treated as 0. $((...)) is distinguished from $(...) command
+# substitution by checking for a doubled opening paren.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-arith-test-$$.sh"
+
+printf 'echo $((1+2))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "basic addition" "3" "$out"
+
+printf 'echo $((2+3*4))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "* binds tighter than + (precedence)" "14" "$out"
+
+cat > "$TMP_SCRIPT" << 'SCRIPTEOF'
+echo $(((2+3)*4))
+SCRIPTEOF
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "parentheses override precedence" "20" "$out"
+
+printf 'echo $((10-2-3))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "- is left-associative" "5" "$out"
+
+printf 'echo $((-5+10))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "unary minus" "5" "$out"
+
+printf 'echo $((10%%3))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "modulo" "1" "$out"
+
+printf 'x123=7\necho $((x123+3))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a shell variable is looked up and parsed numerically" "10" "$out"
+
+printf 'echo $((y123+5))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "an unset variable is treated as 0" "5" "$out"
+
+printf 'echo $((3>2))\necho $((2>3))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "comparison operators yield 1/0" "1
+0" "$out"
+
+printf 'echo $((2<=2))\necho $((3<=2))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "<= comparison" "1
+0" "$out"
+
+printf 'echo $((3==3))\necho $((3!=3))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "==/!= comparison" "1
+0" "$out"
+
+printf 'echo $((1&&1))\necho $((1&&0))\necho $((0||1))\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "logical &&/||" "1
+0
+1" "$out"
+
+cat > "$TMP_SCRIPT" << 'SCRIPTEOF'
+echo $(( (1+2)*(3+4) ))
+SCRIPTEOF
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "nested parentheses within the expression itself" "21" "$out"
+
+printf 'echo $(echo hello123)\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "plain \$(...) command substitution still works, distinguished from \$((...))" "hello123" "$out"
+
+printf 'x123=5\n/usr/bin/test $((x123*2)) -eq 10 && echo matched123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "arithmetic expansion used as a command's own argument" "matched123" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

@@ -155,6 +155,32 @@ VARIABLE LOOP-DEPTH        \ how many while/for loops are currently
 : CSTRLEN ( c-addr --- u )
   DUP BEGIN DUP C@ WHILE CHAR+ REPEAT SWAP - ;
 
+VARIABLE PARSE-N
+
+: PARSE-DECIMAL ( c-addr u --- n )
+  \ Parses a simple non-negative decimal integer from (c-addr u) - no
+  \ sign handling, matching how exit codes are conventionally
+  \ unsigned small integers. An explicit multiply/accumulate loop
+  \ rather than the standard >NUMBER, to keep this self-contained and
+  \ easy to verify directly, matching EMIT-DECIMAL's own reasoning
+  \ elsewhere. u can be 0 (e.g. `exit ""`), guarded the same way as
+  \ Iteration 15's crash-hardening fixes - this kernel's DO/LOOP
+  \ doesn't treat start=limit as zero iterations. Moved here (from
+  \ much later in the file originally) in Iteration 35, so arithmetic
+  \ expansion's own numeric-lookup logic - defined much earlier than
+  \ this word's original position - can call it directly.
+  0 PARSE-N !
+  DUP 0 > IF
+    0 DO
+      DUP I + C@ 48 -
+      PARSE-N @ 10 * + PARSE-N !
+    LOOP
+    DROP
+  ELSE
+    2DROP
+  THEN
+  PARSE-N @ ;
+
 : TYPE0 ( c-addr --- )
   DUP CSTRLEN TYPE ;
 
@@ -698,6 +724,299 @@ VARIABLE ER-I
     DROP
   THEN ;
 
+\ ==================================================================
+\ Arithmetic expansion: $((expression)) - a real, precedence-climbing
+\ recursive-descent expression grammar (each level below binds
+\ tighter than the one above it, matching C/POSIX precedence):
+\   AE-OR   := AE-AND ( "||" AE-AND )*
+\   AE-AND  := AE-EQ ( "&&" AE-EQ )*
+\   AE-EQ   := AE-REL ( ("=="|"!=") AE-REL )*
+\   AE-REL  := AE-ADD ( ("<"|">"|"<="|">=") AE-ADD )*
+\   AE-ADD  := AE-MUL ( ("+"|"-") AE-MUL )*
+\   AE-MUL  := AE-PRIMARY ( ("*"|"/"|"%") AE-PRIMARY )*
+\   AE-PRIMARY := NUMBER | NAME | "(" AE-OR ")" | ("-"|"+"|"!") AE-PRIMARY
+\ Scope limits, all deliberate: no bitwise operators (&, |, ^, <<, >>,
+\ ~), no ternary (?:), no assignment forms (=, +=, etc.) or ++/--
+\ within the expression, no octal/hex literals (decimal only). A
+\ variable that's unset, or whose value doesn't start with an optional
+\ '-' followed by digits, is treated as 0 - matching how POSIX
+\ arithmetic treats a non-numeric operand as an error in principle,
+\ but this shell's own established style favors a harmless fallback
+\ over a hard error throughout (see LOOKUP-VAR/EMIT-DECIMAL and
+\ friends elsewhere in this file). Operates on ARITH-BUF, a private
+\ copy of the expression text (extracted by EXPAND-ARITH below,
+\ tracking paren depth so a nested "(...)" inside the expression
+\ itself isn't mistaken for the arithmetic expansion's own closing
+\ "))"), with its own AE-POS/AE-END position tracking, entirely
+\ separate from the main tokenizer's own TOK-POS/TOK-END - this
+\ evaluator has no awareness of quoting, $VAR expansion, or anything
+\ else about the outer command line at all, only of the extracted
+\ expression text itself.
+\ ==================================================================
+
+CREATE ARITH-BUF 256 ALLOT
+VARIABLE AE-POS
+VARIABLE AE-END
+
+: AE-SKIP-WS ( --- )
+  BEGIN
+    AE-POS @ AE-END @ < IF AE-POS @ C@ WS? ELSE 0 THEN
+  WHILE
+    AE-POS @ 1+ AE-POS !
+  REPEAT ;
+
+: AE-DIGIT? ( c --- f )
+  DUP 48 < 0= SWAP 58 < AND ;
+
+: AE-PARSE-NUMBER ( --- n )
+  0
+  BEGIN
+    AE-POS @ AE-END @ < IF AE-POS @ C@ AE-DIGIT? ELSE 0 THEN
+  WHILE
+    10 * AE-POS @ C@ 48 - +
+    AE-POS @ 1+ AE-POS !
+  REPEAT ;
+
+CREATE AE-VARNAME-BUF 64 ALLOT
+VARIABLE AE-VN-LEN
+
+: AE-READ-VARNAME ( --- )
+  0 AE-VN-LEN !
+  BEGIN
+    AE-POS @ AE-END @ < IF AE-POS @ C@ NAME-CHAR? ELSE 0 THEN
+  WHILE
+    AE-POS @ C@ AE-VARNAME-BUF AE-VN-LEN @ + C!
+    AE-VN-LEN @ 1+ AE-VN-LEN !
+    AE-POS @ 1+ AE-POS !
+  REPEAT
+  0 AE-VARNAME-BUF AE-VN-LEN @ + C! ;
+
+: AE-LOOKUP-NUMERIC ( --- n )
+  \ An unset variable, or one whose value isn't itself a (possibly
+  \ "-"-prefixed) run of digits, is treated as 0.
+  AE-VARNAME-BUF LOOKUP-VAR DUP 0= IF
+    DROP 0
+  ELSE
+    DUP C@ 45 = IF
+      1+ DUP CSTRLEN PARSE-DECIMAL NEGATE
+    ELSE
+      DUP CSTRLEN PARSE-DECIMAL
+    THEN
+  THEN ;
+
+: AE-BOOL-TO-INT ( f --- n )  \ Forth's own -1/0 boolean convention to
+                                \ POSIX arithmetic's 1/0
+  NEGATE ;
+: AE-TRUTHY? ( n --- f )  0= 0= ;
+
+: AE-MUL-OP? ( c --- f )
+  DUP 42 = OVER 47 = OR SWAP 37 = OR ;
+
+: AE-ADD-OP? ( c --- f )
+  DUP 43 = SWAP 45 = OR ;
+
+VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
+                      \ full expression in its own right) and AE-OR
+                      \ (the top of the grammar) are mutually
+                      \ recursive across several intervening levels -
+                      \ rather than defining all seven levels as one
+                      \ giant, deeply-nested word, AE-PRIMARY reaches
+                      \ AE-OR through this deferred call, patched
+                      \ right after AE-OR itself is defined below.
+
+: AE-OR-CALL ( --- n )  AE-OR-XT @ EXECUTE ;
+
+: AE-PRIMARY ( --- n )
+  AE-SKIP-WS
+  AE-POS @ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ C@ 40 = IF                    ( '(' )
+    AE-POS @ 1+ AE-POS !
+    AE-OR-CALL
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ 41 = IF AE-POS @ 1+ AE-POS ! THEN THEN
+    EXIT
+  THEN
+  AE-POS @ C@ 45 = IF                    ( unary '-' )
+    AE-POS @ 1+ AE-POS !
+    RECURSE NEGATE
+    EXIT
+  THEN
+  AE-POS @ C@ 43 = IF                    ( unary '+' )
+    AE-POS @ 1+ AE-POS !
+    RECURSE
+    EXIT
+  THEN
+  AE-POS @ C@ 33 = IF                    ( unary '!' logical not )
+    AE-POS @ 1+ AE-POS !
+    RECURSE AE-TRUTHY? 0= AE-BOOL-TO-INT
+    EXIT
+  THEN
+  AE-POS @ C@ AE-DIGIT? IF
+    AE-PARSE-NUMBER
+    EXIT
+  THEN
+  AE-READ-VARNAME
+  AE-LOOKUP-NUMERIC ;
+
+: AE-MUL ( --- n )
+  AE-PRIMARY
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ AE-MUL-OP? ELSE 0 THEN
+  WHILE
+    AE-POS @ C@
+    DUP 42 = IF
+      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY *
+    ELSE DUP 47 = IF
+      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY /
+    ELSE
+      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY MOD
+    THEN THEN
+  REPEAT ;
+
+: AE-ADD ( --- n )
+  AE-MUL
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ AE-ADD-OP? ELSE 0 THEN
+  WHILE
+    AE-POS @ C@ 43 = IF
+      AE-POS @ 1+ AE-POS ! AE-MUL +
+    ELSE
+      AE-POS @ 1+ AE-POS ! AE-MUL -
+    THEN
+  REPEAT ;
+
+: AE-REL ( --- n )
+  \ "<="/">=" checked by matching the leading '<'/'>' first, then
+  \ peeking one further character for a following '=' - matching how
+  \ AE-EQ itself distinguishes "==<"/"!=" from a bare '='/'!' (which
+  \ don't appear in this grammar at all, so a bare one is simply not
+  \ matched by anything here and left for the caller to report as an
+  \ unmatched trailing character, the same sparse-error-handling style
+  \ used throughout this shell).
+  AE-ADD
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ DUP 60 = SWAP 62 = OR ELSE 0 THEN
+  WHILE
+    AE-POS @ C@ 60 = IF                      ( starts with '<' )
+      AE-POS @ 1+ AE-POS !
+      AE-POS @ AE-END @ < AE-POS @ C@ 61 = AND IF
+        AE-POS @ 1+ AE-POS !
+        AE-ADD SWAP < 0= AE-BOOL-TO-INT       ( "<=" )
+      ELSE
+        AE-ADD < AE-BOOL-TO-INT               ( "<" )
+      THEN
+    ELSE                                       ( starts with '>' )
+      AE-POS @ 1+ AE-POS !
+      AE-POS @ AE-END @ < AE-POS @ C@ 61 = AND IF
+        AE-POS @ 1+ AE-POS !
+        AE-ADD < 0= AE-BOOL-TO-INT             ( ">=" )
+      ELSE
+        AE-ADD SWAP < AE-BOOL-TO-INT           ( ">" )
+      THEN
+    THEN
+  REPEAT ;
+
+: AE-EQ ( --- n )
+  AE-REL
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF
+      AE-POS @ C@ DUP 61 = SWAP 33 = OR
+      AE-POS @ 1+ AE-END @ < IF AE-POS @ 1+ C@ 61 = ELSE 0 THEN AND
+    ELSE 0 THEN
+  WHILE
+    AE-POS @ C@ 61 = IF
+      AE-POS @ 2 + AE-POS !
+      AE-REL = AE-BOOL-TO-INT
+    ELSE
+      AE-POS @ 2 + AE-POS !
+      AE-REL = 0= AE-BOOL-TO-INT
+    THEN
+  REPEAT ;
+
+: AE-AND ( --- n )
+  AE-EQ
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < AE-POS @ 1+ AE-END @ < AND IF
+      AE-POS @ C@ 38 = AE-POS @ 1+ C@ 38 = AND
+    ELSE 0 THEN
+  WHILE
+    AE-POS @ 2 + AE-POS !
+    AE-EQ
+    SWAP AE-TRUTHY? SWAP AE-TRUTHY? AND AE-BOOL-TO-INT
+  REPEAT ;
+
+: AE-OR ( --- n )
+  AE-AND
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < AE-POS @ 1+ AE-END @ < AND IF
+      AE-POS @ C@ 124 = AE-POS @ 1+ C@ 124 = AND
+    ELSE 0 THEN
+  WHILE
+    AE-POS @ 2 + AE-POS !
+    AE-AND
+    SWAP AE-TRUTHY? SWAP AE-TRUTHY? OR AE-BOOL-TO-INT
+  REPEAT ;
+' AE-OR AE-OR-XT !
+
+VARIABLE AE-EVAL-LEN
+
+: AE-EVAL ( c-addr u --- n )
+  \ Copies (c-addr u) into ARITH-BUF (a private copy, so the
+  \ evaluator's own AE-POS/AE-END never alias the main tokenizer's
+  \ LINE-BUF/TOK-POS/TOK-END) and evaluates it as a full expression.
+  DUP AE-EVAL-LEN !
+  ARITH-BUF SWAP MOVE
+  ARITH-BUF AE-POS !
+  ARITH-BUF AE-EVAL-LEN @ + AE-END !
+  AE-OR ;
+
+CREATE ARITH-EXPR-BUF 256 ALLOT
+VARIABLE ARITH-EXPR-LEN
+VARIABLE ARITH-DEPTH
+
+: EXPAND-ARITH ( --- )
+  \ TOK-POS is right after "$((" (both opening parens already
+  \ consumed by the caller). Scans for the matching "))" - tracking
+  \ how many *extra*, unmatched "(" are open within the expression
+  \ itself (ARITH-DEPTH), so a nested "(...)" inside the expression
+  \ (e.g. "$(( (1+2)*3 ))") isn't mistaken for the arithmetic
+  \ expansion's own closing "))" - before evaluating the extracted
+  \ text (via AE-EVAL) and emitting the result as a decimal number.
+  \ Bounds-checked against ARITH-EXPR-BUF's own fixed size the same
+  \ defensive way this file already handles other fixed-size copies -
+  \ an expression longer than that is silently truncated rather than
+  \ overflowing, not reported as an error.
+  0 ARITH-DEPTH !
+  0 ARITH-EXPR-LEN !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF
+      TOK-POS @ C@ 41 = ARITH-DEPTH @ 0 = AND
+      TOK-POS @ 1+ TOK-END @ < AND
+      TOK-POS @ 1+ C@ 41 = AND
+      0=
+    ELSE
+      0
+    THEN
+  WHILE
+    TOK-POS @ C@ 40 = IF ARITH-DEPTH @ 1+ ARITH-DEPTH ! THEN
+    TOK-POS @ C@ 41 = IF
+      ARITH-DEPTH @ 0 > IF ARITH-DEPTH @ 1- ARITH-DEPTH ! THEN
+    THEN
+    ARITH-EXPR-LEN @ 255 < IF
+      TOK-POS @ C@ ARITH-EXPR-BUF ARITH-EXPR-LEN @ + C!
+      ARITH-EXPR-LEN @ 1+ ARITH-EXPR-LEN !
+    THEN
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
+  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL ;
+
 : EXPAND-CMDSUB ( --- )
   \ TOK-POS is at the '(' immediately following '$'.
   TOK-POS @ 1+ TOK-POS !            ( skip '(' )
@@ -978,8 +1297,15 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     EMIT-ALL-POS-PARAMS
     EXIT
   THEN
-  DUP 40 = IF                     ( $( - command substitution )
-    DROP EXPAND-CMDSUB
+  DUP 40 = IF                     \ command substitution, or
+                                   \ arithmetic expansion if doubled
+    DROP
+    TOK-POS @ 1+ TOK-END @ < TOK-POS @ 1+ C@ 40 = AND IF
+      TOK-POS @ 2 + TOK-POS !
+      EXPAND-ARITH
+    ELSE
+      EXPAND-CMDSUB
+    THEN
     EXIT
   THEN
   DUP 123 = IF                    ( ${...} )
@@ -1354,29 +1680,6 @@ VARIABLE PATH-END2
     THEN
   THEN
   0 LAST-STATUS ! ;
-
-VARIABLE PARSE-N
-
-: PARSE-DECIMAL ( c-addr u --- n )
-  \ Parses a simple non-negative decimal integer from (c-addr u) - no
-  \ sign handling, matching how exit codes are conventionally
-  \ unsigned small integers. An explicit multiply/accumulate loop
-  \ rather than the standard >NUMBER, to keep this self-contained and
-  \ easy to verify directly, matching EMIT-DECIMAL's own reasoning
-  \ above. u can be 0 (e.g. `exit ""`), guarded the same way as
-  \ Iteration 15's crash-hardening fixes - this kernel's DO/LOOP
-  \ doesn't treat start=limit as zero iterations.
-  0 PARSE-N !
-  DUP 0 > IF
-    0 DO
-      DUP I + C@ 48 -
-      PARSE-N @ 10 * + PARSE-N !
-    LOOP
-    DROP
-  ELSE
-    2DROP
-  THEN
-  PARSE-N @ ;
 
 : DO-UNSET ( --- )
   \ unset NAME - removes an exported environment variable and, if
@@ -2240,6 +2543,22 @@ VARIABLE NORM-U
 VARIABLE NORM-IN-SQ?
 VARIABLE NORM-IN-DQ?
 VARIABLE NORM-C
+VARIABLE NORM-IN-ARITH?    \ true while copying through a $((...))
+                            \ region verbatim - operators like <, >,
+                            \ &, | are meaningful to the arithmetic
+                            \ grammar itself (e.g. "<=", "&&") and
+                            \ must not get shell-level spacing
+                            \ inserted around them, the same reason
+                            \ quoted regions are already copied
+                            \ through untouched rather than normalized.
+VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
+                            \ within the arithmetic expression itself,
+                            \ so a nested "(...)" inside it isn't
+                            \ mistaken for the expansion's own closing
+                            \ "))" - mirrors EXPAND-ARITH's own,
+                            \ separate depth tracking exactly, since
+                            \ this is the same problem solved once
+                            \ more, earlier in the pipeline.
 
 : NORM-EMIT ( c --- )
   NORM-LEN @ NORM-MAX 1- < IF
@@ -2255,6 +2574,10 @@ VARIABLE NORM-C
     DROP 0
   THEN ;
 
+: NORM-AT-ARITH-START? ( --- f )  \ is "$((" starting right at the
+                                     \ current position?
+  NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 = AND ;
+
 : NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
@@ -2263,10 +2586,23 @@ VARIABLE NORM-C
   0 NORM-LEN !
   0 NORM-IN-SQ? !
   0 NORM-IN-DQ? !
+  0 NORM-IN-ARITH? !
+  0 NORM-ARITH-DEPTH !
   0 NORM-I !
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
-    NORM-IN-SQ? @ IF
+    NORM-IN-ARITH? @ IF
+      NORM-C @ 40 = IF NORM-ARITH-DEPTH @ 1+ NORM-ARITH-DEPTH ! THEN
+      NORM-C @ 41 = IF
+        NORM-ARITH-DEPTH @ 0 > IF
+          NORM-ARITH-DEPTH @ 1- NORM-ARITH-DEPTH !
+        ELSE
+          1 NORM-PEEK 41 = IF 0 NORM-IN-ARITH? ! THEN
+        THEN
+      THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-IN-SQ? @ IF
       NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
@@ -2293,6 +2629,18 @@ VARIABLE NORM-C
         0 NORM-PEEK NORM-EMIT
         NORM-I @ 1+ NORM-I !
       THEN
+    ELSE NORM-AT-ARITH-START? IF
+      \ "$((" starting here - copy all three characters verbatim and
+      \ switch into arith-mode, so operators meaningful to the
+      \ arithmetic grammar itself ("<=", "&&", etc.) inside it don't
+      \ get shell-level spacing inserted around them - see
+      \ NORM-IN-ARITH?'s own comment above.
+      -1 NORM-IN-ARITH? !
+      0 NORM-ARITH-DEPTH !
+      NORM-C @ NORM-EMIT
+      1 NORM-PEEK NORM-EMIT
+      2 NORM-PEEK NORM-EMIT
+      NORM-I @ 3 + NORM-I !
     ELSE NORM-C @ OP-CHAR? IF
       32 NORM-EMIT
       NORM-C @ NORM-EMIT
@@ -2307,7 +2655,7 @@ VARIABLE NORM-C
     ELSE
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
   NORM-LEN @ ;
 
