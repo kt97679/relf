@@ -3394,3 +3394,75 @@ cases, by giving a function an early-exit that doesn't need a nested
 interact with directly), and the unverified extent of the
 `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call sites fixed here.
 
+## Iteration 29: goal 8 phase C - `return`
+
+`return [n]` exits the innermost currently-executing function
+immediately: `$?` becomes `n` if given, or is left as whatever the
+last command's own status already was otherwise (POSIX's own rule).
+Everything else in that function's own body - later lines, and any
+remaining `;`/`&&`/`||`-chained segments on the *same* line `return`
+appeared on - is correctly skipped.
+
+### Design: one flag, checked in exactly two places
+
+`RETURN-PENDING?`, set by the new `return` builtin (alongside
+`cd`/`pwd`/`export`/`unset`/`exit` in `DISPATCH`), is checked in:
+
+1. `RUN-SIMPLE-OR-PIPELINE`, alongside the existing `SUPPRESS-EXEC?`
+   check - both cause an immediate, no-op exit. This one place is
+   reached by *every* individual command or assignment regardless of
+   `;`/`&&`/`||` structure (plain fall-through, each `&&`/`||`-chained
+   piece, and each `;`-separated recursive call all funnel through it
+   eventually), so nothing further in the same logical line runs once
+   `return` has fired, without needing a separate check bolted onto
+   each splitting word individually - the same reasoning already
+   established for why `SUPPRESS-EXEC?` itself is checked only there
+   (and in `DO-ASSIGN`).
+
+2. `RUN-FUNC-BODY`'s own replay loop condition, so the invocation
+   also stops advancing to its own next stored body line - and,
+   critically, `RUN-FUNC-BODY` resets `RETURN-PENDING?` back to false
+   *before* returning to its own caller (restoring the saved
+   `FUNC-CUR-I`/`FUNC-BODY-I` via `R>`), regardless of whether the loop
+   ended normally or via a return. This is what keeps recursion safe:
+   an inner, nested invocation's own return is fully "consumed" by
+   that invocation alone and never leaks out to also stop an outer,
+   still-in-progress caller - verified directly (`inner`/`outer` test
+   below), not just asserted from the design.
+
+A new `FUNC-DEPTH` counter (incremented/decremented symmetrically
+around `RUN-FUNC-BODY`'s own body) lets a top-level `return` - outside
+any function at all - be diagnosed with a message rather than
+silently setting a flag nothing will ever consume, which would
+otherwise wedge every following command in the entire remaining
+script (nothing else resets `RETURN-PENDING?` except `RUN-FUNC-BODY`
+itself).
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Went smoothly - every case passed on the first attempt, likely because
+the two independent bugs the function feature itself surfaced
+(Iteration 28's assignment-in-`&&`-chain and `COPY-ARGV`/`ARGV-QUOTED`
+fixes) were already in place before this started, and because the
+single-flag, two-check-point design was thought through fully before
+writing any code, rather than discovered through trial and error.
+Confirmed: a bare `return` stops the rest of its own function's body;
+an explicit status (`return 5`) sets `$?`; a bare `return` after a
+failing command leaves `$?` as that failure; `return` used as one
+segment of an `&&`-chain stops the rest of that chain *and* the rest
+of the function's body, not just that one chained piece; a nested
+function's own `return` unwinds only that function, correctly letting
+its caller continue normally afterward; and a top-level `return`
+prints a diagnostic and the script continues rather than hanging or
+crashing.
+
+`tests/shell/run-return` (10 assertions) locks all of this in - 170
+assertions across 25 files now, all passing on both x86-64 and i386.
+mrsh-suite unchanged (1 passed, 20 failed, 3 skipped) -
+`return.sh` itself still needs the `:` no-op builtin (not yet
+implemented) and a `while` loop nested inside a function body (the
+already-documented multi-line-construct limitation) before it can
+pass as a whole file.
+
+**Phase C now has only `break`/`continue` remaining.**
+

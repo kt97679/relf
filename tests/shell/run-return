@@ -1,0 +1,69 @@
+#!/bin/sh
+# run-return - "return [n]" exits the innermost currently-executing
+# function immediately, setting $? to n if given or leaving it as the
+# last command's own status otherwise (see DO-RETURN's own home
+# inside DISPATCH). Implemented as a single RETURN-PENDING? flag,
+# checked in the same place SUPPRESS-EXEC? already is
+# (RUN-SIMPLE-OR-PIPELINE), so it short-circuits any further command
+# in the same logical line regardless of ';'/'&&'/'||' structure -
+# and in RUN-FUNC-BODY's own replay loop, so it also stops that
+# invocation from advancing to its own next stored body line.
+# RUN-FUNC-BODY resets the flag before returning to its own caller, so
+# a nested/recursive call's own return never leaks out to stop an
+# outer, still-in-progress invocation too - verified directly below,
+# not just asserted from the design. FUNC-DEPTH (incremented/
+# decremented around RUN-FUNC-BODY) lets a top-level "return" (outside
+# any function) be diagnosed rather than silently setting a flag
+# nothing will ever consume, which would otherwise wedge every
+# following command in the whole script.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-return-test-$$.sh"
+
+printf 'myfunc123() {\necho before-return123\nreturn\necho after-return-should-not-print\n}\nmyfunc123\necho done123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "return stops the rest of the function's own body" "before-return123
+done123" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "after-return-should-not-print"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing after a return in the same function body should run"
+fi
+
+printf 'myfunc123() {\nreturn 5\n}\nmyfunc123\necho status=$?\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "return with an explicit status sets \$? to it" "status=5" "$out"
+
+printf 'myfunc123() {\n/usr/bin/false\nreturn\n}\nmyfunc123\necho status=$?\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a bare return leaves \$? as the last command's own status" "status=1" "$out"
+
+printf 'myfunc123() {\n/usr/bin/true && return 3 && echo should-not-print123\necho also-should-not-print123\n}\nmyfunc123\necho status=$?\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "return inside an &&-chain stops the rest of that chain too" "status=3" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "should-not-print123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: nothing chained after a return, or after it in the body, should run"
+fi
+
+printf 'inner123() {\necho inner-before123\nreturn 7\necho inner-after-should-not-print123\n}\nouter123() {\necho outer-before123\ninner123\necho outer-after123\n}\nouter123\necho status=$?\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "return only unwinds the innermost function, not an outer caller" "outer-before123
+inner-before123
+outer-after123
+status=0" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "inner-after-should-not-print123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: an inner function's own return must not skip the outer caller's own remaining body"
+fi
+
+printf 'return\necho after-toplevel-return123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a top-level return (outside any function) is diagnosed, not fatal" "not in a function" "$out"
+assert_output_contains "script execution continues normally after a top-level return" "after-toplevel-return123" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

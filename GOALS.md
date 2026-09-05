@@ -514,7 +514,25 @@ the full account and the fixes applied.
      hazard at other `COPY-ARGV` call sites (pipeline segments, group
      bodies) unverified rather than claimed safe.
 
-     Still open: `return`. `break`/`continue`.
+     `return [n]`: **done (Iteration 29)** — exits the innermost
+     currently-executing function immediately (`$?` becomes `n` if
+     given, otherwise left as the last command's own status, per
+     POSIX), correctly skipping everything else in that function's own
+     body, including any remaining `;`/`&&`/`||`-chained segments on
+     the same line `return` appeared on. A single `RETURN-PENDING?`
+     flag, checked in exactly two places (`RUN-SIMPLE-OR-PIPELINE`,
+     alongside the existing `SUPPRESS-EXEC?` check, since every
+     individual command eventually funnels through there regardless of
+     `;`/`&&`/`||` structure; and `RUN-FUNC-BODY`'s own replay-loop
+     condition) — reset by `RUN-FUNC-BODY` itself before returning to
+     its own caller, so an inner, recursive invocation's own return
+     never leaks out to stop an outer, still-in-progress caller too. A
+     top-level `return` (outside any function) is diagnosed rather
+     than silently setting a flag nothing would ever consume. Went
+     smoothly — every case passed on the first attempt. See
+     `PROGRESS.md`'s Iteration 29 entry for the full design.
+
+     Still open: `break`/`continue`.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`). Parameter-expansion modifiers
      (`${VAR:-word}`, `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,

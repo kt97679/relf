@@ -54,6 +54,29 @@ VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ inspection.
 0 LAST-STATUS !        ( defensive: don't rely on a VARIABLE's initial content )
 
+VARIABLE RETURN-PENDING?  \ true from the moment a "return" builtin
+                           \ runs (see DISPATCH) until the innermost
+                           \ still-executing function's own
+                           \ RUN-FUNC-BODY notices and resets it.
+                           \ Checked alongside SUPPRESS-EXEC? in
+                           \ RUN-SIMPLE-OR-PIPELINE, so it short-
+                           \ circuits any further command in the same
+                           \ logical line regardless of ';'/'&&'/'||'
+                           \ structure - all of those eventually run
+                           \ their own piece through
+                           \ RUN-SIMPLE-OR-PIPELINE, the one place
+                           \ this needs to be checked, the same reason
+                           \ SUPPRESS-EXEC? is checked only there
+                           \ (and DO-ASSIGN) rather than at every
+                           \ splitting word individually.
+VARIABLE FUNC-DEPTH        \ how many RUN-FUNC-BODY calls are
+                           \ currently on the way down (0 at the top
+                           \ level) - "return" outside any function is
+                           \ diagnosed rather than silently ignored or
+                           \ left to corrupt later execution.
+0 RETURN-PENDING? !
+0 FUNC-DEPTH !
+
 \ ==================================================================
 \ C-string helpers
 \ EXECVE/GETENV/SETENV/CHDIR all speak NUL-terminated C strings, not
@@ -1048,6 +1071,17 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
         LAST-STATUS @ SYS-EXIT
       THEN
     THEN
+    S" return" ARGV @ STR0= IF
+      ARGC @ 1 > IF
+        ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL LAST-STATUS !
+      THEN
+      FUNC-DEPTH @ 0 > IF
+        -1 RETURN-PENDING? !
+      ELSE
+        ." return: not in a function" CR
+      THEN
+      -1 EXIT
+    THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
       RUN-FUNC-BODY-CALL -1 EXIT
     THEN
@@ -1386,8 +1420,16 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
                                     \ is being read only to correctly
                                     \ consume a skipped if/while
                                     \ branch's own body, not actually
-                                    \ run.
-  SUPPRESS-EXEC? @ IF EXIT THEN
+                                    \ run. Also a no-op once
+                                    \ RETURN-PENDING? is set - once a
+                                    \ "return" builtin has run within
+                                    \ the current function, nothing
+                                    \ further in that same logical line
+                                    \ (or any later line of that
+                                    \ function's own body) should run
+                                    \ either, regardless of ';'/'&&'/
+                                    \ '||' structure.
+  SUPPRESS-EXEC? @ RETURN-PENDING? @ OR IF EXIT THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
@@ -2234,17 +2276,31 @@ VARIABLE FUNC-BODY-I
   \ via another function) doesn't disturb an outer, still-in-progress
   \ invocation's own iteration state - the same principle already
   \ established for if's own COND-TRUE?/SUPPRESS-EXEC? nesting.
+  \ FUNC-DEPTH tracks call nesting (so "return" outside any function
+  \ can be diagnosed); the loop also stops as soon as RETURN-PENDING?
+  \ is set (by a "return" builtin run somewhere in this invocation's
+  \ own body, possibly several ';'/'&&'/'||'-chained segments deep -
+  \ see RUN-SIMPLE-OR-PIPELINE), which is then reset before this
+  \ invocation returns, so an outer, still-in-progress caller (if this
+  \ was a recursive or nested call) never sees a stale, already-
+  \ consumed return meant only for the invocation that triggered it.
+  FUNC-DEPTH @ 1+ FUNC-DEPTH !
   FUNC-CUR-I @ >R
   FUNC-BODY-I @ >R
   FUNC-CUR-I !
   0 FUNC-BODY-I !
-  BEGIN FUNC-BODY-I @ FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ < WHILE
+  BEGIN
+    FUNC-BODY-I @ FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ <
+    RETURN-PENDING? @ 0= AND
+  WHILE
     FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + RUN-STORED-LINE
     FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + CSTRLEN
     FUNC-BODY-I @ + 1+ FUNC-BODY-I !
   REPEAT
+  0 RETURN-PENDING? !
   R> FUNC-BODY-I !
-  R> FUNC-CUR-I ! ;
+  R> FUNC-CUR-I !
+  FUNC-DEPTH @ 1- FUNC-DEPTH ! ;
 ' RUN-FUNC-BODY RUN-FUNC-BODY-XT !
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
