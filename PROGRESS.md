@@ -3667,3 +3667,55 @@ neither related to positional parameters, before it can pass.
 expansion (`$((...))`); tilde expansion; `IFS`-based field splitting of
 unquoted expansion results.
 
+## Iteration 32: goal 8 phase D - parameter-expansion modifiers
+## (default/assign/alternate value, length)
+
+`${#VAR}` (length), `${VAR:-word}`/`${VAR-word}` (default value),
+`${VAR:=word}`/`${VAR=word}` (assign default), `${VAR:+word}`/
+`${VAR+word}` (alternate value). The `:`-prefixed variants trigger on
+`VAR` being either unset *or* empty; the plain variants trigger on
+unset only - a distinction that matters and is tested explicitly for
+each pair. `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`
+(prefix/suffix removal) remain for a follow-up iteration - genuinely
+new pattern-matching logic, not just string comparison, unlike
+everything else here.
+
+### Design: extracted into a dedicated `EXPAND-BRACED-VAR`, replacing the old inline `${NAME}` block
+
+The previous `${...}` handling in `EXPAND-VAR` just read everything up
+to the closing `}` as one blob and looked it up directly - workable
+for a plain name, but a modifier like `${VAR:-word}` would have been
+looked up (and fail to be found) as a single, literal variable name
+`"VAR:-word"`. Replaced with a new word, `EXPAND-BRACED-VAR`, built
+from two small, reusable pieces: `READ-VARNAME` (like the old parsing,
+but stops at the first non-name character instead of consuming through
+`}`, so the caller can inspect what follows) and `READ-PEWORD` (reads
+the "word" portion up to the closing `}`).
+
+Dispatch, in order: `${#VAR}` detected by `#` immediately after `{`
+(before any name is even read, since `#` can't itself be a name
+character); then the variable name; then whatever follows it - `}`
+(the plain, unmodified case, unchanged from before), or an optional
+`:` followed by one of `-`/`=`/`+`. Each of the three checks `LOOKUP-VAR`
+directly (its 0-vs-address return already distinguishes "unset" from
+"set", even set-to-empty, so no separate "is it set" check was
+needed) and combines that with `CSTRLEN 0=` (is the value empty) `AND`
+the colon flag to decide whether the modifier fires - one boolean
+expression per case, mirrored across all three modifiers.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Every case passed on the first attempt: length; default value on
+unset; the actual value used when set and non-empty; the `:`-vs-plain
+distinction on an empty variable (confirmed both ways, `:-` firing on
+empty while plain `-` does not); assign-default (confirmed the
+variable was genuinely set afterward, not just expanded once); and
+alternate-value in all four combinations (set/unset × colon/no-colon).
+
+`tests/shell/run-param-modifiers` (8 assertions) - 196 assertions
+across 28 files now, all passing on both x86-64 and i386.
+
+**Phase D remaining**: `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/
+`${VAR##word}` (prefix/suffix removal); arithmetic expansion
+(`$((...))`); tilde expansion; `IFS`-based field splitting.
+

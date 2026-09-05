@@ -749,6 +749,145 @@ VARIABLE EAP-I
     EAP-I @ 1+ EAP-I !
   REPEAT ;
 
+\ ==================================================================
+\ Parameter-expansion modifiers: ${#VAR} (length), ${VAR:-word}/
+\ ${VAR-word} (default value), ${VAR:=word}/${VAR=word} (assign
+\ default), ${VAR:+word}/${VAR+word} (alternate value). The ':'
+\ variants trigger on VAR being either unset OR empty; the plain
+\ variants trigger on unset only. Scope limits, both documented here
+\ rather than silently: the "word" portion is treated as a literal
+\ string - no further $-expansion is applied to it, unlike real POSIX
+\ - and no nested braces are tracked while reading it, so an inner
+\ "}" ends it early. ${VAR%word}/${VAR%%word}/${VAR#word}/
+\ ${VAR##word} (prefix/suffix removal) are a separate, not yet
+\ implemented piece - genuinely new pattern-matching logic, not just
+\ string comparison, unlike the modifiers here.
+\ ==================================================================
+
+CREATE PEWORD-BUF 256 ALLOT
+VARIABLE PEWORD-LEN
+VARIABLE PEW-COLON?
+
+: READ-PEWORD ( --- )
+  \ Reads from TOK-POS up to (not including) the closing '}' into
+  \ PEWORD-BUF, advancing TOK-POS past the '}' - the "word" portion of
+  \ a ${VAR:-word}-style expansion.
+  0 PEWORD-LEN !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 125 <> ELSE 0 THEN
+  WHILE
+    TOK-POS @ C@ PEWORD-BUF PEWORD-LEN @ + C!
+    PEWORD-LEN @ 1+ PEWORD-LEN !
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
+  0 PEWORD-BUF PEWORD-LEN @ + C! ;
+
+: READ-VARNAME ( --- )
+  \ Reads a POSIX portable variable name from TOK-POS into
+  \ VARNAME-BUF, *without* consuming whatever follows (unlike the
+  \ plain, unmodified ${NAME} path, which consumes through the closing
+  \ '}' itself) - stops right at the first non-name character, so the
+  \ caller can inspect what comes next to detect a modifier.
+  0 VN-LEN !
+  BEGIN
+    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ NAME-CHAR? ELSE 0 THEN
+  WHILE
+    TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
+    VN-LEN @ 1+ VN-LEN !
+    TOK-POS @ 1+ TOK-POS !
+  REPEAT
+  0 VARNAME-BUF VN-LEN @ + C! ;
+
+: EMIT-LOOKED-UP-VAR ( value-addr-or-0 --- )
+  \ Shared with the plain ${NAME}/$NAME paths below: emits a looked-up
+  \ value if found, otherwise emits nothing (an unset variable
+  \ expands to empty).
+  DUP 0= IF DROP ELSE
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+  THEN ;
+
+: EXPAND-BRACED-VAR ( --- )
+  \ TOK-POS is right after the opening '{'.
+  TOK-POS @ TOK-END @ < TOK-POS @ C@ 35 = AND IF   ( ${#VAR}: length )
+    TOK-POS @ 1+ TOK-POS !
+    READ-VARNAME
+    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
+    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP 0 ELSE CSTRLEN THEN
+    EMIT-DECIMAL
+    EXIT
+  THEN
+  READ-VARNAME
+  TOK-POS @ TOK-END @ < 0= IF        ( ran off the end - malformed;
+                                        fall back to a plain lookup )
+    VARNAME-BUF LOOKUP-VAR EMIT-LOOKED-UP-VAR
+    EXIT
+  THEN
+  TOK-POS @ C@ 125 = IF               ( ${NAME}: plain, unmodified )
+    TOK-POS @ 1+ TOK-POS !
+    VARNAME-BUF LOOKUP-VAR EMIT-LOOKED-UP-VAR
+    EXIT
+  THEN
+  -1 PEW-COLON? !
+  TOK-POS @ C@ 58 = IF                ( ':' introducer, optional )
+    TOK-POS @ 1+ TOK-POS !
+  ELSE
+    0 PEW-COLON? !
+  THEN
+  TOK-POS @ TOK-END @ < 0= IF EXIT THEN   ( malformed - bail quietly )
+  TOK-POS @ C@
+  DUP 45 = IF                         ( '-': default value )
+    DROP TOK-POS @ 1+ TOK-POS !
+    READ-PEWORD
+    VARNAME-BUF LOOKUP-VAR
+    DUP 0= IF
+      DROP PEWORD-BUF TYPE0-TO-TOK
+    ELSE
+      DUP CSTRLEN 0= PEW-COLON? @ AND IF
+        DROP PEWORD-BUF TYPE0-TO-TOK
+      ELSE
+        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+      THEN
+    THEN
+    EXIT
+  THEN
+  DUP 61 = IF                         ( '=': assign default )
+    DROP TOK-POS @ 1+ TOK-POS !
+    READ-PEWORD
+    VARNAME-BUF LOOKUP-VAR
+    DUP 0= IF
+      DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
+      PEWORD-BUF TYPE0-TO-TOK
+    ELSE
+      DUP CSTRLEN 0= PEW-COLON? @ AND IF
+        DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
+        PEWORD-BUF TYPE0-TO-TOK
+      ELSE
+        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+      THEN
+    THEN
+    EXIT
+  THEN
+  DUP 43 = IF                         ( '+': alternate value )
+    DROP TOK-POS @ 1+ TOK-POS !
+    READ-PEWORD
+    VARNAME-BUF LOOKUP-VAR
+    DUP 0= IF
+      DROP
+    ELSE
+      DUP CSTRLEN 0= PEW-COLON? @ AND IF
+        DROP
+      ELSE
+        DROP PEWORD-BUF TYPE0-TO-TOK
+      THEN
+    THEN
+    EXIT
+  THEN
+  DROP ;                              ( unrecognized modifier - bail
+                                         quietly, matching this
+                                         shell's existing sparse error
+                                         handling elsewhere )
+
 : EXPAND-VAR ( --- )
   \ TOK-POS is at the '$' character.
   -1 TOK-WAS-QUOTED? !
@@ -797,21 +936,9 @@ VARIABLE EAP-I
     DROP EXPAND-CMDSUB
     EXIT
   THEN
-  DUP 123 = IF                    ( ${NAME} )
+  DUP 123 = IF                    ( ${...} )
     DROP TOK-POS @ 1+ TOK-POS !
-    0 VN-LEN !
-    BEGIN
-      TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 125 <> ELSE 0 THEN
-    WHILE
-      TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
-      VN-LEN @ 1+ VN-LEN !
-      TOK-POS @ 1+ TOK-POS !
-    REPEAT
-    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
-    0 VARNAME-BUF VN-LEN @ + C!
-    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
-      DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
-    THEN
+    EXPAND-BRACED-VAR
     EXIT
   THEN
   DUP NAME-CHAR? 0= IF

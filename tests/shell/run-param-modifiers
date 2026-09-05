@@ -1,0 +1,54 @@
+#!/bin/sh
+# run-param-modifiers - parameter-expansion modifiers: ${#VAR}
+# (length), ${VAR:-word}/${VAR-word} (default value), ${VAR:=word}/
+# ${VAR=word} (assign default), ${VAR:+word}/${VAR+word} (alternate
+# value). The ":" variants trigger on VAR being either unset OR
+# empty; the plain variants trigger on unset only - see
+# EXPAND-BRACED-VAR's own comment for the full design and its
+# documented scope limits (the "word" portion is a literal string, no
+# further $-expansion applied to it; no nested braces tracked while
+# reading it). ${VAR%word}/${VAR%%word}/${VAR#word}/${VAR##word}
+# (prefix/suffix removal) are not yet implemented - a separate piece
+# needing genuine pattern-matching logic, not just string comparison.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-param-modifiers-test-$$.sh"
+
+printf 'x123=hello123\necho ${#x123}\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${#VAR} expands to the length of VAR's value" "8" "$out"
+
+printf 'echo [${y123:-default123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:-word} uses the default when VAR is unset" "[default123]" "$out"
+
+printf 'z123=actual123\necho [${z123:-default123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:-word} uses VAR's own value when set and non-empty" "[actual123]" "$out"
+
+printf 'w123=\necho colon=[${w123:-default123}]\necho nocolon=[${w123-default123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:-word} triggers on empty too, but \${VAR-word} does not" "colon=[default123]
+nocolon=[]" "$out"
+
+printf 'echo first=[${v123:=assigned123}]\necho second=[$v123]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:=word} both expands to and actually assigns the default" "first=[assigned123]
+second=[assigned123]" "$out"
+
+printf 'a123=something123\necho [${a123:+alt123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:+word} uses the alternate when VAR is set and non-empty" "[alt123]" "$out"
+
+printf 'echo [${b123:+alt123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:+word} expands to empty when VAR is unset" "[]" "$out"
+
+printf 'c123=\necho colon=[${c123:+alt123}]\necho nocolon=[${c123+alt123}]\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "\${VAR:+word} requires non-empty, but \${VAR+word} only requires set" "colon=[]
+nocolon=[alt123]" "$out"
+
+rm -f "$TMP_SCRIPT"
+report

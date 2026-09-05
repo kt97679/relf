@@ -572,9 +572,21 @@ the full account and the fixes applied.
      call test re-checked `$1` after the inner call returned. See
      `PROGRESS.md`'s Iteration 31 entry for the full design.
 
-     Still open: parameter-expansion modifiers (`${VAR:-word}`,
-     `${VAR:=word}`, `${VAR:+word}`, `${#VAR}`,
-     `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`).
+     `${#VAR}` (length), `${VAR:-word}`/`${VAR-word}` (default value),
+     `${VAR:=word}`/`${VAR=word}` (assign default), `${VAR:+word}`/
+     `${VAR+word}` (alternate value): **done (Iteration 32)** — the
+     `:`-prefixed variants trigger on `VAR` being unset *or* empty;
+     the plain variants trigger on unset only. Extracted into a
+     dedicated `EXPAND-BRACED-VAR`, replacing the old inline `${NAME}`
+     block, which just looked up everything between the braces as one
+     literal name — workable for a plain name, but would have looked
+     up (and failed to find) `${VAR:-word}` as a variable literally
+     named `"VAR:-word"`. Went smoothly — every case passed on the
+     first attempt. See `PROGRESS.md`'s Iteration 32 entry.
+
+     Still open: `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/
+     `${VAR##word}` (prefix/suffix removal — genuinely new pattern-
+     matching logic, not just string comparison, unlike the above).
      Arithmetic expansion (`$((...))` — a real expression grammar:
      precedence, associativity, comparison/bitwise/logical operators,
      assignment forms). Tilde expansion. `IFS`-based field splitting
