@@ -4150,3 +4150,201 @@ still missing.
 **Phase F remaining**: `read`, `readonly`, `shift`, `getopts`,
 `command`, background jobs/`wait`/`$!`, `alias`/`unalias`, `ulimit`.
 
+## Iteration 38: `locals.4` - named, per-invocation locals
+
+Not a shell feature. This is infrastructure, added because the same
+missing facility keeps showing up as the root cause of separate
+`shell.4` limitations.
+
+`shell.4` has **181 global `VARIABLE`s**, and the kernel has no locals
+wordset at all. Most of those globals are not global state: they are
+per-word scratch cells, faked with a naming convention (`GM-*` 9 of
+them, `NORM-*` 8, `TEST-*` 7, `SAEK-*` 6, `SEQ-*`/`AE-*`/`FPM-*`/`BM-*`
+5 each). That convention costs correctness, not just readability. A
+word whose scratch state lives in fixed globals cannot be re-entered,
+which is precisely why:
+
+- `while`/`for` don't nest - their condition/body live in one fixed
+  `WHILE-COND-BUF`/`WHILE-BODY-BUF` set, so an inner loop stomps the
+  outer one's body (`if` nests fine because its state is the single
+  scalar `COND-TRUE?`, saved and restored across `>R`/`R>`).
+- a loop or function body can't contain another multi-line construct,
+  now noted against three separate features.
+
+So the nesting limitation carried forward since Iteration 23 isn't an
+accident of those features' designs; it's a direct consequence of fixed
+global state where per-invocation state belongs. This iteration builds
+the tool. It deliberately does **not** use it yet - `shell.4` is
+untouched, so this commit changes no shell behavior at all.
+
+### Design: a local is an ordinary VARIABLE, saved on entry and restored on exit
+
+That one decision is what keeps this small (about 65 lines of actual
+code). The alternatives were considered and rejected:
+
+- *A real locals frame with its own namespace* would need the local
+  names to be findable during compilation. Creating temporary
+  dictionary headers is not viable here: `HEADER` builds at `HERE`,
+  which is exactly where the colon definition being compiled is also
+  being built, so a header created mid-definition splices itself into
+  the middle of the body. Working around that means hooking name
+  resolution or juggling a locals wordlist plus dictionary rollback -
+  far more machinery than the problem justifies.
+- *A frame pointer with `RP@`/`RP!`* would need engine changes; neither
+  word exists in this kernel.
+
+Saving and restoring an existing variable sidesteps both. Consequences,
+all of them wanted:
+
+- **No new dictionary machinery.** Local names are the `VARIABLE`s that
+  already exist, found by the ordinary `FIND`.
+- **Existing code converts mechanically.** A word's *body is unchanged*
+  - `CA-SRC @` and `CA-N !` keep working, because a local still is a
+  variable. Converting a word means adding one `{: ... :}` line and
+  deleting its argument-popping stores. That matters a lot for
+  converting 181 globals' worth of existing, tested code without
+  reintroducing bugs.
+- **Neither stack is touched**, so this composes with `shell.4`'s
+  existing, load-bearing `>R`/`R>` use (`DO-IF`, `RUN-FUNC-BODY`)
+  instead of competing with it.
+- **The kernel and `cross.4` are untouched.** `locals.4` is an ordinary
+  Forth source file using only what the kernel already exposes
+  (`STATE`, `FIND`, `COMPILE,`, `LITERAL`, `POSTPONE`, `IMMEDIATE`,
+  `'`). `kernel.img` is not rebuilt. This was a deliberate constraint:
+  `GOALS.md` warns that `cross.4`/`kernel.4` hand-embed raw
+  primitive-dispatch token numbers whose failure mode is segfaulting
+  the *next* engine at an unrelated primitive, and no part of this
+  feature needs to go near that.
+
+The cost is copying N cells at entry/exit instead of moving a frame
+pointer. Not worth optimizing for this codebase.
+
+### Syntax
+
+    : COPY-ARGV ( src-argv src-argc --- )  {: CA-SRC CA-N :}
+      CA-N @ ARGC ! ...
+
+Names before an optional `|` are initialized from the data stack, left
+to right = deepest to top, matching the stack comment's own reading
+order. Names after `|` are scratch: saved and restored identically, but
+zeroed rather than taking an argument.
+
+    : GLOB-MATCH ( pat plen text tlen --- f )
+      {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S :}
+
+### Wrapping `EXIT` and `;`
+
+The restore has to happen on *every* exit path, and `shell.4` uses
+early `IF EXIT THEN` pervasively. Both `EXIT` and `;` are therefore
+redefined as immediate wrappers that capture the previous definition
+(`' EXIT CONSTANT L-OLD-EXIT`, `' ; CONSTANT L-OLD-SEMI`) and defer to
+it, adding behavior rather than reimplementing any. `;` additionally
+clears the declaration count, which is what stops one definition's
+locals leaking into the next - so a definition with no `{:` sees a
+count of zero and compiles no extra code whatsoever. Verified
+transparent: everything in `tester.fr` and `core-extra.fth` is compiled
+through the original definitions, `tests/locals.fth` loads `locals.4`
+last, and all 1991 OK markers still pass.
+
+Both wrappers were probed directly against the running system before
+being designed around, rather than reasoned about from `kernel.4`'s
+source - `;` is bootstrapped through a self-referential trick
+(`EXIT-TOK , [ ?CSP REVEAL ;`) whose metacompiled semantics are not
+obvious from reading, and `:` uses `HEADER` without `REVEAL`, so a new
+`;` isn't findable until its own terminating `;` completes it. Probing
+took two minutes and removed all doubt.
+
+### A real bug found only on integration: `BASE`
+
+Every case passed in isolation. Adding `tests/locals.fth` to the real
+suite broke immediately, with `{: LT-A LT-B :}` reporting the entire
+rest of the line as one undefined name.
+
+Root cause: **`tester.fr` leaves `BASE` at 16**, and `locals.4` parsed
+names with a bare `32 WORD`. In hex, `32` is 0x32 = the character `2`,
+so `WORD` was delimiting on the digit `2` instead of on a space and
+swallowing whole lines. Nothing about the failure pointed at the number
+base; it looked like a parsing bug.
+
+Fixed at the root rather than at the one literal: `locals.4` now saves
+`BASE`, forces `DECIMAL` for its own source, and restores `BASE` at the
+end, and every character constant is written `[CHAR] :` / `[CHAR] }` /
+`[CHAR] |` / `BL` instead of `58` / `125` / `124` / `32`. The
+`[CHAR]` form is both base-proof and more readable than the numbers
+were.
+
+The same trap then fired one level up: with parsing fixed, the *test
+file* was still being read in hex, so `{ 8 LT-FACT -> 40320 }` was
+comparing values that don't mean what they look like. `tests/locals.fth`
+now forces `DECIMAL` too, with a comment explaining why
+`core-extra.fth` gets away without it (every value it uses happens to
+read identically in hex and decimal).
+
+Worth remembering generally: **a Forth source file that is `INCLUDED`
+into an unknown session should not inherit the caller's `BASE`.** This
+is a close cousin of the multi-line `( )` comment hazard from Iteration
+33 - a whole-file parsing failure whose symptom points nowhere near its
+cause.
+
+### Verification
+
+`tests/locals.fth` (22 assertions) covers: argument order (left to
+right = deepest to top); `|` scratch locals zeroed rather than popped;
+an empty `{: :}` declaration; the caller's value surviving the call;
+restore on early `EXIT`; restore on `EXIT` from inside a `DO` loop;
+recursion (`LT-FACT`); nesting where two different words use the *same*
+local name and one calls the other (`LT-OUTER`/`LT-INNER` - the case
+fixed globals cannot express, and the whole point of the exercise);
+scratch locals surviving recursion independently; and the save stack
+returning to empty afterwards.
+
+The harness is known to catch failures in this file rather than
+silently skipping it: the pre-`BASE`-fix run reported `INCORRECT
+RESULT` for these exact assertions.
+
+1991 OK markers, no errors, on **both** 8-byte and 4-byte (i386) cell
+widths. `tests/shell/run-all` unchanged at 251 assertions across 34
+files, all passing on both. mrsh-suite unchanged at 0 passed, 21
+failed, 3 skipped - expected, since `shell.4` was not modified.
+
+### What this iteration deliberately did NOT do
+
+- **No `shell.4` conversion.** Converting words to locals is its own
+  iteration, and doing it in the same commit would have made a
+  behavior-preserving refactor indistinguishable from a new feature if
+  anything broke.
+- **`{:` cannot introduce a brand-new name.** Every local must already
+  be a defined `VARIABLE` (or any word returning an address); an
+  undefined name is diagnosed, not silently accepted. This is the
+  direct consequence of the "a local is an ordinary variable" design.
+  It means the `VARIABLE` declarations stay in the file rather than
+  disappearing, so converting `shell.4` will make its globals
+  *re-entrant* without reducing their *count*. Removing them entirely
+  would need the dictionary machinery this design deliberately avoids;
+  worth revisiting only if the declarations themselves become a
+  problem.
+- **One physical line per declaration.** `WORD` does not refill, and a
+  multi-line construct here would be a close cousin of the Iteration 33
+  comment hazard. Diagnosed explicitly (`locals: missing :} on this
+  line`) rather than looping or misparsing.
+- **Fixed limits**, both checked with a diagnostic rather than left to
+  corrupt silently: 16 locals per definition, 256 cells of live save
+  stack across all nested invocations.
+- **`ABORT` inside a locals-using word leaks its saved cells** -
+  `LSAVE-SP` isn't reset on the abort path, so the variables keep the
+  callee's values. Acceptable for now (`shell.4` doesn't use `ABORT`,
+  and an abort is already a session-level event), but it's a real
+  loose end if that changes.
+- **Two lines of startup noise.** Redefining `EXIT` and `;` makes
+  `HEADER` print its "Redefining:" warning twice. Harmless for the test
+  harnesses, which use substring assertions, but `relfsh` already emits
+  a boot banner on stdout and this would add to it - worth handling as
+  part of wiring `locals.4` into `shell.4`, not speculatively now.
+
+### Unrelated observation, noted for later
+
+Running `tests/mrsh-suite/run.sh` leaves a stray file literally named
+`&` in that directory (from `async.sh`). `shell.4` has no background-job
+support, so a trailing `&` is ending up treated as an ordinary word or
+redirect target rather than being rejected. Not investigated here;
+relevant whenever background jobs are picked up in Phase F.

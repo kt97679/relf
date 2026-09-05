@@ -144,6 +144,53 @@ the full account and the fixes applied.
   regression suite. It existed in the repo but wasn't wired into any
   automated runner before this project — now is, via `tests/run_tests.sh`.
 
+## Named locals (`locals.4`) — available since Iteration 38
+
+Not a goal in itself; infrastructure the rest of the project can use.
+Load with `S" locals.4" INCLUDED`.
+
+`shell.4` carries 181 global `VARIABLE`s, most of which are not global
+state at all but per-word scratch cells faked with a naming convention
+(`GM-*`, `NORM-*`, `SAEK-*`, …), because this kernel has no locals
+wordset. That is the *root cause* of the nesting limitations recorded
+under phase 8 below: a word whose scratch state lives in fixed globals
+cannot be re-entered. `while`/`for` don't nest because their body lives
+in one fixed buffer set; `if` does nest, because its state is a single
+scalar saved across `>R`/`R>`.
+
+**A local is an ordinary `VARIABLE`, saved on entry to the declaring
+word and restored on every exit.** That design is what keeps the
+implementation to ~65 lines and, crucially, means a converted word's
+*body is unchanged* — `CA-SRC @` and `CA-N !` keep working, because a
+local still is a variable. Converting existing code is adding one
+declaration line and deleting the argument-popping stores.
+
+    : COPY-ARGV ( src-argv src-argc --- )  {: CA-SRC CA-N :}
+
+    : GLOB-MATCH ( pat plen text tlen --- f )
+      {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S :}
+
+Names before an optional `|` are initialized from the data stack, left
+to right = deepest to top. Names after `|` are scratch: saved and
+restored the same way, but zeroed. `EXIT` and `;` are wrapped so the
+restore happens on every exit path including early `IF EXIT THEN`, and
+both compile nothing at all in a definition that declares no locals.
+
+The kernel, `cross.4` and `kernel.img` are **untouched** — `locals.4`
+uses only what the kernel already exposes. That was a deliberate
+constraint given this file's own warning about `cross.4`'s hand-embedded
+primitive-dispatch token numbers.
+
+Documented scope limits: a local must already be a defined `VARIABLE`
+(so converting `shell.4` makes its globals re-entrant without reducing
+their count); one physical line per declaration; 16 locals per
+definition; 256 cells of live save stack; `ABORT` inside a
+locals-using word leaks its saved cells. See `PROGRESS.md`'s Iteration
+38 entry, including a real bug worth remembering: **a Forth file that
+is `INCLUDED` into an unknown session must not inherit the caller's
+`BASE`** — `tester.fr` leaves it at 16, which turned `locals.4`'s own
+`32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
+
 ## Phases
 
 1. **Scaffolding** — repo structure, test runner, process log. **Done**
@@ -572,9 +619,12 @@ the full account and the fixes applied.
      **Phase C is now complete.** Carried-over limitations: a
      loop-body/function-body still can't contain another multi-line
      construct (now touched by three separate features, making it an
-     increasingly valuable target for a proper fix); the unverified
-     extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two
-     call sites fixed in Iteration 28.
+     increasingly valuable target for a proper fix — and as of
+     Iteration 38 the tool for that fix exists: see the named-locals
+     section above, since the root cause is `while`/`for` keeping
+     their body in fixed globals rather than per-invocation state);
+     the unverified extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard
+     beyond the two call sites fixed in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
      call arguments, or a script's own command-line arguments at the
