@@ -1,0 +1,73 @@
+#!/bin/sh
+# tests/shell/run-nesting - a multi-line construct nested inside a
+# loop body or a function body (Iteration 42). Before replay became a
+# real input source, a nested if inside such a body silently ran its
+# own body unconditionally, because DO-IF's search for then/else/fi
+# read from the real process input rather than from the stored body.
+. "$(dirname "$0")/lib.sh"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+cat > "$t/a.sh" <<'X'
+for x in a b c
+do
+  if test "$x" = b
+  then
+    echo "matched $x"
+  else
+    echo "other $x"
+  fi
+done
+X
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "if inside for: else branch, first item"  "other a"   "$out"
+assert_output_contains "if inside for: then branch, middle item" "matched b" "$out"
+assert_output_contains "if inside for: else branch, last item"   "other c"   "$out"
+
+cat > "$t/b.sh" <<'X'
+f() {
+  if test "$1" = hi
+  then
+    echo "func saw hi"
+  else
+    echo "func saw $1"
+  fi
+}
+f hi
+f bye
+X
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "if inside function: then branch" "func saw hi"  "$out"
+assert_output_contains "if inside function: else branch" "func saw bye" "$out"
+
+cat > "$t/c.sh" <<'X'
+i=0
+while test $i -lt 3
+do
+  if test $i -eq 1
+  then
+    echo "one"
+  fi
+  i=$((i+1))
+done
+echo done
+X
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "if inside while: fires once"     "one"  "$out"
+assert_output_contains "if inside while: loop completes" "done" "$out"
+
+cat > "$t/d.sh" <<'X'
+g() {
+  for w in p q
+  do
+    echo "g $w"
+  done
+  return 0
+}
+g
+X
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "for inside function: first"  "g p" "$out"
+assert_output_contains "for inside function: second" "g q" "$out"
+
+report

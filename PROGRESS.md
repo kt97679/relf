@@ -4824,3 +4824,91 @@ written) exercised directly by making the directory read-only.
 - **`while`/`for` still don't nest.** `WHILE-BODY-BUF` is now
   heap-allocated, which is a prerequisite for making it
   per-invocation, but the arena work itself is still ahead.
+## Iteration 42: replay as an input source - nested constructs inside
+## loop and function bodies
+
+The limitation carried since Iteration 23, and since noted against
+three separate features: a while/for body or a function body could not
+contain another multi-line construct. A nested `if` inside a loop body
+silently ran its own body unconditionally, because `DO-IF`'s search for
+`then`/`else`/`fi` reads a *new* line, and that read went to the real
+process input rather than to the next stored body line.
+
+### The fix is one idea, not a special case
+
+A stored body was being replayed by *dispatching* each line directly
+(`RUN-STORED-LINE`). Replay is now a third **input source**, alongside
+the real stdin and an open script file:
+
+    : READ-NEXT-INPUT-LINE ( c-addr max --- u2 )
+      REPLAY-SRC @ IF REPLAY-NEXT-LINE EXIT THEN
+      SHFILE-ACTIVE? @ IF ... ELSE ACCEPT THEN ;
+
+Everything that reads a line already funnels through that one word, so
+once replay is one of its cases, every construct nested inside a body
+reads from the body automatically - and no construct needs to know
+replay exists. `DO-IF` is unchanged. So are `DO-CASE`, `DO-FUNCDEF`
+and the rest.
+
+`REPLAY-SRC`/`REPLAY-LEN`/`REPLAY-POS` are declared as **locals** by
+`DO-WHILE-BODY` and `RUN-FUNC-BODY`, which is what makes replays nest:
+an inner body's replay saves and restores the outer one's position.
+This is the first place the locals facility built in Iteration 38 has
+been used for something that could not reasonably have been written
+without it - the two words' state genuinely has to be per-invocation.
+
+It also gets a subtlety right for free. A construct that *captures*
+lines while a replay is active - a nested `while` reading its own body,
+say - consumes them from the outer body through the same path, leaving
+the outer position correctly advanced past them.
+
+### Simplifications that fell out
+
+`RUN-STORED-LINE` is gone entirely: replayed lines now go through
+`READ-LINE-INTO-ARGV` like every other line. That also fixes a
+quiet inconsistency - `RUN-STORED-LINE` tokenized without calling
+`NORMALIZE-OPERATORS` first, so an operator fused to adjacent text
+(`a>file`) behaved differently inside a loop body than outside it.
+`RUN-FUNC-BODY` lost its `>R`/`R>` juggling and its `FUNC-BODY-I`
+cursor, taking `FUNC-CUR-I` as a local instead; `RSL-LEN` and
+`FUNC-BODY-I` are gone.
+
+### What now works
+
+`tests/shell/run-nesting` (9 assertions): `if` inside `for`, `if`
+inside a function, `if` inside `while`, and `for` inside a function -
+all checked against the branch actually taken, not merely that
+something ran. 260 assertions across 35 files now, all passing on both
+cell widths.
+
+### What still does not, and why
+
+**A loop nested directly inside another loop still fails** - it
+produces no output rather than misbehaving. This is a *different*
+cause, and the one this iteration did not address: `while` and `for`
+capture their body into the single shared `WHILE-BODY-BUF`, so an
+inner loop's capture overwrites the outer's body. Replay-as-input-
+source was the prerequisite; making those buffers per-invocation is the
+remaining half.
+
+The shape of that fix is clear now. `WHILE-BODY-BUF`/`WHILE-COND-BUF`
+become pointers into an arena, with the arena's bump pointer preserved
+across a construct by declaring it as a local. Note the idiom that
+gives "save and restore the current value", since a `|` scratch local
+is zeroed rather than preserved:
+
+    BODY-ARENA-TOP @  {: BODY-ARENA-TOP | ... :}
+
+pushing the current value and taking it straight back as an argument
+local. Freeing is then automatic and exception-safe: the local restores
+the bump pointer on every exit path, including an early `EXIT`.
+
+### A self-inflicted detour worth recording
+
+The edit was applied with a Python script whose quoting was wrong,
+leaving a stray `'` at the start of `DO-WHILE-BODY`. `shell.4` then
+failed to compile, `relfsh` fell back to its source bootstrap, and the
+symptom was `Undefined word ':` plus a suddenly reappearing "Welcome to
+Forth" banner. The banner was the useful clue: it only prints on the
+fallback path, so it meant "the image build failed", not "the shell is
+broken". Worth remembering as a diagnostic.

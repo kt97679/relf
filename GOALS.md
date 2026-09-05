@@ -832,15 +832,20 @@ This was the blocker in front of the `forth` builtin.
      design was fully thought through before writing any code. See
      `PROGRESS.md`'s Iteration 30 entry for the full account.
 
-     **Phase C is now complete.** Carried-over limitations: a
-     loop-body/function-body still can't contain another multi-line
-     construct (now touched by three separate features, making it an
-     increasingly valuable target for a proper fix — and as of
-     Iteration 38 the tool for that fix exists: see the named-locals
-     section above, since the root cause is `while`/`for` keeping
-     their body in fixed globals rather than per-invocation state);
-     the unverified extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard
-     beyond the two call sites fixed in Iteration 28.
+     **Phase C is now complete.** Carried-over limitations: a loop
+     body or function body **can** now contain a nested `if`/`for`
+     (Iteration 42 — replay became a real input source, so a nested
+     construct reads its continuation lines from the stored body),
+     but a loop nested directly inside another loop still does not
+     work: `while`/`for` capture into the single shared
+     `WHILE-BODY-BUF`, so an inner loop's capture overwrites the
+     outer's body. Making those buffers per-invocation is the
+     remaining half and the clear next step — see PROGRESS.md's
+     Iteration 42 entry for the arena design and the
+     `X @ {: X ... :}` idiom that gives locals a "preserve current
+     value" mode. Also still open: the unverified extent of the
+     `COPY-ARGV`/`ARGV-QUOTED` hazard beyond the two call sites fixed
+     in Iteration 28.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
      call arguments, or a script's own command-line arguments at the

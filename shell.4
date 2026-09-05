@@ -2730,6 +2730,50 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
                             \ seen at all when invoked this way, and
                             \ the whole command was silently a no-op.
 
+\ ==================================================================
+\ Replaying a stored body as an INPUT SOURCE
+\ ==================================================================
+\ A while/for body and a function body are both stored as raw,
+\ NUL-separated lines and replayed later. Replay used to dispatch each
+\ stored line directly (RUN-STORED-LINE), which meant a nested
+\ multi-line construct inside such a body did not work at all: DO-IF's
+\ own search for "then"/"fi" reads a NEW line, and that read went to
+\ the real process input rather than to the next stored line. So the
+\ nested if's body ran unconditionally and its "fi" was never seen -
+\ the limitation carried since Iteration 23 and since noted against
+\ three separate features.
+\
+\ The fix is to make replay a third INPUT SOURCE, alongside the real
+\ stdin and an open script file, rather than a separate dispatch path.
+\ Everything that reads a line already funnels through
+\ READ-NEXT-INPUT-LINE, so once replay is one of its cases, every
+\ construct nested inside a body reads from the body automatically,
+\ with no construct needing to know about replay at all.
+\
+\ REPLAY-SRC/LEN/POS are declared as locals by each replaying word, so
+\ replays nest: an inner body's replay saves and restores the outer
+\ one's position, and a construct that CAPTURES lines while a replay
+\ is active (a nested while reading its own body, say) consumes them
+\ from the outer body and leaves the position correctly advanced.
+
+VARIABLE REPLAY-SRC   \ 0 when not replaying, else the stored lines
+VARIABLE REPLAY-LEN
+VARIABLE REPLAY-POS
+VARIABLE RNL-DEST
+VARIABLE RNL-MAX
+VARIABLE RNL-CUR
+VARIABLE RNL-LEN
+
+: REPLAY-NEXT-LINE ( c-addr max --- u2 )
+  {: RNL-DEST RNL-MAX | RNL-CUR RNL-LEN :}
+  REPLAY-POS @ REPLAY-LEN @ < 0= IF 0 EXIT THEN
+  REPLAY-SRC @ REPLAY-POS @ + RNL-CUR !
+  RNL-CUR @ CSTRLEN RNL-LEN !
+  REPLAY-POS @ RNL-LEN @ + 1+ REPLAY-POS !
+  RNL-LEN @ RNL-MAX @ > IF RNL-MAX @ RNL-LEN ! THEN
+  RNL-CUR @ RNL-DEST @ RNL-LEN @ MOVE
+  RNL-LEN @ ;
+
 : READ-NEXT-INPUT-LINE ( c-addr max --- u2 )
   \ Reads one line of "current input" - from the real process stdin
   \ via ACCEPT (preserving its backspace/delete editing, which matters
@@ -2737,6 +2781,7 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
   \ SH-FILE, or from the open script file via READ-LINE (discarding
   \ its own flag/ior - EOF just gives u2=0, the same as running out
   \ of lines already meant here) when SHFILE-ACTIVE? is true.
+  REPLAY-SRC @ IF REPLAY-NEXT-LINE EXIT THEN
   SHFILE-ACTIVE? @ IF
     SHFILE-FID @ READ-LINE DROP DROP
   ELSE
@@ -3197,15 +3242,6 @@ VARIABLE RAW-SKIP-I
     WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN !
   THEN ;
 
-VARIABLE RSL-LEN
-
-: RUN-STORED-LINE ( c-addr --- )
-  \ Copies a NUL-terminated stored line into LINE-BUF, tokenizes it
-  \ fresh (including fresh $VAR/$?/$$ expansion), and runs it.
-  DUP CSTRLEN RSL-LEN !
-  LINE-BUF RSL-LEN @ MOVE
-  RSL-LEN @ TOKENIZE
-  RUN-TOKENIZED-CALL ;
 
 \ ==================================================================
 \ Shell functions: name() { <body> } - definition, invocation,
@@ -3256,61 +3292,47 @@ VARIABLE SF-I
   SF-BODY-ADDR @ SF-I @ FUNC-BODY-SLOT SF-BODY-LEN @ MOVE ;
 
 VARIABLE FUNC-CUR-I
-VARIABLE FUNC-BODY-I
 
 : RUN-FUNC-BODY ( i --- )
-  \ i is the function's own table index. Iterates through its stored,
-  \ NUL-separated body lines, replaying each via RUN-STORED-LINE,
-  \ matching how while/for replay their own stored bodies. Supports
-  \ recursion: the "current position within THIS invocation's own
-  \ body" is saved via >R at entry and restored via R> before
-  \ returning, so a function calling itself (directly, or indirectly
-  \ via another function) doesn't disturb an outer, still-in-progress
-  \ invocation's own iteration state - the same principle already
-  \ established for if's own COND-TRUE?/SUPPRESS-EXEC? nesting.
-  \ FUNC-DEPTH tracks call nesting (so "return" outside any function
-  \ can be diagnosed); the loop also stops as soon as RETURN-PENDING?
-  \ is set (by a "return" builtin run somewhere in this invocation's
-  \ own body, possibly several ';'/'&&'/'||'-chained segments deep -
-  \ see RUN-SIMPLE-OR-PIPELINE), which is then reset before this
-  \ invocation returns, so an outer, still-in-progress caller (if this
-  \ was a recursive or nested call) never sees a stale, already-
-  \ consumed return meant only for the invocation that triggered it.
-  \ Also stops as soon as LOOP-CONTROL-PENDING? is set (a "break"/
-  \ "continue" run somewhere in this invocation's own body, meant for
-  \ a while/for loop dynamically further out that called this
-  \ function from within its own body) - but unlike RETURN-PENDING?,
-  \ that flag is deliberately left untouched here, not reset, so it
-  \ keeps propagating outward until DO-WHILE-BODY - not this word -
-  \ finally consumes it. ARGV[1..] (the function's own call
-  \ arguments, still the live global ARGV/ARGC at this point, before
-  \ the first body line's own replay overwrites them) become this
-  \ invocation's own $1.. via SET-POS-PARAMS-FROM-ARGV; the caller's
-  \ own positional parameters are saved (keyed by FUNC-DEPTH's current
-  \ value, unique per nesting level exactly the way FUNC-CUR-I/
-  \ FUNC-BODY-I's own >R/R> save slots are, just needing an explicit
-  \ save/restore pair here since a whole parameter list isn't a single
-  \ cell) and restored once this invocation returns, so recursion and
-  \ nested calls each see only their own arguments.
+  \ i is the function's own table index. Installs its stored body as
+  \ the current input source and reads lines the ordinary way, exactly
+  \ as DO-WHILE-BODY does - so a nested if/while/for inside a function
+  \ body works, and so does recursion: REPLAY-SRC/LEN/POS and
+  \ FUNC-CUR-I are locals, so an inner invocation cannot disturb an
+  \ outer, still-in-progress one's position.
+  \
+  \ FUNC-DEPTH tracks call nesting so "return" outside any function
+  \ can be diagnosed. The loop stops as soon as RETURN-PENDING? is set
+  \ (by a "return" somewhere in this invocation's body, possibly
+  \ several ';'/'&&'/'||'-chained segments deep - see
+  \ RUN-SIMPLE-OR-PIPELINE), which is then reset before returning, so
+  \ an outer caller never sees a stale, already-consumed return. It
+  \ also stops as soon as LOOP-CONTROL-PENDING? is set (a
+  \ "break"/"continue" meant for a while/for loop further out that
+  \ called this function from its body) - but unlike RETURN-PENDING?
+  \ that flag is deliberately left untouched here, so it keeps
+  \ propagating outward until DO-WHILE-BODY consumes it.
+  \
+  \ ARGV[1..] - the call arguments, still the live global ARGV at this
+  \ point - become this invocation's $1.. ; the caller's own
+  \ positional parameters are saved keyed by FUNC-DEPTH and restored
+  \ when this returns, so recursive and nested calls each see only
+  \ their own.
+  {: FUNC-CUR-I | REPLAY-SRC REPLAY-LEN REPLAY-POS :}
   FUNC-DEPTH @ SAVE-POS-PARAMS
   SET-POS-PARAMS-FROM-ARGV
   FUNC-DEPTH @ 1+ FUNC-DEPTH !
-  FUNC-CUR-I @ >R
-  FUNC-BODY-I @ >R
-  FUNC-CUR-I !
-  0 FUNC-BODY-I !
+  FUNC-CUR-I @ FUNC-BODY-SLOT REPLAY-SRC !
+  FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ REPLAY-LEN !
   BEGIN
-    FUNC-BODY-I @ FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ <
+    REPLAY-POS @ REPLAY-LEN @ <
     RETURN-PENDING? @ 0= AND
     LOOP-CONTROL-PENDING? @ 0= AND
   WHILE
-    FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + RUN-STORED-LINE
-    FUNC-CUR-I @ FUNC-BODY-SLOT FUNC-BODY-I @ + CSTRLEN
-    FUNC-BODY-I @ + 1+ FUNC-BODY-I !
+    READ-LINE-INTO-ARGV
+    RUN-TOKENIZED-CALL
   REPEAT
   0 RETURN-PENDING? !
-  R> FUNC-BODY-I !
-  R> FUNC-CUR-I !
   FUNC-DEPTH @ 1- FUNC-DEPTH !
   FUNC-DEPTH @ RESTORE-POS-PARAMS ;
 ' RUN-FUNC-BODY RUN-FUNC-BODY-XT !XT
@@ -3350,27 +3372,26 @@ VARIABLE WHILE-BODY-I
 VARIABLE WHILE-BODY-CUR
 
 : DO-WHILE-BODY ( --- )
-  \ Runs each stored, NUL-separated body line once, in order - unless
-  \ LOOP-CONTROL-PENDING? is set first (by "break"/"continue", run
-  \ either directly in this body or by a function called from within
-  \ it - see RUN-FUNC-BODY's own comment on why that word checks but
-  \ deliberately never resets this same flag), in which case this
-  \ single iteration stops early. Either way (body ran to completion,
-  \ or stopped early), this word - and only this word, not
-  \ RUN-FUNC-BODY - resets LOOP-CONTROL-PENDING? before returning: the
-  \ iteration this flag was scoped to has now definitely ended, one
-  \ way or another. LOOP-BREAK? (whether the outer while/for loop
-  \ should stop entirely rather than proceed to its own next
-  \ iteration) is deliberately left untouched here - that's the outer
-  \ loop's own check, made right after this word returns.
-  0 WHILE-BODY-I !
+  \ Runs each stored body line once, in order, by installing the body
+  \ as the current input source and then reading lines the ordinary
+  \ way - so a nested if/while/for inside the body reads its own
+  \ continuation lines from the body too. Stops early if
+  \ LOOP-CONTROL-PENDING? is set (by "break"/"continue", run either
+  \ directly here or by a function called from within - see
+  \ RUN-FUNC-BODY on why that word checks but never resets this flag).
+  \ Either way this word - and only this word - resets it before
+  \ returning: the iteration it was scoped to has now ended.
+  \ LOOP-BREAK? is deliberately left alone; that is the outer loop's
+  \ own check, made right after this returns.
+  {: | REPLAY-SRC REPLAY-LEN REPLAY-POS :}
+  WHILE-BODY-BUF REPLAY-SRC !
+  WHILE-BODY-LEN @ REPLAY-LEN !
   BEGIN
-    WHILE-BODY-I @ WHILE-BODY-LEN @ <
+    REPLAY-POS @ REPLAY-LEN @ <
     LOOP-CONTROL-PENDING? @ 0= AND
   WHILE
-    WHILE-BODY-BUF WHILE-BODY-I @ + WHILE-BODY-CUR !
-    WHILE-BODY-CUR @ RUN-STORED-LINE
-    WHILE-BODY-I @ WHILE-BODY-CUR @ CSTRLEN + 1+ WHILE-BODY-I !
+    READ-LINE-INTO-ARGV
+    RUN-TOKENIZED-CALL
   REPEAT
   0 LOOP-CONTROL-PENDING? ! ;
 
