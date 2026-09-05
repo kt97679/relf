@@ -4083,3 +4083,70 @@ portion of a parameter-expansion modifier is a literal string, not
 itself further expanded; only space/tab (not a customizable `$IFS`,
 not newline) trigger field splitting.
 
+## Iteration 37: goal 8 phase F - `:`, `test`/`[` (string, numeric,
+## limited file-existence tests)
+
+The first Phase F builtins. `:` is a pure no-op, always exiting 0 -
+trivial, but genuinely needed (the mrsh-suite's own `loop.sh`/
+`return.sh` use `while :` as an infinite-loop idiom). `test`/`[`
+support string tests (`-z`, `-n`, `=`, `!=`, a bare non-empty check),
+numeric comparisons (`-eq`, `-ne`, `-lt`, `-le`, `-gt`, `-ge`), `!`
+negation (of a bare/1-arg test, or a full 3-arg `a op b` test), and an
+approximate `-e`/`-f`/`-d` (existence only, via `OPEN-FILE` - this
+kernel exposes no real stat/access primitive, so `-f`/`-d` can't
+actually distinguish a regular file from a directory, only "does
+something exist at this path at all"). Scope limits, all documented in
+`EVAL-TEST-ARGS`'s own comment: no `-r`/`-w`/`-x`/`-s`, no `-a`/`-o`
+(deprecated in POSIX anyway), no `(` `)` grouping, and `"! -z
+STRING"`-style 3-arg negated unary tests aren't handled (only a
+bare/1-arg operand, or a full 3-arg `a op b`, can be negated).
+
+### Design
+
+`EVAL-TEST-ARGS` dispatches purely on argument count (0 through 4;
+5+ isn't supported) over `ARGV[TEST-START, TEST-END)`, a range rather
+than a fixed starting point so the same evaluator serves both `test`
+(the whole of `ARGV[1..ARGC)`) and `[` (excluding the trailing,
+required `]`). `TEST-BINARY?`/`TEST-UNARY?` each compare the operator
+argument against a small set of known literals (`S" op" ARGV@ STR0=`,
+the same pattern this file already establishes everywhere a literal
+needs comparing against a `NUL`-terminated string). Numeric comparisons
+reduce to four cases of a single `<` via straightforward algebra
+(`A -le B` is `NOT(B < A)`, `A -ge B` is `NOT(A < B)`, etc.), the same
+approach the arithmetic evaluator's own relational operators already
+use in Iteration 35. `TEST-PARSE-INT` handles an optional leading `-`
+that bare `PARSE-DECIMAL` doesn't, mirroring the arithmetic
+evaluator's own `AE-LOOKUP-NUMERIC`.
+
+### A real bug found immediately by running the existing regression suite
+
+Installing `test` as a builtin means it now takes priority over the
+external `/usr/bin/test` binary any script invokes bare (matching real
+shell precedence - a builtin shadows a same-named external command).
+`tests/shell/run-while` broke immediately: it uses bare `test -f
+FILE`, which the initial implementation didn't recognize at all
+(only `-e`/`-z`/`-n` were handled), so every condition silently
+evaluated false and the loop bodies never ran. Fixed by adding `-f`/
+`-d` as approximate aliases for the same existence check `-e` already
+uses - not a precise fix (still can't distinguish file types), but
+correct for every case that matters in practice: something that exists
+at all.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: every string test, every numeric comparison, 2-arg and
+4-arg negation, `-e` on both an existing and a missing path, the `[
+... ]` bracket form with its required closing `]`, and a bare
+string's own non-empty/empty check.
+
+`tests/shell/run-test-builtin` (19 assertions) - 251 assertions across
+34 files now, all passing on both x86-64 and i386. mrsh-suite
+unchanged (0 passed, 21 failed, 3 skipped) - `test`/`[` alone doesn't
+carry any single test file all the way to passing, since most need
+several more Phase F/G features together, but individual scripts using
+`test`/`[`/`:` should now progress further before hitting whatever's
+still missing.
+
+**Phase F remaining**: `read`, `readonly`, `shift`, `getopts`,
+`command`, background jobs/`wait`/`$!`, `alias`/`unalias`, `ulimit`.
+

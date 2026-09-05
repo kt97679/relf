@@ -1,0 +1,73 @@
+#!/bin/sh
+# run-test-builtin - the "test"/"[" and ":" builtins (Phase F). ":" is
+# a pure no-op, always exiting 0. "test"/"[" support string tests
+# (-z, -n, =, !=, bare non-empty check), numeric comparisons (-eq,
+# -ne, -lt, -le, -gt, -ge), "!" negation (of a bare/1-arg test, or of
+# a full "a op b" 3-arg test), and an approximate -e/-f/-d (existence
+# only, via OPEN-FILE - this kernel has no real stat/access primitive
+# to distinguish a regular file from a directory). Scope limits, both
+# documented in EVAL-TEST-ARGS's own comment: no -r/-w/-x/-s, no -a/
+# -o, no "(" ")" grouping, and "! -z STRING"-style 3-arg negated unary
+# tests aren't handled (only a bare/1-arg operand, or a full 3-arg
+# "a op b", can be negated).
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+"$THIS_SH" -c ':' > /dev/null 2>&1
+assert_status ": is a no-op that always succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test -z ""' > /dev/null 2>&1
+assert_status "test -z on an empty string succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test -n "abc123"' > /dev/null 2>&1
+assert_status "test -n on a non-empty string succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test abc123 = abc123' > /dev/null 2>&1
+assert_status "test STRING1 = STRING2 succeeds when equal" 0 "$?"
+
+"$THIS_SH" -c 'test abc123 != xyz123' > /dev/null 2>&1
+assert_status "test STRING1 != STRING2 succeeds when different" 0 "$?"
+
+"$THIS_SH" -c 'test abc123 = xyz123' > /dev/null 2>&1
+assert_status "test STRING1 = STRING2 fails when different" 1 "$?"
+
+"$THIS_SH" -c 'test 5 -eq 5' > /dev/null 2>&1
+assert_status "test N -eq N succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test 3 -lt 5' > /dev/null 2>&1
+assert_status "test N1 -lt N2 succeeds when less" 0 "$?"
+
+"$THIS_SH" -c 'test 5 -le 5' > /dev/null 2>&1
+assert_status "test N -le N (equal) succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test 5 -gt 3' > /dev/null 2>&1
+assert_status "test N1 -gt N2 succeeds when greater" 0 "$?"
+
+"$THIS_SH" -c 'test 5 -ge 5' > /dev/null 2>&1
+assert_status "test N -ge N (equal) succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test 5 -ne 3' > /dev/null 2>&1
+assert_status "test N1 -ne N2 succeeds when different" 0 "$?"
+
+"$THIS_SH" -c 'test ! ""' > /dev/null 2>&1
+assert_status "test ! on a bare empty string succeeds (negation)" 0 "$?"
+
+"$THIS_SH" -c 'test ! 5 -eq 3' > /dev/null 2>&1
+assert_status "test ! N1 -eq N2 (a full 3-arg test negated) succeeds when unequal" 0 "$?"
+
+"$THIS_SH" -c 'test -e /etc/passwd' > /dev/null 2>&1
+assert_status "test -e succeeds on a file that exists" 0 "$?"
+
+"$THIS_SH" -c 'test -e /nonexistent-path-xyz123' > /dev/null 2>&1
+assert_status "test -e fails on a path that doesn't exist" 1 "$?"
+
+"$THIS_SH" -c '[ 5 -eq 5 ]' > /dev/null 2>&1
+assert_status "[ ... ] works as an alias for test, with a matching ]" 0 "$?"
+
+"$THIS_SH" -c 'test "nonempty123"' > /dev/null 2>&1
+assert_status "a bare, non-empty string alone succeeds" 0 "$?"
+
+"$THIS_SH" -c 'test ""' > /dev/null 2>&1
+assert_status "a bare, empty string alone fails" 1 "$?"
+
+report

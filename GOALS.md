@@ -669,8 +669,23 @@ the full account and the fixes applied.
      state, run the inner command through the real `TOKENIZE`, restore
      outer state" approach considered and set aside as too complex
      during Iteration 13, now worth revisiting given the payoff.
-   - **Phase F — builtins.** `[`/`test` (string and numeric
-     comparisons, file tests). `:` (no-op). `read`. `readonly`.
+   - **Phase F — builtins.**
+     `[`/`test` and `:`: **done (Iteration 37)** — string tests (`-z`,
+     `-n`, `=`, `!=`, bare non-empty check), numeric comparisons
+     (`-eq`, `-ne`, `-lt`, `-le`, `-gt`, `-ge`), `!` negation (of a
+     bare/1-arg test, or a full 3-arg `a op b`), and an approximate
+     `-e`/`-f`/`-d` (existence only, via `OPEN-FILE` — no real
+     stat/access primitive exists, so `-f`/`-d` can't distinguish file
+     types). Installing `test` as a builtin shadows the external
+     `/usr/bin/test` any script invokes bare, breaking
+     `tests/shell/run-while` immediately (it uses bare `test -f`,
+     which the initial implementation didn't recognize at all) — fixed
+     by adding `-f`/`-d` as aliases for the same existence check `-e`
+     uses. See `PROGRESS.md`'s Iteration 37 entry for the full design
+     and documented scope limits (no `-r`/`-w`/`-x`/`-s`, no `-a`/`-o`,
+     no `(` `)` grouping, no 3-arg negated unary tests).
+
+     Still open: `read`. `readonly`.
      `shift`. `getopts`. `command`. Background jobs, `wait`, `$!`.
      `alias`/`unalias`. `ulimit`. Possibly `trap`, `exec`, `hash`,
      `type` if a test ends up needing them.

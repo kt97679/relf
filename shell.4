@@ -1861,8 +1861,136 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
 : RUN-FUNC-BODY-CALL ( i --- )
   RUN-FUNC-BODY-XT @ EXECUTE ;
 
+\ ==================================================================
+\ test / [ - string, numeric, and (limited) file-existence tests.
+\ Scope limits, all deliberate: no -f/-d/-r/-w/-x/-s (would need a
+\ real stat/access primitive this kernel doesn't expose, only
+\ OPEN-FILE - -e is approximated by attempting to open the path
+\ read-only, which can't distinguish a file from a directory); no
+\ -a/-o (deprecated in POSIX anyway); no "(" ")" grouping; a 3-arg
+\ form is always "STRING1 OP STRING2" and a 4-arg form is always
+\ "! STRING1 OP STRING2" - "! -z STRING"-style 3-arg negated unary
+\ tests, and 5+ argument forms generally, aren't handled.
+\ ==================================================================
+
+VARIABLE TEST-START
+VARIABLE TEST-END
+
+: TEST-NARGS ( --- n )  TEST-END @ TEST-START @ - ;
+: TEST-ARGN ( i --- c-addr )  TEST-START @ + ARGV@ ;
+
+: TEST-PARSE-INT ( c-addr --- n )  \ handles an optional leading "-",
+                                      \ unlike PARSE-DECIMAL alone
+  DUP C@ 45 = IF
+    1+ DUP CSTRLEN PARSE-DECIMAL NEGATE
+  ELSE
+    DUP CSTRLEN PARSE-DECIMAL
+  THEN ;
+
+: TEST-FILE-EXISTS? ( c-addr --- f )
+  R/O OPEN-FOR IF
+    CLOSE-FILE DROP -1
+  ELSE
+    DROP 0
+  THEN ;
+
+: TEST-IS-BANG? ( c-addr --- f )
+  S" !" ROT STR0= ;
+
+VARIABLE TEST-OP
+VARIABLE TEST-A
+VARIABLE TEST-B
+
+: TEST-BINARY? ( a-addr op-addr b-addr --- f )
+  TEST-B ! TEST-OP ! TEST-A !
+  S" ="   TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= EXIT THEN
+  S" !="  TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= 0= EXIT THEN
+  S" -eq" TEST-OP @ STR0= IF
+    TEST-A @ TEST-PARSE-INT TEST-B @ TEST-PARSE-INT = EXIT
+  THEN
+  S" -ne" TEST-OP @ STR0= IF
+    TEST-A @ TEST-PARSE-INT TEST-B @ TEST-PARSE-INT = 0= EXIT
+  THEN
+  S" -lt" TEST-OP @ STR0= IF
+    TEST-A @ TEST-PARSE-INT TEST-B @ TEST-PARSE-INT < EXIT
+  THEN
+  S" -le" TEST-OP @ STR0= IF
+    TEST-B @ TEST-PARSE-INT TEST-A @ TEST-PARSE-INT < 0= EXIT
+  THEN
+  S" -gt" TEST-OP @ STR0= IF
+    TEST-B @ TEST-PARSE-INT TEST-A @ TEST-PARSE-INT < EXIT
+  THEN
+  S" -ge" TEST-OP @ STR0= IF
+    TEST-A @ TEST-PARSE-INT TEST-B @ TEST-PARSE-INT < 0= EXIT
+  THEN
+  0 ;
+
+VARIABLE TEST-U-OP
+VARIABLE TEST-U-OPERAND
+
+: TEST-UNARY? ( op-addr operand-addr --- f )
+  \ -f/-d are approximated as "does this path exist at all" (same as
+  \ -e) - this kernel has no real stat/access primitive to actually
+  \ distinguish a regular file from a directory, only OPEN-FILE.
+  TEST-U-OPERAND ! TEST-U-OP !
+  S" -z" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= EXIT THEN
+  S" -n" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= 0= EXIT THEN
+  S" -e" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
+  S" -f" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
+  S" -d" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
+  0 ;
+
+: EVAL-TEST-ARGS ( --- f )  \ TEST-START/TEST-END already set by the
+                              \ caller - evaluates ARGV[TEST-START,
+                              \ TEST-END) as a test expression.
+  TEST-NARGS 0 = IF 0 EXIT THEN
+  TEST-NARGS 1 = IF
+    0 TEST-ARGN CSTRLEN 0= 0= EXIT
+  THEN
+  TEST-NARGS 2 = IF
+    0 TEST-ARGN TEST-IS-BANG? IF
+      1 TEST-ARGN CSTRLEN 0= EXIT
+    ELSE
+      0 TEST-ARGN 1 TEST-ARGN TEST-UNARY? EXIT
+    THEN
+  THEN
+  TEST-NARGS 3 = IF
+    0 TEST-ARGN 1 TEST-ARGN 2 TEST-ARGN TEST-BINARY? EXIT
+  THEN
+  TEST-NARGS 4 = IF
+    0 TEST-ARGN TEST-IS-BANG? IF
+      1 TEST-ARGN 2 TEST-ARGN 3 TEST-ARGN TEST-BINARY? 0= EXIT
+    THEN
+  THEN
+  0 ;
+
+: DO-TEST ( --- )  \ ARGV[0] is "test" - evaluates ARGV[1..ARGC).
+  1 TEST-START !
+  ARGC @ TEST-END !
+  EVAL-TEST-ARGS IF 0 ELSE 1 THEN LAST-STATUS ! ;
+
+: DO-BRACKET-TEST ( --- )  \ ARGV[0] is "[" - like DO-TEST, but the
+                             \ last argument must be a matching "]",
+                             \ excluded from the range evaluated.
+  ARGC @ 2 < IF
+    ." [: missing matching ']'" CR
+    2 LAST-STATUS !
+    EXIT
+  THEN
+  ARGC @ 1- ARGV@ S" ]" ROT STR0= 0= IF
+    ." [: missing matching ']'" CR
+    2 LAST-STATUS !
+    EXIT
+  THEN
+  1 TEST-START !
+  ARGC @ 1- TEST-END !
+  EVAL-TEST-ARGS IF 0 ELSE 1 THEN LAST-STATUS ! ;
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
+    S" :"      ARGV @ STR0= IF 0 LAST-STATUS ! -1 EXIT THEN
+    S" test"   ARGV @ STR0= IF DO-TEST -1 EXIT THEN
+    S" ["      ARGV @ STR0= IF DO-BRACKET-TEST -1 EXIT THEN
     S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
     S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
     S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
