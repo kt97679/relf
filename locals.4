@@ -78,19 +78,36 @@ BASE @  DECIMAL
 CREATE LSAVE-STACK LSAVE-MAX CELLS ALLOT
 VARIABLE LSAVE-SP
 
-: LSAVE ( addr --- )   \ push addr's current value, so it can be put
-                       \ back when this invocation ends
+\ Each of these takes the slot as an OFFSET from START, not as an
+\ absolute address, and adds START itself. That is what makes a
+\ locals-using word survive being saved into an image and reloaded at
+\ a different address (see save-system.4): the only thing compiled
+\ into the word's body is the offset, which is position-independent,
+\ exactly like kernel.4's BOOT hook and shell.4's deferred xts.
+\
+\ Doing the arithmetic HERE rather than in the generated code is not
+\ just tidier, it is what keeps this free. The first attempt compiled
+\ "LIT off | START | @ | + | call" inline instead, quadrupling the
+\ code emitted per local - which overflowed the engine's dictionary
+\ and corrupted compilation of shell.4. This version emits exactly
+\ the same two cells the original absolute-address version did.
+
+: LSAVE ( off --- )   \ push the slot's current value, so it can be
+                      \ put back when this invocation ends
   LSAVE-SP @ LSAVE-MAX < 0= ABORT" locals: save stack overflow"
-  @ LSAVE-STACK LSAVE-SP @ CELLS + !
+  START @ + @ LSAVE-STACK LSAVE-SP @ CELLS + !
   LSAVE-SP @ 1+ LSAVE-SP ! ;
 
-: LRESTORE ( addr --- )   \ pop the most recently saved value into addr
+: LRESTORE ( off --- )   \ pop the most recently saved value back
   LSAVE-SP @ 0 > 0= ABORT" locals: save stack underflow"
   LSAVE-SP @ 1- LSAVE-SP !
-  LSAVE-STACK LSAVE-SP @ CELLS + @ SWAP ! ;
+  LSAVE-STACK LSAVE-SP @ CELLS + @ SWAP START @ + ! ;
 
-: LZERO ( addr --- )   \ initial value of a post-| scratch local
-  0 SWAP ! ;
+: LZERO ( off --- )   \ initial value of a post-| scratch local
+  0 SWAP START @ + ! ;
+
+: L! ( x off --- )    \ store a data-stack argument into a slot
+  START @ + ! ;
 
 \ ------------------------------------------------------------------
 \ Compile time: the declaration currently being processed
@@ -105,10 +122,26 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 0 LDECL-ARGS !
 0 LSAVE-SP !
 
-: L-EMIT ( xt i --- )   \ compile "LDECL-ADDRS[i]  <call to xt>"
-                        \ - the one place any code is generated, shared
-                        \ by all four emit loops below
-  CELLS LDECL-ADDRS + @ POSTPONE LITERAL COMPILE, ;
+: L-EMIT ( xt i --- )
+  \ Compile "LDECL-ADDRS[i]  <call to xt>" - the one place any code is
+  \ generated, shared by all four emit loops below.
+  \
+  \ The slot address is emitted as an OFFSET from START, with a
+  \ "START @ +" compiled after it to rebuild the real address at run
+  \ time, rather than as a plain absolute literal. That costs three
+  \ extra operations per local per entry/exit and buys
+  \ position-independence: a saved image (see save-system.4) reloads
+  \ at a different address every run, and an absolute literal baked
+  \ into a word's body is stale the moment it does. Found exactly that
+  \ way - the first turnkey shell image segfaulted inside
+  \ NORMALIZE-OPERATORS, the first locals-using word its startup path
+  \ reached.
+  \
+  \ Two cells: the offset as a literal, then a relative call to the
+  \ runtime word, which does the "+ START" itself. Both are
+  \ position-independent.
+  CELLS LDECL-ADDRS + @ START @ -
+  POSTPONE LITERAL COMPILE, ;
 
 : L-COMPILE-ENTRY ( --- )
   \ Saves come first and cover every declared name; only then are the
@@ -121,7 +154,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
     LDECL-N @ 0 DO ['] LSAVE I L-EMIT LOOP
   THEN
   LDECL-ARGS @ 0 > IF
-    LDECL-ARGS @ 0 DO ['] ! LDECL-ARGS @ 1- I - L-EMIT LOOP
+    LDECL-ARGS @ 0 DO ['] L! LDECL-ARGS @ 1- I - L-EMIT LOOP
   THEN
   LDECL-N @ LDECL-ARGS @ > IF
     LDECL-N @ LDECL-ARGS @ DO ['] LZERO I L-EMIT LOOP

@@ -47,6 +47,30 @@ CREATE ENVNAMBUF  64 ALLOT
 VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
+
+\ ==================================================================
+\ Storing an execution token so it survives being saved into an image
+\ ==================================================================
+\ This file uses the deferred-word pattern in six places to break
+\ genuine mutual dependencies (RUN-TOKENIZED-CALL and friends): patch
+\ a VARIABLE with a word's xt once that word exists, and call through
+\ the variable before then.
+\
+\ An xt is an absolute address. That is fine within one process, and
+\ was fine for as long as shell.4 was recompiled from source on every
+\ startup - but a saved image (see save-system.4) reloads at a
+\ different address every run, so a stored absolute xt is stale the
+\ moment the image boots and EXECUTEing it segfaults. Found exactly
+\ that way: the first turnkey image built crashed inside RUN-LINE,
+\ which reaches RUN-TOKENIZED through one of these.
+\
+\ So store the xt as an offset from START and add START back at call
+\ time - the same representation kernel.4's own BOOT hook uses, and
+\ the same reason. Everything else in a RelF image is already
+\ position-independent by design; these six cells were the exception.
+: !XT ( xt addr --- )  SWAP START @ - SWAP ! ;
+: @XT ( addr --- xt )  @ START @ + ;
+
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ branch has already determined this whole
                           \ region shouldn't execute anything (either
@@ -772,7 +796,7 @@ VARIABLE CMDSUB-OUT-LEN
 VARIABLE RUN-CMDSUB-CHILD-XT
 
 : RUN-CMDSUB-CHILD-CALL ( --- )
-  RUN-CMDSUB-CHILD-XT @ EXECUTE ;
+  RUN-CMDSUB-CHILD-XT @XT EXECUTE ;
 
 VARIABLE CS-FD
 VARIABLE CMDSUB-PIPE-RD
@@ -939,7 +963,7 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
                       \ AE-OR through this deferred call, patched
                       \ right after AE-OR itself is defined below.
 
-: AE-OR-CALL ( --- n )  AE-OR-XT @ EXECUTE ;
+: AE-OR-CALL ( --- n )  AE-OR-XT @XT EXECUTE ;
 
 : AE-PRIMARY ( --- n )
   AE-SKIP-WS
@@ -1077,7 +1101,7 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     AE-AND
     SWAP AE-TRUTHY? SWAP AE-TRUTHY? OR AE-BOOL-TO-INT
   REPEAT ;
-' AE-OR AE-OR-XT !
+' AE-OR AE-OR-XT !XT
 
 VARIABLE AE-EVAL-LEN
 
@@ -1232,7 +1256,7 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
                           \ VAR is.
 
 : TRIM-PARAM-CALL ( --- )
-  TRIM-PARAM-XT @ EXECUTE ;
+  TRIM-PARAM-XT @XT EXECUTE ;
 
 : READ-PEWORD ( --- )
   \ Reads from TOK-POS up to (not including) the closing '}' into
@@ -1858,7 +1882,7 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
                               \ body-replay logic is.
 
 : RUN-FUNC-BODY-CALL ( i --- )
-  RUN-FUNC-BODY-XT @ EXECUTE ;
+  RUN-FUNC-BODY-XT @XT EXECUTE ;
 
 \ ==================================================================
 \ test / [ - string, numeric, and (limited) file-existence tests.
@@ -2235,7 +2259,7 @@ VARIABLE CAQ-N
                               \ COPY-ARGV.
   CMDSUB-ARGV CMDSUB-ARGC @ COPY-ARGV
   RUN-CHILD ;
-' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !
+' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
 
 VARIABLE PIPE-RD
 VARIABLE PIPE-WR
@@ -2373,7 +2397,7 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
                                \ failing command name.
 
 : TRY-ASSIGNMENT-CALL ( --- f )
-  TRY-ASSIGNMENT-XT @ EXECUTE ;
+  TRY-ASSIGNMENT-XT @XT EXECUTE ;
 
 : RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
                                     \ global ARGV/ARGC as one pipeline
@@ -2477,7 +2501,7 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
 VARIABLE RUN-TOKENIZED-XT
 
 : RUN-TOKENIZED-CALL ( --- )
-  RUN-TOKENIZED-XT @ EXECUTE ;
+  RUN-TOKENIZED-XT @XT EXECUTE ;
 
 \ ==================================================================
 \ '( list )' subshells and '{ list ; }' brace groups. Both require
@@ -2680,7 +2704,7 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
     DROP
   THEN
   0 ;
-' TRY-ASSIGNMENT TRY-ASSIGNMENT-XT !
+' TRY-ASSIGNMENT TRY-ASSIGNMENT-XT !XT
 
 CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
 VARIABLE ARGC-SHIFT
@@ -3308,7 +3332,7 @@ VARIABLE FUNC-BODY-I
   R> FUNC-CUR-I !
   FUNC-DEPTH @ 1- FUNC-DEPTH !
   FUNC-DEPTH @ RESTORE-POS-PARAMS ;
-' RUN-FUNC-BODY RUN-FUNC-BODY-XT !
+' RUN-FUNC-BODY RUN-FUNC-BODY-XT !XT
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
 
@@ -3735,7 +3759,7 @@ VARIABLE TP-MATCH-LEN
       TP-VAL-ADDR @ TP-MATCH-LEN @ + TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
     THEN
   THEN ;
-' TRIM-PARAM TRIM-PARAM-XT !
+' TRIM-PARAM TRIM-PARAM-XT !XT
 
 \ ==================================================================
 \ case WORD in / PATTERN1) / <body> / ;; / PATTERN2|PATTERN3) / ... /
@@ -3891,7 +3915,7 @@ VARIABLE FD-LEN
     EXIT
   THEN
   RUN-SIMPLE-OR-PIPELINE ;
-' RUN-TOKENIZED RUN-TOKENIZED-XT !
+' RUN-TOKENIZED RUN-TOKENIZED-XT !XT
 
 
 : RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then

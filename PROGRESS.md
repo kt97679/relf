@@ -4521,3 +4521,162 @@ nothing to check.
 - **The two "Redefining:" lines are still printed at startup.** Bundled
   with the banner problem above rather than fixed separately, since
   both are the same question about `relfsh`'s stdout hygiene.
+## Iteration 40: prebuilt shell image - ~128x faster startup, and the
+## acceptance criterion unblocked
+
+Your idea, and it paid off more than either of us expected. Three
+numbers, 50 runs each, measured before starting:
+
+| | 50 runs | per run |
+|---|---|---|
+| `relfsh -c true` | 12.68s | ~254ms |
+| bare `relf kernel.img` | 0.061s | ~1.2ms |
+| `/bin/true` | 0.040s | ~0.8ms |
+
+**~99.5% of every `relfsh` invocation was compiling `locals.4` +
+`shell.4` from source**, which the bootstrap did afresh every single
+time. This had been true since Iteration 5 and nobody had looked.
+
+Result: `relfsh` now boots a prebuilt image in ~1.8ms (**~128x**), the
+shell test suite went from **59.3s to 1.18s** (**50x**), and the
+mrsh-suite went from 0 passed to 2 - one of them genuine, the first
+vendored file ever carried across by real shell features.
+
+This also corrects Iteration 39's entry, which asserted the suite's
+runtime was "dominated by forking a real process per assertion, not by
+anything inside `shell.4`". That was invented. The measurement it was
+attached to (that the locals conversion cost nothing) was fine; the
+causal story bolted onto it was never checked, and was wrong.
+
+### Three pieces
+
+**`save-system.4`** - `SAVE-SYSTEM ( c-addr u -- )` writes the
+*running* system out as a bootable image: the 8-byte magic header,
+then memory from `START` to `HERE`. This is much simpler than it
+sounds, because RelF images are relocatable by design - that is the
+entire point of RelF's relative addressing. `COLD` is the authority on
+what is absolute in a live system:
+
+    : COLD  START ! START @ FORTH-WORDLIST +! START @ DP +! ...
+
+Exactly two cells. So subtracting `START` back out of `DP` and
+`FORTH-WORDLIST` before writing, and adding it back after, is the whole
+of "relocation". `HERE` is read *before* unrelocating (unrelocating
+changes `DP`, and therefore `HERE`), and the window in which the system
+sits in its on-disk form contains nothing but the two writes - no
+`ALLOT`, no `WORD`, no `ABORT"` that could strand it there.
+
+Needs no engine change and no kernel change: `START`, `DP`,
+`FORTH-WORDLIST`, `HERE` and the file words all already existed. Proved
+in isolation first, against an unmodified `kernel.img`, by saving an
+image containing a word and a variable defined just beforehand and
+checking both survived a reboot.
+
+Deliberately not confused with `cross.4`'s own `SAVE-IMAGE`, which is a
+host-side word writing the target image the cross-compiler is building
+- a different thing.
+
+**`BOOT` in `kernel.4`** - the one kernel change, so `kernel.img` is
+regenerated. 0 in a plain image; when set it holds the xt of a word to
+run at startup:
+
+    BOOT @ ?DUP IF START @ + EXECUTE THEN
+
+Stored as an offset from `START` and never relocated in place, so it
+stays valid if the image is saved again. This is what skips the banner.
+`OK` needed no work at all: those lines were `QUIT` acknowledging
+`relfsh`'s bootstrap lines, and a prebuilt image has no bootstrap.
+
+**`relfsh`** rebuilds the image whenever any input is newer, writing to
+a temporary name and `mv`-ing it into place so concurrent invocations
+can't see a half-written file, with a fallback to the old source
+bootstrap if the build fails. The image is **built, never committed**:
+a committed binary derived from `shell.4` is a second source of truth
+that goes stale silently the first time someone edits the shell and
+forgets. The name is derived from the kernel image
+(`kernel.img` -> `kernel-shell.img`), so both cell widths work without
+collision.
+
+### Position-independence is now load-bearing, and two things weren't
+
+An image reloads at a different address every run, so any absolute
+address compiled into a word's body is stale the moment it boots. Both
+offenders were found the same way - by the turnkey image segfaulting -
+and both are the same mistake:
+
+1. **`shell.4`'s six deferred-word xts.** `' RUN-TOKENIZED
+   RUN-TOKENIZED-XT !` stores an absolute address. Fine for as long as
+   `shell.4` was recompiled on every startup; fatal once it isn't. Now
+   stored as offsets via new `!XT`/`@XT` helpers. Bisected to this by
+   testing boot words of increasing scope until `1 SYS-ARG SH-C`
+   crashed while `SYS-ARGC`, `SYS-ARG` and `S"` all worked.
+2. **`locals.4`'s slot addresses.** `L-EMIT` compiled the variable's
+   absolute address as a literal into *every* locals-using word. Found
+   when the next crash landed in `NORMALIZE-OPERATORS` - the first
+   locals-using word on the startup path.
+
+The fix for (2) is worth recording, because the first attempt was
+wrong in an instructive way. It compiled `LIT off | START | @ | + |
+call` inline, which is correct but **quadruples the code emitted per
+local**. That overflowed the dictionary and corrupted compilation of
+`shell.4`, reported as two `Undefined word` errors against an *empty
+name* - a symptom pointing nowhere near its cause. The right answer is
+to pass the offset *to* the runtime words and let `LSAVE`/`LRESTORE`/
+`LZERO`/(new) `L!` add `START` themselves: same two cells the original
+absolute version emitted, no growth at all, and simpler.
+
+**Anything added in future that stores or compiles an address must do
+the same.** Recorded in `GOALS.md`.
+
+### The dictionary was nearly full, and nobody knew
+
+Chasing that overflow surfaced something worth having found: `relf.c`'s
+`MEMSIZE` was 256K, and a prebuilt shell image measures **253,256
+bytes**. `kernel.img` + `locals.4` + `shell.4` had come within a few KB
+of the ceiling, with the return and data stacks living in what was
+left. It had not bitten yet only because nothing had pushed it over.
+
+Raised to 1M. Worth emphasising that this does *not* fail cleanly: the
+symptom is corrupted compilation surfacing as `Undefined word` against
+an empty name, arbitrarily far from the actual cause.
+
+### The mrsh count moved, and only half of it is real
+
+**2 passed, 19 failed, 3 skipped.** Checked both rather than reporting
+the number:
+
+- **`case.sh` is genuine.** Full `case`/`esac`: variable expansion in
+  the case word, `*`, `?`, `[a-z]` and `|` patterns, a quoted pattern,
+  an expanded pattern, and an omitted final `;;`. All of it really
+  implemented (Iterations 27, 33-36). `GOALS.md` had predicted this
+  file needed arithmetic and `$IFS` splitting, which landed in 35/36 -
+  so this is the first vendored file carried across by actual features
+  rather than by measurement artifact.
+- **`ulimit.sh` is hollow**, and is recorded as such. `shell.4` has
+  neither `ulimit` nor backquote substitution. Both shells simply exit
+  1, and their stdout coincides only because of the single `grep` line
+  that runs in both. Exactly the shape of the old
+  `2.2.3-alias-expansion.fail.sh` accident.
+
+### Verified
+
+1991 OK markers and 251 shell assertions, all passing, on **both**
+8-byte and 4-byte (i386) cell widths, with the regenerated `kernel.img`
+and prebuilt shell images. `relfsh`'s stdout is now byte-identical to
+`bash` for a script that both can run.
+
+### What this iteration deliberately did NOT do
+
+- **Compiling new code inside a turnkey image still doesn't work.**
+  `locals.4`'s compile-time machinery holds absolute xts
+  (`L-OLD-EXIT`/`L-OLD-SEMI`, `['] LSAVE` inside `L-EMIT`), stale in a
+  reloaded image. Running compiled code is fine; only compilation is
+  affected. **This has to be fixed before the `forth` builtin can work
+  in a prebuilt image**, which is the main reason it matters.
+- **`while`/`for` still don't nest.** Unchanged from Iteration 39, and
+  still the highest-value structural item: the buffers need to become
+  pointers into an arena.
+- **`kernel.img` is regenerated but the cross-compiler is untouched.**
+  Adding a `VARIABLE` and editing `COLD` changes neither the primitive
+  list nor its stride, so the hand-embedded dispatch tokens
+  `GOALS.md` warns about were never in play.

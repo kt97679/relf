@@ -53,7 +53,17 @@ typedef int32_t  INT64;
 #error "relf: unsupported pointer size (only 32-bit and 64-bit hosts are supported)"
 #endif
 
-#define MEMSIZE (256 * 1024)  /* how much memory do we allocate for VM */
+/*  How much memory the VM gets: dictionary at the bottom, return and
+ *  data stacks at the top (see rp/dsp below). Raised from 256K to 1M
+ *  in Iteration 40, after a prebuilt shell image measured 253,256
+ *  bytes - i.e. kernel.img plus locals.4 plus shell.4 had come within
+ *  a few KB of the old ceiling, with the stacks living in what was
+ *  left. Overflowing it does not fail cleanly: the symptom is
+ *  corrupted compilation reported as "Undefined word" against an
+ *  empty name, nowhere near the actual cause. 1M is still small
+ *  enough to be unremarkable and leaves real headroom for shell.4 to
+ *  keep growing.  */
+#define MEMSIZE (1024 * 1024)
 #define RSTACK_BYTES 2048     /* room reserved for the return stack     */
 
 /*

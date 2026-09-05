@@ -1,0 +1,93 @@
+\ save-system.4 - write the *running* Forth system out as a bootable
+\ image, so work already compiled into the dictionary doesn't have to
+\ be recompiled on every startup.
+\
+\ Why: `relfsh` compiles locals.4 + shell.4 from source every single
+\ time it starts. Measured, 50 runs each: `relfsh -c true` 12.68s,
+\ bare `relf kernel.img` 0.061s, `/bin/true` 0.040s. That is ~253ms
+\ of compiling against ~1.2ms of actual engine startup - about 99.5%
+\ of every invocation, and the reason the shell test suite takes a
+\ minute. See PROGRESS.md's Iteration 40 entry.
+\
+\ This is deliberately NOT cross.4's SAVE-IMAGE. That one is a
+\ host-side word that writes the target image the cross-compiler is
+\ building. This one writes the image the current process is itself
+\ running in, which is a different thing and much simpler, because
+\ RelF images are already relocatable by design - that is the whole
+\ point of RelF's relative addressing (see GOALS.md's load-bearing
+\ architectural note).
+\
+\ Only three cells in a live system are absolute, and COLD is the
+\ authority on which:
+\
+\   : COLD  START ! START @ FORTH-WORDLIST +! START @ DP +! ...
+\
+\ So exactly DP and FORTH-WORDLIST get START added at boot, and
+\ subtracting it back out before writing is the entire "relocation"
+\ this needs. BOOT (added to kernel.4 alongside this) is deliberately
+\ kept as an offset at all times and never relocated in place, so it
+\ needs no handling here at all.
+\
+\ Loadable against a plain kernel.img with no engine change - every
+\ word used here already exists. Forces DECIMAL for its own literals
+\ and restores the caller's BASE, for the reason documented in
+\ locals.4's header.
+
+BASE @  DECIMAL
+
+VARIABLE SS-FID
+VARIABLE SS-LEN
+
+CREATE SS-MAGIC 8 ALLOT
+
+: SS-SET-MAGIC ( --- )
+  \ The 8-byte header relf.c checks at load: "RELF", then the cell
+  \ width, then three zero bytes. A mismatched image is rejected
+  \ cleanly at load rather than silently misbehaving, so this must
+  \ agree with relf.c's own IMAGE_MAGIC exactly.
+  [CHAR] R SS-MAGIC     C!
+  [CHAR] E SS-MAGIC 1+  C!
+  [CHAR] L SS-MAGIC 2 + C!
+  [CHAR] F SS-MAGIC 3 + C!
+  1 CELLS  SS-MAGIC 4 + C!
+  0 SS-MAGIC 5 + C!
+  0 SS-MAGIC 6 + C!
+  0 SS-MAGIC 7 + C! ;
+
+: SS-UNRELOCATE ( --- )   \ back to the on-disk, START-relative form
+  START @ NEGATE DUP DP +! FORTH-WORDLIST +! ;
+
+: SS-RERELOCATE ( --- )   \ and back to the live, absolute form
+  START @ DUP DP +! FORTH-WORDLIST +! ;
+
+: SAVE-SYSTEM ( c-addr u --- )
+  \ Writes the whole live dictionary, START through HERE, prefixed by
+  \ the magic header. The resulting file is a complete image: run it
+  \ with `relf that-image` and every word defined at save time is
+  \ already there.
+  \
+  \ HERE is read BEFORE unrelocating, because unrelocating changes DP
+  \ (and therefore HERE) to a small offset. Likewise the file is
+  \ created before unrelocating and closed after rerelocating, so the
+  \ window in which the system is in its on-disk form contains
+  \ nothing but the two writes - no ALLOT, no WORD, no HERE, and no
+  \ ABORT" that could leave the system stranded in that state.
+  HERE START @ - SS-LEN !
+  SS-SET-MAGIC
+  W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file"
+  SS-FID !
+  SS-UNRELOCATE
+  SS-MAGIC 8 SS-FID @ WRITE-FILE DROP
+  START @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SS-RERELOCATE
+  SS-FID @ CLOSE-FILE DROP ;
+
+: SET-BOOT ( xt --- )
+  \ Arrange for the saved image to run xt at startup instead of
+  \ printing the banner and entering the interpreter loop. Stored as
+  \ an offset from START, never as an absolute address, so it stays
+  \ valid across the save and needs no relocation handling in
+  \ SAVE-SYSTEM. COLD adds START back when it runs it - see kernel.4.
+  START @ - BOOT ! ;
+
+BASE !

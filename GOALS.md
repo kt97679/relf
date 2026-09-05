@@ -115,6 +115,18 @@ the full account and the fixes applied.
 
 ## Repository conventions
 
+- **Watch for development-process wins, and raise them.** Alongside
+  feature work, actively look for ways the *process* of working on
+  this project could be faster or more reliable, and discuss them
+  rather than just absorbing the friction. Measure before proposing:
+  the point is to find real costs, not plausible-sounding ones.
+  Iteration 40 is the model - `relfsh` had been recompiling
+  `shell.4` from source on every single invocation, ~253ms of every
+  ~254ms, which made the shell test suite take a minute and hid a
+  hard blocker in the acceptance criterion. A prebuilt image cut the
+  suite from 59.3s to 1.2s. That had been true and unnoticed since
+  Iteration 5. Slow feedback loops compound: they discourage running
+  the full suite, which is exactly when regressions slip through.
 - **Single branch: `master`.** Linear history, no feature branches.
 - **Code must always build and run, with all tests passing, at every
   commit** — not just at the end of a session.
@@ -212,6 +224,50 @@ is `INCLUDED` into an unknown session must not inherit the caller's
 `BASE`** — `tester.fr` leaves it at 16, which turned `locals.4`'s own
 `32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
 
+## Prebuilt shell image (`save-system.4`) — since Iteration 40
+
+`relfsh` runs a prebuilt image rather than compiling `locals.4` +
+`shell.4` from source on every invocation. Measured, 50 runs each:
+source bootstrap 12.68s, prebuilt image 0.091s, bare `relf kernel.img`
+0.061s. That is ~253ms against ~1.8ms, **~128x**, and it took the
+shell test suite from 59.3s to 1.2s.
+
+Three pieces:
+
+- **`save-system.4`** — `SAVE-SYSTEM ( c-addr u -- )` writes the
+  *running* system out as a bootable image: the magic header, then
+  memory from `START` to `HERE`. RelF images are relocatable by design,
+  so the only work is subtracting `START` back out of the two cells
+  `COLD` relocates (`DP` and `FORTH-WORDLIST`) before writing. Needs no
+  engine change; every word it uses already existed. Distinct from
+  `cross.4`'s own `SAVE-IMAGE`, which is a host-side word writing the
+  target image the cross-compiler is building.
+- **`BOOT` in `kernel.4`** — 0 in a plain kernel image; when set it
+  holds the xt of a word to run at startup, so the image boots straight
+  into `shell.4`'s `MAIN` and never prints the banner or `OK`. Stored
+  as an offset from `START`, never absolute.
+- **`relfsh`** rebuilds the image whenever any input is newer, to a
+  temporary name then `mv`. The image is **built, never committed** —
+  a committed binary derived from `shell.4` is a second source of truth
+  that goes stale silently.
+
+**Position-independence is now load-bearing, and was not before.** An
+image reloads at a different address every run, so any absolute address
+compiled into a word's body is stale the moment it boots. Two places
+had them, both found by the turnkey image segfaulting: `shell.4`'s six
+deferred-word xts (now stored as `START`-relative offsets via
+`!XT`/`@XT`), and the slot addresses `locals.4` compiles into every
+locals-using word (now offsets, with the runtime words adding `START`
+themselves). **Anything added in future that stores or compiles an
+address must do the same.**
+
+Known limitation: *compiling new code inside a turnkey image is not
+supported yet.* `locals.4`'s own compile-time machinery holds absolute
+xts (`L-OLD-EXIT`/`L-OLD-SEMI`, and `['] LSAVE` inside `L-EMIT`), which
+are stale in a reloaded image. Running compiled code is fine; only
+compilation is affected. This must be fixed before the `forth` builtin
+(see the named-locals section) can work in a prebuilt image.
+
 ## Phases
 
 1. **Scaffolding** — repo structure, test runner, process log. **Done**
@@ -298,24 +354,27 @@ is `INCLUDED` into an unknown session must not inherit the caller's
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **0 passed, 21 failed, 3 skipped**.
+   and currently reports **2 passed, 19 failed, 3 skipped** - of which
+   exactly **one is genuine**. `case.sh` passes on its merits: full
+   `case`/`esac` with variable expansion, `*`, `?`, `[...]` and `|`
+   patterns, quoted patterns, and an omitted final `;;`, all of which
+   `shell.4` really implements (Iterations 27 and 33-36). It is the
+   first vendored file ever carried across by actual shell features.
+   `ulimit.sh` is hollow and should be read as such: `shell.4` has
+   neither `ulimit` nor backquote substitution, both shells simply
+   exit 1, and their stdout coincides only because of the one `grep`
+   line that runs in both. It will stop being hollow when Phase F's
+   `ulimit` and Phase E's backquotes land.
 
-   **A structural blocker sits underneath that number, found in
-   Iteration 39.** The 18 differential tests compare `relfsh`'s stdout
-   against `bash`'s *byte for byte*, but `relfsh` emits `relf`'s own
-   boot output first - `Welcome to Forth` (printed at image load) and
-   `OK` (from `QUIT`'s interpreter loop), both from `kernel.4` and so
-   baked into the committed `kernel.img`. **No differential test can
-   pass while those are there, however complete `shell.4` becomes.**
-   This was measured, not assumed: re-running every vendored test with
-   the boot prefix stripped still yields zero passes, so today's
-   failures are genuine feature gaps and the banner is a *latent*
-   blocker rather than the binding one. But it must be cleared before
-   the count can ever rise above the 2 status-only `.fail.sh`
-   conformance tests. Doing so means editing `kernel.4` and
-   regenerating `kernel.img`; that deserves its own iteration. The
-   two `Redefining:` lines `locals.4` adds at startup are the same
-   question and should be handled together.
+   **A structural blocker sat underneath that number, found in
+   Iteration 39 and cleared in Iteration 40.** The 18 differential
+   tests compare `relfsh`'s stdout against `bash`'s *byte for byte*,
+   but `relfsh` used to emit `relf`'s own boot output first -
+   `Welcome to Forth` and `OK` - so no differential test could pass
+   however complete `shell.4` became. `relfsh` now runs a prebuilt
+   image that boots straight into `MAIN` (see the prebuilt-image
+   section below), so neither line is ever printed and stdout is
+   exactly what the shell itself writes.
 
    That number has moved exactly three times, and never yet because a
    `shell.4` feature carried a vendored test file across the line:

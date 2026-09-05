@@ -186,6 +186,18 @@ PRIMITIVE RP!      ( a-addr ---)
 
 VARIABLE START \ holds absolute address of the system address space
 
+VARIABLE BOOT
+\ Turnkey hook, 0 in a plain kernel image. When nonzero it holds the
+\ execution token of a word to run at startup, stored as an OFFSET
+\ from START rather than an absolute address - so it survives being
+\ written to disk and reloaded at a different address, and COLD adds
+\ START back when it runs it rather than relocating it in place (which
+\ would make the value absolute and so wrong if the image were saved
+\ again). Set via save-system.4's SET-BOOT; see PROGRESS.md's
+\ Iteration 40 entry for why this exists - a prebuilt shell image
+\ boots straight into shell.4's MAIN, skipping both the banner and
+\ ~253ms of recompiling shell.4 on every single invocation.
+
 -1 CONSTANT TRUE
 
 VARIABLE S0 ( --- a-addr)
@@ -1323,6 +1335,11 @@ VARIABLE INCLUDE-POINTER ( --- a-addr)
   START ! START @ FORTH-WORDLIST +! START @ DP +!
   SP@ S0 !
   RP@ CELL+ R0 ! \ Initialize variables SO and RO
+  BOOT @ ?DUP IF START @ + EXECUTE THEN
+  \ A turnkey image's own boot word normally never returns (shell.4's
+  \ MAIN either exits or runs its own read-eval loop). If one does
+  \ return, fall through to the ordinary interactive behavior rather
+  \ than doing something surprising.
   ." Welcome to Forth " CR
   WARM ;
 
