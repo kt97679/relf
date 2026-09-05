@@ -1,0 +1,46 @@
+#!/bin/sh
+# run-tilde - a bare "~" at the very start of a word expands to
+# $HOME, whether it's the whole word or immediately followed by "/" -
+# see TRY-TILDE-EXPAND, called once at the start of SCAN-TOKEN before
+# any other character of the token is processed, since tilde
+# expansion only ever applies right at the start of a word. Scope
+# limit: only this bare form is supported - "~user" (another user's
+# home directory) and "~+"/"~-" ($PWD/$OLDPWD) are not implemented,
+# and a "~" in either of those shapes, or anywhere but the very start
+# of a word, is left untouched as a literal character.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-tilde-test-$$.sh"
+
+home=$(printf 'echo $HOME\n' > "$TMP_SCRIPT"; "$THIS_SH" "$TMP_SCRIPT" 2>&1 | tail -1)
+
+printf 'echo ~\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a bare ~ alone expands to \$HOME" "$home" "$out"
+
+printf 'echo ~/foo123/bar123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "~/path expands the ~ and keeps the rest of the path" "$home/foo123/bar123" "$out"
+
+printf 'echo foo123~bar123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a ~ not at the start of a word is left untouched" "foo123~bar123" "$out"
+
+printf 'echo ~someuser123\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "~user (out of scope) is left untouched" "~someuser123" "$out"
+
+cat > "$TMP_SCRIPT" << 'SCRIPTEOF'
+echo "~"
+SCRIPTEOF
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a quoted ~ is left untouched, not expanded" "~" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -qF "$home"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: a quoted ~ must not expand to \$HOME"
+fi
+
+rm -f "$TMP_SCRIPT"
+report

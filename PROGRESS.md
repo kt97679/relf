@@ -3816,3 +3816,54 @@ leaving the value unchanged, and an unset variable expanding to empty.
 **Phase D remaining**: arithmetic expansion (`$((...))`); tilde
 expansion; `IFS`-based field splitting.
 
+## Iteration 34: goal 8 phase D - tilde expansion
+
+A bare `~` at the very start of a word expands to `$HOME` - whether
+it's the whole word (`~`) or immediately followed by `/` (`~/path`).
+Scope limit: only this bare form is supported; `~user` (another
+user's home directory, needing a password-database lookup this shell
+has no access to) and `~+`/`~-` (`$PWD`/`$OLDPWD` - this shell doesn't
+track `$OLDPWD` at all) are not implemented, and a `~` in either of
+those shapes, or anywhere but the very start of a word, is left
+untouched as a literal character.
+
+### Design
+
+`TRY-TILDE-EXPAND`, called once at the very start of `SCAN-TOKEN`
+(before any other character of the token is processed, and before the
+existing quote/escape/`$VAR` handling in its main loop even begins) -
+since tilde expansion only ever applies right at the start of a word,
+this is the one place it needs to be checked, not woven into the
+per-character loop itself. A no-op unless `TOK-POS` is sitting on an
+unquoted `~` that's either the whole token (followed by whitespace or
+end of input) or immediately followed by `/`; otherwise the `~` is
+left alone for the main loop to copy through as an ordinary character.
+When it does fire, reuses the exact same `LOOKUP-VAR`/`TYPE0-TO-TOK`/
+`ENSURE-ROOM` mechanism `$VAR` expansion itself already uses, so a
+longer `$HOME` value correctly grows the token in place the same way.
+
+A real bug found immediately by testing: the first attempt called
+`LOOKUP-VAR` with `S" HOME"` directly - but `S" ..."` leaves `(addr
+len)` on the stack, while `LOOKUP-VAR` expects a single NUL-terminated
+`(name-addr)`. This silently corrupted the stack (consuming `len` as
+if it were the name address, leaving the real address stranded) and
+crashed with a segfault on the very first test of the feature actually
+firing. Fixed by copying `"HOME"` into the already-existing
+`ENVNAMBUF` scratch buffer first and NUL-terminating it - the same
+established pattern this file already uses in two other places for
+exactly this "reference a `GETENV`/`LOOKUP-VAR` key by name" need.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+Confirmed: a bare `~` expands to `$HOME`; `~/path` expands the `~` and
+keeps the rest of the path; a `~` not at the start of a word is left
+untouched; `~user` (out of scope) is left untouched; and a quoted
+`"~"` is never expanded, matching POSIX (tilde expansion doesn't apply
+inside quotes).
+
+`tests/shell/run-tilde` (6 assertions) - 208 assertions across 30
+files now, all passing on both x86-64 and i386.
+
+**Phase D remaining**: arithmetic expansion (`$((...))`); `IFS`-based
+field splitting.
+

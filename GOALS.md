@@ -604,9 +604,23 @@ the full account and the fixes applied.
      problem) for anything spanning multiple lines. See `PROGRESS.md`'s
      Iteration 33 entry for the full investigation.
 
+     Tilde expansion: **done (Iteration 34)** — a bare `~` at the very
+     start of a word expands to `$HOME` (whole word, or followed by
+     `/`); `~user`/`~+`/`~-` are out of scope. `TRY-TILDE-EXPAND`,
+     called once at the start of `SCAN-TOKEN` before any other
+     character is processed, since tilde expansion only ever applies
+     right at a word's start. Reuses `$VAR` expansion's own
+     `LOOKUP-VAR`/`TYPE0-TO-TOK`/`ENSURE-ROOM` mechanism. A real bug
+     found immediately by testing: `S" HOME"` leaves `(addr len)` on
+     the stack, not the single NUL-terminated address `LOOKUP-VAR`
+     expects — corrupted the stack and crashed on the first real test;
+     fixed by copying into the existing `ENVNAMBUF` scratch buffer
+     first, the same pattern already used elsewhere in this file for
+     this exact need. See `PROGRESS.md`'s Iteration 34 entry.
+
      Still open: arithmetic expansion (`$((...))` — a real expression
      grammar: precedence, associativity, comparison/bitwise/logical
-     operators, assignment forms). Tilde expansion. `IFS`-based field
+     operators, assignment forms). `IFS`-based field
      splitting of unquoted expansion results (an explicit non-goal up
      through Iteration 13 — revisited here since mrsh's tests depend
      on it).

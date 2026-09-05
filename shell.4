@@ -1066,11 +1066,35 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     TOK-POS @ 1+ TOK-POS !
   THEN ;
 
+: TRY-TILDE-EXPAND ( --- )
+  \ Called once, right at the start of SCAN-TOKEN, before any other
+  \ character of the token is processed - POSIX tilde expansion only
+  \ applies to a bare "~" right at the very start of a word, never one
+  \ appearing anywhere else within it. A no-op unless TOK-POS is
+  \ sitting on an unquoted "~" that's either the whole token (followed
+  \ by whitespace or end of input) or immediately followed by "/".
+  \ Scope limit: only this bare "~" form (expanding to $HOME) is
+  \ supported - "~user" (another user's home directory, needing a
+  \ password-database lookup this shell has no access to) and "~+"/
+  \ "~-" ($PWD/$OLDPWD, and this shell doesn't track $OLDPWD at all)
+  \ are not implemented; a "~" in either of those shapes is left
+  \ untouched, same as any other literal character.
+  TOK-POS @ C@ 126 <> IF EXIT THEN
+  TOK-POS @ 1+ TOK-END @ < IF
+    TOK-POS @ 1+ C@ DUP 47 = SWAP WS? OR 0= IF EXIT THEN
+  THEN
+  TOK-POS @ 1+ TOK-POS !
+  S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
+  ENVNAMBUF LOOKUP-VAR DUP 0= IF DROP ELSE
+    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK
+  THEN ;
+
 : SCAN-TOKEN ( --- )
   \ Reads from TOK-POS, writing the *unquoted* content via
   \ EMIT-TOK-CHAR (at TOK-OUT, which only ever trails or equals
   \ TOK-POS, so writing in place is always safe), until unquoted
   \ whitespace or the end of input.
+  TRY-TILDE-EXPAND
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
   WHILE
