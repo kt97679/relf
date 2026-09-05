@@ -1,0 +1,42 @@
+#!/bin/sh
+# tests/shell/run-comments - '#' comments (Iteration 45). The tricky
+# part is what must NOT become a comment: '#' only starts one at the
+# beginning of a word, so $#, ${#VAR}, ${VAR#pat} and a literal a#b all
+# have to survive.
+. "$(dirname "$0")/lib.sh"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf '#!/bin/sh\n# whole-line comment\necho hello # trailing comment\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "trailing comment stripped" "hello" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in
+    *"#"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "FAIL: comment text leaked into output: $out" ;;
+esac
+
+out=$("$THIS_SH" -c 'echo "len=${#HOME} trim=${HOME#/} lit=a#b"' 2>/dev/null)
+assert_output_contains "\${#VAR} still a length"      "len=5"     "$out"
+assert_output_contains "\${VAR#pat} still a trim"     "trim=root" "$out"
+assert_output_contains "'#' inside a word is literal" "lit=a#b"   "$out"
+
+out=$("$THIS_SH" -c "echo 'a # b' \"c # d\"" 2>/dev/null)
+assert_output_contains "quoted '#' is literal (single)" "a # b" "$out"
+assert_output_contains "quoted '#' is literal (double)" "c # d" "$out"
+
+printf 'for i in 1 2 3; do\n  echo v$i\ndone\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "for ...; do on one line, first"  "v1" "$out"
+assert_output_contains "for ...; do on one line, last"   "v3" "$out"
+
+printf 'n=a\nwhile [ "$n" != "b" ]; do\n  echo n=$n\n  n=b\ndone\necho end\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "while ...; do on one line, body ran"  "n=a" "$out"
+assert_output_contains "while ...; do on one line, finished" "end" "$out"
+
+printf 'for i in a b; do\n  for j in x y; do\n    echo $i$j\n  done\ndone\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "nested same-line do, first" "ax" "$out"
+assert_output_contains "nested same-line do, last"  "by" "$out"
+
+report

@@ -5101,3 +5101,99 @@ diffed against bash (which forces at least one arena `RESIZE`) and
 8-level nesting producing exactly 256 lines. 273 assertions across 35
 files plus 1991 core OK markers, on both cell widths. mrsh-suite
 unchanged.
+## Iteration 45: `#` comments and same-line `; do` - mrsh 2 -> 4 passed
+
+Chosen by measuring rather than guessing. Running every failing
+vendored test and looking at where each one first diverges from `bash`
+showed two gaps blocking far more files than anything else, both cheap:
+
+- **`#` comments did not exist at all.** Every vendored script starts
+  `#!/bin/sh`, which was being executed as a command, and `echo d # e f`
+  printed `d # e f`.
+- **`while`/`for` had no same-line `; do`.** `if` gained the equivalent
+  in Iteration 25; the loops were explicitly left out, so `for i in
+  1 2 3; do` failed with `for: expected 'do'`.
+
+Both now work. **mrsh-suite: 2 passed -> 4**, with `loop.sh` and
+`syntax.sh` newly passing, both genuinely (12 and 6 lines of real
+output matching `bash` exactly, exit 0).
+
+### Comments
+
+Implemented in `NORMALIZE-OPERATORS`, which already tracks single/
+double-quote and `$((...))` state, so a quoted or escaped `#` is
+handled by the branches that already exist. A comment simply jumps the
+read position to end of line.
+
+The interesting part is what must NOT become a comment. POSIX starts
+one only at the beginning of a word, so `NORM-COMMENT-START?` requires
+the `#` to be at line start or follow whitespace. That is exactly what
+keeps `$#`, `${#VAR}`, `${VAR#pattern}` and a literal `a#b` working -
+in all of those the `#` follows a non-blank. All four are now
+regression-tested, since getting this wrong would break parameter
+expansion in a way no existing test covered.
+
+Body lines stored for replay keep their comments, because they are
+stored raw; the comment is stripped when the line is re-read and
+re-normalized. A body line that is entirely a comment tokenizes to
+nothing and is a no-op.
+
+### Same-line `; do`
+
+Two different problems, because `for` and `while` store their setup
+differently.
+
+`for` keeps its word list as *tokens*, so the fix is to stop the list
+at an unquoted `;` (`FOR-AT-SEMI?`).
+
+`while` keeps its condition as *raw text* - deliberately, so `$VAR`,
+`$?` and `$$` re-expand fresh on every iteration (Iteration 11's whole
+design problem). So the `; do` tail has to be trimmed from raw text,
+not from `ARGV`, which needs its own quote-aware scan
+(`RAW-LAST-SEMI`). It takes the *last* unquoted `;` so that
+`while a; b; do` keeps the whole compound condition.
+
+Both then skip reading a separate `do` line, gated on `SAME-LINE-DO?`,
+which checks whether the **last** token is an unquoted `do` rather than
+whether a `do` appears anywhere - so `while grep do file` is not
+mistaken for the same-line form.
+
+### Verified
+
+`tests/shell/run-comments` (13 assertions) covers comment stripping,
+the four `#`-must-survive cases, quoted `#` in both quote styles,
+same-line `do` for `for` and `while`, and two same-line loops nested.
+286 assertions across 36 files plus 1991 core OK markers, both cell
+widths.
+
+### Noted, not fixed
+
+`relfsh -c 'set a b c; echo $#'` reports 0 where bash reports 3. Not
+caused by this work: it is the architectural limitation recorded in
+Iteration 18 - `$VAR` expansion happens once for the whole raw line
+during the initial tokenize, before any `;`-separated segment has run.
+The proper fix is tokenizing and expanding each `;` segment in
+sequence, still its own future iteration.
+
+### The remaining gap to a full mrsh pass
+
+Measured, in the order I would take it:
+
+1. **Multi-stage pipelines** (`a | b | c`) - `SPLIT-PIPE` handles
+   exactly one `|`. Blocks pipeline.sh, readonly.sh, command.sh,
+   redir.sh.
+2. **`elif`** - if.sh.
+3. **Builtins**: `read`, `readonly`, `command -v`, `alias`/`unalias`.
+4. **fd redirection** (`2>&1`) - redir.sh.
+5. **Bitwise/shift and `?:` in `$((...))`** - arithm.sh.
+6. **Background `&`, `wait`, `$!`** - async.sh.
+7. **`(cmd)` with no surrounding spaces** - subshell.sh; needs
+   `NORMALIZE-OPERATORS` to become `$(...)`-aware, deferred since
+   Iteration 24.
+8. **Tilde beyond bare `~`**: `~user`, `~` after `=`, inside
+   `a=~/x:~/y` - word.sh.
+9. Quoting conformance edge cases, and rejecting unterminated quotes.
+
+`args.sh`/`function.sh`/`return.sh` still fail for reasons now hidden
+behind earlier failures; expect the list to shift slightly as the top
+items land.

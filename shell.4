@@ -2928,6 +2928,15 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                             \ this is the same problem solved once
                             \ more, earlier in the pipeline.
 
+: NORM-COMMENT-START? ( --- f )
+  \ True if the '#' at the current position begins a comment: POSIX
+  \ says '#' introduces one only at the start of a word, so it must be
+  \ the first character of the line or follow whitespace. That is
+  \ exactly what keeps "$#", "${#VAR}", "${VAR#pat}" and a literal
+  \ "a#b" working - in all of those the '#' follows a non-blank.
+  NORM-LEN @ 0= IF -1 EXIT THEN
+  NORM-BUF NORM-LEN @ 1- + C@ WS? ;
+
 : NORM-EMIT ( c --- )
   NORM-LEN @ NORM-MAX 1- < IF
     NORM-BUF NORM-LEN @ + C!
@@ -2991,6 +3000,12 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
         0 NORM-PEEK NORM-EMIT
         NORM-I @ 1+ NORM-I !
       THEN
+    ELSE NORM-C @ 35 = NORM-COMMENT-START? AND IF
+      \ A comment runs to end of line: stop copying entirely by
+      \ jumping the read position to the end. Quoted '#' never gets
+      \ here (the quote branches above consume it), and neither does
+      \ a backslash-escaped one.
+      NORM-U @ NORM-I !
     ELSE NORM-AT-ARITH-START? IF
       \ "$((" starting here - copy all three characters verbatim and
       \ switch into arith-mode, so operators meaningful to the
@@ -3017,7 +3032,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     ELSE
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
   NORM-LEN @ ;
 
@@ -3292,6 +3307,44 @@ VARIABLE WHILE-BODY-BUF
 VARIABLE WHILE-BODY-LEN
 VARIABLE RAW-SKIP-I
 
+VARIABLE RLS-ADDR
+VARIABLE RLS-LEN
+VARIABLE RLS-I
+VARIABLE RLS-POS
+VARIABLE RLS-SQ?
+VARIABLE RLS-DQ?
+
+: SAME-LINE-DO? ( --- f )
+  \ Is the last token of the current line an unquoted "do"? That is
+  \ the "while COND; do" / "for X in W; do" shape. Checking the LAST
+  \ token specifically, rather than "is there a do anywhere", so a
+  \ condition that merely mentions do (`while grep do file`) is not
+  \ mistaken for it.
+  ARGC @ 2 < IF 0 EXIT THEN
+  ARGC @ 1- DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN S" do" STR= ;
+
+: RAW-LAST-SEMI ( c-addr u --- pos | -1 )
+  \ Offset of the last UNQUOTED ';' in raw text, or -1. Needed because
+  \ a while condition is stored as raw text (so it can be re-expanded
+  \ fresh each iteration), not as tokens - so the "; do" tail has to be
+  \ trimmed off the raw text, not off ARGV. The last one rather than
+  \ the first, so "while a; b; do" keeps the whole compound condition.
+  {: RLS-ADDR RLS-LEN | RLS-I RLS-POS RLS-SQ? RLS-DQ? :}
+  -1 RLS-POS !
+  BEGIN RLS-I @ RLS-LEN @ < WHILE
+    RLS-ADDR @ RLS-I @ + C@
+    DUP 39 = RLS-DQ? @ 0= AND IF RLS-SQ? @ 0= RLS-SQ? ! THEN
+    DUP 34 = RLS-SQ? @ 0= AND IF RLS-DQ? @ 0= RLS-DQ? ! THEN
+    59 = RLS-SQ? @ 0= AND RLS-DQ? @ 0= AND IF RLS-I @ RLS-POS ! THEN
+    RLS-I @ 1+ RLS-I !
+  REPEAT
+  RLS-POS @ ;
+
+: FOR-AT-SEMI? ( i --- f )
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN S" ;" STR= ;
+
 : SAVE-WHILE-COND ( --- )
   \ RAW-LINE-BUF/RAW-LINE-LEN holds the raw "while ..." line just
   \ read. Skips its own leading whitespace, the literal "while" (5
@@ -3312,6 +3365,10 @@ VARIABLE RAW-SKIP-I
     RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ MOVE
   ELSE
     0 WHILE-COND-LEN !
+  THEN
+  SAME-LINE-DO? IF
+    WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ RAW-LAST-SEMI
+    DUP -1 <> IF WHILE-COND-LEN ! ELSE DROP THEN
   THEN
   0 WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ + C! ;
 
@@ -3556,9 +3613,11 @@ VARIABLE WHILE-BODY-CUR
   LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   SAVE-WHILE-COND
-  READ-LINE-INTO-ARGV
-  S" do" LINE-IS? 0= IF
-    ." while: expected 'do'" CR EXIT
+  SAME-LINE-DO? 0= IF
+    READ-LINE-INTO-ARGV
+    S" do" LINE-IS? 0= IF
+      ." while: expected 'do'" CR EXIT
+    THEN
   THEN
   0 WHILE-BODY-LEN !
   0 BODY-DEPTH !
@@ -3622,7 +3681,9 @@ VARIABLE FW-WORDLEN
   ARGV 1 CELLS + @ FOR-VARNAME-BUF @ BODY@ 64 SAFE-CSTR-COPY DROP
   0 FOR-WORDS-LEN !
   3 FW-I !
-  BEGIN FW-I @ ARGC @ < WHILE
+  BEGIN
+    FW-I @ ARGC @ < IF FW-I @ FOR-AT-SEMI? 0= ELSE 0 THEN
+  WHILE
     FW-I @ ARGV@ DUP CSTRLEN FW-WORDLEN !
     FW-WORDLEN @
     FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ +
@@ -3675,9 +3736,11 @@ VARIABLE FOR-WORD-CUR
   FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
   SAVE-FOR-WORDS
-  READ-LINE-INTO-ARGV
-  S" do" LINE-IS? 0= IF
-    ." for: expected 'do'" CR EXIT
+  SAME-LINE-DO? 0= IF
+    READ-LINE-INTO-ARGV
+    S" do" LINE-IS? 0= IF
+      ." for: expected 'do'" CR EXIT
+    THEN
   THEN
   0 WHILE-BODY-LEN !
   0 BODY-DEPTH !
