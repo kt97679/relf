@@ -71,6 +71,19 @@
 BASE @  DECIMAL
 
 \ ------------------------------------------------------------------
+\ Storing an execution token so it survives being saved into an image
+\ ------------------------------------------------------------------
+\ An xt is an absolute address, so a stored one is stale the moment a
+\ saved image reloads at a different address - and, before that even
+\ bites, it makes two builds of identical sources differ. Store the
+\ offset from START instead and add START back on use. Defined here
+\ rather than in shell.4 because both files need it and shell.4
+\ already requires this one to be loaded first for {: itself.
+
+: !XT ( xt addr --- )  SWAP START @ - SWAP ! ;
+: @XT ( addr --- xt )  @ START @ + ;
+
+\ ------------------------------------------------------------------
 \ Runtime: the save stack
 \ ------------------------------------------------------------------
 
@@ -113,6 +126,14 @@ VARIABLE LSAVE-SP
 \ Compile time: the declaration currently being processed
 \ ------------------------------------------------------------------
 
+\ The xts of the four runtime words above, held as offsets rather than
+\ compiled into L-COMPILE-ENTRY/L-COMPILE-RESTORES as absolute
+\ literals via [']. Same reason as everything else here.
+VARIABLE L-LSAVE-XT     ' LSAVE    L-LSAVE-XT    !XT
+VARIABLE L-L!-XT        ' L!       L-L!-XT       !XT
+VARIABLE L-LZERO-XT     ' LZERO    L-LZERO-XT    !XT
+VARIABLE L-LRESTORE-XT  ' LRESTORE L-LRESTORE-XT !XT
+
 16 CONSTANT LDECL-MAX
 CREATE LDECL-ADDRS LDECL-MAX CELLS ALLOT
 VARIABLE LDECL-N      \ total names declared by the definition being compiled
@@ -140,7 +161,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   \ Two cells: the offset as a literal, then a relative call to the
   \ runtime word, which does the "+ START" itself. Both are
   \ position-independent.
-  CELLS LDECL-ADDRS + @ START @ -
+  CELLS LDECL-ADDRS + @
   POSTPONE LITERAL COMPILE, ;
 
 : L-COMPILE-ENTRY ( --- )
@@ -151,13 +172,13 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   \ in this kernel runs the whole unsigned range instead of zero
   \ iterations - see PROGRESS.md's Iteration 15 entry.
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO ['] LSAVE I L-EMIT LOOP
+    LDECL-N @ 0 DO L-LSAVE-XT @XT I L-EMIT LOOP
   THEN
   LDECL-ARGS @ 0 > IF
-    LDECL-ARGS @ 0 DO ['] L! LDECL-ARGS @ 1- I - L-EMIT LOOP
+    LDECL-ARGS @ 0 DO L-L!-XT @XT LDECL-ARGS @ 1- I - L-EMIT LOOP
   THEN
   LDECL-N @ LDECL-ARGS @ > IF
-    LDECL-N @ LDECL-ARGS @ DO ['] LZERO I L-EMIT LOOP
+    LDECL-N @ LDECL-ARGS @ DO L-LZERO-XT @XT I L-EMIT LOOP
   THEN ;
 
 : L-COMPILE-RESTORES ( --- )
@@ -165,7 +186,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   \ A no-op when nothing was declared, which is what makes the EXIT
   \ and ; wrappers below transparent to every ordinary definition.
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO ['] LRESTORE LDECL-N @ 1- I - L-EMIT LOOP
+    LDECL-N @ 0 DO L-LRESTORE-XT @XT LDECL-N @ 1- I - L-EMIT LOOP
   THEN ;
 
 \ ------------------------------------------------------------------
@@ -183,7 +204,8 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 : L-ADD-NAME ( c-addr --- )
   LDECL-N @ LDECL-MAX < 0= ABORT" locals: too many locals"
   FIND 0= ABORT" locals: undefined local name"
-  EXECUTE                               \ a VARIABLE's xt yields its address
+  EXECUTE START @ -   \ a VARIABLE's xt yields its address; keep the
+                      \ offset, so nothing absolute is ever recorded
   LDECL-ADDRS LDECL-N @ CELLS + !
   LDECL-N @ 1+ LDECL-N ! ;
 
@@ -214,13 +236,13 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 \ leaking into the next one - a definition with no {: therefore always
 \ sees a count of zero and compiles no extra code whatsoever.
 
-' EXIT CONSTANT L-OLD-EXIT
-' ; CONSTANT L-OLD-SEMI
+VARIABLE L-OLD-EXIT  ' EXIT L-OLD-EXIT !XT
+VARIABLE L-OLD-SEMI  ' ;    L-OLD-SEMI !XT
 
 : EXIT ( --- )
-  L-COMPILE-RESTORES L-OLD-EXIT COMPILE, ; IMMEDIATE
+  L-COMPILE-RESTORES L-OLD-EXIT @XT COMPILE, ; IMMEDIATE
 
 : ; ( --- )
-  L-COMPILE-RESTORES 0 LDECL-N ! 0 LDECL-ARGS ! L-OLD-SEMI EXECUTE ; IMMEDIATE
+  L-COMPILE-RESTORES 0 LDECL-N ! 0 LDECL-ARGS ! L-OLD-SEMI @XT EXECUTE ; IMMEDIATE
 
 BASE !

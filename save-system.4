@@ -28,8 +28,20 @@
 \ kept as an offset at all times and never relocated in place, so it
 \ needs no handling here at all.
 \
-\ Loadable against a plain kernel.img with no engine change - every
-\ word used here already exists. Forces DECIMAL for its own literals
+\ The image is assembled in a heap copy (ALLOCATE) rather than by
+\ mutating the live system: nothing is ever written to disk from a
+\ system that is temporarily in a broken, half-unrelocated state, and
+\ the copy can be scrubbed freely without consequence.
+\
+\ Scrubbing is what makes the same sources produce the same image.
+\ Without it, an image carries whatever happened to be in the
+\ interpreter's scratch buffers at save time - the first prebuilt
+\ shell image contained the literal text
+\ `S" /home/claude/relf/kernel-shell.img.tmp.476" SAVE-SYSTEM`, i.e.
+\ the build machine's path and the builder's PID - plus a dozen cells
+\ holding absolute addresses that differ every run. All of it is
+\ re-initialized before use by COLD, WARM or QUIT, so zeroing it
+\ costs nothing and removes every source of run-to-run variation. Forces DECIMAL for its own literals
 \ and restores the caller's BASE, for the reason documented in
 \ locals.4's header.
 
@@ -37,14 +49,14 @@ BASE @  DECIMAL
 
 VARIABLE SS-FID
 VARIABLE SS-LEN
+VARIABLE SS-BUF
 
 CREATE SS-MAGIC 8 ALLOT
 
 : SS-SET-MAGIC ( --- )
   \ The 8-byte header relf.c checks at load: "RELF", then the cell
-  \ width, then three zero bytes. A mismatched image is rejected
-  \ cleanly at load rather than silently misbehaving, so this must
-  \ agree with relf.c's own IMAGE_MAGIC exactly.
+  \ width, then three zero bytes. Must agree with relf.c's own
+  \ IMAGE_MAGIC exactly, or the image is rejected at load.
   [CHAR] R SS-MAGIC     C!
   [CHAR] E SS-MAGIC 1+  C!
   [CHAR] L SS-MAGIC 2 + C!
@@ -54,40 +66,73 @@ CREATE SS-MAGIC 8 ALLOT
   0 SS-MAGIC 6 + C!
   0 SS-MAGIC 7 + C! ;
 
-: SS-UNRELOCATE ( --- )   \ back to the on-disk, START-relative form
-  START @ NEGATE DUP DP +! FORTH-WORDLIST +! ;
+: SS>COPY ( live-addr --- copy-addr )   \ same location, in the copy
+  START @ - SS-BUF @ + ;
 
-: SS-RERELOCATE ( --- )   \ and back to the live, absolute form
-  START @ DUP DP +! FORTH-WORDLIST +! ;
+: SS-BLANK ( live-addr u --- )          \ zero a range in the copy
+  SWAP SS>COPY SWAP 0 FILL ;
+
+: SS-CELL ( live-addr --- )             \ zero one cell in the copy
+  1 CELLS SS-BLANK ;
+
+: SS-UNRELOCATE ( live-addr --- )
+  \ Put a relocated cell back into its on-disk, START-relative form.
+  \ COLD is the authority on which cells these are, and there are
+  \ exactly two: DP and FORTH-WORDLIST.
+  SS>COPY DUP @ START @ - SWAP ! ;
+
+: SS-SCRUB ( --- )
+  \ Everything here is scratch that COLD, WARM or QUIT re-initializes
+  \ before anything reads it, and every one of them either holds an
+  \ absolute address (so it differs every run) or holds leftover text
+  \ from whatever the builder was doing.
+  TIB             1 CELLS 80 +  SS-BLANK   \ terminal input buffer
+  NAMEBUF         1 CELLS 28 +  SS-BLANK   \ FIND's name scratch
+  POCKET          1 CELLS 252 + SS-BLANK   \ interpreted S" strings
+  INCLUDE-BUFFER  1 CELLS 508 + SS-BLANK   \ lines of the included file
+  CONTEXT         1 CELLS 28 +  SS-BLANK   \ search order (WARM resets)
+  INCLUDE-POINTER SS-CELL
+  SRC   SS-CELL   #SRC SS-CELL   >IN SS-CELL   SID SS-CELL
+  LAST  SS-CELL   CURRENT SS-CELL
+  CSP   SS-CELL   'LEAVE  SS-CELL
+  S0    SS-CELL   R0      SS-CELL
+  START SS-CELL
+  \ This word's own working variables, and pool.4's - they hold a heap
+  \ address and a file descriptor from the save that is in progress,
+  \ so leaving them would make two saves of the same system differ.
+  \ BUF-LIST is deliberately NOT scrubbed: it is the buffer
+  \ declaration chain, real state the image needs.
+  SS-FID SS-CELL   SS-LEN SS-CELL   SS-BUF SS-CELL
+  BUF-BODY SS-CELL BUF-SIZE SS-CELL BUF-PTR SS-CELL ;
 
 : SAVE-SYSTEM ( c-addr u --- )
   \ Writes the whole live dictionary, START through HERE, prefixed by
-  \ the magic header. The resulting file is a complete image: run it
-  \ with `relf that-image` and every word defined at save time is
-  \ already there.
+  \ the magic header. The result is a complete image: run it with
+  \ `relf that-image` and every word defined at save time is there.
   \
-  \ HERE is read BEFORE unrelocating, because unrelocating changes DP
-  \ (and therefore HERE) to a small offset. Likewise the file is
-  \ created before unrelocating and closed after rerelocating, so the
-  \ window in which the system is in its on-disk form contains
-  \ nothing but the two writes - no ALLOT, no WORD, no HERE, and no
-  \ ABORT" that could leave the system stranded in that state.
+  \ Buffer contents declared via pool.4's BUFFER: are NOT saved -
+  \ RESET-BUFFERS releases them and marks them unallocated, so the
+  \ image is written in a clean, freshly-booted state. That is what
+  \ SAVE-SYSTEM is for; it is not a checkpoint/restore facility.
+  RESET-BUFFERS
   HERE START @ - SS-LEN !
+  SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
+  START @ SS-BUF @ SS-LEN @ MOVE
+  DP SS-UNRELOCATE
+  FORTH-WORDLIST SS-UNRELOCATE
+  SS-SCRUB
   SS-SET-MAGIC
-  W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file"
-  SS-FID !
-  SS-UNRELOCATE
+  W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
   SS-MAGIC 8 SS-FID @ WRITE-FILE DROP
-  START @ SS-LEN @ SS-FID @ WRITE-FILE DROP
-  SS-RERELOCATE
-  SS-FID @ CLOSE-FILE DROP ;
+  SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SS-FID @ CLOSE-FILE DROP
+  SS-BUF @ FREE DROP ;
 
 : SET-BOOT ( xt --- )
   \ Arrange for the saved image to run xt at startup instead of
   \ printing the banner and entering the interpreter loop. Stored as
   \ an offset from START, never as an absolute address, so it stays
-  \ valid across the save and needs no relocation handling in
-  \ SAVE-SYSTEM. COLD adds START back when it runs it - see kernel.4.
+  \ valid across the save. COLD adds START back - see kernel.4.
   START @ - BOOT ! ;
 
 BASE !

@@ -270,7 +270,8 @@ static void virtual_machine(void) {
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
-        &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv
+        &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
+        &&L_allocate, &&L_free, &&L_resize
     };
 
 #define NEXT() do { \
@@ -573,6 +574,42 @@ L_getpid: /* --- pid */
 L_unsetenv: /* c-addr --- ior */
     DS0 = (UNS64)((unsetenv((char*)(uintptr_t)DS0) < 0) ? 200 : 0);
     NEXT();
+
+/*
+ *  ALLOCATE / FREE / RESIZE - the standard Forth-2012 memory-allocation
+ *  wordset, backed by libc. This is memory OUTSIDE the image: it lives
+ *  in the C heap, not in the VM's own mem[] region, so it does not
+ *  consume dictionary space and is not written out by save-system.4's
+ *  SAVE-SYSTEM.
+ *
+ *  The addresses handed back are absolute and process-local. They are
+ *  therefore NOT valid across a save/reload, which is why buffer
+ *  pointers are reset before an image is written - see pool.4.
+ */
+L_allocate: /* u --- a-addr ior */
+{
+    void *p = malloc((size_t)DS0);
+    DS0 = (UNS64)(uintptr_t)p;
+    PUSH((UNS64)(p == NULL ? 201 : 0));
+    NEXT();
+}
+L_free: /* a-addr --- ior */
+    free((void*)(uintptr_t)DS0);
+    DS0 = 0;
+    NEXT();
+L_resize: /* a-addr u --- a-addr' ior */
+{
+    void *p = realloc((void*)(uintptr_t)DS1, (size_t)DS0);
+    if (p == NULL) {
+        /*  Forth-2012: on failure a-addr is unchanged and still valid,
+         *  so the caller can carry on with the original block.  */
+        DS0 = 202;
+    } else {
+        DS1 = (UNS64)(uintptr_t)p;
+        DS0 = 0;
+    }
+    NEXT();
+}
 }
 
 /*

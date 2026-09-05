@@ -657,6 +657,16 @@ PRIMITIVE SYS-ARGC  ( --- n )
 PRIMITIVE SYS-ARG   ( n --- c-addr )
 PRIMITIVE GETPID    ( --- pid )
 PRIMITIVE UNSETENV  ( c-addr --- ior )
+\ Forth-2012 memory-allocation wordset, backed by the host's own
+\ malloc/free/realloc. This is memory OUTSIDE the image - it does not
+\ consume dictionary space and is not saved by SAVE-SYSTEM. Appended
+\ at the END of this list deliberately: primitive tokens are
+\ 1 + (position-1)*stride, so adding here leaves every existing token
+\ untouched, while inserting anywhere earlier would silently
+\ renumber them (see GOALS.md and PROGRESS.md 2026-09-01).
+PRIMITIVE ALLOCATE  ( u --- a-addr ior )
+PRIMITIVE FREE      ( a-addr --- ior )
+PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.

@@ -224,6 +224,73 @@ is `INCLUDED` into an unknown session must not inherit the caller's
 `BASE`** — `tester.fr` leaves it at 16, which turned `locals.4`'s own
 `32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
 
+## Memory policy — agreed in Iteration 41
+
+Standing requirements for how this project uses memory, and the
+reasoning behind them:
+
+- **Don't hardcode limits, and don't preallocate.** Reserve space when
+  it is actually needed, not at compile time against a guessed worst
+  case. `CREATE name n ALLOT` does the opposite: it takes dictionary
+  at compile time, so the space lands in every saved image whether or
+  not it is ever used. Measured on the first prebuilt shell image:
+  135,576 of its 253,528 bytes were such buffers and 77.3% of the file
+  was zeros, with a single unused 73,728-byte buffer accounting for
+  29% of it.
+- **Prefer memory outside the image.** `ALLOCATE`/`FREE`/`RESIZE`
+  (Forth-2012's own wordset, primitives since Iteration 41, backed by
+  the host's `malloc`/`free`/`realloc`) give memory from the C heap.
+  It costs no dictionary space, is not written out by `SAVE-SYSTEM`,
+  and is not bounded by `relf.c`'s `MEMSIZE`. `pool.4`'s `BUFFER:`
+  is the convenient front end: same call site as a `CREATE`d buffer,
+  but three cells in the image and the space allocated on first use.
+- **Growable rather than fixed, where the size genuinely varies.**
+  `RESIZE` exists for this. Not yet used - see the concerns below for
+  when it is and isn't safe.
+
+Two concerns worth keeping in view, neither blocking:
+
+1. **`RESIZE` can move a block, and this codebase stores interior
+   pointers.** `ARGV` entries point into `LINE-BUF`; `REDIR-*-FILE`
+   point into token storage. Growing a buffer that others point into
+   would silently invalidate those pointers, and the failure would
+   look like data corruption rather than an allocation error. So
+   `RESIZE` is safe for a self-contained arena that nothing points
+   into from outside, and unsafe for the shell's line and token
+   buffers as they are written today. Worth checking per buffer
+   rather than adopting wholesale.
+2. **Heap memory can never be saved in an image.** Anything
+   `ALLOCATE`d is process-local: an address is meaningless after a
+   reload, which is exactly why `BUFFER:` pointers are reset before a
+   save. That is the right default - it is what keeps images small and
+   reproducible - but it does mean an image can carry *declarations*
+   and never *contents*. Any future feature that wants state to
+   survive into an image must put it in the dictionary deliberately.
+
+A third point is a tension already present rather than one this
+introduces: `malloc` deepens the dependence on libc, while this file's
+end-state still says "no libraries, raw syscalls only". Phase 5
+already traded that away for portability. If the no-libc goal is
+revived, `ALLOCATE`/`FREE`/`RESIZE` are a small, well-isolated thing
+to reimplement on `mmap`/`brk` - three primitives in `relf.c` and
+nothing above them changes.
+
+## Reproducible images
+
+The same sources must produce a byte-identical image. Verified by
+building twice and comparing. Without care they do not: the first
+prebuilt image contained the build machine's path and the builder's
+PID (left in the interpreter's include buffer) plus a dozen cells
+holding absolute addresses that differ every run.
+
+`SAVE-SYSTEM` assembles the image in a heap copy and scrubs it - see
+`save-system.4`'s `SS-SCRUB` for the list, all of it re-initialized by
+`COLD`/`WARM`/`QUIT` before anything reads it. **Anything added that
+stores an absolute address, a PID, a timestamp or a file descriptor in
+the dictionary breaks this**, and the fix is either to make the value
+position-independent (preferred - see below) or to add it to
+`SS-SCRUB`.
+
 ## Prebuilt shell image (`save-system.4`) — since Iteration 40
 
 `relfsh` runs a prebuilt image rather than compiling `locals.4` +
@@ -261,12 +328,13 @@ locals-using word (now offsets, with the runtime words adding `START`
 themselves). **Anything added in future that stores or compiles an
 address must do the same.**
 
-Known limitation: *compiling new code inside a turnkey image is not
-supported yet.* `locals.4`'s own compile-time machinery holds absolute
-xts (`L-OLD-EXIT`/`L-OLD-SEMI`, and `['] LSAVE` inside `L-EMIT`), which
-are stale in a reloaded image. Running compiled code is fine; only
-compilation is affected. This must be fixed before the `forth` builtin
-(see the named-locals section) can work in a prebuilt image.
+Compiling new code inside a reloaded image **works** as of Iteration
+41. It did not in Iteration 40, because `locals.4`'s compile-time
+machinery held absolute xts; those are now offsets like everything
+else, which was needed for reproducible images anyway and removed the
+limitation as a side effect. Verified by saving a non-turnkey image and
+then defining a new locals-using word and a new `BUFFER:` inside it.
+This was the blocker in front of the `forth` builtin.
 
 ## Phases
 

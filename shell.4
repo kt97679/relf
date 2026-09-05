@@ -48,28 +48,9 @@ VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
 
-\ ==================================================================
-\ Storing an execution token so it survives being saved into an image
-\ ==================================================================
-\ This file uses the deferred-word pattern in six places to break
-\ genuine mutual dependencies (RUN-TOKENIZED-CALL and friends): patch
-\ a VARIABLE with a word's xt once that word exists, and call through
-\ the variable before then.
-\
-\ An xt is an absolute address. That is fine within one process, and
-\ was fine for as long as shell.4 was recompiled from source on every
-\ startup - but a saved image (see save-system.4) reloads at a
-\ different address every run, so a stored absolute xt is stale the
-\ moment the image boots and EXECUTEing it segfaults. Found exactly
-\ that way: the first turnkey image built crashed inside RUN-LINE,
-\ which reaches RUN-TOKENIZED through one of these.
-\
-\ So store the xt as an offset from START and add START back at call
-\ time - the same representation kernel.4's own BOOT hook uses, and
-\ the same reason. Everything else in a RelF image is already
-\ position-independent by design; these six cells were the exception.
-: !XT ( xt addr --- )  SWAP START @ - SWAP ! ;
-: @XT ( addr --- xt )  @ START @ + ;
+\ !XT / @XT (storing an execution token as a START-relative offset,
+\ so it survives being saved into an image) live in locals.4, which
+\ this file already requires for {: itself.
 
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ branch has already determined this whole
@@ -317,8 +298,8 @@ VARIABLE SCC-MAX
 32  CONSTANT MAX-SHVARS
 64  CONSTANT SHVAR-NAME-MAX
 256 CONSTANT SHVAR-VALUE-MAX
-CREATE SHVAR-NAMES  MAX-SHVARS SHVAR-NAME-MAX * ALLOT
-CREATE SHVAR-VALUES MAX-SHVARS SHVAR-VALUE-MAX * ALLOT
+MAX-SHVARS SHVAR-NAME-MAX * BUFFER: SHVAR-NAMES
+MAX-SHVARS SHVAR-VALUE-MAX * BUFFER: SHVAR-VALUES
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
 
@@ -434,10 +415,10 @@ VARIABLE SV-IDX
 256 CONSTANT POS-PARAM-MAX
 32 CONSTANT MAX-POS-PARAM-DEPTH
 
-CREATE POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * ALLOT
+MAX-POS-PARAMS POS-PARAM-MAX * BUFFER: POS-PARAMS
 VARIABLE POS-PARAM-COUNT
 
-CREATE POS-PARAMS-SAVE MAX-POS-PARAM-DEPTH MAX-POS-PARAMS POS-PARAM-MAX * * ALLOT
+MAX-POS-PARAM-DEPTH MAX-POS-PARAMS POS-PARAM-MAX * * BUFFER: POS-PARAMS-SAVE
 CREATE POS-PARAM-COUNT-SAVE MAX-POS-PARAM-DEPTH CELLS ALLOT
 
 : POS-PARAM-SLOT ( i --- addr )  \ i is 0-based: $1 is slot 0, $9 is
@@ -1843,7 +1824,7 @@ VARIABLE PATH-END2
 16 CONSTANT MAX-FUNCS
 64 CONSTANT FUNC-NAME-MAX
 
-CREATE FUNC-NAMES MAX-FUNCS FUNC-NAME-MAX * ALLOT
+MAX-FUNCS FUNC-NAME-MAX * BUFFER: FUNC-NAMES
 VARIABLE FUNC-COUNT
 
 : FUNC-NAME-SLOT ( i --- addr )  FUNC-NAME-MAX * FUNC-NAMES + ;
@@ -3175,7 +3156,7 @@ VARIABLE COND-TRUE?
 CREATE WHILE-COND-BUF LINE-MAX ALLOT
 VARIABLE WHILE-COND-LEN
 4096 CONSTANT WHILE-BODY-MAX
-CREATE WHILE-BODY-BUF WHILE-BODY-MAX ALLOT   ( raw body lines, NUL-separated )
+WHILE-BODY-MAX BUFFER: WHILE-BODY-BUF   ( raw body lines, NUL-separated )
 VARIABLE WHILE-BODY-LEN
 VARIABLE RAW-SKIP-I
 
@@ -3238,7 +3219,7 @@ VARIABLE RSL-LEN
 
 2048 CONSTANT FUNC-BODY-MAX
 
-CREATE FUNC-BODIES MAX-FUNCS FUNC-BODY-MAX * ALLOT
+MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
 CREATE FUNC-BODY-LENS MAX-FUNCS CELLS ALLOT
 
 : FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;

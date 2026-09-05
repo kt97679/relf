@@ -4680,3 +4680,147 @@ and prebuilt shell images. `relfsh`'s stdout is now byte-identical to
   Adding a `VARIABLE` and editing `COLD` changes neither the primitive
   list nor its stride, so the hand-embedded dispatch tokens
   `GOALS.md` warns about were never in play.
+## Iteration 41: pool allocator, memory outside the image, and
+## reproducible images
+
+Answering the question "why is shell.img almost 256K?" - the answer
+was buffers, and fixing it turned into three related pieces of work.
+
+### The measurement that started it
+
+Of the 253,528-byte prebuilt image:
+
+| | bytes | share |
+|---|---|---|
+| `POS-PARAMS-SAVE` | 73,728 | 29% |
+| `FUNC-BODIES` | 32,768 | 13% |
+| other `CREATE`d buffers | 29,080 | 11% |
+| **buffers total** | **135,576** | **53%** |
+| compiled code + headers | 88,464 | 35% |
+| `kernel.img` underneath | 23,152 | 9% |
+
+**77.3% of the file was zero bytes**, and the longest single run of
+zeros was 73,707 - `POS-PARAMS-SAVE`, entirely empty. It is
+`MAX-POS-PARAM-DEPTH(32) x MAX-POS-PARAMS(9) x POS-PARAM-MAX(256)`:
+room for 32 levels of function nesting each saving 9 parameters of 256
+bytes, reserved whether or not a single function is ever called.
+
+`CREATE name n ALLOT` takes *dictionary* at compile time, and
+`SAVE-SYSTEM` writes everything from `START` to `HERE`, so every
+reserved byte lands in the image.
+
+### ALLOCATE / FREE / RESIZE
+
+Three new primitives, backed by libc `malloc`/`free`/`realloc`. This is
+Forth-2012's own memory-allocation wordset rather than an invention,
+which matters for a project whose top priority is minimalism: it is a
+standard interface other Forth code already expects.
+
+Appended at the **end** of `kernel.4`'s `PRIMITIVE` list deliberately.
+Tokens are `1 + (position-1) x stride`, so adding at the end leaves
+every existing token untouched, while inserting anywhere earlier would
+silently renumber them - the exact failure `GOALS.md` warns about,
+whose symptom is the *next* engine segfaulting at an unrelated
+primitive.
+
+This is memory **outside** the image: it costs no dictionary space,
+`SAVE-SYSTEM` does not write it, and it is not bounded by `MEMSIZE`.
+
+### `pool.4` - `BUFFER:`
+
+    MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
+
+Declares a buffer whose name behaves exactly like a `CREATE`d one -
+executing it pushes the address - so no call site changes. What changes
+is that only a three-cell descriptor goes in the dictionary, and the
+space is `ALLOCATE`d on **first use**, so a buffer that is declared but
+never touched costs nothing at runtime either.
+
+The descriptors are a linked list rather than a table, so there is no
+fixed maximum number of buffers to pick and get wrong; the link is an
+offset from `START`, not an address. `RESET-BUFFERS` walks the chain,
+`FREE`s everything and marks it unallocated - `SAVE-SYSTEM` calls it,
+so an image is always written in a clean, freshly-booted state.
+
+Seven buffers converted (every one at or above 1KB): 124,160 bytes,
+92% of all buffer space, and all cold-path - none is touched
+per-character by the tokenizer, so the extra indirection on first use
+cannot show up in the hot loop. `LINE-BUF`, `ARGV` and the other small
+hot buffers were deliberately left as plain `CREATE`.
+
+**Image: 253,536 -> 131,784 bytes, a 48% reduction.** Zeros fell from
+77.3% to 55.7%.
+
+### Reproducible images
+
+Two builds of identical sources must produce identical bytes. They did
+not. Three separate causes, each found by building twice and diffing:
+
+1. **The build machine's path and the builder's PID**, left in the
+   interpreter's include buffer - the first image literally contained
+   `S" /home/claude/relf/kernel-shell.img.tmp.476" SAVE-SYSTEM`.
+2. **A dozen cells holding absolute addresses** that differ every run:
+   `SRC`, `LAST`, `CURRENT`, `CONTEXT`, `CSP`, `S0`, `R0`, `START`
+   itself, and `SAVE-SYSTEM`'s own working variables (which held the
+   heap address of the copy being written).
+3. **`locals.4`'s compile-time machinery**, which held absolute xts -
+   `['] LSAVE` compiled as a literal into `L-COMPILE-ENTRY`, and
+   `L-OLD-EXIT`/`L-OLD-SEMI` as `CONSTANT`s.
+
+`SAVE-SYSTEM` was restructured to assemble the image in a heap copy and
+scrub it there, rather than mutating the live system - which is better
+anyway, since nothing is ever written to disk from a system that is
+temporarily half-unrelocated. Everything scrubbed is re-initialized by
+`COLD`, `WARM` or `QUIT` before anything reads it, so zeroing costs
+nothing.
+
+Cause (3) was fixed properly rather than scrubbed, by storing those
+xts as offsets (`!XT`/`@XT`, moved from `shell.4` to `locals.4` since
+both files need them and `shell.4` already requires `locals.4` for `{:`
+itself). **That removed the limitation recorded in Iteration 40**:
+compiling new code inside a reloaded image now works. Verified by
+saving a non-turnkey image, then defining a new locals-using word and a
+new `BUFFER:` inside it and checking both behave correctly. That
+limitation was the blocker in front of the `forth` builtin.
+
+### Concerns raised about the longer-term direction
+
+Recorded in `GOALS.md` under "Memory policy" rather than only here,
+since they are standing constraints:
+
+- **`RESIZE` can move a block, and this codebase stores interior
+  pointers into buffers.** `ARGV` entries point into `LINE-BUF`.
+  Growing such a buffer would silently invalidate them, and it would
+  look like data corruption rather than an allocation failure. `RESIZE`
+  is safe for a self-contained arena nothing points into from outside,
+  and unsafe for the shell's line and token buffers as written today.
+- **Heap memory can never be saved in an image**, by construction. That
+  is the right default and it is what keeps images small and
+  reproducible, but it means an image carries buffer *declarations* and
+  never *contents*.
+- **`malloc` deepens the libc dependency**, against this file's stated
+  "no libraries" end state. That tension predates this change (phase 5
+  traded it away for portability), and if the goal is revived these are
+  three well-isolated primitives to reimplement on `mmap`/`brk` with
+  nothing above them changing.
+
+### Verified
+
+1991 OK markers and 251 shell assertions on **both** 8-byte and 4-byte
+(i386) cell widths. mrsh-suite unchanged at 2 passed, 19 failed, 3
+skipped. Image byte-identical across two separate build processes.
+`relfsh`'s fallback path (source bootstrap when the image can't be
+written) exercised directly by making the directory read-only.
+
+### What this iteration deliberately did NOT do
+
+- **Sizes are still fixed, just no longer preallocated.**
+  `POS-PARAMS-SAVE` still reserves 32 nesting levels' worth on first
+  use; it is simply not in the image and not paid for until a function
+  is called. Making it grow on demand is the `RESIZE` work above, and
+  wants the interior-pointer question answered per buffer first.
+- **The small hot buffers are unconverted**, on purpose - 8% of the
+  buffer bytes for the buffers touched most often.
+- **`while`/`for` still don't nest.** `WHILE-BODY-BUF` is now
+  heap-allocated, which is a prerequisite for making it
+  per-invocation, but the arena work itself is still ahead.
