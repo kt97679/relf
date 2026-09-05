@@ -2885,3 +2885,117 @@ doesn't fix, plus various other missing features) - but this removes
 a foundational parsing obstacle that was blocking progress on nearly
 every remaining test file, independent of which specific feature each
 one needs next.
+
+## Iteration 25: same-line 'if COND; then BODY; fi' support
+
+Goal: the natural follow-up to Iteration 24's operator-fusion fix -
+getting `;` to tokenize correctly regardless of surrounding
+whitespace was necessary but not sufficient for `if true; then` to
+actually work, since `DO-IF` only ever looked for `then`/`else`/`fi`
+by reading a *new* line, never by checking the remainder of the
+*current* line's already-correctly-tokenized `ARGV`. This closes that
+gap, for `if` specifically (`while`/`for` still require `do` on its
+own separate line - extending this to them is real, separate future
+work, given the added complexity of also needing it for their
+buffer-based body-replay machinery).
+
+### The mechanism: a "pending remainder" and depth-aware keyword scanning
+
+A new `SPLIT-AT-KEYWORD ( c-addr u --- f )` scans the *global* `ARGV`
+for the first unquoted token matching a given keyword - if found,
+`ARGV`/`ARGC` are truncated to just what came before it, and
+everything after the keyword becomes a new `PENDING-REMAINDER` for a
+new `READ-NEXT-LOGICAL-LINE` to pick up next time, rather than
+actually reading a new line of input. `DO-IF` now always does the
+condition-extraction/`SPLIT-AT-KEYWORD` dance regardless of whether
+`SUPPRESS-EXEC?` is set (parsing the structure correctly either way),
+gating only whether the condition is *actually run* on that flag -
+the same principle Iteration 22's suppress mechanism already
+established for nesting.
+
+### Three real bugs found and fixed along the way, each caught by testing directly, not by inspection
+
+**First**: `RUN-TOKENIZED` was checking for `;` before checking for
+the `if`/`while`/`for` keyword at all - so `"if true; then echo hi;
+fi"` got split apart at the first `;` before `DO-IF` ever saw the
+whole line intact, exactly the same class of problem `(`/`{` group
+detection already had to solve by running before `;`-splitting.
+Fixed by moving keyword detection earlier too. Confirmed this
+wouldn't make `while`/`for` any *worse* off - `"while true; do"` was
+already broken before this reordering too, an untested gap from
+Iteration 24 that hadn't been caught at the time.
+
+**Second, found via a same-line `if`/`then`/`else`/`fi` test that
+printed nothing from either branch at all**: the body loop checked
+for `fi` before checking for `else` in the remaining tokens. When
+both are present on the same line (`"then a; else b; fi"`), checking
+`fi` first finds the *later* one, incorrectly swallowing the real
+`else` in between as if it were ordinary body text - both branches
+got silently suppressed together, since the whole "then a; else b"
+span got treated as one (correctly-skipped) then-branch body line.
+Fixed with a new `SPLIT-AT-EITHER-KEYWORD`, scanning for both `else`
+and `fi` in one pass and splitting at whichever is actually found
+first.
+
+**Third, found via a nested same-line if that printed the wrong
+branch's output disappearing partway through**: neither
+`SPLIT-AT-KEYWORD` nor `SPLIT-AT-EITHER-KEYWORD` originally accounted
+for nesting depth at all - a *nested* if's own `else`/`fi` (still
+inside its own span) got mistaken for the outer if's own, since the
+scan just found the first textual match regardless of context. Fixed
+by tracking `if`/`fi` nesting depth during the scan itself (an
+unquoted `if` increments depth, an unquoted `fi` decrements it -
+`else`/`fi` only count as *this* if's own keyword when depth is back
+to 0) - verified via a standalone diagnostic before integrating,
+confirming a hand-traced case (an outer `if`/`then`/`fi` wrapping a
+complete nested `if`/`then`/`else`/`fi`) correctly found the *outer*
+`fi`, not the inner one.
+
+**A fourth, more subtle bug, found via a stray literal semicolon
+appearing in output only when nesting was involved, never in
+isolation**: `NORMALIZE-OPERATORS` (Iteration 24's whole point) had
+only ever been wired into `RUN-LINE` - never into
+`READ-LINE-INTO-ARGV`, the *separate* line-reading path `DO-IF`/
+`DO-WHILE`/`DO-FOR` use internally to read a fresh `then`/`else`/`fi`
+line when nothing is pending. A body line read this way kept its
+operators fused together exactly as if Iteration 24 had never
+happened, since it never went through the pre-pass at all - "echo
+inner-else; fi", read this way, kept "inner-else;" as one literal
+token rather than splitting off the `;`. Confirmed by testing the
+identical construct in isolation (worked correctly, since that path
+happened to go through `RUN-LINE`) versus embedded inside an outer
+`if`'s body (broken, since that path goes through `READ-LINE-INTO-
+ARGV` instead) - the same construct, two different code paths, only
+one of which had been fixed. Applied the identical normalize-and-
+fallback pattern to `READ-LINE-INTO-ARGV` too (after yet another
+file-ordering relocation to keep `NORMALIZE-OPERATORS` defined before
+its new caller - the fifth such relocation this project has needed).
+
+### A documented, deliberate scope limit, re-confirmed rather than newly discovered
+
+Content after the *final* `fi` on the same line (e.g. `"if x; then y;
+fi; z"`) is silently dropped - `"z"` never runs, whether or not the
+`if` is nested inside another one. This was already documented as an
+accepted limitation when `SPLIT-AT-KEYWORD` was first designed
+(preserving it correctly needs propagating a pending remainder *up*
+the call stack to whatever called `DO-IF`, a bigger change than this
+iteration attempted) - re-confirmed directly (both in a simple,
+non-nested case and inside a nested construct) to make sure the
+nested case's missing output was this known gap, not a new bug.
+
+### Verified end-to-end via `relfsh` and confirmed on i386
+
+`if true; then echo yes; fi` (basic); `if false; then ...; else ...;
+fi` taking the else branch and vice versa; a same-line nested `if`/
+`else` embedded inside a multi-line outer `if`, correctly running
+only the inner branch that should run plus the outer body that
+follows it; the original, fully separate-line style confirmed
+unchanged; exit-status propagation for both a bare successful `if`
+and a false condition with no `else`.
+
+`tests/shell/run-if-sameline` (10 assertions) locks all of this in -
+140 assertions across 22 files now, all passing on both x86-64 and
+i386. `tests/mrsh-suite/run.sh` stays at 1 passed, 20 failed, 3
+skipped - expected, since `if.sh` itself also needs `$#` (positional
+parameter count) and `elif` (not implemented) before it can pass as a
+whole file, even though this is real, necessary progress toward it.

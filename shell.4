@@ -1495,6 +1495,7 @@ VARIABLE ARGC-SHIFT
   ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
   RUN-TOKENIZED-CALL ;
 
+
 CREATE RAW-LINE-BUF LINE-MAX ALLOT
 VARIABLE RAW-LINE-LEN
 
@@ -1529,6 +1530,137 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
     ACCEPT
   THEN ;
 
+\ ==================================================================
+\ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
+\ forms '&&', '||', '>>') are, in real POSIX shells, self-delimiting
+\ operator characters - "true;echo" and "a>file" parse correctly with
+\ no whitespace needed around the operator at all. Every operator
+\ this shell has implemented so far (Iterations 7, 18, 19) instead
+\ took the shortcut of requiring surrounding whitespace, a deliberate,
+\ consistently-documented scope limit - but re-reading mrsh's own test
+\ files directly showed this blocking real progress: "if true; then",
+\ "( echo hi )" written as "(echo hi)", and similar fused-operator
+\ style are the norm in real scripts, not the exception.
+\
+\ Rather than rewrite SCAN-TOKEN/TOKENIZE's own in-place compaction
+\ logic to recognize operators mid-scan (which turned out to risk a
+\ real hazard: an unquoted word's NUL-termination write lands exactly
+\ where a following fused operator character would sit, destroying it
+\ before it could ever be read as its own token), this runs as a
+\ pre-pass over the raw line text, inserting a literal space before
+\ and after every *unquoted* operator character found (tracking
+\ single/double quote state so an operator character *inside* a quote
+\ is left untouched - quoted operators are literal text, not
+\ operators, matching real shells) - "true;echo" becomes "true ; echo"
+\ before TOKENIZE (entirely unmodified) ever sees it. Re-normalizing
+\ an already-spaced-out operator is harmless (just adds a redundant
+\ extra space either side, which SKIP-WS already tolerates fine) -
+\ relevant since a while loop's condition gets re-tokenized fresh every
+\ iteration, and would otherwise go through this twice.
+\
+\ Deliberately out of scope for now: '(', ')', '{', '}'. Unlike the
+\ five operators above, blindly spacing every unquoted paren/brace
+\ would break $(...) command substitution outright - EXPAND-VAR's own
+\ detection needs "$(" with no space in between - and doing this
+\ correctly needs tracking "am I currently inside a $(...) construct"
+\ during this same pre-pass, which is real additional complexity left
+\ for its own future iteration rather than risking this one.
+\ ==================================================================
+
+: OP-CHAR? ( c --- f )
+  DUP 59 = IF DROP -1 EXIT THEN    ( ; )
+  DUP 124 = IF DROP -1 EXIT THEN   ( | )
+  DUP 38 = IF DROP -1 EXIT THEN    ( & )
+  DUP 60 = IF DROP -1 EXIT THEN    ( < )
+  DUP 62 = IF DROP -1 EXIT THEN    ( > )
+  DROP 0 ;
+
+: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, > - the three operator
+                                  \ characters with a two-character
+                                  \ doubled form (&&, ||, >>)
+  DUP 38 = IF DROP -1 EXIT THEN
+  DUP 124 = IF DROP -1 EXIT THEN
+  62 = ;
+
+512 CONSTANT NORM-MAX
+CREATE NORM-BUF NORM-MAX ALLOT
+VARIABLE NORM-LEN
+VARIABLE NORM-I
+VARIABLE NORM-U
+VARIABLE NORM-IN-SQ?
+VARIABLE NORM-IN-DQ?
+VARIABLE NORM-C
+
+: NORM-EMIT ( c --- )
+  NORM-LEN @ NORM-MAX 1- < IF
+    NORM-BUF NORM-LEN @ + C!
+    NORM-LEN @ 1+ NORM-LEN !
+  THEN ;
+
+: NORM-PEEK ( offset --- c )  \ byte at LINE-BUF[NORM-I + offset], or
+                                \ 0 if that would be beyond NORM-U
+  NORM-I @ + DUP NORM-U @ < IF
+    LINE-BUF SWAP + C@
+  ELSE
+    DROP 0
+  THEN ;
+
+: NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
+                                      \ result (u2 bytes) is in
+                                      \ NORM-BUF, not LINE-BUF itself -
+                                      \ the caller copies it back.
+  NORM-U !
+  0 NORM-LEN !
+  0 NORM-IN-SQ? !
+  0 NORM-IN-DQ? !
+  0 NORM-I !
+  BEGIN NORM-I @ NORM-U @ < WHILE
+    0 NORM-PEEK NORM-C !
+    NORM-IN-SQ? @ IF
+      NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-IN-DQ? @ IF
+      NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 39 = IF
+      -1 NORM-IN-SQ? !
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 34 = IF
+      -1 NORM-IN-DQ? !
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    ELSE NORM-C @ 92 = IF
+      ( a backslash outside quotes escapes the next character -
+        copied verbatim, including if it happens to be an operator
+        character, so it stays unspaced/literal like everywhere else
+        this shell already treats a backslash-escaped char )
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+      NORM-I @ NORM-U @ < IF
+        0 NORM-PEEK NORM-EMIT
+        NORM-I @ 1+ NORM-I !
+      THEN
+    ELSE NORM-C @ OP-CHAR? IF
+      32 NORM-EMIT
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+      NORM-C @ NORM-DOUBLED-OP? IF
+        0 NORM-PEEK NORM-C @ = IF
+          NORM-C @ NORM-EMIT
+          NORM-I @ 1+ NORM-I !
+        THEN
+      THEN
+      32 NORM-EMIT
+    ELSE
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
+    THEN THEN THEN THEN THEN THEN
+  REPEAT
+  NORM-LEN @ ;
+
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe
                                  \ parsing or dispatch, just enough to
@@ -1544,12 +1676,183 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
   SHFILE-ACTIVE? @ 0= IF CR THEN
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  TOKENIZE ;
+  NORMALIZE-OPERATORS
+  DUP LINE-MAX < IF
+    DUP NORM-BUF LINE-BUF ROT MOVE
+    TOKENIZE
+  ELSE
+    ( normalized text wouldn't fit LINE-BUF - fall back to tokenizing
+      the original, unmodified line, same as RUN-LINE's own fallback )
+    DROP
+    RAW-LINE-LEN @ TOKENIZE
+  THEN ;
+
+\ ==================================================================
+\ Same-line 'then'/'fi'/'else' continuation: "if true; then echo hi;
+\ fi" all on one line now tokenizes correctly (';' has been a
+\ self-delimiting operator since Iteration 24), but DO-IF still needs
+\ its own redesign to actually look for "then"/"fi"/"else" in the
+\ *remainder of the current line* before falling back to reading a
+\ whole new one - getting the tokenization right was necessary but
+\ not sufficient, and this is that redesign, for "if" only (while/for
+\ still require "do" on its own separate line - left for their own
+\ future work, given the added complexity of also needing this for
+\ their own body-replay buffers).
+\
+\ SPLIT-AT-KEYWORD scans the *global* ARGV for the first unquoted
+\ token matching a given keyword ("then", "else", or "fi") - if found,
+\ ARGV/ARGC are truncated to just what came before it (the "before"
+\ content, e.g. the condition, or a body line - may be empty), and
+\ everything after the keyword becomes the new PENDING-REMAINDER for
+\ READ-NEXT-LOGICAL-LINE to pick up next, rather than reading an
+\ actual new line of input. If not found, ARGV/ARGC are left
+\ completely untouched and no pending remainder is set - DO-IF then
+\ falls back to READ-LINE-INTO-ARGV exactly as before, so "then"/
+\ "else"/"fi" on their own separate line still works exactly as it
+\ always has.
+\
+\ Content after the *final* "fi" on the same line (e.g.
+\ "if x; then y; fi; z") is a documented, deliberate scope limit: "z"
+\ is silently dropped rather than handed back to whatever called
+\ DO-IF - preserving it correctly would mean propagating a pending
+\ remainder *up* the call stack, a bigger change than this one.
+\ ==================================================================
+
+CREATE ARGV-PENDING MAX-ARGS CELLS ALLOT
+VARIABLE ARGC-PENDING
+VARIABLE PENDING-REMAINDER?
+
+: READ-NEXT-LOGICAL-LINE ( --- )
+  \ Either continues where a previous same-line split left off, or
+  \ genuinely reads a new line of input - transparently, so DO-IF's
+  \ own then/else/fi search doesn't need to know or care which.
+  PENDING-REMAINDER? @ IF
+    0 PENDING-REMAINDER? !
+    ARGV-PENDING ARGC-PENDING @ COPY-ARGV
+  ELSE
+    READ-LINE-INTO-ARGV
+  THEN ;
+
+VARIABLE SAK-I
+VARIABLE SAK-KW-ADDR
+VARIABLE SAK-KW-LEN
+VARIABLE SAK-J
+
+VARIABLE SAEK-DEPTH
+VARIABLE SAEK-WHICH
+
+: SPLIT-AT-KEYWORD ( c-addr u --- f )
+  \ Tracks nesting depth via unquoted "if"/"fi" tokens encountered
+  \ along the way, so a *nested* if's own "fi" (or whatever else this
+  \ is searching for, if it happens to also appear inside a nested
+  \ if's own span) is correctly skipped over rather than being
+  \ mistaken for this (outer) if's own - found by testing a same-line
+  \ nested if/then/else/fi directly, where the naive, non-depth-aware
+  \ version found the *inner* if's own "fi" first and treated
+  \ everything up to it (including the outer's real "else") as if it
+  \ were ordinary body text.
+  SAK-KW-LEN ! SAK-KW-ADDR !
+  0 SAEK-DEPTH !
+  0 SAK-I !
+  BEGIN SAK-I @ ARGC @ < WHILE
+    0 SAEK-WHICH !
+    SAK-I @ ARGV-QUOTED@ 0= IF
+      SAK-I @ ARGV@ DUP CSTRLEN S" if" STR= IF
+        SAEK-DEPTH @ 1+ SAEK-DEPTH !
+      ELSE
+        SAEK-DEPTH @ 0 = IF
+          SAK-I @ ARGV@ DUP CSTRLEN SAK-KW-ADDR @ SAK-KW-LEN @ STR=
+          IF -1 SAEK-WHICH ! THEN
+        ELSE
+          SAK-I @ ARGV@ DUP CSTRLEN S" fi" STR= IF
+            SAEK-DEPTH @ 1- SAEK-DEPTH !
+          THEN
+        THEN
+      THEN
+    THEN
+    SAEK-WHICH @ 0 <> IF
+      0 ARGC-PENDING !
+      SAK-I @ 1+ SAK-J !
+      BEGIN SAK-J @ ARGC @ < WHILE
+        SAK-J @ ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
+        ARGC-PENDING @ 1+ ARGC-PENDING !
+        SAK-J @ 1+ SAK-J !
+      REPEAT
+      0 ARGV-PENDING ARGC-PENDING @ CELLS + !
+      -1 PENDING-REMAINDER? !
+      SAK-I @ ARGC !
+      0 ARGV SAK-I @ CELLS + !
+      -1 EXIT
+    THEN
+    SAK-I @ 1+ SAK-I !
+  REPEAT
+  0 ;
+
+VARIABLE SAEK-KW1-ADDR
+VARIABLE SAEK-KW1-LEN
+VARIABLE SAEK-KW2-ADDR
+VARIABLE SAEK-KW2-LEN
+
+: SPLIT-AT-EITHER-KEYWORD ( c-addr1 u1 c-addr2 u2 --- which )
+  \ Like SPLIT-AT-KEYWORD, but scans for *either* of two keywords in
+  \ one pass, splitting at whichever one is actually found first
+  \ (which = 1 for the first keyword, 2 for the second, 0 if neither
+  \ is present at all - same truncate/pending-remainder side effects
+  \ as SPLIT-AT-KEYWORD either way, and the same "if"/"fi" nesting-
+  \ depth tracking). DO-IF needs this rather than two separate
+  \ SPLIT-AT-KEYWORD calls, since "else" and "fi" can both be present
+  \ in the same remaining line (e.g. "then a; else b; fi") - checking
+  \ for "fi" first would find the *later* one, incorrectly swallowing
+  \ a real "else" in between as if it were ordinary body text (found
+  \ by testing this exact case directly: both branches of an if/else
+  \ on one line silently failed to run at all).
+  SAEK-KW2-LEN ! SAEK-KW2-ADDR ! SAEK-KW1-LEN ! SAEK-KW1-ADDR !
+  0 SAEK-DEPTH !
+  0 SAK-I !
+  BEGIN SAK-I @ ARGC @ < WHILE
+    0 SAEK-WHICH !
+    SAK-I @ ARGV-QUOTED@ 0= IF
+      SAK-I @ ARGV@ DUP CSTRLEN S" if" STR= IF
+        SAEK-DEPTH @ 1+ SAEK-DEPTH !
+      ELSE
+        SAEK-DEPTH @ 0 = IF
+          SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW1-ADDR @ SAEK-KW1-LEN @ STR=
+          IF 1 SAEK-WHICH !
+          ELSE
+            SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW2-ADDR @ SAEK-KW2-LEN @ STR=
+            IF 2 SAEK-WHICH ! THEN
+          THEN
+        ELSE
+          SAK-I @ ARGV@ DUP CSTRLEN S" fi" STR= IF
+            SAEK-DEPTH @ 1- SAEK-DEPTH !
+          THEN
+        THEN
+      THEN
+    THEN
+    SAEK-WHICH @ 0 <> IF
+      0 ARGC-PENDING !
+      SAK-I @ 1+ SAK-J !
+      BEGIN SAK-J @ ARGC @ < WHILE
+        SAK-J @ ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
+        ARGC-PENDING @ 1+ ARGC-PENDING !
+        SAK-J @ 1+ SAK-J !
+      REPEAT
+      0 ARGV-PENDING ARGC-PENDING @ CELLS + !
+      -1 PENDING-REMAINDER? !
+      SAK-I @ ARGC !
+      0 ARGV SAK-I @ CELLS + !
+      SAEK-WHICH @ EXIT
+    THEN
+    SAK-I @ 1+ SAK-I !
+  REPEAT
+  0 ;
 
 VARIABLE COND-TRUE?
 
 : DO-IF ( --- )
-  \ ARGV[0] is "if"; the rest of the line is the condition command.
+  \ ARGV[0] is "if"; the rest of the line is the condition command,
+  \ up to an optional unquoted "then" on the *same* line (checked via
+  \ SPLIT-AT-KEYWORD - see the comment above it for the full design).
   \ Supports nesting, including inside a branch that itself doesn't
   \ execute: COND-TRUE? and SUPPRESS-EXEC? are both saved on the
   \ return stack at entry (COND-TRUE? first, then SUPPRESS-EXEC? on
@@ -1570,30 +1873,47 @@ VARIABLE COND-TRUE?
   \ than this; left for its own future iteration.)
   COND-TRUE? @ >R
   SUPPRESS-EXEC? @ >R
+  SHIFT-ARGV-DOWN
+  ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+  S" then" SPLIT-AT-KEYWORD DROP
   SUPPRESS-EXEC? @ IF
     0 COND-TRUE? !
   ELSE
-    SHIFT-ARGV-DOWN
-    RUN-SHIFTED
+    RUN-TOKENIZED-CALL
     LAST-STATUS @ 0 = COND-TRUE? !
   THEN
-  READ-LINE-INTO-ARGV
-  S" then" LINE-IS? 0= IF
-    ." if: expected 'then'" CR
-    R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+  PENDING-REMAINDER? @ 0= IF
+    READ-NEXT-LOGICAL-LINE
+    S" then" LINE-IS? 0= IF
+      ." if: expected 'then'" CR
+      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+    THEN
   THEN
   R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
   BEGIN
-    READ-LINE-INTO-ARGV
-    S" fi" LINE-IS? IF R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT THEN
-    S" else" LINE-IS? IF
+    READ-NEXT-LOGICAL-LINE
+    S" else" S" fi" SPLIT-AT-EITHER-KEYWORD
+    DUP 2 = IF
+      DROP
+      RUN-TOKENIZED-CALL
+      0 PENDING-REMAINDER? !
+      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+    THEN
+    DUP 1 = IF
+      DROP
+      RUN-TOKENIZED-CALL
       R@ COND-TRUE? @ OR SUPPRESS-EXEC? !
       BEGIN
-        READ-LINE-INTO-ARGV
-        S" fi" LINE-IS? IF R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT THEN
+        READ-NEXT-LOGICAL-LINE
+        S" fi" SPLIT-AT-KEYWORD IF
+          RUN-TOKENIZED-CALL
+          0 PENDING-REMAINDER? !
+          R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+        THEN
         RUN-TOKENIZED-CALL
       0 UNTIL
     THEN
+    DROP
     RUN-TOKENIZED-CALL
   0 UNTIL ;
 
@@ -1783,12 +2103,18 @@ VARIABLE FOR-WORD-CUR
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
   \ group's own ';'/'&&'/'||' must stay scoped to its body rather than
   \ being split as if it belonged to the outer line, so this has to
-  \ run before any of that), then ';' splitting (so each ';'-separated
-  \ piece gets the full treatment below on its own - see SPLIT-SEMI),
-  \ then control-structure keywords, then assignment detection, then
-  \ &&/|| splitting (see SPLIT-ANDOR/RUN-AND-OR-CHAIN - POSIX gives
-  \ '&&'/'||' equal, left-to-right precedence, tighter than ';' but
-  \ looser than '|'), then a plain pipeline/simple command
+  \ run before any of that), then control-structure keywords (for the
+  \ same reason as groups - "if true; then echo hi; fi" needs "if" to
+  \ see its own ';'/"then"/"fi" intact, not have the outer ';'-split
+  \ carve it up first; while/for don't support same-line "do" yet, but
+  \ moving their own detection here too avoids a *worse*, different
+  \ misbehavior than simply keeping "do" on its own line already was -
+  \ "while true; do" was already broken before this reordering too),
+  \ then ';' splitting (so each ';'-separated piece gets the full
+  \ treatment below on its own - see SPLIT-SEMI), then assignment
+  \ detection, then &&/|| splitting (see SPLIT-ANDOR/RUN-AND-OR-CHAIN
+  \ - POSIX gives '&&'/'||' equal, left-to-right precedence, tighter
+  \ than ';' but looser than '|'), then a plain pipeline/simple command
   \ (RUN-SIMPLE-OR-PIPELINE, which is what each &&/||-separated piece
   \ above also runs through). Shared by RUN-LINE (after its own
   \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
@@ -1802,6 +2128,9 @@ VARIABLE FOR-WORD-CUR
     SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
     EXIT
   THEN
+  S" if" LINE-IS? IF DO-IF EXIT THEN
+  S" while" LINE-IS? IF DO-WHILE EXIT THEN
+  S" for" LINE-IS? IF DO-FOR EXIT THEN
   SPLIT-SEMI IF
     ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV
     RUN-TOKENIZED-CALL
@@ -1809,9 +2138,6 @@ VARIABLE FOR-WORD-CUR
     RUN-TOKENIZED-CALL
     EXIT
   THEN
-  S" if" LINE-IS? IF DO-IF EXIT THEN
-  S" while" LINE-IS? IF DO-WHILE EXIT THEN
-  S" for" LINE-IS? IF DO-FOR EXIT THEN
   ARGC @ 1 = 0 ARGV-QUOTED@ 0= AND IF
     ARGV @ ASSIGNMENT-EQPOS
     DUP -1 <> IF DO-ASSIGN EXIT THEN
@@ -1824,136 +2150,6 @@ VARIABLE FOR-WORD-CUR
   RUN-SIMPLE-OR-PIPELINE ;
 ' RUN-TOKENIZED RUN-TOKENIZED-XT !
 
-\ ==================================================================
-\ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
-\ forms '&&', '||', '>>') are, in real POSIX shells, self-delimiting
-\ operator characters - "true;echo" and "a>file" parse correctly with
-\ no whitespace needed around the operator at all. Every operator
-\ this shell has implemented so far (Iterations 7, 18, 19) instead
-\ took the shortcut of requiring surrounding whitespace, a deliberate,
-\ consistently-documented scope limit - but re-reading mrsh's own test
-\ files directly showed this blocking real progress: "if true; then",
-\ "( echo hi )" written as "(echo hi)", and similar fused-operator
-\ style are the norm in real scripts, not the exception.
-\
-\ Rather than rewrite SCAN-TOKEN/TOKENIZE's own in-place compaction
-\ logic to recognize operators mid-scan (which turned out to risk a
-\ real hazard: an unquoted word's NUL-termination write lands exactly
-\ where a following fused operator character would sit, destroying it
-\ before it could ever be read as its own token), this runs as a
-\ pre-pass over the raw line text, inserting a literal space before
-\ and after every *unquoted* operator character found (tracking
-\ single/double quote state so an operator character *inside* a quote
-\ is left untouched - quoted operators are literal text, not
-\ operators, matching real shells) - "true;echo" becomes "true ; echo"
-\ before TOKENIZE (entirely unmodified) ever sees it. Re-normalizing
-\ an already-spaced-out operator is harmless (just adds a redundant
-\ extra space either side, which SKIP-WS already tolerates fine) -
-\ relevant since a while loop's condition gets re-tokenized fresh every
-\ iteration, and would otherwise go through this twice.
-\
-\ Deliberately out of scope for now: '(', ')', '{', '}'. Unlike the
-\ five operators above, blindly spacing every unquoted paren/brace
-\ would break $(...) command substitution outright - EXPAND-VAR's own
-\ detection needs "$(" with no space in between - and doing this
-\ correctly needs tracking "am I currently inside a $(...) construct"
-\ during this same pre-pass, which is real additional complexity left
-\ for its own future iteration rather than risking this one.
-\ ==================================================================
-
-: OP-CHAR? ( c --- f )
-  DUP 59 = IF DROP -1 EXIT THEN    ( ; )
-  DUP 124 = IF DROP -1 EXIT THEN   ( | )
-  DUP 38 = IF DROP -1 EXIT THEN    ( & )
-  DUP 60 = IF DROP -1 EXIT THEN    ( < )
-  DUP 62 = IF DROP -1 EXIT THEN    ( > )
-  DROP 0 ;
-
-: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, > - the three operator
-                                  \ characters with a two-character
-                                  \ doubled form (&&, ||, >>)
-  DUP 38 = IF DROP -1 EXIT THEN
-  DUP 124 = IF DROP -1 EXIT THEN
-  62 = ;
-
-512 CONSTANT NORM-MAX
-CREATE NORM-BUF NORM-MAX ALLOT
-VARIABLE NORM-LEN
-VARIABLE NORM-I
-VARIABLE NORM-U
-VARIABLE NORM-IN-SQ?
-VARIABLE NORM-IN-DQ?
-VARIABLE NORM-C
-
-: NORM-EMIT ( c --- )
-  NORM-LEN @ NORM-MAX 1- < IF
-    NORM-BUF NORM-LEN @ + C!
-    NORM-LEN @ 1+ NORM-LEN !
-  THEN ;
-
-: NORM-PEEK ( offset --- c )  \ byte at LINE-BUF[NORM-I + offset], or
-                                \ 0 if that would be beyond NORM-U
-  NORM-I @ + DUP NORM-U @ < IF
-    LINE-BUF SWAP + C@
-  ELSE
-    DROP 0
-  THEN ;
-
-: NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
-                                      \ result (u2 bytes) is in
-                                      \ NORM-BUF, not LINE-BUF itself -
-                                      \ the caller copies it back.
-  NORM-U !
-  0 NORM-LEN !
-  0 NORM-IN-SQ? !
-  0 NORM-IN-DQ? !
-  0 NORM-I !
-  BEGIN NORM-I @ NORM-U @ < WHILE
-    0 NORM-PEEK NORM-C !
-    NORM-IN-SQ? @ IF
-      NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-IN-DQ? @ IF
-      NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 39 = IF
-      -1 NORM-IN-SQ? !
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 34 = IF
-      -1 NORM-IN-DQ? !
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 92 = IF
-      ( a backslash outside quotes escapes the next character -
-        copied verbatim, including if it happens to be an operator
-        character, so it stays unspaced/literal like everywhere else
-        this shell already treats a backslash-escaped char )
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-      NORM-I @ NORM-U @ < IF
-        0 NORM-PEEK NORM-EMIT
-        NORM-I @ 1+ NORM-I !
-      THEN
-    ELSE NORM-C @ OP-CHAR? IF
-      32 NORM-EMIT
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-      NORM-C @ NORM-DOUBLED-OP? IF
-        0 NORM-PEEK NORM-C @ = IF
-          NORM-C @ NORM-EMIT
-          NORM-I @ 1+ NORM-I !
-        THEN
-      THEN
-      32 NORM-EMIT
-    ELSE
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN
-  REPEAT
-  NORM-LEN @ ;
 
 : RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
                         \ act on it via RUN-TOKENIZED.

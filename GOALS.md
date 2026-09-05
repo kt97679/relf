@@ -236,15 +236,15 @@ the full account and the fixes applied.
    for genuinely different reasons before settling here, both times
    because an *invocation/measurement* bug was found and fixed, not
    because `shell.4` itself changed; it hasn't moved again since,
-   including after Iteration 17 through 24's work — expected, since no
+   including after Iteration 17 through 25's work — expected, since no
    single vendored test file passes purely from variable assignment,
    `;`, `&&`/`||`, command-grouping, the if/while script-file fix,
-   if-nesting, `for` loops, or operator-fusion alone — the command-
-   grouping item in particular doesn't apply to mrsh's own tests at
-   all yet, given the whitespace-around-parens scope limit above, and
-   `for.sh`/`if.sh`/`loop.sh` still need `then`/`do` on the same line
-   as their own `if`/`while`/`for`, a gap operator-fusion (Iteration
-   24) exposed as separate and still open rather than closed).
+   if-nesting, `for` loops, operator-fusion, or same-line if/then/fi
+   alone — the command-grouping item in particular doesn't apply to
+   mrsh's own tests at all yet, given the whitespace-around-parens
+   scope limit above, `while`/`for` (unlike `if`) still need `do` on
+   their own separate line, and `if.sh` itself also needs `$#` and
+   `elif`, neither implemented yet).
 
    **Phase A is done (Iterations 15–16).** It found and fixed two
    layers of problems before any real feature work could even be
@@ -395,13 +395,26 @@ the full account and the fixes applied.
      fused operator would sit, destroying it before it could be read).
      Deliberately still excludes `(`/`)`/`{`/`}` — blindly spacing
      those would break `$(...)` command substitution outright; left
-     for its own future iteration. Surfaced a related, separate,
-     *still-open* gap rather than fixing it: `if true; then` still
-     doesn't work, since `DO-IF`/`DO-WHILE`/`DO-FOR` only look for
-     `then`/`do` by reading a *new* line, never by checking the
+     for its own future iteration. Surfaced a related, separate gap
+     rather than fixing it outright: `if true; then` still didn't
+     work at the time, since `DO-IF`/`DO-WHILE`/`DO-FOR` only looked
+     for `then`/`do` by reading a *new* line, never by checking the
      remainder of the current line's already-correctly-tokenized
      `ARGV` — getting the tokenization right was necessary but not
-     sufficient. See `PROGRESS.md`'s Iteration 24 entry for the full
+     sufficient. **`if` specifically now supports this too (Iteration
+     25)** — `if COND; then BODY; fi`/`else` all work on one line, at
+     any nesting depth, via a new "pending remainder" mechanism
+     (`SPLIT-AT-KEYWORD`/`SPLIT-AT-EITHER-KEYWORD`, tracking `if`/`fi`
+     nesting depth so a *nested* if's own `else`/`fi` isn't mistaken
+     for the outer one's — found to be necessary by testing directly,
+     not by inspection). `while`/`for` still require `do` on its own
+     separate line — extending this to them is separate, still-open
+     future work. See `PROGRESS.md`'s Iteration 25 entry for the full
+     account of the four real bugs found and fixed getting there,
+     including one (operator normalization never having been wired
+     into the *second* line-reading path control structures use
+     internally) that had been silently present since Iteration 24
+     itself. See `PROGRESS.md`'s Iteration 24 entry for the full
      account, including a real regression this surfaced in an
      *existing test* (not a shell bug — an unquoted `|` inside an
      assignment value was never actually valid in real shells either).

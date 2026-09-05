@@ -209,11 +209,18 @@ skips c if a succeeds, but skips b and runs c if a fails) - tighter
 precedence than `;`, looser than `|`. None of these operators need
 surrounding whitespace to be recognized - "true;echo hi", "a|cat", and
 "echo a>file" all parse correctly with no spaces at all, matching real
-shells (a quoted operator character stays literal, as always) -
-though `if true; then` still doesn't work even so, since if/while/for
-only look for then/do by reading a *new* line, not by checking the
-remainder of the current line (a separate, still-open gap this
-surfaced rather than fixed - see PROGRESS.md's Iteration 24 entry).
+shells (a quoted operator character stays literal, as always).
+if COND; then BODY; fi (and ...; else BODY2; fi) now work with
+then/else/fi all on the same line, at any nesting depth - a nested
+if's own else/fi is correctly distinguished from the outer one's, so
+"if a; then if b; then x; else y; fi; z; fi" runs the right pieces
+regardless of how deep it goes. while/for still require `do` on its
+own separate line - extending this to them is separate, still-open
+future work (see PROGRESS.md's Iteration 25 entry, including four
+real bugs found and fixed getting there). Content after the *final*
+fi on the same line (e.g. "if x; then y; fi; z") is silently dropped
+rather than run - a documented, deliberate scope limit, not silent
+breakage.
 `( )`/`{ }` are the one exception still requiring surrounding
 whitespace, since spacing them out unconditionally would break
 $(...) command substitution. `( list )` runs its body in a
@@ -247,7 +254,7 @@ used inside a script file - see PROGRESS.md's Iteration 21 entry). See
 GOALS.md
 phase 7 (and goal 8, a separate, much larger effort to close the gap
 against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 24 entries for the current state and what's planned next.
+through 25 entries for the current state and what's planned next.
 tests/shell/ has a small test suite (structurally modeled on bash's
 own tests/ directory) exercising all of the above; run it directly
 via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
@@ -259,7 +266,7 @@ target for how much further shell.4 has to go; run it via
 `tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
 crash-free, phase A and phase B both done (modulo a couple of
 documented, still-open items within phase B), phase C underway - see
-PROGRESS.md's Iteration 14 through 24 entries).
+PROGRESS.md's Iteration 14 through 25 entries).
 
 5. Possible usage.
 

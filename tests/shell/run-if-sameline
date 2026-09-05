@@ -1,0 +1,72 @@
+#!/bin/sh
+# run-if-sameline - "if COND; then BODY; fi" (and "...; else BODY2;
+# fi") now work with then/else/fi all on the same line as what
+# precedes them, not just on their own separate line - now that ';'
+# tokenizes correctly regardless of surrounding whitespace (Iteration
+# 24), DO-IF was redesigned to actually look for "then"/"else"/"fi"
+# in the remainder of the current line before falling back to reading
+# a whole new one (SPLIT-AT-KEYWORD/SPLIT-AT-EITHER-KEYWORD, tracking
+# "if"/"fi" nesting depth so a *nested* if's own else/fi isn't
+# mistaken for the outer one's).
+#
+# Three real bugs were found and fixed getting here (see PROGRESS.md
+# for the full account): RUN-TOKENIZED was checking ';' before the
+# if/while/for keyword check, splitting "if true; then" apart before
+# DO-IF ever saw it whole; the body loop checked for "fi" before
+# "else", so when both were present on one line it found the *later*
+# fi first and silently swallowed the real else; and READ-LINE-INTO-
+# ARGV (used to read a fresh then/else/fi line) never went through the
+# operator-normalization pre-pass at all, so a line read this way kept
+# its operators fused together with a literal '&'/';' ending up as
+# part of some other token's own text.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+TMP_SCRIPT="/tmp/relf-run-if-sameline-test-$$.sh"
+
+printf 'if true; then echo yes123; fi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "if/then/fi all on one line" "yes123" "$out"
+
+printf 'if /usr/bin/false; then echo then123; else echo else456; fi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "if/then/else/fi all on one line takes the else branch" "else456" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "then123"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: the then-branch must not also run"
+fi
+
+printf 'if /usr/bin/true; then echo then789; else echo else789; fi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "if/then/else/fi all on one line takes the then branch" "then789" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "else789"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: the else-branch must not also run"
+fi
+
+printf 'if true\nthen\nif /usr/bin/false; then echo innerA; else echo innerB; fi\necho outerC\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "a same-line nested if/else inside a multi-line outer if" "innerB
+outerC" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+if echo "$out" | grep -q "innerA"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: the nested if's own then-branch must not run (its condition was false)"
+fi
+
+printf 'if /usr/bin/false\nthen\necho then999\nelse\necho else999\nfi\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
+assert_output_contains "the original, fully separate-line style still works unchanged" "else999" "$out"
+
+printf 'if /usr/bin/true; then echo alone111; fi\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "a successful same-line if's own exit status is 0" 0 "$?"
+
+printf 'if /usr/bin/false; then echo alone222; fi\n' > "$TMP_SCRIPT"
+"$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
+assert_status "an if with no else and a false condition exits with the condition's own status" 1 "$?"
+
+rm -f "$TMP_SCRIPT"
+report
