@@ -8138,3 +8138,71 @@ token, and here `done` is — so this is the pre-existing gap, not
 something the substitution rewrite introduced. It is the same family as
 Iteration 104's one-line function definition, which hangs. Both want
 one iteration together.
+## Iteration 106: the `done`/`esac` suffix, as specified in 101
+
+    while ... done && echo m
+    for ... done && echo n
+    case ... esac && echo q
+
+None of the three ran their suffix. Iteration 101 diagnosed this
+precisely and stopped rather than implementing it; this is that
+implementation, and the specification held.
+
+`CAPTURE-CONTINUE?` and `DO-CASE` both detect the closing line with
+`LINE-IS?`, which looks only at `ARGV[0]`, so everything after the
+keyword was dropped in silence. `SAVE-COMPOUND-SUFFIX` takes the rest
+of the line and `RUN-COMPOUND-SUFFIX` runs it once the construct
+finishes, as an ordinary line — a leading `&&` then splits with an
+empty left-hand side and so tests the construct's own status, which is
+the trick DO-IF has used after `fi` since Iteration 92.
+
+**The addition 101 predicted was the important part, and it was not
+the one 101 named.** 101 said the remainder must be copied to arena
+storage first, citing `RT-SAVE-REST` and `AO-SAVE-REST`. Those copy the
+*pointer arrays*, which solves a shared-array problem — and that is not
+this problem. `ARGV` entries point into `LINE-BUF`, and running a loop
+body reads lines, which overwrites the text itself. So what is saved
+here is the **raw text**, the way loop bodies already are. The reason
+`DO-IF` needed none of this is the one 101 gave: its `fi` is reached
+after the body has run; a loop's `done` is reached before.
+
+### A second bug, found only because something finally looked
+
+With the suffix running, `while false; do ...; done && echo m` still
+printed nothing. A loop that runs zero iterations was exiting with the
+status of the *condition that stopped it* — which for a `while` is
+always a failure, so `&&` after any completed while loop could never
+fire.
+
+POSIX: a loop's status is that of the last body it ran, or zero if it
+ran none. Exactly the rule Iteration 92 applied to an untaken `if`, in
+the two other constructs that needed it, and invisible for exactly the
+same reason: nothing had ever looked at a loop's exit status before
+this iteration gave it a way to be looked at. A `LOOP-RAN?` local in
+each of `DO-WHILE` and `DO-FOR`.
+
+That is twice now that adding a suffix to a compound command has
+immediately exposed a wrong exit status underneath it. Worth expecting
+a third if any construct is still missing one.
+
+### Verified
+
+`tests/diff/cases/compound-suffix.sh` extended: `&&` and `||` after
+`done` and `esac`, a loop that iterates and one that does not, an
+empty `for` list, a matching and a non-matching `case`, `$?` after
+each, a `;` suffix that is a whole further command, and a nested loop
+whose inner suffix must not be taken for the outer's.
+
+510 assertions across 62 files, 15 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
+
+### What is left
+
+One item, and it is the one everything now converges on: **Stage 1 of
+`PARSE-EXPAND-PLAN.md`**. `word.sh` differs on a single line,
+`c=""; echo ${c=BAD} $c`, which is the stale-expansion limitation — and
+the same change also removes the in-place-growth bug class (four
+instances found, the last in Iteration 103) and is where the ~190x
+loop cost is addressed. The other two mrsh failures are the deliberate
+POSIX-versus-bash alias divergence and cannot be fixed without making
+the shell less correct.

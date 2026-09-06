@@ -5273,6 +5273,55 @@ VARIABLE BODY-DEPTH
     -1
   THEN ;
 
+DEFER RUN-LINE-CALL
+\ RUN-LINE is the last word in the file; the suffix after a "done" or
+\ "esac" is run as an ordinary line, so this reaches it the usual way.
+
+VARIABLE SUF-BUF        \ arena offset of the saved suffix text
+VARIABLE SUF-LEN
+VARIABLE SUF-KWLEN
+VARIABLE SUF-I
+VARIABLE LOOP-RAN?      \ did this loop execute its body even once?
+
+: SAVE-COMPOUND-SUFFIX ( kwlen --- )
+  \ RAW-LINE-BUF holds the line that closes a while/for/case -
+  \ "done && echo m", say. CAPTURE-CONTINUE? and DO-CASE both detect
+  \ that line with LINE-IS?, which looks only at ARGV[0], so
+  \ everything after the keyword used to be dropped in silence.
+  \
+  \ The RAW text is saved, not the tokens. ARGV entries point into
+  \ LINE-BUF, and running the loop reads lines - which overwrites it.
+  \ Copying the pointer array the way RT-SAVE-REST does would not
+  \ help here: that solves a shared-array problem, not a text-lifetime
+  \ one. This is the distinction Iteration 101 recorded and is why
+  \ this was not a mechanical repeat of 92's fix for "fi": DO-IF
+  \ reaches its "fi" AFTER the body has run, and a loop reaches its
+  \ "done" before.
+  {: SUF-KWLEN | SUF-I :}
+  0 SUF-LEN !
+  BEGIN
+    SUF-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF SUF-I @ + C@ WS? ELSE 0 THEN
+  WHILE SUF-I @ 1+ SUF-I ! REPEAT
+  SUF-I @ SUF-KWLEN @ + SUF-I !
+  BEGIN
+    SUF-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF SUF-I @ + C@ WS? ELSE 0 THEN
+  WHILE SUF-I @ 1+ SUF-I ! REPEAT
+  RAW-LINE-LEN @ SUF-I @ > IF
+    RAW-LINE-LEN @ SUF-I @ - SUF-LEN !
+    LINE-MAX BODY-ALLOC SUF-BUF !
+    RAW-LINE-BUF SUF-I @ + SUF-BUF @ BODY@ SUF-LEN @ MOVE
+  THEN ;
+
+: RUN-COMPOUND-SUFFIX ( --- )
+  \ Runs whatever followed the terminator, once the construct itself
+  \ has finished, as an ordinary line. A leading "&&" then splits with
+  \ an empty left-hand side and so tests the construct's own exit
+  \ status - the same thing DO-IF does after "fi" (Iteration 92).
+  SUF-LEN @ 0= IF EXIT THEN
+  SUF-BUF @ BODY@ LINE-BUF SUF-LEN @ MOVE
+  SUF-LEN @  0 SUF-LEN !
+  RUN-LINE-CALL ;
+
 \ ==================================================================
 \ Shell functions: name() { <body> } - definition, invocation,
 \ redefinition, and recursion. Each function's body is stored as raw,
@@ -5613,7 +5662,7 @@ VARIABLE WHILE-BODY-CUR
   \ every exit path, releasing both automatically.
   BODY-ARENA-TOP @
   \ One physical line: {: ... :} cannot span lines (see locals.4).
-  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH :}
+  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? :}
   LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   SAVE-WHILE-COND
@@ -5631,6 +5680,7 @@ VARIABLE WHILE-BODY-CUR
   WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
+  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
   \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
   \ LOOP-BREAK? is reset fresh for this loop, then checked *before*
   \ each re-evaluation of the real condition below - if the previous
@@ -5649,10 +5699,18 @@ VARIABLE WHILE-BODY-CUR
       0
     THEN
   WHILE
+    -1 LOOP-RAN? !
     DO-WHILE-BODY
   REPEAT
   0 LOOP-BREAK? !
-  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
+  LOOP-DEPTH @ 1- LOOP-DEPTH !
+  \ POSIX: a loop's status is that of the last body it ran, or zero if
+  \ it ran none - NOT the status of the condition that stopped it. The
+  \ same rule Iteration 92 applied to an untaken "if", and invisible
+  \ for the same reason until something looked at the status
+  \ afterwards, which "done && echo m" now does.
+  LOOP-RAN? @ 0= IF 0 LAST-STATUS ! THEN
+  RUN-COMPOUND-SUFFIX ;
 
 \ ==================================================================
 \ for VAR in word1 word2 ... / do / <body> / done
@@ -5722,11 +5780,13 @@ VARIABLE FOR-WORD-CUR
   WHILE
     FOR-WORDS-BUF @ BODY@ FOR-WORD-I @ + FOR-WORD-CUR !
     FOR-VARNAME-BUF @ BODY@ FOR-WORD-CUR @ SET-SHVAR
+    -1 LOOP-RAN? !
     DO-WHILE-BODY
     FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
   REPEAT
   0 LOOP-BREAK? !
-  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
+  LOOP-DEPTH @ 1- LOOP-DEPTH !
+  LOOP-RAN? @ 0= IF 0 LAST-STATUS ! THEN ;
 
 : DO-FOR ( --- )
   \ ARGV[0] is "for"; ARGV[1] is the loop variable name; ARGV[3..] is
@@ -5736,7 +5796,7 @@ VARIABLE FOR-WORD-CUR
   \ reads these same names, which works because a local IS the
   \ variable and holds this invocation's value for the whole call.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH :}
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? :}
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
@@ -5755,7 +5815,9 @@ VARIABLE FOR-WORD-CUR
   WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
-  DO-FOR-ITERATE ;
+  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
+  DO-FOR-ITERATE
+  RUN-COMPOUND-SUFFIX ;
 
 \ ==================================================================
 \ Glob-pattern matching (*, ?, [...] with a-z ranges and [!...]/[^...]
@@ -6079,6 +6141,7 @@ VARIABLE CASE-MATCHED?
   \ version set CASE-MATCHED? but never actually checked it, so a
   \ later arm - even a non-matching one - kept right on being tested
   \ and, if it matched, running its body too).
+  BODY-ARENA-TOP @  {: BODY-ARENA-TOP | SUF-BUF SUF-LEN :}
   SUPPRESS-EXEC? @ >R
   ARGV 1 CELLS + @ DUP CSTRLEN
   DUP CASE-WORD-LEN !
@@ -6100,7 +6163,10 @@ VARIABLE CASE-MATCHED?
     THEN
     BEGIN
       READ-NEXT-LOGICAL-LINE
-      S" esac" LINE-IS? IF R> SUPPRESS-EXEC? ! EXIT THEN
+      S" esac" LINE-IS? IF
+        4 SAVE-COMPOUND-SUFFIX
+        R> SUPPRESS-EXEC? ! RUN-COMPOUND-SUFFIX EXIT
+      THEN
       S" ;;" LINE-IS? IF -1 ELSE
         \ ";;" may end this arm from within a body line rather than
         \ having a line of its own.
@@ -6115,7 +6181,9 @@ VARIABLE CASE-MATCHED?
       THEN
     UNTIL
   REPEAT
-  R> SUPPRESS-EXEC? ! ;
+  4 SAVE-COMPOUND-SUFFIX                  ( "esac" )
+  R> SUPPRESS-EXEC? !
+  RUN-COMPOUND-SUFFIX ;
 
 VARIABLE FD-ADDR
 VARIABLE FD-LEN
@@ -6483,6 +6551,7 @@ VARIABLE PP-BAR
     RAW-LINE-LEN @ TOKENIZE
   THEN
   RUN-TOKENIZED-CALL ;
+' RUN-LINE IS RUN-LINE-CALL
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way
   SH-PROMPT
