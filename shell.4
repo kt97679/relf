@@ -4445,6 +4445,49 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   NORM-IN-SQ? @ NORM-IN-DQ? @ OR UNTERMINATED-QUOTE? !
   NORM-LEN @ ;
 
+VARIABLE JQ-LEN
+VARIABLE JQ-N
+VARIABLE JQ-GUARD
+VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
+
+: JOIN-OPEN-QUOTES ( u --- u2 )
+  \ LINE-BUF holds u bytes. A quote still open at end of line means the
+  \ string continues on the next one:
+  \
+  \     echo "a
+  \     b"
+  \
+  \ so read further lines, joined by the newline that separated them,
+  \ until the quote closes. Iteration 60 made an open quote a syntax
+  \ error, which is right at end of INPUT and wrong at end of line -
+  \ that check now only fires when this word gives up.
+  \
+  \ NORMALIZE-OPERATORS is re-run purely to test: it is a pure
+  \ function of LINE-BUF into NORM-BUF and sets UNTERMINATED-QUOTE?,
+  \ so calling it twice costs a pass over the line and nothing else.
+  \ JQ-GUARD stops a runaway at EOF, where READ-INPUT-CALL reports an
+  \ empty line and end-of-input identically.
+  JQ-LEN !
+  0 JQ-GUARD !
+  \ In -c mode the command string is the whole input, so there is
+  \ nothing to continue onto and asking would block on ACCEPT reading
+  \ the terminal. An open quote there is a genuine syntax error.
+  NO-MORE-INPUT? @ IF JQ-LEN @ EXIT THEN
+  BEGIN
+    JQ-LEN @ NORMALIZE-OPERATORS DROP
+    UNTERMINATED-QUOTE? @
+    JQ-GUARD @ 4096 < AND
+    JQ-LEN @ 1+ LINE-MAX < AND
+  WHILE
+    JQ-GUARD @ 1+ JQ-GUARD !
+    10 LINE-BUF JQ-LEN @ + C!
+    JQ-LEN @ 1+ JQ-LEN !
+    LINE-BUF JQ-LEN @ + LINE-MAX JQ-LEN @ - READ-INPUT-CALL JQ-N !
+    JQ-N @ 0= IF JQ-LEN @ EXIT THEN
+    JQ-LEN @ JQ-N @ + JQ-LEN !
+  REPEAT
+  JQ-LEN @ ;
+
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe
                                  \ parsing or dispatch, just enough to
@@ -4459,6 +4502,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   LINE-BUF LINE-MAX READ-NEXT-INPUT-LINE
   SHFILE-ACTIVE? @ 0= IF CR THEN
   JOIN-CONTINUATIONS
+  JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS
@@ -6122,6 +6166,7 @@ VARIABLE PP-BAR
                         \ operator normalization, so it holds the
                         \ line exactly as given, unmodified.
   JOIN-CONTINUATIONS
+  JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS
@@ -6188,6 +6233,7 @@ VARIABLE SHC-LEN
                         \ (RUN-LINE/RUN-TOKENIZED handle those, not
                         \ TOKENIZE itself), but no if/while/for, which
                         \ need multiple lines.
+  -1 NO-MORE-INPUT? !
   DUP CSTRLEN SHC-LEN !
   LINE-BUF SHC-LEN @ MOVE
   SHC-LEN @ RUN-LINE

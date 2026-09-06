@@ -7434,3 +7434,47 @@ rather than changed blind.
 shapes plus both exit-status cases. 507 assertions across 62 files, 8
 differential cases, 1991 core OK markers, both cell widths, mrsh 17
 of 21.
+## Iteration 93: multi-line quoted strings
+
+    echo "a
+    b"
+
+now works. A quote still open at end of line means the string
+continues, so `JOIN-OPEN-QUOTES` reads further lines — joined by the
+newline that separated them — until it closes.
+
+This corrects an over-reach from Iteration 60, which made an open quote
+a syntax error. That is right at end of *input* and wrong at end of
+*line*, and the check now fires only where this word gives up. It is
+the first time a fix here has narrowed an earlier fix rather than
+extending it.
+
+### The `-c` case, which hung
+
+`relfsh -c "printf '%s\n' '''"` went from a clean `status 2` to
+hanging. With `-c` the command string is the entire input, so asking
+for a continuation line blocks on `ACCEPT` reading the terminal.
+`NO-MORE-INPUT?`, set by `SH-C`, makes an open quote there the genuine
+syntax error it is. Interactive mode deliberately still continues,
+matching every shell's `PS2` behaviour.
+
+Worth noting the shape: the feature was correct for two of the three
+input sources (script, replay) and catastrophic for the third. "Which
+input source am I on" has now been the deciding question three times
+— `read` reading fd 0 rather than the script (Iteration 54), the
+compound pipeline stage (80), and this.
+
+### What it bought
+
+`2.2-quoted-characters.sh` gets past its multi-line section and now
+differs on **one** line: the nested `$(echo $(echo "cmd 3"))`, which is
+Stage 3 of `PARSE-EXPAND-PLAN.md`. `word.sh` still needs its tilde
+forms, positional parameters inside `${...}`, and a `${var#pattern}`
+case.
+
+### Verified
+
+`tests/diff/cases/multiline-quote.sh` — both quote styles, a
+multi-line assignment, and execution continuing afterwards. 507
+assertions across 62 files, 9 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
