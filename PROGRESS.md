@@ -7961,3 +7961,87 @@ fixes one. The others:
 Recording the re-measurement because the earlier count was not wrong
 when written — the `$@` fix in 100 changed what the remaining diff
 lines were, and nobody re-read them afterwards.
+## Iteration 104: the word in `${VAR:-word}` is word text
+
+`${null:-"$@"}` printed a literal `"$@"`, and `${x#$HOME}` trimmed
+nothing. The word and the pattern inside `${...}` were read by
+`READ-PEWORD`, which copied bytes and expanded none of them — a scope
+limit documented since Iteration 32, and two of `word.sh`'s four
+remaining differences.
+
+The fix is not to add expansion to `READ-PEWORD`. It is to stop having
+a second reader at all: the word in `${VAR:-word}` *is* ordinary word
+text, so `EXPAND-BRACED-WORD` runs the same per-character dispatch that
+`SCAN-TOKEN` runs, in place, into the token being built. Nested
+`${...}`, quoting, backquotes, `$(...)` and `$((...))` inside the word
+all work without being arranged for, because the dispatch already
+consumes each of those regions whole — which is also why a top-level
+`}` can end the word while one inside quotes cannot.
+
+`SCAN-TOKEN`'s loop body became `SCAN-TOKEN-CHAR` so both callers share
+it, reached from `EXPAND-BRACED-WORD` through a `DEFER` (the shared
+word lives far below, after `COPY-DOUBLE-QUOTED`).
+
+Three consequences had to be handled:
+
+- **The untaken branch must still find the end of the word.**
+  `EXPAND-BRACED-WORD-ASIDE` runs the *same* scan with `TOK-OUT`
+  declared as a local, so everything written is rewound on exit;
+  `IN-DQ-CONTEXT?` set, so a `"$@"` in the discarded word cannot
+  advance `ARGC`; and a new `EXPAND-SUPPRESSED?`, checked in
+  `EXPAND-CMDSUB` after the text is consumed but before the fork, so
+  `${set:-$(cmd)}` does not run `cmd`. A separate hand-written skipper
+  would have been a second answer to "where does this word end", which
+  is FORTH-STYLE.md §11's whole subject.
+- **A pattern is not emitted.** `CAPTURE-BRACED-WORD` expands into the
+  token buffer and then copies out and rewinds, so `ENSURE-ROOM` keeps
+  comparing a `TOK-OUT` and a `TOK-POS` that live in the same buffer.
+  Expanding into a *separate* buffer would have made that comparison
+  arithmetic between two unrelated addresses — it would have worked or
+  not depending on which of two `malloc` results happened to be lower.
+- **Literal text in the word is field-split when unquoted.**
+  `n ${nope:-a b c}` passes three arguments. An ordinary word never
+  needs this, because `SCAN-TOKEN` stops at the separator instead of
+  emitting it, so the split is gated on a new `IN-BRACED-WORD?`.
+
+### The bug this introduced, and where it came from
+
+`${x#$HOME}` gave empty. `EXPAND-BRACED-WORD` recurses into
+`EXPAND-VAR`, which writes the *inner* name into `VARNAME-BUF` — and
+`TRIM-PARAM` reads that buffer after the scan returns, so it trimmed
+`$HOME` from `HOME` rather than from `x`. `${X:=$y}` assigned to `y`
+for the same reason.
+
+FORTH-STYLE.md §9 names this exactly: a global that does not survive a
+call which can reach it. What made it easy to miss is that the
+reentrancy is *new* — `READ-PEWORD` copied bytes and could not recurse,
+so `VARNAME-BUF` had never needed to survive anything. Adding recursion
+to a word makes every global it touches a question again, and the file
+gives no signal about which ones were already answered.
+
+Fixed with per-invocation arena storage for the name (`BODY-ALLOC`,
+with `BODY-ARENA-TOP` as a local so it is released on every exit path)
+rather than a second fixed buffer, since `${a#${b#$c}}` has no bound.
+
+### Found, not fixed
+
+A function defined entirely on one line — `n() { echo "$#"; }` —
+**hangs**. Confirmed by `git stash` to predate this iteration. GOALS.md
+records that each body line and the closing `}` must be on their own
+line, so this is a documented scope limit; hanging rather than
+diagnosing it is not. Worth its own iteration.
+
+### Verified
+
+`tests/diff/cases/braced-word.sh` — parameter, command and arithmetic
+expansion inside the word, quoted and unquoted; the untaken branch not
+running its `$(...)`; field splitting of literal and of `"$@"`;
+`${VAR:=word}` assigning the expanded value; expanded trim patterns;
+a `}` inside quotes; and nesting.
+
+507 assertions across 62 files, 14 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
+
+`word.sh` is down to two differences: the multi-line `$(` on its line
+104, and the stale-expansion case. `2.2-quoted-characters.sh` is down
+to one: nested `$(...)`.

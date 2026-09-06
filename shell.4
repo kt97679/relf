@@ -737,6 +737,26 @@ VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
                                \ by testing directly: a bare, unquoted
                                \ $x came out completely empty).
 
+VARIABLE IN-BRACED-WORD?     \ true while scanning the word of a
+                               \ ${VAR:-word}. Literal text there is
+                               \ part of the expansion's result and is
+                               \ field-split when unquoted, so
+                               \ "n ${nope:-a b c}" passes three
+                               \ arguments; literal text in an ordinary
+                               \ word never is, since SCAN-TOKEN stops
+                               \ at the separator instead of emitting
+                               \ it.
+
+VARIABLE EXPAND-SUPPRESSED?  \ true while a word is being scanned only
+                               \ to find where it ends, not for its
+                               \ value - the untaken branch of
+                               \ ${VAR:-word}. Everything is still
+                               \ dispatched (that is what makes the two
+                               \ branches agree about the word's
+                               \ extent), but a $(...) inside must not
+                               \ actually run. See
+                               \ EXPAND-BRACED-WORD-ASIDE.
+
 CREATE IFS-NM 4 ALLOT
 VARIABLE IFSC-C
 VARIABLE IFSC-P
@@ -1535,6 +1555,11 @@ VARIABLE ARITH-DEPTH
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN   ( skip closing paren )
+  EXPAND-SUPPRESSED? @ IF EXIT THEN
+  \ The text has been consumed; the command must not run. This is the
+  \ branch of ${VAR:-$(cmd)} that is not taken - the word is still
+  \ scanned, to find where it ends, but a shell that ran the command
+  \ anyway would be visibly wrong (Iteration 104).
   CS-COPY-I @ CMDSUB-TOKENIZE
   CMDSUB-ARGC @ 0 > IF
     PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
@@ -1663,20 +1688,104 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
                           \ VAR is.
 
 
-: READ-PEWORD ( --- )
-  \ Reads from TOK-POS up to (not including) the closing '}' into
-  \ PEWORD-BUF, advancing TOK-POS past the '}' - the "word" portion of
-  \ a ${VAR:-word}-style expansion.
-  0 PEWORD-LEN !
+DEFER SCAN-CHAR-CALL
+\ SCAN-TOKEN's one-character dispatch - quotes, backslash, '$', a
+\ backquote, an assignment tilde. Patched to the real word far below,
+\ where COPY-DOUBLE-QUOTED and friends exist; needed here because the
+\ "word" in ${VAR:-word} is ordinary word text and gets expanded by
+\ exactly the same machinery as any other, rather than by a second
+\ copy of it.
+
+VARIABLE CBW-START
+VARIABLE EBW-NAME       \ arena offset of the saved name
+VARIABLE EBW-NAMELEN
+
+: EXPAND-BRACED-WORD ( --- )
+  \ TOK-POS is at the first character of the word in ${VAR:-word}.
+  \ Expands it in place into the token being built, and consumes the
+  \ closing '}'.
+  \
+  \ A '}' at this level ends the word; one inside quotes, or inside a
+  \ nested ${...} or $(...), does not, because the dispatch consumes
+  \ those regions whole. Nesting therefore works without being
+  \ arranged for.
+  \
+  \ VARNAME-BUF is saved across the scan and put back afterwards. This
+  \ word introduced reentrancy where there was none - the old
+  \ READ-PEWORD only copied bytes - and an inner $NAME writes its own
+  \ name into that same buffer, which both TRIM-PARAM and
+  \ ${VAR:=word}'s SET-SHVAR read after the scan returns.
+  \ "${x#$HOME}" trimmed HOME from HOME and quietly gave empty.
+  \ FORTH-STYLE.md section 9, found by testing rather than by reading.
+  \
+  \ Per-invocation arena storage rather than a second fixed buffer,
+  \ since the nesting has no bound: BODY-ARENA-TOP is a local, so the
+  \ allocation is released on every exit path.
+  IN-BRACED-WORD? @ BODY-ARENA-TOP @
+  {: IN-BRACED-WORD? BODY-ARENA-TOP | EBW-NAME EBW-NAMELEN :}
+  -1 IN-BRACED-WORD? !
+  VN-LEN @ 1+ EBW-NAMELEN !
+  EBW-NAMELEN @ BODY-ALLOC EBW-NAME !
+  VARNAME-BUF EBW-NAME @ BODY@ EBW-NAMELEN @ MOVE
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 125 <> ELSE 0 THEN
   WHILE
-    TOK-POS @ C@ PEWORD-BUF PEWORD-LEN @ + C!
-    PEWORD-LEN @ 1+ PEWORD-LEN !
-    TOK-POS @ 1+ TOK-POS !
+    SCAN-CHAR-CALL
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
+  EBW-NAME @ BODY@ VARNAME-BUF EBW-NAMELEN @ MOVE
+  EBW-NAMELEN @ 1- VN-LEN ! ;
+
+: EXPAND-BRACED-WORD-ASIDE ( --- )
+  \ Consumes the word without letting any of it be seen: the branch of
+  \ ${VAR:-word} that is not taken.
+  \
+  \ Deliberately the same scan as the live path rather than a separate
+  \ skipper. Two scanners would be two answers to "where does this word
+  \ end", and FORTH-STYLE.md section 11 is about exactly that: copies
+  \ drift, and here they would drift on quoted braces.
+  \
+  \ Three things make the scan invisible. TOK-OUT is declared as a
+  \ local, so it is restored on exit and whatever was written is
+  \ rewound. IN-DQ-CONTEXT? suppresses field splitting, which would
+  \ otherwise advance ARGC for a "$@" in the discarded word.
+  \ EXPAND-SUPPRESSED? stops a $(...) from running.
+  IN-DQ-CONTEXT? @ EXPAND-SUPPRESSED? @ TOK-OUT @
+  {: IN-DQ-CONTEXT? EXPAND-SUPPRESSED? TOK-OUT :}
+  -1 IN-DQ-CONTEXT? !
+  -1 EXPAND-SUPPRESSED? !
+  EXPAND-BRACED-WORD ;
+
+: CAPTURE-BRACED-WORD ( --- )
+  \ Expands the word and leaves the result in PEWORD-BUF instead of in
+  \ the token: what ${VAR%pattern} needs, since the pattern is matched
+  \ against rather than emitted, and what ${VAR:=word} needs for the
+  \ value it assigns.
+  \
+  \ The token buffer is the scratch space - expand into it and rewind -
+  \ so ENSURE-ROOM keeps working normally. Writing into a separate
+  \ buffer instead would leave ENSURE-ROOM comparing a TOK-OUT in one
+  \ buffer against a TOK-POS in another, which is arithmetic with no
+  \ meaning.
+  \
+  \ Field splitting is suppressed: a pattern is one pattern, and an
+  \ assigned value is one value.
+  IN-DQ-CONTEXT? @ TOK-OUT @ {: IN-DQ-CONTEXT? TOK-OUT :}
+  TOK-OUT @ CBW-START !
+  -1 IN-DQ-CONTEXT? !
+  EXPAND-BRACED-WORD
+  TOK-OUT @ CBW-START @ - DUP 255 > IF DROP 255 THEN
+  PEWORD-LEN !
+  CBW-START @ PEWORD-BUF PEWORD-LEN @ MOVE
   0 PEWORD-BUF PEWORD-LEN @ + C! ;
+
+: USE-BRACED-WORD? ( value-or-0 --- f )
+  \ Does this modifier's word apply? True when the variable is unset,
+  \ or empty and the modifier was written with a ':'. The three
+  \ branches below all asked this in the same two nested IFs; asking it
+  \ once is what lets each branch be a plain choice between two words.
+  DUP 0= IF DROP -1 EXIT THEN
+  CSTRLEN 0= PEW-COLON? @ AND ;
 
 : READ-VARNAME ( --- )
   \ Reads a POSIX portable variable name from TOK-POS into
@@ -1733,48 +1842,36 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
   TOK-POS @ C@
   DUP 45 = IF                         ( '-': default value )
     DROP TOK-POS @ 1+ TOK-POS !
-    READ-PEWORD
     VARNAME-BUF LOOKUP-VAR
-    DUP 0= IF
-      DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
+    DUP USE-BRACED-WORD? IF
+      DROP EXPAND-BRACED-WORD
     ELSE
-      DUP CSTRLEN 0= PEW-COLON? @ AND IF
-        DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
-      ELSE
-        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
-      THEN
+      EXPAND-BRACED-WORD-ASIDE
+      EMIT-LOOKED-UP-VAR
     THEN
     EXIT
   THEN
   DUP 61 = IF                         ( '=': assign default )
     DROP TOK-POS @ 1+ TOK-POS !
-    READ-PEWORD
     VARNAME-BUF LOOKUP-VAR
-    DUP 0= IF
-      DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
-      PEWORD-BUF TYPE0-TO-TOK-SPLIT
+    DUP USE-BRACED-WORD? IF
+      DROP
+      CAPTURE-BRACED-WORD
+      VARNAME-BUF PEWORD-BUF SET-SHVAR
+      PEWORD-BUF DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
     ELSE
-      DUP CSTRLEN 0= PEW-COLON? @ AND IF
-        DROP VARNAME-BUF PEWORD-BUF SET-SHVAR
-        PEWORD-BUF TYPE0-TO-TOK-SPLIT
-      ELSE
-        DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
-      THEN
+      EXPAND-BRACED-WORD-ASIDE
+      EMIT-LOOKED-UP-VAR
     THEN
     EXIT
   THEN
   DUP 43 = IF                         ( '+': alternate value )
     DROP TOK-POS @ 1+ TOK-POS !
-    READ-PEWORD
     VARNAME-BUF LOOKUP-VAR
-    DUP 0= IF
-      DROP
+    USE-BRACED-WORD? IF               ( unset/empty: no alternate )
+      EXPAND-BRACED-WORD-ASIDE
     ELSE
-      DUP CSTRLEN 0= PEW-COLON? @ AND IF
-        DROP
-      ELSE
-        DROP PEWORD-BUF TYPE0-TO-TOK-SPLIT
-      THEN
+      EXPAND-BRACED-WORD
     THEN
     EXIT
   THEN
@@ -1786,7 +1883,7 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
       TOK-POS @ 1+ TOK-POS !
       -1 PEW-LONGEST? !
     THEN
-    READ-PEWORD
+    CAPTURE-BRACED-WORD
     TRIM-PARAM-CALL
     EXIT
   THEN
@@ -1798,7 +1895,7 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
       TOK-POS @ 1+ TOK-POS !
       -1 PEW-LONGEST? !
     THEN
-    READ-PEWORD
+    CAPTURE-BRACED-WORD
     TRIM-PARAM-CALL
     EXIT
   THEN
@@ -2069,6 +2166,39 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   TOK-OUT @ ARGV ARGC @ CELLS + @ > 0= IF 0 EXIT THEN
   TOK-OUT @ 1- C@ DUP 61 = SWAP 58 = OR ;
 
+: SCAN-TOKEN-CHAR ( --- )
+  \ Dispatches the one character at TOK-POS, consuming it (or the whole
+  \ quoted/expanded region it opens) and emitting its content at
+  \ TOK-OUT.
+  \
+  \ Factored out of SCAN-TOKEN so EXPAND-BRACED-WORD can use it: the
+  \ word in ${VAR:-word} is ordinary word text, and the alternative was
+  \ a second copy of this dispatch that would have had to be kept in
+  \ step with this one.
+  TOK-POS @ C@
+  DUP 96 = IF
+    DROP
+    -1 TOK-WAS-QUOTED? !
+    TOK-POS @ 1+ TOK-POS !
+    96 EXPAND-CMDSUB
+  ELSE DUP 39 = IF DROP COPY-SINGLE-QUOTED
+  ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
+  ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
+  ELSE DUP 36 = IF DROP EXPAND-VAR
+  ELSE DUP 126 = ASSIGN-TILDE-POINT? AND IF
+    \ POSIX expands a tilde in an ASSIGNMENT after the '=' and after
+    \ each unquoted ':', so "a=~/stuff" and "PATH=~/bin:~/sbin" both
+    \ work. Elsewhere in a word '~' is literal, which is why this is
+    \ not simply "is the character a tilde" - and why it is here and
+    \ not in COPY-DOUBLE-QUOTED, where a tilde stays literal too.
+    DROP TRY-TILDE-EXPAND
+  ELSE
+    IN-BRACED-WORD? @ IF EMIT-EXPANDED-CHAR ELSE EMIT-TOK-CHAR THEN
+    TOK-POS @ 1+ TOK-POS !
+  THEN THEN THEN THEN THEN THEN ;
+
+' SCAN-TOKEN-CHAR IS SCAN-CHAR-CALL
+
 : SCAN-TOKEN ( --- )
   \ Reads from TOK-POS, writing the *unquoted* content via
   \ EMIT-TOK-CHAR (at TOK-OUT, which only ever trails or equals
@@ -2078,28 +2208,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
   WHILE
-    TOK-POS @ C@
-    DUP 96 = IF
-      DROP
-      -1 TOK-WAS-QUOTED? !
-      TOK-POS @ 1+ TOK-POS !
-      96 EXPAND-CMDSUB
-    ELSE DUP 39 = IF DROP COPY-SINGLE-QUOTED
-    ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
-    ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
-    ELSE DUP 36 = IF DROP EXPAND-VAR
-    ELSE DUP 126 = ASSIGN-TILDE-POINT? AND IF
-      \ POSIX expands a tilde in an ASSIGNMENT after the '=' and after
-      \ each unquoted ':', so "a=~/stuff" and "PATH=~/bin:~/sbin" both
-      \ work. Elsewhere in a word '~' is literal, which is why this is
-      \ not simply "is the character a tilde" - and why it is here in
-      \ SCAN-TOKEN and not in COPY-DOUBLE-QUOTED, where a tilde stays
-      \ literal too.
-      DROP TRY-TILDE-EXPAND
-    ELSE
-      EMIT-TOK-CHAR
-      TOK-POS @ 1+ TOK-POS !
-    THEN THEN THEN THEN THEN THEN
+    SCAN-TOKEN-CHAR
   REPEAT ;
 
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
