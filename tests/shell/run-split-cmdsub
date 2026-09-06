@@ -1,0 +1,28 @@
+#!/bin/sh
+# tests/shell/run-split-cmdsub - field splitting of an unquoted command
+# substitution, and the assignment case that must NOT split (Iter. 66).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'for c in $(echo a s d f); do\n  echo "[$c]"\ndone\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "unquoted \$(...) splits into fields (first)" "[a]" "$out"
+assert_output_contains "unquoted \$(...) splits into fields (last)"  "[f]" "$out"
+
+out=$("$THIS_SH" -c 'echo "[$(echo a b)]"' 2>/dev/null)
+assert_output_contains "quoted \$(...) stays one word" "[a b]" "$out"
+
+# POSIX: an assignment's value is not field-split, however many blanks
+printf 'x=$(echo a b)\necho "[$x]"\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "assignment from \$(...) keeps the blanks" "[a b]" "$out"
+
+printf "p='a b'\nq=\$p\necho \"[\$q]\"\n" > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "assignment from \$VAR keeps the blanks" "[a b]" "$out"
+
+printf "v='a b'\nfor w in \$v; do\n  echo \"<\$w>\"\ndone\n" > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "unquoted \$VAR still splits (first)" "<a>" "$out"
+assert_output_contains "unquoted \$VAR still splits (last)"  "<b>" "$out"
+report

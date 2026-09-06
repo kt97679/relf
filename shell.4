@@ -627,6 +627,40 @@ VARIABLE IFS-SPLIT-PENDING?  \ true once an IFS character has been
                                \ field, and multiple consecutive IFS
                                \ characters collapse into a single
                                \ split rather than several empty ones.
+VARIABLE TAP-S
+VARIABLE TAP-L
+VARIABLE TAP-I
+
+: TAP-NAME-CHAR? ( c --- f )
+  DUP 95 = IF DROP -1 EXIT THEN
+  DUP 47 > OVER 58 < AND IF DROP -1 EXIT THEN
+  DUP 64 > OVER 91 < AND IF DROP -1 EXIT THEN
+  DUP 96 > SWAP 123 < AND ;
+
+: TOKEN-IS-ASSIGN-PREFIX? ( --- f )
+  \ Does the token built so far look like "NAME=" ? Read from the
+  \ token being accumulated (ARGV's current entry through TOK-OUT)
+  \ rather than kept as a flag, so it needs no reset discipline.
+  ARGV ARGC @ CELLS + @ TAP-S !
+  TAP-S @ 0= IF 0 EXIT THEN
+  TOK-OUT @ TAP-S @ - TAP-L !
+  TAP-L @ 2 < IF 0 EXIT THEN
+  0 TAP-I !
+  BEGIN
+    TAP-I @ TAP-L @ < IF TAP-S @ TAP-I @ + C@ 61 <> ELSE 0 THEN
+  WHILE
+    TAP-S @ TAP-I @ + C@ TAP-NAME-CHAR? 0= IF 0 EXIT THEN
+    TAP-I @ 1+ TAP-I !
+  REPEAT
+  TAP-I @ 0 > TAP-I @ TAP-L @ < AND ;
+
+VARIABLE IN-ASSIGN-CONTEXT?
+\ True once the token being built looks like "NAME=" - i.e. an
+\ assignment word. POSIX does NOT field-split the value of an
+\ assignment, so "q=$p" and "x=$(echo a b)" each stay a single word
+\ however many blanks the expansion contains. Set by SCAN-TOKEN as it
+\ scans, cleared at the start of every token.
+
 VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
                                \ syntactic double-quoted span - set (and
                                \ later cleared) by COPY-DOUBLE-QUOTED
@@ -664,7 +698,7 @@ VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
-  IN-DQ-CONTEXT? @ IF
+  IN-DQ-CONTEXT? @ TOKEN-IS-ASSIGN-PREFIX? OR IF
     EMIT-TOK-CHAR
     EXIT
   THEN
@@ -1422,8 +1456,13 @@ VARIABLE ARITH-DEPTH
     \ entry) and reproduced down to a single command: `echo $(true)`.
     CMDSUB-OUT-LEN @ 0 > IF
       CMDSUB-OUT-LEN @ ENSURE-ROOM
+      \ EMIT-EXPANDED-CHAR, not EMIT-TOK-CHAR: an *unquoted* command
+      \ substitution is subject to IFS field splitting exactly as an
+      \ unquoted $VAR is, so "for c in $(echo a s d f)" runs four
+      \ times. EMIT-EXPANDED-CHAR checks IN-DQ-CONTEXT? itself, so
+      \ "$(...)" inside double quotes still yields one word.
       CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
-        DUP I + C@ EMIT-TOK-CHAR
+        DUP I + C@ EMIT-EXPANDED-CHAR
       LOOP DROP
     THEN
   THEN ;

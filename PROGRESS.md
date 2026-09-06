@@ -6326,3 +6326,46 @@ pipeline stages (`read.sh`), field splitting in a `for` word list
 (`for.sh`), a braceless compound function body (`function.sh`),
 `command.sh`, `readonly.sh`, `2.2-quoted-characters.sh`, and the alias
 conformance case.
+## Iteration 66: field splitting of command substitution, and the
+## assignment exception
+
+An unquoted `$(...)` is now subject to IFS field splitting, so
+`for c in $(echo a s d f)` runs four times. One word changed in the
+command-substitution splice: `EMIT-EXPANDED-CHAR` instead of
+`EMIT-TOK-CHAR`, the same word an unquoted `$VAR` already used.
+
+### Which immediately exposed a bigger, older bug
+
+That one-word change broke `x=$(echo a b)` — the value got split and
+the variable ended up empty. Checking whether this was new found that
+**`q=$p` was already broken the same way**, and had been since IFS
+splitting landed in Iteration 36. POSIX does not field-split the value
+of an assignment; this shell was splitting both, and only the
+command-substitution path had been accidentally exempt by not
+splitting at all.
+
+So the honest fix was not to revert but to implement the exception:
+`TOKEN-IS-ASSIGN-PREFIX?` asks whether the token accumulated so far
+looks like `NAME=`, and `EMIT-EXPANDED-CHAR` suppresses splitting when
+it does — alongside the `IN-DQ-CONTEXT?` check it already had.
+
+It is computed from the token being built rather than kept as a flag,
+so there is no reset discipline to get wrong: no "clear it at the start
+of each token" that a later code path could skip. Given how many bugs
+in this project have been stale state (Iterations 28, 47, 49, 61), a
+derived answer beat a stored one here.
+
+**Net: two POSIX conformance bugs fixed, one of which nothing had
+noticed for thirty iterations.** Reverting would have hidden it again.
+
+### Verified
+
+`tests/shell/run-split-cmdsub` (7 assertions): unquoted `$(...)`
+splitting, quoted `$(...)` staying one word, assignment from `$(...)`
+*and* from `$VAR` keeping their blanks, and unquoted `$VAR` still
+splitting. 451 assertions across 54 files plus 1991 core OK markers,
+both cell widths.
+
+mrsh-suite stays at 12 — `for.sh` also needs `IFS=':'` set inside a
+subshell to affect splitting there, which is the next thing in that
+file.
