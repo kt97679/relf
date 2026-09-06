@@ -21,6 +21,24 @@ X
 out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
 assert_output_contains "escaped backslash does not continue the line" "b" "$out"
 
+# THREE backslashes are an escaped backslash plus a continuation. The
+# older test looked only at the character before the last backslash and
+# called this escaped (Iteration 102).
+cat > "$t/d.sh" <<'X'
+printf '[%s]\n' "a\\\
+b"
+X
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "odd backslash run still continues the line" '[a\b]' "$out"
+
+# FOUR are two escaped backslashes and no continuation.
+cat > "$t/e.sh" <<'X'
+printf '[%s]\n' "z\\\\\
+b"
+X
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "even backslash run does not continue the line" '[z\\b]' "$out"
+
 # continuation inside a loop body reads from the stored body
 cat > "$t/c.sh" <<'X'
 for i in 1 2

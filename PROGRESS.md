@@ -7842,3 +7842,50 @@ differential cases against a live reference shell, 1991 core Forth OK
 markers, green on both 8-byte and 4-byte cell widths. `relfsh` starts
 in ~2ms from a byte-reproducible prebuilt image; the i386 build is
 ~90KB of engine plus image against dash's 121KB.
+## Iteration 102: a trailing backslash run, counted by parity
+
+`2.2-quoted-characters.sh` had two differences from its expected
+output. This is the smaller one, and it is independent of the other.
+
+    printf '%s\n' "\$\`\"\\\
+    test"
+
+The double-quoted string ends the line with **three** backslashes: an
+escaped backslash, then a continuation. `JOIN-CONTINUATIONS` decided
+"escaped or continuation?" by looking at the single character before
+the final backslash — a backslash there meant "escaped, do not
+continue". That is right for two and wrong for three, five, seven.
+
+The test is the parity of the whole trailing run: each pair is one
+escaped backslash, and an odd one left over continues the line.
+`JC-CONTINUES?` scans the run backwards and returns
+`run-length 1 AND 1 =`.
+
+### Why the existing tests missed it
+
+`run-continuation` covered one backslash and two — the two cases the
+old comment named. Nothing covered three. That is the shape
+`FORTH-STYLE.md` §13 warns about under "test the negative case": the
+old code was not missing a case so much as encoding a rule that
+happened to agree with the rule on every input anyone had tried.
+
+### Verified
+
+`tests/diff/cases/continuation.sh` — runs of one through five
+backslashes, inside double quotes and bare, against bash. Runs of
+four and five are what distinguish parity from any "look back one
+character" rule, in both directions.
+
+`2.2-quoted-characters.sh` is now down to one difference: the nested
+`$(echo $(echo "cmd 3"))` on its line 27.
+
+507 assertions across 62 files, 13 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
+
+**A correction to the numbers in earlier entries.** The assertion
+count recorded from Iteration 95 onward was 507, but the actual sum of
+`tests/shell/run-all`'s own per-file counts was 505 before this
+iteration's two additions; it is 507 now by coincidence. The file
+count of 62 is `ls tests/shell | wc -l`, which includes `lib.sh` and
+`run-all` themselves, so 60 files really run. Left as-is going
+forward, with the method stated here so the series stays comparable.

@@ -2183,6 +2183,30 @@ DEFER READ-INPUT-CALL
 
 VARIABLE JC-LEN
 VARIABLE JC-N
+VARIABLE JC-I
+
+: JC-CONTINUES? ( --- f )
+  \ True when LINE-BUF's first JC-LEN bytes end in an ODD number of
+  \ backslashes. Each pair is one escaped backslash; an odd one left
+  \ over is the continuation.
+  \
+  \ Parity, not "is the previous character a backslash". That older
+  \ test called "a\\\" escaped, because it saw a backslash before the
+  \ last one - but three backslashes are an escaped backslash followed
+  \ by a real continuation, which is exactly the shape
+  \ 2.2-quoted-characters.sh uses.
+  \
+  \ JC-I is a scratch local rather than a plain global: the run is
+  \ rescanned after every join, and READ-INPUT-CALL can reach a great
+  \ deal of the shell in between.
+  {: | JC-I :}
+  JC-LEN @ JC-I !
+  BEGIN
+    JC-I @ 0 > IF LINE-BUF JC-I @ 1- + C@ 92 = ELSE 0 THEN
+  WHILE
+    JC-I @ 1- JC-I !
+  REPEAT
+  JC-LEN @ JC-I @ - 1 AND 1 = ;
 
 : JOIN-CONTINUATIONS ( u --- u2 )
   \ LINE-BUF holds u bytes. A line ending in an unescaped backslash is
@@ -2194,14 +2218,9 @@ VARIABLE JC-N
   \ line continuation exists. It reads through READ-INPUT-CALL, so a
   \ continuation inside a loop body or function reads from the stored
   \ body like everything else.
-  \
-  \ "\\" at end of line is an escaped backslash, not a continuation,
-  \ which is why the character before is checked too.
   JC-LEN !
   BEGIN
-    JC-LEN @ 0 > IF LINE-BUF JC-LEN @ 1- + C@ 92 = ELSE 0 THEN
-    JC-LEN @ 1 > IF LINE-BUF JC-LEN @ 2 - + C@ 92 <> ELSE -1 THEN
-    AND
+    JC-CONTINUES?
   WHILE
     JC-LEN @ 1- JC-LEN !
     LINE-BUF JC-LEN @ + LINE-MAX JC-LEN @ - READ-INPUT-CALL JC-N !
