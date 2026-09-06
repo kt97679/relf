@@ -7478,3 +7478,53 @@ case.
 multi-line assignment, and execution continuing afterwards. 507
 assertions across 62 files, 9 differential cases, 1991 core OK
 markers, both cell widths, mrsh 17 of 21.
+## Iteration 94: is startup cost the reason the loop is slow? No — but
+## the wrapper is 43% of startup
+
+Asked whether the ~190x pure-loop gap comes from `relf` loading a
+separate image file where `dash` loads only a binary, and whether
+embedding the image would fix it. Measured rather than reasoned.
+
+**For the loop: no, and not close.** Timing the same script at 0, 1000,
+2000 and 4000 iterations gives a **fixed cost of 4ms** and about
+**0.25-0.3ms per iteration**. On the 2000-iteration benchmark that is
+4ms of 600ms — 0.7% — and the image read is a fraction of even that.
+The gap is interpretation, exactly as `PARSE-EXPAND-PLAN.md` says: work
+redone every iteration that a real shell does once.
+
+**But the question found something real in startup:**
+
+| invocation | per start |
+|---|---:|
+| `relfsh -c true` (wrapper) | 3.5ms |
+| `relf kernel-shell.img -c true` (direct) | 2.0ms |
+| `dash -c true` | 0.72ms |
+
+`relfsh` is a `/bin/sh` script that stats sources and rebuilds the
+image if stale. **That wrapper costs 1.5ms — 43% of startup** — and it
+is pure overhead at run time. Reading the 230KB image costs on the
+order of 0.1-0.2ms by comparison.
+
+So embedding the image in the binary is worth doing, for two reasons
+that are *not* the one asked about: it removes the need for the wrapper
+at all (nothing to locate or rebuild), and it makes RelF's shell a
+genuine single executable — which fits the no-dependencies goal better
+than an engine plus a data file plus a shell script. Expected result is
+startup around 2ms or a little under, against dash's 0.72ms; the
+remainder is `MAIN`'s own setup, not I/O.
+
+It would not move the loop number at all, and should not be sold as
+performance work.
+
+`tests/bench` now measures the direct invocation alongside the wrapper,
+so the wrapper's cost stays visible rather than being rediscovered. Its
+own numbers confirm the split cleanly:
+
+| shell | loop | spawn | startup |
+|---|---:|---:|---:|
+| relfsh (wrapper) | 694 | 146 | 383 |
+| relf (direct)    | 691 | 128 | 179 |
+| dash             | 4   | 72  | 74  |
+
+Startup halves; the loop does not move at all. That is the whole answer
+in one table.
