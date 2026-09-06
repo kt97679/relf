@@ -6607,3 +6607,45 @@ not expose), backquotes (`2.2-quoted-characters.sh`), the alias
 conformance case, and `command.sh` — which is the one deliberately
 left failing on the POSIX-versus-bash alias conflict recorded in
 `GOALS.md`.
+## Iteration 73: backquote command substitution
+
+`` `cmd` `` works, in a bare word and inside double quotes, and is
+literal inside single quotes.
+
+### One parameter, not a second implementation
+
+The backquote form is `$(...)` with a different terminator and nothing
+else. So `EXPAND-CMDSUB` gained a `closer` parameter — `)` for the
+dollar form, `` ` `` for this one — and both call the same word. A
+second copy would have been precisely the duplication
+`FORTH-STYLE.md` exists to prevent, and precisely what Ramey names as
+the mistake in bash's own `parse_comsub`.
+
+`NORMALIZE-OPERATORS` also needed a backquoted region copied verbatim,
+for the same reason a `$(...)` one is: the operators inside belong to
+the substituted command, not to the enclosing line.
+
+### What is left in Phase E, and why it should not be built here
+
+`2.2-quoted-characters.sh` now differs on one line: a **nested**
+`$(...)` inside a substitution. That is the last piece, and it is the
+one that should *not* be added to this second tokenizer.
+
+Ramey's chapter is explicit that bash's equivalent "knows an
+uncomfortable amount of shell syntax and duplicates rather more of the
+token-reading code than is optimal", and recommends instead using the
+real parser with `)` flagged as a context-dependent EOF and parser
+state saved and restored around a recursive parse. This shell now has
+what that needs: replay as an input source (Iteration 42), locals for
+cheap state save/restore (38), and `GRP-DEPTH`-style nesting counts.
+Three iterations have each added a little to `CMDSUB-TOKENIZE`; the
+fourth should replace it.
+
+### Verified
+
+`tests/shell/run-backquote` (6 assertions): backquotes inside double
+quotes, bare in a word, containing a quoted argument, in an
+assignment, `$(...)` still working alongside, and backquotes literal
+inside single quotes. 487 assertions across 59 files plus 1991 core OK
+markers, both cell widths. mrsh-suite stays at 15 for the reason
+above.

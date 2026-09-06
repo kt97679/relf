@@ -1,0 +1,26 @@
+#!/bin/sh
+# tests/shell/run-backquote - the `cmd` form of command substitution
+# (Iteration 73). Same machinery as $(...), differing only in its
+# terminator.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+out=$("$THIS_SH" -c 'echo "got: `echo hello`"' 2>/dev/null)
+assert_output_contains "backquotes inside double quotes" "got: hello" "$out"
+
+out=$("$THIS_SH" -c 'echo [`echo bare`]' 2>/dev/null)
+assert_output_contains "bare backquotes in a word" "[bare]" "$out"
+
+out=$("$THIS_SH" -c 'echo "q: `echo "two words"`"' 2>/dev/null)
+assert_output_contains "a quoted argument inside backquotes" "q: two words" "$out"
+
+printf 'x=`echo hi`\necho "[$x]"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "assignment from backquotes" "[hi]" "$out"
+
+out=$("$THIS_SH" -c 'echo "[$(echo dollar-form)]"' 2>/dev/null)
+assert_output_contains "\$(...) still works alongside" "[dollar-form]" "$out"
+
+out=$("$THIS_SH" -c "echo '\`not a command\`'" 2>/dev/null)
+assert_output_contains "backquotes inside single quotes are literal" '`not a command`' "$out"
+report

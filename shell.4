@@ -805,6 +805,7 @@ VARIABLE CS-COPY-I
 VARIABLE CS-SQ?
 VARIABLE CS-DQ?
 VARIABLE CS-QC
+VARIABLE CS-CLOSER
 
 256 CONSTANT CMDSUB-OUT-MAX
 CREATE CMDSUB-OUT-BUF CMDSUB-OUT-MAX ALLOT
@@ -1471,14 +1472,18 @@ VARIABLE ARITH-DEPTH
   TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
   ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL-EXPANDED ;
 
-: EXPAND-CMDSUB ( --- )
-  \ TOK-POS is at the '(' immediately following '$'.
-  TOK-POS @ 1+ TOK-POS !            ( skip '(' )
+: EXPAND-CMDSUB ( closer --- )
+  \ TOK-POS is just inside the substitution; `closer` is the character
+  \ that ends it - ')' for $(...), '`' for the backquote form, which
+  \ is otherwise identical. Parameterising the terminator was all the
+  \ backquote form needed; a second copy of this word would have been
+  \ exactly the duplication FORTH-STYLE.md warns about.
+  CS-CLOSER !
   0 CS-COPY-I !
   0 CS-SQ? !  0 CS-DQ? !
   BEGIN
     TOK-POS @ TOK-END @ < IF
-      TOK-POS @ C@ 41 <> CS-SQ? @ OR CS-DQ? @ OR
+      TOK-POS @ C@ CS-CLOSER @ <> CS-SQ? @ OR CS-DQ? @ OR
     ELSE 0 THEN
   WHILE
     \ A ')' inside quotes belongs to the command text, not to the
@@ -1770,7 +1775,8 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
       TOK-POS @ 2 + TOK-POS !
       EXPAND-ARITH
     ELSE
-      EXPAND-CMDSUB
+      TOK-POS @ 1+ TOK-POS !          ( skip '(' )
+      41 EXPAND-CMDSUB
     THEN
     EXIT
   THEN
@@ -1845,10 +1851,13 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
       THEN
     ELSE TOK-POS @ C@ 36 = IF
       EXPAND-VAR
+    ELSE TOK-POS @ C@ 96 = IF
+      TOK-POS @ 1+ TOK-POS !
+      96 EXPAND-CMDSUB
     ELSE
       TOK-POS @ C@ EMIT-TOK-CHAR
       TOK-POS @ 1+ TOK-POS !
-    THEN THEN
+    THEN THEN THEN
   REPEAT
   0 IN-DQ-CONTEXT? !
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
@@ -1896,14 +1905,19 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
   WHILE
     TOK-POS @ C@
-    DUP 39 = IF DROP COPY-SINGLE-QUOTED
+    DUP 96 = IF
+      DROP
+      -1 TOK-WAS-QUOTED? !
+      TOK-POS @ 1+ TOK-POS !
+      96 EXPAND-CMDSUB
+    ELSE DUP 39 = IF DROP COPY-SINGLE-QUOTED
     ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
     ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
     ELSE DUP 36 = IF DROP EXPAND-VAR
     ELSE
       EMIT-TOK-CHAR
       TOK-POS @ 1+ TOK-POS !
-    THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN
   REPEAT ;
 
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
@@ -4089,6 +4103,7 @@ VARIABLE NORM-IN-CMDSUB?   \ true while copying through a $(...)
                             \ substituted text - and "$(" must stay
                             \ fused for EXPAND-VAR to recognise it at
                             \ all. Same shape as NORM-IN-ARITH? below.
+VARIABLE NORM-IN-BQ?
 VARIABLE NORM-CMDSUB-DEPTH \ nested "(" inside the substitution, so a
                             \ "(" in the command text is not mistaken
                             \ for its closing ")"
@@ -4143,7 +4158,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
                                       \ the caller copies it back.
-  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-I NORM-C :}
+  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-I NORM-C :}
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
@@ -4165,6 +4180,10 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
         NORM-C @ NORM-EMIT
         NORM-I @ 1+ NORM-I !
       THEN
+    ELSE NORM-IN-BQ? @ IF
+      NORM-C @ 96 = IF 0 NORM-IN-BQ? ! THEN
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
     ELSE NORM-IN-CMDSUB? @ IF
       NORM-C @ 40 = IF NORM-CMDSUB-DEPTH @ 1+ NORM-CMDSUB-DEPTH ! THEN
       NORM-C @ 41 = IF
@@ -4197,6 +4216,13 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
         NORM-C @ NORM-EMIT
         NORM-I @ 1+ NORM-I !
       THEN
+    ELSE NORM-C @ 96 = IF
+      \ A backquoted region is copied verbatim for the same reason a
+      \ $(...) one is: the operators inside belong to the substituted
+      \ command, not to this line.
+      -1 NORM-IN-BQ? !
+      NORM-C @ NORM-EMIT
+      NORM-I @ 1+ NORM-I !
     ELSE NORM-C @ 39 = IF
       -1 NORM-IN-SQ? !
       NORM-C @ NORM-EMIT
@@ -4274,7 +4300,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     ELSE
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
   \ A quote still open at end of line is a syntax error, not something
   \ to paper over. POSIX: single quotes cannot contain single quotes,
