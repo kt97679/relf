@@ -531,13 +531,24 @@ This was the blocker in front of the `forth` builtin.
    section below), so neither line is ever printed and stdout is
    exactly what the shell itself writes.
 
-   **One test cannot pass without making the shell less correct.**
-   `command.sh` differs from bash on one line only: bash does not
-   expand or report aliases in non-interactive shells, a documented
-   deviation, while POSIX says alias substitution applies — which is
-   what this shell does. Matching bash there would mean emulating its
-   extension. Left failing deliberately; the criterion and the goal
-   disagree on that line and the goal wins.
+   **Two tests cannot pass without making the shell less correct**,
+   and they are the same conflict. Bash does not expand aliases in
+   non-interactive shells — a documented deviation — while POSIX says
+   alias substitution applies, which is what this shell does.
+   `command.sh` differs on one line because `command -v ll` reports an
+   alias here and not in bash; `2.2.3-alias-expansion.fail.sh` expects
+   status 127 purely because bash never expands the alias and so finds
+   no command. Matching either would mean emulating bash's extension.
+   Left failing deliberately: the criterion and the goal disagree on
+   these, and the goal wins.
+
+   **So the realistic ceiling on this suite is 19 of 21**, not 21.
+   Reaching it needs two things: nested `$(...)` (see the Phase E note
+   about reusing the real parser rather than growing `CMDSUB-TOKENIZE`
+   further) and `~user` tilde expansion, which needs a
+   password-database primitive the kernel does not expose. Both are
+   deliberate pieces of work rather than gaps, and both are described
+   where they belong rather than only here.
 
    That number has moved exactly three times, and never yet because a
    `shell.4` feature carried a vendored test file across the line:

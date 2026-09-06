@@ -6982,3 +6982,40 @@ an undesigned shape would be asserting behaviour nobody chose.
 (`word.sh`, needs a kernel primitive), the alias conformance case, and
 `command.sh`, still deliberately failing on the POSIX-versus-bash
 alias conflict.
+## Iteration 81: the alias conformance case is the same conflict
+
+Diagnosed `2.2.3-alias-expansion.fail.sh` rather than assuming it was
+Phase G work like the unterminated-quote case (Iteration 60). It is
+not:
+
+    alias myalias="echo )"
+    var="$(myalias arg-two)"
+
+bash exits 127 — not because it rejects anything, but because it does
+not expand aliases in non-interactive shells, so `myalias` is simply
+not a command. This shell expands it, per POSIX, and exits 0.
+
+That is the *same* deviation already recorded for `command.sh`. Both
+remaining alias tests are one disagreement between the acceptance
+criterion (match bash byte for byte) and the goal (POSIX conformance),
+and on both this shell is on the POSIX side.
+
+**`GOALS.md` now states the realistic ceiling: 19 of 21, not 21.** It
+matters that the number is honest — a project tracking a score should
+not leave two permanently-unreachable tests looking like unfinished
+work, and someone picking this up cold would otherwise spend an
+iteration discovering what took one command to check.
+
+The two genuinely reachable ones are named where they belong: nested
+`$(...)`, which should come with replacing `CMDSUB-TOKENIZE` rather
+than extending it a fourth time, and `~user`, which needs a
+password-database primitive the kernel does not expose — an engine
+change, not shell work.
+
+### Status at 81 iterations
+
+17 of 21 mrsh tests pass, 2 of the remaining 4 by deliberate choice.
+502 assertions across 61 test files plus 1991 core Forth OK markers,
+green on both 8-byte and 4-byte cell widths. `relfsh` starts in ~1.8ms
+from a prebuilt, byte-reproducible image; the i386 build is
+90KB of engine plus image, against `dash`'s 121KB.
