@@ -1,0 +1,26 @@
+#!/bin/sh
+# tests/shell/run-multiline-group - a group whose opener is alone on
+# its line (Iteration 64). SPLIT-GROUP only handles a group contained
+# in one line.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'echo start\n(\n  a=inner\n  echo "in=$a"\n)\necho "out=[$a]"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "multi-line subshell body runs"   "in=inner" "$out"
+assert_output_contains "its assignment does not escape"  "out=[]"   "$out"
+assert_output_contains "execution continues afterwards"  "start"    "$out"
+
+printf '{\n  b=braced\n}\necho "b=$b"\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "multi-line brace group DOES affect the shell" "b=braced" "$out"
+
+printf '(\n  echo a\n)\necho "st=$?"\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "a multi-line group leaves a sane status" "st=0" "$out"
+
+printf '(\n  echo one\n  (\n    echo two\n  )\n  echo three\n)\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "nested multi-line group: inner" "two"   "$out"
+assert_output_contains "outer body continues past it"   "three" "$out"
+report

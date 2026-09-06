@@ -6220,3 +6220,57 @@ taking effect) and a multi-line group inside a body not truncating it.
 430 assertions across 52 files plus 1991 core OK markers, both cell
 widths. mrsh-suite stays at 10, since `function.sh` needs the
 braceless-body form too.
+## Iteration 64: multi-line groups — mrsh 10 -> 11 passed
+
+`subshell.sh` passes. A group whose opener is alone on its line now
+works:
+
+    (
+        echo a
+    )
+
+`SPLIT-GROUP` only handles a group contained within one line, so this
+captures the body the way `DO-WHILE` and `DO-FUNCDEF` do and replays it
+through `DO-WHILE-BODY`. A `(` group runs in a fork, a `{` group in
+this shell — the same distinction `SPLIT-GROUP`'s two callers already
+make.
+
+### The diagnosis was the interesting part
+
+`subshell.sh` and `return.sh` both produced output **identical to
+bash** and still failed. Their exit statuses were 127 and 124 (a
+timeout). The stdout matched only by accident: the lines of the group
+body ran as ordinary top-level commands, printing the same thing, while
+the bare `(` and `)` were each treated as a command that did not exist.
+
+Two things worth taking from that. A test comparing stdout *and* status
+caught something stdout alone would have called a pass. And "identical
+output" was the strongest possible hint that the failure was
+structural rather than a missing feature — the work was being done,
+just not by the construct that was supposed to do it.
+
+`MG-END?` is the fourth place this codebase counts nesting depth to
+find a construct's own terminator (after `CAPTURE-CONTINUE?`,
+`SPLIT-AT-3` and `FD-BODY-END?`). Four instances of one shape is worth
+a note for the next duplication audit, though they differ in which
+tokens open and close.
+
+### Known wart, recorded rather than hidden
+
+Reusing `DO-WHILE-BODY` for the replay means it also clears
+`LOOP-CONTROL-PENDING?` on the way out, so a `break` inside a
+multi-line group nested in a loop is swallowed instead of propagating.
+Still better than a second copy of the replay loop; the flag handling
+wants factoring out when something actually needs it.
+
+### Verified
+
+`tests/shell/run-multiline-group` (7 assertions): a subshell body
+running with its assignment not escaping, a brace group's assignment
+persisting, a sane exit status, and a nested multi-line group with the
+outer body continuing past it. 437 assertions across 53 files plus 1991
+core OK markers, both cell widths.
+
+**mrsh-suite: 10 passed -> 11.** `return.sh` hangs (status 124) and is
+next; `for.sh` needs field splitting of an unquoted variable in a `for`
+word list.

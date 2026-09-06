@@ -5387,6 +5387,60 @@ VARIABLE AL-VALUE
 ' DO-ALIAS   S" alias"   BUILTIN
 ' DO-UNALIAS S" unalias" BUILTIN
 
+VARIABLE MG-SUB?
+VARIABLE MG-DEPTH
+
+: MG-END? ( --- f )
+  \ True at the ")" or "}" that closes THIS group, counting nesting -
+  \ the same shape as FD-BODY-END? and CAPTURE-CONTINUE?.
+  MG-SUB? @ IF S" )" LINE-IS? ELSE S" }" LINE-IS? THEN IF
+    MG-DEPTH @ 0 > IF MG-DEPTH @ 1- MG-DEPTH ! 0 ELSE -1 THEN
+  ELSE
+    MG-SUB? @ IF S" (" LINE-IS? ELSE FD-OPENS-BRACE? THEN IF
+      MG-DEPTH @ 1+ MG-DEPTH !
+    THEN
+    0
+  THEN ;
+
+: DO-MULTILINE-GROUP ( --- )
+  \ A group whose opener is alone on its line:
+  \
+  \     (
+  \         echo a
+  \     )
+  \
+  \ SPLIT-GROUP only handles a group contained in one line, so this
+  \ captures the body the way DO-WHILE and DO-FUNCDEF do and replays
+  \ it through DO-WHILE-BODY. A "(" group runs in a fork, a "{" group
+  \ in this shell - the same distinction SPLIT-GROUP's two callers
+  \ make.
+  \
+  \ Known wart: DO-WHILE-BODY clears LOOP-CONTROL-PENDING? on the way
+  \ out, so a "break" inside a multi-line group nested in a loop is
+  \ swallowed rather than propagating. Reusing it is still better than
+  \ a second copy of the replay loop; the flag handling wants
+  \ factoring out when something needs it.
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP MG-DEPTH :}
+  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
+  0 WHILE-BODY-LEN !
+  BEGIN
+    READ-NEXT-LOGICAL-LINE
+    MG-END? 0=
+  WHILE
+    ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
+  REPEAT
+  MG-SUB? @ IF
+    FORK DUP 0 = IF
+      DROP
+      DO-WHILE-BODY
+      LAST-STATUS @ SYS-EXIT
+    THEN
+    WAITPID DROP 8 RSHIFT 255 AND LAST-STATUS !
+  ELSE
+    DO-WHILE-BODY
+  THEN ;
+
 : RUN-TOKENIZED ( --- )
   BODY-ARENA-TOP @
   {: BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I :}
@@ -5421,6 +5475,10 @@ VARIABLE AL-VALUE
   \ segment handled by RUN-SIMPLE-OR-PIPELINE below. Before this, a
   \ trailing pipe or operator after a group was silently dropped -
   \ the scope limit recorded in Iteration 20.
+  ARGC @ 1 = IF
+    S" (" LINE-IS? IF -1 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
+    S" {" LINE-IS? IF  0 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
+  THEN
   AT-GROUP-END? IF
     S" (" LINE-IS? IF
       SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
