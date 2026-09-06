@@ -6433,3 +6433,55 @@ braceless compound function body (`function.sh`), `command.sh` (which
 needs `command -v` to report a *function* ahead of a same-named
 external, plus `ls -la` output matching), the newline-escape case in
 `2.2-quoted-characters.sh`, and the alias conformance case.
+## Iteration 69: `command -v` for reserved words and aliases, and
+## LF-only output
+
+### The systemic bug this uncovered
+
+`command.sh` came down to a one-byte-per-line difference: **`\r`**.
+
+This kernel's `CR` emits CRLF (13 then 10) — correct for a Forth
+console, wrong for a shell. Every builtin that printed a line — `pwd`,
+`command -v`, `readonly -p`, every diagnostic — had been emitting a
+stray carriage return since the first iteration, so their output
+differed from every other shell by one byte per line.
+
+It had gone unnoticed for 68 iterations because the shell's own test
+harness uses substring assertions, which `\r` does not disturb, and
+because `echo` is an external command that never went through this
+path. Only a byte-exact comparison against a reference implementation
+surfaced it. Fixed by redefining `CR` once at the top of `shell.4`, so
+every later definition in the file gets it and nothing outside is
+affected.
+
+That is the strongest argument yet for the differential test being the
+acceptance criterion rather than the hand-written suite: 463 local
+assertions all passed while every builtin emitted a wrong byte.
+
+### `command -v` extended
+
+Reserved words (`if`, `then`, `while`, …) and aliases are now reported,
+per POSIX — `command -v if` prints `if`, `command -v ll` prints
+`alias ll='ls -l'`. The alias *table* moved ahead of `DO-COMMAND`,
+leaving the expansion machinery where it needs `NORMALIZE-OPERATORS`.
+
+### A spec conflict, recorded rather than papered over
+
+`command.sh` still fails, on one line, and the reason is worth stating
+precisely: **bash does not expand or report aliases in non-interactive
+shells**, so `command -v ll` gives status 1 there. That is a documented
+bash deviation; POSIX says alias substitution applies, which is what
+this shell does.
+
+So on this one line the acceptance criterion (match bash byte for byte)
+and the goal (POSIX conformance) disagree, and this shell is on the
+POSIX side. Contorting to match bash's extension would make the shell
+less correct to make a number go up. Left as is, and recorded in
+`GOALS.md` so the failing count is read accurately.
+
+### Verified
+
+`tests/shell/run-newline` (3 assertions) checks directly that `pwd` and
+`command -v` emit no carriage return and still print their answer. 466
+assertions across 56 files plus 1991 core OK markers, both cell widths.
+mrsh-suite stays at 14 for the reason above.

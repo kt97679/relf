@@ -39,6 +39,22 @@
 
 CREATE LINE-BUF   LINE-MAX ALLOT
 CREATE ARGV       MAX-ARGS CELLS ALLOT
+
+\ ==================================================================
+\ Newline
+\ ==================================================================
+\ This kernel's own CR emits CRLF (13 then 10), which is right for a
+\ Forth console and wrong for a shell: every builtin that printed a
+\ line - pwd, command -v, readonly -p, every diagnostic - emitted a
+\ stray carriage return, so the output differed from every other
+\ shell by one byte per line. Found by diffing command.sh against
+\ bash, where the ONLY remaining difference was "\r".
+\
+\ Redefined here rather than spelled "10 EMIT" at each site: every
+\ later definition in this file then gets it automatically, and
+\ nothing outside shell.4 is affected.
+: CR ( --- )  10 EMIT ;
+
 : ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
 CREATE PATHBUF    PATH-MAX ALLOT
 CREATE CWDBUF     PATH-MAX ALLOT
@@ -2545,6 +2561,49 @@ VARIABLE FB-E
 
 : BUILTIN-NAME? ( c-addr --- f )  FIND-BUILTIN 0= 0= ;
 
+\ The alias TABLE lives here, ahead of DO-COMMAND, which has to
+\ report an alias. The expansion machinery (TRY-ALIAS/DO-ALIAS)
+\ stays further down, where NORMALIZE-OPERATORS and TOKENIZE are
+\ available.
+
+32  CONSTANT MAX-ALIASES
+64  CONSTANT ALIAS-NAME-MAX
+256 CONSTANT ALIAS-VALUE-MAX
+MAX-ALIASES ALIAS-NAME-MAX  * BUFFER: ALIAS-NAMES
+MAX-ALIASES ALIAS-VALUE-MAX * BUFFER: ALIAS-VALUES
+LINE-MAX BUFFER: ALIAS-LINE
+VARIABLE ALIAS-COUNT
+VARIABLE ALIAS-LINE-LEN
+VARIABLE ALIAS-DEPTH
+VARIABLE AL-I
+VARIABLE AL-LEN
+VARIABLE AL-NAME
+VARIABLE AL-VALUE
+
+: ALIAS-NAME-SLOT  ( i --- addr )  ALIAS-NAME-MAX  * ALIAS-NAMES  + ;
+: ALIAS-VALUE-SLOT ( i --- addr )  ALIAS-VALUE-MAX * ALIAS-VALUES + ;
+
+: FIND-ALIAS ( name-addr --- i | -1 )
+  {: AL-NAME | AL-I :}
+  BEGIN AL-I @ ALIAS-COUNT @ < WHILE
+    AL-I @ ALIAS-NAME-SLOT AL-NAME @ CSTR= IF AL-I @ EXIT THEN
+    AL-I @ 1+ AL-I !
+  REPEAT
+  -1 ;
+
+: SET-ALIAS ( name-addr value-addr --- )
+  {: AL-NAME AL-VALUE | AL-I :}
+  AL-NAME @ FIND-ALIAS AL-I !
+  AL-I @ -1 = IF
+    ALIAS-COUNT @ MAX-ALIASES < 0= IF
+      ." alias: too many aliases" CR EXIT
+    THEN
+    ALIAS-COUNT @ AL-I !
+    ALIAS-COUNT @ 1+ ALIAS-COUNT !
+  THEN
+  AL-NAME  @ AL-I @ ALIAS-NAME-SLOT  ALIAS-NAME-MAX  SAFE-CSTR-COPY DROP
+  AL-VALUE @ AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX SAFE-CSTR-COPY DROP ;
+
 VARIABLE DO-I
 
 
@@ -2636,12 +2695,52 @@ VARIABLE DO-I
   REPEAT
   0 ;
 
+VARIABLE RW-NAME
+
+: RESERVED-WORD? ( c-addr --- f )
+  \ The POSIX shell reserved words. Kept as one list here rather than
+  \ scattered through RUN-TOKENIZED's own LINE-IS? checks, which test
+  \ them individually for a different purpose (dispatch, not
+  \ classification).
+  RW-NAME !
+  S" if"    RW-NAME @ STR0= IF -1 EXIT THEN
+  S" then"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" else"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" elif"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" fi"    RW-NAME @ STR0= IF -1 EXIT THEN
+  S" do"    RW-NAME @ STR0= IF -1 EXIT THEN
+  S" done"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" case"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" esac"  RW-NAME @ STR0= IF -1 EXIT THEN
+  S" while" RW-NAME @ STR0= IF -1 EXIT THEN
+  S" until" RW-NAME @ STR0= IF -1 EXIT THEN
+  S" for"   RW-NAME @ STR0= IF -1 EXIT THEN
+  S" in"    RW-NAME @ STR0= IF -1 EXIT THEN
+  S" {"     RW-NAME @ STR0= IF -1 EXIT THEN
+  S" }"     RW-NAME @ STR0= IF -1 EXIT THEN
+  S" !"     RW-NAME @ STR0= ;
+
 : DO-COMMAND ( --- )
   \ command -v NAME. The other forms (command NAME args, -p, -V) are
   \ not implemented; -v is what scripts actually use to test for a
   \ command's existence.
   ARGC @ 3 < IF 1 LAST-STATUS ! EXIT THEN
   S" -v" 1 ARGV@ STR0= 0= IF 1 LAST-STATUS ! EXIT THEN
+  \ POSIX: command -v reports reserved words and aliases too, not just
+  \ functions, builtins and PATH entries. Order matters - an alias
+  \ shadows a command of the same name, and a reserved word is not a
+  \ command at all.
+  2 ARGV@ RESERVED-WORD? IF
+    2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+  THEN
+  2 ARGV@ FIND-ALIAS DUP -1 <> IF
+    ." alias " 2 ARGV@ DUP CSTRLEN TYPE
+    [CHAR] = EMIT [CHAR] ' EMIT
+    ALIAS-VALUE-SLOT DUP CSTRLEN TYPE
+    [CHAR] ' EMIT CR
+    0 LAST-STATUS ! EXIT
+  THEN
+  DROP
   2 ARGV@ FIND-FUNC -1 <> IF
     2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
   THEN
@@ -5366,44 +5465,6 @@ VARIABLE RT-I
 \ shells suppress re-expansion of the alias currently being expanded;
 \ a depth cap is cruder but needs no per-expansion state, and the
 \ failure mode is a diagnosed stop rather than a hang.
-
-32  CONSTANT MAX-ALIASES
-64  CONSTANT ALIAS-NAME-MAX
-256 CONSTANT ALIAS-VALUE-MAX
-MAX-ALIASES ALIAS-NAME-MAX  * BUFFER: ALIAS-NAMES
-MAX-ALIASES ALIAS-VALUE-MAX * BUFFER: ALIAS-VALUES
-LINE-MAX BUFFER: ALIAS-LINE
-VARIABLE ALIAS-COUNT
-VARIABLE ALIAS-LINE-LEN
-VARIABLE ALIAS-DEPTH
-VARIABLE AL-I
-VARIABLE AL-LEN
-VARIABLE AL-NAME
-VARIABLE AL-VALUE
-
-: ALIAS-NAME-SLOT  ( i --- addr )  ALIAS-NAME-MAX  * ALIAS-NAMES  + ;
-: ALIAS-VALUE-SLOT ( i --- addr )  ALIAS-VALUE-MAX * ALIAS-VALUES + ;
-
-: FIND-ALIAS ( name-addr --- i | -1 )
-  {: AL-NAME | AL-I :}
-  BEGIN AL-I @ ALIAS-COUNT @ < WHILE
-    AL-I @ ALIAS-NAME-SLOT AL-NAME @ CSTR= IF AL-I @ EXIT THEN
-    AL-I @ 1+ AL-I !
-  REPEAT
-  -1 ;
-
-: SET-ALIAS ( name-addr value-addr --- )
-  {: AL-NAME AL-VALUE | AL-I :}
-  AL-NAME @ FIND-ALIAS AL-I !
-  AL-I @ -1 = IF
-    ALIAS-COUNT @ MAX-ALIASES < 0= IF
-      ." alias: too many aliases" CR EXIT
-    THEN
-    ALIAS-COUNT @ AL-I !
-    ALIAS-COUNT @ 1+ ALIAS-COUNT !
-  THEN
-  AL-NAME  @ AL-I @ ALIAS-NAME-SLOT  ALIAS-NAME-MAX  SAFE-CSTR-COPY DROP
-  AL-VALUE @ AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX SAFE-CSTR-COPY DROP ;
 
 : AL-APPEND ( c-addr u --- )
   {: AL-NAME AL-LEN :}

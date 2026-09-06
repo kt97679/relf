@@ -531,6 +531,14 @@ This was the blocker in front of the `forth` builtin.
    section below), so neither line is ever printed and stdout is
    exactly what the shell itself writes.
 
+   **One test cannot pass without making the shell less correct.**
+   `command.sh` differs from bash on one line only: bash does not
+   expand or report aliases in non-interactive shells, a documented
+   deviation, while POSIX says alias substitution applies — which is
+   what this shell does. Matching bash there would mean emulating its
+   extension. Left failing deliberately; the criterion and the goal
+   disagree on that line and the goal wins.
+
    That number has moved exactly three times, and never yet because a
    `shell.4` feature carried a vendored test file across the line:
 

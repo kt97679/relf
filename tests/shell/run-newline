@@ -1,0 +1,18 @@
+#!/bin/sh
+# tests/shell/run-newline - builtins emit LF, not CRLF (Iteration 69).
+# This kernel's own CR is CRLF, right for a Forth console and wrong for
+# a shell; shell.4 redefines it.
+. "$(dirname "$0")/lib.sh"
+
+for c in pwd "command -v cd"; do
+    TESTS_RUN=$((TESTS_RUN + 1))
+    if "$THIS_SH" -c "$c" 2>/dev/null | od -c | grep -q '\\r'; then
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        echo "FAIL: '$c' emitted a carriage return"
+    fi
+done
+
+# and the output must still actually be a line
+out=$("$THIS_SH" -c 'command -v cd' 2>/dev/null)
+assert_output_contains "command -v still prints its answer" "cd" "$out"
+report
