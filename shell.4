@@ -38,6 +38,13 @@
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
 
 CREATE LINE-BUF   LINE-MAX ALLOT
+
+512 CONSTANT NORM-MAX
+CREATE NORM-BUF NORM-MAX ALLOT
+\ Declared here rather than beside NORMALIZE-OPERATORS: TOKENIZE
+\ reads the normalized line straight out of this buffer (Iteration
+\ 111), and this file is one linear source where a word must be
+\ defined before it is used.
 CREATE ARGV       MAX-ARGS CELLS ALLOT
 
 \ ==================================================================
@@ -2137,9 +2144,11 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     SCAN-TOKEN-CHAR
   REPEAT ;
 
-: TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
-  LINE-BUF + TOK-END !
-  LINE-BUF TOK-POS !
+: TOKENIZE ( u --- )  \ NORM-BUF holds the normalized line, u bytes.
+                       \ Reached only through NORM-TOKENIZE, which is
+                       \ what puts it there.
+  NORM-BUF + TOK-END !
+  NORM-BUF TOK-POS !
   TOK-BUF TOK-OUT !
   0 ARGC !
   BEGIN
@@ -4433,8 +4442,6 @@ VARIABLE INPUT-EOF?
   DUP 60 = IF DROP -1 EXIT THEN    ( < , for "<<" here-documents )
   59 = ;
 
-512 CONSTANT NORM-MAX
-CREATE NORM-BUF NORM-MAX ALLOT
 VARIABLE NORM-LEN
 VARIABLE NORM-I
 VARIABLE NORM-U
@@ -4732,17 +4739,14 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   \ had hit, found by scoping Stage 1b of PARSE-EXPAND-PLAN.md rather
   \ than by anything failing (Iteration 110).
   \
-  \ The fallback when the normalized text will not fit LINE-BUF is to
-  \ tokenize the original, unmodified line: operators fused to
-  \ adjacent text are not recognised in that rare case, which is the
-  \ pre-existing behaviour and better than truncating.
-  DUP NORMALIZE-OPERATORS
-  DUP LINE-MAX < IF
-    DUP NORM-BUF LINE-BUF ROT MOVE
-    TOKENIZE DROP
-  ELSE
-    DROP TOKENIZE
-  THEN ;
+  \ `TOKENIZE` reads `NORM-BUF` directly rather than having it copied
+  \ back over `LINE-BUF` first. That copy needed a fallback for when
+  \ the normalized text did not fit `LINE-BUF` - `NORM-MAX` is 512
+  \ and `LINE-MAX` is 256 - in which case the ORIGINAL line was
+  \ tokenized instead, silently, with its operators unspaced. Reading
+  \ `NORM-BUF` where it already is removes the copy, the ceiling and
+  \ the fallback together.
+  NORMALIZE-OPERATORS TOKENIZE ;
 
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe

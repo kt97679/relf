@@ -22,3 +22,11 @@ echo "12 [\$a] ['\$a'] [\"\$a\"]"
 c=1
 echo "13 [${c:=Z}] [$c]"
 echo "14 [${a}x] [x${a}] [x${a}x]"
+
+# A line whose NORMALIZED form is longer than LINE-MAX. Until
+# Iteration 111 the normalized text was copied back over LINE-BUF, and
+# when it did not fit the ORIGINAL line was tokenized instead -
+# silently, with every operator left fused to its neighbours. TOKENIZE
+# now reads NORM-BUF where it already is.
+echo a0>/dev/null;echo b0 a1>/dev/null;echo b1 a2>/dev/null;echo b2 a3>/dev/null;echo b3 a4>/dev/null;echo b4 a5>/dev/null;echo b5
+echo tail

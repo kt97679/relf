@@ -8406,3 +8406,43 @@ This clears the obstacle recorded in `PARSE-EXPAND-PLAN.md` against
 Stage 1b: every path into `TOKENIZE` now goes through
 `NORMALIZE-OPERATORS` first, which is the precondition for that word
 being able to hand `TOKENIZE` the raw word boundaries it found.
+## Iteration 111: tokenize the normalized line where it already is
+
+`NORM-TOKENIZE` normalized into `NORM-BUF`, copied the result back
+over `LINE-BUF`, and tokenized that. The copy needed a fallback,
+because `NORM-MAX` is 512 and `LINE-MAX` is 256: when the normalized
+text did not fit, the **original** line was tokenized instead -
+silently, with every operator left fused to whatever it touched. A
+long enough line simply stopped having operators.
+
+`TOKENIZE` now reads `NORM-BUF` directly. The copy, the ceiling and
+the fallback all go at once, and `NORM-TOKENIZE` is two words.
+
+This is only safe because of Iteration 108: `ARGV` used to point into
+`LINE-BUF`, so what the tokenizer read from and what it left behind
+had to be the same buffer. Since expansion writes into `TOK-BUF`, the
+input buffer is just an input, and which one it is stopped mattering.
+
+### The mistake, which the file's own rule names
+
+First attempt failed everywhere at once - every shell test, not a
+subset. `NORM-BUF` is declared beside `NORMALIZE-OPERATORS`, two
+thousand lines *below* `TOKENIZE`, and this is one linear source:
+"define before use", FORTH-STYLE.md §12. The symptom was not an
+undefined-word error at the point of use but `relfsh` silently falling
+back to a source bootstrap and printing `Welcome to Forth`, because
+the image build is what failed. Worth knowing that this is what a
+load-order mistake looks like from the outside once a prebuilt image
+is in the picture: not a Forth error, a banner.
+
+`NORM-BUF` is declared next to `LINE-BUF` now, with a note saying why
+it is there.
+
+### Verified
+
+`tests/diff/cases/expansion-broad.sh` extended with a line whose
+normalized form is longer than `LINE-MAX` and which is all operators -
+it would have been tokenized unnormalized before.
+
+524 assertions across 63 files, 16 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
