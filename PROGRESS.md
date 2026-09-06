@@ -5769,3 +5769,64 @@ other features.
 `word.sh` (`~user` tilde forms), `args.sh` (`getopts`, and `f() ( ... )`
 subshell function bodies), `function.sh`, `for.sh`, `return.sh`,
 `subshell.sh`, `readonly.sh`, and the two quoting conformance cases.
+## Iteration 55: file-descriptor redirection — mrsh 7 -> 8 passed
+
+`redir.sh` passes. `2>file`, `2>&1`, `1>&2` and combinations all work.
+
+### A list, not one slot per operator
+
+Redirections were three fixed variables — `REDIR-IN-FILE`,
+`REDIR-OUT-FILE`, `REDIR-APPEND-FILE` — which cannot express a
+redirection on any descriptor but the default, and cannot express
+duplication at all. They are now an ordered list of
+`(target fd, operation, filename-or-source-fd)`.
+
+**Order is the point, not an implementation detail.** `> f 2>&1` sends
+both streams to the file; `2>&1 > f` sends stderr to the terminal and
+only stdout to the file. A list applied in sequence gets that right by
+construction, where three slots could not represent the difference at
+all. There is a test for it.
+
+### Two tokenizer details
+
+`>&` and `<&` are single operators and must not be split into `>` and
+`&` — `&` alone means something entirely different. Added to
+`NORMALIZE-OPERATORS` alongside the existing doubled-operator handling.
+
+A leading digit (`2>file`) arrives as its own token, and the digit and
+operator are recognised as a *pair* in `PARSE-REDIRECTIONS` rather than
+being fused in the tokenizer. That keeps the tokenizer ignorant of
+redirection syntax; the alternative would have meant teaching it when a
+digit is an fd and when it is an ordinary argument, which is a
+context question the parser is already answering.
+
+### A self-inflicted one
+
+Replacing the old block deleted `VARIABLE PR-I` along with it — the
+scan cursor several other words declare as a local. "Undefined word
+PR-I", one line to restore. Worth noting only because it is the same
+hazard as always: this file's single linear ordering means a block
+move is never purely a move.
+
+### Not done, deliberately
+
+Redirection still only applies to external commands, in the forked
+child. `pwd > file` does not redirect a builtin's output. Fixing that
+needs the **undo list** from Ramey's bash chapter (see `GOALS.md`):
+the effects of a redirection must not persist beyond the command, so
+the shell has to record how to reverse each one. Recorded as the next
+piece of redirection work rather than half-done here.
+
+### Verified
+
+`tests/shell/run-fd-redir` (8 assertions): `2>/dev/null` actually
+suppressing stderr, `2>&1`, `2>file`, `>`/`>>` in order, `<`, and
+`> f 2>&1` putting stderr in the file. 376 assertions across 45 files
+plus 1991 core OK markers, both cell widths.
+
+**mrsh-suite: 7 passed -> 8.** Remaining 13: here-documents
+(`read.sh`), background `&`/`wait`/`$!` (`async.sh`), `alias`
+(`command.sh`, `2.2.3-alias-expansion`), `ulimit`, `~user`
+(`word.sh`), `getopts` and `f() ( ... )` subshell function bodies
+(`args.sh`), `function.sh`, `for.sh`, `return.sh`, `subshell.sh`,
+`readonly.sh`, and the two quoting conformance cases.

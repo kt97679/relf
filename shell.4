@@ -1854,52 +1854,78 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
 
 CREATE ARGV2 MAX-ARGS CELLS ALLOT
 VARIABLE ARGC2
-VARIABLE REDIR-IN-FILE      ( c-addr, or 0 for none - "<" )
-VARIABLE REDIR-OUT-FILE     ( c-addr, or 0 for none - ">" truncate )
-VARIABLE REDIR-APPEND-FILE  ( c-addr, or 0 for none - ">>" append )
-VARIABLE PR-I
+\ A general list of redirections rather than one slot per operator.
+\ The old shape had a fixed REDIR-IN/OUT/APPEND-FILE, which cannot
+\ express "2>file" (a redirection on a file descriptor other than the
+\ default) or "2>&1" (duplicating one descriptor onto another) at all.
+\ Each entry is a target fd, an operation, and either a filename or a
+\ source fd. They are applied in order, which matters: "> f 2>&1"
+\ sends both streams to the file, while "2>&1 > f" does not.
+
+CREATE REDIR-FD  MAX-ARGS CELLS ALLOT
+CREATE REDIR-OP  MAX-ARGS CELLS ALLOT
+CREATE REDIR-TGT MAX-ARGS CELLS ALLOT
+VARIABLE REDIR-N
+VARIABLE PR-I     \ shared scan cursor, declared as a local by each scanner
+VARIABLE RA-FD
+VARIABLE RA-OP
+VARIABLE AR-I
+
+: DIGIT-TOKEN? ( i --- f )   \ a one-character token that is a digit
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN 1 = SWAP C@ AE-DIGIT? AND ;
+
+: REDIR-OP-AT ( i --- op | 0 )   \ 1 "<"  2 ">"  3 ">>"  4 ">&"  5 "<&"
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN
+  2DUP S" <"  STR= IF 2DROP 1 EXIT THEN
+  2DUP S" >"  STR= IF 2DROP 2 EXIT THEN
+  2DUP S" >>" STR= IF 2DROP 3 EXIT THEN
+  2DUP S" >&" STR= IF 2DROP 4 EXIT THEN
+       S" <&" STR= IF 5 EXIT THEN
+  0 ;
+
+: REDIR-ADD ( fd op --- )
+  \ Records one redirection, consuming its target token. Reads PR-I,
+  \ which is a local of PARSE-REDIRECTIONS - safe because a local IS
+  \ the variable, so it holds that invocation's value throughout.
+  {: RA-FD RA-OP :}
+  PR-I @ ARGC @ < 0= IF EXIT THEN
+  RA-FD @      REDIR-FD  REDIR-N @ CELLS + !
+  RA-OP @      REDIR-OP  REDIR-N @ CELLS + !
+  PR-I @ ARGV@ REDIR-TGT REDIR-N @ CELLS + !
+  REDIR-N @ 1+ REDIR-N !
+  PR-I @ 1+ PR-I ! ;
 
 : PARSE-REDIRECTIONS ( --- )
+  \ Pulls redirections out of ARGV into the list above; what remains
+  \ is what the command itself sees. A leading digit attached to an
+  \ operator ("2>file") arrives as its own token, so the digit and the
+  \ operator are recognised as a pair here rather than in the
+  \ tokenizer.
   {: | PR-I :}
-  0 REDIR-IN-FILE !  0 REDIR-OUT-FILE !  0 REDIR-APPEND-FILE !
+  0 REDIR-N !
   0 ARGC2 !
   BEGIN PR-I @ ARGC @ < WHILE
-    PR-I @ ARGV@ DUP CSTRLEN
-    2DUP S" <" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
-      2DROP
-      PR-I @ 1+ ARGC @ < IF
-        PR-I @ 1+ ARGV@ REDIR-IN-FILE !
-        PR-I @ 2 + PR-I !
-      ELSE
-        PR-I @ 1+ PR-I !          ( malformed: "<" with no filename )
-      THEN
-    ELSE 2DUP S" >>" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
-      2DROP
-      PR-I @ 1+ ARGC @ < IF
-        PR-I @ 1+ ARGV@ REDIR-APPEND-FILE !
-        PR-I @ 2 + PR-I !
-      ELSE
-        PR-I @ 1+ PR-I !
-      THEN
-    ELSE 2DUP S" >" STR= PR-I @ ARGV-QUOTED@ 0= AND IF
-      2DROP
-      PR-I @ 1+ ARGC @ < IF
-        PR-I @ 1+ ARGV@ REDIR-OUT-FILE !
-        PR-I @ 2 + PR-I !
-      ELSE
-        PR-I @ 1+ PR-I !
-      THEN
+    PR-I @ DIGIT-TOKEN? PR-I @ 1+ ARGC @ < AND
+    IF PR-I @ 1+ REDIR-OP-AT ELSE 0 THEN
+    ?DUP IF
+      PR-I @ ARGV@ C@ 48 - SWAP        ( fd op )
+      PR-I @ 2 + PR-I !
+      REDIR-ADD
     ELSE
-      2DROP
-      PR-I @ ARGV@ ARGV2 ARGC2 @ CELLS + !
-      ARGC2 @ 1+ ARGC2 !
-      PR-I @ 1+ PR-I !
-    THEN THEN THEN
+      PR-I @ REDIR-OP-AT ?DUP IF
+        DUP 1 = OVER 5 = OR IF 0 ELSE 1 THEN SWAP   ( fd op )
+        PR-I @ 1+ PR-I !
+        REDIR-ADD
+      ELSE
+        PR-I @ ARGV@ ARGV2 ARGC2 @ CELLS + !
+        ARGC2 @ 1+ ARGC2 !
+        PR-I @ 1+ PR-I !
+      THEN
+    THEN
   REPEAT
   0 ARGV2 ARGC2 @ CELLS + !
-  \ Copy ARGV2/ARGC2 back into ARGV/ARGC, so nothing downstream (PATH
-  \ search, DISPATCH's builtin-name checks, EXECVE) needs to know
-  \ redirection parsing happened at all.
   0 PR-I !
   BEGIN PR-I @ ARGC2 @ < WHILE
     ARGV2 PR-I @ CELLS + @  ARGV PR-I @ CELLS + !
@@ -1912,26 +1938,29 @@ VARIABLE PR-I
   SWAP DUP CSTRLEN ROT OPEN-FILE 0= ;
 
 : APPLY-REDIRECTIONS ( --- )
-  \ Runs in the forked child, before RUN-CHILD/EXECVE. v0.1/v0.2
-  \ simplification: a redirection that fails to open (e.g. "<" on a
-  \ missing file) is silently skipped rather than aborting the
-  \ command - no error reporting for this yet, matching how sparse
-  \ error handling is everywhere else in this shell so far.
-  REDIR-IN-FILE @ IF
-    REDIR-IN-FILE @ R/O OPEN-FOR IF
-      DUP 0 DUP2 DROP CLOSE-FILE DROP
-    ELSE DROP THEN
-  THEN
-  REDIR-OUT-FILE @ IF
-    REDIR-OUT-FILE @ W/O OPEN-FOR IF
-      DUP 1 DUP2 DROP CLOSE-FILE DROP
-    ELSE DROP THEN
-  THEN
-  REDIR-APPEND-FILE @ IF
-    REDIR-APPEND-FILE @ A/O OPEN-FOR IF
-      DUP 1 DUP2 DROP CLOSE-FILE DROP
-    ELSE DROP THEN
-  THEN ;
+  \ Runs in the forked child, before RUN-CHILD/EXECVE. A redirection
+  \ that fails to open is skipped rather than aborting the command -
+  \ no error reporting yet, matching this file's sparse error handling
+  \ elsewhere.
+  0 AR-I !
+  BEGIN AR-I @ REDIR-N @ < WHILE
+    REDIR-OP AR-I @ CELLS + @
+    DUP 4 = OVER 5 = OR IF
+      \ "2>&1": duplicate the named source descriptor onto the target.
+      DROP
+      REDIR-TGT AR-I @ CELLS + @ DUP CSTRLEN PARSE-DECIMAL
+      REDIR-FD  AR-I @ CELLS + @ DUP2 DROP
+    ELSE
+      DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN
+      REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-FOR IF
+        DUP REDIR-FD AR-I @ CELLS + @ DUP2 DROP
+        CLOSE-FILE DROP
+      ELSE
+        DROP
+      THEN
+    THEN
+    AR-I @ 1+ AR-I !
+  REPEAT ;
 
 \ ==================================================================
 \ PATH search + exec
@@ -3698,6 +3727,15 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       NORM-C @ NORM-DOUBLED-OP? IF
         0 NORM-PEEK NORM-C @ = IF
           NORM-C @ NORM-EMIT
+          NORM-I @ 1+ NORM-I !
+        THEN
+      THEN
+      \ ">&" and "<&" are single redirection operators (fd duplication)
+      \ and must not be split into '>' and '&' - '&' on its own means
+      \ something quite different.
+      NORM-C @ 62 = NORM-C @ 60 = OR IF
+        0 NORM-PEEK 38 = IF
+          38 NORM-EMIT
           NORM-I @ 1+ NORM-I !
         THEN
       THEN

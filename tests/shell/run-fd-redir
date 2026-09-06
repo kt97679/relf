@@ -1,0 +1,32 @@
+#!/bin/sh
+# tests/shell/run-fd-redir - redirection on descriptors other than the
+# default, and descriptor duplication (Iteration 55).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+out=$("$THIS_SH" -c "ls /nonexistent-xyz 2>/dev/null; echo after" 2>&1)
+assert_output_contains "2>/dev/null suppresses stderr" "after" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *"No such file"*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: stderr leaked past 2>/dev/null";; esac
+
+out=$("$THIS_SH" -c "ls /nonexistent-xyz 2>&1" 2>/dev/null)
+assert_output_contains "2>&1 sends stderr to stdout" "No such file" "$out"
+
+"$THIS_SH" -c "ls /nonexistent-xyz 2>$t/err" >/dev/null 2>&1
+TESTS_RUN=$((TESTS_RUN + 1))
+grep -q "No such file" "$t/err" || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: 2>file did not capture stderr"; }
+
+# ordinary redirection must still work, and in order
+out=$("$THIS_SH" -c "echo one > $t/a; echo two >> $t/a; cat $t/a" 2>/dev/null)
+assert_output_contains "> truncates then >> appends (1)" "one" "$out"
+assert_output_contains "> truncates then >> appends (2)" "two" "$out"
+
+printf 'from-file\n' > "$t/in"
+out=$("$THIS_SH" -c "cat < $t/in" 2>/dev/null)
+assert_output_contains "< still redirects input" "from-file" "$out"
+
+# both streams to one file, which needs the list applied in order
+"$THIS_SH" -c "ls /nonexistent-xyz > $t/b 2>&1" >/dev/null 2>&1
+TESTS_RUN=$((TESTS_RUN + 1))
+grep -q "No such file" "$t/b" || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: '> f 2>&1' did not put stderr in the file"; }
+report
