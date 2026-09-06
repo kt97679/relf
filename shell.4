@@ -2754,6 +2754,11 @@ VARIABLE DO-I
   DUP POS-PARAM-COUNT @ > IF
     DROP ." shift: count out of range" CR 1 LAST-STATUS ! EXIT
   THEN
+  \ "shift 0" is valid and a no-op. Without this guard the count of 0
+  \ reaches DO as "0 0 DO", which in this kernel runs the entire
+  \ unsigned range - the same hazard as TYPE-N-TO-TOK in Iteration 88,
+  \ found by auditing every DO here rather than by anything hitting it.
+  DUP 0 > IF
   DUP 0 DO
     0 DO-I !
     BEGIN DO-I @ 1+ POS-PARAM-COUNT @ < WHILE
@@ -2761,7 +2766,9 @@ VARIABLE DO-I
       DO-I @ 1+ DO-I !
     REPEAT
     POS-PARAM-COUNT @ 1- POS-PARAM-COUNT !
-  LOOP DROP
+  LOOP
+  THEN
+  DROP
   0 LAST-STATUS ! ;
 
 : CMD-V-FOUND ( c-addr u --- )   \ report a hit and exit 0

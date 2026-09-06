@@ -194,7 +194,14 @@ Audit periodically, not only when touching a feature.
 
 - **`DO`/`LOOP` with `start = limit` runs the entire unsigned range**,
   not zero iterations. Guard every loop whose count can be zero with
-  an explicit `0 >` test. Caused four segfaults in Iteration 15.
+  an explicit `0 >` test. Caused four segfaults in Iteration 15 — and
+  then two more much later, in words written *after* that rule existed:
+  `TYPE-N-TO-TOK` (Iteration 88, `${p%%/*}` segfaulted) and `DO-SHIFT`
+  (89, `shift 0` hung). **Writing the rule down did not retire the
+  class.** What retired it was auditing every `DO` in the file and
+  asking of each one whether its count can be zero — do that after
+  adding any loop, and prefer a differential case that exercises the
+  zero path.
 - **A multi-line `( ... )` comment can corrupt parsing** once enough
   code precedes it, surfacing as a cascade of unrelated "Undefined
   word" errors. Use `\` line comments for anything multi-line. A

@@ -7270,3 +7270,32 @@ their current behaviour would freeze something nobody designed.
 
 5 differential cases, 502 assertions across 61 files, 1991 core OK
 markers, both cell widths, mrsh 17 of 21.
+## Iteration 89: auditing every `DO` — one more hang
+
+Followed through on Iteration 88's own recommendation rather than
+filing it: checked all 14 `DO` loops in `shell.4` for whether their
+count can reach zero.
+
+Twelve were already guarded. One more was not: **`shift 0` hung** —
+valid POSIX and a no-op, but the count of 0 reached `DO` as `0 0 DO`,
+which in this kernel runs the entire unsigned range. Same hazard as
+`TYPE-N-TO-TOK` yesterday, found by looking rather than by anything
+tripping over it.
+
+That makes **six** segfaults or hangs from this one kernel behaviour:
+four in Iteration 15, then `TYPE-N-TO-TOK` (88) and `DO-SHIFT` (89) —
+both in words written *after* the rule about it was documented.
+`FORTH-STYLE.md` now says so explicitly: writing the rule down did not
+retire the class, and what retired it was the audit. The entry now
+tells the reader to check every new loop and to prefer a differential
+case that exercises the zero path.
+
+`tests/diff/cases/zero-counts.sh` does exactly that — trims that
+consume the whole value, `shift 0` and `shift n`, an empty `$(...)`,
+`$((0))` and `$((5-5))`, and `${#n}` on an empty variable. These are
+the zero paths, in one place, checked against bash.
+
+### Verified
+
+6 differential cases, 502 assertions across 61 files, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
