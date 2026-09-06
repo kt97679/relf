@@ -2552,11 +2552,30 @@ VARIABLE DO-I
   FIND-SHVAR DUP -1 = IF DROP EXIT THEN
   SHVAR-RO + -1 SWAP C! ;
 
+: PRINT-READONLY ( --- )
+  \ "readonly -p", and "readonly" with no operands: list the read-only
+  \ variables in a form that could be re-read as input, per POSIX.
+  0 DO-I !
+  BEGIN DO-I @ SHVAR-COUNT @ < WHILE
+    DO-I @ SHVAR-RO + C@ IF
+      ." readonly "
+      DO-I @ SHVAR-NAME-SLOT DUP CSTRLEN TYPE
+      [CHAR] = EMIT
+      DO-I @ SHVAR-VALUE-SLOT DUP CSTRLEN TYPE
+      CR
+    THEN
+    DO-I @ 1+ DO-I !
+  REPEAT ;
+
 : DO-READONLY ( --- )
-  \ readonly NAME | readonly NAME=value. With a value it assigns
-  \ first, then marks; the mark must come second or the assignment
-  \ would be refused by its own flag.
+  \ readonly NAME | readonly NAME=value | readonly -p. With a value it
+  \ assigns first, then marks; the mark must come second or the
+  \ assignment would be refused by its own flag.
   0 LAST-STATUS !
+  ARGC @ 1 = IF PRINT-READONLY EXIT THEN
+  ARGC @ 2 = IF
+    S" -p" 1 ARGV@ STR0= IF PRINT-READONLY EXIT THEN
+  THEN
   ARGC @ 1 < IF EXIT THEN
   1 DO-I !
   BEGIN DO-I @ ARGC @ < WHILE

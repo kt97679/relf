@@ -6409,3 +6409,27 @@ markers, both cell widths.
 pipeline stages (`read.sh`), a braceless compound function body
 (`function.sh`), `command.sh`, `readonly.sh`,
 `2.2-quoted-characters.sh`, and the alias conformance case.
+## Iteration 68: `readonly -p` — mrsh 13 -> 14 passed
+
+`readonly.sh` passes. `readonly -p`, and bare `readonly` with no
+operands, now list the read-only variables in the form POSIX
+specifies — `readonly NAME=VALUE`, re-readable as input.
+
+Small, and the whole of what that test needed: it does
+`readonly -p | grep mrsh_readonly_param | wc -l` and expects 1, which
+was 0 because the listing form printed nothing at all.
+
+### Verified
+
+`run-builtins2` grew to 12 assertions, adding that `readonly -p` lists
+a read-only variable, does *not* list an ordinary one, and that bare
+`readonly` behaves the same. 463 assertions across 55 files plus 1991
+core OK markers, both cell widths.
+
+**mrsh-suite: 13 passed -> 14**, i.e. two-thirds of the 21 scored
+tests. Remaining 7: background jobs (`async.sh`), `ulimit`, `~user`
+(`word.sh`), compound commands as pipeline stages (`read.sh`), a
+braceless compound function body (`function.sh`), `command.sh` (which
+needs `command -v` to report a *function* ahead of a same-named
+external, plus `ls -la` output matching), the newline-escape case in
+`2.2-quoted-characters.sh`, and the alias conformance case.

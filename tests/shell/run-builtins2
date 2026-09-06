@@ -29,4 +29,14 @@ assert_output_contains "command -v fails on a nonword"  "st=1" "$out"
 printf 'f() {\n  echo x\n}\ncommand -v f\n' > "$t/f.sh"
 out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
 assert_output_contains "command -v finds a function" "f" "$out"
+printf 'readonly p=b\nq=notro\nreadonly -p\n' > "$t/g.sh"
+out=$("$THIS_SH" "$t/g.sh" 2>/dev/null)
+assert_output_contains "readonly -p lists a read-only variable" "readonly p=b" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *notro*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: readonly -p listed an ordinary variable";; esac
+
+printf 'readonly r=1\nreadonly\n' > "$t/h.sh"
+out=$("$THIS_SH" "$t/h.sh" 2>/dev/null)
+assert_output_contains "bare 'readonly' lists them too" "readonly r=1" "$out"
+
 report
