@@ -6733,3 +6733,56 @@ falling through to `*`, and `|` alternatives on a same-line arm. 497
 assertions across 60 files plus 1991 core OK markers, both cell
 widths. mrsh-suite unchanged at 16 — no vendored test uses this form,
 which is why it went unnoticed for fifty iterations.
+## Iteration 76: compound commands as pipeline stages — attempted and
+## reverted, with the design established
+
+`printf "a\nb\nc\n" | while read line; do ...; done` (mrsh's
+`read.sh`) still does not work. This iteration attempted it, got the
+design right, and ran out of room to land it cleanly — so it was
+**reverted rather than committed half-done**. The tree is green at 16
+passed; what follows is what the attempt established, so the next one
+starts from it rather than rediscovering it.
+
+### The design, confirmed by building most of it
+
+Three pieces are needed, and the first two were written and worked:
+
+1. **Capture the stage's body in the parent, before forking.**
+   `CAPTURE-PIPE-BODY` reads the construct's remaining lines into a
+   `BUFFER:` using `FDC-LINE-END?`'s depth counting. This is the fix
+   for the file-offset race found in Iteration 57: a forked child
+   shares the script's offset with the shell, so the two race for the
+   same lines. The parent consuming them is also *correct* — they
+   belong to the construct.
+2. **Give the stage its own raw text.** `DO-WHILE` stores its
+   condition as raw text deliberately, so `$VAR` re-expands each
+   iteration (Iteration 11), but for a stage the whole pipeline line
+   is not its own text. `RAW-AFTER-LAST-PIPE` shifts `RAW-LINE-BUF`
+   past the last unquoted `|`. This also generalized `RAW-LAST-SEMI`
+   into `RAW-LAST-CHAR ( c-addr u c --- pos )`, which is worth keeping
+   whatever happens next.
+3. **Install the captured body as the child's input source** —
+   `REPLAY-SRC`/`LEN`/`POS` set before `RUN-TOKENIZED-CALL`, exactly
+   as `DO-WHILE-BODY` does.
+
+### Why it did not land: file ordering, four times
+
+Every piece needs words defined far below the pipeline section —
+`RAW-LINE-BUF`, `READ-NEXT-LOGICAL-LINE`, `RAW-LAST-CHAR`,
+`FDC-DEPTH`/`FDC-LINE-END?`. Each move to satisfy one dependency
+exposed the next. Two deferred-word indirections were added and the
+replay variables were hoisted, and it still was not resolved when the
+budget ran out.
+
+That is the real finding, and it is not about this feature. This file
+is 4,900 lines in one linear definition order, and a change that spans
+the tokenizer, the pipeline and the loop machinery now costs more in
+reordering than in logic. The deferred-word pattern has been used
+**nine** times to break such cycles. It works, but each use is a hole
+in the ordering rather than a fix for it.
+
+**Recommendation for the next session:** before attempting this again,
+consider splitting `shell.4` into loadable sections with an explicit
+dependency order, or introducing a forward-declaration convention
+rather than a per-case deferred variable. The feature is ~60 lines;
+the ordering is what makes it expensive.
