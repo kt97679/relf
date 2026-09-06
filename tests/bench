@@ -1,0 +1,52 @@
+#!/bin/sh
+# tests/bench - compare relfsh against reference shells on three shapes
+# of work. Not run by tests/run_tests.sh; run it deliberately.
+#
+#   loop      pure interpretation, no external commands
+#   spawn     a loop that runs /bin/true - dominated by fork/exec
+#   startup   how long the shell takes to start and exit
+#
+# The three differ by orders of magnitude, and quoting only one of them
+# would misrepresent the shell either way.
+set -u
+THIS_SH="${THIS_SH:-./relfsh}"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+cat > "$t/loop.sh" <<'X'
+i=0
+while [ $i -lt 2000 ]
+do
+  i=$((i+1))
+done
+X
+cat > "$t/spawn.sh" <<'X'
+i=0
+while [ $i -lt 100 ]
+do
+  /bin/true
+  i=$((i+1))
+done
+X
+
+time_it() {   # time_it SHELL SCRIPT -> seconds
+    s=$(date +%s%N)
+    "$1" "$2" >/dev/null 2>&1
+    e=$(date +%s%N)
+    echo $(( (e - s) / 1000000 ))
+}
+time_start() {
+    s=$(date +%s%N)
+    i=0
+    while [ $i -lt 100 ]; do "$1" -c true >/dev/null 2>&1; i=$((i+1)); done
+    e=$(date +%s%N)
+    echo $(( (e - s) / 1000000 ))
+}
+
+printf '%-10s %10s %10s %10s\n' shell loop-ms spawn-ms start-ms
+for sh in "$THIS_SH" /bin/dash /bin/bash; do
+    [ -x "$sh" ] || continue
+    printf '%-10s %10s %10s %10s\n' "$(basename "$sh")" \
+        "$(time_it "$sh" "$t/loop.sh")" \
+        "$(time_it "$sh" "$t/spawn.sh")" \
+        "$(time_start "$sh")"
+done

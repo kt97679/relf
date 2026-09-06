@@ -7113,3 +7113,49 @@ compound pipeline stage).
 
 502 assertions across 61 files, 3 differential cases, 1991 core OK
 markers, both cell widths, mrsh 17 of 21.
+## Iteration 85: performance baseline
+
+Measured before deciding anything, since "reasonable results" was the
+gate on what comes next. `tests/bench` compares three shapes of work
+(not run by `run_tests.sh`; run deliberately):
+
+| shell  | loop | spawn | startup |
+|--------|-----:|------:|--------:|
+| relfsh | 568  | 122   | 328     |
+| dash   | 3    | 59    | 64      |
+| bash   | 6    | 80    | 108     |
+
+(milliseconds: 2000 pure loop iterations; 100 iterations running
+`/bin/true`; 100 start-and-exit cycles.)
+
+**Three very different verdicts, and quoting one alone would
+misrepresent the shell.**
+
+- **Real scripts: ~2x dash, ~1.5x bash.** Anything that runs external
+  commands is dominated by `fork`/`exec`, where this shell is only
+  modestly behind. That is the number most scripts actually feel.
+- **Startup: ~5x dash**, 3.3ms against 0.64ms. Fine in absolute terms
+  and already 128x better than before the prebuilt image (Iteration
+  40).
+- **Pure interpretation: ~190x dash.** 0.28ms per loop iteration. This
+  is the number that is not reasonable.
+
+### Why the loop number is what it is, and what would fix it
+
+Every iteration re-does work a real shell does once. `DO-WHILE` stores
+its condition as **raw text** and re-tokenizes it each time round
+(deliberately, so `$VAR` re-expands — Iteration 11), and each body line
+is re-normalized and re-tokenized on every pass. `dash` parses to a
+command tree once and re-executes it.
+
+That is the same architectural item already recorded from Ramey's
+chapter: **parse first, expand after**. It is the root of the stale-`$?`
+and `ENSURE-ROOM` smear classes *and* of this. One change addresses a
+bug class and a 100x, which is unusual and worth weighing accordingly.
+
+A cheaper intermediate exists: cache the tokenized form of a body line
+and re-run only the expansion step, rather than re-normalizing and
+re-tokenizing text that cannot have changed. That keeps the raw-text
+condition semantics and should recover most of the loop cost.
+
+Nothing was changed this iteration beyond adding `tests/bench`.
