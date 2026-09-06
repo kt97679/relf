@@ -1946,6 +1946,35 @@ VARIABLE READ-INPUT-XT
 
 : READ-INPUT-CALL ( c-addr max --- u2 )  READ-INPUT-XT @XT EXECUTE ;
 
+VARIABLE JC-LEN
+VARIABLE JC-N
+
+: JOIN-CONTINUATIONS ( u --- u2 )
+  \ LINE-BUF holds u bytes. A line ending in an unescaped backslash is
+  \ continued by the next one: the backslash and the newline are both
+  \ removed and the lines become a single logical line, per POSIX.
+  \
+  \ Done at the reading end, before quote tracking or tokenizing, so
+  \ every consumer sees one line and nothing downstream needs to know
+  \ line continuation exists. It reads through READ-INPUT-CALL, so a
+  \ continuation inside a loop body or function reads from the stored
+  \ body like everything else.
+  \
+  \ "\\" at end of line is an escaped backslash, not a continuation,
+  \ which is why the character before is checked too.
+  JC-LEN !
+  BEGIN
+    JC-LEN @ 0 > IF LINE-BUF JC-LEN @ 1- + C@ 92 = ELSE 0 THEN
+    JC-LEN @ 1 > IF LINE-BUF JC-LEN @ 2 - + C@ 92 <> ELSE -1 THEN
+    AND
+  WHILE
+    JC-LEN @ 1- JC-LEN !
+    LINE-BUF JC-LEN @ + LINE-MAX JC-LEN @ - READ-INPUT-CALL JC-N !
+    JC-N @ 0= IF JC-LEN @ EXIT THEN
+    JC-LEN @ JC-N @ + JC-LEN !
+  REPEAT
+  JC-LEN @ ;
+
 8192 CONSTANT HEREDOC-MAX
 HEREDOC-MAX BUFFER: HEREDOC-BUF
 LINE-MAX    BUFFER: HD-LINE
@@ -4230,6 +4259,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                                  \ first reading.
   LINE-BUF LINE-MAX READ-NEXT-INPUT-LINE
   SHFILE-ACTIVE? @ 0= IF CR THEN
+  JOIN-CONTINUATIONS
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS
@@ -5669,6 +5699,7 @@ VARIABLE MG-DEPTH
                         \ READ-LINE-INTO-ARGV above - taken *before*
                         \ operator normalization, so it holds the
                         \ line exactly as given, unmodified.
+  JOIN-CONTINUATIONS
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS

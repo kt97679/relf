@@ -1,0 +1,35 @@
+#!/bin/sh
+# tests/shell/run-continuation - a backslash at end of line joins it to
+# the next (Iteration 70).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+cat > "$t/a.sh" <<'X'
+printf 'one: %s two: %s\n' without \
+	newline
+echo after
+X
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "continued line becomes one command" "one: without two: newline" "$out"
+assert_output_contains "execution continues afterwards"     "after" "$out"
+
+# a doubled backslash is an escaped backslash, NOT a continuation
+cat > "$t/b.sh" <<'X'
+echo a\\
+echo b
+X
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "escaped backslash does not continue the line" "b" "$out"
+
+# continuation inside a loop body reads from the stored body
+cat > "$t/c.sh" <<'X'
+for i in 1 2
+do
+  printf '%s-%s\n' "$i" \
+    tail
+done
+X
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "continuation inside a loop body (1)" "1-tail" "$out"
+assert_output_contains "continuation inside a loop body (2)" "2-tail" "$out"
+report

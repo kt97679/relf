@@ -6485,3 +6485,35 @@ less correct to make a number go up. Left as is, and recorded in
 `command -v` emit no carriage return and still print their answer. 466
 assertions across 56 files plus 1991 core OK markers, both cell widths.
 mrsh-suite stays at 14 for the reason above.
+## Iteration 70: line continuation
+
+A backslash at end of line joins it to the next, per POSIX. Both the
+backslash and the newline are removed and the result is one logical
+line.
+
+Done at the **reading** end — `JOIN-CONTINUATIONS`, called from
+`RUN-LINE` and `READ-LINE-INTO-ARGV` — before quote tracking or
+tokenizing, so every consumer sees a single line and nothing
+downstream needs to know line continuation exists. It reads through
+`READ-INPUT-CALL`, which means a continuation inside a loop body or
+function reads from the stored body like everything else; that is
+tested, not assumed.
+
+`\\` at end of line is an *escaped backslash*, not a continuation,
+which is why the preceding character is checked too — also tested.
+
+This also retires a limitation asserted in `NORMALIZE-OPERATORS`'
+own comment since Iteration 60 ("this shell has no line
+continuation, so end of line really is the end of the word").
+
+### Verified
+
+`tests/shell/run-continuation` (5 assertions): a continued line
+becoming one command, execution continuing afterwards, a doubled
+backslash *not* continuing, and a continuation inside a `for` body
+working on every iteration. 471 assertions across 57 files plus 1991
+core OK markers, both cell widths.
+
+mrsh-suite stays at 14. `2.2-quoted-characters.sh` needed this and
+still differs further down the file; the remaining differences are in
+its own later sections rather than in continuation itself.
