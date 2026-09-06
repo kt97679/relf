@@ -1,0 +1,25 @@
+#!/bin/sh
+# tests/shell/run-func-subshell - "f() ( ... )", a function body written
+# as a subshell (Iteration 62). POSIX allows any compound command as a
+# body, and the paren form means the body runs in a child.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'f() (\n  x=inner\n  echo "in=$x"\n)\nx=outer\nf\necho "out=$x"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "subshell body runs"                    "in=inner" "$out"
+assert_output_contains "its assignments do not reach the caller" "out=outer" "$out"
+
+printf 'g() {\n  y=braced\n}\ny=before\ng\necho "y=$y"\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "a brace body still DOES affect the caller" "y=braced" "$out"
+
+printf 'h() (\n  exit 3\n)\nh\necho "st=$?"\necho alive\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "exit in a subshell body sets the status" "st=3" "$out"
+assert_output_contains "and does not exit the shell"             "alive" "$out"
+
+printf 'k() (\n  echo "$1-$2"\n)\nk one two\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "arguments reach a subshell body" "one-two" "$out"
+report

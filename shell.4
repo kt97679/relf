@@ -4518,10 +4518,13 @@ VARIABLE BODY-DEPTH
 2048 CONSTANT FUNC-BODY-MAX
 
 MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
+MAX-FUNCS BUFFER: FUNC-SUBSH
+VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
 CREATE FUNC-BODY-LENS MAX-FUNCS CELLS ALLOT
 
 : FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;
 : FUNC-BODY-LEN-SLOT ( i --- addr )  CELLS FUNC-BODY-LENS + ;
+: FUNC-SUBSH-SLOT  ( i --- addr )  FUNC-SUBSH + ;
 
 VARIABLE SF-NAME
 VARIABLE SF-BODY-ADDR
@@ -4551,6 +4554,7 @@ VARIABLE SF-I
   THEN
   SF-NAME @ SF-I @ FUNC-NAME-SLOT FUNC-NAME-MAX SAFE-CSTR-COPY DROP
   SF-BODY-LEN @ SF-I @ FUNC-BODY-LEN-SLOT !
+  FUNCDEF-SUBSHELL? @ SF-I @ FUNC-SUBSH-SLOT C!
   SF-BODY-ADDR @ SF-I @ FUNC-BODY-SLOT SF-BODY-LEN @ MOVE ;
 
 VARIABLE FUNC-CUR-I
@@ -4581,6 +4585,20 @@ VARIABLE FUNC-CUR-I
   \ when this returns, so recursive and nested calls each see only
   \ their own.
   {: FUNC-CUR-I | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS :}
+  FUNC-CUR-I @ FUNC-SUBSH-SLOT C@ IF
+    \ "f() ( ... )": run the whole body in a child, so nothing it does
+    \ reaches this shell. Recursing here rather than duplicating the
+    \ loop below - the child clears its own flag first so it does not
+    \ fork again on the way in.
+    FORK DUP 0 = IF
+      DROP
+      0 FUNC-CUR-I @ FUNC-SUBSH-SLOT C!
+      FUNC-CUR-I @ RECURSE
+      LAST-STATUS @ SYS-EXIT
+    THEN
+    WAITPID DROP 8 RSHIFT 255 AND LAST-STATUS !
+    EXIT
+  THEN
   FUNC-DEPTH @ SAVE-POS-PARAMS
   SET-POS-PARAMS-FROM-ARGV
   FUNC-DEPTH @ 1+ FUNC-DEPTH !
@@ -4617,17 +4635,42 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
   {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP :}
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 ARGV@ FUNCDEF-NAME-BUF 64 SAFE-CSTR-COPY DROP   \ ARGV[0] is now the bare name
-  S" {" SPLIT-AT-KEYWORD DROP
+  \ POSIX allows a function body to be any compound command, so
+  \ "f() ( ... )" is as valid as "f() { ... }" - and it means something
+  \ different: the body runs in a subshell, so its assignments and cd
+  \ do not affect the caller. Which form was used is recorded per
+  \ function and honoured by RUN-FUNC-BODY.
+  0 FUNCDEF-SUBSHELL? !
+  \ Drop the three header tokens - name, "(" and ")" - before looking
+  \ for the body opener. Scanning the whole line instead finds the
+  \ parameter list's own "(" at index 1 and mistakes every brace
+  \ function for a subshell one, which is exactly what happened.
+  ARGC @ 3 > IF
+    ARGC @ 3 - 0 DO
+      I 3 + CELLS ARGV + @    I CELLS ARGV + !
+      I 3 + ARGV-QUOTED + C@  I ARGV-QUOTED + C!
+    LOOP
+    ARGC @ 3 - ARGC !
+  ELSE
+    0 ARGC !
+  THEN
+  0 ARGC @ CELLS ARGV + !
+  ARGC @ 0 > IF
+    S" (" 0 ARGV@ STR0= IF -1 FUNCDEF-SUBSHELL? ! THEN
+  THEN
+  FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF
     READ-NEXT-LOGICAL-LINE
-    S" {" LINE-IS? 0= IF
-      ." function: expected '{'" CR EXIT
+    S" {" LINE-IS? IF 0 FUNCDEF-SUBSHELL? ! ELSE
+      S" (" LINE-IS? IF -1 FUNCDEF-SUBSHELL? ! ELSE
+        ." function: expected '{' or '('" CR EXIT
+      THEN
     THEN
   THEN
   0 WHILE-BODY-LEN !
   BEGIN
     READ-NEXT-LOGICAL-LINE
-    S" }" LINE-IS? 0= WHILE
+    FUNCDEF-SUBSHELL? @ IF S" )" LINE-IS? ELSE S" }" LINE-IS? THEN 0= WHILE
     ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
   REPEAT
   FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @

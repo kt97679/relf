@@ -6144,3 +6144,47 @@ probably does.
 widths. mrsh-suite stays at 9 — `args.sh` also needs `f() ( ... )`,
 a function body written as a subshell, and `command.sh` needs more
 besides.
+## Iteration 62: subshell function bodies — mrsh 9 -> 10 passed
+
+`args.sh` passes. POSIX allows a function body to be any compound
+command, so `f() ( ... )` is as valid as `f() { ... }` — and it means
+something different: the body runs in a subshell, so its assignments,
+`cd` and `exit` do not reach the caller.
+
+Which form was used is recorded per function (`FUNC-SUBSH`), and
+`RUN-FUNC-BODY` forks when the flag is set, recursing into itself with
+the flag cleared in the child rather than duplicating the body loop.
+
+### The bug this produced, and why it is instructive
+
+My first version looked for the body opener with
+`S" {" S" (" SPLIT-AT-EITHER-KEYWORD` — scanning the whole line for
+either. For `f() {` the tokens are `f ( ) {`, so it matched the `(` of
+the **parameter list** at index 1 and classified *every brace function*
+as a subshell one. `run-func`, `run-return` and `run-nesting` all
+failed at once.
+
+The fix is to drop the three header tokens (`name`, `(`, `)`) before
+looking for the opener. What is worth extracting is that Iteration 48
+made parens self-delimiting precisely so `(` would be its own token —
+and that same change is what put a stray `(` in the middle of a
+function header, where a later feature then tripped over it. A change
+that makes something uniform also makes it *ambiguous* in places that
+previously had no reason to care.
+
+Three existing test files caught it immediately, which is the argument
+for the regression suite doing more than confirming the new feature.
+
+### Verified
+
+`tests/shell/run-func-subshell` (6 assertions): the subshell body
+running, its assignments *not* reaching the caller, a brace body still
+doing so, `exit` inside a subshell body setting the status without
+exiting the shell, and arguments reaching the body. 426 assertions
+across 52 files plus 1991 core OK markers, both cell widths.
+
+**mrsh-suite: 9 passed -> 10.** Remaining 11: background jobs
+(`async.sh`), `ulimit`, `~user` (`word.sh`), compound commands as
+pipeline stages (`read.sh`), `command.sh`, `for.sh`, `function.sh`,
+`return.sh`, `subshell.sh`, `readonly.sh`, `2.2-quoted-characters.sh`,
+and the alias conformance case.
