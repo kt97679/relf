@@ -8446,3 +8446,69 @@ it would have been tokenized unnormalized before.
 
 524 assertions across 63 files, 16 differential cases, 1991 core OK
 markers, both cell widths, mrsh 18 of 21.
+## Iteration 112: word boundaries recorded by the pass that finds them
+
+`NORMALIZE-OPERATORS` now records where each word starts and ends, and
+`TOKENIZE` expands those spans instead of re-deriving the boundaries
+itself. This is the piece Stage 1b needs: expansion of a word becomes
+"run the scanner over this span", which is a thing that can be done
+later, per command, rather than only during one pass over the line.
+
+It goes here because this pass already tracks single quotes, double
+quotes, `$(...)`, backquotes and `$((...))` — it must, or it would
+space out operators inside them. "Does this whitespace separate two
+words" is the same question, already answered. `NORM-EMIT` opens a
+word at the first non-blank emitted while none is open; `NORM-CLOSE`
+ends one at unquoted whitespace, around each operator (so the operator
+is its own word), at a comment, and at end of line. `TOKENIZE`'s own
+`SKIP-WS` loop is gone.
+
+### The disagreement this exposed, which is the whole point of §11
+
+Two shell tests went red: a quoted argument inside `$(...)`, and the
+same inside backquotes. The two scanners disagreed, and the *new* one
+was wrong.
+
+`NORMALIZE-OPERATORS`' double-quote branch did not recognise a command
+substitution at all, so in `"cmd: $(echo "one two")"` the inner quote
+read as the outer one's closer. From there the space in `one two` was
+unquoted, and the word ended in the middle of the substitution.
+`SCAN-TOKEN` had always got this right, because `COPY-DOUBLE-QUOTED`
+consumes a `$(...)` whole.
+
+The inaccuracy was old and harmless while nothing acted on it — the
+same shape as the `NORM-IN-CMDSUB?` state leak found in Iteration 105
+and the approximate backslash tracking that only started mattering in
+Iteration 60. Making this pass the authority on word boundaries is
+what made it matter. `NORM-SKIP-CMDSUB` and `NORM-SKIP-BQ` copy those
+regions verbatim from inside double quotes, counting parens.
+
+Worth stating plainly: the merge did not create a bug, it *revealed*
+one that had been latent for a hundred iterations, and it took two
+existing tests to find it rather than inspection. That is the argument
+for merging duplicated shapes even when both copies appear to work —
+one of them does not, and you cannot tell which by reading.
+
+### Also fixed, in passing
+
+`NORM-EMIT` left the character on the data stack when `NORM-BUF` was
+full instead of dropping it. Never reached, since the buffer is 512
+bytes and a line is at most 256, but a stack leak on an overflow path
+is not something to leave sitting there.
+
+### Verified
+
+`tests/diff/cases/cmdsub-body.sh` extended with quotes inside a
+substitution inside quotes, in both `$( )` and backquote form, nested
+two deep, two substitutions in one word, and inside an assignment.
+
+524 assertions across 63 files, 16 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
+
+### What Stage 1b still needs
+
+`TOKENIZE` still expands as it walks the spans. The remaining step is
+to make that walk *not* expand — recording each word's raw text and a
+"needs expansion" flag — and to run a new `EXPAND-WORDS` per command
+instead. Then the audit of `ARGV`'s readers in
+`PARSE-EXPAND-PLAN.md`, which is where the quiet failures will be.

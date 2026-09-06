@@ -50,3 +50,14 @@ echo "[$(true)]"
 
 # text either side survives
 echo A$(echo b)C
+
+# Quotes inside a substitution inside quotes. Operator normalization
+# has to recognise the substitution, or the inner quote reads as the
+# outer one's closer and the word ends in the middle of it
+# (Iteration 112).
+echo "cmd: $(echo "one two")"
+echo "bq: `echo "two words"`"
+echo "nested: $(echo "$(echo "deep")")"
+echo "after: $(echo a)$(echo b) tail"
+x="pre $(echo mid) post"
+echo "[$x]"

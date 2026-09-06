@@ -41,6 +41,10 @@ CREATE LINE-BUF   LINE-MAX ALLOT
 
 512 CONSTANT NORM-MAX
 CREATE NORM-BUF NORM-MAX ALLOT
+CREATE NORM-WORDS MAX-ARGS CELLS ALLOT   \ each word's start offset
+CREATE NORM-WLENS MAX-ARGS CELLS ALLOT   \ and its length, in NORM-BUF
+VARIABLE NORM-WCOUNT
+VARIABLE NORM-WSTART      \ start of the word currently open, or -1
 \ Declared here rather than beside NORMALIZE-OPERATORS: TOKENIZE
 \ reads the normalized line straight out of this buffer (Iteration
 \ 111), and this file is one linear source where a word must be
@@ -574,6 +578,7 @@ VARIABLE SPPD-DEPTH
 VARIABLE TOK-POS
 VARIABLE TOK-END
 VARIABLE TOK-OUT
+VARIABLE TK-I
 
 4096 CONSTANT TOK-BUF-MAX
 TOK-BUF-MAX BUFFER: TOK-BUF
@@ -2144,17 +2149,23 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     SCAN-TOKEN-CHAR
   REPEAT ;
 
-: TOKENIZE ( u --- )  \ NORM-BUF holds the normalized line, u bytes.
-                       \ Reached only through NORM-TOKENIZE, which is
-                       \ what puts it there.
-  NORM-BUF + TOK-END !
-  NORM-BUF TOK-POS !
+: TOKENIZE ( u --- )
+  \ NORM-BUF holds the normalized line and NORM-WORDS/NORM-WLENS its
+  \ word boundaries, both left there by NORM-TOKENIZE's call to
+  \ NORMALIZE-OPERATORS. u is that pass's byte count and is no longer
+  \ needed: where the words are is recorded rather than re-derived.
+  \
+  \ Each word is expanded independently, from its own span into
+  \ TOK-BUF. One raw word can still produce several ARGV entries -
+  \ IFS splitting of an unquoted expansion - which is why ARGC is not
+  \ simply the word count.
+  DROP
   TOK-BUF TOK-OUT !
   0 ARGC !
-  BEGIN
-    SKIP-WS
-    TOK-POS @ TOK-END @ <
-  WHILE
+  {: | TK-I :}
+  BEGIN TK-I @ NORM-WCOUNT @ < WHILE
+    NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TOK-POS !
+    TOK-POS @ NORM-WLENS TK-I @ CELLS + @ + TOK-END !
     0 TOK-WAS-QUOTED? !
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
@@ -2185,15 +2196,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
     THEN
-    \ SCAN-TOKEN stops exactly at the next unquoted-whitespace
-    \ separator (or end of input) without consuming it. Advance past
-    \ it here so the next SKIP-WS actually finds whitespace to skip -
-    \ the NUL-termination write just above lands at TOK-OUT, which for
-    \ an uncompacted/unquoted token coincides with this very separator
-    \ position, overwriting it; without this advance TOK-POS would be
-    \ left sitting on that now-NUL byte, and the next iteration would
-    \ record an empty token there instead of moving on.
-    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
+    TK-I @ 1+ TK-I !
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
 
@@ -4491,10 +4494,38 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   NORM-LEN @ 0= IF -1 EXIT THEN
   NORM-BUF NORM-LEN @ 1- + C@ WS? ;
 
+: NORM-CLOSE ( --- )
+  \ Ends the word currently being emitted, if any.
+  \
+  \ Word boundaries are recorded HERE, by the pass that already knows
+  \ where they are. NORMALIZE-OPERATORS tracks single quotes, double
+  \ quotes, $(...), backquotes and $((...)) because it must not space
+  \ out operators inside them - which is the same question as "does
+  \ this whitespace separate two words". Deriving it a second time in
+  \ the tokenizer would be two answers to one question, and
+  \ FORTH-STYLE.md section 11 is about what happens next.
+  NORM-WSTART @ -1 = IF EXIT THEN
+  NORM-WCOUNT @ MAX-ARGS 1- < IF
+    NORM-WSTART @                    NORM-WORDS NORM-WCOUNT @ CELLS + !
+    NORM-LEN @ NORM-WSTART @ -       NORM-WLENS NORM-WCOUNT @ CELLS + !
+    NORM-WCOUNT @ 1+ NORM-WCOUNT !
+  THEN
+  -1 NORM-WSTART ! ;
+
 : NORM-EMIT ( c --- )
   NORM-LEN @ NORM-MAX 1- < IF
+    \ A word opens at the first non-blank emitted while none is open.
+    \ Blanks never open one, so the separators - both the line's own
+    \ and the ones inserted around an operator - fall between words
+    \ rather than starting a new one. A blank INSIDE a word (quoted,
+    \ or within a $(...)) arrives with the word already open and
+    \ leaves it open, which is exactly right.
+    DUP WS? 0= NORM-WSTART @ -1 = AND IF NORM-LEN @ NORM-WSTART ! THEN
     NORM-BUF NORM-LEN @ + C!
     NORM-LEN @ 1+ NORM-LEN !
+  ELSE
+    DROP        ( buffer full - the character was being left on the
+                  data stack until Iteration 112 )
   THEN ;
 
 : NORM-PEEK ( offset --- c )  \ byte at LINE-BUF[NORM-I + offset], or
@@ -4512,11 +4543,58 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                                      \ current position?
   NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 = AND ;
 
+VARIABLE NORM-SKIPD
+
+: NORM-SKIP-CMDSUB ( --- )
+  \ Copies a "$(...)" region verbatim from INSIDE double quotes,
+  \ counting parens. The double-quote branch below does not otherwise
+  \ recognise a command substitution, so the quotes inside one were
+  \ taken for the enclosing quote's closer: `"cmd: $(echo "a b")"`
+  \ left this pass believing the string ended after `echo `.
+  \
+  \ That was harmless while nothing acted on where a word ended.
+  \ Iteration 112 made this pass the authority on that, and the
+  \ boundary landed in the middle of the substitution.
+  NORM-C @ NORM-EMIT
+  1 NORM-PEEK NORM-EMIT
+  NORM-I @ 2 + NORM-I !
+  0 NORM-SKIPD !
+  BEGIN
+    NORM-I @ NORM-U @ < IF
+      0 NORM-PEEK 41 = NORM-SKIPD @ 0= AND 0=
+    ELSE 0 THEN
+  WHILE
+    0 NORM-PEEK 40 = IF NORM-SKIPD @ 1+ NORM-SKIPD ! THEN
+    0 NORM-PEEK 41 = IF NORM-SKIPD @ 1- NORM-SKIPD ! THEN
+    0 NORM-PEEK NORM-EMIT
+    NORM-I @ 1+ NORM-I !
+  REPEAT
+  NORM-I @ NORM-U @ < IF
+    41 NORM-EMIT
+    NORM-I @ 1+ NORM-I !
+  THEN ;
+
+: NORM-SKIP-BQ ( --- )
+  \ The same for a backquoted region inside double quotes.
+  NORM-C @ NORM-EMIT
+  NORM-I @ 1+ NORM-I !
+  BEGIN
+    NORM-I @ NORM-U @ < IF 0 NORM-PEEK 96 <> ELSE 0 THEN
+  WHILE
+    0 NORM-PEEK NORM-EMIT
+    NORM-I @ 1+ NORM-I !
+  REPEAT
+  NORM-I @ NORM-U @ < IF
+    96 NORM-EMIT
+    NORM-I @ 1+ NORM-I !
+  THEN ;
+
 : NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
                                       \ the caller copies it back.
   {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C :}
+  0 NORM-WCOUNT !  -1 NORM-WSTART !
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
@@ -4557,6 +4635,10 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
+    ELSE NORM-IN-DQ? @ NORM-AT-CMDSUB-START? AND IF
+      NORM-SKIP-CMDSUB
+    ELSE NORM-IN-DQ? @ NORM-C @ 96 = AND IF
+      NORM-SKIP-BQ
     ELSE NORM-IN-DQ? @ IF
       \ A backslash inside double quotes escapes the next character,
       \ so an escaped quote must not be counted as the closing one.
@@ -4605,6 +4687,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       \ jumping the read position to the end. Quoted '#' never gets
       \ here (the quote branches above consume it), and neither does
       \ a backslash-escaped one.
+      NORM-CLOSE
       NORM-U @ NORM-I !
     ELSE NORM-AT-CMDSUB-START? IF
       \ "$(" starting here: copy both characters verbatim and switch
@@ -4628,6 +4711,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       2 NORM-PEEK NORM-EMIT
       NORM-I @ 3 + NORM-I !
     ELSE NORM-C @ OP-CHAR? IF
+      NORM-CLOSE
       32 NORM-EMIT
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
@@ -4654,12 +4738,15 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
           NORM-I @ 1+ NORM-I !
         THEN
       THEN
+      NORM-CLOSE
       32 NORM-EMIT
     ELSE
+      NORM-C @ WS? IF NORM-CLOSE THEN
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
+  NORM-CLOSE
   \ A quote still open at end of line is a syntax error, not something
   \ to paper over. POSIX: single quotes cannot contain single quotes,
   \ so "'''" is an empty string followed by an unterminated quote -
