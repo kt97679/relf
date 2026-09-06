@@ -1613,7 +1613,15 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
     \ rather than copying a value.
     EAP-I @ 0 > IF
       EAP-AT @ IN-DQ-CONTEXT? @ AND IF
-        IFS-SPLIT-HERE
+        \ The field break needs room reserved too. IFS-SPLIT-HERE
+        \ writes a NUL and advances TOK-OUT, so it grows the output by
+        \ one byte like the separator below does. It is balanced when
+        \ EMIT-EXPANDED-CHAR calls it - the IFS character that
+        \ triggered the split was consumed from the input and not
+        \ emitted - but here nothing was consumed: "$@" synthesises the
+        \ break out of nothing. Without this, "1  $@  2" with three
+        \ parameters lost its "  2" (Iteration 103).
+        1 ENSURE-ROOM IFS-SPLIT-HERE
       ELSE
         1 ENSURE-ROOM 32 EMIT-EXPANDED-CHAR
       THEN

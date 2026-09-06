@@ -7889,3 +7889,75 @@ iteration's two additions; it is 507 now by coincidence. The file
 count of 62 is `ls tests/shell | wc -l`, which includes `lib.sh` and
 `run-all` themselves, so 60 files really run. Left as-is going
 forward, with the method stated here so the series stays comparable.
+## Iteration 103: the fourth in-place-growth bug, where Iteration 99
+## predicted it
+
+    set a b c
+    echo "1  $@  2"     ->  1  a b c
+
+The `  2` is gone. One parameter works; two or more lose everything
+after the `$@`.
+
+`IFS-SPLIT-HERE` writes a NUL and advances `TOK-OUT`, so it grows the
+output by one byte. That is *balanced* when `EMIT-EXPANDED-CHAR` calls
+it — the IFS character that triggered the split was consumed from the
+input and never emitted, so one byte in pays for one byte out. The
+quoted `"$@"` path added in Iteration 100 has no such character: it
+synthesises a field break between parameters out of nothing. One byte
+of unread input clobbered per break, which is why the single-parameter
+case looked fine.
+
+One `ENSURE-ROOM` again, and the same shape as `$VAR` (26), the
+numeric expansions (46) and `$*`'s joining space (99). Iteration 99
+wrote that three instances was a reasonable argument the fourth was
+out there; it was, and it was the sibling branch of the very word 99
+fixed — 99 reserved room for the `$*` separator and left the `$@`
+break beside it unreserved.
+
+### The audit 99 should have done, done now
+
+Every site that writes through `EMIT-TOK-CHAR`/`EMIT-EXPANDED-CHAR`,
+asking of each whether it emits more than it consumed:
+
+- **Balanced, no reservation needed.** `COPY-DOUBLE-QUOTED`'s
+  `92 EMIT-TOK-CHAR EMIT-TOK-CHAR` (two out for the backslash and the
+  character it failed to escape, two in); the literal `$` at 1811 and
+  1872; the ordinary character copies; `TOKENIZE`'s own NUL, which
+  lands on the separator `SCAN-TOKEN` stopped at.
+- **Shorter than their source by construction.** The `PEWORD-BUF`
+  emissions in `EXPAND-BRACED-VAR` (`${VAR:-word}` and friends) have
+  no `ENSURE-ROOM` and do not need one: the word came from inside
+  `${VAR:-`…`}`, so the text consumed is always at least seven bytes
+  longer than the word emitted. Their siblings on the *value* branch
+  do call it, correctly — a variable's value has no such bound.
+- **Reserved.** Everything else already was.
+
+So this is the last of the class that is reachable today. It stops
+being a class at all under Stage 1, where expansion writes into a
+fresh word list instead of over the input.
+
+### Verified
+
+`tests/diff/cases/posparams.sh` extended: text after `"$@"` with
+three parameters and with six, `"[$@]"`, `"x$@y"`, the same as a
+function argument, and the one-parameter case that hid it.
+
+509 assertions across 62 files, 13 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
+
+### Where `word.sh` stands, re-measured
+
+Iteration 100 recorded one difference left. There are four, and this
+fixes one. The others:
+
+- `${null:-"$@"}` and `${x#$HOME}` — the *word* and the *pattern*
+  inside `${...}` are never expanded. Documented in the code as a
+  scope limit since Iteration 32, not a regression, but two of the
+  four.
+- a `$(` whose body spans several physical lines.
+- `c=""; echo ${c=BAD} $c` on one line — the stale-expansion case,
+  Stage 1, as recorded.
+
+Recording the re-measurement because the earlier count was not wrong
+when written — the `$@` fix in 100 changed what the remaining diff
+lines were, and nobody re-read them afterwards.
