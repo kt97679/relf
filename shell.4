@@ -802,6 +802,9 @@ VARIABLE CMDSUB-ARGC
 VARIABLE CS-POS
 VARIABLE CS-END
 VARIABLE CS-COPY-I
+VARIABLE CS-SQ?
+VARIABLE CS-DQ?
+VARIABLE CS-QC
 
 256 CONSTANT CMDSUB-OUT-MAX
 CREATE CMDSUB-OUT-BUF CMDSUB-OUT-MAX ALLOT
@@ -813,6 +816,8 @@ VARIABLE CMDSUB-OUT-LEN
   BEGIN
     CS-POS @ CS-END @ < IF CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? ELSE 0 THEN
   WHILE CS-POS @ 1+ CS-POS ! REPEAT ;
+
+VARIABLE CS-OUT
 
 : CMDSUB-TOKENIZE ( u --- )  \ CMDSUB-LINE-BUF holds u raw bytes
   \ CS-END is a plain length (matching CS-POS's own offset
@@ -831,6 +836,7 @@ VARIABLE CMDSUB-OUT-LEN
   CS-END !
   0 CS-POS !
   0 CMDSUB-ARGC !
+  0 CS-SQ? !  0 CS-DQ? !
   BEGIN
     CMDSUB-SKIP-WS
     CS-POS @ CS-END @ <
@@ -839,9 +845,29 @@ VARIABLE CMDSUB-OUT-LEN
       CMDSUB-LINE-BUF CS-POS @ + CMDSUB-ARGV CMDSUB-ARGC @ CELLS + !
       CMDSUB-ARGC @ 1+ CMDSUB-ARGC !
     THEN
+    \ Quote-aware, unlike the original whitespace-only splitter: a
+    \ quoted argument is one token with its quotes removed, so
+    \ $(echo "cmd 1") passes ONE argument. Compacts in place - the
+    \ output can only ever be shorter than the input, since quotes are
+    \ dropped and nothing is inserted.
+    CS-POS @ CS-OUT !
     BEGIN
-      CS-POS @ CS-END @ < IF CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? 0= ELSE 0 THEN
-    WHILE CS-POS @ 1+ CS-POS ! REPEAT
+      CS-POS @ CS-END @ < IF
+        CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? 0=
+        CS-SQ? @ OR CS-DQ? @ OR
+      ELSE 0 THEN
+    WHILE
+      CMDSUB-LINE-BUF CS-POS @ + C@ CS-QC !
+      CS-QC @ 39 = CS-DQ? @ 0= AND IF
+        CS-SQ? @ 0= CS-SQ? !
+      ELSE CS-QC @ 34 = CS-SQ? @ 0= AND IF
+        CS-DQ? @ 0= CS-DQ? !
+      ELSE
+        CS-QC @ CMDSUB-LINE-BUF CS-OUT @ + C!
+        CS-OUT @ 1+ CS-OUT !
+      THEN THEN
+      CS-POS @ 1+ CS-POS !
+    REPEAT
     \ NUL-terminate this token unconditionally, even if it ran all the
     \ way to the end of input with no trailing separator - CMDSUB-
     \ LINE-BUF has room for this one extra byte (LINE-MAX is well past
@@ -850,7 +876,7 @@ VARIABLE CMDSUB-OUT-LEN
     \ TOKENIZE back in Iteration 8 - reintroduced by accident by
     \ copying the pre-fix pattern as a "simple" reference for this
     \ separate tokenizer.
-    0 CMDSUB-LINE-BUF CS-POS @ + C!
+    0 CMDSUB-LINE-BUF CS-OUT @ + C!
     CS-POS @ 1+ CS-POS !
   REPEAT
   0 CMDSUB-ARGV CMDSUB-ARGC @ CELLS + ! ;
@@ -1449,9 +1475,16 @@ VARIABLE ARITH-DEPTH
   \ TOK-POS is at the '(' immediately following '$'.
   TOK-POS @ 1+ TOK-POS !            ( skip '(' )
   0 CS-COPY-I !
+  0 CS-SQ? !  0 CS-DQ? !
   BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 41 <> ELSE 0 THEN
+    TOK-POS @ TOK-END @ < IF
+      TOK-POS @ C@ 41 <> CS-SQ? @ OR CS-DQ? @ OR
+    ELSE 0 THEN
   WHILE
+    \ A ')' inside quotes belongs to the command text, not to the
+    \ substitution: $(echo "a)b") must not stop at the first ')'.
+    TOK-POS @ C@ 39 = CS-DQ? @ 0= AND IF CS-SQ? @ 0= CS-SQ? ! THEN
+    TOK-POS @ C@ 34 = CS-SQ? @ 0= AND IF CS-DQ? @ 0= CS-DQ? ! THEN
     CS-COPY-I @ LINE-MAX 1- < IF
       TOK-POS @ C@ CMDSUB-LINE-BUF CS-COPY-I @ + C!
       CS-COPY-I @ 1+ CS-COPY-I !

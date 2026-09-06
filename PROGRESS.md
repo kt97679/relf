@@ -6517,3 +6517,42 @@ core OK markers, both cell widths.
 mrsh-suite stays at 14. `2.2-quoted-characters.sh` needed this and
 still differs further down the file; the remaining differences are in
 its own later sections rather than in continuation itself.
+## Iteration 71: quoting inside `$(...)`
+
+`$(echo "one two")` now passes **one** argument. The inner tokenizer
+(`CMDSUB-TOKENIZE`) was deliberately whitespace-only — a documented
+scope limit since Iteration 13 — so a quoted argument became several
+words and its quotes were passed through literally.
+
+It is now quote-aware: a quoted run is one token with its quotes
+removed, compacted in place (safe, since the output can only be
+shorter — quotes are dropped and nothing is inserted). `EXPAND-CMDSUB`'s
+search for the closing `)` also skips quoted regions, so a `)` inside
+the command text no longer ends the substitution early.
+
+This is a piece of Phase E rather than the whole of it. What remains
+there: backquotes (`` `cmd` ``), and *nested* `$(...)`. Ramey's chapter
+argues for solving both by reusing the real parser with `)` flagged as
+a context-dependent terminator, rather than by continuing to grow this
+second tokenizer — which is exactly what he says went wrong with
+bash's own `parse_comsub`. This iteration improves the duplicate
+because the improvement was small and self-contained; the next step
+there should be the parser reuse, not more of this.
+
+### Known remaining edge
+
+`$(echo "a)b")` yields `a ) b`. `NORMALIZE-OPERATORS` copies a `$(...)`
+region verbatim but does not itself track quotes *within* it, so the
+`)` inside the string ends its cmdsub-mode early and the rest gets
+operator spacing. Recorded rather than fixed: it wants the same quote
+tracking one level up, and is a narrow case next to the parser work
+above.
+
+### Verified
+
+`tests/shell/run-cmdsub-quotes` (4 assertions): a double-quoted
+argument staying one word, single quotes likewise, unquoted still
+working, and several arguments with one quoted. 475 assertions across
+58 files plus 1991 core OK markers, both cell widths. mrsh-suite stays
+at 14 — `2.2-quoted-characters.sh` needed this and still needs
+backquotes.

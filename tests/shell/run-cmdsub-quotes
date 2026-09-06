@@ -1,0 +1,18 @@
+#!/bin/sh
+# tests/shell/run-cmdsub-quotes - quoting INSIDE $(...) (Iteration 71).
+# The inner tokenizer used to be whitespace-only, so a quoted argument
+# became several and its quotes were literal.
+. "$(dirname "$0")/lib.sh"
+
+out=$("$THIS_SH" -c 'printf "%s\n" "cmd: $(echo "one two")"' 2>/dev/null)
+assert_output_contains "a quoted argument inside \$(...) stays one word" "cmd: one two" "$out"
+
+out=$("$THIS_SH" -c "echo [\$(echo 'sq arg')]" 2>/dev/null)
+assert_output_contains "single quotes inside \$(...) too" "[sq arg]" "$out"
+
+out=$("$THIS_SH" -c 'echo "[$(echo plain)]"' 2>/dev/null)
+assert_output_contains "unquoted \$(...) still works" "[plain]" "$out"
+
+out=$("$THIS_SH" -c 'echo "[$(printf "%s-%s" a b)]"' 2>/dev/null)
+assert_output_contains "several arguments, one of them quoted" "[a-b]" "$out"
+report
