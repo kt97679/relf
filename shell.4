@@ -1588,7 +1588,13 @@ VARIABLE EAP-I
   \ why they're not yet distinguished).
   {: | EAP-I :}
   BEGIN EAP-I @ POS-PARAM-COUNT @ < WHILE
-    EAP-I @ 0 > IF 32 EMIT-EXPANDED-CHAR THEN
+    \ The separator needs room reserved just as the parameters do.
+    \ Without this each one overwrote a byte of unread input, so
+    \ "echo \"[$*]\"" with two parameters lost its closing bracket -
+    \ the same in-place-growth hazard as the numeric expansions in
+    \ Iteration 46, in the one place that emits a character of its own
+    \ rather than copying a value.
+    EAP-I @ 0 > IF 1 ENSURE-ROOM 32 EMIT-EXPANDED-CHAR THEN
     EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !
   REPEAT ;

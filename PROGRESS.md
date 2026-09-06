@@ -7703,3 +7703,44 @@ distinction invisible; `dash` settled it in one command.
 
 The case is removed from `tilde.sh` rather than asserted, since that
 file uses bash as its oracle and always will.
+## Iteration 99: `$*` lost characters after it
+
+`echo "[$*]"` with two parameters printed `[a b c` — the closing
+bracket gone. With one parameter it was fine.
+
+`EMIT-ALL-POS-PARAMS` reserves room for each parameter's text but
+emitted the **separator** between them without reserving anything, so
+each space overwrote a byte of unread input. One parameter means no
+separator, which is why the simple case worked and hid it.
+
+This is the in-place-growth hazard again, and the third distinct
+instance: `$VAR` (Iteration 26), the numeric expansions
+`$?`/`$$`/`$#`/`$((...))` (46), and now the one place that emits a
+character *of its own* rather than copying a value. Each time the fix
+was one `ENSURE-ROOM`; each time it was found by output going missing
+rather than by inspection.
+
+That is the class `PARSE-EXPAND-PLAN.md` says disappears entirely once
+expansion produces a new word list instead of rewriting the input
+buffer. Three instances is a reasonable argument that the fourth is out
+there.
+
+### Found while chasing something else
+
+The visible symptom was `$@`. `"$@"` gives one field where bash gives
+one per parameter — a real gap, and the last independent item in
+`word.sh`. Chasing it turned up this unrelated corruption first, which
+is worth noting as a pattern: a wrong *count* was masking a wrong
+*string*.
+
+`"$@"` itself is not fixed. It needs a forced field break between
+parameters even inside double quotes, where splitting is otherwise
+suppressed — the one expansion POSIX allows to produce multiple fields
+from a quoted word.
+
+### Verified
+
+`tests/diff/cases/posparams.sh` — `$*` alone, embedded, with a
+space-containing parameter, `$#`, indexed access and the empty case.
+507 assertions across 62 files, 12 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
