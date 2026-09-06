@@ -1941,10 +1941,22 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   PW-I @ SWAP - ;
 
 : PASSWD-HOME ( name-addr name-len --- addr | 0 )
-  \ A named user's home directory, read straight out of /etc/passwd:
-  \ this engine exposes no getpwnam, and the format is two lines of
-  \ Forth. Returns 0 for an unknown user, which leaves "~nosuchuser"
-  \ literal - what POSIX requires.
+  \ A named user's home directory, read straight out of /etc/passwd.
+  \ Returns 0 for an unknown user, which leaves "~nosuchuser" literal
+  \ - what POSIX requires.
+  \
+  \ TEMPORARY, and wrong in general: /etc/passwd is only one NSS
+  \ source. On a system using LDAP, SSSD, NIS or systemd-homed a real
+  \ user may not be in this file, and "~alice" would silently stay
+  \ literal. The failure is quiet and environment-dependent - it will
+  \ never show up on a developer machine and will show up on exactly
+  \ the hosts where centrally managed accounts are the point.
+  \
+  \ The fix is a getpwnam(3) primitive in relf.c, which goes through
+  \ NSS and returns whatever the system is configured to use. It
+  \ should REPLACE this word, not sit beside it: two code paths
+  \ disagreeing about who exists is worse than either. Recorded in
+  \ GOALS.md under "Known shortcuts to revisit".
   PW-LEN !
   PW-WANT PW-LEN @ MOVE
   S" /etc/passwd" R/O OPEN-FILE IF DROP 0 EXIT THEN

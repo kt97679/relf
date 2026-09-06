@@ -1239,6 +1239,31 @@ build-time choice, not a fork.
   mode - the right tradeoff until/unless a real need for the
   pre-set-before-including convenience shows up.
 
+## Known shortcuts to revisit
+
+Deliberate compromises that work today and are wrong in general. Each
+is implemented, tested and *incorrect in a way that will not show up
+locally* — which is exactly why they need to be written down rather
+than remembered.
+
+- **`~user` reads `/etc/passwd` directly** (Iteration 96). That is one
+  NSS source among several. On a system using LDAP, SSSD, NIS or
+  systemd-homed — any site with centrally managed accounts — a real
+  user may not appear in that file at all, and `~alice` would silently
+  stay literal instead of expanding. The failure is quiet and
+  environment-dependent: it will never fail on a developer laptop and
+  will fail on exactly the machines where it matters.
+
+  The correct fix is `getpwnam(3)` as an engine primitive, which goes
+  through NSS and returns whatever the system is actually configured
+  to use. That is a small addition to `relf.c` (one primitive, a name
+  in and a string out) and should replace the file reader rather than
+  supplement it — two code paths that disagree about who exists would
+  be worse than either alone.
+
+  Kept for now because it needs no engine change and unblocks
+  `word.sh`; not kept because it is right.
+
 ## Next architectural work: `PARSE-EXPAND-PLAN.md`
 
 The one remaining structural change in `shell.4` — separating

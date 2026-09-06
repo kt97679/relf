@@ -7609,3 +7609,36 @@ separate and not done. The rest of that file needs Stage 1 of the plan.
 unknown user, and both quoted forms staying literal. 507 assertions
 across 62 files, 11 differential cases, 1991 core OK markers, both cell
 widths, mrsh 17 of 21.
+## Iteration 97: recording that `~user` via `/etc/passwd` is a shortcut
+
+Raised in review, and correct: `/etc/passwd` is one NSS source among
+several. On a host using LDAP, SSSD, NIS or systemd-homed, a real user
+may not be in that file, and `~alice` would silently stay literal.
+
+What makes this worth writing down rather than remembering is the
+*shape* of the failure. It is quiet — no error, just a word that does
+not expand — and environment-dependent in the worst direction: it
+cannot fail on a developer machine, and fails on exactly the hosts
+where centrally managed accounts are the reason the feature is used.
+Nothing in this project's test suites can catch it, because both
+suites run here.
+
+Recorded in two places, deliberately:
+
+- **`GOALS.md`, under a new "Known shortcuts to revisit" heading** —
+  for deliberate compromises that work today, are wrong in general, and
+  will not show up locally. `~user` is the first entry; the heading
+  exists so there is somewhere obvious for the next one.
+- **In the code at `PASSWD-HOME`**, since that is where someone would
+  otherwise conclude the behaviour is intended.
+
+The fix is `getpwnam(3)` as an engine primitive — one name in, one
+string out — which goes through NSS and returns whatever the system is
+configured to use. Noted that it should **replace** the file reader
+rather than supplement it: two code paths disagreeing about who exists
+would be worse than either alone.
+
+Kept for now because it needs no engine change and unblocks `word.sh`.
+Not kept because it is right.
+
+No behaviour changed this iteration.
