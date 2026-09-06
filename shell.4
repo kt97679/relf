@@ -843,12 +843,19 @@ VARIABLE IFSC-P
 \ ARGV/ARGC/TOK-POS/TOK-END/TOK-OUT are all still mid-scan for the
 \ *outer* line) - reusing TOKENIZE/ARGV/LINE-BUF for the *inner*
 \ command's own parsing would corrupt that in-progress outer state.
-\ So this uses entirely separate, dedicated buffers and a small,
-\ deliberately simple whitespace-only tokenizer for the inner command
-\ text - no quoting, escaping, expansion, pipes, or redirection
-\ *within* a $(...) command in v0.7 (same "no nesting" scope limit
-\ as if/while), and no nested $(...) either (the first unescaped ")"
-\ found closes it).
+\ So this copies the inner text into its own buffer and runs it in the
+\ forked child through the REAL tokenizer, as replayed input lines -
+\ the same machinery a loop body uses. The child has its own copy of
+\ LINE-BUF/ARGV/TOK-*, so there is nothing left to corrupt.
+\
+\ That replaced CMDSUB-TOKENIZE, a private whitespace-only tokenizer
+\ that had been extended three times (Iterations 71, 73, 104) and
+\ still could not do pipes, redirection, ';', or several commands.
+\ Ramey's regret about bash's own parse_comsub - that it "knows an
+\ uncomfortable amount of shell syntax and duplicates rather more of
+\ the token-reading code than is optimal" - is recorded in GOALS.md
+\ against this exact word, with the instruction to replace rather
+\ than extend it. (Iteration 105.)
 \
 \ RUN-CMDSUB-CHILD needs COPY-ARGV/RUN-CHILD, both defined much later
 \ in this file (in the pipe/path-search sections) - broken via the
@@ -858,90 +865,39 @@ VARIABLE IFSC-P
 \ ==================================================================
 
 CREATE CMDSUB-LINE-BUF LINE-MAX ALLOT
-CREATE CMDSUB-ARGV MAX-ARGS CELLS ALLOT
-VARIABLE CMDSUB-ARGC
+LINE-MAX BUFFER: CMDSUB-LINES     \ the same text, NUL-separated per
+                                   \ line, ready to be replayed
+VARIABLE CMDSUB-LINES-LEN
 VARIABLE CS-POS
-VARIABLE CS-END
 VARIABLE CS-COPY-I
 VARIABLE CS-SQ?
 VARIABLE CS-DQ?
-VARIABLE CS-QC
 VARIABLE CS-CLOSER
+VARIABLE CS-DEPTH        \ nested "$(" still open within this one
+VARIABLE CS-NONBLANK?
 
 256 CONSTANT CMDSUB-OUT-MAX
 CREATE CMDSUB-OUT-BUF CMDSUB-OUT-MAX ALLOT
 VARIABLE CMDSUB-OUT-LEN
 
-: CMDSUB-WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
-
-: CMDSUB-SKIP-WS ( --- )
-  BEGIN
-    CS-POS @ CS-END @ < IF CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? ELSE 0 THEN
-  WHILE CS-POS @ 1+ CS-POS ! REPEAT ;
-
-VARIABLE CS-OUT
-
-: CMDSUB-TOKENIZE ( u --- )  \ CMDSUB-LINE-BUF holds u raw bytes
-  \ CS-END is a plain length (matching CS-POS's own offset
-  \ convention, added to CMDSUB-LINE-BUF explicitly at every use) -
-  \ NOT an absolute address. Storing "CMDSUB-LINE-BUF + u" here was
-  \ the actual bug: it silently mixed an address into what every
-  \ comparison against CS-POS treats as a plain offset, making the
-  \ "CS-POS @ CS-END @ <" bounds check compare an offset (0, 1, 2...)
-  \ against a huge address - always true, so the scan ran unbounded
-  \ past the buffer until it happened to hit something that looked
-  \ like whitespace in whatever memory followed. Found by tracing a
-  \ diagnostic copy of the inner scan loop (loaded via INCLUDED, not
-  \ typed interactively - a long line typed directly at relf's
-  \ interactive stdin was itself a separate, unrelated pitfall: it
-  \ truncated mid-word and threw an "Undefined word" error).
-  CS-END !
-  0 CS-POS !
-  0 CMDSUB-ARGC !
-  0 CS-SQ? !  0 CS-DQ? !
-  BEGIN
-    CMDSUB-SKIP-WS
-    CS-POS @ CS-END @ <
-  WHILE
-    CMDSUB-ARGC @ MAX-ARGS 1- < IF
-      CMDSUB-LINE-BUF CS-POS @ + CMDSUB-ARGV CMDSUB-ARGC @ CELLS + !
-      CMDSUB-ARGC @ 1+ CMDSUB-ARGC !
+: CMDSUB-SPLIT-LINES ( u --- )
+  \ CMDSUB-LINE-BUF holds u raw bytes of command text, which may span
+  \ several physical lines. Rewrites it into CMDSUB-LINES with each
+  \ newline replaced by a NUL - the NUL-separated shape every replay
+  \ source in this file uses - and records whether any non-blank
+  \ character was seen at all, so "$( )" runs nothing.
+  {: CS-POS | CS-COPY-I :}
+  0 CS-NONBLANK? !
+  BEGIN CS-COPY-I @ CS-POS @ < WHILE
+    CMDSUB-LINE-BUF CS-COPY-I @ + C@
+    DUP 10 = IF DROP 0 ELSE
+      DUP WS? 0= IF -1 CS-NONBLANK? ! THEN
     THEN
-    \ Quote-aware, unlike the original whitespace-only splitter: a
-    \ quoted argument is one token with its quotes removed, so
-    \ $(echo "cmd 1") passes ONE argument. Compacts in place - the
-    \ output can only ever be shorter than the input, since quotes are
-    \ dropped and nothing is inserted.
-    CS-POS @ CS-OUT !
-    BEGIN
-      CS-POS @ CS-END @ < IF
-        CMDSUB-LINE-BUF CS-POS @ + C@ CMDSUB-WS? 0=
-        CS-SQ? @ OR CS-DQ? @ OR
-      ELSE 0 THEN
-    WHILE
-      CMDSUB-LINE-BUF CS-POS @ + C@ CS-QC !
-      CS-QC @ 39 = CS-DQ? @ 0= AND IF
-        CS-SQ? @ 0= CS-SQ? !
-      ELSE CS-QC @ 34 = CS-SQ? @ 0= AND IF
-        CS-DQ? @ 0= CS-DQ? !
-      ELSE
-        CS-QC @ CMDSUB-LINE-BUF CS-OUT @ + C!
-        CS-OUT @ 1+ CS-OUT !
-      THEN THEN
-      CS-POS @ 1+ CS-POS !
-    REPEAT
-    \ NUL-terminate this token unconditionally, even if it ran all the
-    \ way to the end of input with no trailing separator - CMDSUB-
-    \ LINE-BUF has room for this one extra byte (LINE-MAX is well past
-    \ any realistic $(...) command). Guarding this write with a bounds
-    \ check here was the exact bug already found and fixed in the main
-    \ TOKENIZE back in Iteration 8 - reintroduced by accident by
-    \ copying the pre-fix pattern as a "simple" reference for this
-    \ separate tokenizer.
-    0 CMDSUB-LINE-BUF CS-OUT @ + C!
-    CS-POS @ 1+ CS-POS !
+    CMDSUB-LINES CS-COPY-I @ + C!
+    CS-COPY-I @ 1+ CS-COPY-I !
   REPEAT
-  0 CMDSUB-ARGV CMDSUB-ARGC @ CELLS + ! ;
+  0 CMDSUB-LINES CS-POS @ + C!
+  CS-POS @ 1+ CMDSUB-LINES-LEN ! ;
 
 DEFER RUN-CMDSUB-CHILD-CALL
 
@@ -1538,16 +1494,27 @@ VARIABLE ARITH-DEPTH
   \ exactly the duplication FORTH-STYLE.md warns about.
   CS-CLOSER !
   0 CS-COPY-I !
-  0 CS-SQ? !  0 CS-DQ? !
+  0 CS-SQ? !  0 CS-DQ? !  0 CS-DEPTH !
   BEGIN
     TOK-POS @ TOK-END @ < IF
-      TOK-POS @ C@ CS-CLOSER @ <> CS-SQ? @ OR CS-DQ? @ OR
+      TOK-POS @ C@ CS-CLOSER @ <> CS-SQ? @ OR CS-DQ? @ OR CS-DEPTH @ 0 <> OR
     ELSE 0 THEN
   WHILE
     \ A ')' inside quotes belongs to the command text, not to the
     \ substitution: $(echo "a)b") must not stop at the first ')'.
     TOK-POS @ C@ 39 = CS-DQ? @ 0= AND IF CS-SQ? @ 0= CS-SQ? ! THEN
     TOK-POS @ C@ 34 = CS-SQ? @ 0= AND IF CS-DQ? @ 0= CS-DQ? ! THEN
+    \ A nested "$(" opens another level, so its own ')' does not close
+    \ this one - "$(echo $(echo x))". Only for the paren form; the
+    \ backquote form has no nesting to track.
+    CS-CLOSER @ 41 = CS-SQ? @ 0= AND CS-DQ? @ 0= AND IF
+      TOK-POS @ C@ 36 = TOK-POS @ 1+ TOK-END @ < AND IF
+        TOK-POS @ 1+ C@ 40 = IF CS-DEPTH @ 1+ CS-DEPTH ! THEN
+      THEN
+      TOK-POS @ C@ 41 = CS-DEPTH @ 0 > AND IF
+        CS-DEPTH @ 1- CS-DEPTH !
+      THEN
+    THEN
     CS-COPY-I @ LINE-MAX 1- < IF
       TOK-POS @ C@ CMDSUB-LINE-BUF CS-COPY-I @ + C!
       CS-COPY-I @ 1+ CS-COPY-I !
@@ -1560,8 +1527,8 @@ VARIABLE ARITH-DEPTH
   \ branch of ${VAR:-$(cmd)} that is not taken - the word is still
   \ scanned, to find where it ends, but a shell that ran the command
   \ anyway would be visibly wrong (Iteration 104).
-  CS-COPY-I @ CMDSUB-TOKENIZE
-  CMDSUB-ARGC @ 0 > IF
+  CS-COPY-I @ CMDSUB-SPLIT-LINES
+  CS-NONBLANK? @ IF
     PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
     FORK DUP CMDSUB-PID !
     0 = IF
@@ -3871,22 +3838,6 @@ VARIABLE PL-J
   ARGV @ FIND-BUILTIN 0= 0= IF -1 EXIT THEN
   ARGV @ FIND-FUNC -1 <> ;
 
-: RUN-CMDSUB-CHILD ( --- )
-  \ Runs the substituted command inside the child EXPAND-CMDSUB
-  \ forked, so clobbering the global ARGV/ARGC is safe.
-  \
-  \ A function, builtin or group is run in this child rather than
-  \ exec'd - "output=$(func_a)" is ordinary usage, and exec'ing would
-  \ just fail to find it. Same test the pipeline uses, which is why
-  \ this word moved down here: PIPE-STAGE-INTERNAL? is defined just
-  \ above.
-  CMDSUB-ARGV CMDSUB-ARGC @ COPY-ARGV
-  PIPE-STAGE-INTERNAL? IF
-    RUN-TOKENIZED-CALL
-    LAST-STATUS @ SYS-EXIT
-  THEN
-  RUN-CHILD ;
-' RUN-CMDSUB-CHILD IS RUN-CMDSUB-CHILD-CALL
 
 \ ------------------------------------------------------------------
 \ A compound command as the last pipeline stage
@@ -4521,6 +4472,10 @@ VARIABLE NORM-IN-SQ?
 VARIABLE NORM-IN-DQ?
 VARIABLE NORM-C
 VARIABLE UNTERMINATED-QUOTE?
+VARIABLE UNTERMINATED-CMDSUB?  \ a "$(" or backquote still open at end
+                                \ of line - the command text continues
+                                \ on the next one, exactly as an open
+                                \ quote does (Iteration 105)
 VARIABLE NORM-IN-CMDSUB?   \ true while copying through a $(...)
                             \ region verbatim. '(' and ')' are
                             \ self-delimiting operators everywhere
@@ -4584,7 +4539,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
                                       \ the caller copies it back.
-  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-I NORM-C :}
+  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C :}
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
@@ -4736,6 +4691,17 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   \ end of the word; a multi-line quoted string is not supported and
   \ would be reported here rather than silently mis-parsed.
   NORM-IN-SQ? @ NORM-IN-DQ? @ OR UNTERMINATED-QUOTE? !
+  \ Likewise for a command substitution: "$(" or a backquote still
+  \ open means the command text continues on the next line, which is
+  \ what JOIN-OPEN-QUOTES acts on.
+  \
+  \ NORM-IN-CMDSUB?/NORM-CMDSUB-DEPTH are scratch locals now. They
+  \ were plain globals and were not reset on entry, so a line ending
+  \ inside a $(...) left the flag set into the NEXT call, which would
+  \ have copied that whole line through verbatim. Nothing had reached
+  \ it because nothing acted on the state at end of line - the same
+  \ shape as the quote tracking before Iteration 60.
+  NORM-IN-CMDSUB? @ NORM-IN-BQ? @ OR UNTERMINATED-CMDSUB? !
   NORM-LEN @ ;
 
 VARIABLE JQ-LEN
@@ -4751,7 +4717,10 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   \     b"
   \
   \ so read further lines, joined by the newline that separated them,
-  \ until the quote closes. Iteration 60 made an open quote a syntax
+  \ until the quote closes. The same applies to a "$(" or backquote
+  \ still open, whose command text continues the same way - the
+  \ newline is kept, and CMDSUB-SPLIT-LINES turns it back into a line
+  \ boundary for the substituted text (Iteration 105). Iteration 60 made an open quote a syntax
   \ error, which is right at end of INPUT and wrong at end of line -
   \ that check now only fires when this word gives up.
   \
@@ -4768,7 +4737,7 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   NO-MORE-INPUT? @ IF JQ-LEN @ EXIT THEN
   BEGIN
     JQ-LEN @ NORMALIZE-OPERATORS DROP
-    UNTERMINATED-QUOTE? @
+    UNTERMINATED-QUOTE? @ UNTERMINATED-CMDSUB? @ OR
     JQ-GUARD @ 4096 < AND
     JQ-LEN @ 1+ LINE-MAX < AND
   WHILE
@@ -4812,6 +4781,41 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
     DROP
     RAW-LINE-LEN @ TOKENIZE
   THEN ;
+
+\ Moved down here in Iteration 105: it now installs the substituted
+\ text as a replay input source and reads it through
+\ READ-LINE-INTO-ARGV, so it must come after that word and after the
+\ REPLAY-*/SHFILE-ACTIVE? declarations. Reaching it from
+\ EXPAND-CMDSUB, far above, is what RUN-CMDSUB-CHILD-CALL is for.
+
+: RUN-CMDSUB-CHILD ( --- )
+  \ Runs the substituted text inside the child EXPAND-CMDSUB forked,
+  \ so clobbering the global ARGV/ARGC/LINE-BUF is safe.
+  \
+  \ The text is installed as a replay input source and read line by
+  \ line through READ-LINE-INTO-ARGV, exactly as a loop body is. That
+  \ is what gives a $(...) the whole language rather than a private
+  \ subset: several commands, ';', '&&', pipes, redirection,
+  \ if/while/for, functions, and nested $(...) - the inner one is
+  \ expanded by the ordinary tokenizer running here.
+  \
+  \ It costs one extra fork for a plain external command, which used
+  \ to be exec'd directly from this child. Correctness over the fork:
+  \ the alternative is keeping a second, weaker parser to avoid it.
+  \ SHFILE-ACTIVE? only decides whether READ-LINE-INTO-ARGV echoes a
+  \ newline for an interactive session. This child's stdout is the
+  \ capture pipe, so that echo would be captured as output - set here
+  \ rather than tested for, since a command substitution is never
+  \ interactive.
+  -1 SHFILE-ACTIVE? !
+  CMDSUB-LINES REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
+  CMDSUB-LINES-LEN @ REPLAY-LEN !  0 REPLAY-POS !
+  BEGIN REPLAY-POS @ REPLAY-LEN @ < WHILE
+    READ-LINE-INTO-ARGV
+    RUN-TOKENIZED-CALL
+  REPEAT
+  LAST-STATUS @ SYS-EXIT ;
+' RUN-CMDSUB-CHILD IS RUN-CMDSUB-CHILD-CALL
 
 \ ==================================================================
 \ Same-line 'then'/'fi'/'else' continuation: "if true; then echo hi;

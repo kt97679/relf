@@ -43,4 +43,12 @@ assert_output_contains "unquoted substitution is split on its internal newline" 
     "START-line1 line2-END" "$out"
 rm -f /tmp/run-cmdsub-multiline.sh
 
+# A $(...) body is real shell text since Iteration 105: several
+# commands, nesting, and a body spanning lines.
+out=$("$THIS_SH" -c 'echo $(echo a; echo b)' 2>/dev/null)
+assert_output_contains "several commands in a substitution" "a b" "$out"
+out=$("$THIS_SH" -c 'echo $(echo $(echo deep))' 2>/dev/null)
+assert_output_contains "nested command substitution" "deep" "$out"
+out=$("$THIS_SH" -c 'echo $(printf "x\ny\n" | tr a-z A-Z)' 2>/dev/null)
+assert_output_contains "a pipeline inside a substitution" "X Y" "$out"
 report

@@ -8045,3 +8045,96 @@ markers, both cell widths, mrsh 17 of 21.
 `word.sh` is down to two differences: the multi-line `$(` on its line
 104, and the stale-expansion case. `2.2-quoted-characters.sh` is down
 to one: nested `$(...)`.
+## Iteration 105: `$(...)` gets the whole language, by deleting the
+## parser that gave it a subset
+
+`CMDSUB-TOKENIZE` was a private whitespace-only tokenizer for the text
+inside a command substitution. It had been extended three times —
+quoting (71), backquotes (73), and again in 104 — and still could not
+do `;`, pipes, redirection, several commands, a body spanning lines, or
+nesting.
+
+GOALS.md already said what to do about it, quoting Ramey on bash's own
+`parse_comsub`: it *"knows an uncomfortable amount of shell syntax and
+duplicates rather more of the token-reading code than is optimal"*, and
+the instruction recorded against this word was to **replace** it rather
+than improve it. That is this iteration.
+
+The substituted text is now installed as a **replay input source** and
+read line by line through `READ-LINE-INTO-ARGV` in the forked child —
+the identical machinery a loop body uses since Iteration 42. The child
+has its own copy of `LINE-BUF`/`ARGV`/`TOK-*`, which is what made
+reusing the real tokenizer safe here where it was not safe in the
+parent.
+
+Everything the private tokenizer could not do now works because
+nothing implements it: several commands, `;`, `&&`, pipes,
+redirection, `if`/`while`/`for`, functions, quoting. `CMDSUB-TOKENIZE`,
+`CMDSUB-ARGV`, `CMDSUB-ARGC`, `CMDSUB-SKIP-WS`, `CMDSUB-WS?` and their
+scratch variables are all gone; `CMDSUB-SPLIT-LINES`, which turns
+newlines into the NUL separators every replay source already uses, is
+sixteen lines.
+
+**Nested `$(...)` came almost free.** The inner substitution is
+expanded by the ordinary tokenizer running in the child, so the only
+thing missing was finding the right closing paren: `CS-DEPTH` counts a
+nested `$(` in the outer scan, exactly as `NORMALIZE-OPERATORS` already
+counted one. That closes `2.2-quoted-characters.sh`.
+
+**A body spanning several lines** needed the other half.
+`NORMALIZE-OPERATORS` now reports `UNTERMINATED-CMDSUB?` alongside
+`UNTERMINATED-QUOTE?`, and `JOIN-OPEN-QUOTES` continues on either — an
+open `$(` at end of line means the command text continues, the same as
+an open quote since Iteration 93. One flag, one `OR`.
+
+### A latent bug the flag exposed
+
+`NORM-IN-CMDSUB?` and `NORM-CMDSUB-DEPTH` were plain globals, absent
+from `NORMALIZE-OPERATORS`' scratch-local list while every other piece
+of its state was there. Nothing reset them, so a line ending inside a
+`$(...)` left cmdsub-mode set for the *next* line, which would then be
+copied through verbatim with no operator spacing at all. Nothing had
+reached it because nothing acted on the state at end of line — the same
+shape the quote tracking had before Iteration 60 made it matter. Both
+are locals now.
+
+### The cost, taken deliberately
+
+A plain `$(cmd)` used to `EXECVE` straight out of the substitution
+child. It now goes through `RUN-TOKENIZED`, which forks again for an
+external command: one extra process per substitution. The alternative
+is keeping a second, weaker parser to avoid it, which is the trade
+GOALS.md already refused. Worth measuring against `tests/bench` when
+Stage 2 is done, not before.
+
+`RUN-CMDSUB-CHILD` moved far down the file, after
+`READ-LINE-INTO-ARGV` and the `REPLAY-*` declarations it now needs.
+Reaching it from `EXPAND-CMDSUB` was already through
+`RUN-CMDSUB-CHILD-CALL`, so nothing else changed.
+
+### Verified
+
+`tests/diff/cases/cmdsub-body.sh` — several commands, nesting two
+deep, a multi-line body in both `$( )` and backquote form, a pipeline,
+a multi-line `for` and a same-line `if` inside the body, quoting, exit
+status, the empty and blank bodies, and text either side.
+`tests/shell/run-cmdsub` extended with three of the same.
+
+510 assertions across 62 files, 15 differential cases, 1991 core OK
+markers, both cell widths.
+
+**mrsh-suite 17 -> 18 of 21.** `2.2-quoted-characters.sh` passes on
+its merits. `word.sh` is down to one differing line — `c=""; echo
+${c=BAD} $c`, the stale-expansion case — which is Stage 1 of
+`PARSE-EXPAND-PLAN.md` and the only thing now standing between this
+project and 19 of 21, its recorded ceiling.
+
+### Found, not fixed
+
+`echo $(for i in 1 2 3; do printf "%s" "$i"; done)` reports
+`for: expected 'do'`. A loop written entirely on one line is not
+supported anywhere — `SAME-LINE-DO?` looks for `do` as the *last*
+token, and here `done` is — so this is the pre-existing gap, not
+something the substitution rewrite introduced. It is the same family as
+Iteration 104's one-line function definition, which hangs. Both want
+one iteration together.
