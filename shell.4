@@ -4720,6 +4720,30 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   REPEAT
   JQ-LEN @ ;
 
+: NORM-TOKENIZE ( u --- )
+  \ LINE-BUF holds u raw bytes: normalize the operators, copy the
+  \ result back over LINE-BUF and tokenize it.
+  \
+  \ This shape appeared verbatim in four places and, in a fifth, did
+  \ not appear where it should have: DO-WHILE re-tokenized its stored
+  \ condition text with no normalization at all, because
+  \ SAVE-WHILE-COND stores the line as it was typed. So `while a;b`
+  \ in a condition never had its ';' spaced out - a latent bug nobody
+  \ had hit, found by scoping Stage 1b of PARSE-EXPAND-PLAN.md rather
+  \ than by anything failing (Iteration 110).
+  \
+  \ The fallback when the normalized text will not fit LINE-BUF is to
+  \ tokenize the original, unmodified line: operators fused to
+  \ adjacent text are not recognised in that rare case, which is the
+  \ pre-existing behaviour and better than truncating.
+  DUP NORMALIZE-OPERATORS
+  DUP LINE-MAX < IF
+    DUP NORM-BUF LINE-BUF ROT MOVE
+    TOKENIZE DROP
+  ELSE
+    DROP TOKENIZE
+  THEN ;
+
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
                                  \ it into ARGV/ARGC - no redirect/pipe
                                  \ parsing or dispatch, just enough to
@@ -4737,19 +4761,15 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  NORMALIZE-OPERATORS
+  NORM-TOKENIZE
+  \ Checked AFTER normalizing, since NORMALIZE-OPERATORS is what sets
+  \ the flag - JOIN-OPEN-QUOTES gives up without normalizing in -c
+  \ mode, so the flag can otherwise be a stale one from the previous
+  \ line. Tokenizing an unterminated line first is harmless: an
+  \ unclosed quote just consumes to end of input, and nothing runs.
   UNTERMINATED-QUOTE? @ IF
     ." shell: syntax error: unterminated quote" CR
-    DROP 2 LAST-STATUS ! EXIT
-  THEN
-  DUP LINE-MAX < IF
-    DUP NORM-BUF LINE-BUF ROT MOVE
-    TOKENIZE
-  ELSE
-    ( normalized text wouldn't fit LINE-BUF - fall back to tokenizing
-      the original, unmodified line, same as RUN-LINE's own fallback )
-    DROP
-    RAW-LINE-LEN @ TOKENIZE
+    2 LAST-STATUS !
   THEN ;
 
 \ Moved down here in Iteration 105: it now installs the substituted
@@ -5685,7 +5705,7 @@ VARIABLE WHILE-BODY-CUR
   BEGIN
     LOOP-BREAK? @ 0= RETURN-PENDING? @ 0= AND IF
       WHILE-COND-BUF @ BODY@ LINE-BUF WHILE-COND-LEN @ MOVE
-      WHILE-COND-LEN @ TOKENIZE
+      WHILE-COND-LEN @ NORM-TOKENIZE
       RUN-TOKENIZED-CALL
       LAST-STATUS @ 0 =
     ELSE
@@ -6271,12 +6291,7 @@ VARIABLE RT-I
   REPEAT
   ALIAS-LINE LINE-BUF ALIAS-LINE-LEN @ MOVE
   ALIAS-DEPTH @ 1+ ALIAS-DEPTH !
-  ALIAS-LINE-LEN @ NORMALIZE-OPERATORS
-  DUP LINE-MAX < IF
-    DUP NORM-BUF LINE-BUF ROT MOVE TOKENIZE
-  ELSE
-    DROP ALIAS-LINE-LEN @ TOKENIZE
-  THEN
+  ALIAS-LINE-LEN @ NORM-TOKENIZE
   RUN-TOKENIZED-CALL
   ALIAS-DEPTH @ 1- ALIAS-DEPTH !
   -1 ;
@@ -6444,12 +6459,7 @@ VARIABLE PP-BAR
   PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
   PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
   PIPE-RAW-FULL LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
-  PIPE-RAW-FULL-LEN @ NORMALIZE-OPERATORS
-  DUP LINE-MAX < IF
-    DUP NORM-BUF LINE-BUF ROT MOVE TOKENIZE
-  ELSE
-    DROP PIPE-RAW-FULL-LEN @ TOKENIZE
-  THEN
+  PIPE-RAW-FULL-LEN @ NORM-TOKENIZE
   -1 PIPE-HAVE-BODY ! ;
 
 ' PREPARE-COMPOUND-PIPE IS PREPARE-PIPE-CALL
@@ -6539,21 +6549,10 @@ VARIABLE PP-BAR
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  NORMALIZE-OPERATORS
+  NORM-TOKENIZE
   UNTERMINATED-QUOTE? @ IF
     ." shell: syntax error: unterminated quote" CR
-    DROP 2 LAST-STATUS ! EXIT
-  THEN
-  DUP LINE-MAX < IF
-    DUP NORM-BUF LINE-BUF ROT MOVE
-    TOKENIZE
-  ELSE
-    ( normalized text wouldn't fit LINE-BUF - fall back to tokenizing
-      the original, unmodified line: operators fused to adjacent text
-      won't be recognized in this rare case, matching the pre-existing
-      behavior rather than truncating or corrupting anything )
-    DROP
-    RAW-LINE-LEN @ TOKENIZE
+    2 LAST-STATUS ! EXIT
   THEN
   RUN-TOKENIZED-CALL ;
 ' RUN-LINE IS RUN-LINE-CALL

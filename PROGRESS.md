@@ -8360,3 +8360,49 @@ the same reason §11 says to merge duplicated shapes.
 
 No behaviour changed. 524 assertions across 63 files, 16 differential
 cases, 1991 core OK markers, both cell widths, mrsh 18 of 21.
+## Iteration 110: one word for normalize-then-tokenize, and the caller
+## that was missing it
+
+Scoping Stage 1b turned up that `TOKENIZE` has a caller which never
+normalizes: `DO-WHILE` re-tokenizes its stored condition text
+directly, because `SAVE-WHILE-COND` keeps the line as it was typed.
+So `while test x != y;do` never had its `;` spaced out - the condition
+was tokenized as if operator normalization did not exist. Nobody had
+hit it because conditions are usually written with spaces.
+
+The same five-line shape - normalize, check the length, copy `NORM-BUF`
+back over `LINE-BUF`, tokenize, or fall back to tokenizing the
+original - appeared verbatim in four places and was *absent* in the
+fifth. That is the FORTH-STYLE.md §11 pattern exactly, with the twist
+that here the copies had not drifted: one had never been written.
+`NORM-TOKENIZE` is that word, and all five sites call it.
+
+### A real failure the change caused, and what it taught
+
+Two `run-syntax-err` assertions went red: an unterminated quote
+stopped being a syntax error. Folding normalization into
+`NORM-TOKENIZE` moved it *after* the `UNTERMINATED-QUOTE?` check that
+two callers make, and that flag is set by `NORMALIZE-OPERATORS` - so
+the check was reading whatever the previous line had left. It looked
+fine in a script, where `JOIN-OPEN-QUOTES` normalizes on the way in,
+and failed in `-c` mode, where that word gives up early without
+normalizing because there is no next line to ask for.
+
+The check now runs after `NORM-TOKENIZE`. Tokenizing an unterminated
+line first is harmless - an unclosed quote consumes to end of input
+and nothing is run - but the ordering dependency was invisible until
+the suite found it, which is the argument for the suite rather than
+for inspection.
+
+### Verified
+
+`tests/diff/cases/control.sh` extended with three while loops whose
+`do` and condition operators are fused to adjacent text.
+
+524 assertions across 63 files, 16 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
+
+This clears the obstacle recorded in `PARSE-EXPAND-PLAN.md` against
+Stage 1b: every path into `TOKENIZE` now goes through
+`NORMALIZE-OPERATORS` first, which is the precondition for that word
+being able to hand `TOKENIZE` the raw word boundaries it found.
