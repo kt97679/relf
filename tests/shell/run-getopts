@@ -23,7 +23,14 @@ assert_output_contains "clustered options (1)"            "o=a a="  "$out"
 assert_output_contains "clustered options (2)"            "o=b a="  "$out"
 assert_output_contains "argument attached to its option"  "o=c a=X" "$out"
 
-printf 'set -- -- -x\necho "1=[$1]"\n' > "$t/d.sh"
+# Only the FIRST '--' is consumed - verified against bash, which also
+# reports '--' here. The point of 'set --' is that the NEXT word is
+# taken literally even if it starts with '-'.
+printf 'set -- -x\necho "1=[$1]"\n' > "$t/d.sh"
 out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
-assert_output_contains "'set --' does not make -- a parameter" "1=[-x]" "$out"
+assert_output_contains "'set --' takes a leading-dash value literally" "1=[-x]" "$out"
+
+printf 'set -- -- -x\necho "1=[$1] 2=[$2]"\n' > "$t/e.sh"
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "a second -- is an ordinary parameter" "1=[--] 2=[-x]" "$out"
 report

@@ -6128,7 +6128,18 @@ what makes `OPTIND=1` work.
 
 ### Verified
 
-`tests/shell/run-getopts` (10 assertions) covering all of the above.
+`tests/shell/run-getopts` (11 assertions) covering all of the above.
+
+One of those assertions was initially **wrong, and I committed it
+failing** before reading the output — it asserted that
+`set -- -- -x` leaves `$1` as `-x`. Running the same script through
+bash shows `$1` is `--`: only the *first* `--` is consumed, and the
+point of `set --` is that the next word is taken literally even if it
+begins with a dash. The shell was right and the expectation was wrong.
+Two lessons, the second more useful than the first: check the suite
+output before committing, and write the expectation by running the
+reference implementation rather than by reasoning about what it
+probably does.
 420 assertions across 51 files plus 1991 core OK markers, both cell
 widths. mrsh-suite stays at 9 — `args.sh` also needs `f() ( ... )`,
 a function body written as a subshell, and `command.sh` needs more
