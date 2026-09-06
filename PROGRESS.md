@@ -8683,3 +8683,62 @@ Checked by output rather than by exit status, which was the first
 attempt and rejected two working shells: the raw-engine row
 (`./relf kernel-shell.img`) does not report a script's exit status at
 all, so a status check called it broken.
+## Iteration 117: a loop written entirely on one line
+
+    for i in 1 2 3; do echo "i=$i"; done
+    while [ $i -lt 3 ]; do i=$((i+1)); done
+
+Both were a syntax error - `for: expected 'do'`, because
+`SAME-LINE-DO?` looks for `do` as the *last* token, and here it is in
+the middle. Found while writing Iteration 105's own differential case,
+which had to be rewritten around it.
+
+`ONE-LINE-LOOP?` finds an unquoted `do` that is not last and an
+unquoted `done` after it. `CAPTURE-ONE-LINE-LOOP` then produces
+exactly the three things the multi-line path produces by reading
+further lines: the body, stored as text through the existing
+`APPEND-RAW-LINE-TO-BODY`; the suffix after `done`, through the
+existing `SAVE-COMPOUND-SUFFIX`; and a header left in `ARGV`. Nothing
+downstream knows the difference - `DO-WHILE-BODY`, nesting,
+`break`/`continue`, the suffix, all unchanged.
+
+**This became easy only because of Iteration 114.** Carving a body out
+of the token list requires the tokens to still be the words as
+written, and until 114 they were expanded during tokenizing - the body
+would have been expanded once, at the header, before the loop
+variable existed. Now `ARGC` is simply cut back to the header before
+the caller expands anything, and the body's words are expanded on each
+iteration when they run, because that is where expansion happens.
+
+`while` needs one thing more: its condition is stored as raw text, and
+`SAVE-WHILE-COND` trims that text at the last unquoted `;` - which for
+a one-line loop is the one before `done`, not the one before `do`. So
+`JOIN-WHILE-COND` rebuilds `RAW-LINE-BUF` as just `while COND` from
+the tokens before the `do`, and `SAVE-WHILE-COND` then reads it the
+way it reads any while line. Body and suffix are captured first, since
+all three rebuild that buffer.
+
+The last `done` is the outer loop's, so a one-line loop nested inside
+another works: the inner one is then a body line and is recognised
+again when it runs.
+
+### A blank line before every iteration
+
+Under `-c`, each iteration printed an empty line first.
+`READ-LINE-INTO-ARGV` echoes a newline when `SHFILE-ACTIVE?` is false,
+which is the echo of an interactively *typed* line - and a loop body
+is replayed, not typed. It had never shown because `-c` had no way to
+run a loop at all before this iteration. Now gated on
+`REPLAY-ACTIVE?` too.
+
+### Verified
+
+`tests/diff/cases/one-line-loop.sh` - `for` and `while`; a word list
+from a variable; a body whose value changes each iteration; a
+multi-command condition; nesting; a suffix after `done`; `$?` from a
+loop that ran nothing; `break` and `continue`; `"do"` and `"done"`
+quoted so they are not keywords; and the multi-line form still
+working.
+
+524 assertions across 63 files, 18 differential cases, 1991 core OK
+markers, both cell widths, mrsh 19 of 21.

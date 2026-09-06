@@ -4970,7 +4970,12 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
                                  \ iteration rather than frozen at its
                                  \ first reading.
   LINE-BUF LINE-MAX READ-NEXT-INPUT-LINE
-  SHFILE-ACTIVE? @ 0= IF CR THEN
+  \ The newline is the echo of an INTERACTIVELY typed line. A replayed
+  \ line - a loop body, a function body, a command substitution - was
+  \ never typed, and echoing one printed a blank line before every
+  \ iteration of a one-line loop under `-c` (Iteration 117). It never
+  \ showed before because `-c` had no way to run a loop at all.
+  SHFILE-ACTIVE? @ 0= REPLAY-ACTIVE? @ 0= AND IF CR THEN
   JOIN-CONTINUATIONS
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
@@ -5536,6 +5541,111 @@ VARIABLE LOOP-RAN?      \ did this loop execute its body even once?
   SUF-LEN @  0 SUF-LEN !
   RUN-LINE-CALL ;
 
+VARIABLE JT-FROM
+VARIABLE JT-TO
+VARIABLE JT-I
+VARIABLE JT-LEN
+VARIABLE RA-A
+VARIABLE RA-U
+VARIABLE TE-I
+VARIABLE TE-A
+VARIABLE TE-U
+VARIABLE OL-DO
+VARIABLE OL-DONE
+VARIABLE OL-I
+VARIABLE OL-END
+
+: TOK-EQ? ( i c-addr u --- f )
+  \ Is ARGV[i] this exact unquoted word? LINE-IS? asks the same
+  \ question but only ever of ARGV[0].
+  {: TE-I TE-A TE-U :}
+  TE-I @ ARGC @ < 0= IF 0 EXIT THEN
+  TE-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  TE-I @ ARGV@ DUP CSTRLEN TE-A @ TE-U @ STR= ;
+
+: RAW-APPEND ( c-addr u --- )
+  \ Appends one word and a separating space at JT-LEN, which is
+  \ JOIN-ARGV-TO-RAW's local and so belongs to the join in progress.
+  {: RA-A RA-U :}
+  RA-U @ JT-LEN @ + 1+ LINE-MAX < IF
+    RA-A @ RAW-LINE-BUF JT-LEN @ + RA-U @ MOVE
+    JT-LEN @ RA-U @ + JT-LEN !
+    32 RAW-LINE-BUF JT-LEN @ + C!
+    JT-LEN @ 1+ JT-LEN !
+  THEN ;
+
+: JOIN-ARGV-TO-RAW ( from to --- )
+  \ Rebuilds RAW-LINE-BUF from ARGV[from..to), one space between
+  \ words. The tokens are raw - quotes and '$' still in them, since
+  \ Iteration 114 - so the result is a line that means exactly what
+  \ that part of the original line meant. Original spacing is lost,
+  \ which nothing depends on.
+  \
+  \ Safe to overwrite RAW-LINE-BUF here: every caller has already
+  \ taken what it needs out of it.
+  {: JT-FROM JT-TO | JT-I JT-LEN :}
+  JT-FROM @ JT-I !
+  BEGIN JT-I @ JT-TO @ < JT-I @ ARGC @ < AND WHILE
+    JT-I @ ARGV@ DUP CSTRLEN RAW-APPEND
+    JT-I @ 1+ JT-I !
+  REPEAT
+  JT-LEN @ 0 > IF JT-LEN @ 1- JT-LEN ! THEN   ( the trailing space )
+  JT-LEN @ RAW-LINE-LEN !
+  0 RAW-LINE-BUF JT-LEN @ + C! ;
+
+: ONE-LINE-LOOP? ( --- f )
+  \ Is the whole loop on this one line - "for i in 1 2; do echo $i;
+  \ done"? True when there is an unquoted "do" that is not the last
+  \ token and an unquoted "done" after it.
+  \
+  \ The LAST "done" is taken, so a one-line loop nested inside another
+  \ belongs to the outer one; the inner is then a body line and is
+  \ recognised again when it runs.
+  {: | OL-I :}
+  -1 OL-DO !  -1 OL-DONE !
+  BEGIN OL-I @ ARGC @ < WHILE
+    OL-DO @ -1 = IF
+      OL-I @ S" do" TOK-EQ? IF OL-I @ OL-DO ! THEN
+    ELSE
+      OL-I @ S" done" TOK-EQ? IF OL-I @ OL-DONE ! THEN
+    THEN
+    OL-I @ 1+ OL-I !
+  REPEAT
+  OL-DO @ ARGC @ 1- = IF -1 OL-DO ! THEN
+  OL-DO @ -1 <> OL-DONE @ -1 <> AND ;
+
+: CAPTURE-ONE-LINE-LOOP ( --- )
+  \ Splits a one-line loop into the three pieces the multi-line path
+  \ produces by reading further lines: the body, the suffix after
+  \ "done", and a header left in ARGV.
+  \
+  \ The body is stored as text, exactly as APPEND-RAW-LINE-TO-BODY
+  \ stores a body line read from input, so everything downstream -
+  \ DO-WHILE-BODY, nesting, break/continue - is unchanged and unaware.
+  \
+  \ ARGC is cut back to the header before the caller expands anything:
+  \ the body's words must not be expanded now, when the loop is being
+  \ set up, but each time the body runs. Without that,
+  \ "for i in 1 2; do echo $i; done" expands $i once, before i exists.
+  0 WHILE-BODY-LEN !
+  OL-DO @ 1+ OL-DONE @ JOIN-ARGV-TO-RAW
+  RAW-LINE-LEN @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
+  OL-DONE @ ARGC @ JOIN-ARGV-TO-RAW
+  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
+  OL-DO @ ARGC !
+  0 ARGV ARGC @ CELLS + ! ;
+
+: JOIN-WHILE-COND ( --- )
+  \ Rebuilds RAW-LINE-BUF as just "while COND", so SAVE-WHILE-COND can
+  \ read it the way it reads any while line. A trailing ";" before the
+  \ "do" is dropped - it separated the condition from the "do" and is
+  \ not part of the condition.
+  OL-DO @ OL-END !
+  OL-END @ 1- 0 > IF
+    OL-END @ 1- S" ;" TOK-EQ? IF OL-END @ 1- OL-END ! THEN
+  THEN
+  0 OL-END @ JOIN-ARGV-TO-RAW ;
+
 \ ==================================================================
 \ Shell functions: name() { <body> } - definition, invocation,
 \ redefinition, and recursion. Each function's body is stored as raw,
@@ -5889,25 +5999,33 @@ VARIABLE WHILE-BODY-CUR
   {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? :}
   LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  SAVE-WHILE-COND
-  SAME-LINE-DO? 0= IF
-    READ-LINE-INTO-ARGV
-    S" do" LINE-IS? 0= IF
-      ." while: expected 'do'" CR EXIT
-    THEN
-  THEN
   0 WHILE-BODY-LEN !
   0 BODY-DEPTH !
-  BEGIN
-    READ-LINE-INTO-ARGV
-    CAPTURE-CONTINUE?
-  WHILE
-    APPEND-RAW-LINE-TO-BODY
-  REPEAT
-  \ An unterminated body is a syntax error: report it and run nothing,
-  \ rather than executing however much of it was read.
-  INPUT-EOF? @ IF EXIT THEN
-  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
+  ONE-LINE-LOOP? IF
+    \ Body and suffix first: both rebuild RAW-LINE-BUF, and
+    \ SAVE-WHILE-COND reads it.
+    CAPTURE-ONE-LINE-LOOP
+    JOIN-WHILE-COND
+    SAVE-WHILE-COND
+  ELSE
+    SAVE-WHILE-COND
+    SAME-LINE-DO? 0= IF
+      READ-LINE-INTO-ARGV
+      S" do" LINE-IS? 0= IF
+        ." while: expected 'do'" CR EXIT
+      THEN
+    THEN
+    BEGIN
+      READ-LINE-INTO-ARGV
+      CAPTURE-CONTINUE?
+    WHILE
+      APPEND-RAW-LINE-TO-BODY
+    REPEAT
+    \ An unterminated body is a syntax error: report it and run
+    \ nothing, rather than executing however much of it was read.
+    INPUT-EOF? @ IF EXIT THEN
+    4 SAVE-COMPOUND-SUFFIX                ( "done" )
+  THEN
   \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
   \ LOOP-BREAK? is reset fresh for this loop, then checked *before*
   \ each re-evaluation of the real condition below - if the previous
@@ -6031,24 +6149,30 @@ VARIABLE FOR-WORD-CUR
   \ iterates over the words $list expands to. DO-FOR reads ARGV
   \ directly and never reaches RUN-SIMPLE-OR-PIPELINE, so it asks for
   \ expansion itself.
-  EXPAND-WORDS
-  SAVE-FOR-WORDS
-  SAME-LINE-DO? 0= IF
-    READ-LINE-INTO-ARGV
-    S" do" LINE-IS? 0= IF
-      ." for: expected 'do'" CR EXIT
-    THEN
-  THEN
   0 WHILE-BODY-LEN !
   0 BODY-DEPTH !
-  BEGIN
-    READ-LINE-INTO-ARGV
-    CAPTURE-CONTINUE?
-  WHILE
-    APPEND-RAW-LINE-TO-BODY
-  REPEAT
-  INPUT-EOF? @ IF EXIT THEN
-  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
+  ONE-LINE-LOOP? IF
+    CAPTURE-ONE-LINE-LOOP
+    EXPAND-WORDS
+    SAVE-FOR-WORDS
+  ELSE
+    EXPAND-WORDS
+    SAVE-FOR-WORDS
+    SAME-LINE-DO? 0= IF
+      READ-LINE-INTO-ARGV
+      S" do" LINE-IS? 0= IF
+        ." for: expected 'do'" CR EXIT
+      THEN
+    THEN
+    BEGIN
+      READ-LINE-INTO-ARGV
+      CAPTURE-CONTINUE?
+    WHILE
+      APPEND-RAW-LINE-TO-BODY
+    REPEAT
+    INPUT-EOF? @ IF EXIT THEN
+    4 SAVE-COMPOUND-SUFFIX                ( "done" )
+  THEN
   DO-FOR-ITERATE
   RUN-COMPOUND-SUFFIX ;
 
@@ -6664,9 +6788,8 @@ VARIABLE PP-BAR
   PP-COMPOUND-AFTER-PIPE? 0= IF EXIT THEN
   \ If the construct is already complete on this line there is nothing
   \ to capture - and capturing anyway would swallow the NEXT line as
-  \ body. (A fully one-line "while ...; do ...; done" is not supported
-  \ here or outside a pipeline; DO-WHILE reads its body from following
-  \ lines. This guard just stops it doing damage.)
+  \ body. A fully one-line "while ...; do ...; done" is complete, and
+  \ DO-WHILE handles it directly since Iteration 117.
   FDC-BALANCED? IF EXIT THEN
   RAW-LINE-BUF PIPE-RAW-FULL RAW-LINE-LEN @ MOVE
   RAW-LINE-LEN @ PIPE-RAW-FULL-LEN !
