@@ -115,6 +115,19 @@ the full account and the fixes applied.
 
 ## Repository conventions
 
+- **Periodically audit for duplication and refactor.** Not only when
+  adding a feature: look over the codebase for repeated shapes and
+  collapse them, keeping it simple, minimal and orthogonal. This has
+  repeatedly turned out to *fix bugs*, not just shorten files —
+  merging the four prefix/suffix searchers (Iteration 39) and the two
+  group splitters (Iteration 50) each removed a latent defect that
+  existed in one copy and not the other. A duplicated shape is a place
+  where two copies can disagree.
+- **Mine the bash maintainers' experience.** Ramey's chapter (see the
+  bash-architecture section below) has already named three bugs this
+  project actually had, before they were found here. When a design
+  question comes up, check what bash does and why, rather than
+  deriving it from scratch — and record the finding.
 - **Watch for development-process wins, and raise them.** Alongside
   feature work, actively look for ways the *process* of working on
   this project could be faster or more reliable, and discuss them

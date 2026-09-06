@@ -32,4 +32,14 @@ out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
 assert_output_contains "subshell assignment does not escape" "sub=1"   "$out"
 assert_output_contains "brace-group assignment persists"     "brace=3" "$out"
 
+# Nested groups: the merged SPLIT-GROUP counts depth, where the two
+# separate splitters it replaced stopped at the inner closer.
+out=$("$THIS_SH" -c '( echo a; ( echo nested ); echo b )' 2>/dev/null)
+assert_output_contains "nested subshell: outer before" "a"      "$out"
+assert_output_contains "nested subshell: inner"        "nested" "$out"
+assert_output_contains "nested subshell: outer after"  "b"      "$out"
+out=$("$THIS_SH" -c '{ echo x; { echo y; }; echo z; }' 2>/dev/null)
+assert_output_contains "nested brace group: inner" "y" "$out"
+assert_output_contains "nested brace group: after" "z" "$out"
+
 report

@@ -5480,3 +5480,63 @@ genuine. Remaining 15: `read`, `readonly`, `command -v`, `alias`,
 and `?:` in `$((...))`, `~user` tilde forms, `args.sh`/`function.sh`/
 `return.sh`/`for.sh` (to be re-diagnosed - their first divergence has
 moved), and the quoting conformance cases.
+## Iteration 50: duplication audit - two merges, two latent bugs
+
+A refactor iteration, done on its own rather than alongside a feature,
+now a standing convention in `GOALS.md`. The finding worth generalizing
+is that **merging duplicated code kept fixing bugs**: in both cases the
+two copies had already drifted, and one of them was wrong.
+
+### Six predicates became one
+
+`AT-SEMI?`, `AT-PIPE?`, `AT-AND?`, `AT-OR?`, `AT-CLOSE-PAREN?` and
+`AT-CLOSE-BRACE?` were the same four lines each, differing only in the
+literal. Now `AT-TOKEN? ( c-addr u --- f )` plus `AT-OP?` (the same,
+restricted to group depth 0), with the named predicates as one-liners
+so no call site changed.
+
+The drift the merge exposed: the four operator predicates had gained
+the `GRP-DEPTH` check in Iteration 49; the two close-bracket ones never
+did, because they were separate copies nobody thought to update.
+
+### Two group splitters became one, fixing nested groups
+
+`SPLIT-GROUP-PAREN` and `SPLIT-GROUP-BRACE` were twenty near-identical
+lines differing only in the closing token. Now one `SPLIT-GROUP`
+parameterized by the closer.
+
+Neither original counted depth, so **`( a ( b ) c )` stopped at the
+inner `)`** and ran a truncated body. Counting depth in the merged word
+fixed that as a side effect. Nested subshells and nested brace groups
+both work now, and are tested.
+
+### And a real reentrancy bug the new test found
+
+`{ echo x; { echo y; }; echo z; }` printed `x` and `y` but never `z`.
+
+`RUN-TOKENIZED` splits at `;` into the *global* `ARGV-SEMI-REST`, runs
+the part before the `;`, and then reads the remainder back. But running
+that first part can recurse all the way into `SPLIT-SEMI` again - a
+brace group does exactly that, since its body goes through
+`RUN-TOKENIZED` - which overwrites the remainder before it is used.
+Pre-existing, and it needed a group nested inside a `;` list to
+surface.
+
+Fixed by copying the remainder into per-invocation arena storage before
+running the left part, released automatically by the locals holding the
+arena's bump pointer.
+
+**The same shape exists in `RUN-AND-OR-CHAIN`**, which also keeps its
+segments in globals across a call that can recurse. Not hit by any test
+yet and not fixed here - recorded rather than quietly left. It is the
+same fix when it comes up.
+
+### Verified
+
+`run-group-cmd` grew to 17 assertions (nested subshells, nested brace
+groups, and the `;`-list case above). 331 assertions across 40 files
+plus 1991 core OK markers, both cell widths. mrsh-suite unchanged at 6
+passed, as expected for a refactor.
+
+`shell.4` is 4559 lines - down slightly despite three added tests'
+worth of behaviour, and the duplicated shapes are gone.

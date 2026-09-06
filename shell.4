@@ -2170,11 +2170,20 @@ CREATE ARGQ-SEMI-REST MAX-ARGS ALLOT
 VARIABLE ARGC-SEMI-LEFT
 VARIABLE ARGC-SEMI-REST
 
-: AT-SEMI? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" ;" STR= ;
+: AT-TOKEN? ( c-addr u --- f )
+  \ Is the token at PR-I this exact literal, unquoted? Six predicates
+  \ used to spell this out separately, differing only in the literal.
+  AT-END? IF 2DROP 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN 2SWAP STR= ;
+
+: AT-OP? ( c-addr u --- f )
+  \ AT-TOKEN?, but only outside any group - so a ';' or '|' belonging
+  \ to a "( ... )" body is not mistaken for the enclosing line's own.
+  GRP-DEPTH @ 0 <> IF 2DROP 0 EXIT THEN
+  AT-TOKEN? ;
+
+: AT-SEMI? ( --- f )  S" ;"  AT-OP? ;
 
 : SPLIT-SEMI ( --- f )  \ f = -1 if a ';' token was found (the part
                           \ before it is in ARGV-SEMI-LEFT/ARGC-SEMI-
@@ -2209,11 +2218,7 @@ VARIABLE ARGC-SEMI-REST
   0 ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
   -1 ;
 
-: AT-PIPE? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
+: AT-PIPE? ( --- f )  S" |" AT-OP? ;
 
 : PIPE-AT-BAR? ( i --- f )   \ is PIPE-ARGV[i] an unquoted "|" ?
   DUP PIPE-ARGQ + C@ IF DROP 0 EXIT THEN
@@ -2352,50 +2357,43 @@ CREATE ARGQ-SHIFT MAX-ARGS ALLOT        \ likewise for ARGV-SHIFT
 VARIABLE ARGC-GROUP-BODY
 VARIABLE GROUP-PID
 
-: AT-CLOSE-PAREN? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" )" STR= ;
+VARIABLE SG-ADDR
+VARIABLE SG-LEN
 
-: AT-CLOSE-BRACE? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" }" STR= ;
-
-: SPLIT-GROUP-PAREN ( --- f )
-  \ ARGV[0] is assumed to already be "(" (checked by the caller, see
-  \ RUN-TOKENIZED). Scans ARGV[1..] for the matching ")" - if found
-  \ (f = -1), ARGV-GROUP-BODY/ARGC-GROUP-BODY holds everything
-  \ between them (may be empty, e.g. "( )"). If the line ends first
-  \ (f = 0, an unterminated group), nothing is touched - not yet
-  \ reported as an error, matching this shell's sparse error handling
-  \ elsewhere.
-  {: | PR-I :}
+: SPLIT-GROUP ( c-addr u --- f )
+  \ ARGV[0] is the opening "(" or "{" (checked by the caller); c-addr u
+  \ is the matching closer. Everything between them goes to
+  \ ARGV-GROUP-BODY/ARGQ-GROUP-BODY (may be empty, e.g. "( )").
+  \ f = 0 and nothing touched if the line ends first - an unterminated
+  \ group, not reported as an error, matching this file's sparse error
+  \ handling elsewhere.
+  \
+  \ This replaces SPLIT-GROUP-PAREN and SPLIT-GROUP-BRACE, which were
+  \ the same twenty lines differing only in the closing token - and
+  \ neither tracked depth, so "( a ( b ) c )" stopped at the INNER
+  \ ')'. Counting depth here fixes that as a side effect of merging
+  \ them.
+  SG-LEN ! SG-ADDR !
   1 PR-I !
+  1 GRP-DEPTH !
   0 ARGC-GROUP-BODY !
-  BEGIN AT-END? AT-CLOSE-PAREN? OR 0= WHILE
+  BEGIN
+    AT-END? IF 0 ELSE
+      SG-ADDR @ SG-LEN @ AT-TOKEN? GRP-DEPTH @ 1 = AND 0=
+    THEN
+  WHILE
     PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
     PR-I @ ARGV-QUOTED@ ARGQ-GROUP-BODY ARGC-GROUP-BODY @ + C!
     ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
+    PR-I @ GRP-TRACK
     PR-I @ 1+ PR-I !
   REPEAT
   0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-  AT-CLOSE-PAREN? 0= IF 0 EXIT THEN
+  AT-END? IF 0 EXIT THEN
   -1 ;
 
-: SPLIT-GROUP-BRACE ( --- f )  \ same as SPLIT-GROUP-PAREN, for "{"/"}"
-  {: | PR-I :}
-  1 PR-I !
-  0 ARGC-GROUP-BODY !
-  BEGIN AT-END? AT-CLOSE-BRACE? OR 0= WHILE
-    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-GROUP-BODY ARGC-GROUP-BODY @ + C!
-    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-  AT-CLOSE-BRACE? 0= IF 0 EXIT THEN
-  -1 ;
+: SPLIT-GROUP-PAREN ( --- f )  S" )" SPLIT-GROUP ;
+: SPLIT-GROUP-BRACE ( --- f )  S" }" SPLIT-GROUP ;
 
 : DO-SUBSHELL ( --- )
   \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
@@ -2542,17 +2540,9 @@ VARIABLE AO-PENDING-OP   \ which of the above applies to the NEXT
                           \ piece about to be considered
 VARIABLE AO-CONTINUE
 
-: AT-AND? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" &&" STR= ;
+: AT-AND? ( --- f )  S" &&" AT-OP? ;
 
-: AT-OR? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" ||" STR= ;
+: AT-OR? ( --- f )  S" ||" AT-OP? ;
 
 : SPLIT-ANDOR ( --- f )  \ f = -1 if a && or || token was found in the
                           \ *global* ARGV/ARGC (not touched by this
@@ -4402,7 +4392,35 @@ VARIABLE FD-LEN
   2 ARGV@ DUP CSTRLEN S" )" STR= 0= IF 0 EXIT THEN
   0 ARGV@ CSTRLEN 0 > ;
 
+VARIABLE RT-REST
+VARIABLE RT-RESTQ
+VARIABLE RT-RESTC
+VARIABLE RT-I
+
+: RT-SAVE-REST ( --- )
+  \ Copy the ';'-remainder out of the shared ARGV-SEMI-REST arrays into
+  \ per-invocation arena storage, BEFORE running the part before the
+  \ ';'.
+  \
+  \ Those arrays are globals, and running the left-hand part can
+  \ recurse all the way back into SPLIT-SEMI - a brace group does
+  \ exactly that, since its body is run through RUN-TOKENIZED. The
+  \ remainder was then overwritten and silently dropped:
+  \ "{ echo x; { echo y; }; echo z; }" printed x and y but never z.
+  \ Pre-existing; it needed a group nested inside a ';' list to show.
+  ARGC-SEMI-REST @ RT-RESTC !
+  MAX-ARGS CELLS BODY-ALLOC RT-REST !
+  MAX-ARGS       BODY-ALLOC RT-RESTQ !
+  0 RT-I !
+  BEGIN RT-I @ RT-RESTC @ < WHILE
+    ARGV-SEMI-REST RT-I @ CELLS + @  RT-REST  @ BODY@ RT-I @ CELLS + !
+    ARGQ-SEMI-REST RT-I @ +      C@  RT-RESTQ @ BODY@ RT-I @ +       C!
+    RT-I @ 1+ RT-I !
+  REPEAT ;
+
 : RUN-TOKENIZED ( --- )
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I :}
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
   \ group's own ';'/'&&'/'||' must stay scoped to its body rather than
@@ -4447,9 +4465,10 @@ VARIABLE FD-LEN
   S" case" LINE-IS? IF DO-CASE EXIT THEN
   FUNCDEF-NAME? IF DO-FUNCDEF EXIT THEN
   SPLIT-SEMI IF
+    RT-SAVE-REST
     ARGV-SEMI-LEFT ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV-Q
     RUN-TOKENIZED-CALL
-    ARGV-SEMI-REST ARGQ-SEMI-REST ARGC-SEMI-REST @ COPY-ARGV-Q
+    RT-REST @ BODY@ RT-RESTQ @ BODY@ RT-RESTC @ COPY-ARGV-Q
     RUN-TOKENIZED-CALL
     EXIT
   THEN
