@@ -115,6 +115,16 @@ the full account and the fixes applied.
 
 ## Repository conventions
 
+- **`FORTH-STYLE.md` is the coding-practice reference.** Read it
+  before writing Forth here. Every rule in it is paired with the
+  incident that produced it, and most of the recurring defect classes
+  in this project are covered: stack-parameter limits, position
+  independence, sentinel values, keeping flags with their data,
+  reentrancy of globals, this kernel's specific hazards
+  (`DO`/`LOOP` at `start = limit`, multi-line `( )` comments,
+  inherited `BASE`), the three testing layers, and when a small
+  facility is worth building versus a language layer.
+
 - **Periodically audit for duplication and refactor.** Not only when
   adding a feature: look over the codebase for repeated shapes and
   collapse them, keeping it simple, minimal and orthogonal. This has
