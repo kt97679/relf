@@ -6827,3 +6827,51 @@ Behaviour-preserving refactor: 497 assertions across 60 files plus
 1991 core OK markers, both cell widths, and mrsh-suite unchanged at 16
 passed. `FORTH-STYLE.md`'s define-before-use rule now documents
 `DEFER`/`IS` instead of the hand-rolled pattern.
+## Iteration 78: compound pipeline stages, second attempt — reverted
+
+Retried Iteration 76's feature now that `DEFER` makes forward
+references cheap. **The ordering problem is gone**: all three pieces
+compiled and loaded cleanly on the first try, where the previous
+attempt never got that far. `DEFER` did what it was added for.
+
+The feature itself is still wrong, and it was reverted. Tree green at
+16 passed.
+
+### Symptom, precisely
+
+`printf "a\nb\nc\n" | while read line; do echo "got:$line"; done`
+prints `got:` unbounded — 4,660 lines in five seconds. The loop body
+runs, `$line` is never set, and the loop never ends.
+
+That signature says the **condition text is empty**: an empty
+condition leaves `LAST-STATUS` at 0, so `DO-WHILE` loops forever
+without ever running `read`. It is not the pipe (a builtin as a
+pipeline stage has worked since Iteration 57) and not the body capture
+(the body clearly replays).
+
+So the suspect is `RAW-AFTER-LAST-PIPE`, which trims `RAW-LINE-BUF` to
+what follows the last unquoted `|` before `SAVE-WHILE-COND` skips the
+literal `while`. Either the trim is producing nothing, or
+`RAW-LINE-BUF`/`RAW-LINE-LEN` are not what that word assumes at the
+point the child calls it.
+
+### Why revert rather than push on
+
+The previous behaviour was "produces no output"; this one is "loops
+without terminating". Shipping it would trade a missing feature for a
+hang, and the local suite would not have caught it — no existing test
+uses this shape, which is precisely why it is worth being careful
+here.
+
+**Next step is a narrow one**, not a redesign: instrument
+`RAW-AFTER-LAST-PIPE` in isolation (print `RAW-LINE-BUF` before and
+after) rather than reasoning about it. The isolated-diagnostic-first
+habit from `FORTH-STYLE.md` is what both attempts skipped — the design
+was verified by reading, and the one word doing string surgery was
+not.
+
+### Kept
+
+`RAW-LAST-CHAR` — the generalization of `RAW-LAST-SEMI` to any
+character — was part of the reverted change and is worth re-adding
+first next time; it is independently useful and was not implicated.
