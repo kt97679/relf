@@ -88,4 +88,19 @@ if echo "$out" | grep -q "should-not-print"; then
 fi
 
 rm -f "$TMP_SCRIPT"
+# A whole arm on one line: pattern, body and ";;" together.
+printf 'p=7\ncase "$p" in\n[0-9]*) echo num ;;\n*) echo other ;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>/dev/null)
+assert_output_contains "same-line arm: bracket pattern matches" "num" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *other*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: a later same-line arm also ran";; esac
+
+printf 'v=zzz\ncase "$v" in\n[0-9]*) echo num ;;\n*) echo other ;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>/dev/null)
+assert_output_contains "same-line arm: falls through to *" "other" "$out"
+
+printf 'case abc in\nx|abc) echo alt ;;\nesac\n' > "$TMP_SCRIPT"
+out=$("$THIS_SH" "$TMP_SCRIPT" 2>/dev/null)
+assert_output_contains "same-line arm with | alternatives" "alt" "$out"
+
 report

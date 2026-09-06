@@ -6695,3 +6695,41 @@ compound commands as pipeline stages (`read.sh`), `~user` (`word.sh`,
 needs a kernel primitive), the alias conformance case, and
 `command.sh`, still deliberately failing on the POSIX-versus-bash
 alias conflict.
+## Iteration 75: same-line `case` arms
+
+`case "$p" in [0-9]*) echo num ;; *) echo other ;; esac` — pattern,
+body and `;;` all on one line — now works. Found in Iteration 74 while
+writing an unrelated test, and recorded then rather than worked
+around; this is the fix.
+
+### Reusing the mechanism that already existed
+
+`DO-CASE` now splits an arm line at its `)` with `SPLIT-AT-KEYWORD`,
+leaving the patterns in `ARGV` and the body as the pending remainder,
+and splits a body line at `;;` the same way. That is exactly how
+`DO-IF` has handled a same-line `then`/`else`/`fi` since Iteration 25 —
+no new machinery, just two more callers of it.
+
+### And it deleted code
+
+`CASE-ARM-MATCHES?` had been stripping a trailing `)` from the last
+pattern token, with its own buffer and length variable. That became
+vestigial when Iteration 48 made `)` a self-delimiting token, and
+outright wrong once `DO-CASE` splits the arm at the `)` itself — it
+would have stripped a real character from the last pattern. Removed:
+every remaining token is now simply a whole pattern.
+
+Worth noting the shape. Iteration 48 changed how `)` tokenizes, and
+that change has now rippled into four separate places — function
+headers (62), `case` pattern stripping (48 and again here), the
+multi-line group check (64), and this. A tokenization change is not
+local, and the places it reaches are not all found at once.
+
+### Verified
+
+`run-case` grew from 16 to 20 assertions: a same-line arm with a
+bracket pattern matching, a later arm correctly *not* also running,
+falling through to `*`, and `|` alternatives on a same-line arm. 497
+assertions across 60 files plus 1991 core OK markers, both cell
+widths. mrsh-suite unchanged at 16 — no vendored test uses this form,
+which is why it went unnoticed for fifty iterations.

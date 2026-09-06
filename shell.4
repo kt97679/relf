@@ -5570,10 +5570,9 @@ VARIABLE CASE-MATCHED?
   \ that stripped last one) is tried as an independent alternative
   \ against the saved CASE-WORD-BUF - any one matching is enough to
   \ select this arm, matching real shells' "PAT1|PAT2|..." semantics.
-  ARGC @ 1- ARGV@ DUP CSTRLEN
-  DUP 0 > IF 1- THEN
-  DUP CASE-PATLAST-LEN !
-  CASE-PATLAST-BUF 256 SAFE-COPY-NUL DROP
+  \ No trailing-')' stripping any more: DO-CASE splits the arm at its
+  \ ')' before calling this, and Iteration 48 made ')' its own token
+  \ in any case, so every remaining token is a whole pattern.
   {: | CA-I :}
   BEGIN CA-I @ ARGC @ < WHILE
     \ '|' separates alternatives; ')' is now its own token too, since
@@ -5587,11 +5586,7 @@ VARIABLE CASE-MATCHED?
       CA-I @ ARGV@ DUP CSTRLEN S" )" STR= OR
     ELSE 0 THEN
     0= IF
-      CA-I @ ARGC @ 1- = IF
-        CASE-PATLAST-BUF CASE-PATLAST-LEN @
-      ELSE
-        CA-I @ ARGV@ DUP CSTRLEN
-      THEN
+      CA-I @ ARGV@ DUP CSTRLEN
       CASE-WORD-BUF CASE-WORD-LEN @ GLOB-MATCH IF -1 EXIT THEN
     THEN
     CA-I @ 1+ CA-I !
@@ -5616,9 +5611,13 @@ VARIABLE CASE-MATCHED?
   CASE-WORD-BUF 256 SAFE-COPY-NUL DROP
   0 CASE-MATCHED? !
   BEGIN
-    READ-LINE-INTO-ARGV
+    READ-NEXT-LOGICAL-LINE
     S" esac" LINE-IS? 0=
   WHILE
+    \ "pat) body ;;" all on one line: split at the ')' so ARGV holds
+    \ only the patterns and the body becomes the pending remainder,
+    \ exactly as DO-IF handles a same-line "then".
+    S" )" SPLIT-AT-KEYWORD DROP
     CASE-MATCHED? @ 0= CASE-ARM-MATCHES? AND IF
       -1 CASE-MATCHED? !
       R@ SUPPRESS-EXEC? !
@@ -5626,11 +5625,19 @@ VARIABLE CASE-MATCHED?
       -1 SUPPRESS-EXEC? !
     THEN
     BEGIN
-      READ-LINE-INTO-ARGV
+      READ-NEXT-LOGICAL-LINE
       S" esac" LINE-IS? IF R> SUPPRESS-EXEC? ! EXIT THEN
       S" ;;" LINE-IS? IF -1 ELSE
-        RUN-TOKENIZED-CALL
-        0
+        \ ";;" may end this arm from within a body line rather than
+        \ having a line of its own.
+        S" ;;" SPLIT-AT-KEYWORD IF
+          RUN-TOKENIZED-CALL
+          ARGC-PENDING @ 0= IF 0 PENDING-REMAINDER? ! THEN
+          -1
+        ELSE
+          RUN-TOKENIZED-CALL
+          0
+        THEN
       THEN
     UNTIL
   REPEAT
