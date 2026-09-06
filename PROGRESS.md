@@ -6055,3 +6055,48 @@ mrsh-suite stays at 8. `command.sh` needs `alias` *and* `getopts`,
 alias-expansion conformance case needs the shell to *reject* the
 invalid usage it contains, which is Phase G work rather than a feature
 gap.
+## Iteration 60: unterminated quotes are a syntax error — mrsh 8 -> 9
+
+The first Phase G item. `2.2.2-nested-single-quotes.fail.sh` passes:
+POSIX says single quotes cannot contain single quotes, so `'''` is an
+empty string followed by an unterminated quote. `bash` rejects it with
+status 2; this shell accepted it silently and now reports
+`syntax error: unterminated quote` and exits 2 as well.
+
+`NORMALIZE-OPERATORS` already tracked quote state for its own purposes;
+the change is to record whether a quote is still open at end of line
+and refuse to run the line if so.
+
+### A latent bug this exposed immediately
+
+`run-quote` failed the moment the check went in: `echo "a\"b"` was
+reported as unterminated. The double-quote tracking in
+`NORMALIZE-OPERATORS` did not honour `\"` — it counted the escaped
+quote as the closing one, so the *real* closing quote re-opened the
+string.
+
+That had been wrong all along and had never mattered, because nothing
+acted on the leftover state; the actual unescaping happens later in
+`COPY-DOUBLE-QUOTED`. Adding a consumer of the state turned an
+approximation into a bug in one step.
+
+Worth generalizing: **state that is only ever an approximation stops
+being harmless the moment something reads it.** Nothing about the
+tracking changed between it being fine and being wrong — only that a
+second caller appeared. The existing test caught it, which is the
+argument for keeping tests for behaviour that seems settled.
+
+### Verified
+
+`tests/shell/run-syntax-err` (6 assertions): both unterminated cases
+rejected with status 2, and four lookalikes that must still work — a
+properly closed quote, an escaped quote inside double quotes, a single
+quote inside double quotes, and an empty quoted string. 410 assertions
+across 50 files plus 1991 core OK markers, both cell widths.
+
+**mrsh-suite: 8 passed -> 9.** Remaining 12: `getopts` and `f() ( ... )`
+(`args.sh`), background jobs (`async.sh`), `ulimit`, `~user`
+(`word.sh`), compound commands as pipeline stages (`read.sh`),
+`command.sh`, `for.sh`, `function.sh`, `return.sh`, `subshell.sh`,
+`readonly.sh`, `2.2-quoted-characters.sh`, and the alias conformance
+case (which needs the shell to reject an invalid alias usage).

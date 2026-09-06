@@ -3694,6 +3694,7 @@ VARIABLE NORM-U
 VARIABLE NORM-IN-SQ?
 VARIABLE NORM-IN-DQ?
 VARIABLE NORM-C
+VARIABLE UNTERMINATED-QUOTE?
 VARIABLE NORM-IN-CMDSUB?   \ true while copying through a $(...)
                             \ region verbatim. '(' and ')' are
                             \ self-delimiting operators everywhere
@@ -3794,9 +3795,22 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
     ELSE NORM-IN-DQ? @ IF
-      NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
+      \ A backslash inside double quotes escapes the next character,
+      \ so an escaped quote must not be counted as the closing one.
+      \ This tracking used to be approximate and it did not matter,
+      \ because nothing acted on the state; once an unterminated quote
+      \ became a diagnosed syntax error, `echo "a\"b"` started
+      \ reporting one. The actual unescaping still happens later, in
+      \ COPY-DOUBLE-QUOTED - here both characters are simply copied.
+      NORM-C @ 92 = NORM-I @ 1+ NORM-U @ < AND IF
+        NORM-C @ NORM-EMIT
+        1 NORM-PEEK NORM-EMIT
+        NORM-I @ 2 + NORM-I !
+      ELSE
+        NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
+        NORM-C @ NORM-EMIT
+        NORM-I @ 1+ NORM-I !
+      THEN
     ELSE NORM-C @ 39 = IF
       -1 NORM-IN-SQ? !
       NORM-C @ NORM-EMIT
@@ -3876,6 +3890,14 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       NORM-I @ 1+ NORM-I !
     THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
+  \ A quote still open at end of line is a syntax error, not something
+  \ to paper over. POSIX: single quotes cannot contain single quotes,
+  \ so "'''" is an empty string followed by an unterminated quote -
+  \ which is exactly what the 2.2.2 conformance case checks.
+  \ This shell has no line continuation, so end of line really is the
+  \ end of the word; a multi-line quoted string is not supported and
+  \ would be reported here rather than silently mis-parsed.
+  NORM-IN-SQ? @ NORM-IN-DQ? @ OR UNTERMINATED-QUOTE? !
   NORM-LEN @ ;
 
 : READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
@@ -3894,6 +3916,10 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS
+  UNTERMINATED-QUOTE? @ IF
+    ." shell: syntax error: unterminated quote" CR
+    DROP 2 LAST-STATUS ! EXIT
+  THEN
   DUP LINE-MAX < IF
     DUP NORM-BUF LINE-BUF ROT MOVE
     TOKENIZE
@@ -5236,6 +5262,10 @@ VARIABLE AL-VALUE
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   NORMALIZE-OPERATORS
+  UNTERMINATED-QUOTE? @ IF
+    ." shell: syntax error: unterminated quote" CR
+    DROP 2 LAST-STATUS ! EXIT
+  THEN
   DUP LINE-MAX < IF
     DUP NORM-BUF LINE-BUF ROT MOVE
     TOKENIZE

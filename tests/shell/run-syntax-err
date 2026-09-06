@@ -1,0 +1,20 @@
+#!/bin/sh
+# tests/shell/run-syntax-err - unterminated quotes are a syntax error
+# (Iteration 60), and the escapes that must NOT trigger it.
+. "$(dirname "$0")/lib.sh"
+
+"$THIS_SH" -c "printf '%s\n' '''" >/dev/null 2>&1
+assert_status "POSIX: single quotes cannot nest -> syntax error" 2 "$?"
+"$THIS_SH" -c 'echo "unterminated' >/dev/null 2>&1
+assert_status "unterminated double quote -> syntax error" 2 "$?"
+
+# things that look similar and must still work
+out=$("$THIS_SH" -c "echo 'ok quoted'" 2>/dev/null)
+assert_output_contains "a properly closed single quote" "ok quoted" "$out"
+out=$("$THIS_SH" -c 'echo "a\"b"' 2>/dev/null)
+assert_output_contains "an escaped quote is not the closing one" 'a"b' "$out"
+out=$("$THIS_SH" -c "echo \"it's\"" 2>/dev/null)
+assert_output_contains "a single quote inside double quotes" "it's" "$out"
+out=$("$THIS_SH" -c "echo '' after" 2>/dev/null)
+assert_output_contains "an empty quoted string" "after" "$out"
+report
