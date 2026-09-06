@@ -8512,3 +8512,42 @@ to make that walk *not* expand — recording each word's raw text and a
 "needs expansion" flag — and to run a new `EXPAND-WORDS` per command
 instead. Then the audit of `ARGV`'s readers in
 `PARSE-EXPAND-PLAN.md`, which is where the quiet failures will be.
+## Iteration 113: expansion becomes a word you can call later
+
+`TOKENIZE` is now `TOKENIZE-RAW` followed by `EXPAND-WORDS`.
+
+`TOKENIZE-RAW` copies each word recorded by `NORMALIZE-OPERATORS` into
+`TOK-BUF` verbatim - quotes, `$`, backquotes and all. `EXPAND-WORDS`
+takes that list, runs `SCAN-TOKEN` over each word into `EXP-BUF`, and
+rebuilds `ARGV` from the results.
+
+Not expanding turned out to cost nothing, which was not true a week
+ago. The obstacle had always been that the scanner which *found* the
+words was the same one that expanded them, so a raw pass meant a
+second "raw mode" through every region-consuming word - and every one
+of those modes would have been a chance to disagree with its
+expanding twin about where a region ends. Iteration 112 moved boundary
+finding into `NORMALIZE-OPERATORS`, so `TOKENIZE-RAW` has no scanner
+in it at all. It is a `MOVE` and a NUL.
+
+Three details:
+
+- The raw list is **snapshotted** before `ARGV` is rebuilt. One raw
+  word can yield several fields (IFS splitting) or none (an unquoted
+  empty expansion), so the two lists cannot share an array.
+- `ARGV-NAME-QUOTED` is recorded by the raw pass, while the quotes are
+  still there to see. `EXPAND-WORDS` needs it after they are gone, to
+  tell `""` (a field) from `${nope:-}` (no field).
+- `EMIT-TOK-CHAR` now bounds-checks against a `TOK-OUT-END` variable
+  rather than a fixed buffer, since the same emit path fills `TOK-BUF`
+  with raw words and `EXP-BUF` with expanded ones.
+
+**No behaviour changed.** `TOKENIZE` still calls `EXPAND-WORDS`
+immediately, so a line is still expanded in one pass before any of it
+runs. Moving that call to the execution paths - so a word is expanded
+after everything earlier on its line has finished - is the last step,
+and it is a change of behaviour rather than of structure, which is why
+it is not in this commit.
+
+524 assertions across 63 files, 16 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.

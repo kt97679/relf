@@ -579,9 +579,15 @@ VARIABLE TOK-POS
 VARIABLE TOK-END
 VARIABLE TOK-OUT
 VARIABLE TK-I
+VARIABLE TK-J
 
 4096 CONSTANT TOK-BUF-MAX
 TOK-BUF-MAX BUFFER: TOK-BUF
+TOK-BUF-MAX BUFFER: EXP-BUF
+VARIABLE TOK-OUT-END
+\ TOK-BUF holds the line's words as they were written; EXP-BUF holds
+\ them after expansion. Splitting the two is what lets expansion
+\ happen at a different time from tokenizing (Iteration 113).
 \ Expanded words are written HERE, not back over the line they came
 \ from. Until Iteration 108 the tokenizer compacted in place: TOK-OUT
 \ trailed TOK-POS through LINE-BUF, which worked for quote-stripping
@@ -630,7 +636,11 @@ CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
   \ The bounds check is the only limit left on how much a line can
   \ expand to. Over-long output is truncated rather than overrunning,
   \ matching how every other fixed-size copy in this file behaves.
-  TOK-OUT @ TOK-BUF TOK-BUF-MAX + < IF
+  \
+  \ TOK-OUT-END rather than a fixed buffer: the same emit path fills
+  \ TOK-BUF with raw words and EXP-BUF with expanded ones, and only
+  \ whoever set TOK-OUT knows which (Iteration 113).
+  TOK-OUT @ TOK-OUT-END @ < IF
     TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT !
   ELSE
     DROP
@@ -2149,38 +2159,77 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     SCAN-TOKEN-CHAR
   REPEAT ;
 
-: TOKENIZE ( u --- )
-  \ NORM-BUF holds the normalized line and NORM-WORDS/NORM-WLENS its
-  \ word boundaries, both left there by NORM-TOKENIZE's call to
-  \ NORMALIZE-OPERATORS. u is that pass's byte count and is no longer
-  \ needed: where the words are is recorded rather than re-derived.
+CREATE EW-ARGV MAX-ARGS CELLS ALLOT
+CREATE EW-ARGQ MAX-ARGS ALLOT
+VARIABLE EW-ARGC
+VARIABLE EW-I
+
+: TOKENIZE-RAW ( --- )
+  \ Copies each word recorded by NORMALIZE-OPERATORS into TOK-BUF,
+  \ verbatim and NUL-terminated: quotes, '$', backquotes and all.
   \
-  \ Each word is expanded independently, from its own span into
-  \ TOK-BUF. One raw word can still produce several ARGV entries -
-  \ IFS splitting of an unquoted expansion - which is why ARGC is not
-  \ simply the word count.
-  DROP
+  \ Finding the words is no longer this word's job, so not expanding
+  \ them costs nothing - there is no scanner here to put into a
+  \ "raw mode". That is what Iteration 112 bought.
   TOK-BUF TOK-OUT !
+  TOK-BUF TOK-BUF-MAX + TOK-OUT-END !
   0 ARGC !
-  {: | TK-I :}
-  BEGIN TK-I @ NORM-WCOUNT @ < WHILE
-    NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TOK-POS !
-    TOK-POS @ NORM-WLENS TK-I @ CELLS + @ + TOK-END !
+  {: | TK-I TK-J :}
+  BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ MAX-ARGS 1- < AND WHILE
+    TOK-OUT @ ARGV ARGC @ CELLS + !
+    \ A leading quote character is recorded now, while the quotes are
+    \ still there to see. EXPAND-WORDS needs it after they are gone,
+    \ to tell "" (a field) from ${nope:-} (no field).
+    NORM-BUF NORM-WORDS TK-I @ CELLS + @ + C@
+    DUP 39 = SWAP 34 = OR
+    ARGV-NAME-QUOTED ARGC @ + C!
+    0 TK-J !
+    BEGIN TK-J @ NORM-WLENS TK-I @ CELLS + @ < WHILE
+      NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TK-J @ + C@ EMIT-TOK-CHAR
+      TK-J @ 1+ TK-J !
+    REPEAT
+    0 EMIT-TOK-CHAR
+    ARGC @ 1+ ARGC !
+    TK-I @ 1+ TK-I !
+  REPEAT
+  0 ARGV ARGC @ CELLS + ! ;
+
+: EXPAND-WORDS ( --- )
+  \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
+  \ rebuilds ARGV from the results.
+  \
+  \ One raw word can produce several fields - IFS splitting of an
+  \ unquoted expansion - or none at all, which is why the raw list is
+  \ snapshotted first rather than rewritten in place.
+  ARGC @ EW-ARGC !
+  0 EW-I !
+  BEGIN EW-I @ EW-ARGC @ < WHILE
+    ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
+    ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
+    EW-I @ 1+ EW-I !
+  REPEAT
+  EXP-BUF TOK-OUT !
+  EXP-BUF TOK-BUF-MAX + TOK-OUT-END !
+  0 ARGC !
+  0 EW-I !
+  BEGIN EW-I @ EW-ARGC @ < WHILE
+    EW-ARGV EW-I @ CELLS + @ TOK-POS !
+    TOK-POS @ DUP CSTRLEN + TOK-END !
     0 TOK-WAS-QUOTED? !
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
     0 IN-DQ-CONTEXT? !
     ARGC @ MAX-ARGS 1- < IF
       TOK-OUT @ ARGV ARGC @ CELLS + !
-      TOK-POS @ C@ DUP 39 = SWAP 34 = OR
-      ARGV-NAME-QUOTED ARGC @ + C!
+      EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
       \ POSIX: an unquoted expansion that produces nothing yields NO
       \ field at all - "echo A ${nope:-} B" passes two arguments, not
-      \ three. A word that was quoted still counts, even when empty,
-      \ which is what TOK-WAS-QUOTED? distinguishes: "" is a field.
+      \ three. A word that was quoted still counts, even when empty:
+      \ "" is a field.
+      \
       \ ARGV-NAME-QUOTED, not TOK-WAS-QUOTED?: the latter is also set
       \ by an expansion (it is EXPAND-VAR's signal that the result is
       \ not to be re-read as an operator), so it cannot distinguish
@@ -2196,9 +2245,24 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
     THEN
-    TK-I @ 1+ TK-I !
+    EW-I @ 1+ EW-I !
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
+
+: TOKENIZE ( u --- )
+  \ NORM-BUF holds the normalized line and NORM-WORDS/NORM-WLENS its
+  \ word boundaries, both left there by NORM-TOKENIZE's call to
+  \ NORMALIZE-OPERATORS. u is that pass's byte count and is no longer
+  \ needed: where the words are is recorded rather than re-derived.
+  \
+  \ Expansion still runs here, immediately. Moving this second call to
+  \ the execution paths - so a word is expanded after everything
+  \ earlier on its line has run - is the last step of Stage 1b in
+  \ PARSE-EXPAND-PLAN.md, and is a change of behaviour rather than of
+  \ structure, so it is kept separate from this one.
+  DROP
+  TOKENIZE-RAW
+  EXPAND-WORDS ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
