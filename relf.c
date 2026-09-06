@@ -64,7 +64,14 @@ typedef int32_t  INT64;
  *  enough to be unremarkable and leaves real headroom for shell.4 to
  *  keep growing.  */
 #define MEMSIZE (1024 * 1024)
-#define RSTACK_BYTES 2048     /* room reserved for the return stack     */
+/*  Room reserved for the return stack. Raised from 2048 in Iteration
+ *  90: 2048 bytes is 256 cells, and each level of shell function
+ *  recursion nests roughly a dozen Forth calls, so the return stack
+ *  overflowed - segfaulting - at around fifteen levels, before
+ *  shell.4's own MAX-POS-PARAM-DEPTH guard of 32 could report
+ *  "recursion too deep". A limit that pre-empts a higher-level one
+ *  turns a diagnosable error into a crash.  */
+#define RSTACK_BYTES 65536
 
 /*
  *  Macroses for memory access. Plain native access, both cell- and

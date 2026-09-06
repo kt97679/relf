@@ -7299,3 +7299,49 @@ the zero paths, in one place, checked against bash.
 
 6 differential cases, 502 assertions across 61 files, 1991 core OK
 markers, both cell widths, mrsh 17 of 21.
+## Iteration 90: auditing the fixed tables — a silent failure, a crash,
+## and two limits that pre-empted a diagnosis
+
+Continued reading rather than running. `GOALS.md`'s memory policy says
+"a full fixed table must never fail silently"; this checked whether
+that was true. It was not.
+
+**Three defects, escalating:**
+
+1. **`SET-SHVAR` failed silently.** Past 32 variables it just `EXIT`ed,
+   so the 33rd was never set and every later use expanded to empty —
+   wrong output, no error. Found in Iteration 44 and *recorded*; never
+   actually diagnosed until now. Same for `SET-FUNC` past 16.
+2. **`SAVE-POS-PARAMS` had no bound at all.** It indexes
+   `POS-PARAMS-SAVE` by function depth, and past
+   `MAX-POS-PARAM-DEPTH` it would `MOVE` a full parameter block past
+   the end of that buffer. Nothing had hit it, which was luck rather
+   than design.
+3. **Two lower limits pre-empted the diagnosis, turning an error into
+   a crash.** With a guard finally added, deep recursion still died —
+   because `locals.4`'s save stack (256 cells) ran out at ~15 levels,
+   and then, once raised, the engine's 2KB return stack overflowed and
+   segfaulted, both before the shell's own limit of 32 could report
+   anything.
+
+`LSAVE-MAX` 256 → 4096 and `RSTACK_BYTES` 2048 → 65536. Deep recursion
+now prints `shell: function recursion too deep` and the script carries
+on.
+
+### The general shape
+
+**A limit that pre-empts a higher-level one turns a diagnosable error
+into a crash.** Three limits were stacked here — the shell's, the
+locals facility's, the engine's — and they were ordered exactly wrong,
+with the most informative one last. That ordering is not visible from
+any single file; it only shows when the deepest one is reached.
+Recorded in both `locals.4` and `relf.c` next to the numbers, since
+that is where someone would consider lowering them again.
+
+### Verified
+
+`tests/shell/run-limits` (5 assertions): ordinary recursion working,
+deep recursion diagnosed *and survived*, and a full variable table
+reported with execution continuing. 507 assertions across 62 files, 6
+differential cases, 1991 core OK markers, both cell widths, mrsh 17
+of 21.

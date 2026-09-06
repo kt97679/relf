@@ -1,0 +1,22 @@
+#!/bin/sh
+# tests/shell/run-limits - fixed limits must be DIAGNOSED, not silently
+# exceeded and not left to crash (Iteration 90).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 10\necho ok10\n' > "$t/a.sh"
+out=$(timeout 15 "$THIS_SH" "$t/a.sh" 2>&1)
+assert_output_contains "ordinary recursion works" "ok10" "$out"
+
+printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 60\necho survived\n' > "$t/b.sh"
+out=$(timeout 20 "$THIS_SH" "$t/b.sh" 2>&1)
+assert_output_contains "deep recursion is diagnosed" "recursion too deep" "$out"
+assert_output_contains "and the shell survives it"   "survived"           "$out"
+
+# the shell-variable table reports when full instead of silently
+# dropping assignments
+{ i=0; while [ $i -lt 40 ]; do echo "v$i=$i"; i=$((i+1)); done; echo 'echo done'; } > "$t/c.sh"
+out=$(timeout 15 "$THIS_SH" "$t/c.sh" 2>&1)
+assert_output_contains "a full variable table is reported" "too many shell variables" "$out"
+assert_output_contains "and execution continues"           "done" "$out"
+report

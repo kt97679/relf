@@ -376,7 +376,15 @@ VARIABLE SV-IDX
   SV-NAME @ FIND-SHVAR
   DUP -1 = IF
     DROP
-    SHVAR-COUNT @ MAX-SHVARS < 0= IF EXIT THEN
+    SHVAR-COUNT @ MAX-SHVARS < 0= IF
+      \ GOALS.md's memory policy: a full fixed table must never fail
+      \ silently. This used to just EXIT, so the 33rd variable was
+      \ never set and every later use of it expanded to empty -
+      \ wrong output rather than an error (found in Iteration 44,
+      \ diagnosed only now).
+      ." shell: too many shell variables" CR
+      EXIT
+    THEN
     SHVAR-COUNT @ DUP 1+ SHVAR-COUNT !
     DUP SHVAR-RO + 0 SWAP C!        \ new slots start writable
   THEN
@@ -4924,7 +4932,10 @@ VARIABLE SF-I
   SF-NAME @ FIND-FUNC
   DUP -1 = IF
     DROP
-    FUNC-COUNT @ MAX-FUNCS < 0= IF EXIT THEN
+    FUNC-COUNT @ MAX-FUNCS < 0= IF
+      ." shell: too many functions" CR
+      EXIT
+    THEN
     FUNC-COUNT @ SF-I !
     FUNC-COUNT @ 1+ FUNC-COUNT !
   ELSE
@@ -4975,6 +4986,17 @@ VARIABLE FUNC-CUR-I
       LAST-STATUS @ SYS-EXIT
     THEN
     WAITPID DROP 8 RSHIFT 255 AND LAST-STATUS !
+    EXIT
+  THEN
+  \ SAVE-POS-PARAMS indexes POS-PARAMS-SAVE by depth with no bound of
+  \ its own: past MAX-POS-PARAM-DEPTH it would MOVE a full parameter
+  \ block past the end of that buffer. Nothing had hit it because
+  \ locals.4's own save stack overflows at a similar depth first - but
+  \ that is an accident of two unrelated limits, and its ABORT kills
+  \ the shell rather than reporting a shell error.
+  FUNC-DEPTH @ MAX-POS-PARAM-DEPTH < 0= IF
+    ." shell: function recursion too deep" CR
+    1 LAST-STATUS !
     EXIT
   THEN
   FUNC-DEPTH @ SAVE-POS-PARAMS

@@ -115,7 +115,14 @@ BASE @  DECIMAL
 \ Runtime: the save stack
 \ ------------------------------------------------------------------
 
-256 CONSTANT LSAVE-MAX
+4096 CONSTANT LSAVE-MAX
+\ Raised from 256 in Iteration 90. Each nested shell construct
+\ declares several locals, so 256 cells ran out around fifteen levels
+\ of function recursion - shallower than shell.4's own
+\ MAX-POS-PARAM-DEPTH of 32, which meant the SHELL's "recursion too
+\ deep" diagnostic could never fire and the user got this file's
+\ ABORT instead, killing the shell. A limit that pre-empts a
+\ higher-level one is worse than a larger limit.
 CREATE LSAVE-STACK LSAVE-MAX CELLS ALLOT
 VARIABLE LSAVE-SP
 
