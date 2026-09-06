@@ -2020,6 +2020,13 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
   THEN ;
 
+: ASSIGN-TILDE-POINT? ( --- f )
+  \ Are we at a point in an ASSIGNMENT word where a tilde expands -
+  \ i.e. directly after the '=' or after a ':'?
+  TOKEN-IS-ASSIGN-PREFIX? 0= IF 0 EXIT THEN
+  TOK-OUT @ ARGV ARGC @ CELLS + @ > 0= IF 0 EXIT THEN
+  TOK-OUT @ 1- C@ DUP 61 = SWAP 58 = OR ;
+
 : SCAN-TOKEN ( --- )
   \ Reads from TOK-POS, writing the *unquoted* content via
   \ EMIT-TOK-CHAR (at TOK-OUT, which only ever trails or equals
@@ -2039,10 +2046,18 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
     ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
     ELSE DUP 36 = IF DROP EXPAND-VAR
+    ELSE DUP 126 = ASSIGN-TILDE-POINT? AND IF
+      \ POSIX expands a tilde in an ASSIGNMENT after the '=' and after
+      \ each unquoted ':', so "a=~/stuff" and "PATH=~/bin:~/sbin" both
+      \ work. Elsewhere in a word '~' is literal, which is why this is
+      \ not simply "is the character a tilde" - and why it is here in
+      \ SCAN-TOKEN and not in COPY-DOUBLE-QUOTED, where a tilde stays
+      \ literal too.
+      DROP TRY-TILDE-EXPAND
     ELSE
       EMIT-TOK-CHAR
       TOK-POS @ 1+ TOK-POS !
-    THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN
   REPEAT ;
 
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length

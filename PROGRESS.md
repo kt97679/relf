@@ -7642,3 +7642,42 @@ Kept for now because it needs no engine change and unblocks `word.sh`.
 Not kept because it is right.
 
 No behaviour changed this iteration.
+## Iteration 98: tilde in assignments
+
+`a=~/stuff` and `PATH=~/bin:~/sbin` expand, per POSIX — after the `=`
+and after each unquoted `:`. Elsewhere in a word, and inside quotes, a
+tilde stays literal, so `echo other=~/y` is unchanged.
+
+`ASSIGN-TILDE-POINT?` asks the two questions that matter: is this an
+assignment word (reusing `TOKEN-IS-ASSIGN-PREFIX?`, itself narrowed to
+assignment position in Iteration 83), and is the previous emitted
+character `=` or `:`.
+
+### Placed in the wrong word first
+
+My first attempt matched on the surrounding text and landed in
+`COPY-DOUBLE-QUOTED` rather than `SCAN-TOKEN` — the two have a nearly
+identical dispatch chain since backquotes were added to both in
+Iteration 73. It failed to load, which caught it, but it would have
+been *wrong even if it had loaded*: a tilde inside double quotes is
+literal.
+
+Worth noting because the two chains are now similar enough that a
+pattern match can land in either, and only one is right for any given
+character. That is a duplication smell the next audit should look at:
+`SCAN-TOKEN` and `COPY-DOUBLE-QUOTED` differ in which characters are
+special, not in how they dispatch.
+
+### `word.sh` after this
+
+The whole tilde section now matches. What remains in that file is the
+stale-expansion case (`c=""; echo ${c:=GOOD}` on one line — Stage 1 of
+the plan) and `$@`/`$*` expanding to multiple fields. No independent
+pieces left.
+
+### Verified
+
+`tests/diff/cases/tilde.sh` extended with the assignment forms and the
+two shapes that must stay literal. 507 assertions across 62 files, 11
+differential cases, 1991 core OK markers, both cell widths, mrsh 17
+of 21.
