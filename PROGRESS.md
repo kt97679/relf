@@ -7192,3 +7192,42 @@ New differential case `empty-field.sh` covering both directions
 (unquoted empty dropped, quoted empty kept, `$#` counting a quoted
 empty operand). 502 assertions across 61 files, 4 differential cases,
 1991 core OK markers, both cell widths, mrsh 17 of 21.
+## Iteration 87: a written plan for parse-then-expand
+
+Agreed to do the architectural change before the remaining `word.sh`
+pieces, so those get written once against the new structure rather than
+twice. For a change this size the first move is a plan, not an edit —
+`PARSE-EXPAND-PLAN.md`, referenced from `GOALS.md`.
+
+### What the plan says, in short
+
+Move from `TOKENIZE` (which expands inline at 24 call sites) to
+`TOKENIZE` (boundaries and flags only) → `EXPAND-WORDS` (per command,
+immediately before it runs). The per-*command* timing is the point: it
+is what makes `FOO=bar; echo $FOO` work.
+
+Four stages, each committed separately and each leaving the suite
+green: split tokenize from expand; cache tokenized body lines
+(performance); nested `$(...)` by recursive tokenize with `)` as a
+context terminator, *replacing* `CMDSUB-TOKENIZE`; then retire the two
+recorded limitations and delete their notes.
+
+### Why write it down rather than start
+
+Three things this project has learned the hard way argue for it:
+
+- **Tokenizer changes are not local.** Iteration 48 changed how `)`
+  tokenizes and the consequences appeared in four places across
+  fourteen iterations. This change is larger.
+- **Buffer lifetime is where the bugs are.** Four iterations went on
+  it for one 60-line feature (76–80), and the plan makes "list which
+  buffers each stage reads and writes" an explicit precondition.
+- **Two reverts came from starting with an edit.** The plan requires an
+  isolated diagnostic per piece and differential cases *before* each
+  stage, which is the habit that broke the deadlock in 79.
+
+The plan also states what is *not* changing — `RUN-TOKENIZED`, the
+splitters, `DISPATCH`, the builtins, replay-as-input-source, the arena.
+Bounding it is most of what makes it safe.
+
+No code changed this iteration.

@@ -1239,6 +1239,17 @@ build-time choice, not a fork.
   mode - the right tradeoff until/unless a real need for the
   pre-set-before-including convenience shows up.
 
+## Next architectural work: `PARSE-EXPAND-PLAN.md`
+
+The one remaining structural change in `shell.4` — separating
+tokenizing from expansion — has a staged plan of its own. It is worth
+doing as one deliberate piece because three otherwise-unrelated
+problems share its root: the `FOO=bar; echo $FOO` and
+`set a b c; echo $#` limitations, the whole `ENSURE-ROOM` smear bug
+class, and the ~190x pure-loop performance gap measured in
+`tests/bench`. Read that file before starting; each of its four stages
+must leave the full suite green and be committed separately.
+
 ## Shell architecture: what bash does differently (read, Iteration 48)
 
 From Chet Ramey's chapter on bash in *The Architecture of Open Source
