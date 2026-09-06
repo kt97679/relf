@@ -1913,6 +1913,78 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
     TOK-POS @ 1+ TOK-POS !
   THEN ;
 
+256 BUFFER: PW-LINE
+64  BUFFER: PW-HOME
+64  BUFFER: PW-WANT
+VARIABLE PW-FID
+VARIABLE PW-N
+VARIABLE PW-I
+VARIABLE PW-F
+VARIABLE PW-S
+VARIABLE PW-LEN
+VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
+
+: PW-FIELD ( n --- addr len )   \ field n of PW-LINE, ':'-separated
+  PW-F !
+  0 PW-I !  0 PW-S !
+  BEGIN
+    PW-S @ PW-F @ < PW-I @ PW-N @ < AND
+  WHILE
+    PW-LINE PW-I @ + C@ 58 = IF PW-S @ 1+ PW-S ! THEN
+    PW-I @ 1+ PW-I !
+  REPEAT
+  PW-LINE PW-I @ +
+  PW-I @
+  BEGIN
+    PW-I @ PW-N @ < IF PW-LINE PW-I @ + C@ 58 <> ELSE 0 THEN
+  WHILE PW-I @ 1+ PW-I ! REPEAT
+  PW-I @ SWAP - ;
+
+: PASSWD-HOME ( name-addr name-len --- addr | 0 )
+  \ A named user's home directory, read straight out of /etc/passwd:
+  \ this engine exposes no getpwnam, and the format is two lines of
+  \ Forth. Returns 0 for an unknown user, which leaves "~nosuchuser"
+  \ literal - what POSIX requires.
+  PW-LEN !
+  PW-WANT PW-LEN @ MOVE
+  S" /etc/passwd" R/O OPEN-FILE IF DROP 0 EXIT THEN
+  PW-FID !
+  BEGIN
+    PW-LINE 256 PW-FID @ READ-LINE DROP
+  WHILE
+    PW-N !
+    0 PW-FIELD PW-WANT PW-LEN @ STR= IF
+      5 PW-FIELD
+      PW-HOME 64 SAFE-COPY-NUL DROP
+      PW-FID @ CLOSE-FILE DROP
+      PW-HOME EXIT
+    THEN
+  REPEAT
+  DROP
+  PW-FID @ CLOSE-FILE DROP
+  0 ;
+
+: TRY-TILDE-USER ( --- )
+  \ "~user" / "~user/path". Leaves the word untouched if the name is
+  \ not in the password file.
+  0 PW-I !
+  BEGIN
+    TOK-POS @ 1+ PW-I @ + TOK-END @ < IF
+      TOK-POS @ 1+ PW-I @ + C@ DUP 47 <> SWAP WS? 0= AND
+    ELSE 0 THEN
+  WHILE PW-I @ 1+ PW-I ! REPEAT
+  PW-I @ 0= IF EXIT THEN
+  \ Keep the length somewhere PASSWD-HOME cannot reach: it calls
+  \ PW-FIELD, which uses PW-I as its own cursor. Reusing one scratch
+  \ variable across a call that reaches it is the hazard
+  \ FORTH-STYLE.md section 9 is about, and it cost "~root/x" its
+  \ "/x".
+  PW-I @ PW-ULEN !
+  TOK-POS @ 1+ PW-ULEN @ PASSWD-HOME
+  DUP 0= IF DROP EXIT THEN
+  TOK-POS @ 1+ PW-ULEN @ + TOK-POS !
+  DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT ;
+
 : TRY-TILDE-EXPAND ( --- )
   \ Called once, right at the start of SCAN-TOKEN, before any other
   \ character of the token is processed - POSIX tilde expansion only
@@ -1928,7 +2000,7 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
   \ untouched, same as any other literal character.
   TOK-POS @ C@ 126 <> IF EXIT THEN
   TOK-POS @ 1+ TOK-END @ < IF
-    TOK-POS @ 1+ C@ DUP 47 = SWAP WS? OR 0= IF EXIT THEN
+    TOK-POS @ 1+ C@ DUP 47 = SWAP WS? OR 0= IF TRY-TILDE-USER EXIT THEN
   THEN
   TOK-POS @ 1+ TOK-POS !
   S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!

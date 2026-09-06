@@ -7571,3 +7571,41 @@ smaller piece is wanted.
 `tests/diff/cases/positional-braced.sh`. 507 assertions across 62
 files, 10 differential cases, 1991 core OK markers, both cell widths,
 mrsh 17 of 21.
+## Iteration 96: `~user` expansion
+
+`~root` and `~root/x` now expand. The home directory comes from reading
+`/etc/passwd` directly: this engine exposes no `getpwnam`, and the file
+format is two short words of Forth — `PW-FIELD` to pick a
+colon-separated field and `PASSWD-HOME` to scan for the name. An
+unknown user is left literal, which is what POSIX requires and what
+`~nosuchuser` should do.
+
+This also corrects a comment in `TRY-TILDE-EXPAND` claiming `~user`
+needed "a password-database lookup this shell has no access to". It had
+access all along; nobody had checked.
+
+### A shared scratch variable, one call deep
+
+First version dropped the `/x` from `~root/x`. `PW-I` was used both as
+the username-scanning cursor *and* by `PW-FIELD` inside
+`PASSWD-HOME` — so by the time the length was needed again it held a
+field offset.
+
+That is `FORTH-STYLE.md` §9 (a global that does not survive a call
+which can reach it) at its smallest scale: not recursion, just one
+helper two levels down reusing the same name. The per-word prefix
+convention (`PW-*`) actively encouraged it, since both words are
+legitimately "PW". Worth noting that the convention which prevents
+collisions *between* subsystems does nothing within one.
+
+### Still outstanding in `word.sh`
+
+Tilde in an assignment (`a=~/stuff`, and after each `:` within one) is
+separate and not done. The rest of that file needs Stage 1 of the plan.
+
+### Verified
+
+`tests/diff/cases/tilde.sh` — bare, with a path, `~user`, `~user/path`,
+unknown user, and both quoted forms staying literal. 507 assertions
+across 62 files, 11 differential cases, 1991 core OK markers, both cell
+widths, mrsh 17 of 21.
