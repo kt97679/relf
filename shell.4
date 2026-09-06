@@ -872,6 +872,50 @@ VARIABLE ER-I
   21 ENSURE-ROOM EMIT-DECIMAL ;
 
 \ ==================================================================
+\ The body arena
+\ ==================================================================
+\ Defined here rather than down with while/for because the replay
+\ machinery below is its first user - the same file-ordering care the
+\ deferred-word patches elsewhere in this file exist for.
+
+4096 CONSTANT BODY-ARENA-INIT
+
+VARIABLE BODY-ARENA-BASE    \ heap address, 0 until first use
+VARIABLE BODY-ARENA-SIZE    \ current capacity in bytes
+VARIABLE BODY-ARENA-TOP     \ bump pointer, an OFFSET not an address
+VARIABLE BA-NEED
+VARIABLE BA-NEWSIZE
+
+: BODY@ ( offset --- addr )  BODY-ARENA-BASE @ + ;
+
+: BODY-GROW ( needed --- )
+  \ Grow (or first create) the arena to at least `needed` bytes,
+  \ doubling so repeated growth stays amortized. RESIZE is allowed to
+  \ MOVE the block - measured, not assumed: growing a blocked
+  \ allocation past glibc's mmap threshold relocates it nearly every
+  \ time. That is safe here precisely because nothing outside holds a
+  \ raw pointer into the arena; everything holds an offset and goes
+  \ through BODY@.
+  {: BA-NEED :}
+  BODY-ARENA-SIZE @ DUP 0= IF DROP BODY-ARENA-INIT THEN BA-NEWSIZE !
+  BEGIN BA-NEWSIZE @ BA-NEED @ < WHILE
+    BA-NEWSIZE @ 2 * BA-NEWSIZE !
+  REPEAT
+  BODY-ARENA-BASE @ 0= IF
+    BA-NEWSIZE @ ALLOCATE ABORT" shell: body arena out of memory"
+  ELSE
+    BODY-ARENA-BASE @ BA-NEWSIZE @ RESIZE ABORT" shell: body arena out of memory"
+  THEN
+  BODY-ARENA-BASE !
+  BA-NEWSIZE @ BODY-ARENA-SIZE ! ;
+
+: BODY-ALLOC ( n --- offset )
+  BODY-ARENA-TOP @ SWAP OVER +            ( old new )
+  DUP BODY-ARENA-SIZE @ > IF DUP BODY-GROW THEN
+  BODY-ARENA-TOP !                        ( old )
+  ;
+
+\ ==================================================================
 \ Arithmetic expansion: $((expression)) - a real, precedence-climbing
 \ recursive-descent expression grammar (each level below binds
 \ tighter than the one above it, matching C/POSIX precedence):
@@ -1002,6 +1046,12 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     AE-PARSE-NUMBER
     EXIT
   THEN
+  \ "$((  $a + 2 ))" - a '$' before a name inside an arithmetic
+  \ expression. The text reaches here unexpanded, because
+  \ NORMALIZE-OPERATORS copies a $((...)) region verbatim, so the
+  \ sigil is simply skipped: POSIX allows a variable to be written
+  \ with or without it here and both mean the same thing.
+  AE-POS @ C@ 36 = IF AE-POS @ 1+ AE-POS ! THEN
   AE-READ-VARNAME
   AE-LOOKUP-NUMERIC ;
 
@@ -1034,6 +1084,30 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     THEN
   REPEAT ;
 
+VARIABLE AE-SH-C
+
+: AE-SHIFT-OP? ( --- f )   \ "<<" or ">>" at AE-POS?
+  AE-POS @ 1+ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ C@ AE-SH-C !
+  AE-SH-C @ 60 = AE-SH-C @ 62 = OR
+  AE-POS @ 1+ C@ AE-SH-C @ = AND ;
+
+: AE-SHIFT ( --- n )
+  \ C/POSIX precedence: shifts bind tighter than the relational
+  \ operators and looser than "+"/"-". AE-REL below now calls this
+  \ instead of AE-ADD, and must not mistake "<<" for "<".
+  AE-ADD
+  BEGIN
+    AE-SKIP-WS
+    AE-SHIFT-OP?
+  WHILE
+    AE-POS @ C@ 60 = IF
+      AE-POS @ 2 + AE-POS !  AE-ADD LSHIFT
+    ELSE
+      AE-POS @ 2 + AE-POS !  AE-ADD RSHIFT
+    THEN
+  REPEAT ;
+
 : AE-REL ( --- n )
   \ "<="/">=" checked by matching the leading '<'/'>' first, then
   \ peeking one further character for a following '=' - matching how
@@ -1042,26 +1116,29 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
   \ matched by anything here and left for the caller to report as an
   \ unmatched trailing character, the same sparse-error-handling style
   \ used throughout this shell).
-  AE-ADD
+  AE-SHIFT
   BEGIN
     AE-SKIP-WS
-    AE-POS @ AE-END @ < IF AE-POS @ C@ DUP 60 = SWAP 62 = OR ELSE 0 THEN
+    AE-POS @ AE-END @ < IF
+      AE-POS @ C@ DUP 60 = SWAP 62 = OR
+      AE-SHIFT-OP? 0= AND
+    ELSE 0 THEN
   WHILE
     AE-POS @ C@ 60 = IF                      ( starts with '<' )
       AE-POS @ 1+ AE-POS !
       AE-POS @ AE-END @ < AE-POS @ C@ 61 = AND IF
         AE-POS @ 1+ AE-POS !
-        AE-ADD SWAP < 0= AE-BOOL-TO-INT       ( "<=" )
+        AE-SHIFT SWAP < 0= AE-BOOL-TO-INT     ( "<=" )
       ELSE
-        AE-ADD < AE-BOOL-TO-INT               ( "<" )
+        AE-SHIFT < AE-BOOL-TO-INT             ( "<" )
       THEN
     ELSE                                       ( starts with '>' )
       AE-POS @ 1+ AE-POS !
       AE-POS @ AE-END @ < AE-POS @ C@ 61 = AND IF
         AE-POS @ 1+ AE-POS !
-        AE-ADD < 0= AE-BOOL-TO-INT             ( ">=" )
+        AE-SHIFT < 0= AE-BOOL-TO-INT           ( ">=" )
       ELSE
-        AE-ADD SWAP < AE-BOOL-TO-INT           ( ">" )
+        AE-SHIFT SWAP < AE-BOOL-TO-INT         ( ">" )
       THEN
     THEN
   REPEAT ;
@@ -1084,8 +1161,40 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     THEN
   REPEAT ;
 
-: AE-AND ( --- n )
+VARIABLE AE-BIT-C
+
+: AE-SINGLE-OP? ( c --- f )
+  \ Is character c present at AE-POS and NOT doubled? Distinguishes
+  \ the bitwise "&"/"|" from the logical "&&"/"||", which bind looser
+  \ and are handled further out.
+  AE-BIT-C !
+  AE-POS @ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ C@ AE-BIT-C @ = 0= IF 0 EXIT THEN
+  AE-POS @ 1+ AE-END @ < IF AE-POS @ 1+ C@ AE-BIT-C @ <> ELSE -1 THEN ;
+
+: AE-BITAND ( --- n )
   AE-EQ
+  BEGIN AE-SKIP-WS 38 AE-SINGLE-OP? WHILE
+    AE-POS @ 1+ AE-POS !  AE-EQ AND
+  REPEAT ;
+
+: AE-BITXOR ( --- n )
+  AE-BITAND
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ 94 = ELSE 0 THEN
+  WHILE
+    AE-POS @ 1+ AE-POS !  AE-BITAND XOR
+  REPEAT ;
+
+: AE-BITOR ( --- n )
+  AE-BITXOR
+  BEGIN AE-SKIP-WS 124 AE-SINGLE-OP? WHILE
+    AE-POS @ 1+ AE-POS !  AE-BITXOR OR
+  REPEAT ;
+
+: AE-AND ( --- n )
+  AE-BITOR
   BEGIN
     AE-SKIP-WS
     AE-POS @ AE-END @ < AE-POS @ 1+ AE-END @ < AND IF
@@ -1093,7 +1202,7 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     ELSE 0 THEN
   WHILE
     AE-POS @ 2 + AE-POS !
-    AE-EQ
+    AE-BITOR
     SWAP AE-TRUTHY? SWAP AE-TRUTHY? AND AE-BOOL-TO-INT
   REPEAT ;
 
@@ -1109,9 +1218,110 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
     AE-AND
     SWAP AE-TRUTHY? SWAP AE-TRUTHY? OR AE-BOOL-TO-INT
   REPEAT ;
-' AE-OR AE-OR-XT !XT
 
 VARIABLE AE-EVAL-LEN
+
+CREATE AE-NUMBUF 24 ALLOT
+VARIABLE ANS-I
+VARIABLE ANS-N
+CREATE AE-ASGN-NAME 64 ALLOT
+VARIABLE AE-ASGN-OP
+VARIABLE AE-SAVE-POS
+VARIABLE AE-ASGN-C
+VARIABLE AE-SLOT
+
+VARIABLE ANS-NEG
+
+: N>STR ( n --- c-addr )
+  \ Decimal text for n, NUL-terminated, built from the END of
+  \ AE-NUMBUF backwards so no reversal pass is needed. Returns a
+  \ pointer to the first digit, which is somewhere inside the buffer.
+  \ Needed because a variable's value is a string: an arithmetic
+  \ assignment has to write one back.
+  {: ANS-N | ANS-I ANS-NEG :}
+  0 AE-NUMBUF 23 + C!
+  22 ANS-I !
+  ANS-N @ 0< IF -1 ANS-NEG ! ANS-N @ NEGATE ANS-N ! THEN
+  ANS-N @ 0= IF
+    48 AE-NUMBUF ANS-I @ + C!
+    ANS-I @ 1- ANS-I !
+  ELSE
+    BEGIN ANS-N @ 0 > WHILE
+      ANS-N @ 10 MOD 48 + AE-NUMBUF ANS-I @ + C!
+      ANS-N @ 10 / ANS-N !
+      ANS-I @ 1- ANS-I !
+    REPEAT
+  THEN
+  ANS-NEG @ IF
+    45 AE-NUMBUF ANS-I @ + C!
+    ANS-I @ 1- ANS-I !
+  THEN
+  AE-NUMBUF ANS-I @ 1+ + ;
+
+: AE-ASGN-OP? ( --- f )
+  \ At AE-POS: "=" (not "=="), or one of "+= -= *= /= %=".
+  \ Consumes the operator and records it in AE-ASGN-OP (0 for plain
+  \ "="), or leaves AE-POS untouched and answers false.
+  AE-POS @ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ C@ AE-ASGN-C !
+  AE-ASGN-C @ 61 = IF
+    AE-POS @ 1+ AE-END @ < IF AE-POS @ 1+ C@ 61 = IF 0 EXIT THEN THEN
+    0 AE-ASGN-OP !  AE-POS @ 1+ AE-POS !  -1 EXIT
+  THEN
+  AE-ASGN-C @ AE-MUL-OP? AE-ASGN-C @ AE-ADD-OP? OR 0= IF 0 EXIT THEN
+  AE-POS @ 1+ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ 1+ C@ 61 = 0= IF 0 EXIT THEN
+  AE-ASGN-C @ AE-ASGN-OP !  AE-POS @ 2 + AE-POS !  -1 ;
+
+: AE-TRY-ASSIGN? ( --- f )
+  \ Lookahead for "NAME op= ...". Restores AE-POS on any mismatch, so
+  \ an ordinary expression starting with a name is unaffected.
+  AE-POS @ AE-SAVE-POS !
+  AE-SKIP-WS
+  AE-POS @ AE-END @ < 0= IF AE-SAVE-POS @ AE-POS ! 0 EXIT THEN
+  AE-POS @ C@ NAME-CHAR? 0= IF AE-SAVE-POS @ AE-POS ! 0 EXIT THEN
+  AE-POS @ C@ AE-DIGIT?   IF AE-SAVE-POS @ AE-POS ! 0 EXIT THEN
+  AE-READ-VARNAME
+  AE-VARNAME-BUF AE-ASGN-NAME 64 SAFE-CSTR-COPY DROP
+  AE-SKIP-WS
+  AE-ASGN-OP? 0= IF AE-SAVE-POS @ AE-POS ! 0 EXIT THEN
+  -1 ;
+
+: AE-ASGN-OLD ( --- n )   \ current numeric value of the target
+  AE-ASGN-NAME AE-VARNAME-BUF 64 SAFE-CSTR-COPY DROP
+  AE-LOOKUP-NUMERIC ;
+
+: AE-EXPR ( --- n )
+  \ Lowest precedence level: assignment, right-associative. Anything
+  \ that is not an assignment falls straight through to AE-OR, so this
+  \ costs one lookahead per expression.
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | AE-SLOT :}
+  AE-TRY-ASSIGN? 0= IF AE-OR EXIT THEN
+  \ The target name and the operator both have to survive the
+  \ recursive evaluation of the right-hand side, which may itself be
+  \ an assignment ("a=b=1") and overwrite AE-ASGN-NAME/AE-ASGN-OP.
+  \ The operator rides on the data stack; the name gets a slot in the
+  \ body arena, released by the local holding the bump pointer.
+  64 BODY-ALLOC AE-SLOT !
+  AE-ASGN-NAME AE-SLOT @ BODY@ 64 SAFE-CSTR-COPY DROP
+  AE-ASGN-OP @
+  RECURSE                                   ( op rhs )
+  AE-SLOT @ BODY@ AE-ASGN-NAME 64 SAFE-CSTR-COPY DROP
+  SWAP ?DUP IF
+    DUP 43 = IF DROP AE-ASGN-OLD + ELSE
+    DUP 45 = IF DROP AE-ASGN-OLD SWAP - ELSE
+    DUP 42 = IF DROP AE-ASGN-OLD * ELSE
+    DUP 47 = IF DROP AE-ASGN-OLD SWAP / ELSE
+                DROP AE-ASGN-OLD SWAP MOD
+    THEN THEN THEN THEN
+  THEN
+  DUP N>STR
+  AE-ASGN-NAME SWAP SET-SHVAR ;
+
+\ Patched here, not next to AE-OR: the deferred call must resolve to
+\ AE-EXPR, which is defined above only now.
+' AE-EXPR AE-OR-XT !XT   \ a parenthesized subexpression may assign
 
 : AE-EVAL ( c-addr u --- n )
   \ Copies (c-addr u) into ARITH-BUF (a private copy, so the
@@ -1121,7 +1331,7 @@ VARIABLE AE-EVAL-LEN
   ARITH-BUF SWAP MOVE
   ARITH-BUF AE-POS !
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
-  AE-OR ;
+  AE-EXPR ;
 
 CREATE ARITH-EXPR-BUF 256 ALLOT
 VARIABLE ARITH-EXPR-LEN
@@ -1511,7 +1721,10 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
       TOK-POS @ 1+ TOK-END @ < IF
         TOK-POS @ 1+ TOK-POS !
         TOK-POS @ C@
-        DUP 34 = OVER 92 = OR IF
+        \ POSIX: inside double quotes a backslash is special only
+        \ before $ ` " \ (and newline). '$' and '`' were missing, so
+        \ "\$a" kept its backslash instead of producing a literal $.
+        DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR IF
           EMIT-TOK-CHAR
         ELSE
           92 EMIT-TOK-CHAR EMIT-TOK-CHAR
@@ -3123,49 +3336,7 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
                             \ seen at all when invoked this way, and
                             \ the whole command was silently a no-op.
 
-\ ==================================================================
-\ The body arena
-\ ==================================================================
-\ Defined here rather than down with while/for because the replay
-\ machinery below is its first user - the same file-ordering care the
-\ deferred-word patches elsewhere in this file exist for.
 
-4096 CONSTANT BODY-ARENA-INIT
-
-VARIABLE BODY-ARENA-BASE    \ heap address, 0 until first use
-VARIABLE BODY-ARENA-SIZE    \ current capacity in bytes
-VARIABLE BODY-ARENA-TOP     \ bump pointer, an OFFSET not an address
-VARIABLE BA-NEED
-VARIABLE BA-NEWSIZE
-
-: BODY@ ( offset --- addr )  BODY-ARENA-BASE @ + ;
-
-: BODY-GROW ( needed --- )
-  \ Grow (or first create) the arena to at least `needed` bytes,
-  \ doubling so repeated growth stays amortized. RESIZE is allowed to
-  \ MOVE the block - measured, not assumed: growing a blocked
-  \ allocation past glibc's mmap threshold relocates it nearly every
-  \ time. That is safe here precisely because nothing outside holds a
-  \ raw pointer into the arena; everything holds an offset and goes
-  \ through BODY@.
-  {: BA-NEED :}
-  BODY-ARENA-SIZE @ DUP 0= IF DROP BODY-ARENA-INIT THEN BA-NEWSIZE !
-  BEGIN BA-NEWSIZE @ BA-NEED @ < WHILE
-    BA-NEWSIZE @ 2 * BA-NEWSIZE !
-  REPEAT
-  BODY-ARENA-BASE @ 0= IF
-    BA-NEWSIZE @ ALLOCATE ABORT" shell: body arena out of memory"
-  ELSE
-    BODY-ARENA-BASE @ BA-NEWSIZE @ RESIZE ABORT" shell: body arena out of memory"
-  THEN
-  BODY-ARENA-BASE !
-  BA-NEWSIZE @ BODY-ARENA-SIZE ! ;
-
-: BODY-ALLOC ( n --- offset )
-  BODY-ARENA-TOP @ SWAP OVER +            ( old new )
-  DUP BODY-ARENA-SIZE @ > IF DUP BODY-GROW THEN
-  BODY-ARENA-TOP !                        ( old )
-  ;
 
 \ ==================================================================
 \ Replaying a stored body as an INPUT SOURCE

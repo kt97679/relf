@@ -1,0 +1,34 @@
+#!/bin/sh
+# tests/shell/run-arith2 - bitwise/shift operators, arithmetic
+# assignment, '$' inside $((...)), and \$ in double quotes (Iter. 53).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+out=$("$THIS_SH" -c 'echo "$((2<<5)) $((64>>3)) $((2&5)) $((2^5)) $((2|5))"' 2>/dev/null)
+assert_output_contains "bitwise and shift operators" "64 8 0 7 7" "$out"
+
+# precedence: shifts tighter than relational, & tighter than ^ tighter
+# than |, all looser than == - checked against bash's answers
+out=$("$THIS_SH" -c 'echo "$((1+2<<3)) $((3&1|4)) $((2^3^1)) $((2|1||1)) $((5&3==3))"' 2>/dev/null)
+assert_output_contains "bitwise precedence" "24 5 0 1 1" "$out"
+
+printf 'a=0\necho $((a=42)) $a\necho $((a+=1)) $a\necho $((a/=3)) $a\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "arithmetic assignment"        "42 42" "$out"
+assert_output_contains "compound assignment +="       "43 43" "$out"
+assert_output_contains "compound assignment /="       "14 14" "$out"
+
+printf 'echo $((a=b=5)) $((a+b))\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "nested assignment is right-associative" "5 10" "$out"
+
+printf 'a=42\necho $(($a)) $(($a+2)) $((2*a-10))\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "a '\$' sigil inside \$((...)) is allowed" "42 44 74" "$out"
+
+out=$("$THIS_SH" -c 'echo "\$a and \\ and \"q\""' 2>/dev/null)
+assert_output_contains "backslash-dollar in double quotes" '$a' "$out"
+
+out=$("$THIS_SH" -c 'echo $((0-7)) $((0-7/2))' 2>/dev/null)
+assert_output_contains "negative results" "-7 -3" "$out"
+report

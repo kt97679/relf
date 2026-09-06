@@ -5660,3 +5660,65 @@ test uses.
 `shell.4` grew slightly (4759 lines) because six inline builtins became
 named words with their own comments — the repeated *shape* is gone,
 which was the point.
+## Iteration 53: bitwise/shift operators and arithmetic assignment
+## — mrsh 6 -> 7 passed
+
+`arithm.sh` passes. Four separate gaps had to close together, which is
+why re-diagnosing after each one mattered.
+
+### Bitwise and shift operators
+
+The arithmetic grammar gained four precedence levels, in C/POSIX
+order: `AE-SHIFT` (`<<`, `>>`) between relational and additive, and
+`AE-BITAND`/`AE-BITXOR`/`AE-BITOR` between `&&` and `==`. The
+recursive-descent shape made this purely additive — each new level
+calls the next tighter one and nothing else changed.
+
+The lexing needs care, and `AE-SINGLE-OP?` is where it lives: `&` is
+the bitwise operator only when *not* doubled, since `&&` binds looser
+and is handled further out. Likewise `|` versus `||`, and `AE-REL` had
+to learn not to read `<<` as `<`. Verified against `bash` on eight
+precedence-interaction cases (`1+2<<3`, `3&1|4`, `2^3^1`, `2|1||1`,
+`5&3==3`, …), not just the operators in isolation.
+
+### Arithmetic assignment
+
+`$((a=42))`, `$((a+=1))` and friends, right-associative, at the lowest
+precedence. Not an assignment falls straight through to `AE-OR`, so it
+costs one lookahead per expression.
+
+Two things had to survive the recursive evaluation of the right-hand
+side, because it can itself be an assignment (`a=b=5`): the operator
+rides on the data stack, and the target *name* gets a slot in the body
+arena, released by the local holding the bump pointer. My first
+version parked the name in `AE-NUMBUF` — the same buffer `N>STR` then
+wrote the result into. Classic aliasing: it worked for the value and
+silently destroyed the name.
+
+`N>STR` builds digits from the *end* of its buffer backwards and
+returns a pointer to the first one, which avoids a reversal pass. My
+first attempt did the reversal in place and was wrong.
+
+### Two conformance fixes found on the way
+
+- **`\$` inside double quotes.** POSIX makes backslash special before
+  `$`, `` ` ``, `"`, `\` and newline; only the last two were handled,
+  so `"\$a"` kept its backslash.
+- **A `$` sigil inside `$((...))`.** `$(($a+2))` reaches the evaluator
+  unexpanded, because `NORMALIZE-OPERATORS` copies an arithmetic region
+  verbatim. POSIX allows a variable there with or without the sigil, so
+  `AE-PRIMARY` now skips it. This was the *last* difference in
+  `arithm.sh` — everything else already matched.
+
+### Verified
+
+`tests/shell/run-arith2` (9 assertions): the operators, the precedence
+interactions, plain and compound assignment, nested right-associative
+assignment, the `$` sigil, `\$` in double quotes, and negative results.
+360 assertions across 43 files plus 1991 core OK markers, both cell
+widths.
+
+**mrsh-suite: 6 passed -> 7.** Remaining 14 need `read`, fd
+redirection (`2>&1`), background `&`/`wait`/`$!`, `alias`, `ulimit`,
+`~user` tilde forms, a subshell function body (`f() ( ... )`), and the
+quoting conformance cases.
