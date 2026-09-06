@@ -525,14 +525,12 @@ This was the blocker in front of the `forth` builtin.
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **18 passed, 3 failed, 3 skipped**.
+   and currently reports **19 passed, 2 failed, 3 skipped**.
 
-   Two of the three failures are the deliberate POSIX-versus-bash
-   alias divergence recorded below, and cannot be fixed without making
-   this shell less correct. The third, `word.sh`, differs on a single
-   line - `c=""; echo ${c=BAD} $c` - which is the stale-expansion
-   limitation and therefore **Stage 1 of `PARSE-EXPAND-PLAN.md`**.
-   That one change is the whole remaining distance to the ceiling.
+   Both remaining failures are the deliberate POSIX-versus-bash alias
+   divergence recorded below and cannot be fixed without making this
+   shell less correct. **This is the ceiling** described in the
+   paragraphs below, reached in Iteration 114.
 
    **A structural blocker sat underneath that number, found in
    Iteration 39 and cleared in Iteration 40.** The 18 differential
@@ -1299,11 +1297,13 @@ than remembered.
 
 ## Next architectural work: `PARSE-EXPAND-PLAN.md`
 
-**This is now the only item between the project and its recorded mrsh
-ceiling of 19 of 21**, as well as the fix for the in-place-growth bug
-class (four instances found, the most recent in Iteration 103) and for
-the ~190x pure-loop cost. Three problems, one change - which is why it
-is worth doing deliberately rather than drifting into it.
+**Stage 1 is done** (Iterations 108, 112, 113, 114). Expansion writes
+into its own buffer, so the in-place-growth bug class no longer
+exists; word boundaries come from `NORMALIZE-OPERATORS`, the pass that
+already knew them; and `EXPAND-WORDS` runs when a command runs rather
+than when its line is read, which took the mrsh suite to its ceiling
+of 19 of 21. Stages 2 and 3 remain, and the ~190x pure-loop cost is
+Stage 2's business.
 
 The one remaining structural change in `shell.4` — separating
 tokenizing from expansion — has a staged plan of its own. It is worth

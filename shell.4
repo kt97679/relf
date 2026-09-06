@@ -580,6 +580,7 @@ VARIABLE TOK-END
 VARIABLE TOK-OUT
 VARIABLE TK-I
 VARIABLE TK-J
+VARIABLE TK-Q
 
 4096 CONSTANT TOK-BUF-MAX
 TOK-BUF-MAX BUFFER: TOK-BUF
@@ -2174,7 +2175,7 @@ VARIABLE EW-I
   TOK-BUF TOK-OUT !
   TOK-BUF TOK-BUF-MAX + TOK-OUT-END !
   0 ARGC !
-  {: | TK-I TK-J :}
+  {: | TK-I TK-J TK-Q :}
   BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ MAX-ARGS 1- < AND WHILE
     TOK-OUT @ ARGV ARGC @ CELLS + !
     \ A leading quote character is recorded now, while the quotes are
@@ -2184,11 +2185,24 @@ VARIABLE EW-I
     DUP 39 = SWAP 34 = OR
     ARGV-NAME-QUOTED ARGC @ + C!
     0 TK-J !
+    0 TK-Q !
     BEGIN TK-J @ NORM-WLENS TK-I @ CELLS + @ < WHILE
-      NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TK-J @ + C@ EMIT-TOK-CHAR
+      NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TK-J @ + C@
+      \ ARGV-QUOTED means "do not re-read this as an operator or a
+      \ keyword". The splitters and LINE-IS? run on the RAW words now,
+      \ so the flag has to be set here rather than by EXPAND-WORDS,
+      \ and the question it answers has changed shape: it used to mean
+      \ "was quoted, or came out of an expansion", and now means
+      \ "contains a quote or a backslash somewhere". Those agree on
+      \ everything that matters - an expansion result was never
+      \ literal text to begin with, and only literal text can be an
+      \ operator (Iteration 114).
+      DUP 39 = OVER 34 = OR OVER 92 = OR IF -1 TK-Q ! THEN
+      EMIT-TOK-CHAR
       TK-J @ 1+ TK-J !
     REPEAT
     0 EMIT-TOK-CHAR
+    TK-Q @ ARGV-QUOTED ARGC @ + C!
     ARGC @ 1+ ARGC !
     TK-I @ 1+ TK-I !
   REPEAT
@@ -2201,6 +2215,17 @@ VARIABLE EW-I
   \ One raw word can produce several fields - IFS splitting of an
   \ unquoted expansion - or none at all, which is why the raw list is
   \ snapshotted first rather than rewritten in place.
+  \
+  \ SCAN-TOKEN stops at unquoted whitespace. That cannot occur inside
+  \ a raw word - the spans were cut at exactly those points - but it
+  \ certainly can inside a word that has already been expanded once,
+  \ and some paths do reach this twice: a group used as a pipeline
+  \ stage has its body carved out of an ARGV the enclosing line
+  \ expanded, then runs it through RUN-TOKENIZED, whose leaf expands
+  \ it again. So each word is scanned until its span is used up,
+  \ splitting at any whitespace left in the middle. A second pass then
+  \ re-splits rather than truncating - `"a b"` stays two words instead
+  \ of becoming `a`.
   ARGC @ EW-ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -2208,13 +2233,24 @@ VARIABLE EW-I
     ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
     EW-I @ 1+ EW-I !
   REPEAT
-  EXP-BUF TOK-OUT !
-  EXP-BUF TOK-BUF-MAX + TOK-OUT-END !
+  \ Write into whichever of the two buffers the current words are NOT
+  \ in. Normally that is EXP-BUF, since the words come from
+  \ TOKENIZE-RAW. But a group used as a pipeline stage has its body
+  \ carved out of an ARGV the enclosing line already expanded, and
+  \ that body is expanded again when it runs; reading and writing one
+  \ buffer at once corrupts it, where alternating merely re-splits -
+  \ which for an already-expanded word is what would have happened
+  \ anyway.
+  ARGC @ 0 > IF ARGV @ ELSE 0 THEN
+  DUP EXP-BUF 1- > SWAP EXP-BUF TOK-BUF-MAX + < AND IF TOK-BUF ELSE EXP-BUF THEN
+  DUP TOK-OUT !
+  TOK-BUF-MAX + TOK-OUT-END !
   0 ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
     EW-ARGV EW-I @ CELLS + @ TOK-POS !
     TOK-POS @ DUP CSTRLEN + TOK-END !
+    BEGIN
     0 TOK-WAS-QUOTED? !
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
@@ -2245,6 +2281,13 @@ VARIABLE EW-I
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
     THEN
+    BEGIN
+      TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? ELSE 0 THEN
+    WHILE
+      TOK-POS @ 1+ TOK-POS !
+    REPEAT
+    TOK-POS @ TOK-END @ < 0=
+    UNTIL
     EW-I @ 1+ EW-I !
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
@@ -2261,8 +2304,7 @@ VARIABLE EW-I
   \ PARSE-EXPAND-PLAN.md, and is a change of behaviour rather than of
   \ structure, so it is kept separate from this one.
   DROP
-  TOKENIZE-RAW
-  EXPAND-WORDS ;
+  TOKENIZE-RAW ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
@@ -4136,6 +4178,23 @@ VARIABLE ARGC-SHIFT
                                     \ loop iteration's own body (or the
                                     \ body of any function called from
                                     \ within it) should run either.
+  \ PREPARE-PIPE-CALL first, because it may re-tokenize the whole line
+  \ from raw text - and then expand, once. It used to sit further
+  \ down, which was fine while tokenizing and expanding were the same
+  \ act; now it would throw away an expanded ARGV and leave a raw one
+  \ in its place.
+  PREPARE-PIPE-CALL
+  \ Expansion happens HERE, not during tokenizing: this is the point
+  \ at which one command is about to run, and everything earlier on
+  \ its line already has. That is what makes
+  \ `FOO=bar; echo $FOO` print bar (Iteration 114).
+  \
+  \ Exactly once per ARGV. Expanding an already-expanded list would
+  \ re-split its results and, since the source and destination buffers
+  \ would then be the same one, corrupt them outright. That is why the
+  \ call sits below the group handling rather than above it: a group's
+  \ body is carved out of ARGV and then run through RUN-TOKENIZED,
+  \ which expands it at its own leaf.
   SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
   IF EXIT THEN
   \ A trailing unquoted '&' runs the command in the background: fork,
@@ -4157,7 +4216,6 @@ VARIABLE ARGC-SHIFT
       EXIT
     THEN
   THEN
-  TRY-ASSIGNMENT-CALL IF EXIT THEN
   \ A '&&'/'||'/';' segment, or a pipeline stage, can itself be a
   \ group - "[ x ] || { echo fail; exit 1; }". Checked here as well as
   \ at the line level, since segments never pass through RUN-TOKENIZED.
@@ -4175,6 +4233,8 @@ VARIABLE ARGC-SHIFT
     EXIT
   THEN
   THEN
+  EXPAND-WORDS
+  TRY-ASSIGNMENT-CALL IF EXIT THEN
   S" !" LINE-IS? IF
     \ Pipeline negation: run the rest and invert its status. POSIX
     \ negates the whole pipeline, which is why this sits here - ahead
@@ -4185,7 +4245,6 @@ VARIABLE ARGC-SHIFT
     LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
     EXIT
   THEN
-  PREPARE-PIPE-CALL
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
@@ -5968,6 +6027,11 @@ VARIABLE FOR-WORD-CUR
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
+  \ The word list is expanded before it is saved: `for i in $list`
+  \ iterates over the words $list expands to. DO-FOR reads ARGV
+  \ directly and never reaches RUN-SIMPLE-OR-PIPELINE, so it asks for
+  \ expansion itself.
+  EXPAND-WORDS
   SAVE-FOR-WORDS
   SAME-LINE-DO? 0= IF
     READ-LINE-INTO-ARGV
@@ -6307,6 +6371,9 @@ VARIABLE CASE-MATCHED?
   \ and, if it matched, running its body too).
   BODY-ARENA-TOP @  {: BODY-ARENA-TOP | SUF-BUF SUF-LEN :}
   SUPPRESS-EXEC? @ >R
+  \ Same as DO-FOR: the case word is read straight out of ARGV, so
+  \ this path asks for expansion itself.
+  EXPAND-WORDS
   ARGV 1 CELLS + @ DUP CSTRLEN
   DUP CASE-WORD-LEN !
   CASE-WORD-BUF 256 SAFE-COPY-NUL DROP
@@ -6324,6 +6391,12 @@ VARIABLE CASE-MATCHED?
     \ only the patterns and the body becomes the pending remainder,
     \ exactly as DO-IF handles a same-line "then".
     S" )" SPLIT-AT-KEYWORD DROP
+    \ The patterns are expanded, the body is not - the body goes back
+    \ through RUN-TOKENIZED, which expands each of its commands at the
+    \ point that command runs. Splitting at the ')' first is what
+    \ separates the two, and is why this call is here rather than at
+    \ the top of the loop.
+    EXPAND-WORDS
     CASE-MATCHED? @ 0= CASE-ARM-MATCHES? AND IF
       -1 CASE-MATCHED? !
       R@ SUPPRESS-EXEC? !

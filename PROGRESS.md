@@ -8551,3 +8551,72 @@ it is not in this commit.
 
 524 assertions across 63 files, 16 differential cases, 1991 core OK
 markers, both cell widths, mrsh 18 of 21.
+## Iteration 114: a word is expanded when its command runs
+
+    FOO=bar; echo $FOO      ->  bar
+
+`TOKENIZE` no longer calls `EXPAND-WORDS`. The splitters, the keyword
+checks, alias lookup and group detection all run on the raw words;
+`EXPAND-WORDS` runs at the point one command is about to execute, by
+which time everything earlier on its line has finished.
+
+**mrsh-suite 18 -> 19 of 21.** `word.sh` passes. That is the recorded
+ceiling: the remaining two failures are the deliberate POSIX-versus-
+bash alias divergence, which cannot be fixed without making this shell
+less correct.
+
+This closes the stale-expansion limitation recorded in Iteration 18
+and carried in GOALS.md ever since, and it is Stage 1 of
+`PARSE-EXPAND-PLAN.md` complete.
+
+### Where expansion had to be asked for
+
+`RUN-SIMPLE-OR-PIPELINE` covers every builtin, every external command,
+every pipeline stage and both loop conditions. Three paths read `ARGV`
+directly and never reach it, exactly as the plan's audit predicted:
+
+- **`DO-FOR`** - the word list, so `for i in $list` iterates over what
+  `$list` expands to.
+- **`DO-CASE`** - twice: the case word, and each arm's patterns. The
+  pattern call goes *after* the `)` split, so the arm's body is left
+  raw and expanded later, per command, when it runs.
+- **`PREPARE-COMPOUND-PIPE`** - it re-tokenizes the whole line from
+  raw text, so `PREPARE-PIPE-CALL` had to move above the expansion
+  point rather than below it. Where it sat was fine while tokenizing
+  and expanding were one act; now it would have thrown away an
+  expanded `ARGV` and left a raw one behind.
+
+Group handling also had to move *above* the expansion call, so a
+group's body is carved out of raw words rather than expanded ones.
+
+### The bug that took the longest, and what it really was
+
+`(echo "a b") | cat` printed `a`. The group's body was being expanded
+twice - once as part of the enclosing line, again when the body ran -
+and the second pass truncated it. `SCAN-TOKEN` stops at unquoted
+whitespace. Inside a raw word that cannot happen, because the spans
+were cut at exactly those points; inside an already-expanded word it
+can, and everything after the space was silently dropped.
+
+The first fix was a flag: expand once per tokenization, refuse
+after. It broke same-line `elif`, because the flag is global and the
+`;`-remainder of a line is raw while a group's body is not - the same
+"parallel state that does not travel with the words" problem as
+`ARGV-QUOTED`, which Iteration 109 had just finished deleting the
+unsafe half of. Refusing was the wrong shape.
+
+`EXPAND-WORDS` now scans each word until its span is used up, treating
+any whitespace left in the middle as a field break. For a raw word
+there is never any, so nothing changes; for a word expanded twice it
+re-splits instead of truncating, which is both harmless and the more
+defensible reading. No flag, no state to keep in step.
+
+### Verified
+
+`tests/diff/cases/same-line-expansion.sh` - an assignment and a later
+use of it on one line, across `;`, `&&`, `${c=...}`, arithmetic,
+`set --` word splitting, and a `for` list and `case` word read when
+the construct runs.
+
+524 assertions across 63 files, 17 differential cases, 1991 core OK
+markers, both cell widths, **mrsh 19 of 21**.
