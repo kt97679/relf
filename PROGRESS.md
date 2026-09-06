@@ -6875,3 +6875,53 @@ not.
 `RAW-LAST-CHAR` — the generalization of `RAW-LAST-SEMI` to any
 character — was part of the reverted change and is worth re-adding
 first next time; it is independently useful and was not implicated.
+## Iteration 79: third attempt — the isolated diagnostic paid off, and
+## found the *next* obstacle
+
+Followed `FORTH-STYLE.md`'s own rule this time: built the suspect word
+standalone before touching anything.
+
+**The trim was correct all along.** Loaded `shell.4`, set
+`RAW-LINE-BUF` to `printf x | while read line`, ran the scan and the
+trim in isolation: last `|` at offset 9, result `[while read line]`.
+Exactly right. Two iterations had blamed the wrong word, on the
+strength of reading it rather than running it.
+
+### The actual bug, and the one after it
+
+**Bug 1 — ordering of trim vs capture.** Capturing the body reads
+lines, and reading a line overwrites `RAW-LINE-BUF`. Doing the capture
+first left `RAW-LINE-BUF` holding `done`, so the condition came out
+empty and `DO-WHILE` spun forever — Iteration 78's unbounded loop.
+Trimming and *saving* the stage text before capturing fixed it: the
+loop now terminates and reaches the line after `done`.
+
+**Bug 2, found immediately after — the same class, one level deeper.**
+The body still does not run. `SPLIT-PIPE` copies the pipeline's tokens
+into `PIPE-ARGV`, but those are **pointers into `LINE-BUF`** — and
+capturing overwrites `LINE-BUF` too. By the time the pipeline forks,
+its own segment text is gone.
+
+That is `FORTH-STYLE.md` §9 (globals do not survive a call that can
+reach them) landing twice in one feature, on two different buffers.
+The shape is now unmistakable: **anything that reads a line destroys
+the current line**, and this feature has to read lines in the middle
+of processing one.
+
+### The fix that follows, recorded for next time
+
+Capture *before* `SPLIT-PIPE`, not after:
+
+1. detect a compound last stage from `ARGV` (still valid at that point)
+2. save the whole raw pipeline line
+3. capture the body — freely clobbering `LINE-BUF`/`ARGV`
+4. restore the saved line, re-normalize, re-tokenize, then `SPLIT-PIPE`
+5. run the pipeline as usual
+
+Reverted rather than shipped: the tree is green at 16 passed, and a
+half-working pipeline stage is worse than a missing one.
+
+Three attempts, three distinct obstacles, each now named: file
+ordering (fixed by `DEFER`, Iteration 77), trim-versus-capture order,
+and `LINE-BUF` lifetime. None was visible from reading the code; each
+took running it.
