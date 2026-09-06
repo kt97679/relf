@@ -3920,36 +3920,59 @@ VARIABLE ARGC-SHIFT
     THEN
   THEN ;
 
+VARIABLE AO-REST
+VARIABLE AO-RESTQ
+VARIABLE AO-RESTC
+VARIABLE AO-SAVED-OP
+VARIABLE AO-J
+
+: AO-SAVE-REST ( --- )
+  \ Copy the &&/||-remainder out of the shared ARGV-AO-REST arrays
+  \ into per-invocation arena storage BEFORE running the piece before
+  \ it. Running that piece can recurse all the way back into
+  \ SPLIT-ANDOR - a group whose body contains "&&" does exactly that -
+  \ which overwrites the remainder. Iteration 50 fixed the identical
+  \ shape in RUN-TOKENIZED for ';' and recorded that this word had it
+  \ too and had simply never been hit; it is hit by
+  \ "{ true && echo inner; } && echo outer", which printed
+  \ "inner inner".
+  ARGC-AO-REST @ AO-RESTC !
+  MAX-ARGS CELLS BODY-ALLOC AO-REST !
+  MAX-ARGS       BODY-ALLOC AO-RESTQ !
+  0 AO-J !
+  BEGIN AO-J @ AO-RESTC @ < WHILE
+    ARGV-AO-REST AO-J @ CELLS + @  AO-REST  @ BODY@ AO-J @ CELLS + !
+    ARGQ-AO-REST AO-J @ +      C@  AO-RESTQ @ BODY@ AO-J @ +       C!
+    AO-J @ 1+ AO-J !
+  REPEAT ;
+
+: AO-LOAD-REST ( --- )
+  AO-REST @ BODY@ AO-RESTQ @ BODY@ AO-RESTC @ COPY-ARGV-Q ;
+
 : RUN-AND-OR-CHAIN ( --- )
-  \ Called right after RUN-TOKENIZED's own SPLIT-ANDOR call has
-  \ already found at least one &&/|| in the current segment -
-  \ ARGV-AO-LEFT/ARGC-AO-LEFT holds the first piece, ANDOR-OP the
-  \ operator right after it, ARGV-AO-REST/ARGC-AO-REST everything
-  \ beyond that. The first piece always runs unconditionally - there's
-  \ no operator before it to make it conditional on. Uses COPY-ARGV-Q,
-  \ not plain COPY-ARGV, to also restore each copied-in piece's own
-  \ ARGV-QUOTED flags - see COPY-ARGV-Q's own comment for the real bug
-  \ this fixes (a stale "quoted" flag from an earlier piece's own
-  \ $VAR expansion silently hiding a real &&/;/etc. operator in a
-  \ later piece, if it happened to land at the same ARGV index).
+  \ AO-CONTINUE, AO-PENDING-OP and the arena pointers are locals, not
+  \ globals: every one of them is held across RUN-SIMPLE-OR-PIPELINE,
+  \ which can recurse into this same word.
+  BODY-ARENA-TOP @
+  {: BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP :}
+  AO-SAVE-REST
+  ANDOR-OP @ AO-SAVED-OP !
   ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
   RUN-SIMPLE-OR-PIPELINE
-  ANDOR-OP @ AO-PENDING-OP !
-  ARGV-AO-REST ARGQ-AO-REST ARGC-AO-REST @ COPY-ARGV-Q
+  AO-SAVED-OP @ AO-PENDING-OP !
+  AO-LOAD-REST
   -1 AO-CONTINUE !
   BEGIN AO-CONTINUE @ WHILE
     SPLIT-ANDOR IF
-      ( more &&/|| ahead: this piece is in ARGV-AO-LEFT, the operator
-        after it in ANDOR-OP, the remainder in ARGV-AO-REST )
+      AO-SAVE-REST
+      ANDOR-OP @ AO-SAVED-OP !
       AO-SHOULD-RUN? IF
         ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
         RUN-SIMPLE-OR-PIPELINE
       THEN
-      ANDOR-OP @ AO-PENDING-OP !
-      ARGV-AO-REST ARGQ-AO-REST ARGC-AO-REST @ COPY-ARGV-Q
+      AO-SAVED-OP @ AO-PENDING-OP !
+      AO-LOAD-REST
     ELSE
-      ( no more &&/|| - the global ARGV IS the final piece, already
-        copied in by the previous iteration )
       AO-SHOULD-RUN? IF RUN-SIMPLE-OR-PIPELINE THEN
       0 AO-CONTINUE !
     THEN

@@ -7345,3 +7345,43 @@ deep recursion diagnosed *and survived*, and a full variable table
 reported with execution continuing. 507 assertions across 62 files, 6
 differential cases, 1991 core OK markers, both cell widths, mrsh 17
 of 21.
+## Iteration 91: the recorded and-or reentrancy bug, demonstrated and
+## fixed
+
+Iteration 50 fixed `RUN-TOKENIZED` holding the `;`-remainder in globals
+across a recursive call, and noted that `RUN-AND-OR-CHAIN` had the
+identical shape but had never been hit. Went looking for the case that
+hits it:
+
+    { true && echo inner; } && echo outer     -> "inner inner"
+
+The left-hand group's body contains `&&`, so running it recurses into
+`SPLIT-ANDOR` and overwrites the outer chain's saved remainder — the
+outer `echo outer` was replaced by the inner one's remainder.
+
+Three *more* globals had the same exposure and would have been the next
+bug: `ANDOR-OP` (read after the piece runs), `AO-PENDING-OP` (which
+`AO-SHOULD-RUN?` consults) and `AO-CONTINUE` (the loop's own control).
+All are now locals, and the remainder is copied to per-invocation arena
+storage before anything runs — the same fix as Iteration 50.
+
+Worth noting how it was found: not by a failing test, but by taking a
+recorded "same shape, never hit" note seriously enough to construct
+the input that hits it. The note had been sitting there for forty-one
+iterations.
+
+### A different gap, found alongside and not fixed
+
+`if true; then true && echo n; fi && echo m` prints `n` but not `m`.
+That is not reentrancy — it is an `&&` *after* a compound command,
+which `DO-IF` consumes without looking for what follows. The group
+equivalent was fixed in Iteration 49 (`AT-GROUP-END?` falls through to
+the splitters); `if`/`while`/`for`/`case` never got the same treatment.
+Recorded rather than bundled in.
+
+### Verified
+
+`tests/diff/cases/andor-nesting.sh` — six chains including nested
+groups on both sides and `||` chains. 507 assertions across 62 files,
+7 differential cases, 1991 core OK markers, both cell widths, mrsh 17
+of 21.
