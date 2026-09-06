@@ -7528,3 +7528,46 @@ own numbers confirm the split cleanly:
 
 Startup halves; the loop does not move at all. That is the whole answer
 in one table.
+## Iteration 95: positional parameters inside `${...}`, and what
+## `word.sh` actually needs
+
+`${2}`, `${3:+posix}`, `${#1}`, `${2#pat}` all expanded to empty: only
+the bare `$2` spelling worked, because `EXPAND-VAR` special-cased
+digits while `EXPAND-BRACED-VAR` went straight to `LOOKUP-VAR`, which
+knew only named variables.
+
+Fixed in `LOOKUP-VAR` itself rather than at each call site, so every
+braced form gets it at once. A single digit `1`-`9` names a positional;
+`0` deliberately does not (it is the script name), and an out-of-range
+digit expands to empty like an unset variable. `LOOKUP-VAR` sits above
+the positional machinery in the file, so this is one more `DEFER` — the
+cheapness of that now matters, which is the payoff from Iteration 77.
+
+### Re-diagnosing `word.sh` changed the plan
+
+With that fixed, the remaining differences are:
+
+- **tilde forms** — `~root`, and tilde in an assignment (`a=~/stuff`,
+  and after each `:` within one).
+- **`c=""; echo ${c:=GOOD}` on one line** — prints the *old* value.
+  This is the stale-expansion limitation: expansion happens once per
+  raw line, before any `;`-separated command on it has run.
+- two further lines needing their own look.
+
+That second item is not a gap to fill — it is **Stage 1 of
+`PARSE-EXPAND-PLAN.md`**, the parse-then-expand separation.
+
+So both remaining reachable mrsh tests now converge on the plan:
+`word.sh` needs Stage 1, and `2.2-quoted-characters.sh` needs Stage 3
+(nested `$(...)`). "Finish the mrsh tests, then embed the image" and
+"do the architectural change" turn out to be the same instruction,
+which is worth knowing before starting either.
+
+The tilde forms are still independent and can be done first if a
+smaller piece is wanted.
+
+### Verified
+
+`tests/diff/cases/positional-braced.sh`. 507 assertions across 62
+files, 10 differential cases, 1991 core OK markers, both cell widths,
+mrsh 17 of 21.

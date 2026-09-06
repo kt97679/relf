@@ -419,6 +419,8 @@ VARIABLE SV-IDX
   DROP
   SHVAR-COUNT @ 1- SHVAR-COUNT ! ;
 
+DEFER POS-DIGIT-CALL   \ patched once POS-PARAM-SLOT exists, below
+
 : LOOKUP-VAR ( name-addr --- value-addr | 0 )  \ shell-local storage
                                                  \ first (covers every
                                                  \ assigned variable,
@@ -431,6 +433,12 @@ VARIABLE SV-IDX
                                                  \ inherited from its
                                                  \ own environment,
                                                  \ e.g. $HOME).
+  \ A single digit names a positional parameter, not a shell variable.
+  \ Handled here rather than at each call site so every braced form
+  \ gets it at once - ${2}, ${3:+x}, ${#2}, ${2#pat} - where before
+  \ only the bare $2 spelling worked, because EXPAND-VAR special-cased
+  \ digits and EXPAND-BRACED-VAR went straight to this word.
+  DUP POS-DIGIT-CALL ?DUP IF SWAP DROP EXIT THEN
   DUP GET-SHVAR DUP 0= IF DROP GETENV ELSE SWAP DROP THEN ;
 
 \ ==================================================================
@@ -467,6 +475,21 @@ CREATE POS-PARAM-COUNT-SAVE MAX-POS-PARAM-DEPTH CELLS ALLOT
   CELLS POS-PARAM-COUNT-SAVE + ;
 
 VARIABLE SPP-I
+
+: POS-DIGIT-LOOKUP ( name-addr --- value-addr | 0 )
+  \ "1".."9" name a positional parameter. Anything else - including
+  \ "0", which is the script name rather than a parameter - is not
+  \ ours, and an out-of-range digit expands to empty like an unset
+  \ variable.
+  DUP CSTRLEN 1 <> IF DROP 0 EXIT THEN
+  C@ 48 -
+  DUP 1 < IF DROP 0 EXIT THEN
+  DUP 9 > IF DROP 0 EXIT THEN
+  1-
+  DUP POS-PARAM-COUNT @ < 0= IF DROP 0 EXIT THEN
+  POS-PARAM-SLOT ;
+
+' POS-DIGIT-LOOKUP IS POS-DIGIT-CALL
 
 : SET-POS-PARAMS-FROM-ARGV ( --- )
   \ Populates POS-PARAMS/POS-PARAM-COUNT from the *current* global
