@@ -300,6 +300,7 @@ VARIABLE SCC-MAX
 256 CONSTANT SHVAR-VALUE-MAX
 MAX-SHVARS SHVAR-NAME-MAX * BUFFER: SHVAR-NAMES
 MAX-SHVARS SHVAR-VALUE-MAX * BUFFER: SHVAR-VALUES
+CREATE SHVAR-RO MAX-SHVARS ALLOT   \ readonly flag per slot
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
 
@@ -360,8 +361,17 @@ VARIABLE SV-IDX
     DROP
     SHVAR-COUNT @ MAX-SHVARS < 0= IF EXIT THEN
     SHVAR-COUNT @ DUP 1+ SHVAR-COUNT !
+    DUP SHVAR-RO + 0 SWAP C!        \ new slots start writable
   THEN
   SV-IDX !
+  \ A readonly variable refuses assignment, per POSIX. Checked here
+  \ rather than in each caller, so every path that can set a variable
+  \ (plain assignment, export, ${VAR:=word}, a for loop's own control
+  \ variable) is covered by one test.
+  SV-IDX @ SHVAR-RO + C@ IF
+    ." shell: readonly variable" CR
+    EXIT
+  THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
   SV-VALUE @ SV-IDX @ SHVAR-VALUE-SLOT SHVAR-VALUE-MAX SAFE-CSTR-COPY DROP ;
 
@@ -2007,6 +2017,198 @@ VARIABLE TEST-U-OPERAND
   ARGC @ 1- TEST-END !
   EVAL-TEST-ARGS IF 0 ELSE 1 THEN LAST-STATUS ! ;
 
+\ ==================================================================
+\ Assignment machinery, moved ahead of DISPATCH so `readonly NAME=value`
+\ can reuse it instead of reimplementing the split (Iteration 51).
+\ ==================================================================
+
+VARIABLE AW-I
+
+: FIND-EQ-OR-END ( c-addr --- offset )  \ offset of the first '=' in
+                                          \ c-addr, or its CSTRLEN if
+                                          \ none is found before the
+                                          \ terminating NUL.
+  0 AW-I !
+  BEGIN
+    DUP AW-I @ + C@ DUP 0 <> SWAP 61 <> AND
+  WHILE
+    AW-I @ 1+ AW-I !
+  REPEAT
+  DROP AW-I @ ;
+
+: VALID-NAME? ( c-addr u --- f )  \ is (c-addr u) a non-empty,
+                                    \ POSIX-valid variable name? (first
+                                    \ character not a digit, every
+                                    \ character NAME-CHAR? - which
+                                    \ itself does allow digits, correct
+                                    \ for every character *after* the
+                                    \ first).
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ DUP 48 < 0= SWAP 58 < AND IF 2DROP 0 EXIT THEN
+  0 DO
+    DUP I + C@ NAME-CHAR? 0= IF UNLOOP DROP 0 EXIT THEN
+  LOOP
+  DROP -1 ;
+
+: ASSIGNMENT-EQPOS ( c-addr --- eqpos | -1 )  \ c-addr: a NUL-
+                                                \ terminated string
+                                                \ (ARGV[0]). The offset
+                                                \ of its first '=' if
+                                                \ everything before it
+                                                \ forms a valid,
+                                                \ non-empty POSIX name
+                                                \ - else -1 (not an
+                                                \ assignment word at
+                                                \ all).
+  DUP FIND-EQ-OR-END
+  2DUP + C@ 61 <> IF 2DROP -1 EXIT THEN
+  2DUP VALID-NAME? 0= IF 2DROP -1 EXIT THEN
+  SWAP DROP ;
+
+CREATE ASSIGN-NAME-BUF SHVAR-NAME-MAX ALLOT
+CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
+
+VARIABLE DA-ADDR
+VARIABLE DA-EQ
+
+: DO-ASSIGN-AT ( c-addr eqpos --- )
+  \ Split a validated "NAME=value" word at its '=' and record it.
+  \ Factored out of DO-ASSIGN so `readonly NAME=value` uses the same
+  \ code rather than a second copy of the splitting.
+  {: DA-ADDR DA-EQ :}
+  DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
+  DA-ADDR @ DA-EQ @ + 1+
+  DA-ADDR @ CSTRLEN DA-EQ @ - 1-
+  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
+  ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR ;
+
+: DO-ASSIGN ( eqpos --- )  \ ARGV[0] is a validated "NAME=value"
+                            \ assignment word (see ASSIGNMENT-EQPOS)
+                            \ and eqpos is its '='s offset. Splits it
+                            \ into ASSIGN-NAME-BUF/ASSIGN-VALUE-BUF and
+                            \ records it via SET-SHVAR - does NOT
+                            \ export it (see DO-EXPORT for how export
+                            \ interacts with this). A no-op (not even
+                            \ touching LAST-STATUS) if SUPPRESS-EXEC?
+                            \ is set - this line is being read only to
+                            \ correctly consume a skipped if/while
+                            \ branch's own body, not actually run.
+  SUPPRESS-EXEC? @ IF DROP EXIT THEN
+  ARGV @ SWAP DO-ASSIGN-AT
+  0 LAST-STATUS ! ;
+
+VARIABLE DO-I
+
+: BUILTIN-NAME? ( c-addr --- f )
+  \ Is this the name of a shell builtin? Used only by `command -v`.
+  \
+  \ DUPLICATION, acknowledged: this list has to be kept in step with
+  \ DISPATCH's own chain by hand, which FORTH-STYLE.md says not to do
+  \ - two copies can disagree. The real fix is making DISPATCH
+  \ table-driven (name -> xt), after which both this and DISPATCH read
+  \ the one table, and registering a builtin becomes adding a row.
+  \ That refactor is the next item; recorded here rather than left for
+  \ someone to discover.
+  DUP S" :"        ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" test"     ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" ["        ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" cd"       ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" pwd"      ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" export"   ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" unset"    ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" exit"     ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" return"   ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" break"    ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" continue" ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" set"      ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" shift"    ROT STR0= IF DROP -1 EXIT THEN
+  DUP S" readonly" ROT STR0= IF DROP -1 EXIT THEN
+      S" command"  ROT STR0= ;
+
+: MARK-READONLY ( name-addr --- )
+  FIND-SHVAR DUP -1 = IF DROP EXIT THEN
+  SHVAR-RO + -1 SWAP C! ;
+
+: DO-READONLY ( --- )
+  \ readonly NAME | readonly NAME=value. With a value it assigns
+  \ first, then marks; the mark must come second or the assignment
+  \ would be refused by its own flag.
+  0 LAST-STATUS !
+  ARGC @ 1 < IF EXIT THEN
+  1 DO-I !
+  BEGIN DO-I @ ARGC @ < WHILE
+    DO-I @ ARGV@ ASSIGNMENT-EQPOS
+    DUP -1 = IF
+      DROP
+      DO-I @ ARGV@ MARK-READONLY
+    ELSE
+      DO-I @ ARGV@ SWAP DO-ASSIGN-AT
+      ASSIGN-NAME-BUF MARK-READONLY
+    THEN
+    DO-I @ 1+ DO-I !
+  REPEAT ;
+
+: DO-SHIFT ( --- )
+  \ shift [n]: drop the first n positional parameters. Out-of-range
+  \ n is an error and leaves the parameters untouched, per POSIX.
+  1
+  ARGC @ 1 > IF DROP ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL THEN
+  DUP POS-PARAM-COUNT @ > IF
+    DROP ." shift: count out of range" CR 1 LAST-STATUS ! EXIT
+  THEN
+  DUP 0 DO
+    0 DO-I !
+    BEGIN DO-I @ 1+ POS-PARAM-COUNT @ < WHILE
+      DO-I @ 1+ POS-PARAM-SLOT DO-I @ POS-PARAM-SLOT POS-PARAM-MAX MOVE
+      DO-I @ 1+ DO-I !
+    REPEAT
+    POS-PARAM-COUNT @ 1- POS-PARAM-COUNT !
+  LOOP DROP
+  0 LAST-STATUS ! ;
+
+: CMD-V-FOUND ( c-addr u --- )   \ report a hit and exit 0
+  TYPE CR 0 LAST-STATUS ! ;
+
+: PATH-LOOKUP? ( --- f )
+  \ Is ARGV[1] findable in PATH? Prints the full path if so. Same
+  \ PATH walk as SEARCH-PATH, but testing for existence instead of
+  \ exec'ing - deliberately a separate word rather than a flag on
+  \ SEARCH-PATH, whose whole contract is "only returns on failure".
+  S" PATH" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
+  ENVNAMBUF GETENV
+  DUP 0= IF DROP 0 EXIT THEN
+  DUP CSTRLEN OVER + PATH-END2 !
+  PATH-CUR !
+  BEGIN PATH-CUR @ PATH-END2 @ < WHILE
+    PATH-CUR @
+    BEGIN
+      PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ C@ 58 <> ELSE 0 THEN
+    WHILE PATH-CUR @ 1+ PATH-CUR ! REPEAT
+    PATH-CUR @ OVER -
+    PATHBUF B-RESET B-STR 47 B-CHAR ARGV 1 CELLS + @ B-CSTR B-FINISH
+    PATHBUF TEST-FILE-EXISTS? IF
+      PATHBUF DUP CSTRLEN CMD-V-FOUND
+      -1 EXIT
+    THEN
+    PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ 1+ PATH-CUR ! THEN
+  REPEAT
+  0 ;
+
+: DO-COMMAND ( --- )
+  \ command -v NAME. The other forms (command NAME args, -p, -V) are
+  \ not implemented; -v is what scripts actually use to test for a
+  \ command's existence.
+  ARGC @ 3 < IF 1 LAST-STATUS ! EXIT THEN
+  S" -v" 1 ARGV@ STR0= 0= IF 1 LAST-STATUS ! EXIT THEN
+  2 ARGV@ FIND-FUNC -1 <> IF
+    2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+  THEN
+  2 ARGV@ BUILTIN-NAME? IF
+    2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+  THEN
+  ARGV 2 CELLS + @ ARGV 1 CELLS + !   \ PATH-LOOKUP? reads ARGV[1]
+  PATH-LOOKUP? 0= IF 1 LAST-STATUS ! THEN ;
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
     S" :"      ARGV @ STR0= IF 0 LAST-STATUS ! -1 EXIT THEN
@@ -2055,6 +2257,9 @@ VARIABLE TEST-U-OPERAND
       THEN
       -1 EXIT
     THEN
+    S" shift"    ARGV @ STR0= IF DO-SHIFT -1 EXIT THEN
+    S" readonly" ARGV @ STR0= IF DO-READONLY -1 EXIT THEN
+    S" command"  ARGV @ STR0= IF DO-COMMAND -1 EXIT THEN
     S" set" ARGV @ STR0= IF
       \ "set a b c" replaces whatever positional parameters are
       \ currently active (the current function's own, if called from
@@ -2797,70 +3002,6 @@ VARIABLE ARGC-SHIFT
 \ looked up as a command name.
 \ ==================================================================
 
-VARIABLE AW-I
-
-: FIND-EQ-OR-END ( c-addr --- offset )  \ offset of the first '=' in
-                                          \ c-addr, or its CSTRLEN if
-                                          \ none is found before the
-                                          \ terminating NUL.
-  0 AW-I !
-  BEGIN
-    DUP AW-I @ + C@ DUP 0 <> SWAP 61 <> AND
-  WHILE
-    AW-I @ 1+ AW-I !
-  REPEAT
-  DROP AW-I @ ;
-
-: VALID-NAME? ( c-addr u --- f )  \ is (c-addr u) a non-empty,
-                                    \ POSIX-valid variable name? (first
-                                    \ character not a digit, every
-                                    \ character NAME-CHAR? - which
-                                    \ itself does allow digits, correct
-                                    \ for every character *after* the
-                                    \ first).
-  DUP 0= IF 2DROP 0 EXIT THEN
-  OVER C@ DUP 48 < 0= SWAP 58 < AND IF 2DROP 0 EXIT THEN
-  0 DO
-    DUP I + C@ NAME-CHAR? 0= IF UNLOOP DROP 0 EXIT THEN
-  LOOP
-  DROP -1 ;
-
-: ASSIGNMENT-EQPOS ( c-addr --- eqpos | -1 )  \ c-addr: a NUL-
-                                                \ terminated string
-                                                \ (ARGV[0]). The offset
-                                                \ of its first '=' if
-                                                \ everything before it
-                                                \ forms a valid,
-                                                \ non-empty POSIX name
-                                                \ - else -1 (not an
-                                                \ assignment word at
-                                                \ all).
-  DUP FIND-EQ-OR-END
-  2DUP + C@ 61 <> IF 2DROP -1 EXIT THEN
-  2DUP VALID-NAME? 0= IF 2DROP -1 EXIT THEN
-  SWAP DROP ;
-
-CREATE ASSIGN-NAME-BUF SHVAR-NAME-MAX ALLOT
-CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
-
-: DO-ASSIGN ( eqpos --- )  \ ARGV[0] is a validated "NAME=value"
-                            \ assignment word (see ASSIGNMENT-EQPOS)
-                            \ and eqpos is its '='s offset. Splits it
-                            \ into ASSIGN-NAME-BUF/ASSIGN-VALUE-BUF and
-                            \ records it via SET-SHVAR - does NOT
-                            \ export it (see DO-EXPORT for how export
-                            \ interacts with this). A no-op (not even
-                            \ touching LAST-STATUS) if SUPPRESS-EXEC?
-                            \ is set - this line is being read only to
-                            \ correctly consume a skipped if/while
-                            \ branch's own body, not actually run.
-  SUPPRESS-EXEC? @ IF DROP EXIT THEN
-  DUP ARGV @ SWAP ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
-  DUP 1+ ARGV @ +
-  SWAP ARGV @ CSTRLEN SWAP - 1-
-  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
-  ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR
-  0 LAST-STATUS ! ;
 
 : TRY-ASSIGNMENT ( --- f )  \ f = -1 if ARGV was a standalone
                               \ "NAME=value" assignment word (already

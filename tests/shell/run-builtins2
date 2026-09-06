@@ -1,0 +1,32 @@
+#!/bin/sh
+# tests/shell/run-builtins2 - shift, readonly, command -v (Iteration 51)
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'set a b c\nshift\necho "1=$1 n=$#"\nshift 2\necho "after=$#"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "shift drops the first parameter" "1=b n=2"  "$out"
+assert_output_contains "shift n drops n"                 "after=0"  "$out"
+
+printf 'shift 5\necho "st=$?"\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "shift past the end is an error" "st=1" "$out"
+
+printf 'readonly R=1\nR=2\necho "R=$R"\nW=1\nW=2\necho "W=$W"\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "readonly refuses reassignment" "R=1" "$out"
+assert_output_contains "ordinary variables still assign" "W=2" "$out"
+
+printf 'V=7\nreadonly V\nV=8\necho "V=$V"\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "readonly NAME marks an existing variable" "V=7" "$out"
+
+printf 'command -v cd\ncommand -v nosuchthing\necho "st=$?"\n' > "$t/e.sh"
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "command -v finds a builtin"     "cd"   "$out"
+assert_output_contains "command -v fails on a nonword"  "st=1" "$out"
+
+printf 'f() {\n  echo x\n}\ncommand -v f\n' > "$t/f.sh"
+out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
+assert_output_contains "command -v finds a function" "f" "$out"
+report

@@ -5540,3 +5540,53 @@ passed, as expected for a refactor.
 
 `shell.4` is 4559 lines - down slightly despite three added tests'
 worth of behaviour, and the duplicated shapes are gone.
+## Iteration 51: `shift`, `readonly`, `command -v`
+
+Three Phase F builtins, chosen because they are independent of the
+parser and of each other. mrsh-suite unchanged at 6 — none of these
+carries a vendored file on its own, as expected; `readonly.sh` and
+`command.sh` each need several more features together.
+
+- **`shift [n]`** drops the first n positional parameters; an
+  out-of-range n is an error leaving them untouched, per POSIX.
+- **`readonly NAME` / `readonly NAME=value`** marks a slot via a
+  parallel `SHVAR-RO` byte array. The refusal is enforced **inside
+  `SET-SHVAR`**, not at each caller, so every path that can set a
+  variable — plain assignment, `export`, `${VAR:=word}`, a `for`
+  loop's control variable — is covered by one test rather than four
+  that could drift apart.
+- **`command -v NAME`** reports functions, builtins and `PATH` hits.
+
+### Reuse rather than a second copy
+
+`readonly NAME=value` needs exactly the splitting `DO-ASSIGN` already
+does, so `DO-ASSIGN-AT ( c-addr eqpos --- )` was factored out and
+`DO-ASSIGN` now calls it. That required moving the assignment block
+ahead of `DISPATCH` — the usual file-ordering cost — but the
+alternative was a second copy of the split, which
+`FORTH-STYLE.md` was written to stop.
+
+`command -v` needed a PATH walk that *tests* rather than execs.
+Deliberately a separate `PATH-LOOKUP?` rather than a flag on
+`SEARCH-PATH`, whose entire contract is "only returns on failure";
+adding a mode to it would have made that contract conditional.
+
+### One duplication accepted, and flagged
+
+`BUILTIN-NAME?` lists the builtin names, and that list must be kept in
+step with `DISPATCH`'s own chain by hand — exactly what this project
+just wrote a rule against. Recorded in the code, with the fix named:
+**make `DISPATCH` table-driven** (name → xt), after which both read
+one table and registering a builtin is adding a row. That refactor
+also removes ~60 lines of repeated `S" name" ARGV @ STR0= IF` and is
+the prerequisite for the `forth` builtin discussed back in Iteration
+38. It is the next item.
+
+### Verified
+
+`tests/shell/run-builtins2` (9 assertions): `shift` and `shift n`,
+`shift` past the end erroring, `readonly` refusing reassignment while
+ordinary variables still assign, `readonly NAME` on an existing
+variable, and `command -v` on a builtin, a `PATH` command, a function
+and a nonexistent name. 340 assertions across 41 files plus 1991 core
+OK markers, both cell widths.
