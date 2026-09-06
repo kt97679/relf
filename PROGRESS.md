@@ -5918,3 +5918,49 @@ dependency without running the one-line check that would have
 falsified it, and it went into the log as fact. `FORTH-STYLE.md`'s
 "measure before concluding" is about causes; this is the same failure
 about *requirements*.
+## Iteration 57: builtins as pipeline stages
+
+`printf x | read a` and `pwd | tr a-z A-Z` work. This retires the
+"builtins aren't supported on either side of a pipe" limit recorded in
+Iteration 7.
+
+The shape already existed: Iteration 49 made a stage that is a *group*
+run via `RUN-TOKENIZED-CALL` in the forked child instead of being
+exec'd. `PIPE-STAGE-INTERNAL?` now answers that question for groups,
+builtins and functions alike, and everything else still goes straight
+to `exec` — so an ordinary external pipeline costs no extra process.
+
+A builtin in a pipeline runs in the child, so it cannot affect this
+shell: `printf new | read a` leaves `$a` unchanged. That is POSIX's
+own behaviour and matches bash, not a limitation of the
+implementation — asserted as a test so it is not "fixed" later by
+mistake.
+
+### What I tried, and backed out
+
+I first included `if`/`while`/`for`/`case` in the same test, aiming
+directly at `read.sh`'s `printf "a\\nb\\nc\\n" | while read line; ...`.
+It does not work, and the reason is structural rather than a bug to
+chase: those constructs read their body lines from the input *after*
+the stage has started, and the forked child shares the script's file
+offset with the parent, so the two race for the same lines. The
+observed symptom was `while: expected 'do'` repeating while the loop
+produced empty output.
+
+Groups are fine precisely because `SPLIT-GROUP` has already captured
+their entire body from the current line before any fork happens.
+
+Making multi-line compound commands work as pipeline stages means
+capturing the body *before* forking — the same "capture, then replay"
+machinery `DO-WHILE` already has, but hoisted above the pipeline
+split. That is its own iteration, and it is what `read.sh` still needs.
+Recorded here rather than left as a mystery for the next attempt.
+
+### Verified
+
+`tests/shell/run-pipe-builtin` (6 assertions): a builtin as the first
+stage, as the last stage with its status propagating, a builtin's
+assignment correctly *not* escaping the subshell, external pipelines
+unchanged, and groups as stages still working. 389 assertions across 47
+files plus 1991 core OK markers, both cell widths. mrsh-suite unchanged
+at 8, for the reason above.

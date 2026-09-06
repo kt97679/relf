@@ -3111,6 +3111,31 @@ VARIABLE PL-J
   0 ARGV PL-J @ CELLS + !
   PL-J @ ARGC ! ;
 
+: PIPE-STAGE-INTERNAL? ( --- f )
+  \ Does this pipeline stage have to run inside the shell rather than
+  \ being exec'd? Groups, compound commands, builtins and functions
+  \ all do; anything else is an external command and goes straight to
+  \ exec, so an ordinary pipeline still costs no extra process.
+  \
+  \ It runs in the forked child either way, so a builtin in a pipeline
+  \ cannot affect this shell - "printf x | read a" leaves $a unset
+  \ here exactly as it does in bash. That is the POSIX behaviour, not
+  \ a limitation of running it in the child.
+  \ Groups qualify because SPLIT-GROUP already captured their whole
+  \ body from the current line. Multi-line compound commands
+  \ (if/while/for/case) deliberately do NOT: their body lines are read
+  \ from the input *after* the stage starts, and a forked child cannot
+  \ do that reliably - it shares the script's file offset with the
+  \ parent, so the two race for the same lines. Tried directly and it
+  \ misbehaves exactly that way. Making them work means capturing the
+  \ body before forking, which is its own piece of work.
+  S" ("     LINE-IS? IF -1 EXIT THEN
+  S" {"     LINE-IS? IF -1 EXIT THEN
+  ARGC @ 0 = IF 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 0 EXIT THEN
+  ARGV @ FIND-BUILTIN 0= 0= IF -1 EXIT THEN
+  ARGV @ FIND-FUNC -1 <> ;
+
 : RUN-PIPELINE ( --- )
   \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
   \ version handled exactly one pipe; this is the same shape
@@ -3151,16 +3176,12 @@ VARIABLE PL-J
         PL-RD @ CLOSE-FILE DROP
       THEN
       PIPE-SEG-TO-ARGV
-      \ A stage that is a group runs in this child rather than being
-      \ exec'd - "(echo a; echo b) | sed ...". Everything else still
-      \ goes straight to exec, so an ordinary pipeline costs no extra
-      \ process.
-      S" (" LINE-IS? 0= S" {" LINE-IS? 0= AND IF
-        RUN-CHILD
-        127 SYS-EXIT
+      PIPE-STAGE-INTERNAL? IF
+        RUN-TOKENIZED-CALL
+        LAST-STATUS @ SYS-EXIT
       THEN
-      RUN-TOKENIZED-CALL
-      LAST-STATUS @ SYS-EXIT
+      RUN-CHILD
+      127 SYS-EXIT
     THEN
     PIPE-PIDS PL-I @ CELLS + !
     PL-PREV-RD @ 0 < 0= IF PL-PREV-RD @ CLOSE-FILE DROP THEN

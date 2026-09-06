@@ -1,0 +1,28 @@
+#!/bin/sh
+# tests/shell/run-pipe-builtin - builtins and groups as pipeline stages
+# (Iteration 57). Retires the "builtins aren't supported in a pipeline"
+# limit recorded in Iteration 7.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+out=$("$THIS_SH" -c 'pwd | tr a-z A-Z' 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *[A-Z]*) ;; *) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: builtin as first stage produced: $out";; esac
+
+printf 'printf "x y\\n" | read a b\necho "st=$?"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "builtin as last stage runs and reports status" "st=0" "$out"
+
+# POSIX: a builtin in a pipeline runs in a subshell, so its assignments
+# do not reach this shell - same as bash.
+printf 'a=orig\nprintf "new\\n" | read a\necho "a=$a"\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "pipeline builtin cannot alter this shell" "a=orig" "$out"
+
+out=$("$THIS_SH" -c 'echo abc | tr a-z A-Z | tr A-Z a-z' 2>/dev/null)
+assert_output_contains "external pipelines unaffected" "abc" "$out"
+
+out=$("$THIS_SH" -c '(echo a; echo b) | tr a-z A-Z' 2>/dev/null)
+assert_output_contains "group as a stage still works (1)" "A" "$out"
+assert_output_contains "group as a stage still works (2)" "B" "$out"
+report
