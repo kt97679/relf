@@ -1239,6 +1239,22 @@ build-time choice, not a fork.
   mode - the right tradeoff until/unless a real need for the
   pre-set-before-including convenience shows up.
 
+## Where bash and POSIX disagree, and this shell follows POSIX
+
+Deliberate divergences from the differential oracle. Each was checked
+against a second reference (`dash`) before being recorded, because
+"bash does X" and "X is correct" are not the same claim.
+
+- **Aliases are not expanded by bash in non-interactive shells.** POSIX
+  says alias substitution applies; this shell applies it. Costs two
+  mrsh tests, `command.sh` and `2.2.3-alias-expansion.fail.sh` — the
+  19-of-21 ceiling recorded below.
+- **Tilde after `=` in a non-assignment word.** `echo other=~/y`:
+  bash expands the tilde, dash does not, and neither do we. POSIX
+  applies tilde-after-`=` to assignment *words*; an argument to `echo`
+  is not one. bash is being permissive with any `name=value`-shaped
+  word. (Iteration 98.)
+
 ## Known shortcuts to revisit
 
 Deliberate compromises that work today and are wrong in general. Each

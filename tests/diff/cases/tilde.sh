@@ -15,6 +15,11 @@ b=~/foo:~/bar:~/baz
 echo "$b"
 c=~root
 echo "$c"
-# ...but not elsewhere in a word, and not when quoted
+# ...but not when quoted.
 echo "not=~/x"
-echo other=~/y
+# NOTE: 'echo other=~/y' is deliberately NOT tested here. bash expands
+# it; dash does not, and neither do we. POSIX applies tilde-after-'='
+# to assignment WORDS, and an argument to echo is not one. bash is
+# being permissive (it treats any name=value-shaped word that way);
+# this differential file uses bash as its oracle, so the case cannot
+# live here. Recorded in GOALS.md instead.

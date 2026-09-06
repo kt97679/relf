@@ -7681,3 +7681,25 @@ pieces left.
 two shapes that must stay literal. 507 assertions across 62 files, 11
 differential cases, 1991 core OK markers, both cell widths, mrsh 17
 of 21.
+### Correction to the above
+
+I committed Iteration 98 with a **failing differential case**, again
+without reading the output first — the second time (see Iteration 61).
+The failure was real and informative:
+
+`echo other=~/y` — bash expands the tilde, **dash does not, and
+neither do we**. I had asserted our behaviour was correct without
+checking, and it *is* correct: POSIX applies tilde-after-`=` to
+assignment *words*, and an argument to `echo` is not one. bash is being
+permissive with any `name=value`-shaped word.
+
+So this is a third POSIX-versus-bash divergence, alongside the two
+alias ones. `GOALS.md` now has a heading for them —
+**"Where bash and POSIX disagree, and this shell follows POSIX"** —
+with the rule that each entry must be checked against a *second*
+reference before being recorded, because "bash does X" and "X is
+correct" are different claims. Having only one oracle made that
+distinction invisible; `dash` settled it in one command.
+
+The case is removed from `tilde.sh` rather than asserted, since that
+file uses bash as its oracle and always will.
