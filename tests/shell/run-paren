@@ -1,0 +1,43 @@
+#!/bin/sh
+# tests/shell/run-paren - '(' and ')' as self-delimiting operators
+# (Iteration 48), and everything that collided with making them so.
+. "$(dirname "$0")/lib.sh"
+
+out=$("$THIS_SH" -c '(echo hi)' 2>/dev/null)
+assert_output_contains "subshell with no surrounding spaces" "hi" "$out"
+out=$("$THIS_SH" -c '( echo spaced )' 2>/dev/null)
+assert_output_contains "subshell with spaces still works" "spaced" "$out"
+
+# $(...) must stay fused, and $((...)) must survive intact - the
+# closing '))' is consumed as a unit, or the second ')' gets spaced.
+out=$("$THIS_SH" -c 'echo "[$(echo inner)]"' 2>/dev/null)
+assert_output_contains "command substitution unaffected" "[inner]" "$out"
+out=$("$THIS_SH" -c 'echo $((3*(2+1)))' 2>/dev/null)
+assert_output_contains "arithmetic with nested parens" "9" "$out"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+printf 'x=5\necho "[$((x*2))]"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "arithmetic on a variable" "[10]" "$out"
+
+# function headers now tokenize as name ( ) { - not a fused "name()"
+printf 'f() {\n  echo in-f\n}\nf\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "function definition still recognised" "in-f" "$out"
+printf 'g ( ) {\n  echo spaced-g\n}\ng\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "function header with spaces" "spaced-g" "$out"
+
+# case arms: ')' is now its own token rather than fused to the pattern
+printf 'case abc in\nxyz)\necho no\n;;\nab*)\necho yes\n;;\nesac\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "case pattern still matches" "yes" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *no*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: wrong case arm ran";; esac
+
+# a bare ')' must not act as an empty pattern matching an empty word
+printf 'v=""\ncase "$v" in\nx)\necho X\n;;\n*)\necho star\n;;\nesac\n' > "$t/e.sh"
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "empty case word falls to *" "star" "$out"
+
+report

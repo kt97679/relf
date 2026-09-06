@@ -5352,3 +5352,59 @@ ordinary commands, which is the same `(cmd)`/group work `pipeline.sh`
 and `subshell.sh` are waiting on. That is now the single highest-value
 remaining item: it is the last thing standing between three separate
 test files and passing.
+## Iteration 48: `(` and `)` as self-delimiting operators
+
+Deferred since Iteration 24, because blindly spacing parens breaks
+`$(...)` outright. Now done, and it took four collisions to land.
+
+`NORMALIZE-OPERATORS` gains a `$(...)` mode mirroring the `$((...))`
+one it already had: on seeing `$(` (and not `$((`) it copies verbatim,
+tracking nested parens, until the matching `)`. Everywhere else `(`
+and `)` are ordinary self-delimiting operators, so `(echo hi)` parses
+the same as `( echo hi )`.
+
+### Four things collided with it, three of which broke tests
+
+1. **`$((...))`'s closing `))`.** The arith branch left arith-mode on
+   the *first* `)` and let the second fall through - harmless while
+   `)` was an ordinary character, fatal once it became an operator,
+   since a space got inserted and `$((x*2))` became `$((x*2) )`. Every
+   arithmetic expansion broke. The closing `))` is now consumed as a
+   unit. Caught by `run-arith`.
+2. **Function headers.** `f() {` tokenizes as four tokens now -
+   `f`, `(`, `)`, `{` - not one fused `f()` token, which is what
+   `FUNCDEF-NAME?` looked for. Every function test broke, and
+   `run-break-continue` *hung*. Now matched as the three-token shape.
+   Caught by the suite; the hang is what made it obvious.
+3. **`case` pattern arms.** `hello)` used to keep its `)` fused, and
+   `CASE-ARM-MATCHES?` stripped it from the last token. With `)` split
+   off, `run-case` still passed - **by luck**: the real patterns became
+   separate tokens that matched directly, and the leftover `)` became
+   an empty pattern that happened to match nothing. It would have
+   wrongly matched a `case` on an empty word. Now skipped explicitly
+   alongside `|`, and that exact case is a test.
+4. `{`/`}` were considered and left alone: POSIX requires a blank
+   after `{` and a `;` or newline before `}` anyway, so brace groups
+   already tokenize correctly.
+
+Point 3 is the one worth remembering. The suite went green on a change
+that was still wrong; only reading *why* it passed found it. A passing
+test says the observed behaviour is right, not that the reasoning is.
+
+### Verified
+
+`tests/shell/run-paren` (10 assertions): subshells with and without
+spaces, `$(...)` and `$((...))` unaffected including nested parens and
+a variable operand, function headers in both spellings, a `case` arm
+still matching the right pattern, and an empty `case` word correctly
+falling through to `*`. 314 assertions across 39 files plus 1991 core
+OK markers, both cell widths.
+
+mrsh-suite stays at 4 passed. `subshell.sh` gets further but still
+diverges; `pipeline.sh` and `if.sh` need what is now clearly the next
+item - **a subshell or brace group used as an ordinary command**:
+as a pipeline segment (`(a; b) | c`), and with a trailing redirect.
+Today `DO-SUBSHELL`/`DO-BRACE-GROUP` only trigger when the group is
+the *entire* line, and a trailing pipe or redirect after one is
+silently dropped - the scope limit recorded back in Iteration 20.
+Three test files are waiting on that single item.

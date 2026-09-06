@@ -2997,6 +2997,8 @@ VARIABLE RNL-LEN
   DUP 38 = IF DROP -1 EXIT THEN    ( & )
   DUP 60 = IF DROP -1 EXIT THEN    ( < )
   DUP 62 = IF DROP -1 EXIT THEN    ( > )
+  DUP 40 = IF DROP -1 EXIT THEN    ( ( )
+  DUP 41 = IF DROP -1 EXIT THEN    ( ) )
   DROP 0 ;
 
 : NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, >, ; - the four
@@ -3019,6 +3021,17 @@ VARIABLE NORM-U
 VARIABLE NORM-IN-SQ?
 VARIABLE NORM-IN-DQ?
 VARIABLE NORM-C
+VARIABLE NORM-IN-CMDSUB?   \ true while copying through a $(...)
+                            \ region verbatim. '(' and ')' are
+                            \ self-delimiting operators everywhere
+                            \ else now, but inside a command
+                            \ substitution they are part of the
+                            \ substituted text - and "$(" must stay
+                            \ fused for EXPAND-VAR to recognise it at
+                            \ all. Same shape as NORM-IN-ARITH? below.
+VARIABLE NORM-CMDSUB-DEPTH \ nested "(" inside the substitution, so a
+                            \ "(" in the command text is not mistaken
+                            \ for its closing ")"
 VARIABLE NORM-IN-ARITH?    \ true while copying through a $((...))
                             \ region verbatim - operators like <, >,
                             \ &, | are meaningful to the arithmetic
@@ -3059,6 +3072,9 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     DROP 0
   THEN ;
 
+: NORM-AT-CMDSUB-START? ( --- f )  \ "$(" but not "$((" ?
+  NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 <> AND ;
+
 : NORM-AT-ARITH-START? ( --- f )  \ is "$((" starting right at the
                                      \ current position?
   NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 = AND ;
@@ -3072,11 +3088,30 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
       NORM-C @ 40 = IF NORM-ARITH-DEPTH @ 1+ NORM-ARITH-DEPTH ! THEN
-      NORM-C @ 41 = IF
-        NORM-ARITH-DEPTH @ 0 > IF
+      NORM-C @ 41 = NORM-ARITH-DEPTH @ 0 = AND 1 NORM-PEEK 41 = AND IF
+        \ The closing "))" is consumed as a UNIT. Leaving arith-mode on
+        \ the first ')' and letting the second fall through was
+        \ harmless until Iteration 48 made ')' a self-delimiting
+        \ operator - after which the second one got a space inserted
+        \ before it, turning "$((x*2))" into "$((x*2) )" and breaking
+        \ every arithmetic expansion. Found by run-arith.
+        0 NORM-IN-ARITH? !
+        41 NORM-EMIT  41 NORM-EMIT
+        NORM-I @ 2 + NORM-I !
+      ELSE
+        NORM-C @ 41 = NORM-ARITH-DEPTH @ 0 > AND IF
           NORM-ARITH-DEPTH @ 1- NORM-ARITH-DEPTH !
+        THEN
+        NORM-C @ NORM-EMIT
+        NORM-I @ 1+ NORM-I !
+      THEN
+    ELSE NORM-IN-CMDSUB? @ IF
+      NORM-C @ 40 = IF NORM-CMDSUB-DEPTH @ 1+ NORM-CMDSUB-DEPTH ! THEN
+      NORM-C @ 41 = IF
+        NORM-CMDSUB-DEPTH @ 0 > IF
+          NORM-CMDSUB-DEPTH @ 1- NORM-CMDSUB-DEPTH !
         ELSE
-          1 NORM-PEEK 41 = IF 0 NORM-IN-ARITH? ! THEN
+          0 NORM-IN-CMDSUB? !
         THEN
       THEN
       NORM-C @ NORM-EMIT
@@ -3114,6 +3149,15 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       \ here (the quote branches above consume it), and neither does
       \ a backslash-escaped one.
       NORM-U @ NORM-I !
+    ELSE NORM-AT-CMDSUB-START? IF
+      \ "$(" starting here: copy both characters verbatim and switch
+      \ into cmdsub-mode, so the parens belonging to the substitution
+      \ are not spaced out as operators.
+      -1 NORM-IN-CMDSUB? !
+      0 NORM-CMDSUB-DEPTH !
+      NORM-C @ NORM-EMIT
+      1 NORM-PEEK NORM-EMIT
+      NORM-I @ 2 + NORM-I !
     ELSE NORM-AT-ARITH-START? IF
       \ "$((" starting here - copy all three characters verbatim and
       \ switch into arith-mode, so operators meaningful to the
@@ -3140,7 +3184,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     ELSE
       NORM-C @ NORM-EMIT
       NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT
   NORM-LEN @ ;
 
@@ -3717,7 +3761,7 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
   BODY-ARENA-TOP @
   {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP :}
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  0 ARGV@ DUP CSTRLEN 2 - FUNCDEF-NAME-BUF 64 SAFE-COPY-NUL DROP
+  0 ARGV@ FUNCDEF-NAME-BUF 64 SAFE-CSTR-COPY DROP   \ ARGV[0] is now the bare name
   S" {" SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF
     READ-NEXT-LOGICAL-LINE
@@ -4196,8 +4240,15 @@ VARIABLE CASE-MATCHED?
   CASE-PATLAST-BUF 256 SAFE-COPY-NUL DROP
   {: | CA-I :}
   BEGIN CA-I @ ARGC @ < WHILE
+    \ '|' separates alternatives; ')' is now its own token too, since
+    \ Iteration 48 made parens self-delimiting - before that it stayed
+    \ fused to the last pattern and was stripped below. Both are
+    \ skipped rather than treated as patterns; without this the ')'
+    \ would be tried as an empty pattern, which would wrongly match a
+    \ case word that happened to be empty.
     CA-I @ ARGV-QUOTED@ 0= IF
       CA-I @ ARGV@ DUP CSTRLEN S" |" STR=
+      CA-I @ ARGV@ DUP CSTRLEN S" )" STR= OR
     ELSE 0 THEN
     0= IF
       CA-I @ ARGC @ 1- = IF
@@ -4252,18 +4303,21 @@ VARIABLE CASE-MATCHED?
 VARIABLE FD-ADDR
 VARIABLE FD-LEN
 
-: FUNCDEF-NAME? ( --- f )  \ is ARGV[0] a "NAME()" function-definition
-                             \ header - unquoted, at least 3 characters
-                             \ (a 1-character name plus "()"), and
-                             \ ending in "()"?
-  {: | FD-ADDR FD-LEN :}
-  ARGC @ 0 = IF 0 EXIT THEN
+: FUNCDEF-NAME? ( --- f )
+  \ Is this line a function-definition header?
+  \
+  \ Since Iteration 48 made '(' and ')' self-delimiting, "name() {"
+  \ tokenizes as four tokens - name, "(", ")", "{" - not as a single
+  \ "name()" token with the parens fused on, which is what this used
+  \ to look for. Checking the three-token shape instead. (Missing this
+  \ is what broke every function test when parens became operators.)
+  ARGC @ 3 < IF 0 EXIT THEN
   0 ARGV-QUOTED@ IF 0 EXIT THEN
-  0 ARGV@ FD-ADDR !
-  FD-ADDR @ CSTRLEN FD-LEN !
-  FD-LEN @ 2 > 0= IF 0 EXIT THEN
-  FD-ADDR @ FD-LEN @ 2 - + C@ 40 = 0= IF 0 EXIT THEN
-  FD-ADDR @ FD-LEN @ 1- + C@ 41 = ;
+  1 ARGV-QUOTED@ IF 0 EXIT THEN
+  2 ARGV-QUOTED@ IF 0 EXIT THEN
+  1 ARGV@ DUP CSTRLEN S" (" STR= 0= IF 0 EXIT THEN
+  2 ARGV@ DUP CSTRLEN S" )" STR= 0= IF 0 EXIT THEN
+  0 ARGV@ CSTRLEN 0 > ;
 
 : RUN-TOKENIZED ( --- )
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
