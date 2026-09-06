@@ -5892,8 +5892,29 @@ execution continuing past the delimiter, `<<-` stripping tabs and
 finding an indented delimiter, and an empty here-document. 383
 assertions across 46 files plus 1991 core OK markers, both cell widths.
 
-mrsh-suite stays at 8. `read.sh` uses `read x <<EOF` — a here-document
-feeding a builtin — so it is blocked on the undo list rather than on
-here-documents themselves. That makes the undo list the next item: it
-now blocks `read.sh`, builtin redirection generally, and is a
-prerequisite for combining pipes with redirection.
+mrsh-suite stays at 8.
+
+**Correction (made while answering a question about `<<<`):** the
+sentence that stood here claimed `read.sh` uses `read x <<EOF` and was
+therefore blocked on the undo list. That is wrong, and was never
+checked — `grep '<<' vendor/` finds exactly one file, `arithm.sh`,
+using it as the *shift operator*. The mrsh suite does not use
+here-documents at all.
+
+`read.sh` actually uses `printf | read a` and
+`printf "a\nb\nc\n" | while read line; do ... done`. It is blocked on
+**builtins and compound commands as pipeline stages**, not on
+redirection. Today a pipeline stage is exec'd, so `read` is not found
+and the stage exits 127.
+
+That is a much cheaper fix than the undo list, and the shape already
+exists: Iteration 49 made a stage that is a *group* run via
+`RUN-TOKENIZED-CALL` in the child instead of being exec'd. Extending
+that test to cover builtins and reserved words gets `read.sh`, and
+costs no extra process for ordinary external stages.
+
+The lesson is the one this project keeps relearning: I stated a
+dependency without running the one-line check that would have
+falsified it, and it went into the log as fact. `FORTH-STYLE.md`'s
+"measure before concluding" is about causes; this is the same failure
+about *requirements*.

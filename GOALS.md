@@ -1036,6 +1036,15 @@ This was the blocker in front of the `forth` builtin.
 
 ## Non-goals (at least for now — revisit if this changes)
 
+- **Non-POSIX shell extensions**, including here-strings (`<<<`),
+  `[[ ]]`, arrays, and process substitution. The mrsh suite is the
+  acceptance criterion for goal 8 and uses none of them (checked:
+  zero occurrences of `<<<` in the vendored tests). They are cheap to
+  add on top of what exists — `<<<` in particular is one more
+  redirection op reusing the here-document's pipe — but they are
+  additions to make deliberately once POSIX conformance is reached,
+  not while it is still the goal.
+
 - Full ANS/Forth-2012 compliance (see test suite strategy above).
 - Preserving support for the old 32-bit-only build path — single
   supported target as of phase 2 (**done**: no `-m32`, no BIG_ENDIAN
