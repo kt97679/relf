@@ -6188,3 +6188,35 @@ across 52 files plus 1991 core OK markers, both cell widths.
 pipeline stages (`read.sh`), `command.sh`, `for.sh`, `function.sh`,
 `return.sh`, `subshell.sh`, `readonly.sh`, `2.2-quoted-characters.sh`,
 and the alias conformance case.
+## Iteration 63: nested function definitions
+
+A function definition (or a multi-line brace group) inside a function
+body no longer truncates it. `DO-FUNCDEF`'s capture counts `{` depth
+instead of stopping at the first `}` — the same shape as
+`CAPTURE-CONTINUE?` for loops and `SPLIT-AT-3`'s `if`/`fi` tracking.
+This retires the "nested function definitions are not supported" limit
+recorded in Iteration 43.
+
+### Re-diagnosing first paid off
+
+I checked the remaining failures rather than working from the list I
+had written, and two entries were wrong: `for.sh` and `subshell.sh`
+both fail *later* than I had assumed — their opening constructs
+(`for i in 1 $two $(echo 3); do`, `(a=b)`) already work, verified
+against bash directly.
+
+`function.sh` turned out to need two distinct things, only one of which
+was on my list: nested definitions (this iteration) **and** a function
+whose body is a bare compound command with no braces at all —
+`func_d() if true; then echo func_d; fi`. POSIX allows any compound
+command as a body; this shell accepts `{ }` and `( )`. That is a real
+remaining gap and now a known one.
+
+### Verified
+
+`run-func-subshell` grew to 10 assertions, adding a self-redefining
+function (both the outer body running in full and the redefinition
+taking effect) and a multi-line group inside a body not truncating it.
+430 assertions across 52 files plus 1991 core OK markers, both cell
+widths. mrsh-suite stays at 10, since `function.sh` needs the
+braceless-body form too.

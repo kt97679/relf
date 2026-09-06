@@ -22,4 +22,17 @@ assert_output_contains "and does not exit the shell"             "alive" "$out"
 printf 'k() (\n  echo "$1-$2"\n)\nk one two\n' > "$t/d.sh"
 out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
 assert_output_contains "arguments reach a subshell body" "one-two" "$out"
+# A nested function definition must not end the outer body early
+# (the "nested function definitions" limit from Iteration 43).
+printf 'c() {\n  echo outer\n  c() {\n    echo revised\n  }\n}\nc\nc\necho fin\n' > "$t/e.sh"
+out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "outer body runs in full"        "outer"   "$out"
+assert_output_contains "the nested definition took effect" "revised" "$out"
+assert_output_contains "execution continues afterwards" "fin"     "$out"
+
+# a multi-line group inside a body must not end it either
+printf 'd() {\n  {\n    echo grouped\n  }\n  echo tail\n}\nd\n' > "$t/f.sh"
+out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
+assert_output_contains "a nested group does not truncate the body" "tail" "$out"
+
 report

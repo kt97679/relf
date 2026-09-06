@@ -4520,6 +4520,7 @@ VARIABLE BODY-DEPTH
 MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
 MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
+VARIABLE FD-DEPTH            \ nested "{" depth while capturing a body
 CREATE FUNC-BODY-LENS MAX-FUNCS CELLS ALLOT
 
 : FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;
@@ -4619,6 +4620,27 @@ VARIABLE FUNC-CUR-I
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
 
+VARIABLE FDL-I
+
+: FD-OPENS-BRACE? ( --- f )
+  \ Does this body line open a nested brace block? A nested function
+  \ header ("func_c() {") ends with "{", as does a multi-line group.
+  ARGC @ 0 = IF 0 EXIT THEN
+  ARGC @ 1- DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN S" {" STR= ;
+
+: FD-BODY-END? ( --- f )
+  \ True only at the "}" that closes THIS function. Without the depth
+  \ count a nested definition's own "}" ended the outer body early,
+  \ truncating it - the "nested function definitions are not
+  \ supported" limit recorded in Iteration 43.
+  S" }" LINE-IS? IF
+    FD-DEPTH @ 0 > IF FD-DEPTH @ 1- FD-DEPTH ! 0 ELSE -1 THEN
+  ELSE
+    FD-OPENS-BRACE? IF FD-DEPTH @ 1+ FD-DEPTH ! THEN
+    0
+  THEN ;
+
 : DO-FUNCDEF ( --- )
   \ ARGV[0] ends with "()" - a function definition header. Requires
   \ "{" either later on the same line (the common "name() {" style,
@@ -4668,9 +4690,10 @@ CREATE FUNCDEF-NAME-BUF 64 ALLOT
     THEN
   THEN
   0 WHILE-BODY-LEN !
+  0 FD-DEPTH !
   BEGIN
     READ-NEXT-LOGICAL-LINE
-    FUNCDEF-SUBSHELL? @ IF S" )" LINE-IS? ELSE S" }" LINE-IS? THEN 0= WHILE
+    FUNCDEF-SUBSHELL? @ IF S" )" LINE-IS? ELSE FD-BODY-END? THEN 0= WHILE
     ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
   REPEAT
   FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
