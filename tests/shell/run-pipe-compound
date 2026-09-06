@@ -1,0 +1,27 @@
+#!/bin/sh
+# tests/shell/run-pipe-compound - a multi-line compound command as the
+# last pipeline stage (Iteration 80). Four attempts; see PROGRESS.md.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'printf "a\\nb\\nc\\n" | while read line\ndo\n  echo "got:$line"\ndone\necho fin\n' > "$t/a.sh"
+out=$(timeout 10 "$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "while stage: first line"  "got:a" "$out"
+assert_output_contains "while stage: last line"   "got:c" "$out"
+assert_output_contains "shell continues after it" "fin"   "$out"
+
+# NOTE: a fully one-line "while ...; do ...; done" is not supported -
+# here OR outside a pipeline, since DO-WHILE reads its body from
+# following lines. Verified directly rather than assumed. Not asserted
+# either way: the shape is unsupported, and pinning down its exact
+# failure mode would be asserting behaviour nobody has designed.
+
+# an ordinary pipeline must be unaffected
+out=$(timeout 10 "$THIS_SH" -c 'echo abc | tr a-z A-Z' 2>/dev/null)
+assert_output_contains "plain pipelines unaffected" "ABC" "$out"
+
+# a compound command NOT in a pipeline must be unaffected
+printf 'for i in 1 2\ndo\n  echo "n$i"\ndone\n' > "$t/c.sh"
+out=$(timeout 10 "$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "a plain loop still works" "n2" "$out"
+report

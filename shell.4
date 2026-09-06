@@ -3557,6 +3557,44 @@ VARIABLE PL-J
   RUN-CHILD ;
 ' RUN-CMDSUB-CHILD IS RUN-CMDSUB-CHILD-CALL
 
+\ ------------------------------------------------------------------
+\ A compound command as the last pipeline stage
+\ ------------------------------------------------------------------
+\ "printf ... | while read line; do ... done".
+\
+\ The whole difficulty is buffer lifetime: capturing the body READS
+\ LINES, and reading a line overwrites both RAW-LINE-BUF and LINE-BUF
+\ - and SPLIT-PIPE's PIPE-ARGV entries are pointers INTO LINE-BUF. So
+\ the capture cannot happen after the split (Iteration 79), and the
+\ raw text has to be preserved across it too (Iteration 78).
+\
+\ The order that works: save the raw line, capture the body (freely
+\ clobbering everything), restore the line, derive the stage's own raw
+\ text, then re-tokenize and let SPLIT-PIPE run on a line that is
+\ intact again. All of it in the parent, before any fork - a forked
+\ child shares the script's file offset and would race for the body
+\ lines (Iteration 57).
+
+CREATE RAW-LINE-BUF LINE-MAX ALLOT
+VARIABLE RAW-LINE-LEN
+
+8192     BUFFER: PIPE-BODY
+LINE-MAX BUFFER: PIPE-RAW
+LINE-MAX BUFFER: PIPE-RAW-FULL
+VARIABLE PIPE-BODY-LEN
+VARIABLE PIPE-RAW-LEN
+VARIABLE PIPE-RAW-FULL-LEN
+VARIABLE PIPE-HAVE-BODY
+VARIABLE PLS-I
+
+DEFER PREPARE-PIPE-CALL
+
+VARIABLE REPLAY-ACTIVE?
+VARIABLE REPLAY-SRC
+VARIABLE REPLAY-ARENA?
+VARIABLE REPLAY-LEN
+VARIABLE REPLAY-POS
+
 : RUN-PIPELINE ( --- )
   \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
   \ version handled exactly one pipe; this is the same shape
@@ -3606,6 +3644,14 @@ VARIABLE PL-J
       \ them as ordinary arguments.
       PARSE-REDIRECTIONS
       APPLY-REDIRECTIONS
+      PIPE-HAVE-BODY @ PL-I @ 1+ PIPE-NSEG @ = AND IF
+        PIPE-RAW RAW-LINE-BUF PIPE-RAW-LEN @ MOVE
+        PIPE-RAW-LEN @ RAW-LINE-LEN !
+        PIPE-BODY REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
+        PIPE-BODY-LEN @ REPLAY-LEN !  0 REPLAY-POS !
+        RUN-TOKENIZED-CALL
+        LAST-STATUS @ SYS-EXIT
+      THEN
       PIPE-STAGE-INTERNAL? IF
         RUN-TOKENIZED-CALL
         LAST-STATUS @ SYS-EXIT
@@ -3825,6 +3871,7 @@ VARIABLE ARGC-SHIFT
     LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
     EXIT
   THEN
+  PREPARE-PIPE-CALL
   SPLIT-PIPE
   PIPE-PRESENT? @ IF
     PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
@@ -3961,8 +4008,6 @@ VARIABLE ARGC-SHIFT
   RUN-TOKENIZED-CALL ;
 
 
-CREATE RAW-LINE-BUF LINE-MAX ALLOT
-VARIABLE RAW-LINE-LEN
 
 VARIABLE SHFILE-FID
 VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
@@ -4010,13 +4055,10 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
 \ is active (a nested while reading its own body, say) consumes them
 \ from the outer body and leaves the position correctly advanced.
 
-VARIABLE REPLAY-ACTIVE?
 \ Whether a replay is in progress. A separate flag rather than
 \ "REPLAY-SRC is non-zero", because REPLAY-SRC became an arena OFFSET
 \ and the very first allocation legitimately has offset 0 - so the
 \ outermost loop in a script silently did not replay at all.
-VARIABLE REPLAY-SRC   \ the stored lines: offset or address, see below
-VARIABLE REPLAY-ARENA?
 \ True when REPLAY-SRC is an OFFSET into the body arena (a while/for
 \ body), false when it is a plain address (a function body, which
 \ lives in FUNC-BODIES and never moves). The distinction is needed
@@ -4024,8 +4066,6 @@ VARIABLE REPLAY-ARENA?
 \ through a replay: a nested loop inside the body being replayed
 \ allocates its own storage before it reads a single line. Resolving
 \ the address per line rather than caching it is what makes that safe.
-VARIABLE REPLAY-LEN
-VARIABLE REPLAY-POS
 VARIABLE RNL-DEST
 VARIABLE RNL-MAX
 VARIABLE RNL-CUR
@@ -4674,6 +4714,7 @@ VARIABLE WHILE-BODY-LEN
 VARIABLE RAW-SKIP-I
 
 VARIABLE RLS-ADDR
+VARIABLE RLS-WANT
 VARIABLE RLS-LEN
 VARIABLE RLS-I
 VARIABLE RLS-POS
@@ -4690,19 +4731,19 @@ VARIABLE RLS-DQ?
   ARGC @ 1- DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
   ARGV@ DUP CSTRLEN S" do" STR= ;
 
-: RAW-LAST-SEMI ( c-addr u --- pos | -1 )
+: RAW-LAST-CHAR ( c-addr u c --- pos | -1 )
   \ Offset of the last UNQUOTED ';' in raw text, or -1. Needed because
   \ a while condition is stored as raw text (so it can be re-expanded
   \ fresh each iteration), not as tokens - so the "; do" tail has to be
   \ trimmed off the raw text, not off ARGV. The last one rather than
   \ the first, so "while a; b; do" keeps the whole compound condition.
-  {: RLS-ADDR RLS-LEN | RLS-I RLS-POS RLS-SQ? RLS-DQ? :}
+  {: RLS-ADDR RLS-LEN RLS-WANT | RLS-I RLS-POS RLS-SQ? RLS-DQ? :}
   -1 RLS-POS !
   BEGIN RLS-I @ RLS-LEN @ < WHILE
     RLS-ADDR @ RLS-I @ + C@
     DUP 39 = RLS-DQ? @ 0= AND IF RLS-SQ? @ 0= RLS-SQ? ! THEN
     DUP 34 = RLS-SQ? @ 0= AND IF RLS-DQ? @ 0= RLS-DQ? ! THEN
-    59 = RLS-SQ? @ 0= AND RLS-DQ? @ 0= AND IF RLS-I @ RLS-POS ! THEN
+    RLS-WANT @ = RLS-SQ? @ 0= AND RLS-DQ? @ 0= AND IF RLS-I @ RLS-POS ! THEN
     RLS-I @ 1+ RLS-I !
   REPEAT
   RLS-POS @ ;
@@ -4733,7 +4774,7 @@ VARIABLE RLS-DQ?
     0 WHILE-COND-LEN !
   THEN
   SAME-LINE-DO? IF
-    WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ RAW-LAST-SEMI
+    WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ 59 RAW-LAST-CHAR
     DUP -1 <> IF WHILE-COND-LEN ! ELSE DROP THEN
   THEN
   0 WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ + C! ;
@@ -5812,6 +5853,88 @@ VARIABLE MG-DEPTH
   ELSE
     DO-WHILE-BODY
   THEN ;
+
+VARIABLE PP-I
+VARIABLE PP-BAR
+
+: PP-COMPOUND-AFTER-PIPE? ( --- f )
+  \ Scanned from ARGV, before SPLIT-PIPE has run: is the token after
+  \ the last unquoted "|" a multi-line compound keyword?
+  -1 PP-BAR !  0 PP-I !
+  BEGIN PP-I @ ARGC @ < WHILE
+    PP-I @ ARGV-QUOTED@ 0= IF
+      PP-I @ ARGV@ DUP CSTRLEN S" |" STR= IF PP-I @ PP-BAR ! THEN
+    THEN
+    PP-I @ 1+ PP-I !
+  REPEAT
+  PP-BAR @ -1 = IF 0 EXIT THEN
+  PP-BAR @ 1+ DUP ARGC @ < 0= IF DROP 0 EXIT THEN
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN
+  2DUP S" while" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
+  2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
+       S" case"  STR= ;
+
+: PB-APPEND ( --- )
+  PIPE-BODY-LEN @ RAW-LINE-LEN @ + 1+ 8192 < IF
+    RAW-LINE-BUF PIPE-BODY PIPE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
+    PIPE-BODY-LEN @ RAW-LINE-LEN @ + PIPE-BODY-LEN !
+    0 PIPE-BODY PIPE-BODY-LEN @ + C!
+    PIPE-BODY-LEN @ 1+ PIPE-BODY-LEN !
+  THEN ;
+
+: PP-TRIM-TO-STAGE ( --- )
+  RAW-LINE-BUF RAW-LINE-LEN @ 124 RAW-LAST-CHAR
+  DUP -1 = IF DROP EXIT THEN
+  1+ PLS-I !
+  BEGIN
+    PLS-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF PLS-I @ + C@ WS? ELSE 0 THEN
+  WHILE PLS-I @ 1+ PLS-I ! REPEAT
+  RAW-LINE-LEN @ PLS-I @ - 0 > IF
+    RAW-LINE-BUF PLS-I @ + RAW-LINE-BUF RAW-LINE-LEN @ PLS-I @ - MOVE
+    RAW-LINE-LEN @ PLS-I @ - RAW-LINE-LEN !
+  ELSE
+    0 RAW-LINE-LEN !
+  THEN ;
+
+: PREPARE-COMPOUND-PIPE ( --- )
+  0 PIPE-HAVE-BODY !
+  PP-COMPOUND-AFTER-PIPE? 0= IF EXIT THEN
+  \ If the construct is already complete on this line there is nothing
+  \ to capture - and capturing anyway would swallow the NEXT line as
+  \ body. (A fully one-line "while ...; do ...; done" is not supported
+  \ here or outside a pipeline; DO-WHILE reads its body from following
+  \ lines. This guard just stops it doing damage.)
+  FDC-BALANCED? IF EXIT THEN
+  RAW-LINE-BUF PIPE-RAW-FULL RAW-LINE-LEN @ MOVE
+  RAW-LINE-LEN @ PIPE-RAW-FULL-LEN !
+  0 PIPE-BODY-LEN !
+  0 FDC-DEPTH !
+  BEGIN
+    READ-NEXT-LOGICAL-LINE
+    FDC-LINE-END? 0=
+  WHILE
+    ARGC @ 0 > IF PB-APPEND THEN
+  REPEAT
+  PB-APPEND
+  PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
+  PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
+  PP-TRIM-TO-STAGE
+  RAW-LINE-BUF PIPE-RAW RAW-LINE-LEN @ MOVE
+  RAW-LINE-LEN @ PIPE-RAW-LEN !
+  PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
+  PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
+  PIPE-RAW-FULL LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
+  PIPE-RAW-FULL-LEN @ NORMALIZE-OPERATORS
+  DUP LINE-MAX < IF
+    DUP NORM-BUF LINE-BUF ROT MOVE TOKENIZE
+  ELSE
+    DROP PIPE-RAW-FULL-LEN @ TOKENIZE
+  THEN
+  -1 PIPE-HAVE-BODY ! ;
+
+' PREPARE-COMPOUND-PIPE IS PREPARE-PIPE-CALL
 
 : RUN-TOKENIZED ( --- )
   BODY-ARENA-TOP @

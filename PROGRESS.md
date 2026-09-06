@@ -6925,3 +6925,60 @@ Three attempts, three distinct obstacles, each now named: file
 ordering (fixed by `DEFER`, Iteration 77), trim-versus-capture order,
 and `LINE-BUF` lifetime. None was visible from reading the code; each
 took running it.
+## Iteration 80: compound pipeline stages — mrsh 16 -> 17 passed
+
+`read.sh` passes. `printf "a\nb\nc\n" | while read line; do ...; done`
+works. Four attempts; this one landed because the previous three each
+named a distinct obstacle instead of guessing.
+
+### The order that works, and why each step is there
+
+    save the raw line          \ reading destroys it (Iteration 78)
+    capture the body           \ freely clobbering LINE-BUF/ARGV
+    restore the line
+    derive the stage's raw text
+    restore again, re-tokenize \ PIPE-ARGV points INTO LINE-BUF (79)
+    SPLIT-PIPE, run
+
+All in the parent, before any fork — a forked child shares the
+script's file offset and would race for the body lines (Iteration 57).
+
+Every one of those steps exists because of a specific failure that was
+*observed*, not anticipated. The feature is about sixty lines; the
+four iterations went on buffer lifetime, which no amount of reading
+the code revealed.
+
+### The four obstacles, in the order they appeared
+
+1. **File ordering** — every piece needs words defined far below the
+   pipeline section. Fixed by `DEFER`/`IS` (Iteration 77), and this
+   attempt compiled first try.
+2. **Trim after capture** — capturing overwrites `RAW-LINE-BUF`, so
+   the condition came out empty and the loop spun forever (78).
+3. **`LINE-BUF` lifetime** — `PIPE-ARGV` holds pointers into it, and
+   capturing overwrites it too, so the pipeline lost its own segment
+   text (79).
+4. **Capturing an already-complete construct** — found while writing
+   the tests here: with the whole loop on one line there is nothing to
+   capture, and capturing anyway swallows the *next* line.
+   `FDC-BALANCED?` guards it.
+
+### Verified
+
+`tests/shell/run-pipe-compound` (5 assertions): a `while` stage
+receiving each piped line, the shell continuing afterwards, ordinary
+pipelines unaffected, and a plain loop outside a pipeline unaffected.
+502 assertions across 61 files plus 1991 core OK markers, both cell
+widths.
+
+A fully one-line `while ...; do ...; done` remains unsupported — here
+*and* outside a pipeline, since `DO-WHILE` reads its body from
+following lines. Verified directly rather than assumed, and
+deliberately not asserted either way: pinning down the failure mode of
+an undesigned shape would be asserting behaviour nobody chose.
+
+**mrsh-suite: 16 passed -> 17** of 21 scored. Remaining 4: nested
+`$(...)` (`2.2-quoted-characters.sh` — the parser-reuse work), `~user`
+(`word.sh`, needs a kernel primitive), the alias conformance case, and
+`command.sh`, still deliberately failing on the POSIX-versus-bash
+alias conflict.
