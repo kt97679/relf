@@ -1,0 +1,52 @@
+#!/bin/sh
+# tests/shell/run-unterminated - an unterminated compound command is a
+# syntax error, not a hang (Iteration 107). Deliberately NOT a
+# differential case: bash accepts several of these one-line forms
+# outright, so it is the wrong oracle here. What is being asserted is
+# only that the shell stops and says so.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+check() {
+    # $1 = label, $2 = script text
+    printf '%s\n' "$2" > "$t/s.sh"
+    out=$(timeout 10 "$THIS_SH" "$t/s.sh" 2>&1)
+    st=$?
+    assert_output_contains "$1 terminates with a diagnostic" "syntax error" "$out"
+    assert_status "$1 exits nonzero" "2" "$st"
+}
+
+check "unterminated while"    'echo start
+while true
+do
+  echo body'
+
+check "unterminated for"      'echo start
+for i in 1
+do
+  echo body'
+
+check "unterminated if"       'echo start
+if true
+then
+  echo body'
+
+check "unterminated case"     'echo start
+case x in
+x)
+  echo body'
+
+check "unterminated group"    'echo start
+(
+echo body'
+
+check "unterminated function" 'echo start
+f() {
+  echo body'
+
+# The one-line function definition that hung before this iteration.
+# The form is not supported; reporting it is the point.
+check "one-line function definition" 'echo start
+n() { echo "$#"; }'
+
+report

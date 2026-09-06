@@ -8206,3 +8206,59 @@ instances found, the last in Iteration 103) and is where the ~190x
 loop cost is addressed. The other two mrsh failures are the deliberate
 POSIX-versus-bash alias divergence and cannot be fixed without making
 the shell less correct.
+## Iteration 107: an unterminated compound command hangs
+
+    n() { echo "$#"; }
+
+hung. Found in Iteration 104 and confirmed by `git stash` to be old.
+It turned out not to be about one-line functions at all: **every**
+capture loop in this file spun forever at end of input.
+
+`READ-NEXT-INPUT-LINE` reports an empty line and end-of-input
+identically, as its own callers' comments have said since Iteration
+54 - `HD-READ` works around it with a 4096-iteration guard. So
+`FD-BODY-END?` kept asking "is this line `}`?", kept being told no,
+and kept reading nothing forever. The same for `done`, `fi`, `esac`
+and a group's closer.
+
+`INPUT-EOF?` is set by the two input sources that can actually tell:
+a replay knows its own length, and `READ-LINE` returns a flag that
+was being discarded. `ACCEPT` cannot distinguish the two, so the
+interactive path is deliberately untouched - a real shell prompts for
+continuation there indefinitely too, and that is correct behaviour
+rather than a hang.
+
+Each terminator predicate now reports "stop" at end of input and says
+which keyword was missing, and `DO-WHILE`/`DO-FOR`/`DO-MULTILINE-GROUP`
+run nothing rather than executing however much of the body was read
+before the input ran out. Status 2, matching the unterminated-quote
+error from Iteration 60.
+
+### Why this was worth an iteration of its own
+
+A hang is the worst failure mode a shell has - worse than a wrong
+answer, because nothing downstream reports it and a test harness only
+learns about it from a timeout. FORTH-STYLE.md §13 already says "a
+hang is a test result"; this is the other half of that, which is that
+a hang should never be the *product*. Seven constructs shared one
+cause, and the fix is one flag plus a check in each predicate.
+
+### Verified
+
+`tests/shell/run-unterminated` - while, for, if, case, group and
+function, each unterminated, plus the one-line function definition
+that started this. Deliberately not a differential case: bash accepts
+several of these forms outright, so it is the wrong oracle for them.
+What is asserted is only that the shell stops and says so.
+
+524 assertions across 63 files, 15 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
+
+### Still open, and unchanged by this
+
+A one-line `for i in 1 2 3; do ...; done` and a one-line function
+definition are still *unsupported* forms - they are now diagnosed
+rather than hung, which is a different and smaller problem. Supporting
+them means extending the pending-remainder mechanism (which `if` has
+had since Iteration 25) to the capture loops, and is its own piece of
+work.

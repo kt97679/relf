@@ -4376,9 +4376,21 @@ VARIABLE RNL-MAX
 VARIABLE RNL-CUR
 VARIABLE RNL-LEN
 
+VARIABLE INPUT-EOF?
+\ True when the current input source has genuinely run out, as opposed
+\ to having produced an empty line - the two are reported identically
+\ by READ-NEXT-INPUT-LINE's own u2, which is why every capture loop in
+\ this file used to spin forever on an unterminated construct rather
+\ than diagnosing one (Iteration 107).
+\
+\ Only the two sources that can actually tell set it: a replay knows
+\ its own length, and READ-LINE returns a flag. ACCEPT cannot
+\ distinguish them, so the interactive path is left alone - a real
+\ shell prompts for continuation there indefinitely too.
+
 : REPLAY-NEXT-LINE ( c-addr max --- u2 )
   {: RNL-DEST RNL-MAX | RNL-CUR RNL-LEN :}
-  REPLAY-POS @ REPLAY-LEN @ < 0= IF 0 EXIT THEN
+  REPLAY-POS @ REPLAY-LEN @ < 0= IF -1 INPUT-EOF? ! 0 EXIT THEN
   REPLAY-ARENA? @ IF REPLAY-SRC @ BODY@ ELSE REPLAY-SRC @ THEN
   REPLAY-POS @ + RNL-CUR !
   RNL-CUR @ CSTRLEN RNL-LEN !
@@ -4394,9 +4406,11 @@ VARIABLE RNL-LEN
   \ SH-FILE, or from the open script file via READ-LINE (discarding
   \ its own flag/ior - EOF just gives u2=0, the same as running out
   \ of lines already meant here) when SHFILE-ACTIVE? is true.
+  0 INPUT-EOF? !
   REPLAY-ACTIVE? @ IF REPLAY-NEXT-LINE EXIT THEN
   SHFILE-ACTIVE? @ IF
-    SHFILE-FID @ READ-LINE DROP DROP
+    SHFILE-FID @ READ-LINE DROP        ( u2 flag )
+    0= IF -1 INPUT-EOF? ! THEN
   ELSE
     ACCEPT
   THEN ;
@@ -5013,6 +5027,11 @@ VARIABLE IF-ELIF-SKIP
   \ in this shape as an ordinary iteration.
   BEGIN
     READ-NEXT-LOGICAL-LINE
+    INPUT-EOF? @ IF
+      ." shell: syntax error: unexpected end of input, expected 'fi'" CR
+      2 LAST-STATUS !
+      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+    THEN
     S" elif" S" else" S" fi" SPLIT-AT-3
     DUP 3 = IF                          ( fi )
       DROP
@@ -5264,6 +5283,11 @@ VARIABLE BODY-DEPTH
   \
   \ BODY-DEPTH is declared as a local by DO-WHILE/DO-FOR, so captures
   \ nest too.
+  INPUT-EOF? @ IF
+    ." shell: syntax error: unexpected end of input, expected 'done'" CR
+    2 LAST-STATUS !
+    0 EXIT
+  THEN
   S" done" LINE-IS? IF
     BODY-DEPTH @ 0 > IF BODY-DEPTH @ 1- BODY-DEPTH ! -1 ELSE 0 THEN
   ELSE
@@ -5465,6 +5489,11 @@ VARIABLE FDL-I
   \ count a nested definition's own "}" ended the outer body early,
   \ truncating it - the "nested function definitions are not
   \ supported" limit recorded in Iteration 43.
+  INPUT-EOF? @ IF
+    ." shell: syntax error: unexpected end of input, expected '}'" CR
+    2 LAST-STATUS !
+    -1 EXIT
+  THEN
   S" }" LINE-IS? IF
     FD-DEPTH @ 0 > IF FD-DEPTH @ 1- FD-DEPTH ! 0 ELSE -1 THEN
   ELSE
@@ -5502,6 +5531,11 @@ VARIABLE FDC-I
   FDC-DEPTH @ 1 < ;
 
 : FDC-LINE-END? ( --- f )   \ closes the compound body, counting nesting
+  INPUT-EOF? @ IF
+    ." shell: syntax error: unexpected end of input" CR
+    2 LAST-STATUS !
+    -1 EXIT
+  THEN
   S" fi" LINE-IS? S" done" LINE-IS? OR S" esac" LINE-IS? OR IF
     FDC-DEPTH @ 0 > IF FDC-DEPTH @ 1- FDC-DEPTH ! 0 ELSE -1 THEN
   ELSE
@@ -5680,6 +5714,9 @@ VARIABLE WHILE-BODY-CUR
   WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
+  \ An unterminated body is a syntax error: report it and run nothing,
+  \ rather than executing however much of it was read.
+  INPUT-EOF? @ IF EXIT THEN
   4 SAVE-COMPOUND-SUFFIX                  ( "done" )
   \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
   \ LOOP-BREAK? is reset fresh for this loop, then checked *before*
@@ -5815,6 +5852,7 @@ VARIABLE FOR-WORD-CUR
   WHILE
     APPEND-RAW-LINE-TO-BODY
   REPEAT
+  INPUT-EOF? @ IF EXIT THEN
   4 SAVE-COMPOUND-SUFFIX                  ( "done" )
   DO-FOR-ITERATE
   RUN-COMPOUND-SUFFIX ;
@@ -6149,6 +6187,11 @@ VARIABLE CASE-MATCHED?
   0 CASE-MATCHED? !
   BEGIN
     READ-NEXT-LOGICAL-LINE
+    INPUT-EOF? @ IF
+      ." shell: syntax error: unexpected end of input, expected 'esac'" CR
+      2 LAST-STATUS !
+      R> SUPPRESS-EXEC? ! EXIT
+    THEN
     S" esac" LINE-IS? 0=
   WHILE
     \ "pat) body ;;" all on one line: split at the ')' so ARGV holds
@@ -6163,6 +6206,11 @@ VARIABLE CASE-MATCHED?
     THEN
     BEGIN
       READ-NEXT-LOGICAL-LINE
+      INPUT-EOF? @ IF
+        ." shell: syntax error: unexpected end of input, expected 'esac'" CR
+        2 LAST-STATUS !
+        R> SUPPRESS-EXEC? ! EXIT
+      THEN
       S" esac" LINE-IS? IF
         4 SAVE-COMPOUND-SUFFIX
         R> SUPPRESS-EXEC? ! RUN-COMPOUND-SUFFIX EXIT
@@ -6319,6 +6367,11 @@ VARIABLE MG-DEPTH
 : MG-END? ( --- f )
   \ True at the ")" or "}" that closes THIS group, counting nesting -
   \ the same shape as FD-BODY-END? and CAPTURE-CONTINUE?.
+  INPUT-EOF? @ IF
+    ." shell: syntax error: unexpected end of input, unterminated group" CR
+    2 LAST-STATUS !
+    -1 EXIT
+  THEN
   MG-SUB? @ IF S" )" LINE-IS? ELSE S" }" LINE-IS? THEN IF
     MG-DEPTH @ 0 > IF MG-DEPTH @ 1- MG-DEPTH ! 0 ELSE -1 THEN
   ELSE
@@ -6356,6 +6409,7 @@ VARIABLE MG-DEPTH
   WHILE
     ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
   REPEAT
+  INPUT-EOF? @ IF EXIT THEN
   MG-SUB? @ IF
     FORK DUP 0 = IF
       DROP
