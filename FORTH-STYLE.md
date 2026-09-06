@@ -208,8 +208,20 @@ Audit periodically, not only when touching a feature.
 - **Define before use.** One linear source file; a word used before
   its definition is an "Undefined word" at load. This has caught
   something in roughly a third of iterations. For genuine mutual
-  recursion use the deferred-word pattern: a variable holding an
-  offset xt, patched with `!XT` once the real word exists.
+  recursion use `DEFER` / `IS` (`locals.4`):
+
+  ```forth
+  DEFER FOO-CALL        \ callable from here on
+  ...
+  : FOO ... ;
+  ' FOO IS FOO-CALL     \ patched once the real word exists
+  ```
+
+  The stored value is a `START`-relative offset, so it survives into a
+  saved image, and an unpatched `DEFER` is a no-op rather than a jump
+  to address zero — a forgotten patch shows up as "nothing happened"
+  instead of a segfault. This replaced fourteen hand-written
+  variable/caller/patch triples (Iteration 77).
 - **A full fixed table must never fail silently.** `SET-SHVAR` does
   nothing when its 32 slots are full, so the 33rd variable produces
   wrong output rather than an error. Same for `MAX-FUNCS`,

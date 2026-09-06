@@ -6786,3 +6786,44 @@ consider splitting `shell.4` into loadable sections with an explicit
 dependency order, or introducing a forward-declaration convention
 rather than a per-case deferred variable. The feature is ~60 lines;
 the ordering is what makes it expensive.
+## Iteration 77: `DEFER` / `IS`
+
+Acting on Iteration 76's own recommendation rather than filing it.
+
+Forward declaration was hand-written fourteen times: a `VARIABLE`
+holding an offset xt, a one-line caller word, and a patch line after
+the real definition. Three pieces of boilerplate per site, and the
+attempt in Iteration 76 ran aground partly because adding two more was
+enough friction to lose the thread.
+
+Now one line each way:
+
+    DEFER RUN-TOKENIZED-CALL
+    ...
+    : RUN-TOKENIZED ... ;
+    ' RUN-TOKENIZED IS RUN-TOKENIZED-CALL
+
+Built on `CREATE`/`DOES>` and `>BODY`, which the kernel already had.
+The stored value stays a `START`-relative offset — these go into a
+saved image — and **an unpatched `DEFER` is a no-op rather than a jump
+to address zero**, so a forgotten patch shows up as "nothing happened"
+instead of a segfault. That is deliberate: it is the difference
+between a puzzling result and a crash in a language with no type
+checking.
+
+All seven remaining sites converted mechanically. Two patch lines the
+script missed were caught by the loader on the next build, which is
+the ordinary way this file reports a mistake and cost a minute each.
+
+This does not by itself fix the ordering problem Iteration 76 hit —
+the file is still one linear definition order — but it makes each
+forward reference cheap enough that reaching for one is no longer a
+small design decision. Splitting `shell.4` into sections with an
+explicit dependency order remains the larger recommendation.
+
+### Verified
+
+Behaviour-preserving refactor: 497 assertions across 60 files plus
+1991 core OK markers, both cell widths, and mrsh-suite unchanged at 16
+passed. `FORTH-STYLE.md`'s define-before-use rule now documents
+`DEFER`/`IS` instead of the hand-rolled pattern.

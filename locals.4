@@ -84,6 +84,34 @@ BASE @  DECIMAL
 : @XT ( addr --- xt )  @ START @ + ;
 
 \ ------------------------------------------------------------------
+\ Forward declaration
+\ ------------------------------------------------------------------
+\ shell.4 is one linear definition order, and words genuinely need to
+\ call each other in both directions - RUN-TOKENIZED and DO-IF,
+\ EXPAND-BRACED-VAR and TRIM-PARAM, and a dozen more. Each has been
+\ broken by hand: a VARIABLE holding an offset xt, a one-line caller
+\ word, and a patch line after the real definition. Fourteen such
+\ sites, three pieces of boilerplate each - and Iteration 76 ran
+\ aground trying to add two more.
+\
+\     DEFER FOO          \ FOO is callable from here on
+\     ...
+\     : REAL-FOO ... ;
+\     ' REAL-FOO IS FOO  \ patch it
+\
+\ The stored value is an OFFSET from START, not an address - it is
+\ written into a saved image, and an absolute address there is stale
+\ the moment it reloads. Calling an unpatched DEFER is a no-op rather
+\ than a jump to address zero, so a forgotten patch shows up as
+\ "nothing happened" instead of a segfault.
+
+: DEFER ( "name" --- )
+  CREATE 0 ,
+  DOES> DUP @ 0= IF DROP EXIT THEN  @XT EXECUTE ;
+
+: IS ( xt "name" --- )  ' >BODY !XT ;
+
+\ ------------------------------------------------------------------
 \ Runtime: the save stack
 \ ------------------------------------------------------------------
 

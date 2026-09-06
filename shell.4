@@ -883,10 +883,8 @@ VARIABLE CS-OUT
   REPEAT
   0 CMDSUB-ARGV CMDSUB-ARGC @ CELLS + ! ;
 
-VARIABLE RUN-CMDSUB-CHILD-XT
+DEFER RUN-CMDSUB-CHILD-CALL
 
-: RUN-CMDSUB-CHILD-CALL ( --- )
-  RUN-CMDSUB-CHILD-XT @XT EXECUTE ;
 
 VARIABLE CS-FD
 VARIABLE CMDSUB-PIPE-RD
@@ -1105,7 +1103,7 @@ VARIABLE AE-VN-LEN
 : AE-ADD-OP? ( c --- f )
   DUP 43 = SWAP 45 = OR ;
 
-VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
+DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
                       \ full expression in its own right) and AE-OR
                       \ (the top of the grammar) are mutually
                       \ recursive across several intervening levels -
@@ -1114,7 +1112,6 @@ VARIABLE AE-OR-XT   \ AE-PRIMARY (a parenthesized subexpression is a
                       \ AE-OR through this deferred call, patched
                       \ right after AE-OR itself is defined below.
 
-: AE-OR-CALL ( --- n )  AE-OR-XT @XT EXECUTE ;
 
 : AE-PRIMARY ( --- n )
   AE-SKIP-WS
@@ -1420,7 +1417,7 @@ VARIABLE ANS-NEG
 
 \ Patched here, not next to AE-OR: the deferred call must resolve to
 \ AE-EXPR, which is defined above only now.
-' AE-EXPR AE-OR-XT !XT   \ a parenthesized subexpression may assign
+' AE-EXPR IS AE-OR-CALL   \ a parenthesized subexpression may assign
 
 : AE-EVAL ( c-addr u --- n )
   \ Copies (c-addr u) into ARITH-BUF (a private copy, so the
@@ -1579,7 +1576,7 @@ VARIABLE PEW-SUFFIX?     \ set by EXPAND-BRACED-VAR before calling
                           \ removal), false for #/## (prefix removal).
 VARIABLE PEW-LONGEST?    \ true for %%/## (longest match), false for
                           \ %/# (shortest match).
-VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
+DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
                           \ it's defined, much further down (the same
                           \ deferred-word pattern already used for
                           \ RUN-TOKENIZED-CALL/RUN-FUNC-BODY-CALL/
@@ -1588,8 +1585,6 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
                           \ far later in the file than EXPAND-BRACED-
                           \ VAR is.
 
-: TRIM-PARAM-CALL ( --- )
-  TRIM-PARAM-XT @XT EXECUTE ;
 
 : READ-PEWORD ( --- )
   \ Reads from TOK-POS up to (not including) the closing '}' into
@@ -1991,13 +1986,12 @@ VARIABLE ARGC2
 \ source fd. They are applied in order, which matters: "> f 2>&1"
 \ sends both streams to the file, while "2>&1 > f" does not.
 
-VARIABLE READ-INPUT-XT
+DEFER READ-INPUT-CALL
 \ READ-NEXT-INPUT-LINE is defined much further down (it needs the
 \ script-file and replay machinery), but here-documents have to read
 \ input at redirection-parsing time. Same deferred-word pattern used
 \ for RUN-TOKENIZED-CALL and friends.
 
-: READ-INPUT-CALL ( c-addr max --- u2 )  READ-INPUT-XT @XT EXECUTE ;
 
 VARIABLE JC-LEN
 VARIABLE JC-N
@@ -2365,7 +2359,7 @@ VARIABLE FF-I
   REPEAT
   -1 ;
 
-VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
+DEFER RUN-FUNC-BODY-CALL   \ patched to RUN-FUNC-BODY's own xt right
                               \ after it's defined, much further down -
                               \ the same deferred-word pattern already
                               \ used for RUN-TOKENIZED-CALL, needed
@@ -2373,8 +2367,6 @@ VARIABLE RUN-FUNC-BODY-XT   \ patched to RUN-FUNC-BODY's own xt right
                               \ defined long before a function's own
                               \ body-replay logic is.
 
-: RUN-FUNC-BODY-CALL ( i --- )
-  RUN-FUNC-BODY-XT @XT EXECUTE ;
 
 \ ==================================================================
 \ test / [ - string, numeric, and (limited) file-existence tests.
@@ -3419,10 +3411,8 @@ VARIABLE CAQ-N
   0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
   ARGV @ STR0= ;
 
-VARIABLE RUN-TOKENIZED-XT
+DEFER RUN-TOKENIZED-CALL
 
-: RUN-TOKENIZED-CALL ( --- )
-  RUN-TOKENIZED-XT @XT EXECUTE ;
 
 CREATE ARGV-GROUP-BODY MAX-ARGS CELLS ALLOT
 CREATE ARGQ-GROUP-BODY MAX-ARGS ALLOT   \ the body's own quoted flags
@@ -3565,7 +3555,7 @@ VARIABLE PL-J
     LAST-STATUS @ SYS-EXIT
   THEN
   RUN-CHILD ;
-' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
+' RUN-CMDSUB-CHILD IS RUN-CMDSUB-CHILD-CALL
 
 : RUN-PIPELINE ( --- )
   \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
@@ -3718,7 +3708,7 @@ VARIABLE AO-CONTINUE
   AO-PENDING-OP @ 1 = IF LAST-STATUS @ 0= EXIT THEN
   LAST-STATUS @ 0 <> ;
 
-VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
+DEFER TRY-ASSIGNMENT-CALL   \ patched to TRY-ASSIGNMENT's own xt right
                                \ after it's defined, further down (the
                                \ same deferred-word pattern already
                                \ used for RUN-TOKENIZED-CALL) - needed
@@ -3738,8 +3728,6 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
                                \ just path-searched as a literal,
                                \ failing command name.
 
-: TRY-ASSIGNMENT-CALL ( --- f )
-  TRY-ASSIGNMENT-XT @XT EXECUTE ;
 
 \ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
 \ pipeline negation ( ! cmd ).
@@ -3964,7 +3952,7 @@ VARIABLE ARGC-SHIFT
     DROP
   THEN
   0 ;
-' TRY-ASSIGNMENT TRY-ASSIGNMENT-XT !XT
+' TRY-ASSIGNMENT IS TRY-ASSIGNMENT-CALL
 
 
 : RUN-SHIFTED ( --- )  \ runs ARGV-SHIFT/ARGC-SHIFT the same way a
@@ -4068,7 +4056,7 @@ VARIABLE RNL-LEN
     ACCEPT
   THEN ;
 
-' READ-NEXT-INPUT-LINE READ-INPUT-XT !XT
+' READ-NEXT-INPUT-LINE IS READ-INPUT-CALL
 
 \ ==================================================================
 \ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
@@ -4934,7 +4922,7 @@ VARIABLE FUNC-CUR-I
   0 RETURN-PENDING? !
   FUNC-DEPTH @ 1- FUNC-DEPTH !
   FUNC-DEPTH @ RESTORE-POS-PARAMS ;
-' RUN-FUNC-BODY RUN-FUNC-BODY-XT !XT
+' RUN-FUNC-BODY IS RUN-FUNC-BODY-CALL
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
 
@@ -5536,7 +5524,7 @@ VARIABLE TP-MATCH-LEN
       TP-VAL-ADDR @ TP-MATCH-LEN @ + TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
     THEN
   THEN ;
-' TRIM-PARAM TRIM-PARAM-XT !XT
+' TRIM-PARAM IS TRIM-PARAM-CALL
 
 \ ==================================================================
 \ case WORD in / PATTERN1) / <body> / ;; / PATTERN2|PATTERN3) / ... /
@@ -5891,7 +5879,7 @@ VARIABLE MG-DEPTH
     EXIT
   THEN
   RUN-SIMPLE-OR-PIPELINE ;
-' RUN-TOKENIZED RUN-TOKENIZED-XT !XT
+' RUN-TOKENIZED IS RUN-TOKENIZED-CALL
 
 
 : RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
