@@ -7019,3 +7019,46 @@ change, not shell work.
 green on both 8-byte and 4-byte cell widths. `relfsh` starts in ~1.8ms
 from a prebuilt, byte-reproducible image; the i386 build is
 90KB of engine plus image, against `dash`'s 121KB.
+## Iteration 82: auditing the 17 passes for hollowness
+
+This project has twice had a pass that was not real — the
+alias-expansion accident (Iterations 14-36) and `run-case` staying
+green through a wrong change (48). At 17 of 21 it is worth knowing
+which passes actually mean something, so each was re-run and its
+output measured rather than trusted.
+
+**Fifteen are substantive**, producing between 4 and 41 lines of real
+output that matches bash exactly: `arithm` (41), `for` (26), `case`
+(18), `pipeline` (16), `if` (13), `loop` (12), `function` and
+`subshell` (8), `syntax` (6), `async` (5), `read`, `redir` and
+`return` (4), `readonly` (2), plus
+`2.2.2-nested-single-quotes.fail.sh`, which is status-only *by
+design* — it checks that the shell rejects `'''`, which it does since
+Iteration 60.
+
+**Two are weak, and should be read as such:**
+
+- **`ulimit.sh` is hollow**, as recorded back in Iteration 40 and
+  still true: `command -v ulimit` finds nothing, so the builtin does
+  not exist. Both shells fail at the same point and their single line
+  of output coincides. It will become real when `ulimit` and
+  backquote-free `$(...)` both land.
+- **`args.sh` is thin.** It produces *no output at all* — it defines
+  `func() ( getopts "abcd" opt )` and calls it four times. What it
+  genuinely verifies is that a subshell function body parses and that
+  `getopts` exits 0 on a valid option; without `getopts` at all the
+  script would exit 127 rather than 0. It verifies nothing about
+  `OPTARG`, `OPTIND` or clustering — that assurance comes from
+  `tests/shell/run-getopts` (11 assertions), not from here.
+
+### Why bother
+
+The mrsh count is the headline number in `GOALS.md`, and a headline
+number that includes an accident is worse than a smaller honest one.
+Recording *which* passes are thin also says where the local suite is
+carrying the weight: `getopts` is well covered locally and barely
+covered by the vendored test, which is the opposite of the impression
+"args.sh passes" gives.
+
+Nothing changed in the shell this iteration. 502 assertions across 61
+files plus 1991 core OK markers, both cell widths, mrsh 17 of 21.
