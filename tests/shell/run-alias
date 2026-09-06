@@ -1,0 +1,34 @@
+#!/bin/sh
+# tests/shell/run-alias - alias/unalias (Iteration 59). Expansion is
+# textual and happens before the line is interpreted, so an alias may
+# introduce operators.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'alias ll="echo LL"\nll\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "a simple alias expands" "LL" "$out"
+
+printf 'alias greet="echo hi;echo there"\ngreet\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "an alias may introduce operators (1)" "hi" "$out"
+assert_output_contains "an alias may introduce operators (2)" "there" "$out"
+
+printf 'alias e="echo pre"\ne post\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "arguments after the alias are kept" "pre post" "$out"
+
+printf 'alias x="echo one"\nunalias x\nx\necho after\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *one*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: unalias did not remove the alias";; esac
+assert_output_contains "execution continues after unalias" "after" "$out"
+
+printf 'alias r="r"\nr\necho survived\n' > "$t/e.sh"
+out=$(timeout 10 "$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "a self-referential alias terminates" "survived" "$out"
+
+printf 'alias q="echo Q"\nq\nalias q="echo R"\nq\n' > "$t/f.sh"
+out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
+assert_output_contains "redefining an alias replaces it" "R" "$out"
+report

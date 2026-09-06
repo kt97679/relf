@@ -2397,15 +2397,21 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
 VARIABLE DA-ADDR
 VARIABLE DA-EQ
 
-: DO-ASSIGN-AT ( c-addr eqpos --- )
-  \ Split a validated "NAME=value" word at its '=' and record it.
-  \ Factored out of DO-ASSIGN so `readonly NAME=value` uses the same
-  \ code rather than a second copy of the splitting.
+: SPLIT-ASSIGN-AT ( c-addr eqpos --- )
+  \ Split a validated "NAME=value" word into ASSIGN-NAME-BUF and
+  \ ASSIGN-VALUE-BUF, without deciding what to do with them. Shared by
+  \ DO-ASSIGN-AT (shell variables) and DO-ALIAS.
   {: DA-ADDR DA-EQ :}
   DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
   DA-ADDR @ DA-EQ @ + 1+
   DA-ADDR @ CSTRLEN DA-EQ @ - 1-
-  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
+  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP ;
+
+: DO-ASSIGN-AT ( c-addr eqpos --- )
+  \ Split a validated "NAME=value" word at its '=' and record it.
+  \ Factored out of DO-ASSIGN so `readonly NAME=value` uses the same
+  \ code rather than a second copy of the splitting.
+  SPLIT-ASSIGN-AT
   ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR ;
 
 : DO-ASSIGN ( eqpos --- )  \ ARGV[0] is a validated "NAME=value"
@@ -5029,9 +5035,133 @@ VARIABLE RT-I
     RT-I @ 1+ RT-I !
   REPEAT ;
 
+\ ==================================================================
+\ Aliases
+\ ==================================================================
+\ Textual substitution of the first word of a command, done before the
+\ line is interpreted - "completely lexical", as Ramey puts it, which
+\ is why an alias can introduce operators and even change the grammar
+\ of the line it appears in. The expansion re-normalizes and
+\ re-tokenizes, so "alias ll='ls -l'" and "alias e='echo a;echo b'"
+\ both behave.
+\
+\ ALIAS-DEPTH stops "alias ls='ls -l'" from recursing forever. Real
+\ shells suppress re-expansion of the alias currently being expanded;
+\ a depth cap is cruder but needs no per-expansion state, and the
+\ failure mode is a diagnosed stop rather than a hang.
+
+32  CONSTANT MAX-ALIASES
+64  CONSTANT ALIAS-NAME-MAX
+256 CONSTANT ALIAS-VALUE-MAX
+MAX-ALIASES ALIAS-NAME-MAX  * BUFFER: ALIAS-NAMES
+MAX-ALIASES ALIAS-VALUE-MAX * BUFFER: ALIAS-VALUES
+LINE-MAX BUFFER: ALIAS-LINE
+VARIABLE ALIAS-COUNT
+VARIABLE ALIAS-LINE-LEN
+VARIABLE ALIAS-DEPTH
+VARIABLE AL-I
+VARIABLE AL-LEN
+VARIABLE AL-NAME
+VARIABLE AL-VALUE
+
+: ALIAS-NAME-SLOT  ( i --- addr )  ALIAS-NAME-MAX  * ALIAS-NAMES  + ;
+: ALIAS-VALUE-SLOT ( i --- addr )  ALIAS-VALUE-MAX * ALIAS-VALUES + ;
+
+: FIND-ALIAS ( name-addr --- i | -1 )
+  {: AL-NAME | AL-I :}
+  BEGIN AL-I @ ALIAS-COUNT @ < WHILE
+    AL-I @ ALIAS-NAME-SLOT AL-NAME @ CSTR= IF AL-I @ EXIT THEN
+    AL-I @ 1+ AL-I !
+  REPEAT
+  -1 ;
+
+: SET-ALIAS ( name-addr value-addr --- )
+  {: AL-NAME AL-VALUE | AL-I :}
+  AL-NAME @ FIND-ALIAS AL-I !
+  AL-I @ -1 = IF
+    ALIAS-COUNT @ MAX-ALIASES < 0= IF
+      ." alias: too many aliases" CR EXIT
+    THEN
+    ALIAS-COUNT @ AL-I !
+    ALIAS-COUNT @ 1+ ALIAS-COUNT !
+  THEN
+  AL-NAME  @ AL-I @ ALIAS-NAME-SLOT  ALIAS-NAME-MAX  SAFE-CSTR-COPY DROP
+  AL-VALUE @ AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX SAFE-CSTR-COPY DROP ;
+
+: AL-APPEND ( c-addr u --- )
+  {: AL-NAME AL-LEN :}
+  ALIAS-LINE-LEN @ AL-LEN @ + 1+ LINE-MAX < IF
+    AL-NAME @ ALIAS-LINE ALIAS-LINE-LEN @ + AL-LEN @ MOVE
+    ALIAS-LINE-LEN @ AL-LEN @ + ALIAS-LINE-LEN !
+    32 ALIAS-LINE ALIAS-LINE-LEN @ + C!
+    ALIAS-LINE-LEN @ 1+ ALIAS-LINE-LEN !
+  THEN ;
+
+: TRY-ALIAS ( --- f )
+  \ f = -1 if ARGV[0] was an alias and the rebuilt line has been run.
+  ARGC @ 0 = IF 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 0 EXIT THEN
+  ALIAS-DEPTH @ 8 > IF
+    ." alias: expansion too deep" CR
+    0 EXIT
+  THEN
+  ARGV @ FIND-ALIAS DUP -1 = IF DROP 0 EXIT THEN
+  0 ALIAS-LINE-LEN !
+  ALIAS-VALUE-SLOT DUP CSTRLEN AL-APPEND
+  1 AL-I !
+  BEGIN AL-I @ ARGC @ < WHILE
+    AL-I @ ARGV@ DUP CSTRLEN AL-APPEND
+    AL-I @ 1+ AL-I !
+  REPEAT
+  ALIAS-LINE LINE-BUF ALIAS-LINE-LEN @ MOVE
+  ALIAS-DEPTH @ 1+ ALIAS-DEPTH !
+  ALIAS-LINE-LEN @ NORMALIZE-OPERATORS
+  DUP LINE-MAX < IF
+    DUP NORM-BUF LINE-BUF ROT MOVE TOKENIZE
+  ELSE
+    DROP ALIAS-LINE-LEN @ TOKENIZE
+  THEN
+  RUN-TOKENIZED-CALL
+  ALIAS-DEPTH @ 1- ALIAS-DEPTH !
+  -1 ;
+
+: DO-ALIAS ( --- )
+  0 LAST-STATUS !
+  1 AL-I !
+  BEGIN AL-I @ ARGC @ < WHILE
+    AL-I @ ARGV@ ASSIGNMENT-EQPOS
+    DUP -1 = IF
+      DROP
+    ELSE
+      AL-I @ ARGV@ SWAP SPLIT-ASSIGN-AT
+      ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-ALIAS
+    THEN
+    AL-I @ 1+ AL-I !
+  REPEAT ;
+
+: DO-UNALIAS ( --- )
+  0 LAST-STATUS !
+  1 AL-I !
+  BEGIN AL-I @ ARGC @ < WHILE
+    AL-I @ ARGV@ FIND-ALIAS DUP -1 <> IF
+      ALIAS-COUNT @ 1- OVER <> IF
+        ALIAS-COUNT @ 1- ALIAS-NAME-SLOT  OVER ALIAS-NAME-SLOT  ALIAS-NAME-MAX  MOVE
+        ALIAS-COUNT @ 1- ALIAS-VALUE-SLOT OVER ALIAS-VALUE-SLOT ALIAS-VALUE-MAX MOVE
+      THEN
+      DROP ALIAS-COUNT @ 1- ALIAS-COUNT !
+    ELSE DROP THEN
+    AL-I @ 1+ AL-I !
+  REPEAT ;
+
+' DO-ALIAS   S" alias"   BUILTIN
+' DO-UNALIAS S" unalias" BUILTIN
+
 : RUN-TOKENIZED ( --- )
   BODY-ARENA-TOP @
   {: BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I :}
+  \ Alias expansion first: it is textual, and the rebuilt line must
+  \ go through every check below as if it had been typed.
+  TRY-ALIAS IF EXIT THEN
   \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
   \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
   \ group's own ';'/'&&'/'||' must stay scoped to its body rather than

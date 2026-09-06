@@ -6013,3 +6013,45 @@ capture would have been worse than shipping this instead.
 leaking, a here-document into a pipeline, and plain pipelines
 unaffected. 396 assertions across 48 files plus 1991 core OK markers,
 both cell widths. mrsh-suite unchanged at 8.
+## Iteration 59: `alias` and `unalias`
+
+Aliases are expanded **textually, before the line is interpreted** —
+"completely lexical", as Ramey's chapter puts it, which is why an alias
+can introduce operators and change the grammar of the line it appears
+in. `alias greet="echo hi;echo there"` really does run two commands.
+
+`TRY-ALIAS` sits at the very top of `RUN-TOKENIZED`: it rebuilds the
+line with the alias body in place of the first word, re-normalizes,
+re-tokenizes, and runs the result through every check below as if it
+had been typed that way. That placement is the whole design — putting
+it after the `;`/`&&` splitting would have made an alias unable to
+contain them.
+
+`ALIAS-DEPTH` caps expansion at 8. Real shells instead suppress
+re-expansion of the alias currently being expanded, which is more
+precise; a depth cap needs no per-expansion state and fails by
+diagnosing rather than hanging. `alias r="r"` terminates, and there is
+a test for it.
+
+### Reuse rather than a third copy
+
+`alias NAME=value` needs the same `NAME=value` splitting that
+`DO-ASSIGN` and `readonly` already use, so `SPLIT-ASSIGN-AT` was
+factored out of `DO-ASSIGN-AT` — the split without the decision about
+what to store. Three callers, one implementation. That is the second
+time this particular splitting has been about to be duplicated
+(Iteration 51 was the first).
+
+### Verified
+
+`tests/shell/run-alias` (8 assertions): simple expansion, an alias
+introducing operators, arguments after the alias being kept,
+`unalias` removing one with execution continuing, a self-referential
+alias terminating, and redefinition replacing. 404 assertions across 49
+files plus 1991 core OK markers, both cell widths.
+
+mrsh-suite stays at 8. `command.sh` needs `alias` *and* `getopts`,
+`command -v` on more shapes, and `ls -la` output matching; the
+alias-expansion conformance case needs the shell to *reject* the
+invalid usage it contains, which is Phase G work rather than a feature
+gap.
