@@ -4676,8 +4676,27 @@ VARIABLE IF-ELIF-SKIP
     DUP 3 = IF                          ( fi )
       DROP
       RUN-TOKENIZED-CALL
-      0 PENDING-REMAINDER? !
-      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
+      \ POSIX: if no branch was taken, the if exits 0 - not with the
+      \ failed condition's status. Read COND-TRUE? ("some branch has
+      \ been taken") before restoring it. This only became visible
+      \ once something looked at the status afterwards, which is what
+      \ "fi && echo m" does.
+      COND-TRUE? @ 0= IF 0 LAST-STATUS ! THEN
+      R> SUPPRESS-EXEC? ! R> COND-TRUE? !
+      \ Anything after the "fi" belongs to the enclosing line, not to
+      \ the if: "if ...; fi && echo m" must still run the "&& echo m".
+      \ It used to be discarded here. Run through RUN-TOKENIZED like
+      \ any line, so a leading "&&" splits with an empty left-hand
+      \ side and therefore tests the if's own exit status - which is
+      \ exactly the semantics wanted. Groups got this in Iteration 49
+      \ via AT-GROUP-END?; the compound commands never did.
+      PENDING-REMAINDER? @ ARGC-PENDING @ 0 > AND IF
+        READ-NEXT-LOGICAL-LINE
+        RUN-TOKENIZED-CALL
+      ELSE
+        0 PENDING-REMAINDER? !
+      THEN
+      EXIT
     THEN
     DUP 2 = IF                          ( else )
       DROP

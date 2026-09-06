@@ -66,7 +66,11 @@ assert_status "a successful same-line if's own exit status is 0" 0 "$?"
 
 printf 'if /usr/bin/false; then echo alone222; fi\n' > "$TMP_SCRIPT"
 "$THIS_SH" "$TMP_SCRIPT" < /dev/null > /dev/null 2>&1
-assert_status "an if with no else and a false condition exits with the condition's own status" 1 "$?"
+# POSIX: an if with no else and a false condition exits 0, NOT with
+# the condition's status. Verified against both bash and dash. This
+# assertion previously claimed 1 - the third hand-written expectation
+# in this suite to have been simply wrong (see Iterations 61, 67).
+assert_status "an if with no else and a false condition exits 0" 0 "$?"
 
 rm -f "$TMP_SCRIPT"
 report

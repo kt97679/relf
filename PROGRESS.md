@@ -7385,3 +7385,52 @@ Recorded rather than bundled in.
 groups on both sides and `||` chains. 507 assertions across 62 files,
 7 differential cases, 1991 core OK markers, both cell widths, mrsh 17
 of 21.
+## Iteration 92: an operator after `fi`, and the status an untaken `if`
+## leaves
+
+`if ...; fi && echo m` dropped the `&& echo m` — recorded last
+iteration, fixed here. `DO-IF` was discarding the pending remainder
+after `fi`; it now runs it through `RUN-TOKENIZED` like any line. A
+leading `&&` then splits with an *empty* left-hand side, which tests
+the if's own exit status — exactly the semantics wanted, with no
+special case.
+
+### Which exposed a second, older bug
+
+With something finally looking at the status, `if false; then ...; fi`
+turned out to leave the failed *condition's* status. POSIX says an if
+with no branch taken exits **0**. Verified against both bash and dash
+before changing anything.
+
+The status had been wrong all along and could not be observed: nothing
+in the shell or its tests examined `$?` after an `if` until an operator
+could follow `fi`. A second consumer of existing state turning an
+invisible bug visible — the same shape as the double-quote tracking in
+Iteration 60 and the `TOK-WAS-QUOTED?` overload in 86.
+
+### A wrong assertion, the third of its kind
+
+`run-if-sameline` asserted "an if with no else and a false condition
+exits with the condition's own status", expecting 1. That is not what
+POSIX says and not what either reference shell does. Corrected, with
+the reason in the test.
+
+That is the third hand-written expectation in this suite found to be
+simply wrong (after `set --` in Iteration 61 and the multi-line command
+substitution in 67), and the second one this project's own code was
+right about while its test was not. `tests/diff/` exists precisely
+because of this failure mode; this is one more argument for moving
+assertions there when the answer is checkable against a reference.
+
+### Not done
+
+`while`/`for`/`case` still discard what follows `done`/`esac` the same
+way `if` did. Same fix, three more places; left for its own iteration
+rather than changed blind.
+
+### Verified
+
+`tests/diff/cases/compound-suffix.sh` — five operator-after-`fi`
+shapes plus both exit-status cases. 507 assertions across 62 files, 8
+differential cases, 1991 core OK markers, both cell widths, mrsh 17
+of 21.
