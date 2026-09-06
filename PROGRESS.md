@@ -8262,3 +8262,75 @@ rather than hung, which is a different and smaller problem. Supporting
 them means extending the pending-remainder mechanism (which `if` has
 had since Iteration 25) to the capture loops, and is its own piece of
 work.
+## Iteration 108: expansion stops writing over its own input
+
+The first part of Stage 1 of `PARSE-EXPAND-PLAN.md`, and the one that
+stands on its own: **`TOKENIZE` now writes expanded words into a
+separate `TOK-BUF` instead of compacting them back over `LINE-BUF`.**
+
+In-place compaction was correct for quote-stripping, where the output
+is always shorter than the input. It was never correct for expansion,
+where a value can be longer than the `$name` it replaces — so
+`ENSURE-ROOM` existed to shift the unread input rightward and keep the
+write cursor behind the read cursor, and **every call site had to
+remember to call it**. Four bugs were one such call being missing:
+`$VAR` (Iteration 26), the numeric expansions (46), `$*`'s joining
+space (99) and `$@`'s field break (103). Iteration 99 wrote that three
+instances made a reasonable argument for a fourth; 103 found it four
+iterations later, in the sibling branch of the word 99 had just fixed.
+
+With separate buffers there is no shared buffer to overrun, so the
+hazard does not exist rather than being guarded against.
+`ENSURE-ROOM` is deleted, along with its twenty call sites and
+`EMIT-DECIMAL-EXPANDED`, which existed only to pair a reservation with
+`EMIT-DECIMAL` and is now `EMIT-DECIMAL` itself. The only remaining
+limit is one bounds check in `EMIT-TOK-CHAR`.
+
+Two things fall out:
+
+- **An expansion may now exceed `LINE-MAX`.** It could not before:
+  `ENSURE-ROOM` had nowhere to shift to and silently skipped both the
+  shift and the expansion, leaving the old corruption in that rare
+  case by explicit choice. `TOK-BUF` is 4096 against `LINE-MAX`'s 256.
+- **`LINE-BUF` survives tokenizing intact.** Nothing needs that yet.
+  It is the prerequisite for the rest of Stage 1: re-expanding a line
+  per command means the line has to still be there afterwards.
+
+### On how this went
+
+Green on the first run, on both cell widths, with no test changes —
+which is worth recording precisely because the plan warned this was
+the tokenizer and to budget for consequences surfacing over many
+iterations. The reason it went cleanly is that the change removes a
+coupling rather than adding one: every site that was juggling two
+cursors in one buffer now just writes forward into a buffer of its
+own. Iterations 104 and 105 had already moved the two places that
+cared about the coupling (`CAPTURE-BRACED-WORD`'s rewind, and the
+command-substitution child) onto footing that did not depend on it.
+
+### Verified
+
+`tests/diff/cases/expansion-grows.sh` — an expansion thirty times its
+own reference text, one exceeding the input line's own length with
+text on both sides, and the exact shapes of all four historical
+`ENSURE-ROOM` bugs.
+
+524 assertions across 63 files, 16 differential cases, 1991 core OK
+markers, both cell widths, mrsh 18 of 21.
+
+### Found, not fixed
+
+`x=0123456789...` repeated past 256 characters truncates the value to
+the first repetition rather than to `SHVAR-VALUE-MAX`. Confirmed by
+`git stash` to predate this iteration. It belongs to the fixed-table
+family already listed in GOALS.md's memory policy, all of which
+truncate or fail silently.
+
+### What Stage 1 still needs
+
+Expansion still happens once per raw line, during tokenizing. What
+remains is to stop `TOKENIZE` calling the `EXPAND-*` words at all —
+recording each word's raw text and a "needs expansion" flag instead —
+and to run a new `EXPAND-WORDS` per command, immediately before it
+runs. That is what makes `c=""; echo ${c=BAD} $c` work, and it is the
+last thing between this project and 19 of 21.

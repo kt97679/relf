@@ -567,6 +567,24 @@ VARIABLE SPPD-DEPTH
 VARIABLE TOK-POS
 VARIABLE TOK-END
 VARIABLE TOK-OUT
+
+4096 CONSTANT TOK-BUF-MAX
+TOK-BUF-MAX BUFFER: TOK-BUF
+\ Expanded words are written HERE, not back over the line they came
+\ from. Until Iteration 108 the tokenizer compacted in place: TOK-OUT
+\ trailed TOK-POS through LINE-BUF, which worked for quote-stripping
+\ (output is always shorter) and not for expansion (a value can be
+\ longer than the "$name" it replaces). ENSURE-ROOM existed to shift
+\ the unread input rightward and keep the write cursor behind the read
+\ cursor, and four separate bugs were one call to it being missing -
+\ $VAR (26), the numeric expansions (46), "$*"'s separator (99) and
+\ "$@"'s field break (103).
+\
+\ With a separate output buffer the hazard does not exist: there is no
+\ shared buffer to overrun. That is item 2 of PARSE-EXPAND-PLAN.md,
+\ and the first part of its Stage 1 - the input line now survives
+\ tokenizing intact, which is what re-expanding it per command will
+\ need.
 VARIABLE TOK-WAS-QUOTED?
 CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
 CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
@@ -597,7 +615,14 @@ CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
   WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
 
 : EMIT-TOK-CHAR ( c --- )
-  TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT ! ;
+  \ The bounds check is the only limit left on how much a line can
+  \ expand to. Over-long output is truncated rather than overrunning,
+  \ matching how every other fixed-size copy in this file behaves.
+  TOK-OUT @ TOK-BUF TOK-BUF-MAX + < IF
+    TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT !
+  ELSE
+    DROP
+  THEN ;
 
 \ ==================================================================
 \ $VAR expansion: $NAME, ${NAME}, $? (last exit status), $$ (this
@@ -922,67 +947,6 @@ VARIABLE CMDSUB-PID
     DUP 0 = IF DROP EXIT THEN
     CMDSUB-OUT-LEN @ + CMDSUB-OUT-LEN !
   REPEAT ;
-
-VARIABLE ER-SHIFT
-VARIABLE ER-I
-
-: ENSURE-ROOM ( n --- )
-  \ About to write n bytes at TOK-OUT (an expansion's value, from
-  \ $VAR or $(cmd)) - if that would advance TOK-OUT past TOK-POS, this
-  \ shell's in-place token compaction has a real hazard: the write
-  \ would land on top of input TOK-POS hasn't read yet, destroying it
-  \ before it's ever seen - and since SCAN-TOKEN's own loop then reads
-  \ that now-overwritten byte as if it were real input, re-emitting it
-  \ one position further along, the corruption self-propagates
-  \ (a "smear" of whatever character was last written) until the line
-  \ ends. Found via $VAR expansion specifically - "x=abc" then
-  \ "echo $x in" produced "abcccc" instead of "abc in", since the
-  \ 3-byte value "abc" is one byte longer than the 2-byte "$x" it
-  \ replaces, letting TOK-OUT overtake TOK-POS by exactly one byte -
-  \ confirmed present since before this session's own changes (a real,
-  \ independent bug, not introduced by anything recent). Shifts
-  \ LINE-BUF[TOK-POS..TOK-END) rightward by just enough to prevent the
-  \ overtake (copying from the end backward, so the shift itself can't
-  \ corrupt the very data it's relocating), updating TOK-POS/TOK-END to
-  \ match. If there's truly no room left in the buffer, the shift (and
-  \ the expansion after it) is skipped rather than overflowing past
-  \ LINE-MAX - the pre-existing corruption bug in that rare case,
-  \ rather than a crash, matching this shell's own "never corrupt
-  \ memory, an occasional stale result is an acceptable fallback"
-  \ priority elsewhere.
-  {: | ER-SHIFT ER-I :}
-  TOK-OUT @ + TOK-POS @ -
-  DUP 0 > IF
-    ER-SHIFT !
-    TOK-END @ ER-SHIFT @ + LINE-BUF LINE-MAX + < IF
-      TOK-END @ 1- ER-I !
-      BEGIN ER-I @ TOK-POS @ < 0= WHILE
-        ER-I @ C@ ER-I @ ER-SHIFT @ + C!
-        ER-I @ 1- ER-I !
-      REPEAT
-      TOK-POS @ ER-SHIFT @ + TOK-POS !
-      TOK-END @ ER-SHIFT @ + TOK-END !
-    THEN
-  ELSE
-    DROP
-  THEN ;
-
-: EMIT-DECIMAL-EXPANDED ( n --- )
-  \ EMIT-DECIMAL, but reserving room in the token buffer first.
-  \
-  \ Every numeric expansion ($?, $$, $#, ${#VAR}, $((...))) writes its
-  \ digits straight into the token being built, and every one of them
-  \ can be LONGER than the text it replaces - "$?" is two characters,
-  \ "127" is three. That is exactly the in-place compaction hazard
-  \ ENSURE-ROOM exists for, and exactly the smear Iteration 26 found
-  \ and fixed... for $VAR only. The numeric paths never called it, so
-  \ they kept the bug: `echo $? x` after a failing command printed
-  \ "12777" instead of "127 x". Found while diagnosing mrsh's
-  \ pipeline.sh, which is what it had been quietly failing on.
-  \
-  \ 21 characters covers any 64-bit value plus a sign. Over-reserving
-  \ is harmless: ENSURE-ROOM only shifts when it actually has to.
-  21 ENSURE-ROOM EMIT-DECIMAL ;
 
 \ ==================================================================
 \ The body arena
@@ -1484,7 +1448,7 @@ VARIABLE ARITH-DEPTH
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
-  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL-EXPANDED ;
+  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL ;
 
 : EXPAND-CMDSUB ( closer --- )
   \ TOK-POS is just inside the substitution; `closer` is the character
@@ -1560,7 +1524,6 @@ VARIABLE ARITH-DEPTH
     \ found via mrsh's async.sh (see PROGRESS.md's crash-hardening
     \ entry) and reproduced down to a single command: `echo $(true)`.
     CMDSUB-OUT-LEN @ 0 > IF
-      CMDSUB-OUT-LEN @ ENSURE-ROOM
       \ EMIT-EXPANDED-CHAR, not EMIT-TOK-CHAR: an *unquoted* command
       \ substitution is subject to IFS field splitting exactly as an
       \ unquoted $VAR is, so "for c in $(echo a s d f)" runs four
@@ -1613,12 +1576,12 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
         \ emitted - but here nothing was consumed: "$@" synthesises the
         \ break out of nothing. Without this, "1  $@  2" with three
         \ parameters lost its "  2" (Iteration 103).
-        1 ENSURE-ROOM IFS-SPLIT-HERE
+        IFS-SPLIT-HERE
       ELSE
-        1 ENSURE-ROOM 32 EMIT-EXPANDED-CHAR
+        32 EMIT-EXPANDED-CHAR
       THEN
     THEN
-    EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+    EAP-I @ POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !
   REPEAT ;
 
@@ -1729,11 +1692,7 @@ VARIABLE EBW-NAMELEN
   \ against rather than emitted, and what ${VAR:=word} needs for the
   \ value it assigns.
   \
-  \ The token buffer is the scratch space - expand into it and rewind -
-  \ so ENSURE-ROOM keeps working normally. Writing into a separate
-  \ buffer instead would leave ENSURE-ROOM comparing a TOK-OUT in one
-  \ buffer against a TOK-POS in another, which is arithmetic with no
-  \ meaning.
+  \ The token buffer is the scratch space - expand into it and rewind.
   \
   \ Field splitting is suppressed: a pattern is one pattern, and an
   \ assigned value is one value.
@@ -1775,7 +1734,7 @@ VARIABLE EBW-NAMELEN
   \ value if found, otherwise emits nothing (an unset variable
   \ expands to empty).
   DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+    TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : EXPAND-BRACED-VAR ( --- )
@@ -1785,7 +1744,7 @@ VARIABLE EBW-NAMELEN
     READ-VARNAME
     TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
     VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP 0 ELSE CSTRLEN THEN
-    EMIT-DECIMAL-EXPANDED
+    EMIT-DECIMAL
     EXIT
   THEN
   READ-VARNAME
@@ -1825,7 +1784,7 @@ VARIABLE EBW-NAMELEN
       DROP
       CAPTURE-BRACED-WORD
       VARNAME-BUF PEWORD-BUF SET-SHVAR
-      PEWORD-BUF DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+      PEWORD-BUF TYPE0-TO-TOK-SPLIT
     ELSE
       EXPAND-BRACED-WORD-ASIDE
       EMIT-LOOKED-UP-VAR
@@ -1876,17 +1835,17 @@ VARIABLE EBW-NAMELEN
   TOK-POS @ C@
   DUP 63 = IF                     ( $? )
     DROP TOK-POS @ 1+ TOK-POS !
-    LAST-STATUS @ EMIT-DECIMAL-EXPANDED
+    LAST-STATUS @ EMIT-DECIMAL
     EXIT
   THEN
   DUP 33 = IF                     ( $! - most recent background pid )
     DROP TOK-POS @ 1+ TOK-POS !
-    BG-PID @ EMIT-DECIMAL-EXPANDED
+    BG-PID @ EMIT-DECIMAL
     EXIT
   THEN
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
-    GETPID EMIT-DECIMAL-EXPANDED
+    GETPID EMIT-DECIMAL
     EXIT
   THEN
   DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
@@ -1894,7 +1853,7 @@ VARIABLE EBW-NAMELEN
     TOK-POS @ 1+ TOK-POS !
     1-
     DUP POS-PARAM-COUNT @ < IF
-      POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+      POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
     ELSE
       DROP
     THEN
@@ -1902,7 +1861,7 @@ VARIABLE EBW-NAMELEN
   THEN
   DUP 35 = IF                     ( $# )
     DROP TOK-POS @ 1+ TOK-POS !
-    POS-PARAM-COUNT @ EMIT-DECIMAL-EXPANDED
+    POS-PARAM-COUNT @ EMIT-DECIMAL
     EXIT
   THEN
   DUP 64 = IF                     ( $@ )
@@ -1947,7 +1906,7 @@ VARIABLE EBW-NAMELEN
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C!
   VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+    TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : COPY-SINGLE-QUOTED ( --- )
@@ -2101,7 +2060,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   TOK-POS @ 1+ PW-ULEN @ PASSWD-HOME
   DUP 0= IF DROP EXIT THEN
   TOK-POS @ 1+ PW-ULEN @ + TOK-POS !
-  DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT ;
+  TYPE0-TO-TOK-SPLIT ;
 
 : TRY-TILDE-EXPAND ( --- )
   \ Called once, right at the start of SCAN-TOKEN, before any other
@@ -2123,7 +2082,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   TOK-POS @ 1+ TOK-POS !
   S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
   ENVNAMBUF LOOKUP-VAR DUP 0= IF DROP ELSE
-    DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
+    TYPE0-TO-TOK-SPLIT
   THEN ;
 
 : ASSIGN-TILDE-POINT? ( --- f )
@@ -2167,10 +2126,10 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
 ' SCAN-TOKEN-CHAR IS SCAN-CHAR-CALL
 
 : SCAN-TOKEN ( --- )
-  \ Reads from TOK-POS, writing the *unquoted* content via
-  \ EMIT-TOK-CHAR (at TOK-OUT, which only ever trails or equals
-  \ TOK-POS, so writing in place is always safe), until unquoted
-  \ whitespace or the end of input.
+  \ Reads from TOK-POS in LINE-BUF, writing the *unquoted, expanded*
+  \ content via EMIT-TOK-CHAR into TOK-BUF, until unquoted whitespace
+  \ or the end of input. The two buffers are separate, so the output
+  \ can be longer than the input it came from.
   TRY-TILDE-EXPAND
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
@@ -2181,19 +2140,18 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
 : TOKENIZE ( u --- )  \ LINE-BUF holds the line; u is its length
   LINE-BUF + TOK-END !
   LINE-BUF TOK-POS !
+  TOK-BUF TOK-OUT !
   0 ARGC !
   BEGIN
     SKIP-WS
     TOK-POS @ TOK-END @ <
   WHILE
-    TOK-POS @ TOK-OUT !      ( always safe to compact in place, even
-                                if this token won't end up recorded )
     0 TOK-WAS-QUOTED? !
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
     0 IN-DQ-CONTEXT? !
     ARGC @ MAX-ARGS 1- < IF
-      TOK-POS @ ARGV ARGC @ CELLS + !
+      TOK-OUT @ ARGV ARGC @ CELLS + !
       TOK-POS @ C@ DUP 39 = SWAP 34 = OR
       ARGV-NAME-QUOTED ARGC @ + C!
       SCAN-TOKEN
@@ -6065,8 +6023,6 @@ VARIABLE FPM-I
   \ Like TYPE0-TO-TOK, but for a known-length span rather than a
   \ NUL-terminated C string - the remaining portion after a prefix/
   \ suffix match isn't itself NUL-terminated at the right point
-  \ without a separate copy. Caller must ENSURE-ROOM(n) first,
-  \ matching TYPE0-TO-TOK's own convention.
   \ The zero guard is not optional: this kernel's DO with start = limit
   \ runs the whole unsigned range rather than zero iterations
   \ (FORTH-STYLE.md section 12). n IS zero whenever a trim consumes the
@@ -6099,14 +6055,11 @@ VARIABLE TP-MATCH-LEN
   PEW-SUFFIX? @ PEW-LONGEST? @ FIND-TRIM-LEN
   TP-MATCH-LEN !
   TP-MATCH-LEN @ -1 = IF
-    TP-VAL-LEN @ ENSURE-ROOM
     TP-VAL-ADDR @ TP-VAL-LEN @ TYPE-N-TO-TOK
   ELSE
     PEW-SUFFIX? @ IF
-      TP-VAL-LEN @ TP-MATCH-LEN @ - ENSURE-ROOM
       TP-VAL-ADDR @ TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
     ELSE
-      TP-VAL-LEN @ TP-MATCH-LEN @ - ENSURE-ROOM
       TP-VAL-ADDR @ TP-MATCH-LEN @ + TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
     THEN
   THEN ;
