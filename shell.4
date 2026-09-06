@@ -658,6 +658,15 @@ VARIABLE TAP-I
   \ Does the token built so far look like "NAME=" ? Read from the
   \ token being accumulated (ARGV's current entry through TOK-OUT)
   \ rather than kept as a flag, so it needs no reset discipline.
+  \ Only a word in ASSIGNMENT POSITION counts. "echo a=$(...)" is an
+  \ ordinary argument that happens to contain '=', and POSIX field
+  \ splitting DOES apply to it - suppressing it there was wrong, and
+  \ was found by the differential harness on its first run
+  \ (Iteration 83). Approximated as "first word of the command": that
+  \ covers "q=$p" and "x=$(...)" and correctly excludes an argument.
+  \ A second assignment in "a=1 b=$p cmd" is not covered - POSIX
+  \ allows a run of them - and is a known narrowing.
+  ARGC @ 0 <> IF 0 EXIT THEN
   ARGV ARGC @ CELLS + @ TAP-S !
   TAP-S @ 0= IF 0 EXIT THEN
   TOK-OUT @ TAP-S @ - TAP-L !

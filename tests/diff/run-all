@@ -1,0 +1,41 @@
+#!/bin/sh
+# tests/diff/run-all - differential tests: every script in cases/ is run
+# through relfsh AND through a reference shell, and their stdout and
+# exit status must match.
+#
+# Why this exists alongside tests/shell/: those assert expectations
+# written by hand, and twice those expectations were simply wrong about
+# POSIX ("set -- -- -x" in Iteration 61, an unquoted multi-line command
+# substitution in 67) - the shell was right and the test was not. Here
+# nothing is hand-written but the input, so that class of mistake
+# cannot occur.
+#
+# Bash's own test files are NOT vendored: bash is GPLv3 and this
+# project is GPLv2 (see GOALS.md), which is a licence incompatibility,
+# and its tests exercise bash extensions this shell deliberately does
+# not have. Using bash as a live oracle has neither problem.
+set -u
+THIS_SH="${THIS_SH:-./relfsh}"
+REF_SH="${REF_SH:-/bin/bash}"
+dir=$(dirname "$0")/cases
+run=0; failed=0
+
+if [ ! -x "$REF_SH" ]; then
+    echo "tests/diff: no reference shell at $REF_SH - skipping"
+    exit 0
+fi
+
+for c in "$dir"/*.sh; do
+    [ -e "$c" ] || continue
+    run=$((run + 1))
+    got=$(timeout 10 "$THIS_SH" "$c" </dev/null 2>/dev/null); gs=$?
+    want=$(timeout 10 "$REF_SH" "$c" </dev/null 2>/dev/null); ws=$?
+    if [ "$got" != "$want" ] || [ "$gs" != "$ws" ]; then
+        failed=$((failed + 1))
+        echo "FAIL: $(basename "$c")  (status $gs, want $ws)"
+        printf '%s\n' "$want" | sed 's/^/    want: /' | head -6
+        printf '%s\n' "$got"  | sed 's/^/    got:  /' | head -6
+    fi
+done
+echo "$run differential case(s), $failed failed"
+[ "$failed" -eq 0 ]

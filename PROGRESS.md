@@ -7062,3 +7062,54 @@ covered by the vendored test, which is the opposite of the impression
 
 Nothing changed in the shell this iteration. 502 assertions across 61
 files plus 1991 core OK markers, both cell widths, mrsh 17 of 21.
+## Iteration 83: a differential test suite, and two bugs it found
+## immediately
+
+Prompted by the question "should we use bash's tests for getopts?".
+Two separate things are bundled in that: bash's test *files*, and
+bash's *answers*.
+
+**Not the files.** Bash is GPLv3 and this project is GPLv2 (GOALS.md)
+— a licence incompatibility, not a preference. Its tests also exercise
+bash extensions this shell deliberately does not have, so importing
+them would mean importing failures that are bash-isms.
+
+**Yes to the answers**, and we already have them: the mrsh harness
+runs bash live. The real weakness was elsewhere — `tests/shell/*`
+assert expectations *written by hand*, and twice those were simply
+wrong about POSIX while the shell was right (`set -- -- -x`,
+Iteration 61; an unquoted multi-line command substitution, 67).
+
+So: `tests/diff/`. Every script in `cases/` is run through `relfsh`
+and through a reference shell and both stdout and exit status must
+match. Nothing is hand-written but the input, so that whole class of
+mistake cannot occur. It skips silently where no reference shell
+exists, and is wired into `tests/run_tests.sh`.
+
+### It found two bugs on its first run
+
+**A real splitting bug, now fixed.** `echo unquoted=$(printf 'l1\nl2\n')`
+printed two lines where bash prints one. `TOKEN-IS-ASSIGN-PREFIX?`
+(Iteration 66) treated *any* word containing `=` as an assignment and
+suppressed field splitting — but `echo a=$(...)` is an ordinary
+argument that happens to contain `=`, and POSIX splits it. Now
+restricted to assignment position (first word of the command). A
+second assignment in `a=1 b=$p cmd` is still not covered; POSIX allows
+a run of them, and that narrowing is documented in the code.
+
+**A hang, recorded not fixed.** `g() ( x=1; echo $x )` — a subshell
+function body entirely on one line — never terminates. The multi-line
+form works. Related to the one-line `while`/`for` limitation but not
+identical, since that one merely fails. It has its own note; the case
+file uses the multi-line form so the suite tests what it means to,
+rather than pinning down the failure mode of an unsupported shape.
+
+Three case files so far: `getopts.sh` (flags, attached and separate
+arguments, clustering, unknown options, `OPTIND`, `OPTARG` not
+lingering), `expansion.sh` (the two previously-mistaken expectations,
+plus arithmetic), and `control.sh` (braceless and subshell function
+bodies, `return` from inside a loop, a same-line `case` arm, a
+compound pipeline stage).
+
+502 assertions across 61 files, 3 differential cases, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.

@@ -150,6 +150,14 @@ report_sizes() {
     rm -f "$tmp"
 }
 
+# Differential suite: scripts checked against a reference shell rather
+# than against expectations written by hand. Skipped silently if no
+# reference shell is present.
+if [ -x /bin/bash ]; then
+    echo "== Running differential suite (vs /bin/bash) =="
+    THIS_SH="$PWD/relfsh" tests/diff/run-all || exit 1
+fi
+
 echo "== Sizes (stripped engine + prebuilt shell image) =="
 report_sizes ./relf   kernel-shell.img   "x86-64 (8-byte)"
 report_sizes ./relf32 kernel32-shell.img "i386 (4-byte)"
