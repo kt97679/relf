@@ -525,17 +525,14 @@ This was the blocker in front of the `forth` builtin.
    own `README.md`) is adopted here as a concrete, external,
    trackable target rather than one this project invents its own
    criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **2 passed, 19 failed, 3 skipped** - of which
-   exactly **one is genuine**. `case.sh` passes on its merits: full
-   `case`/`esac` with variable expansion, `*`, `?`, `[...]` and `|`
-   patterns, quoted patterns, and an omitted final `;;`, all of which
-   `shell.4` really implements (Iterations 27 and 33-36). It is the
-   first vendored file ever carried across by actual shell features.
-   `ulimit.sh` is hollow and should be read as such: `shell.4` has
-   neither `ulimit` nor backquote substitution, both shells simply
-   exit 1, and their stdout coincides only because of the one `grep`
-   line that runs in both. It will stop being hollow when Phase F's
-   `ulimit` and Phase E's backquotes land.
+   and currently reports **18 passed, 3 failed, 3 skipped**.
+
+   Two of the three failures are the deliberate POSIX-versus-bash
+   alias divergence recorded below, and cannot be fixed without making
+   this shell less correct. The third, `word.sh`, differs on a single
+   line - `c=""; echo ${c=BAD} $c` - which is the stale-expansion
+   limitation and therefore **Stage 1 of `PARSE-EXPAND-PLAN.md`**.
+   That one change is the whole remaining distance to the ceiling.
 
    **A structural blocker sat underneath that number, found in
    Iteration 39 and cleared in Iteration 40.** The 18 differential
@@ -1024,14 +1021,21 @@ This was the blocker in front of the `forth` builtin.
      `PROGRESS.md`'s Iteration 36 entry for the full account.
 
      **Phase D is now complete.**
-   - **Phase E — command substitution completeness.** Nested
-     `$(...)`. Backquote `` `...` `` substitution. A `$(...)` body
-     that supports the full command grammar (pipelines, quoting,
-     expansion) rather than today's bare whitespace-split
-     `CMDSUB-TOKENIZE` — likely requires the "save outer tokenizer
-     state, run the inner command through the real `TOKENIZE`, restore
-     outer state" approach considered and set aside as too complex
-     during Iteration 13, now worth revisiting given the payoff.
+   - **Phase E — command substitution completeness. Done**
+     (backquotes in Iteration 73, the rest in 105). `CMDSUB-TOKENIZE`
+     is gone: the substituted text is installed as a replay input
+     source and read through the real tokenizer in the forked child,
+     which has its own copy of every buffer. Nested `$(...)`, several
+     commands, `;`/`&&`, pipes, redirection, compound commands,
+     functions and quoting all work as a consequence rather than as
+     features. A body spanning several physical lines works too -
+     `NORMALIZE-OPERATORS` reports an open `$(` the same way it
+     reports an open quote.
+
+     The cost, taken deliberately: a plain `$(cmd)` now forks twice
+     rather than once, since the child goes through `RUN-TOKENIZED`
+     instead of `EXECVE`-ing directly. Worth measuring after Stage 2,
+     not before.
    - **Phase F — builtins.**
      `[`/`test` and `:`: **done (Iteration 37)** — string tests (`-z`,
      `-n`, `=`, `!=`, bare non-empty check), numeric comparisons
@@ -1262,6 +1266,15 @@ is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
 
+- **A one-line loop or function definition is not supported.**
+  `for i in 1 2 3; do echo $i; done` and `f() { echo hi; }` written
+  entirely on one line are rejected with a syntax error (Iteration
+  107 - before that they hung). `if` has supported the same-line form
+  since Iteration 25 via the pending-remainder mechanism; extending
+  that to the capture loops is what these need. Recorded here rather
+  than only in `PROGRESS.md` because both forms are common in real
+  scripts and a reader will reasonably expect them to work.
+
 - **`~user` reads `/etc/passwd` directly** (Iteration 96). That is one
   NSS source among several. On a system using LDAP, SSSD, NIS or
   systemd-homed — any site with centrally managed accounts — a real
@@ -1281,6 +1294,12 @@ than remembered.
   `word.sh`; not kept because it is right.
 
 ## Next architectural work: `PARSE-EXPAND-PLAN.md`
+
+**This is now the only item between the project and its recorded mrsh
+ceiling of 19 of 21**, as well as the fix for the in-place-growth bug
+class (four instances found, the most recent in Iteration 103) and for
+the ~190x pure-loop cost. Three problems, one change - which is why it
+is worth doing deliberately rather than drifting into it.
 
 The one remaining structural change in `shell.4` — separating
 tokenizing from expansion — has a staged plan of its own. It is worth
