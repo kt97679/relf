@@ -16,12 +16,13 @@ rather than incrementally.
    `FOO=bar; echo $FOO` does not see the new value (Iteration 18) and
    `set a b c; echo $#` reports 0 (45). Both are recorded as
    architectural limitations, not bugs, precisely because of this.
-2. **A whole bug class.** Expansion writes *in place* into the input
-   buffer, which is why `ENSURE-ROOM` exists and why a too-long
-   expansion smeared over the rest of the line — found in Iteration 26
-   for `$VAR`, and again in 46 for `$?`/`$$`/`$#`/`$((...))`, which had
-   never called it. With expansion producing a *new* word list, the
-   hazard cannot occur: there is no shared buffer to overrun.
+2. **A whole bug class. Done in Iteration 108.** Expansion used to
+   write *in place* into the input buffer, which is why `ENSURE-ROOM`
+   existed and why a too-long expansion smeared over the rest of the
+   line — Iteration 26 for `$VAR`, 46 for `$?`/`$$`/`$#`/`$((...))`,
+   99 for `$*`'s separator and 103 for `$@`'s field break, each one a
+   missing call. Expansion now writes into its own buffer, so there is
+   no shared buffer to overrun and `ENSURE-ROOM` is deleted.
 3. **Performance.** `tests/bench`: 568ms against dash's 3ms on a pure
    loop, ~190x. Every iteration re-normalizes and re-tokenizes body
    lines that cannot have changed, and re-tokenizes the `while`
@@ -42,9 +43,9 @@ line. That is what makes `FOO=bar; echo $FOO` work.
 
 ## Staging
 
-Each stage must leave the full suite green — 502 assertions, 4
-differential cases, both cell widths, mrsh at 17 — and be committed
-separately. Do not begin a stage before the previous one is committed
+Each stage must leave the full suite green — as of Iteration 108, 524
+assertions, 16 differential cases, 1991 core OK markers, both cell
+widths, and mrsh at 18 — and be committed separately. Do not begin a stage before the previous one is committed
 green.
 
 **Stage 1 — split tokenize from expand.**
@@ -55,13 +56,55 @@ anything needing expansion (a `$`, a backquote, a leading `~`). A new
 fresh output buffer. Call it from `RUN-SIMPLE-OR-PIPELINE` and the
 other execution paths, not from `TOKENIZE`.
 
-Expect this stage to be the whole of the difficulty. The 24 expansion
-call sites all currently write via `EMIT-TOK-CHAR`/`EMIT-EXPANDED-CHAR`
-into the token being built; they need to write into the output word
-instead. The field-splitting logic (`IFS-SPLIT-PENDING?`,
+**Stage 1a is done (Iteration 108).** The expansion sites no longer
+write back over the input: `TOKENIZE` emits into `TOK-BUF`, a separate
+buffer, and `ENSURE-ROOM` is gone along with all twenty of its call
+sites. That was half of what this stage's difficulty was made of, it
+removed the four-instance bug class on its own, and it left `LINE-BUF`
+intact after tokenizing — which the rest of the stage needs, since
+re-expanding a line per command means the line has to still be there.
+It went green first time on both cell widths with no test changes.
+
+**Stage 1b is the rest, and is where the care goes.** Two pieces:
+
+*Producing raw words.* Do NOT write a second scanner for "where does a
+word end". `NORMALIZE-OPERATORS` already walks the raw line tracking
+single quotes, double quotes, `$(...)`, backquotes and `$((...))`, and
+already emits into a buffer of its own. Word boundaries are exactly
+the whitespace it emits while at depth zero in all of those, so it can
+record `RAW-ARGV`/`RAW-ARGC` as it goes, for free and by construction
+in agreement with itself. Any other approach gives this codebase two
+answers to the same question, which FORTH-STYLE.md §11 is entirely
+about.
+
+*Deciding where `EXPAND-WORDS` runs.* This is the real work, and it is
+an audit rather than a design problem. Every reader of `ARGV` has to
+be classified as wanting raw words or expanded ones, because with
+expansion deferred it will get raw ones by default:
+
+- **Raw is correct, leave alone.** `LINE-IS?`'s keyword checks;
+  `SPLIT-SEMI`/`SPLIT-ANDOR`/`SPLIT-PIPE`/`GRP-TRACK`/`SPLIT-GROUP`
+  and the `AT-*?` predicates; `FUNCDEF-NAME?` and `DO-FUNCDEF`'s name;
+  `TRY-ALIAS` (POSIX looks up the alias on the unexpanded word);
+  `PARSE-REDIRECTIONS`' recognition of the operators themselves.
+- **Needs expanded words, and does not pass through
+  `RUN-SIMPLE-OR-PIPELINE`.** These are the ones that will break
+  silently if missed: `DO-CASE`'s case word *and* each arm's patterns
+  (the patterns are expanded but must not then be re-split);
+  `DO-FOR`'s word list, expanded once at the `for` line per POSIX;
+  `PARSE-REDIRECTIONS`' filename operand; `TRY-ASSIGNMENT`'s value.
+- **Gets it from `RUN-SIMPLE-OR-PIPELINE`.** Every builtin, every
+  external command, every pipeline stage, and both loop conditions —
+  a `while` condition is run through `RUN-TOKENIZED`, so it is covered
+  by whatever covers an ordinary command.
+
+Write a differential case for each of the second group *before*
+touching it, since that is the group whose failures are quiet.
+
+The field-splitting logic (`IFS-SPLIT-PENDING?`,
 `TOKEN-IS-ASSIGN-PREFIX?`, the empty-field rule from Iteration 86)
-moves with them and gets *simpler*, because "which word am I in" stops
-being implicit in a buffer position.
+moves with the expansion sites and gets *simpler*, because "which word
+am I in" stops being implicit in a buffer position.
 
 **Stage 2 — cache tokenized body lines.**
 Loop and function bodies are stored as raw text and re-tokenized every
