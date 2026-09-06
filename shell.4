@@ -1950,7 +1950,21 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
       SCAN-TOKEN
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
-      ARGC @ 1+ ARGC !
+      \ POSIX: an unquoted expansion that produces nothing yields NO
+      \ field at all - "echo A ${nope:-} B" passes two arguments, not
+      \ three. A word that was quoted still counts, even when empty,
+      \ which is what TOK-WAS-QUOTED? distinguishes: "" is a field.
+      \ ARGV-NAME-QUOTED, not TOK-WAS-QUOTED?: the latter is also set
+      \ by an expansion (it is EXPAND-VAR's signal that the result is
+      \ not to be re-read as an operator), so it cannot distinguish
+      \ "" from ${nope:-}. ARGV-NAME-QUOTED records an actual leading
+      \ quote character, which is the question being asked here.
+      ARGV ARGC @ CELLS + @ C@ 0=
+      ARGV-NAME-QUOTED ARGC @ + C@ 0= AND IF
+        TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )
+      ELSE
+        ARGC @ 1+ ARGC !
+      THEN
     ELSE
       SCAN-TOKEN
       0 EMIT-TOK-CHAR

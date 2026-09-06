@@ -7159,3 +7159,36 @@ re-tokenizing text that cannot have changed. That keeps the raw-text
 condition semantics and should recover most of the loop cost.
 
 Nothing was changed this iteration beyond adding `tests/bench`.
+## Iteration 86: an unquoted empty expansion yields no field
+
+`echo A ${nope:-} B` passed three arguments where POSIX (and bash)
+give two. An unquoted expansion that produces nothing yields **no
+field at all**; a quoted empty word (`""`) still yields one.
+
+### The flag that could not answer the question
+
+The obvious test — "was this word quoted?" — is `TOK-WAS-QUOTED?`, and
+using it did nothing. That flag is *also* set by `EXPAND-VAR`, as its
+signal that an expansion result must not be re-read as an operator. So
+it cannot distinguish `""` from `${nope:-}`: both set it.
+
+`ARGV-NAME-QUOTED` records an actual leading quote character, which is
+the question actually being asked. Worth noting as a small instance of
+a recurring theme here: a flag that accumulated a second meaning
+silently stopped being usable for its first.
+
+### Scope note on `word.sh`
+
+This is one of several differences in that test, which is a broad
+expansion suite. Still outstanding there: tilde expansion in an
+assignment (`a=~/stuff`) and after each `:` in one, `~user` (which can
+be done by reading `/etc/passwd` — no kernel primitive needed, contrary
+to the earlier note), `$@` expanding to multiple fields, and a
+`${x##...}` case. Each is independent; the file needs all of them.
+
+### Verified
+
+New differential case `empty-field.sh` covering both directions
+(unquoted empty dropped, quoted empty kept, `$#` counting a quoted
+empty operand). 502 assertions across 61 files, 4 differential cases,
+1991 core OK markers, both cell widths, mrsh 17 of 21.
