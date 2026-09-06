@@ -61,6 +61,7 @@ CREATE CWDBUF     PATH-MAX ALLOT
 CREATE ENVNAMBUF  64 ALLOT
 
 VARIABLE ARGC          ( number of tokens in the current command line )
+VARIABLE BG-PID   \ pid of the most recent background command, for $!
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
 
@@ -1742,6 +1743,11 @@ VARIABLE TRIM-PARAM-XT   \ patched to TRIM-PARAM's own xt right after
     LAST-STATUS @ EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
+  DUP 33 = IF                     ( $! - most recent background pid )
+    DROP TOK-POS @ 1+ TOK-POS !
+    BG-PID @ EMIT-DECIMAL-EXPANDED
+    EXIT
+  THEN
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
     GETPID EMIT-DECIMAL-EXPANDED
@@ -3111,6 +3117,25 @@ VARIABLE GO-NMLEN
     THEN
   0 UNTIL ;
 
+VARIABLE WT-PID
+
+: DO-WAIT ( --- )
+  \ wait [pid]: with an operand, wait for that child; with none, wait
+  \ for all of them. A shell with no children at all is not an error.
+  0 LAST-STATUS !
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL WAITPID
+    DUP 0= IF DROP 8 RSHIFT 255 AND LAST-STATUS ! ELSE 2DROP THEN
+    EXIT
+  THEN
+  BEGIN
+    -1 WAITPID          ( raw ior )
+    DUP 0= WHILE
+    DROP 8 RSHIFT 255 AND LAST-STATUS !
+  REPEAT
+  2DROP ;
+
+' DO-WAIT         S" wait"     BUILTIN
 ' DO-GETOPTS      S" getopts"  BUILTIN
 ' DO-READ         S" read"     BUILTIN
 ' DO-FORTH        S" forth"    BUILTIN
@@ -3765,6 +3790,25 @@ VARIABLE ARGC-SHIFT
                                     \ within it) should run either.
   SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
   IF EXIT THEN
+  \ A trailing unquoted '&' runs the command in the background: fork,
+  \ do not wait, report success immediately, and remember the child's
+  \ pid for $!. The '&' itself is dropped first, so everything below
+  \ sees an ordinary command - the child then runs it by recursing
+  \ into this same word.
+  ARGC @ 1 > IF
+    ARGC @ 1- DUP ARGV-QUOTED@ 0= SWAP ARGV@ DUP CSTRLEN S" &" STR= AND IF
+      ARGC @ 1- ARGC !
+      0 ARGV ARGC @ CELLS + !
+      FORK DUP 0 = IF
+        DROP
+        RECURSE
+        LAST-STATUS @ SYS-EXIT
+      THEN
+      BG-PID !
+      0 LAST-STATUS !
+      EXIT
+    THEN
+  THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
   \ A '&&'/'||'/';' segment, or a pipeline stage, can itself be a
   \ group - "[ x ] || { echo fail; exit 1; }". Checked here as well as

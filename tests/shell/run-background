@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/shell/run-background - "cmd &", $! and wait (Iteration 74).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'sleep 0 &\np=$!\nif [ -n "$p" ]\nthen\n  echo pid-ok\nfi\nwait\necho done\n' > "$t/a.sh"
+out=$(timeout 10 "$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "\$! is a pid"          "pid-ok" "$out"
+assert_output_contains "wait returns and the shell continues" "done" "$out"
+
+# a background command must not block the shell
+printf 'sleep 2 &\necho immediate\n' > "$t/b.sh"
+out=$(timeout 5 "$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "background command does not block" "immediate" "$out"
+
+# its output still reaches stdout
+printf 'echo from-bg &\nwait\n' > "$t/c.sh"
+out=$(timeout 10 "$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "background command's output arrives" "from-bg" "$out"
+
+# a quoted & is a literal argument, not a background operator
+out=$("$THIS_SH" -c "echo 'a & b'" 2>/dev/null)
+assert_output_contains "quoted & stays literal" "a & b" "$out"
+
+# wait with no children is not an error
+printf 'wait\necho ok\n' > "$t/d.sh"
+out=$(timeout 10 "$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "wait with no children is fine" "ok" "$out"
+report

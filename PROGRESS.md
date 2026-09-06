@@ -6649,3 +6649,49 @@ assignment, `$(...)` still working alongside, and backquotes literal
 inside single quotes. 487 assertions across 59 files plus 1991 core OK
 markers, both cell widths. mrsh-suite stays at 15 for the reason
 above.
+## Iteration 74: background jobs — mrsh 15 -> 16 passed
+
+`async.sh` passes. `cmd &` runs in the background, `$!` gives the most
+recent background pid, and `wait` waits — for one pid if given, for
+all children if not.
+
+The `&` is dropped from `ARGV` before anything else looks at the line,
+so every construct below sees an ordinary command; the forked child
+then runs it by recursing into `RUN-SIMPLE-OR-PIPELINE`. That means
+background works with pipelines, groups and builtins without any of
+them knowing about it.
+
+`wait` with no children is not an error, and a *quoted* `&` stays a
+literal argument — both tested, since both are easy to get wrong in
+the direction of a hang or a misparse.
+
+### A separate gap found while writing the tests
+
+My first test used `case "$p" in [0-9]*) echo num ;;` — a `case` arm
+with its body on the **same line** as the pattern. That produces
+nothing here; bash prints `num`.
+
+It is not a regression, and not about bracket patterns: `DO-CASE`
+expects the pattern alone on its line with the body following, and
+since Iteration 48 split `)` into its own token the same-line form
+puts the body in `ARGV` alongside the pattern, where
+`CASE-ARM-MATCHES?` tries each word as an alternative. Same-line arms
+are a documented gap in `DO-CASE`'s own comment; this is the first
+time something ran into it. Recorded rather than worked around
+silently — the test was rewritten to use `if`, which is what it was
+actually testing.
+
+### Verified
+
+`tests/shell/run-background` (6 assertions): `$!` being a pid, `wait`
+returning, a background command not blocking the shell, its output
+still arriving, a quoted `&` staying literal, and `wait` with no
+children. 493 assertions across 60 files plus 1991 core OK markers,
+both cell widths.
+
+**mrsh-suite: 15 passed -> 16** of 21 scored. Remaining 5: nested
+`$(...)` (`2.2-quoted-characters.sh` — the parser-reuse work),
+compound commands as pipeline stages (`read.sh`), `~user` (`word.sh`,
+needs a kernel primitive), the alias conformance case, and
+`command.sh`, still deliberately failing on the POSIX-versus-bash
+alias conflict.
