@@ -1,0 +1,30 @@
+#!/bin/sh
+# tests/shell/run-heredoc - here-documents (Iteration 56)
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'cat <<EOF\nhello\nworld\nEOF\necho after\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "here-document body, line 1" "hello" "$out"
+assert_output_contains "here-document body, line 2" "world" "$out"
+assert_output_contains "execution continues past the delimiter" "after" "$out"
+
+printf 'cat <<-END\n\thi\n\tthere\n\tEND\necho done\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "<<- strips leading tabs" "hi" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *"	hi"*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: <<- left a tab in the body";; esac
+assert_output_contains "<<- finds an indented delimiter" "done" "$out"
+
+# NOTE two limits a here-document inherits, neither new here:
+#  - it cannot feed a BUILTIN's stdin ("read a b <<EOF"), because
+#    redirection is applied in the forked child and builtins do not
+#    fork; that needs the redirection undo list (Iteration 55).
+#  - it cannot be combined with a pipe ("cat <<EOF | tr ..."), because
+#    pipeline stages bypass PARSE-REDIRECTIONS entirely - the
+#    pipe/redirect exclusion recorded back in Iteration 7.
+
+printf 'cat <<EOF\nEOF\necho empty-ok\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "an empty here-document is fine" "empty-ok" "$out"
+report

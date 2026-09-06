@@ -1862,6 +1862,72 @@ VARIABLE ARGC2
 \ source fd. They are applied in order, which matters: "> f 2>&1"
 \ sends both streams to the file, while "2>&1 > f" does not.
 
+VARIABLE READ-INPUT-XT
+\ READ-NEXT-INPUT-LINE is defined much further down (it needs the
+\ script-file and replay machinery), but here-documents have to read
+\ input at redirection-parsing time. Same deferred-word pattern used
+\ for RUN-TOKENIZED-CALL and friends.
+
+: READ-INPUT-CALL ( c-addr max --- u2 )  READ-INPUT-XT @XT EXECUTE ;
+
+8192 CONSTANT HEREDOC-MAX
+HEREDOC-MAX BUFFER: HEREDOC-BUF
+LINE-MAX    BUFFER: HD-LINE
+VARIABLE HEREDOC-LEN
+VARIABLE HD-N
+VARIABLE HD-DELIM
+VARIABLE HD-STRIP?
+VARIABLE HD-GUARD
+VARIABLE HD-S
+VARIABLE HD-RD
+VARIABLE HD-WR
+
+: HD-LINE-START ( --- addr )
+  \ Start of the just-read line, past leading tabs when the operator
+  \ was "<<-". POSIX strips tabs only - not spaces - which is what
+  \ makes "<<-" usable for indenting a here-document inside a loop
+  \ without indenting its contents.
+  HD-STRIP? @ 0= IF HD-LINE EXIT THEN
+  0 HD-S !
+  BEGIN
+    HD-S @ HD-N @ < IF HD-LINE HD-S @ + C@ 9 = ELSE 0 THEN
+  WHILE HD-S @ 1+ HD-S ! REPEAT
+  HD-LINE HD-S @ + ;
+
+: HD-READ ( delim-addr --- )
+  \ Consume input lines into HEREDOC-BUF until one equals the
+  \ delimiter. Reads through READ-NEXT-INPUT-LINE, so a here-document
+  \ inside a loop body or a function reads from the stored body just
+  \ like everything else does.
+  \
+  \ Scope limits, documented rather than silent: no expansion is
+  \ performed on the body (POSIX expands $VAR unless the delimiter is
+  \ quoted); one here-document per command; and HD-GUARD stops a
+  \ runaway at EOF, since READ-NEXT-INPUT-LINE reports an empty line
+  \ and end-of-input identically.
+  HD-DELIM !
+  0 HEREDOC-LEN !
+  0 HD-GUARD !
+  BEGIN
+    HD-LINE LINE-MAX READ-INPUT-CALL HD-N !
+    HD-GUARD @ 1+ HD-GUARD !
+    HD-GUARD @ 4096 > IF EXIT THEN
+    HD-LINE-START HD-N @ HD-LINE-START HD-LINE - -
+    HD-DELIM @ STR0= 0=
+  WHILE
+    HD-LINE-START
+    HD-N @ HD-LINE-START HD-LINE - -            ( addr len )
+    DUP HEREDOC-LEN @ + 1+ HEREDOC-MAX < IF
+      DUP >R
+      HEREDOC-BUF HEREDOC-LEN @ + SWAP MOVE
+      HEREDOC-LEN @ R> + HEREDOC-LEN !
+      10 HEREDOC-BUF HEREDOC-LEN @ + C!
+      HEREDOC-LEN @ 1+ HEREDOC-LEN !
+    ELSE
+      2DROP
+    THEN
+  REPEAT ;
+
 CREATE REDIR-FD  MAX-ARGS CELLS ALLOT
 CREATE REDIR-OP  MAX-ARGS CELLS ALLOT
 CREATE REDIR-TGT MAX-ARGS CELLS ALLOT
@@ -1882,7 +1948,9 @@ VARIABLE AR-I
   2DUP S" >"  STR= IF 2DROP 2 EXIT THEN
   2DUP S" >>" STR= IF 2DROP 3 EXIT THEN
   2DUP S" >&" STR= IF 2DROP 4 EXIT THEN
-       S" <&" STR= IF 5 EXIT THEN
+  2DUP S" <&" STR= IF 2DROP 5 EXIT THEN
+  2DUP S" <<" STR= IF 2DROP 6 EXIT THEN
+       S" <<-" STR= IF 7 EXIT THEN
   0 ;
 
 : REDIR-ADD ( fd op --- )
@@ -1895,6 +1963,10 @@ VARIABLE AR-I
   RA-OP @      REDIR-OP  REDIR-N @ CELLS + !
   PR-I @ ARGV@ REDIR-TGT REDIR-N @ CELLS + !
   REDIR-N @ 1+ REDIR-N !
+  RA-OP @ 6 = RA-OP @ 7 = OR IF
+    RA-OP @ 7 = HD-STRIP? !
+    PR-I @ ARGV@ HD-READ
+  THEN
   PR-I @ 1+ PR-I ! ;
 
 : PARSE-REDIRECTIONS ( --- )
@@ -1915,7 +1987,7 @@ VARIABLE AR-I
       REDIR-ADD
     ELSE
       PR-I @ REDIR-OP-AT ?DUP IF
-        DUP 1 = OVER 5 = OR IF 0 ELSE 1 THEN SWAP   ( fd op )
+        DUP 2 = OVER 3 = OR OVER 4 = OR IF 1 ELSE 0 THEN SWAP   ( fd op )
         PR-I @ 1+ PR-I !
         REDIR-ADD
       ELSE
@@ -1945,6 +2017,17 @@ VARIABLE AR-I
   0 AR-I !
   BEGIN AR-I @ REDIR-N @ < WHILE
     REDIR-OP AR-I @ CELLS + @
+    DUP 6 = OVER 7 = OR IF
+      \ Feed the body through a pipe rather than a temporary file.
+      \ The write happens before anything reads, so a body larger than
+      \ the pipe buffer would block - HEREDOC-MAX is well under it.
+      DROP
+      PIPE DROP HD-WR ! HD-RD !
+      HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+      HD-WR @ CLOSE-FILE DROP
+      HD-RD @ REDIR-FD AR-I @ CELLS + @ DUP2 DROP
+      HD-RD @ CLOSE-FILE DROP
+    ELSE
     DUP 4 = OVER 5 = OR IF
       \ "2>&1": duplicate the named source descriptor onto the target.
       DROP
@@ -1958,6 +2041,7 @@ VARIABLE AR-I
       ELSE
         DROP
       THEN
+    THEN
     THEN
     AR-I @ 1+ AR-I !
   REPEAT ;
@@ -3504,6 +3588,8 @@ VARIABLE RNL-LEN
     ACCEPT
   THEN ;
 
+' READ-NEXT-INPUT-LINE READ-INPUT-XT !XT
+
 \ ==================================================================
 \ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
 \ forms '&&', '||', '>>') are, in real POSIX shells, self-delimiting
@@ -3561,6 +3647,7 @@ VARIABLE RNL-LEN
   DUP 38 = IF DROP -1 EXIT THEN
   DUP 124 = IF DROP -1 EXIT THEN
   DUP 62 = IF DROP -1 EXIT THEN
+  DUP 60 = IF DROP -1 EXIT THEN    ( < , for "<<" here-documents )
   59 = ;
 
 512 CONSTANT NORM-MAX
@@ -3736,6 +3823,14 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
       NORM-C @ 62 = NORM-C @ 60 = OR IF
         0 NORM-PEEK 38 = IF
           38 NORM-EMIT
+          NORM-I @ 1+ NORM-I !
+        THEN
+      THEN
+      \ "<<-" is its own operator (strip leading tabs), so the '-'
+      \ stays attached to the "<<" that was just emitted.
+      NORM-C @ 60 = IF
+        0 NORM-PEEK 45 = IF
+          45 NORM-EMIT
           NORM-I @ 1+ NORM-I !
         THEN
       THEN

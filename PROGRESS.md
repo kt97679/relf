@@ -5830,3 +5830,70 @@ plus 1991 core OK markers, both cell widths.
 (`word.sh`), `getopts` and `f() ( ... )` subshell function bodies
 (`args.sh`), `function.sh`, `for.sh`, `return.sh`, `subshell.sh`,
 `readonly.sh`, and the two quoting conformance cases.
+## Iteration 56: here-documents
+
+`cmd <<DELIM` and `cmd <<-DELIM` work: the following input lines up to
+a line equal to the delimiter become the command's standard input, with
+`<<-` stripping leading tabs (tabs only, not spaces — which is what
+makes it usable for indenting a here-document inside a loop without
+indenting its contents).
+
+### Design notes
+
+**The body is fed through a pipe, not a temporary file.** No temp path
+to invent, clean up, or collide on. The write happens before anything
+reads, so a body larger than the pipe buffer would block —
+`HEREDOC-MAX` is 8K, well under it, and that is the reason for the
+limit rather than an arbitrary size.
+
+**It reads through `READ-NEXT-INPUT-LINE`**, so a here-document inside
+a loop body or a function reads from the stored body exactly like
+everything else — the input-source work from Iteration 42 paying off
+again, with nothing here needing to know about replay.
+
+That required the deferred-word pattern: `READ-NEXT-INPUT-LINE` is
+defined far below `PARSE-REDIRECTIONS` (it needs the script-file and
+replay machinery), and here-documents must read input at
+redirection-parsing time. Same shape as `RUN-TOKENIZED-CALL`.
+
+Tokenizer: `<` joins the doubled-operator set so `<<` is one token, and
+`<<-` keeps its dash attached.
+
+### Three limits, all pre-existing, all now visible
+
+Writing the tests surfaced two cases I had assumed would work and did
+not — both inherited, neither introduced here:
+
+- **A here-document cannot feed a builtin.** `read a b <<EOF` produces
+  nothing, because redirection is applied in the forked child and
+  builtins do not fork. This is the same gap as `pwd > file`, and it
+  needs the redirection **undo list** from Ramey's bash chapter
+  (Iteration 55).
+- **A here-document cannot be combined with a pipe.**
+  `cat <<EOF | tr a-z A-Z` fails, because pipeline stages bypass
+  `PARSE-REDIRECTIONS` entirely — the pipe/redirect exclusion recorded
+  back in Iteration 7 and never revisited.
+- **Redirection on a compound command** (`done <<EOF`, `done < file`)
+  is not supported at all; redirection attaches to simple commands
+  only.
+
+I removed both invalid assertions rather than leaving tests that
+asserted behaviour the shell does not have. The limits are written into
+the test file so the next person meets them there rather than
+rediscovering them.
+
+Also not done: no expansion is performed on the body. POSIX expands
+`$VAR` unless the delimiter is quoted.
+
+### Verified
+
+`tests/shell/run-heredoc` (7 assertions): body lines delivered,
+execution continuing past the delimiter, `<<-` stripping tabs and
+finding an indented delimiter, and an empty here-document. 383
+assertions across 46 files plus 1991 core OK markers, both cell widths.
+
+mrsh-suite stays at 8. `read.sh` uses `read x <<EOF` — a here-document
+feeding a builtin — so it is blocked on the undo list rather than on
+here-documents themselves. That makes the undo list the next item: it
+now blocks `read.sh`, builtin redirection generally, and is a
+prerequisite for combining pipes with redirection.
