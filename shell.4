@@ -5555,9 +5555,19 @@ VARIABLE FPM-I
   \ suffix match isn't itself NUL-terminated at the right point
   \ without a separate copy. Caller must ENSURE-ROOM(n) first,
   \ matching TYPE0-TO-TOK's own convention.
-  0 DO
-    DUP I + C@ EMIT-TOK-CHAR
-  LOOP DROP ;
+  \ The zero guard is not optional: this kernel's DO with start = limit
+  \ runs the whole unsigned range rather than zero iterations
+  \ (FORTH-STYLE.md section 12). n IS zero whenever a trim consumes the
+  \ entire value - "${p%%/*}", "${p##*}" - and every one of those
+  \ segfaulted.
+  DUP 0 > IF
+    0 DO
+      DUP I + C@ EMIT-TOK-CHAR
+    LOOP
+  ELSE
+    DROP
+  THEN
+  DROP ;
 
 VARIABLE TP-VAL-ADDR
 VARIABLE TP-VAL-LEN

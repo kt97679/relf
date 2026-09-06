@@ -7231,3 +7231,42 @@ splitters, `DISPATCH`, the builtins, replay-as-input-source, the arena.
 Bounding it is most of what makes it safe.
 
 No code changed this iteration.
+## Iteration 88: a segfault found by the plan's own first step
+
+The plan says: add differential cases *before* each stage. Doing that
+for Stage 1 — a broad probe of expansion behaviour against bash —
+found a **crash** on the third line.
+
+`${p%%/*}`, `${p##*}` and `${p%%*}` all segfault. The common factor is
+that the trim consumes the *entire* value, so the remainder is
+zero-length — and `TYPE-N-TO-TOK` did `0 DO ... LOOP` with no zero
+guard. This kernel's `DO` with `start = limit` runs the whole unsigned
+range rather than zero iterations.
+
+That hazard is documented in `FORTH-STYLE.md` §12, caused four
+segfaults in Iteration 15, and had a rule written about it — and here
+it was, still present in a word added later. **Writing a rule down does
+not retire the class**; only a check does. Every remaining `DO` in
+`shell.4` whose count can be zero is worth an audit on that basis.
+
+The four prefix/suffix forms now all match bash, including the
+empty-result cases.
+
+### Stage 1's net is in place
+
+`tests/diff/cases/expansion-broad.sh` — 14 numbered checks covering
+`$VAR`, all six `${...:-+=}` forms with and without the colon, `${#x}`,
+all four prefix/suffix trims, quoting interactions, field splitting,
+arithmetic, `$(...)` and backquotes, positional parameters, and
+adjacency (`x${a}x`). It passes byte-for-byte against bash, so the
+refactor now has something that will catch a silent change.
+
+Two shapes were deliberately left out rather than asserted: a fully
+one-line `for`, and `$*`/`$@` as multiple fields. Both are known gaps
+(the latter is one of the several `word.sh` still needs), and asserting
+their current behaviour would freeze something nobody designed.
+
+### Verified
+
+5 differential cases, 502 assertions across 61 files, 1991 core OK
+markers, both cell widths, mrsh 17 of 21.
