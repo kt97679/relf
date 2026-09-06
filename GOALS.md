@@ -1172,6 +1172,64 @@ build-time choice, not a fork.
   mode - the right tradeoff until/unless a real need for the
   pre-set-before-including convenience shows up.
 
+## Shell architecture: what bash does differently (read, Iteration 48)
+
+From Chet Ramey's chapter on bash in *The Architecture of Open Source
+Applications*, vol. 1 (https://aosabook.org/en/v1/bash.html). Read in
+full; these are the parts that bear directly on `shell.4`, several of
+which name bugs this project has actually had.
+
+**On hand-written parsers.** Ramey, after twenty-odd years maintaining
+bash's yacc/bison grammar: he has considered rewriting the parser as
+straight recursive descent several times, and *"were I starting bash
+from scratch, I probably would have written a parser by hand"*. Not to
+be read as endorsing what `shell.4` does today — his target is
+recursive descent building a **command tree**, and `shell.4` has a
+sequence of split passes over one flat token array. The note says the
+destination is right, not that we have arrived.
+
+**Applicable now, in rough order of value:**
+
+1. **Attach flags to the word, not to a parallel array.** Bash's
+   `WORD_DESC` is `{ char *word; int flags; }`, and a word list is a
+   list of those. `shell.4` keeps `ARGV` with `ARGV-QUOTED` and
+   `ARGV-NAME-QUOTED` beside it — and *every* stale-flag bug this
+   project has had (Iteration 28's vanishing `&&`, Iteration 47's
+   literal `;`) is `COPY-ARGV` moving words without their flags.
+   Bash's shape makes that class impossible. Small, concrete, worth
+   doing.
+2. **Parse first, expand after.** Bash parses to a command structure,
+   *then* expands words. `shell.4` expands during tokenization, in
+   place, once per raw line — the single root of `FOO=bar; echo $FOO`
+   not seeing the value (Iteration 18), `set a b c; echo $#` reporting
+   0 (Iteration 45), and the whole `ENSURE-ROOM` smear class
+   (Iterations 26, 46). With expansion as a separate stage producing
+   new word lists, the smear cannot occur — there is no shared buffer
+   to overrun. This is the large one, and the natural end point of the
+   parser work.
+3. **Command substitution should reuse the real parser**, with `)`
+   flagged as EOF in that context and parser state saved/restored
+   around a recursive parse. That is the Phase E design. Ramey
+   explicitly regrets the alternative: bash's `parse_comsub` *"knows
+   an uncomfortable amount of shell syntax and duplicates rather more
+   of the token-reading code than is optimal"* — which is precisely
+   what `CMDSUB-TOKENIZE` is. Go to the reuse approach rather than
+   improving the duplicate. Locals make the state save/restore cheap.
+4. **Redirections need an undo list.** Their effects must not persist
+   beyond the command, however the command is implemented. `shell.4`
+   sidesteps this by only applying redirection in the forked child,
+   which is why `pwd > file` does not redirect a builtin. When that is
+   fixed, this is the mechanism.
+5. **Aliases are purely lexical**, handled in the analyzer, with the
+   parser telling it when alias expansion is permitted. That is the
+   design for the pending `alias` item.
+6. **Variable scoping**: bash uses hash tables plus linked lists of
+   them, including *temporary scopes* for assignments preceding a
+   command. That covers both the silently-full 32-entry `MAX-SHVARS`
+   table and the unimplemented `NAME=value command` prefix.
+7. `for for in for; do for=for; done` prints `for` — a good
+   conformance test for reserved-word context handling.
+
 ## External references (potentially reusable ideas, not yet mined)
 
 Not read/evaluated in depth yet — listed here so a future session knows
