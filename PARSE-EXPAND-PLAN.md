@@ -24,7 +24,9 @@ rather than incrementally.
    missing call. Expansion now writes into its own buffer, so there is
    no shared buffer to overrun and `ENSURE-ROOM` is deleted.
 3. **Performance.** `tests/bench`: 568ms against dash's 3ms on a pure
-   loop, ~190x. Every iteration re-normalizes and re-tokenizes body
+   loop: 236x dash as re-measured in Iteration 116, up from ~172x
+   before Stage 1, which added a copy per line. Every iteration
+   re-normalizes and re-tokenizes body
    lines that cannot have changed, and re-tokenizes the `while`
    condition. dash parses once and re-executes.
 

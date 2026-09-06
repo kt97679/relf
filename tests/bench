@@ -28,7 +28,24 @@ do
 done
 X
 
-time_it() {   # time_it SHELL SCRIPT -> seconds
+# A shell that cannot start looks tremendously fast: everything below
+# redirects to /dev/null, so a failure is timed like a success. That
+# happened for real in Iteration 116 - a git worktree with no built
+# binary reported 6ms for a hundred fork/exec pairs, which is
+# physically impossible, and the number was believed for a minute.
+# Run it once first and refuse to report if it does not exit 0.
+# Checked by output rather than by exit status: the raw engine row
+# ("./relf kernel-shell.img") does not report a shell's exit status,
+# so a status check would reject a working shell.
+printf 'echo bench-probe\n' > "$t/probe.sh"
+check_shell() {   # check_shell SHELL
+    if [ "$($1 "$t/probe.sh" 2>/dev/null)" != "bench-probe" ]; then
+        echo "bench: $1 cannot run a script - refusing to time it" >&2
+        exit 1
+    fi
+}
+time_it() {   # time_it SHELL SCRIPT -> milliseconds
+    check_shell "$1"
     s=$(date +%s%N)
     $1 "$2" >/dev/null 2>&1
     e=$(date +%s%N)

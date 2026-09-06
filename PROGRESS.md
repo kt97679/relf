@@ -8620,3 +8620,66 @@ the construct runs.
 
 524 assertions across 63 files, 17 differential cases, 1991 core OK
 markers, both cell widths, **mrsh 19 of 21**.
+## Iteration 116: measuring what Stage 1 cost
+
+`tests/bench` had not been run in this whole run of work. It has now,
+here and at the Iteration 101 handoff, on the same machine:
+
+| | loop-ms | spawn-ms | start-ms (engine) |
+|---|---|---|---|
+| relfsh @ 101 | 689 | 145 | 210 |
+| relfsh @ 115 | 944–966 | 150–160 | 236–239 |
+| dash | 4 | 71–74 | 97–101 |
+| bash | 8 | 88–91 | 131–133 |
+
+**Stage 1 made the pure loop about 37% slower.** Startup and spawn are
+roughly flat, within noise of a 10% rise. The gap against dash on the
+loop went from ~172x to ~236x; the "~190x" figure carried in GOALS.md
+was measured somewhere in that range and is now wrong in the unhelpful
+direction.
+
+The cause is not mysterious: a line is walked more times than it used
+to be. `NORMALIZE-OPERATORS` now records word boundaries as it goes,
+`TOKENIZE-RAW` copies every word into `TOK-BUF`, and `EXPAND-WORDS`
+then reads each word back out and writes it again into `EXP-BUF`. That
+is one more full copy of every line than before, and loop bodies are
+re-tokenized every iteration.
+
+Recording it plainly because the alternative is that it gets found
+later and read as a surprise. Stage 1 was worth it — it fixed four
+`ENSURE-ROOM` bugs, two recorded limitations and took mrsh to its
+ceiling — but it was not free, and "no behaviour changed" in
+Iterations 111 and 113 meant no *observable* behaviour, not no cost.
+
+### Why this makes Stage 2 the right next thing
+
+Stage 2 is caching tokenized body lines, and it attacks exactly the
+work this iteration added. A loop body is stored as raw text and
+re-tokenized on every iteration: normalized, word-boundaried, copied
+into `TOK-BUF`, then expanded. Only the last of those depends on
+anything that changes between iterations. Caching the first three per
+body line should recover this 37% and then some, which is the first
+time that stage has had a number attached to it rather than an
+argument.
+
+Measure again after, on the same machine, and put both numbers in the
+entry.
+
+### A note on the first attempt at measuring
+
+The Iteration 101 numbers were nonsense on the first run - 7ms for the
+loop, 6ms for a hundred `fork`/`exec` pairs, which is physically
+impossible. `git worktree` gave a checkout with no built `relf` in it,
+`relfsh` failed to exec, and `tests/bench` timed the failure. It
+redirects to `/dev/null`, so a shell that cannot start looks
+tremendously fast.
+
+`tests/bench` now runs a probe script through each shell first and
+refuses to report if it does not come back with the expected output. A
+benchmark that silently times a crash is worse than no benchmark,
+because it produces a number and numbers get believed.
+
+Checked by output rather than by exit status, which was the first
+attempt and rejected two working shells: the raw-engine row
+(`./relf kernel-shell.img`) does not report a script's exit status at
+all, so a status check called it broken.

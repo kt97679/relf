@@ -1300,13 +1300,15 @@ into its own buffer, so the in-place-growth bug class no longer
 exists; word boundaries come from `NORMALIZE-OPERATORS`, the pass that
 already knew them; and `EXPAND-WORDS` runs when a command runs rather
 than when its line is read, which took the mrsh suite to its ceiling
-of 19 of 21. Stages 2 and 3 remain, and the ~190x pure-loop cost is
+of 19 of 21. Stages 2 and 3 remain, and the pure-loop cost - 236x
+dash as measured in Iteration 116 - is
 Stage 2's business.
 
 Stages 3 and 4 are done as well — nested `$(...)` in Iteration 105,
 and the limitation notes retired in 115. What remains of that plan is
-**Stage 2**, caching tokenized body lines, which is where the ~190x
-pure-loop gap measured in `tests/bench` is addressed and the only
+**Stage 2**, caching tokenized body lines, which is where the
+pure-loop gap measured in `tests/bench` (236x dash, Iteration 116) is
+addressed and the only
 stage whose justification is speed rather than correctness. Read that
 file before starting; each stage must leave the full suite green and
 be committed separately.
