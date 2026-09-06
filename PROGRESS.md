@@ -8334,3 +8334,29 @@ recording each word's raw text and a "needs expansion" flag instead —
 and to run a new `EXPAND-WORDS` per command, immediately before it
 runs. That is what makes `c=""; echo ${c=BAD} $c` work, and it is the
 last thing between this project and 19 of 21.
+## Iteration 109: deleting the word rather than auditing its callers
+
+`COPY-ARGV` moved words between `ARGV` arrays without their
+`ARGV-QUOTED` flags. Every stale-flag bug this project has had was a
+call to it - Iteration 28's vanishing `&&`, 47's literal `;`, 49's
+group body surviving into a pipeline stage - and each was fixed by
+changing that call site to `COPY-ARGV-Q`. Iteration 28 fixed two of
+them and recorded, honestly, that the extent of the same hazard at the
+other call sites was *unverified*. GOALS.md has carried that sentence
+under phase C ever since, through eighty iterations.
+
+It is verified now, and not by auditing: the last caller of the bare
+word disappeared along with `CMDSUB-TOKENIZE` in Iteration 105, so the
+word had none left. Deleted, and its loop folded into `COPY-ARGV-Q`'s,
+which now does one pass carrying the word and its flag together.
+
+The point is the shape of the fix rather than its size. An open item
+that says "we are not sure whether the other call sites are safe"
+cannot be closed by looking harder, because the answer changes every
+time someone adds a call site. It closes when the unsafe spelling
+stops existing. FORTH-STYLE.md §8 says every copy carries the flags;
+that is now true by construction rather than by remembering, which is
+the same reason §11 says to merge duplicated shapes.
+
+No behaviour changed. 524 assertions across 63 files, 16 differential
+cases, 1991 core OK markers, both cell widths, mrsh 18 of 21.

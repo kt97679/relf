@@ -914,9 +914,13 @@ This was the blocker in front of the `forth` builtin.
      too — the old fixed 4,096-byte body cap had been *silently
      dropping* lines, so a large enough body produced wrong output
      rather than an error. Still open: nested function *definitions*
-     are not supported; and the
-     unverified extent of the `COPY-ARGV`/`ARGV-QUOTED` hazard beyond
-     the two call sites fixed in Iteration 28.
+     are not supported.
+
+     The `COPY-ARGV`/`ARGV-QUOTED` hazard is **closed** (Iteration
+     109). It is not that the remaining call sites were checked: the
+     bare `COPY-ARGV` was deleted, so a word that moves words without
+     their flags no longer exists to be called. Its last caller went
+     with `CMDSUB-TOKENIZE` in Iteration 105.
    - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
      `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
      call arguments, or a script's own command-line arguments at the

@@ -882,7 +882,7 @@ VARIABLE IFSC-P
 \ against this exact word, with the instruction to replace rather
 \ than extend it. (Iteration 105.)
 \
-\ RUN-CMDSUB-CHILD needs COPY-ARGV/RUN-CHILD, both defined much later
+\ RUN-CMDSUB-CHILD needs the replay machinery and RUN-CHILD, defined much later
 \ in this file (in the pipe/path-search sections) - broken via the
 \ same deferred-word pattern already used for RUN-TOKENIZED-CALL: a
 \ stub here, patched to the real word's execution token once it's
@@ -3609,48 +3609,46 @@ VARIABLE PSO-LEN
   REPEAT
   PSO-LEN @ 0= 0= ;
 
-VARIABLE CA-SRC
-VARIABLE CA-N
-
-: COPY-ARGV ( src-argv src-argc --- )  \ overwrite the global ARGV/ARGC
-  {: CA-SRC CA-N :}
-  CA-N @ ARGC !
-  \ CA-N can be 0 (e.g. an empty pipeline segment), guarded for the
-  \ same reason as HAS-SLASH?/B-STR/DO-EXPORT above - nothing else is
-  \ on the data stack around this loop, so no ELSE/2DROP is needed.
-  CA-N @ 0 > IF
-    CA-N @ 0 DO
-      CA-SRC @ I CELLS + @ ARGV I CELLS + !
-    LOOP
-  THEN
-  0 ARGV CA-N @ CELLS + ! ;
-
 VARIABLE CAQ-ARGV
 VARIABLE CAQ-ARGQ
 VARIABLE CAQ-N
 
 : COPY-ARGV-Q ( src-argv src-argq src-argc --- )
-  \ Like COPY-ARGV, but also restores each entry's own ARGV-QUOTED
-  \ flag from a parallel byte array captured at split time -
-  \ COPY-ARGV alone leaves ARGV-QUOTED holding whatever was there from
-  \ a PREVIOUS tokenization at each index, which can incorrectly mark
-  \ a real operator as "quoted" if an earlier line's expansion result
-  \ (always marked quoted, so it's never re-interpreted as an
-  \ operator/keyword) happened to sit at that same index - found as a
-  \ real bug via a three-segment &&-chain, where the second segment's
-  \ own trailing "&&" silently vanished this way (SPLIT-ANDOR's own
-  \ "is this token quoted" check saw a stale flag from the very first
-  \ segment's own $VAR expansion, which had sat at that same index in
-  \ the original, unsplit line). Used by SPLIT-SEMI/SPLIT-ANDOR's own
-  \ callers instead of plain COPY-ARGV wherever the copied-in segment
-  \ might need its own further ';'/'&&'/'||' recognized correctly.
+  \ Overwrite the global ARGV/ARGC with a segment, carrying each
+  \ entry's own ARGV-QUOTED flag with it from a parallel byte array
+  \ captured at split time.
+  \
+  \ There used to be a bare COPY-ARGV beside this, moving the words
+  \ and not the flags, and leaving ARGV-QUOTED holding whatever a
+  \ PREVIOUS tokenization left at each index. Every stale-flag bug
+  \ this project has had was a call to it: Iteration 28's vanishing
+  \ "&&" (an earlier segment's expansion result, always marked
+  \ quoted, sat at the same index and hid a real operator),
+  \ Iteration 47's literal ";", Iteration 49's group body. Two of
+  \ its call sites were fixed in 28 and GOALS.md has carried "the
+  \ extent of the same hazard at the other call sites is unverified"
+  \ ever since.
+  \
+  \ It is verified now, by deleting the word: the last caller went
+  \ with CMDSUB-TOKENIZE in Iteration 105, and the two loops are one
+  \ loop here. A word that moves words without their flags no longer
+  \ exists to be called by accident. FORTH-STYLE.md section 8, which
+  \ says every copy carries the flags - now by construction rather
+  \ than by remembering.
+  \
+  \ The zero guard is not optional: CAQ-N can be 0 (an empty pipeline
+  \ segment), and this kernel's DO with start = limit runs the entire
+  \ unsigned range.
   {: CAQ-ARGV CAQ-ARGQ CAQ-N :}
+  CAQ-N @ ARGC !
   CAQ-N @ 0 > IF
     CAQ-N @ 0 DO
-      CAQ-ARGQ @ I + C@ ARGV-QUOTED I + C!
+      CAQ-ARGQ @ I +       C@ ARGV-QUOTED I +       C!
+      CAQ-ARGV @ I CELLS + @  ARGV        I CELLS + !
     LOOP
   THEN
-  CAQ-ARGV @ CAQ-N @ COPY-ARGV ;
+  0 ARGV CAQ-N @ CELLS + ! ;
+
 
 
 \ ==================================================================
@@ -3725,7 +3723,7 @@ VARIABLE SG-LEN
 : DO-SUBSHELL ( --- )
   \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
   \ body in ARGV-GROUP-BODY/ARGC-GROUP-BODY. Forks; the child copies
-  \ the body into the global ARGV/ARGC (safe - COPY-ARGV inside a
+  \ the body into the global ARGV/ARGC (safe - COPY-ARGV-Q inside a
   \ freshly forked child is the same pattern RUN-PIPELINE's own sides
   \ already use) and runs it via RUN-TOKENIZED-CALL, so the body's own
   \ ';'/'&&'/'||'/'|' all work normally, then exits with whatever
