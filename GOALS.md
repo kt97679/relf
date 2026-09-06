@@ -165,6 +165,22 @@ the full account and the fixes applied.
 - **License: GPLv2**, matching both upstream `relf.c` and SOD32 (which
   RelF is derived from).
 
+  **GPLv2-only, and it cannot be changed here.** The headers in
+  `relf.c`, `kernel.4` and `cross.4` say "released under the GNU
+  General Public License version 2" with no "or any later version",
+  and GPLv2-only is incompatible with GPLv3. Relicensing would need
+  the copyright holders' permission — Kirill Timofeev for the RelF
+  sources and L.C. Benschop for SOD32, which `relf.c` derives from —
+  and would work against the push-back-to-upstream target above,
+  since a GPLv3 fork could not be merged back.
+
+  Practical consequence, and the reason this came up: **bash's own
+  test files cannot be vendored** (bash is GPLv3). That is no loss.
+  Its tests encode bash behaviour including extensions this shell
+  deliberately does not have, so they would import failures that are
+  not bugs. Using bash as a *live oracle* instead — `tests/diff/` —
+  has the same authority, no licence entanglement, and no bash-isms.
+
 ## Test suite strategy
 
 - Full `forth2012-test-suite` (ANS/Forth-2012) compliance is a long-term
