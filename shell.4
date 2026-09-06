@@ -2612,6 +2612,23 @@ VARIABLE DO-I
   \ "set a b c" replaces whichever positional parameters are currently
   \ active. Scope limit: option flags (-e, -x) are not handled, so
   \ "set -e" would be treated as setting $1 to the literal "-e".
+  \ "set -- a b c" is the standard way to set the parameters safely:
+  \ the "--" marks the end of options so a value beginning with '-'
+  \ is not mistaken for one. It must not itself become $1.
+  ARGC @ 1 > IF
+    S" --" 1 ARGV@ STR0= IF
+      \ shifted in place; SHIFT-ARGV-DOWN itself is defined further
+      \ down the file. ARGC is at least 2 here, so the loop count is
+      \ at least 1 - this kernel's DO with start = limit would run the
+      \ whole unsigned range.
+      ARGC @ 1- 0 DO
+        I 1+ CELLS ARGV + @     I CELLS ARGV + !
+        I 1+ ARGV-QUOTED + C@   I ARGV-QUOTED + C!
+      LOOP
+      ARGC @ 1- ARGC !
+      0 ARGC @ CELLS ARGV + !
+    THEN
+  THEN
   SET-POS-PARAMS-FROM-ARGV
   0 LAST-STATUS ! ;
 
@@ -2719,6 +2736,128 @@ VARIABLE RD-E
   REPEAT
   0 LAST-STATUS ! ;
 
+64 BUFFER: GO-NMBUF
+8  BUFFER: GO-VALBUF
+VARIABLE GO-CPOS      \ character position within the current argument
+VARIABLE GO-LASTIND   \ OPTIND as this word last left it
+VARIABLE GO-IND
+VARIABLE GO-OPTS
+VARIABLE GO-NAME
+VARIABLE GO-ARG
+VARIABLE GO-C
+VARIABLE GO-J
+VARIABLE GO-POS
+VARIABLE GO-NMLEN
+
+: >NM ( c-addr u --- c-addr' )
+  \ NUL-terminated copy of an S" literal, for the shell-variable words
+  \ which all take C strings.
+  DUP GO-NMLEN !
+  GO-NMBUF SWAP MOVE
+  0 GO-NMBUF GO-NMLEN @ + C!
+  GO-NMBUF ;
+
+: GO-OPTIND@ ( --- n )
+  S" OPTIND" >NM LOOKUP-VAR
+  DUP 0= IF DROP 1 EXIT THEN
+  DUP CSTRLEN PARSE-DECIMAL ;
+
+: GO-OPTIND! ( n --- )   N>STR S" OPTIND" >NM SWAP SET-SHVAR ;
+: GO-OPTARG! ( c-addr --- )  S" OPTARG" >NM SWAP SET-SHVAR ;
+
+: GO-SETNAME ( c --- )   \ set the user's variable to one character
+  GO-VALBUF C!  0 GO-VALBUF 1+ C!
+  GO-NAME @ GO-VALBUF SET-SHVAR ;
+
+: GO-FIND-OPT ( c --- pos | -1 )
+  GO-C !
+  0 GO-J !
+  BEGIN GO-J @ GO-OPTS @ CSTRLEN < WHILE
+    GO-OPTS @ GO-J @ + C@ GO-C @ = IF GO-J @ EXIT THEN
+    GO-J @ 1+ GO-J !
+  REPEAT
+  -1 ;
+
+: GO-DONE ( c --- )   \ no more options: set the variable and return 1
+  GO-SETNAME
+  GO-IND @ GO-OPTIND!
+  GO-IND @ GO-LASTIND !
+  1 LAST-STATUS ! ;
+
+: GO-CLEAR-OPTARG ( --- )
+  \ An option that takes no argument leaves OPTARG unset, so a value
+  \ from a previous iteration must not linger - "opt=a arg=val" where
+  \ the val belonged to the -c before it.
+  0 GO-VALBUF C!
+  S" OPTARG" >NM GO-VALBUF SET-SHVAR ;
+
+: GO-STEP ( --- )   \ finished with this character; advance if at end
+  GO-CPOS @ 1+ GO-CPOS !
+  GO-ARG @ GO-CPOS @ + C@ 0= IF
+    GO-IND @ 1+ GO-IND !
+    1 GO-CPOS !
+  THEN ;
+
+: GO-FINISH ( --- )
+  GO-IND @ GO-OPTIND!
+  GO-IND @ GO-LASTIND !
+  0 LAST-STATUS ! ;
+
+: DO-GETOPTS ( --- )
+  \ getopts OPTSTRING NAME - parse the positional parameters one
+  \ option at a time, per POSIX. OPTIND is a shell variable so a
+  \ script can reset it; GO-CPOS tracks the position *within* a
+  \ clustered argument like "-abc" and is reset whenever OPTIND
+  \ changes underneath us, which is how "OPTIND=1" restarts parsing.
+  ARGC @ 3 < IF 2 LAST-STATUS ! EXIT THEN
+  1 ARGV@ GO-OPTS !
+  2 ARGV@ GO-NAME !
+  GO-OPTIND@ GO-IND !
+  GO-IND @ GO-LASTIND @ <> IF 1 GO-CPOS ! THEN
+  GO-CPOS @ 0= IF 1 GO-CPOS ! THEN
+  BEGIN
+    GO-IND @ POS-PARAM-COUNT @ > IF 63 GO-DONE EXIT THEN
+    GO-IND @ 1- POS-PARAM-SLOT GO-ARG !
+    GO-ARG @ C@ 45 <> IF 63 GO-DONE EXIT THEN
+    GO-ARG @ CSTRLEN 1 = IF 63 GO-DONE EXIT THEN
+    GO-ARG @ CSTRLEN 2 = GO-ARG @ 1+ C@ 45 = AND IF
+      GO-IND @ 1+ GO-IND ! 63 GO-DONE EXIT
+    THEN
+    GO-ARG @ GO-CPOS @ + C@ GO-C !
+    GO-C @ 0= IF
+      GO-IND @ 1+ GO-IND !
+      1 GO-CPOS !
+    ELSE
+      GO-C @ GO-FIND-OPT GO-POS !
+      GO-POS @ -1 = IF
+        GO-CLEAR-OPTARG 63 GO-SETNAME GO-STEP GO-FINISH EXIT
+      THEN
+      GO-OPTS @ GO-POS @ 1+ + C@ 58 = IF
+        \ this option takes an argument: the rest of this word if
+        \ there is any, otherwise the whole of the next one
+        GO-CPOS @ 1+ GO-CPOS !
+        GO-ARG @ GO-CPOS @ + C@ 0= IF
+          GO-IND @ 1+ GO-IND !
+          GO-IND @ POS-PARAM-COUNT @ > IF
+            58 GO-SETNAME
+          ELSE
+            GO-IND @ 1- POS-PARAM-SLOT GO-OPTARG!
+            GO-IND @ 1+ GO-IND !
+            GO-C @ GO-SETNAME
+          THEN
+        ELSE
+          GO-ARG @ GO-CPOS @ + GO-OPTARG!
+          GO-IND @ 1+ GO-IND !
+          GO-C @ GO-SETNAME
+        THEN
+        1 GO-CPOS !
+        GO-FINISH EXIT
+      THEN
+      GO-CLEAR-OPTARG GO-C @ GO-SETNAME GO-STEP GO-FINISH EXIT
+    THEN
+  0 UNTIL ;
+
+' DO-GETOPTS      S" getopts"  BUILTIN
 ' DO-READ         S" read"     BUILTIN
 ' DO-FORTH        S" forth"    BUILTIN
 ' DO-COLON        S" :"        BUILTIN

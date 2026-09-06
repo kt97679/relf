@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/shell/run-getopts - the getopts builtin, and 'set --'
+# (Iteration 61). Each case is also checked against bash by hand; the
+# assertions below encode those answers.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'set -- -a -b val -c rest\nwhile getopts "abc:" opt\ndo\n  echo "opt=$opt arg=$OPTARG"\ndone\necho "ind=$OPTIND"\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "flag option"                  "opt=a arg=" "$out"
+assert_output_contains "second flag option"           "opt=b arg=" "$out"
+assert_output_contains "stops at the first non-option" "ind=3"      "$out"
+
+printf 'set -- -c val -a -z\nwhile getopts "abc:" opt\ndo\n  echo "opt=$opt arg=$OPTARG"\ndone\n' > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "option taking a separate argument" "opt=c arg=val" "$out"
+assert_output_contains "OPTARG cleared for a flag option" "opt=a arg=" "$out"
+assert_output_contains "unknown option reported as ?"     "opt=? arg=" "$out"
+
+printf 'set -- -ab -cX\nwhile getopts "abc:" o\ndo\n  echo "o=$o a=$OPTARG"\ndone\n' > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "clustered options (1)"            "o=a a="  "$out"
+assert_output_contains "clustered options (2)"            "o=b a="  "$out"
+assert_output_contains "argument attached to its option"  "o=c a=X" "$out"
+
+printf 'set -- -- -x\necho "1=[$1]"\n' > "$t/d.sh"
+out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "'set --' does not make -- a parameter" "1=[-x]" "$out"
+report

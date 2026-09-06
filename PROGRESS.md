@@ -6100,3 +6100,36 @@ across 50 files plus 1991 core OK markers, both cell widths.
 `command.sh`, `for.sh`, `function.sh`, `return.sh`, `subshell.sh`,
 `readonly.sh`, `2.2-quoted-characters.sh`, and the alias conformance
 case (which needs the shell to reject an invalid alias usage).
+## Iteration 61: `getopts`, and `set --`
+
+`getopts OPTSTRING NAME` parses the positional parameters one option at
+a time: flag options, options taking an argument either attached
+(`-cX`) or separate (`-c val`), clustered options (`-ab`), unknown
+options reported as `?`, and stopping at the first non-option with
+`OPTIND` left pointing at it. Checked case by case against `bash`; the
+stdout now matches exactly.
+
+`OPTIND` is a shell variable so a script can reset it to restart
+parsing. The position *within* a clustered argument is internal state
+(`GO-CPOS`), reset whenever `OPTIND` changes underneath us — which is
+what makes `OPTIND=1` work.
+
+### Two bugs, both found by comparing with bash rather than by reading
+
+- **`set -- -a -b` made `--` into `$1`.** The `--` marks the end of
+  options precisely so a value beginning with `-` is not mistaken for
+  one, and it must not itself become a parameter. Nothing had exercised
+  `set --` before; `getopts` is the first thing that needs it. Fixed in
+  `DO-SET`.
+- **`OPTARG` was not cleared for options that take no argument**, so a
+  value left by an earlier `-c val` showed up against a later `-a`.
+  Exactly the kind of stale-state difference that only appears when
+  diffing against a reference implementation.
+
+### Verified
+
+`tests/shell/run-getopts` (10 assertions) covering all of the above.
+420 assertions across 51 files plus 1991 core OK markers, both cell
+widths. mrsh-suite stays at 9 — `args.sh` also needs `f() ( ... )`,
+a function body written as a subshell, and `command.sh` needs more
+besides.
