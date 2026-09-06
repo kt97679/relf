@@ -6556,3 +6556,54 @@ working, and several arguments with one quoted. 475 assertions across
 58 files plus 1991 core OK markers, both cell widths. mrsh-suite stays
 at 14 — `2.2-quoted-characters.sh` needed this and still needs
 backquotes.
+## Iteration 72: braceless compound function bodies, and functions
+## inside `$(...)` — mrsh 14 -> 15 passed
+
+`function.sh` passes. Two independent gaps, both found by diffing:
+
+**POSIX allows any compound command as a function body**, not only
+`{ }` or `( )`. `f() if true; then echo yes; fi` is valid, and is what
+`function.sh` uses. `DO-FUNCDEF` now detects a compound keyword where
+the body opener would be, stores the rest of the header line as the
+body's first line (`FD-RAW-AFTER-PAREN` shifts `RAW-LINE-BUF` past the
+`)`, which is safe once the header tokens have been read out of
+`ARGV`), and reads further lines only when the construct is not
+already complete on that line — `FDC-BALANCED?` decides which.
+
+**A function or builtin inside `$(...)`** now runs. `output=$(func_a)`
+had been exec'ing, which simply fails to find a function.
+`RUN-CMDSUB-CHILD` moved below `PIPE-STAGE-INTERNAL?` so it can reuse
+that same test — the third caller of it now, after the pipeline and
+groups. Worth noting the shape: "does this have to run inside the
+shell rather than be exec'd" turned out to be one question with three
+callers, not three separate judgements.
+
+### Two bugs of my own, both off-by-one in a depth counter
+
+`FDC-BALANCED?` used `0 <=`, which this kernel does not have — caught
+at load. And the capture loop started its depth at 1 rather than 0, so
+the body's own closing `done` was counted as an inner construct's and
+the capture ran past it: the multi-line braceless case produced
+nothing at all. The depth counts constructs opened *inside* the body;
+the outer one's terminator is what ends the capture.
+
+That is the fifth depth-counting site in this codebase and the second
+to get its starting value wrong. Worth a note for the next audit:
+they are not textually similar enough to merge, but the *initial
+value* is the part that keeps being subtly different.
+
+### Verified
+
+`run-func-subshell` grew to 16 assertions, adding a one-line braceless
+`if` body, a multi-line braceless `while` body (with its body
+correctly not running), and a function and a builtin each inside
+`$(...)`. 481 assertions across 58 files plus 1991 core OK markers,
+both cell widths.
+
+**mrsh-suite: 14 passed -> 15** of 21 scored. Remaining 6: background
+jobs (`async.sh`), compound commands as pipeline stages (`read.sh`),
+`~user` (`word.sh`, needs a password-database primitive the kernel does
+not expose), backquotes (`2.2-quoted-characters.sh`), the alias
+conformance case, and `command.sh` — which is the one deliberately
+left failing on the POSIX-versus-bash alias conflict recorded in
+`GOALS.md`.

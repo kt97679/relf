@@ -3365,16 +3365,6 @@ VARIABLE CAQ-N
   THEN
   CAQ-ARGV @ CAQ-N @ COPY-ARGV ;
 
-: RUN-CMDSUB-CHILD ( --- )  \ resolves CMDSUB-ARGV[0] and execs it -
-                              \ only returns on total failure. Runs
-                              \ within a freshly forked child (see
-                              \ EXPAND-CMDSUB), so overwriting the
-                              \ global ARGV/ARGC here is safe, same
-                              \ reasoning as RUN-PIPELINE's own use of
-                              \ COPY-ARGV.
-  CMDSUB-ARGV CMDSUB-ARGC @ COPY-ARGV
-  RUN-CHILD ;
-' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
 
 \ ==================================================================
 \ Moved ahead of RUN-PIPELINE and RUN-SIMPLE-OR-PIPELINE, both of
@@ -3520,6 +3510,23 @@ VARIABLE PL-J
   0 ARGV-QUOTED@ IF 0 EXIT THEN
   ARGV @ FIND-BUILTIN 0= 0= IF -1 EXIT THEN
   ARGV @ FIND-FUNC -1 <> ;
+
+: RUN-CMDSUB-CHILD ( --- )
+  \ Runs the substituted command inside the child EXPAND-CMDSUB
+  \ forked, so clobbering the global ARGV/ARGC is safe.
+  \
+  \ A function, builtin or group is run in this child rather than
+  \ exec'd - "output=$(func_a)" is ordinary usage, and exec'ing would
+  \ just fail to find it. Same test the pipeline uses, which is why
+  \ this word moved down here: PIPE-STAGE-INTERNAL? is defined just
+  \ above.
+  CMDSUB-ARGV CMDSUB-ARGC @ COPY-ARGV
+  PIPE-STAGE-INTERNAL? IF
+    RUN-TOKENIZED-CALL
+    LAST-STATUS @ SYS-EXIT
+  THEN
+  RUN-CHILD ;
+' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
 
 : RUN-PIPELINE ( --- )
   \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
@@ -4882,6 +4889,67 @@ VARIABLE FDL-I
     0
   THEN ;
 
+VARIABLE FDC-DEPTH
+VARIABLE FDC-I
+
+: FDC-OPENER? ( i --- f )
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN
+  2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
+  2DUP S" while" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
+       S" case"  STR= ;
+
+: FDC-CLOSER? ( i --- f )
+  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
+  ARGV@ DUP CSTRLEN
+  2DUP S" fi"   STR= IF 2DROP -1 EXIT THEN
+  2DUP S" done" STR= IF 2DROP -1 EXIT THEN
+       S" esac" STR= ;
+
+: FDC-BALANCED? ( --- f )
+  \ Is the compound command on this line already complete? "f() if
+  \ true; then x; fi" is; "f() if true" continues on later lines.
+  {: | FDC-I FDC-DEPTH :}
+  BEGIN FDC-I @ ARGC @ < WHILE
+    FDC-I @ FDC-OPENER? IF FDC-DEPTH @ 1+ FDC-DEPTH ! THEN
+    FDC-I @ FDC-CLOSER? IF FDC-DEPTH @ 1- FDC-DEPTH ! THEN
+    FDC-I @ 1+ FDC-I !
+  REPEAT
+  FDC-DEPTH @ 1 < ;
+
+: FDC-LINE-END? ( --- f )   \ closes the compound body, counting nesting
+  S" fi" LINE-IS? S" done" LINE-IS? OR S" esac" LINE-IS? OR IF
+    FDC-DEPTH @ 0 > IF FDC-DEPTH @ 1- FDC-DEPTH ! 0 ELSE -1 THEN
+  ELSE
+    S" if" LINE-IS? S" while" LINE-IS? OR
+    S" for" LINE-IS? OR S" case" LINE-IS? OR IF
+      FDC-DEPTH @ 1+ FDC-DEPTH !
+    THEN
+    0
+  THEN ;
+
+: FD-RAW-AFTER-PAREN ( --- )
+  \ Shift RAW-LINE-BUF left so it starts just past the header's ")",
+  \ leaving the compound command's own text as if it were a line of
+  \ its own - APPEND-RAW-LINE-TO-BODY then stores it unchanged. Safe
+  \ to clobber RAW-LINE-BUF here: the header tokens have already been
+  \ read out of ARGV.
+  0 FDC-I !
+  BEGIN
+    FDC-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF FDC-I @ + C@ 41 <> ELSE 0 THEN
+  WHILE FDC-I @ 1+ FDC-I ! REPEAT
+  FDC-I @ RAW-LINE-LEN @ < IF FDC-I @ 1+ FDC-I ! THEN
+  BEGIN
+    FDC-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF FDC-I @ + C@ WS? ELSE 0 THEN
+  WHILE FDC-I @ 1+ FDC-I ! REPEAT
+  RAW-LINE-LEN @ FDC-I @ - 0 > IF
+    RAW-LINE-BUF FDC-I @ + RAW-LINE-BUF RAW-LINE-LEN @ FDC-I @ - MOVE
+    RAW-LINE-LEN @ FDC-I @ - RAW-LINE-LEN !
+  ELSE
+    0 RAW-LINE-LEN !
+  THEN ;
+
 : DO-FUNCDEF ( --- )
   \ ARGV[0] ends with "()" - a function definition header. Requires
   \ "{" either later on the same line (the common "name() {" style,
@@ -4920,6 +4988,35 @@ VARIABLE FDL-I
   0 ARGC @ CELLS ARGV + !
   ARGC @ 0 > IF
     S" (" 0 ARGV@ STR0= IF -1 FUNCDEF-SUBSHELL? ! THEN
+  THEN
+  \ POSIX allows ANY compound command as a body, not only { } or ( ).
+  \ "f() if true; then x; fi" is valid, and is what function.sh uses.
+  \ Detected here, before the brace/paren path: the rest of the line
+  \ is stored as the body's first line and further lines are read
+  \ until the construct's own terminator.
+  ARGC @ 0 > FUNCDEF-SUBSHELL? @ 0= AND IF
+    0 FDC-OPENER? IF
+      0 WHILE-BODY-LEN !
+      FDC-BALANCED? 0= FDC-DEPTH !
+      FD-RAW-AFTER-PAREN
+      APPEND-RAW-LINE-TO-BODY
+      FDC-DEPTH @ IF
+        \ Depth counts constructs opened INSIDE the body; the outer
+        \ one's own terminator is what ends the capture, so this
+        \ starts at 0 rather than 1.
+        0 FDC-DEPTH !
+        BEGIN
+          READ-NEXT-LOGICAL-LINE
+          FDC-LINE-END? 0=
+        WHILE
+          ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
+        REPEAT
+        APPEND-RAW-LINE-TO-BODY
+      THEN
+      FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
+      SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN
+      EXIT
+    THEN
   THEN
   FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF

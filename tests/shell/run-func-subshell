@@ -35,4 +35,22 @@ printf 'd() {\n  {\n    echo grouped\n  }\n  echo tail\n}\nd\n' > "$t/f.sh"
 out=$("$THIS_SH" "$t/f.sh" 2>/dev/null)
 assert_output_contains "a nested group does not truncate the body" "tail" "$out"
 
+# POSIX allows ANY compound command as a function body, not just {} or ()
+printf 'f() if true; then echo yes; fi\nf\necho after\n' > "$t/g.sh"
+out=$("$THIS_SH" "$t/g.sh" 2>/dev/null)
+assert_output_contains "braceless if body, all on one line" "yes"   "$out"
+assert_output_contains "execution continues afterwards"     "after" "$out"
+
+printf 'g() while false\ndo\n  echo never\ndone\ng\necho ok\n' > "$t/h.sh"
+out=$("$THIS_SH" "$t/h.sh" 2>/dev/null)
+assert_output_contains "braceless while body spanning lines" "ok" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *never*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: false while-body ran";; esac
+
+# a function or builtin inside $(...)
+printf 'k() {\n  echo hi\n}\nout=$(k)\necho "got $out"\nb=$(pwd)\necho "b-set-${b:+yes}"\n' > "$t/i.sh"
+out=$("$THIS_SH" "$t/i.sh" 2>/dev/null)
+assert_output_contains "a function runs inside \$(...)" "got hi"    "$out"
+assert_output_contains "a builtin runs inside \$(...)"  "b-set-yes" "$out"
+
 report
