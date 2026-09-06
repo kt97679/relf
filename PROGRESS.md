@@ -5590,3 +5590,73 @@ ordinary variables still assign, `readonly NAME` on an existing
 variable, and `command -v` on a builtin, a `PATH` command, a function
 and a nonexistent name. 340 assertions across 41 files plus 1991 core
 OK markers, both cell widths.
+## Iteration 52: table-driven DISPATCH, and the `forth` builtin
+
+`DISPATCH` was sixty lines of `S" name" ARGV @ STR0= IF DO-name -1
+EXIT THEN`, one per builtin, and Iteration 51 had to add a *second*
+hand-maintained copy of the same name list for `command -v`. Both are
+now one table.
+
+Registering a builtin is a row:
+
+    ' DO-CD  S" cd"  BUILTIN
+
+A linked list built in the dictionary, not a fixed array, so there is
+no maximum count to pick and get wrong. Entries are
+`[ link | xt | len | name ]`, with link and xt stored as **offsets
+from START** — they go into a saved image, where an absolute address
+is stale on reload. `BUILTIN-NAME?` is now `FIND-BUILTIN 0= 0=`, and
+the duplicated list flagged in Iteration 51 is gone.
+
+Six builtins that were written inline in the chain (`:`, `exit`,
+`return`, `break`, `continue`, `set`) became ordinary words, which is
+what let them go in the table at all.
+
+### The `forth` builtin, discussed in Iteration 38 and finally cheap
+
+Because `BUILTIN` is an ordinary runtime call rather than compiled-in
+syntax, Forth loaded at runtime can register builtins itself. That was
+the whole argument for the table, and it now works end to end:
+
+    forth ': GREET ." hello from forth" CR ;'
+    forth "' GREET S\" greet\" BUILTIN"
+    greet          # -> hello from forth
+
+Defining a Forth word does **not** by itself make it a shell command;
+registering it does. That separation seems right: the shell's namespace
+stays explicit.
+
+Documented caveats, not papered over: arguments arrive already
+tokenized and expanded, so anything Forth must parse itself (a `."`
+string) has to be protected with shell quotes; a Forth error `ABORT`s
+the whole shell; and a word that unbalances the stack corrupts *this*
+process, because there is no isolation. That is the nature of an
+escape hatch into the interpreter the shell is written in.
+
+### A latent hazard this surfaced
+
+`forth` segfaulted immediately. A turnkey image boots from `COLD`
+straight into `MAIN`, so `WARM` and `QUIT` — which set up the search
+order and the input source — **never run**. Nothing in the shell had
+needed them; `EVALUATE` calls `FIND`, which walked an empty search
+order.
+
+`MAIN` now does that initialization itself, at the boot word, rather
+than changing `COLD`: it keeps the kernel unchanged and keeps the
+setup next to the reason for it. Worth recording that Iteration 40
+noticed WARM/QUIT don't run in a turnkey image and judged it harmless;
+it was harmless for exactly twelve iterations.
+
+### Verified
+
+`tests/shell/run-forth` (11 assertions): `forth` evaluating an
+expression, a shell-registered builtin running, every builtin still
+reachable through the table via `command -v`, and `command -v`
+correctly silent on a nonexistent name. 351 assertions across 42 files
+plus 1991 core OK markers, both cell widths. mrsh-suite unchanged at 6,
+as expected for a refactor plus an extension mechanism no vendored
+test uses.
+
+`shell.4` grew slightly (4759 lines) because six inline builtins became
+named words with their own comments — the repeated *shape* is gone,
+which was the point.

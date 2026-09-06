@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/shell/run-forth - the table-driven builtin dispatch and the
+# `forth` escape hatch (Iteration 52).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+out=$("$THIS_SH" -c 'forth 2 3 + . CR' 2>/dev/null)
+assert_output_contains "forth evaluates an expression" "5" "$out"
+
+# Arguments arrive already tokenized and expanded, so anything Forth
+# needs to parse itself (a ." string) must be protected by shell quotes.
+cat > "$t/a.sh" <<'X'
+forth ': GREET ." hello from forth" CR ;'
+forth "' GREET S\" greet\" BUILTIN"
+greet
+X
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "a shell-registered builtin runs" "hello from forth" "$out"
+
+# every builtin still reachable through the table
+for b in cd pwd export unset shift readonly command test; do
+    o=$("$THIS_SH" -c "command -v $b" 2>/dev/null)
+    assert_output_contains "builtin '$b' is in the table" "$b" "$o"
+done
+
+out=$("$THIS_SH" -c 'command -v nosuchcommandxyz' 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+[ -z "$out" ] || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: command -v reported a nonexistent name: $out"; }
+report

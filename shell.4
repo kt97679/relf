@@ -2097,33 +2097,64 @@ VARIABLE DA-EQ
   ARGV @ SWAP DO-ASSIGN-AT
   0 LAST-STATUS ! ;
 
+\ ==================================================================
+\ The builtin table
+\ ==================================================================
+\ DISPATCH used to be sixty lines of
+\ `S" name" ARGV @ STR0= IF DO-name -1 EXIT THEN`, one per builtin,
+\ and `command -v` needed a second hand-maintained copy of the same
+\ name list. Both are replaced by one table: registering a builtin is
+\ adding a row, and every consumer reads the same rows.
+\
+\ A linked list built in the dictionary rather than a fixed array, so
+\ there is no maximum number of builtins to pick and get wrong. Each
+\ entry is [ link | xt | len | name bytes ], where link and xt are
+\ OFFSETS from START - they are written into an image, and an
+\ absolute address there is stale the moment it reloads (see
+\ FORTH-STYLE.md).
+\
+\ Because registration is a runtime call rather than compiled-in
+\ syntax, Forth code loaded later can add builtins the same way -
+\ which is the mechanism the `forth` builtin discussed in Iteration
+\ 38 needs.
+
+VARIABLE BUILTIN-LIST   0 BUILTIN-LIST !
+VARIABLE BI-XT
+VARIABLE BI-ADDR
+VARIABLE BI-LEN
+VARIABLE BI-HERE
+
+: BUILTIN ( xt c-addr u --- )
+  {: BI-XT BI-ADDR BI-LEN | BI-HERE :}
+  HERE BI-HERE !
+  BUILTIN-LIST @ ,
+  BI-XT @ START @ - ,
+  BI-LEN @ ,
+  BI-ADDR @ HERE BI-LEN @ MOVE
+  BI-LEN @ ALLOT
+  ALIGN
+  BI-HERE @ START @ - BUILTIN-LIST ! ;
+
+VARIABLE FB-NAME
+VARIABLE FB-E
+
+: FIND-BUILTIN ( c-addr --- xt | 0 )
+  {: FB-NAME | FB-E :}
+  BUILTIN-LIST @ FB-E !
+  BEGIN FB-E @ WHILE
+    FB-E @ START @ +
+    DUP 3 CELLS +  OVER 2 CELLS + @   ( entry name-addr name-len )
+    FB-NAME @ STR0= IF
+      CELL+ @ START @ + EXIT
+    THEN
+    @ FB-E !
+  REPEAT
+  0 ;
+
+: BUILTIN-NAME? ( c-addr --- f )  FIND-BUILTIN 0= 0= ;
+
 VARIABLE DO-I
 
-: BUILTIN-NAME? ( c-addr --- f )
-  \ Is this the name of a shell builtin? Used only by `command -v`.
-  \
-  \ DUPLICATION, acknowledged: this list has to be kept in step with
-  \ DISPATCH's own chain by hand, which FORTH-STYLE.md says not to do
-  \ - two copies can disagree. The real fix is making DISPATCH
-  \ table-driven (name -> xt), after which both this and DISPATCH read
-  \ the one table, and registering a builtin becomes adding a row.
-  \ That refactor is the next item; recorded here rather than left for
-  \ someone to discover.
-  DUP S" :"        ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" test"     ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" ["        ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" cd"       ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" pwd"      ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" export"   ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" unset"    ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" exit"     ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" return"   ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" break"    ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" continue" ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" set"      ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" shift"    ROT STR0= IF DROP -1 EXIT THEN
-  DUP S" readonly" ROT STR0= IF DROP -1 EXIT THEN
-      S" command"  ROT STR0= ;
 
 : MARK-READONLY ( name-addr --- )
   FIND-SHVAR DUP -1 = IF DROP EXIT THEN
@@ -2209,73 +2240,113 @@ VARIABLE DO-I
   ARGV 2 CELLS + @ ARGV 1 CELLS + !   \ PATH-LOOKUP? reads ARGV[1]
   PATH-LOOKUP? 0= IF 1 LAST-STATUS ! THEN ;
 
+
+\ The builtins that used to be written inline in DISPATCH's chain.
+
+: DO-COLON ( --- )  0 LAST-STATUS ! ;
+
+: DO-EXIT ( --- )
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SYS-EXIT
+  ELSE
+    LAST-STATUS @ SYS-EXIT
+  THEN ;
+
+: DO-RETURN ( --- )
+  ARGC @ 1 > IF
+    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL LAST-STATUS !
+  THEN
+  FUNC-DEPTH @ 0 > IF
+    -1 RETURN-PENDING? !
+  ELSE
+    ." return: not in a function" CR
+  THEN ;
+
+: DO-BREAK ( --- )
+  LOOP-DEPTH @ 0 > IF
+    -1 LOOP-CONTROL-PENDING? !  -1 LOOP-BREAK? !  0 LAST-STATUS !
+  ELSE
+    ." break: not in a loop" CR  1 LAST-STATUS !
+  THEN ;
+
+: DO-CONTINUE ( --- )
+  LOOP-DEPTH @ 0 > IF
+    -1 LOOP-CONTROL-PENDING? !  0 LAST-STATUS !
+  ELSE
+    ." continue: not in a loop" CR  1 LAST-STATUS !
+  THEN ;
+
+: DO-SET ( --- )
+  \ "set a b c" replaces whichever positional parameters are currently
+  \ active. Scope limit: option flags (-e, -x) are not handled, so
+  \ "set -e" would be treated as setting $1 to the literal "-e".
+  SET-POS-PARAMS-FROM-ARGV
+  0 LAST-STATUS ! ;
+
+LINE-MAX BUFFER: FORTH-BUF
+VARIABLE FTH-LEN
+VARIABLE FA-ADDR
+VARIABLE FA-LEN
+VARIABLE FTH-I
+
+: FORTH-APPEND ( c-addr u --- )
+  {: FA-ADDR FA-LEN :}
+  FTH-LEN @ FA-LEN @ + 1+ LINE-MAX < IF
+    FA-ADDR @ FORTH-BUF FTH-LEN @ + FA-LEN @ MOVE
+    FTH-LEN @ FA-LEN @ + FTH-LEN !
+    32 FORTH-BUF FTH-LEN @ + C!
+    FTH-LEN @ 1+ FTH-LEN !
+  THEN ;
+
+: DO-FORTH ( --- )
+  \ forth WORDS... - hand the rest of the line to the Forth
+  \ interpreter. This is the extension mechanism discussed back in
+  \ Iteration 38: the shell is written in Forth and the interpreter is
+  \ already present, so an escape hatch costs almost nothing - and
+  \ because BUILTIN is an ordinary runtime call, Forth loaded this way
+  \ can register further builtins itself.
+  \
+  \ The arguments arrive already tokenized and expanded, so $VAR works
+  \ and quoting is the shell's, not Forth's; they are rejoined with
+  \ single spaces, which is fine for Forth's own whitespace-delimited
+  \ syntax. Caveats, deliberately not papered over: a Forth error
+  \ ABORTs the whole shell, and a word that unbalances the stack
+  \ corrupts this shell rather than a child process, because there is
+  \ no isolation. That is the nature of the facility.
+  {: | FTH-I :}
+  0 FTH-LEN !
+  1 FTH-I !
+  BEGIN FTH-I @ ARGC @ < WHILE
+    FTH-I @ ARGV@ DUP CSTRLEN FORTH-APPEND
+    FTH-I @ 1+ FTH-I !
+  REPEAT
+  FORTH-BUF FTH-LEN @ EVALUATE
+  0 LAST-STATUS ! ;
+
+' DO-FORTH        S" forth"    BUILTIN
+' DO-COLON        S" :"        BUILTIN
+' DO-TEST         S" test"     BUILTIN
+' DO-BRACKET-TEST S" ["        BUILTIN
+' DO-CD           S" cd"       BUILTIN
+' DO-PWD          S" pwd"      BUILTIN
+' DO-EXPORT       S" export"   BUILTIN
+' DO-UNSET        S" unset"    BUILTIN
+' DO-EXIT         S" exit"     BUILTIN
+' DO-RETURN       S" return"   BUILTIN
+' DO-BREAK        S" break"    BUILTIN
+' DO-CONTINUE     S" continue" BUILTIN
+' DO-SET          S" set"      BUILTIN
+' DO-SHIFT        S" shift"    BUILTIN
+' DO-READONLY     S" readonly" BUILTIN
+' DO-COMMAND      S" command"  BUILTIN
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
+  \ A quoted 'cd' is a literal argument, not the builtin - same
+  \ reasoning as ARGV-QUOTED everywhere else. Functions are checked
+  \ after builtins, so a builtin name cannot be overridden by a
+  \ function, matching real shells.
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
-    S" :"      ARGV @ STR0= IF 0 LAST-STATUS ! -1 EXIT THEN
-    S" test"   ARGV @ STR0= IF DO-TEST -1 EXIT THEN
-    S" ["      ARGV @ STR0= IF DO-BRACKET-TEST -1 EXIT THEN
-    S" cd"     ARGV @ STR0= IF DO-CD -1 EXIT THEN
-    S" pwd"    ARGV @ STR0= IF DO-PWD -1 EXIT THEN
-    S" export" ARGV @ STR0= IF DO-EXPORT -1 EXIT THEN
-    S" unset"  ARGV @ STR0= IF DO-UNSET -1 EXIT THEN
-    S" exit"   ARGV @ STR0= IF
-      ARGC @ 1 > IF
-        ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SYS-EXIT
-      ELSE
-        LAST-STATUS @ SYS-EXIT
-      THEN
-    THEN
-    S" return" ARGV @ STR0= IF
-      ARGC @ 1 > IF
-        ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL LAST-STATUS !
-      THEN
-      FUNC-DEPTH @ 0 > IF
-        -1 RETURN-PENDING? !
-      ELSE
-        ." return: not in a function" CR
-      THEN
-      -1 EXIT
-    THEN
-    S" break" ARGV @ STR0= IF
-      LOOP-DEPTH @ 0 > IF
-        -1 LOOP-CONTROL-PENDING? !
-        -1 LOOP-BREAK? !
-        0 LAST-STATUS !
-      ELSE
-        ." break: not in a loop" CR
-        1 LAST-STATUS !
-      THEN
-      -1 EXIT
-    THEN
-    S" continue" ARGV @ STR0= IF
-      LOOP-DEPTH @ 0 > IF
-        -1 LOOP-CONTROL-PENDING? !
-        0 LAST-STATUS !
-      ELSE
-        ." continue: not in a loop" CR
-        1 LAST-STATUS !
-      THEN
-      -1 EXIT
-    THEN
-    S" shift"    ARGV @ STR0= IF DO-SHIFT -1 EXIT THEN
-    S" readonly" ARGV @ STR0= IF DO-READONLY -1 EXIT THEN
-    S" command"  ARGV @ STR0= IF DO-COMMAND -1 EXIT THEN
-    S" set" ARGV @ STR0= IF
-      \ "set a b c" replaces whatever positional parameters are
-      \ currently active (the current function's own, if called from
-      \ within one, or the top level/script's own otherwise) with
-      \ a/b/c - SET-POS-PARAMS-FROM-ARGV already does exactly this,
-      \ since it just populates POS-PARAMS/POS-PARAM-COUNT from
-      \ whatever's currently in ARGV[1..], the same shape "set" itself
-      \ needs. Scope limit: real "set" also supports option flags
-      \ (-e, -x, etc.) with no positional-parameter arguments at all -
-      \ not handled here, so "set -e" would be (mis)treated as setting
-      \ $1 to the literal string "-e" instead. A real, if less
-      \ commonly hit, gap worth closing later.
-      SET-POS-PARAMS-FROM-ARGV
-      0 LAST-STATUS !
-      -1 EXIT
-    THEN
+    ARGV @ FIND-BUILTIN ?DUP IF EXECUTE -1 EXIT THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
       RUN-FUNC-BODY-CALL -1 EXIT
     THEN
@@ -4717,6 +4788,18 @@ VARIABLE SHC-LEN
   \ word, rather than relying on it happening to be zero because no
   \ loop ran during the image build.
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
+  \ A turnkey image boots straight here from COLD, so WARM and QUIT -
+  \ which normally set up the search order and the input source -
+  \ never run. Nothing in the shell needed them until the `forth`
+  \ builtin, whose EVALUATE calls FIND and segfaulted on an empty
+  \ search order. Doing that setup here rather than in COLD keeps the
+  \ kernel unchanged and keeps it where the reason for it lives.
+  2 #ORDER !
+  FORTH-WORDLIST CONTEXT !
+  FORTH-WORDLIST CONTEXT CELL+ !
+  FORTH-WORDLIST CURRENT !
+  TIB SRC !  0 SID !
+  INCLUDE-BUFFER INCLUDE-POINTER !
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG SH-C
