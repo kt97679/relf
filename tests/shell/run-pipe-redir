@@ -1,0 +1,27 @@
+#!/bin/sh
+# tests/shell/run-pipe-redir - redirection on a pipeline stage
+# (Iteration 58). Retires the pipe/redirect exclusion from Iteration 7.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+"$THIS_SH" -c "echo hi | cat > $t/o" 2>/dev/null
+TESTS_RUN=$((TESTS_RUN + 1))
+grep -q hi "$t/o" 2>/dev/null || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: '> file' on the last stage"; }
+
+printf 'from-file\n' > "$t/in"
+out=$("$THIS_SH" -c "cat < $t/in | tr a-z A-Z" 2>/dev/null)
+assert_output_contains "'< file' on the first stage" "FROM-FILE" "$out"
+
+out=$("$THIS_SH" -c 'ls /nonexistent-zz 2>/dev/null | cat; echo ok' 2>&1)
+assert_output_contains "'2>/dev/null' on a stage" "ok" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *"No such file"*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: stderr leaked from a pipeline stage";; esac
+
+printf 'cat <<EOF | tr a-z A-Z\nxy\nEOF\necho done\n' > "$t/h.sh"
+out=$("$THIS_SH" "$t/h.sh" 2>/dev/null)
+assert_output_contains "here-document into a pipeline" "XY" "$out"
+assert_output_contains "execution continues afterwards" "done" "$out"
+
+out=$("$THIS_SH" -c 'echo a | cat | cat' 2>/dev/null)
+assert_output_contains "plain pipelines unaffected" "a" "$out"
+report

@@ -3176,6 +3176,15 @@ VARIABLE PL-J
         PL-RD @ CLOSE-FILE DROP
       THEN
       PIPE-SEG-TO-ARGV
+      \ Redirections on this stage are parsed and applied here, AFTER
+      \ the pipe's own dup2s, so an explicit "> file" on a stage
+      \ overrides the pipe as POSIX requires. This retires the
+      \ "pipes and redirection are mutually exclusive" limit recorded
+      \ in Iteration 7: stages used to go straight to RUN-CHILD with
+      \ their redirection tokens still in ARGV, where the command saw
+      \ them as ordinary arguments.
+      PARSE-REDIRECTIONS
+      APPLY-REDIRECTIONS
       PIPE-STAGE-INTERNAL? IF
         RUN-TOKENIZED-CALL
         LAST-STATUS @ SYS-EXIT

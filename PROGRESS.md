@@ -5964,3 +5964,52 @@ assignment correctly *not* escaping the subshell, external pipelines
 unchanged, and groups as stages still working. 389 assertions across 47
 files plus 1991 core OK markers, both cell widths. mrsh-suite unchanged
 at 8, for the reason above.
+## Iteration 58: redirection on pipeline stages
+
+`echo hi | cat > file`, `cat < file | tr`, `ls 2>/dev/null | cat` and
+`cat <<EOF | tr` all work. This retires the "pipes and redirection are
+mutually exclusive" limit recorded in Iteration 7 — a stage used to go
+straight to `RUN-CHILD` with its redirection tokens still in `ARGV`,
+where the command saw them as ordinary arguments (`cat: '>': No such
+file or directory`).
+
+Two lines in the pipeline child: parse and apply the stage's
+redirections **after** the pipe's own `dup2`s, so an explicit
+`> file` on a stage overrides the pipe, as POSIX requires. It works for
+internal stages too, since a builtin running in that child inherits
+the descriptors just as an exec'd command would.
+
+Here-documents into pipelines came for free, which retires one of the
+three limits recorded in Iteration 56 — the test file's note is
+updated rather than left stale.
+
+### The attempt I abandoned, and why
+
+This iteration was meant to be compound commands as pipeline stages,
+for `read.sh`'s `printf "a\\nb\\nc\\n" | while read line; ...`. The plan
+from Iteration 57 was to capture the construct's body before forking.
+Working through it found a **second** structural obstacle beyond the
+file-offset race:
+
+`DO-WHILE` takes its condition from the **raw line text**
+(`SAVE-WHILE-COND` skips the literal `while` at the start of
+`RAW-LINE-BUF`). For a pipeline stage the raw line is the whole
+pipeline — `printf ... | while read line` — so the condition text would
+be wrong. And the condition cannot simply be taken from the already
+tokenized `ARGV` instead, because it is deliberately kept raw so
+`$VAR`/`$?` re-expand on every iteration; that was the entire design
+problem of Iteration 11.
+
+So making this work needs the raw text of *one stage*, which means
+splitting the raw line at unquoted `|` the way `RAW-LAST-SEMI` splits
+at `;` for `while COND; do`. That is a real piece of work and now a
+known one. Recorded rather than half-attempted: shipping a broken
+capture would have been worse than shipping this instead.
+
+### Verified
+
+`tests/shell/run-pipe-redir` (7 assertions): `>` on the last stage,
+`<` on the first, `2>/dev/null` on a stage with stderr confirmed not
+leaking, a here-document into a pipeline, and plain pipelines
+unaffected. 396 assertions across 48 files plus 1991 core OK markers,
+both cell widths. mrsh-suite unchanged at 8.

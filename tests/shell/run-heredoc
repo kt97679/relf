@@ -20,9 +20,8 @@ assert_output_contains "<<- finds an indented delimiter" "done" "$out"
 #  - it cannot feed a BUILTIN's stdin ("read a b <<EOF"), because
 #    redirection is applied in the forked child and builtins do not
 #    fork; that needs the redirection undo list (Iteration 55).
-#  - it cannot be combined with a pipe ("cat <<EOF | tr ..."), because
-#    pipeline stages bypass PARSE-REDIRECTIONS entirely - the
-#    pipe/redirect exclusion recorded back in Iteration 7.
+#  - combining it with a pipe DOES work as of Iteration 58; see
+#    run-pipe-redir.
 
 printf 'cat <<EOF\nEOF\necho empty-ok\n' > "$t/d.sh"
 out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
