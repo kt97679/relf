@@ -120,7 +120,14 @@ for a body line can be built once and only `EXPAND-WORDS` re-run per
 iteration. This is where the loop benchmark improves; measure with
 `tests/bench` and record the number.
 
-**Stage 3 — nested `$(...)`.**
+**Stage 3 — nested `$(...)`. Done in Iteration 105, ahead of this
+plan and without needing it.** Not by saving and restoring parser
+state: the substituted text became a replay input source read through
+the real tokenizer in the forked child, which has its own copy of
+every buffer, so there was no state to save. `CMDSUB-TOKENIZE` is
+deleted. `2.2-quoted-characters.sh` passes. Original text follows.
+
+
 With expansion a separate pass, a command substitution can invoke the
 real tokenizer recursively with `)` as a context-dependent terminator,
 saving and restoring parser state — Ramey's recommendation, and the
@@ -128,10 +135,9 @@ thing `CMDSUB-TOKENIZE` should be *replaced* by rather than extended a
 fourth time (Iterations 71, 73). This closes
 `2.2-quoted-characters.sh`.
 
-**Stage 4 — retire the recorded limitations.**
-`FOO=bar; echo $FOO` and `set a b c; echo $#` should now work. Add
-differential cases for both, and delete the limitation notes in
-`GOALS.md` rather than leaving them to mislead.
+**Stage 4 — retire the recorded limitations. Done in Iteration 115.**
+Both work. `tests/diff/cases/same-line-expansion.sh` covers them, and
+the notes in `GOALS.md` are gone rather than left to mislead.
 
 ## Risks, and how to keep them small
 

@@ -678,14 +678,12 @@ This was the blocker in front of the `forth` builtin.
      previous one's own exit status, recursively handling any number
      of segments. Surfaced a real, pre-existing architectural
      limitation rather than introducing one: `FOO=bar ; echo $FOO`
-     doesn't see the just-assigned value, because `$VAR` expansion
-     happens once for the *entire* raw line during the initial
-     tokenize pass, before any `;`-segment has actually run (the same
-     assignment on its own, separate line works correctly) — a proper
-     fix means tokenizing/expanding each `;`-separated piece
-     independently in sequence rather than the whole line up front, a
-     real architectural change left for its own future iteration; see
-     `PROGRESS.md`'s Iteration 18 entry for the full account.
+     did not see the just-assigned value, because expansion happened
+     once for the *entire* raw line during tokenizing, before any
+     `;`-segment had run. **Fixed in Iteration 114**, by the staged
+     change `PARSE-EXPAND-PLAN.md` describes: a word is expanded when
+     its command runs. `PROGRESS.md`'s Iteration 18 entry has the
+     original account and 114's has the fix.
 
      `&&`/`||` (conditional chaining): **done (Iteration 19)** —
      left-associative, equal precedence for both, evaluated left to
@@ -1305,14 +1303,13 @@ than when its line is read, which took the mrsh suite to its ceiling
 of 19 of 21. Stages 2 and 3 remain, and the ~190x pure-loop cost is
 Stage 2's business.
 
-The one remaining structural change in `shell.4` — separating
-tokenizing from expansion — has a staged plan of its own. It is worth
-doing as one deliberate piece because three otherwise-unrelated
-problems share its root: the `FOO=bar; echo $FOO` and
-`set a b c; echo $#` limitations, the whole `ENSURE-ROOM` smear bug
-class, and the ~190x pure-loop performance gap measured in
-`tests/bench`. Read that file before starting; each of its four stages
-must leave the full suite green and be committed separately.
+Stages 3 and 4 are done as well — nested `$(...)` in Iteration 105,
+and the limitation notes retired in 115. What remains of that plan is
+**Stage 2**, caching tokenized body lines, which is where the ~190x
+pure-loop gap measured in `tests/bench` is addressed and the only
+stage whose justification is speed rather than correctness. Read that
+file before starting; each stage must leave the full suite green and
+be committed separately.
 
 ## Shell architecture: what bash does differently (read, Iteration 48)
 
@@ -1338,25 +1335,42 @@ destination is right, not that we have arrived.
    `ARGV-NAME-QUOTED` beside it — and *every* stale-flag bug this
    project has had (Iteration 28's vanishing `&&`, Iteration 47's
    literal `;`) is `COPY-ARGV` moving words without their flags.
-   Bash's shape makes that class impossible. Small, concrete, worth
-   doing.
-2. **Parse first, expand after.** Bash parses to a command structure,
-   *then* expands words. `shell.4` expands during tokenization, in
-   place, once per raw line — the single root of `FOO=bar; echo $FOO`
+   Bash's shape makes that class impossible.
+
+   Half-addressed in Iteration 109: the bare `COPY-ARGV` was deleted
+   rather than audited, so a word that moves words without their flags
+   no longer exists to be called. The parallel arrays themselves
+   remain, and Iteration 114 hit the same shape from a different
+   direction — a global "is this list expanded" flag that did not
+   travel with a copied segment. Still worth doing.
+2. **Parse first, expand after. Done** (Iterations 108-114). Bash
+   parses to a command structure, *then* expands words. `shell.4` used
+   to expand during tokenization, in place, once per raw line — the
+   single root of `FOO=bar; echo $FOO`
    not seeing the value (Iteration 18), `set a b c; echo $#` reporting
    0 (Iteration 45), and the whole `ENSURE-ROOM` smear class
-   (Iterations 26, 46). With expansion as a separate stage producing
-   new word lists, the smear cannot occur — there is no shared buffer
-   to overrun. This is the large one, and the natural end point of the
-   parser work.
-3. **Command substitution should reuse the real parser**, with `)`
-   flagged as EOF in that context and parser state saved/restored
-   around a recursive parse. That is the Phase E design. Ramey
-   explicitly regrets the alternative: bash's `parse_comsub` *"knows
-   an uncomfortable amount of shell syntax and duplicates rather more
-   of the token-reading code than is optimal"* — which is precisely
-   what `CMDSUB-TOKENIZE` is. Go to the reuse approach rather than
-   improving the duplicate. Locals make the state save/restore cheap.
+   (Iterations 26, 46, 99, 103). Expansion is now `EXPAND-WORDS`, run
+   when a command runs and writing into its own buffer: all three are
+   fixed, and the smear class cannot recur because there is no shared
+   buffer to overrun.
+
+   Still short of Ramey's shape: he expands words hanging off a
+   command *tree*, and this is still a flat token array with splitting
+   passes over it. The destination is right; this is one step closer
+   to it, not at it.
+
+3. **Command substitution should reuse the real parser. Done**
+   (Iteration 105), though not by this route: the substituted text
+   became a replay input source read through the real tokenizer in the
+   forked child, which already has its own copy of every buffer, so
+   there was no state to save. `CMDSUB-TOKENIZE` is deleted, which was
+   the point: Ramey regrets that bash's `parse_comsub` *"knows an
+   uncomfortable amount of shell syntax and duplicates rather more of
+   the token-reading code than is optimal"*, and that word was
+   precisely it. The route sketched here — `)` flagged as EOF in that
+   context, parser state saved and restored around a recursive parse —
+   turned out not to be needed once the work happened in the child.
+
 4. **Redirections need an undo list.** Their effects must not persist
    beyond the command, however the command is implemented. `shell.4`
    sidesteps this by only applying redirection in the forked child,
