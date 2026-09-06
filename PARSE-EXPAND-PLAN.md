@@ -77,6 +77,19 @@ in agreement with itself. Any other approach gives this codebase two
 answers to the same question, which FORTH-STYLE.md §11 is entirely
 about.
 
+  **One obstacle to check first**, found while scoping this: not every
+  caller of `TOKENIZE` has normalized. `DO-WHILE` re-tokenizes its
+  stored condition text directly - `WHILE-COND-BUF @ BODY@ LINE-BUF
+  MOVE` then `TOKENIZE`, with no `NORMALIZE-OPERATORS` in between -
+  because `SAVE-WHILE-COND` stores the RAW line. So `TOKENIZE` cannot
+  simply consume spans that `NORMALIZE-OPERATORS` produced; that path
+  has to be routed through normalization first. Worth doing on its own
+  merits: it also means a condition with a fused operator
+  (`while a;b`) is not normalized today, which is a latent bug nobody
+  has hit. Check `TRY-ALIAS` and `PREPARE-COMPOUND-PIPE` the same way
+  before starting - both call `TOKENIZE` and both do normalize, but
+  confirm rather than assume.
+
 *Deciding where `EXPAND-WORDS` runs.* This is the real work, and it is
 an audit rather than a design problem. Every reader of `ARGV` has to
 be classified as wanting raw words or expanded ones, because with
