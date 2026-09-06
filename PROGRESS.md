@@ -7744,3 +7744,44 @@ from a quoted word.
 space-containing parameter, `$#`, indexed access and the empty case.
 507 assertions across 62 files, 12 differential cases, 1991 core OK
 markers, both cell widths, mrsh 17 of 21.
+## Iteration 100: `"$@"` as separate fields
+
+`"$@"` now produces one field per positional parameter — the last
+independent item in `word.sh`.
+
+It is the one expansion POSIX allows to yield several fields from a
+*quoted* word, so it cannot go through `EMIT-EXPANDED-CHAR`, which
+suppresses splitting inside quotes correctly for everything else. It
+calls `IFS-SPLIT-HERE` directly instead. `$@` and `$*` differ only
+inside quotes; unquoted they behave alike, because the joining space is
+then an ordinary IFS character and normal splitting finishes the job —
+which is why one shared word had sufficed until now.
+
+**And an unsatisfied `"$@"` produces no field at all.** With no
+positional parameters, `n "$@"` passes zero arguments where any other
+quoted empty word passes one. That interacts with the empty-field rule
+from Iteration 86, which deliberately keeps quoted empties: the
+exception is recorded when `$@` expands to nothing at the start of a
+word and acted on when the token ends, since `"x$@y"` is still the
+single field `xy` and that is not knowable at expansion time.
+
+### On the process
+
+Three attempts at the edit failed on stale `assert` text — the source
+had moved under comments written in Iterations 99 and earlier. Reading
+the current text first would have cost one command instead of three.
+Worth remembering that a patch keyed to a comment is keyed to the most
+volatile part of the file.
+
+### Where `word.sh` stands
+
+One difference left: `c=""; echo ${c:=GOOD}` on a single line, which
+prints the old value. That is the stale-expansion limitation — Stage 1
+of `PARSE-EXPAND-PLAN.md` — and nothing smaller remains.
+
+### Verified
+
+`tests/diff/cases/posparams.sh` extended with all four `$@`/`$*` field
+counts, an empty `"$@"`, and `"x$@y"`. 507 assertions across 62 files,
+12 differential cases, 1991 core OK markers, both cell widths, mrsh 17
+of 21.

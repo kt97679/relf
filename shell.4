@@ -1581,12 +1581,29 @@ VARIABLE ARITH-DEPTH
   THEN ;
 
 VARIABLE EAP-I
+VARIABLE EAP-AT
+VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
 
-: EMIT-ALL-POS-PARAMS ( --- )
-  \ Emits every positional parameter, space-separated - the shared
-  \ implementation for both $@ and $* (see EXPAND-VAR's own comment on
-  \ why they're not yet distinguished).
-  {: | EAP-I :}
+: EMIT-ALL-POS-PARAMS ( at? --- )
+  \ Emits every positional parameter. at? distinguishes $@ from $*,
+  \ which differ only INSIDE double quotes: "$@" gives one field per
+  \ parameter, "$*" one field with them joined. Unquoted they behave
+  \ alike, because the joining space is then an ordinary IFS character
+  \ and normal splitting does the rest.
+  \
+  \ "$@" is the one expansion POSIX allows to produce several fields
+  \ from a quoted word, so it cannot go through EMIT-EXPANDED-CHAR -
+  \ which suppresses splitting inside quotes, correctly, for
+  \ everything else - and calls IFS-SPLIT-HERE directly.
+  {: EAP-AT | EAP-I :}
+  \ POSIX: "$@" with no positional parameters produces NO field, where
+  \ any other quoted empty word produces one. Recorded here and acted
+  \ on when the token ends, since whether the word is empty overall is
+  \ not known yet - "x$@y" is still a single field "xy".
+  EAP-AT @ POS-PARAM-COUNT @ 0= AND
+  TOK-OUT @ ARGV ARGC @ CELLS + @ = AND IF
+    -1 EMPTY-AT-WORD? !
+  THEN
   BEGIN EAP-I @ POS-PARAM-COUNT @ < WHILE
     \ The separator needs room reserved just as the parameters do.
     \ Without this each one overwrote a byte of unread input, so
@@ -1594,7 +1611,13 @@ VARIABLE EAP-I
     \ the same in-place-growth hazard as the numeric expansions in
     \ Iteration 46, in the one place that emits a character of its own
     \ rather than copying a value.
-    EAP-I @ 0 > IF 1 ENSURE-ROOM 32 EMIT-EXPANDED-CHAR THEN
+    EAP-I @ 0 > IF
+      EAP-AT @ IN-DQ-CONTEXT? @ AND IF
+        IFS-SPLIT-HERE
+      ELSE
+        1 ENSURE-ROOM 32 EMIT-EXPANDED-CHAR
+      THEN
+    THEN
     EAP-I @ POS-PARAM-SLOT DUP CSTRLEN ENSURE-ROOM TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !
   REPEAT ;
@@ -1810,9 +1833,14 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
     POS-PARAM-COUNT @ EMIT-DECIMAL-EXPANDED
     EXIT
   THEN
-  DUP 64 = OVER 42 = OR IF        ( $@ / $* - both space-joined for now )
+  DUP 64 = IF                     ( $@ )
     DROP TOK-POS @ 1+ TOK-POS !
-    EMIT-ALL-POS-PARAMS
+    -1 EMIT-ALL-POS-PARAMS
+    EXIT
+  THEN
+  DUP 42 = IF                     ( $* )
+    DROP TOK-POS @ 1+ TOK-POS !
+    0 EMIT-ALL-POS-PARAMS
     EXIT
   THEN
   DUP 40 = IF                     \ command substitution, or
@@ -2077,6 +2105,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     TOK-POS @ TOK-OUT !      ( always safe to compact in place, even
                                 if this token won't end up recorded )
     0 TOK-WAS-QUOTED? !
+    0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
     0 IN-DQ-CONTEXT? !
     ARGC @ MAX-ARGS 1- < IF
@@ -2096,7 +2125,7 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
       \ "" from ${nope:-}. ARGV-NAME-QUOTED records an actual leading
       \ quote character, which is the question being asked here.
       ARGV ARGC @ CELLS + @ C@ 0=
-      ARGV-NAME-QUOTED ARGC @ + C@ 0= AND IF
+      ARGV-NAME-QUOTED ARGC @ + C@ 0= EMPTY-AT-WORD? @ OR AND IF
         TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )
       ELSE
         ARGC @ 1+ ARGC !
