@@ -1,0 +1,35 @@
+#!/bin/sh
+# tests/shell/run-group-cmd - subshells and brace groups used as
+# ordinary commands (Iteration 49): as a &&/||/; segment, as a
+# pipeline stage, and still as a whole line.
+. "$(dirname "$0")/lib.sh"
+
+out=$("$THIS_SH" -c 'false || { echo fallback; }' 2>/dev/null)
+assert_output_contains "brace group as || segment" "fallback" "$out"
+out=$("$THIS_SH" -c '{ echo one; } && echo two' 2>/dev/null)
+assert_output_contains "brace group as && left side" "one" "$out"
+assert_output_contains "command after the group still runs" "two" "$out"
+
+out=$("$THIS_SH" -c '(echo hi) | tr a-z A-Z' 2>/dev/null)
+assert_output_contains "subshell as first pipeline stage" "HI" "$out"
+out=$("$THIS_SH" -c '(echo "a b"; echo "c d") | sed s/c/C/' 2>/dev/null)
+assert_output_contains "multi-command subshell into a pipe, line 1" "a b" "$out"
+assert_output_contains "multi-command subshell into a pipe, line 2" "C d" "$out"
+
+out=$("$THIS_SH" -c '(echo whole)' 2>/dev/null)
+assert_output_contains "subshell as the whole line still works" "whole" "$out"
+
+# separators inside a group must stay inside it
+out=$("$THIS_SH" -c '{ echo a; echo b; } && echo c' 2>/dev/null)
+assert_output_contains "group's own ';' not split at top level (a)" "a" "$out"
+assert_output_contains "group's own ';' not split at top level (b)" "b" "$out"
+assert_output_contains "operator after group still seen"            "c" "$out"
+
+# a subshell's assignments must not escape; a brace group's must
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+printf 'a=1\n(a=2)\necho sub=$a\n{ a=3; }\necho brace=$a\n' > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "subshell assignment does not escape" "sub=1"   "$out"
+assert_output_contains "brace-group assignment persists"     "brace=3" "$out"
+
+report

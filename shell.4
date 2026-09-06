@@ -2124,6 +2124,33 @@ VARIABLE PIPE-PRESENT?
 
 : AT-END? ( --- f )  PR-I @ ARGC @ < 0= ;
 
+VARIABLE GRP-DEPTH
+\ How many '('/'{' are open at the scan position. Every operator scan
+\ below (';', '&&', '||', '|') only recognises its operator at depth
+\ 0, so a group used as an ordinary command keeps its own separators
+\ to itself: "{ a; b; } && c" splits at the '&&', not at either ';'.
+\ Bash gets this from a real grammar; this is the flat-token-array
+\ equivalent - see GOALS.md's notes on Ramey's bash chapter.
+
+: GRP-TRACK ( i --- )   \ update GRP-DEPTH for the token just consumed
+  DUP ARGV-QUOTED@ IF DROP EXIT THEN
+  ARGV@ DUP CSTRLEN
+  2DUP S" (" STR= IF 2DROP GRP-DEPTH @ 1+ GRP-DEPTH ! EXIT THEN
+  2DUP S" {" STR= IF 2DROP GRP-DEPTH @ 1+ GRP-DEPTH ! EXIT THEN
+  2DUP S" )" STR= IF 2DROP GRP-DEPTH @ 1- GRP-DEPTH ! EXIT THEN
+  S" }" STR= IF GRP-DEPTH @ 1- GRP-DEPTH ! THEN ;
+
+: AT-GROUP-END? ( --- f )   \ is the whole line one group and nothing else?
+  ARGC @ 0 = IF 0 EXIT THEN
+  0 GRP-DEPTH !
+  0 PR-I !
+  BEGIN PR-I @ ARGC @ < WHILE
+    PR-I @ GRP-TRACK
+    GRP-DEPTH @ 0 = PR-I @ 1+ ARGC @ < AND IF 0 EXIT THEN
+    PR-I @ 1+ PR-I !
+  REPEAT
+  -1 ;
+
 \ ==================================================================
 \ ';' - multiple commands per line, run in sequence regardless of
 \ each one's own exit status (unlike '&&'/'||', not yet implemented).
@@ -2145,6 +2172,7 @@ VARIABLE ARGC-SEMI-REST
 
 : AT-SEMI? ( --- f )
   AT-END? IF 0 EXIT THEN
+  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" ;" STR= ;
 
@@ -2159,8 +2187,10 @@ VARIABLE ARGC-SEMI-REST
                           \ e.g. a leading or trailing ';'), 0
                           \ otherwise (nothing touched).
   {: | PR-I :}
+  0 GRP-DEPTH !
   0 ARGC-SEMI-LEFT !
   BEGIN AT-END? AT-SEMI? OR 0= WHILE
+    PR-I @ GRP-TRACK
     PR-I @ ARGV@ ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
     PR-I @ ARGV-QUOTED@ ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ + C!
     ARGC-SEMI-LEFT @ 1+ ARGC-SEMI-LEFT !
@@ -2181,6 +2211,7 @@ VARIABLE ARGC-SEMI-REST
 
 : AT-PIPE? ( --- f )
   AT-END? IF 0 EXIT THEN
+  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" |" STR= ;
 
@@ -2197,6 +2228,7 @@ VARIABLE SP-I
   \ which is what lifts the old one-pipe-per-line limit: a line has
   \ PIPE-NSEG segments for any number of pipes.
   {: | SP-I :}
+  0 GRP-DEPTH !
   0 PIPE-PRESENT? !
   ARGC @ PIPE-ARGC !
   1 PIPE-NSEG !
@@ -2287,6 +2319,110 @@ VARIABLE CAQ-N
   RUN-CHILD ;
 ' RUN-CMDSUB-CHILD RUN-CMDSUB-CHILD-XT !XT
 
+\ ==================================================================
+\ Moved ahead of RUN-PIPELINE and RUN-SIMPLE-OR-PIPELINE, both of
+\ which now recognise a group as an ordinary command (Iteration 49).
+\ ==================================================================
+
+: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
+                                 \ equal this literal, exactly, and
+                                 \ unquoted? (a quoted 'if'/'then'/etc
+                                 \ is just a literal argument, same
+                                 \ reasoning as ARGV-QUOTED elsewhere)
+  ARGC @ 0 = IF 2DROP 0 EXIT THEN
+  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
+  ARGV @ STR0= ;
+
+VARIABLE RUN-TOKENIZED-XT
+
+: RUN-TOKENIZED-CALL ( --- )
+  RUN-TOKENIZED-XT @XT EXECUTE ;
+
+CREATE ARGV-GROUP-BODY MAX-ARGS CELLS ALLOT
+CREATE ARGQ-GROUP-BODY MAX-ARGS ALLOT   \ the body's own quoted flags
+CREATE ARGQ-SHIFT MAX-ARGS ALLOT        \ likewise for ARGV-SHIFT
+\ Carrying each word's quoted flag with the word, rather than leaving
+\ ARGV-QUOTED holding whatever a previous tokenization left at that
+\ index. Bash attaches flags to the word itself (WORD_DESC); this file
+\ keeps parallel arrays, and EVERY stale-flag bug it has had -
+\ Iteration 28's vanishing '&&', Iteration 47's literal ';', and the
+\ group body's own ';' surviving into a pipeline stage - is a copy
+\ that moved words without them. See GOALS.md's notes on Ramey's bash
+\ chapter.
+VARIABLE ARGC-GROUP-BODY
+VARIABLE GROUP-PID
+
+: AT-CLOSE-PAREN? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" )" STR= ;
+
+: AT-CLOSE-BRACE? ( --- f )
+  AT-END? IF 0 EXIT THEN
+  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  PR-I @ ARGV@ DUP CSTRLEN S" }" STR= ;
+
+: SPLIT-GROUP-PAREN ( --- f )
+  \ ARGV[0] is assumed to already be "(" (checked by the caller, see
+  \ RUN-TOKENIZED). Scans ARGV[1..] for the matching ")" - if found
+  \ (f = -1), ARGV-GROUP-BODY/ARGC-GROUP-BODY holds everything
+  \ between them (may be empty, e.g. "( )"). If the line ends first
+  \ (f = 0, an unterminated group), nothing is touched - not yet
+  \ reported as an error, matching this shell's sparse error handling
+  \ elsewhere.
+  {: | PR-I :}
+  1 PR-I !
+  0 ARGC-GROUP-BODY !
+  BEGIN AT-END? AT-CLOSE-PAREN? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-GROUP-BODY ARGC-GROUP-BODY @ + C!
+    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+  AT-CLOSE-PAREN? 0= IF 0 EXIT THEN
+  -1 ;
+
+: SPLIT-GROUP-BRACE ( --- f )  \ same as SPLIT-GROUP-PAREN, for "{"/"}"
+  {: | PR-I :}
+  1 PR-I !
+  0 ARGC-GROUP-BODY !
+  BEGIN AT-END? AT-CLOSE-BRACE? OR 0= WHILE
+    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+    PR-I @ ARGV-QUOTED@ ARGQ-GROUP-BODY ARGC-GROUP-BODY @ + C!
+    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
+    PR-I @ 1+ PR-I !
+  REPEAT
+  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
+  AT-CLOSE-BRACE? 0= IF 0 EXIT THEN
+  -1 ;
+
+: DO-SUBSHELL ( --- )
+  \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
+  \ body in ARGV-GROUP-BODY/ARGC-GROUP-BODY. Forks; the child copies
+  \ the body into the global ARGV/ARGC (safe - COPY-ARGV inside a
+  \ freshly forked child is the same pattern RUN-PIPELINE's own sides
+  \ already use) and runs it via RUN-TOKENIZED-CALL, so the body's own
+  \ ';'/'&&'/'||'/'|' all work normally, then exits with whatever
+  \ LAST-STATUS that left behind. The parent waits and takes the
+  \ child's exit status as this command's own.
+  FORK DUP GROUP-PID !
+  0 = IF
+    ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
+    RUN-TOKENIZED-CALL
+    LAST-STATUS @ SYS-EXIT
+  THEN
+  GROUP-PID @ WAITPID DROP
+  8 RSHIFT 255 AND LAST-STATUS ! ;
+
+: DO-BRACE-GROUP ( --- )
+  \ Same as DO-SUBSHELL, but no fork - the body runs directly in this
+  \ shell, so any cd/variable/export changes inside it persist
+  \ afterward. That's the whole reason a brace group exists as a
+  \ separate construct from a subshell.
+  ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
+  RUN-TOKENIZED-CALL ;
+
 CREATE PIPE-PIDS MAX-ARGS CELLS ALLOT
 VARIABLE PL-I
 VARIABLE PL-PREV-RD
@@ -2304,6 +2440,7 @@ VARIABLE PL-J
   0 PL-J !
   BEGIN PL-START @ PL-J @ + PL-END @ < WHILE
     PIPE-ARGV PL-START @ PL-J @ + CELLS + @  ARGV PL-J @ CELLS + !
+    PIPE-ARGQ PL-START @ PL-J @ + + C@       ARGV-QUOTED PL-J @ + C!
     PL-J @ 1+ PL-J !
   REPEAT
   0 ARGV PL-J @ CELLS + !
@@ -2349,8 +2486,16 @@ VARIABLE PL-J
         PL-RD @ CLOSE-FILE DROP
       THEN
       PIPE-SEG-TO-ARGV
-      RUN-CHILD
-      127 SYS-EXIT
+      \ A stage that is a group runs in this child rather than being
+      \ exec'd - "(echo a; echo b) | sed ...". Everything else still
+      \ goes straight to exec, so an ordinary pipeline costs no extra
+      \ process.
+      S" (" LINE-IS? 0= S" {" LINE-IS? 0= AND IF
+        RUN-CHILD
+        127 SYS-EXIT
+      THEN
+      RUN-TOKENIZED-CALL
+      LAST-STATUS @ SYS-EXIT
     THEN
     PIPE-PIDS PL-I @ CELLS + !
     PL-PREV-RD @ 0 < 0= IF PL-PREV-RD @ CLOSE-FILE DROP THEN
@@ -2399,11 +2544,13 @@ VARIABLE AO-CONTINUE
 
 : AT-AND? ( --- f )
   AT-END? IF 0 EXIT THEN
+  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" &&" STR= ;
 
 : AT-OR? ( --- f )
   AT-END? IF 0 EXIT THEN
+  GRP-DEPTH @ 0 <> IF 0 EXIT THEN
   PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   PR-I @ ARGV@ DUP CSTRLEN S" ||" STR= ;
 
@@ -2422,8 +2569,10 @@ VARIABLE AO-CONTINUE
                           \ neither was found at all (nothing touched
                           \ except ARGC-AO-LEFT, harmlessly reset).
   {: | PR-I :}
+  0 GRP-DEPTH !
   0 ARGC-AO-LEFT !
   BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
+    PR-I @ GRP-TRACK
     PR-I @ ARGV@ ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
     PR-I @ ARGV-QUOTED@ ARGQ-AO-LEFT ARGC-AO-LEFT @ + C!
     ARGC-AO-LEFT @ 1+ ARGC-AO-LEFT !
@@ -2476,14 +2625,6 @@ VARIABLE TRY-ASSIGNMENT-XT   \ patched to TRY-ASSIGNMENT's own xt right
 
 \ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
 \ pipeline negation ( ! cmd ).
-: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
-                                 \ equal this literal, exactly, and
-                                 \ unquoted? (a quoted 'if'/'then'/etc
-                                 \ is just a literal argument, same
-                                 \ reasoning as ARGV-QUOTED elsewhere)
-  ARGC @ 0 = IF 2DROP 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
-  ARGV @ STR0= ;
 
 CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
 VARIABLE ARGC-SHIFT
@@ -2496,6 +2637,7 @@ VARIABLE ARGC-SHIFT
   ARGC @ 1 > IF
     ARGC @ 1 DO
       I ARGV@ ARGV-SHIFT ARGC-SHIFT @ CELLS + !
+      I ARGV-QUOTED@ ARGQ-SHIFT ARGC-SHIFT @ + C!
       ARGC-SHIFT @ 1+ ARGC-SHIFT !
     LOOP
   THEN
@@ -2531,12 +2673,29 @@ VARIABLE ARGC-SHIFT
   SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
   IF EXIT THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
+  \ A '&&'/'||'/';' segment, or a pipeline stage, can itself be a
+  \ group - "[ x ] || { echo fail; exit 1; }". Checked here as well as
+  \ at the line level, since segments never pass through RUN-TOKENIZED.
+  \ Guarded by AT-GROUP-END? for the same reason it is there: if a
+  \ pipe follows the group, this must fall through to SPLIT-PIPE, or
+  \ the group runs alone and the rest of the pipeline is dropped -
+  \ which is exactly what "(echo hi) | tr a-z A-Z" did without it.
+  AT-GROUP-END? IF
+  S" (" LINE-IS? IF
+    SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
+    EXIT
+  THEN
+  S" {" LINE-IS? IF
+    SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
+    EXIT
+  THEN
+  THEN
   S" !" LINE-IS? IF
     \ Pipeline negation: run the rest and invert its status. POSIX
     \ negates the whole pipeline, which is why this sits here - ahead
     \ of SPLIT-PIPE - rather than being treated as a command name.
     SHIFT-ARGV-DOWN
-    ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+    ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
     RECURSE
     LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
     EXIT
@@ -2610,10 +2769,6 @@ VARIABLE ARGC-SHIFT
 \ around it.
 \ ==================================================================
 
-VARIABLE RUN-TOKENIZED-XT
-
-: RUN-TOKENIZED-CALL ( --- )
-  RUN-TOKENIZED-XT @XT EXECUTE ;
 
 \ ==================================================================
 \ '( list )' subshells and '{ list ; }' brace groups. Both require
@@ -2640,78 +2795,6 @@ VARIABLE RUN-TOKENIZED-XT
 \ split as if it belonged to the outer line.
 \ ==================================================================
 
-CREATE ARGV-GROUP-BODY MAX-ARGS CELLS ALLOT
-VARIABLE ARGC-GROUP-BODY
-VARIABLE GROUP-PID
-
-: AT-CLOSE-PAREN? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" )" STR= ;
-
-: AT-CLOSE-BRACE? ( --- f )
-  AT-END? IF 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN S" }" STR= ;
-
-: SPLIT-GROUP-PAREN ( --- f )
-  \ ARGV[0] is assumed to already be "(" (checked by the caller, see
-  \ RUN-TOKENIZED). Scans ARGV[1..] for the matching ")" - if found
-  \ (f = -1), ARGV-GROUP-BODY/ARGC-GROUP-BODY holds everything
-  \ between them (may be empty, e.g. "( )"). If the line ends first
-  \ (f = 0, an unterminated group), nothing is touched - not yet
-  \ reported as an error, matching this shell's sparse error handling
-  \ elsewhere.
-  {: | PR-I :}
-  1 PR-I !
-  0 ARGC-GROUP-BODY !
-  BEGIN AT-END? AT-CLOSE-PAREN? OR 0= WHILE
-    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-  AT-CLOSE-PAREN? 0= IF 0 EXIT THEN
-  -1 ;
-
-: SPLIT-GROUP-BRACE ( --- f )  \ same as SPLIT-GROUP-PAREN, for "{"/"}"
-  {: | PR-I :}
-  1 PR-I !
-  0 ARGC-GROUP-BODY !
-  BEGIN AT-END? AT-CLOSE-BRACE? OR 0= WHILE
-    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-  AT-CLOSE-BRACE? 0= IF 0 EXIT THEN
-  -1 ;
-
-: DO-SUBSHELL ( --- )
-  \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
-  \ body in ARGV-GROUP-BODY/ARGC-GROUP-BODY. Forks; the child copies
-  \ the body into the global ARGV/ARGC (safe - COPY-ARGV inside a
-  \ freshly forked child is the same pattern RUN-PIPELINE's own sides
-  \ already use) and runs it via RUN-TOKENIZED-CALL, so the body's own
-  \ ';'/'&&'/'||'/'|' all work normally, then exits with whatever
-  \ LAST-STATUS that left behind. The parent waits and takes the
-  \ child's exit status as this command's own.
-  FORK DUP GROUP-PID !
-  0 = IF
-    ARGV-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV
-    RUN-TOKENIZED-CALL
-    LAST-STATUS @ SYS-EXIT
-  THEN
-  GROUP-PID @ WAITPID DROP
-  8 RSHIFT 255 AND LAST-STATUS ! ;
-
-: DO-BRACE-GROUP ( --- )
-  \ Same as DO-SUBSHELL, but no fork - the body runs directly in this
-  \ shell, so any cd/variable/export changes inside it persist
-  \ afterward. That's the whole reason a brace group exists as a
-  \ separate construct from a subshell.
-  ARGV-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV
-  RUN-TOKENIZED-CALL ;
 
 
 \ ==================================================================
@@ -2813,7 +2896,7 @@ CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
 
 : RUN-SHIFTED ( --- )  \ runs ARGV-SHIFT/ARGC-SHIFT the same way a
                         \ normal top-level line would be
-  ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+  ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
   RUN-TOKENIZED-CALL ;
 
 
@@ -3386,7 +3469,7 @@ VARIABLE IF-ELIF-SKIP
   COND-TRUE? @ >R
   SUPPRESS-EXEC? @ >R
   SHIFT-ARGV-DOWN
-  ARGV-SHIFT ARGC-SHIFT @ COPY-ARGV
+  ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
   S" then" SPLIT-AT-KEYWORD DROP
   SUPPRESS-EXEC? @ IF
     0 COND-TRUE? !
@@ -4341,13 +4424,22 @@ VARIABLE FD-LEN
   \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
   \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
   \ defined).
-  S" (" LINE-IS? IF
-    SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
-    EXIT
-  THEN
-  S" {" LINE-IS? IF
-    SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
-    EXIT
+  \ A group is handled here only when it IS the entire line. If
+  \ anything follows its closing ')'/'}' - a pipe, a '&&', a ';' -
+  \ fall through to the splitters instead, which now know not to
+  \ split inside the group (GRP-DEPTH), and the group ends up as one
+  \ segment handled by RUN-SIMPLE-OR-PIPELINE below. Before this, a
+  \ trailing pipe or operator after a group was silently dropped -
+  \ the scope limit recorded in Iteration 20.
+  AT-GROUP-END? IF
+    S" (" LINE-IS? IF
+      SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
+      EXIT
+    THEN
+    S" {" LINE-IS? IF
+      SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
+      EXIT
+    THEN
   THEN
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN

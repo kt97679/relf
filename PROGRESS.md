@@ -5408,3 +5408,75 @@ Today `DO-SUBSHELL`/`DO-BRACE-GROUP` only trigger when the group is
 the *entire* line, and a trailing pipe or redirect after one is
 silently dropped - the scope limit recorded back in Iteration 20.
 Three test files are waiting on that single item.
+## Iteration 49: groups as ordinary commands - mrsh 4 -> 6 passed
+
+`pipeline.sh` and `if.sh` both pass now. A subshell or brace group can
+be used anywhere a command can: as a `&&`/`||`/`;` segment, as a
+pipeline stage, and still as a whole line. This retires the scope limit
+recorded in Iteration 20 ("a trailing pipe or redirect after a group is
+silently dropped").
+
+### One mechanism, not three special cases
+
+Following the note from Ramey's bash chapter that a real grammar gets
+this for free, the flat-token-array equivalent is a **depth count**.
+`GRP-TRACK` maintains `GRP-DEPTH` as each token is consumed, and
+`AT-SEMI?`/`AT-AND?`/`AT-OR?`/`AT-PIPE?` only recognise their operator
+at depth 0. So `{ a; b; } && c` splits at the `&&` and not at either
+`;`, without any of the splitters knowing what a group is.
+
+With that in place the rest is two guards and a fallthrough:
+
+- `AT-GROUP-END?` answers "is this whole line/segment one group?".
+  The group is handled directly only then; otherwise it falls through
+  to the splitters, which now split correctly around it.
+- `RUN-SIMPLE-OR-PIPELINE` gained the same group check, because
+  `&&`/`||`/`;` segments never pass through `RUN-TOKENIZED` at all -
+  that is why `[ x ] || { ...; }` never worked.
+- A pipeline stage that is a group runs in the forked child directly
+  rather than being exec'd. Everything else still goes straight to
+  `exec`, so an ordinary pipeline costs no extra process.
+
+### The flags-on-word fix, and it earned its keep immediately
+
+Also from the bash chapter: bash attaches flags to the word
+(`WORD_DESC`), while this file keeps `ARGV-QUOTED` as a parallel array
+that copies routinely leave behind. Every stale-flag bug this project
+has had is that. The two remaining uncarried copies - group bodies and
+`ARGV-SHIFT` - now have parallel flag arrays and use `COPY-ARGV-Q`,
+and pipeline stages carry their flags too.
+
+That was not speculative tidying: `(echo "a b"; echo "c d") | sed` was
+*failing on it* mid-iteration. The group body was copied without
+flags, the inner `;` looked quoted, and both echoes collapsed into one
+command. Third occurrence of the same root cause (Iterations 28, 47,
+here), now closed at every call site.
+
+### Two bugs of my own, both the same mistake
+
+The segment-level and line-level group checks each fired before the
+pipe was considered, so `(echo hi) | tr a-z A-Z` printed `hi` - the
+group ran alone and the pipeline was discarded. Both now sit behind
+`AT-GROUP-END?`. Worth noting the shape: "handle the special case
+first" is wrong whenever the special case can be *part of* a larger
+construct.
+
+Also three file-ordering moves (`LINE-IS?`, `RUN-TOKENIZED-CALL`, the
+whole group block ahead of `RUN-PIPELINE`). That is now routine enough
+to be a real cost.
+
+### Verified
+
+`tests/shell/run-group-cmd` (12 assertions): groups as `||`/`&&`
+segments, as the first pipeline stage, a multi-command subshell into a
+pipe, a group's own `;` staying inside it, the operator after a group
+still being seen, and the subshell-vs-brace-group scoping distinction
+(`(a=2)` does not escape, `{ a=3; }` does). 326 assertions across 40
+files plus 1991 core OK markers, both cell widths.
+
+**mrsh-suite: 4 passed -> 6.** `pipeline.sh` and `if.sh`, both
+genuine. Remaining 15: `read`, `readonly`, `command -v`, `alias`,
+`ulimit`, background `&`/`wait`/`$!`, fd redirection (`2>&1`), bitwise
+and `?:` in `$((...))`, `~user` tilde forms, `args.sh`/`function.sh`/
+`return.sh`/`for.sh` (to be re-diagnosed - their first divergence has
+moved), and the quoting conformance cases.
