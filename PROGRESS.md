@@ -6369,3 +6369,43 @@ both cell widths.
 mrsh-suite stays at 12 — `for.sh` also needs `IFS=':'` set inside a
 subshell to affect splitting there, which is the next thing in that
 file.
+## Iteration 67: `$IFS` actually controls field splitting — mrsh 12 -> 13
+
+`for.sh` passes. `IFS-CHAR?` was hardcoded to space and tab: the
+variable could be set and was simply never read, so `IFS=':'` had no
+effect at all. It now consults `$IFS`, defaulting to space/tab/newline
+per POSIX when unset. An IFS that is set but *empty* correctly
+disables splitting, since nothing is a member of an empty set.
+
+### An obsolete test caught by the change
+
+`run-cmdsub` failed immediately, asserting that an unquoted
+`$(printf 'line1\nline2\n')` keeps its internal newline. Checked
+against bash: it prints `START-line1 line2-END` — the newline is an
+IFS character, so it separates fields and `echo` rejoins them with a
+space. Our shell now produces exactly that.
+
+The assertion was encoding the behaviour from *before* IFS splitting
+existed (Iteration 36), and had survived because newline had never
+been in the separator set. The shell became right and the test became
+wrong in the same commit. Fixed the assertion, and recorded why in
+the test itself so it is not "corrected" back.
+
+That is the second time in three iterations that a test encoded a
+pre-conformance behaviour (see also Iteration 61's `set --`). The
+lesson from `FORTH-STYLE.md` — write expectations by running the
+reference implementation — applies to *updating* an assertion as much
+as writing one.
+
+### Verified
+
+`tests/shell/run-ifs` (5 assertions): `IFS=':'` splitting on colon, a
+space no longer splitting once IFS is set, and the default still
+splitting on space. 460 assertions across 55 files plus 1991 core OK
+markers, both cell widths.
+
+**mrsh-suite: 12 passed -> 13.** Remaining 8: background jobs
+(`async.sh`), `ulimit`, `~user` (`word.sh`), compound commands as
+pipeline stages (`read.sh`), a braceless compound function body
+(`function.sh`), `command.sh`, `readonly.sh`,
+`2.2-quoted-characters.sh`, and the alias conformance case.

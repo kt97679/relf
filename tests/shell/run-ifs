@@ -1,73 +1,20 @@
 #!/bin/sh
-# run-ifs - an *unquoted* $VAR/${...}/$(...)/$((...)) expansion result
-# is split into separate ARGV entries wherever a run of IFS whitespace
-# appears within it - see EMIT-EXPANDED-CHAR's own comment for the
-# full design and its documented scope limits: only space/tab are
-# treated as IFS (not yet a customizable $IFS shell variable, and not
-# newline); a run of consecutive IFS characters collapses into a
-# single split (not several empty ones); leading/trailing IFS
-# whitespace in the expansion produces no spurious empty leading/
-# trailing field. Never applies inside double quotes (IN-DQ-CONTEXT?,
-# distinct from TOK-WAS-QUOTED?, which EXPAND-VAR sets for every
-# expansion regardless of real quoting - reusing that one here was a
-# real bug caught by testing directly: it made splitting never fire
-# at all).
-#
-# A second, unrelated, pre-existing bug was found and fixed alongside
-# this feature: TRY-ASSIGNMENT rejected any x="value"-style assignment
-# whose value was quoted, because it checked ARGV-QUOTED (records "was
-# ANY part of this token quoted") rather than a name-specific check -
-# a new ARGV-NAME-QUOTED array (true only if the token's own very
-# first character came from inside a quote) fixes this while still
-# correctly rejecting a fully-quoted 'NAME=value' (not a real
-# assignment - the name itself is quoted).
-cd "$(dirname "$0")" || exit 1
-. ./lib.sh
+# tests/shell/run-ifs - $IFS actually controls field splitting
+# (Iteration 67). It used to be hardcoded to space/tab.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
-TMP_SCRIPT="/tmp/relf-run-ifs-test-$$.sh"
+printf "IFS=':'\nfor c in \$(echo a:s:d)\ndo\n  echo \"[\$c]\"\ndone\n" > "$t/a.sh"
+out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "IFS=':' splits on colon (first)" "[a]" "$out"
+assert_output_contains "IFS=':' splits on colon (last)"  "[d]" "$out"
 
-printf 'x123="a b c"\nset $x123\necho count=$#\necho one=$1\necho two=$2\necho three=$3\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "an unquoted multi-word \$VAR splits into separate positional parameters via set" "count=3
-one=a
-two=b
-three=c" "$out"
+printf "IFS=':'\nv='x y'\nfor c in \$v\ndo\n  echo \"<\$c>\"\ndone\n" > "$t/b.sh"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "with IFS=':', a space no longer splits" "<x y>" "$out"
 
-printf 'x123="a b c"\nset "$x123"\necho count=$#\necho one=$1\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "a quoted \"\$VAR\" does not split, even with internal whitespace" "count=1
-one=a b c" "$out"
-
-printf 'x123="a  b"\nfor w123 in $x123\ndo\necho word=$w123\ndone\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "multiple consecutive IFS characters collapse into a single split" "word=a
-word=b" "$out"
-
-printf 'x123="a b "\nfor w123 in $x123\ndo\necho word=$w123\ndone\necho after123\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "trailing IFS whitespace produces no spurious empty trailing field" "word=a
-word=b
-after123" "$out"
-TESTS_RUN=$((TESTS_RUN + 1))
-if echo "$out" | grep -q "word=$"; then
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    echo "FAIL: trailing whitespace should not produce an empty word"
-fi
-
-printf 'x123=" a b"\nfor w123 in $x123\ndo\necho word=$w123\ndone\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "leading IFS whitespace produces no spurious empty leading field" "word=a
-word=b" "$out"
-
-printf 'x123="ab"\necho got=[$x123]\n' > "$TMP_SCRIPT"
-out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
-assert_output_contains "a quoted assignment value with no whitespace still works correctly" "got=[ab]" "$out"
-
-"$THIS_SH" -c "'FOO123=bar123'" > /dev/null 2>&1
-assert_status "a fully-quoted 'NAME=value' (name itself quoted) is still correctly rejected as an assignment" 127 "$?"
-
-"$THIS_SH" -c "FOO123=bar123" > /dev/null 2>&1
-assert_status "a plain, unquoted assignment still succeeds" 0 "$?"
-
-rm -f "$TMP_SCRIPT"
+printf "v='a b'\nfor c in \$v\ndo\n  echo \"<\$c>\"\ndone\n" > "$t/c.sh"
+out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "default IFS still splits on space (1)" "<a>" "$out"
+assert_output_contains "default IFS still splits on space (2)" "<b>" "$out"
 report

@@ -33,9 +33,14 @@ printf 'line1\nline2\n'
 SCRIPT_EOF
 chmod +x /tmp/run-cmdsub-multiline.sh
 out=$(printf 'echo START-$(/tmp/run-cmdsub-multiline.sh)-END\nexit\n' | "$THIS_SH" 2>&1)
-assert_output_contains "trailing newline stripped, internal newline kept" \
-    "START-line1
-line2-END" "$out"
+# An UNQUOTED command substitution is field-split, and newline is an
+# IFS character by default (POSIX), so the internal newline becomes a
+# field separator and echo rejoins the fields with a space. Verified
+# against bash, which prints exactly this. The assertion here used to
+# expect the newline preserved - that was the behaviour before IFS
+# splitting was implemented, not bash's.
+assert_output_contains "unquoted substitution is split on its internal newline" \
+    "START-line1 line2-END" "$out"
 rm -f /tmp/run-cmdsub-multiline.sh
 
 report

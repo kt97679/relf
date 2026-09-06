@@ -680,8 +680,29 @@ VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
                                \ by testing directly: a bare, unquoted
                                \ $x came out completely empty).
 
+CREATE IFS-NM 4 ALLOT
+VARIABLE IFSC-C
+VARIABLE IFSC-P
+
 : IFS-CHAR? ( c --- f )
-  DUP 32 = SWAP 9 = OR ;
+  \ Is c a field separator? POSIX: the characters in $IFS, defaulting
+  \ to space/tab/newline when IFS is unset. This used to be hardcoded
+  \ to space and tab, so `IFS=':'` had no effect at all on splitting -
+  \ the variable could be set and was simply never read.
+  \
+  \ An IFS that is set but *empty* correctly disables splitting
+  \ entirely, since no character is a member of an empty set.
+  IFSC-C !
+  73 IFS-NM C!  70 IFS-NM 1+ C!  83 IFS-NM 2 + C!  0 IFS-NM 3 + C!
+  IFS-NM LOOKUP-VAR IFSC-P !
+  IFSC-P @ 0= IF
+    IFSC-C @ 32 = IFSC-C @ 9 = OR IFSC-C @ 10 = OR EXIT
+  THEN
+  BEGIN IFSC-P @ C@ WHILE
+    IFSC-P @ C@ IFSC-C @ = IF -1 EXIT THEN
+    IFSC-P @ 1+ IFSC-P !
+  REPEAT
+  0 ;
 
 : IFS-SPLIT-HERE ( --- )
   \ Finishes the current ARGV entry (NUL-terminating at TOK-OUT,
