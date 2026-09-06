@@ -5722,3 +5722,50 @@ widths.
 redirection (`2>&1`), background `&`/`wait`/`$!`, `alias`, `ulimit`,
 `~user` tilde forms, a subshell function body (`f() ( ... )`), and the
 quoting conformance cases.
+## Iteration 54: the `read` builtin
+
+`read [-r] NAME...` reads one line from the real stdin, splits it on
+whitespace, one field per name, with the **last** name receiving
+everything that remains and trailing blanks trimmed — matching `bash`
+byte for byte on the shared test.
+
+### Two details that mattered
+
+**It reads fd 0 directly, not through `READ-NEXT-INPUT-LINE`.** That
+word reads the *script* when one is running, which is exactly what
+`if` and `while` need for their body lines. `read` must take the
+process's own stdin instead, or `while read line; do ...; done` over a
+pipe would consume the script it is running rather than the data.
+Two input sources that look interchangeable and are not.
+
+**`READ-LINE`'s flag distinguishes EOF from an empty line.** `ACCEPT`
+returns 0 for both, which would have made a blank line end a
+`while read` loop early — the kind of bug that only shows up on real
+input. Tested explicitly: an empty line reads successfully with status
+0, EOF gives status 1.
+
+`-r` is accepted and ignored, honestly rather than silently: this
+shell does no backslash processing on the line either way, so `-r` is
+already the behaviour.
+
+### Verified
+
+`tests/shell/run-read` (8 assertions): field splitting with the last
+variable taking the remainder, blanks trimmed, EOF status, `-r`, an
+empty line not being EOF, and a `while read` loop over a pipe running
+to completion. 368 assertions across 44 files plus 1991 core OK
+markers, both cell widths.
+
+mrsh-suite stays at 7. `read.sh` needs more than the builtin — it uses
+`printf` with operands this shell mishandles and a here-document.
+Recorded rather than assumed: the builtin is right, the test needs
+other features.
+
+### Remaining gap to a full mrsh pass
+
+`read.sh` (here-documents), `redir.sh` (fd redirection, `2>&1`),
+`async.sh` (background `&`, `wait`, `$!`), `command.sh`/
+`2.2.3-alias-expansion` (`alias`), `ulimit.sh` (`ulimit`),
+`word.sh` (`~user` tilde forms), `args.sh` (`getopts`, and `f() ( ... )`
+subshell function bodies), `function.sh`, `for.sh`, `return.sh`,
+`subshell.sh`, `readonly.sh`, and the two quoting conformance cases.

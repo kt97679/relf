@@ -1,0 +1,27 @@
+#!/bin/sh
+# tests/shell/run-read - the `read` builtin (Iteration 54)
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+printf 'read x y\necho "x=[$x] y=[$y]"\nread rest\necho "rest=[$rest]"\nread z\necho "eof=$?"\n' > "$t/a.sh"
+out=$(printf 'a b  c d\n  second   line  \n' | "$THIS_SH" "$t/a.sh" 2>/dev/null)
+assert_output_contains "first field, and last var takes the rest" "x=[a] y=[b  c d]" "$out"
+assert_output_contains "leading and trailing blanks trimmed"      "rest=[second   line]" "$out"
+assert_output_contains "read at EOF returns 1"                    "eof=1" "$out"
+
+printf 'read -r a\necho "a=[$a]"\n' > "$t/b.sh"
+out=$(printf 'hello world\n' | "$THIS_SH" "$t/b.sh" 2>/dev/null)
+assert_output_contains "-r is accepted" "a=[hello world]" "$out"
+
+# an empty line is not EOF
+printf 'read a\necho "st=$? a=[$a]"\n' > "$t/c.sh"
+out=$(printf '\nx\n' | "$THIS_SH" "$t/c.sh" 2>/dev/null)
+assert_output_contains "an empty line reads successfully" "st=0 a=[]" "$out"
+
+# read inside a while loop, consuming the pipe rather than the script
+printf 'while read line\ndo\n  echo "got:$line"\ndone\necho fin\n' > "$t/d.sh"
+out=$(printf 'p\nq\n' | "$THIS_SH" "$t/d.sh" 2>/dev/null)
+assert_output_contains "while read: first line"  "got:p" "$out"
+assert_output_contains "while read: second line" "got:q" "$out"
+assert_output_contains "while read: terminates"  "fin"   "$out"
+report

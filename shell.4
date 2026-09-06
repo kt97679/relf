@@ -2536,6 +2536,71 @@ VARIABLE FTH-I
   FORTH-BUF FTH-LEN @ EVALUATE
   0 LAST-STATUS ! ;
 
+LINE-MAX        BUFFER: READ-BUF
+SHVAR-VALUE-MAX BUFFER: READ-FIELD
+VARIABLE RD-LEN
+VARIABLE RD-POS
+VARIABLE RD-VI
+VARIABLE RD-NAME
+VARIABLE RD-S
+VARIABLE RD-E
+
+: RD-SKIP-WS ( --- )
+  BEGIN
+    RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ WS? ELSE 0 THEN
+  WHILE RD-POS @ 1+ RD-POS ! REPEAT ;
+
+: RD-SET ( name-addr start end --- )   \ assign READ-BUF[start,end)
+  {: RD-NAME RD-S RD-E :}
+  READ-BUF RD-S @ + RD-E @ RD-S @ -
+  READ-FIELD SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
+  RD-NAME @ READ-FIELD SET-SHVAR ;
+
+: DO-READ ( --- )
+  \ read [-r] NAME... - one line from the real stdin, split on
+  \ whitespace, one field per name; the LAST name receives everything
+  \ that remains, trailing blanks trimmed, per POSIX.
+  \
+  \ Reads fd 0 directly rather than through READ-NEXT-INPUT-LINE:
+  \ that word reads the *script* when one is running, which is what
+  \ if/while need, but `read` must take the process's own stdin or
+  \ "while read x" over a pipe would consume the script instead.
+  \ READ-LINE's flag distinguishes a genuine EOF (status 1) from an
+  \ empty line, which ACCEPT alone could not.
+  \
+  \ -r is accepted and ignored: this shell does no backslash
+  \ processing on the line either way, so -r is already the behaviour.
+  {: | RD-VI :}
+  READ-BUF LINE-MAX 0 READ-LINE DROP
+  0= IF DROP 1 LAST-STATUS ! EXIT THEN
+  RD-LEN !
+  0 RD-POS !
+  1 RD-VI !
+  ARGC @ 1 > IF
+    S" -r" 1 ARGV@ STR0= IF 2 RD-VI ! THEN
+  THEN
+  ARGC @ RD-VI @ > 0= IF 0 LAST-STATUS ! EXIT THEN
+  BEGIN
+    RD-LEN @ 0 > IF READ-BUF RD-LEN @ 1- + C@ WS? ELSE 0 THEN
+  WHILE
+    RD-LEN @ 1- RD-LEN !
+  REPEAT
+  BEGIN RD-VI @ ARGC @ < WHILE
+    RD-SKIP-WS
+    RD-POS @
+    RD-VI @ 1+ ARGC @ < IF
+      BEGIN
+        RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ WS? 0= ELSE 0 THEN
+      WHILE RD-POS @ 1+ RD-POS ! REPEAT
+    ELSE
+      RD-LEN @ RD-POS !
+    THEN
+    RD-VI @ ARGV@ SWAP RD-POS @ RD-SET
+    RD-VI @ 1+ RD-VI !
+  REPEAT
+  0 LAST-STATUS ! ;
+
+' DO-READ         S" read"     BUILTIN
 ' DO-FORTH        S" forth"    BUILTIN
 ' DO-COLON        S" :"        BUILTIN
 ' DO-TEST         S" test"     BUILTIN
