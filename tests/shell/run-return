@@ -66,4 +66,21 @@ assert_output_contains "a top-level return (outside any function) is diagnosed, 
 assert_output_contains "script execution continues normally after a top-level return" "after-toplevel-return123" "$out"
 
 rm -f "$TMP_SCRIPT"
+# A "return" inside a loop inside a function must end the loop, not
+# just the body line - "while :" would otherwise spin forever.
+printf 'f() {\n  echo start\n  while :\n  do\n    echo loop\n    return\n    echo never\n  done\n  echo post\n}\nf\necho "st=$?"\necho done\n' > "$TMP_SCRIPT"
+out=$(timeout 10 "$THIS_SH" "$TMP_SCRIPT" 2>/dev/null)
+assert_output_contains "return inside while: body ran once" "loop" "$out"
+assert_output_contains "return inside while: function ended" "st=0" "$out"
+assert_output_contains "return inside while: shell continues" "done" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *never*|*post*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: execution continued past the return";; esac
+
+printf 'g() {\n  for i in 1 2 3\n  do\n    echo "i=$i"\n    return 4\n  done\n}\ng\necho "st=$?"\n' > "$TMP_SCRIPT"
+out=$(timeout 10 "$THIS_SH" "$TMP_SCRIPT" 2>/dev/null)
+assert_output_contains "return inside for: one iteration" "i=1" "$out"
+assert_output_contains "return inside for: status kept"   "st=4" "$out"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$out" in *i=2*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: for loop continued past the return";; esac
+
 report

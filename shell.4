@@ -4720,6 +4720,12 @@ VARIABLE WHILE-BODY-CUR
   BEGIN
     REPLAY-POS @ REPLAY-LEN @ <
     LOOP-CONTROL-PENDING? @ 0= AND
+    \ A "return" inside a loop inside a function ends the body too,
+    \ and must keep propagating - RUN-FUNC-BODY is what consumes it.
+    \ Without this, "while : ; do return; done" spun forever: the
+    \ return set RETURN-PENDING?, nothing here looked at it, and the
+    \ condition was ":".
+    RETURN-PENDING? @ 0= AND
   WHILE
     READ-LINE-INTO-ARGV
     RUN-TOKENIZED-CALL
@@ -4762,7 +4768,7 @@ VARIABLE WHILE-BODY-CUR
   LOOP-DEPTH @ 1+ LOOP-DEPTH !
   0 LOOP-BREAK? !
   BEGIN
-    LOOP-BREAK? @ 0= IF
+    LOOP-BREAK? @ 0= RETURN-PENDING? @ 0= AND IF
       WHILE-COND-BUF @ BODY@ LINE-BUF WHILE-COND-LEN @ MOVE
       WHILE-COND-LEN @ TOKENIZE
       RUN-TOKENIZED-CALL
@@ -4840,6 +4846,7 @@ VARIABLE FOR-WORD-CUR
   BEGIN
     FOR-WORD-I @ FOR-WORDS-LEN @ <
     LOOP-BREAK? @ 0= AND
+    RETURN-PENDING? @ 0= AND
   WHILE
     FOR-WORDS-BUF @ BODY@ FOR-WORD-I @ + FOR-WORD-CUR !
     FOR-VARNAME-BUF @ BODY@ FOR-WORD-CUR @ SET-SHVAR

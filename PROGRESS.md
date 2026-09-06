@@ -6274,3 +6274,55 @@ core OK markers, both cell widths.
 **mrsh-suite: 10 passed -> 11.** `return.sh` hangs (status 124) and is
 next; `for.sh` needs field splitting of an unquoted variable in a `for`
 word list.
+## Iteration 65: `return` inside a loop — mrsh 11 -> 12 passed
+
+`return.sh` passes. A `return` inside a `while` or `for` inside a
+function now ends the function, rather than only ending the body line.
+
+### A hang, not a wrong answer
+
+`return.sh` had been failing with status 124 — a timeout. The cause:
+
+    func_c() {
+        while :
+        do
+            return
+        done
+    }
+
+`return` sets `RETURN-PENDING?`, and `RUN-FUNC-BODY` checks it — but
+nothing between the two did. `DO-WHILE-BODY` checked only
+`LOOP-CONTROL-PENDING?` (set by `break`/`continue`), and `DO-WHILE`'s
+iteration loop checked only `LOOP-BREAK?`. So the return was recorded,
+the body ended, and the loop re-evaluated its condition — which was
+`:`. Forever.
+
+Three loop conditions now also stop on `RETURN-PENDING?`:
+`DO-WHILE-BODY`, `DO-WHILE`'s iteration loop, and `DO-FOR-ITERATE`.
+The flag is deliberately *not* cleared in any of them — only
+`RUN-FUNC-BODY` consumes it, which is what lets it propagate outward
+through however many nested loops sit between the `return` and the
+function boundary.
+
+Worth noting the general shape: this shell has three "stop what you are
+doing" flags (`RETURN-PENDING?`, `LOOP-CONTROL-PENDING?`,
+`LOOP-BREAK?`) and every construct that loops has to know which of them
+apply to it. Adding a construct means auditing all three, and adding a
+flag means auditing every construct. The bug was a missing cell in that
+matrix, not a mistake in any one word. Something to keep in view if a
+fourth flag ever appears.
+
+### Verified
+
+`run-return` grew from 10 to 17 assertions, adding `return` inside a
+`while :` (body running exactly once, function ending, shell
+continuing, nothing after the return executing) and `return 4` inside
+a `for` (one iteration, status preserved, loop not continuing). 444
+assertions across 53 files plus 1991 core OK markers, both cell widths.
+
+**mrsh-suite: 11 passed -> 12.** Remaining 9: background jobs
+(`async.sh`), `ulimit`, `~user` (`word.sh`), compound commands as
+pipeline stages (`read.sh`), field splitting in a `for` word list
+(`for.sh`), a braceless compound function body (`function.sh`),
+`command.sh`, `readonly.sh`, `2.2-quoted-characters.sh`, and the alias
+conformance case.
