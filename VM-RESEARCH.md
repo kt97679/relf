@@ -201,6 +201,31 @@ interesting here: it could pay for the density work rather than
 competing with it. It also fits goal 5's portability constraint less
 comfortably, since it depends on the compiler honouring tail calls.
 
+## Measured afterwards (Iteration 140)
+
+Three of the recommendations below were cheap to test and were tested.
+Two came back decisively, one of them against the literature:
+
+- **Dispatch-site replication buys nothing here.** GCC had merged 68
+  `NEXT()` sites into **5**; forcing them apart with a zero-cost unique
+  asm marker restored 66, and changed the benchmark by nothing
+  measurable. Ertl's BTB mechanism and CPython's tail-call mechanism
+  are the same mechanism, and this Xeon does not need it. Item 7 below
+  is therefore much less attractive than it looked.
+- **Token threading is real and cheap.** A two-tier byte encoding of
+  the actual stream is **3.26x smaller on i386 and 6.51x on x86-64**,
+  and `tools/dispatch-bench.c` measures it at **0.98-1.03x the speed**
+  of the current cell encoding *including* the offset-call it gives
+  up. Latendresse and Feeley's ~9% is 2005 hardware and full Huffman;
+  a two-tier scheme captures most of the compression - their entropy
+  floor is 13,778 bytes against two-tier's 18,937 - for far less
+  decoding.
+
+See `PROGRESS.md`'s Iteration 140 entry, including the first version
+of the speed benchmark, which reported the byte stream 5x slower
+because the harness gave it a comparison chain and the cell encoding a
+jump table.
+
 ## What to take from this
 
 1. **Keep superinstructions**, and measure speed per K as well as

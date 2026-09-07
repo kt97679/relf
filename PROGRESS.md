@@ -188,6 +188,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **137** — one `LENTER`/`LEXIT` instead of three cells per local (+42% loop, revertable alone)
 - **138** — the size comparison was mixing word sizes
 - **139** — reading the field: `VM-RESEARCH.md`
+- **140** — token threading measured: 3.26x/6.51x smaller, no dispatch cost
 
 ### Not tied to an iteration
 
@@ -10849,6 +10850,142 @@ measuring this image**, and each is larger than anything currently in
 this project has been well served by it; it does not substitute for
 finding out whether the question has already been answered. Read the
 field earlier next time.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 140: three experiments from the literature review, two decisive
+
+`VM-RESEARCH.md` ended with seven recommendations. Three of them were
+cheap enough to test without touching the system, so they were tested
+rather than scheduled.
+
+### 1. Dispatch-site replication: a clean NEGATIVE result
+
+CPython 3.14's tail-call interpreter is reported at ~10%, and its own
+analysis attributes most of that to stopping the compiler **merging
+the identical `DISPATCH` tails**, which destroys the per-opcode
+indirect branches the predictor needs. Ertl's 2001 superinstruction
+speedups rest on the same mechanism.
+
+Checked first, because it is one `objdump`:
+
+    $ objdump -d relf | grep -c 'jmp *(%r'
+    5
+
+**Five dispatch sites in the binary for 68 primitives.** GCC had
+merged almost all of them, exactly as described.
+
+Fixing it needs no restructuring - a unique zero-cost marker makes the
+tails textually different so they cannot be merged:
+
+    __asm__ volatile ("# dispatch %c0" :: "i"(__LINE__));
+
+That took the binary from **5 to 66** dispatch sites, at +4KB of
+engine. And it bought **nothing**:
+
+| | loop-ms, 5 runs |
+|---|---|
+| merged (5 sites) | 1351 1347 1355 1352 **1336** |
+| unmerged (66 sites) | 1358 1390 1357 1354 **1330** |
+
+A pure dispatch-bound Forth loop agrees: 985-1002ms against
+993-1005ms.
+
+**The classic advice does not pay on this hardware.** Ertl's result is
+2001 branch target buffers; this is an Intel Xeon at 2.10GHz, whose
+indirect predictor evidently handles one branch with history as well
+as 66 with context. Recorded because it also **substantially devalues
+the tail-call interpreter experiment** - if replicating the dispatch
+gains nothing, most of CPython's reported mechanism is not available
+here either.
+
+### 2. Byte-granular token threading: measured, and it is the answer
+
+Two measurements, one for each half of the question.
+
+**Size**, by re-encoding the real token stream rather than estimating:
+15,420 operations, 1,119 distinct symbols, 817 distinct call targets.
+A two-tier byte encoding - one byte for the 128 most frequent symbols,
+which cover **77.2%** of the stream, two bytes for the rest - gives:
+
+    23,969 bytes  against  78,024 (i386)  and  156,048 (x86-64)
+    = 3.26x on i386, 6.51x on x86-64
+
+For reference the Huffman entropy floor on the operation stream is
+13,778 bytes against the two-tier scheme's 18,937, so **two-tier
+captures most of what is there** and full Huffman would buy perhaps
+20% more for a great deal more decoding machinery. That settles
+Latendresse and Feeley's technique as interesting but not necessary.
+
+**Speed**, by `tools/dispatch-bench.c` - both encodings dispatched
+through a computed goto, doing identical work, on the measured
+operation mix:
+
+| | x86-64 | i386 |
+|---|---|---|
+| cell + table call | 32.2 / 34.9 ms | 42.2 / 43.2 ms |
+| **cell + offset call (RelF today)** | **30.4 / 33.3 ms** | **38.8 / 40.0 ms** |
+| **byte stream** | **31.3 / 32.6 ms** | **39.5 / 39.7 ms** |
+
+**byte / cell-with-offset-call = 0.98 to 1.03.** Within noise. The
+byte stream fetches about five times less memory, which pays for the
+extra byte load on the two-byte forms.
+
+The third row is the one that matters and it was missing from the
+first version of this benchmark. Token threading **gives up RelF's
+cheapest property** - a call today is `RPUSH(ip); ip += t`, no lookup
+at all - so the comparison had to include a variant that keeps it.
+It does, and the byte stream still matches it.
+
+**The first version of this benchmark reported the byte stream 5x
+slower.** It gave the byte encoding an if/else comparison chain and
+the cell encoding a short one - an artifact of the harness, not the
+encoding. Kept in the file's comments as a warning: a microbenchmark
+that confirms the expected answer is the one to distrust, and this one
+confirmed `GOALS.md`'s existing position before it was fixed.
+
+### What this changes
+
+`GOALS.md` rejected byte-granular encoding because `CALL` would need a
+marker byte and realignment. That objection is about an **offset**.
+Token threading makes a call an **index** - 817 targets, ten bits - and
+the objection does not apply. Iteration 139 found the idea; this
+iteration measured both halves of it:
+
+- **3.26x smaller on i386, 6.51x on x86-64**, on the real stream.
+- **No measurable dispatch cost**, on this hardware, against the
+  current offset-call.
+
+Projected: i386 image 101,104 -> ~47,000, total ~65,000. x86-64 image
+189,024 -> ~57,000, total ~80,000. Both **well under `dash`** at
+129,832, and it is the x86-64 number that matters, because Iteration
+138 established that is where this project is actually behind.
+
+That is larger than everything in `DENSITY-PLAN.md` combined, and it
+makes the two-bit-tag encoding of Iterations 132-134 a much smaller
+change chasing a much smaller prize.
+
+### Caveats, because the numbers are good enough to be suspicious of
+
+- The speed benchmark is a **synthetic mix with trivial handlers**, so
+  dispatch dominates by construction. That is the right isolation for
+  the question asked, but real handlers do work that dilutes the
+  difference in both directions.
+- It does not model `cross.4`, `save-system.4`, or position
+  independence, and those are where the actual difficulty is: a byte
+  stream has no cell alignment, and every assumption about `HERE`,
+  `ALIGN` and `,` in a definition body changes.
+- Nothing here was run inside RelF. The next experiment is a
+  throwaway prototype - encode one real word, execute it - before any
+  commitment.
+
+### 3. Not yet run
+
+The superinstruction K-curve including engine growth and instruction-
+cache effects, per Ertl's warning that the curve turns. Deferred,
+because if token threading lands, the superinstruction question should
+be re-asked on the new stream anyway.
 
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
