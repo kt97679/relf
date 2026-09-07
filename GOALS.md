@@ -420,30 +420,58 @@ Baseline at Iteration 41, and where it stands at Iteration 137:
 Iterations 136 and 137 took 33,396 bytes off the i386 image - every
 `CREATE ... ALLOT` buffer moved out of the dictionary, and the locals
 prologue/epilogue reduced from three cells per local per entry and
-exit to one call each. **The i386 total is now below `dash`.**
+exit to one call each. **The i386 total is below a same-architecture
+`dash`; the x86-64 total is 1.63x it.** See the per-architecture
+tables below - Iteration 138 found the earlier comparison was mixing
+word sizes.
 
-**Against every other shell on the machine** (Iteration 128, run
-`tests/sizes`; "total" adds any shared library beyond libc/libm,
-which is why yash and bash jump):
+**Against other shells, per architecture** (Iteration 138, run
+`tests/sizes`). Architectures are never ranked against each other -
+they were until 138, and the conclusion drawn from that table did not
+survive fixing it.
 
-| implementation | total | note |
-|---|---|---|
-| **shell.4 (i386)** | **118,912** | engine + image |
-| dash | 129,784 | |
-| posh | 149,352 | |
-| **shell.4 (x86-64)** | **211,768** | engine + image |
-| mksh | 310,312 | |
-| yash | 653,680 | +libtinfo |
-| zsh | 1,236,168 | +libtinfo, libcap |
-| ksh93 | 1,432,848 | |
-| bash | 1,654,352 | +libtinfo |
-| *busybox* | *2,124,608* | *static, 272 applets — not a shell size* |
+*x86-64, the build that matters for a modern machine:*
 
-Read it with the conformance number beside it or it means nothing.
-The narrow build is **the smallest on the list** as of Iteration 137,
-and it passes the mrsh suite, which is a real if narrow claim. It is **not** a claim to be a smaller bash: bash
-implements a language several times larger than this one. The
-trajectory is the point, not the rank.
+| implementation | total |
+|---|---|
+| dash | 129,784 |
+| posh | 149,352 |
+| mksh | 310,312 |
+| **shell.4** | **211,768** |
+| yash | 653,680 (+libtinfo) |
+| ksh93 | 1,432,848 |
+| bash | 1,654,352 (+libtinfo) |
+
+**shell.4 is 1.63x `dash` here**, between mksh and yash. That is the
+honest headline: on the word size this machine actually runs, this is
+not the smallest shell and is not close to `dash`.
+
+*i386, where cell width suits the design:*
+
+| implementation | total |
+|---|---|
+| **shell.4** | **118,912** |
+| dash | 136,936 |
+| posh | 163,308 |
+
+**shell.4 is 0.87x `dash` here.** The comparators are built from
+Debian source by `tools/build-shells-i386.sh`, and the same script
+builds each for x86-64 from the same source and flags - a locally
+built 32-bit binary against a distro-built 64-bit one would just swap
+one unfair comparison for another. Its `dash` at 129,832 against the
+distro's 129,784 is the check that the build is representative.
+
+Worth knowing: **both comparison shells are LARGER at 32 bits than at
+64** - dash 136,936 against 129,832, posh 163,308 against 149,336.
+x86-64 code is not much bigger than i386 code and the extra registers
+cut spills, while i386 position-independent code pays for GOT setup.
+So the i386 result is not an artifact of comparing against a bloated
+32-bit build; it holds against the fairest comparator available.
+
+Read either table with the conformance number beside it or it means
+nothing. It is **not** a claim to be a smaller bash: bash implements a
+language several times larger, and the gaps under "Still open" are
+real. The trajectory is the point, not the rank.
 
 **The 8-byte build is ~1.8x the 4-byte one, and that is structural.**
 Measured zero-rate by byte position within each cell: byte 0 is 14.8%

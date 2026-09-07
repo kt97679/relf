@@ -186,6 +186,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **135** — a review of `shell.4` for size: no duplicated logic, idioms instead
 - **136** — every buffer out of the image (i386 total below `dash`)
 - **137** — one `LENTER`/`LEXIT` instead of three cells per local (+42% loop, revertable alone)
+- **138** — the size comparison was mixing word sizes
 
 ### Not tied to an iteration
 
@@ -10641,3 +10642,80 @@ but **re-baseline `tests/bench` before starting Stage 2**, and treat
 
 Both cell widths, 1998 core OK markers, 532 assertions across 63
 files, 19 differential cases, mrsh 20 of 21, posix 3/1/1.
+## Iteration 138: the size comparison was mixing word sizes
+
+`tests/sizes` ranked the **i386** `shell.4` build in one table with
+the distro's **x86-64** `dash`, `bash` and the rest, and Iteration 137
+concluded from it that `shell.4` was the smallest shell on the list.
+That was not a comparison, and the objection came from outside before
+it came from here.
+
+### Fixed by building the comparators, not by adding a caveat
+
+Ubuntu ships no i386 shells - general i386 support ended after 19.10 -
+so they had to be built. `tools/build-shells-i386.sh` enables
+`deb-src`, fetches the Debian sources and builds `dash` and `posh` at
+`-m32`, **and builds each for x86-64 from the same source with the
+same flags**. A locally built 32-bit binary against a distro-built
+64-bit one just swaps one unfair comparison for another.
+
+The check that the build is representative: this machine's x86-64
+`dash` comes out at **129,832** against the distro's **129,784**, 48
+bytes apart.
+
+(`mksh` is absent. Its build asserts on `-m32` - "Use the documented
+way to build this" - and it was not worth fighting for one more row.)
+
+### The honest result, both ways
+
+*x86-64, the word size this machine actually runs:*
+
+    dash        129,784
+    posh        149,352
+    shell.4     211,768      <- 1.63x dash
+    mksh        310,312
+    bash      1,654,352
+
+*i386:*
+
+    shell.4     118,912      <- 0.87x dash
+    dash        136,936
+    posh        163,308
+
+**Both claims are now stated, and the unflattering one first.** On the
+architecture that matters for a modern machine this is not the
+smallest shell and is not near `dash`. On i386 it is smaller than
+either comparator.
+
+### The finding that saves the i386 claim
+
+**Both comparison shells are LARGER at 32 bits than at 64** - `dash`
+136,936 against 129,832, `posh` 163,308 against 149,336, same source,
+same flags, same compiler. x86-64 code is not much bigger than i386
+code, the extra registers cut spills, and i386 position-independent
+code pays for GOT setup.
+
+That was worth measuring rather than assuming, and it cuts the
+obvious objection: the i386 result is not an artifact of comparing
+against a bloated 32-bit build. It holds against the fairest
+comparator obtainable.
+
+It also sharpens what `GOALS.md` already says about RelF's own 1.85x
+between widths. Real machine code barely grows from 32 to 64 bits;
+**a threaded-code image nearly doubles**, because every token is a
+cell and a cell must be a host pointer. The gap between those two
+facts is the whole of `DENSITY-PLAN.md`'s case, and it is larger than
+it looked when the comparison was against a single 64-bit `dash`.
+
+### `tests/sizes` now cannot make this mistake again
+
+Two tables, one per word size, and nothing is ranked across them. The
+i386 table prints an explicit note when no comparators are present -
+"the 64-bit table above is the honest one" - rather than silently
+listing `shell.4` alone and inviting the reader to compare upward.
+`build/` is gitignored; the binaries are reproducible from the script
+rather than committed.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3/1/1.

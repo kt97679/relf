@@ -1,5 +1,1 @@
-relf
-relf32
-kernel32.img
-*.o
-*-shell.img
+build/

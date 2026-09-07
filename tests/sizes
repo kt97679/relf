@@ -24,6 +24,18 @@
 #
 # Caveats that matter more than the numbers:
 #
+#   - ARCHITECTURES ARE NEVER RANKED AGAINST EACH OTHER. Until
+#     Iteration 138 this script listed the i386 shell.4 build in one
+#     ranked table with the distro's x86-64 dash, bash and the rest,
+#     and concluded shell.4 was the smallest shell on the list. It was
+#     not a comparison. The tables below are per word size, and the
+#     32-bit one is empty unless tools/build-shells-i386.sh has been
+#     run, because the distro ships no i386 shells.
+#   - Comparators built by that script are ALSO built for x86-64 from
+#     the same source with the same flags, and shown next to the
+#     distro binary. A locally built 32-bit binary against a
+#     distro-built 64-bit one just swaps one unfair comparison for
+#     another.
 #   - busybox is a MULTI-CALL binary. Its ash applet is one of a few
 #     hundred programs in that file, so its total is not a shell size
 #     and is reported separately rather than ranked alongside the
@@ -60,42 +72,78 @@ row() {
     # $1 = label, $2 = binary bytes, $3 = image bytes, $4 = lib bytes,
     # $5 = link type
     total=$(( $2 + $3 + $4 ))
-    printf '%-18s %10d %10d %10d %12d  %s\n' "$1" "$2" "$3" "$4" "$total" "$5"
+    printf '%-20s %10d %10d %10d %12d  %s\n' "$1" "$2" "$3" "$4" "$total" "$5"
 }
 
-printf '%-18s %10s %10s %10s %12s  %s\n' \
-       implementation binary image libs TOTAL link
-printf '%s\n' "------------------------------------------------------------------------------"
+bits() {
+    case "$(file -b "$1")" in
+        *32-bit*) echo 32 ;;
+        *64-bit*) echo 64 ;;
+        *)        echo "?"  ;;
+    esac
+}
 
-# --- this project -------------------------------------------------
+header() {
+    printf '\n== %s ==\n' "$1"
+    printf '%-20s %10s %10s %10s %12s  %s\n' \
+           implementation binary image libs TOTAL link
+    printf '%s\n' "--------------------------------------------------------------------------------"
+}
+
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
-for w in 64 32; do
-    if [ "$w" = 64 ]; then eng=relf;   img=kernel-shell.img;   label="shell.4 (x86-64)"
-    else                   eng=relf32; img=kernel32-shell.img; label="shell.4 (i386)"
-    fi
-    [ -e "$eng" ] && [ -e "$img" ] || continue
-    cp "$eng" "$TMP/e" && strip "$TMP/e" 2>/dev/null
-    row "$label" "$(stat -c%s "$TMP/e")" "$(stat -c%s "$img")" \
-        "$(extra_libs "$eng")" "$(link_type "$eng")"
-done
+ours() {
+    # $1 = engine, $2 = image, $3 = label
+    [ -e "$1" ] && [ -e "$2" ] || return 0
+    cp "$1" "$TMP/e" && strip "$TMP/e" 2>/dev/null
+    row "$3" "$(stat -c%s "$TMP/e")" "$(stat -c%s "$2")" \
+        "$(extra_libs "$1")" "$(link_type "$1")"
+}
 
-# --- everything else installed ------------------------------------
+theirs() {
+    # $1 = path, $2 = label
+    [ -e "$1" ] || return 0
+    row "$2" "$(stat -c%s "$1")" 0 "$(extra_libs "$1")" "$(link_type "$1")"
+}
+
+# ---------------- 64-bit ----------------
+header "x86-64 (8-byte cells)"
+ours relf kernel-shell.img "shell.4"
 for s in dash posh mksh yash zsh ksh93 bash; do
     p=$(command -v "$s" 2>/dev/null) || continue
     p=$(readlink -f "$p")
-    row "$s" "$(stat -c%s "$p")" 0 "$(extra_libs "$p")" "$(link_type "$p")"
+    [ "$(bits "$p")" = 64 ] || continue
+    theirs "$p" "$s (distro)"
+done
+for s in dash posh; do
+    theirs "build/shells-x86-64/$s" "$s (built here)"
 done
 
-# --- reported apart, on purpose -----------------------------------
+# ---------------- 32-bit ----------------
+header "i386 (4-byte cells)"
+ours relf32 kernel32-shell.img "shell.4"
+found=0
+for f in build/shells-i386/*; do
+    [ -e "$f" ] || continue
+    theirs "$f" "$(basename "$f") (built here)"
+    found=1
+done
+if [ "$found" = 0 ]; then
+    printf '%s\n' "  No i386 comparison shells. The distro ships none;"
+    printf '%s\n' "  run tools/build-shells-i386.sh to build them."
+    printf '%s\n' "  Until then this table has nothing to compare against,"
+    printf '%s\n' "  and the 64-bit table above is the honest one."
+fi
+
+# ---------------- reported apart ----------------
 if command -v busybox >/dev/null 2>&1; then
     p=$(readlink -f "$(command -v busybox)")
     n=$(busybox --list 2>/dev/null | wc -l)
-    printf '%s\n' "------------------------------------------------------------------------------"
+    printf '\n== not a shell size ==\n'
     row "busybox (all $n)" "$(stat -c%s "$p")" 0 "$(extra_libs "$p")" "$(link_type "$p")"
-    printf '%s\n' "  ^ a multi-call binary: its ash applet is one of $n programs in that"
-    printf '%s\n' "    file. Not a shell size, and not ranked with the rows above."
+    printf '%s\n' "  ^ a multi-call binary: its ash applet is one of $n programs in"
+    printf '%s\n' "    that file. Not ranked with anything above."
 fi
 
 printf '\n%s\n' "Sizes only. See tests/posix for conformance and tests/bench for speed."
