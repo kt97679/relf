@@ -163,7 +163,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 112 — word boundaries recorded by the pass that finds them
 - 113 — expansion becomes a word you can call later
 - **114** — a word is expanded when its command runs  `mrsh 18->19`
-- 115 — *(no entry; commit `cd7ff9a` "retire the limitation notes Stage 1 made false". Cited by GOALS.md and PARSE-EXPAND-PLAN.md.)*
+- **115** — retire the limitation notes Stage 1 made false  *(written retrospectively in 122)*
 - **116** — measuring what Stage 1 cost
 - 117 — a loop written entirely on one line
 - 118 — a function defined entirely on one line
@@ -8789,6 +8789,56 @@ the construct runs.
 
 524 assertions across 63 files, 17 differential cases, 1991 core OK
 markers, both cell widths, **mrsh 19 of 21**.
+## Iteration 115: retire the limitation notes Stage 1 made false
+
+Written retrospectively in Iteration 122, from commit `cd7ff9a`, which
+made a real change to two documents and left no entry here. Recording
+it because the gap was load-bearing: both `GOALS.md` and
+`PARSE-EXPAND-PLAN.md` cite "Iteration 115" as where Stage 4 was done,
+and following that citation led nowhere.
+
+No code. Iteration 114 made three recorded limitations false, and a
+limitation that has stopped being true is worse than one that never
+got written down, because it is believed. Four notes retired:
+
+- **`GOALS.md`, phase B.** `FOO=bar; echo $FOO` not seeing the
+  assigned value was described as needing "a real architectural
+  change left for its own future iteration". It had just had one; the
+  note now points at Iteration 18 for the original account and 114 for
+  the fix.
+- **`GOALS.md`, Ramey item 2** ("parse first, expand after") marked
+  **done** for Iterations 108-114, with the honest remainder stated
+  rather than dropped: bash expands words hanging off a command
+  *tree*, and this is still a flat token array with splitting passes
+  over it. Closer to the destination, not at it.
+- **`GOALS.md`, Ramey item 3** ("command substitution should reuse the
+  real parser") marked done for Iteration 105 — but *not by the route
+  sketched there*. Saving and restoring parser state around a
+  recursive parse turned out to be unnecessary once the work moved
+  into the forked child, which has its own copy of every buffer. The
+  original route is kept in the entry so a future session can see that
+  it was considered and bypassed, not overlooked.
+- **`PARSE-EXPAND-PLAN.md`, Stages 3 and 4** marked done, with each
+  stage's original text kept below its status line for the same
+  reason.
+
+Ramey item 1 (flags attached to the word, not a parallel array) was
+deliberately *not* marked done. Iteration 109 deleted the unsafe
+spelling; the parallel arrays remain, and 114 hit the same shape from
+a different direction. "Half-addressed" is the accurate word and is
+what it now says.
+
+### What this iteration is really about
+
+The project has two documents that make claims about the present
+tense (`GOALS.md`, `PARSE-EXPAND-PLAN.md`) and one that makes claims
+about the past (`PROGRESS.md`). Only the first two can go stale, and
+they go stale silently, in the direction of describing finished work
+as unfinished. Iteration 122 found five more of these and is the
+argument for auditing them on a schedule rather than opportunistically.
+
+No behaviour changed. 524 assertions across 63 files, 19 differential
+cases, 1991 core OK markers, both cell widths, mrsh 19 of 21.
 ## Iteration 116: measuring what Stage 1 cost
 
 `tests/bench` had not been run in this whole run of work. It has now,
