@@ -433,13 +433,14 @@ Baseline at Iteration 41, and where it stands at Iteration 137:
 
 | | engine | image (41) | image (127) | image (137) | total (137) |
 |---|---|---|---|---|---|
-| **i386 (4-byte cells)** | 17,808 | 72,528 | 134,500 | 101,104 | **118,912** |
-| x86-64 (8-byte cells) | 22,744 | 131,784 | 251,104 | 189,024 | 211,768 |
+| **i386 (4-byte cells)** | 17,808 | 72,528 | 134,500 | 109,600 | **127,408** |
+| x86-64 (8-byte cells) | 22,744 | 131,784 | 251,104 | 206,024 | 228,768 |
 
-Iterations 136 and 137 took 33,396 bytes off the i386 image - every
-`CREATE ... ALLOT` buffer moved out of the dictionary, and the locals
-prologue/epilogue reduced from three cells per local per entry and
-exit to one call each. **The i386 total is below a same-architecture
+Iteration 136 took 24,900 bytes off the i386 image by moving every
+`CREATE ... ALLOT` buffer out of the dictionary. Iteration 137 took a
+further 8,472 by rewriting the locals prologue and epilogue, and
+**Iteration 149 reverted it**: it cost 42% of the loop benchmark, and
+a clean baseline matters more before engine work than 8KB does. **The i386 total is below a same-architecture
 `dash`; the x86-64 total is 1.63x it.** See the per-architecture
 tables below - Iteration 138 found the earlier comparison was mixing
 word sizes.
@@ -456,12 +457,12 @@ survive fixing it.
 | dash | 129,784 |
 | posh | 149,352 |
 | mksh | 310,312 |
-| **shell.4** | **211,768** |
+| **shell.4** | **228,768** |
 | yash | 653,680 (+libtinfo) |
 | ksh93 | 1,432,848 |
 | bash | 1,654,352 (+libtinfo) |
 
-**shell.4 is 1.63x `dash` here**, between mksh and yash. That is the
+**shell.4 is 1.76x `dash` here**, between mksh and yash. That is the
 honest headline: on the word size this machine actually runs, this is
 not the smallest shell and is not close to `dash`.
 
@@ -469,11 +470,11 @@ not the smallest shell and is not close to `dash`.
 
 | implementation | total |
 |---|---|
-| **shell.4** | **118,912** |
+| **shell.4** | **127,408** |
 | dash | 136,936 |
 | posh | 163,308 |
 
-**shell.4 is 0.87x `dash` here.** The comparators are built from
+**shell.4 is 0.93x `dash` here.** The comparators are built from
 Debian source by `tools/build-shells-i386.sh`, and the same script
 builds each for x86-64 from the same source and flags - a locally
 built 32-bit binary against a distro-built 64-bit one would just swap
@@ -1103,21 +1104,110 @@ than remembered.
   Entries here are things that are implemented, tested and incorrect
   in a way that will not show up locally - keep adding them.)*
 
+## Next work, in order (rewritten at the Iteration 149 freeze)
+
+Everything below has been measured or designed; nothing is a guess.
+Run `tests/verify` first - if it does not say VERIFIED, fix that
+before anything else, because every number here is relative to it.
+
+### Settled, so nobody re-proposes them
+
+- **Headerless words: rejected.** 16,400 bytes, and extending the
+  shell in Forth needs `FIND`, which needs headers. A decision, not a
+  deferral (Iteration 131).
+- **Register VMs: closed.** Measured elsewhere at 26% larger bytecode
+  for 46% fewer executed instructions - the wrong direction for goal 3
+  (Shi et al., TACO 2008; `VM-RESEARCH.md`).
+- **Replicating the dispatch site: measured, gains nothing here.** GCC
+  had merged 68 `NEXT()` sites into 5; forcing 66 apart changed the
+  benchmark by nothing on this hardware. That also devalues a
+  tail-call interpreter, whose reported gain rests on the same
+  mechanism (Iteration 140).
+- **Byte-granular *offsets*: still rejected.** Byte-granular
+  *indices* are not - see token threading below. The objection was
+  always about the width an offset needs.
+- **Variable-length branch offsets: rejected**, twice. They need
+  assembler relaxation.
+- **Iteration 137's locals rewrite: reverted** in 149. If it is ever
+  re-applied, `SS-SCRUB` must scrub `LE-A`, `LE-N`, `LE-ARGS`, `LE-P`,
+  `LE-Q` and `LX-N`, or the image stops reproducing.
+
+### The queue
+
+1. **The four absent POSIX items**: `until`, `eval`, `for w; do`, and
+   the `NAME=value command` prefix. Small, independent, no
+   architectural risk, and they take `tests/posix` from 25/21 to about
+   25/17. Do these first for a reason beyond their size: **the corpus
+   has only ever gone down, so it is unproven as a driver of work.**
+2. **`PARSE-EXPAND-PLAN.md` Stage 2** - cache tokenized body lines.
+   Two justifications, and the second was found later: it is the loop
+   benchmark's fix *and* it removes the whole same-line fault class
+   (Iterations 143, 144). Four POSIX failures go with it.
+3. **Redirection's undo list** (Ramey's design, in the bash-
+   architecture section below). Three more POSIX failures, including
+   `while read ...; done < file` - the commonest file-reading idiom in
+   shell scripting.
+4. **Engine: `TOKEN-THREADING.md`.** Four stages, each green. Stage 1
+   (split code space from data space) is worth doing alone. **Run the
+   decisive experiment first**: the Iteration 141 prototype scaled to
+   the whole `shell.4` closure, so the working set exceeds L1 as the
+   real system's does. Both existing speed measurements flattered the
+   proposal for working-set reasons, and neither settles it.
+5. **Superinstructions** (`DENSITY-PLAN.md` option B), re-measured on
+   whatever token stream exists by then - folding branches removes
+   most of what they had to offer, so the search must be re-run rather
+   than the old numbers reused. Measure *speed* per K as well as size:
+   Ertl found the curve turns from instruction-cache pressure.
+6. **A `FILL` primitive.** `FILL` is a per-byte threaded loop, which
+   is most of what boot-time buffer zeroing costs (Iteration 136). A
+   memset one-liner that helps everything.
+7. **Phase 3, the Forth-hosted assembler.** Goal 1's last piece, never
+   started in 149 iterations, and the prerequisite for phase 4.
+
+The rest of the POSIX backlog - pattern matching, the tokenizer, and
+the remaining parameter and expansion semantics - is grouped by root
+cause in `PROGRESS.md`'s Iteration 147 entry. Six faults, not
+twenty-one.
+
+### Not yet audited at all
+
+Whole XCU sections have no cases: signals and traps (2.11), the shell
+execution environment (2.12), here-documents beyond the simplest form,
+`getopts`, `exec`, `set -o`, `$0`, and what a subshell inherits. An
+audit round *would* find more; Iteration 147's judgement was that
+fixing what is known beats finding more of it, not that the well is
+dry.
+
+### Method that must survive contact with all of the above
+
+- **Measure before proposing** - and measure the *harness* too. Three
+  separate wrong conclusions this project reached came from a broken
+  oracle, not broken code: the mrsh reference shell (124), the token
+  decoder (135, 141), and two benchmarks that flattered the same
+  answer (140, 141).
+- **Check why a test passes**, not just that it does. `ulimit.sh`
+  passed for two years' worth of iterations while `ulimit` did not
+  exist (122).
+- **One feature per test case.** A case exercising two attributes the
+  fault to whichever one you were thinking about (147).
+- **A fix and `tests/verify --update` go in the same commit**, so
+  `tests/BASELINE` always records what the tree does.
+
 ## Next architectural work: `PARSE-EXPAND-PLAN.md`
 
 **Stage 1 is done** (Iterations 108, 112, 113, 114). Expansion writes
 into its own buffer, so the in-place-growth bug class no longer
 exists; word boundaries come from `NORMALIZE-OPERATORS`, the pass that
 already knew them; and `EXPAND-WORDS` runs when a command runs rather
-than when its line is read, which took the mrsh suite to 19 of 21. Stages 3 and 4 are done as well — nested `$(...)` in
-Iteration 105, and the limitation notes retired in 115.
+than when its line is read, which took the mrsh suite to 19 of 21.
+Stages 3 and 4 are done as well - nested `$(...)` in Iteration 105,
+and the limitation notes retired in 115.
 
 **Stage 2 is the only one left**: caching tokenized body lines, where
-the pure-loop gap measured in `tests/bench` (236x dash, Iteration 116)
-is addressed, and the only stage whose justification is speed rather
-than correctness. Read that
-file before starting; each stage must leave the full suite green and
-be committed separately.
+the pure-loop gap measured in `tests/bench` is addressed - and, found
+later, the whole same-line fault class with it. Read that file before
+starting; each stage must leave the full suite green and be committed
+separately.
 
 ## Shell architecture: what bash does differently (read, Iteration 48)
 

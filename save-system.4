@@ -103,17 +103,18 @@ CREATE SS-MAGIC 8 ALLOT
   CSP   SS-CELL   'LEAVE  SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
-  \ locals.4's scratch. LENTER leaves the address of the descriptor it
-  \ last stepped over, plus the counts it read, so two saves of the
-  \ same system differed by eleven bytes - found in Iteration 148 by
-  \ noticing that rebuilding kernel-shell.img dirtied the working
-  \ tree every time. These arrived with LENTER/LEXIT in Iteration 137
-  \ and this word was not told about them.
+  \ locals.4's save-stack pointer. It is zero at save time when the
+  \ frames are balanced, but scrubbing it costs nothing and makes that
+  \ a property of the image rather than a hope.
+  \
+  \ Iteration 137's LENTER/LEXIT added six more scratch cells here
+  \ (LE-A holding a code address, plus its counts) and Iteration 148
+  \ scrubbed them; Iteration 149 reverted 137, so they are gone again.
+  \ If that change is ever re-applied, they must come back - a rebuilt
+  \ image stops reproducing otherwise, which is what found them.
   \
   \ This file therefore REQUIRES locals.4 to be loaded first, which
   \ relfsh already does.
-  LE-A SS-CELL   LE-N SS-CELL   LE-ARGS SS-CELL
-  LE-P SS-CELL   LE-Q SS-CELL   LX-N SS-CELL
   LSAVE-SP SS-CELL
   \ This word's own working variables, and pool.4's - they hold a heap
   \ address and a file descriptor from the save that is in progress,

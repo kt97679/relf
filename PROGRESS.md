@@ -197,6 +197,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **146** — a systematic POSIX corpus: 47 cases, eleven new gaps
 - **147** — triage: the 21 failures are six faults; stop auditing, start fixing
 - **148** — the freeze: reproducible build, `tests/verify`, `tests/BASELINE`
+- **149** — revert 137; `GOALS.md` carries the whole plan
 
 ### Not tied to an iteration
 
@@ -11742,3 +11743,79 @@ token threading projects, on code it would have to be rewritten
 against anyway.
 
 No behaviour changed beyond the scrub. `tests/verify` passes clean.
+## Iteration 149: revert 137, and write down what comes next
+
+The code base is being frozen so engine work can start in a fresh
+session. Two things left to do: take the one decision still open, and
+make sure `GOALS.md` carries the plan rather than leaving it scattered
+across six documents and a hundred log entries.
+
+### Iteration 137 reverted
+
+`LENTER`/`LEXIT` bought 8,472 bytes of image and cost **42% of the
+loop benchmark**. It was landed as its own commit precisely so this
+was one command.
+
+Measured after the revert, four runs: **741, 788, 741, 788 ms**,
+against 1,338-1,389 with it and 939-1,256 before it. Fully recovered,
+and faster than the pre-137 figure - that baseline was taken while the
+machine was under heavier load, which is its own reminder that single
+comparisons across sessions are worth little.
+
+Three reasons, recorded in Iteration 148 and acted on here: the engine
+change will be judged against `tests/bench` and its baseline was
+contaminated by a deliberate regression; token threading may cost a
+further 14-28%, and two stacked regressions cannot be attributed to
+either; and 8,472 bytes are dwarfed by the ~54,000 token threading
+projects, on code that would have to be rewritten against it anyway.
+
+**The revert was not clean and the reason is worth knowing.** It
+conflicted in `GOALS.md` and `PROGRESS.md` - the latter is append-only,
+so reverting its Iteration 137 entry would have been wrong. Both were
+resolved by keeping the current text: the log records what happened,
+including changes later undone. And `save-system.4` had to be edited
+by hand, because Iteration 148 taught `SS-SCRUB` about six scratch
+variables that only existed because of 137. That dependency is now a
+comment in `SS-SCRUB`: **if 137 is ever re-applied, those six must go
+back, or the image stops reproducing.**
+
+Sizes return to i386 **127,408** and x86-64 **228,768** - 0.93x and
+1.76x a same-architecture `dash`.
+
+### `GOALS.md` now carries the whole plan
+
+A new section, replacing one that predated twenty iterations of work
+and said only "Stage 2 is the only one left". It has four parts:
+
+**Settled, so nobody re-proposes them.** Headerless words rejected;
+register VMs closed; dispatch-site replication measured and gains
+nothing here, which also devalues a tail-call interpreter;
+byte-granular *offsets* still rejected while byte-granular *indices*
+are not; variable-length branch offsets rejected twice; and 137
+reverted, with the `SS-SCRUB` warning attached.
+
+**The queue**, seven items in order with the reason for the order.
+The four absent POSIX items first - not because they are the largest
+but because **the corpus has only ever gone down, so it is unproven as
+a driver of work**. Then Stage 2, which is now justified twice over.
+Then the redirection undo list. Then the engine, decisive experiment
+first. Then superinstructions, re-measured rather than re-quoted. Then
+a `FILL` primitive. Then phase 3, the assembler, which is goal 1's
+last piece and has never been started in 149 iterations.
+
+**What has not been audited at all** - signals and traps, the
+execution environment, here-documents, `getopts`, `exec`, `set -o`,
+`$0`, subshell inheritance - so the next session knows the backlog is
+incomplete by choice rather than by accident.
+
+**Method that must survive.** Four rules, each with the incident that
+produced it: measure the harness and not just the code (124, 135, 140,
+141); check *why* a test passes (122); one feature per test case
+(147); and a fix ships with `tests/verify --update` (148).
+
+### State at the freeze
+
+`tests/verify` clean against `tests/BASELINE`, from a fresh clone.
+Both cell widths, images reproducing byte for byte, mrsh fully passed
+against the set upstream runs, 21 POSIX failures that are documented,
+reproducible, and grouped into six root causes.
