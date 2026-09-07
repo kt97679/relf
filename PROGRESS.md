@@ -180,6 +180,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **129** — where the image bytes actually go, and why Forth being "compact" does not make this the smallest shell
 - **130** — what the compiled code is actually made of (`DENSITY-PLAN.md`)
 - **131** — correcting the density numbers; longer superinstructions are worth 1.3%
+- **132** — two tag bits, and where `LIT` goes
 
 ### Not tied to an iteration
 
@@ -10096,6 +10097,110 @@ ranking.
 
 `tools/classify-code.py` and `tools/superinstr-search.py`, both
 documented, including the four not-token cases that made 130 wrong.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 132: two tag bits, and where `LIT` goes
+
+A better use of the tag space than Iteration 131 proposed, and it
+came from outside: use the low **two** bits to select four classes -
+`CALL`, `PRIMITIVE`, `BRANCH`, `0BRANCH` - instead of one bit
+selecting two.
+
+    t & 3 == 0   CALL       ip += t                (unchanged, free)
+    t & 3 == 1   PRIMITIVE  goto *dispatch[t >> 2]
+    t & 3 == 2   BRANCH     ip += (t & ~3)
+    t & 3 == 3   0BRANCH    if (TOS) ip += CELL else ip += (t & ~3)
+
+**The branch offset moves into the branch cell.** `BRANCH`/`?BRANCH`
+are ordinary primitives today, each followed by an offset cell.
+Measured: **1,228 branch sites, 4,912 bytes on i386, 9,824 on
+x86-64** - the largest single density win found so far, and it needs
+no new primitives and no engine growth at all.
+
+Verified against the image rather than assumed: every branch offset is
+4-aligned as the scheme requires, and the largest is 2,216 against a
+30-bit payload reaching ±536,870,912.
+
+**Two bits is the right width, not three.** More tag bits are
+available if payloads are shifted - offsets are cell-aligned and
+primitive indices are tiny - but a shift on `CALL`, the most common
+class at 6,986 cells, is exactly the "adds a decoding step" mistake
+this whole line of work is organised around. Two bits keeps `CALL`
+free.
+
+Side benefit worth recording: primitive tokens become `idx * 4 + 1` on
+every host instead of `idx * sizeof(void*) + 1`, decoupling the token
+stride from pointer width. `GOALS.md` flags that coupling as a hazard,
+since `cross.4`'s hand-embedded token numbers must change whenever the
+stride does.
+
+### Where `LIT` goes: nowhere, and that is fine
+
+All four tags are spent, so the question was what to do with `LIT`.
+Three options, measured:
+
+1. **Leave it a primitive, and shrink its frequency with a constant
+   block inside the primitive index space.** The payload is 30 bits
+   and real primitives need seven, so indices above the last one are
+   free; a contiguous run of them all point at one shared label, so
+   **no test is added to any path**. Block width is a real
+   optimisation - each entry costs `CELL` of table and buys `CELL` per
+   site covered - and scanning every contiguous range gives an optimum
+   at **`-1..96`: 1,189 of 2,178 sites (54.6%), 4,756 bytes gross, 392
+   of table, 4,364 net.** The curve is flat from about `-1..48` to
+   `-1..128`.
+2. **Widen past the table with a bounds test.** Reaches every literal,
+   but puts a test on the hot path to serve the tail. Rejected.
+3. **Merge the two branch classes to free a tag for a full 30-bit
+   immediate.** Covers *every* literal: 2,178 cells, 8,712 bytes on
+   i386, nearly double option 1. The price is that `BRANCH` and
+   `0BRANCH` must then be distinguished by a bit taken from the
+   payload, so branch offsets need a shift on decode.
+
+Option 3 is +4,348 bytes on i386 for one shift on the branch path.
+**Rejected anyway**: branches are hot in exactly the loops
+`tests/bench` measures at 236x `dash`, and the principle is that
+density must not buy itself with decoding work. Recorded with its
+number so it can be revisited if the loop benchmark stops being the
+constraint.
+
+### The schemes are not additive, and this was the surprise
+
+Folding branches **removes most of what superinstructions had to
+offer**. Greedy pair fusion to a fixed point:
+
+| stream | K=32 | K=128 |
+|---|---|---|
+| today | 2,336 | 2,927 |
+| branches folded (branch patterns excluded) | 1,774 | 2,161 |
+| branches folded + constant block | 1,691 | **2,116** |
+
+Once a branch carries its own offset, fusing `X BRANCH` gains nothing:
+`X` + `BRANCH|off` is two cells and `<X+BRANCH>` + `off` is also two.
+**Seven of the ten best fusions in Iteration 131's table ended in a
+branch.** Had these been implemented in the other order, the second
+one would have looked like a failure.
+
+### Total, and the honest shortfall
+
+| | cells | i386 | x86-64 |
+|---|---|---|---|
+| branch folding | 1,228 | 4,912 | 9,824 |
+| constant block `-1..96`, net of table | 1,091 | 4,364 | 8,728 |
+| superinstructions K=128 | 2,116 | 8,464 | 16,928 |
+| **total** | **4,435** | **17,740** | **35,480** |
+
+i386 image 134,500 -> ~116,760, total 152,308 -> **~134,568 against
+`dash`'s 129,784**. Short by about 4,800, and the 16,400 bytes that
+would have closed it are the dictionary headers `FIND` needs. That
+trade was made deliberately and this is what it costs.
+
+Order: **encoding, then constant block, then re-run the fusion search
+and pick K against measured engine growth.** The encoding is largest,
+needs no new primitives, and moves the stream everything else is
+measured against.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
