@@ -490,7 +490,11 @@ tuning now would be tuning something about to be rewritten. The levers
 that will still be there afterwards, in rough order of value:
 
 **Now measured, and planned: see `DENSITY-PLAN.md`** (Iterations 130,
-131). Two options, both of which should also make the image *faster*:
+131) **and `VM-RESEARCH.md`** (Iteration 139), which reviews the
+published work and finds three larger options the plan did not have -
+including token threading, the only idea found that attacks the
+x86-64 size problem, and a measured 9% figure for the
+variable-length encoding this file had rejected on reasoning alone. Two options, both of which should also make the image *faster*:
 constant-pushing primitives over the range -1..63 (4,560 bytes on
 i386) and superinstructions built from iterated pair fusion (11,708 at
 K=128, less the engine growth they cost). Roughly 15KB together.

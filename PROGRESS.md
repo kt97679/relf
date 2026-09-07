@@ -187,6 +187,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **136** — every buffer out of the image (i386 total below `dash`)
 - **137** — one `LENTER`/`LEXIT` instead of three cells per local (+42% loop, revertable alone)
 - **138** — the size comparison was mixing word sizes
+- **139** — reading the field: `VM-RESEARCH.md`
 
 ### Not tied to an iteration
 
@@ -10715,6 +10716,139 @@ i386 table prints an explicit note when no comparators are present -
 listing `shell.4` alone and inviting the reader to compare upward.
 `build/` is gitignored; the binaries are reproducible from the script
 rather than committed.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 139: reading the field, after designing without it
+
+`VM-RESEARCH.md`. `DENSITY-PLAN.md` reached its design by measuring
+this image alone. Reading the published work afterwards confirms three
+of its conclusions, **overturns an assumption in `GOALS.md`**, and
+turns up one structural option nobody here had considered that is
+probably larger than the whole plan.
+
+### Confirmed, with a caution the plan did not have
+
+Proebsting's superoperators (POPL 1995) and Ertl's *Threaded Code
+Variations* (EuroForth 2001) are the sources. Ertl measured
+superinstructions in Gforth at **up to 2x on large benchmarks**, from
+**fewer mispredicted indirect branches** rather than from fetching
+less memory - and only 1.38x against 1.86x on a processor without a
+branch target buffer.
+
+The caution: **more superinstructions eventually made things slower**,
+on a machine with a small direct-mapped instruction cache, from
+conflict misses. `DENSITY-PLAN.md` says to measure engine growth per
+K; it should also measure *speed* per K, because that curve can turn
+first. 800 superinstructions also needed ~100MB to build and 1600
+needed ~300MB and 1.5 hours, which is its own argument against the
+K=128 end of the range.
+
+### Ertl's negative size result does not apply to us, and the reason matters
+
+Ertl concluded superinstructions did **not** reduce Gforth's code size
+overall. That reads as fatal until you see why: to make them widely
+applicable, Gforth first had to move from indirect threading to a
+**primitive-centric** scheme, and that growth outweighed what
+superinstructions recovered.
+
+**RelF has been primitive-centric since Iteration 2** - a call is one
+cell of relative offset, there are no code fields in the threaded code
+at all. We take the saving without the entry fee. Ertl even names
+eliminating code fields and switching to byte code as what might
+change the picture; this project did the first years ago.
+
+### Factorization: our 6% is the right number, not a disappointing one
+
+Clausen et al. (TOPLAS 2000) factor repeated JVM sequences into macro
+instructions and measure footprint down to **~85% of original**.
+Iteration 135 found only ~6% available here. The explanation is in
+Ben Hoyt's *nibbleforth* notes, in one line worth stealing:
+programmers who factor into small words are running a dictionary
+compressor by hand. `shell.4` is written that way; Clausen's 15% is
+what you get when the source was not.
+
+### Settled against a direction we might have drifted toward
+
+Shi, Casey, Ertl and Gregg (TACO 2008) measured register VMs at **46%
+fewer executed instructions for 26% larger bytecode.** For goal 3 that
+is a closed question in the wrong direction. Recorded so nobody spends
+an iteration rediscovering it.
+
+### The assumption that was wrong
+
+`GOALS.md` rejected byte-granular opcodes because `CALL` - which has
+**zero** encoding overhead today, the offset being the instruction -
+would need a marker byte and realignment. `DENSITY-PLAN.md` promoted
+that into a principle: safe schemes remove work, unsafe ones add a
+decoding step.
+
+The principle stands. The **quantity** was a guess. Latendresse and
+Feeley (SCP 2005) decode canonical-Huffman opcodes with custom-sized
+operand fields directly during execution, no prior decompression, and
+measure **~9% average slowdown for 30-60% compression** - noting that
+earlier work had *assumed* this was too slow and that the assumption
+did not survive testing.
+
+Nine percent is a fifth of what Iteration 137's locals change cost,
+for several times the saving.
+
+### The option nobody here had considered: token threading
+
+The largest finding, and it dissolves the objection above rather than
+arguing with it.
+
+RelF spends a **full cell on every call**, because a call *is* an
+offset - 6,576 cells, 34% of compiled code, 8 bytes on x86-64 to name
+one of about 620 words. In **token threading** a call is an *index*
+into a table of addresses. 620 words needs 10 bits. The "a byte scheme
+must widen CALL" objection applies to an offset and **not to an
+index**.
+
+*nibbleforth* works this out for Forth: nibble-granular variable-length
+opcodes, most frequent words in 4 bits and the next tier in 8,
+assigned by frequency analysis of the actual program, with token
+threading so **user-defined words get short codes too**. Its reported
+frequency profile - `exit` dominant, branches next - is close to this
+image's own (`EXIT` 647, `LIT` 2,178, `?BRANCH` 863, `BRANCH` 365).
+Lefurgy et al. (MICRO-30 1997) is the hardware precedent; Thumb-2,
+MIPS16 and RISC-V's C extension are the shipped ones.
+
+Rough estimate on this image's census, one byte for primitives and
+small values, two for calls and wider operands: **~26,000 bytes
+against 78,024 on i386 and 156,048 on x86-64.** Roughly **3x on i386
+and 6x on x86-64** - and the second number is the point, because **a
+byte stream does not scale with cell width at all.** Iteration 138
+established that the x86-64 build at 1.63x `dash` is this project's
+real size problem. This is the only idea found that addresses it.
+
+### A speed lever that could fund the rest
+
+CPython 3.14 replaced computed-goto dispatch with **tail calls**,
+reported at ~10% on 64-bit platforms. The mechanism is the
+interesting part: one enormous function defeats the compiler's
+register allocation, and compilers **merge the identical `DISPATCH`
+tails**, destroying exactly the per-opcode indirect branches that give
+the predictor context. Separate functions stop the merging, and
+CPython's own analysis attributes most of the gain to that alone.
+
+**`relf.c` is precisely that shape** - one function, `NEXT()`
+replicated at every primitive, built with GCC. A speed lever
+independent of size, which is what makes it worth having: it could pay
+for the density work rather than compete with it. The LWN account is
+worth reading for the caveats - early measurements were inflated and
+part of the apparent gain was a GCC regression rather than a speedup.
+
+### What this says about method
+
+Three of the seven conclusions - reopening variable-length encoding,
+token threading, tail-call dispatch - were **not reachable by
+measuring this image**, and each is larger than anything currently in
+`DENSITY-PLAN.md`. Measuring before proposing is the right rule and
+this project has been well served by it; it does not substitute for
+finding out whether the question has already been answered. Read the
+field earlier next time.
 
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
