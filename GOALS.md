@@ -1266,12 +1266,6 @@ is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
 
-- **A one-line function definition is not supported.**
-  `f() { echo hi; }` written entirely on one line is rejected with a
-  syntax error (Iteration 107 - before that it hung). One-line *loops*
-  work as of Iteration 117; the same approach should carry over, since
-  the body is carved out of the raw tokens the same way.
-
 - **`~user` reads `/etc/passwd` directly** (Iteration 96). That is one
   NSS source among several. On a system using LDAP, SSSD, NIS or
   systemd-homed — any site with centrally managed accounts — a real

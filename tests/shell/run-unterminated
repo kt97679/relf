@@ -44,9 +44,10 @@ check "unterminated function" 'echo start
 f() {
   echo body'
 
-# The one-line function definition that hung before this iteration.
-# The form is not supported; reporting it is the point.
-check "one-line function definition" 'echo start
-n() { echo "$#"; }'
+# A one-line function definition used to hang, then (Iteration 107) be
+# diagnosed, and since Iteration 118 it simply works - so it is no
+# longer a case for this file. An unterminated one still belongs here.
+check "unterminated one-line function" 'echo start
+n() { echo "$#";'
 
 report

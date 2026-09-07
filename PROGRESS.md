@@ -8742,3 +8742,39 @@ working.
 
 524 assertions across 63 files, 18 differential cases, 1991 core OK
 markers, both cell widths, mrsh 19 of 21.
+## Iteration 118: a function defined entirely on one line
+
+    f() { echo hi; }
+
+The form that hung before Iteration 107 and was diagnosed after it now
+works. Same technique as 117's one-line loop, and possible for the
+same reason: since Iteration 114 the tokens are still the words as
+written, so a body can be carved out of them and stored unexpanded.
+
+`FIND-BODY-CLOSE` locates the brace that closes the body **by depth**,
+not by taking the last token. The first attempt did take the last
+token, and `outer() { inner() { echo deep; }; inner; }` failed on it -
+the inner definition's own tokens continue past its closing brace, so
+`ARGV` ends in `;` rather than `}`. Depth also gives the other half
+for free: whatever follows the closing brace is the rest of the line
+and still has to run, which is how that example manages to define
+`inner` and then call it, both from the outer body's single stored
+line.
+
+`tests/shell/run-unterminated` lost its "one-line function definition"
+case, which asserted a syntax error, and gained an *unterminated*
+one-line definition instead - the thing that file is actually about.
+
+### Verified
+
+`tests/diff/cases/one-line-funcdef.sh` - arguments and `$#`; the
+caller's own positional parameters surviving the call; a body read
+when it runs rather than when it is defined; the `f() ( ... )`
+subshell form; `return` and the resulting `$?`; nesting; redefinition;
+and the multi-line form still working.
+
+524 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, both cell widths, mrsh 19 of 21.
+
+With this, every form GOALS.md listed as an unsupported same-line
+construct now works, and that entry is gone from the limitations list.

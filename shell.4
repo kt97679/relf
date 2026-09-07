@@ -5774,6 +5774,30 @@ VARIABLE FUNC-CUR-I
 ' RUN-FUNC-BODY IS RUN-FUNC-BODY-CALL
 
 CREATE FUNCDEF-NAME-BUF 64 ALLOT
+VARIABLE FBC-I
+VARIABLE FBC-D
+VARIABLE FD-CLOSE
+
+: FIND-BODY-CLOSE ( --- idx | -1 )
+  \ ARGV[0] should be the body's opening "{" (or "("); returns the
+  \ index of the brace that closes it, or -1 if it is not there.
+  \
+  \ By depth rather than "the last token": a definition nested inside
+  \ another, or anything following the closing brace on the same
+  \ line, both leave tokens after it.
+  {: | FBC-I FBC-D :}
+  0 FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? 0= IF -1 EXIT THEN
+  BEGIN FBC-I @ ARGC @ < WHILE
+    FBC-I @ FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? IF
+      FBC-D @ 1+ FBC-D !
+    THEN
+    FBC-I @ FUNCDEF-SUBSHELL? @ IF S" )" ELSE S" }" THEN TOK-EQ? IF
+      FBC-D @ 1- FBC-D !
+      FBC-D @ 0= IF FBC-I @ EXIT THEN
+    THEN
+    FBC-I @ 1+ FBC-I !
+  REPEAT
+  -1 ;
 
 VARIABLE FDL-I
 
@@ -5869,13 +5893,10 @@ VARIABLE FDC-I
 
 : DO-FUNCDEF ( --- )
   \ ARGV[0] ends with "()" - a function definition header. Requires
-  \ "{" either later on the same line (the common "name() {" style,
-  \ via the same pending-remainder mechanism if's own same-line
-  \ then/else/fi detection uses) or on its own separate line - but the
-  \ body's own lines and the closing "}" must each be on their own
-  \ separate line, not fused with other content the way if's own
-  \ same-line then/else/fi can be; a deliberate, simpler scope cut for
-  \ now. Stores the captured body (raw text, NUL-separated lines, the
+  \ "{" later on the same line (the common "name() {" style), on its
+  \ own separate line, or with the WHOLE body on one line -
+  \ "f() { echo hi; }" - which FIND-BODY-CLOSE handles by locating
+  \ the matching brace among the tokens (Iteration 118). Stores the captured body (raw text, NUL-separated lines, the
   \ same shape while/for's own bodies use) via SET-FUNC, keyed by the
   \ name extracted from ARGV[0] - a later definition with the same
   \ name simply replaces it.
@@ -5935,6 +5956,35 @@ VARIABLE FDC-I
       EXIT
     THEN
   THEN
+  \ The whole body on one line - "f() { echo hi; }". The opener is
+  \ ARGV[0] and its closer is the last token, so the body is simply
+  \ the tokens between them, joined back into a line and stored the
+  \ way a body line read from input is stored. Same shape as
+  \ Iteration 117's one-line loop, and possible for the same reason:
+  \ since Iteration 114 the tokens are still the words as written, so
+  \ nothing in the body has been expanded yet.
+  \
+  \ The LAST closer, so a definition nested inside another belongs to
+  \ the outer one.
+  FIND-BODY-CLOSE DUP 0 > IF
+    FD-CLOSE !
+    0 WHILE-BODY-LEN !
+    1 FD-CLOSE @ JOIN-ARGV-TO-RAW
+    RAW-LINE-LEN @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
+    FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
+    SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN
+    \ Anything after the closing brace is the rest of the line and
+    \ still has to run - "outer() { inner() { echo deep; }; inner; }"
+    \ stores the inner definition and then calls it, both from the
+    \ outer body's single stored line.
+    FD-CLOSE @ 1+ ARGC @ < IF
+      FD-CLOSE @ 1+ ARGC @ JOIN-ARGV-TO-RAW
+      RAW-LINE-BUF LINE-BUF RAW-LINE-LEN @ MOVE
+      RAW-LINE-LEN @ RUN-LINE-CALL
+    THEN
+    EXIT
+  THEN
+  DROP
   FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN SPLIT-AT-KEYWORD DROP
   PENDING-REMAINDER? @ 0= IF
     READ-NEXT-LOGICAL-LINE
