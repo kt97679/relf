@@ -181,6 +181,57 @@ the full account and the fixes applied.
   not bugs. Using bash as a *live oracle* instead — `tests/diff/` —
   has the same authority, no licence entanglement, and no bash-isms.
 
+## Build environment: what a fresh machine needs
+
+Everything here is checked into the repository except the toolchain.
+There is no `configure`, no `Makefile`, and no package manifest, so
+this is the list.
+
+**Required.**
+
+- **A C compiler reachable as `cc`.** `tests/run_tests.sh` invokes
+  `cc -O2 -Wall` directly. GCC and Clang both work.
+- **32-bit support for that compiler**, because the suite builds
+  `relf32` with `cc -m32` and *every commit must pass on both cell
+  widths* (see Repository conventions). On Debian/Ubuntu:
+
+      apt-get update && apt-get install -y gcc-multilib
+
+  Without it `cc -m32` fails with `cannot find Scrt1.o` and
+  `run_tests.sh` prints `SKIP:` and carries on — so the 4-byte-cell
+  half is silently not tested. **Install it before trusting a green
+  run.** A container image with only the 64-bit libraries looks
+  entirely healthy while checking half of what it claims to.
+- **`bash` and `dash`.** `tests/diff/` uses bash as a live oracle and
+  the mrsh suite compares against it; `tests/bench` reports both. They
+  are test dependencies, not runtime ones - the shell itself needs
+  nothing but libc.
+- **`timeout`** (coreutils), used throughout the test scripts.
+
+**Not required.** `qemu-user` only for the ARM64 cross-check recorded
+in Phase 5; nothing in the normal loop needs it.
+
+**Rebuilding `kernel.img`.** It is a committed build artifact and does
+*not* rebuild itself. Adding an engine primitive means editing the
+dispatch table in `relf.c` and the `PRIMITIVE` list in `kernel.4` -
+which are positional, so append at the end of both - and then
+cross-compiling:
+
+    ./relf kernel.img
+    S" extend.4" INCLUDED
+    S" cross.4" INCLUDED
+
+which overwrites `kernel.img` in place. Do not delete it first: the
+cross-compiler runs *on* the existing image. Recovering from that is
+`git checkout kernel.img` (Iteration 120 did exactly this wrong).
+Delete `kernel-shell.img` afterwards so `relfsh` rebuilds the shell
+image against the new kernel.
+
+**The whole check** is `bash tests/run_tests.sh` (core suite on both
+cell widths, shell suite, differential suite) plus
+`bash tests/mrsh-suite/run.sh`. `tests/bench` is deliberately not run
+by either; run it when performance is the point.
+
 ## Test suite strategy
 
 - Full `forth2012-test-suite` (ANS/Forth-2012) compliance is a long-term
@@ -194,6 +245,33 @@ the full account and the fixes applied.
   test suite, already using RelF's `{ -> }` convention) is the primary
   regression suite. It existed in the repo but wasn't wired into any
   automated runner before this project — now is, via `tests/run_tests.sh`.
+
+**The four layers, and what each is for.** `FORTH-STYLE.md` §13 covers
+how to test; this is what exists:
+
+1. **`tests/` core suite** - `tester.fr` and the Forth-level tests, run
+   on both cell widths. Counted in OK markers.
+2. **`tests/shell/run-*`** - hand-written shell assertions, one file
+   per feature, run by `tests/shell/run-all`. Use these for things bash
+   is the *wrong* oracle for: diagnostics this shell emits, forms bash
+   accepts that this shell deliberately rejects, and its own scope
+   limits. `run-unterminated` is the model.
+3. **`tests/diff/cases/*.sh`** - the differential suite. Each case is a
+   plain script run under both this shell and bash, with the outputs
+   compared and **no hand-written expectations at all**. This is the
+   strongest layer and the one to reach for first: it has caught bugs
+   no hand-written test would have, precisely because nobody had to
+   think of the failing case. Add cases *before* changing behaviour.
+   Note the scripts must avoid forms bash and this shell legitimately
+   disagree on, or the case fails for the wrong reason.
+4. **`tests/mrsh-suite/`** - vendored third-party acceptance tests, the
+   criterion for goal 8. Not editable; they are the outside view.
+
+A `run-*` file must be executable and is picked up by `run-all`
+automatically. Run them through `run-all` rather than directly:
+`lib.sh` defaults `THIS_SH` to `../../relfsh`, so a file run from the
+repository root silently tests a shell that does not exist and reports
+every assertion as a failure.
 
 ## Named locals (`locals.4`) — available since Iteration 38
 
@@ -272,13 +350,25 @@ move honestly, the same way the mrsh count is:
   assertions, on both cell widths.
 - `tests/mrsh-suite/run.sh`: the acceptance criterion for goal 8.
 - **Size**: stripped engine + prebuilt shell image, both cell widths.
+- **`tests/bench`**, when performance is the point. Not run by
+  `run_tests.sh` - it takes minutes and is noisy. Iteration 116's
+  measurement: loop 944ms, spawn ~155ms, startup ~235ms, against
+  dash's 4/72/98. The loop figure is the one Stage 2 of
+  `PARSE-EXPAND-PLAN.md` exists to move.
 
-Baseline at Iteration 41:
+Baseline at Iteration 41, and where it stands at Iteration 121:
 
-| | engine | image | total |
-|---|---|---|---|
-| **i386 (4-byte cells)** | 17,808 | 72,528 | **90,336** |
-| x86-64 (8-byte cells) | 22,744 | 131,784 | 154,528 |
+| | engine | image (41) | image (121) | total (121) |
+|---|---|---|---|---|
+| **i386 (4-byte cells)** | 17,808 | 72,528 | 133,940 | **151,748** |
+| x86-64 (8-byte cells) | 22,744 | 131,784 | 250,120 | 272,864 |
+
+The image has grown ~1.85x since Iteration 41, entirely from shell
+functionality - the engine has not changed size at all. `dash` at
+121,520 is no longer being flattered: the i386 build passed it
+somewhere in the eighties and is now ~1.25x it. That is the number
+the size levers below exist for, and the reason they are worth
+revisiting once the functionality gap is closed rather than never.
 
 For context, on the same machine: `dash` is 121,520; `mrsh` is 183,312
 plus a 15,432-byte shared library. Both are far more complete shells

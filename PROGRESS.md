@@ -8851,3 +8851,46 @@ Iteration 96 wanted one.
 
 524 assertions across 63 files, 19 differential cases, 1991 core OK
 markers, both cell widths, mrsh 19 of 21.
+## Iteration 121: what a fresh machine needs, written down
+
+No code. Three gaps in the handoff documentation, each of which cost
+time in this run of work and would have cost it again.
+
+**Build environment.** Everything is checked in except the toolchain,
+and there is no `Makefile` or package manifest to read it off, so
+GOALS.md now lists it: a `cc`, **32-bit support for it**, `bash`,
+`dash`, `timeout`. The 32-bit point is the one that matters. Every
+commit must pass on both cell widths, but when `cc -m32` cannot link,
+`tests/run_tests.sh` prints `SKIP:` and carries on green - so a
+container with only 64-bit libraries looks entirely healthy while
+testing half of what it claims to. This session began by installing
+`gcc-multilib` and would have reported false greens without it.
+
+Also recorded there: how to rebuild `kernel.img` after adding an
+engine primitive, including that the cross-compiler runs *on* the
+existing image, so deleting it first is the one thing not to do.
+Iteration 120 did exactly that and had to recover with
+`git checkout kernel.img`.
+
+**The four test layers.** `tests/`, `tests/shell/`, `tests/diff/` and
+`tests/mrsh-suite/` existed with no single place saying what each is
+*for* - in particular that the differential suite is the strongest and
+should be reached for first, and that hand-written assertions are for
+the cases where bash is the wrong oracle. Plus the trap that cost
+twenty minutes here: `lib.sh` defaults `THIS_SH` to `../../relfsh`, so
+running a `run-*` file from the repository root tests a shell that
+does not exist and reports every assertion as failed. I misread that
+as a real regression and reverted a correct change because of it.
+
+**Tracked numbers brought current.** The size table was Iteration 41's
+and eighty iterations stale. The image has grown ~1.85x since then,
+all of it shell functionality - the engine has not changed size at
+all. Worth stating plainly: the i386 build is no longer smaller than
+`dash`, it is ~1.25x it, having passed it somewhere in the eighties.
+The section already said the comparison "currently flatters this
+project"; it no longer does, and that is the fact the deferred size
+levers exist for. `tests/bench` is now listed as a tracked number with
+Iteration 116's figures, rather than living only in a PROGRESS entry.
+
+524 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, both cell widths, mrsh 19 of 21.
