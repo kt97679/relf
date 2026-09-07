@@ -1,0 +1,48 @@
+\ tools/dict-report.4 - walk the dictionary and print one line per
+\ word: header bytes, body bytes, name. Used by Iteration 129 to find
+\ out where a shell image's bytes actually go.
+\
+\ Header layout, from cross.4's "HEADER: an aligned link cell holding
+\ a RELATIVE offset (previous name-field address minus this link
+\ cell's own address, so it survives relocation), then a count byte
+\ with bit 7 set as a marker, then the name, then alignment padding.
+\ FORTH-WORDLIST holds the latest name-field address.
+\
+\ Body extent is computed as "start of the next-defined word's link
+\ cell, minus the end of this word's name field", which works because
+\ the dictionary is laid down strictly upward. The walk runs newest
+\ to oldest, so the previous iteration's link cell is the current
+\ word's body end.
+\
+\ Usage (i386 build shown; the same works for 8-byte cells):
+\   printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\n\
+\           S" shell.4" INCLUDED\nS" tools/dict-report.4" INCLUDED\n' \
+\     | ./relf32 kernel32.img
+\
+\ Terminate on the LINK VALUE being zero, not on the computed address
+\ being zero - the last word's link cell holds 0, so the computed
+\ "previous" address is the link cell itself and a naive loop walks
+\ off the end of the dictionary into garbage. That is what the first
+\ version of this file did.
+
+BASE @ DECIMAL
+VARIABLE PREVLINK
+VARIABLE NFA
+VARIABLE LNK
+VARIABLE GO
+: CELLB 1 CELLS ;
+: WALK
+  HERE PREVLINK !
+  FORTH-WORDLIST @ NFA !
+  -1 GO !
+  BEGIN GO @ WHILE
+    NFA @ C@ 31 AND
+    DUP 1+ ALIGNED CELLB +
+    PREVLINK @  NFA @ DUP C@ 31 AND 1+ ALIGNED + -
+    ." W " SWAP . . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
+    NFA @ CELLB - DUP PREVLINK ! @ LNK !
+    LNK @ 0= IF 0 GO ! ELSE PREVLINK @ LNK @ + NFA ! THEN
+  REPEAT ;
+WALK
+." TOTALHERE " HERE START @ - . CR
+BASE ! BYE

@@ -177,6 +177,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 126 — a conformance harness scored by consensus, not by bash
 - 127 — seven reference shells, and the 32-bit half finally run
 - **128** — the size axis of the comparison, as a script
+- **129** — where the image bytes actually go, and why Forth being "compact" does not make this the smallest shell
 
 ### Not tied to an iteration
 
@@ -9718,3 +9719,143 @@ believing it.
 
 532 assertions across 63 files, 19 differential cases, 1991 core OK
 markers on both cell widths, mrsh 20 of 21, posix 3/1/1.
+## Iteration 129: where the image bytes actually go, and why Forth
+## being "compact" does not make this the smallest shell
+
+The question was why `shell.4` is bigger than `dash` when Forth is
+supposed to produce compact code. Measured rather than argued.
+`tools/dict-report.4` walks the dictionary and prints header bytes,
+body bytes and name for every word; the numbers below are the i386
+build, whose 134,500-byte image accounts for 133,772 bytes of
+dictionary plus the magic header.
+
+### The Forth system is compact. The application is not.
+
+| | bytes | of image |
+|---|---|---|
+| Forth kernel (interpreter, compiler, 265 core words) | 13,336 | 10% |
+| shell layer: compiled colon-word bodies (353 words) | 77,604 | 58% |
+| shell layer: `CREATE ... ALLOT` buffers (55) | 25,968 | 19% |
+| dictionary headers - names and link fields (1,069) | 16,400 | 12% |
+| `VARIABLE` bodies (365) | 2,920 | 2% |
+| `BUFFER:` descriptors (31) | 476 | <1% |
+
+**The compactness reputation holds for the system and fails for the
+code.** A complete Forth - outer interpreter, compiler, 265 words - is
+13KB against dash's ~120KB of text. That part is real and remarkable.
+Everything above it is not compact at all.
+
+### Why the compiled code is not dense: one full cell per token
+
+RelF's threading spends **one cell per operation**: 4 bytes on i386, 8
+on x86-64. Against real machine code:
+
+- 77,604 bytes of compiled body = **19,401 cells** = 19,401 tokens.
+- `dash` is 21,348 x86 instructions in 115,394 bytes of text =
+  **5.41 bytes per instruction** (`objdump -d`, counted, not
+  estimated).
+
+So per operation RelF is **4 bytes against x86's 5.41** - a 1.35x
+density advantage on i386, and on **x86-64 it is 8 bytes against 5.41,
+a 1.5x disadvantage.** That single fact is most of the answer to the
+original question, and it explains the 8-byte image being 1.85x the
+4-byte one better than any statement about buffers does.
+
+Two things make it worse than the raw ratio suggests:
+
+1. **A Forth token often buys less work than a machine instruction.**
+   `DUP`, `SWAP`, `>R`, `DROP` are pure stack shuffling that a
+   register-allocating C compiler never emits at all. RelF pays a full
+   cell for each.
+2. **There is no compression between source and image.** 18,357
+   whitespace-separated source tokens produce 19,401 compiled cells -
+   almost exactly 1:1. `cross.4` is a transliterator, not an
+   optimizer. Nothing is inlined, folded or deduplicated.
+
+Where the "Forth is compact" reputation comes from is 16-bit
+threading, where a token is 2 bytes and genuinely halves x86, and from
+factoring reducing the *number* of operations. Neither applies here.
+GOALS.md's phase 5 already records byte-granular opcodes being
+considered and rejected on `CALL`-encoding grounds; this measurement
+is the size half of the case that was being weighed there.
+
+### The one piece of pure waste: 16KB for an empty stack
+
+`locals.4` declares `CREATE LSAVE-STACK LSAVE-MAX CELLS ALLOT` with
+`LSAVE-MAX` at 4096. That is **16,388 bytes - 12% of the entire i386
+image - for a save stack that is empty at save time by construction.**
+It is the single largest object in the dictionary by a factor of six.
+
+GOALS.md's memory policy says precisely this: *"Don't hardcode limits,
+and don't preallocate. `CREATE name n ALLOT` ... takes dictionary at
+compile time, so the space lands in every saved image whether or not
+it is ever used."* Iteration 90 raised the limit from 256 cells to
+4096 to fix a recursion depth bug, sixteen-fold, and nobody costed it.
+The policy was written in Iteration 41 and the violation went in at
+90.
+
+### Converting it to `BUFFER:` was measured, and reverted
+
+The obvious fix is `pool.4`'s `BUFFER:`, which puts three cells in the
+dictionary and allocates on first use. It works, and it needed one
+more change - `pool.4` must load before `locals.4`, and
+`tests/locals.fth` includes `locals.4` alone, so that file needed
+`pool.4` too. Without it the suite **segfaults** rather than reporting
+an undefined word: the failed declaration leaves `LSAVE-STACK`
+undefined and every later use compiles a garbage reference.
+
+Then the benchmark, three runs each way, alternating:
+
+| | loop-ms | start-ms | i386 image | x86-64 image |
+|---|---|---|---|---|
+| `CREATE ... ALLOT` | 862-928 | 394-419 | 134,500 | 251,104 |
+| `BUFFER:` | 982-1075 | 487-518 | **118,128** | **218,360** |
+
+**-10.7% image, +13% loop, +22% startup.** i386 total would have gone
+152,308 -> 135,936, within 1.05x of dash instead of 1.17x.
+
+GOALS.md predicted exactly this question - *"the ~11K of small hot
+buffers still declared with `CREATE`, once it is measured whether
+`BUFFER:`'s extra indirection matters on the tokenizer's hot path"* -
+and the answer is that it does. `BUFFER:` replaces a constant push
+with a `DOES>` body that tests a pointer and branches, on a path taken
+on entry to and exit from every locals-using word.
+
+**Reverted, deliberately, and the decision left open.** Landing a 13%
+loop regression immediately before Stage 2 of
+`PARSE-EXPAND-PLAN.md` - whose entire justification is loop time, and
+which needs a clean before/after - would muddy the one measurement
+that stage has. Iteration 116 makes the same argument in the other
+direction about Stage 1's cost. The size win is real and still
+available; it should be taken as its own decision, not smuggled in
+under a question about why the image is big.
+
+**The design that gets both**, not attempted here: allocate the stack
+once at boot rather than lazily on each access, so the hot path is a
+single `VARIABLE` fetch instead of a `DOES>` with an initialization
+branch. It cannot be a plain pointer stored in the image - heap
+addresses are meaningless after a reload, which is why `BUFFER:`
+pointers are scrubbed by `save-system.4` - so it needs boot-time
+wiring through `BOOT`. That is an iteration of its own.
+
+### A tracked number that is not what it says
+
+Adding seven lines to `tests/locals.fth` moved "core OK markers" from
+1991 to 1998. The suite counts lines beginning `OK`, and the
+interpreter prints one per line of stdin it consumes - so the figure
+is **lines of test input interpreted without error**, not assertions
+passed. It moved by exactly the number of lines added. Still a real
+regression signal, since an error breaks the run; not a count of
+anything. GOALS.md quotes it as though it were.
+
+### Kept
+
+`tools/dict-report.4`, documented, including the trap that the walk
+must terminate on the link *value* being zero rather than the computed
+address - the last word's link cell holds 0, so a naive loop walks off
+the end of the dictionary into garbage, which is what the first
+version did.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
