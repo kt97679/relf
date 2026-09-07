@@ -115,12 +115,47 @@ The field-splitting logic (`IFS-SPLIT-PENDING?`,
 moves with the expansion sites and gets *simpler*, because "which word
 am I in" stops being implicit in a buffer position.
 
-**Stage 2 — cache tokenized body lines.**
+**Stage 2 — cache tokenized body lines.** The only stage left, and
+the only one whose justification is speed rather than correctness.
+
 Loop and function bodies are stored as raw text and re-tokenized every
-iteration. Once tokenizing is separate from expanding, the token list
-for a body line can be built once and only `EXPAND-WORDS` re-run per
-iteration. This is where the loop benchmark improves; measure with
-`tests/bench` and record the number.
+iteration: `NORMALIZE-OPERATORS` walks the line and records its word
+spans, `TOKENIZE-RAW` copies each word into `TOK-BUF`, and only then
+does `EXPAND-WORDS` do the part that actually depends on anything that
+changed since last time. The first two are pure functions of the line
+text and could be done once.
+
+**The number to beat.** Iteration 116 measured the loop benchmark at
+689ms before Stage 1 and 944ms after - Stage 1 cost 37%, by adding a
+copy of every line. Iteration 119 took back about 4% by removing a
+duplicated normalization pass, leaving ~914ms against dash's 4ms.
+Measure before and after on the same machine and put both numbers in
+the entry; a change justified by speed that does not move the
+benchmark is not worth its complexity.
+
+**What makes this harder than it sounds.** `TOKENIZE` reads from
+`NORM-BUF` and the spans in `NORM-WORDS`/`NORM-WLENS` - single global
+buffers, overwritten by the next line. A cache therefore cannot just
+"remember the last result"; consecutive body lines alternate, so a
+one-entry cache never hits. It needs per-line storage, which means:
+
+- Keyed by what identifies a body line uniquely. `REPLAY-SRC` plus the
+  line's start offset within it is the natural key and is already
+  known at `READ-LINE-INTO-ARGV` time.
+- Sized how? A body is arbitrarily long. The body arena is the obvious
+  home (allocate the cache alongside the body, freed by the same
+  `BODY-ARENA-TOP` local), but a *function* body outlives its
+  invocation and would want the cache in the function's table slot
+  instead. Two homes, or accept caching only loop bodies at first.
+- Invalidated when? The stored text of a body never changes once
+  captured, so within one construct the cache is safe. A function
+  redefined with the same name must drop its cache; `SET-FUNC` is the
+  one place that happens.
+
+**Do the smallest version first and measure it**: loop bodies only,
+cache in the body arena, no function bodies. If that does not move
+`tests/bench`, the remaining cost is elsewhere and the rest of the
+stage should not be built on an assumption.
 
 **Stage 3 — nested `$(...)`. Done in Iteration 105, ahead of this
 plan and without needing it.** Not by saving and restoring parser
