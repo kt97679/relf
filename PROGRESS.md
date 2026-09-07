@@ -193,6 +193,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **142** — the token-threading design written out (`TOKEN-THREADING.md`)
 - **143** — `ONE-LINE-LOOP?` is a symptom: two conformance bugs, one silent
 - **144** — the audit: `until` silently does nothing, plus three more same-line faults
+- **145** — why `(`/`)` are not reserved words; `$( (list) )` read as arithmetic
 
 ### Not tied to an iteration
 
@@ -11400,3 +11401,82 @@ fixes the class rather than the instances.
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 3 passed / 6 failed / 1 inconclusive.
+## Iteration 145: why `(` and `)` are not reserved words, and what asking found
+
+Asked why `RESERVED-WORD?` omits `(` and `)`. **It is correct to omit
+them**, and checking why turned up a real gap somewhere else.
+
+### The list is exactly POSIX's
+
+XCU 2.9 defines the reserved words as
+
+    !  {  }  case  do  done  elif  else  esac  fi  for  if  in
+    then  until  while
+
+which is precisely the sixteen in `RESERVED-WORD?`. `(` and `)` are
+**control operators** (2.10.2), a different category with different
+recognition rules, and they are correctly absent.
+
+### The distinction is observable, and this shell gets it right
+
+A **reserved word** is recognised only as a separate, unquoted token in
+command-name position, so it must be delimited. An **operator**
+self-delimits and needs no surrounding space. That predicts two
+things, and both hold:
+
+    (echo hi)      -> hi          operator: no spaces needed
+    {echo hi;}     -> status 127  reserved word: "{echo" is just a word
+
+Tested unspaced parens in ten shapes - `(echo a)&&(echo b)`,
+`((echo a))`, `if (true); then`, `(exit 3); echo $?`, a subshell in a
+pipeline, one inside a `for` body - and all match `sh`. So although
+`NORMALIZE-OPERATORS` deliberately does **not** space out parens, the
+tokenizer handles them anyway.
+
+**A correction to my own first reading.** I initially called
+`{echo hi;}` a silent divergence, because I compared stdout and
+relfsh printed nothing where `sh` printed a diagnostic. It exits
+**127** - `{echo` is not a command - which is the correct behaviour;
+only the message differs, and messages are implementation-defined.
+Recorded as `2.9.4.1-brace-must-be-delimited.fail.sh`, which passes.
+Comparing stdout alone is how the `ulimit.sh` hollow pass happened
+too.
+
+### The gap the question actually found
+
+    x=$( (echo inner) ); echo "got=$x"
+
+    sh and six others -> got=inner
+    relfsh            -> got=
+
+Silent. POSIX 2.6.3 requires that space: a command substitution whose
+first token is a subshell must be written `$( (` so it is not read as
+`$((` arithmetic expansion. This shell ignores the space and reads
+arithmetic either way, which quietly evaluates to nothing.
+
+The same root shows the other way round: `x=$((echo n))` yields **0**
+here where `sh` diagnoses an arithmetic syntax error.
+
+`NORMALIZE-OPERATORS`' own comment predicted this. It says parens are
+out of scope because blindly spacing them "would break `$(...)`
+command substitution outright - EXPAND-VAR's own detection needs
+`"$("` with no space in between". That detection is the same code that
+cannot tell `$((` from `$( (`. The comment identified the coupling and
+stopped one step short of noticing it was already a bug.
+
+### Where this leaves the audit
+
+Eleven `tests/posix` cases: **4 passed, 7 failed, 1 inconclusive**. The
+new failure is the only one of the five differences probed here that
+is a genuine defect; the rest of the paren behaviour is correct, and
+`RESERVED-WORD?` needs no change.
+
+Worth stating plainly because it is the opposite of the last two
+iterations: **the design question had a good answer.** The list is
+right, the operator/reserved-word distinction is implemented
+correctly, and asking about it was still worth it - it found a defect
+next door.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 4 passed / 7 failed / 1 inconclusive.

@@ -825,6 +825,13 @@ from an older revision of this file:
 - **`&` is treated as a line terminator, not a list terminator.**
   `true & echo after` passes `&` and `echo` and `after` as arguments
   to `true`. A command may follow `&` on the same line.
+- **`$( (list) )` is read as arithmetic.** POSIX requires the space to
+  disambiguate a command substitution whose first token is a subshell
+  from `$((` arithmetic expansion; this shell ignores it, so
+  `x=$( (echo n) )` yields the empty string. `$((echo n))` likewise
+  yields 0 where other shells diagnose it. `NORMALIZE-OPERATORS`'
+  comment predicted exactly this when it left `(` and `)` out of
+  operator spacing.
 - **`case` cannot be written on one line**, and therefore cannot
   appear in a one-line function body. `case x in x) echo M ;; esac` is
   a syntax error.
