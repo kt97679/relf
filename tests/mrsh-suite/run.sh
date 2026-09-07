@@ -5,7 +5,8 @@
 #
 #   - vendor/*.sh (mrsh's top-level test/*.sh): differential testing,
 #     matching mrsh's own harness.sh - run the same script through
-#     relfsh and through bash (as the reference shell), PASS only if
+#     relfsh and through the reference shell ($REF_SH, default sh),
+#     PASS only if
 #     stdout and exit status both match. stderr is intentionally
 #     ignored, matching mrsh's own harness.
 #   - vendor/conformance/*.sh (mrsh's test/conformance/*.sh): three
@@ -21,7 +22,8 @@
 #
 # relfsh gained real file-argument invocation in Iteration 16 (phase
 # A's last item), so each vendored test is fed to it the same way
-# bash is: `relfsh testcase` / `bash testcase`, no more asymmetry.
+# the reference is: `relfsh testcase` / `$REF_SH testcase`, no more
+# asymmetry.
 #
 # This script deliberately reports failures rather than hiding them -
 # the whole point of adopting mrsh's suite is an honest, trackable
@@ -32,6 +34,15 @@
 cd "$(dirname "$0")" || exit 1
 VENDOR_DIR="./vendor"
 RELFSH="${RELFSH:-../../relfsh}"
+# Reference shell for the differential half. Upstream's own
+# meson_options.txt defaults 'reference-shell' to 'sh', and this
+# harness followed bash instead until Iteration 124 - which cost a
+# genuine pass and bought a hollow one, because bash deviates from
+# POSIX on alias expansion in non-interactive shells (GOALS.md, "Where
+# bash and POSIX disagree") and reports ulimit in 1024-byte blocks
+# where POSIX says 512. Override to compare against another shell:
+#   REF_SH=bash tests/mrsh-suite/run.sh
+REF_SH="${REF_SH:-sh}"
 TIMEOUT_SECS=10
 
 PASS=0
@@ -44,9 +55,9 @@ run_relfsh() {
     timeout "$TIMEOUT_SECS" "$RELFSH" "$1" < /dev/null 2>/dev/null
 }
 
-run_bash() {
-    # $1 = script path; prints stdout, returns bash's exit status
-    timeout "$TIMEOUT_SECS" bash "$1" < /dev/null 2>/dev/null
+run_ref() {
+    # $1 = script path; prints stdout, returns the reference shell's status
+    timeout "$TIMEOUT_SECS" "$REF_SH" "$1" < /dev/null 2>/dev/null
 }
 
 record_pass() { PASS=$((PASS + 1)); }
@@ -70,21 +81,21 @@ is_crash_status() {
     [ "$1" -ge 128 ] 2>/dev/null
 }
 
-echo "=== Differential tests (relfsh vs bash) ==="
+echo "=== Differential tests (relfsh vs $REF_SH) ==="
 for f in "$VENDOR_DIR"/*.sh; do
     name=$(basename "$f")
     relfsh_out=$(run_relfsh "$f")
     relfsh_ret=$?
-    bash_out=$(run_bash "$f")
-    bash_ret=$?
-    if [ "$relfsh_ret" = "$bash_ret" ] && [ "$relfsh_out" = "$bash_out" ]; then
+    ref_out=$(run_ref "$f")
+    ref_ret=$?
+    if [ "$relfsh_ret" = "$ref_ret" ] && [ "$relfsh_out" = "$ref_out" ]; then
         echo "PASS: $name"
         record_pass
     elif is_crash_status "$relfsh_ret"; then
-        echo "FAIL: $name (relfsh CRASHED, status=$relfsh_ret; bash status=$bash_ret)"
+        echo "FAIL: $name (relfsh CRASHED, status=$relfsh_ret; ref status=$ref_ret)"
         record_fail "$name"
     else
-        echo "FAIL: $name (relfsh status=$relfsh_ret bash status=$bash_ret)"
+        echo "FAIL: $name (relfsh status=$relfsh_ret ref status=$ref_ret)"
         record_fail "$name"
     fi
 done

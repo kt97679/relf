@@ -172,6 +172,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **121** — what a fresh machine needs, written down
 - 122 — the documents that can rot
 - 123 — correcting Iteration 122, from upstream's own harness
+- 124 — the reference shell was the ceiling
 
 ### Not tied to an iteration
 
@@ -9288,3 +9289,80 @@ vendored commit is bumped.
 No code. 1991 core OK markers, 524 assertions across 63 files, 19
 differential cases, mrsh 19 of 21 (19 of 20 upstream-active), 8-byte
 cells only — this host still has no 32-bit toolchain.
+## Iteration 124: the reference shell was the ceiling
+
+`tests/mrsh-suite/run.sh` compared against `bash`. Upstream's
+`meson_options.txt` defaults `reference-shell` to **`sh`**. Nobody had
+read that file, for the same reason nobody had read `harness.sh`:
+`vendor/README.md` records both as tooling not worth vendoring, and
+Iteration 123 already noted that `meson.build` is not tooling but
+upstream's statement of what counts. `meson_options.txt` is the other
+half of that statement, and it names the oracle.
+
+The harness now uses `${REF_SH:-sh}`. On this host `/bin/sh` is dash.
+Same count, different members, and both changes are in the honest
+direction:
+
+| | vs bash | vs sh |
+|---|---|---|
+| `command.sh` | FAIL | **PASS** |
+| `ulimit.sh` | **PASS** | FAIL |
+| total | 19 | 19 |
+
+### Both movements say the same thing
+
+`command.sh` failed because bash does not expand aliases in
+non-interactive shells — a documented bash deviation from POSIX.
+`GOALS.md` has a whole section saying this shell follows POSIX where
+the two disagree, and listing this exact case as costing two tests.
+Checked directly rather than reasoned about: on `alias ll="ls -l";
+command -v ll`, dash prints `alias ll='ls -l'` and exits 0, relfsh
+prints **the identical line** and exits 0, and bash prints nothing and
+exits 1. This shell was right and was being marked wrong by an oracle
+the project's own documentation calls wrong.
+
+`ulimit.sh` is the hollow pass from Iteration 122, and it evaporated
+exactly as predicted. bash fails that test on a modern host because
+its last assertion greps `/proc/self/limits` for a 512-byte block
+count that bash reports in 1024-byte blocks — POSIX specifies 512, and
+dash reports 512 and passes. Against bash, two shells failed for
+unrelated reasons and matched; against `sh`, the missing builtin shows
+up as a missing builtin.
+
+That the same one-line change fixed a false failure *and* exposed a
+false pass is the strongest evidence available that it is a correction
+rather than a way of moving a number.
+
+### What this does to goal 8
+
+The recorded "ceiling of 19 of 21, and the remaining two are
+deliberate divergence we will not fix" was **an artifact of the
+oracle**, not a property of this shell. It had been believed since
+Iteration 81 and repeated in `GOALS.md` ever since.
+
+What is actually left:
+
+- **`ulimit.sh`** — a real, missing builtin. Needs a
+  `getrlimit`/`setrlimit` engine primitive.
+- **`2.2.3-alias-expansion.fail.sh`** — which upstream does not run,
+  per Iteration 123.
+
+**So the target is 20 of 20 against the upstream-active set, and one
+builtin stands in the way.** `run.sh` still scores the disabled file,
+and bash remains one `REF_SH=bash` away for anyone who wants the
+second opinion; keeping both oracles reachable is worth more than
+picking one.
+
+### The pattern, now three for three
+
+Three iterations in a row have found that a number this project
+believed was a property of `shell.4` was a property of how it was
+measured: 122 (a hollow pass), 123 (a stricter denominator than
+upstream's), 124 (the wrong oracle). Iterations 15/16, 40 and 116
+found the same shape earlier. **When a count stops moving, suspect
+the harness before concluding the ceiling is real** — and read the
+build files of a vendored suite, not just its tests.
+
+19 passed, 2 failed, 3 skipped against `sh`; unchanged against bash.
+1991 core OK markers, 524 assertions across 63 files, 19 differential
+cases, 8-byte cells only.

@@ -588,8 +588,9 @@ both, so it no longer carries accounts.
    description of what the shell does today, and this file does not
    duplicate it. Iterations 5-13 built v0.1 through v0.8; everything
    since has been driven by phase 8.
-8. **Goal: pass the whole mrsh test suite.** **At its ceiling of 19
-   of 21**, reached in Iteration 114. See below.
+8. **Goal: pass the whole mrsh test suite.** **19 of 21**, with one
+   real remaining failure (`ulimit`) and one test upstream itself does
+   not run. See below.
 
 ## Phase 8: the mrsh suite, and what is left
 
@@ -601,23 +602,34 @@ concrete external target rather than one this project invents its own
 criteria for. `tests/mrsh-suite/run.sh` is the acceptance criterion;
 re-run it after each iteration and let the count move honestly.
 
-**Current: 19 passed, 2 failed, 3 skipped.** The 3 skips are
-`*.undefined.sh` conformance cases, which POSIX does not specify a
-result for and which the harness deliberately does not score. They are
-not outstanding work and never will be.
+**Current: 19 passed, 2 failed, 3 skipped**, measured against `sh`.
 
-**The 2 failures are the alias divergence recorded below and cannot be
-fixed without making this shell less correct.** `command.sh` differs
-on one line because `command -v ll` reports an alias here and not in
-bash; `2.2.3-alias-expansion.fail.sh` expects status 127 purely
-because bash never expands the alias and so finds no command. Matching
-either means emulating a documented bash deviation from POSIX. Left
-failing deliberately: the criterion and the goal disagree, and the
-goal wins.
+The reference shell is `${REF_SH:-sh}`, matching upstream's own
+`meson_options.txt` default. This harness used bash until Iteration
+124, and that choice was costing a genuine pass and buying a hollow
+one — see below. `REF_SH=bash tests/mrsh-suite/run.sh` still works and
+is worth running occasionally, but `sh` is what the number means.
 
-**So 19 of 21 is the ceiling, and it has been reached.** Phases A
-through G below are all complete. What remains under this goal is not
-a number to move.
+The 3 skips are `*.undefined.sh` conformance cases, which POSIX does
+not specify a result for. Upstream runs them behind a
+`test-undefined-behavior` option; this harness reports them unscored.
+They are not outstanding work.
+
+**Both failures are now real and one of them is fixable:**
+
+- **`ulimit.sh`** — `ulimit` is not implemented. A genuine missing
+  builtin, and the single feature standing between this project and a
+  clean sweep of the tests upstream actually runs. Needs a
+  `getrlimit`/`setrlimit` engine primitive; POSIX specifies 512-byte
+  blocks, which is what `sh` reports and where bash differs.
+- **`2.2.3-alias-expansion.fail.sh`** — commented out of upstream's
+  own conformance `meson.build` against a TODO citing mrsh issue #145.
+  mrsh does not run it either.
+
+**So the reachable target is 20 of 20 against the upstream-active
+set, and `ulimit` is what stands in the way.** The previously-recorded
+"ceiling of 19 of 21, the rest is deliberate divergence" was an
+artifact of the reference-shell choice, not a property of this shell.
 
 ### One pass is hollow, found in Iteration 122
 
@@ -899,9 +911,11 @@ against a second reference (`dash`) before being recorded, because
 "bash does X" and "X is correct" are not the same claim.
 
 - **Aliases are not expanded by bash in non-interactive shells.** POSIX
-  says alias substitution applies; this shell applies it. Costs two
-  mrsh tests, `command.sh` and `2.2.3-alias-expansion.fail.sh` — the
-  19-of-21 ceiling recorded below.
+  says alias substitution applies; this shell applies it, and so does
+  `dash`. Cost two mrsh tests while bash was the reference shell;
+  costs none since Iteration 124 moved the harness to `sh`, upstream's
+  own default. bash is the outlier here, which is why the reference
+  shell mattered more than it looked.
 - **Tilde after `=` in a non-assignment word.** `echo other=~/y`:
   bash expands the tilde, dash does not, and neither do we. POSIX
   applies tilde-after-`=` to assignment *words*; an argument to `echo`
@@ -927,8 +941,7 @@ than remembered.
 into its own buffer, so the in-place-growth bug class no longer
 exists; word boundaries come from `NORMALIZE-OPERATORS`, the pass that
 already knew them; and `EXPAND-WORDS` runs when a command runs rather
-than when its line is read, which took the mrsh suite to its ceiling
-of 19 of 21. Stages 3 and 4 are done as well — nested `$(...)` in
+than when its line is read, which took the mrsh suite to 19 of 21. Stages 3 and 4 are done as well — nested `$(...)` in
 Iteration 105, and the limitation notes retired in 115.
 
 **Stage 2 is the only one left**: caching tokenized body lines, where
