@@ -190,6 +190,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **139** — reading the field: `VM-RESEARCH.md`
 - **140** — token threading measured: 3.26x/6.51x smaller, no dispatch cost
 - **141** — the prototype: size confirmed, speed 1.14-1.28x and 140's 0.98 was an artifact
+- **142** — the token-threading design written out (`TOKEN-THREADING.md`)
 
 ### Not tied to an iteration
 
@@ -11081,6 +11082,112 @@ The next measurement that would settle it is a prototype large enough
 to exceed L1 - the whole `shell.4` closure rather than one word - which
 is a much bigger generator but no new engine work. That is the
 experiment to run before committing to `cross.4`.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 142: the token-threading design, written out
+
+`TOKEN-THREADING.md`. No code. The proposal has been measured
+(Iteration 140), prototyped (141) and recommended twice without anyone
+writing down what it actually entails, and the cost turns out to be
+concentrated somewhere nobody had looked.
+
+### The substitution, and everything that follows from it
+
+A call stops being a **relative byte offset** and becomes a small
+**index into a word table**. An offset must reach any word from any
+other, so it cannot be narrow without a relaxation pass; an index has
+to distinguish **817 words**, which is ten bits. Calls are 34% of
+compiled code and eight bytes each on x86-64.
+
+The encoding is written out byte by byte in the document: 64 primitive
+slots, 32 hot-call slots, 16 small literals, 12 reserved for
+superinstructions, four control forms, and two escape prefixes giving
+1,024 words and 256 further primitives. The one-byte tier deliberately
+**mixes categories** - a hot call costs the same as a primitive -
+because the measured 77.2% coverage of the top 128 symbols assumed
+frequency assignment, not partition by kind.
+
+Branch offsets stay **fixed at two bytes**. One byte would fit most of
+them and save perhaps 1,200 more, and it would require assembler
+relaxation, which `GOALS.md` refused once and should keep refusing.
+
+### The dispatch loop gets simpler, which was not expected
+
+    #define NEXT() do { b = *ip++; goto *dispatch[b]; } while (0)
+
+One byte load, one indirect branch. Today's `NEXT()` tests `t & 1` to
+tell a call from a primitive; here the table does it and **calls stop
+being a special case in the inner loop**.
+
+### Where the cost actually is: `EXECUTE` and the dictionary
+
+Not the dispatch loop. Three lines of the current system carry the
+whole difficulty:
+
+- **`: EXECUTE ( xt --- ) >R ;`** - it pushes the xt and returns, so
+  control continues there. That works *only* because an xt is a
+  directly executable code address. An xt becomes an index, and
+  `EXECUTE` becomes a primitive. Everything downstream follows: `'`,
+  `[']`, `COMPILE,`, `DEFER`/`IS` in `locals.4`, the `forth` builtin.
+- **`: >BODY ( xt --- a-addr ) CELL+ ;`** - the parameter field is one
+  cell past the code start. Under a byte code stream that identity
+  simply dissolves.
+- **`: , ( x --- ) HERE ! 1 CELLS ALLOT ;`** - there is now more than
+  one `HERE`.
+
+Plus every word that reads an inline operand through the return stack:
+`(S")`, `(.")`, `(LOOP)`. Iteration 141 found that class by having to
+make a prototype run; there may be more than the three known.
+
+### The structural consequence, and the thing worth doing anyway
+
+**Code space and data space must separate.** A byte-granular code
+stream cannot host cell-aligned data, so headers, `VARIABLE` bodies,
+`CREATE` bodies and the word table go to a cell-granular data space
+with its own `HERE`, and compiled code gets a byte-granular one.
+
+That is the largest piece of work in the proposal **and it can be done
+first, alone, with cell tokens unchanged.** Ertl's paper notes
+separating code and data avoids the cache-consistency penalty x86 pays
+when instruction and data accesses share a line - which this project
+has never looked for. Stage 1 is worth doing even if stages 2-4 never
+happen.
+
+### Staging, four stages, each green
+
+1. Split code and data space. No encoding change.
+2. Calls become indices, still one cell each. Size gets slightly
+   **worse** - a cell per call plus a 3KB table - and that is the
+   point: it isolates the semantic change so a regression has one
+   possible cause.
+3. Narrow the stream to bytes. This is where the size arrives.
+4. Frequency-assign the hot tier; superinstructions in the reserved
+   slots.
+
+### The honest position on whether to do it
+
+The size case is strong and confirmed twice: **3.26x on i386, 6.51x on
+x86-64** whole-image, **3.04x / 6.08x** on a real word. It would take
+x86-64 from 211,768 to about 80,000 against `dash`'s 129,832, and it
+is the only proposal that puts the 8-byte build below `dash`. **The
+byte stream is the same size on both architectures**, so the 1.85x
+penalty the wide build pays today disappears entirely rather than
+shrinking.
+
+The speed case is **not settled and both benchmarks so far were
+flattering**: 0.98-1.03x synthetic, 1.14-1.28x on a real word, the gap
+explained by working-set size. The decisive experiment - the same
+prototype scaled to the whole `shell.4` closure so it exceeds L1 - is a
+bigger generator and no new engine work, and should be run **before
+stage 3**.
+
+And it would arrive on top of Iteration 137's 42%. Two size changes
+each costing 15-40% of loop time would leave this shell meaningfully
+slower than one already 236x off `dash`. That is a real argument for
+reverting 137 if this lands, and for doing Stage 2 of
+`PARSE-EXPAND-PLAN.md` first so there is headroom to spend.
 
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
