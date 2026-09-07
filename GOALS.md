@@ -460,15 +460,18 @@ will change as phases E/F land and as loop bodies move to an arena, so
 tuning now would be tuning something about to be rewritten. The levers
 that will still be there afterwards, in rough order of value:
 
-**Now measured, and planned: see `DENSITY-PLAN.md`** (Iteration 130).
-Three options that each shrink the image and should each make it
-faster - immediate literals in the token (8,712 bytes on i386),
-superinstructions for the common operand-free pairs (6,352), and
-headerless words (16,400) - totalling ~31KB, which would put the i386
-build below `dash`. Two larger options are recorded there as
-not-recommended, with the numbers that would have tempted them.
+**Now measured, and planned: see `DENSITY-PLAN.md`** (Iterations 130,
+131). Two options, both of which should also make the image *faster*:
+constant-pushing primitives over the range -1..63 (4,560 bytes on
+i386) and superinstructions built from iterated pair fusion (11,708 at
+K=128, less the engine growth they cost). Roughly 15KB together.
 
-1. **Headerless words.** `cross.4` already carries a commented-out
+**Headerless words are withdrawn, not deferred.** Extending the shell
+in Forth requires `FIND`, `FIND` requires headers, and the 16,400
+bytes below are what that costs. Lever 1 is kept here as the record of
+a decision rather than a plan.
+
+1. **Headerless words — rejected (Iteration 131).** `cross.4` carries a commented-out
    alternative `"HEADER` "in case the target system is just an
    application without headers". Names and headers for ~180 shell
    words are a real fraction of the image. The cost is that `FIND`

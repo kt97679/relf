@@ -179,6 +179,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **128** — the size axis of the comparison, as a script
 - **129** — where the image bytes actually go, and why Forth being "compact" does not make this the smallest shell
 - **130** — what the compiled code is actually made of (`DENSITY-PLAN.md`)
+- **131** — correcting the density numbers; longer superinstructions are worth 1.3%
 
 ### Not tied to an iteration
 
@@ -9965,6 +9966,136 @@ and dispatches, not from measurement, and are labelled as such in the
 plan. Iteration 129's method applies: `tests/sizes` before and after,
 `tests/bench` three runs alternating, because a single run on this
 hardware proves nothing.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 131: correcting the density numbers, and what longer
+## superinstructions are actually worth
+
+`DENSITY-PLAN.md` rewritten. Two options withdrawn on direction, one
+replaced by a safer design, and Iteration 130's superinstruction
+figures corrected because the decoder was wrong.
+
+### The decoder was wrong, and everything after a branch was noise
+
+130 treated `LIT` as the only primitive consuming an inline operand
+cell. `BRANCH` and `?BRANCH` do too, and `S" ..."` compiles to a call
+to `(S")` followed by an **inline counted string** which is not tokens
+at all. So the cell after every branch was being read as a token
+(usually classified as a call offset, since offsets are even), and
+every string body was read as a few dozen garbage tokens.
+
+`tools/classify-code.py` now handles all four and accounts for 19,518
+of 19,506 body cells. The corrected mix:
+
+| | cells |
+|---|---|
+| call offsets | 6,986 |
+| operand-carrying tokens and their operands | 6,812 |
+| plain primitive tokens | 5,445 |
+| unclassified (`DOES>`/`CONSTANT` bodies) | 275 |
+
+130's headline - that `LIT` is the most frequent primitive and
+literals are ~22% of compiled code - survives. Its *pair table* did
+not: entries like `?BRANCH CALL` were `?BRANCH` followed by its own
+offset.
+
+### Withdrawn: headerless words
+
+12.3% of the image, and it is not available. Extending the shell in
+Forth needs `FIND`, and `FIND` needs headers. That is a requirement,
+not a preference, and the 16,400 bytes are what it costs.
+
+### Replaced: tagged immediate literals -> constant-pushing primitives
+
+The objection to tagging is usually "it limits the literal values you
+can store". **That is not true**, and it is worth recording as a wrong
+reason for a right conclusion: `LIT` would remain as a fallback, so
+the compiler emits an immediate only when the value fits and nothing
+becomes unrepresentable. The payload would have been 30 bits on i386
+against a largest literal in this image of ~127,000.
+
+The two real reasons to drop it: it puts a second test on **every**
+primitive dispatch to serve the 24% that are literals, and it changes
+`cross.4`'s literal emission - the code holding the hand-embedded
+token numbers that segfault the *next* engine when stale.
+
+The replacement gets most of the win with neither cost. **Not one
+primitive per hand-picked constant** - that would overfit this image -
+but a contiguous block of dispatch-table entries all pointing at one
+label that derives the value from the token index. The token stays an
+ordinary `n * CELL + 1` primitive, the discriminator is untouched, no
+test is added anywhere, `LIT` is the fallback.
+
+Measured, the range matters and the answer is small:
+
+| range | tokens | sites | saves i386 | table |
+|---|---|---|---|---|
+| `0..15` | 16 | 758 (34.8%) | 3,032 | 64 |
+| **`-1..63`** | 65 | **1,140 (52.3%)** | **4,560** | **260** |
+| `-16..255` | 272 | 1,219 (56.0%) | 4,876 | 1,088 |
+| `-128..1023` | 1,152 | 1,228 (56.4%) | 4,912 | 4,608 |
+
+`-16..255` buys 316 more bytes of image for 828 more of table - a net
+loss. Four values (`0`, `-1`, `1`, `2`) are already 40.2% of all
+literal sites. Hand-picking the top 128 *individual* values would
+reach 84%, because offsets like `44264` recur 51 times, but those
+change whenever `shell.4` does; that is a benchmark-specific hack, not
+a compiler improvement.
+
+### Longer superinstructions: measured, and worth 1.3%
+
+The interesting result, and it went against expectation. Greedy
+selection, patterns cut at branch targets:
+
+| max length | K=16 | K=32 | K=64 | K=128 |
+|---|---|---|---|---|
+| 2 | 1,855 | 2,336 | 2,656 | 2,927 |
+| 3 | 1,879 | 2,345 | 2,687 | 2,951 |
+| 4 | 1,879 | 2,349 | 2,689 | 2,951 |
+| 6 | 1,879 | 2,362 | 2,700 | **2,965** |
+
+*(cells saved)*
+
+**Searching up to six tokens beats pairs-only by 1.3%**, because
+iterated pair fusion *composes*. Once `LIT = ?BRANCH` is a token,
+`DUP` + that + `DROP` is a pair again and fuses next round - the
+greedy output contains `DUP <LIT+=+?BRANCH> DROP` at 59 sites,
+discovered as a pair of pairs.
+
+So the implementation needs to recognise **two adjacent tokens only**,
+run to a fixed point. Triples and longer arrive with no n-gram
+machinery. That is a large simplification bought by measuring
+something that looked like it needed a general answer.
+
+At K=128, 2,927 cells is 11,708 bytes on i386 and 23,416 on x86-64.
+
+### The counterweight nobody had counted
+
+Each superinstruction is a table entry **and a body in the engine**.
+The table is K*CELL; the bodies are plausibly 30-80 bytes each, so
+K=128 is perhaps 4-10KB of engine growth against 11,708 saved. Still
+positive, and the margin narrows fast enough that it must be measured
+per K rather than assumed. **Size and speed diverge**: more
+superinstructions always removes more dispatches, so speed keeps
+improving while net size peaks and turns.
+
+### Order
+
+A then B, and they are not additive: `LIT 0 =` is three cells now, two
+after A, one after B. A changes the stream B selects over, so the K
+table must be regenerated between them.
+
+Combined, before engine growth: ~15KB off i386, 152,308 toward
+~137,000. That does not reach `dash` at 129,784, which is the honest
+position - `FIND` costs 16,400 bytes and is worth more than the
+ranking.
+
+### Kept
+
+`tools/classify-code.py` and `tools/superinstr-search.py`, both
+documented, including the four not-token cases that made 130 wrong.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
