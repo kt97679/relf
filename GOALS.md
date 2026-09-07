@@ -814,6 +814,28 @@ from an older revision of this file:
   command. Recorded in Iteration 55 as the next piece of redirection
   work.
 - **`set -e`**, per above.
+- **`until` is recognised and then silently ignored.** It is in the
+  reserved-word list (`shell.4` line 3155, so it is correctly refused
+  as a command name) but the compound-command dispatcher tests only
+  `while` and `for`, so `until ...; do ...; done` runs **nothing** and
+  exits 0. A POSIX compound command that is a silent no-op, unrecorded
+  here until Iteration 144 audited for it.
+- **`{ ... }` spanning lines drops every line but the last**, silently.
+  `SPLIT-GROUP` handles a group contained in one line only.
+- **`&` is treated as a line terminator, not a list terminator.**
+  `true & echo after` passes `&` and `echo` and `after` as arguments
+  to `true`. A command may follow `&` on the same line.
+- **`case` cannot be written on one line**, and therefore cannot
+  appear in a one-line function body. `case x in x) echo M ;; esac` is
+  a syntax error.
+- **Content after a nested `fi` on the same line is dropped**,
+  silently. The un-nested form works.
+
+  The last four are one fault with four faces: the line is the unit of
+  both input and body storage, so each construct needs its own
+  same-line adapter and the ones that never got one are broken. See
+  Iterations 143 and 144, and `PARSE-EXPAND-PLAN.md` Stage 2, which
+  fixes the class rather than the instances.
 - **`trap`, `exec`, `hash`, `type`**, none of which anything has
   needed yet. `ulimit` landed in Iteration 125 — POSIX specifies only
   the file-size limit, so `ulimit [-f] [blocks|unlimited]` is the

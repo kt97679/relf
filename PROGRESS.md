@@ -192,6 +192,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **141** — the prototype: size confirmed, speed 1.14-1.28x and 140's 0.98 was an artifact
 - **142** — the token-threading design written out (`TOKEN-THREADING.md`)
 - **143** — `ONE-LINE-LOOP?` is a symptom: two conformance bugs, one silent
+- **144** — the audit: `until` silently does nothing, plus three more same-line faults
 
 ### Not tied to an iteration
 
@@ -11297,3 +11298,105 @@ than the benchmark alone, and it should be recorded in
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 3 passed / 3 failed / 1 inconclusive.
+## Iteration 144: auditing for the rest of the same-line family
+
+Iteration 143 found `ONE-LINE-LOOP?` was a symptom. Asked to audit
+`shell.4` for the rest. Method: mine the file's own comments for
+self-declared limits, then **test every one against the seven
+reference shells**, because a special case that produces wrong output
+is a bug and one that does not is merely structure.
+
+Twenty shapes tested. Five differed, and the file's comments predicted
+only three of them.
+
+### `until` is recognised and then silently ignored
+
+The worst of the five, and it was not in any comment or in
+`GOALS.md`'s open list.
+
+    i=0; until [ "$i" -ge 3 ]; do echo $i; i=$((i+1)); done
+
+    sh, and six others -> 0 1 2
+    relfsh             -> nothing, status 0
+
+`until` **is** in the reserved-word list (line 3155), so it is
+correctly refused as a command name - but the compound-command
+dispatcher at line 5519 tests only `while` and `for`. So the word is
+recognised, falls through every branch, and the whole loop evaporates
+without an error. A POSIX compound command that is a silent no-op, in
+a shell that passes mrsh's suite.
+
+Recognised-but-unhandled is a worse failure mode than unrecognised:
+had `until` not been a reserved word, it would have been a command
+lookup failure with a diagnostic.
+
+### `{ ... }` across lines drops all but the last command
+
+    { echo first
+      echo second
+      echo third; }
+
+    sh     -> first second third
+    relfsh -> third
+
+Silent. `SPLIT-GROUP`'s comment says it "only handles a group
+contained in one line"; what the comment does not say is that the
+other lines are discarded rather than refused.
+
+### `&` is treated as a line terminator, not a list terminator
+
+    true & echo after
+
+    sh     -> after
+    relfsh -> nothing; `&`, `echo` and `after` become arguments to `true`
+
+Background execution works when `&` ends the line, which is how every
+existing test writes it. POSIX makes `&` a list terminator: a command
+may follow it exactly as after `;`.
+
+### Two already known, confirmed
+
+`pwd > file` (redirection not applied to builtins, recorded) and
+`case` on one line (Iteration 143) - which also means **`case` cannot
+appear in a one-line function body**, the common form:
+
+    f() { case $1 in a) echo A;; *) echo other;; esac; }
+
+### The shape of the whole finding
+
+Four of the five are **the same fault with four faces**: `do`/`done`,
+`{`/`}`, `&`, and `case`/`esac` each need to be recognised as
+separators or terminators *within* a line, and the parser asks instead
+whether the line ends there. `while`/`for` got an adapter
+(`ONE-LINE-LOOP?`), `if` got a different mechanism entirely, and `{`,
+`&` and `case` got nothing.
+
+Nine `tests/posix` cases now, **3 passed, 6 failed, 1 inconclusive**,
+every failure agreed on by all seven reference shells. The number
+getting worse three iterations running is the suite doing its job.
+
+### A hollow pass in the new suite, caught immediately
+
+The first `&` case was `sleep 0 & wait`, which **passed** - because a
+shell treating `&` as an argument fails on *stderr*, and this harness
+ignores stderr. Exactly the `ulimit.sh` shape from Iteration 122, in a
+suite built partly to avoid it.
+
+The second version, `echo one & echo two`, went INCONCLUSIVE: the
+reference shells disagree with each other on the interleaving, which
+is a race and not a conformance question. The third has the background
+command produce no output, so the result cannot depend on ordering.
+
+Both wrong versions are recorded in the case file's own comments. The
+rule they teach: **a differential case must put the difference on
+stdout, and must not depend on scheduling.**
+
+### `GOALS.md` updated
+
+All four same-line faults and `until` added to the open list, with a
+note that they are one fault and that `PARSE-EXPAND-PLAN.md` Stage 2
+fixes the class rather than the instances.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3 passed / 6 failed / 1 inconclusive.
