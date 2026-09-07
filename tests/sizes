@@ -1,0 +1,101 @@
+#!/bin/sh
+# tests/sizes - on-disk size of shell.4 against every other shell
+# installed, as the size axis of the implementation comparison
+# (tests/bench is the speed axis, tests/posix the conformance one).
+#
+# What is measured, and why it is not one number:
+#
+#   binary   the executable, stripped, as it sits on disk. Distro
+#            shells arrive stripped; relf is stripped here to match,
+#            since an unstripped relf carries ~3KB of symbols that
+#            the others do not.
+#
+#   image    relf is an engine plus a saved Forth image, and both
+#            files are required to run a shell. Counting only the
+#            engine would flatter this project by an order of
+#            magnitude - the image is where shell.4 actually lives.
+#
+#   libs     shared libraries beyond the ones every dynamically
+#            linked program on the system already needs (libc, libm,
+#            the loader, the vDSO). Those are free in any honest
+#            comparison because nothing avoids them. libtinfo and
+#            libcap are not: they are a dependency that shell pulls
+#            in, and a system without it cannot run that shell.
+#
+# Caveats that matter more than the numbers:
+#
+#   - busybox is a MULTI-CALL binary. Its ash applet is one of a few
+#     hundred programs in that file, so its total is not a shell size
+#     and is reported separately rather than ranked alongside the
+#     others. A shell-only busybox build would be a fraction of it.
+#   - Static and dynamic binaries are not comparable on this axis at
+#     all. A static binary contains its libc; a dynamic one borrows
+#     the system's. The link type is printed for each.
+#   - This says nothing about how complete each shell is. shell.4
+#     passes the mrsh suite; bash implements a language several times
+#     larger. Size without conformance is half a comparison, which is
+#     why tests/posix exists.
+
+cd "$(dirname "$0")/.." || exit 1
+
+extra_libs() {
+    # $1 = binary; prints total bytes of non-universal shared libs
+    ldd "$1" 2>/dev/null \
+        | grep -v 'linux-vdso\|ld-linux\|/libc\.so\|/libm\.so' \
+        | sed -n 's/.*=> \([^ ]*\).*/\1/p' \
+        | while read -r l; do
+              [ -e "$l" ] && stat -c%s "$(readlink -f "$l")"
+          done \
+        | awk '{s+=$1} END {print s+0}'
+}
+
+link_type() {
+    case "$(file -b "$1")" in
+        *statically*) echo static ;;
+        *)            echo dynamic ;;
+    esac
+}
+
+row() {
+    # $1 = label, $2 = binary bytes, $3 = image bytes, $4 = lib bytes,
+    # $5 = link type
+    total=$(( $2 + $3 + $4 ))
+    printf '%-18s %10d %10d %10d %12d  %s\n' "$1" "$2" "$3" "$4" "$total" "$5"
+}
+
+printf '%-18s %10s %10s %10s %12s  %s\n' \
+       implementation binary image libs TOTAL link
+printf '%s\n' "------------------------------------------------------------------------------"
+
+# --- this project -------------------------------------------------
+TMP=$(mktemp -d) || exit 1
+trap 'rm -rf "$TMP"' EXIT INT TERM
+
+for w in 64 32; do
+    if [ "$w" = 64 ]; then eng=relf;   img=kernel-shell.img;   label="shell.4 (x86-64)"
+    else                   eng=relf32; img=kernel32-shell.img; label="shell.4 (i386)"
+    fi
+    [ -e "$eng" ] && [ -e "$img" ] || continue
+    cp "$eng" "$TMP/e" && strip "$TMP/e" 2>/dev/null
+    row "$label" "$(stat -c%s "$TMP/e")" "$(stat -c%s "$img")" \
+        "$(extra_libs "$eng")" "$(link_type "$eng")"
+done
+
+# --- everything else installed ------------------------------------
+for s in dash posh mksh yash zsh ksh93 bash; do
+    p=$(command -v "$s" 2>/dev/null) || continue
+    p=$(readlink -f "$p")
+    row "$s" "$(stat -c%s "$p")" 0 "$(extra_libs "$p")" "$(link_type "$p")"
+done
+
+# --- reported apart, on purpose -----------------------------------
+if command -v busybox >/dev/null 2>&1; then
+    p=$(readlink -f "$(command -v busybox)")
+    n=$(busybox --list 2>/dev/null | wc -l)
+    printf '%s\n' "------------------------------------------------------------------------------"
+    row "busybox (all $n)" "$(stat -c%s "$p")" 0 "$(extra_libs "$p")" "$(link_type "$p")"
+    printf '%s\n' "  ^ a multi-call binary: its ash applet is one of $n programs in that"
+    printf '%s\n' "    file. Not a shell size, and not ranked with the rows above."
+fi
+
+printf '\n%s\n' "Sizes only. See tests/posix for conformance and tests/bench for speed."

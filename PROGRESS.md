@@ -176,6 +176,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **125** — `ulimit`, and goal 8 is met  `mrsh 19->20`
 - 126 — a conformance harness scored by consensus, not by bash
 - 127 — seven reference shells, and the 32-bit half finally run
+- **128** — the size axis of the comparison, as a script
 
 ### Not tied to an iteration
 
@@ -9632,3 +9633,88 @@ this time again.
 532 assertions across 63 files, 19 differential cases, 1991 core OK
 markers **on both cell widths**, mrsh 20 of 21, posix 3 passed /
 1 failed / 1 inconclusive against seven references.
+## Iteration 128: the size axis of the comparison, as a script
+
+`tests/sizes` — `shell.4` against every other shell installed, on one
+table. The size axis of the implementation comparison; `tests/bench`
+is the speed axis and `tests/posix` the conformance one.
+
+A script rather than a number pasted into `GOALS.md`, for the reason
+Iteration 121 found the hard way: the size table there was Iteration
+41's and eighty iterations stale. A measurement that cannot be re-run
+in one command will be quoted long after it stopped being true.
+
+    implementation         binary      image       libs        TOTAL
+    shell.4 (x86-64)        22744     251104          0       273848
+    shell.4 (i386)          17808     134500          0       152308
+    dash                   129784          0          0       129784
+    posh                   149352          0          0       149352
+    mksh                   310312          0          0       310312
+    yash                   445352          0     208328       653680
+    zsh                    976304          0     259864      1236168
+    ksh93                 1432848          0          0      1432848
+    bash                  1446024          0     208328      1654352
+    busybox (all 272)     2124608          0          0      2124608
+
+### Three columns, because one number would be dishonest
+
+**`image` is not optional.** `relf` is an engine plus a saved Forth
+image and both files are needed to run a shell. Reporting the 22,744
+engine alone would flatter this project by an order of magnitude and
+put it ahead of everything on the list; the image is where `shell.4`
+actually lives. This is the number most likely to be quoted wrongly,
+which is why it has its own column rather than being folded in.
+
+**`libs` counts only what is not universal.** libc, libm, the loader
+and the vDSO are free in any honest comparison because nothing avoids
+them. `libtinfo` and `libcap` are not: they are a dependency the shell
+pulls in, and a system without them cannot run it. That is a 208KB
+difference for bash and yash and a 260KB one for zsh — larger than
+several whole shells on this list, and invisible if you only `ls -l`
+the binary.
+
+**Stripped, to match.** Distro binaries arrive stripped; an
+unstripped `relf` carries ~3KB of symbols the others do not (25,872
+against 22,744). Comparing one to the other would have been a free
+~12% penalty on the only build where this project is competitive.
+
+### busybox is reported apart
+
+It is a multi-call binary: its `ash` applet is one of **272**
+programs in that file. 2.1MB is not a shell size and ranking it
+alongside the others would be meaningless in both directions. A
+shell-only build would be a fraction of it. Static, too, so it carries
+its own libc where every other row borrows the system's — the two link
+types are not comparable on this axis at all, and the column says
+which each is.
+
+### What the table actually says
+
+The i386 build is **third smallest**, behind `dash` and `posh` and
+ahead of `mksh`, and it passes the mrsh suite. That is a real claim
+and a narrow one.
+
+It is not a claim to be a smaller bash. bash implements a language
+several times larger than this one, and the gaps under GOALS.md's
+"Still open" are real. **Size without conformance is half a
+comparison**, which is the whole reason `tests/posix` was built first
+and why the two numbers are now recorded next to each other rather
+than in separate sections.
+
+The x86-64 build at 273,848 sits between mksh and yash, and that is
+structural rather than sloppy: RelF dereferences a cell as a real host
+pointer, so cell width must equal pointer width and a 64-bit host pays
+double for an image that is mostly small values. The measured
+zero-rate by byte position is already recorded in GOALS.md. The
+genuinely small build is the i386 one.
+
+### Also updated
+
+`GOALS.md`'s size table was still Iteration 121's and its "for
+context" line quoted a `dash` of 121,520 from a different machine
+against this machine's 129,784. Both replaced by the table above, with
+a pointer to `tests/sizes` so the next reader re-runs it instead of
+believing it.
+
+532 assertions across 63 files, 19 differential cases, 1991 core OK
+markers on both cell widths, mrsh 20 of 21, posix 3/1/1.

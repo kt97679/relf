@@ -402,32 +402,47 @@ move honestly, the same way the mrsh count is:
   reference shells were present. All three move honestly; a rising
   inconclusive count means the references disagree more, not that the
   shell got worse.
-- **Size**: stripped engine + prebuilt shell image, both cell widths.
+- **Size**: `tests/sizes` — stripped engine + prebuilt shell image on
+  both cell widths, and every other shell installed, on one table.
 - **`tests/bench`**, when performance is the point. Not run by
   `run_tests.sh` - it takes minutes and is noisy. Iteration 116's
   measurement: loop 944ms, spawn ~155ms, startup ~235ms, against
   dash's 4/72/98. The loop figure is the one Stage 2 of
   `PARSE-EXPAND-PLAN.md` exists to move.
 
-Baseline at Iteration 41, and where it stands at Iteration 121:
+Baseline at Iteration 41, and where it stands at Iteration 127:
 
-| | engine | image (41) | image (121) | total (121) |
+| | engine | image (41) | image (127) | total (127) |
 |---|---|---|---|---|
-| **i386 (4-byte cells)** | 17,808 | 72,528 | 133,940 | **151,748** |
-| x86-64 (8-byte cells) | 22,744 | 131,784 | 250,120 | 272,864 |
+| **i386 (4-byte cells)** | 17,808 | 72,528 | 134,500 | **152,308** |
+| x86-64 (8-byte cells) | 22,744 | 131,784 | 251,104 | 273,848 |
 
 The image has grown ~1.85x since Iteration 41, entirely from shell
-functionality - the engine has not changed size at all. `dash` at
-121,520 is no longer being flattered: the i386 build passed it
-somewhere in the eighties and is now ~1.25x it. That is the number
-the size levers below exist for, and the reason they are worth
-revisiting once the functionality gap is closed rather than never.
+functionality - the engine has not changed size at all.
 
-For context, on the same machine: `dash` is 121,520; `mrsh` is 183,312
-plus a 15,432-byte shared library. Both are far more complete shells
-than `shell.4` is today, so the comparison currently flatters this
-project — the point of tracking is the trajectory as phases E/F fill
-the functionality gap, not the snapshot.
+**Against every other shell on the machine** (Iteration 128, run
+`tests/sizes`; "total" adds any shared library beyond libc/libm,
+which is why yash and bash jump):
+
+| implementation | total | note |
+|---|---|---|
+| dash | 129,784 | |
+| posh | 149,352 | |
+| **shell.4 (i386)** | **152,308** | engine + image |
+| **shell.4 (x86-64)** | **273,848** | engine + image |
+| mksh | 310,312 | |
+| yash | 653,680 | +libtinfo |
+| zsh | 1,236,168 | +libtinfo, libcap |
+| ksh93 | 1,432,848 | |
+| bash | 1,654,352 | +libtinfo |
+| *busybox* | *2,124,608* | *static, 272 applets — not a shell size* |
+
+Read it with the conformance number beside it or it means nothing.
+The narrow build is third smallest, behind `dash` and `posh` and
+ahead of `mksh` — and it passes the mrsh suite, which is a real if
+narrow claim. It is **not** a claim to be a smaller bash: bash
+implements a language several times larger than this one. The
+trajectory is the point, not the rank.
 
 **The 8-byte build is ~1.8x the 4-byte one, and that is structural.**
 Measured zero-rate by byte position within each cell: byte 0 is 14.8%
