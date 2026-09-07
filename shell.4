@@ -4921,7 +4921,10 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   \ In -c mode the command string is the whole input, so there is
   \ nothing to continue onto and asking would block on ACCEPT reading
   \ the terminal. An open quote there is a genuine syntax error.
-  NO-MORE-INPUT? @ IF JQ-LEN @ EXIT THEN
+  \ Still normalizes once on the way out: this word's callers rely on
+  \ NORM-BUF and the word spans being valid when it returns, and skip
+  \ normalizing again themselves (Iteration 119).
+  NO-MORE-INPUT? @ IF JQ-LEN @ NORMALIZE-OPERATORS DROP JQ-LEN @ EXIT THEN
   BEGIN
     JQ-LEN @ NORMALIZE-OPERATORS DROP
     UNTERMINATED-QUOTE? @ UNTERMINATED-CMDSUB? @ OR
@@ -4980,7 +4983,12 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  NORM-TOKENIZE
+  \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
+  \ this exact line - that is how it decides whether a quote is still
+  \ open - so NORM-BUF and the word spans are already there.
+  \ Normalizing a second time was pure repeated work on every line of
+  \ every loop body (Iteration 119).
+  TOKENIZE
   \ Checked AFTER normalizing, since NORMALIZE-OPERATORS is what sets
   \ the flag - JOIN-OPEN-QUOTES gives up without normalizing in -c
   \ mode, so the flag can otherwise be a stale one from the previous
@@ -6950,7 +6958,12 @@ VARIABLE PP-BAR
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  NORM-TOKENIZE
+  \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
+  \ this exact line - that is how it decides whether a quote is still
+  \ open - so NORM-BUF and the word spans are already there.
+  \ Normalizing a second time was pure repeated work on every line of
+  \ every loop body (Iteration 119).
+  TOKENIZE
   UNTERMINATED-QUOTE? @ IF
     ." shell: syntax error: unterminated quote" CR
     2 LAST-STATUS ! EXIT

@@ -8778,3 +8778,38 @@ markers, both cell widths, mrsh 19 of 21.
 
 With this, every form GOALS.md listed as an unsupported same-line
 construct now works, and that entry is gone from the limitations list.
+## Iteration 119: normalizing each line once instead of twice
+
+Every line went through `NORMALIZE-OPERATORS` twice.
+`JOIN-OPEN-QUOTES` runs it to find out whether a quote is still open,
+and then `NORM-TOKENIZE` ran it again on the same bytes. Its own
+comment said so and called it "a pass over the line and nothing else",
+which was true when it was written and stopped being true once loop
+bodies started going through it on every iteration.
+
+`RUN-LINE` and `READ-LINE-INTO-ARGV` now call `TOKENIZE` directly,
+since `JOIN-OPEN-QUOTES` has just left `NORM-BUF` and the word spans
+exactly as they need them. `DO-WHILE`'s condition and the three other
+callers still use `NORM-TOKENIZE`; they have no `JOIN-OPEN-QUOTES`
+before them.
+
+The invariant that makes this safe - "`JOIN-OPEN-QUOTES` returns with
+a valid `NORM-BUF`" - was *almost* true. Its `-c` early exit returned
+without normalizing at all, which is why the first attempt broke every
+arithmetic and `&&` test in that mode. It normalizes once on that path
+now, which also removes the stale-flag hazard Iteration 110 had to
+work around by moving the `UNTERMINATED-QUOTE?` check.
+
+**Measured: 944-966ms down to 914ms on the loop benchmark**, about 4%.
+Smaller than it looks like it should be, because only body and script
+lines were paying twice - a `while` condition goes through
+`NORM-TOKENIZE` and was already normalizing once. Recorded rather than
+rounded up: the change is worth keeping as one less redundant pass
+over every line, not as a performance result.
+
+Stage 2 proper - caching the tokenized form of a body line so
+iterations two onward skip normalizing and tokenizing entirely - is
+still the thing that addresses the 37% Stage 1 cost.
+
+524 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, both cell widths, mrsh 19 of 21.
