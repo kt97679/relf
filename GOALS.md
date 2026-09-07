@@ -1266,23 +1266,11 @@ is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
 
-- **`~user` reads `/etc/passwd` directly** (Iteration 96). That is one
-  NSS source among several. On a system using LDAP, SSSD, NIS or
-  systemd-homed — any site with centrally managed accounts — a real
-  user may not appear in that file at all, and `~alice` would silently
-  stay literal instead of expanding. The failure is quiet and
-  environment-dependent: it will never fail on a developer laptop and
-  will fail on exactly the machines where it matters.
-
-  The correct fix is `getpwnam(3)` as an engine primitive, which goes
-  through NSS and returns whatever the system is actually configured
-  to use. That is a small addition to `relf.c` (one primitive, a name
-  in and a string out) and should replace the file reader rather than
-  supplement it — two code paths that disagree about who exists would
-  be worse than either alone.
-
-  Kept for now because it needs no engine change and unblocks
-  `word.sh`; not kept because it is right.
+- *(This section is currently empty. `~user` reading `/etc/passwd`
+  directly was the last entry; Iteration 120 replaced it with a
+  `GETPWHOME` primitive calling `getpwnam(3)`, which goes through NSS.
+  Entries here are things that are implemented, tested and incorrect
+  in a way that will not show up locally - keep adding them.)*
 
 ## Next architectural work: `PARSE-EXPAND-PLAN.md`
 

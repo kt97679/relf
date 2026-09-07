@@ -21,6 +21,7 @@
  */
 
 #include <unistd.h>
+#include <pwd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <stdlib.h>
@@ -278,7 +279,7 @@ static void virtual_machine(void) {
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
-        &&L_allocate, &&L_free, &&L_resize
+        &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome
     };
 
 #define NEXT() do { \
@@ -573,6 +574,19 @@ L_sysarg: { /* n --- c-addr */
     } else {
         DS0 = (UNS64)(uintptr_t)g_argv[n + 2];
     }
+    NEXT();
+}
+L_getpwhome: { /* c-addr --- addr | 0 */
+    /* A named user's home directory, via NSS rather than by reading
+     * /etc/passwd. That file is one NSS source among several: on a
+     * host using LDAP, SSSD, NIS or systemd-homed a real user may not
+     * appear in it at all, and "~alice" would quietly stay literal.
+     * getpwnam(3) returns whatever the system is actually configured
+     * to use. The returned string is in getpwnam's own static
+     * storage, valid until the next call - the caller copies it
+     * immediately. */
+    struct passwd *pw = getpwnam((const char *)(uintptr_t)DS0);
+    DS0 = pw ? (UNS64)(uintptr_t)pw->pw_dir : 0;
     NEXT();
 }
 L_getpid: /* --- pid */

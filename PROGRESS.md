@@ -8813,3 +8813,41 @@ still the thing that addresses the 37% Stage 1 cost.
 
 524 assertions across 63 files, 19 differential cases, 1991 core OK
 markers, both cell widths, mrsh 19 of 21.
+## Iteration 120: `~user` through NSS instead of /etc/passwd
+
+The last entry under GOALS.md's "Known shortcuts to revisit", recorded
+in Iteration 96 as "kept for now because it needs no engine change and
+unblocks `word.sh`; not kept because it is right".
+
+`/etc/passwd` is one NSS source among several. On a host using LDAP,
+SSSD, NIS or systemd-homed a real user need not appear in that file at
+all, and `~alice` stayed literal - a failure that could never show up
+on a developer machine and would show up on exactly the hosts where
+centrally managed accounts are the point.
+
+`GETPWHOME` is a new engine primitive wrapping `getpwnam(3)`: a
+NUL-terminated name in, a pointer to the home directory out, 0 for an
+unknown user. `PASSWD-HOME` now calls it and the file reader is gone,
+rather than the two sitting side by side - two code paths disagreeing
+about who exists would be worse than either alone, which is what the
+GOALS.md entry said when it was written.
+
+The result points into `getpwnam`'s own static storage, valid only
+until the next call, so it is copied out immediately.
+
+### The engine change this needed
+
+`relf.c` gains one label and one entry at the **end** of the
+primitive dispatch table, and `kernel.4` one `PRIMITIVE` line at the
+end of its list. The two are positional and must stay in step;
+appending is the only safe place. `kernel.img` then has to be
+cross-compiled again (`extend.4`, `cross.4`) so the new word exists in
+the dictionary - the committed image is a build artifact and does not
+update itself.
+
+Both cell widths rebuilt and pass. This is the first engine change
+since the shell work began, and the first new primitive since
+Iteration 96 wanted one.
+
+524 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, both cell widths, mrsh 19 of 21.

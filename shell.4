@@ -2029,40 +2029,31 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   PW-I @ SWAP - ;
 
 : PASSWD-HOME ( name-addr name-len --- addr | 0 )
-  \ A named user's home directory, read straight out of /etc/passwd.
-  \ Returns 0 for an unknown user, which leaves "~nosuchuser" literal
-  \ - what POSIX requires.
+  \ A named user's home directory. Returns 0 for an unknown user,
+  \ which leaves "~nosuchuser" literal - what POSIX requires.
   \
-  \ TEMPORARY, and wrong in general: /etc/passwd is only one NSS
-  \ source. On a system using LDAP, SSSD, NIS or systemd-homed a real
-  \ user may not be in this file, and "~alice" would silently stay
-  \ literal. The failure is quiet and environment-dependent - it will
-  \ never show up on a developer machine and will show up on exactly
-  \ the hosts where centrally managed accounts are the point.
+  \ Through GETPWHOME, which is getpwnam(3), and therefore through
+  \ NSS. This used to read /etc/passwd directly, which is one NSS
+  \ source among several: on a host using LDAP, SSSD, NIS or
+  \ systemd-homed a real user need not appear in that file at all,
+  \ and "~alice" stayed literal. The failure was quiet and
+  \ environment-dependent - it could never show up on a developer
+  \ machine and would show up on exactly the hosts where centrally
+  \ managed accounts are the point, which is why it was recorded in
+  \ GOALS.md rather than trusted to be remembered (Iteration 120).
   \
-  \ The fix is a getpwnam(3) primitive in relf.c, which goes through
-  \ NSS and returns whatever the system is configured to use. It
-  \ should REPLACE this word, not sit beside it: two code paths
-  \ disagreeing about who exists is worse than either. Recorded in
-  \ GOALS.md under "Known shortcuts to revisit".
+  \ The name is copied into a NUL-terminated buffer first: it arrives
+  \ as an address and a length pointing into the line being scanned,
+  \ and getpwnam wants a C string. The result points into getpwnam's
+  \ own static storage, valid until the next call, so it is copied
+  \ out here rather than returned raw.
   PW-LEN !
   PW-WANT PW-LEN @ MOVE
-  S" /etc/passwd" R/O OPEN-FILE IF DROP 0 EXIT THEN
-  PW-FID !
-  BEGIN
-    PW-LINE 256 PW-FID @ READ-LINE DROP
-  WHILE
-    PW-N !
-    0 PW-FIELD PW-WANT PW-LEN @ STR= IF
-      5 PW-FIELD
-      PW-HOME 64 SAFE-COPY-NUL DROP
-      PW-FID @ CLOSE-FILE DROP
-      PW-HOME EXIT
-    THEN
-  REPEAT
-  DROP
-  PW-FID @ CLOSE-FILE DROP
-  0 ;
+  0 PW-WANT PW-LEN @ + C!
+  PW-WANT GETPWHOME
+  DUP 0= IF EXIT THEN
+  DUP CSTRLEN PW-HOME 64 SAFE-COPY-NUL DROP
+  DROP PW-HOME ;
 
 : TRY-TILDE-USER ( --- )
   \ "~user" / "~user/path". Leaves the word untouched if the name is

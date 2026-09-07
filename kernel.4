@@ -667,6 +667,7 @@ PRIMITIVE UNSETENV  ( c-addr --- ior )
 PRIMITIVE ALLOCATE  ( u --- a-addr ior )
 PRIMITIVE FREE      ( a-addr --- ior )
 PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
+PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.
