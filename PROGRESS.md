@@ -9,6 +9,175 @@ first** — that's the stable reference. This file is only the log of what
 was actually done, in order, and shouldn't repeat what's already stated
 there.
 
+The **Index** below is how to use this file: find the entry, read that
+entry, don't read the log. It is long because it is 119 entries, not
+because it is padded — and the oldest entries are the ones the other
+documents cite most, so nothing here gets archived or trimmed by age.
+
+## Index
+
+Every entry, in order. Titles are the entries' own. `mrsh a->b`
+marks the entries that moved the goal-8 acceptance count; **bold**
+marks an entry cited by `GOALS.md`, `FORTH-STYLE.md`,
+`PARSE-EXPAND-PLAN.md` or `README.md`, which is the closest thing to a
+marker for "still load-bearing". Find an entry by searching for
+`Iteration N:`.
+
+### 1-4 — Engine: phases 1, 2, 5, 6
+
+- 1 — scaffolding
+- 2 — no-libc x86-64 engine, 8-byte cells
+- 3 — phase 5 (libc, native endianness, computed-goto, ARM64)
+- 4 — phase 6, i386/32-bit cell width (parameterized, verified working)
+
+### 5-13 — Shell v0.1-v0.8 (phase 7)
+
+- **5** — POSIX shell, v0.1 (process-control primitives + shell.4)
+- 6 — shell `-c` mode + a real test suite for shell.4
+- 7 — pipes and redirection
+- 8 — quoting and escaping
+- 9 — $VAR expansion
+- 10 — if/then/else/fi
+- **11** — while/do/done
+- 12 — unset
+- 13 — $(...) command substitution
+
+### 14-16 — mrsh suite adopted; phase A
+
+- **14** — adopt mrsh's test suite as goal 8, establish baseline
+- **15** — phase A: crash-hardening
+- **16** — phase A: script-file invocation (phase A done)
+
+### 17-30 — Phases B and C: semantics and control structures
+
+- **17** — phase B: shell-local variable assignment
+- **18** — phase B: ';' (multiple commands per line)
+- **19** — phase B: '&&'/'||' (conditional chaining)
+- **20** — phase B: command grouping ('( )' and '{ ; }')
+- **21** — fix if/while reading from the wrong input source in script-file mode
+- **22** — phase B: if/then/else/fi nesting (phase B done)
+- **23** — phase C: for/in/do/done loops
+- **24** — operators no longer require surrounding whitespace
+- **25** — same-line 'if COND; then BODY; fi' support
+- **26** — fix a real, pre-existing token-corruption bug in $VAR/$(...) expansion
+- **27** — phase C: case/in/esac (with glob-pattern matching)
+- **28** — phase C: shell functions (`name() { ... }`)
+- **29** — phase C: `return`
+- **30** — phase C: `break`/`continue`
+
+### 31-37 — Phases D and F: expansions and the first builtins
+
+- **31** — phase D: positional parameters (`$1`-`$9`, `$#`, `$@`/`$*`, `set`)
+- **32** — phase D: parameter-expansion modifiers (default/assign/alternate value, length)
+- **33** — phase D: `${VAR%word}`/`${VAR%%word}`/ `${VAR#word}`/`${VAR##word}` (prefix/suffix removal), plus a significant kernel-behavior discovery
+- **34** — phase D: tilde expansion
+- **35** — phase D: arithmetic expansion (`$((...))`)
+- **36** — phase D: `IFS`-based field splitting (Phase D complete)
+- **37** — phase F: `:`, `test`/`[` (string, numeric, limited file-existence tests)
+
+### 38-44 — Locals, the prebuilt image, and the arena
+
+- **38** — `locals.4` - named, per-invocation locals
+- **39** — converting `shell.4` to locals, and two real deduplications
+- **40** — prebuilt shell image - ~128x faster startup, and the acceptance criterion unblocked
+- **41** — pool allocator, memory outside the image, and reproducible images
+- **42** — replay as an input source - nested constructs inside loop and function bodies
+- 43 — per-invocation body storage - loops nest
+- **44** — offset-based growable arena - two hardcoded limits gone
+
+### 45-80 — Climbing the mrsh count
+
+- **45** — `#` comments and same-line `; do` - mrsh 2 -> 4 passed  `mrsh 2->4`
+- 46 — multi-stage pipelines, `!` negation, and a real pre-existing expansion bug
+- **47** — `elif`, and closing a hazard open since Iteration 28
+- **48** — `(` and `)` as self-delimiting operators
+- **49** — groups as ordinary commands - mrsh 4 -> 6 passed  `mrsh 4->6`
+- **50** — duplication audit - two merges, two latent bugs
+- 51 — `shift`, `readonly`, `command -v`
+- 52 — table-driven DISPATCH, and the `forth` builtin
+- 53 — bitwise/shift operators and arithmetic assignment — mrsh 6 -> 7 passed  `mrsh 6->7`
+- 54 — the `read` builtin
+- 55 — file-descriptor redirection — mrsh 7 -> 8 passed  `mrsh 7->8`
+- 56 — here-documents
+- 57 — builtins as pipeline stages
+- 58 — redirection on pipeline stages
+- 59 — `alias` and `unalias`
+- 60 — unterminated quotes are a syntax error — mrsh 8 -> 9  `mrsh 8->9`
+- 61 — `getopts`, and `set --`
+- 62 — subshell function bodies — mrsh 9 -> 10 passed  `mrsh 9->10`
+- 63 — nested function definitions
+- 64 — multi-line groups — mrsh 10 -> 11 passed  `mrsh 10->11`
+- 65 — `return` inside a loop — mrsh 11 -> 12 passed  `mrsh 11->12`
+- 66 — field splitting of command substitution, and the assignment exception
+- 67 — `$IFS` actually controls field splitting — mrsh 12 -> 13  `mrsh 12->13`
+- 68 — `readonly -p` — mrsh 13 -> 14 passed  `mrsh 13->14`
+- 69 — `command -v` for reserved words and aliases, and LF-only output
+- 70 — line continuation
+- **71** — quoting inside `$(...)`
+- 72 — braceless compound function bodies, and functions inside `$(...)` — mrsh 14 -> 15 passed  `mrsh 14->15`
+- **73** — backquote command substitution
+- 74 — background jobs — mrsh 15 -> 16 passed  `mrsh 15->16`
+- 75 — same-line `case` arms
+- 76 — compound commands as pipeline stages — attempted and reverted, with the design established
+- **77** — `DEFER` / `IS`
+- 78 — compound pipeline stages, second attempt — reverted
+- **79** — third attempt — the isolated diagnostic paid off, and found the *next* obstacle
+- 80 — compound pipeline stages — mrsh 16 -> 17 passed  `mrsh 16->17`
+
+### 81-107 — The differential suite, and audits it made possible
+
+- 81 — the alias conformance case is the same conflict
+- 82 — auditing the 17 passes for hollowness
+- 83 — a differential test suite, and two bugs it found immediately
+- 84 — *(number not used)*
+- 85 — performance baseline
+- **86** — an unquoted empty expansion yields no field
+- 87 — a written plan for parse-then-expand
+- **88** — a segfault found by the plan's own first step
+- 89 — auditing every `DO` — one more hang
+- 90 — auditing the fixed tables — a silent failure, a crash, and two limits that pre-empted a diagnosis
+- 91 — the recorded and-or reentrancy bug, demonstrated and fixed
+- 92 — an operator after `fi`, and the status an untaken `if` leaves
+- 93 — multi-line quoted strings
+- 94 — is startup cost the reason the loop is slow? No — but the wrapper is 43% of startup
+- 95 — positional parameters inside `${...}`, and what `word.sh` actually needs
+- 96 — `~user` expansion
+- 97 — recording that `~user` via `/etc/passwd` is a shortcut
+- **98** — tilde in assignments
+- 99 — `$*` lost characters after it
+- 100 — `"$@"` as separate fields
+- 101 — `done`/`esac` suffixes — diagnosed precisely, not implemented
+- 102 — a trailing backslash run, counted by parity
+- 103 — the fourth in-place-growth bug, where Iteration 99 predicted it
+- 104 — the word in `${VAR:-word}` is word text
+- **105** — `$(...)` gets the whole language, by deleting the parser that gave it a subset  `mrsh 17->18`
+- 106 — the `done`/`esac` suffix, as specified in 101
+- 107 — an unterminated compound command hangs
+
+### 108-121 — Parse-then-expand (PARSE-EXPAND-PLAN.md Stage 1)
+
+- **108** — expansion stops writing over its own input
+- **109** — deleting the word rather than auditing its callers
+- **110** — one word for normalize-then-tokenize, and the caller that was missing it
+- 111 — tokenize the normalized line where it already is
+- 112 — word boundaries recorded by the pass that finds them
+- 113 — expansion becomes a word you can call later
+- **114** — a word is expanded when its command runs  `mrsh 18->19`
+- 115 — *(no entry; commit `cd7ff9a` "retire the limitation notes Stage 1 made false". Cited by GOALS.md and PARSE-EXPAND-PLAN.md.)*
+- **116** — measuring what Stage 1 cost
+- 117 — a loop written entirely on one line
+- 118 — a function defined entirely on one line
+- **119** — normalizing each line once instead of twice
+- **120** — `~user` through NSS instead of /etc/passwd
+- **121** — what a fresh machine needs, written down
+
+### Not tied to an iteration
+
+- 2026-09-01 — Design discussion: phase 5 direction, and a rejected byte-opcode idea
+- Assessment: reusing mrsh's test suite
+
+---
+
 ## 2026-08-31 — Iteration 1: scaffolding
 
 ### Context
