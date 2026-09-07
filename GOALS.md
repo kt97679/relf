@@ -249,7 +249,7 @@ image against the new kernel.
 
 **The whole check** is `bash tests/run_tests.sh` (core suite on both
 cell widths, shell suite, differential suite) plus
-`bash tests/mrsh-suite/run.sh`. `tests/bench` is deliberately not run
+`bash tests/mrsh-suite/run.sh` and `tests/posix/run.sh`. `tests/bench` is deliberately not run
 by either; run it when performance is the point.
 
 ## Test suite strategy
@@ -286,6 +286,15 @@ how to test; this is what exists:
    disagree on, or the case fails for the wrong reason.
 4. **`tests/mrsh-suite/`** - vendored third-party acceptance tests, the
    criterion for goal 8. Not editable; they are the outside view.
+   **Fully passed as of Iteration 125.**
+5. **`tests/posix/`** - conformance cases derived from POSIX.1 XCU
+   itself, scored against the *consensus* of every reference shell
+   present rather than against one. A case only counts when the
+   references agree; where they disagree it is reported
+   INCONCLUSIVE and scored neither way, which keeps one shell's
+   extensions from becoming the standard. This is the successor to
+   layer 4 now that layer 4 is passed, and the layer that will grow.
+   See its own `README.md`.
 
 A `run-*` file must be executable and is picked up by `run-all`
 automatically. Run them through `run-all` rather than directly:
@@ -369,6 +378,11 @@ move honestly, the same way the mrsh count is:
 - `tests/run_tests.sh`: core-suite OK markers and shell-suite
   assertions, on both cell widths.
 - `tests/mrsh-suite/run.sh`: the acceptance criterion for goal 8.
+  Met at Iteration 125.
+- `tests/posix/run.sh`: passed / failed / **inconclusive**, plus which
+  reference shells were present. All three move honestly; a rising
+  inconclusive count means the references disagree more, not that the
+  shell got worse.
 - **Size**: stripped engine + prebuilt shell image, both cell widths.
 - **`tests/bench`**, when performance is the point. Not run by
   `run_tests.sh` - it takes minutes and is noisy. Iteration 116's

@@ -174,6 +174,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 123 — correcting Iteration 122, from upstream's own harness
 - 124 — the reference shell was the ceiling
 - **125** — `ulimit`, and goal 8 is met  `mrsh 19->20`
+- 126 — a conformance harness scored by consensus, not by bash
 
 ### Not tied to an iteration
 
@@ -9444,3 +9445,94 @@ markers, mrsh 20 of 21, 8-byte cells only — this host still has no
 32-bit toolchain, and this iteration **does change the engine and
 `kernel.img`**, so the 4-byte build genuinely needs running before
 this is trusted on both widths.
+## Iteration 126: a conformance harness scored by consensus, not by bash
+
+`tests/posix/` — cases derived from POSIX.1 XCU "Shell Command
+Language" rather than from another shell's suite, and scored against
+**the agreement of every reference shell present** rather than against
+one.
+
+Goal 8 was met in Iteration 125 and it is 21 files. Passing it says
+`shell.4` handles what mrsh's acceptance tests exercise and nothing
+about the rest of the specification. This is the successor yardstick.
+The harness first; the corpus is scoped next.
+
+### The design decision, and what it is a reaction to
+
+A case is scored only when every reference agrees on stdout **and**
+exit status. Where they disagree the verdict is `INCONCLUSIVE` and
+nothing is scored.
+
+This is a direct reaction to Iteration 124. `tests/diff/` compares
+against bash alone, which means each case has to be hand-checked for
+forms where bash and POSIX legitimately differ — and the mrsh harness
+made exactly that mistake, silently, for eighty iterations, at a cost
+of one real pass and one hollow one. **One shell is not POSIX.** It is
+one implementation's reading plus its extensions, and a suite that
+treats it as the standard will encode the extensions along with the
+standard and never notice.
+
+Consensus makes the oracle self-checking. A case that accidentally
+depends on a bash-ism cannot become the criterion, because dash
+disagrees and the *case* gets flagged rather than the shell failed.
+The property worth stating plainly: **adding a reference shell can
+only make this harness stricter about what it scores**, never more
+permissive.
+
+`INCONCLUSIVE` is deliberately not a skip. It is one of two findings:
+the case needs narrowing to what POSIX actually specifies, or it has
+documented a genuine divergence between implementations. Both are
+worth having written down.
+
+### Five seed cases, one per verdict path
+
+A harness with no cases is an unverified harness, so each path is
+exercised by something real rather than by a fixture:
+
+| case | verdict |
+|---|---|
+| `2.6.2-parameter-expansion-defaults.sh` | PASS |
+| `2.5.2-special-parameters.sh` | PASS |
+| `2.2.2-unterminated-single-quote.fail.sh` | PASS |
+| `2.6.1-tilde-after-equals-in-argument.sh` | INCONCLUSIVE |
+| `2.9.1-assignment-prefix.sh` | FAIL |
+
+The inconclusive one is the tilde-after-`=` divergence already in
+GOALS.md — bash expands, dash does not — kept permanently as the
+worked example of what that verdict means. The failure is
+`NAME=value command`, the recorded Phase B gap, which the harness
+found on its first run without being told to look for it. Verbose
+mode shows it exactly: the reference prints the value in the child and
+then `unset-after`; `shell.4` prints only the second line, because the
+prefix form is not recognised at all.
+
+### Details that came from prior mistakes here
+
+- **Symlinks are resolved during discovery.** `/bin/sh` is dash on
+  this host, so `sh` and `dash` would otherwise count as two
+  independent opinions. Two agreeing copies of one shell look exactly
+  like consensus, which is the false confidence the whole design
+  exists to avoid.
+- **A single reference is reported as a degradation**, in the output,
+  not in a comment: with one shell present the run is no stronger than
+  `tests/diff/` and says so. This container has only dash and bash.
+- **A crash is never a rejection.** `.fail.sh` cases require nonzero
+  *and* not 128+signum, the same distinction `tests/mrsh-suite/run.sh`
+  makes after an earlier version there scored a segfault as a pass.
+- **`printf`, not `echo`**, in cases. `echo`'s treatment of `-n`, `-e`
+  and backslashes is implementation defined and would produce
+  inconclusive verdicts on content unrelated to the section under
+  test. Written into the README as a rule rather than left to be
+  rediscovered.
+
+### Not wired into `run_tests.sh`
+
+Same as the mrsh suite: a separately-run tracked number, now listed in
+GOALS.md alongside it, reporting passed / failed / **inconclusive**
+plus which references were present. A rising inconclusive count means
+the references disagree more, not that the shell got worse — worth
+saying because it is the one number here that goes up for a good
+reason.
+
+532 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, mrsh 20 of 21, posix 3/1/1, 8-byte cells only.
