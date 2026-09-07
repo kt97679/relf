@@ -182,6 +182,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **131** — correcting the density numbers; longer superinstructions are worth 1.3%
 - **132** — two tag bits, and where `LIT` goes
 - **133** — how the branch merge would work, and why not to do it
+- **134** — keep the dispatch loop, put the payload above the index
 
 ### Not tied to an iteration
 
@@ -10282,6 +10283,115 @@ better by rearranging what occupies the tag space than by finding
 more bits: 131 wanted a fifth class, 132 got four by using two bits,
 133 gets more out of four by not spending them symmetrically. The
 scarce resource is not bits, it is decoding steps.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 134: keep the dispatch loop, put the payload above the index
+
+Iterations 132 and 133 both spent the low bits on a tag, and both add
+a **second data-dependent test** to the two hottest paths. That is a
+real cost against a dispatch loop whose entire virtue is having one
+test, and the objection came from outside before it came from here.
+
+The observation that removes it: **the primitive index field is nearly
+empty.** There are 68 primitives and room for billions. So put the
+payload *above* the index instead of beside the tag, and let the
+existing dispatch table do the work.
+
+    bits [31..12]  payload (signed)   -524,288 .. 524,287
+    bits [11..2]   primitive index    1024 slots
+    bits [1..0]    01 primitive, 00 call
+
+Three reserved indices carry a payload; every other primitive leaves
+it zero. `LIT` carries the value, `BRANCH` and `0BRANCH` the byte
+offset.
+
+### The loop, which is the point
+
+```c
+#define NEXT() do { \
+        t = CELL(ip); ip += CELL_BYTES; \
+        if (t & 1) goto *dispatch[(t >> 2) & IDX_MASK]; \
+        RPUSH(ip); ip += t; \
+        goto next; \
+    } while (0)
+```
+
+against today's
+
+```c
+        if (t & 1) goto *dispatch[(t - 1) >> CELL_SHIFT];
+```
+
+**One test, one indirect branch, exactly as now.** An `and` replaces a
+`sub`. Both single-cycle, neither a branch. `CALL` is untouched.
+
+The three handlers get *shorter*, because the operand arrives in a
+register instead of a second memory read:
+
+```c
+L_lit:     PUSH((UNS64)TOK_PAY(t)); NEXT();        /* was: PUSH(CELL(ip)); ip += CELL_BYTES; */
+L_branch:  ip += TOK_PAY(t); NEXT();               /* was: ip += CELL(ip); */
+L_0branch: dsp += CELL_BYTES; if (!old) ip += TOK_PAY(t); NEXT();
+```
+
+So there is **no case where the interpreter does more work than
+today**. That is the test this whole line of work applies, and this is
+the first option to pass it outright rather than on balance.
+
+### It is also the biggest
+
+All three operand-carriers fold, not just the ones a tag could reach:
+
+| | cells |
+|---|---|
+| `LIT` -> immediate | 2,178 |
+| `0BRANCH` -> folded | 863 |
+| `BRANCH` -> folded | 365 |
+| superinstructions K=128 on the resulting stream | 2,161 |
+| **total** | **5,567** |
+
+**22,268 bytes on i386, 44,536 on x86-64**, against 17,796 for the
+four-tag scheme (132) and 21,488 for the `0BRANCH`-tagged variant
+(133) - and with a simpler dispatch loop than either.
+
+It also retires the constant block. Iteration 132 spent a scan over
+every contiguous range to find `-1..96`; a 20-bit immediate covers all
+2,178 sites with no table, so the question stops existing.
+
+### Ranges checked, not asserted
+
+`IDX_BITS = 10` gives a 20-bit signed payload, -524,288..524,287,
+against measured maxima of **127,404** for a literal and **2,216** for
+a branch offset. 1,024 primitive slots against 68 today plus K=128
+superinstructions = 196.
+
+`tools/encoding-roundtrip.c` encodes and decodes every primitive
+index, both payload extremes, and negatives, and is built `-m32` so
+the narrow cell is what is tested. It passes. Sign extension through
+an arithmetic shift is the part that would have failed silently.
+
+`IDX_BITS` is the one knob: a bit of index costs a bit of payload.
+`LIT` stays available as a two-cell primitive for any literal too
+wide, so **nothing becomes unrepresentable** - the compiler picks the
+short form when it fits, which was the objection to tagging in the
+first place and is now answered by construction.
+
+### Where this leaves the total
+
+i386 image 134,500 -> ~112,232; total 152,308 -> **~130,040 against
+`dash`'s 129,784.** Level, near enough, and without giving up `FIND` -
+which two iterations ago looked like it cost 4,800 bytes of ranking.
+
+### The pattern, four for four
+
+131 wanted a fifth class. 132 got four classes from two bits. 133 got
+more from four by not spending them symmetrically. 134 gets more than
+all of them by not using a tag at all. Every step came from
+rearranging what occupies the encoding rather than finding more room
+in it, and the last one came from someone pushing back on complexity
+rather than on size.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,

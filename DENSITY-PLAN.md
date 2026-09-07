@@ -46,212 +46,125 @@ interpreter do strictly *less* work per unit of program.
 
 ---
 
-## The encoding: two tag bits, four classes
+## The encoding: one test, as now — payload above the index
 
-Proposed in Iteration 132 and adopted here. The low two bits of a code
-cell select the class, and every payload is either cell-aligned (so
-its low two bits are free) or a small index:
+Iterations 132 and 133 worked through 2-bit tags. Both add a **second
+data-dependent test** to the two hottest paths, which is a real cost
+against a dispatch loop whose whole virtue is that it has one test.
+Iteration 134 avoids it entirely.
 
-    t & 3 == 0   CALL     ip += t                  (unchanged, free)
-    t & 3 == 1   PRIMITIVE  goto *dispatch[t >> 2]
-    t & 3 == 2   BRANCH     ip += (t & ~3)
-    t & 3 == 3   0BRANCH    if (TOS) ip += CELL else ip += (t & ~3)
+The observation: the primitive index field is almost empty. There are
+68 primitives and room for billions. So put the payload **above** the
+index rather than beside the tag, and let the existing dispatch table
+do all the work:
 
-**What this buys over today: the branch offset moves into the branch
-cell.** `BRANCH` and `?BRANCH` are ordinary primitives today, each
-followed by an offset cell; folding them saves one cell per site.
-Measured: **1,228 branch sites, 4,912 bytes on i386, 9,824 on
-x86-64.** Offsets are all 4-aligned as required, and the largest in
-the image is 2,216 against a 30-bit payload reaching ±536,870,912.
+    bits [31..12]  payload (signed)      -524,288 .. 524,287
+    bits [11..2]   primitive index       1024 slots
+    bits [1..0]    01 = primitive, 00 = call
 
-**`CALL` stays free**, which is why two bits is the right width rather
-than three or four. Payloads could be shifted to free more tag bits,
-but a shift on `CALL` — the single most common class, 6,986 cells —
-is exactly the "adds a decoding step" mistake this document is built
-to avoid.
+Three reserved indices carry a payload; every other primitive leaves
+it zero:
 
-A side benefit: primitive tokens become `idx * 4 + 1` on every host
-rather than `idx * sizeof(void*) + 1`. That decouples the token stride
-from pointer width, which `GOALS.md` currently flags as a hazard —
-`cross.4`'s hand-embedded token numbers have to change whenever the
-stride does.
+    LIT      payload = the literal value
+    BRANCH   payload = byte offset
+    0BRANCH  payload = byte offset
 
-## Where `LIT` goes, given the tag space is full
-
-All four tags are spent, so `LIT` cannot have one. Three options,
-measured:
-
-**1. Leave `LIT` a primitive with a following value cell, and shrink
-its frequency with a constant block inside the primitive index space.
-Recommended.** The primitive payload is 30 bits and real primitives
-need seven, so indices above the last real primitive are free. Give a
-contiguous run of them to "push this constant", with **every entry in
-the dispatch table pointing at one shared label** so no test is added
-to any path:
+### The dispatch loop
 
 ```c
-/* PUSHK_BASE .. PUSHK_BASE+N all point at this one label */
-L_pushk: PUSH((UNS64)(INT64)((t >> 2) - PUSHK_ZERO)); NEXT();
+#define IDX_BITS   10                  /* 1024 primitive slots      */
+#define PAY_SHIFT  (2 + IDX_BITS)
+#define IDX_MASK   ((1u << IDX_BITS) - 1)
+#define TOK_PAY(t) ((INT64)(t) >> PAY_SHIFT)   /* arithmetic: signed */
+
+#define NEXT() do { \
+        t = CELL(ip); ip += CELL_BYTES; \
+        if (t & 1) goto *dispatch[(t >> 2) & IDX_MASK]; \
+        RPUSH(ip); ip += t; \
+        goto next; \
+    } while (0)
 ```
 
-The block's width is a real optimisation, because each entry costs
-`CELL` bytes of table and buys `CELL` bytes per site it covers. Net
-cells saved is `sites(range) - width(range)`, and scanning every
-contiguous range gives the optimum:
-
-| range | tokens | sites | gross i386 | table | **net** |
-|---|---|---|---|---|---|
-| `0..15` | 16 | 758 (34.8%) | 3,032 | 64 | 2,968 |
-| `-1..63` | 65 | 1,140 (52.3%) | 4,560 | 260 | 4,300 |
-| **`-1..96`** | **98** | **1,189 (54.6%)** | **4,756** | **392** | **4,364** |
-| `-16..255` | 272 | 1,219 (56.0%) | 4,876 | 1,088 | 3,788 |
-| `-128..1023` | 1,152 | 1,228 (56.4%) | 4,912 | 4,608 | 304 |
-
-`-1..96` is the measured optimum, and the curve is flat between about
-`-1..48` and `-1..128` — anything in that band is within a few hundred
-bytes, so pick a round number and move on. The head of the
-distribution is what matters: `0`, `-1`, `1` and `2` alone are 40.2%
-of all literal sites.
-
-**2. Widen the block past the table with a bounds test.** Anything
-beyond the table range needs `if (idx >= PUSHK_BASE)` in the primitive
-path. That reaches every literal but puts a test on the hot path to
-serve values in the tail, which is precisely the trade option 1
-avoids. Not recommended.
-
-**3. Give `LIT` a tag by merging the two branch classes.** Explained
-in full because the mechanics are the point.
-
-The two branch kinds need one bit to tell them apart, and under a
-2-bit tag there is no spare bit: the tag occupies bits 0-1, and bit 2
-already belongs to the offset. The bit has to be *made*, by storing
-the offset shifted left one place. An offset is a multiple of `CELL`,
-so `offset << 1` has its low three bits clear, leaving bit 2 free:
-
-    t     = (offset << 1) | (kind << 2) | 2
-    kind  = (t >> 2) & 1
-    offset= (t & ~7) >> 1          /* arithmetic, to keep the sign */
-
-Tag `11` is then free for a 30-bit signed immediate, covering **every**
-literal in the image (largest ~127,000 against a reach of ±536,870,912),
-with the `LIT` primitive still there for anything wider. 2,178 cells
-instead of the constant block's 1,091 net.
-
-The cost is one extra shift on the branch path — `(t & ~7) >> 1`
-instead of `t & ~3`. **Rejected**, and not because the shift is
-expensive but because there is a better use of the same tag.
-
-**4. Drop unconditional `BRANCH` from the tag space instead of merging.
-Recommended — this is the scheme to build.**
-
-Nothing forces all four tags to be spent on the four things that look
-symmetric. `0BRANCH` is 863 sites and `BRANCH` only 365, and
-unconditional `BRANCH` is the one that superinstructions can still
-fuse (`! BRANCH`, 145 sites) because it keeps its operand cell:
-
-    t & 3 == 0   CALL       ip += t
-    t & 3 == 1   PRIMITIVE  goto *dispatch[t >> 2]      (BRANCH lives here)
-    t & 3 == 2   0BRANCH    if (!pop()) ip += (t & ~3)
-    t & 3 == 3   LITERAL    push((INT)t >> 2)
-
-No shift on any branch path, no constant-block table, no bounds test,
-and `LIT` stays in primitive space as the fallback for a literal too
-wide for 30 bits — so nothing becomes unrepresentable.
-
-Measured against option 1's scheme, both including a K=128 fusion pass
-re-run on their own token streams:
-
-| | folding | literals | fusion | total | i386 |
-|---|---|---|---|---|---|
-| both branches tagged, constant block `-1..96` | 1,228 | 1,091 | 2,130 | 4,449 | 17,796 |
-| **`0BRANCH` tagged, `BRANCH` a primitive, full immediates** | 863 | **2,178** | **2,331** | **5,372** | **21,488** |
-
-**+923 cells, +3,692 bytes on i386, +7,384 on x86-64.** Giving up 365
-cells of `BRANCH` folding buys 1,087 more cells of literal and 201
-more of fusion, because full immediates remove every literal operand
-cell that was breaking up fusable runs.
-
-**The one thing it gives up is speed on loop back-edges.** An
-unconditional `BRANCH` is what closes every loop, and under this scheme
-it stays two cells with a memory load, exactly as today — no
-regression, but no gain either, where tagging both branches would have
-saved one load per iteration. `?BRANCH` is folded under both schemes,
-so the difference is one load per loop iteration on the benchmark this
-project is 236x `dash` on. Small, real, and measurable: **build both
-and run `tests/bench` three times alternating** before committing to
-one.
-
-## Option A — the constant block (details)
-
-**Saves 4,560 bytes on i386 (9,120 on x86-64) for 260 bytes of
-dispatch table. Strictly faster: no memory fetch at all.**
-
-Not one primitive per constant hand-picked from this image — that
-overfits a token stream which changes every time `shell.4` does.
-Instead **one contiguous block of dispatch-table entries, all pointing
-at a single label that derives the value from the token index**:
+Against today's
 
 ```c
-/* PUSHK_BASE .. PUSHK_BASE+64 all point at this one label */
-L_pushk:
-    PUSH((UNS64)(INT64)(((t - 1) >> CELL_SHIFT) - PUSHK_ZERO));
-    NEXT();
+        if (t & 1) goto *dispatch[(t - 1) >> CELL_SHIFT];
 ```
 
-This is **not cell tagging.** The token is an ordinary primitive token
-in the existing `n * CELL + 1` scheme, the discriminator is unchanged,
-and no test is added to any path. `LIT` stays exactly as it is for
-every value outside the range, so nothing becomes unrepresentable and
-the compiler picks the shorter encoding only when it fits.
+**one test, one indirect branch, exactly as now.** The difference is
+`(t >> 2) & IDX_MASK` in place of `(t - 1) >> CELL_SHIFT` — an `and`
+where there was a `sub`, both single-cycle, neither a branch. The
+handlers:
 
-**Range `-1 .. 63` is the sweet spot**, measured:
+```c
+L_lit:     PUSH((UNS64)TOK_PAY(t)); NEXT();
+L_branch:  ip += TOK_PAY(t); NEXT();
+L_0branch: if (DS0) { dsp += CELL_BYTES; }
+           else     { dsp += CELL_BYTES; ip += TOK_PAY(t); }
+           NEXT();
+```
 
-| range | tokens | sites covered | saves (i386) | table cost |
-|---|---|---|---|---|
-| `0..15` | 16 | 758 (34.8%) | 3,032 | 64 |
-| `-1..63` | 65 | **1,140 (52.3%)** | **4,560** | **260** |
-| `-16..255` | 272 | 1,219 (56.0%) | 4,876 | 1,088 |
-| `-128..1023` | 1,152 | 1,228 (56.4%) | 4,912 | 4,608 |
+Each is *shorter* than the version it replaces, because the operand
+comes from a register instead of a second memory read:
 
-Past `-1..63` it stops paying: `-16..255` buys 316 more bytes of image
-for 828 more bytes of table, a **net loss**. The head of the
-distribution is so sharp that four values (`0`, `-1`, `1`, `2`)
-already account for 40.2% of all literal sites.
+```c
+L_lit:     PUSH(CELL(ip)); ip += CELL_BYTES; NEXT();     /* was */
+L_branch:  ip += CELL(ip); NEXT();
+```
 
-*(For the record: hand-picking the top 128 individual values would
-cover 84%, because values like `44264` recur 51 times. Rejected —
-those are this image's buffer offsets, they change whenever `shell.4`
-does, and a constant table tuned to them is a benchmark-specific hack
-rather than a compiler improvement.)*
+### Why this beats both tag schemes
 
-### Why the tagged-cell alternative was dropped, precisely
+All three operand-carriers fold into one cell, not just the ones a tag
+could reach:
 
-The usual objection — that a tag limits the literal values that can be
-stored — **is not actually true**, and it is worth saying so rather
-than accepting a correct conclusion for a wrong reason. `LIT` would
-remain in the engine, so the compiler emits an immediate only when the
-value fits and falls back otherwise; nothing becomes unrepresentable,
-and the payload would have been 30 bits on i386 against a largest
-literal in this image of about 127,000.
+| | cells saved |
+|---|---|
+| `LIT` -> immediate | 2,178 |
+| `0BRANCH` -> folded | 863 |
+| `BRANCH` -> folded | 365 |
+| superinstructions, K=128, on the resulting stream | 2,161 |
+| **total** | **5,567** |
 
-The real reasons to prefer Option A are two, and they are enough:
+**22,268 bytes on i386, 44,536 on x86-64** — against 17,796 for the
+four-tag scheme and 21,488 for the `0BRANCH`-tagged variant, and with
+a simpler dispatch loop than either. It also retires the constant
+block: a 20-bit immediate covers every literal, so there is no range
+to tune.
 
-1. **Tagging adds a test to the hot path.** It needs a second
-   discrimination (`t & 2`) on *every* primitive dispatch in order to
-   serve the 24% that are literals. Option A adds nothing — it is a
-   table entry.
-2. **Tagging changes what `cross.4` emits for literals**, which is the
-   code holding the hand-embedded dispatch token numbers `GOALS.md`
-   warns about, where a stale value segfaults the *next* engine at
-   whatever primitive lands on it. Option A changes literal emission
-   too, but additively: a new token range appended at the end, `LIT`
-   untouched as the fallback, so a bug shows up as "this literal used
-   the long form" rather than as a corrupted engine.
+### Ranges, verified rather than asserted
 
-Option A gets 52% of the literal sites for none of that. The tagged
-scheme's extra 48% is not worth either cost.
+`IDX_BITS = 10` gives a 20-bit signed payload, **-524,288 .. 524,287**,
+against measured maxima of 127,404 for a literal and 2,216 for a
+branch offset — two orders of magnitude of headroom on the branch and
+four times on the literal. 1,024 primitive slots against 68 today plus
+whatever superinstructions are chosen (K=128 would reach 196).
 
----
+`IDX_BITS` is the one tuning knob: raising it buys primitive slots and
+costs payload reach, one bit for one bit. `LIT` remains available as a
+two-cell primitive for any literal too wide, so **nothing becomes
+unrepresentable** — the compiler picks the short form when it fits.
+
+Encode and decode round-trip, checked including negatives and sign
+extension, for every primitive index and for literals at both ends of
+the range (`/tmp` scratch test, reproduced in `tools/` if this is
+built).
+
+### What it costs
+
+`CALL` is untouched. The `and` replaces a `sub`. The three folded
+handlers each lose a memory read. There is no case in this scheme
+where the interpreter does more work than it does today — which is
+the whole test this document applies, and the first option to pass it
+outright rather than on balance.
+
+## The constant block — superseded
+
+Iteration 132 scanned every contiguous range to find the best block of
+"push this constant" primitives, landing on `-1..96` for 1,091 cells
+net of table cost. **The encoding above retires it**: a 20-bit
+immediate covers all 2,178 literal sites for 2,178 cells and no table
+at all. Kept as a record of why the question stopped mattering, not as
+a plan.
 
 ## Option B — superinstructions
 
@@ -327,53 +240,34 @@ than a default.
 
 ---
 
-## Order, and the interaction — the schemes are NOT additive
+## Order, and the interaction
 
-**Folding branches removes most of what superinstructions had to
-offer.** Measured, greedy pair fusion to a fixed point:
+**The encoding first, then re-run the fusion search, then pick K.**
+They are not additive and the interaction is large: folding a branch
+removes any gain from fusing a pattern that ends in one, and turning
+literals into single tokens changes which pairs are adjacent at all.
+Measured on the final stream, K=128 fusion is 2,161 cells; the top
+pairs become `PUSHK =` (234), `PUSHK EXIT` (172), `@ <` (157),
+`! PUSHK` (150), `@ +` (150).
 
-| stream | K=16 | K=32 | K=64 | K=128 |
-|---|---|---|---|---|
-| today | 1,855 | 2,336 | 2,656 | 2,927 |
-| branches folded (branch patterns excluded) | 1,499 | 1,774 | 1,996 | 2,161 |
-| branches folded + constant block | 1,381 | 1,691 | 1,927 | **2,116** |
-
-*(cells saved)*
-
-Once a branch carries its own offset, fusing `X BRANCH` gains
-**nothing**: `X` + `BRANCH|off` is two cells, and `<X+BRANCH>` + `off`
-is also two. Seven of the ten best fusions in the original table ended
-in a branch, which is why K=128 falls from 2,927 to 2,161. The
-constant block overlaps a little further, taking it to 2,116.
-
-So the fusion search must **exclude any pattern containing a branch**,
-and be re-run after the constant block lands, because `LIT 0 =`
-becomes `PUSHK0 =` and changes which pairs are common. The top
-fusions on the final stream are `PUSHK =` (204), `@ <` (157),
-`PUSHK EXIT` (154), `@ +` (150), `! PUSHK` (121), `@ PUSHK` (109).
+Had these been done in the other order, the second would have looked
+like a failure — the fusion figure on today's stream is 2,927, and
+nearly all of the difference is patterns the encoding claims first.
 
 ### What it comes to
 
 | | cells | i386 | x86-64 |
 |---|---|---|---|
-| branch folding | 1,228 | 4,912 | 9,824 |
-| constant block `-1..96` (net of table) | 1,091 | 4,364 | 8,728 |
-| superinstructions, K=128 | 2,116 | 8,464 | 16,928 |
-| **total** | **4,435** | **17,740** | **35,480** |
+| encoding (LIT + BRANCH + 0BRANCH folded) | 3,406 | 13,624 | 27,248 |
+| superinstructions, K=128 | 2,161 | 8,644 | 17,288 |
+| **total** | **5,567** | **22,268** | **44,536** |
 
-Less whatever the superinstruction bodies add to the engine, which is
-the one figure here that is a guess rather than a measurement.
+Less whatever the superinstruction bodies add to the engine, which
+remains the one figure here that is a guess.
 
-i386 image 134,500 -> about 116,760; total 152,308 -> about **134,568
-against `dash`'s 129,784**. Close, and short — the 16,400 bytes of
-dictionary headers that would have closed it are what `FIND` costs,
-and that was decided.
-
-**Do them in this order**: encoding first (it is the largest single
-piece, needs no new primitives, and changes the stream everything else
-measures against), then the constant block, then re-run
-`tools/superinstr-search.py` and pick K against measured engine
-growth.
+i386 image 134,500 -> about 112,232; total 152,308 -> about **130,040
+against `dash`'s 129,784**. Level, near enough, and without giving up
+`FIND`.
 
 ## Method, non-negotiable
 
