@@ -22,6 +22,7 @@
 
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <stdlib.h>
@@ -279,7 +280,8 @@ static void virtual_machine(void) {
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
-        &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome
+        &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
+        &&L_getfsize, &&L_setfsize
     };
 
 #define NEXT() do { \
@@ -587,6 +589,39 @@ L_getpwhome: { /* c-addr --- addr | 0 */
      * immediately. */
     struct passwd *pw = getpwnam((const char *)(uintptr_t)DS0);
     DS0 = pw ? (UNS64)(uintptr_t)pw->pw_dir : 0;
+    NEXT();
+}
+L_getfsize: { /* --- n */
+    /* RLIMIT_FSIZE's soft limit in POSIX's 512-byte blocks, or -1 for
+     * unlimited. Blocks rather than bytes deliberately: POSIX specifies
+     * ulimit in 512-byte units (which is where bash differs, reporting
+     * 1024), and a byte count of a large limit does not fit a 4-byte
+     * cell on a 32-bit build. File size is the only resource POSIX's
+     * own ulimit covers, so this pair is narrow on purpose - see
+     * GOALS.md goal 3. */
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_FSIZE, &rl) < 0 || rl.rlim_cur == RLIM_INFINITY) {
+        PUSH((UNS64)(INT64)-1);
+    } else {
+        PUSH((UNS64)(rl.rlim_cur / 512));
+    }
+    NEXT();
+}
+L_setfsize: { /* n --- ior */
+    struct rlimit rl;
+    INT64 n = (INT64)DS0;
+    if (getrlimit(RLIMIT_FSIZE, &rl) < 0) {
+        DS0 = (UNS64)202;
+    } else {
+        /* POSIX: with neither -H nor -S, ulimit sets the soft *and*
+         * hard limit. Setting only rlim_cur left the hard limit
+         * untouched, which /proc/self/limits reports in a second
+         * column - caught by mrsh's ulimit.sh, whose last assertion
+         * greps that line. */
+        rl.rlim_cur = (n < 0) ? RLIM_INFINITY : (rlim_t)n * 512;
+        rl.rlim_max = rl.rlim_cur;
+        DS0 = (UNS64)((setrlimit(RLIMIT_FSIZE, &rl) < 0) ? 202 : 0);
+    }
     NEXT();
 }
 L_getpid: /* --- pid */

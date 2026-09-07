@@ -3492,7 +3492,38 @@ VARIABLE WT-PID
   REPEAT
   2DROP ;
 
+\ ------------------------------------------------------------------
+\ ulimit - POSIX specifies exactly one resource, the file size limit,
+\ in 512-byte blocks. GETFSIZE/SETFSIZE (engine primitives, Iteration
+\ 125) already work in blocks for that reason, so there is no
+\ conversion here. bash reports 1024-byte blocks instead, which is why
+\ mrsh's ulimit.sh passes under sh and fails under bash - see
+\ PROGRESS.md's Iteration 124 entry.
+\ ------------------------------------------------------------------
+
+: TYPE-UNSIGNED ( u --- )   \ print without Forth's trailing space
+  0 <# #S #> TYPE ;
+
+: TYPE-FSIZE ( --- )
+  GETFSIZE DUP 0< IF DROP ." unlimited" ELSE TYPE-UNSIGNED THEN CR ;
+
+: ULIMIT-ARG ( c-addr --- n )   \ "unlimited" or a block count
+  DUP CSTRLEN 2DUP S" unlimited" 2SWAP STR= IF 2DROP -1 EXIT THEN
+  PARSE-DECIMAL ;
+
+: DO-ULIMIT ( --- )
+  0 LAST-STATUS !
+  ARGC @ 1 = IF TYPE-FSIZE EXIT THEN
+  S" -f" 1 ARGV@ STR0= 0= IF
+    ." ulimit: only -f is supported" CR 1 LAST-STATUS ! EXIT
+  THEN
+  ARGC @ 2 = IF TYPE-FSIZE EXIT THEN
+  2 ARGV@ ULIMIT-ARG SETFSIZE IF
+    ." ulimit: cannot set limit" CR 1 LAST-STATUS !
+  THEN ;
+
 ' DO-WAIT         S" wait"     BUILTIN
+' DO-ULIMIT       S" ulimit"   BUILTIN
 ' DO-GETOPTS      S" getopts"  BUILTIN
 ' DO-READ         S" read"     BUILTIN
 ' DO-FORTH        S" forth"    BUILTIN

@@ -588,8 +588,8 @@ both, so it no longer carries accounts.
    description of what the shell does today, and this file does not
    duplicate it. Iterations 5-13 built v0.1 through v0.8; everything
    since has been driven by phase 8.
-8. **Goal: pass the whole mrsh test suite.** **19 of 21**, with one
-   real remaining failure (`ulimit`) and one test upstream itself does
+8. **Goal: pass the whole mrsh test suite.** **Done** (Iteration
+   125): 20 of 21, and the one failure is a test upstream itself does
    not run. See below.
 
 ## Phase 8: the mrsh suite, and what is left
@@ -602,59 +602,56 @@ concrete external target rather than one this project invents its own
 criteria for. `tests/mrsh-suite/run.sh` is the acceptance criterion;
 re-run it after each iteration and let the count move honestly.
 
-**Current: 19 passed, 2 failed, 3 skipped**, measured against `sh`.
+**Current: 20 passed, 1 failed, 3 skipped**, measured against `sh` —
+and the single failure is `2.2.3-alias-expansion.fail.sh`, which is
+**commented out of upstream's own conformance `meson.build`** against
+a TODO citing mrsh issue #145. mrsh does not run it either.
+
+**So against the set mrsh itself runs, this suite is fully passed:
+20 of 20**, as of Iteration 125. `run.sh` keeps scoring the disabled
+file rather than quietly dropping it, so the headline number stays
+20 of 21.
 
 The reference shell is `${REF_SH:-sh}`, matching upstream's own
 `meson_options.txt` default. This harness used bash until Iteration
 124, and that choice was costing a genuine pass and buying a hollow
 one — see below. `REF_SH=bash tests/mrsh-suite/run.sh` still works and
-is worth running occasionally, but `sh` is what the number means.
+is worth a periodic second opinion, but `sh` is what the number means.
 
 The 3 skips are `*.undefined.sh` conformance cases, which POSIX does
 not specify a result for. Upstream runs them behind a
 `test-undefined-behavior` option; this harness reports them unscored.
-They are not outstanding work.
+They are not outstanding work and never will be.
 
-**Both failures are now real and one of them is fixable:**
+**What this does and does not mean.** It means `shell.4` handles
+everything mrsh's own acceptance tests exercise. It does not mean the
+shell is POSIX-complete — the suite is 21 files, and the gaps listed
+under "Still open" below are real and unmeasured by it. Goal 8 has
+served its purpose as an external, honest yardstick; a broader
+criterion derived from the POSIX specification itself is the natural
+successor, and is the direction after this.
 
-- **`ulimit.sh`** — `ulimit` is not implemented. A genuine missing
-  builtin, and the single feature standing between this project and a
-  clean sweep of the tests upstream actually runs. Needs a
-  `getrlimit`/`setrlimit` engine primitive; POSIX specifies 512-byte
-  blocks, which is what `sh` reports and where bash differs.
-- **`2.2.3-alias-expansion.fail.sh`** — commented out of upstream's
-  own conformance `meson.build` against a TODO citing mrsh issue #145.
-  mrsh does not run it either.
+### The hollow pass, and how it resolved (122, 124, 125)
 
-**So the reachable target is 20 of 20 against the upstream-active
-set, and `ulimit` is what stands in the way.** The previously-recorded
-"ceiling of 19 of 21, the rest is deliberate divergence" was an
-artifact of the reference-shell choice, not a property of this shell.
+`ulimit.sh` used to pass while `ulimit` was not implemented at all.
+The harness is differential and bash *also* failed that test on a
+modern host — its last assertion greps `/proc/self/limits` for a
+512-byte block count bash reports in 1024-byte blocks. Two shells
+failing for unrelated reasons produced identical output.
 
-### One pass is hollow, found in Iteration 122
+Moving the reference shell to `sh` (124) turned it into an honest
+failure, and 125 implemented the builtin. Kept here as the worked
+example of the rule: **check *why* a test passes, and re-audit the
+passes when the count moves**, not only when it stalls. Iteration 82
+audited the then-17 passes for exactly this and found none; two landed
+afterwards and one of them was hollow.
 
-`ulimit.sh` passes, and `ulimit` is not implemented at all. The
-harness is differential, and bash *also* fails this test on a modern
-host — its last assertion greps `/proc/self/limits` for a 512-byte
-block count that bash reports in 1024-byte blocks. Both shells produce
-the same stdout and the same status 1, so the comparison succeeds for
-reasons unrelated to the shell.
-
-Iteration 82 audited the then-17 passes for exactly this and found
-none; two have landed since, and this is one of them. **Re-audit the
-passes when the count moves**, not only when it stalls.
-
-The same test surfaced a real gap: **`set -e` is not implemented**,
-neither as `set -e` nor via a `#!/bin/sh -e` shebang. It is inert in
-this suite, and **inert in mrsh's own suite too**: upstream's
-`test/harness.sh` runs `"$MRSH" "$testcase"` and
-`"$REF_SH" "$testcase"`, passing the script as an argument exactly as
-`run.sh` does here, so the shebang is a comment on both sides. Checked
-against upstream at the vendored commit rather than assumed. The five
-vendored tests carrying `-e` are therefore not being run more
-forgivingly than mrsh intends, and implementing `set -e` would not
-change this suite's verdict on any of them. It remains a genuine POSIX
-gap, just not one this criterion measures.
+The same test surfaced `set -e`, which is **not implemented** in
+either spelling. It is inert in this suite and inert in mrsh's own:
+upstream's `test/harness.sh` passes the script as an argument exactly
+as `run.sh` does, so `#!/bin/sh -e` is a comment on both sides.
+Checked against upstream rather than assumed (Iteration 123). A
+genuine POSIX gap, just not one this criterion measures.
 
 ### The criterion here is stricter than mrsh's own
 
@@ -724,8 +721,10 @@ from an older revision of this file:
   command. Recorded in Iteration 55 as the next piece of redirection
   work.
 - **`set -e`**, per above.
-- **`ulimit`**, and possibly `trap`, `exec`, `hash`, `type` if
-  something ends up needing them.
+- **`trap`, `exec`, `hash`, `type`**, none of which anything has
+  needed yet. `ulimit` landed in Iteration 125 — POSIX specifies only
+  the file-size limit, so `ulimit [-f] [blocks|unlimited]` is the
+  whole of it; other resource options are diagnosed, not ignored.
 - **Fixed tables with hard limits.** No longer *silent* — Iteration
   90 gave `SET-SHVAR`, `SET-FUNC` and the positional-parameter save
   stack real diagnostics, and the 33rd variable now says so. They are

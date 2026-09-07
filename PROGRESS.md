@@ -173,6 +173,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 122 — the documents that can rot
 - 123 — correcting Iteration 122, from upstream's own harness
 - 124 — the reference shell was the ceiling
+- **125** — `ulimit`, and goal 8 is met  `mrsh 19->20`
 
 ### Not tied to an iteration
 
@@ -9366,3 +9367,80 @@ build files of a vendored suite, not just its tests.
 19 passed, 2 failed, 3 skipped against `sh`; unchanged against bash.
 1991 core OK markers, 524 assertions across 63 files, 19 differential
 cases, 8-byte cells only.
+## Iteration 125: `ulimit`, and goal 8 is met
+
+    20 passed, 1 failed, 3 skipped
+
+**The mrsh suite is fully passed against the set mrsh itself runs.**
+The remaining failure is `2.2.3-alias-expansion.fail.sh`, which is
+commented out of upstream's own conformance `meson.build` (Iteration
+123). `run.sh` keeps scoring it rather than quietly dropping it.
+
+Iteration 124 left exactly one real feature in the way, and this is
+it.
+
+### Two primitives, deliberately narrow
+
+`GETFSIZE ( --- n )` and `SETFSIZE ( n --- ior )`, wrapping
+`getrlimit`/`setrlimit` on `RLIMIT_FSIZE`. Appended to `relf.c`'s
+dispatch table and `kernel.4`'s `PRIMITIVE` list — positional, so the
+end is the only safe place — and `kernel.img` cross-compiled again,
+following the recipe Iteration 121 wrote down. It worked first time,
+which is the recipe earning its keep.
+
+They traffic in POSIX's **512-byte blocks**, not bytes. Two reasons,
+both real: POSIX specifies `ulimit` in 512-byte units, and a byte
+count of a large limit does not fit a 4-byte cell on a 32-bit build.
+
+`RLIMIT_FSIZE` is the *only* resource POSIX's own `ulimit` covers, so
+one pair of primitives is the whole job rather than a first
+instalment. Goal 3 says minimalism above completeness; here they
+agree.
+
+### The bug, which the vendored test caught and a smaller test would not
+
+First version set `rl.rlim_cur` alone. `ulimit` and `ulimit -f 100`
+both then reported correctly, and `ulimit.sh` still failed — on its
+last line, which greps `/proc/self/limits`, a file with *two* columns.
+POSIX: with neither `-H` nor `-S`, `ulimit` sets the soft and hard
+limits both. The soft column read 51200 and the hard column still read
+`unlimited`.
+
+Worth noting how thin the margin was. Every assertion I would have
+written by hand — report, set, read back — passed against the broken
+version. What caught it was a third-party test asserting on a
+*side effect* in a file outside the shell. That is the argument for
+`tests/mrsh-suite/` being a layer of its own rather than redundant
+with the hand-written ones (GOALS.md's four layers).
+
+### `run-ulimit`, and a wrong expectation of mine
+
+`tests/shell/run-ulimit`, 8 assertions. Deliberately hand-written
+rather than differential: bash reports 1024-byte blocks, so it is the
+wrong oracle here — exactly the case GOALS.md's layer 2 exists for.
+
+One assertion I wrote was wrong, not the shell.
+`ulimit -f 100; ulimit -f unlimited` fails, because setting `-f`
+without `-H` lowers the *hard* limit too and an unprivileged process
+may not raise it back. Checked against dash before changing anything:
+dash refuses identically. The test now asserts the refusal. Its status
+is 1 here and 2 in dash; POSIX requires only nonzero, so this is left
+alone rather than matched — recorded because a future POSIX-derived
+differential case against `sh` would trip on it.
+
+### What goal 8 being met does and does not mean
+
+It means `shell.4` handles everything mrsh's acceptance tests
+exercise. It does **not** mean POSIX conformance: the suite is 21
+files, and the gaps under GOALS.md's "Still open" — `set -e`, the
+`NAME=value command` prefix, redirection of builtins, `trap`/`exec`/
+`hash`/`type` — are real and entirely unmeasured by it. The external
+yardstick has been useful precisely because it was external; the
+successor is a criterion derived from the POSIX specification itself,
+which is the next direction.
+
+532 assertions across 63 files, 19 differential cases, 1991 core OK
+markers, mrsh 20 of 21, 8-byte cells only — this host still has no
+32-bit toolchain, and this iteration **does change the engine and
+`kernel.img`**, so the 4-byte build genuinely needs running before
+this is trusted on both widths.
