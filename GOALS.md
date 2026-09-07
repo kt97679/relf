@@ -807,12 +807,38 @@ from an older revision of this file:
   assignment prefix. Currently a failed command lookup, status 1.
   Ramey's temporary-scope design (see the bash-architecture section)
   is the shape to build.
-- **Redirection does not apply to builtins.** `pwd > file` writes to
+- **Redirection does not apply to builtins - and the consequences are
+  wider than that sentence suggests.** Iteration 146 found the same
+  root behind `read -r l < file` reading nothing, `while read ...;
+  done < file` producing nothing, and `{ ...; } > f 2>&1` writing
+  nothing: any redirection whose target command is a builtin, or a
+  compound containing one, is silently dropped. `pwd > file` writes to
   the terminal and creates nothing, because redirection is only
   applied in the forked child. Fixing it needs the **undo list** from
   Ramey's chapter: a redirection's effects must not outlive the
   command. Recorded in Iteration 55 as the next piece of redirection
   work.
+- **Positional parameters stop at 9.** `set -- 1 2 3 4 5 6 7 8 9 10`
+  leaves `$#` at 9; `${10}` cannot be reached. Found by
+  `tests/posix/2.5.1-positional-parameters.sh` in Iteration 146.
+- **`${#}`** - the count of positional parameters - yields 0.
+  `${#var}` works; the bare form does not.
+- **`for w; do ... done`**, the implicit `in "$@"` form, iterates over
+  nothing.
+- **`eval` is not implemented** (status 127). A POSIX special
+  built-in.
+- **`"$*"` joins with a space regardless of `IFS`.** POSIX says the
+  first character of `IFS`, and nothing when `IFS` is null.
+- **Non-whitespace `IFS` produces no empty fields.** With `IFS=:`,
+  `a::b:` must split into three fields; it yields two.
+- **Arithmetic division truncates the wrong way for negatives.**
+  `$((-7 / 2))` is -4 here and -3 everywhere else; ISO C, which XCU
+  2.6.4 defers to, truncates toward zero.
+- **A reserved word cannot be a `for` list value.**
+  `for x in do done; do ...; done` iterates over nothing.
+- **Quoted and escaped patterns in `case` do not match.**
+  `case 'a*b' in 'a*b')` selects no arm, and neither does `*)`.
+- **An empty `case` word does not match an empty pattern.**
 - **`set -e`**, per above.
 - **`until` is recognised and then silently ignored.** It is in the
   reserved-word list (`shell.4` line 3155, so it is correctly refused

@@ -194,6 +194,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **143** — `ONE-LINE-LOOP?` is a symptom: two conformance bugs, one silent
 - **144** — the audit: `until` silently does nothing, plus three more same-line faults
 - **145** — why `(`/`)` are not reserved words; `$( (list) )` read as arithmetic
+- **146** — a systematic POSIX corpus: 47 cases, eleven new gaps
 
 ### Not tied to an iteration
 
@@ -11480,3 +11481,95 @@ next door.
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 4 passed / 7 failed / 1 inconclusive.
+## Iteration 146: a systematic POSIX corpus, and eleven new gaps
+
+Asked to revisit the tests and get real coverage, derived from the
+specification and from what the reference shells actually do. Wrote 35
+new `tests/posix` cases covering XCU section 2 systematically -
+quoting, token recognition, reserved words, all three parameter
+sections, every expansion, field splitting, pathname expansion, quote
+removal, redirection, exit status, pipelines, functions, pattern
+matching and the special built-ins.
+
+**47 cases: 24 passed, 21 failed, 2 inconclusive**, every failure
+agreed on by all seven reference shells.
+
+### What the existing suites were and were not covering
+
+`tests/shell` has 63 files and 532 assertions, but they are
+hand-written expectations - layer 2 - and they were written alongside
+the features they test, so they encode what was built rather than what
+the specification requires. `tests/diff` is 19 cases against bash
+alone. `tests/mrsh-suite` is 21 files and fully passed. None of them
+systematically walks the specification, which is why a corpus written
+*from* XCU rather than from the code found this much.
+
+### Eleven gaps not previously recorded
+
+- **Positional parameters stop at 9.** `set -- 1 ... 10` leaves `$#`
+  at 9. Verified separately from the corpus: 8 and 9 are fine, 10 and
+  11 both report 9.
+- **`${#}`** yields 0. `${#var}` works; the bare count does not.
+- **`for w; do ... done`** - the implicit `in "$@"` form - iterates
+  over nothing.
+- **`eval` is not implemented**, status 127. A POSIX special built-in.
+- **`"$*"` joins with a space regardless of `IFS`**, where POSIX says
+  the first character of `IFS`, and nothing when `IFS` is null.
+- **Non-whitespace `IFS` produces no empty fields**: `IFS=:` on
+  `a::b:` gives two fields where the specification requires three.
+- **Arithmetic division truncates toward negative infinity.**
+  `$((-7 / 2))` is -4 here and -3 in every reference shell; XCU 2.6.4
+  defers to ISO C, which truncates toward zero.
+- **A reserved word cannot be a `for` list value.**
+  `for x in do done; do ...` iterates over nothing - a reserved word
+  is being recognised somewhere it should be an ordinary word, which
+  is the mirror image of Iteration 145's finding that the
+  *classification* is correct.
+- **Quoted and escaped `case` patterns do not match**, and neither
+  does the `*)` arm afterwards, so the whole construct silently
+  selects nothing.
+- **An empty `case` word does not match an empty pattern.**
+- **Pathname expansion differs** on the sorted multi-match and
+  no-match forms.
+
+### One known gap, much wider than its recorded description
+
+`GOALS.md` said "redirection does not apply to builtins" and gave
+`pwd > file` as the example. The corpus found the same root behind
+three more shapes:
+
+    read -r l < file                    reads nothing
+    while read -r l; do ...; done < f   produces nothing
+    { printf a; printf b >&2; } > f 2>&1 writes nothing
+
+So it is not a builtin curiosity - **any redirection whose target is a
+builtin or a compound containing one is silently dropped**, which
+covers the single most common idiom for reading a file in a shell
+script. The description has been widened.
+
+### On the cases themselves
+
+Every case cites its XCU section, exercises one section, uses `printf`
+rather than `echo`, and avoids anything that depends on scheduling,
+process ids or locale. The glob case builds and removes its own
+directory under `/tmp` so it does not depend on the repository's
+contents.
+
+Two are INCONCLUSIVE and left that way deliberately: the
+tilde-after-`=` divergence from Iteration 126, and arithmetic with an
+unset variable, where the references disagree among themselves. Both
+are findings about the shells, not defects here.
+
+### What is still weak
+
+**The core Forth suite's headline number is not an assertion count.**
+Iteration 129 established that "1998 core OK markers" counts lines of
+input interpreted without error, and it moved by exactly seven when
+seven lines were added to a test file. It is a real regression signal -
+an error breaks the run - but it is not coverage, and it should not be
+quoted as though it were. Replacing it with a genuine count from
+`tester.fr` is unfinished business.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 24 passed / 21 failed / 2 inconclusive.
