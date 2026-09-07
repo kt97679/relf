@@ -191,6 +191,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **140** — token threading measured: 3.26x/6.51x smaller, no dispatch cost
 - **141** — the prototype: size confirmed, speed 1.14-1.28x and 140's 0.98 was an artifact
 - **142** — the token-threading design written out (`TOKEN-THREADING.md`)
+- **143** — `ONE-LINE-LOOP?` is a symptom: two conformance bugs, one silent
 
 ### Not tied to an iteration
 
@@ -11192,3 +11193,107 @@ reverting 137 if this lands, and for doing Stage 2 of
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 3/1/1.
+## Iteration 143: `ONE-LINE-LOOP?` should not exist, and two bugs prove it
+
+Asked why `ONE-LINE-LOOP?` is needed when parsing ought to be
+universal. It should not be, the question is right, and checking it
+turned up **two real conformance bugs** - one of which is silent.
+
+### What it actually is
+
+Not a second parser. An **adapter**. `while` and `for` capture their
+bodies by *reading further lines* into a buffer and replaying them, so
+a loop written entirely on one line has nothing further to read.
+`CAPTURE-ONE-LINE-LOOP` manufactures the three pieces the multi-line
+path would have produced - body text, suffix, header - and its own
+comment says so: everything downstream is "unchanged and unaware".
+
+That is the least-bad version of the workaround. It is still a
+workaround, and the root cause is architectural: **the line is the unit
+of both input and body storage.** In POSIX's grammar a newline is just
+a token, largely interchangeable with `;`, and "does this construct
+end on this line?" is not a question the grammar can ask. In this
+implementation it is the central question.
+
+### The evidence that it is a design smell and not a local choice
+
+Three compound constructs, three *different* strategies:
+
+- **`if`** executes body lines as it reads them, never buffering. Its
+  own comment records why `while`/`for` cannot do this: a loop body
+  runs many times, so it must be buffered and replayed.
+- **`while`/`for`** buffer and replay, plus `SAME-LINE-DO?` and
+  `ONE-LINE-LOOP?`/`CAPTURE-ONE-LINE-LOOP` as adapters for the shapes
+  that have no further lines.
+- **`case`** has no adapter at all, and says so: "Requires each pattern
+  arm on its own line... no same-line support yet, matching while/for."
+
+**The two constructs without a working adapter are the two that are
+broken.** That is about as clean a demonstration as this project has
+produced that the special case is a symptom.
+
+### Bug 1: one-line `case` (loud)
+
+    case x in x) echo matched ;; esac
+
+    sh, bash, mksh, ksh, yash, busybox, posh   ->  matched
+    relfsh -> shell: syntax error: unexpected end of input, expected 'esac'
+
+Also fails with the arm split after the `)`:
+
+    case x in x)
+    echo M ;;
+    esac
+
+    sh -> M        relfsh -> nothing at all, status 0
+
+The second form is worse than the first: no error, no output, no
+failure. A script would carry on.
+
+### Bug 2: content after a nested `fi` (silent)
+
+    if true; then if true; then echo A; fi; fi; echo B
+
+    sh -> A B        relfsh -> A
+
+`echo B` is **silently dropped**. `DO-IF`'s comment documents this as a
+deliberate scope limit - preserving the remainder would mean
+propagating it up the call stack - but it is written as though it
+applies only to the outermost `fi`, and the un-nested case
+(`if true; then echo A; fi; echo B`) works. It is the *nested* one that
+loses the tail, which is not what the comment says.
+
+Both are now `tests/posix` cases, `2.9.4.2-case-on-one-line.sh` and
+`2.9.4.1-nested-if-trailing-command.sh`. The suite goes **3 passed, 3
+failed, 1 inconclusive**, and all seven reference shells agree on both,
+so neither is a matter of interpretation.
+
+That number getting worse is the suite working. It was built in
+Iteration 126 to find exactly this, and it found it the first time
+somebody asked it a question about a construct rather than about an
+expansion.
+
+### The fix, and what it connects to
+
+Make the tokenizer **stream-oriented**: read tokens from a source that
+spans lines, with newline as an ordinary token. Then `do ... done`,
+`then ... fi` and `in ... esac` parse identically however they are
+laid out, and `SAME-LINE-DO?`, `ONE-LINE-LOOP?`,
+`CAPTURE-ONE-LINE-LOOP` and the `case` gap all disappear together
+rather than needing an adapter each.
+
+Bodies still have to be *stored* for replay, since a loop body runs
+many times - but stored as **tokens rather than raw text**, which is
+exactly Stage 2 of `PARSE-EXPAND-PLAN.md`. Stage 2 was specified as a
+speed change: cache tokenized body lines instead of re-tokenizing them
+every iteration, to attack the 236x loop gap.
+
+**It is the same work.** Approached from speed it is Stage 2;
+approached from correctness it is the removal of every same-line
+special case in the file. That is a much better argument for doing it
+than the benchmark alone, and it should be recorded in
+`PARSE-EXPAND-PLAN.md` as such.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3 passed / 3 failed / 1 inconclusive.

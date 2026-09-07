@@ -115,6 +115,18 @@ The field-splitting logic (`IFS-SPLIT-PENDING?`,
 moves with the expansion sites and gets *simpler*, because "which word
 am I in" stops being implicit in a buffer position.
 
+**Stage 2 has a second justification, found in Iteration 143.** It was
+specified as a speed change - cache tokenized body lines instead of
+re-tokenizing them every iteration. It is also the fix for every
+same-line special case in `shell.4`. The line is currently the unit of
+both input and body storage, which is why `while`/`for` need
+`SAME-LINE-DO?` and `ONE-LINE-LOOP?`/`CAPTURE-ONE-LINE-LOOP`, why `if`
+uses a completely different execute-as-you-read strategy, and why
+`case` - which got no adapter - cannot parse `case x in x) echo M ;;
+esac` at all. Storing bodies as tokens rather than raw text, read from
+a source that spans lines with newline as an ordinary token, removes
+all of them together. Two POSIX cases now record the bugs.
+
 **Stage 2 — cache tokenized body lines.** The only stage left, and
 the only one whose justification is speed rather than correctness.
 
