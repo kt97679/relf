@@ -222,11 +222,30 @@ this is the list.
   half is silently not tested. **Install it before trusting a green
   run.** A container image with only the 64-bit libraries looks
   entirely healthy while checking half of what it claims to.
-- **`bash` and `dash`.** `tests/diff/` uses bash as a live oracle and
-  the mrsh suite compares against it; `tests/bench` reports both. They
-  are test dependencies, not runtime ones - the shell itself needs
-  nothing but libc.
+- **`bash` and `dash`.** `tests/diff/` uses bash as a live oracle;
+  the mrsh suite compares against `sh`, which is dash on Debian and
+  Ubuntu; `tests/bench` reports both. They are test dependencies, not
+  runtime ones - the shell itself needs nothing but libc.
 - **`timeout`** (coreutils), used throughout the test scripts.
+
+**Strongly recommended: more reference shells.** `tests/posix/` scores
+a case only when every reference shell present agrees, so each one
+added makes that suite stricter about what it scores and more
+trustworthy about what it does. With only dash and bash it degrades to
+`tests/diff/` and says so in its output. On Debian/Ubuntu:
+
+    apt-get install -y mksh yash posh ksh busybox-static
+
+That gives seven independent readings - dash, bash, mksh (MirBSD ksh),
+ksh93, yash, posh and busybox ash - which is what the numbers in
+`PROGRESS.md`'s Iteration 127 entry were measured against.
+
+**`zsh` is deliberately not a reference.** Invoked as `zsh script.sh`
+it runs in its native mode rather than sh emulation and differs from
+POSIX on word splitting and much else, so it would generate
+INCONCLUSIVE verdicts about zsh rather than about the specification.
+A fine shell, the wrong oracle. `POSIX_REF_SHELLS` can add it back for
+anyone who wants to see what it says.
 
 **Not required.** `qemu-user` only for the ARM64 cross-check recorded
 in Phase 5; nothing in the normal loop needs it.

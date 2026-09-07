@@ -175,6 +175,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 124 — the reference shell was the ceiling
 - **125** — `ulimit`, and goal 8 is met  `mrsh 19->20`
 - 126 — a conformance harness scored by consensus, not by bash
+- 127 — seven reference shells, and the 32-bit half finally run
 
 ### Not tied to an iteration
 
@@ -9536,3 +9537,98 @@ reason.
 
 532 assertions across 63 files, 19 differential cases, 1991 core OK
 markers, mrsh 20 of 21, posix 3/1/1, 8-byte cells only.
+## Iteration 127: seven reference shells, and the 32-bit half finally run
+
+Two provisioning gaps closed, and both had been hiding something.
+
+### The 4-byte-cell build was never verified for `ulimit`
+
+Iterations 120 through 126 all reported "8-byte cells only" because
+`cc -m32` could not link here. Iteration 121 wrote that trap down and
+Iteration 122 confirmed it live; **125 then changed `relf.c` and
+`kernel.img` anyway**, adding the `GETFSIZE`/`SETFSIZE` primitives,
+and shipped with half the convention unmet.
+
+`gcc-multilib` installs from Ubuntu's own archive, which was
+allowlisted the whole time. The earlier attempt failed for an
+unrelated reason worth recording: a third-party `nodesource` entry in
+`sources.list.d` returns 403, and `apt-get update` exits nonzero
+because of it even though every Ubuntu repository fetched fine. One
+broken source makes the whole update look like no network at all.
+Disabling that entry was the entire fix.
+
+Both cell widths now pass, primitives included:
+
+    PASS (8-byte cells): 1991 OK markers
+    PASS (8-byte cells shell test suite)
+    PASS (4-byte cells, i386): 1991 OK markers
+    PASS (4-byte cells, i386 shell test suite)
+    19 differential cases, 0 failed
+
+Sizes, against Iteration 121's table: i386 151,748 -> **152,308**,
+x86-64 272,864 -> **273,848**. The `ulimit` builtin cost ~560 bytes of
+image on the narrow build. The engines are unchanged in size.
+
+### Seven reference shells
+
+`mksh`, `ksh93`, `yash`, `posh` and `busybox ash` join `dash` and
+`bash`, all from the Ubuntu archive rather than built from source -
+`apt` is the right tool when the packages exist, and they all do.
+
+The payoff is immediate on the one case that was already
+inconclusive. With two references it read "sh disagrees with bash";
+with seven it reads **"sh disagrees with bash mksh"** - so on
+tilde-after-`=` in a non-assignment word, five of seven shells agree
+with `shell.4` and bash and mksh are the outliers. `GOALS.md` recorded
+that divergence in Iteration 98 on the strength of dash alone. It now
+has a majority behind it, which is a stronger claim than the one that
+was written down.
+
+The other four cases held their verdicts under five extra opinions,
+which is the more important result: adding references did not shake
+anything loose, so the three passes are three passes and the failure
+is a real failure.
+
+### A harness bug, surfaced as four false disagreements
+
+The first full run reported busybox disagreeing with every other shell
+on every case. That is not a finding, it is a defect, and the shape
+says so: **a disagreement that lands on exactly one shell and every
+single case is the harness, not the shell.**
+
+`busybox` is a multi-call binary invoked as `busybox sh`, so a
+reference's label and its command line are not the same string - and
+the space-separated lists in `run.sh` can only carry one word. The
+label `busybox-sh` was being exec'd verbatim, returning 127 with no
+output every time. A `ref_cmd` mapping fixes it, and the reasoning is
+now a comment there.
+
+Worth noting what went right: the harness reported its own defect as
+INCONCLUSIVE rather than as a silent wrong answer or four spurious
+failures. Consensus scoring degrades safely when a reference is
+broken, which is a property it was not explicitly designed for.
+
+### `zsh` excluded, deliberately
+
+Installed, then left out of the default candidate list. Invoked as
+`zsh script.sh` it runs in its native mode rather than sh emulation
+and differs from POSIX on word splitting and much else, so it would
+produce INCONCLUSIVE verdicts about zsh rather than about the
+specification. A fine shell and the wrong oracle.
+`POSIX_REF_SHELLS` can add it back.
+
+The general rule, now written into `tests/posix/README.md`: a
+reference must be *attempting* POSIX `sh` semantics when run as a
+script interpreter. Otherwise it does not contribute an opinion about
+POSIX, it contributes noise that suppresses scoring.
+
+### Recorded in GOALS.md
+
+The build-environment section now lists the extra shells and the
+`apt` line, alongside the `gcc-multilib` warning Iteration 121 wrote.
+That section exists precisely so the next fresh machine does not spend
+this time again.
+
+532 assertions across 63 files, 19 differential cases, 1991 core OK
+markers **on both cell widths**, mrsh 20 of 21, posix 3 passed /
+1 failed / 1 inconclusive against seven references.

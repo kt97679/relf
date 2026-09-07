@@ -58,7 +58,13 @@ TIMEOUT_SECS="${TIMEOUT_SECS:-10}"
 # Override with POSIX_REF_SHELLS="dash bash mksh". Anything not
 # installed is skipped silently - this is meant to run on a bare
 # container and on a well-stocked machine without editing.
-CANDIDATES="${POSIX_REF_SHELLS:-sh dash bash mksh ksh yash busybox-sh zsh posh}"
+# zsh is deliberately absent. Invoked as "zsh script.sh" it runs in
+# its own native mode, not sh emulation, and differs from POSIX on
+# word splitting and much else - it would produce INCONCLUSIVE
+# verdicts about zsh rather than about the specification. It is a
+# fine shell and the wrong reference. Add it explicitly via
+# POSIX_REF_SHELLS if you want to see what it says.
+CANDIDATES="${POSIX_REF_SHELLS:-sh dash bash mksh ksh yash busybox-sh posh}"
 
 REFS=""
 REF_REAL=""
@@ -87,10 +93,31 @@ if [ "$REF_COUNT" -eq 0 ]; then
     exit 2
 fi
 
+# A reference is carried through the loops as a single word (the lists
+# here are space-separated), but some are invoked as two - busybox is
+# a multi-call binary and its shell is "busybox sh". The label and the
+# command line are therefore not the same string, and this maps one to
+# the other at the point of use.
+#
+# Getting this wrong is instructive: the first version stored the
+# label and ran it verbatim, so every busybox case exec'd a
+# nonexistent "busybox-sh", returned 127 with no output, and was
+# reported as busybox DISAGREEING with every other shell on every
+# case. The harness surfaced its own defect as four INCONCLUSIVE
+# verdicts rather than as a silent wrong answer, which is the design
+# working - but a disagreement that lands on one shell and every case
+# is a harness bug, not a finding. Check the invocation first.
+ref_cmd() {
+    case "$1" in
+        busybox-sh) echo "busybox sh" ;;
+        *)          echo "$1" ;;
+    esac
+}
+
 run_shell() {
-    # $1 = shell (may be two words, e.g. "busybox sh"), $2 = script
+    # $1 = shell label, $2 = script
     # shellcheck disable=SC2086
-    timeout "$TIMEOUT_SECS" $1 "$2" < /dev/null 2>/dev/null
+    timeout "$TIMEOUT_SECS" $(ref_cmd "$1") "$2" < /dev/null 2>/dev/null
 }
 
 # A status of 128+signum is what timeout and a crashing process both

@@ -96,6 +96,16 @@ Rules that have already cost time elsewhere in this project:
   `FORTH-STYLE.md` §13 both say this; the differential layer is where
   it pays most.
 
+## Reference shells
+
+Seven, on a fully-provisioned machine: `dash` (as `sh`), `bash`,
+`mksh`, `ksh93`, `yash`, `posh` and `busybox ash`. Install with
+
+    apt-get install -y mksh yash posh ksh busybox-static
+
+`zsh` is deliberately excluded - see `run.sh`'s comment at the
+candidate list.
+
 ## Current state
 
 Five seed cases, one per verdict path, written to prove the harness
