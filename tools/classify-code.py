@@ -1,8 +1,3 @@
-# tools/classify-code.py - decode a dict-dump.4 dump into tokens and
-# classify them. Handles the four things that are NOT tokens in a body:
-# LIT/BRANCH/?BRANCH operand cells, and the inline counted string that
-# follows a call to (S")/(."). Getting any of them wrong mis-tokenizes
-# everything after it - which is what Iteration 130 did.
 import re, collections, sys
 CELL=4
 prims=[l.split()[1] for l in open('kernel.4') if l.startswith('PRIMITIVE')]
@@ -20,6 +15,13 @@ for l in open('/tmp/dump2.txt',errors='replace'):
 bystart={w['s']:w['n'] for w in words}
 # which words are the inline-string runtimes?
 SLIT={w['s'] for w in words if w['n'] in ('(S")','(.")')}
+# (LOOP) reads a branch offset from the cell after its own call site,
+# through the return stack - the same trick (S") uses for an inline
+# string. So the cell after a call to (LOOP) is an OPERAND, not a token.
+# Missed until Iteration 141, when a generator that had to resolve every
+# call target failed on it. It is the fifth not-a-token case, after LIT,
+# BRANCH, ?BRANCH operands and inline strings.
+LOOPW={w['s'] for w in words if w['n'] == '(LOOP)'}
 print('inline-string runtimes found:',[w['n'] for w in words if w['n'] in ('(S")','(.")')], file=sys.stderr)
 kern=set()
 for l in open('/tmp/walk_kernel.txt',errors='replace'):
@@ -44,7 +46,15 @@ def decode(w):
             else:
                 out.append((a,'p',nm,1)); a+=CELL
         else:
-            tgt=a+v
+            # Call targets are relative to the cell AFTER the call cell,
+            # because relf.c's NEXT() advances ip before adding: the
+            # engine does RPUSH(ip); ip += t with ip already past the
+            # cell. Getting this wrong resolves no targets at all, so
+            # the inline-string skip below never fires and every S"
+            # body is read as tokens. Iterations 130-134 had this bug.
+            tgt=a+CELL+v
+            if tgt in LOOPW:
+                out.append((a,'op','(LOOP)',2)); a+=2*CELL; continue
             if tgt in SLIT:
                 # inline counted string follows the call cell
                 sa=a+CELL; ln=C.get(sa,0)&0xff

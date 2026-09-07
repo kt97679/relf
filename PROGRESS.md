@@ -189,6 +189,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **138** — the size comparison was mixing word sizes
 - **139** — reading the field: `VM-RESEARCH.md`
 - **140** — token threading measured: 3.26x/6.51x smaller, no dispatch cost
+- **141** — the prototype: size confirmed, speed 1.14-1.28x and 140's 0.98 was an artifact
 
 ### Not tied to an iteration
 
@@ -10986,6 +10987,100 @@ The superinstruction K-curve including engine growth and instruction-
 cache effects, per Ertl's warning that the curve turns. Deferred,
 because if token threading lands, the superinstruction question should
 be re-asked on the new stream anyway.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 141: the prototype, and the number it changed
+
+`tools/proto-gen.py` and `tools/proto-bytecode.c`. A throwaway spike:
+take **one real word** from `shell.4` - `VALID-NAME? ( c-addr u --- f )`
+- and its colon-word closure, encode it two ways from the **actual
+token stream of the actual image**, execute both, and check they agree
+before timing them.
+
+    VALID-NAME? from shell.4, 4 words, 20 primitives
+    cell program 117 cells = 936 bytes   byte program 154 bytes
+
+    ''  x  _  9  9x  x9  PATH  _foo_BAR9  a-b  HOME  1PATH
+    __  z  A1  'has space'  'e\xffz'          -- 16 inputs, all agree
+
+**Size confirmed on real code**: 3.04x on i386, 6.08x on x86-64,
+against the whole-image estimate of 3.26x and 6.51x. Calls were given
+two bytes even though four words need one, because the real image has
+817 targets and flattering the encoding would defeat the exercise.
+
+### The speed result contradicts Iteration 140, and 140 was wrong
+
+| | byte / cell |
+|---|---|
+| Iteration 140, synthetic mix | 0.98 - 1.03 |
+| **this prototype, real word, x86-64** | **1.14 - 1.16** |
+| **this prototype, real word, i386** | **1.28** |
+
+**The byte encoding is 14-28% slower here, not free.**
+
+The reason is the working set. Iteration 140's synthetic program was
+33MB of cells against 6.8MB of bytes, so it measured *cache misses*,
+which the byte encoding wins by construction. This word is 936 bytes
+against 154 - **both fit in L1 several times over**, so the memory
+advantage vanishes entirely and only the decode cost remains:
+assembling a two-byte call index, reconstructing a 16-bit branch
+offset, reading a 32-bit literal a byte at a time.
+
+Neither number is the answer for the real system, and saying so is the
+point:
+
+- The real image's compiled code is **156KB on x86-64** - far past L1
+  at 32KB, comfortably inside L2. So it sits between the two
+  measurements, and closer to which end is not knowable from either.
+- A hot inner loop in `shell.4` behaves like this prototype: small,
+  cache-resident, and it would pay the 14-28%.
+- The image as a whole behaves more like Iteration 140: mostly cold,
+  and the byte encoding would win on fetch.
+
+**The honest position is that the speed effect is unresolved and
+depends on locality**, and that the earlier 0.98 was an artifact of
+working-set size in exactly the way the first version of that
+benchmark was an artifact of its dispatch structure. Two artifacts in
+two iterations, both flattering the same conclusion.
+
+### What the prototype found that no measurement would have
+
+Generating the encoding forced every call target to resolve, and one
+would not: **`(LOOP)` reads a branch offset from the cell after its own
+call site, through the return stack** - `R> DUP @ + >R` - exactly the
+trick `(S")` uses for an inline string. It is a **fifth not-a-token
+case**, after `LIT`, `BRANCH` and `?BRANCH` operands and inline
+strings, and `tools/classify-code.py` had been misreading it since
+Iteration 130.
+
+That matters beyond the census. **Every word that reads inline
+operands through the return stack has to be rewritten for a byte
+stream**, because the operand is no longer a cell at a cell-aligned
+address. `(S")`, `(.")` and `(LOOP)` are the ones found so far; a port
+would have to hunt the rest. This is the kind of problem that only
+surfaces when something has to actually run.
+
+### What the prototype does not do
+
+No `cross.4`, so nothing compiles Forth source to bytes. No
+`save-system.4`, no relocation, no position independence. A byte
+stream has no cell alignment, so `HERE`, `ALIGN` and `,` inside a
+definition body all change meaning - and that, not the dispatch loop,
+is where the work actually is.
+
+### Where this leaves token threading
+
+The size case is confirmed on real code and is large. The speed case
+is **weaker than Iteration 140 claimed and unresolved**: somewhere
+between 0.98 and 1.28 depending on locality, against a plan that
+Iteration 137 already spent 42% of the loop benchmark on.
+
+The next measurement that would settle it is a prototype large enough
+to exceed L1 - the whole `shell.4` closure rather than one word - which
+is a much bigger generator but no new engine work. That is the
+experiment to run before committing to `cross.4`.
 
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
