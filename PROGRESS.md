@@ -196,6 +196,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **145** — why `(`/`)` are not reserved words; `$( (list) )` read as arithmetic
 - **146** — a systematic POSIX corpus: 47 cases, eleven new gaps
 - **147** — triage: the 21 failures are six faults; stop auditing, start fixing
+- **148** — the freeze: reproducible build, `tests/verify`, `tests/BASELINE`
 
 ### Not tied to an iteration
 
@@ -11658,3 +11659,86 @@ whose speed cost is unresolved, sitting on top of that.
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 25 passed / 21 failed / 2 inconclusive.
+## Iteration 148: freezing - a reproducible build and one command to check it
+
+Asked what to do for maximum stability before the code base is frozen
+and engine work begins in a fresh session. The answer turned out to
+start with something that had been visible all session and treated as
+noise.
+
+### The build was not reproducible, and the images are tracked
+
+`kernel-shell.img` and `kernel32-shell.img` are committed, and every
+test run modified them. I had been running `git checkout` on them
+repeatedly for dozens of iterations without asking why.
+
+Two causes, both the same shape - **the saved image was capturing
+transient runtime state**:
+
+- `SS-SCRUB` did not know about `locals.4`'s scratch variables. `LE-A`
+  holds the address of the descriptor `LENTER` last stepped over, and
+  `LE-N`, `LE-ARGS`, `LE-P`, `LE-Q`, `LX-N` hold its counts. They
+  arrived with `LENTER`/`LEXIT` in Iteration 137 and nobody told
+  `SS-SCRUB`. Eleven bytes of difference.
+- `SS-SCRUB` blanked `TIB` but not `#TIB`, so the image recorded **how
+  long the builder's last command line was**. One byte, and enough:
+  `relfsh -c true` and a full test run produced different images.
+
+`SS-SCRUB`'s own comment already stated the principle - these
+variables "hold an absolute address, so it differs every run" and
+"leaving them would make two saves of the same system differ". The
+word was right; its list was incomplete.
+
+Both fixed. Two full test runs on both cell widths now produce
+byte-identical images, as does a build doing entirely different work
+in between.
+
+**Why this matters more than it looks.** The engine change ahead
+touches `relf.c`, `cross.4`, `save-system.4` and every
+position-independence assumption in the system. A tracked artifact
+that changes on every run is exactly the noise that hides a real
+regression - and it would have been at its most dangerous during the
+one change most likely to produce one.
+
+### `tests/verify`
+
+One command. Runs every suite, checks that rebuilt images reproduce
+the committed ones byte for byte, and compares **eighteen numbers**
+against `tests/BASELINE`:
+
+    ok  core:8byte 1        ok  mrsh:passed 20       ok  posix:passed 25
+    ok  core:4byte 1        ok  mrsh:failed 1        ok  posix:failed 21
+    ok  core:okmarkers 1998 ok  shell:assertions 532 ok  posix:inconclusive 2
+    ok  diff:failed 0       ok  shell:files 63       ok  posix:cases 48
+    ok  rebuild:kernel-shell.img reproduces          ok  size:i386 118984
+    ok  rebuild:kernel32-shell.img reproduces        ok  size:x86_64 211912
+
+Any difference - **better or worse** - is reported and fails the run.
+A `CHANGED` line is not automatically a defect: fixing one of the 21
+known POSIX failures will change a number, and the right response is
+`tests/verify --update` in the same commit as the fix, so the file
+always records what the tree does rather than what someone hoped.
+
+Deliberately excluded: `tests/bench`. Minutes to run, and single runs
+on this hardware differ by more than most changes do - it needs
+Iteration 129's alternating method, not a threshold.
+
+### What is frozen, and the one decision still open
+
+Everything verifies. Both cell widths, reproducible images, mrsh fully
+passed against the set upstream runs, 21 POSIX failures that are
+documented, reproducible and grouped into six root causes (Iteration
+147).
+
+**Iteration 137's 42% loop regression is still in `master` and still
+undecided.** It is one `git revert` away. The recommendation, recorded
+here so the next session does not have to reconstruct it: **revert it
+before starting engine work.** Three reasons - a clean `tests/bench`
+baseline is what the engine change will be judged against and it is
+currently contaminated by a deliberate regression; token threading may
+cost a further 14-28% and two stacked regressions cannot be
+attributed; and the 8,712 bytes it buys are dwarfed by the ~54,000
+token threading projects, on code it would have to be rewritten
+against anyway.
+
+No behaviour changed beyond the scrub. `tests/verify` passes clean.

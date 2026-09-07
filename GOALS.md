@@ -125,6 +125,16 @@ the full account and the fixes applied.
   inherited `BASE`), the three testing layers, and when a small
   facility is worth building versus a language layer.
 
+- **The build is reproducible, and that is checked.** A rebuilt image
+  must equal the committed one byte for byte. It did not until
+  Iteration 148: `SS-SCRUB` did not know about `locals.4`'s scratch
+  variables (added in 137) or about `#TIB`, so the image recorded
+  leftover addresses and the length of the builder's last command
+  line. Every test run dirtied the working tree, which meant no diff
+  of a tracked artifact could be trusted. If a rebuild stops
+  reproducing, something is saving transient state - look at
+  `SS-SCRUB` first.
+
 - **Read `PROGRESS.md` through its Index, never end to end.** It is
   119 entries and roughly 114k tokens — over half a context window,
   and reading it whole is not a thorough start, it is most of the
@@ -266,9 +276,18 @@ cross-compiler runs *on* the existing image. Recovering from that is
 Delete `kernel-shell.img` afterwards so `relfsh` rebuilds the shell
 image against the new kernel.
 
-**The whole check** is `bash tests/run_tests.sh` (core suite on both
-cell widths, shell suite, differential suite) plus
-`bash tests/mrsh-suite/run.sh` and `tests/posix/run.sh`. `tests/bench` is deliberately not run
+**The whole check is `tests/verify`** (Iteration 148). It runs every
+suite, checks that a rebuilt `kernel-shell.img` and
+`kernel32-shell.img` reproduce the committed ones byte for byte, and
+compares eighteen numbers against `tests/BASELINE`. Any difference -
+better or worse - is reported and fails the run. When a change is
+intended, commit the fix and `tests/verify --update` together, so
+`BASELINE` always records what the tree actually does.
+
+The individual suites still run on their own: `bash
+tests/run_tests.sh` (core on both cell widths, shell suite,
+differential suite), `bash tests/mrsh-suite/run.sh` and
+`tests/posix/run.sh`. `tests/bench` is deliberately not run
 by either; run it when performance is the point.
 
 ## Test suite strategy

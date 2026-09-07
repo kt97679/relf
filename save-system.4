@@ -93,10 +93,28 @@ CREATE SS-MAGIC 8 ALLOT
   CONTEXT         1 CELLS 28 +  SS-BLANK   \ search order (WARM resets)
   INCLUDE-POINTER SS-CELL
   SRC   SS-CELL   #SRC SS-CELL   >IN SS-CELL   SID SS-CELL
+  \ #TIB and SPAN are the LENGTHS that go with TIB, blanked above.
+  \ Blanking the buffer but leaving its length meant the image still
+  \ recorded how long the builder's last command line was - one byte
+  \ of difference between `relfsh -c true` and a full test run, which
+  \ is all it takes to make a tracked build artifact churn.
+  #TIB  SS-CELL   SPAN SS-CELL
   LAST  SS-CELL   CURRENT SS-CELL
   CSP   SS-CELL   'LEAVE  SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
+  \ locals.4's scratch. LENTER leaves the address of the descriptor it
+  \ last stepped over, plus the counts it read, so two saves of the
+  \ same system differed by eleven bytes - found in Iteration 148 by
+  \ noticing that rebuilding kernel-shell.img dirtied the working
+  \ tree every time. These arrived with LENTER/LEXIT in Iteration 137
+  \ and this word was not told about them.
+  \
+  \ This file therefore REQUIRES locals.4 to be loaded first, which
+  \ relfsh already does.
+  LE-A SS-CELL   LE-N SS-CELL   LE-ARGS SS-CELL
+  LE-P SS-CELL   LE-Q SS-CELL   LX-N SS-CELL
+  LSAVE-SP SS-CELL
   \ This word's own working variables, and pool.4's - they hold a heap
   \ address and a file descriptor from the save that is in progress,
   \ so leaving them would make two saves of the same system differ.

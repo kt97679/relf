@@ -1,0 +1,134 @@
+#!/bin/sh
+# tests/verify - one command that checks everything and compares the
+# result against tests/BASELINE, so "did I break something" is a
+# yes/no rather than four suites and a paragraph of prose.
+#
+# Written in Iteration 148, to freeze the shell before engine work
+# starts. The engine change ahead (TOKEN-THREADING.md) touches relf.c,
+# cross.4, save-system.4 and every position-independence assumption in
+# the system. What makes that survivable is a signal that is trusted:
+# every number below must be exactly what BASELINE says, and any
+# difference - better or worse - is reported and fails the run.
+#
+# A CHANGED line is not automatically a defect. Fixing one of the 21
+# known POSIX failures will change a number, and the right response is
+# to update BASELINE in the same commit as the fix, so the file always
+# records what the tree actually does.
+#
+#   tests/verify              check everything
+#   tests/verify --update     rewrite BASELINE from this run
+#
+# Not included: tests/bench. It takes minutes, and single runs on
+# ordinary hardware differ by more than most changes do - see
+# PROGRESS.md's Iteration 129 entry for the method it needs instead.
+
+cd "$(dirname "$0")/.." || exit 1
+BASE=tests/BASELINE
+UPDATE=0
+[ "$1" = "--update" ] && UPDATE=1
+OUT=$(mktemp) || exit 1
+trap 'rm -f "$OUT"' EXIT INT TERM
+
+emit() { printf '%s %s\n' "$1" "$2" >> "$OUT"; }
+
+# ---------------------------------------------------------------
+# 1. Reproducible build. The images are tracked, so a rebuild that
+#    does not reproduce them byte for byte means either the build is
+#    nondeterministic or the committed image is stale. Both were true
+#    before Iteration 148: SS-SCRUB did not know about locals.4's
+#    scratch variables or about #TIB, so every test run dirtied the
+#    working tree and no diff could be trusted.
+# ---------------------------------------------------------------
+echo "== reproducible build =="
+for i in kernel-shell.img kernel32-shell.img; do
+    [ -e "$i" ] && cp "$i" "/tmp/verify-was-$i"
+done
+rm -f kernel-shell.img kernel32-shell.img
+# run_tests.sh uses bash arrays and 'local'; it is not a POSIX script.
+bash tests/run_tests.sh > /tmp/verify-run.log 2>&1
+RT=$?
+for i in kernel-shell.img kernel32-shell.img; do
+    if [ -e "/tmp/verify-was-$i" ] && [ -e "$i" ]; then
+        if cmp -s "/tmp/verify-was-$i" "$i"; then emit "rebuild:$i" reproduces
+        else emit "rebuild:$i" DIFFERS; fi
+    else
+        emit "rebuild:$i" missing
+    fi
+    rm -f "/tmp/verify-was-$i"
+done
+
+# ---------------------------------------------------------------
+# 2. Core, shell and differential suites, both cell widths.
+# ---------------------------------------------------------------
+echo "== core, shell, differential =="
+emit core:8byte  "$(grep -c 'PASS (8-byte cells):' /tmp/verify-run.log)"
+emit shell:8byte "$(grep -c 'PASS (8-byte cells shell' /tmp/verify-run.log)"
+emit core:4byte  "$(grep -c 'PASS (4-byte cells, i386):' /tmp/verify-run.log)"
+emit shell:4byte "$(grep -c 'PASS (4-byte cells, i386 shell' /tmp/verify-run.log)"
+emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1)"
+emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
+emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------
+# 3. The two acceptance suites.
+# ---------------------------------------------------------------
+echo "== mrsh and posix =="
+M=$(bash tests/mrsh-suite/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\1 \2/p')
+emit mrsh:passed "$(echo "$M" | cut -d' ' -f1)"
+emit mrsh:failed "$(echo "$M" | cut -d' ' -f2)"
+P=$(sh tests/posix/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) inconclusive.*/\1 \2 \3/p')
+emit posix:passed       "$(echo "$P" | cut -d' ' -f1)"
+emit posix:failed       "$(echo "$P" | cut -d' ' -f2)"
+emit posix:inconclusive "$(echo "$P" | cut -d' ' -f3)"
+emit posix:cases "$(ls tests/posix/cases/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------
+# 4. Sizes. Cheap, and the number the engine work is chasing.
+# ---------------------------------------------------------------
+echo "== sizes =="
+S=$(sh tests/sizes 2>/dev/null)
+# tests/sizes prints one section per word size, with the row simply
+# labelled "shell.4" inside each - so track which section we are in.
+emit size:x86_64 "$(echo "$S" | awk '/^== x86-64/{s=1} /^== i386/{s=0} s && /^shell.4 /{print $5; exit}')"
+emit size:i386   "$(echo "$S" | awk '/^== i386/{s=1} /^== not a shell/{s=0} s && /^shell.4 /{print $5; exit}')"
+
+# ---------------------------------------------------------------
+# Compare, or record.
+# ---------------------------------------------------------------
+sort -o "$OUT" "$OUT"
+if [ "$UPDATE" = 1 ]; then
+    cp "$OUT" "$BASE"
+    echo ""
+    echo "BASELINE updated:"
+    sed 's/^/  /' "$BASE"
+    exit 0
+fi
+if [ ! -e "$BASE" ]; then
+    echo "no $BASE - run: tests/verify --update" >&2
+    exit 2
+fi
+
+echo ""
+bad=0
+while read -r k v; do
+    want=$(awk -v k="$k" '$1==k {print $2}' "$BASE")
+    if [ -z "$want" ]; then
+        printf 'NEW      %-22s %s\n' "$k" "$v"; bad=1
+    elif [ "$want" = "$v" ]; then
+        printf 'ok       %-22s %s\n' "$k" "$v"
+    else
+        printf 'CHANGED  %-22s %s (baseline %s)\n' "$k" "$v" "$want"; bad=1
+    fi
+done < "$OUT"
+while read -r k v; do
+    awk -v k="$k" '$1==k {f=1} END {exit !f}' "$OUT" || {
+        printf 'MISSING  %-22s (baseline %s)\n' "$k" "$v"; bad=1; }
+done < "$BASE"
+
+echo ""
+if [ "$RT" != 0 ]; then echo "tests/run_tests.sh exited $RT - see /tmp/verify-run.log"; bad=1; fi
+if [ "$bad" = 0 ]; then echo "VERIFIED: everything matches $BASE"
+else echo "DIFFERENCES ABOVE. If they are intended, commit the fix and"
+     echo "tests/verify --update together."; fi
+exit "$bad"
