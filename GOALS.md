@@ -830,7 +830,9 @@ from an older revision of this file:
 - **`"$*"` joins with a space regardless of `IFS`.** POSIX says the
   first character of `IFS`, and nothing when `IFS` is null.
 - **Non-whitespace `IFS` produces no empty fields.** With `IFS=:`,
-  `a::b:` must split into three fields; it yields two.
+  `a::b:` must split into three fields; it yields two. Whitespace
+  splitting is correct - Iteration 146 implied otherwise and 147
+  corrected it.
 - **Arithmetic division truncates the wrong way for negatives.**
   `$((-7 / 2))` is -4 here and -3 everywhere else; ISO C, which XCU
   2.6.4 defers to, truncates toward zero.

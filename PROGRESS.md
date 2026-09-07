@@ -195,6 +195,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **144** — the audit: `until` silently does nothing, plus three more same-line faults
 - **145** — why `(`/`)` are not reserved words; `$( (list) )` read as arithmetic
 - **146** — a systematic POSIX corpus: 47 cases, eleven new gaps
+- **147** — triage: the 21 failures are six faults; stop auditing, start fixing
 
 ### Not tied to an iteration
 
@@ -11573,3 +11574,87 @@ quoted as though it were. Replacing it with a genuine count from
 No behaviour changed. Both cell widths, 1998 core OK markers, 532
 assertions across 63 files, 19 differential cases, mrsh 20 of 21,
 posix 24 passed / 21 failed / 2 inconclusive.
+## Iteration 147: triage, not more discovery
+
+Asked whether the project is in stable shape or needs another audit
+round. The answer is **stable, not finished, and the next round should
+be triage rather than discovery** - and this iteration is the evidence
+for that, because triaging what was already there changed it.
+
+### The audit had a defect of its own
+
+`2.6.5-field-splitting-whitespace.sh` and its non-whitespace twin both
+iterated with `for w; do`, the implicit form - **which is itself
+unimplemented**. So both cases tested two features at once and blamed
+the wrong one. Checked directly:
+
+    IFS=' '  v='  a   b  '   sh: n=2 [a][b]   relfsh: n=2 [a][b]
+    IFS=':'  v='a::b:'       sh: n=3 [a][][b] relfsh: n=2 [a][b]
+
+**Whitespace field splitting is correct.** Only the non-whitespace
+empty-field case is broken. Iteration 146's write-up listed both as
+failures and implied splitting was generally wrong; it is not.
+
+Both cases now iterate with an explicit `"$@"`, and the implicit form
+has a case of its own. `tests/posix/README.md` already said "keep a
+case to one section"; the stronger rule this teaches is **keep a case
+to one feature**, because a case that exercises two attributes the
+fault to whichever one you were thinking about.
+
+48 cases: **25 passed, 21 failed, 2 inconclusive** - same failure
+count, correctly attributed.
+
+### The 21 failures are six faults, not twenty-one
+
+| root cause | cases | fix |
+|---|---|---|
+| line-oriented parsing (the same-line family) | 4 | `PARSE-EXPAND-PLAN.md` Stage 2 |
+| redirection never reaches builtins or compounds | 3 | Ramey's undo list, in `GOALS.md` |
+| construct or built-in simply absent | 4 | independent, each small |
+| parameter and expansion semantics | 5 | independent, each small |
+| pattern matching | 3 | one area |
+| tokenizer | 2 | one area |
+
+**Two root causes account for a third of the list**, and both already
+have a designed fix recorded. The four "absent" ones - `until`,
+`eval`, `for w; do`, the `NAME=value` prefix - are independent and
+small. So is most of the parameter group: `${#}`, the `$*` join with
+`IFS`, arithmetic division truncating the wrong way, positional
+parameters past 9.
+
+### Why stop auditing
+
+Not because the yield has dropped - it has not. Iteration 146 found
+eleven gaps in one pass, and whole sections remain untouched: signals
+and traps (2.11), the shell execution environment (2.12), here-
+documents beyond the simplest form, `getopts`, `exec`, `set -o`, `$0`,
+what a subshell inherits. Another round **would** find more.
+
+The reason to stop is the ratio. **Twenty-one verified, specified,
+reproducible failures and not one of them fixed.** A backlog that only
+grows stops being read, and finding defect twenty-two is worth less
+than fixing defects one through seven.
+
+There is also a specific reason to fix some now: **the corpus is
+unproven as a driver of work.** It has only ever gone down. A suite
+that has never been used to make a number go *up* has not demonstrated
+it can be, and the cheap items - `${#}`, `eval`, the `$*` join,
+division truncation - would prove it in an iteration or two.
+
+### On "stable"
+
+In the sense of not regressing: **yes, solidly.** Every commit is
+green on both cell widths, the mrsh suite is fully passed against the
+set upstream actually runs, and the documents describe the system as
+it is - Iterations 122, 135, 138, 144, 146 each corrected something
+that had drifted.
+
+Two things are open and should not be forgotten in a stable-sounding
+summary. **Iteration 137's 42% loop regression is still in `master`**,
+landed deliberately and revertable in one commit, with no decision
+taken. And `TOKEN-THREADING.md` is a designed but unstarted change
+whose speed cost is unresolved, sitting on top of that.
+
+No behaviour changed. Both cell widths, 1998 core OK markers, 532
+assertions across 63 files, 19 differential cases, mrsh 20 of 21,
+posix 25 passed / 21 failed / 2 inconclusive.

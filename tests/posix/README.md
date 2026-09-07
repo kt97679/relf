@@ -90,8 +90,14 @@ Rules that have already cost time elsewhere in this project:
   backslashes is implementation defined and will produce
   `INCONCLUSIVE` on content that has nothing to do with the section
   under test.
-- **Keep a case to one section.** A case that exercises four features
-  fails as one line and tells you nothing about which.
+- **Keep a case to one section, and to one FEATURE.** A case that
+  exercises four features fails as one line and tells you nothing
+  about which. Worse, it tells you something wrong: two field-splitting
+  cases iterated with `for w; do`, which is itself unimplemented, so
+  both failed and both were read as splitting defects. Whitespace
+  splitting was correct all along (Iteration 147). If a case needs a
+  second feature to express itself, use the form that already works
+  and give the other feature its own case.
 - **Write the case before the fix.** `PARSE-EXPAND-PLAN.md` and
   `FORTH-STYLE.md` §13 both say this; the differential layer is where
   it pays most.
