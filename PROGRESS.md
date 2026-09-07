@@ -178,6 +178,7 @@ marker for "still load-bearing". Find an entry by searching for
 - 127 — seven reference shells, and the 32-bit half finally run
 - **128** — the size axis of the comparison, as a script
 - **129** — where the image bytes actually go, and why Forth being "compact" does not make this the smallest shell
+- **130** — what the compiled code is actually made of (`DENSITY-PLAN.md`)
 
 ### Not tied to an iteration
 
@@ -9855,6 +9856,115 @@ must terminate on the link *value* being zero rather than the computed
 address - the last word's link cell holds 0, so a naive loop walks off
 the end of the dictionary into garbage, which is what the first
 version did.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 130: what the compiled code is actually made of
+
+`DENSITY-PLAN.md` — three ways to make the image smaller that should
+each make it *faster* too, and two large ones that should not be
+taken. No code; the options differ in risk by an order of magnitude
+and starting with an edit would be the wrong move, same reasoning as
+`PARSE-EXPAND-PLAN.md`.
+
+Iteration 129 established that compiled code is 58% of the image and
+that RelF spends one cell per operation. This classifies every one of
+those cells, using `tools/dict-report.4` extended to dump bodies.
+
+### The 19,506 code cells
+
+| | cells | share |
+|---|---|---|
+| primitive tokens | 9,122 | 46.8% |
+| literal operands | 2,178 | 11.2% |
+| call offsets | 8,206 | 42.1% |
+
+**`LIT` is the most frequent primitive in the image**, 2,178 sites and
+23.9% of all primitive tokens — and each costs *two* cells, so
+literals are 4,356 cells, **22.3% of all compiled code**. 513 of them
+push zero. That was the surprise; nothing in the file's shape suggests
+that pushing constants is the single largest thing the compiled code
+does.
+
+### The rule that separates a good scheme from SOD32's
+
+Worth stating plainly, because it is the answer to "is there anything
+left" and it explains a result this project already has:
+
+> **A density scheme is safe when it removes work, and unsafe when it
+> adds a decoding step.**
+
+SOD32 packed several opcodes per cell and paid shift/mask/counter work
+on every instruction; RelF beat it anyway. `GOALS.md` rejected
+byte-granular opcodes here for the same reason from the other
+direction — that scheme adds a marker byte and realignment to `CALL`,
+the one instruction with zero overhead in the current format.
+
+So the question is not "can the encoding be tighter" but "can it be
+tighter *by doing less*". Three answers, all measured:
+
+- **Immediate literals in the token.** The token space is nearly
+  empty: primitive tokens are `n*CELL+1`, so `1 mod 4`; call offsets
+  are cell-aligned, so `0 mod 4`. **`3 mod 4` is free**, giving a
+  three-way discriminator at no cost and a 30-bit payload on i386 —
+  four orders of magnitude more than the largest literal in the image
+  needs. Saves 2,178 cells, **8,712 bytes on i386**, 17,424 on
+  x86-64, and should be *faster*: an immediate is a shift of a
+  register already loaded, where `LIT` is a dispatch plus a second
+  memory fetch plus an `ip` bump.
+- **Superinstructions.** 1,857 adjacent pairs where neither token
+  carries an operand; the top 32 cover 1,588 of them. `! BRANCH`
+  (163), `@ <` (157), `@ +` (150), `= ?BRANCH` (140). **6,352 bytes**,
+  one fewer dispatch per fused pair. Additive: each is one label and
+  one table entry appended to `relf.c` and `kernel.4`, the same
+  discipline Iterations 120 and 125 used.
+- **Headerless words.** 16,400 bytes, **12.3% of the image, at exactly
+  zero runtime cost** — headers are read only by `FIND`, at compile
+  time. `cross.4` already carries the alternative `"HEADER`, commented
+  out. The cost is that `FIND` stops working for those names, so the
+  `forth` builtin and interactive use break; it need not be
+  all-or-nothing.
+
+All three: **31,464 bytes off i386**, 152,308 -> roughly 121,000,
+**below `dash`'s 129,784**, with the speed prediction pointing the
+right way.
+
+### Two large options recorded as not-recommended
+
+**A 32-bit code stream on 64-bit hosts** is the biggest lever by far —
+code is 62% of the x86-64 image, so halving token width takes ~31% off
+it, and it is the direct fix for the 8-byte build being 1.85x the
+4-byte one. It also breaks the property `GOALS.md` calls load-bearing,
+that a cell is dereferenced directly as a real host pointer, and
+complicates `,`/`HERE`/`ALIGN` and every access into a definition
+body. Recorded rather than pursued: it is a large change to the
+system's identity for the build that is not the small one anyway.
+
+**Variable-length call offsets** would reclaim thousands of cells —
+74.7% of offsets fit in 16 bits, 20.5% in 8 — but need assembler
+relaxation, iterating to a fixed point because shortening one call
+moves every later target. `GOALS.md` already refused that complexity
+once when rejecting byte-granular opcodes. Same verdict for the same
+reason, now with the numbers that would have tempted it.
+
+### Where the risk actually is
+
+Options 1 and 2 both change what `cross.4` emits, which is where this
+project's worst failure mode lives: `cross.4` hand-embeds the
+dispatch token numbers for `LIT`, `EXIT`, `BRANCH`, `0BRANCH` and
+`R>`, and a stale one segfaults the *next* engine at whatever
+primitive lands on the wrong value. Iteration 4's account is the
+warning. Both options touch exactly that code, and the mitigation is
+`tools/dict-report.4` — check the emitted cells before running
+anything.
+
+The predictions here are **predictions**. Nothing in this iteration
+was benchmarked; the speed claims follow from counting memory accesses
+and dispatches, not from measurement, and are labelled as such in the
+plan. Iteration 129's method applies: `tests/sizes` before and after,
+`tests/bench` three runs alternating, because a single run on this
+hardware proves nothing.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,

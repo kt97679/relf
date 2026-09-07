@@ -460,6 +460,14 @@ will change as phases E/F land and as loop bodies move to an arena, so
 tuning now would be tuning something about to be rewritten. The levers
 that will still be there afterwards, in rough order of value:
 
+**Now measured, and planned: see `DENSITY-PLAN.md`** (Iteration 130).
+Three options that each shrink the image and should each make it
+faster - immediate literals in the token (8,712 bytes on i386),
+superinstructions for the common operand-free pairs (6,352), and
+headerless words (16,400) - totalling ~31KB, which would put the i386
+build below `dash`. Two larger options are recorded there as
+not-recommended, with the numbers that would have tempted them.
+
 1. **Headerless words.** `cross.4` already carries a commented-out
    alternative `"HEADER` "in case the target system is just an
    application without headers". Names and headers for ~180 shell
