@@ -125,6 +125,26 @@ the full account and the fixes applied.
   inherited `BASE`), the three testing layers, and when a small
   facility is worth building versus a language layer.
 
+- **Read `PROGRESS.md` through its Index, never end to end.** It is
+  119 entries and roughly 114k tokens — over half a context window,
+  and reading it whole is not a thorough start, it is most of the
+  budget spent before any work begins. The Index at the top lists
+  every entry in one screen (~2k tokens); find the one you need and
+  read that entry (~700). A citation elsewhere in this repository
+  always gives an iteration number, which is what to search for.
+
+- **These two documents are the ones that can go stale.**
+  `PROGRESS.md` only makes claims about the past and cannot rot;
+  `GOALS.md` and `PARSE-EXPAND-PLAN.md` make claims about the present
+  tense, and they rot silently and in the worst direction — describing
+  finished work as unfinished, in the file a new session is told to
+  trust first. Iteration 122 found five such claims, some eighty
+  iterations old, each of which could have sent a session to rebuild
+  something that already worked. **When an iteration finishes an item
+  named here, update this file in the same commit**, and audit the
+  open items whenever the shape of the work changes rather than
+  waiting to notice.
+
 - **Periodically audit for duplication and refactor.** Not only when
   adding a feature: look over the codebase for repeated shapes and
   collapse them, keeping it simple, minimal and orthogonal. This has
@@ -531,637 +551,155 @@ This was the blocker in front of the `forth` builtin.
 
 ## Phases
 
-1. **Scaffolding** — repo structure, test runner, process log. **Done**
-   (iteration 1).
-2. **No-libc, syscalls-only x86-64 engine**, replacing `relf.c`/
-   `vm.asm`/`vm_tos.asm` in place (not preserved alongside — the goal is
-   a leaner successor, not a fork-with-extras). **Done** (iteration 2).
-   `relf.c` is now the only engine: built `-nostdlib -static`, raw
-   syscalls, 8-byte cells, no `relfgcc.c`/`vm.asm`/`vm_tos.asm`. Also
-   fixed Bug 3 (EOF hang) as part of this work, since it was directly a
-   syscall-level concern. See `PROGRESS.md`, 2026-09-01, for the full
-   account, including the cross-compiler-side work this dragged in
-   (migrating `cross.4`/`kernel.4` to 8-byte target cells, which turned
-   out to be most of the actual effort).
-3. **Forth-hosted assembler** — a `CODE`/`END-CODE`-style facility so
-   the engine itself can eventually be assembled by the running Forth
-   system, not `gcc`/`as`. Not started.
-4. **JIT/AOT** — extend the phase-3 assembler to compile hot colon-word
-   bodies to native code, including non-recursive call inlining. Not
-   started.
-5. **Portability + performance without JIT** — libc-based multi-
-   architecture support (all architectures `bash` runs on), native-
-   endianness images, computed-goto dispatch. **Mostly done** (this
-   iteration): libc port, native-endianness images with a magic header,
-   and computed-goto dispatch are all done and verified on x86-64 and
-   ARM64 (same `kernel.img` on both, confirming the shared-image design).
-   Call-flattening is **not done** — deliberately deferred, see the
-   phase 5 section below for why. See `PROGRESS.md` for the full
-   account, including several real bugs found and fixed along the way.
-6. **32-bit-cell targets (i386)** — cell width parameterized at compile
-   time (engine) and via `TARGET-CELL-BYTES` (cross-compiler/kernel).
-   **Done**, verified on i386. See the phase 6 section below.
-7. **Userland: a POSIX-flavored shell on RelF** — process-control
-   primitives (`FORK`/`EXECVE`/`WAITPID`/`PIPE`/`DUP2`/`GETENV`/
-   `SETENV`/`UNSETENV`/`SYS-EXIT`/`CHDIR`/`GETCWD`/`SYS-ARGC`/`SYS-ARG`/
-   `GETPID`) plus `shell.4`, a shell built on top of them, plus
-   `relfsh` (a single-executable wrapper) and a real, scoped test suite
-   in `tests/shell/`. **v0.8 done**: external command execution via
-   PATH search, `cd`/`pwd`/`export`/`unset`/`exit` builtins, a `-c`
-   invocation mode (`relfsh -c 'command'`, matching `sh -c '...'`), a
-   single pipe per line (`cmd1 | cmd2`), redirection (`<`/`>`/`>>`),
-   quoting (single quotes, double quotes with minimal `\"`/`\\`
-   escaping, and backslash-escaping outside quotes), `$VAR`/`${VAR}`/
-   `$?`/`$$` expansion, `$(command)` command substitution (external
-   commands only, no quoting/expansion/pipes within the substituted
-   command's own text yet, no nesting — see `PROGRESS.md`'s Iteration
-   13 entry for the design and for a real bug worth remembering: an
-   absolute address silently compared against a plain offset, making a
-   bounds check always pass), `if`/`then`/`else`/`fi`, and
-   `while`/`do`/`done` (with the condition and body genuinely
-   re-evaluated fresh each iteration — including fresh `$VAR`/`$?`/`$$`
-   re-expansion, not frozen from the loop's first reading — see
-   `PROGRESS.md`'s Iteration 11 entry for why that distinction was the
-   whole design problem) — no nesting for either control structure
-   yet, no `for`/`until`, see that same entry for exactly why those are
-   harder — all with quote-awareness so a literal
-   `'<'`/`'cd'`/`'if'`/`'while'` or an expansion result matching an
-   operator isn't mistaken for the operator/builtin/keyword it happens
-   to spell — all verified end-to-end on x86-64 and i386, with an
-   automated test suite (structurally inspired by bash's own `tests/`,
-   56 assertions as of this writing) checking all of it on every run.
-   See `PROGRESS.md`'s Iteration 5 through 13 entries for the full
-   account, including several real bugs found getting there — one
-   caught directly by the test suite on its first run. Nesting,
-   word-splitting of unquoted expansion results, parameter-expansion
-   modifiers (`${VAR:-default}` etc.), and positional parameters are
-   **not yet done**, and pipes and redirection still can't be combined
-   on the same line — see
-   those entries' "what this iteration deliberately did NOT do". This
-   phase is the first concrete step toward the "busybox-on-RelF"
-   direction discussed under "Non-goals" and in `PROGRESS.md`'s
-   architectural notes; whether it's worth pushing toward a fuller
-   coreutils/shell replacement, versus stopping at
-   "useful enough to drive the system interactively", is an open
-   question to revisit
-   once quoting and variable expansion — the next natural gaps — are
-   addressed.
+**Status only.** How each phase was done, and every bug found getting
+there, is in `PROGRESS.md` — find the entry through its Index rather
+than reading the log. This section went stale twice by trying to be
+both, so it no longer carries accounts.
 
-8. **Goal: pass the whole mrsh test suite.** mrsh
-   (https://github.com/emersion/mrsh) is a minimal but far more
-   complete POSIX shell than `shell.4` currently is; its test suite
-   (vendored unmodified into `tests/mrsh-suite/vendor/` at commit
-   `4c81598721bc5eeb28f9faa818b3102d0471b7f6` — see that directory's
-   own `README.md`) is adopted here as a concrete, external,
-   trackable target rather than one this project invents its own
-   criteria for. `tests/mrsh-suite/run.sh` runs it against `relfsh`
-   and currently reports **19 passed, 2 failed, 3 skipped**.
+1. **Scaffolding** — repo structure, test runner, process log.
+   **Done** (Iteration 1).
+2. **No-libc, syscalls-only x86-64 engine.** **Done** (2), and
+   **deliberately superseded by phase 5**, which traded no-libc back
+   for portability. `relf.c` is the only engine; `relfgcc.c`,
+   `vm.asm` and `vm_tos.asm` are gone and are not coming back.
+3. **Forth-hosted assembler** — a `CODE`/`END-CODE` facility so the
+   engine itself can be assembled by the running Forth system rather
+   than by `gcc`/`as`. **Not started.** This is the last piece of
+   goal 1 and the only phase never begun.
+4. **JIT/AOT** — extend the phase-3 assembler to compile hot
+   colon-word bodies to native code, including non-recursive call
+   inlining. **Not started**; needs phase 3 first.
+5. **Portability + performance without JIT.** **Done except
+   call-flattening** (3). libc as the portability layer,
+   native-endianness images with a magic header, computed-goto
+   dispatch measured at ~1.30x. Verified on x86-64 and ARM64 running
+   the identical `kernel.img`. Call-flattening and the rejected
+   byte-granular opcode encoding are covered in the phase 5 section
+   below.
+6. **32-bit-cell targets.** **Done**, verified on i386 (4). Cell
+   width is a compile-time parameter of the engine and a
+   `TARGET-CELL-BYTES` parameter of the cross-compiler. ARM32 should
+   work by the same mechanism but has not been attempted. Details in
+   the phase 6 section below.
+7. **Userland: a POSIX-flavored shell on RelF.** **Done and
+   continuing.** Fourteen process-control primitives in the engine
+   plus `shell.4`, `relfsh`, and the test suites. For the
+   user-facing feature set, read `README.md` §4 — it is the
+   description of what the shell does today, and this file does not
+   duplicate it. Iterations 5-13 built v0.1 through v0.8; everything
+   since has been driven by phase 8.
+8. **Goal: pass the whole mrsh test suite.** **At its ceiling of 19
+   of 21**, reached in Iteration 114. See below.
 
-   Both remaining failures are the deliberate POSIX-versus-bash alias
-   divergence recorded below and cannot be fixed without making this
-   shell less correct. **This is the ceiling** described in the
-   paragraphs below, reached in Iteration 114.
+## Phase 8: the mrsh suite, and what is left
 
-   **A structural blocker sat underneath that number, found in
-   Iteration 39 and cleared in Iteration 40.** The 18 differential
-   tests compare `relfsh`'s stdout against `bash`'s *byte for byte*,
-   but `relfsh` used to emit `relf`'s own boot output first -
-   `Welcome to Forth` and `OK` - so no differential test could pass
-   however complete `shell.4` became. `relfsh` now runs a prebuilt
-   image that boots straight into `MAIN` (see the prebuilt-image
-   section below), so neither line is ever printed and stdout is
-   exactly what the shell itself writes.
+mrsh (https://github.com/emersion/mrsh) is a minimal but far more
+complete POSIX shell. Its test suite, vendored unmodified into
+`tests/mrsh-suite/vendor/` at commit
+`4c81598721bc5eeb28f9faa818b3102d0471b7f6`, is adopted here as a
+concrete external target rather than one this project invents its own
+criteria for. `tests/mrsh-suite/run.sh` is the acceptance criterion;
+re-run it after each iteration and let the count move honestly.
 
-   **Two tests cannot pass without making the shell less correct**,
-   and they are the same conflict. Bash does not expand aliases in
-   non-interactive shells — a documented deviation — while POSIX says
-   alias substitution applies, which is what this shell does.
-   `command.sh` differs on one line because `command -v ll` reports an
-   alias here and not in bash; `2.2.3-alias-expansion.fail.sh` expects
-   status 127 purely because bash never expands the alias and so finds
-   no command. Matching either would mean emulating bash's extension.
-   Left failing deliberately: the criterion and the goal disagree on
-   these, and the goal wins.
+**Current: 19 passed, 2 failed, 3 skipped.** The 3 skips are
+`*.undefined.sh` conformance cases, which POSIX does not specify a
+result for and which the harness deliberately does not score. They are
+not outstanding work and never will be.
 
-   **So the realistic ceiling on this suite is 19 of 21**, not 21.
-   Reaching it needs two things: nested `$(...)` (see the Phase E note
-   about reusing the real parser rather than growing `CMDSUB-TOKENIZE`
-   further) and `~user` tilde expansion, which needs a
-   password-database primitive the kernel does not expose. Both are
-   deliberate pieces of work rather than gaps, and both are described
-   where they belong rather than only here.
+**The 2 failures are the alias divergence recorded below and cannot be
+fixed without making this shell less correct.** `command.sh` differs
+on one line because `command -v ll` reports an alias here and not in
+bash; `2.2.3-alias-expansion.fail.sh` expects status 127 purely
+because bash never expands the alias and so finds no command. Matching
+either means emulating a documented bash deviation from POSIX. Left
+failing deliberately: the criterion and the goal disagree, and the
+goal wins.
 
-   That number has moved exactly three times, and never yet because a
-   `shell.4` feature carried a vendored test file across the line:
+**So 19 of 21 is the ceiling, and it has been reached.** Phases A
+through G below are all complete. What remains under this goal is not
+a number to move.
 
-   - Twice during Iterations 14 through 16, when an
-     *invocation/measurement* bug was found and fixed each time (see
-     those `PROGRESS.md` entries), settling at 1 passed, 20 failed, 3
-     skipped.
-   - Once at Iteration 36, **downward**, to the current 0 passed, 21
-     failed, 3 skipped. This is not a regression. The single "pass"
-     was `2.2.3-alias-expansion.fail.sh`, which this file had already
-     flagged as hollow — `alias` isn't implemented at all, so the test
-     passed by accident rather than because the shell handled its
-     actual intent. Iteration 36's `TRY-ASSIGNMENT` fix made the
-     script's own `var="$(myalias arg-two)"` assignment genuinely
-     work, so it now exits 0 instead of being rejected outright, and
-     the accidental pass evaporated. A `git stash` comparison
-     confirmed the difference comes from the assignment now working,
-     not from anything `alias`-related.
+### One pass is hollow, found in Iteration 122
 
-   Everything else — Iterations 17 through 35 and 37 — left the count
-   untouched, which is expected: no single vendored file passes purely
-   from variable assignment, `;`, `&&`/`||`, command-grouping, the
-   if/while script-file fix, if-nesting, `for` loops, operator-fusion,
-   same-line if/then/fi, the $VAR-expansion corruption fix,
-   `case`/`esac`, functions, `return`, `break`/`continue`, any single
-   Phase D expansion, or `test`/`[`/`:` alone. Each vendored file needs
-   several still-missing features together. Known specific blockers:
-   command-grouping doesn't apply to mrsh's tests at all yet given the
-   whitespace-around-parens scope limit above; `while`/`for` (unlike
-   `if`) still need `do` on their own separate line; `if.sh` also needs
-   `$#` and `elif`; `case.sh` needs arithmetic and `$IFS` splitting in
-   its later sections (both now implemented as of Iterations 35/36, so
-   this file is worth re-checking specifically).
+`ulimit.sh` passes, and `ulimit` is not implemented at all. The
+harness is differential, and bash *also* fails this test on a modern
+host — its last assertion greps `/proc/self/limits` for a 512-byte
+block count that bash reports in 1024-byte blocks. Both shells produce
+the same stdout and the same status 1, so the comparison succeeds for
+reasons unrelated to the shell.
 
-   **Phase A is done (Iterations 15–16).** It found and fixed two
-   layers of problems before any real feature work could even be
-   measured accurately:
+Iteration 82 audited the then-17 passes for exactly this and found
+none; two have landed since, and this is one of them. **Re-audit the
+passes when the count moves**, not only when it stalls.
 
-   - **Four segfaults** (Iteration 15) — root cause: this kernel's
-     `DO`/`LOOP` doesn't treat `start = limit` as zero iterations (the
-     common, expected Forth behavior) but instead wraps around and
-     runs the entire unsigned range, and five places in `shell.4` had
-     a loop count that could legitimately be zero at runtime (most
-     directly, `$(true)` or any command producing no output at all,
-     inside `EXPAND-CMDSUB`'s splice loop). All five now guarded
-     explicitly; no crashes remain anywhere in the suite.
-   - **`relfsh` had no file-argument invocation** (Iteration 16) —
-     `tests/mrsh-suite/run.sh` had been working around this since
-     Iteration 14 by piping each script into `relfsh`'s stdin instead
-     of passing it as an argument, which fed every script through the
-     ordinary interactive loop rather than the more accurate
-     `sh script.sh` semantics `SH-FILE` (new in Iteration 16) now
-     provides. This surfaced something bigger than the missing
-     feature itself: the old stdin-piped method's exit status was
-     *always 0*, regardless of what the script's last command
-     actually did — `relf`'s own top-level interpreter, not
-     `shell.4`, is what notices EOF on stdin, and it always exits
-     cleanly without ever touching `LAST-STATUS`/`SYS-EXIT`. So the
-     Iteration 14/15 baselines' exit-status numbers for every
-     differential test were themselves partly an artifact of the
-     measurement method, not a genuine reflection of `shell.4`'s
-     behavior (it didn't change any pass/fail *verdicts* for the 18
-     differential tests, all of which were already failing on output
-     grounds regardless — but it did flip the one conformance
-     expected-failure test back to a genuine pass, this time via a
-     correctly-propagated 127 rather than a piped-stdin artifact or a
-     disguised crash).
+The same test surfaced a real gap: **`set -e` is not implemented**,
+neither as `set -e` nor via a `#!/bin/sh -e` shebang. It is inert in
+this suite because the harness invokes `relfsh file` and `bash file`,
+which ignores the shebang for both — so five vendored tests are being
+run with error-exit disabled on both sides, more forgivingly than
+upstream intends. Symmetric, therefore not a false pass, but worth
+knowing before trusting a green run to mean what mrsh meant by it.
 
-   Along the way, a real, independent bug got fixed too: `exit` had
-   always hardcoded status 0 regardless of any argument, and didn't
-   default a bare `exit` to `$?` as POSIX requires — both fixed, since
-   correct exit-status propagation is exactly what this whole
-   suite depends on being measured accurately.
+### Phases A-G: all complete
 
-   Four of the original segfaults — `async.sh` (background jobs, `&`),
-   `function.sh` (shell functions), `pipeline.sh` (subshells/brace
-   groups inside a pipeline), and `read.sh` (the `read` builtin) —
-   all now fail cleanly rather than crashing, though none of the
-   underlying *features* exist yet, so they remain genuine failures
-   for those reasons, which is exactly the honest state phase A was
-   meant to produce.
+Each was a multi-iteration effort. Named here so a citation elsewhere
+resolves; the accounts are in `PROGRESS.md`.
 
-   The full feature gap, roughly ordered by dependency (each phase
-   below is expected to be its own multi-iteration effort, comparable
-   in scope to phases 5 or 6 above — this is a large goal, not a
-   quick one):
+- **A — infrastructure to run the suite at all** (15-16, with a
+  script-file correctness fix in 21). Crash-hardening — five sites
+  where this kernel's `DO`/`LOOP` runs the entire unsigned range at
+  `start = limit` — and real file-argument invocation, so `relfsh
+  testcase` and `bash testcase` are symmetric.
+- **B — foundational semantics** (17-22, 24-25). Shell-local
+  assignment, `;`, `&&`/`||`, command grouping, `if` nesting,
+  self-delimiting operators, same-line `if`.
+- **C — control structures** (23, 27-30, 42-44, 63). `for`, `case`
+  with full glob matching, functions, `return`, `break`/`continue`.
+  Nesting to any depth arrived in 42-44 once replay became a real
+  input source and body storage became per-invocation; nested
+  function *definitions* in 63.
+- **D — expansions** (31-36). Positional parameters, `${#VAR}` and
+  the `:-`/`:=`/`:+` and `%`/`%%`/`#`/`##` modifiers, tilde,
+  arithmetic, `IFS` field splitting — with `$IFS` genuinely
+  controlling it since 67.
+- **E — command substitution completeness** (73, 105). Finished by
+  *deleting* `CMDSUB-TOKENIZE`: the substituted text is installed as
+  a replay input source and read through the real tokenizer in the
+  forked child, so nesting, pipes, redirection, compound commands and
+  quoting inside `$(...)` work as a consequence rather than as
+  features. Costs one extra fork per substitution, taken knowingly.
+- **F — builtins** (37, 51, 54, 59, 61, 68, 69, 74). `test`/`[`, `:`,
+  `shift`, `readonly`, `read`, `alias`/`unalias`, `getopts`,
+  `command -v`, background jobs with `wait` and `$!`.
+- **G — conformance edge cases** (60, 81). Unterminated quotes are a
+  syntax error. The remaining `.fail.sh` case is the alias conflict
+  above.
 
-   - **Phase A — infrastructure to run the suite at all: done
-     (Iterations 15–16).** Crash-hardening and script-file invocation
-     both landed; `tests/mrsh-suite/run.sh` now invokes `relfsh` the
-     same way it invokes `bash` (`relfsh testcase` /
-     `bash testcase`), no more asymmetry. One correctness gap in
-     script-file invocation itself surfaced later, while investigating
-     phase B's if/while nesting item, and was fixed as its own
-     iteration: `if`/`while` were completely broken when run via a
-     script file (their own body-line reading always read from the
-     real process stdin regardless of where the script's lines
-     actually came from) — see `PROGRESS.md`'s Iteration 21 entry.
-   - **Phase B — foundational semantics needed almost everywhere.**
-     Shell-local (non-exported) variable assignment as a standalone
-     statement: **done (Iteration 17)** — `VAR=value` (the whole
-     line) sets a real shell-parameter table distinct from the OS
-     environment, expanding via `$VAR`/`${VAR}` without being
-     inherited by a child process; `export`/`unset` both updated to
-     interact with it correctly (bare `export NAME` now exports an
-     existing shell-local value; `unset` removes both copies). Still
-     open: `NAME=value command args...` (POSIX's temporary,
-     per-command assignment prefix — a real, acknowledged gap, not
-     silently mishandled: it currently falls through to being looked
-     up as a literal, failing command name, since `ARGC` isn't 1 in
-     that shape).
+### Still open under this goal
 
-     Multiple commands per line via `;`: **done (Iteration 18)** —
-     `cmd1 ; cmd2 ; ...`, each run in sequence regardless of the
-     previous one's own exit status, recursively handling any number
-     of segments. Surfaced a real, pre-existing architectural
-     limitation rather than introducing one: `FOO=bar ; echo $FOO`
-     did not see the just-assigned value, because expansion happened
-     once for the *entire* raw line during tokenizing, before any
-     `;`-segment had run. **Fixed in Iteration 114**, by the staged
-     change `PARSE-EXPAND-PLAN.md` describes: a word is expanded when
-     its command runs. `PROGRESS.md`'s Iteration 18 entry has the
-     original account and 114's has the fix.
+Real gaps, each verified as of Iteration 122 rather than inherited
+from an older revision of this file:
 
-     `&&`/`||` (conditional chaining): **done (Iteration 19)** —
-     left-associative, equal precedence for both, evaluated left to
-     right, correctly carrying the "compound status so far" through a
-     skipped segment (`a && b || c` runs `b` and skips `c` if `a`
-     succeeds, but skips `b` and runs `c` if `a` fails) — tighter
-     precedence than `;`, looser than `|`.
-
-     Command grouping: **done (Iteration 20)** — `( list )` runs its
-     body in a forked subshell (`cd`/variable/`export` changes inside
-     it don't affect this shell); `{ list ; }` runs its body directly
-     in this shell instead, so those changes do persist. Requires
-     whitespace around `(`/`)`/`{`/`}` themselves, matching every
-     other operator's convention here — a real, acknowledged gap
-     against mrsh's own tests, which write `(cmd)` with no spaces (a
-     trailing pipe or redirect after a group is also silently dropped
-     rather than applied, for now); see `PROGRESS.md`'s Iteration 20
-     entry.
-
-     `if`/`then`/`else`/`fi` nesting: **done (Iteration 22)** — a body
-     line that's itself another `if` works correctly at any nesting
-     depth, regardless of whether the enclosing branch actually
-     executes. A first attempt (saving/restoring `COND-TRUE?` alone)
-     handled nesting correctly whenever the *enclosing* condition was
-     true, but testing the opposite case directly surfaced a deeper
-     gap: when the enclosing condition is false, body lines were never
-     run through the recursive dispatch at all, so a nested if's own
-     `then`/body/`fi` were never parsed as a nested construct, and its
-     `fi` got mistaken for the enclosing if's own. Fixed by always
-     recursing into every body line regardless of whether it should
-     execute, gated instead by a separate `SUPPRESS-EXEC?` state
-     checked at the two actual points that execute anything
-     (`DO-ASSIGN`, `RUN-SIMPLE-OR-PIPELINE`) — see `PROGRESS.md`'s
-     Iteration 22 entry for the full account, including three more
-     file-ordering slips of the same kind Iterations 16/20/21 already
-     hit.
-
-     `while`/`do`/`done` nesting remains **not done** — its condition
-     and body are buffered as raw text across dedicated, fixed-size
-     buffers rather than a single scalar like `if`'s `COND-TRUE?`, so
-     nesting it needs considerably more than what fixed `if` here;
-     left as its own, separate, still-open problem. **Phase B is now
-     complete** apart from that one item and the `NAME=value command`
-     temporary-assignment-prefix form noted above.
-   - **Foundational fix (Iteration 24, cuts across every phase):**
-     operators no longer require surrounding whitespace — `;`, `|`,
-     `&&`, `||`, `<`, `>`, `>>` are now self-delimiting (`"true;echo"`
-     and `"a>file"` parse correctly), matching real POSIX shells,
-     rather than needing whitespace on both sides as every earlier
-     operator implementation had shortcut-taken. Implemented as a
-     pre-pass over the raw line (`NORMALIZE-OPERATORS`, inserting
-     synthetic spaces around unquoted operators before the existing
-     tokenizer ever runs) rather than a `SCAN-TOKEN` rewrite, after
-     identifying a real hazard in the more obvious approach (an
-     unquoted word's own NUL-termination write lands exactly where a
-     fused operator would sit, destroying it before it could be read).
-     Deliberately still excludes `(`/`)`/`{`/`}` — blindly spacing
-     those would break `$(...)` command substitution outright; left
-     for its own future iteration. Surfaced a related, separate gap
-     rather than fixing it outright: `if true; then` still didn't
-     work at the time, since `DO-IF`/`DO-WHILE`/`DO-FOR` only looked
-     for `then`/`do` by reading a *new* line, never by checking the
-     remainder of the current line's already-correctly-tokenized
-     `ARGV` — getting the tokenization right was necessary but not
-     sufficient. **`if` specifically now supports this too (Iteration
-     25)** — `if COND; then BODY; fi`/`else` all work on one line, at
-     any nesting depth, via a new "pending remainder" mechanism
-     (`SPLIT-AT-KEYWORD`/`SPLIT-AT-EITHER-KEYWORD`, tracking `if`/`fi`
-     nesting depth so a *nested* if's own `else`/`fi` isn't mistaken
-     for the outer one's — found to be necessary by testing directly,
-     not by inspection). `while`/`for` still require `do` on its own
-     separate line — extending this to them is separate, still-open
-     future work. See `PROGRESS.md`'s Iteration 25 entry for the full
-     account of the four real bugs found and fixed getting there,
-     including one (operator normalization never having been wired
-     into the *second* line-reading path control structures use
-     internally) that had been silently present since Iteration 24
-     itself. See `PROGRESS.md`'s Iteration 24 entry for the full
-     account, including a real regression this surfaced in an
-     *existing test* (not a shell bug — an unquoted `|` inside an
-     assignment value was never actually valid in real shells either).
-   - **Phase C — control structures.**
-     `for`/`in`/`do`/`done`: **done (Iteration 23)** — iterates its
-     body once per word, expanded once at the `for ... in ...` line
-     itself (matching POSIX), reusing `while`'s own body-capture/
-     replay machinery unmodified. Requires `do` on its own, separate
-     line, same as `if`/`while` already do. Went smoothly — every test
-     passed on the first attempt. Testing directly did surface a real,
-     pre-existing, more general limitation (not introduced by this
-     work — confirmed it already affects `while` too): a loop body
-     cannot contain another multi-line construct at all (`if`, or a
-     nested `while`/`for`) — the replay mechanism dispatches each
-     stored body line independently, but `DO-IF`'s own search for
-     `then`/`fi` reads from the real input stream, not the next stored
-     line, so a nested `if` inside a loop body silently misbehaves
-     (its own body lines run unconditionally, regardless of the
-     condition). A real fix needs loop bodies to support genuine
-     read-ahead into stored lines; left as its own, separate,
-     substantial future item — see `PROGRESS.md`'s Iteration 23 entry.
-
-     `case`/`in`/`esac`: **done (Iteration 27)** — `case WORD in
-     PATTERN) <body> ;; ... esac` with full glob-pattern matching
-     (`*`, `?`, `[...]` ranges and `[!...]`/`[^...]` negation, the
-     classic iterative two-pointer backtrack algorithm, tested
-     thoroughly in isolation, 22/22 cases before ever being wired in)
-     and `|` alternation, matching the first arm whose pattern matches
-     and never falling through to a later one, the way a C `switch`
-     can. Requires each pattern arm on its own separate line, matching
-     while/for's own "no same-line support" scope. A real bug was
-     found and fixed by testing against a realistic, multi-arm script
-     rather than one pattern type at a time: `CASE-MATCHED?` was being
-     *set* once a match was found, but never actually *checked* — so
-     every later arm, even a non-matching one, kept being tested and,
-     if it happened to match too, ran its body as well. Also fixed
-     along the way: `;;` was tokenizing as two separate `;` tokens
-     rather than its own doubled-operator form (needed for `case`'s
-     own arm terminator), by adding `;` to `NORM-DOUBLED-OP?` alongside
-     `&`/`|`/`>`. See `PROGRESS.md`'s Iteration 27 entry for the full
-     account.
-
-     A significant, independent bug found and fixed along the way
-     (Iteration 26, while testing `case` directly rather than
-     something `case` itself caused):
-     `TOKENIZE`'s in-place token compaction assumes the write cursor
-     (`TOK-OUT`) never advances past the read cursor (`TOK-POS`) after
-     an expansion — true for quote-stripping, false for `$VAR`/`$(...)`
-     whenever the expanded value is *longer* than its own reference
-     text. When that happens, the write destroys unread input before
-     `SCAN-TOKEN` reads it, and `SCAN-TOKEN`'s own loop then re-reads
-     and re-emits that corrupted byte, cascading into a self-
-     propagating "smear" until the line ends — confirmed via `git
-     stash` to already exist in the committed Iteration 25 state, not
-     introduced by anything recent. `echo $x in` with `x=hello`
-     printed `hellollo` instead of `hello in`. Fixed with a new
-     `ENSURE-ROOM`, which shifts the remaining unread line rightward
-     just enough to make room before writing a longer-than-source
-     expansion value. The existing test suite never caught this
-     because no existing test combined "value longer than its own
-     `$NAME` reference" with "more text follows on the same line" — see
-     `PROGRESS.md`'s Iteration 26 entry for the full account, including
-     why five existing, seemingly-relevant tests each individually
-     missed it.
-
-     Shell functions (`name() { <body> }`): **done (Iteration 28)** —
-     definition (persistent, named storage, unlike `while`/`for`'s own
-     "replay once, discard" body), redefinition (a later definition
-     with the same name simply replaces the earlier one), invocation
-     (checked in `DISPATCH` ahead of external `PATH` search, existing
-     builtins still take priority on a name collision), and genuine
-     self-recursion (each invocation's own "which body line am I on"
-     position nested via `>R`/`R>`, mirroring `if`'s own
-     `COND-TRUE?`/`SUPPRESS-EXEC?` nesting from Iteration 22). Requires
-     `{` either on the same line as `name()` (the common style) or its
-     own line, but unlike `if`'s own same-line flexibility, each body
-     line and the closing `}` must be on their own separate line — a
-     deliberate, simpler initial scope cut. Shares the same
-     multi-line-construct limitation noted above (a function body
-     can't contain a nested `if`/`while`/`for`, for the identical
-     reason). Recursion testing surfaced two real, independent bugs,
-     neither specific to functions at all: (1) a standalone
-     `NAME=value` assignment used as one segment of an `&&`/`||` chain
-     was never recognized as an assignment, since that check had only
-     ever lived in the non-chained fall-through path; and (2)
-     `COPY-ARGV` never touched `ARGV-QUOTED`, so a stale "quoted" flag
-     left behind by an earlier piece's own `$VAR` expansion could
-     silently hide a real operator token from a later piece, if it
-     happened to land at the same `ARGV` index after being copied in —
-     found via a three-segment `&&` chain where the second `&&`
-     vanished entirely. Both fixed; see `PROGRESS.md`'s Iteration 28
-     entry for the full account, including why the fix restores
-     quoted-flags at exactly two call sites rather than changing plain
-     `COPY-ARGV` itself, and why that leaves the extent of the same
-     hazard at other `COPY-ARGV` call sites (pipeline segments, group
-     bodies) unverified rather than claimed safe.
-
-     `return [n]`: **done (Iteration 29)** — exits the innermost
-     currently-executing function immediately (`$?` becomes `n` if
-     given, otherwise left as the last command's own status, per
-     POSIX), correctly skipping everything else in that function's own
-     body, including any remaining `;`/`&&`/`||`-chained segments on
-     the same line `return` appeared on. A single `RETURN-PENDING?`
-     flag, checked in exactly two places (`RUN-SIMPLE-OR-PIPELINE`,
-     alongside the existing `SUPPRESS-EXEC?` check, since every
-     individual command eventually funnels through there regardless of
-     `;`/`&&`/`||` structure; and `RUN-FUNC-BODY`'s own replay-loop
-     condition) — reset by `RUN-FUNC-BODY` itself before returning to
-     its own caller, so an inner, recursive invocation's own return
-     never leaks out to stop an outer, still-in-progress caller too. A
-     top-level `return` (outside any function) is diagnosed rather
-     than silently setting a flag nothing would ever consume. Went
-     smoothly — every case passed on the first attempt. See
-     `PROGRESS.md`'s Iteration 29 entry for the full design.
-
-     `break`/`continue`: **done (Iteration 30)** — `break` exits the
-     innermost enclosing `while`/`for` loop immediately; `continue`
-     skips the rest of the current iteration and proceeds to the
-     next as usual. Both recognized even from within a function
-     called by a loop's own body — the trickiest case — via two flags:
-     `LOOP-CONTROL-PENDING?` (set by either, checked by
-     `RUN-SIMPLE-OR-PIPELINE` and both `RUN-FUNC-BODY`'s and
-     `DO-WHILE-BODY`'s own replay loops, but reset only by
-     `DO-WHILE-BODY`, so it keeps propagating outward through however
-     many function-call frames separate the break/continue from the
-     loop iteration it's actually meant for) and `LOOP-BREAK?` (set
-     only by `break`, surviving past `DO-WHILE-BODY`'s own reset so
-     the outer loop can check it and decide whether to stop entirely
-     or proceed as normal). `LOOP-DEPTH` diagnoses break/continue
-     outside any loop, mirroring `return`'s own `FUNC-DEPTH`. Went
-     smoothly — every case passed on the first attempt, since the
-     design was fully thought through before writing any code. See
-     `PROGRESS.md`'s Iteration 30 entry for the full account.
-
-     **Phase C is now complete, and so is nesting** (Iterations 42
-     and 43). A loop or function body can contain any combination of
-     `if`/`while`/`for`, at any depth — verified against `bash` on a
-     three-deep `while` > `for` > `if` script. Two independent causes
-     had to be fixed: replay had to become a real *input source* so a
-     nested construct reads its continuation lines from the stored
-     body (42), and the capture buffers had to become per-invocation
-     arena allocations with a nesting-depth count in the capture loop,
-     or the outer capture stopped at the inner loop's `done` (43).
-     Both fixed limits there are gone as of Iteration 44: the arena
-     grows on demand via `RESIZE` (no maximum), and loop bodies grow
-     too — the old fixed 4,096-byte body cap had been *silently
-     dropping* lines, so a large enough body produced wrong output
-     rather than an error. Still open: nested function *definitions*
-     are not supported.
-
-     The `COPY-ARGV`/`ARGV-QUOTED` hazard is **closed** (Iteration
-     109). It is not that the remaining call sites were checked: the
-     bare `COPY-ARGV` was deleted, so a word that moves words without
-     their flags no longer exists to be called. Its last caller went
-     with `CMDSUB-TOKENIZE` in Iteration 105.
-   - **Phase D — expansions.** Positional parameters (`$1`.., `$@`,
-     `$*`, `$#`, `set`): **done (Iteration 31)** — a function's own
-     call arguments, or a script's own command-line arguments at the
-     top level, become `$1`-`$9` (single-digit access only, a
-     documented scope limit) within its own scope; `set a b c`
-     replaces whichever is currently active. Nested and recursive
-     function calls each see only their own arguments — the caller's
-     own positional parameters are saved (keyed by `FUNC-DEPTH`) and
-     restored once the call returns. A real bug found by testing:
-     `SAVE-POS-PARAMS`'s own `MOVE` call had source/destination
-     backwards, silently corrupting the current parameters instead of
-     preserving them — only surfaced once a nested (non-recursive)
-     call test re-checked `$1` after the inner call returned. See
-     `PROGRESS.md`'s Iteration 31 entry for the full design.
-
-     `${#VAR}` (length), `${VAR:-word}`/`${VAR-word}` (default value),
-     `${VAR:=word}`/`${VAR=word}` (assign default), `${VAR:+word}`/
-     `${VAR+word}` (alternate value): **done (Iteration 32)** — the
-     `:`-prefixed variants trigger on `VAR` being unset *or* empty;
-     the plain variants trigger on unset only. Extracted into a
-     dedicated `EXPAND-BRACED-VAR`, replacing the old inline `${NAME}`
-     block, which just looked up everything between the braces as one
-     literal name — workable for a plain name, but would have looked
-     up (and failed to find) `${VAR:-word}` as a variable literally
-     named `"VAR:-word"`. Went smoothly — every case passed on the
-     first attempt. See `PROGRESS.md`'s Iteration 32 entry.
-
-     `${VAR%word}`/`${VAR%%word}`/`${VAR#word}`/`${VAR##word}`
-     (prefix/suffix removal): **done (Iteration 33)** — built on
-     `GLOB-MATCH` (from `case`/`esac`), but needed new logic to find
-     the shortest/longest *partial* prefix/suffix match rather than a
-     whole-string match, by trying candidate lengths one at a time.
-     While building this, found and fixed a significant kernel
-     behavior: a `(...)` comment spanning multiple physical lines can
-     silently corrupt parsing once enough code precedes it earlier in
-     the file, surfacing as a cascade of unrelated "Undefined word"
-     errors. Confirmed empirically (200 unrelated filler word
-     definitions reproduced the identical failure in an otherwise
-     pristine file) and fixed by collapsing the affected comment onto
-     one line — no content change. **Future iterations should treat a
-     sudden cascade of unrelated "Undefined word" errors as a signal
-     to check for multi-line `(...)` comments first**, rather than
-     assuming a logic bug in whatever was just edited; prefer `\` line
-     comments (used pervasively already, never observed to have this
-     problem) for anything spanning multiple lines. See `PROGRESS.md`'s
-     Iteration 33 entry for the full investigation.
-
-     Tilde expansion: **done (Iteration 34)** — a bare `~` at the very
-     start of a word expands to `$HOME` (whole word, or followed by
-     `/`); `~user`/`~+`/`~-` are out of scope. `TRY-TILDE-EXPAND`,
-     called once at the start of `SCAN-TOKEN` before any other
-     character is processed, since tilde expansion only ever applies
-     right at a word's start. Reuses `$VAR` expansion's own
-     `LOOKUP-VAR`/`TYPE0-TO-TOK`/`ENSURE-ROOM` mechanism. A real bug
-     found immediately by testing: `S" HOME"` leaves `(addr len)` on
-     the stack, not the single NUL-terminated address `LOOKUP-VAR`
-     expects — corrupted the stack and crashed on the first real test;
-     fixed by copying into the existing `ENVNAMBUF` scratch buffer
-     first, the same pattern already used elsewhere in this file for
-     this exact need. See `PROGRESS.md`'s Iteration 34 entry.
-
-     Arithmetic expansion (`$((...))`): **done (Iteration 35)** — a
-     real, precedence-climbing recursive-descent grammar (`||`, `&&`,
-     `==`/`!=`, `<`/`>`/`<=`/`>=`, `+`/`-`, `*`/`/`/`%`, unary
-     `-`/`+`/`!`, parentheses, decimal literals, variables — no
-     bitwise, ternary, assignment forms, or octal/hex). Built and
-     fully verified in an isolated diagnostic (22 cases) before
-     touching `shell.4` at all, catching two bugs early (a missing
-     `RECURSE` for self-reference within a still-compiling definition;
-     a test helper consuming its own length argument before needing
-     it again). A third, more significant bug surfaced only once
-     wired in: `NORMALIZE-OPERATORS` had no awareness of `$((...))`
-     regions, corrupting `2<=2` into `2 < =2` before the evaluator
-     ever saw it — fixed the same way quoted regions are already
-     protected, with new `NORM-IN-ARITH?`/`NORM-ARITH-DEPTH` tracking
-     mirroring the existing quote-tracking shape exactly. See
-     `PROGRESS.md`'s Iteration 35 entry for the full account.
-
-     `IFS`-based field splitting of unquoted expansion results: **done
-     (Iteration 36, completing Phase D)** — an unquoted `$VAR`/
-     `${...}`/`$(...)`/`$((...))` result splits into separate `ARGV`
-     entries wherever `IFS` whitespace (space/tab only, not yet a
-     customizable `$IFS`, not newline) appears within it, composing
-     correctly with literal text before/after the expansion in the
-     same word. Built and verified in an isolated diagnostic before
-     touching the real tokenizer. `EMIT-EXPANDED-CHAR`'s own split
-     decision is deferred until the next non-`IFS` character actually
-     needs writing — collapsing consecutive `IFS` runs into one split
-     and avoiding spurious empty leading/trailing fields, both
-     confirmed necessary and correct by direct testing. Two real bugs
-     found: (1) the first attempt reused `TOK-WAS-QUOTED?` to decide
-     whether to split, but that flag is set unconditionally by
-     `EXPAND-VAR` for *every* expansion — fixed with a new, dedicated
-     `IN-DQ-CONTEXT?` flag set only by `COPY-DOUBLE-QUOTED`; (2) a
-     second, independent, *pre-existing* bug (confirmed via `git
-     stash` to already exist in the prior commit) where
-     `TRY-ASSIGNMENT` rejected any `x="value"`-style assignment
-     because it checked the wrong "am I quoted" flag — fixed with a
-     new, more precise `ARGV-NAME-QUOTED` array (true only if a
-     token's own first character came from inside a quote), leaving
-     the existing `ARGV-QUOTED` and its other uses untouched. See
-     `PROGRESS.md`'s Iteration 36 entry for the full account.
-
-     **Phase D is now complete.**
-   - **Phase E — command substitution completeness. Done**
-     (backquotes in Iteration 73, the rest in 105). `CMDSUB-TOKENIZE`
-     is gone: the substituted text is installed as a replay input
-     source and read through the real tokenizer in the forked child,
-     which has its own copy of every buffer. Nested `$(...)`, several
-     commands, `;`/`&&`, pipes, redirection, compound commands,
-     functions and quoting all work as a consequence rather than as
-     features. A body spanning several physical lines works too -
-     `NORMALIZE-OPERATORS` reports an open `$(` the same way it
-     reports an open quote.
-
-     The cost, taken deliberately: a plain `$(cmd)` now forks twice
-     rather than once, since the child goes through `RUN-TOKENIZED`
-     instead of `EXECVE`-ing directly. Worth measuring after Stage 2,
-     not before.
-   - **Phase F — builtins.**
-     `[`/`test` and `:`: **done (Iteration 37)** — string tests (`-z`,
-     `-n`, `=`, `!=`, bare non-empty check), numeric comparisons
-     (`-eq`, `-ne`, `-lt`, `-le`, `-gt`, `-ge`), `!` negation (of a
-     bare/1-arg test, or a full 3-arg `a op b`), and an approximate
-     `-e`/`-f`/`-d` (existence only, via `OPEN-FILE` — no real
-     stat/access primitive exists, so `-f`/`-d` can't distinguish file
-     types). Installing `test` as a builtin shadows the external
-     `/usr/bin/test` any script invokes bare, breaking
-     `tests/shell/run-while` immediately (it uses bare `test -f`,
-     which the initial implementation didn't recognize at all) — fixed
-     by adding `-f`/`-d` as aliases for the same existence check `-e`
-     uses. See `PROGRESS.md`'s Iteration 37 entry for the full design
-     and documented scope limits (no `-r`/`-w`/`-x`/`-s`, no `-a`/`-o`,
-     no `(` `)` grouping, no 3-arg negated unary tests).
-
-     Still open: `read`. `readonly`.
-     `shift`. `getopts`. `command`. Background jobs, `wait`, `$!`.
-     `alias`/`unalias`. `ulimit`. Possibly `trap`, `exec`, `hash`,
-     `type` if a test ends up needing them.
-   - **Phase G — remaining conformance edge cases.** Both remaining
-     `.fail.sh` cases are now genuine failures, each expecting
-     `shell.4` to *reject* input it currently accepts with status 0:
-     `2.2.2-nested-single-quotes.fail.sh` (should reject
-     unterminated/invalid single-quote nesting) and
-     `2.2.3-alias-expansion.fail.sh` (passed accidentally until
-     Iteration 36 — see the count history above; a real pass here
-     needs `alias` from Phase F first, and then the shell must reject
-     the test's invalid alias usage rather than silently accepting
-     it).
-
-   `tests/mrsh-suite/run.sh` is the acceptance criterion for this
-   goal — re-run it after each phase (or each iteration within a
-   phase) and let the pass count go up honestly, the same way
-   `tests/run_tests.sh` and `tests/shell/run-all` already track
-   progress elsewhere in this project.
+- **`NAME=value command args...`** — POSIX's temporary, per-command
+  assignment prefix. Currently a failed command lookup, status 1.
+  Ramey's temporary-scope design (see the bash-architecture section)
+  is the shape to build.
+- **Redirection does not apply to builtins.** `pwd > file` writes to
+  the terminal and creates nothing, because redirection is only
+  applied in the forked child. Fixing it needs the **undo list** from
+  Ramey's chapter: a redirection's effects must not outlive the
+  command. Recorded in Iteration 55 as the next piece of redirection
+  work.
+- **`set -e`**, per above.
+- **`ulimit`**, and possibly `trap`, `exec`, `hash`, `type` if
+  something ends up needing them.
+- **Fixed tables with hard limits.** No longer *silent* — Iteration
+  90 gave `SET-SHVAR`, `SET-FUNC` and the positional-parameter save
+  stack real diagnostics, and the 33rd variable now says so. They are
+  still fixed. Growable is the goal; see the memory policy above.
+- **A shell variable longer than 256 characters truncates** to the
+  first line-buffer's worth. Found in Iteration 108, predates it,
+  same family as the fixed tables.
 
 ## Non-goals (at least for now — revisit if this changes)
 
@@ -1369,16 +907,13 @@ into its own buffer, so the in-place-growth bug class no longer
 exists; word boundaries come from `NORMALIZE-OPERATORS`, the pass that
 already knew them; and `EXPAND-WORDS` runs when a command runs rather
 than when its line is read, which took the mrsh suite to its ceiling
-of 19 of 21. Stages 2 and 3 remain, and the pure-loop cost - 236x
-dash as measured in Iteration 116 - is
-Stage 2's business.
+of 19 of 21. Stages 3 and 4 are done as well — nested `$(...)` in
+Iteration 105, and the limitation notes retired in 115.
 
-Stages 3 and 4 are done as well — nested `$(...)` in Iteration 105,
-and the limitation notes retired in 115. What remains of that plan is
-**Stage 2**, caching tokenized body lines, which is where the
-pure-loop gap measured in `tests/bench` (236x dash, Iteration 116) is
-addressed and the only
-stage whose justification is speed rather than correctness. Read that
+**Stage 2 is the only one left**: caching tokenized body lines, where
+the pure-loop gap measured in `tests/bench` (236x dash, Iteration 116)
+is addressed, and the only stage whose justification is speed rather
+than correctness. Read that
 file before starting; each stage must leave the full suite green and
 be committed separately.
 
