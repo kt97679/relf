@@ -170,6 +170,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **119** — normalizing each line once instead of twice
 - **120** — `~user` through NSS instead of /etc/passwd
 - **121** — what a fresh machine needs, written down
+- 122 — the documents that can rot
 
 ### Not tied to an iteration
 
@@ -9113,3 +9114,109 @@ Iteration 116's figures, rather than living only in a PROGRESS entry.
 
 524 assertions across 63 files, 19 differential cases, 1991 core OK
 markers, both cell widths, mrsh 19 of 21.
+## Iteration 122: the documents that can rot
+
+No code. `PROGRESS.md` had no index and `GOALS.md` had become a log,
+and the second of those was actively misleading.
+
+### PROGRESS.md: an index, not a trim
+
+The obvious move was to compact this file, and measuring first said
+not to. 119 entries, ~456K, ~114k tokens — over half a context window.
+But the only large mechanically-removable category is the 63
+`### Verified` blocks, 12% of the file, most of which name a test file
+that is checked in and then restate what it covers. Deleting all of
+them perfectly still leaves 400K. Reaching a readable size means
+deleting about 78% of the entries.
+
+And the entries that look stalest are the ones being used. The other
+four documents make 139 citations to specific iterations, and **108 of
+them point at iteration 50 or below**. The oldest half is the
+most-cited half, so archiving by age would break exactly the pointers
+that get followed. The problem was never bulk, it was that finding the
+entry a citation meant took scanning 8,896 lines.
+
+The Index at the top lists every entry in one screen (~2k tokens),
+grouped into nine eras, marking the 16 entries that moved the mrsh
+count and bolding the 53 cited elsewhere. Index plus three entries is
+~4k tokens against ~114k. Nothing was rewritten or deleted.
+
+**An index nobody is told to use is worth nothing**, so
+`GOALS.md`'s conventions now say to read this file through it. That
+sentence is the load-bearing half of the change.
+
+### The missing Iteration 115
+
+Commit `cd7ff9a` changed two documents and wrote no entry here, while
+both of those documents cite "Iteration 115" as where Stage 4 was
+done. Reconstructed from its own diff and marked as retrospective. The
+gap was found by the index generator, which noticed a number with a
+commit and no heading — worth knowing that building the index was what
+made the hole visible.
+
+### GOALS.md had become a log, and had gone stale
+
+Its own header says it "changes rarely... not a log". The `## Phases`
+section was 38,575 characters — 44% of the file — of narrative
+duplicating `PROGRESS.md` entries it also links to. That matters more
+than this file's size ever did: **`GOALS.md` is the document every new
+session reads in full, by its own instruction.** ~22k tokens, every
+session.
+
+Five claims said finished work was unfinished:
+
+| claim | actually done in |
+|---|---|
+| phase 7: nesting, IFS splitting, `${VAR:-default}`, positional parameters "not yet done"; pipes and redirection not combinable | 42/43, 36, 32, 31, 58 |
+| phase B: `while`/`do`/`done` nesting "remains not done" | 42/43 |
+| phase C: "Still open: nested function *definitions*" | 63 |
+| phase D: "not yet a customizable `$IFS`" | 67 |
+| phase F: `read`, `readonly`, `shift`, `getopts`, `command`, background jobs, `alias`/`unalias` open | 51, 54, 59, 61, 74 |
+
+Some had been wrong for eighty iterations. A session that trusts them
+either rebuilds something that works or spends its first hour finding
+out it needn't — which is precisely the failure this log exists to
+prevent, occurring in the file with priority over it.
+
+Phases is now status plus pointers, 38,575 -> 7,853 chars; GOALS.md
+87,486 -> 57,629, about 22k tokens to 14k. Every remaining open item
+was re-verified **by running it**, not inherited: the
+`NAME=value command` prefix still fails, `pwd > file` still does not
+redirect a builtin, and the 33rd shell variable now diagnoses rather
+than failing silently (Iteration 90) but is still capped.
+
+### mrsh: at the ceiling, and one pass is hollow
+
+Re-ran the suite rather than trusting the recorded number: 19 passed,
+2 failed, 3 skipped, and the two failures are the alias divergence, as
+recorded. The 3 skips are `*.undefined.sh` cases POSIX does not
+specify — not outstanding work, and worth saying plainly because
+"19 of 21 with 3 skipped" reads like 24 tests with 5 to go.
+
+Then checked *why* the passes pass, per FORTH-STYLE.md §13.
+**`ulimit.sh` is hollow.** `ulimit` is not implemented at all; the
+harness is differential and bash also fails this test on a modern host,
+because its last assertion greps `/proc/self/limits` for a 512-byte
+block count bash reports in 1024-byte blocks. Both shells emit the
+same stdout and status 1. Iteration 82 audited the then-17 passes for
+exactly this; two have landed since and this is one of them, so the
+rule is to re-audit **when the count moves**, not when it stalls.
+
+That test also surfaced a real gap: **`set -e` is not implemented**,
+in either spelling. It is inert here because the harness runs
+`relfsh file` and `bash file`, which ignores the shebang for both — so
+five vendored tests run with error-exit disabled on both sides, more
+forgivingly than upstream intends. Symmetric, so not a false pass, but
+the suite is testing something weaker than mrsh meant.
+
+### A caveat on this iteration's own verification
+
+**Only the 8-byte-cell half was run.** This host has no 32-bit
+toolchain, `cc -m32` cannot link, and `tests/run_tests.sh` prints
+`SKIP:` and carries on green — exactly the trap Iteration 121 wrote
+down, confirmed live one iteration later. No code changed here, so the
+risk is nil, but the convention says every commit passes on both
+widths and this one has not been shown to.
+
+8-byte cells: 1991 core OK markers, 524 assertions across 63 files, 19
+differential cases, mrsh 19 of 21. 4-byte cells: not run.
