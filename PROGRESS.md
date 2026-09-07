@@ -184,6 +184,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **133** — how the branch merge would work, and why not to do it
 - **134** — keep the dispatch loop, put the payload above the index
 - **135** — a review of `shell.4` for size: no duplicated logic, idioms instead
+- **136** — every buffer out of the image (i386 total below `dash`)
 
 ### Not tied to an iteration
 
@@ -10515,3 +10516,62 @@ should go.
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
 posix 3/1/1.
+## Iteration 136: every buffer out of the image
+
+`CREATE name n ALLOT` reserves *dictionary*, so the space lands in the
+saved image whether or not it is ever used. 55 of them were left in
+`shell.4` and `locals.4`, 25,968 bytes, including `LSAVE-STACK` at
+16,388 - the one Iteration 129 measured, converted, and reverted
+because `BUFFER:` cost 13% on the loop benchmark.
+
+**All 55 are now `BUFFER:`, and the loop cost is gone.** i386 image
+**134,500 -> 109,576**, total 152,308 -> **127,384, below `dash`'s
+129,784.** x86-64 251,104 -> 205,976.
+
+### Why it is affordable now and was not in 129
+
+`BUFFER:` allocated lazily and kept its pointer at descriptor offset
++2, so **every reference** ran a store, three fetches, an add and a
+branch - about ten threaded operations where a `CREATE`d name costs
+one. On the tokenizer's hot path that is what the 13% was.
+
+Two changes make it a fetch:
+
+- **Pointer moved to offset +0**, so the accessor is `DOES> @`.
+- **Allocation is eager**, at declaration, so there is no
+  initialisation test on the reference path at all. `RESET-BUFFERS`
+  already zeroed every pointer before a save; the new `ALLOC-BUFFERS`
+  gives them their space again at boot, called first thing in `MAIN`
+  because nothing may touch a buffer before it runs.
+
+Measured: loop 939-1,256ms against a 925-1,239 baseline on the same
+machine in the same session. Neutral.
+
+### A startup regression, and where it came from
+
+Startup went 440 -> 1,065ms, and the cause was not the buffers
+themselves: **`FILL` is a per-byte threaded loop** (`kernel.4` line
+589). `CREATE ... ALLOT` space starts zeroed so the pool must match,
+and zeroing ~34KB of buffers at every boot was ~34,000 threaded
+iterations.
+
+`BUF-ZERO` does it a cell at a time, with the allocation rounded up to
+a whole cell so it cannot overrun. 1,065 -> ~490ms. The residue over
+440 is the ~80 `ALLOCATE` calls plus what is left of the zeroing, and
+the real fix is a `FILL` primitive - a memset one-liner that would
+help everything, not just boot. Left for the engine work rather than
+smuggled in here.
+
+### The load order changed
+
+`pool.4` must now load before `locals.4`, so `relfsh` and
+`tests/locals.fth` both changed. Loading `locals.4` alone **segfaults**
+rather than reporting an undefined word: the failed declaration leaves
+`LSAVE-STACK` undefined and every later use compiles a garbage
+reference. Same trap Iteration 129 hit; written into `tests/locals.fth`
+this time so the next person meets a comment instead of a crash.
+
+### Verified
+
+Both cell widths, 1998 core OK markers, 532 assertions across 63
+files, 19 differential cases, mrsh 20 of 21, posix 3/1/1.

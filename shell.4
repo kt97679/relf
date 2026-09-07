@@ -37,19 +37,19 @@
 
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
 
-CREATE LINE-BUF   LINE-MAX ALLOT
+LINE-MAX BUFFER: LINE-BUF
 
 512 CONSTANT NORM-MAX
-CREATE NORM-BUF NORM-MAX ALLOT
-CREATE NORM-WORDS MAX-ARGS CELLS ALLOT   \ each word's start offset
-CREATE NORM-WLENS MAX-ARGS CELLS ALLOT   \ and its length, in NORM-BUF
+NORM-MAX BUFFER: NORM-BUF
+MAX-ARGS CELLS BUFFER: NORM-WORDS   \ each word's start offset
+MAX-ARGS CELLS BUFFER: NORM-WLENS   \ and its length, in NORM-BUF
 VARIABLE NORM-WCOUNT
 VARIABLE NORM-WSTART      \ start of the word currently open, or -1
 \ Declared here rather than beside NORMALIZE-OPERATORS: TOKENIZE
 \ reads the normalized line straight out of this buffer (Iteration
 \ 111), and this file is one linear source where a word must be
 \ defined before it is used.
-CREATE ARGV       MAX-ARGS CELLS ALLOT
+MAX-ARGS CELLS BUFFER: ARGV
 
 \ ==================================================================
 \ Newline
@@ -67,9 +67,9 @@ CREATE ARGV       MAX-ARGS CELLS ALLOT
 : CR ( --- )  10 EMIT ;
 
 : ARGV@ ( i --- c-addr )  CELLS ARGV + @ ;
-CREATE PATHBUF    PATH-MAX ALLOT
-CREATE CWDBUF     PATH-MAX ALLOT
-CREATE ENVNAMBUF  64 ALLOT
+PATH-MAX BUFFER: PATHBUF
+PATH-MAX BUFFER: CWDBUF
+64 BUFFER: ENVNAMBUF
 
 VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE BG-PID   \ pid of the most recent background command, for $!
@@ -328,7 +328,7 @@ VARIABLE SCC-MAX
 256 CONSTANT SHVAR-VALUE-MAX
 MAX-SHVARS SHVAR-NAME-MAX * BUFFER: SHVAR-NAMES
 MAX-SHVARS SHVAR-VALUE-MAX * BUFFER: SHVAR-VALUES
-CREATE SHVAR-RO MAX-SHVARS ALLOT   \ readonly flag per slot
+MAX-SHVARS BUFFER: SHVAR-RO   \ readonly flag per slot
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
 
@@ -473,7 +473,7 @@ MAX-POS-PARAMS POS-PARAM-MAX * BUFFER: POS-PARAMS
 VARIABLE POS-PARAM-COUNT
 
 MAX-POS-PARAM-DEPTH MAX-POS-PARAMS POS-PARAM-MAX * * BUFFER: POS-PARAMS-SAVE
-CREATE POS-PARAM-COUNT-SAVE MAX-POS-PARAM-DEPTH CELLS ALLOT
+MAX-POS-PARAM-DEPTH CELLS BUFFER: POS-PARAM-COUNT-SAVE
 
 : POS-PARAM-SLOT ( i --- addr )  \ i is 0-based: $1 is slot 0, $9 is
                                    \ slot 8.
@@ -605,8 +605,8 @@ VARIABLE TOK-OUT-END
 \ tokenizing intact, which is what re-expanding it per command will
 \ need.
 VARIABLE TOK-WAS-QUOTED?
-CREATE ARGV-QUOTED MAX-ARGS ALLOT   ( one byte flag per ARGV entry )
-CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
+MAX-ARGS BUFFER: ARGV-QUOTED   ( one byte flag per ARGV entry )
+MAX-ARGS BUFFER: ARGV-NAME-QUOTED  \ true if THIS token's very
                                           \ first character came from
                                           \ inside a quote - used only
                                           \ by TRY-ASSIGNMENT, to
@@ -670,9 +670,9 @@ CREATE ARGV-NAME-QUOTED MAX-ARGS ALLOT  \ true if THIS token's very
   DUP 97 < 0= OVER 123 < AND IF DROP -1 EXIT THEN   ( a-z )
   DROP 0 ;
 
-CREATE VARNAME-BUF 64 ALLOT
+64 BUFFER: VARNAME-BUF
 VARIABLE VN-LEN
-CREATE DIGIT-BUF 24 ALLOT
+24 BUFFER: DIGIT-BUF
 VARIABLE DIGIT-N
 
 : EMIT-DECIMAL ( n --- )
@@ -805,7 +805,7 @@ VARIABLE EXPAND-SUPPRESSED?  \ true while a word is being scanned only
                                \ actually run. See
                                \ EXPAND-BRACED-WORD-ASIDE.
 
-CREATE IFS-NM 4 ALLOT
+4 BUFFER: IFS-NM
 VARIABLE IFSC-C
 VARIABLE IFSC-P
 
@@ -912,7 +912,7 @@ VARIABLE IFSC-P
 \ defined below.
 \ ==================================================================
 
-CREATE CMDSUB-LINE-BUF LINE-MAX ALLOT
+LINE-MAX BUFFER: CMDSUB-LINE-BUF
 LINE-MAX BUFFER: CMDSUB-LINES     \ the same text, NUL-separated per
                                    \ line, ready to be replayed
 VARIABLE CMDSUB-LINES-LEN
@@ -925,7 +925,7 @@ VARIABLE CS-DEPTH        \ nested "$(" still open within this one
 VARIABLE CS-NONBLANK?
 
 256 CONSTANT CMDSUB-OUT-MAX
-CREATE CMDSUB-OUT-BUF CMDSUB-OUT-MAX ALLOT
+CMDSUB-OUT-MAX BUFFER: CMDSUB-OUT-BUF
 VARIABLE CMDSUB-OUT-LEN
 
 : CMDSUB-SPLIT-LINES ( u --- )
@@ -1045,7 +1045,7 @@ VARIABLE BA-NEWSIZE
 \ expression text itself.
 \ ==================================================================
 
-CREATE ARITH-BUF 256 ALLOT
+256 BUFFER: ARITH-BUF
 VARIABLE AE-POS
 VARIABLE AE-END
 
@@ -1068,7 +1068,7 @@ VARIABLE AE-END
     AE-POS @ 1+ AE-POS !
   REPEAT ;
 
-CREATE AE-VARNAME-BUF 64 ALLOT
+64 BUFFER: AE-VARNAME-BUF
 VARIABLE AE-VN-LEN
 
 : AE-READ-VARNAME ( --- )
@@ -1320,10 +1320,10 @@ VARIABLE AE-BIT-C
 
 VARIABLE AE-EVAL-LEN
 
-CREATE AE-NUMBUF 24 ALLOT
+24 BUFFER: AE-NUMBUF
 VARIABLE ANS-I
 VARIABLE ANS-N
-CREATE AE-ASGN-NAME 64 ALLOT
+64 BUFFER: AE-ASGN-NAME
 VARIABLE AE-ASGN-OP
 VARIABLE AE-SAVE-POS
 VARIABLE AE-ASGN-C
@@ -1432,7 +1432,7 @@ VARIABLE ANS-NEG
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
   AE-EXPR ;
 
-CREATE ARITH-EXPR-BUF 256 ALLOT
+256 BUFFER: ARITH-EXPR-BUF
 VARIABLE ARITH-EXPR-LEN
 VARIABLE ARITH-DEPTH
 
@@ -1623,7 +1623,7 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
 \ string comparison, unlike the modifiers here.
 \ ==================================================================
 
-CREATE PEWORD-BUF 256 ALLOT
+256 BUFFER: PEWORD-BUF
 VARIABLE PEWORD-LEN
 VARIABLE PEW-COLON?
 VARIABLE PEW-SUFFIX?     \ set by EXPAND-BRACED-VAR before calling
@@ -2151,8 +2151,8 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     SCAN-TOKEN-CHAR
   REPEAT ;
 
-CREATE EW-ARGV MAX-ARGS CELLS ALLOT
-CREATE EW-ARGQ MAX-ARGS ALLOT
+MAX-ARGS CELLS BUFFER: EW-ARGV
+MAX-ARGS BUFFER: EW-ARGQ
 VARIABLE EW-ARGC
 VARIABLE EW-I
 
@@ -2315,7 +2315,7 @@ VARIABLE EW-I
 \ multiple output redirections isn't meaningful anyway without pipes.
 \ ==================================================================
 
-CREATE ARGV2 MAX-ARGS CELLS ALLOT
+MAX-ARGS CELLS BUFFER: ARGV2
 VARIABLE ARGC2
 \ A general list of redirections rather than one slot per operator.
 \ The old shape had a fixed REDIR-IN/OUT/APPEND-FILE, which cannot
@@ -2438,9 +2438,9 @@ VARIABLE HD-WR
     THEN
   REPEAT ;
 
-CREATE REDIR-FD  MAX-ARGS CELLS ALLOT
-CREATE REDIR-OP  MAX-ARGS CELLS ALLOT
-CREATE REDIR-TGT MAX-ARGS CELLS ALLOT
+MAX-ARGS CELLS BUFFER: REDIR-FD
+MAX-ARGS CELLS BUFFER: REDIR-OP
+MAX-ARGS CELLS BUFFER: REDIR-TGT
 VARIABLE REDIR-N
 VARIABLE PR-I     \ shared scan cursor, declared as a local by each scanner
 VARIABLE RA-FD
@@ -2899,8 +2899,8 @@ VARIABLE AW-I
   2DUP VALID-NAME? 0= IF 2DROP -1 EXIT THEN
   SWAP DROP ;
 
-CREATE ASSIGN-NAME-BUF SHVAR-NAME-MAX ALLOT
-CREATE ASSIGN-VALUE-BUF SHVAR-VALUE-MAX ALLOT
+SHVAR-NAME-MAX BUFFER: ASSIGN-NAME-BUF
+SHVAR-VALUE-MAX BUFFER: ASSIGN-VALUE-BUF
 
 VARIABLE DA-ADDR
 VARIABLE DA-EQ
@@ -3595,8 +3595,8 @@ VARIABLE WT-PID
 \ the other child.
 \ ==================================================================
 
-CREATE PIPE-ARGV MAX-ARGS CELLS ALLOT   \ a private copy of the whole
-CREATE PIPE-ARGQ MAX-ARGS ALLOT         \ tokenized line, so each
+MAX-ARGS CELLS BUFFER: PIPE-ARGV   \ a private copy of the whole
+MAX-ARGS BUFFER: PIPE-ARGQ         \ tokenized line, so each
 VARIABLE PIPE-ARGC                      \ segment can be extracted
 VARIABLE PIPE-NSEG                      \ without disturbing ARGV
 VARIABLE PIPE-PRESENT?
@@ -3642,10 +3642,10 @@ VARIABLE GRP-DEPTH
 \ for how the two pieces get run in turn.
 \ ==================================================================
 
-CREATE ARGV-SEMI-LEFT MAX-ARGS CELLS ALLOT
-CREATE ARGV-SEMI-REST MAX-ARGS CELLS ALLOT
-CREATE ARGQ-SEMI-LEFT MAX-ARGS ALLOT
-CREATE ARGQ-SEMI-REST MAX-ARGS ALLOT
+MAX-ARGS CELLS BUFFER: ARGV-SEMI-LEFT
+MAX-ARGS CELLS BUFFER: ARGV-SEMI-REST
+MAX-ARGS BUFFER: ARGQ-SEMI-LEFT
+MAX-ARGS BUFFER: ARGQ-SEMI-REST
 VARIABLE ARGC-SEMI-LEFT
 VARIABLE ARGC-SEMI-REST
 
@@ -3808,9 +3808,9 @@ VARIABLE CAQ-N
 DEFER RUN-TOKENIZED-CALL
 
 
-CREATE ARGV-GROUP-BODY MAX-ARGS CELLS ALLOT
-CREATE ARGQ-GROUP-BODY MAX-ARGS ALLOT   \ the body's own quoted flags
-CREATE ARGQ-SHIFT MAX-ARGS ALLOT        \ likewise for ARGV-SHIFT
+MAX-ARGS CELLS BUFFER: ARGV-GROUP-BODY
+MAX-ARGS BUFFER: ARGQ-GROUP-BODY   \ the body's own quoted flags
+MAX-ARGS BUFFER: ARGQ-SHIFT        \ likewise for ARGV-SHIFT
 \ Carrying each word's quoted flag with the word, rather than leaving
 \ ARGV-QUOTED holding whatever a previous tokenization left at that
 \ index. Bash attaches flags to the word itself (WORD_DESC); this file
@@ -3886,7 +3886,7 @@ VARIABLE SG-LEN
   ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
   RUN-TOKENIZED-CALL ;
 
-CREATE PIPE-PIDS MAX-ARGS CELLS ALLOT
+MAX-ARGS CELLS BUFFER: PIPE-PIDS
 VARIABLE PL-I
 VARIABLE PL-PREV-RD
 VARIABLE PL-RD
@@ -3953,7 +3953,7 @@ VARIABLE PL-J
 \ child shares the script's file offset and would race for the body
 \ lines (Iteration 57).
 
-CREATE RAW-LINE-BUF LINE-MAX ALLOT
+LINE-MAX BUFFER: RAW-LINE-BUF
 VARIABLE RAW-LINE-LEN
 
 8192     BUFFER: PIPE-BODY
@@ -4071,10 +4071,10 @@ VARIABLE REPLAY-POS
 \ ARGV-QUOTED@, same as AT-PIPE?/AT-SEMI?).
 \ ==================================================================
 
-CREATE ARGV-AO-LEFT MAX-ARGS CELLS ALLOT
-CREATE ARGV-AO-REST MAX-ARGS CELLS ALLOT
-CREATE ARGQ-AO-LEFT MAX-ARGS ALLOT
-CREATE ARGQ-AO-REST MAX-ARGS ALLOT
+MAX-ARGS CELLS BUFFER: ARGV-AO-LEFT
+MAX-ARGS CELLS BUFFER: ARGV-AO-REST
+MAX-ARGS BUFFER: ARGQ-AO-LEFT
+MAX-ARGS BUFFER: ARGQ-AO-REST
 VARIABLE ARGC-AO-LEFT
 VARIABLE ARGC-AO-REST
 VARIABLE ANDOR-OP        ( 1 = && was found, 2 = || was found )
@@ -4156,7 +4156,7 @@ DEFER TRY-ASSIGNMENT-CALL   \ patched to TRY-ASSIGNMENT's own xt right
 \ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
 \ pipeline negation ( ! cmd ).
 
-CREATE ARGV-SHIFT MAX-ARGS CELLS ALLOT
+MAX-ARGS CELLS BUFFER: ARGV-SHIFT
 VARIABLE ARGC-SHIFT
 
 : SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
@@ -5087,8 +5087,8 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
 \ remainder *up* the call stack, a bigger change than this one.
 \ ==================================================================
 
-CREATE ARGV-PENDING MAX-ARGS CELLS ALLOT
-CREATE ARGQ-PENDING MAX-ARGS ALLOT   \ each pending token's quoted flag
+MAX-ARGS CELLS BUFFER: ARGV-PENDING
+MAX-ARGS BUFFER: ARGQ-PENDING   \ each pending token's quoted flag
 VARIABLE ARGC-PENDING
 VARIABLE PENDING-REMAINDER?
 
@@ -5692,7 +5692,7 @@ MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
 MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
 VARIABLE FD-DEPTH            \ nested "{" depth while capturing a body
-CREATE FUNC-BODY-LENS MAX-FUNCS CELLS ALLOT
+MAX-FUNCS CELLS BUFFER: FUNC-BODY-LENS
 
 : FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;
 : FUNC-BODY-LEN-SLOT ( i --- addr )  CELLS FUNC-BODY-LENS + ;
@@ -5803,7 +5803,7 @@ VARIABLE FUNC-CUR-I
   FUNC-DEPTH @ RESTORE-POS-PARAMS ;
 ' RUN-FUNC-BODY IS RUN-FUNC-BODY-CALL
 
-CREATE FUNCDEF-NAME-BUF 64 ALLOT
+64 BUFFER: FUNCDEF-NAME-BUF
 VARIABLE FBC-I
 VARIABLE FBC-D
 VARIABLE FD-CLOSE
@@ -6524,9 +6524,9 @@ VARIABLE TP-MATCH-LEN
 \ before testing it as a pattern.
 \ ==================================================================
 
-CREATE CASE-WORD-BUF 256 ALLOT
+256 BUFFER: CASE-WORD-BUF
 VARIABLE CASE-WORD-LEN
-CREATE CASE-PATLAST-BUF 256 ALLOT
+256 BUFFER: CASE-PATLAST-BUF
 VARIABLE CASE-PATLAST-LEN
 VARIABLE CA-I
 VARIABLE CASE-MATCHED?
@@ -7061,6 +7061,11 @@ VARIABLE SHC-LEN
   \ after an image is saved and reloaded. Reset here, at the boot
   \ word, rather than relying on it happening to be zero because no
   \ loop ran during the image build.
+  \ Every pool.4 buffer's pointer was zeroed by RESET-BUFFERS before
+  \ this image was written, because a heap address means nothing after
+  \ a save and reload. Nothing below may touch a buffer before this
+  \ runs, so it is the first thing in the boot word.
+  ALLOC-BUFFERS
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   \ A turnkey image boots straight here from COLD, so WARM and QUIT -
   \ which normally set up the search order and the input source -

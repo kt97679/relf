@@ -26,13 +26,23 @@
 \
 \ Descriptor layout, at the body address DOES> hands back:
 \
-\   +0  link    offset of the previously declared buffer's body, 0 at
+\   +0  ptr     the ALLOCATEd address; 0 only between RESET-BUFFERS
+\               and the next ALLOC-BUFFERS
+\   +1  size    in bytes
+\   +2  link    offset of the previously declared buffer's body, 0 at
 \               the end of the chain - an OFFSET from START, not an
 \               address, so it survives being saved and reloaded
 \               (Iteration 40's lesson: anything stored or compiled
 \               that names a location must be position-independent)
-\   +1  size    in bytes
-\   +2  ptr     0 until first use, then the ALLOCATEd address
+\
+\ The pointer is at +0 deliberately: the whole runtime cost of a
+\ buffer reference is then `DOES> @`, one fetch on top of what a
+\ CREATE'd name costs. The original layout put the pointer at +2 and
+\ allocated lazily, so every reference ran a store, three fetches, an
+\ add and a branch - about ten threaded operations where CREATE costs
+\ one. Iteration 129 measured that at 13% of the loop benchmark and
+\ reverted the one conversion it had tried. Allocating eagerly and
+\ putting the pointer first is what makes the conversion affordable.
 \
 \ A linked list rather than a table, so there is no fixed maximum
 \ number of buffers to pick and get wrong.
@@ -51,22 +61,50 @@ VARIABLE BUF-BODY
 VARIABLE BUF-SIZE
 VARIABLE BUF-PTR
 
+: BUF-ZERO ( addr u --- )   \ u is a whole number of cells
+  OVER + SWAP                          ( end addr )
+  BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT
+  2DROP ;
+
+: BUF-ALLOC ( body --- )   \ give one descriptor its space
+  DUP @ 0= IF
+    \ Round up to a whole cell so BUF-ZERO can work a cell at a time
+    \ without overrunning; a few bytes of slack per buffer is nothing
+    \ against the heap and the sizes are not all cell multiples.
+    DUP CELL+ @ CELL+ 1- [ 1 CELLS 1- ] LITERAL INVERT AND BUF-SIZE !
+    BUF-SIZE @ ALLOCATE ABORT" BUFFER: out of memory"
+    BUF-PTR !
+    \ CREATE ... ALLOT space starts zeroed, so this must too. Done a
+    \ cell at a time rather than with FILL, which is a per-BYTE
+    \ threaded loop (kernel.4) - at ~34KB of buffers per boot that was
+    \ measured as most of a 2.4x startup regression when the shell's
+    \ buffers moved out of the image in Iteration 136.
+    BUF-PTR @ BUF-SIZE @ BUF-ZERO
+    BUF-PTR @ SWAP !
+  ELSE DROP THEN ;
+
 : BUFFER: ( size "name" --- )
   CREATE
     HERE BUF-BODY !
-    BUF-LIST @ ,                  \ link to the previous declaration
+    0 ,                           \ pointer
     ,                             \ size
-    0 ,                           \ pointer, filled in on first use
+    BUF-LIST @ ,                  \ link to the previous declaration
     BUF-BODY @ START @ - BUF-LIST !
+    BUF-BODY @ BUF-ALLOC          \ eagerly, so a reference is one fetch
   DOES> ( --- addr )
-    BUF-BODY !
-    BUF-BODY @ 2 CELLS + @ ?DUP IF EXIT THEN
-    BUF-BODY @ CELL+ @ BUF-SIZE !
-    BUF-SIZE @ ALLOCATE ABORT" BUFFER: out of memory"
-    BUF-PTR !
-    BUF-PTR @ BUF-SIZE @ 0 FILL   \ CREATE ... ALLOT space starts zeroed
-    BUF-PTR @ BUF-BODY @ 2 CELLS + !
-    BUF-PTR @ ;
+    @ ;
+
+: ALLOC-BUFFERS ( --- )
+  \ Give every declared buffer its space. Called at boot, because
+  \ RESET-BUFFERS zeroed every pointer before the image was written -
+  \ a heap address means nothing after a save and reload. A turnkey
+  \ image must call this before touching any buffer; shell.4's MAIN
+  \ does it first thing.
+  BUF-LIST @
+  BEGIN DUP WHILE
+    START @ + DUP BUF-ALLOC
+    2 CELLS + @
+  REPEAT DROP ;
 
 : RESET-BUFFERS ( --- )
   \ Release every allocated buffer and mark it unallocated again.
@@ -76,9 +114,9 @@ VARIABLE BUF-PTR
   BUF-LIST @
   BEGIN DUP WHILE
     START @ +                     ( body )
-    DUP 2 CELLS + @ ?DUP IF FREE DROP THEN
-    DUP 2 CELLS + 0 SWAP !
-    @                             ( link of the previous declaration )
+    DUP @ ?DUP IF FREE DROP THEN
+    DUP 0 SWAP !
+    2 CELLS + @                   ( link of the previous declaration )
   REPEAT DROP ;
 
 BASE !

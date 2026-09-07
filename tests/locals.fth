@@ -9,6 +9,13 @@
 \ checked here - the wrappers must be transparent to code that declares
 \ no locals.
 
+\ pool.4 first: since Iteration 136 locals.4's save stack and its
+\ compile-time address table are BUFFER:s rather than CREATE ... ALLOT,
+\ so BUFFER: must exist before locals.4 is compiled. Loading locals.4
+\ alone segfaults rather than reporting an undefined word - the failed
+\ declaration leaves the name undefined and every later use compiles a
+\ garbage reference.
+S" pool.4" INCLUDED
 S" locals.4" INCLUDED
 
 \ tester.fr leaves BASE at 16, and core-extra.fth happens not to notice

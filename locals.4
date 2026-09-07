@@ -123,7 +123,7 @@ BASE @  DECIMAL
 \ deep" diagnostic could never fire and the user got this file's
 \ ABORT instead, killing the shell. A limit that pre-empts a
 \ higher-level one is worse than a larger limit.
-CREATE LSAVE-STACK LSAVE-MAX CELLS ALLOT
+LSAVE-MAX CELLS BUFFER: LSAVE-STACK
 VARIABLE LSAVE-SP
 
 \ Each of these takes the slot as an OFFSET from START, not as an
@@ -170,7 +170,7 @@ VARIABLE L-LZERO-XT     ' LZERO    L-LZERO-XT    !XT
 VARIABLE L-LRESTORE-XT  ' LRESTORE L-LRESTORE-XT !XT
 
 16 CONSTANT LDECL-MAX
-CREATE LDECL-ADDRS LDECL-MAX CELLS ALLOT
+LDECL-MAX CELLS BUFFER: LDECL-ADDRS
 VARIABLE LDECL-N      \ total names declared by the definition being compiled
 VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 
