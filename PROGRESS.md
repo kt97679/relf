@@ -183,6 +183,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **132** — two tag bits, and where `LIT` goes
 - **133** — how the branch merge would work, and why not to do it
 - **134** — keep the dispatch loop, put the payload above the index
+- **135** — a review of `shell.4` for size: no duplicated logic, idioms instead
 
 ### Not tied to an iteration
 
@@ -10392,6 +10393,124 @@ all of them by not using a tag at all. Every step came from
 rearranging what occupies the encoding rather than finding more room
 in it, and the last one came from someone pushing back on complexity
 rather than on size.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 135: a review of `shell.4` for size, and a decoder bug it found
+
+Asked to find duplicated logic and non-compact algorithms in
+`shell.4` before touching the engine. The short answer is that **there
+is no duplicated-logic problem**, and the savings that do exist are in
+repeated *idioms* rather than repeated *code*.
+
+### First, a bug in the analysis tooling
+
+The duplication scan printed `CALL:?` for every call target. Call
+offsets are relative to the cell **after** the call cell - `relf.c`
+does `RPUSH(ip); ip += t` with `ip` already advanced - and
+`tools/classify-code.py` was resolving `a + offset` instead of
+`a + CELL + offset`. Checked empirically rather than by reading:
+`a+off` lands on a known body start 0.2% of the time, `a+CELL+off`
+41.9%.
+
+The consequence was not cosmetic. Because no target resolved, the
+inline-string skip never fired, so **every `S" ..."` body was read as
+tokens.** 644 cells of string text were being counted as 410 calls, 15
+primitives and 219 unclassified.
+
+Re-ran everything downstream. **Iterations 131-134 survive**: the
+operand-carrier counts come from primitive token values, and `op` is
+still 6,812 - `LIT` 2,178, `BRANCH` 365, `0BRANCH` 863 - so the 3,406
+cells of folding and the K=128 fusion figure of 2,161 are unchanged.
+Third time in this session that a decoder assumption has been wrong
+and the numbers happened to survive; the pattern is that
+**tokenization bugs are silent**, and the only defence is resolving
+something and checking the hit rate.
+
+### There is no duplicated logic
+
+Normalised source clone detection over 4,002 code lines: **95 lines
+recoverable across the ten largest clones, 2.4%**, and most of that is
+structural `THEN` / `EXIT` / `THEN` noise that is not logic at all.
+The largest genuine clone is 11 lines appearing twice. For a
+7,000-line file grown over 130 iterations that is a good result, and
+it means the premise that `shell.4` might be copy-paste bloated does
+not hold.
+
+Compiled-sequence detection agrees: after the decoder fix, the best
+factorable repeat is 5 tokens at 44 sites, worth 170 cells. Nothing
+structural.
+
+### What is actually there: idioms, not clones
+
+**1. The locals prologue and epilogue are open-coded at every site.**
+`LRESTORE` is **the most-called word in the entire shell** (487
+sites), `LSAVE` is third (227), and each is always preceded by a
+literal address - so a word with three locals emits six cells at
+entry and six at each exit. 68 words use locals, 3.3 locals each,
+~2.1 exit points each.
+
+    open-coded now             1,428 cells   5,712 B
+    one address list per word     723 cells   2,892 B
+    saving                        705 cells   2,820 B
+
+The list is stored once per word and `LSAVE-ALL` / `LRESTORE-ALL`
+walk it. **This is a change to `locals.4`, not to `shell.4`** - one
+file, one mechanism, 68 words improved without editing any of them,
+which is the best risk-to-reward on this list by a wide margin.
+
+Caveat: it replaces straight-line code with a loop, on a path taken at
+every entry to and exit from a locals-using word. Same shape as
+Iteration 129's `BUFFER:` result, which cost 13% on the loop
+benchmark. **Measure it.**
+
+**2. `VAR @ 1+ VAR !` appears 232 times over 102 variables.** A `1+!`
+word makes each site two cells instead of five: **696 cells, 2,784
+bytes.**
+
+Worth noting why superinstructions do not already get this: `1+` is a
+colon word here, not a primitive (`kernel.4` line 336), so `@ 1+` is a
+primitive followed by a *call* and fusion cannot span it. Checked
+rather than assumed - `('@','1+')` is not among the 128 pairs greedy
+selection picks. So this saving is real and additive to Option B
+rather than overlapping it.
+
+**3. `VAR @ VAR @ <` appears 132 times** over 63 distinct pairs
+(`TOK-POS/TOK-END` 24, `AE-POS/AE-END` 17). A two-address comparison
+word saves 2 cells each: ~264 cells.
+
+**4. Ten linear `STR=` chains**, e.g. `REDIR-OP-AT` testing seven
+operator strings in sequence at ~11 cells per arm. Table-driven with a
+counted table and a loop would save perhaps 40 cells each, ~400 total
+- the only item here that is genuinely an *algorithm* rather than an
+idiom, and the one with the worst complexity-to-saving ratio.
+
+### Totals, and the recommendation
+
+| | cells | i386 |
+|---|---|---|
+| locals address lists | 705 | 2,820 |
+| `1+!` | 696 | 2,784 |
+| two-address comparison | 264 | 1,056 |
+| `STR=` chains to tables | ~400 | ~1,600 |
+| **total** | **~2,065** | **~8,260** |
+
+About **6% of the image**, against the encoding change's 3,406 cells
+on its own.
+
+**Recommendation: do the locals change, skip the rest for now, and
+proceed to the encoding.** The locals work is one file and improves 68
+words without touching them. Items 2-4 are 400-odd edits spread
+through working shell code that currently passes the whole mrsh suite,
+for 1,360 cells - a poor trade against an encoding change that is
+larger, confined to `relf.c` and `cross.4`, and needs no edits to
+`shell.4` at all.
+
+The file was asked to be made smaller and the honest finding is that
+it is already about as factored as it is going to get by hand. The
+remaining density is in the encoding, which is where the next work
+should go.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
