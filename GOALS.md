@@ -634,11 +634,32 @@ passes when the count moves**, not only when it stalls.
 
 The same test surfaced a real gap: **`set -e` is not implemented**,
 neither as `set -e` nor via a `#!/bin/sh -e` shebang. It is inert in
-this suite because the harness invokes `relfsh file` and `bash file`,
-which ignores the shebang for both — so five vendored tests are being
-run with error-exit disabled on both sides, more forgivingly than
-upstream intends. Symmetric, therefore not a false pass, but worth
-knowing before trusting a green run to mean what mrsh meant by it.
+this suite, and **inert in mrsh's own suite too**: upstream's
+`test/harness.sh` runs `"$MRSH" "$testcase"` and
+`"$REF_SH" "$testcase"`, passing the script as an argument exactly as
+`run.sh` does here, so the shebang is a comment on both sides. Checked
+against upstream at the vendored commit rather than assumed. The five
+vendored tests carrying `-e` are therefore not being run more
+forgivingly than mrsh intends, and implementing `set -e` would not
+change this suite's verdict on any of them. It remains a genuine POSIX
+gap, just not one this criterion measures.
+
+### The criterion here is stricter than mrsh's own
+
+`2.2.3-alias-expansion.fail.sh` is **commented out of upstream's
+`test/conformance/meson.build`**, against a TODO pointing at
+mrsh issue #145 — mrsh does not run it either. So the honest reading
+of the current result is:
+
+- **19 of 21** by `run.sh`'s own arithmetic, which scores every
+  vendored file.
+- **19 of 20** against the set mrsh itself actually runs.
+
+Either way one genuine failure remains, `command.sh`, and it is the
+alias divergence. The vendored file stays and `run.sh` keeps scoring
+it — deleting a test to improve a number is exactly the move this
+suite was adopted to prevent — but the denominator should not be
+quoted without knowing this.
 
 ### Phases A-G: all complete
 

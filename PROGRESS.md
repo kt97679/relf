@@ -171,6 +171,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **120** — `~user` through NSS instead of /etc/passwd
 - **121** — what a fresh machine needs, written down
 - 122 — the documents that can rot
+- 123 — correcting Iteration 122, from upstream's own harness
 
 ### Not tied to an iteration
 
@@ -9220,3 +9221,70 @@ widths and this one has not been shown to.
 
 8-byte cells: 1991 core OK markers, 524 assertions across 63 files, 19
 differential cases, mrsh 19 of 21. 4-byte cells: not run.
+## Iteration 123: correcting Iteration 122, from upstream's own harness
+
+122 wrote that five vendored tests "run with error-exit disabled on
+both sides, more forgivingly than upstream intends." The second half
+of that is **wrong**, and it was inferred rather than checked. This
+log is append-only, so 122 stands as written; this is the correction.
+
+mrsh's `test/harness.sh` and both `meson.build` files were fetched at
+the vendored commit `4c81598` — the parts `vendor/README.md` records as
+deliberately *not* vendored, which is why nobody here had read them.
+
+### `set -e` is inert upstream too
+
+Upstream's harness runs `"$MRSH" "$testcase"` and
+`"$REF_SH" "$testcase"`, passing the script as an argument. That is
+exactly what `tests/mrsh-suite/run.sh` does, so `#!/bin/sh -e` is a
+comment on both sides, for mrsh as much as for us. Our invocation is
+faithful to upstream's, which is the reassuring half.
+
+The consequence for the open question that prompted this:
+**implementing `set -e` would not change this suite's verdict on any
+file.** It is still a real POSIX gap and `ulimit.sh` is still a hollow
+pass — neither of those findings depended on the claim being retracted
+— but the argument that goal 8's own criterion was being measured too
+weakly does not survive contact with the harness.
+
+Worth naming the mistake precisely: 122 established a true fact (the
+shebang is ignored), attached a plausible consequence to it (so we are
+more lenient than upstream), and did not check the consequence when
+one `curl` would have. FORTH-STYLE.md §13 already says "measure before
+concluding" and cites a wrong PROGRESS entry that survived an
+iteration. This one survived a turn.
+
+### The criterion here is stricter than mrsh's own
+
+Found in the same file. `2.2.3-alias-expansion.fail.sh` is **commented
+out of upstream's `test/conformance/meson.build`**, against a TODO
+pointing at mrsh issue #145. Upstream does not run it. The undefined
+cases are likewise behind a `test-undefined-behavior` option, which
+matches what `run.sh` already does by skipping them.
+
+So there are two defensible denominators, and GOALS.md now carries
+both: **19 of 21** by this harness's arithmetic, **19 of 20** against
+the set mrsh itself runs. One genuine failure either way, `command.sh`,
+and it is the alias divergence.
+
+`run.sh` is deliberately left scoring the file. Dropping a vendored
+test to improve a number is the exact move this suite was adopted to
+prevent, and the fix for a misleading denominator is to write down
+what it means, not to change it. But "19 of 21" should not be quoted
+as though 21 were mrsh's own count.
+
+### What this says about the vendoring decision
+
+`vendor/README.md` records that `harness.sh` and `meson.build` were
+not vendored because they are tooling rather than test content. That
+was right for `harness.sh` — `run.sh` reimplements it — but
+`meson.build` is not tooling: it is upstream's statement of *which
+tests count and in which category*, and not having it meant this
+project silently invented a stricter criterion than the one it
+believed it had adopted. The classification was reconstructed by
+reading filenames instead. Worth a re-read of both files whenever the
+vendored commit is bumped.
+
+No code. 1991 core OK markers, 524 assertions across 63 files, 19
+differential cases, mrsh 19 of 21 (19 of 20 upstream-active), 8-byte
+cells only — this host still has no 32-bit toolchain.
