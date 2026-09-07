@@ -410,15 +410,17 @@ move honestly, the same way the mrsh count is:
   dash's 4/72/98. The loop figure is the one Stage 2 of
   `PARSE-EXPAND-PLAN.md` exists to move.
 
-Baseline at Iteration 41, and where it stands at Iteration 127:
+Baseline at Iteration 41, and where it stands at Iteration 137:
 
-| | engine | image (41) | image (127) | total (127) |
-|---|---|---|---|---|
-| **i386 (4-byte cells)** | 17,808 | 72,528 | 134,500 | **152,308** |
-| x86-64 (8-byte cells) | 22,744 | 131,784 | 251,104 | 273,848 |
+| | engine | image (41) | image (127) | image (137) | total (137) |
+|---|---|---|---|---|---|
+| **i386 (4-byte cells)** | 17,808 | 72,528 | 134,500 | 101,104 | **118,912** |
+| x86-64 (8-byte cells) | 22,744 | 131,784 | 251,104 | 189,024 | 211,768 |
 
-The image has grown ~1.85x since Iteration 41, entirely from shell
-functionality - the engine has not changed size at all.
+Iterations 136 and 137 took 33,396 bytes off the i386 image - every
+`CREATE ... ALLOT` buffer moved out of the dictionary, and the locals
+prologue/epilogue reduced from three cells per local per entry and
+exit to one call each. **The i386 total is now below `dash`.**
 
 **Against every other shell on the machine** (Iteration 128, run
 `tests/sizes`; "total" adds any shared library beyond libc/libm,
@@ -426,10 +428,10 @@ which is why yash and bash jump):
 
 | implementation | total | note |
 |---|---|---|
+| **shell.4 (i386)** | **118,912** | engine + image |
 | dash | 129,784 | |
 | posh | 149,352 | |
-| **shell.4 (i386)** | **152,308** | engine + image |
-| **shell.4 (x86-64)** | **273,848** | engine + image |
+| **shell.4 (x86-64)** | **211,768** | engine + image |
 | mksh | 310,312 | |
 | yash | 653,680 | +libtinfo |
 | zsh | 1,236,168 | +libtinfo, libcap |
@@ -438,9 +440,8 @@ which is why yash and bash jump):
 | *busybox* | *2,124,608* | *static, 272 applets — not a shell size* |
 
 Read it with the conformance number beside it or it means nothing.
-The narrow build is third smallest, behind `dash` and `posh` and
-ahead of `mksh` — and it passes the mrsh suite, which is a real if
-narrow claim. It is **not** a claim to be a smaller bash: bash
+The narrow build is **the smallest on the list** as of Iteration 137,
+and it passes the mrsh suite, which is a real if narrow claim. It is **not** a claim to be a smaller bash: bash
 implements a language several times larger than this one. The
 trajectory is the point, not the rank.
 

@@ -185,6 +185,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **134** — keep the dispatch loop, put the payload above the index
 - **135** — a review of `shell.4` for size: no duplicated logic, idioms instead
 - **136** — every buffer out of the image (i386 total below `dash`)
+- **137** — one `LENTER`/`LEXIT` instead of three cells per local (+42% loop, revertable alone)
 
 ### Not tied to an iteration
 
@@ -10570,6 +10571,71 @@ rather than reporting an undefined word: the failed declaration leaves
 `LSAVE-STACK` undefined and every later use compiles a garbage
 reference. Same trap Iteration 129 hit; written into `tests/locals.fth`
 this time so the next person meets a comment instead of a crash.
+
+### Verified
+
+Both cell widths, 1998 core OK markers, 532 assertions across 63
+files, 19 differential cases, mrsh 20 of 21, posix 3/1/1.
+## Iteration 137: one LENTER and one LEXIT instead of three cells per local
+
+The locals prologue and epilogue were open-coded. `L-EMIT` compiled a
+two-cell literal plus a call for **every local at every entry and
+every exit** - `LRESTORE` was the most-called word in the whole shell
+at 487 sites, `LSAVE` third at 227, plus 129 `LZERO` and 98 `L!`.
+941 sites x 3 cells = **2,823 cells, 14.5% of all compiled code**,
+saying the same thing over and over.
+
+Now a definition compiles **one** call to `LENTER` followed by an
+inline descriptor - count, argument count, one START-relative offset
+per name - and **one** call to `LEXIT` at each exit. `LENTER` steps
+over its own descriptor with `R>` / `>R`, the trick `(S")` already
+uses for an inline string.
+
+`LEXIT` takes no descriptor at all, because `LENTER` pushes each
+slot's **offset alongside its saved value** and then the count. An
+epilogue is therefore a single cell however many locals a word has,
+which is where most of the saving is: exits outnumber entries about
+two to one.
+
+    i386 image   109,576 -> 101,104   (-8,472)
+    i386 total   127,384 -> 118,912
+    x86-64 image 205,976 -> 189,024
+
+### It costs 42% on the loop benchmark
+
+Measured three runs each way, alternating, on the same machine:
+
+| | loop-ms | start-ms | i386 total |
+|---|---|---|---|
+| Iteration 136 | 939-1,256 | 477-496 | 127,384 |
+| with `LENTER`/`LEXIT` | 1,338-1,389 | 491-498 | **118,912** |
+
+**Committed separately from 136 for exactly this reason** - `git
+revert` this one commit returns the 42% and keeps every byte of the
+buffer work, which is 74% of the combined saving and free.
+
+The first version was worse: **2.1x**, from `LPUSH`/`LPOP` helper
+calls and an `LE-OFF` accessor inside the loops. Flattening both words
+- one overflow check per frame rather than per local, running pointers
+instead of index-times-`CELLS`, no calls inside a loop - took it to
+1.42x. The remainder is structural: a frame is now `2n+1` cells rather
+than `n`, because carrying offsets is what makes the epilogue one
+cell, and `DO`/`LOOP` overhead replaces straight-line code.
+
+`LSAVE-MAX` is unchanged at 4096, so the depth limit halves to 2048
+cells of locals - still far past anything `shell.4` reaches.
+
+### The judgement
+
+`GOALS.md` goal 3 puts minimalism above raw performance, which argues
+for keeping it. Iteration 129's precedent argues the other way: do not
+land a loop regression immediately before Stage 2 of
+`PARSE-EXPAND-PLAN.md`, whose whole justification is loop time and
+which needs a clean before-and-after.
+
+Landed, because the size win is large and the revert is one commit -
+but **re-baseline `tests/bench` before starting Stage 2**, and treat
+1,365ms rather than 960ms as the number Stage 2 is measured against.
 
 ### Verified
 

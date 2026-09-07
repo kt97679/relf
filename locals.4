@@ -140,22 +140,104 @@ VARIABLE LSAVE-SP
 \ and corrupted compilation of shell.4. This version emits exactly
 \ the same two cells the original absolute-address version did.
 
-: LSAVE ( off --- )   \ push the slot's current value, so it can be
-                      \ put back when this invocation ends
-  LSAVE-SP @ LSAVE-MAX < 0= ABORT" locals: save stack overflow"
-  START @ + @ LSAVE-STACK LSAVE-SP @ CELLS + !
-  LSAVE-SP @ 1+ LSAVE-SP ! ;
+\ ------------------------------------------------------------------
+\ LENTER / LEXIT - the whole prologue and epilogue, two words
+\ ------------------------------------------------------------------
+\ Until Iteration 136 the prologue was open-coded: three cells per
+\ local per entry for the save, three more for the argument store or
+\ the zeroing, and three per local at EVERY exit. LRESTORE was the
+\ most-called word in the whole shell at 487 sites and LSAVE third at
+\ 227, each preceded by a two-cell literal. 941 sites x 3 cells =
+\ 2,823 cells, 14.5% of all compiled code, to say the same thing over
+\ and over.
+\
+\ Now a definition compiles ONE call to LENTER followed by an inline
+\ descriptor - count, argument count, then one START-relative offset
+\ per name - and ONE call to LEXIT at each exit. LENTER skips its own
+\ descriptor via R> / >R, the same trick (S") uses for an inline
+\ string.
+\
+\ LEXIT takes no descriptor at all, because LENTER pushes each slot's
+\ OFFSET alongside its saved value and then the count. The epilogue is
+\ therefore a single cell however many locals a word has, which is
+\ where most of the saving comes from - exits outnumber entries about
+\ two to one.
+\
+\ Frame layout on the save stack, growing upward:
+\   off0 val0 off1 val1 ... offn-1 valn-1 n
+\ so a frame is 2n+1 cells where it used to be n. LSAVE-MAX is
+\ unchanged at 4096, which is 2048 cells of locals rather than 4096 -
+\ still far past anything shell.4 reaches (Iteration 90 raised it
+\ from 256 to fix a recursion depth bug).
 
-: LRESTORE ( off --- )   \ pop the most recently saved value back
+VARIABLE LE-A       \ inline descriptor pointer
+VARIABLE LE-N
+VARIABLE LE-ARGS
+VARIABLE LE-P       \ running save-stack address
+VARIABLE LE-Q       \ running descriptor address
+VARIABLE LX-N       \ LEXIT's frame count, kept apart from LE-N so a
+                    \ word's exit cannot disturb a caller's entry
+
+\ Both words are written flat on purpose: one overflow check per
+\ frame rather than per local, running pointers instead of an index
+\ times CELLS, and no calls inside the loops. The first version used
+\ LPUSH/LPOP helpers and an LE-OFF accessor and measured 2.1x on the
+\ loop benchmark - the size win is not worth paying for twice.
+
+: LENTER ( x1 .. xk --- )
+  \ The arguments sit on the data stack BELOW anything this word
+  \ pushes, so saved values go to the save stack and the data stack is
+  \ left alone until the argument loop consumes it.
+  R> LE-A !
+  LE-A @ @ LE-N !
+  LE-A @ CELL+ @ LE-ARGS !
+  LSAVE-SP @ LE-N @ 2* + 1+ LSAVE-MAX < 0=
+    ABORT" locals: save stack overflow"
+  LSAVE-STACK LSAVE-SP @ CELLS + LE-P !
+  LE-A @ 2 CELLS + LE-Q !
+  \ 1. save every slot, offset beside value, so LEXIT needs no
+  \ descriptor of its own. Guarded by an explicit emptiness test
+  \ rather than relying on DO with start = limit, which in this
+  \ kernel runs the whole unsigned range - PROGRESS.md Iteration 15.
+  LE-N @ 0 > IF
+    LE-N @ 0 DO
+      LE-Q @ @ DUP LE-P @ !
+      START @ + @ LE-P @ CELL+ !
+      LE-P @ 2 CELLS + LE-P !
+      LE-Q @ CELL+ LE-Q !
+    LOOP
+  THEN
+  LE-N @ LE-P @ !
+  LSAVE-SP @ LE-N @ 2* + 1+ LSAVE-SP !
+  \ 2. consume arguments in reverse, so the top of the data stack
+  \ fills the rightmost pre-| name.
+  LE-ARGS @ 0 > IF
+    LE-ARGS @ 0 DO
+      LE-ARGS @ 1- I - CELLS LE-A @ + 2 CELLS + @ START @ + !
+    LOOP
+  THEN
+  \ 3. zero the post-| scratch names.
+  LE-N @ LE-ARGS @ > IF
+    LE-N @ LE-ARGS @ DO
+      0 I CELLS LE-A @ + 2 CELLS + @ START @ + !
+    LOOP
+  THEN
+  \ Step the return address past the descriptor: two header cells and
+  \ one per name.
+  LE-A @ LE-N @ 2 + CELLS + >R ;
+
+: LEXIT ( --- )
   LSAVE-SP @ 0 > 0= ABORT" locals: save stack underflow"
-  LSAVE-SP @ 1- LSAVE-SP !
-  LSAVE-STACK LSAVE-SP @ CELLS + @ SWAP START @ + ! ;
-
-: LZERO ( off --- )   \ initial value of a post-| scratch local
-  0 SWAP START @ + ! ;
-
-: L! ( x off --- )    \ store a data-stack argument into a slot
-  START @ + ! ;
+  LSAVE-SP @ 1- DUP LSAVE-SP !
+  CELLS LSAVE-STACK + @ LX-N !
+  LX-N @ 0 > IF
+    LSAVE-STACK LSAVE-SP @ CELLS + LE-P !
+    LX-N @ 0 DO
+      LE-P @ 2 CELLS - LE-P !
+      LE-P @ CELL+ @  LE-P @ @ START @ + !
+    LOOP
+    LSAVE-SP @ LX-N @ 2* - LSAVE-SP !
+  THEN ;
 
 \ ------------------------------------------------------------------
 \ Compile time: the declaration currently being processed
@@ -164,10 +246,8 @@ VARIABLE LSAVE-SP
 \ The xts of the four runtime words above, held as offsets rather than
 \ compiled into L-COMPILE-ENTRY/L-COMPILE-RESTORES as absolute
 \ literals via [']. Same reason as everything else here.
-VARIABLE L-LSAVE-XT     ' LSAVE    L-LSAVE-XT    !XT
-VARIABLE L-L!-XT        ' L!       L-L!-XT       !XT
-VARIABLE L-LZERO-XT     ' LZERO    L-LZERO-XT    !XT
-VARIABLE L-LRESTORE-XT  ' LRESTORE L-LRESTORE-XT !XT
+VARIABLE L-LENTER-XT    ' LENTER   L-LENTER-XT   !XT
+VARIABLE L-LEXIT-XT     ' LEXIT    L-LEXIT-XT    !XT
 
 16 CONSTANT LDECL-MAX
 LDECL-MAX CELLS BUFFER: LDECL-ADDRS
@@ -178,51 +258,32 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 0 LDECL-ARGS !
 0 LSAVE-SP !
 
-: L-EMIT ( xt i --- )
-  \ Compile "LDECL-ADDRS[i]  <call to xt>" - the one place any code is
-  \ generated, shared by all four emit loops below.
-  \
-  \ The slot address is emitted as an OFFSET from START, with a
-  \ "START @ +" compiled after it to rebuild the real address at run
-  \ time, rather than as a plain absolute literal. That costs three
-  \ extra operations per local per entry/exit and buys
-  \ position-independence: a saved image (see save-system.4) reloads
-  \ at a different address every run, and an absolute literal baked
-  \ into a word's body is stale the moment it does. Found exactly that
-  \ way - the first turnkey shell image segfaulted inside
-  \ NORMALIZE-OPERATORS, the first locals-using word its startup path
-  \ reached.
-  \
-  \ Two cells: the offset as a literal, then a relative call to the
-  \ runtime word, which does the "+ START" itself. Both are
-  \ position-independent.
-  CELLS LDECL-ADDRS + @
-  POSTPONE LITERAL COMPILE, ;
-
 : L-COMPILE-ENTRY ( --- )
-  \ Saves come first and cover every declared name; only then are the
-  \ data-stack arguments consumed, in reverse (top of stack fills the
-  \ rightmost pre-| name). Each loop is guarded by an explicit
-  \ emptiness test rather than relying on DO with start = limit, which
-  \ in this kernel runs the whole unsigned range instead of zero
-  \ iterations - see PROGRESS.md's Iteration 15 entry.
-  LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO L-LSAVE-XT @XT I L-EMIT LOOP
-  THEN
-  LDECL-ARGS @ 0 > IF
-    LDECL-ARGS @ 0 DO L-L!-XT @XT LDECL-ARGS @ 1- I - L-EMIT LOOP
-  THEN
-  LDECL-N @ LDECL-ARGS @ > IF
-    LDECL-N @ LDECL-ARGS @ DO L-LZERO-XT @XT I L-EMIT LOOP
-  THEN ;
+  \ One call to LENTER, then the inline descriptor it reads and steps
+  \ over: name count, argument count, then one slot offset per name.
+  \
+  \ Every cell here is position-independent. The offsets are already
+  \ START-relative (LDECL-ADDRS holds `EXECUTE START @ -`), and the
+  \ call to LENTER is relative like any other. An absolute literal
+  \ baked into a body is stale the moment a saved image reloads at a
+  \ different address - found exactly that way, when the first turnkey
+  \ shell image segfaulted inside NORMALIZE-OPERATORS, the first
+  \ locals-using word its startup path reached.
+  LDECL-N @ 0= IF EXIT THEN
+  L-LENTER-XT @XT COMPILE,
+  LDECL-N @ ,
+  LDECL-ARGS @ ,
+  LDECL-N @ 0 DO I CELLS LDECL-ADDRS + @ , LOOP ;
 
 : L-COMPILE-RESTORES ( --- )
-  \ Reverse of the save order, since the save stack is a stack.
+  \ One cell, whatever the local count: LENTER left each slot's offset
+  \ on the save stack next to its saved value, so LEXIT needs no
+  \ descriptor of its own. Exits outnumber entries about two to one,
+  \ which is why this is where most of the saving is.
+  \
   \ A no-op when nothing was declared, which is what makes the EXIT
   \ and ; wrappers below transparent to every ordinary definition.
-  LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO L-LRESTORE-XT @XT LDECL-N @ 1- I - L-EMIT LOOP
-  THEN ;
+  LDECL-N @ 0 > IF L-LEXIT-XT @XT COMPILE, THEN ;
 
 \ ------------------------------------------------------------------
 \ Compile time: parsing {: ... | ... :}
