@@ -119,19 +119,67 @@ path. That reaches every literal but puts a test on the hot path to
 serve values in the tail, which is precisely the trade option 1
 avoids. Not recommended.
 
-**3. Give `LIT` a tag by merging the two branch classes.** `BRANCH`
-and `0BRANCH` share tag `10`, distinguished by a bit taken from the
-payload — which means the offset must be shifted, so branches pay a
-shift on decode. In exchange tag `11` becomes a full 30-bit immediate
-covering **every** literal: 2,178 cells, **8,712 bytes on i386**,
-against option 1's 4,364 net.
+**3. Give `LIT` a tag by merging the two branch classes.** Explained
+in full because the mechanics are the point.
 
-That is a genuine +4,348 bytes on i386 for one shift on the branch
-path. Worth having measured; **not recommended anyway**, because
-branches are hot in exactly the loops `tests/bench` is 236x `dash` on,
-and this document's whole principle is that density must not add
-decoding work. Revisit only if the loop benchmark stops being the
-constraint.
+The two branch kinds need one bit to tell them apart, and under a
+2-bit tag there is no spare bit: the tag occupies bits 0-1, and bit 2
+already belongs to the offset. The bit has to be *made*, by storing
+the offset shifted left one place. An offset is a multiple of `CELL`,
+so `offset << 1` has its low three bits clear, leaving bit 2 free:
+
+    t     = (offset << 1) | (kind << 2) | 2
+    kind  = (t >> 2) & 1
+    offset= (t & ~7) >> 1          /* arithmetic, to keep the sign */
+
+Tag `11` is then free for a 30-bit signed immediate, covering **every**
+literal in the image (largest ~127,000 against a reach of ±536,870,912),
+with the `LIT` primitive still there for anything wider. 2,178 cells
+instead of the constant block's 1,091 net.
+
+The cost is one extra shift on the branch path — `(t & ~7) >> 1`
+instead of `t & ~3`. **Rejected**, and not because the shift is
+expensive but because there is a better use of the same tag.
+
+**4. Drop unconditional `BRANCH` from the tag space instead of merging.
+Recommended — this is the scheme to build.**
+
+Nothing forces all four tags to be spent on the four things that look
+symmetric. `0BRANCH` is 863 sites and `BRANCH` only 365, and
+unconditional `BRANCH` is the one that superinstructions can still
+fuse (`! BRANCH`, 145 sites) because it keeps its operand cell:
+
+    t & 3 == 0   CALL       ip += t
+    t & 3 == 1   PRIMITIVE  goto *dispatch[t >> 2]      (BRANCH lives here)
+    t & 3 == 2   0BRANCH    if (!pop()) ip += (t & ~3)
+    t & 3 == 3   LITERAL    push((INT)t >> 2)
+
+No shift on any branch path, no constant-block table, no bounds test,
+and `LIT` stays in primitive space as the fallback for a literal too
+wide for 30 bits — so nothing becomes unrepresentable.
+
+Measured against option 1's scheme, both including a K=128 fusion pass
+re-run on their own token streams:
+
+| | folding | literals | fusion | total | i386 |
+|---|---|---|---|---|---|
+| both branches tagged, constant block `-1..96` | 1,228 | 1,091 | 2,130 | 4,449 | 17,796 |
+| **`0BRANCH` tagged, `BRANCH` a primitive, full immediates** | 863 | **2,178** | **2,331** | **5,372** | **21,488** |
+
+**+923 cells, +3,692 bytes on i386, +7,384 on x86-64.** Giving up 365
+cells of `BRANCH` folding buys 1,087 more cells of literal and 201
+more of fusion, because full immediates remove every literal operand
+cell that was breaking up fusable runs.
+
+**The one thing it gives up is speed on loop back-edges.** An
+unconditional `BRANCH` is what closes every loop, and under this scheme
+it stays two cells with a memory load, exactly as today — no
+regression, but no gain either, where tagging both branches would have
+saved one load per iteration. `?BRANCH` is folded under both schemes,
+so the difference is one load per loop iteration on the benchmark this
+project is 236x `dash` on. Small, real, and measurable: **build both
+and run `tests/bench` three times alternating** before committing to
+one.
 
 ## Option A — the constant block (details)
 

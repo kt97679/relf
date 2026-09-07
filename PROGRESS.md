@@ -181,6 +181,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **130** — what the compiled code is actually made of (`DENSITY-PLAN.md`)
 - **131** — correcting the density numbers; longer superinstructions are worth 1.3%
 - **132** — two tag bits, and where `LIT` goes
+- **133** — how the branch merge would work, and why not to do it
 
 ### Not tied to an iteration
 
@@ -10201,6 +10202,86 @@ Order: **encoding, then constant block, then re-run the fusion search
 and pick K against measured engine growth.** The encoding is largest,
 needs no new primitives, and moves the stream everything else is
 measured against.
+
+No behaviour changed. 532 assertions across 63 files, 19 differential
+cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
+posix 3/1/1.
+## Iteration 133: how the branch merge would work, and why not to do it
+
+Iteration 132 rejected "merge `BRANCH`/`0BRANCH` to free a tag for
+literals" in one sentence. Written out properly, the mechanics point
+at a better scheme, so the rejection was right and the reasoning was
+not.
+
+### The merge, in full
+
+Two branch kinds need one bit to separate them, and under a 2-bit tag
+there is no spare: bits 0-1 are the tag and bit 2 already belongs to
+the offset. The bit must be manufactured by storing the offset shifted
+left one place. An offset is a multiple of `CELL`, so `offset << 1`
+has three clear low bits and bit 2 becomes available:
+
+    t      = (offset << 1) | (kind << 2) | 2
+    kind   = (t >> 2) & 1
+    offset = (t & ~7) >> 1          \\ arithmetic, to keep the sign
+
+Tag `11` is then a 30-bit signed immediate covering every literal in
+the image. The cost is `(t & ~7) >> 1` instead of `t & ~3` on the
+branch path.
+
+### The better move: don't merge, drop `BRANCH` from the tag space
+
+Nothing requires the four tags to be spent on the four things that
+look symmetric. `0BRANCH` is 863 sites and `BRANCH` only 365 - and
+`BRANCH` is the one superinstructions can still fuse, because keeping
+it a primitive keeps its operand cell:
+
+    t & 3 == 0   CALL       ip += t
+    t & 3 == 1   PRIMITIVE  goto *dispatch[t >> 2]     \\ BRANCH lives here
+    t & 3 == 2   0BRANCH    if (!pop()) ip += (t & ~3)
+    t & 3 == 3   LITERAL    push((INT)t >> 2)
+
+No shift on any branch path, no constant-block table, no bounds test,
+and `LIT` survives in primitive space as the fallback for a literal
+wider than 30 bits, so nothing becomes unrepresentable.
+
+Measured, each with its own K=128 fusion pass re-run on its own stream:
+
+| | folding | literals | fusion | total | i386 |
+|---|---|---|---|---|---|
+| both branches tagged + constant block `-1..96` | 1,228 | 1,091 | 2,130 | 4,449 | 17,796 |
+| **`0BRANCH` tagged, `BRANCH` primitive, full immediates** | 863 | **2,178** | **2,331** | **5,372** | **21,488** |
+
+**+923 cells, +3,692 bytes on i386, +7,384 on x86-64.** Surrendering
+365 cells of `BRANCH` folding buys 1,087 more of literal and 201 more
+of fusion - the second of those because full immediates delete every
+literal operand cell that was interrupting a fusable run.
+
+This also retires the constant block entirely. Iteration 132 spent an
+optimisation scan finding `-1..96`; with a whole tag for literals the
+question does not arise.
+
+### What it gives up, stated plainly
+
+An unconditional `BRANCH` closes every loop. Under this scheme it
+stays two cells with a memory load, exactly as today - no regression,
+but no gain, where tagging both branches would have removed one load
+per iteration. `?BRANCH` is folded either way, so the difference is
+one load per loop iteration, on the benchmark this project is 236x
+`dash` on.
+
+Small, real, and not decidable from a table: **build both and run
+`tests/bench` three times alternating.** The size difference is
+certain and the speed difference is not, which is the opposite of how
+this normally goes here.
+
+### The pattern worth keeping
+
+Three iterations running, an encoding question has been answered
+better by rearranging what occupies the tag space than by finding
+more bits: 131 wanted a fifth class, 132 got four by using two bits,
+133 gets more out of four by not spending them symmetrically. The
+scarce resource is not bits, it is decoding steps.
 
 No behaviour changed. 532 assertions across 63 files, 19 differential
 cases, 1991 core OK markers on both cell widths, mrsh 20 of 21,
