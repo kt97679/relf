@@ -3574,8 +3574,22 @@ VARIABLE WT-PID
     LAST-STATUS !
   THEN ;
 
+CREATE SH-NL 10 C,   \ a single newline byte, for writing to fd 2
+
 : SH-PROMPT ( --- )
-  ." $ " ;
+  \ To fd 2, not stdout. Every reference shell - bash, dash, mksh,
+  \ ksh, yash, posh and busybox - writes its prompt to stderr, and for
+  \ a good reason: `... | relfsh` had the prompt interleaved into the
+  \ shell's own output, so a piped script's stdout was not what the
+  \ script printed. `printf 'echo hi\n' | relfsh` produced "$ \nhi\n$ "
+  \ where every other shell produces "hi\n".
+  \
+  \ This shell still PRINTS a prompt when stdin is not a terminal,
+  \ which the others do not - that needs an isatty the engine has no
+  \ primitive for, and adding one means touching cross.4's
+  \ hand-embedded dispatch numbers, deliberately not done here. On
+  \ stderr the remaining divergence no longer corrupts stdout.
+  S" $ " 2 WRITE-FILE DROP ;
 
 \ ==================================================================
 \ Pipes: a single "cmd1 | cmd2" per line
@@ -7014,7 +7028,10 @@ VARIABLE PP-BAR
 : SH1 ( --- )  \ process one interactively-read line; returns either way
   SH-PROMPT
   LINE-BUF LINE-MAX ACCEPT
-  CR
+  \ Terminates the prompt line, so it belongs with the prompt on fd 2
+  \ rather than on stdout. As a CR it put a stray newline into the
+  \ output of every piped script.
+  SH-NL 1 2 WRITE-FILE DROP
   RUN-LINE ;
 
 : SH ( --- )

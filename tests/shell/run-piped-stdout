@@ -1,0 +1,57 @@
+#!/bin/sh
+# tests/shell/run-piped-stdout - when a script is piped on stdin, the
+# shell's stdout must be exactly what the script printed and nothing
+# else (Iteration 153).
+#
+# relfsh's own header documents "... | relfsh" as a supported mode,
+# and it was the one invocation mode no test checked byte for byte.
+# The interactive prompt was written to STDOUT rather than stderr, and
+# the newline after ACCEPT with it, so
+#
+#     printf 'echo hi\n' | relfsh
+#
+# put "$ \nhi\n$ \n" on stdout where every other shell puts "hi\n".
+# The files in this directory could not see it: they assert substrings,
+# and "hi" is a substring of the corrupted output too. bash, dash,
+# mksh, ksh, yash, posh and busybox all agree the prompt belongs on
+# stderr.
+#
+# Deliberately uses assert_output_equals, not assert_output_contains -
+# a substring assertion here would pass against the exact bug this
+# file exists to catch.
+. "$(dirname "$0")/lib.sh"
+
+# $THIS_SH is what the rest of the suite drives, so this follows both
+# cell widths the way tests/run_tests.sh sets them up.
+pipe_out() {
+    # $1 = script text. stdout only; stderr is where the prompt now
+    # legitimately goes, so it must not be folded in here.
+    printf '%s\n' "$1" | timeout 10 "$THIS_SH" 2>/dev/null
+}
+
+assert_output_equals "single command: stdout is just its output" \
+    "hi" "$(pipe_out 'echo hi')"
+
+assert_output_equals "two commands: no prompt between them" \
+    "a
+b" "$(pipe_out 'echo a
+echo b')"
+
+assert_output_equals "expansion still works through the piped path" \
+    "5" "$(pipe_out 'x=5
+echo $x')"
+
+# Nothing at all on stdout for a script that prints nothing. This is
+# the case a substring assertion can never make: the old behaviour
+# emitted two prompts and a newline here, and "" is a substring of
+# anything.
+assert_output_equals "silent script produces empty stdout" \
+    "" "$(pipe_out 'true')"
+
+# The prompt has not been deleted, only moved. If it vanished
+# entirely, interactive use would regress silently and no other test
+# would notice.
+err=$(printf 'true\n' | timeout 10 "$THIS_SH" 2>&1 >/dev/null)
+assert_output_contains "prompt still written, on stderr" "$" "$err"
+
+report

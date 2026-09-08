@@ -201,6 +201,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **150** — the shell image did not build from a path over ~36 characters
 - **151** — neither stack was bounded; overflow corrupted the dictionary
 - **152** — one duplicated block had drifted; `true && {` left status 127
+- **153** — the interactive prompt was on stdout, corrupting every piped script
 
 ### Not tied to an iteration
 
@@ -12092,3 +12093,90 @@ Still open from the 151 audit: the prompt on stdout, `MAX-ARGS`
 failing silently at 64, and the nine dead variables. And the
 duplication pass itself is still only two blocks deep - this entry is
 evidence the rest of that pass is worth doing.
+
+## Iteration 153: the prompt was on stdout
+
+Third of the Iteration 151 audit's findings, and the one that was
+being hidden by a test-strength decision whose justification had
+expired.
+
+`SH-PROMPT` wrote `." $ "`, and `SH1` followed `ACCEPT` with a bare
+`CR`. Both go to stdout. `relfsh`'s own header documents `... |
+relfsh` as a supported mode, so:
+
+    printf 'echo hi\n' | relfsh    ->  "$ \nhi\n$ \n"
+    printf 'echo hi\n' | bash      ->  "hi\n"
+
+Every reference shell present - bash, dash, mksh, ksh, yash, posh,
+busybox - writes its prompt to stderr. A piped script's stdout was
+therefore not what the script printed.
+
+### Why nothing caught it
+
+`tests/shell` *does* pipe into the shell; several files build scripts
+with `printf ... | "$THIS_SH"`. But its assertions are substring
+assertions, and "hi" is a substring of the corrupted output just as
+much as of the correct one.
+
+`lib.sh`'s header justified that choice: "RelF's own boot banner and
+CRLF line endings would make literal whole-output comparison fragile
+for little benefit here." **Both reasons were removed by Iteration
+40**, when the prebuilt image began booting straight into `MAIN`.
+Verified before touching anything: the current shell emits no banner
+and no CR. The justification went stale; the weakened assertions did
+not. That is the same rot `GOALS.md` warns about, in a test harness
+rather than in prose - and 124/135/140/141's rule, measure the
+harness and not just the code, is what it argues for.
+
+### The fix
+
+`S" $ " 2 WRITE-FILE DROP`, and the terminating newline written as a
+single byte from `CREATE SH-NL 10 C,` rather than as `CR`. An empty
+`S" "` will not compile in this kernel - the definition silently
+fails to complete and the word comes back undefined - so the byte
+constant is the way to write exactly a newline and nothing else.
+
+stdout is now byte-identical to bash's for piped scripts; the prompt
+and its newline are on fd 2, where they were always meant to be.
+
+**Still divergent, deliberately:** this shell prints a prompt even
+when stdin is not a terminal, which the others do not. That needs an
+`isatty`, the engine has no primitive for it, and adding one means
+touching `cross.4`'s hand-embedded dispatch numbers - not something to
+do in a stabilization pass, and especially not immediately before the
+token-threading work rearranges that area anyway. On stderr the
+remaining divergence no longer corrupts stdout, which was the part
+that mattered.
+
+### Tests
+
+`tests/shell/run-piped-stdout`, 5 assertions, using a new
+`assert_output_equals` rather than the substring form - a substring
+assertion here would pass against the exact bug the file exists to
+catch. One case asserts a silent script produces **empty** stdout,
+which a substring assertion can never express, since "" is a
+substring of anything. One asserts the prompt is still written to
+stderr, so a "fix" that simply deleted it could not pass. Confirmed
+non-hollow: all 5 fail against the old `shell.4`.
+
+`lib.sh`'s header is corrected to say the justification expired, and
+to point new tests at the strong form. The 63 existing files are
+left alone on purpose: rewriting them all at once is a large untested
+change, and this entry is not evidence for doing it blind.
+
+Sizes grew slightly, `WRITE-FILE` costing more than `."`:
+i386 127,296 -> 127,356 (+60), x86-64 228,480 -> 228,592 (+112).
+Both images still reproduce on both cell widths; mrsh, the POSIX
+corpus and the differential suite are all unchanged.
+
+### Also still open from the 151 audit
+
+Unrelated to the prompt, found while checking whether diagnostics
+share the problem: **the shell prints nothing at all for an unknown
+command.** `relfsh -c nosuchcommand` exits 127 with both streams
+empty, where bash reports "command not found" on stderr. This is why
+152's status-127 bug was silent rather than merely wrong. Not fixed
+here.
+
+Also outstanding: `MAX-ARGS` failing silently at 64, the nine dead
+variables, and the rest of the duplication pass.

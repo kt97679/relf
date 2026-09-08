@@ -14,15 +14,40 @@
 # than testing ahead of it.
 #
 # Unlike bash's own tests/ (which diffs raw output against a fixed
-# .right file), these use substring/status assertions instead of
-# full-output diffing - RelF's own boot banner and CRLF line endings
-# would make literal whole-output comparison fragile for little
-# benefit here.
+# .right file), most assertions here are substring/status rather than
+# full-output diffing. That was originally justified by "RelF's own
+# boot banner and CRLF line endings", and BOTH of those reasons
+# expired in Iteration 40, when the prebuilt image began booting
+# straight into MAIN: the shell emits no banner and no CR. The
+# justification went stale, the weakened assertions did not, and what
+# they were hiding was real - the interactive prompt was going to
+# STDOUT, so `... | relfsh` interleaved "$ " into the shell's own
+# output and no substring assertion could see it (Iteration 153).
+#
+# assert_output_equals below is the strong form. New tests should
+# prefer it wherever the exact bytes are known; the existing
+# substring assertions are kept because rewriting 63 files at once
+# would be a large untested change, not because they are preferred.
 
 : "${THIS_SH:=../../relfsh}"
 
 TESTS_RUN=0
 TESTS_FAILED=0
+
+assert_output_equals() {
+    # $1 = description, $2 = expected output (exact), $3 = actual output
+    TESTS_RUN=$((TESTS_RUN + 1))
+    if [ "$3" = "$2" ]; then
+        return 0
+    fi
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "FAIL: $1"
+    echo "  expected exactly:"
+    printf '%s\n' "$2" | sed 's/^/    /'
+    echo "  actual:"
+    printf '%s\n' "$3" | sed 's/^/    /'
+    return 1
+}
 
 assert_output_contains() {
     # $1 = description, $2 = expected substring, $3 = actual output
