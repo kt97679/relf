@@ -205,6 +205,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **154** — two silent failures given diagnostics; a third found (`LINE-MAX`)
 - **155** — both images regenerated and checked; `tests/bench` made a measurement
 - **156** — encoding comparison against SOD32; the freeze; the data-address finding
+- **157** — the speed half: packing costs 20-66%, token threading costs nothing
 
 ### Not tied to an iteration
 
@@ -12471,3 +12472,83 @@ Speed. Every number is size. Iteration 134's objection to two-bit tags
 unanswered, and Iteration 133's stated experiment (build both,
 alternate `tests/bench`) is now runnable at about +/-4% on a ratio
 thanks to Iteration 155.
+
+## Iteration 157: the speed half of the encoding question
+
+`ENCODING-COMPARISON.md` sized five encodings and could not choose
+between them, because every number in it was bytes while the open
+objection was about time. Iteration 134 argued that a tag plus a packed
+field adds a second data-dependent test to the two hottest paths in the
+interpreter, and Iteration 133 left the experiment stated but never
+run. `tools/pack-bench.c` runs it.
+
+### Method
+
+Four inner loops doing identical work on the same operation stream,
+differing only in fetch and decode: `CELL` (RelF today), `PACK5`
+(SOD32 authentic - six 5-bit subinstructions, return flag in bit 31),
+`PACK4` (the tagged-nibble proposal), `PACK8` (the tagged-byte
+proposal). Nine interleaved rounds, minimum of each, because
+run-to-run drift on this machine is larger than the effects.
+
+The operation mix is **dynamic, not static**, and that is the point.
+`tools/dispatch-bench.c` uses the static mix because it was answering a
+size question. Dispatch cost depends on what executes, and Iteration
+155's profiling showed the two differ sharply - calls are 46.3% of the
+image but 24.9% of execution, `EXIT` is 3.6% static and 17.3% dynamic.
+Using static counts here would overstate calls by nearly 2x, and calls
+are exactly the operation packing cannot help with, since they end a
+pack. It would have flattered the packed schemes.
+
+### Result
+
+    x86-64:   cell 1.00   pack5 1.21   pack4 1.65   pack8 1.60
+    i386:     cell 1.00   pack5 1.68   pack4 2.05   pack8 1.90
+    token threading (tools/dispatch-bench.c):     0.985
+
+Packing costs 20-66% on x86-64 and 68-105% on i386. Token threading
+costs nothing - it is marginally faster than cell dispatch.
+
+Iteration 134's objection is confirmed. It is worse on i386, where a
+32-bit pack holds fewer fields so pack boundaries come round more
+often.
+
+SOD32's 5-bit format is again the least bad packed scheme, as it was on
+size. Its 1.21x also sits inside `GOALS.md`'s recorded "SOD32 27-51%
+slower" from twenty years ago on different hardware, which is some
+evidence both numbers are measuring something real.
+
+### Both axes together
+
+    scheme                    size (x86-64)   dispatch
+    RelF today                     1.00         1.00
+    SOD32 + inline literals        0.73         1.21
+    tagged nibble                  0.75         1.65
+    tagged byte                    0.75         1.60
+    token threading                0.19         0.985
+
+**Token threading dominates every packed scheme on both axes at once.**
+The packed designs buy 25-30% of size for 20-65% of dispatch; token
+threading buys 81% of size for nothing. Under goal 3 it is also the
+simpler object: no shift register, no nibble alphabet, no SPECIAL
+escape, no hot-call table, no two-pass build.
+
+That closes the design question this pair of iterations was opened to
+answer. The tagged/packed direction, which several sessions and a long
+design conversation converged on, is the wrong one, and it took a
+measurement rather than an argument to establish that.
+
+### What this deliberately does not measure
+
+**Cache effects.** The streams are sized to run hot, so density gets no
+credit for touching less memory - this is the pessimistic case for
+packing, and on a real workload the packed schemes would do better than
+1.21x, possibly much better. It is the main reason these ratios are a
+guide to where to spend effort rather than a verdict.
+
+**A real engine.** This is a synthetic stream, not RelF executing.
+Real dispatch is interleaved with the primitives' own work, which
+dilutes decode cost as a share of runtime, so 1.21x here does not mean
+1.21x on `tests/bench`. The end-to-end experiment is still the one
+Iteration 133 specified, and `tests/bench` can now resolve about +/-4%
+on a ratio.
