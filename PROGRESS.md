@@ -204,6 +204,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **153** — the interactive prompt was on stdout, corrupting every piped script
 - **154** — two silent failures given diagnostics; a third found (`LINE-MAX`)
 - **155** — both images regenerated and checked; `tests/bench` made a measurement
+- **156** — encoding comparison against SOD32; the freeze; the data-address finding
 
 ### Not tied to an iteration
 
@@ -12373,3 +12374,100 @@ still be run twice.
 
 Neither change touches the shell or the engine; sizes, mrsh, the
 POSIX corpus and the differential suite are all unchanged.
+
+## Iteration 156: comparing encodings, with SOD32 in the table
+
+A design conversation about instruction encoding produced a lot that
+existed nowhere in the repository, including a proposal that Iteration
+132 had already measured and rejected. `ENCODING-COMPARISON.md` and
+`tools/encoding-census.py` exist so the next session inherits the
+numbers instead of re-deriving them.
+
+### The freeze
+
+`freeze/iter156-encoding-baseline` tags the tree these numbers come
+from. RelF is the right baseline for this comparison for a reason SOD32
+cannot match: it builds **both cell widths from one image**, so a
+scheme that saves cells can be distinguished from one that saves bytes.
+That distinction turns out to decide the whole question.
+
+### SOD32's real encoding, from the author's own source
+
+Fetched from `github.com/lennart-benschop/sod32` rather than
+reconstructed from memory. `sod32.txt` gives it exactly:
+
+    bit0=0 bit1=0   CALL     target in bits 31-2
+    bit0=0 bit1=1   JUMPZ    target in bits 31-2
+    bit0=1          six 5-bit subinstructions, bit31 = return flag
+
+Two things stand out against the schemes proposed in conversation.
+
+`5 bits x 6` is a better bit budget than `4 bits x 7`: 32 opcodes
+against 16, costing one slot the code does not use, because the mean
+run of packable primitives is 1.34 and 75.5% of runs are a single
+operation. Slot count is nearly free; opcode width is not.
+
+And **SOD32 has no unconditional branch**. It synthesises one as
+`push0` then `JUMPZ`, spending a subinstruction rather than a tag
+class. Unconditional branches are 365 sites against `?BRANCH`'s 863,
+so a whole tag class is poor value. Under goal 3 that is the more
+minimal design, and it is a twenty-year-old one.
+
+### The table
+
+Word bodies only, macros applied per scheme by profitability:
+
+| scheme | cells | i386 | x86-64 | vs today |
+|---|---|---|---|---|
+| RelF today | 16862 | 67448 | 134896 | 1.00x |
+| SOD32 authentic | 14639 | 58556 | 117112 | 0.87x |
+| SOD32 fields + inline literals | 12338 | 49352 | 98704 | 0.73x |
+| tagged nibble (4-bit x7) | 12692 | 50768 | 101536 | 0.75x |
+| tagged byte (8-bit x3/x7) | 12573 | 50292 | 100584 | 0.75x |
+| tagged byte + hot-call | 11759 | 47036 | 94072 | 0.70x |
+| token-threaded bytes | - | 25639 | 25639 | 0.38x / 0.19x |
+
+SOD32's format with one addition beats the nibble proposal and ties the
+byte one. Only token threading breaks the cell-width coupling, and
+x86-64 at 1.76x dash is where this project's size problem actually is.
+
+### The finding that outranks the table
+
+**45.7% of call sites are pushing a data address** - 2,557 sites over
+432 `VARIABLE`/`BUFFER:`/`CONSTANT` words, each paying a call, a
+`DOVAR` dispatch and a return to deliver a compile-time constant. The
+distribution is flat, so no small table captures it, but the operation
+is uniform and its payload is an address rather than an identity. None
+of the schemes above touches it. It is the largest unexploited
+regularity found and it has not been designed.
+
+It also settles an open question: variable references *are* compiled as
+calls, so the 452 data words consume call indices. Token threading's
+1,024-target extended call is therefore already over budget against
+1,060 dictionary entries - before any bash or busybox work. A third
+call width (one prefix, two index bytes, 65,536 targets) costs one
+first-byte value where widening by prefixes costs 256 targets each.
+
+### Two corrections to earlier work in this session
+
+The hot-call index, proposed and measured here, is the weakest idea in
+the table despite the best cell count: only 12.9% of call sites can
+actually fold, the rest sitting next to another call or branch where
+the pack is empty. It needs a two-pass build and a generated offset
+table and cannot include runtime-defined words. Recorded so it is not
+re-proposed.
+
+And the first version of the census resolved call targets as
+`addr + value` rather than `addr + CELL + value`, which is what `NEXT()`
+does - 24 of 6,548 calls resolved and the conclusions drawn from it
+were worthless. The tool now handles inline strings and `(LOOP)`
+operands too, which is why its op count (14,909) is lower and more
+trustworthy than the 19,104 quoted mid-conversation.
+
+### Still not measured
+
+Speed. Every number is size. Iteration 134's objection to two-bit tags
+- a second data-dependent test on the two hottest paths - is
+unanswered, and Iteration 133's stated experiment (build both,
+alternate `tests/bench`) is now runnable at about +/-4% on a ratio
+thanks to Iteration 155.
