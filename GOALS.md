@@ -345,7 +345,7 @@ every assertion as a failure.
 Not a goal in itself; infrastructure the rest of the project can use.
 Load with `S" locals.4" INCLUDED`.
 
-`shell.4` carries 181 global `VARIABLE`s, most of which are not global
+`shell.4` carries 356 global `VARIABLE`s, most of which are not global
 state at all but per-word scratch cells faked with a naming convention
 (`GM-*`, `NORM-*`, `SAEK-*`, …), because this kernel has no locals
 wordset. That is the *root cause* of the nesting limitations recorded
@@ -378,8 +378,8 @@ constraint given this file's own warning about `cross.4`'s hand-embedded
 primitive-dispatch token numbers.
 
 **In use since Iteration 39**: `relfsh` loads `locals.4` ahead of
-`shell.4`, and 31 words are converted. The dynamic-scoping property
-earned its keep immediately - words like `GLOB-MATCH` share their
+`shell.4`, and 71 of its 300 words are converted. The dynamic-scoping
+property earned its keep immediately - words like `GLOB-MATCH` share their
 scratch with helper words (`BRACKET-END`, `GLOB-CHAR-MATCHES?`), and
 the six `SPLIT-*`/`PARSE-REDIRECTIONS` words share the `PR-I` cursor
 with the `AT-*?` predicates; because a local *is* the variable, every
@@ -866,10 +866,16 @@ from an older revision of this file:
   reserved-word list (`shell.4` line 3155, so it is correctly refused
   as a command name) but the compound-command dispatcher tests only
   `while` and `for`, so `until ...; do ...; done` runs **nothing** and
-  exits 0. A POSIX compound command that is a silent no-op, unrecorded
-  here until Iteration 144 audited for it.
-- **`{ ... }` spanning lines drops every line but the last**, silently.
-  `SPLIT-GROUP` handles a group contained in one line only.
+  exits **127**, not 0 as this entry claimed until Iteration 151 -
+  the body never executes and `until` falls through to the "command
+  not found" path. A POSIX compound command that is a near-silent
+  no-op, unrecorded here until Iteration 144 audited for it.
+- **A multi-line `{ ... }` after `&&` returns 127**, though its body
+  runs and its output is correct. Corrected in Iteration 151: this
+  entry used to claim the construct "drops every line but the last",
+  which was **stale** - at the top level it works. The remaining
+  fault is one duplicated block, `shell.4` 4248 against 6936, where
+  only the second copy has the `ARGC @ 1 =` multi-line preamble.
 - **`&` is treated as a line terminator, not a list terminator.**
   `true & echo after` passes `&` and `echo` and `after` as arguments
   to `true`. A command may follow `&` on the same line.

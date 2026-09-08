@@ -198,6 +198,8 @@ marker for "still load-bearing". Find an entry by searching for
 - **147** — triage: the 21 failures are six faults; stop auditing, start fixing
 - **148** — the freeze: reproducible build, `tests/verify`, `tests/BASELINE`
 - **149** — revert 137; `GOALS.md` carries the whole plan
+- **150** — the shell image did not build from a path over ~36 characters
+- **151** — neither stack was bounded; overflow corrupted the dictionary
 
 ### Not tied to an iteration
 
@@ -11819,3 +11821,197 @@ produced it: measure the harness and not just the code (124, 135, 140,
 Both cell widths, images reproducing byte for byte, mrsh fully passed
 against the set upstream runs, 21 POSIX failures that are documented,
 reproducible, and grouped into six root causes.
+
+## Iteration 150: the shell image did not build from a long path
+
+A stabilization audit before the engine work, asked for on the
+grounds that `TOKEN-THREADING.md` touches `relf.c`, `cross.4`,
+`save-system.4` and every position-independence assumption at once,
+so anything shaky underneath would surface wearing an engine bug's
+clothes. This entry is the first of two fixes; the audit's other
+findings are listed at the end.
+
+### The bug
+
+`relfsh`'s `build_shell_img` interpolated `$DIR` into every line of
+the Forth bootstrap it feeds the engine. This kernel's `QUERY` reads
+a line with `TIB 80 ACCEPT`, and **an over-long line loses its tail
+in silence** - no diagnostic, no status, nothing. Confirmed directly:
+a bare `999 . CR` sitting at column 81 simply never runs.
+
+The longest generated line was the save:
+
+    S" $DIR/kernel-shell.img.tmp.$$" SAVE-SYSTEM
+
+Its length is `38 + len($DIR) + len($$)`, and the cliff is exact -
+measured by generating the line at controlled widths:
+
+| save-line length | result |
+|---|---|
+| 80 | BUILT |
+| 81 | FAILED SILENTLY |
+
+So the build stopped working once the repository sat deeper than
+about 36 characters. `/home/claude/relf` is 17 and had room;
+`/home/user/projects/forth/relf-shell` would not have.
+
+**The PID's digit count is part of that sum**, which makes the
+threshold nondeterministic - the same checkout builds or fails
+depending on the PID it happens to get. Measured: a 39-character path
+failed on eight consecutive attempts, a 36-character path built on
+three.
+
+### Why it would have been so confusing
+
+`build_shell_img` returns nonzero, and `relfsh` falls back to the
+source bootstrap. That path is ~128x slower *and* prints "Welcome to
+Forth" plus `Redefining:` lines to stdout, so every output-comparing
+test breaks at once, none of them anywhere near the cause. A
+developer hitting this while debugging a token-threaded image would
+have been chasing a path-length bug that looked like an engine bug.
+
+### The fix
+
+`cd` to `$DIR` in a subshell and feed relative filenames, so every
+line is a fixed length whatever the path. The `cd` stays inside the
+subshell deliberately: the parent must remain in the caller's
+directory or a `relfsh script.sh` argument resolves against the wrong
+place. `RELF_BIN`/`RELF_IMG` are resolved to absolute first, since a
+relative override (`RELF_BIN=./relf32`) would otherwise break across
+that `cd`. Verified building cleanly at 39, 60, 90 and 140 characters.
+
+### The check that could not have caught it
+
+`tests/verify`'s reproducibility test built twice **in the same
+directory**, which cannot distinguish "the build leaks nothing" from
+"both builds leaked the same thing". Leaking the build path is
+precisely the failure `save-system.4`'s own header describes, where
+the first prebuilt image carried the machine's directory and the
+builder's PID - so `SS-SCRUB`'s whole reason for existing was
+untested.
+
+`crosspath:kernel-shell.img` now builds under an 84-character path
+and compares byte for byte. It passes, which is also the first
+positive evidence that `SS-SCRUB` genuinely scrubs the path rather
+than both builds having leaked the same one. Confirmed non-hollow the
+way 122 says to: reverted `relfsh`, watched the check fail.
+
+## Iteration 151: neither stack was bounded
+
+`relf.c` set `dsp` and `rp` in `main()` and never looked at either
+again. There was no overflow check of any kind on either stack.
+
+### What actually happened on overflow
+
+Both stacks grow down. `rp` starts at `base + MEMSIZE`; `dsp` starts
+`RSTACK_BYTES` below it. Nothing stopped either from descending
+through the free middle of `mem[]` and into the dictionary, quietly
+rewriting compiled words from the top down. The SIGSEGV arrived much
+later, when the pointer finally walked off the bottom of the array -
+so **the corruption came first and the crash came long after**.
+
+That is exactly the symptom `relf.c`'s own `MEMSIZE` comment already
+recorded, without naming the cause: "corrupted compilation reported
+as 'Undefined word' against an empty name, nowhere near the actual
+cause."
+
+Measured before the fix, both cases exit 139 (128 + SIGSEGV) with
+nothing on stderr:
+
+    : OVF BEGIN 1 0 UNTIL ;  OVF     -> exit 139, silent
+    : DEEP RECURSE ;         DEEP    -> exit 139, silent
+
+### The fix, and why it is at the push sites
+
+A push is the only way either stack can grow, so `PUSH`/`RPUSH` is
+the complete set of sites. There is no cheaper subset that still
+catches runaway recursion *and* runaway loops: a check only at the
+colon-call path in `NEXT()` misses `BEGIN 1 0 UNTIL`, whose body
+contains no call at all.
+
+`DSTACK_BYTES` (256KB) puts the data stack's floor at 720,896 bytes
+from `base`. The largest image this project builds is the x86-64
+prebuilt shell at 206,024, so **the check fires with half a megabyte
+still between the stack and the dictionary** - strictly before any
+corruption rather than after it. This reserves nothing and moves
+nothing: `dsp` and `rp` start exactly where they always did, so
+`S0`/`R0` and every saved image are unaffected.
+
+Status 70 (`EX_SOFTWARE`) rather than 1, so a harness can tell an
+engine fault from a Forth-level `ABORT`. No attempt is made to
+recover into the interpreter: by the time either pointer is out of
+bounds the system has been running away for a while, and `ABORT`ing
+back into `QUIT` would need a working data stack to do it with.
+
+### Cost, measured
+
+`fib.4`, which is the most call- and push-dense workload in the
+repository, eight interleaved pairs to control for machine drift:
+
+| | mean | median | min |
+|---|---|---|---|
+| unchecked | 398.1ms | 396.5 | 390 |
+| checked | 407.6ms | 407.0 | 402 |
+
+**1.024x on the mean, 1.031x on the min** - so roughly 2.4-3.1% on
+the workload chosen to make it look worst. Stripped engine size is
+unchanged at 22,744 bytes, and both tracked size figures are
+untouched.
+
+That cost is accepted deliberately. Goal 3 ranks simplicity and
+correctness above raw performance, and this converts silent
+dictionary corruption into a named diagnostic on the exact code path
+the token-threading work is about to rearrange. For scale: Iteration
+137 was reverted for costing 42% of the loop benchmark; this is not
+that.
+
+### The test
+
+`tests/shell/run-engine-stacks`, 6 assertions. An engine test living
+in the shell suite because that is where the assertion helpers and
+the counting are; it drives `$RELF_BIN`/`$RELF_IMG` rather than
+`$THIS_SH`, since `relfsh` boots straight into the shell's `MAIN` and
+what is under test is the engine underneath. `tests/run_tests.sh`
+already sets those per cell width, so it runs against both builds.
+
+It asserts the diagnostic and the status on both stacks, **and that
+`fib.4` still completes with the right answer** - the check must not
+trade a rare crash for a common false positive. Confirmed non-hollow:
+against the old engine 4 of the 6 assertions fail, showing status 139
+and empty stderr.
+
+### Also found in the audit, not yet fixed
+
+Recorded so the next session has them without re-deriving:
+
+- **A duplicated block that has already diverged.** The group
+  dispatch sequence appears at `shell.4` 4248 and 6936; the second
+  has an `ARGC @ 1 =` multi-line preamble the first lacks. That
+  predicts a real defect and does produce one: a multi-line `{ }`
+  after `&&` gives correct output but **exit status 127**. No case
+  covers it, though `tests/diff` does compare status. This is the
+  class the duplication convention exists for.
+- **The interactive prompt goes to stdout, and prints when stdin is
+  not a terminal.** bash, dash, mksh, ksh, yash, posh and busybox all
+  suppress it and write prompts to stderr. It survives because
+  `tests/shell/lib.sh` uses substring assertions, justified in its
+  header by "RelF's own boot banner and CRLF line endings" - **both
+  of which Iteration 40 removed.** Verified: the current shell emits
+  no banner and no CR. The justification expired; the weakened
+  assertions did not. The prompt is now the only thing blocking
+  exact-output comparison in that layer.
+- **`MAX-ARGS` (64) still fails silently.** 70 arguments truncate to
+  62 plus a spurious `0`, and `set --` then reports 9. Iteration 90's
+  diagnostics reached `SET-SHVAR`, `SET-FUNC` and the positional
+  stack, but not this path. `MAX-ALIASES` does diagnose correctly.
+- **Nine dead variables** in `shell.4`, one occurrence each:
+  `IN-ASSIGN-CONTEXT?`, `PW-FID`, `WT-PID`, `FDL-I`, `WHILE-BODY-I`,
+  `WHILE-BODY-CUR`, `CASE-PATLAST-LEN`, `FD-ADDR`, `FD-LEN`.
+- **Two stale claims in `GOALS.md`**, both corrected in this commit.
+  All fifteen "Still open" items were re-tested against bash; thirteen
+  reproduce exactly.
+
+The duplication finding came from inspecting only the two largest
+repeated blocks. A full pass over 7,091 lines would likely surface
+more of the same class, and it should be its own iteration rather
+than folded into a fix.

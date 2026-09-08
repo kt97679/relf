@@ -1,0 +1,57 @@
+#!/bin/sh
+# tests/shell/run-engine-stacks - exhausting either stack must produce a
+# named diagnostic, not a segfault (Iteration 151).
+#
+# Before this, neither stack was bounded at all. dsp descended out of
+# its own region, through free space, and into the dictionary, quietly
+# rewriting compiled words from the top down; the SIGSEGV arrived much
+# later, when it finally walked off the bottom of mem[]. relf.c's own
+# MEMSIZE comment already recorded the symptom - "Undefined word"
+# against an empty name - without naming the cause. Both cases exited
+# 139 with nothing on stderr.
+#
+# This is an ENGINE test living in the shell suite because that is
+# where the assertion helpers and the counting are. It deliberately
+# does not use $THIS_SH: relfsh boots straight into the shell's MAIN,
+# and what is under test is the Forth engine underneath it. It drives
+# $RELF_BIN/$RELF_IMG instead, which tests/run_tests.sh already sets
+# per cell width, so this runs against both the 8-byte and 4-byte
+# builds without a second copy.
+. "$(dirname "$0")/lib.sh"
+
+# Same defaults relfsh uses, so the file also works when run directly
+# through run-all with nothing set.
+D=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd) || exit 1
+BIN=${RELF_BIN:-"$D/relf"}
+IMG=${RELF_IMG:-"$D/kernel.img"}
+
+# 70 is EX_SOFTWARE, chosen so a harness can tell an engine fault from
+# a Forth-level ABORT. 139 is the old behaviour (128 + SIGSEGV) and is
+# what regressing would produce.
+check() {
+    # $1 = label, $2 = expected stderr substring, $3 = forth source
+    out=$(printf '%s' "$3" | timeout 20 "$BIN" "$IMG" 2>&1 >/dev/null)
+    st=$?
+    assert_output_contains "$1 is diagnosed" "$2" "$out"
+    assert_status "$1 exits 70, not a signal" "70" "$st"
+}
+
+check "data stack overflow" "data stack overflow" \
+': OVF BEGIN 1 0 UNTIL ;
+OVF
+'
+
+check "return stack overflow" "return stack overflow" \
+': DEEP RECURSE ;
+DEEP
+'
+
+# The check must not fire on ordinary deep-but-bounded work, or it
+# would be trading a rare crash for a common false positive. fib.4
+# recurses to depth 34 and pushes hard throughout.
+out=$(timeout 60 "$BIN" "$IMG" < "$D/fib.4" 2>&1)
+st=$?
+assert_status "fib.4 still completes" "0" "$st"
+assert_output_contains "fib.4 result unaffected by the bounds check" "9227465" "$out"
+
+report

@@ -74,6 +74,24 @@ typedef int32_t  INT64;
  *  "recursion too deep". A limit that pre-empts a higher-level one
  *  turns a diagnosable error into a crash.  */
 #define RSTACK_BYTES 65536
+/*  Room the data stack is allowed to occupy before it is declared
+ *  overflowed. Nothing enforced this until Iteration 151: dsp simply
+ *  descended out of its own region, through free space, and into the
+ *  dictionary, silently rewriting compiled words from the top down
+ *  until it eventually walked off the bottom of mem[] and took a
+ *  SIGSEGV. The corruption came first and the crash came much later,
+ *  which is why the symptom recorded above - "Undefined word" against
+ *  an empty name - points nowhere near the cause.
+ *
+ *  256KB is 32768 cells at 8-byte width. The floor it puts under the
+ *  data stack sits at MEMSIZE-RSTACK_BYTES-DSTACK_BYTES = 720,896
+ *  bytes from base, and the largest image this project builds (the
+ *  x86-64 prebuilt shell) ends at 206,024 - so the check fires with
+ *  half a megabyte still between the stack and the dictionary, i.e.
+ *  strictly BEFORE any corruption rather than after it. This reserves
+ *  nothing and moves nothing: dsp and rp start exactly where they
+ *  always did, so S0/R0 and every saved image are unaffected.  */
+#define DSTACK_BYTES 262144
 
 /*
  *  Macroses for memory access. Plain native access, both cell- and
@@ -97,8 +115,18 @@ typedef int32_t  INT64;
 #define DS1      CELL(dsp + CELL_BYTES)      /* 2nd element on d.stack  */
 #define DS2      CELL(dsp + 2 * CELL_BYTES)  /* 3d element on d.stack   */
 #define DS3      CELL(dsp + 3 * CELL_BYTES)  /* 4th element on d.stack  */
-#define PUSH(x)  dsp -= CELL_BYTES; DS0 = x  /* pushes x to data stack  */
-#define RPUSH(x) rp -= CELL_BYTES; RS = x    /* pushes x to return stack*/
+/*  Both stacks grow DOWN, and both are checked on every push. A push
+ *  is the only way either of them can grow, so this is the complete
+ *  set of sites - there is no cheaper subset that still catches
+ *  runaway recursion and runaway loops both. Measured on fib.4, which
+ *  is call- and push-dense by construction: see PROGRESS.md's
+ *  Iteration 151 entry for the numbers.  */
+#define PUSH(x)  do { dsp -= CELL_BYTES;                              \
+                      if (dsp < dsp_limit) stack_fault(0);            \
+                      DS0 = x; } while (0)  /* pushes x to data stack  */
+#define RPUSH(x) do { rp -= CELL_BYTES;                               \
+                      if (rp < rp_limit) stack_fault(1);              \
+                      RS = x; } while (0)   /* pushes x to return stack*/
 
 /*
  *  VM memory. +(CELL_BYTES-1) is necessary to be able to allocate
@@ -122,6 +150,13 @@ static UNS64  rp; /* return stack pointer              */
 static UNS64 dsp; /* data stack pointer                */
 static UNS64   t; /* variable for temporary storage    */
 
+/*  Floors for the two stacks, both set once in main() and never
+ *  changed. Kept as plain variables rather than recomputed from base
+ *  at each check so the hot path compares against something already
+ *  in a register.  */
+static UNS64 dsp_limit; /* data stack may not descend below this   */
+static UNS64  rp_limit; /* return stack may not descend below this */
+
 /*
  *  8-byte magic every image starts with: "RELF" + cell width + 3
  *  reserved bytes. Always 8 bytes on disk regardless of the engine's
@@ -138,6 +173,7 @@ static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', CELL_BYTES, 0, 0, 0 };
  */
 
 static void write_str(int fd, const char *s);
+static void stack_fault(int which);
 
 /* Read/write the full requested amount, looping over short reads/writes.
  * Returns bytes transferred, or a negative value on a real error. */
@@ -167,6 +203,25 @@ static long full_write(int fd, const void *buf, long count) {
 
 static void write_str(int fd, const char *s) {
     (void)full_write(fd, s, (long)strlen(s));
+}
+
+/*
+ *  Report an exhausted stack and stop. There is deliberately no
+ *  attempt to recover into the Forth interpreter: by the time either
+ *  pointer is out of bounds the system has usually been running away
+ *  for a while, and ABORTing back into QUIT would need a working data
+ *  stack to do it with. Diagnosing the condition is the whole point -
+ *  what this replaces is silent dictionary corruption followed much
+ *  later by a bare "Segmentation fault", which named neither the
+ *  stack involved nor the fact that a stack was involved at all.
+ *
+ *  Status 70 (EX_SOFTWARE) rather than 1, so a test harness can tell
+ *  an engine fault from a Forth-level ABORT.
+ */
+static void stack_fault(int which) {
+    write_str(2, which ? "relf: return stack overflow\n"
+                       : "relf: data stack overflow\n");
+    exit(70);
 }
 
 /*
@@ -683,6 +738,9 @@ int main(int argc, char **argv) {
     ip = (UNS64)(uintptr_t)base;
     rp = ip + MEMSIZE;
     dsp = ip + MEMSIZE - RSTACK_BYTES;
+    /*  Set before the first PUSH below, which is itself checked.  */
+    rp_limit  = ip + MEMSIZE - RSTACK_BYTES;
+    dsp_limit = ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
     PUSH(ip);
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */
