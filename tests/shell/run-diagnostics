@@ -1,0 +1,73 @@
+#!/bin/sh
+# tests/shell/run-diagnostics - failures that used to be silent must
+# say something, on stderr, without touching stdout (Iteration 154).
+#
+# Two separate silences, both found by the Iteration 151 audit:
+#
+#   relfsh -c nosuchcommand   exited 127 with BOTH streams empty
+#   echo <70 words>           ran the command with 62 of them
+#
+# The first is why Iteration 152's status-127 bug looked like correct
+# output: a stray '{' segment was being run as a command name and
+# failing without a word. The second is worse than a diagnostic-free
+# error - it ran a command the script did not write.
+#
+# Every assertion here checks stdout separately from stderr. A
+# diagnostic that lands on stdout is the Iteration 153 bug again, and
+# in a pipeline it would become the next stage's input.
+. "$(dirname "$0")/lib.sh"
+
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+# --- command not found ---------------------------------------------
+
+out=$(timeout 10 "$THIS_SH" -c 'nosuchcommand' 2>/dev/null)
+assert_output_equals "unknown command writes nothing to stdout" "" "$out"
+
+err=$(timeout 10 "$THIS_SH" -c 'nosuchcommand' 2>&1 >/dev/null)
+assert_output_contains "unknown command is reported" "command not found" "$err"
+assert_output_contains "the report names the command" "nosuchcommand" "$err"
+
+timeout 10 "$THIS_SH" -c 'nosuchcommand' >/dev/null 2>&1
+assert_status "unknown command still exits 127" "127" "$?"
+
+# In a pipeline the diagnostic must not enter the pipe: the child's
+# stdout belongs to the next stage.
+out=$(timeout 10 "$THIS_SH" -c 'nosuchcommand | cat' 2>/dev/null)
+assert_output_equals "pipeline stage's diagnostic stays out of the pipe" "" "$out"
+
+# A command that DOES exist must not acquire a diagnostic.
+err=$(timeout 10 "$THIS_SH" -c 'echo hi' 2>&1 >/dev/null)
+assert_output_equals "a successful command reports nothing" "" "$err"
+
+# --- too many arguments ---------------------------------------------
+
+# 70 one-character words, deliberately: MAX-ARGS is 64, and keeping
+# the words short holds the whole line under LINE-MAX so this tests
+# the argument limit rather than the line limit.
+i=0; args=""
+while [ "$i" -lt 70 ]; do args="$args a"; i=$((i + 1)); done
+printf 'echo%s\n' "$args" > "$t/many.sh"
+
+out=$(timeout 10 "$THIS_SH" "$t/many.sh" 2>/dev/null)
+assert_output_equals "over-long argument list runs nothing" "" "$out"
+
+err=$(timeout 10 "$THIS_SH" "$t/many.sh" 2>&1 >/dev/null)
+assert_output_contains "over-long argument list is reported" "too many arguments" "$err"
+
+timeout 10 "$THIS_SH" "$t/many.sh" >/dev/null 2>&1
+assert_status "over-long argument list fails" "1" "$?"
+
+# The limit must not have moved down onto ordinary lines. 50 words is
+# comfortably under MAX-ARGS and must still run, silently.
+i=0; args=""
+while [ "$i" -lt 50 ]; do args="$args b"; i=$((i + 1)); done
+printf 'echo%s\n' "$args" > "$t/ok.sh"
+
+out=$(timeout 10 "$THIS_SH" "$t/ok.sh" 2>/dev/null | wc -w | tr -d ' ')
+assert_output_equals "50 arguments still run" "50" "$out"
+
+err=$(timeout 10 "$THIS_SH" "$t/ok.sh" 2>&1 >/dev/null)
+assert_output_equals "50 arguments report nothing" "" "$err"
+
+report

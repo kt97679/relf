@@ -33,6 +33,16 @@
 
 256 CONSTANT LINE-MAX
 64  CONSTANT MAX-ARGS
+
+VARIABLE ARGS-OVERFLOW?
+\ Set whenever a word had to be dropped because ARGV is full, and
+\ reported once per line by RUN-LINE. Until Iteration 154 hitting
+\ MAX-ARGS was completely silent: 70 arguments came back as 62 plus a
+\ spurious empty one, and `set -- <70 words>; echo $#` printed 9. The
+\ command then RAN, with a quietly different argument list than the
+\ script asked for, which is the worst of the available behaviours.
+\ Iteration 90 gave diagnostics to SET-SHVAR, SET-FUNC and the
+\ positional-parameter stack but never reached this path.
 256 CONSTANT PATH-MAX
 
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
@@ -187,6 +197,31 @@ VARIABLE LOOP-DEPTH        \ how many while/for loops are currently
 
 : CSTRLEN ( c-addr --- u )
   DUP BEGIN DUP C@ WHILE CHAR+ REPEAT SWAP - ;
+
+\ ------------------------------------------------------------------
+\ Writing to stderr.
+\
+\ Forth's `."` and TYPE go to stdout, which is wrong for every
+\ diagnostic a shell produces: POSIX puts them on fd 2, and a script
+\ that redirects stdout must still see its errors. Defined this early
+\ because RUN-CHILD needs them, ~2400 lines above where the
+\ interactive prompt (the other fd 2 writer) lives.
+\
+\ Note that shell.4's OLDER diagnostics - "cd: no such directory",
+\ "shell: syntax error: ...", "alias: too many aliases" and the rest -
+\ still use `."` and so still go to stdout. Moving them is a separate
+\ change with its own test churn, recorded in PROGRESS.md rather than
+\ folded in here.
+\ ------------------------------------------------------------------
+CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
+                     \ compile in this kernel - the definition fails
+                     \ to complete and the word comes back undefined -
+                     \ so a byte constant is how to write exactly one
+                     \ newline and nothing else.
+
+: ERR-TYPE ( c-addr u --- )   2 WRITE-FILE DROP ;
+: ERR-CSTR ( c-addr --- )     DUP CSTRLEN ERR-TYPE ;
+: ERR-NL   ( --- )            SH-NL 1 ERR-TYPE ;
 
 VARIABLE PARSE-N
 
@@ -838,6 +873,8 @@ VARIABLE IFSC-P
   ARGC @ MAX-ARGS 1- < IF
     ARGC @ 1+ ARGC !
     TOK-OUT @ 1+ ARGV ARGC @ CELLS + !
+  ELSE
+    -1 ARGS-OVERFLOW? !
   THEN
   TOK-OUT @ 1+ TOK-OUT ! ;
 
@@ -2607,7 +2644,22 @@ VARIABLE PATH-END2
     ARGV ARGV @ EXECVE DROP
   ELSE
     SEARCH-PATH
-  THEN ;
+  THEN
+  \ Reached only when the exec failed, which every caller follows with
+  \ `127 SYS-EXIT`. Until Iteration 154 nothing was printed at all:
+  \ `relfsh -c nosuchcommand` exited 127 with BOTH streams empty,
+  \ where every reference shell reports on stderr. That silence is
+  \ why Iteration 152's status-127 bug looked like correct output -
+  \ the stray `{` segment was being run as a command name and failing
+  \ without a word.
+  \
+  \ On fd 2 via ERR-*, not `."`: this runs in the forked child, whose
+  \ stdout may be a pipe belonging to the next stage of a pipeline,
+  \ and a diagnostic must not become that stage's input.
+  S" shell: " ERR-TYPE
+  ARGV @ ERR-CSTR
+  S" : command not found" ERR-TYPE
+  ERR-NL ;
 
 \ ==================================================================
 \ Builtins - these must run in the shell's own process (not a forked
@@ -3573,8 +3625,6 @@ VARIABLE WT-PID
                               in v0.1 - see PROGRESS.md )
     LAST-STATUS !
   THEN ;
-
-CREATE SH-NL 10 C,   \ a single newline byte, for writing to fd 2
 
 : SH-PROMPT ( --- )
   \ To fd 2, not stdout. Every reference shell - bash, dash, mksh,
@@ -4691,6 +4741,12 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
     NORM-WSTART @                    NORM-WORDS NORM-WCOUNT @ CELLS + !
     NORM-LEN @ NORM-WSTART @ -       NORM-WLENS NORM-WCOUNT @ CELLS + !
     NORM-WCOUNT @ 1+ NORM-WCOUNT !
+  ELSE
+    \ This, not the tokenizer, is where a too-long line actually loses
+    \ its words: NORM-WORDS is MAX-ARGS cells, so NORM-WCOUNT is
+    \ already capped by the time TOKENIZE-RAW reads it, and a check
+    \ there can never see the overflow.
+    -1 ARGS-OVERFLOW? !
   THEN
   -1 NORM-WSTART ! ;
 
@@ -7021,6 +7077,16 @@ VARIABLE PP-BAR
   UNTERMINATED-QUOTE? @ IF
     ." shell: syntax error: unterminated quote" CR
     2 LAST-STATUS ! EXIT
+  THEN
+  \ A line with more words than ARGV holds is refused rather than run
+  \ short. Running it would execute a command the script did not
+  \ write, which is strictly worse than not running it - and the old
+  \ behaviour did exactly that, silently. Reported on fd 2, like the
+  \ other Iteration 154 diagnostic and unlike the older ones above.
+  ARGS-OVERFLOW? @ IF
+    0 ARGS-OVERFLOW? !
+    S" shell: too many arguments" ERR-TYPE ERR-NL
+    1 LAST-STATUS ! EXIT
   THEN
   RUN-TOKENIZED-CALL ;
 ' RUN-LINE IS RUN-LINE-CALL

@@ -202,6 +202,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **151** — neither stack was bounded; overflow corrupted the dictionary
 - **152** — one duplicated block had drifted; `true && {` left status 127
 - **153** — the interactive prompt was on stdout, corrupting every piped script
+- **154** — two silent failures given diagnostics; a third found (`LINE-MAX`)
 
 ### Not tied to an iteration
 
@@ -12180,3 +12181,92 @@ here.
 
 Also outstanding: `MAX-ARGS` failing silently at 64, the nine dead
 variables, and the rest of the duplication pass.
+
+## Iteration 154: two silent failures, and a third found by fixing them
+
+Continues the theme of 150-153: this project's characteristic bug is
+not a wrong answer, it is a wrong answer delivered without a word.
+
+### 1. No "command not found"
+
+`relfsh -c nosuchcommand` exited 127 with **both streams empty**.
+`RUN-CHILD` is documented as returning only on total failure, and
+every caller follows it with `127 SYS-EXIT`; nothing in between said
+anything.
+
+This is why Iteration 152's status-127 bug read as correct output -
+the stray `{` segment was being run as a command name and failing
+silently. One missing diagnostic hid another bug for an unknown number
+of iterations.
+
+Now `shell: <name>: command not found` on fd 2. Placed inside
+`RUN-CHILD` so all four call sites get it. On fd 2 specifically
+because this runs in the forked child, whose stdout may be the next
+stage of a pipeline - verified that `nosuchcommand | cat` still gives
+empty stdout, matching bash.
+
+### 2. `MAX-ARGS` truncating in silence
+
+70 arguments came back as 62 plus a spurious empty one, and
+`set -- <70 words>; echo $#` printed 9. The command then **ran**,
+with an argument list the script did not write. Iteration 90 gave
+diagnostics to `SET-SHVAR`, `SET-FUNC` and the positional stack but
+never reached this path.
+
+Now `shell: too many arguments` on fd 2, status 1, and the line is
+**not run**. Executing a command with quietly different arguments is
+worse than refusing it.
+
+**The instructive part** is where the flag had to go. The obvious
+site is `TOKENIZE-RAW`, whose loop carries `ARGC @ MAX-ARGS 1- <`.
+A check there never fires: `NORM-WORDS` is itself `MAX-ARGS` cells,
+so `NORM-WCOUNT` is already capped by the time the tokenizer reads
+it, and `TK-I` can never exceed it. The words are lost ~2500 lines
+earlier, in the normalizer's word-recording step. The first attempt
+was written at the obvious site, produced no diagnostic at all, and
+was only caught by running it - 122's rule, check *why* a test
+passes, in its negative form.
+
+### 3. A third silence, exposed by the first fix
+
+With "command not found" in place, the 70-argument test printed an
+extra `shell: 65: command not found`. That is not the argument limit.
+**`LINE-MAX` is 256, and a script line longer than that has its tail
+executed as a separate command.**
+
+    linelen=256  ->  runs correctly
+    linelen=260  ->  runs, then runs "xxxx..." as a command
+    linelen=500  ->  runs, then runs the remainder
+
+Same class as Iteration 150's `TIB 80 ACCEPT`, but worse: there the
+tail was discarded, here it is *executed*. A 300-character line runs
+a command nobody wrote. Not fixed here - `READ-LINE` returning
+exactly `LINE-MAX` cannot be distinguished from a longer line without
+a lookahead, so the fix needs a design rather than a patch, and this
+entry is already two fixes long. It is the strongest remaining item
+in the backlog.
+
+### Stderr, and the older diagnostics
+
+`ERR-TYPE`/`ERR-CSTR`/`ERR-NL` are defined right after `CSTRLEN`,
+early enough for `RUN-CHILD`. `shell.4`'s **older** diagnostics -
+"cd: no such directory", "shell: syntax error: ...", "alias: too many
+aliases" - still use `."` and so still go to **stdout**, which is
+wrong for the same reason 153's prompt was wrong. Moving them is a
+separate change with its own test churn; recorded here rather than
+folded in.
+
+### Tests
+
+`tests/shell/run-diagnostics`, 11 assertions. Every one checks stdout
+separately from stderr, since a diagnostic landing on stdout is 153's
+bug returning. Includes the pipeline case, a successful command
+asserting **empty** stderr, and 50 arguments still running silently so
+a fix that moved the limit down could not pass. The 70-argument case
+uses one-character words on purpose, keeping the line under
+`LINE-MAX` so it tests the argument limit and not finding 3 above.
+Confirmed non-hollow: 5 of 11 fail against the old `shell.4`.
+
+Sizes: i386 127,356 -> 127,684, x86-64 228,592 -> 229,160. mrsh, the
+POSIX corpus and the differential suite are unchanged; both images
+reproduce on both cell widths.
