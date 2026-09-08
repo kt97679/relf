@@ -205,7 +205,8 @@ marker for "still load-bearing". Find an entry by searching for
 - **154** — two silent failures given diagnostics; a third found (`LINE-MAX`)
 - **155** — both images regenerated and checked; `tests/bench` made a measurement
 - **156** — encoding comparison against SOD32; the freeze; the data-address finding
-- **157** — the speed half: packing costs 20-66%, token threading costs nothing
+- **157** — the speed half: packing costs 20-66%; the threading figure was wrong
+- **158** — variable-length tokens, and what the word table costs as it grows
 
 ### Not tied to an iteration
 
@@ -12552,3 +12553,103 @@ dilutes decode cost as a share of runtime, so 1.21x here does not mean
 1.21x on `tests/bench`. The end-to-end experiment is still the one
 Iteration 133 specified, and `tests/bench` can now resolve about +/-4%
 on a ratio.
+
+## Iteration 158: variable-length tokens, and the table nobody costed
+
+### First, a correction to Iteration 157
+
+157 reported token threading at 0.985 - marginally FASTER than cell
+dispatch - and concluded it "costs nothing". That was wrong, and wrong
+in a way this repository has a rule about.
+
+The figure came from `tools/dispatch-bench.c` at its single built-in
+stream size, 2^22 operations, where the cell stream is 32MB against the
+byte stream's 6.8MB. This machine's L2 is 2MB. Both streams miss, but
+the cell stream misses 4.9x harder, so the number was measuring memory
+traffic and being read as a decode result. Varying the working set:
+
+    stream (cell)      byte/cell-offset
+      16 KB (L1)            1.063
+     128 KB                 1.064
+       1 MB                 1.059
+      32 MB                 1.002
+
+Token threading costs about **6% in decode**, repaid only when the
+working set is large. `pack-bench.c`'s header claim that its streams
+"run hot" was false for the same reason - they are 13-18MB.
+
+The packed schemes' penalty, by contrast, holds at every size (pack5
+1.27 at 9KB, 1.23 at 18MB), so 157's central conclusion - packing is
+the wrong direction - survives. What does not survive is "threading is
+free".
+
+### Variable-length tokens
+
+`tools/varint-bench.c`. A continuation-bit encoding, UTF-8 in shape:
+
+    0xxxxxxx                  opcode 0..127
+    1xxxxxxx 0yyyyyyy         14-bit token
+    1xxxxxxx 1yyyyyyy 0zzz..  21-bit, and onward without limit
+
+This removes the ceiling that `TOKEN-THREADING.md`'s fixed 2-byte call
+has, and that ceiling is not hypothetical: 1,024 targets against 1,060
+dictionary entries today, variables included.
+
+Against the fixed 2-byte form, same tool, near-identical loops:
+
+    working set small   varint 1.03   two-byte case peeled 0.84
+    working set large   varint 1.12   peeled 1.10
+
+2-3% when cache-resident, 11-12% when not, for under 2% more bytes.
+And the comparison flatters the fixed form, which masks its index to 10
+bits and so cannot represent the 20,000 targets in the stream at all.
+
+### What the word table costs as the dictionary grows
+
+The question that had not been asked. Every indexed encoding needs a
+`wordtab` lookup; RelF needs none, because the offset IS the
+instruction. Sweeping the word count at a fixed stream size:
+
+    words      table     varint/cell
+      1,000      7 KB       0.735
+      8,000     62 KB       0.727
+     65,000    507 KB       0.820
+    500,000   3906 KB       0.815
+  2,000,000   15.6 MB       0.824
+
+**The indexed scheme loses ~12% of its advantage once the table stops
+fitting in L2**, with the knee between 8,000 and 65,000 words. RelF
+pays none of this, and the cost grows in exactly the regime the project
+is aiming at - bash compatibility plus busybox-style applets, where the
+definition count is the thing that is supposed to grow without limit.
+
+The `fixed` column appears immune only because its 15-bit index cannot
+address beyond 32,767 words, so it keeps touching a smaller footprint.
+Not a result.
+
+### Where this leaves the comparison
+
+Density and dispatch pull in opposite directions and both depend on
+scale:
+
+  - packing: 1.35x density, 20-66% dispatch cost, at every size. Ruled
+    out by 157 and nothing here changes that.
+  - indexed byte tokens: ~5-7x density, ~6% decode cost, plus a table
+    cost that starts near zero and reaches ~12% at 65,000 words.
+  - RelF today: no table, no decode cost, and a cell per operation.
+
+157's claim that token threading "dominates on both axes" does not
+survive. It dominates on density; on dispatch it is behind, and falls
+further behind as the dictionary grows.
+
+### Unreconciled, and it matters
+
+`varint-bench.c` and `dispatch-bench.c` DISAGREE about the cell
+baseline: here cell is slower than byte at every size (0.69-0.83),
+there byte is ~6% slower at L1 sizes. Two tools, two answers, not
+reconciled - most likely the loops are not doing equivalent work per
+iteration. Trust the within-tool comparisons (varint vs fixed, and the
+word-count sweep); do not trust either tool's cell baseline until they
+agree. Three times in this line of work a dispatch ratio has turned out
+to be measuring something other than dispatch, and each time the cause
+was a single configuration with no cross-check.
