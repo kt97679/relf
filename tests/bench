@@ -4,12 +4,98 @@
 #
 #   loop      pure interpretation, no external commands
 #   spawn     a loop that runs /bin/true - dominated by fork/exec
-#   startup   how long the shell takes to start and exit
+#   startup   how long the shell takes to start and exit, x100
 #
 # The three differ by orders of magnitude, and quoting only one of them
 # would misrepresent the shell either way.
+#
+# ==================================================================
+# WHAT IS MEASURED, AND WHAT THE ERROR MEANS
+# ==================================================================
+#
+# Rewritten in Iteration 155. The previous version took exactly ONE
+# timing per shell per workload and printed it as a bare number. That
+# is a sample, not a measurement, and it was being used to decide an
+# architectural question.
+#
+# The question it has to serve is TOKEN-THREADING.md's:
+#
+#     "If that experiment says 1.15x or worse, this proposal is a size
+#      change that costs speed."
+#
+# So the instrument has to resolve 15%. Measured on the machine this
+# was written on, the loop workload has a per-run coefficient of
+# variation around 3.5%. A single run therefore carries roughly +/-7%
+# at 95% confidence, and the DIFFERENCE of two single runs about
+# +/-10% - against a 15% threshold. A borderline result could not have
+# been called. For scale, Iteration 151's stack bounds cost 2.4-3.1%,
+# which the old harness could not see at all.
+#
+# What this reports now:
+#
+#   quantity   the arithmetic MEAN of the retained samples, in ms
+#   +/-        the half-width of a 95% confidence interval on that
+#              mean, as a percentage of it: t(0.975, n-1) * s / sqrt(n)
+#
+# The interval is on the MEAN, not on a single future run, and it is
+# the ordinary Student-t interval, so it assumes the retained samples
+# are independent and roughly symmetric. Timing data is right-skewed -
+# a scheduler hiccup can only make a run slower, never faster - so min
+# and median are printed alongside as a skew check. If mean sits well
+# above median the distribution has a tail and the interval understates
+# the true uncertainty; say so rather than quoting it.
+#
+# It is a within-machine, within-session interval. It says nothing
+# about other hardware, and comparing a number here against one
+# recorded in a document written on another machine measures nothing.
+#
+# METHOD
+#
+#   - BENCH_REPS samples per cell (default 7). Raise it for a decision.
+#   - The first BENCH_WARMUP rounds (default 1) are discarded, not
+#     averaged in: the first touch of an image pays page-cache and
+#     branch-predictor costs the rest do not.
+#   - Rounds are INTERLEAVED across shells - every shell sampled once,
+#     then again - so drift over the run (thermal, other load) is
+#     charged equally to all of them instead of landing on whichever
+#     was timed last. Measuring A fully, then B fully, is the easiest
+#     way to manufacture a difference that is not there.
+#
+# Raising BENCH_REPS does NOT monotonically improve the interval, and
+# it is worth knowing why before trusting a long run. Measured here:
+# n=5 gave +/-3.7% on the loop ratio and n=15 gave +/-7.2%, with mean
+# above median in the longer run. The variance is not stationary - a
+# longer run spans more of whatever else the machine is doing - so a
+# bigger n buys a better estimate of a distribution that is itself
+# moving. Interleaving is what protects the COMPARISON from this;
+# nothing protects the absolute numbers. Treat a single bench run as
+# one observation of the instrument, not as the truth, and prefer two
+# runs that agree over one long one.
+#
+# RESOLUTION
+#
+# The footer prints, per workload, the smallest relative difference
+# this run could distinguish at 95% confidence - about sqrt(2) times
+# the worst half-width in the row, since uncertainty on a difference
+# compounds. If that is not comfortably below the effect being argued
+# about, the run does not settle the question, and the honest response
+# is to raise BENCH_REPS rather than quote the point estimate.
+#
+# WHAT COUNTS AS A FAILED MEASUREMENT
+#
+# A shell that cannot start looks tremendously fast: everything below
+# redirects to /dev/null, so a failure is timed like a success. That
+# happened for real in Iteration 116 - a git worktree with no built
+# binary reported 6ms for a hundred fork/exec pairs, which is
+# physically impossible, and the number was believed for a minute.
+# Every shell is probed before it is timed, by OUTPUT rather than exit
+# status: the raw engine row does not report a shell's exit status, so
+# a status check would reject a working shell.
 set -u
+
 THIS_SH="${THIS_SH:-./relfsh}"
+REPS=${BENCH_REPS:-7}
+WARMUP=${BENCH_WARMUP:-1}
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
 cat > "$t/loop.sh" <<'X'
@@ -27,30 +113,22 @@ do
   i=$((i+1))
 done
 X
-
-# A shell that cannot start looks tremendously fast: everything below
-# redirects to /dev/null, so a failure is timed like a success. That
-# happened for real in Iteration 116 - a git worktree with no built
-# binary reported 6ms for a hundred fork/exec pairs, which is
-# physically impossible, and the number was believed for a minute.
-# Run it once first and refuse to report if it does not exit 0.
-# Checked by output rather than by exit status: the raw engine row
-# ("./relf kernel-shell.img") does not report a shell's exit status,
-# so a status check would reject a working shell.
 printf 'echo bench-probe\n' > "$t/probe.sh"
-check_shell() {   # check_shell SHELL
+
+check_shell() {
     if [ "$($1 "$t/probe.sh" 2>/dev/null)" != "bench-probe" ]; then
         echo "bench: $1 cannot run a script - refusing to time it" >&2
         exit 1
     fi
 }
-time_it() {   # time_it SHELL SCRIPT -> milliseconds
-    check_shell "$1"
+
+time_script() {
     s=$(date +%s%N)
     $1 "$2" >/dev/null 2>&1
     e=$(date +%s%N)
     echo $(( (e - s) / 1000000 ))
 }
+
 time_start() {
     s=$(date +%s%N)
     i=0
@@ -59,14 +137,123 @@ time_start() {
     echo $(( (e - s) / 1000000 ))
 }
 
-printf '%-10s %10s %10s %10s\n' shell loop-ms spawn-ms start-ms
-# The direct engine invocation is measured alongside the wrapper:
-# relfsh is a /bin/sh script, and that fork costs more than loading the
-# image does (Iteration 94).
+# Student-t two-sided 95% critical values by degrees of freedom, rather
+# than 1.96, because the default n is small: at n=7, 1.96 understates
+# the interval by about 25%.
+stats() {   # stats FILE -> "mean halfwidth_pct min median n"
+    awk '
+    { v[n++] = $1 }
+    END {
+        if (n == 0) { print "0 0 0 0 0"; exit }
+        for (i = 0; i < n; i++) sum += v[i]
+        mean = sum / n
+        for (i = 0; i < n; i++) { d = v[i] - mean; ss += d * d }
+        sd = (n > 1) ? sqrt(ss / (n - 1)) : 0
+        split("12.706 4.303 3.182 2.776 2.571 2.447 2.365 2.306 2.262 2.228 2.201 2.179 2.160 2.145 2.131 2.120 2.110 2.101 2.093 2.086 2.080 2.074 2.069 2.064 2.060 2.056 2.052 2.048 2.045 2.042", tt, " ")
+        df = n - 1
+        tv = (df >= 1 && df <= 30) ? tt[df] : 1.960
+        hw = (n > 1) ? tv * sd / sqrt(n) : 0
+        pct = (mean > 0) ? 100 * hw / mean : 0
+        for (i = 0; i < n; i++) for (j = i+1; j < n; j++)
+            if (v[j] < v[i]) { x = v[i]; v[i] = v[j]; v[j] = x }
+        med = (n % 2) ? v[(n-1)/2] : (v[n/2-1] + v[n/2]) / 2
+        printf "%.1f %.1f %d %.1f %d\n", mean, pct, v[0], med, n
+    }' "$1"
+}
+
+SHELLS=""
 for sh in "$THIS_SH" "./relf kernel-shell.img" /bin/dash /bin/bash; do
-    set -- $sh; [ -x "$1" ] || continue
-    printf '%-10s %10s %10s %10s\n' "$(basename "$1")" \
-        "$(time_it "$sh" "$t/loop.sh")" \
-        "$(time_it "$sh" "$t/spawn.sh")" \
-        "$(time_start "$sh")"
+    set -- $sh
+    [ -x "$1" ] || continue
+    check_shell "$sh"
+    SHELLS="$SHELLS|$sh"
 done
+
+echo "bench: $REPS samples per cell (+$WARMUP discarded warmup), interleaved"
+echo
+
+r=0
+while [ "$r" -lt $((REPS + WARMUP)) ]; do
+    r=$((r + 1))
+    idx=0
+    OLDIFS=$IFS; IFS='|'
+    for sh in $SHELLS; do
+        [ -n "$sh" ] || continue
+        IFS=$OLDIFS
+        idx=$((idx + 1))
+        lt=$(time_script "$sh" "$t/loop.sh")
+        st=$(time_script "$sh" "$t/spawn.sh")
+        ut=$(time_start "$sh")
+        if [ "$r" -gt "$WARMUP" ]; then
+            echo "$lt" >> "$t/s$idx.loop"
+            echo "$st" >> "$t/s$idx.spawn"
+            echo "$ut" >> "$t/s$idx.start"
+        fi
+        IFS='|'
+    done
+    IFS=$OLDIFS
+done
+
+printf '%-10s %17s %17s %17s\n' shell "loop-ms" "spawn-ms" "start-ms"
+idx=0
+OLDIFS=$IFS; IFS='|'
+for sh in $SHELLS; do
+    [ -n "$sh" ] || continue
+    IFS=$OLDIFS
+    idx=$((idx + 1))
+    set -- $sh; name=$(basename "$1")
+    row=""
+    for w in loop spawn start; do
+        set -- $(stats "$t/s$idx.$w")
+        row="$row$(printf '%10s +/-%3s%%' "$1" "$2")"
+    done
+    printf '%-10s%s\n' "$name" "$row"
+    IFS='|'
+done
+IFS=$OLDIFS
+
+echo
+printf '%-10s %8s %8s %8s   %s\n' workload "min" "median" "mean" "resolution (95%)"
+for w in loop spawn start; do
+    idx=0; hw=0; mn=""; md=""; mnn=""
+    OLDIFS=$IFS; IFS='|'
+    for sh in $SHELLS; do
+        [ -n "$sh" ] || continue
+        IFS=$OLDIFS
+        idx=$((idx + 1))
+        set -- $(stats "$t/s$idx.$w")
+        # The FIRST shell is the one under test. Resolution is quoted
+        # for it alone, because the decision this instrument serves is
+        # "is build B of this shell slower than build A" - not "is this
+        # shell slower than dash", which no confidence interval is
+        # needed to answer. Taking the worst half-width across every
+        # row instead would let dash's 3ms timing, which is dominated
+        # by millisecond timer quantization rather than by real
+        # variance, set the resolution for a question it has no part in.
+        if [ "$idx" = 1 ]; then mnn="$1"; hw="$2"; mn="$3"; md="$4"; fi
+        IFS='|'
+    done
+    IFS=$OLDIFS
+    res=$(awk -v h="$hw" 'BEGIN { printf "%.1f", h * 1.414 }')
+    q=$(awk -v m="$mnn" 'BEGIN { print (m < 50) ? " (near timer floor)" : "" }')
+    printf '%-10s %8s %8s %8s   +/-%s%% on a ratio%s\n' "$w" "$mn" "$md" "$mnn" "$res" "$q"
+done
+
+cat <<'X'
+
+min/median/mean are for the first shell listed, as a skew check: if
+mean sits well above median, the distribution has a slow tail and the
+interval above understates the uncertainty.
+
+"resolution" is the smallest relative difference this run could call
+at 95% confidence between two builds OF THE SHELL UNDER TEST - the
+first row - using sqrt(2) for the compounding of two independent
+means. If the effect under discussion is not comfortably larger,
+raise BENCH_REPS rather than quoting the point estimate.
+
+Any row whose mean is only a few milliseconds is quantization-limited:
+these timings have millisecond granularity, so a 3ms figure carries
+~+/-33% from the clock alone regardless of how many samples are taken.
+Such rows are marked, and their intervals describe the clock more than
+the shell.
+X

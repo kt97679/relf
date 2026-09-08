@@ -103,6 +103,15 @@ emit shell:8byte "$(grep -c 'PASS (8-byte cells shell' /tmp/verify-run.log)"
 emit core:4byte  "$(grep -c 'PASS (4-byte cells, i386):' /tmp/verify-run.log)"
 emit shell:4byte "$(grep -c 'PASS (4-byte cells, i386 shell' /tmp/verify-run.log)"
 emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1)"
+# Both base images are now regenerated from cross.4 + kernel.4 on every
+# run and compared against the committed artifacts. The 8-byte one is
+# the fixpoint the bootstrap rests on: it is simultaneously the image
+# the cross-compiler PRODUCES and the image it RUNS ON. Nothing checked
+# it before Iteration 155, so "cross.4 still produces what we ship" was
+# unverified for the width the project develops on - the width the
+# engine work is about to change.
+emit image:8byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
+emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells, i386): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
 emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"

@@ -203,6 +203,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **152** — one duplicated block had drifted; `true && {` left status 127
 - **153** — the interactive prompt was on stdout, corrupting every piped script
 - **154** — two silent failures given diagnostics; a third found (`LINE-MAX`)
+- **155** — both images regenerated and checked; `tests/bench` made a measurement
 
 ### Not tied to an iteration
 
@@ -12270,3 +12271,105 @@ Confirmed non-hollow: 5 of 11 fail against the old `shell.4`.
 Sizes: i386 127,356 -> 127,684, x86-64 228,592 -> 229,160. mrsh, the
 POSIX corpus and the differential suite are unchanged; both images
 reproduce on both cell widths.
+
+## Iteration 155: preparing the instruments for the engine work
+
+Neither of these is a bug fix. Both are about being able to TELL
+whether the engine work went wrong, which is the part that has to
+exist before it starts rather than after.
+
+### 1. Both base images are regenerated, and both are checked
+
+`tests/run_tests.sh` regenerated `kernel32.img` from `cross.4` +
+`kernel.4` on every run, but `kernel.img` was only ever consumed. So
+for the 8-byte width - the one the project develops on - "cross.4
+still produces the image we ship" was **unverified**, and the base
+images were never compared against their committed forms at all.
+
+That matters more for 8 bytes than for 4, because the 8-byte image is
+simultaneously the image the cross-compiler PRODUCES and the image it
+RUNS ON. It is the fixpoint the whole bootstrap rests on, and token
+threading rewrites primitive encoding in `cross.4`, which is exactly
+what would break it.
+
+Both widths now go through one `cross_compile_image` function, both
+are regenerated before the suites, and **the Forth core suite runs
+against the regenerated images** rather than against committed
+binaries that may no longer match the sources. Two new tracked
+numbers, `image:8byte-fixpoint` and `image:4byte-fixpoint`. Both
+report `reproduces` today - so the cross-compiler does reach its
+fixpoint, which had never been demonstrated.
+
+Confirmed non-hollow, eventually. The first probe appended a
+`VARIABLE` to the end of `kernel.4` and both checks still said
+`reproduces`. That was the probe's fault, not the check's:
+`kernel.4` ends with `END-CROSS`, so anything after it is not
+cross-compiled at all. Inserting the same line *before* `END-CROSS`
+moved the image from 23,384 to 23,424 bytes and both checks reported
+`DIFFERS`. Worth recording as a small trap for anyone editing
+`kernel.4`: text after `END-CROSS` compiles into the host, not the
+target, and changes nothing about the image.
+
+### 2. `tests/bench` now produces a measurement rather than a sample
+
+The old harness took **exactly one timing** per shell per workload and
+printed it as a bare number, with no indication of its uncertainty.
+It was nevertheless the instrument for `TOKEN-THREADING.md`'s
+decision rule:
+
+    "If that experiment says 1.15x or worse, this proposal is a size
+     change that costs speed."
+
+Deciding a 15% threshold from single runs was not possible. Measured
+before the rewrite: the loop workload's per-run CV is around 3.5%, so
+one run carries about +/-7% at 95%, and the DIFFERENCE of two single
+runs about +/-10%. A borderline result - 1.12x against 1.18x - was a
+coin flip. Iteration 151's stack bounds, at 2.4-3.1%, were entirely
+invisible to it.
+
+What it does now, and what each part means:
+
+  - **BENCH_REPS samples per cell** (default 7), with BENCH_WARMUP
+    rounds discarded rather than averaged in.
+  - **Interleaved rounds**: every shell sampled once, then again, so
+    drift over the run is charged equally to all of them. Measuring A
+    fully and then B fully is the easiest way to manufacture a
+    difference that is not there.
+  - **Mean +/- the half-width of a 95% CI on that mean**, as a
+    percentage: `t(0.975, n-1) * s / sqrt(n)`. Student-t rather than
+    1.96 because the default n is small - at n=7, 1.96 understates by
+    about 25%.
+  - **min and median alongside**, as a skew check. Timing data is
+    right-skewed; a hiccup can only make a run slower. If mean sits
+    well above median, the interval is understating the uncertainty
+    and should be said so rather than quoted.
+  - **A resolution line**: the smallest relative difference the run
+    could call at 95%, about sqrt(2) times the half-width since
+    uncertainty on a difference compounds.
+
+Two design points found by running it, not by thinking about it:
+
+**The resolution figure is quoted for the shell under test only.**
+The first version took the worst half-width across every row, which
+let `dash`'s 3ms loop timing set the resolution. At 3ms with
+millisecond granularity the clock alone contributes ~+/-33%, and no
+number of samples fixes that. The question this instrument serves is
+"is build B of this shell slower than build A", to which dash is not
+a party. Rows near the timer floor are now marked as such.
+
+**Raising BENCH_REPS does not monotonically improve the interval.**
+Measured: n=5 gave +/-3.7% on the loop ratio, n=15 gave +/-7.2%, with
+mean above median in the longer run. The variance is not stationary -
+a longer run spans more of whatever else the machine is doing - so a
+bigger n buys a better estimate of a distribution that is itself
+moving. Interleaving protects the comparison; nothing protects the
+absolute numbers. Recorded in the header, with the advice to prefer
+two runs that agree over one long one.
+
+**Where that leaves the decision.** Loop resolution now lands around
++/-4% on a ratio at n=5, against a 15% threshold. The decisive
+experiment is instrumentable, which it was not before. It should
+still be run twice.
+
+Neither change touches the shell or the engine; sizes, mrsh, the
+POSIX corpus and the differential suite are all unchanged.

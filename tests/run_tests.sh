@@ -100,11 +100,72 @@ run_shell_test_suite() {
     echo "== PASS ($label shell test suite) =="
 }
 
+cross_compile_image() {
+    # $1 = target cell bytes, $2 = destination path, $3 = label
+    #
+    # Regenerates a target image from cross.4 + kernel.4, using the
+    # COMMITTED kernel.img as the host the cross-compiler runs on.
+    #
+    # Both widths are built the same way and from the same sources.
+    # Until Iteration 155 only the 4-byte image was regenerated; the
+    # 8-byte kernel.img was a committed artifact that nothing ever
+    # rebuilt, so "cross.4 still produces the image we ship" was
+    # unverified for the width the project actually develops on - and
+    # that is the width whose image is also the host, which makes it
+    # the fixpoint the whole bootstrap rests on.
+    #
+    # Done in a temp copy rather than by editing the committed cross.4,
+    # so a failed or interrupted run cannot leave the tree modified.
+    local bytes="$1" dest="$2" label="$3"
+    local wd
+    wd=$(mktemp -d)
+    cp extend.4 cross.4 kernel.4 kernel.img relf "$wd/"
+    if [ "$bytes" != 8 ]; then
+        sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
+    fi
+    (
+        cd "$wd"
+        printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
+            | timeout 60 ./relf kernel.img > boot.log 2>&1
+        if grep -qiE "undefined word|segmentation fault" boot.log; then
+            echo "FAIL: $label cross-compile failed (see boot.log below)"
+            cat boot.log
+            exit 1
+        fi
+    )
+    cp "$wd/kernel.img" "$dest"
+    rm -rf "$wd"
+}
+
+check_image_reproduces() {
+    # $1 = freshly cross-compiled image, $2 = committed image, $3 = label
+    #
+    # The committed image must be exactly what today's sources produce.
+    # If it is not, either the committed artifact is stale or the
+    # cross-compiler is nondeterministic, and both are silent failures
+    # that would otherwise surface much later as inexplicable runtime
+    # behaviour. Prints a line tests/verify greps.
+    if [ ! -e "$2" ]; then
+        echo "== IMAGE-FIXPOINT ($3): missing =="
+    elif cmp -s "$1" "$2"; then
+        echo "== IMAGE-FIXPOINT ($3): reproduces =="
+    else
+        echo "== IMAGE-FIXPOINT ($3): DIFFERS =="
+    fi
+}
+
 echo "== Building relf (default, 8-byte cells) =="
 cc -O2 -Wall -o relf relf.c
 
+echo "== Cross-compiling an 8-byte-cell target image =="
+# Regenerated BEFORE the suites, so the tests below run against an
+# image built from the sources in the tree rather than against a
+# committed binary that may no longer match them.
+cross_compile_image 8 /tmp/relf-regen-kernel.img "8-byte cells"
+check_image_reproduces /tmp/relf-regen-kernel.img kernel.img "8-byte cells"
+
 echo "== Running test suite (8-byte cells) =="
-run_suite ./relf kernel.img "8-byte cells"
+run_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
 run_shell_test_suite relf kernel.img "8-byte cells"
 
 echo "== Building relf32 (i386, 4-byte cells) =="
@@ -112,21 +173,9 @@ if ! cc -m32 -O2 -Wall -o relf32 relf.c 2>/tmp/relf32_build.log; then
     echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
 else
     echo "== Cross-compiling a 4-byte-cell target image =="
-    WORKDIR=$(mktemp -d)
-    trap 'rm -rf "$WORKDIR"' EXIT
-    cp extend.4 cross.4 kernel.4 kernel.img "$WORKDIR/"
-    sed -i 's/^8 TARGET-CELL-BYTES !$/4 TARGET-CELL-BYTES !/' "$WORKDIR/cross.4"
-    cp relf "$WORKDIR/"
-    ( cd "$WORKDIR"
-      printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-        | timeout 60 ./relf kernel.img > boot.log 2>&1
-      if grep -qiE "undefined word|segmentation fault" boot.log; then
-          echo "FAIL: 4-byte-cell cross-compile failed (see boot.log below)"
-          cat boot.log
-          exit 1
-      fi
-    )
-    cp "$WORKDIR/kernel.img" kernel32.img
+    cross_compile_image 4 /tmp/relf-regen-kernel32.img "4-byte cells, i386"
+    check_image_reproduces /tmp/relf-regen-kernel32.img kernel32.img "4-byte cells, i386"
+    cp /tmp/relf-regen-kernel32.img kernel32.img
 
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
