@@ -870,12 +870,11 @@ from an older revision of this file:
   the body never executes and `until` falls through to the "command
   not found" path. A POSIX compound command that is a near-silent
   no-op, unrecorded here until Iteration 144 audited for it.
-- **A multi-line `{ ... }` after `&&` returns 127**, though its body
-  runs and its output is correct. Corrected in Iteration 151: this
-  entry used to claim the construct "drops every line but the last",
-  which was **stale** - at the top level it works. The remaining
-  fault is one duplicated block, `shell.4` 4248 against 6936, where
-  only the second copy has the `ARGC @ 1 =` multi-line preamble.
+- ~~**A multi-line `{ ... }` after `&&` returns 127**~~ — fixed in
+  Iteration 152. The cause was one duplicated block, `shell.4` 4248
+  against 6936, where only the second copy carried the `ARGC @ 1 =`
+  multi-line arm; the two are now a single `DISPATCH-GROUP`. Covered
+  by `tests/diff/cases/multiline-group-segment.sh`.
 - **`&` is treated as a line terminator, not a list terminator.**
   `true & echo after` passes `&` and `echo` and `after` as arguments
   to `true`. A command may follow `&` on the same line.

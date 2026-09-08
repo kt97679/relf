@@ -200,6 +200,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **149** — revert 137; `GOALS.md` carries the whole plan
 - **150** — the shell image did not build from a path over ~36 characters
 - **151** — neither stack was bounded; overflow corrupted the dictionary
+- **152** — one duplicated block had drifted; `true && {` left status 127
 
 ### Not tied to an iteration
 
@@ -12015,3 +12016,79 @@ The duplication finding came from inspecting only the two largest
 repeated blocks. A full pass over 7,091 lines would likely surface
 more of the same class, and it should be its own iteration rather
 than folded into a fix.
+
+## Iteration 152: one duplicated block had drifted
+
+The second of the Iteration 151 audit's findings, and the reason the
+duplication convention exists.
+
+`shell.4` carried the group-dispatch sequence twice, verbatim, at
+lines 4248 in `RUN-SIMPLE-OR-PIPELINE` and 6936 in `RUN-TOKENIZED`.
+They were not equivalent. Only the `RUN-TOKENIZED` copy carried the
+arm above it:
+
+    ARGC @ 1 = IF
+      S" (" LINE-IS? IF -1 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
+      S" {" LINE-IS? IF  0 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
+    THEN
+
+So a group whose opener is alone on its line was recognized when it
+*was* the whole line, and not when it arrived as an `&&`/`||`
+segment. `true && {` ran its body and printed correctly, but left
+**status 127**: the lone `{` segment fell through `DISPATCH-GROUP`'s
+predecessor and was executed as a command name. Silently - no "not
+found" diagnostic reached the terminal, which is why output-only
+inspection never caught it.
+
+Confirmed the shape before fixing, against bash:
+
+    true && { echo a; }      status 0    (single line, fine)
+    { \n echo a \n }         status 0    (whole line, fine)
+    true && { \n echo a \n } status 127   <- only this
+    false || { \n echo a \n } status 127
+
+### The fix
+
+Both copies are now one word, `DISPATCH-GROUP ( --- f )`, returning
+true when it handled the line so the caller can `EXIT`. It sits after
+`DO-BRACE-GROUP`, which is early - and `DO-MULTILINE-GROUP` and
+`MG-SUB?` are defined ~2900 lines later, since they need the
+tokenizer. Reached through `DEFER DO-MULTILINE-GROUP-CALL`, patched
+to `(DO-MULTILINE-GROUP)` right after that word exists, which is the
+same pattern already used for `RUN-TOKENIZED-CALL`,
+`TRY-ASSIGNMENT-CALL` and eight others. The wrapper takes the
+subshell flag on the stack so `MG-SUB?` stays private to that end of
+the file.
+
+All seven forms now match bash, **including `(echo hi) | tr a-z
+A-Z`** - the `AT-GROUP-END?` guard inside the merged word is what
+keeps a group followed by a pipe falling through to `SPLIT-PIPE`
+instead of running alone, the regression Iteration 20 recorded.
+
+### Result
+
+`tests/diff/cases/multiline-group-segment.sh`, 20 differential cases
+now, 0 failed. Written for the statuses, not the output: every one of
+these printed correctly before the fix, so an output-only case would
+have passed against the bug. It includes the whole-line group and the
+piped group as controls, so a fix that broke the working paths could
+not pass either. Confirmed non-hollow against the old `shell.4`,
+where it shows exactly the `st=127` lines.
+
+Both images still reproduce byte for byte, on both cell widths, and
+merging the copies made the shell **smaller**:
+
+| | before | after | delta |
+|---|---|---|---|
+| i386 | 127,408 | 127,296 | -112 |
+| x86-64 | 228,768 | 228,480 | -288 |
+
+The POSIX corpus is unchanged at 21 failures - this fault was never
+in it, which is worth noting given the corpus is the thing driving
+the queue. It was found by inspecting the file's largest duplicated
+block, not by any test.
+
+Still open from the 151 audit: the prompt on stdout, `MAX-ARGS`
+failing silently at 64, and the nine dead variables. And the
+duplication pass itself is still only two blocks deep - this entry is
+evidence the rest of that pass is worth doing.

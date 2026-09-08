@@ -3886,6 +3886,42 @@ VARIABLE SG-LEN
   ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
   RUN-TOKENIZED-CALL ;
 
+DEFER DO-MULTILINE-GROUP-CALL   \ patched to (DO-MULTILINE-GROUP) once
+                                \ that and MG-SUB? exist, far below.
+
+: DISPATCH-GROUP ( --- f )
+  \ The one place a leading '(' or '{' is turned into a group. Returns
+  \ true if it handled the line, in which case the caller must EXIT.
+  \
+  \ This used to be two verbatim copies, in RUN-TOKENIZED and in
+  \ RUN-SIMPLE-OR-PIPELINE, and they had drifted apart: only the
+  \ RUN-TOKENIZED copy carried the ARGC=1 multi-line arm below. So a
+  \ group that opened on one line was recognized when it WAS the whole
+  \ line, and not when it followed '&&' or '||' - "true && {" ran the
+  \ body correctly but left status 127, because the lone '{' segment
+  \ fell through to be executed as a command name. Iteration 151 found
+  \ the divergence by inspecting the file's largest duplicated block;
+  \ 152 merged them, which is the fix.
+  \
+  \ ARGC=1 means the group opener is the entire line/segment, so the
+  \ body arrives on following lines and DO-MULTILINE-GROUP collects
+  \ them. Reached through a DEFER because DO-MULTILINE-GROUP needs the
+  \ tokenizer and cannot be defined this early.
+  ARGC @ 1 = IF
+    S" (" LINE-IS? IF -1 DO-MULTILINE-GROUP-CALL -1 EXIT THEN
+    S" {" LINE-IS? IF  0 DO-MULTILINE-GROUP-CALL -1 EXIT THEN
+  THEN
+  \ Otherwise the group closes on this same line. Guarded by
+  \ AT-GROUP-END? because if a pipe follows the group this must fall
+  \ through to SPLIT-PIPE, or the group runs alone and the rest of the
+  \ pipeline is dropped - which is exactly what "(echo hi) | tr a-z
+  \ A-Z" did without it.
+  AT-GROUP-END? IF
+    S" (" LINE-IS? IF SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN -1 EXIT THEN
+    S" {" LINE-IS? IF SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN -1 EXIT THEN
+  THEN
+  0 ;
+
 MAX-ARGS CELLS BUFFER: PIPE-PIDS
 VARIABLE PL-I
 VARIABLE PL-PREV-RD
@@ -4241,20 +4277,7 @@ VARIABLE ARGC-SHIFT
   \ A '&&'/'||'/';' segment, or a pipeline stage, can itself be a
   \ group - "[ x ] || { echo fail; exit 1; }". Checked here as well as
   \ at the line level, since segments never pass through RUN-TOKENIZED.
-  \ Guarded by AT-GROUP-END? for the same reason it is there: if a
-  \ pipe follows the group, this must fall through to SPLIT-PIPE, or
-  \ the group runs alone and the rest of the pipeline is dropped -
-  \ which is exactly what "(echo hi) | tr a-z A-Z" did without it.
-  AT-GROUP-END? IF
-  S" (" LINE-IS? IF
-    SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
-    EXIT
-  THEN
-  S" {" LINE-IS? IF
-    SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
-    EXIT
-  THEN
-  THEN
+  DISPATCH-GROUP IF EXIT THEN
   EXPAND-WORDS
   TRY-ASSIGNMENT-CALL IF EXIT THEN
   S" !" LINE-IS? IF
@@ -6819,6 +6842,14 @@ VARIABLE MG-DEPTH
     DO-WHILE-BODY
   THEN ;
 
+: (DO-MULTILINE-GROUP) ( sub? --- )
+  \ The DEFER'd form DISPATCH-GROUP calls. It takes the subshell flag
+  \ on the stack rather than having each caller store MG-SUB? itself,
+  \ so that variable stays private to this end of the file.
+  MG-SUB? ! DO-MULTILINE-GROUP ;
+
+' (DO-MULTILINE-GROUP) IS DO-MULTILINE-GROUP-CALL
+
 VARIABLE PP-I
 VARIABLE PP-BAR
 
@@ -6929,20 +6960,7 @@ VARIABLE PP-BAR
   \ segment handled by RUN-SIMPLE-OR-PIPELINE below. Before this, a
   \ trailing pipe or operator after a group was silently dropped -
   \ the scope limit recorded in Iteration 20.
-  ARGC @ 1 = IF
-    S" (" LINE-IS? IF -1 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
-    S" {" LINE-IS? IF  0 MG-SUB? ! DO-MULTILINE-GROUP EXIT THEN
-  THEN
-  AT-GROUP-END? IF
-    S" (" LINE-IS? IF
-      SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN
-      EXIT
-    THEN
-    S" {" LINE-IS? IF
-      SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN
-      EXIT
-    THEN
-  THEN
+  DISPATCH-GROUP IF EXIT THEN
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
   S" for" LINE-IS? IF DO-FOR EXIT THEN
