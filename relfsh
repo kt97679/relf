@@ -54,6 +54,13 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 RELF_BIN=${RELF_BIN:-"$DIR/relf"}
 RELF_IMG=${RELF_IMG:-"$DIR/kernel.img"}
 
+# Resolved against the caller's directory now, because build_shell_img
+# runs the engine from a subshell that has cd'd to $DIR. A relative
+# override (RELF_BIN=./relf32) would otherwise be interpreted against
+# the wrong directory there. Absolute values are left untouched.
+case "$RELF_BIN" in /*) ;; *) RELF_BIN="$PWD/$RELF_BIN" ;; esac
+case "$RELF_IMG" in /*) ;; *) RELF_IMG="$PWD/$RELF_IMG" ;; esac
+
 # Derived from the image name, so the same script drives either cell
 # width without collision (kernel.img -> kernel-shell.img,
 # kernel32.img -> kernel32-shell.img).
@@ -71,10 +78,34 @@ needs_rebuild() {
 build_shell_img() {
     # Built to a temporary name and moved into place, so two concurrent
     # relfsh invocations can't observe a half-written image.
-    tmp="$SHELL_IMG.tmp.$$"
-    printf 'S" %s/pool.4" INCLUDED\nS" %s/locals.4" INCLUDED\nS" %s/save-system.4" INCLUDED\nS" %s/shell.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
-        "$DIR" "$DIR" "$DIR" "$DIR" "'" "$tmp" \
-        | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
+    #
+    # The bootstrap is fed as RELATIVE filenames from a subshell that has
+    # cd'd to $DIR, rather than as "$DIR/pool.4" and friends. That is not
+    # cosmetic. This kernel's QUERY reads a line with `TIB 80 ACCEPT`, so
+    # an input line over 80 characters loses its tail SILENTLY - no
+    # diagnostic, no status. With absolute paths the longest generated
+    # line was
+    #     S" $DIR/kernel-shell.img.tmp.$$" SAVE-SYSTEM
+    # whose length is 38 + len($DIR) + len($$), so the build broke once
+    # the repository sat deeper than ~36-38 characters. Worse, the PID's
+    # digit count is part of that sum, so the same checkout built or
+    # failed depending on the PID it happened to get. When it failed,
+    # the fallback below silently substituted the ~128x slower source
+    # bootstrap, which also prints the Forth banner to stdout and so
+    # breaks every output-comparing test at once, nowhere near the cause.
+    #
+    # Relative names make every line a fixed length, independent of where
+    # the repository lives. The subshell keeps the cd local: the parent
+    # must stay in the caller's directory, or a "relfsh script.sh"
+    # argument would resolve against the wrong place.
+    tmp_base="$(basename "$SHELL_IMG").tmp.$$"
+    tmp="$DIR/$tmp_base"
+    (
+        cd "$DIR" || exit 1
+        printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
+            "'" "$tmp_base" \
+            | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
+    )
     if [ -s "$tmp" ]; then
         mv -f "$tmp" "$SHELL_IMG"
         return 0

@@ -1,6 +1,7 @@
 core:4byte 1
 core:8byte 1
 core:okmarkers 1998
+crosspath:kernel-shell.img reproduces
 diff:failed 0
 mrsh:failed 1
 mrsh:passed 20

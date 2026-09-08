@@ -58,6 +58,43 @@ for i in kernel-shell.img kernel32-shell.img; do
 done
 
 # ---------------------------------------------------------------
+# 1b. Reproducible from a DIFFERENT PATH, which is the property the
+#     check above cannot see. Building twice in the same directory
+#     cannot distinguish "the build leaks nothing" from "both builds
+#     leaked the same thing" - and leaking the build path is the
+#     specific failure save-system.4's header describes, where the
+#     first prebuilt image carried the machine's directory and the
+#     builder's PID. So SS-SCRUB's whole reason for existing was
+#     untested until this check.
+#
+#     It also guards the 80-column input limit. QUERY reads with
+#     `TIB 80 ACCEPT`, so an over-long line loses its tail silently;
+#     relfsh's bootstrap used to interpolate $DIR into every line and
+#     so stopped building past a ~36-character repository path, with
+#     the PID's digit count deciding the exact cliff. A deliberately
+#     long path here fails if that ever comes back.
+# ---------------------------------------------------------------
+CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eighty-columns
+rm -rf "$CROSS"
+if mkdir -p "$CROSS" 2>/dev/null; then
+    for f in relf relf32 kernel.img kernel32.img relfsh \
+             pool.4 locals.4 save-system.4 shell.4; do
+        [ -e "$f" ] && cp "$f" "$CROSS/"
+    done
+    ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1
+    if [ -s "$CROSS/kernel-shell.img" ] && [ -e kernel-shell.img ]; then
+        if cmp -s "$CROSS/kernel-shell.img" kernel-shell.img
+        then emit crosspath:kernel-shell.img reproduces
+        else emit crosspath:kernel-shell.img DIFFERS; fi
+    else
+        emit crosspath:kernel-shell.img missing
+    fi
+    rm -rf "$CROSS"
+else
+    emit crosspath:kernel-shell.img skipped
+fi
+
+# ---------------------------------------------------------------
 # 2. Core, shell and differential suites, both cell widths.
 # ---------------------------------------------------------------
 echo "== core, shell, differential =="
