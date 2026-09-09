@@ -218,11 +218,41 @@ stub that `code_end` does not apply to. Two are real:
 
     DO-ULIMIT   640 B     DO-UNALIAS   64 B      (x86-64)
 
-**Those tails are not yet relocated**, and the layout tool says so on
-every run. `BUILTIN` lays each entry out as `[link][xt][len][name]`,
-and both the link and the xt are `START`-relative offsets into an image
-whose bodies have all moved. Copied verbatim they point at the old
-layout. This is the last known relocation category.
+Those tails hold `shell.4`'s builtin table, `[link][xt][len][name]` per
+entry with both the link and the xt as `START`-relative offsets. They
+relocate as a block with the tail that contains them, so a new offset
+is the tail's new position plus the same distance in. 22 entries,
+matching the 22 `BUILTIN` lines in `shell.4` - an independent count.
+
+## Every relocation category, and how they were found
+
+Not one at a time. `save-system.4` enumerates them, because it has to:
+
+    : SS-UNRELOCATE
+      \\ COLD is the authority on which cells these are, and there
+      \\ are exactly two: DP and FORTH-WORDLIST.
+
+`grep "START @ -"` across the sources gives the rest, since that is the
+only way an offset is ever made. The complete list, all resolving with
+none unresolved at both cell widths (Iteration 178):
+
+| category | count | source |
+|---|---|---|
+| link fields | 1,082 | re-walked to the same order |
+| call offsets | - | become word numbers |
+| branch offsets | 1,310 | token units, Iteration 169 |
+| `(LOOP)` operands | 17 | byte offset in a cell |
+| `(POSTPONE)` operands | 13 | relative address |
+| `DEFER` xts | 12 | `locals.4` `!XT` |
+| `BUFFER:` links | 81 | `pool.4` |
+| `BUILTIN` entries | 22 | `shell.4` |
+| `DP`, `FORTH-WORDLIST` | 2 | `SS-UNRELOCATE` |
+| `BOOT` | 1 | `SET-BOOT` |
+| `BUF-LIST` | 1 | `pool.4` |
+
+`DP` and `FORTH-WORDLIST` are **absolute** in a live dump, because
+`COLD` added `START` to them at boot, and are written back as offsets.
+Everything else that holds an offset is scrubbed by `SS-SCRUB`.
 
 ## What is next
 

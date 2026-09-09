@@ -268,6 +268,80 @@ for w in order:
     if lnk: 
         if remap_pfa_off(lnk) is None: buf_bad.append((w['n'], lnk))
 
+# ---- the BUILTIN table ---------------------------------------------
+# shell.4 compiles its builtin table at HERE between definitions, so
+# the entries have no headers and land inside the previous word's tail
+# (see code_end). Each is [link][xt][len][name], and BOTH the link and
+# the xt are START-relative offsets into an image whose bodies have all
+# moved. BUILTIN-LIST holds the head, also as an offset.
+#
+# The entries move as a block with the tail that contains them, so a
+# new offset is the tail's new position plus the same distance in.
+tail_start = {}          # old address of a code word's tail
+for w in order:
+    if tail_bytes(w):
+        tail_start[w['s']] = code_end(w)
+
+def remap_tail_addr(addr):
+    """old absolute address inside some tail -> new image offset."""
+    for s0, ts_ in tail_start.items():
+        w = starts[s0]
+        if ts_ <= addr < w['e']:
+            head = align_up(len(tok[s0]) * 2, CELL)
+            return new_off[s0]['body'] + head + (addr - ts_)
+    return None
+
+BL = [w for w in order if w['n'] == 'BUILTIN-LIST']
+builtins, bi_bad = 0, []
+if BL:
+    head = cells.get(BL[0]['s'] + CELL)          # parameter field
+    o = head
+    seen = set()
+    while o and o not in seen:
+        seen.add(o)
+        a = START + o
+        if remap_tail_addr(a) is None: bi_bad.append(('entry', o)); break
+        xt = cells.get(a + CELL)
+        if remap_body_off(xt) is None: bi_bad.append(('xt', o, xt))
+        builtins += 1
+        o = cells.get(a)                          # link to previous
+    if remap_tail_addr(START + head) is None: bi_bad.append(('head', head))
+
+# ---- the four remaining offset cells --------------------------------
+# save-system.4 enumerates these, so they do not have to be guessed.
+# SS-UNRELOCATE: "COLD is the authority on which cells these are, and
+# there are exactly two: DP and FORTH-WORDLIST." SET-BOOT adds BOOT,
+# and pool.4 adds BUF-LIST. Everything else that holds an offset is
+# either scrubbed by SS-SCRUB or is one of the categories above.
+#
+# DP and FORTH-WORDLIST are ABSOLUTE in a live dump, because COLD added
+# START to them at boot, and are written back as offsets. BOOT and
+# BUF-LIST are offsets at rest.
+def pfa_of(name):
+    w = [x for x in order if x['n'] == name]
+    return w[0]['s'] + CELL if w else None
+
+fixed, fixed_bad = {}, []
+_dp = pfa_of('DP')
+if _dp: fixed['DP'] = NEW_HERE
+_fw = pfa_of('FORTH-WORDLIST')
+if _fw: fixed['FORTH-WORDLIST'] = new_off[order[-1]['s']]['nfa']
+_bt = pfa_of('BOOT')
+if _bt:
+    v = cells.get(_bt)
+    if not v: fixed['BOOT'] = 0                  # no turnkey word set
+    elif remap_body_off(v) is not None: fixed['BOOT'] = remap_body_off(v)
+    else: fixed_bad.append(('BOOT', v))
+_bl = pfa_of('BUF-LIST')
+if _bl:
+    v = cells.get(_bl)
+    if not v: fixed['BUF-LIST'] = 0
+    elif remap_pfa_off(v) is not None: fixed['BUF-LIST'] = remap_pfa_off(v)
+    else: fixed_bad.append(('BUF-LIST', v))
+if BL:
+    h = cells.get(BL[0]['s'] + CELL)
+    if h: fixed['BUILTIN-LIST'] = remap_tail_addr(START + h)
+
 # ---- report ---------------------------------------------------------
 c = collections.Counter(kind.values())
 codeb = sum(w['e'] - w['s'] for w in order if kind[w['s']] == 'code')
@@ -302,10 +376,8 @@ print("UNTRANSLATED code bodies: %d  (copied verbatim would be wrong)"
       % len(untranslated))
 print("unheadered tails carried after code: %s" % (tails_kept or "none"))
 if tails_kept:
-    print("   NOT YET RELOCATED. shell.4's BUILTIN lays each entry out as")
-    print("   [link][xt][len][name], and BOTH the link and the xt are")
-    print("   START-relative offsets into an image whose bodies have all")
-    print("   moved. Copied verbatim they point at the old layout.")
+    print("BUILTIN table: %d entries relocated, %d unresolved %s"
+          % (builtins, len(bi_bad), bi_bad[:3] if bi_bad else ""))
 for w in untranslated:
     print("   %s" % w['n'])
 print("link chain re-walks to the same %d words in the same order: %s"
@@ -316,5 +388,8 @@ print("DEFER xts relocated: %d resolved, %d unresolved %s"
       % (len(defers), len(defer_bad), defer_bad if defer_bad else ""))
 print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
       % (bufs, len(buf_bad), buf_bad[:3] if buf_bad else ""))
+print("named offset cells: %d set, %d unresolved %s"
+      % (len(fixed), len(fixed_bad), fixed_bad if fixed_bad else ""))
+for k in sorted(fixed): print("   %-16s -> %d" % (k, fixed[k]))
 sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not xt_bad
-         and not buf_bad and not untranslated else 1)
+         and not buf_bad and not untranslated and not bi_bad and not fixed_bad else 1)
