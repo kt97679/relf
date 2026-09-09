@@ -172,6 +172,21 @@ def enc_token(sts, _w):
             else: nb += 1 if pl in A else 2
     return nb
 
+def enc_u16(sts, _w):
+    """Uniform 16-bit token (Iteration 159/160). One token per
+    operation: 0..255 primitive or inline form, 256..65535 a word
+    number. Operands follow as tokens - LIT one or two depending on
+    magnitude, branch one signed offset. No tag, no varint, no packing,
+    no branch on token width. Returned in BYTES, since it does not
+    scale with cell width."""
+    n = 0
+    for st in sts:
+        for k, pl in st:
+            if k == 'LIT': n += 2 if 0 <= pl <= 0xFFFF else 3
+            elif k == 'BR': n += 2
+            else: n += 1
+    return n * 2
+
 def expand(macros):
     out = []
     for s, d in body.items():
@@ -200,6 +215,7 @@ SCHEMES = [
   ("tagged nibble (4-bit x7)",          make_packed(7, 14, (-7, 8), 2, True),               'cell'),
   ("tagged byte (8-bit x3/x7)",         make_packed(3, 254, (-128, 127), 2, True),          'cell'),
   ("tagged byte + hot-call (15)",       make_packed(3, 254, (-128, 127), 2, True, HOT),     'cell'),
+  ("uniform 16-bit token",              enc_u16,                                            'byte'),
   ("token-threaded byte stream",        enc_token,                                          'byte'),
 ]
 

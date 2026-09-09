@@ -23,58 +23,135 @@ that distinction is invisible in it.
 
 ## Results
 
-Compiled word bodies only — not headers, not the engine. 1,060 words,
-14,909 operations, 6,596 call sites, 1,842 literals. Macro inlining
+**Regenerated in Iteration 160.** The figures published in 156 were
+wrong: the census read an inline counted string's length as a cell when
+`(S")` uses `COUNT`, so the length is a byte. Every word containing an
+inline string was truncated and the operation count was low by 21.5%
+(14,909 against 18,121). Ratios barely moved and no conclusion changed,
+but do not quote the 156 numbers.
+
+Compiled word bodies only - not headers, not the engine. 1,059 words,
+18,121 operations, 8,120 call sites, 2,329 literals. Macro inlining
 (`M:`) is applied to every scheme, selected per scheme by
 profitability.
 
 | scheme | cells | i386 B | x86-64 B | vs today |
 |---|---|---|---|---|
-| RelF today (1 cell/op) | 16862 | 67448 | 134896 | 1.00x |
-| SOD32 (5-bit x6, no BRANCH tag) | 14639 | 58556 | 117112 | 0.87x |
-| **SOD32 fields + inline literals** | **12338** | **49352** | **98704** | **0.73x** |
-| tagged nibble (4-bit x7) | 12692 | 50768 | 101536 | 0.75x |
-| tagged byte (8-bit x3/x7) | 12573 | 50292 | 100584 | 0.75x |
-| tagged byte + hot-call (15) | 11759 | 47036 | 94072 | 0.70x |
-| token-threaded byte stream | — | 25639 | 25639 | 0.38x / **0.19x** |
+| RelF today (1 cell/op) | 21075 | 84300 | 168600 | 1.00x |
+| SOD32 (5-bit x6, no BRANCH tag) | 18503 | 74012 | 148024 | 0.88x |
+| SOD32 fields + inline literals | 15765 | 63060 | 126120 | 0.75x |
+| tagged nibble (4-bit x7) | 15958 | 63832 | 127664 | 0.76x |
+| tagged byte (8-bit x3/x7) | 15943 | 63772 | 127544 | 0.76x |
+| tagged byte + hot-call (15) | 14994 | 59976 | 119952 | 0.71x |
+| **uniform 16-bit token** | — | **43706** | **43706** | **0.52x / 0.26x** |
+| token-threaded byte stream | — | 32528 | 32528 | 0.39x / 0.19x |
+
+The last two do not scale with cell width, so they cost the same bytes
+on both.
+
+## Dispatch cost
+
+Sizes alone cannot choose, and Iteration 134's objection was about
+time: a tag plus a packed field adds a second data-dependent test to
+the two hottest paths. `tools/pack-bench.c` and
+`tools/varint-bench.c` measure it. Identical work, same operation
+stream, **dynamic** operation mix rather than static - calls are 46.3%
+of the image but 24.9% of execution, `EXIT` 3.6% against 17.3%.
+
+| scheme | dispatch, x86-64 | dispatch, i386 |
+|---|---|---|
+| RelF today | 1.00 | 1.00 |
+| SOD32 packed (5-bit) | 1.21 | 1.68 |
+| tagged nibble | 1.65 | 2.05 |
+| tagged byte | 1.60 | 1.90 |
+| uniform 16-bit token | ~1.00 | — |
+| variable-width byte stream | ~1.06 | — |
+
+Varint tokens cost roughly **15% per additional byte**, because the
+decode loop's exit is data-dependent: 0.98 / 1.16 / 1.31 at widths
+2 / 3 / 4. That is why the scaled-offset variant, whose span is 15 bits
+before any growth, sits at ~1.16x rather than the 1.03x a natural mix
+suggests.
+
+**Treat these dispatch numbers as weaker than the sizes.**
+`varint-bench.c` and `dispatch-bench.c` disagree about their `cell`
+baselines and the disagreement is unresolved. Three separate dispatch
+results in this line of work turned out to be measuring something other
+than dispatch, each time from a single configuration with no
+cross-check - most sharply Iteration 157's "token threading costs
+nothing", which was a 32MB working set on a 2MB L2 and became ~6% once
+the stream size was varied.
 
 ## What the numbers say
 
-**SOD32's twenty-year-old field layout beats the newer proposals.**
-Its authentic encoding — one tag bit, a return bit, six 5-bit
-subinstructions — plus a single addition (inline small literals) lands
-at 12,338 cells, ahead of the tagged-nibble scheme at 12,692 and level
-with tagged bytes at 12,573. `5 bits x 6` is simply a better bit budget
-than `4 bits x 7`: 32 opcodes against 16, for the cost of one slot that
-the code does not use anyway, because the mean run of packable
+**SOD32's twenty-year-old field layout beats the newer proposals.** Its
+authentic encoding - one tag bit, a return bit, six 5-bit
+subinstructions - plus inline small literals lands at 15,765 cells,
+ahead of the tagged-nibble scheme and level with tagged bytes. `5 bits
+x 6` is a better bit budget than `4 bits x 7`: 32 opcodes against 16,
+for one slot the code does not use, because the mean run of packable
 primitives is 1.34 and 75.5% of runs are a single operation.
 
 **SOD32 also spends fewer tag classes.** It has no unconditional
-branch. `BRANCH` is synthesised as `push0` followed by `JUMPZ` — a
-subinstruction instead of a whole tag class, which matters because
-unconditional branches are only 365 sites against `?BRANCH`'s 863.
-Under goal 3 that is the more minimal design, and it frees a tag class
-for something that earns it.
+branch, synthesising one as `push0` then `JUMPZ` - a subinstruction
+rather than a whole tag class, which matters when unconditional
+branches are 365 sites against `?BRANCH`'s 863. Under goal 3 that is
+the more minimal design.
 
-**Only token threading breaks the cell-width coupling.** Every cell
-scheme costs twice as much on x86-64 as on i386, because a cell is
-twice as wide; the byte stream costs the same on both. That is the
-whole ballgame for this project's actual size problem, which is on
-x86-64 (1.76x dash) and not on i386 (0.93x dash). No amount of
-better packing closes a 4x gap.
+**But every packed scheme loses on time.** 1.21x to 1.65x on x86-64,
+1.68x to 2.05x on i386, and the penalty holds at every working-set size
+from 9KB to 18MB, so it is genuine decode cost rather than a cache
+artifact. Buying 25-30% of size for 20-65% of dispatch is the wrong
+trade for this project. **The packed direction is closed.**
 
-**The hot-call index is the weakest idea here** despite showing the
-best cell count. It folds a call into spare tag bits, but only 12.9% of
-call sites can use it — the rest sit next to another call or a branch,
-where the pack is empty and nothing is saved. It needs a two-pass
-build, a generated position-independent offset table, and it can never
-include a runtime-defined word. That is a lot of machinery, against
-goal 3, for a few percent.
+**Only the byte and token streams break the cell-width coupling.**
+Every cell scheme costs twice as much on x86-64 as on i386; the token
+streams cost the same on both. That is the whole ballgame for this
+project's actual size problem, which is on x86-64 (1.76x dash) and not
+on i386 (0.93x dash). No amount of better packing closes a 4x gap.
+
+**The uniform 16-bit token is the simplest thing that works.** One
+aligned load, one compare against 256, one branch - fewer concepts than
+the cell scheme it would replace, not more. It gives 0.52x on i386 and
+0.26x on x86-64 at parity dispatch, against variable-width's 0.39x /
+0.19x at ~1.06x. Iteration 160 translated real compiled bodies through
+it and checked the two assumptions it rests on: the highest word number
+any call uses is **1,044** against a 65,279 ceiling, and **zero** branch
+offsets need more than 16 signed bits.
+
+**The hot-call index is the weakest idea here** despite a good cell
+count. Only 12.9% of call sites can fold - the rest sit next to another
+call or a branch, where the pack is empty and nothing is saved. It
+needs a two-pass build, a generated position-independent offset table,
+and it can never include a runtime-defined word.
+
+## Where the word table lives
+
+An indexed scheme needs a table; RelF today needs none, because the
+offset *is* the instruction. That table has a cost that grows with the
+dictionary, and it is easy to miss. Sweeping word count at a fixed
+stream size, an indexed byte scheme goes from 0.735 of cell time at
+1,000 words (7KB table) to 0.824 at 65,000 (507KB) - **losing about
+12% of its advantage once the table leaves L2**, with the knee between
+8,000 and 65,000 words. That is exactly the range a bash-plus-busybox
+system would occupy.
+
+The fix is to put the table **outside the image**, where it is derived
+data: rebuilt at startup by walking the dictionary link chain, so word
+N is the Nth entry and compiler and loader agree for free; never
+saved, so `SS-SCRUB` has nothing to clean and the image does not grow;
+rebuilt after load, so it can hold absolute addresses and dispatch is
+one load with no base add; and grown by `realloc` outside `mem[]`, so
+it never collides with `HERE` and a runtime-defined word just appends.
+
+That also answers the ceiling question. A 16-bit token holds 65,280
+word numbers against 1,059 today and a plausible 25,000-30,000 at
+busybox scale - roughly 2x headroom, with no prefix budget to ration.
 
 ## An unresolved finding worth more than any of the above
 
-**45.7% of call sites are pushing a data address.** 2,557 sites across
-432 distinct `VARIABLE`/`BUFFER:`/`CONSTANT` words, each paying a call,
+**37.9% of call sites are pushing a data address.** 3,076 sites across
+458 distinct `VARIABLE`/`BUFFER:`/`CONSTANT` words, each paying a call,
 a `DOVAR` dispatch and a return to deliver a compile-time constant.
 
 The distribution is flat — the top 15 data words are only 14.9% of
@@ -87,7 +164,7 @@ found, and it has not been designed.
 This also settles a question that was open: variable references *are*
 compiled as calls, so the 452 data words consume call indices. Token
 threading's `0x80-0x83` extended call reaches 1,024 targets against
-1,060 dictionary entries today — already over budget, before any of the
+1,082 dictionary entries today — already over budget, before any of the
 bash-compatibility or busybox-applet work. A third call width (one
 prefix byte plus two index bytes, 65,536 targets) costs one first-byte
 value where widening by prefixes costs 256 targets per value.
