@@ -69,7 +69,21 @@ for l in open(DUMP, errors='replace'):
     m = re.match(r'^B (-?\d+) (-?\d+)\s*$', l)
     if m: cells[int(m.group(1))] = int(m.group(2))
 
-num = {w['s']: i for i, w in enumerate(words)}
+# Word numbers run OLDEST FIRST, which is definition order.
+#
+# The dump walks the dictionary link chain from the newest word
+# backwards, so `words` is newest-first. Numbering in that order would
+# be a design bug: defining a new word makes it number 0 and shifts
+# every existing number by one, invalidating every token already
+# compiled. Reversing it means a new definition takes the next unused
+# number and nothing that exists moves - which is the property that
+# lets an xt be a word number at all.
+#
+# It also matches how a real load rebuilds the table: walk the chain to
+# the end, then assign numbers coming back, so entry N is the Nth word
+# ever defined.
+order = list(reversed(words))
+num = {w['s']: i for i, w in enumerate(order)}
 by_name = {w['n']: w for w in words}
 STR = {by_name[n]['s'] for n in ('(S")', '(.")') if n in by_name}
 LOOP = by_name.get('(LOOP)', {}).get('s')
@@ -152,7 +166,7 @@ def from_tokens(t):
     while i < len(t):
         v = t[i]
         if v >= 256:
-            tgt = words[v - 256]['s']
+            tgt = order[v - 256]['s']
             out.append(('C', tgt)); i += 1
             # (LOOP) carries a bare operand token; it must be consumed
             # here or the decoder reads it as another call. Operands are

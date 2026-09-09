@@ -212,6 +212,8 @@ marker for "still load-bearing". Find an entry by searching for
 - **161** — `ENCODING-COMPARISON.md` regenerated from the fixed census
 - **162** — branch `token16`: a translator that proves itself by round trip
 - **163** — the dispatch core runs real translated words; the table is derived
+- **164** — named SOD16; the gap stated honestly
+- **165** — an xt is a word number, and the numbering was backwards
 
 ### Not tied to an iteration
 
@@ -13006,3 +13008,56 @@ comparison against `relf`.
 3. Image relocation, so a translated image loads and runs.
 4. `cross.4` emitting tokens, for self-hosting. The one that decides
    whether SOD16 can replace the current encoding or only sit beside it.
+
+## Iteration 165: what an xt is, and a numbering bug found by asking
+
+164 recommended deciding what an execution token is **before** writing
+64 primitives rather than after. Doing that first immediately paid,
+because the answer forced a change to something already built.
+
+### An xt is a word number. That is forced, not chosen.
+
+`SET-BOOT` and the 17 `DEFER` cells store xts **in the image**, which
+is saved and reloaded at a different base. An address stored there is
+precisely the absolute-address-in-a-saved-image fault that `SS-SCRUB`
+exists to catch, and that `save-system.4`'s header records happening
+once already. A word number survives relocation untouched.
+
+The only cost is that `EXECUTE` needs a bounds check on the number,
+which an address form would not. That is cheap, and it buys memory
+safety on a path that currently has none.
+
+### The numbering was backwards, and would have been fatal
+
+Asking what an xt is exposed a bug in the translator. Word numbers were
+assigned in dump order, and the dump walks the dictionary link chain
+from the **newest** word backwards - so word 0 was `DUMP`, the last
+thing defined, and the oldest kernel primitives had the highest
+numbers.
+
+That numbering is unstable. **Defining a new word would make it word 0
+and shift every existing number by one, invalidating every token
+already compiled.** With an xt being a word number, it would also
+silently repoint every `DEFER` cell and `SET-BOOT` in a saved image.
+
+Fixed by numbering oldest-first, i.e. definition order: a new
+definition takes the next unused number and nothing that exists moves.
+Word 0 is now `NOOP` and word 1081 is `DUMP`. A real load rebuilds this
+by walking the chain to its end, then assigning coming back.
+
+The round trip still passes - 531 words, 0 differ - which is the point
+of having it: a change to the numbering is exactly the kind of edit
+that could have silently broken the encoding.
+
+### Why this is worth an entry of its own
+
+The bug was not found by testing. The round trip could not see it,
+because it re-encodes and decodes with the same numbering and so agrees
+with itself either way. It was found by asking what an xt has to be,
+and noticing that the answer required a property the numbering did not
+have.
+
+Nothing in the test suite would have caught it either. It would have
+surfaced the first time a translated image defined a word, as total
+corruption with no obvious cause - and by then 64 primitives would have
+been written on top of it.

@@ -23,14 +23,24 @@
  * WHAT IS BEING DEMONSTRATED
  *
  *   1. The encoding round-trips (proved in token16.py) and loads.
- *   2. The table is DERIVED: word N is the Nth record in chain order,
- *      so nothing about it is stored in the image. Here that is the
- *      Nth W record; in the real engine it is the Nth entry walking
- *      the dictionary link chain. Same numbering, same rebuild, and
- *      the image carries none of it.
+ *   2. The table is DERIVED: word N is the Nth word ever DEFINED, so
+ *      nothing about it is stored in the image. Numbering runs oldest
+ *      first, which is the property that makes an xt a word number:
+ *      a new definition takes the next unused number and nothing that
+ *      exists moves. Numbering newest-first - the order the link chain
+ *      walks - would renumber every word on each new definition and
+ *      invalidate every token already compiled. The real engine walks
+ *      the chain to its end, then assigns coming back.
  *   3. The table holds ABSOLUTE addresses, because it is rebuilt after
  *      load. Dispatch is one load with no base add and no shift.
  *   4. Decode is one 16-bit read, one compare against 256, one branch.
+ *   5. An xt is a WORD NUMBER, not an address. That is forced, not
+ *      chosen: SET-BOOT and the 17 DEFER cells store xts IN THE IMAGE,
+ *      which is saved and reloaded at a different base. An address
+ *      there is the absolute-address-in-a-saved-image fault SS-SCRUB
+ *      exists to catch. A word number survives relocation untouched.
+ *      EXECUTE therefore needs a bounds check, which an address form
+ *      would not - cheap, and the only cost of the choice.
  *
  * WHAT IS NOT
  *
