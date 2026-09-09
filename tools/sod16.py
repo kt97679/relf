@@ -85,8 +85,15 @@ for l in open(DUMP, errors='replace'):
 order = list(reversed(words))
 num = {w['s']: i for i, w in enumerate(order)}
 by_name = {w['n']: w for w in words}
-STR = {by_name[n]['s'] for n in ('(S")', '(.")') if n in by_name}
-LOOP = by_name.get('(LOOP)', {}).get('s')
+# LIT32 is a synthetic opcode: a literal too wide for one 16-bit
+# operand, followed by two of them. It is NOT one of kernel.4's
+# primitives, so it needs its own dispatch entry in the engine, and it
+# takes the first index past the real ones rather than a high number
+# like 255 - sod16.c's dispatch table has exactly len(prims) entries,
+# and `goto *dispatch[255]` would read past the end of it. Appending is
+# also what GOALS.md's rule for adding a primitive says to do.
+LIT32 = len(prims)
+assert LIT32 < 256, "no room for the LIT32 opcode below the call band"
 
 src = "".join(open(f, errors='replace').read()
               for f in ['shell.4', 'locals.4', 'pool.4', 'save-system.4'])
@@ -95,12 +102,54 @@ DATA = (set(re.findall(r'CREATE\s+(\S+)', src)) |
         set(re.findall(r'^\s*VARIABLE\s+(\S+)', src, re.M)) |
         set(re.findall(r'CONSTANT\s+(\S+)', src)))
 
+# ---- what the inline-operand words expect --------------------------
+#
+# kernel.4 line 252 states it: "(LOOP) and (+LOOP) are followed by an
+# inline loop start address. (?DO) and (LEAVE) are followed by an
+# inline leave address." Three more words carry an inline counted
+# string. All seven read that inline data off the return stack, in
+# FORTH, with CELL-width arithmetic - which makes them the one part of
+# the system that a change of code representation cannot ignore.
+#
+# The governing rule here, and the reason sod16.c stays eight lines
+# from relf.c: ONLY THE OPCODE STREAM BECOMES TOKENS. Inline operands
+# and inline strings keep cell granularity and cell alignment, so
+# (LOOP)'s `DUP @ +` and `CELL+`, and (S")'s `COUNT ... ALIGNED`, all
+# keep working with no kernel change at all.
+#
+#   (S") (.") (ABORT")  `R> COUNT ... ALIGNED >R` - the counted string
+#       must start at the very next address after the call token, so
+#       NO padding may precede it, and execution resumes at the next
+#       CELL-aligned address after it.
+#   (LOOP) (+LOOP)      `>R DUP @ +` reads a CELL at the very next
+#       address after the call token, and `CELL+` skips one. So the
+#       operand must be CELL-aligned, which is arranged by padding with
+#       NOOP tokens BEFORE the call token - padding after it would be
+#       what `@` read.
+#
+# (?DO) and (LEAVE) are refused, not translated. Their operand is an
+# ABSOLUTE address: RESOLVE-LEAVE compiles a bare `HERE` into it. That
+# is a latent fault in the cell image too - an absolute address does not
+# survive the relocation a saved image performs on every load - and it
+# is invisible today only because both words have ZERO call sites in
+# this image. Anything that adds a ?DO or a LEAVE to shell.4 breaks
+# saved images before it ever reaches SOD16.
+STR_WORDS  = ('(S")', '(.")', '(ABORT")')
+LOOP_WORDS = ('(LOOP)', '(+LOOP)')
+BAD_WORDS  = ('(?DO)', '(LEAVE)')
+
+STR  = {by_name[n]['s'] for n in STR_WORDS  if n in by_name}
+LOOPS = {by_name[n]['s'] for n in LOOP_WORDS if n in by_name}
+BAD  = {by_name[n]['s'] for n in BAD_WORDS  if n in by_name}
+
+def align_up(x, a): return (x + a - 1) // a * a
+
 # ---- decode a word body to an operation list -----------------------
 EXIT_TOK = idx_of['EXIT'] * CELL + 1
 
 # The three primitives that take an operand. A stub for one of these is
 # the only place in the image where a token stream is genuinely
-# ambiguous - see stub_ops.
+# ambiguous - see the driver.
 OPERAND_PRIMS = ('LIT', 'BRANCH', '?BRANCH')
 
 def stub_ops(w):
@@ -115,15 +164,9 @@ def read_ops(w):
     # `"HEADER DUP , ,-T EXIT-TOKEN ,-T`, so the body is exactly
     # [prim-token, EXIT]. Read as code, LIT/BRANCH/?BRANCH swallow that
     # trailing EXIT as their operand: the word LIT translated to "push
-    # 9" rather than "LIT; EXIT", and BRANCH to a branch of 9 bytes.
-    # All three round-tripped clean, because the decoder made the same
-    # mistake in both directions - the fault only became visible once
-    # branch offsets genuinely converted between units (Iteration 169).
-    #
-    # Detected by shape rather than by name: locals.4 redefines EXIT, so
-    # there are two words called EXIT and a name test picks the wrong
-    # one. Words whose real body happens to share this shape (`: FOO
-    # DUP ;`) decode identically either way, so the test is safe.
+    # 9" rather than "LIT; EXIT". Detected by shape rather than by name,
+    # because locals.4 redefines EXIT and a name test picks the wrong
+    # word.
     st = stub_ops(w)
     if st is not None: return st
 
@@ -143,19 +186,28 @@ def read_ops(w):
                 out.append(('P', nm)); a += CELL
         else:
             t = a + CELL + v
+            if t in BAD: return None          # absolute-address operand
             out.append(('C', t)); a += CELL
-            if t == LOOP:
+            if t in LOOPS:
                 out.append(('OPD', cells.get(a, 0))); a += CELL
             elif t in STR:
                 n = (cells.get(a) or 0) & 0xFF
-                blob = (1 + n + CELL - 1) // CELL * CELL
-                raw = []
+                blob = align_up(1 + n, CELL)
+                # Keep the STRING BYTES, not the cells that hold them.
+                # The cell image pads the tail to CELL from the body
+                # start and the token image pads it from a different
+                # position, so the pad bytes are not comparable and are
+                # not part of the string. Comparing the bytes is what
+                # makes the round trip test the string rather than the
+                # padding.
+                raw = bytearray()
                 for k in range(0, blob, CELL):
-                    raw.append(cells.get(a + k, 0))
-                out.append(('STR', (n, tuple(raw)))); a += blob
+                    raw += (cells.get(a + k, 0) & ((1 << (8 * CELL)) - 1)
+                            ).to_bytes(CELL, 'little')
+                out.append(('STR', bytes(raw[:1 + n]))); a += blob
     return out
 
-# ---- the layout map: cell offsets against token indices -------------
+# ---- the layout map: cell offsets against token offsets -------------
 #
 # A branch operand in the cell image is a BYTE offset from the operand
 # cell's own address (`relf.c` does `ip += CELL(ip)` with ip already
@@ -164,49 +216,65 @@ def read_ops(w):
 # `ip += 2 * (int16_t)TOK(ip)`.
 #
 # Those are different numbers, and the conversion needs to know where
-# every operation lands in both representations - which is what these
-# two functions give. Iteration 169 found the translator was passing
-# the byte offset through unconverted for 1,308 of 1,310 branches, and
-# the round trip could not see it: it decoded with the same convention
-# it encoded with, so it agreed with itself. Both directions now
-# genuinely convert, which is what makes the round trip evidence about
-# branches rather than a tautology.
+# every operation lands in both representations - which is what layout()
+# gives. Iteration 169 found the translator was passing the byte offset
+# through unconverted for 1,308 of 1,310 branches, and the round trip
+# could not see it: it decoded with the same convention it encoded with,
+# so it agreed with itself. Both directions now genuinely convert.
+#
+# Every position here is a BYTE offset from the start of the body, in
+# each image. Bodies start CELL-aligned in both.
 
 def op_cells(k, pl):
-    """Size of one operation in the CELL image, in cells."""
-    if k in ('P', 'C', 'OPD'): return 1
-    if k in ('LIT', 'BR', 'QBR'): return 2
-    if k == 'STR': return len(pl[1])
+    """Size of one operation in the CELL image, in bytes."""
+    if k in ('P', 'C', 'OPD'): return CELL
+    if k in ('LIT', 'BR', 'QBR'): return 2 * CELL
+    if k == 'STR': return align_up(len(pl), CELL)
     raise AssertionError("unknown op kind %r" % k)
 
-def op_toks(k, pl):
-    """Size of one operation in the TOKEN image, in 16-bit tokens."""
-    if k in ('P', 'C', 'OPD'): return 1
-    if k == 'LIT': return 2 if 0 <= pl <= 0xFFFF else 3
-    if k in ('BR', 'QBR'): return 2
-    if k == 'STR': return 2 + len(pl[1]) * (CELL // 2)
+def op_bytes(k, pl, t):
+    """Size of one operation in the TOKEN image, in bytes, at offset t."""
+    if k in ('P', 'C'): return 2
+    if k == 'LIT': return 4 if 0 <= pl <= 0xFFFF else 6
+    if k in ('BR', 'QBR'): return 4
+    if k == 'OPD': return CELL
+    if k == 'STR': return align_up(t + len(pl), CELL) - t
     raise AssertionError("unknown op kind %r" % k)
+
+def pad_before(ops, j, t):
+    """NOOP padding needed before op j so an inline operand lands aligned."""
+    if ops[j][0] == 'C' and j + 1 < len(ops) and ops[j + 1][0] == 'OPD':
+        return (-(t + 2)) % CELL      # operand sits 2 bytes after the call
+    return 0
 
 def layout(ops):
-    """(cell offset -> token index, cell offsets, token indices).
+    """(cell offset -> token offset, cell offsets, token offsets, totals).
 
-    The map carries one entry per operation start AND one for the
-    position just past the last operation, because a branch forward out
-    of the final operation targets exactly there."""
-    c2t, cs, ts, c, i = {}, [], [], 0, 0
-    for k, pl in ops:
-        c2t[c] = i; cs.append(c); ts.append(i)
-        c += op_cells(k, pl) * CELL
-        i += op_toks(k, pl)
-    c2t[c] = i
-    return c2t, cs, ts, c, i
+    One entry per operation start, plus one for the position just past
+    the last operation, because a branch forward out of the final
+    operation targets exactly there."""
+    c2t, cs, ts, c, t = {}, [], [], 0, 0
+    for j, (k, pl) in enumerate(ops):
+        t += pad_before(ops, j, t)
+        c2t[c] = t; cs.append(c); ts.append(t)
+        c += op_cells(k, pl)
+        t += op_bytes(k, pl, t)
+    c2t[c] = t
+    return c2t, cs, ts, c, t
 
 # ---- encode an operation list to 16-bit tokens ---------------------
 MASK = 0xFFFF
-def to_tokens(ops, base):
-    c2t, cs, ts, _, _ = layout(ops)
+
+def to_tokens(ops):
+    """The 16-bit token stream for one word body, or None if it cannot
+    be encoded. Positions come from layout(), and padding is emitted by
+    catching up to the position layout() assigned, so the two cannot
+    drift apart."""
+    c2t, cs, ts, _, ttot = layout(ops)
     t = []
     for j, (k, pl) in enumerate(ops):
+        while len(t) * 2 < ts[j]: t.append(idx_of['NOOP'])   # padding
+        assert len(t) * 2 == ts[j], "layout and emission disagree"
         if k == 'P':
             i = idx_of[pl]
             assert i < 256, "primitive index %d exceeds the 0..255 band" % i
@@ -217,68 +285,84 @@ def to_tokens(ops, base):
             assert n + 256 <= 65535, "word number %d exceeds the token field" % n
             t.append(256 + n)
         elif k == 'LIT':
-            v = pl & 0xFFFFFFFF if pl >= 0 else (pl + (1 << 32)) & 0xFFFFFFFF
+            v = pl & ((1 << 32) - 1)
             if 0 <= pl <= 0xFFFF:
                 t.append(idx_of['LIT']); t.append(pl)
             else:
-                t.append(255); t.append(v & MASK); t.append((v >> 16) & MASK)
+                t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
         elif k in ('BR', 'QBR'):
             t.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
-            # Convert. The operand sits one cell past the opcode, and one
-            # token past it; both offsets are measured from the operand
-            # itself, so both anchors move together.
-            tgt_cell = cs[j] + CELL + pl
-            if tgt_cell not in c2t:
-                return None                      # target is not an op start
-            off = c2t[tgt_cell] - (ts[j] + 1)
+            # Convert. Both offsets are measured from the operand
+            # itself, which sits one cell past the opcode in the cell
+            # image and one token past it here, so the anchors move
+            # together.
+            tgt = cs[j] + CELL + pl
+            if tgt not in c2t: return None        # not an operation start
+            off = (c2t[tgt] - (ts[j] + 2)) // 2
             assert -32768 <= off <= 32767, \
                 "branch offset %d does not fit a signed 16-bit token" % off
             t.append(off & MASK)
         elif k == 'OPD':
-            t.append(pl & MASK)
+            # (LOOP)'s operand stays a CELL holding a BYTE offset, so
+            # `DUP @ +` needs no change. The distance is recomputed for
+            # the new layout; the units do not change, the spacing does.
+            tgt = cs[j] + pl
+            if tgt not in c2t: return None
+            off = c2t[tgt] - ts[j]
+            for sh in range(0, 8 * CELL, 16):
+                t.append((off & ((1 << (8 * CELL)) - 1)) >> sh & MASK)
         elif k == 'STR':
-            n, raw = pl
-            t.append(254); t.append(n)
-            for r in raw:
-                t.append(r & MASK)
-                if CELL == 4: t.append((r >> 16) & MASK)
-                else:
-                    for sh in (16, 32, 48): t.append((r >> sh) & MASK)
+            # No marker token. The counted string must begin at the very
+            # next address after the call token, because that is where
+            # (S") looks for it. The tail is zero-padded to the next CELL
+            # boundary, which is where ALIGNED resumes.
+            body = pl + bytes(op_bytes(k, pl, ts[j]) - len(pl))
+            for i in range(0, len(body), 2):
+                t.append(body[i] | (body[i + 1] << 8))
+    while len(t) * 2 < ttot: t.append(idx_of['NOOP'])
     return t
 
 # ---- decode tokens back, to prove the encoding is reversible -------
 def from_tokens(t):
-    # Pass 1: recover the operation list, leaving branch offsets in the
-    # token units they are stored in, and remembering each operation's
-    # token index so pass 2 can convert them back.
+    # Pass 1: recover the operation list, leaving branch and loop
+    # offsets as stored, and remembering each operation's byte offset so
+    # pass 2 can convert them back. Byte offset is always 2*index: every
+    # token is two bytes, padding included.
     out, at, i = [], [], 0
     while i < len(t):
-        v = t[i]; at.append(i)
+        v = t[i]
+        if v == idx_of['NOOP']:
+            # Padding before a (LOOP) call is NOOPs, and so is a real
+            # NOOP. Tell them apart the only way available: look past
+            # the run and see whether a loop call follows at exactly the
+            # aligned position. Operands are positional; so is this.
+            k = i
+            while k < len(t) and t[k] == idx_of['NOOP']: k += 1
+            if (k < len(t) and t[k] >= 256 and order[t[k] - 256]['s'] in LOOPS
+                    and (2 * k + 2) % CELL == 0 and (2 * i + 2) % CELL != 0):
+                i = k; continue
+        at.append(i)
         if v >= 256:
             tgt = order[v - 256]['s']
             out.append(('C', tgt)); i += 1
-            # (LOOP) carries a bare operand token; it must be consumed
-            # here or the decoder reads it as another call. Operands are
-            # positional - only the op that emitted one knows it is there.
-            if tgt == LOOP:
-                o = t[i]
+            if tgt in LOOPS:
                 at.append(i)
-                out.append(('OPD', o - 65536 if o >= 32768 else o)); i += 1
-        elif v == 255:
-            lo, hi = t[i+1], t[i+2]
-            val = (hi << 16) | lo
+                raw = 0
+                for j in range(CELL // 2): raw |= t[i + j] << (16 * j)
+                if raw >= 1 << (8 * CELL - 1): raw -= 1 << (8 * CELL)
+                out.append(('OPD', raw)); i += CELL // 2
+            elif tgt in STR:
+                n = t[i] & 0xFF
+                nb = align_up(2 * i + 1 + n, CELL) - 2 * i
+                body = bytearray()
+                for j in range(nb // 2):
+                    body.append(t[i + j] & 0xFF); body.append(t[i + j] >> 8)
+                at.append(i)
+                out.append(('STR', bytes(body[:1 + n]))); i += nb // 2
+        elif v == LIT32:
+            val = (t[i+2] << 16) | t[i+1]
             if val >= (1 << 31): val -= (1 << 32)
             out.append(('LIT', val)); i += 3
-        elif v == 254:
-            n = t[i+1]; i += 2
-            per = 2 if CELL == 4 else 4
-            blob = (1 + n + CELL - 1) // CELL * CELL
-            raw = []
-            for _ in range(blob // CELL):
-                acc = 0
-                for j in range(per): acc |= t[i + j] << (16 * j)
-                raw.append(acc); i += per
-            out.append(('STR', (n, tuple(raw))))
         elif v == idx_of['LIT']:
             out.append(('LIT', t[i+1])); i += 2
         elif v == idx_of['BRANCH']:
@@ -288,18 +372,22 @@ def from_tokens(t):
         else:
             out.append(('P', prims[v])); i += 1
 
-    # Pass 2: convert branch offsets from token units back to the byte
-    # offsets the cell image uses. This is the inverse of the conversion
-    # in to_tokens, and doing it here is what lets the round trip test
-    # that conversion at all.
-    _, cs, ts, _, _ = layout(out)
-    t2c = {ti: ci for ti, ci in zip(ts, cs)}
-    t2c[len(t)] = cs[-1] + op_cells(*out[-1]) * CELL if out else 0
+    # Pass 2: convert branch and loop offsets back to the cell image's
+    # byte offsets. This is the inverse of the conversion in to_tokens,
+    # and doing it here is what lets the round trip test that conversion
+    # at all rather than agreeing with itself.
+    _, cs, ts, ctot, _ = layout(out)
+    t2c = {tb: cb for tb, cb in zip(ts, cs)}
+    t2c[len(t) * 2] = ctot
     for j, (k, pl) in enumerate(out):
         if k in ('BR', 'QBR'):
-            tgt_tok = ts[j] + 1 + pl
-            if tgt_tok not in t2c: return None
-            out[j] = (k, t2c[tgt_tok] - (cs[j] + CELL))
+            tgt = ts[j] + 2 + 2 * pl
+            if tgt not in t2c: return None
+            out[j] = (k, t2c[tgt] - (cs[j] + CELL))
+        elif k == 'OPD':
+            tgt = ts[j] + pl
+            if tgt not in t2c: return None
+            out[j] = (k, t2c[tgt] - cs[j])
     return out
 
 # ---- optional emission of a loadable token file --------------------
@@ -327,7 +415,7 @@ for w in words:
     ops = read_ops(w)
     if ops is None:
         skipped += 1; tot_cell += span; tot_tok += span; continue
-    t = to_tokens(ops, w['s'])
+    t = to_tokens(ops)
     if t is None:
         skipped += 1; tot_cell += span; tot_tok += span; continue
 
