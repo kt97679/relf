@@ -169,6 +169,35 @@ separate command** (`LINE-MAX`, still unfixed - see the backlog in
 `PROGRESS.md` Iteration 154). Easy to hit when writing long one-liner
 probes, and it looks like an engine bug.
 
+## Reproducing everything
+
+Every figure in this file comes from these four commands. The dump is
+the input to both Python tools and is not committed, because it is
+derived; regenerate it rather than looking for it.
+
+    # the addressed dictionary dump, 4-byte cells (relf32) and 8-byte
+    printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n' \
+      | ./relf32 kernel32.img | tr -d '\r' > /tmp/dump3.txt
+    printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n' \
+      | ./relf  kernel.img   | tr -d '\r' > /tmp/dump64.txt
+
+    # translator + round-trip proof, and a loadable token file
+    python3 tools/sod16.py /tmp/dump3.txt  4 --emit /tmp/shell.tk
+    python3 tools/sod16.py /tmp/dump64.txt 8
+
+    # every size in ENCODING-COMPARISON.md
+    python3 tools/encoding-census.py
+
+    # the dispatch core, on real translated bodies
+    cc -O2 -o /tmp/s16 tools/sod16-engine.c && /tmp/s16 /tmp/shell.tk 50
+
+`sod16.py` exits nonzero if the round trip fails, so it can be wired
+into `tests/verify` once the layout pass lands.
+
+Note the `tr -d '\r'`: the engine emits CRLF and the parsers do not
+strip it. Without it every regex silently fails to match and the tools
+report zero words.
+
 ## Where the numbers live
 
 - `ENCODING-COMPARISON.md` - the full comparison, regenerated in
