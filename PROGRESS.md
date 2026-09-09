@@ -214,6 +214,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **163** — the dispatch core runs real translated words; the table is derived
 - **164** — named SOD16; the gap stated honestly
 - **165** — an xt is a word number, and the numbering was backwards
+- **166** — `sod16.c`: the whole engine differs from `relf.c` by eight lines
 
 ### Not tied to an iteration
 
@@ -13061,3 +13062,62 @@ Nothing in the test suite would have caught it either. It would have
 surfaced the first time a translated image defined a word, as total
 corruption with no obvious cause - and by then 64 primitives would have
 been written on top of it.
+
+## Iteration 166: the engine, and how little of it changes
+
+164 called the primitives "the largest mechanical job". That estimate
+was wrong, and pleasantly so.
+
+**Only 4 of 68 primitives touch `ip`**: `exit`, `lit`, `branch`,
+`?branch`. A primitive's body depends on the stacks and on memory, not
+on how code is represented. So `sod16.c` is `relf.c` with eight
+executable lines changed:
+
+    - t = CELL(ip); ip += CELL_BYTES;
+    - if (t & 1) goto *dispatch[(t - 1) >> CELL_SHIFT];
+    - RPUSH(ip); ip += t;
+    + t = TOK(ip); ip += 2;
+    + if (t < 256) goto *dispatch[t];
+    + RPUSH(ip); ip = wordtab[t - 256];
+
+    - L_lit:    PUSH(CELL(ip)); ip += CELL_BYTES;
+    + L_lit:    PUSH(TOK(ip));  ip += 2;
+    - L_branch: ip += CELL(ip);
+    + L_branch: ip += 2 * (int16_t)TOK(ip);
+    - if (DS0) ip += CELL_BYTES; else ip += CELL(ip);
+    + if (DS0) ip += 2;         else ip += 2 * (int16_t)TOK(ip);
+
+plus a `TOK()` accessor and the `wordtab` declaration. `L_exit` needs
+no change at all - the return stack holds `ip` values whatever they
+point at.
+
+It compiles clean. The file is deliberately derived by minimal edit and
+says so in its header: if it ever diverges from `relf.c` anywhere
+except the marked places, something has gone wrong.
+
+### Why this matters more than the line count
+
+Under goal 3 this is the strongest argument SOD16 has. It is not a new
+engine competing with the existing one; it is the same engine with a
+different code representation, and the 64 primitives that make up
+almost all of the source are untouched. Every other encoding examined
+in Iterations 156-161 - packing, varints, hot-call tables, scaled
+offsets - would have required a second decode path, a shift register,
+or a two-pass build. This requires none.
+
+The dispatch is also shorter than what it replaces: one 16-bit read,
+one compare against 256, one branch, against a cell read, a bit test, a
+shift and an add.
+
+### What still blocks booting
+
+Loading. A token image's bodies are a different size from a cell
+image's, so every address in the dictionary moves - link fields,
+`HERE`, and anything a `VARIABLE` holds that points into the image.
+`load_image()` in `sod16.c` still loads a cell image, so the engine
+compiles and its dispatch is real, but it cannot yet boot one. That is
+step 3, and it is now the only thing between here and a like-for-like
+`tests/bench` number.
+
+`EXECUTE` also needs its bounds check, since Iteration 165 made an xt a
+word number. Marked in the source, not yet written.
