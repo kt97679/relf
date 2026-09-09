@@ -172,7 +172,36 @@ while True:
     if n > len(order) + 2: walk.append('LOOPED'); break
 chain_ok = (walk == [w['n'] for w in reversed(order)])
 
-# ---- DEFER xts become word numbers ---------------------------------
+# ---- xts are ADDRESSES, and get relocated --------------------------
+# Iteration 176. `: EXECUTE ( xt --- ) >R ;` is pure Forth, not a
+# primitive: it makes the xt the return address, and EXIT jumps to it.
+# So an xt has to be an executable address in either engine. A CALL
+# TOKEN is a word number; an XT is an address. Iteration 165 conflated
+# them, and 175 refused (POSTPONE) on the strength of that.
+#
+# Nothing here converts an xt to a word number. Everything here moves
+# an offset to where its target landed.
+body_at = {w['s'] - START: w for w in order}
+
+def remap_body_off(off):
+    w = body_at.get(off)
+    return new_off[w['s']]['body'] if w else None
+
+# (POSTPONE)'s inline operand: a relative address from the operand cell
+# to another word's body. sod16.py passes it through because a per-word
+# translator cannot see where other words land.
+xt_ok, xt_bad = 0, []
+for w in order:
+    if kind[w['s']] != 'code': continue
+    ops = info[w['s']]
+    _, cs, ts, _, _ = layout(ops)
+    for j, (k, pl) in enumerate(ops):
+        if k != 'XT': continue
+        tgt = (w['s'] + cs[j]) + pl - START
+        if remap_body_off(tgt) is None: xt_bad.append((w['n'], tgt))
+        else: xt_ok += 1
+
+# ---- DEFER xts -----------------------------------------------------
 # A DEFER cell holds its xt as a START-relative offset (shell.4's
 # !XT/@XT), which is what makes it survive a save. Under SOD16 an xt is
 # a word number instead - Iteration 165 - so these convert, and the
@@ -188,12 +217,14 @@ for t in TAILS:
     h = [w for w in order if w['s'] < t < w['e']][0]
     if h['n'] == 'DEFER': DEFER_TAIL = t
 
+# A DEFER cell holds a START-relative offset to a word body (shell.4's
+# !XT/@XT). It stays an offset; it just points somewhere else now.
 defers, defer_bad = {}, []
 for w in order:
     if info.get(w['s']) != DEFER_TAIL or DEFER_TAIL is None: continue
     xt = cells.get(w['s'] + CELL)
-    tgt = START + xt if xt is not None else None
-    if tgt in starts: defers[w['s']] = num[tgt]
+    new = remap_body_off(xt) if xt is not None else None
+    if new is not None: defers[w['s']] = new
     else: defer_bad.append((w['n'], xt))
 
 # ---- BUFFER: parameter fields --------------------------------------
@@ -263,9 +294,11 @@ for w in untranslated:
     print("   %s" % w['n'])
 print("link chain re-walks to the same %d words in the same order: %s"
       % (len(order), "yes" if chain_ok else "NO"))
-print("DEFER xts converted to word numbers: %d resolved, %d unresolved %s"
+print("(POSTPONE) operands relocated: %d resolved, %d unresolved %s"
+      % (xt_ok, len(xt_bad), xt_bad[:3] if xt_bad else ""))
+print("DEFER xts relocated: %d resolved, %d unresolved %s"
       % (len(defers), len(defer_bad), defer_bad if defer_bad else ""))
 print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
       % (bufs, len(buf_bad), buf_bad[:3] if buf_bad else ""))
-sys.exit(0 if chain_ok and gaps == 0 and not defer_bad
+sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not xt_bad
          and not buf_bad and not untranslated else 1)

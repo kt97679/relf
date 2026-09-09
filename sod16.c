@@ -34,8 +34,13 @@
  *    compiles and its dispatch is real, but it cannot yet boot one.
  *    Relocation is the next piece.
  *
- *    An xt is a word number (Iteration 165), so EXECUTE needs a bounds
- *    check before indexing wordtab. Marked below.
+ *    An xt is an ADDRESS, not a word number (Iteration 176): EXECUTE is
+ *    `>R ;` in Forth, not a primitive, so it never indexes wordtab and
+ *    needs no bounds check. A CALL TOKEN is a word number; an xt is an
+ *    address; Iteration 165 conflated them. What this file still owes:
+ *    a dispatch entry for LIT32 (index 68), and a load_image that
+ *    rebuilds wordtab by walking the link chain and then appends the
+ *    two DOES> tails from the image's side table.
  */
 /*
  *  RelF - Relative Forth

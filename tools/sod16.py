@@ -136,21 +136,28 @@ DATA = (set(re.findall(r'CREATE\s+(\S+)', src)) |
 # saved images before it ever reaches SOD16.
 STR_WORDS  = ('(S")', '(.")', '(ABORT")')
 LOOP_WORDS = ('(LOOP)', '(+LOOP)')
-# (POSTPONE) is the eighth inline-operand word, and its own comment in
-# kernel.4 says so: "has inline argument". `R> DUP DUP @ + SWAP CELL+
-# >R` reads a CELL holding a RELATIVE ADDRESS and skips it. Unlike the
-# other seven it cannot be carried across unchanged: the runtime turns
-# that operand into an address and then EXECUTEs or COMPILE,s it, but
-# under SOD16 an xt is a WORD NUMBER (Iteration 165). So it needs a
-# source change, and until that is decided it is refused rather than
-# mis-decoded. Refusing costs the 13 compiling words that use POSTPONE
-# - CREATE, DO, LOOP, S", DOES> and the rest - which is visible and
-# fixable, where mis-decoding them was neither.
-BAD_WORDS  = ('(?DO)', '(LEAVE)', '(POSTPONE)')
+# (POSTPONE) is the eighth inline-operand word - its own comment in
+# kernel.4 says "has inline argument". `R> DUP DUP @ + SWAP CELL+ >R`
+# reads a CELL holding a relative address to another word's body and
+# skips it. Iteration 175 thought this needed a source change, on the
+# grounds that an xt is a word number. Iteration 176 found that is not
+# so: `: EXECUTE ( xt --- ) >R ;` is pure Forth, not a primitive, and
+# works by making the xt the RETURN ADDRESS, so an xt must be an
+# executable address in either engine. A CALL TOKEN is a word number; an
+# XT is an address; they are different things and Iteration 165
+# conflated them.
+#
+# So this operand carries across like the others. Its value is a
+# relative address into ANOTHER word, which a per-word translator
+# cannot resolve, so it is passed through here and relocated by
+# tools/sod16-layout.py, which is the pass that knows where words land.
+XT_WORDS   = ('(POSTPONE)',)
+BAD_WORDS  = ('(?DO)', '(LEAVE)')
 
 STR  = {by_name[n]['s'] for n in STR_WORDS  if n in by_name}
 LOOPS = {by_name[n]['s'] for n in LOOP_WORDS if n in by_name}
 BAD  = {by_name[n]['s'] for n in BAD_WORDS  if n in by_name}
+XTS  = {by_name[n]['s'] for n in XT_WORDS   if n in by_name}
 
 def align_up(x, a): return (x + a - 1) // a * a
 
@@ -200,6 +207,8 @@ def read_ops(w):
             out.append(('C', t)); a += CELL
             if t in LOOPS:
                 out.append(('OPD', cells.get(a, 0))); a += CELL
+            elif t in XTS:
+                out.append(('XT', cells.get(a, 0))); a += CELL
             elif t in STR:
                 n = (cells.get(a) or 0) & 0xFF
                 blob = align_up(1 + n, CELL)
@@ -237,7 +246,7 @@ def read_ops(w):
 
 def op_cells(k, pl):
     """Size of one operation in the CELL image, in bytes."""
-    if k in ('P', 'C', 'OPD'): return CELL
+    if k in ('P', 'C', 'OPD', 'XT'): return CELL
     if k in ('LIT', 'BR', 'QBR'): return 2 * CELL
     if k == 'STR': return align_up(len(pl), CELL)
     raise AssertionError("unknown op kind %r" % k)
@@ -247,13 +256,13 @@ def op_bytes(k, pl, t):
     if k in ('P', 'C'): return 2
     if k == 'LIT': return 4 if 0 <= pl <= 0xFFFF else 6
     if k in ('BR', 'QBR'): return 4
-    if k == 'OPD': return CELL
+    if k in ('OPD', 'XT'): return CELL
     if k == 'STR': return align_up(t + len(pl), CELL) - t
     raise AssertionError("unknown op kind %r" % k)
 
 def pad_before(ops, j, t):
     """NOOP padding needed before op j so an inline operand lands aligned."""
-    if ops[j][0] == 'C' and j + 1 < len(ops) and ops[j + 1][0] == 'OPD':
+    if ops[j][0] == 'C' and j + 1 < len(ops) and ops[j + 1][0] in ('OPD', 'XT'):
         return (-(t + 2)) % CELL      # operand sits 2 bytes after the call
     return 0
 
@@ -312,6 +321,12 @@ def to_tokens(ops):
             assert -32768 <= off <= 32767, \
                 "branch offset %d does not fit a signed 16-bit token" % off
             t.append(off & MASK)
+        elif k == 'XT':
+            # Relative address into another word. Relocated by the
+            # layout pass, which is the only place that knows the new
+            # position of the target; passed through unchanged here.
+            for sh in range(0, 8 * CELL, 16):
+                t.append((pl & ((1 << (8 * CELL)) - 1)) >> sh & MASK)
         elif k == 'OPD':
             # (LOOP)'s operand stays a CELL holding a BYTE offset, so
             # `DUP @ +` needs no change. The distance is recomputed for
@@ -348,19 +363,21 @@ def from_tokens(t):
             # aligned position. Operands are positional; so is this.
             k = i
             while k < len(t) and t[k] == idx_of['NOOP']: k += 1
-            if (k < len(t) and t[k] >= 256 and order[t[k] - 256]['s'] in LOOPS
+            if (k < len(t) and t[k] >= 256
+                    and order[t[k] - 256]['s'] in (LOOPS | XTS)
                     and (2 * k + 2) % CELL == 0 and (2 * i + 2) % CELL != 0):
                 i = k; continue
         at.append(i)
         if v >= 256:
             tgt = order[v - 256]['s']
             out.append(('C', tgt)); i += 1
-            if tgt in LOOPS:
+            if tgt in LOOPS or tgt in XTS:
                 at.append(i)
                 raw = 0
                 for j in range(CELL // 2): raw |= t[i + j] << (16 * j)
                 if raw >= 1 << (8 * CELL - 1): raw -= 1 << (8 * CELL)
-                out.append(('OPD', raw)); i += CELL // 2
+                out.append(('OPD' if tgt in LOOPS else 'XT', raw))
+                i += CELL // 2
             elif tgt in STR:
                 n = t[i] & 0xFF
                 nb = align_up(2 * i + 1 + n, CELL) - 2 * i

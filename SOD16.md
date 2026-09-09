@@ -156,33 +156,60 @@ A data body is the SAME SIZE in both images, which is not a
 coincidence: its leading call cell becomes NOOP padding plus a 2-byte
 call token, and that is exactly one cell at either width.
 
-## The blocker in front of emitting an image
+## An xt is an address, not a word number
 
-**`(POSTPONE)` is an eighth inline-operand word, and it is the one that
-does not carry across unchanged.** Its own comment in `kernel.4` says
-"has inline argument"; the body is
-`R> DUP DUP @ + SWAP CELL+ >R`, which reads a CELL holding a RELATIVE
-ADDRESS and skips it.
+Iteration 176, and it reverses a conclusion this file carried since
+165.
 
-The other seven inline-operand words survive because their arithmetic
-is about *positions*, and the rule "only the opcode stream becomes
-tokens" keeps positions cell-granular. This one is about *identity*:
-it turns its operand into an address and then `EXECUTE`s or
-`COMPILE,`s it, and under SOD16 an xt is a word NUMBER (Iteration
-165). So `(POSTPONE)` needs a source change - to fetch a word number
-rather than compute an address - and that decision is not made here.
+    : EXECUTE ( xt --- )  >R ;
 
-Until it is, `(POSTPONE)` is **refused** rather than mis-decoded. The
-cost is the 13 words that compile through it - `CREATE`, `WHILE`,
-`DO`, `?DO`, `LEAVE`, `LOOP`, `+LOOP`, `."`, `S"`, `ABORT"`,
-`POSTPONE`, `DOES>`, `L-EMIT` - plus `DO-ULIMIT` and `DO-UNALIAS`,
-which fail for a reason not yet diagnosed. `tools/sod16-layout.py`
-names all 15 and **exits nonzero**, because the failure mode to avoid
-is emitting an image in which fifteen code bodies were quietly copied
-as data.
+`EXECUTE` is **pure Forth, not a primitive** - it is not in `kernel.4`'s
+`PRIMITIVE` list. It makes the xt the return address and `EXIT` jumps
+to it. `COLD` does the same: `BOOT @ ?DUP IF START @ + EXECUTE THEN`
+turns a `START`-relative offset into an address before executing it. So
+an xt must be an executable address in either engine.
 
-That list is why no image is emitted yet. It is not a long list, and
-none of it is mysterious except the last two.
+**A call token is a word number; an xt is an address. They are
+different things, and Iteration 165 conflated them.** That mattered
+twice:
+
+- `sod16.c` still carries a note that `EXECUTE` needs a bounds check
+  before indexing `wordtab`. It does not index `wordtab`, because it is
+  not a primitive. That check is for a word that does not exist.
+- Iteration 175 refused `(POSTPONE)` on the grounds that its operand
+  had to become a word number. It does not. The operand is a relative
+  address, it carries across like the other seven inline operands, and
+  the layout pass relocates it - 13 of 13 resolved. The 13 compiling
+  words it was blocking (`CREATE`, `DO`, `LOOP`, `S"`, `DOES>` and the
+  rest) now translate, and the round trip went 541 to **554 exact, 0
+  differ**, on both cell widths.
+
+`DEFER` cells are the same story: they hold a `START`-relative offset
+and they keep holding one. 12 of 12 relocate.
+
+## The last two words, and why they are hard
+
+`DO-ULIMIT` and `DO-UNALIAS` still do not translate, and the cause is
+now known. Both end normally with `;`, and both are followed in the
+image by **unheadered data**: `shell.4` builds its builtin table with
+lines like
+
+    ' DO-WAIT         S" wait"     BUILTIN
+
+which compiles at `HERE` between definitions. `tools/dict-dump-addr.4`
+computes a body as everything up to the next header, so that table
+lands inside the previous word's body span.
+
+**So a body span is not the same thing as a word's code.** Nothing
+else in this file assumed otherwise, but an emitter would: it would
+translate past the final `EXIT` and start reading a counted string as
+threaded code, which is exactly where the decode fails - at `+504` of
+`DO-ULIMIT`, on the bytes `wait\0\0\0\0`.
+
+Splitting them needs a rule for where code ends that is better than
+"where decoding stops". Until there is one, `tools/sod16-layout.py`
+names both and **exits nonzero**, because the failure to avoid is an
+image in which two bodies were quietly copied as data.
 
 ## What is next
 
