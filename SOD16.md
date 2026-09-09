@@ -156,6 +156,34 @@ A data body is the SAME SIZE in both images, which is not a
 coincidence: its leading call cell becomes NOOP padding plus a 2-byte
 call token, and that is exactly one cell at either width.
 
+## The blocker in front of emitting an image
+
+**`(POSTPONE)` is an eighth inline-operand word, and it is the one that
+does not carry across unchanged.** Its own comment in `kernel.4` says
+"has inline argument"; the body is
+`R> DUP DUP @ + SWAP CELL+ >R`, which reads a CELL holding a RELATIVE
+ADDRESS and skips it.
+
+The other seven inline-operand words survive because their arithmetic
+is about *positions*, and the rule "only the opcode stream becomes
+tokens" keeps positions cell-granular. This one is about *identity*:
+it turns its operand into an address and then `EXECUTE`s or
+`COMPILE,`s it, and under SOD16 an xt is a word NUMBER (Iteration
+165). So `(POSTPONE)` needs a source change - to fetch a word number
+rather than compute an address - and that decision is not made here.
+
+Until it is, `(POSTPONE)` is **refused** rather than mis-decoded. The
+cost is the 13 words that compile through it - `CREATE`, `WHILE`,
+`DO`, `?DO`, `LEAVE`, `LOOP`, `+LOOP`, `."`, `S"`, `ABORT"`,
+`POSTPONE`, `DOES>`, `L-EMIT` - plus `DO-ULIMIT` and `DO-UNALIAS`,
+which fail for a reason not yet diagnosed. `tools/sod16-layout.py`
+names all 15 and **exits nonzero**, because the failure mode to avoid
+is emitting an image in which fifteen code bodies were quietly copied
+as data.
+
+That list is why no image is emitted yet. It is not a long list, and
+none of it is mysterious except the last two.
+
 ## What is next
 
 **A `DOES>` word's body calls a mid-word address, and SOD16 cannot

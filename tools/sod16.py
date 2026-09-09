@@ -136,7 +136,17 @@ DATA = (set(re.findall(r'CREATE\s+(\S+)', src)) |
 # saved images before it ever reaches SOD16.
 STR_WORDS  = ('(S")', '(.")', '(ABORT")')
 LOOP_WORDS = ('(LOOP)', '(+LOOP)')
-BAD_WORDS  = ('(?DO)', '(LEAVE)')
+# (POSTPONE) is the eighth inline-operand word, and its own comment in
+# kernel.4 says so: "has inline argument". `R> DUP DUP @ + SWAP CELL+
+# >R` reads a CELL holding a RELATIVE ADDRESS and skips it. Unlike the
+# other seven it cannot be carried across unchanged: the runtime turns
+# that operand into an address and then EXECUTEs or COMPILE,s it, but
+# under SOD16 an xt is a WORD NUMBER (Iteration 165). So it needs a
+# source change, and until that is decided it is refused rather than
+# mis-decoded. Refusing costs the 13 compiling words that use POSTPONE
+# - CREATE, DO, LOOP, S", DOES> and the rest - which is visible and
+# fixable, where mis-decoding them was neither.
+BAD_WORDS  = ('(?DO)', '(LEAVE)', '(POSTPONE)')
 
 STR  = {by_name[n]['s'] for n in STR_WORDS  if n in by_name}
 LOOPS = {by_name[n]['s'] for n in LOOP_WORDS if n in by_name}

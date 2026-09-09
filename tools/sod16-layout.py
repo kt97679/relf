@@ -253,11 +253,19 @@ print("%-22s %12d %12d %8.3f" % ("headers + names", heads, heads, 1.0))
 print("%-22s %12d %12d %8.3f"
       % ("whole image", OLD_HERE, NEW_HERE, NEW_HERE/OLD_HERE))
 print()
+untranslated = [w for w in order
+                if kind[w['s']] == 'data' and info[w['s']] is None
+                and cells.get(w['s']) is not None]
 print("code words %d, data words %d" % (c['code'], c['data']))
+print("UNTRANSLATED code bodies: %d  (copied verbatim would be wrong)"
+      % len(untranslated))
+for w in untranslated:
+    print("   %s" % w['n'])
 print("link chain re-walks to the same %d words in the same order: %s"
       % (len(order), "yes" if chain_ok else "NO"))
 print("DEFER xts converted to word numbers: %d resolved, %d unresolved %s"
       % (len(defers), len(defer_bad), defer_bad if defer_bad else ""))
 print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
       % (bufs, len(buf_bad), buf_bad[:3] if buf_bad else ""))
-sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not buf_bad else 1)
+sys.exit(0 if chain_ok and gaps == 0 and not defer_bad
+         and not buf_bad and not untranslated else 1)
