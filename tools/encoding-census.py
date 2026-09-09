@@ -89,8 +89,8 @@ def decode(w):
             out.append(('c', t)); a += CELL
             if t == LOOP: a += CELL
             elif t in STR:
-                n = cells.get(a) or 0
-                a += CELL + (n + CELL - 1) // CELL * CELL
+                n = (cells.get(a) or 0) & 0xFF   # COUNT: length is a BYTE
+                a += (1 + n + CELL - 1) // CELL * CELL
     return out
 
 body = {}

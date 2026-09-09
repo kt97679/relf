@@ -208,6 +208,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **157** — the speed half: packing costs 20-66%; the threading figure was wrong
 - **158** — variable-length tokens, and what the word table costs as it grows
 - **159** — token width sweep; the uniform 16-bit token; the derived-table idea
+- **160** — the 16-bit token prototype on real code, and a census bug that mattered
 
 ### Not tied to an iteration
 
@@ -12747,3 +12748,79 @@ than the current cell scheme, not more - that building it and running
 `tests/bench` end to end would settle more than another synthetic loop.
 That is Iteration 133's stated experiment, now resolvable to about
 +/-4% since Iteration 155.
+
+## Iteration 160: the token prototype, and a bug in every number before it
+
+### The bug first
+
+`tools/encoding-census.py` read an inline counted string's length as a
+CELL. `(S")` is `R> COUNT 2DUP + ALIGNED >R` - `COUNT`, so the length is
+a **byte**. Reading four bytes of string data as a length produced a
+nonsense span, `a` jumped past the end of the word, and the decode loop
+stopped early. Every word containing an inline string was silently
+truncated.
+
+Corrected, the census moves substantially:
+
+    ops    14,909 -> 18,121   (+21.5%)
+    cells  16,862 -> 21,075
+    calls   6,596 ->  8,120
+
+Every absolute figure quoted from this tool in Iterations 156-159 was
+low by about a fifth. The ratios barely moved and no conclusion
+changes, but the numbers in `ENCODING-COMPARISON.md` are wrong and the
+document should be regenerated rather than read.
+
+The bug surfaced only because `tools/tokenize-image.py` accumulated the
+bad span instead of just skipping past it, and reported a word-body
+size of 53 GB. A wrong answer large enough to be obviously wrong is a
+lucky bug; the census had been quietly wrong for four iterations.
+
+### The prototype
+
+`tools/tokenize-image.py` translates real compiled word bodies into the
+uniform 16-bit token stream discussed in Iteration 159. Not an engine -
+a measurement of what the image would weigh, on real code rather than
+on a synthetic stream, which is what every previous number here rested
+on.
+
+Encoding: one 16-bit token per operation, `0..255` a primitive or
+inline form, `256..65535` a word number. Operands follow as further
+tokens - `LIT16` one, `LIT32` two, branches one signed offset in token
+units. No tags, no varint, no packing, no branch on token width.
+
+    word bodies      cell form    token form
+    i386              92,616 B     52,942 B     0.57x
+    x86-64           182,456 B     60,668 B     0.33x
+
+Two design assumptions checked rather than assumed, and both hold: the
+highest word number any call uses is **1,044** against a 65,279
+ceiling, and **zero** branch offsets need more than 16 signed bits. The
+two widths differ only because more literals need `LIT32` on 64-bit
+(952 against 787).
+
+### Where it sits
+
+Against the corrected census, on x86-64:
+
+    packed schemes            0.71 - 0.76x
+    uniform 16-bit token           0.33x
+    variable-width byte stream     0.19x
+
+The uniform token is worse than variable-width threading and much
+better than anything packed, while being the simplest of the three:
+one aligned load, one compare, one branch. On dispatch it measured at
+parity with cell in Iteration 159's microbenchmark.
+
+### What is still missing
+
+An engine. Everything above is size; the speed figures come from
+synthetic loops whose `cell` baselines still disagree between
+`varint-bench.c` and `dispatch-bench.c`. A real comparison needs a
+`cross.4` variant emitting tokens and an engine decoding them, and then
+`tests/bench` end to end. The translator is a step toward that - it
+proves the encoding covers the real instruction mix and that the field
+widths are adequate - but it does not execute anything.
+
+Also unmodelled: headers, 16,576 bytes this scheme does not touch, and
+data-word bodies, which are copied verbatim.
