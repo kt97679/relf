@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/token16.py - translate RelF's compiled word bodies to a uniform
+tools/sod16.py - translate RelF's compiled word bodies to a uniform
 16-bit token stream, and PROVE the translation is lossless by decoding
 it back and comparing.
 

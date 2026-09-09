@@ -1,7 +1,16 @@
-/* tools/token16-engine.c - the dispatch core for uniform 16-bit tokens,
- * running REAL translated word bodies from tools/token16.py.
+/* tools/sod16-engine.c - SOD16: the dispatch core for uniform 16-bit
+ * tokens.
  *
- * Iteration 163, branch token16.
+ * Named for SOD32, whose encoding this replaces rather than extends:
+ * SOD32 packed six 5-bit subinstructions into a 32-bit cell and paid
+ * shift/mask/counter work per operation; SOD16 spends a whole 16-bit
+ * token per operation and pays none. Measured, that trade is worth
+ * taking - the packed form costs 21-68% in dispatch (Iteration 157)
+ * to buy density that a plain 16-bit token gets more of anyway.
+ *
+ * running REAL translated word bodies from tools/sod16.py.
+ *
+ * Iterations 162-163, branch token16.
  *
  * This is the engine's decode loop and its table rebuild, not a whole
  * engine. It loads a .tk file, rebuilds the word table the way a real
@@ -29,8 +38,8 @@
  *   new definitions, since the Forth compiler still emits cells. Both
  *   are the next problems, and both are larger than this file.
  *
- * Build: cc -O2 -o token16-engine tools/token16-engine.c
- * Run:   ./token16-engine /tmp/shell.tk [reps]
+ * Build: cc -O2 -o sod16-engine tools/sod16-engine.c
+ * Run:   ./sod16-engine /tmp/shell.tk [reps]
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -12939,3 +12939,70 @@ image needs the Forth compiler to emit tokens - `,` and `:` still build
 cells. Both are larger than this file, and the second is the one that
 decides whether this encoding can replace the current one rather than
 merely be measured beside it.
+
+## Iteration 164: naming it SOD16, and an honest gap list
+
+The uniform 16-bit token design is now **SOD16**, and the tools are
+`tools/sod16.py` and `tools/sod16-engine.c`.
+
+The name is meant as a claim about lineage. SOD32 packed six 5-bit
+subinstructions into a 32-bit cell and paid shift/mask/counter work on
+every operation. SOD16 spends a whole 16-bit token per operation and
+pays none. Measured, that trade is worth taking: the packed form costs
+21-68% in dispatch (Iteration 157) to buy density that a plain 16-bit
+token gets more of anyway (0.343x against 0.75x on x86-64).
+
+### Is it complete? No. Can it run shell.4? No.
+
+Worth stating precisely, because "the engine runs real translated
+words at 428 Mops/s" invites the wrong conclusion.
+
+**64 of 68 primitives are unimplemented.** Every primitive in
+`kernel.4` appears in the compiled bodies - all 68 - and the engine
+implements exactly five, all of which are decode rather than
+semantics: `LIT`, `LIT32`, `BRANCH`, `?BRANCH`, `EXIT`. The rest are
+stubs that push a value so the dispatch loop cannot be optimised away.
+
+**Addresses move.** Translated bodies are a different size from cell
+bodies, so every address in the image shifts. Dictionary link fields,
+`HERE`, anything a `VARIABLE` holds that points into the image - all of
+it needs relocating. The translator does not attempt this; it emits
+bodies in isolation.
+
+**Execution tokens are unresolved, and this is the deep one.** `'`
+returns an xt, which today is an address. There are 182 tick sites, 17
+`DEFER` declarations, 12 `IS` patches, 11 `EXECUTE` sites and 2
+`SET-BOOT` calls. In SOD16 an xt could be a word number or an address,
+and the choice reaches `EXECUTE`, `DEFER`/`IS`, `SET-BOOT`, and every
+place the shell stores a word for later. Nothing here decides it.
+
+**The Forth compiler still emits cells.** `,` and `:` build cell code,
+so a translated image can run but cannot compile new definitions. Self
+-hosting needs `cross.4` to emit tokens, which is where its
+hand-embedded dispatch numbers finally have to be touched - the thing
+`GOALS.md` has warned about since phase 3 was written.
+
+### What IS established
+
+  - the encoding is lossless: 531 words round-trip exactly, both widths
+  - it is dense: 0.584x on i386, 0.343x on x86-64, verified not estimated
+  - the field widths are adequate: highest word number 1,044 against a
+    65,279 ceiling, zero branch offsets past 16 signed bits
+  - the table is derived and lives outside the image: 8,656 bytes that
+    the size figures correctly never counted
+  - decode is one 16-bit read, one compare, one branch
+
+That is a validated encoding and a demonstrated decode path. It is not
+an engine, and the 428 Mops/s figure is a decode rate, not a
+comparison against `relf`.
+
+### The order the rest should go in
+
+1. Real primitives, giving a like-for-like `tests/bench` number against
+   `freeze/iter156-encoding-baseline`. Largest mechanical job, least
+   design risk.
+2. Decide what an xt is. Small change, large blast radius - it should
+   be decided before the primitives are written, not after.
+3. Image relocation, so a translated image loads and runs.
+4. `cross.4` emitting tokens, for self-hosting. The one that decides
+   whether SOD16 can replace the current encoding or only sit beside it.
