@@ -101,10 +101,18 @@ every one.
 - **`tools/dict-dump-addr.4`** - the addressed dictionary dump the
   tools consume.
 
-Verified size, word bodies:
+Verified size, word bodies (Iteration 172, both widths re-measured on
+a machine with the 32-bit toolchain present):
 
-    i386     92,616 B -> 54,084 B   0.584x
-    x86-64  182,456 B -> 62,626 B   0.343x
+    i386     92,616 B -> 52,698 B   0.569x
+    x86-64  182,456 B -> 59,764 B   0.328x
+
+The round trip gives 541 exact, 0 differ, 3 ambiguous **on both cell
+widths**, and the structural check - inline strings adjacent to their
+call, `(LOOP)` operands cell-aligned - gives 194 and 17 with zero
+violations at 4 bytes and at 8. Sabotaging either offset conversion
+breaks the same 277 and 15 words at both widths, so the width-dependent
+alignment arithmetic is genuinely under test and not merely exercised.
 
 Field widths checked rather than assumed: highest word number used is
 **1,044** against a 65,279 ceiling, and **zero** branch offsets need
