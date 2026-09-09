@@ -135,8 +135,22 @@ interesting one about the encoding; this is the one about the artifact.
 
 Checked rather than asserted, at both cell widths: the header
 adjacency holds on all 1,081 consecutive pairs, the recomputed link
-chain re-walks to the same 1,082 words in the same order, and all 12
-`DEFER` xts convert to word numbers with none unresolved.
+chain re-walks to the same 1,082 words in the same order, all 12
+`DEFER` xts convert to word numbers with none unresolved, and all 81
+`BUFFER:` links remap with none unresolved.
+
+**`BUFFER:` parameter fields are a relocation category this list did
+not have** (Iteration 174). `pool.4` lays them out `[+0 ptr][+1 size]
+[+2 link]`. The ptr is a live `malloc`'d address in a dump and
+`RESET-BUFFERS` zeroes it before a save, so it is written as 0, the
+state `ALLOC-BUFFERS` expects. The link is a `START`-relative offset to
+the previous buffer's **parameter field** - one cell past its body
+start, because `BUF-BODY` is `HERE` at the moment `CREATE` has laid the
+header and the leading call cell - and bodies move, so it is remapped.
+Aiming that remap at the body start instead of the parameter field
+fails on 80 of 81 and passes on the one whose link is 0, which is
+exactly the shape of a bug that a less complete check would have
+called success.
 
 A data body is the SAME SIZE in both images, which is not a
 coincidence: its leading call cell becomes NOOP padding plus a 2-byte

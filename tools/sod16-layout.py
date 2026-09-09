@@ -196,6 +196,38 @@ for w in order:
     if tgt in starts: defers[w['s']] = num[tgt]
     else: defer_bad.append((w['n'], xt))
 
+# ---- BUFFER: parameter fields --------------------------------------
+# pool.4: [+0 ptr][+1 size][+2 link]. The ptr is a live malloc'd address
+# in this dump and RESET-BUFFERS zeroes it before a save, so it is
+# written as 0 - the "not yet allocated" state ALLOC-BUFFERS expects.
+# The link is a START-relative offset to the PREVIOUS buffer's body,
+# and bodies move, so it is remapped. That is a relocation category the
+# layout list in SOD16.md did not have.
+BUF_TAIL = None
+for t in TAILS:
+    h = [w for w in order if w['s'] < t < w['e']][0]
+    if h['n'] == 'BUFFER:': BUF_TAIL = t
+
+# BUF-BODY is HERE at the moment CREATE has laid down the header and
+# the leading call cell, so a buffer link points at the PARAMETER
+# FIELD - one cell past the body start - not at the body start. In the
+# new layout the parameter field is also one cell in, because the
+# padding plus the call token come to exactly one cell.
+pfa_at = {w['s'] - START + CELL: w for w in order}
+buf_bad = []
+def remap_pfa_off(off):
+    """old START-relative parameter-field offset -> new one, or None."""
+    w = pfa_at.get(off)
+    return new_off[w['s']]['body'] + CELL if w else None
+
+bufs = 0
+for w in order:
+    if BUF_TAIL is None or info.get(w['s']) != BUF_TAIL: continue
+    bufs += 1
+    lnk = cells.get(w['s'] + 3 * CELL)
+    if lnk: 
+        if remap_pfa_off(lnk) is None: buf_bad.append((w['n'], lnk))
+
 # ---- report ---------------------------------------------------------
 c = collections.Counter(kind.values())
 codeb = sum(w['e'] - w['s'] for w in order if kind[w['s']] == 'code')
@@ -226,4 +258,6 @@ print("link chain re-walks to the same %d words in the same order: %s"
       % (len(order), "yes" if chain_ok else "NO"))
 print("DEFER xts converted to word numbers: %d resolved, %d unresolved %s"
       % (len(defers), len(defer_bad), defer_bad if defer_bad else ""))
-sys.exit(0 if chain_ok and gaps == 0 and not defer_bad else 1)
+print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
+      % (bufs, len(buf_bad), buf_bad[:3] if buf_bad else ""))
+sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not buf_bad else 1)

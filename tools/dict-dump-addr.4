@@ -30,7 +30,12 @@ VARIABLE BE
   BEGIN GO @ WHILE
     NFA @ DUP C@ 31 AND 1+ ALIGNED + BP !
     PREVLINK @ BE !
-    ." N " BP @ . BE @ . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
+    \ The raw count byte carries flag bits above the length - bit 5 is
+    \ the MACRO flag cross.4's PRIMITIVE sets. TYPE below masks them
+    \ off, so without this line an image rebuilt from this dump would
+    \ silently lose every flag.
+    S" H " TYPE NFA @ . NFA @ C@ . CR
+    S" N " TYPE BP @ . BE @ . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
     BEGIN BP @ BE @ < WHILE
       ." B " BP @ . BP @ @ . CR
       BP @ CELLB + BP !
@@ -47,4 +52,18 @@ VARIABLE BE
 \ cost a silent empty anchor line once.
 S" S " TYPE START @ . HERE . CR
 DUMP
+\ The prologue: the cells between START and the oldest word's link
+\ cell. ip = base starts executing at offset 0, so the first two are
+\ code and the image cannot be rebuilt without them. DUMP walks bodies
+\ only and never sees this region.
+\
+\ This MUST be a definition. A DO/+LOOP typed at the interpreter runs
+\ once and stops - the same interpret-mode hazard GOALS.md records for
+\ IF/THEN in this kernel. It printed one line and looked like a dump
+\ with a short prologue rather than like a broken loop.
+: PROLOGUE-DUMP
+  START @ DUP 6 CELLS + SWAP DO
+    S" P " TYPE I . I @ . CR
+  1 CELLS +LOOP ;
+PROLOGUE-DUMP
 BASE ! BYE
