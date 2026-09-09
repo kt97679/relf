@@ -535,7 +535,19 @@ a decision rather than a plan.
    it is measured whether `BUFFER:`'s extra indirection matters on the
    tokenizer's hot path.
 3. Nothing else looks large: the compiled code is ~88K and most of it
-   is real.
+   is real. **The way to shrink it is the code encoding, not the
+   content** - see `SOD16.md`, measured at 0.34x on x86-64 against
+   0.75x for every packed scheme.
+4. **Headerless words came up again in Iteration 158** and were
+   rejected again, this time with a number: the 314 words that
+   profitably become `M:` macros carry 4,456 bytes of headers, 26.9%
+   of the image's header bytes. Still not worth losing `FIND`.
+5. **Macro inlining (`M:`) is worth ~5-6%, and the naive form is a
+   size REGRESSION.** Inlining every eligible word made the image
+   bigger, 17,481 -> 18,763 cells; it only pays when selected by call
+   count. `VM-RESEARCH.md` explains why the ceiling is low - this
+   source is already factored by hand, so there is little left for
+   either factoring or inlining to find.
 
 ## Memory policy — agreed in Iteration 41
 
@@ -862,6 +874,29 @@ from an older revision of this file:
   `case 'a*b' in 'a*b')` selects no arm, and neither does `*)`.
 - **An empty `case` word does not match an empty pattern.**
 - **`set -e`**, per above.
+- **A script line over `LINE-MAX` (256) has its TAIL EXECUTED as a
+  separate command.** Found in Iteration 154, unfixed. Measured: 256
+  characters runs correctly, 260 runs the line and then runs its
+  remainder as a command, 500 the same. This is the `TIB 80 ACCEPT`
+  class of fault that Iteration 150 fixed for the build, but worse -
+  there the tail was discarded, here a 300-character line runs a
+  command nobody wrote. `READ-LINE` returning exactly `LINE-MAX`
+  cannot be told from a longer line without a lookahead, so it needs a
+  design rather than a patch. **The strongest remaining correctness
+  item**, and an easy trap when writing long one-liner probes.
+- **`shell.4`'s older diagnostics go to STDOUT.** "cd: no such
+  directory", "shell: syntax error: ...", "alias: too many aliases"
+  all still use `."`. Iteration 153 moved the prompt and 154 added
+  `ERR-TYPE`/`ERR-CSTR`/`ERR-NL` on fd 2, but the older messages were
+  left alone - a separate change with its own test churn.
+- **Nine dead variables in `shell.4`**, one occurrence each:
+  `IN-ASSIGN-CONTEXT?`, `PW-FID`, `WT-PID`, `FDL-I`, `WHILE-BODY-I`,
+  `WHILE-BODY-CUR`, `CASE-PATLAST-LEN`, `FD-ADDR`, `FD-LEN`.
+- **The duplication pass is two blocks deep.** Iteration 152 found the
+  largest duplicated block had drifted and was causing a real
+  status-127 bug. A full pass over 7,091 lines has not been done and
+  is likely to find more of the same class - it should be its own
+  iteration, not folded into a fix.
 - **`until` is recognised and then silently ignored.** It is in the
   reserved-word list (`shell.4` line 3155, so it is correctly refused
   as a command name) but the compound-command dispatcher tests only
@@ -1152,17 +1187,26 @@ before anything else, because every number here is relative to it.
    architecture section below). Three more POSIX failures, including
    `while read ...; done < file` - the commonest file-reading idiom in
    shell scripting.
-4. **Engine: `TOKEN-THREADING.md`.** Four stages, each green. Stage 1
-   (split code space from data space) is worth doing alone. **Run the
-   decisive experiment first**: the Iteration 141 prototype scaled to
-   the whole `shell.4` closure, so the working set exceeds L1 as the
-   real system's does. Both existing speed measurements flattered the
-   proposal for working-set reasons, and neither settles it.
-5. **Superinstructions** (`DENSITY-PLAN.md` option B), re-measured on
-   whatever token stream exists by then - folding branches removes
-   most of what they had to offer, so the search must be re-run rather
-   than the old numbers reused. Measure *speed* per K as well as size:
-   Ertl found the curve turns from instruction-cache pressure.
+4. **Engine: SOD16, on branch `token16`.** See `SOD16.md` for the
+   design, the state, and the traps. Iterations 156-167 measured every
+   encoding this project has considered and this one won; the branch
+   has a verified translator, an engine that differs from `relf.c` by
+   eight lines, and a settled answer for what an execution token is.
+   The next task is named precisely at the end of `SOD16.md`.
+
+   **`TOKEN-THREADING.md` is superseded but not wrong.** Its
+   variable-width byte stream is still the densest option measured
+   (0.19x against SOD16's 0.34x on x86-64). It lost on simplicity and
+   on a ceiling: its 1,024-target extended call is already under water
+   against 1,082 dictionary entries, because variable references
+   compile as calls. Read it for the density analysis, not the plan.
+
+5. ~~**Superinstructions**~~ - **closed by measurement (Iteration
+   157).** Every packed encoding costs 21-68% in dispatch to buy
+   density a plain 16-bit token gets more of anyway. That includes
+   SOD32's own 5-bit x 6 format, the best of them, at 1.21x on x86-64
+   and 1.68x on i386. `DENSITY-PLAN.md` option B should not be
+   re-proposed without new evidence.
 6. **A `FILL` primitive.** `FILL` is a per-byte threaded loop, which
    is most of what boot-time buffer zeroing costs (Iteration 136). A
    memset one-liner that helps everything.

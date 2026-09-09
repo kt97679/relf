@@ -216,6 +216,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **165** — an xt is a word number, and the numbering was backwards
 - **166** — `sod16.c`: the whole engine differs from `relf.c` by eight lines
 - **167** — re-layout is tractable, because the image is already relative
+- **168** — the handoff: `SOD16.md`, and `GOALS.md` brought up to date
 
 ### Not tied to an iteration
 
@@ -13185,3 +13186,52 @@ then walk the dictionary chain in the result and assert it reaches
 every word in the same order - the same shape of check that caught the
 `(LOOP)` operand and the sign-extension bugs, and that could not have
 caught the numbering bug, which needed a design question instead.
+
+## Iteration 168: the handoff
+
+Written to end a long session cleanly rather than to add capability.
+The session's own lesson applies to itself: this project's
+characteristic failure is a document that stops matching the code, and
+`GOALS.md` is what a new session is told to trust first.
+
+### `SOD16.md`
+
+The brief for the engine work: the encoding, the decisions and why they
+are forced rather than chosen, what is built, what is next, and the
+traps. It exists because Iterations 156-167 produced a design that
+lived only in a conversation, and because a session earlier in this
+same run re-proposed a two-tag-bit layout that Iteration 132 had
+already measured and rejected - the exact failure this file is meant to
+prevent.
+
+### `GOALS.md` brought up to date
+
+Four changes, all of them things a new session would otherwise get
+wrong:
+
+  - **Queue item 4** now points at SOD16 and `SOD16.md` instead of
+    `TOKEN-THREADING.md`. That document is marked superseded but not
+    wrong - its byte stream is still the densest option measured
+    (0.19x against SOD16's 0.34x), and it lost on simplicity and on a
+    ceiling, not on density. Read it for the analysis, not the plan.
+  - **Queue item 5, superinstructions, is struck out** as closed by
+    measurement. Every packed encoding costs 21-68% in dispatch to buy
+    density a plain 16-bit token gets more of anyway, SOD32's own
+    5-bit x 6 format included.
+  - **The size-lever section** gains the finding that the way to shrink
+    the image is the code encoding rather than its content, the second
+    rejection of headerless words now carrying a number (4,456 bytes,
+    26.9% of header bytes), and the fact that naive `M:` inlining is a
+    size *regression*.
+  - **The backlog** gains this session's unfixed findings: the
+    `LINE-MAX` tail-execution bug, marked as the strongest remaining
+    correctness item; the older diagnostics still on stdout; nine dead
+    variables; and the unfinished duplication pass.
+
+### State at the handoff
+
+`master` at Iteration 161, `token16` six commits ahead, `tests/verify`
+VERIFIED on both. Every commit in this run has a bundle, each verified
+by cloning it back and comparing HEAD.
+
+The next task is the layout pass, specified at the end of `SOD16.md`.
