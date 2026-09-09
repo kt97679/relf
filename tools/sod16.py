@@ -96,7 +96,37 @@ DATA = (set(re.findall(r'CREATE\s+(\S+)', src)) |
         set(re.findall(r'CONSTANT\s+(\S+)', src)))
 
 # ---- decode a word body to an operation list -----------------------
+EXIT_TOK = idx_of['EXIT'] * CELL + 1
+
+# The three primitives that take an operand. A stub for one of these is
+# the only place in the image where a token stream is genuinely
+# ambiguous - see stub_ops.
+OPERAND_PRIMS = ('LIT', 'BRANCH', '?BRANCH')
+
+def stub_ops(w):
+    """The two ops of a PRIMITIVE stub body, or None if this is not one."""
+    if w['e'] - w['s'] != 2 * CELL: return None
+    v0 = cells.get(w['s'])
+    if cells.get(w['s'] + CELL) != EXIT_TOK or v0 not in tokn: return None
+    return [('P', tokn[v0]), ('P', 'EXIT')]
+
 def read_ops(w):
+    # A PRIMITIVE stub is not threaded code. cross.4's PRIMITIVE emits
+    # `"HEADER DUP , ,-T EXIT-TOKEN ,-T`, so the body is exactly
+    # [prim-token, EXIT]. Read as code, LIT/BRANCH/?BRANCH swallow that
+    # trailing EXIT as their operand: the word LIT translated to "push
+    # 9" rather than "LIT; EXIT", and BRANCH to a branch of 9 bytes.
+    # All three round-tripped clean, because the decoder made the same
+    # mistake in both directions - the fault only became visible once
+    # branch offsets genuinely converted between units (Iteration 169).
+    #
+    # Detected by shape rather than by name: locals.4 redefines EXIT, so
+    # there are two words called EXIT and a name test picks the wrong
+    # one. Words whose real body happens to share this shape (`: FOO
+    # DUP ;`) decode identically either way, so the test is safe.
+    st = stub_ops(w)
+    if st is not None: return st
+
     out, a = [], w['s']
     while a < w['e']:
         v = cells.get(a)
@@ -125,11 +155,58 @@ def read_ops(w):
                 out.append(('STR', (n, tuple(raw)))); a += blob
     return out
 
+# ---- the layout map: cell offsets against token indices -------------
+#
+# A branch operand in the cell image is a BYTE offset from the operand
+# cell's own address (`relf.c` does `ip += CELL(ip)` with ip already
+# past the opcode). In the token image it must be a TOKEN offset from
+# the operand token's own position, because `sod16.c` does
+# `ip += 2 * (int16_t)TOK(ip)`.
+#
+# Those are different numbers, and the conversion needs to know where
+# every operation lands in both representations - which is what these
+# two functions give. Iteration 169 found the translator was passing
+# the byte offset through unconverted for 1,308 of 1,310 branches, and
+# the round trip could not see it: it decoded with the same convention
+# it encoded with, so it agreed with itself. Both directions now
+# genuinely convert, which is what makes the round trip evidence about
+# branches rather than a tautology.
+
+def op_cells(k, pl):
+    """Size of one operation in the CELL image, in cells."""
+    if k in ('P', 'C', 'OPD'): return 1
+    if k in ('LIT', 'BR', 'QBR'): return 2
+    if k == 'STR': return len(pl[1])
+    raise AssertionError("unknown op kind %r" % k)
+
+def op_toks(k, pl):
+    """Size of one operation in the TOKEN image, in 16-bit tokens."""
+    if k in ('P', 'C', 'OPD'): return 1
+    if k == 'LIT': return 2 if 0 <= pl <= 0xFFFF else 3
+    if k in ('BR', 'QBR'): return 2
+    if k == 'STR': return 2 + len(pl[1]) * (CELL // 2)
+    raise AssertionError("unknown op kind %r" % k)
+
+def layout(ops):
+    """(cell offset -> token index, cell offsets, token indices).
+
+    The map carries one entry per operation start AND one for the
+    position just past the last operation, because a branch forward out
+    of the final operation targets exactly there."""
+    c2t, cs, ts, c, i = {}, [], [], 0, 0
+    for k, pl in ops:
+        c2t[c] = i; cs.append(c); ts.append(i)
+        c += op_cells(k, pl) * CELL
+        i += op_toks(k, pl)
+    c2t[c] = i
+    return c2t, cs, ts, c, i
+
 # ---- encode an operation list to 16-bit tokens ---------------------
 MASK = 0xFFFF
-def to_tokens(ops):
+def to_tokens(ops, base):
+    c2t, cs, ts, _, _ = layout(ops)
     t = []
-    for k, pl in ops:
+    for j, (k, pl) in enumerate(ops):
         if k == 'P':
             i = idx_of[pl]
             assert i < 256, "primitive index %d exceeds the 0..255 band" % i
@@ -147,7 +224,16 @@ def to_tokens(ops):
                 t.append(255); t.append(v & MASK); t.append((v >> 16) & MASK)
         elif k in ('BR', 'QBR'):
             t.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
-            t.append(pl & MASK)                  # offset kept, re-derived below
+            # Convert. The operand sits one cell past the opcode, and one
+            # token past it; both offsets are measured from the operand
+            # itself, so both anchors move together.
+            tgt_cell = cs[j] + CELL + pl
+            if tgt_cell not in c2t:
+                return None                      # target is not an op start
+            off = c2t[tgt_cell] - (ts[j] + 1)
+            assert -32768 <= off <= 32767, \
+                "branch offset %d does not fit a signed 16-bit token" % off
+            t.append(off & MASK)
         elif k == 'OPD':
             t.append(pl & MASK)
         elif k == 'STR':
@@ -162,9 +248,12 @@ def to_tokens(ops):
 
 # ---- decode tokens back, to prove the encoding is reversible -------
 def from_tokens(t):
-    out, i = [], 0
+    # Pass 1: recover the operation list, leaving branch offsets in the
+    # token units they are stored in, and remembering each operation's
+    # token index so pass 2 can convert them back.
+    out, at, i = [], [], 0
     while i < len(t):
-        v = t[i]
+        v = t[i]; at.append(i)
         if v >= 256:
             tgt = order[v - 256]['s']
             out.append(('C', tgt)); i += 1
@@ -173,6 +262,7 @@ def from_tokens(t):
             # positional - only the op that emitted one knows it is there.
             if tgt == LOOP:
                 o = t[i]
+                at.append(i)
                 out.append(('OPD', o - 65536 if o >= 32768 else o)); i += 1
         elif v == 255:
             lo, hi = t[i+1], t[i+2]
@@ -197,6 +287,19 @@ def from_tokens(t):
             o = t[i+1]; out.append(('QBR', o - 65536 if o >= 32768 else o)); i += 2
         else:
             out.append(('P', prims[v])); i += 1
+
+    # Pass 2: convert branch offsets from token units back to the byte
+    # offsets the cell image uses. This is the inverse of the conversion
+    # in to_tokens, and doing it here is what lets the round trip test
+    # that conversion at all.
+    _, cs, ts, _, _ = layout(out)
+    t2c = {ti: ci for ti, ci in zip(ts, cs)}
+    t2c[len(t)] = cs[-1] + op_cells(*out[-1]) * CELL if out else 0
+    for j, (k, pl) in enumerate(out):
+        if k in ('BR', 'QBR'):
+            tgt_tok = ts[j] + 1 + pl
+            if tgt_tok not in t2c: return None
+            out[j] = (k, t2c[tgt_tok] - (cs[j] + CELL))
     return out
 
 # ---- optional emission of a loadable token file --------------------
@@ -214,7 +317,7 @@ EMIT = None
 if '--emit' in sys.argv:
     EMIT = open(sys.argv[sys.argv.index('--emit') + 1], 'w')
 
-ok = fail = skipped = 0
+ok = fail = skipped = ambiguous = 0
 tot_cell = tot_tok = 0
 failures = []
 for w in words:
@@ -224,11 +327,38 @@ for w in words:
     ops = read_ops(w)
     if ops is None:
         skipped += 1; tot_cell += span; tot_tok += span; continue
-    t = to_tokens(ops)
+    t = to_tokens(ops, w['s'])
     if t is None:
         skipped += 1; tot_cell += span; tot_tok += span; continue
+
+    # The stub for LIT, BRANCH or ?BRANCH encodes to [prim, EXIT], which
+    # cannot be told from "prim, with EXIT as its operand" - by exactly
+    # the positional-operand rule that makes the encoding work
+    # everywhere else. That ambiguity is inherited, not introduced: the
+    # cell body has it too, and either engine executing one of these
+    # three words would consume the EXIT as an operand and run on past
+    # the word. The bodies exist so the NAME resolves, not to be run.
+    # So they are translated and counted for size, and excluded from the
+    # equality check with a reason rather than silently passing it.
+    stub = stub_ops(w)
+    if stub is not None and stub[0][1] in OPERAND_PRIMS:
+        ambiguous += 1
+        tot_cell += span; tot_tok += len(t) * 2
+        if EMIT:
+            EMIT.write("W %d %d %s\n" % (num[w['s']], len(t), w['n']))
+            EMIT.write("T " + " ".join(str(x) for x in t) + "\n")
+        continue
+
     back = from_tokens(t)
-    if back == ops:
+    if back is None:
+        # The token stream did not decode at all - a branch offset landed
+        # somewhere that is not an operation boundary. Reported, not
+        # raised: this tool is meant to be wired into tests/verify, where
+        # a traceback is a worse diagnostic than a named word.
+        fail += 1
+        if len(failures) < 3:
+            failures.append((w['n'], -1, 'undecodable', 'branch target is not an op start'))
+    elif back == ops:
         ok += 1
     else:
         fail += 1
@@ -243,8 +373,9 @@ for w in words:
 
 if EMIT: EMIT.close()
 print("dump %s  cell %d" % (DUMP, CELL))
-print("round trip: %d words reproduce exactly, %d differ, %d skipped"
-      % (ok, fail, skipped))
+print("round trip: %d words reproduce exactly, %d differ, %d skipped,"
+      " %d ambiguous by construction"
+      % (ok, fail, skipped, ambiguous))
 for f in failures: print("   MISMATCH %s op %d: was %r, back %r" % f)
 print()
 print("word bodies: cell %d B   token %d B   %.3fx"

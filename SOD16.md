@@ -89,9 +89,10 @@ Six commits on `token16`, `master` untouched, `tests/verify` green at
 every one.
 
 - **`tools/sod16.py`** - translator, and it **proves itself**: it
-  decodes its own output and asserts equality per word. 531 words
-  round-trip exactly on both cell widths, 0 differ. `--emit` writes a
-  loadable text form.
+  decodes its own output and asserts equality per word. 528 words
+  round-trip exactly, 0 differ, 3 ambiguous by construction. `--emit`
+  writes a loadable text form. The figure was 531 before Iteration 169
+  corrected two decoder faults; the size result is unchanged.
 - **`tools/sod16-engine.c`** - dispatch core and table rebuild, running
   real translated bodies. Primitives are stubs, so its throughput
   figure is a decode rate and **not** a comparison against `relf`.
@@ -124,7 +125,10 @@ To recompute:
 
 1. **link fields** - spacing between headers changes as bodies shrink;
 2. **call offsets** - become word numbers, so the category vanishes;
-3. **branch offsets** - already in token units and verified to fit;
+3. **branch offsets** - converted to token units in Iteration 169, and
+   verified to fit: the widest is 559 against a 32,767 ceiling. This
+   line previously read "already in token units", and that was wrong -
+   see the traps below;
 4. **xts in `DEFER` and `SET-BOOT`** - word numbers, which do not move.
 
 Then: emit a loadable image, boot it, and run `tests/bench` against
@@ -154,6 +158,41 @@ The first two were caught by round-tripping. **The third could not
 be** - a round trip re-encodes and decodes with the same numbering and
 agrees with itself either way. It was caught by asking what an xt has
 to be. Some faults need a design question, not a test.
+
+Iteration 169 found two more of the same family, in the same tool, and
+neither was visible to the round trip for the same reason:
+
+- **Branch offsets were never converted to token units.** `to_tokens`
+  copied the cell image's *byte* offset straight into the token, with
+  a comment promising it was "re-derived below"; nothing re-derived it.
+  1,308 of 1,310 branches carried a wrong number, and the round trip
+  agreed with itself because it decoded with the same convention. The
+  fix converts in both directions through an explicit cell-offset /
+  token-index layout map, which is what makes the round trip evidence
+  about branches instead of a tautology. Sabotaging the conversion now
+  breaks 272 words; before, it broke none.
+- **A `PRIMITIVE` stub is not threaded code.** `cross.4` emits
+  `"HEADER DUP , ,-T EXIT-TOKEN ,-T`, so a stub body is exactly
+  `[prim-token, EXIT]`. Read as code, `LIT`, `BRANCH` and `?BRANCH`
+  each swallowed the trailing `EXIT` as their operand: the word `LIT`
+  translated to "push 9". It round-tripped clean and was counted among
+  the successes. Detect stubs **by shape, not by name** - `locals.4`
+  redefines `EXIT`, so a name test picks the wrong word.
+
+The rule those two sharpen: **a round trip only tests a
+transformation the two directions actually disagree about.** Where
+encode and decode share an assumption, it proves the assumption is
+applied consistently, not that it is right. Check by breaking the
+transformation on purpose and confirming the harness notices.
+
+**Three words are ambiguous by construction**, and the report now says
+so rather than passing them. The stub for `LIT`, `BRANCH` or `?BRANCH`
+encodes to `[prim, EXIT]`, which cannot be told from "prim, with EXIT
+as its operand" - by the same positional-operand rule the encoding
+relies on everywhere else. The cell image has the identical ambiguity;
+either engine executing one of those three would consume the `EXIT`
+and run on past the word. The bodies exist so the *name* resolves, not
+to be executed, so this is inherited, not introduced.
 
 **Operands are positional.** Only the operation that emitted an operand
 knows it is there. `(LOOP)`'s bare operand token was read back as a
