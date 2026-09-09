@@ -207,6 +207,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **156** — encoding comparison against SOD32; the freeze; the data-address finding
 - **157** — the speed half: packing costs 20-66%; the threading figure was wrong
 - **158** — variable-length tokens, and what the word table costs as it grows
+- **159** — token width sweep; the uniform 16-bit token; the derived-table idea
 
 ### Not tied to an iteration
 
@@ -12653,3 +12654,96 @@ word-count sweep); do not trust either tool's cell baseline until they
 agree. Three times in this line of work a dispatch ratio has turned out
 to be measuring something other than dispatch, and each time the cause
 was a single configuration with no cross-check.
+
+## Iteration 159: token width, and a table that lives outside the image
+
+### Varint cost grows steeply with width
+
+158 measured varint against a fixed 2-byte token on a natural mix and
+got 1.03-1.12x. That mix was mostly 2-byte tokens, so it did not answer
+the obvious question. Forcing every cold call to a fixed width
+(stream 2^14, table resident):
+
+    width   varint/cell   peeled/cell   stream KB
+      1        0.44          0.36         17.9
+      2        0.98          0.73         21.9
+      3        1.16          1.15         26.0
+      4        1.31          1.07         30.0
+
+**About 15% per additional byte.** The loop's exit is data-dependent,
+so a stream mixing widths mispredicts on every change.
+
+That matters because the scaled-offset scheme of 158 lives at width 3:
+the dictionary span is 27,306 slots on i386 and 25,660 on x86-64,
+15 bits, before any growth. So the offset variant sits at ~1.16x, not
+the 1.03x quoted from the natural mix.
+
+Peeling the two-byte case out of the loop is worth a lot at width 2
+(0.73 against 0.98) and nothing beyond it. If a varint scheme is used
+at all it should be written that way.
+
+### Fixed width is not automatically cheaper
+
+    fixed2   5.3 ms   1.00     20,588 bytes
+    varint   6.2 ms   1.18     20,987
+    fixed3   7.8 ms   1.49     22,831
+
+A fixed 3-byte token costs ~49% over a 2-byte one - steeper than "one
+more byte" suggests, and worse than varint on the same stream. Note
+`fixed2` cannot represent the 20,000 targets in the stream (it masks to
+10 bits), so it is a floor rather than a contestant.
+
+Also corrected here: with a one-byte opcode band, an extended token has
+only 7 bits in its first byte. So 2 bytes reaches 32K words and 3 bytes
+reaches 8M - not the 64K and 16M that a full-width reading suggests.
+And an earlier "fixed3" measurement in this session was actually a
+4-byte encoding, prefix plus three index bytes, which is why it looked
+so bad.
+
+### The uniform 16-bit token
+
+Proposed in conversation and the simplest thing yet measured. Every
+operation is one 16-bit token: `v < 256` selects a primitive or inline
+form, `v >= 256` is a word number. No tag, no varint, no packing, no
+branch on width - one aligned load, one compare, one branch.
+
+    u16   0.97-1.07 x cell time   36,690 bytes   4.0x smaller than cell
+
+Two bytes per operation against a cell's four or eight, so **2x on
+i386 and 4x on x86-64**, uniform across widths, which none of the
+offset schemes managed. Less dense than variable-width byte tokens
+(7.1x here) but far simpler.
+
+It measured at parity with cell dispatch and slower than the
+variable-width byte scheme, which is unexplained. Recorded as measured
+rather than rationalised.
+
+### The table outside the image
+
+The strongest idea in this exchange, and it is about where the table
+lives rather than how tokens are encoded. A word-number table held in
+malloc'd memory rather than in the image is **derived data**:
+
+  - rebuilt at startup by walking the dictionary link chain, so word N
+    is the Nth entry and the compiler and loader agree for free;
+  - never saved, so `SS-SCRUB` has nothing to clean and the image does
+    not grow;
+  - rebuilt after load, so it can hold ABSOLUTE addresses - dispatch is
+    one load with no base add and no shift, cheaper than every
+    in-image variant discussed;
+  - grown by realloc outside `mem[]`, so it never collides with `HERE`
+    and a runtime-defined word just appends.
+
+Load-time cost is a walk over 1,000-20,000 words against a 1.8ms
+startup, i.e. noise.
+
+### Confidence, and what to do next
+
+Three dispatch results in this session have come out contrary to
+expectation, and `varint-bench.c` and `dispatch-bench.c` still disagree
+about their cell baselines. The marginal value of more microbenchmarking
+is low. The uniform 16-bit design is simple enough - fewer concepts
+than the current cell scheme, not more - that building it and running
+`tests/bench` end to end would settle more than another synthetic loop.
+That is Iteration 133's stated experiment, now resolvable to about
++/-4% since Iteration 155.
