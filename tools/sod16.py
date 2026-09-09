@@ -176,6 +176,62 @@ def stub_ops(w):
     if cells.get(w['s'] + CELL) != EXIT_TOK or v0 not in tokn: return None
     return [('P', tokn[v0]), ('P', 'EXIT')]
 
+# Mid-word addresses that are entered from outside: the DOES> tails.
+# Code cannot be said to end before one of these.
+ENTRIES = set()
+for _w in words:
+    _v = cells.get(_w['s'])
+    if _v is not None and not (_v & 1):
+        _t = _w['s'] + CELL + _v
+        if _t not in num: ENTRIES.add(_t)
+
+def code_end(w):
+    """Address where this word's CODE ends. Usually w['e'].
+
+    A body span is everything up to the next HEADER, which is not the
+    same as a word's code: shell.4 compiles unheadered table entries
+    between definitions (`' DO-WAIT S" wait" BUILTIN`), and they land
+    inside the previous word's span. DO-ULIMIT and DO-UNALIAS each
+    carry one, and decoding ran off into a counted string.
+
+    The rule: code ends at the first EXIT that nothing can jump past.
+    If code continued beyond an EXIT, something would have to reach it,
+    and the only ways in are a branch or an outside entry point - fall
+    through is impossible past an EXIT. So an EXIT with no branch
+    target and no DOES> entry beyond it is the end.
+    """
+    a, reach = w['s'], w['s']
+    for e in ENTRIES:
+        if w['s'] < e < w['e']: reach = max(reach, e)
+    while a < w['e']:
+        v = cells.get(a)
+        if v is None: return w['e']
+        if v & 1:
+            nm = tokn.get(v)
+            if nm is None: return w['e']
+            if v in (BR, QBR):
+                reach = max(reach, a + CELL + cells.get(a + CELL, 0))
+                a += 2 * CELL
+            elif v == LIT: a += 2 * CELL
+            else:
+                a += CELL
+                # STRICTLY greater. A branch whose target is exactly
+                # the address after this EXIT means code resumes there;
+                # `>=` treated that as the end and truncated 106 bodies,
+                # dropping 49 KB of real code while the round trip
+                # stayed green, because it only ever saw the part that
+                # was kept.
+                if nm == 'EXIT' and a > reach: return a
+        else:
+            t = a + CELL + v
+            a += CELL
+            if t in BAD: return w['e']
+            if t in LOOPS or t in XTS: a += CELL
+            elif t in STR:
+                n = (cells.get(a) or 0) & 0xFF
+                a += align_up(1 + n, CELL)
+    return w['e']
+
 def read_ops(w):
     # A PRIMITIVE stub is not threaded code. cross.4's PRIMITIVE emits
     # `"HEADER DUP , ,-T EXIT-TOKEN ,-T`, so the body is exactly
@@ -187,8 +243,8 @@ def read_ops(w):
     st = stub_ops(w)
     if st is not None: return st
 
-    out, a = [], w['s']
-    while a < w['e']:
+    out, a, end = [], w['s'], code_end(w)
+    while a < end:
         v = cells.get(a)
         if v is None: return None
         if v & 1:

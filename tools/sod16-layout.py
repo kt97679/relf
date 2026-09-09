@@ -79,6 +79,7 @@ words, cells, tokn = G['words'], G['cells'], G['tokn']
 read_ops, to_tokens, layout = G['read_ops'], G['to_tokens'], G['layout']
 idx_of, prims, stub_ops = G['idx_of'], G['prims'], G['stub_ops']
 align_up, LOOPS, STR = G['align_up'], G['LOOPS'], G['STR']
+code_end = G['code_end']
 
 # ---- the anchor -----------------------------------------------------
 START = None
@@ -133,9 +134,17 @@ for w in order:
     if k == 'code': tok[w['s']] = to_tokens(i)
 
 # ---- new sizes ------------------------------------------------------
+def tail_bytes(w):
+    """Unheadered data compiled after this word's code - see code_end.
+
+    A PRIMITIVE stub is read by shape, not by walking, so code_end does
+    not apply to it and would report its second cell as a tail."""
+    if kind[w['s']] != 'code' or stub_ops(w) is not None: return 0
+    return w['e'] - code_end(w)
+
 def new_body_bytes(w):
     if kind[w['s']] == 'code':
-        return align_up(len(tok[w['s']]) * 2, CELL)
+        return align_up(len(tok[w['s']]) * 2, CELL) + tail_bytes(w)
     if info[w['s']] is not None:
         # [pad][call token][parameter field, CELL aligned]
         # The pad goes BEFORE the token so the parameter field, which is
@@ -264,6 +273,7 @@ c = collections.Counter(kind.values())
 codeb = sum(w['e'] - w['s'] for w in order if kind[w['s']] == 'code')
 datab = sum(w['e'] - w['s'] for w in order if kind[w['s']] == 'data')
 newcode = sum(new_body_bytes(w) for w in order if kind[w['s']] == 'code')
+tails_kept = [(w['n'], tail_bytes(w)) for w in order if tail_bytes(w)]
 newdata = sum(new_body_bytes(w) for w in order if kind[w['s']] == 'data')
 heads = sum(CELL + align_up(len(w['n']) + 1, CELL) for w in order)
 
@@ -290,6 +300,12 @@ untranslated = [w for w in order
 print("code words %d, data words %d" % (c['code'], c['data']))
 print("UNTRANSLATED code bodies: %d  (copied verbatim would be wrong)"
       % len(untranslated))
+print("unheadered tails carried after code: %s" % (tails_kept or "none"))
+if tails_kept:
+    print("   NOT YET RELOCATED. shell.4's BUILTIN lays each entry out as")
+    print("   [link][xt][len][name], and BOTH the link and the xt are")
+    print("   START-relative offsets into an image whose bodies have all")
+    print("   moved. Copied verbatim they point at the old layout.")
 for w in untranslated:
     print("   %s" % w['n'])
 print("link chain re-walks to the same %d words in the same order: %s"

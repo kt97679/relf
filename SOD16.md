@@ -187,29 +187,42 @@ twice:
 `DEFER` cells are the same story: they hold a `START`-relative offset
 and they keep holding one. 12 of 12 relocate.
 
-## The last two words, and why they are hard
+## Where a word's code ends
 
-`DO-ULIMIT` and `DO-UNALIAS` still do not translate, and the cause is
-now known. Both end normally with `;`, and both are followed in the
-image by **unheadered data**: `shell.4` builds its builtin table with
-lines like
+Iteration 177. **A body span is not the same thing as a word's code.**
+`tools/dict-dump-addr.4` computes a body as everything up to the next
+header, and `shell.4` compiles unheadered table entries between
+definitions:
 
     ' DO-WAIT         S" wait"     BUILTIN
 
-which compiles at `HERE` between definitions. `tools/dict-dump-addr.4`
-computes a body as everything up to the next header, so that table
-lands inside the previous word's body span.
+so that table lands inside the previous word's span. `DO-ULIMIT` and
+`DO-UNALIAS` each carry one, and decoding ran off the end of the code
+into a counted string.
 
-**So a body span is not the same thing as a word's code.** Nothing
-else in this file assumed otherwise, but an emitter would: it would
-translate past the final `EXIT` and start reading a counted string as
-threaded code, which is exactly where the decode fails - at `+504` of
-`DO-ULIMIT`, on the bytes `wait\0\0\0\0`.
+The rule now used: **code ends at the first `EXIT` that nothing can
+jump past.** If code continued past an `EXIT`, something would have to
+reach it, and the only ways in are a branch or an outside entry point -
+a `DOES>` tail - because falling through an `EXIT` is impossible.
 
-Splitting them needs a rule for where code ends that is better than
-"where decoding stops". Until there is one, `tools/sod16-layout.py`
-names both and **exits nonzero**, because the failure to avoid is an
-image in which two bodies were quietly copied as data.
+The comparison must be **strictly** greater. A branch whose target is
+exactly the address after an `EXIT` means code resumes there. Writing
+it as `>=` truncated **106 bodies and dropped 49 KB of real code**, and
+the round trip stayed green throughout, because it only ever saw the
+part that was kept. That is the same failure as every other one in this
+file - a check that agrees with itself - and it was caught by
+disbelieving a size ratio that improved too much.
+
+With the rule right, 3 bodies have tails, one of which is a `PRIMITIVE`
+stub that `code_end` does not apply to. Two are real:
+
+    DO-ULIMIT   640 B     DO-UNALIAS   64 B      (x86-64)
+
+**Those tails are not yet relocated**, and the layout tool says so on
+every run. `BUILTIN` lays each entry out as `[link][xt][len][name]`,
+and both the link and the xt are `START`-relative offsets into an image
+whose bodies have all moved. Copied verbatim they point at the old
+layout. This is the last known relocation category.
 
 ## What is next
 
