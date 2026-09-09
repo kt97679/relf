@@ -215,6 +215,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **164** — named SOD16; the gap stated honestly
 - **165** — an xt is a word number, and the numbering was backwards
 - **166** — `sod16.c`: the whole engine differs from `relf.c` by eight lines
+- **167** — re-layout is tractable, because the image is already relative
 
 ### Not tied to an iteration
 
@@ -13121,3 +13122,66 @@ step 3, and it is now the only thing between here and a like-for-like
 
 `EXECUTE` also needs its bounds check, since Iteration 165 made an xt a
 word number. Marked in the source, not yet written.
+
+## Iteration 167: re-layout is not the relocation problem
+
+166 left loading as the last thing between SOD16 and a like-for-like
+`tests/bench` number, and called it the part where trouble was
+expected: "every address in a saved image has to be found and
+adjusted", which is the classic undecidable-looking problem, since a
+cell holding an address is indistinguishable from a cell holding an
+integer.
+
+Measured before writing any of it:
+
+    image address range: 1448464512 .. 1448573736  (109,224 bytes)
+    cells scanned: 23,154
+    cells whose VALUE falls in that range: 13  (0.06%)
+       of those, in data-word bodies: 1
+
+And those 13 come from a **live process** dump, i.e. runtime state, not
+from a saved image.
+
+### Why it is not the problem it looked like
+
+RelF's image is already position-independent, and deliberately so.
+`cross.4`'s header comment says it: a link field is "a RELATIVE offset
+(previous name-field address minus this link cell's own address, so it
+survives relocation)". Calls are relative. `SS-SCRUB` exists to
+guarantee no absolute address survives a save - that is the whole point
+of the word, and Iteration 150's cross-path check is the first thing
+that ever proved it works.
+
+So a saved image contains **no absolute addresses to find**. Re-layout
+is not relocation. The work is recomputing relative offsets under a new
+layout, and the translator already knows both layouts because it
+computes the new one.
+
+Concretely, what has to be recomputed:
+
+  - **link fields**, since bodies shrink and the spacing between
+    headers changes;
+  - **call offsets**, which become word numbers anyway and so vanish
+    as a category;
+  - **branch offsets**, already re-expressed in token units and
+    verified to fit 16 signed bits with room over;
+  - **xts in `DEFER` cells and `SET-BOOT`**, which Iteration 165 made
+    word numbers, and word numbers do not move.
+
+That is a list, not a search. The design decisions of Iterations 162,
+165 and the project's own position-independence discipline have between
+them removed every category that would have required guessing.
+
+### What this changes about the plan
+
+164 listed relocation as step 3 and `cross.4` emission as step 4, with
+step 4 the one that decides whether SOD16 can replace the current
+encoding. That ordering still holds, but step 3 is smaller than
+estimated: a layout pass over the translator's own output, not an
+analysis of the image.
+
+The round-trip discipline should extend to it. Translate, re-lay out,
+then walk the dictionary chain in the result and assert it reaches
+every word in the same order - the same shape of check that caught the
+`(LOOP)` operand and the sign-extension bugs, and that could not have
+caught the numbering bug, which needed a design question instead.
