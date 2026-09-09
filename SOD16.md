@@ -112,7 +112,47 @@ more than 16 signed bits.
 
 ## What is next
 
-**The layout pass.** `sod16.c` still loads a cell image. A token
+**A `DOES>` word's body calls a mid-word address, and SOD16 cannot
+encode that.** Found in Iteration 170 and not previously recorded. It
+is the blocker in front of a bootable image, ahead of the layout pass.
+
+`(;CODE)` stores into the created word's first cell a relative offset
+to the address just past the `DOES>` in the *defining* word:
+
+    : (;CODE)  LAST @ NAME> R> OVER - CELLBYTES-TOK - SWAP ! ;
+
+So the target is inside another word's body, not at a word start. A
+SOD16 call token is a word *number*, and a word number can only name a
+word start, so these calls have no representation at all. Measured on
+this image: **93 words**, 81 through `pool.4`'s `BUFFER:` (target
+`+176` inside its body) and 12 through `kernel.4`'s `DEFER` (`+40`).
+The 12 include the `DEFER` cells `SOD16.md` already discusses under
+"an xt is a word number" - the xt *stored* in a `DEFER` was settled;
+the call *to* the `DEFER` runtime was not.
+
+Three routes, none measured:
+
+1. **Give each `DOES>` tail its own word number** by making it a real
+   word, so a call to it is an ordinary call. Cleanest against "an xt
+   is a word number", and a `cross.4`/`kernel.4` change.
+2. **A second call form carrying an offset.** Buys generality and
+   spends the simplicity that won the encoding comparison in the first
+   place - see the table above before proposing it.
+3. **Let the word table carry the tails.** It is derived and rebuilt
+   at load anyway, so it could append an entry per `DOES>` word. The
+   cost is that a word number stops meaning "the Nth word in the
+   chain", and the loader must reproduce the translator's numbering
+   exactly - which is the property Iteration 165 went to some trouble
+   to establish.
+
+**Do not classify code and data by whether the body decodes.** 26
+`CONSTANT`s decode cleanly as code and *are* code - `CONSTANT` compiles
+`LIT-TOK , , EXIT-TOK ,` - while 404 `DOVAR` words and 93 `DOES>` words
+are data with a call in front. The structural handle is the first cell:
+a call to `DOVAR`, or to a `DOES>` tail, means the rest of the body is
+data and must be copied as cells.
+
+**Then the layout pass.** `sod16.c` still loads a cell image. A token
 image's bodies are a different size, so offsets must be recomputed.
 Iteration 167 established this is a list, not a search, because the
 image is already position-independent - `cross.4`'s link fields are
@@ -121,15 +161,25 @@ relative "so it survives relocation", calls are relative, and
 cells only 13 hold values in the image's address range, and those come
 from a live-process dump, not a saved image.
 
+The image structure is confirmed (Iteration 170) and is a strict
+sequence, ascending: a 48-byte prologue - two calls at `+0` and `+8`,
+which is where `ip = base` starts executing, then three filler cells -
+then, per word, `[link cell][name field, aligned][body]`, ending at
+`HERE`. The older word's body ends exactly where the newer word's link
+cell begins: checked on all **1,081** consecutive pairs, 0 disagree.
+
 To recompute:
 
 1. **link fields** - spacing between headers changes as bodies shrink;
-2. **call offsets** - become word numbers, so the category vanishes;
+2. **call offsets** - become word numbers, so the category vanishes,
+   *except* for the mid-word `DOES>` targets above;
 3. **branch offsets** - converted to token units in Iteration 169, and
    verified to fit: the widest is 559 against a 32,767 ceiling. This
    line previously read "already in token units", and that was wrong -
    see the traps below;
-4. **xts in `DEFER` and `SET-BOOT`** - word numbers, which do not move.
+4. **`(LOOP)` operands** - a byte offset in a cell, recomputed for the
+   new spacing rather than reinterpreted (Iteration 170);
+5. **xts in `DEFER` and `SET-BOOT`** - word numbers, which do not move.
 
 Then: emit a loadable image, boot it, and run `tests/bench` against
 `freeze/iter156-encoding-baseline`. That is the like-for-like number
@@ -140,6 +190,29 @@ After that, `cross.4` emitting tokens directly, for self-hosting. That
 is the one that decides whether SOD16 *replaces* the current encoding
 or only sits beside it, and it is where `cross.4`'s hand-embedded
 dispatch numbers finally have to be touched.
+
+**Only the opcode stream becomes tokens.** Inline operands and inline
+strings keep cell granularity and cell alignment, so the seven words
+that read inline data off the return stack in Forth - `(S")`, `(.")`,
+`(ABORT")`, `(LOOP)`, `(+LOOP)`, `(?DO)`, `(LEAVE)` - need no change.
+`(LOOP)` gets NOOP padding *before* its call token, since padding after
+it is what `DUP @` would read. Verified structurally: 194 inline
+strings adjacent to their call with correct `ALIGNED` resume points,
+all 17 `(LOOP)` operands cell-aligned, zero violations.
+
+**`(?DO)` and `(LEAVE)` compile an absolute address.**
+`RESOLVE-LEAVE` stores a bare `HERE`. That is a latent fault in the
+*cell* image too, since an absolute address does not survive the
+relocation performed on every load, and it is invisible only because
+both words have **zero call sites** in this image. Anything that adds
+a `?DO` or a `LEAVE` to `shell.4` breaks saved images before it ever
+reaches SOD16. The translator refuses both rather than mis-decoding.
+
+**Still unwritten in `sod16.c`:** the `EXECUTE` bounds check
+(Iteration 165), and a dispatch entry for `LIT32`. The latter is now
+token index 68, appended past the 68 real primitives, because the
+dispatch table has exactly that many entries and the earlier choice of
+255 would have read past the end of it.
 
 ## Traps
 
