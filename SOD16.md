@@ -118,11 +118,41 @@ Field widths checked rather than assumed: highest word number used is
 **1,044** against a 65,279 ceiling, and **zero** branch offsets need
 more than 16 signed bits.
 
+## The layout pass, and the whole-image number
+
+`tools/sod16-layout.py` (Iteration 173) lays the entire image out again
+with token bodies, recomputes every reference the new spacing
+invalidates, and checks the result. Run it on a dump from either
+engine. It reports, and exits nonzero if any of it fails:
+
+    x86-64   205,336 B -> 83,920 B   0.409x
+    i386     109,256 B -> 69,748 B   0.638x
+
+**Quote this, not the body-only ratio.** Bodies shrink to 0.284x and
+0.539x, but headers, names and data bodies do not shrink at all, and
+they are 35,688 bytes of the x86-64 image. The body figure is the
+interesting one about the encoding; this is the one about the artifact.
+
+Checked rather than asserted, at both cell widths: the header
+adjacency holds on all 1,081 consecutive pairs, the recomputed link
+chain re-walks to the same 1,082 words in the same order, and all 12
+`DEFER` xts convert to word numbers with none unresolved.
+
+A data body is the SAME SIZE in both images, which is not a
+coincidence: its leading call cell becomes NOOP padding plus a 2-byte
+call token, and that is exactly one cell at either width.
+
 ## What is next
 
 **A `DOES>` word's body calls a mid-word address, and SOD16 cannot
-encode that.** Found in Iteration 170 and not previously recorded. It
-is the blocker in front of a bootable image, ahead of the layout pass.
+encode that.** Found in Iteration 170. It is the blocker in front of a
+bootable image. Iteration 173 measured it and took route 3 below: there
+are exactly **two** such targets, so they get word numbers past the end
+of the chain and the image carries a two-entry side table of (word
+number, byte offset) so the loader can finish deriving the word table
+after walking the chain. The table itself stays derived and unsaved.
+The translator and layout pass do this; the ENGINE does not read that
+side table yet.
 
 `(;CODE)` stores into the created word's first cell a relative offset
 to the address just past the `DOES>` in the *defining* word:

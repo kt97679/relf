@@ -38,5 +38,13 @@ VARIABLE BE
     NFA @ CELLB - DUP PREVLINK ! @ LNK !
     LNK @ 0= IF 0 GO ! ELSE PREVLINK @ LNK @ + NFA ! THEN
   REPEAT ;
+\ The S line anchors every address above to an offset in the saved
+\ image, which runs from START to HERE. Without it the layout pass
+\ cannot tell where the pre-dictionary prologue begins. Printed before
+\ DUMP runs, so HERE is the value the dump itself will see.
+\ `."` is compile-only in this kernel and prints nothing at the
+\ interpreter, so the label goes through S" ... " TYPE instead. That
+\ cost a silent empty anchor line once.
+S" S " TYPE START @ . HERE . CR
 DUMP
 BASE ! BYE
