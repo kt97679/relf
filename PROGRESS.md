@@ -209,6 +209,8 @@ marker for "still load-bearing". Find an entry by searching for
 - **158** — variable-length tokens, and what the word table costs as it grows
 - **159** — token width sweep; the uniform 16-bit token; the derived-table idea
 - **160** — the 16-bit token prototype on real code, and a census bug that mattered
+- **161** — `ENCODING-COMPARISON.md` regenerated from the fixed census
+- **162** — branch `token16`: a translator that proves itself by round trip
 
 ### Not tied to an iteration
 
@@ -12824,3 +12826,62 @@ widths are adequate - but it does not execute anything.
 
 Also unmodelled: headers, 16,576 bytes this scheme does not touch, and
 data-word bodies, which are copied verbatim.
+
+## Iteration 162: branch `token16`, and a translator that proves itself
+
+First commit on branch `token16`, off `c1d14ac`. The plan agreed: build
+the uniform 16-bit token engine first, leave varint for later if it is
+ever wanted.
+
+### Why the round trip came before the engine
+
+This session found two silent decoder bugs in analysis tools of exactly
+this shape, and each invalidated numbers already reported with
+confidence: call targets resolved as `addr+value` instead of
+`addr+CELL+value`, matching 24 of 6,548 calls; and an inline counted
+string's length read as a CELL when `(S")` uses `COUNT`, so every word
+containing a string was truncated and the operation count was low by
+21.5%.
+
+Both produced plausible output. Neither was caught by reading the code.
+An engine built on an unvalidated translator inherits the same class of
+fault, and there the symptom is a corrupt image rather than a wrong
+number.
+
+So `tools/token16.py` decodes its own output and asserts equality
+against the input, per word. That check paid for itself immediately -
+it caught two more bugs that size-counting alone would have missed:
+
+  - `(LOOP)`'s operand is emitted as a bare token and was being read
+    back as a call, because operands are POSITIONAL: only the operation
+    that emitted one knows it is there. `tokenize-image.py` never
+    noticed, because it only counted.
+  - signed operands were not sign-extended on decode, so `-24` came
+    back as `65512`.
+
+### Result
+
+    round trip: 531 words reproduce exactly, 0 differ  (both widths)
+
+    word bodies      cell form    token form
+    i386              92,616 B     54,084 B    0.584x
+    x86-64           182,456 B     62,626 B    0.343x
+
+Slightly larger than `tokenize-image.py`'s estimate (52,942 / 60,668)
+because that tool approximated inline strings while this one encodes
+them exactly and can prove it. **The verified numbers are the ones to
+use.**
+
+### Scope, stated plainly
+
+This translates a fully built image. It does not make the Forth
+compiler emit tokens - `,` and `:` still build cell code - so a
+translated image can run but cannot compile new definitions. That is
+enough to measure size and dispatch on real code, and not enough to
+self-host, which is a later problem and the one that will decide
+whether this encoding can actually replace the current one.
+
+Next: the engine. A `NEXT()` that reads one 16-bit token, compares
+against 256, and either dispatches a primitive or calls
+`wordtab[v-256]`; the table rebuilt at startup from the dictionary link
+chain, held outside the image, in absolute addresses.
