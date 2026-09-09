@@ -211,6 +211,7 @@ marker for "still load-bearing". Find an entry by searching for
 - **160** — the 16-bit token prototype on real code, and a census bug that mattered
 - **161** — `ENCODING-COMPARISON.md` regenerated from the fixed census
 - **162** — branch `token16`: a translator that proves itself by round trip
+- **163** — the dispatch core runs real translated words; the table is derived
 
 ### Not tied to an iteration
 
@@ -12885,3 +12886,56 @@ Next: the engine. A `NEXT()` that reads one 16-bit token, compares
 against 256, and either dispatches a primitive or calls
 `wordtab[v-256]`; the table rebuilt at startup from the dictionary link
 chain, held outside the image, in absolute addresses.
+
+## Iteration 163: the dispatch core, running real code
+
+`tools/token16-engine.c`. The decode loop and the table rebuild, run
+against real translated word bodies rather than a synthetic stream.
+
+    loaded 1082 words, 22492 tokens (44984 bytes of code)
+    table: 1082 entries x 8 B = 8656 B, OUTSIDE the image
+    executed 6,477,050 operations in 15.1 ms -> 428 Mops/s
+
+`tools/token16.py --emit` now writes a loadable form, deliberately
+plain text so it can be checked by eye and by diff. `CELLB`, which is
+`: CELLB 1 CELLS ;`, comes out as `2 1 1279 1` - `LIT`, the value 1,
+call word 1279 (`CELLS`), `EXIT`. That is the whole encoding, visible.
+
+### What this establishes
+
+**The table is derived, and the image carries none of it.** Word N is
+the Nth record in chain order - here the Nth `W` record, in the real
+engine the Nth entry walking the dictionary link chain. Same numbering,
+same rebuild. The 8,656 bytes it occupies are outside the image
+entirely, which is why the size figures never counted them.
+
+**It holds absolute addresses**, fixed up at load, so dispatch is one
+load with no base add and no shift:
+
+    ip = wordtab[v - 256];
+
+**Decode is one 16-bit read, one compare against 256, one branch.** The
+loop is in the file and is shorter than the cell version it would
+replace, which is the goal-3 argument for this design independent of
+any measurement.
+
+Operand handling repeats the lesson that cost two bugs in the
+translator: `LIT`, `LIT32`, the branches and `(S")` all consume
+positionally, because only the operation that emitted an operand knows
+it is there.
+
+### What it is not
+
+Primitives are stubs that touch the data stack so dispatch cannot be
+optimised away; they do not implement Forth. That is deliberate and
+sufficient - the question is what DECODE costs on a real instruction
+mix, and a stubbed primitive answers it as well as a real one while
+keeping the prototype small. But it means this cannot run the shell,
+and the 428 Mops/s figure is a decode rate, not a comparison against
+`relf`.
+
+A like-for-like number needs the real primitives, and a self-hosting
+image needs the Forth compiler to emit tokens - `,` and `:` still build
+cells. Both are larger than this file, and the second is the one that
+decides whether this encoding can replace the current one rather than
+merely be measured beside it.

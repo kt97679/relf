@@ -185,6 +185,21 @@ def from_tokens(t):
             out.append(('P', prims[v])); i += 1
     return out
 
+# ---- optional emission of a loadable token file --------------------
+# Format is deliberately plain text: the point of this prototype is to
+# be checkable by eye and by diff, not to be fast to load. A binary
+# image is a later concern, and premature here.
+#
+#   W <wordnum> <ntokens> <name>
+#   T <tok> <tok> ...
+#
+# The engine rebuilds its dispatch table from this the same way a real
+# load would rebuild it from the dictionary link chain: word N is the
+# Nth W record, in chain order. Nothing about the table is stored.
+EMIT = None
+if '--emit' in sys.argv:
+    EMIT = open(sys.argv[sys.argv.index('--emit') + 1], 'w')
+
 ok = fail = skipped = 0
 tot_cell = tot_tok = 0
 failures = []
@@ -208,7 +223,11 @@ for w in words:
                 if a != b: failures.append((w['n'], j, a, b)); break
             else: failures.append((w['n'], -1, len(ops), len(back)))
     tot_cell += span; tot_tok += len(t) * 2
+    if EMIT:
+        EMIT.write("W %d %d %s\n" % (num[w['s']], len(t), w['n']))
+        EMIT.write("T " + " ".join(str(x) for x in t) + "\n")
 
+if EMIT: EMIT.close()
 print("dump %s  cell %d" % (DUMP, CELL))
 print("round trip: %d words reproduce exactly, %d differ, %d skipped"
       % (ok, fail, skipped))
