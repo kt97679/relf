@@ -268,6 +268,26 @@ goes: it asserts that each link cell, each body, and each body's size
 land exactly where the layout pass said, and that the finished image is
 the length the layout computed.
 
+**The shell does not run.** `MAIN` enters its loop and prints its `$ `
+prompt, but a command produces no output at all - the same script that
+prints `hello` under `relf` prints nothing here, and with
+`ALLOC-BUFFERS` called first it produces nothing whatever. **This is
+not diagnosed.** What has been ruled out, by probing from inside the
+running token image:
+
+- `BUF-LIST` is 77232, matching the layout, and `ALLOC-BUFFERS` walks
+  the chain and returns a real heap address for `LINE-BUF`. The
+  `BUFFER:` relocation is correct.
+- `BUILTIN-LIST` is 79416, its entry's link is 79384 - exactly one
+  32-byte entry earlier - and its xt is a plausible body offset. The
+  22 entries pack into the two tails at exactly 32 bytes each, which
+  is 704 bytes and is exactly the tail space measured.
+
+So the two relocation categories most likely to be wrong are right.
+Anything reached through the shell's own machinery is still open, and
+runtime compilation is the obvious suspect, since the shell may compile
+on paths that a bare `echo` reaches.
+
 **It cannot compile.** `,` and `COMPILE,` write CELLS, so a new
 definition lays down cell-threaded code that the engine then reads as
 tokens. `: SQ DUP * ;` segfaults. Nothing about the image is wrong -
