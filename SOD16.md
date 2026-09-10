@@ -403,6 +403,68 @@ So the token image is not "boots and runs a few commands". It runs the
 shell's own test corpus, and the only thing it cannot do is the thing
 the next phase is for.
 
+## The real numbers, both axes
+
+Iteration 185. Like-for-like at last. The dump session now loads
+`save-system.4` as `relfsh` does, and the eight words
+`tools/dict-dump-addr.4` adds are subtracted. The check that this is
+honest: the cell image derived from the dump, minus those eight words,
+is **206,408 B on x86-64 and 109,868 B on i386 - byte-for-byte the
+committed `kernel-shell.img` and `kernel32-shell.img`**. The pipeline
+reproduces its own input.
+
+### Size: SOD16 wins, and beats `dash`
+
+Stripped engine + image, the same way `tests/sizes` counts it:
+
+| | engine | image | TOTAL | |
+|---|---|---|---|---|
+| x86-64 cell | 22,744 | 206,416 | **229,160** | |
+| x86-64 token | 22,744 | 83,496 | **106,240** | 0.464x |
+| `dash` | 129,784 | 0 | 129,784 | |
+| i386 cell | 17,808 | 109,876 | **127,684** | |
+| i386 token | 17,808 | 70,456 | **88,264** | 0.691x |
+
+The two engines strip to **exactly the same size**, which is the
+"eight executable lines" claim showing up on the scales.
+
+At 106,240 the token build is **smaller than `dash`**, which inverts
+the headline `GOALS.md`'s size table has carried since it was written.
+
+### Speed: SOD16 loses, and the microbenchmark did not predict it
+
+`tests/bench`, token image against the cell image:
+
+| workload | token | cell | |
+|---|---|---|---|
+| loop | 1110.9 ms | 928.1 ms | **1.20x slower** |
+| spawn | 164.4 ms | 154.4 ms | 1.06x slower |
+| start | 369.1 ms | 301.7 ms | 1.22x slower |
+
+Resolution on that run was +/-1.3% on a ratio, so a 20% gap is far
+outside the noise.
+
+**This contradicts the encoding comparison at the top of this file.**
+That table measured DECODE cost in isolation and gave SOD16 0.34x on
+x86-64, and `tools/sod16-engine.c` still reports ~560 Mops/s. Neither
+predicted the real workload, because neither included the cost the real
+engine pays: a call in the cell image is `ip += CELL(ip)`, a relative
+offset already in hand, while a SOD16 call is `wordtab[t - 256]` - an
+extra dependent load on the hot path, every call.
+
+The microbenchmark measured the part SOD16 makes cheaper and left out
+the part it makes dearer. It is the same fault as every other one in
+this file - a measurement that agreed with itself - and it survived
+because nothing ran the real thing until Iteration 184 made that
+possible.
+
+**This does not settle whether SOD16 is worth it.** `GOALS.md` ranks
+minimalism above performance and size is a stated goal; a 57% smaller
+artifact for 20% slower interpretation is exactly the trade that
+document says to take. But it should be taken knowingly, and the
+encoding table above should no longer be read as a performance
+argument.
+
 ## What is next
 
 **A `DOES>` word's body calls a mid-word address, and SOD16 cannot
