@@ -254,6 +254,31 @@ none unresolved at both cell widths (Iteration 178):
 `COLD` added `START` to them at boot, and are written back as offsets.
 Everything else that holds an offset is scrubbed by `SS-SCRUB`.
 
+## It boots
+
+Iteration 179. `tools/sod16-layout.py --emit-image` writes a token
+image and `sod16.c` runs it, at **both cell widths**:
+
+    x86-64   206,416 B  ->  82,752 B
+    i386     109,876 B  ->  69,388 B
+
+Arithmetic, inline strings, `HEX`/`DECIMAL`, `BASE @`, tick - every
+word compiled into the image runs. The emitter checks itself as it
+goes: it asserts that each link cell, each body, and each body's size
+land exactly where the layout pass said, and that the finished image is
+the length the layout computed.
+
+**It cannot compile.** `,` and `COMPILE,` write CELLS, so a new
+definition lays down cell-threaded code that the engine then reads as
+tokens. `: SQ DUP * ;` segfaults. Nothing about the image is wrong -
+the compiler is simply still emitting the old representation.
+
+That is the next piece, and it is not a small one: `COMPILE,`,
+`LITERAL`, the branch-resolving words, `ALLOT`/`,`, and `HEADER` all
+assume a cell body. It is the same work as `GOALS.md`'s phase 3, which
+is where `cross.4`'s hand-embedded dispatch numbers finally have to be
+touched.
+
 ## What is next
 
 **A `DOES>` word's body calls a mid-word address, and SOD16 cannot

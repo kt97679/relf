@@ -30,17 +30,15 @@
  *    Loading. A token image's bodies are a different size from a cell
  *    image's, so every address in the dictionary moves: link fields,
  *    HERE, and anything a VARIABLE holds that points into the image.
- *    load_image() below still loads a CELL image, so this engine
- *    compiles and its dispatch is real, but it cannot yet boot one.
- *    Relocation is the next piece.
+ *    It BOOTS (Iteration 179). Both cell widths run every word that
+ *    was compiled into the image: arithmetic, strings, HEX/DECIMAL,
+ *    tick, and the whole pre-compiled shell.
  *
- *    An xt is an ADDRESS, not a word number (Iteration 176): EXECUTE is
- *    `>R ;` in Forth, not a primitive, so it never indexes wordtab and
- *    needs no bounds check. A CALL TOKEN is a word number; an xt is an
- *    address; Iteration 165 conflated them. What this file still owes:
- *    a dispatch entry for LIT32 (index 68), and a load_image that
- *    rebuilds wordtab by walking the link chain and then appends the
- *    two DOES> tails from the image's side table.
+ *    It CANNOT COMPILE. `,` and `COMPILE,` write CELLS, so a new
+ *    definition lays down cell-threaded code that this engine then
+ *    reads as tokens. `: SQ DUP * ;` segfaults. Making the compiler
+ *    emit tokens is the next piece, and it is the same work as
+ *    GOALS.md's phase 3.
  */
 /*
  *  RelF - Relative Forth
@@ -125,7 +123,7 @@ typedef int32_t  INT64;
 #define TOK(a)   (*(UNS16 *)(uintptr_t)(a))
 #define MAXWORDS 65280
 static UNS64 *wordtab;          /* absolute body addresses, malloc'd */
-static unsigned n_words;
+/* n_words: superseded by nwords, set by load_image */
 
 #define RSTACK_BYTES 65536
 /*  Room the data stack is allowed to occupy before it is declared
@@ -219,7 +217,7 @@ static UNS64  rp_limit; /* return stack may not descend below this */
  *  no endianness handling of its own.
  */
 
-static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', CELL_BYTES, 0, 0, 0 };
+static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
 
 /*
  *  write() wrapper: don't care about partial writes here, only used for
@@ -341,10 +339,16 @@ static const int open_flags[8] = {
  *  This function reads binary forth image from file into memory.
  */
 
+#define MAX_TAILS 16
+static UNS64 nwords;
+
 static void load_image(const char *name) {
     int fd;
     long len;
     UNS8 magic[8];
+    UNS64 head_nfa, ntails, nfa, link;
+    UNS64 tail_w[MAX_TAILS], tail_o[MAX_TAILS];
+    long i, n;
 
     fd = open(name, O_RDONLY);
     if (fd < 0) {
@@ -356,6 +360,37 @@ static void load_image(const char *name) {
                  "different cell width.\n");
         exit(2);
     }
+    /*
+     *  Header, after the magic: the newest word's NFA as an offset, the
+     *  number of DOES> tail entries, then that many (word number, byte
+     *  offset) pairs.
+     *
+     *  The word table is DERIVED, not saved - it holds absolute
+     *  addresses and would not survive relocation. It is rebuilt here by
+     *  walking the link chain, which is the same walk FIND does. The
+     *  tail entries exist because a DOES>-created word's body begins
+     *  with a call to a MID-WORD address, and a call token can only name
+     *  a word start; there are exactly two such addresses in the image,
+     *  so the header describes how to finish deriving the table rather
+     *  than carrying the table itself.
+     */
+    if (full_read(fd, (UNS8*)&head_nfa, CELL_BYTES) != CELL_BYTES ||
+        full_read(fd, (UNS8*)&ntails,   CELL_BYTES) != CELL_BYTES) {
+        write_str(2, "Truncated image header.\n");
+        exit(2);
+    }
+    if (ntails > MAX_TAILS) {
+        write_str(2, "Image declares too many DOES> tails.\n");
+        exit(2);
+    }
+    for (i = 0; i < ntails; i++) {
+        if (full_read(fd, (UNS8*)&tail_w[i], CELL_BYTES) != CELL_BYTES ||
+            full_read(fd, (UNS8*)&tail_o[i], CELL_BYTES) != CELL_BYTES) {
+            write_str(2, "Truncated image header.\n");
+            exit(2);
+        }
+    }
+
     base = (UNS8*)(((UNS64)(uintptr_t)mem + CELL_BYTES - 1)
                     & ~(UNS64)(CELL_BYTES - 1));
     len = full_read(fd, base, MEMSIZE);
@@ -363,6 +398,39 @@ static void load_image(const char *name) {
     if (len < 0) {
         write_str(2, "Error reading image file.\n");
         exit(2);
+    }
+
+    /*  Count the chain, then fill it in. Walking twice avoids growing
+     *  the table, and the chain runs newest to oldest while word
+     *  numbers run oldest to newest, so the index is reversed.  */
+    nfa = (UNS64)(uintptr_t)base + head_nfa;
+    for (n = 0;; n++) {
+        link = CELL(nfa - CELL_BYTES);
+        if (link == 0) break;
+        nfa = (nfa - CELL_BYTES) + link;
+    }
+    n++;
+    nwords = n;
+    wordtab = malloc((n + ntails) * sizeof *wordtab);
+    if (!wordtab) {
+        write_str(2, "Out of memory building the word table.\n");
+        exit(2);
+    }
+    nfa = (UNS64)(uintptr_t)base + head_nfa;
+    for (i = 0; i < n; i++) {
+        UNS64 nlen = (*(UNS8*)(uintptr_t)nfa) & 31;
+        wordtab[n - 1 - i] =
+            nfa + ((nlen + 1 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+        link = CELL(nfa - CELL_BYTES);
+        if (link == 0) break;
+        nfa = (nfa - CELL_BYTES) + link;
+    }
+    for (i = 0; i < ntails; i++) {
+        if (tail_w[i] >= (UNS64)n) {
+            write_str(2, "DOES> tail names a word outside the chain.\n");
+            exit(2);
+        }
+        wordtab[n + i] = wordtab[tail_w[i]] + tail_o[i];
     }
 }
 
@@ -390,7 +458,11 @@ static void virtual_machine(void) {
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize
+        &&L_getfsize, &&L_setfsize,
+        /*  LIT32 is not one of kernel.4's primitives. It is appended
+         *  past the real ones so the table has no hole - `dispatch[255]`
+         *  would have read past the end.  */
+        &&L_lit32
     };
 
 #define NEXT() do { \
@@ -406,6 +478,9 @@ next:
 L_noop:    /* noop    */ NEXT();
 L_exit:    /* exit    */ ip = RS; rp += CELL_BYTES; NEXT();
 L_lit:     /* lit     */ PUSH(TOK(ip)); ip += 2; NEXT();
+L_lit32:   /* lit32   */ { UNS64 v = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
+                           if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
+                           PUSH(v); ip += 4; } NEXT();
 L_branch:  /* branch  */ ip += 2 * (int16_t)TOK(ip); NEXT();
 L_0branch: /* 0branch */
     if (DS0) ip += 2; else ip += 2 * (int16_t)TOK(ip);

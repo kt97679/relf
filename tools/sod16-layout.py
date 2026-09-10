@@ -66,6 +66,7 @@ how to finish deriving it.
 """
 import re, sys, collections
 
+ARGV = list(sys.argv)          # sod16.py's argv is faked below; keep ours
 DUMP = sys.argv[1] if len(sys.argv) > 1 else '/tmp/dump64.txt'
 CELL = int(sys.argv[2]) if len(sys.argv) > 2 else 8
 
@@ -342,6 +343,97 @@ if BL:
     h = cells.get(BL[0]['s'] + CELL)
     if h: fixed['BUILTIN-LIST'] = remap_tail_addr(START + h)
 
+# ---- emit the token image -------------------------------------------
+def emit(path):
+    """Write the token image. Layout and values all come from above."""
+    # Name flag bytes and prologue cells come from the dump's H and P
+    # lines; DUMP itself masks the flags off and never walks the
+    # prologue, so both were added in Iteration 174.
+    flag, pro = {}, {}
+    for l in open(DUMP, errors='replace'):
+        m = re.match(r'^H (\d+) (\d+)', l)
+        if m: flag[int(m.group(1))] = int(m.group(2)) & 0xFF
+        m = re.match(r'^P (\d+) (-?\d+)', l)
+        if m: pro[int(m.group(1))] = int(m.group(2))
+
+    M = (1 << (8 * CELL)) - 1
+    def cel(v): return (v & M).to_bytes(CELL, 'little')
+    def tk(v):  return (v & 0xFFFF).to_bytes(2, 'little')
+
+    img = bytearray()
+    # Prologue. The first two cells are calls - ip = base starts here -
+    # and become call tokens. The remaining cells are kept at their own
+    # cell positions, so the region keeps its size and the first link
+    # cell stays where the layout expects it.
+    for i in (0, 1):
+        v = pro[START + i * CELL]
+        img += tk(256 + num[START + i * CELL + CELL + v])
+    while len(img) < PROLOGUE - 3 * CELL: img += b'\x00'
+    for i in (2, 3, 4): img += cel(pro[START + i * CELL])
+    assert len(img) == PROLOGUE, "prologue emitted %d, expected %d" % (len(img), PROLOGUE)
+
+    # Builtin entries: old address -> new image offset, for the links.
+    bi_new = {START + o: remap_tail_addr(START + o) for o in seen} if BL else {}
+
+    for w in order:
+        s0 = w['s']
+        assert len(img) == new_off[s0]['link'], "link drift at %s" % w['n']
+        img += cel(linkval[s0])
+        nm = w['n'].encode('latin-1')
+        img += bytes([flag.get(w['nfa'], 0x80 | len(nm))]) + nm
+        while len(img) % CELL: img += b'\x00'
+        assert len(img) == new_off[s0]['body'], "body drift at %s" % w['n']
+
+        if kind[s0] == 'code':
+            for t_ in tok[s0]: img += tk(t_)
+            while len(img) % CELL: img += b'\x00'
+            # Unheadered tail, with its builtin entries relocated.
+            # Derived from tail_bytes, not from code_end directly, so a
+            # PRIMITIVE stub - which code_end does not apply to - cannot
+            # grow a spurious tail here while the layout says it has none.
+            a = w['e'] - tail_bytes(w)
+            while a < w['e']:
+                v = cells.get(a, 0)
+                if a in bi_new:                      # [link][xt][len][name]
+                    lk = cells.get(a, 0)
+                    img += cel(bi_new.get(START + lk, 0) if lk else 0)
+                    img += cel(remap_body_off(cells.get(a + CELL, 0)) or 0)
+                    img += cel(cells.get(a + 2 * CELL, 0))
+                    a += 3 * CELL
+                    continue
+                img += cel(v); a += CELL
+        else:
+            n = info[s0]
+            if n is None:                            # opaque, copied whole
+                a = s0
+                while a < w['e']: img += cel(cells.get(a, 0)); a += CELL
+            else:
+                img += b'\x00' * (CELL - 2)         # pad BEFORE the token
+                img += tk(256 + (num[n] if n in num else tailnum[n]))
+                vals = [cells.get(s0 + k * CELL, 0)
+                        for k in range(1, (w['e'] - s0) // CELL)]
+                if s0 in defers: vals[0] = defers[s0]
+                elif n == BUF_TAIL:
+                    vals[0] = 0                      # ptr, as RESET-BUFFERS
+                    if len(vals) > 2 and vals[2]:
+                        vals[2] = remap_pfa_off(vals[2])
+                elif w['n'] in fixed: vals[0] = fixed[w['n']]
+                for v in vals: img += cel(v)
+        assert len(img) == new_off[s0]['body'] + new_body_bytes(w), \
+            "body size drift at %s" % w['n']
+
+    assert len(img) == NEW_HERE, "image %d, layout said %d" % (len(img), NEW_HERE)
+
+    hdr = b'SOD1' + bytes([CELL, 0, 0, 0])
+    hdr += cel(new_off[order[-1]['s']]['nfa'])
+    hdr += cel(len(TAILS))
+    for t in TAILS:
+        h = [x for x in order if x['s'] < t < x['e']][0]
+        c2t_, _, _, _, _ = layout(info[h['s']])
+        hdr += cel(num[h['s']]) + cel(c2t_[t - h['s']])
+    open(path, 'wb').write(hdr + bytes(img))
+    return len(hdr), len(img)
+
 # ---- report ---------------------------------------------------------
 c = collections.Counter(kind.values())
 codeb = sum(w['e'] - w['s'] for w in order if kind[w['s']] == 'code')
@@ -350,6 +442,10 @@ newcode = sum(new_body_bytes(w) for w in order if kind[w['s']] == 'code')
 tails_kept = [(w['n'], tail_bytes(w)) for w in order if tail_bytes(w)]
 newdata = sum(new_body_bytes(w) for w in order if kind[w['s']] == 'data')
 heads = sum(CELL + align_up(len(w['n']) + 1, CELL) for w in order)
+
+EMIT = None
+for i, a in enumerate(ARGV):
+    if a == '--emit-image': EMIT = ARGV[i + 1]
 
 print("dump %s   cell %d" % (DUMP, CELL))
 print("structure: %d words, prologue %d B, %d header-adjacency gaps"
@@ -391,5 +487,9 @@ print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
 print("named offset cells: %d set, %d unresolved %s"
       % (len(fixed), len(fixed_bad), fixed_bad if fixed_bad else ""))
 for k in sorted(fixed): print("   %-16s -> %d" % (k, fixed[k]))
+if EMIT:
+    h, b = emit(EMIT)
+    print("wrote %s: %d B header + %d B image" % (EMIT, h, b))
+
 sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not xt_bad
          and not buf_bad and not untranslated and not bi_bad and not fixed_bad else 1)
