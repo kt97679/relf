@@ -288,11 +288,46 @@ running token image:
 - `SYS-ARGC` and `SYS-ARG` return 0 correctly, so `MAIN` falls through
   to the interactive loop as intended.
 
-So every relocation category that could plausibly be wrong has been
-checked from inside the running image and is right. Anything reached
-through the shell's own machinery is still open, and runtime
-compilation is the obvious suspect, since the shell may compile on
-paths that a bare `echo` reaches.
+So every relocation category checked was right. The fault is a category
+that was never on the list.
+
+## An eleventh relocation: literals that hold offsets
+
+Iteration 182, by bisection against a working control. `-c "echo hi"`
+prints `hi` under `relf` and nothing under `sod16`. Splitting the path:
+
+    SYS-ARGC                        both 2
+    0 SYS-ARG / S" -c" / C@         identical on both
+    CSTRLEN                         both 2
+    STR=                            relf -1, sod16 SEGFAULT
+
+`STR=` is `shell.4`'s string compare, and it uses **locals**:
+`{: SEQ-A SEQ-ALEN SEQ-B SEQ-BLEN | SEQ-I :}`.
+
+`locals.4`'s `L-EMIT` says exactly what it compiles:
+
+    \\ Two cells: the offset as a literal, then a relative call to the
+    \\ runtime word, which does the "+ START" itself.
+
+So a locals-using word's body contains **`LIT <offset from START to a
+slot word's body>`**, and the runtime adds `START` back. That is
+position-independent - which is why it survives a save - but it is
+**not layout-independent**, and the layout pass treats every `LIT`
+operand as an opaque value. Every one of those literals still points
+into the cell image's layout.
+
+The signature is structural, not a guess: a `LIT` immediately followed
+by a call to one of `locals.4`'s runtime words. It is the same
+positional-operand reasoning that `(LOOP)` and `(POSTPONE)` needed -
+only the op that emitted the value knows what the value means.
+
+`locals.4`'s comment records that this exact hazard, in its absolute
+form, once segfaulted the first turnkey image inside
+`NORMALIZE-OPERATORS`. The offset form fixed it for relocation. SOD16
+moves the bodies as well as the base, so it needs relocating again.
+
+**This is not runtime compilation**, which was the standing suspicion
+in Iterations 180 and 181. `STR=` is fully compiled into the image.
 
 **A warning about diagnosing this.** Two instruments lied during
 Iteration 181, and both looked like engine faults:
