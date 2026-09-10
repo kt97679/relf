@@ -331,7 +331,14 @@ if _fw: fixed['FORTH-WORDLIST'] = new_off[order[-1]['s']]['nfa']
 _bt = pfa_of('BOOT')
 if _bt:
     v = cells.get(_bt)
-    if not v: fixed['BOOT'] = 0                  # no turnkey word set
+    # The dump session never runs SET-BOOT, so BOOT is 0 and the image
+    # comes up at the Forth interpreter. Point it at MAIN so the image
+    # is turnkey, which is what relfsh's image is: otherwise the only
+    # way in is to type MAIN, and that eats the stdin a shell script
+    # needs.
+    _main = [x for x in order if x['n'] == 'MAIN']
+    if not v and _main: fixed['BOOT'] = new_off[_main[0]['s']]['body']
+    elif not v: fixed['BOOT'] = 0
     elif remap_body_off(v) is not None: fixed['BOOT'] = remap_body_off(v)
     else: fixed_bad.append(('BOOT', v))
 _bl = pfa_of('BUF-LIST')

@@ -376,6 +376,33 @@ assume a cell body. It is the same work as `GOALS.md`'s phase 3, which
 is where `cross.4`'s hand-embedded dispatch numbers finally have to be
 touched.
 
+## The suites, against the token image
+
+Iteration 184. The image is now **turnkey**: `BOOT` points at `MAIN`,
+as `relfsh`'s image does, so it needs no bootstrap on stdin and a
+piped script gets stdin to itself. A one-line wrapper is enough to
+point any harness at it, since they all take `THIS_SH`:
+
+    #!/bin/sh
+    exec ./sod16 shell.s16 "$@"
+
+Results, against `bash` as the live oracle:
+
+| suite | control (`relfsh`) | token 8-byte | token 4-byte |
+|---|---|---|---|
+| `tests/diff` | 20/20 | **20/20** | **20/20** |
+| `tests/shell` | all pass | **one failure** | - |
+
+The single failure is `run-forth`, "a shell-registered builtin runs" -
+the `forth` builtin, which goes through `EVALUATE`. That is runtime
+compilation, and it is the one thing already known not to work. Every
+other assertion in the suite passes: aliases, `while`, `unset`,
+`ulimit`, unterminated quotes, the lot.
+
+So the token image is not "boots and runs a few commands". It runs the
+shell's own test corpus, and the only thing it cannot do is the thing
+the next phase is for.
+
 ## What is next
 
 **A `DOES>` word's body calls a mid-word address, and SOD16 cannot
