@@ -78,6 +78,7 @@ exec(compile(_lib, 'sod16lib', 'exec'), G)
 
 words, cells, tokn = G['words'], G['cells'], G['tokn']
 read_ops, to_tokens, layout = G['read_ops'], G['to_tokens'], G['layout']
+retag = G['retag']
 idx_of, prims, stub_ops = G['idx_of'], G['prims'], G['stub_ops']
 align_up, LOOPS, STR = G['align_up'], G['LOOPS'], G['STR']
 code_end = G['code_end']
@@ -385,7 +386,14 @@ def emit(path):
         assert len(img) == new_off[s0]['body'], "body drift at %s" % w['n']
 
         if kind[s0] == 'code':
-            for t_ in tok[s0]: img += tk(t_)
+            # Re-encode with the relocated locals-slot literals. Safe to
+            # do after the layout was computed because a LITOFF is
+            # always the 32-bit form, so its size does not depend on its
+            # value; the assertion below is what proves that held.
+            ops2 = list(info[s0])
+            for (ws, j), nv in lit_new.items():
+                if ws == s0: ops2[j] = ('LITOFF', nv)
+            for t_ in to_tokens(ops2): img += tk(t_)
             while len(img) % CELL: img += b'\x00'
             # Unheadered tail, with its builtin entries relocated.
             # Derived from tail_bytes, not from code_end directly, so a
@@ -433,6 +441,40 @@ def emit(path):
         hdr += cel(num[h['s']]) + cel(c2t_[t - h['s']])
     open(path, 'wb').write(hdr + bytes(img))
     return len(hdr), len(img)
+
+# ---- literals that hold offsets -------------------------------------
+# locals.4's L-EMIT: "Two cells: the offset as a literal, then a
+# relative call to the runtime word, which does the + START itself."
+#
+# So a locals-using word's body carries LIT <offset from START to a
+# slot word's body>. That is position-INDEPENDENT, which is why it
+# survives a save, and it is not layout-INDEPENDENT, which is why SOD16
+# has to move it: the bodies are all somewhere else now.
+#
+# The four runtime words are found through the variables that hold
+# their xts, not by name, so renaming them cannot silently break this.
+# The signature is positional, like every other operand in this file:
+# a LIT is an offset only when a call to one of those four follows it.
+LOCALS_RT = set()
+for _n in ('L-LSAVE-XT', 'L-L!-XT', 'L-LZERO-XT', 'L-LRESTORE-XT'):
+    _p = pfa_of(_n)
+    if _p:
+        _v = cells.get(_p)
+        if _v: LOCALS_RT.add(START + _v)
+
+lit_ok, lit_bad, lit_new = 0, [], {}
+for w in order:
+    if kind[w['s']] != 'code': continue
+    ops = info[w['s']]
+    for j in range(len(ops) - 1):
+        if ops[j][0] not in ('LIT', 'LITOFF'): continue
+        if ops[j + 1][0] != 'C': continue
+        if ops[j + 1][1] not in LOCALS_RT: continue
+        v = ops[j][1]
+        n2 = remap_pfa_off(v)
+        if n2 is None: n2 = remap_body_off(v)
+        if n2 is None: lit_bad.append((w['n'], v))
+        else: lit_ok += 1; lit_new[(w['s'], j)] = n2
 
 # ---- report ---------------------------------------------------------
 c = collections.Counter(kind.values())
@@ -484,6 +526,8 @@ print("DEFER xts relocated: %d resolved, %d unresolved %s"
       % (len(defers), len(defer_bad), defer_bad if defer_bad else ""))
 print("BUFFER: fields: %d words, ptr zeroed, %d links unremappable %s"
       % (bufs, len(buf_bad), buf_bad[:3] if buf_bad else ""))
+print("locals slot literals relocated: %d resolved, %d unresolved %s"
+      % (lit_ok, len(lit_bad), lit_bad[:3] if lit_bad else ""))
 print("named offset cells: %d set, %d unresolved %s"
       % (len(fixed), len(fixed_bad), fixed_bad if fixed_bad else ""))
 for k in sorted(fixed): print("   %-16s -> %d" % (k, fixed[k]))
@@ -492,4 +536,5 @@ if EMIT:
     print("wrote %s: %d B header + %d B image" % (EMIT, h, b))
 
 sys.exit(0 if chain_ok and gaps == 0 and not defer_bad and not xt_bad
-         and not buf_bad and not untranslated and not bi_bad and not fixed_bad else 1)
+         and not buf_bad and not untranslated and not bi_bad and not fixed_bad
+         and not lit_bad else 1)

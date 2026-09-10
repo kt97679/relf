@@ -329,6 +329,31 @@ moves the bodies as well as the base, so it needs relocating again.
 **This is not runtime compilation**, which was the standing suspicion
 in Iterations 180 and 181. `STR=` is fully compiled into the image.
 
+**Fixed, and the shell runs.** 926 such literals at each cell width,
+all resolving to a slot word's parameter field. With them relocated,
+both token images run the shell:
+
+    echo hello world      ->  hello world
+    echo $((6*7))         ->  42
+    pwd                   ->  /home/claude/repo
+    X=5; echo $X          ->  5
+    for w in a b c; ...   ->  a b c
+    if true; then ...     ->  yes
+
+A `LITOFF` is **always** encoded in the 32-bit form, whatever its
+current value. Relocating changes the value, and if the encoding could
+shrink or grow with it the body would change size after the layout had
+already been computed from it. That costs 2 bytes per literal, about
+1.8 KB, and it is what makes the re-encode safe.
+
+One near-miss worth keeping: the first version of the fix reported
+"926 resolved" and changed nothing. The layout pass tested for `LIT`
+while `retag` had already renamed them `LITOFF`, so the loop skipped
+every one and the count came from a leftover match. It was caught by
+checking the emitted bytes against both the relocated and the
+unrelocated token stream - and they matched the unrelocated one. A
+count is not evidence that anything was written.
+
 **A warning about diagnosing this.** Two instruments lied during
 Iteration 181, and both looked like engine faults:
 

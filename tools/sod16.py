@@ -60,8 +60,11 @@ idx_of = {n: i for i, n in enumerate(prims)}
 LIT, BR, QBR = (prims.index(x) * CELL + 1 for x in ('LIT', 'BRANCH', '?BRANCH'))
 
 words, cur, cells = [], None, {}
+START_ADDR = None
 for l in open(DUMP, errors='replace'):
     l = l.rstrip()
+    m = re.match(r'^S (\d+) (\d+)', l)
+    if m and START_ADDR is None: START_ADDR = int(m.group(1)); continue
     m = re.match(r'^N (-?\d+) (-?\d+) (.*)$', l)
     if m:
         cur = {'s': int(m.group(1)), 'e': int(m.group(2)), 'n': m.group(3).strip()}
@@ -152,6 +155,25 @@ LOOP_WORDS = ('(LOOP)', '(+LOOP)')
 # cannot resolve, so it is passed through here and relocated by
 # tools/sod16-layout.py, which is the pass that knows where words land.
 XT_WORDS   = ('(POSTPONE)',)
+
+# locals.4's L-EMIT compiles "the offset as a literal, then a relative
+# call to the runtime word, which does the + START itself". So a LIT
+# followed by a call to one of those four runtime words is not a value,
+# it is an offset into the image, and the layout pass has to move it.
+#
+# Such a literal is ALWAYS encoded in the 32-bit form, whatever its
+# current value. Relocating it changes the value, and if the encoding
+# could shrink or grow with the value the body would change size after
+# the layout had already been computed from it.
+#
+# The four are found through the variables holding their xts rather
+# than by name.
+LOCALS_RT = set()
+for _n in ('L-LSAVE-XT', 'L-L!-XT', 'L-LZERO-XT', 'L-LRESTORE-XT'):
+    _w = by_name.get(_n)
+    if _w:
+        _v = cells.get(_w['s'] + CELL)
+        if _v: LOCALS_RT.add(START_ADDR + _v)
 BAD_WORDS  = ('(?DO)', '(LEAVE)')
 
 STR  = {by_name[n]['s'] for n in STR_WORDS  if n in by_name}
@@ -232,6 +254,16 @@ def code_end(w):
                 a += align_up(1 + n, CELL)
     return w['e']
 
+def retag(ops):
+    """Mark literals that are really image offsets. Positional, like
+    every other operand rule here: only the call that follows says what
+    the value means."""
+    for j in range(len(ops) - 1):
+        if (ops[j][0] == 'LIT' and ops[j + 1][0] == 'C'
+                and ops[j + 1][1] in LOCALS_RT):
+            ops[j] = ('LITOFF', ops[j][1])
+    return ops
+
 def read_ops(w):
     # A PRIMITIVE stub is not threaded code. cross.4's PRIMITIVE emits
     # `"HEADER DUP , ,-T EXIT-TOKEN ,-T`, so the body is exactly
@@ -280,7 +312,7 @@ def read_ops(w):
                     raw += (cells.get(a + k, 0) & ((1 << (8 * CELL)) - 1)
                             ).to_bytes(CELL, 'little')
                 out.append(('STR', bytes(raw[:1 + n]))); a += blob
-    return out
+    return retag(out)
 
 # ---- the layout map: cell offsets against token offsets -------------
 #
@@ -303,7 +335,7 @@ def read_ops(w):
 def op_cells(k, pl):
     """Size of one operation in the CELL image, in bytes."""
     if k in ('P', 'C', 'OPD', 'XT'): return CELL
-    if k in ('LIT', 'BR', 'QBR'): return 2 * CELL
+    if k in ('LIT', 'LITOFF', 'BR', 'QBR'): return 2 * CELL
     if k == 'STR': return align_up(len(pl), CELL)
     raise AssertionError("unknown op kind %r" % k)
 
@@ -311,6 +343,7 @@ def op_bytes(k, pl, t):
     """Size of one operation in the TOKEN image, in bytes, at offset t."""
     if k in ('P', 'C'): return 2
     if k == 'LIT': return 4 if 0 <= pl <= 0xFFFF else 6
+    if k == 'LITOFF': return 6          # always the 32-bit form
     if k in ('BR', 'QBR'): return 4
     if k in ('OPD', 'XT'): return CELL
     if k == 'STR': return align_up(t + len(pl), CELL) - t
@@ -359,6 +392,9 @@ def to_tokens(ops):
             if n is None: return None            # call outside the dump
             assert n + 256 <= 65535, "word number %d exceeds the token field" % n
             t.append(256 + n)
+        elif k == 'LITOFF':
+            v = pl & ((1 << 32) - 1)
+            t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
         elif k == 'LIT':
             v = pl & ((1 << 32) - 1)
             if 0 <= pl <= 0xFFFF:
@@ -459,6 +495,7 @@ def from_tokens(t):
     # byte offsets. This is the inverse of the conversion in to_tokens,
     # and doing it here is what lets the round trip test that conversion
     # at all rather than agreeing with itself.
+    retag(out)
     _, cs, ts, ctot, _ = layout(out)
     t2c = {tb: cb for tb, cb in zip(ts, cs)}
     t2c[len(t) * 2] = ctot
