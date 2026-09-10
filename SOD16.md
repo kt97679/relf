@@ -283,10 +283,27 @@ running token image:
   22 entries pack into the two tails at exactly 32 bytes each, which
   is 704 bytes and is exactly the tail space measured.
 
-So the two relocation categories most likely to be wrong are right.
-Anything reached through the shell's own machinery is still open, and
-runtime compilation is the obvious suspect, since the shell may compile
-on paths that a bare `echo` reaches.
+- The `DEFER` indirection the shell runs through is exact: `' RUN-LINE`
+  and the address stored in `RUN-LINE-CALL` are the same number.
+- `SYS-ARGC` and `SYS-ARG` return 0 correctly, so `MAIN` falls through
+  to the interactive loop as intended.
+
+So every relocation category that could plausibly be wrong has been
+checked from inside the running image and is right. Anything reached
+through the shell's own machinery is still open, and runtime
+compilation is the obvious suspect, since the shell may compile on
+paths that a bare `echo` reaches.
+
+**A warning about diagnosing this.** Two instruments lied during
+Iteration 181, and both looked like engine faults:
+
+- Filtering the engine's output through `strings` silently drops
+  anything under four characters, so `SYS-ARGC` printing `0 ` looked
+  like a crash. Use `tr -d '\r'`, not `strings`.
+- A hand-written probe that loads `LINE-BUF` and calls `RUN-LINE`
+  segfaults **on the cell engine too**. Any probe of the shell must be
+  run against `relf` first to establish that it works at all; a probe
+  that fails on both engines says nothing about SOD16.
 
 **It cannot compile.** `,` and `COMPILE,` write CELLS, so a new
 definition lays down cell-threaded code that the engine then reads as
