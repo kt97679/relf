@@ -435,14 +435,30 @@ the headline `GOALS.md`'s size table has carried since it was written.
 
 `tests/bench`, token image against the cell image:
 
-| workload | token | cell | |
-|---|---|---|---|
-| loop | 1110.9 ms | 928.1 ms | **1.20x slower** |
-| spawn | 164.4 ms | 154.4 ms | 1.06x slower |
-| start | 369.1 ms | 301.7 ms | 1.22x slower |
+The `relf` row is `./relf kernel-shell.img` - the cell engine on the
+cell image. `tests/bench` hardcodes it alongside whatever `THIS_SH`
+is, so both are the same `relf.c` bar the eight lines, both `cc -O2`,
+same machine, interleaved samples.
 
-Resolution on that run was +/-1.3% on a ratio, so a 20% gap is far
-outside the noise.
+Measured with a WORD-SET-MATCHED token image, from a dump session that
+loads `save-system.4` as `relfsh` does:
+
+| workload | token | `relf` | |
+|---|---|---|---|
+| loop | 1099.1 ms | 880.4 ms | **1.25x slower** |
+| spawn | 157.1 ms | 143.3 ms | 1.10x slower |
+| start | 342.3 ms | 275.1 ms | 1.24x slower |
+
+The first measurement of this used an image built without
+`save-system.4` and read 1.20x; matching the word sets moved it to
+1.25x. Absolute times drift a few percent between runs, so quote the
+RATIO, which is stable and moved against SOD16 when the confound was
+removed.
+
+`start` is slower despite the image being 59% smaller, which is its own
+result: `load_image` now walks the 1,082-word link chain and mallocs
+the table before executing anything. That is a second place the word
+table costs something.
 
 **This contradicts the encoding comparison at the top of this file.**
 That table measured DECODE cost in isolation and gave SOD16 0.34x on
