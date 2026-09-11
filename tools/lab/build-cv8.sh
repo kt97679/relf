@@ -37,6 +37,10 @@ img cptf-64    8 --cpt 3 --dataprims --fold --fold-set "$HOT"
 img cptf-32    4 --cpt 2 --dataprims --fold --fold-set "$HOT"
 img cv8-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT"
 img cv8-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT"
+# VM-SURVEY.md: CV8 plus the specialisations borrowed from other VMs
+SPECS=loc,var,tiny,small,imm
+img spec-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS
+img spec-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
@@ -63,6 +67,12 @@ python3 tools/lab/gen-fold.py "$O/vm-lab-tos.c" "$HOT" v8 > /dev/null
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cv8t-64" "$O/vm-lab-tos.c"
 cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 \
     -o "$O/cv8t-32" "$O/vm-lab-tos.c"
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
+    -o "$O/spec-64" "$O/vm-lab-tos.c"
+cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
+    -DSHAREDCALL=1 -o "$O/spec-32" "$O/vm-lab-tos.c"
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DPROFILE=1 \
+    -o "$O/spec-64-prof" "$O/vm-lab-tos.c" 2>/dev/null
 
 # ---- smoke test: every pair must agree with dash ----------------------
 want=$(for w in fn str arith; do dash tests/bench-vm/$w.sh; done)
@@ -77,3 +87,4 @@ chk cpt16-64  "$O/cpt16-64.img";      chk cpt16-32  "$O/cpt16-32.img"
 chk cptf-64   "$O/cptf-64.img";       chk cptf-32   "$O/cptf-32.img"
 chk cv8-64    "$O/cv8-64.img";        chk cv8-32    "$O/cv8-32.img"
 chk cv8t-64   "$O/cv8-64.img";        chk cv8t-32   "$O/cv8-32.img"
+chk spec-64   "$O/spec-64.img";       chk spec-32   "$O/spec-32.img"

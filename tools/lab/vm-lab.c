@@ -83,6 +83,12 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+#ifndef SPEC
+#define SPEC 0     /* 1: CV8 specialised opcodes 0x60-0x77 (CV8.md 10) */
+#endif
+#ifndef VMPUSH
+#define VMPUSH PUSH
+#endif
 #define UNS8 unsigned char /* byte access; width-independent */
 
 #if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFFULL
@@ -239,7 +245,8 @@ static UNS64 dsp_limit, rp_limit;
 #if ENC == 1
 static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
 #elif ENC == 3
-static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES, 0, 0, 0 };
+static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES,
+                                     SPEC ? 'L' : 0, 0, 0 };
 #else
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'P', 'T', '0' + SCALE, CELL_BYTES, 0, 0, 0 };
 #endif
@@ -366,6 +373,7 @@ static const int open_flags[8] = {
 
 #define MAX_TAILS 16
 static UNS64 nwords;
+static UNS64 loc_hdr[5];   /* SPEC: lsp, lstk, lmax, lsave, lrestore (offsets) */
 
 static void load_image(const char *name) {
     int fd;
@@ -408,6 +416,19 @@ static void load_image(const char *name) {
         write_str(2, "Image declares too many DOES> tails.\n");
         exit(2);
     }
+#if SPEC
+    /* locals opcodes: save-stack variable, buffer, limit, fallback words */
+    for (i = 0; i < ntails; i++) {
+        UNS64 w_, o_;
+        if (full_read(fd, (UNS8*)&w_, CELL_BYTES) != CELL_BYTES ||
+            full_read(fd, (UNS8*)&o_, CELL_BYTES) != CELL_BYTES) exit(2);
+        tail_w[i] = w_; tail_o[i] = o_;
+    }
+    if (full_read(fd, (UNS8*)loc_hdr, 5 * CELL_BYTES) != 5 * CELL_BYTES) {
+        write_str(2, "Truncated locals header.\n"); exit(2);
+    }
+    if (0)
+#endif
     for (i = 0; i < ntails; i++) {
         if (full_read(fd, (UNS8*)&tail_w[i], CELL_BYTES) != CELL_BYTES ||
             full_read(fd, (UNS8*)&tail_o[i], CELL_BYTES) != CELL_BYTES) {
@@ -475,23 +496,27 @@ static void load_image(const char *name) {
 #if PROFILE
 #include <stdio.h>
 #define PROFDUMP dump_prof()
-static unsigned long long prof[258], pair[258][258], callc[65536];
+static unsigned long long prof[258], pair[258][258], callc[65536], ipc[1 << 20];
 static const char *prof_names[258];
 static void dump_prof(void) {
     const char *f = getenv("VMPROF"); if (!f) return;
     int fd = open(f, O_WRONLY|O_CREAT|O_APPEND, 0644); char b[128];
     for (int i = 0; i < 258; i++) for (int j = 0; j < 258; j++) if (pair[i][j]) {
         int n = snprintf(b, sizeof b, "%d %d %llu\n", i, j, pair[i][j]); write(fd, b, n); }
+    for (int i = 0; i < (1 << 20); i++) if (ipc[i]) {   /* per-address: patterns.py */
+        int n = snprintf(b, sizeof b, "I %d %llu\n", i, ipc[i]); write(fd, b, n); }
     for (int i = 0; i < 65536; i++) if (callc[i]) {
         int n = snprintf(b, sizeof b, "C %d %llu\n", i, callc[i]); write(fd, b, n); }
     close(fd);
 }
 static int prev_op = 257;
 #define PROFC(t) (callc[t]++)
+#define PROFIP(a) (ipc[((a) - (UNS64)(uintptr_t)base) & ((1 << 20) - 1)]++)
 #define PROF(k) do { pair[prev_op][k]++; prev_op = (k); } while (0)
 #else
 #define PROF(k)
 #define PROFC(t)
+#define PROFIP(a)
 #define PROFDUMP
 #endif
 static void virtual_machine(void) {
@@ -532,14 +557,30 @@ static void virtual_machine(void) {
 #if ENC == 3
         &&L_lit8, &&L_lit8x,
 #endif
+#if ENC == 3 && SPEC
+        [0x60] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
+        &&L_lsave, &&L_lrest, &&L_lstore, &&L_lzero,
+        &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
+        &&L_charp, &&L_onep, &&L_cellp, &&L_cells, &&L_onem, &&L_invert,
+        &&L_count, &&L_aligned, &&L_addi, &&L_addix, &&L_eqi, &&L_eqix,
+#endif
 #if FOLD
 #include "vm-fold-table.h"
 #endif
     };
 
-#if ENC == 3
+#if ENC == 3 && SHAREDCALL
+/*  Every handler keeps its own opcode dispatch (what the branch predictor
+ *  needs), but the call path - decode, RPUSH, limit check - exists once.
+ *  GCC otherwise replicates ~50 bytes of it into all ~120 handlers.  */
 #define NEXT() do { \
-        t = BYTE(ip); \
+        PROFIP(ip); t = BYTE(ip); \
+        if (t < 0x80) { ip += 1; PROF(t); goto *dispatch[t]; } \
+        goto do_call; \
+    } while (0)
+#elif ENC == 3
+#define NEXT() do { \
+        PROFIP(ip); t = BYTE(ip); \
         if (t < 0x80) { ip += 1; PROF(t); goto *dispatch[t]; } \
         t = ((t & 0x7F) << 8) | BYTE(ip + 1); ip += 2; \
         PROF(256); RPUSH(ip); ip = cbase + (t << SCALE); \
@@ -556,6 +597,12 @@ static void virtual_machine(void) {
 
 next:
     NEXT();
+#if ENC == 3 && SHAREDCALL
+do_call:
+    t = ((t & 0x7F) << 8) | BYTE(ip + 1); ip += 2;
+    PROF(256); RPUSH(ip); ip = cbase + (t << SCALE);
+    NEXT();
+#endif
 
 L_noop:    /* noop    */ NEXT();
 L_exit:    /* exit    */ ip = RS; rp += CELL_BYTES; NEXT();
@@ -570,6 +617,59 @@ L_lit32:   /* lit32   */ { UNS64 v = LD32(ip);
 L_lit32:   /* lit32   */ { UNS64 v = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
                            if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
                            PUSH(v); ip += 4; } NEXT();
+#endif
+#if ENC == 3 && SPEC
+/*  Specialised opcodes, each borrowed from another VM (CV8.md 10).
+ *  The slot/variable operand is a 16-bit little-endian value v; the
+ *  address is base + (v << SCALE), the same compressed pointer calls use. */
+#define SLOT() (t = LD16(ip), ip += 2, cbase + (t << SCALE))
+L_lit0:   VMPUSH(0); NEXT();                          /* JVM iconst_0  */
+L_lit1:   VMPUSH(1); NEXT();
+L_litm1:  VMPUSH(~(UNS64)0); NEXT();
+L_vf:     { UNS64 a = SLOT(); VMPUSH(CELL(a)); } NEXT();   /* getstatic */
+L_vs:     { UNS64 a = SLOT(); CELL(a) = DS0; dsp += CELL_BYTES; } NEXT();
+/*  Locals are shallow-bound VARIABLEs (locals.4). These do LSAVE,
+ *  LRESTORE, L! and LZERO in one dispatch, on the SAME Forth-visible save
+ *  stack (LSAVE-SP, LSAVE-STACK), and fall back to the Forth word itself
+ *  - pushing the START offset exactly as `LIT off` did - whenever the
+ *  Forth version would take its ABORT" path. Specialise, and deoptimise
+ *  to the general code on the rare case: CPython 3.11's pattern.  */
+L_lsave: { UNS64 a = SLOT(), lsp = cbase + loc_hdr[0];
+    UNS64 sp = CELL(lsp), stk = CELL(cbase + loc_hdr[1]);
+    if ((INT64)sp >= (INT64)loc_hdr[2] || (INT64)sp < 0 || !stk) {
+        VMPUSH(a - cbase); RPUSH(ip); ip = cbase + loc_hdr[3]; NEXT(); }
+    CELL(stk + sp * CELL_BYTES) = CELL(a); CELL(lsp) = sp + 1; } NEXT();
+L_lrest: { UNS64 a = SLOT(), lsp = cbase + loc_hdr[0];
+    UNS64 sp = CELL(lsp), stk = CELL(cbase + loc_hdr[1]);
+    if ((INT64)sp <= 0 || !stk) {
+        VMPUSH(a - cbase); RPUSH(ip); ip = cbase + loc_hdr[4]; NEXT(); }
+    CELL(lsp) = --sp; CELL(a) = CELL(stk + sp * CELL_BYTES); } NEXT();
+L_lstore: { UNS64 a = SLOT(); CELL(a) = DS0; dsp += CELL_BYTES; } NEXT();
+L_lzero:  { UNS64 a = SLOT(); CELL(a) = 0; } NEXT();
+/*  The kernel's hottest tiny colon words, as opcodes (Gforth-style
+ *  primitive selection). The translator substitutes one only where the
+ *  compiled body is exactly the definition implemented here.  */
+L_zeq:    DS0 = -(UNS64)(DS0 == 0); NEXT();                     /* 0=  */
+L_sub:    DS1 -= DS0; dsp += CELL_BYTES; NEXT();                /* -   */
+L_ne:     DS1 = -(UNS64)(DS1 != DS0); dsp += CELL_BYTES; NEXT(); /* <> */
+L_zlt:    DS0 = -(UNS64)((INT64)DS0 < 0); NEXT();               /* 0<  */
+L_sgt:    DS1 = -(UNS64)((INT64)DS0 < (INT64)DS1); dsp += CELL_BYTES; NEXT();
+L_2dup:   { UNS64 a_ = DS1, b_ = DS0; PUSH(a_); PUSH(b_); } NEXT();
+L_2drop:  dsp += 2 * CELL_BYTES; NEXT();
+L_charp:  DS0 += 1; NEXT();                                     /* CHAR+ */
+L_onep:   DS0 += 1; NEXT();                                     /* 1+  */
+L_cellp:  DS0 += CELL_BYTES; NEXT();                            /* CELL+ */
+L_cells:  DS0 <<= CELL_SHIFT; NEXT();
+L_onem:   DS0 -= 1; NEXT();                                     /* 1-  */
+L_invert: DS0 = ~DS0; NEXT();
+L_count:  { UNS64 a_ = DS0; DS0 = a_ + 1; PUSH(BYTE(a_)); } NEXT();
+L_aligned: DS0 = (DS0 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1); NEXT();
+/*  Lua 5.4's OP_ADDI / OP_EQI: a signed 8-bit immediate. Lua added
+ *  immediate forms for every operator and kept only these.  */
+L_addi:   DS0 += (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; NEXT();
+L_addix:  DS0 += (UNS64)(INT64)(int8_t)BYTE(ip); ip = RS; rp += CELL_BYTES; NEXT();
+L_eqi:    DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
+L_eqix:   DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 #endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
     PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));

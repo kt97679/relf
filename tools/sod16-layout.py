@@ -89,6 +89,7 @@ V8 = '--v8' in ARGV
 if V8:
     G['V8'] = True
     G['V8_FOLDLIST'] = _opt('--fold-set', '').split(',')
+if '--spec' in ARGV: G['SPEC'].update(_opt('--spec').split(','))
 UB = 1 if V8 else 2                # bytes per stream unit
 DOVARP = len(G['prims']) + 1       # after LIT32
 DODOES = len(G['prims']) + 2
@@ -400,6 +401,17 @@ def v8val(target):
     assert off % (1 << CPT) == 0, "v8 call target %d not aligned" % off
     return off >> CPT
 if V8: G['V8_CALLTOK'][0] = v8val
+def v8pfa(target):
+    off = new_off[target]['body'] + CELL          # [DOVAR][pad] is one cell
+    assert off % (1 << CPT) == 0 and (off >> CPT) < 0x10000
+    return off >> CPT
+def v8loc(old):
+    n2 = remap_pfa_off(old)
+    if n2 is None: n2 = remap_body_off(old)
+    assert n2 is not None and n2 % (1 << CPT) == 0 and (n2 >> CPT) < 0x10000, old
+    return n2 >> CPT
+G['V8_PFA'][0] = v8pfa
+G['V8_LOC'][0] = v8loc
 def callbytes(target):
     if V8:
         v = v8val(target); return bytes([0x80 | (v >> 8), v & 0xFF])
@@ -510,6 +522,15 @@ def emit(path):
         h = [x for x in order if x['s'] < t < x['e']][0]
         c2t_, _, _, _, _ = layout(info[h['s']])
         hdr += cel(num[h['s']]) + cel(c2t_[t - h['s']])
+    if G['SPEC']:
+        # CV8 locals opcodes: where the save stack lives, its limit, and the
+        # Forth words to fall back to. Offsets from base, one cell each.
+        def body_of(n): return new_off[[w for w in order if w['n'] == n][-1]['s']]['body']
+        lmax = [w for w in order if w['n'] == 'LSAVE-MAX'][-1]
+        lmax_v = [pl for k, pl in info[lmax['s']] if k in ('LIT', 'LITX')][0]
+        hdr = hdr[:5] + b'L' + hdr[6:]
+        hdr += cel(body_of('LSAVE-SP') + CELL) + cel(body_of('LSAVE-STACK') + CELL)
+        hdr += cel(lmax_v) + cel(body_of('LSAVE')) + cel(body_of('LRESTORE'))
     open(path, 'wb').write(hdr + bytes(img))
     return len(hdr), len(img)
 

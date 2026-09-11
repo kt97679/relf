@@ -32,9 +32,34 @@ HOT = {
  'L_lshift': 'tos = NOS << tos; dsp += CELL_BYTES; NEXT();',
  'L_rshift': 'tos = NOS >> tos; dsp += CELL_BYTES; NEXT();',
  'L_dovar':  'PUSHT((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1)); ip = RS; rp += CELL_BYTES; NEXT();',
+ 'L_lit0':   'PUSHT(0); NEXT();',
+ 'L_lit1':   'PUSHT(1); NEXT();',
+ 'L_litm1':  'PUSHT(~(UNS64)0); NEXT();',
+ 'L_vf':     '{ UNS64 a = SLOT(); PUSHT(CELL(a)); } NEXT();',
+ 'L_vs':     '{ UNS64 a = SLOT(); CELL(a) = tos; POPT(); } NEXT();',
+ 'L_lstore': '{ UNS64 a = SLOT(); CELL(a) = tos; POPT(); } NEXT();',
+ 'L_zeq':    'tos = -(UNS64)(tos == 0); NEXT();',
+ 'L_sub':    'tos = NOS - tos; dsp += CELL_BYTES; NEXT();',
+ 'L_ne':     'tos = -(UNS64)(NOS != tos); dsp += CELL_BYTES; NEXT();',
+ 'L_zlt':    'tos = -(UNS64)((INT64)tos < 0); NEXT();',
+ 'L_sgt':    'tos = -(UNS64)((INT64)tos < (INT64)NOS); dsp += CELL_BYTES; NEXT();',
+ 'L_2dup':   '{ UNS64 a_ = NOS, b_ = tos; PUSHT(a_); PUSHT(b_); } NEXT();',
+ 'L_2drop':  'tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; NEXT();',
+ 'L_charp':  'tos += 1; NEXT();',
+ 'L_onep':   'tos += 1; NEXT();',
+ 'L_cellp':  'tos += CELL_BYTES; NEXT();',
+ 'L_cells':  'tos <<= CELL_SHIFT; NEXT();',
+ 'L_onem':   'tos -= 1; NEXT();',
+ 'L_invert': 'tos = ~tos; NEXT();',
+ 'L_count':  '{ UNS64 a_ = tos; tos = a_ + 1; PUSHT(BYTE(a_)); } NEXT();',
+ 'L_aligned':'tos = (tos + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1); NEXT();',
+ 'L_addi':   'tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; NEXT();',
+ 'L_addix':  'tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip = RS; rp += CELL_BYTES; NEXT();',
+ 'L_eqi':    'tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();',
+ 'L_eqix':   'tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();',
  'L_0branch':'t = tos; POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();',
 }
-NOSTACK = {'L_noop', 'L_exit', 'L_branch', 'L_dodoes'}   # never touch the data stack
+NOSTACK = {'L_noop', 'L_exit', 'L_branch', 'L_dodoes', 'L_lsave', 'L_lrest', 'L_lzero'}   # never touch the data stack
 fend = s.index("\n#if FOLD\n#define EXITNEXT")
 start = s.index("L_noop:")
 sec = s[start:fend]
@@ -64,6 +89,8 @@ s = s.replace("static void virtual_machine(void) {\n    VMREGS", """static void 
 #define PUSHT(x) do { UNS64 v_ = (x); dsp -= CELL_BYTES; \\
         if (dsp < dsp_limit) stack_fault(0); CELL(dsp) = tos; tos = v_; } while (0)
 #define POPT() do { tos = CELL(dsp); dsp += CELL_BYTES; } while (0)
+#undef VMPUSH
+#define VMPUSH PUSHT
 #define SPILL() do { dsp -= CELL_BYTES; CELL(dsp) = tos; } while (0)
 #define FILLNEXT() do { POPT(); NEXT(); } while (0)
 #if ENC == 3

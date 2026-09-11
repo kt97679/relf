@@ -13286,3 +13286,35 @@ are in `CV8.md`. Recorded here are the findings and what was done.
 `(LOOP)` padding. Token images carry 16 live-session addresses from
 the dump (START, S0, LAST, ...) that COLD resets - so they boot, but
 are not byte-reproducible across dumps; SOD16's were not either.
+
+## Iteration 190: borrowing from other VMs (branch `cv8`) - `VM-SURVEY.md`
+
+A per-address execution profile (`vm-lab.c -DPROFILE`, joined to the
+translator's ops by `tools/lab/patterns.py`) ranked what other VMs
+specialise by what it is worth in THIS shell. Five ideas were built as
+translator rewrites plus CV8 opcodes, and ablated on one engine binary
+over four layouts.
+
+- **Locals as frame-slot opcodes** (JVM iload, CPython LOAD_FAST):
+  LSAVE/LRESTORE/L!/LZERO become one opcode + 2-byte slot, on the same
+  Forth-visible save stack, falling back to the Forth word on its
+  ABORT" paths (PEP 659's deoptimise-to-general). 0.43-0.50x time;
+  -3.7 KB. The hottest call target in the shell had been the LSAVE-SP
+  variable (45M calls), all from inside LSAVE/LRESTORE.
+- **Tiny kernel colon words as opcodes** (Gforth/Proebsting): 15, each
+  substituted only where the compiled body matches exactly. 0.75-0.82x.
+- **VAR@/VAR!** (getstatic): 0.90-0.97x. **0/1/-1 opcodes**: -1.5 KB.
+  **ADDI/EQI** (Lua 5.4 kept only these): within noise - Lua's
+  judgement held.
+- **Shared call path**: GCC replicated the whole NEXT, call path
+  included, into every handler; sharing only the call path cut 5.7 KB
+  (x86-64) / 3.7 KB (i386) of .text at no measured cost.
+
+All five: 0.33x CV8's time; 0.16-0.23x of the committed engine at
+both widths; images 66,144 / 52,820 (-9% / -11%). tests/diff 20/20 and
+tests/shell except run-forth at both widths; locals fallback tested at
+both limits against the cell engine. tests/verify unchanged; SOD16
+translator output still byte-identical. dash remains ~40x faster on
+loops - the re-parse-per-line design, not the VM. Next density lever is
+headers (35% of the x86-64 image; compact headers estimated -8.1 KB),
+a kernel question.

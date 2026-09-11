@@ -1,5 +1,10 @@
 # CV8.md — the inner interpreter, measured end to end
 
+> **Iteration 190 adds `VM-SURVEY.md`**: five specialisations borrowed
+> from the JVM, CPython, Lua and Gforth - locals as frame-slot opcodes
+> above all - take CV8 to ~0.33x its own time (0.16-0.23x of today's
+> engine) and 9-11% smaller. Read it after this file.
+
 Iteration 189, branch `cv8` (from `token16`). This answers
 `INNER-INTERPRETER.md`. Read that first; this file does not repeat its
 constraints, it measures against them.

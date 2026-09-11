@@ -317,7 +317,88 @@ def read_ops(w):
                             ).to_bytes(CELL, 'little')
                 out.append(('STR', bytes(raw[:1 + n]))); a += blob
     out = retag(out)
+    if SPEC: out = specialise(out)
     return fold_exit(out) if FOLD else out
+
+def branch_targets(ops):
+    cs, c = [], 0
+    for k, pl in ops: cs.append(c); c += op_cells(k, pl)
+    tg = set()
+    for j, (k, pl) in enumerate(ops):
+        if k in ('BR', 'QBR'): tg.add(cs[j] + CELL + pl)
+        if k == 'OPD': tg.add(cs[j] + pl)
+        if k == 'ALN': tg.add(cs[j])
+    return cs, tg
+
+_DOVAR = [w['s'] for w in words if w['n'] == 'DOVAR']
+def is_var(t):
+    v = cells.get(t)
+    return bool(_DOVAR) and v is not None and not (v & 1) and t + CELL + v == _DOVAR[0]
+
+def _expect(n):
+    sh = CELL.bit_length() - 1
+    E = {'0=': [('LIT', 0), ('P', '='), ('P', 'EXIT')],
+         '-': [('P', 'NEGATE'), ('P', '+'), ('P', 'EXIT')],
+         '<>': [('P', '='), ('C', '0='), ('P', 'EXIT')],
+         '0<': [('LIT', 0), ('P', '<'), ('P', 'EXIT')],
+         '>': [('P', 'SWAP'), ('P', '<'), ('P', 'EXIT')],
+         '2DUP': [('P', 'OVER'), ('P', 'OVER'), ('P', 'EXIT')],
+         '2DROP': [('P', 'DROP'), ('P', 'DROP'), ('P', 'EXIT')],
+         'CHAR+': [('LIT', 1), ('P', '+'), ('P', 'EXIT')],
+         '1+': [('LIT', 1), ('P', '+'), ('P', 'EXIT')],
+         'CELL+': [('LIT', CELL), ('P', '+'), ('P', 'EXIT')],
+         'CELLS': [('LIT', sh), ('P', 'LSHIFT'), ('P', 'EXIT')],
+         '1-': [('LIT', -1), ('P', '+'), ('P', 'EXIT')],
+         'INVERT': [('LIT', -1), ('P', 'XOR'), ('P', 'EXIT')],
+         'COUNT': [('P', 'DUP'), ('LIT', 1), ('P', '+'), ('P', 'SWAP'), ('P', 'C@'), ('P', 'EXIT')],
+         'ALIGNED': [('LIT', CELL), ('LIT', 1), ('C', '-'), ('P', '+'), ('LIT', CELL),
+                     ('P', 'NEGATE'), ('P', 'AND'), ('P', 'EXIT')]}
+    return E[n]
+
+TINY_AT = None
+def tiny_at():
+    """old body address -> tiny opcode name, ONLY where the compiled body
+    is exactly the definition the engine's opcode implements."""
+    global TINY_AT, FOLD
+    if TINY_AT is None:
+        TINY_AT, saved, fsaved = {}, set(SPEC), FOLD
+        SPEC.clear(); FOLD = False        # read the real bodies, unrewritten
+        nm_of = {w['s']: w['n'] for w in words}
+        for w in words:
+            if w['n'] in X_TINY:
+                o = read_ops(w)
+                if o is None: continue
+                o = [(k, nm_of.get(p, p) if k == 'C' else p) for k, p in o]
+                if o == _expect(w['n']): TINY_AT[w['s']] = w['n']
+        SPEC.update(saved); FOLD = fsaved
+        missing = set(X_TINY) - set(TINY_AT.values())
+        if missing: print("tiny: no exact body match for %s" % sorted(missing))
+    return TINY_AT
+
+LOCNAME = {}
+def specialise(ops):
+    cs, tg = branch_targets(ops)
+    if not LOCNAME:
+        for w in words:
+            if w['s'] in LOCALS_RT: LOCNAME[w['s']] = w['n']
+    out, j = [], 0
+    while j < len(ops):
+        k, pl = ops[j]
+        nxt = ops[j + 1] if j + 1 < len(ops) else None
+        free = j + 1 < len(ops) and cs[j + 1] not in tg   # nothing enters mid-pattern
+        if ('loc' in SPEC and k == 'LITOFF' and nxt and nxt[0] == 'C'
+                and nxt[1] in LOCNAME and free):
+            out.append(('LOC', (LOCNAME[nxt[1]], pl))); j += 2; continue
+        if ('var' in SPEC and k == 'C' and is_var(pl) and nxt in (('P', '@'), ('P', '!'))
+                and free):
+            out.append(('VF' if nxt[1] == '@' else 'VS', pl)); j += 2; continue
+        if ('imm' in SPEC and k == 'LIT' and -128 <= pl <= 127 and free
+                and nxt in (('P', '+'), ('P', '='))):
+            out.append(('ADDI' if nxt[1] == '+' else 'EQI', pl)); j += 2; continue
+        if 'tiny' in SPEC and k == 'C' and pl in tiny_at():
+            out.append(('P', tiny_at()[pl])); j += 1; continue
+        out.append(ops[j]); j += 1
+    return out
 
 NOFOLD = ('EXIT', 'BRANCH', '?BRANCH', 'NOOP')
 FOLDSET = None        # None = every primitive; else a set of names
@@ -338,6 +419,8 @@ def fold_exit(ops):
         if nxt == ('P', 'EXIT') and cs[j + 1] not in targets:
             if k == 'P' and pl not in NOFOLD and (FOLDSET is None or pl in FOLDSET):
                 out.append(('PX', pl)); j += 2; continue
+            if k in ('ADDI', 'EQI'):
+                out.append((k + 'X', pl)); j += 2; continue
             if k == 'LIT' and 0 <= pl <= 0xFFFF and (FOLDSET is None or 'LIT' in FOLDSET):
                 out.append(('LITX', pl)); j += 2; continue
         out.append(ops[j]); j += 1
@@ -369,9 +452,25 @@ V8_FOLDLIST = []      # v8: folded opcodes are 73 + position in this list
 V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72, 73
 V8_CALLTOK = [None]   # layout pass binds: old target addr -> 15-bit value
 
+# ---- specialisations borrowed from other VMs (CV8 only; CV8.md 10) ----
+SPEC = set()          # any of: 'loc' 'tiny' 'var' 'small'
+V8_PFA = [None]       # layout pass binds: old var address -> new PFA >> S
+V8_LOC = [None]       # layout pass binds: old START offset -> new >> S
+X_LIT0, X_LIT1, X_LITM1, X_VF, X_VS = 0x60, 0x61, 0x62, 0x63, 0x64
+X_LOC = {'LSAVE': 0x65, 'LRESTORE': 0x66, 'L!': 0x67, 'LZERO': 0x68}
+TINY_NAMES = ['0=', '-', '<>', '0<', '>', '2DUP', '2DROP', 'CHAR+', '1+',
+              'CELL+', 'CELLS', '1-', 'INVERT', 'COUNT', 'ALIGNED']
+X_TINY = {n: 0x69 + i for i, n in enumerate(TINY_NAMES)}
+# Lua 5.4 kept exactly these immediate forms (OP_ADDI, OP_EQI): LIT n +, LIT n =
+X_IMM = {'ADDI': 0x78, 'ADDIX': 0x79, 'EQI': 0x7A, 'EQIX': 0x7B}
+
 def op_cells(k, pl):
     """Size of one operation in the CELL image, in bytes."""
     if k == 'ALN': return 0
+    if k in ('VF', 'VS'): return 2 * CELL           # call + @/!
+    if k in ('ADDI', 'EQI'): return 3 * CELL        # LIT n + op
+    if k in ('ADDIX', 'EQIX'): return 4 * CELL      # ... + EXIT
+    if k == 'LOC': return 3 * CELL                  # LIT off + call
     if k == 'PX': return 2 * CELL
     if k == 'LITX': return 3 * CELL
     if k in ('P', 'C', 'OPD', 'XT'): return CELL
@@ -383,6 +482,9 @@ def op_bytes(k, pl, t):
     """Size of one operation in the TOKEN image, in bytes, at offset t."""
     if k == 'ALN': return (-t) % pl
     if V8:
+        if k in ('VF', 'VS', 'LOC'): return 3
+        if k in X_IMM: return 2
+        if k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC: return 1
         if k in ('P', 'PX'): return 1
         if k == 'C': return 2
         if k in ('LIT', 'LITX'):
@@ -441,7 +543,16 @@ def to_bytes_v8(ops):
         while len(b) < ts[j]: b.append(idx_of['NOOP'])
         assert len(b) == ts[j], "v8 layout and emission disagree"
         if k == 'ALN': continue
-        if k == 'P': b.append(idx_of[pl])
+        if k == 'P' and pl in X_TINY: b.append(X_TINY[pl])
+        elif k == 'P': b.append(idx_of[pl])
+        elif k in X_IMM:
+            b.append(X_IMM[k]); b.append(pl & 0xFF)
+        elif k in ('VF', 'VS'):
+            b.append(X_VF if k == 'VF' else X_VS); le(V8_PFA[0](pl) if V8_PFA[0] else 0, 2)
+        elif k == 'LOC':
+            b.append(X_LOC[pl[0]]); le(V8_LOC[0](pl[1]) if V8_LOC[0] else 0, 2)
+        elif k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC:
+            b.append({0: X_LIT0, 1: X_LIT1, -1: X_LITM1}[pl])
         elif k == 'PX':
             b.append(V8_FOLD0 + V8_FOLDLIST.index(pl))
         elif k in ('LIT', 'LITX'):
