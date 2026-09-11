@@ -145,17 +145,24 @@ static UNS8 *base;
 
 /* VM registers and related variables */
 
-static UNS64  ip; /* instruction pointer               */
-static UNS64  rp; /* return stack pointer              */
-static UNS64 dsp; /* data stack pointer                */
-static UNS64   t; /* variable for temporary storage    */
+/*  Initial values only. The VM registers themselves - ip, rp, dsp, t
+ *  and the two stack floors - are LOCALS of virtual_machine(), copied
+ *  from these on entry.
+ *
+ *  Until Iteration 189 they were these statics, and that cost ~20% of
+ *  every workload: a primitive's store through CELL() is a UNS64 store
+ *  that C's aliasing rules allow to hit a UNS64 static, so GCC reloaded
+ *  and re-stored ip, rp and dsp around every NEXT. Measured with
+ *  tools/lab/bench-vm.py: 0.82x the time on x86-64 and 0.80x on i386,
+ *  identical images. See CV8.md.  */
+static UNS64 g_ip, g_rp, g_dsp;
 
 /*  Floors for the two stacks, both set once in main() and never
  *  changed. Kept as plain variables rather than recomputed from base
  *  at each check so the hot path compares against something already
  *  in a register.  */
-static UNS64 dsp_limit; /* data stack may not descend below this   */
-static UNS64  rp_limit; /* return stack may not descend below this */
+static UNS64 g_dsp_limit; /* data stack may not descend below this   */
+static UNS64  g_rp_limit; /* return stack may not descend below this */
 
 /*
  *  8-byte magic every image starts with: "RELF" + cell width + 3
@@ -173,7 +180,7 @@ static const UNS8 IMAGE_MAGIC[8] = { 'R', 'E', 'L', 'F', CELL_BYTES, 0, 0, 0 };
  */
 
 static void write_str(int fd, const char *s);
-static void stack_fault(int which);
+static void stack_fault(int which) __attribute__((noreturn, cold));
 
 /* Read/write the full requested amount, looping over short reads/writes.
  * Returns bytes transferred, or a negative value on a real error. */
@@ -322,6 +329,8 @@ static void load_image(const char *name) {
  */
 
 static void virtual_machine(void) {
+    UNS64 ip = g_ip, rp = g_rp, dsp = g_dsp, t;
+    const UNS64 dsp_limit = g_dsp_limit, rp_limit = g_rp_limit;
     static const void *const dispatch[] = {
         &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
         &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
@@ -735,13 +744,14 @@ int main(int argc, char **argv) {
     g_argc = argc;
     g_argv = argv;
     load_image(argv[1]);
-    ip = (UNS64)(uintptr_t)base;
-    rp = ip + MEMSIZE;
-    dsp = ip + MEMSIZE - RSTACK_BYTES;
-    /*  Set before the first PUSH below, which is itself checked.  */
-    rp_limit  = ip + MEMSIZE - RSTACK_BYTES;
-    dsp_limit = ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
-    PUSH(ip);
+    g_ip = (UNS64)(uintptr_t)base;
+    g_rp = g_ip + MEMSIZE;
+    g_rp_limit  = g_ip + MEMSIZE - RSTACK_BYTES;
+    g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
+    /*  The one boot-time push: the image's base address, which COLD
+     *  reads as START. Done by hand because PUSH needs the VM's locals. */
+    g_dsp = g_ip + MEMSIZE - RSTACK_BYTES - CELL_BYTES;
+    CELL(g_dsp) = g_ip;
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */
 }
