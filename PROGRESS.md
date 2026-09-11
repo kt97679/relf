@@ -13235,3 +13235,54 @@ VERIFIED on both. Every commit in this run has a bundle, each verified
 by cloning it back and comparing HEAD.
 
 The next task is the layout pass, specified at the end of `SOD16.md`.
+
+## Iteration 189: the inner interpreter, measured end to end (branch `cv8`)
+
+Answers `INNER-INTERPRETER.md`; the full account, method and sources
+are in `CV8.md`. Recorded here are the findings and what was done.
+
+**Findings.**
+- **The VM registers were statics.** Every CELL() store may alias
+  them, so GCC reloaded and re-stored `ip` on every NEXT. Locals:
+  0.82x the time on x86-64, 0.80x on i386, same images. Bigger than
+  any encoding effect, and invisible to `thread-chase`.
+- **SOD16 executed its padding.** `[NOOP pad][call DOVAR][PFA]` ran
+  three NOOPs per variable reference on 64-bit: 17.3% of all
+  dispatches. With the pad skipped and registers fixed, SOD16's table
+  and a table-free design are indistinguishable end to end.
+- **A table is not needed for a narrow call token.** Scale instead of
+  index: `base + (t << S)` (compressed-pointer threading, as HotSpot's
+  compressed oops and 8086 segment threading).
+- **EXIT folding is ~20%** (EXIT was 17% of dispatches, 80% of them
+  after a primitive). DOVAR/DODOES primitives cut 12% of dispatches
+  but no measurable time; kept for structure.
+- **The byte stream costs nothing**: CV8 (1-byte opcodes, 2-byte
+  compressed-pointer calls) is 13-16% smaller than 16-bit tokens, tied
+  on x86-64, faster on i386.
+- **TOS caching is width-dependent**: +5-8% on x86-64, -3-18% on i386
+  PIE, a win again on i386 non-PIE (ebx freed from the GOT).
+- **Code layout alone moves an engine +/-4-5%**; one engine got 8%
+  faster by containing handlers it never ran. Engine comparisons now
+  use four flag layouts (`tools/lab/layout-variants.sh`).
+
+**Done.**
+- `relf.c`: VM registers are locals of `virtual_machine()`;
+  `stack_fault` is `noreturn, cold`. `tests/verify` identical to the
+  unmodified tree (the two posix lines differ from BASELINE the same
+  way on both - this host's reference shells, not this change).
+- `tools/sod16.py`, `tools/sod16-layout.py`: options `--cpt S`,
+  `--skip-pad`, `--dataprims`, `--fold[-set]`, `--v8`, `--symbols`.
+  With none, output is byte-identical to `token16`'s tools, checked at
+  both widths on the same dump.
+- `tools/lab/`: `vm-lab.c` (ENC/REG/FOLD/SCALE/PROFILE), the fold and
+  TOS generators, `bench-vm.py`, `layout-variants.sh`,
+  `build-cv8.sh` (rebuilds and smoke-tests every pair), profilers.
+  `tools/size-estimate.py`. Workloads in `tests/bench-vm/`.
+- CV8 images at both widths: `tests/diff` 20/20; `tests/shell` all
+  files pass except `run-forth`'s colon-definition assertion (the
+  compiler still emits cells - phase 3).
+
+**Not done**: the compiler emitting CV8, `save-system.4`, far calls,
+`(LOOP)` padding. Token images carry 16 live-session addresses from
+the dump (START, S0, LAST, ...) that COLD resets - so they boot, but
+are not byte-reproducible across dumps; SOD16's were not either.

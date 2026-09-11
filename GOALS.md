@@ -1213,6 +1213,13 @@ before anything else, because every number here is relative to it.
    **`INNER-INTERPRETER.md` is the brief for deciding what to do about
    that**; the next build task is still named at the end of `SOD16.md`.
 
+   **Iteration 189 answered the brief: see `CV8.md`.** Recommendation:
+   the CV8 byte stream (1-byte opcodes, 2-byte compressed-pointer
+   calls, no word table) plus DOVAR/DODOES primitives, folded
+   prim;EXIT opcodes, and TOS caching on 64-bit. VM registers are now
+   locals in `relf.c` (~1.22x, verified). The next build task becomes
+   phase 3 emitting CV8 - `CV8.md` section 8.
+
    **`TOKEN-THREADING.md` is superseded but not wrong.** Its
    variable-width byte stream is still the densest option measured
    (0.19x against SOD16's 0.34x on x86-64). It lost on simplicity and

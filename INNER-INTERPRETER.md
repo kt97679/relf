@@ -1,5 +1,12 @@
 # The inner interpreter: a design brief
 
+> **Answered in `CV8.md` (Iteration 189).** Short version: the 1.25x
+> was mostly VM registers living in statics (~20%) and executed NOOP
+> padding (17% of dispatches), not the dependent load; a byte stream
+> whose calls are 2-byte compressed pointers (`base + v << S`) is
+> 0.43x/0.64x the size and ~1.6x the speed of today's build. The brief
+> below is left as written.
+
 Written at Iteration 188, on branch `token16`, to open a design
 discussion rather than to record a decision. Everything here is
 measured unless it says otherwise, and it says where each number came

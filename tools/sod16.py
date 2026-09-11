@@ -273,10 +273,14 @@ def read_ops(w):
     # because locals.4 redefines EXIT and a name test picks the wrong
     # word.
     st = stub_ops(w)
-    if st is not None: return st
+    if st is not None:
+        if FOLD and st[0][1] not in OPERAND_PRIMS: return fold_exit(st)
+        return st
 
     out, a, end = [], w['s'], code_end(w)
     while a < end:
+        if ALIGN_TAILS and a in ENTRIES and a != w['s']:
+            out.append(('ALN', ALIGN_TAILS))
         v = cells.get(a)
         if v is None: return None
         if v & 1:
@@ -312,7 +316,32 @@ def read_ops(w):
                     raw += (cells.get(a + k, 0) & ((1 << (8 * CELL)) - 1)
                             ).to_bytes(CELL, 'little')
                 out.append(('STR', bytes(raw[:1 + n]))); a += blob
-    return retag(out)
+    out = retag(out)
+    return fold_exit(out) if FOLD else out
+
+NOFOLD = ('EXIT', 'BRANCH', '?BRANCH', 'NOOP')
+FOLDSET = None        # None = every primitive; else a set of names
+def fold_exit(ops):
+    """Fold `prim EXIT` into one folded opcode, unless something can
+    enter at the EXIT: a branch or loop target, or a DOES> tail."""
+    cs, c = [], 0
+    for k, pl in ops: cs.append(c); c += op_cells(k, pl)
+    targets = set()
+    for j, (k, pl) in enumerate(ops):
+        if k in ('BR', 'QBR'): targets.add(cs[j] + CELL + pl)
+        if k == 'OPD': targets.add(cs[j] + pl)
+        if k == 'ALN': targets.add(cs[j])
+    out, j = [], 0
+    while j < len(ops):
+        k, pl = ops[j]
+        nxt = ops[j + 1] if j + 1 < len(ops) else None
+        if nxt == ('P', 'EXIT') and cs[j + 1] not in targets:
+            if k == 'P' and pl not in NOFOLD and (FOLDSET is None or pl in FOLDSET):
+                out.append(('PX', pl)); j += 2; continue
+            if k == 'LIT' and 0 <= pl <= 0xFFFF and (FOLDSET is None or 'LIT' in FOLDSET):
+                out.append(('LITX', pl)); j += 2; continue
+        out.append(ops[j]); j += 1
+    return out
 
 # ---- the layout map: cell offsets against token offsets -------------
 #
@@ -332,8 +361,19 @@ def read_ops(w):
 # Every position here is a BYTE offset from the start of the body, in
 # each image. Bodies start CELL-aligned in both.
 
+FOLD = False          # set by the layout pass: fold EXIT into prims
+ALIGN_TAILS = 0       # set by the layout pass: DOES> tails aligned to this
+FOLDBASE = 128        # folded opcode = FOLDBASE + primitive index
+V8 = False            # byte-stream mode: 1-byte ops, 2-byte calls
+V8_FOLDLIST = []      # v8: folded opcodes are 73 + position in this list
+V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72, 73
+V8_CALLTOK = [None]   # layout pass binds: old target addr -> 15-bit value
+
 def op_cells(k, pl):
     """Size of one operation in the CELL image, in bytes."""
+    if k == 'ALN': return 0
+    if k == 'PX': return 2 * CELL
+    if k == 'LITX': return 3 * CELL
     if k in ('P', 'C', 'OPD', 'XT'): return CELL
     if k in ('LIT', 'LITOFF', 'BR', 'QBR'): return 2 * CELL
     if k == 'STR': return align_up(len(pl), CELL)
@@ -341,6 +381,16 @@ def op_cells(k, pl):
 
 def op_bytes(k, pl, t):
     """Size of one operation in the TOKEN image, in bytes, at offset t."""
+    if k == 'ALN': return (-t) % pl
+    if V8:
+        if k in ('P', 'PX'): return 1
+        if k == 'C': return 2
+        if k in ('LIT', 'LITX'):
+            return 2 if 0 <= pl < 256 else 3 if 0 <= pl <= 0xFFFF else 5
+        if k == 'LITOFF': return 5
+        if k in ('BR', 'QBR'): return 3
+    if k == 'PX': return 2
+    if k == 'LITX': return 4
     if k in ('P', 'C'): return 2
     if k == 'LIT': return 4 if 0 <= pl <= 0xFFFF else 6
     if k == 'LITOFF': return 6          # always the 32-bit form
@@ -364,16 +414,64 @@ def layout(ops):
     c2t, cs, ts, c, t = {}, [], [], 0, 0
     for j, (k, pl) in enumerate(ops):
         t += pad_before(ops, j, t)
+        if k == 'ALN': t += op_bytes(k, pl, t)
         c2t[c] = t; cs.append(c); ts.append(t)
         c += op_cells(k, pl)
-        t += op_bytes(k, pl, t)
+        if k != 'ALN': t += op_bytes(k, pl, t)
     c2t[c] = t
     return c2t, cs, ts, c, t
 
 # ---- encode an operation list to 16-bit tokens ---------------------
 MASK = 0xFFFF
 
+G_CALLTOK = [None]
+def CALLTOK(target, n):
+    """Call token for a call to old address `target` (word number n).
+    SOD16 default; the layout pass rebinds this for CPT16."""
+    return 256 + n
+G_CALLTOK[0] = CALLTOK
+
+def to_bytes_v8(ops):
+    """The v8 byte stream for one body. Same layout() as the 16-bit
+    stream, so padding and branch conversion share one definition."""
+    c2t, cs, ts, _, ttot = layout(ops)
+    b = bytearray()
+    def le(v, n): b.extend((v & ((1 << (8 * n)) - 1)).to_bytes(n, 'little'))
+    for j, (k, pl) in enumerate(ops):
+        while len(b) < ts[j]: b.append(idx_of['NOOP'])
+        assert len(b) == ts[j], "v8 layout and emission disagree"
+        if k == 'ALN': continue
+        if k == 'P': b.append(idx_of[pl])
+        elif k == 'PX':
+            b.append(V8_FOLD0 + V8_FOLDLIST.index(pl))
+        elif k in ('LIT', 'LITX'):
+            x = k == 'LITX'
+            if 0 <= pl < 256: b.append(V8_LIT8X if x else V8_LIT8); b.append(pl)
+            elif 0 <= pl <= 0xFFFF:
+                b.append(V8_FOLD0 + V8_FOLDLIST.index('LIT') if x else idx_of['LIT']); le(pl, 2)
+            else: assert not x; b.append(V8_LIT32); le(pl, 4)
+        elif k == 'LITOFF': b.append(V8_LIT32); le(pl, 4)
+        elif k == 'C':
+            v = V8_CALLTOK[0](pl) if V8_CALLTOK[0] else 0
+            assert 0 <= v < 0x8000, "v8 call value %d out of 15 bits" % v
+            b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
+        elif k in ('BR', 'QBR'):
+            b.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
+            tgt = cs[j] + CELL + pl
+            if tgt not in c2t: return None
+            le(c2t[tgt] - (ts[j] + 1), 2)       # from the operand, in bytes
+        elif k == 'XT': le(pl, CELL)
+        elif k == 'OPD':
+            tgt = cs[j] + pl
+            if tgt not in c2t: return None
+            le(c2t[tgt] - ts[j], CELL)
+        elif k == 'STR':
+            b.extend(pl); b.extend(bytes(op_bytes(k, pl, ts[j]) - len(pl)))
+    while len(b) < ttot: b.append(idx_of['NOOP'])
+    return list(b)
+
 def to_tokens(ops):
+    if V8: return to_bytes_v8(ops)
     """The 16-bit token stream for one word body, or None if it cannot
     be encoded. Positions come from layout(), and padding is emitted by
     catching up to the position layout() assigned, so the two cannot
@@ -383,7 +481,13 @@ def to_tokens(ops):
     for j, (k, pl) in enumerate(ops):
         while len(t) * 2 < ts[j]: t.append(idx_of['NOOP'])   # padding
         assert len(t) * 2 == ts[j], "layout and emission disagree"
-        if k == 'P':
+        if k == 'ALN':
+            pass                                  # padding already emitted
+        elif k == 'PX':
+            t.append(FOLDBASE + idx_of[pl])
+        elif k == 'LITX':
+            t.append(FOLDBASE + idx_of['LIT']); t.append(pl)
+        elif k == 'P':
             i = idx_of[pl]
             assert i < 256, "primitive index %d exceeds the 0..255 band" % i
             t.append(i)
@@ -391,7 +495,7 @@ def to_tokens(ops):
             n = num.get(pl)
             if n is None: return None            # call outside the dump
             assert n + 256 <= 65535, "word number %d exceeds the token field" % n
-            t.append(256 + n)
+            t.append(G_CALLTOK[0](pl, n))
         elif k == 'LITOFF':
             v = pl & ((1 << 32) - 1)
             t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)

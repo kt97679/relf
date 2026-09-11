@@ -76,6 +76,23 @@ _lib = _src[:_src.index("# ---- optional emission")]
 G = {'__name__': 'sod16lib'}
 exec(compile(_lib, 'sod16lib', 'exec'), G)
 
+# Encoding options, parsed BEFORE any body is classified, because they
+# change what read_ops() returns and so the size of every body.
+def _opt(name, default=None):
+    return ARGV[ARGV.index(name) + 1] if name in ARGV else default
+CPT = int(_opt('--cpt')) if '--cpt' in ARGV else None   # scale shift S
+DATAPRIMS = '--dataprims' in ARGV
+if '--fold' in ARGV: G['FOLD'] = True
+if '--fold-set' in ARGV: G['FOLDSET'] = set(_opt('--fold-set').split(','))
+if CPT is not None and CPT > 1: G['ALIGN_TAILS'] = 1 << CPT
+V8 = '--v8' in ARGV
+if V8:
+    G['V8'] = True
+    G['V8_FOLDLIST'] = _opt('--fold-set', '').split(',')
+UB = 1 if V8 else 2                # bytes per stream unit
+DOVARP = len(G['prims']) + 1       # after LIT32
+DODOES = len(G['prims']) + 2
+
 words, cells, tokn = G['words'], G['cells'], G['tokn']
 read_ops, to_tokens, layout = G['read_ops'], G['to_tokens'], G['layout']
 retag = G['retag']
@@ -146,7 +163,7 @@ def tail_bytes(w):
 
 def new_body_bytes(w):
     if kind[w['s']] == 'code':
-        return align_up(len(tok[w['s']]) * 2, CELL) + tail_bytes(w)
+        return align_up(len(tok[w['s']]) * UB, CELL) + tail_bytes(w)
     if info[w['s']] is not None:
         # [pad][call token][parameter field, CELL aligned]
         # The pad goes BEFORE the token so the parameter field, which is
@@ -289,7 +306,7 @@ def remap_tail_addr(addr):
     for s0, ts_ in tail_start.items():
         w = starts[s0]
         if ts_ <= addr < w['e']:
-            head = align_up(len(tok[s0]) * 2, CELL)
+            head = align_up(len(tok[s0]) * UB, CELL)
             return new_off[s0]['body'] + head + (addr - ts_)
     return None
 
@@ -351,6 +368,43 @@ if BL:
     h = cells.get(BL[0]['s'] + CELL)
     if h: fixed['BUILTIN-LIST'] = remap_tail_addr(START + h)
 
+def tk(v): return (v & 0xFFFF).to_bytes(2, 'little')
+
+# ---- CPT16: call tokens are scaled image offsets, not word numbers ---
+SKIPPAD = '--skip-pad' in ARGV
+def new_target_off(target):
+    """old absolute call-target address -> new image offset."""
+    if target in new_off:
+        # A data body is [NOOP pad][call token][parameter field]. The pad
+        # exists only to align the parameter field; a call may land on
+        # the token itself and skip executing the NOOPs.
+        if (SKIPPAD and not DATAPRIMS and kind[target] == 'data'
+                and info[target] is not None):
+            return new_off[target]['body'] + CELL - 2
+        return new_off[target]['body']
+    h = [x for x in order if x['s'] < target < x['e']][0]
+    c2t_, _, _, _, _ = layout(info[h['s']])
+    return new_off[h['s']]['body'] + c2t_[target - h['s']]
+def calltok_addr(target):
+    if CPT is None:
+        return 256 + (num[target] if target in num else tailnum[target])
+    off = new_target_off(target)
+    assert off % (1 << CPT) == 0, "call target %d not %d-aligned" % (off, 1 << CPT)
+    v = 256 + (off >> CPT)
+    assert v <= 0xFFFF, "call target offset %d beyond CPT16 reach" % off
+    return v
+if CPT is not None:
+    G['G_CALLTOK'][0] = lambda target, n: calltok_addr(target)
+def v8val(target):
+    off = new_target_off(target)
+    assert off % (1 << CPT) == 0, "v8 call target %d not aligned" % off
+    return off >> CPT
+if V8: G['V8_CALLTOK'][0] = v8val
+def callbytes(target):
+    if V8:
+        v = v8val(target); return bytes([0x80 | (v >> 8), v & 0xFF])
+    return tk(calltok_addr(target))
+
 # ---- emit the token image -------------------------------------------
 def emit(path):
     """Write the token image. Layout and values all come from above."""
@@ -375,7 +429,7 @@ def emit(path):
     # cell stays where the layout expects it.
     for i in (0, 1):
         v = pro[START + i * CELL]
-        img += tk(256 + num[START + i * CELL + CELL + v])
+        img += callbytes(START + i * CELL + CELL + v)
     while len(img) < PROLOGUE - 3 * CELL: img += b'\x00'
     for i in (2, 3, 4): img += cel(pro[START + i * CELL])
     assert len(img) == PROLOGUE, "prologue emitted %d, expected %d" % (len(img), PROLOGUE)
@@ -400,7 +454,9 @@ def emit(path):
             ops2 = list(info[s0])
             for (ws, j), nv in lit_new.items():
                 if ws == s0: ops2[j] = ('LITOFF', nv)
-            for t_ in to_tokens(ops2): img += tk(t_)
+            if V8: img += bytes(to_tokens(ops2))
+            else:
+                for t_ in to_tokens(ops2): img += tk(t_)
             while len(img) % CELL: img += b'\x00'
             # Unheadered tail, with its builtin entries relocated.
             # Derived from tail_bytes, not from code_end directly, so a
@@ -423,8 +479,16 @@ def emit(path):
                 a = s0
                 while a < w['e']: img += cel(cells.get(a, 0)); a += CELL
             else:
-                img += b'\x00' * (CELL - 2)         # pad BEFORE the token
-                img += tk(256 + (num[n] if n in num else tailnum[n]))
+                if DATAPRIMS and n in DOVAR:
+                    # [DOVAR][pad][PFA]: the primitive pushes ALIGNED(ip)
+                    img += (bytes([69]) + b'\x00' * (CELL - 1)) if V8 else (tk(DOVARP) + b'\x00' * (CELL - 2))
+                elif DATAPRIMS:
+                    # [DODOES][tail][pad][PFA]: pushes ALIGNED(ip) as the
+                    # return address the tail's R> expects, jumps to tail
+                    img += (bytes([70]) + callbytes(n) + b'\x00' * (CELL - 3)) if V8 else (tk(DODOES) + tk(calltok_addr(n)) + b'\x00' * (CELL - 4))
+                else:
+                    img += b'\x00' * (CELL - 2)     # pad BEFORE the token
+                    img += tk(calltok_addr(n))
                 vals = [cells.get(s0 + k * CELL, 0)
                         for k in range(1, (w['e'] - s0) // CELL)]
                 if s0 in defers: vals[0] = defers[s0]
@@ -439,7 +503,7 @@ def emit(path):
 
     assert len(img) == NEW_HERE, "image %d, layout said %d" % (len(img), NEW_HERE)
 
-    hdr = b'SOD1' + bytes([CELL, 0, 0, 0])
+    hdr = (b'SOD1' if CPT is None else (b'CV8' if V8 else b'CPT') + bytes([48 + CPT])) + bytes([CELL, 0, 0, 0])
     hdr += cel(new_off[order[-1]['s']]['nfa'])
     hdr += cel(len(TAILS))
     for t in TAILS:
@@ -538,6 +602,12 @@ print("locals slot literals relocated: %d resolved, %d unresolved %s"
 print("named offset cells: %d set, %d unresolved %s"
       % (len(fixed), len(fixed_bad), fixed_bad if fixed_bad else ""))
 for k in sorted(fixed): print("   %-16s -> %d" % (k, fixed[k]))
+for i, a in enumerate(ARGV):
+    if a == '--symbols':
+        with open(ARGV[i + 1], 'w') as f:
+            for w in order:
+                f.write("%d %d %s %s\n" % (new_off[w['s']]['body'],
+                        new_body_bytes(w), kind[w['s']], w['n']))
 if EMIT:
     h, b = emit(EMIT)
     print("wrote %s: %d B header + %d B image" % (EMIT, h, b))
