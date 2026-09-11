@@ -1,5 +1,9 @@
 # VM-SURVEY.md — what other VMs do, and what this shell borrowed
 
+> **Iteration 191, `XARCH.md`:** the specialisations below were checked
+> on AArch64, ARMv7 and RISC-V 64 under qemu - 0.13-0.24 of today's
+> engine's instructions on every ISA; they transfer.
+
 Iteration 190, branch `cv8`. Iteration 189's `CV8.md` settled the
 *encoding*. This file asks a different question: which ideas from other
 virtual machines make a Forth VM denser or faster, and which of them

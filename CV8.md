@@ -1,6 +1,7 @@
 # CV8.md — the inner interpreter, measured end to end
 
-> **Iteration 190 adds `VM-SURVEY.md`**: five specialisations borrowed
+> **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
+> 3.3's cache attribution). **Iteration 190 adds `VM-SURVEY.md`**: five specialisations borrowed
 > from the JVM, CPython, Lua and Gforth - locals as frame-slot opcodes
 > above all - take CV8 to ~0.33x its own time (0.16-0.23x of today's
 > engine) and 9-11% smaller. Read it after this file.
@@ -254,8 +255,15 @@ four layouts.
 
 ### 3.3 What each stage buys, and why
 
-**Token vs cell** is about 5% on 64-bit and nothing on i386. The
-reason is the data cache, not dispatch. Cachegrind on a 300-iteration
+**Token vs cell** is about 5% on 64-bit and nothing on i386.
+
+> **Corrected in Iteration 191 (`XARCH.md` §5).** The miss *counts*
+> below are right, but weighed they are ~0.06% of instructions (cell)
+> against ~0.012% (token): roughly 1-3% of time, not the explanation
+> of CV8's x86 lead over `relf-new`. That comes mainly from EXIT
+> folding and TOS caching. The original reasoning is kept below.
+
+The reason was taken to be the data cache, not dispatch. Cachegrind on a 300-iteration
 loop shows **243K L1d misses for the cell image against 9K for every
 token image**. 156 KB of cell code does not fit a 48 KB L1d, and 50 KB
 of tokens nearly does.

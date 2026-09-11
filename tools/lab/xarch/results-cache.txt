@@ -1,0 +1,25 @@
+aarch64 relf-old fn60 dacc=270630388 dmiss=201857 iacc=514149046 imiss=475
+aarch64 relf-old str40 dacc=318873150 dmiss=202430 iacc=599254797 imiss=475
+aarch64 relf-new fn60 dacc=116154436 dmiss=194673 iacc=342178982 imiss=465
+aarch64 relf-new str40 dacc=135935437 dmiss=197986 iacc=398953428 imiss=465
+aarch64 cv8t fn60 dacc=97930603 dmiss=38999 iacc=320770704 imiss=514
+aarch64 cv8t str40 dacc=109696779 dmiss=31310 iacc=359807704 imiss=514
+aarch64 spec fn60 dacc=36754008 dmiss=28086 iacc=117074735 imiss=520
+aarch64 spec str40 dacc=26125361 dmiss=23512 iacc=81667703 imiss=517
+arm relf-old fn60 dacc=329979461 dmiss=72697 iacc=570503577 imiss=365
+arm relf-old str40 dacc=390944123 dmiss=66994 iacc=675828380 imiss=365
+arm relf-new fn60 dacc=135147662 dmiss=71838 iacc=405663461 imiss=351
+arm relf-new str40 dacc=154901923 dmiss=66733 iacc=480284445 imiss=351
+arm cv8t fn60 dacc=115363787 dmiss=20420 iacc=354396852 imiss=380
+arm cv8t str40 dacc=130429159 dmiss=14892 iacc=405232370 imiss=380
+arm spec fn60 dacc=42722269 dmiss=18139 iacc=126305206 imiss=389
+arm spec str40 dacc=30039889 dmiss=15139 iacc=88061370 imiss=389
+riscv64 relf-old fn60 dacc=294024045 dmiss=177512 iacc=561859958 imiss=409
+riscv64 relf-old str40 dacc=346238995 dmiss=182721 iacc=660900097 imiss=409
+riscv64 relf-new fn60 dacc=119258342 dmiss=175771 iacc=392542033 imiss=415
+riscv64 relf-new str40 dacc=135889390 dmiss=181141 iacc=456032881 imiss=416
+riscv64 cv8t fn60 dacc=98926396 dmiss=40372 iacc=374147759 imiss=452
+riscv64 cv8t str40 dacc=107744095 dmiss=29490 iacc=418051026 imiss=452
+riscv64 spec fn60 dacc=39181538 dmiss=35805 iacc=133912031 imiss=474
+riscv64 spec str40 dacc=29551880 dmiss=31075 iacc=100149566 imiss=474
+DONE

@@ -13318,3 +13318,36 @@ translator output still byte-identical. dash remains ~40x faster on
 loops - the re-parse-per-line design, not the VM. Next density lever is
 headers (35% of the x86-64 image; compact headers estimated -8.1 KB),
 a kernel question.
+
+## Iteration 191: AArch64, ARMv7, RISC-V under qemu (branch `cv8`) - `XARCH.md`
+
+qemu 8.2.2 built from source with TCG plugins (Ubuntu's has none);
+four engines cross-compiled per ISA (`tools/lab/xarch/`). qemu wall
+time rejected as a metric - it charges for translating indirect
+branches (CV8: 8% fewer AArch64 instructions than relf-new, yet slower
+under qemu). Measured instead: exact guest instructions (libinsn) and
+a simulated 32 KB 4-way L1 (cache.c; cachegrind with the same model on
+x86).
+
+- **Correctness**: 12/12 engine/image pairs match dash; x86-built
+  images run unchanged on every same-width ISA (first time tested).
+  The specialised engine passes tests/diff 20/20 under qemu on
+  AArch64, ARMv7 and RISC-V 64.
+- **The specialisations transfer**: 0.13-0.24 of relf-old's
+  instructions on all four ISAs; 0.18-0.34 of relf-new's.
+- **The register fix is bigger on RISC**: 0.67 (AArch64), 0.71
+  (ARMv7), 0.69 (RISC-V) of relf-old's instructions vs 0.75 on x86.
+- **CV8 alone is x86-flavoured**: a CV8 dispatch costs 1-2 more
+  instructions than a cell one on every ISA, so CV8 without the
+  specialisations removes only 7-15% of instructions vs relf-new.
+- **Correction to CV8.md 3.3**: token code misses L1d ~5x less on every
+  ISA, but the rates are ~0.06% vs ~0.012% of instructions - ~1-3% of
+  time, not the cause of CV8's x86 lead (that is EXIT folding and TOS).
+  CV8.md annotated in place.
+- **Engine**: LD16/LD32 composed from bytes (one load on x86/ARM; the
+  memcpy form was poor on RISC-V in isolation, marginal in the engine).
+  SIGNTEST dispatch (sign-extended byte, branch on sign): -3.6% AArch64,
+  -4.2% RISC-V, +-0.3% x86, +3.0% ARMv7 - default on except 32-bit ARM.
+
+Unknown without hardware: TOS on ARM32, folding's prediction gain on
+simple predictors. tests/shell not run under qemu (~25 min per ISA).

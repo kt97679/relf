@@ -83,6 +83,15 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+#ifndef SIGNTEST
+/*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
+ *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
+#if defined(__arm__) && !defined(__aarch64__)
+#define SIGNTEST 0
+#else
+#define SIGNTEST 1
+#endif
+#endif
 #ifndef SPEC
 #define SPEC 0     /* 1: CV8 specialised opcodes 0x60-0x77 (CV8.md 10) */
 #endif
@@ -128,13 +137,23 @@ typedef int32_t  INT64;
  *  addresses because it is rebuilt after relocation, and is never
  *  saved. Nothing about it goes in the image.  */
 #define TOK(a)   (*(UNS16 *)(uintptr_t)(a))
-static inline UNS64 LD16(UNS64 a) { UNS16 v; memcpy(&v, (void *)(uintptr_t)a, 2); return v; }
+/*  CV8 operands are unaligned little-endian. Composed from bytes, not
+ *  memcpy'd: GCC merges this into one ldrh/movzwl on x86, ARMv7 and
+ *  AArch64, while on RISC-V the memcpy form compiled to byte loads, a
+ *  stack round trip and a stack-protector check on every operand.  */
+static inline UNS64 LD16(UNS64 a) {
+    const UNS8 *p = (const UNS8 *)(uintptr_t)a;
+    return (UNS64)p[0] | (UNS64)p[1] << 8;
+}
 #if ENC == 3
 #define OPND16(a) LD16(a)
 #else
 #define OPND16(a) TOK(a)
 #endif
-static inline UNS64 LD32(UNS64 a) { uint32_t v; memcpy(&v, (void *)(uintptr_t)a, 4); return v; }
+static inline UNS64 LD32(UNS64 a) {
+    const UNS8 *p = (const UNS8 *)(uintptr_t)a;
+    return (UNS64)p[0] | (UNS64)p[1] << 8 | (UNS64)p[2] << 16 | (UNS64)p[3] << 24;
+}
 #define MAXWORDS 65280
 static UNS64 *wordtab;          /* absolute body addresses, malloc'd */
 /* n_words: superseded by nwords, set by load_image */
@@ -573,11 +592,22 @@ static void virtual_machine(void) {
 /*  Every handler keeps its own opcode dispatch (what the branch predictor
  *  needs), but the call path - decode, RPUSH, limit check - exists once.
  *  GCC otherwise replicates ~50 bytes of it into all ~120 handlers.  */
+#if SIGNTEST
+/*  Load the byte sign-extended: an opcode is then just t >= 0, one
+ *  branch-on-sign (bgez / tbz / js) with no constant and no compare.
+ *  RISC-V otherwise rematerialises 127 for bltu on every dispatch.  */
+#define NEXT() do { \
+        PROFIP(ip); t = (UNS64)(INT64)(int8_t)BYTE(ip); \
+        if ((INT64)t >= 0) { ip += 1; PROF(t); goto *dispatch[t]; } \
+        goto do_call; \
+    } while (0)
+#else
 #define NEXT() do { \
         PROFIP(ip); t = BYTE(ip); \
         if (t < 0x80) { ip += 1; PROF(t); goto *dispatch[t]; } \
         goto do_call; \
     } while (0)
+#endif
 #elif ENC == 3
 #define NEXT() do { \
         PROFIP(ip); t = BYTE(ip); \
