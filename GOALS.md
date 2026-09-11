@@ -143,6 +143,11 @@ the full account and the fixes applied.
   read that entry (~700). A citation elsewhere in this repository
   always gives an iteration number, which is what to search for.
 
+- `INNER-INTERPRETER.md` is a design brief, not a record: it collects
+  the measured constraints on `NEXT` and the alternatives to it, for a
+  discussion that has not happened yet. It will be stale the moment
+  that discussion reaches a conclusion.
+
 - **These two documents are the ones that can go stale.**
   `PROGRESS.md` only makes claims about the past and cannot rot;
   `GOALS.md` and `PARSE-EXPAND-PLAN.md` make claims about the present
@@ -536,8 +541,12 @@ a decision rather than a plan.
    tokenizer's hot path.
 3. Nothing else looks large: the compiled code is ~88K and most of it
    is real. **The way to shrink it is the code encoding, not the
-   content** - see `SOD16.md`, measured at 0.34x on x86-64 against
-   0.75x for every packed scheme.
+   content** - see `SOD16.md`. The 0.34x this line used to quote was a
+   DECODE microbenchmark; the whole-image figure, measured on a booting
+   token image in Iteration 185, is **0.40x**, and engine + image goes
+   from 229,160 to **106,240** - smaller than `dash`. The same
+   measurement cost 1.25x on interpretation speed; see
+   `INNER-INTERPRETER.md`.
 4. **Headerless words came up again in Iteration 158** and were
    rejected again, this time with a number: the 314 words that
    profitably become `M:` macros carry 4,456 bytes of headers, 26.9%
@@ -1189,10 +1198,20 @@ before anything else, because every number here is relative to it.
    shell scripting.
 4. **Engine: SOD16, on branch `token16`.** See `SOD16.md` for the
    design, the state, and the traps. Iterations 156-167 measured every
-   encoding this project has considered and this one won; the branch
-   has a verified translator, an engine that differs from `relf.c` by
-   eight lines, and a settled answer for what an execution token is.
-   The next task is named precisely at the end of `SOD16.md`.
+   encoding this project has considered and this one won on the numbers
+   available then. **As of Iteration 187 it boots, runs the shell, and
+   passes `tests/diff` 20/20 at both cell widths**, failing only
+   `tests/shell/run-forth`, which needs the compiler to emit tokens -
+   phase 3, unbuilt.
+
+   Two of that comparison's conclusions have since been corrected by
+   measuring the real thing. An xt is an ADDRESS, not a word number:
+   `EXECUTE` is `>R ;` in Forth and was never a primitive. And the
+   encoding won partly on a decode microbenchmark that measured the
+   part SOD16 makes cheaper and omitted the dependent load it makes
+   dearer - hand-written assembly puts the call path at 1.65x.
+   **`INNER-INTERPRETER.md` is the brief for deciding what to do about
+   that**; the next build task is still named at the end of `SOD16.md`.
 
    **`TOKEN-THREADING.md` is superseded but not wrong.** Its
    variable-width byte stream is still the densest option measured
