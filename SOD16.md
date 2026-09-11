@@ -474,6 +474,44 @@ this file - a measurement that agreed with itself - and it survived
 because nothing ran the real thing until Iteration 184 made that
 possible.
 
+### Is it the design or the C? The design.
+
+Iteration 187, asked directly. `tools/thread-chase.S` writes both call
+mechanisms by hand and `tools/thread-chase.c` drives them over the
+**same** pseudo-random slot sequence, so cache behaviour is matched and
+only the mechanism differs. Everything identical between the engines -
+stack traffic, dispatch table, primitive bodies - is left out, because
+it would only dilute the ratio.
+
+| slots | asm ratio | C ratio |
+|---|---|---|
+| 1,082 (this image's word count) | 1.68 | 1.70 |
+| 4,096 | 1.73 | 1.69 |
+| 65,535 | 1.86 | 1.89 |
+
+**Hand-written assembly gives the same ratio as C.** The cost is in the
+mechanism and no amount of compiler work will remove it:
+
+    cell     ip = ip + CELL_BYTES + *(long *)ip     load, then ALU
+    token    ip = wordtab[*(short *)ip]             load, then a
+                                                    DEPENDENT load
+
+About 1.96 ns against 3.38 ns per step - roughly 5 cycles against 10,
+which is one L1 latency against two serialised. Threaded code is
+latency-bound on exactly this chain: nothing can start until the next
+`ip` is known.
+
+The call path alone is ~1.7x; the whole engine measured 1.25x, and the
+difference is the primitives, where SOD16 is no worse. So the 1.25x is
+a blend, and it will move with the call density of the code being run.
+
+A secondary finding: **the word table is not free.** This file has
+described it as "OUTSIDE the image", which is true of the image's size
+and says nothing about the cache. At 65,535 words the table is 511 KB
+of hot, randomly-accessed memory and the ratio worsens to 1.86. At this
+image's 1,082 words it is 8.7 KB and stays small - but it scales with
+the dictionary, and it is touched on every single call.
+
 **This does not settle whether SOD16 is worth it.** `GOALS.md` ranks
 minimalism above performance and size is a stated goal; a 57% smaller
 artifact for 20% slower interpretation is exactly the trade that
