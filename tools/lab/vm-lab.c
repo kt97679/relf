@@ -83,6 +83,21 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+#ifndef VARSLOT
+/*  VARSLOT: slot operands (VAR@/VAR!, the locals opcodes) are variable
+ *  too. 0xxxxxxx + 1 byte is a 15-bit payload; 1xxxxxx + 2 bytes is
+ *  23-bit. Without this a slot is a fixed 16 bits, so variables had to
+ *  live in the first 512 KB (64-bit) / 256 KB (32-bit) while VARCALL
+ *  let code span 32 MB - an asymmetry that fails silently.  */
+#define VARSLOT 1
+#endif
+#ifndef VARCALL
+/*  VARCALL: the call form is variable too. 10xxxxxx takes one more byte
+ *  (14-bit payload), 11xxxxxx takes two (22-bit). Costs one extra test
+ *  on the call path; buys a far call without spending an opcode.
+ *  VARCALL=0 is the fixed 15-bit form.  */
+#define VARCALL 1
+#endif
 #ifndef SIGNTEST
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -124,7 +139,14 @@ typedef int32_t  INT64;
  *  empty name, nowhere near the actual cause. 1M is still small
  *  enough to be unremarkable and leaves real headroom for shell.4 to
  *  keep growing.  */
-#define MEMSIZE (1024 * 1024)
+/*  The whole VM: image, all dictionary growth, and the two stacks. This
+ *  is the FIRST ceiling a growing system meets - far below the call
+ *  reach - and it is a plain parameter: every reference in an image is
+ *  relative, so raising it breaks nothing. Overridable at build time,
+ *  and at run time with RELF_MEMSIZE (in MB).  */
+#ifndef MEMSIZE
+#define MEMSIZE (16 * 1024 * 1024)
+#endif
 /*  Room reserved for the return stack. Raised from 2048 in Iteration
  *  90: 2048 bytes is 256 cells, and each level of shell function
  *  recursion nests roughly a dozen Forth calls, so the return stack
@@ -264,8 +286,19 @@ static UNS64 dsp_limit, rp_limit;
 #if ENC == 1
 static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
 #elif ENC == 3
+/*  Header bytes 0-7. Byte 6 is a FORMAT VERSION and byte 7 a FEATURE
+ *  BITMAP, so an engine can tell what an image needs instead of the
+ *  widths being implied by the magic string. Widening a field in future
+ *  sets a bit here rather than breaking the format.  */
+#define CV8_VERSION 1
+#define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
+#define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
+#define F_SPEC    0x04   /* specialised opcodes present (locals header) */
+#define F_LIT64   0x08   /* LIT64 may appear                            */
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES,
-                                     SPEC ? 'L' : 0, 0, 0 };
+    SPEC ? 'L' : 0, CV8_VERSION,
+    (VARCALL ? F_VARCALL : 0) | (VARSLOT ? F_VARSLOT : 0)
+        | (SPEC ? F_SPEC : 0) | F_LIT64 };
 #else
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'P', 'T', '0' + SCALE, CELL_BYTES, 0, 0, 0 };
 #endif
@@ -407,9 +440,22 @@ static void load_image(const char *name) {
         write_str(2, "Cannot open image file.\n");
         exit(2);
     }
-    if (full_read(fd, magic, 8) != 8 || memcmp(magic, IMAGE_MAGIC, 8) != 0) {
-        write_str(2, "kernel.img: not a RelF image, or built for a "
-                 "different cell width.\n");
+    if (full_read(fd, magic, 8) != 8 || memcmp(magic, IMAGE_MAGIC, 5) != 0) {
+        write_str(2, "not a RelF image, or built for a different encoding "
+                     "or cell width.\n");
+        exit(2);
+    }
+    /*  Bytes 6-7 are a format version and a FEATURE BITMAP. The engine
+     *  runs any image whose required features it implements, so adding
+     *  a feature later does not invalidate older images, and an older
+     *  engine refuses a newer image cleanly instead of misreading it. */
+    if (magic[6] > IMAGE_MAGIC[6]) {
+        write_str(2, "image is a newer CV8 format version than this engine\n");
+        exit(2);
+    }
+    if (magic[7] & ~IMAGE_MAGIC[7]) {
+        write_str(2, "image needs CV8 features this engine was not built "
+                     "with (varcall/varslot/spec/lit64)\n");
         exit(2);
     }
     /*
@@ -576,6 +622,7 @@ static void virtual_machine(void) {
         &&L_lit32, &&L_dovar, &&L_dodoes,
 #if ENC == 3
         &&L_lit8, &&L_lit8x,
+        [0x7C] = &&L_lit64, [0x7D] = &&L_esc,
 #endif
 #if ENC == 3 && SPEC
         [0x60] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
@@ -630,7 +677,17 @@ next:
     NEXT();
 #if ENC == 3 && SHAREDCALL
 do_call:
+#if VARCALL
+    if (t & 0x40) {                       /* 11xxxxxx: 22-bit target */
+        t = ((t & 0x3F) << 16) | ((UNS64)BYTE(ip + 1) << 8) | BYTE(ip + 2);
+        ip += 3;
+    } else {                              /* 10xxxxxx: 14-bit target */
+        t = ((t & 0x3F) << 8) | BYTE(ip + 1);
+        ip += 2;
+    }
+#else
     t = ((t & 0x7F) << 8) | BYTE(ip + 1); ip += 2;
+#endif
     PROF(256); RPUSH(ip); ip = cbase + (t << SCALE);
     NEXT();
 #endif
@@ -653,7 +710,14 @@ L_lit32:   /* lit32   */ { UNS64 v = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16)
 /*  Specialised opcodes, each borrowed from another VM (CV8.md 10).
  *  The slot/variable operand is a 16-bit little-endian value v; the
  *  address is base + (v << SCALE), the same compressed pointer calls use. */
+#if VARSLOT
+#define SLOT() (t = BYTE(ip), \
+        (t & 0x80) ? (t = ((t & 0x7F) << 16) | ((UNS64)BYTE(ip + 1) << 8) \
+                         | BYTE(ip + 2), ip += 3, cbase + (t << SCALE)) \
+                   : (t = (t << 8) | BYTE(ip + 1), ip += 2, cbase + (t << SCALE)))
+#else
 #define SLOT() (t = LD16(ip), ip += 2, cbase + (t << SCALE))
+#endif
 L_lit0:   VMPUSH(0); NEXT();                          /* JVM iconst_0  */
 L_lit1:   VMPUSH(1); NEXT();
 L_litm1:  VMPUSH(~(UNS64)0); NEXT();
@@ -702,13 +766,33 @@ L_addix:  DS0 += (UNS64)(INT64)(int8_t)BYTE(ip); ip = RS; rp += CELL_BYTES; NEXT
 L_eqi:    DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
 L_eqix:   DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 #endif
+#if ENC == 3
+L_lit64:   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
+    { UNS64 v = 0; int i_;
+      for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);
+      PUSH(v); ip += CELL_BYTES; } NEXT();
+L_esc:     /* reserved: extended opcode bank. The next byte selects one
+            * of 256 further opcodes. Reserved NOW because opcode space
+            * is the one resource this design cannot widen later.       */
+    write_str(2, "CV8: extended opcode bank not implemented\n"); exit(2);
+#endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
     PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
     ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
 #if ENC == 3
+#if VARCALL
+    if (BYTE(ip) & 0x40) {
+        t = ((BYTE(ip) & 0x3F) << 16) | ((UNS64)BYTE(ip + 1) << 8) | BYTE(ip + 2);
+        RPUSH((ip + 3 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+    } else {
+        t = ((BYTE(ip) & 0x3F) << 8) | BYTE(ip + 1);
+        RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+    }
+#else
     t = ((BYTE(ip) & 0x7F) << 8) | BYTE(ip + 1);
     RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+#endif
     ip = cbase + (t << SCALE); NEXT();
 #else
     t = TOK(ip);

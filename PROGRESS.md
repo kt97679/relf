@@ -13403,3 +13403,44 @@ one score, with the complexity rubric written out and a sensitivity
 sweep: H (CV8+spec) wins whenever complexity is weighted at half or
 less, B (register locals) whenever it is weighted at 1.0 or more, and
 every intermediate design scores below doing nothing.
+
+## Iteration 194: the ceilings audit - CV8 widened for bigger systems
+
+Asked whether CV8's limits would block using this as a base for a larger
+project. Auditing every ceiling found that the ones I had been
+discussing were not the binding ones, and one was a silent correctness
+bug.
+
+- **BUG, now fixed: 64-bit literals were silently truncated.**
+  `$123456789ABC` gave 20015998343868 on the cell engine and 1450744508
+  under CV8 - the translator masked to 32 bits with no range check, and
+  the engine sign-extended. Today's kernel has no such literal, so it
+  had never shown. New `LIT64` opcode (0x7C); the translator asserts
+  rather than masks. Verified against the cell engine for a 48-bit
+  value, INT64_MIN+1, and 2^32.
+- **MEMSIZE was 1 MB** - image + all dictionary growth + 320 KB of
+  stacks - so the image ceiling was ~700 KB and the 32 MB call reach was
+  academic. Now 16 MB, overridable; it is a parameter, not a format
+  property, because every reference in an image is relative.
+- **Slot operands were a fixed 16 bits**: variables and locals had to
+  live in the first 512 KB (64-bit) / 256 KB (32-bit) while VARCALL let
+  code span 32 MB. Now variable-width like calls (VARSLOT): 15-bit or
+  23-bit payload, so slots reach 64 MB / 32 MB.
+- **Variable-width calls are now the default** (user's proposal,
+  measured in Iteration 193 at under 1% of instructions and no
+  measurable time): 10xxxxxx + 1 byte near, 11xxxxxx + 2 bytes far.
+  Reach 128 KB near / 32 MB far. -DVARCALL=0 restores the fixed form.
+- **Opcode 0x7D reserved as ESC**, a second bank of 256. Opcode space
+  is the one resource the design cannot widen later; two slots remain.
+- **Header now carries a format version and a feature bitmap.** The
+  loader checks name/scale/cell exactly, then version-not-newer and
+  features-a-subset. Adding a feature no longer invalidates old images,
+  and an old engine refuses a new image cleanly. Previously the magic
+  was compared byte for byte.
+
+Resulting ceilings: code 32 MB, variables 64 MB, literals a full cell,
+opcodes 128 + a reserved bank, memory a build parameter.
+
+tests/diff 20/20 and tests/shell (all but run-forth) at both widths;
+tests/verify unchanged; build-cv8.sh builds and smoke-tests both the
+variable- and fixed-width configurations.

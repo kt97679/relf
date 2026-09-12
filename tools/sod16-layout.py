@@ -90,6 +90,8 @@ if V8:
     G['V8'] = True
     G['V8_FOLDLIST'] = _opt('--fold-set', '').split(',')
 if '--spec' in ARGV: G['SPEC'].update(_opt('--spec').split(','))
+if '--no-varcall' in ARGV: G['VARCALL'] = False
+if '--no-varslot' in ARGV: G['VARSLOT'] = False
 UB = 1 if V8 else 2                # bytes per stream unit
 DOVARP = len(G['prims']) + 1       # after LIT32
 DODOES = len(G['prims']) + 2
@@ -403,18 +405,23 @@ def v8val(target):
 if V8: G['V8_CALLTOK'][0] = v8val
 def v8pfa(target):
     off = new_off[target]['body'] + CELL          # [DOVAR][pad] is one cell
-    assert off % (1 << CPT) == 0 and (off >> CPT) < 0x10000
+    assert off % (1 << CPT) == 0 and (off >> CPT) < (1 << 23)
     return off >> CPT
 def v8loc(old):
     n2 = remap_pfa_off(old)
     if n2 is None: n2 = remap_body_off(old)
-    assert n2 is not None and n2 % (1 << CPT) == 0 and (n2 >> CPT) < 0x10000, old
+    assert n2 is not None and n2 % (1 << CPT) == 0, old
+    assert (n2 >> CPT) < (1 << 23), "locals slot %d beyond 23-bit reach" % n2
     return n2 >> CPT
 G['V8_PFA'][0] = v8pfa
 G['V8_LOC'][0] = v8loc
 def callbytes(target):
     if V8:
-        v = v8val(target); return bytes([0x80 | (v >> 8), v & 0xFF])
+        v = v8val(target)
+        if G['VARCALL']:
+            if v < (1 << 14): return bytes([0x80 | (v >> 8), v & 0xFF])
+            return bytes([0xC0 | (v >> 16), (v >> 8) & 0xFF, v & 0xFF])
+        return bytes([0x80 | (v >> 8), v & 0xFF])
     return tk(calltok_addr(target))
 
 # ---- emit the token image -------------------------------------------
@@ -515,7 +522,10 @@ def emit(path):
 
     assert len(img) == NEW_HERE, "image %d, layout said %d" % (len(img), NEW_HERE)
 
-    hdr = (b'SOD1' if CPT is None else (b'CV8' if V8 else b'CPT') + bytes([48 + CPT])) + bytes([CELL, 0, 0, 0])
+    _flags = ((1 if G['VARCALL'] else 0) | (2 if G['VARSLOT'] else 0)
+              | (4 if G['SPEC'] else 0) | 8) if V8 else 0
+    hdr = (b'SOD1' if CPT is None else (b'CV8' if V8 else b'CPT') + bytes([48 + CPT]))
+    hdr += bytes([CELL, ord('L') if G['SPEC'] else 0, 1 if V8 else 0, _flags])
     hdr += cel(new_off[order[-1]['s']]['nfa'])
     hdr += cel(len(TAILS))
     for t in TAILS:
@@ -526,10 +536,8 @@ def emit(path):
     # does not depend on what was loaded. A bare kernel has no save
     # stack: the header is zeroed, and no LOC opcode is ever emitted
     # (there are no calls to a locals runtime to rewrite).
-    if G['SPEC']:
-        hdr = hdr[:5] + b'L' + hdr[6:]
-        if not [w for w in order if w['n'] == 'LSAVE-MAX']:
-            hdr += cel(0) * 5
+    if G['SPEC'] and not [w for w in order if w['n'] == 'LSAVE-MAX']:
+        hdr += cel(0) * 5
     if G['SPEC'] and [w for w in order if w['n'] == 'LSAVE-MAX']:
         # CV8 locals opcodes: where the save stack lives, its limit, and the
         # Forth words to fall back to. Offsets from base, one cell each.

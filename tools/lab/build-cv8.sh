@@ -35,8 +35,8 @@ img cpt16-64   8 --cpt 1 --skip-pad
 img cpt16-32   4 --cpt 1 --skip-pad
 img cptf-64    8 --cpt 3 --dataprims --fold --fold-set "$HOT"
 img cptf-32    4 --cpt 2 --dataprims --fold --fold-set "$HOT"
-img cv8-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT"
-img cv8-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT"
+img cv8-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --no-varcall --no-varslot
+img cv8-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --no-varcall --no-varslot
 # VM-SURVEY.md: CV8 plus the specialisations borrowed from other VMs
 SPECS=loc,var,tiny,small,imm
 img spec-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS
@@ -61,11 +61,11 @@ python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" > /dev/null
 cc -O2 -DENC=2 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cptf-64" "$O/vm-lab.c"
 cc -m32 -O2 -DENC=2 -DREG=1 -DFOLD=1 -DSCALE=2 -o "$O/cptf-32" "$O/vm-lab.c"
 python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" v8 > /dev/null
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cv8-64" "$O/vm-lab.c"
-cc -m32 -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -o "$O/cv8-32" "$O/vm-lab.c"
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-64" "$O/vm-lab.c"
+cc -m32 -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-32" "$O/vm-lab.c"
 python3 tools/lab/gen-fold.py "$O/vm-lab-tos.c" "$HOT" v8 > /dev/null
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cv8t-64" "$O/vm-lab-tos.c"
-cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 \
+cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 \
     -o "$O/cv8t-32" "$O/vm-lab-tos.c"
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
     -o "$O/spec-64" "$O/vm-lab-tos.c"
@@ -73,6 +73,9 @@ cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
     -DSHAREDCALL=1 -o "$O/spec-32" "$O/vm-lab-tos.c"
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DPROFILE=1 \
     -o "$O/spec-64-prof" "$O/vm-lab-tos.c" 2>/dev/null
+# fixed-width-call/slot build, for comparison with the variable forms
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
+    -DVARCALL=0 -DVARSLOT=0 -o "$O/fixedw-64" "$O/vm-lab-tos.c"
 
 # ---- smoke test: every pair must agree with dash ----------------------
 want=$(for w in fn str arith; do dash tests/bench-vm/$w.sh; done)

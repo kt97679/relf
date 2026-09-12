@@ -450,7 +450,10 @@ FOLDBASE = 128        # folded opcode = FOLDBASE + primitive index
 V8 = False            # byte-stream mode: 1-byte ops, 2-byte calls
 V8_FOLDLIST = []      # v8: folded opcodes are 73 + position in this list
 V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72, 73
-V8_CALLTOK = [None]   # layout pass binds: old target addr -> 15-bit value
+V8_CALLTOK = [None]   # layout pass binds: old target addr -> scaled value
+VARCALL = True        # 10xxxxxx = 2-byte call, 11xxxxxx = 3-byte
+VARSLOT = True        # 0xxxxxxx+1 = 15-bit slot, 1xxxxxxx+2 = 23-bit
+V8_LIT64, V8_ESC = 0x7C, 0x7D
 
 # ---- specialisations borrowed from other VMs (CV8 only; CV8.md 10) ----
 SPEC = set()          # any of: 'loc' 'tiny' 'var' 'small'
@@ -482,13 +485,21 @@ def op_bytes(k, pl, t):
     """Size of one operation in the TOKEN image, in bytes, at offset t."""
     if k == 'ALN': return (-t) % pl
     if V8:
-        if k in ('VF', 'VS', 'LOC'): return 3
+        if k == 'C' and VARCALL:
+            return 2 if V8_CALLTOK[0] is None or V8_CALLTOK[0](pl) < (1 << 14) else 3
+        if k in ('VF', 'VS', 'LOC'):
+            if not VARSLOT: return 3
+            v = slotval(k, pl)
+            return 3 if v is None or v < (1 << 15) else 4
         if k in X_IMM: return 2
         if k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC: return 1
         if k in ('P', 'PX'): return 1
         if k == 'C': return 2
         if k in ('LIT', 'LITX'):
-            return 2 if 0 <= pl < 256 else 3 if 0 <= pl <= 0xFFFF else 5
+            if 0 <= pl < 256: return 2
+            if 0 <= pl <= 0xFFFF: return 3
+            if -(1 << 31) <= pl < (1 << 31): return 5
+            return 1 + CELL
         if k == 'LITOFF': return 5
         if k in ('BR', 'QBR'): return 3
     if k == 'PX': return 2
@@ -533,6 +544,23 @@ def CALLTOK(target, n):
     return 256 + n
 G_CALLTOK[0] = CALLTOK
 
+def slotval(k, pl):
+    """scaled slot value for a VF/VS (variable) or LOC (locals) op,
+    or None during the sizing pass before the layout is known."""
+    try:
+        return V8_PFA[0](pl) if k in ('VF', 'VS') else V8_LOC[0](pl[1])
+    except Exception:
+        return None
+
+def emit_slot(b, v):
+    if not VARSLOT:
+        b.append(v & 0xFF); b.append((v >> 8) & 0xFF); return
+    if v < (1 << 15):
+        b.append(v >> 8); b.append(v & 0xFF)
+    else:
+        assert v < (1 << 23), "slot %d out of 23 bits" % v
+        b.append(0x80 | (v >> 16)); b.append((v >> 8) & 0xFF); b.append(v & 0xFF)
+
 def to_bytes_v8(ops):
     """The v8 byte stream for one body. Same layout() as the 16-bit
     stream, so padding and branch conversion share one definition."""
@@ -548,9 +576,9 @@ def to_bytes_v8(ops):
         elif k in X_IMM:
             b.append(X_IMM[k]); b.append(pl & 0xFF)
         elif k in ('VF', 'VS'):
-            b.append(X_VF if k == 'VF' else X_VS); le(V8_PFA[0](pl) if V8_PFA[0] else 0, 2)
+            b.append(X_VF if k == 'VF' else X_VS); emit_slot(b, slotval(k, pl) or 0)
         elif k == 'LOC':
-            b.append(X_LOC[pl[0]]); le(V8_LOC[0](pl[1]) if V8_LOC[0] else 0, 2)
+            b.append(X_LOC[pl[0]]); emit_slot(b, slotval(k, pl) or 0)
         elif k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC:
             b.append({0: X_LIT0, 1: X_LIT1, -1: X_LITM1}[pl])
         elif k == 'PX':
@@ -560,12 +588,28 @@ def to_bytes_v8(ops):
             if 0 <= pl < 256: b.append(V8_LIT8X if x else V8_LIT8); b.append(pl)
             elif 0 <= pl <= 0xFFFF:
                 b.append(V8_FOLD0 + V8_FOLDLIST.index('LIT') if x else idx_of['LIT']); le(pl, 2)
-            else: assert not x; b.append(V8_LIT32); le(pl, 4)
+            elif -(1 << 31) <= pl < (1 << 31):
+                assert not x; b.append(V8_LIT32); le(pl, 4)
+            else:
+                # A value wider than 32 bits. Until Iteration 194 this
+                # was silently masked to 32 bits and sign-extended, so
+                # $123456789ABC evaluated differently under CV8 than
+                # under the cell engine. Now it gets a full cell.
+                assert not x, "cannot fold EXIT into a LIT64"
+                b.append(V8_LIT64); le(pl, CELL)
         elif k == 'LITOFF': b.append(V8_LIT32); le(pl, 4)
         elif k == 'C':
             v = V8_CALLTOK[0](pl) if V8_CALLTOK[0] else 0
-            assert 0 <= v < 0x8000, "v8 call value %d out of 15 bits" % v
-            b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
+            if VARCALL:
+                if v < (1 << 14):
+                    b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
+                else:
+                    assert v < (1 << 22), "varcall target %d out of 22 bits" % v
+                    b.append(0xC0 | (v >> 16)); b.append((v >> 8) & 0xFF)
+                    b.append(v & 0xFF)
+            else:
+                assert 0 <= v < 0x8000, "v8 call value %d out of 15 bits" % v
+                b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
         elif k in ('BR', 'QBR'):
             b.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
             tgt = cs[j] + CELL + pl

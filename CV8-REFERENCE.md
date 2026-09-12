@@ -121,13 +121,29 @@ five times more often than the token image (`XARCH.md` §5).
 
 ```
 b = ip[0]
-b < 0x80  ->  opcode b, one byte, ip += 1
-b >= 0x80 ->  call: v = ((b & 0x7F) << 8) | ip[1], ip += 2
-             target = base + (v << SCALE)
+b < 0x80    ->  opcode b, one byte, ip += 1
+b = 10xxxxxx -> call, 2 bytes: v = ((b & 0x3F) << 8)  | ip[1]
+b = 11xxxxxx -> call, 3 bytes: v = ((b & 0x3F) << 16) | (ip[1] << 8) | ip[2]
+                target = base + (v << SCALE)
 ```
 
 `SCALE` is 3 on a 64-bit build and 2 on a 32-bit build. This is the
 whole decoder. There is no length table and no prefix.
+
+The two call widths (`VARCALL`) exist so the format is not capped at a
+single window. The near form reaches 16384 << SCALE and the far form
+4M << SCALE, and the compiler picks per call site by distance, exactly
+as it picks `LIT8`/`LIT`/`LIT32`. Measured cost of the extra test: under
+1% of instructions, and no measurable time - it runs only on calls
+(~22% of dispatches) and predicts nearly perfectly, since almost every
+call is near. Building with `-DVARCALL=0` restores a fixed 15-bit call
+if you ever want it.
+
+Slot operands (`VAR@`, `VAR!`, the locals opcodes) use the same trick
+(`VARSLOT`): one leading bit selects a 15-bit or 23-bit payload. Without
+it slots were a fixed 16 bits, so **variables had to live in the first
+512 KB while code could span 32 MB** - an asymmetry that would have
+failed silently in a larger system.
 
 The engine loads the byte **sign-extended**, so "is this an opcode?" is a
 branch on sign with no comparison (`SIGNTEST`, on by default except on
@@ -145,7 +161,9 @@ branch on sign with no comparison (`SIGNTEST`, on by default except on
 | `0x48` | `LIT8;EXIT` |
 | `0x49`–`0x5F` | folded `primitive;EXIT`, in `--fold-set` order (23 used) |
 | `0x60`–`0x7B` | specialised opcodes (§7) |
-| `0x7C`–`0x7F` | **free** (4 slots; one is reserved for `FARCALL`) |
+| `0x7C` | `LIT64` — a full cell, little-endian |
+| `0x7D` | `ESC` — **reserved**: selects a second bank of 256 opcodes |
+| `0x7E`–`0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two-byte call |
 
 The primitive numbering is not a CV8 invention: it is the order words
@@ -159,6 +177,7 @@ engine uses. `LIT` is primitive 2 and keeps a 2-byte operand.
 | `LIT8` | 1 byte, unsigned 0–255 |
 | `LIT` | 2 bytes, unsigned little-endian |
 | `LIT32` | 4 bytes, signed little-endian, sign-extended to a cell |
+| `LIT64` | `CELL_BYTES` bytes, little-endian — for values outside int32 |
 | `BRANCH`, `?BRANCH` | 2 bytes, **signed byte offset from the operand itself** |
 | `ADDI`, `EQI` | 1 byte, signed −128..127 |
 | specialised slot ops | 2 bytes, a scaled offset like a call |
@@ -188,15 +207,33 @@ Consequences:
 
 - **Every call target must be 2^SCALE aligned.** Word bodies already are,
   because the name field is padded to a cell.
-- **Reach is 32,767 × 2^SCALE**: 256 KB on 64-bit, 128 KB on 32-bit.
-  Today's shell images are 66 KB and 53 KB.
 - **The limit is bytes, not words.** At today's average of ~60 bytes per
-  entry that is roughly 4,300 words (64-bit) or 2,700 (32-bit).
-- `COMPILE,` becomes arithmetic: `xt START @ - SCALE RSHIFT 0x8000 OR`.
+  entry, the far form is roughly 500,000 words.
+- `COMPILE,` becomes arithmetic on the target's distance.
 
-When the image outgrows the window, in order: raise 32-bit `SCALE` to 3
-(costs ~2 KB of padding, doubles reach), then add a `FARCALL` opcode with
-a 3-byte operand in one of the free slots.
+### 3.5 Every ceiling in the format
+
+Audited in Iteration 194, after the question "will these limits stop a
+bigger project?". They are listed here because the answer depended on
+limits I had not been tracking - the binding one was not the call reach.
+
+| limit | 64-bit | 32-bit | kind |
+|---|---|---|---|
+| VM memory (`MEMSIZE`) | 16 MB | 16 MB | build parameter, **not** format |
+| call reach, near form | 128 KB | 64 KB | format |
+| call reach, far form | **32 MB** | 16 MB | format |
+| slot reach, near form | 256 KB | 128 KB | format |
+| slot reach, far form | **64 MB** | 32 MB | format |
+| literal width | full cell | full cell | format |
+| branch, within one word | ±32 KB | ±32 KB | format |
+| opcode space | 128 + a reserved second bank | same | format |
+| `DOES>` tails (`MAX_TAILS`) | 16 | 16 | build parameter |
+
+`MEMSIZE` covers the image, all runtime dictionary growth and the
+stacks, so it is the **first** ceiling a growing system meets. It was
+1 MB until Iteration 194, which made the 32 MB call reach academic. It
+is a plain parameter: every reference in an image is relative, so
+raising it breaks nothing.
 
 ---
 
@@ -303,15 +340,23 @@ cell by cell.
 | 0 | 4 | magic `CV8` + `'0'+SCALE` — e.g. `CV83` |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
-| 6 | 2 | zero |
+| 6 | 1 | **format version** (1) |
+| 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
 | 8 | cell | offset of the newest word's name field (the dictionary head) |
 | +cell | cell | number of `DOES>` tail entries, *N* |
 | … | 2·*N*·cell | the tail entries: (word number, byte offset) pairs |
 | … | 5·cell | **SPEC only**: the locals header (§7.3) |
 
-The engine rejects an image whose magic does not match its build exactly,
-including the cell width and the `SCALE`, so a 32-bit image cannot be
-loaded by a 64-bit engine.
+The engine checks the first five bytes exactly - name, scale and cell
+width - so a 32-bit image cannot be loaded by a 64-bit engine. Then it
+checks that the image's **version is not newer** than its own and that
+its **required features are a subset** of what the engine implements.
+
+That is the point of the bitmap: a feature added later sets a bit rather
+than breaking the format, older images keep working on newer engines,
+and an older engine refuses a newer image with a clear message instead
+of misreading it. Before Iteration 194 the magic was compared byte for
+byte, so any change to the format invalidated every image.
 
 A `SPEC` image **always** carries the five locals cells, zero-filled when
 the dictionary had no `locals.4`. That keeps the format independent of
@@ -576,7 +621,10 @@ places. A committed engine should:
   `DO` loops; a kernel that did should make `(LOOP)` read an `ALIGNED`
   operand.
 - **`LIT8` is unsigned.** `-1` needs `LIT32` unless the `0x62` opcode is
-  enabled.
+  enabled. Values outside int32 need `LIT64`: until Iteration 194 they
+  were silently masked to 32 bits, so `$123456789ABC` evaluated
+  differently under CV8 than under the cell engine. The translator now
+  emits `LIT64`; anything that generates CV8 code must do the same.
 - **A folded `EXIT` must not be a branch target** (§6.4).
 - **Call targets must be aligned** to 2^SCALE; data bodies only are
   because `DOVAR` made them so.

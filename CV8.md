@@ -1,5 +1,11 @@
 # CV8.md — the inner interpreter, measured end to end
 
+> **Iteration 194 widened the format** after an audit of its ceilings:
+> variable-width calls and slots (32 MB / 64 MB reach), `LIT64` (a
+> 64-bit literal was silently truncated), a reserved opcode bank, a
+> 16 MB `MEMSIZE`, and a version + feature bitmap in the header so
+> future widening is not a format break. See `CV8-REFERENCE.md` §3.5.
+>
 > **`CV8-REFERENCE.md`** is the format-and-engine reference: opcode
 > map, image layout, worked byte examples, and the rules a compiler
 > must follow. **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
