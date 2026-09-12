@@ -13791,3 +13791,34 @@ its count byte are right, and the surrounding calls resolve sensibly.
 So the fault is in something the renumbering perturbs around BUF-ALLOC,
 not in the encoding of the escape. Next step is to diff BUF-ALLOC's
 bytes with and without --escape, which is now a one-line change.
+
+## Iteration 204: the Forth CORE suite - which I had not been running
+
+Caught in review: I had been running only the SHELL suites. Every CV8
+image passed those long before the Forth compiler was correct, because
+they exercise the shell, not `:`. The suite that matters for cv8.4 is
+`tester.fr` + `tests/*.fth` - 671 ANS CORE cases, which compile
+hundreds of definitions at RUN time. It had not been run on a CV8 image
+at all.
+
+It needs an image that boots into the INTERPRETER: a shell image sends
+Forth source to the shell and reports nothing useful, which is why my
+first attempt produced a meaningless "problems=1". build-cv8.sh now
+builds `fkernel-64`/`fkernel-32` for this, and `tools/lab/forth-tests.sh`
+runs the suite on both. The harness was checked by injecting
+`{ 1 2 -> 9 9 }`, which is correctly reported as INCORRECT RESULT.
+
+**Result: the CV8 self-hosting compiler passes all 671 cases at both
+widths.** That is the strongest evidence so far that cv8.4 is right -
+far stronger than the shell suites, which never compile anything.
+
+**And it immediately found the escaped-band fault.** With `--escape`:
+- tester.fr alone: 0 problems
+- + core-extra.fth: 0 problems
+- + **locals.fth: SEGFAULT**
+
+So the reproducer is now a 12 KB bare-kernel image and one test file,
+not the whole shell. BUF-ALLOC was a symptom, not the cause: both it
+and locals.fth go through the locals machinery. The next step is to
+compare what `--escape` changes about LSAVE/LRESTORE or the locals
+header - a much smaller search than before.

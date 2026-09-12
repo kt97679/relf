@@ -36,6 +36,10 @@ printf "$BOOT" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32.txt"
 SELF='S" cv8.4" INCLUDED\n'"$BOOT"
 printf "$SELF" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-self.txt"
 printf "$SELF" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-self.txt"
+# bare kernel + cv8.4 only: boots into the interpreter, for the CORE suite
+KONLY='S" cv8.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+printf "$KONLY" | ./relf   kernel.img   | tr -d '\r' > "$O/k64.txt"
+printf "$KONLY" | ./relf32 kernel32.img | tr -d '\r' > "$O/k32.txt"
 
 # ---- images -----------------------------------------------------------
 img() {  # img NAME CELL OPTIONS...
@@ -43,6 +47,7 @@ img() {  # img NAME CELL OPTIONS...
     local d="$O/d64.txt"; [ "$c" = 4 ] && d="$O/d32.txt"
     case "$*" in *--cv8-compiler*) d="$O/d64-self.txt"
         [ "$c" = 4 ] && d="$O/d32-self.txt";; esac
+    case "$n" in fkernel-64) d="$O/k64.txt";; fkernel-32) d="$O/k32.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
@@ -63,6 +68,10 @@ img spec-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS
 # image's own compiler emits CV8 (phase 3). tests/shell/run-forth.
 img self-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 img self-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+# A CV8 image that boots into the INTERPRETER: the ANS CORE suite needs
+# one, because a shell image feeds Forth source to the shell instead.
+img fkernel-64 8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+img fkernel-32 4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
