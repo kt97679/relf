@@ -443,9 +443,10 @@ static void load_image(const char *name) {
             full_read(fd, (UNS8*)&o_, CELL_BYTES) != CELL_BYTES) exit(2);
         tail_w[i] = w_; tail_o[i] = o_;
     }
-    if (full_read(fd, (UNS8*)loc_hdr, 5 * CELL_BYTES) != 5 * CELL_BYTES) {
-        write_str(2, "Truncated locals header.\n"); exit(2);
-    }
+    /*  The locals header is present only if the image was built from a
+     *  dictionary that had locals.4 loaded; a bare kernel has none. */
+    if (full_read(fd, (UNS8*)loc_hdr, 5 * CELL_BYTES) != 5 * CELL_BYTES)
+        loc_hdr[0] = loc_hdr[1] = 0;
     if (0)
 #endif
     for (i = 0; i < ntails; i++) {

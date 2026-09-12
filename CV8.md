@@ -1,6 +1,8 @@
 # CV8.md — the inner interpreter, measured end to end
 
-> **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
+> **`CV8-REFERENCE.md`** is the format-and-engine reference: opcode
+> map, image layout, worked byte examples, and the rules a compiler
+> must follow. **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
 > 3.3's cache attribution). **Iteration 190 adds `VM-SURVEY.md`**: five specialisations borrowed
 > from the JVM, CPython, Lua and Gforth - locals as frame-slot opcodes
 > above all - take CV8 to ~0.33x its own time (0.16-0.23x of today's

@@ -522,13 +522,20 @@ def emit(path):
         h = [x for x in order if x['s'] < t < x['e']][0]
         c2t_, _, _, _, _ = layout(info[h['s']])
         hdr += cel(num[h['s']]) + cel(c2t_[t - h['s']])
+    # SPEC images always carry the 5-cell locals header, so the format
+    # does not depend on what was loaded. A bare kernel has no save
+    # stack: the header is zeroed, and no LOC opcode is ever emitted
+    # (there are no calls to a locals runtime to rewrite).
     if G['SPEC']:
+        hdr = hdr[:5] + b'L' + hdr[6:]
+        if not [w for w in order if w['n'] == 'LSAVE-MAX']:
+            hdr += cel(0) * 5
+    if G['SPEC'] and [w for w in order if w['n'] == 'LSAVE-MAX']:
         # CV8 locals opcodes: where the save stack lives, its limit, and the
         # Forth words to fall back to. Offsets from base, one cell each.
         def body_of(n): return new_off[[w for w in order if w['n'] == n][-1]['s']]['body']
         lmax = [w for w in order if w['n'] == 'LSAVE-MAX'][-1]
         lmax_v = [pl for k, pl in info[lmax['s']] if k in ('LIT', 'LITX')][0]
-        hdr = hdr[:5] + b'L' + hdr[6:]
         hdr += cel(body_of('LSAVE-SP') + CELL) + cel(body_of('LSAVE-STACK') + CELL)
         hdr += cel(lmax_v) + cel(body_of('LSAVE')) + cel(body_of('LRESTORE'))
     open(path, 'wb').write(hdr + bytes(img))

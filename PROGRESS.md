@@ -13351,3 +13351,55 @@ x86).
 
 Unknown without hardware: TOS on ARM32, folding's prediction gain on
 simple predictors. tests/shell not run under qemu (~25 min per ISA).
+
+## Iteration 192: kernel-vs-shell images, an asm engine, and the CV8 reference
+
+**`CV8-REFERENCE.md`**: the format and engine in detail - opcode map,
+operand conventions, image layout and header, worked byte examples from
+a real image, what each specialised opcode does, and the rules phase 3
+must reproduce (the translator's fold_exit/specialise/layout are the
+specification). Every checkable claim in it is verified against the
+sources by a script in the commit message's test.
+
+**Kernel images, separate from the shell** (asked for in review).
+tools/sod16-layout.py now tolerates a dictionary with no locals.4: SPEC
+images always carry the 5-cell locals header, zero-filled if absent, so
+the format does not depend on what was loaded. Bare kernel is 23,384 B
+(64) / 12,908 B (32) against the shell image's 206,416 / 109,876 - the
+shell is ~89% of what every earlier measurement covered.
+
+- kernel-only image sizes: CV8+spec 0.44x (64-bit), 0.59x (32-bit),
+  against 0.32x/0.48x for the shell image. The kernel compresses LESS
+  because headers and names are a bigger share of a small dictionary.
+- kernel-only speed (loop + FIB 26, compiled into the image so every
+  encoding runs identical code): CV8+spec is 2.4x (64-bit) / 2.0x
+  (32-bit) against today's engine, where the shell workloads give
+  4.3-6x. The specialisations target what SHELL code does: locals in
+  nearly every word, and variable access. Honest summary: ~2x on
+  general Forth, 4-6x on this shell's own code.
+- the 2016 original relf (commit 25d3c0b) still builds and runs; on the
+  same benchmark today's engine is 2.2x faster.
+
+**tools/lab/cv8-core.S**: the CV8 interpreter in x86-64 assembly - 63
+handlers plus dispatch, with syscall words delegated to one shared slow
+path, verified by tools/lab/core-bench.c. Answers whether .text is a
+fair complexity metric:
+
+- SIZE: asm 2,512 B vs 2,351 B for the same 63 C handlers. GCC is
+  already as tight as hand-written asm; .text measures how many CASES
+  exist, times a compiler constant. 124 endbr64 pads = 496 B are pure
+  CET overhead; -fcf-protection=none -Os cuts .text 11,534 -> 9,998.
+- SPEED: asm is 0.80x the C core's time, consistently, on the same
+  token stream in the same binary. GCC cannot pin six VM registers
+  across a 430-instruction function with 124 exits.
+- but -Os makes the C core 88% SLOWER (it merges the dispatch tails)
+  while the asm is unaffected. Ship -O2 -fcf-protection=none.
+- NOT recommended: 20% is the smallest lever measured, and the cost is
+  one engine per architecture (five measured so far), against GOALS.md
+  reason 2. Revisit at phase 4, where register pinning comes free.
+
+tools/lab/figure-of-merit.py combines speed, size and complexity into
+one score, with the complexity rubric written out and a sensitivity
+sweep: H (CV8+spec) wins whenever complexity is weighted at half or
+less, B (register locals) whenever it is weighted at 1.0 or more, and
+every intermediate design scores below doing nothing.
