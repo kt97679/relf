@@ -83,6 +83,14 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+#ifndef DISPATCH256
+/*  DISPATCH256: no opcode-vs-call test at all. The table gets 256
+ *  entries, every one with the top bit set pointing at do_call, so
+ *  NEXT is load / increment / indirect jump. Suggested in review:
+ *  the CPU should not have to learn whether this is a one- or
+ *  two-byte instruction before it can jump. Costs 1 KB more table.  */
+#define DISPATCH256 0
+#endif
 #ifndef VARSLOT
 /*  VARSLOT: slot operands (VAR@/VAR!, the locals opcodes) are variable
  *  too. 0xxxxxxx + 1 byte is a 15-bit payload; 1xxxxxx + 2 bytes is
@@ -635,12 +643,24 @@ static void virtual_machine(void) {
 #include "vm-fold-table.h"
 #endif
     };
+#if ENC == 3 && SHAREDCALL && DISPATCH256
+    /*  Same handlers, but indexed by the whole byte: 0x80-0xFF all land
+     *  on do_call, so no test is needed to tell an opcode from a call. */
+    const void *dtab256[256];
+    { int i_, n_ = (int)(sizeof dispatch / sizeof dispatch[0]);
+      for (i_ = 0; i_ < 256; i_++)
+          dtab256[i_] = (i_ < n_ && i_ < 128) ? dispatch[i_] : &&do_call; }
+#endif
 
 #if ENC == 3 && SHAREDCALL
 /*  Every handler keeps its own opcode dispatch (what the branch predictor
  *  needs), but the call path - decode, RPUSH, limit check - exists once.
  *  GCC otherwise replicates ~50 bytes of it into all ~120 handlers.  */
-#if SIGNTEST
+#if DISPATCH256
+#define NEXT() do { \
+        PROFIP(ip); t = BYTE(ip); ip += 1; PROF(t); goto *dtab256[t]; \
+    } while (0)
+#elif SIGNTEST
 /*  Load the byte sign-extended: an opcode is then just t >= 0, one
  *  branch-on-sign (bgez / tbz / js) with no constant and no compare.
  *  RISC-V otherwise rematerialises 127 for bltu on every dispatch.  */
@@ -677,7 +697,12 @@ next:
     NEXT();
 #if ENC == 3 && SHAREDCALL
 do_call:
-#if VARCALL
+#if DISPATCH256
+    /*  ip is already past the first byte here.  */
+    if (t & 0x40) { t = ((t & 0x3F) << 16) | ((UNS64)BYTE(ip) << 8) | BYTE(ip + 1);
+                    ip += 2; }
+    else          { t = ((t & 0x3F) << 8) | BYTE(ip); ip += 1; }
+#elif VARCALL
     if (t & 0x40) {                       /* 11xxxxxx: 22-bit target */
         t = ((t & 0x3F) << 16) | ((UNS64)BYTE(ip + 1) << 8) | BYTE(ip + 2);
         ip += 3;

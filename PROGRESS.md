@@ -13631,3 +13631,42 @@ BUFFER:, so its PFA (not its heap pointer) is what the header wants.
 
 Until then the self-hosting images are still produced by the
 translator, which works and passes every test.
+
+## Iteration 200: DISPATCH256 measured; SAVE-SYSTEM still blocked
+
+**Review suggestion measured (thanks to KVT).** "The CPU should not have
+to test whether this is a one- or two-byte instruction before it can
+jump." Implemented as `-DDISPATCH256=1`: the table gets 256 entries,
+every one with the top bit set pointing at `do_call`, so NEXT is load /
+increment / indirect jump with no test at all.
+
+- engine .text 9,726 vs 12,206 bytes - **2.5 KB smaller**
+- but **2-4% SLOWER**, consistently, across four code layouts
+  (1.02-1.04 on loop and str)
+
+The test is nearly free because it predicts almost perfectly - calls are
+~22% of dispatches - while a 256-entry table doubles the table
+footprint and puts a load where a predicted branch used to be. Kept
+under the flag: on an in-order core with a weak predictor (MSP430,
+Cortex-M0) the answer could easily go the other way, and that is
+exactly where the 16-bit port would land. The out-of-bounds copy in the
+first version (reading 2 entries past `dispatch[]`) is fixed.
+
+**SAVE-SYSTEM: still not finished, and now blocked on something else.**
+Replaced the compile-time `[']` captures with a run-time lookup, which
+is the right shape - but `FIND` returns not-found in this context even
+for `DUP`, so the lookup path itself is broken and needs diagnosing
+before the header can be filled. Two separate problems remain:
+
+1. Why `S" DUP" NAME>BUF NAMEBUF FIND` fails inside a translated image
+   while the outer interpreter clearly finds words. Suspect CONTEXT or
+   #ORDER, or NAMEBUF/PLACE - not yet investigated.
+2. `LSAVE-STACK` is a `BUFFER:` (pool.4), so EXECUTING it pushes the
+   heap pointer, while the header needs the address of the cell that
+   HOLDS that pointer. Executing a VARIABLE gives its PFA, so
+   `LSAVE-SP` is fine; `LSAVE-STACK` needs its PFA by another route -
+   walking pool.4's BUF-LIST chain would do it.
+
+The translator-produced images are unaffected and still pass
+everything: tests/shell all files, tests/diff 20/20, run-forth 11/11,
+tests/verify unchanged.
