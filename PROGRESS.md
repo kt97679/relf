@@ -13921,3 +13921,27 @@ a portable C engine, the tagged family being six schemes, CPT16, and
 the specialisations), which designs were built versus only modelled,
 the four corrections where a measurement overturned an earlier
 conclusion, and the claims that need re-verification before publishing.
+
+## Iteration 208: repository cleanup - 72 files I created and committed
+
+Caught in review. The repository root held 72 empty files with names
+like `0=`, `MAX-INT`, `UNLOOP`, `}`, `-1`.
+
+**Cause, and it was mine.** In Iteration 204, before I understood that
+the CORE suite needs an image booting into the INTERPRETER, I piped
+`tester.fr` into a SHELL image. The shell parsed it as a script, and
+tester.fr's `->` and `>` became REDIRECTIONS: one empty file per token
+that followed. I then committed them without looking at `git status`
+carefully - `git add -A` took them all.
+
+Removed, and `tools/lab/forth-tests.sh` now refuses to run against an
+image that does not boot into the interpreter: it first sends
+`1 2 + . BYE` and requires `3`. Verified that the guard fires when a
+shell image is passed. The suite itself must still run from the repo
+root, because tests/locals.fth INCLUDEs pool.4 by relative path, so
+moving to a scratch directory was not the fix.
+
+Two lessons worth keeping for the article's honesty section: `git add
+-A` after a test run is how generated junk enters a repository, and a
+test harness that can be pointed at the wrong kind of input should
+check rather than assume.

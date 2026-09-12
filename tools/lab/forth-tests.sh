@@ -14,9 +14,27 @@
 set -e
 cd "$(dirname "$0")/../.."
 B=${1:?usage: forth-tests.sh BUILDDIR}
+B=$(cd "$B" && pwd)
+# The suite must run from the repo root: tests/locals.fth INCLUDEs
+# pool.4 by relative path.
+#
+# But it must NEVER be handed an image that boots into the SHELL: the
+# shell parses tester.fr as a script, and its `>` and `->` become
+# REDIRECTIONS, creating one empty file per token in the repo root.
+# That happened in Iteration 204 and 72 such files were committed.
+# So check first that the image boots into the INTERPRETER.
+interpreter_p() {
+    printf '1 2 + . BYE\n' | timeout 10 "$1" "$2" 2>/dev/null | tr -d '\r' | grep -q '^3 '
+}
 fail=0
 run() {   # run ENGINE IMAGE LABEL
     local out st
+    if ! interpreter_p "$1" "$2"; then
+        echo "FAIL $3: $2 does not boot into the Forth interpreter."
+        echo "      Refusing to run: a shell image would turn tester.fr's"
+        echo "      '>' into redirections and litter the repository."
+        fail=1; return
+    fi
     out=$( { cat tester.fr tests/*.fth; echo BYE; } | timeout 120 "$1" "$2" 2>&1 ) || true
     st=$?
     if echo "$out" | grep -qiE "incorrect result|wrong number of results|undefined word|segmentation"; then
