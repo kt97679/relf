@@ -13822,3 +13822,31 @@ not the whole shell. BUF-ALLOC was a symptom, not the cause: both it
 and locals.fth go through the locals machinery. The next step is to
 compare what `--escape` changes about LSAVE/LRESTORE or the locals
 header - a much smaller search than before.
+
+## Iteration 205: kernel image sizes clarified; escape fault narrowed again
+
+**On the two kernel numbers** (asked in review - they measure different
+things, and I had not said which):
+
+| image | 64-bit | 32-bit |
+|---|---|---|
+| bare kernel.img -> CV8 | 10,064 | 7,460 |
+| + cv8.4, the CV8 compiler (`fkernel`) | 12,144 | 8,992 |
+
+The ~7 KB figure was the 32-bit BARE kernel; the 12 KB figure is the
+64-bit kernel WITH the self-hosting compiler. cv8.4 costs about 2 KB,
+which is what buys the ability to compile at run time.
+
+**Escape fault, narrowed further.** Not the escape encoding, and not
+runtime compilation of escaped primitives - both work:
+- `100 ALLOCATE . .` runs correctly under --escape;
+- `: X 100 ALLOCATE DROP DROP ;` compiles to `71 100 | 125 26 | 88`
+  (LIT8 100, ESC+26 = ALLOCATE, folded DROP;EXIT) and runs.
+
+What fails is compiling **pool.4** at run time under --escape. pool.4 is
+what tests/locals.fth INCLUDEs first, which is why that file was the
+reproducer, and BUF-ALLOC is pool.4's. So the suspects are now pool.4's
+distinctive features rather than escaped primitives as such: BUFFER:
+(CREATE + DOES>) and ABORT" with its inline string, both of which
+involve alignment that the extra byte of an escape can shift.
+
