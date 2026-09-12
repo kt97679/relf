@@ -96,6 +96,13 @@ UB = 1 if V8 else 2                # bytes per stream unit
 DOVARP = len(G['prims']) + 1       # after LIT32
 DODOES = len(G['prims']) + 2
 
+# --- phase 3: swap the CV8 compiler words in (cv8.4) -----------------
+# cv8.4 defines its words as `;8`, `IF8`, ... because redefining `;` in
+# the CELL image would break the cell compiler on the very next
+# definition. Here the body of each `X8` becomes the body of `X`, so the
+# emitted image's compiler emits CV8. The `X8` names stay, harmlessly.
+CV8_COMPILER = '--cv8-compiler' in ARGV
+
 words, cells, tokn = G['words'], G['cells'], G['tokn']
 read_ops, to_tokens, layout = G['read_ops'], G['to_tokens'], G['layout']
 retag = G['retag']
@@ -153,7 +160,27 @@ kind, info, tok = {}, {}, {}
 for w in order:
     k, i = classify(w)
     kind[w['s']], info[w['s']] = k, i
-    if k == 'code': tok[w['s']] = to_tokens(i)
+
+if CV8_COMPILER:
+    # `X8` body becomes `X`'s body, so the image's compiler emits CV8.
+    _by = {}
+    for w in order:
+        _by.setdefault(w['n'], []).append(w)
+    _n, _miss = 0, []
+    for w in order:
+        if len(w['n']) < 2 or not w['n'].endswith('8'): continue
+        tgt = w['n'][:-1]
+        if tgt not in _by: continue
+        dst = _by[tgt][-1]
+        if kind[w['s']] != 'code' or info[w['s']] is None:
+            _miss.append(w['n']); continue
+        kind[dst['s']], info[dst['s']] = 'code', list(info[w['s']])
+        _n += 1
+    print("CV8 compiler: %d word bodies swapped in%s"
+          % (_n, "; NOT translatable: %s" % _miss if _miss else ""))
+
+for w in order:
+    if kind[w['s']] == 'code': tok[w['s']] = to_tokens(info[w['s']])
 
 # ---- new sizes ------------------------------------------------------
 def tail_bytes(w):

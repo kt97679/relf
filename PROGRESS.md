@@ -13444,3 +13444,41 @@ opcodes 128 + a reserved bank, memory a build parameter.
 tests/diff 20/20 and tests/shell (all but run-forth) at both widths;
 tests/verify unchanged; build-cv8.sh builds and smoke-tests both the
 variable- and fixed-width configurations.
+
+## Iteration 195: phase 3 started - a CV8-emitting compiler (INCOMPLETE)
+
+Decision taken: switch the shell to CV8. This iteration starts phase 3,
+the Forth compiler emitting CV8 instead of cells. It is NOT working yet.
+
+**What is in place.**
+- `cv8.4`: the emitter layer and the code-emitting compiler words -
+  `LIT,` (picks LIT8/LIT16/LIT32/LIT64), `CALL,` (near/far scaled
+  offset), `OP,`, `W,`, `!W`, `>MARK`/`>RESOLVE`/`<RESOLVE` for 16-bit
+  byte-offset branches measured FROM THE OPERAND, and CV8 versions of
+  LITERAL, COMPILE,, ;, BEGIN/UNTIL/AGAIN/IF/THEN/ELSE/WHILE/REPEAT,
+  CREATE/VARIABLE/CONSTANT, RECURSE.
+- Every word is named `X8`, not `X`: redefining `;` in the CELL image
+  breaks the cell compiler on the very next definition (found the hard
+  way - a segfault mid-load). `tools/sod16-layout.py --cv8-compiler`
+  swaps each `X8` body into `X` during translation, so only the EMITTED
+  image gets the new compiler. 13 bodies swap in cleanly.
+- The overlay loads into the cell image without disturbing it, and the
+  translated image builds (67,192 B) and still interprets correctly
+  (`forth '5 . CR'` prints 5).
+
+**What fails.** Compiling a colon definition in the CV8 image segfaults.
+Two bugs found and fixed so far (`;8` executing `[` at definition time;
+`COMPILE8,` reading a primitive's opcode with `@` when a CV8 primitive
+body is one BYTE), but at least one more remains. Not yet investigated:
+whether the outer interpreter's own compile path calls anything not
+swapped, and whether `:`/`]`/`HEADER` need CV8 versions.
+
+**Known gaps beyond that bug**: DO/LOOP, DOES>, POSTPONE (its inline
+operand is cell-sized and cell-aligned), S"/ABORT", and folding
+prim;EXIT at runtime (the runtime compiler does not fold, which is
+correct but loses ~20% on newly compiled code until it does).
+
+The next session should debug with a minimal image - a bare kernel plus
+cv8.4, no shell - and `forth : F 1 . ;` as the test, dumping the
+compiled bytes to compare against what the translator emits for the
+same definition.
