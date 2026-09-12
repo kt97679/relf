@@ -467,10 +467,13 @@ V8_LIT64, V8_ESC = 0x7C, 0x7D
 # frees 32 opcodes - the one resource this encoding cannot widen later.
 # EMIT and KEY stay direct: they are the only two plausibly hot ones,
 # and the profile that says otherwise is from scripts that print little.
-ESC_PRIMS = set("""BYE OPEN-FILE CLOSE-FILE READ-LINE WRITE-LINE READ-FILE
+ESCAPE = False        # --escape: OFF until the BUF-ALLOC fault is found
+ESC_PRIMS_ALL = set("""BYE OPEN-FILE CLOSE-FILE READ-LINE WRITE-LINE READ-FILE
 WRITE-FILE SYSTEM REPOSITION-FILE FILE-POSITION DELETE-FILE FILE-SIZE FORK
 EXECVE WAITPID PIPE DUP2 GETENV SETENV SYS-EXIT CHDIR GETCWD SYS-ARGC SYS-ARG
 GETPID UNSETENV ALLOCATE FREE RESIZE GETPWHOME GETFSIZE SETFSIZE""".split())
+
+ESC_PRIMS = set()     # populated from ESC_PRIMS_ALL when --escape is on
 
 def cv8_op(name):
     """(opcode, escaped) for a primitive. Non-escaped primitives keep

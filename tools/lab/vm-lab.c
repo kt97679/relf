@@ -83,6 +83,13 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+#ifndef ESCAPE
+/*  ESCAPE: the 32 OS/libc primitives move behind ESC + a selector,
+ *  which renumbers the primitive band. Both the engine and the
+ *  translator (--escape) must agree, so this is off until the fault in
+ *  BUF-ALLOC is found.  */
+#define ESCAPE 0
+#endif
 #ifndef DISPATCH256
 /*  DISPATCH256: no opcode-vs-call test at all. The table gets 256
  *  entries, every one with the top bit set pointing at do_call, so
@@ -643,7 +650,7 @@ static void virtual_machine(void) {
 #include "vm-fold-table.h"
 #endif
     };
-#if ENC == 3
+#if ENC == 3 && ESCAPE
     /*  CV8 renumbers the primitive band: the 36 non-escaped primitives
      *  keep kernel.4's order compacted into 0..35, and the 32 escaped
      *  ones are reached as ESC + index. dispatch[] is in kernel.4
@@ -818,7 +825,12 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
             *  primitive. Half the primitive band was these, for 3.2% of
             *  static sites and 0.006% of dispatches; behind an escape
             *  they cost a byte each and free 32 opcodes.  */
+#if ESCAPE
     t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
+#else
+    write_str(2, "CV8: image uses the escaped band, engine built without it\n");
+    exit(2);
+#endif
 #endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
     PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));

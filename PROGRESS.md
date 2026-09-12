@@ -13758,3 +13758,36 @@ Next step: bisect shell.4 itself. The suspects are the places it keeps
 execution tokens or inspects a word's body - BUILTIN registration, the
 `forth` builtin, DEFER - since those are what a renumbering would
 disturb while ordinary compiled code is unaffected.
+
+## Iteration 203: the escaped band is opt-in; fault localised to BUF-ALLOC
+
+**Corrected a process mistake first.** Iteration 202 made the escaped
+band unconditional, which broke every CV8 image, not just the new
+configuration - the translator always escaped and the engine always
+remapped. Both are now behind a switch (`--escape` for the translator,
+`-DESCAPE=1` for the engine) that is OFF by default, so the working
+build is restored and the incomplete work is preserved rather than
+blocking everything. An engine without the band now REFUSES an image
+that uses it, instead of misreading it.
+
+**Verified after the change**, at both widths:
+- build-cv8.sh: all 16 engine/image pairs smoke-test ok
+- tests/diff: 20/20 both widths
+- tests/shell: ALL test files pass, both widths
+- tests/verify: unchanged
+
+**Where the escaped band fails.** Bisected shell.4 by prefix: every
+prefix through line 7135 works, and the full file does not - the
+difference is MAIN, which is what makes the image boot into the shell
+rather than the interpreter. Running under gdb, the crash is inside
+`BUF-ALLOC` (pool.4) at body offset 63, in `!`, storing through an
+address that came from a `VAR@` two operations earlier.
+
+The escape mechanism itself is NOT at fault: escaped primitives execute
+correctly on their own (`SYS-ARGC .` and `GETPID .` both work in a bare
+kernel), and BUF-ALLOC's emitted bytes decode correctly by hand -
+`7d 1a` is ESC + selector 26 = ALLOCATE, the inline ABORT" string and
+its count byte are right, and the surrounding calls resolve sensibly.
+So the fault is in something the renumbering perturbs around BUF-ALLOC,
+not in the encoding of the escape. Next step is to diff BUF-ALLOC's
+bytes with and without --escape, which is now a one-line change.

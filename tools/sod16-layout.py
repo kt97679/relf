@@ -90,6 +90,9 @@ if V8:
     G['V8'] = True
     G['V8_FOLDLIST'] = _opt('--fold-set', '').split(',')
 if '--spec' in ARGV: G['SPEC'].update(_opt('--spec').split(','))
+if '--escape' in ARGV:
+    G['ESCAPE'] = True
+    G['ESC_PRIMS'].update(G['ESC_PRIMS_ALL'])
 if '--no-varcall' in ARGV: G['VARCALL'] = False
 if '--no-varslot' in ARGV: G['VARSLOT'] = False
 UB = 1 if V8 else 2                # bytes per stream unit
