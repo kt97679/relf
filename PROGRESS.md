@@ -13559,3 +13559,36 @@ engine's, at both widths.
 **Not done**: runtime EXIT folding (newly compiled code is correct but
 misses the ~20% the translator gets), and the self-hosting images are
 still translated rather than produced by SAVE-SYSTEM.
+
+## Iteration 198: runtime EXIT folding - newly compiled code matches
+
+The image's own compiler now folds `primitive EXIT` into one opcode at
+`;`, so code compiled at RUN time gets the ~20% the translator already
+got. `: Z DROP ;` compiles to a single byte.
+
+Safe because the fold applies only to the LAST operation of a
+definition, and `LAST-OP` is cleared by anything that is not a plain
+primitive emit - crucially by every branch resolution, since a THEN
+that resolves to HERE would otherwise point at an EXIT that is no
+longer there.
+
+**A bug worth recording.** The first version held the foldable
+primitives as a table of XTS. An xt is an absolute address of the
+cell-image session, and the translator has no reason to relocate a
+CREATEd array, so the image read back garbage and crashed. It now
+stores OPCODE BYTES, computed at load time from the cell token
+(`1 + n*CELL` -> n, which is also the CV8 opcode). Data that must
+survive translation cannot contain addresses.
+
+The fold set now exists in three places - build-cv8.sh's --fold-set,
+the engine's generated table, and cv8.4's FOLD-OPS - so build-cv8.sh
+checks the third against the first and fails the build on a mismatch.
+That is the drift risk CV8-REFERENCE.md 9 warns about; one list in
+kernel.4 generating all three is still the right end state.
+
+tests/shell: all files pass. tests/diff 20/20. run-forth 11/11. On the
+whole construct suite the image's output is identical to the cell
+engine's.
+
+**Remaining**: the self-hosting images are still TRANSLATED rather than
+produced by SAVE-SYSTEM, which is the last piece of phase 3.

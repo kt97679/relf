@@ -14,6 +14,16 @@ cd "$(dirname "$0")/../.."
 O=${1:-/tmp/cv8-build}
 mkdir -p "$O"
 HOT='+,=,!,@,LSHIFT,RSHIFT,C@,C!,AND,OR,XOR,LIT,<,U<,OVER,DROP,DUP,SWAP,ROT,>R,R>,R@,NEGATE'
+# The fold set lives in THREE places that must agree: this list (passed
+# to the translator), the engine's generated table (gen-fold.py, from
+# this list), and cv8.4's FOLD-OPS, which the image's own compiler uses
+# to fold at run time. Check the third against the first.
+CV8_LIST=$(sed -n "/^CREATE FOLD-OPS/,/^ALIGN/p" cv8.4 |
+           grep -o "' [^ ]* >OP" | sed "s/^' //; s/ >OP$//" | paste -sd,)
+[ "$CV8_LIST" = "$HOT" ] || {
+    echo "fold set mismatch between build-cv8.sh and cv8.4's FOLD-OPS:"
+    echo "  build-cv8.sh: $HOT"
+    echo "  cv8.4:        $CV8_LIST"; exit 1; }
 LAY=tools/sod16-layout.py
 
 # ---- dictionary dumps (tr -d '\r', always) --------------------------
