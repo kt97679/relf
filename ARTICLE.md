@@ -135,6 +135,115 @@ more instructions everywhere).
 
 ---
 
+## 4a. Measured tables the article will want
+
+### The tiny kernel words (`VM-SURVEY.md` §7.4)
+
+Two- and three-operation colon words in `kernel.4`, turned into opcodes.
+Static call sites are from the shell image before substitution; dynamic
+is executions of the word's body across the four bench workloads
+(371.9M dispatches total).
+
+| word | definition | static sites | dynamic |
+|---|---|---|---|
+| `0=` | `0 =` | 226 | **11.99M** |
+| `1+` | `1 +` | **337** | 2.32M |
+| `CHAR+` | `1 +` | 7 | 3.22M |
+| `CELLS` | `n LSHIFT` | 116 | 1.53M |
+| `-` | `NEGATE +` | 92 | 1.75M |
+| `>` | `SWAP <` | 96 | 0.41M |
+| `1-` | `-1 +` | 91 | 0.46M |
+| `2DROP` | `DROP DROP` | 54 | 0.32M |
+| `<>` | `= 0=` | 42 | 1.73M |
+| `2DUP` | `OVER OVER` | 39 | 1.37M |
+| `CELL+` | `CELL +` | 23 | 0.65M |
+| `0<` | `0 <` | 13 | 0.23M |
+| `COUNT` | `DUP 1+ SWAP C@` | 13 | 0.77M |
+| `ALIGNED` | `CELL 1- + CELL NEGATE AND` | 8 | 0.77M |
+| `INVERT` | `-1 XOR` | 1 | ~0 |
+
+Total 1,158 static sites, 27.5M executions = **7.4% of all dispatches**.
+Worth 0.75-0.82x on top of CV8. The distribution is heavily skewed:
+`0=` alone is 44% of the dynamic total, and eight of the fifteen
+capture ~90% of it. `INVERT` earns nothing and is in the set only
+because it matched the pattern.
+
+### The opcode budget
+
+128 opcodes below the call band. Occupied: 68 primitives, 5 literal and
+data forms, 23 folded `prim;EXIT`, 28 specialised, `LIT64`, `ESC`.
+
+| configuration | free |
+|---|---|
+| as shipped (escape off) | **2** |
+| with the escaped band | 34 |
+| escaped band + tiny set trimmed to 8 | 41 |
+
+Plus 256 reserved behind `ESC`, which is claimed but unimplemented.
+This is the design's scarcest resource and the reason the escaped band
+matters: it is what stands between "two spare" and "comfortable".
+
+---
+
+## 8. Benchmarking for the article
+
+**The shell workloads are not a fair VM benchmark** and the article
+must not lead with them. They are dominated by locals and variable
+access, which is exactly what the specialisations target - hence the
+same build measures ~5x on shell code and ~2.0-2.4x on kernel code.
+Quoting 5x as "the VM got 5x faster" would overstate it.
+
+Suggested set, best first:
+
+1. **Recompiling the kernel** - real self-hosting work, exercises the
+   compiler and the dictionary rather than one idiom, and cannot be
+   accused of being tuned to the encoding. `tests/verify` already does
+   a reproducible build, so the harness exists.
+2. **The ANS CORE suite run** (671 cases, `tools/lab/forth-tests.sh`) -
+   compiles hundreds of definitions; compile-heavy rather than
+   execution-heavy, so a useful second axis.
+3. **`fib.4`** - narrow (calls and arithmetic), but readers expect it.
+4. **One shell workload, clearly labelled** as "what the system is
+   actually for", never as the headline.
+
+Report kernel recompile as the headline with shell as a separate line,
+and say plainly why they differ. Take all numbers from ONE build of the
+committed branch: the figures in this repository accumulated across
+many iterations and several were superseded (varcall became the
+default, guard pages and the escaped band are opt-in and incomplete).
+
+**Tooling gap to fix first if per-word dynamic data is wanted again:**
+the CV8 path of `vm-lab.c -DPROFILE` records per-address counts but not
+call targets (`PROFC` is only in the ENC=2 path), so `tools/lab/hot.py`
+returns nothing for CV8 images. The tables above were produced by
+mapping the per-address `I` records onto `--symbols` output instead.
+
+---
+
+## 9. For the honesty section
+
+The article's most useful material is where the work was wrong, and
+the log has more than the four corrections in §2:
+
+- **72 empty files committed** (Iteration 204, removed in 208). Piping
+  `tester.fr` into an image that boots into the SHELL makes the shell
+  read `->` and `>` as redirections, creating one file per token; then
+  `git add -A` committed them. The harness now refuses an image that
+  does not boot into the interpreter.
+- **A test that could not fail.** For several iterations the only
+  suites being run were the shell ones, which never compile anything -
+  so they passed long before the Forth compiler was correct. The ANS
+  CORE suite, run for the first time in Iteration 204, both validated
+  the compiler (671/671) and immediately found a fault the shell suites
+  could not see.
+- **A fixed point is not cleanliness.** Two generations of a saved
+  image being byte-identical proves the save is self-consistent, not
+  that the saved state is clean: state that is stale but *stable* looks
+  identical in both. Diffing against a different, working build found
+  22 more variables that generation-diffing could not.
+
+---
+
 ## 5. Ideas borrowed, and from where
 
 For the "where the ideas came from" section the reviewer asked for.
