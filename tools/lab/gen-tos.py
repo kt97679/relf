@@ -86,8 +86,13 @@ s = s.replace("static void virtual_machine(void) {\n    VMREGS", """static void 
     VMREGS
     UNS64 tos = CELL(dsp); dsp += CELL_BYTES;       /* fill */
 #define NOS CELL(dsp)
+#if GUARD
+#define PUSHT(x) do { UNS64 v_ = (x); dsp -= CELL_BYTES; \\
+        CELL(dsp) = tos; tos = v_; } while (0)
+#else
 #define PUSHT(x) do { UNS64 v_ = (x); dsp -= CELL_BYTES; \\
         if (dsp < dsp_limit) stack_fault(0); CELL(dsp) = tos; tos = v_; } while (0)
+#endif
 #define POPT() do { tos = CELL(dsp); dsp += CELL_BYTES; } while (0)
 #undef VMPUSH
 #define VMPUSH PUSHT

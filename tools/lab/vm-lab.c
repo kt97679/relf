@@ -243,12 +243,20 @@ static UNS64 *wordtab;          /* absolute body addresses, malloc'd */
  *  runaway recursion and runaway loops both. Measured on fib.4, which
  *  is call- and push-dense by construction: see PROGRESS.md's
  *  Iteration 151 entry for the numbers.  */
+#if GUARD
+#define PUSH(x)  do { dsp -= CELL_BYTES; DS0 = x; } while (0)
+#else
 #define PUSH(x)  do { dsp -= CELL_BYTES;                              \
                       if (dsp < dsp_limit) stack_fault(0);            \
                       DS0 = x; } while (0)  /* pushes x to data stack  */
+#endif
+#if GUARD
+#define RPUSH(x) do { rp -= CELL_BYTES; RS = x; } while (0)
+#else
 #define RPUSH(x) do { rp -= CELL_BYTES;                               \
                       if (rp < rp_limit) stack_fault(1);              \
                       RS = x; } while (0)   /* pushes x to return stack*/
+#endif
 
 /*
  *  VM memory. +(CELL_BYTES-1) is necessary to be able to allocate
@@ -256,7 +264,23 @@ static UNS64 *wordtab;          /* absolute body addresses, malloc'd */
  *  native word access.
  */
 
+#ifndef GUARD
+/*  GUARD: catch stack overflow with an unreadable page below each
+ *  stack instead of a compare on every push. The checks cost 5-6% of
+ *  run time (measured); a guard page costs nothing in the loop and is
+ *  exact rather than probabilistic. Needs an MMU, so a target without
+ *  one (MSP430) builds with GUARD=0 and keeps the checks.  */
+#define GUARD 0   /* 1: guard pages. See PROGRESS.md 206 - one
+                    * tests/diff case (tilde) regresses, not yet diagnosed. */
+#endif
+#if GUARD
+#include <sys/mman.h>
+#include <signal.h>
+#define PAGE 4096
+static UNS8 mem[MEMSIZE + CELL_BYTES - 1] __attribute__((aligned(PAGE)));
+#else
 static UNS8 mem[MEMSIZE + CELL_BYTES - 1];
+#endif
 
 /*
  *  1st CELL_BYTES-aligned address in mem array. Base address of the
@@ -369,6 +393,46 @@ static void write_str(int fd, const char *s) {
  *  Status 70 (EX_SOFTWARE) rather than 1, so a test harness can tell
  *  an engine fault from a Forth-level ABORT.
  */
+#if GUARD
+/*  One unreadable page below each stack. The data stack's guard sits
+ *  below its floor; the return stack's sits between the two stacks, so
+ *  a return-stack overflow traps instead of quietly eating the data
+ *  stack. Both are inside mem, so nothing else has to move.  */
+static UNS64 g_dguard, g_rguard;
+static void guard_trap(int sig, siginfo_t *si, void *uc) {
+    UNS64 a = (UNS64)(uintptr_t)si->si_addr;
+    (void)sig; (void)uc;
+    if (a >= g_dguard && a < g_dguard + PAGE)
+        write_str(2, "relf: data stack overflow\n");
+    else if (a >= g_rguard && a < g_rguard + PAGE)
+        write_str(2, "relf: return stack overflow\n");
+    else
+        write_str(2, "relf: segmentation fault (not a stack guard)\n");
+    _exit(1);
+}
+/*  The regions, top down:
+ *      [rfloor, MEMSIZE)        return stack
+ *      [rfloor - PAGE, rfloor)  GUARD - return stack overflow
+ *      [dfloor, rfloor - PAGE)  data stack
+ *      [dfloor - PAGE, dfloor)  GUARD - data stack overflow (and the
+ *                               dictionary growing up into the stacks)
+ *  The two guard pages come out of the data stack, so the stacks stay
+ *  where they were and only the usable data depth shrinks by 8 KB. */
+static void install_guards(UNS8 *b) {
+    UNS64 dfloor = (UNS64)(uintptr_t)b + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
+    UNS64 rfloor = (UNS64)(uintptr_t)b + MEMSIZE - RSTACK_BYTES;
+    struct sigaction sa;
+    mprotect((void *)(uintptr_t)(rfloor - PAGE), PAGE, PROT_NONE);
+    mprotect((void *)(uintptr_t)dfloor, PAGE, PROT_NONE);
+    g_dguard = dfloor; g_rguard = rfloor - PAGE;
+    sa.sa_sigaction = guard_trap;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &sa, (struct sigaction *)0);
+    sigaction(SIGBUS, &sa, (struct sigaction *)0);
+}
+#endif
+
 static void stack_fault(int which) {
     write_str(2, which ? "relf: return stack overflow\n"
                        : "relf: data stack overflow\n");
@@ -1253,9 +1317,22 @@ int main(int argc, char **argv) {
     load_image(argv[1]);
     g_ip = (UNS64)(uintptr_t)base;
     g_rp = g_ip + MEMSIZE;
+#if GUARD
+    install_guards(base);
+    /*  Below the return stack's guard page, not below the return stack.
+     *  TWO cells of slack, not one: with TOS caching dsp sits one cell
+     *  ABOVE the logical top, so with one cell the empty stack would
+     *  put dsp exactly on the guard and any NOS read would trap. */
+    g_dsp = g_ip + MEMSIZE - RSTACK_BYTES - PAGE - 2 * CELL_BYTES;
+#else
     g_dsp = g_ip + MEMSIZE - RSTACK_BYTES - CELL_BYTES;
+#endif
     g_rp_limit  = g_ip + MEMSIZE - RSTACK_BYTES;
-    g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
+    g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES
+#if GUARD
+                  + PAGE
+#endif
+                  ;
     CELL(g_dsp) = g_ip;
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */

@@ -13850,3 +13850,35 @@ distinctive features rather than escaped primitives as such: BUFFER:
 (CREATE + DOES>) and ABORT" with its inline string, both of which
 involve alignment that the extra byte of an escape can shift.
 
+
+## Iteration 206: guard pages instead of per-push stack checks (regression)
+
+Taken from review as the first of the "worth taking" ideas, because it
+DELETES hot-path code rather than adding any.
+
+**Implemented**: `-DGUARD=1` replaces the compare-on-every-push with one
+unreadable page below each stack. The layout gains two guard pages,
+taken out of the data stack, so the stacks stay where they were and only
+the usable depth shrinks by 8 KB. A SA_SIGINFO handler reports which
+guard was hit, so the old diagnostics survive - verified: `: RR RECURSE
+;` gives "return stack overflow" and the data-stack case likewise.
+
+**Two things worth recording.**
+- With TOS caching `dsp` sits one cell ABOVE the logical top, so with a
+  single cell of slack the EMPTY stack puts `dsp` exactly on the guard
+  and any NOS read traps at startup. Two cells of slack fixes it.
+- The first measurement showed **zero** gain, because gen-tos.py's
+  `PUSHT` carries its own copy of the check and I had only gated the
+  non-TOS `PUSH`. With both gated: **0.932-0.958**, i.e. 4-7%, matching
+  the earlier estimate from simply deleting the checks.
+
+**Regression, so GUARD defaults to 0.** `tests/diff` goes from 20/20 to
+19/20: the `tilde` case fails on the guard build and passes on the same
+build with checks. Tilde expansion goes through GETPWHOME, and the only
+things the change touches are the data stack's start address and the
+SIGSEGV/SIGBUS handlers - so the suspect is either something depending
+on the stack's absolute position, or a handler interfering with libc.
+Not yet diagnosed, so the option is off until it is.
+
+Everything else passes on the guard build: CORE suite 671/671 both
+widths, tests/shell all files both widths, 16/16 pairs.
