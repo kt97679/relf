@@ -274,7 +274,11 @@ def read_ops(w):
     # word.
     st = stub_ops(w)
     if st is not None:
-        if FOLD and st[0][1] not in OPERAND_PRIMS: return fold_exit(st)
+        # A PRIMITIVE's body is NOT folded, even though `op EXIT` would
+        # fold: the runtime compiler inlines a primitive by reading the
+        # first byte of its body (cv8.4, COMPILE,8), so that byte must
+        # be the plain opcode. Folding made `+` compile as `+;EXIT`,
+        # which ended the caller's definition early.
         return st
 
     out, a, end = [], w['s'], code_end(w)
@@ -453,6 +457,7 @@ V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72,
 V8_CALLTOK = [None]   # layout pass binds: old target addr -> scaled value
 VARCALL = True        # 10xxxxxx = 2-byte call, 11xxxxxx = 3-byte
 VARSLOT = True        # 0xxxxxxx+1 = 15-bit slot, 1xxxxxxx+2 = 23-bit
+OP_CTX = [None]       # (ops, j) while sizing, so op_bytes can see context
 V8_LIT64, V8_ESC = 0x7C, 0x7D
 
 # ---- specialisations borrowed from other VMs (CV8 only; CV8.md 10) ----
@@ -486,6 +491,7 @@ def op_bytes(k, pl, t):
     if k == 'ALN': return (-t) % pl
     if V8:
         if k == 'C' and VARCALL:
+            if OP_CTX[0] is not None and before_operand(*OP_CTX[0]): return 3
             return 2 if V8_CALLTOK[0] is None or V8_CALLTOK[0](pl) < (1 << 14) else 3
         if k in ('VF', 'VS', 'LOC'):
             if not VARSLOT: return 3
@@ -512,10 +518,19 @@ def op_bytes(k, pl, t):
     if k == 'STR': return align_up(t + len(pl), CELL) - t
     raise AssertionError("unknown op kind %r" % k)
 
+def before_operand(ops, j):
+    """True if op j is a call whose inline CELL operand follows it."""
+    return (ops[j][0] == 'C' and j + 1 < len(ops)
+            and ops[j + 1][0] in ('OPD', 'XT'))
+
 def pad_before(ops, j, t):
-    """NOOP padding needed before op j so an inline operand lands aligned."""
-    if ops[j][0] == 'C' and j + 1 < len(ops) and ops[j + 1][0] in ('OPD', 'XT'):
-        return (-(t + 2)) % CELL      # operand sits 2 bytes after the call
+    """NOOP padding needed before op j so an inline operand lands aligned.
+    A call before an operand ALWAYS uses the 3-byte far form, so the
+    padding does not depend on how far the target happens to be. With
+    VARCALL a near call is 2 bytes and a far one 3; letting the distance
+    decide made (POSTPONE) and (LOOP) read a misaligned operand."""
+    if before_operand(ops, j):
+        return (-(t + (3 if VARCALL else 2))) % CELL
     return 0
 
 def layout(ops):
@@ -526,11 +541,13 @@ def layout(ops):
     operation targets exactly there."""
     c2t, cs, ts, c, t = {}, [], [], 0, 0
     for j, (k, pl) in enumerate(ops):
+        OP_CTX[0] = (ops, j)
         t += pad_before(ops, j, t)
         if k == 'ALN': t += op_bytes(k, pl, t)
         c2t[c] = t; cs.append(c); ts.append(t)
         c += op_cells(k, pl)
         if k != 'ALN': t += op_bytes(k, pl, t)
+    OP_CTX[0] = None
     c2t[c] = t
     return c2t, cs, ts, c, t
 
@@ -601,7 +618,11 @@ def to_bytes_v8(ops):
         elif k == 'C':
             v = V8_CALLTOK[0](pl) if V8_CALLTOK[0] else 0
             if VARCALL:
-                if v < (1 << 14):
+                if before_operand(ops, j):
+                    assert v < (1 << 22), "call target %d out of 22 bits" % v
+                    b.append(0xC0 | (v >> 16)); b.append((v >> 8) & 0xFF)
+                    b.append(v & 0xFF)
+                elif v < (1 << 14):
                     b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
                 else:
                     assert v < (1 << 22), "varcall target %d out of 22 bits" % v

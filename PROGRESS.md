@@ -13482,3 +13482,39 @@ The next session should debug with a minimal image - a bare kernel plus
 cv8.4, no shell - and `forth : F 1 . ;` as the test, dumping the
 compiled bytes to compare against what the translator emits for the
 same definition.
+
+## Iteration 196: the CV8 compiler works for most constructs
+
+Debugged with a bare kernel + cv8.4 image, comparing the bytes the
+runtime compiler emits against what the translator emits. Four real
+bugs, three of them in the TRANSLATOR rather than in cv8.4:
+
+1. `COMPILE8,` ends in `,`, not `8`, so --cv8-compiler's suffix rule
+   silently skipped it and definitions used the old CELL emitter (an
+   8-byte cell where a 2-byte call belonged). Renamed `COMPILE,8`; the
+   swap now reports any `X8` whose target is missing.
+2. A PRIMITIVE's body was FOLDED, so `+`'s body is the `+;EXIT` opcode.
+   COMPILE, inlines a primitive by reading its first body byte, so `+`
+   compiled as "add then return" and ended the caller early. Primitive
+   stubs are no longer folded.
+3. `pad_before` assumed a call is 2 bytes, but VARCALL made it 2 or 3,
+   so inline CELL operands landed misaligned and (POSTPONE)/(LOOP) read
+   garbage. A call before an operand now always uses the 3-byte far
+   form, so the padding does not depend on distance.
+4. (POSTPONE)'s XT operand was only CHECKED, never relocated - the old
+   offset was passed through. No translated image had ever noticed,
+   because nothing in one COMPILES. Now relocated; swapped bodies use
+   the SOURCE word's base for their operand offsets (SRC_OF).
+
+**Working in a CV8 image**: `:` ... `;`, arithmetic, calls, IF/ELSE/
+THEN, BEGIN/UNTIL, DO/LOOP/+LOOP including nested loops with I and J
+and LEAVE, all four literal widths (LIT8/16/32/64 - verified
+$123456789ABC), VARIABLE, CONSTANT, CREATE with , and cell arithmetic,
+and RECURSE (5 FACT = 120).
+
+**Still broken**: BEGIN ... WHILE ... REPEAT runs away - REPEAT8
+resolves its two marks wrongly (the cell version's stack order does not
+carry over unchanged). That is the next thing to fix.
+
+**Still not started**: DOES>, POSTPONE at runtime, S"/ABORT", ?DO,
+and runtime EXIT folding.

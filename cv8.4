@@ -77,7 +77,7 @@
     DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C,
   THEN ;
 
-: COMPILE8, ( xt --- )
+: COMPILE,8 ( xt --- )
 \ Add the execution semantics of xt to the current definition: a
 \ primitive becomes its opcode byte, anything else a call.
   DUP >NAME C@ 32 AND IF
@@ -151,3 +151,29 @@
 
 : RECURSE8 ( --- )
   LAST @ NAME> CALL, ; IMMEDIATE
+
+\ ---- DO ... LOOP ----------------------------------------------------
+\ (LOOP) and (+LOOP) read an inline CELL operand, and it must stay
+\ cell-aligned - the one place CV8 keeps cell granularity
+\ (CV8-REFERENCE.md 3.3). The translator pads BEFORE the call so the
+\ operand lands aligned just after it; the runtime compiler does the
+\ same. The pad is NOOPs, which do execute, once per loop.
+: OPERAND-ALIGN ( --- )
+\ Emit NOOPs until a 2-byte call would leave HERE cell-aligned.
+  BEGIN HERE 2 + 1 CELLS 1- AND WHILE 0 C, REPEAT ;
+
+: DO8 ( --- a-addr )
+\ (DO) has no inline operand, so this matches the cell version.
+  POSTPONE (DO) 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
+
+: LOOP8 ( a-addr --- )
+  OPERAND-ALIGN POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+
+: +LOOP8 ( a-addr --- )
+  OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+
+\ ---- debugging aid --------------------------------------------------
+: BYTES. ( a-addr n --- )
+\ Print n bytes from a-addr. Compiled by the CELL compiler and
+\ translated, so it works even when the runtime compiler is broken.
+  0 DO DUP I + C@ . LOOP DROP CR ;

@@ -102,6 +102,7 @@ DODOES = len(G['prims']) + 2
 # definition. Here the body of each `X8` becomes the body of `X`, so the
 # emitted image's compiler emits CV8. The `X8` names stay, harmlessly.
 CV8_COMPILER = '--cv8-compiler' in ARGV
+SRC_OF = {}          # destination word start -> source word start
 
 words, cells, tokn = G['words'], G['cells'], G['tokn']
 read_ops, to_tokens, layout = G['read_ops'], G['to_tokens'], G['layout']
@@ -166,18 +167,24 @@ if CV8_COMPILER:
     _by = {}
     for w in order:
         _by.setdefault(w['n'], []).append(w)
-    _n, _miss = 0, []
+    _n, _miss, _unmatched = 0, [], []
     for w in order:
         if len(w['n']) < 2 or not w['n'].endswith('8'): continue
         tgt = w['n'][:-1]
-        if tgt not in _by: continue
+        if tgt not in _by:
+            _unmatched.append(w['n']); continue
         dst = _by[tgt][-1]
         if kind[w['s']] != 'code' or info[w['s']] is None:
             _miss.append(w['n']); continue
         kind[dst['s']], info[dst['s']] = 'code', list(info[w['s']])
+        # A swapped body's operand offsets are relative to the SOURCE
+        # word's old address, so anything that resolves an inline
+        # address must use that base, not the destination's.
+        SRC_OF[dst['s']] = w['s']
         _n += 1
-    print("CV8 compiler: %d word bodies swapped in%s"
-          % (_n, "; NOT translatable: %s" % _miss if _miss else ""))
+    print("CV8 compiler: %d word bodies swapped in%s%s"
+          % (_n, "; NOT translatable: %s" % _miss if _miss else "",
+             "; no such target: %s" % _unmatched if _unmatched else ""))
 
 for w in order:
     if kind[w['s']] == 'code': tok[w['s']] = to_tokens(info[w['s']])
@@ -248,16 +255,25 @@ def remap_body_off(off):
 # (POSTPONE)'s inline operand: a relative address from the operand cell
 # to another word's body. sod16.py passes it through because a per-word
 # translator cannot see where other words land.
-xt_ok, xt_bad = 0, []
+xt_ok, xt_bad, xt_new = 0, [], {}
 for w in order:
     if kind[w['s']] != 'code': continue
     ops = info[w['s']]
     _, cs, ts, _, _ = layout(ops)
     for j, (k, pl) in enumerate(ops):
         if k != 'XT': continue
-        tgt = (w['s'] + cs[j]) + pl - START
-        if remap_body_off(tgt) is None: xt_bad.append((w['n'], tgt))
-        else: xt_ok += 1
+        tgt = (SRC_OF.get(w['s'], w['s']) + cs[j]) + pl - START
+        n2 = remap_body_off(tgt)
+        if n2 is None: xt_bad.append((w['n'], tgt))
+        else:
+            xt_ok += 1
+            # RELOCATE it, do not merely count it: the operand is a byte
+            # offset from its own cell to the target's body, and both
+            # move. Until Iteration 196 the old value was passed through
+            # and only checked, which no translated image ever noticed -
+            # nothing in one COMPILES, so (POSTPONE) never ran. It runs
+            # as soon as the image has its own compiler (cv8.4).
+            xt_new[(w['s'], j)] = n2 - (new_off[w['s']]['body'] + ts[j])
 
 # ---- DEFER xts -----------------------------------------------------
 # A DEFER cell holds its xt as a START-relative offset (shell.4's
@@ -500,6 +516,8 @@ def emit(path):
             ops2 = list(info[s0])
             for (ws, j), nv in lit_new.items():
                 if ws == s0: ops2[j] = ('LITOFF', nv)
+            for (ws, j), nv in xt_new.items():
+                if ws == s0: ops2[j] = ('XT', nv)
             if V8: img += bytes(to_tokens(ops2))
             else:
                 for t_ in to_tokens(ops2): img += tk(t_)
