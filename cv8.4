@@ -131,7 +131,13 @@ ALIGN
   DUP >NAME C@ 32 AND IF
     \ A primitive's CV8 body is one opcode byte - C@, not @: the cell
     \ compiler read a whole cell here because a token WAS a cell.
-    C@ HERE LAST-OP ! OP,
+    \ An escaped primitive's body is [ESC][selector]; inline both bytes
+    \ and do not offer it for folding.
+    DUP C@ 125 = IF
+      DUP C@ OP, 1+ C@ OP, 0 LAST-OP !
+    ELSE
+      C@ HERE LAST-OP ! OP,
+    THEN
   ELSE
     CALL,
   THEN ;

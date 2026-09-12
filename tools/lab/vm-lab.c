@@ -643,6 +643,24 @@ static void virtual_machine(void) {
 #include "vm-fold-table.h"
 #endif
     };
+#if ENC == 3
+    /*  CV8 renumbers the primitive band: the 36 non-escaped primitives
+     *  keep kernel.4's order compacted into 0..35, and the 32 escaped
+     *  ones are reached as ESC + index. dispatch[] is in kernel.4
+     *  order, so both tables are derived from it here rather than
+     *  written out twice.  */
+    static const UNS8 esc_k[32] = { 32,
+        37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,
+        52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67 };
+    const void *cv8_tab[128], *esc_tab[32];
+    { int i_, n_ = (int)(sizeof dispatch / sizeof dispatch[0]);
+      for (i_ = 0; i_ < 128; i_++) cv8_tab[i_] = (i_ < n_) ? dispatch[i_] : &&L_noop;
+      for (i_ = 0; i_ < 32; i_++)  cv8_tab[i_] = dispatch[i_];
+      for (i_ = 32; i_ < 36; i_++) cv8_tab[i_] = dispatch[i_ + 1];  /* SP@..RP! */
+      for (i_ = 36; i_ < 68; i_++) cv8_tab[i_] = &&L_noop;          /* freed */
+      for (i_ = 0; i_ < 32; i_++)  esc_tab[i_] = dispatch[esc_k[i_]]; }
+#define dispatch cv8_tab
+#endif
 #if ENC == 3 && SHAREDCALL && DISPATCH256
     /*  Same handlers, but indexed by the whole byte: 0x80-0xFF all land
      *  on do_call, so no test is needed to tell an opcode from a call. */
@@ -796,10 +814,11 @@ L_lit64:   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);
       PUSH(v); ip += CELL_BYTES; } NEXT();
-L_esc:     /* reserved: extended opcode bank. The next byte selects one
-            * of 256 further opcodes. Reserved NOW because opcode space
-            * is the one resource this design cannot widen later.       */
-    write_str(2, "CV8: extended opcode bank not implemented\n"); exit(2);
+L_esc:     /*  The escaped band: one more byte selects an OS/libc
+            *  primitive. Half the primitive band was these, for 3.2% of
+            *  static sites and 0.006% of dispatches; behind an escape
+            *  they cost a byte each and free 32 opcodes.  */
+    t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
 #endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
     PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));

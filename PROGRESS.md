@@ -13704,3 +13704,33 @@ messages point at stale condition/exit-status state, so the scrub is
 still incomplete. Finding the remaining variables is the next step -
 the fixed point proves the save is self-consistent, not that it is
 clean.
+
+## Iteration 202: escaped band for the OS/libc primitives (INCOMPLETE)
+
+Measured first: 34 of 68 primitives are OS/libc wrappers - half the
+band - for 3.2% of static sites (143) and 0.006% of dispatches. Moving
+them behind ESC + a one-byte selector costs 143 bytes and frees 32
+opcodes, which is the one resource this encoding cannot widen later.
+EMIT and KEY stay direct (the profile that says they are cold is from
+scripts that print almost nothing); the intention is to retire them in
+favour of ACCEPT/TYPE later, which would remove even that exception.
+
+**The renumbering is CV8-local**: kernel.4, relf.c and kernel.img are
+untouched. Only the translator's opcode map changes, so the cell engine
+keeps its own numbering and both remain valid. Because every escaped
+primitive has kernel index >= 32, opcodes below 32 are unchanged - so
+cv8.4's fixed constants (EXIT=1, LIT=2, BRANCH=3, ?BRANCH=4) and the
+whole fold set keep their numbers, and >OP still works. 36 primitives
+now occupy 0..35, freeing 36..67.
+
+**State: does not run yet.** The translator emits the escaped form
+correctly (verified: BYE's stub body is [ESC][0][EXIT], EMIT stays
+direct), cv8.4's COMPILE, inlines both bytes and refuses to fold them,
+and the engine builds both tables from dispatch[] rather than writing
+the order out twice. But the engine segfaults on the simplest script.
+Not yet investigated; the suspect is the cv8_tab/esc_tab construction
+or the `#define dispatch cv8_tab` that follows it, not the image - the
+image's shape was checked by hand and looks right.
+
+Nothing else regressed: the previous engine and images are unchanged
+and still pass everything.

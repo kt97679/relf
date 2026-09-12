@@ -460,6 +460,27 @@ VARSLOT = True        # 0xxxxxxx+1 = 15-bit slot, 1xxxxxxx+2 = 23-bit
 OP_CTX = [None]       # (ops, j) while sizing, so op_bytes can see context
 V8_LIT64, V8_ESC = 0x7C, 0x7D
 
+# ---- the escaped band (Iteration 202) -------------------------------
+# Half the primitive band was OS/libc wrappers: 34 of 68 opcodes for
+# 3.2% of static sites and 0.006% of dispatches. They now live behind
+# ESC + a one-byte selector, which costs one byte at 143 sites and
+# frees 32 opcodes - the one resource this encoding cannot widen later.
+# EMIT and KEY stay direct: they are the only two plausibly hot ones,
+# and the profile that says otherwise is from scripts that print little.
+ESC_PRIMS = set("""BYE OPEN-FILE CLOSE-FILE READ-LINE WRITE-LINE READ-FILE
+WRITE-FILE SYSTEM REPOSITION-FILE FILE-POSITION DELETE-FILE FILE-SIZE FORK
+EXECVE WAITPID PIPE DUP2 GETENV SETENV SYS-EXIT CHDIR GETCWD SYS-ARGC SYS-ARG
+GETPID UNSETENV ALLOCATE FREE RESIZE GETPWHOME GETFSIZE SETFSIZE""".split())
+
+def cv8_op(name):
+    """(opcode, escaped) for a primitive. Non-escaped primitives keep
+    kernel.4's order, compacted; escaped ones get an ESC selector."""
+    esc, plain = [], []
+    for n in prims:
+        (esc if n in ESC_PRIMS else plain).append(n)
+    if name in ESC_PRIMS: return esc.index(name), True
+    return plain.index(name), False
+
 # ---- specialisations borrowed from other VMs (CV8 only; CV8.md 10) ----
 SPEC = set()          # any of: 'loc' 'tiny' 'var' 'small'
 V8_PFA = [None]       # layout pass binds: old var address -> new PFA >> S
@@ -499,6 +520,7 @@ def op_bytes(k, pl, t):
             return 3 if v is None or v < (1 << 15) else 4
         if k in X_IMM: return 2
         if k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC: return 1
+        if k == 'P' and pl in ESC_PRIMS: return 2
         if k in ('P', 'PX'): return 1
         if k == 'C': return 2
         if k in ('LIT', 'LITX'):
@@ -589,7 +611,9 @@ def to_bytes_v8(ops):
         assert len(b) == ts[j], "v8 layout and emission disagree"
         if k == 'ALN': continue
         if k == 'P' and pl in X_TINY: b.append(X_TINY[pl])
-        elif k == 'P': b.append(idx_of[pl])
+        elif k == 'P' and pl in ESC_PRIMS:
+            i_, _ = cv8_op(pl); b.append(V8_ESC); b.append(i_)
+        elif k == 'P': b.append(cv8_op(pl)[0])
         elif k in X_IMM:
             b.append(X_IMM[k]); b.append(pl & 0xFF)
         elif k in ('VF', 'VS'):
@@ -599,6 +623,7 @@ def to_bytes_v8(ops):
         elif k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC:
             b.append({0: X_LIT0, 1: X_LIT1, -1: X_LITM1}[pl])
         elif k == 'PX':
+            assert pl not in ESC_PRIMS, "cannot fold an escaped primitive"
             b.append(V8_FOLD0 + V8_FOLDLIST.index(pl))
         elif k in ('LIT', 'LITX'):
             x = k == 'LITX'
