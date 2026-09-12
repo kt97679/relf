@@ -13518,3 +13518,44 @@ carry over unchanged). That is the next thing to fix.
 
 **Still not started**: DOES>, POSTPONE at runtime, S"/ABORT", ?DO,
 and runtime EXIT folding.
+
+## Iteration 197: CV8 is self-hosting - tests/shell/run-forth PASSES
+
+Phase 3 reaches its goal: a CV8 image compiles its own definitions, and
+`tests/shell` passes in full for the first time on a token image.
+
+**Fixed this iteration.**
+- `REPEAT8` had a stray SWAP, so <RESOLVE consumed WHILE's forward mark
+  instead of BEGIN's address and the loop ran away.
+- `?DO8`/`LEAVE8` need the same OPERAND-ALIGN as LOOP8: their inline
+  operand is a CELL.
+- **DOES> needed two alignment fixes.** A call is a SCALED offset, so a
+  DOES> tail must be an ALIGNED call target - an unaligned tail silently
+  loses its low bits and jumps to the word's start instead (the symptom
+  was a defining word re-running CREATE). `DOES>8` now ALIGNs before
+  compiling the tail, and `(;CODE)8` ALIGNs the return address it gets,
+  because that address points at the pad, not at the tail. The pad is
+  dead code: (;CODE) never returns there.
+- `pad_before` applied the VARCALL 3-byte rule in the 16-bit path too,
+  where a call is always 2 units. Broke the SOD16 control image the
+  moment a dump contained the right shapes.
+- `(;CODE)8` writes [DODOES][2-byte call] over the [DOVAR][pad] that
+  CREATE8 laid down; `!CALL` does the store.
+
+**Verified.** On the whole construct suite - `:`/`;`, IF/ELSE/THEN,
+BEGIN/UNTIL, BEGIN/WHILE/REPEAT, DO/LOOP/+LOOP/?DO/LEAVE with I and J,
+S", DOES>, RECURSE, VARIABLE/CONSTANT/CREATE, POSTPONE, all four
+literal widths - the CV8 image's output is IDENTICAL to the cell
+engine's, at both widths.
+
+- `tests/shell/run-forth`: 11 assertions, 0 failed (64- and 32-bit).
+- `tests/shell`: **all 65 test files pass**, no failures.
+- `tests/diff`: 20/20.
+- `tests/verify`: unchanged.
+- `build-cv8.sh` now builds `self-64`/`self-32` and smoke-tests all 16
+  engine/image pairs. cv8.4 is loaded only for those dumps: it holds
+  64-bit literals the 16-bit encodings cannot represent.
+
+**Not done**: runtime EXIT folding (newly compiled code is correct but
+misses the ~20% the translator gets), and the self-hosting images are
+still translated rather than produced by SAVE-SYSTEM.

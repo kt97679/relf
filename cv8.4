@@ -135,7 +135,9 @@
   POSTPONE IF8 SWAP ; IMMEDIATE
 
 : REPEAT8 ( a-addr1 a-addr2 --- )
-  BRANCH-OP OP, SWAP <RESOLVE >RESOLVE ; IMMEDIATE
+  \ ( a-addr1 a-addr2 --- ) with the BEGIN address on top, as WHILE8
+  \ left it: <RESOLVE takes that one, >RESOLVE patches WHILE's mark.
+  BRANCH-OP OP, <RESOLVE >RESOLVE ; IMMEDIATE
 
 \ ---- defining words -------------------------------------------------
 : CREATE8 ( "ccc" --- )
@@ -171,6 +173,43 @@
 
 : +LOOP8 ( a-addr --- )
   OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+
+\ ---- ?DO and LEAVE ---------------------------------------------------
+\ (?DO) and (LEAVE) also carry an inline CELL operand, so they need the
+\ same alignment as (LOOP).
+: ?DO8 ( --- a-addr )
+  OPERAND-ALIGN POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , HERE ; IMMEDIATE
+
+: LEAVE8 ( --- )
+  OPERAND-ALIGN POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! ; IMMEDIATE
+
+\ ---- DOES> -----------------------------------------------------------
+\ A DOES> word's body is [DODOES][2-byte call to the tail][pad][PFA],
+\ where the cell version wrote a single relative-call cell. CREATE8 has
+\ already laid down [DOVAR][pad], so there is room to overwrite.
+
+: !CALL ( a-addr target --- )
+\ Store a near call to target at a-addr. Two bytes, so it fits in the
+\ space CREATE8 reserved.
+  START @ - CV8-SHIFT RSHIFT
+  2DUP 8 RSHIFT 128 OR SWAP C!
+  SWAP 1+ SWAP 255 AND SWAP C! ;
+
+: (;CODE)8 ( --- )
+\ Runtime for DOES>: point the last created word at the code following
+\ the call to this word, and end the defining word (the R> discards its
+\ return address, exactly as the cell version does).
+  \ ALIGNED because DOES>8 pads to the next call-target boundary: the
+  \ return address points at the pad, the tail starts after it.
+  R> ALIGNED LAST @ NAME>
+  DODOES-OP OVER C!
+  1+ SWAP !CALL ;
+
+: DOES>8 ( --- )
+  \ The tail must be an ALIGNED call target: a call is a SCALED offset,
+  \ so an unaligned tail address loses its low bits and jumps to the
+  \ wrong place. The pad is dead code - (;CODE) never returns here.
+  POSTPONE (;CODE) ALIGN POSTPONE R> ; IMMEDIATE
 
 \ ---- debugging aid --------------------------------------------------
 : BYTES. ( a-addr n --- )

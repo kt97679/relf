@@ -530,7 +530,7 @@ def pad_before(ops, j, t):
     VARCALL a near call is 2 bytes and a far one 3; letting the distance
     decide made (POSTPONE) and (LOOP) read a misaligned operand."""
     if before_operand(ops, j):
-        return (-(t + (3 if VARCALL else 2))) % CELL
+        return (-(t + (3 if (V8 and VARCALL) else 2))) % CELL
     return 0
 
 def layout(ops):

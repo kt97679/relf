@@ -20,11 +20,19 @@ LAY=tools/sod16-layout.py
 BOOT='S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$BOOT" | ./relf   kernel.img   | tr -d '\r' > "$O/d64.txt"
 printf "$BOOT" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32.txt"
+# A second pair of dumps with cv8.4 loaded, for the self-hosting images.
+# cv8.4 is NOT in the others: it holds 64-bit literals that the 16-bit
+# encodings cannot represent, and they only ever need to RUN, not compile.
+SELF='S" cv8.4" INCLUDED\n'"$BOOT"
+printf "$SELF" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-self.txt"
+printf "$SELF" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-self.txt"
 
 # ---- images -----------------------------------------------------------
 img() {  # img NAME CELL OPTIONS...
     local n=$1 c=$2; shift 2
     local d="$O/d64.txt"; [ "$c" = 4 ] && d="$O/d32.txt"
+    case "$*" in *--cv8-compiler*) d="$O/d64-self.txt"
+        [ "$c" = 4 ] && d="$O/d32-self.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
@@ -41,6 +49,10 @@ img cv8-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --no-varcall 
 SPECS=loc,var,tiny,small,imm
 img spec-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS
 img spec-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS
+# self-hosting: --cv8-compiler swaps cv8.4's X8 bodies into X, so the
+# image's own compiler emits CV8 (phase 3). tests/shell/run-forth.
+img self-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+img self-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
@@ -91,3 +103,4 @@ chk cptf-64   "$O/cptf-64.img";       chk cptf-32   "$O/cptf-32.img"
 chk cv8-64    "$O/cv8-64.img";        chk cv8-32    "$O/cv8-32.img"
 chk cv8t-64   "$O/cv8-64.img";        chk cv8t-32   "$O/cv8-32.img"
 chk spec-64   "$O/spec-64.img";       chk spec-32   "$O/spec-32.img"
+chk spec-64   "$O/self-64.img";       chk spec-32   "$O/self-32.img"
