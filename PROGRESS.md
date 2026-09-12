@@ -13734,3 +13734,27 @@ image's shape was checked by hand and looks right.
 
 Nothing else regressed: the previous engine and images are unchanged
 and still pass everything.
+
+### Iteration 202 follow-up: the escaped band works; shell.4 breaks it
+
+Bisected rather than guessed. The mechanism itself is correct:
+
+- the emitted bytes are right - `BYE` is `7d 00 01` (ESC, selector 0,
+  EXIT), `EMIT` stays direct at `1e 01`, `SP@` renumbered `20 01`;
+- `dispatch[]` really is in kernel.4 order, so deriving the CV8 table
+  and the escape table from it is sound, and both were checked entry by
+  entry against the translator's mapping;
+- **bare kernel runs**: `5 3 + . CR` prints 8;
+- **+pool, +locals, +save-system all run**;
+- **+shell.4 segfaults.**
+
+So the failure is specific to shell.4, not to the encoding. The crash
+lands in `!` storing through a bad address, with `ip` pointing at bytes
+that decode as a call to 119 KB in a 68 KB image - i.e. execution had
+already left the instruction stream, so the reported site is not the
+cause.
+
+Next step: bisect shell.4 itself. The suspects are the places it keeps
+execution tokens or inspects a word's body - BUILTIN registration, the
+`forth` builtin, DEFER - since those are what a renumbering would
+disturb while ordinary compiled code is unaffected.
