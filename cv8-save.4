@@ -1,0 +1,75 @@
+\ cv8-save.4 - SAVE-SYSTEM writing a CV8 image.
+\
+\ The last piece of phase 3: a CV8 system that can save itself, with no
+\ cell image and no translator in the loop. Load after save-system.4
+\ (and after cv8.4); --cv8-compiler swaps `SAVE-SYSTEM8` into
+\ `SAVE-SYSTEM` and `SS-SET-MAGIC8` into `SS-SET-MAGIC`.
+\
+\ The only real difference from the cell version is the header. A cell
+\ image is 8 magic bytes then the dictionary; a CV8 image is
+\ (CV8-REFERENCE.md 5.1):
+\
+\     magic 8 bytes   "CV8" + scale digit, cell width, 'L', version, flags
+\     head_nfa  cell  offset of the newest word's name field
+\     ntails    cell  DOES> tail count - always 0 here, because DODOES
+\                     carries its target inline (--dataprims)
+\     locals    5 cells, present whenever the specialised opcodes are
+\
+\ Everything else - SS-SCRUB, the unrelocation, RESET-BUFFERS - is the
+\ cell version's and is already right: it zeroes every cell holding a
+\ live-session address, which is exactly what made TRANSLATED images
+\ non-reproducible across dumps.
+
+BASE @  DECIMAL
+
+VARIABLE SS-HEAD        \ newest NFA, captured before SS-SCRUB clears LAST
+
+: SS-SET-MAGIC8 ( --- )
+  \ Must agree with the engine's IMAGE_MAGIC exactly, including the
+  \ feature bits, or the image is refused at load.
+  [CHAR] C SS-MAGIC     C!
+  [CHAR] V SS-MAGIC 1+  C!
+  [CHAR] 8 SS-MAGIC 2 + C!
+  \ scale digit: 3 on a 64-bit cell, 2 on a 32-bit one
+  48 CV8-SHIFT + SS-MAGIC 3 + C!
+  1 CELLS  SS-MAGIC 4 + C!
+  [CHAR] L SS-MAGIC 5 + C!      \ specialised opcodes present
+  1        SS-MAGIC 6 + C!      \ format version
+  15       SS-MAGIC 7 + C! ;    \ varcall | varslot | spec | lit64
+
+: SS-CELL, ( n --- )
+  \ Append one cell to the image file, reusing SS-MAGIC as scratch: the
+  \ magic itself has already been written by then.
+  SS-MAGIC ! SS-MAGIC 1 CELLS SS-FID @ WRITE-FILE DROP ;
+
+: SS-HEADER, ( --- )
+  \ The CV8 header fields that follow the magic.
+  SS-HEAD @ SS-CELL,                    \ head_nfa
+  0 SS-CELL,                            \ ntails: DODOES is self-contained
+  LSAVE-SP    START @ - SS-CELL,        \ the locals save-stack pointer
+  LSAVE-STACK START @ - SS-CELL,        \ and its buffer
+  LSAVE-MAX             SS-CELL,        \ its limit
+  ['] LSAVE     START @ - SS-CELL,      \ fallbacks, for the ABORT" paths
+  ['] LRESTORE  START @ - SS-CELL, ;
+
+: SAVE-SYSTEM8 ( c-addr u --- )
+  RESET-BUFFERS
+  HERE START @ - SS-LEN !
+  SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
+  START @ SS-BUF @ SS-LEN @ MOVE
+  DP SS-UNRELOCATE
+  FORTH-WORDLIST SS-UNRELOCATE
+  \ The dictionary head. NOT LAST: a translated image never had LAST
+  \ remapped, so it holds a stale address of the build session. The
+  \ wordlist head is remapped, and is the same word.
+  FORTH-WORDLIST @ START @ - SS-HEAD !
+  SS-SCRUB
+  SS-SET-MAGIC
+  W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
+  SS-MAGIC 8 SS-FID @ WRITE-FILE DROP
+  SS-HEADER,
+  SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SS-FID @ CLOSE-FILE DROP
+  SS-BUF @ FREE DROP ;
+
+BASE !

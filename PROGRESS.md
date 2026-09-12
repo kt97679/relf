@@ -13592,3 +13592,42 @@ engine's.
 
 **Remaining**: the self-hosting images are still TRANSLATED rather than
 produced by SAVE-SYSTEM, which is the last piece of phase 3.
+
+## Iteration 199: SAVE-SYSTEM for CV8 (INCOMPLETE)
+
+`cv8-save.4` adds `SS-SET-MAGIC8` and `SAVE-SYSTEM8`, swapped in by
+--cv8-compiler. A CV8 image now WRITES a correctly sized image with a
+correct magic, head_nfa and ntails - but the saved image does not yet
+run, and the reason is the same bug for the third time.
+
+**Working**: the magic (CV8 + scale, cell width, 'L', version, feature
+bits), head_nfa, ntails=0 (DODOES carries its target inline, so a
+saved image needs no tail table), and the overall size - 68,544 bytes
+against the translated image's 68,576.
+
+**The bug, again: compile-time addresses do not survive translation.**
+`['] LSAVE` captures an xt when cv8-save.4 is compiled - in the CELL
+image - so the saved locals header holds stale build-session
+addresses. The same mistake as Iteration 198's FOLD-XTS (xts in a
+CREATEd table) and as the `LAST` problem found here: a translated
+image's LAST was never remapped, so it holds a build-session address;
+FORTH-WORDLIST is remapped and is the same word, and using it fixed
+head_nfa.
+
+**The rule this establishes, now three times over**: in code that will
+be translated, an address may only be obtained by EXECUTING a word
+(the call is relocated) or from a cell the translator remaps. It may
+never be captured at compile time - not by ['], not by ' into a
+variable, not in a CREATEd table.
+
+**To finish**: get LSAVE, LRESTORE, LSAVE-SP and LSAVE-STACK's
+addresses at run time. `LSAVE-SP` already works, because executing a
+VARIABLE pushes its PFA through a relocated call. LSAVE and LRESTORE
+need a runtime FIND, or a small word per entry whose body is just the
+target - e.g. `: 'LSAVE ['] LSAVE ;` has the same flaw, but
+`: 'LSAVE-BODY LSAVE ;` does not, since the CALL is relocated and its
+target can be read back from the compiled byte. LSAVE-STACK is a
+BUFFER:, so its PFA (not its heap pointer) is what the header wants.
+
+Until then the self-hosting images are still produced by the
+translator, which works and passes every test.
