@@ -13670,3 +13670,37 @@ before the header can be filled. Two separate problems remain:
 The translator-produced images are unaffected and still pass
 everything: tests/shell all files, tests/diff 20/20, run-forth 11/11,
 tests/verify unchanged.
+
+## Iteration 201: CV8 saves itself - and reaches a fixed point
+
+`SAVE-SYSTEM` now works from inside a CV8 image: no cell image, no
+translator. The saved image runs, passes `run-forth` 11/11 and
+`tests/diff` 20/20, and can save a further image that is BYTE-IDENTICAL
+to itself - a fixed point, which is the real proof the save is complete.
+
+**Three bugs, and the first two were mine misdiagnosing.**
+
+1. "FIND is broken in translated images" (Iteration 200) was WRONG. The
+   cell engine behaved identically; my probe was mangled by shell
+   quoting. Always compare against the cell engine before blaming the
+   new thing.
+2. The real problem: `NAMEBUF` is the OUTER INTERPRETER's scratch. A
+   probe that placed "LSAVE" there read back "TYPE" - the next word of
+   the probe itself. cv8-save.4 now uses its own buffer, `SS-NAME`.
+3. Naming the extended scrub `SS-SCRUB8` made --cv8-compiler replace
+   `SS-SCRUB` with it, and it calls `SS-SCRUB` - infinite recursion,
+   seen as a return stack overflow. Renamed `SS-SCRUB-ALL`. The suffix
+   rule is load-bearing; a name ending in 8 is a declaration.
+
+**Reproducibility.** gen1 and gen2 first differed in 25 bytes across
+five shell tokenizer variables (TOK-POS, TOK-END, TOK-OUT,
+TOK-OUT-END, TAP-S) that `SS-SCRUB` does not know about - it predates
+shell.4. `SS-SCRUB-ALL` zeroes them, and cv8-save.4 is now loaded AFTER
+shell.4 so it can see them. That made the save a fixed point.
+
+**Still failing**: 3 assertions in 2 files (run-if 1, run-while 2) on
+the SELF-SAVED image only; the translated image passes everything. The
+messages point at stale condition/exit-status state, so the scrub is
+still incomplete. Finding the remaining variables is the next step -
+the fixed point proves the save is self-consistent, not that it is
+clean.

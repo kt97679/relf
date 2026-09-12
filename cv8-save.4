@@ -42,12 +42,18 @@ VARIABLE SS-HEAD        \ newest NFA, captured before SS-SCRUB clears LAST
   \ magic itself has already been written by then.
   SS-MAGIC ! SS-MAGIC 1 CELLS SS-FID @ WRITE-FILE DROP ;
 
+CREATE SS-NAME 40 ALLOT
+\ A PRIVATE counted-string buffer. NOT NAMEBUF: that is the outer
+\ interpreter's scratch, and it is overwritten by the very next word
+\ the interpreter looks up - a probe that used it read back "TYPE",
+\ the next word of the probe itself.
+
 : SS-FIND ( c-addr u --- xt )
 \ Look a word up at RUN time. NOT ['] and NOT ' into a variable: both
 \ capture an address of the session that COMPILED this file, which for
 \ a translated image is the cell build and is meaningless in the saved
 \ image. Executing a word is relocated; a compile-time address is not.
-  NAME>BUF NAMEBUF FIND 0= ABORT" cv8-save: word not found" ;
+  39 MIN SS-NAME PLACE SS-NAME FIND 0= ABORT" cv8-save: word not found" ;
 
 : SS-PFA ( c-addr u --- offset )
 \ Offset of a data word's parameter field: the body is [DOVAR][pad],
@@ -64,6 +70,19 @@ VARIABLE SS-HEAD        \ newest NFA, captured before SS-SCRUB clears LAST
   S" LSAVE"       SS-FIND START @ - SS-CELL,   \ fallbacks for ABORT" paths
   S" LRESTORE"    SS-FIND START @ - SS-CELL, ;
 
+: SS-SCRUB-ALL ( --- )   \ NOT "SS-SCRUB8": that name would make --cv8-compiler
+\ replace SS-SCRUB itself, and this word calls it - infinite recursion,
+\ which showed up as a return stack overflow.
+\ SS-SCRUB knows the kernel's, locals' and pool's scratch cells, but
+\ not shell.4's. These five hold tokenizer positions from whatever the
+\ builder was last parsing; leaving them made two saves of the same
+\ system differ (found by comparing gen1 with gen2) and made the saved
+\ image start with stale parser state, which failed two test files.
+  SS-SCRUB
+  TOK-POS SS-CELL   TOK-END SS-CELL
+  TOK-OUT SS-CELL   TOK-OUT-END SS-CELL
+  TAP-S SS-CELL ;
+
 : SAVE-SYSTEM8 ( c-addr u --- )
   RESET-BUFFERS
   HERE START @ - SS-LEN !
@@ -75,7 +94,7 @@ VARIABLE SS-HEAD        \ newest NFA, captured before SS-SCRUB clears LAST
   \ remapped, so it holds a stale address of the build session. The
   \ wordlist head is remapped, and is the same word.
   FORTH-WORDLIST @ START @ - SS-HEAD !
-  SS-SCRUB
+  SS-SCRUB-ALL
   SS-SET-MAGIC
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
   SS-MAGIC 8 SS-FID @ WRITE-FILE DROP
