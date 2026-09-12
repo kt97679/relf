@@ -13882,3 +13882,42 @@ Not yet diagnosed, so the option is off until it is.
 
 Everything else passes on the guard build: CORE suite 671/671 both
 widths, tests/shell all files both widths, 16/16 pairs.
+
+## Iteration 207: SAVE-SYSTEM complete - the gate is met
+
+A CV8 image saved by a CV8 image now passes everything, at both widths:
+
+| | 64-bit | 32-bit |
+|---|---|---|
+| ANS CORE suite (671 cases) | pass | pass |
+| tests/shell (all files) | pass | pass |
+| tests/diff | 20/20 | 20/20 |
+| save again -> byte-identical | yes | yes |
+
+**Two bugs, both about state rather than encoding.**
+
+1. `build-cv8.sh` never included `cv8-save.4` in the self-hosting dump,
+   so the image carried the CELL `SAVE-SYSTEM` and wrote a `RELF`
+   header, which the CV8 engine then refused. It had looked like a
+   corrupt image; it was the wrong SAVE-SYSTEM. Found by dumping the
+   magic of the saved file rather than trusting the error message.
+2. **An image is always saved in the MIDDLE of a command** - the one
+   that called SAVE-SYSTEM - so every parser cursor in shell.4 holds
+   live state. The saved shell resumed mid-parse and reported
+   "if: expected 'then'". Found by diffing the saved image against a
+   translated one that passes, which named 42 differing variables; 22
+   of them are shell.4 parser state and are now scrubbed
+   (`SS-SCRUB-ALL`). SS-SCRUB itself predates shell.4 and knows only
+   the kernel's, locals' and pool's cells.
+
+The diff-against-a-passing-image technique is worth keeping: the first
+five variables were found by comparing two generations of the SAVED
+image, which cannot find state that is stale but stable. Comparing
+against a DIFFERENT, working build can.
+
+**`ARTICLE.md`** records the evolution chain for the planned write-up,
+including the five links a first draft dropped (the hybrid, the move to
+a portable C engine, the tagged family being six schemes, CPT16, and
+the specialisations), which designs were built versus only modelled,
+the four corrections where a measurement overturned an earlier
+conclusion, and the claims that need re-verification before publishing.

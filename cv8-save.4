@@ -79,9 +79,24 @@ CREATE SS-NAME 40 ALLOT
 \ system differ (found by comparing gen1 with gen2) and made the saved
 \ image start with stale parser state, which failed two test files.
   SS-SCRUB
+  \ The image is always saved in the MIDDLE of a command - the one that
+  \ called SAVE-SYSTEM - so every parser cursor holds live state. Found
+  \ by diffing a saved image against a translated one that passes: the
+  \ saved shell reported "if: expected 'then'", i.e. it resumed mid-parse.
   TOK-POS SS-CELL   TOK-END SS-CELL
   TOK-OUT SS-CELL   TOK-OUT-END SS-CELL
-  TAP-S SS-CELL ;
+  TAP-S SS-CELL     TAP-L SS-CELL      TAP-I SS-CELL
+  NORM-WCOUNT SS-CELL   NORM-WSTART SS-CELL
+  TOK-WAS-QUOTED? SS-CELL
+  ARGC SS-CELL      ARGC2 SS-CELL
+  ARGC-SEMI-LEFT SS-CELL   ARGC-AO-LEFT SS-CELL
+  EW-ARGC SS-CELL   EW-I SS-CELL
+  JC-LEN SS-CELL    JQ-LEN SS-CELL
+  FTH-LEN SS-CELL   FTH-I SS-CELL
+  PIPE-ARGC SS-CELL PIPE-NSEG SS-CELL
+  PP-BAR SS-CELL    PP-I SS-CELL
+  RAW-LINE-LEN SS-CELL
+  SHFILE-FID SS-CELL   SHFILE-ACTIVE? SS-CELL ;
 
 : SAVE-SYSTEM8 ( c-addr u --- )
   RESET-BUFFERS
