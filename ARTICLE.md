@@ -185,65 +185,6 @@ matters: it is what stands between "two spare" and "comfortable".
 
 ---
 
-## 8. Benchmarking for the article
-
-**The shell workloads are not a fair VM benchmark** and the article
-must not lead with them. They are dominated by locals and variable
-access, which is exactly what the specialisations target - hence the
-same build measures ~5x on shell code and ~2.0-2.4x on kernel code.
-Quoting 5x as "the VM got 5x faster" would overstate it.
-
-Suggested set, best first:
-
-1. **Recompiling the kernel** - real self-hosting work, exercises the
-   compiler and the dictionary rather than one idiom, and cannot be
-   accused of being tuned to the encoding. `tests/verify` already does
-   a reproducible build, so the harness exists.
-2. **The ANS CORE suite run** (671 cases, `tools/lab/forth-tests.sh`) -
-   compiles hundreds of definitions; compile-heavy rather than
-   execution-heavy, so a useful second axis.
-3. **`fib.4`** - narrow (calls and arithmetic), but readers expect it.
-4. **One shell workload, clearly labelled** as "what the system is
-   actually for", never as the headline.
-
-Report kernel recompile as the headline with shell as a separate line,
-and say plainly why they differ. Take all numbers from ONE build of the
-committed branch: the figures in this repository accumulated across
-many iterations and several were superseded (varcall became the
-default, guard pages and the escaped band are opt-in and incomplete).
-
-**Tooling gap to fix first if per-word dynamic data is wanted again:**
-the CV8 path of `vm-lab.c -DPROFILE` records per-address counts but not
-call targets (`PROFC` is only in the ENC=2 path), so `tools/lab/hot.py`
-returns nothing for CV8 images. The tables above were produced by
-mapping the per-address `I` records onto `--symbols` output instead.
-
----
-
-## 9. For the honesty section
-
-The article's most useful material is where the work was wrong, and
-the log has more than the four corrections in §2:
-
-- **72 empty files committed** (Iteration 204, removed in 208). Piping
-  `tester.fr` into an image that boots into the SHELL makes the shell
-  read `->` and `>` as redirections, creating one file per token; then
-  `git add -A` committed them. The harness now refuses an image that
-  does not boot into the interpreter.
-- **A test that could not fail.** For several iterations the only
-  suites being run were the shell ones, which never compile anything -
-  so they passed long before the Forth compiler was correct. The ANS
-  CORE suite, run for the first time in Iteration 204, both validated
-  the compiler (671/671) and immediately found a fault the shell suites
-  could not see.
-- **A fixed point is not cleanliness.** Two generations of a saved
-  image being byte-identical proves the save is self-consistent, not
-  that the saved state is clean: state that is stale but *stable* looks
-  identical in both. Diffing against a different, working build found
-  22 more variables that generation-diffing could not.
-
----
-
 ## 5. Ideas borrowed, and from where
 
 For the "where the ideas came from" section the reviewer asked for.
@@ -310,3 +251,64 @@ the work:
 - `tools/pack-bench.c`, `varint-bench.c`, `dispatch-bench.c` — the
   microbenchmarks behind rows 5 and 6.
 - `tools/lab/` — everything from Iteration 188 on.
+
+---
+
+## 8. Benchmarking for the article
+
+**The shell workloads are not a fair VM benchmark** and the article
+must not lead with them. They are dominated by locals and variable
+access, which is exactly what the specialisations target - hence the
+same build measures ~5x on shell code and ~2.0-2.4x on kernel code.
+Quoting 5x as "the VM got 5x faster" would overstate it.
+
+Suggested set, best first:
+
+1. **Recompiling the kernel** - real self-hosting work, exercises the
+   compiler and the dictionary rather than one idiom, and cannot be
+   accused of being tuned to the encoding. `tests/verify` already does
+   a reproducible build, so the harness exists.
+2. **The ANS CORE suite run** (671 cases, `tools/lab/forth-tests.sh`) -
+   compiles hundreds of definitions; compile-heavy rather than
+   execution-heavy, so a useful second axis.
+3. **`fib.4`** - narrow (calls and arithmetic), but readers expect it.
+4. **One shell workload, clearly labelled** as "what the system is
+   actually for", never as the headline.
+
+Report kernel recompile as the headline with shell as a separate line,
+and say plainly why they differ. Take all numbers from ONE build of the
+committed branch: the figures in this repository accumulated across
+many iterations and several were superseded (varcall became the
+default, guard pages and the escaped band are opt-in and incomplete).
+
+**Tooling gap to fix first if per-word dynamic data is wanted again:**
+the CV8 path of `vm-lab.c -DPROFILE` records per-address counts but not
+call targets (`PROFC` is only in the ENC=2 path), so `tools/lab/hot.py`
+returns nothing for CV8 images. The tables above were produced by
+mapping the per-address `I` records onto `--symbols` output instead.
+
+---
+
+---
+
+## 9. For the honesty section
+
+The article's most useful material is where the work was wrong, and
+the log has more than the four corrections in §2:
+
+- **72 empty files committed** (Iteration 204, removed in 208). Piping
+  `tester.fr` into an image that boots into the SHELL makes the shell
+  read `->` and `>` as redirections, creating one file per token; then
+  `git add -A` committed them. The harness now refuses an image that
+  does not boot into the interpreter.
+- **A test that could not fail.** For several iterations the only
+  suites being run were the shell ones, which never compile anything -
+  so they passed long before the Forth compiler was correct. The ANS
+  CORE suite, run for the first time in Iteration 204, both validated
+  the compiler (671/671) and immediately found a fault the shell suites
+  could not see.
+- **A fixed point is not cleanliness.** Two generations of a saved
+  image being byte-identical proves the save is self-consistent, not
+  that the saved state is clean: state that is stale but *stable* looks
+  identical in both. Diffing against a different, working build found
+  22 more variables that generation-diffing could not.
