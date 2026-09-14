@@ -157,17 +157,55 @@ INIT-IMAGE-MAGIC
 VARIABLE TLINK 0 TLINK !   \ This variable points to the name
                            \ of the last definition.
 
+\ The target's word list is HASHED - see kernel.4's FORTH-WORDLIST - so
+\ the cross-compiler must thread the dictionary it builds exactly the
+\ way the target will search it. These are the host-side mirrors of the
+\ target's thread heads and of its HASH.
+
+32 CONSTANT #TTHREADS
+CREATE TTHREADS #TTHREADS CELLS ALLOT
+TTHREADS #TTHREADS CELLS 0 FILL
+
+: THASH ( c-addr u --- n )
+\ Must produce exactly what kernel.4's HASH produces for the same name
+\ and the same thread count. If the two ever disagree a word is filed
+\ under one thread and looked for under another, and the target cannot
+\ find half its own dictionary.
+  #TTHREADS >R
+  OVER C@ 1 LSHIFT OVER 1 > IF ROT 1+ C@ 2 LSHIFT XOR ELSE ROT DROP
+   THEN XOR
+  R> 1- AND ;
+
+VARIABLE THIS-THREAD
+VARIABLE LINKCELL
+VARIABLE NAMELEN
+
+: PUBLISH-WORDLIST ( t-addr --- )
+\ Copy the host-side thread heads into the target's word list array.
+\ This is a definition rather than a run of interpreted code because
+\ DO ... LOOP is compile-only; interpreting it segfaulted the host at
+\ the very last step of the build, after everything else had worked.
+  DUP #TTHREADS SWAP !-T             \ cell 0: the thread count
+  #TTHREADS 0 DO
+    I CELLS TTHREADS + @             ( wl head )
+    OVER I 1+ CELLS-T + !-T          ( wl )
+  LOOP
+  DROP ;
+
 : "HEADER >IN @ CREATE >IN ! \ Create the shadow definition.
   ALIGN-T
-  TLINK @ IF
-    TLINK @ THERE - ,-T        \ Lay out the link field.
-  ELSE
-    0 ,-T
+  THERE LINKCELL ! 0 ,-T      \ Link field, patched once the name is known.
+  BL WORD COUNT               ( c-addr u )
+  2DUP THASH THIS-THREAD !
+  DUP NAMELEN !
+  THERE PLACE-T               \ Place name in target dictionary.
+  THIS-THREAD @ CELLS TTHREADS + @ ?DUP IF
+    LINKCELL @ - LINKCELL @ !-T    \ relative to the link cell itself
   THEN
-  BL WORD
-  COUNT DUP >R THERE PLACE-T  \ Place name in target dictionary.
   THERE TLINK !
-  THERE C@-T 128 OR THERE C!-T R> 1+ ALLOT-T ALIGN-T ;
+  THERE THIS-THREAD @ CELLS TTHREADS + !
+  THERE C@-T 128 OR THERE C!-T
+  NAMELEN @ 1+ ALLOT-T ALIGN-T ;
       \ Set bit 7 of count byte as a marker.
 
 \ : "HEADER CREATE ALIGN-T ;  \ Alternative for "HEADER in case the target system
@@ -500,7 +538,9 @@ RESOLVE THROW
 RESOLVE (POSTPONE)
 
 \ Store appropriate values into some of the new Forth's variables.
-TLINK @ T' FORTH-WORDLIST >BODY-T !-T
+\ Publish the threaded word list into the target: cell 0 is the thread
+\ count the target's HASH reads back, cells 1..n the heads.
+T' FORTH-WORDLIST >BODY-T PUBLISH-WORDLIST
 THERE   T' DP             >BODY-T !-T
 
 SAVE-IMAGE kernel.img \ Save the newly constructed Forth system to disk.

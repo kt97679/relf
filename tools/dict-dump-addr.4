@@ -1,35 +1,74 @@
-\ tools/dict-dump-addr.4 - dict-dump.4, but each line carries the
-\ ADDRESS as well as the value, so call targets can be resolved.
+\ tools/dict-dump-addr.4 - dump every word in the dictionary, with
+\ addresses, so a call target can be resolved.
 \
-\ Emits, for every word in the dictionary:
+\ Emits, for every word:
+\     H <nfa> <raw count byte>
 \     N <body-start> <body-end> <name>
 \     B <addr> <value>          (one per body cell)
 \
-\ tools/dict-dump.4 prints sizes only, which is enough to census
-\ opcode frequency but not enough to follow a call: a call cell holds
-\ a RELATIVE offset, so the target is addr + CELL + value and cannot
-\ be computed without knowing addr. Added in Iteration 156 for
-\ tools/encoding-census.py.
+\ WHY THIS IS A TWO-PASS WALK. The word list is HASHED: 32 threads, each
+\ a separate chain. Following one chain no longer visits every word and,
+\ less obviously, no longer visits them in ADDRESS order either. Both
+\ matter. The dump must be complete, and the layout pass downstream
+\ derives a word's body END from where the NEXT word's link cell starts,
+\ which is only the next word in the chain if the chain is in address
+\ order. It used to be. It is not any more.
 \
-\ Usage (4-byte cells, with the shell loaded so the census covers it):
-\   printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n' \
-\     | ./relf32 kernel32.img | tr -d '\\r' > dump.txt
+\ So: collect every nfa from every thread, sort by address descending,
+\ and emit in that order. Descending, because the dump has always been
+\ newest-first and tools/layout.py reverses it to recover definition
+\ order.
 
 BASE @ DECIMAL
-VARIABLE PREVLINK
 VARIABLE NFA
-VARIABLE LNK
-VARIABLE GO
 VARIABLE BP
 VARIABLE BE
+VARIABLE NFATAB
+VARIABLE #NFA
+VARIABLE TA
 : CELLB 1 CELLS ;
-: DUMP
-  HERE PREVLINK !
-  FORTH-WORDLIST @ NFA !
-  -1 GO !
-  BEGIN GO @ WHILE
+
+\ In a definition: ABORT" is compile-only, and interpreting it here
+\ segfaulted before a single word was dumped.
+: INIT-NFATAB 8192 CELLS ALLOCATE ABORT" dict-dump: out of memory" NFATAB ! ;
+INIT-NFATAB
+
+: COLLECT ( --- )
+\ Every nfa in every thread, in whatever order the chains give them.
+  0 #NFA !
+  FORTH-WORDLIST @ 1+ 1 DO
+    FORTH-WORDLIST I CELLS + @ NFA !
+    BEGIN NFA @ WHILE
+      NFA @ NFATAB @ #NFA @ CELLS + !
+      1 #NFA +!
+      NFA @ CELLB - DUP @ ?DUP IF + NFA ! ELSE DROP 0 NFA ! THEN
+    REPEAT
+  LOOP ;
+
+: SWAPC ( a --- )
+\ Exchange the cells at a and a+CELL.
+  TA !
+  TA @ @ TA @ CELLB + @
+  TA @ ! TA @ CELLB + ! ;
+
+: SORTNFA ( --- )
+\ Descending by address. A bubble sort, because it runs once over a few
+\ hundred entries and the clarity is worth more than the cycles.
+  #NFA @ 1- 0 DO
+    #NFA @ 1- 0 DO
+      NFATAB @ I CELLS +
+      DUP @ OVER CELLB + @ < IF SWAPC ELSE DROP THEN
+    LOOP
+  LOOP ;
+
+: DUMP ( --- )
+  COLLECT SORTNFA
+  #NFA @ 0 DO
+    NFATAB @ I CELLS + @ NFA !
     NFA @ DUP C@ 31 AND 1+ ALIGNED + BP !
-    PREVLINK @ BE !
+    \ The body ends where the next word by ADDRESS begins its link cell.
+    \ The newest word - first in this descending order - ends at HERE.
+    I 0= IF HERE ELSE NFATAB @ I 1- CELLS + @ CELLB - THEN BE !
     \ The raw count byte carries flag bits above the length - bit 5 is
     \ the MACRO flag cross.4's PRIMITIVE sets. TYPE below masks them
     \ off, so without this line an image rebuilt from this dump would
@@ -37,19 +76,15 @@ VARIABLE BE
     S" H " TYPE NFA @ . NFA @ C@ . CR
     S" N " TYPE BP @ . BE @ . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
     BEGIN BP @ BE @ < WHILE
-      ." B " BP @ . BP @ @ . CR
+      S" B " TYPE BP @ . BP @ @ . CR
       BP @ CELLB + BP !
     REPEAT
-    NFA @ CELLB - DUP PREVLINK ! @ LNK !
-    LNK @ 0= IF 0 GO ! ELSE PREVLINK @ LNK @ + NFA ! THEN
-  REPEAT ;
+  LOOP ;
+
 \ The S line anchors every address above to an offset in the saved
-\ image, which runs from START to HERE. Without it the layout pass
-\ cannot tell where the pre-dictionary prologue begins. Printed before
-\ DUMP runs, so HERE is the value the dump itself will see.
-\ `."` is compile-only in this kernel and prints nothing at the
-\ interpreter, so the label goes through S" ... " TYPE instead. That
-\ cost a silent empty anchor line once.
+\ image, which runs from START to HERE. Printed before DUMP runs, so
+\ HERE is the value the dump itself will see - the nfa table is on the
+\ HEAP, so it does not move HERE.
 S" S " TYPE START @ . HERE . CR
 DUMP
 \ The prologue: the cells between START and the oldest word's link
@@ -59,8 +94,7 @@ DUMP
 \
 \ This MUST be a definition. A DO/+LOOP typed at the interpreter runs
 \ once and stops - the same interpret-mode hazard GOALS.md records for
-\ IF/THEN in this kernel. It printed one line and looked like a dump
-\ with a short prologue rather than like a broken loop.
+\ IF/THEN in this kernel.
 : PROLOGUE-DUMP
   START @ DUP 6 CELLS + SWAP DO
     S" P " TYPE I . I @ . CR

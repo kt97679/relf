@@ -43,7 +43,15 @@
 
 : WORDLIST ( --- wid)
 \ Make a new wordlist and give its address.
-  HERE 0 , ;
+\ A wordlist is [thread count][head 0..n-1], the same shape as
+\ FORTH-WORDLIST, whose count is taken as the authority so there is one
+\ place that decides how many threads a wordlist has. This stayed a
+\ single cell when the threads went in, and the symptom was that the
+\ system passed the whole CORE suite and then could not cross-compile
+\ itself: the vocabularies cross.4 uses were one cell each and
+\ SEARCH-WORDLIST read a chain head as a thread count.
+  HERE FORTH-WORDLIST @ ,
+  HERE FORTH-WORDLIST @ CELLS DUP ALLOT 0 FILL ;
 
 : DEFINITIONS  ( --- )
 \ Set the definitions wordlist to the last wordlist in the search order.

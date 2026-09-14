@@ -842,8 +842,16 @@ VARIABLE NAMEBUF ( --- a-addr)
 28 ALLOT-T
 
 VARIABLE FORTH-WORDLIST ( --- addr)
-\ This variable holds a pointer to the last definition in the Forth
-\ word list.
+\ A hashed word list, laid out as SOD32's is: cell 0 holds the number
+\ of threads and cells 1..n the head of each thread.
+\
+\ RelF carried this structure over from SOD32 as a SINGLE cell - "a
+\ pointer to the last definition" - which made every lookup a linear
+\ scan of the whole dictionary. Measured on bench/parse.fth that cost
+\ 8.05 million dictionary entries visited against SOD32's 397 thousand,
+\ and about 81% of every operation the system executed. See
+\ FINDINGS-OUTER-INTERPRETER.md.
+32 CELLS-T ALLOT-T
 
 VARIABLE LAST ( --- addr)
 \ This variable holds a pointer to the last definition created.
@@ -859,6 +867,15 @@ VARIABLE CURRENT ( --- addr)
 \ This variable holds the address of the word list to which new definitions
 \ are added.
 
+: HASH ( c-addr u #threads --- n )
+\ SOD32's hash, unchanged: the length and the first two characters.
+\ It must agree EXACTLY with cross.4's THASH, which threads the
+\ dictionary of the image being built, or a word would be filed under
+\ one thread and looked for under another.
+  >R OVER C@ 1 LSHIFT OVER 1 > IF ROT 1+ C@ 2 LSHIFT XOR ELSE ROT DROP
+   THEN XOR
+  R> 1- AND ;
+
 : NAME>BUF ( c-addr u ---)
 \ Move the name c-addr u to the aligned buffer NAMEBUF.
   NAMEBUF 32 0 FILL 32 MIN NAMEBUF PLACE ;
@@ -869,7 +886,11 @@ VARIABLE CURRENT ( --- addr)
 \ words and xt and 1 for immediate words.
   ROT ROT
   NAME>BUF
-  @ DUP IF
+  \ Pick the thread this name would have been filed under. Everything
+  \ below is unchanged: the chain walk, the cell-at-a-time compare and
+  \ the relative link field are all as they were.
+  DUP >R NAMEBUF COUNT R@ @ HASH 1+ CELLS + @ R> DROP
+  DUP IF
   BEGIN
    \ Mask clears the flag bits within the count byte - which, since cells
    \ are read native-endian (little-endian on every host targeted so
@@ -1020,21 +1041,26 @@ VARIABLE CURRENT ( --- addr)
 : HEADER ( --- )
 \ Create a header for a new definition without a code field.
   ALIGN
-  CURRENT @ @ IF
-    CURRENT @ @ HERE - , \ Create link field.
-  ELSE
-    0 ,
-  THEN
+  \ The link field cannot be filled in yet: which thread this word
+  \ belongs to depends on its name, and the name has not been parsed.
+  \ So reserve the cell, remember where it is, and patch it below -
+  \ which is what SOD32 does.
+  HERE >R 0 ,
   HERE LAST !         \ Set LAST so definition can be linked by REVEAL
   32 WORD DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP
                        \ Give warning if existing word redefined.
+  DUP COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @
+  ?DUP IF R@ - R@ ! THEN    \ link, relative to the link cell itself
+  R> DROP
   C@ 1+ HERE C@ 128 + HERE C! ALLOT ALIGN
                        \ Allot the name and set bit 7 in length byte.
 ;
 
 : REVEAL ( --- )
-\ Add the last created definition to the CURRENT wordlist.
-  LAST @ CURRENT @ ! ;
+\ Add the last created definition to the CURRENT wordlist, at the head
+\ of the thread its name hashes to.
+  LAST @ DUP COUNT 31 AND CURRENT @ @ HASH
+  1+ CELLS CURRENT @ + ! ;
 
 : CREATE ( "ccc" --- )
 \ Create a definition that returns its parameter field address when
@@ -1345,7 +1371,14 @@ VARIABLE INCLUDE-POINTER ( --- a-addr)
 
 : COLD ( --- )
 \ The first word that is called at the start of Forth.
-  START ! START @ FORTH-WORDLIST +! START @ DP +!
+  START ! START @ DP +!
+  \ Every thread head is stored as an offset from START and relocated
+  \ here, which is what the single head used to need. Cell 0 is the
+  \ thread COUNT and must not be touched; an empty thread is 0 and
+  \ must stay 0, or it would become a pointer to the image base.
+  FORTH-WORDLIST @ 1+ 1 DO
+    FORTH-WORDLIST I CELLS + DUP @ ?DUP IF START @ + SWAP ! ELSE DROP THEN
+  LOOP
   SP@ S0 !
   RP@ CELL+ R0 ! \ Initialize variables SO and RO
   BOOT @ ?DUP IF START @ + EXECUTE THEN

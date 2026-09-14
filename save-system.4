@@ -77,9 +77,28 @@ CREATE SS-MAGIC 8 ALLOT
 
 : SS-UNRELOCATE ( live-addr --- )
   \ Put a relocated cell back into its on-disk, START-relative form.
-  \ COLD is the authority on which cells these are, and there are
-  \ exactly two: DP and FORTH-WORDLIST.
+  \ COLD is the authority on which cells these are.
   SS>COPY DUP @ START @ - SWAP ! ;
+
+: SS-UNRELOCATE-WORDLIST ( live-addr --- )
+  \ FORTH-WORDLIST stopped being one cell when the dictionary was
+  \ hashed: it is now [thread count][head 0..n-1], and COLD relocates
+  \ every head. So this is SS-UNRELOCATE applied to each of them.
+  \
+  \ Two things here are load-bearing, and both are silent if missed.
+  \ Cell 0 is the thread COUNT, not an address, and must not be
+  \ touched. And an EMPTY thread is 0 and must stay 0 - subtracting
+  \ START would leave -START on disk, which COLD's own ?DUP guard
+  \ would then happily relocate into a pointer to the image base.
+  \
+  \ Getting this wrong does not produce a diagnostic. It produces an
+  \ image that boots with 32 stale absolute addresses in its word
+  \ list and segfaults in FIND, which is exactly what the first
+  \ attempt at this did.
+  DUP @ 1+ 1 DO
+    DUP I CELLS + SS>COPY
+    DUP @ ?DUP IF START @ - SWAP ! ELSE DROP THEN
+  LOOP DROP ;
 
 : SS-SCRUB ( --- )
   \ Everything here is scratch that COLD, WARM or QUIT re-initializes
@@ -138,7 +157,7 @@ CREATE SS-MAGIC 8 ALLOT
   SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
   START @ SS-BUF @ SS-LEN @ MOVE
   DP SS-UNRELOCATE
-  FORTH-WORDLIST SS-UNRELOCATE
+  FORTH-WORDLIST SS-UNRELOCATE-WORDLIST
   SS-SCRUB
   SS-SET-MAGIC
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
