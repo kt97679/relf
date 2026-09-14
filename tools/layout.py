@@ -334,6 +334,33 @@ def _placed_val(target):
     return None
 
 
+# Old-offset lookup tables. Built here rather than at their original
+# sites further down because sizing needs them: a LOC slot's width
+# depends on where its target landed, and pinning every one of them to
+# the wide form cost 573 bytes on the shell image. They are pure
+# functions of `order` and START, so building them early changes
+# nothing - the definitions below simply reuse these.
+body_at = {w['s'] - START: w for w in order}
+pfa_at = {w['s'] - START + CELL: w for w in order}
+
+
+def _loc_val(old):
+    """Scaled locals-slot value for an already placed target, or None.
+
+    Mirrors v8loc, which cannot be used here because it is defined with
+    the emission helpers. The two must agree: this decides how many
+    bytes the slot occupies, that one decides what goes in it."""
+    w = pfa_at.get(old)
+    if w is not None:
+        if w['s'] in new_off and 'body' in new_off[w['s']]:
+            return (new_off[w['s']]['body'] + CELL) >> CPT
+        return None
+    w = body_at.get(old)
+    if w is not None and w['s'] in new_off and 'body' in new_off[w['s']]:
+        return new_off[w['s']]['body'] >> CPT
+    return None
+
+
 def _pfa_val(target):
     """Scaled parameter-field value for an already placed data word."""
     if target in new_off and 'body' in new_off[target]:
@@ -359,16 +386,15 @@ def size_here(w):
             if _pfa_val(o[1]) is None:
                 G['V8_FORCE4'].add((k, o[1]))
         elif k == 'LOC':
-            # A LOC slot resolves through remap_pfa_off/remap_body_off,
-            # neither of which exists yet. Pin it: 926 of them in the
-            # shell image, so a byte each, against a layout that
-            # otherwise cannot be sized at all.
-            G['V8_FORCE4'].add((k, o[1]))
+            if _loc_val(o[1][1]) is None:
+                G['V8_FORCE4'].add((k, o[1]))
     G['V8_CALLTOK'][0] = lambda tg: (_placed_val(tg) or 0)
     G['V8_PFA'][0] = lambda tg: _pfa_val(tg)
+    G['V8_LOC'][0] = lambda old: _loc_val(old)
     tok[w['s']] = to_tokens(info[w['s']])
     G['V8_CALLTOK'][0] = None
     G['V8_PFA'][0] = None
+    G['V8_LOC'][0] = None
 
 
 new_off, off = {}, PROLOGUE
@@ -481,8 +507,6 @@ for i, h in enumerate(HEADS):
 #
 # Nothing here converts an xt to a word number. Everything here moves
 # an offset to where its target landed.
-body_at = {w['s'] - START: w for w in order}
-
 def remap_body_off(off):
     w = body_at.get(off)
     return new_off[w['s']]['body'] if w else None
@@ -553,7 +577,6 @@ for t in TAILS:
 # FIELD - one cell past the body start - not at the body start. In the
 # new layout the parameter field is also one cell in, because the
 # padding plus the call token come to exactly one cell.
-pfa_at = {w['s'] - START + CELL: w for w in order}
 buf_bad = []
 def remap_pfa_off(off):
     """old START-relative parameter-field offset -> new one, or None."""
