@@ -232,6 +232,9 @@ do not trust the absence of a line below.
 - **209** — hashed word list, buffered I/O, and the CV8 toolchain
   reworked for 32 threads
 - **210** — the escaped-band fault is a double SPILL; 203-205 corrected
+- **211** — layout.py sized every call before anything had an address
+- **212** — tails need alignment too; LOC pinning measured and removed
+- **213** — the byte-header shell: NAME> must be exact, so pad before the link
 
 ### Not tied to an iteration
 
@@ -14177,3 +14180,119 @@ the only thing that widens it. The `TYPE`/`ACCEPT` work parked in
 "the intention is to retire them in favour of ACCEPT/TYPE later".
 That was the plan of record and I did not know it, which is its own
 argument for reading the log before starting.
+
+## Iteration 211: layout.py sized every call before anything had an address
+
+Byte-granular headers worked on a 10 KB kernel and could not build a
+70 KB shell image at all: "body size drift at SAVE-SYSTEM".
+
+The translator computed every word's token stream first and placed
+everything afterwards, so at sizing time no word had an address and
+two width decisions were made blind - calls (2,689 ops, all assumed
+2-byte near) and slots (VF/VS/LOC, 3,842 ops, all assumed narrow). At
+a call scale of 3 the guesses are always right: the 14-bit call field
+reaches 131 KB and the 15-bit slot 262 KB. At scale 0 - which byte
+headers REQUIRE, since nothing is aligned any more - they reach 16 KB
+and 32 KB, and a 60 KB image crosses both constantly.
+
+**I nearly built a fixed-point loop for this.** A call's width depends
+on where its target landed, which depends on every preceding call's
+width: real circularity, and branch relaxation is the textbook answer.
+Asked to justify the iteration, I measured instead:
+
+    backward, target already placed   2,640   98.2%
+    self / recursion                      7    0.3%
+    FORWARD, target not yet placed       42    1.6%
+
+98% of calls have an exact, already-known offset. The information was
+there and being thrown away. Sizing now happens inside the placement
+walk; the 1.6% genuine forward references are pinned to the wide form
+and stay pinned at emission. A convergence algorithm for 1.6% of cases
+would have been a week of work for forty bytes.
+
+## Iteration 212: two more places that assumed cell alignment
+
+**Tails.** The byte-header shell image now built and segfaulted on
+EVERY command, including `:`, while booting to a prompt and exiting
+cleanly on EOF. gdb found it in one step: `@` inside FIND-BUILTIN, 46
+bytes in, fetching 0x78005555555600fd - the low 48 bits a good
+pointer, the top two bytes garbage. That is a CELL read from an
+UNALIGNED address, straddling a boundary and picking up its
+neighbours.
+
+A TAIL is unheadered data compiled after a word's code; the BUILTIN
+table is the one that matters, and it is read with `@`. Non-bytehdr
+images got alignment free from the padding that rounds every body up
+to a cell. body_needs_align already protected the START of a body with
+a tail - but not the position of the tail WITHIN it.
+
+Before reaching for gdb I spent five builds disproving: the 3-byte
+dictionary link (forced every link to 3 bytes: still failed),
+unaligned bodies (forced every body aligned: still failed), unpadded
+names (padded them: still failed), the specialised slot ops (built
+with no --spec at all: still failed), and my own LOC pinning (every
+slot resolves to a correct aligned PFA). The debugger cost one.
+
+**LOC pinning.** Measured: 573 LOC slots pinned to the wide form
+against 27 genuine forward-reference calls, so the pessimism was most
+of the 1,096 bytes the scale-3 image had grown. body_at and pfa_at are
+pure functions of `order` and START, so they are built before
+placement now and sizing resolves a LOC exactly as v8loc does.
+Scale 3 came back from 71,640 to 70,760.
+
+## Iteration 213: the byte-header shell, and NAME> must be exact
+
+Wiring selfb-64/selfb-32 into the ladder made the new self-hosting
+gate fail on its first run - gen2 could not save gen3. That is what a
+gate is for, and it is the third time this session that building a
+configuration nothing built found a defect immediately.
+
+NAME> under byte headers is `nfa + 1 + count`, with nothing in
+between; that is the whole point, and cv8b.4's NAME>8 says so. The
+placement walk padded BETWEEN the name and the body to cell-align
+bodies that need it, so the translator put the body at
+align(nfa+1+count) while every consumer computed nfa+1+count.
+
+    loc_hdr, translated image   9352 9304 4096 9368 9440
+    loc_hdr, saved gen2         9344 9304 4096 9368 9440
+    runtime `' LSAVE-SP`        9338      (translator's body: 9344)
+
+One field wrong, by one cell. SS-PFA wrote a locals save-stack pointer
+one word short and the engine dereferenced it in LSAVE without
+checking, so a saved image executed data at LSAVE-SP+1.
+
+Fixed by padding in FRONT of the link: dead space nothing reads, and
+NAME> stays exact. The file's own assertions caught both consequences
+- the link-length bound must allow for the pad, and the emission must
+write those bytes. A new assertion checks that a body needing
+alignment is reachable by NAME>, because this class is otherwise
+silent.
+
+### What byte headers are actually worth
+
+    stage      64-bit              32-bit
+    self       70,400              56,028
+    selfb      62,337  (0.886x)    54,581  (0.974x)
+
+**The 32-bit gain is almost nothing, and that is the honest shape of
+it.** Byte headers remove link cells and padding, worth 8 bytes each
+at 64-bit and 4 at 32-bit, while scale 0 costs a third byte on every
+call past 16 KB at BOTH widths. This is a 64-bit optimisation that
+roughly breaks even at 32-bit. The kernel ratios (0.73x) do not carry
+to a 70 KB image, because at 10 KB every call still fits the near form
+and scale 0 is free.
+
+### The method lesson, since it repeated four times
+
+Four separate defects this session were "two places compute the same
+address and disagree": L_dovar vs L_dodoes, >BODY8, SS-PFA, and
+NAME> vs the placement walk. Every one was found by PRINTING BOTH
+NUMBERS, and every wrong guess before that came from reasoning about
+which one ought to be right.
+
+I asserted three fixes without checking arithmetic first - the LOC
+pin, SS-PFA (>BODY8 is ALIGNED(xt+4), which equals xt+CELL for an
+aligned xt, so it was a no-op by value), and the link decode. Each
+cost a build. The two measurements that solved it cost one command
+each. **When something disagrees, print both sides before theorising
+about either.**
