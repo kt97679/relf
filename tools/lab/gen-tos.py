@@ -63,7 +63,22 @@ HOT = {
  'L_eqix':   'tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();',
  'L_0branch':'t = tos; POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();',
 }
-NOSTACK = {'L_noop', 'L_exit', 'L_branch', 'L_dodoes', 'L_lsave', 'L_lrest', 'L_lzero'}   # never touch the data stack
+#  Labels that must NOT get a SPILL()/FILLNEXT() wrapper.
+#
+#  Most of these are here because they never touch the data stack, so
+#  spilling would be pure cost. L_esc is here for a different and
+#  sharper reason: it is the only handler that dispatches ONWARD to
+#  another handler instead of ending in NEXT(). The label it jumps to
+#  does its own SPILL(), and SPILL() is not idempotent - it moves dsp -
+#  so wrapping L_esc too spills one tos twice and leaves dsp a cell
+#  low. That cost three iterations (203-205) misdiagnosed as a DOES>
+#  alignment fault, because a one-argument primitive still finds
+#  something plausible in DS0 and only OPEN-FILE, which reads DS2,
+#  actually died.
+#
+#  The rule: a label that dispatches onward must not spill.
+NOSTACK = {'L_noop', 'L_exit', 'L_branch', 'L_dodoes', 'L_lsave', 'L_lrest',
+           'L_lzero', 'L_esc'}
 fend = s.index("\n#if FOLD\n#define EXITNEXT")
 start = s.index("L_noop:")
 sec = s[start:fend]
