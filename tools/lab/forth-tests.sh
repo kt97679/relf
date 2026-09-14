@@ -13,6 +13,16 @@
 # useful. build-cv8.sh builds fkernel-64/-32 for exactly this.
 set -e
 cd "$(dirname "$0")/../.."
+
+# Every engine below is a measured or tested subject, so it runs in a
+# predictable environment rather than whatever the caller exported.
+# LD_PRELOAD is the one that bites: a desktop session that preloads a
+# library into every process has it loaded into every engine here too,
+# and when the engine is a 32-bit binary and the library is 64-bit,
+# ld.so cannot load it and writes a line of complaint PER PROCESS -
+# straight into the output a dump or a test comparison is reading.
+unset LD_PRELOAD
+
 B=${1:?usage: forth-tests.sh BUILDDIR}
 B=$(cd "$B" && pwd)
 # The suite must run from the repo root: tests/locals.fth INCLUDEs
@@ -52,4 +62,12 @@ run "$B/spec-32" "$B/fkernel-32.img" "CORE suite, CV8 32-bit"
 # without this the whole byte-header path is code nobody runs.
 run "$B/cv8b-64" "$B/cv8b-64.img"    "CORE suite, CV8 byte headers 64-bit"
 run "$B/cv8b-32" "$B/cv8b-32.img"    "CORE suite, CV8 byte headers 32-bit"
+# The 16-bit encodings emitting their own encoding. These are what make
+# sod16.4 and cpt16.4 more than dead files: the suite compiles hundreds
+# of definitions at RUN time, which is the only thing that exercises a
+# compiler overlay at all.
+run "$B/sod16p-64" "$B/s16self-64.img"  "CORE suite, SOD16 self-hosting 64-bit"
+run "$B/sod16p-32" "$B/s16self-32.img"  "CORE suite, SOD16 self-hosting 32-bit"
+run "$B/cptf-64"   "$B/cptfself-64.img" "CORE suite, CPT16+fold self-hosting 64-bit"
+run "$B/cptf-32"   "$B/cptfself-32.img" "CORE suite, CPT16+fold self-hosting 32-bit"
 exit $fail

@@ -11,6 +11,16 @@
 # compile new definitions (tests/shell/run-forth). That is phase 3.
 set -e
 cd "$(dirname "$0")/../.."
+
+# Every engine below is a measured or tested subject, so it runs in a
+# predictable environment rather than whatever the caller exported.
+# LD_PRELOAD is the one that bites: a desktop session that preloads a
+# library into every process has it loaded into every engine here too,
+# and when the engine is a 32-bit binary and the library is 64-bit,
+# ld.so cannot load it and writes a line of complaint PER PROCESS -
+# straight into the output a dump or a test comparison is reading.
+unset LD_PRELOAD
+
 O=${1:-/tmp/cv8-build}
 mkdir -p "$O"
 HOT='+,=,!,@,LSHIFT,RSHIFT,C@,C!,AND,OR,XOR,LIT,<,U<,OVER,DROP,DUP,SWAP,ROT,>R,R>,R@,NEGATE'
@@ -49,8 +59,19 @@ printf "$KONLY" | ./relf32 kernel32.img | tr -d '\r' > "$O/k32.txt"
 # nfa is cell-aligned and zero-padded, and under byte headers it is
 # neither.
 KCV8B='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+# The 16-bit encodings have compiler overlays too, using the suffix `16`
+# where cv8.4 uses `8`. Without these the SOD16 and CPT16 images can RUN
+# but cannot compile a new definition - the same gap cv8.4 closed for
+# CV8 in phase 3. Each needs its own dump, because the overlay replaces
+# the code-emitting words.
+KS16='S" sod16.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+KCPT='S" cpt16.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$KCV8B" | ./relf   kernel.img   | tr -d '\r' > "$O/kb64.txt"
 printf "$KCV8B" | ./relf32 kernel32.img | tr -d '\r' > "$O/kb32.txt"
+printf "$KS16"  | ./relf   kernel.img   | tr -d '\r' > "$O/ks64.txt"
+printf "$KS16"  | ./relf32 kernel32.img | tr -d '\r' > "$O/ks32.txt"
+printf "$KCPT"  | ./relf   kernel.img   | tr -d '\r' > "$O/kc64.txt"
+printf "$KCPT"  | ./relf32 kernel32.img | tr -d '\r' > "$O/kc32.txt"
 
 # ---- images -----------------------------------------------------------
 img() {  # img NAME CELL OPTIONS...
@@ -60,7 +81,9 @@ img() {  # img NAME CELL OPTIONS...
         [ "$c" = 4 ] && d="$O/d32-self.txt";; esac
     case "$n" in fkernel-64) d="$O/k64.txt";; fkernel-32) d="$O/k32.txt";;
                  cv8b-64|cv8b-k64) d="$O/kb64.txt";;
-                 cv8b-32|cv8b-k32) d="$O/kb32.txt";; esac
+                 cv8b-32|cv8b-k32) d="$O/kb32.txt";;
+                 s16self-64) d="$O/ks64.txt";; s16self-32) d="$O/ks32.txt";;
+                 cptfself-64) d="$O/kc64.txt";; cptfself-32) d="$O/kc32.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
@@ -102,6 +125,17 @@ img cv8b-k64   8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --s
 img cv8b-k32   4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS
 img cv8b-64    8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 img cv8b-32    4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+# The 16-bit stages emitting their OWN encoding. sod16.4 is twice the
+# size of cpt16.4 and the difference is the argument for CPT16: SOD16
+# names a call by word NUMBER, so its compiler has to rebuild the
+# engine's number->address table in the image and search it on every
+# call it compiles, and a word defined after load has no number at all
+# and needs the FARCALL escape. CPT16 computes the target arithmetically
+# and its CALL, is one line.
+img s16self-64  8 --compiler-overlay 16
+img s16self-32  4 --compiler-overlay 16
+img cptfself-64 8 --cpt 3 --dataprims --fold --fold-set "$HOT" --compiler-overlay 16
+img cptfself-32 4 --cpt 2 --dataprims --fold --fold-set "$HOT" --compiler-overlay 16
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
