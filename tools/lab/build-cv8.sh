@@ -43,6 +43,14 @@ printf "$SELF" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-self.txt"
 KONLY='S" cv8.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$KONLY" | ./relf   kernel.img   | tr -d '\r' > "$O/k64.txt"
 printf "$KONLY" | ./relf32 kernel32.img | tr -d '\r' > "$O/k32.txt"
+# cv8b.4 on top of cv8.4: byte-granular dictionary headers. A separate
+# dump because the overlay REPLACES SEARCH-WORDLIST and NAME> - the
+# kernel's own versions compare names a cell at a time and assume the
+# nfa is cell-aligned and zero-padded, and under byte headers it is
+# neither.
+KCV8B='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+printf "$KCV8B" | ./relf   kernel.img   | tr -d '\r' > "$O/kb64.txt"
+printf "$KCV8B" | ./relf32 kernel32.img | tr -d '\r' > "$O/kb32.txt"
 
 # ---- images -----------------------------------------------------------
 img() {  # img NAME CELL OPTIONS...
@@ -50,7 +58,9 @@ img() {  # img NAME CELL OPTIONS...
     local d="$O/d64.txt"; [ "$c" = 4 ] && d="$O/d32.txt"
     case "$*" in *--cv8-compiler*) d="$O/d64-self.txt"
         [ "$c" = 4 ] && d="$O/d32-self.txt";; esac
-    case "$n" in fkernel-64) d="$O/k64.txt";; fkernel-32) d="$O/k32.txt";; esac
+    case "$n" in fkernel-64) d="$O/k64.txt";; fkernel-32) d="$O/k32.txt";;
+                 cv8b-64|cv8b-k64) d="$O/kb64.txt";;
+                 cv8b-32|cv8b-k32) d="$O/kb32.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
@@ -75,6 +85,23 @@ img self-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS
 # one, because a shell image feeds Forth source to the shell instead.
 img fkernel-64 8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 img fkernel-32 4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+# s6: byte-granular dictionary headers. The link stops being a cell and
+# becomes a 1-3 byte DISTANCE BACKWARD from the nfa, tag byte last, so
+# it is read backward - the tag sits at nfa-1 because it is the first
+# byte anyone reads. Names and code bodies stop being padded, and with
+# nothing needing cell alignment the call scale drops to 0.
+#
+# --cv8-compiler is NOT optional here. Without it the image carries the
+# kernel's own SEARCH-WORDLIST, which assumes a cell link and an aligned
+# name, and the image boots and then segfaults on the first lookup. The
+# run-only pair below is built anyway because it is the honest SIZE
+# figure for the encoding - the self-hosting pair carries cv8b.4's
+# replacement words as well - but it is never run, and the k in its name
+# is the reminder.
+img cv8b-k64   8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS
+img cv8b-k32   4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS
+img cv8b-64    8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+img cv8b-32    4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
@@ -110,6 +137,17 @@ cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DPROFILE=1 \
 # fixed-width-call/slot build, for comparison with the variable forms
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
     -DVARCALL=0 -DVARSLOT=0 -o "$O/fixedw-64" "$O/vm-lab-tos.c"
+# s6 engines: spec with SCALE=0, because byte-granular headers leave
+# call targets byte-aligned. The engine never READS a dictionary link -
+# only SOD16 does, to number its calls - so the whole byte-granular
+# header change is invisible to it and the scale is the only difference
+# in the binary. DOESFAR matches cv8.4's three-byte DOES> call, which
+# scale 0 requires: the two-byte form's 14-bit field of scaled units
+# reaches 131 KB at scale 3 but only 16 KB at scale 0.
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 -DSHAREDCALL=1 -DDOESFAR=1 \
+    -o "$O/cv8b-64" "$O/vm-lab-tos.c"
+cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 \
+    -DSHAREDCALL=1 -DDOESFAR=1 -o "$O/cv8b-32" "$O/vm-lab-tos.c"
 
 # ---- smoke test: every pair must agree with dash ----------------------
 want=$(for w in fn str arith; do dash tests/bench-vm/$w.sh; done)

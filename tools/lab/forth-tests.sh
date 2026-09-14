@@ -46,4 +46,10 @@ run() {   # run ENGINE IMAGE LABEL
 }
 run "$B/spec-64" "$B/fkernel-64.img" "CORE suite, CV8 64-bit"
 run "$B/spec-32" "$B/fkernel-32.img" "CORE suite, CV8 32-bit"
+# s6, byte-granular dictionary headers. These are the images that
+# exercise cv8b.4's replacement SEARCH-WORDLIST and NAME> - the ones
+# that have to find a word through a 1-3 byte backward-read link - so
+# without this the whole byte-header path is code nobody runs.
+run "$B/cv8b-64" "$B/cv8b-64.img"    "CORE suite, CV8 byte headers 64-bit"
+run "$B/cv8b-32" "$B/cv8b-32.img"    "CORE suite, CV8 byte headers 32-bit"
 exit $fail
