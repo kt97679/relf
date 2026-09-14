@@ -460,7 +460,23 @@ ALIGN_TAILS = 0       # set by the layout pass: DOES> tails aligned to this
 FOLDBASE = 128        # folded opcode = FOLDBASE + primitive index
 V8 = False            # byte-stream mode: 1-byte ops, 2-byte calls
 V8_FOLDLIST = []      # v8: folded opcodes are 73 + position in this list
-V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72, 73
+# CV8's synthetic opcodes sit immediately above the real primitives,
+# and the folded band immediately above those. These were written out
+# as 68..73 - correct for exactly as long as kernel.4 had 68
+# primitives. Adding one made KEY index 68 and V8_LIT32 68 at the same
+# time, which does not fail at build time: the image simply encodes a
+# primitive that the engine decodes as a literal. It showed up as a
+# return stack overflow in CPT16+fold and a corrupted heap in CV8 spec.
+#
+# Derived now. gen-fold.py and vm-lab.c derive the same way, from the
+# same count, or the image encodes one opcode and the engine decodes
+# another with nothing to warn either of them.
+V8_LIT32  = len(prims)
+V8_DOVAR  = len(prims) + 1
+V8_DODOES = len(prims) + 2
+V8_LIT8   = len(prims) + 3
+V8_LIT8X  = len(prims) + 4
+V8_FOLD0  = len(prims) + 5
 V8_CALLTOK = [None]   # layout pass binds: old target addr -> scaled value
 V8_FORCE4 = set()     # (kind, payload) pinned to the WIDE slot form.
 # Same problem as V8_FORCE3, for VF/VS/LOC: a slot is 2 bytes if the
@@ -655,7 +671,23 @@ def to_bytes_v8(ops):
             b.append({0: X_LIT0, 1: X_LIT1, -1: X_LITM1}[pl])
         elif k == 'PX':
             assert pl not in ESC_PRIMS, "cannot fold an escaped primitive"
-            b.append(V8_FOLD0 + V8_FOLDLIST.index(pl))
+            _f = V8_FOLD0 + V8_FOLDLIST.index(pl)
+            # The folded band starts just above the primitives and grows
+            # up towards the specialised band at 0x60. The two collided
+            # the first time a 69th primitive was added: the last folded
+            # opcode became 96 and the engine decoded it as lit0 - a
+            # return stack overflow in one stage, a corrupted heap in
+            # another, and no complaint from either side. Checked
+            # against the real fold list rather than a guess at its
+            # size, because --fold-set decides that per build.
+            assert _f < X_LIT0, (
+                "folded opcode %d for %r has reached the specialised band "
+                "at %d: kernel.4 has %d primitives and --fold-set has %d "
+                "entries. Move the specialised band up (0x7E-0x7F are "
+                "free) or turn on the escaped band, which compacts the "
+                "primitives into 0..35."
+                % (_f, pl, X_LIT0, len(prims), len(V8_FOLDLIST)))
+            b.append(_f)
         elif k in ('LIT', 'LITX'):
             x = k == 'LITX'
             if 0 <= pl < 256: b.append(V8_LIT8X if x else V8_LIT8); b.append(pl)

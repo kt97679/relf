@@ -4,6 +4,21 @@ Hot primitives get hand-written TOS bodies; every other primitive is
 wrapped SPILL / unchanged body / FILL, so its memory-stack view (and
 SP@, DEPTH, the syscalls) is exactly what it was."""
 import re, sys
+
+def _nprim():
+    """kernel.4's PRIMITIVE count, so the generated engine numbers its
+    synthetic opcodes exactly as sod16.py does. Both must agree: if they
+    drift, the image encodes one opcode and the engine decodes another,
+    with no build error either side."""
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    for rel in (('..', '..', 'kernel.4'), ('..', 'forth', 'kernel.4'),
+                ('..', '..', 'forth', 'kernel.4'), ('kernel.4',)):
+        q = os.path.join(here, *rel)
+        if os.path.exists(q):
+            return sum(1 for l in open(q) if l.startswith('PRIMITIVE'))
+    raise SystemExit("gen-tos: cannot find kernel.4 relative to %s" % here)
+
 s = open(sys.argv[1]).read()
 HOT = {
  'L_lit':    'PUSHT(OPND16(ip)); ip += 2; NEXT();',
@@ -122,4 +137,5 @@ s = s.replace("static void virtual_machine(void) {\n    VMREGS", """static void 
 #else
 #define BROFF(a) (2 * (int16_t)TOK(a))
 #endif""", 1)
+sys.stdout.write("#define NPRIM %d\n" % _nprim())
 sys.stdout.write(s)

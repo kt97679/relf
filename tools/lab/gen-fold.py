@@ -39,7 +39,8 @@ for i, (pos, lab) in enumerate(labs):
     body = sec[pos:nxt].replace(lab + ':', 'LX' + lab[1:] + ':', 1)
     body = ''.join(l for l in body.splitlines(True) if not l.lstrip().startswith('#'))
     copies.append(body.replace('NEXT();', 'EXITNEXT();'))
-    if V8: entries.append('[73 + %d] = &&LX%s,' % (V8LIST.index(prims[order.index(lab)]), lab[1:]))
+    # Must match sod16.py's V8_FOLD0 exactly - see the note there.
+    if V8: entries.append('[%d + %d] = &&LX%s,' % (len(prims) + 5, V8LIST.index(prims[order.index(lab)]), lab[1:]))
     else: entries.append('[FOLDBASE + %d] = &&LX%s,' % (order.index(lab), lab[1:]))
 open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), 'vm-fold-table.h'), 'w').write('\n'.join(entries) + '\n')
 open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), 'vm-fold-bodies.h'), 'w').write(''.join(copies))

@@ -83,6 +83,19 @@ static int g_argc;
 static char **g_argv;
 
 #define FOLDBASE 128
+
+/*  Number of PRIMITIVE lines in kernel.4. gen-tos.py overrides this on
+ *  the generated copy, so the value here is only a fallback for reading
+ *  vm-lab.c directly. Everything synthetic - LIT32, DOVAR, DODOES,
+ *  LIT64, FARCALL, the CV8 literal forms and the folded band - is
+ *  numbered RELATIVE to it, and sod16.py derives the same way from the
+ *  same count. These were written out as 68..73, correct for exactly as
+ *  long as the count stayed 68: adding one primitive put DODOES at 71
+ *  and left [71] = &&L_lit64t overwriting it, with no build error and a
+ *  return stack overflow at run time.  */
+#ifndef NPRIM
+#define NPRIM 68
+#endif
 #ifndef ESCAPE
 /*  ESCAPE: the 32 OS/libc primitives move behind ESC + a selector,
  *  which renumbers the primitive band. Both the engine and the
@@ -901,18 +914,18 @@ static void virtual_machine(void) {
         /*  LIT32 is not one of kernel.4's primitives. It is appended
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
-        &&L_lit32, &&L_dovar, &&L_dodoes,
+        [NPRIM] = &&L_lit32, &&L_dovar, &&L_dodoes,
 #if ENC != 3
         /*  LIT64 at 71, the first index past DODOES. Folded opcodes
          *  start at FOLDBASE (128) and calls at 256, so 71..127 is
          *  free space in both 16-bit encodings.  */
-        [71] = &&L_lit64t,
+        [NPRIM + 3] = &&L_lit64t,
 #endif
 #if ENC == 1
-        [72] = &&L_farcall, [73] = &&L_dodoesf,
+        [NPRIM + 4] = &&L_farcall, [NPRIM + 5] = &&L_dodoesf,
 #endif
 #if ENC == 3
-        &&L_lit8, &&L_lit8x,
+        [NPRIM + 3] = &&L_lit8, &&L_lit8x,
         [0x7C] = &&L_lit64, [0x7D] = &&L_esc,
 #endif
 #if ENC == 3 && SPEC

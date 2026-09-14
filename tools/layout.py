@@ -845,11 +845,11 @@ def emit(path):
             else:
                 if DATAPRIMS and n in DOVAR:
                     # [DOVAR][pad][PFA]: the primitive pushes ALIGNED(ip)
-                    img += (bytes([69]) + b'\x00' * (CELL - 1)) if V8 else (tk(DOVARP) + b'\x00' * (CELL - 2))
+                    img += (bytes([G['V8_DOVAR']]) + b'\x00' * (CELL - 1)) if V8 else (tk(DOVARP) + b'\x00' * (CELL - 2))
                 elif DATAPRIMS:
                     # [DODOES][tail][pad][PFA]: pushes ALIGNED(ip) as the
                     # return address the tail's R> expects, jumps to tail
-                    img += (bytes([70]) + callbytes(n) + b'\x00' * (CELL - 3)) if V8 else (tk(DODOES) + tk(calltok_addr(n)) + b'\x00' * (CELL - 4))
+                    img += (bytes([G['V8_DODOES']]) + callbytes(n) + b'\x00' * (CELL - 3)) if V8 else (tk(DODOES) + tk(calltok_addr(n)) + b'\x00' * (CELL - 4))
                 else:
                     img += b'\x00' * (CELL - 2)     # pad BEFORE the token
                     img += tk(calltok_addr(n))
