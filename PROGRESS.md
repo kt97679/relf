@@ -231,6 +231,7 @@ do not trust the absence of a line below.
 
 - **209** — hashed word list, buffered I/O, and the CV8 toolchain
   reworked for 32 threads
+- **210** — the escaped-band fault is a double SPILL; 203-205 corrected
 
 ### Not tied to an iteration
 
@@ -14081,3 +14082,98 @@ and the reworked `HEADER`/`REVEAL`/`SEARCH-WORDLIST`. The full CV8
 ladder builds and agrees with dash at both cell widths, the ANS CORE
 suite passes on CV8 at both widths, and a CV8 image saved by a CV8
 image boots, runs and matches dash.
+
+## Iteration 210: the escaped band fault is a double SPILL, not alignment
+
+**Iterations 203, 204 and 205 chased the wrong thing, and this entry
+supersedes their diagnosis.** They recorded the fault as "compiling
+pool.4 at run time under --escape", with `BUFFER:`/`DOES>` and
+`ABORT"`'s inline string as the suspects and their alignment as the
+mechanism. All three are wrong. Measured today, under `--escape`:
+
+| test                                    | result   |
+|-----------------------------------------|----------|
+| `CREATE`/`DOES>` compiled at run time    | works    |
+| `100 ALLOCATE` (escaped, selector 26)    | works    |
+| `99 CLOSE-FILE` (escaped, selector 2)    | works    |
+| `99 FILE-SIZE` (escaped, selector 11)    | works    |
+| `S" f" R/O OPEN-FILE` (escaped, sel 1)   | SEGFAULT |
+| `INCLUDED` a file containing one comment | SEGFAULT |
+
+pool.4 was never the trigger. `INCLUDED` is, and pool.4 is simply the
+first thing tests/locals.fth includes. BUF-ALLOC is where execution
+landed after the damage, not where it happened. The earlier bisection
+ran pool.4 PREFIXES but never tried a file with no content at all, so
+it could not see that the file's contents were irrelevant - a
+one-line comment file fails identically.
+
+**The cause.** `gen-tos.py` prepends `SPILL()` to every label that
+touches the memory stack, and
+
+    #define SPILL() do { dsp -= CELL_BYTES; CELL(dsp) = tos; } while (0)
+
+is NOT idempotent: it pushes the cached top-of-stack into memory and
+moves `dsp`. `L_esc` is the one handler in the engine that dispatches
+ONWARD to another handler instead of ending in `NEXT()`, so under
+ESCAPE the sequence is
+
+    L_esc:      SPILL(); ... goto *esc_tab[t];    <- spill 1
+    L_openfile: SPILL(); { ... }                  <- spill 2, same tos
+
+One `tos`, two spills. `dsp` ends one cell low and a junk cell sits
+under the real arguments, so `DS2` reads from the wrong place.
+
+**Why it looked like everything except what it was.**
+
+- Primitives taking one argument or none still find something
+  plausible in `DS0`, so `ALLOCATE`, `GETPID`, `CLOSE-FILE` and
+  `FILE-SIZE` all appear to work. `OPEN-FILE` is the first escaped
+  primitive that reads `DS2`, which is why it is the one that dies.
+- The emitted bytes were correct the whole time - `OPEN-FILE` is
+  `125 1 1`, `ALLOCATE` `125 26 1`, exactly as Iteration 202 recorded
+  - so every inspection of the IMAGE found nothing wrong, because
+  nothing was.
+- Iteration 203's own evidence describes it precisely without naming
+  it: BUF-ALLOC's `!` "storing through an address that came from a
+  `VAR@` two operations earlier" is what a stack shifted by one cell
+  looks like. It was read as an alignment fault.
+- `-DREG=0` does not help, which is what ruled out TOS caching as a
+  suspect in the obvious sense: `gen-tos.py` has already baked the
+  `SPILL()` into the generated source, so the flag cannot remove it.
+
+**Confirmed pre-existing.** Rebuilt the escape engine and image at
+69675b5, before the article-repository integration, and `OPEN-FILE`
+segfaults there too. The integration replaced vm-lab.c wholesale but
+the escape block is byte-identical before and after.
+
+### The invariant, which is the real lesson
+
+Every other handler spills exactly once because nothing jumps into it
+from a label that has already spilled. `L_esc` breaks that, and
+`gen-tos.py` has no way to know: it sees a label and adds a spill.
+The rule worth writing down is **a label that dispatches onward must
+not spill** - the label it reaches will.
+
+### Plan
+
+1. Make `L_esc` a pure decoder that leaves the stack alone, rather
+   than special-casing it in `gen-tos.py`. The invariant is a property
+   of the one label, not of the generator.
+2. Check `gen-fold.py` for the same shape. Folded bodies are COPIES of
+   handlers with `NEXT()` rewritten to `EXITNEXT()`; if a copy
+   inherits a `SPILL()` whose original was reached differently, it has
+   the same fault. Not yet examined.
+3. Re-run with `--escape`: the ANS CORE suite at both widths (which is
+   what caught this class in Iteration 204), tests/shell, tests/diff.
+4. Only then consider turning the band on by default. It frees 32
+   opcodes, and the map is otherwise down to two.
+
+### Why this matters beyond the escaped band
+
+`GOALS.md` records that adding a primitive is cheap. It is not: the
+CV8 one-byte map has 126 of 128 slots used, and the escaped band is
+the only thing that widens it. The `TYPE`/`ACCEPT` work parked in
+`stash@{0}` needs those opcodes, and Iteration 202 already said so -
+"the intention is to retire them in favour of ACCEPT/TYPE later".
+That was the plan of record and I did not know it, which is its own
+argument for reading the log before starting.
