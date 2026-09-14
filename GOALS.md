@@ -185,7 +185,20 @@ the full account and the fixes applied.
   suite from 59.3s to 1.2s. That had been true and unnoticed since
   Iteration 5. Slow feedback loops compound: they discourage running
   the full suite, which is exactly when regressions slip through.
-- **Single branch: `master`.** Linear history, no feature branches.
+- **Branches.** The convention was "single branch `master`, linear
+  history, no feature branches", and for 160 iterations that was
+  true. It is not now, and saying so matters more than restating the
+  rule: the engine work runs on `cv8`, with `token16` and `master` as
+  ancestors of it. `master` is ~50 commits behind and nothing is
+  merging back into it. Treat `cv8` as the trunk. History on it is
+  still linear and should stay that way.
+
+  Some of the work also lives in a SEPARATE repository,
+  `kt97679/forth-vm-evolution`, which is the article's working code.
+  It is a fork of this system's engine and Forth sources, and
+  improvements have flowed back from it - see "Integrated from the
+  article repository" below. When the two disagree about a shared
+  file, this tree is not automatically right.
 - **Code must always build and run, with all tests passing, at every
   commit** — not just at the end of a session.
 - **Git bundle handed off at the end of each iteration.** Always bundle
@@ -433,6 +446,25 @@ move honestly, the same way the mrsh count is:
   measurement: loop 944ms, spawn ~155ms, startup ~235ms, against
   dash's 4/72/98. The loop figure is the one Stage 2 of
   `PARSE-EXPAND-PLAN.md` exists to move.
+
+- **Every engine ratio in this repository comes from a single build,
+  and that is worth about ±5%.** The article repository measured the
+  variation properly and it is dominated by per-BUILD bias, not by
+  run-to-run noise: three consecutive runs of the SAME binaries agree
+  to 1-2%, but rebuild the tree and a stage moves five or ten percent,
+  because where the compiler places code is worth that much and is
+  fixed for a given binary. Taking the minimum over more repetitions
+  measures that bias more precisely instead of removing it; only
+  building several ways and averaging removes it.
+
+  The sting is in which stage moved most. The widest spread of any,
+  **12.6%, belongs to the cell engine** - the baseline that divides
+  every ratio in every table here. So a figure quoted from one build
+  should be read as ±5% on most stages and ±13% on the baseline, and
+  differences smaller than that were never resolved. `CV8.md` section
+  2.2 already knew the mechanism (±4-5% from alignment alone, which is
+  what `tools/lab/layout-variants.sh` builds for); what was missing
+  was that the baseline is the worst offender.
 
 Baseline at Iteration 41, and where it stands at Iteration 137:
 
@@ -1153,7 +1185,129 @@ than remembered.
   Entries here are things that are implemented, tested and incorrect
   in a way that will not show up locally - keep adding them.)*
 
+## Integrated from the article repository
+
+`kt97679/forth-vm-evolution` is the article's working code: this
+system's engine and Forth sources, taken sideways to build a ladder of
+encodings and measure them honestly. While the article was being
+written the shared parts improved, and those improvements are now
+here. What follows is what changed and what it is worth, because the
+largest of them **invalidates comparisons made before it**.
+
+### The hashed word list, and why it resets the numbers
+
+RelF was derived from SOD32 and dropped SOD32's hashed `FORTH-WORDLIST`
+- a thread count and 32 chain heads - for a single cell. Nothing
+replaced it. Every dictionary lookup was therefore a linear scan of the
+whole dictionary, twice, because the default search order holds
+`FORTH-WORDLIST` in two slots. It is worst for NUMBERS, which are never
+found and so cost a complete traversal before the system gives up and
+converts them.
+
+Measured here with `tools/find-depth.sh`, entries examined on 4000
+lines of interpreted arithmetic:
+
+    single chain     8,052,327
+    32 threads         288,009      28.0x fewer
+
+and in time, interleaved min of 5:
+
+    parse workload   8-byte   400ms -> 84ms    4.76x
+    CORE corpus      8-byte    58ms -> 19ms    3.05x
+    shell image build         482ms -> 86ms    5.60x
+
+**Read that against the encoding work.** CV8 and the whole ladder
+behind it - SOD16, CPT16, folding, the specialisations, TOS caching,
+every one of iterations 156-208 - are worth between 0.72x and 0.81x.
+One omission, restored, is worth more than all of it. That is not an
+argument against the encoding work; it is an argument about where this
+project was looking. Every benchmark it used compared the system
+against ITSELF, and a defect present from the first commit is
+invisible to that. The article repository found it by comparing
+against the ANCESTOR.
+
+Two consequences for anything quoted from before this landed:
+
+- Any whole-system timing taken before the hash was measuring a
+  system spending ~81% of its operations in dictionary search. Ratios
+  between encodings are still meaningful - the constant was identical
+  for all of them - but absolute figures and any comparison against
+  SOD32 or dash are not.
+- The same applies to the syscall constant fixed alongside it. `KEY`,
+  `EMIT` and `READ-LINE` did one syscall per CHARACTER; the CORE
+  corpus made 32,357 against SOD32's 59. Being identical for every
+  stage, it compressed every ratio toward 1.0 - so pre-existing
+  encoding comparisons are, if anything, understated.
+
+### What else came across
+
+- **Buffered terminal and file I/O** in `relf.c` and `vm-lab.c`.
+  `NOINLINE_IO` on those paths is load-bearing: upstream measured an
+  85% loss from letting a cold I/O path with loops and static state
+  inline into the dispatch function and wreck register allocation.
+  Same class as Iteration 189a, from the other side.
+- **`tools/layout.py`** (was `sod16-layout.py`), reworked for 32
+  threads: it reads the thread count out of the image rather than
+  assuming one, rebuilds every chain, and walks them all back to prove
+  the union is exactly the dictionary.
+- **`LIT64` in `tools/sod16.py`** - literals were masked to 32 bits
+  and silently truncated above that, the same fault CV8 had until
+  Iteration 194.
+- **A far `DOES>` call in `cv8.4`.** The two-byte near form has a
+  14-bit field of SCALED units: 131 KB of reach at scale 3, but only
+  16 KB at scale 0, so a `DOES>` word above 16 KB had its target
+  truncated and jumped into the data stack.
+- **`cv8b.4` and `cpt16.4`**, new overlays - byte-granular dictionary
+  headers, and CPT16.
+
+### What this tree had to solve that upstream did not
+
+Upstream builds kernel images from committed seed images and emits
+them with `layout.py`. This tree cross-compiles in place and saves
+images with `SAVE-SYSTEM`, so two things had no upstream equivalent:
+
+- **The bootstrap.** `extend.4`'s new `WORDLIST` reads
+  `FORTH-WORDLIST @` as a thread count, but on the pre-hash host that
+  cell is a POINTER - it allotted a garbage-sized block and
+  segfaulted. Done as a two-stage transition: old `extend.4` with new
+  `cross.4`/`kernel.4` to build the first hashed image, then new
+  `extend.4` to reach the fixed point. Both stages came out
+  byte-identical to upstream's seed images, which is the evidence the
+  port is faithful and not merely working. The transition is spent;
+  every host from here is hashed.
+- **`SAVE-SYSTEM`.** It unrelocated ONE cell of `FORTH-WORDLIST` where
+  there are now 33, so a saved image booted with 32 stale absolute
+  addresses and segfaulted in `FIND`. `SS-UNRELOCATE-WORDLIST` in
+  `save-system.4` fixes it, and `cv8-save.4` writes the header's new
+  count-then-heads form. **Two traps there are silent**: cell 0 is the
+  thread COUNT and must not be touched, and an empty thread is 0 and
+  must STAY 0, or `COLD`'s own `?DUP` guard relocates it into a
+  pointer to the image base.
+
+Anything that walks the dictionary must now walk 32 chains and sort by
+address: a single chain reaches about a thirty-second of the words and
+does not visit them in address order, which matters because
+`tools/dict-report.4` and `tools/dict-dump-addr.4` both derive a body's
+extent from its address neighbour.
+
+### Known, and not introduced by any of this
+
+Calling `SAVE-SYSTEM` from a RUNNING shell writes a correct image and
+then segfaults: `RESET-BUFFERS` releases pool buffers the shell goes on
+using. `relfsh` always follows `SAVE-SYSTEM` with `BYE`, so nothing
+hits it in normal use. Confirmed against the pre-hash tree rather than
+assumed - it does the same thing, the same way.
+
 ## Next work, in order (rewritten at the Iteration 149 freeze)
+
+**This queue is older than the tree.** It was written at 149, last
+touched around 189, and the work has since run to 208 plus the article
+pivot and the integration above. Item 4 is finished and is kept only
+for its reasoning; items 1-3, 6 and 7 have not been re-audited since,
+so confirm against `tests/verify` and `tests/posix` before trusting a
+count in them. GOALS.md warns at the top that it rots in the direction
+of describing finished work as unfinished; this section is where that
+happens.
 
 Everything below has been measured or designed; nothing is a guess.
 Run `tests/verify` first - if it does not say VERIFIED, fix that
@@ -1196,8 +1350,15 @@ before anything else, because every number here is relative to it.
    architecture section below). Three more POSIX failures, including
    `while read ...; done < file` - the commonest file-reading idiom in
    shell scripting.
-4. **Engine: SOD16, on branch `token16`.** See `SOD16.md` for the
-   design, the state, and the traps. Iterations 156-167 measured every
+4. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, and overtaken.**
+   SOD16 was superseded by CV8, and CV8 is finished: as of Iteration
+   207 it is self-hosting, saves its own images, and passes the ANS
+   CORE suite, `tests/shell` and `tests/diff` at both cell widths -
+   including after the hashed word list, which broke every translated
+   image and needed `tools/layout.py` reworked for 32 threads. The
+   text below is kept for the reasoning, not as a task. See `SOD16.md`
+   for the design, the state, and the traps. Iterations 156-167
+   measured every
    encoding this project has considered and this one won on the numbers
    available then. **As of Iteration 187 it boots, runs the shell, and
    passes `tests/diff` 20/20 at both cell widths**, failing only
@@ -1260,6 +1421,13 @@ dry.
   oracle, not broken code: the mrsh reference shell (124), the token
   decoder (135, 141), and two benchmarks that flattered the same
   answer (140, 141).
+- **Compare against something that is not this system.** Every
+  benchmark here compared RelF against RelF, which cannot see a defect
+  that was present at the first commit. A 4x regression in the outer
+  interpreter survived 200 iterations of careful measurement for
+  exactly that reason, and was found in an afternoon by running SOD32
+  on the same input. A ratio against your own previous build tells you
+  whether you improved; it never tells you whether you are slow.
 - **Check why a test passes**, not just that it does. `ulimit.sh`
   passed for two years' worth of iterations while `ulimit` did not
   exist (122).

@@ -218,6 +218,20 @@ marker for "still load-bearing". Find an entry by searching for
 - **167** — re-layout is tractable, because the image is already relative
 - **168** — the handoff: `SOD16.md`, and `GOALS.md` brought up to date
 
+### 169-208 — not indexed
+
+The index stops at 168 and the log does not. Entries 169 through 208 -
+the whole CV8 arc, from `INNER-INTERPRETER.md` through self-hosting and
+`SAVE-SYSTEM` - are in the file but were never added here. Noted rather
+than quietly fixed, because "the index is complete" is exactly the kind
+of assumption this file exists to stop: search for `Iteration N:` and
+do not trust the absence of a line below.
+
+### 209 — the article repository, merged back
+
+- **209** — hashed word list, buffered I/O, and the CV8 toolchain
+  reworked for 32 threads
+
 ### Not tied to an iteration
 
 - 2026-09-01 — Design discussion: phase 5 direction, and a rejected byte-opcode idea
@@ -13945,3 +13959,125 @@ Two lessons worth keeping for the article's honesty section: `git add
 -A` after a test run is how generated junk enters a repository, and a
 test harness that can be pointed at the wrong kind of input should
 check rather than assume.
+
+## Iteration 209: the article repository, merged back
+
+`kt97679/forth-vm-evolution` is this system's engine and Forth sources
+taken sideways to build a ladder of encodings for the article. Building
+that ladder found two defects in the SHARED code, and both are now
+here. `GOALS.md` has the durable version under "Integrated from the
+article repository"; this entry is what happened and what bit.
+
+**The finding that matters, and how it was found.** RelF dropped
+SOD32's hashed `FORTH-WORDLIST` when it was derived and put a single
+cell in its place. Every lookup became a linear scan of the whole
+dictionary, twice - worst for numbers, which are never found and so
+cost a full traversal before conversion. Measured with the instrument
+now at `tools/find-depth.sh`, on 4000 lines of interpreted arithmetic:
+
+    single chain     8,052,327 entries examined
+    32 threads         288,009                    28.0x fewer
+
+    parse workload   8-byte   400ms -> 84ms    4.76x
+    CORE corpus      8-byte    58ms -> 19ms    3.05x
+    shell image build         482ms -> 86ms    5.60x
+
+The whole encoding ladder - iterations 156 to 208 - is worth 0.72x to
+0.81x. This was worth 4.8x. **It survived 200 iterations of careful
+measurement because every benchmark this project used compared RelF
+against RelF**, and a defect present at the first commit is invisible
+to that. It was found by running the ancestor on the same input.
+
+**What bit, in order.**
+
+1. *The bootstrap has a chicken-and-egg.* `extend.4`'s new `WORDLIST`
+   reads `FORTH-WORDLIST @` as a thread count; on the pre-hash host
+   that cell is a POINTER, so it allotted a garbage-sized block and
+   segfaulted before defining a word. Upstream never sees this - it
+   ships committed seed images. Fixed as a two-stage transition: old
+   `extend.4` with new `cross.4`/`kernel.4` to produce the first hashed
+   image, then new `extend.4` to reach the fixed point. Both stages
+   came out byte-identical to upstream's `kernel-seed.img` and
+   `kernel32-seed.img`, which is the evidence the port is faithful
+   rather than merely working. Worth keeping as a technique: when
+   porting a change that alters a structure the BUILDER also reads,
+   the builder needs a version that works on both shapes, or a bridge.
+
+2. *`SAVE-SYSTEM` unrelocated one cell where there are now 33.*
+   `save-system.4` is identical in both repositories because upstream
+   builds kernel images only and never calls it. Saved shell images
+   booted with 32 stale absolute addresses and segfaulted in `FIND`.
+   `SS-UNRELOCATE-WORDLIST` fixes it. Two traps in there are silent:
+   cell 0 is the thread COUNT and must not be touched, and an empty
+   thread is 0 and must STAY 0 - subtracting `START` leaves `-START`
+   on disk, which `COLD`'s own `?DUP` guard then relocates into a
+   pointer to the image base.
+
+3. *Every translated image broke,* exactly as upstream's findings
+   predicted. `build-cv8.sh` produced images of plausible size and
+   segfaulted on the first one it ran, because the layout pass wrote
+   ONE chain in dump order and copied `FORTH-WORDLIST`'s parameter
+   field verbatim - with the thread heads of the image it was
+   translating FROM. Fixed by taking upstream's reworked
+   `tools/layout.py` (renamed from `sod16-layout.py`).
+
+4. *The image header changed shape and `cv8-save.4` did not know.*
+   The engine can no longer derive a word table from one chain, so the
+   header now carries a thread count and every head. Upstream never
+   updated `cv8-save.4` because it emits images with `layout.py`;
+   this tree saves them. `SS-HEADS,` writes the new form. Use `DUP`,
+   not `?DUP`, when emitting a head: an empty thread must be emitted
+   as 0, and `?DUP` leaves nothing on the stack in that case, so
+   `SS-CELL,` would write whatever was underneath it.
+
+5. *Anything that walks the dictionary had to learn to walk 32.* A
+   single chain reaches about a thirty-second of the words and does
+   not visit them in address order - which matters because
+   `tools/dict-report.4` and `tools/dict-dump-addr.4` both derive a
+   body's extent from its address NEIGHBOUR. Both now collect every
+   nfa from all threads and sort descending. Checked rather than
+   assumed: the walk tiles the dictionary exactly, 271 words summing
+   to 26,176 bytes against a 26,216-byte image, the 40-byte remainder
+   being the pre-dictionary prologue. `tools/dict-dump.4` was deleted
+   instead of fixed - unreferenced, a strict subset of the fixed
+   dumper, and it had just silently disagreed with its own near-copy.
+
+6. *A hard-coded path broke on contact.* `gen-fold.py` looked for
+   `../forth/kernel.4`, which is upstream's layout; here it is at the
+   root. It now tries the known layouts and fails loudly.
+
+**The other defect: one syscall per character.** `KEY`, `EMIT` and
+`READ-LINE` did `read`/`write` of one byte at a time - 32,357 syscalls
+for the CORE corpus against SOD32's 59, and 67,316 for one kernel
+cross-compile. Buffered now, with flushes ordered before any read of
+stdin, any other write to fd 1, and exit/fork/exec. `NOINLINE_IO` on
+those paths is load-bearing: upstream measured the specialised CV8
+engine going from 9.5ms to 17.6ms on a workload that reads no files at
+all, purely because a cold path with loops and static state inlined
+into the dispatch function and wrecked register allocation. Same class
+as 189a, from the other side.
+
+Because that constant was identical for every stage, it compressed
+every ratio in the encoding comparison toward 1.0 - so the pre-existing
+encoding numbers are, if anything, understated.
+
+**Also recorded, not fixed.** Upstream measured benchmark variation
+properly and found it is dominated by per-BUILD bias, not run-to-run
+noise: the same binaries agree to 1-2%, a rebuild moves a stage 5-10%,
+and the widest spread of any stage - 12.6% - belongs to the cell
+engine, which is the baseline dividing every ratio in every table here.
+Single-build figures in this repository should be read as ±5%, and
+±13% on the baseline. `CV8.md` 2.2 already had the mechanism; what was
+missing was which stage it hurt most.
+
+**Known and NOT introduced here.** Calling `SAVE-SYSTEM` from a running
+shell writes a correct image and then segfaults - `RESET-BUFFERS`
+releases pool buffers the shell goes on using. `relfsh` always follows
+it with `BYE`. Confirmed against the pre-hash tree rather than assumed.
+
+**State.** `tests/verify` VERIFIED; the only BASELINE movement is size,
++612 bytes on i386 and +1,192 on x86-64, for the extra wordlist cells
+and the reworked `HEADER`/`REVEAL`/`SEARCH-WORDLIST`. The full CV8
+ladder builds and agrees with dash at both cell widths, the ANS CORE
+suite passes on CV8 at both widths, and a CV8 image saved by a CV8
+image boots, runs and matches dash.
