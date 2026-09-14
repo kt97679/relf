@@ -287,7 +287,7 @@ The method that worked, stated because it kept catching things:
 | `relf.c` | the cell engine; `NEXT` at line ~342 |
 | `sod16.c` | the token engine; `relf.c` plus eight executable lines |
 | `tools/sod16.py` | translator and round-trip proof |
-| `tools/sod16-layout.py` | whole-image layout, relocation, `--emit-image` |
+| `tools/layout.py` | whole-image layout, relocation, `--emit-image` |
 | `tools/thread-chase.S` `.c` | the two call mechanisms by hand, and the driver |
 | `tools/dict-dump-addr.4` | the dump everything above reads |
 | `tests/bench` | takes `THIS_SH`; always adds `./relf kernel-shell.img` |
@@ -297,7 +297,7 @@ To reproduce the token build:
 ```sh
 printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n' \
   | ./relf kernel.img | tr -d '\r' > /tmp/d64.txt
-python3 tools/sod16-layout.py /tmp/d64.txt 8 --emit-image /tmp/s.s16
+python3 tools/layout.py /tmp/d64.txt 8 --emit-image /tmp/s.s16
 cc -O2 -o /tmp/sod16 sod16.c
 /tmp/sod16 /tmp/s.s16 -c 'echo it works'
 ```

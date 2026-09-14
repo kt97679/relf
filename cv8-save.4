@@ -22,7 +22,6 @@
 
 BASE @  DECIMAL
 
-VARIABLE SS-HEAD        \ newest NFA, captured before SS-SCRUB clears LAST
 
 : SS-SET-MAGIC8 ( --- )
   \ Must agree with the engine's IMAGE_MAGIC exactly, including the
@@ -60,9 +59,33 @@ CREATE SS-NAME 40 ALLOT
 \ one cell, then the field.
   SS-FIND 1 CELLS + START @ - ;
 
+: SS-HEADS, ( --- )
+  \ The word list, as the engine's loader now wants it: a thread COUNT
+  \ followed by that many START-relative heads.
+  \
+  \ It used to be a single head_nfa, and the loader walked that one
+  \ chain to build its word table. Once the dictionary was hashed there
+  \ was no single chain to walk - one thread reaches about a thirty-
+  \ second of the dictionary - so the header carries every head and the
+  \ loader walks them all. SOD16 needs them because it names a call by
+  \ word NUMBER; CV8 names a call by address and ignores this entirely,
+  \ but the header shape is shared.
+  \
+  \ Read from the LIVE word list, not the copy: SS-UNRELOCATE-WORDLIST
+  \ has already rewritten the copy's heads to their on-disk form, and
+  \ these need the same treatment applied to the live values.
+  \
+  \ DUP, not ?DUP. An empty thread is 0 and must be emitted as 0; ?DUP
+  \ leaves nothing on the stack in that case and SS-CELL, would then
+  \ write whatever was underneath it.
+  FORTH-WORDLIST @ DUP SS-CELL,
+  1+ 1 DO
+    FORTH-WORDLIST I CELLS + @ DUP IF START @ - THEN SS-CELL,
+  LOOP ;
+
 : SS-HEADER, ( --- )
   \ The CV8 header fields that follow the magic.
-  SS-HEAD @ SS-CELL,                        \ head_nfa
+  SS-HEADS,                                 \ nthreads, then the heads
   0 SS-CELL,                                \ ntails: DODOES is self-contained
   S" LSAVE-SP"    SS-PFA  SS-CELL,          \ the locals save-stack pointer
   S" LSAVE-STACK" SS-PFA  SS-CELL,          \ and its buffer
@@ -104,11 +127,7 @@ CREATE SS-NAME 40 ALLOT
   SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
   START @ SS-BUF @ SS-LEN @ MOVE
   DP SS-UNRELOCATE
-  FORTH-WORDLIST SS-UNRELOCATE
-  \ The dictionary head. NOT LAST: a translated image never had LAST
-  \ remapped, so it holds a stale address of the build session. The
-  \ wordlist head is remapped, and is the same word.
-  FORTH-WORDLIST @ START @ - SS-HEAD !
+  FORTH-WORDLIST SS-UNRELOCATE-WORDLIST
   SS-SCRUB-ALL
   SS-SET-MAGIC
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !

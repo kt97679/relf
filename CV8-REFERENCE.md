@@ -8,7 +8,7 @@ implement or debug it.
 
 Everything here describes the working lab implementation:
 `tools/lab/vm-lab.c` (`ENC=3`), `tools/sod16.py` and
-`tools/sod16-layout.py`. Byte values quoted below are from a real image
+`tools/layout.py`. Byte values quoted below are from a real image
 built by `tools/lab/build-cv8.sh`.
 
 ---
@@ -571,7 +571,7 @@ relf kernel.img
   + tools/dict-dump-addr.4      -> a text dump of the dictionary
   |
   v
-tools/sod16-layout.py           -> decodes every word body, re-lays it
+tools/layout.py           -> decodes every word body, re-lays it
   --v8 --cpt S --dataprims          out in CV8, fixes up every offset
   --fold --fold-set ...             and writes the image
   --spec loc,var,tiny,small,imm

@@ -1,8 +1,8 @@
 \ cv8.4 - make the Forth compiler emit CV8 instead of cells.
 \
 \ Phase 3. Until now every CV8 image has been TRANSLATED from a cell
-\ image by tools/sod16-layout.py, so a CV8 system could run but could
-\ not compile a new definition - tests/shell/run-forth's one failure.
+\ image by tools/layout.py, so a CV8 system could run but could not
+\ compile a new definition.
 \ This file replaces the code-emitting words with CV8 emitters.
 \
 \ HOW IT IS USED. Every word here has a distinct name (`;8`, `IF8`, ...)
@@ -45,9 +45,21 @@
 \ Append a 32-bit little-endian operand.
   DUP W, 16 RSHIFT W, ;
 
-: CV8-SHIFT ( --- n )
-\ The call/slot scale: 3 on a 64-bit cell, 2 on a 32-bit cell.
-  1 CELLS 8 = IF 3 ELSE 2 THEN ;
+VARIABLE CV8-SHIFT-V ( --- a-addr )
+\ The call/slot scale. 3 on a 64-bit cell, 2 on a 32-bit cell - or 0 in
+\ the byte-granular-header layout, where cv8b.4 sets it. A VARIABLE and
+\ not a constant so a second overlay can change it after this one is
+\ loaded; everything below reads it through CV8-SHIFT.
+: CV8-SHIFT-DEFAULT ( --- n ) 1 CELLS 8 = IF 3 ELSE 2 THEN ;
+CV8-SHIFT-DEFAULT CV8-SHIFT-V !
+: CV8-SHIFT ( --- n ) CV8-SHIFT-V @ ;
+
+VARIABLE CV8-DOES-FAR? ( --- a-addr )
+VARIABLE CV8-DOES-RESERVE ( --- a-addr )
+\ How DOES> writes its call, and how much room CREATE leaves for it.
+\ Two bytes by default; cv8b.4 sets three, because at a call scale of 0
+\ the near form cannot reach past 16 KB.
+0 CV8-DOES-FAR? ! 2 CV8-DOES-RESERVE !
 
 VARIABLE LAST-OP ( --- a-addr )
 \ Address of the primitive opcode just emitted, or 0 if the last thing
@@ -202,7 +214,10 @@ ALIGN
 : CREATE8 ( "ccc" --- )
 \ A data body is [DOVAR][pad to a cell][parameter field], so the
 \ parameter field stays cell-aligned and the pad is never executed.
-  HEADER REVEAL DOVAR-OP OP, ALIGN ;
+  \ Two bytes reserved after DOVAR so that DOES> can overwrite the front
+  \ with [DODOES][2-byte call] without moving the parameter field. The
+  \ engine computes the PFA as align(body+3) on both paths.
+  HEADER REVEAL DOVAR-OP OP, CV8-DOES-RESERVE @ ALLOT ALIGN ;
 
 : VARIABLE8 ( "ccc" --- )
   CREATE8 0 , ;
@@ -248,11 +263,23 @@ ALIGN
 \ already laid down [DOVAR][pad], so there is room to overwrite.
 
 : !CALL ( a-addr target --- )
-\ Store a near call to target at a-addr. Two bytes, so it fits in the
-\ space CREATE8 reserved.
-  START @ - CV8-SHIFT RSHIFT
-  2DUP 8 RSHIFT 128 OR SWAP C!
-  SWAP 1+ SWAP 255 AND SWAP C! ;
+\ Store a call to target at a-addr, in the form CV8-DOES-FAR? selects.
+\
+\ The two-byte near form has a 14-bit field of SCALED units: 131 KB of
+\ reach at a scale of 3, but only 16 KB at a scale of 0. Cross-compiling
+\ the kernel grows the dictionary well past 16 KB, so at scale 0 a DOES>
+\ word up there had its target silently truncated and jumped into the
+\ data stack. The far form is three bytes, which is why CREATE has to
+\ reserve a matching amount - see CV8-DOES-RESERVE.
+  START @ - CV8-SHIFT RSHIFT        ( a-addr v )
+  CV8-DOES-FAR? @ IF
+    2DUP 255 AND SWAP 2 + C!
+    2DUP 8 RSHIFT 255 AND SWAP 1+ C!
+    16 RSHIFT 192 OR SWAP C!
+  ELSE
+    2DUP 255 AND SWAP 1+ C!
+    8 RSHIFT 128 OR SWAP C!
+  THEN ;
 
 : (;CODE)8 ( --- )
 \ Runtime for DOES>: point the last created word at the code following

@@ -120,7 +120,7 @@ more than 16 signed bits.
 
 ## The layout pass, and the whole-image number
 
-`tools/sod16-layout.py` (Iteration 173) lays the entire image out again
+`tools/layout.py` (Iteration 173) lays the entire image out again
 with token bodies, recomputes every reference the new spacing
 invalidates, and checks the result. Run it on a dump from either
 engine. It reports, and exits nonzero if any of it fails:
@@ -256,7 +256,7 @@ Everything else that holds an offset is scrubbed by `SS-SCRUB`.
 
 ## It boots
 
-Iteration 179. `tools/sod16-layout.py --emit-image` writes a token
+Iteration 179. `tools/layout.py --emit-image` writes a token
 image and `sod16.c` runs it, at **both cell widths**:
 
     x86-64   206,416 B  ->  82,752 B

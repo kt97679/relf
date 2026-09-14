@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DUMP, CELL, PROFS = sys.argv[1], sys.argv[2], sys.argv[3:]
 HOT = '+,=,!,@,LSHIFT,RSHIFT,C@,C!,AND,OR,XOR,LIT,<,U<,OVER,DROP,DUP,SWAP,ROT,>R,R>,R@,NEGATE'
 S = '3' if CELL == '8' else '2'
-LAY = os.path.join(HERE, '..', 'sod16-layout.py')
+LAY = os.path.join(HERE, '..', 'layout.py')
 sys.argv = [LAY, DUMP, CELL, '--v8', '--cpt', S, '--dataprims', '--fold', '--fold-set', HOT]
 src = open(LAY).read(); src = src[:src.index('# ---- report')]
 G = {'__name__': 'lay', '__file__': LAY}

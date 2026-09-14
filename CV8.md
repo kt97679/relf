@@ -420,7 +420,7 @@ the "dense at rest, fast in memory" point.
 That option was considered here and rejected:
 - The metric is disk *and* memory.
 - Load-time relocation of the whole image in C is exactly what
-  `sod16-layout.py` is, and it would have to be in the engine.
+  `layout.py` is, and it would have to be in the engine.
 - The `start` workload would pay it every time.
 
 **WebAssembly.** Titzer's in-place interpreter executes the compact
@@ -528,9 +528,9 @@ python3 $OLDPWD/tools/lab/bench-vm.py 5 cfg        # paired CPU-time ratios
 **Profiling.** `cc -DPROFILE=1` on `vm-lab.c`, then
 `VMPROF=/tmp/p.txt <engine> <image> script.sh`. `tools/lab/prof.py`
 summarises the dispatch mix. `tools/lab/hot.py` maps call targets to
-words, using `sod16-layout.py --symbols`.
+words, using `layout.py --symbols`.
 
-**Translator options** (all in `tools/sod16-layout.py`). With no
+**Translator options** (all in `tools/layout.py`). With no
 options, the output is byte-identical to `token16`'s tool; this was
 checked at both widths.
 

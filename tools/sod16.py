@@ -97,6 +97,13 @@ by_name = {w['n']: w for w in words}
 # also what GOALS.md's rule for adding a primitive says to do.
 LIT32 = len(prims)
 assert LIT32 < 256, "no room for the LIT32 opcode below the call band"
+# LIT64: a literal that does not fit LIT32's SIGNED 32 bits. Before this
+# existed, to_tokens() masked every literal to 32 bits, so a wider one
+# was silently truncated - the same fault CV8 had until Iteration 194,
+# still present here because no 16-bit image had ever compiled anything.
+LIT64 = len(prims) + 3
+def _fits32(v):
+    return -(1 << 31) <= v < (1 << 31)
 
 src = "".join(open(f, errors='replace').read()
               for f in ['shell.4', 'locals.4', 'pool.4', 'save-system.4'])
@@ -153,7 +160,7 @@ LOOP_WORDS = ('(LOOP)', '(+LOOP)')
 # So this operand carries across like the others. Its value is a
 # relative address into ANOTHER word, which a per-word translator
 # cannot resolve, so it is passed through here and relocated by
-# tools/sod16-layout.py, which is the pass that knows where words land.
+# tools/layout.py, which is the pass that knows where words land.
 XT_WORDS   = ('(POSTPONE)',)
 
 # locals.4's L-EMIT compiles "the offset as a literal, then a relative
@@ -536,7 +543,10 @@ def op_bytes(k, pl, t):
     if k == 'PX': return 2
     if k == 'LITX': return 4
     if k in ('P', 'C'): return 2
-    if k == 'LIT': return 4 if 0 <= pl <= 0xFFFF else 6
+    if k == 'LIT':
+        if 0 <= pl <= 0xFFFF: return 4          # LIT + one token
+        if _fits32(pl): return 6                # LIT32 + two tokens
+        return 2 + CELL                         # LIT64 + CELL/2 tokens
     if k == 'LITOFF': return 6          # always the 32-bit form
     if k in ('BR', 'QBR'): return 4
     if k in ('OPD', 'XT'): return CELL
@@ -704,11 +714,16 @@ def to_tokens(ops):
             v = pl & ((1 << 32) - 1)
             t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
         elif k == 'LIT':
-            v = pl & ((1 << 32) - 1)
             if 0 <= pl <= 0xFFFF:
                 t.append(idx_of['LIT']); t.append(pl)
-            else:
+            elif _fits32(pl):
+                v = pl & ((1 << 32) - 1)
                 t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
+            else:
+                v = pl & ((1 << (8 * CELL)) - 1)
+                t.append(LIT64)
+                for sh in range(0, 8 * CELL, 16):
+                    t.append((v >> sh) & MASK)
         elif k in ('BR', 'QBR'):
             t.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
             # Convert. Both offsets are measured from the operand

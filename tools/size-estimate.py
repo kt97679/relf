@@ -10,9 +10,9 @@ re-sized per scheme; headers, names, data bodies and tails are shared.
 """
 import sys, subprocess, collections
 sys.argv = [sys.argv[0], sys.argv[1], sys.argv[2], '--cpt', '1', '--dataprims', '--fold']
-src = open(__file__.replace('size-estimate.py', 'sod16-layout.py')).read()
+src = open(__file__.replace('size-estimate.py', 'layout.py')).read()
 src = src[:src.index('# ---- report')]
-G2 = {'__name__': 'lay', '__file__': __file__.replace('size-estimate.py', 'sod16-layout.py')}
+G2 = {'__name__': 'lay', '__file__': __file__.replace('size-estimate.py', 'layout.py')}
 exec(compile(src, 'lay', 'exec'), G2)
 order, kind, info, CELL = G2['order'], G2['kind'], G2['info'], G2['CELL']
 align_up, tail_bytes, stub_ops = G2['align_up'], G2['tail_bytes'], G2['stub_ops']

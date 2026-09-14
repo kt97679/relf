@@ -24,7 +24,7 @@ CV8_LIST=$(sed -n "/^CREATE FOLD-OPS/,/^ALIGN/p" cv8.4 |
     echo "fold set mismatch between build-cv8.sh and cv8.4's FOLD-OPS:"
     echo "  build-cv8.sh: $HOT"
     echo "  cv8.4:        $CV8_LIST"; exit 1; }
-LAY=tools/sod16-layout.py
+LAY=tools/layout.py
 
 # ---- dictionary dumps (tr -d '\r', always) --------------------------
 BOOT='S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'

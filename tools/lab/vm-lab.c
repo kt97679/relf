@@ -106,6 +106,15 @@ static char **g_argv;
  *  let code span 32 MB - an asymmetry that fails silently.  */
 #define VARSLOT 1
 #endif
+#ifndef DOESFAR
+/*  DOESFAR: CREATE reserves THREE bytes after the DOVAR opcode and
+ *  DOES> writes the three-byte far call, so the parameter field is at
+ *  align(body+4). Needed when the call scale is 0, where the two-byte
+ *  near form reaches only 16 KB and the cross-compiler's dictionary is
+ *  far larger. Without it CREATE reserves two and the field is at
+ *  align(body+3), which is what every other CV8 stage uses.  */
+#define DOESFAR 0
+#endif
 #ifndef VARCALL
 /*  VARCALL: the call form is variable too. 10xxxxxx takes one more byte
  *  (14-bit payload), 11xxxxxx takes two (22-bit). Costs one extra test
@@ -334,10 +343,16 @@ static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present (locals header) */
 #define F_LIT64   0x08   /* LIT64 may appear                            */
+#define F_BYTEHDR 0x10   /* dictionary headers are byte-granular: a 1-3
+                            byte link with its tag last, unpadded names.
+                            The engine never reads a link in this
+                            encoding, so it accepts this unconditionally;
+                            the flag exists so an ENC=1 build, which does
+                            walk links, can refuse. */
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES,
     SPEC ? 'L' : 0, CV8_VERSION,
     (VARCALL ? F_VARCALL : 0) | (VARSLOT ? F_VARSLOT : 0)
-        | (SPEC ? F_SPEC : 0) | F_LIT64 };
+        | (SPEC ? F_SPEC : 0) | F_LIT64 | F_BYTEHDR };
 #else
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'P', 'T', '0' + SCALE, CELL_BYTES, 0, 0, 0 };
 #endif
@@ -502,6 +517,7 @@ static const int open_flags[8] = {
  *  This function reads binary forth image from file into memory.
  */
 
+#define MAX_THREADS 4096
 #define MAX_TAILS 16
 static UNS64 nwords;
 static UNS64 loc_hdr[5];   /* SPEC: lsp, lstk, lmax, lsave, lrestore (offsets) */
@@ -510,7 +526,8 @@ static void load_image(const char *name) {
     int fd;
     long len;
     UNS8 magic[8];
-    UNS64 head_nfa, ntails, nfa, link;
+    UNS64 head_nfa, ntails, nfa, link, nthreads;
+    UNS64 heads[MAX_THREADS];
     UNS64 tail_w[MAX_TAILS], tail_o[MAX_TAILS];
     long i, n;
 
@@ -551,8 +568,26 @@ static void load_image(const char *name) {
      *  so the header describes how to finish deriving the table rather
      *  than carrying the table itself.
      */
-    if (full_read(fd, (UNS8*)&head_nfa, CELL_BYTES) != CELL_BYTES ||
-        full_read(fd, (UNS8*)&ntails,   CELL_BYTES) != CELL_BYTES) {
+    /*  The word list is HASHED, so there is no single chain to walk and
+     *  the header carries every thread head: a count, then that many
+     *  START-relative offsets. Only SOD16 uses them - it is the one
+     *  encoding that names a call by word NUMBER - but the header has
+     *  one shape for every encoding.  */
+    if (full_read(fd, (UNS8*)&nthreads, CELL_BYTES) != CELL_BYTES) {
+        write_str(2, "Truncated image header.\n");
+        exit(2);
+    }
+    if (nthreads < 1 || nthreads > MAX_THREADS) {
+        write_str(2, "Image declares an impossible thread count.\n");
+        exit(2);
+    }
+    for (i = 0; i < nthreads; i++)
+        if (full_read(fd, (UNS8*)&heads[i], CELL_BYTES) != CELL_BYTES) {
+            write_str(2, "Truncated image header.\n");
+            exit(2);
+        }
+    head_nfa = heads[0];
+    if (full_read(fd, (UNS8*)&ntails, CELL_BYTES) != CELL_BYTES) {
         write_str(2, "Truncated image header.\n");
         exit(2);
     }
@@ -591,16 +626,75 @@ static void load_image(const char *name) {
         exit(2);
     }
 
-    /*  Count the chain, then fill it in. Walking twice avoids growing
-     *  the table, and the chain runs newest to oldest while word
-     *  numbers run oldest to newest, so the index is reversed.  */
-    nfa = (UNS64)(uintptr_t)base + head_nfa;
-    for (n = 0;; n++) {
-        link = CELL(nfa - CELL_BYTES);
-        if (link == 0) break;
-        nfa = (nfa - CELL_BYTES) + link;
+#if ENC != 1
+    /*  Only SOD16 names a call by word number, so only SOD16 needs the
+     *  table, and only SOD16 walks the link chain to build it. The
+     *  others compute a call target from the address and never read a
+     *  link - which is what lets the byte-header CV8 layout change the
+     *  link's encoding without the engine knowing.  */
+    (void)link; (void)nfa; (void)n;
+    return;
+#else
+    if (magic[7] & 0x10) {
+        write_str(2, "Byte-granular headers are not supported by this encoding.\n");
+        exit(2);
     }
-    n++;
+    /*  Collect every word from every thread, then sort by address.
+     *
+     *  A word NUMBER is its position in definition order, and the
+     *  dictionary only ever grows upwards, so definition order IS
+     *  ascending body address. That used to fall out of walking the one
+     *  chain backwards; with a hashed word list it has to be recovered
+     *  by sorting, and the sort is the definition both the loader and
+     *  tools/layout.py now agree on.  */
+    {
+        UNS64 cap = 4096, i2, j2;
+        UNS64 *nfas = malloc(cap * sizeof *nfas);
+        if (!nfas) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
+        n = 0;
+        for (i2 = 0; i2 < nthreads; i2++) {
+            if (!heads[i2]) continue;
+            nfa = (UNS64)(uintptr_t)base + heads[i2];
+            for (;;) {
+                if (n == cap) {
+                    cap *= 2;
+                    nfas = realloc(nfas, cap * sizeof *nfas);
+                    if (!nfas) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
+                }
+                nfas[n++] = nfa;
+                link = CELL(nfa - CELL_BYTES);
+                if (link == 0) break;
+                nfa = (nfa - CELL_BYTES) + link;
+            }
+        }
+        /*  Insertion sort, ascending. It runs once at load over a few
+         *  hundred entries.  */
+        for (i2 = 1; i2 < n; i2++) {
+            UNS64 k = nfas[i2];
+            for (j2 = i2; j2 > 0 && nfas[j2 - 1] > k; j2--) nfas[j2] = nfas[j2 - 1];
+            nfas[j2] = k;
+        }
+        nwords = n;
+        wordtab = malloc((n + ntails) * sizeof *wordtab);
+        if (!wordtab) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
+        for (i2 = 0; i2 < n; i2++) {
+            UNS64 nlen = (*(UNS8*)(uintptr_t)nfas[i2]) & 31;
+            wordtab[i2] = nfas[i2] + ((nlen + 1 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+#if SKIPPAD
+            while (TOK(wordtab[i2]) == 0) wordtab[i2] += 2;
+#endif
+        }
+        free(nfas);
+        for (i = 0; i < ntails; i++) {
+            if (tail_w[i] >= (UNS64)n) {
+                write_str(2, "DOES> tail names a word outside the chain.\n");
+                exit(2);
+            }
+            wordtab[n + i] = wordtab[tail_w[i]] + tail_o[i];
+        }
+        return;
+    }
+#endif
     nwords = n;
     wordtab = malloc((n + ntails) * sizeof *wordtab);
     if (!wordtab) {
@@ -664,6 +758,115 @@ static int prev_op = 257;
 #define PROFIP(a)
 #define PROFDUMP
 #endif
+
+/*
+ *  Buffered terminal I/O.
+ *
+ *  KEY and EMIT used to do one read(2) or write(2) PER CHARACTER. On a
+ *  host where a syscall is cheap that is merely wasteful; on real
+ *  hardware with the usual mitigations it dominates every workload that
+ *  touches text. Running the 616-case CORE corpus made 26,950 one-byte
+ *  reads of stdin and 5,373 one-byte writes: 32,357 syscalls against
+ *  SOD32's 59 for the identical input, because SOD32 reads in blocks.
+ *
+ *  That is not a small constant. Measured on two machines, the same
+ *  build was 5x slower on the faster CPU, purely because its syscalls
+ *  cost more - and the constant is identical for every stage, so it also
+ *  compressed every ratio in the comparison towards 1.0 and hid the
+ *  differences the benchmarks exist to show.
+ *
+ *  Ordering is the thing to get right. Output is flushed before any
+ *  read of stdin, so a prompt appears before the input it asks for;
+ *  before any other write to fd 1, so interleaving is preserved; and
+ *  before exit, fork and exec, so nothing is lost or duplicated into a
+ *  child.
+ */
+#define TIOBUF 4096
+static UNS8 t_ibuf[TIOBUF];
+static int  t_ipos = 0, t_ilen = 0;
+static UNS8 t_obuf[TIOBUF];
+static int  t_olen = 0;
+
+
+/*
+ *  Buffered READ-LINE for FILES, the same problem as KEY and EMIT and a
+ *  larger one. Cross-compiling the kernel reads extend.4, cross.4 and
+ *  kernel.4 - about 62 KB of source - and READ-LINE was doing
+ *  read(fd, &c, 1) for every byte of it: 67,316 syscalls for one build.
+ *
+ *  The OS file offset has to stay honest, because REPOSITION-FILE,
+ *  FILE-POSITION and READ-FILE all depend on it and none of them know
+ *  about this buffer. So any of those drops the buffer first, seeking
+ *  back over whatever was read ahead and not yet consumed.
+ */
+/*  These MUST NOT be inlined into virtual_machine(). They are cold I/O
+ *  paths with loops and static state; inlined, they wreck register
+ *  allocation across the whole dispatch function and the VM registers
+ *  stop living in registers. Measured: the specialised CV8 engine went
+ *  from 9.5 ms to 17.6 ms on a workload that reads no files at all,
+ *  same image, same input - an 85% loss from adding a function nothing
+ *  in that run ever called. Iteration 189a found the same class of
+ *  problem from the other direction, when the VM registers were
+ *  file-scope statics.  */
+#define NOINLINE_IO __attribute__((noinline))
+#define FBUFN  8
+#define FBUFSZ 4096
+static struct fbuf { int fd, len, pos; UNS8 b[FBUFSZ]; } t_fb[FBUFN];
+
+NOINLINE_IO static struct fbuf *t_fslot(int fd) {
+    int i, free_ = -1;
+    for (i = 0; i < FBUFN; i++) {
+        if (t_fb[i].fd == fd) return &t_fb[i];
+        if (t_fb[i].fd == 0 && free_ < 0) free_ = i;   /* 0 marks unused */
+    }
+    if (free_ < 0) return 0;                           /* fall back to raw */
+    t_fb[free_].fd = fd; t_fb[free_].len = t_fb[free_].pos = 0;
+    return &t_fb[free_];
+}
+
+NOINLINE_IO static void t_fdrop(int fd) {
+    int i;
+    for (i = 0; i < FBUFN; i++) if (t_fb[i].fd == fd) {
+        int un = t_fb[i].len - t_fb[i].pos;
+        if (un > 0) lseek(fd, -(off_t)un, SEEK_CUR);
+        t_fb[i].fd = 0; t_fb[i].len = t_fb[i].pos = 0;
+    }
+}
+
+/*  Next byte of fd: >=0 a character, -1 end of file, -2 error.  */
+NOINLINE_IO static int t_fgetc(int fd) {
+    struct fbuf *f = t_fslot(fd);
+    long n;
+    if (!f) { UNS8 c; n = read(fd, &c, 1);
+              return n == 1 ? (int)c : (n == 0 ? -1 : -2); }
+    if (f->pos >= f->len) {
+        n = read(fd, f->b, FBUFSZ);
+        if (n < 0) return -2;
+        if (n == 0) return -1;
+        f->len = (int)n; f->pos = 0;
+    }
+    return f->b[f->pos++];
+}
+
+NOINLINE_IO static void t_flush(void) {
+    if (t_olen) { full_write(1, t_obuf, (size_t)t_olen); t_olen = 0; }
+}
+
+NOINLINE_IO static void t_put(UNS8 c) {
+    if (t_olen == TIOBUF) t_flush();
+    t_obuf[t_olen++] = c;
+}
+
+NOINLINE_IO static int t_getc(void) {
+    if (t_ipos >= t_ilen) {
+        t_flush();                     /* prompt before blocking */
+        t_ilen = (int)read(0, t_ibuf, TIOBUF);
+        t_ipos = 0;
+        if (t_ilen <= 0) { t_ilen = 0; return -1; }
+    }
+    return t_ibuf[t_ipos++];
+}
+
 static void virtual_machine(void) {
     VMREGS
 #if ENC == 1
@@ -699,6 +902,15 @@ static void virtual_machine(void) {
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
         &&L_lit32, &&L_dovar, &&L_dodoes,
+#if ENC != 3
+        /*  LIT64 at 71, the first index past DODOES. Folded opcodes
+         *  start at FOLDBASE (128) and calls at 256, so 71..127 is
+         *  free space in both 16-bit encodings.  */
+        [71] = &&L_lit64t,
+#endif
+#if ENC == 1
+        [72] = &&L_farcall, [73] = &&L_dodoesf,
+#endif
 #if ENC == 3
         &&L_lit8, &&L_lit8x,
         [0x7C] = &&L_lit64, [0x7D] = &&L_esc,
@@ -819,6 +1031,49 @@ L_lit32:   /* lit32   */ { UNS64 v = LD32(ip);
 L_lit32:   /* lit32   */ { UNS64 v = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
                            if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
                            PUSH(v); ip += 4; } NEXT();
+/*  A literal too wide for LIT32's sign-extended 32 bits, as CELL_BYTES/2
+ *  tokens, little end first. The 16-bit encodings did not have this: the
+ *  translator masked every literal to 32 bits and a wider one was
+ *  silently truncated. Nothing noticed, because no image in these
+ *  encodings had ever COMPILED a literal - they were all translated from
+ *  a cell image whose own constants happened to fit. The first thing to
+ *  find it was the CORE suite's MAX-INT on a 64-bit cell.  */
+L_lit64t:  /* lit64   */ { UNS64 v = 0; int k_;
+                           for (k_ = 0; k_ < CELL_BYTES / 2; k_++)
+                               v |= (UNS64)TOK(ip + 2 * k_) << (16 * k_);
+                           PUSH(v); ip += CELL_BYTES; } NEXT();
+#endif
+#if ENC == 1
+/*  FARCALL: [72][low 16][high 16] - a call to an absolute byte offset
+ *  from the image base, bypassing the word table entirely.
+ *
+ *  SOD16 needs this to compile anything. Its table is derived at load
+ *  by walking the dictionary chain, sized to exactly the words that
+ *  were in the image, and malloc'd once; a word defined afterwards has
+ *  no entry and therefore no number that a call token could name. The
+ *  table is the whole point of the encoding and it is also the reason
+ *  the encoding cannot host its own compiler without an escape.
+ *
+ *  CPT16, one step later, needs nothing of the kind: it computes the
+ *  target from the address. That contrast is the argument for deleting
+ *  the table, and this opcode is what makes it measurable rather than
+ *  hypothetical.  */
+L_farcall: { UNS64 off = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
+             RPUSH(ip + 4); ip = (UNS64)(uintptr_t)base + off; }
+           goto next;
+/*  DODOES with an address instead of a word number, for a DOES> word
+ *  created after load. Body is [DODOESF][offset/2][pad][PFA].
+ *
+ *  The operand is ONE token, not two, and that is forced by the layout
+ *  rather than chosen: CREATE reserves exactly one cell before the
+ *  parameter field, so on a 4-byte cell there are four bytes to
+ *  overwrite and a 32-bit offset does not fit. Bodies are 2-byte
+ *  aligned, so halving the offset costs nothing and reaches 128 KB.
+ *  Past that the compiler refuses rather than truncating.  */
+L_dodoesf: { UNS64 off = (UNS64)TOK(ip) << 1;
+             RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+             ip = (UNS64)(uintptr_t)base + off; }
+           goto next;
 #endif
 #if ENC == 3 && SPEC
 /*  Specialised opcodes, each borrowed from another VM (CV8.md 10).
@@ -897,7 +1152,18 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
 #endif
 #endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
+#if ENC == 3
+    /*  The PFA is align(body+3), not align(body+1), so that it is the
+     *  SAME address DODOES computes after overwriting the front of the
+     *  body with a 2-byte call. With bodies always cell-aligned the two
+     *  agreed by accident; the byte-header layout leaves bodies wherever
+     *  the name ends, and a DOES> word created at run time then found
+     *  its parameter field one cell away from where CREATE had put it.
+     *  cv8.4's CREATE8 reserves the two bytes.  */
+    PUSH((ip + (DOESFAR ? 3 : 2) + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+#else
     PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
+#endif
     ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
 #if ENC == 3
@@ -966,22 +1232,23 @@ L_dplus:   /* d+      */
 
 L_emit: { /* emit    */
     UNS8 c = (UNS8)DS0;
-    full_write(1, &c, 1);
+    t_put(c);
     dsp += CELL_BYTES;
     NEXT();
 }
 L_key: { /* key     */
-    UNS8 c;
-    long n = read(0, &c, 1);
+    int ch = t_getc();
+    UNS8 c = (UNS8)ch;
+    long n = (ch < 0) ? 0 : 1;
     if (n <= 0) {
         /* Clean exit on stdin EOF (or a read error) instead of spinning
          * forever re-reading EOF - see GOALS.md / PROGRESS.md, Bug 3. */
-        PROFDUMP; exit(0);
+        t_flush(); PROFDUMP; exit(0);
     }
     PUSH((UNS64)c);
     NEXT();
 }
-L_bye:     /* bye     */ PROFDUMP; exit(0);
+L_bye:     /* bye     */ t_flush(); PROFDUMP; exit(0);
 L_spfetch: /* sp@     */ PUSH(dsp + CELL_BYTES); NEXT();
 L_spstore: /* sp!     */ dsp = DS0; NEXT();
 L_rpfetch: /* rp@     */ PUSH(rp); NEXT();
@@ -998,9 +1265,12 @@ L_openfile: { /* c-addr u fam --- fid ior */
     dsp += CELL_BYTES;
     NEXT();
 }
-L_closefile: /* fid --- ior */
+L_closefile: {/* fid --- ior */
+    t_fdrop((int)DS0);
+
     DS0 = (UNS64)close((int)DS0);
     NEXT();
+    }
 L_readline: { /* c-addr u1 fid --- u2 flag ior */
     int fd = (int)DS0;
     UNS64 addr = DS2, max = DS1, count = 0;
@@ -1008,7 +1278,9 @@ L_readline: { /* c-addr u1 fid --- u2 flag ior */
     UNS8 c;
 
     while (count < max) {
-        n = read(fd, &c, 1);
+        int ch = (fd == 0) ? t_getc() : t_fgetc(fd);
+        n = (ch == -2) ? -1 : (ch < 0 ? 0 : 1);
+        c = (UNS8)ch;
         if (n < 0) { err = 1; break; }
         if (n == 0) break;      /* EOF */
         got_any = 1;
@@ -1025,6 +1297,7 @@ L_readline: { /* c-addr u1 fid --- u2 flag ior */
     NEXT();
 }
 L_writeline: { /* c-addr u fid --- ior */
+    t_flush();
     int fd = (int)DS0;
     UNS64 addr = DS2, len = DS1;
     long n;
@@ -1040,6 +1313,7 @@ L_writeline: { /* c-addr u fid --- ior */
     NEXT();
 }
 L_readfile: { /* c-addr u1 fid --- u2 ior */
+    t_fdrop((int)DS0);
     int fd = (int)DS0;
     UNS64 addr = DS2, maxlen = DS1;
     long n;
@@ -1056,6 +1330,8 @@ L_readfile: { /* c-addr u1 fid --- u2 ior */
     NEXT();
 }
 L_writefile: { /* c-addr u fid --- ior */
+    t_fdrop((int)DS0);
+    t_flush();
     int fd = (int)DS0;
     UNS64 addr = DS2, len = DS1;
     long n;
@@ -1065,7 +1341,7 @@ L_writefile: { /* c-addr u fid --- ior */
     dsp += 2 * CELL_BYTES;
     NEXT();
 }
-L_system: { /* c-addr u --- ior */
+L_system: { t_flush(); /* c-addr u --- ior */
     UNS64 addr = DS1, len = DS0;
     UNS8 saved;
     pid_t pid;
@@ -1095,11 +1371,16 @@ L_system: { /* c-addr u --- ior */
     dsp += CELL_BYTES;
     NEXT();
 }
-L_reposfile: /* offset fid --- ior */
+L_reposfile: {/* offset fid --- ior */
+    t_fdrop((int)DS0);
+
     DS1 = (UNS64)lseek((int)DS0, (long)DS1, SEEK_SET);
     dsp += CELL_BYTES;
     NEXT();
-L_filepos: /* fid --- u ior */
+    }
+L_filepos: {/* fid --- u ior */
+    t_fdrop((int)DS0);
+
     DS0 = (UNS64)lseek((int)DS0, 0, SEEK_CUR);
     dsp -= CELL_BYTES;
     if ((INT64)DS1 == -1) {
@@ -1108,6 +1389,7 @@ L_filepos: /* fid --- u ior */
         DS0 = 0;
     }
     NEXT();
+    }
 L_delfile: { /* c-addr u --- ior */
     t = BYTE(DS1 + DS0);
     BYTE(DS1 + DS0) = 0;
@@ -1117,6 +1399,7 @@ L_delfile: { /* c-addr u --- ior */
     NEXT();
 }
 L_filesize: { /* fid --- u ior */
+    t_fdrop((int)DS0);
     int fd = (int)DS0;
     long cur = lseek(fd, 0, SEEK_CUR);
     long size = lseek(fd, 0, SEEK_END);
@@ -1135,9 +1418,9 @@ L_filesize: { /* fid --- u ior */
  *  live source text the way OPEN-FILE's c-addr/u pair typically is).
  */
 L_fork: /* --- pid */
-    PUSH((UNS64)(INT64)fork());
+     t_flush();PUSH((UNS64)(INT64)fork());
     NEXT();
-L_execve: { /* argv-addr path-addr --- ior */
+L_execve: { t_flush(); /* argv-addr path-addr --- ior */
     char *path = (char*)(uintptr_t)DS0;
     char **argv = (char**)(uintptr_t)DS1;
     execve(path, argv, environ);
@@ -1181,7 +1464,7 @@ L_setenv: /* value-addr name-addr --- ior */
     dsp += CELL_BYTES;
     NEXT();
 L_sysexit: /* n --- */
-    PROFDUMP; _exit((int)DS0);
+     t_flush();PROFDUMP; _exit((int)DS0);
 L_chdir: /* c-addr --- ior */
     DS0 = (UNS64)((chdir((char*)(uintptr_t)DS0) < 0) ? 200 : 0);
     NEXT();
