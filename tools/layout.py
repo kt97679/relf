@@ -220,8 +220,16 @@ if CV8_COMPILER:
           % (OVERLAY_SUFFIX, _n, "; NOT translatable: %s" % _miss if _miss else "",
              "; no such target: %s" % _unmatched if _unmatched else ""))
 
-for w in order:
-    if kind[w['s']] == 'code': tok[w['s']] = to_tokens(info[w['s']])
+if not V8:
+    for w in order:
+        if kind[w['s']] == 'code': tok[w['s']] = to_tokens(info[w['s']])
+# In V8 the token stream is sized INSIDE the placement walk instead -
+# see `size_here` below. Sizing everything first, as this did, meant no
+# word had an address yet, so every call was assumed to be the 2-byte
+# near form. At a call scale of 3 that guess is always right (the 14-bit
+# field reaches 131 KB); at scale 0 it reaches 16 KB, and a 70 KB image
+# has targets past it, so bodies came out longer than the space
+# reserved for them - "body size drift".
 
 # ---- new sizes ------------------------------------------------------
 def tail_bytes(w):
@@ -277,9 +285,86 @@ for w in order:
     _prev_in_thread[w['s']] = _last.get(h)
     _last[h] = w['s']
 
+_MIDBODY = [False]
+
+
+def _placed_val(target):
+    """Scaled call value for an ALREADY PLACED target, or None.
+
+    Mirrors new_target_off, which cannot be used here because it is
+    defined after the emission helpers. The two must agree: this decides
+    how many bytes a call occupies, that one decides what goes in them."""
+    if target in new_off and 'body' in new_off[target]:
+        # SKIPPAD is set further down the file, so it is read lazily
+        # rather than captured - this runs before that line.
+        if (globals().get('SKIPPAD') and not DATAPRIMS
+                and kind[target] == 'data' and info[target] is not None):
+            return (new_off[target]['body'] + CELL - 2) >> CPT
+        return new_off[target]['body'] >> CPT
+    # A target INSIDE a body, not at its start. new_target_off resolves
+    # these through layout(); so must this, or every one of them gets
+    # pinned to the far form and the image grows for no reason.
+    if _MIDBODY[0]:
+        return None          # see below
+    for h in order:
+        if h['s'] < target < h['e']:
+            if h['s'] not in new_off or 'body' not in new_off[h['s']]:
+                return None                      # container not placed yet
+            # layout() re-enters calltok_len, which re-enters this
+            # function. One level is all that is ever needed; deeper
+            # than that, pin rather than risk unbounded recursion.
+            _MIDBODY[0] = True
+            try:
+                c2t_ = layout(info[h['s']])[0]
+            finally:
+                _MIDBODY[0] = False
+            if (target - h['s']) not in c2t_:
+                return None
+            return (new_off[h['s']]['body'] + c2t_[target - h['s']]) >> CPT
+    return None
+
+
+def _pfa_val(target):
+    """Scaled parameter-field value for an already placed data word."""
+    if target in new_off and 'body' in new_off[target]:
+        return (new_off[target]['body'] + CELL) >> CPT
+    return None
+
+
+def size_here(w):
+    """Tokenise one word against the words placed before it.
+
+    Every backward call - 98% of them - gets its exact offset, so its
+    width is known rather than guessed. A forward reference has no
+    offset yet, so it is pinned to the 3-byte form and stays pinned at
+    emission."""
+    if kind[w['s']] != 'code' or info[w['s']] is None:
+        return
+    for o in info[w['s']]:
+        k = o[0] if isinstance(o, (tuple, list)) else o
+        if k == 'C':
+            if _placed_val(o[1]) is None:
+                G['V8_FORCE3'].add(o[1])
+        elif k in ('VF', 'VS'):
+            if _pfa_val(o[1]) is None:
+                G['V8_FORCE4'].add((k, o[1]))
+        elif k == 'LOC':
+            # A LOC slot resolves through remap_pfa_off/remap_body_off,
+            # neither of which exists yet. Pin it: 926 of them in the
+            # shell image, so a byte each, against a layout that
+            # otherwise cannot be sized at all.
+            G['V8_FORCE4'].add((k, o[1]))
+    G['V8_CALLTOK'][0] = lambda tg: (_placed_val(tg) or 0)
+    G['V8_PFA'][0] = lambda tg: _pfa_val(tg)
+    tok[w['s']] = to_tokens(info[w['s']])
+    G['V8_CALLTOK'][0] = None
+    G['V8_PFA'][0] = None
+
+
 new_off, off = {}, PROLOGUE
 LINKLEN = {}
 for w in order:
+    if V8: size_here(w)
     if BYTEHDR:
         pv = _prev_in_thread[w['s']]
         # Bound from above: the nfa lands at most 3 bytes past `off`, so

@@ -462,6 +462,20 @@ V8 = False            # byte-stream mode: 1-byte ops, 2-byte calls
 V8_FOLDLIST = []      # v8: folded opcodes are 73 + position in this list
 V8_LIT32, V8_DOVAR, V8_DODOES, V8_LIT8, V8_LIT8X, V8_FOLD0 = 68, 69, 70, 71, 72, 73
 V8_CALLTOK = [None]   # layout pass binds: old target addr -> scaled value
+V8_FORCE4 = set()     # (kind, payload) pinned to the WIDE slot form.
+# Same problem as V8_FORCE3, for VF/VS/LOC: a slot is 2 bytes if the
+# scaled value fits 15 bits and 3 if not, so its width depends on where
+# its target landed. At a call scale of 3 every slot in a 70 KB image
+# fits; at scale 0 many do not.
+V8_FORCE3 = set()     # targets pinned to the 3-byte call form.
+# A call's width depends on where its target landed, and 98% of calls
+# are BACKWARD - the target is already placed, so the width is known
+# exactly. The ~2% that are forward references have no offset yet, so
+# the layout pass pins them here and they are emitted far regardless of
+# how small the value turns out to be. The far form encodes any value
+# the near form can, so pinning costs a byte and is never wrong; what
+# matters is that sizing and emission make the SAME choice, or the body
+# is not the length the placement reserved for it.
 VARCALL = True        # 10xxxxxx = 2-byte call, 11xxxxxx = 3-byte
 VARSLOT = True        # 0xxxxxxx+1 = 15-bit slot, 1xxxxxxx+2 = 23-bit
 OP_CTX = [None]       # (ops, j) while sizing, so op_bytes can see context
@@ -523,9 +537,11 @@ def op_bytes(k, pl, t):
     if V8:
         if k == 'C' and VARCALL:
             if OP_CTX[0] is not None and before_operand(*OP_CTX[0]): return 3
+            if pl in V8_FORCE3: return 3
             return 2 if V8_CALLTOK[0] is None or V8_CALLTOK[0](pl) < (1 << 14) else 3
         if k in ('VF', 'VS', 'LOC'):
             if not VARSLOT: return 3
+            if (k, pl) in V8_FORCE4: return 4
             v = slotval(k, pl)
             return 3 if v is None or v < (1 << 15) else 4
         if k in X_IMM: return 2
@@ -604,10 +620,10 @@ def slotval(k, pl):
     except Exception:
         return None
 
-def emit_slot(b, v):
+def emit_slot(b, v, wide=False):
     if not VARSLOT:
         b.append(v & 0xFF); b.append((v >> 8) & 0xFF); return
-    if v < (1 << 15):
+    if v < (1 << 15) and not wide:
         b.append(v >> 8); b.append(v & 0xFF)
     else:
         assert v < (1 << 23), "slot %d out of 23 bits" % v
@@ -630,9 +646,11 @@ def to_bytes_v8(ops):
         elif k in X_IMM:
             b.append(X_IMM[k]); b.append(pl & 0xFF)
         elif k in ('VF', 'VS'):
-            b.append(X_VF if k == 'VF' else X_VS); emit_slot(b, slotval(k, pl) or 0)
+            b.append(X_VF if k == 'VF' else X_VS)
+            emit_slot(b, slotval(k, pl) or 0, (k, pl) in V8_FORCE4)
         elif k == 'LOC':
-            b.append(X_LOC[pl[0]]); emit_slot(b, slotval(k, pl) or 0)
+            b.append(X_LOC[pl[0]])
+            emit_slot(b, slotval(k, pl) or 0, (k, pl) in V8_FORCE4)
         elif k == 'LIT' and pl in (0, 1, -1) and 'small' in SPEC:
             b.append({0: X_LIT0, 1: X_LIT1, -1: X_LITM1}[pl])
         elif k == 'PX':
@@ -660,7 +678,7 @@ def to_bytes_v8(ops):
                     assert v < (1 << 22), "call target %d out of 22 bits" % v
                     b.append(0xC0 | (v >> 16)); b.append((v >> 8) & 0xFF)
                     b.append(v & 0xFF)
-                elif v < (1 << 14):
+                elif v < (1 << 14) and pl not in V8_FORCE3:
                     b.append(0x80 | (v >> 8)); b.append(v & 0xFF)
                 else:
                     assert v < (1 << 22), "varcall target %d out of 22 bits" % v
