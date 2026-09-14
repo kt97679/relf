@@ -111,7 +111,15 @@ def linkbytes(d, n):
     if n == 2: return bytes([d & 0xFF, 0x80 | (d >> 8)])
     return bytes([d & 0xFF, (d >> 8) & 0xFF, 0xC0 | (d >> 16)])
 if '--spec' in ARGV: G['SPEC'].update(_opt('--spec').split(','))
-if '--escape' in ARGV:
+# The escaped band is ON by default for CV8. The 32 OS/libc primitives
+# move behind ESC + a one-byte selector, which costs 8 bytes on a
+# kernel image and about 104 on a shell image and frees the opcodes at
+# 36..67 - the one resource this encoding cannot widen later. Without
+# it the map has two free slots out of 128 and the next primitive
+# anyone adds pushes the folded band into the specialised one.
+#
+# --no-escape builds the old numbering, for comparing the two.
+if V8 and '--no-escape' not in ARGV:
     G['ESCAPE'] = True
     G['ESC_PRIMS'].update(G['ESC_PRIMS_ALL'])
 if '--no-varcall' in ARGV: G['VARCALL'] = False

@@ -88,7 +88,7 @@ img() {  # img NAME CELL OPTIONS...
     case "$n" in fkernel-64) d="$O/k64.txt";; fkernel-32) d="$O/k32.txt";;
                  cv8b-64|cv8b-k64) d="$O/kb64.txt";;
                  cv8b-32|cv8b-k32) d="$O/kb32.txt";;
-                 esc-64) d="$O/k64.txt";; esc-32) d="$O/k32.txt";;
+                 noesc-64) d="$O/k64.txt";; noesc-32) d="$O/k32.txt";;
                  s16self-64) d="$O/ks64.txt";; s16self-32) d="$O/ks32.txt";;
                  cptfself-64) d="$O/kc64.txt";; cptfself-32) d="$O/kc32.txt";;
                  selfb-64) d="$O/d64-selfb.txt";; selfb-32) d="$O/d32-selfb.txt";; esac
@@ -140,12 +140,12 @@ img cv8b-k64   8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --s
 img cv8b-k32   4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS
 img cv8b-64    8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 img cv8b-32    4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
-# The escaped band: the 32 OS/libc primitives move behind ESC + a
-# one-byte selector, freeing 36..67 in the opcode map. Built and tested
-# from here on rather than left as a switch nobody exercises - it was
-# broken for eight iterations precisely because nothing ran it.
-img esc-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --escape
-img esc-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --escape
+# The OLD numbering, without the escaped band, which is now the default
+# everywhere else. Kept as a stage so the two stay comparable and so
+# the engine's refusal path - an image using the band against an engine
+# built without it - has something to refuse.
+img noesc-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --no-escape
+img noesc-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --no-escape
 # The 16-bit stages emitting their OWN encoding. sod16.4 is twice the
 # size of cpt16.4 and the difference is the argument for CPT16: SOD16
 # names a call by word NUMBER, so its compiler has to rebuild the
@@ -206,10 +206,10 @@ cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 \
 # Escaped-band engines: spec plus -DESCAPE=1. An engine WITHOUT the band
 # refuses an image that uses it rather than misreading it, so these have
 # to be built in matching pairs with the esc-* images.
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 -DESCAPE=1 \
-    -o "$O/esc-64" "$O/vm-lab-tos.c"
+cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 -DESCAPE=0 \
+    -o "$O/noesc-64" "$O/vm-lab-tos.c"
 cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
-    -DSHAREDCALL=1 -DESCAPE=1 -o "$O/esc-32" "$O/vm-lab-tos.c"
+    -DSHAREDCALL=1 -DESCAPE=0 -o "$O/noesc-32" "$O/vm-lab-tos.c"
 
 # ---- smoke test: every pair must agree with dash ----------------------
 want=$(for w in fn str arith; do dash tests/bench-vm/$w.sh; done)

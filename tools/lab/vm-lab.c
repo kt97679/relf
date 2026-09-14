@@ -101,7 +101,7 @@ static char **g_argv;
  *  which renumbers the primitive band. Both the engine and the
  *  translator (--escape) must agree, so this is off until the fault in
  *  BUF-ALLOC is found.  */
-#define ESCAPE 0
+#define ESCAPE 1
 #endif
 #ifndef DISPATCH256
 /*  DISPATCH256: no opcode-vs-call test at all. The table gets 256

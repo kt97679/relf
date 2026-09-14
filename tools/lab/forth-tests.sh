@@ -68,11 +68,12 @@ run "$B/cv8b-32" "$B/cv8b-32.img"    "CORE suite, CV8 byte headers 32-bit"
 # compiler overlay at all.
 run "$B/sod16p-64" "$B/s16self-64.img"  "CORE suite, SOD16 self-hosting 64-bit"
 run "$B/sod16p-32" "$B/s16self-32.img"  "CORE suite, SOD16 self-hosting 32-bit"
-# The escaped band. The CORE suite is what caught its fault in
-# Iteration 204 and what proved the fix in 210, so it is the suite that
-# has to keep running against it.
-run "$B/esc-64"    "$B/esc-64.img"    "CORE suite, CV8 escaped band 64-bit"
-run "$B/esc-32"    "$B/esc-32.img"    "CORE suite, CV8 escaped band 32-bit"
+# The old numbering, WITHOUT the escaped band, which is the default
+# everywhere else now. Kept so the two stay comparable and so the
+# engine's refusal path has something to refuse. The CORE suite is what
+# caught the escape fault in Iteration 204 and proved the fix in 210.
+run "$B/noesc-64"    "$B/noesc-64.img"    "CORE suite, CV8 WITHOUT the escaped band 64-bit"
+run "$B/noesc-32"    "$B/noesc-32.img"    "CORE suite, CV8 WITHOUT the escaped band 32-bit"
 run "$B/cptf-64"   "$B/cptfself-64.img" "CORE suite, CPT16+fold self-hosting 64-bit"
 run "$B/cptf-32"   "$B/cptfself-32.img" "CORE suite, CPT16+fold self-hosting 32-bit"
 exit $fail
