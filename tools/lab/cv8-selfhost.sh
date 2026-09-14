@@ -117,6 +117,12 @@ echo
 echo "== gate 2: CV8 SAVE-SYSTEM reaches a fixed point =="
 gate2 "$B/spec-64" "$B/self-64.img" "CV8 shell image 64-bit"
 gate2 "$B/spec-32" "$B/self-32.img" "CV8 shell image 32-bit"
+# The byte-header shell. Saving is the sharpest test this configuration
+# can be given: SAVE-SYSTEM walks the dictionary, unrelocates it and
+# writes it back, so a header format that is wrong anywhere shows up as
+# a gen2 that differs from gen3 rather than as a lucky silence.
+gate2 "$B/cv8b-64" "$B/selfb-64.img" "CV8 byte-header shell 64-bit"
+gate2 "$B/cv8b-32" "$B/selfb-32.img" "CV8 byte-header shell 32-bit"
 
 echo
 [ $fail = 0 ] && echo "CV8 rebuilds itself: both gates pass." \

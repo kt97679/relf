@@ -405,11 +405,35 @@ for w in order:
         pv = _prev_in_thread[w['s']]
         # Bound from above: the nfa lands at most 3 bytes past `off`, so
         # a link sized for that distance always fits the real one.
-        ll = 1 if pv is None else linklen(off + 3 - new_off[pv]['nfa'])
+        # Bound the link length from above BEFORE deciding the padding,
+        # and include the padding in the bound: the pad moves the nfa up
+        # to CELL-1 further from its predecessor, and sizing the link
+        # without allowing for that makes it too short - "link does not
+        # fit at SCC-SRC", which is what the first version of this did.
+        _slack = 3 + (CELL - 1 if body_needs_align(w) else 0)
+        ll = 1 if pv is None else linklen(off + _slack - new_off[pv]['nfa'])
+        # Where a body must be cell-aligned, pad BEFORE the link rather
+        # than between the name and the body.
+        #
+        # NAME> is `nfa + 1 + count`, with nothing in between - that is
+        # the whole point of a byte-granular header, and cv8b.4's
+        # NAME>8 says so. Padding after the name breaks that: the
+        # translator would put the body at align(nfa+1+count) while
+        # every consumer computed nfa+1+count, six bytes lower for
+        # LSAVE-SP. The saved image then handed the engine a locals
+        # header pointing one word short and it executed data.
+        #
+        # Padding in front is dead space nothing reads, and leaves
+        # NAME> exact. The link length is unaffected: it is bounded
+        # from above below, and padding only moves the nfa further from
+        # its predecessor, which the bound already allows for.
+        if body_needs_align(w):
+            off += (-(off + ll + len(w['n']) + 1)) % CELL
         LINKLEN[w['s']] = ll
         new_off[w['s']] = {'link': off}; off += ll
         new_off[w['s']]['nfa'] = off;   off += len(w['n']) + 1
-        if body_needs_align(w): off = align_up(off, CELL)
+        assert not body_needs_align(w) or off % CELL == 0, \
+            "body of %s needs alignment but NAME> would not reach it" % w['n']
         new_off[w['s']]['body'] = off;  off += new_body_bytes(w)
     else:
         new_off[w['s']] = {'link': off}
@@ -765,6 +789,11 @@ def emit(path):
 
     for w in order:
         s0 = w['s']
+        # Dead space in front of a link, where a body had to be
+        # cell-aligned and the pad went before the header rather than
+        # between the name and the body - see the placement walk.
+        # Nothing reads these bytes; they exist so NAME> stays exact.
+        while len(img) < new_off[s0]['link']: img += b'\x00'
         assert len(img) == new_off[s0]['link'], "link drift at %s" % w['n']
         if BYTEHDR: img += linkbytes(linkval[s0], LINKLEN[s0])
         else:       img += cel(linkval[s0])

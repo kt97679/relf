@@ -55,9 +55,21 @@ CREATE SS-NAME 40 ALLOT
   39 MIN SS-NAME PLACE SS-NAME FIND 0= ABORT" cv8-save: word not found" ;
 
 : SS-PFA ( c-addr u --- offset )
-\ Offset of a data word's parameter field: the body is [DOVAR][pad],
-\ one cell, then the field.
-  SS-FIND 1 CELLS + START @ - ;
+\ Offset of a data word's parameter field.
+\
+\ >BODY, not `1 CELLS +`. The hardcoded cell was right for as long as
+\ every data body was [DOVAR][pad to a cell][field], which stopped
+\ being true when cv8b.4 arrived: under byte-granular headers the
+\ field is at ALIGNED(xt + CV8-DOES-RESERVE + 1), and --cv8-compiler
+\ swaps >BODY8 in to say so. Calling >BODY follows whichever overlay
+\ is loaded; computing the offset here does not.
+\
+\ Getting it wrong is silent at save time and fatal at load: these two
+\ offsets go into the image header as the locals save-stack pointer
+\ and its buffer, and the engine dereferences both in LSAVE without
+\ checking. A saved byte-header image segfaulted in L_lsave while the
+\ translated image of the same system was fine.
+  SS-FIND >BODY START @ - ;
 
 : SS-HEADS, ( --- )
   \ The word list, as the engine's loader now wants it: a thread COUNT

@@ -49,6 +49,12 @@ printf "$BOOT" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32.txt"
 SELF='S" cv8.4" INCLUDED\nS" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$SELF" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-self.txt"
 printf "$SELF" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-self.txt"
+# The same shell, with cv8b.4 on top: byte-granular headers. This is the
+# densest working configuration in the tree and nothing built it until
+# now, which is how the escaped band stayed broken for eight iterations.
+SELFB='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+printf "$SELFB" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-selfb.txt"
+printf "$SELFB" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-selfb.txt"
 # bare kernel + cv8.4 only: boots into the interpreter, for the CORE suite
 KONLY='S" cv8.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$KONLY" | ./relf   kernel.img   | tr -d '\r' > "$O/k64.txt"
@@ -84,7 +90,8 @@ img() {  # img NAME CELL OPTIONS...
                  cv8b-32|cv8b-k32) d="$O/kb32.txt";;
                  esc-64) d="$O/k64.txt";; esc-32) d="$O/k32.txt";;
                  s16self-64) d="$O/ks64.txt";; s16self-32) d="$O/ks32.txt";;
-                 cptfself-64) d="$O/kc64.txt";; cptfself-32) d="$O/kc32.txt";; esac
+                 cptfself-64) d="$O/kc64.txt";; cptfself-32) d="$O/kc32.txt";;
+                 selfb-64) d="$O/d64-selfb.txt";; selfb-32) d="$O/d32-selfb.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
@@ -105,6 +112,13 @@ img spec-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS
 # image's own compiler emits CV8 (phase 3). tests/shell/run-forth.
 img self-64    8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 img self-32    4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+# The byte-header shell. A call scale of 0 is not optional here - byte
+# headers exist because nothing needs cell alignment any more - so the
+# 14-bit near call reaches only 16 KB and most calls in a 60 KB image
+# take the 3-byte far form. It still comes out the smallest image in
+# the ladder.
+img selfb-64   8 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
+img selfb-32   4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
 # A CV8 image that boots into the INTERPRETER: the ANS CORE suite needs
 # one, because a shell image feeds Forth source to the shell instead.
 img fkernel-64 8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler
@@ -212,3 +226,4 @@ chk cv8-64    "$O/cv8-64.img";        chk cv8-32    "$O/cv8-32.img"
 chk cv8t-64   "$O/cv8-64.img";        chk cv8t-32   "$O/cv8-32.img"
 chk spec-64   "$O/spec-64.img";       chk spec-32   "$O/spec-32.img"
 chk spec-64   "$O/self-64.img";       chk spec-32   "$O/self-32.img"
+chk cv8b-64   "$O/selfb-64.img";      chk cv8b-32   "$O/selfb-32.img"
