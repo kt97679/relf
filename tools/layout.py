@@ -250,7 +250,17 @@ def body_needs_align(w):
 def new_body_bytes(w):
     if kind[w['s']] == 'code':
         if BYTEHDR:
-            return len(tok[w['s']]) * UB + tail_bytes(w)
+            # A TAIL is unheadered data - the BUILTIN table is the one
+            # that matters - and it is read with `@`, so its entries
+            # must be cell-aligned. Byte headers drop the padding that
+            # used to guarantee that for free, so the code in front of
+            # a tail is still padded up to a cell. Without this the
+            # table lands at an odd offset and FIND-BUILTIN fetches a
+            # cell across a boundary: the low 48 bits of the pointer
+            # are right and the top two bytes are the neighbours.
+            if tail_bytes(w):
+                return align_up(len(tok[w['s']]) * UB, CELL) + tail_bytes(w)
+            return len(tok[w['s']]) * UB
         return align_up(len(tok[w['s']]) * UB, CELL) + tail_bytes(w)
     if info[w['s']] is not None:
         # [pad][call token][parameter field, CELL aligned]
@@ -755,7 +765,10 @@ def emit(path):
             if V8: img += bytes(to_tokens(ops2))
             else:
                 for t_ in to_tokens(ops2): img += tk(t_)
-            if not BYTEHDR:
+            # Must match new_body_bytes exactly: pad when there is no
+            # byte header at all, or when there is one and a tail
+            # follows that needs its entries aligned.
+            if not BYTEHDR or tail_bytes(w):
                 while len(img) % CELL: img += b'\x00'
             # Unheadered tail, with its builtin entries relocated.
             # Derived from tail_bytes, not from code_end directly, so a
