@@ -352,8 +352,6 @@ static void load_image(const char *name) {
  *  child.
  */
 #define TIOBUF 4096
-static UNS8 t_ibuf[TIOBUF];
-static int  t_ipos = 0, t_ilen = 0;
 static UNS8 t_obuf[TIOBUF];
 static int  t_olen = 0;
 
@@ -428,13 +426,18 @@ NOINLINE_IO static void t_put(UNS8 c) {
 }
 
 NOINLINE_IO static int t_getc(void) {
-    if (t_ipos >= t_ilen) {
-        t_flush();                     /* prompt before blocking */
-        t_ilen = (int)read(0, t_ibuf, TIOBUF);
-        t_ipos = 0;
-        if (t_ilen <= 0) { t_ilen = 0; return -1; }
-    }
-    return t_ibuf[t_ipos++];
+    /*  One byte, unbuffered. Descriptor 0 is INHERITED and shared with
+     *  children, so bytes read ahead are bytes taken from them - the
+     *  4096-byte buffer that used to be here made `read x; cat` swallow
+     *  a whole pipe. bash, dash, gforth, SPF and lbForth all read fd 0
+     *  a byte at a time for exactly this reason.
+     *
+     *  Descriptors this system OPENS are a different matter: it owns
+     *  them, nobody else is reading, and t_fgetc buffers them.  */
+    UNS8 c;
+    t_flush();                         /* a prompt appears before the wait */
+    if (read(0, &c, 1) != 1) return -1;
+    return c;
 }
 
 /*  Is another byte already in the standard-input buffer? READ-STDIN uses
@@ -444,7 +447,6 @@ NOINLINE_IO static int t_getc(void) {
  *  read yet is not "ready" here, and asking would cost a syscall per
  *  character. ANS's KEY? is the word for that question, and this system
  *  does not have it yet.  */
-NOINLINE_IO static int t_ready(void) { return t_ipos < t_ilen; }
 
 static void virtual_machine(void) {
     UNS64 ip = g_ip, rp = g_rp, dsp = g_dsp, t;
@@ -455,7 +457,7 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_readstdin, &&L_spfetch, &&L_spstore,
+        &&L_dplus, &&L_type, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_bye, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
@@ -527,27 +529,6 @@ L_type: { /* type    */ /* c-addr u --- */
     UNS64 u = DS0;
     for (UNS64 i = 0; i < u; i++) t_put(p[i]);
     dsp += 2 * CELL_BYTES;
-    NEXT();
-    }
-L_readstdin: { /* read-stdin */ /* c-addr u --- n */
-    /*  read(2), through the standard-input buffer. The ONLY input
-     *  primitive: KEY is a one-byte READ-STDIN and ACCEPT is a loop over
-     *  KEY, both in kernel.4. There used to be a primitive for each,
-     *  and the ACCEPT one was a line editor written in C.
-     *
-     *  EOF exits, as KEY's primitive did. Re-reading EOF forever is
-     *  GOALS.md Bug 3, and moving the read into a new primitive is
-     *  exactly the change that would quietly reintroduce it.  */
-    UNS8 *buf = (UNS8 *)(uintptr_t)DS1;
-    UNS64 max = DS0, n = 0;
-    while (n < max) {
-        int ch = t_getc();
-        if (ch < 0) { if (n) break; t_flush(); exit(0); }
-        buf[n++] = (UNS8)ch;
-        if (!t_ready()) break;      /* return what is available */
-    }
-    dsp += CELL_BYTES;
-    DS0 = n;
     NEXT();
     }
 L_bye:     /* bye     */ t_flush(); exit(0);

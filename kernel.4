@@ -111,27 +111,6 @@ PRIMITIVE D+ ( d1 d2 --- d3)
 PRIMITIVE TYPE ( c-addr u --- )
 \ Output u characters starting at c-addr to the terminal.
 
-PRIMITIVE READ-STDIN ( c-addr u --- n )
-\ Read at most u characters from standard input into a buffer at
-\ c-addr;
-\ n is the number actually read. This is read(2): it returns what is
-\ available, it does not wait for a line, and it does nothing about
-\ editing.
-\
-\ STDIN, not TTY, which is what this was called first: it reads
-\ descriptor 0 and has no idea whether that is a terminal, a pipe, a
-\ file or a socket. Nothing in it is terminal-specific.
-\
-\ It is the ONLY input primitive. KEY is a one-byte READ-STDIN and ACCEPT
-\ is a loop over KEY, both below in Forth. Having primitives for both
-\ KEY and ACCEPT - which is what this replaces - meant the engine
-\ carried two ways of reading the same file descriptor, one of them a
-\ line editor written in C. SOD32 had ACCEPT in Forth over KEY for the
-\ same reason.
-\
-\ Paired with TYPE, which is write(2), so an engine hosting this needs
-\ exactly two calls into the operating system for the terminal.
-
 PRIMITIVE SP@      ( --- a-addr)
 \ Return the address of the stack pointer (before SP@ was executed).
 
@@ -723,16 +702,26 @@ VARIABLE #SRC ( --- addr)
 : KEY ( --- c )
 \ Receive one character from the terminal.
 \
-\ No buffer, for the same reason EMIT needs none: push a zero cell,
-\ read one byte into its low end, and the cell IS the character. Zero
-\ first, because READ-STDIN writes one byte and leaves the rest of the
-\ cell alone.
+\ One byte, unbuffered, straight off descriptor 0 - which is what
+\ gforth, SPF and lbForth all do, and what dash does for its `read`
+\ builtin. SPF's is character for character this:
 \
-\ Raw - one character, no line buffering, no editing - so a line
-\ editor built on it can see cursor keys once the terminal is out of
-\ canonical mode. That is the property a KEY built on a line-reading
-\ ACCEPT could not have.
-   0 SP@ 1 READ-STDIN DROP ;
+\     : KEY-TERMIOS   0 SP@ 1 H-STDIN READ-FILE DROP DROP ;
+\
+\ No buffer, and no buffer is possible: descriptor 0 is INHERITED,
+\ shared with every child, and a byte read ahead is a byte taken from
+\ whatever runs next. The engine used to hold 4096 bytes of it, and
+\ `read x; cat` swallowed the whole pipe - see tests/shell/run-read.
+\
+\ Reading into the cell the 0 just pushed, via SP@, for the same
+\ reason EMIT does: the character is already in memory, so no
+\ variable is needed to hold it.
+\ EOF exits, which is not decoration: the old primitive did it in C,
+\ and dropping it here reintroduced GOALS.md's Bug 3 within minutes -
+\ a shell reading a script off stdin spun on read(0,"",1)=0 forever,
+\ 2.7 million times before the test timed out.
+   0 SP@ 1 0 READ-FILE DROP
+   0= IF BYE THEN ;
 
 : ACCEPT ( c-addr n1 --- n2 )
 \ Read a line from the terminal into a buffer at c-addr of length n1;
