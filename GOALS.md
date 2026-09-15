@@ -1290,6 +1290,38 @@ than remembered.
      `cross.4` emitting `cv8.4` the way it emits the rest of
      `kernel.4`.
 
+     HOW TO GET IT THERE, and three ways that do not, all tried at
+     Iteration 240:
+
+     - Including `cv8.4` from `cross.4` AFTER `S" kernel.4" INCLUDED`
+       puts it in the HOST: `kernel.4` ends with `END-CROSS`, which
+       ends target compilation. The image grows 8 bytes and gains
+       nothing.
+     - Including it from inside `kernel.4` as `S" cv8.4" INCLUDED`
+       gives `Undefined word cv8.4"`. Inside the cross-compiled region
+       `S"` is the TARGET's - it compiles a string into the image
+       rather than handing a filename to the host.
+     - Relocating `END-CROSS` out of `kernel.4` hangs the build.
+       `END-CROSS` is how the cross-compiler EXITS.
+
+     What works is a TRANSIENT word, since those run on the host the
+     moment `kernel.4` reaches them, taking the name as a parsed WORD
+     rather than a string:
+
+         : LOAD-HOST ( "name" --- )   BL WORD COUNT INCLUDED ;
+
+     `LOAD-HOST cv8.4` before `END-CROSS` does reach the file.
+
+     WHAT REMAINS: `cv8.4` is not cross-compilable as written. It was
+     written for the HOST's compiler, and the cross-compiler's versions
+     of the same words differ. The first obstacle is an `ABORT"`
+     executed at INTERPRETATION time - the host tolerates it, the
+     cross-compiler's `ABORT"` is a compiling word, and the load stops
+     with "Incomplete control structure". That one is mine, added at
+     Iteration 216; `tools/sod16.py` already asserts the same thing
+     with the real fold list in hand, so the Forth copy can go. There
+     is at least one more behind it.
+
   3. Prove the pipeline with no `./relf` in it, then switch the product
      over and move `relf.c` to `attic/`. Tag the commit before that
      last step: it is the last one where the system can be rebuilt from
