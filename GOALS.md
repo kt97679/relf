@@ -1226,6 +1226,51 @@ is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
 
+- **`+LOOP` does not handle steps that cross the cell boundary.**
+  Seven cases in the Forth Standard suite's `coreplustest.fth` fail,
+  all stepping by `MAX-UINT 8 RSHIFT 1+` - a 256th of the cell range -
+  where the loop should terminate after exactly 256 iterations.
+  `(+LOOP)`'s crossing test is
+
+      R> SWAP R> DUP R@ - ROT ROT + DUP R@ - ROT XOR 0 <
+
+  which is the standard signed formulation and is wrong for steps this
+  large. Not reachable from anything this system does; found only
+  because the tests were adopted. The file is not in `tests/ext/`
+  precisely because it fails - adding it means fixing this first.
+
+- **The Locals word set is not provided.** This is CONFORMANT: Locals
+  is optional and CORE stands at 133 of 133 without it. Recorded
+  because the system HAS a facility that looks like it and is not -
+  `SHADOW{ ... }`, which is dynamic scoping over existing VARIABLEs
+  (see `shadow.4`). Iteration 236 renamed it off the standard's `{: :}`
+  spelling so that standard code fails loudly rather than computing
+  address arithmetic. If real locals are ever wanted, `{: :}` is free
+  and the two can coexist.
+
+- **`relf.c` cannot be retired yet, and the reason is worth stating.**
+  The intended end state is CV8 only: one engine, and a CV8 Forth that
+  recompiles and re-hosts itself. `relf.c` is not a second ENCODING -
+  it is the only thing that can EXECUTE a cell image, and the CV8 build
+  needs one executed:
+
+      kernel.4 --cross.4--> kernel.img (CELL) --run--> dump --layout.py--> CV8
+
+  `layout.py` reads a TEXT DUMP produced by running the cell image.
+  Gate 1 proves a CV8 image can RUN `cross.4`, but what it produces is
+  a cell image, which is inert without a cell engine. And `cv8.4`
+  compiles new words into an EXISTING image; it cannot rebuild the
+  kernel from `kernel.4`. So retiring `relf.c` today would mean
+  `kernel.4` can never change again.
+
+  What has to happen first, in order: `layout.py` reads the cell image
+  FILE rather than a run-time dump (bounded, and it deletes the dump
+  step), or `cross.4` emits CV8 directly (larger, the real end state).
+  Then prove the pipeline with no `./relf` in it, then switch the
+  product over and move `relf.c` to `attic/`. Tag the commit before
+  that last step: it is the last one where the system can be rebuilt
+  from a C compiler and a text kernel.
+
 - **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
   `KEY` is `0 SP@ 1 0 READ-FILE DROP  0= IF BYE THEN`. It tests the
   COUNT and throws away the `ior`, and `READ-FILE` collapses two

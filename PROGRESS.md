@@ -236,6 +236,7 @@ do not trust the absence of a line below.
 - **212** — tails need alignment too; LOC pinning measured and removed
 - **213** — the byte-header shell: NAME> must be exact, so pad before the link
 - **214-227** — one engine, one read, and four wrong guesses
+- **228-236** — conformance, and what the standard's own tests found
 
 ### Not tied to an iteration
 
@@ -14390,3 +14391,85 @@ had written both.
 And a commit landed with `cv8-selfhost.sh` failing, because the check
 and the commit ran in the same command with no gate between them.
 Amended immediately, but it existed.
+
+## Iterations 228-236: conformance, and what the standard's own tests found
+
+Iteration 227 left four items on the original clean-up list finished and
+the documentation half-corrected. This stretch started as "finish the
+docs" and turned into a conformance pass, because adopting somebody
+else's tests is the fastest way to find out what you actually built.
+
+**228-229, the documents.** GOALS.md got a "Where things stand" section
+- one engine, why the CELL engine is still built, the image sizes and
+which ones BASELINE tracks. CV8.md and CV8-REFERENCE.md had the opcode
+map as it was before byte headers, the escaped band and the derived
+numbering; both now describe what the tools produce, computed from
+kernel.4 rather than by hand. That caught my own error: three free
+opcodes, not one. Four documents describing retired work got status
+headers rather than moving to attic/, because each is referenced by two
+or three others and by the tools.
+
+**230-232, extend.4 into the shell image.** The question was whether one
+file could serve both the cross-compile host and the shell; extend.4
+already was that file, providing SEARCH-ORDER, COMPARE and THROW, and
+only the host ever saw it. Sixteen CORE EXT words went in and
+ENVIRONMENT? completed ANS CORE at 133 of 133.
+
+Loading it into a saved image broke reproducibility: two identical
+builds differed in 32 cells, all by exactly the ASLR delta. COLD
+relocated DP and FORTH-WORDLIST's thread heads and nothing else -
+complete for as long as there WAS one wordlist. WORDLISTS is now a
+chain of every other one, linked through offsets so the chain itself
+never needs relocating. Three stored wids became offsets. That left
+FOUR bytes, from ?DO's leave operand, which had been an absolute
+address since the beginning and had never mattered because nothing
+CROSS-COMPILED uses ?DO. (LOOP) had always stored its loop-back
+relative; (?DO) and (LEAVE) now agree.
+
+**233-234, other people's tests.** forth-standard-test-suite's
+coreexttest.fth passes in ten of its twenty-eight sections with no
+change to any word - WITHIN alone is 128 cases against the four I had
+written. Their harness IS our tester.fr: both are John Hayes' core.fr,
+which is why the CORE suite needed nothing and why nobody had noticed
+the relationship.
+
+filetest.fth found four real defects on the day it was adopted.
+FILE-POSITION and FILE-SIZE returned a single cell where ANS specifies
+a DOUBLE, REPOSITION-FILE took one, and READ-LINE with a zero-length
+buffer reported end-of-file. Nothing in Forth called any of them, which
+is exactly why they had been wrong since they were written. The
+Memory-Allocation suite passes unchanged and covers ALLOCATE, FREE and
+RESIZE, which had no tests at all.
+
+**235-236, the locals that were not locals.** Our {: :} used the Forth
+2012 SPELLING for different semantics: names had to be pre-existing
+VARIABLEs and they yielded ADDRESSES. Standard code compiled and
+silently computed the difference of two addresses - `: STD {: a b :} a
+b - ;` gives -32, not 7. Renamed to SHADOW{ }, and the file to
+shadow.4, because the mechanism is dynamic scoping rather than locals:
+the name stays global, only its value is displaced and restored. 71
+declaration sites; bodies untouched, since the variables are still
+variables.
+
+### The method, again
+
+Every defect in this stretch was found by running something written by
+someone else against the system, or by printing two numbers that should
+have matched. None was found by reading code looking for bugs.
+
+### Three mistakes worth keeping
+
+A commit landed while cv8-selfhost.sh was failing, because the check
+and the commit ran in one command with no gate between them.
+
+Two >IN tests in coreplustest.fth "failed" because rewriting T{ to {
+shifted every column by one and those tests hardcode `14 >IN !`. The
+defect was in my conversion. Any file adopted from that suite has to
+preserve column positions.
+
+The shadow.4 rename missed two references and BOTH were found by tests
+rather than by grep - tests/shadow.fth still INCLUDEd locals.4, which
+made the CORE suite segfault rather than report a missing file, and
+three tools open the Forth sources by name. I updated a hand-written
+list of files instead of searching. A rename is only as complete as the
+search behind it.
