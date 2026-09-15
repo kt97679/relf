@@ -113,6 +113,51 @@ the full account and the fixes applied.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
+## Where things stand (Iteration 227)
+
+The state a reader needs before anything else in this file, because
+several sections below describe a system with more parts than it now
+has.
+
+**One engine.** CV8: a byte stream of 1-byte opcodes with 2- or 3-byte
+compressed-pointer calls. Iteration 218 retired SOD16, CPT16,
+CPT16+fold and the packed schemes - the ladder existed to find the
+densest encoding and it found it. `attic/` holds the sources;
+`ENCODING-COMPARISON.md` holds the numbers.
+
+**Two engines are built, and they are not alternatives.** `relf.c` is
+the CELL engine and it is the BOOTSTRAP - `kernel.img` is a cell image,
+`cross.4` cross-compiles into cell format, and `relfsh` ships as a cell
+image. `tools/lab/vm-lab.c` is the CV8 engine, and every CV8 image is
+translated by `tools/layout.py` from a dictionary dump that the cell
+engine produces. Retiring `relf.c` means making CV8 the product, which
+is a decision nobody has taken.
+
+**Image sizes, the numbers to quote:**
+
+    cell   kernel.img    23,552      kernel-shell.img   ~207,000
+    CV8    fkernel-64    13,488      self-64             70,560
+    CV8b   cv8b-64        9,929      selfb-64            62,529
+
+`tests/BASELINE` tracks the CELL sizes, because that is what ships.
+The CV8 numbers have to be read out of a build directory, which is why
+they have been misquoted here more than once.
+
+**Sixty-seven primitives**, escaped band on by default: the 32 OS/libc
+primitives sit behind ESC + a selector, contiguous at the end of
+kernel.4's list, so the partition is a property of the ORDER and needs
+no table. The opcode map is derived from the primitive count in five
+places and hardcoded in none.
+
+**Terminal I/O is two syscalls.** `TYPE` is write(2). `READ-FILE` is
+read(2), unbuffered, for any descriptor. `KEY` and `ACCEPT` are Forth
+on top. Descriptors this system OPENS get a buffer from a four-slot
+LRU pool that seeks back on eviction; descriptors it INHERITS - 0, 1,
+2 - never do, because bytes read ahead on a shared descriptor are
+bytes taken from a child.
+
+**Single branch `master`.** `cv8` and `token16` are merged and gone.
+
 ## Repository conventions
 
 - **`FORTH-STYLE.md` is the coding-practice reference.** Read it
@@ -1376,43 +1421,22 @@ before anything else, because every number here is relative to it.
    architecture section below). Three more POSIX failures, including
    `while read ...; done < file` - the commonest file-reading idiom in
    shell scripting.
-4. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, and overtaken.**
-   SOD16 was superseded by CV8, and CV8 is finished: as of Iteration
-   207 it is self-hosting, saves its own images, and passes the ANS
-   CORE suite, `tests/shell` and `tests/diff` at both cell widths -
-   including after the hashed word list, which broke every translated
-   image and needed `tools/layout.py` reworked for 32 threads. The
-   text below is kept for the reasoning, not as a task. See `SOD16.md`
-   for the design, the state, and the traps. Iterations 156-167
-   measured every
-   encoding this project has considered and this one won on the numbers
-   available then. **As of Iteration 187 it boots, runs the shell, and
-   passes `tests/diff` 20/20 at both cell widths**, failing only
-   `tests/shell/run-forth`, which needs the compiler to emit tokens -
-   phase 3, unbuilt.
+4. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, superseded, and
+   retired.** SOD16 won the Iteration 156-167 comparison, CV8 replaced
+   it at 189, and Iteration 218 retired it along with every other
+   encoding - the ladder had answered its question. `sod16.4`,
+   `cpt16.4` and `sod16.c` are in `attic/`; `SOD16.md`,
+   `TOKEN-THREADING.md`, `ENCODING-COMPARISON.md` and
+   `INNER-INTERPRETER.md` are the historical record and should be read
+   as such. `CV8.md` describes what actually runs.
 
-   Two of that comparison's conclusions have since been corrected by
-   measuring the real thing. An xt is an ADDRESS, not a word number:
-   `EXECUTE` is `>R ;` in Forth and was never a primitive. And the
+   Two conclusions from that comparison were corrected by measuring
+   the real thing, and both are worth carrying forward because they
+   are about METHOD: an xt is an ADDRESS, not a word number, so
+   `EXECUTE` is `>R ;` in Forth and was never a primitive; and the
    encoding won partly on a decode microbenchmark that measured the
-   part SOD16 makes cheaper and omitted the dependent load it makes
-   dearer - hand-written assembly puts the call path at 1.65x.
-   **`INNER-INTERPRETER.md` is the brief for deciding what to do about
-   that**; the next build task is still named at the end of `SOD16.md`.
-
-   **Iteration 189 answered the brief: see `CV8.md`.** Recommendation:
-   the CV8 byte stream (1-byte opcodes, 2-byte compressed-pointer
-   calls, no word table) plus DOVAR/DODOES primitives, folded
-   prim;EXIT opcodes, and TOS caching on 64-bit. VM registers are now
-   locals in `relf.c` (~1.22x, verified). The next build task becomes
-   phase 3 emitting CV8 - `CV8.md` section 8.
-
-   **`TOKEN-THREADING.md` is superseded but not wrong.** Its
-   variable-width byte stream is still the densest option measured
-   (0.19x against SOD16's 0.34x on x86-64). It lost on simplicity and
-   on a ceiling: its 1,024-target extended call is already under water
-   against 1,082 dictionary entries, because variable references
-   compile as calls. Read it for the density analysis, not the plan.
+   part SOD16 makes cheaper while omitting the dependent load it makes
+   dearer.
 
 5. ~~**Superinstructions**~~ - **closed by measurement (Iteration
    157).** Every packed encoding costs 21-68% in dispatch to buy

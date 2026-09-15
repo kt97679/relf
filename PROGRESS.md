@@ -235,6 +235,7 @@ do not trust the absence of a line below.
 - **211** — layout.py sized every call before anything had an address
 - **212** — tails need alignment too; LOC pinning measured and removed
 - **213** — the byte-header shell: NAME> must be exact, so pad before the link
+- **214-227** — one engine, one read, and four wrong guesses
 
 ### Not tied to an iteration
 
@@ -14296,3 +14297,96 @@ aligned xt, so it was a no-op by value), and the link decode. Each
 cost a build. The two measurements that solved it cost one command
 each. **When something disagrees, print both sides before theorising
 about either.**
+
+## Iterations 214-227: one engine, one read, and four wrong guesses
+
+A long stretch with one theme: almost every defect found was TWO
+PLACES COMPUTING THE SAME THING AND DISAGREEING, and almost every one
+was found by printing both numbers rather than by reasoning about
+which ought to be right.
+
+**214-217, the opcode map.** It was written out by hand as 68..73 in
+FIVE places - sod16.py, gen-fold.py, vm-lab.c, layout.py and cv8.4.
+All five now derive from the primitive count, and gen-tos.py emits
+`#define NPRIM` so the image side and the engine side read the same
+number. Nothing fails at build time when they drift; the image encodes
+one opcode and the engine decodes another. It showed up as a return
+stack overflow in one stage and a corrupted heap in another.
+
+The escaped band became the default (Iteration 202's decision, opt-in
+ever since because it did not work), which turned two free opcodes
+into thirty-four. TYPE and ACCEPT became the primitives and EMIT a
+colon definition - and the CV8 images got BIGGER, which the commit
+message did not say because it quoted the cell sizes. Caught in
+review. EMITBUF then turned out to be unnecessary: the character is
+already in memory, on the stack, and SP@ is its address.
+
+**218-221, retirement.** Every engine but CV8 retired to `attic/`.
+`ENC` was the most-used conditional in vm-lab.c - 23 of them - and
+collapsing it uncovered a dead word table the loader still built and
+nobody read, and a tail-reading loop that existed twice, one copy
+disabled by `if (0)`. Five primitives were reordered so the escaped
+band is contiguous, which deleted a 32-entry hand-written table and
+three loops: the partition became a property of the order.
+
+**222-225, the read path.** This started as a naming argument -
+READ-TTY, then READ-STDIN, both wrong because the primitive reads
+descriptor 0 and has no idea what is on the other end - and ended
+somewhere else entirely.
+
+Asked whether the engine's stdin buffer could cause trouble with two
+input sources, the answer to the question as asked was "no, the
+buffers are keyed separately". Checking it found that `read x; cat`
+swallowed the whole pipe: POSIX requires a shell to leave unconsumed
+bytes for whatever runs next, and the 4096-byte stdin buffer added in
+c6c44d6 - at the start of this same stretch - took them. The commit
+that introduced it flagged the read-ahead as "a wider window than
+existed before" and did not test it.
+
+Five implementations were read before fixing it: SOD32, gforth, SPF,
+lbForth and dash. Not one buffers per descriptor in the engine. Three
+of five read ONE BYTE for KEY, and SPF's KEY is character for
+character what RelF now has - `0 SP@ 1 H-STDIN READ-FILE DROP DROP` -
+which had already been written here independently.
+
+The rule that came out of it is not terminal-versus-file and not
+seekable-versus-pipe. It is OWNED versus INHERITED: buffer what this
+system opened, never what it was handed. The file buffers became a
+four-slot LRU pool that seeks back on eviction, replacing a fixed
+8-entry table that failed silently at the 9th open file and used fd 0
+as its "slot unused" marker.
+
+**226-227.** DISPATCH256 - a build knob with a rationale and no number
+- was finally measured: the comment predicting "costs 1 KB more table"
+was wrong, and it makes the engine 1,600 bytes SMALLER. And the
+non-blocking KEY hazard was logged rather than patched, because it is
+not reachable until KEY? exists and fixing it properly needs fcntl.
+
+### The four wrong guesses, since they are the expensive part
+
+- A fixed-point loop was nearly built for call-width sizing. Measuring
+  first showed 98.2% of calls are BACKWARD with known targets; the
+  circularity covers 42 calls out of 2,689.
+- LOC slots were pinned to the wide form "for safety" - 573 of them,
+  against 27 genuine forward references, and that pessimism was most
+  of a regression logged as a cost of correctness.
+- A Forth-level input buffer was built to avoid "extremely
+  inefficient" per-character reads. It was SLOWER (130ms against
+  117ms) and 928 bytes bigger, because the engine already buffered and
+  the C call it saved was the cheap part.
+- Byte-at-a-time stdin was expected to hurt. It did not: a 20,000-line
+  script via stdin went 1,616ms -> 1,502ms.
+
+Four times, the intuition was backwards and one command settled it.
+
+### Two regressions I introduced and then found
+
+GOALS.md Bug 3 - the engine spinning on EOF - came back when KEY moved
+from C to Forth and lost its `exit(0)`. A shell reading a script off
+stdin looped on `read(0,"",1)=0` 2,774,304 times before the test timed
+out. Two comments in the source predicted this exact regression and I
+had written both.
+
+And a commit landed with `cv8-selfhost.sh` failing, because the check
+and the commit ran in the same command with no gate between them.
+Amended immediately, but it existed.
