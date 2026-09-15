@@ -54,8 +54,31 @@ run() {   # run ENGINE IMAGE LABEL
         echo "ok   $3 (671 cases)"
     fi
 }
+# The CORE EXT suites need extend.4 loaded, which the CORE suite above
+# deliberately does not load - putting these files in tests/*.fth took
+# that suite from 1998 ok-markers to zero. They also have to be fed as a
+# script file rather than on the CORE stream, because tester.fr's
+# harness must be in place before extend.4 changes the search order.
+ext_run() {   # ext_run ENGINE IMAGE LABEL
+    local out ext
+    if ! interpreter_p "$1" "$2"; then
+        echo "SKIP $3: not an interpreter image"; return; fi
+    ext=$(mktemp)
+    printf 'S" tester.fr" INCLUDED\nS" extend.4" INCLUDED\nS" tests/ext/coreext-std.fth" INCLUDED\nS" tests/ext/coreext.fth" INCLUDED\n' > "$ext"
+    out=$( printf 'S" %s" INCLUDED\nDUMMY\nBYE\n' "$ext" | timeout 120 "$1" "$2" 2>&1 )
+    rm -f "$ext"
+    if echo "$out" | grep -qiE "incorrect result|wrong number|undefined word|segmentation"; then
+        echo "FAIL $3"; echo "$out" | grep -iE "incorrect|wrong number|undefined" | head -3
+        fail=1
+    else
+        echo "ok   $3 (10 standard sections + 30 own assertions)"
+    fi
+}
+
 run "$B/spec-64" "$B/fkernel-64.img" "CORE suite, CV8 64-bit"
 run "$B/spec-32" "$B/fkernel-32.img" "CORE suite, CV8 32-bit"
+ext_run "$B/spec-64" "$B/fkernel-64.img" "CORE EXT suites, CV8 64-bit"
+ext_run "$B/spec-32" "$B/fkernel-32.img" "CORE EXT suites, CV8 32-bit"
 # s6, byte-granular dictionary headers. These are the images that
 # exercise cv8b.4's replacement SEARCH-WORDLIST and NAME> - the ones
 # that have to find a word through a 1-3 byte backward-read link - so
