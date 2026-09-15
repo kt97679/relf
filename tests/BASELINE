@@ -17,5 +17,5 @@ shell:4byte 1
 shell:8byte 1
 shell:assertions 554
 shell:files 66
-size:i386 128296
-size:x86_64 230352
+size:i386 128044
+size:x86_64 229840

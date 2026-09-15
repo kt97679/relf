@@ -495,7 +495,7 @@ V8_FORCE3 = set()     # targets pinned to the 3-byte call form.
 VARCALL = True        # 10xxxxxx = 2-byte call, 11xxxxxx = 3-byte
 VARSLOT = True        # 0xxxxxxx+1 = 15-bit slot, 1xxxxxxx+2 = 23-bit
 OP_CTX = [None]       # (ops, j) while sizing, so op_bytes can see context
-V8_LIT64, V8_ESC = 0x7C, 0x7D
+V8_LIT64, V8_ESC = 0x7D, 0x7E      # one above the specialised band
 
 # ---- the escaped band (Iteration 202) -------------------------------
 # Half the primitive band was OS/libc wrappers: 34 of 68 opcodes for
@@ -525,13 +525,30 @@ def cv8_op(name):
 SPEC = set()          # any of: 'loc' 'tiny' 'var' 'small'
 V8_PFA = [None]       # layout pass binds: old var address -> new PFA >> S
 V8_LOC = [None]       # layout pass binds: old START offset -> new >> S
-X_LIT0, X_LIT1, X_LITM1, X_VF, X_VS = 0x60, 0x61, 0x62, 0x63, 0x64
-X_LOC = {'LSAVE': 0x65, 'LRESTORE': 0x66, 'L!': 0x67, 'LZERO': 0x68}
+# The specialised band. It used to start at 0x60 with LIT64/ESC at
+# 0x7C/0x7D and 0x7E-0x7F spare. Adding a 69th primitive pushed the
+# folded band - which starts just above the primitives and grows up -
+# onto 0x60 exactly, so the last folded opcode and lit0 became the same
+# byte. The whole band moves up one to make room, spending one of the
+# two spare slots; 0x7F is still free.
+#
+# There is exactly one primitive of headroom left after this. The next
+# one needs the escaped band to renumber the SYNTHETIC opcodes as well
+# as the primitives - it already frees 36..67, but LIT32 and everything
+# above it still sit at len(prims)+n and do not move down into the gap.
+X_SPEC0 = 0x61
+X_LIT0, X_LIT1, X_LITM1, X_VF, X_VS = (X_SPEC0 + i for i in range(5))
+X_LOC = {'LSAVE': X_SPEC0 + 5, 'LRESTORE': X_SPEC0 + 6,
+         'L!': X_SPEC0 + 7, 'LZERO': X_SPEC0 + 8}
 TINY_NAMES = ['0=', '-', '<>', '0<', '>', '2DUP', '2DROP', 'CHAR+', '1+',
               'CELL+', 'CELLS', '1-', 'INVERT', 'COUNT', 'ALIGNED']
-X_TINY = {n: 0x69 + i for i, n in enumerate(TINY_NAMES)}
+X_TINY = {n: X_SPEC0 + 9 + i for i, n in enumerate(TINY_NAMES)}
 # Lua 5.4 kept exactly these immediate forms (OP_ADDI, OP_EQI): LIT n +, LIT n =
-X_IMM = {'ADDI': 0x78, 'ADDIX': 0x79, 'EQI': 0x7A, 'EQIX': 0x7B}
+X_IMM = {'ADDI': X_SPEC0 + 24, 'ADDIX': X_SPEC0 + 25,
+         'EQI': X_SPEC0 + 26, 'EQIX': X_SPEC0 + 27}
+assert X_IMM['EQIX'] < V8_LIT64, (
+    "the specialised band has grown into LIT64 at %d: it starts at %d and "
+    "ends at %d" % (V8_LIT64, X_SPEC0, X_IMM['EQIX']))
 
 def op_cells(k, pl):
     """Size of one operation in the CELL image, in bytes."""

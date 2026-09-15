@@ -94,7 +94,7 @@ static char **g_argv;
  *  and left [71] = &&L_lit64t overwriting it, with no build error and a
  *  return stack overflow at run time.  */
 #ifndef NPRIM
-#define NPRIM 68
+#define NPRIM 69
 #endif
 #ifndef ESCAPE
 /*  ESCAPE: the 32 OS/libc primitives move behind ESC + a selector,
@@ -902,7 +902,7 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_emit, &&L_key, &&L_bye, &&L_spfetch, &&L_spstore,
+        &&L_dplus, &&L_type, &&L_accept, &&L_bye, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
@@ -910,7 +910,7 @@ static void virtual_machine(void) {
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize,
+        &&L_getfsize, &&L_setfsize, &&L_key,
         /*  LIT32 is not one of kernel.4's primitives. It is appended
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
@@ -926,10 +926,10 @@ static void virtual_machine(void) {
 #endif
 #if ENC == 3
         [NPRIM + 3] = &&L_lit8, &&L_lit8x,
-        [0x7C] = &&L_lit64, [0x7D] = &&L_esc,
+        [0x7D] = &&L_lit64, [0x7E] = &&L_esc,
 #endif
 #if ENC == 3 && SPEC
-        [0x60] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
+        [0x61] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
         &&L_lsave, &&L_lrest, &&L_lstore, &&L_lzero,
         &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
         &&L_charp, &&L_onep, &&L_cellp, &&L_cells, &&L_onem, &&L_invert,
@@ -1089,7 +1089,9 @@ L_dodoesf: { UNS64 off = (UNS64)TOK(ip) << 1;
            goto next;
 #endif
 #if ENC == 3 && SPEC
-/*  Specialised opcodes, each borrowed from another VM (CV8.md 10).
+/*  Specialised opcodes at 0x61 (they were at 0x60 until a 69th
+ *  primitive pushed the folded band onto it), each borrowed from
+ *  another VM (CV8.md 10).
  *  The slot/variable operand is a 16-bit little-endian value v; the
  *  address is base + (v << SCALE), the same compressed pointer calls use. */
 #if VARSLOT
@@ -1243,24 +1245,53 @@ L_dplus:   /* d+      */
     dsp += 2 * CELL_BYTES;
     NEXT();
 
-L_emit: { /* emit    */
-    UNS8 c = (UNS8)DS0;
-    t_put(c);
-    dsp += CELL_BYTES;
+L_type: { /* type    */ /* c-addr u --- */
+    /* TYPE and ACCEPT are the terminal primitives; EMIT and KEY are
+     * built on them in kernel.4. That is the reverse of the usual
+     * arrangement and it is deliberate: a primitive that moves a WHOLE
+     * STRING costs one dispatch where a per-character EMIT costs one
+     * per byte, and ACCEPT's editing loop leaves the image. */
+    const UNS8 *p = (const UNS8 *)(uintptr_t)DS1;
+    UNS64 u = DS0;
+    for (UNS64 i = 0; i < u; i++) t_put(p[i]);
+    dsp += 2 * CELL_BYTES;
     NEXT();
-}
-L_key: { /* key     */
-    int ch = t_getc();
-    UNS8 c = (UNS8)ch;
-    long n = (ch < 0) ? 0 : 1;
-    if (n <= 0) {
-        /* Clean exit on stdin EOF (or a read error) instead of spinning
-         * forever re-reading EOF - see GOALS.md / PROGRESS.md, Bug 3. */
-        t_flush(); PROFDUMP; exit(0);
     }
-    PUSH((UNS64)c);
+L_accept: { /* accept  */ /* c-addr n1 --- n2 */
+    /* Must match the Forth ACCEPT this replaces character for
+     * character, because shell.4 depends on the editing: backspace and
+     * DEL erase one character if there is one, CR or LF end the line
+     * and are NOT stored, and a character that would overflow the
+     * buffer is DROPPED rather than ending the line.
+     *
+     * EOF exits, as KEY did. Re-reading EOF forever is GOALS.md Bug 3,
+     * and moving the read into a new primitive is exactly the kind of
+     * change that would quietly reintroduce it. */
+    UNS8 *buf = (UNS8 *)(uintptr_t)DS1;
+    UNS64 max = DS0, n = 0;
+    for (;;) {
+        int ch = t_getc();
+        if (ch < 0) { t_flush(); exit(0); }
+        if (ch == 8 || ch == 127) { if (n) n--; }
+        else if (ch == 10 || ch == 13) break;
+        else if (n < max) buf[n++] = (UNS8)ch;
+    }
+    dsp += CELL_BYTES;
+    DS0 = n;
     NEXT();
-}
+    }
+L_key: { /* key     */ /* --- c */
+    /* Raw: one character, no line buffering and no editing. It cannot
+     * be a colon definition on ACCEPT - ACCEPT returns a finished,
+     * edited LINE, so a KEY built on it could not return a keystroke
+     * until Enter, which is the property interactive line editing needs
+     * it not to have. Appended at the END of the primitive list so
+     * every other opcode number is untouched. */
+    int ch = t_getc();
+    if (ch < 0) { t_flush(); exit(0); }   /* GOALS.md Bug 3 */
+    PUSH((UNS64)(UNS8)ch);
+    NEXT();
+    }
 L_bye:     /* bye     */ t_flush(); PROFDUMP; exit(0);
 L_spfetch: /* sp@     */ PUSH(dsp + CELL_BYTES); NEXT();
 L_spstore: /* sp!     */ dsp = DS0; NEXT();

@@ -26,11 +26,32 @@
   2 CONSTANT LIT16-OP
   3 CONSTANT BRANCH-OP
   4 CONSTANT 0BRANCH-OP
- 68 CONSTANT LIT32-OP
- 69 CONSTANT DOVAR-OP
- 70 CONSTANT DODOES-OP
- 71 CONSTANT LIT8-OP
-124 CONSTANT LIT64-OP           \ 0x7C
+\ The synthetic opcodes sit immediately above kernel.4's primitives, so
+\ every one of them moves when a primitive is added. They were written
+\ out as 68..71 and 124 - correct for exactly as long as the count
+\ stayed 68 - and a 69th primitive left this file emitting an opcode
+\ one below the one the engine decodes, with nothing to warn either
+\ side. The symptom was a call into uncompiled memory during the very
+\ first cross-compile.
+\
+\ Derived from one number now. sod16.py, gen-fold.py, gen-tos.py and
+\ layout.py derive the same values from len(prims); this file cannot
+\ read kernel.4, so NPRIM-OP is the one place that has to be kept in
+\ step with it. The check below catches the failure that actually
+\ happens when it drifts upward - the folded band running into the
+\ specialised one - but nothing here can catch a NPRIM-OP that is
+\ simply wrong, so it is worth a grep when a primitive is added.
+ 69 CONSTANT NPRIM-OP           \ kernel.4's PRIMITIVE count
+NPRIM-OP     CONSTANT LIT32-OP
+NPRIM-OP 1 + CONSTANT DOVAR-OP
+NPRIM-OP 2 + CONSTANT DODOES-OP
+NPRIM-OP 3 + CONSTANT LIT8-OP
+NPRIM-OP 4 + CONSTANT LIT8X-OP
+NPRIM-OP 5 + CONSTANT FOLD-BASE0
+\ The escape and wide-literal opcodes sit at the top of the byte, above
+\ the specialised band, and do NOT move with the primitive count.
+125 CONSTANT LIT64-OP           \ 0x7D
+126 CONSTANT ESC-OP             \ 0x7E
 
 \ ---- raw emission ---------------------------------------------------
 : OP, ( n --- )
@@ -115,7 +136,13 @@ CREATE FOLD-OPS ( --- a-addr )
   ' R> >OP C,  ' R@ >OP C,  ' NEGATE >OP C,
 ALIGN
 23 CONSTANT #FOLD-OPS
-73 CONSTANT FOLD-BASE
+FOLD-BASE0 CONSTANT FOLD-BASE
+\ The folded band starts just above the synthetic opcodes and grows up
+\ towards the specialised band at 0x61. They collided the first time a
+\ 69th primitive was added: the last folded opcode and `lit0` became
+\ the same byte, and the engine decoded one as the other.
+FOLD-BASE #FOLD-OPS + 97 >
+ABORT" cv8.4: the folded band has reached the specialised band - too many primitives"
 
 : FOLD-OP ( op --- op2 -1 | op 0 )
 \ The folded opcode for primitive opcode op, if it has one.
@@ -145,7 +172,7 @@ ALIGN
     \ compiler read a whole cell here because a token WAS a cell.
     \ An escaped primitive's body is [ESC][selector]; inline both bytes
     \ and do not offer it for folding.
-    DUP C@ 125 = IF
+    DUP C@ ESC-OP = IF
       DUP C@ OP, 1+ C@ OP, 0 LAST-OP !
     ELSE
       C@ HERE LAST-OP ! OP,

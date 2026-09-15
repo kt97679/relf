@@ -108,11 +108,19 @@ PRIMITIVE UM/MOD ( ud u1 --- urem uquot)
 PRIMITIVE D+ ( d1 d2 --- d3)
 \ Add the double numbers d1 and d2.
 
-PRIMITIVE EMIT ( c ---)
-\ Output the character c to the terminal.
+PRIMITIVE TYPE ( c-addr u --- )
+\ Output u characters starting at c-addr to the terminal.
 
-PRIMITIVE KEY ( --- c)
-\ Input the character c from the terminal.
+PRIMITIVE ACCEPT ( c-addr n1 --- n2 )
+\ Read one line from the terminal into a buffer at c-addr of length
+\ n1; n2 is the number of characters read. Backspace and DEL erase,
+\ CR and LF end the line and are not stored, and a character that
+\ would overflow the buffer is dropped.
+\
+\ TYPE and ACCEPT are the primitives and EMIT and KEY are colon
+\ definitions on top of them, which is the reverse of the usual
+\ arrangement. Both loops used to live here in the image, one
+\ dispatch per character; now they are one dispatch per STRING.
 
 PRIMITIVE BYE  ( ---)
 \ Terminate the execution of Forth, return to host OS.
@@ -179,6 +187,14 @@ PRIMITIVE RP!      ( a-addr ---)
 : U>  ( u1 u2 --- f)
 \ f is true if and only if the unsigned number u1 is greater than u2.
   SWAP U< ;
+
+VARIABLE EMITBUF ( --- a-addr)
+\ One character of scratch for EMIT. A cell because that is the
+\ smallest thing VARIABLE makes; only its first byte is used.
+
+: EMIT ( c --- )
+\ Output the character c to the terminal.
+   EMITBUF C! EMITBUF 1 TYPE ;
 
 : CR  ( --- )
 \ Output a newline to the terminal.
@@ -306,10 +322,6 @@ VARIABLE R0 ( --- a-addr)
 \ This word is intended to be used with 'counted strings' where the
 \ first character indicates the length of the string.
    DUP 1 + SWAP C@ ;
-
-: TYPE ( c-addr1 u --- )
-\ Output the string starting at c-addr and length u to the terminal.
-   OVER + SWAP BEGIN 2DUP - WHILE DUP C@ EMIT CHAR+ REPEAT 2DROP ;
 
 : ALIGNED ( c-addr --- a-addr )
 \ a-addr is the first aligned address after c-addr.
@@ -671,6 +683,24 @@ PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
 PRIMITIVE GETFSIZE  ( --- n )
 PRIMITIVE SETFSIZE  ( n --- ior )
 
+PRIMITIVE KEY ( --- c)
+\ Input one character from the terminal, RAW: no line buffering, no
+\ editing, no waiting for a terminator. Appended at the end of the
+\ primitive list rather than placed with TYPE and ACCEPT so that every
+\ other primitive keeps its opcode number.
+\
+\ It is a primitive, and not a colon definition on ACCEPT, because the
+\ two cannot express each other. ACCEPT returns a finished, edited
+\ LINE; a KEY built on it cannot return a keystroke until Enter is
+\ pressed, which is precisely the property interactive line editing -
+\ cursor keys, history search, completion - needs it not to have.
+\
+\ Note that raw here means unbuffered by FORTH. The terminal is still
+\ in canonical mode, so the kernel driver hands over a line at a time
+\ and even this KEY will not see a cursor key until Enter. Making that
+\ work needs a termios primitive to turn off ICANON and ECHO; this
+\ word is the half of the problem that lives on this side.
+
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.
 \ Return the file-ID and the IO result. (ior=0 if success)
@@ -681,29 +711,6 @@ PRIMITIVE SETFSIZE  ( n --- ior )
 \ R> ;
 
 \ PART 7: SOURCE INPUT WORDS.
-
-: ACCEPT ( c-addr n1 --- n2 )
-\ Read a line from the terminal to a buffer starting at c-addr with
-\ length n1. n2 is the number of characters read,
-  >R 0
-  BEGIN
-   KEY DUP 8 = OVER 127 = OR 
-   IF \ Backspace/del 
-     DROP DUP IF 1- THEN 
-   ELSE
-     DUP 10 = OVER 13 = OR 
-     IF \ CR/LF
-      DROP SWAP DROP R> DROP EXIT     
-     ELSE
-      OVER R@ - IF   
-       >R OVER OVER + R> SWAP C! 1+
-      ELSE
-       DROP
-      THEN
-     THEN 
-   THEN 
-  0 UNTIL     
-;
 
 VARIABLE TIB ( --- addr)
 \ is the standard terminal input buffer.

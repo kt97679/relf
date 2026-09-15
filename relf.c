@@ -446,7 +446,7 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_emit, &&L_key, &&L_bye, &&L_spfetch, &&L_spstore,
+        &&L_dplus, &&L_type, &&L_accept, &&L_bye, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
@@ -454,7 +454,7 @@ static void virtual_machine(void) {
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize
+        &&L_getfsize, &&L_setfsize, &&L_key
     };
 
 #define NEXT() do { \
@@ -507,25 +507,56 @@ L_dplus:   /* d+      */
     dsp += 2 * CELL_BYTES;
     NEXT();
 
-L_emit: { /* emit    */
-    UNS8 c = (UNS8)DS0;
-    t_put(c);
-    dsp += CELL_BYTES;
+L_type: { /* type    */ /* c-addr u --- */
+    /* TYPE and ACCEPT are the terminal primitives; EMIT and KEY are
+     * colon definitions on top of them in kernel.4. That is the reverse
+     * of the usual arrangement and it is deliberate: a primitive that
+     * moves a WHOLE STRING costs one dispatch where a per-character
+     * EMIT costs one per byte, and ACCEPT's line editing is a loop the
+     * image no longer has to carry. */
+    const UNS8 *p = (const UNS8 *)(uintptr_t)DS1;
+    UNS64 u = DS0;
+    for (UNS64 i = 0; i < u; i++) t_put(p[i]);
+    dsp += 2 * CELL_BYTES;
     NEXT();
-}
-L_key: { /* key     */
+    }
+L_key: { /* key     */ /* --- c */
+    /* Raw: one character, no line buffering and no editing. See
+     * kernel.4's PRIMITIVE KEY for why this cannot be a colon
+     * definition on ACCEPT. */
     int ch = t_getc();
-    UNS8 c = (UNS8)ch;
-    long n = (ch < 0) ? 0 : 1;
-    if (n <= 0) {
+    if (ch < 0) {
         /* Clean exit on stdin EOF (or a read error) instead of spinning
          * forever re-reading EOF - see GOALS.md / PROGRESS.md, Bug 3. */
         t_flush();
         exit(0);
     }
-    PUSH((UNS64)c);
+    PUSH((UNS64)(UNS8)ch);
     NEXT();
-}
+    }
+L_accept: { /* accept  */ /* c-addr n1 --- n2 */
+    /* Must match the Forth ACCEPT this replaces, character for
+     * character, because shell.4 depends on the editing behaviour:
+     * backspace and DEL erase one character if there is one, CR or LF
+     * end the line and are NOT stored, and a character that would
+     * overflow the buffer is DROPPED rather than ending the line.
+     *
+     * EOF exits, as KEY did before it. Re-reading EOF forever is
+     * GOALS.md Bug 3, and moving the read into a new primitive is
+     * exactly the kind of change that would quietly reintroduce it. */
+    UNS8 *buf = (UNS8 *)(uintptr_t)DS1;
+    UNS64 max = DS0, n = 0;
+    for (;;) {
+        int ch = t_getc();
+        if (ch < 0) { t_flush(); exit(0); }
+        if (ch == 8 || ch == 127) { if (n) n--; }
+        else if (ch == 10 || ch == 13) break;
+        else if (n < max) buf[n++] = (UNS8)ch;
+    }
+    dsp += CELL_BYTES;
+    DS0 = n;
+    NEXT();
+    }
 L_bye:     /* bye     */ t_flush(); exit(0);
 L_spfetch: /* sp@     */ PUSH(dsp + CELL_BYTES); NEXT();
 L_spstore: /* sp!     */ dsp = DS0; NEXT();
