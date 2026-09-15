@@ -59,26 +59,35 @@ run() {   # run ENGINE IMAGE LABEL
 # that suite from 1998 ok-markers to zero. They also have to be fed as a
 # script file rather than on the CORE stream, because tester.fr's
 # harness must be in place before extend.4 changes the search order.
-ext_run() {   # ext_run ENGINE IMAGE LABEL
+ext_run() {   # ext_run ENGINE IMAGE LABEL TESTFILE
+    # One invocation per suite. Chaining them shares a dictionary and a
+    # stack, and one suite's leftovers become another's "WRONG NUMBER OF
+    # RESULTS" - which is what happened, in memorytest, from something
+    # a CORE EXT file left behind.
     local out ext
     if ! interpreter_p "$1" "$2"; then
         echo "SKIP $3: not an interpreter image"; return; fi
     ext=$(mktemp)
-    printf 'S" tester.fr" INCLUDED\nS" extend.4" INCLUDED\nS" tests/ext/coreext-std.fth" INCLUDED\nS" tests/ext/coreext.fth" INCLUDED\n' > "$ext"
+    printf 'S" tester.fr" INCLUDED\nS" extend.4" INCLUDED\nS" %s" INCLUDED\n' "$4" > "$ext"
     out=$( printf 'S" %s" INCLUDED\nDUMMY\nBYE\n' "$ext" | timeout 120 "$1" "$2" 2>&1 )
     rm -f "$ext"
     if echo "$out" | grep -qiE "incorrect result|wrong number|undefined word|segmentation"; then
         echo "FAIL $3"; echo "$out" | grep -iE "incorrect|wrong number|undefined" | head -3
         fail=1
     else
-        echo "ok   $3 (10 standard sections + 30 own assertions)"
+        echo "ok   $3"
     fi
 }
 
 run "$B/spec-64" "$B/fkernel-64.img" "CORE suite, CV8 64-bit"
 run "$B/spec-32" "$B/fkernel-32.img" "CORE suite, CV8 32-bit"
-ext_run "$B/spec-64" "$B/fkernel-64.img" "CORE EXT suites, CV8 64-bit"
-ext_run "$B/spec-32" "$B/fkernel-32.img" "CORE EXT suites, CV8 32-bit"
+for _w in 64 32; do
+    _e=$B/spec-$_w; _i=$B/fkernel-$_w.img
+    ext_run "$_e" "$_i" "CORE EXT, standard suite, $_w-bit" tests/ext/coreext-std.fth
+    ext_run "$_e" "$_i" "CORE EXT, own tests, $_w-bit"      tests/ext/coreext.fth
+    ext_run "$_e" "$_i" "Memory-Allocation suite, $_w-bit"  tests/ext/memorytest.fth
+    ext_run "$_e" "$_i" "File-Access suite, $_w-bit"        tests/ext/filetest.fth
+done
 # s6, byte-granular dictionary headers. These are the images that
 # exercise cv8b.4's replacement SEARCH-WORDLIST and NAME> - the ones
 # that have to find a word through a 1-3 byte backward-read link - so

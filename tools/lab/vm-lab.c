@@ -1191,7 +1191,11 @@ L_readline: { /* c-addr u1 fid --- u2 flag ior */
      * stopped at is a line terminator too, not payload. */
     if (count > 0 && BYTE(addr + count - 1) == '\r') count--;
     DS2 = count;
-    DS1 = got_any ? (UNS64)-1 : 0;
+    /*  ANS: flag is false only at end of file. A request for ZERO
+     *  characters cannot have reached it - the file was never looked
+     *  at - so it reports true with a count of 0, which is what
+     *  filetest.fth's `BUF 0 FID1 @ READ-LINE` checks. */
+    DS1 = (got_any || max == 0) ? (UNS64)-1 : 0;
     DS0 = err ? (UNS64)-200 : 0;
     NEXT();
 }
@@ -1270,21 +1274,32 @@ L_system: { t_flush(); /* c-addr u --- ior */
     dsp += CELL_BYTES;
     NEXT();
 }
-L_reposfile: {/* offset fid --- ior */
+L_reposfile: { /* ud fid --- ior */
+    /*  ANS: ( ud fileid -- ior ) - the offset is a DOUBLE, low cell
+     *  under high cell. See L_filepos. */
     t_fdrop((int)DS0);
-
-    DS1 = (UNS64)lseek((int)DS0, (long)DS1, SEEK_SET);
-    dsp += CELL_BYTES;
+    int fd = (int)DS0;
+    unsigned long long off = (CELL_BYTES == 8)
+        ? (unsigned long long)DS2
+        : ((unsigned long long)DS2 | ((unsigned long long)DS1 << 32));
+    off_t r = lseek(fd, (off_t)off, SEEK_SET);
+    dsp += 2 * CELL_BYTES;
+    DS0 = (r < 0) ? 200 : 0;
     NEXT();
     }
-L_filepos: {/* fid --- u ior */
+L_filepos: { /* fid --- ud ior */
+    /*  ANS: ( fileid -- ud ior ) - the position is a DOUBLE, low cell
+     *  then high cell. This returned a single cell until the Forth
+     *  Standard file tests were adopted and said so; nothing in Forth
+     *  called it, which is why it went unnoticed. */
     t_fdrop((int)DS0);
-
-    DS0 = (UNS64)lseek((int)DS0, 0, SEEK_CUR);
-    dsp -= CELL_BYTES;
-    if ((INT64)DS1 == -1) {
-        DS0 = 200;
-    } else {
+    off_t p = lseek((int)DS0, 0, SEEK_CUR);
+    dsp -= 2 * CELL_BYTES;
+    if (p < 0) { DS2 = 0; DS1 = 0; DS0 = 200; }
+    else {
+        unsigned long long q = (unsigned long long)p;
+        DS2 = (UNS64)q;
+        DS1 = (UNS64)(CELL_BYTES == 8 ? 0ULL : (q >> 32));
         DS0 = 0;
     }
     NEXT();
@@ -1297,16 +1312,22 @@ L_delfile: { /* c-addr u --- ior */
     dsp += CELL_BYTES;
     NEXT();
 }
-L_filesize: { /* fid --- u ior */
+L_filesize: { /* fid --- ud ior */
+    /*  ANS: ( fileid -- ud ior ), a DOUBLE - see L_filepos. */
     t_fdrop((int)DS0);
     int fd = (int)DS0;
-    long cur = lseek(fd, 0, SEEK_CUR);
-    long size = lseek(fd, 0, SEEK_END);
-    lseek(fd, cur, SEEK_SET);
-    DS0 = (UNS64)size;
-    PUSH(0);
+    off_t cur = lseek(fd, 0, SEEK_CUR), end = -1;
+    if (cur >= 0) { end = lseek(fd, 0, SEEK_END); lseek(fd, cur, SEEK_SET); }
+    dsp -= 2 * CELL_BYTES;
+    if (end < 0) { DS2 = 0; DS1 = 0; DS0 = 200; }
+    else {
+        unsigned long long q = (unsigned long long)end;
+        DS2 = (UNS64)q;
+        DS1 = (UNS64)(CELL_BYTES == 8 ? 0ULL : (q >> 32));
+        DS0 = 0;
+    }
     NEXT();
-}
+    }
 /*
  *  Process-control primitives (shell support). Callers are responsible
  *  for NUL-terminating any string these pass to libc (matching the
