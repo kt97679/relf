@@ -2,7 +2,7 @@
 \ image, so work already compiled into the dictionary doesn't have to
 \ be recompiled on every startup.
 \
-\ Why: `relfsh` compiles locals.4 + shell.4 from source every single
+\ Why: `relfsh` compiles shadow.4 + shell.4 from source every single
 \ time it starts. Measured, 50 runs each: `relfsh -c true` 12.68s,
 \ bare `relf kernel.img` 0.061s, `/bin/true` 0.040s. That is ~253ms
 \ of compiling against ~1.2ms of actual engine startup - about 99.5%
@@ -43,7 +43,7 @@
 \ re-initialized before use by COLD, WARM or QUIT, so zeroing it
 \ costs nothing and removes every source of run-to-run variation. Forces DECIMAL for its own literals
 \ and restores the caller's BASE, for the reason documented in
-\ locals.4's header.
+\ shadow.4's header.
 
 BASE @  DECIMAL
 
@@ -125,7 +125,7 @@ CREATE SS-MAGIC 8 ALLOT
   CSP   SS-CELL   'LEAVE  SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
-  \ locals.4's save-stack pointer. It is zero at save time when the
+  \ shadow.4's save-stack pointer. It is zero at save time when the
   \ frames are balanced, but scrubbing it costs nothing and makes that
   \ a property of the image rather than a hope.
   \
@@ -135,7 +135,7 @@ CREATE SS-MAGIC 8 ALLOT
   \ If that change is ever re-applied, they must come back - a rebuilt
   \ image stops reproducing otherwise, which is what found them.
   \
-  \ This file therefore REQUIRES locals.4 to be loaded first, which
+  \ This file therefore REQUIRES shadow.4 to be loaded first, which
   \ relfsh already does.
   LSAVE-SP SS-CELL
   \ This word's own working variables, and pool.4's - they hold a heap

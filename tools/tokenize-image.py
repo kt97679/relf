@@ -74,7 +74,7 @@ STR = {by_name[n]['s'] for n in ('(S")', '(.")') if n in by_name}
 LOOP = by_name.get('(LOOP)', {}).get('s')
 
 src = "".join(open(f, errors='replace').read()
-              for f in ['shell.4', 'locals.4', 'pool.4', 'save-system.4'])
+              for f in ['shell.4', 'shadow.4', 'pool.4', 'save-system.4'])
 data = (set(re.findall(r'CREATE\s+(\S+)', src)) |
         set(re.findall(r'BUFFER:\s+(\S+)', src)) |
         set(re.findall(r'^\s*VARIABLE\s+(\S+)', src, re.M)) |

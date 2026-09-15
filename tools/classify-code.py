@@ -27,7 +27,7 @@ kern=set()
 for l in open('/tmp/walk_kernel.txt',errors='replace'):
     m=re.match(r'^W \S+ \S+ ?(.*)$',l.rstrip('\n'))
     if m: kern.add(m.group(1).strip())
-src="".join(open(f,errors='replace').read() for f in ['shell.4','locals.4','pool.4','save-system.4'])
+src="".join(open(f,errors='replace').read() for f in ['shell.4','shadow.4','pool.4','save-system.4'])
 notcode=set(re.findall(r'CREATE\s+(\S+)[^\n]*ALLOT',src))|set(re.findall(r'BUFFER:\s+(\S+)',src))|set(re.findall(r'^\s*VARIABLE\s+(\S+)',src,re.M))
 
 def decode(w):

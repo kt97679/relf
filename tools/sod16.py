@@ -106,7 +106,7 @@ def _fits32(v):
     return -(1 << 31) <= v < (1 << 31)
 
 src = "".join(open(f, errors='replace').read()
-              for f in ['shell.4', 'locals.4', 'pool.4', 'save-system.4'])
+              for f in ['shell.4', 'shadow.4', 'pool.4', 'save-system.4'])
 DATA = (set(re.findall(r'CREATE\s+(\S+)', src)) |
         set(re.findall(r'BUFFER:\s+(\S+)', src)) |
         set(re.findall(r'^\s*VARIABLE\s+(\S+)', src, re.M)) |

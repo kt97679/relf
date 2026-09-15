@@ -87,8 +87,8 @@ VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to 
 
 
 \ !XT / @XT (storing an execution token as a START-relative offset,
-\ so it survives being saved into an image) live in locals.4, which
-\ this file already requires for {: itself.
+\ so it survives being saved into an image) live in shadow.4, which
+\ this file already requires for SHADOW{ itself.
 
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ branch has already determined this whole
@@ -292,7 +292,7 @@ VARIABLE SEQ-BLEN
 VARIABLE SEQ-I
 
 : STR= ( c-addr1 u1 c-addr2 u2 --- f )
-  {: SEQ-A SEQ-ALEN SEQ-B SEQ-BLEN | SEQ-I :}
+  SHADOW{ SEQ-A SEQ-ALEN SEQ-B SEQ-BLEN | SEQ-I }
   SEQ-ALEN @ SEQ-BLEN @ <> IF 0 EXIT THEN
   BEGIN SEQ-I @ SEQ-ALEN @ < WHILE
     SEQ-A @ SEQ-I @ + C@
@@ -327,7 +327,7 @@ VARIABLE SCN-MAX
   \ truncating or overflowing a fixed-size slot. Explicit variables
   \ rather than stack-juggling for all four arguments, matching this
   \ shell's own established preference (see e.g. CMDSUB-* words).
-  {: SCN-SRC SCN-LEN SCN-DEST SCN-MAX :}
+  SHADOW{ SCN-SRC SCN-LEN SCN-DEST SCN-MAX }
   SCN-LEN @ 1+ SCN-MAX @ > IF 0 EXIT THEN
   SCN-SRC @ SCN-DEST @ SCN-LEN @ MOVE
   0 SCN-DEST @ SCN-LEN @ + C!
@@ -341,7 +341,7 @@ VARIABLE SCC-MAX
   \ Same as SAFE-COPY-NUL, but src-addr is already a NUL-terminated
   \ C string (its own length is computed here) rather than a
   \ separately-given (addr u) pair.
-  {: SCC-SRC SCC-DEST SCC-MAX :}
+  SHADOW{ SCC-SRC SCC-DEST SCC-MAX }
   SCC-SRC @ SCC-SRC @ CSTRLEN SCC-DEST @ SCC-MAX @ SAFE-COPY-NUL ;
 
 \ ==================================================================
@@ -374,7 +374,7 @@ VARIABLE FS-I
 
 : FIND-SHVAR ( name-addr --- i | -1 )  \ linear scan; name-addr is a
                                          \ NUL-terminated C string.
-  {: | FS-I :}
+  SHADOW{ | FS-I }
   BEGIN FS-I @ SHVAR-COUNT @ < WHILE
     DUP FS-I @ SHVAR-NAME-SLOT CSTR= IF
       DROP FS-I @ EXIT
@@ -418,7 +418,7 @@ VARIABLE SV-IDX
                                             \ by testing directly: the
                                             \ name and value slots came
                                             \ out swapped).
-  {: SV-NAME SV-VALUE | SV-IDX :}
+  SHADOW{ SV-NAME SV-VALUE | SV-IDX }
   SV-NAME @ FIND-SHVAR
   DUP -1 = IF
     DROP
@@ -543,7 +543,7 @@ VARIABLE SPP-I
   \ name itself) - called by RUN-FUNC-BODY right as a function call
   \ begins, while the global ARGV still holds the calling line (before
   \ the function's own first body line is replayed and overwrites it).
-  {: | SPP-I :}
+  SHADOW{ | SPP-I }
   BEGIN
     SPP-I @ 1+ ARGC @ <
     SPP-I @ MAX-POS-PARAMS < AND
@@ -564,7 +564,7 @@ VARIABLE SPFSA-I
   \ script from the very start, without needing an explicit "set"
   \ call. Called once, from the top-level dispatch, right before
   \ SH-FILE runs the script.
-  {: | SPFSA-I :}
+  SHADOW{ | SPFSA-I }
   BEGIN
     SPFSA-I @ 1+ SYS-ARGC <
     SPFSA-I @ MAX-POS-PARAMS < AND
@@ -580,13 +580,13 @@ VARIABLE SPFSA-I
 VARIABLE SPPD-DEPTH
 
 : SAVE-POS-PARAMS ( depth --- )
-  {: SPPD-DEPTH :}
+  SHADOW{ SPPD-DEPTH }
   SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT
   POS-PARAMS SWAP MAX-POS-PARAMS POS-PARAM-MAX * MOVE
   SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT POS-PARAM-COUNT @ SWAP ! ;
 
 : RESTORE-POS-PARAMS ( depth --- )
-  {: SPPD-DEPTH :}
+  SHADOW{ SPPD-DEPTH }
   SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * MOVE
   SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT @ POS-PARAM-COUNT ! ;
 
@@ -971,7 +971,7 @@ VARIABLE CMDSUB-OUT-LEN
   \ newline replaced by a NUL - the NUL-separated shape every replay
   \ source in this file uses - and records whether any non-blank
   \ character was seen at all, so "$( )" runs nothing.
-  {: CS-POS | CS-COPY-I :}
+  SHADOW{ CS-POS | CS-COPY-I }
   0 CS-NONBLANK? !
   BEGIN CS-COPY-I @ CS-POS @ < WHILE
     CMDSUB-LINE-BUF CS-COPY-I @ + C@
@@ -996,7 +996,7 @@ VARIABLE CMDSUB-PID
   \ Reads everything available from fd into CMDSUB-OUT-BUF, up to its
   \ fixed capacity - output beyond that is silently truncated rather
   \ than overflowing the buffer.
-  {: CS-FD :}
+  SHADOW{ CS-FD }
   0 CMDSUB-OUT-LEN !
   BEGIN
     CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ - 0 >
@@ -1033,7 +1033,7 @@ VARIABLE BA-NEWSIZE
   \ time. That is safe here precisely because nothing outside holds a
   \ raw pointer into the arena; everything holds an offset and goes
   \ through BODY@.
-  {: BA-NEED :}
+  SHADOW{ BA-NEED }
   BODY-ARENA-SIZE @ DUP 0= IF DROP BODY-ARENA-INIT THEN BA-NEWSIZE !
   BEGIN BA-NEWSIZE @ BA-NEED @ < WHILE
     BA-NEWSIZE @ 2 * BA-NEWSIZE !
@@ -1374,7 +1374,7 @@ VARIABLE ANS-NEG
   \ pointer to the first digit, which is somewhere inside the buffer.
   \ Needed because a variable's value is a string: an arithmetic
   \ assignment has to write one back.
-  {: ANS-N | ANS-I ANS-NEG :}
+  SHADOW{ ANS-N | ANS-I ANS-NEG }
   0 AE-NUMBUF 23 + C!
   22 ANS-I !
   ANS-N @ 0< IF -1 ANS-NEG ! ANS-N @ NEGATE ANS-N ! THEN
@@ -1432,7 +1432,7 @@ VARIABLE ANS-NEG
   \ that is not an assignment falls straight through to AE-OR, so this
   \ costs one lookahead per expression.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | AE-SLOT :}
+  SHADOW{ BODY-ARENA-TOP | AE-SLOT }
   AE-TRY-ASSIGN? 0= IF AE-OR EXIT THEN
   \ The target name and the operator both have to survive the
   \ recursive evaluation of the right-hand side, which may itself be
@@ -1610,7 +1610,7 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
   \ from a quoted word, so it cannot go through EMIT-EXPANDED-CHAR -
   \ which suppresses splitting inside quotes, correctly, for
   \ everything else - and calls IFS-SPLIT-HERE directly.
-  {: EAP-AT | EAP-I :}
+  SHADOW{ EAP-AT | EAP-I }
   \ POSIX: "$@" with no positional parameters produces NO field, where
   \ any other quoted empty word produces one. Recorded here and acted
   \ on when the token ends, since whether the word is empty overall is
@@ -1712,7 +1712,7 @@ VARIABLE EBW-NAMELEN
   \ since the nesting has no bound: BODY-ARENA-TOP is a local, so the
   \ allocation is released on every exit path.
   IN-BRACED-WORD? @ BODY-ARENA-TOP @
-  {: IN-BRACED-WORD? BODY-ARENA-TOP | EBW-NAME EBW-NAMELEN :}
+  SHADOW{ IN-BRACED-WORD? BODY-ARENA-TOP | EBW-NAME EBW-NAMELEN }
   -1 IN-BRACED-WORD? !
   VN-LEN @ 1+ EBW-NAMELEN !
   EBW-NAMELEN @ BODY-ALLOC EBW-NAME !
@@ -1741,7 +1741,7 @@ VARIABLE EBW-NAMELEN
   \ otherwise advance ARGC for a "$@" in the discarded word.
   \ EXPAND-SUPPRESSED? stops a $(...) from running.
   IN-DQ-CONTEXT? @ EXPAND-SUPPRESSED? @ TOK-OUT @
-  {: IN-DQ-CONTEXT? EXPAND-SUPPRESSED? TOK-OUT :}
+  SHADOW{ IN-DQ-CONTEXT? EXPAND-SUPPRESSED? TOK-OUT }
   -1 IN-DQ-CONTEXT? !
   -1 EXPAND-SUPPRESSED? !
   EXPAND-BRACED-WORD ;
@@ -1756,7 +1756,7 @@ VARIABLE EBW-NAMELEN
   \
   \ Field splitting is suppressed: a pattern is one pattern, and an
   \ assigned value is one value.
-  IN-DQ-CONTEXT? @ TOK-OUT @ {: IN-DQ-CONTEXT? TOK-OUT :}
+  IN-DQ-CONTEXT? @ TOK-OUT @ SHADOW{ IN-DQ-CONTEXT? TOK-OUT }
   TOK-OUT @ CBW-START !
   -1 IN-DQ-CONTEXT? !
   EXPAND-BRACED-WORD
@@ -2203,7 +2203,7 @@ VARIABLE EW-I
   TOK-BUF TOK-OUT !
   TOK-BUF TOK-BUF-MAX + TOK-OUT-END !
   0 ARGC !
-  {: | TK-I TK-J TK-Q :}
+  SHADOW{ | TK-I TK-J TK-Q }
   BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ MAX-ARGS 1- < AND WHILE
     TOK-OUT @ ARGV ARGC @ CELLS + !
     \ A leading quote character is recorded now, while the quotes are
@@ -2387,7 +2387,7 @@ VARIABLE JC-I
   \ JC-I is a scratch local rather than a plain global: the run is
   \ rescanned after every join, and READ-INPUT-CALL can reach a great
   \ deal of the shell in between.
-  {: | JC-I :}
+  SHADOW{ | JC-I }
   JC-LEN @ JC-I !
   BEGIN
     JC-I @ 0 > IF LINE-BUF JC-I @ 1- + C@ 92 = ELSE 0 THEN
@@ -2504,7 +2504,7 @@ VARIABLE AR-I
   \ Records one redirection, consuming its target token. Reads PR-I,
   \ which is a local of PARSE-REDIRECTIONS - safe because a local IS
   \ the variable, so it holds that invocation's value throughout.
-  {: RA-FD RA-OP :}
+  SHADOW{ RA-FD RA-OP }
   PR-I @ ARGC @ < 0= IF EXIT THEN
   RA-FD @      REDIR-FD  REDIR-N @ CELLS + !
   RA-OP @      REDIR-OP  REDIR-N @ CELLS + !
@@ -2522,7 +2522,7 @@ VARIABLE AR-I
   \ operator ("2>file") arrives as its own token, so the digit and the
   \ operator are recognised as a pair here rather than in the
   \ tokenizer.
-  {: | PR-I :}
+  SHADOW{ | PR-I }
   0 REDIR-N !
   0 ARGC2 !
   BEGIN PR-I @ ARGC @ < WHILE
@@ -2762,7 +2762,7 @@ VARIABLE FF-I
                                         \ actually a defined function
                                         \ before falling through to a
                                         \ builtin or external command.
-  {: FF-NAME | FF-I :}
+  SHADOW{ FF-NAME | FF-I }
   BEGIN FF-I @ FUNC-COUNT @ < WHILE
     FF-I @ FUNC-NAME-SLOT FF-NAME @ CSTR= IF FF-I @ EXIT THEN
     FF-I @ 1+ FF-I !
@@ -2819,7 +2819,7 @@ VARIABLE TEST-A
 VARIABLE TEST-B
 
 : TEST-BINARY? ( a-addr op-addr b-addr --- f )
-  {: TEST-A TEST-OP TEST-B :}
+  SHADOW{ TEST-A TEST-OP TEST-B }
   S" ="   TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= EXIT THEN
   S" !="  TEST-OP @ STR0= IF TEST-A @ TEST-B @ CSTR= 0= EXIT THEN
   S" -eq" TEST-OP @ STR0= IF
@@ -2849,7 +2849,7 @@ VARIABLE TEST-U-OPERAND
   \ -f/-d are approximated as "does this path exist at all" (same as
   \ -e) - this kernel has no real stat/access primitive to actually
   \ distinguish a regular file from a directory, only OPEN-FILE.
-  {: TEST-U-OP TEST-U-OPERAND :}
+  SHADOW{ TEST-U-OP TEST-U-OPERAND }
   S" -z" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= EXIT THEN
   S" -n" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= 0= EXIT THEN
   S" -e" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
@@ -2961,7 +2961,7 @@ VARIABLE DA-EQ
   \ Split a validated "NAME=value" word into ASSIGN-NAME-BUF and
   \ ASSIGN-VALUE-BUF, without deciding what to do with them. Shared by
   \ DO-ASSIGN-AT (shell variables) and DO-ALIAS.
-  {: DA-ADDR DA-EQ :}
+  SHADOW{ DA-ADDR DA-EQ }
   DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
   DA-ADDR @ DA-EQ @ + 1+
   DA-ADDR @ CSTRLEN DA-EQ @ - 1-
@@ -3017,7 +3017,7 @@ VARIABLE BI-LEN
 VARIABLE BI-HERE
 
 : BUILTIN ( xt c-addr u --- )
-  {: BI-XT BI-ADDR BI-LEN | BI-HERE :}
+  SHADOW{ BI-XT BI-ADDR BI-LEN | BI-HERE }
   HERE BI-HERE !
   BUILTIN-LIST @ ,
   BI-XT @ START @ - ,
@@ -3031,7 +3031,7 @@ VARIABLE FB-NAME
 VARIABLE FB-E
 
 : FIND-BUILTIN ( c-addr --- xt | 0 )
-  {: FB-NAME | FB-E :}
+  SHADOW{ FB-NAME | FB-E }
   BUILTIN-LIST @ FB-E !
   BEGIN FB-E @ WHILE
     FB-E @ START @ +
@@ -3068,7 +3068,7 @@ VARIABLE AL-VALUE
 : ALIAS-VALUE-SLOT ( i --- addr )  ALIAS-VALUE-MAX * ALIAS-VALUES + ;
 
 : FIND-ALIAS ( name-addr --- i | -1 )
-  {: AL-NAME | AL-I :}
+  SHADOW{ AL-NAME | AL-I }
   BEGIN AL-I @ ALIAS-COUNT @ < WHILE
     AL-I @ ALIAS-NAME-SLOT AL-NAME @ CSTR= IF AL-I @ EXIT THEN
     AL-I @ 1+ AL-I !
@@ -3076,7 +3076,7 @@ VARIABLE AL-VALUE
   -1 ;
 
 : SET-ALIAS ( name-addr value-addr --- )
-  {: AL-NAME AL-VALUE | AL-I :}
+  SHADOW{ AL-NAME AL-VALUE | AL-I }
   AL-NAME @ FIND-ALIAS AL-I !
   AL-I @ -1 = IF
     ALIAS-COUNT @ MAX-ALIASES < 0= IF
@@ -3308,7 +3308,7 @@ VARIABLE FA-LEN
 VARIABLE FTH-I
 
 : FORTH-APPEND ( c-addr u --- )
-  {: FA-ADDR FA-LEN :}
+  SHADOW{ FA-ADDR FA-LEN }
   FTH-LEN @ FA-LEN @ + 1+ LINE-MAX < IF
     FA-ADDR @ FORTH-BUF FTH-LEN @ + FA-LEN @ MOVE
     FTH-LEN @ FA-LEN @ + FTH-LEN !
@@ -3331,7 +3331,7 @@ VARIABLE FTH-I
   \ ABORTs the whole shell, and a word that unbalances the stack
   \ corrupts this shell rather than a child process, because there is
   \ no isolation. That is the nature of the facility.
-  {: | FTH-I :}
+  SHADOW{ | FTH-I }
   0 FTH-LEN !
   1 FTH-I !
   BEGIN FTH-I @ ARGC @ < WHILE
@@ -3356,7 +3356,7 @@ VARIABLE RD-E
   WHILE RD-POS @ 1+ RD-POS ! REPEAT ;
 
 : RD-SET ( name-addr start end --- )   \ assign READ-BUF[start,end)
-  {: RD-NAME RD-S RD-E :}
+  SHADOW{ RD-NAME RD-S RD-E }
   READ-BUF RD-S @ + RD-E @ RD-S @ -
   READ-FIELD SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
   RD-NAME @ READ-FIELD SET-SHVAR ;
@@ -3375,7 +3375,7 @@ VARIABLE RD-E
   \
   \ -r is accepted and ignored: this shell does no backslash
   \ processing on the line either way, so -r is already the behaviour.
-  {: | RD-VI :}
+  SHADOW{ | RD-VI }
   READ-BUF LINE-MAX 0 READ-LINE DROP
   0= IF DROP 1 LAST-STATUS ! EXIT THEN
   RD-LEN !
@@ -3738,7 +3738,7 @@ VARIABLE ARGC-SEMI-REST
                           \ REST/ARGQ-SEMI-REST - either can be empty,
                           \ e.g. a leading or trailing ';'), 0
                           \ otherwise (nothing touched).
-  {: | PR-I :}
+  SHADOW{ | PR-I }
   0 GRP-DEPTH !
   0 ARGC-SEMI-LEFT !
   BEGIN AT-END? AT-SEMI? OR 0= WHILE
@@ -3775,7 +3775,7 @@ VARIABLE SP-I
   \ RUN-PIPELINE rather than being split into fixed left/right arrays,
   \ which is what lifts the old one-pipe-per-line limit: a line has
   \ PIPE-NSEG segments for any number of pipes.
-  {: | SP-I :}
+  SHADOW{ | SP-I }
   0 GRP-DEPTH !
   0 PIPE-PRESENT? !
   ARGC @ PIPE-ARGC !
@@ -3801,7 +3801,7 @@ VARIABLE PSO-LEN
   \ Every segment must be non-empty, matching the old "both sides
   \ non-empty" guard - "a | | b" or a trailing "|" runs nothing rather
   \ than misbehaving.
-  {: | PSO-I PSO-LEN :}
+  SHADOW{ | PSO-I PSO-LEN }
   BEGIN PSO-I @ PIPE-ARGC @ < WHILE
     PSO-I @ PIPE-AT-BAR? IF
       PSO-LEN @ 0= IF 0 EXIT THEN
@@ -3843,7 +3843,7 @@ VARIABLE CAQ-N
   \ The zero guard is not optional: CAQ-N can be 0 (an empty pipeline
   \ segment), and this kernel's DO with start = limit runs the entire
   \ unsigned range.
-  {: CAQ-ARGV CAQ-ARGQ CAQ-N :}
+  SHADOW{ CAQ-ARGV CAQ-ARGQ CAQ-N }
   CAQ-N @ ARGC !
   CAQ-N @ 0 > IF
     CAQ-N @ 0 DO
@@ -4086,7 +4086,7 @@ VARIABLE REPLAY-POS
   \
   \ Builtins still aren't supported in a pipeline: every segment runs
   \ via RUN-CHILD, the same scope limit as before.
-  {: | PL-I PL-PREV-RD PL-RD PL-WR PL-START PL-END PL-J :}
+  SHADOW{ | PL-I PL-PREV-RD PL-RD PL-WR PL-START PL-END PL-J }
   -1 PL-PREV-RD !
   BEGIN PL-I @ PIPE-NSEG @ < WHILE
     PL-START @ PL-END !
@@ -4200,7 +4200,7 @@ VARIABLE AO-CONTINUE
                           \ ARGC-AO-REST/ARGQ-AO-REST. f = 0 if
                           \ neither was found at all (nothing touched
                           \ except ARGC-AO-LEFT, harmlessly reset).
-  {: | PR-I :}
+  SHADOW{ | PR-I }
   0 GRP-DEPTH !
   0 ARGC-AO-LEFT !
   BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
@@ -4398,7 +4398,7 @@ VARIABLE AO-J
   \ globals: every one of them is held across RUN-SIMPLE-OR-PIPELINE,
   \ which can recurse into this same word.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP :}
+  SHADOW{ BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP }
   AO-SAVE-REST
   ANDOR-OP @ AO-SAVED-OP !
   ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
@@ -4589,7 +4589,7 @@ VARIABLE INPUT-EOF?
 \ shell prompts for continuation there indefinitely too.
 
 : REPLAY-NEXT-LINE ( c-addr max --- u2 )
-  {: RNL-DEST RNL-MAX | RNL-CUR RNL-LEN :}
+  SHADOW{ RNL-DEST RNL-MAX | RNL-CUR RNL-LEN }
   REPLAY-POS @ REPLAY-LEN @ < 0= IF -1 INPUT-EOF? ! 0 EXIT THEN
   REPLAY-ARENA? @ IF REPLAY-SRC @ BODY@ ELSE REPLAY-SRC @ THEN
   REPLAY-POS @ + RNL-CUR !
@@ -4831,7 +4831,7 @@ VARIABLE NORM-SKIPD
                                       \ result (u2 bytes) is in
                                       \ NORM-BUF, not LINE-BUF itself -
                                       \ the caller copies it back.
-  {: NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C :}
+  SHADOW{ NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C }
   0 NORM-WCOUNT !  -1 NORM-WSTART !
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
@@ -5229,7 +5229,7 @@ VARIABLE SAEK-KW3-LEN
   \ a real "else" in between as if it were ordinary body text (found
   \ by testing this exact case directly: both branches of an if/else
   \ on one line silently failed to run at all).
-  {: SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN SAEK-KW3-ADDR SAEK-KW3-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH :}
+  SHADOW{ SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN SAEK-KW3-ADDR SAEK-KW3-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH }
   BEGIN SAK-I @ ARGC @ < WHILE
     0 SAEK-WHICH !
     SAK-I @ ARGV-QUOTED@ 0= IF
@@ -5296,7 +5296,7 @@ VARIABLE COND-TRUE?
 VARIABLE IF-ELIF-SKIP
 
 : DO-IF ( --- )
-  {: | IF-ELIF-SKIP :}
+  SHADOW{ | IF-ELIF-SKIP }
   \ ARGV[0] is "if"; the rest of the line is the condition command,
   \ up to an optional unquoted "then" on the *same* line (checked via
   \ SPLIT-AT-KEYWORD - see the comment above it for the full design).
@@ -5454,7 +5454,7 @@ VARIABLE IF-ELIF-SKIP
 \ Note the idiom for that, since a "|" scratch local is ZEROED rather
 \ than preserved:
 \
-\     BODY-ARENA-TOP @  {: BODY-ARENA-TOP | ... :}
+\     BODY-ARENA-TOP @  SHADOW{ BODY-ARENA-TOP | ... }
 \
 \ pushing the current value and taking it straight back as an argument
 \ local. Result: saved on entry, unchanged during the body, restored
@@ -5495,7 +5495,7 @@ VARIABLE RLS-DQ?
   \ fresh each iteration), not as tokens - so the "; do" tail has to be
   \ trimmed off the raw text, not off ARGV. The last one rather than
   \ the first, so "while a; b; do" keeps the whole compound condition.
-  {: RLS-ADDR RLS-LEN RLS-WANT | RLS-I RLS-POS RLS-SQ? RLS-DQ? :}
+  SHADOW{ RLS-ADDR RLS-LEN RLS-WANT | RLS-I RLS-POS RLS-SQ? RLS-DQ? }
   -1 RLS-POS !
   BEGIN RLS-I @ RLS-LEN @ < WHILE
     RLS-ADDR @ RLS-I @ + C@
@@ -5639,7 +5639,7 @@ VARIABLE LOOP-RAN?      \ did this loop execute its body even once?
   \ this was not a mechanical repeat of 92's fix for "fi": DO-IF
   \ reaches its "fi" AFTER the body has run, and a loop reaches its
   \ "done" before.
-  {: SUF-KWLEN | SUF-I :}
+  SHADOW{ SUF-KWLEN | SUF-I }
   0 SUF-LEN !
   BEGIN
     SUF-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF SUF-I @ + C@ WS? ELSE 0 THEN
@@ -5681,7 +5681,7 @@ VARIABLE OL-END
 : TOK-EQ? ( i c-addr u --- f )
   \ Is ARGV[i] this exact unquoted word? LINE-IS? asks the same
   \ question but only ever of ARGV[0].
-  {: TE-I TE-A TE-U :}
+  SHADOW{ TE-I TE-A TE-U }
   TE-I @ ARGC @ < 0= IF 0 EXIT THEN
   TE-I @ ARGV-QUOTED@ IF 0 EXIT THEN
   TE-I @ ARGV@ DUP CSTRLEN TE-A @ TE-U @ STR= ;
@@ -5689,7 +5689,7 @@ VARIABLE OL-END
 : RAW-APPEND ( c-addr u --- )
   \ Appends one word and a separating space at JT-LEN, which is
   \ JOIN-ARGV-TO-RAW's local and so belongs to the join in progress.
-  {: RA-A RA-U :}
+  SHADOW{ RA-A RA-U }
   RA-U @ JT-LEN @ + 1+ LINE-MAX < IF
     RA-A @ RAW-LINE-BUF JT-LEN @ + RA-U @ MOVE
     JT-LEN @ RA-U @ + JT-LEN !
@@ -5706,7 +5706,7 @@ VARIABLE OL-END
   \
   \ Safe to overwrite RAW-LINE-BUF here: every caller has already
   \ taken what it needs out of it.
-  {: JT-FROM JT-TO | JT-I JT-LEN :}
+  SHADOW{ JT-FROM JT-TO | JT-I JT-LEN }
   JT-FROM @ JT-I !
   BEGIN JT-I @ JT-TO @ < JT-I @ ARGC @ < AND WHILE
     JT-I @ ARGV@ DUP CSTRLEN RAW-APPEND
@@ -5724,7 +5724,7 @@ VARIABLE OL-END
   \ The LAST "done" is taken, so a one-line loop nested inside another
   \ belongs to the outer one; the inner is then a body line and is
   \ recognised again when it runs.
-  {: | OL-I :}
+  SHADOW{ | OL-I }
   -1 OL-DO !  -1 OL-DONE !
   BEGIN OL-I @ ARGC @ < WHILE
     OL-DO @ -1 = IF
@@ -5852,7 +5852,7 @@ VARIABLE FUNC-CUR-I
   \ positional parameters are saved keyed by FUNC-DEPTH and restored
   \ when this returns, so recursive and nested calls each see only
   \ their own.
-  {: FUNC-CUR-I | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS :}
+  SHADOW{ FUNC-CUR-I | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
   FUNC-CUR-I @ FUNC-SUBSH-SLOT C@ IF
     \ "f() ( ... )": run the whole body in a child, so nothing it does
     \ reaches this shell. Recursing here rather than duplicating the
@@ -5870,7 +5870,7 @@ VARIABLE FUNC-CUR-I
   \ SAVE-POS-PARAMS indexes POS-PARAMS-SAVE by depth with no bound of
   \ its own: past MAX-POS-PARAM-DEPTH it would MOVE a full parameter
   \ block past the end of that buffer. Nothing had hit it because
-  \ locals.4's own save stack overflows at a similar depth first - but
+  \ shadow.4's own save stack overflows at a similar depth first - but
   \ that is an accident of two unrelated limits, and its ABORT kills
   \ the shell rather than reporting a shell error.
   FUNC-DEPTH @ MAX-POS-PARAM-DEPTH < 0= IF
@@ -5908,7 +5908,7 @@ VARIABLE FD-CLOSE
   \ By depth rather than "the last token": a definition nested inside
   \ another, or anything following the closing brace on the same
   \ line, both leave tokens after it.
-  {: | FBC-I FBC-D :}
+  SHADOW{ | FBC-I FBC-D }
   0 FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? 0= IF -1 EXIT THEN
   BEGIN FBC-I @ ARGC @ < WHILE
     FBC-I @ FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? IF
@@ -5969,7 +5969,7 @@ VARIABLE FDC-I
 : FDC-BALANCED? ( --- f )
   \ Is the compound command on this line already complete? "f() if
   \ true; then x; fi" is; "f() if true" continues on later lines.
-  {: | FDC-I FDC-DEPTH :}
+  SHADOW{ | FDC-I FDC-DEPTH }
   BEGIN FDC-I @ ARGC @ < WHILE
     FDC-I @ FDC-OPENER? IF FDC-DEPTH @ 1+ FDC-DEPTH ! THEN
     FDC-I @ FDC-CLOSER? IF FDC-DEPTH @ 1- FDC-DEPTH ! THEN
@@ -6024,7 +6024,7 @@ VARIABLE FDC-I
   \ name extracted from ARGV[0] - a later definition with the same
   \ name simply replaces it.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP :}
+  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP }
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 ARGV@ FUNCDEF-NAME-BUF 64 SAFE-CSTR-COPY DROP   \ ARGV[0] is now the bare name
   \ POSIX allows a function body to be any compound command, so
@@ -6142,7 +6142,7 @@ VARIABLE WHILE-BODY-CUR
   \ returning: the iteration it was scoped to has now ended.
   \ LOOP-BREAK? is deliberately left alone; that is the outer loop's
   \ own check, made right after this returns.
-  {: | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS :}
+  SHADOW{ | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
   WHILE-BODY-BUF @ REPLAY-SRC !  -1 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
   WHILE-BODY-LEN @ REPLAY-LEN !
   BEGIN
@@ -6168,8 +6168,8 @@ VARIABLE WHILE-BODY-CUR
   \ argument local (see BODY-ALLOC's comment) so it is restored on
   \ every exit path, releasing both automatically.
   BODY-ARENA-TOP @
-  \ One physical line: {: ... :} cannot span lines (see locals.4).
-  {: BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? :}
+  \ One physical line: SHADOW{ ... } cannot span lines (see shadow.4).
+  SHADOW{ BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
   LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 WHILE-BODY-LEN !
@@ -6314,7 +6314,7 @@ VARIABLE FOR-WORD-CUR
   \ reads these same names, which works because a local IS the
   \ variable and holds this invocation's value for the whole call.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? :}
+  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
@@ -6410,7 +6410,7 @@ VARIABLE BM-MATCHED?
   \ a member of this set - a leading '!'/'^' negates the whole result,
   \ and "x-y" (three characters, a literal '-' in the middle) is a
   \ range rather than three separate members.
-  {: BM-I BM-END BM-CHAR | BM-NEG? BM-MATCHED? :}
+  SHADOW{ BM-I BM-END BM-CHAR | BM-NEG? BM-MATCHED? }
   BM-I @ 1+ BM-I !
   BM-I @ GM-PATTERN @ + C@ 33 = BM-I @ GM-PATTERN @ + C@ 94 = OR IF
     -1 BM-NEG? !
@@ -6443,7 +6443,7 @@ VARIABLE GCM-BEND
   \ pattern scanning next, regardless of match/no-match - a bracket
   \ expression can span many pattern characters, unlike '?' or a
   \ literal, which only ever advance by one.
-  {: GCM-P GCM-CHAR | GCM-BEND :}
+  SHADOW{ GCM-P GCM-CHAR | GCM-BEND }
   GCM-P @ GM-PATTERN @ + C@
   DUP 63 = IF
     DROP
@@ -6460,7 +6460,7 @@ VARIABLE GCM-BEND
   THEN ;
 
 : GLOB-MATCH ( pattern-addr pattern-len text-addr text-len --- f )
-  {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S GM-STAR-P GM-STAR-S GM-HAS-STAR? :}
+  SHADOW{ GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S GM-STAR-P GM-STAR-S GM-HAS-STAR? }
   BEGIN GM-S @ GM-TLEN @ < WHILE
     GM-P @ GM-PLEN @ < IF
       GM-P @ GM-PATTERN @ + C@ 42 =
@@ -6542,7 +6542,7 @@ VARIABLE FPM-I
   \ of the first candidate GLOB-MATCH accepts, or -1 if no length
   \ matches at all - including 0 and the full value length - in which
   \ case POSIX says the value is emitted unchanged.
-  {: FPM-PAT-ADDR FPM-PAT-LEN FPM-VAL-ADDR FPM-VAL-LEN FPM-SUFFIX? FPM-LONGEST? | FPM-I :}
+  SHADOW{ FPM-PAT-ADDR FPM-PAT-LEN FPM-VAL-ADDR FPM-VAL-LEN FPM-SUFFIX? FPM-LONGEST? | FPM-I }
   FPM-LONGEST? @ IF FPM-VAL-LEN @ FPM-I ! THEN
   BEGIN
     FPM-MATCHES? 0=
@@ -6581,7 +6581,7 @@ VARIABLE TP-MATCH-LEN
   \ EXPAND-BRACED-VAR before calling TRIM-PARAM-CALL) select which of
   \ the four removal modes applies. An unset variable expands to
   \ empty (nothing to trim).
-  {: | TP-VAL-ADDR TP-VAL-LEN TP-MATCH-LEN :}
+  SHADOW{ | TP-VAL-ADDR TP-VAL-LEN TP-MATCH-LEN }
   VARNAME-BUF LOOKUP-VAR
   DUP 0= IF DROP EXIT THEN
   DUP CSTRLEN TP-VAL-LEN ! TP-VAL-ADDR !
@@ -6634,7 +6634,7 @@ VARIABLE CASE-MATCHED?
   \ No trailing-')' stripping any more: DO-CASE splits the arm at its
   \ ')' before calling this, and Iteration 48 made ')' its own token
   \ in any case, so every remaining token is a whole pattern.
-  {: | CA-I :}
+  SHADOW{ | CA-I }
   BEGIN CA-I @ ARGC @ < WHILE
     \ '|' separates alternatives; ')' is now its own token too, since
     \ Iteration 48 made parens self-delimiting - before that it stayed
@@ -6666,7 +6666,7 @@ VARIABLE CASE-MATCHED?
   \ version set CASE-MATCHED? but never actually checked it, so a
   \ later arm - even a non-matching one - kept right on being tested
   \ and, if it matched, running its body too).
-  BODY-ARENA-TOP @  {: BODY-ARENA-TOP | SUF-BUF SUF-LEN :}
+  BODY-ARENA-TOP @  SHADOW{ BODY-ARENA-TOP | SUF-BUF SUF-LEN }
   SUPPRESS-EXEC? @ >R
   \ Same as DO-FOR: the case word is read straight out of ARGV, so
   \ this path asks for expansion itself.
@@ -6790,7 +6790,7 @@ VARIABLE RT-I
 \ failure mode is a diagnosed stop rather than a hang.
 
 : AL-APPEND ( c-addr u --- )
-  {: AL-NAME AL-LEN :}
+  SHADOW{ AL-NAME AL-LEN }
   ALIAS-LINE-LEN @ AL-LEN @ + 1+ LINE-MAX < IF
     AL-NAME @ ALIAS-LINE ALIAS-LINE-LEN @ + AL-LEN @ MOVE
     ALIAS-LINE-LEN @ AL-LEN @ + ALIAS-LINE-LEN !
@@ -6891,7 +6891,7 @@ VARIABLE MG-DEPTH
   \ a second copy of the replay loop; the flag handling wants
   \ factoring out when something needs it.
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP MG-DEPTH :}
+  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP MG-DEPTH }
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 WHILE-BODY-LEN !
   BEGIN
@@ -6998,7 +6998,7 @@ VARIABLE PP-BAR
 
 : RUN-TOKENIZED ( --- )
   BODY-ARENA-TOP @
-  {: BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I :}
+  SHADOW{ BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I }
   \ Alias expansion first: it is textual, and the rebuilt line must
   \ go through every check below as if it had been typed.
   TRY-ALIAS IF EXIT THEN

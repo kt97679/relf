@@ -22,7 +22,7 @@
 \   - Existing code converts mechanically. A word's body is UNCHANGED -
 \     `CA-SRC @` and `CA-N !` keep working exactly as before, because
 \     a local still is a variable. Converting a word means adding one
-\     {: ... :} line and deleting its argument-popping stores. The
+\     SHADOW{ ... } line and deleting its argument-popping stores. The
 \     VARIABLE declarations themselves stay where they are.
 \   - The data stack and return stack are untouched, so this composes
 \     with shell.4's existing, load-bearing >R/R> use (DO-IF,
@@ -45,7 +45,7 @@
 \     {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S :}
 \
 \ Restrictions, all deliberate:
-\   - The whole {: ... :} must be on one physical line. WORD does not
+\   - The whole SHADOW{ ... } must be on one physical line. WORD does not
 \     refill, and a multi-line construct here would be a close cousin
 \     of the multi-line ( ) comment hazard documented in GOALS.md.
 \   - Every name must already be a defined VARIABLE (or any word that
@@ -78,7 +78,7 @@ BASE @  DECIMAL
 \ bites, it makes two builds of identical sources differ. Store the
 \ offset from START instead and add START back on use. Defined here
 \ rather than in shell.4 because both files need it and shell.4
-\ already requires this one to be loaded first for {: itself.
+\ already requires this one to be loaded first for SHADOW{ itself.
 
 : !XT ( xt addr --- )  SWAP START @ - SWAP ! ;
 : @XT ( addr --- xt )  @ START @ + ;
@@ -142,12 +142,12 @@ VARIABLE LSAVE-SP
 
 : LSAVE ( off --- )   \ push the slot's current value, so it can be
                       \ put back when this invocation ends
-  LSAVE-SP @ LSAVE-MAX < 0= ABORT" locals: save stack overflow"
+  LSAVE-SP @ LSAVE-MAX < 0= ABORT" shadow: save stack overflow"
   START @ + @ LSAVE-STACK LSAVE-SP @ CELLS + !
   LSAVE-SP @ 1+ LSAVE-SP ! ;
 
 : LRESTORE ( off --- )   \ pop the most recently saved value back
-  LSAVE-SP @ 0 > 0= ABORT" locals: save stack underflow"
+  LSAVE-SP @ 0 > 0= ABORT" shadow: save stack underflow"
   LSAVE-SP @ 1- LSAVE-SP !
   LSAVE-STACK LSAVE-SP @ CELLS + @ SWAP START @ + ! ;
 
@@ -225,12 +225,12 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   THEN ;
 
 \ ------------------------------------------------------------------
-\ Compile time: parsing {: ... | ... :}
+\ Compile time: parsing SHADOW{ ... | ... }
 \ ------------------------------------------------------------------
 
-: L-END? ( c-addr --- f )   \ is this parsed word ":}" ?
-  DUP C@ 2 <> IF DROP 0 EXIT THEN
-  DUP 1+ C@ [CHAR] : = SWAP 2 + C@ [CHAR] } = AND ;
+: L-END? ( c-addr --- f )   \ is this parsed word "}" ?
+  DUP C@ 1 <> IF DROP 0 EXIT THEN
+  1+ C@ [CHAR] } = ;
 
 : L-BAR? ( c-addr --- f )   \ is this parsed word "|" ?
   DUP C@ 1 <> IF DROP 0 EXIT THEN
@@ -242,24 +242,24 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 \ and everything after -- is a COMMENT: the output arguments are
 \ documentation, not names to bind. This parser treated them as names
 \ and the standard locals suite stopped on its second line with
-\ "locals: undefined local name --".
+\ "shadow: undefined local name --".
   DUP C@ 2 <> IF DROP 0 EXIT THEN
   DUP 1+ C@ [CHAR] - = SWAP 2 + C@ [CHAR] - = AND ;
 
 : L-ADD-NAME ( c-addr --- )
-  LDECL-N @ LDECL-MAX < 0= ABORT" locals: too many locals"
-  FIND 0= ABORT" locals: undefined local name"
+  LDECL-N @ LDECL-MAX < 0= ABORT" shadow: too many locals"
+  FIND 0= ABORT" shadow: undefined local name"
   EXECUTE START @ -   \ a VARIABLE's xt yields its address; keep the
                       \ offset, so nothing absolute is ever recorded
   LDECL-ADDRS LDECL-N @ CELLS + !
   LDECL-N @ 1+ LDECL-N ! ;
 
-: {: ( --- )
+: SHADOW{ ( --- )
   0 LDECL-N !
   -1 LDECL-ARGS !                       \ -1 = no "|" seen yet
   BEGIN
     BL WORD
-    DUP C@ 0= ABORT" locals: missing :} on this line"
+    DUP C@ 0= ABORT" shadow: missing } on this line"
     DUP L-END? 0=
   WHILE
     DUP L-BAR? IF
@@ -268,7 +268,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
       \ Output arguments: skip to :} without binding anything.
       DROP
       BEGIN BL WORD
-        DUP C@ 0= ABORT" locals: missing :} on this line"
+        DUP C@ 0= ABORT" shadow: missing } on this line"
         DUP L-END? 0=
       WHILE DROP REPEAT
       DROP
@@ -288,7 +288,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 \ Both capture the previous definition first and defer to it, so this
 \ adds behavior rather than reimplementing any of it. ; additionally
 \ clears LDECL-N, which is what stops one definition's declaration
-\ leaking into the next one - a definition with no {: therefore always
+\ leaking into the next one - a definition with no SHADOW{ therefore always
 \ sees a count of zero and compiles no extra code whatsoever.
 
 VARIABLE L-OLD-EXIT  ' EXIT L-OLD-EXIT !XT

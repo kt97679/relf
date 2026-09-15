@@ -37,7 +37,7 @@ CV8_LIST=$(sed -n "/^CREATE FOLD-OPS/,/^ALIGN/p" cv8.4 |
 LAY=tools/layout.py
 
 # ---- dictionary dumps (tr -d '\r', always) --------------------------
-BOOT='S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+BOOT='S" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$BOOT" | ./relf   kernel.img   | tr -d '\r' > "$O/d64.txt"
 printf "$BOOT" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32.txt"
 # A second pair of dumps with cv8.4 loaded, for the self-hosting images.
@@ -46,13 +46,13 @@ printf "$BOOT" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32.txt"
 # cv8-save.4 must come AFTER shell.4: it scrubs shell.4's tokenizer
 # state. Without it SAVE-SYSTEM is the cell version and writes a RELF
 # header, which the CV8 engine then refuses.
-SELF='S" cv8.4" INCLUDED\nS" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+SELF='S" cv8.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$SELF" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-self.txt"
 printf "$SELF" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-self.txt"
 # The same shell, with cv8b.4 on top: byte-granular headers. This is the
 # densest working configuration in the tree and nothing built it until
 # now, which is how the escaped band stayed broken for eight iterations.
-SELFB='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
+SELFB='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" cv8-save.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$SELFB" | ./relf   kernel.img   | tr -d '\r' > "$O/d64-selfb.txt"
 printf "$SELFB" | ./relf32 kernel32.img | tr -d '\r' > "$O/d32-selfb.txt"
 # bare kernel + cv8.4 only: boots into the interpreter, for the CORE suite

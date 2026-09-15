@@ -172,7 +172,7 @@ bytes taken from a child.
 
 - **The build is reproducible, and that is checked.** A rebuilt image
   must equal the committed one byte for byte. It did not until
-  Iteration 148: `SS-SCRUB` did not know about `locals.4`'s scratch
+  Iteration 148: `SS-SCRUB` did not know about `shadow.4`'s scratch
   variables (added in 137) or about `#TIB`, so the image recorded
   leftover addresses and the length of the builder's last command
   line. Every test run dirtied the working tree, which meant no diff
@@ -405,10 +405,10 @@ automatically. Run them through `run-all` rather than directly:
 repository root silently tests a shell that does not exist and reports
 every assertion as a failure.
 
-## Named locals (`locals.4`) — available since Iteration 38
+## Named locals (`shadow.4`) — available since Iteration 38
 
 Not a goal in itself; infrastructure the rest of the project can use.
-Load with `S" locals.4" INCLUDED`.
+Load with `S" shadow.4" INCLUDED`.
 
 `shell.4` carries 356 global `VARIABLE`s, most of which are not global
 state at all but per-word scratch cells faked with a naming convention
@@ -437,12 +437,12 @@ restored the same way, but zeroed. `EXIT` and `;` are wrapped so the
 restore happens on every exit path including early `IF EXIT THEN`, and
 both compile nothing at all in a definition that declares no locals.
 
-The kernel, `cross.4` and `kernel.img` are **untouched** — `locals.4`
+The kernel, `cross.4` and `kernel.img` are **untouched** — `shadow.4`
 uses only what the kernel already exposes. That was a deliberate
 constraint given this file's own warning about `cross.4`'s hand-embedded
 primitive-dispatch token numbers.
 
-**In use since Iteration 39**: `relfsh` loads `locals.4` ahead of
+**In use since Iteration 39**: `relfsh` loads `shadow.4` ahead of
 `shell.4`, and 71 of its 300 words are converted. The dynamic-scoping
 property earned its keep immediately - words like `GLOB-MATCH` share their
 scratch with helper words (`BRACKET-END`, `GLOB-CHAR-MATCHES?`), and
@@ -470,7 +470,7 @@ definition; 256 cells of live save stack; `ABORT` inside a
 locals-using word leaks its saved cells. See `PROGRESS.md`'s Iteration
 38 entry, including a real bug worth remembering: **a Forth file that
 is `INCLUDED` into an unknown session must not inherit the caller's
-`BASE`** — `tester.fr` leaves it at 16, which turned `locals.4`'s own
+`BASE`** — `tester.fr` leaves it at 16, which turned `shadow.4`'s own
 `32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
 
 ## Tracked numbers
@@ -719,7 +719,7 @@ position-independent (preferred - see below) or to add it to
 
 ## Prebuilt shell image (`save-system.4`) — since Iteration 40
 
-`relfsh` runs a prebuilt image rather than compiling `locals.4` +
+`relfsh` runs a prebuilt image rather than compiling `shadow.4` +
 `shell.4` from source on every invocation. Measured, 50 runs each:
 source bootstrap 12.68s, prebuilt image 0.091s, bare `relf kernel.img`
 0.061s. That is ~253ms against ~1.8ms, **~128x**, and it took the
@@ -749,13 +749,13 @@ image reloads at a different address every run, so any absolute address
 compiled into a word's body is stale the moment it boots. Two places
 had them, both found by the turnkey image segfaulting: `shell.4`'s six
 deferred-word xts (now stored as `START`-relative offsets via
-`!XT`/`@XT`), and the slot addresses `locals.4` compiles into every
+`!XT`/`@XT`), and the slot addresses `shadow.4` compiles into every
 locals-using word (now offsets, with the runtime words adding `START`
 themselves). **Anything added in future that stores or compiles an
 address must do the same.**
 
 Compiling new code inside a reloaded image **works** as of Iteration
-41. It did not in Iteration 40, because `locals.4`'s compile-time
+41. It did not in Iteration 40, because `shadow.4`'s compile-time
 machinery held absolute xts; those are now offsets like everything
 else, which was needed for reproducible images anyway and removed the
 limitation as a side effect. Verified by saving a non-turnkey image and

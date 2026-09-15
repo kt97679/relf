@@ -35,7 +35,7 @@ emit() { printf '%s %s\n' "$1" "$2" >> "$OUT"; }
 # 1. Reproducible build. The images are tracked, so a rebuild that
 #    does not reproduce them byte for byte means either the build is
 #    nondeterministic or the committed image is stale. Both were true
-#    before Iteration 148: SS-SCRUB did not know about locals.4's
+#    before Iteration 148: SS-SCRUB did not know about shadow.4's
 #    scratch variables or about #TIB, so every test run dirtied the
 #    working tree and no diff could be trusted.
 # ---------------------------------------------------------------
@@ -78,7 +78,7 @@ CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eigh
 rm -rf "$CROSS"
 if mkdir -p "$CROSS" 2>/dev/null; then
     for f in relf relf32 kernel.img kernel32.img relfsh \
-             extend.4 pool.4 locals.4 save-system.4 shell.4; do
+             extend.4 pool.4 shadow.4 save-system.4 shell.4; do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
     ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1

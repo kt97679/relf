@@ -1,22 +1,22 @@
-\ tests/locals.fth - regression tests for locals.4 (see GOALS.md phase
+\ tests/shadow.fth - regression tests for shadow.4 (see GOALS.md phase
 \ 8 / PROGRESS.md Iteration 38). Uses tester.fr's own { -> } convention,
 \ same as every other file in this directory.
 \
-\ Loading locals.4 redefines ; and EXIT (deliberately - see that file's
+\ Loading shadow.4 redefines ; and EXIT (deliberately - see that file's
 \ header for why), so this file is deliberately the LAST thing the core
 \ suite loads: everything before it has already been compiled through
 \ the original definitions, which is itself part of what's being
 \ checked here - the wrappers must be transparent to code that declares
-\ no locals.
+\ no shadowed variables.
 
-\ pool.4 first: since Iteration 136 locals.4's save stack and its
+\ pool.4 first: since Iteration 136 shadow.4's save stack and its
 \ compile-time address table are BUFFER:s rather than CREATE ... ALLOT,
-\ so BUFFER: must exist before locals.4 is compiled. Loading locals.4
+\ so BUFFER: must exist before shadow.4 is compiled. Loading shadow.4
 \ alone segfaults rather than reporting an undefined word - the failed
 \ declaration leaves the name undefined and every later use compiles a
 \ garbage reference.
 S" pool.4" INCLUDED
-S" locals.4" INCLUDED
+S" shadow.4" INCLUDED
 
 \ tester.fr leaves BASE at 16, and core-extra.fth happens not to notice
 \ because every value it uses reads the same in hex as in decimal. The
@@ -26,7 +26,7 @@ S" locals.4" INCLUDED
 DECIMAL
 
 CR
-TESTING LOCALS ( locals.4 )
+TESTING LOCALS ( shadow.4 )
 
 VARIABLE LT-A
 VARIABLE LT-B
@@ -34,23 +34,23 @@ VARIABLE LT-S
 
 \ --- arguments are taken left to right = deepest to top of stack ---
 
-: LT-SUB ( x y --- x-y )  {: LT-A LT-B :}  LT-A @ LT-B @ - ;
+: LT-SUB ( x y --- x-y )  SHADOW{ LT-A LT-B }  LT-A @ LT-B @ - ;
 
 { 10 3 LT-SUB -> 7 }
 { 3 10 LT-SUB -> -7 }
 
 \ --- a scratch local after | is zeroed, not taken from the stack ---
 
-: LT-SCRATCH ( x --- x*x+1 )  {: LT-A | LT-S :}
+: LT-SCRATCH ( x --- x*x+1 )  SHADOW{ LT-A | LT-S }
   LT-S @ 1+ LT-S !
   LT-A @ LT-A @ * LT-S @ + ;
 
 { 5 LT-SCRATCH -> 26 }
 { 0 LT-SCRATCH -> 1 }
 
-\ --- declaring no locals at all is a no-op ---
+\ --- declaring no shadowed variables at all is a no-op ---
 
-: LT-NONE ( x --- x+5 ) {: :} 5 + ;
+: LT-NONE ( x --- x+5 ) SHADOW{ } 5 + ;
 
 { 1 LT-NONE -> 6 }
 
@@ -63,7 +63,7 @@ VARIABLE LT-S
 
 \ --- restore happens on an early EXIT too, not just at ; ---
 
-: LT-EARLY ( x --- y )  {: LT-A :}
+: LT-EARLY ( x --- y )  SHADOW{ LT-A }
   LT-A @ 0 < IF 0 EXIT THEN
   LT-A @ 2 * ;
 
@@ -73,7 +73,7 @@ VARIABLE LT-S
 
 \ --- and on an EXIT from inside a DO LOOP ---
 
-: LT-FIND ( n --- i )  {: LT-A :}
+: LT-FIND ( n --- i )  SHADOW{ LT-A }
   10 0 DO I LT-A @ = IF I UNLOOP EXIT THEN LOOP -1 ;
 
 { 4 LT-FIND -> 4 }
@@ -82,7 +82,7 @@ VARIABLE LT-S
 
 \ --- recursion: each invocation must see only its own values ---
 
-: LT-FACT ( n --- n! )  {: LT-A :}
+: LT-FACT ( n --- n! )  SHADOW{ LT-A }
   LT-A @ 1 < IF 1 EXIT THEN
   LT-A @ 1- RECURSE LT-A @ * ;
 
@@ -94,15 +94,15 @@ VARIABLE LT-S
 \ --- the other. This is the case fixed globals cannot express, and
 \ --- the reason while/for/function bodies cannot nest today.
 
-: LT-INNER ( x --- y )  {: LT-A :} LT-A @ 10 * ;
-: LT-OUTER ( x --- y )  {: LT-A :} LT-A @ LT-INNER LT-A @ + ;
+: LT-INNER ( x --- y )  SHADOW{ LT-A } LT-A @ 10 * ;
+: LT-OUTER ( x --- y )  SHADOW{ LT-A } LT-A @ LT-INNER LT-A @ + ;
 
 { 3 LT-OUTER -> 33 }
 { LT-A @ -> 111 }
 
-\ --- scratch locals survive recursion independently ---
+\ --- scratch shadowed variables survive recursion independently ---
 
-: LT-SUMTO ( n --- s )  {: LT-A | LT-S :}
+: LT-SUMTO ( n --- s )  SHADOW{ LT-A | LT-S }
   LT-A @ 0 > 0= IF 0 EXIT THEN
   LT-A @ 1- RECURSE LT-S !
   LT-S @ LT-A @ + ;

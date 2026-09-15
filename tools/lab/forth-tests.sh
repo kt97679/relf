@@ -25,7 +25,7 @@ unset LD_PRELOAD
 
 B=${1:?usage: forth-tests.sh BUILDDIR}
 B=$(cd "$B" && pwd)
-# The suite must run from the repo root: tests/locals.fth INCLUDEs
+# The suite must run from the repo root: tests/shadow.fth INCLUDEs
 # pool.4 by relative path.
 #
 # But it must NEVER be handed an image that boots into the SHELL: the

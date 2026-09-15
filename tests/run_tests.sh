@@ -81,7 +81,7 @@ run_shell_test_suite() {
     # comment claimed: measured directly, 50 `relfsh -c true` runs take
     # 12.68s while 50 bare `relf kernel.img` runs take 0.061s and 50
     # /bin/true take 0.040s. So ~99.5% of every relfsh invocation is
-    # spent COMPILING locals.4 + shell.4 from source, which relfsh's
+    # spent COMPILING shadow.4 + shell.4 from source, which relfsh's
     # bootstrap does afresh every single time it starts. ~253ms per
     # invocation, against ~1.2ms of actual engine startup.
     #
