@@ -25,6 +25,56 @@
 \ Will abort if f is nonzero, a preliminary substitute for real THROW.
   ABORT" Throw Exception" ;
 
+\ ---- ANS CORE EXT ---------------------------------------------------
+\ This file is loaded twice: by the cross-compile host, before cross.4,
+\ and into the shell image by relfsh before SAVE-SYSTEM. One copy, two
+\ consumers - the `forth` builtin gets a standard Forth rather than a
+\ near-standard one, and it costs nothing at startup because the image
+\ is prebuilt.
+\
+\ Every word here has a test in tests/coreext.fth. That is the rule
+\ that retired 0> and U> from kernel.4 at Iteration 220: they were
+\ unused AND untested, so they could have been wrong for years.
+
+: NIP ( x1 x2 --- x2 )    SWAP DROP ;
+: TUCK ( x1 x2 --- x2 x1 x2 )  SWAP OVER ;
+: 0<> ( x --- f )         0= 0= ;
+: 0> ( n --- f )          0 > ;
+: U> ( u1 u2 --- f )      SWAP U< ;
+: WITHIN ( x lo hi --- f ) OVER - >R - R> U< ;
+: ERASE ( c-addr u --- )  0 FILL ;
+
+\ TRUE is already in kernel.4; only FALSE was missing.
+ 0 CONSTANT FALSE ( --- f )
+
+: AGAIN ( x --- )
+\ End a BEGIN AGAIN loop: branch back unconditionally. Same shape as
+\ UNTIL, with the unconditional token.
+\ BRANCH-TOK is a cross-compile-time name and is not in the image, so
+\ the branch opcode is compiled through its xt instead: COMPILE, of a
+\ primitive inlines it, and the offset follows exactly as UNTIL's does.
+  ['] BRANCH COMPILE, HERE - , ; IMMEDIATE
+
+: [COMPILE] ( "ccc" --- )
+\ Compile the next word even if it is immediate.
+  ' COMPILE, ; IMMEDIATE
+
+\ CASE ... OF ... ENDOF ... ENDCASE, built on IF/ELSE/THEN as the
+\ standard's own appendix does. CASE leaves a 0 to mark the bottom of
+\ the ENDOF chain; ENDCASE unwinds it.
+: CASE ( --- 0 )   0 ; IMMEDIATE
+: OF ( --- x )     POSTPONE OVER POSTPONE = POSTPONE IF POSTPONE DROP ; IMMEDIATE
+: ENDOF ( x1 --- x2 )  POSTPONE ELSE ; IMMEDIATE
+: ENDCASE ( 0 x1 .. xn --- )
+  POSTPONE DROP
+  BEGIN ?DUP WHILE POSTPONE THEN REPEAT ; IMMEDIATE
+
+: ENVIRONMENT? ( c-addr u --- false | i*x true )
+\ CORE, not CORE EXT, and it was the one CORE word missing. No
+\ environment query is answered, which the standard permits: "If the
+\ query is not recognised, return false."
+  2DROP FALSE ;
+
 : GET-ORDER ( --- w1 w2 ... wn n )
 \ Return all wordlists in the search order, followed by the count.
   #ORDER @ 0 ?DO CONTEXT I CELLS + @ LOOP #ORDER @ ;
@@ -84,3 +134,4 @@ ROOT-WORDLIST CURRENT !
 : DEFINITIONS DEFINITIONS ;
 DEFINITIONS
 \ Fill the ROOT wordlist.
+
