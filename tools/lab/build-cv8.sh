@@ -136,7 +136,6 @@ img noesc-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPE
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
 # Iteration 189). vm-lab.c is the experimental engine; its options:
-#   ENC=1 SOD16 table  ENC=2 CPT16  ENC=3 CV8 byte stream
 #   REG=1 VM registers in locals   FOLD=1 folded prim+EXIT opcodes
 #   SCALE=S call scale shift       SKIPPAD=1 SOD16 loader skips NOOPs
 #   PROFILE=1 dispatch/call histogram to $VMPROF at exit
@@ -146,20 +145,20 @@ cc -O2 -o "$O/relf64"  relf.c
 cc -m32 -O2 -o "$O/relf32" relf.c
 python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" > /dev/null
 python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" v8 > /dev/null
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-64" "$O/vm-lab.c"
-cc -m32 -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-32" "$O/vm-lab.c"
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-64" "$O/vm-lab.c"
+cc -m32 -O2 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-32" "$O/vm-lab.c"
 python3 tools/lab/gen-fold.py "$O/vm-lab-tos.c" "$HOT" v8 > /dev/null
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cv8t-64" "$O/vm-lab-tos.c"
-cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cv8t-64" "$O/vm-lab-tos.c"
+cc -m32 -O2 -fno-pie -no-pie -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 \
     -o "$O/cv8t-32" "$O/vm-lab-tos.c"
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
     -o "$O/spec-64" "$O/vm-lab-tos.c"
-cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
+cc -m32 -O2 -fno-pie -no-pie -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
     -DSHAREDCALL=1 -o "$O/spec-32" "$O/vm-lab-tos.c"
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DPROFILE=1 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DPROFILE=1 \
     -o "$O/spec-64-prof" "$O/vm-lab-tos.c" 2>/dev/null
 # fixed-width-call/slot build, for comparison with the variable forms
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
     -DVARCALL=0 -DVARSLOT=0 -o "$O/fixedw-64" "$O/vm-lab-tos.c"
 # s6 engines: spec with SCALE=0, because byte-granular headers leave
 # call targets byte-aligned. The engine never READS a dictionary link -
@@ -168,16 +167,16 @@ cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 \
 # in the binary. DOESFAR matches cv8.4's three-byte DOES> call, which
 # scale 0 requires: the two-byte form's 14-bit field of scaled units
 # reaches 131 KB at scale 3 but only 16 KB at scale 0.
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 -DSHAREDCALL=1 -DDOESFAR=1 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 -DSHAREDCALL=1 -DDOESFAR=1 \
     -o "$O/cv8b-64" "$O/vm-lab-tos.c"
-cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 \
+cc -m32 -O2 -fno-pie -no-pie -DREG=1 -DFOLD=1 -DSCALE=0 -DSPEC=1 \
     -DSHAREDCALL=1 -DDOESFAR=1 -o "$O/cv8b-32" "$O/vm-lab-tos.c"
 # Escaped-band engines: spec plus -DESCAPE=1. An engine WITHOUT the band
 # refuses an image that uses it rather than misreading it, so these have
 # to be built in matching pairs with the esc-* images.
-cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 -DESCAPE=0 \
+cc -O2 -DREG=1 -DFOLD=1 -DSCALE=3 -DSPEC=1 -DSHAREDCALL=1 -DESCAPE=0 \
     -o "$O/noesc-64" "$O/vm-lab-tos.c"
-cc -m32 -O2 -fno-pie -no-pie -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
+cc -m32 -O2 -fno-pie -no-pie -DREG=1 -DFOLD=1 -DSCALE=2 -DSPEC=1 \
     -DSHAREDCALL=1 -DESCAPE=0 -o "$O/noesc-32" "$O/vm-lab-tos.c"
 
 # ---- smoke test: every pair must agree with dash ----------------------

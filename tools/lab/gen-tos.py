@@ -46,7 +46,7 @@ HOT = {
  'L_negate': 'tos = -tos; NEXT();',
  'L_lshift': 'tos = NOS << tos; dsp += CELL_BYTES; NEXT();',
  'L_rshift': 'tos = NOS >> tos; dsp += CELL_BYTES; NEXT();',
- # PFA = align(body+3), matching vm-lab.c's ENC=3 L_dovar and the DODOES
+ # PFA = align(body+3), matching vm-lab.c's L_dovar and the DODOES
  # path. This table OVERRIDES the source; when the source changed and this
  # did not, the first CREATE after boot pushed the wrong address on the
  # 32-bit build and the right one on 64-bit, by alignment luck.
@@ -132,10 +132,9 @@ s = s.replace("static void virtual_machine(void) {\n    VMREGS", """static void 
 #define VMPUSH PUSHT
 #define SPILL() do { dsp -= CELL_BYTES; CELL(dsp) = tos; } while (0)
 #define FILLNEXT() do { POPT(); NEXT(); } while (0)
-#if ENC == 3
-#define BROFF(a) ((int16_t)LD16(a))
-#else
-#define BROFF(a) (2 * (int16_t)TOK(a))
-#endif""", 1)
+/*  A CV8 branch operand is a signed 16-bit BYTE offset. The 16-bit
+ *  encodings measured it in tokens and needed the doubling; they are
+ *  retired, so there is one form.  */
+#define BROFF(a) ((int16_t)LD16(a))""", 1)
 sys.stdout.write("#define NPRIM %d\n" % _nprim())
 sys.stdout.write(s)

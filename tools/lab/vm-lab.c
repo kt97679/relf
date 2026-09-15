@@ -204,18 +204,12 @@ static inline UNS64 LD16(UNS64 a) {
     const UNS8 *p = (const UNS8 *)(uintptr_t)a;
     return (UNS64)p[0] | (UNS64)p[1] << 8;
 }
-#if ENC == 3
 #define OPND16(a) LD16(a)
-#else
-#define OPND16(a) TOK(a)
-#endif
 static inline UNS64 LD32(UNS64 a) {
     const UNS8 *p = (const UNS8 *)(uintptr_t)a;
     return (UNS64)p[0] | (UNS64)p[1] << 8 | (UNS64)p[2] << 16 | (UNS64)p[3] << 24;
 }
 #define MAXWORDS 65280
-static UNS64 *wordtab;          /* absolute body addresses, malloc'd */
-/* n_words: superseded by nwords, set by load_image */
 
 #define RSTACK_BYTES 65536
 /*  Room the data stack is allowed to occupy before it is declared
@@ -344,9 +338,6 @@ static UNS64 dsp_limit, rp_limit;
  *  no endianness handling of its own.
  */
 
-#if ENC == 1
-static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
-#elif ENC == 3
 /*  Header bytes 0-7. Byte 6 is a FORMAT VERSION and byte 7 a FEATURE
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
@@ -360,15 +351,12 @@ static const UNS8 IMAGE_MAGIC[8] = { 'S', 'O', 'D', '1', CELL_BYTES, 0, 0, 0 };
                             byte link with its tag last, unpadded names.
                             The engine never reads a link in this
                             encoding, so it accepts this unconditionally;
-                            the flag exists so an ENC=1 build, which does
-                            walk links, can refuse. */
+                            the flag exists so that an engine which DID
+                            walk links could refuse such an image. */
 static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES,
     SPEC ? 'L' : 0, CV8_VERSION,
     (VARCALL ? F_VARCALL : 0) | (VARSLOT ? F_VARSLOT : 0)
         | (SPEC ? F_SPEC : 0) | F_LIT64 | F_BYTEHDR };
-#else
-static const UNS8 IMAGE_MAGIC[8] = { 'C', 'P', 'T', '0' + SCALE, CELL_BYTES, 0, 0, 0 };
-#endif
 
 /*
  *  write() wrapper: don't care about partial writes here, only used for
@@ -532,17 +520,15 @@ static const int open_flags[8] = {
 
 #define MAX_THREADS 4096
 #define MAX_TAILS 16
-static UNS64 nwords;
 static UNS64 loc_hdr[5];   /* SPEC: lsp, lstk, lmax, lsave, lrestore (offsets) */
 
 static void load_image(const char *name) {
     int fd;
     long len;
     UNS8 magic[8];
-    UNS64 head_nfa, ntails, nfa, link, nthreads;
+    UNS64 ntails, nthreads;
     UNS64 heads[MAX_THREADS];
-    UNS64 tail_w[MAX_TAILS], tail_o[MAX_TAILS];
-    long i, n;
+    long i;
 
     fd = open(name, O_RDONLY);
     if (fd < 0) {
@@ -599,7 +585,6 @@ static void load_image(const char *name) {
             write_str(2, "Truncated image header.\n");
             exit(2);
         }
-    head_nfa = heads[0];
     if (full_read(fd, (UNS8*)&ntails, CELL_BYTES) != CELL_BYTES) {
         write_str(2, "Truncated image header.\n");
         exit(2);
@@ -608,27 +593,28 @@ static void load_image(const char *name) {
         write_str(2, "Image declares too many DOES> tails.\n");
         exit(2);
     }
-#if SPEC
-    /* locals opcodes: save-stack variable, buffer, limit, fallback words */
-    for (i = 0; i < ntails; i++) {
+    /*  The DOES> tail entries are SKIPPED, not stored. They named a word
+     *  and an offset into it for the word table, which nothing builds
+     *  any more; the bytes still have to be consumed to reach what
+     *  follows. There were two copies of this loop - one under #if SPEC
+     *  and one after it disabled by `if (0)` - which differed only in
+     *  where they put a value neither of them needed.  */
+    for (i = 0; i < (long)ntails; i++) {
         UNS64 w_, o_;
         if (full_read(fd, (UNS8*)&w_, CELL_BYTES) != CELL_BYTES ||
-            full_read(fd, (UNS8*)&o_, CELL_BYTES) != CELL_BYTES) exit(2);
-        tail_w[i] = w_; tail_o[i] = o_;
-    }
-    /*  The locals header is present only if the image was built from a
-     *  dictionary that had locals.4 loaded; a bare kernel has none. */
-    if (full_read(fd, (UNS8*)loc_hdr, 5 * CELL_BYTES) != 5 * CELL_BYTES)
-        loc_hdr[0] = loc_hdr[1] = 0;
-    if (0)
-#endif
-    for (i = 0; i < ntails; i++) {
-        if (full_read(fd, (UNS8*)&tail_w[i], CELL_BYTES) != CELL_BYTES ||
-            full_read(fd, (UNS8*)&tail_o[i], CELL_BYTES) != CELL_BYTES) {
+            full_read(fd, (UNS8*)&o_, CELL_BYTES) != CELL_BYTES) {
             write_str(2, "Truncated image header.\n");
             exit(2);
         }
     }
+#if SPEC
+    /*  The locals header - save-stack variable, buffer, limit, and the
+     *  LSAVE/LRESTORE fallbacks - is present only if the image was
+     *  built from a dictionary that had locals.4 loaded; a bare kernel
+     *  has none. */
+    if (full_read(fd, (UNS8*)loc_hdr, 5 * CELL_BYTES) != 5 * CELL_BYTES)
+        loc_hdr[0] = loc_hdr[1] = 0;
+#endif
 
     base = (UNS8*)(((UNS64)(uintptr_t)mem + CELL_BYTES - 1)
                     & ~(UNS64)(CELL_BYTES - 1));
@@ -639,101 +625,17 @@ static void load_image(const char *name) {
         exit(2);
     }
 
-#if ENC != 1
-    /*  Only SOD16 names a call by word number, so only SOD16 needs the
-     *  table, and only SOD16 walks the link chain to build it. The
-     *  others compute a call target from the address and never read a
-     *  link - which is what lets the byte-header CV8 layout change the
-     *  link's encoding without the engine knowing.  */
-    (void)link; (void)nfa; (void)n;
-    return;
-#else
-    if (magic[7] & 0x10) {
-        write_str(2, "Byte-granular headers are not supported by this encoding.\n");
-        exit(2);
-    }
-    /*  Collect every word from every thread, then sort by address.
+    /*  Nothing here reads a dictionary link. Only SOD16 named a call by
+     *  word NUMBER and so needed a number->address table built by
+     *  walking the chain at load; CV8 computes a call target from the
+     *  address. That is what lets the byte-header layout change a
+     *  link's encoding without the engine knowing or caring, and it is
+     *  why the header still carries the thread heads even though this
+     *  loader ignores them.
      *
-     *  A word NUMBER is its position in definition order, and the
-     *  dictionary only ever grows upwards, so definition order IS
-     *  ascending body address. That used to fall out of walking the one
-     *  chain backwards; with a hashed word list it has to be recovered
-     *  by sorting, and the sort is the definition both the loader and
-     *  tools/layout.py now agree on.  */
-    {
-        UNS64 cap = 4096, i2, j2;
-        UNS64 *nfas = malloc(cap * sizeof *nfas);
-        if (!nfas) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
-        n = 0;
-        for (i2 = 0; i2 < nthreads; i2++) {
-            if (!heads[i2]) continue;
-            nfa = (UNS64)(uintptr_t)base + heads[i2];
-            for (;;) {
-                if (n == cap) {
-                    cap *= 2;
-                    nfas = realloc(nfas, cap * sizeof *nfas);
-                    if (!nfas) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
-                }
-                nfas[n++] = nfa;
-                link = CELL(nfa - CELL_BYTES);
-                if (link == 0) break;
-                nfa = (nfa - CELL_BYTES) + link;
-            }
-        }
-        /*  Insertion sort, ascending. It runs once at load over a few
-         *  hundred entries.  */
-        for (i2 = 1; i2 < n; i2++) {
-            UNS64 k = nfas[i2];
-            for (j2 = i2; j2 > 0 && nfas[j2 - 1] > k; j2--) nfas[j2] = nfas[j2 - 1];
-            nfas[j2] = k;
-        }
-        nwords = n;
-        wordtab = malloc((n + ntails) * sizeof *wordtab);
-        if (!wordtab) { write_str(2, "Out of memory building the word table.\n"); exit(2); }
-        for (i2 = 0; i2 < n; i2++) {
-            UNS64 nlen = (*(UNS8*)(uintptr_t)nfas[i2]) & 31;
-            wordtab[i2] = nfas[i2] + ((nlen + 1 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-#if SKIPPAD
-            while (TOK(wordtab[i2]) == 0) wordtab[i2] += 2;
-#endif
-        }
-        free(nfas);
-        for (i = 0; i < ntails; i++) {
-            if (tail_w[i] >= (UNS64)n) {
-                write_str(2, "DOES> tail names a word outside the chain.\n");
-                exit(2);
-            }
-            wordtab[n + i] = wordtab[tail_w[i]] + tail_o[i];
-        }
-        return;
-    }
-#endif
-    nwords = n;
-    wordtab = malloc((n + ntails) * sizeof *wordtab);
-    if (!wordtab) {
-        write_str(2, "Out of memory building the word table.\n");
-        exit(2);
-    }
-    nfa = (UNS64)(uintptr_t)base + head_nfa;
-    for (i = 0; i < n; i++) {
-        UNS64 nlen = (*(UNS8*)(uintptr_t)nfa) & 31;
-        wordtab[n - 1 - i] =
-            nfa + ((nlen + 1 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-#if SKIPPAD
-        /* skip leading NOOP padding: calls land on the first real token */
-        while (TOK(wordtab[n - 1 - i]) == 0) wordtab[n - 1 - i] += 2;
-#endif
-        link = CELL(nfa - CELL_BYTES);
-        if (link == 0) break;
-        nfa = (nfa - CELL_BYTES) + link;
-    }
-    for (i = 0; i < ntails; i++) {
-        if (tail_w[i] >= (UNS64)n) {
-            write_str(2, "DOES> tail names a word outside the chain.\n");
-            exit(2);
-        }
-        wordtab[n + i] = wordtab[tail_w[i]] + tail_o[i];
-    }
+     *  The table construction was left here behind an unconditional
+     *  `return` when SOD16 was retired from the engine; it is deleted
+     *  now that SOD16 is retired from the tree. See attic/.  */
 }
 
 /*
@@ -882,20 +784,9 @@ NOINLINE_IO static int t_getc(void) {
 
 static void virtual_machine(void) {
     VMREGS
-#if ENC == 1
-#define CALLTARGET(t) (wtab[(t) - 256])
-    const UNS64 *const wtab = wordtab;
-#elif ENC == 3
     /* CV8: byte stream. b < 0x80 is an opcode; otherwise b and the next
      * byte are a 15-bit scaled offset from the image base. */
     const UNS64 cbase = (UNS64)(uintptr_t)base;
-#else
-    /* CPT16: compressed-pointer threading. A call token is a scaled
-     * offset from the image base: target = base + (t - 256) << SCALE.
-     * No table, so no second dependent load. */
-#define CALLTARGET(t) (cbase + ((t) << SCALE))
-    const UNS64 cbase = (UNS64)(uintptr_t)base - (256u << SCALE);
-#endif
     static const void *const dispatch[] = {
         &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
         &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
@@ -915,20 +806,9 @@ static void virtual_machine(void) {
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
         [NPRIM] = &&L_lit32, &&L_dovar, &&L_dodoes,
-#if ENC != 3
-        /*  LIT64 at 71, the first index past DODOES. Folded opcodes
-         *  start at FOLDBASE (128) and calls at 256, so 71..127 is
-         *  free space in both 16-bit encodings.  */
-        [NPRIM + 3] = &&L_lit64t,
-#endif
-#if ENC == 1
-        [NPRIM + 4] = &&L_farcall, [NPRIM + 5] = &&L_dodoesf,
-#endif
-#if ENC == 3
         [NPRIM + 3] = &&L_lit8, &&L_lit8x,
         [0x7D] = &&L_lit64, [0x7E] = &&L_esc,
-#endif
-#if ENC == 3 && SPEC
+#if SPEC
         [0x61] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
         &&L_lsave, &&L_lrest, &&L_lstore, &&L_lzero,
         &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
@@ -939,7 +819,7 @@ static void virtual_machine(void) {
 #include "vm-fold-table.h"
 #endif
     };
-#if ENC == 3 && ESCAPE
+#if ESCAPE
     /*  CV8 renumbers the primitive band: the 36 non-escaped primitives
      *  keep kernel.4's order compacted into 0..35, and the 32 escaped
      *  ones are reached as ESC + index. dispatch[] is in kernel.4
@@ -957,7 +837,7 @@ static void virtual_machine(void) {
       for (i_ = 0; i_ < 32; i_++)  esc_tab[i_] = dispatch[esc_k[i_]]; }
 #define dispatch cv8_tab
 #endif
-#if ENC == 3 && SHAREDCALL && DISPATCH256
+#if SHAREDCALL && DISPATCH256
     /*  Same handlers, but indexed by the whole byte: 0x80-0xFF all land
      *  on do_call, so no test is needed to tell an opcode from a call. */
     const void *dtab256[256];
@@ -966,7 +846,7 @@ static void virtual_machine(void) {
           dtab256[i_] = (i_ < n_ && i_ < 128) ? dispatch[i_] : &&do_call; }
 #endif
 
-#if ENC == 3 && SHAREDCALL
+#if SHAREDCALL
 /*  Every handler keeps its own opcode dispatch (what the branch predictor
  *  needs), but the call path - decode, RPUSH, limit check - exists once.
  *  GCC otherwise replicates ~50 bytes of it into all ~120 handlers.  */
@@ -990,7 +870,7 @@ static void virtual_machine(void) {
         goto do_call; \
     } while (0)
 #endif
-#elif ENC == 3
+#else
 #define NEXT() do { \
         PROFIP(ip); t = BYTE(ip); \
         if (t < 0x80) { ip += 1; PROF(t); goto *dispatch[t]; } \
@@ -998,18 +878,11 @@ static void virtual_machine(void) {
         PROF(256); RPUSH(ip); ip = cbase + (t << SCALE); \
         goto next; \
     } while (0)
-#else
-#define NEXT() do { \
-        t = TOK(ip); ip += 2; \
-        if (t < 256) { PROF(t); goto *dispatch[t]; } \
-        PROF(256); PROFC(t); RPUSH(ip); ip = CALLTARGET(t); \
-        goto next; \
-    } while (0)
 #endif
 
 next:
     NEXT();
-#if ENC == 3 && SHAREDCALL
+#if SHAREDCALL
 do_call:
 #if DISPATCH256
     /*  ip is already past the first byte here.  */
@@ -1034,61 +907,12 @@ do_call:
 L_noop:    /* noop    */ NEXT();
 L_exit:    /* exit    */ ip = RS; rp += CELL_BYTES; NEXT();
 L_lit:     /* lit     */ PUSH(OPND16(ip)); ip += 2; NEXT();
-#if ENC == 3
 L_lit8:    /* lit8    */ PUSH(BYTE(ip)); ip += 1; NEXT();
 L_lit8x:   /* lit8;exit */ PUSH(BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 L_lit32:   /* lit32   */ { UNS64 v = LD32(ip);
                            if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
                            PUSH(v); ip += 4; } NEXT();
-#else
-L_lit32:   /* lit32   */ { UNS64 v = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
-                           if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
-                           PUSH(v); ip += 4; } NEXT();
-/*  A literal too wide for LIT32's sign-extended 32 bits, as CELL_BYTES/2
- *  tokens, little end first. The 16-bit encodings did not have this: the
- *  translator masked every literal to 32 bits and a wider one was
- *  silently truncated. Nothing noticed, because no image in these
- *  encodings had ever COMPILED a literal - they were all translated from
- *  a cell image whose own constants happened to fit. The first thing to
- *  find it was the CORE suite's MAX-INT on a 64-bit cell.  */
-L_lit64t:  /* lit64   */ { UNS64 v = 0; int k_;
-                           for (k_ = 0; k_ < CELL_BYTES / 2; k_++)
-                               v |= (UNS64)TOK(ip + 2 * k_) << (16 * k_);
-                           PUSH(v); ip += CELL_BYTES; } NEXT();
-#endif
-#if ENC == 1
-/*  FARCALL: [72][low 16][high 16] - a call to an absolute byte offset
- *  from the image base, bypassing the word table entirely.
- *
- *  SOD16 needs this to compile anything. Its table is derived at load
- *  by walking the dictionary chain, sized to exactly the words that
- *  were in the image, and malloc'd once; a word defined afterwards has
- *  no entry and therefore no number that a call token could name. The
- *  table is the whole point of the encoding and it is also the reason
- *  the encoding cannot host its own compiler without an escape.
- *
- *  CPT16, one step later, needs nothing of the kind: it computes the
- *  target from the address. That contrast is the argument for deleting
- *  the table, and this opcode is what makes it measurable rather than
- *  hypothetical.  */
-L_farcall: { UNS64 off = (UNS64)TOK(ip) | ((UNS64)TOK(ip + 2) << 16);
-             RPUSH(ip + 4); ip = (UNS64)(uintptr_t)base + off; }
-           goto next;
-/*  DODOES with an address instead of a word number, for a DOES> word
- *  created after load. Body is [DODOESF][offset/2][pad][PFA].
- *
- *  The operand is ONE token, not two, and that is forced by the layout
- *  rather than chosen: CREATE reserves exactly one cell before the
- *  parameter field, so on a 4-byte cell there are four bytes to
- *  overwrite and a 32-bit offset does not fit. Bodies are 2-byte
- *  aligned, so halving the offset costs nothing and reaches 128 KB.
- *  Past that the compiler refuses rather than truncating.  */
-L_dodoesf: { UNS64 off = (UNS64)TOK(ip) << 1;
-             RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-             ip = (UNS64)(uintptr_t)base + off; }
-           goto next;
-#endif
-#if ENC == 3 && SPEC
+#if SPEC
 /*  Specialised opcodes at 0x61 (they were at 0x60 until a 69th
  *  primitive pushed the folded band onto it), each borrowed from
  *  another VM (CV8.md 10).
@@ -1150,7 +974,6 @@ L_addix:  DS0 += (UNS64)(INT64)(int8_t)BYTE(ip); ip = RS; rp += CELL_BYTES; NEXT
 L_eqi:    DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
 L_eqix:   DS0 = -(UNS64)(DS0 == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 #endif
-#if ENC == 3
 L_lit64:   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);
@@ -1165,9 +988,7 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
     write_str(2, "CV8: image uses the escaped band, engine built without it\n");
     exit(2);
 #endif
-#endif
 L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
-#if ENC == 3
     /*  The PFA is align(body+3), not align(body+1), so that it is the
      *  SAME address DODOES computes after overwriting the front of the
      *  body with a 2-byte call. With bodies always cell-aligned the two
@@ -1176,12 +997,8 @@ L_dovar:   /* DOVAR as a primitive: [DOVAR][pad][PFA] -> push PFA, return */
      *  its parameter field one cell away from where CREATE had put it.
      *  cv8.4's CREATE8 reserves the two bytes.  */
     PUSH((ip + (DOESFAR ? 3 : 2) + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-#else
-    PUSH((ip + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-#endif
     ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
-#if ENC == 3
 #if VARCALL
     if (BYTE(ip) & 0x40) {
         t = ((BYTE(ip) & 0x3F) << 16) | ((UNS64)BYTE(ip + 1) << 8) | BYTE(ip + 2);
@@ -1195,22 +1012,9 @@ L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
     RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
 #endif
     ip = cbase + (t << SCALE); NEXT();
-#else
-    t = TOK(ip);
-    RPUSH((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1));
-    ip = CALLTARGET(t); NEXT();
-#endif
-#if ENC == 3
 L_branch:  /* branch  */ ip += (int16_t)LD16(ip); NEXT();
-#else
-L_branch:  /* branch  */ ip += 2 * (int16_t)TOK(ip); NEXT();
-#endif
 L_0branch: /* 0branch */
-#if ENC == 3
     if (DS0) ip += 2; else ip += (int16_t)LD16(ip);
-#else
-    if (DS0) ip += 2; else ip += 2 * (int16_t)TOK(ip);
-#endif
     dsp += CELL_BYTES;
     NEXT();
 L_drop:    /* drop    */ dsp += CELL_BYTES; NEXT();
