@@ -53,7 +53,11 @@
 \ BRANCH-TOK is a cross-compile-time name and is not in the image, so
 \ the branch opcode is compiled through its xt instead: COMPILE, of a
 \ primitive inlines it, and the offset follows exactly as UNTIL's does.
-  ['] BRANCH COMPILE, HERE - , ; IMMEDIATE
+\ The xt is captured as a START-relative OFFSET, not as a literal
+\ address: [']  would compile an absolute xt into AGAIN's own body,
+\ which then survives SAVE-SYSTEM unchanged and is wrong after the
+\ image reloads at a different base.
+  [ ' BRANCH START @ - ] LITERAL START @ + COMPILE, HERE - , ; IMMEDIATE
 
 : [COMPILE] ( "ccc" --- )
 \ Compile the next word even if it is immediate.
@@ -100,7 +104,14 @@
 \ system passed the whole CORE suite and then could not cross-compile
 \ itself: the vocabularies cross.4 uses were one cell each and
 \ SEARCH-WORDLIST read a chain head as a thread count.
-  HERE FORTH-WORDLIST @ ,
+\ A link cell goes in FRONT of the count, holding the offset of the
+\ previously created wordlist, so COLD and SAVE-SYSTEM can walk every
+\ wordlist rather than knowing about FORTH-WORDLIST alone. The wid is
+\ still the address of the COUNT cell, so nothing that uses a wid
+\ changes.
+  WORDLISTS @ ,
+  HERE DUP START @ - WORDLISTS !
+  FORTH-WORDLIST @ ,
   HERE FORTH-WORDLIST @ CELLS DUP ALLOT 0 FILL ;
 
 : DEFINITIONS  ( --- )
@@ -111,9 +122,17 @@
 \ REplace the last wordlist in the search order with FORTH-WORDLIST
   FORTH-WORDLIST CONTEXT #ORDER @ 1- CELLS + ! ;
 
-WORDLIST
-CONSTANT ROOT-WORDLIST ( --- wid )
-\ Minimal wordlist for ONLY
+WORDLIST START @ -
+CONSTANT ROOT-WORDLIST-OFFSET ( --- off )
+\ Minimal wordlist for ONLY, held as a START-relative OFFSET.
+\
+\ A wid is an absolute address, and an absolute address stored in the
+\ dictionary survives SAVE-SYSTEM unchanged and is then wrong - the
+\ image reloads at a different base. Storing the offset and adding
+\ START at use costs one add and makes the image reproducible; keeping
+\ the address made two identical builds differ.
+
+: ROOT-WORDLIST ( --- wid )   ROOT-WORDLIST-OFFSET START @ + ;
 
 : ONLY ( --- )
 \ Set the search order to the minimal wordlist.
@@ -122,9 +141,11 @@ CONSTANT ROOT-WORDLIST ( --- wid )
 : VOCABULARY ( --- )
 \ Make a definition that will replace the last word in the search order
 \ by its wordlist.
-  WORDLIST CREATE  ,            \ Make a new wordlist and store it in def.
-  DOES> >R                      \ Replace last item in the search order.
-  GET-ORDER SWAP DROP R> @ SWAP SET-ORDER ;
+\ The wordlist is stored as a START-relative OFFSET for the same
+\ reason ROOT-WORDLIST is, and DOES> adds START back.
+  WORDLIST START @ - CREATE  ,
+  DOES> >R
+  GET-ORDER SWAP DROP R> @ START @ + SWAP SET-ORDER ;
 
 ROOT-WORDLIST CURRENT !
 : FORTH FORTH ;

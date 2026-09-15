@@ -867,6 +867,23 @@ VARIABLE NAMEBUF ( --- a-addr)
 \ An aligned buffer that holds a copy of the name that is searched.
 28 ALLOT-T
 
+VARIABLE WORDLISTS ( --- a-addr)
+\ Head of the chain of wordlists OTHER than FORTH-WORDLIST: the
+\ START-relative offset of the most recently created one, or 0.
+\
+\ Each such wordlist carries the offset of the next in a link cell
+\ immediately BEFORE its count cell, so the chain costs one cell per
+\ wordlist and needs no table and no limit. Offsets, not addresses, so
+\ the chain itself never needs relocating - only the thread heads
+\ inside each wordlist do.
+\
+\ COLD relocates every wordlist on this chain and SAVE-SYSTEM
+\ unrelocates the same walk. Before it existed both knew about exactly
+\ one wordlist, which was complete for as long as there WAS one: the
+\ moment extend.4 was loaded into a saved image, ROOT-WORDLIST and
+\ every VOCABULARY kept the builder's absolute addresses, and two
+\ identical builds differed in eight cells by exactly the ASLR delta.
+
 VARIABLE FORTH-WORDLIST ( --- addr)
 \ A hashed word list, laid out as SOD32's is: cell 0 holds the number
 \ of threads and cells 1..n the head of each thread.
@@ -1395,16 +1412,27 @@ VARIABLE INCLUDE-POINTER ( --- a-addr)
   FORTH-WORDLIST CURRENT !
   QUIT ;
 
+: RELOCATE-WORDLIST ( wid --- )
+\ Add START to every thread head of one wordlist.
+\
+\ Cell 0 is the thread COUNT and must not be touched; an empty thread
+\ is 0 and must STAY 0, or it becomes a pointer to the image base.
+\ SAVE-SYSTEM's SS-UNRELOCATE-WORDLIST is this in reverse and the two
+\ have to agree.
+  DUP @ 1+ 1 DO
+    DUP I CELLS + DUP @ ?DUP IF START @ + SWAP ! ELSE DROP THEN
+  LOOP DROP ;
+
 : COLD ( --- )
 \ The first word that is called at the start of Forth.
   START ! START @ DP +!
-  \ Every thread head is stored as an offset from START and relocated
-  \ here, which is what the single head used to need. Cell 0 is the
-  \ thread COUNT and must not be touched; an empty thread is 0 and
-  \ must stay 0, or it would become a pointer to the image base.
-  FORTH-WORDLIST @ 1+ 1 DO
-    FORTH-WORDLIST I CELLS + DUP @ ?DUP IF START @ + SWAP ! ELSE DROP THEN
-  LOOP
+  FORTH-WORDLIST RELOCATE-WORDLIST
+  \ ...and every other wordlist, down the chain WORDLIST built.
+  WORDLISTS @
+  BEGIN ?DUP WHILE
+    START @ + DUP RELOCATE-WORDLIST
+    1 CELLS - @
+  REPEAT
   SP@ S0 !
   RP@ CELL+ R0 ! \ Initialize variables SO and RO
   BOOT @ ?DUP IF START @ + EXECUTE THEN

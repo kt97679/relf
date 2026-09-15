@@ -161,6 +161,16 @@ CREATE SS-MAGIC 8 ALLOT
   START @ SS-BUF @ SS-LEN @ MOVE
   DP SS-UNRELOCATE
   FORTH-WORDLIST SS-UNRELOCATE-WORDLIST
+  \ ...and every other wordlist, down the chain WORDLIST built. The
+  \ link cells hold OFFSETS and so need no unrelocating themselves;
+  \ only the thread heads inside each wordlist do. Reading the chain
+  \ from the LIVE system, writing through SS>COPY, exactly as the
+  \ single-wordlist case does.
+  WORDLISTS @
+  BEGIN ?DUP WHILE
+    START @ + DUP SS-UNRELOCATE-WORDLIST
+    1 CELLS - @
+  REPEAT
   SS-SCRUB
   SS-SET-MAGIC
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
