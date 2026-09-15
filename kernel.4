@@ -122,9 +122,6 @@ PRIMITIVE ACCEPT ( c-addr n1 --- n2 )
 \ arrangement. Both loops used to live here in the image, one
 \ dispatch per character; now they are one dispatch per STRING.
 
-PRIMITIVE BYE  ( ---)
-\ Terminate the execution of Forth, return to host OS.
-
 PRIMITIVE SP@      ( --- a-addr)
 \ Return the address of the stack pointer (before SP@ was executed).
 
@@ -136,6 +133,24 @@ PRIMITIVE RP@      ( --- a-addr)
 
 PRIMITIVE RP!      ( a-addr ---)
 \ Set the return stack pointer to a-addr.
+
+PRIMITIVE KEY ( --- c)
+\ Input one character from the terminal, RAW: no line buffering, no
+\ editing, no waiting for a terminator. Appended at the end of the
+\ primitive list rather than placed with TYPE and ACCEPT so that every
+\ other primitive keeps its opcode number.
+\
+\ It is a primitive, and not a colon definition on ACCEPT, because the
+\ two cannot express each other. ACCEPT returns a finished, edited
+\ LINE; a KEY built on it cannot return a keystroke until Enter is
+\ pressed, which is precisely the property interactive line editing -
+\ cursor keys, history search, completion - needs it not to have.
+\
+\ Note that raw here means unbuffered by FORTH. The terminal is still
+\ in canonical mode, so the kernel driver hands over a line at a time
+\ and even this KEY will not see a cursor key until Enter. Making that
+\ work needs a termios primitive to turn off ICANON and ECHO; this
+\ word is the half of the problem that lives on this side.
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
 
@@ -635,6 +650,9 @@ VARIABLE DPL ( --- a-addr)
 \ Modify the R/O W/O or R/W mode so that it applies to binary files.
   1 + ;
 
+PRIMITIVE BYE  ( ---)
+\ Terminate the execution of Forth, return to host OS.
+
 PRIMITIVE OPEN-FILE
 PRIMITIVE CLOSE-FILE
 PRIMITIVE READ-LINE
@@ -677,24 +695,6 @@ PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
 PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
 PRIMITIVE GETFSIZE  ( --- n )
 PRIMITIVE SETFSIZE  ( n --- ior )
-
-PRIMITIVE KEY ( --- c)
-\ Input one character from the terminal, RAW: no line buffering, no
-\ editing, no waiting for a terminator. Appended at the end of the
-\ primitive list rather than placed with TYPE and ACCEPT so that every
-\ other primitive keeps its opcode number.
-\
-\ It is a primitive, and not a colon definition on ACCEPT, because the
-\ two cannot express each other. ACCEPT returns a finished, edited
-\ LINE; a KEY built on it cannot return a keystroke until Enter is
-\ pressed, which is precisely the property interactive line editing -
-\ cursor keys, history search, completion - needs it not to have.
-\
-\ Note that raw here means unbuffered by FORTH. The terminal is still
-\ in canonical mode, so the kernel driver hands over a line at a time
-\ and even this KEY will not see a cursor key until Enter. Making that
-\ work needs a termios primitive to turn off ICANON and ECHO; this
-\ word is the half of the problem that lives on this side.
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.

@@ -96,6 +96,13 @@ static char **g_argv;
 #ifndef NPRIM
 #define NPRIM 69
 #endif
+
+/*  The escaped band: the OS/libc primitives, contiguous at the end of
+ *  kernel.4's PRIMITIVE list. NESC is fixed by that list - sod16.py's
+ *  ESC_PRIMS_ALL names the same 32 words - and NDIRECT is whatever is
+ *  left below them.  */
+#define NESC    32
+#define NDIRECT (NPRIM - NESC)
 #ifndef ESCAPE
 /*  ESCAPE: the 32 OS/libc primitives move behind ESC + a selector,
  *  which renumbers the primitive band. Both the engine and the
@@ -793,8 +800,8 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_accept, &&L_bye, &&L_spfetch, &&L_spstore,
-        &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
+        &&L_dplus, &&L_type, &&L_accept, &&L_spfetch, &&L_spstore,
+        &&L_rpfetch, &&L_rpstore, &&L_key, &&L_bye, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
@@ -825,16 +832,30 @@ static void virtual_machine(void) {
      *  ones are reached as ESC + index. dispatch[] is in kernel.4
      *  order, so both tables are derived from it here rather than
      *  written out twice.  */
-    static const UNS8 esc_k[32] = { 32,
-        37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,
-        52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67 };
-    const void *cv8_tab[128], *esc_tab[32];
+    /*  The escaped primitives are CONTIGUOUS at the end of kernel.4's
+     *  list, so the partition is a property of the ORDER and needs no
+     *  table: direct opcodes are an identity mapping, and selector t is
+     *  simply the primitive at NDIRECT + t.
+     *
+     *  This used to be a hand-written esc_k[32] listing 32 and 37..67,
+     *  because BYE sat below SP@/SP!/RP@/RP! and KEY sat above the file
+     *  primitives, leaving the escaped set interleaved. Moving those
+     *  five declarations in kernel.4 removed the table and three of the
+     *  four loops - and removed the possibility of the table and the
+     *  order disagreeing, which nothing would have caught.  */
+    const void *cv8_tab[128], *esc_tab[NESC];
     { int i_, n_ = (int)(sizeof dispatch / sizeof dispatch[0]);
+      /*  Copy the whole table first: everything ABOVE the primitives -
+       *  LIT32, DOVAR, DODOES, the literal forms, the folded band and
+       *  the specialised band - keeps its slot and must be carried
+       *  over. Leaving that out is what a first attempt did, and every
+       *  translated image died with a return stack overflow.  */
       for (i_ = 0; i_ < 128; i_++) cv8_tab[i_] = (i_ < n_) ? dispatch[i_] : &&L_noop;
-      for (i_ = 0; i_ < 32; i_++)  cv8_tab[i_] = dispatch[i_];
-      for (i_ = 32; i_ < 36; i_++) cv8_tab[i_] = dispatch[i_ + 1];  /* SP@..RP! */
-      for (i_ = 36; i_ < 68; i_++) cv8_tab[i_] = &&L_noop;          /* freed */
-      for (i_ = 0; i_ < 32; i_++)  esc_tab[i_] = dispatch[esc_k[i_]]; }
+      /*  Direct primitives are already an identity mapping. The escaped
+       *  ones vacate their slots, and selector t is the primitive at
+       *  NDIRECT + t - no table, because the order says it.  */
+      for (i_ = NDIRECT; i_ < NPRIM; i_++) cv8_tab[i_] = &&L_noop;
+      for (i_ = 0; i_ < NESC; i_++) esc_tab[i_] = dispatch[NDIRECT + i_]; }
 #define dispatch cv8_tab
 #endif
 #if SHAREDCALL && DISPATCH256

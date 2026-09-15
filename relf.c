@@ -446,15 +446,15 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_accept, &&L_bye, &&L_spfetch, &&L_spstore,
-        &&L_rpfetch, &&L_rpstore, &&L_openfile, &&L_closefile,
+        &&L_dplus, &&L_type, &&L_accept, &&L_spfetch, &&L_spstore,
+        &&L_rpfetch, &&L_rpstore, &&L_key, &&L_bye, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize, &&L_key
+        &&L_getfsize, &&L_setfsize
     };
 
 #define NEXT() do { \
