@@ -752,84 +752,16 @@ def to_bytes_v8(ops):
     return list(b)
 
 def to_tokens(ops):
-    if V8: return to_bytes_v8(ops)
-    """The 16-bit token stream for one word body, or None if it cannot
-    be encoded. Positions come from layout(), and padding is emitted by
-    catching up to the position layout() assigned, so the two cannot
-    drift apart."""
-    c2t, cs, ts, _, ttot = layout(ops)
-    t = []
-    for j, (k, pl) in enumerate(ops):
-        while len(t) * 2 < ts[j]: t.append(idx_of['NOOP'])   # padding
-        assert len(t) * 2 == ts[j], "layout and emission disagree"
-        if k == 'ALN':
-            pass                                  # padding already emitted
-        elif k == 'PX':
-            t.append(FOLDBASE + idx_of[pl])
-        elif k == 'LITX':
-            t.append(FOLDBASE + idx_of['LIT']); t.append(pl)
-        elif k == 'P':
-            i = idx_of[pl]
-            assert i < 256, "primitive index %d exceeds the 0..255 band" % i
-            t.append(i)
-        elif k == 'C':
-            n = num.get(pl)
-            if n is None: return None            # call outside the dump
-            assert n + 256 <= 65535, "word number %d exceeds the token field" % n
-            t.append(G_CALLTOK[0](pl, n))
-        elif k == 'LITOFF':
-            v = pl & ((1 << 32) - 1)
-            t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
-        elif k == 'LIT':
-            if 0 <= pl <= 0xFFFF:
-                t.append(idx_of['LIT']); t.append(pl)
-            elif _fits32(pl):
-                v = pl & ((1 << 32) - 1)
-                t.append(LIT32); t.append(v & MASK); t.append((v >> 16) & MASK)
-            else:
-                v = pl & ((1 << (8 * CELL)) - 1)
-                t.append(LIT64)
-                for sh in range(0, 8 * CELL, 16):
-                    t.append((v >> sh) & MASK)
-        elif k in ('BR', 'QBR'):
-            t.append(idx_of['BRANCH' if k == 'BR' else '?BRANCH'])
-            # Convert. Both offsets are measured from the operand
-            # itself, which sits one cell past the opcode in the cell
-            # image and one token past it here, so the anchors move
-            # together.
-            tgt = cs[j] + CELL + pl
-            if tgt not in c2t: return None        # not an operation start
-            off = (c2t[tgt] - (ts[j] + 2)) // 2
-            assert -32768 <= off <= 32767, \
-                "branch offset %d does not fit a signed 16-bit token" % off
-            t.append(off & MASK)
-        elif k == 'XT':
-            # Relative address into another word. Relocated by the
-            # layout pass, which is the only place that knows the new
-            # position of the target; passed through unchanged here.
-            for sh in range(0, 8 * CELL, 16):
-                t.append((pl & ((1 << (8 * CELL)) - 1)) >> sh & MASK)
-        elif k == 'OPD':
-            # (LOOP)'s operand stays a CELL holding a BYTE offset, so
-            # `DUP @ +` needs no change. The distance is recomputed for
-            # the new layout; the units do not change, the spacing does.
-            tgt = cs[j] + pl
-            if tgt not in c2t: return None
-            off = c2t[tgt] - ts[j]
-            for sh in range(0, 8 * CELL, 16):
-                t.append((off & ((1 << (8 * CELL)) - 1)) >> sh & MASK)
-        elif k == 'STR':
-            # No marker token. The counted string must begin at the very
-            # next address after the call token, because that is where
-            # (S") looks for it. The tail is zero-padded to the next CELL
-            # boundary, which is where ALIGNED resumes.
-            body = pl + bytes(op_bytes(k, pl, ts[j]) - len(pl))
-            for i in range(0, len(body), 2):
-                t.append(body[i] | (body[i + 1] << 8))
-    while len(t) * 2 < ttot: t.append(idx_of['NOOP'])
-    return t
+    """The byte stream for one word body, or None if it cannot be encoded.
 
-# ---- decode tokens back, to prove the encoding is reversible -------
+    CV8 is the only encoding left, so this is a thin alias. It used to
+    carry a second, 16-bit emitter behind `if V8: return
+    to_bytes_v8(ops)` - 79 lines that no caller could reach, since every
+    stage in tools/lab/build-cv8.sh passes --v8. Retired with the rest
+    of the ladder; see attic/."""
+    return to_bytes_v8(ops)
+
+
 def from_tokens(t):
     # Pass 1: recover the operation list, leaving branch and loop
     # offsets as stored, and remembering each operation's byte offset so
