@@ -115,8 +115,20 @@ static char **g_argv;
  *  entries, every one with the top bit set pointing at do_call, so
  *  NEXT is load / increment / indirect jump. Suggested in review:
  *  the CPU should not have to learn whether this is a one- or
- *  two-byte instruction before it can jump. Costs 1 KB more table.  */
-#define DISPATCH256 0
+ *  two-byte instruction before it can jump.
+ *
+ *  ON BY DEFAULT since it was finally measured. The prediction written
+ *  here - "costs 1 KB more table" - was wrong in both directions: the
+ *  table does grow by 1 KB, but deleting the opcode-vs-call test from
+ *  NEXT shrinks the code by more, and the engine comes out SMALLER.
+ *
+ *      .text     12,334 -> 10,734 bytes   (-1,600)
+ *      compute loop  309 ->    305 ms     (interleaved, min of 7)
+ *
+ *  It sat at 0 for as long as it did because nobody ran it. An idea
+ *  with a rationale and no number is indistinguishable from dead
+ *  code.  */
+#define DISPATCH256 1
 #endif
 #ifndef VARSLOT
 /*  VARSLOT: slot operands (VAR@/VAR!, the locals opcodes) are variable
