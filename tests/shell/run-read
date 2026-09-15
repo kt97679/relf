@@ -24,4 +24,31 @@ out=$(printf 'p\nq\n' | "$THIS_SH" "$t/d.sh" 2>/dev/null)
 assert_output_contains "while read: first line"  "got:p" "$out"
 assert_output_contains "while read: second line" "got:q" "$out"
 assert_output_contains "while read: terminates"  "fin"   "$out"
+
+# ---- read must not consume more than the line it returns ------------
+# POSIX: "the shell shall read the input... such that the file offset
+# is positioned at the first byte after the line read". A shell that
+# reads ahead into a buffer takes input away from whatever runs next -
+# the failure is invisible to every test that only checks what the
+# SHELL got, which is why this checks what a CHILD gets afterwards.
+#
+# Regression: the engine gained a 4096-byte stdin buffer, and `read x`
+# then swallowed the whole pipe. `cat` saw nothing, while dash left it
+# two lines. Caught only when someone asked whether the buffer could
+# cause trouble with two input sources.
+
+printf 'read x\necho "shell:$x"\ncat\n' > "$t/e.sh"
+out=$(printf 'l1\nl2\nl3\n' | "$THIS_SH" "$t/e.sh" 2>/dev/null)
+assert_output_contains "read takes one line from a pipe"        "shell:l1" "$out"
+assert_output_contains "a pipe's remainder is left for a child" "l2"       "$out"
+assert_output_contains "the child gets ALL of the remainder"    "l3"       "$out"
+
+# Same, from a seekable file: here POSIX is stricter still, because the
+# shell can and must seek back to where the line ended.
+printf 'm1\nm2\nm3\n' > "$t/in.txt"
+out=$("$THIS_SH" "$t/e.sh" < "$t/in.txt" 2>/dev/null)
+assert_output_contains "read takes one line from a file"        "shell:m1" "$out"
+assert_output_contains "a file's remainder is left for a child" "m2"       "$out"
+assert_output_contains "the child gets ALL of the file remainder" "m3"     "$out"
+
 report
