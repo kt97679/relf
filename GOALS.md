@@ -1263,13 +1263,45 @@ than remembered.
   kernel from `kernel.4`. So retiring `relf.c` today would mean
   `kernel.4` can never change again.
 
-  What has to happen first, in order: `layout.py` reads the cell image
-  FILE rather than a run-time dump (bounded, and it deletes the dump
-  step), or `cross.4` emits CV8 directly (larger, the real end state).
-  Then prove the pipeline with no `./relf` in it, then switch the
-  product over and move `relf.c` to `attic/`. Tag the commit before
-  that last step: it is the last one where the system can be rebuilt
-  from a C compiler and a text kernel.
+  WHAT HAS TO HAPPEN FIRST - corrected at Iteration 238, after the
+  first half was built and the second half turned out not to be what
+  this entry said.
+
+  1. **Read the dictionary out of the image file.** DONE:
+     `tools/image-dump.py`. It walks a saved cell image and emits the
+     same S/P/H/N/B records `tools/dict-dump-addr.4` emits when run
+     inside one. It finds the word list by SHAPE - a cell holding the
+     thread count followed by 32 plausible offsets - because a saved
+     image has an 8-byte header and no directory.
+
+  2. **Move `cv8.4` into the cross-compiled kernel.** NOT DONE, and
+     this is the actual gate. Measured: an image translated from
+     `kernel.img` boots and runs (`1 2 + .` gives 3) but SEGFAULTS on
+     `: SQ DUP * ;`. Without `cv8.4`'s `COMPILE,8` in it, `COMPILE,`
+     emits cell-format calls into a byte-stream image.
+
+     So `cv8.4` has to be in the dictionary AT TRANSLATION TIME, which
+     means in the image file. Two ways not to do it: loading it into a
+     running image is what needs the cell engine, and `SAVE-SYSTEM`
+     would drag `pool.4`, `shadow.4` and save-system.4's own words into
+     every image - worse contamination than the five dumper words this
+     was meant to remove. It cannot be compiled in afterwards either,
+     because compiling is what needs it. The circle only opens by
+     `cross.4` emitting `cv8.4` the way it emits the rest of
+     `kernel.4`.
+
+  3. Prove the pipeline with no `./relf` in it, then switch the product
+     over and move `relf.c` to `attic/`. Tag the commit before that
+     last step: it is the last one where the system can be rebuilt from
+     a C compiler and a text kernel.
+
+  ONE ACCEPTANCE TEST TO NOT USE. "Every ladder image byte-identical"
+  was the obvious check and it is wrong: the build loads
+  `tools/dict-dump-addr.4` into the image before dumping it, so
+  `COLLECT`, `SORTNFA`, `SWAPC`, `DUMP` and `NFATAB` are compiled into
+  every translated image and shipped today. Reading the file cannot
+  pick them up, so the correct images are SMALLER. Check that they work
+  and that the difference is exactly the dumper's footprint.
 
 - **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
   `KEY` is `0 SP@ 1 0 READ-FILE DROP  0= IF BYE THEN`. It tests the
