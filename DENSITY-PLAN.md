@@ -1,5 +1,10 @@
 # DENSITY-PLAN.md — making the image smaller without paying for it
 
+> **Historical.** Written before the encoding work began. Most of it
+> was done by CV8 and byte-granular headers; see `CV8.md` and
+> PROGRESS.md 211-213. Read it for the reasoning about where image
+> bytes go.
+
 Written before any code, because the options differ in risk by an
 order of magnitude. Read `GOALS.md`'s phase 5 (which already rejected
 one density scheme) and `PROGRESS.md`'s Iterations 129-131 first.

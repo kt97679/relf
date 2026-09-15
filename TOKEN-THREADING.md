@@ -1,5 +1,10 @@
 # TOKEN-THREADING.md — the proposed change, in detail
 
+> **Historical.** Proposed at Iteration 139, superseded by CV8 at 189,
+> and the encoding it argued against was retired at 218. Its density
+> analysis is still the best in the repository; its plan is not the
+> plan. See `CV8.md`.
+
 Proposed in Iteration 139, measured in 140, prototyped in 141, written
 out here in 142 because it is by a wide margin the largest change ever
 proposed for this project and the cost is in places nobody has looked

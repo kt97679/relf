@@ -317,17 +317,25 @@ the registers available (Ertl, *Stack Caching for Interpreters*, PLDI
 
 ```
 0x00-0x43   primitive, index = byte (kernel.4's 68, in PRIMITIVE order)
-0x44        LIT32   4-byte little-endian signed operand
-0x45        DOVAR   [DOVAR][pad to CELL][PFA]: push PFA, return
-0x46        DODOES  [DODOES][2-byte call form][pad][PFA]:
+0x43        LIT32   4-byte little-endian signed operand
+0x44        DOVAR   [DOVAR][pad to CELL][PFA]: push PFA, return
+0x45        DODOES  [DODOES][call form][pad][PFA]:
                     RPUSH(PFA), jump to the DOES> tail
-0x47        LIT8    1-byte operand
-0x48        LIT8;EXIT
-0x49-0x5F   folded "primitive then EXIT", in the order of --fold-set
+0x46        LIT8    1-byte operand
+0x47        LIT8;EXIT
+0x48-0x5E   folded "primitive then EXIT", in the order of --fold-set
             (LIT here means LIT16;EXIT)
-0x60-0x7F   free
+0x61-0x7C   specialised opcodes
+0x7D        LIT64
+0x7E        ESC + selector: one of the 32 escaped OS/libc primitives
 0x80-0xFF   call: target = base + ((b & 0x7F) << 8 | next) << S
 ```
+
+**These numbers move.** Every boundary is derived from the number of
+`PRIMITIVE` lines in `kernel.4`; the map above is 67 primitives with
+the escaped band on, which is the default. `CV8-REFERENCE.md` §3.2 has
+the full table and the derivation. The specialised band sat at `0x60`
+until a 69th primitive pushed the folded band onto it.
 
 **Operands.**
 - `LIT` is 2 bytes. `BRANCH` and `?BRANCH` take a 2-byte signed *byte*

@@ -1,5 +1,10 @@
 # Engine encoding comparison
 
+> **Historical.** The Iteration 156-161 comparison of every encoding
+> this project considered. The ladder that produced these numbers was
+> retired at Iteration 218 - `attic/` has the sources - so the figures
+> can be cited but no longer reproduced without reviving it. CV8 won.
+
 Iteration 156. Written because the design work in this area was being
 re-derived from scratch: a session proposed a two-tag-bit layout that
 Iteration 132 had already measured, and only found out by grepping

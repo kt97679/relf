@@ -151,20 +151,63 @@ branch on sign with no comparison (`SIGNTEST`, on by default except on
 
 ### 3.2 Opcode map
 
+Nothing in this table is a constant in the source. Every boundary is
+derived from the number of `PRIMITIVE` lines in `kernel.4`, in five
+places that must agree — `tools/sod16.py`, `tools/lab/gen-fold.py`,
+`tools/lab/gen-tos.py`, `tools/layout.py` and `cv8.4`. They were
+written out by hand until Iteration 214, and adding one primitive then
+made the image encode an opcode the engine decoded as something else,
+with no build error: a return stack overflow in one stage and a
+corrupted heap in another.
+
+With 67 primitives and the escaped band on, which is the default:
+
 | range | meaning |
 |---|---|
-| `0x00`–`0x43` | the 68 primitives of `kernel.4`, in `PRIMITIVE` order |
-| `0x44` | `LIT32` — 4-byte signed operand |
-| `0x45` | `DOVAR` — data body prologue |
-| `0x46` | `DODOES` — `DOES>` body prologue |
-| `0x47` | `LIT8` — 1-byte unsigned operand |
-| `0x48` | `LIT8;EXIT` |
-| `0x49`–`0x5F` | folded `primitive;EXIT`, in `--fold-set` order (23 used) |
-| `0x60`–`0x7B` | specialised opcodes (§7) |
-| `0x7C` | `LIT64` — a full cell, little-endian |
-| `0x7D` | `ESC` — **reserved**: selects a second bank of 256 opcodes |
-| `0x7E`–`0x7F` | free |
-| `0x80`–`0xFF` | first byte of a two-byte call |
+| `0x00`–`0x22` | the 35 **direct** primitives, in `PRIMITIVE` order |
+| `0x23`–`0x42` | vacated — the 32 escaped primitives live behind `ESC` |
+| `0x43` | `LIT32` — 4-byte signed operand |
+| `0x44` | `DOVAR` — data body prologue |
+| `0x45` | `DODOES` — `DOES>` body prologue |
+| `0x46` | `LIT8` — 1-byte unsigned operand |
+| `0x47` | `LIT8;EXIT` |
+| `0x48`–`0x5E` | folded `primitive;EXIT`, in `--fold-set` order (23 used) |
+| `0x5F`–`0x60` | free |
+| `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
+| `0x7D` | `LIT64` — a full cell, little-endian |
+| `0x7E` | `ESC` + a selector byte: one of the 32 OS/libc primitives |
+| `0x7F` | free |
+| `0x80`–`0xFF` | first byte of a two- or three-byte call |
+
+Two things moved and are worth knowing about. The specialised band was
+at `0x60`; a 69th primitive pushed the folded band onto it, so the last
+folded opcode and `lit0` became the same byte, and the whole band moved
+up one. `ESC` was `0x7D`.
+
+Free: `0x5F`, `0x60`, `0x7F`, plus the 32 vacated at `0x23`–`0x42`.
+The vacated ones are NOT usable by a new primitive — primitives are
+numbered by position from 0, so a 68th would land at `0x23` and push
+everything above it up. They are reachable only by something numbered
+explicitly, which is why the folded band's headroom is the two at
+`0x5F`–`0x60` and not thirty-four.
+
+The numbers above are what `kernel.4` and `tools/sod16.py` produce
+today, and they will move again the moment a primitive is added or
+`--fold-set` changes. To print the current map rather than trust this
+table, derive it the way the tools do: 35 direct primitives, then
+`len(prims)+0..4`, then `len(prims)+5` for the folded band.
+
+The escaped band is what keeps that from being tight. The 32 OS/libc
+primitives — `BYE`, the file words, `FORK`, `EXECVE` and the rest — are
+3.2% of static sites and 0.006% of dispatches, so putting them behind
+`ESC` costs a byte each where it does not matter and frees 32 opcodes
+where it does. They are **contiguous at the end** of `kernel.4`'s list,
+which is what lets the engine compute the partition instead of carrying
+a table: selector *t* is the primitive at `NDIRECT + t`.
+
+`--no-escape` builds the unescaped numbering, where all 67 primitives
+are direct at `0x00`–`0x42`; an engine built without the band refuses
+such an image rather than misreading it.
 
 The primitive numbering is not a CV8 invention: it is the order words
 appear as `PRIMITIVE` lines in `kernel.4`, the same numbering the cell
@@ -341,10 +384,11 @@ cell by cell.
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
 | 6 | 1 | **format version** (1) |
-| 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
-| 8 | cell | offset of the newest word's name field (the dictionary head) |
-| +cell | cell | number of `DOES>` tail entries, *N* |
-| … | 2·*N*·cell | the tail entries: (word number, byte offset) pairs |
+| 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64, 16 bytehdr |
+| 8 | cell | thread **count** *T* (32 — the hashed word list) |
+| +cell | *T*·cell | the thread heads, `START`-relative |
+| … | cell | number of `DOES>` tail entries, *N* |
+| … | 2·*N*·cell | the tail entries: (word number, byte offset) pairs — **skipped**, see below |
 | … | 5·cell | **SPEC only**: the locals header (§7.3) |
 
 The engine checks the first five bytes exactly - name, scale and cell
@@ -362,6 +406,16 @@ A `SPEC` image **always** carries the five locals cells, zero-filled when
 the dictionary had no `locals.4`. That keeps the format independent of
 what was loaded; a bare kernel image and a shell image differ only in
 content.
+
+The header used to carry a single dictionary head, and the loader
+walked that one chain to build a word-number table. Two things ended
+that. The word list was hashed into 32 threads (Iteration 209), so no
+single chain reaches every word — hence the count and the heads. And
+the table itself was only ever needed by SOD16, which named a call by
+word NUMBER; CV8 computes a target from the address, so the loader now
+reads the tail entries only to step over them. That is also what lets
+byte-granular headers change a link's encoding without the engine
+knowing or caring.
 
 ### 5.2 Loading
 

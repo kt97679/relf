@@ -1,5 +1,10 @@
 # SOD16
 
+> **Historical.** SOD16 was replaced by CV8 at Iteration 189 and
+> retired from the tree at 218; `sod16.c` and `sod16.4` are in
+> `attic/`. Read this for the design and the measurements, not as a
+> description of anything that runs. `CV8.md` describes the engine.
+
 The engine encoding chosen in Iterations 156-167, being built on branch
 `token16`. This file is the brief: what it is, what is decided and why,
 what is built, what is next, and what will bite.
