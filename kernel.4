@@ -180,14 +180,6 @@ PRIMITIVE RP!      ( a-addr ---)
 \ f is true if and only if the signed number n1 is less than n2.
   SWAP < ;
 
-: 0>  ( n --- f)
-\ f is true if and only if n is greater than 0.
-  0 > ;
-
-: U>  ( u1 u2 --- f)
-\ f is true if and only if the unsigned number u1 is greater than u2.
-  SWAP U< ;
-
 : EMIT ( c --- )
 \ Output the character c to the terminal.
 \
@@ -252,10 +244,6 @@ VARIABLE R0 ( --- a-addr)
 : CHARS ( n1 --- n2)
 \ n2 is the number of address units occupied by n1 characters.
 ; \ A no-op.
-
-: CHAR-  ( c-addr1 --- c-addr2)
-\ c-addr2 is the previous character address before c-addr1.
-   -1 + ;
 
 : CELL+ ( a-addr1 --- a-addr2)
 \ a-addr2 is the address of the next cell after a-addr2.
@@ -723,9 +711,6 @@ VARIABLE TIB ( --- addr)
 \ is the standard terminal input buffer.
 80 CHARS-T ALLOT-T
 
-VARIABLE SPAN ( --- addr)
-\ This variable holds the number of characters read by EXPECT.
-
 VARIABLE #TIB ( --- addr)
 \ This variable holds the number of characters in the terminal input buffer.
 
@@ -741,11 +726,6 @@ VARIABLE SRC  ( --- addr)
 
 VARIABLE #SRC ( --- addr)
 \ This variable holds the length of the current input source.
-
-: EXPECT ( c-addr u --- )
-\ Read a line from the terminal to a buffer at c-addr with length u.
-\ Store the length of the line in SPAN.
-  ACCEPT SPAN ! ;
 
 : QUERY ( --- )
 \ Read a line from the terminal into the terminal input buffer.

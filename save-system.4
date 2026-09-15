@@ -112,12 +112,15 @@ CREATE SS-MAGIC 8 ALLOT
   CONTEXT         1 CELLS 28 +  SS-BLANK   \ search order (WARM resets)
   INCLUDE-POINTER SS-CELL
   SRC   SS-CELL   #SRC SS-CELL   >IN SS-CELL   SID SS-CELL
-  \ #TIB and SPAN are the LENGTHS that go with TIB, blanked above.
-  \ Blanking the buffer but leaving its length meant the image still
-  \ recorded how long the builder's last command line was - one byte
-  \ of difference between `relfsh -c true` and a full test run, which
-  \ is all it takes to make a tracked build artifact churn.
-  #TIB  SS-CELL   SPAN SS-CELL
+  \ #TIB is the LENGTH that goes with TIB, blanked above. Blanking the
+  \ buffer but leaving its length meant the image still recorded how
+  \ long the builder's last command line was - one byte of difference
+  \ between `relfsh -c true` and a full test run, which is all it takes
+  \ to make a tracked build artifact churn.
+  \
+  \ SPAN was scrubbed here too until EXPECT was retired; it existed
+  \ only to hold EXPECT's result and nothing writes it now.
+  #TIB  SS-CELL
   LAST  SS-CELL   CURRENT SS-CELL
   CSP   SS-CELL   'LEAVE  SS-CELL
   S0    SS-CELL   R0      SS-CELL
