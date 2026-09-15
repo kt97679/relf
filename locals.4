@@ -236,6 +236,16 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   DUP C@ 1 <> IF DROP 0 EXIT THEN
   1+ C@ [CHAR] | = ;
 
+: L-OUT? ( c-addr --- f )   \ is this parsed word "--" ?
+\ Forth 2012 writes the declaration as
+\     {: <args>* [| <vals>*] [-- <out>*] :}
+\ and everything after -- is a COMMENT: the output arguments are
+\ documentation, not names to bind. This parser treated them as names
+\ and the standard locals suite stopped on its second line with
+\ "locals: undefined local name --".
+  DUP C@ 2 <> IF DROP 0 EXIT THEN
+  DUP 1+ C@ [CHAR] - = SWAP 2 + C@ [CHAR] - = AND ;
+
 : L-ADD-NAME ( c-addr --- )
   LDECL-N @ LDECL-MAX < 0= ABORT" locals: too many locals"
   FIND 0= ABORT" locals: undefined local name"
@@ -254,9 +264,19 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   WHILE
     DUP L-BAR? IF
       DROP LDECL-N @ LDECL-ARGS !
+    ELSE DUP L-OUT? IF
+      \ Output arguments: skip to :} without binding anything.
+      DROP
+      BEGIN BL WORD
+        DUP C@ 0= ABORT" locals: missing :} on this line"
+        DUP L-END? 0=
+      WHILE DROP REPEAT
+      DROP
+      LDECL-ARGS @ -1 = IF LDECL-N @ LDECL-ARGS ! THEN
+      L-COMPILE-ENTRY EXIT
     ELSE
       L-ADD-NAME
-    THEN
+    THEN THEN
   REPEAT
   DROP
   LDECL-ARGS @ -1 = IF LDECL-N @ LDECL-ARGS ! THEN
