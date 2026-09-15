@@ -188,13 +188,20 @@ PRIMITIVE RP!      ( a-addr ---)
 \ f is true if and only if the unsigned number u1 is greater than u2.
   SWAP U< ;
 
-VARIABLE EMITBUF ( --- a-addr)
-\ One character of scratch for EMIT. A cell because that is the
-\ smallest thing VARIABLE makes; only its first byte is used.
-
 : EMIT ( c --- )
 \ Output the character c to the terminal.
-   EMITBUF C! EMITBUF 1 TYPE ;
+\
+\ No buffer: the character is already in memory, on the data stack,
+\ and SP@ is its address. TYPE reads one byte from there and DROP
+\ removes it. A VARIABLE for this cost a dictionary header and a cell
+\ in every image to hold a byte that was already sitting in one.
+\
+\ Little-endian only, since the low byte of the cell has to be the one
+\ at SP@ - which this system is anyway, by GOALS.md's non-goals and by
+\ the image format. Checked on both engines, including the one that
+\ caches the top of stack in a register: TYPE spills it below SP@'s
+\ result, so the address stays good.
+   SP@ 1 TYPE DROP ;
 
 : CR  ( --- )
 \ Output a newline to the terminal.

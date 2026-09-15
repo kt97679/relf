@@ -34,7 +34,10 @@
 \ side. The symptom was a call into uncompiled memory during the very
 \ first cross-compile.
 \
-\ Derived from one number now. sod16.py, gen-fold.py, gen-tos.py and
+\ Derived from one number now. Each of these is a real word with a
+\ real header, about 26 bytes in a CV8 image, so they are kept to the
+\ ones actually used - an unused LIT8X-OP and a redundant FOLD-BASE0
+\ cost 52 bytes in every image before they were noticed. sod16.py, gen-fold.py, gen-tos.py and
 \ layout.py derive the same values from len(prims); this file cannot
 \ read kernel.4, so NPRIM-OP is the one place that has to be kept in
 \ step with it. The check below catches the failure that actually
@@ -46,8 +49,6 @@ NPRIM-OP     CONSTANT LIT32-OP
 NPRIM-OP 1 + CONSTANT DOVAR-OP
 NPRIM-OP 2 + CONSTANT DODOES-OP
 NPRIM-OP 3 + CONSTANT LIT8-OP
-NPRIM-OP 4 + CONSTANT LIT8X-OP
-NPRIM-OP 5 + CONSTANT FOLD-BASE0
 \ The escape and wide-literal opcodes sit at the top of the byte, above
 \ the specialised band, and do NOT move with the primitive count.
 125 CONSTANT LIT64-OP           \ 0x7D
@@ -136,7 +137,7 @@ CREATE FOLD-OPS ( --- a-addr )
   ' R> >OP C,  ' R@ >OP C,  ' NEGATE >OP C,
 ALIGN
 23 CONSTANT #FOLD-OPS
-FOLD-BASE0 CONSTANT FOLD-BASE
+NPRIM-OP 5 + CONSTANT FOLD-BASE
 \ The folded band starts just above the synthetic opcodes and grows up
 \ towards the specialised band at 0x61. They collided the first time a
 \ 69th primitive was added: the last folded opcode and `lit0` became
