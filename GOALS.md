@@ -185,13 +185,15 @@ the full account and the fixes applied.
   suite from 59.3s to 1.2s. That had been true and unnoticed since
   Iteration 5. Slow feedback loops compound: they discourage running
   the full suite, which is exactly when regressions slip through.
-- **Branches.** The convention was "single branch `master`, linear
-  history, no feature branches", and for 160 iterations that was
-  true. It is not now, and saying so matters more than restating the
-  rule: the engine work runs on `cv8`, with `token16` and `master` as
-  ancestors of it. `master` is ~50 commits behind and nothing is
-  merging back into it. Treat `cv8` as the trunk. History on it is
-  still linear and should stay that way.
+- **Single branch: `master`.** Linear history, no feature branches.
+
+  This held for 160 iterations, lapsed for about 70, and is restored.
+  The engine work ran on `cv8` from Iteration 162, with `token16`
+  branched off it; by 217 `master` was 72 commits behind and nothing
+  was merging back. `cv8` fast-forwarded into `master` cleanly - there
+  was never any divergence, only neglect - and both `cv8` and
+  `token16` are gone. If a branch appears again, merge it back or
+  delete it; do not let it run for seventy iterations.
 
   Some of the work also lives in a SEPARATE repository,
   `kt97679/forth-vm-evolution`, which is the article's working code.
