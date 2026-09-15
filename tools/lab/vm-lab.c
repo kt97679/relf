@@ -94,7 +94,7 @@ static char **g_argv;
  *  and left [71] = &&L_lit64t overwriting it, with no build error and a
  *  return stack overflow at run time.  */
 #ifndef NPRIM
-#define NPRIM 69
+#define NPRIM 68
 #endif
 
 /*  The escaped band: the OS/libc primitives, contiguous at the end of
@@ -789,6 +789,15 @@ NOINLINE_IO static int t_getc(void) {
     return t_ibuf[t_ipos++];
 }
 
+/*  Is another byte already in the terminal input buffer? READ-TTY uses
+ *  this to return what is available rather than block until it has
+ *  filled the caller's buffer - read(2) semantics. It deliberately does
+ *  NOT consult the file descriptor: a byte the OS has but we have not
+ *  read yet is not "ready" here, and asking would cost a syscall per
+ *  character. ANS's KEY? is the word for that question, and this system
+ *  does not have it yet.  */
+NOINLINE_IO static int t_ready(void) { return t_ipos < t_ilen; }
+
 static void virtual_machine(void) {
     VMREGS
     /* CV8: byte stream. b < 0x80 is an opcode; otherwise b and the next
@@ -800,15 +809,15 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_accept, &&L_spfetch, &&L_spstore,
-        &&L_rpfetch, &&L_rpstore, &&L_key, &&L_bye, &&L_openfile, &&L_closefile,
+        &&L_dplus, &&L_type, &&L_readtty, &&L_spfetch, &&L_spstore,
+        &&L_rpfetch, &&L_rpstore, &&L_bye, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize, &&L_key,
+        &&L_getfsize, &&L_setfsize,
         /*  LIT32 is not one of kernel.4's primitives. It is appended
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
@@ -1082,39 +1091,25 @@ L_type: { /* type    */ /* c-addr u --- */
     dsp += 2 * CELL_BYTES;
     NEXT();
     }
-L_accept: { /* accept  */ /* c-addr n1 --- n2 */
-    /* Must match the Forth ACCEPT this replaces character for
-     * character, because shell.4 depends on the editing: backspace and
-     * DEL erase one character if there is one, CR or LF end the line
-     * and are NOT stored, and a character that would overflow the
-     * buffer is DROPPED rather than ending the line.
+L_readtty: { /* read-tty */ /* c-addr u --- n */
+    /*  read(2), through the terminal input buffer. The ONLY input
+     *  primitive: KEY is a one-byte READ-TTY and ACCEPT is a loop over
+     *  KEY, both in kernel.4. There used to be a primitive for each,
+     *  and the ACCEPT one was a line editor written in C.
      *
-     * EOF exits, as KEY did. Re-reading EOF forever is GOALS.md Bug 3,
-     * and moving the read into a new primitive is exactly the kind of
-     * change that would quietly reintroduce it. */
+     *  EOF exits, as KEY's primitive did. Re-reading EOF forever is
+     *  GOALS.md Bug 3, and moving the read into a new primitive is
+     *  exactly the change that would quietly reintroduce it.  */
     UNS8 *buf = (UNS8 *)(uintptr_t)DS1;
     UNS64 max = DS0, n = 0;
-    for (;;) {
+    while (n < max) {
         int ch = t_getc();
-        if (ch < 0) { t_flush(); exit(0); }
-        if (ch == 8 || ch == 127) { if (n) n--; }
-        else if (ch == 10 || ch == 13) break;
-        else if (n < max) buf[n++] = (UNS8)ch;
+        if (ch < 0) { if (n) break; t_flush(); exit(0); }
+        buf[n++] = (UNS8)ch;
+        if (!t_ready()) break;      /* return what is available */
     }
     dsp += CELL_BYTES;
     DS0 = n;
-    NEXT();
-    }
-L_key: { /* key     */ /* --- c */
-    /* Raw: one character, no line buffering and no editing. It cannot
-     * be a colon definition on ACCEPT - ACCEPT returns a finished,
-     * edited LINE, so a KEY built on it could not return a keystroke
-     * until Enter, which is the property interactive line editing needs
-     * it not to have. Appended at the END of the primitive list so
-     * every other opcode number is untouched. */
-    int ch = t_getc();
-    if (ch < 0) { t_flush(); exit(0); }   /* GOALS.md Bug 3 */
-    PUSH((UNS64)(UNS8)ch);
     NEXT();
     }
 L_bye:     /* bye     */ t_flush(); PROFDUMP; exit(0);

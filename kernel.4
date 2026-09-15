@@ -111,16 +111,21 @@ PRIMITIVE D+ ( d1 d2 --- d3)
 PRIMITIVE TYPE ( c-addr u --- )
 \ Output u characters starting at c-addr to the terminal.
 
-PRIMITIVE ACCEPT ( c-addr n1 --- n2 )
-\ Read one line from the terminal into a buffer at c-addr of length
-\ n1; n2 is the number of characters read. Backspace and DEL erase,
-\ CR and LF end the line and are not stored, and a character that
-\ would overflow the buffer is dropped.
+PRIMITIVE READ-TTY ( c-addr u --- n )
+\ Read at most u characters from the terminal into a buffer at c-addr;
+\ n is the number actually read. This is read(2): it returns what is
+\ available, it does not wait for a line, and it does nothing about
+\ editing.
 \
-\ TYPE and ACCEPT are the primitives and EMIT and KEY are colon
-\ definitions on top of them, which is the reverse of the usual
-\ arrangement. Both loops used to live here in the image, one
-\ dispatch per character; now they are one dispatch per STRING.
+\ It is the ONLY input primitive. KEY is a one-byte READ-TTY and ACCEPT
+\ is a loop over KEY, both below in Forth. Having primitives for both
+\ KEY and ACCEPT - which is what this replaces - meant the engine
+\ carried two ways of reading the same file descriptor, one of them a
+\ line editor written in C. SOD32 had ACCEPT in Forth over KEY for the
+\ same reason.
+\
+\ Paired with TYPE, which is write(2), so an engine hosting this needs
+\ exactly two calls into the operating system for the terminal.
 
 PRIMITIVE SP@      ( --- a-addr)
 \ Return the address of the stack pointer (before SP@ was executed).
@@ -133,24 +138,6 @@ PRIMITIVE RP@      ( --- a-addr)
 
 PRIMITIVE RP!      ( a-addr ---)
 \ Set the return stack pointer to a-addr.
-
-PRIMITIVE KEY ( --- c)
-\ Input one character from the terminal, RAW: no line buffering, no
-\ editing, no waiting for a terminator. Appended at the end of the
-\ primitive list rather than placed with TYPE and ACCEPT so that every
-\ other primitive keeps its opcode number.
-\
-\ It is a primitive, and not a colon definition on ACCEPT, because the
-\ two cannot express each other. ACCEPT returns a finished, edited
-\ LINE; a KEY built on it cannot return a keystroke until Enter is
-\ pressed, which is precisely the property interactive line editing -
-\ cursor keys, history search, completion - needs it not to have.
-\
-\ Note that raw here means unbuffered by FORTH. The terminal is still
-\ in canonical mode, so the kernel driver hands over a line at a time
-\ and even this KEY will not see a cursor key until Enter. Making that
-\ work needs a termios primitive to turn off ICANON and ECHO; this
-\ word is the half of the problem that lives on this side.
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
 
@@ -209,6 +196,7 @@ PRIMITIVE KEY ( --- c)
 \ caches the top of stack in a register: TYPE spills it below SP@'s
 \ result, so the address stays good.
    SP@ 1 TYPE DROP ;
+
 
 : CR  ( --- )
 \ Output a newline to the terminal.
@@ -726,6 +714,50 @@ VARIABLE SRC  ( --- addr)
 
 VARIABLE #SRC ( --- addr)
 \ This variable holds the length of the current input source.
+
+: KEY ( --- c )
+\ Receive one character from the terminal.
+\
+\ No buffer, for the same reason EMIT needs none: push a zero cell,
+\ read one byte into its low end, and the cell IS the character. Zero
+\ first, because READ-TTY writes one byte and leaves the rest of the
+\ cell alone.
+\
+\ Raw - one character, no line buffering, no editing - so a line
+\ editor built on it can see cursor keys once the terminal is out of
+\ canonical mode. That is the property a KEY built on a line-reading
+\ ACCEPT could not have.
+   0 SP@ 1 READ-TTY DROP ;
+
+: ACCEPT ( c-addr n1 --- n2 )
+\ Read a line from the terminal into a buffer at c-addr of length n1;
+\ n2 is the number of characters read. Backspace and DEL erase one
+\ character if there is one, CR and LF end the line and are not
+\ stored, and a character that would overflow the buffer is dropped.
+\
+\ ANS requires this to WAIT for a line terminator, which is why it
+\ cannot be the non-blocking read; that is READ-TTY, and the standard's
+\ own answer for "read whatever is ready" is KEY? - which this system
+\ does not have yet.
+  >R 0
+  BEGIN
+   KEY DUP 8 = OVER 127 = OR
+   IF
+     DROP DUP IF 1- THEN
+   ELSE
+     DUP 10 = OVER 13 = OR
+     IF
+      DROP SWAP DROP R> DROP EXIT
+     ELSE
+      OVER R@ - IF
+       >R OVER OVER + R> SWAP C! 1+
+      ELSE
+       DROP
+      THEN
+     THEN
+   THEN
+  0 UNTIL
+;
 
 : QUERY ( --- )
 \ Read a line from the terminal into the terminal input buffer.
