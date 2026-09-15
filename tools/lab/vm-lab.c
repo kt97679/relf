@@ -789,7 +789,7 @@ NOINLINE_IO static int t_getc(void) {
     return t_ibuf[t_ipos++];
 }
 
-/*  Is another byte already in the terminal input buffer? READ-TTY uses
+/*  Is another byte already in the standard-input buffer? READ-STDIN uses
  *  this to return what is available rather than block until it has
  *  filled the caller's buffer - read(2) semantics. It deliberately does
  *  NOT consult the file descriptor: a byte the OS has but we have not
@@ -809,7 +809,7 @@ static void virtual_machine(void) {
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_readtty, &&L_spfetch, &&L_spstore,
+        &&L_dplus, &&L_type, &&L_readstdin, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_bye, &&L_openfile, &&L_closefile,
         &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
@@ -1091,9 +1091,9 @@ L_type: { /* type    */ /* c-addr u --- */
     dsp += 2 * CELL_BYTES;
     NEXT();
     }
-L_readtty: { /* read-tty */ /* c-addr u --- n */
-    /*  read(2), through the terminal input buffer. The ONLY input
-     *  primitive: KEY is a one-byte READ-TTY and ACCEPT is a loop over
+L_readstdin: { /* read-stdin */ /* c-addr u --- n */
+    /*  read(2), through the standard-input buffer. The ONLY input
+     *  primitive: KEY is a one-byte READ-STDIN and ACCEPT is a loop over
      *  KEY, both in kernel.4. There used to be a primitive for each,
      *  and the ACCEPT one was a line editor written in C.
      *
