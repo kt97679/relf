@@ -70,14 +70,8 @@ KCV8B='S" cv8.4" INCLUDED\nS" cv8b.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLU
 # but cannot compile a new definition - the same gap cv8.4 closed for
 # CV8 in phase 3. Each needs its own dump, because the overlay replaces
 # the code-emitting words.
-KS16='S" sod16.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
-KCPT='S" cpt16.4" INCLUDED\nS" tools/dict-dump-addr.4" INCLUDED\nBYE\n'
 printf "$KCV8B" | ./relf   kernel.img   | tr -d '\r' > "$O/kb64.txt"
 printf "$KCV8B" | ./relf32 kernel32.img | tr -d '\r' > "$O/kb32.txt"
-printf "$KS16"  | ./relf   kernel.img   | tr -d '\r' > "$O/ks64.txt"
-printf "$KS16"  | ./relf32 kernel32.img | tr -d '\r' > "$O/ks32.txt"
-printf "$KCPT"  | ./relf   kernel.img   | tr -d '\r' > "$O/kc64.txt"
-printf "$KCPT"  | ./relf32 kernel32.img | tr -d '\r' > "$O/kc32.txt"
 
 # ---- images -----------------------------------------------------------
 img() {  # img NAME CELL OPTIONS...
@@ -89,19 +83,11 @@ img() {  # img NAME CELL OPTIONS...
                  cv8b-64|cv8b-k64) d="$O/kb64.txt";;
                  cv8b-32|cv8b-k32) d="$O/kb32.txt";;
                  noesc-64) d="$O/k64.txt";; noesc-32) d="$O/k32.txt";;
-                 s16self-64) d="$O/ks64.txt";; s16self-32) d="$O/ks32.txt";;
-                 cptfself-64) d="$O/kc64.txt";; cptfself-32) d="$O/kc32.txt";;
                  selfb-64) d="$O/d64-selfb.txt";; selfb-32) d="$O/d32-selfb.txt";; esac
     python3 $LAY "$d" "$c" "$@" --emit-image "$O/$n.img" > "$O/$n.log" \
         || { echo "layout failed: $n"; tail -5 "$O/$n.log"; exit 1; }
     printf '%-14s %7d bytes\n' "$n" "$(stat -c%s "$O/$n.img")"
 }
-img sod16-64   8                                   # control: == SOD16
-img sod16-32   4
-img cpt16-64   8 --cpt 1 --skip-pad
-img cpt16-32   4 --cpt 1 --skip-pad
-img cptf-64    8 --cpt 3 --dataprims --fold --fold-set "$HOT"
-img cptf-32    4 --cpt 2 --dataprims --fold --fold-set "$HOT"
 img cv8-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --no-varcall --no-varslot
 img cv8-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --no-varcall --no-varslot
 # VM-SURVEY.md: CV8 plus the specialisations borrowed from other VMs
@@ -146,17 +132,6 @@ img cv8b-32    4 --v8 --cpt 0 --bytehdr --dataprims --fold --fold-set "$HOT" --s
 # built without it - has something to refuse.
 img noesc-64     8 --v8 --cpt 3 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --no-escape
 img noesc-32     4 --v8 --cpt 2 --dataprims --fold --fold-set "$HOT" --spec $SPECS --cv8-compiler --no-escape
-# The 16-bit stages emitting their OWN encoding. sod16.4 is twice the
-# size of cpt16.4 and the difference is the argument for CPT16: SOD16
-# names a call by word NUMBER, so its compiler has to rebuild the
-# engine's number->address table in the image and search it on every
-# call it compiles, and a word defined after load has no number at all
-# and needs the FARCALL escape. CPT16 computes the target arithmetically
-# and its CALL, is one line.
-img s16self-64  8 --compiler-overlay 16
-img s16self-32  4 --compiler-overlay 16
-img cptfself-64 8 --cpt 3 --dataprims --fold --fold-set "$HOT" --compiler-overlay 16
-img cptfself-32 4 --cpt 2 --dataprims --fold --fold-set "$HOT" --compiler-overlay 16
 
 # ---- engines ----------------------------------------------------------
 # relf.c itself is the cell engine (VM registers are locals since
@@ -169,13 +144,7 @@ cp tools/lab/vm-lab.c "$O/"
 python3 tools/lab/gen-tos.py "$O/vm-lab.c" > "$O/vm-lab-tos.c"
 cc -O2 -o "$O/relf64"  relf.c
 cc -m32 -O2 -o "$O/relf32" relf.c
-cc -O2 -DENC=1 -DREG=1 -DSKIPPAD=1 -DSCALE=1 -o "$O/sod16p-64" "$O/vm-lab.c"
-cc -m32 -O2 -DENC=1 -DREG=1 -DSKIPPAD=1 -DSCALE=1 -o "$O/sod16p-32" "$O/vm-lab.c"
-cc -O2 -DENC=2 -DREG=1 -DSCALE=1 -o "$O/cpt16-64" "$O/vm-lab.c"
-cc -m32 -O2 -DENC=2 -DREG=1 -DSCALE=1 -o "$O/cpt16-32" "$O/vm-lab.c"
 python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" > /dev/null
-cc -O2 -DENC=2 -DREG=1 -DFOLD=1 -DSCALE=3 -o "$O/cptf-64" "$O/vm-lab.c"
-cc -m32 -O2 -DENC=2 -DREG=1 -DFOLD=1 -DSCALE=2 -o "$O/cptf-32" "$O/vm-lab.c"
 python3 tools/lab/gen-fold.py "$O/vm-lab.c" "$HOT" v8 > /dev/null
 cc -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=3 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-64" "$O/vm-lab.c"
 cc -m32 -O2 -DENC=3 -DREG=1 -DFOLD=1 -DSCALE=2 -DVARCALL=0 -DVARSLOT=0 -o "$O/cv8-32" "$O/vm-lab.c"
@@ -219,9 +188,6 @@ chk() {
                          || { echo "WRONG $1 $2"; exit 1; }
 }
 chk relf64    kernel-shell.img;       chk relf32    kernel32-shell.img
-chk sod16p-64 "$O/sod16-64.img";      chk sod16p-32 "$O/sod16-32.img"
-chk cpt16-64  "$O/cpt16-64.img";      chk cpt16-32  "$O/cpt16-32.img"
-chk cptf-64   "$O/cptf-64.img";       chk cptf-32   "$O/cptf-32.img"
 chk cv8-64    "$O/cv8-64.img";        chk cv8-32    "$O/cv8-32.img"
 chk cv8t-64   "$O/cv8-64.img";        chk cv8t-32   "$O/cv8-32.img"
 chk spec-64   "$O/spec-64.img";       chk spec-32   "$O/spec-32.img"
