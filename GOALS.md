@@ -1181,11 +1181,35 @@ is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
 
-- *(This section is currently empty. `~user` reading `/etc/passwd`
-  directly was the last entry; Iteration 120 replaced it with a
-  `GETPWHOME` primitive calling `getpwnam(3)`, which goes through NSS.
-  Entries here are things that are implemented, tested and incorrect
-  in a way that will not show up locally - keep adding them.)*
+- **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
+  `KEY` is `0 SP@ 1 0 READ-FILE DROP  0= IF BYE THEN`. It tests the
+  COUNT and throws away the `ior`, and `READ-FILE` collapses two
+  different outcomes into the same count:
+
+  | situation | `read()` | `u2` | `ior` | `KEY` does |
+  |---|---|---|---|---|
+  | genuine EOF | `0` | 0 | `0` | `BYE` - correct |
+  | non-blocking, no data yet | `-1` EAGAIN | 0 | `-200` | `BYE` - **wrong** |
+
+  Not reachable today: nothing sets `O_NONBLOCK` on descriptor 0. It
+  becomes reachable the moment `KEY?` is implemented the way its
+  references are - SOD32's `kbhit` toggles `O_NDELAY` around the read,
+  gforth probes the terminal - and the symptom will be the shell
+  exiting at random while someone is typing.
+
+  The fix needs `fcntl`, which this system does not have as a
+  primitive. `KEY` should either clear `O_NONBLOCK` around its read, as
+  SOD32's `getch` does, or branch on the `ior` rather than the count.
+  Branching on `ior` alone means busy-waiting, since ANS `KEY` must
+  block - which is why this is logged rather than patched.
+
+  Two related faults in the same path, to fix together:
+  `L_readfile` maps EVERY error to `-200`, so `EAGAIN`, `EINTR` and a
+  real I/O error are one value and no caller can tell them apart -
+  `EINTR` in particular must be retried, not reported. And `full_read`
+  returns `-1` even when it has already read some bytes, discarding
+  them; harmless for `KEY` at one byte, wrong for a larger
+  `READ-FILE` on a non-blocking descriptor.
 
 ## Integrated from the article repository
 

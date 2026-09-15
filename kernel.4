@@ -716,6 +716,12 @@ VARIABLE #SRC ( --- addr)
 \ Reading into the cell the 0 just pushed, via SP@, for the same
 \ reason EMIT does: the character is already in memory, so no
 \ variable is needed to hold it.
+\ KNOWN SHORTCUT, see GOALS.md: this tests the COUNT and drops the
+\ ior, so a non-blocking descriptor with no data yet - which also
+\ returns a count of 0 - makes KEY exit. Not reachable until something
+\ sets O_NONBLOCK on descriptor 0, which is what implementing KEY?
+\ will do. Fixing it properly needs an fcntl primitive.
+\
 \ EOF exits, which is not decoration: the old primitive did it in C,
 \ and dropping it here reintroduced GOALS.md's Bug 3 within minutes -
 \ a shell reading a script off stdin spun on read(0,"",1)=0 forever,
