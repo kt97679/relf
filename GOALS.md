@@ -1312,15 +1312,38 @@ than remembered.
 
      `LOAD-HOST cv8.4` before `END-CROSS` does reach the file.
 
-     WHAT REMAINS: `cv8.4` is not cross-compilable as written. It was
-     written for the HOST's compiler, and the cross-compiler's versions
-     of the same words differ. The first obstacle is an `ABORT"`
-     executed at INTERPRETATION time - the host tolerates it, the
-     cross-compiler's `ABORT"` is a compiling word, and the load stops
-     with "Incomplete control structure". That one is mine, added at
-     Iteration 216; `tools/sod16.py` already asserts the same thing
-     with the real fold list in hand, so the Forth copy can go. There
-     is at least one more behind it.
+     BUT `LOAD-HOST` IS STILL THE WRONG MECHANISM, and Iteration 241
+     bisected far enough to say exactly why. `cv8.4` is not "not
+     cross-compilable"; nothing loaded that way is. Reduced to the
+     smallest failing case:
+
+         : PG SWAP DROP ;     compiles
+         : PH 1 ;             "Incomplete control structure"
+         255 CONSTANT PK      compiles
+
+     A NUMERIC LITERAL INSIDE A COLON DEFINITION is the trigger, and
+     the reason is that `CROSS-COMPILE` is its own interpret loop:
+
+         FIND IF EXECUTE
+         ELSE NUMBER? ... STATE-T @ IF LITERAL-T THEN THEN
+
+     A word is found and executed, which is why `SWAP DROP` works
+     through any interpreter. A NUMBER needs `LITERAL-T`, which only
+     this loop calls. `LOAD-HOST` hands the file to the HOST's
+     `INCLUDED`, so the host's interpreter compiles a host literal into
+     a target definition, and `;` finds the stack wrong.
+
+     So the file has to be fed through `CROSS-COMPILE`'s own loop. Two
+     ways, neither tried yet: concatenate `kernel.4` (minus its
+     `END-CROSS`) with `cv8.4` and an `END-CROSS` at the build step, or
+     teach that loop an include directive - it already drives its input
+     with `REFILL`, so a nested source may simply work.
+
+     The `ABORT"` at interpretation time in `cv8.4` is a real obstacle
+     too and is mine, added at Iteration 216; `tools/sod16.py` already
+     asserts the same thing with the real fold list in hand, so the
+     Forth copy can go. But removing it was not sufficient, and this is
+     why.
 
   3. Prove the pipeline with no `./relf` in it, then switch the product
      over and move `relf.c` to `attic/`. Tag the commit before that
