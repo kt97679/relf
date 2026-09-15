@@ -261,8 +261,16 @@ VARIABLE R0 ( --- a-addr)
   R> ROT ROT SWAP >R >R >R ;
 : (?DO)  ( n1 n2 ---)
 \ Runtime part of ?DO
+\
+\ The inline leave operand is an offset RELATIVE to the cell holding
+\ it, like (LOOP)'s loop-back and like every branch - hence DUP @ +
+\ rather than @. It was an absolute address until Iteration 232, which
+\ never showed because nothing CROSS-COMPILED uses ?DO: kernel.4 only
+\ defines it and shell.4 does not use it at all. A word compiled at
+\ RUN time and then saved kept the builder's address, and extend.4's
+\ GET-ORDER was the first such word to reach a saved image.
    2DUP - IF R> ROT ROT SWAP >R >R CELL+ >R
-                  ELSE 2DROP R> @ >R \ Jump to leave address if equal
+                  ELSE 2DROP R> DUP @ + >R \ Jump to leave address
                   THEN ;
 : I ( --- n )
 \ Return the counter (index) of the innermost DO LOOP
@@ -273,9 +281,10 @@ VARIABLE R0 ( --- a-addr)
   RP@ CELLBYTES-TOK CELLBYTES-TOK CELLBYTES-TOK + + + @ ;
 
 : (LEAVE)   ( --- )
-\ Runtime part of LEAVE
-  R> @ R> DROP R> DROP >R ; \ Remove loop parameters and replace top of ret
-                            \ stack by leave address.
+\ Runtime part of LEAVE. The operand is relative to its own cell - see
+\ (?DO).
+  R> DUP @ + R> DROP R> DROP >R ; \ Remove loop parameters and replace
+                            \ top of ret stack by the leave address.
 
 : UNLOOP ( --- )
 \ Remove one set of loop parameters from the return stack.
@@ -1250,8 +1259,13 @@ VARIABLE POCKET ( --- a-addr )
 
 : RESOLVE-LEAVE
 \ Resolve the references to the leave addresses of the loop.
+\
+\ Each cell gets HERE MINUS ITS OWN ADDRESS, not HERE: the operand is
+\ relative, so that a word compiled at run time and then saved by
+\ SAVE-SYSTEM still works when the image reloads at a different base.
+\ (?DO) and (LEAVE) add the cell's address back.
           'LEAVE @
-          BEGIN DUP WHILE DUP @ HERE ROT ! REPEAT DROP ;
+          BEGIN DUP WHILE DUP @ SWAP HERE OVER - SWAP ! REPEAT DROP ;
 
 : LOOP  ( x --- )
 \ End a DO LOOP.

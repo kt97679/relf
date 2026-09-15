@@ -68,7 +68,7 @@ SHELL_IMG="${RELF_IMG%.img}-shell.img"
 
 needs_rebuild() {
     [ -f "$SHELL_IMG" ] || return 0
-    for f in "$DIR/pool.4" "$DIR/locals.4" "$DIR/save-system.4" "$DIR/shell.4" \
+    for f in "$DIR/extend.4" "$DIR/pool.4" "$DIR/locals.4" "$DIR/save-system.4" "$DIR/shell.4" \
              "$RELF_IMG" "$RELF_BIN"; do
         [ "$f" -nt "$SHELL_IMG" ] && return 0
     done
@@ -102,7 +102,7 @@ build_shell_img() {
     tmp="$DIR/$tmp_base"
     (
         cd "$DIR" || exit 1
-        printf 'S" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
+        printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" locals.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
             "'" "$tmp_base" \
             | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
     )

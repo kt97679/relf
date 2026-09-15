@@ -78,7 +78,7 @@ CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eigh
 rm -rf "$CROSS"
 if mkdir -p "$CROSS" 2>/dev/null; then
     for f in relf relf32 kernel.img kernel32.img relfsh \
-             pool.4 locals.4 save-system.4 shell.4; do
+             extend.4 pool.4 locals.4 save-system.4 shell.4; do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
     ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1
