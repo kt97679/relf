@@ -47,7 +47,10 @@ VARIABLE ARGS-OVERFLOW?
 
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
 
-LINE-MAX BUFFER: LINE-BUF
+\ One byte more than LINE-MAX, so a reader can ask for LINE-MAX + 1
+\ characters and tell a line that fits from one that does not - see
+\ READ-LINE-CHECKED.
+LINE-MAX 1+ BUFFER: LINE-BUF
 
 512 CONSTANT NORM-MAX
 NORM-MAX BUFFER: NORM-BUF
@@ -222,6 +225,57 @@ CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
 : ERR-TYPE ( c-addr u --- )   2 WRITE-FILE DROP ;
 : ERR-CSTR ( c-addr --- )     DUP CSTRLEN ERR-TYPE ;
 : ERR-NL   ( --- )            SH-NL 1 ERR-TYPE ;
+
+\ ==================================================================
+\ Reading a line that may not fit
+\ ==================================================================
+\ Every line this shell reads goes into a buffer of LINE-MAX bytes. A
+\ longer one used to be cut there and its TAIL read as the next line,
+\ so `echo <250 characters>Z echo INJECTED` ran a command nobody wrote
+\ (GOALS.md, found in Iteration 154). A read that returns exactly as
+\ many characters as it asked for cannot say whether the line went on,
+\ so these readers ask for one MORE than a caller can use, into a
+\ buffer with room for it: if that character arrives, the line is too
+\ long. It is reported, the rest of it is read and thrown away, and the
+\ caller gets an empty line - nothing of it runs. That is how this
+\ shell treats a syntax error: diagnosed, status 2, and the script
+\ goes on (Iteration 248).
+
+VARIABLE LONG-LINE?   \ was the last line read too long?
+
+: LINE-TOO-LONG ( --- )
+  S" shell: line too long" ERR-TYPE ERR-NL
+  2 LAST-STATUS !  -1 LONG-LINE? ! ;
+
+LINE-MAX BUFFER: DRAIN-BUF
+
+: DRAIN-LINE ( fid --- )
+\ Read and discard up to and including the next newline.
+  BEGIN
+    DRAIN-BUF LINE-MAX 2 PICK READ-LINE DROP   ( fid u flag )
+    SWAP LINE-MAX = AND 0=
+  UNTIL DROP ;
+
+VARIABLE RLC-MAX
+VARIABLE RLC-FID
+
+: READ-LINE-CHECKED ( c-addr max fid --- u flag )
+\ READ-LINE into a buffer with room for max + 1 characters. flag is
+\ false only at end of file. A line longer than max reads as empty.
+  SHADOW{ RLC-MAX RLC-FID }
+  0 LONG-LINE? !
+  RLC-MAX @ 1+ RLC-FID @ READ-LINE DROP        ( u flag )
+  OVER RLC-MAX @ > IF
+    2DROP RLC-FID @ DRAIN-LINE LINE-TOO-LONG 0 -1
+  THEN ;
+
+: ACCEPT-CHECKED ( c-addr max --- u )
+\ ACCEPT into a buffer with room for max + 1 characters. ACCEPT reads
+\ the whole line however long it is and keeps what fits, so a count of
+\ max + 1 means there was more: the line reads as empty.
+  0 LONG-LINE? !
+  DUP >R 1+ ACCEPT
+  DUP R> > IF DROP LINE-TOO-LONG 0 THEN ;
 
 VARIABLE PARSE-N
 
@@ -2412,6 +2466,7 @@ VARIABLE JC-I
   WHILE
     JC-LEN @ 1- JC-LEN !
     LINE-BUF JC-LEN @ + LINE-MAX JC-LEN @ - READ-INPUT-CALL JC-N !
+    LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
     JC-N @ 0= IF JC-LEN @ EXIT THEN
     JC-LEN @ JC-N @ + JC-LEN !
   REPEAT
@@ -2419,7 +2474,7 @@ VARIABLE JC-I
 
 8192 CONSTANT HEREDOC-MAX
 HEREDOC-MAX BUFFER: HEREDOC-BUF
-LINE-MAX    BUFFER: HD-LINE
+LINE-MAX 1+ BUFFER: HD-LINE     \ +1: see LINE-BUF
 VARIABLE HEREDOC-LEN
 VARIABLE HD-N
 VARIABLE HD-DELIM
@@ -3343,7 +3398,7 @@ VARIABLE FTH-I
   FORTH-BUF FTH-LEN @ EVALUATE
   0 LAST-STATUS ! ;
 
-LINE-MAX        BUFFER: READ-BUF
+LINE-MAX 1+     BUFFER: READ-BUF     \ +1: see LINE-BUF
 SHVAR-VALUE-MAX BUFFER: READ-FIELD
 VARIABLE RD-LEN
 VARIABLE RD-POS
@@ -3378,7 +3433,8 @@ VARIABLE RD-E
   \ -r is accepted and ignored: this shell does no backslash
   \ processing on the line either way, so -r is already the behaviour.
   SHADOW{ | RD-VI }
-  READ-BUF LINE-MAX 0 READ-LINE DROP
+  READ-BUF LINE-MAX 0 READ-LINE-CHECKED
+  LONG-LINE? @ IF 2DROP EXIT THEN      \ reported; the variables are left alone
   0= IF DROP 1 LAST-STATUS ! EXIT THEN
   RD-LEN !
   0 RD-POS !
@@ -4608,13 +4664,13 @@ VARIABLE INPUT-EOF?
   \ SH-FILE, or from the open script file via READ-LINE (discarding
   \ its own flag/ior - EOF just gives u2=0, the same as running out
   \ of lines already meant here) when SHFILE-ACTIVE? is true.
-  0 INPUT-EOF? !
+  0 INPUT-EOF? !  0 LONG-LINE? !
   REPLAY-ACTIVE? @ IF REPLAY-NEXT-LINE EXIT THEN
   SHFILE-ACTIVE? @ IF
-    SHFILE-FID @ READ-LINE DROP        ( u2 flag )
+    SHFILE-FID @ READ-LINE-CHECKED     ( u2 flag )
     0= IF -1 INPUT-EOF? ! THEN
   ELSE
-    ACCEPT
+    ACCEPT-CHECKED
   THEN ;
 
 ' READ-NEXT-INPUT-LINE IS READ-INPUT-CALL
@@ -5053,6 +5109,7 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
     10 LINE-BUF JQ-LEN @ + C!
     JQ-LEN @ 1+ JQ-LEN !
     LINE-BUF JQ-LEN @ + LINE-MAX JQ-LEN @ - READ-INPUT-CALL JQ-N !
+    LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
     JQ-N @ 0= IF JQ-LEN @ EXIT THEN
     JQ-LEN @ JQ-N @ + JQ-LEN !
   REPEAT
@@ -7096,7 +7153,7 @@ VARIABLE PP-BAR
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way
   SH-PROMPT
-  LINE-BUF LINE-MAX ACCEPT
+  LINE-BUF LINE-MAX ACCEPT-CHECKED
   \ Terminates the prompt line, so it belongs with the prompt on fd 2
   \ rather than on stdout. As a CR it put a stray newline into the
   \ output of every piped script.
@@ -7126,7 +7183,7 @@ VARIABLE PP-BAR
   SHFILE-FID !
   -1 SHFILE-ACTIVE? !
   BEGIN
-    LINE-BUF LINE-MAX SHFILE-FID @ READ-LINE DROP
+    LINE-BUF LINE-MAX SHFILE-FID @ READ-LINE-CHECKED
   WHILE
     RUN-LINE
   REPEAT

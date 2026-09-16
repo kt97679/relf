@@ -243,6 +243,7 @@ do not trust the absence of a line below.
 - **245** — READ and WRITE; the file words move into Forth; five old bugs
 - **246** — POLL: KEY waits, KEY? and MS
 - **247** — escaped primitives stop costing opcodes; format version 3
+- **248** — GOALS.md audited; a too-long line no longer runs its tail
 
 ### Not tied to an iteration
 
@@ -14924,3 +14925,58 @@ version only. Both mismatches now stop with a message.
 
 tests/verify: VERIFIED with no change at all - same sizes, same counts
 - which is what a pure renumbering should give.
+
+## Iteration 248: GOALS.md audited; a too-long line no longer runs its tail
+
+**GOALS.md.** The stale present-tense claims flagged at Iteration 243,
+checked against the tree rather than rewritten from memory:
+- The mrsh subsection said 19 of 21 with `command.sh` failing; the
+  headline above it said 20 of 21. Re-run: 20 of 21, the one failure
+  `2.2.3-alias-expansion.fail.sh`, which upstream does not run.
+- "The image is built, never committed": it is committed, and
+  `tests/verify` checks the rebuild reproduces it.
+- The Iteration 149 shell queue was marked unaudited. Every item was
+  checked against the running shell and `tests/posix` (25/21/2) and is
+  still open, except the one it already said was done. So is every item
+  under "Still open", with one symptom corrected: `while read ... done <
+  file` does not merely produce nothing - the redirection is dropped, so
+  it reads the shell's own stdin and can wait for ever.
+- Smaller: the memory policy said several tables fail silently and, a
+  page later, that none has since Iteration 90; the end state said
+  no-libc was done without saying phase 5 undid it; tests/verify was
+  described as comparing eighteen numbers; the tracked-numbers tables
+  are the retired cell engine's and now say so.
+
+**The long-line fault.** Reproduced as documented: `echo <250 a's>Z
+echo INJECTED` printed the a's and then ran `echo INJECTED`. A read
+that returns exactly as many characters as it asked for cannot say
+whether the line went on - so the fix asks for one more.
+
+- `READ-LINE-CHECKED` and `ACCEPT-CHECKED` in `shell.4` ask for
+  `LINE-MAX + 1` characters into buffers with room for them
+  (`LINE-BUF`, `HD-LINE` and `READ-BUF` grew by a byte). If the extra
+  character arrives the line is too long: "shell: line too long" on
+  stderr, status 2, the rest of the line read and discarded
+  (`DRAIN-LINE`; `ACCEPT` already reads to the newline), and the caller
+  gets an empty line. That is how this shell treats a syntax error.
+- Every read path uses them: the script loop, stdin, the central
+  `READ-NEXT-INPUT-LINE` (continued lines, open quotes, bodies,
+  here-documents) and the `read` builtin. The continuation and
+  quote-joining loops discard the WHOLE logical line when a piece did
+  not fit, or its first part would still have run.
+- `read` fails with status 2 and leaves its variables alone, and the
+  next `read` gets the next line - before, the tail of a long input
+  line was the next `read`'s value.
+
+`tests/shell/run-long-line`, 8 assertions: the injection through a
+script and through stdin, the report, the 256/257 boundary, status 2,
+a continued line, and `read`. The previous build fails 7 of them - all
+but the 256-character case, which always worked.
+
+Left, and recorded under "Still open": the limit itself (dash and bash
+have none); a too-long here-document line becomes an empty line and
+the command still runs; and a quoted string that fills the buffer
+across lines stops joining, so its later lines are read as commands.
+
+tests/verify: 568 shell assertions (was 560) in 67 files (66); engine
++ shell image 86,249 -> 86,617 (x86-64), 76,137 -> 76,509 (i386).

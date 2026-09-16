@@ -97,8 +97,10 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
 ## End state (what "done" looks like)
 
 - **No libraries.** The engine talks to the OS via raw syscalls only —
-  no libc. **Done as of phase 2** (`relf.c`, built `-nostdlib -static`,
-  hand-written syscall wrappers, custom `_start`). This applies to the
+  no libc. **Done in phase 2 and deliberately undone in phase 5**,
+  which traded it for portability: the engine uses libc, and the
+  primitives are thin wrappers over it (`READ`, `WRITE`, `POLL`, ...).
+  The goal stands; phase 5 explains why it waits. This applies to the
   *engine's runtime*, not to build-time bootstrap tooling: `gcc`/`as`/`ld`
   remain fine to use for building the engine until phase 3 below (a
   self-hosted assembler) replaces them.
@@ -116,7 +118,7 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Where things stand (Iteration 244)
+## Where things stand (Iteration 248)
 
 The state a reader needs before anything else in this file, because
 several sections below describe a system with more parts than it now
@@ -148,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,710    kernel-shell.img     59,409
-    32-bit   kernel32.img   8,106    kernel32-shell.img   54,161
+    64-bit   kernel.img     8,710    kernel-shell.img     59,777
+    32-bit   kernel32.img   8,106    kernel32-shell.img   54,533
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -362,7 +364,7 @@ image against the new kernel.
 **The whole check is `tests/verify`** (Iteration 148). It runs every
 suite, checks that a rebuilt `kernel-shell.img` and
 `kernel32-shell.img` reproduce the committed ones byte for byte, and
-compares eighteen numbers against `tests/BASELINE`. Any difference -
+compares every number in `tests/BASELINE` with this run. Any difference -
 better or worse - is reported and fails the run. When a change is
 intended, commit the fix and `tests/verify --update` together, so
 `BASELINE` always records what the tree actually does.
@@ -387,7 +389,7 @@ by either; run it when performance is the point.
   regression suite. It existed in the repo but wasn't wired into any
   automated runner before this project — now is, via `tests/run_tests.sh`.
 
-**The four layers, and what each is for.** `FORTH-STYLE.md` §13 covers
+**The layers, and what each is for.** `FORTH-STYLE.md` §13 covers
 how to test; this is what exists:
 
 1. **`tests/` core suite** - `tester.fr` and the Forth-level tests, run
@@ -500,11 +502,16 @@ is `INCLUDED` into an unknown session must not inherit the caller's
 
 ## Tracked numbers
 
-Three figures are reported on every full test run and are expected to
-move honestly, the same way the mrsh count is:
+Every figure below is recorded in `tests/BASELINE` and checked by
+`tests/verify`, which fails on ANY change, better or worse - so each is
+expected to move honestly, and only together with an `--update` in the
+same commit. The size and speed tables further down are historical:
+they were measured on the cell engine, which Iteration 243 retired, and
+are kept for their reasoning. The current sizes are under "Where things
+stand".
 
-- `tests/run_tests.sh`: core-suite OK markers and shell-suite
-  assertions, on both cell widths.
+- `tests/run_tests.sh`: core-suite OK markers, the extension and I/O
+  suites, and shell-suite assertions, on both cell widths.
 - `tests/mrsh-suite/run.sh`: the acceptance criterion for goal 8.
   Met at Iteration 125.
 - `tests/posix/run.sh`: passed / failed / **inconclusive**, plus which
@@ -692,12 +699,13 @@ reasoning behind them:
   here (`START`-relative xts, `BOOT`, locals' slots, the `BUFFER:`
   chain); this is the same rule, and it is what makes growable
   allocation work without a chunked-arena scheme.
-- **A full fixed table must never fail silently.** Several still do,
-  and each produces wrong output rather than an error: `MAX-SHVARS`
-  (32 shell variables — found in Iteration 44, `SET-SHVAR` just does
-  nothing when full), `MAX-FUNCS` (16), `MAX-POS-PARAM-DEPTH` (32),
-  `MAX-ARGS` (64). Making them growable is the goal; diagnosing
-  overflow is the minimum.
+- **A full fixed table must never fail silently.** When this was
+  agreed, several did: `MAX-SHVARS` (32 shell variables - `SET-SHVAR`
+  just did nothing when full), `MAX-FUNCS` (16),
+  `MAX-POS-PARAM-DEPTH` (32), `MAX-ARGS` (64). Iteration 90 gave them
+  diagnostics, so none is silent now; they are still fixed. Making them
+  growable is the goal. The line length limit (`LINE-MAX`, 256) is the
+  same kind of table and was silent until Iteration 248.
 
 Two concerns worth keeping in view, neither blocking:
 
@@ -765,7 +773,10 @@ Three pieces:
   into `shell.4`'s `MAIN` and never prints the banner or `OK`. Stored
   as an offset from `START`, never absolute.
 - **`relfsh`** rebuilds the image whenever any input is newer, to a
-  temporary name then `mv`. The image is **built, never committed** —
+  temporary name then `mv`. The image IS committed, and `tests/verify`
+  rebuilds it and checks the rebuild is byte-identical, from this
+  directory and from a long path; the line that follows is from before
+  that check existed —
   a committed binary derived from `shell.4` is a second source of truth
   that goes stale silently.
 
@@ -897,17 +908,19 @@ genuine POSIX gap, just not one this criterion measures.
 `2.2.3-alias-expansion.fail.sh` is **commented out of upstream's
 `test/conformance/meson.build`**, against a TODO pointing at
 mrsh issue #145 — mrsh does not run it either. So the honest reading
-of the current result is:
+of the current result (re-run in Iteration 248) is:
 
-- **19 of 21** by `run.sh`'s own arithmetic, which scores every
+- **20 of 21** by `run.sh`'s own arithmetic, which scores every
   vendored file.
-- **19 of 20** against the set mrsh itself actually runs.
+- **20 of 20** against the set mrsh itself actually runs.
 
-Either way one genuine failure remains, `command.sh`, and it is the
-alias divergence. The vendored file stays and `run.sh` keeps scoring
-it — deleting a test to improve a number is exactly the move this
-suite was adopted to prevent — but the denominator should not be
-quoted without knowing this.
+The one failure is that file, and it is the alias divergence recorded
+under "Where bash and POSIX disagree". The vendored file stays and
+`run.sh` keeps scoring it — deleting a test to improve a number is
+exactly the move this suite was adopted to prevent — but the
+denominator should not be quoted without knowing this. (This
+subsection said 19 of 21, with `command.sh` failing, from before
+Iteration 125 until 248.)
 
 ### Phases A-G: all complete
 
@@ -946,8 +959,9 @@ resolves; the accounts are in `PROGRESS.md`.
 
 ### Still open under this goal
 
-Real gaps, each verified as of Iteration 122 rather than inherited
-from an older revision of this file:
+Real gaps, each checked against the running shell in Iteration 248
+(first verified in 122) rather than inherited from an older revision
+of this file:
 
 - **`NAME=value command args...`** — POSIX's temporary, per-command
   assignment prefix. Currently a failed command lookup, status 1.
@@ -956,7 +970,9 @@ from an older revision of this file:
 - **Redirection does not apply to builtins - and the consequences are
   wider than that sentence suggests.** Iteration 146 found the same
   root behind `read -r l < file` reading nothing, `while read ...;
-  done < file` producing nothing, and `{ ...; } > f 2>&1` writing
+  done < file` producing nothing - or, since the redirection is
+  dropped, reading the shell's own stdin, which with a terminal or an
+  open pipe means waiting for ever - and `{ ...; } > f 2>&1` writing
   nothing: any redirection whose target command is a builtin, or a
   compound containing one, is silently dropped. `pwd > file` writes to
   the terminal and creates nothing, because redirection is only
@@ -988,16 +1004,18 @@ from an older revision of this file:
   `case 'a*b' in 'a*b')` selects no arm, and neither does `*)`.
 - **An empty `case` word does not match an empty pattern.**
 - **`set -e`**, per above.
-- **A script line over `LINE-MAX` (256) has its TAIL EXECUTED as a
-  separate command.** Found in Iteration 154, unfixed. Measured: 256
-  characters runs correctly, 260 runs the line and then runs its
-  remainder as a command, 500 the same. This is the `TIB 80 ACCEPT`
-  class of fault that Iteration 150 fixed for the build, but worse -
-  there the tail was discarded, here a 300-character line runs a
-  command nobody wrote. `READ-LINE` returning exactly `LINE-MAX`
-  cannot be told from a longer line without a lookahead, so it needs a
-  design rather than a patch. **The strongest remaining correctness
-  item**, and an easy trap when writing long one-liner probes.
+- ~~**A script line over `LINE-MAX` (256) has its TAIL EXECUTED as a
+  separate command.**~~ **Fixed in Iteration 248**: every reader asks
+  for one character more than it can keep, so a longer line is seen,
+  reported ("shell: line too long"), read to its end and discarded -
+  status 2, and nothing of it runs, like a syntax error. Covers
+  scripts, stdin, continued lines, open quotes and the `read` builtin;
+  `tests/shell/run-long-line`. **Still a limit, not a feature**: dash
+  and bash take lines of any length. Two edges remain: a here-document
+  line that is too long becomes an empty line in the document (the
+  command still runs, after the report), and a quoted string that
+  fills the buffer across several lines stops joining, so its later
+  lines are read as commands.
 - **`shell.4`'s older diagnostics go to STDOUT.** "cd: no such
   directory", "shell: syntax error: ...", "alias: too many aliases"
   all still use `."`. Iteration 153 moved the prompt and 154 added
@@ -1245,7 +1263,7 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
-## What to do next, in order (as of Iteration 243)
+## What to do next, in order (as of Iteration 248)
 
 The first two items were ordered around the `relf.c` retirement:
 kernel semantics before it, while the cell engine was the simplest
@@ -1461,18 +1479,14 @@ using. `relfsh` always follows `SAVE-SYSTEM` with `BYE`, so nothing
 hits it in normal use. Confirmed against the pre-hash tree rather than
 assumed - it does the same thing, the same way.
 
-## Next work, in order (rewritten at the Iteration 149 freeze)
+## The shell queue (written at Iteration 149, audited at 248)
 
-**This queue is older than the tree.** It was written at 149, last
-touched around 189, and the work has since run to 208 plus the article
-pivot and the integration above. Item 4 is finished and is kept only
-for its reasoning; items 1-3, 6 and 7 have not been re-audited since,
-so confirm against `tests/verify` and `tests/posix` before trusting a
-count in them. GOALS.md warns at the top that it rots in the direction
-of describing finished work as unfinished; this section is where that
-happens.
+The engine queue is "What to do next" above; this one is the shell's.
+It was written at the Iteration 149 freeze and not audited again until
+Iteration 248, when every item below was checked against the running
+shell and `tests/posix` (25 passed, 21 failed, 2 inconclusive). Item 4
+is finished and kept for its reasoning; the rest are still open.
 
-Everything below has been measured or designed; nothing is a guess.
 Run `tests/verify` first - if it does not say VERIFIED, fix that
 before anything else, because every number here is relative to it.
 
@@ -1501,9 +1515,10 @@ before anything else, because every number here is relative to it.
 ### The queue
 
 1. **The four absent POSIX items**: `until`, `eval`, `for w; do`, and
-   the `NAME=value command` prefix. Small, independent, no
-   architectural risk, and they take `tests/posix` from 25/21 to about
-   25/17. Do these first for a reason beyond their size: **the corpus
+   the `NAME=value command` prefix - all four still absent at 248, each
+   with its own `tests/posix` case. Small, independent, no
+   architectural risk, and they would take `tests/posix` from 25/21 to
+   about 29/17. Do these first for a reason beyond their size: **the corpus
    has only ever gone down, so it is unproven as a driver of work.**
 2. **`PARSE-EXPAND-PLAN.md` Stage 2** - cache tokenized body lines.
    Two justifications, and the second was found later: it is the loop

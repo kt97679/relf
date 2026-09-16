@@ -1,0 +1,53 @@
+#!/bin/sh
+# tests/shell/run-long-line - a line longer than LINE-MAX (256) is
+# reported and runs NOTHING (Iteration 248).
+#
+# The fault this guards: a longer line was cut at 256 characters and
+# its tail read as the next line, so the tail ran as a command nobody
+# wrote. The first case is the exploit shape - an echo whose argument
+# runs past the limit into "echo INJECTED".
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+pad() { i=0; s=; while [ "$i" -lt "$2" ]; do s="$s$1"; i=$((i + 1)); done; printf '%s' "$s"; }
+
+# 250 a's and "Z" put " echo INJECTED" past character 256.
+printf 'echo start\necho %sZ echo INJECTED\necho end\n' "$(pad a 250)" > "$t/inject.sh"
+out=$("$THIS_SH" "$t/inject.sh" 2>/dev/null)
+assert_output_equals "the tail of a too-long line does not run" "start
+end" "$out"
+err=$("$THIS_SH" "$t/inject.sh" 2>&1 >/dev/null)
+assert_output_equals "a too-long line is reported on stderr" "shell: line too long" "$err"
+
+# The boundary: 256 characters run, 257 do not.
+printf 'echo %s\necho after\n' "$(pad b 251)" > "$t/l256.sh"
+out=$("$THIS_SH" "$t/l256.sh" 2>&1)
+assert_output_equals "a line of exactly 256 characters runs" "$(pad b 251)
+after" "$out"
+printf 'echo %s\necho after\n' "$(pad c 252)" > "$t/l257.sh"
+out=$("$THIS_SH" "$t/l257.sh" 2>/dev/null)
+assert_output_equals "a line of 257 characters is skipped, and the script goes on" "after" "$out"
+
+# Status 2, like a syntax error.
+printf 'echo %s\necho "st=$?"\n' "$(pad c 252)" > "$t/st.sh"
+out=$("$THIS_SH" "$t/st.sh" 2>/dev/null)
+assert_output_equals "a too-long line sets status 2" "st=2" "$out"
+
+# The same through stdin, which is read with ACCEPT, not READ-LINE.
+out=$("$THIS_SH" < "$t/inject.sh" 2>/dev/null)
+assert_output_equals "stdin: the tail of a too-long line does not run" "start
+end" "$out"
+
+# A continued line that grows past the limit: none of it runs.
+printf 'echo %s\\\n%s\necho next\n' "$(pad d 200)" "$(pad e 100)" > "$t/cont.sh"
+out=$("$THIS_SH" "$t/cont.sh" 2>/dev/null)
+assert_output_equals "a continued line past the limit runs nothing" "next" "$out"
+
+# The read builtin: status 2, the variable untouched, and the next read
+# gets the NEXT line rather than the rest of the long one.
+printf 'x=old\nread x\necho "st=$? x=[$x]"\nread y\necho "y=[$y]"\n' > "$t/rd.sh"
+out=$({ pad f 300; printf '\nshort\n'; } | "$THIS_SH" "$t/rd.sh" 2>/dev/null)
+assert_output_equals "read: a too-long line fails and is consumed whole" "st=2 x=[old]
+y=[short]" "$out"
+
+report
