@@ -37,12 +37,14 @@
  *  wants to measure a different configuration; nothing here depends
  *  on them any more.
  *
- *  ADDING A PRIMITIVE. Opcodes are kernel.4's PRIMITIVE order, the
- *  escaped band (NESC) is the last NESC of them, and everything
- *  synthetic is numbered from NPRIM. So: append the PRIMITIVE line at
- *  the end of kernel.4's list, add the handler to the table below in
- *  the same position, and raise NPRIM. The folded band sits just above
- *  the synthetic opcodes and must stay below 0x61.
+ *  ADDING A PRIMITIVE. An OS/libc one is escaped: append its PRIMITIVE
+ *  line at the end of kernel.4's list, append its handler to
+ *  escaped_prims[] and raise NESC. Nothing else moves; there are 256
+ *  selectors. A hot one is direct: add it before ESCAPED in kernel.4,
+ *  to direct_prims[] in the same position, and raise NDIRECT - which
+ *  moves the synthetic opcodes and the folded band up by one. They must
+ *  stay below the specialised band at 0x61; both cross.4 and this file
+ *  check that.
  */
 
 #include <unistd.h>
@@ -77,16 +79,6 @@ static int g_argc;
 static char **g_argv;
 
 
-/*  Number of PRIMITIVE lines in kernel.4. gen-tos.py overrides this on
- *  the generated copy, so the value here is only a fallback for reading
- *  vm-lab.c directly. Everything synthetic - LIT32, DOVAR, DODOES,
- *  LIT64, FARCALL, the CV8 literal forms and the folded band - is
- *  numbered RELATIVE to it, and sod16.py derives the same way from the
- *  same count. These were written out as 68..73, correct for exactly as
- *  long as the count stayed 68: adding one primitive put DODOES at 71
- *  and left [71] = &&L_lit64t overwriting it, with no build error and a
- *  return stack overflow at run time.  */
-#define NPRIM 66
 /*  Call and slot operands name a BYTE offset from the image base: the
  *  scale is 0, because dictionary headers are byte-granular and bodies
  *  are not aligned (Iteration 243). It was 3 or 2 - the cell shift -
@@ -94,12 +86,19 @@ static char **g_argv;
 #define SCALE 0
 #define SPEC 1
 
-/*  The escaped band: the OS/libc primitives, contiguous at the end of
- *  kernel.4's PRIMITIVE list. NESC is fixed by that list - sod16.py's
- *  ESC_PRIMS_ALL names the same 32 words - and NDIRECT is whatever is
- *  left below them.  */
+/*  kernel.4's primitives, in PRIMITIVE order. The first NDIRECT have
+ *  one-byte opcodes 0..NDIRECT-1; the NESC declared after ESCAPED - the
+ *  OS/libc interface - are reached as ESC + a selector byte, and use no
+ *  opcode of their own. Everything synthetic (LIT32, DOVAR, DODOES, the
+ *  literal forms and the folded band) is numbered from NSYN = NDIRECT,
+ *  so adding an escaped primitive moves nothing (Iteration 247). Until
+ *  then it was numbered from the TOTAL, which left NESC opcodes unused
+ *  and let every escaped primitive push the map towards the fixed
+ *  specialised band. Both counts are checked against the tables in
+ *  virtual_machine().  */
+#define NDIRECT 35
 #define NESC    31
-#define NDIRECT (NPRIM - NESC)
+#define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
 #if defined(__arm__) && !defined(__aarch64__)
@@ -255,10 +254,12 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
 /*  Version 2 (Iteration 243): the five locals cells moved out of the
- *  file header into the image itself, at offset 8 (see LOCHDR). A
- *  version-1 engine refuses a version-2 image rather than reading the
- *  first five cells of the image as a header.  */
-#define CV8_VERSION 2
+ *  file header into the image itself, at offset 8 (see LOCHDR).
+ *  Version 3 (Iteration 247): the synthetic opcodes are numbered from
+ *  NDIRECT rather than from the total primitive count, so the same
+ *  byte means something else in a version-2 image - measured, each way
+ *  round it ran and crashed. */
+#define CV8_VERSION 3
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -425,10 +426,12 @@ static void load_image(const char *name) {
     }
     /*  Bytes 6-7 are a format version and a FEATURE BITMAP. The engine
      *  runs any image whose required features it implements, so adding
-     *  a feature later does not invalidate older images, and an older
-     *  engine refuses a newer image cleanly instead of misreading it. */
-    if (magic[6] > IMAGE_MAGIC[6]) {
-        write_str(2, "image is a newer CV8 format version than this engine\n");
+     *  a feature does not invalidate older images. A VERSION change is a
+     *  different matter - it is what changes when a byte's meaning
+     *  does - so only this engine's own version is run, older or newer
+     *  being refused alike. Until Iteration 247 only newer ones were.  */
+    if (magic[6] != IMAGE_MAGIC[6]) {
+        write_str(2, "image is a different CV8 format version than this engine\n");
         exit(2);
     }
     if (magic[7] & ~IMAGE_MAGIC[7]) {
@@ -600,84 +603,79 @@ static void virtual_machine(void) {
     /* CV8: byte stream. b < 0x80 is an opcode; otherwise b and the next
      * byte are a 15-bit scaled offset from the image base. */
     const UNS64 cbase = (UNS64)(uintptr_t)base;
-    static const void *const dispatch[] = {
+    /*  The direct primitives, in kernel.4 order: opcodes 0..NDIRECT-1.  */
+    static const void *const direct_prims[] = {
         &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
         &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
         &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
         &&L_dplus, &&L_type, &&L_spfetch, &&L_spstore,
-        &&L_rpfetch, &&L_rpstore, &&L_bye, &&L_openfile, &&L_closefile,
+        &&L_rpfetch, &&L_rpstore,
+    };
+    /*  The escaped primitives, in kernel.4 order after ESCAPED:
+     *  selectors 0..NESC-1.  */
+    static const void *const escaped_prims[] = {
+        &&L_bye, &&L_openfile, &&L_closefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
         &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
-        /*  LIT32 is not one of kernel.4's primitives. It is appended
-         *  past the real ones so the table has no hole - `dispatch[255]`
-         *  would have read past the end.  */
-        [NPRIM] = &&L_lit32, &&L_dovar, &&L_dodoes,
-        [NPRIM + 3] = &&L_lit8, &&L_lit8x,
-        [0x7D] = &&L_lit64, [0x7E] = &&L_esc,
+    };
+    /*  Every opcode that is not a direct primitive. The synthetic ones
+     *  and the folded band are numbered from NSYN, and move when a
+     *  DIRECT primitive is added; the specialised band, LIT64 and ESC
+     *  are fixed. The folded order is kernel.4's fold list.  */
+    static const void *const other_ops[128] = {
+        [NSYN] = &&L_lit32, &&L_dovar, &&L_dodoes, &&L_lit8, &&L_lit8x,
+        [NSYN + 5 + 11] = &&LX_lit,
+        [NSYN + 5 + 15] = &&LX_drop,
+        [NSYN + 5 + 16] = &&LX_dup,
+        [NSYN + 5 + 17] = &&LX_swap,
+        [NSYN + 5 + 18] = &&LX_rot,
+        [NSYN + 5 + 14] = &&LX_over,
+        [NSYN + 5 + 6] = &&LX_cfetch,
+        [NSYN + 5 + 3] = &&LX_fetch,
+        [NSYN + 5 + 7] = &&LX_cstore,
+        [NSYN + 5 + 2] = &&LX_store,
+        [NSYN + 5 + 8] = &&LX_and,
+        [NSYN + 5 + 9] = &&LX_or,
+        [NSYN + 5 + 10] = &&LX_xor,
+        [NSYN + 5 + 20] = &&LX_fromr,
+        [NSYN + 5 + 19] = &&LX_tor,
+        [NSYN + 5 + 21] = &&LX_rfetch,
+        [NSYN + 5 + 1] = &&LX_eq,
+        [NSYN + 5 + 13] = &&LX_ugt,
+        [NSYN + 5 + 12] = &&LX_gt,
+        [NSYN + 5 + 0] = &&LX_plus,
+        [NSYN + 5 + 22] = &&LX_negate,
+        [NSYN + 5 + 4] = &&LX_lshift,
+        [NSYN + 5 + 5] = &&LX_rshift,
         [0x61] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
         &&L_lsave, &&L_lrest, &&L_lstore, &&L_lzero,
         &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
         &&L_charp, &&L_onep, &&L_cellp, &&L_cells, &&L_onem, &&L_invert,
         &&L_count, &&L_aligned, &&L_addi, &&L_addix, &&L_eqi, &&L_eqix,
-[NPRIM + 5 + 11] = &&LX_lit,
-[NPRIM + 5 + 15] = &&LX_drop,
-[NPRIM + 5 + 16] = &&LX_dup,
-[NPRIM + 5 + 17] = &&LX_swap,
-[NPRIM + 5 + 18] = &&LX_rot,
-[NPRIM + 5 + 14] = &&LX_over,
-[NPRIM + 5 + 6] = &&LX_cfetch,
-[NPRIM + 5 + 3] = &&LX_fetch,
-[NPRIM + 5 + 7] = &&LX_cstore,
-[NPRIM + 5 + 2] = &&LX_store,
-[NPRIM + 5 + 8] = &&LX_and,
-[NPRIM + 5 + 9] = &&LX_or,
-[NPRIM + 5 + 10] = &&LX_xor,
-[NPRIM + 5 + 20] = &&LX_fromr,
-[NPRIM + 5 + 19] = &&LX_tor,
-[NPRIM + 5 + 21] = &&LX_rfetch,
-[NPRIM + 5 + 1] = &&LX_eq,
-[NPRIM + 5 + 13] = &&LX_ugt,
-[NPRIM + 5 + 12] = &&LX_gt,
-[NPRIM + 5 + 0] = &&LX_plus,
-[NPRIM + 5 + 22] = &&LX_negate,
-[NPRIM + 5 + 4] = &&LX_lshift,
-[NPRIM + 5 + 5] = &&LX_rshift,
+        [0x7D] = &&L_lit64, [0x7E] = &&L_esc,
     };
-    /*  CV8 renumbers the primitive band: the NDIRECT non-escaped
-     *  primitives keep kernel.4's order in 0..NDIRECT-1, and the NESC
-     *  escaped ones are reached as ESC + index. dispatch[] is in kernel.4
-     *  order, so both tables are derived from it here rather than
-     *  written out twice.  */
-    /*  The escaped primitives are CONTIGUOUS at the end of kernel.4's
-     *  list, so the partition is a property of the ORDER and needs no
-     *  table: direct opcodes are an identity mapping, and selector t is
-     *  simply the primitive at NDIRECT + t.
-     *
-     *  This used to be a hand-written esc_k[32] listing 32 and 37..67,
-     *  because BYE sat below SP@/SP!/RP@/RP! and KEY sat above the file
-     *  primitives, leaving the escaped set interleaved. Moving those
-     *  five declarations in kernel.4 removed the table and three of the
-     *  four loops - and removed the possibility of the table and the
-     *  order disagreeing, which nothing would have caught.  */
-    const void *cv8_tab[128], *esc_tab[NESC];
-    { int i_, n_ = (int)(sizeof dispatch / sizeof dispatch[0]);
-      /*  Copy the whole table first: everything ABOVE the primitives -
-       *  LIT32, DOVAR, DODOES, the literal forms, the folded band and
-       *  the specialised band - keeps its slot and must be carried
-       *  over. Leaving that out is what a first attempt did, and every
-       *  translated image died with a return stack overflow.  */
-      for (i_ = 0; i_ < 128; i_++) cv8_tab[i_] = (i_ < n_) ? dispatch[i_] : &&L_noop;
-      /*  Direct primitives are already an identity mapping. The escaped
-       *  ones vacate their slots, and selector t is the primitive at
-       *  NDIRECT + t - no table, because the order says it.  */
-      for (i_ = NDIRECT; i_ < NPRIM; i_++) cv8_tab[i_] = &&L_noop;
-      for (i_ = 0; i_ < NESC; i_++) esc_tab[i_] = dispatch[NDIRECT + i_]; }
+    _Static_assert(sizeof direct_prims / sizeof *direct_prims == NDIRECT,
+                   "NDIRECT does not match the direct primitive table");
+    _Static_assert(sizeof escaped_prims / sizeof *escaped_prims == NESC,
+                   "NESC does not match the escaped primitive table");
+    _Static_assert(NSYN + 5 + 23 <= 0x61,
+                   "the folded band has reached the specialised band");
+    /*  The opcode table, and the selector table ESC indexes with a whole
+     *  byte - so a selector past NESC lands on a diagnosis, not past
+     *  the end of an array.  */
+    const void *cv8_tab[128], *esc_tab[256];
+    { int i_;
+      for (i_ = 0; i_ < 128; i_++)
+          cv8_tab[i_] = i_ < NDIRECT ? direct_prims[i_]
+                      : other_ops[i_] ? other_ops[i_] : &&L_noop;
+      for (i_ = 0; i_ < 256; i_++)
+          esc_tab[i_] = i_ < NESC ? escaped_prims[i_] : &&L_badesc; }
 #define dispatch cv8_tab
     /*  Same handlers, but indexed by the whole byte: 0x80-0xFF all land
      *  on do_call, so no test is needed to tell an opcode from a call. */
@@ -767,6 +765,9 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
             *  static sites and 0.006% of dispatches; behind an escape
             *  they cost a byte each and free 32 opcodes.  */
     t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
+L_badesc:
+    write_str(2, "relf: image uses an escaped primitive this engine does not have\n");
+    exit(2);
 L_dovar: PUSHT((ip + 3 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1)); ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
     if (BYTE(ip) & 0x40) {

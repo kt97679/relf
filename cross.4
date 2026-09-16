@@ -231,25 +231,27 @@ VARIABLE CSP   \ Stack pointer checking between : and ;
 \ ---- the opcode map ------------------------------------------------
 \ Primitive opcodes are kernel.4's PRIMITIVE order. The ones declared
 \ after ESCAPED sit behind ESC + a selector, so only the first #DIRECT
-\ take a byte of their own. The synthetic opcodes start at the TOTAL
-\ primitive count, which is only known once kernel.4 has declared them
-\ all - kernel.4 declares every primitive before its first use of one
-\ of these.
+\ take a byte of their own, and the synthetic opcodes start right after
+\ them - an escaped primitive uses no opcode, and adding one moves
+\ nothing (Iteration 247). Until then they started at the TOTAL count,
+\ which wasted an opcode per escaped primitive. kernel.4 declares every
+\ primitive before its first use of one of these.
 VARIABLE #PRIMS  0 #PRIMS !
 VARIABLE #DIRECT -1 #DIRECT !
 VARIABLE PRIMS-USED 0 PRIMS-USED !
 : DIRECT? ( n --- f ) #DIRECT @ 0< IF DROP -1 ELSE #DIRECT @ < THEN ;
-: NPRIM ( --- n )
-\ The primitive count, and from now on it must not change: PRIMITIVE
-\ refuses once this has been used. Without that, a PRIMITIVE declared
-\ after the first VARIABLE would silently renumber every DOVAR before it.
-  -1 PRIMS-USED ! #PRIMS @ ;
-: LIT32-OP  ( --- n ) NPRIM ;
-: DOVAR-OP  ( --- n ) NPRIM 1+ ;
-: DODOES-OP ( --- n ) NPRIM 2 + ;
-: LIT8-OP   ( --- n ) NPRIM 3 + ;
-: LIT8X-OP  ( --- n ) NPRIM 4 + ;
-: FOLD-BASE ( --- n ) NPRIM 5 + ;
+: NSYN ( --- n )
+\ The first synthetic opcode: the direct primitive count. From now on
+\ that must not change - PRIMITIVE refuses once this has been used, or a
+\ primitive declared after the first VARIABLE would silently renumber
+\ every DOVAR before it.
+  -1 PRIMS-USED ! #DIRECT @ DUP 0< IF DROP #PRIMS @ THEN ;
+: LIT32-OP  ( --- n ) NSYN ;
+: DOVAR-OP  ( --- n ) NSYN 1+ ;
+: DODOES-OP ( --- n ) NSYN 2 + ;
+: LIT8-OP   ( --- n ) NSYN 3 + ;
+: LIT8X-OP  ( --- n ) NSYN 4 + ;
+: FOLD-BASE ( --- n ) NSYN 5 + ;
 1 CONSTANT EXIT-OP
 2 CONSTANT LIT16-OP
 3 CONSTANT BRANCH-OP
@@ -424,7 +426,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  2 IMAGE-HDR 6 + C!          \ format version
+  3 IMAGE-HDR 6 + C!          \ format version
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,

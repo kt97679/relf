@@ -242,6 +242,7 @@ do not trust the absence of a line below.
 - **244** — byte-granular headers in the product
 - **245** — READ and WRITE; the file words move into Forth; five old bugs
 - **246** — POLL: KEY waits, KEY? and MS
+- **247** — escaped primitives stop costing opcodes; format version 3
 
 ### Not tied to an iteration
 
@@ -14889,3 +14890,37 @@ engine + shell image 86,009 -> 86,249 and 75,925 -> 76,137.
 Enter. A multitasker needs task stacks the engine's limit checks
 accept, and a way to wait on child processes. Both are in GOALS.md's
 queue. Three folded-band slots remain before the opcode map is full.
+
+## Iteration 247: escaped primitives stop costing opcodes
+
+Asked in review: "I thought we got a lot of opcode space when we
+escaped all libc wrappers?" We should have, and had not. The escaped
+band moved the OS/libc primitives behind `ESC` + a selector, but the
+engine and both compilers still numbered the synthetic opcodes - LIT32,
+DOVAR, DODOES, the literal forms and the folded band - from the TOTAL
+primitive count. The opcodes the escaped primitives had left sat unused
+(the reference called them "vacated"), and every escaped primitive
+added still pushed the map up by one. Iteration 246 reported three free
+opcodes; there were thirty-four.
+
+**The fix.** The synthetic opcodes are numbered from `NDIRECT`, the
+count before `ESCAPED`: `cross.4`'s `NSYN`, and in `cv8.c` a table
+built from three lists - `direct_prims[]`, `escaped_prims[]`, and a
+designated `other_ops[]` for everything else - with the two counts
+checked against the lists at compile time. The copy-then-vacate loops
+went with it. `esc_tab` now has 256 entries, so an unknown selector is
+a diagnosis instead of a jump through whatever follows a 31-entry
+array. Adding an escaped primitive now moves nothing.
+
+    0x00-0x22  direct      0x23-0x27  LIT32 DOVAR DODOES LIT8 LIT8;EXIT
+    0x28-0x3E  folded      0x3F-0x60  free (34)     0x61-0x7C  specialised
+
+**Format version 3, and exact matching.** Renumbering changes what a
+byte means without changing any size, so it was checked rather than
+assumed: the version-2 image on the new engine died with a return
+stack overflow, and the new image on the version-2 engine segfaulted.
+The engine used to refuse only NEWER versions; it now runs its own
+version only. Both mismatches now stop with a message.
+
+tests/verify: VERIFIED with no change at all - same sizes, same counts
+- which is what a pure renumbering should give.

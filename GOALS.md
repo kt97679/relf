@@ -84,12 +84,13 @@ literal-parsing and `@-T`/`!-T` plumbing does host-cell arithmetic on
 values that end up in target cells.
 
 A third, since Iteration 243: **opcode numbers live in four places
-that must agree** - `cv8.c`'s dispatch table and `NPRIM`, `kernel.4`'s
-`PRIMITIVE`/`OPCODE` order and the fixed numbers in its compiler
-(97-126), `cross.4`'s PART 4 constants, and `shadow.4`'s four locals
-opcodes. The primitive band and everything synthetic are derived from
-the `PRIMITIVE` count by both compilers; the specialised band at
-0x61-0x7E is written out, because it does not move. A mismatch is
+that must agree** - `cv8.c`'s `direct_prims[]`, `escaped_prims[]`,
+`NDIRECT` and `NESC`; `kernel.4`'s `PRIMITIVE`/`OPCODE` order and the
+fixed numbers in its compiler (97-126); `cross.4`'s PART 4 constants;
+and `shadow.4`'s four locals opcodes. The synthetic opcodes are derived
+from the DIRECT primitive count by both compilers (Iteration 247); the
+specialised band at 0x61-0x7E is written out, because it does not
+move. `cv8.c` checks its two counts against its tables at build time. A mismatch is
 silent: the image encodes one operation and the engine decodes
 another. `CV8-REFERENCE.md` 3.2 has the map.
 
@@ -150,10 +151,11 @@ and the rule every consumer must share.
     64-bit   kernel.img     8,710    kernel-shell.img     59,409
     32-bit   kernel32.img   8,106    kernel32-shell.img   54,161
 
-**Sixty-six primitives**, escaped band on: the 31 OS/libc primitives
-sit behind ESC + a selector, declared after `ESCAPED` in `kernel.4`,
-which declares every primitive before its first definition because
-the synthetic opcodes are numbered from the total.
+**Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
+OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
+`kernel.4`. The synthetic opcodes are numbered from the direct count,
+so an escaped primitive costs no opcode (Iteration 247); 34 opcodes
+are free. `CV8-REFERENCE.md` 3.2 has the map.
 
 **Descriptor I/O is three primitives**: `READ` and `WRITE` (Iteration
 245), one read(2) or write(2) each, returning a count or a negative
@@ -1277,8 +1279,7 @@ once. Both are done; the rest keep their order.
    **Still open: terminal raw mode**, without which `KEY?` on a
    terminal sees nothing until Enter. It wants its own primitive that
    hides `struct termios`, whose layout differs by platform - say
-   `RAW-MODE ( fd flag --- ior )` - and it takes one of the three free
-   folded-band slots.
+   `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
 
 5. **A cooperative multitasker**, the other thing `POLL` was chosen
    for: `PAUSE` switches tasks, and when every task is waiting on a

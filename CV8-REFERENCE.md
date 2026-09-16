@@ -162,46 +162,44 @@ encode an opcode the engine decoded as something else, with no build
 error. Until Iteration 245 the engine's folded table was still written
 as `[72 + k]`, which is right for 67 primitives only.
 
-With 66 primitives (Iteration 246) and the escaped band on:
+With 35 direct and 31 escaped primitives (Iteration 247):
 
 | range | meaning |
 |---|---|
 | `0x00`–`0x22` | the 35 **direct** primitives, in `PRIMITIVE` order |
-| `0x23`–`0x41` | vacated — the 31 escaped primitives live behind `ESC` |
-| `0x42` | `LIT32` — 4-byte signed operand |
-| `0x43` | `DOVAR` — data body prologue |
-| `0x44` | `DODOES` — `DOES>` body prologue |
-| `0x45` | `LIT8` — 1-byte unsigned operand |
-| `0x46` | `LIT8;EXIT` |
-| `0x47`–`0x5D` | folded `primitive;EXIT`, in the fold-set order (23 used) |
-| `0x5E`–`0x60` | free |
+| `0x23` | `LIT32` — 4-byte signed operand |
+| `0x24` | `DOVAR` — data body prologue |
+| `0x25` | `DODOES` — `DOES>` body prologue |
+| `0x26` | `LIT8` — 1-byte unsigned operand |
+| `0x27` | `LIT8;EXIT` |
+| `0x28`–`0x3E` | folded `primitive;EXIT`, in the fold-list order (23) |
+| `0x3F`–`0x60` | **free** — 34 opcodes |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
-| `0x7E` | `ESC` + a selector byte: one of the 31 OS/libc primitives |
+| `0x7E` | `ESC` + a selector byte: 31 OS/libc primitives of 256 selectors |
 | `0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two- or three-byte call |
 
-Everything from `LIT32` to the end of the folded band is `NPRIM + k`,
-so it moves with the primitive count: it sat at `0x43`–`0x5E` with 67
-primitives and `0x41`–`0x5C` with 65. The specialised band, `LIT64` and `ESC` do not move.
+**Escaped primitives cost no opcode.** The 31 OS/libc primitives —
+`BYE`, the file and process words, `READ`, `WRITE`, `POLL` — are
+declared after `ESCAPED` in `kernel.4`, contiguous at the end of the
+list, and selector *t* is the *t*-th of them. Adding one appends a
+`PRIMITIVE` line, a handler to `cv8.c`'s `escaped_prims[]` and one to
+`NESC`, and moves nothing: there are 256 selectors, and a selector the
+engine does not have is reported rather than jumped through.
 
-Free: `0x5E`–`0x60` and `0x7F`, plus the 31 vacated at `0x23`–`0x41`.
-The vacated ones are NOT usable by a new primitive — primitives are
-numbered by position from 0, so a 67th would land at the end of the
-list and push `LIT32` and everything after it up by one. They are
-reachable only by something numbered explicitly. So the headroom is
-the three at `0x5E`–`0x60`: three more primitives before the folded
-band reaches the specialised one. `cross.4` refuses to build past that.
+**The synthetic opcodes start at `NDIRECT`** — `LIT32` through the end
+of the folded band are `NDIRECT + k`. So only a new DIRECT primitive
+moves the map, by one; the free band is its headroom, and both
+`cross.4` (`MAP-FITS?`) and `cv8.c` (a static assertion) refuse a map
+whose folded band reaches `0x61`.
 
-The escaped band is what keeps that from being tight. The 31 OS/libc
-primitives — `BYE`, the file and process words, `READ`, `WRITE`,
-`POLL` — are
-a few percent of static sites and a negligible share of dispatches, so
-putting them behind `ESC` costs a byte each where it does not matter
-and frees opcodes where it does. They are **contiguous at the end** of
-`kernel.4`'s list, which is what lets the engine compute the partition
-instead of carrying a table: selector *t* is the primitive at
-`NDIRECT + t`.
+Until Iteration 247 the synthetic opcodes were numbered from the TOTAL
+primitive count. That left the 31 opcodes after the direct band unused
+- they were labelled "vacated" in this table - and made every escaped
+primitive push the map up by one, so the headroom looked like three
+opcodes when it was thirty-four. The byte meanings changed with the
+fix, which is why the format version went to 3.
 
 The primitive numbering is not a CV8 invention: it is the order words
 appear as `PRIMITIVE` lines in `kernel.4`, the same numbering the cell
@@ -417,7 +415,7 @@ first built as `attic/cv8b.4` for translated images.
 | 0 | 4 | magic `CV8` + `'0'+SCALE` — `CV80` today |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
-| 6 | 1 | **format version** (2) |
+| 6 | 1 | **format version** (3); the engine runs only its own |
 | 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
 | 8 | cell | thread **count** *T* (32 — the hashed word list) |
 | +cell | *T*·cell | the thread heads, `START`-relative |
@@ -434,6 +432,11 @@ than breaking the format, older images keep working on newer engines,
 and an older engine refuses a newer image with a clear message instead
 of misreading it. Before Iteration 194 the magic was compared byte for
 byte, so any change to the format invalidated every image.
+
+**Version 3** (Iteration 247) renumbered the synthetic opcodes (§3.2).
+The same byte means different things in versions 2 and 3, and each
+engine ran the other's image and crashed; since 247 an engine refuses
+any version but its own, where before it refused only newer ones.
 
 **Version 2** (Iteration 243) moved the five locals cells out of the
 header and into the image, at offset 8. In version 1 the engine read
