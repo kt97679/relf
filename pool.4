@@ -94,6 +94,72 @@ VARIABLE BUF-PTR
   DOES> ( --- addr )
     @ ;
 
+\ ==================================================================
+\ Growing a buffer (Iteration 249)
+\ ==================================================================
+\ BUF-ENSURE gives a buffer at least u bytes, keeping its contents: a
+\ new block of at least twice the old size, the contents copied over,
+\ the descriptor updated. The old block is NOT freed. Code holds
+\ absolute addresses into these buffers - shell.4's ARGV points into
+\ its token buffers - and a freed block could be reused under them.
+\ So the old block goes on a retired list, and stays readable exactly
+\ as long as today's rule already says such a pointer is worth
+\ anything: until the next command. BUF-FREE-RETIRED releases the list,
+\ and must be called only where nothing can still point into a retired
+\ block - shell.4 calls it between top-level commands. Doubling keeps
+\ what is retired below the size of the buffer that replaced it.
+\
+\ The list nodes are separate two-cell blocks [next][block], so a
+\ retired buffer's own bytes are never touched.
+
+VARIABLE BUF-RETIRED   0 BUF-RETIRED !    \ first node, or 0
+
+: BUF-ROUND ( u --- u' )   \ up to a whole number of cells
+  CELL+ 1- [ 1 CELLS 1- ] LITERAL INVERT AND ;
+
+: BUF-RETIRE ( addr --- )
+  2 CELLS ALLOCATE ABORT" BUFFER: out of memory"   ( addr node )
+  SWAP OVER CELL+ !
+  BUF-RETIRED @ OVER !
+  BUF-RETIRED ! ;
+
+: BUF-FREE-RETIRED ( --- )
+  BUF-RETIRED @
+  BEGIN ?DUP WHILE
+    DUP CELL+ @ FREE DROP
+    DUP @ SWAP FREE DROP
+  REPEAT
+  0 BUF-RETIRED ! ;
+
+: BUF-ENSURE ( u body --- )
+\ Make the buffer described at body hold at least u bytes.
+  2DUP CELL+ @ > 0= IF 2DROP EXIT THEN        \ already big enough
+  SWAP OVER CELL+ @ 2* MAX BUF-ROUND          ( body n )
+  DUP ALLOCATE ABORT" BUFFER: out of memory"  ( body n a )
+  2DUP SWAP BUF-ZERO
+  2 PICK @ ?DUP IF                            ( body n a old )
+    DUP 2 PICK 5 PICK CELL+ @ MOVE
+    BUF-RETIRE
+  THEN
+  2 PICK !  SWAP CELL+ ! ;
+
+\ The two words shell code uses, both IMMEDIATE, taking the buffer's
+\ name at compile time. They compile its descriptor as an offset from
+\ START and add START back when they run: ['] would compile an
+\ absolute address, which is wrong the moment a saved image reloads
+\ somewhere else.
+: BUF-BODY, ( "name" --- )
+  ' >BODY START @ - POSTPONE LITERAL POSTPONE START POSTPONE @ POSTPONE + ;
+
+: BUFFER-BODY ( --- body )  ( compiling: "name" --- )
+  BUF-BODY, ; IMMEDIATE
+
+: ENSURE-BUFFER ( u --- )   ( compiling: "name" --- )
+  BUF-BODY, POSTPONE BUF-ENSURE ; IMMEDIATE
+
+: BUFFER-SIZE ( --- u )     ( compiling: "name" --- )
+  BUF-BODY, POSTPONE CELL+ POSTPONE @ ; IMMEDIATE
+
 : ALLOC-BUFFERS ( --- )
   \ Give every declared buffer its space. Called at boot, because
   \ RESET-BUFFERS zeroed every pointer before the image was written -
@@ -111,6 +177,7 @@ VARIABLE BUF-PTR
   \ Called by SAVE-SYSTEM before writing, so a saved image never
   \ contains a stale heap address - and, incidentally, so two builds
   \ of identical sources produce identical images.
+  BUF-FREE-RETIRED
   BUF-LIST @
   BEGIN DUP WHILE
     START @ +                     ( body )
@@ -118,5 +185,6 @@ VARIABLE BUF-PTR
     DUP 0 SWAP !
     2 CELLS + @                   ( link of the previous declaration )
   REPEAT DROP ;
+
 
 BASE !

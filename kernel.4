@@ -764,11 +764,15 @@ VARIABLE #SRC ( --- addr)
   DUP >R WRITE-FILE ?DUP IF R> DROP EXIT THEN
   10 SP@ 1 R> WRITE-FILE SWAP DROP ;
 
-: RL-END ( c-addr p flag ior --- u2 flag ior )
-\ READ-LINE's result from its end pointer p. A CR just before the
-\ newline is part of the terminator: CRLF files read as plain lines.
-  >R >R OVER -
-  DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN
+: RL-END ( c-addr p nl? flag ior --- u2 flag ior )
+\ READ-LINE's result from its end pointer p. When the line ended at a
+\ newline (nl?), a CR just before it is part of the terminator: CRLF
+\ files read as plain lines. A line cut short by the buffer keeps a
+\ trailing CR, because nothing says it is the end: stripping it made a
+\ full buffer look one short, and a caller growing its buffer took the
+\ line for finished (Iteration 249).
+  >R >R >R OVER -
+  R> IF DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN THEN
   SWAP DROP R> R> ;
 
 : RL-BYTES ( c-addr u1 fid --- u2 flag ior )
@@ -779,17 +783,18 @@ VARIABLE #SRC ( --- addr)
   BEGIN 2DUP - WHILE
     DUP 1 R@ READ-SOME                   ( c-addr end p n )
     DUP 1 = IF
-      DROP DUP C@ 10 = IF SWAP DROP -1 0 R> DROP RL-END EXIT THEN
+      DROP DUP C@ 10 = IF SWAP DROP -1 -1 0 R> DROP RL-END EXIT THEN
       1+
     ELSE
       \ 0 is end of file, below 0 an error; the flag says whether this
       \ line got any characters before it.
-      >R SWAP DROP 2DUP - 0= 0= R> R> DROP
+      >R SWAP DROP 2DUP - 0= 0=          ( c-addr p any  R: fid n )
+      0 SWAP R> R> DROP                  ( c-addr p 0 any n )
       DUP 0< 0= IF DROP 0 THEN
       RL-END EXIT
     THEN
   REPEAT
-  SWAP DROP -1 0 R> DROP RL-END ;
+  SWAP DROP 0 -1 0 R> DROP RL-END ;
 
 : READ-LINE ( c-addr u1 fid --- u2 flag ior )
 \ Read a line of at most u1 characters; the newline ends it and is not
@@ -806,17 +811,18 @@ VARIABLE #SRC ( --- addr)
   DUP FILE-POSITION IF 2DROP RL-BYTES EXIT THEN
   >R >R >R                               ( c-addr u1  R: hi lo fid )
   OVER SWAP R@ READ-FILE                 ( c-addr n ior )
-  ?DUP IF >R DROP DUP -1 R> R> DROP R> R> 2DROP RL-END EXIT THEN
-  DUP 0= IF DROP DUP 0 0 R> DROP R> R> 2DROP RL-END EXIT THEN
+  ?DUP IF >R DROP DUP 0 -1 R> R> DROP R> R> 2DROP RL-END EXIT THEN
+  DUP 0= IF DROP DUP 0 0 0 R> DROP R> R> 2DROP RL-END EXIT THEN
   2DUP 10 SCAN SWAP DROP                 ( c-addr n rest )
   DUP >R - R>                            ( c-addr i rest )
+  DUP 0= 0= ROT ROT                      ( c-addr nl? i rest )
   1 > IF                                 \ read past the newline: give it back
-    R> R> R>                             ( c-addr i fid lo hi )
-    3 PICK 1+ 0 D+ ROT REPOSITION-FILE   ( c-addr i ior )
+    R> R> R>                             ( c-addr nl? i fid lo hi )
+    3 PICK 1+ 0 D+ ROT REPOSITION-FILE   ( c-addr nl? i ior )
   ELSE
-    R> R> R> 2DROP DROP 0                ( c-addr i 0 )
+    R> R> R> 2DROP DROP 0                ( c-addr nl? i 0 )
   THEN
-  >R OVER + -1 R> RL-END ;
+  >R ROT DUP ROT + ROT -1 R> RL-END ;
 
 : W! ( w a-addr --- )
 \ Store the low 16 bits of w at a-addr, little-endian.

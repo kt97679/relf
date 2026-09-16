@@ -1,53 +1,64 @@
 #!/bin/sh
-# tests/shell/run-long-line - a line longer than LINE-MAX (256) is
-# reported and runs NOTHING (Iteration 248).
+# tests/shell/run-long-line - lines longer than the 256 characters this
+# shell's buffers start at (Iterations 248, 249).
 #
-# The fault this guards: a longer line was cut at 256 characters and
-# its tail read as the next line, so the tail ran as a command nobody
-# wrote. The first case is the exploit shape - an echo whose argument
-# runs past the limit into "echo INJECTED".
+# They used to be cut at 256, and the tail read as the next line - so the
+# tail of `echo <250 characters>Z echo INJECTED` ran as a command nobody
+# wrote. Iteration 248 made that an error; 249 made the buffers grow, so
+# a long line simply runs. What is still limited, and must be REPORTED
+# rather than silently wrong, is tested here too: the 1 MB ceiling on a
+# line, and the 255-character limit on a variable's value.
 . "$(dirname "$0")/lib.sh"
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
-pad() { i=0; s=; while [ "$i" -lt "$2" ]; do s="$s$1"; i=$((i + 1)); done; printf '%s' "$s"; }
+pad() { head -c "$2" /dev/zero | tr '\0' "$1"; }
 
-# 250 a's and "Z" put " echo INJECTED" past character 256.
+# The exploit shape: one echo, whatever its length.
 printf 'echo start\necho %sZ echo INJECTED\necho end\n' "$(pad a 250)" > "$t/inject.sh"
-out=$("$THIS_SH" "$t/inject.sh" 2>/dev/null)
-assert_output_equals "the tail of a too-long line does not run" "start
+out=$("$THIS_SH" "$t/inject.sh" 2>&1)
+assert_output_equals "a long line runs whole, and its tail is not a command" "start
+$(pad a 250)Z echo INJECTED
 end" "$out"
-err=$("$THIS_SH" "$t/inject.sh" 2>&1 >/dev/null)
-assert_output_equals "a too-long line is reported on stderr" "shell: line too long" "$err"
-
-# The boundary: 256 characters run, 257 do not.
-printf 'echo %s\necho after\n' "$(pad b 251)" > "$t/l256.sh"
-out=$("$THIS_SH" "$t/l256.sh" 2>&1)
-assert_output_equals "a line of exactly 256 characters runs" "$(pad b 251)
-after" "$out"
-printf 'echo %s\necho after\n' "$(pad c 252)" > "$t/l257.sh"
-out=$("$THIS_SH" "$t/l257.sh" 2>/dev/null)
-assert_output_equals "a line of 257 characters is skipped, and the script goes on" "after" "$out"
-
-# Status 2, like a syntax error.
-printf 'echo %s\necho "st=$?"\n' "$(pad c 252)" > "$t/st.sh"
-out=$("$THIS_SH" "$t/st.sh" 2>/dev/null)
-assert_output_equals "a too-long line sets status 2" "st=2" "$out"
-
-# The same through stdin, which is read with ACCEPT, not READ-LINE.
 out=$("$THIS_SH" < "$t/inject.sh" 2>/dev/null)
-assert_output_equals "stdin: the tail of a too-long line does not run" "start
+assert_output_equals "the same through stdin" "start
+$(pad a 250)Z echo INJECTED
 end" "$out"
 
-# A continued line that grows past the limit: none of it runs.
-printf 'echo %s\\\n%s\necho next\n' "$(pad d 200)" "$(pad e 100)" > "$t/cont.sh"
-out=$("$THIS_SH" "$t/cont.sh" 2>/dev/null)
-assert_output_equals "a continued line past the limit runs nothing" "next" "$out"
+# Well past any old limit, in a script, on stdin and under -c.
+printf 'echo %s | wc -c\n' "$(pad b 50000)" > "$t/big.sh"
+out=$("$THIS_SH" "$t/big.sh" 2>&1 | tr -d ' ')
+assert_output_equals "a 50,000-character line runs" "50001" "$out"
+out=$("$THIS_SH" < "$t/big.sh" 2>/dev/null | tr -d ' ')
+assert_output_equals "a 50,000-character line runs from stdin" "50001" "$out"
+out=$("$THIS_SH" -c "echo $(pad c 3000) | wc -c" 2>&1 | tr -d ' ')
+assert_output_equals "a 3,000-character -c command runs" "3001" "$out"
 
-# The read builtin: status 2, the variable untouched, and the next read
-# gets the NEXT line rather than the rest of the long one.
-printf 'x=old\nread x\necho "st=$? x=[$x]"\nread y\necho "y=[$y]"\n' > "$t/rd.sh"
-out=$({ pad f 300; printf '\nshort\n'; } | "$THIS_SH" "$t/rd.sh" 2>/dev/null)
-assert_output_equals "read: a too-long line fails and is consumed whole" "st=2 x=[old]
+# The ceiling: past 1 MB a line is reported and nothing of it runs.
+{ printf 'echo '; pad d 1100000; printf '\necho "after st=$?"\n'; } > "$t/huge.sh"
+out=$("$THIS_SH" "$t/huge.sh" 2>/dev/null)
+assert_output_equals "a line past the 1 MB ceiling runs nothing, and the script goes on" "after st=2" "$out"
+err=$("$THIS_SH" "$t/huge.sh" 2>&1 >/dev/null)
+assert_output_equals "the ceiling is reported on stderr" "shell: line too long" "$err"
+
+# A value is still limited to 255 characters. Over that it is reported,
+# EMPTY and status 2 - it used to keep the previous assignment's value.
+printf 'a=first\nb=%s\necho "b=[$b] st=$?"\n' "$(pad e 300)" > "$t/val.sh"
+out=$("$THIS_SH" "$t/val.sh" 2>/dev/null)
+assert_output_equals "a too-long value is empty, never a stale one" "b=[] st=2" "$out"
+err=$("$THIS_SH" "$t/val.sh" 2>&1 >/dev/null)
+assert_output_equals "a too-long value is reported" "shell: value too long" "$err"
+printf 'b=%s\necho "${#b}"\n' "$(pad f 255)" > "$t/val255.sh"
+out=$("$THIS_SH" "$t/val255.sh" 2>&1)
+assert_output_equals "a 255-character value is kept" "255" "$out"
+
+# read takes the whole line, whatever its length: the next read gets
+# the NEXT line. A field too long for a variable is reported as above.
+printf 'read x\necho "st=$? x=[$x]"\nread y\necho "y=[$y]"\n' > "$t/rd.sh"
+out=$({ echo first; pad g 3000; printf '\nshort\n'; } | "$THIS_SH" -c 'read p; echo "p=[$p]"; read x; echo "st=$? x=[$x]"; read y; echo "y=[$y]"' 2>/dev/null)
+assert_output_equals "read: a long line is consumed whole" "p=[first]
+st=2 x=[]
 y=[short]" "$out"
+out=$({ pad h 200; printf ' %s\n' "$(pad i 200)"; } | "$THIS_SH" -c 'read x y; echo "${#x} ${#y}"' 2>&1)
+assert_output_equals "read: a 401-character line splits into its fields" "200 200" "$out"
 
 report

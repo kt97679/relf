@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,710    kernel-shell.img     59,777
-    32-bit   kernel32.img   8,106    kernel32-shell.img   54,533
+    64-bit   kernel.img     8,726    kernel-shell.img     61,273
+    32-bit   kernel32.img   8,122    kernel32-shell.img   55,865
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -704,8 +704,12 @@ reasoning behind them:
   just did nothing when full), `MAX-FUNCS` (16),
   `MAX-POS-PARAM-DEPTH` (32), `MAX-ARGS` (64). Iteration 90 gave them
   diagnostics, so none is silent now; they are still fixed. Making them
-  growable is the goal. The line length limit (`LINE-MAX`, 256) is the
-  same kind of table and was silent until Iteration 248.
+  growable is the goal. The line length limit (`LINE-MAX`, 256) was the
+  same kind of table: silent until Iteration 248, growable since 249 -
+  pool.4's `BUF-ENSURE`, which RETIRES the old block rather than
+  freeing it, because code holds addresses into these buffers; the
+  top-level loop frees retired blocks between commands. That is the
+  pattern for the tables still to convert.
 
 Two concerns worth keeping in view, neither blocking:
 
@@ -1005,17 +1009,21 @@ of this file:
 - **An empty `case` word does not match an empty pattern.**
 - **`set -e`**, per above.
 - ~~**A script line over `LINE-MAX` (256) has its TAIL EXECUTED as a
-  separate command.**~~ **Fixed in Iteration 248**: every reader asks
-  for one character more than it can keep, so a longer line is seen,
-  reported ("shell: line too long"), read to its end and discarded -
-  status 2, and nothing of it runs, like a syntax error. Covers
-  scripts, stdin, continued lines, open quotes and the `read` builtin;
-  `tests/shell/run-long-line`. **Still a limit, not a feature**: dash
-  and bash take lines of any length. Two edges remain: a here-document
-  line that is too long becomes an empty line in the document (the
-  command still runs, after the report), and a quoted string that
-  fills the buffer across several lines stops joining, so its later
-  lines are read as commands.
+  separate command.**~~ Made an error in Iteration 248, and **lifted in
+  249**: lines of any length run, through scripts, stdin, `-c`,
+  continued lines, open quotes, bodies, here-documents and `read`
+  (`tests/shell/run-long-line`, and `tests/diff/cases/long-lines.sh`
+  against bash). A line past 1 MB (`LINE-HARD-MAX`) is reported and
+  discarded, so a binary file costs a message, not the memory.
+- **Fixed limits that a long line now reaches first**, each REPORTED
+  rather than silent unless noted: a variable's value, 255 characters
+  ("value too long", status 2, the value empty - until 249 it kept the
+  PREVIOUS value); 64 words on a line (`MAX-ARGS`, about thirty
+  parallel arrays - the next stage); a here-document body, 8 KB
+  (`HEREDOC-MAX`, excess dropped SILENTLY); positional parameters and
+  alias values, 256. And one that is not this shell's: Linux refuses a
+  single exec argument over 128 KB, which a long `echo` meets because
+  `echo` here is `/bin/echo`.
 - **`shell.4`'s older diagnostics go to STDOUT.** "cd: no such
   directory", "shell: syntax error: ...", "alias: too many aliases"
   all still use `."`. Iteration 153 moved the prompt and 154 added
@@ -1299,7 +1307,15 @@ once. Both are done; the rest keep their order.
    hides `struct termios`, whose layout differs by platform - say
    `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
 
-5. **A cooperative multitasker**, the other thing `POLL` was chosen
+5. **The rest of the growable-buffer work** (Iteration 249 did the
+   line buffers). Stage 3: the `MAX-ARGS` arrays grow with the number
+   of words, the largest audit - `ARGV` and about thirty copies of it.
+   Stage 4: variable values, here-documents, positional parameters and
+   alias values. Each by the same rule: grow before any pointer into
+   the table is taken, retire rather than free, and diagnose whatever
+   stays fixed.
+
+6. **A cooperative multitasker**, the other thing `POLL` was chosen
    for: `PAUSE` switches tasks, and when every task is waiting on a
    descriptor the scheduler makes one poll(2) over all of them. Two
    things to settle first. The engine checks both stacks against the

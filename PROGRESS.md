@@ -244,6 +244,7 @@ do not trust the absence of a line below.
 - **246** — POLL: KEY waits, KEY? and MS
 - **247** — escaped primitives stop costing opcodes; format version 3
 - **248** — GOALS.md audited; a too-long line no longer runs its tail
+- **249** — growable line buffers; stale values; function bodies; a test that compared nothing
 
 ### Not tied to an iteration
 
@@ -14980,3 +14981,92 @@ across lines stops joining, so its later lines are read as commands.
 
 tests/verify: 568 shell assertions (was 560) in 67 files (66); engine
 + shell image 86,249 -> 86,617 (x86-64), 76,137 -> 76,509 (i386).
+
+## Iteration 249: growable line buffers
+
+**The mechanism (pool.4).** `BUF-ENSURE ( u body --- )` gives a
+`BUFFER:` at least u bytes: a new block of at least double the size,
+the contents copied, the rest zeroed. The old block is RETIRED, not
+freed - shell.4's `ARGV` and its thirty copies hold absolute addresses
+into the token buffers, and a freed block reused under them would be
+corruption, not an error. `BUF-FREE-RETIRED` frees the list at the top
+of `SH1` and `SH-FILE`, the only places no command is running (`.` is
+not implemented, so neither is ever entered from inside a command).
+`ENSURE-BUFFER`, `BUFFER-SIZE` and `BUFFER-BODY` name a buffer's
+descriptor as an offset from START, compiled in, because `[']` would
+compile an address that is wrong after a save and reload.
+`tests/ext/pooltest.fth` covers growth, contents, zeroing, the old
+block staying readable, and the list.
+
+**The readers.** `READ-LINE-INTO ( off body fid --- u flag )` and
+`ACCEPT-INTO ( off body --- u )` take a buffer and an offset, not an
+address: the buffer may move while they read, and the continuation
+joins pass "the buffer, after what is already there". READ-LINE never
+reads past its newline (Iteration 245), so a full read means the line
+continues and the reader simply grows and reads again. ACCEPT cannot
+resume - it reads the whole line and drops what does not fit - so the
+shell's terminal reader is its own KEY loop with ACCEPT's editing.
+Every path uses them: scripts, stdin, `-c`, continued lines, open
+quotes, replayed bodies, here-documents and `read`.
+
+**Everything downstream is sized from the line**, before any pointer
+into it is taken: the normalized text (3x), the raw and expanded token
+buffers (2x that), the raw-line copies, the command substitution and
+alias and `forth` buffers, the pipe copies, and two arena allocations
+that were `LINE-MAX` regardless of what went into them.
+
+**A kernel change it needed.** READ-LINE stripped a trailing CR whenever
+it returned characters, including from a FULL buffer with no newline
+seen. A full chunk ending in CR then looked one short, and the growing
+reader took the line for finished. The CR is now stripped only when the
+newline was read; `tests/ext/filetest2.fth` has the case, which the old
+kernel fails.
+
+**Found on the way, all fixed:**
+- `-c` copied its string into LINE-BUF with no bound at all - a
+  command over 256 characters wrote past the buffer.
+- **A value of 256 characters or more set the variable to the PREVIOUS
+  assignment's value**: the bounded copy failed, every caller dropped
+  the flag, and the buffer kept what it had. `a=first; b=<300 chars>`
+  gave `b=first`; `read` did the same. Long lines made it reachable.
+  Now `VALUE-COPY` reports "value too long", leaves the value EMPTY,
+  and the assignment's or `read`'s status is 2.
+- Function bodies were 2,048-byte slots, and a longer body was cut
+  short silently - a truncated command still runs. Each function now
+  has its own heap block; a redefined one's old block is retired,
+  because a function may redefine itself while its body is replaying.
+- The 1 MB ceiling drained the rest of the line even when the last read
+  had already taken the newline, so the NEXT line - here, the rest of
+  the script - was thrown away. Drain only a line still going.
+
+**A differential case that compared nothing.** `tests/diff/cases/
+control.sh` has three loops meant to count up from an empty string;
+they started from `0`, and `x0`, `xx0`, ... never equals `xxx`. Both
+shells ran into the 10-second timeout with the same partial output, so
+the case "passed" - every line after the loops had been uncompared
+since Iteration 110. It surfaced because this shell stopped looping:
+the over-long value now becomes empty, and from empty the loop ends.
+The loops start empty now, both shells finish in milliseconds, and the
+outputs are identical. A matching timeout is not a match.
+
+**Measured against dash and bash.** Lines of 250 to 70,000 characters,
+the injection shape, continuations, multi-line quotes, loops, `if`,
+pipes, here-documents and functions all match; the new differential
+case matches bash byte for byte. `tests/shell/run-long-line` was
+rewritten for the new behaviour (12 assertions; the previous build
+fails all of them), including the ceiling reached both ways - a last
+read that stopped short and one that was full.
+
+**Speed**, `tests/bench-vm`, 7 rounds against the Iteration 248 build:
+loop 1.04, fn 1.00, str 0.97, arith 1.07 [1.005-1.090], start 1.00. The
+arith interval only just excludes 1.0 and sits inside the per-build
+bias GOALS.md describes; the per-line cost added is a few size checks
+and the growing reader's bookkeeping. Worth re-measuring on the next
+build rather than acting on.
+
+**Still fixed**, in GOALS.md's "Still open": 64 words on a line (stage
+3), variable values, here-documents (8 KB, dropped silently),
+positional parameters and alias values (stage 4).
+
+tests/verify: shell assertions 568 -> 572; engine + shell image 86,617
+-> 88,113 (x86-64), 76,509 -> 77,841 (i386); all else unchanged.

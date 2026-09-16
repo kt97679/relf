@@ -128,6 +128,24 @@ TESTING DELETE-FILE
 { FN2 DELETE-FILE 0= -> FALSE }
 
 \ ------------------------------------------------------------------------------
+\ Not upstream: CRLF lines. A CR before the newline is part of the line
+\ terminator; a CR at the end of a FULL buffer is not known to be, and
+\ is kept (Iteration 249).
+CREATE CRLF-TXT 97 C, 98 C, 13 C, 10 C, 99 C, 10 C,
+{ FN1 W/O CREATE-FILE SWAP FID1 ! -> 0 }
+{ CRLF-TXT 6 FID1 @ WRITE-FILE -> 0 }
+{ FID1 @ CLOSE-FILE -> 0 }
+{ FN1 R/O OPEN-FILE SWAP FID1 ! -> 0 }
+{ BUF 100 FID1 @ READ-LINE -> 2 TRUE 0 }
+{ BUF 100 FID1 @ READ-LINE -> 1 TRUE 0 }
+{ FID1 @ CLOSE-FILE -> 0 }
+{ FN1 R/O OPEN-FILE SWAP FID1 ! -> 0 }
+{ BUF 3 FID1 @ READ-LINE -> 3 TRUE 0 }
+{ BUF 2 + C@ -> 13 }
+{ BUF 3 FID1 @ READ-LINE -> 0 TRUE 0 }
+{ FID1 @ CLOSE-FILE -> 0 }
+
+\ ------------------------------------------------------------------------------
 \ Not upstream: leave nothing behind in the repository.
 { FN1 DELETE-FILE -> 0 }
 

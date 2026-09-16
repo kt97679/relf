@@ -47,10 +47,9 @@ VARIABLE ARGS-OVERFLOW?
 
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
 
-\ One byte more than LINE-MAX, so a reader can ask for LINE-MAX + 1
-\ characters and tell a line that fits from one that does not - see
-\ READ-LINE-CHECKED.
-LINE-MAX 1+ BUFFER: LINE-BUF
+\ LINE-MAX is the size the line buffers START at: they grow to fit the
+\ line being read (see READ-LINE-INTO).
+LINE-MAX BUFFER: LINE-BUF
 
 512 CONSTANT NORM-MAX
 NORM-MAX BUFFER: NORM-BUF
@@ -227,19 +226,24 @@ CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
 : ERR-NL   ( --- )            SH-NL 1 ERR-TYPE ;
 
 \ ==================================================================
-\ Reading a line that may not fit
+\ Reading a line of any length
 \ ==================================================================
-\ Every line this shell reads goes into a buffer of LINE-MAX bytes. A
-\ longer one used to be cut there and its TAIL read as the next line,
-\ so `echo <250 characters>Z echo INJECTED` ran a command nobody wrote
-\ (GOALS.md, found in Iteration 154). A read that returns exactly as
-\ many characters as it asked for cannot say whether the line went on,
-\ so these readers ask for one MORE than a caller can use, into a
-\ buffer with room for it: if that character arrives, the line is too
-\ long. It is reported, the rest of it is read and thrown away, and the
-\ caller gets an empty line - nothing of it runs. That is how this
-\ shell treats a syntax error: diagnosed, status 2, and the script
-\ goes on (Iteration 248).
+\ Lines are read into GROWING buffers (pool.4's BUF-ENSURE): a reader
+\ is given a buffer's descriptor and an offset rather than an address,
+\ because the buffer may move while it reads - and the old block stays
+\ readable until the top-level loop frees it, since code holds
+\ addresses into these buffers. LINE-MAX is only the size a buffer
+\ starts at (Iteration 249).
+\
+\ Until then every line had to fit 256 bytes. A longer one was cut and
+\ its tail read as the next line, so `echo <250 characters>Z echo
+\ INJECTED` ran a command nobody wrote (Iteration 154's finding, made
+\ safe in 248 and lifted here). What is left is a ceiling well past any
+\ real script, LINE-HARD-MAX: a line longer than that is reported, read
+\ to its end and discarded - status 2, nothing of it runs - so feeding
+\ the shell a binary file costs a message, not the memory.
+
+1048576 CONSTANT LINE-HARD-MAX
 
 VARIABLE LONG-LINE?   \ was the last line read too long?
 
@@ -256,26 +260,72 @@ LINE-MAX BUFFER: DRAIN-BUF
     SWAP LINE-MAX = AND 0=
   UNTIL DROP ;
 
-VARIABLE RLC-MAX
-VARIABLE RLC-FID
+VARIABLE GL-OFF
+VARIABLE GL-BODY
+VARIABLE GL-FID
+VARIABLE GL-N
+VARIABLE GL-K
+VARIABLE GL-ANY
 
-: READ-LINE-CHECKED ( c-addr max fid --- u flag )
-\ READ-LINE into a buffer with room for max + 1 characters. flag is
-\ false only at end of file. A line longer than max reads as empty.
-  SHADOW{ RLC-MAX RLC-FID }
-  0 LONG-LINE? !
-  RLC-MAX @ 1+ RLC-FID @ READ-LINE DROP        ( u flag )
-  OVER RLC-MAX @ > IF
-    2DROP RLC-FID @ DRAIN-LINE LINE-TOO-LONG 0 -1
-  THEN ;
+: GL-ROOM ( --- c-addr k )
+\ Room for at least 64 more characters after what has been read, plus
+\ one a caller may use to terminate the line: where it is, and how many
+\ characters to ask for.
+  GL-OFF @ GL-N @ + 65 + GL-BODY @ BUF-ENSURE
+  GL-BODY @ @ GL-OFF @ + GL-N @ +
+  GL-BODY @ CELL+ @ GL-OFF @ - GL-N @ - 1- ;
 
-: ACCEPT-CHECKED ( c-addr max --- u )
-\ ACCEPT into a buffer with room for max + 1 characters. ACCEPT reads
-\ the whole line however long it is and keeps what fits, so a count of
-\ max + 1 means there was more: the line reads as empty.
+: READ-LINE-INTO ( off body fid --- u flag )
+\ Read one line from fid into the growing buffer described at body,
+\ starting at offset off. u excludes the newline; flag is false only at
+\ end of file. READ-LINE never reads past the newline, so when a read
+\ fills the room it was given, the rest of the line is still waiting:
+\ grow and read again. A read that fills it exactly is followed by one
+\ that returns just the newline.
+  SHADOW{ GL-OFF GL-BODY GL-FID | GL-N GL-K GL-ANY }
   0 LONG-LINE? !
-  DUP >R 1+ ACCEPT
-  DUP R> > IF DROP LINE-TOO-LONG 0 THEN ;
+  BEGIN
+    GL-ROOM DUP GL-K ! GL-FID @ READ-LINE DROP   ( u flag )
+    GL-ANY @ OR GL-ANY !
+    DUP GL-N @ + GL-N !
+    GL-K @ =                                     ( full? )
+    GL-OFF @ GL-N @ + LINE-HARD-MAX > IF
+      \ Drain only if the line is still going: a read that stopped short
+      \ has already taken the newline, and draining then swallowed the
+      \ NEXT line - and, as it happened, the rest of the script.
+      IF GL-FID @ DRAIN-LINE THEN
+      LINE-TOO-LONG 0 -1 EXIT
+    THEN
+  WHILE REPEAT
+  GL-N @ GL-ANY @ ;
+
+VARIABLE AG-OFF
+VARIABLE AG-BODY
+VARIABLE AG-N
+
+: ACCEPT-INTO ( off body --- u )
+\ The same from the terminal, a KEY at a time with ACCEPT's editing:
+\ backspace and DEL remove a character, CR and LF end the line. The
+\ kernel's ACCEPT cannot be used - it reads the whole line and drops
+\ what does not fit, so nothing is left to grow into.
+  SHADOW{ AG-OFF AG-BODY | AG-N }
+  0 LONG-LINE? !
+  BEGIN
+    KEY
+    DUP 8 = OVER 127 = OR IF
+      DROP AG-N @ IF AG-N @ 1- AG-N ! THEN
+    ELSE DUP 10 = OVER 13 = OR IF
+      DROP LONG-LINE? @ IF LINE-TOO-LONG 0 ELSE AG-N @ THEN EXIT
+    ELSE
+      AG-OFF @ AG-N @ + LINE-HARD-MAX < IF
+        AG-OFF @ AG-N @ + 2 + AG-BODY @ BUF-ENSURE
+        AG-BODY @ @ AG-OFF @ + AG-N @ + C!
+        AG-N @ 1+ AG-N !
+      ELSE
+        DROP -1 LONG-LINE? !   \ past the ceiling: read on to the newline
+      THEN
+    THEN THEN
+  0 UNTIL ;
 
 VARIABLE PARSE-N
 
@@ -398,6 +448,22 @@ VARIABLE SCC-MAX
   SHADOW{ SCC-SRC SCC-DEST SCC-MAX }
   SCC-SRC @ SCC-SRC @ CSTRLEN SCC-DEST @ SCC-MAX @ SAFE-COPY-NUL ;
 
+\ A variable's value is still limited to SHVAR-VALUE-MAX - 1 characters.
+\ Until Iteration 249 an over-long one was silently not copied, so the
+\ destination kept whatever it held: `a=first; b=<300 characters>` set
+\ b to "first", and `read` did the same. Now it is reported, the value
+\ is EMPTY, and the command's status is 2. VALUE-FAILED? tells the
+\ callers that would otherwise overwrite that status.
+VARIABLE VALUE-FAILED?
+
+: VALUE-TOO-LONG ( --- )
+  S" shell: value too long" ERR-TYPE ERR-NL
+  2 LAST-STATUS !  -1 VALUE-FAILED? ! ;
+
+: VALUE-COPY ( src u dest max --- )
+\ SAFE-COPY-NUL for a value: never leaves a stale one behind.
+  OVER >R SAFE-COPY-NUL R> SWAP IF DROP ELSE 0 SWAP C! VALUE-TOO-LONG THEN ;
+
 \ ==================================================================
 \ Shell-local variables: POSIX "shell parameters" distinct from the
 \ OS environment - a standalone "NAME=value" line (see ASSIGNMENT-
@@ -498,7 +564,7 @@ VARIABLE SV-IDX
     EXIT
   THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
-  SV-VALUE @ SV-IDX @ SHVAR-VALUE-SLOT SHVAR-VALUE-MAX SAFE-CSTR-COPY DROP ;
+  SV-VALUE @ DUP CSTRLEN SV-IDX @ SHVAR-VALUE-SLOT SHVAR-VALUE-MAX VALUE-COPY ;
 
 : REMOVE-SHVAR ( name-addr --- )  \ shifts the last entry into the
                                     \ removed slot rather than
@@ -1026,6 +1092,7 @@ VARIABLE CMDSUB-OUT-LEN
   \ source in this file uses - and records whether any non-blank
   \ character was seen at all, so "$( )" runs nothing.
   SHADOW{ CS-POS | CS-COPY-I }
+  CS-POS @ 1+ ENSURE-BUFFER CMDSUB-LINES
   0 CS-NONBLANK? !
   BEGIN CS-COPY-I @ CS-POS @ < WHILE
     CMDSUB-LINE-BUF CS-COPY-I @ + C@
@@ -1593,7 +1660,8 @@ VARIABLE ARITH-DEPTH
         CS-DEPTH @ 1- CS-DEPTH !
       THEN
     THEN
-    CS-COPY-I @ LINE-MAX 1- < IF
+    CS-COPY-I @ 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
+    CS-COPY-I @ LINE-HARD-MAX < IF
       TOK-POS @ C@ CMDSUB-LINE-BUF CS-COPY-I @ + C!
       CS-COPY-I @ 1+ CS-COPY-I !
     THEN
@@ -2254,8 +2322,12 @@ VARIABLE EW-I
   \ Finding the words is no longer this word's job, so not expanding
   \ them costs nothing - there is no scanner here to put into a
   \ "raw mode". That is what Iteration 112 bought.
+  \ The raw words are at most the normalized text plus a NUL each; the
+  \ expanded ones get the same room. Both grow here, before any word
+  \ is written, so nothing grows while ARGV points into them.
+  BUFFER-SIZE NORM-BUF 2* DUP ENSURE-BUFFER TOK-BUF ENSURE-BUFFER EXP-BUF
   TOK-BUF TOK-OUT !
-  TOK-BUF TOK-BUF-MAX + TOK-OUT-END !
+  TOK-BUF BUFFER-SIZE TOK-BUF + TOK-OUT-END !
   0 ARGC !
   SHADOW{ | TK-I TK-J TK-Q }
   BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ MAX-ARGS 1- < AND WHILE
@@ -2324,9 +2396,9 @@ VARIABLE EW-I
   \ which for an already-expanded word is what would have happened
   \ anyway.
   ARGC @ 0 > IF ARGV @ ELSE 0 THEN
-  DUP EXP-BUF 1- > SWAP EXP-BUF TOK-BUF-MAX + < AND IF TOK-BUF ELSE EXP-BUF THEN
+  DUP EXP-BUF 1- > SWAP EXP-BUF BUFFER-SIZE EXP-BUF + < AND IF TOK-BUF ELSE EXP-BUF THEN
   DUP TOK-OUT !
-  TOK-BUF-MAX + TOK-OUT-END !
+  BUFFER-SIZE TOK-BUF BUFFER-SIZE EXP-BUF MIN + TOK-OUT-END !
   0 ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -2465,7 +2537,7 @@ VARIABLE JC-I
     JC-CONTINUES?
   WHILE
     JC-LEN @ 1- JC-LEN !
-    LINE-BUF JC-LEN @ + LINE-MAX JC-LEN @ - READ-INPUT-CALL JC-N !
+    JC-LEN @ BUFFER-BODY LINE-BUF READ-INPUT-CALL JC-N !
     LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
     JC-N @ 0= IF JC-LEN @ EXIT THEN
     JC-LEN @ JC-N @ + JC-LEN !
@@ -2474,7 +2546,7 @@ VARIABLE JC-I
 
 8192 CONSTANT HEREDOC-MAX
 HEREDOC-MAX BUFFER: HEREDOC-BUF
-LINE-MAX 1+ BUFFER: HD-LINE     \ +1: see LINE-BUF
+LINE-MAX BUFFER: HD-LINE        \ grows: see LINE-BUF
 VARIABLE HEREDOC-LEN
 VARIABLE HD-N
 VARIABLE HD-DELIM
@@ -2511,7 +2583,7 @@ VARIABLE HD-WR
   0 HEREDOC-LEN !
   0 HD-GUARD !
   BEGIN
-    HD-LINE LINE-MAX READ-INPUT-CALL HD-N !
+    0 BUFFER-BODY HD-LINE READ-INPUT-CALL HD-N !
     HD-GUARD @ 1+ HD-GUARD !
     HD-GUARD @ 4096 > IF EXIT THEN
     HD-LINE-START HD-N @ HD-LINE-START HD-LINE - -
@@ -3020,7 +3092,7 @@ VARIABLE DA-EQ
   DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
   DA-ADDR @ DA-EQ @ + 1+
   DA-ADDR @ CSTRLEN DA-EQ @ - 1-
-  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX SAFE-COPY-NUL DROP ;
+  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX VALUE-COPY ;
 
 : DO-ASSIGN-AT ( c-addr eqpos --- )
   \ Split a validated "NAME=value" word at its '=' and record it.
@@ -3041,8 +3113,9 @@ VARIABLE DA-EQ
                             \ correctly consume a skipped if/while
                             \ branch's own body, not actually run.
   SUPPRESS-EXEC? @ IF DROP EXIT THEN
+  0 VALUE-FAILED? !
   ARGV @ SWAP DO-ASSIGN-AT
-  0 LAST-STATUS ! ;
+  VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS ! ;
 
 \ ==================================================================
 \ The builtin table
@@ -3366,7 +3439,8 @@ VARIABLE FTH-I
 
 : FORTH-APPEND ( c-addr u --- )
   SHADOW{ FA-ADDR FA-LEN }
-  FTH-LEN @ FA-LEN @ + 1+ LINE-MAX < IF
+  FTH-LEN @ FA-LEN @ + 2 + ENSURE-BUFFER FORTH-BUF
+  FTH-LEN @ FA-LEN @ + LINE-HARD-MAX < IF
     FA-ADDR @ FORTH-BUF FTH-LEN @ + FA-LEN @ MOVE
     FTH-LEN @ FA-LEN @ + FTH-LEN !
     32 FORTH-BUF FTH-LEN @ + C!
@@ -3398,7 +3472,7 @@ VARIABLE FTH-I
   FORTH-BUF FTH-LEN @ EVALUATE
   0 LAST-STATUS ! ;
 
-LINE-MAX 1+     BUFFER: READ-BUF     \ +1: see LINE-BUF
+LINE-MAX        BUFFER: READ-BUF     \ grows: see LINE-BUF
 SHVAR-VALUE-MAX BUFFER: READ-FIELD
 VARIABLE RD-LEN
 VARIABLE RD-POS
@@ -3415,7 +3489,7 @@ VARIABLE RD-E
 : RD-SET ( name-addr start end --- )   \ assign READ-BUF[start,end)
   SHADOW{ RD-NAME RD-S RD-E }
   READ-BUF RD-S @ + RD-E @ RD-S @ -
-  READ-FIELD SHVAR-VALUE-MAX SAFE-COPY-NUL DROP
+  READ-FIELD SHVAR-VALUE-MAX VALUE-COPY
   RD-NAME @ READ-FIELD SET-SHVAR ;
 
 : DO-READ ( --- )
@@ -3433,7 +3507,8 @@ VARIABLE RD-E
   \ -r is accepted and ignored: this shell does no backslash
   \ processing on the line either way, so -r is already the behaviour.
   SHADOW{ | RD-VI }
-  READ-BUF LINE-MAX 0 READ-LINE-CHECKED
+  0 VALUE-FAILED? !
+  0 BUFFER-BODY READ-BUF 0 READ-LINE-INTO
   LONG-LINE? @ IF 2DROP EXIT THEN      \ reported; the variables are left alone
   0= IF DROP 1 LAST-STATUS ! EXIT THEN
   RD-LEN !
@@ -3461,7 +3536,7 @@ VARIABLE RD-E
     RD-VI @ ARGV@ SWAP RD-POS @ RD-SET
     RD-VI @ 1+ RD-VI !
   REPEAT
-  0 LAST-STATUS ! ;
+  VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS ! ;
 
 64 BUFFER: GO-NMBUF
 8  BUFFER: GO-VALBUF
@@ -4624,13 +4699,13 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
 \ outermost loop in a script silently did not replay at all.
 \ True when REPLAY-SRC is an OFFSET into the body arena (a while/for
 \ body), false when it is a plain address (a function body, which
-\ lives in FUNC-BODIES and never moves). The distinction is needed
+\ lives in a function's own heap block). The distinction is needed
 \ because the arena can be RESIZEd - and so relocated - part way
 \ through a replay: a nested loop inside the body being replayed
 \ allocates its own storage before it reads a single line. Resolving
 \ the address per line rather than caching it is what makes that safe.
-VARIABLE RNL-DEST
-VARIABLE RNL-MAX
+VARIABLE RNL-OFF
+VARIABLE RNL-BODY
 VARIABLE RNL-CUR
 VARIABLE RNL-LEN
 
@@ -4646,18 +4721,18 @@ VARIABLE INPUT-EOF?
 \ distinguish them, so the interactive path is left alone - a real
 \ shell prompts for continuation there indefinitely too.
 
-: REPLAY-NEXT-LINE ( c-addr max --- u2 )
-  SHADOW{ RNL-DEST RNL-MAX | RNL-CUR RNL-LEN }
+: REPLAY-NEXT-LINE ( off body --- u2 )
+  SHADOW{ RNL-OFF RNL-BODY | RNL-CUR RNL-LEN }
   REPLAY-POS @ REPLAY-LEN @ < 0= IF -1 INPUT-EOF? ! 0 EXIT THEN
   REPLAY-ARENA? @ IF REPLAY-SRC @ BODY@ ELSE REPLAY-SRC @ THEN
   REPLAY-POS @ + RNL-CUR !
   RNL-CUR @ CSTRLEN RNL-LEN !
   REPLAY-POS @ RNL-LEN @ + 1+ REPLAY-POS !
-  RNL-LEN @ RNL-MAX @ > IF RNL-MAX @ RNL-LEN ! THEN
-  RNL-CUR @ RNL-DEST @ RNL-LEN @ MOVE
+  RNL-OFF @ RNL-LEN @ + 1+ RNL-BODY @ BUF-ENSURE
+  RNL-CUR @ RNL-BODY @ @ RNL-OFF @ + RNL-LEN @ MOVE
   RNL-LEN @ ;
 
-: READ-NEXT-INPUT-LINE ( c-addr max --- u2 )
+: READ-NEXT-INPUT-LINE ( off body --- u2 )
   \ Reads one line of "current input" - from the real process stdin
   \ via ACCEPT (preserving its backspace/delete editing, which matters
   \ for a genuinely interactive session) when not running via
@@ -4667,10 +4742,10 @@ VARIABLE INPUT-EOF?
   0 INPUT-EOF? !  0 LONG-LINE? !
   REPLAY-ACTIVE? @ IF REPLAY-NEXT-LINE EXIT THEN
   SHFILE-ACTIVE? @ IF
-    SHFILE-FID @ READ-LINE-CHECKED     ( u2 flag )
+    SHFILE-FID @ READ-LINE-INTO        ( u2 flag )
     0= IF -1 INPUT-EOF? ! THEN
   ELSE
-    ACCEPT-CHECKED
+    ACCEPT-INTO
   THEN ;
 
 ' READ-NEXT-INPUT-LINE IS READ-INPUT-CALL
@@ -4810,7 +4885,7 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   -1 NORM-WSTART ! ;
 
 : NORM-EMIT ( c --- )
-  NORM-LEN @ NORM-MAX 1- < IF
+  NORM-LEN @ BUFFER-SIZE NORM-BUF 1- < IF
     \ A word opens at the first non-blank emitted while none is open.
     \ Blanks never open one, so the separators - both the line's own
     \ and the ones inserted around an operator - fall between words
@@ -4892,6 +4967,8 @@ VARIABLE NORM-SKIPD
                                       \ the caller copies it back.
   SHADOW{ NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C }
   0 NORM-WCOUNT !  -1 NORM-WSTART !
+  \ Spacing the operators at most triples the text.
+  NORM-U @ 3 * 8 + ENSURE-BUFFER NORM-BUF
   BEGIN NORM-I @ NORM-U @ < WHILE
     0 NORM-PEEK NORM-C !
     NORM-IN-ARITH? @ IF
@@ -5103,12 +5180,13 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
     JQ-LEN @ NORMALIZE-OPERATORS DROP
     UNTERMINATED-QUOTE? @ UNTERMINATED-CMDSUB? @ OR
     JQ-GUARD @ 4096 < AND
-    JQ-LEN @ 1+ LINE-MAX < AND
+    JQ-LEN @ LINE-HARD-MAX < AND
   WHILE
     JQ-GUARD @ 1+ JQ-GUARD !
+    JQ-LEN @ 2 + ENSURE-BUFFER LINE-BUF
     10 LINE-BUF JQ-LEN @ + C!
     JQ-LEN @ 1+ JQ-LEN !
-    LINE-BUF JQ-LEN @ + LINE-MAX JQ-LEN @ - READ-INPUT-CALL JQ-N !
+    JQ-LEN @ BUFFER-BODY LINE-BUF READ-INPUT-CALL JQ-N !
     LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
     JQ-N @ 0= IF JQ-LEN @ EXIT THEN
     JQ-LEN @ JQ-N @ + JQ-LEN !
@@ -5147,7 +5225,7 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
                                  \ can be re-expanded fresh on every
                                  \ iteration rather than frozen at its
                                  \ first reading.
-  LINE-BUF LINE-MAX READ-NEXT-INPUT-LINE
+  0 BUFFER-BODY LINE-BUF READ-NEXT-INPUT-LINE
   \ The newline is the echo of an INTERACTIVELY typed line. A replayed
   \ line - a loop body, a function body, a command substitution - was
   \ never typed, and echoing one printed a blank line before every
@@ -5157,6 +5235,7 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
   JOIN-CONTINUATIONS
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
+  RAW-LINE-LEN @ 1+ ENSURE-BUFFER RAW-LINE-BUF
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
   \ this exact line - that is how it decides whether a quote is still
@@ -5710,7 +5789,7 @@ VARIABLE LOOP-RAN?      \ did this loop execute its body even once?
   WHILE SUF-I @ 1+ SUF-I ! REPEAT
   RAW-LINE-LEN @ SUF-I @ > IF
     RAW-LINE-LEN @ SUF-I @ - SUF-LEN !
-    LINE-MAX BODY-ALLOC SUF-BUF !
+    SUF-LEN @ 1+ BODY-ALLOC SUF-BUF !
     RAW-LINE-BUF SUF-I @ + SUF-BUF @ BODY@ SUF-LEN @ MOVE
   THEN ;
 
@@ -5750,7 +5829,8 @@ VARIABLE OL-END
   \ Appends one word and a separating space at JT-LEN, which is
   \ JOIN-ARGV-TO-RAW's local and so belongs to the join in progress.
   SHADOW{ RA-A RA-U }
-  RA-U @ JT-LEN @ + 1+ LINE-MAX < IF
+  RA-U @ JT-LEN @ + 2 + ENSURE-BUFFER RAW-LINE-BUF
+  RA-U @ JT-LEN @ + LINE-HARD-MAX < IF
     RA-A @ RAW-LINE-BUF JT-LEN @ + RA-U @ MOVE
     JT-LEN @ RA-U @ + JT-LEN !
     32 RAW-LINE-BUF JT-LEN @ + C!
@@ -5839,15 +5919,19 @@ VARIABLE OL-END
 \ once immediately after being read.
 \ ==================================================================
 
-2048 CONSTANT FUNC-BODY-MAX
 
-MAX-FUNCS FUNC-BODY-MAX * BUFFER: FUNC-BODIES
+\ Each function's body is a heap block of its own, sized to fit
+\ (Iteration 249); until then they were 2048-byte slots and a longer
+\ body was cut short without a word. A redefined function's old block
+\ is RETIRED, not freed: the function may be redefining itself while
+\ its old body is being replayed. The top-level loop frees it.
+MAX-FUNCS CELLS BUFFER: FUNC-BODY-PTRS
 MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
 VARIABLE FD-DEPTH            \ nested "{" depth while capturing a body
 MAX-FUNCS CELLS BUFFER: FUNC-BODY-LENS
 
-: FUNC-BODY-SLOT ( i --- addr )  FUNC-BODY-MAX * FUNC-BODIES + ;
+: FUNC-BODY-SLOT ( i --- addr )  CELLS FUNC-BODY-PTRS + @ ;
 : FUNC-BODY-LEN-SLOT ( i --- addr )  CELLS FUNC-BODY-LENS + ;
 : FUNC-SUBSH-SLOT  ( i --- addr )  FUNC-SUBSH + ;
 
@@ -5866,7 +5950,6 @@ VARIABLE SF-I
   \ separators), so it's copied via a length-bounded MOVE, not
   \ SAFE-CSTR-COPY/SAFE-COPY-NUL (which assume a single trailing NUL
   \ terminator, the wrong shape for this data).
-  DUP FUNC-BODY-MAX 1- > IF DROP FUNC-BODY-MAX 1- THEN
   SF-BODY-LEN ! SF-BODY-ADDR ! SF-NAME !
   SF-NAME @ FIND-FUNC
   DUP -1 = IF
@@ -5883,7 +5966,10 @@ VARIABLE SF-I
   SF-NAME @ SF-I @ FUNC-NAME-SLOT FUNC-NAME-MAX SAFE-CSTR-COPY DROP
   SF-BODY-LEN @ SF-I @ FUNC-BODY-LEN-SLOT !
   FUNCDEF-SUBSHELL? @ SF-I @ FUNC-SUBSH-SLOT C!
-  SF-BODY-ADDR @ SF-I @ FUNC-BODY-SLOT SF-BODY-LEN @ MOVE ;
+  SF-I @ FUNC-BODY-SLOT ?DUP IF BUF-RETIRE THEN
+  SF-BODY-LEN @ 1+ ALLOCATE ABORT" shell: out of memory"
+  DUP SF-I @ CELLS FUNC-BODY-PTRS + !
+  SF-BODY-ADDR @ SWAP SF-BODY-LEN @ MOVE ;
 
 VARIABLE FUNC-CUR-I
 
@@ -6230,7 +6316,7 @@ VARIABLE WHILE-BODY-CUR
   BODY-ARENA-TOP @
   \ One physical line: SHADOW{ ... } cannot span lines (see shadow.4).
   SHADOW{ BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
-  LINE-MAX       BODY-ALLOC WHILE-COND-BUF !
+  RAW-LINE-LEN @ 1+ BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 WHILE-BODY-LEN !
   0 BODY-DEPTH !
@@ -6851,7 +6937,8 @@ VARIABLE RT-I
 
 : AL-APPEND ( c-addr u --- )
   SHADOW{ AL-NAME AL-LEN }
-  ALIAS-LINE-LEN @ AL-LEN @ + 1+ LINE-MAX < IF
+  ALIAS-LINE-LEN @ AL-LEN @ + 2 + ENSURE-BUFFER ALIAS-LINE
+  ALIAS-LINE-LEN @ AL-LEN @ + LINE-HARD-MAX < IF
     AL-NAME @ ALIAS-LINE ALIAS-LINE-LEN @ + AL-LEN @ MOVE
     ALIAS-LINE-LEN @ AL-LEN @ + ALIAS-LINE-LEN !
     32 ALIAS-LINE ALIAS-LINE-LEN @ + C!
@@ -7032,6 +7119,7 @@ VARIABLE PP-BAR
   \ body. A fully one-line "while ...; do ...; done" is complete, and
   \ DO-WHILE handles it directly since Iteration 117.
   FDC-BALANCED? IF EXIT THEN
+  RAW-LINE-LEN @ 1+ ENSURE-BUFFER PIPE-RAW-FULL
   RAW-LINE-BUF PIPE-RAW-FULL RAW-LINE-LEN @ MOVE
   RAW-LINE-LEN @ PIPE-RAW-FULL-LEN !
   0 PIPE-BODY-LEN !
@@ -7046,6 +7134,7 @@ VARIABLE PP-BAR
   PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
   PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
   PP-TRIM-TO-STAGE
+  RAW-LINE-LEN @ 1+ ENSURE-BUFFER PIPE-RAW
   RAW-LINE-BUF PIPE-RAW RAW-LINE-LEN @ MOVE
   RAW-LINE-LEN @ PIPE-RAW-LEN !
   PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
@@ -7127,6 +7216,7 @@ VARIABLE PP-BAR
   JOIN-CONTINUATIONS
   JOIN-OPEN-QUOTES
   DUP RAW-LINE-LEN !
+  RAW-LINE-LEN @ 1+ ENSURE-BUFFER RAW-LINE-BUF
   LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
   \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
   \ this exact line - that is how it decides whether a quote is still
@@ -7152,8 +7242,10 @@ VARIABLE PP-BAR
 ' RUN-LINE IS RUN-LINE-CALL
 
 : SH1 ( --- )  \ process one interactively-read line; returns either way
+  \ Nothing can point into a retired buffer between commands.
+  BUF-FREE-RETIRED
   SH-PROMPT
-  LINE-BUF LINE-MAX ACCEPT-CHECKED
+  0 BUFFER-BODY LINE-BUF ACCEPT-INTO
   \ Terminates the prompt line, so it belongs with the prompt on fd 2
   \ rather than on stdout. As a CR it put a stray newline into the
   \ output of every piped script.
@@ -7183,7 +7275,8 @@ VARIABLE PP-BAR
   SHFILE-FID !
   -1 SHFILE-ACTIVE? !
   BEGIN
-    LINE-BUF LINE-MAX SHFILE-FID @ READ-LINE-CHECKED
+    BUF-FREE-RETIRED   \ between commands: see SH1
+    0 BUFFER-BODY LINE-BUF SHFILE-FID @ READ-LINE-INTO
   WHILE
     RUN-LINE
   REPEAT
@@ -7202,6 +7295,10 @@ VARIABLE SHC-LEN
                         \ need multiple lines.
   -1 NO-MORE-INPUT? !
   DUP CSTRLEN SHC-LEN !
+  \ Grown to fit first: until Iteration 249 a -c string longer than
+  \ LINE-BUF was copied past its end.
+  SHC-LEN @ LINE-HARD-MAX > IF DROP LINE-TOO-LONG LAST-STATUS @ SYS-EXIT THEN
+  SHC-LEN @ 1+ ENSURE-BUFFER LINE-BUF
   LINE-BUF SHC-LEN @ MOVE
   SHC-LEN @ RUN-LINE
   LAST-STATUS @ SYS-EXIT ;
