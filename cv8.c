@@ -54,6 +54,17 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <poll.h>
+#include <stddef.h>
+
+/*  kernel.4's FD-POLL lays a struct pollfd out by hand, in two cells on
+ *  the data stack: a 32-bit fd, then 16-bit events and revents, eight
+ *  bytes in all. Refuse to build anywhere that is not the layout.  */
+_Static_assert(sizeof(struct pollfd) == 8
+               && offsetof(struct pollfd, events) == 4
+               && offsetof(struct pollfd, revents) == 6
+               && POLLIN == 1,
+               "struct pollfd is not the layout kernel.4's FD-POLL assumes");
 
 extern char **environ;
 
@@ -75,7 +86,7 @@ static char **g_argv;
  *  long as the count stayed 68: adding one primitive put DODOES at 71
  *  and left [71] = &&L_lit64t overwriting it, with no build error and a
  *  return stack overflow at run time.  */
-#define NPRIM 65
+#define NPRIM 66
 /*  Call and slot operands name a BYTE offset from the image base: the
  *  scale is 0, because dictionary headers are byte-granular and bodies
  *  are not aligned (Iteration 243). It was 3 or 2 - the cell shift -
@@ -87,7 +98,7 @@ static char **g_argv;
  *  kernel.4's PRIMITIVE list. NESC is fixed by that list - sod16.py's
  *  ESC_PRIMS_ALL names the same 32 words - and NDIRECT is whatever is
  *  left below them.  */
-#define NESC    30
+#define NESC    31
 #define NDIRECT (NPRIM - NESC)
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -549,6 +560,13 @@ NOINLINE_IO static long t_read(int fd, UNS64 a, UNS64 u) {
     return n < 0 ? -(long)errno : n;
 }
 
+/*  poll(2) on n structs at a, waiting ms milliseconds (-1: for ever):
+ *  the number ready, 0 on timeout, or -errno.  */
+NOINLINE_IO static long t_poll(UNS64 a, UNS64 n, UNS64 ms) {
+    int r = poll((struct pollfd *)(uintptr_t)a, (nfds_t)n, (int)(INT64)ms);
+    return r < 0 ? -(long)errno : r;
+}
+
 NOINLINE_IO static long t_write(int fd, UNS64 a, UNS64 u) {
     long n = write(fd, (const void *)(uintptr_t)a, (size_t)u);
     return n < 0 ? -(long)errno : n;
@@ -595,7 +613,7 @@ static void virtual_machine(void) {
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize, &&L_read, &&L_write,
+        &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
         /*  LIT32 is not one of kernel.4's primitives. It is appended
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
@@ -922,6 +940,17 @@ L_filesize: SPILL(); { /* fid --- ud ior */
 L_read: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
     t_flush();
     DS2 = (UNS64)(INT64)t_read((int)DS0, DS2, DS1);
+    dsp += 2 * CELL_BYTES;
+    FILLNEXT();
+}
+/*  POLL: poll(2), once. With it, Forth can wait for a descriptor
+ *  without changing anything shared - KEY waits on a non-blocking
+ *  stdin, KEY? asks without taking a byte, and MS is a poll on no
+ *  descriptors (Iteration 246). Flushes first, as READ does: this is a
+ *  wait.  */
+L_poll: SPILL(); { /* a-addr n ms --- n' : n' < 0 is -errno */
+    t_flush();
+    DS2 = (UNS64)(INT64)t_poll(DS2, DS1, DS0);
     dsp += 2 * CELL_BYTES;
     FILLNEXT();
 }

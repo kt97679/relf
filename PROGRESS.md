@@ -241,6 +241,7 @@ do not trust the absence of a line below.
 - **243** — +LOOP fixed; CV8 hosts itself and relf.c is retired
 - **244** — byte-granular headers in the product
 - **245** — READ and WRITE; the file words move into Forth; five old bugs
+- **246** — POLL: KEY waits, KEY? and MS
 
 ### Not tied to an iteration
 
@@ -14827,3 +14828,64 @@ see the error now; waiting needs `fcntl` or `poll`, which belongs with
 tests/verify: CORE 2,127 -> 2,129 markers; engine + shell image
 85,537 -> 86,009 (x86-64) and 75,437 -> 75,925 (i386); everything
 else unchanged.
+
+## Iteration 246: POLL - KEY waits, KEY? and MS
+
+**Why poll(2) rather than fcntl(2).** The fix GOALS.md sketched for a
+non-blocking stdin was to clear O_NONBLOCK around KEY's read. That flag
+belongs to the open file description, which descriptor 0 shares with
+the parent shell and every child: toggling it changes their behaviour,
+and a kill between the two calls leaves it changed. poll(2) waits and
+changes nothing. It also gives KEY? without a pushback slot - a zero
+timeout asks whether a byte is ready without taking it - and MS, as a
+poll on no descriptors. And it is the natural base for a cooperative
+multitasker.
+
+**The primitive.** `POLL ( a-addr n ms --- n' )`, one poll(2), escaped,
+appended: 66 primitives, 31 escaped. `cv8.c` refuses to build unless
+`struct pollfd` is eight bytes with events at 4 and revents at 6, and
+POLLIN is 1 - the layout kernel.4 writes by hand.
+
+**The words.**
+- `FD-POLL ( fd events ms --- revents | 0 | -errno )` lays the struct
+  out in two cells pushed for the purpose and found with SP@, as KEY
+  finds its byte. No variable: reentrant, for a multitasker. `W!` and
+  `W@` are the 16-bit helpers (`L!` is shadow.4's).
+- `FD-WAIT ( fd events --- revents )` waits for ever, retrying EINTR.
+- `KEY` reads; on a failure it waits ONCE with FD-WAIT and retries, and
+  a second failure exits. So EAGAIN is handled without knowing its
+  value, which differs by platform, and a real error - stdin a
+  directory, a terminal gone - leaves the descriptor readable, the retry
+  fails at once and KEY exits rather than spinning. A successful read
+  costs nothing extra.
+- `KEY? ( --- flag )`: a zero-timeout FD-POLL; true also at end of
+  input or on an error, where KEY would not wait either.
+- `MS ( u --- )`: poll on no descriptors.
+
+**tests/io/run**, run on both widths by run_tests.sh and counted by
+tests/verify, 17 checks. `tests/io/nonblock.c` sets O_NONBLOCK on stdin
+and execs its arguments - there is no portable shell command for it,
+and the tree's tests do not otherwise depend on Python. Against the
+previous engine the key case fails exactly as GOALS.md predicted: the
+first line runs, the pause yields EAGAIN, and KEY exits. The shell does
+the same on a non-blocking pipe with a pause in it, and no longer does.
+
+**Two measurement mistakes, both in the test, both worth keeping.**
+The FD-POLL timeout check first passed on the OLD engine, where FD-POLL
+does not exist: the interpreter blocked on the pipe until its writer
+closed, which also took "at least 200 ms". It is bounded above now. It
+then failed on the new engine at 1,004 ms, because `$(...)` waits for
+every process in the pipeline - the sleep that holds the pipe open
+included - and so does a process substitution inside it. The engine is
+now timed inside the pipeline, around itself alone. A timing
+assertion needs to fail on the thing it is meant to catch, not just
+pass on the thing that works.
+
+**Sizes.** Kernel 8,518 -> 8,710 (64-bit), 7,918 -> 8,106 (32-bit);
+engine + shell image 86,009 -> 86,249 and 75,925 -> 76,137.
+
+**Next, from here.** Terminal raw mode needs its own primitive, hiding
+`struct termios`; without it KEY? on a terminal sees nothing until
+Enter. A multitasker needs task stacks the engine's limit checks
+accept, and a way to wait on child processes. Both are in GOALS.md's
+queue. Three folded-band slots remain before the opcode map is full.

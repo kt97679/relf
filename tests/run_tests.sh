@@ -124,6 +124,19 @@ run_ext_suites() {
     echo "== PASS ($label extension suites): $n files =="
 }
 
+run_io_suite() {
+    # $1 = engine binary, $2 = image, $3 = label
+    # KEY, KEY?, MS and FD-POLL against pipes, a non-blocking stdin,
+    # files and a directory - see tests/io/run.
+    local out
+    if ! out=$(bash tests/io/run "$1" "$2" 2>&1); then
+        echo "$out"
+        echo "FAIL ($3 I/O suite)"
+        exit 1
+    fi
+    echo "== PASS ($3 I/O suite): $(echo "$out" | tail -1 | tr -d '=') =="
+}
+
 cross_compile_image() {
     # $1 = target cell bytes, $2 = destination path, $3 = label
     #
@@ -191,6 +204,7 @@ check_image_reproduces /tmp/relf-regen-kernel.img kernel.img "8-byte cells"
 echo "== Running test suite (8-byte cells) =="
 run_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
 run_ext_suites ./relf /tmp/relf-regen-kernel.img "8-byte cells"
+run_io_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
 run_shell_test_suite relf kernel.img "8-byte cells"
 
 echo "== Building relf32 (i386, 4-byte cells) =="
@@ -205,6 +219,7 @@ else
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"
+    run_io_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
 fi
 

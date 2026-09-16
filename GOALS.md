@@ -147,17 +147,18 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,518    kernel-shell.img     59,169
-    32-bit   kernel32.img   7,918    kernel32-shell.img   53,953
+    64-bit   kernel.img     8,710    kernel-shell.img     59,409
+    32-bit   kernel32.img   8,106    kernel32-shell.img   54,161
 
-**Sixty-five primitives**, escaped band on: the 30 OS/libc primitives
+**Sixty-six primitives**, escaped band on: the 31 OS/libc primitives
 sit behind ESC + a selector, declared after `ESCAPED` in `kernel.4`,
 which declares every primitive before its first definition because
 the synthetic opcodes are numbered from the total.
 
-**Descriptor I/O is two primitives** (Iteration 245): `READ` and
-`WRITE`, one read(2) or write(2) each, returning a count or a negative
-errno. Everything else is Forth on top, in `kernel.4`: `KEY` (one
+**Descriptor I/O is three primitives**: `READ` and `WRITE` (Iteration
+245), one read(2) or write(2) each, returning a count or a negative
+errno, and `POLL` (246), one poll(2). `FD-POLL` wraps it for one
+descriptor; `KEY?` and `MS` are built on it, and `KEY` uses it to wait. Everything else is Forth on top, in `kernel.4`: `KEY` (one
 byte, retrying `EINTR`), `ACCEPT` on `KEY`, `READ-FILE` and
 `WRITE-FILE` (looping over short counts), `WRITE-LINE`, and
 `READ-LINE`. Nothing reads ahead: `READ-LINE` reads a block from a
@@ -390,7 +391,10 @@ how to test; this is what exists:
 1. **`tests/` core suite** - `tester.fr` and the Forth-level tests, run
    on both cell widths. Counted in OK markers. `tests/ext/` holds the
    CORE EXT, Memory-Allocation and File-Access suites, which need
-   `extend.4` and run one file per engine invocation.
+   `extend.4` and run one file per engine invocation. `tests/io/run`
+   checks how the kernel reads its terminal - `KEY` on a non-blocking
+   pipe, `KEY?`, `MS`, `FD-POLL`, end of input and read errors - with a
+   small C helper, `tests/io/nonblock.c`, to set `O_NONBLOCK`.
 2. **`tests/shell/run-*`** - hand-written shell assertions, one file
    per feature, run by `tests/shell/run-all`. Use these for things bash
    is the *wrong* oracle for: diagnostics this shell emits, forms bash
@@ -1266,16 +1270,25 @@ once. Both are done; the rest keep their order.
    guard-page code was specialised out of `cv8.c`; it is in
    `attic/tools/lab/vm-lab.c`.
 
-4. **`KEY?` plus a termios/fcntl primitive.** The interactive shell
-   work, and the rest of the non-blocking `KEY` hazard below: the I/O
-   layering it needed is done (Iteration 245), so `KEY` can already
-   see `EAGAIN` and needs only a way to wait. Adds a primitive, so it
-   moves the opcode map - `NPRIM`, `NESC` and the dispatch table in
-   `cv8.c` - and uses one of the four free folded-band slots.
+4. ~~**`KEY?` plus a termios/fcntl primitive.**~~ **`KEY?` done**
+   (Iteration 246), on `POLL` rather than `fcntl`: poll(2) waits
+   without changing the descriptor's flags, which every process sharing
+   it would see. The non-blocking `KEY` hazard is fixed with it.
+   **Still open: terminal raw mode**, without which `KEY?` on a
+   terminal sees nothing until Enter. It wants its own primitive that
+   hides `struct termios`, whose layout differs by platform - say
+   `RAW-MODE ( fd flag --- ior )` - and it takes one of the three free
+   folded-band slots.
 
-   If the interactive shell matters more to you than engine
-   minimalism, move this ahead of 2. It costs a second round of
-   opcode-map work and delivers something usable sooner.
+5. **A cooperative multitasker**, the other thing `POLL` was chosen
+   for: `PAUSE` switches tasks, and when every task is waiting on a
+   descriptor the scheduler makes one poll(2) over all of them. Two
+   things to settle first. The engine checks both stacks against the
+   MAIN stacks' limits, so task stacks must lie inside the VM's memory
+   or the limits need a way to change. And poll(2) sees descriptors,
+   not child processes, so waiting on a background job needs a
+   SIGCHLD self-pipe or pidfd_open. `FD-POLL` is already reentrant -
+   it keeps its struct on the data stack - for this reason.
 
 A SMALLER THING, left so it is not re-proposed:
 
@@ -1321,29 +1334,18 @@ than remembered.
   not emit, so retiring the translator without teaching the compiler
   would have cost 2.4x.
 
-- **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
-  Since Iteration 245 `KEY` reads through `READ-SOME`, which sees the
-  real errno: end of input (0) exits, as it must; `EINTR` is retried;
-  every other error still exits - including `EAGAIN`, which a
-  non-blocking descriptor returns when no key has been pressed yet,
-  and where ANS `KEY` must wait instead.
-
-  Not reachable today: nothing sets `O_NONBLOCK` on descriptor 0. It
-  becomes reachable the moment `KEY?` is implemented the way its
-  references are - SOD32's `kbhit` toggles `O_NDELAY` around the read,
-  gforth probes the terminal - and the symptom will be the shell
-  exiting at random while someone is typing.
-
-  The fix needs a way to wait, which this system does not have as a
-  primitive: `fcntl` to clear `O_NONBLOCK` around the read, as SOD32's
-  `getch` does, or `poll`. Retrying `EAGAIN` alone would be a busy
-  loop. Errno values are the host's; `READ-SOME` relies only on
-  `EINTR` being 4, which it is on Linux and the BSDs.
-
-  The two related faults logged here before are fixed by the same
-  change: the file words now return the real errno rather than -200
-  for everything, and `READ-FILE` keeps the count of what it read
-  before an error instead of discarding it.
+- ~~**`KEY` exits the shell if descriptor 0 is non-blocking and
+  idle.**~~ **Fixed in Iteration 246.** A failed read now waits once,
+  with `FD-WAIT`, for descriptor 0 to become readable and tries again;
+  a second failure exits. That handles `EAGAIN` without knowing its
+  value (11 on Linux, 35 on the BSDs), and a real error - stdin a
+  directory, a terminal gone - leaves the descriptor readable, so the
+  retry fails at once and `KEY` exits instead of spinning.
+  `tests/io/run` covers it with a non-blocking pipe; the engine before
+  246 fails that case. One corner is accepted: if another process
+  sharing descriptor 0 takes the byte between the poll and the retry,
+  `KEY` exits. Reading a shared terminal concurrently is a race in any
+  case.
 
 ## Integrated from the article repository
 

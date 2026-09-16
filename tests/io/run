@@ -1,0 +1,86 @@
+#!/bin/bash
+# tests/io/run ENGINE IMAGE - how the kernel reads its terminal: KEY,
+# KEY?, MS and FD-POLL (Iteration 246).
+#
+# Every case feeds the engine's own interpreter through descriptor 0,
+# which is also what KEY reads - so a line is consumed by ACCEPT and
+# whatever follows it in the pipe is what KEY and KEY? see. Output is
+# matched as a substring after the marker each case prints, because the
+# interpreter prints its banner and an OK per line around it.
+#
+# The case this suite exists for is the first: a NON-BLOCKING stdin
+# with nothing written yet, where read(2) says EAGAIN. KEY used to exit
+# there; it must wait. The engine before Iteration 246 fails it, which
+# was checked when the suite was written.
+set -u
+cd "$(dirname "$0")/../.."
+E=$(readlink -f "$1"); I=$(readlink -f "$2")
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+cc -O2 -o "$T/nonblock" tests/io/nonblock.c || exit 1
+NB="$T/nonblock"
+pass=0; fail=0
+check() {   # check DESCRIPTION EXPECTED ACTUAL
+    if printf '%s' "$3" | tr -d '\r' | grep -qF -- "$2"; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        echo "FAIL: $1"
+        echo "      expected to contain: $2"
+        echo "      got: $(printf '%s' "$3" | tr -d '\r' | tr '\n' '|')"
+    fi
+}
+ms_now() { echo $(( $(date +%s%N) / 1000000 )); }
+
+# 1. KEY waits on a non-blocking stdin
+out=$( { printf 'S" A:" TYPE 1 2 + . CR\n'; sleep 0.4
+         printf 'S" B:" TYPE 3 4 + . CR\nBYE\n'; } | timeout 10 "$NB" "$E" "$I" 2>&1 )
+check "KEY waits on a non-blocking stdin (before the pause)" "A:3" "$out"
+check "KEY waits on a non-blocking stdin (after the pause)"  "B:7" "$out"
+
+# 2. KEY? sees a waiting byte, and does not take it
+out=$(printf 'S" K:" TYPE KEY? . KEY . CR BYE\nA' | timeout 10 "$E" "$I" 2>&1)
+check "KEY? is true when a byte is waiting, and KEY then gets it" "K:-1 65" "$out"
+
+# 3. KEY? with nothing waiting, blocking and non-blocking
+out=$( { printf 'S" Q:" TYPE KEY? . CR BYE\n'; sleep 1; } | timeout 10 "$E" "$I" 2>&1 )
+check "KEY? is false when nothing is waiting" "Q:0" "$out"
+out=$( { printf 'S" Q:" TYPE KEY? . CR BYE\n'; sleep 1; } | timeout 10 "$NB" "$E" "$I" 2>&1 )
+check "KEY? is false on a non-blocking stdin with nothing waiting" "Q:0" "$out"
+
+# 4. FD-POLL: a timeout, and a readable file
+# Timed INSIDE the pipeline, around the engine alone: the pipeline as a
+# whole lasts as long as the sleep that holds the pipe open.
+out=$( { printf 'S" P:" TYPE 0 1 200 FD-POLL . CR BYE\n'; sleep 1; } |
+       { t0=$(ms_now); timeout 10 "$E" "$I" 2>&1; echo "EL=$(( $(ms_now) - t0 ))"; } )
+el=$(printf '%s' "$out" | sed -n 's/^EL=//p')
+check "FD-POLL returns 0 when it times out" "P:0" "$out"
+# Bounded above as well: the writer holds the pipe open for a second, so
+# anything that blocks on the pipe instead of timing out takes that long.
+check "FD-POLL waited for its timeout, not for the pipe (${el} ms)" "yes" \
+      "$([ "$el" -ge 190 ] && [ "$el" -lt 900 ] && echo yes)"
+out=$(printf 'S" kernel.4" R/O OPEN-FILE DROP 1 0 FD-POLL S" R:" TYPE . CR BYE\n' | timeout 10 "$E" "$I" 2>&1)
+check "FD-POLL reports POLLIN on a regular file" "R:1" "$out"
+
+# 5. MS
+t0=$(ms_now)
+out=$(printf '300 MS S" M:" TYPE 0 MS 1 . CR BYE\n' | timeout 10 "$E" "$I" 2>&1)
+el=$(( $(ms_now) - t0 ))
+check "MS returns" "M:1" "$out"
+check "300 MS waited at least 300 ms (${el} ms)" "yes" "$([ "$el" -ge 300 ] && echo yes)"
+
+# 6. End of input and read errors end the session rather than hanging
+out=$(printf 'S" E:" TYPE 5 . CR\n' | timeout 10 "$E" "$I" 2>&1); st=$?
+check "end of a pipe exits" "E:5" "$out"
+check "end of a pipe exits with status 0" "st=0" "st=$st"
+out=$(printf 'S" E:" TYPE 6 . CR\n' | timeout 10 "$NB" "$E" "$I" 2>&1); st=$?
+check "end of a non-blocking pipe exits" "E:6" "$out"
+check "end of a non-blocking pipe exits with status 0" "st=0" "st=$st"
+printf 'S" F:" TYPE KEY? . CR\n' > "$T/in.fth"
+out=$(timeout 10 "$E" "$I" < "$T/in.fth" 2>&1); st=$?
+check "KEY? is true on a regular file, and its end exits" "F:-1" "$out"
+check "the end of a regular file exits with status 0" "st=0" "st=$st"
+timeout 10 "$E" "$I" < / > /dev/null 2>&1; st=$?
+check "a read error (stdin a directory) exits instead of spinning" "st=0" "st=$st"
+
+echo "== $pass passed, $fail failed =="
+[ "$fail" = 0 ]

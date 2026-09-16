@@ -181,6 +181,10 @@ PRIMITIVE SETFSIZE  ( n --- ior )
 \ with every other write.
 PRIMITIVE READ      ( c-addr u fd --- n )
 PRIMITIVE WRITE     ( c-addr u fd --- n )
+\ poll(2), once: n structs pollfd at a-addr, waiting ms milliseconds
+\ (-1: for ever). n' is the number ready, 0 on timeout, or a negative
+\ errno. Flushes terminal output first, like READ. See FD-POLL.
+PRIMITIVE POLL      ( a-addr n ms --- n' )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -814,6 +818,36 @@ VARIABLE #SRC ( --- addr)
   THEN
   >R OVER + -1 R> RL-END ;
 
+: W! ( w a-addr --- )
+\ Store the low 16 bits of w at a-addr, little-endian.
+  2DUP C! SWAP 8 RSHIFT SWAP 1+ C! ;
+
+: W@ ( a-addr --- w )
+\ Fetch an unsigned 16-bit little-endian value.
+  DUP C@ SWAP 1+ C@ 8 LSHIFT OR ;
+
+: FD-POLL ( fd events ms --- revents | 0 | -errno )
+\ poll(2) on one descriptor: the events that occurred, 0 on timeout, or
+\ a negative errno. events and revents are poll(2)'s bits; POLLIN is 1.
+\
+\ The struct pollfd - an int fd, then short events and short revents,
+\ eight bytes, checked by cv8.c at build time - is laid out in two
+\ cells pushed onto the data stack for the purpose and found with SP@,
+\ as KEY finds its byte. No variable, so the word is reentrant, which a
+\ multitasker will need.
+  >R >R >R 0 0 SP@ R> R> R>            ( 0 0 p fd events ms )
+  >R 2 PICK 4 + W!                     ( 0 0 p fd )
+  DUP 2 PICK W! 16 RSHIFT OVER 2 + W!  ( 0 0 p )
+  DUP 1 R> POLL                        ( 0 0 p n )
+  DUP 0 > IF DROP 6 + W@ ELSE SWAP DROP THEN
+  >R 2DROP R> ;
+
+: FD-WAIT ( fd events --- revents )
+\ Wait for one of events on fd, however long it takes: the events that
+\ occurred, or 0 if poll(2) itself failed. A signal is retried.
+  BEGIN 2DUP -1 FD-POLL DUP -4 = WHILE DROP REPEAT
+  >R 2DROP R> 0 MAX ;
+
 : KEY ( --- c )
 \ Receive one character from the terminal.
 \
@@ -823,19 +857,41 @@ VARIABLE #SRC ( --- addr)
 \ INHERITED, shared with every child, and a byte read ahead is a byte
 \ taken from whatever runs next. The engine used to hold 4096 bytes of
 \ it, and `read x; cat` swallowed the whole pipe - see
-\ tests/shell/run-read.
-\
-\ Reading into the cell the 0 just pushed, via SP@, for the same
-\ reason EMIT does: the character is already in memory.
+\ tests/shell/run-read. Reading into the cell the 0 just pushed, via
+\ SP@, for the same reason EMIT does.
 \
 \ End of input exits, which is not decoration: without it a shell
 \ reading a script off stdin spun on read(0,"",1)=0 forever (GOALS.md's
-\ Bug 3). A signal is retried (READ-SOME). KNOWN SHORTCUT, see
-\ GOALS.md: every other error exits too, including EAGAIN on a
-\ non-blocking descriptor, where KEY should wait. Nothing sets
-\ O_NONBLOCK on descriptor 0 yet; KEY? will need the fix.
-   0 SP@ 1 0 READ-SOME
-   1 = 0= IF BYE THEN ;
+\ Bug 3).
+\
+\ A failed read WAITS, once, for descriptor 0 to become readable, then
+\ tries again; a second failure exits. That covers a non-blocking
+\ descriptor with nothing typed yet (EAGAIN, where ANS KEY must wait
+\ and this used to exit), without knowing EAGAIN's value, which is 11
+\ on Linux and 35 on the BSDs. A real error - stdin a directory, a
+\ terminal gone - leaves the descriptor "readable", so the retry fails
+\ at once and KEY exits rather than spinning. No shared state changes:
+\ fcntl could have made the descriptor blocking, but the flag belongs
+\ to every process sharing it (Iteration 246).
+  0                                    ( waited? )
+  BEGIN
+    0 SP@ 1 0 READ-SOME                ( waited? c n )
+    DUP 1 = IF DROP SWAP DROP EXIT THEN
+    0= ROT OR IF BYE THEN              ( c )
+    DROP 0 1 FD-WAIT 1 AND 0= IF BYE THEN
+    -1
+  0 UNTIL ;
+
+: KEY? ( --- flag )
+\ Is a character available from the terminal, now? Also true at end of
+\ input or on an error, where KEY would not wait either. On a terminal
+\ in its usual line mode the system sees nothing until Enter.
+  0 1 0 FD-POLL 0= 0= ;
+
+: MS ( u --- )
+\ Wait at least u milliseconds: poll(2) on no descriptors. A signal can
+\ end the wait early; nothing in this system installs a handler.
+  0 0 ROT POLL DROP ;
 
 : ACCEPT ( c-addr n1 --- n2 )
 \ Read a line from the terminal into a buffer at c-addr of length n1;

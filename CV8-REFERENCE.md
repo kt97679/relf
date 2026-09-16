@@ -162,39 +162,40 @@ encode an opcode the engine decoded as something else, with no build
 error. Until Iteration 245 the engine's folded table was still written
 as `[72 + k]`, which is right for 67 primitives only.
 
-With 65 primitives (Iteration 245) and the escaped band on:
+With 66 primitives (Iteration 246) and the escaped band on:
 
 | range | meaning |
 |---|---|
 | `0x00`–`0x22` | the 35 **direct** primitives, in `PRIMITIVE` order |
-| `0x23`–`0x40` | vacated — the 30 escaped primitives live behind `ESC` |
-| `0x41` | `LIT32` — 4-byte signed operand |
-| `0x42` | `DOVAR` — data body prologue |
-| `0x43` | `DODOES` — `DOES>` body prologue |
-| `0x44` | `LIT8` — 1-byte unsigned operand |
-| `0x45` | `LIT8;EXIT` |
-| `0x46`–`0x5C` | folded `primitive;EXIT`, in the fold-set order (23 used) |
-| `0x5D`–`0x60` | free |
+| `0x23`–`0x41` | vacated — the 31 escaped primitives live behind `ESC` |
+| `0x42` | `LIT32` — 4-byte signed operand |
+| `0x43` | `DOVAR` — data body prologue |
+| `0x44` | `DODOES` — `DOES>` body prologue |
+| `0x45` | `LIT8` — 1-byte unsigned operand |
+| `0x46` | `LIT8;EXIT` |
+| `0x47`–`0x5D` | folded `primitive;EXIT`, in the fold-set order (23 used) |
+| `0x5E`–`0x60` | free |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
-| `0x7E` | `ESC` + a selector byte: one of the 30 OS/libc primitives |
+| `0x7E` | `ESC` + a selector byte: one of the 31 OS/libc primitives |
 | `0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two- or three-byte call |
 
 Everything from `LIT32` to the end of the folded band is `NPRIM + k`,
 so it moves with the primitive count: it sat at `0x43`–`0x5E` with 67
-primitives. The specialised band, `LIT64` and `ESC` do not move.
+primitives and `0x41`–`0x5C` with 65. The specialised band, `LIT64` and `ESC` do not move.
 
-Free: `0x5D`–`0x60` and `0x7F`, plus the 30 vacated at `0x23`–`0x40`.
+Free: `0x5E`–`0x60` and `0x7F`, plus the 31 vacated at `0x23`–`0x41`.
 The vacated ones are NOT usable by a new primitive — primitives are
-numbered by position from 0, so a 66th would land at the end of the
+numbered by position from 0, so a 67th would land at the end of the
 list and push `LIT32` and everything after it up by one. They are
 reachable only by something numbered explicitly. So the headroom is
-the four at `0x5D`–`0x60`: four more primitives before the folded
+the three at `0x5E`–`0x60`: three more primitives before the folded
 band reaches the specialised one. `cross.4` refuses to build past that.
 
-The escaped band is what keeps that from being tight. The 30 OS/libc
-primitives — `BYE`, the file and process words, `READ`, `WRITE` — are
+The escaped band is what keeps that from being tight. The 31 OS/libc
+primitives — `BYE`, the file and process words, `READ`, `WRITE`,
+`POLL` — are
 a few percent of static sites and a negligible share of dispatches, so
 putting them behind `ESC` costs a byte each where it does not matter
 and frees opcodes where it does. They are **contiguous at the end** of
