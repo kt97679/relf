@@ -13,10 +13,25 @@ out=$(timeout 20 "$THIS_SH" "$t/b.sh" 2>&1)
 assert_output_contains "deep recursion is diagnosed" "recursion too deep" "$out"
 assert_output_contains "and the shell survives it"   "survived"           "$out"
 
-# the shell-variable table reports when full instead of silently
-# dropping assignments
-{ i=0; while [ $i -lt 40 ]; do echo "v$i=$i"; i=$((i+1)); done; echo 'echo done'; } > "$t/c.sh"
+# the shell-variable table held 32 and reported the 33rd (Iteration 90);
+# since Iteration 252 it grows, so 40 variables are simply 40 variables
+{ i=0; while [ $i -lt 40 ]; do echo "v$i=$i"; i=$((i+1)); done; echo 'echo "done $v0 $v32 $v39"'; } > "$t/c.sh"
 out=$(timeout 15 "$THIS_SH" "$t/c.sh" 2>&1)
-assert_output_contains "a full variable table is reported" "too many shell variables" "$out"
+assert_output_equals "the variable table grows past 32" "done 0 32 39" "$out"
 assert_output_contains "and execution continues"           "done" "$out"
+# A variable name that does not fit (64 bytes) is refused with status
+# 2. Until Iteration 252 its copy failed silently and the assignment
+# went to the PREVIOUS assignment's variable: here, x.
+long=$(head -c 70 /dev/zero | tr '\0' n)
+printf 'x=5\n%s=1\necho "st=$? x=$x"\n' "$long" > "$t/name.sh"
+out=$(timeout 10 "$THIS_SH" "$t/name.sh" 2>/dev/null)
+assert_output_equals "a too-long name is refused and touches nothing else" "st=2 x=5" "$out"
+err=$(timeout 10 "$THIS_SH" "$t/name.sh" 2>&1 >/dev/null)
+assert_output_equals "a too-long name is reported" "shell: variable name too long" "$err"
+
+# An alias value is still 255 characters: reported, never left stale.
+printf 'alias a1=first\nalias a1="%s"\necho "st=$?"\n' "$(head -c 300 /dev/zero | tr '\0' q)" > "$t/alias.sh"
+out=$(timeout 10 "$THIS_SH" "$t/alias.sh" 2>&1)
+assert_output_contains "a too-long alias value is reported" "value too long" "$out"
+
 report

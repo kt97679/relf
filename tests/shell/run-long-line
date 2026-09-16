@@ -5,9 +5,9 @@
 # They used to be cut at 256, and the tail read as the next line - so the
 # tail of `echo <250 characters>Z echo INJECTED` ran as a command nobody
 # wrote. Iteration 248 made that an error; 249 made the buffers grow, so
-# a long line simply runs. What is still limited, and must be REPORTED
-# rather than silently wrong, is tested here too: the 1 MB ceiling on a
-# line, and the 255-character limit on a variable's value.
+# a long line simply runs, and 252 lifted the limit on values. What is
+# still limited, and must be REPORTED rather than silently wrong, is
+# tested here too: the 1 MB ceiling on a line.
 . "$(dirname "$0")/lib.sh"
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
@@ -40,25 +40,23 @@ assert_output_equals "a line past the 1 MB ceiling runs nothing, and the script 
 err=$("$THIS_SH" "$t/huge.sh" 2>&1 >/dev/null)
 assert_output_equals "the ceiling is reported on stderr" "shell: line too long" "$err"
 
-# A value is still limited to 255 characters. Over that it is reported,
-# EMPTY and status 2 - it used to keep the previous assignment's value.
-printf 'a=first\nb=%s\necho "b=[$b] st=$?"\n' "$(pad e 300)" > "$t/val.sh"
-out=$("$THIS_SH" "$t/val.sh" 2>/dev/null)
-assert_output_equals "a too-long value is empty, never a stale one" "b=[] st=2" "$out"
-err=$("$THIS_SH" "$t/val.sh" 2>&1 >/dev/null)
-assert_output_equals "a too-long value is reported" "shell: value too long" "$err"
-printf 'b=%s\necho "${#b}"\n' "$(pad f 255)" > "$t/val255.sh"
-out=$("$THIS_SH" "$t/val255.sh" 2>&1)
-assert_output_equals "a 255-character value is kept" "255" "$out"
+# A variable's value has no fixed limit since Iteration 252. At 255
+# characters, until then, a longer value was dropped - and until 249 the
+# variable kept its PREVIOUS value instead.
+printf 'a=first\nb=%s\necho "${#b} st=$?"\n' "$(pad e 300)" > "$t/val.sh"
+out=$("$THIS_SH" "$t/val.sh" 2>&1)
+assert_output_equals "a 300-character value is kept whole" "300 st=0" "$out"
+printf 'b=%s\necho "${#b}"\n' "$(pad f 20000)" > "$t/val20k.sh"
+out=$("$THIS_SH" "$t/val20k.sh" 2>&1)
+assert_output_equals "a 20,000-character value is kept whole" "20000" "$out"
 
-# read takes the whole line, whatever its length: the next read gets
-# the NEXT line. A field too long for a variable is reported as above.
-printf 'read x\necho "st=$? x=[$x]"\nread y\necho "y=[$y]"\n' > "$t/rd.sh"
-out=$({ echo first; pad g 3000; printf '\nshort\n'; } | "$THIS_SH" -c 'read p; echo "p=[$p]"; read x; echo "st=$? x=[$x]"; read y; echo "y=[$y]"' 2>/dev/null)
-assert_output_equals "read: a long line is consumed whole" "p=[first]
-st=2 x=[]
+# read takes the whole line, whatever its length, and the next read gets
+# the NEXT line.
+out=$({ echo first; pad g 3000; printf '\nshort\n'; } | "$THIS_SH" -c 'read p; echo "p=[$p]"; read x; echo "st=$? ${#x}"; read y; echo "y=[$y]"' 2>&1)
+assert_output_equals "read: a long line is read whole" "p=[first]
+st=0 3000
 y=[short]" "$out"
-out=$({ pad h 200; printf ' %s\n' "$(pad i 200)"; } | "$THIS_SH" -c 'read x y; echo "${#x} ${#y}"' 2>&1)
-assert_output_equals "read: a 401-character line splits into its fields" "200 200" "$out"
+out=$({ pad h 2000; printf ' %s\n' "$(pad i 2000)"; } | "$THIS_SH" -c 'read x y; echo "${#x} ${#y}"' 2>&1)
+assert_output_equals "read: a long line splits into long fields" "2000 2000" "$out"
 
 report

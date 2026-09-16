@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,726    kernel-shell.img     62,890
-    32-bit   kernel32.img   8,122    kernel32-shell.img   57,041
+    64-bit   kernel.img     8,726    kernel-shell.img     63,714
+    32-bit   kernel32.img   8,122    kernel32-shell.img   57,901
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -703,8 +703,9 @@ reasoning behind them:
   agreed, several did: `MAX-SHVARS` (32 shell variables - `SET-SHVAR`
   just did nothing when full), `MAX-FUNCS` (16),
   `MAX-POS-PARAM-DEPTH` (32), `MAX-ARGS` (64). Iteration 90 gave them
-  diagnostics, so none is silent now; they are still fixed. Making them
-  growable is the goal. The line length limit (`LINE-MAX`, 256) was the
+  diagnostics, so none was silent after that; since Iterations 250-252
+  all but `MAX-FUNCS` grow (`MAX-POS-PARAM-DEPTH` is the recursion
+  limit, and stays). The line length limit (`LINE-MAX`, 256) was the
   same kind of table: silent until Iteration 248, growable since 249 -
   pool.4's `BUF-ENSURE`, which RETIRES the old block rather than
   freeing it, because code holds addresses into these buffers; the
@@ -1017,13 +1018,16 @@ of this file:
   against bash). A line past 1 MB (`LINE-HARD-MAX`) is reported and
   discarded, so a binary file costs a message, not the memory.
 - **What is still fixed, now that lines are not.** Growable since
-  Iterations 249-251: lines (to 1 MB), the words of a line (to 65,536),
+  Iterations 249-252: lines (to 1 MB), the words of a line (to 65,536),
   positional parameters, the text a line expands to and command
   substitution output (to 16 MB each, then "expansion too large"),
-  `for` lists, here-document bodies. Still fixed:
-  - A variable's value, 255 characters: reported ("value too long",
-    status 2, the value empty - until 249 it kept the PREVIOUS value).
-    Alias values likewise 256, and `${var%pattern}`-style words.
+  `for` lists, here-document bodies, variable values, and the variable
+  table (to 65,536 variables). Still fixed, all REPORTED:
+  - Variable names, 63 characters ("variable name too long", status 2).
+    Until 252 a longer name's assignment went to the PREVIOUS
+    assignment's variable.
+  - Aliases: 32 of them, names 63 characters, values 255 ("value too
+    long"; until 252 a longer value left the old one in place).
   - Not this shell's: Linux refuses a single exec argument over 128 KB,
     which a long `echo` meets because `echo` here is `/bin/echo`.
 - **`for` after `&&` or `||` is not recognised** (`true && for i in 1;
@@ -1032,6 +1036,10 @@ of this file:
 - **A one-line `for` inside a multi-line `for` is a syntax error**
   ("unexpected end of input, expected 'done'"). Recorded in Iteration
   251; earlier builds fail the same way.
+- **An assignment inside the first stage of a pipeline reaches the
+  parent** (`echo ${x:=v} | cat; echo $x` prints `v` here and nothing
+  in dash and bash, which run every stage in a subshell). Recorded in
+  Iteration 252.
 - **A `-c` string with newlines is one line.** `relfsh -c 'echo one
   <newline> echo two'` prints "one", a newline and "echo two", so a
   here-document or any second command in a `-c` string does not work.
@@ -1322,8 +1330,9 @@ once. Both are done; the rest keep their order.
 5. **The rest of the growable-buffer work.** Iteration 249 did the
    line buffers, 250 the word arrays and positional parameters, 251
    expansion output, command substitution, `for` lists and
-   here-documents. What is left is variable and alias values - no
-   longer silent, but still 255 characters. Each by the same rule: grow before any
+   here-documents, 252 variable values and the variable table. What is
+   left is the alias table and name lengths, all reported rather than
+   silent; worth doing only if a real script meets them. Each by the same rule: grow before any
    pointer into the table is taken, retire rather than free, and
    diagnose whatever stays fixed.
 

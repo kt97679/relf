@@ -247,6 +247,7 @@ do not trust the absence of a line below.
 - **249** — growable line buffers; stale values; function bodies; a test that compared nothing
 - **250** — the word arrays grow; positional parameters past nine
 - **251** — expansion output, command substitution, for lists and here-documents grow
+- **252** — variable values and the variable table grow; three stale-state bugs
 
 ### Not tied to an iteration
 
@@ -15175,3 +15176,46 @@ taken as one line. Both behave the same in earlier builds.
 
 tests/verify: engine + shell image 89,090 -> 89,730 (x86-64), 78,441 ->
 79,017 (i386); everything else unchanged.
+
+## Iteration 252: variable values and the variable table
+
+**Values.** Each variable's value is a heap block of its own, with its
+capacity recorded (`SHVAR-VALS`, `SHVAR-VCAPS`). A value that fits is
+copied in place, exactly as the 256-byte slots were; a larger one gets a
+block of at least twice the size, filled before the old block is
+RETIRED - so a value may be assigned from itself, and only growth
+retires, so `s="$s."` two thousand times keeps a handful of blocks, not
+two thousand (20,000 assignments with `unset` in between: 2.0 MB peak,
+against 1.8 MB before). `unset` frees its block. The staging buffers an
+assignment, `read` and `${x:=word}` pass through grow to fit first.
+
+**The table** doubles when it fills - names, value pointers, capacities
+and readonly flags together - to 65,536 variables. It held 32, and the
+33rd was refused; `tests/shell/run-limits` asserted that refusal and now
+asserts that 40 work.
+
+**Three bugs of one shape** - a bounded copy whose failure flag was
+dropped, leaving the destination as it was:
+- `unset` moved the table's last entry into the hole but not its
+  readonly flag, so `a=1; b=2; readonly b; unset a; b=3` succeeded.
+- A variable name over 63 characters: its copy failed, the name buffer
+  kept the PREVIOUS assignment's name, and `x=5; <70-character name>=1`
+  set x. The name buffer grows now, and `SET-SHVAR` refuses a name that
+  does not fit its slot - "variable name too long", status 2 - before
+  making an entry.
+- An alias value over 255 characters left the old value; it is reported
+  now (the alias table itself is still fixed, and so are name lengths).
+
+All three fail on the previous build and pass on this one
+(`run-unset`, `run-limits`). `tests/diff/cases/long-values.sh` - long
+values, 200 variables, growth in a loop, `unset`, braced forms on a
+1,000-character value - matches bash. `run-long-line` now asserts that
+a 20,000-character value and a 3,000-character `read` field are kept.
+
+**Found while testing, not changed:** `eval` is not implemented (known);
+redirections on builtins are still dropped, so `read x < file` reads
+the shell's own stdin (known); and `${x:=word}` in a pipeline stage sets
+x in the parent, where POSIX shells run the stage in a subshell.
+
+tests/verify: shell assertions 573 -> 577; engine + shell image 89,730
+-> 90,554 (x86-64), 79,017 -> 79,877 (i386).

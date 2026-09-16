@@ -534,17 +534,63 @@ VARIABLE VALUE-FAILED?
 \ everywhere else (ARGV, the PATH search, etc).
 \ ==================================================================
 
-32  CONSTANT MAX-SHVARS
+\ Since Iteration 252 the table and its values grow. It held 32
+\ variables, and every value was a 256-byte slot: the 33rd variable was
+\ refused, and a longer value was dropped (and, until 249, left the
+\ PREVIOUS value in place). Now the table doubles as it fills - names,
+\ value pointers, capacities and readonly flags together - and each
+\ value is a heap block of its own. A value that fits its block is
+\ copied in place, as the slots were; a larger one gets a new block of
+\ at least twice the size, and the old block is RETIRED rather than
+\ freed (pool.4), which only growth does, so a loop assigning a million
+\ times keeps no more than a few. `unset` frees its block.
+32  CONSTANT MAX-SHVARS          \ the table's starting size
 64  CONSTANT SHVAR-NAME-MAX
-256 CONSTANT SHVAR-VALUE-MAX
+256 CONSTANT SHVAR-VALUE-MAX     \ the staging buffers' starting size
+65536 CONSTANT SHVARS-HARD-MAX
+VARIABLE SHVAR-CAP   MAX-SHVARS SHVAR-CAP !
 MAX-SHVARS SHVAR-NAME-MAX * BUFFER: SHVAR-NAMES
-MAX-SHVARS SHVAR-VALUE-MAX * BUFFER: SHVAR-VALUES
+MAX-SHVARS CELLS BUFFER: SHVAR-VALS    \ each value's block; 0 before it is set
+MAX-SHVARS CELLS BUFFER: SHVAR-VCAPS   \ that block's size
 MAX-SHVARS BUFFER: SHVAR-RO   \ readonly flag per slot
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
-
+CREATE EMPTY-CSTR 0 C,
 : SHVAR-NAME-SLOT ( i --- addr )   SHVAR-NAME-MAX * SHVAR-NAMES + ;
-: SHVAR-VALUE-SLOT ( i --- addr )  SHVAR-VALUE-MAX * SHVAR-VALUES + ;
+: SHVAR-VALUE-SLOT ( i --- addr )
+  CELLS SHVAR-VALS + @ ?DUP 0= IF EMPTY-CSTR THEN ;
+
+: GROW-SHVARS ( --- f )
+\ Room for one more variable? Doubles the table if it can.
+  SHVAR-COUNT @ SHVAR-CAP @ < IF -1 EXIT THEN
+  SHVAR-CAP @ SHVARS-HARD-MAX < 0= IF 0 EXIT THEN
+  SHVAR-CAP @ 2*
+  DUP SHVAR-NAME-MAX * ENSURE-BUFFER SHVAR-NAMES
+  DUP CELLS ENSURE-BUFFER SHVAR-VALS
+  DUP CELLS ENSURE-BUFFER SHVAR-VCAPS
+  DUP ENSURE-BUFFER SHVAR-RO
+  SHVAR-CAP !  -1 ;
+
+VARIABLE SVV-SRC
+VARIABLE SVV-I
+VARIABLE SVV-LEN
+VARIABLE SVV-NEW
+
+: SET-SHVAR-VALUE ( value-addr i --- )
+\ Store a NUL-terminated value in variable i. The new block is filled
+\ before the old one is retired, so the value may come from the old one.
+  SHADOW{ SVV-SRC SVV-I | SVV-LEN SVV-NEW }
+  SVV-SRC @ CSTRLEN SVV-LEN !
+  SVV-LEN @ 1+ SVV-I @ CELLS SHVAR-VCAPS + @ > IF
+    SVV-LEN @ 1+ 32 MAX  SVV-I @ CELLS SHVAR-VCAPS + @ 2* MAX
+    DUP ALLOCATE ABORT" shell: out of memory" SVV-NEW !
+    SVV-I @ CELLS SHVAR-VCAPS + !
+    SVV-SRC @ SVV-NEW @ SVV-LEN @ 1+ MOVE
+    SVV-I @ CELLS SHVAR-VALS + @ ?DUP IF BUF-RETIRE THEN
+    SVV-NEW @ SVV-I @ CELLS SHVAR-VALS + !
+  ELSE
+    SVV-SRC @ SVV-I @ CELLS SHVAR-VALS + @ SVV-LEN @ 1+ MOVE
+  THEN ;
 
 VARIABLE FS-I
 
@@ -595,10 +641,18 @@ VARIABLE SV-IDX
                                             \ name and value slots came
                                             \ out swapped).
   SHADOW{ SV-NAME SV-VALUE | SV-IDX }
+  \ A name that does not fit is refused before an entry is made: the
+  \ copy below used to fail silently, and a new entry kept whatever
+  \ name its slot last held (Iteration 252).
+  SV-NAME @ CSTRLEN SHVAR-NAME-MAX < 0= IF
+    S" shell: variable name too long" ERR-TYPE ERR-NL  2 LAST-STATUS !
+    -1 VALUE-FAILED? !
+    EXIT
+  THEN
   SV-NAME @ FIND-SHVAR
   DUP -1 = IF
     DROP
-    SHVAR-COUNT @ MAX-SHVARS < 0= IF
+    GROW-SHVARS 0= IF
       \ GOALS.md's memory policy: a full fixed table must never fail
       \ silently. This used to just EXIT, so the 33rd variable was
       \ never set and every later use of it expanded to empty -
@@ -620,7 +674,7 @@ VARIABLE SV-IDX
     EXIT
   THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
-  SV-VALUE @ DUP CSTRLEN SV-IDX @ SHVAR-VALUE-SLOT SHVAR-VALUE-MAX VALUE-COPY ;
+  SV-VALUE @ SV-IDX @ SET-SHVAR-VALUE ;
 
 : REMOVE-SHVAR ( name-addr --- )  \ shifts the last entry into the
                                     \ removed slot rather than
@@ -630,16 +684,20 @@ VARIABLE SV-IDX
                                     \ the name isn't present.
   FIND-SHVAR
   DUP -1 = IF DROP EXIT THEN
-  DUP SHVAR-COUNT @ 1- = IF
-    DROP SHVAR-COUNT @ 1- SHVAR-COUNT !
-    EXIT
+  DUP CELLS SHVAR-VALS + @ ?DUP IF FREE DROP THEN
+  SHVAR-COUNT @ 1- 2DUP <> IF              ( i last )
+    \ The last entry moves into the hole - its readonly flag too,
+    \ which until Iteration 252 stayed behind.
+    DUP SHVAR-NAME-SLOT 2 PICK SHVAR-NAME-SLOT SHVAR-NAME-MAX MOVE
+    DUP CELLS SHVAR-VALS + @   2 PICK CELLS SHVAR-VALS + !
+    DUP CELLS SHVAR-VCAPS + @  2 PICK CELLS SHVAR-VCAPS + !
+    DUP SHVAR-RO + C@          2 PICK SHVAR-RO + C!
   THEN
-  SHVAR-COUNT @ 1- SHVAR-NAME-SLOT
-  OVER SHVAR-NAME-SLOT SHVAR-NAME-MAX MOVE
-  SHVAR-COUNT @ 1- SHVAR-VALUE-SLOT
-  OVER SHVAR-VALUE-SLOT SHVAR-VALUE-MAX MOVE
-  DROP
-  SHVAR-COUNT @ 1- SHVAR-COUNT ! ;
+  \ The last slot is free now: no block, so the next variable to take
+  \ it allocates its own instead of freeing one it does not own.
+  0 OVER CELLS SHVAR-VALS + !  0 OVER CELLS SHVAR-VCAPS + !
+  0 OVER SHVAR-RO + C!
+  SHVAR-COUNT !  DROP ;
 
 DEFER POS-DIGIT-CALL   \ patched once POS-PARAM-SLOT exists, below
 
@@ -1988,7 +2046,8 @@ VARIABLE EBW-NAMELEN
   EXPAND-BRACED-WORD
   \ CBW-START is an OFFSET, and the rewind is by offset: the buffer may
   \ have moved while the word expanded (Iteration 251).
-  TOK-OUT @ OUT-BASE - CBW-START @ - DUP 255 > IF DROP 255 THEN
+  TOK-OUT @ OUT-BASE - CBW-START @ -
+  DUP 1+ ENSURE-BUFFER PEWORD-BUF
   PEWORD-LEN !
   OUT-BASE CBW-START @ + PEWORD-BUF PEWORD-LEN @ MOVE
   0 PEWORD-BUF PEWORD-LEN @ + C!
@@ -3214,10 +3273,16 @@ VARIABLE DA-EQ
   \ ASSIGN-VALUE-BUF, without deciding what to do with them. Shared by
   \ DO-ASSIGN-AT (shell variables) and DO-ALIAS.
   SHADOW{ DA-ADDR DA-EQ }
-  DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF SHVAR-NAME-MAX SAFE-COPY-NUL DROP
+  \ The whole name, however long: SET-SHVAR refuses one that does not
+  \ fit the table. This copy used to fail silently for a name over 63
+  \ characters and leave the PREVIOUS assignment's name in the buffer,
+  \ so `x=5; <70-character name>=1` set x (Iteration 252).
+  DA-EQ @ 1+ ENSURE-BUFFER ASSIGN-NAME-BUF
+  DA-ADDR @ DA-EQ @ ASSIGN-NAME-BUF BUFFER-SIZE ASSIGN-NAME-BUF SAFE-COPY-NUL DROP
   DA-ADDR @ DA-EQ @ + 1+
   DA-ADDR @ CSTRLEN DA-EQ @ - 1-
-  ASSIGN-VALUE-BUF SHVAR-VALUE-MAX VALUE-COPY ;
+  DUP 1+ ENSURE-BUFFER ASSIGN-VALUE-BUF
+  ASSIGN-VALUE-BUF BUFFER-SIZE ASSIGN-VALUE-BUF VALUE-COPY ;
 
 : DO-ASSIGN-AT ( c-addr eqpos --- )
   \ Split a validated "NAME=value" word at its '=' and record it.
@@ -3332,6 +3397,10 @@ VARIABLE AL-VALUE
 
 : SET-ALIAS ( name-addr value-addr --- )
   SHADOW{ AL-NAME AL-VALUE | AL-I }
+  AL-NAME @ CSTRLEN ALIAS-NAME-MAX < 0= IF
+    S" alias: name too long" ERR-TYPE ERR-NL  2 LAST-STATUS !
+    EXIT
+  THEN
   AL-NAME @ FIND-ALIAS AL-I !
   AL-I @ -1 = IF
     ALIAS-COUNT @ MAX-ALIASES < 0= IF
@@ -3341,7 +3410,8 @@ VARIABLE AL-VALUE
     ALIAS-COUNT @ 1+ ALIAS-COUNT !
   THEN
   AL-NAME  @ AL-I @ ALIAS-NAME-SLOT  ALIAS-NAME-MAX  SAFE-CSTR-COPY DROP
-  AL-VALUE @ AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX SAFE-CSTR-COPY DROP ;
+  \ Reported when too long, never left stale (Iteration 252).
+  AL-VALUE @ DUP CSTRLEN AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX VALUE-COPY ;
 
 VARIABLE DO-I
 
@@ -3614,7 +3684,8 @@ VARIABLE RD-E
 : RD-SET ( name-addr start end --- )   \ assign READ-BUF[start,end)
   SHADOW{ RD-NAME RD-S RD-E }
   READ-BUF RD-S @ + RD-E @ RD-S @ -
-  READ-FIELD SHVAR-VALUE-MAX VALUE-COPY
+  DUP 1+ ENSURE-BUFFER READ-FIELD
+  READ-FIELD BUFFER-SIZE READ-FIELD VALUE-COPY
   RD-NAME @ READ-FIELD SET-SHVAR ;
 
 : DO-READ ( --- )
