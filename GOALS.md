@@ -118,7 +118,7 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Where things stand (Iteration 248)
+## Where things stand (Iteration 253)
 
 The state a reader needs before anything else in this file, because
 several sections below describe a system with more parts than it now
@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,726    kernel-shell.img     63,714
-    32-bit   kernel32.img   8,122    kernel32-shell.img   57,901
+    64-bit   kernel.img     8,726    kernel-shell.img     63,730
+    32-bit   kernel32.img   8,122    kernel32-shell.img   57,917
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1312,11 +1312,15 @@ once. Both are done; the rest keep their order.
    translated any more. The measurement that made it safe - the
    specialised opcodes - is under "Where things stand".
 
-3. **`GUARD`.** A measured 5-6% win, disabled since Iteration 206 for a
-   `tests/diff` regression that predates most of the engine work since.
-   Worth re-measuring, and cheaper with one engine than two. The
-   guard-page code was specialised out of `cv8.c`; it is in
-   `attic/tools/lab/vm-lab.c`.
+3. ~~**`GUARD`.**~~ **On by default since Iteration 253.** One
+   unreadable page below each stack replaces the compare on every push:
+   3-6% faster at 64-bit (every workload's interval excludes 1.0),
+   neutral at 32. The `tests/diff` regression that kept it off since 206
+   was a real bug the guard exposed - `PASSWD-HOME` dropped one cell too
+   many from its caller's stack on every `~user` - and it is fixed. The
+   guard above the empty data stack makes an underflow of two cells or
+   more a fault; `-DGUARD=0` brings back the compares for a target
+   without an MMU.
 
 4. ~~**`KEY?` plus a termios/fcntl primitive.**~~ **`KEY?` done**
    (Iteration 246), on `POLL` rather than `fcntl`: poll(2) waits

@@ -208,11 +208,26 @@ static inline UNS64 LD32(UNS64 a) {
  *  runaway recursion and runaway loops both. Measured on fib.4, which
  *  is call- and push-dense by construction: see PROGRESS.md's
  *  Iteration 151 entry for the numbers.  */
+/*  GUARD (Iteration 253): instead of those compares, one unreadable
+ *  page below each stack, and a SIGSEGV handler that says which one was
+ *  hit. The pushes cost nothing, and the guard catches every push at
+ *  the push itself - the compares leave SPILL() (LIT32 and friends)
+ *  to be caught by the next checked push. Needs an MMU; build with
+ *  -DGUARD=0 for a
+ *  target without one, and the compares come back.  */
+#ifndef GUARD
+#define GUARD 1
+#endif
+#if GUARD
+#define STACK_CHECK(c, which)
+#else
+#define STACK_CHECK(c, which) if (c) stack_fault(which);
+#endif
 #define PUSH(x)  do { dsp -= CELL_BYTES;                              \
-                      if (dsp < dsp_limit) stack_fault(0);            \
+                      STACK_CHECK(dsp < dsp_limit, 0)                 \
                       DS0 = x; } while (0)  /* pushes x to data stack  */
 #define RPUSH(x) do { rp -= CELL_BYTES;                               \
-                      if (rp < rp_limit) stack_fault(1);              \
+                      STACK_CHECK(rp < rp_limit, 1)                   \
                       RS = x; } while (0)   /* pushes x to return stack*/
 
 /*
@@ -221,7 +236,14 @@ static inline UNS64 LD32(UNS64 a) {
  *  native word access.
  */
 
+#if GUARD
+/*  Aligned to 64 KB, and every stack boundary is a multiple of 64 KB,
+ *  so the guards start on a page boundary for any page size up to that
+ *  (4 KB on x86, 16 or 64 KB on some ARM systems).  */
+static UNS8 mem[MEMSIZE + CELL_BYTES - 1] __attribute__((aligned(65536)));
+#else
 static UNS8 mem[MEMSIZE + CELL_BYTES - 1];
+#endif
 
 /*
  *  1st CELL_BYTES-aligned address in mem array. Base address of the
@@ -233,7 +255,11 @@ static UNS8 *base;
 /* VM registers and related variables */
 
 static UNS64  g_ip, g_rp, g_dsp;
+#if GUARD
+#define VMREGS UNS64 ip = g_ip, rp = g_rp, dsp = g_dsp, t;
+#else
 #define VMREGS UNS64 ip = g_ip, rp = g_rp, dsp = g_dsp, t; const UNS64 dsp_limit = g_dsp_limit, rp_limit = g_rp_limit;
+#endif
 
 /*  Floors for the two stacks, both set once in main() and never
  *  changed. Kept as plain variables rather than recomputed from base
@@ -273,7 +299,9 @@ static const UNS8 IMAGE_MAGIC[8] = { 'C', 'V', '8', '0' + SCALE, CELL_BYTES,
  */
 
 static void write_str(int fd, const char *s);
+#if !GUARD
 static void stack_fault(int which) __attribute__((noreturn, cold));
+#endif
 
 /* Read/write the full requested amount, looping over short reads/writes.
  * Returns bytes transferred, or a negative value on a real error. */
@@ -319,11 +347,59 @@ static void write_str(int fd, const char *s) {
  *  an engine fault from a Forth-level ABORT.
  */
 
+#if !GUARD
 static void stack_fault(int which) {
     write_str(2, which ? "relf: return stack overflow\n"
                        : "relf: data stack overflow\n");
     exit(70);
 }
+#endif
+
+#if GUARD
+#include <sys/mman.h>
+#include <signal.h>
+/*  The regions, top down:
+ *      [rfloor, MEMSIZE)          return stack
+ *      [rfloor - page, rfloor)    GUARD: return stack overflow
+ *      [dfloor + page, ...)       data stack
+ *      [dfloor, dfloor + page)    GUARD: data stack overflow - and the
+ *                                 dictionary growing up into the stacks
+ *  Both guard pages come out of the data stack's space, so nothing else
+ *  moves; the data stack is two pages shallower. The messages and the
+ *  status are stack_fault()'s. _exit, not exit: this runs in a signal
+ *  handler, and the output buffer may be half-written.  */
+static UNS64 g_dguard, g_rguard, g_page;
+static void guard_trap(int sig, siginfo_t *si, void *uc) {
+    UNS64 a = (UNS64)(uintptr_t)si->si_addr;
+    (void)sig; (void)uc;
+    if (a >= g_dguard && a < g_dguard + g_page)
+        write_str(2, "relf: data stack overflow\n");
+    else if (a >= g_rguard && a < g_rguard + g_page)
+        write_str(2, "relf: return stack overflow\n");
+    else
+        write_str(2, "relf: segmentation fault (not a stack guard)\n");
+    _exit(70);
+}
+static void install_guards(UNS8 *b) {
+    UNS64 dfloor = (UNS64)(uintptr_t)b + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
+    UNS64 rfloor = (UNS64)(uintptr_t)b + MEMSIZE - RSTACK_BYTES;
+    struct sigaction sa;
+    g_page = (UNS64)sysconf(_SC_PAGESIZE);
+    g_dguard = dfloor;
+    g_rguard = rfloor - g_page;
+    if (mprotect((void *)(uintptr_t)g_rguard, g_page, PROT_NONE) != 0
+        || mprotect((void *)(uintptr_t)g_dguard, g_page, PROT_NONE) != 0) {
+        write_str(2, "relf: cannot protect the stack guard pages\n");
+        exit(70);
+    }
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = guard_trap;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &sa, (struct sigaction *)0);
+    sigaction(SIGBUS, &sa, (struct sigaction *)0);
+}
+#endif
 
 /*
  *  Multiply two cell-width unsigned numbers *a and *b.
@@ -589,7 +665,7 @@ static void virtual_machine(void) {
     UNS64 tos = CELL(dsp); dsp += CELL_BYTES;       /* fill */
 #define NOS CELL(dsp)
 #define PUSHT(x) do { UNS64 v_ = (x); dsp -= CELL_BYTES;         \
-        if (dsp < dsp_limit) { stack_fault(0); }                     \
+        STACK_CHECK(dsp < dsp_limit, 0)                              \
         CELL(dsp) = tos; tos = v_; } while (0)
 #define POPT() do { tos = CELL(dsp); dsp += CELL_BYTES; } while (0)
 #undef VMPUSH
@@ -1173,10 +1249,18 @@ int main(int argc, char **argv) {
     load_image(argv[1]);
     g_ip = (UNS64)(uintptr_t)base;
     g_rp = g_ip + MEMSIZE;
+#if GUARD
+    install_guards(base);
+    /*  Below the return stack's guard page. TWO cells of slack, not
+     *  one: with TOS caching dsp sits a cell ABOVE the logical top, so
+     *  with one the empty stack would put dsp on the guard and the first
+     *  read of the second item would trap (PROGRESS.md 206).  */
+    g_dsp = g_ip + MEMSIZE - RSTACK_BYTES - g_page - 2 * CELL_BYTES;
+#else
     g_dsp = g_ip + MEMSIZE - RSTACK_BYTES - CELL_BYTES;
+#endif
     g_rp_limit  = g_ip + MEMSIZE - RSTACK_BYTES;
-    g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES
-                  ;
+    g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
     CELL(g_dsp) = g_ip;
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */

@@ -2377,8 +2377,15 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
   0 PW-WANT PW-LEN @ + C!
   PW-WANT GETPWHOME
   DUP 0= IF EXIT THEN
-  DUP CSTRLEN PW-HOME 64 SAFE-COPY-NUL DROP
-  DROP PW-HOME ;
+  \ The copy takes the address and its length, and leaves nothing else:
+  \ there used to be one more DROP here, which took a cell from the
+  \ CALLER's stack on every ~user. It surfaced in Iteration 253, when a
+  \ guard page above the empty data stack turned the resulting
+  \ underflow into a fault. PW-HOME grows to fit, too: a home over 63
+  \ characters used to leave the previous one in place.
+  DUP CSTRLEN DUP 1+ ENSURE-BUFFER PW-HOME
+  PW-HOME BUFFER-SIZE PW-HOME SAFE-COPY-NUL DROP
+  PW-HOME ;
 
 : TRY-TILDE-USER ( --- )
   \ "~user" / "~user/path". Leaves the word untouched if the name is

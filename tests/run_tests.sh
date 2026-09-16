@@ -193,6 +193,10 @@ check_image_reproduces() {
 
 echo "== Building relf (default, 8-byte cells) =="
 cc -O2 -Wall -o relf cv8.c
+# The compare-on-every-push build, for a target without an MMU, is not
+# what runs here - so check at least that it still compiles cleanly.
+cc -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard cv8.c
+rm -f /tmp/relf-noguard
 
 echo "== Cross-compiling an 8-byte-cell target image =="
 # Regenerated BEFORE the suites, so the tests below run against an

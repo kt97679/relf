@@ -248,6 +248,7 @@ do not trust the absence of a line below.
 - **250** — the word arrays grow; positional parameters past nine
 - **251** — expansion output, command substitution, for lists and here-documents grow
 - **252** — variable values and the variable table grow; three stale-state bugs
+- **253** — guard pages on by default; the regression was a stack underflow in shell.4
 
 ### Not tied to an iteration
 
@@ -15219,3 +15220,47 @@ x in the parent, where POSIX shells run the stage in a subshell.
 
 tests/verify: shell assertions 573 -> 577; engine + shell image 89,730
 -> 90,554 (x86-64), 79,017 -> 79,877 (i386).
+
+## Iteration 253: guard pages, and what they found
+
+GOALS.md's queue item 3: `GUARD`, a measured 5-6% win off since
+Iteration 206 for an undiagnosed `tests/diff` regression.
+
+**Porting.** The guard code had been specialised out of `cv8.c`; it came
+back from `attic/tools/lab/vm-lab.c` as a build option, now on by
+default. `STACK_CHECK` is the compare, empty under `GUARD`, and the
+limit variables and `stack_fault` exist only without it, so both builds
+are warning-free. Three changes from the lab version: `mem` is aligned
+to 64 KB and the page size comes from `sysconf`, so a 16 KB or 64 KB
+page system still gets page-aligned guards (every stack boundary is a
+multiple of 64 KB); the handler exits with status 70, like the compares,
+where the lab's used 1; and a failed `mprotect` is an error rather than
+silence. Checked at both widths: runaway recursion reports "return stack
+overflow", and runaway pushes - through `LIT8`, `LIT32` and `LIT64` -
+report "data stack overflow", with and without `GUARD`.
+
+**Measured**, `tests/bench-vm`, 7 rounds, the same image under both
+engines: at 64-bit the compares cost 1.03, 1.06, 1.06 and 1.05 on loop,
+fn, str and arith, each interval excluding 1.0 - the 4-7% of 206
+again. At 32-bit the two builds trade places across workloads, within
+the per-build bias. The stripped i386 file shrank by 4 KB, but that is
+ELF segment padding moving by a page: the text grew by 15 bytes.
+
+**The regression was a real bug.** `tilde.sh` exited with status 70 and
+"return stack overflow" at `echo ~root`. A debug build that printed the
+fault context put the faulting address exactly at the return stack's
+guard and the instruction in `DROP` - not an overflow at all, but an
+UNDERFLOW: the empty data stack sits two cells below that guard, so a
+second DROP past empty reads it. `PASSWD-HOME` did one `DROP` too many
+after a copy that had already consumed its arguments, so every `~user`
+took a cell from its caller's stack; with compares the read just
+returned whatever lay above the empty stack. Fixed, and `PW-HOME` grows
+to fit (a home directory over 63 characters used to leave the previous
+one in place). tests/diff's `tilde` case and mrsh (which had dropped to
+19/2 under GUARD, the same bug) are back.
+
+So the guard is also an underflow detector, for two cells or more,
+which the compares never were. Nothing else in the suites trips it.
+
+tests/verify: unchanged except the i386 file size (79,877 -> 75,813,
+padding) and x86-64 90,554 -> 90,570.

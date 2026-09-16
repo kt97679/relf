@@ -557,10 +557,31 @@ two-operation colon words.
 
 ### 6.5 Stack limits
 
-The data and return stacks have floors checked on push. Both live inside
-the same memory block as the image; `dsp_limit` and `rp_limit` are
-copied into locals on entry, and `stack_fault()` is marked
-`noreturn, cold` so the checks stay off the hot path.
+Both stacks live at the top of the same memory block as the image, and
+since Iteration 253 each has an unreadable GUARD page below it instead
+of a compare on every push (`GUARD`, on by default):
+
+```
+[rfloor, top)            return stack
+[rfloor - page, rfloor)  guard: "return stack overflow"
+[... , rfloor - page)    data stack; the empty stack is two cells
+                         below the return stack's guard
+[dfloor, dfloor + page)  guard: "data stack overflow", and the
+                         dictionary growing up into the stacks
+```
+
+A `SIGSEGV` handler reports which guard was hit and exits with status
+70, as the compares did. Two consequences worth knowing. Every push is
+caught at the push itself, including `SPILL()`, which the compares left
+to the next checked push. And the return stack's guard sits two cells
+above the empty data stack, so reading two or more cells past empty -
+an underflow - faults too; the first thing it found was a word in
+`shell.4` that took one cell too many from its caller's stack.
+
+`-DGUARD=0` restores the compares, for a target without an MMU:
+`dsp_limit` and `rp_limit` copied into locals on entry, and
+`stack_fault()` marked `noreturn, cold` so they stay off the hot path.
+Measured: the compares cost 3-6% at 64-bit, nothing measurable at 32.
 
 ---
 
