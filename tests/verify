@@ -4,10 +4,11 @@
 # yes/no rather than four suites and a paragraph of prose.
 #
 # Written in Iteration 148, to freeze the shell before engine work
-# starts. The engine change ahead (TOKEN-THREADING.md) touches relf.c,
-# cross.4, save-system.4 and every position-independence assumption in
-# the system. What makes that survivable is a signal that is trusted:
-# every number below must be exactly what BASELINE says, and any
+# starts. The engine change it froze for touched the engine, cross.4,
+# save-system.4 and every position-independence assumption in the
+# system, and ended with relf.c replaced by cv8.c (Iteration 243).
+# What makes that survivable is a signal that is trusted: every
+# number below must be exactly what BASELINE says, and any
 # difference - better or worse - is reported and fails the run.
 #
 # A CHANGED line is not automatically a defect. Fixing one of the 21
@@ -102,6 +103,8 @@ emit core:8byte  "$(grep -c 'PASS (8-byte cells):' /tmp/verify-run.log)"
 emit shell:8byte "$(grep -c 'PASS (8-byte cells shell' /tmp/verify-run.log)"
 emit core:4byte  "$(grep -c 'PASS (4-byte cells, i386):' /tmp/verify-run.log)"
 emit shell:4byte "$(grep -c 'PASS (4-byte cells, i386 shell' /tmp/verify-run.log)"
+emit ext:8byte    "$(grep -c 'PASS (8-byte cells extension suites)' /tmp/verify-run.log)"
+emit ext:4byte    "$(grep -c 'PASS (4-byte cells, i386 extension suites)' /tmp/verify-run.log)"
 emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1)"
 # Both base images are now regenerated from cross.4 + kernel.4 on every
 # run and compared against the committed artifacts. The 8-byte one is

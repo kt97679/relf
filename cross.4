@@ -1,5 +1,6 @@
-\ Cross compiler to produce machine-independent binary image of RelF
-\ (Relative Forth). Uses kernel.4.
+\ Cross compiler to produce a CV8 binary image of RelF (Relative
+\ Forth) from kernel.4. Runs on a CV8 image: see README.md for the
+\ bootstrap, and CV8-REFERENCE.md for the format it emits.
 \ Based on SOD32 by L.C. Benschop
 \ Copyright 2001 - 2005, Kirill Timofeev, kt97679@gmail.com
 \ The program is released under the GNU General Public License version 2.
@@ -125,29 +126,6 @@ VARIABLE DP-T                       \ Dictionary pointer for target dictionary.
 : PLACE-T ( c-addr len t-addr --- ) \ Move counted string to target space.
   OVER OVER C!-T 1+ CHARS IMAGE + SWAP CHARS CMOVE ;
 
-\ 8-byte magic written before the image itself, so a future engine with
-\ a different cell width refuses a mismatched image instead of silently
-\ misbehaving. Plain byte-level writes - byte order doesn't apply to a
-\ byte sequence, so this needs no special handling (same reasoning as
-\ @-T/!-T above). Plain C! (not C!-T): IMAGE-MAGIC is its own buffer,
-\ not part of IMAGE.
-CREATE IMAGE-MAGIC 8 CHARS ALLOT
-: INIT-IMAGE-MAGIC
-  82 IMAGE-MAGIC C! 69 IMAGE-MAGIC 1 CHARS + C!
-  76 IMAGE-MAGIC 2 CHARS + C! 70 IMAGE-MAGIC 3 CHARS + C! \ "RELF"
-  TARGET-CELL-BYTES @ IMAGE-MAGIC 4 CHARS + C!             \ cell width
-  0 IMAGE-MAGIC 5 CHARS + C!
-  0 IMAGE-MAGIC 6 CHARS + C!
-  0 IMAGE-MAGIC 7 CHARS + C! ;
-INIT-IMAGE-MAGIC
-
-\ After the Forth system is constructed, its image must be saved.
-: SAVE-IMAGE ( "name" --- )
-  32 WORD COUNT W/O BIN CREATE-FILE ABORT" Can't create file" >R
-  IMAGE-MAGIC 8 R@ WRITE-FILE ABORT" Can't write file"
-  IMAGE THERE R@ WRITE-FILE ABORT" Can't write file"
-  R> CLOSE-FILE ABORT" Can't close file" ;
-
 \ PART 3: CREATING NEW DEFINITIONS IN THE TARGET SYSTEM.
 
 \ These words create new target definitions, both the shadow definition
@@ -219,7 +197,17 @@ ALSO TRANSIENT DEFINITIONS
 PREVIOUS DEFINITIONS
 
 
-\ PART 4: CODE GENERATION
+\ PART 4: CODE GENERATION - CV8 (CV8-REFERENCE.md)
+
+\ The target is a byte stream: one-byte opcodes, two- or three-byte
+\ calls, and the specialised opcodes the engine implements. Until
+\ Iteration 243 this file emitted CELLS, and every CV8 image was
+\ translated from that cell image by tools/layout.py after running it
+\ on relf.c. Emitting CV8 here is what retired both.
+\
+\ Everything below is the host-side twin of the compiler in kernel.4:
+\ the same encoding, the same peepholes, written against the target
+\ space instead of HERE. When one changes, the other must.
 
 VARIABLE STATE-T 0 STATE-T ! \ State variable for cross compiler.
 : T] 1 STATE-T ! ;
@@ -229,176 +217,335 @@ VARIABLE CSP   \ Stack pointer checking between : and ;
 : !CSP DEPTH CSP ! ;
 : ?CSP DEPTH CSP @ - ABORT" Incomplete control structure" ;
 
-VARIABLE LAST-PRIMITIVE 1 LAST-PRIMITIVE !
+\ ---- the opcode map ------------------------------------------------
+\ Primitive opcodes are kernel.4's PRIMITIVE order. The ones declared
+\ after ESCAPED sit behind ESC + a selector, so only the first #DIRECT
+\ take a byte of their own. The synthetic opcodes start at the TOTAL
+\ primitive count, which is only known once kernel.4 has declared them
+\ all - kernel.4 declares every primitive before its first use of one
+\ of these.
+VARIABLE #PRIMS  0 #PRIMS !
+VARIABLE #DIRECT -1 #DIRECT !
+VARIABLE PRIMS-USED 0 PRIMS-USED !
+: DIRECT? ( n --- f ) #DIRECT @ 0< IF DROP -1 ELSE #DIRECT @ < THEN ;
+: NPRIM ( --- n )
+\ The primitive count, and from now on it must not change: PRIMITIVE
+\ refuses once this has been used. Without that, a PRIMITIVE declared
+\ after the first VARIABLE would silently renumber every DOVAR before it.
+  -1 PRIMS-USED ! #PRIMS @ ;
+: LIT32-OP  ( --- n ) NPRIM ;
+: DOVAR-OP  ( --- n ) NPRIM 1+ ;
+: DODOES-OP ( --- n ) NPRIM 2 + ;
+: LIT8-OP   ( --- n ) NPRIM 3 + ;
+: LIT8X-OP  ( --- n ) NPRIM 4 + ;
+: FOLD-BASE ( --- n ) NPRIM 5 + ;
+1 CONSTANT EXIT-OP
+2 CONSTANT LIT16-OP
+3 CONSTANT BRANCH-OP
+4 CONSTANT 0BRANCH-OP
+\ Fixed, at the top of the byte.
+ 97 CONSTANT LIT0-OP     \ 98 push 1, 99 push -1
+100 CONSTANT VAR@-OP
+101 CONSTANT VAR!-OP
+121 CONSTANT ADDI-OP     \ +1 is ADDI;EXIT
+123 CONSTANT EQI-OP      \ +1 is EQI;EXIT
+125 CONSTANT LIT64-OP
+126 CONSTANT ESC-OP
+: TSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 
-\ Primitive-dispatch tokens (and a couple of other cell-width-dependent
-\ values) as formulas in TARGET-CELL-BYTES, instead of the hardcoded
-\ numbers phase 2 used (9/5/17/13/etc for the then-only stride-8
-\ numbering). token = 1 + (position-1)*stride, where position is the
-\ primitive's 1-based position in kernel.4's PRIMITIVE list (see
-\ PROGRESS.md, 2026-09-01, for what goes wrong if these are hardcoded
-\ instead and the stride or list ever changes) and stride ==
-\ TARGET-CELL-BYTES (dispatch-table entries are pointer-sized, which is
-\ exactly the cell width on every host this targets - see relf.c).
-: EXIT-TOKEN    ( --- n ) 1 TARGET-CELL-BYTES @ + ;         \ 2nd: EXIT
-: LIT-TOKEN     ( --- n ) 1 2 TARGET-CELL-BYTES @ * + ;     \ 3rd: LIT
-: BRANCH-TOKEN  ( --- n ) 1 3 TARGET-CELL-BYTES @ * + ;     \ 4th: BRANCH
-: 0BRANCH-TOKEN ( --- n ) 1 4 TARGET-CELL-BYTES @ * + ;     \ 5th: 0BRANCH
-: RFROM-TOKEN   ( --- n ) 1 17 TARGET-CELL-BYTES @ * + ;    \ 18th: R>
-\ Not primitive tokens, but the same "must vary with TARGET-CELL-BYTES,
-\ and gets embedded as a literal into a *different* word's compiled
-\ body, so a plain host IF/ELSE can't fix it" problem: kernel.4's
-\ CELL+/CELLS/CELL-/DEPTH/ALIGNED/ALIGN/J, and 2/'s sign-bit shift.
-: CELLBYTES-TOKEN  ( --- n ) TARGET-CELL-BYTES @ ;
-: CELLSHIFT-TOKEN  ( --- n ) TARGET-CELL-BYTES @ 4 = IF 2 ELSE 3 THEN ;
-: SIGNSHIFT-TOKEN  ( --- n ) TARGET-CELL-BYTES @ 8 * 1- ;
+\ The primitives with a folded "then EXIT" form, in the order the
+\ engine's table has them. Names, because their opcodes are not known
+\ until kernel.4 declares them; PRIMITIVE fills in FOLD-IDX.
+23 CONSTANT #FOLD
+CREATE FOLD-IDX #FOLD CELLS ALLOT
+: NAMES, ( n "name"... --- )
+\ Lay down n counted strings. WORD parses to HERE, so ALLOT keeps it.
+  0 DO BL WORD C@ 1+ ALLOT LOOP ;
+: FOLD-SETUP ( --- )
+  #FOLD 0 DO -1 FOLD-IDX I CELLS + ! LOOP ;
+FOLD-SETUP
+CREATE FOLD-NAMES
+16 NAMES, + = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT < U< OVER DROP
+ 7 NAMES, DUP SWAP ROT >R R> R@ NEGATE
+ALIGN
 
-\ Primitive tokens below are updated for the stride-8 numbering (see
-\ PRIMITIVE above): EXIT=9, LIT=17, BRANCH=25, 0BRANCH=33. Same values
-\ as the formulas above at TARGET-CELL-BYTES=8; the formulas replace
-\ the phase-2 hardcoded numbers so a 4-byte-cell target gets the right
-\ ones automatically instead of needing every occurrence hand-updated.
-: LITERAL-T ( n --- ) LIT-TOKEN ,-T ,-T ;
+: FOLD-POS ( c-addr u --- k | -1 )
+\ Position of a name in the fold list, or -1.
+  FOLD-NAMES #FOLD 0 DO           ( c-addr u p )
+    >R 2DUP R@ COUNT COMPARE 0= IF 2DROP R> DROP I UNLOOP EXIT THEN
+    R> COUNT +
+  LOOP DROP 2DROP -1 ;
+
+\ The four primitives the peepholes complete, by index, found the same
+\ way when PRIMITIVE declares them.
+VARIABLE PLUS-IDX   VARIABLE EQUALS-IDX
+VARIABLE FETCH-IDX  VARIABLE STORE-IDX
+
+\ ---- raw emission ---------------------------------------------------
+: W,-T ( n --- )  DUP 255 AND C,-T 8 RSHIFT 255 AND C,-T ;
+: 32,-T ( n --- ) DUP W,-T 16 RSHIFT W,-T ;
+: REWIND-T ( t-addr --- ) THERE - ALLOT-T ;
+
+\ ---- peephole state: see kernel.4's NO-PEEP --------------------------
+VARIABLE LAST-OP-T
+VARIABLE LAST-LIT-T   VARIABLE LAST-LITV-T
+VARIABLE LAST-CALL-T  VARIABLE LAST-CALLXT-T
+: NO-PEEP-T ( --- ) 0 LAST-OP-T ! 0 LAST-LIT-T ! 0 LAST-CALL-T ! ;
+NO-PEEP-T
+\ An image offset of 0 is the prologue, which no pattern ever starts at,
+\ so 0 is a safe "none".
+
+: SLOT,-T ( t-addr --- )
+\ A slot operand: scaled like a call, 2 bytes big-endian, or 3 with the
+\ top bit set.
+  TSHIFT RSHIFT
+  DUP 32768 < IF DUP 8 RSHIFT C,-T 255 AND C,-T
+  ELSE DUP 16 RSHIFT 128 OR C,-T DUP 8 RSHIFT 255 AND C,-T 255 AND C,-T
+  THEN ;
+
+: CALLBYTES-T ( t-addr v --- )
+\ Store the three-byte (far) call form for scaled value v at t-addr.
+  2DUP 16 RSHIFT 192 OR SWAP C!-T
+  2DUP 8 RSHIFT 255 AND SWAP 1+ C!-T
+  255 AND SWAP 2 + C!-T ;
+
+: CALL,-T ( t-addr --- )
+\ A call to the target body at t-addr: near if it fits 14 bits.
+  NO-PEEP-T THERE LAST-CALL-T ! DUP LAST-CALLXT-T !
+  TSHIFT RSHIFT
+  DUP 16384 < IF DUP 8 RSHIFT 128 OR C,-T 255 AND C,-T
+  ELSE THERE SWAP CALLBYTES-T 3 ALLOT-T THEN ;
+
+: SIGNED-T ( n --- n' )
+\ A literal as the target sees it: on a 4-byte target, the low 32 bits
+\ sign-extended, so that -1 and 0xFFFFFFFF are the same value.
+  TARGET-CELL-BYTES @ 4 = 1 CELLS 8 = AND IF
+    4294967295 AND DUP 2147483648 AND IF 4294967296 - THEN
+  THEN ;
+
+: LITERAL-T ( n --- )
+\ A literal in the narrowest form. Remembered for ADDI/EQI and for
+\ folding into the EXIT.
+  SIGNED-T
+  NO-PEEP-T THERE LAST-LIT-T ! DUP LAST-LITV-T !
+  DUP 0 = IF DROP LIT0-OP C,-T EXIT THEN
+  DUP 1 = IF DROP LIT0-OP 1+ C,-T EXIT THEN
+  DUP -1 = IF DROP LIT0-OP 2 + C,-T EXIT THEN
+  DUP 256 U< IF THERE LAST-OP-T ! LIT8-OP C,-T C,-T EXIT THEN
+  DUP 65536 U< IF THERE LAST-OP-T ! LIT16-OP C,-T W,-T EXIT THEN
+  TARGET-CELL-BYTES @ 4 = IF LIT32-OP C,-T 32,-T EXIT THEN
+  DUP 2147483648 + 4294967296 U< IF LIT32-OP C,-T 32,-T EXIT THEN
+  LIT64-OP C,-T DUP 32,-T 32 RSHIFT 32,-T ;
+
+: FOLD-OP-T ( op --- op2 -1 | op 0 )
+  DUP LIT8-OP = IF DROP LIT8X-OP -1 EXIT THEN
+  DUP ADDI-OP = OVER EQI-OP = OR IF 1+ -1 EXIT THEN
+  #FOLD 0 DO
+    DUP FOLD-IDX I CELLS + @ = IF DROP I FOLD-BASE + -1 UNLOOP EXIT THEN
+  LOOP 0 ;
+
+: EXIT,-T ( --- )
+\ The end of a body: EXIT, folded into the last operation if it can be.
+  LAST-LIT-T @ IF LAST-LITV-T @ 2 U< IF
+    LAST-LIT-T @ REWIND-T THERE LAST-OP-T ! LIT8-OP C,-T LAST-LITV-T @ C,-T
+  THEN THEN
+  LAST-OP-T @ ?DUP IF
+    DUP C@-T FOLD-OP-T IF SWAP C!-T ELSE 2DROP EXIT-OP C,-T THEN
+  ELSE EXIT-OP C,-T THEN
+  NO-PEEP-T ;
+
+: PEEP-IMM-T ( idx --- f )
+  LAST-LIT-T @ 0= IF DROP 0 EXIT THEN
+  LAST-LITV-T @ 128 + 256 U< 0= IF DROP 0 EXIT THEN
+  DUP PLUS-IDX @ = IF DROP ADDI-OP ELSE
+  EQUALS-IDX @ = IF EQI-OP ELSE 0 EXIT THEN THEN
+  LAST-LIT-T @ REWIND-T LAST-LITV-T @ >R NO-PEEP-T
+  THERE LAST-OP-T ! C,-T R> 255 AND C,-T -1 ;
+
+: PEEP-VAR-T ( idx --- f )
+  LAST-CALL-T @ 0= IF DROP 0 EXIT THEN
+  LAST-CALLXT-T @ C@-T DOVAR-OP = 0= IF DROP 0 EXIT THEN
+  DUP FETCH-IDX @ = IF DROP VAR@-OP ELSE
+  STORE-IDX @ = IF VAR!-OP ELSE 0 EXIT THEN THEN
+  LAST-CALL-T @ REWIND-T LAST-CALLXT-T @ >R NO-PEEP-T
+  C,-T R> 1 CELLS-T + SLOT,-T -1 ;
+
+: PRIM,-T ( idx --- )
+\ Compile primitive number idx into the current target definition.
+  DUP DIRECT? 0= IF NO-PEEP-T ESC-OP C,-T #DIRECT @ - C,-T EXIT THEN
+  DUP PEEP-IMM-T IF DROP EXIT THEN
+  DUP PEEP-VAR-T IF DROP EXIT THEN
+  NO-PEEP-T THERE LAST-OP-T ! C,-T ;
+
+\ ---- branches -------------------------------------------------------
+\ A branch operand is a signed 16-bit offset from the operand itself.
+: >MARK-T ( --- t-addr ) NO-PEEP-T THERE 0 W,-T ;
+: >RESOLVE-T ( t-addr --- )
+  NO-PEEP-T THERE OVER - SWAP 2DUP C!-T 1+ SWAP 8 RSHIFT SWAP C!-T ;
+: <RESOLVE-T ( t-addr --- ) NO-PEEP-T THERE - W,-T ;
+: OPERAND-ALIGN-T ( --- )
+\ NOOPs until a two-byte call would leave the next byte cell-aligned,
+\ so the inline cell after (LOOP), (?DO), (LEAVE) and (POSTPONE) is
+\ aligned. kernel.4's OPERAND-ALIGN does the same at run time.
+  BEGIN THERE 2 + TARGET-CELL-BYTES @ 1- AND WHILE 0 C,-T REPEAT ;
+
+\ A forward call is three bytes, so LOOP and POSTPONE below count
+\ three rather than the two OPERAND-ALIGN-T assumes: pad to one byte
+\ before a cell boundary.
+: FAR-ALIGN-T ( --- )
+  BEGIN THERE 3 + TARGET-CELL-BYTES @ 1- AND WHILE 0 C,-T REPEAT ;
+
+CREATE IMAGE-HDR 8 ALLOT
+VARIABLE IMAGE-FID
+: HDR, ( x --- )
+\ Write one TARGET cell. The host cell is at least as wide and the
+\ host is little-endian, so its low bytes are the target cell.
+  IMAGE-HDR ! IMAGE-HDR TARGET-CELL-BYTES @ IMAGE-FID @ WRITE-FILE
+  ABORT" Can't write file" ;
+
+: SAVE-IMAGE ( "name" --- )
+\ The CV8 header (CV8-REFERENCE.md 5.1), then the image: the thread
+\ heads, which are also in the image where COLD relocates them, and
+\ the DOES> tail count, always 0 because DODOES carries its target
+\ inline.
+  32 WORD COUNT W/O BIN CREATE-FILE ABORT" Can't create file" IMAGE-FID !
+  67 IMAGE-HDR C!  86 IMAGE-HDR 1+ C!  56 IMAGE-HDR 2 + C!   \ "CV8"
+  48 TSHIFT + IMAGE-HDR 3 + C!                            \ call scale
+  TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
+  76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
+  2 IMAGE-HDR 6 + C!          \ format version
+  15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
+  IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
+  #TTHREADS HDR,
+  #TTHREADS 0 DO I CELLS TTHREADS + @ HDR, LOOP
+  0 HDR,
+  IMAGE THERE IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
+  IMAGE-FID @ CLOSE-FILE ABORT" Can't close file" ;
+
+: TNAME= ( c-addr u --- f )
+\ Is the newest target name c-addr u?
+  TLINK @ C@-T 31 AND OVER = IF
+    TLINK @ 1+ IMAGE + OVER COMPARE 0=
+  ELSE 2DROP 0 THEN ;
 
 ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Now define the words that do compile code.
 
-: PRIMITIVE ( c --- )
-  \ Primitive tokens stride by sizeof(host function pointer), which is
-  \ TARGET-CELL-BYTES on every host this targets, see GOALS.md.
-  LAST-PRIMITIVE @ DUP TARGET-CELL-BYTES @ LAST-PRIMITIVE +!
-  "HEADER DUP , ,-T EXIT-TOKEN ,-T  \ Create an executable target definition.
-  TLINK @ DUP C@-T 32 OR SWAP C!-T   \ Set the MACRO bit of last name. 
-  DOES> @ ,-T
-;
+: LOCALS-CELLS ( --- )
+\ Reserve the five locals cells the engine reads at image offset 8.
+\ The two boot calls before them are three bytes each, so they end at
+\ 6 and the cells start at 8 on either cell width.
+  ALIGN-T THERE 8 - ABORT" cross: LOCALS-CELLS is not at offset 8"
+  5 CELLS-T ALLOT-T ;
 
-\ TRANSIENT-vocabulary wrappers around the -TOKEN words above, for use
-\ *inside* kernel.4's own target-level colon-definitions (CONSTANT,
-\ LITERAL, ;, BEGIN/UNTIL/IF/ELSE/WHILE/REPEAT, (;CODE)'s R> token,
-\ CELL+/CELLS/CELL-/DEPTH/ALIGNED/ALIGN/J, 2/'s sign mask). A bare
-\ number there gets compiled as a literal into whatever *target*
-\ definition kernel.4 is building at the time (via CROSS-COMPILE's
-\ NUMBER?/LITERAL-T path - see PROGRESS.md for the full derivation of
-\ why this needs its own mechanism rather than an ordinary host IF/
-\ ELSE); these words, found via CROSS-COMPILE's restricted TARGET+
-\ TRANSIENT search and executed the moment kernel.4 reaches them,
-\ reproduce exactly that compiled-literal effect with the right value.
-: EXIT-TOK    EXIT-TOKEN LITERAL-T ;
-: LIT-TOK     LIT-TOKEN LITERAL-T ;
-: BRANCH-TOK  BRANCH-TOKEN LITERAL-T ;
-: 0BRANCH-TOK 0BRANCH-TOKEN LITERAL-T ;
-: RFROM-TOK   RFROM-TOKEN LITERAL-T ;
-: CELLBYTES-TOK CELLBYTES-TOKEN LITERAL-T ;
-: CELLSHIFT-TOK CELLSHIFT-TOKEN LITERAL-T ;
-: SIGNSHIFT-TOK SIGNSHIFT-TOKEN LITERAL-T ;
+: ESCAPED ( --- )
+\ Every PRIMITIVE after this one is reached through ESC.
+  #PRIMS @ #DIRECT ! ;
+
+: PRIMITIVE ( --- )
+\ A primitive's body is its opcode (or ESC and a selector) then EXIT,
+\ so EXECUTE works on it; compiling it inlines the opcode. The MACRO
+\ bit (32) is what tells COMPILE, to inline.
+  PRIMS-USED @ ABORT" cross: PRIMITIVE after the opcode map was used"
+  #PRIMS @ 1 #PRIMS +!
+  "HEADER THERE , DUP ,
+  DUP DIRECT? IF DUP C,-T ELSE ESC-OP C,-T DUP #DIRECT @ - C,-T THEN
+  EXIT-OP C,-T ALIGN-T
+  TLINK @ DUP C@-T 32 OR SWAP C!-T
+  TLINK @ 1+ IMAGE + TLINK @ C@-T 31 AND FOLD-POS DUP 0< 0= IF
+    OVER SWAP CELLS FOLD-IDX + !
+  ELSE DROP THEN
+  S" +" TNAME= IF DUP PLUS-IDX ! THEN
+  S" =" TNAME= IF DUP EQUALS-IDX ! THEN
+  S" @" TNAME= IF DUP FETCH-IDX ! THEN
+  S" !" TNAME= IF DUP STORE-IDX ! THEN
+  DROP
+  DOES> CELL+ @ PRIM,-T ;
+
+: OPCODE ( op "name" --- )
+\ A kernel word the engine implements as an opcode of its own - the
+\ fifteen tiny words of CV8-REFERENCE.md 7.4. Declared exactly like a
+\ primitive, so COMPILE, inlines it; the engine, not a Forth body,
+\ defines what it does.
+  "HEADER THERE , DUP ,
+  C,-T EXIT-OP C,-T ALIGN-T
+  TLINK @ DUP C@-T 32 OR SWAP C!-T
+  DOES> CELL+ @ NO-PEEP-T THERE LAST-OP-T ! C,-T ;
+
+\ Literals kernel.4's compiler needs, compiled into its definitions.
+\ Opcode numbers above the primitives depend on how many there are, so
+\ they cannot be written into kernel.4 as numbers.
+: CELLBYTES-TOK TARGET-CELL-BYTES @ LITERAL-T ;
+: CELLSHIFT-TOK TSHIFT LITERAL-T ;
+: SIGNSHIFT-TOK TARGET-CELL-BYTES @ 8 * 1- LITERAL-T ;
+: LIT32-TOK  LIT32-OP LITERAL-T ;
+: DOVAR-TOK  DOVAR-OP LITERAL-T ;
+: DODOES-TOK DODOES-OP LITERAL-T ;
+: LIT8-TOK   LIT8-OP LITERAL-T ;
+: LIT8X-TOK  LIT8X-OP LITERAL-T ;
+: FOLD-BASE-TOK FOLD-BASE LITERAL-T ;
+: #FOLD-TOK  #FOLD LITERAL-T ;
+: [OP] ( "name" --- )
+\ Compile the opcode of a direct primitive as a literal.
+  ALSO TARGET ' >BODY CELL+ @ PREVIOUS LITERAL-T ;
+: FOLD-TABLE ( --- )
+\ Overwrite the cell a VARIABLE just reserved with the fold list as
+\ opcode bytes, for kernel.4's FOLD-OP.
+  -1 CELLS-T ALLOT-T
+  #FOLD 0 DO FOLD-IDX I CELLS + @ C,-T LOOP ALIGN-T ;
 FORTH DEFINITIONS
 
 \ PART 5: FORWARD REFERENCES
 
-\ Some definitions are referenced before they are defined. A definition
-\ in the TRANSIENT voc is created for each forward referenced definition.
-\ This links all addresses together where the forward reference is used.
-\ The word RESOLVE stores the real address everywhere it is needed.
+\ A forward reference is a three-byte far call whose target is not
+\ known yet. Until RESOLVE, those three bytes hold the address of the
+\ previous reference to the same word (22 bits, all ones at the end of
+\ the chain) - the same threading the cell version did through cells.
 \
-\ FORWARD and RESOLVE are defined here, before :/; below get redefined -
-\ deliberately, not incidentally. They're ordinary host-level defining
-\ words (like VARIABLE would be at the host level), not target-shadow
-\ words like PRIMITIVE/CONSTANT/VARIABLE further down, so they don't
-\ need :/;'s "HEADER-based target-compilation machinery - and they
-\ actively can't tolerate it: that redefined : never sets the base
-\ kernel's own STATE flag (only its own separate STATE-T), so an
-\ ordinary CREATE/DOES>-based word compiled under it never actually
-\ gets compiled - it executes immediately, at definition time, with
-\ whatever happens to be on the stack at that moment instead of the
-\ arguments it's meant to receive when properly invoked later. That's a
-\ silent, accidental "works" for definitions robust to it, and a crash
-\ for FORWARD specifically (see PROGRESS.md for the full diagnosis, found
-\ via gdb dictionary-chain walking and primitive-level trace-diffing).
-\ Defining FORWARD/RESOLVE here, before the redefinition, sidesteps the
-\ whole issue rather than depending on it.
+\ FORWARD and RESOLVE are defined before : and ; are redefined below;
+\ see PROGRESS.md for why a CREATE ... DOES> word cannot be compiled
+\ under the redefined pair.
+
+4194303 CONSTANT END-CHAIN
 
 : FORWARD
-  CREATE -1 ,              \ Store head of list in the definition.
-  DOES> 
-        DUP @ ,-T THERE 1 CELLS-T - SWAP ! \ Reserve a cell in the dictionary
-                  \ where the call to the forward definition must come.
-                  \ As the call address is unknown, store link to next
-                  \ reference instead.
-;
+  CREATE END-CHAIN ,
+  DOES> NO-PEEP-T
+        DUP @ THERE SWAP CALLBYTES-T THERE SWAP ! 3 ALLOT-T ;
+
+: CHAIN@-T ( t-addr --- v )
+  DUP C@-T 63 AND 16 LSHIFT OVER 1+ C@-T 8 LSHIFT OR SWAP 2 + C@-T OR ;
 
 : RESOLVE
-  ALSO TARGET >IN @ ' >BODY @ >R >IN ! \ Find the resolving word in the
-                          \ target voc. and take the CFA out of the definition.
-  TRANSIENT ' >BODY  @                 \ Find the forward ref word in the
-                                       \ TRANSIENT VOC and take list head.
-  BEGIN
-   DUP -1 -                            \ Traverse all the links until end.
-  WHILE
-   DUP @-T                             \ Take address of next link from dict.
-   R@ ROT SWAP OVER - CELLBYTES-TOKEN - SWAP !-T   \ Set resolved address in dict.
-  REPEAT DROP R> DROP PREVIOUS
-;
-
-\ T' and >BODY-T are, like FORWARD/RESOLVE above, ordinary host-level
-\ utility words with no need for :/;'s target-shadow machinery - and,
-\ also like FORWARD/RESOLVE, they can't tolerate being defined under
-\ it either (see the note above FORWARD for why). POSTPONE and ['] later
-\ reference T' from within their own (correctly target-shadowed) bodies;
-\ that's fine regardless of where T' itself was defined, as long as
-\ it's defined before they are - which it is, here.
+  ALSO TARGET >IN @ ' >BODY @ >R >IN !   \ the target body
+  TRANSIENT ' >BODY @                    \ the head of the chain
+  BEGIN DUP END-CHAIN - WHILE
+    DUP CHAIN@-T SWAP R@ TSHIFT RSHIFT CALLBYTES-T
+  REPEAT DROP R> DROP PREVIOUS ;
 
 : T' ( --- t-addr) \ Find the execution token of a target definition.
-  ALSO TARGET ' >BODY @ \ Get the address from the shadow definition.
-  PREVIOUS
-;
+  ALSO TARGET ' >BODY @ PREVIOUS ;
 
-: >BODY-T ( t-addr1 --- t-addr2 ) \ Convert executing token to param address.
-  \ NOTE: this is target-address arithmetic and must use CELLS-T, not the
-  \ host's CELLS. It only worked before because the host (RelF, 4-byte
-  \ cells) and the target (RelF, 4-byte cells) happened to match; see
-  \ GOALS.md for the 8-byte target/host mismatch this now avoids.
+: >BODY-T ( t-addr1 --- t-addr2 ) \ the parameter field of a data word
   1 CELLS-T + ;
 
 \ PART 6: DEFINING WORDS.
 
 TRANSIENT DEFINITIONS FORTH
 
-FORWARD DOVAR \ Dovar is the runtime part of a variable.
-
-\ VARIABLE and CONSTANT don't need :/;'s inherited DOES> either - they
-\ each have their own complete "HEADER...DOES> structure right in their
-\ own body text (same as FORWARD/RESOLVE/T'/>BODY-T above), and, for the
-\ same reason, can't tolerate the nested-DOES> conflict the redefined :
-\ below would cause. Defined here with the plain :/; instead, so their
-\ body actually compiles instead of executing immediately. T]/T[ are
-\ applied explicitly around each so STATE-T is still set correctly -
-\ NUMBER? needs that to compile their own numeric literals (VARIABLE's
-\ "0", CONSTANT's "1") as target literals via LITERAL-T, same as the
-\ redefined : below would have done, without what broke it.
-
+\ A data body is [DOVAR][pad to a cell][parameter field]; the two bytes
+\ after DOVAR are where DOES> would write its call.
 T]
-: VARIABLE "HEADER THERE , [ TRANSIENT ] DOVAR [ FORTH ]  0 ,-T
-\ Create a variable.
-  DOES> @ THERE - CELLBYTES-TOKEN - ,-T ;
+: VARIABLE "HEADER THERE ,
+  NO-PEEP-T DOVAR-OP C,-T ALIGN-T 0 ,-T
+  DOES> @ CALL,-T ;
 T[
 
 T]
-: CONSTANT "HEADER THERE ,
-  LIT-TOKEN ,-T ,-T EXIT-TOKEN ,-T \ Assemble the instruction LIT with EXIT.
-  DOES> @ 1 CELLS-T + @-T LITERAL-T \ Compile const as a literal for speed.
-;
+: CONSTANT "HEADER THERE , DUP ,
+  LITERAL-T EXIT,-T
+  DOES> CELL+ @ LITERAL-T ;   \ compiled inline, as the value
 T[
-
-FORTH DEFINITIONS
-
-\ PART 5b: TARGET-LEVEL COLON-DEFINITION SHADOW WORDS.
-\
-\ The control-structure words below (PART 7), similarly, are plain
-\ words with no nested defining-word pattern of their own - so, same as
-\ FORWARD/RESOLVE/T'/>BODY-T/VARIABLE/CONSTANT above, they're defined
-\ with the plain :/; too (wrapped in one T]...T[ pair for the whole
-\ block, since nothing here needs :/;'s "HEADER-inherited DOES> either -
-\ nothing here turned out to actually need the redefined :/; at all).
 
 FORTH DEFINITIONS
 
@@ -408,15 +555,13 @@ TRANSIENT DEFINITIONS FORTH
 
 T]
 
-\ NOTE: these reserve a target cell, so they must use CELLS-T, not the
-\ host's CELLS (see >BODY-T above for why this distinction now matters).
-: BEGIN THERE ;
-: UNTIL 0BRANCH-TOKEN ,-T THERE - ,-T ;
-: IF 0BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T ;
-: THEN THERE OVER - SWAP !-T ;
-: ELSE BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T SWAP THERE OVER - SWAP !-T ;
-: WHILE 0BRANCH-TOKEN ,-T THERE 1 CELLS-T ALLOT-T SWAP ;
-: REPEAT BRANCH-TOKEN ,-T THERE - ,-T THERE OVER - SWAP !-T ;
+: BEGIN NO-PEEP-T THERE ;
+: UNTIL NO-PEEP-T 0BRANCH-OP C,-T <RESOLVE-T ;
+: IF NO-PEEP-T 0BRANCH-OP C,-T >MARK-T ;
+: THEN >RESOLVE-T ;
+: ELSE NO-PEEP-T BRANCH-OP C,-T >MARK-T SWAP >RESOLVE-T ;
+: WHILE NO-PEEP-T 0BRANCH-OP C,-T >MARK-T SWAP ;
+: REPEAT NO-PEEP-T BRANCH-OP C,-T <RESOLVE-T >RESOLVE-T ;
 
 FORWARD (DO)
 FORWARD (LOOP)
@@ -424,38 +569,31 @@ FORWARD (.")
 FORWARD (ABORT")
 FORWARD (POSTPONE)
 
-: DO [ TRANSIENT ] (DO) [ FORTH ] THERE ;
-: LOOP [ TRANSIENT ] (LOOP) [ FORTH ] THERE - ,-T ;
+
+: DO [ TRANSIENT ] (DO) [ FORTH ] NO-PEEP-T THERE ;
+: LOOP FAR-ALIGN-T [ TRANSIENT ] (LOOP) [ FORTH ] THERE - ,-T NO-PEEP-T ;
 : ." [ TRANSIENT ] (.") [ FORTH ] 34 WORD COUNT DUP 1+ >R
-      THERE PLACE-T R> ALLOT-T ALIGN-T ;
-: POSTPONE [ TRANSIENT ] (POSTPONE) [ FORTH ] T' THERE - ,-T ;
+      THERE PLACE-T R> ALLOT-T ALIGN-T NO-PEEP-T ;
+: POSTPONE FAR-ALIGN-T [ TRANSIENT ] (POSTPONE) [ FORTH ] T' THERE - ,-T
+      NO-PEEP-T ;
 : ABORT" [ TRANSIENT ] (ABORT") [ FORTH ] 34 WORD COUNT DUP 1+ >R
-      THERE PLACE-T R> ALLOT-T ALIGN-T ;
+      THERE PLACE-T R> ALLOT-T ALIGN-T NO-PEEP-T ;
 
 : \ POSTPONE \ ; IMMEDIATE
 : ( POSTPONE ( ; IMMEDIATE \ Move duplicates of comment words to TRANSIENT
 : CHARS-T CHARS-T ; \ Also words that must be executed while cross compiling.
 : CELLS-T CELLS-T ;
 : ALLOT-T ALLOT-T ;
-: ['] T' LITERAL-T ;
 
 T[
 
 FORTH DEFINITIONS
 
-\ kernel.4 itself uses plain :/; throughout its own source to compile
-\ *target*-level colon definitions - CROSS-COMPILE finds those via its
-\ own restricted [TARGET, TRANSIENT] search, so a :/; pair needs to
-\ exist in TRANSIENT vocabulary for it to find. This is the redefined,
-\ "HEADER-based one - safe here because kernel.4's own colon-definitions
-\ don't have the nested-DOES> pattern that broke it for FORWARD/VARIABLE/
-\ the control-structure words above (none of which use it anymore).
-
 TRANSIENT DEFINITIONS FORTH
 
-: : !CSP "HEADER THERE , T] DOES> @ THERE - CELLBYTES-TOKEN - ,-T ;
+: : !CSP "HEADER THERE , NO-PEEP-T T] DOES> @ CALL,-T ;
 
-: ; EXIT-TOKEN ,-T T[ ?CSP ; \ Compile EXIT. Quit compilation state.
+: ; EXIT,-T T[ ?CSP ;
 
 FORTH DEFINITIONS
 
@@ -513,10 +651,6 @@ VARIABLE DPL
 TRANSIENT DEFINITIONS
 FORWARD COLD
 FORWARD WARM
-FORWARD DIV-EX
-FORWARD BREAK-EX
-FORWARD TIMER-EX
-FORWARD THROW
 FORTH DEFINITIONS
 
 S" kernel.4" INCLUDED
@@ -525,16 +659,11 @@ S" kernel.4" INCLUDED
 
 \ Resolve the forward references created by the cross compiler.
 RESOLVE (DO)
-RESOLVE DOVAR
 RESOLVE (LOOP)
 RESOLVE (.")
 RESOLVE (ABORT")
 RESOLVE COLD
 RESOLVE WARM
-\  RESOLVE DIV-EX
-\  RESOLVE BREAK-EX
-\  RESOLVE TIMER-EX
-RESOLVE THROW
 RESOLVE (POSTPONE)
 
 \ Store appropriate values into some of the new Forth's variables.

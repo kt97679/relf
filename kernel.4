@@ -9,11 +9,12 @@ CROSS-COMPILE
 
 \ PART 0: BOOT VECTORS.
 
-COLD \ call to cold start location.
+COLD \ call to cold start location: the engine starts executing here,
+     \ with the image's base address on the data stack.
 WARM \ call to warm start location.
-DIV-EX \ address of division exception routine.
-BREAK-EX \ address of break handling routine.
-TIMER-EX \ address of timer interrupt routine.
+LOCALS-CELLS \ five cells at image offset 8, for the engine's locals
+     \ opcodes: shadow.4 fills them in when it loads (CV8-REFERENCE.md
+     \ 7.3), and SAVE-SYSTEM saves them with the rest of the image.
 
 \ PART 1: LOW-LEVEL PRIMITIVES
 
@@ -123,17 +124,84 @@ PRIMITIVE RP@      ( --- a-addr)
 PRIMITIVE RP!      ( a-addr ---)
 \ Set the return stack pointer to a-addr.
 
+\ The OS/libc primitives: 3.2% of static sites and 0.006% of
+\ dispatches, so they sit behind ESC + a selector byte and leave the
+\ one-byte opcodes to the words that matter (CV8-REFERENCE.md 3.2).
+\ Every primitive must be declared before the first definition that
+\ compiles anything: the synthetic opcodes are numbered from the total.
+ESCAPED
+
+PRIMITIVE BYE  ( ---)
+\ Terminate the execution of Forth, return to host OS.
+
+PRIMITIVE OPEN-FILE
+PRIMITIVE CLOSE-FILE
+PRIMITIVE READ-LINE
+PRIMITIVE WRITE-LINE
+PRIMITIVE READ-FILE
+PRIMITIVE WRITE-FILE
+PRIMITIVE SYSTEM
+PRIMITIVE REPOSITION-FILE
+PRIMITIVE FILE-POSITION
+PRIMITIVE DELETE-FILE
+PRIMITIVE FILE-SIZE
+
+\ Process-control primitives (shell support, see PROGRESS.md). Order
+\ here must match cv8.c's dispatch table exactly, since PRIMITIVE
+\ assigns opcodes sequentially as each of these lines is processed.
+PRIMITIVE FORK      ( --- pid )
+PRIMITIVE EXECVE    ( argv-addr path-addr --- ior )
+PRIMITIVE WAITPID   ( pid --- status ior )
+PRIMITIVE PIPE      ( --- fd-read fd-write ior )
+PRIMITIVE DUP2      ( oldfd newfd --- ior )
+PRIMITIVE GETENV    ( c-addr --- addr )
+PRIMITIVE SETENV    ( value-addr name-addr --- ior )
+PRIMITIVE SYS-EXIT  ( n --- )
+PRIMITIVE CHDIR     ( c-addr --- ior )
+PRIMITIVE GETCWD    ( addr max-len --- len ior )
+PRIMITIVE SYS-ARGC  ( --- n )
+PRIMITIVE SYS-ARG   ( n --- c-addr )
+PRIMITIVE GETPID    ( --- pid )
+PRIMITIVE UNSETENV  ( c-addr --- ior )
+\ Forth-2012 memory-allocation wordset, backed by the host's own
+\ malloc/free/realloc. This is memory OUTSIDE the image - it does not
+\ consume dictionary space and is not saved by SAVE-SYSTEM. Appended
+\ at the END of this list deliberately: opcodes are positions, so
+\ adding here leaves every existing one untouched, while inserting
+\ anywhere earlier would silently renumber them.
+PRIMITIVE ALLOCATE  ( u --- a-addr ior )
+PRIMITIVE FREE      ( a-addr --- ior )
+PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
+PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
+PRIMITIVE GETFSIZE  ( --- n )
+PRIMITIVE SETFSIZE  ( n --- ior )
+
+
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
 
-\ Only VARIABLES (or CREATE) need a runtime part in this system.
-\ As this is a native code compiler, colon definitions have no runtime
-\ part and for CONSTANT it is compiled inline. For variables, a call
-\ to DOVAR is compiled. DOVAR pushes the return address (the address
-\ where the data of the variable is stored) on the stack.
+\ None: DOVAR and DODOES are opcodes of their own. A data body is
+\ [DOVAR][pad to a cell][parameter field], and a DOES> body is
+\ [DODOES][call to the tail][pad][parameter field].
 
-: DOVAR  ( --- a-addr)
-\ Runtime part of variables.
-  R> ;
+\ The kernel words the engine implements as opcodes (CV8-REFERENCE.md
+\ 7.4). Declared like primitives, so COMPILE, inlines them; their
+\ meaning is in cv8.c. They are declared here, before anything uses
+\ them, and not where their Forth definitions used to be.
+106 OPCODE 0=      ( x --- f )           \ true iff x is 0
+107 OPCODE -       ( w1 w2 --- w3 )      \ w1 minus w2
+108 OPCODE <>      ( x1 x2 --- f )
+109 OPCODE 0<      ( n --- f )
+110 OPCODE >       ( n1 n2 --- f )       \ signed
+111 OPCODE 2DUP    ( d --- d d )
+112 OPCODE 2DROP   ( d --- )
+113 OPCODE CHAR+   ( c-addr1 --- c-addr2 )
+114 OPCODE 1+      ( w1 --- w2 )
+115 OPCODE CELL+   ( a-addr1 --- a-addr2 )
+116 OPCODE CELLS   ( n1 --- n2 )
+117 OPCODE 1-      ( w1 --- w2 )
+118 OPCODE INVERT  ( x1 --- x2 )
+119 OPCODE COUNT   ( c-addr1 --- c-addr2 c )
+120 OPCODE ALIGNED ( c-addr --- a-addr )
 
 \ PART 3: SIMPLE DEFINITIONS
 
@@ -146,25 +214,10 @@ PRIMITIVE RP!      ( a-addr ---)
 \ dependent on each other, so they are in a less than logical order to
 \ avoid large numbers of forward references.
 
-: -    ( w1 w2 --- w3 )
-\ Subtract the top two numbers on the stack (w2 from w1).
-  NEGATE + ;
 
-: 0=    ( x --- f)
-\ f is true if and only if x is 0.
-  0 = ;
 
-: <>   ( x1 x2 --- f)
-\ f is true if and only if x1 is not equal to x2.
-  = 0= ;
 
-: 0<   ( n --- f)
-\ f is true if and only if n is less than 0.
-  0 < ;
 
-: >    ( n1 n2 --- f)
-\ f is true if and only if the signed number n1 is less than n2.
-  SWAP < ;
 
 : EMIT ( c --- )
 \ Output the character c to the terminal.
@@ -212,33 +265,18 @@ VARIABLE R0 ( --- a-addr)
 \ n is the number of cells on the stack (before DEPTH was executed).
   SP@ S0 @ SWAP - CELLSHIFT-TOK RSHIFT ;
 
-: 2DUP  ( d --- d d)
-\ Duplicate the top double number on the stack.
-  OVER OVER ;
 
-: 2DROP ( d --- )
-\ Discard the top double number on the stack.
-   DROP DROP ;
 
 \ The next few words manipulate addresses in a system-independent way.
 \ Use CHAR+ instead of 1+ and it will be portable to systems where you
 \ have to add something different from 1.
 
-: CHAR+ ( c-addr1 --- c-addr2)
-\ c-addr2 is the next character address after c-addr1.
-   1 + ;
 
 : CHARS ( n1 --- n2)
 \ n2 is the number of address units occupied by n1 characters.
 ; \ A no-op.
 
-: CELL+ ( a-addr1 --- a-addr2)
-\ a-addr2 is the address of the next cell after a-addr2.
-    CELLBYTES-TOK + ;
 
-: CELLS ( n2 --- n1)
-\ n2 is the number of address units occupied by n1 cells.
-   CELLSHIFT-TOK LSHIFT ;
 
 : CELL- ( a-addr1 --- a-addr2)
 \ a-addr2 is the address of the previous cell before a-addr1.
@@ -320,16 +358,7 @@ VARIABLE R0 ( --- a-addr)
      IF R> 2DROP CELL+ >R
      ELSE >R DUP @ + >R THEN ;
 
-: COUNT  ( c-addr1 --- c-addr2 c)
-\ c-addr2 is the next address after c-addr1 and c is the character
-\ stored at c-addr1.
-\ This word is intended to be used with 'counted strings' where the
-\ first character indicates the length of the string.
-   DUP 1 + SWAP C@ ;
 
-: ALIGNED ( c-addr --- a-addr )
-\ a-addr is the first aligned address after c-addr.
-  CELLBYTES-TOK 1 - + CELLBYTES-TOK NEGATE AND ;
 
 : (.") ( --- )
 \ Runtime part of ."
@@ -349,17 +378,8 @@ VARIABLE R0 ( --- a-addr)
 \ is OVER etc.
   1 + CELLS SP@ + @ ;
 
-: 1+ ( w1 --- w2 )
-\ Add 1 to the top of the stack.
-   1 + ;
 
-: 1- ( w1 --- w2)
-\ Subtract 1 from the top of the stack.
-   -1 + ;
 
-: INVERT ( x1 --- x2)
-\ Invert all the bits of x1 (one's complement)
-   -1 XOR ;
 
 : 2* ( w1 --- w2)
 \ Multiply w1 by 2.
@@ -644,51 +664,6 @@ VARIABLE DPL ( --- a-addr)
 \ Modify the R/O W/O or R/W mode so that it applies to binary files.
   1 + ;
 
-PRIMITIVE BYE  ( ---)
-\ Terminate the execution of Forth, return to host OS.
-
-PRIMITIVE OPEN-FILE
-PRIMITIVE CLOSE-FILE
-PRIMITIVE READ-LINE
-PRIMITIVE WRITE-LINE
-PRIMITIVE READ-FILE
-PRIMITIVE WRITE-FILE
-PRIMITIVE SYSTEM
-PRIMITIVE REPOSITION-FILE
-PRIMITIVE FILE-POSITION
-PRIMITIVE DELETE-FILE
-PRIMITIVE FILE-SIZE
-
-\ Process-control primitives (shell support, see PROGRESS.md). Order
-\ here must match relf.c's dispatch table exactly, since PRIMITIVE
-\ assigns tokens sequentially as each of these lines is processed.
-PRIMITIVE FORK      ( --- pid )
-PRIMITIVE EXECVE    ( argv-addr path-addr --- ior )
-PRIMITIVE WAITPID   ( pid --- status ior )
-PRIMITIVE PIPE      ( --- fd-read fd-write ior )
-PRIMITIVE DUP2      ( oldfd newfd --- ior )
-PRIMITIVE GETENV    ( c-addr --- addr )
-PRIMITIVE SETENV    ( value-addr name-addr --- ior )
-PRIMITIVE SYS-EXIT  ( n --- )
-PRIMITIVE CHDIR     ( c-addr --- ior )
-PRIMITIVE GETCWD    ( addr max-len --- len ior )
-PRIMITIVE SYS-ARGC  ( --- n )
-PRIMITIVE SYS-ARG   ( n --- c-addr )
-PRIMITIVE GETPID    ( --- pid )
-PRIMITIVE UNSETENV  ( c-addr --- ior )
-\ Forth-2012 memory-allocation wordset, backed by the host's own
-\ malloc/free/realloc. This is memory OUTSIDE the image - it does not
-\ consume dictionary space and is not saved by SAVE-SYSTEM. Appended
-\ at the END of this list deliberately: primitive tokens are
-\ 1 + (position-1)*stride, so adding here leaves every existing token
-\ untouched, while inserting anywhere earlier would silently
-\ renumber them (see GOALS.md and PROGRESS.md 2026-09-01).
-PRIMITIVE ALLOCATE  ( u --- a-addr ior )
-PRIMITIVE FREE      ( a-addr --- ior )
-PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
-PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
-PRIMITIVE GETFSIZE  ( --- n )
-PRIMITIVE SETFSIZE  ( n --- ior )
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
 \ Create a new file with the name starting at c-addr with length u.
@@ -1127,21 +1102,48 @@ VARIABLE CURRENT ( --- addr)
   LAST @ DUP COUNT 31 AND CURRENT @ @ HASH
   1+ CELLS CURRENT @ + ! ;
 
-: CREATE ( "ccc" --- )
-\ Create a definition that returns its parameter field address when
-\ executed. Storage can be added to it with ALLOT.
-  HEADER REVEAL POSTPONE DOVAR ;
 
-: VARIABLE ( "ccc" --- )
-\ Create a variable where 1 cell can be stored. When executed it
-\ returns the address.
-  CREATE 0 , ;
 
-: CONSTANT ( x "ccc" ---)
-\ Create a definition that returns x when executed.
-\ Definition contains lit & return in its code field.
-  HEADER REVEAL LIT-TOK , , EXIT-TOK , ;
+: OP, ( n --- )
+\ Append one opcode byte.
+  C, ;
 
+VARIABLE LAST-OP ( --- a-addr )
+\ Where the last foldable operation starts, or 0.
+VARIABLE LAST-LIT ( --- a-addr )
+\ Where the last literal starts, or 0...
+VARIABLE LAST-LITV ( --- a-addr )
+\ ...and its value.
+VARIABLE LAST-CALL ( --- a-addr )
+\ Where the last call starts, or 0...
+VARIABLE LAST-CALLXT ( --- a-addr )
+\ ...and its target.
+
+\ The compiler rewrites four two-operation patterns into one opcode
+\ (CV8-REFERENCE.md 7): `LIT n +` and `LIT n =` into ADDI/EQI, and
+\ `var @` and `var !` into VAR@/VAR!. It remembers where the last
+\ literal and the last call started, and the second half of a pattern
+\ rewinds HERE over the first. NOTHING MAY BRANCH BETWEEN THE TWO, so
+\ everything that makes HERE a branch target, or emits anything that is
+\ not one of the halves, calls NO-PEEP. `;` folds a final operation and
+\ its EXIT into one opcode under the same rule.
+: NO-PEEP ( --- )
+  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! ;
+
+: REWIND ( a-addr --- )
+\ Discard everything compiled from a-addr to HERE.
+  HERE - ALLOT ;
+
+: W, ( n --- )
+\ Append a 16-bit little-endian operand.
+  DUP 255 AND C, 8 RSHIFT 255 AND C, ;
+
+: SLOT, ( a-addr --- )
+\ A slot operand naming a-addr: a scaled offset like a call, two bytes
+\ big-endian if it fits 15 bits, else three with the top bit set.
+  START @ - CELLSHIFT-TOK RSHIFT
+  DUP 32768 < IF DUP 8 RSHIFT C, 255 AND C,
+  ELSE DUP 16 RSHIFT 128 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
 
 VARIABLE STATE ( --- a-addr)
 \ Variable that holds the compiler state, 0 is interpreting 1 is compiling.
@@ -1154,15 +1156,93 @@ VARIABLE STATE ( --- a-addr)
 \ Leave compilation mode.
   0 STATE ! ; IMMEDIATE
 
+: LIT, ( n --- )
+\ Append a literal in the narrowest form that holds it.
+  NO-PEEP HERE LAST-LIT ! DUP LAST-LITV !
+  DUP 0 = IF DROP 97 OP, EXIT THEN              \ push 0
+  DUP 1 = IF DROP 98 OP, EXIT THEN              \ push 1
+  DUP -1 = IF DROP 99 OP, EXIT THEN             \ push -1
+  DUP 256 U< IF HERE LAST-OP ! LIT8-TOK OP, C, EXIT THEN
+  DUP 65536 U< IF HERE LAST-OP ! [OP] LIT OP, W, EXIT THEN
+  \ A 64-bit cell holds values a signed 32-bit field cannot.
+  DUP 2147483648 + 4294967296 U< CELLBYTES-TOK 4 = OR IF
+    LIT32-TOK OP, DUP W, 16 RSHIFT W, EXIT
+  THEN
+  125 OP, DUP DUP W, 16 RSHIFT W, 32 RSHIFT DUP W, 16 RSHIFT W, ;
+
 : LITERAL ( n --- )
 \ Add a literal to the current definition.
-  LIT-TOK , , ; IMMEDIATE
+  LIT, ; IMMEDIATE
+
+VARIABLE FOLD-OPS ( --- a-addr )
+\ The primitives with a folded "then EXIT" opcode, as opcode bytes, in
+\ the order of the engine's table.
+FOLD-TABLE
+
+: FOLD-OP ( op --- op2 -1 | op 0 )
+\ The folded opcode for op, if it has one.
+  DUP LIT8-TOK = IF DROP LIT8X-TOK -1 EXIT THEN
+  DUP 121 = OVER 123 = OR IF 1+ -1 EXIT THEN   \ ADDI, EQI
+  #FOLD-TOK 0 DO
+    DUP FOLD-OPS I + C@ = IF DROP I FOLD-BASE-TOK + -1 UNLOOP EXIT THEN
+  LOOP 0 ;
+
+: EXIT, ( --- )
+\ Append a return, folded into the last operation where that has a
+\ folded form. Only ever at the END of a body, so nothing can branch to
+\ the EXIT that folding removes. A final 0 or 1 becomes LIT8 so that it
+\ folds too.
+  LAST-LIT @ IF LAST-LITV @ 2 U< IF
+    LAST-LIT @ REWIND HERE LAST-OP ! LIT8-TOK OP, LAST-LITV @ C,
+  THEN THEN
+  LAST-OP @ ?DUP IF
+    DUP C@ FOLD-OP IF SWAP C! ELSE 2DROP [OP] EXIT OP, THEN
+  ELSE [OP] EXIT OP, THEN
+  NO-PEEP ;
+
+: CALL, ( a-addr --- )
+\ A call to the body at a-addr: a scaled offset from the image base,
+\ two bytes if it fits 14 bits, else three.
+  NO-PEEP HERE LAST-CALL ! DUP LAST-CALLXT !
+  START @ - CELLSHIFT-TOK RSHIFT
+  DUP 16384 < IF DUP 8 RSHIFT 128 OR C, 255 AND C,
+  ELSE DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
+
+: PEEP-IMM ( op --- f )
+\ Rewrite `LIT n +` or `LIT n =` just compiled, if op completes it.
+  LAST-LIT @ 0= IF DROP 0 EXIT THEN
+  LAST-LITV @ 128 + 256 U< 0= IF DROP 0 EXIT THEN
+  DUP [OP] + = IF DROP 121 ELSE
+  [OP] = = IF 123 ELSE 0 EXIT THEN THEN
+  LAST-LIT @ REWIND LAST-LITV @ >R NO-PEEP
+  HERE LAST-OP ! OP, R> 255 AND C, -1 ;
+
+: PEEP-VAR ( op --- f )
+\ Rewrite `var @` or `var !` just compiled, where var is a plain data
+\ word: its body starts with DOVAR, so its parameter field is fixed.
+  LAST-CALL @ 0= IF DROP 0 EXIT THEN
+  LAST-CALLXT @ C@ DOVAR-TOK = 0= IF DROP 0 EXIT THEN
+  DUP [OP] @ = IF DROP 100 ELSE
+  [OP] ! = IF 101 ELSE 0 EXIT THEN THEN
+  LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
+  OP, R> CELL+ SLOT, -1 ;   \ >BODY, which is defined later
 
 : COMPILE, ( xt --- )
-\ Add the execution semantics of the definition xt to the current definition.
-  DUP >NAME C@ 32 AND \ if primitive compile inline
-  IF @ , ELSE HERE - CELL- , THEN
-;
+\ Add the execution semantics of xt to the current definition. A word
+\ with the MACRO bit is a primitive or an opcode word: its body starts
+\ with its opcode, or with ESC and a selector, and that is inlined.
+\ Anything else is a call.
+  DUP >NAME C@ 32 AND IF
+    DUP C@ 126 = IF
+      NO-PEEP DUP C@ OP, 1+ C@ OP,
+    ELSE
+      C@ DUP PEEP-IMM IF DROP EXIT THEN
+      DUP PEEP-VAR IF DROP EXIT THEN
+      NO-PEEP HERE LAST-OP ! OP,
+    THEN
+  ELSE
+    CALL,
+  THEN ;
 
 VARIABLE CSP ( --- a-addr )
 \ This variable is used for stack checking between : and ;
@@ -1181,7 +1261,23 @@ VARIABLE 'LEAVE ( --- a-addr)
 : ; ( --- )
 \ Finish the current definition by adding a return to it, make it
 \ visible and leave compilation mode.
-  EXIT-TOK , [ ?CSP REVEAL ; IMMEDIATE
+  EXIT, [ ?CSP REVEAL ; IMMEDIATE
+
+: CREATE ( "ccc" --- )
+\ Create a definition that returns its parameter field address when
+\ executed. Storage can be added to it with ALLOT. The body is
+\ [DOVAR][pad to a cell]: the pad has room for DOES> to overwrite the
+\ front with [DODOES][call], and the parameter field does not move.
+  HEADER REVEAL NO-PEEP DOVAR-TOK OP, ALIGN ;
+
+: VARIABLE ( "ccc" --- )
+\ Create a variable where 1 cell can be stored. When executed it
+\ returns the address.
+  CREATE 0 , ;
+
+: CONSTANT ( x "ccc" ---)
+\ Create a definition that returns x when executed.
+  HEADER REVEAL LIT, EXIT, ;
 
 : (POSTPONE) ( --- )
 \ Runtime for POSTPONE.
@@ -1194,15 +1290,32 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Start a new definition, enter compilation mode.
   !CSP HEADER ] ;
 
+: >MARK ( --- a-addr )
+\ Emit a placeholder branch operand and leave its address. A branch
+\ operand is a signed 16-bit offset from the operand itself.
+  NO-PEEP HERE 0 W, ;
+
+: >RESOLVE ( a-addr --- )
+\ Patch the operand at a-addr so its branch lands on HERE.
+  NO-PEEP HERE OVER - SWAP 2DUP C! 1+ SWAP 8 RSHIFT SWAP C! ;
+
+: <RESOLVE ( a-addr --- )
+\ Emit a branch operand jumping back to a-addr.
+  NO-PEEP HERE - W, ;
+
 : BEGIN ( --- x )
 \ Start a BEGIN UNTIL or BEGIN WHILE REPEAT loop.
-  HERE ; IMMEDIATE
+  NO-PEEP HERE ; IMMEDIATE
 
 : UNTIL ( x --- )
 \ Form a loop with matching BEGIN.
 \ Runtime: A flag is take from the stack
 \ each time UNTIL is encountered and the loop iterates until it is nonzero.
-  0BRANCH-TOK , HERE - , ; IMMEDIATE
+  NO-PEEP [OP] ?BRANCH OP, <RESOLVE ; IMMEDIATE
+
+: AGAIN ( x --- )
+\ End a BEGIN AGAIN loop: branch back unconditionally.
+  NO-PEEP [OP] BRANCH OP, <RESOLVE ; IMMEDIATE
 
 : IF    ( --- x)
 \ Start an IF THEN or IF ELSE THEN construction.
@@ -1210,15 +1323,15 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ the stack and if it is true the part between IF and ELSE is executed,
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
-  0BRANCH-TOK , HERE 1 CELLS ALLOT ; IMMEDIATE
+  NO-PEEP [OP] ?BRANCH OP, >MARK ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.
-  HERE OVER - SWAP ! ; IMMEDIATE
+  >RESOLVE ; IMMEDIATE
 
 : ELSE ( x1 --- x2)
 \ part of IF ELSE THEN construction.
-  BRANCH-TOK , HERE 1 CELLS ALLOT SWAP HERE OVER - SWAP ! ; IMMEDIATE
+  NO-PEEP [OP] BRANCH OP, >MARK SWAP >RESOLVE ; IMMEDIATE
 
 : WHILE  ( x1 --- x2 x1 )
 \ part of BEGIN WHILE REPEAT construction.
@@ -1229,7 +1342,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 
 : REPEAT ( x1 x2 --- )
 \ part of BEGIN WHILE REPEAT construction.
-  BRANCH-TOK , HERE - , HERE OVER - SWAP ! ; IMMEDIATE
+  NO-PEEP [OP] BRANCH OP, <RESOLVE >RESOLVE ; IMMEDIATE
 
 VARIABLE POCKET ( --- a-addr )
 \ Buffer for S" strings that are interpreted.
@@ -1251,24 +1364,31 @@ VARIABLE POCKET ( --- a-addr )
 \ Compile the first character of "ccc" as a literal.
   CHAR LITERAL ; IMMEDIATE
 
+: OPERAND-ALIGN ( --- )
+\ (LOOP), (+LOOP), (?DO), (LEAVE) and (POSTPONE) are followed by an
+\ inline CELL, read with @. Pad with NOOPs so that it is aligned: they
+\ execute, once, before the call. Calls to kernel words are two bytes.
+  BEGIN HERE 2 + CELLBYTES-TOK 1- AND WHILE 0 C, REPEAT ;
+
 : DO ( --- x)
 \ Start a DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1.
-  POSTPONE (DO) 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
+  POSTPONE (DO) NO-PEEP 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
 
 : ?DO ( --- x )
 \ Start a ?DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1. Exit immediately if n1 = n2.
-  POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , HERE ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , NO-PEEP HERE
+  ; IMMEDIATE
 
 : LEAVE ( --- )
 \ Runtime: leave the matching DO LOOP immediately.
 \ All places where a leave address for the loop is needed are in a linked
 \ list, starting with 'LEAVE variable, the other links in the cells where
 \ the leave addresses will come.
-  POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! NO-PEEP ; IMMEDIATE
 
 : RESOLVE-LEAVE
 \ Resolve the references to the leave addresses of the loop.
@@ -1283,17 +1403,19 @@ VARIABLE POCKET ( --- a-addr )
 : LOOP  ( x --- )
 \ End a DO LOOP.
 \ Runtime: Add 1 to the count and if it is equal to the limit leave the loop.
-  POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
+  ; IMMEDIATE
 
 : +LOOP ( x --- )
 \ End a DO +LOOP
 \ Runtime: ( n ---) Add n to the count and exit if this crosses the
 \ boundary between limit-1 and limit.
-  POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
+  ; IMMEDIATE
 
 : RECURSE ( --- )
 \ Compile a call to the current (not yet finished) definition.
-  LAST @ NAME> COMPILE, ; IMMEDIATE
+  LAST @ NAME> CALL, ; IMMEDIATE
 
 : ."  ( "ccc<quote>" --- )
 \ Parse a string delimited by " and compile the following runtime semantics.
@@ -1320,7 +1442,7 @@ VARIABLE POCKET ( --- a-addr )
 \ Parse the next word delimited by spaces and compile the following runtime.
 \ Runtime: depending on immediateness EXECUTE or compile the execution
 \ semantics of the parsed word.
-  POSTPONE (POSTPONE) ' HERE - , ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (POSTPONE) ' HERE - , NO-PEEP ; IMMEDIATE
 
 : IMMEDIATE ( --- )
 \ Make last definition immediate, so that it will be executed even in
@@ -1346,17 +1468,29 @@ VARIABLE POCKET ( --- a-addr )
   CELL+ ;
 
 : (;CODE) ( --- )
-\ Runtime for DOES>, exit calling definition and make last defined word
-\ execute the calling definition after (;CODE)
-  LAST @ NAME> R> OVER - CELLBYTES-TOK - SWAP ! ;
+\ Runtime for DOES>: make the last created word call the code after
+\ the call to this word, and end the defining word (R> discards its
+\ return address). The body becomes [DODOES][call to the tail]; CREATE
+\ left room for that, and the three-byte form still fits because the
+\ body is cell-aligned. ALIGNED because DOES> pads the tail to a call
+\ target.
+  R> ALIGNED LAST @ NAME>             ( tail xt )
+  DODOES-TOK OVER C! 1+ SWAP          ( a-addr tail )
+  START @ - CELLSHIFT-TOK RSHIFT      ( a-addr v )
+  DUP 16384 < IF
+    2DUP 255 AND SWAP 1+ C!  8 RSHIFT 128 OR SWAP C!
+  ELSE
+    2DUP 255 AND SWAP 2 + C!  2DUP 8 RSHIFT 255 AND SWAP 1+ C!
+    16 RSHIFT 192 OR SWAP C!
+  THEN ;
 
 : DOES>  ( --- )
 \ Word that contains DOES> will change the behavior of the last created
 \ word such that it pushes its parameter field address onto the stack
-\ and then executes whatever comes after DOES>
-  POSTPONE (;CODE) RFROM-TOK , \ Compile the R> primitive, which is the first
-                        \ instruction that the defined word performs.
-; IMMEDIATE
+\ and then executes whatever comes after DOES>. The tail must start on
+\ a call target, so it is padded; the pad is never executed. DODOES
+\ leaves the parameter field on the return stack for the tail's R>.
+  POSTPONE (;CODE) ALIGN NO-PEEP POSTPONE R> ; IMMEDIATE
 
 \ PART 10: TOP LEVEL OF INTERPRETER
 

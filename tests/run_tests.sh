@@ -3,19 +3,17 @@
 # for both the default (8-byte) cell width and the 32-bit (4-byte,
 # i386) target.
 #
-# relf is portable, libc-based C (see GOALS.md phase 5) - built with a
-# plain `cc`, no special flags. Cell width is parameterized (see
-# GOALS.md phase 6): relf.c picks 4 or 8 bytes at compile time from the
-# host's own UINTPTR_MAX, matching the process's own pointer width, per
-# RelF's real-pointer addressing model (see PROGRESS.md, Bug 2, for why
-# cell width and host pointer width must match). Building with a 32-bit
-# compiler (e.g. `gcc -m32`) therefore automatically produces a
-# 4-byte-cell engine - no source changes needed for the engine itself.
+# relf is built from cv8.c, the CV8 engine - portable, libc-based C,
+# built with a plain `cc`. Cell width is the host's pointer width,
+# chosen at compile time (GOALS.md phase 6), so a 32-bit compiler
+# (`cc -m32`) produces the 4-byte-cell engine with no source changes.
+# The i386 build is non-PIE: PIE spends ebx on the GOT, which costs
+# the engine's TOS cache more than it saves (CV8.md 3.3).
 #
 # Images are native host endianness (see GOALS.md phase 5), not a
-# portable on-disk format, and carry an 8-byte magic header (cell width
-# + a fixed tag) so a mismatched image fails cleanly at load instead of
-# silently misbehaving. The 4-byte-cell image is a genuinely different
+# portable on-disk format, and carry a CV8 header (CV8-REFERENCE.md
+# 5.1) recording the cell width, so a mismatched image fails cleanly at
+# load instead of silently misbehaving. The 4-byte-cell image is a genuinely different
 # image from kernel.img (not just a different engine build of the same
 # image) - it's cross-compiled separately, each run, from the same
 # cross.4/kernel.4 source with TARGET-CELL-BYTES set to 4 instead of
@@ -100,6 +98,32 @@ run_shell_test_suite() {
     echo "== PASS ($label shell test suite) =="
 }
 
+run_ext_suites() {
+    # $1 = engine binary, $2 = image, $3 = label
+    #
+    # The CORE EXT, Memory-Allocation and File-Access suites. They need
+    # extend.4, which the CORE suite above deliberately does not load,
+    # and tester.fr's harness must be in place before extend.4 changes
+    # the search order - so each is fed as a script file, one engine
+    # run per suite: chained, one suite's leftovers become the next
+    # one's "WRONG NUMBER OF RESULTS". Until Iteration 243 these ran
+    # only on the CV8 lab images (tools/lab/forth-tests.sh).
+    local engine="$1" image="$2" label="$3" t ext out n=0
+    for t in tests/ext/*.fth; do
+        ext=$(mktemp)
+        printf 'S" tester.fr" INCLUDED\nS" extend.4" INCLUDED\nS" %s" INCLUDED\n' "$t" > "$ext"
+        out=$( printf 'S" %s" INCLUDED\nBYE\n' "$ext" | timeout 60 "$engine" "$image" 2>&1 ) || true
+        rm -f "$ext"
+        if echo "$out" | grep -qiE "incorrect result|wrong number of results|undefined word|segmentation fault"; then
+            echo "$out" | grep -iE "incorrect|wrong number|undefined" | head -5
+            echo "FAIL ($label): $t"
+            exit 1
+        fi
+        n=$((n + 1))
+    done
+    echo "== PASS ($label extension suites): $n files =="
+}
+
 cross_compile_image() {
     # $1 = target cell bytes, $2 = destination path, $3 = label
     #
@@ -155,7 +179,7 @@ check_image_reproduces() {
 }
 
 echo "== Building relf (default, 8-byte cells) =="
-cc -O2 -Wall -o relf relf.c
+cc -O2 -Wall -o relf cv8.c
 
 echo "== Cross-compiling an 8-byte-cell target image =="
 # Regenerated BEFORE the suites, so the tests below run against an
@@ -166,10 +190,11 @@ check_image_reproduces /tmp/relf-regen-kernel.img kernel.img "8-byte cells"
 
 echo "== Running test suite (8-byte cells) =="
 run_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
+run_ext_suites ./relf /tmp/relf-regen-kernel.img "8-byte cells"
 run_shell_test_suite relf kernel.img "8-byte cells"
 
 echo "== Building relf32 (i386, 4-byte cells) =="
-if ! cc -m32 -O2 -Wall -o relf32 relf.c 2>/tmp/relf32_build.log; then
+if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c 2>/tmp/relf32_build.log; then
     echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
 else
     echo "== Cross-compiling a 4-byte-cell target image =="
@@ -179,6 +204,7 @@ else
 
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
+    run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"
     run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
 fi
 

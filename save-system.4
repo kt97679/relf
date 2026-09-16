@@ -54,17 +54,35 @@ VARIABLE SS-BUF
 CREATE SS-MAGIC 8 ALLOT
 
 : SS-SET-MAGIC ( --- )
-  \ The 8-byte header relf.c checks at load: "RELF", then the cell
-  \ width, then three zero bytes. Must agree with relf.c's own
-  \ IMAGE_MAGIC exactly, or the image is rejected at load.
-  [CHAR] R SS-MAGIC     C!
-  [CHAR] E SS-MAGIC 1+  C!
-  [CHAR] L SS-MAGIC 2 + C!
-  [CHAR] F SS-MAGIC 3 + C!
+  \ The 8-byte CV8 magic the engine checks at load (CV8-REFERENCE.md
+  \ 5.1): "CV8", the call scale as a digit, the cell width, 'L' for
+  \ the specialised opcodes, the format version, and the feature bits
+  \ varcall | varslot | spec | lit64. Must agree with cv8.c's
+  \ IMAGE_MAGIC, and with cross.4's SAVE-IMAGE, which writes the same
+  \ header for the kernel.
+  [CHAR] C SS-MAGIC     C!
+  [CHAR] V SS-MAGIC 1+  C!
+  [CHAR] 8 SS-MAGIC 2 + C!
+  1 CELLS 8 = IF [CHAR] 3 ELSE [CHAR] 2 THEN SS-MAGIC 3 + C!
   1 CELLS  SS-MAGIC 4 + C!
-  0 SS-MAGIC 5 + C!
-  0 SS-MAGIC 6 + C!
-  0 SS-MAGIC 7 + C! ;
+  [CHAR] L SS-MAGIC 5 + C!
+  2        SS-MAGIC 6 + C!
+  15       SS-MAGIC 7 + C! ;
+
+: SS-CELL, ( x --- )
+  \ Append one cell to the image file. SS-MAGIC is reused as scratch:
+  \ the magic itself has already been written by then.
+  SS-MAGIC ! SS-MAGIC 1 CELLS SS-FID @ WRITE-FILE DROP ;
+
+: SS-HEADER, ( --- )
+  \ The header fields after the magic: the thread count and heads
+  \ (START-relative, 0 for an empty thread), then the DOES> tail
+  \ count, always 0 because DODOES carries its target inline.
+  FORTH-WORDLIST @ DUP SS-CELL,
+  1+ 1 DO
+    FORTH-WORDLIST I CELLS + @ DUP IF START @ - THEN SS-CELL,
+  LOOP
+  0 SS-CELL, ;
 
 : SS>COPY ( live-addr --- copy-addr )   \ same location, in the copy
   START @ - SS-BUF @ + ;
@@ -123,6 +141,11 @@ CREATE SS-MAGIC 8 ALLOT
   #TIB  SS-CELL
   LAST  SS-CELL   CURRENT SS-CELL
   CSP   SS-CELL   'LEAVE  SS-CELL
+  \ The compiler's peephole state (kernel.4's NO-PEEP). LAST-CALLXT is
+  \ an ABSOLUTE address that NO-PEEP never clears, so without this the
+  \ image differed on every run under ASLR (Iteration 243).
+  LAST-OP SS-CELL   LAST-LIT SS-CELL   LAST-LITV SS-CELL
+  LAST-CALL SS-CELL LAST-CALLXT SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
   \ shadow.4's save-stack pointer. It is zero at save time when the
@@ -175,6 +198,7 @@ CREATE SS-MAGIC 8 ALLOT
   SS-SET-MAGIC
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
   SS-MAGIC 8 SS-FID @ WRITE-FILE DROP
+  SS-HEADER,
   SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
   SS-FID @ CLOSE-FILE DROP
   SS-BUF @ FREE DROP ;

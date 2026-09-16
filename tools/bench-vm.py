@@ -16,7 +16,7 @@ for l in open(sys.argv[2]):
     if l and not l.startswith('#'):
         n, cwd, cmd = l.split('|'); cfg.append((n, cwd, cmd))
 WL = os.environ.get('WL', 'loop fn str arith start').split()
-W = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tests', 'bench-vm') + '/'
+W = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tests', 'bench-vm') + '/'
 
 def run(cwd, cmd, reps=1):
     tot = 0.0

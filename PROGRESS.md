@@ -10,7 +10,7 @@ was actually done, in order, and shouldn't repeat what's already stated
 there.
 
 The **Index** below is how to use this file: find the entry, read that
-entry, don't read the log. It is long because it is 119 entries, not
+entry, don't read the log. It is long because it is ~222 entries, not
 because it is padded — and the oldest entries are the ones the other
 documents cite most, so nothing here gets archived or trimmed by age.
 
@@ -238,6 +238,7 @@ do not trust the absence of a line below.
 - **214-227** — one engine, one read, and four wrong guesses
 - **228-236** — conformance, and what the standard's own tests found
 - **237-242** — the relf.c retirement, prepared but not done
+- **243** — +LOOP fixed; CV8 hosts itself and relf.c is retired
 
 ### Not tied to an iteration
 
@@ -14564,3 +14565,102 @@ that used a variable before declaring it and was then abandoned with a
 stack-order bug half-diagnosed. The work stopped there deliberately.
 Everything above is in the repository rather than in a conversation,
 which is the point of writing it down.
+
+## Iteration 243: CV8 hosts itself, and relf.c is retired
+
+Four commits, in order: 71 empty root files removed; `+LOOP` fixed;
+the CV8 compiler taught the peepholes; the switch. The first three
+passed `tests/verify` on the cell product. The switch changed only
+what was intended - see the end.
+
+**The `+LOOP` fix needed no biased index.** The plan was to store
+`index - limit + MIN-INT` so `+LOOP` becomes an overflow test, which
+touches eight words. The same test can be computed from the unbiased
+difference x = index - limit: the loop crossed the limit iff
+`((x XOR x+n) AND (x XOR n)) < 0` (gforth's formulation). So only
+`(+LOOP)` changed, and `I` kept its four-token body.
+`tests/coreplus-loop.fth` vendors the standard's four `+LOOP` sections.
+It shows exactly the seven failures on the old kernel and none on the
+new one. It must start at upstream's own `DECIMAL`: `tester.fr` leaves
+`BASE` at 16, and the first attempt read `-20 31 -10` as hex.
+
+**The obstacle GOALS.md did not list.** Without a cell engine there is
+no running cell image to translate, so the shell image must be compiled
+natively - and only the translator emitted the specialised opcodes.
+Measured first, same engine, natively compiled shell against
+translated:
+
+                     loop   fn     str    arith
+    native           2.39   1.96   2.78   2.28
+    + peepholes      2.04   1.65   2.19   1.90
+    + OPCODE words
+      + locals       1.01   1.00   0.99   0.99
+    cell (shipped)   4.04   3.26   4.41   3.70
+
+The peepholes (0/1/-1, ADDI, EQI, VAR@, VAR!, folding a final literal)
+went into `cv8.4` first, where the lab gates could check them. The
+fifteen tiny kernel words became `OPCODE` declarations in `kernel.4`:
+declared like primitives, so `COMPILE,` inlines them, with the engine
+as their definition. `shadow.4` emits the locals opcodes itself.
+
+**The CV8 cross-compiler.** `cross.4` PART 4 now emits CV8 against the
+target space, a twin of `kernel.4`'s run-time compiler. That compiler
+is `cv8.4` merged in, with `AGAIN` moved from `extend.4` because it
+needs an opcode.
+- Forward references are three-byte far calls, threaded through their
+  own operands until `RESOLVE`.
+- `LOOP` and `POSTPONE` pad for a three-byte call so their inline cell
+  lands aligned.
+- `PRIMITIVE` records the opcodes the peepholes complete, by name.
+- Every primitive is declared before the first definition, since the
+  synthetic opcodes are numbered from the total. `NPRIM` refuses a
+  late `PRIMITIVE` rather than silently renumbering.
+
+Some of this was written in a session whose conversation was lost; it
+was treated as unverified and tested from scratch. It segfaulted at
+`PRIMITIVE @`: `TNAME=` handed `COMPARE` three arguments, and `@` was
+the first name whose length matched one of its targets. After that
+one-word fix, the 64-bit kernel is 11,638 bytes and the 32-bit one
+8,674. Both pass all 2,127 CORE markers and the four extension suites,
+and the 64-bit kernel reproduces itself byte for byte.
+
+**Locals needed a format change.** The first native shell build
+segfaulted at the first registered `BUILTIN` - the first locals-using
+word to RUN during the load. The engine found `shadow.4`'s save stack
+through five cells in the image FILE HEADER, read once at load, so in
+a freshly cross-compiled kernel they were zeros until a save and a
+reload. The translated flow never hit it, because code ran on the cell
+engine before anything was saved. The cells now live in the image at
+offset 8, reserved by `kernel.4` (`LOCALS-CELLS`) and filled in by
+`shadow.4` as it loads; the header no longer carries them. CV8 format
+version 2, which a version-1 engine refuses.
+
+**The engine.** `cv8.c` is `tools/lab/vm-lab.c`, through
+`gen-tos.py` and `gen-fold.py`, specialised by a one-off `unifdef` to
+the measured-best configuration (REG, FOLD, SPEC, SHAREDCALL, ESCAPE,
+VARCALL, VARSLOT, DISPATCH256; no GUARD), with the fold table
+inlined. That removed the SOD16 leftovers and fixed one `-Wall`
+warning in a macro. The i386 build is non-PIE, as the lab's was.
+
+**Reproducibility caught a real leak.** The first `tests/verify` said a
+shell image built in another directory DIFFERED. It was not the path:
+`LAST-CALLXT`, the compiler's peephole scratch, holds an ABSOLUTE
+address that `NO-PEEP` never clears, so under ASLR the image differed
+on every run. `SS-SCRUB` now blanks all five peephole cells. The
+in-place rebuild check could not show it that time, because the shell
+images had been deleted first and were reported "missing".
+
+**What moved.** `relf.c`, `cv8.4`, `cv8b.4` and `cv8-save.4` went to
+`attic/`, along with the translator, the dumpers, the encoding lab and
+the cell-image analyses; `attic/README.md` has the list. The byte-header
+layout (`cv8b.4`) was not carried over. `tools/bench-vm.py` stayed, and
+`tests/run_tests.sh` now runs the four extension suites on both widths,
+which only the CV8 lab did before. The tag `cell-engine-final` marks
+the last commit the cell engine built.
+
+**tests/verify after the switch:** every suite and count unchanged -
+2,127 CORE markers, 560 shell assertions, mrsh 20/1, posix 25/21/2,
+diff 0, both kernel fixpoints and both shell rebuilds reproducing,
+including from the long path. New: `ext:8byte` and `ext:4byte`.
+Changed: engine + shell image, 234,064 -> 96,358 bytes on x86-64 and
+130,312 -> 77,350 on i386.

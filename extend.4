@@ -47,17 +47,6 @@
 \ TRUE is already in kernel.4; only FALSE was missing.
  0 CONSTANT FALSE ( --- f )
 
-: AGAIN ( x --- )
-\ End a BEGIN AGAIN loop: branch back unconditionally. Same shape as
-\ UNTIL, with the unconditional token.
-\ BRANCH-TOK is a cross-compile-time name and is not in the image, so
-\ the branch opcode is compiled through its xt instead: COMPILE, of a
-\ primitive inlines it, and the offset follows exactly as UNTIL's does.
-\ The xt is captured as a START-relative OFFSET, not as a literal
-\ address: [']  would compile an absolute xt into AGAIN's own body,
-\ which then survives SAVE-SYSTEM unchanged and is wrong after the
-\ image reloads at a different base.
-  [ ' BRANCH START @ - ] LITERAL START @ + COMPILE, HERE - , ; IMMEDIATE
 
 : [COMPILE] ( "ccc" --- )
 \ Compile the next word even if it is immediate.

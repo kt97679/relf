@@ -18,40 +18,36 @@ name - Relative Forth).
 
 2. Compilation.
 
-As of phase 5 (see GOALS.md), RelF is portable C targeting every
-architecture its libc supports (verified on x86-64 and ARM64 Linux so
-far). The engine (relf.c) is plain libc-based C, no special flags, no
-custom startup code:
+RelF is portable C targeting every architecture its libc supports
+(verified on x86-64 and ARM64 Linux, and i386). There is one engine,
+cv8.c, which runs CV8 images - a byte stream of one-byte opcodes and
+two- or three-byte relative calls (see CV8-REFERENCE.md). It is plain
+libc-based C:
 
-cc -O2 -Wall -o relf relf.c
+cc -O2 -Wall -o relf cv8.c
+cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
 
 For a different architecture, use that architecture's C compiler (e.g.
-aarch64-linux-gnu-gcc for ARM64); nothing else changes.
+aarch64-linux-gnu-gcc for ARM64); nothing else changes. Until Iteration
+243 the engine was relf.c, which ran cell-threaded images; it is in
+attic/, and the git tag cell-engine-final is the last commit it built.
 
-Cells are 8 bytes by default, matching the process's own pointer width
-on every 64-bit host targeted so far (RelF's real-pointer addressing
-model needs the two to match - see PROGRESS.md, Bug 2). Cell width is
-parameterized (see GOALS.md, phase 6): relf.c picks 4 or 8 bytes at
-compile time from the host's own UINTPTR_MAX, so building with a 32-bit
-compiler (e.g. `gcc -m32`) automatically produces a 4-byte-cell engine,
-matching a 32-bit host's own pointer width - no source changes needed
-for the engine itself. i386 is verified working this way (full CORE
-test suite passes on both cell widths from the same cross.4/kernel.4
-source). ARM32 should work the same way in principle but hasn't been
-verified. There is no separate relfgcc.c/vm.asm/vm_tos.asm engine any
-more; relf.c is the only one.
+Cell width is the process's pointer width, chosen at compile time: a
+32-bit compiler produces the 4-byte-cell engine with no source
+changes. The i386 build is non-PIE because PIE costs the engine's TOS
+cache a register (CV8.md 3.3). A 4-byte-cell image is a different
+image, built separately - see below.
 
 kernel.img is native host endianness (little-endian - see GOALS.md's
-non-goals) with an 8-byte magic header (cell width + a fixed tag), so a
-mismatched image fails cleanly at load rather than silently
-misbehaving. Any two architectures that agree on *both* cell width and
-endianness can share one image unmodified - confirmed by running the
-identical kernel.img, unchanged, on both x86-64 and ARM64 (both 8-byte
-cells). A 4-byte-cell image (e.g. for i386) is a *different* image,
-built separately - see below.
+non-goals) with a CV8 header recording the call scale, cell width and
+format version, so a mismatched image fails cleanly at load rather
+than silently misbehaving. Any two architectures that agree on both
+cell width and endianness can share one image unmodified.
 
-Machine-independent kernel can be compiled by RelF itself. gforth is
-not currently usable as an alternative host: cross.4/extend.4/kernel.4
+The kernel image is compiled by RelF itself: cross.4, running on the
+committed kernel.img, compiles kernel.4 into a new CV8 image. Nothing
+else is involved - no other engine, no translator, no other language.
+gforth is not usable as an alternative host: cross.4/extend.4/kernel.4
 rely on RelF-kernel-specific search-order words (CONTEXT, #ORDER,
 CURRENT) that gforth doesn't provide.
 

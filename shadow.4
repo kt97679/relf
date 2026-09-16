@@ -42,7 +42,7 @@
 \ same way, but zeroed rather than taking a stack argument.
 \
 \   : GLOB-MATCH ( pat plen text tlen --- f )
-\     {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S :}
+\     SHADOW{ GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S }
 \
 \ Restrictions, all deliberate:
 \   - The whole SHADOW{ ... } must be on one physical line. WORD does not
@@ -161,13 +161,15 @@ VARIABLE LSAVE-SP
 \ Compile time: the declaration currently being processed
 \ ------------------------------------------------------------------
 
-\ The xts of the four runtime words above, held as offsets rather than
-\ compiled into L-COMPILE-ENTRY/L-COMPILE-RESTORES as absolute
-\ literals via [']. Same reason as everything else here.
-VARIABLE L-LSAVE-XT     ' LSAVE    L-LSAVE-XT    !XT
-VARIABLE L-L!-XT        ' L!       L-L!-XT       !XT
-VARIABLE L-LZERO-XT     ' LZERO    L-LZERO-XT    !XT
-VARIABLE L-LRESTORE-XT  ' LRESTORE L-LRESTORE-XT !XT
+\ The four runtime words above are what the engine's locals opcodes
+\ fall back to on their error paths (CV8-REFERENCE.md 7.3); the code
+\ compiled for a declaration is the opcodes themselves. save-system.4
+\ writes LSAVE-SP, LSAVE-STACK, LSAVE-MAX, LSAVE and LRESTORE into the
+\ image header, which is how the engine finds them.
+102 CONSTANT LSAVE-OP
+103 CONSTANT LRESTORE-OP
+104 CONSTANT L!-OP
+105 CONSTANT LZERO-OP
 
 16 CONSTANT LDECL-MAX
 LDECL-MAX CELLS BUFFER: LDECL-ADDRS
@@ -178,26 +180,29 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 0 LDECL-ARGS !
 0 LSAVE-SP !
 
-: L-EMIT ( xt i --- )
-  \ Compile "LDECL-ADDRS[i]  <call to xt>" - the one place any code is
+\ The engine's locals opcodes find the save stack, its limit and the
+\ two fallback words through five cells at image offset 8, which
+\ kernel.4 reserves (LOCALS-CELLS). Filled in here, so the opcodes
+\ work from the moment this file is loaded, and saved with the image.
+\ All but the limit are offsets from START.
+LSAVE-SP START @ -                    START @  8 + !
+' LSAVE-STACK >BODY START @ -         START @  8 + CELL+ !
+LSAVE-MAX                             START @  8 + 2 CELLS + !
+' LSAVE START @ -                     START @  8 + 3 CELLS + !
+' LRESTORE START @ -                  START @  8 + 4 CELLS + !
+
+: L-EMIT ( op i --- )
+  \ Compile locals opcode op on slot i - the one place any code is
   \ generated, shared by all four emit loops below.
   \
-  \ The slot address is emitted as an OFFSET from START, with a
-  \ "START @ +" compiled after it to rebuild the real address at run
-  \ time, rather than as a plain absolute literal. That costs three
-  \ extra operations per local per entry/exit and buys
-  \ position-independence: a saved image (see save-system.4) reloads
-  \ at a different address every run, and an absolute literal baked
-  \ into a word's body is stale the moment it does. Found exactly that
-  \ way - the first turnkey shell image segfaulted inside
-  \ NORMALIZE-OPERATORS, the first locals-using word its startup path
-  \ reached.
-  \
-  \ Two cells: the offset as a literal, then a relative call to the
-  \ runtime word, which does the "+ START" itself. Both are
-  \ position-independent.
-  CELLS LDECL-ADDRS + @
-  POSTPONE LITERAL COMPILE, ;
+  \ The slot operand is a scaled offset from the image base, like a
+  \ call, so the compiled code stays position-independent: a saved
+  \ image (see save-system.4) reloads at a different address every
+  \ run. Until Iteration 243 this compiled `LIT offset` and a call to
+  \ the runtime word, and the translator rewrote the pair into the
+  \ opcode; with the translator retired, the compiler emits it.
+  CELLS LDECL-ADDRS + @ START @ +   ( op a-addr )
+  SWAP NO-PEEP OP, SLOT, ;
 
 : L-COMPILE-ENTRY ( --- )
   \ Saves come first and cover every declared name; only then are the
@@ -207,13 +212,13 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   \ in this kernel runs the whole unsigned range instead of zero
   \ iterations - see PROGRESS.md's Iteration 15 entry.
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO L-LSAVE-XT @XT I L-EMIT LOOP
+    LDECL-N @ 0 DO LSAVE-OP I L-EMIT LOOP
   THEN
   LDECL-ARGS @ 0 > IF
-    LDECL-ARGS @ 0 DO L-L!-XT @XT LDECL-ARGS @ 1- I - L-EMIT LOOP
+    LDECL-ARGS @ 0 DO L!-OP LDECL-ARGS @ 1- I - L-EMIT LOOP
   THEN
   LDECL-N @ LDECL-ARGS @ > IF
-    LDECL-N @ LDECL-ARGS @ DO L-LZERO-XT @XT I L-EMIT LOOP
+    LDECL-N @ LDECL-ARGS @ DO LZERO-OP I L-EMIT LOOP
   THEN ;
 
 : L-COMPILE-RESTORES ( --- )
@@ -221,7 +226,7 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
   \ A no-op when nothing was declared, which is what makes the EXIT
   \ and ; wrappers below transparent to every ordinary definition.
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO L-LRESTORE-XT @XT LDECL-N @ 1- I - L-EMIT LOOP
+    LDECL-N @ 0 DO LRESTORE-OP LDECL-N @ 1- I - L-EMIT LOOP
   THEN ;
 
 \ ------------------------------------------------------------------

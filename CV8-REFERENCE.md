@@ -353,7 +353,9 @@ the tail.
 +-------------------------+
 | header (§5.1)           |
 +-------------------------+
-| prologue, 40 bytes      |  the boot call; entry point of the image
+| prologue, 8 + 5 cells   |  offset 0: call COLD - the entry point
+|                         |  offset 3: call WARM
+|                         |  offset 8: the five locals cells (7.3)
 +-------------------------+
 | word 0: link, name, body|  the OLDEST word first
 | word 1: ...             |
@@ -383,13 +385,12 @@ cell by cell.
 | 0 | 4 | magic `CV8` + `'0'+SCALE` — e.g. `CV83` |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
-| 6 | 1 | **format version** (1) |
-| 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64, 16 bytehdr |
+| 6 | 1 | **format version** (2) |
+| 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
 | 8 | cell | thread **count** *T* (32 — the hashed word list) |
 | +cell | *T*·cell | the thread heads, `START`-relative |
 | … | cell | number of `DOES>` tail entries, *N* |
-| … | 2·*N*·cell | the tail entries: (word number, byte offset) pairs — **skipped**, see below |
-| … | 5·cell | **SPEC only**: the locals header (§7.3) |
+| … | 2·*N*·cell | the tail entries: (word number, byte offset) pairs — **skipped**, see below; both compilers write *N* = 0 |
 
 The engine checks the first five bytes exactly - name, scale and cell
 width - so a 32-bit image cannot be loaded by a 64-bit engine. Then it
@@ -402,20 +403,18 @@ and an older engine refuses a newer image with a clear message instead
 of misreading it. Before Iteration 194 the magic was compared byte for
 byte, so any change to the format invalidated every image.
 
-A `SPEC` image **always** carries the five locals cells, zero-filled when
-the dictionary had no `locals.4`. That keeps the format independent of
-what was loaded; a bare kernel image and a shell image differ only in
-content.
+**Version 2** (Iteration 243) moved the five locals cells out of the
+header and into the image, at offset 8. In version 1 the engine read
+them once at load, so a word using locals could only run in an image
+that had been saved and reloaded - which was never a problem while the
+shell was compiled on the cell engine and translated, and broke the
+first native build at the first `BUILTIN` registration. Now `kernel.4`
+reserves the cells, `shadow.4` fills them in when it loads, and they
+are saved like any other part of the image. A version-1 engine refuses
+a version-2 image.
 
-The header used to carry a single dictionary head, and the loader
-walked that one chain to build a word-number table. Two things ended
-that. The word list was hashed into 32 threads (Iteration 209), so no
-single chain reaches every word — hence the count and the heads. And
-the table itself was only ever needed by SOD16, which named a call by
-word NUMBER; CV8 computes a target from the address, so the loader now
-reads the tail entries only to step over them. That is also what lets
-byte-granular headers change a link's encoding without the engine
-knowing or caring.
+The byte-header bit (16) is gone with the byte-header layout; see
+`attic/README.md`.
 
 ### 5.2 Loading
 
@@ -574,8 +573,8 @@ entry each is saved to a save stack, on exit restored. The Forth
 45M calls.
 
 The opcodes do the same thing in one dispatch, on **the same
-Forth-visible save stack**. The engine finds it through the five header
-cells:
+Forth-visible save stack**. The engine finds it through the five cells at
+image offset 8 (header cells before format version 2):
 
 | cell | contents |
 |---|---|
@@ -607,37 +606,51 @@ These are colon words in `kernel.4`, two or three operations long, that
 together took 6.4% of all dispatches as calls. As opcodes they cost one
 byte instead of a two-byte call plus a body plus a return.
 
-The translator substitutes one **only where the compiled body is exactly
-the definition the engine implements**, checked per address, so a
-redefinition of the same name is left alone. In a real phase-3 system
-this check disappears: you simply declare them `PRIMITIVE` in `kernel.4`
-and delete the Forth definitions.
+They are declared in `kernel.4` with `OPCODE` rather than defined in
+Forth, exactly as the translator's notes suggested a phase-3 system
+would: the engine is the definition, and `COMPILE,` inlines the byte.
+The translator used to substitute one only where a compiled body
+matched the engine's implementation.
 
 ---
 
 ## 8. Building an image today
 
-Images are currently **translated** from a cell image, because the Forth
-compiler still emits cells. That is the one large piece of work left.
+Since Iteration 243 nothing is translated. Two Forth compilers emit
+CV8 directly, and they are twins that must agree:
+
+- **`cross.4`**, the cross-compiler, runs on the committed `kernel.img`
+  and compiles `kernel.4` into a new one. Its PART 4 emits against the
+  target space (`C,-T`, `THERE`).
+- **`kernel.4`'s own compiler** (`LIT,`, `CALL,`, `COMPILE,`,
+  `EXIT,`, `NO-PEEP` and the rest) compiles everything loaded at run
+  time: `extend.4`, `pool.4`, `shadow.4`, `save-system.4`, `shell.4`.
 
 ```
-relf kernel.img
-  + tools/dict-dump-addr.4      -> a text dump of the dictionary
-  |
-  v
-tools/layout.py           -> decodes every word body, re-lays it
-  --v8 --cpt S --dataprims          out in CV8, fixes up every offset
-  --fold --fold-set ...             and writes the image
-  --spec loc,var,tiny,small,imm
+relf kernel.img  + extend.4 + cross.4   -> kernel.img       (a fixpoint)
+relf kernel.img  + extend.4 + pool.4 + shadow.4 + save-system.4
+                 + shell.4, SAVE-SYSTEM -> kernel-shell.img
 ```
 
-`tools/lab/build-cv8.sh` runs the whole matrix and smoke-tests each
-engine/image pair against `dash`.
+The specialised opcodes of section 7 are emitted as follows:
 
-The translator is also the **specification of the compiler's rules**:
-`fold_exit()` for folding, `specialise()` for the opcode rewrites,
-`layout()` for padding and branch conversion. When phase 3 emits CV8
-directly, those three functions are what it must reproduce.
+- **Constants** `0`, `1` and `-1` come straight from `LIT,`.
+- **`ADDI`, `EQI`, `VAR@` and `VAR!`** are peepholes. `LIT,` and
+  `CALL,` remember where they started. When `COMPILE,` of `+`, `=`,
+  `@` or `!` completes a pattern, it rewinds `HERE` over the first
+  half. `NO-PEEP` is called by everything that makes `HERE` a branch
+  target, so nothing can jump between the halves.
+- **Folding** is done by `EXIT,` at `;`. It folds the last operation
+  and the `EXIT` into one opcode, under the same rule.
+- **The fifteen tiny words** are declared in `kernel.4` with
+  `OPCODE`, like primitives. `COMPILE,` inlines them, and the engine
+  defines what they do.
+- **The locals opcodes** are emitted by `shadow.4`'s `L-EMIT`.
+
+The translator (`attic/tools/layout.py`) was the specification these
+were written from, and the measurement that retired it is in
+`PROGRESS.md`: the natively compiled shell runs at 0.99-1.02 of the
+translated one's time on every workload in `tests/bench-vm`.
 
 ---
 

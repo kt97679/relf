@@ -99,10 +99,10 @@ the full account and the fixes applied.
   *engine's runtime*, not to build-time bootstrap tooling: `gcc`/`as`/`ld`
   remain fine to use for building the engine until phase 3 below (a
   self-hosted assembler) replaces them.
-- **Fully self-hosted.** Forth already compiles the Forth image
-  (`cross.4` → `kernel.img`), now with 8-byte target cells matching the
-  engine's own pointer width. The remaining piece is Forth compiling the
-  *engine itself* (currently `relf.c`, built by `gcc`) — a Forth-hosted
+- **Fully self-hosted.** Forth already compiles the Forth image:
+  `cross.4`, running on the CV8 engine, compiles `kernel.4` into the
+  CV8 `kernel.img` it runs on, byte for byte (Iteration 243). The remaining piece is Forth compiling the
+  *engine itself* (currently `cv8.c`, built by `gcc`) — a Forth-hosted
   native-code assembler, in the tradition of the classic Forth
   `ASSEMBLER` wordset / `CODE ... END-CODE` facility.
 - **Eventually, JIT/AOT.** Once the self-hosted assembler exists, extend
@@ -113,41 +113,40 @@ the full account and the fixes applied.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Where things stand (Iteration 227)
+## Where things stand (Iteration 243)
 
 The state a reader needs before anything else in this file, because
 several sections below describe a system with more parts than it now
 has.
 
-**One engine.** CV8: a byte stream of 1-byte opcodes with 2- or 3-byte
-compressed-pointer calls. Iteration 218 retired SOD16, CPT16,
-CPT16+fold and the packed schemes - the ladder existed to find the
-densest encoding and it found it. `attic/` holds the sources;
-`ENCODING-COMPARISON.md` holds the numbers.
+**One engine, and it hosts itself.** `cv8.c` runs CV8: a byte stream
+of 1-byte opcodes with 2- or 3-byte compressed-pointer calls. `cross.4`
+runs on the committed CV8 `kernel.img` and compiles `kernel.4` into a
+new one, byte-identical; `kernel.4`'s own compiler emits the same
+encoding for everything loaded at run time, including the shell. No
+other engine, translator or language is involved. `relf.c`, the cell
+engine that bootstrapped every image until Iteration 243, is in
+`attic/` with the translator and the encoding lab; the tag
+`cell-engine-final` is the last commit they built.
 
-**Two engines are built, and they are not alternatives.** `relf.c` is
-the CELL engine and it is the BOOTSTRAP - `kernel.img` is a cell image,
-`cross.4` cross-compiles into cell format, and `relfsh` ships as a cell
-image. `tools/lab/vm-lab.c` is the CV8 engine, and every CV8 image is
-translated by `tools/layout.py` from a dictionary dump that the cell
-engine produces. Retiring `relf.c` means making CV8 the product, which
-is a decision nobody has taken.
+**The compiler emits what the translator used to add.** The
+specialised opcodes (`CV8-REFERENCE.md` 7) were the difference between
+the cell product and CV8, and only `tools/layout.py` emitted them. They
+are now peepholes in `kernel.4` and `cross.4`, `OPCODE` declarations
+for the tiny kernel words, and opcodes emitted by `shadow.4`. Measured:
+the natively compiled shell runs at 0.99-1.02 of the translated one's
+time on every `tests/bench-vm` workload, and 3.3-4.4x faster than the
+cell product it replaced.
 
-**Image sizes, the numbers to quote:**
+**Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    cell   kernel.img    23,552      kernel-shell.img   ~207,000
-    CV8    fkernel-64    13,488      self-64             70,560
-    CV8b   cv8b-64        9,929      selfb-64            62,529
+    64-bit   kernel.img    11,638    kernel-shell.img     69,518
+    32-bit   kernel32.img   8,674    kernel32-shell.img   55,382
 
-`tests/BASELINE` tracks the CELL sizes, because that is what ships.
-The CV8 numbers have to be read out of a build directory, which is why
-they have been misquoted here more than once.
-
-**Sixty-seven primitives**, escaped band on by default: the 32 OS/libc
-primitives sit behind ESC + a selector, contiguous at the end of
-kernel.4's list, so the partition is a property of the ORDER and needs
-no table. The opcode map is derived from the primitive count in five
-places and hardcoded in none.
+**Sixty-seven primitives**, escaped band on: the 32 OS/libc primitives
+sit behind ESC + a selector, declared after `ESCAPED` in `kernel.4`,
+which declares every primitive before its first definition because
+the synthetic opcodes are numbered from the total.
 
 **Terminal I/O is two syscalls.** `TYPE` is write(2). `READ-FILE` is
 read(2), unbuffered, for any descriptor. `KEY` and `ACCEPT` are Forth
@@ -156,7 +155,7 @@ LRU pool that seeks back on eviction; descriptors it INHERITS - 0, 1,
 2 - never do, because bytes read ahead on a shared descriptor are
 bytes taken from a child.
 
-**Single branch `master`.** `cv8` and `token16` are merged and gone.
+**Single branch `master`.**
 
 ## Repository conventions
 
@@ -181,8 +180,8 @@ bytes taken from a child.
   `SS-SCRUB` first.
 
 - **Read `PROGRESS.md` through its Index, never end to end.** It is
-  119 entries and roughly 114k tokens — over half a context window,
-  and reading it whole is not a thorough start, it is most of the
+  about 222 entries and roughly 183k tokens (Iteration 243) — most of a
+  context window, and reading it whole is not a thorough start, it is most of the
   budget spent before any work begins. The Index at the top lists
   every entry in one screen (~2k tokens); find the one you need and
   read that entry (~700). A citation elsewhere in this repository
@@ -261,7 +260,7 @@ bytes taken from a child.
   RelF is derived from).
 
   **GPLv2-only, and it cannot be changed here.** The headers in
-  `relf.c`, `kernel.4` and `cross.4` say "released under the GNU
+  `cv8.c` (from `relf.c`), `kernel.4` and `cross.4` say "released under the GNU
   General Public License version 2" with no "or any later version",
   and GPLv2-only is incompatible with GPLv3. Relicensing would need
   the copyright holders' permission — Kirill Timofeev for the RelF
@@ -327,9 +326,13 @@ in Phase 5; nothing in the normal loop needs it.
 
 **Rebuilding `kernel.img`.** It is a committed build artifact and does
 *not* rebuild itself. Adding an engine primitive means editing the
-dispatch table in `relf.c` and the `PRIMITIVE` list in `kernel.4` -
-which are positional, so append at the end of both - and then
-cross-compiling:
+dispatch table in `cv8.c` and the `PRIMITIVE` list in `kernel.4` -
+which are positional, so append at the end of both - raising `NPRIM`
+in `cv8.c`, and then cross-compiling. `cv8.c`'s header comment has the
+details, including the escaped band. The kernel is the host of its own
+rebuild, so an image that cannot run `cross.4` cannot be repaired from
+the tree: rebuild from `git checkout kernel.img` or, failing that,
+from the tag `cell-engine-final`. The rebuild is:
 
     ./relf kernel.img
     S" extend.4" INCLUDED
@@ -373,7 +376,9 @@ by either; run it when performance is the point.
 how to test; this is what exists:
 
 1. **`tests/` core suite** - `tester.fr` and the Forth-level tests, run
-   on both cell widths. Counted in OK markers.
+   on both cell widths. Counted in OK markers. `tests/ext/` holds the
+   CORE EXT, Memory-Allocation and File-Access suites, which need
+   `extend.4` and run one file per engine invocation.
 2. **`tests/shell/run-*`** - hand-written shell assertions, one file
    per feature, run by `tests/shell/run-all`. Use these for things bash
    is the *wrong* oracle for: diagnostics this shell emits, forms bash
@@ -408,7 +413,9 @@ every assertion as a failure.
 ## Named locals (`shadow.4`) — available since Iteration 38
 
 Not a goal in itself; infrastructure the rest of the project can use.
-Load with `S" shadow.4" INCLUDED`.
+Load with `S" shadow.4" INCLUDED`. Spelled `SHADOW{ ... }` since
+Iteration 236; it was `{: ... :}`, the standard's spelling for a
+different thing.
 
 `shell.4` carries 356 global `VARIABLE`s, most of which are not global
 state at all but per-word scratch cells faked with a naming convention
@@ -426,10 +433,10 @@ implementation to ~65 lines and, crucially, means a converted word's
 local still is a variable. Converting existing code is adding one
 declaration line and deleting the argument-popping stores.
 
-    : COPY-ARGV ( src-argv src-argc --- )  {: CA-SRC CA-N :}
+    : COPY-ARGV ( src-argv src-argc --- )  SHADOW{ CA-SRC CA-N }
 
     : GLOB-MATCH ( pat plen text tlen --- f )
-      {: GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S :}
+      SHADOW{ GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S }
 
 Names before an optional `|` are initialized from the data stack, left
 to right = deepest to top. Names after `|` are scratch: saved and
@@ -654,7 +661,7 @@ reasoning behind them:
   (Forth-2012's own wordset, primitives since Iteration 41, backed by
   the host's `malloc`/`free`/`realloc`) give memory from the C heap.
   It costs no dictionary space, is not written out by `SAVE-SYSTEM`,
-  and is not bounded by `relf.c`'s `MEMSIZE`. `pool.4`'s `BUFFER:`
+  and is not bounded by `cv8.c`'s `MEMSIZE`. `pool.4`'s `BUFFER:`
   is the convenient front end: same call site as a `CREATE`d buffer,
   but three cells in the image and the space allocated on first use.
 - **Growable rather than fixed, where the size genuinely varies.**
@@ -698,7 +705,7 @@ introduces: `malloc` deepens the dependence on libc, while this file's
 end-state still says "no libraries, raw syscalls only". Phase 5
 already traded that away for portability. If the no-libc goal is
 revived, `ALLOCATE`/`FREE`/`RESIZE` are a small, well-isolated thing
-to reimplement on `mmap`/`brk` - three primitives in `relf.c` and
+to reimplement on `mmap`/`brk` - three primitives in `cv8.c` and
 nothing above them changes.
 
 ## Reproducible images
@@ -773,8 +780,9 @@ both, so it no longer carries accounts.
    **Done** (Iteration 1).
 2. **No-libc, syscalls-only x86-64 engine.** **Done** (2), and
    **deliberately superseded by phase 5**, which traded no-libc back
-   for portability. `relf.c` is the only engine; `relfgcc.c`,
-   `vm.asm` and `vm_tos.asm` are gone and are not coming back.
+   for portability. `relfgcc.c`, `vm.asm` and `vm_tos.asm` are gone
+   and are not coming back; `relf.c` followed them to `attic/` in
+   Iteration 243, replaced by `cv8.c`.
 3. **Forth-hosted assembler** — a `CODE`/`END-CODE` facility so the
    engine itself can be assembled by the running Forth system rather
    than by `gcc`/`as`. **Not started.** This is the last piece of
@@ -1219,14 +1227,12 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
-## What to do next, in order (as of Iteration 242)
+## What to do next, in order (as of Iteration 243)
 
-Ordering matters here for one reason: anything touching KERNEL
-SEMANTICS should be done while `relf.c` still exists, because it is the
-simplest thing in the system to debug against - one primitive per
-label, no encoding, no translator. Anything touching the ENGINE or the
-OPCODE MAP should wait until after the retirement, so it is done once
-rather than twice.
+The first two items were ordered around the `relf.c` retirement:
+kernel semantics before it, while the cell engine was the simplest
+thing to debug against, and engine work after it, so it would be done
+once. Both are done; the rest keep their order.
 
 1. ~~**`+LOOP` boundary conformance.**~~ **Done** (Iteration 243), and
    smaller than planned: no biased index was needed. The overflow test
@@ -1235,38 +1241,29 @@ rather than twice.
    not, and `I` stayed cheap. `tests/coreplus-loop.fth` carries the
    standard's four `+LOOP` sections.
 
-2. **Adapt `cv8.4` for cross-compilation**, then retire `relf.c`. The
-   mechanism is settled and the remaining work is enumerated below,
-   under "relf.c cannot be retired yet". Tag the commit before the
-   final switch: it is the last one that can be rebuilt from a C
-   compiler and a text kernel.
+2. ~~**Adapt `cv8.4` for cross-compilation**, then retire `relf.c`.~~
+   **Done** (Iteration 243). `cv8.4` was merged into `kernel.4` and
+   `cross.4` emits CV8, so the class of load-time obstacles the entry
+   below describes never had to be solved one by one: nothing is
+   translated any more. The measurement that made it safe - the
+   specialised opcodes - is under "Where things stand".
 
 3. **`GUARD`.** A measured 5-6% win, disabled since Iteration 206 for a
    `tests/diff` regression that predates most of the engine work since.
-   Worth re-measuring, and cheaper with one engine than two.
+   Worth re-measuring, and cheaper with one engine than two. The
+   guard-page code was specialised out of `cv8.c`; it is in
+   `attic/tools/lab/vm-lab.c`.
 
 4. **`KEY?` plus a termios/fcntl primitive.** The interactive shell
    work, and the fix for the non-blocking `KEY` hazard below. Adds a
-   primitive, so it moves the opcode map - after the retirement, that
-   is one dispatch table instead of two.
+   primitive, so it moves the opcode map: one dispatch table now,
+   plus `NPRIM`.
 
    If the interactive shell matters more to you than engine
    minimalism, move this ahead of 2. It costs a second round of
    opcode-map work and delivers something usable sooner.
 
-TWO SMALLER THINGS, either of which is a good first task:
-
-- **The dictionary dumper contaminates every image.** The build loads
-  `tools/dict-dump-addr.4` into the image before dumping it, so
-  `COLLECT`, `SORTNFA`, `SWAPC`, `DUMP`, `NFATAB` and the rest are
-  compiled into every translated image and shipped: 269 words dumped
-  where a pristine image has 257. The fix is for the dumper to record
-  `LAST` and `HERE` on the stack BEFORE its first definition, and skip
-  nfas above that mark when emitting - they are all newer, so higher in
-  address. Attempted at Iteration 242 and abandoned half-done; the
-  variables must be DECLARED before `DUMP` uses them and filled in
-  afterwards, and the `S` line must print the marked `HERE`, not the
-  current one.
+A SMALLER THING, left so it is not re-proposed:
 
 - **`forth.img` is NOT worth building.** SOD32 builds one - kernel.img
   plus extend.4th, saved - and cross-compiles from it. Measured here:
@@ -1300,136 +1297,15 @@ than remembered.
   which `shadow.4` deliberately avoids. That is a decision about
   `shell.4`, not a fix to `shadow.4`.
 
-- **`relf.c` cannot be retired yet, and the reason is worth stating.**
-  The intended end state is CV8 only: one engine, and a CV8 Forth that
-  recompiles and re-hosts itself. `relf.c` is not a second ENCODING -
-  it is the only thing that can EXECUTE a cell image, and the CV8 build
-  needs one executed:
-
-      kernel.4 --cross.4--> kernel.img (CELL) --run--> dump --layout.py--> CV8
-
-  `layout.py` reads a TEXT DUMP produced by running the cell image.
-  Gate 1 proves a CV8 image can RUN `cross.4`, but what it produces is
-  a cell image, which is inert without a cell engine. And `cv8.4`
-  compiles new words into an EXISTING image; it cannot rebuild the
-  kernel from `kernel.4`. So retiring `relf.c` today would mean
-  `kernel.4` can never change again.
-
-  WHAT HAS TO HAPPEN FIRST - corrected at Iteration 238, after the
-  first half was built and the second half turned out not to be what
-  this entry said.
-
-  1. **Read the dictionary out of the image file.** DONE:
-     `tools/image-dump.py`. It walks a saved cell image and emits the
-     same S/P/H/N/B records `tools/dict-dump-addr.4` emits when run
-     inside one. It finds the word list by SHAPE - a cell holding the
-     thread count followed by 32 plausible offsets - because a saved
-     image has an 8-byte header and no directory.
-
-  2. **Move `cv8.4` into the cross-compiled kernel.** NOT DONE, and
-     this is the actual gate. Measured: an image translated from
-     `kernel.img` boots and runs (`1 2 + .` gives 3) but SEGFAULTS on
-     `: SQ DUP * ;`. Without `cv8.4`'s `COMPILE,8` in it, `COMPILE,`
-     emits cell-format calls into a byte-stream image.
-
-     So `cv8.4` has to be in the dictionary AT TRANSLATION TIME, which
-     means in the image file. Two ways not to do it: loading it into a
-     running image is what needs the cell engine, and `SAVE-SYSTEM`
-     would drag `pool.4`, `shadow.4` and save-system.4's own words into
-     every image - worse contamination than the five dumper words this
-     was meant to remove. It cannot be compiled in afterwards either,
-     because compiling is what needs it. The circle only opens by
-     `cross.4` emitting `cv8.4` the way it emits the rest of
-     `kernel.4`.
-
-     HOW TO GET IT THERE, and three ways that do not, all tried at
-     Iteration 240:
-
-     - Including `cv8.4` from `cross.4` AFTER `S" kernel.4" INCLUDED`
-       puts it in the HOST: `kernel.4` ends with `END-CROSS`, which
-       ends target compilation. The image grows 8 bytes and gains
-       nothing.
-     - Including it from inside `kernel.4` as `S" cv8.4" INCLUDED`
-       gives `Undefined word cv8.4"`. Inside the cross-compiled region
-       `S"` is the TARGET's - it compiles a string into the image
-       rather than handing a filename to the host.
-     - Relocating `END-CROSS` out of `kernel.4` hangs the build.
-       `END-CROSS` is how the cross-compiler EXITS.
-
-     What works is a TRANSIENT word, since those run on the host the
-     moment `kernel.4` reaches them, taking the name as a parsed WORD
-     rather than a string:
-
-         : LOAD-HOST ( "name" --- )   BL WORD COUNT INCLUDED ;
-
-     `LOAD-HOST cv8.4` before `END-CROSS` does reach the file.
-
-     BUT `LOAD-HOST` IS STILL THE WRONG MECHANISM, and Iteration 241
-     bisected far enough to say exactly why. `cv8.4` is not "not
-     cross-compilable"; nothing loaded that way is. Reduced to the
-     smallest failing case:
-
-         : PG SWAP DROP ;     compiles
-         : PH 1 ;             "Incomplete control structure"
-         255 CONSTANT PK      compiles
-
-     A NUMERIC LITERAL INSIDE A COLON DEFINITION is the trigger, and
-     the reason is that `CROSS-COMPILE` is its own interpret loop:
-
-         FIND IF EXECUTE
-         ELSE NUMBER? ... STATE-T @ IF LITERAL-T THEN THEN
-
-     A word is found and executed, which is why `SWAP DROP` works
-     through any interpreter. A NUMBER needs `LITERAL-T`, which only
-     this loop calls. `LOAD-HOST` hands the file to the HOST's
-     `INCLUDED`, so the host's interpreter compiles a host literal into
-     a target definition, and `;` finds the stack wrong.
-
-     FEEDING IT THROUGH THAT LOOP IS SOLVED, and needs no new
-     machinery. `kernel.4` line 8 is `CROSS-COMPILE` and its last line
-     is `END-CROSS`: a cross-compiled file simply wraps itself in the
-     pair, and `cross.4` includes it normally. So
-
-         S" kernel.4" INCLUDED
-         S" cv8.4" INCLUDED        \ wrapped the same way
-
-     is the whole mechanism. `LOAD-HOST` and the `REFILL` question are
-     both dead ends - `REFILL` does not pop the source stack anyway,
-     the restore is on `INCLUDE-FILE`'s return stack.
-
-     WHAT IS LEFT is genuinely adapting `cv8.4`, and it is not one
-     obstacle but a class of them: the file DOES WORK at load time,
-     using its own constants and tables as it defines them. Under
-     cross-compilation those live in the TARGET and the host cannot
-     read them. Two instances seen: `FOLD-BASE #FOLD-OPS + 97 >`
-     evaluated at interpretation, and `#FOLD-OPS 0 DO ... FOLD-OPS I +
-     C@` where `FOLD-OPS` was `CREATE`d earlier in the same file and
-     comes back "Undefined word". Every compile-time use of a
-     self-defined constant or table has to become something the host
-     can see - a TRANSIENT definition, or a value computed in
-     `cross.4`.
-
-     That is a real piece of work on `cv8.4`, not a wrapper, and it is
-     where the next attempt should start.
-
-     The `ABORT"` at interpretation time in `cv8.4` is a real obstacle
-     too and is mine, added at Iteration 216; `tools/sod16.py` already
-     asserts the same thing with the real fold list in hand, so the
-     Forth copy can go. But removing it was not sufficient, and this is
-     why.
-
-  3. Prove the pipeline with no `./relf` in it, then switch the product
-     over and move `relf.c` to `attic/`. Tag the commit before that
-     last step: it is the last one where the system can be rebuilt from
-     a C compiler and a text kernel.
-
-  ONE ACCEPTANCE TEST TO NOT USE. "Every ladder image byte-identical"
-  was the obvious check and it is wrong: the build loads
-  `tools/dict-dump-addr.4` into the image before dumping it, so
-  `COLLECT`, `SORTNFA`, `SWAPC`, `DUMP` and `NFATAB` are compiled into
-  every translated image and shipped today. Reading the file cannot
-  pick them up, so the correct images are SMALLER. Check that they work
-  and that the difference is exactly the dumper's footprint.
+- **`relf.c` was retired in Iteration 243**, and what it took is in
+  `PROGRESS.md`. Two things from the plan that was here are worth
+  keeping. The dead ends on getting `cv8.4` into the cross-compiled
+  kernel (Iterations 239-242) were real, and they stopped mattering
+  once `cross.4` emitted CV8 itself rather than cells for a translator.
+  And the plan missed the obstacle that mattered most: the shell image
+  was only fast because the translator added opcodes the compiler did
+  not emit, so retiring the translator without teaching the compiler
+  would have cost 2.4x.
 
 - **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
   `KEY` is `0 SP@ 1 0 READ-FILE DROP  0= IF BYE THEN`. It tests the
