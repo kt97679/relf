@@ -55,7 +55,7 @@ CREATE SS-MAGIC 8 ALLOT
 
 : SS-SET-MAGIC ( --- )
   \ The 8-byte CV8 magic the engine checks at load (CV8-REFERENCE.md
-  \ 5.1): "CV8", the call scale as a digit, the cell width, 'L' for
+  \ 5.1): "CV8", the call scale as a digit (0), the cell width, 'L' for
   \ the specialised opcodes, the format version, and the feature bits
   \ varcall | varslot | spec | lit64. Must agree with cv8.c's
   \ IMAGE_MAGIC, and with cross.4's SAVE-IMAGE, which writes the same
@@ -63,7 +63,7 @@ CREATE SS-MAGIC 8 ALLOT
   [CHAR] C SS-MAGIC     C!
   [CHAR] V SS-MAGIC 1+  C!
   [CHAR] 8 SS-MAGIC 2 + C!
-  1 CELLS 8 = IF [CHAR] 3 ELSE [CHAR] 2 THEN SS-MAGIC 3 + C!
+  [CHAR] 0 SS-MAGIC 3 + C!      \ call scale 0
   1 CELLS  SS-MAGIC 4 + C!
   [CHAR] L SS-MAGIC 5 + C!
   2        SS-MAGIC 6 + C!
@@ -146,6 +146,8 @@ CREATE SS-MAGIC 8 ALLOT
   \ image differed on every run under ASLR (Iteration 243).
   LAST-OP SS-CELL   LAST-LIT SS-CELL   LAST-LITV SS-CELL
   LAST-CALL SS-CELL LAST-CALLXT SS-CELL
+  \ HEADER's scratch: HDR-HEAD is the absolute address of a thread head.
+  HDR-HEAD SS-CELL  HDR-LEN SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
   \ shadow.4's save-stack pointer. It is zero at save time when the

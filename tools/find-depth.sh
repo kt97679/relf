@@ -21,7 +21,7 @@
 #
 # WHERE THE COUNTER GOES. The outer loop of SEARCH-WORDLIST runs once
 # per dictionary entry examined, and its first act is to compare the
-# first cell of the candidate's name. Incrementing there counts entries
+# candidate's name length. Incrementing there counts entries
 # EXAMINED, which is the quantity the hash was supposed to reduce - not
 # lookups performed, which it does not change.
 #
@@ -64,7 +64,7 @@ s = open(p).read()
 # Declared next to NAMEBUF so it is an ordinary kernel variable and gets
 # cross-compiled, relocated and saved like any other.
 a = "VARIABLE NAMEBUF ( --- a-addr)"
-b = "   NAMEBUF @ OVER @ -1 224 XOR AND = "
+b = "    DUP C@ 31 AND NAMEBUF C@ = IF"
 for t in (a, b):
     if s.count(t) != 1:
         sys.exit("find-depth: %r appears %d times in kernel.4; the "

@@ -98,7 +98,9 @@
 \ wordlist rather than knowing about FORTH-WORDLIST alone. The wid is
 \ still the address of the COUNT cell, so nothing that uses a wid
 \ changes.
-  WORDLISTS @ ,
+  \ ALIGN first: dictionary bodies are not padded, so HERE after a
+  \ colon definition is not aligned, and these are cells read with @.
+  ALIGN WORDLISTS @ ,
   HERE DUP START @ - WORDLISTS !
   FORTH-WORDLIST @ ,
   HERE FORTH-WORDLIST @ CELLS DUP ALLOT 0 FILL ;

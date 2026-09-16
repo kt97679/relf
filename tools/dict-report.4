@@ -2,16 +2,16 @@
 \ word: header bytes, body bytes, name. Used by Iteration 129 to find
 \ out where a shell image's bytes actually go.
 \
-\ Header layout, from cross.4's "HEADER: an aligned link cell holding
-\ a RELATIVE offset (previous name-field address minus this link
-\ cell's own address, so it survives relocation), then a count byte
-\ with bit 7 set as a marker, then the name, then alignment padding.
-\ FORTH-WORDLIST is a HASHED word list - [thread count][head 0..n-1]
-\ - not a single chain, so no one chain reaches every word and no
-\ chain is in address order.
+\ Header layout, from kernel.4's HEADER (and cross.4's "HEADER): a
+\ 1-3 byte link holding the distance back to the previous name field
+\ in the same thread, tag byte last; then a count byte with bit 7 set
+\ as a marker; then the name, unpadded; then the body. kernel.4's
+\ PREV-NFA decodes the link. FORTH-WORDLIST is a HASHED word list -
+\ [thread count][head 0..n-1] - not a single chain, so no one chain
+\ reaches every word and no chain is in address order.
 \
 \ Body extent is computed as "start of the next word BY ADDRESS's
-\ link cell, minus the end of this word's name field", which works
+\ link, minus the end of this word's name field", which works
 \ because the dictionary is laid down strictly upward. That is why
 \ this collects every nfa from all 32 threads and sorts them by
 \ address descending before walking: following a single chain would
@@ -23,11 +23,10 @@
 \           S" shell.4" INCLUDED\nS" tools/dict-report.4" INCLUDED\n' \
 \     | ./relf32 kernel32.img
 \
-\ Terminate a thread on the LINK VALUE being zero, not on the
-\ computed address being zero - a thread's oldest word has a 0 link
-\ cell, so the computed "previous" address is the link cell itself
-\ and a naive loop walks off the end of the dictionary into garbage.
-\ That is what the first version of this file did.
+\ A body's bytes include the padding a data body carries before its
+\ parameter field. The bytes before the first word - the two boot
+\ calls and the locals cells - belong to no word, so TOTALHERE exceeds
+\ the sum of the lines by exactly that much.
 
 BASE @ DECIMAL
 VARIABLE NFA
@@ -50,10 +49,12 @@ INIT-NFATAB
     BEGIN NFA @ WHILE
       NFA @ NFATAB @ #NFA @ CELLS + !
       1 #NFA +!
-      NFA @ CELLB - DUP @ ?DUP IF + NFA ! ELSE DROP 0 NFA ! THEN
+      NFA @ PREV-NFA NFA !
     REPEAT
   LOOP ;
 
+: LINKBYTES ( nfa --- n )   \ the length of the link in front of nfa
+  1- C@ DUP 128 U< IF DROP 1 ELSE 192 U< IF 2 ELSE 3 THEN THEN ;
 : SWAPC ( a --- )
   TA !
   TA @ @ TA @ CELLB + @
@@ -74,10 +75,10 @@ INIT-NFATAB
   #NFA @ 0 DO
     NFATAB @ I CELLS + @ NFA !
     \ The newest word by address - first in this order - ends at HERE.
-    I 0= IF HERE ELSE NFATAB @ I 1- CELLS + @ CELLB - THEN BE !
-    NFA @ C@ 31 AND
-    DUP 1+ ALIGNED CELLB +
-    BE @  NFA @ DUP C@ 31 AND 1+ ALIGNED + -
+    \ Anything else ends where the next word's link begins.
+    I 0= IF HERE ELSE NFATAB @ I 1- CELLS + @ DUP LINKBYTES - THEN BE !
+    NFA @ C@ 31 AND 1+ NFA @ LINKBYTES +
+    BE @  NFA @ NAME> -
     S" W " TYPE SWAP . . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
   LOOP ;
 WALK

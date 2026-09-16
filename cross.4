@@ -170,24 +170,35 @@ VARIABLE NAMELEN
   LOOP
   DROP ;
 
+: TLINK-LEN ( d --- n )
+\ The bytes a link of distance d needs - kernel.4's LINK-LEN.
+  DUP 128 U< IF DROP 1 EXIT THEN
+  16384 U< IF 2 ELSE 3 THEN ;
+
+: TLINK, ( d n --- )
+\ Append a link of exactly n bytes, tag byte last - kernel.4's LINK,.
+  DUP 1 = IF DROP C,-T EXIT THEN
+  2 = IF DUP 255 AND C,-T 8 RSHIFT 128 OR C,-T EXIT THEN
+  DUP 255 AND C,-T DUP 8 RSHIFT 255 AND C,-T 16 RSHIFT 192 OR C,-T ;
+
+VARIABLE LINKLEN
+
 : "HEADER >IN @ CREATE >IN ! \ Create the shadow definition.
-  ALIGN-T
-  THERE LINKCELL ! 0 ,-T      \ Link field, patched once the name is known.
+\ The target header is [link][count][name], nothing padded - see
+\ kernel.4's HEADER, which this must lay out identically. LINKCELL
+\ holds the previous name field in the thread, 0 if there is none: no
+\ name field is ever at target address 0, where the prologue is.
   BL WORD COUNT               ( c-addr u )
   2DUP THASH THIS-THREAD !
   DUP NAMELEN !
+  THIS-THREAD @ CELLS TTHREADS + @ LINKCELL !
+  LINKCELL @ IF THERE 3 + LINKCELL @ - TLINK-LEN ELSE 1 THEN LINKLEN !
+  LINKCELL @ IF THERE LINKLEN @ + LINKCELL @ - ELSE 0 THEN LINKLEN @ TLINK,
   THERE PLACE-T               \ Place name in target dictionary.
-  THIS-THREAD @ CELLS TTHREADS + @ ?DUP IF
-    LINKCELL @ - LINKCELL @ !-T    \ relative to the link cell itself
-  THEN
   THERE TLINK !
   THERE THIS-THREAD @ CELLS TTHREADS + !
-  THERE C@-T 128 OR THERE C!-T
-  NAMELEN @ 1+ ALLOT-T ALIGN-T ;
-      \ Set bit 7 of count byte as a marker.
-
-\ : "HEADER CREATE ALIGN-T ;  \ Alternative for "HEADER in case the target system
-                      \ is just an application without headers.
+  THERE C@-T 128 OR THERE C!-T \ Set bit 7 of count byte as a marker.
+  NAMELEN @ 1+ ALLOT-T ;
 
 ALSO TRANSIENT DEFINITIONS
 
@@ -251,7 +262,9 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 123 CONSTANT EQI-OP      \ +1 is EQI;EXIT
 125 CONSTANT LIT64-OP
 126 CONSTANT ESC-OP
-: TSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
+: TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
+\ Calls and slot operands name a byte offset: the call scale is 0,
+\ because bodies are not aligned (CV8-REFERENCE.md 3.4).
 
 \ The primitives with a folded "then EXIT" form, in the order the
 \ engine's table has them. Names, because their opcodes are not known
@@ -296,15 +309,14 @@ NO-PEEP-T
 \ so 0 is a safe "none".
 
 : SLOT,-T ( t-addr --- )
-\ A slot operand: scaled like a call, 2 bytes big-endian, or 3 with the
-\ top bit set.
-  TSHIFT RSHIFT
+\ A slot operand: a byte offset like a call, 2 bytes big-endian, or 3
+\ with the top bit set.
   DUP 32768 < IF DUP 8 RSHIFT C,-T 255 AND C,-T
   ELSE DUP 16 RSHIFT 128 OR C,-T DUP 8 RSHIFT 255 AND C,-T 255 AND C,-T
   THEN ;
 
 : CALLBYTES-T ( t-addr v --- )
-\ Store the three-byte (far) call form for scaled value v at t-addr.
+\ Store the three-byte (far) call form for offset v at t-addr.
   2DUP 16 RSHIFT 192 OR SWAP C!-T
   2DUP 8 RSHIFT 255 AND SWAP 1+ C!-T
   255 AND SWAP 2 + C!-T ;
@@ -312,7 +324,6 @@ NO-PEEP-T
 : CALL,-T ( t-addr --- )
 \ A call to the target body at t-addr: near if it fits 14 bits.
   NO-PEEP-T THERE LAST-CALL-T ! DUP LAST-CALLXT-T !
-  TSHIFT RSHIFT
   DUP 16384 < IF DUP 8 RSHIFT 128 OR C,-T 255 AND C,-T
   ELSE THERE SWAP CALLBYTES-T 3 ALLOT-T THEN ;
 
@@ -368,7 +379,7 @@ NO-PEEP-T
   DUP FETCH-IDX @ = IF DROP VAR@-OP ELSE
   STORE-IDX @ = IF VAR!-OP ELSE 0 EXIT THEN THEN
   LAST-CALL-T @ REWIND-T LAST-CALLXT-T @ >R NO-PEEP-T
-  C,-T R> 1 CELLS-T + SLOT,-T -1 ;
+  C,-T R> 4 + ALIGNED-T SLOT,-T -1 ;   \ >BODY-T, which is defined later
 
 : PRIM,-T ( idx --- )
 \ Compile primitive number idx into the current target definition.
@@ -410,7 +421,7 @@ VARIABLE IMAGE-FID
 \ inline.
   32 WORD COUNT W/O BIN CREATE-FILE ABORT" Can't create file" IMAGE-FID !
   67 IMAGE-HDR C!  86 IMAGE-HDR 1+ C!  56 IMAGE-HDR 2 + C!   \ "CV8"
-  48 TSHIFT + IMAGE-HDR 3 + C!                            \ call scale
+  48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
   2 IMAGE-HDR 6 + C!          \ format version
@@ -450,7 +461,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
   #PRIMS @ 1 #PRIMS +!
   "HEADER THERE , DUP ,
   DUP DIRECT? IF DUP C,-T ELSE ESC-OP C,-T DUP #DIRECT @ - C,-T THEN
-  EXIT-OP C,-T ALIGN-T
+  EXIT-OP C,-T
   TLINK @ DUP C@-T 32 OR SWAP C!-T
   TLINK @ 1+ IMAGE + TLINK @ C@-T 31 AND FOLD-POS DUP 0< 0= IF
     OVER SWAP CELLS FOLD-IDX + !
@@ -468,7 +479,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ primitive, so COMPILE, inlines it; the engine, not a Forth body,
 \ defines what it does.
   "HEADER THERE , DUP ,
-  C,-T EXIT-OP C,-T ALIGN-T
+  C,-T EXIT-OP C,-T
   TLINK @ DUP C@-T 32 OR SWAP C!-T
   DOES> CELL+ @ NO-PEEP-T THERE LAST-OP-T ! C,-T ;
 
@@ -476,7 +487,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Opcode numbers above the primitives depend on how many there are, so
 \ they cannot be written into kernel.4 as numbers.
 : CELLBYTES-TOK TARGET-CELL-BYTES @ LITERAL-T ;
-: CELLSHIFT-TOK TSHIFT LITERAL-T ;
+: CELLSHIFT-TOK TCELLSHIFT LITERAL-T ;
 : SIGNSHIFT-TOK TARGET-CELL-BYTES @ 8 * 1- LITERAL-T ;
 : LIT32-TOK  LIT32-OP LITERAL-T ;
 : DOVAR-TOK  DOVAR-OP LITERAL-T ;
@@ -520,24 +531,25 @@ FORTH DEFINITIONS
   ALSO TARGET >IN @ ' >BODY @ >R >IN !   \ the target body
   TRANSIENT ' >BODY @                    \ the head of the chain
   BEGIN DUP END-CHAIN - WHILE
-    DUP CHAIN@-T SWAP R@ TSHIFT RSHIFT CALLBYTES-T
+    DUP CHAIN@-T SWAP R@ CALLBYTES-T
   REPEAT DROP R> DROP PREVIOUS ;
 
 : T' ( --- t-addr) \ Find the execution token of a target definition.
   ALSO TARGET ' >BODY @ PREVIOUS ;
 
 : >BODY-T ( t-addr1 --- t-addr2 ) \ the parameter field of a data word
-  1 CELLS-T + ;
+  4 + ALIGNED-T ;       \ kernel.4's >BODY
 
 \ PART 6: DEFINING WORDS.
 
 TRANSIENT DEFINITIONS FORTH
 
-\ A data body is [DOVAR][pad to a cell][parameter field]; the two bytes
-\ after DOVAR are where DOES> would write its call.
+\ A data body is [DOVAR][three bytes][pad to a cell][parameter field];
+\ the three bytes are where DOES> would write its call. kernel.4's
+\ CREATE lays out the same.
 T]
 : VARIABLE "HEADER THERE ,
-  NO-PEEP-T DOVAR-OP C,-T ALIGN-T 0 ,-T
+  NO-PEEP-T DOVAR-OP C,-T 0 C,-T 0 C,-T 0 C,-T ALIGN-T 0 ,-T
   DOES> @ CALL,-T ;
 T[
 
@@ -671,6 +683,13 @@ RESOLVE (POSTPONE)
 \ count the target's HASH reads back, cells 1..n the heads.
 T' FORTH-WORDLIST >BODY-T PUBLISH-WORDLIST
 THERE   T' DP             >BODY-T !-T
+
+\ kernel.4's OPERAND-ALIGN assumes a call to these is the two-byte near
+\ form, which at a call scale of 0 reaches 16 KB. A kernel that grew
+\ past that would misalign every inline operand, silently.
+: NEAR? ( t-addr --- )
+  16384 < 0= ABORT" cross: kernel runtime words beyond near-call reach" ;
+T' (POSTPONE) NEAR?   T' (LEAVE) NEAR?   T' (+LOOP) NEAR?
 
 SAVE-IMAGE kernel.img \ Save the newly constructed Forth system to disk.
 

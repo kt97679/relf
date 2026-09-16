@@ -35,7 +35,7 @@ specialised opcodes, about a fifth of its execution time.
 units: calls are compressed pointers (§3.4), operations are
 variable-length, and the unit is a byte rather than a cell or a 16-bit
 token. It is also the image's magic string — `CV8` followed by the
-scale digit, so a 64-bit image reads `CV83`.
+scale digit, so an image reads `CV80` (`CV83` for a 64-bit image before Iteration 244).
 
 The name was coined in Iteration 189 of this project, when the encoding
 was first built and measured. It is not a name from the Forth
@@ -127,7 +127,9 @@ b = 11xxxxxx -> call, 3 bytes: v = ((b & 0x3F) << 16) | (ip[1] << 8) | ip[2]
                 target = base + (v << SCALE)
 ```
 
-`SCALE` is 3 on a 64-bit build and 2 on a 32-bit build. This is the
+`SCALE` is 0 at both widths since Iteration 244, when headers became
+byte-granular and bodies stopped being aligned; it was 3 on a 64-bit
+build and 2 on a 32-bit one before that. This is the
 whole decoder. There is no length table and no prefix.
 
 The two call widths (`VARCALL`) exist so the format is not capped at a
@@ -240,7 +242,8 @@ Two conventions matter when writing a compiler:
 
 ### 3.4 Calls, and the reach limit
 
-A call names a **byte offset from the image base, divided by 2^SCALE**.
+A call names a **byte offset from the image base, divided by 2^SCALE**
+(with SCALE 0, simply the byte offset).
 It does not name a word number, so there is no word table, no load-time
 chain walk and no xt-to-index map. This is HotSpot's compressed-oops
 decode (`base + (narrow << shift)`) and, before it, 8086 Forth's
@@ -248,8 +251,10 @@ segment threading.
 
 Consequences:
 
-- **Every call target must be 2^SCALE aligned.** Word bodies already are,
-  because the name field is padded to a cell.
+- **Every call target must be 2^SCALE aligned** - which, at SCALE 0, is
+  every byte. Before Iteration 244 it meant padding every name and body
+  to a cell. The cost of SCALE 0 is reach: the near form covers 16 KB,
+  so calls to the upper part of a shell image take the three-byte form.
 - **The limit is bytes, not words.** At today's average of ~60 bytes per
   entry, the far form is roughly 500,000 words.
 - `COMPILE,` becomes arithmetic on the target's distance.
@@ -263,26 +268,38 @@ limits I had not been tracking - the binding one was not the call reach.
 | limit | 64-bit | 32-bit | kind |
 |---|---|---|---|
 | VM memory (`MEMSIZE`) | 16 MB | 16 MB | build parameter, **not** format |
-| call reach, near form | 128 KB | 64 KB | format |
-| call reach, far form | **32 MB** | 16 MB | format |
-| slot reach, near form | 256 KB | 128 KB | format |
-| slot reach, far form | **64 MB** | 32 MB | format |
+| call reach, near form | 16 KB | 16 KB | format |
+| call reach, far form | **4 MB** | 4 MB | format |
+| slot reach, near form | 32 KB | 32 KB | format |
+| slot reach, far form | **8 MB** | 8 MB | format |
 | literal width | full cell | full cell | format |
 | branch, within one word | ±32 KB | ±32 KB | format |
 | opcode space | 128 + a reserved second bank | same | format |
 | `DOES>` tails (`MAX_TAILS`) | 16 | 16 | build parameter |
 
+The reach figures are for SCALE 0 (Iteration 244); at the old scales
+they were 8x (64-bit) and 4x (32-bit) larger. **The far call reach, 4
+MB, is now below `MEMSIZE`**, so a dictionary that grew past 4 MB could
+not call its own oldest words' neighbours from its newest - the first
+ceiling a growing system meets. At today's 60 KB it is 70x away. The
+remedy is a fourth call width, not a return to aligned bodies.
+
+A second, tighter limit is not in the format: the kernel's
+`OPERAND-ALIGN` assumes calls to `(LOOP)`, `(+LOOP)`, `(?DO)`,
+`(LEAVE)` and `(POSTPONE)` take the two-byte form, so those words must
+sit in the first 16 KB. `cross.4` checks this when it saves the kernel.
+
 `MEMSIZE` covers the image, all runtime dictionary growth and the
-stacks, so it is the **first** ceiling a growing system meets. It was
-1 MB until Iteration 194, which made the 32 MB call reach academic. It
-is a plain parameter: every reference in an image is relative, so
-raising it breaks nothing.
+stacks. It is a plain parameter: every reference in an image is
+relative, so raising it breaks nothing.
 
 ---
 
 ## 4. Worked examples
 
-Real bytes from `spec-64.img`. Word bodies are cell-aligned, so the
+Real bytes from `spec-64.img`, an image from before Iteration 244:
+the bodies there are cell-aligned and the calls scaled, which today's
+are not. Word bodies are cell-aligned, so the
 trailing zeros are padding, not code.
 
 **`: 2DUP OVER OVER ;`** at offset 1344:
@@ -363,26 +380,49 @@ the tail.
 +-------------------------+
 ```
 
-Each word is laid out exactly as the cell image lays it out, and this is
-deliberate: `FIND`, `>NAME`, the link walk and `save-system.4` are
-unchanged.
+Each word is three fields with nothing padded (Iteration 244):
 
 ```
-[ link: one cell, relative offset to the previous word ]
-[ name: count byte + characters, padded to a cell      ]
-[ body: CV8 bytes, padded to a cell                    ]
+[ link: 1-3 bytes, the distance back to the previous name field in
+        the same thread, tag byte LAST                             ]
+[ name: count byte (bit 7 set, bit 6 immediate, bit 5 inline)
+        + characters                                               ]
+[ body: CV8 bytes                                                  ]
 ```
 
-**Headers and names are not compressed.** In the 64-bit shell image they
-are 23 KB of 66 KB — 35%. That is now the largest single density lever
-left, and it is a kernel question, not a VM one: `FIND` compares names
-cell by cell.
+The link is read backward from the name field, so the tag is the
+first byte read:
+
+| tag at nfa-1 | length | distance |
+|---|---|---|
+| `0xxxxxxx` | 1 | the tag, 0-127 |
+| `10xxxxxx` | 2 | `(tag & 0x3F) << 8 \| [nfa-2]` |
+| `11xxxxxx` | 3 | `(tag & 0x3F) << 16 \| [nfa-2] << 8 \| [nfa-3]` |
+
+A distance of 0 ends the thread. `kernel.4`'s `PREV-NFA` decodes it,
+`HEADER` and `cross.4`'s `"HEADER` lay it down, and nothing in the
+engine reads it. `>NAME` still scans back from the body for the count
+byte, which names being 7-bit makes unambiguous.
+
+**A data body is the one thing aligned**: `[DOVAR or DODOES][three
+bytes][pad][parameter field]`, with the parameter field at
+`align(xt + 4)`. That is what `>BODY`, `CREATE`, the engine's `DOVAR`
+and `DODOES`, and both compilers' `VAR@`/`VAR!` peepholes compute, and
+all of them must agree. Code that lays down cells after a colon
+definition must `ALIGN` first, since `HERE` is not aligned there
+(`BUILTIN` in `shell.4` and `WORDLIST` in `extend.4` do).
+
+Measured when this layout replaced padded headers: the 64-bit kernel
+from 11,638 to 8,094 bytes and the shell image from 69,518 to 58,657;
+at 32-bit, 8,674 to 7,486 and 55,382 to 53,461. The gain is mostly a
+64-bit one, since a padded cell there is 8 bytes. The layout was
+first built as `attic/cv8b.4` for translated images.
 
 ### 5.1 Header
 
 | offset | size | contents |
 |---|---|---|
-| 0 | 4 | magic `CV8` + `'0'+SCALE` — e.g. `CV83` |
+| 0 | 4 | magic `CV8` + `'0'+SCALE` — `CV80` today |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
 | 6 | 1 | **format version** (2) |
@@ -413,8 +453,10 @@ reserves the cells, `shadow.4` fills them in when it loads, and they
 are saved like any other part of the image. A version-1 engine refuses
 a version-2 image.
 
-The byte-header bit (16) is gone with the byte-header layout; see
-`attic/README.md`.
+The byte-header bit (16) is gone: since Iteration 244 byte-granular
+headers are the only layout, and the engine never reads a link, so
+there is nothing for it to refuse. Scale 0 is recorded in the magic,
+which is what makes an older engine refuse these images.
 
 ### 5.2 Loading
 
@@ -693,8 +735,9 @@ places. A committed engine should:
   differently under CV8 than under the cell engine. The translator now
   emits `LIT64`; anything that generates CV8 code must do the same.
 - **A folded `EXIT` must not be a branch target** (§6.4).
-- **Call targets must be aligned** to 2^SCALE; data bodies only are
-  because `DOVAR` made them so.
+- **Parameter fields must be computed one way everywhere**:
+  `align(xt + 4)`. Four defects in the byte-header work were two places
+  computing the same address differently (PROGRESS.md 213, 244).
 - **The image is not byte-reproducible across dumps.** It carries 16
   variables holding live-session absolute addresses (`START`, `S0`,
   `LAST`, …). `COLD` resets them, so every image boots, but two dumps of

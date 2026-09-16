@@ -38,7 +38,7 @@ opcodes the translator used to add, nothing needed either.
 | file | what it was |
 |---|---|
 | `relf.c` | the cell engine: one host cell per operation |
-| `cv8.4`, `cv8b.4` | the CV8 compiler, as an overlay loaded into a CELL image and swapped in by the translator; `cv8.4` is now part of `kernel.4`. `cv8b.4` was byte-granular headers, a layout the product does not use |
+| `cv8.4`, `cv8b.4` | the CV8 compiler, as an overlay loaded into a CELL image and swapped in by the translator; `cv8.4` is now part of `kernel.4`. `cv8b.4` was byte-granular headers, which the product adopted in Iteration 244 (in `kernel.4` and `cross.4`) |
 | `cv8-save.4` | SAVE-SYSTEM for translated CV8 images; now part of `save-system.4` |
 | `tools/layout.py`, `tools/sod16.py` | the cell-to-CV8 translator |
 | `tools/image-dump.py`, `tools/dict-dump-addr.4` | dictionary dumps of a cell image, the translator's input |

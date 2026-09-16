@@ -239,6 +239,7 @@ do not trust the absence of a line below.
 - **228-236** — conformance, and what the standard's own tests found
 - **237-242** — the relf.c retirement, prepared but not done
 - **243** — +LOOP fixed; CV8 hosts itself and relf.c is retired
+- **244** — byte-granular headers in the product
 
 ### Not tied to an iteration
 
@@ -14664,3 +14665,69 @@ diff 0, both kernel fixpoints and both shell rebuilds reproducing,
 including from the long path. New: `ext:8byte` and `ext:4byte`.
 Changed: engine + shell image, 234,064 -> 96,358 bytes on x86-64 and
 130,312 -> 77,350 on i386.
+
+## Iteration 244: byte-granular headers in the product
+
+The layout `attic/cv8b.4` built for translated images, now in
+`kernel.4` and `cross.4`: a 1-3 byte link read backward from the name
+field, unpadded names, unaligned bodies, and a call scale of 0 at both
+widths. Only parameter fields stay aligned, at `align(xt + 4)`, with
+three bytes reserved after DOVAR for DODOES's far call.
+
+    64-bit   kernel   11,638 ->  8,094    shell   69,518 -> 58,657
+    32-bit   kernel    8,674 ->  7,486    shell   55,382 -> 53,461
+    engine + shell (tests/sizes): 96,358 -> 85,537 and 77,350 -> 75,437
+
+Speed, one build each, paired, 7 rounds against the old 64-bit build
+(the 32-bit pair divided by each other):
+
+             loop   fn     str    arith
+    64-bit   1.01   0.98   1.07   1.03
+    32-bit   0.97   1.02   1.04   1.02
+
+The 64-bit `str` figure is the only interval that excludes 1.0, and it
+is inside the +/-5-13% per-build bias GOALS.md describes. Scale 0 costs
+a third byte on calls past 16 KB; the loop is unchanged.
+
+**What changed, and the two defects.**
+- `kernel.4`: `HEADER` parses the name first, sizes the link for a
+  name at HERE+3, moves the name up and writes the link into the gap.
+  `SEARCH-WORDLIST` compares bytes and walks `PREV-NFA`. `NAME>` loses
+  `ALIGNED`; `>BODY` is `4 + ALIGNED`; `CREATE` reserves three bytes;
+  `(;CODE)` always writes the far call; `DOES>` no longer pads. `CALL,`
+  and `SLOT,` stop shifting.
+- `cross.4`: `"HEADER` lays down the same header. `TSHIFT` is gone,
+  and `CELLSHIFT-TOK` now uses the real cell shift - it had been
+  borrowing the call scale, which only coincided while bodies were
+  aligned. A check refuses a kernel whose loop and `POSTPONE` runtimes
+  sit beyond near-call reach, because `OPERAND-ALIGN` assumes the
+  two-byte form.
+- `cv8.c`: `SCALE 0`, and `DOVAR` computes `align(ip + 3)` to match.
+- `extend.4`'s `WORDLIST` and `shell.4`'s `BUILTIN` `ALIGN` before
+  laying down cells: `HERE` after a colon definition is no longer
+  aligned (the native form of PROGRESS.md 212's tail fault).
+- `tools/dict-report.4` walks byte links (and no longer leaks a stack
+  cell per word); `tools/find-depth.sh` patches the new loop.
+
+**Defect 1: two rules for one address, again.** The first kernel
+segfaulted before printing anything. `COLD`'s first instruction was
+`VAR!` on slot 883, where `START`'s parameter field was at 880:
+`cross.4`'s `VAR@`/`VAR!` peephole still computed `xt + CELL`, the old
+`>BODY`, while everything else used `align(xt + 4)`. Found by printing
+both numbers. This is the fifth instance of the class PROGRESS.md 213
+names.
+
+**Defect 2: a leak, found by reproducibility.** The shell image
+`relfsh` built differed from a scratch build of the same sources, in
+`HDR-HEAD` - `HEADER`'s new scratch cell, which holds an absolute
+thread head. `SS-SCRUB` now blanks both header scratch cells. This is
+the same shape as Iteration 243's `LAST-CALLXT`: every new VARIABLE
+the compiler writes an address into must go into `SS-SCRUB`.
+
+**A method note.** The first bootstrap run printed FIXPOINT after a
+segfault. The second cross-compile had crashed without writing, so
+`cmp` compared the first image with itself. `/tmp`'s bootstrap script
+now moves each image aside and fails if one is not produced. A
+comparison needs two artifacts that were both actually made.
+
+tests/verify: everything unchanged except the two sizes.

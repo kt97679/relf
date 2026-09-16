@@ -115,7 +115,7 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Where things stand (Iteration 243)
+## Where things stand (Iteration 244)
 
 The state a reader needs before anything else in this file, because
 several sections below describe a system with more parts than it now
@@ -140,10 +140,15 @@ the natively compiled shell runs at 0.99-1.02 of the translated one's
 time on every `tests/bench-vm` workload, and 3.3-4.4x faster than the
 cell product it replaced.
 
+**Headers are byte-granular** (Iteration 244): a 1-3 byte backward
+link, an unpadded name, an unaligned body, and so a call scale of 0.
+Only parameter fields are aligned. `CV8-REFERENCE.md` 5 has the layout
+and the rule every consumer must share.
+
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img    11,638    kernel-shell.img     69,518
-    32-bit   kernel32.img   8,674    kernel32-shell.img   55,382
+    64-bit   kernel.img     8,094    kernel-shell.img     58,657
+    32-bit   kernel32.img   7,486    kernel32-shell.img   53,461
 
 **Sixty-seven primitives**, escaped band on: the 32 OS/libc primitives
 sit behind ESC + a selector, declared after `ESCAPED` in `kernel.4`,

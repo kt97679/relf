@@ -842,23 +842,24 @@ VARIABLE #SRC ( --- addr)
 
 \ First we need FIND and related words.
 
-\ Each word list consists of one linked list of definitions. No hashing
-\ is used to speed up dictionary search. All names in the dictionary
-\ are at aligned addresses and FIND is optimized to compare one 4-byte
-\ cell at a time.
+\ Each word list is hashed into threads, each a linked list of
+\ definitions, newest first; a search walks only the thread its name
+\ hashes to (see HASH). Names are compared a byte at a time; they are
+\ not padded to a cell (Iteration 243).
 
 \ Dictionary definitions are built as follows:
 \
-\ LINK field: 1 cell, aligned, contains name field of previous word in list.
-\ NAME field: counted string of at most 31 characters.
+\ LINK field: 1-3 bytes, the distance back to the name field of the
+\             previous word in the same thread; see PREV-NFA.
+\ NAME field: counted string of at most 31 characters, not padded.
 \             bits 5-7 of length byte have special meaning.
 \                   7 is always set to mark start of name ( for >NAME)
 \                   6 is set if the word is immediate.
 \                   5 is set if the word is a macro.
-\ CODE field: first aligned address after name, is execution token for word.
-\             here the executable code for the word starts. (is 1 cell for
-\             variables etc.)
-\ PARAMETER field: (body) Contains the data of constants and variables etc.
+\ CODE field: the byte after the name, is execution token for word.
+\             here the executable code for the word starts. Not aligned.
+\ PARAMETER field: (body) Contains the data of variables etc.; always
+\             cell-aligned, at align(xt+4) - see CREATE.
 
 VARIABLE NAMEBUF ( --- a-addr)
 \ An aligned buffer that holds a copy of the name that is searched.
@@ -916,52 +917,62 @@ VARIABLE CURRENT ( --- addr)
    THEN XOR
   R> 1- AND ;
 
+: >NAME ( addr1 --- addr2 )
+\ Convert execution token addr1 (address of code) to address of name:
+\ the count byte is the only header byte with bit 7 set that is reached
+\ scanning back from the body, since names are 7-bit.
+  BEGIN 1- DUP C@ 128 AND UNTIL ;
+
+: NAME> ( addr1 --- addr2 )
+\ Convert address of name to address of code: the body follows the
+\ name directly.
+  COUNT 31 AND + ;
+
 : NAME>BUF ( c-addr u ---)
-\ Move the name c-addr u to the aligned buffer NAMEBUF.
+\ Move the name c-addr u to the buffer NAMEBUF.
   NAMEBUF 32 0 FILL 32 MIN NAMEBUF PLACE ;
+
+\ A dictionary header is [link][count][name][body], with nothing
+\ padded. The link is the distance BACK from this word's name field to
+\ the previous one in the same thread, 1-3 bytes with the tag byte
+\ LAST, so it is read backward from the name field:
+\     tag < 128           d = tag                                 7 bits
+\     128 <= tag < 192    d = (tag AND 63) << 8 OR [nfa-2]        14 bits
+\     tag >= 192          d = (tag AND 63) << 16 OR [nfa-2] << 8
+\                           OR [nfa-3]                            22 bits
+\ and d = 0 ends the thread (CV8-REFERENCE.md 5). Until Iteration 243 the
+\ link was a cell and names were padded to one.
+
+: PREV-NFA ( nfa --- nfa' | 0 )
+\ The name field of the previous word in this thread, or 0.
+  DUP 1- C@                                    ( nfa tag )
+  DUP 128 U< IF DUP IF - ELSE 2DROP 0 THEN EXIT THEN
+  DUP 192 U< IF 63 AND 8 LSHIFT OVER 2 - C@ OR - EXIT THEN
+  63 AND 16 LSHIFT OVER 2 - C@ 8 LSHIFT OR OVER 3 - C@ OR - ;
+
+: NAME=? ( a1 a2 u --- f )
+\ Are the u bytes at a1 and a2 equal?
+  BEGIN DUP WHILE
+    >R OVER C@ OVER C@ = 0= IF R> DROP 2DROP 0 EXIT THEN
+    1+ SWAP 1+ SWAP R> 1-
+  REPEAT DROP 2DROP -1 ;
 
 : SEARCH-WORDLIST ( c-addr u wid --- 0 | xt 1 xt -1)
 \ Search the wordlist with address wid for the name c-addr u.
 \ Return 0 if not found, the execution token xt and -1 for non-immediate
-\ words and xt and 1 for immediate words.
-  ROT ROT
-  NAME>BUF
-  \ Pick the thread this name would have been filed under. Everything
-  \ below is unchanged: the chain walk, the cell-at-a-time compare and
-  \ the relative link field are all as they were.
-  DUP >R NAMEBUF COUNT R@ @ HASH 1+ CELLS + @ R> DROP
-  DUP IF
-  BEGIN
-   \ Mask clears the flag bits within the count byte - which, since cells
-   \ are read native-endian (little-endian on every host targeted so
-   \ far - see GOALS.md phase 5), is the LOW byte of the cell, not the
-   \ high byte the old big-endian-packed mask (1 61 LSHIFT 1 -) assumed.
-   NAMEBUF @ OVER @ -1 224 XOR AND = \ Compare first cells of names.
-           \ Mask off bits 5-7 of name length, these have special purposes.
-   IF
-    NAMEBUF CELL+
-    OVER CELL+
-    CELLBYTES-TOK >R
-    BEGIN
-     OVER @ OVER @ - >R
-     CELL+ SWAP CELL+ SWAP R> R> CELL+ >R \ Compare all of name until different
-    UNTIL
-    R> NAMEBUF C@ 1 + ALIGNED CELL+ = IF \ match to the right length then found
-     SWAP DROP SWAP C@
-     64 AND IF \ determine immediateness of a word from bit 6 of name length.
-      1
-     ELSE
-      -1
-     THEN
-     SWAP CELLBYTES-TOK - SWAP EXIT \ Exit with execution token and flag.
+\ words and xt and 1 for immediate words. Only the thread the name
+\ hashes to is walked.
+  ROT ROT NAME>BUF
+  DUP >R NAMEBUF COUNT R@ @ HASH 1+ CELLS + @ R> DROP   ( nfa | 0 )
+  BEGIN DUP WHILE
+    \ Bits 5-7 of the count byte are flags, not length.
+    DUP C@ 31 AND NAMEBUF C@ = IF
+      DUP 1+ NAMEBUF 1+ NAMEBUF C@ NAME=? IF
+        DUP NAME> SWAP C@ 64 AND IF 1 ELSE -1 THEN EXIT
+      THEN
     THEN
-    2DROP
-   THEN
-   CELLBYTES-TOK - DUP @ DUP ROT ROT + SWAP 0 =  \ Take address of next word from link field until 0
-  UNTIL
-  THEN
-  DROP 0 \ Not found.
-;
+    PREV-NFA
+  REPEAT ;
 
 : FIND ( c-addr --- c-addr 0| xt 1|xt -1 )
 \ Search all word lists in the search order for the name in the
@@ -1070,31 +1081,36 @@ VARIABLE CURRENT ( --- addr)
 \ Add as many bytes to the dictionary as needed to align dictionary pointer.
   BEGIN HERE CELLBYTES-TOK 1- AND WHILE 0 C, REPEAT ;
 
-: >NAME ( addr1 --- addr2 )
-\ Convert execution token addr1 (address of code) to address of name.
-  BEGIN 1- DUP C@ 128 AND UNTIL ;
+: LINK-LEN ( d --- n )
+\ The bytes a link of distance d needs.
+  DUP 128 U< IF DROP 1 EXIT THEN
+  16384 U< IF 2 ELSE 3 THEN ;
 
-: NAME> ( addr1 --- addr2 )
-\ Convert address of name to address of code.
-  COUNT 31 AND + ALIGNED ;
+: LINK, ( d n --- )
+\ Append a link of exactly n bytes, tag byte last.
+  DUP 1 = IF DROP C, EXIT THEN
+  2 = IF DUP 255 AND C, 8 RSHIFT 128 OR C, EXIT THEN
+  DUP 255 AND C, DUP 8 RSHIFT 255 AND C, 16 RSHIFT 192 OR C, ;
+
+VARIABLE HDR-HEAD ( --- a-addr )
+VARIABLE HDR-LEN  ( --- a-addr )
 
 : HEADER ( --- )
-\ Create a header for a new definition without a code field.
-  ALIGN
-  \ The link field cannot be filled in yet: which thread this word
-  \ belongs to depends on its name, and the name has not been parsed.
-  \ So reserve the cell, remember where it is, and patch it below -
-  \ which is what SOD32 does.
-  HERE >R 0 ,
-  HERE LAST !         \ Set LAST so definition can be linked by REVEAL
-  32 WORD DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP
-                       \ Give warning if existing word redefined.
-  DUP COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @
-  ?DUP IF R@ - R@ ! THEN    \ link, relative to the link cell itself
-  R> DROP
-  C@ 1+ HERE C@ 128 + HERE C! ALLOT ALIGN
-                       \ Allot the name and set bit 7 in length byte.
-;
+\ Create a header for a new definition without a code field. The name
+\ is parsed first - WORD leaves it counted at HERE - because the link
+\ depends on the thread the name hashes to. The link's length depends
+\ on the distance, which depends on where the name lands, which
+\ depends on the link's length: bound it from above by sizing for a
+\ name at HERE+3, so the real distance always fits. Then the name is
+\ moved up and the link written into the gap.
+  32 WORD DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP DROP
+  HERE COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @ HDR-HEAD !
+  HDR-HEAD @ IF HERE 3 + HDR-HEAD @ - LINK-LEN ELSE 1 THEN HDR-LEN !
+  HERE DUP HDR-LEN @ + HERE C@ 1+ CMOVE>
+  HDR-HEAD @ IF HERE HDR-LEN @ + HDR-HEAD @ - ELSE 0 THEN HDR-LEN @ LINK,
+  HERE LAST !             \ Set LAST so the definition can be linked by REVEAL
+  HERE C@ 1+ HERE C@ 128 + HERE C! ALLOT ;
+                          \ Allot the name and set bit 7 in the count byte.
 
 : REVEAL ( --- )
 \ Add the last created definition to the CURRENT wordlist, at the head
@@ -1139,9 +1155,9 @@ VARIABLE LAST-CALLXT ( --- a-addr )
   DUP 255 AND C, 8 RSHIFT 255 AND C, ;
 
 : SLOT, ( a-addr --- )
-\ A slot operand naming a-addr: a scaled offset like a call, two bytes
-\ big-endian if it fits 15 bits, else three with the top bit set.
-  START @ - CELLSHIFT-TOK RSHIFT
+\ A slot operand naming a-addr: its offset from the image base, two
+\ bytes big-endian if it fits 15 bits, else three with the top bit set.
+  START @ -
   DUP 32768 < IF DUP 8 RSHIFT C, 255 AND C,
   ELSE DUP 16 RSHIFT 128 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
 
@@ -1201,10 +1217,11 @@ FOLD-TABLE
   NO-PEEP ;
 
 : CALL, ( a-addr --- )
-\ A call to the body at a-addr: a scaled offset from the image base,
-\ two bytes if it fits 14 bits, else three.
+\ A call to the body at a-addr: its offset from the image base, two
+\ bytes if it fits 14 bits, else three. The call scale is 0, because
+\ bodies are not aligned (CV8-REFERENCE.md 3.4).
   NO-PEEP HERE LAST-CALL ! DUP LAST-CALLXT !
-  START @ - CELLSHIFT-TOK RSHIFT
+  START @ -
   DUP 16384 < IF DUP 8 RSHIFT 128 OR C, 255 AND C,
   ELSE DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
 
@@ -1225,7 +1242,7 @@ FOLD-TABLE
   DUP [OP] @ = IF DROP 100 ELSE
   [OP] ! = IF 101 ELSE 0 EXIT THEN THEN
   LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
-  OP, R> CELL+ SLOT, -1 ;   \ >BODY, which is defined later
+  OP, R> 4 + ALIGNED SLOT, -1 ;   \ >BODY, which is defined later
 
 : COMPILE, ( xt --- )
 \ Add the execution semantics of xt to the current definition. A word
@@ -1266,9 +1283,10 @@ VARIABLE 'LEAVE ( --- a-addr)
 : CREATE ( "ccc" --- )
 \ Create a definition that returns its parameter field address when
 \ executed. Storage can be added to it with ALLOT. The body is
-\ [DOVAR][pad to a cell]: the pad has room for DOES> to overwrite the
-\ front with [DODOES][call], and the parameter field does not move.
-  HEADER REVEAL NO-PEEP DOVAR-TOK OP, ALIGN ;
+\ [DOVAR][three bytes][pad to a cell]: DOES> overwrites the front with
+\ [DODOES][three-byte call], and the parameter field, which the engine
+\ computes as align(body+4), does not move.
+  HEADER REVEAL NO-PEEP DOVAR-TOK OP, 0 C, 0 C, 0 C, ALIGN ;
 
 : VARIABLE ( "ccc" --- )
 \ Create a variable where 1 cell can be stored. When executed it
@@ -1464,33 +1482,29 @@ VARIABLE POCKET ( --- a-addr )
   SOURCE >IN ! DROP ; IMMEDIATE
 
 : >BODY ( xt --- a-addr)
-\ Convert execution token to parameter field address.
-  CELL+ ;
+\ Convert execution token to parameter field address: past DOVAR or
+\ DODOES and three bytes, aligned. See CREATE.
+  4 + ALIGNED ;
 
 : (;CODE) ( --- )
 \ Runtime for DOES>: make the last created word call the code after
 \ the call to this word, and end the defining word (R> discards its
-\ return address). The body becomes [DODOES][call to the tail]; CREATE
-\ left room for that, and the three-byte form still fits because the
-\ body is cell-aligned. ALIGNED because DOES> pads the tail to a call
-\ target.
-  R> ALIGNED LAST @ NAME>             ( tail xt )
+\ return address). The body becomes [DODOES][three-byte call to the
+\ tail], in the room CREATE left. Always the far form: at a call scale
+\ of 0 the near form reaches only 16 KB.
+  R> LAST @ NAME>                     ( tail xt )
   DODOES-TOK OVER C! 1+ SWAP          ( a-addr tail )
-  START @ - CELLSHIFT-TOK RSHIFT      ( a-addr v )
-  DUP 16384 < IF
-    2DUP 255 AND SWAP 1+ C!  8 RSHIFT 128 OR SWAP C!
-  ELSE
-    2DUP 255 AND SWAP 2 + C!  2DUP 8 RSHIFT 255 AND SWAP 1+ C!
-    16 RSHIFT 192 OR SWAP C!
-  THEN ;
+  START @ -                           ( a-addr v )
+  2DUP 255 AND SWAP 2 + C!
+  2DUP 8 RSHIFT 255 AND SWAP 1+ C!
+  16 RSHIFT 192 OR SWAP C! ;
 
 : DOES>  ( --- )
 \ Word that contains DOES> will change the behavior of the last created
 \ word such that it pushes its parameter field address onto the stack
-\ and then executes whatever comes after DOES>. The tail must start on
-\ a call target, so it is padded; the pad is never executed. DODOES
-\ leaves the parameter field on the return stack for the tail's R>.
-  POSTPONE (;CODE) ALIGN NO-PEEP POSTPONE R> ; IMMEDIATE
+\ and then executes whatever comes after DOES>. DODOES leaves the
+\ parameter field on the return stack for the tail's R>.
+  POSTPONE (;CODE) NO-PEEP POSTPONE R> ; IMMEDIATE
 
 \ PART 10: TOP LEVEL OF INTERPRETER
 

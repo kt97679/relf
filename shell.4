@@ -3018,7 +3018,9 @@ VARIABLE BI-HERE
 
 : BUILTIN ( xt c-addr u --- )
   SHADOW{ BI-XT BI-ADDR BI-LEN | BI-HERE }
-  HERE BI-HERE !
+  \ ALIGN first: HERE after a colon definition is not aligned, and the
+  \ entry is cells read with @ (PROGRESS.md 212).
+  ALIGN HERE BI-HERE !
   BUILTIN-LIST @ ,
   BI-XT @ START @ - ,
   BI-LEN @ ,

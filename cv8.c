@@ -12,8 +12,10 @@
  *  and this engine in detail; CV8.md has the measurements behind it.
  *
  *  Code is a byte stream: one-byte opcodes, two- or three-byte calls
- *  to a scaled offset from the image base, and a band of specialised
- *  opcodes for the kernel's hottest patterns. Every reference in an
+ *  to a byte offset from the image base, and a band of specialised
+ *  opcodes for the kernel's hottest patterns. Dictionary headers are
+ *  byte-granular and bodies unaligned, which is why the offset is not
+ *  scaled; the engine never reads a header. Every reference in an
  *  image is relative, so an image loads anywhere with no relocation.
  *
  *  Cell width is the host's pointer width, chosen at compile time, and
@@ -73,7 +75,11 @@ static char **g_argv;
  *  and left [71] = &&L_lit64t overwriting it, with no build error and a
  *  return stack overflow at run time.  */
 #define NPRIM 67
-#define SCALE CELL_SHIFT   /* call and slot scale: 3 or 2 */
+/*  Call and slot operands name a BYTE offset from the image base: the
+ *  scale is 0, because dictionary headers are byte-granular and bodies
+ *  are not aligned (Iteration 243). It was 3 or 2 - the cell shift -
+ *  while bodies were cell-aligned.  */
+#define SCALE 0
 #define SPEC 1
 
 /*  The escaped band: the OS/libc primitives, contiguous at the end of
@@ -850,7 +856,7 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
             *  static sites and 0.006% of dispatches; behind an escape
             *  they cost a byte each and free 32 opcodes.  */
     t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
-L_dovar: PUSHT((ip + 2 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1)); ip = RS; rp += CELL_BYTES; NEXT();
+L_dovar: PUSHT((ip + 3 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1)); ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
     if (BYTE(ip) & 0x40) {
         t = ((BYTE(ip) & 0x3F) << 16) | ((UNS64)BYTE(ip + 1) << 8) | BYTE(ip + 2);
