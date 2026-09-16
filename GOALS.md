@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,726    kernel-shell.img     61,273
-    32-bit   kernel32.img   8,122    kernel32-shell.img   55,865
+    64-bit   kernel.img     8,726    kernel-shell.img     62,194
+    32-bit   kernel32.img   8,122    kernel32-shell.img   56,429
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1015,15 +1015,26 @@ of this file:
   (`tests/shell/run-long-line`, and `tests/diff/cases/long-lines.sh`
   against bash). A line past 1 MB (`LINE-HARD-MAX`) is reported and
   discarded, so a binary file costs a message, not the memory.
-- **Fixed limits that a long line now reaches first**, each REPORTED
-  rather than silent unless noted: a variable's value, 255 characters
-  ("value too long", status 2, the value empty - until 249 it kept the
-  PREVIOUS value); 64 words on a line (`MAX-ARGS`, about thirty
-  parallel arrays - the next stage); a here-document body, 8 KB
-  (`HEREDOC-MAX`, excess dropped SILENTLY); positional parameters and
-  alias values, 256. And one that is not this shell's: Linux refuses a
-  single exec argument over 128 KB, which a long `echo` meets because
-  `echo` here is `/bin/echo`.
+- **Fixed limits a long line now reaches first.** The word arrays grow
+  since Iteration 250 (`ARGS-BUFFER:`, to 65,536 words, then "too many
+  arguments"). What is still fixed, worst first - the first three LOSE
+  DATA SILENTLY, which the memory policy says a table must never do:
+  - **Positional parameters: 9.** `set -- 1 ... 20` gives `$#` = 9,
+    and `"$@"` and a function's arguments are cut the same way.
+  - **Command substitution output: 256 bytes** (`CMDSUB-OUT-MAX`).
+    `$(seq 1 3000)` gives 89 words.
+  - **A `for` list: 256 bytes** (`FOR-WORDS-MAX`). A 1,000-item list
+    runs 88 times.
+  - A here-document body, 8 KB (`HEREDOC-MAX`), excess dropped
+    silently.
+  - A variable's value, 255 characters: reported ("value too long",
+    status 2, the value empty - until 249 it kept the PREVIOUS value).
+    Alias values likewise 256.
+  - Not this shell's: Linux refuses a single exec argument over 128 KB,
+    which a long `echo` meets because `echo` here is `/bin/echo`.
+- **`for` after `&&` or `||` is not recognised** (`true && for i in 1;
+  do ...; done` is "for: command not found"), in this and earlier
+  builds.
 - **`shell.4`'s older diagnostics go to STDOUT.** "cd: no such
   directory", "shell: syntax error: ...", "alias: too many aliases"
   all still use `."`. Iteration 153 moved the prompt and 154 added
@@ -1307,13 +1318,13 @@ once. Both are done; the rest keep their order.
    hides `struct termios`, whose layout differs by platform - say
    `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
 
-5. **The rest of the growable-buffer work** (Iteration 249 did the
-   line buffers). Stage 3: the `MAX-ARGS` arrays grow with the number
-   of words, the largest audit - `ARGV` and about thirty copies of it.
-   Stage 4: variable values, here-documents, positional parameters and
-   alias values. Each by the same rule: grow before any pointer into
-   the table is taken, retire rather than free, and diagnose whatever
-   stays fixed.
+5. **The rest of the growable-buffer work.** Iteration 249 did the
+   line buffers and 250 the word arrays. Stage 4 is the value tables
+   under "Still open", silent ones first: positional parameters,
+   command substitution output, `for` lists, here-documents, then
+   variable and alias values. Each by the same rule: grow before any
+   pointer into the table is taken, retire rather than free, and
+   diagnose whatever stays fixed.
 
 6. **A cooperative multitasker**, the other thing `POLL` was chosen
    for: `PAUSE` switches tasks, and when every task is waiting on a

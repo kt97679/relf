@@ -42,21 +42,25 @@ assert_output_equals "a successful command reports nothing" "" "$err"
 
 # --- too many arguments ---------------------------------------------
 
-# 70 one-character words, deliberately: MAX-ARGS is 64, and keeping
-# the words short holds the whole line under LINE-MAX so this tests
-# the argument limit rather than the line limit.
-i=0; args=""
-while [ "$i" -lt 70 ]; do args="$args a"; i=$((i + 1)); done
-printf 'echo%s\n' "$args" > "$t/many.sh"
+# 66,000 one-character words: past ARGS-HARD-MAX (65,536), the
+# ceiling since the word arrays became growable in Iteration 250. Until
+# then this was 70 words against MAX-ARGS (64). The line is 132 KB,
+# which the line buffers take in stride since Iteration 249.
+head -c 66000 /dev/zero | sed 's/\x0/ a/g' > "$t/words"
+printf 'echo%s\n' "$(cat "$t/words")" > "$t/many.sh"
 
-out=$(timeout 10 "$THIS_SH" "$t/many.sh" 2>/dev/null)
+out=$(timeout 30 "$THIS_SH" "$t/many.sh" 2>/dev/null)
 assert_output_equals "over-long argument list runs nothing" "" "$out"
 
-err=$(timeout 10 "$THIS_SH" "$t/many.sh" 2>&1 >/dev/null)
+err=$(timeout 30 "$THIS_SH" "$t/many.sh" 2>&1 >/dev/null)
 assert_output_contains "over-long argument list is reported" "too many arguments" "$err"
 
-timeout 10 "$THIS_SH" "$t/many.sh" >/dev/null 2>&1
+timeout 30 "$THIS_SH" "$t/many.sh" >/dev/null 2>&1
 assert_status "over-long argument list fails" "1" "$?"
+
+# And 1,000 words, which used to be refused, now run.
+out=$(printf 'echo %s | wc -w\n' "$(head -c 1000 /dev/zero | sed 's/\x0/ b/g')" > "$t/k.sh"; timeout 10 "$THIS_SH" "$t/k.sh" 2>&1 | tr -d ' ')
+assert_output_equals "1,000 words run" "1000" "$out"
 
 # The limit must not have moved down onto ordinary lines. 50 words is
 # comfortably under MAX-ARGS and must still run, silently.

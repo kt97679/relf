@@ -245,6 +245,7 @@ do not trust the absence of a line below.
 - **247** — escaped primitives stop costing opcodes; format version 3
 - **248** — GOALS.md audited; a too-long line no longer runs its tail
 - **249** — growable line buffers; stale values; function bodies; a test that compared nothing
+- **250** — the word arrays grow; three silent limits found behind them
 
 ### Not tied to an iteration
 
@@ -15070,3 +15071,42 @@ positional parameters and alias values (stage 4).
 
 tests/verify: shell assertions 568 -> 572; engine + shell image 86,617
 -> 88,113 (x86-64), 76,509 -> 77,841 (i386); all else unchanged.
+
+## Iteration 250: the word arrays grow
+
+**The audit.** `MAX-ARGS` (64) sized 28 arrays - `ARGV`, the arrays
+parallel to it, and its copies for `;`, `&&`, pipes, groups, pending
+words and redirections - but was checked in only five places, plus two
+arena allocations. Everything else copies or indexes up to `ARGC`,
+trusting that `ARGC` never passed `MAX-ARGS`. So the arrays must grow
+together, and no code keeps an array's address: the one word that takes
+arrays as arguments, `COPY-ARGV-Q`, copies without anything able to
+grow in between.
+
+**The mechanism.** `ARGS-BUFFER: ( entry-bytes "name" )` declares a
+`BUFFER:` of `MAX-ARGS` entries and chains it; `GROW-ARGS` walks the
+chain and grows every one with pool.4's `BUF-ENSURE`, so an array
+declared this way cannot be forgotten. `ARGS-CAP` replaces `MAX-ARGS`
+in the checks, and `ROOM-FOR-ARG?` grows where a word is about to be
+added - normalizing (the raw words), tokenizing, expanding and field
+splitting (which can multiply them). The ceiling is `ARGS-HARD-MAX`,
+65,536 words (at most about 15 MB of arrays); past it the line is
+refused with "too many arguments", as it was past 64.
+
+`tests/shell/run-diagnostics` moved its refusal case from 70 words to
+66,000 and gained a 1,000-word case that runs.
+`tests/diff/cases/many-words.sh` - 200 and 5,000 words through echo,
+pipes, `;`, `&&`, loops and `if` - matches bash; the previous build
+does not.
+
+**What it uncovered.** Comparing with dash past 64 words found three
+limits that LOSE DATA WITHOUT A WORD, all older than this work:
+positional parameters stop at 9 (`set -- 1 ... 20` gives `$#` = 9, so
+`"$@"` and function arguments are cut); command substitution output
+stops at 256 bytes (`$(seq 1 3000)` is 89 words); a `for` list stops at
+256 bytes (1,000 items run 88 times). GOALS.md's "Still open" lists
+them first, and they are the next stage. Also recorded: `for` after
+`&&` is not recognised at all.
+
+tests/verify: shell assertions 572 -> 573; engine + shell image 88,113
+-> 89,034 (x86-64), 77,841 -> 78,405 (i386).

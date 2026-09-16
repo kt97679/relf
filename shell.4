@@ -32,7 +32,62 @@
 \ ---- sizes ----
 
 256 CONSTANT LINE-MAX
-64  CONSTANT MAX-ARGS
+64  CONSTANT MAX-ARGS      \ what the word arrays START at: see ARGS-BUFFER:
+
+\ ==================================================================
+\ The word arrays grow (Iteration 250)
+\ ==================================================================
+\ ARGV and about thirty arrays like it - copies of it, and arrays
+\ parallel to it - hold one entry per word of a line, and every one of
+\ them is indexed up to ARGC without a check of its own: the only bound
+\ was that ARGC never passed MAX-ARGS. So they must all grow TOGETHER.
+\ ARGS-BUFFER: declares one and chains it; GROW-ARGS walks the chain,
+\ so an array declared this way cannot be forgotten. ARGS-CAP is the
+\ entries every one of them has room for, and replaces MAX-ARGS
+\ wherever the code asks "is there room".
+\
+\ Growth copies and retires (pool.4's BUF-ENSURE), and nothing keeps an
+\ array's ADDRESS: everything names it, so after a growth everything
+\ sees the new block with the same contents.
+\
+\ ARGS-HARD-MAX is the ceiling: 28 arrays of up to a cell each per
+\ word, so 65,536 words is at most about 15 MB. Past it the words are
+\ dropped and the line is refused, as every line was past 64 before.
+
+65536 CONSTANT ARGS-HARD-MAX
+VARIABLE ARGS-CAP     MAX-ARGS ARGS-CAP !
+VARIABLE ARGS-ARRAYS  0 ARGS-ARRAYS !   \ newest chain entry, as an offset
+
+: ARGS-BUFFER: ( entry-bytes "name" --- )
+\ A BUFFER: of MAX-ARGS entries that GROW-ARGS keeps at ARGS-CAP. The
+\ chain entry follows the descriptor: [link][descriptor][entry-bytes],
+\ all offsets from START, so they survive a save and reload.
+  DUP MAX-ARGS * BUFFER:
+  HERE                                  ( n entry )
+  ARGS-ARRAYS @ ,
+  BUF-BODY @ START @ - ,
+  SWAP ,
+  START @ - ARGS-ARRAYS ! ;
+
+: GROW-ARGS ( n --- )
+\ Make every word array hold at least n entries - at least doubling, up
+\ to ARGS-HARD-MAX.
+  DUP ARGS-CAP @ > 0= IF DROP EXIT THEN
+  ARGS-CAP @ 2* MAX ARGS-HARD-MAX MIN
+  ARGS-ARRAYS @
+  BEGIN ?DUP WHILE
+    START @ +                           ( n entry )
+    2DUP 2 CELLS + @ *                  ( n entry bytes )
+    OVER CELL+ @ START @ + BUF-ENSURE
+    @                                   ( n link )
+  REPEAT
+  ARGS-CAP ! ;
+
+: ROOM-FOR-ARG? ( i --- f )
+\ Can entry i+1 be used? Grows the arrays if it can; false only at the
+\ ceiling. i is the count so far, and one entry is kept for a NUL.
+  2 + DUP ARGS-HARD-MAX > IF DROP 0 EXIT THEN
+  GROW-ARGS -1 ;
 
 VARIABLE ARGS-OVERFLOW?
 \ Set whenever a word had to be dropped because ARGV is full, and
@@ -53,15 +108,15 @@ LINE-MAX BUFFER: LINE-BUF
 
 512 CONSTANT NORM-MAX
 NORM-MAX BUFFER: NORM-BUF
-MAX-ARGS CELLS BUFFER: NORM-WORDS   \ each word's start offset
-MAX-ARGS CELLS BUFFER: NORM-WLENS   \ and its length, in NORM-BUF
+1 CELLS ARGS-BUFFER: NORM-WORDS   \ each word's start offset
+1 CELLS ARGS-BUFFER: NORM-WLENS   \ and its length, in NORM-BUF
 VARIABLE NORM-WCOUNT
 VARIABLE NORM-WSTART      \ start of the word currently open, or -1
 \ Declared here rather than beside NORMALIZE-OPERATORS: TOKENIZE
 \ reads the normalized line straight out of this buffer (Iteration
 \ 111), and this file is one linear source where a word must be
 \ defined before it is used.
-MAX-ARGS CELLS BUFFER: ARGV
+1 CELLS ARGS-BUFFER: ARGV
 
 \ ==================================================================
 \ Newline
@@ -760,8 +815,8 @@ VARIABLE TOK-OUT-END
 \ tokenizing intact, which is what re-expanding it per command will
 \ need.
 VARIABLE TOK-WAS-QUOTED?
-MAX-ARGS BUFFER: ARGV-QUOTED   ( one byte flag per ARGV entry )
-MAX-ARGS BUFFER: ARGV-NAME-QUOTED  \ true if THIS token's very
+1 ARGS-BUFFER: ARGV-QUOTED   ( one byte flag per ARGV entry )
+1 ARGS-BUFFER: ARGV-NAME-QUOTED  \ true if THIS token's very
                                           \ first character came from
                                           \ inside a quote - used only
                                           \ by TRY-ASSIGNMENT, to
@@ -990,7 +1045,7 @@ VARIABLE IFSC-P
   \ right after, if there's still room in ARGV.
   0 TOK-OUT @ C!
   0 ARGV-QUOTED ARGC @ + C!
-  ARGC @ MAX-ARGS 1- < IF
+  ARGC @ ROOM-FOR-ARG? IF
     ARGC @ 1+ ARGC !
     TOK-OUT @ 1+ ARGV ARGC @ CELLS + !
   ELSE
@@ -2310,8 +2365,8 @@ VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
     SCAN-TOKEN-CHAR
   REPEAT ;
 
-MAX-ARGS CELLS BUFFER: EW-ARGV
-MAX-ARGS BUFFER: EW-ARGQ
+1 CELLS ARGS-BUFFER: EW-ARGV
+1 ARGS-BUFFER: EW-ARGQ
 VARIABLE EW-ARGC
 VARIABLE EW-I
 
@@ -2330,7 +2385,7 @@ VARIABLE EW-I
   TOK-BUF BUFFER-SIZE TOK-BUF + TOK-OUT-END !
   0 ARGC !
   SHADOW{ | TK-I TK-J TK-Q }
-  BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ MAX-ARGS 1- < AND WHILE
+  BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ ARGS-CAP @ 1- < AND WHILE
     TOK-OUT @ ARGV ARGC @ CELLS + !
     \ A leading quote character is recorded now, while the quotes are
     \ still there to see. EXPAND-WORDS needs it after they are gone,
@@ -2409,7 +2464,7 @@ VARIABLE EW-I
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
     0 IN-DQ-CONTEXT? !
-    ARGC @ MAX-ARGS 1- < IF
+    ARGC @ ROOM-FOR-ARG? IF
       TOK-OUT @ ARGV ARGC @ CELLS + !
       EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
       SCAN-TOKEN
@@ -2478,7 +2533,7 @@ VARIABLE EW-I
 \ multiple output redirections isn't meaningful anyway without pipes.
 \ ==================================================================
 
-MAX-ARGS CELLS BUFFER: ARGV2
+1 CELLS ARGS-BUFFER: ARGV2
 VARIABLE ARGC2
 \ A general list of redirections rather than one slot per operator.
 \ The old shape had a fixed REDIR-IN/OUT/APPEND-FILE, which cannot
@@ -2602,9 +2657,9 @@ VARIABLE HD-WR
     THEN
   REPEAT ;
 
-MAX-ARGS CELLS BUFFER: REDIR-FD
-MAX-ARGS CELLS BUFFER: REDIR-OP
-MAX-ARGS CELLS BUFFER: REDIR-TGT
+1 CELLS ARGS-BUFFER: REDIR-FD
+1 CELLS ARGS-BUFFER: REDIR-OP
+1 CELLS ARGS-BUFFER: REDIR-TGT
 VARIABLE REDIR-N
 VARIABLE PR-I     \ shared scan cursor, declared as a local by each scanner
 VARIABLE RA-FD
@@ -3792,8 +3847,8 @@ VARIABLE WT-PID
 \ the other child.
 \ ==================================================================
 
-MAX-ARGS CELLS BUFFER: PIPE-ARGV   \ a private copy of the whole
-MAX-ARGS BUFFER: PIPE-ARGQ         \ tokenized line, so each
+1 CELLS ARGS-BUFFER: PIPE-ARGV   \ a private copy of the whole
+1 ARGS-BUFFER: PIPE-ARGQ         \ tokenized line, so each
 VARIABLE PIPE-ARGC                      \ segment can be extracted
 VARIABLE PIPE-NSEG                      \ without disturbing ARGV
 VARIABLE PIPE-PRESENT?
@@ -3839,10 +3894,10 @@ VARIABLE GRP-DEPTH
 \ for how the two pieces get run in turn.
 \ ==================================================================
 
-MAX-ARGS CELLS BUFFER: ARGV-SEMI-LEFT
-MAX-ARGS CELLS BUFFER: ARGV-SEMI-REST
-MAX-ARGS BUFFER: ARGQ-SEMI-LEFT
-MAX-ARGS BUFFER: ARGQ-SEMI-REST
+1 CELLS ARGS-BUFFER: ARGV-SEMI-LEFT
+1 CELLS ARGS-BUFFER: ARGV-SEMI-REST
+1 ARGS-BUFFER: ARGQ-SEMI-LEFT
+1 ARGS-BUFFER: ARGQ-SEMI-REST
 VARIABLE ARGC-SEMI-LEFT
 VARIABLE ARGC-SEMI-REST
 
@@ -4005,9 +4060,9 @@ VARIABLE CAQ-N
 DEFER RUN-TOKENIZED-CALL
 
 
-MAX-ARGS CELLS BUFFER: ARGV-GROUP-BODY
-MAX-ARGS BUFFER: ARGQ-GROUP-BODY   \ the body's own quoted flags
-MAX-ARGS BUFFER: ARGQ-SHIFT        \ likewise for ARGV-SHIFT
+1 CELLS ARGS-BUFFER: ARGV-GROUP-BODY
+1 ARGS-BUFFER: ARGQ-GROUP-BODY   \ the body's own quoted flags
+1 ARGS-BUFFER: ARGQ-SHIFT        \ likewise for ARGV-SHIFT
 \ Carrying each word's quoted flag with the word, rather than leaving
 \ ARGV-QUOTED holding whatever a previous tokenization left at that
 \ index. Bash attaches flags to the word itself (WORD_DESC); this file
@@ -4119,7 +4174,7 @@ DEFER DO-MULTILINE-GROUP-CALL   \ patched to (DO-MULTILINE-GROUP) once
   THEN
   0 ;
 
-MAX-ARGS CELLS BUFFER: PIPE-PIDS
+1 CELLS ARGS-BUFFER: PIPE-PIDS
 VARIABLE PL-I
 VARIABLE PL-PREV-RD
 VARIABLE PL-RD
@@ -4304,10 +4359,10 @@ VARIABLE REPLAY-POS
 \ ARGV-QUOTED@, same as AT-PIPE?/AT-SEMI?).
 \ ==================================================================
 
-MAX-ARGS CELLS BUFFER: ARGV-AO-LEFT
-MAX-ARGS CELLS BUFFER: ARGV-AO-REST
-MAX-ARGS BUFFER: ARGQ-AO-LEFT
-MAX-ARGS BUFFER: ARGQ-AO-REST
+1 CELLS ARGS-BUFFER: ARGV-AO-LEFT
+1 CELLS ARGS-BUFFER: ARGV-AO-REST
+1 ARGS-BUFFER: ARGQ-AO-LEFT
+1 ARGS-BUFFER: ARGQ-AO-REST
 VARIABLE ARGC-AO-LEFT
 VARIABLE ARGC-AO-REST
 VARIABLE ANDOR-OP        ( 1 = && was found, 2 = || was found )
@@ -4389,7 +4444,7 @@ DEFER TRY-ASSIGNMENT-CALL   \ patched to TRY-ASSIGNMENT's own xt right
 \ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
 \ pipeline negation ( ! cmd ).
 
-MAX-ARGS CELLS BUFFER: ARGV-SHIFT
+1 CELLS ARGS-BUFFER: ARGV-SHIFT
 VARIABLE ARGC-SHIFT
 
 : SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
@@ -4514,8 +4569,8 @@ VARIABLE AO-J
   \ "{ true && echo inner; } && echo outer", which printed
   \ "inner inner".
   ARGC-AO-REST @ AO-RESTC !
-  MAX-ARGS CELLS BODY-ALLOC AO-REST !
-  MAX-ARGS       BODY-ALLOC AO-RESTQ !
+  ARGS-CAP @ CELLS BODY-ALLOC AO-REST !
+  ARGS-CAP @       BODY-ALLOC AO-RESTQ !
   0 AO-J !
   BEGIN AO-J @ AO-RESTC @ < WHILE
     ARGV-AO-REST AO-J @ CELLS + @  AO-REST  @ BODY@ AO-J @ CELLS + !
@@ -4871,15 +4926,15 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
   \ the tokenizer would be two answers to one question, and
   \ FORTH-STYLE.md section 11 is about what happens next.
   NORM-WSTART @ -1 = IF EXIT THEN
-  NORM-WCOUNT @ MAX-ARGS 1- < IF
+  NORM-WCOUNT @ ROOM-FOR-ARG? IF
     NORM-WSTART @                    NORM-WORDS NORM-WCOUNT @ CELLS + !
     NORM-LEN @ NORM-WSTART @ -       NORM-WLENS NORM-WCOUNT @ CELLS + !
     NORM-WCOUNT @ 1+ NORM-WCOUNT !
   ELSE
-    \ This, not the tokenizer, is where a too-long line actually loses
-    \ its words: NORM-WORDS is MAX-ARGS cells, so NORM-WCOUNT is
-    \ already capped by the time TOKENIZE-RAW reads it, and a check
-    \ there can never see the overflow.
+    \ This, not the tokenizer, is where a line with too many words
+    \ loses them: NORM-WCOUNT is capped here, so a check in
+    \ TOKENIZE-RAW could never see the overflow. Only at
+    \ ARGS-HARD-MAX since Iteration 250; at MAX-ARGS (64) before.
     -1 ARGS-OVERFLOW? !
   THEN
   -1 NORM-WSTART ! ;
@@ -5319,8 +5374,8 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
 \ remainder *up* the call stack, a bigger change than this one.
 \ ==================================================================
 
-MAX-ARGS CELLS BUFFER: ARGV-PENDING
-MAX-ARGS BUFFER: ARGQ-PENDING   \ each pending token's quoted flag
+1 CELLS ARGS-BUFFER: ARGV-PENDING
+1 ARGS-BUFFER: ARGQ-PENDING   \ each pending token's quoted flag
 VARIABLE ARGC-PENDING
 VARIABLE PENDING-REMAINDER?
 
@@ -6911,8 +6966,8 @@ VARIABLE RT-I
   \ "{ echo x; { echo y; }; echo z; }" printed x and y but never z.
   \ Pre-existing; it needed a group nested inside a ';' list to show.
   ARGC-SEMI-REST @ RT-RESTC !
-  MAX-ARGS CELLS BODY-ALLOC RT-REST !
-  MAX-ARGS       BODY-ALLOC RT-RESTQ !
+  ARGS-CAP @ CELLS BODY-ALLOC RT-REST !
+  ARGS-CAP @       BODY-ALLOC RT-RESTQ !
   0 RT-I !
   BEGIN RT-I @ RT-RESTC @ < WHILE
     ARGV-SEMI-REST RT-I @ CELLS + @  RT-REST  @ BODY@ RT-I @ CELLS + !
