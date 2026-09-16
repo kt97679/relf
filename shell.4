@@ -4684,6 +4684,98 @@ VARIABLE ARGC-SHIFT
   THEN
   0 ARGV-SHIFT ARGC-SHIFT @ CELLS + ! ;
 
+\ ==================================================================
+\ Assignment words (Iteration 256)
+\ ==================================================================
+\ A line of nothing but NAME=value words sets them all; NAME=value words
+\ in front of a command set them for that command only - exported, so
+\ an external command sees them, and put back afterwards (XCU 2.9.1).
+\ Until now only a lone assignment worked, and `FOO=x cmd` was "FOO=x:
+\ command not found". The old values are kept in a heap record whose
+\ address stays on the data stack while the command runs, as the
+\ redirection undo list does. Assignments to special builtins persist
+\ in POSIX; here every prefix is temporary.
+
+: ASSIGN-WORD? ( i --- eqpos | -1 )
+  DUP ARGV-NAME-QUOTED@ IF DROP -1 EXIT THEN
+  ARGV@ ASSIGNMENT-EQPOS ;
+
+: PREFIX-COUNT ( --- k )   \ how many leading words are NAME=value
+  0 BEGIN DUP ARGC @ < IF DUP ASSIGN-WORD? -1 <> ELSE 0 THEN WHILE 1+ REPEAT ;
+
+: STRDUP ( c-addr --- a )  \ a heap copy of a NUL-terminated string
+  DUP CSTRLEN 1+ DUP ALLOCATE ABORT" shell: out of memory"
+  DUP >R SWAP MOVE R> ;
+
+VARIABLE TA-K
+VARIABLE TA-REC
+VARIABLE TA-I
+VARIABLE TA-E
+
+: TA-FIELD ( i n --- a )   \ field n of entry i: name, old value, had?, old env
+  SWAP 4 * + 1+ CELLS TA-REC @ + ;
+
+: TEMP-ASSIGN ( k --- record )
+  SHADOW{ TA-K | TA-REC TA-I TA-E }
+  TA-K @ 4 * 1+ CELLS ALLOCATE ABORT" shell: out of memory" TA-REC !
+  TA-K @ TA-REC @ !
+  BEGIN TA-I @ TA-K @ < WHILE
+    TA-I @ ARGV@ TA-I @ ASSIGN-WORD? SPLIT-ASSIGN-AT
+    ASSIGN-NAME-BUF STRDUP                TA-I @ 0 TA-FIELD !
+    ASSIGN-NAME-BUF GET-SHVAR ?DUP IF
+      STRDUP TA-I @ 1 TA-FIELD !  -1 TA-I @ 2 TA-FIELD !
+    ELSE
+      0 TA-I @ 1 TA-FIELD !  0 TA-I @ 2 TA-FIELD !
+    THEN
+    ASSIGN-NAME-BUF GETENV ?DUP IF STRDUP ELSE 0 THEN TA-I @ 3 TA-FIELD !
+    ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR
+    ASSIGN-VALUE-BUF ASSIGN-NAME-BUF SETENV DROP
+    TA-I @ 1+ TA-I !
+  REPEAT
+  \ The command is what follows the assignments.
+  0 TA-I !
+  BEGIN TA-I @ TA-K @ + ARGC @ < WHILE
+    TA-I @ TA-K @ + ARGV@            ARGV TA-I @ CELLS + !
+    TA-I @ TA-K @ + ARGV-QUOTED@     ARGV-QUOTED TA-I @ + C!
+    TA-I @ TA-K @ + ARGV-NAME-QUOTED@ ARGV-NAME-QUOTED TA-I @ + C!
+    TA-I @ 1+ TA-I !
+  REPEAT
+  ARGC @ TA-K @ - ARGC !
+  0 ARGV ARGC @ CELLS + !
+  TA-REC @ ;
+
+: TEMP-RESTORE ( record --- )
+  SHADOW{ TA-REC | TA-I TA-K }
+  TA-REC @ @ TA-I !
+  BEGIN TA-I @ WHILE
+    TA-I @ 1- TA-I !
+    TA-I @ 2 TA-FIELD @ IF
+      TA-I @ 0 TA-FIELD @  TA-I @ 1 TA-FIELD @  SET-SHVAR
+    ELSE
+      TA-I @ 0 TA-FIELD @ REMOVE-SHVAR
+    THEN
+    TA-I @ 3 TA-FIELD @ ?DUP IF
+      TA-I @ 0 TA-FIELD @ SETENV DROP
+    ELSE
+      TA-I @ 0 TA-FIELD @ UNSETENV DROP
+    THEN
+    TA-I @ 0 TA-FIELD @ FREE DROP
+    TA-I @ 1 TA-FIELD @ ?DUP IF FREE DROP THEN
+    TA-I @ 3 TA-FIELD @ ?DUP IF FREE DROP THEN
+  REPEAT
+  TA-REC @ FREE DROP ;
+
+: RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
+  SPLIT-PIPE
+  PIPE-PRESENT? @ IF
+    PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
+  ELSE
+    PARSE-REDIRECTIONS
+    ARGC @ 0 > IF
+      DISPATCH 0= IF RUN-EXTERNAL THEN
+    THEN
+  THEN ;
+
 : RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
                                     \ global ARGV/ARGC as one pipeline
                                     \ (or simple command) - the logic
@@ -4765,15 +4857,11 @@ VARIABLE ARGC-SHIFT
     LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
     EXIT
   THEN
-  SPLIT-PIPE
-  PIPE-PRESENT? @ IF
-    PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
-  ELSE
-    PARSE-REDIRECTIONS
-    ARGC @ 0 > IF
-      DISPATCH 0= IF RUN-EXTERNAL THEN
-    THEN
-  THEN ;
+  PREFIX-COUNT ?DUP IF
+    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE
+    EXIT
+  THEN
+  RUN-EXPANDED ;
 
 VARIABLE AO-REST
 VARIABLE AO-RESTQ
@@ -4950,12 +5038,14 @@ VARIABLE SRT-I
   \ field splitting with a quoted, multi-word assignment value, but
   \ present already in the last committed version too, unrelated to
   \ that feature itself.
-  ARGC @ 1 = 0 ARGV-NAME-QUOTED@ 0= AND IF
-    ARGV @ ASSIGNMENT-EQPOS
-    DUP -1 <> IF DO-ASSIGN -1 EXIT THEN
-    DROP
-  THEN
-  0 ;
+  \ Every word an assignment: set them all (Iteration 256; one only,
+  \ before). A command after them is RUN-SIMPLE-OR-PIPELINE's business.
+  PREFIX-COUNT DUP 0= OVER ARGC @ <> OR IF DROP 0 EXIT THEN
+  SUPPRESS-EXEC? @ IF DROP -1 EXIT THEN
+  0 VALUE-FAILED? !
+  0 ?DO I ARGV@ I ASSIGN-WORD? DO-ASSIGN-AT LOOP
+  VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS !
+  -1 ;
 ' TRY-ASSIGNMENT IS TRY-ASSIGNMENT-CALL
 
 
@@ -6043,6 +6133,42 @@ VARIABLE WHILE-BODY-CAP   \ this body's current arena capacity
 
 VARIABLE BODY-DEPTH
 
+VARIABLE TE-I
+VARIABLE TE-A
+VARIABLE TE-U
+VARIABLE OL-DO
+VARIABLE OL-DONE
+VARIABLE OL-I
+
+: TOK-EQ? ( i c-addr u --- f )
+  \ Is ARGV[i] this exact unquoted word? LINE-IS? asks the same
+  \ question but only ever of ARGV[0].
+  SHADOW{ TE-I TE-A TE-U }
+  TE-I @ ARGC @ < 0= IF 0 EXIT THEN
+  TE-I @ ARGV-QUOTED@ IF 0 EXIT THEN
+  TE-I @ ARGV@ DUP CSTRLEN TE-A @ TE-U @ STR= ;
+
+: ONE-LINE-LOOP? ( --- f )
+  \ Is the whole loop on this one line - "for i in 1 2; do echo $i;
+  \ done"? True when there is an unquoted "do" that is not the last
+  \ token and an unquoted "done" after it.
+  \
+  \ The LAST "done" is taken, so a one-line loop nested inside another
+  \ belongs to the outer one; the inner is then a body line and is
+  \ recognised again when it runs.
+  SHADOW{ | OL-I }
+  -1 OL-DO !  -1 OL-DONE !
+  BEGIN OL-I @ ARGC @ < WHILE
+    OL-DO @ -1 = IF
+      OL-I @ S" do" TOK-EQ? IF OL-I @ OL-DO ! THEN
+    ELSE
+      OL-I @ S" done" TOK-EQ? IF OL-I @ OL-DONE ! THEN
+    THEN
+    OL-I @ 1+ OL-I !
+  REPEAT
+  OL-DO @ ARGC @ 1- = IF -1 OL-DO ! THEN
+  OL-DO @ -1 <> OL-DONE @ -1 <> AND ;
+
 : CAPTURE-CONTINUE? ( --- f )
   \ Called once per line while capturing a while/for body. True if the
   \ line belongs to the body, false if it is the "done" that closes
@@ -6067,8 +6193,11 @@ VARIABLE BODY-DEPTH
   S" done" LINE-IS? IF
     BODY-DEPTH @ 0 > IF BODY-DEPTH @ 1- BODY-DEPTH ! -1 ELSE 0 THEN
   ELSE
-    S" while" LINE-IS? S" for" LINE-IS? OR IF
-      BODY-DEPTH @ 1+ BODY-DEPTH !
+    S" while" LINE-IS? S" for" LINE-IS? OR S" until" LINE-IS? OR IF
+      \ Only a loop that stays open: one whose `done` is on this same
+      \ line closes itself, and counting it swallowed the outer `done`
+      \ ("expected 'done'" at end of input; fixed in Iteration 256).
+      ONE-LINE-LOOP? 0= IF BODY-DEPTH @ 1+ BODY-DEPTH ! THEN
     THEN
     -1
   THEN ;
@@ -6128,21 +6257,8 @@ VARIABLE JT-I
 VARIABLE JT-LEN
 VARIABLE RA-A
 VARIABLE RA-U
-VARIABLE TE-I
-VARIABLE TE-A
-VARIABLE TE-U
-VARIABLE OL-DO
-VARIABLE OL-DONE
-VARIABLE OL-I
 VARIABLE OL-END
 
-: TOK-EQ? ( i c-addr u --- f )
-  \ Is ARGV[i] this exact unquoted word? LINE-IS? asks the same
-  \ question but only ever of ARGV[0].
-  SHADOW{ TE-I TE-A TE-U }
-  TE-I @ ARGC @ < 0= IF 0 EXIT THEN
-  TE-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  TE-I @ ARGV@ DUP CSTRLEN TE-A @ TE-U @ STR= ;
 
 : RAW-APPEND ( c-addr u --- )
   \ Appends one word and a separating space at JT-LEN, which is
@@ -6175,26 +6291,6 @@ VARIABLE OL-END
   JT-LEN @ RAW-LINE-LEN !
   0 RAW-LINE-BUF JT-LEN @ + C! ;
 
-: ONE-LINE-LOOP? ( --- f )
-  \ Is the whole loop on this one line - "for i in 1 2; do echo $i;
-  \ done"? True when there is an unquoted "do" that is not the last
-  \ token and an unquoted "done" after it.
-  \
-  \ The LAST "done" is taken, so a one-line loop nested inside another
-  \ belongs to the outer one; the inner is then a body line and is
-  \ recognised again when it runs.
-  SHADOW{ | OL-I }
-  -1 OL-DO !  -1 OL-DONE !
-  BEGIN OL-I @ ARGC @ < WHILE
-    OL-DO @ -1 = IF
-      OL-I @ S" do" TOK-EQ? IF OL-I @ OL-DO ! THEN
-    ELSE
-      OL-I @ S" done" TOK-EQ? IF OL-I @ OL-DONE ! THEN
-    THEN
-    OL-I @ 1+ OL-I !
-  REPEAT
-  OL-DO @ ARGC @ 1- = IF -1 OL-DO ! THEN
-  OL-DO @ -1 <> OL-DONE @ -1 <> AND ;
 
 : CAPTURE-ONE-LINE-LOOP ( --- )
   \ Splits a one-line loop into the three pieces the multi-line path
@@ -6361,6 +6457,45 @@ VARIABLE FUNC-CUR-I
   FUNC-DEPTH @ RESTORE-POS-PARAMS ;
 ' RUN-FUNC-BODY IS RUN-FUNC-BODY-CALL
 
+\ ==================================================================
+\ eval (Iteration 256)
+\ ==================================================================
+\ The arguments, joined by spaces, are shell input: parsed and run line
+\ by line, the way a function body is replayed. The text is a heap block
+\ of this call's own, so an eval inside an eval has its own.
+VARIABLE EVAL-TEXT
+VARIABLE EVAL-LEN
+
+: DO-EVAL ( --- )
+  SHADOW{ | EVAL-TEXT EVAL-LEN REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
+  0 LAST-STATUS !
+  ARGC @ 2 < IF EXIT THEN
+  ARGC @ 1 ?DO I ARGV@ CSTRLEN 1+ EVAL-LEN @ + EVAL-LEN ! LOOP
+  EVAL-LEN @ 1+ ALLOCATE ABORT" shell: out of memory" EVAL-TEXT !
+  0 EVAL-LEN !
+  ARGC @ 1 ?DO
+    I ARGV@ DUP CSTRLEN >R EVAL-TEXT @ EVAL-LEN @ + R@ MOVE
+    EVAL-LEN @ R> + EVAL-LEN !
+    32 EVAL-TEXT @ EVAL-LEN @ + C!  EVAL-LEN @ 1+ EVAL-LEN !
+  LOOP
+  \ A replay source is lines ending in NUL: every newline is one, and so
+  \ is the space after the last argument.
+  EVAL-LEN @ 0 ?DO EVAL-TEXT @ I + C@ 10 = IF 0 EVAL-TEXT @ I + C! THEN LOOP
+  0 EVAL-TEXT @ EVAL-LEN @ 1- + C!
+  EVAL-TEXT @ REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
+  EVAL-LEN @ REPLAY-LEN !  0 REPLAY-POS !
+  BEGIN
+    REPLAY-POS @ REPLAY-LEN @ <
+    RETURN-PENDING? @ 0= AND
+    LOOP-CONTROL-PENDING? @ 0= AND
+  WHILE
+    READ-LINE-INTO-ARGV
+    RUN-TOKENIZED-CALL
+  REPEAT
+  EVAL-TEXT @ FREE DROP ;
+' DO-EVAL S" eval" BUILTIN
+
+
 64 BUFFER: FUNCDEF-NAME-BUF
 VARIABLE FBC-I
 VARIABLE FBC-D
@@ -6421,6 +6556,7 @@ VARIABLE FDC-I
   ARGV@ DUP CSTRLEN
   2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
   2DUP S" while" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" until" STR= IF 2DROP -1 EXIT THEN
   2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
        S" case"  STR= ;
 
@@ -6451,7 +6587,7 @@ VARIABLE FDC-I
   S" fi" LINE-IS? S" done" LINE-IS? OR S" esac" LINE-IS? OR IF
     FDC-DEPTH @ 0 > IF FDC-DEPTH @ 1- FDC-DEPTH ! 0 ELSE -1 THEN
   ELSE
-    S" if" LINE-IS? S" while" LINE-IS? OR
+    S" if" LINE-IS? S" while" LINE-IS? OR S" until" LINE-IS? OR
     S" for" LINE-IS? OR S" case" LINE-IS? OR IF
       FDC-DEPTH @ 1+ FDC-DEPTH !
     THEN
@@ -6625,6 +6761,9 @@ VARIABLE WHILE-BODY-CUR
   REPEAT
   0 LOOP-CONTROL-PENDING? ! ;
 
+VARIABLE UNTIL-NEXT   0 UNTIL-NEXT !
+VARIABLE LOOP-UNTIL?
+
 : DO-WHILE ( --- )
   \ ARGV[0] is "while"; RAW-LINE-BUF holds the raw line just read.
   \ The condition text and the body get their own arena storage for
@@ -6632,9 +6771,12 @@ VARIABLE WHILE-BODY-CUR
   \ longer overwrites the outer one's. BODY-ARENA-TOP is taken as an
   \ argument local (see BODY-ALLOC's comment) so it is restored on
   \ every exit path, releasing both automatically.
-  BODY-ARENA-TOP @
-  \ One physical line: SHADOW{ ... } cannot span lines (see shadow.4).
-  SHADOW{ BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
+  \ `until` is this loop with the test inverted (Iteration 256): the
+  \ dispatcher sets UNTIL-NEXT, and it is taken into a local here, so a
+  \ nested loop keeps its own kind.
+  UNTIL-NEXT @ BODY-ARENA-TOP @
+  SHADOW{ LOOP-UNTIL? BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
+  0 UNTIL-NEXT !
   RAW-LINE-LEN @ 1+ BODY-ALLOC WHILE-COND-BUF !
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
   0 WHILE-BODY-LEN !
@@ -6677,7 +6819,7 @@ VARIABLE WHILE-BODY-CUR
       WHILE-COND-BUF @ BODY@ LINE-BUF WHILE-COND-LEN @ MOVE
       WHILE-COND-LEN @ NORM-TOKENIZE
       RUN-TOKENIZED-CALL
-      LAST-STATUS @ 0 =
+      LAST-STATUS @ 0 =  LOOP-UNTIL? @ IF 0= THEN
     ELSE
       0
     THEN
@@ -6718,11 +6860,31 @@ VARIABLE FOR-VARNAME-BUF \ pointer into the arena
 VARIABLE FW-I
 VARIABLE FW-WORDLEN
 
+: FOR-IMPLICIT? ( --- f )   \ `for NAME` with no `in`: the list is "$@"
+  ARGC @ 3 < IF -1 EXIT THEN
+  2 ARGV-QUOTED@ IF -1 EXIT THEN
+  2 ARGV@ DUP CSTRLEN S" in" STR= 0= ;
+
+: SAVE-FOR-POS-PARAMS ( --- )
+  \ The positional parameters as the list (Iteration 256; it was empty).
+  0 FOR-WORDS-LEN !
+  POS-PARAM-COUNT @ 0 ?DO
+    I POS-PARAM-SLOT CSTRLEN 1+ FOR-WORDS-LEN @ + FOR-WORDS-LEN !
+  LOOP
+  FOR-WORDS-LEN @ 1+ BODY-ALLOC FOR-WORDS-BUF !
+  0 FOR-WORDS-LEN !
+  POS-PARAM-COUNT @ 0 ?DO
+    I POS-PARAM-SLOT DUP CSTRLEN 1+ DUP FW-WORDLEN !
+    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ + SWAP MOVE
+    FOR-WORDS-LEN @ FW-WORDLEN @ + FOR-WORDS-LEN !
+  LOOP ;
+
 : SAVE-FOR-WORDS ( --- )
   \ ARGV[1] (the loop variable name) into FOR-VARNAME-BUF; ARGV[3..]
   \ (the word list, skipping ARGV[2]'s assumed "in") into
   \ FOR-WORDS-BUF/FOR-WORDS-LEN.
   ARGV 1 CELLS + @ FOR-VARNAME-BUF @ BODY@ 64 SAFE-CSTR-COPY DROP
+  FOR-IMPLICIT? IF SAVE-FOR-POS-PARAMS EXIT THEN
   \ Measured first, then stored in exactly that much arena. Until
   \ Iteration 251 the list had 256 bytes and a longer one was cut short
   \ without a word - a 1,000-item list ran 88 times.
@@ -7412,6 +7574,7 @@ VARIABLE PP-BAR
   DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
   ARGV@ DUP CSTRLEN
   2DUP S" while" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" until" STR= IF 2DROP -1 EXIT THEN
   2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
   2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
        S" case"  STR= ;
@@ -7509,6 +7672,7 @@ VARIABLE PP-BAR
   DISPATCH-GROUP IF EXIT THEN
   S" if" LINE-IS? IF DO-IF EXIT THEN
   S" while" LINE-IS? IF DO-WHILE EXIT THEN
+  S" until" LINE-IS? IF -1 UNTIL-NEXT ! DO-WHILE EXIT THEN
   S" for" LINE-IS? IF DO-FOR EXIT THEN
   S" case" LINE-IS? IF DO-CASE EXIT THEN
   FUNCDEF-NAME? IF DO-FUNCDEF EXIT THEN

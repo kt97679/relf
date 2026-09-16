@@ -251,6 +251,7 @@ do not trust the absence of a line below.
 - **253** — guard pages on by default; the regression was a stack underflow in shell.4
 - **254** — RAW-MODE; tests on a pseudo-terminal
 - **255** — redirections on builtins and functions; what follows a function call; $$
+- **256** — until, eval, for w, NAME=value cmd; nested one-line loops
 
 ### Not tied to an iteration
 
@@ -15356,3 +15357,46 @@ next item under the undo list.
 
 tests/verify: sizes only - x86-64 90,586 -> 91,706, i386 79,937 ->
 80,973.
+
+## Iteration 256: the four absent POSIX items
+
+Multitasking postponed; the POSIX corpus is the driver now, and its
+first four failures were features that did not exist.
+
+- **`until`** is `DO-WHILE` with the test inverted. The dispatcher sets
+  `UNTIL-NEXT` and `DO-WHILE` takes it into a local, so a nested loop
+  keeps its own kind; the four places that count loop openers count
+  `until` too. The condition extraction skips five characters, which
+  `until` happens to share with `while`.
+- **`for w`** with no `in` - `for w; do`, `for w do`, `for w` with `do`
+  on the next line - takes `"$@"` (`FOR-IMPLICIT?`,
+  `SAVE-FOR-POS-PARAMS`). It iterated over nothing.
+- **`eval`** joins its arguments with spaces into a heap block of its
+  own and replays it line by line, as a function body is run, so
+  multi-line text and `return` inside it work.
+- **`NAME=value cmd`**: `TEMP-ASSIGN` sets each prefix variable and
+  exports it, keeping the old variable and environment values in a heap
+  record whose address stays on the data stack; `TEMP-RESTORE` puts
+  them back after the command. The tail of `RUN-SIMPLE-OR-PIPELINE`
+  became `RUN-EXPANDED` so the two can wrap it. A line of several
+  assignments sets them all; before, only a lone one worked. Known
+  narrowings: POSIX keeps the prefixes of SPECIAL builtins, and
+  assignments on one line are all expanded before any is made.
+
+**One older bug fixed on the way.** A one-line loop inside a multi-line
+loop's body was "unexpected end of input, expected 'done'": the capture
+counted its `while` as an opener and never saw its `done`, which was on
+the same line. `CAPTURE-CONTINUE?` now asks `ONE-LINE-LOOP?` first
+(moved ahead of it, with `TOK-EQ?` and their variables). This was
+GOALS.md's "one-line `for` inside a multi-line `for`".
+
+**One older bug recorded, not fixed**: a multi-line loop after `;` (`n=0;
+while ...` with `do` on the next line) prints "expected 'do'" for ever.
+The loop takes its condition from the raw line, which starts with
+`n=0;`; it is the same-line class of PARSE-EXPAND-PLAN.md Stage 2.
+
+`tests/diff/cases/posix-features.sh` matches bash (and dash).
+`tests/posix`: 26/20 -> 30/16, the four cases this was for.
+
+tests/verify: posix 26/20 -> 30/16; engine + shell image 91,706 ->
+93,642 (x86-64), 80,973 -> 82,749 (i386).

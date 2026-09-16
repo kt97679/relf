@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,742    kernel-shell.img     64,866
-    32-bit   kernel32.img   8,138    kernel32-shell.img   58,969
+    64-bit   kernel.img     8,742    kernel-shell.img     66,802
+    32-bit   kernel32.img   8,138    kernel32-shell.img   60,745
 
 **Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -969,10 +969,12 @@ Real gaps, each checked against the running shell in Iteration 248
 (first verified in 122) rather than inherited from an older revision
 of this file:
 
-- **`NAME=value command args...`** — POSIX's temporary, per-command
-  assignment prefix. Currently a failed command lookup, status 1.
-  Ramey's temporary-scope design (see the bash-architecture section)
-  is the shape to build.
+- ~~**`NAME=value command args...`**~~ **Done in Iteration 256**: set
+  and exported for the command, put back afterwards (`TEMP-ASSIGN`,
+  `TEMP-RESTORE`). Every prefix is temporary here, where POSIX keeps
+  those before SPECIAL builtins; a line of several assignments sets them
+  all, but each value is expanded before any is set (`a=1 b=$a` gives b
+  the old a).
 - ~~**Redirection does not apply to builtins.**~~ **Fixed in Iteration
   255** with Ramey's undo list: a builtin's or a function's redirections
   are applied in the shell and undone afterwards (`BEGIN-REDIRECT`,
@@ -991,10 +993,9 @@ of this file:
   now passes.
 - **`${#}`** - the count of positional parameters - yields 0.
   `${#var}` works; the bare form does not.
-- **`for w; do ... done`**, the implicit `in "$@"` form, iterates over
-  nothing.
-- **`eval` is not implemented** (status 127). A POSIX special
-  built-in.
+- ~~**`for w; do ... done`**~~ and ~~**`eval`**~~ **done in Iteration
+  256**. `eval` joins its arguments and runs them as a function body is
+  run, multi-line text included.
 - **`"$*"` joins with a space regardless of `IFS`.** POSIX says the
   first character of `IFS`, and nothing when `IFS` is null.
 - **Non-whitespace `IFS` produces no empty fields.** With `IFS=:`,
@@ -1057,14 +1058,16 @@ of this file:
   status-127 bug. A full pass over 7,091 lines has not been done and
   is likely to find more of the same class - it should be its own
   iteration, not folded into a fix.
-- **`until` is recognised and then silently ignored.** It is in the
-  reserved-word list (`shell.4` line 3155, so it is correctly refused
-  as a command name) but the compound-command dispatcher tests only
-  `while` and `for`, so `until ...; do ...; done` runs **nothing** and
-  exits **127**, not 0 as this entry claimed until Iteration 151 -
-  the body never executes and `until` falls through to the "command
-  not found" path. A POSIX compound command that is a near-silent
-  no-op, unrecorded here until Iteration 144 audited for it.
+- ~~**`until` is recognised and then silently ignored.**~~ **Done in
+  Iteration 256**, as `while` with the test inverted.
+- ~~**A one-line loop inside a multi-line loop**~~ was "expected 'done'"
+  at end of input: the body capture counted its `while` as an opener and
+  never saw its `done`. **Fixed in Iteration 256.**
+- **A multi-line loop after `;` loops FOR EVER**: `n=0; while [ ... ]`
+  with `do` on the next line prints "while: expected 'do'" without end,
+  in this and earlier builds. The loop reads its condition from the raw
+  line, which here starts with `n=0;`. The same-line fault class
+  `PARSE-EXPAND-PLAN.md` Stage 2 addresses; recorded in Iteration 256.
 - ~~**A multi-line `{ ... }` after `&&` returns 127**~~ — fixed in
   Iteration 152. The cause was one duplicated block, `shell.4` 4248
   against 6936, where only the second copy carried the `ARGC @ 1 =`
@@ -1556,8 +1559,9 @@ before anything else, because every number here is relative to it.
 
 ### The queue
 
-1. **The four absent POSIX items**: `until`, `eval`, `for w; do`, and
-   the `NAME=value command` prefix - all four still absent at 248, each
+1. ~~**The four absent POSIX items**~~ **Done in Iteration 256**, and
+   `tests/posix` went from 26/20 to 30/16 as predicted: `until`,
+   `eval`, `for w; do`, and the `NAME=value command` prefix, each
    with its own `tests/posix` case. Small, independent, no
    architectural risk, and they would take `tests/posix` from 25/21 to
    about 29/17. Do these first for a reason beyond their size: **the corpus
