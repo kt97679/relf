@@ -1,6 +1,6 @@
 core:4byte 1
 core:8byte 1
-core:okmarkers 1998
+core:okmarkers 2127
 crosspath:kernel-shell.img reproduces
 diff:failed 0
 image:4byte-fixpoint reproduces
@@ -17,5 +17,5 @@ shell:4byte 1
 shell:8byte 1
 shell:assertions 560
 shell:files 66
-size:i386 130296
-size:x86_64 234032
+size:i386 130312
+size:x86_64 234064

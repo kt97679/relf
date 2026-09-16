@@ -51,7 +51,7 @@ run() {   # run ENGINE IMAGE LABEL
         echo "FAIL $3"; echo "$out" | grep -iE "incorrect|wrong number|undefined" | head -5
         fail=1
     else
-        echo "ok   $3 (671 cases)"
+        echo "ok   $3 ($(echo "$out" | grep -c "^OK") OK markers)"
     fi
 }
 # The CORE EXT suites need extend.4 loaded, which the CORE suite above

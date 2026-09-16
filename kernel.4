@@ -302,8 +302,21 @@ VARIABLE R0 ( --- a-addr)
 : (+LOOP) ( n ---)
 \ Runtime part of +LOOP
 \ Very similar to (LOOP), but the compare condition is different.
-\  exit if ( oldcount - lim < 0) xor ( newcount - lim < 0).
-     R> SWAP R> DUP R@ - ROT ROT + DUP R@ - ROT XOR 0 <
+\ With x = index - limit, the loop has crossed the boundary between
+\ limit-1 and limit exactly when x changes sign AND x and the step n
+\ have opposite signs:  ((x XOR x+n) AND (x XOR n)) < 0.
+\ That is the signed-overflow test on the biased index x+MIN-INT,
+\ computed without storing the bias, so (DO), I, J and the rest are
+\ unchanged. The previous test used only the first half - "x changed
+\ sign" - which also fires when x wraps from MAX-INT to MIN-INT, so a
+\ step of a 256th of the cell range stopped half way (Iteration 243;
+\ coreplustest.fth, seven cases).
+     R> SWAP R>              \ ret n index
+     2DUP + ROT ROT          \ ret index' n index
+     R@ -                    \ ret index' n x
+     2DUP XOR >R             \ ret index' n x        R: x^n limit
+     DUP ROT +               \ ret index' x x'
+     XOR R> AND 0 <          \ ret index' crossed?
      IF R> 2DROP CELL+ >R
      ELSE >R DUP @ + >R THEN ;
 

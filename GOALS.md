@@ -1228,12 +1228,12 @@ label, no encoding, no translator. Anything touching the ENGINE or the
 OPCODE MAP should wait until after the retirement, so it is done once
 rather than twice.
 
-1. **`+LOOP` boundary conformance.** Seven cases in the Forth Standard
-   suite. Kernel semantics, so: before the retirement. Needs the biased
-   loop index - store `index - limit + MIN-INT` so `+LOOP` is "add and
-   test signed overflow" - which changes `(DO)`, `(?DO)`, `(LOOP)`,
-   `(+LOOP)`, `I`, `J`, `UNLOOP` and `LEAVE` together. See the entry
-   below.
+1. ~~**`+LOOP` boundary conformance.**~~ **Done** (Iteration 243), and
+   smaller than planned: no biased index was needed. The overflow test
+   the bias enables can be computed from the unbiased `index - limit`,
+   so only `(+LOOP)` changed - `(DO)`, `I`, `J`, `UNLOOP` and `LEAVE` did
+   not, and `I` stayed cheap. `tests/coreplus-loop.fth` carries the
+   standard's four `+LOOP` sections.
 
 2. **Adapt `cv8.4` for cross-compilation**, then retire `relf.c`. The
    mechanism is settled and the remaining work is enumerated below,
@@ -1281,19 +1281,6 @@ Deliberate compromises that work today and are wrong in general. Each
 is implemented, tested and *incorrect in a way that will not show up
 locally* — which is exactly why they need to be written down rather
 than remembered.
-
-- **`+LOOP` does not handle steps that cross the cell boundary.**
-  Seven cases in the Forth Standard suite's `coreplustest.fth` fail,
-  all stepping by `MAX-UINT 8 RSHIFT 1+` - a 256th of the cell range -
-  where the loop should terminate after exactly 256 iterations.
-  `(+LOOP)`'s crossing test is
-
-      R> SWAP R> DUP R@ - ROT ROT + DUP R@ - ROT XOR 0 <
-
-  which is the standard signed formulation and is wrong for steps this
-  large. Not reachable from anything this system does; found only
-  because the tests were adopted. The file is not in `tests/ext/`
-  precisely because it fails - adding it means fixing this first.
 
 - **The Locals word set is not provided.** This is CONFORMANT: Locals
   is optional and CORE stands at 133 of 133 without it. Recorded
