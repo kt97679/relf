@@ -1,0 +1,2 @@
+cat <<EOF
+no delimiter

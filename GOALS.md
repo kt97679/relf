@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,726    kernel-shell.img     62,194
-    32-bit   kernel32.img   8,122    kernel32-shell.img   56,429
+    64-bit   kernel.img     8,726    kernel-shell.img     62,890
+    32-bit   kernel32.img   8,122    kernel32-shell.img   57,041
 
 **Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1016,26 +1016,26 @@ of this file:
   (`tests/shell/run-long-line`, and `tests/diff/cases/long-lines.sh`
   against bash). A line past 1 MB (`LINE-HARD-MAX`) is reported and
   discarded, so a binary file costs a message, not the memory.
-- **Fixed limits a long line now reaches first.** The word arrays grow
-  since Iteration 250 (`ARGS-BUFFER:`, to 65,536 words, then "too many
-  arguments"), and positional parameters since 250 too (any number,
-  `${10}` and up included). What is still fixed, worst first - the
-  first two LOSE DATA SILENTLY, which the memory policy says a table
-  must never do:
-  - **Command substitution output: 256 bytes** (`CMDSUB-OUT-MAX`).
-    `$(seq 1 3000)` gives 89 words.
-  - **A `for` list: 256 bytes** (`FOR-WORDS-MAX`). A 1,000-item list
-    runs 88 times.
-  - A here-document body, 8 KB (`HEREDOC-MAX`), excess dropped
-    silently.
+- **What is still fixed, now that lines are not.** Growable since
+  Iterations 249-251: lines (to 1 MB), the words of a line (to 65,536),
+  positional parameters, the text a line expands to and command
+  substitution output (to 16 MB each, then "expansion too large"),
+  `for` lists, here-document bodies. Still fixed:
   - A variable's value, 255 characters: reported ("value too long",
     status 2, the value empty - until 249 it kept the PREVIOUS value).
-    Alias values likewise 256.
+    Alias values likewise 256, and `${var%pattern}`-style words.
   - Not this shell's: Linux refuses a single exec argument over 128 KB,
     which a long `echo` meets because `echo` here is `/bin/echo`.
 - **`for` after `&&` or `||` is not recognised** (`true && for i in 1;
   do ...; done` is "for: command not found"), in this and earlier
   builds.
+- **A one-line `for` inside a multi-line `for` is a syntax error**
+  ("unexpected end of input, expected 'done'"). Recorded in Iteration
+  251; earlier builds fail the same way.
+- **A `-c` string with newlines is one line.** `relfsh -c 'echo one
+  <newline> echo two'` prints "one", a newline and "echo two", so a
+  here-document or any second command in a `-c` string does not work.
+  Recorded in Iteration 251; earlier builds behave the same.
 - **`shell.4`'s older diagnostics go to STDOUT.** "cd: no such
   directory", "shell: syntax error: ...", "alias: too many aliases"
   all still use `."`. Iteration 153 moved the prompt and 154 added
@@ -1320,10 +1320,10 @@ once. Both are done; the rest keep their order.
    `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
 
 5. **The rest of the growable-buffer work.** Iteration 249 did the
-   line buffers, 250 the word arrays and positional parameters. Stage
-   4 is the value tables under "Still open", silent ones first:
-   command substitution output, `for` lists, here-documents, then
-   variable and alias values. Each by the same rule: grow before any
+   line buffers, 250 the word arrays and positional parameters, 251
+   expansion output, command substitution, `for` lists and
+   here-documents. What is left is variable and alias values - no
+   longer silent, but still 255 characters. Each by the same rule: grow before any
    pointer into the table is taken, retire rather than free, and
    diagnose whatever stays fixed.
 

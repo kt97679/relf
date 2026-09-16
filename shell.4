@@ -301,6 +301,7 @@ CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
 1048576 CONSTANT LINE-HARD-MAX
 
 VARIABLE LONG-LINE?   \ was the last line read too long?
+VARIABLE INPUT-EOF?   \ did the input source run out? See READ-NEXT-INPUT-LINE
 
 : LINE-TOO-LONG ( --- )
   S" shell: line too long" ERR-TYPE ERR-NL
@@ -799,6 +800,46 @@ VARIABLE TK-Q
 TOK-BUF-MAX BUFFER: TOK-BUF
 TOK-BUF-MAX BUFFER: EXP-BUF
 VARIABLE TOK-OUT-END
+VARIABLE OUT-BODY     \ descriptor of the buffer TOK-OUT writes into
+
+\ The words a line expands to are written into TOK-BUF or EXP-BUF, and
+\ since Iteration 251 that buffer grows when it fills. Growing MOVES it,
+\ and three kinds of pointer into it are live while it is written: the
+\ cursor TOK-OUT and its limit, and ARGV's entries for the words written
+\ so far - including the one being built. GROW-OUT moves all of them.
+\ Anything else that has to remember a place in the output keeps an
+\ OFFSET from OUT-BASE (see SKIP-BRACED-WORD and CAPTURE-BRACED-WORD).
+\ Until then output past the buffer was dropped without a word: a
+\ command substitution was cut at 256 bytes, an expansion at 4 KB.
+16777216 CONSTANT EXPAND-HARD-MAX
+VARIABLE GRO-OLD
+VARIABLE GRO-SIZE
+VARIABLE GRO-DELTA
+VARIABLE EXP-OVERFLOW?   \ reported once per line
+
+: OUT-BASE ( --- a )  OUT-BODY @ @ ;
+
+: GROW-OUT ( --- f )
+  OUT-BODY @ CELL+ @ DUP GRO-SIZE !  EXPAND-HARD-MAX < 0= IF 0 EXIT THEN
+  OUT-BASE GRO-OLD !
+  GRO-SIZE @ 1+ OUT-BODY @ BUF-ENSURE
+  OUT-BASE GRO-OLD @ - GRO-DELTA !
+  TOK-OUT @ GRO-DELTA @ + TOK-OUT !
+  ARGC @ 1+ 0 DO
+    ARGV I CELLS + @
+    DUP GRO-OLD @ U< 0= OVER GRO-OLD @ GRO-SIZE @ + U< AND IF
+      GRO-DELTA @ + ARGV I CELLS + !
+    ELSE DROP THEN
+  LOOP
+  OUT-BASE OUT-BODY @ CELL+ @ + TOK-OUT-END !
+  -1 ;
+
+: EXPANSION-TOO-LARGE ( --- )
+  EXP-OVERFLOW? @ 0= IF
+    S" shell: expansion too large" ERR-TYPE ERR-NL  2 LAST-STATUS !
+  THEN
+  -1 EXP-OVERFLOW? ! ;
+
 \ TOK-BUF holds the line's words as they were written; EXP-BUF holds
 \ them after expansion. Splitting the two is what lets expansion
 \ happen at a different time from tokenizing (Iteration 113).
@@ -847,18 +888,16 @@ VARIABLE TOK-WAS-QUOTED?
   WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
 
 : EMIT-TOK-CHAR ( c --- )
-  \ The bounds check is the only limit left on how much a line can
-  \ expand to. Over-long output is truncated rather than overrunning,
-  \ matching how every other fixed-size copy in this file behaves.
+  \ A full buffer grows (GROW-OUT); only past EXPAND-HARD-MAX is output
+  \ dropped, and then it is reported.
   \
   \ TOK-OUT-END rather than a fixed buffer: the same emit path fills
   \ TOK-BUF with raw words and EXP-BUF with expanded ones, and only
   \ whoever set TOK-OUT knows which (Iteration 113).
-  TOK-OUT @ TOK-OUT-END @ < IF
-    TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT !
-  ELSE
-    DROP
-  THEN ;
+  TOK-OUT @ TOK-OUT-END @ < 0= IF
+    GROW-OUT 0= IF DROP EXPANSION-TOO-LARGE EXIT THEN
+  THEN
+  TOK-OUT @ C!  TOK-OUT @ 1+ TOK-OUT ! ;
 
 \ ==================================================================
 \ $VAR expansion: $NAME, ${NAME}, $? (last exit status), $$ (this
@@ -1046,15 +1085,16 @@ VARIABLE IFSC-P
   \ Finishes the current ARGV entry (NUL-terminating at TOK-OUT,
   \ recording it as unquoted, advancing ARGC) and starts a new one
   \ right after, if there's still room in ARGV.
-  0 TOK-OUT @ C!
+  \ The NUL goes through EMIT-TOK-CHAR, which may grow the buffer; it
+  \ used to be stored directly, one past a full buffer.
+  0 EMIT-TOK-CHAR
   0 ARGV-QUOTED ARGC @ + C!
   ARGC @ ROOM-FOR-ARG? IF
     ARGC @ 1+ ARGC !
-    TOK-OUT @ 1+ ARGV ARGC @ CELLS + !
+    TOK-OUT @ ARGV ARGC @ CELLS + !
   ELSE
     -1 ARGS-OVERFLOW? !
-  THEN
-  TOK-OUT @ 1+ TOK-OUT ! ;
+  THEN ;
 
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
@@ -1139,7 +1179,7 @@ VARIABLE CS-CLOSER
 VARIABLE CS-DEPTH        \ nested "$(" still open within this one
 VARIABLE CS-NONBLANK?
 
-256 CONSTANT CMDSUB-OUT-MAX
+256 CONSTANT CMDSUB-OUT-MAX   \ where the output buffer starts; it grows
 CMDSUB-OUT-MAX BUFFER: CMDSUB-OUT-BUF
 VARIABLE CMDSUB-OUT-LEN
 
@@ -1172,20 +1212,24 @@ VARIABLE CMDSUB-PIPE-WR
 VARIABLE CMDSUB-PID
 
 : READ-ALL-CMDSUB-OUTPUT ( fd --- )
-  \ Reads everything available from fd into CMDSUB-OUT-BUF, up to its
-  \ fixed capacity - output beyond that is silently truncated rather
-  \ than overflowing the buffer.
+  \ Everything the command writes, growing the buffer as it comes -
+  \ until Iteration 251 the buffer was 256 bytes and the rest was left
+  \ unread. Past EXPAND-HARD-MAX the rest is read and discarded, so the
+  \ command is never left blocked on a full pipe, and it is reported.
   SHADOW{ CS-FD }
   0 CMDSUB-OUT-LEN !
   BEGIN
-    CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ - 0 >
-  WHILE
-    CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ +
-    CMDSUB-OUT-MAX CMDSUB-OUT-LEN @ -
-    CS-FD @ READ-FILE DROP
-    DUP 0 = IF DROP EXIT THEN
-    CMDSUB-OUT-LEN @ + CMDSUB-OUT-LEN !
-  REPEAT ;
+    CMDSUB-OUT-LEN @ EXPAND-HARD-MAX < IF
+      CMDSUB-OUT-LEN @ 4096 + ENSURE-BUFFER CMDSUB-OUT-BUF
+      CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ +
+      BUFFER-SIZE CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ -
+      CS-FD @ READ-FILE DROP
+      DUP CMDSUB-OUT-LEN @ + CMDSUB-OUT-LEN !
+    ELSE
+      DRAIN-BUF LINE-MAX CS-FD @ READ-FILE DROP
+      DUP IF EXPANSION-TOO-LARGE THEN
+    THEN
+  0= UNTIL ;
 
 \ ==================================================================
 \ The body arena
@@ -1866,7 +1910,8 @@ DEFER SCAN-CHAR-CALL
 \ exactly the same machinery as any other, rather than by a second
 \ copy of it.
 
-VARIABLE CBW-START
+VARIABLE CBW-START   \ an offset from OUT-BASE
+VARIABLE SKIP-OFF    \ likewise
 VARIABLE EBW-NAME       \ arena offset of the saved name
 VARIABLE EBW-NAMELEN
 
@@ -1920,11 +1965,13 @@ VARIABLE EBW-NAMELEN
   \ rewound. IN-DQ-CONTEXT? suppresses field splitting, which would
   \ otherwise advance ARGC for a "$@" in the discarded word.
   \ EXPAND-SUPPRESSED? stops a $(...) from running.
-  IN-DQ-CONTEXT? @ EXPAND-SUPPRESSED? @ TOK-OUT @
-  SHADOW{ IN-DQ-CONTEXT? EXPAND-SUPPRESSED? TOK-OUT }
+  IN-DQ-CONTEXT? @ EXPAND-SUPPRESSED? @ TOK-OUT @ OUT-BASE -
+  SHADOW{ IN-DQ-CONTEXT? EXPAND-SUPPRESSED? SKIP-OFF }
   -1 IN-DQ-CONTEXT? !
   -1 EXPAND-SUPPRESSED? !
-  EXPAND-BRACED-WORD ;
+  EXPAND-BRACED-WORD
+  \ Rewind by offset: the buffer may have moved (Iteration 251).
+  OUT-BASE SKIP-OFF @ + TOK-OUT ! ;
 
 : CAPTURE-BRACED-WORD ( --- )
   \ Expands the word and leaves the result in PEWORD-BUF instead of in
@@ -1936,14 +1983,16 @@ VARIABLE EBW-NAMELEN
   \
   \ Field splitting is suppressed: a pattern is one pattern, and an
   \ assigned value is one value.
-  IN-DQ-CONTEXT? @ TOK-OUT @ SHADOW{ IN-DQ-CONTEXT? TOK-OUT }
-  TOK-OUT @ CBW-START !
+  IN-DQ-CONTEXT? @ TOK-OUT @ OUT-BASE - SHADOW{ IN-DQ-CONTEXT? CBW-START }
   -1 IN-DQ-CONTEXT? !
   EXPAND-BRACED-WORD
-  TOK-OUT @ CBW-START @ - DUP 255 > IF DROP 255 THEN
+  \ CBW-START is an OFFSET, and the rewind is by offset: the buffer may
+  \ have moved while the word expanded (Iteration 251).
+  TOK-OUT @ OUT-BASE - CBW-START @ - DUP 255 > IF DROP 255 THEN
   PEWORD-LEN !
-  CBW-START @ PEWORD-BUF PEWORD-LEN @ MOVE
-  0 PEWORD-BUF PEWORD-LEN @ + C! ;
+  OUT-BASE CBW-START @ + PEWORD-BUF PEWORD-LEN @ MOVE
+  0 PEWORD-BUF PEWORD-LEN @ + C!
+  OUT-BASE CBW-START @ + TOK-OUT ! ;
 
 : USE-BRACED-WORD? ( value-or-0 --- f )
   \ Does this modifier's word apply? True when the variable is unset,
@@ -2384,6 +2433,7 @@ VARIABLE EW-I
   \ expanded ones get the same room. Both grow here, before any word
   \ is written, so nothing grows while ARGV points into them.
   BUFFER-SIZE NORM-BUF 2* DUP ENSURE-BUFFER TOK-BUF ENSURE-BUFFER EXP-BUF
+  BUFFER-BODY TOK-BUF OUT-BODY !  0 EXP-OVERFLOW? !
   TOK-BUF TOK-OUT !
   TOK-BUF BUFFER-SIZE TOK-BUF + TOK-OUT-END !
   0 ARGC !
@@ -2454,9 +2504,12 @@ VARIABLE EW-I
   \ which for an already-expanded word is what would have happened
   \ anyway.
   ARGC @ 0 > IF ARGV @ ELSE 0 THEN
-  DUP EXP-BUF 1- > SWAP EXP-BUF BUFFER-SIZE EXP-BUF + < AND IF TOK-BUF ELSE EXP-BUF THEN
-  DUP TOK-OUT !
-  BUFFER-SIZE TOK-BUF BUFFER-SIZE EXP-BUF MIN + TOK-OUT-END !
+  DUP EXP-BUF 1- > SWAP EXP-BUF BUFFER-SIZE EXP-BUF + < AND IF
+    BUFFER-BODY TOK-BUF ELSE BUFFER-BODY EXP-BUF
+  THEN
+  DUP OUT-BODY !  0 EXP-OVERFLOW? !
+  DUP @ TOK-OUT !
+  DUP @ SWAP CELL+ @ + TOK-OUT-END !
   0 ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -2602,7 +2655,7 @@ VARIABLE JC-I
   REPEAT
   JC-LEN @ ;
 
-8192 CONSTANT HEREDOC-MAX
+8192 CONSTANT HEREDOC-MAX   \ where the body buffer starts; it grows
 HEREDOC-MAX BUFFER: HEREDOC-BUF
 LINE-MAX BUFFER: HD-LINE        \ grows: see LINE-BUF
 VARIABLE HEREDOC-LEN
@@ -2634,29 +2687,31 @@ VARIABLE HD-WR
   \
   \ Scope limits, documented rather than silent: no expansion is
   \ performed on the body (POSIX expands $VAR unless the delimiter is
-  \ quoted); one here-document per command; and HD-GUARD stops a
-  \ runaway at EOF, since READ-NEXT-INPUT-LINE reports an empty line
-  \ and end-of-input identically.
+  \ quoted); and one here-document per command.
+  \
+  \ The body grows (Iteration 251). It was 8 KB, and a guard stopped
+  \ after 4,096 lines because an empty line and end of input read
+  \ alike; both cut a long body short without a word. End of input is
+  \ INPUT-EOF? now, and past EXPAND-HARD-MAX the body is reported.
   HD-DELIM !
   0 HEREDOC-LEN !
-  0 HD-GUARD !
   BEGIN
     0 BUFFER-BODY HD-LINE READ-INPUT-CALL HD-N !
-    HD-GUARD @ 1+ HD-GUARD !
-    HD-GUARD @ 4096 > IF EXIT THEN
+    INPUT-EOF? @ IF EXIT THEN
     HD-LINE-START HD-N @ HD-LINE-START HD-LINE - -
     HD-DELIM @ STR0= 0=
   WHILE
     HD-LINE-START
     HD-N @ HD-LINE-START HD-LINE - -            ( addr len )
-    DUP HEREDOC-LEN @ + 1+ HEREDOC-MAX < IF
+    DUP HEREDOC-LEN @ + 1+ EXPAND-HARD-MAX < IF
+      DUP HEREDOC-LEN @ + 2 + ENSURE-BUFFER HEREDOC-BUF
       DUP >R
       HEREDOC-BUF HEREDOC-LEN @ + SWAP MOVE
       HEREDOC-LEN @ R> + HEREDOC-LEN !
       10 HEREDOC-BUF HEREDOC-LEN @ + C!
       HEREDOC-LEN @ 1+ HEREDOC-LEN !
     ELSE
-      2DROP
+      2DROP EXPANSION-TOO-LARGE
     THEN
   REPEAT ;
 
@@ -2750,12 +2805,24 @@ VARIABLE AR-I
   BEGIN AR-I @ REDIR-N @ < WHILE
     REDIR-OP AR-I @ CELLS + @
     DUP 6 = OVER 7 = OR IF
-      \ Feed the body through a pipe rather than a temporary file.
-      \ The write happens before anything reads, so a body larger than
-      \ the pipe buffer would block - HEREDOC-MAX is well under it.
+      \ Feed the body through a pipe rather than a temporary file. A
+      \ small body is written here, before anything reads, which only
+      \ works while it fits the pipe; POSIX promises 4 KB. A larger one
+      \ is written by a child of its own, as dash does, so nothing waits
+      \ on a reader that does not exist yet. Until Iteration 251 bodies
+      \ were cut at 8 KB, so the direct write was always enough; when
+      \ they grew, a 100 KB body hung the shell for ever.
       DROP
       PIPE DROP HD-WR ! HD-RD !
-      HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+      HEREDOC-LEN @ 4096 > IF
+        FORK 0= IF
+          HD-RD @ CLOSE-FILE DROP
+          HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+          0 SYS-EXIT
+        THEN
+      ELSE
+        HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+      THEN
       HD-WR @ CLOSE-FILE DROP
       HD-RD @ REDIR-FD AR-I @ CELLS + @ DUP2 DROP
       HD-RD @ CLOSE-FILE DROP
@@ -4767,7 +4834,7 @@ VARIABLE RNL-BODY
 VARIABLE RNL-CUR
 VARIABLE RNL-LEN
 
-VARIABLE INPUT-EOF?
+\ (INPUT-EOF? is declared with the line readers, near the top of the file.)
 \ True when the current input source has genuinely run out, as opposed
 \ to having produced an empty line - the two are reported identically
 \ by READ-NEXT-INPUT-LINE's own u2, which is why every capture loop in
@@ -6451,7 +6518,6 @@ VARIABLE WHILE-BODY-CUR
 \ shell's sparse error handling elsewhere) - it's simply skipped over.
 \ ==================================================================
 
-256 CONSTANT FOR-WORDS-MAX
 VARIABLE FOR-WORDS-BUF   \ pointer into the arena
 VARIABLE FOR-WORDS-LEN
 VARIABLE FOR-VARNAME-BUF \ pointer into the arena
@@ -6463,18 +6529,26 @@ VARIABLE FW-WORDLEN
   \ (the word list, skipping ARGV[2]'s assumed "in") into
   \ FOR-WORDS-BUF/FOR-WORDS-LEN.
   ARGV 1 CELLS + @ FOR-VARNAME-BUF @ BODY@ 64 SAFE-CSTR-COPY DROP
+  \ Measured first, then stored in exactly that much arena. Until
+  \ Iteration 251 the list had 256 bytes and a longer one was cut short
+  \ without a word - a 1,000-item list ran 88 times.
   0 FOR-WORDS-LEN !
   3 FW-I !
   BEGIN
     FW-I @ ARGC @ < IF FW-I @ FOR-AT-SEMI? 0= ELSE 0 THEN
   WHILE
-    FW-I @ ARGV@ DUP CSTRLEN FW-WORDLEN !
-    FW-WORDLEN @
-    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ +
-    FOR-WORDS-MAX FOR-WORDS-LEN @ -
-    SAFE-COPY-NUL IF
-      FOR-WORDS-LEN @ FW-WORDLEN @ + 1+ FOR-WORDS-LEN !
-    THEN
+    FW-I @ ARGV@ CSTRLEN 1+ FOR-WORDS-LEN @ + FOR-WORDS-LEN !
+    FW-I @ 1+ FW-I !
+  REPEAT
+  FOR-WORDS-LEN @ 1+ BODY-ALLOC FOR-WORDS-BUF !
+  0 FOR-WORDS-LEN !
+  3 FW-I !
+  BEGIN
+    FW-I @ ARGC @ < IF FW-I @ FOR-AT-SEMI? 0= ELSE 0 THEN
+  WHILE
+    FW-I @ ARGV@ DUP CSTRLEN 1+ DUP FW-WORDLEN !     ( src n )
+    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ + SWAP MOVE
+    FOR-WORDS-LEN @ FW-WORDLEN @ + FOR-WORDS-LEN !
     FW-I @ 1+ FW-I !
   REPEAT ;
 
@@ -6520,7 +6594,6 @@ VARIABLE FOR-WORD-CUR
   BODY-ARENA-TOP @
   SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
   WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  FOR-WORDS-MAX  BODY-ALLOC FOR-WORDS-BUF !
   64             BODY-ALLOC FOR-VARNAME-BUF !
   \ The word list is expanded before it is saved: `for i in $list`
   \ iterates over the words $list expands to. DO-FOR reads ARGV

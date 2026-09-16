@@ -246,6 +246,7 @@ do not trust the absence of a line below.
 - **248** — GOALS.md audited; a too-long line no longer runs its tail
 - **249** — growable line buffers; stale values; function bodies; a test that compared nothing
 - **250** — the word arrays grow; positional parameters past nine
+- **251** — expansion output, command substitution, for lists and here-documents grow
 
 ### Not tied to an iteration
 
@@ -15126,3 +15127,51 @@ calls with fourteen, `set` inside a function, getopts) matches bash;
 
 tests/verify: shell assertions 572 -> 573; posix 25/21 -> 26/20; engine
 + shell image 88,113 -> 89,090 (x86-64), 77,841 -> 78,441 (i386).
+
+## Iteration 251: expansions, command substitution, for lists, here-documents
+
+Three limits found in 250 lost data silently; this removes them, and a
+fourth that growing exposed.
+
+**Expansion output.** Every character an expansion produces goes
+through `EMIT-TOK-CHAR`, which now grows the output buffer when it fills
+(`GROW-OUT`). Growing moves the buffer while three kinds of pointer into
+it are live, and all three are moved: the cursor `TOK-OUT` and its
+limit, and `ARGV`'s entries for the words written so far - including
+the one being built, whose start was recorded before its first
+character. Two words remembered a position in the output across an
+expansion: `CAPTURE-BRACED-WORD` in a variable, and
+`SKIP-BRACED-WORD` by declaring `TOK-OUT` a local - which the locals
+machinery restores as an ABSOLUTE address, so after a growth it would
+have put the cursor back into the retired block and the next write
+past its end. Both keep offsets from `OUT-BASE` now. `IFS-SPLIT-HERE`
+stored its terminating NUL directly, one byte past a full buffer; it
+goes through the emit now. Past `EXPAND-HARD-MAX` (16 MB) output is
+dropped and "expansion too large" reported once per line.
+
+**Command substitution** reads everything the command writes into a
+growing buffer - it read 256 bytes and left the rest in the pipe. Past
+16 MB the rest is read and discarded, so the command never blocks on a
+full pipe.
+
+**`for` lists** are measured, then stored in exactly that much arena;
+they had 256 bytes (a 1,000-item list ran 88 times).
+
+**Here-documents** grow, and the 4,096-line guard - there because an
+empty line and end of input read alike - is `INPUT-EOF?` now. Growing
+the body exposed the assumption recorded in the code beside it: the
+body was written into a pipe before anything read it, which works only
+while it fits the pipe. A 100 KB body hung the shell for ever. A body
+over 4 KB (what POSIX promises for a pipe) is now written by a child of
+its own, as dash does; a reader that stops early (`head -1`) just ends
+the writer.
+
+`tests/diff/cases/large-expansion.sh` and `large-heredoc.sh` match
+bash; the previous build fails both.
+
+**Two older gaps recorded** while comparing: a one-line `for` inside a
+multi-line `for` is a syntax error, and a `-c` string with newlines is
+taken as one line. Both behave the same in earlier builds.
+
+tests/verify: engine + shell image 89,090 -> 89,730 (x86-64), 78,441 ->
+79,017 (i386); everything else unchanged.
