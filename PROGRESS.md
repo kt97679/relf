@@ -250,6 +250,7 @@ do not trust the absence of a line below.
 - **252** — variable values and the variable table grow; three stale-state bugs
 - **253** — guard pages on by default; the regression was a stack underflow in shell.4
 - **254** — RAW-MODE; tests on a pseudo-terminal
+- **255** — redirections on builtins and functions; what follows a function call; $$
 
 ### Not tied to an iteration
 
@@ -15306,3 +15307,52 @@ which surfaced as "Undefined word K" - the line cut inside `KEY?`.
 
 tests/verify: sizes only - x86-64 90,570 -> 90,586, i386 75,813 ->
 79,937 (the page of ELF padding that 253 lost came back).
+
+## Iteration 255: redirections on builtins, and two bugs they uncovered
+
+**The undo list.** Redirections were parsed for every command and applied
+only in the forked child of an external one, so a builtin's or a
+function's were silently dropped: `read x < file` read the shell's own
+input, `pwd > f` wrote to the terminal. Ramey's answer, from the
+bash-architecture section: apply them in the shell, and undo them after.
+`BEGIN-REDIRECT` copies each descriptor a redirection will replace to a
+spare one from `UNDO-BASE` (64) up, applies the redirections, and leaves
+the list on the DATA stack - a function's body parses its own
+redirections and overwrites the REDIR tables, and a builtin leaves the
+stack as it found it. `END-REDIRECT` puts every copy back, last first,
+and closes it; a copy that could not be made means the descriptor was
+closed, so putting it back fails too and the descriptor is closed
+instead. Terminal output is flushed before descriptors change hands
+either way, since the engine buffers it. A here-document writer (a body
+over 4 KB) started for a builtin is reaped once the restore closes its
+pipe.
+
+**Failed opens are reported.** A redirection that could not be opened
+was skipped, and the command ran with the descriptor it already had. Now
+it is "shell: cannot open FILE" and status 1, and the command does not
+run - builtins and external commands alike.
+
+**What follows a function call.** Testing functions with redirections
+found an older bug: the rest of a line after `;`, `&&` or `||` was saved
+as POINTERS into the token buffers, and a function's body is tokenized
+into the same buffers. So `f; echo after` lost "after", and `f && echo
+after` ran a leftover word of f's body as a command - with or without
+redirections, in every earlier build. `COPY-REST-TEXT` copies the saved
+words into a heap block of their own (not the arena, which moves), freed
+once the rest has run; the `&&`/`||` chain frees each block only after
+the next is loaded, since the left part being run still points into it.
+
+**`$$` in a subshell.** The differential case for that used `$$` inside
+a command substitution, which expanded to the CHILD's process ID; POSIX
+says a subshell expands `$$` as its parent does. `SHELL-PID` is recorded
+in `MAIN`.
+
+`tests/diff/cases/builtin-redirect.sh` (read, pwd, `>>`, `2>`/`>&2`,
+nested functions with redirections, failed opens, here-documents on
+`read`) and `function-rest.sh` (`;`, `&&`, `||` around function calls)
+match bash; the previous build fails both. Redirection on COMPOUND
+commands is still dropped - `while ... done < file` - and is GOALS.md's
+next item under the undo list.
+
+tests/verify: sizes only - x86-64 90,586 -> 91,706, i386 79,937 ->
+80,973.

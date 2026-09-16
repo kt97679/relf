@@ -139,6 +139,7 @@ PATH-MAX BUFFER: CWDBUF
 64 BUFFER: ENVNAMBUF
 
 VARIABLE ARGC          ( number of tokens in the current command line )
+VARIABLE SHELL-PID   \ $$ - set once, in MAIN
 VARIABLE BG-PID   \ pid of the most recent background command, for $!
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
@@ -2193,7 +2194,10 @@ VARIABLE EBW-NAMELEN
   THEN
   DUP 36 = IF                     ( $$ )
     DROP TOK-POS @ 1+ TOK-POS !
-    GETPID EMIT-DECIMAL
+    \ The SHELL's process ID, recorded at startup: POSIX says a subshell
+    \ expands $$ as its parent does. GETPID here gave a command
+    \ substitution its own (fixed in Iteration 255).
+    SHELL-PID @ EMIT-DECIMAL
     EXIT
   THEN
   DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
@@ -2862,12 +2866,15 @@ VARIABLE AR-I
 : OPEN-FOR ( c-addr fam --- fid ok? )
   SWAP DUP CSTRLEN ROT OPEN-FILE 0= ;
 
+VARIABLE REDIR-FAILED?   \ set by APPLY-REDIRECTIONS when an open fails
+VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
+
 : APPLY-REDIRECTIONS ( --- )
   \ Runs in the forked child, before RUN-CHILD/EXECVE. A redirection
   \ that fails to open is skipped rather than aborting the command -
   \ no error reporting yet, matching this file's sparse error handling
   \ elsewhere.
-  0 AR-I !
+  0 AR-I !  0 REDIR-FAILED? !
   BEGIN AR-I @ REDIR-N @ < WHILE
     REDIR-OP AR-I @ CELLS + @
     DUP 6 = OVER 7 = OR IF
@@ -2881,11 +2888,13 @@ VARIABLE AR-I
       DROP
       PIPE DROP HD-WR ! HD-RD !
       HEREDOC-LEN @ 4096 > IF
-        FORK 0= IF
+        FORK DUP 0= IF
+          DROP
           HD-RD @ CLOSE-FILE DROP
           HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
           0 SYS-EXIT
         THEN
+        HD-WRITER !   \ reaped by END-REDIRECT when a builtin read it
       ELSE
         HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
       THEN
@@ -2904,7 +2913,13 @@ VARIABLE AR-I
         DUP REDIR-FD AR-I @ CELLS + @ DUP2 DROP
         CLOSE-FILE DROP
       ELSE
+        \ Reported, and the command is not run (Iteration 255). It used
+        \ to be skipped silently, so `read x < missing` read the shell's
+        \ own input and `cmd > /no/such/dir/f` wrote to the terminal.
         DROP
+        S" shell: cannot open " ERR-TYPE
+        REDIR-TGT AR-I @ CELLS + @ ERR-CSTR ERR-NL
+        -1 REDIR-FAILED? !
       THEN
     THEN
     THEN
@@ -3931,15 +3946,73 @@ VARIABLE WT-PID
 ' DO-READONLY     S" readonly" BUILTIN
 ' DO-COMMAND      S" command"  BUILTIN
 
+\ ==================================================================
+\ Redirections on builtins and functions (Iteration 255)
+\ ==================================================================
+\ A builtin runs in the shell itself, so its redirections must be
+\ undone afterwards - Ramey's "undo list". Until now they were parsed and
+\ then ignored: `read x < file` read the shell's own input, `pwd > f`
+\ wrote to the terminal, `f > out` for a function f likewise.
+\
+\ Each descriptor a redirection will replace is first copied to a spare
+\ descriptor from UNDO-BASE up; afterwards every copy is put back, last
+\ first, and closed. A copy that could not be made means the descriptor
+\ was closed, so putting it back fails too, and the descriptor is closed
+\ instead. The descriptor list is kept on the DATA stack, not in the
+\ REDIR tables: a function's body parses its own redirections and
+\ overwrites them, and a builtin leaves the stack as it found it.
+\
+\ The engine buffers terminal output, so it is flushed before descriptors
+\ change hands in either direction - otherwise a builtin's output would
+\ follow whichever descriptor 1 is when the buffer happens to fill.
+
+VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
+
+: FLUSH-OUTPUT ( --- )   PAD 0 1 WRITE DROP ;   \ WRITE flushes first
+
+: REDIRECT-SAVE ( --- fd0 .. fdn-1 n base )
+  REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  LOOP
+  REDIR-N @  UNDO-BASE @
+  REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  OVER I + DUP2 DROP  LOOP
+  DUP REDIR-N @ + UNDO-BASE ! ;
+
+: REDIRECT-RESTORE ( fd0 .. fdn-1 n base --- )
+  UNDO-BASE !
+  BEGIN DUP WHILE
+    1- SWAP                         ( .. i fd )
+    OVER UNDO-BASE @ +              ( .. i fd copy )
+    2DUP SWAP DUP2 IF               \ no copy: the descriptor was closed
+      OVER CLOSE-FILE DROP
+    THEN
+    CLOSE-FILE DROP DROP            ( .. i )
+  REPEAT DROP ;
+
+: BEGIN-REDIRECT ( --- undo )
+  0 HD-WRITER !
+  REDIR-N @ IF FLUSH-OUTPUT REDIRECT-SAVE APPLY-REDIRECTIONS
+  ELSE 0 0 0 REDIR-FAILED? ! THEN ;
+
+: END-REDIRECT ( undo --- )
+  OVER IF FLUSH-OUTPUT REDIRECT-RESTORE ELSE 2DROP THEN
+  \ A here-document writer (a body over 4 KB) ends once the pipe's read
+  \ end is closed, which the restore just did.
+  HD-WRITER @ ?DUP IF WAITPID 2DROP 0 HD-WRITER ! THEN ;
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   \ A quoted 'cd' is a literal argument, not the builtin - same
   \ reasoning as ARGV-QUOTED everywhere else. Functions are checked
   \ after builtins, so a builtin name cannot be overridden by a
   \ function, matching real shells.
   ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
-    ARGV @ FIND-BUILTIN ?DUP IF EXECUTE -1 EXIT THEN
+    ARGV @ FIND-BUILTIN ?DUP IF
+      >R BEGIN-REDIRECT R>
+      REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
+      END-REDIRECT -1 EXIT
+    THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
-      RUN-FUNC-BODY-CALL -1 EXIT
+      >R BEGIN-REDIRECT R>
+      REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE RUN-FUNC-BODY-CALL THEN
+      END-REDIRECT -1 EXIT
     THEN
     DROP
   THEN
@@ -3952,7 +4025,9 @@ VARIABLE WT-PID
 : RUN-EXTERNAL ( --- )
   FORK
   DUP 0 = IF
-    DROP APPLY-REDIRECTIONS RUN-CHILD 127 SYS-EXIT
+    DROP APPLY-REDIRECTIONS
+    REDIR-FAILED? @ IF 1 SYS-EXIT THEN
+    RUN-CHILD 127 SYS-EXIT
   ELSE
     WAITPID DROP           ( raw wait status )
     8 RSHIFT 255 AND       ( decode WEXITSTATUS - the normal-exit case only;
@@ -4703,8 +4778,42 @@ VARIABLE ARGC-SHIFT
 VARIABLE AO-REST
 VARIABLE AO-RESTQ
 VARIABLE AO-RESTC
+VARIABLE AO-TEXT       \ the heap block the saved rest's words live in
+VARIABLE AO-OLD-TEXT   \ the one the words being run now live in
 VARIABLE AO-SAVED-OP
 VARIABLE AO-J
+
+VARIABLE SRT-DST
+VARIABLE SRT-N
+VARIABLE SRT-SIZE
+VARIABLE SRT-AT
+VARIABLE SRT-I
+
+: COPY-REST-TEXT ( argv-offset n --- block )
+\ A saved rest of a line - what follows a `;`, `&&` or `||` - is a list
+\ of pointers into the token buffers. Running the first command can
+\ overwrite those: a FUNCTION's body is tokenized into the same buffers.
+\ So `f; echo after` lost "after", and `f && echo after` ran a leftover
+\ word of f's body as a command (found in Iteration 255). The words are
+\ copied into a heap block of their own, and the saved list pointed at
+\ it; the caller frees the block once the rest has run. A heap block,
+\ not the arena: the arena moves when it grows, and these pointers are
+\ used while commands run.
+  SHADOW{ SRT-DST SRT-N | SRT-SIZE SRT-AT SRT-I }
+  BEGIN SRT-I @ SRT-N @ < WHILE
+    SRT-DST @ BODY@ SRT-I @ CELLS + @ CSTRLEN 1+ SRT-SIZE @ + SRT-SIZE !
+    SRT-I @ 1+ SRT-I !
+  REPEAT
+  SRT-SIZE @ 1 MAX ALLOCATE ABORT" shell: out of memory"
+  DUP SRT-AT !
+  0 SRT-I !
+  BEGIN SRT-I @ SRT-N @ < WHILE
+    SRT-DST @ BODY@ SRT-I @ CELLS + @         ( block src )
+    DUP CSTRLEN 1+ DUP >R SRT-AT @ SWAP MOVE
+    SRT-AT @ SRT-DST @ BODY@ SRT-I @ CELLS + !
+    SRT-AT @ R> + SRT-AT !
+    SRT-I @ 1+ SRT-I !
+  REPEAT ;
 
 : AO-SAVE-REST ( --- )
   \ Copy the &&/||-remainder out of the shared ARGV-AO-REST arrays
@@ -4724,7 +4833,9 @@ VARIABLE AO-J
     ARGV-AO-REST AO-J @ CELLS + @  AO-REST  @ BODY@ AO-J @ CELLS + !
     ARGQ-AO-REST AO-J @ +      C@  AO-RESTQ @ BODY@ AO-J @ +       C!
     AO-J @ 1+ AO-J !
-  REPEAT ;
+  REPEAT
+  AO-TEXT @ AO-OLD-TEXT !
+  AO-REST @ AO-RESTC @ COPY-REST-TEXT AO-TEXT ! ;
 
 : AO-LOAD-REST ( --- )
   AO-REST @ BODY@ AO-RESTQ @ BODY@ AO-RESTC @ COPY-ARGV-Q ;
@@ -4734,7 +4845,7 @@ VARIABLE AO-J
   \ globals: every one of them is held across RUN-SIMPLE-OR-PIPELINE,
   \ which can recurse into this same word.
   BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP }
+  SHADOW{ BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP AO-TEXT AO-OLD-TEXT }
   AO-SAVE-REST
   ANDOR-OP @ AO-SAVED-OP !
   ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
@@ -4752,11 +4863,16 @@ VARIABLE AO-J
       THEN
       AO-SAVED-OP @ AO-PENDING-OP !
       AO-LOAD-REST
+      \ The words just run lived in the previous block; the ones loaded
+      \ now live in the new one.
+      AO-OLD-TEXT @ ?DUP IF FREE DROP THEN  0 AO-OLD-TEXT !
     ELSE
       AO-SHOULD-RUN? IF RUN-SIMPLE-OR-PIPELINE THEN
       0 AO-CONTINUE !
     THEN
-  REPEAT ;
+  REPEAT
+  AO-OLD-TEXT @ ?DUP IF FREE DROP THEN
+  AO-TEXT @ ?DUP IF FREE DROP THEN ;
 
 
 \ ==================================================================
@@ -7106,6 +7222,7 @@ VARIABLE FD-LEN
 VARIABLE RT-REST
 VARIABLE RT-RESTQ
 VARIABLE RT-RESTC
+VARIABLE RT-TEXT   \ the heap block the saved rest's words live in
 VARIABLE RT-I
 
 : RT-SAVE-REST ( --- )
@@ -7127,7 +7244,8 @@ VARIABLE RT-I
     ARGV-SEMI-REST RT-I @ CELLS + @  RT-REST  @ BODY@ RT-I @ CELLS + !
     ARGQ-SEMI-REST RT-I @ +      C@  RT-RESTQ @ BODY@ RT-I @ +       C!
     RT-I @ 1+ RT-I !
-  REPEAT ;
+  REPEAT
+  RT-REST @ RT-RESTC @ COPY-REST-TEXT RT-TEXT ! ;
 
 \ ==================================================================
 \ Aliases
@@ -7356,7 +7474,7 @@ VARIABLE PP-BAR
 
 : RUN-TOKENIZED ( --- )
   BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I }
+  SHADOW{ BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I RT-TEXT }
   \ Alias expansion first: it is textual, and the rebuilt line must
   \ go through every check below as if it had been typed.
   TRY-ALIAS IF EXIT THEN
@@ -7400,6 +7518,7 @@ VARIABLE PP-BAR
     RUN-TOKENIZED-CALL
     RT-REST @ BODY@ RT-RESTQ @ BODY@ RT-RESTC @ COPY-ARGV-Q
     RUN-TOKENIZED-CALL
+    RT-TEXT @ FREE DROP
     EXIT
   THEN
   SPLIT-ANDOR IF
@@ -7533,6 +7652,7 @@ VARIABLE SHC-LEN
   \ a save and reload. Nothing below may touch a buffer before this
   \ runs, so it is the first thing in the boot word.
   ALLOC-BUFFERS
+  GETPID SHELL-PID !
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   \ A turnkey image boots straight here from COLD, so WARM and QUIT -
   \ which normally set up the search order and the input source -

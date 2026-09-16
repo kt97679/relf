@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,742    kernel-shell.img     63,746
-    32-bit   kernel32.img   8,138    kernel32-shell.img   57,933
+    64-bit   kernel.img     8,742    kernel-shell.img     64,866
+    32-bit   kernel32.img   8,138    kernel32-shell.img   58,969
 
 **Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -973,19 +973,18 @@ of this file:
   assignment prefix. Currently a failed command lookup, status 1.
   Ramey's temporary-scope design (see the bash-architecture section)
   is the shape to build.
-- **Redirection does not apply to builtins - and the consequences are
-  wider than that sentence suggests.** Iteration 146 found the same
-  root behind `read -r l < file` reading nothing, `while read ...;
-  done < file` producing nothing - or, since the redirection is
-  dropped, reading the shell's own stdin, which with a terminal or an
-  open pipe means waiting for ever - and `{ ...; } > f 2>&1` writing
-  nothing: any redirection whose target command is a builtin, or a
-  compound containing one, is silently dropped. `pwd > file` writes to
-  the terminal and creates nothing, because redirection is only
-  applied in the forked child. Fixing it needs the **undo list** from
-  Ramey's chapter: a redirection's effects must not outlive the
-  command. Recorded in Iteration 55 as the next piece of redirection
-  work.
+- ~~**Redirection does not apply to builtins.**~~ **Fixed in Iteration
+  255** with Ramey's undo list: a builtin's or a function's redirections
+  are applied in the shell and undone afterwards (`BEGIN-REDIRECT`,
+  `END-REDIRECT`), so `read x < file`, `pwd > f` and `f > out` work, and
+  a redirection that cannot be opened is reported and the command does
+  not run - for external commands too, which ran regardless before.
+- **Redirection on a COMPOUND command is still dropped**: `while read
+  l; do ...; done < file`, `{ ...; } > f 2>&1`, `if ...; fi > f`. The
+  same undo list is the tool; the work is in `DISPATCH-GROUP` and the
+  compound runners, which consume the redirection words as part of the
+  compound. `tests/posix`'s 2.7-redirect-on-compound and
+  2.7-redirect-duplicate-order are these.
 - ~~**Positional parameters stop at 9.**~~ **Fixed in Iteration 250**:
   any number, `${10}` and up included. Found by
   `tests/posix/2.5.1-positional-parameters.sh` in Iteration 146, which
@@ -1568,9 +1567,10 @@ before anything else, because every number here is relative to it.
    benchmark's fix *and* it removes the whole same-line fault class
    (Iterations 143, 144). Four POSIX failures go with it.
 3. **Redirection's undo list** (Ramey's design, in the bash-
-   architecture section below). Three more POSIX failures, including
-   `while read ...; done < file` - the commonest file-reading idiom in
-   shell scripting.
+   architecture section below). **Half done in Iteration 255**:
+   builtins and functions. What remains is compound commands - `while
+   read ...; done < file`, the commonest file-reading idiom in shell
+   scripting, and two POSIX failures.
 4. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, superseded, and
    retired.** SOD16 won the Iteration 156-167 comparison, CV8 replaced
    it at 189, and Iteration 218 retired it along with every other
