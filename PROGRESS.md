@@ -249,6 +249,7 @@ do not trust the absence of a line below.
 - **251** — expansion output, command substitution, for lists and here-documents grow
 - **252** — variable values and the variable table grow; three stale-state bugs
 - **253** — guard pages on by default; the regression was a stack underflow in shell.4
+- **254** — RAW-MODE; tests on a pseudo-terminal
 
 ### Not tied to an iteration
 
@@ -15264,3 +15265,44 @@ which the compares never were. Nothing else in the suites trips it.
 
 tests/verify: unchanged except the i386 file size (79,877 -> 75,813,
 padding) and x86-64 90,554 -> 90,570.
+
+## Iteration 254: RAW-MODE
+
+GOALS.md's queue item 4, the half `KEY?` left: without it a terminal in
+line mode hands the system nothing until Enter.
+
+**The primitive.** `RAW-MODE ( fd flag --- ior )`, escaped - no opcode
+moves, 32 escaped primitives of 256. It hides `struct termios`, whose
+layout differs by platform. On: `ICANON` and `ECHO` off, `VMIN` 1,
+`VTIME` 0 - "cbreak" rather than fully raw, so `ISIG` stays and Ctrl-C
+still interrupts, and output processing is untouched. Off: the setting
+saved when it was first turned on. `ior` is 0 or `-errno`: `-ENOTTY`
+(-25 on Linux) for a pipe.
+
+**Leaving the terminal as it was.** A program that exits in raw mode
+must not leave the terminal that way, so `term_restore()` runs on every
+way out: `BYE`, `SYS-EXIT` (which is `_exit`, so `atexit` would not
+have done it) and the stack guard's signal handler, where `tcsetattr` is
+async-signal-safe. It restores only in the process that turned raw mode
+on: the shell forks constantly, and a child exiting must not hand its
+parent's terminal back to line mode.
+
+**Tests on a real terminal.** `tests/io/pty.c` runs a command on a
+pseudo-terminal using only POSIX calls (`posix_openpt`, `grantpt`,
+`unlockpt`, `ptsname` - no libutil), types its own stdin, then after a
+delay types keys with NO newline, and reports whether the terminal was
+left in line mode with echo. `tests/io/run` gained eleven checks: a key
+arrives without Enter and is not echoed; the control - without raw mode
+it never arrives; `BYE`, `SYS-EXIT` (status kept) and a stack fault
+(status 70 kept) each restore the terminal; a forked child's exit does
+not; and a pipe gets ENOTTY. 28 checks now, both widths.
+
+**Two things the helper taught.** The terminal closes a moment before
+its process can be reaped, so a non-blocking `waitpid` right after the
+last read found nothing and the first runs all "timed out"; it now waits
+with a deadline. And the Forth prompt's input buffer is 80 characters:
+the first fork test was a 106-character line whose tail was dropped,
+which surfaced as "Undefined word K" - the line cut inside `KEY?`.
+
+tests/verify: sizes only - x86-64 90,570 -> 90,586, i386 75,813 ->
+79,937 (the page of ELF padding that 253 lost came back).

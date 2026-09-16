@@ -162,7 +162,7 @@ encode an opcode the engine decoded as something else, with no build
 error. Until Iteration 245 the engine's folded table was still written
 as `[72 + k]`, which is right for 67 primitives only.
 
-With 35 direct and 31 escaped primitives (Iteration 247):
+With 35 direct and 32 escaped primitives (Iteration 254):
 
 | range | meaning |
 |---|---|
@@ -176,12 +176,13 @@ With 35 direct and 31 escaped primitives (Iteration 247):
 | `0x3F`–`0x60` | **free** — 34 opcodes |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
-| `0x7E` | `ESC` + a selector byte: 31 OS/libc primitives of 256 selectors |
+| `0x7E` | `ESC` + a selector byte: 32 OS/libc primitives of 256 selectors |
 | `0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two- or three-byte call |
 
-**Escaped primitives cost no opcode.** The 31 OS/libc primitives —
-`BYE`, the file and process words, `READ`, `WRITE`, `POLL` — are
+**Escaped primitives cost no opcode.** The 32 OS/libc primitives —
+`BYE`, the file and process words, `READ`, `WRITE`, `POLL`,
+`RAW-MODE` — are
 declared after `ESCAPED` in `kernel.4`, contiguous at the end of the
 list, and selector *t* is the *t*-th of them. Adding one appends a
 `PRIMITIVE` line, a handler to `cv8.c`'s `escaped_prims[]` and one to

@@ -185,6 +185,10 @@ PRIMITIVE WRITE     ( c-addr u fd --- n )
 \ (-1: for ever). n' is the number ready, 0 on timeout, or a negative
 \ errno. Flushes terminal output first, like READ. See FD-POLL.
 PRIMITIVE POLL      ( a-addr n ms --- n' )
+\ The terminal on fd a byte at a time without echo (flag true), or back
+\ as it was (flag false): 0 or a negative errno. Ctrl-C still works, and
+\ the engine puts the terminal back on every way out. See KEY?.
+PRIMITIVE RAW-MODE  ( fd flag --- ior )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -891,7 +895,8 @@ VARIABLE #SRC ( --- addr)
 : KEY? ( --- flag )
 \ Is a character available from the terminal, now? Also true at end of
 \ input or on an error, where KEY would not wait either. On a terminal
-\ in its usual line mode the system sees nothing until Enter.
+\ in its usual line mode the system sees nothing until Enter; after
+\ `0 -1 RAW-MODE` it sees each key as it is typed.
   0 1 0 FD-POLL 0= 0= ;
 
 : MS ( u --- )

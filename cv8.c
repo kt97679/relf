@@ -57,6 +57,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <poll.h>
+#include <termios.h>
 #include <stddef.h>
 
 /*  kernel.4's FD-POLL lays a struct pollfd out by hand, in two cells on
@@ -97,7 +98,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    31
+#define NESC    32
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -368,6 +369,7 @@ static void stack_fault(int which) {
  *  moves; the data stack is two pages shallower. The messages and the
  *  status are stack_fault()'s. _exit, not exit: this runs in a signal
  *  handler, and the output buffer may be half-written.  */
+static void term_restore(void);   /* the terminal, on the way out */
 static UNS64 g_dguard, g_rguard, g_page;
 static void guard_trap(int sig, siginfo_t *si, void *uc) {
     UNS64 a = (UNS64)(uintptr_t)si->si_addr;
@@ -378,6 +380,7 @@ static void guard_trap(int sig, siginfo_t *si, void *uc) {
         write_str(2, "relf: return stack overflow\n");
     else
         write_str(2, "relf: segmentation fault (not a stack guard)\n");
+    term_restore();
     _exit(70);
 }
 static void install_guards(UNS8 *b) {
@@ -639,6 +642,42 @@ NOINLINE_IO static long t_read(int fd, UNS64 a, UNS64 u) {
     return n < 0 ? -(long)errno : n;
 }
 
+/*  RAW-MODE's terminal state (Iteration 254). One saved setting, for
+ *  the one descriptor raw mode was turned on for, and the process that
+ *  did it: a forked child that exits must not hand its parent's
+ *  terminal back to line mode. term_restore() is called on every way
+ *  out - BYE, SYS-EXIT and the stack guard's handler, where tcsetattr
+ *  is async-signal-safe - so a program that ends in raw mode does not
+ *  leave the terminal that way.  */
+static struct termios t_saved;
+static int t_raw_fd = -1;
+static pid_t t_raw_pid;
+
+static void term_restore(void) {
+    if (t_raw_fd >= 0 && getpid() == t_raw_pid)
+        tcsetattr(t_raw_fd, TCSANOW, &t_saved);
+}
+
+/*  Raw mode is "cbreak": no line editing and no echo, a byte at a time,
+ *  but signal keys still work - Ctrl-C still interrupts - and output
+ *  processing is untouched, so newlines still print as newlines.  */
+NOINLINE_IO static long t_rawmode(int fd, int on) {
+    struct termios t;
+    if (!on) {
+        if (t_raw_fd != fd) return 0;
+        if (tcsetattr(fd, TCSANOW, &t_saved) < 0) return -(long)errno;
+        t_raw_fd = -1;
+        return 0;
+    }
+    if (tcgetattr(fd, &t) < 0) return -(long)errno;
+    if (t_raw_fd < 0) { t_saved = t; t_raw_fd = fd; t_raw_pid = getpid(); }
+    t.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
+    t.c_cc[VMIN] = 1;
+    t.c_cc[VTIME] = 0;
+    if (tcsetattr(fd, TCSANOW, &t) < 0) return -(long)errno;
+    return 0;
+}
+
 /*  poll(2) on n structs at a, waiting ms milliseconds (-1: for ever):
  *  the number ready, 0 on timeout, or -errno.  */
 NOINLINE_IO static long t_poll(UNS64 a, UNS64 n, UNS64 ms) {
@@ -699,6 +738,7 @@ static void virtual_machine(void) {
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
         &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
+        &&L_rawmode,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -898,7 +938,7 @@ L_type: SPILL(); { /* type    */ /* c-addr u --- */
     dsp += 2 * CELL_BYTES;
     FILLNEXT();
     }
-L_bye: SPILL();     /* bye     */ t_flush(); PROFDUMP; exit(0);
+L_bye: SPILL();     /* bye     */ t_flush(); term_restore(); PROFDUMP; exit(0);
 L_spfetch: SPILL(); /* sp@     */ PUSH(dsp + CELL_BYTES); FILLNEXT();
 L_spstore: SPILL(); /* sp!     */ dsp = DS0; FILLNEXT();
 L_rpfetch: SPILL(); /* rp@     */ PUSH(rp); FILLNEXT();
@@ -1031,6 +1071,15 @@ L_poll: SPILL(); { /* a-addr n ms --- n' : n' < 0 is -errno */
     dsp += 2 * CELL_BYTES;
     FILLNEXT();
 }
+/*  RAW-MODE: the terminal on fd a byte at a time without echo (flag
+ *  true), or back as it was (flag false). ior is 0 or -errno - -ENOTTY
+ *  for a descriptor that is not a terminal.  */
+L_rawmode: SPILL(); { /* fd flag --- ior */
+    t_flush();
+    DS1 = (UNS64)(INT64)t_rawmode((int)DS1, DS0 != 0);
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
 L_write: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
     t_flush();
     DS2 = (UNS64)(INT64)t_write((int)DS0, DS2, DS1);
@@ -1093,7 +1142,7 @@ L_setenv: SPILL(); /* value-addr name-addr --- ior */
     dsp += CELL_BYTES;
     FILLNEXT();
 L_sysexit: SPILL(); /* n --- */
-     t_flush();PROFDUMP; _exit((int)DS0);
+     t_flush(); term_restore(); PROFDUMP; _exit((int)DS0);
 L_chdir: SPILL(); /* c-addr --- ior */
     DS0 = (UNS64)((chdir((char*)(uintptr_t)DS0) < 0) ? 200 : 0);
     FILLNEXT();

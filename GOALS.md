@@ -150,10 +150,10 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,726    kernel-shell.img     63,730
-    32-bit   kernel32.img   8,122    kernel32-shell.img   57,917
+    64-bit   kernel.img     8,742    kernel-shell.img     63,746
+    32-bit   kernel32.img   8,138    kernel32-shell.img   57,933
 
-**Sixty-six primitives**: 35 direct, with one-byte opcodes, and 31
+**Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 34 opcodes
@@ -161,7 +161,8 @@ are free. `CV8-REFERENCE.md` 3.2 has the map.
 
 **Descriptor I/O is three primitives**: `READ` and `WRITE` (Iteration
 245), one read(2) or write(2) each, returning a count or a negative
-errno, and `POLL` (246), one poll(2). `FD-POLL` wraps it for one
+errno, and `POLL` (246), one poll(2); `RAW-MODE` (254) sets a terminal
+to a byte at a time. `FD-POLL` wraps it for one
 descriptor; `KEY?` and `MS` are built on it, and `KEY` uses it to wait. Everything else is Forth on top, in `kernel.4`: `KEY` (one
 byte, retrying `EINTR`), `ACCEPT` on `KEY`, `READ-FILE` and
 `WRITE-FILE` (looping over short counts), `WRITE-LINE`, and
@@ -1326,10 +1327,11 @@ once. Both are done; the rest keep their order.
    (Iteration 246), on `POLL` rather than `fcntl`: poll(2) waits
    without changing the descriptor's flags, which every process sharing
    it would see. The non-blocking `KEY` hazard is fixed with it.
-   **Still open: terminal raw mode**, without which `KEY?` on a
-   terminal sees nothing until Enter. It wants its own primitive that
-   hides `struct termios`, whose layout differs by platform - say
-   `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
+   **Terminal raw mode done too** (Iteration 254): `RAW-MODE ( fd flag
+   --- ior )`, escaped, hides `struct termios`. A byte at a time without
+   echo, Ctrl-C still working; the engine puts the terminal back on
+   every way out, and only in the process that changed it.
+   `tests/io/pty.c` runs the tests on a pseudo-terminal.
 
 5. **The rest of the growable-buffer work.** Iteration 249 did the
    line buffers, 250 the word arrays and positional parameters, 251

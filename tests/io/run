@@ -1,6 +1,6 @@
 #!/bin/bash
 # tests/io/run ENGINE IMAGE - how the kernel reads its terminal: KEY,
-# KEY?, MS and FD-POLL (Iteration 246).
+# KEY?, MS and FD-POLL (Iteration 246), and RAW-MODE (254).
 #
 # Every case feeds the engine's own interpreter through descriptor 0,
 # which is also what KEY reads - so a line is consumed by ACCEPT and
@@ -81,6 +81,33 @@ check "KEY? is true on a regular file, and its end exits" "F:-1" "$out"
 check "the end of a regular file exits with status 0" "st=0" "st=$st"
 timeout 10 "$E" "$I" < / > /dev/null 2>&1; st=$?
 check "a read error (stdin a directory) exits instead of spinning" "st=0" "st=$st"
+
+# 7. RAW-MODE, on a real terminal (Iteration 254). tests/io/pty.c runs
+# the engine on a pseudo-terminal, types the program, and 300 ms later
+# types Q with no newline - which a terminal in line mode never delivers.
+cc -O2 -o "$T/pty" tests/io/pty.c || exit 1
+PTY="$T/pty"
+# The loops are inside definitions, and every line is under 80
+# characters - the Forth prompt's input buffer; a longer line loses its
+# tail.
+out=$(printf ': W BEGIN KEY? UNTIL KEY . ;\n0 -1 RAW-MODE . W 0 0 RAW-MODE . BYE\n' | "$PTY" Q 300 "$E" "$I" 2>&1)
+check "raw mode delivers a key without Enter" "0 81 0" "$out"
+check "raw mode does not echo it" "no-echo" "$(printf '%s' "$out" | grep -q Q || echo no-echo)"
+check "raw mode off restores line mode and echo" "icanon=1 echo=1" "$out"
+out=$(printf ': W BEGIN KEY? UNTIL KEY . ;\nW BYE\n' | PTY_TIMEOUT_MS=1500 "$PTY" Q 300 "$E" "$I" 2>&1); st=$?
+check "the control: in line mode the key never arrives" "st=124" "st=$st"
+out=$(printf '0 -1 RAW-MODE . BYE\n' | "$PTY" "" 100 "$E" "$I" 2>&1)
+check "BYE puts the terminal back" "icanon=1 echo=1" "$out"
+out=$(printf '0 -1 RAW-MODE . 3 SYS-EXIT\n' | "$PTY" "" 100 "$E" "$I" 2>&1); st=$?
+check "SYS-EXIT puts the terminal back" "icanon=1 echo=1" "$out"
+check "SYS-EXIT keeps its status" "st=3" "st=$st"
+out=$(printf '0 -1 RAW-MODE . : RR RECURSE ; RR\n' | "$PTY" "" 100 "$E" "$I" 2>&1); st=$?
+check "a stack fault puts the terminal back" "icanon=1 echo=1" "$out"
+check "a stack fault still exits 70" "st=70" "st=$st"
+out=$(printf ': T FORK ?DUP IF WAITPID DROP DROP ELSE 0 SYS-EXIT THEN ;\n: W BEGIN KEY? UNTIL KEY . ;\n0 -1 RAW-MODE . T W BYE\n' | "$PTY" Q 300 "$E" "$I" 2>&1)
+check "a forked child exiting leaves the parent's terminal raw" "81" "$out"
+out=$(printf '0 -1 RAW-MODE . CR BYE\n' | timeout 10 "$E" "$I" 2>&1)
+check "RAW-MODE on a pipe is an error (ENOTTY)" "-25" "$out"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" = 0 ]
