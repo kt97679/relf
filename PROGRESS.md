@@ -237,6 +237,7 @@ do not trust the absence of a line below.
 - **213** — the byte-header shell: NAME> must be exact, so pad before the link
 - **214-227** — one engine, one read, and four wrong guesses
 - **228-236** — conformance, and what the standard's own tests found
+- **237-242** — the relf.c retirement, prepared but not done
 
 ### Not tied to an iteration
 
@@ -14473,3 +14474,93 @@ made the CORE suite segfault rather than report a missing file, and
 three tools open the Forth sources by name. I updated a hand-written
 list of files instead of searching. A rename is only as complete as the
 search behind it.
+
+## Iterations 237-242: the relf.c retirement, prepared but not done
+
+Five iterations that produced one tool, four dead ends and no other
+code. Written up in full because the dead ends are the useful part: the
+next attempt should start past them, not rediscover them.
+
+**The goal.** CV8 only - one engine, and a CV8 Forth that recompiles
+and re-hosts itself. `relf.c` is not a second ENCODING; it is the only
+thing that can EXECUTE a cell image, and the CV8 build needs one
+executed:
+
+    kernel.4 --cross.4--> kernel.img (CELL) --run--> dump --layout.py--> CV8
+
+**237. forth.img: retired by measurement, not built.** SOD32's Makefile
+builds `forth.img` as kernel.img + extend.4th saved, and cross-compiles
+the kernel FROM it; RelF lost that and re-INCLUDEs extend.4 every time.
+Reviving it was on the queue until it was measured:
+
+    cross-compile total   19ms
+    bare boot              2ms
+    boot + extend.4        3ms
+
+So extend.4 costs about 1ms of 19. A forth.img would save 5% of a 19ms
+operation in exchange for another tracked binary, another thing to keep
+in sync, and another thing SAVE-SYSTEM must scrub correctly. SOD32
+needed it on 1990s hardware. Dropped from the queue; do not revive it
+without a new measurement.
+
+**238. tools/image-dump.py - step 1, done.** Reads the dictionary out of
+a saved cell image and emits the same S/P/H/N/B records
+dict-dump-addr.4 emits when run inside one. A saved image has an 8-byte
+header and no directory, so the word list is found by SHAPE: a cell
+holding 32 followed by 32 plausible in-image offsets. Exactly one
+candidate matches, all 32 threads populated, and the result is checked
+- the walk must reach COLD and FORTH-WORDLIST, every body must lie
+inside the image, and more than one candidate is a hard error.
+
+Two things it surfaced. Chain links are SIGNED and relative to their
+own link cell; reading them unsigned walks off the end. And the
+DUMPER'S OWN WORDS are in every CV8 image - the build loads
+dict-dump-addr.4 into the image before dumping it, so 269 words are
+dumped where a pristine image has 257. Twelve words per image that
+exist only to print the dictionary out.
+
+**239-242. Step 2, not done: cv8.4 has to be in the kernel.** An image
+translated from kernel.img boots and runs (`1 2 + .` gives 3) and
+SEGFAULTS on `: SQ DUP * ;` - without cv8.4's COMPILE,8, COMPILE, emits
+cell-format calls into a byte-stream image. So cv8.4 must be in the
+dictionary AT TRANSLATION TIME, which means in the image file.
+
+Four dead ends, all tried:
+
+- Including cv8.4 from cross.4 after kernel.4 puts it in the HOST;
+  kernel.4 ends with END-CROSS. Image grows 8 bytes, gains nothing.
+- `S" cv8.4" INCLUDED` inside kernel.4 gives `Undefined word cv8.4"`.
+  Inside the cross-compiled region S" is the TARGET's.
+- Relocating END-CROSS hangs the build. It is how CROSS-COMPILE exits.
+- A TRANSIENT `LOAD-HOST` word reaches the file but compiles it with
+  the HOST's interpreter. Reduced to the smallest case: `: PG SWAP
+  DROP ;` compiles, `: PH 1 ;` gives "Incomplete control structure".
+  CROSS-COMPILE is its own loop - FIND/EXECUTE for words, NUMBER? and
+  LITERAL-T for numbers - and only that loop calls LITERAL-T.
+
+**The mechanism, which needed nothing new.** kernel.4 line 8 is
+CROSS-COMPILE and its last line is END-CROSS. A cross-compiled file
+wraps itself in the pair and cross.4 includes it normally. Three turns
+were spent inventing machinery for a convention already in the file.
+
+**What actually remains** is adapting cv8.4, and it is a class of
+obstacle rather than one bug. The file works at load time by using its
+own constants and tables AS IT DEFINES THEM; under cross-compilation
+those live in the TARGET and the host cannot read them. Seen before
+stopping: `FOLD-BASE #FOLD-OPS + 97 >` evaluated at interpretation, and
+`#FOLD-OPS 0 DO ... FOLD-OPS I + C@` where FOLD-OPS was CREATEd earlier
+in the same file. FOLD-OPS itself is built with `' + >OP C,` - host
+work at interpretation time. Every such use has to become a TRANSIENT
+definition or a value computed in cross.4.
+
+### On stopping
+
+Five iterations, one tool, no other code. The last two turns produced
+mistakes of a kind the earlier ones did not: a 300-second build started
+on top of a scripted edit whose precondition had failed and was not
+checked; a first error message generalised into a conclusion and
+written into a commit; and a fifteen-line change to dict-dump-addr.4
+that used a variable before declaring it and was then abandoned with a
+stack-order bug half-diagnosed. The work stopped there deliberately.
+Everything above is in the repository rather than in a conversation,
+which is the point of writing it down.

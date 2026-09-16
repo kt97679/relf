@@ -1219,6 +1219,62 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
+## What to do next, in order (as of Iteration 242)
+
+Ordering matters here for one reason: anything touching KERNEL
+SEMANTICS should be done while `relf.c` still exists, because it is the
+simplest thing in the system to debug against - one primitive per
+label, no encoding, no translator. Anything touching the ENGINE or the
+OPCODE MAP should wait until after the retirement, so it is done once
+rather than twice.
+
+1. **`+LOOP` boundary conformance.** Seven cases in the Forth Standard
+   suite. Kernel semantics, so: before the retirement. Needs the biased
+   loop index - store `index - limit + MIN-INT` so `+LOOP` is "add and
+   test signed overflow" - which changes `(DO)`, `(?DO)`, `(LOOP)`,
+   `(+LOOP)`, `I`, `J`, `UNLOOP` and `LEAVE` together. See the entry
+   below.
+
+2. **Adapt `cv8.4` for cross-compilation**, then retire `relf.c`. The
+   mechanism is settled and the remaining work is enumerated below,
+   under "relf.c cannot be retired yet". Tag the commit before the
+   final switch: it is the last one that can be rebuilt from a C
+   compiler and a text kernel.
+
+3. **`GUARD`.** A measured 5-6% win, disabled since Iteration 206 for a
+   `tests/diff` regression that predates most of the engine work since.
+   Worth re-measuring, and cheaper with one engine than two.
+
+4. **`KEY?` plus a termios/fcntl primitive.** The interactive shell
+   work, and the fix for the non-blocking `KEY` hazard below. Adds a
+   primitive, so it moves the opcode map - after the retirement, that
+   is one dispatch table instead of two.
+
+   If the interactive shell matters more to you than engine
+   minimalism, move this ahead of 2. It costs a second round of
+   opcode-map work and delivers something usable sooner.
+
+TWO SMALLER THINGS, either of which is a good first task:
+
+- **The dictionary dumper contaminates every image.** The build loads
+  `tools/dict-dump-addr.4` into the image before dumping it, so
+  `COLLECT`, `SORTNFA`, `SWAPC`, `DUMP`, `NFATAB` and the rest are
+  compiled into every translated image and shipped: 269 words dumped
+  where a pristine image has 257. The fix is for the dumper to record
+  `LAST` and `HERE` on the stack BEFORE its first definition, and skip
+  nfas above that mark when emitting - they are all newer, so higher in
+  address. Attempted at Iteration 242 and abandoned half-done; the
+  variables must be DECLARED before `DUMP` uses them and filled in
+  afterwards, and the `S` line must print the marked `HERE`, not the
+  current one.
+
+- **`forth.img` is NOT worth building.** SOD32 builds one - kernel.img
+  plus extend.4th, saved - and cross-compiles from it. Measured here:
+  cross-compile 19ms total, bare boot 2ms, boot + extend.4 3ms. So
+  extend.4 costs about 1ms of 19, and a `forth.img` buys 5% in
+  exchange for another tracked binary to keep in sync and scrub. Left
+  here so it is not re-proposed.
+
 ## Known shortcuts to revisit
 
 Deliberate compromises that work today and are wrong in general. Each
@@ -1247,6 +1303,15 @@ than remembered.
   spelling so that standard code fails loudly rather than computing
   address arithmetic. If real locals are ever wanted, `{: :}` is free
   and the two can coexist.
+
+  The COST of converting `SHADOW{` itself to value semantics, measured
+  at Iteration 235 so it does not have to be guessed at again: 71 words
+  in `shell.4` declare them, 192 distinct names, appearing as **784
+  `NAME @`**, **279 `NAME !`**, and **456 other occurrences** that each
+  need reading rather than rewriting. Plus the dictionary machinery -
+  standard locals are new names bound by splicing temporary headers,
+  which `shadow.4` deliberately avoids. That is a decision about
+  `shell.4`, not a fix to `shadow.4`.
 
 - **`relf.c` cannot be retired yet, and the reason is worth stating.**
   The intended end state is CV8 only: one engine, and a CV8 Forth that
