@@ -154,62 +154,53 @@ branch on sign with no comparison (`SIGNTEST`, on by default except on
 ### 3.2 Opcode map
 
 Nothing in this table is a constant in the source. Every boundary is
-derived from the number of `PRIMITIVE` lines in `kernel.4`, in five
-places that must agree — `tools/sod16.py`, `tools/lab/gen-fold.py`,
-`tools/lab/gen-tos.py`, `tools/layout.py` and `cv8.4`. They were
-written out by hand until Iteration 214, and adding one primitive then
-made the image encode an opcode the engine decoded as something else,
-with no build error: a return stack overflow in one stage and a
-corrupted heap in another.
+derived from the number of `PRIMITIVE` lines in `kernel.4` - by
+`cross.4` and `kernel.4`'s compiler, and by `cv8.c` from its `NPRIM`
+and `NESC`, which must be raised by hand. Until Iteration 214 the
+numbers were written out, and adding one primitive then made the image
+encode an opcode the engine decoded as something else, with no build
+error. Until Iteration 245 the engine's folded table was still written
+as `[72 + k]`, which is right for 67 primitives only.
 
-With 67 primitives and the escaped band on, which is the default:
+With 65 primitives (Iteration 245) and the escaped band on:
 
 | range | meaning |
 |---|---|
 | `0x00`–`0x22` | the 35 **direct** primitives, in `PRIMITIVE` order |
-| `0x23`–`0x42` | vacated — the 32 escaped primitives live behind `ESC` |
-| `0x43` | `LIT32` — 4-byte signed operand |
-| `0x44` | `DOVAR` — data body prologue |
-| `0x45` | `DODOES` — `DOES>` body prologue |
-| `0x46` | `LIT8` — 1-byte unsigned operand |
-| `0x47` | `LIT8;EXIT` |
-| `0x48`–`0x5E` | folded `primitive;EXIT`, in `--fold-set` order (23 used) |
-| `0x5F`–`0x60` | free |
+| `0x23`–`0x40` | vacated — the 30 escaped primitives live behind `ESC` |
+| `0x41` | `LIT32` — 4-byte signed operand |
+| `0x42` | `DOVAR` — data body prologue |
+| `0x43` | `DODOES` — `DOES>` body prologue |
+| `0x44` | `LIT8` — 1-byte unsigned operand |
+| `0x45` | `LIT8;EXIT` |
+| `0x46`–`0x5C` | folded `primitive;EXIT`, in the fold-set order (23 used) |
+| `0x5D`–`0x60` | free |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
-| `0x7E` | `ESC` + a selector byte: one of the 32 OS/libc primitives |
+| `0x7E` | `ESC` + a selector byte: one of the 30 OS/libc primitives |
 | `0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two- or three-byte call |
 
-Two things moved and are worth knowing about. The specialised band was
-at `0x60`; a 69th primitive pushed the folded band onto it, so the last
-folded opcode and `lit0` became the same byte, and the whole band moved
-up one. `ESC` was `0x7D`.
+Everything from `LIT32` to the end of the folded band is `NPRIM + k`,
+so it moves with the primitive count: it sat at `0x43`–`0x5E` with 67
+primitives. The specialised band, `LIT64` and `ESC` do not move.
 
-Free: `0x5F`, `0x60`, `0x7F`, plus the 32 vacated at `0x23`–`0x42`.
+Free: `0x5D`–`0x60` and `0x7F`, plus the 30 vacated at `0x23`–`0x40`.
 The vacated ones are NOT usable by a new primitive — primitives are
-numbered by position from 0, so a 68th would land at `0x23` and push
-everything above it up. They are reachable only by something numbered
-explicitly, which is why the folded band's headroom is the two at
-`0x5F`–`0x60` and not thirty-four.
+numbered by position from 0, so a 66th would land at the end of the
+list and push `LIT32` and everything after it up by one. They are
+reachable only by something numbered explicitly. So the headroom is
+the four at `0x5D`–`0x60`: four more primitives before the folded
+band reaches the specialised one. `cross.4` refuses to build past that.
 
-The numbers above are what `kernel.4` and `tools/sod16.py` produce
-today, and they will move again the moment a primitive is added or
-`--fold-set` changes. To print the current map rather than trust this
-table, derive it the way the tools do: 35 direct primitives, then
-`len(prims)+0..4`, then `len(prims)+5` for the folded band.
-
-The escaped band is what keeps that from being tight. The 32 OS/libc
-primitives — `BYE`, the file words, `FORK`, `EXECVE` and the rest — are
-3.2% of static sites and 0.006% of dispatches, so putting them behind
-`ESC` costs a byte each where it does not matter and frees 32 opcodes
-where it does. They are **contiguous at the end** of `kernel.4`'s list,
-which is what lets the engine compute the partition instead of carrying
-a table: selector *t* is the primitive at `NDIRECT + t`.
-
-`--no-escape` builds the unescaped numbering, where all 67 primitives
-are direct at `0x00`–`0x42`; an engine built without the band refuses
-such an image rather than misreading it.
+The escaped band is what keeps that from being tight. The 30 OS/libc
+primitives — `BYE`, the file and process words, `READ`, `WRITE` — are
+a few percent of static sites and a negligible share of dispatches, so
+putting them behind `ESC` costs a byte each where it does not matter
+and frees opcodes where it does. They are **contiguous at the end** of
+`kernel.4`'s list, which is what lets the engine compute the partition
+instead of carrying a table: selector *t* is the primitive at
+`NDIRECT + t`.
 
 The primitive numbering is not a CV8 invention: it is the order words
 appear as `PRIMITIVE` lines in `kernel.4`, the same numbering the cell

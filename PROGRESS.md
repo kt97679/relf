@@ -240,6 +240,7 @@ do not trust the absence of a line below.
 - **237-242** — the relf.c retirement, prepared but not done
 - **243** — +LOOP fixed; CV8 hosts itself and relf.c is retired
 - **244** — byte-granular headers in the product
+- **245** — READ and WRITE; the file words move into Forth; five old bugs
 
 ### Not tied to an iteration
 
@@ -14731,3 +14732,98 @@ now moves each image aside and fails if one is not produced. A
 comparison needs two artifacts that were both actually made.
 
 tests/verify: everything unchanged except the two sizes.
+
+## Iteration 245: READ and WRITE; the file words move into Forth
+
+**The layering.** Two primitives, `READ` and `WRITE`: one read(2) or
+write(2) each, the count or a negative errno. `READ-FILE`,
+`WRITE-FILE`, `READ-LINE` and `WRITE-LINE` stopped being primitives,
+and the engine's four-slot read-ahead pool went with them - 65
+primitives, 30 escaped. In `kernel.4`:
+
+- `READ-SOME` is one read, retried on `EINTR`. `KEY` reads one byte
+  through it; `ACCEPT` was already on `KEY`.
+- `READ-FILE` and `WRITE-FILE` loop over short counts. `READ-FILE` now
+  keeps the count read before an error, which `full_read` discarded.
+- `READ-LINE` never reads ahead of what it returns. On a descriptor
+  that can seek it takes `FILE-POSITION`, reads a block, finds the
+  newline with `SCAN`, and repositions to just past it. Anything else is
+  read a byte at a time (`RL-BYTES`), because a byte taken from a pipe
+  or terminal is taken from whatever runs next. The pool achieved the
+  same with a table, an LRU and seek-back on eviction; this has no
+  state, so nothing else needs to know a read happened.
+- `TYPE` keeps the engine's 4 KB output buffer, deliberately: per-call
+  writes were the 32,357-syscall problem of the hashed-wordlist work.
+  `READ`, `WRITE`, `FORK`, `EXECVE`, `SYSTEM` and exit flush it, so
+  output order is unchanged.
+
+**The cost, measured** (median of 7, same sources):
+
+                     old    new
+    cross-compile    16 ms  22 ms
+    shell build      48 ms  61 ms
+
+Three syscalls a line plus a Forth scan, against a 4 KB block in C.
+Running scripts - `tests/bench-vm`, both widths - showed no difference
+outside noise. A one-file read cache in Forth would recover the build
+time if it ever matters; it was not worth the state today.
+
+**Five old bugs, found by adopting more of the standard file tests.**
+`tests/ext/filetest.fth` stopped at the first section needing
+`/STRING`, so `READ-LINE`, `READ-FILE`, `REPOSITION-FILE` and
+`DELETE-FILE` - the words this change rewrote - had almost no standard
+coverage. `tests/ext/filetest2.fth` adds four upstream sections, with
+`S=` and `/STRING` as local scaffolding. Against the OLD system it
+failed three tests and then segfaulted; the new one failed nine. None
+of the nine were in the new code:
+
+1. **`DELETE-FILE` segfaulted on success.** The handler overwrote DS1
+   with unlink()'s result and then used DS1 as the address at which to
+   restore the byte it had borrowed for a NUL. No test called it. The
+   crash also discarded the engine's output buffer, so the old run
+   showed only the failures printed before it - which is how bug 2
+   stayed hidden in that run.
+2. **`CREATE-FILE` made every file write-only**: it was `1 AND
+   OPEN-FILE`, masking R/W down to W/O. The engine has two new modes,
+   read-write create, and `CREATE-FILE` maps R/O and R/W to them.
+   `OPEN-FILE` now refuses a mode outside the table instead of indexing
+   past it.
+3. **`PARSE` skipped leading delimiters**, as SOD32's does, which the
+   standard reserves for `WORD`. `S" "` took its closing quote for a
+   leading delimiter and swallowed the rest of the line as the string,
+   so two `WRITE-LINE` tests never ran and the reads after them failed.
+   `PARSE` is now standard; `WORD` skips first and then parses; `S"`,
+   `."` and `ABORT"` parse with `PARSE` through a new `STRING,`.
+4. **Two CORE tests had never run.** `tester.fr` has a multi-line `(`
+   comment whose closing line is a lone `)`. The old `PARSE` skipped
+   that `)` as a leading delimiter and the comment ran on over the two
+   `*/MOD` overflow tests after it. They run now, and pass: CORE goes
+   from 2,127 OK markers to 2,129.
+5. **`shell.4` depended on bug 3**: a comment written `( ) )`, meant to
+   contain a `)`. In a standard system that is an empty comment and an
+   undefined word. The shell build broke on it; it is a backslash
+   comment now.
+
+The shell's breakage was found the hard way: a combined command hung
+the session until the tool limit, because the shell image had been
+saved half-built and booted into the interpreter waiting for input.
+Run the build and its smoke test as separate steps, each with a
+timeout.
+
+**Also.** The engine's folded-opcode table was still written as
+`[72 + k]` - correct for 67 primitives only - and is now `[NPRIM + 5 +
+k]`; with the old form, this change would have silently broken every
+folded opcode. `cross.4` gained `MAP-FITS?`, which refuses a kernel
+whose folded band would reach the fixed specialised band at 0x61 (four
+primitives of headroom today); checked by building with a larger fold
+count. `fatest1.txt` was a committed test artifact that the fuller
+tests rewrite and delete; it is untracked and ignored, along with
+`FATEST2.TXT`.
+
+**Still open:** `KEY` exits on `EAGAIN`, where it should wait. It can
+see the error now; waiting needs `fcntl` or `poll`, which belongs with
+`KEY?` (GOALS.md queue item 4).
+
+tests/verify: CORE 2,127 -> 2,129 markers; engine + shell image
+85,537 -> 86,009 (x86-64) and 75,437 -> 75,925 (i386); everything
+else unchanged.

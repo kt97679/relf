@@ -136,10 +136,6 @@ PRIMITIVE BYE  ( ---)
 
 PRIMITIVE OPEN-FILE
 PRIMITIVE CLOSE-FILE
-PRIMITIVE READ-LINE
-PRIMITIVE WRITE-LINE
-PRIMITIVE READ-FILE
-PRIMITIVE WRITE-FILE
 PRIMITIVE SYSTEM
 PRIMITIVE REPOSITION-FILE
 PRIMITIVE FILE-POSITION
@@ -175,6 +171,16 @@ PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
 PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )
 PRIMITIVE GETFSIZE  ( --- n )
 PRIMITIVE SETFSIZE  ( n --- ior )
+\ read(2) and write(2), once each: n is the count transferred, or a
+\ NEGATIVE errno. Everything that reads or writes a descriptor is
+\ Forth on top of these two - KEY, ACCEPT, READ-FILE, READ-LINE,
+\ WRITE-FILE, WRITE-LINE - so the policy about buffering and about
+\ which errors to retry is in one place, visible (Iteration 245). Both
+\ flush the engine's terminal output buffer first, which keeps a
+\ prompt ahead of the input it asks for and TYPE's output in order
+\ with every other write.
+PRIMITIVE READ      ( c-addr u fd --- n )
+PRIMITIVE WRITE     ( c-addr u fd --- n )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -666,9 +672,13 @@ VARIABLE DPL ( --- a-addr)
 
 
 : CREATE-FILE ( c-addr u mode --- fid ior)
-\ Create a new file with the name starting at c-addr with length u.
-\ Return the file-ID and the IO result. (ior=0 if success)
-  1 AND OPEN-FILE ;
+\ Create a new file with the name starting at c-addr with length u,
+\ truncating any that exists, and open it in the given mode. Return
+\ the file-ID and the IO result (ior=0 if success). W/O and A/O keep
+\ their own OPEN-FILE modes; R/O and R/W use the engine's read-write
+\ create modes, 8 and 9 (cv8.c's open_flags). Until Iteration 245 this
+\ masked every mode to W/O, and a file created R/W was write-only.
+  DUP 2 U< 0= OVER 6 U< AND IF 1 AND 8 + THEN OPEN-FILE ;
 
 \ : READ-LINE >R OVER R> READ-FILE >R OVER + SWAP 
 \ BEGIN WHILE REPEAT 
@@ -696,35 +706,136 @@ VARIABLE SRC  ( --- addr)
 VARIABLE #SRC ( --- addr)
 \ This variable holds the length of the current input source.
 
+: SCAN ( c-addr1 u1 c --- c-addr2 u2 )
+\ Find the first occurrence of character c in the string c-addr1 u1
+\ c-addr2 u2 is the remaining part of the string starting with that char.
+\ It is a zero-length string if c was not found.
+  BEGIN
+   OVER
+  WHILE
+   ROT DUP C@ >R OVER R> =
+   IF
+    ROT ROT DROP EXIT
+   THEN
+   1+ ROT ROT SWAP 1- SWAP
+  REPEAT DROP
+;
+
+: READ-SOME ( c-addr u fd --- n )
+\ One read(2), retried when a signal interrupted it (EINTR, 4): n bytes,
+\ 0 at end of file, or a negative errno.
+  BEGIN >R 2DUP R@ READ DUP -4 = WHILE DROP R> REPEAT
+  R> DROP >R 2DROP R> ;
+
+: READ-FILE ( c-addr u1 fid --- u2 ior )
+\ Read u1 characters, fewer only at end of file. read(2) returns less
+\ than asked for on a pipe or a terminal, so this loops. ior is 0 or a
+\ negative errno.
+  >R 0 >R                                ( c-addr u1  R: fid got )
+  BEGIN DUP WHILE
+    2DUP R> R@ SWAP >R READ-SOME         ( c-addr u1 n )
+    DUP 0< IF >R 2DROP R> R> SWAP R> DROP EXIT THEN
+    DUP 0= IF DROP 2DROP R> 0 R> DROP EXIT THEN
+    R> OVER + >R
+    ROT OVER + ROT ROT -
+  REPEAT
+  2DROP R> 0 R> DROP ;
+
+: WRITE-FILE ( c-addr u fid --- ior )
+\ Write all u characters, looping over short writes. ior is 0, a
+\ negative errno, or -1 if write(2) made no progress.
+  >R
+  BEGIN DUP WHILE
+    2DUP R@ WRITE                        ( c-addr u n )
+    DUP -4 = IF DROP ELSE
+      DUP 0 > 0= IF >R 2DROP R> DUP 0= + R> DROP EXIT THEN
+      ROT OVER + ROT ROT -
+    THEN
+  REPEAT
+  2DROP R> DROP 0 ;
+
+: WRITE-LINE ( c-addr u fid --- ior )
+\ Write the string and a newline. The newline is the 10 on the stack,
+\ written from where SP@ says it is, as EMIT does.
+  DUP >R WRITE-FILE ?DUP IF R> DROP EXIT THEN
+  10 SP@ 1 R> WRITE-FILE SWAP DROP ;
+
+: RL-END ( c-addr p flag ior --- u2 flag ior )
+\ READ-LINE's result from its end pointer p. A CR just before the
+\ newline is part of the terminator: CRLF files read as plain lines.
+  >R >R OVER -
+  DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN
+  SWAP DROP R> R> ;
+
+: RL-BYTES ( c-addr u1 fid --- u2 flag ior )
+\ READ-LINE a byte at a time, for a descriptor that cannot seek: a
+\ byte read past the newline could not be given back, and a pipe or a
+\ terminal is shared with whatever runs next.
+  >R OVER + OVER                         ( c-addr end p  R: fid )
+  BEGIN 2DUP - WHILE
+    DUP 1 R@ READ-SOME                   ( c-addr end p n )
+    DUP 1 = IF
+      DROP DUP C@ 10 = IF SWAP DROP -1 0 R> DROP RL-END EXIT THEN
+      1+
+    ELSE
+      \ 0 is end of file, below 0 an error; the flag says whether this
+      \ line got any characters before it.
+      >R SWAP DROP 2DUP - 0= 0= R> R> DROP
+      DUP 0< 0= IF DROP 0 THEN
+      RL-END EXIT
+    THEN
+  REPEAT
+  SWAP DROP -1 0 R> DROP RL-END ;
+
+: READ-LINE ( c-addr u1 fid --- u2 flag ior )
+\ Read a line of at most u1 characters; the newline ends it and is not
+\ stored. flag is false only at end of file.
+\
+\ No buffer. A descriptor that can seek is read a block at a time, and
+\ whatever was read past the newline is given back by seeking to just
+\ after it - so the file offset is always exactly where the reader has
+\ consumed to, and nothing else needs to know a read happened. That is
+\ what the engine's read-ahead pool achieved with a table, an LRU and
+\ seek-back on eviction (until Iteration 245). Anything else is read a
+\ byte at a time: see RL-BYTES.
+  OVER 0= IF 2DROP DROP 0 -1 0 EXIT THEN   \ zero characters: not EOF
+  DUP FILE-POSITION IF 2DROP RL-BYTES EXIT THEN
+  >R >R >R                               ( c-addr u1  R: hi lo fid )
+  OVER SWAP R@ READ-FILE                 ( c-addr n ior )
+  ?DUP IF >R DROP DUP -1 R> R> DROP R> R> 2DROP RL-END EXIT THEN
+  DUP 0= IF DROP DUP 0 0 R> DROP R> R> 2DROP RL-END EXIT THEN
+  2DUP 10 SCAN SWAP DROP                 ( c-addr n rest )
+  DUP >R - R>                            ( c-addr i rest )
+  1 > IF                                 \ read past the newline: give it back
+    R> R> R>                             ( c-addr i fid lo hi )
+    3 PICK 1+ 0 D+ ROT REPOSITION-FILE   ( c-addr i ior )
+  ELSE
+    R> R> R> 2DROP DROP 0                ( c-addr i 0 )
+  THEN
+  >R OVER + -1 R> RL-END ;
+
 : KEY ( --- c )
 \ Receive one character from the terminal.
 \
 \ One byte, unbuffered, straight off descriptor 0 - which is what
 \ gforth, SPF and lbForth all do, and what dash does for its `read`
-\ builtin. SPF's is character for character this:
-\
-\     : KEY-TERMIOS   0 SP@ 1 H-STDIN READ-FILE DROP DROP ;
-\
-\ No buffer, and no buffer is possible: descriptor 0 is INHERITED,
-\ shared with every child, and a byte read ahead is a byte taken from
-\ whatever runs next. The engine used to hold 4096 bytes of it, and
-\ `read x; cat` swallowed the whole pipe - see tests/shell/run-read.
+\ builtin. No buffer, and no buffer is possible: descriptor 0 is
+\ INHERITED, shared with every child, and a byte read ahead is a byte
+\ taken from whatever runs next. The engine used to hold 4096 bytes of
+\ it, and `read x; cat` swallowed the whole pipe - see
+\ tests/shell/run-read.
 \
 \ Reading into the cell the 0 just pushed, via SP@, for the same
-\ reason EMIT does: the character is already in memory, so no
-\ variable is needed to hold it.
-\ KNOWN SHORTCUT, see GOALS.md: this tests the COUNT and drops the
-\ ior, so a non-blocking descriptor with no data yet - which also
-\ returns a count of 0 - makes KEY exit. Not reachable until something
-\ sets O_NONBLOCK on descriptor 0, which is what implementing KEY?
-\ will do. Fixing it properly needs an fcntl primitive.
+\ reason EMIT does: the character is already in memory.
 \
-\ EOF exits, which is not decoration: the old primitive did it in C,
-\ and dropping it here reintroduced GOALS.md's Bug 3 within minutes -
-\ a shell reading a script off stdin spun on read(0,"",1)=0 forever,
-\ 2.7 million times before the test timed out.
-   0 SP@ 1 0 READ-FILE DROP
-   0= IF BYE THEN ;
+\ End of input exits, which is not decoration: without it a shell
+\ reading a script off stdin spun on read(0,"",1)=0 forever (GOALS.md's
+\ Bug 3). A signal is retried (READ-SOME). KNOWN SHORTCUT, see
+\ GOALS.md: every other error exits too, including EAGAIN on a
+\ non-blocking descriptor, where KEY should wait. Nothing sets
+\ O_NONBLOCK on descriptor 0 yet; KEY? will need the fix.
+   0 SP@ 1 0 READ-SOME
+   1 = 0= IF BYE THEN ;
 
 : ACCEPT ( c-addr n1 --- n2 )
 \ Read a line from the terminal into a buffer at c-addr of length n1;
@@ -788,21 +899,6 @@ VARIABLE #SRC ( --- addr)
   THEN
 ;
 
-: SCAN ( c-addr1 u1 c --- c-addr2 u2 )
-\ Find the first occurrence of character c in the string c-addr1 u1
-\ c-addr2 u2 is the remaining part of the string starting with that char.
-\ It is a zero-length string if c was not found.
-  BEGIN
-   OVER
-  WHILE
-   ROT DUP C@ >R OVER R> =
-   IF
-    ROT ROT DROP EXIT
-   THEN
-   1+ ROT ROT SWAP 1- SWAP
-  REPEAT DROP
-;
-
 : SKIP ( c-addr1 u1 c --- c-addr2 u2 )
 \ Find the first character not equal to c in the string c-addr1 u1
 \ c-addr2 u2 is the remaining part of the string starting with the
@@ -818,13 +914,16 @@ VARIABLE #SRC ( --- addr)
   REPEAT DROP
 ;
 
-: PARSE ( c --- addr len )
-\ Find a character sequence in the current source that is delimited by
-\ character c. Adjust >IN to 1 past the end delimiter character.
-  >R SOURCE >IN @ - SWAP >IN @ + R> OVER >R >R SWAP
-  R@ SKIP OVER R> SWAP >R SCAN IF 1 >IN +! THEN
-  DUP R@ - R> SWAP
-  ROT R> - >IN +! ;
+: PARSE ( c --- c-addr u )
+\ Parse ccc delimited by c from the input source and step past the
+\ delimiter. Leading delimiters are NOT skipped - that is WORD's job,
+\ and the standard's. Until Iteration 245 this skipped them, as SOD32's
+\ does, so S" " took the closing quote for a leading delimiter and
+\ swallowed the rest of the line as the string.
+  >R SOURCE SWAP >IN @ + SWAP >IN @ -   ( a n )
+  OVER SWAP R> SCAN                     ( a a2 n2 )
+  IF 1 >IN +! THEN
+  OVER - DUP >IN +! ;
 
 : PLACE ( addr len c-addr --- )
 \ Place the string starting at addr with length len at c-addr as
@@ -832,11 +931,11 @@ VARIABLE #SRC ( --- addr)
   2DUP C! CHAR+ SWAP CMOVE ;
 
 : WORD ( c --- addr )
-\ Parse a character sequence delimited by character c and return the
-\ address of a counted string that is a copy of it. The counted
-\ string is actually placed at HERE. The character after the counted
-\ string is set to a space.
-  PARSE HERE PLACE HERE BL HERE COUNT + C! ;
+\ Skip leading c, parse to the next c, and leave the result as a
+\ counted string at HERE, followed by a blank.
+  >R SOURCE SWAP >IN @ + SWAP >IN @ -   ( a n )
+  R@ SKIP DROP SOURCE DROP - >IN !
+  R> PARSE HERE PLACE HERE BL HERE COUNT + C! ;
 
 \ PART 8: INTERPRETER HELPER WORDS
 
@@ -1435,22 +1534,26 @@ VARIABLE POCKET ( --- a-addr )
 \ Compile a call to the current (not yet finished) definition.
   LAST @ NAME> CALL, ; IMMEDIATE
 
+: STRING, ( c-addr u --- )
+\ Compile the string as a counted string, then align.
+  DUP C, HERE OVER ALLOT SWAP MOVE ALIGN ;
+
 : ."  ( "ccc<quote>" --- )
 \ Parse a string delimited by " and compile the following runtime semantics.
 \ Runtime: type that string.
-   POSTPONE (.") 34 WORD C@ 1+ ALLOT ALIGN ; IMMEDIATE
+   POSTPONE (.") 34 PARSE STRING, ; IMMEDIATE
 
 
 : S"  ( "ccc<quote>" --- )
 \ Parse a string delimited by " and compile the following runtime semantics.
 \ Runtime: ( --- c-addr u) Return start address and length of that string.
-  STATE @ IF POSTPONE (S") 34 WORD C@ 1+ ALLOT ALIGN
-             ELSE 34 WORD COUNT POCKET PLACE POCKET COUNT THEN ; IMMEDIATE
+  STATE @ IF POSTPONE (S") 34 PARSE STRING,
+             ELSE 34 PARSE POCKET PLACE POCKET COUNT THEN ; IMMEDIATE
 
 : ABORT"  ( "ccc<quote>" --- )
 \ Parse a string delimited by " and compile the following runtime semantics.
 \ Runtime: ( f --- ) if f is nonzero, print the string and abort program.
-  POSTPONE (ABORT") 34 WORD C@ 1+ ALLOT ALIGN ; IMMEDIATE
+  POSTPONE (ABORT") 34 PARSE STRING, ; IMMEDIATE
 
 : ABORT ( --- )
 \ Abort unconditionally without a message.

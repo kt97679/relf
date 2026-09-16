@@ -4663,7 +4663,8 @@ VARIABLE INPUT-EOF?
   DUP 60 = IF DROP -1 EXIT THEN    ( < )
   DUP 62 = IF DROP -1 EXIT THEN    ( > )
   DUP 40 = IF DROP -1 EXIT THEN    ( ( )
-  DUP 41 = IF DROP -1 EXIT THEN    ( ) )
+  DUP 41 = IF DROP -1 EXIT THEN    \ )  - a backslash comment: "( ) )"
+                                   \ relied on PARSE skipping a leading )
   DROP 0 ;
 
 : NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, >, ; - the four

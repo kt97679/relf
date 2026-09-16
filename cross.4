@@ -691,6 +691,14 @@ THERE   T' DP             >BODY-T !-T
   16384 < 0= ABORT" cross: kernel runtime words beyond near-call reach" ;
 T' (POSTPONE) NEAR?   T' (LEAVE) NEAR?   T' (+LOOP) NEAR?
 
+\ The folded band is numbered from the primitive count and grows up
+\ towards the fixed specialised band at 0x61 (97). Each primitive added
+\ moves it up one; past the headroom the two would share opcodes and the
+\ engine would decode one as the other, silently.
+: MAP-FITS? ( --- )
+  FOLD-BASE #FOLD + 97 > ABORT" cross: folded band reaches the specialised opcodes" ;
+MAP-FITS?
+
 SAVE-IMAGE kernel.img \ Save the newly constructed Forth system to disk.
 
 BYE

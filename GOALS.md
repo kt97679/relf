@@ -147,20 +147,25 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,094    kernel-shell.img     58,657
-    32-bit   kernel32.img   7,486    kernel32-shell.img   53,461
+    64-bit   kernel.img     8,518    kernel-shell.img     59,169
+    32-bit   kernel32.img   7,918    kernel32-shell.img   53,953
 
-**Sixty-seven primitives**, escaped band on: the 32 OS/libc primitives
+**Sixty-five primitives**, escaped band on: the 30 OS/libc primitives
 sit behind ESC + a selector, declared after `ESCAPED` in `kernel.4`,
 which declares every primitive before its first definition because
 the synthetic opcodes are numbered from the total.
 
-**Terminal I/O is two syscalls.** `TYPE` is write(2). `READ-FILE` is
-read(2), unbuffered, for any descriptor. `KEY` and `ACCEPT` are Forth
-on top. Descriptors this system OPENS get a buffer from a four-slot
-LRU pool that seeks back on eviction; descriptors it INHERITS - 0, 1,
-2 - never do, because bytes read ahead on a shared descriptor are
-bytes taken from a child.
+**Descriptor I/O is two primitives** (Iteration 245): `READ` and
+`WRITE`, one read(2) or write(2) each, returning a count or a negative
+errno. Everything else is Forth on top, in `kernel.4`: `KEY` (one
+byte, retrying `EINTR`), `ACCEPT` on `KEY`, `READ-FILE` and
+`WRITE-FILE` (looping over short counts), `WRITE-LINE`, and
+`READ-LINE`. Nothing reads ahead: `READ-LINE` reads a block from a
+descriptor that can seek and seeks back over what follows the
+newline, and reads anything else a byte at a time, so a pipe or
+terminal shared with a child never loses a byte. The one buffer left
+is the engine's for `TYPE`, flushed by every primitive that reads,
+writes, forks, execs or exits.
 
 **Single branch `master`.**
 
@@ -1262,9 +1267,11 @@ once. Both are done; the rest keep their order.
    `attic/tools/lab/vm-lab.c`.
 
 4. **`KEY?` plus a termios/fcntl primitive.** The interactive shell
-   work, and the fix for the non-blocking `KEY` hazard below. Adds a
-   primitive, so it moves the opcode map: one dispatch table now,
-   plus `NPRIM`.
+   work, and the rest of the non-blocking `KEY` hazard below: the I/O
+   layering it needed is done (Iteration 245), so `KEY` can already
+   see `EAGAIN` and needs only a way to wait. Adds a primitive, so it
+   moves the opcode map - `NPRIM`, `NESC` and the dispatch table in
+   `cv8.c` - and uses one of the four free folded-band slots.
 
    If the interactive shell matters more to you than engine
    minimalism, move this ahead of 2. It costs a second round of
@@ -1315,14 +1322,11 @@ than remembered.
   would have cost 2.4x.
 
 - **`KEY` exits the shell if descriptor 0 is non-blocking and idle.**
-  `KEY` is `0 SP@ 1 0 READ-FILE DROP  0= IF BYE THEN`. It tests the
-  COUNT and throws away the `ior`, and `READ-FILE` collapses two
-  different outcomes into the same count:
-
-  | situation | `read()` | `u2` | `ior` | `KEY` does |
-  |---|---|---|---|---|
-  | genuine EOF | `0` | 0 | `0` | `BYE` - correct |
-  | non-blocking, no data yet | `-1` EAGAIN | 0 | `-200` | `BYE` - **wrong** |
+  Since Iteration 245 `KEY` reads through `READ-SOME`, which sees the
+  real errno: end of input (0) exits, as it must; `EINTR` is retried;
+  every other error still exits - including `EAGAIN`, which a
+  non-blocking descriptor returns when no key has been pressed yet,
+  and where ANS `KEY` must wait instead.
 
   Not reachable today: nothing sets `O_NONBLOCK` on descriptor 0. It
   becomes reachable the moment `KEY?` is implemented the way its
@@ -1330,19 +1334,16 @@ than remembered.
   gforth probes the terminal - and the symptom will be the shell
   exiting at random while someone is typing.
 
-  The fix needs `fcntl`, which this system does not have as a
-  primitive. `KEY` should either clear `O_NONBLOCK` around its read, as
-  SOD32's `getch` does, or branch on the `ior` rather than the count.
-  Branching on `ior` alone means busy-waiting, since ANS `KEY` must
-  block - which is why this is logged rather than patched.
+  The fix needs a way to wait, which this system does not have as a
+  primitive: `fcntl` to clear `O_NONBLOCK` around the read, as SOD32's
+  `getch` does, or `poll`. Retrying `EAGAIN` alone would be a busy
+  loop. Errno values are the host's; `READ-SOME` relies only on
+  `EINTR` being 4, which it is on Linux and the BSDs.
 
-  Two related faults in the same path, to fix together:
-  `L_readfile` maps EVERY error to `-200`, so `EAGAIN`, `EINTR` and a
-  real I/O error are one value and no caller can tell them apart -
-  `EINTR` in particular must be retried, not reported. And `full_read`
-  returns `-1` even when it has already read some bytes, discarding
-  them; harmless for `KEY` at one byte, wrong for a larger
-  `READ-FILE` on a non-blocking descriptor.
+  The two related faults logged here before are fixed by the same
+  change: the file words now return the real errno rather than -200
+  for everything, and `READ-FILE` keeps the count of what it read
+  before an error instead of discarding it.
 
 ## Integrated from the article repository
 

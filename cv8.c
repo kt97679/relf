@@ -53,6 +53,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <errno.h>
 
 extern char **environ;
 
@@ -74,7 +75,7 @@ static char **g_argv;
  *  long as the count stayed 68: adding one primitive put DODOES at 71
  *  and left [71] = &&L_lit64t overwriting it, with no build error and a
  *  return stack overflow at run time.  */
-#define NPRIM 67
+#define NPRIM 65
 /*  Call and slot operands name a BYTE offset from the image base: the
  *  scale is 0, because dictionary headers are byte-granular and bodies
  *  are not aligned (Iteration 243). It was 3 or 2 - the cell shift -
@@ -86,7 +87,7 @@ static char **g_argv;
  *  kernel.4's PRIMITIVE list. NESC is fixed by that list - sod16.py's
  *  ESC_PRIMS_ALL names the same 32 words - and NDIRECT is whatever is
  *  left below them.  */
-#define NESC    32
+#define NESC    30
 #define NDIRECT (NPRIM - NESC)
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -356,7 +357,8 @@ static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
  *  virtual machine I/O primitives' shared state
  */
 
-static const int open_flags[8] = {
+#define NOPENMODES 10
+static const int open_flags[NOPENMODES] = {
     O_WRONLY | O_CREAT | O_TRUNC,  /* w  */
     O_WRONLY | O_CREAT | O_TRUNC,  /* wb : same, no text/binary distinction */
     O_RDONLY,                      /* r  */
@@ -368,7 +370,12 @@ static const int open_flags[8] = {
                                        the original six modes create a
                                        missing file *without* truncating
                                        it, which append redirection needs */
-    O_WRONLY | O_CREAT | O_APPEND  /* ab : same */
+    O_WRONLY | O_CREAT | O_APPEND, /* ab : same */
+    /*  CREATE-FILE's readable modes: kernel.4 maps R/O and R/W here.
+     *  Until Iteration 245 it masked every mode down to w/wb, so a file
+     *  created R/W could not be read back.  */
+    O_RDWR | O_CREAT | O_TRUNC,    /* w+  */
+    O_RDWR | O_CREAT | O_TRUNC     /* w+b */
 };
 
 /*
@@ -535,106 +542,16 @@ static UNS8 t_obuf[TIOBUF];
 static int  t_olen = 0;
 
 
-/*
- *  Buffered READ-LINE for FILES, the same problem as KEY and EMIT and a
- *  larger one. Cross-compiling the kernel reads extend.4, cross.4 and
- *  kernel.4 - about 62 KB of source - and READ-LINE was doing
- *  read(fd, &c, 1) for every byte of it: 67,316 syscalls for one build.
- *
- *  The OS file offset has to stay honest, because REPOSITION-FILE,
- *  FILE-POSITION and READ-FILE all depend on it and none of them know
- *  about this buffer. So any of those drops the buffer first, seeking
- *  back over whatever was read ahead and not yet consumed.
- */
-/*  These MUST NOT be inlined into virtual_machine(). They are cold I/O
- *  paths with loops and static state; inlined, they wreck register
- *  allocation across the whole dispatch function and the VM registers
- *  stop living in registers. Measured: the specialised CV8 engine went
- *  from 9.5 ms to 17.6 ms on a workload that reads no files at all,
- *  same image, same input - an 85% loss from adding a function nothing
- *  in that run ever called. Iteration 189a found the same class of
- *  problem from the other direction, when the VM registers were
- *  file-scope statics.  */
 #define NOINLINE_IO __attribute__((noinline))
-#define FBUFN  4
-#define FBUFSZ 4096
-
-/*  A small POOL of read buffers, not a table indexed by descriptor.
- *
- *  A process may hold 1024 descriptors by default and far more if the
- *  limit is raised, so anything sized by fd number is unbounded. This
- *  is sized by CONCURRENCY instead - how many files are being read at
- *  once - which is 2 or 3 in practice, INCLUDED nested inside
- *  INCLUDED. Memory is FBUFN * FBUFSZ whatever the descriptors are.
- *
- *  Eviction is what makes an arbitrary size safe: a slot gives back
- *  its unread bytes by seeking the descriptor backwards, so a file can
- *  lose its buffer at any moment and be left exactly where the reader
- *  had consumed to. Nothing above this notices. That is the same
- *  discipline t_fdrop applies on close, generalised.
- *
- *  Only SEEKABLE descriptors get a slot. A pipe cannot be seeked back,
- *  so read-ahead on one is theft - and pipes are inherited rather than
- *  opened by this system, which is the same distinction again.
- *
- *  Measured, reading a 7192-line source line by line:
- *      1 file            70 read()       0 lseek()    0.6 ms
- *      2 interleaved    140 read()       0 lseek()    1.1 ms
- *      4 interleaved    280 read()       0 lseek()    2.1 ms
- *      5 interleaved 35,965 read()  35,955 lseek()   25.6 ms
- *  Past the pool size it degrades to re-reading a block per line -
- *  slower, never wrong. The previous design was a fixed 8-entry table
- *  scanned linearly, which failed silently at the 9th file and used
- *  fd 0 as its "slot unused" marker, so descriptor 0 could never own
- *  a slot at all.  */
-static struct fbuf { int fd, len, pos; unsigned long age; UNS8 b[FBUFSZ]; }
-    t_fb[FBUFN];
-static unsigned long t_clk;
-static int t_fbinit;
-
-NOINLINE_IO static void t_fevict(int i) {
-    if (t_fb[i].fd >= 0 && t_fb[i].len > t_fb[i].pos)
-        lseek(t_fb[i].fd, -(off_t)(t_fb[i].len - t_fb[i].pos), SEEK_CUR);
-    t_fb[i].fd = -1; t_fb[i].len = t_fb[i].pos = 0;
+/*  One read(2) or write(2): the count, or -errno.  */
+NOINLINE_IO static long t_read(int fd, UNS64 a, UNS64 u) {
+    long n = read(fd, (void *)(uintptr_t)a, (size_t)u);
+    return n < 0 ? -(long)errno : n;
 }
 
-NOINLINE_IO static struct fbuf *t_fslot(int fd) {
-    int i, lru = 0;
-    if (!t_fbinit) { for (i = 0; i < FBUFN; i++) t_fb[i].fd = -1; t_fbinit = 1; }
-    for (i = 0; i < FBUFN; i++)
-        if (t_fb[i].fd == fd) { t_fb[i].age = ++t_clk; return &t_fb[i]; }
-    /*  Not buffered yet. A descriptor that cannot seek must not be
-     *  buffered, because eviction could not give the bytes back.  */
-    if (lseek(fd, 0, SEEK_CUR) < 0) return 0;
-    for (i = 0; i < FBUFN; i++) {
-        if (t_fb[i].fd < 0) { lru = i; goto take; }
-        if (t_fb[i].age < t_fb[lru].age) lru = i;
-    }
-    t_fevict(lru);
-take:
-    t_fb[lru].fd = fd; t_fb[lru].len = t_fb[lru].pos = 0;
-    t_fb[lru].age = ++t_clk;
-    return &t_fb[lru];
-}
-
-NOINLINE_IO static void t_fdrop(int fd) {
-    int i;
-    for (i = 0; i < FBUFN; i++) if (t_fb[i].fd == fd) t_fevict(i);
-}
-
-/*  Next byte of fd: >=0 a character, -1 end of file, -2 error.  */
-NOINLINE_IO static int t_fgetc(int fd) {
-    struct fbuf *f = t_fslot(fd);
-    long n;
-    if (!f) { UNS8 c; n = read(fd, &c, 1);
-              return n == 1 ? (int)c : (n == 0 ? -1 : -2); }
-    if (f->pos >= f->len) {
-        n = read(fd, f->b, FBUFSZ);
-        if (n < 0) return -2;
-        if (n == 0) return -1;
-        f->len = (int)n; f->pos = 0;
-    }
-    return f->b[f->pos++];
+NOINLINE_IO static long t_write(int fd, UNS64 a, UNS64 u) {
+    long n = write(fd, (const void *)(uintptr_t)a, (size_t)u);
+    return n < 0 ? -(long)errno : n;
 }
 
 NOINLINE_IO static void t_flush(void) {
@@ -645,29 +562,6 @@ NOINLINE_IO static void t_put(UNS8 c) {
     if (t_olen == TIOBUF) t_flush();
     t_obuf[t_olen++] = c;
 }
-
-NOINLINE_IO static int t_getc(void) {
-    /*  One byte, unbuffered. Descriptor 0 is INHERITED and shared with
-     *  children, so bytes read ahead are bytes taken from them - the
-     *  4096-byte buffer that used to be here made `read x; cat` swallow
-     *  a whole pipe. bash, dash, gforth, SPF and lbForth all read fd 0
-     *  a byte at a time for exactly this reason.
-     *
-     *  Descriptors this system OPENS are a different matter: it owns
-     *  them, nobody else is reading, and t_fgetc buffers them.  */
-    UNS8 c;
-    t_flush();                         /* a prompt appears before the wait */
-    if (read(0, &c, 1) != 1) return -1;
-    return c;
-}
-
-/*  Is another byte already in the standard-input buffer? READ-STDIN uses
- *  this to return what is available rather than block until it has
- *  filled the caller's buffer - read(2) semantics. It deliberately does
- *  NOT consult the file descriptor: a byte the OS has but we have not
- *  read yet is not "ready" here, and asking would cost a syscall per
- *  character. ANS's KEY? is the word for that question, and this system
- *  does not have it yet.  */
 
 static void virtual_machine(void) {
     VMREGS
@@ -696,13 +590,12 @@ static void virtual_machine(void) {
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
         &&L_dplus, &&L_type, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore, &&L_bye, &&L_openfile, &&L_closefile,
-        &&L_readline, &&L_writeline, &&L_readfile, &&L_writefile,
         &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
         &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
         &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
         &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize,
+        &&L_getfsize, &&L_setfsize, &&L_read, &&L_write,
         /*  LIT32 is not one of kernel.4's primitives. It is appended
          *  past the real ones so the table has no hole - `dispatch[255]`
          *  would have read past the end.  */
@@ -714,33 +607,33 @@ static void virtual_machine(void) {
         &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
         &&L_charp, &&L_onep, &&L_cellp, &&L_cells, &&L_onem, &&L_invert,
         &&L_count, &&L_aligned, &&L_addi, &&L_addix, &&L_eqi, &&L_eqix,
-[72 + 11] = &&LX_lit,
-[72 + 15] = &&LX_drop,
-[72 + 16] = &&LX_dup,
-[72 + 17] = &&LX_swap,
-[72 + 18] = &&LX_rot,
-[72 + 14] = &&LX_over,
-[72 + 6] = &&LX_cfetch,
-[72 + 3] = &&LX_fetch,
-[72 + 7] = &&LX_cstore,
-[72 + 2] = &&LX_store,
-[72 + 8] = &&LX_and,
-[72 + 9] = &&LX_or,
-[72 + 10] = &&LX_xor,
-[72 + 20] = &&LX_fromr,
-[72 + 19] = &&LX_tor,
-[72 + 21] = &&LX_rfetch,
-[72 + 1] = &&LX_eq,
-[72 + 13] = &&LX_ugt,
-[72 + 12] = &&LX_gt,
-[72 + 0] = &&LX_plus,
-[72 + 22] = &&LX_negate,
-[72 + 4] = &&LX_lshift,
-[72 + 5] = &&LX_rshift,
+[NPRIM + 5 + 11] = &&LX_lit,
+[NPRIM + 5 + 15] = &&LX_drop,
+[NPRIM + 5 + 16] = &&LX_dup,
+[NPRIM + 5 + 17] = &&LX_swap,
+[NPRIM + 5 + 18] = &&LX_rot,
+[NPRIM + 5 + 14] = &&LX_over,
+[NPRIM + 5 + 6] = &&LX_cfetch,
+[NPRIM + 5 + 3] = &&LX_fetch,
+[NPRIM + 5 + 7] = &&LX_cstore,
+[NPRIM + 5 + 2] = &&LX_store,
+[NPRIM + 5 + 8] = &&LX_and,
+[NPRIM + 5 + 9] = &&LX_or,
+[NPRIM + 5 + 10] = &&LX_xor,
+[NPRIM + 5 + 20] = &&LX_fromr,
+[NPRIM + 5 + 19] = &&LX_tor,
+[NPRIM + 5 + 21] = &&LX_rfetch,
+[NPRIM + 5 + 1] = &&LX_eq,
+[NPRIM + 5 + 13] = &&LX_ugt,
+[NPRIM + 5 + 12] = &&LX_gt,
+[NPRIM + 5 + 0] = &&LX_plus,
+[NPRIM + 5 + 22] = &&LX_negate,
+[NPRIM + 5 + 4] = &&LX_lshift,
+[NPRIM + 5 + 5] = &&LX_rshift,
     };
-    /*  CV8 renumbers the primitive band: the 36 non-escaped primitives
-     *  keep kernel.4's order compacted into 0..35, and the 32 escaped
-     *  ones are reached as ESC + index. dispatch[] is in kernel.4
+    /*  CV8 renumbers the primitive band: the NDIRECT non-escaped
+     *  primitives keep kernel.4's order in 0..NDIRECT-1, and the NESC
+     *  escaped ones are reached as ESC + index. dispatch[] is in kernel.4
      *  order, so both tables are derived from it here rather than
      *  written out twice.  */
     /*  The escaped primitives are CONTIGUOUS at the end of kernel.4's
@@ -898,11 +791,12 @@ L_dplus: SPILL();   /* d+      */
     FILLNEXT();
 
 L_type: SPILL(); { /* type    */ /* c-addr u --- */
-    /* TYPE and ACCEPT are the terminal primitives; EMIT and KEY are
-     * built on them in kernel.4. That is the reverse of the usual
-     * arrangement and it is deliberate: a primitive that moves a WHOLE
-     * STRING costs one dispatch where a per-character EMIT costs one
-     * per byte, and ACCEPT's editing loop leaves the image. */
+    /* TYPE is the terminal output primitive and EMIT is built on it
+     * in kernel.4: a primitive that moves a WHOLE STRING costs one
+     * dispatch where a per-character EMIT costs one per byte. Its
+     * output is buffered here (t_obuf) and flushed by every primitive
+     * that reads, writes, forks, execs or exits. Input has no such
+     * buffer: see KEY. */
     const UNS8 *p = (const UNS8 *)(uintptr_t)DS1;
     UNS64 u = DS0;
     for (UNS64 i = 0; i < u; i++) t_put(p[i]);
@@ -919,7 +813,8 @@ L_openfile: SPILL(); { /* c-addr u fam --- fid ior */
     int fd;
     t = BYTE(DS2 + DS1);
     BYTE(DS2 + DS1) = 0;
-    fd = open((char *)(uintptr_t)DS2, open_flags[DS0], 0644);
+    fd = DS0 < NOPENMODES
+        ? open((char *)(uintptr_t)DS2, open_flags[DS0], 0644) : -1;
     BYTE(DS2 + DS1) = t;
     DS2 = (UNS64)fd;
     DS1 = (fd >= 0) ? 0 : 200;
@@ -927,85 +822,9 @@ L_openfile: SPILL(); { /* c-addr u fam --- fid ior */
     FILLNEXT();
 }
 L_closefile: SPILL(); {/* fid --- ior */
-    t_fdrop((int)DS0);
-
     DS0 = (UNS64)close((int)DS0);
     FILLNEXT();
     }
-L_readline: SPILL(); { /* c-addr u1 fid --- u2 flag ior */
-    int fd = (int)DS0;
-    UNS64 addr = DS2, max = DS1, count = 0;
-    long n, err = 0, got_any = 0;
-    UNS8 c;
-
-    while (count < max) {
-        int ch = (fd == 0) ? t_getc() : t_fgetc(fd);
-        n = (ch == -2) ? -1 : (ch < 0 ? 0 : 1);
-        c = (UNS8)ch;
-        if (n < 0) { err = 1; break; }
-        if (n == 0) break;      /* EOF */
-        got_any = 1;
-        if (c == '\n') break;   /* line terminator, not stored */
-        BYTE(addr + count) = c;
-        count++;
-    }
-    /* Tolerate CRLF files: a trailing \r right before the \n we just
-     * stopped at is a line terminator too, not payload. */
-    if (count > 0 && BYTE(addr + count - 1) == '\r') count--;
-    DS2 = count;
-    /*  ANS: flag is false only at end of file. A request for ZERO
-     *  characters cannot have reached it - the file was never looked
-     *  at - so it reports true with a count of 0, which is what
-     *  filetest.fth's `BUF 0 FID1 @ READ-LINE` checks. */
-    DS1 = (got_any || max == 0) ? (UNS64)-1 : 0;
-    DS0 = err ? (UNS64)-200 : 0;
-    FILLNEXT();
-}
-L_writeline: SPILL(); { /* c-addr u fid --- ior */
-    t_flush();
-    int fd = (int)DS0;
-    UNS64 addr = DS2, len = DS1;
-    long n;
-
-    n = full_write(fd, (void*)(uintptr_t)addr, len);
-    if (n == (long)len) {
-        n = full_write(fd, "\n", 1);
-        DS2 = (n == 1) ? 0 : (UNS64)-200;
-    } else {
-        DS2 = (UNS64)-200;
-    }
-    dsp += 2 * CELL_BYTES;
-    FILLNEXT();
-}
-L_readfile: SPILL(); { /* c-addr u1 fid --- u2 ior */
-    t_fdrop((int)DS0);
-    int fd = (int)DS0;
-    UNS64 addr = DS2, maxlen = DS1;
-    long n;
-
-    n = full_read(fd, (void*)(uintptr_t)addr, maxlen);
-    if (n < 0) {
-        DS2 = 0;
-        DS1 = (UNS64)-200;
-    } else {
-        DS2 = (UNS64)n;
-        DS1 = 0;
-    }
-    dsp += CELL_BYTES;
-    FILLNEXT();
-}
-L_writefile: SPILL(); { /* c-addr u fid --- ior */
-    t_fdrop((int)DS0);
-    t_flush();
-    int fd = (int)DS0;
-    UNS64 addr = DS2, len = DS1;
-    long n;
-
-    n = full_write(fd, (void*)(uintptr_t)addr, len);
-    DS2 = (n == (long)len) ? 0 : (UNS64)-200;
-    dsp += 2 * CELL_BYTES;
-    FILLNEXT();
-}
 L_system: SPILL(); { t_flush(); /* c-addr u --- ior */
     UNS64 addr = DS1, len = DS0;
     UNS8 saved;
@@ -1039,7 +858,6 @@ L_system: SPILL(); { t_flush(); /* c-addr u --- ior */
 L_reposfile: SPILL(); { /* ud fid --- ior */
     /*  ANS: ( ud fileid -- ior ) - the offset is a DOUBLE, low cell
      *  under high cell. See L_filepos. */
-    t_fdrop((int)DS0);
     int fd = (int)DS0;
     unsigned long long off = (CELL_BYTES == 8)
         ? (unsigned long long)DS2
@@ -1054,7 +872,6 @@ L_filepos: SPILL(); { /* fid --- ud ior */
      *  then high cell. This returned a single cell until the Forth
      *  Standard file tests were adopted and said so; nothing in Forth
      *  called it, which is why it went unnoticed. */
-    t_fdrop((int)DS0);
     off_t p = lseek((int)DS0, 0, SEEK_CUR);
     dsp -= 2 * CELL_BYTES;
     if (p < 0) { DS2 = 0; DS1 = 0; DS0 = 200; }
@@ -1067,16 +884,21 @@ L_filepos: SPILL(); { /* fid --- ud ior */
     FILLNEXT();
     }
 L_delfile: SPILL(); { /* c-addr u --- ior */
+    /*  The byte past the name is borrowed for a NUL and put back. It
+     *  was put back AFTER DS1 had been overwritten with unlink()'s
+     *  result, so the write went to address 0 + u and DELETE-FILE
+     *  segfaulted on success (found in Iteration 245).  */
+    long r;
     t = BYTE(DS1 + DS0);
     BYTE(DS1 + DS0) = 0;
-    DS1 = (UNS64)unlink((char*)(uintptr_t)DS1);
+    r = unlink((char*)(uintptr_t)DS1);
     BYTE(DS1 + DS0) = t;
+    DS1 = (UNS64)(INT64)r;
     dsp += CELL_BYTES;
     FILLNEXT();
 }
 L_filesize: SPILL(); { /* fid --- ud ior */
     /*  ANS: ( fileid -- ud ior ), a DOUBLE - see L_filepos. */
-    t_fdrop((int)DS0);
     int fd = (int)DS0;
     off_t cur = lseek(fd, 0, SEEK_CUR), end = -1;
     if (cur >= 0) { end = lseek(fd, 0, SEEK_END); lseek(fd, cur, SEEK_SET); }
@@ -1090,6 +912,25 @@ L_filesize: SPILL(); { /* fid --- ud ior */
     }
     FILLNEXT();
     }
+/*  READ and WRITE: read(2) and write(2), once each. Everything that
+ *  reads or writes a descriptor is Forth on top of these - buffering,
+ *  line splitting, retrying a signal, looping over short counts - so
+ *  that policy is in kernel.4 where it can be read (Iteration 245).
+ *  Both flush the terminal output buffer first: a prompt must appear
+ *  before the read that waits for its answer, and TYPE's bytes must
+ *  keep their place among everything else written.  */
+L_read: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
+    t_flush();
+    DS2 = (UNS64)(INT64)t_read((int)DS0, DS2, DS1);
+    dsp += 2 * CELL_BYTES;
+    FILLNEXT();
+}
+L_write: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
+    t_flush();
+    DS2 = (UNS64)(INT64)t_write((int)DS0, DS2, DS1);
+    dsp += 2 * CELL_BYTES;
+    FILLNEXT();
+}
 /*
  *  Process-control primitives (shell support). Callers are responsible
  *  for NUL-terminating any string these pass to libc (matching the
