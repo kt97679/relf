@@ -49,10 +49,19 @@ NPRIM-OP     CONSTANT LIT32-OP
 NPRIM-OP 1 + CONSTANT DOVAR-OP
 NPRIM-OP 2 + CONSTANT DODOES-OP
 NPRIM-OP 3 + CONSTANT LIT8-OP
+NPRIM-OP 4 + CONSTANT LIT8X-OP          \ LIT8 then EXIT, folded
 \ The escape and wide-literal opcodes sit at the top of the byte, above
 \ the specialised band, and do NOT move with the primitive count.
 125 CONSTANT LIT64-OP           \ 0x7D
 126 CONSTANT ESC-OP             \ 0x7E
+\ The specialised band (CV8-REFERENCE.md 7) is fixed at 0x61 too. Only
+\ the opcodes this compiler emits are named; the locals and tiny-word
+\ opcodes are emitted by other means.
+ 97 CONSTANT LIT0-OP            \ 0x61  push 0; 0x62 push 1; 0x63 push -1
+100 CONSTANT VAR@-OP            \ 0x64  slot operand
+101 CONSTANT VAR!-OP            \ 0x65
+121 CONSTANT ADDI-OP            \ 0x79  signed byte operand; +1 is ;EXIT
+123 CONSTANT EQI-OP             \ 0x7B  signed byte operand; +1 is ;EXIT
 
 \ ---- raw emission ---------------------------------------------------
 : OP, ( n --- )
@@ -87,13 +96,57 @@ VARIABLE LAST-OP ( --- a-addr )
 \ Address of the primitive opcode just emitted, or 0 if the last thing
 \ emitted cannot be folded.
 
+\ ---- peephole state --------------------------------------------------
+\ The translator rewrites four two-operation patterns into one opcode
+\ (CV8-REFERENCE.md 7): `LIT n +` and `LIT n =` into ADDI/EQI, and
+\ `var @` and `var !` into VAR@/VAR!. Compiled at run time they were
+\ left as written, which made a natively compiled shell 2-2.8x slower
+\ than a translated one (Iteration 243). So the compiler remembers
+\ where the last literal and the last call started, and the second
+\ operation of a pattern rewinds HERE over the first and emits the
+\ combined opcode instead.
+\
+\ The one rule that makes this safe: NOTHING MAY BRANCH BETWEEN THE TWO.
+\ Every word that creates a branch target at HERE - BEGIN, THEN, the
+\ resolution of WHILE - calls NO-PEEP, and so does anything that emits
+\ code which is not itself one of the two halves.
+VARIABLE LAST-LIT ( --- a-addr )     \ where the last literal starts, or 0
+VARIABLE LAST-LITV ( --- a-addr )    \ and its value
+VARIABLE LAST-CALL ( --- a-addr )    \ where the last call starts, or 0
+VARIABLE LAST-CALLXT ( --- a-addr )  \ and its target
+
+: NO-PEEP ( --- )
+\ Forget everything: the next operation starts a fresh pattern.
+  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! ;
+
+: REWIND ( a-addr --- )
+\ Discard everything compiled from a-addr to HERE.
+  HERE - ALLOT ;
+
+: SLOT, ( a-addr --- )
+\ Append a slot operand naming a-addr: a scaled offset like a call,
+\ two bytes big-endian if it fits 15 bits, else three with the top bit
+\ set (VARSLOT, CV8-REFERENCE.md 3.1).
+  START @ - CV8-SHIFT RSHIFT
+  DUP 32768 < IF
+    DUP 8 RSHIFT C, 255 AND C,
+  ELSE
+    DUP 16 RSHIFT 128 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C,
+  THEN ;
+
 \ ---- literals -------------------------------------------------------
 : LIT, ( n --- )
 \ Append a literal in the narrowest form that holds it. U< does the
 \ range tests, so a negative value falls through to the wide forms.
-  0 LAST-OP !
-  DUP 256 U<   IF LIT8-OP  OP, C, EXIT THEN
-  DUP 65536 U< IF LIT16-OP OP, W, EXIT THEN
+\ 0, 1 and -1 have one-byte opcodes. Every literal is remembered for
+\ the ADDI/EQI peephole, and the LIT8 and LIT16 forms for folding
+\ into `;` - both have a folded LIT;EXIT form.
+  NO-PEEP HERE LAST-LIT ! DUP LAST-LITV !
+  DUP 0 = IF DROP LIT0-OP OP, EXIT THEN
+  DUP 1 = IF DROP LIT0-OP 1 + OP, EXIT THEN
+  DUP -1 = IF DROP LIT0-OP 2 + OP, EXIT THEN
+  DUP 256 U<   IF HERE LAST-OP ! LIT8-OP  OP, C, EXIT THEN
+  DUP 65536 U< IF HERE LAST-OP ! LIT16-OP OP, W, EXIT THEN
   1 CELLS 4 = IF LIT32-OP OP, 32, EXIT THEN
   \ 64-bit cell: does it fit a SIGNED 32-bit field? n + 2^31 < 2^32.
   DUP 2147483648 + 4294967296 U< IF LIT32-OP OP, 32, EXIT THEN
@@ -137,6 +190,12 @@ CREATE FOLD-OPS ( --- a-addr )
   ' R> >OP C,  ' R@ >OP C,  ' NEGATE >OP C,
 ALIGN
 23 CONSTANT #FOLD-OPS
+\ The four primitives the peepholes complete, as opcodes for the same
+\ reason FOLD-OPS holds opcodes and not xts.
+' + >OP CONSTANT PLUS-OP
+' = >OP CONSTANT EQUALS-OP
+' @ >OP CONSTANT FETCH-OP
+' ! >OP CONSTANT STORE-OP
 NPRIM-OP 5 + CONSTANT FOLD-BASE
 \ The folded band starts just above the synthetic opcodes and grows up
 \ towards the specialised band at 0x61. They collided the first time a
@@ -146,7 +205,11 @@ FOLD-BASE #FOLD-OPS + 97 >
 ABORT" cv8.4: the folded band has reached the specialised band - too many primitives"
 
 : FOLD-OP ( op --- op2 -1 | op 0 )
-\ The folded opcode for primitive opcode op, if it has one.
+\ The folded opcode for op, if it has one: a primitive from the table,
+\ LIT8, or one of the two immediates, whose ;EXIT form is the next
+\ opcode up.
+  DUP LIT8-OP = IF DROP LIT8X-OP -1 EXIT THEN
+  DUP ADDI-OP = OVER EQI-OP = OR IF 1 + -1 EXIT THEN
   #FOLD-OPS 0 DO
     DUP FOLD-OPS I + C@ = IF
       DROP I FOLD-BASE + -1 UNLOOP EXIT
@@ -157,13 +220,40 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
 : CALL, ( a-addr --- )
 \ Append a call to the body at a-addr: a scaled offset from the image
 \ base, near (2 bytes) if it fits in 14 bits, far (3 bytes) otherwise.
-  0 LAST-OP !
+\ Remembered for the VAR@/VAR! peephole.
+  NO-PEEP HERE LAST-CALL ! DUP LAST-CALLXT !
   START @ - CV8-SHIFT RSHIFT
   DUP 16384 < IF
     DUP 8 RSHIFT 128 OR C, 255 AND C,
   ELSE
     DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C,
   THEN ;
+
+: IMM-PAIR? ( op1 op2 --- f )
+\ Is op1 the opcode of + (op2 = ADDI) or = (op2 = EQI), following a
+\ literal that fits a signed byte? The patterns are `LIT n +` and
+\ `LIT n =`; nothing else has an immediate form.
+  ADDI-OP = IF PLUS-OP ELSE EQUALS-OP THEN =
+  LAST-LIT @ 0 = 0 = AND
+  LAST-LITV @ 128 + 256 U< AND ;
+
+: PEEP-IMM ( op --- f )
+\ Rewrite `LIT n +` or `LIT n =` just compiled, if that is what op
+\ completes. The result can itself fold into `;`.
+  DUP ADDI-OP IMM-PAIR? IF DROP ADDI-OP ELSE
+  DUP EQI-OP IMM-PAIR? IF DROP EQI-OP ELSE DROP 0 EXIT THEN THEN
+  LAST-LIT @ REWIND LAST-LITV @ >R NO-PEEP
+  HERE LAST-OP ! OP, R> 255 AND C, -1 ;
+
+: PEEP-VAR ( op --- f )
+\ Rewrite `var @` or `var !` just compiled, where var is a plain data
+\ word - its body starts with DOVAR, so its parameter field is fixed.
+  LAST-CALL @ 0 = IF DROP 0 EXIT THEN
+  LAST-CALLXT @ C@ DOVAR-OP = 0 = IF DROP 0 EXIT THEN
+  DUP FETCH-OP = IF DROP VAR@-OP ELSE
+  DUP STORE-OP = IF DROP VAR!-OP ELSE DROP 0 EXIT THEN THEN
+  LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
+  OP, R> >BODY SLOT, -1 ;
 
 : COMPILE,8 ( xt --- )
 \ Add the execution semantics of xt to the current definition: a
@@ -174,20 +264,32 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
     \ An escaped primitive's body is [ESC][selector]; inline both bytes
     \ and do not offer it for folding.
     DUP C@ ESC-OP = IF
-      DUP C@ OP, 1+ C@ OP, 0 LAST-OP !
+      NO-PEEP DUP C@ OP, 1+ C@ OP,
     ELSE
-      C@ HERE LAST-OP ! OP,
+      C@ DUP PEEP-IMM IF DROP EXIT THEN
+      DUP PEEP-VAR IF DROP EXIT THEN
+      NO-PEEP HERE LAST-OP ! OP,
     THEN
   ELSE
     CALL,
   THEN ;
 
-: ;8 ( --- )
-\ Finish the current definition.
+: EXIT, ( --- )
+\ Append a return, folded into the last operation where it has a
+\ folded form. A final 0 or 1 is re-emitted as LIT8 so that it, too,
+\ folds. Only ever used at the END of a body, so nothing can branch to
+\ the EXIT that folding removes.
+  LAST-LIT @ IF LAST-LITV @ 2 U< IF
+    LAST-LIT @ REWIND LAST-LITV @ LIT8-OP LAST-LIT @ LAST-OP ! OP, C,
+  THEN THEN
   LAST-OP @ DUP IF
     DUP C@ FOLD-OP IF SWAP C! ELSE 2DROP EXIT-OP OP, THEN
   ELSE DROP EXIT-OP OP, THEN
-  0 LAST-OP ! 0 STATE ! ?CSP REVEAL ; IMMEDIATE
+  NO-PEEP ;
+
+: ;8 ( --- )
+\ Finish the current definition.
+  EXIT, 0 STATE ! ?CSP REVEAL ; IMMEDIATE
 
 \ ---- control flow ---------------------------------------------------
 \ A branch operand is a signed 16-bit BYTE offset measured from the
@@ -196,7 +298,7 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
 
 : >MARK ( --- a-addr )
 \ Emit a placeholder branch operand and leave its address.
-  0 LAST-OP ! HERE 0 W, ;
+  NO-PEEP HERE 0 W, ;
 
 : !W ( n a-addr --- )
 \ Store a 16-bit little-endian value.
@@ -206,29 +308,30 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
 \ Patch the operand at a-addr so its branch lands on HERE. Clears
 \ LAST-OP: something now branches HERE, so the op before it must not
 \ be folded away.
-  0 LAST-OP ! DUP HERE SWAP - SWAP !W ;
+  NO-PEEP DUP HERE SWAP - SWAP !W ;
 
 : <RESOLVE ( a-addr --- )
 \ Emit a branch operand jumping back to a-addr.
-  0 LAST-OP ! HERE - W, ;
+  NO-PEEP HERE - W, ;
 
 : BEGIN8 ( --- a-addr )
-  HERE ; IMMEDIATE
+\ HERE becomes a branch target, so no pattern may span it.
+  NO-PEEP HERE ; IMMEDIATE
 
 : UNTIL8 ( a-addr --- )
-  0BRANCH-OP OP, <RESOLVE ; IMMEDIATE
+  NO-PEEP 0BRANCH-OP OP, <RESOLVE ; IMMEDIATE
 
 : AGAIN8 ( a-addr --- )
-  BRANCH-OP OP, <RESOLVE ; IMMEDIATE
+  NO-PEEP BRANCH-OP OP, <RESOLVE ; IMMEDIATE
 
 : IF8 ( --- a-addr )
-  0BRANCH-OP OP, >MARK ; IMMEDIATE
+  NO-PEEP 0BRANCH-OP OP, >MARK ; IMMEDIATE
 
 : THEN8 ( a-addr --- )
   >RESOLVE ; IMMEDIATE
 
 : ELSE8 ( a-addr1 --- a-addr2 )
-  BRANCH-OP OP, >MARK SWAP >RESOLVE ; IMMEDIATE
+  NO-PEEP BRANCH-OP OP, >MARK SWAP >RESOLVE ; IMMEDIATE
 
 : WHILE8 ( a-addr1 --- a-addr2 a-addr1 )
   POSTPONE IF8 SWAP ; IMMEDIATE
@@ -236,7 +339,7 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
 : REPEAT8 ( a-addr1 a-addr2 --- )
   \ ( a-addr1 a-addr2 --- ) with the BEGIN address on top, as WHILE8
   \ left it: <RESOLVE takes that one, >RESOLVE patches WHILE's mark.
-  BRANCH-OP OP, <RESOLVE >RESOLVE ; IMMEDIATE
+  NO-PEEP BRANCH-OP OP, <RESOLVE >RESOLVE ; IMMEDIATE
 
 \ ---- defining words -------------------------------------------------
 : CREATE8 ( "ccc" --- )
@@ -245,13 +348,13 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
   \ Two bytes reserved after DOVAR so that DOES> can overwrite the front
   \ with [DODOES][2-byte call] without moving the parameter field. The
   \ engine computes the PFA as align(body+3) on both paths.
-  HEADER REVEAL DOVAR-OP OP, CV8-DOES-RESERVE @ ALLOT ALIGN ;
+  HEADER REVEAL NO-PEEP DOVAR-OP OP, CV8-DOES-RESERVE @ ALLOT ALIGN ;
 
 : VARIABLE8 ( "ccc" --- )
   CREATE8 0 , ;
 
 : CONSTANT8 ( x "ccc" --- )
-  HEADER REVEAL LIT, EXIT-OP OP, ;
+  HEADER REVEAL LIT, EXIT, ;
 
 : RECURSE8 ( --- )
   LAST @ NAME> CALL, ; IMMEDIATE
@@ -268,22 +371,25 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
 
 : DO8 ( --- a-addr )
 \ (DO) has no inline operand, so this matches the cell version.
-  POSTPONE (DO) 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
+  POSTPONE (DO) NO-PEEP 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
 
 : LOOP8 ( a-addr --- )
-  OPERAND-ALIGN POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
+  ; IMMEDIATE
 
 : +LOOP8 ( a-addr --- )
-  OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
+  ; IMMEDIATE
 
 \ ---- ?DO and LEAVE ---------------------------------------------------
 \ (?DO) and (LEAVE) also carry an inline CELL operand, so they need the
 \ same alignment as (LOOP).
 : ?DO8 ( --- a-addr )
-  OPERAND-ALIGN POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , HERE ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , NO-PEEP HERE
+  ; IMMEDIATE
 
 : LEAVE8 ( --- )
-  OPERAND-ALIGN POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! ; IMMEDIATE
+  OPERAND-ALIGN POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! NO-PEEP ; IMMEDIATE
 
 \ ---- DOES> -----------------------------------------------------------
 \ A DOES> word's body is [DODOES][2-byte call to the tail][pad][PFA],
@@ -323,7 +429,7 @@ ABORT" cv8.4: the folded band has reached the specialised band - too many primit
   \ The tail must be an ALIGNED call target: a call is a SCALED offset,
   \ so an unaligned tail address loses its low bits and jumps to the
   \ wrong place. The pad is dead code - (;CODE) never returns here.
-  POSTPONE (;CODE) ALIGN POSTPONE R> ; IMMEDIATE
+  POSTPONE (;CODE) ALIGN NO-PEEP POSTPONE R> ; IMMEDIATE
 
 \ ---- debugging aid --------------------------------------------------
 : BYTES. ( a-addr n --- )
