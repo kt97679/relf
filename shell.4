@@ -675,96 +675,99 @@ DEFER POS-DIGIT-CALL   \ patched once POS-PARAM-SLOT exists, below
 \ just POSIX portable name characters).
 \ ==================================================================
 
-9 CONSTANT MAX-POS-PARAMS
-256 CONSTANT POS-PARAM-MAX
+\ Storage (Iteration 250). The parameters are one heap block: a cell
+\ per parameter pointing at its string, then the strings. Until then
+\ they were nine 256-byte slots, and a tenth parameter was dropped
+\ without a word - `set -- 1 ... 20` gave $# = 9, and "$@" and every
+\ function's arguments were cut the same way. Any number now, each any
+\ length.
+\
+\ A function call SAVES the caller's block and builds its own; the
+\ return FREES it and restores the caller's. Freed, not retired as the
+\ growing buffers are: a loop calling a function a million times would
+\ otherwise hold a million blocks until it ended. That is safe because
+\ nothing keeps a pointer into a parameter past the command that read
+\ it - expansions copy, getopts reloads its pointer on every call, and
+\ shift moves the pointer cells, not the strings.
 32 CONSTANT MAX-POS-PARAM-DEPTH
-
-MAX-POS-PARAMS POS-PARAM-MAX * BUFFER: POS-PARAMS
+VARIABLE POS-BLOCK   0 POS-BLOCK !      \ 0 when there are none
 VARIABLE POS-PARAM-COUNT
+MAX-POS-PARAM-DEPTH 2* CELLS BUFFER: POS-SAVE   \ block, count per depth
 
-MAX-POS-PARAM-DEPTH MAX-POS-PARAMS POS-PARAM-MAX * * BUFFER: POS-PARAMS-SAVE
-MAX-POS-PARAM-DEPTH CELLS BUFFER: POS-PARAM-COUNT-SAVE
+: POS-PARAM-SLOT ( i --- addr )  \ i is 0-based: $1 is slot 0
+  CELLS POS-BLOCK @ + @ ;
 
-: POS-PARAM-SLOT ( i --- addr )  \ i is 0-based: $1 is slot 0, $9 is
-                                   \ slot 8.
-  POS-PARAM-MAX * POS-PARAMS + ;
+VARIABLE POS-FROM-SYS?   \ POS-BUILD's source: relf's argv, or ARGV
 
-: POS-PARAMS-SAVE-SLOT ( depth --- addr )
-  MAX-POS-PARAMS POS-PARAM-MAX * * POS-PARAMS-SAVE + ;
+: POS-SRC ( i --- c-addr )   \ the i-th new parameter, 0-based
+  1+ POS-FROM-SYS? @ IF SYS-ARG ELSE ARGV@ THEN ;
 
-: POS-PARAM-COUNT-SAVE-SLOT ( depth --- addr )
-  CELLS POS-PARAM-COUNT-SAVE + ;
+VARIABLE PB-N
+VARIABLE PB-SIZE
+VARIABLE PB-I
+VARIABLE PB-AT
+
+: POS-BUILD ( n --- )
+\ Replace the parameters with n strings from POS-SRC. The new block is
+\ built before the old one is freed.
+  SHADOW{ PB-N | PB-SIZE PB-I PB-AT }
+  PB-N @ CELLS PB-SIZE !
+  BEGIN PB-I @ PB-N @ < WHILE
+    PB-I @ POS-SRC CSTRLEN 1+ PB-SIZE @ + PB-SIZE !
+    PB-I @ 1+ PB-I !
+  REPEAT
+  PB-SIZE @ 1 MAX ALLOCATE ABORT" shell: out of memory"   ( new )
+  DUP PB-N @ CELLS + PB-AT !
+  0 PB-I !
+  BEGIN PB-I @ PB-N @ < WHILE
+    PB-AT @ OVER PB-I @ CELLS + !
+    PB-I @ POS-SRC DUP CSTRLEN 1+                   ( new src u )
+    DUP >R PB-AT @ SWAP MOVE R> PB-AT @ + PB-AT !
+    PB-I @ 1+ PB-I !
+  REPEAT
+  POS-BLOCK @ ?DUP IF FREE DROP THEN
+  POS-BLOCK !  PB-N @ POS-PARAM-COUNT ! ;
 
 VARIABLE SPP-I
-
 : POS-DIGIT-LOOKUP ( name-addr --- value-addr | 0 )
-  \ "1".."9" name a positional parameter. Anything else - including
-  \ "0", which is the script name rather than a parameter - is not
-  \ ours, and an out-of-range digit expands to empty like an unset
-  \ variable.
-  DUP CSTRLEN 1 <> IF DROP 0 EXIT THEN
-  C@ 48 -
+  \ A decimal name from 1 up names a positional parameter; "0" is the
+  \ script name, not ours. Any number of digits: ${10} reaches here as
+  \ "10" once the braced path accepts it. An unset one expands to empty
+  \ like an unset variable.
+  DUP C@ 0= IF DROP 0 EXIT THEN
+  0 SWAP
+  BEGIN DUP C@ WHILE
+    DUP C@ 48 - DUP 9 U> IF 2DROP DROP 0 EXIT THEN   ( n p d )
+    ROT 10 * + SWAP 1+
+  REPEAT DROP                                       ( n )
   DUP 1 < IF DROP 0 EXIT THEN
-  DUP 9 > IF DROP 0 EXIT THEN
   1-
   DUP POS-PARAM-COUNT @ < 0= IF DROP 0 EXIT THEN
   POS-PARAM-SLOT ;
-
 ' POS-DIGIT-LOOKUP IS POS-DIGIT-CALL
 
 : SET-POS-PARAMS-FROM-ARGV ( --- )
-  \ Populates POS-PARAMS/POS-PARAM-COUNT from the *current* global
-  \ ARGV/ARGC, starting at ARGV[1] (skipping ARGV[0], the function
-  \ name itself) - called by RUN-FUNC-BODY right as a function call
-  \ begins, while the global ARGV still holds the calling line (before
-  \ the function's own first body line is replayed and overwrites it).
-  SHADOW{ | SPP-I }
-  BEGIN
-    SPP-I @ 1+ ARGC @ <
-    SPP-I @ MAX-POS-PARAMS < AND
-  WHILE
-    SPP-I @ 1+ ARGV@ SPP-I @ POS-PARAM-SLOT POS-PARAM-MAX
-    SAFE-CSTR-COPY DROP
-    SPP-I @ 1+ SPP-I !
-  REPEAT
-  ARGC @ 1- DUP MAX-POS-PARAMS > IF DROP MAX-POS-PARAMS THEN
-  POS-PARAM-COUNT ! ;
-
-VARIABLE SPFSA-I
+  \ The parameters become ARGV[1..ARGC-1] - ARGV[0] is the function or
+  \ builtin name. Called by RUN-FUNC-BODY as a call begins, while ARGV
+  \ still holds the calling line, and by `set`.
+  0 POS-FROM-SYS? !  ARGC @ 1- 0 MAX POS-BUILD ;
 
 : SET-POS-PARAMS-FROM-SYS-ARGS ( --- )
-  \ Populates POS-PARAMS/POS-PARAM-COUNT from relf's own command-line
-  \ arguments beyond the script path itself (SYS-ARG(0)) - so
-  \ "relfsh script.sh arg1 arg2" makes $1/$2 available within the
-  \ script from the very start, without needing an explicit "set"
-  \ call. Called once, from the top-level dispatch, right before
-  \ SH-FILE runs the script.
-  SHADOW{ | SPFSA-I }
-  BEGIN
-    SPFSA-I @ 1+ SYS-ARGC <
-    SPFSA-I @ MAX-POS-PARAMS < AND
-  WHILE
-    SPFSA-I @ 1+ SYS-ARG SPFSA-I @ POS-PARAM-SLOT POS-PARAM-MAX
-    SAFE-CSTR-COPY DROP
-    SPFSA-I @ 1+ SPFSA-I !
-  REPEAT
-  SYS-ARGC 1- DUP 0 < IF DROP 0 THEN
-  DUP MAX-POS-PARAMS > IF DROP MAX-POS-PARAMS THEN
-  POS-PARAM-COUNT ! ;
+  \ The parameters become relf's own arguments after the script path,
+  \ so "relfsh script.sh arg1 arg2" has $1 and $2 from the start.
+  -1 POS-FROM-SYS? !  SYS-ARGC 1- 0 MAX POS-BUILD ;
 
 VARIABLE SPPD-DEPTH
-
 : SAVE-POS-PARAMS ( depth --- )
-  SHADOW{ SPPD-DEPTH }
-  SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT
-  POS-PARAMS SWAP MAX-POS-PARAMS POS-PARAM-MAX * MOVE
-  SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT POS-PARAM-COUNT @ SWAP ! ;
-
+  \ The caller's block moves onto the save stack; the parameters are
+  \ empty until SET-POS-PARAMS-FROM-ARGV builds the function's own.
+  2* CELLS POS-SAVE +
+  POS-BLOCK @ OVER !  POS-PARAM-COUNT @ SWAP CELL+ !
+  0 POS-BLOCK !  0 POS-PARAM-COUNT ! ;
 : RESTORE-POS-PARAMS ( depth --- )
-  SHADOW{ SPPD-DEPTH }
-  SPPD-DEPTH @ POS-PARAMS-SAVE-SLOT POS-PARAMS MAX-POS-PARAMS POS-PARAM-MAX * MOVE
-  SPPD-DEPTH @ POS-PARAM-COUNT-SAVE-SLOT @ POS-PARAM-COUNT ! ;
-
+  POS-BLOCK @ ?DUP IF FREE DROP THEN
+  2* CELLS POS-SAVE +
+  DUP @ POS-BLOCK !  CELL+ @ POS-PARAM-COUNT ! ;
 \ ==================================================================
 \ Tokenizer: splits LINE-BUF (u chars from ACCEPT) on whitespace, in
 \ place. Supports single quotes ('...', fully literal, no escapes
@@ -3334,7 +3337,7 @@ VARIABLE DO-I
   DUP 0 DO
     0 DO-I !
     BEGIN DO-I @ 1+ POS-PARAM-COUNT @ < WHILE
-      DO-I @ 1+ POS-PARAM-SLOT DO-I @ POS-PARAM-SLOT POS-PARAM-MAX MOVE
+      DO-I @ 1+ CELLS POS-BLOCK @ + @  DO-I @ CELLS POS-BLOCK @ + !
       DO-I @ 1+ DO-I !
     REPEAT
     POS-PARAM-COUNT @ 1- POS-PARAM-COUNT !

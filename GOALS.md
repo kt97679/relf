@@ -984,9 +984,10 @@ of this file:
   Ramey's chapter: a redirection's effects must not outlive the
   command. Recorded in Iteration 55 as the next piece of redirection
   work.
-- **Positional parameters stop at 9.** `set -- 1 2 3 4 5 6 7 8 9 10`
-  leaves `$#` at 9; `${10}` cannot be reached. Found by
-  `tests/posix/2.5.1-positional-parameters.sh` in Iteration 146.
+- ~~**Positional parameters stop at 9.**~~ **Fixed in Iteration 250**:
+  any number, `${10}` and up included. Found by
+  `tests/posix/2.5.1-positional-parameters.sh` in Iteration 146, which
+  now passes.
 - **`${#}`** - the count of positional parameters - yields 0.
   `${#var}` works; the bare form does not.
 - **`for w; do ... done`**, the implicit `in "$@"` form, iterates over
@@ -1017,10 +1018,10 @@ of this file:
   discarded, so a binary file costs a message, not the memory.
 - **Fixed limits a long line now reaches first.** The word arrays grow
   since Iteration 250 (`ARGS-BUFFER:`, to 65,536 words, then "too many
-  arguments"). What is still fixed, worst first - the first three LOSE
-  DATA SILENTLY, which the memory policy says a table must never do:
-  - **Positional parameters: 9.** `set -- 1 ... 20` gives `$#` = 9,
-    and `"$@"` and a function's arguments are cut the same way.
+  arguments"), and positional parameters since 250 too (any number,
+  `${10}` and up included). What is still fixed, worst first - the
+  first two LOSE DATA SILENTLY, which the memory policy says a table
+  must never do:
   - **Command substitution output: 256 bytes** (`CMDSUB-OUT-MAX`).
     `$(seq 1 3000)` gives 89 words.
   - **A `for` list: 256 bytes** (`FOR-WORDS-MAX`). A 1,000-item list
@@ -1319,8 +1320,8 @@ once. Both are done; the rest keep their order.
    `RAW-MODE ( fd flag --- ior )` - escaped, so it costs no opcode.
 
 5. **The rest of the growable-buffer work.** Iteration 249 did the
-   line buffers and 250 the word arrays. Stage 4 is the value tables
-   under "Still open", silent ones first: positional parameters,
+   line buffers, 250 the word arrays and positional parameters. Stage
+   4 is the value tables under "Still open", silent ones first:
    command substitution output, `for` lists, here-documents, then
    variable and alias values. Each by the same rule: grow before any
    pointer into the table is taken, retire rather than free, and

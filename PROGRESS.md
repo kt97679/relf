@@ -245,7 +245,7 @@ do not trust the absence of a line below.
 - **247** — escaped primitives stop costing opcodes; format version 3
 - **248** — GOALS.md audited; a too-long line no longer runs its tail
 - **249** — growable line buffers; stale values; function bodies; a test that compared nothing
-- **250** — the word arrays grow; three silent limits found behind them
+- **250** — the word arrays grow; positional parameters past nine
 
 ### Not tied to an iteration
 
@@ -15108,5 +15108,21 @@ stops at 256 bytes (`$(seq 1 3000)` is 89 words); a `for` list stops at
 them first, and they are the next stage. Also recorded: `for` after
 `&&` is not recognised at all.
 
-tests/verify: shell assertions 572 -> 573; engine + shell image 88,113
--> 89,034 (x86-64), 77,841 -> 78,405 (i386).
+
+**Positional parameters, in the same iteration.** Nine 256-byte slots
+became one heap block per set: a cell per parameter pointing at its
+string, then the strings (`POS-BUILD`). A function call saves the
+caller's block and builds its own; the return FREES it rather than
+retiring it, because a loop calling a function would otherwise keep
+every block until it ended - measured: 20,000 calls stay at the same
+1.5 MB as before. That is safe because nothing keeps a pointer into a
+parameter past the command that read it: expansions copy, getopts
+reloads its pointer every call, and `shift` now moves the pointer cells
+instead of the strings. `POS-DIGIT-LOOKUP` takes any decimal name, so
+`${10}` and up work, and unbraced `$10` is still `$1` then `0`.
+`tests/diff/cases/positional.sh` (twelve parameters, `shift`, nested
+calls with fourteen, `set` inside a function, getopts) matches bash;
+`tests/posix`'s 2.5.1-positional-parameters case now passes (26/20).
+
+tests/verify: shell assertions 572 -> 573; posix 25/21 -> 26/20; engine
++ shell image 88,113 -> 89,090 (x86-64), 77,841 -> 78,441 (i386).
