@@ -1333,11 +1333,32 @@ than remembered.
      `INCLUDED`, so the host's interpreter compiles a host literal into
      a target definition, and `;` finds the stack wrong.
 
-     So the file has to be fed through `CROSS-COMPILE`'s own loop. Two
-     ways, neither tried yet: concatenate `kernel.4` (minus its
-     `END-CROSS`) with `cv8.4` and an `END-CROSS` at the build step, or
-     teach that loop an include directive - it already drives its input
-     with `REFILL`, so a nested source may simply work.
+     FEEDING IT THROUGH THAT LOOP IS SOLVED, and needs no new
+     machinery. `kernel.4` line 8 is `CROSS-COMPILE` and its last line
+     is `END-CROSS`: a cross-compiled file simply wraps itself in the
+     pair, and `cross.4` includes it normally. So
+
+         S" kernel.4" INCLUDED
+         S" cv8.4" INCLUDED        \ wrapped the same way
+
+     is the whole mechanism. `LOAD-HOST` and the `REFILL` question are
+     both dead ends - `REFILL` does not pop the source stack anyway,
+     the restore is on `INCLUDE-FILE`'s return stack.
+
+     WHAT IS LEFT is genuinely adapting `cv8.4`, and it is not one
+     obstacle but a class of them: the file DOES WORK at load time,
+     using its own constants and tables as it defines them. Under
+     cross-compilation those live in the TARGET and the host cannot
+     read them. Two instances seen: `FOLD-BASE #FOLD-OPS + 97 >`
+     evaluated at interpretation, and `#FOLD-OPS 0 DO ... FOLD-OPS I +
+     C@` where `FOLD-OPS` was `CREATE`d earlier in the same file and
+     comes back "Undefined word". Every compile-time use of a
+     self-defined constant or table has to become something the host
+     can see - a TRANSIENT definition, or a value computed in
+     `cross.4`.
+
+     That is a real piece of work on `cv8.4`, not a wrapper, and it is
+     where the next attempt should start.
 
      The `ABORT"` at interpretation time in `cv8.4` is a real obstacle
      too and is mine, added at Iteration 216; `tools/sod16.py` already
