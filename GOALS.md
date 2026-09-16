@@ -81,15 +81,17 @@ A second, less obvious load-bearing fact, discovered while migrating to
 cross-compile a new `kernel.img` must itself have cells at least as wide
 as the *target* cell width being compiled**, because `cross.4`'s
 literal-parsing and `@-T`/`!-T` plumbing does host-cell arithmetic on
-values that end up in target cells. `cross.4`/`kernel.4` also hand-embed
-a handful of raw primitive-dispatch token numbers (for `LIT`, `EXIT`,
-`BRANCH`, `0BRANCH`, `R>`) that must be updated by hand whenever the
-primitive-token stride changes (it's tied to `sizeof(host function
-pointer)` — 8 on x86-64). Both of these are silent, non-obviously-broken
-failure modes if missed: the first quietly truncates/corrupts large or
-negative literals; the second segfaults the *next* engine at whatever
-primitive happens to land on the stale token value. See `PROGRESS.md` for
-the full account and the fixes applied.
+values that end up in target cells.
+
+A third, since Iteration 243: **opcode numbers live in four places
+that must agree** - `cv8.c`'s dispatch table and `NPRIM`, `kernel.4`'s
+`PRIMITIVE`/`OPCODE` order and the fixed numbers in its compiler
+(97-126), `cross.4`'s PART 4 constants, and `shadow.4`'s four locals
+opcodes. The primitive band and everything synthetic are derived from
+the `PRIMITIVE` count by both compilers; the specialised band at
+0x61-0x7E is written out, because it does not move. A mismatch is
+silent: the image encodes one operation and the engine decodes
+another. `CV8-REFERENCE.md` 3.2 has the map.
 
 ## End state (what "done" looks like)
 
