@@ -1487,6 +1487,7 @@ VARIABLE AE-END
   32 OR DUP 97 - 6 U< IF 87 - EXIT THEN
   DROP -1 ;
 
+VARIABLE EXPANSION-FAILED?   \ an expansion error: the command must not run
 VARIABLE AE-BASE
 : AE-PARSE-NUMBER ( --- n )
   \ C's constants, as POSIX asks (XCU 2.6.4): 0x.. hexadecimal, a leading
@@ -1507,7 +1508,14 @@ VARIABLE AE-BASE
   WHILE
     SWAP AE-BASE @ * +
     AE-POS @ 1+ AE-POS !
-  REPEAT DROP ;
+  REPEAT DROP
+  \ `09` is not an octal constant: both references reject it
+  AE-POS @ AE-END @ < IF
+    AE-POS @ C@ AE-HEX-DIGIT 0< 0= IF
+      S" shell: bad arithmetic constant" ERR-TYPE ERR-NL
+      -1 EXPANSION-FAILED? !
+    THEN
+  THEN ;
 64 BUFFER: AE-VARNAME-BUF
 VARIABLE AE-VN-LEN
 
@@ -1598,7 +1606,8 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
   AE-READ-VARNAME
   AE-LOOKUP-NUMERIC ;
 
-VARIABLE EXPANSION-FAILED?   \ an expansion error: the command must not run
+
+VARIABLE AE-QUIET   \ >0: in the branch of ?: whose value is discarded
 
 : AE-DIV ( n1 n2 --- quot rem )
 \ Division as C and POSIX arithmetic do it: the quotient truncated
@@ -1606,6 +1615,7 @@ VARIABLE EXPANSION-FAILED?   \ an expansion error: the command must not run
 \ A zero divisor is reported and gives 0; it used to reach the CPU's
 \ divide and kill the shell with SIGFPE (Iteration 257).
   DUP 0= IF
+    AE-QUIET @ IF 2DROP 0 0 EXIT THEN         \ `1?2:1/0` must not complain
     2DROP S" shell: division by zero" ERR-TYPE ERR-NL
     -1 EXPANSION-FAILED? !
     0 0 EXIT
@@ -1848,13 +1858,33 @@ VARIABLE ANS-NEG
   AE-ASGN-NAME AE-VARNAME-BUF 64 SAFE-CSTR-COPY DROP
   AE-LOOKUP-NUMERIC ;
 
+DEFER AE-EXPR-CALL   ( --- n )
+
+: AE-COND ( --- n )   \ XCU 2.6.4's ternary, which was missing entirely
+  AE-OR
+  AE-SKIP-WS
+  AE-POS @ AE-END @ < IF AE-POS @ C@ 63 = ELSE 0 THEN 0= IF EXIT THEN
+  AE-POS @ 1+ AE-POS !
+  AE-TRUTHY? >R                              \ was it taken: on the return stack
+  R@ 0= IF 1 AE-QUIET +! THEN
+  AE-EXPR-CALL                               ( then )
+  R@ 0= IF -1 AE-QUIET +! THEN
+  AE-SKIP-WS
+  AE-POS @ AE-END @ < IF
+    AE-POS @ C@ 58 = IF AE-POS @ 1+ AE-POS ! THEN
+  THEN
+  R@ IF 1 AE-QUIET +! THEN
+  RECURSE                                    ( then else )
+  R@ IF -1 AE-QUIET +! THEN
+  R> IF DROP ELSE NIP THEN ;
+
 : AE-EXPR ( --- n )
   \ Lowest precedence level: assignment, right-associative. Anything
   \ that is not an assignment falls straight through to AE-OR, so this
   \ costs one lookahead per expression.
   BODY-ARENA-TOP @
   SHADOW{ BODY-ARENA-TOP | AE-SLOT }
-  AE-TRY-ASSIGN? 0= IF AE-OR EXIT THEN
+  AE-TRY-ASSIGN? 0= IF AE-COND EXIT THEN
   \ The target name and the operator both have to survive the
   \ recursive evaluation of the right-hand side, which may itself be
   \ an assignment ("a=b=1") and overwrite AE-ASGN-NAME/AE-ASGN-OP.
@@ -1873,12 +1903,25 @@ VARIABLE ANS-NEG
                 DROP AE-ASGN-OLD SWAP MOD
     THEN THEN THEN THEN
   THEN
+  AE-QUIET @ IF EXIT THEN                    \ the untaken branch assigns nothing
   DUP N>STR
   AE-ASGN-NAME SWAP SET-SHVAR ;
 
 \ Patched here, not next to AE-OR: the deferred call must resolve to
 \ AE-EXPR, which is defined above only now.
-' AE-EXPR IS AE-OR-CALL   \ a parenthesized subexpression may assign
+: AE-COMMA ( --- n )   \ expr [ , expr ]... - the last one's value (bash's;
+  \ dash rejects it, POSIX does not require it, and giving the FIRST
+  \ value quietly, as this did, is the worst of the three).
+  AE-EXPR
+  BEGIN
+    AE-SKIP-WS
+    AE-POS @ AE-END @ < IF AE-POS @ C@ 44 = ELSE 0 THEN
+  WHILE
+    DROP  AE-POS @ 1+ AE-POS !  AE-EXPR
+  REPEAT ;
+
+' AE-COMMA IS AE-OR-CALL    \ a parenthesized subexpression may assign
+' AE-EXPR IS AE-EXPR-CALL   \ the middle of ?: is a whole expression
 
 : AE-EVAL ( c-addr u --- n )
   \ Copies (c-addr u) into ARITH-BUF (a private copy, so the
@@ -1888,7 +1931,7 @@ VARIABLE ANS-NEG
   ARITH-BUF SWAP MOVE
   ARITH-BUF AE-POS !
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
-  AE-EXPR ;
+  AE-COMMA ;
 
 VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command

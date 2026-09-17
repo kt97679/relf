@@ -282,6 +282,7 @@ do not trust the absence of a line below.
 - **284** — measured: compiling arithmetic is not worth it; a second assignment word is split
 - **285** — fixed: every assignment in a prefix keeps its value whole
 - **286** — expansions inside $(( )) are performed; ~, octal and hex constants
+- **287** — coverage probed; the arithmetic audit: ternary, comma, invalid constants
 
 ### Not tied to an iteration
 
@@ -16705,3 +16706,36 @@ and inside quotes; it matches dash, and dash matches bash on all of it.
 `ENC-RAW`, which copied the expression's text, is gone with it.
 
 tests/verify: diff cases 38 -> 39; parse verdicts 143 -> 145; sizes.
+
+## Iteration 287: what the tests do not reach, and the arithmetic audit
+
+**Coverage, measured first.** `tools/coverage.py` says the suites enter
+521 of 526 colon definitions and run 92% of their instructions - which
+is the wrong question, as 286 showed: the arithmetic reader ran on every
+benchmark and had never seen `0x` or `${#v}`. So the thin places in that
+report were probed by hand instead, comparing against dash and bash.
+
+**Failures collected** (dash and bash agree; this shell differed):
+- **Arithmetic** - fixed here: the ternary `?:` was missing entirely
+  (`$((1?2:3))` gave 1); `$((1,2))` gave 1 quietly; `$((09))` and
+  `$((08+1))` were accepted as 0 where both references reject them.
+- **`read`** - recorded in GOALS.md: it does not process backslashes, it
+  ignores a prefix `IFS=:`, and it returns 0 instead of 1 at end of file
+  without a newline.
+- **`cd -`** is unsupported, and says so on stdout.
+- **`alias NAME`** does not print that alias's definition.
+
+**The arithmetic audit.** `AE-COND` adds the ternary between assignment
+and `||`, with the branch that is not taken evaluated quietly
+(`AE-QUIET`): `$((1?2:1/0))` is 2, not an error, and `$((0?x=5:7))`
+leaves `x` alone, as both references have it. `AE-COMMA` sits above the
+whole expression and takes the last value - bash's behaviour; dash
+rejects the operator and POSIX does not require it, but answering with
+the FIRST value quietly was the worst of the three. `AE-PARSE-NUMBER`
+now rejects a digit that is not valid for the constant's base.
+
+`tests/diff/cases/arith-audit-287.sh` goes through every operator POSIX
+lists, precedence, the constant forms, the assignment forms, nested and
+side-effecting ternaries, and division by zero; it matches bash.
+
+tests/verify: diff cases 39 -> 40; parse verdicts 145 -> 146; sizes.

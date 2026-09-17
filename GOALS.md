@@ -1663,6 +1663,15 @@ before anything else, because every number here is relative to it.
    found two more gaps, also fixed: `~` (bitwise not) was unimplemented,
    and only decimal constants were read, so `$(( 010 + 0x10 ))` was 10.
 
+5b. **Found by the coverage probe of Iteration 287** (dash and bash
+   agree on all of these; this shell does not):
+   - `read` does not process backslashes - `printf 'a\\ b c\\n' | read x y`
+     should give `x="a b"`, `y="c"` - ignores a prefix assignment to
+     `IFS`, and returns 0 rather than 1 at end of file without a newline.
+   - `cd -` is unsupported (and says so on stdout).
+   - `alias NAME` does not print that alias's definition.
+   Each wants a differential case with its fix.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,
