@@ -150,10 +150,10 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,754    kernel-shell.img     56,648
-    32-bit   kernel32.img   8,242    kernel32-shell.img   52,572
+    64-bit   kernel.img     8,794    kernel-shell.img     59,456
+    32-bit   kernel32.img   8,282    kernel32-shell.img   55,180
 
-**Seventy-three primitives**: 35 direct, with one-byte opcodes, and 38
+**Seventy-six primitives**: 35 direct, with one-byte opcodes, and 41
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
@@ -1092,7 +1092,7 @@ of this file:
 - ~~**A one-line loop inside a multi-line loop**~~ was "expected 'done'"
   at end of input: the body capture counted its `while` as an opener and
   never saw its `done`. **Fixed in Iteration 256.**
-- **Pathname expansion is not implemented at all.** `*`, `?` and
+- **[Fixed in Iteration 267]** ~~**Pathname expansion is not implemented at all.**~~ `*`, `?` and
   `[...]` never match files - `GLOB-MATCH` serves `case` and
   `${var%pattern}` only. It needs a primitive that reads a directory
   (escaped, so no opcode). Found in Iteration 257; `tests/posix`'s
@@ -1641,8 +1641,9 @@ before anything else, because every number here is relative to it.
    trees to Forth for now**: the tree walk is 5-15% of the dispatches,
    expansion 40-75% (COMMAND-TREE-PLAN.md has the table). Parse-time
    decisions for the expander and dispatcher are the better next step,
-   and 266 took three; the POSIX gaps below (pathname expansion,
-   non-whitespace `IFS`, `set -e`, `trap`) are the other open line.
+   and 266 took three; the POSIX gaps below (non-whitespace `IFS`,
+   `set -e`, `trap`) are the other open line - pathname expansion was
+   done in 267, and `tests/posix` is 45 of 46.
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while

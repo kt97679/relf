@@ -41,7 +41,8 @@
 1 CONSTANT WF-QUOTED     \ some part is quoted or escaped
 2 CONSTANT WF-NAME-Q     \ the first character is a quote or backslash
 4 CONSTANT WF-EXPAND     \ contains $ or `
-8 CONSTANT WF-SPECIAL    \ contains ~ * ? or [ (Iteration 266)
+8 CONSTANT WF-SPECIAL    \ contains ~ * ? or a closed [...] (Iterations 266, 267)
+16 CONSTANT WF-BRACKET   \ scanning: a [ was seen
 
 256 BUFFER: TREE-BUF
 VARIABLE TREE-TOP
@@ -291,7 +292,13 @@ DEFER SCAN-DOLLAR
     ELSE 36 = IF
       SCAN-DOLLAR 0
     ELSE
-      0 SRC-C DUP 126 = OVER 42 = OR OVER 63 = OR SWAP 91 = OR IF
+      \ A [ is a pattern character only if a ] closes it (XCU 2.13.1):
+      \ `[` and `]` alone, the test command, stay literal.
+      0 SRC-C DUP 126 = OVER 42 = OR SWAP 63 = OR IF
+        WF-SPECIAL TK-FLAGS @ OR TK-FLAGS !
+      THEN
+      0 SRC-C 91 = IF WF-BRACKET TK-FLAGS @ OR TK-FLAGS ! THEN
+      0 SRC-C 93 = TK-FLAGS @ WF-BRACKET AND 0<> AND IF
         WF-SPECIAL TK-FLAGS @ OR TK-FLAGS !
       THEN
       1 SRC-SKIP 0
@@ -975,7 +982,7 @@ VARIABLE HDX#
   LOOP
   34 HDX-C,  0 HDX-C,
   0 ARGC !  0 ARGV !  HDX-BUF WF-QUOTED ARGV-ADD
-  EXPAND-WORDS JOIN-ARGV HEREDOC-SET ;
+  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !  JOIN-ARGV HEREDOC-SET ;
 
 : PREPARE-HEREDOCS ( redirs-vec --- )
   DUP XV# 0 ?DO DUP I XV@ PREPARE-HEREDOC LOOP DROP ;
@@ -1150,8 +1157,8 @@ VARIABLE PS-WR
 
 \ case: the word and each pattern are expanded without field splitting -
 \ joined back if they split.
-: EXPAND-ONE ( word --- c-addr u quoted? )
-  0 ARGC !  0 ARGV !  ADD-WORD EXPAND-WORDS
+: EXPAND-ONE ( word --- c-addr u quoted? )   \ no pathname expansion
+  0 ARGC !  0 ARGV !  ADD-WORD  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
   ARGC @ IF 0 ARGV-QUOTED@ ELSE 0 THEN >R JOIN-ARGV R> ;
 
 256 BUFFER: CASE-TEXT

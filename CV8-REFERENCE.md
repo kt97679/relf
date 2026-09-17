@@ -163,7 +163,7 @@ encode an opcode the engine decoded as something else, with no build
 error. Until Iteration 245 the engine's folded table was still written
 as `[72 + k]`, which is right for 67 primitives only.
 
-With 35 direct and 38 escaped primitives (Iteration 264):
+With 35 direct and 41 escaped primitives (Iteration 267):
 
 | range | meaning |
 |---|---|
@@ -179,15 +179,16 @@ With 35 direct and 38 escaped primitives (Iteration 264):
 | `0x41`–`0x60` | **free** — 32 opcodes |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
-| `0x7E` | `ESC` + a selector byte: 38 OS/libc primitives of 256 selectors |
+| `0x7E` | `ESC` + a selector byte: 41 OS/libc primitives of 256 selectors |
 | `0x7F` | free |
 | `0x80`–`0xFF` | first byte of a two- or three-byte call |
 
-**Escaped primitives cost no opcode.** The 38 OS/libc primitives —
+**Escaped primitives cost no opcode.** The 41 OS/libc primitives —
 `BYE`, the file and process words, `READ`, `WRITE`, `POLL`,
 `RAW-MODE`, and since Iteration 260 `MOVE`, `FILL`, `COMPARE`, `SCAN`
-and `CSTRLEN` (memmove, memset, memcmp, memchr, strlen), and since 264
-`ISATTY` — are
+and `CSTRLEN` (memmove, memset, memcmp, memchr, strlen), since 264
+`ISATTY`, since 265 `EXECVE` returning `-errno`, and since 267
+`OPEN-DIR`, `READ-DIR` and `CLOSE-DIR` — are
 declared after `ESCAPED` in `kernel.4`, contiguous at the end of the
 list, and selector *t* is the *t*-th of them. Adding one appends a
 `PRIMITIVE` line, a handler to `cv8.c`'s `escaped_prims[]` and one to

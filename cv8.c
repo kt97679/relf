@@ -56,6 +56,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <dirent.h>
 #include <poll.h>
 #include <termios.h>
 #include <stddef.h>
@@ -98,7 +99,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    38
+#define NESC    41
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -743,7 +744,7 @@ static void virtual_machine(void) {
         &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
         &&L_rawmode,
         &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
-        &&L_isatty,
+        &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1130,6 +1131,21 @@ L_scan: SPILL(); { /* c-addr1 u1 c --- c-addr2 u2 : from the first c, or the end
 }
 L_cstrlen: SPILL(); /* c-addr --- u : a NUL-terminated string's length */
     DS0 = (UNS64)strlen((const char *)(uintptr_t)DS0);
+    FILLNEXT();
+/*  Directories, for pathname expansion (Iteration 267): libc's
+ *  opendir/readdir/closedir. READ-DIR's name is valid until the next
+ *  READ-DIR on that directory.  */
+L_opendir: SPILL(); /* c-addr --- dirp | 0 : a NUL-terminated path */
+    DS0 = (UNS64)(uintptr_t)opendir((const char *)(uintptr_t)DS0);
+    FILLNEXT();
+L_readdir: SPILL(); { /* dirp --- c-addr | 0 */
+    struct dirent *e = readdir((DIR *)(uintptr_t)DS0);
+    DS0 = e ? (UNS64)(uintptr_t)e->d_name : 0;
+    FILLNEXT();
+}
+L_closedir: SPILL(); /* dirp --- */
+    closedir((DIR *)(uintptr_t)DS0);
+    dsp += CELL_BYTES;
     FILLNEXT();
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;

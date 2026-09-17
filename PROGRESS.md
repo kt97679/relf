@@ -262,6 +262,7 @@ do not trust the absence of a line below.
 - **264** — command tree Stage B: the executor beside the old path (RELF_TREE=1)
 - **265** — command tree Stage C: the tree path is the shell; the line-based shell deleted
 - **266** — command tree Stage D: measured; parse-time decisions instead of a tree compiler
+- **267** — pathname expansion; directory primitives
 
 ### Not tied to an iteration
 
@@ -15881,3 +15882,53 @@ lookup resolved per node, and `I`/`(LOOP)`/`(+LOOP)` - colon definitions,
 
 tests/verify: sizes only (x86-64 87,064 -> 87,584, i386 74,140 ->
 74,596).
+
+## Iteration 267: pathname expansion
+
+`*.txt` expands now (XCU 2.6.6). `tests/posix` 44/2 -> 45/1; the one
+left is non-whitespace `IFS`.
+
+**Engine.** Three escaped primitives over libc - `OPEN-DIR ( c-addr ---
+dirp | 0 )`, `READ-DIR ( dirp --- c-addr | 0 )`, `CLOSE-DIR` - so no
+opcode moves and the image format stands. 76 primitives, 41 escaped.
+
+**Which characters are patterns.** Only unquoted ones: `*` written in a
+word, or produced by an unquoted expansion (`x='*'; echo $x`), but not
+`"*"`, `\*` or `"$x"`. The expander knows the quoting only as it emits
+each character, so `GLOB-MARK` records the output offset of every
+unquoted `*`, `?` and `[` at the two places those leave it - the literal
+branch of `SCAN-TOKEN-CHAR`, and `EMIT-EXPANDED-CHAR` outside double
+quotes - skipping assignment words and callers that set `NO-GLOB?`
+(the case word and patterns, here-document bodies).
+
+**Expanding.** After the words are expanded, `GLOB-FIELDS` walks the
+fields; a field with marks becomes a pattern in which every UNMARKED
+`* ? [` and every backslash is escaped - `GLOB-MATCH` honours escapes
+when `GM-ESCAPES?` is set, which only pathname expansion does, so `case`
+and `${x%...}` are unchanged. `GLOB-WALK` matches it a component at a
+time: a literal component is appended (and at the end checked to exist),
+a pattern component lists the directory. Names starting with a dot need
+an explicit leading dot; `.` and `..` are never returned (bash 5.2; dash
+returns them, so a `.*` case is bash's answer). The matches are sorted
+in byte order and replace the field, marked quoted so a file called `>`
+is not an operator; no match leaves the field as it was. A field right
+after an unquoted redirection operator is not expanded (dash; POSIX
+leaves it to interactive shells).
+
+**`[` alone is not a pattern.** The first measurement had the loop
+benchmark 1.9 times slower: `[ $i -lt 2000 ]` marked its `[`, and every
+iteration listed the current directory. POSIX makes an unclosed bracket
+an ordinary character, so the lexer flags a word special only for a `[`
+followed by a `]` (the test command's words stay literal and take 266's
+fast path), and a field whose pattern has no `*`, `?` or closed bracket
+is not walked at all. Afterwards: loop 1.02, fn 1.02, str 1.00,
+arith 1.00 against 266.
+
+`tests/diff/cases/pathname.sh` - one directory and several, dot files,
+quoting, patterns from expansions, brackets, no match, trailing `/`,
+`for` lists and `set --`, and no expansion for case words, assignments
+and redirection targets - is identical to bash; the previous build
+fails it.
+
+tests/verify: posix 44/2 -> 45/1; diff cases 30 -> 31, parse verdicts
+136 -> 137; sizes.

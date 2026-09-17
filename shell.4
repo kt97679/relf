@@ -1094,6 +1094,24 @@ VARIABLE IFSC-P
     -1 ARGS-OVERFLOW? !
   THEN ;
 
+\ ---- pathname expansion: where the unquoted pattern characters are ----
+\ An unquoted * ? or [ - written in the word, or produced by an unquoted
+\ expansion - is remembered by its offset in the output. After the words
+\ are expanded, a field holding one is a pattern (Iteration 267).
+256 BUFFER: GLOB-MARKS
+VARIABLE GLOB-MARKS#
+VARIABLE NO-GLOB?          \ the caller wants no pathname expansion
+DEFER GLOB-FIELDS-CALL
+
+: GLOB-MARK ( c --- c )
+  DUP 42 = OVER 63 = OR OVER 91 = OR IF
+    NO-GLOB? @ 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
+      GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+      TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+      1 GLOB-MARKS# +!
+    THEN THEN
+  THEN ;
+
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
@@ -1116,7 +1134,7 @@ VARIABLE IFSC-P
         IFS-SPLIT-HERE
       THEN
     THEN
-    EMIT-TOK-CHAR
+    GLOB-MARK EMIT-TOK-CHAR
   THEN ;
 
 : TYPE0-TO-TOK-SPLIT ( c-addr --- )  \ copies a NUL-terminated string
@@ -2419,7 +2437,7 @@ VARIABLE PW-ULEN   \ username length
     \ not in COPY-DOUBLE-QUOTED, where a tilde stays literal too.
     DROP TRY-TILDE-EXPAND
   ELSE
-    IN-BRACED-WORD? @ IF EMIT-EXPANDED-CHAR ELSE EMIT-TOK-CHAR THEN
+    IN-BRACED-WORD? @ IF EMIT-EXPANDED-CHAR ELSE GLOB-MARK EMIT-TOK-CHAR THEN
     TOK-POS @ 1+ TOK-POS !
   THEN THEN THEN THEN THEN THEN ;
 
@@ -2476,6 +2494,7 @@ VARIABLE EW-I
   \ re-splits rather than truncating - `"a b"` stays two words instead
   \ of becoming `a`.
   0 EXPANSION-FAILED? !
+  0 GLOB-MARKS# !
   ARGC @ EW-ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -2548,7 +2567,8 @@ VARIABLE EW-I
     THEN
     EW-I @ 1+ EW-I !
   REPEAT
-  0 ARGV ARGC @ CELLS + ! ;
+  0 ARGV ARGC @ CELLS + !
+  GLOB-MARKS# @ IF GLOB-FIELDS-CALL THEN ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
@@ -4472,6 +4492,8 @@ VARIABLE GCM-P
 VARIABLE GCM-CHAR
 VARIABLE GCM-BEND
 
+VARIABLE GM-ESCAPES?   \ pathname expansion: a backslash quotes a character
+
 : GLOB-CHAR-MATCHES? ( p-idx char --- match? p-idx-after )
   \ Does GM-PATTERN[p-idx] (a '?', a bracket expression, or a single
   \ literal character) match char? p-idx-after is where to resume
@@ -4479,6 +4501,13 @@ VARIABLE GCM-BEND
   \ expression can span many pattern characters, unlike '?' or a
   \ literal, which only ever advance by one.
   SHADOW{ GCM-P GCM-CHAR | GCM-BEND }
+  \ With GM-ESCAPES? set, a backslash makes the next character literal
+  \ (pathname expansion, Iteration 267).
+  GM-ESCAPES? @ IF
+    GCM-P @ GM-PATTERN @ + C@ 92 = GCM-P @ 1+ GM-PLEN @ < AND IF
+      GCM-P @ 1+ GM-PATTERN @ + C@ GCM-CHAR @ =  GCM-P @ 2 + EXIT
+    THEN
+  THEN
   GCM-P @ GM-PATTERN @ + C@
   DUP 63 = IF
     DROP
@@ -4530,6 +4559,219 @@ VARIABLE GCM-BEND
     GM-P @ 1+ GM-P !
   REPEAT
   GM-P @ GM-PLEN @ = ;
+
+\ ==================================================================
+\ Pathname expansion (XCU 2.6.6; Iteration 267)
+\ ==================================================================
+\ After EXPAND-WORDS, each field with a GLOB-MARK is a pattern. Its
+\ unmarked * ? [ and every backslash are escaped, it is matched a
+\ component at a time against directory listings, and the sorted
+\ matches replace it; with no match it stays as it is. Names starting
+\ with a dot match only an explicit leading dot, and . and .. are never
+\ matched (bash 5.2 and dash agree). A redirection's target is not
+\ expanded (dash; POSIX leaves it to interactive shells).
+
+\ the pattern being expanded, escaped
+256 BUFFER: GP-BUF
+VARIABLE GP#
+: GP-C, ( c --- )
+  GP# @ 2 + ENSURE-BUFFER GP-BUF  GP-BUF GP# @ + C!  1 GP# +! ;
+
+\ the field: its output offset and length, and its marks
+VARIABLE GF-OFF
+VARIABLE GF-LEN
+VARIABLE GF-M
+VARIABLE GF-M0
+VARIABLE GF-K
+VARIABLE GF-N
+
+: MARKED? ( off --- f )
+  GF-K @ 0 ?DO
+    GLOB-MARKS GF-M0 @ I + CELLS + @ OVER = IF DROP UNLOOP -1 EXIT THEN
+  LOOP DROP 0 ;
+
+: BUILD-GLOB-PATTERN ( --- )
+  0 GP# !
+  GF-LEN @ 0 ?DO
+    GF-OFF @ I + OUT-BASE + C@
+    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR IF
+      GF-OFF @ I + MARKED? 0= IF 92 GP-C, THEN
+    THEN GP-C,
+  LOOP ;
+
+\ the path being built
+256 BUFFER: GW-PATH
+: GW-C, ( c pos --- pos' )
+  DUP 2 + ENSURE-BUFFER GW-PATH  TUCK GW-PATH + C!  1+ ;
+: GW-NUL ( pos --- )   DUP 1+ ENSURE-BUFFER GW-PATH  0 SWAP GW-PATH + C! ;
+CREATE DOT-PATH  46 C, 0 C,
+
+: COMP-END ( i --- j )   \ the next unescaped / in the pattern, or its end
+  BEGIN DUP GP# @ < IF DUP GP-BUF + C@ 47 <> ELSE 0 THEN WHILE
+    DUP GP-BUF + C@ 92 = IF 1+ THEN 1+
+  REPEAT GP# @ MIN ;
+: CLOSED-BRACKET? ( j i --- f )   \ does a ] close the [ at i, before j
+  1+ DUP GP-BUF + C@ 33 = IF 1+ THEN        \ [! 
+  1+                                        \ a ] first is a member
+  BEGIN 2DUP > WHILE
+    DUP GP-BUF + C@ 93 = IF 2DROP -1 EXIT THEN
+    1+
+  REPEAT 2DROP 0 ;
+: MAGIC? ( i j --- f )   \ an unescaped * or ?, or a closed [...], in [i, j)
+  SWAP BEGIN 2DUP > WHILE
+    DUP GP-BUF + C@
+    DUP 92 = IF DROP 1+ ELSE
+    DUP 42 = OVER 63 = OR IF DROP 2DROP -1 EXIT THEN
+    91 = IF 2DUP CLOSED-BRACKET? IF 2DROP -1 EXIT THEN THEN THEN
+    1+
+  REPEAT 2DROP 0 ;
+: ANY-MAGIC? ( --- f )   \ is any component of the pattern a pattern at all
+  0 BEGIN DUP GP# @ < WHILE
+    DUP COMP-END 2DUP MAGIC? IF 2DROP -1 EXIT THEN
+    NIP 1+
+  REPEAT DROP 0 ;
+VARIABLE UE-I
+VARIABLE UE-J
+VARIABLE UE-POS
+: UNESCAPE-TO-PATH ( i j pos --- pos' )   \ [i, j) of the pattern, escapes dropped
+  UE-POS !  UE-J !  UE-I !
+  BEGIN UE-I @ UE-J @ < WHILE
+    UE-I @ GP-BUF + C@ 92 = IF 1 UE-I +! THEN
+    UE-I @ GP-BUF + C@  UE-POS @ GW-C,  UE-POS !
+    1 UE-I +!
+  REPEAT
+  UE-POS @ ;
+: EXISTS? ( pos --- f )   \ does GW-PATH[0, pos) name anything
+  DUP GW-NUL
+  GW-PATH OPEN-DIR ?DUP IF CLOSE-DIR DROP -1 EXIT THEN
+  GW-PATH SWAP R/O OPEN-FILE IF DROP 0 ELSE CLOSE-FILE DROP -1 THEN ;
+
+\ the matches: in the output, their offsets listed
+256 BUFFER: GML
+VARIABLE GML#
+: ADD-MATCH ( pos --- )
+  GML# @ 1+ CELLS ENSURE-BUFFER GML
+  TOK-OUT @ OUT-BASE -  GML GML# @ CELLS + !  1 GML# +!
+  0 ?DO GW-PATH I + C@ EMIT-TOK-CHAR LOOP  0 EMIT-TOK-CHAR ;
+
+VARIABLE GWK-POS
+VARIABLE GWK-I
+VARIABLE GWK-J
+VARIABLE GWK-DIR
+VARIABLE GWK-NAME
+VARIABLE GWK-NLEN
+
+: DOT-NAME-OK? ( --- f )   \ may this directory entry match the component?
+  GWK-NAME @ C@ 46 <> IF -1 EXIT THEN
+  GWK-NLEN @ 1 = IF 0 EXIT THEN
+  GWK-NLEN @ 2 = GWK-NAME @ 1+ C@ 46 = AND IF 0 EXIT THEN
+  GP-BUF GWK-I @ + C@ 46 = ;
+
+: GLOB-WALK ( pos i --- )
+  SHADOW{ GWK-POS GWK-I | GWK-J GWK-DIR GWK-NAME GWK-NLEN }
+  GWK-I @ GP# @ = IF                         \ after a trailing /
+    GWK-POS @ DUP EXISTS? IF ADD-MATCH ELSE DROP THEN EXIT
+  THEN
+  GWK-I @ COMP-END GWK-J !
+  GWK-I @ GWK-J @ MAGIC? 0= IF               \ a literal component
+    GWK-I @ GWK-J @ GWK-POS @ UNESCAPE-TO-PATH GWK-POS !
+    GWK-J @ GP# @ = IF
+      GWK-POS @ DUP EXISTS? IF ADD-MATCH ELSE DROP THEN EXIT
+    THEN
+    47 GWK-POS @ GW-C,  GWK-J @ 1+ RECURSE EXIT
+  THEN
+  GWK-POS @ IF GWK-POS @ GW-NUL GW-PATH ELSE DOT-PATH THEN
+  OPEN-DIR ?DUP 0= IF EXIT THEN GWK-DIR !
+  BEGIN GWK-DIR @ READ-DIR ?DUP WHILE
+    GWK-NAME !  GWK-NAME @ CSTRLEN GWK-NLEN !
+    DOT-NAME-OK? IF
+      -1 GM-ESCAPES? !
+      GP-BUF GWK-I @ +  GWK-J @ GWK-I @ -  GWK-NAME @ GWK-NLEN @ GLOB-MATCH
+      0 GM-ESCAPES? !
+      IF
+        GWK-POS @ GWK-NLEN @ + 2 + ENSURE-BUFFER GW-PATH
+        GWK-NAME @  GW-PATH GWK-POS @ +  GWK-NLEN @ MOVE
+        GWK-J @ GP# @ = IF
+          GWK-POS @ GWK-NLEN @ + ADD-MATCH
+        ELSE
+          47 GWK-POS @ GWK-NLEN @ + GW-C,  GWK-J @ 1+ RECURSE
+        THEN
+      THEN
+    THEN
+  REPEAT
+  GWK-DIR @ CLOSE-DIR ;
+
+: GML@ ( i --- c-addr )   CELLS GML + @ OUT-BASE + ;
+: CSTR< ( a b --- f )   >R DUP CSTRLEN R> DUP CSTRLEN COMPARE 0< ;
+: GML-SWAP ( j --- )   \ exchange entries j-1 and j
+  CELLS GML +  DUP 1 CELLS -                ( aj aj-1 )
+  OVER @ OVER @                             ( aj aj-1 xj xj-1 )
+  3 PICK !  SWAP !  DROP ;
+: SORT-MATCHES ( --- )   \ insertion sort, in byte order
+  GML# @ 1 ?DO
+    I BEGIN
+      DUP 0> IF DUP GML@ OVER 1- GML@ CSTR< ELSE 0 THEN
+    WHILE
+      DUP GML-SWAP 1-
+    REPEAT DROP
+  LOOP ;
+
+: GLOB-ONE ( --- n )   \ the field's matches into ARGV; how many
+  BUILD-GLOB-PATTERN
+  \ `[` alone - the test command - is marked but is no pattern: no walk
+  ANY-MAGIC? 0= IF 0 EXIT THEN
+  0 GML# !
+  0 0 GLOB-WALK
+  GML# @ 0= IF 0 EXIT THEN
+  SORT-MATCHES
+  GML# @ 0 ?DO
+    ARGC @ ROOM-FOR-ARG? IF
+      I GML@ ARGV ARGC @ CELLS + !
+      \ quoted, so a match is not taken for an operator or an assignment
+      -1 ARGV-QUOTED ARGC @ + C!  -1 ARGV-NAME-QUOTED ARGC @ + C!
+      ARGC @ 1+ ARGC !
+    ELSE -1 ARGS-OVERFLOW? ! THEN
+  LOOP
+  GML# @ ;
+
+: REDIR-OP-FIELD? ( i --- f )   \ is field i an unquoted redirection operator
+  DUP 0< IF DROP 0 EXIT THEN
+  DUP EW-LIT + C@ IF DROP 0 EXIT THEN
+  CELLS EW-ARGV + @ OUT-BASE + C@ DUP 60 = SWAP 62 = OR ;
+
+: GLOB-FIELDS ( --- )
+  ARGC @ GF-N !
+  ARGC @ 0 ?DO
+    I ARGV@ OUT-BASE -  EW-ARGV I CELLS + !
+    I ARGV-QUOTED@ EW-LIT I + C!
+    I ARGV-NAME-QUOTED@ EW-ARGQ I + C!
+  LOOP
+  0 ARGC !  0 GF-M !
+  GF-N @ 0 ?DO
+    EW-ARGV I CELLS + @ GF-OFF !
+    GF-OFF @ OUT-BASE + CSTRLEN GF-LEN !
+    BEGIN
+      GF-M @ GLOB-MARKS# @ < IF GLOB-MARKS GF-M @ CELLS + @ GF-OFF @ < ELSE 0 THEN
+    WHILE 1 GF-M +! REPEAT
+    GF-M @ GF-M0 !
+    BEGIN
+      GF-M @ GLOB-MARKS# @ < IF
+        GLOB-MARKS GF-M @ CELLS + @ GF-OFF @ GF-LEN @ + <
+      ELSE 0 THEN
+    WHILE 1 GF-M +! REPEAT
+    GF-M @ GF-M0 @ - GF-K !
+    GF-K @ IF I 1- REDIR-OP-FIELD? IF 0 ELSE GLOB-ONE THEN ELSE 0 THEN
+    0= IF
+      ARGC @ ROOM-FOR-ARG? IF
+        GF-OFF @ OUT-BASE +  ARGV ARGC @ CELLS + !
+        EW-LIT I + C@ ARGV-QUOTED ARGC @ + C!
+        EW-ARGQ I + C@ ARGV-NAME-QUOTED ARGC @ + C!
+        ARGC @ 1+ ARGC !
+      ELSE -1 ARGS-OVERFLOW? ! THEN
+    THEN
+  LOOP
+  0 ARGV ARGC @ CELLS + ! ;
+' GLOB-FIELDS IS GLOB-FIELDS-CALL
 
 \ ==================================================================
 \ ${VAR%word}/${VAR%%word}/${VAR#word}/${VAR##word} - suffix/prefix

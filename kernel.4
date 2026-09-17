@@ -199,6 +199,10 @@ PRIMITIVE COMPARE   ( c-addr1 u1 c-addr2 u2 --- n )
 PRIMITIVE SCAN      ( c-addr1 u1 c --- c-addr2 u2 )
 PRIMITIVE CSTRLEN   ( c-addr --- u )
 PRIMITIVE ISATTY    ( fd --- flag )   \ Iteration 264
+\ Directories, for the shell's pathname expansion (Iteration 267).
+PRIMITIVE OPEN-DIR  ( c-addr --- dirp | 0 )   \ a NUL-terminated path
+PRIMITIVE READ-DIR  ( dirp --- c-addr | 0 )   \ the next name, NUL-terminated
+PRIMITIVE CLOSE-DIR ( dirp --- )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
