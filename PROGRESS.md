@@ -269,6 +269,7 @@ do not trust the absence of a line below.
 - **271** — trap and signals; kill, umask, times, local; `set` lists variables; Ctrl-C at the prompt
 - **272** — hashed variable index; `set` on an empty table; size lines split
 - **273** — EXPANSION-PLAN.md; its Stage 0: trims by substring search; quoted and nested trim patterns
+- **274** — expansion Stage A: the lexer encodes each word; tree-dump -e; parse cases
 
 ### Not tied to an iteration
 
@@ -16251,3 +16252,50 @@ timeout.
 
 tests/verify: parse verdicts 142 -> 143 (the new case); the shell
 images grew 1,096 bytes (x86-64) and 1,024 (i386), the engine not at all.
+
+## Iteration 274: expansion Stage A - words encoded as they are lexed
+
+EXPANSION-PLAN.md's Stage A. The scanners in `tree.4` already walk every
+construct of a word with the right rules, so each now also writes the
+word's encoded form. A word node carries it (fields 2 and 3) beside the
+raw text the old expander still uses, and field 4 holds a vector of its
+command substitutions' texts.
+
+**The form.** Every control sequence starts with `ENC-CTL` (0x81), so a
+literal run is one `SCAN` and one `MOVE` for the expander of Stage B; a
+literal 0x81 is written twice. `sq<...>` and `dq<...>` are quoted runs
+(inside `dq` expansions still apply), `esc(c)` one quoted character,
+`var(op,name>word>` a parameter with one of the twelve operators -
+plain, length, the four defaults with and without `:`, the four trims -
+`sub n` the nth command substitution of this word, `arith<...>` an
+expression kept as text (Stage D compiles it), `tilde N (user>` a tilde
+prefix with the position class the lexer decided: word start, after `=`,
+or after `:`, the last two expanded only in an assignment.
+
+**What the scanners now do.** `SCAN-SQUOTE`/`SCAN-DQUOTE` bracket their
+runs; `ENC-DQ-ESCAPE` handles the four characters a backslash quotes
+inside double quotes; `SCAN-BRACE` reads the name and the operator
+properly instead of only finding the matching `}` (the operator byte is
+written to a place kept open, since the name comes first); a plain
+`$name` takes its own name characters, so the word's loop does not see
+them twice; `SCAN-ARITH` and the substitutions mute the code writing
+while their contents are scanned and then copy the text raw, line
+continuations dropped.
+
+**Three faults of my own, each caught by the dump.** The words inside a
+`$(...)` are lexed too, and each reset the encoding buffer: the enclosing
+word's bytes were overwritten. Each word now has a base in the buffer and
+appends beyond it, `TOKEN-WORD` copies its own region and truncates back,
+and `SCAN-CMDSUB` saves the bases across the nested parse. Then both
+substitution scanners emitted the code inline AND called the helper that
+does it, so every substitution was recorded twice with an empty text.
+And a printer word placed before `.STR`, and `EMIT-QUOTED` (273) placed
+after a user, each failed the load; the second saved a 21 KB image whose
+run hung until the tool's limit.
+
+`tree-dump -e` prints the encodings, and `tests/parse` gains four cases
+checked by hand - quoting, parameters, substitutions, tildes and
+arithmetic - which the previous build fails. Everything else is
+unchanged: the encoding is written and not yet read.
+
+tests/verify: parse:encoded new (4); sizes.

@@ -1,0 +1,3 @@
+(list (simple "echo" "plain" "a-b.c" "'single quoted'" "\"double quoted\""))
+(list (simple "echo" "\\e" "sc\\ ape" "\"in \\\"quotes\\\" and \\\\ and \\$x and \\`b\\`\"" "'q'\"r\"'s'"))
+(list (simple "echo" "\"\"" "''" "\"a\"\"b\""))

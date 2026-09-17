@@ -194,39 +194,149 @@ VARIABLE HD-TEXT#
 
 DEFER PARSE-SUBLIST   \ for $(...): parse a compound list up to `)`
 
+\ ---- words encoded while they are scanned ----
+\ EXPANSION-PLAN.md Stage A (Iteration 274). The scanners below already
+\ walk every construct with the right rules; each now also writes the
+\ word's encoded form into ENC-BUF, which TOKEN-WORD copies into the
+\ tree. Every control sequence starts with ENC-CTL, so a literal run is
+\ one SCAN and one MOVE for the expander to come; a literal ENC-CTL byte
+\ in the text is written twice.
+129 CONSTANT ENC-CTL
+0 CONSTANT ENC-END        \ ends a run, a name, a word or an expression
+1 CONSTANT ENC-SQ         \ a single-quoted run: nothing inside is special
+2 CONSTANT ENC-DQ         \ a double-quoted run: expansions still apply
+3 CONSTANT ENC-ESC        \ one quoted character follows
+4 CONSTANT ENC-VAR        \ an operator byte, a name, ENC-END, maybe a word
+5 CONSTANT ENC-ARITH      \ $((...)): the expression, raw, then ENC-END
+6 CONSTANT ENC-CMDSUB     \ one byte: which substitution of this word
+7 CONSTANT ENC-TILDE      \ a position byte, the user name, ENC-END
+
+\ ENC-VAR's operator byte
+0 CONSTANT EV-PLAIN
+1 CONSTANT EV-LENGTH
+2 CONSTANT EV-DEFAULT
+3 CONSTANT EV-ASSIGN
+4 CONSTANT EV-ERROR
+5 CONSTANT EV-ALT
+8 CONSTANT EV-COLON       \ added to the four above: the : forms
+16 CONSTANT EV-TRIM-PRE
+17 CONSTANT EV-TRIM-PRE-LONG
+18 CONSTANT EV-TRIM-SUF
+19 CONSTANT EV-TRIM-SUF-LONG
+
+\ ENC-TILDE's position byte: the expander expands the first always, the
+\ others only in an assignment word
+0 CONSTANT ET-START
+1 CONSTANT ET-AFTER-EQ
+2 CONSTANT ET-AFTER-COLON
+
+1024 BUFFER: ENC-BUF
+VARIABLE ENC#
+VARIABLE ENC-MUTE         \ inside a raw region: the codes are not written
+VARIABLE ENC-SUBS         \ command substitutions recorded so far
+VARIABLE ENC-BASE         \ where this word's encoding starts in ENC-BUF
+VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
+                          \ inside a $(...) are lexed too, and append here
+
+: ENC-PUT ( c --- )       \ unconditionally
+  ENC# @ 1+ ENSURE-BUFFER ENC-BUF  ENC-BUF ENC# @ + C!  1 ENC# +! ;
+: ENC-C, ( c --- )        ENC-MUTE @ IF DROP EXIT THEN ENC-PUT ;
+: ENC-CODE, ( code --- )  ENC-MUTE @ IF DROP EXIT THEN ENC-CTL ENC-PUT ENC-PUT ;
+: ENC-LIT, ( c --- )      \ a literal byte of the word's text
+  ENC-MUTE @ IF DROP EXIT THEN
+  DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT ;
+VARIABLE ER-I
+VARIABLE ER-END
+: ENC-RAW ( from to --- )
+  \ The source text as it stands, line continuations dropped. Only the
+  \ outermost raw region copies: the ones nested in it are muted, and it
+  \ copies their text along with its own.
+  ENC-MUTE @ IF 2DROP EXIT THEN
+  ER-END !  ER-I !
+  BEGIN ER-I @ ER-END @ < WHILE
+    ER-I @ SRC-ADDR @ + C@
+    DUP 92 = ER-I @ 1+ ER-END @ < AND IF
+      ER-I @ 1+ SRC-ADDR @ + C@ 10 = IF
+        DROP 2 ER-I +!                     \ a continuation: neither byte
+      ELSE
+        DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT  1 ER-I +!
+      THEN
+    ELSE
+      DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT  1 ER-I +!
+    THEN
+  REPEAT ;
+
+\ Each command substitution in a word is recorded once - the ones nested
+\ inside another's text belong to it - as the source range of its text,
+\ which TOKEN-WORD copies into the tree.
+64 BUFFER: ENC-SUB-POS    \ (start, end) source positions, a pair each
+: ENC-SUB-BEGIN ( --- )   \ before muting: at the start of the text
+  ENC-MUTE @ IF EXIT THEN
+  ENC-CMDSUB ENC-CODE,  ENC-SUBS @ ENC-SUB-BASE @ - ENC-C,
+  ENC-SUBS @ 1+ 2* CELLS ENSURE-BUFFER ENC-SUB-POS
+  SRC-POS @ ENC-SUB-POS ENC-SUBS @ 2* CELLS + !
+  1 ENC-SUBS +! ;
+: ENC-SUB-END ( --- )     \ after unmuting: past the closing ) or `
+  ENC-MUTE @ IF EXIT THEN
+  SRC-POS @ 1- ENC-SUB-POS ENC-SUBS @ 1- 2* 1+ CELLS + ! ;
+
+: ENC-DQ-ESCAPE ( --- )   \ a backslash inside double quotes
+  1 SRC-C
+  DUP -1 = IF DROP 92 ENC-LIT, 1 SRC-SKIP EXIT THEN
+  DUP 10 = IF DROP 2 SRC-SKIP EXIT THEN                \ a continuation
+  DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR IF
+    ENC-ESC ENC-CODE, ENC-C,
+  ELSE
+    92 ENC-LIT, ENC-LIT,                               \ both stay
+  THEN
+  2 SRC-SKIP ;
+
 \ ---- scanning a word ----
 DEFER SCAN-DOLLAR
 
 : SCAN-SQUOTE ( --- )     \ at ': to past the closing '
   1 SRC-SKIP
+  ENC-SQ ENC-CODE,
   BEGIN
     0 SRC-C DUP -1 = IF DROP S" unterminated single quote" SYNTAX THEN
-    1 SRC-SKIP 39 =
-  UNTIL ;
+    DUP 39 <> IF ENC-LIT, ELSE DROP THEN
+    1 SRC-SKIP
+    -1 SRC-C 39 =
+  UNTIL
+  ENC-END ENC-CODE, ;
 
 : SCAN-BACKQUOTE ( --- )  \ at `: to past the closing `
   1 SRC-SKIP
+  ENC-SUB-BEGIN
+  1 ENC-MUTE +!
   BEGIN
     0 SRC-C
     DUP -1 = IF DROP S" unterminated backquote" SYNTAX THEN
     DUP 92 = IF DROP 2 SRC-SKIP 0 ELSE
     96 = IF 1 SRC-SKIP -1 ELSE 1 SRC-SKIP 0 THEN THEN
-  UNTIL ;
+  UNTIL
+  -1 ENC-MUTE +!
+  ENC-SUB-END ;
 
 : SCAN-DQUOTE ( --- )     \ at ": to past the closing "
   1 SRC-SKIP
+  ENC-DQ ENC-CODE,
   BEGIN
     0 SRC-C
     DUP -1 = IF DROP S" unterminated double quote" SYNTAX THEN
     DUP 34 = IF DROP 1 SRC-SKIP -1 ELSE
-    DUP 92 = IF DROP 2 SRC-SKIP 0 ELSE
+    DUP 92 = IF DROP ENC-DQ-ESCAPE 0 ELSE
     DUP 96 = IF DROP SCAN-BACKQUOTE 0 ELSE
-    36 = IF SCAN-DOLLAR 0 ELSE 1 SRC-SKIP 0
+    36 = IF SCAN-DOLLAR 0 ELSE 0 SRC-C ENC-LIT, 1 SRC-SKIP 0
     THEN THEN THEN THEN
-  UNTIL ;
+  UNTIL
+  ENC-END ENC-CODE, ;
 
 : SCAN-ARITH ( --- )      \ at $((: to past the matching ))
-  3 SRC-SKIP 2
+  3 SRC-SKIP
+  ENC-ARITH ENC-CODE,
+  SRC-POS @ >R  1 ENC-MUTE +!
+  2
   BEGIN
     0 SRC-C
     DUP -1 = IF DROP S" unterminated arithmetic expansion" SYNTAX THEN
@@ -237,32 +347,95 @@ DEFER SCAN-DOLLAR
     34 = IF SCAN-DQUOTE ELSE 1 SRC-SKIP
     THEN THEN THEN THEN THEN
     DUP 0=
-  UNTIL DROP ;
+  UNTIL DROP
+  -1 ENC-MUTE +!
+  R> SRC-POS @ 2 - ENC-RAW              \ without the closing ))
+  ENC-END ENC-CODE, ;
 
 : SCAN-CMDSUB ( --- )     \ at $(: parse the contents, to past the )
   2 SRC-SKIP
+  ENC-SUB-BEGIN
+  1 ENC-MUTE +!
   \ The contents are a program: parse it, which is the only way to find
   \ the right `)` past a case pattern's. The tree it builds is thrown
   \ away; the token being scanned is saved around it.
+  \ The words inside are lexed too, and each resets the encoding buffer:
+  \ this word's encoding so far is kept across the parse (Iteration 274).
+  ENC# @ >R  ENC-SUBS @ >R  ENC-MUTE @ >R  ENC-BASE @ >R  ENC-SUB-BASE @ >R
   TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
   0 TK-VALID? !  -1 NO-ALIAS? !
   PARSE-SUBLIST
-  R> NO-ALIAS? !  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START ! ;
+  R> NO-ALIAS? !  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START !
+  R> ENC-SUB-BASE !  R> ENC-BASE !  R> ENC-MUTE !  R> ENC-SUBS !  R> ENC# !
+  -1 ENC-MUTE +!
+  ENC-SUB-END ;
+
+: SPECIAL-PARAM? ( c --- f )   \ NAME-CHAR? comes from shell.4
+  DUP 64 = OVER 42 = OR OVER 35 = OR OVER 63 = OR OVER 36 = OR
+  OVER 33 = OR SWAP 45 = OR ;
+
+: SCAN-BRACE-NAME ( --- )   \ ${ ... : the name, or a special parameter
+  0 SRC-C SPECIAL-PARAM? IF 0 SRC-C ENC-C, 1 SRC-SKIP EXIT THEN
+  BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
+    0 SRC-C ENC-C, 1 SRC-SKIP
+  REPEAT ;
+
+: SCAN-BRACE-OP ( --- op )   \ the operator after the name, or EV-PLAIN
+  0 SRC-C 125 = IF EV-PLAIN EXIT THEN
+  0 SRC-C 58 = IF                        \ the : forms
+    1 SRC-SKIP
+    0 SRC-C
+    DUP 45 = IF DROP 1 SRC-SKIP EV-DEFAULT EV-COLON + EXIT THEN
+    DUP 61 = IF DROP 1 SRC-SKIP EV-ASSIGN EV-COLON + EXIT THEN
+    DUP 63 = IF DROP 1 SRC-SKIP EV-ERROR EV-COLON + EXIT THEN
+    43 = IF 1 SRC-SKIP EV-ALT EV-COLON + EXIT THEN
+    EV-DEFAULT EV-COLON + EXIT                         \ ${x:} - as ${x:-}
+  THEN
+  0 SRC-C
+  DUP 45 = IF DROP 1 SRC-SKIP EV-DEFAULT EXIT THEN
+  DUP 61 = IF DROP 1 SRC-SKIP EV-ASSIGN EXIT THEN
+  DUP 63 = IF DROP 1 SRC-SKIP EV-ERROR EXIT THEN
+  DUP 43 = IF DROP 1 SRC-SKIP EV-ALT EXIT THEN
+  DUP 35 = IF
+    DROP 1 SRC-SKIP
+    0 SRC-C 35 = IF 1 SRC-SKIP EV-TRIM-PRE-LONG ELSE EV-TRIM-PRE THEN EXIT
+  THEN
+  37 = IF
+    1 SRC-SKIP
+    0 SRC-C 37 = IF 1 SRC-SKIP EV-TRIM-SUF-LONG ELSE EV-TRIM-SUF THEN EXIT
+  THEN
+  EV-PLAIN ;
 
 : SCAN-BRACE ( --- )      \ at ${: to past the matching }
-  2 SRC-SKIP 1
-  BEGIN
-    0 SRC-C
-    DUP -1 = IF DROP S" unterminated parameter expansion" SYNTAX THEN
-    DUP 125 = IF DROP 1- 1 SRC-SKIP ELSE
-    DUP 92 = IF DROP 2 SRC-SKIP ELSE
-    DUP 36 = IF DROP SCAN-DOLLAR ELSE
-    DUP 39 = IF DROP SCAN-SQUOTE ELSE
-    DUP 34 = IF DROP SCAN-DQUOTE ELSE
-    96 = IF SCAN-BACKQUOTE ELSE 1 SRC-SKIP
-    THEN THEN THEN THEN THEN THEN
-    DUP 0=
-  UNTIL DROP ;
+  2 SRC-SKIP
+  ENC-VAR ENC-CODE,
+  0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND IF
+    1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME
+    ENC-END ENC-CODE,
+    0 SRC-C 125 = IF 1 SRC-SKIP THEN EXIT
+  THEN
+  \ the operator is only known after the name, so the name is written to
+  \ one side and the operator byte goes in first
+  ENC# @ >R  0 ENC-C,                     \ the operator's place
+  SCAN-BRACE-NAME
+  SCAN-BRACE-OP DUP R> ENC-BUF + C!       ( op )
+  ENC-END ENC-CODE,
+  EV-PLAIN <> IF                          \ a word follows, up to the }
+    BEGIN
+      0 SRC-C
+      DUP -1 = IF DROP S" unterminated parameter expansion" SYNTAX THEN
+      DUP 125 = IF DROP -1 ELSE
+      DUP 92 = IF DROP ENC-DQ-ESCAPE 0 ELSE
+      DUP 36 = IF DROP SCAN-DOLLAR 0 ELSE
+      DUP 39 = IF DROP SCAN-SQUOTE 0 ELSE
+      DUP 34 = IF DROP SCAN-DQUOTE 0 ELSE
+      96 = IF SCAN-BACKQUOTE 0 ELSE
+        0 SRC-C ENC-LIT, 1 SRC-SKIP 0
+      THEN THEN THEN THEN THEN THEN
+    UNTIL
+    ENC-END ENC-CODE,
+  THEN
+  0 SRC-C 125 = IF 1 SRC-SKIP ELSE S" unterminated parameter expansion" SYNTAX THEN ;
 
 : SCAN-DOLLAR-IMPL ( --- )           \ at $
   WF-EXPAND TK-FLAGS @ OR TK-FLAGS !
@@ -270,11 +443,47 @@ DEFER SCAN-DOLLAR
     2 SRC-C 40 = IF SCAN-ARITH ELSE SCAN-CMDSUB THEN EXIT
   THEN
   1 SRC-C 123 = IF SCAN-BRACE EXIT THEN
-  1 SRC-SKIP ;
+  \ $name, $1, $@ and the rest: the name is taken here, so the word's
+  \ own loop does not see it again
+  1 SRC-C DUP SPECIAL-PARAM? SWAP 48 - 10 U< OR IF
+    1 SRC-SKIP
+    ENC-VAR ENC-CODE,  EV-PLAIN ENC-C,  0 SRC-C ENC-C,  1 SRC-SKIP
+    ENC-END ENC-CODE, EXIT
+  THEN
+  1 SRC-C NAME-CHAR? IF
+    1 SRC-SKIP
+    ENC-VAR ENC-CODE,  EV-PLAIN ENC-C,
+    BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
+      0 SRC-C ENC-C,  1 SRC-SKIP
+    REPEAT
+    ENC-END ENC-CODE, EXIT
+  THEN
+  36 ENC-LIT,  1 SRC-SKIP ;
 ' SCAN-DOLLAR-IMPL IS SCAN-DOLLAR
+
+: TILDE-CLASS ( --- class | -1 )   \ where this ~ stands in the word
+  SRC-POS @ TK-START @ = IF ET-START EXIT THEN
+  -1 SRC-C DUP 61 = IF DROP ET-AFTER-EQ EXIT THEN
+  58 = IF ET-AFTER-COLON EXIT THEN
+  -1 ;
+: SCAN-TILDE-PREFIX ( --- )   \ at ~ : its user name, up to / or the word's end
+  TILDE-CLASS DUP 0< IF
+    DROP 126 ENC-LIT, 1 SRC-SKIP EXIT
+  THEN
+  ENC-TILDE ENC-CODE,  ENC-C,
+  1 SRC-SKIP
+  BEGIN
+    0 SRC-C DUP -1 <> IF
+      DUP NAME-CHAR? OVER 45 = OR SWAP 46 = OR
+    ELSE DROP 0 THEN
+  WHILE
+    0 SRC-C ENC-C,  1 SRC-SKIP
+  REPEAT
+  ENC-END ENC-CODE, ;
 
 : SCAN-WORD ( --- )       \ at a word's first character
   SRC-POS @ TK-START !  0 TK-FLAGS !
+  ENC# @ ENC-BASE !  ENC-SUBS @ ENC-SUB-BASE !  0 ENC-MUTE !
   0 SRC-C DUP 39 = OVER 34 = OR SWAP 92 = OR IF WF-NAME-Q TK-FLAGS ! THEN
   BEGIN
     0 SRC-C
@@ -282,6 +491,9 @@ DEFER SCAN-DOLLAR
       DROP -1
     ELSE DUP 92 = IF
       DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !
+      1 SRC-C DUP -1 = IF DROP 92 ENC-LIT, ELSE
+        DUP 10 = IF DROP ELSE ENC-ESC ENC-CODE, ENC-C, THEN
+      THEN
       1 SRC-C -1 = IF 1 ELSE 2 THEN SRC-SKIP 0
     ELSE DUP 39 = IF
       DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !  SCAN-SQUOTE 0
@@ -301,7 +513,12 @@ DEFER SCAN-DOLLAR
       0 SRC-C 93 = TK-FLAGS @ WF-BRACKET AND 0<> AND IF
         WF-SPECIAL TK-FLAGS @ OR TK-FLAGS !
       THEN
-      1 SRC-SKIP 0
+      0 SRC-C 126 = IF
+        SCAN-TILDE-PREFIX                    \ takes the ~ and the name
+      ELSE
+        0 SRC-C ENC-LIT, 1 SRC-SKIP
+      THEN
+      0
     THEN THEN THEN THEN THEN THEN
   UNTIL
   SRC-POS @ TK-END ! ;
@@ -410,6 +627,49 @@ VARIABLE TW-I
 : TW-PUT ( c --- )   TW-DST @ C!  1 TW-DST +! ;
 : TW-C ( i --- c )   SRC-ADDR @ + C@ ;
 
+VARIABLE CST-I
+VARIABLE CST-END
+VARIABLE CST-DST
+: COPY-SRC-TEXT ( from to --- soff )   \ into the tree, NUL-terminated
+  2DUP SWAP - 1+ TREE-ALLOT >R
+  CST-END !  CST-I !
+  R@ TSTR CST-DST !
+  BEGIN CST-I @ CST-END @ < WHILE
+    CST-I @ SRC-ADDR @ + C@
+    DUP 92 = CST-I @ 1+ CST-END @ < AND
+    IF
+      CST-I @ 1+ SRC-ADDR @ + C@ 10 = IF
+        DROP 2 CST-I +!
+      ELSE
+        CST-DST @ C!  1 CST-DST +!  1 CST-I +!
+      THEN
+    ELSE
+      CST-DST @ C!  1 CST-DST +!  1 CST-I +!
+    THEN
+  REPEAT
+  0 CST-DST @ C!
+  R> ;
+
+VARIABLE TW-ENC-OFF
+VARIABLE TW-ENC-LEN
+VARIABLE TW-SUBS-VEC
+: TOKEN-WORD-ENC ( --- )   \ the encoding and each substitution's text
+  ENC# @ ENC-BASE @ - TW-ENC-LEN !
+  TW-ENC-LEN @ IF
+    TW-ENC-LEN @ TREE-ALLOT DUP TW-ENC-OFF !
+    TSTR  TW-ENC-LEN @ >R  ENC-BUF ENC-BASE @ + SWAP R> MOVE
+  ELSE
+    0 TW-ENC-OFF !
+  THEN
+  VEC-MARK
+  ENC-SUBS @ ENC-SUB-BASE @ ?DO
+    ENC-SUB-POS I 2* CELLS + @
+    ENC-SUB-POS I 2* 1+ CELLS + @
+    COPY-SRC-TEXT >VEC
+  LOOP
+  VEC> TW-SUBS-VEC !
+  ENC-BASE @ ENC# !  ENC-SUB-BASE @ ENC-SUBS ! ;
+
 : TOKEN-WORD ( --- node )
   TK-END @ TK-START @ - 1+ TREE-ALLOT       ( soff )
   DUP TSTR TW-DST !  0 TW-SQ !  0 TW-DQ !  TK-START @ TW-I !
@@ -428,7 +688,9 @@ VARIABLE TW-I
       TW-PUT 1 TW-I +!
     THEN
   REPEAT
-  T-WORD 2 NODE  TUCK 0 F!  TK-FLAGS @ OVER 1 F! ;
+  TOKEN-WORD-ENC
+  T-WORD 5 NODE  TUCK 0 F!  TK-FLAGS @ OVER 1 F!
+  TW-ENC-OFF @ OVER 2 F!  TW-ENC-LEN @ OVER 3 F!  TW-SUBS-VEC @ OVER 4 F! ;
 
 \ ==================================================================
 \ The parser: XCU 2.10's grammar, by recursive descent
@@ -791,6 +1053,62 @@ DEFER PRINT-NODE
     DUP 34 = OVER 92 = OR IF 92 EMIT THEN EMIT THEN
   LOOP
   34 EMIT ;
+
+\ ---- the encoded form, readably (tree-dump; Iteration 274) ----
+VARIABLE ENC-SHOW?        \ tree-dump prints encodings too
+VARIABLE PE-I
+VARIABLE PE-A
+VARIABLE PE-N
+: .OP-NAME ( op --- )
+  DUP EV-PLAIN = IF DROP S" plain" TYPE EXIT THEN
+  DUP EV-LENGTH = IF DROP S" length" TYPE EXIT THEN
+  DUP EV-TRIM-PRE = IF DROP S" #" TYPE EXIT THEN
+  DUP EV-TRIM-PRE-LONG = IF DROP S" ##" TYPE EXIT THEN
+  DUP EV-TRIM-SUF = IF DROP S" %" TYPE EXIT THEN
+  DUP EV-TRIM-SUF-LONG = IF DROP S" %%" TYPE EXIT THEN
+  DUP EV-COLON AND IF S" :" TYPE THEN
+  EV-COLON 1- AND
+  DUP EV-DEFAULT = IF DROP 45 EMIT EXIT THEN
+  DUP EV-ASSIGN = IF DROP 61 EMIT EXIT THEN
+  DUP EV-ERROR = IF DROP 63 EMIT EXIT THEN
+  EV-ALT = IF 43 EMIT EXIT THEN
+  S" ?op" TYPE ;
+: PE-C ( --- c )   PE-A @ PE-I @ + C@ ;
+: PRINT-ENC ( word --- )
+  DUP 3 F@ ?DUP 0= IF DROP DROP EXIT THEN
+  PE-N !  DUP 2 F@ TSTR PE-A !
+  S"  enc<" TYPE
+  0 PE-I !
+  BEGIN PE-I @ PE-N @ < WHILE
+    PE-C ENC-CTL = IF
+      1 PE-I +!
+      PE-C
+      DUP ENC-CTL = IF DROP 91 EMIT PE-C EMIT 93 EMIT ELSE
+      DUP ENC-END = IF DROP S" >" TYPE ELSE
+      DUP ENC-SQ = IF DROP S" sq<" TYPE ELSE
+      DUP ENC-DQ = IF DROP S" dq<" TYPE ELSE
+      DUP ENC-ESC = IF DROP 1 PE-I +! S" esc(" TYPE PE-C EMIT 41 EMIT ELSE
+      DUP ENC-VAR = IF
+        DROP 1 PE-I +! S" var(" TYPE PE-C .OP-NAME 44 EMIT
+      ELSE
+      DUP ENC-ARITH = IF DROP S" arith<" TYPE ELSE
+      DUP ENC-CMDSUB = IF DROP 1 PE-I +! S" sub" TYPE PE-C 48 + EMIT ELSE
+      DUP ENC-TILDE = IF DROP 1 PE-I +! S" tilde" TYPE PE-C 48 + EMIT 40 EMIT ELSE
+        DROP S" ?code" TYPE
+      THEN THEN THEN THEN THEN THEN THEN THEN THEN
+      1 PE-I +!
+    ELSE
+      PE-C EMIT  1 PE-I +!
+    THEN
+  REPEAT
+  S" >" TYPE
+  DUP 4 F@ ?DUP IF
+    DUP V# 0 ?DO
+      S"  sub" TYPE I 48 + EMIT S" =<" TYPE
+      DUP I V@ .STR S" >" TYPE
+    LOOP DROP
+  THEN DROP ;
+
 : .SP ( --- )   32 EMIT ;
 : .VEC ( vec --- )   \ items, space-separated
   DUP V# 0 ?DO .SP DUP I V@ PRINT-NODE LOOP DROP ;
@@ -807,7 +1125,7 @@ DEFER PRINT-NODE
 : PRINT-NODE-IMPL ( node --- )
   ?DUP 0= IF ." ()" EXIT THEN
   DUP T@ CASE
-  T-WORD OF 0 F@ .STR ENDOF
+  T-WORD OF DUP 0 F@ .STR  ENC-SHOW? @ IF PRINT-ENC ELSE DROP THEN ENDOF
   T-VEC OF ." [" .VEC ."  ]" ENDOF
   T-LIST OF
     ." (list"
@@ -1516,6 +1834,10 @@ VARIABLE DUMP-XT
 ' DUMP-PROGRAM DUMP-XT !XT
 
 : DO-TREE-DUMP ( --- )
+  0 ENC-SHOW? !
+  ARGC @ 2 > IF
+    1 ARGV@ S" -e" ROT STR0= IF -1 ENC-SHOW? ! DROP-ARGV0 THEN
+  THEN
   ARGC @ 2 < IF 2 LAST-STATUS ! EXIT THEN
   1 ARGV@ DUP CSTRLEN R/O OPEN-FILE IF DROP 2 LAST-STATUS ! EXIT THEN
   >R R@ FILE-SIZE 2DROP                     ( size )

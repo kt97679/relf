@@ -1,0 +1,3 @@
+(list (simple "echo" enc<echo> "$x" enc<var(plain,x>> "${y}" enc<var(plain,y>> "${#n}" enc<var(length,n>> "$1" enc<var(plain,1>> "$@" enc<var(plain,@>> "$*" enc<var(plain,*>> "$#" enc<var(plain,#>> "$?" enc<var(plain,?>> "$$" enc<var(plain,$>> "$!" enc<var(plain,!>> "$-" enc<var(plain,->>))
+(list (simple "echo" enc<echo> "${z:-def}" enc<var(:-,z>def>> "${z-d}" enc<var(-,z>d>> "${z:=as}" enc<var(:=,z>as>> "${z=a}" enc<var(=,z>a>> "${z:?msg}" enc<var(:?,z>msg>> "${z?m}" enc<var(?,z>m>> "${z:+alt}" enc<var(:+,z>alt>> "${z+a}" enc<var(+,z>a>>))
+(list (simple "echo" enc<echo> "${p#a*}" enc<var(#,p>a*>> "${p##a*}" enc<var(##,p>a*>> "${p%z}" enc<var(%,p>z>> "${p%%z}" enc<var(%%,p>z>> "\"${v}post\"" enc<dq<var(plain,v>post>> "\"pre${v:-x}\"" enc<dq<prevar(:-,v>x>>>))

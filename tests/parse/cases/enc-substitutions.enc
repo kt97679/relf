@@ -1,0 +1,3 @@
+(list (simple "echo" enc<echo> "$(echo hi)" enc<sub0> sub0=<"echo hi"> "`date`" enc<sub0> sub0=<"date"> "\"$(echo q)\"" enc<dq<sub0>> sub0=<"echo q"> "$(echo $(echo nested))" enc<sub0> sub0=<"echo $(echo nested)">))
+(list (simple "echo" enc<echo> "\"$(echo a)$(echo b)\"" enc<dq<sub0sub1>> sub0=<"echo a"> sub1=<"echo b"> "${w#`e`}" enc<var(#,w>sub0>> sub0=<"e"> "\"${v:-$(d)}\"" enc<dq<var(:-,v>sub0>>> sub0=<"d">))
+(list (simple (assign "x=$(a)" enc<x=sub0> sub0=<"a">)))

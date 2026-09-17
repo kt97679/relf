@@ -1,0 +1,3 @@
+(list (simple "echo" enc<echo> "plain" enc<plain> "a-b.c" enc<a-b.c> "'single quoted'" enc<sq<single quoted>> "\"double quoted\"" enc<dq<double quoted>>))
+(list (simple "echo" enc<echo> "\\e" enc<esc(e)> "sc\\ ape" enc<scesc( )ape> "\"in \\\"quotes\\\" and \\\\ and \\$x and \\`b\\`\"" enc<dq<in esc(")quotesesc(") and esc(\) and esc($)x and esc(`)besc(`)>> "'q'\"r\"'s'" enc<sq<q>dq<r>sq<s>>))
+(list (simple "echo" enc<echo> "\"\"" enc<dq<>> "''" enc<sq<>> "\"a\"\"b\"" enc<dq<a>dq<b>>))

@@ -30,6 +30,25 @@ for f in cases/*.sh; do
     fi
 done
 
+# 3. cases/NAME.enc must match `tree-dump -e`, which prints each word's
+#    encoded form as well (EXPANSION-PLAN.md Stage A, Iteration 274):
+#    sq<> and dq<> are quoted runs, esc(c) one quoted character,
+#    var(op,name>word> a parameter, sub<n> a command substitution with
+#    its text beside it, arith<> an expression, tildeN() a tilde prefix
+#    with its position class.
+for f in cases/*.enc; do
+    want=$(cat "$f")
+    got=$("$THIS_SH" -c "tree-dump -e $here/${f%.enc}.sh" 2>&1)
+    if [ "$got" = "$want" ]; then
+        encpass=$((${encpass:-0} + 1))
+    else
+        fail=$((fail + 1))
+        echo "FAIL: $f"
+        echo "  want: $want"
+        echo "  got:  $got"
+    fi
+done
+
 if command -v dash > /dev/null 2>&1; then
     for f in ../diff/cases/*.sh ../posix/cases/*.sh ../bench-vm/*.sh \
              ../matrix/errors/*.sh $(find ../mrsh-suite -name '*.sh' | sort); do
@@ -46,5 +65,5 @@ if command -v dash > /dev/null 2>&1; then
     done
 fi
 
-echo "== $pass passed, $fail failed; verdicts: $agree agree, $disagree disagree =="
+echo "== $pass passed, ${encpass:-0} encoded, $fail failed; verdicts: $agree agree, $disagree disagree =="
 [ "$fail" = 0 ] && [ "$disagree" = 0 ]

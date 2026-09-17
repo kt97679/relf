@@ -16,8 +16,9 @@ matrix:passed 420
 matrix:regressions 0
 mrsh:failed 0
 mrsh:passed 21
+parse:encoded 4
 parse:failed 0
-parse:passed 22
+parse:passed 26
 parse:verdicts-agree 143
 parse:verdicts-differ 0
 posix:cases 48
@@ -33,7 +34,7 @@ shell:dead-words 0
 shell:files 70
 size:engine-code-i386 15838
 size:engine-code-x86_64 21226
-size:i386 89936
-size:image-i386 67884
-size:image-x86_64 73136
-size:x86_64 108168
+size:i386 93200
+size:image-i386 71148
+size:image-x86_64 76544
+size:x86_64 111576

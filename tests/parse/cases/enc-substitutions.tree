@@ -1,0 +1,3 @@
+(list (simple "echo" "$(echo hi)" "`date`" "\"$(echo q)\"" "$(echo $(echo nested))"))
+(list (simple "echo" "\"$(echo a)$(echo b)\"" "${w#`e`}" "\"${v:-$(d)}\""))
+(list (simple (assign "x=$(a)")))

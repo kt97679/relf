@@ -1,0 +1,3 @@
+(list (simple "echo" "~" "~root" "~/sub" "a~b"))
+(list (simple (assign "v=~") (assign "w=~/p") (assign "x=a:~") (assign "y=a:~root/b")))
+(list (simple "echo" "$((1+2*3))" "$(( x + $y ))" "\"$((n))\"" "$(($(e)))"))

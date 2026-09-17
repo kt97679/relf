@@ -1,0 +1,3 @@
+(list (simple "echo" enc<echo> "~" enc<tilde0(>> "~root" enc<tilde0(root>> "~/sub" enc<tilde0(>/sub> "a~b" enc<a~b>))
+(list (simple (assign "v=~" enc<v=tilde1(>>) (assign "w=~/p" enc<w=tilde1(>/p>) (assign "x=a:~" enc<x=a:tilde2(>>) (assign "y=a:~root/b" enc<y=a:tilde2(root>/b>)))
+(list (simple "echo" enc<echo> "$((1+2*3))" enc<arith<1+2*3>> "$(( x + $y ))" enc<arith< x + $y >> "\"$((n))\"" enc<dq<arith<n>>> "$(($(e)))" enc<arith<$(e)>>))

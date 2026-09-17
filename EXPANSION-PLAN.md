@@ -128,7 +128,9 @@ take the general path).
    until then `EMIT-QUOTED`, `QUOTE-DEPTH` and `SAVE-TRIM-STATE` carry
    them.
 
-**Stage A — the encoding.** `TOKEN-WORD` writes the encoded form (and
+**Stage A — the encoding.** *(Iteration 274: the lexer writes it; what
+is left of this stage is the here-document bodies, and the subtrees of
+Stage D.)* `TOKEN-WORD` writes the encoded form (and
 keeps the raw text beside it while the old expander still needs it);
 command substitutions keep their subtrees; `tree-dump` prints encoded
 words readably. `tests/parse` gains encoded-word cases: every quoting

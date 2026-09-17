@@ -136,11 +136,12 @@ emit posix:cases "$(ls tests/posix/cases/*.sh 2>/dev/null | wc -l | tr -d ' ')"
 
 # tests/parse: the command-tree parser (Iteration 263), its trees and its
 # syntax verdicts against dash -n.
-PR=$(sh tests/parse/run 2>&1 | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) failed; verdicts: \([0-9]*\) agree, \([0-9]*\) disagree ==$/\1 \2 \3 \4/p')
+PR=$(sh tests/parse/run 2>&1 | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) encoded, \([0-9]*\) failed; verdicts: \([0-9]*\) agree, \([0-9]*\) disagree ==$/\1 \2 \3 \4 \5/p')
 emit parse:passed           "$(echo "$PR" | cut -d' ' -f1)"
-emit parse:failed           "$(echo "$PR" | cut -d' ' -f2)"
-emit parse:verdicts-agree   "$(echo "$PR" | cut -d' ' -f3)"
-emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f4)"
+emit parse:encoded          "$(echo "$PR" | cut -d' ' -f2)"
+emit parse:failed           "$(echo "$PR" | cut -d' ' -f3)"
+emit parse:verdicts-agree   "$(echo "$PR" | cut -d' ' -f4)"
+emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f5)"
 
 # Unreachable definitions in the shell's sources (tools/dead-words.py):
 # Iteration 265 removed 343 of them with the line-based shell; none should
