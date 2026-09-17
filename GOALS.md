@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,742    kernel-shell.img     66,802
-    32-bit   kernel32.img   8,138    kernel32-shell.img   60,745
+    64-bit   kernel.img     8,742    kernel-shell.img     67,594
+    32-bit   kernel32.img   8,138    kernel32-shell.img   61,505
 
 **Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -991,25 +991,29 @@ of this file:
   any number, `${10}` and up included. Found by
   `tests/posix/2.5.1-positional-parameters.sh` in Iteration 146, which
   now passes.
-- **`${#}`** - the count of positional parameters - yields 0.
-  `${#var}` works; the bare form does not.
+- ~~**`${#}`** yields 0~~ - **fixed in Iteration 257.**
 - ~~**`for w; do ... done`**~~ and ~~**`eval`**~~ **done in Iteration
   256**. `eval` joins its arguments and runs them as a function body is
   run, multi-line text included.
-- **`"$*"` joins with a space regardless of `IFS`.** POSIX says the
-  first character of `IFS`, and nothing when `IFS` is null.
+- ~~**`"$*"` joins with a space regardless of `IFS`**~~ - **fixed in
+  Iteration 257**: the first character of `IFS`, a space when unset,
+  nothing when null.
 - **Non-whitespace `IFS` produces no empty fields.** With `IFS=:`,
   `a::b:` must split into three fields; it yields two. Whitespace
   splitting is correct - Iteration 146 implied otherwise and 147
   corrected it.
-- **Arithmetic division truncates the wrong way for negatives.**
-  `$((-7 / 2))` is -4 here and -3 everywhere else; ISO C, which XCU
-  2.6.4 defers to, truncates toward zero.
+- ~~**Arithmetic division truncates the wrong way for negatives**~~ -
+  **fixed in Iteration 257** (`SM/REM`). The same change stopped a
+  division by zero from killing the shell with SIGFPE: it is reported,
+  and the command does not run, status 1, as in bash.
 - **A reserved word cannot be a `for` list value.**
   `for x in do done; do ...; done` iterates over nothing.
-- **Quoted and escaped patterns in `case` do not match.**
-  `case 'a*b' in 'a*b')` selects no arm, and neither does `*)`.
-- **An empty `case` word does not match an empty pattern.**
+- ~~**Quoted and escaped patterns in `case`**~~ and ~~**an empty
+  `case` word**~~ - **fixed in Iteration 257**. A pattern with any
+  quoted part is compared literally, so one that mixes quoted and bare
+  parts (`"a"*`) is literal too - the quoting of single characters is
+  not kept. The case word is everything between `case` and `in`,
+  rejoined, so an empty expansion is the empty word.
 - **`set -e`**, per above.
 - ~~**A script line over `LINE-MAX` (256) has its TAIL EXECUTED as a
   separate command.**~~ Made an error in Iteration 248, and **lifted in
@@ -1063,6 +1067,11 @@ of this file:
 - ~~**A one-line loop inside a multi-line loop**~~ was "expected 'done'"
   at end of input: the body capture counted its `while` as an opener and
   never saw its `done`. **Fixed in Iteration 256.**
+- **Pathname expansion is not implemented at all.** `*`, `?` and
+  `[...]` never match files - `GLOB-MATCH` serves `case` and
+  `${var%pattern}` only. It needs a primitive that reads a directory
+  (escaped, so no opcode). Found in Iteration 257; `tests/posix`'s
+  2.6.6 case.
 - **A multi-line loop after `;` loops FOR EVER**: `n=0; while [ ... ]`
   with `do` on the next line prints "while: expected 'do'" without end,
   in this and earlier builds. The loop reads its condition from the raw
@@ -1083,9 +1092,11 @@ of this file:
   yields 0 where other shells diagnose it. `NORMALIZE-OPERATORS`'
   comment predicted exactly this when it left `(` and `)` out of
   operator spacing.
-- **`case` cannot be written on one line**, and therefore cannot
-  appear in a one-line function body. `case x in x) echo M ;; esac` is
-  a syntax error.
+- ~~**`case` cannot be written on one line**~~ - **fixed in Iteration
+  257**: what follows `in` becomes pending words, and the text after
+  `esac` is rebuilt from them. Pending words also got text of their own,
+  as the rest after `;` did in 255, so a function called in one arm no
+  longer corrupts the next.
 - **Content after a nested `fi` on the same line is dropped**,
   silently. The un-nested form works.
 

@@ -252,6 +252,7 @@ do not trust the absence of a line below.
 - **254** — RAW-MODE; tests on a pseudo-terminal
 - **255** — redirections on builtins and functions; what follows a function call; $$
 - **256** — until, eval, for w, NAME=value cmd; nested one-line loops
+- **257** — division, ${#}, "$*", case patterns and one-line case; division by zero
 
 ### Not tied to an iteration
 
@@ -15400,3 +15401,48 @@ The loop takes its condition from the raw line, which starts with
 
 tests/verify: posix 26/20 -> 30/16; engine + shell image 91,706 ->
 93,642 (x86-64), 80,973 -> 82,749 (i386).
+
+## Iteration 257: small semantics, and a crash
+
+`tests/posix` 30/16 -> 36/10. Each fix was checked against bash in
+`tests/diff/cases/semantics-257.sh`; the previous build fails it.
+
+- **Division** is C's: `AE-DIV` uses `SM/REM`, where the kernel's `/` and
+  `MOD` floor, so `$((-7/2))` was -4. **A zero divisor killed the shell**
+  - the engine's divide took SIGFPE, status 136, in every earlier build.
+  Now it is "shell: division by zero", `EXPANSION-FAILED?` is set, and
+  `RUN-SIMPLE-OR-PIPELINE` does not run the command: status 1, as bash
+  does (dash ends the script). Running it with 0 substituted would have
+  been worse than the crash.
+- **`${#}`** is `$#`; it was the length of a variable with no name.
+- **`"$*"`** joins with IFS's first character (`IFS-FIRST`): a space when
+  IFS is unset, nothing when it is null.
+- **`case` patterns** with any quoted or escaped part are compared
+  literally, so `'a*b')` no longer matches `axb` and `'')` matches the
+  empty word. A pattern mixing quoted and bare parts is literal too; the
+  quoting of single characters is not tracked.
+- **The case word** is everything between `case` and `in` after
+  expansion, rejoined (`CASE-TAKE-WORD`): an empty `$w` made "in" the
+  word, and `x="a b"` split it. It grows, too; it was 256 bytes and a
+  longer word was dropped silently.
+- **One-line `case`** works. `CASE-SPLIT-IN` makes what follows `in` the
+  pending words (split at word 3 exactly: `case in in` is valid), and
+  since `esac` then arrives as pending words, not as the raw line, the
+  text after it is rebuilt from them (`JOIN-ARGV-TO-RAW`) before the
+  suffix is cut - at both of DO-CASE's `esac` exits.
+
+**Two copying bugs of the kind 255 found.** Pending words (after `then`,
+`do`, `;;`, `in`) are pointers into the token buffers, so a function
+called in one case arm corrupted the next arm; `PENDING-KEEP-TEXT` gives
+them a heap block, keeping the previous generation because the words
+being run live there. And `COPY-ARGV-Q` did not carry "was the name
+quoted", which the assignment check reads: after `'a*b')`, the arm
+`r=x ;;` was "command not found" - multi-line case too. It is now taken
+from the raw word's first character.
+
+**Found, not fixed: pathname expansion does not exist.** `*.txt` never
+expands; the one glob matcher serves `case` and `${var%...}`. It needs a
+directory-reading primitive. Recorded in GOALS.md.
+
+tests/verify: posix 30/16 -> 36/10; sizes 93,642 -> 94,434 (x86-64),
+82,749 -> 83,509 (i386).

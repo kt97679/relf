@@ -1120,6 +1120,13 @@ VARIABLE EXPAND-SUPPRESSED?  \ true while a word is being scanned only
 VARIABLE IFSC-C
 VARIABLE IFSC-P
 
+: IFS-FIRST ( --- c | -1 )
+\ What "$*" joins with: IFS's first character, a space when IFS is
+\ unset, nothing (-1) when it is empty (XCU 2.5.2).
+  73 IFS-NM C!  70 IFS-NM 1+ C!  83 IFS-NM 2 + C!  0 IFS-NM 3 + C!
+  IFS-NM LOOKUP-VAR ?DUP 0= IF 32 EXIT THEN
+  C@ ?DUP 0= IF -1 THEN ;
+
 : IFS-CHAR? ( c --- f )
   \ Is c a field separator? POSIX: the characters in $IFS, defaulting
   \ to space/tab/newline when IFS is unset. This used to be hardcoded
@@ -1473,6 +1480,20 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
   AE-READ-VARNAME
   AE-LOOKUP-NUMERIC ;
 
+VARIABLE EXPANSION-FAILED?   \ an expansion error: the command must not run
+
+: AE-DIV ( n1 n2 --- quot rem )
+\ Division as C and POSIX arithmetic do it: the quotient truncated
+\ toward zero (SM/REM - the kernel's / floors, so $((-7/2)) was -4).
+\ A zero divisor is reported and gives 0; it used to reach the CPU's
+\ divide and kill the shell with SIGFPE (Iteration 257).
+  DUP 0= IF
+    2DROP S" shell: division by zero" ERR-TYPE ERR-NL
+    -1 EXPANSION-FAILED? !
+    0 0 EXIT
+  THEN
+  SWAP S>D ROT SM/REM SWAP ;
+
 : AE-MUL ( --- n )
   AE-PRIMARY
   BEGIN
@@ -1483,9 +1504,9 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
     DUP 42 = IF
       DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY *
     ELSE DUP 47 = IF
-      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY /
+      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY AE-DIV DROP
     ELSE
-      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY MOD
+      DROP AE-POS @ 1+ AE-POS ! AE-PRIMARY AE-DIV SWAP DROP
     THEN THEN
   REPEAT ;
 
@@ -1920,9 +1941,12 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
         \ break out of nothing. Without this, "1  $@  2" with three
         \ parameters lost its "  2" (Iteration 103).
         IFS-SPLIT-HERE
+      ELSE EAP-AT @ 0= IN-DQ-CONTEXT? @ AND IF
+        \ "$*" joins with IFS's first character (Iteration 257).
+        IFS-FIRST DUP 0< IF DROP ELSE EMIT-EXPANDED-CHAR THEN
       ELSE
         32 EMIT-EXPANDED-CHAR
-      THEN
+      THEN THEN
     THEN
     EAP-I @ POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !
@@ -2088,6 +2112,14 @@ VARIABLE EBW-NAMELEN
 
 : EXPAND-BRACED-VAR ( --- )
   \ TOK-POS is right after the opening '{'.
+  \ ${#} is $#, not the length of a variable with an empty name.
+  TOK-POS @ 1+ TOK-END @ < IF
+    TOK-POS @ C@ 35 = TOK-POS @ 1+ C@ 125 = AND IF
+      TOK-POS @ 2 + TOK-POS !
+      POS-PARAM-COUNT @ EMIT-DECIMAL
+      EXIT
+    THEN
+  THEN
   TOK-POS @ TOK-END @ < TOK-POS @ C@ 35 = AND IF   ( ${#VAR}: length )
     TOK-POS @ 1+ TOK-POS !
     READ-VARNAME
@@ -2558,6 +2590,7 @@ VARIABLE EW-I
   \ splitting at any whitespace left in the middle. A second pass then
   \ re-splits rather than truncating - `"a b"` stays two words instead
   \ of becoming `a`.
+  0 EXPANSION-FAILED? !
   ARGC @ EW-ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -4260,6 +4293,14 @@ VARIABLE CAQ-N
     CAQ-N @ 0 DO
       CAQ-ARGQ @ I +       C@ ARGV-QUOTED I +       C!
       CAQ-ARGV @ I CELLS + @  ARGV        I CELLS + !
+      \ Whether the word's NAME part was quoted - what an assignment
+      \ is checked by - was not carried, and kept a previous word's
+      \ value: after a case arm `'a*b')`, `r=x ;;` was "command not
+      \ found" (Iteration 257). The copies are raw token text, so it
+      \ is the first character's being a quote or a backslash.
+      CAQ-ARGV @ I CELLS + @ C@
+      DUP 39 = OVER 34 = OR SWAP 92 = OR
+      ARGV-NAME-QUOTED I + C!
     LOOP
   THEN
   0 ARGV CAQ-N @ CELLS + ! ;
@@ -4846,6 +4887,9 @@ VARIABLE TA-E
   \ at the line level, since segments never pass through RUN-TOKENIZED.
   DISPATCH-GROUP IF EXIT THEN
   EXPAND-WORDS
+  \ An expansion that failed - a division by zero - stops the command,
+  \ with status 1, as bash does; dash ends the script (Iteration 257).
+  EXPANSION-FAILED? @ IF 1 LAST-STATUS ! EXIT THEN
   TRY-ASSIGNMENT-CALL IF EXIT THEN
   S" !" LINE-IS? IF
     \ Pipeline negation: run the rest and invert its status. POSIX
@@ -4877,6 +4921,24 @@ VARIABLE SRT-SIZE
 VARIABLE SRT-AT
 VARIABLE SRT-I
 
+: COPY-WORDS-TEXT ( argv-addr n --- block )
+\ COPY-REST-TEXT's core, for a word array at an address.
+  SHADOW{ SRT-DST SRT-N | SRT-SIZE SRT-AT SRT-I }
+  BEGIN SRT-I @ SRT-N @ < WHILE
+    SRT-DST @ SRT-I @ CELLS + @ CSTRLEN 1+ SRT-SIZE @ + SRT-SIZE !
+    SRT-I @ 1+ SRT-I !
+  REPEAT
+  SRT-SIZE @ 1 MAX ALLOCATE ABORT" shell: out of memory"
+  DUP SRT-AT !
+  0 SRT-I !
+  BEGIN SRT-I @ SRT-N @ < WHILE
+    SRT-DST @ SRT-I @ CELLS + @
+    DUP CSTRLEN 1+ DUP >R SRT-AT @ SWAP MOVE
+    SRT-AT @ SRT-DST @ SRT-I @ CELLS + !
+    SRT-AT @ R> + SRT-AT !
+    SRT-I @ 1+ SRT-I !
+  REPEAT ;
+
 : COPY-REST-TEXT ( argv-offset n --- block )
 \ A saved rest of a line - what follows a `;`, `&&` or `||` - is a list
 \ of pointers into the token buffers. Running the first command can
@@ -4887,21 +4949,7 @@ VARIABLE SRT-I
 \ it; the caller frees the block once the rest has run. A heap block,
 \ not the arena: the arena moves when it grows, and these pointers are
 \ used while commands run.
-  SHADOW{ SRT-DST SRT-N | SRT-SIZE SRT-AT SRT-I }
-  BEGIN SRT-I @ SRT-N @ < WHILE
-    SRT-DST @ BODY@ SRT-I @ CELLS + @ CSTRLEN 1+ SRT-SIZE @ + SRT-SIZE !
-    SRT-I @ 1+ SRT-I !
-  REPEAT
-  SRT-SIZE @ 1 MAX ALLOCATE ABORT" shell: out of memory"
-  DUP SRT-AT !
-  0 SRT-I !
-  BEGIN SRT-I @ SRT-N @ < WHILE
-    SRT-DST @ BODY@ SRT-I @ CELLS + @         ( block src )
-    DUP CSTRLEN 1+ DUP >R SRT-AT @ SWAP MOVE
-    SRT-AT @ SRT-DST @ BODY@ SRT-I @ CELLS + !
-    SRT-AT @ R> + SRT-AT !
-    SRT-I @ 1+ SRT-I !
-  REPEAT ;
+  SWAP BODY@ SWAP COPY-WORDS-TEXT ;
 
 : AO-SAVE-REST ( --- )
   \ Copy the &&/||-remainder out of the shared ARGV-AO-REST arrays
@@ -5733,11 +5781,27 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
 VARIABLE ARGC-PENDING
 VARIABLE PENDING-REMAINDER?
 
+VARIABLE LAST-LINE-PENDING?  \ did the last logical line come from pending words?
+VARIABLE PENDING-TEXT       \ the block the pending words live in
+VARIABLE PENDING-TEXT-OLD   \ the one before: the words being run now
+
+: PENDING-KEEP-TEXT ( --- )
+\ Pending words - the rest of a line after `then`, `do`, `;;` or
+\ `in` - are pointers into the token buffers, which running the part
+\ before them can overwrite (a function's body is tokenized into the
+\ same buffers). They get a heap block of their own (Iteration 257, as
+\ `;` got in 255). The words being run now were the PREVIOUS pending
+\ ones, so that block is kept one generation more; the one before it is
+\ freed.
+  PENDING-TEXT-OLD @ ?DUP IF FREE DROP THEN
+  PENDING-TEXT @ PENDING-TEXT-OLD !
+  ARGV-PENDING ARGC-PENDING @ COPY-WORDS-TEXT PENDING-TEXT ! ;
+
 : READ-NEXT-LOGICAL-LINE ( --- )
   \ Either continues where a previous same-line split left off, or
   \ genuinely reads a new line of input - transparently, so DO-IF's
   \ own then/else/fi search doesn't need to know or care which.
-  PENDING-REMAINDER? @ IF
+  PENDING-REMAINDER? @ DUP LAST-LINE-PENDING? !  IF
     0 PENDING-REMAINDER? !
     \ COPY-ARGV-Q, not COPY-ARGV: the pending remainder must carry its
     \ tokens' quoted flags with it, or a stale flag left at the same
@@ -5812,6 +5876,7 @@ VARIABLE SAEK-KW3-LEN
         SAK-J @ 1+ SAK-J !
       REPEAT
       0 ARGV-PENDING ARGC-PENDING @ CELLS + !
+      PENDING-KEEP-TEXT
       -1 PENDING-REMAINDER? !
       SAK-I @ ARGC !
       0 ARGV SAK-I @ CELLS + !
@@ -7281,11 +7346,54 @@ VARIABLE CASE-MATCHED?
     ELSE 0 THEN
     0= IF
       CA-I @ ARGV@ DUP CSTRLEN
-      CASE-WORD-BUF CASE-WORD-LEN @ GLOB-MATCH IF -1 EXIT THEN
+      \ A pattern with any quoted or escaped part is compared as it
+      \ stands (Iteration 257): 'a*b' matched axb, and '' never matched.
+      \ A pattern that mixes quoted and bare parts is literal too - a
+      \ narrowing, since the quoting of single characters is not kept.
+      CA-I @ ARGV-QUOTED@ IF
+        CASE-WORD-BUF CASE-WORD-LEN @ STR= IF -1 EXIT THEN
+      ELSE
+        CASE-WORD-BUF CASE-WORD-LEN @ GLOB-MATCH IF -1 EXIT THEN
+      THEN
     THEN
     CA-I @ 1+ CA-I !
   REPEAT
   0 ;
+
+: CASE-TAKE-WORD ( --- )
+\ The case word is what lies between `case` and `in` after expansion,
+\ put back together: POSIX does no field splitting on it, and an empty
+\ expansion is the empty word rather than no word - `case $w in` with
+\ w empty took "in" as the word (Iteration 257). Joined with single
+\ spaces, which is exact unless IFS changed the spacing.
+  0 CASE-WORD-LEN !
+  1 ENSURE-BUFFER CASE-WORD-BUF
+  ARGC @ 1- 1 ?DO
+    I ARGV@ DUP CSTRLEN                         ( a u )
+    CASE-WORD-LEN @ OVER + 2 + ENSURE-BUFFER CASE-WORD-BUF
+    I 1 > IF 32 CASE-WORD-BUF CASE-WORD-LEN @ + C!  CASE-WORD-LEN @ 1+ CASE-WORD-LEN ! THEN
+    >R CASE-WORD-BUF CASE-WORD-LEN @ + R@ MOVE
+    CASE-WORD-LEN @ R> + CASE-WORD-LEN !
+  LOOP
+  0 CASE-WORD-BUF CASE-WORD-LEN @ + C! ;
+
+: CASE-SPLIT-IN ( --- )
+\ `case WORD in PATTERN) ...` on one line: what follows `in` is the next
+\ logical line, as a pattern on the next physical line would be. It was
+\ ignored (Iteration 257). Split at word 3 exactly - `case in in` is a
+\ valid line whose word is "in".
+  ARGC @ 3 > 0= IF EXIT THEN
+  2 S" in" TOK-EQ? 0= IF EXIT THEN
+  0 ARGC-PENDING !
+  ARGC @ 3 ?DO
+    I ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
+    I ARGV-QUOTED@ ARGQ-PENDING ARGC-PENDING @ + C!
+    ARGC-PENDING @ 1+ ARGC-PENDING !
+  LOOP
+  0 ARGV-PENDING ARGC-PENDING @ CELLS + !
+  PENDING-KEEP-TEXT
+  -1 PENDING-REMAINDER? !
+  3 ARGC !  0 ARGV 3 CELLS + ! ;
 
 : DO-CASE ( --- )
   \ ARGV[0] is "case"; ARGV[1] is the case word (already $VAR-
@@ -7303,10 +7411,9 @@ VARIABLE CASE-MATCHED?
   SUPPRESS-EXEC? @ >R
   \ Same as DO-FOR: the case word is read straight out of ARGV, so
   \ this path asks for expansion itself.
+  CASE-SPLIT-IN
   EXPAND-WORDS
-  ARGV 1 CELLS + @ DUP CSTRLEN
-  DUP CASE-WORD-LEN !
-  CASE-WORD-BUF 256 SAFE-COPY-NUL DROP
+  CASE-TAKE-WORD
   0 CASE-MATCHED? !
   BEGIN
     READ-NEXT-LOGICAL-LINE
@@ -7341,6 +7448,10 @@ VARIABLE CASE-MATCHED?
         R> SUPPRESS-EXEC? ! EXIT
       THEN
       S" esac" LINE-IS? IF
+        \ The suffix is cut from the raw line, which is not this line
+        \ when it came from pending words - a one-line case - so it is
+        \ rebuilt from them first (Iteration 257).
+        LAST-LINE-PENDING? @ IF 0 ARGC @ JOIN-ARGV-TO-RAW THEN
         4 SAVE-COMPOUND-SUFFIX
         R> SUPPRESS-EXEC? ! RUN-COMPOUND-SUFFIX EXIT
       THEN
@@ -7358,6 +7469,7 @@ VARIABLE CASE-MATCHED?
       THEN
     UNTIL
   REPEAT
+  LAST-LINE-PENDING? @ IF 0 ARGC @ JOIN-ARGV-TO-RAW THEN   \ as above
   4 SAVE-COMPOUND-SUFFIX                  ( "esac" )
   R> SUPPRESS-EXEC? !
   RUN-COMPOUND-SUFFIX ;
