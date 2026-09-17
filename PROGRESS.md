@@ -260,6 +260,7 @@ do not trust the absence of a line below.
 - **262** — test coverage before the rewrite: matrix, interactive, syntax errors, dead code
 - **263** — command tree Stage A: tree.4, the lexer and parser; CATCH and THROW
 - **264** — command tree Stage B: the executor beside the old path (RELF_TREE=1)
+- **265** — command tree Stage C: the tree path is the shell; the line-based shell deleted
 
 ### Not tied to an iteration
 
@@ -15772,3 +15773,70 @@ of lines is gone. Stage D measures again after Stage C.
 
 tests/verify: tree:* lines new (the tree path through the matrix,
 differential, POSIX, mrsh, parse and shell suites); engine and image sizes.
+
+## Iteration 265: the tree path is the shell (Stage C)
+
+**The switch.** `tree.4` defines `MAIN` (the old one's setup, then
+`RUN-SOURCES`), and `relfsh` boots it; `MAIN-SELECT`, `RELF_TREE` and
+`TREE-MODE?` are gone. The hooks the line path chose between are set
+once: `DO-EVAL` is `TREE-EVAL-CALL`, `EXPAND-CMDSUB` always asks the tree
+lexer where a `$(...)` ends (its own loop still finds a backquote's
+end), `PARSE-REDIRECTIONS` no longer reads here-document bodies, and
+`RUN-EXPANDED` has no pipeline branch - a simple command from the tree
+has no `|`. `relfsh`'s fallback, for a directory it cannot save an image
+in, loads `extend.4` too now (the tree parser needs CATCH).
+
+**The deletion, by reachability.** `tools/dead-words.py` reads the
+sources in load order, makes each definition a node - resolving each
+name to the definition visible where it is used, as the compiler does,
+so `tree.4`'s `TRY-ALIAS` does not keep `shell.4`'s alive - and treats
+`' X IS Y` as an edge from Y to X that only its last assignment makes.
+Roots: `MAIN` and every top-level line that is not a definition.
+Unreachable: 343 definitions and 7 `IS` lines - the normalizer and
+tokenizer, the line reader and replay source, the splitting passes, the
+pending remainder and its text copies, `DO-IF`/`DO-WHILE`/`DO-FOR`/
+`DO-CASE`/`DO-FUNCDEF` and their capture machinery, the same-line
+adapters, the group and pipeline runners, `RUN-LINE`, `SH`, `SH-FILE`,
+`SH-C`. It deleted them with their comment blocks: `shell.4` 7,825 ->
+4,657 lines. The first run marked `ARGS-BUFFER:` dead - a defining word
+used only to define - and would have deleted the word arrays' definer;
+the tool counts a definer as used since. `tests/verify` counts
+unreachable definitions now (`shell:dead-words`, 0).
+
+**Exec failures.** The line path's 1 MB line ceiling does not exist when
+a script is not read by lines, so a 1.1 MB argument reaches the command
+and the kernel refuses the exec. That was "command not found", status
+127, because `EXECVE` returned a constant 200 on any failure. It returns
+`-errno` now (as `READ` and `WRITE` do; the engine only - the image
+format is unchanged), and `RUN-CHILD` exits 127 "command not found" only
+when nothing was found, and otherwise 126 with the reason ("permission
+denied", "argument list too long", "cannot execute") - XCU 2.9.1.1, and
+the statuses bash and dash give. `run-diagnostics` checks both.
+
+**Tests.** The four assertions Stage B listed were rewritten: `( )` is a
+syntax error, status 2; no prompt when stdin is a pipe (bash and dash
+agree); an argument list too long for exec is 126 and the script goes
+on. `run-interactive` gained the `> ` continuation prompt and Ctrl-D
+keeping the last status (1 after `false`), both of which the old path
+lacked. `tests/matrix/KNOWN-FAILING` is empty. The `tree:*` lines left
+`tests/verify`: the ordinary lines measure the tree path now.
+
+**Coverage** (`tools/coverage.py`, which now covers `tree.4` and runs
+`tests/parse` too): 369 colon words, 89% of instructions run before the
+parse suite was added to its list; the words never entered were the
+printer (now covered by that suite) and the 1 MB / 16 MB ceilings.
+
+**GOALS.md re-audited**: fourteen open entries are fixed by the command
+tree and marked so - compound commands piped, redirected or after
+`&&`/`||`; reserved words as `for` values; `cmd & more`; a group across
+lines; text after a nested `fi`; `$( (list) )`; the endless loop after
+`;`; syntax errors ending a script; a `-c` string with newlines; an
+assignment in a pipeline stage reaching the shell; the interactive gaps;
+the nine dead variables. Still open: pathname expansion, non-whitespace
+`IFS`, `set -e`, `trap`/`exec`/`hash`/`type`, diagnostics still on
+stdout (`cd`), fixed function and alias tables.
+
+tests/verify: matrix 262/158 -> 420/0, posix 36/10 -> 44/2, shell
+assertions 590 -> 595, `shell:dead-words` 0, `tree:*` removed; shell
+images 79,680 -> 56,128 (64-bit) and 73,824 -> 52,116 (32-bit); sizes
+(engine and image) x86-64 110,616 -> 87,064, i386 95,848 -> 74,140.

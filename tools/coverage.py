@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/coverage.py [COMMAND...] - which parts of shell.4 the tests run.
+"""tools/coverage.py [COMMAND...] - which parts of shell.4 and tree.4 the tests run.
 
 Builds a coverage engine from cv8.c: every dispatch marks its instruction
 in a byte map, a file mapped MAP_SHARED so forked children mark it too.
@@ -42,6 +42,7 @@ commands = sys.argv[1:] or [
     'THIS_SH=./relfsh tests/diff/run-all',
     'sh tests/posix/run.sh',
     'sh tests/matrix/run',
+    'sh tests/parse/run',
     'bash tests/mrsh-suite/run.sh',
 ]
 env = dict(os.environ, RELF_BIN=engine)
@@ -61,20 +62,21 @@ with contextlib.redirect_stdout(io.StringIO()):
 cov = open(bitmap, 'rb').read()
 first = g['xt_of']['LINE-MAX']                     # shell.4's first word
 defline = {}
-for i, l in enumerate(open('shell.4').read().split('\n')):
-    m = re.match(r'^: (\S+)', l)
-    if m and m.group(1) not in defline:
-        defline[m.group(1)] = i + 1
+for src in ('shell.4', 'tree.4'):
+    for i, l in enumerate(open(src).read().split('\n')):
+        m = re.match(r'^: (\S+)', l)
+        if m:
+            defline[m.group(1)] = '%s:%d' % (src, i + 1)
 rows = []
 for n, starts in g['STARTS'].items():
     if n in defline and g['xt_of'][n] >= first and starts:
         rows.append((defline[n], n, sum(1 for s in starts if cov[s]), len(starts)))
 hit = sum(r[2] for r in rows); tot = sum(r[3] for r in rows)
 never = sorted((l, n) for l, n, h, t in rows if cov[g['xt_of'][n]] == 0)
-print(f'\nshell.4: {len(rows)} colon words, {len(never)} never entered; '
+print(f'\nshell.4 and tree.4: {len(rows)} colon words, {len(never)} never entered; '
       f'instructions run {hit}/{tot} = {hit * 100 // tot}%')
 for l, n in never:
-    print(f'  never entered: line {l:5}  {n}')
+    print(f'  never entered: {l:14}  {n}')
 print('most instructions never run:')
 for l, n, h, t in sorted(rows, key=lambda r: r[3] - r[2], reverse=True)[:15]:
-    print(f'  {t - h:4}/{t:4}  line {l:5}  {n}')
+    print(f'  {t - h:4}/{t:4}  {l:14}  {n}')

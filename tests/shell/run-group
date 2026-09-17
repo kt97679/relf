@@ -44,8 +44,10 @@ assert_output_contains "a variable assigned inside a brace group does persist" "
 "$THIS_SH" -c "( /usr/bin/false )" < /dev/null > /dev/null 2>&1
 assert_status "a subshell's exit status reflects its own last command" 1 "$?"
 
+# An empty subshell is a syntax error (XCU 2.9.4 wants a compound list;
+# bash and dash agree). Until Iteration 265 it was a quiet no-op.
 "$THIS_SH" -c "( )" < /dev/null > /dev/null 2>&1
-assert_status "an empty group is a harmless no-op" 0 "$?"
+assert_status "an empty subshell is a syntax error" 2 "$?"
 
 out=$(printf "echo '(' foo\nexit\n" | "$THIS_SH" 2>&1)
 assert_output_contains "a quoted '(' is a literal argument, not a group start" "( foo" "$out"

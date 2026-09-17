@@ -102,16 +102,6 @@ VARIABLE ARGS-OVERFLOW?
 
 \ ---- buffers (fixed, allocated once - no dynamic sizing in v0) ----
 
-\ LINE-MAX is the size the line buffers START at: they grow to fit the
-\ line being read (see READ-LINE-INTO).
-LINE-MAX BUFFER: LINE-BUF
-
-512 CONSTANT NORM-MAX
-NORM-MAX BUFFER: NORM-BUF
-1 CELLS ARGS-BUFFER: NORM-WORDS   \ each word's start offset
-1 CELLS ARGS-BUFFER: NORM-WLENS   \ and its length, in NORM-BUF
-VARIABLE NORM-WCOUNT
-VARIABLE NORM-WSTART      \ start of the word currently open, or -1
 \ Declared here rather than beside NORMALIZE-OPERATORS: TOKENIZE
 \ reads the normalized line straight out of this buffer (Iteration
 \ 111), and this file is one linear source where a word must be
@@ -143,12 +133,10 @@ VARIABLE SHELL-PID   \ $$ - set once, in MAIN
 VARIABLE BG-PID   \ pid of the most recent background command, for $!
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
-
 \ !XT / @XT (storing an execution token as a START-relative offset,
 \ so it survives being saved into an image) live in shadow.4, which
 \ this file already requires for SHADOW{ itself.
 
-VARIABLE TREE-MODE?   \ running through tree.4's parser and executor (Iteration 264)
 DEFER TREE-EVAL-CALL  \ eval's text, parsed and run as a tree
 DEFER TREE-CMDSUB-END-CALL  \ ( c-addr u --- n ) where $(...)'s text ends
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
@@ -305,7 +293,6 @@ CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
 1048576 CONSTANT LINE-HARD-MAX
 
 VARIABLE LONG-LINE?   \ was the last line read too long?
-VARIABLE INPUT-EOF?   \ did the input source run out? See READ-NEXT-INPUT-LINE
 
 : LINE-TOO-LONG ( --- )
   S" shell: line too long" ERR-TYPE ERR-NL
@@ -358,34 +345,6 @@ VARIABLE GL-ANY
     THEN
   WHILE REPEAT
   GL-N @ GL-ANY @ ;
-
-VARIABLE AG-OFF
-VARIABLE AG-BODY
-VARIABLE AG-N
-
-: ACCEPT-INTO ( off body --- u )
-\ The same from the terminal, a KEY at a time with ACCEPT's editing:
-\ backspace and DEL remove a character, CR and LF end the line. The
-\ kernel's ACCEPT cannot be used - it reads the whole line and drops
-\ what does not fit, so nothing is left to grow into.
-  SHADOW{ AG-OFF AG-BODY | AG-N }
-  0 LONG-LINE? !
-  BEGIN
-    KEY
-    DUP 8 = OVER 127 = OR IF
-      DROP AG-N @ IF AG-N @ 1- AG-N ! THEN
-    ELSE DUP 10 = OVER 13 = OR IF
-      DROP LONG-LINE? @ IF LINE-TOO-LONG 0 ELSE AG-N @ THEN EXIT
-    ELSE
-      AG-OFF @ AG-N @ + LINE-HARD-MAX < IF
-        AG-OFF @ AG-N @ + 2 + AG-BODY @ BUF-ENSURE
-        AG-BODY @ @ AG-OFF @ + AG-N @ + C!
-        AG-N @ 1+ AG-N !
-      ELSE
-        DROP -1 LONG-LINE? !   \ past the ceiling: read on to the newline
-      THEN
-    THEN THEN
-  0 UNTIL ;
 
 VARIABLE PARSE-N
 
@@ -445,12 +404,6 @@ VARIABLE B-SRC
 \ ==================================================================
 \ Forth-string equality (used for matching builtin names)
 \ ==================================================================
-
-VARIABLE SEQ-A
-VARIABLE SEQ-ALEN
-VARIABLE SEQ-B
-VARIABLE SEQ-BLEN
-VARIABLE SEQ-I
 
 : STR= ( c-addr1 u1 c-addr2 u2 --- f )
 \ The kernel's COMPARE, which is memcmp (Iteration 260). This was a
@@ -782,7 +735,6 @@ VARIABLE PB-AT
   POS-BLOCK @ ?DUP IF FREE DROP THEN
   POS-BLOCK !  PB-N @ POS-PARAM-COUNT ! ;
 
-VARIABLE SPP-I
 : POS-DIGIT-LOOKUP ( name-addr --- value-addr | 0 )
   \ A decimal name from 1 up names a positional parameter; "0" is the
   \ script name, not ours. Any number of digits: ${10} reaches here as
@@ -811,7 +763,6 @@ VARIABLE SPP-I
   \ so "relfsh script.sh arg1 arg2" has $1 and $2 from the start.
   -1 POS-FROM-SYS? !  SYS-ARGC 1- 0 MAX POS-BUILD ;
 
-VARIABLE SPPD-DEPTH
 : SAVE-POS-PARAMS ( depth --- )
   \ The caller's block moves onto the save stack; the parameters are
   \ empty until SET-POS-PARAMS-FROM-ARGV builds the function's own.
@@ -845,9 +796,6 @@ VARIABLE SPPD-DEPTH
 VARIABLE TOK-POS
 VARIABLE TOK-END
 VARIABLE TOK-OUT
-VARIABLE TK-I
-VARIABLE TK-J
-VARIABLE TK-Q
 
 4096 CONSTANT TOK-BUF-MAX
 TOK-BUF-MAX BUFFER: TOK-BUF
@@ -1054,7 +1002,6 @@ VARIABLE TAP-I
   REPEAT
   TAP-I @ 0 > TAP-I @ TAP-L @ < AND ;
 
-VARIABLE IN-ASSIGN-CONTEXT?
 \ True once the token being built looks like "NAME=" - i.e. an
 \ assignment word. POSIX does NOT field-split the value of an
 \ assignment, so "q=$p" and "x=$(echo a b)" each stay a single word
@@ -1251,7 +1198,6 @@ VARIABLE CMDSUB-OUT-LEN
 
 DEFER RUN-CMDSUB-CHILD-CALL
 
-
 VARIABLE CS-FD
 VARIABLE CMDSUB-PIPE-RD
 VARIABLE CMDSUB-PIPE-WR
@@ -1420,7 +1366,6 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
                       \ giant, deeply-nested word, AE-PRIMARY reaches
                       \ AE-OR through this deferred call, patched
                       \ right after AE-OR itself is defined below.
-
 
 : AE-PRIMARY ( --- n )
   AE-SKIP-WS
@@ -1802,10 +1747,11 @@ VARIABLE ARITH-DEPTH
   CS-CLOSER !
   0 CS-COPY-I !
   0 CS-SQ? !  0 CS-DQ? !  0 CS-DEPTH !
-  \ In tree mode the tree lexer finds the closing paren, by parsing the
-  \ text: the loop below counts only $( and so ended a $(...) at a case
-  \ pattern's `)` or a function definition's `()` (Iteration 264).
-  CS-CLOSER @ 41 = TREE-MODE? @ AND IF
+  \ The tree lexer finds the closing paren, by parsing the text: the
+  \ loop below counts only $( and so ended a $(...) at a case pattern's
+  \ `)` or a function definition's `()` (Iteration 264). The loop is
+  \ still what finds a backquote's end.
+  CS-CLOSER @ 41 = IF
     TOK-POS @ TOK-END @ OVER - TREE-CMDSUB-END-CALL     ( n )
     DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
     TOK-POS @ CMDSUB-LINE-BUF 2 PICK MOVE
@@ -1976,7 +1922,6 @@ DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
                           \ TRIM-PARAM depends on GLOB-MATCH, defined
                           \ far later in the file than EXPAND-BRACED-
                           \ VAR is.
-
 
 DEFER SCAN-CHAR-CALL
 \ SCAN-TOKEN's one-character dispatch - quotes, backslash, '$', a
@@ -2355,7 +2300,6 @@ VARIABLE EBW-NAMELEN
     TOK-POS @ 1+ TOK-POS !
   THEN ;
 
-256 BUFFER: PW-LINE
 64  BUFFER: PW-HOME
 64  BUFFER: PW-WANT
 VARIABLE PW-I
@@ -2497,54 +2441,6 @@ VARIABLE PW-ULEN   \ username length
 VARIABLE EW-ARGC
 VARIABLE EW-I
 
-: TOKENIZE-RAW ( --- )
-  \ Copies each word recorded by NORMALIZE-OPERATORS into TOK-BUF,
-  \ verbatim and NUL-terminated: quotes, '$', backquotes and all.
-  \
-  \ Finding the words is no longer this word's job, so not expanding
-  \ them costs nothing - there is no scanner here to put into a
-  \ "raw mode". That is what Iteration 112 bought.
-  \ The raw words are at most the normalized text plus a NUL each; the
-  \ expanded ones get the same room. Both grow here, before any word
-  \ is written, so nothing grows while ARGV points into them.
-  BUFFER-SIZE NORM-BUF 2* DUP ENSURE-BUFFER TOK-BUF ENSURE-BUFFER EXP-BUF
-  BUFFER-BODY TOK-BUF OUT-BODY !  0 EXP-OVERFLOW? !
-  TOK-BUF TOK-OUT !
-  TOK-BUF BUFFER-SIZE TOK-BUF + TOK-OUT-END !
-  0 ARGC !
-  SHADOW{ | TK-I TK-J TK-Q }
-  BEGIN TK-I @ NORM-WCOUNT @ < ARGC @ ARGS-CAP @ 1- < AND WHILE
-    TOK-OUT @ ARGV ARGC @ CELLS + !
-    \ A leading quote character is recorded now, while the quotes are
-    \ still there to see. EXPAND-WORDS needs it after they are gone,
-    \ to tell "" (a field) from ${nope:-} (no field).
-    NORM-BUF NORM-WORDS TK-I @ CELLS + @ + C@
-    DUP 39 = SWAP 34 = OR
-    ARGV-NAME-QUOTED ARGC @ + C!
-    0 TK-J !
-    0 TK-Q !
-    BEGIN TK-J @ NORM-WLENS TK-I @ CELLS + @ < WHILE
-      NORM-BUF NORM-WORDS TK-I @ CELLS + @ + TK-J @ + C@
-      \ ARGV-QUOTED means "do not re-read this as an operator or a
-      \ keyword". The splitters and LINE-IS? run on the RAW words now,
-      \ so the flag has to be set here rather than by EXPAND-WORDS,
-      \ and the question it answers has changed shape: it used to mean
-      \ "was quoted, or came out of an expansion", and now means
-      \ "contains a quote or a backslash somewhere". Those agree on
-      \ everything that matters - an expansion result was never
-      \ literal text to begin with, and only literal text can be an
-      \ operator (Iteration 114).
-      DUP 39 = OVER 34 = OR OVER 92 = OR IF -1 TK-Q ! THEN
-      EMIT-TOK-CHAR
-      TK-J @ 1+ TK-J !
-    REPEAT
-    0 EMIT-TOK-CHAR
-    TK-Q @ ARGV-QUOTED ARGC @ + C!
-    ARGC @ 1+ ARGC !
-    TK-I @ 1+ TK-I !
-  REPEAT
-  0 ARGV ARGC @ CELLS + ! ;
-
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
   \ rebuilds ARGV from the results.
@@ -2633,20 +2529,6 @@ VARIABLE EW-I
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
 
-: TOKENIZE ( u --- )
-  \ NORM-BUF holds the normalized line and NORM-WORDS/NORM-WLENS its
-  \ word boundaries, both left there by NORM-TOKENIZE's call to
-  \ NORMALIZE-OPERATORS. u is that pass's byte count and is no longer
-  \ needed: where the words are is recorded rather than re-derived.
-  \
-  \ Expansion still runs here, immediately. Moving this second call to
-  \ the execution paths - so a word is expanded after everything
-  \ earlier on its line has run - is the last step of Stage 1b in
-  \ PARSE-EXPAND-PLAN.md, and is a change of behaviour rather than of
-  \ structure, so it is kept separate from this one.
-  DROP
-  TOKENIZE-RAW ;
-
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
 
@@ -2675,124 +2557,16 @@ VARIABLE ARGC2
 \ source fd. They are applied in order, which matters: "> f 2>&1"
 \ sends both streams to the file, while "2>&1 > f" does not.
 
-DEFER READ-INPUT-CALL
 \ READ-NEXT-INPUT-LINE is defined much further down (it needs the
 \ script-file and replay machinery), but here-documents have to read
 \ input at redirection-parsing time. Same deferred-word pattern used
 \ for RUN-TOKENIZED-CALL and friends.
 
-
-VARIABLE JC-LEN
-VARIABLE JC-N
-VARIABLE JC-I
-
-: JC-CONTINUES? ( --- f )
-  \ True when LINE-BUF's first JC-LEN bytes end in an ODD number of
-  \ backslashes. Each pair is one escaped backslash; an odd one left
-  \ over is the continuation.
-  \
-  \ Parity, not "is the previous character a backslash". That older
-  \ test called "a\\\" escaped, because it saw a backslash before the
-  \ last one - but three backslashes are an escaped backslash followed
-  \ by a real continuation, which is exactly the shape
-  \ 2.2-quoted-characters.sh uses.
-  \
-  \ JC-I is a scratch local rather than a plain global: the run is
-  \ rescanned after every join, and READ-INPUT-CALL can reach a great
-  \ deal of the shell in between.
-  SHADOW{ | JC-I }
-  JC-LEN @ JC-I !
-  BEGIN
-    JC-I @ 0 > IF LINE-BUF JC-I @ 1- + C@ 92 = ELSE 0 THEN
-  WHILE
-    JC-I @ 1- JC-I !
-  REPEAT
-  JC-LEN @ JC-I @ - 1 AND 1 = ;
-
-: JOIN-CONTINUATIONS ( u --- u2 )
-  \ LINE-BUF holds u bytes. A line ending in an unescaped backslash is
-  \ continued by the next one: the backslash and the newline are both
-  \ removed and the lines become a single logical line, per POSIX.
-  \
-  \ Done at the reading end, before quote tracking or tokenizing, so
-  \ every consumer sees one line and nothing downstream needs to know
-  \ line continuation exists. It reads through READ-INPUT-CALL, so a
-  \ continuation inside a loop body or function reads from the stored
-  \ body like everything else.
-  JC-LEN !
-  BEGIN
-    JC-CONTINUES?
-  WHILE
-    JC-LEN @ 1- JC-LEN !
-    JC-LEN @ BUFFER-BODY LINE-BUF READ-INPUT-CALL JC-N !
-    LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
-    JC-N @ 0= IF JC-LEN @ EXIT THEN
-    JC-LEN @ JC-N @ + JC-LEN !
-  REPEAT
-  JC-LEN @ ;
-
 8192 CONSTANT HEREDOC-MAX   \ where the body buffer starts; it grows
 HEREDOC-MAX BUFFER: HEREDOC-BUF
-LINE-MAX BUFFER: HD-LINE        \ grows: see LINE-BUF
 VARIABLE HEREDOC-LEN
-VARIABLE HD-N
-VARIABLE HD-DELIM
-VARIABLE HD-STRIP?
-VARIABLE HD-GUARD
-VARIABLE HD-S
 VARIABLE HD-RD
 VARIABLE HD-WR
-
-: HD-LINE-START ( --- addr )
-  \ Start of the just-read line, past leading tabs when the operator
-  \ was "<<-". POSIX strips tabs only - not spaces - which is what
-  \ makes "<<-" usable for indenting a here-document inside a loop
-  \ without indenting its contents.
-  HD-STRIP? @ 0= IF HD-LINE EXIT THEN
-  0 HD-S !
-  BEGIN
-    HD-S @ HD-N @ < IF HD-LINE HD-S @ + C@ 9 = ELSE 0 THEN
-  WHILE HD-S @ 1+ HD-S ! REPEAT
-  HD-LINE HD-S @ + ;
-
-: HD-READ ( delim-addr --- )
-  \ In tree mode the body was read with the command, and HEREDOC-BUF
-  \ already holds it.
-  TREE-MODE? @ IF DROP EXIT THEN
-  \ Consume input lines into HEREDOC-BUF until one equals the
-  \ delimiter. Reads through READ-NEXT-INPUT-LINE, so a here-document
-  \ inside a loop body or a function reads from the stored body just
-  \ like everything else does.
-  \
-  \ Scope limits, documented rather than silent: no expansion is
-  \ performed on the body (POSIX expands $VAR unless the delimiter is
-  \ quoted); and one here-document per command.
-  \
-  \ The body grows (Iteration 251). It was 8 KB, and a guard stopped
-  \ after 4,096 lines because an empty line and end of input read
-  \ alike; both cut a long body short without a word. End of input is
-  \ INPUT-EOF? now, and past EXPAND-HARD-MAX the body is reported.
-  HD-DELIM !
-  0 HEREDOC-LEN !
-  BEGIN
-    0 BUFFER-BODY HD-LINE READ-INPUT-CALL HD-N !
-    INPUT-EOF? @ IF EXIT THEN
-    HD-LINE-START HD-N @ HD-LINE-START HD-LINE - -
-    HD-DELIM @ STR0= 0=
-  WHILE
-    HD-LINE-START
-    HD-N @ HD-LINE-START HD-LINE - -            ( addr len )
-    DUP HEREDOC-LEN @ + 1+ EXPAND-HARD-MAX < IF
-      DUP HEREDOC-LEN @ + 2 + ENSURE-BUFFER HEREDOC-BUF
-      DUP >R
-      HEREDOC-BUF HEREDOC-LEN @ + SWAP MOVE
-      HEREDOC-LEN @ R> + HEREDOC-LEN !
-      10 HEREDOC-BUF HEREDOC-LEN @ + C!
-      HEREDOC-LEN @ 1+ HEREDOC-LEN !
-    ELSE
-      2DROP EXPANSION-TOO-LARGE
-    THEN
-  REPEAT ;
 
 1 CELLS ARGS-BUFFER: REDIR-FD
 1 CELLS ARGS-BUFFER: REDIR-OP
@@ -2829,10 +2603,6 @@ VARIABLE AR-I
   RA-OP @      REDIR-OP  REDIR-N @ CELLS + !
   PR-I @ ARGV@ REDIR-TGT REDIR-N @ CELLS + !
   REDIR-N @ 1+ REDIR-N !
-  RA-OP @ 6 = RA-OP @ 7 = OR IF
-    RA-OP @ 7 = HD-STRIP? !
-    PR-I @ ARGV@ HD-READ
-  THEN
   PR-I @ 1+ PR-I ! ;
 
 : PARSE-REDIRECTIONS ( --- )
@@ -2957,13 +2727,20 @@ VARIABLE PATH-END2
 \ Try one PATH directory (c-addr u, no trailing slash) against ARGV[0].
 \ Builds "dir/cmd" into PATHBUF and attempts EXECVE. Only returns if
 \ that attempt failed.
+\ The first exec failure that was not "no such file": a command that was
+\ found but could not run is status 126 and says why; one that was not
+\ found is 127 (XCU 2.9.1.1; Iteration 265). -2 ENOENT, -20 ENOTDIR.
+VARIABLE EXEC-ERR
+: NOTE-EXEC-ERR ( ior --- )
+  DUP -2 = OVER -20 = OR EXEC-ERR @ OR IF DROP ELSE EXEC-ERR ! THEN ;
+
 : TRY-DIR ( c-addr u --- )
   PATHBUF B-RESET
   B-STR
   47 B-CHAR
   ARGV @ B-CSTR
   B-FINISH
-  ARGV PATHBUF EXECVE DROP ;
+  ARGV PATHBUF EXECVE NOTE-EXEC-ERR ;
 
 : SEARCH-PATH ( --- )  \ only returns if every PATH candidate failed
   S" PATH" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!  ( NUL-terminate "PATH" )
@@ -2981,9 +2758,10 @@ VARIABLE PATH-END2
     PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ 1+ PATH-CUR ! THEN
   REPEAT ;
 
-: RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; only returns on total failure
+: RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; exits 126 or 127 if it cannot
+  0 EXEC-ERR !
   ARGV @ DUP CSTRLEN HAS-SLASH? IF
-    ARGV ARGV @ EXECVE DROP
+    ARGV ARGV @ EXECVE NOTE-EXEC-ERR
   ELSE
     SEARCH-PATH
   THEN
@@ -3000,8 +2778,14 @@ VARIABLE PATH-END2
   \ and a diagnostic must not become that stage's input.
   S" shell: " ERR-TYPE
   ARGV @ ERR-CSTR
-  S" : command not found" ERR-TYPE
-  ERR-NL ;
+  EXEC-ERR @ ?DUP 0= IF
+    S" : command not found" ERR-TYPE ERR-NL 127 SYS-EXIT
+  THEN
+  DUP -7 = IF S" : argument list too long" ERR-TYPE ELSE
+  DUP -13 = IF S" : permission denied" ERR-TYPE ELSE
+    S" : cannot execute" ERR-TYPE
+  THEN THEN DROP
+  ERR-NL 126 SYS-EXIT ;
 
 \ ==================================================================
 \ Builtins - these must run in the shell's own process (not a forked
@@ -3118,7 +2902,6 @@ DEFER RUN-FUNC-BODY-CALL   \ patched to RUN-FUNC-BODY's own xt right
                               \ here for the same reason: DISPATCH is
                               \ defined long before a function's own
                               \ body-replay logic is.
-
 
 \ ==================================================================
 \ test / [ - string, numeric, and (limited) file-existence tests.
@@ -3389,12 +3172,8 @@ VARIABLE FB-E
 256 CONSTANT ALIAS-VALUE-MAX
 MAX-ALIASES ALIAS-NAME-MAX  * BUFFER: ALIAS-NAMES
 MAX-ALIASES ALIAS-VALUE-MAX * BUFFER: ALIAS-VALUES
-LINE-MAX BUFFER: ALIAS-LINE
 VARIABLE ALIAS-COUNT
-VARIABLE ALIAS-LINE-LEN
-VARIABLE ALIAS-DEPTH
 VARIABLE AL-I
-VARIABLE AL-LEN
 VARIABLE AL-NAME
 VARIABLE AL-VALUE
 
@@ -3428,7 +3207,6 @@ VARIABLE AL-VALUE
   AL-VALUE @ DUP CSTRLEN AL-I @ ALIAS-VALUE-SLOT ALIAS-VALUE-MAX VALUE-COPY ;
 
 VARIABLE DO-I
-
 
 : MARK-READONLY ( name-addr --- )
   FIND-SHVAR DUP -1 = IF DROP EXIT THEN
@@ -3579,7 +3357,6 @@ VARIABLE RW-NAME
   THEN
   ARGV 2 CELLS + @ ARGV 1 CELLS + !   \ PATH-LOOKUP? reads ARGV[1]
   PATH-LOOKUP? 0= IF 1 LAST-STATUS ! THEN ;
-
 
 \ The builtins that used to be written inline in DISPATCH's chain.
 
@@ -3869,8 +3646,6 @@ VARIABLE GO-NMLEN
     THEN
   0 UNTIL ;
 
-VARIABLE WT-PID
-
 : DO-WAIT ( --- )
   \ wait [pid]: with an operand, wait for that child; with none, wait
   \ for all of them. A shell with no children at all is not an error.
@@ -4062,40 +3837,12 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
 \ the other child.
 \ ==================================================================
 
-1 CELLS ARGS-BUFFER: PIPE-ARGV   \ a private copy of the whole
-1 ARGS-BUFFER: PIPE-ARGQ         \ tokenized line, so each
-VARIABLE PIPE-ARGC                      \ segment can be extracted
-VARIABLE PIPE-NSEG                      \ without disturbing ARGV
-VARIABLE PIPE-PRESENT?
-
-: AT-END? ( --- f )  PR-I @ ARGC @ < 0= ;
-
-VARIABLE GRP-DEPTH
 \ How many '('/'{' are open at the scan position. Every operator scan
 \ below (';', '&&', '||', '|') only recognises its operator at depth
 \ 0, so a group used as an ordinary command keeps its own separators
 \ to itself: "{ a; b; } && c" splits at the '&&', not at either ';'.
 \ Bash gets this from a real grammar; this is the flat-token-array
 \ equivalent - see GOALS.md's notes on Ramey's bash chapter.
-
-: GRP-TRACK ( i --- )   \ update GRP-DEPTH for the token just consumed
-  DUP ARGV-QUOTED@ IF DROP EXIT THEN
-  ARGV@ DUP CSTRLEN
-  2DUP S" (" STR= IF 2DROP GRP-DEPTH @ 1+ GRP-DEPTH ! EXIT THEN
-  2DUP S" {" STR= IF 2DROP GRP-DEPTH @ 1+ GRP-DEPTH ! EXIT THEN
-  2DUP S" )" STR= IF 2DROP GRP-DEPTH @ 1- GRP-DEPTH ! EXIT THEN
-  S" }" STR= IF GRP-DEPTH @ 1- GRP-DEPTH ! THEN ;
-
-: AT-GROUP-END? ( --- f )   \ is the whole line one group and nothing else?
-  ARGC @ 0 = IF 0 EXIT THEN
-  0 GRP-DEPTH !
-  0 PR-I !
-  BEGIN PR-I @ ARGC @ < WHILE
-    PR-I @ GRP-TRACK
-    GRP-DEPTH @ 0 = PR-I @ 1+ ARGC @ < AND IF 0 EXIT THEN
-    PR-I @ 1+ PR-I !
-  REPEAT
-  -1 ;
 
 \ ==================================================================
 \ ';' - multiple commands per line, run in sequence regardless of
@@ -4109,340 +3856,14 @@ VARIABLE GRP-DEPTH
 \ for how the two pieces get run in turn.
 \ ==================================================================
 
-1 CELLS ARGS-BUFFER: ARGV-SEMI-LEFT
-1 CELLS ARGS-BUFFER: ARGV-SEMI-REST
-1 ARGS-BUFFER: ARGQ-SEMI-LEFT
-1 ARGS-BUFFER: ARGQ-SEMI-REST
-VARIABLE ARGC-SEMI-LEFT
-VARIABLE ARGC-SEMI-REST
-
-: AT-TOKEN? ( c-addr u --- f )
-  \ Is the token at PR-I this exact literal, unquoted? Six predicates
-  \ used to spell this out separately, differing only in the literal.
-  AT-END? IF 2DROP 0 EXIT THEN
-  PR-I @ ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
-  PR-I @ ARGV@ DUP CSTRLEN 2SWAP STR= ;
-
-: AT-OP? ( c-addr u --- f )
-  \ AT-TOKEN?, but only outside any group - so a ';' or '|' belonging
-  \ to a "( ... )" body is not mistaken for the enclosing line's own.
-  GRP-DEPTH @ 0 <> IF 2DROP 0 EXIT THEN
-  AT-TOKEN? ;
-
-: AT-SEMI? ( --- f )  S" ;"  AT-OP? ;
-
-: SPLIT-SEMI ( --- f )  \ f = -1 if a ';' token was found (the part
-                          \ before it is in ARGV-SEMI-LEFT/ARGC-SEMI-
-                          \ LEFT (each entry's own ARGV-QUOTED flag at
-                          \ split time mirrored into ARGQ-SEMI-LEFT,
-                          \ for COPY-ARGV-Q to restore later - see its
-                          \ own comment for why this matters), the
-                          \ part after in ARGV-SEMI-REST/ARGC-SEMI-
-                          \ REST/ARGQ-SEMI-REST - either can be empty,
-                          \ e.g. a leading or trailing ';'), 0
-                          \ otherwise (nothing touched).
-  SHADOW{ | PR-I }
-  0 GRP-DEPTH !
-  0 ARGC-SEMI-LEFT !
-  BEGIN AT-END? AT-SEMI? OR 0= WHILE
-    PR-I @ GRP-TRACK
-    PR-I @ ARGV@ ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ + C!
-    ARGC-SEMI-LEFT @ 1+ ARGC-SEMI-LEFT !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-SEMI-LEFT ARGC-SEMI-LEFT @ CELLS + !
-  AT-SEMI? 0= IF 0 EXIT THEN
-  PR-I @ 1+ PR-I !                    ( skip the ";" token itself )
-  0 ARGC-SEMI-REST !
-  BEGIN AT-END? 0= WHILE
-    PR-I @ ARGV@ ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-SEMI-REST ARGC-SEMI-REST @ + C!
-    ARGC-SEMI-REST @ 1+ ARGC-SEMI-REST !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
-  -1 ;
-
-: PIPE-AT-BAR? ( i --- f )   \ is PIPE-ARGV[i] an unquoted "|" ?
-  DUP PIPE-ARGQ + C@ IF DROP 0 EXIT THEN
-  CELLS PIPE-ARGV + @ DUP CSTRLEN S" |" STR= ;
-
-VARIABLE SP-I
-
-: SPLIT-PIPE ( --- )
-  \ Copies the whole tokenized line into PIPE-ARGV/PIPE-ARGQ and counts
-  \ the unquoted "|" tokens. Segments are extracted lazily by
-  \ RUN-PIPELINE rather than being split into fixed left/right arrays,
-  \ which is what lifts the old one-pipe-per-line limit: a line has
-  \ PIPE-NSEG segments for any number of pipes.
-  SHADOW{ | SP-I }
-  0 GRP-DEPTH !
-  0 PIPE-PRESENT? !
-  ARGC @ PIPE-ARGC !
-  1 PIPE-NSEG !
-  BEGIN SP-I @ ARGC @ < WHILE
-    SP-I @ ARGV@         PIPE-ARGV SP-I @ CELLS + !
-    SP-I @ ARGV-QUOTED@  PIPE-ARGQ SP-I @ + C!
-    SP-I @ 1+ SP-I !
-  REPEAT
-  0 SP-I !
-  BEGIN SP-I @ PIPE-ARGC @ < WHILE
-    SP-I @ PIPE-AT-BAR? IF
-      PIPE-NSEG @ 1+ PIPE-NSEG !
-      -1 PIPE-PRESENT? !
-    THEN
-    SP-I @ 1+ SP-I !
-  REPEAT ;
-
-VARIABLE PSO-I
-VARIABLE PSO-LEN
-
-: PIPE-SEGMENTS-OK? ( --- f )
-  \ Every segment must be non-empty, matching the old "both sides
-  \ non-empty" guard - "a | | b" or a trailing "|" runs nothing rather
-  \ than misbehaving.
-  SHADOW{ | PSO-I PSO-LEN }
-  BEGIN PSO-I @ PIPE-ARGC @ < WHILE
-    PSO-I @ PIPE-AT-BAR? IF
-      PSO-LEN @ 0= IF 0 EXIT THEN
-      0 PSO-LEN !
-    ELSE
-      PSO-LEN @ 1+ PSO-LEN !
-    THEN
-    PSO-I @ 1+ PSO-I !
-  REPEAT
-  PSO-LEN @ 0= 0= ;
-
-VARIABLE CAQ-ARGV
-VARIABLE CAQ-ARGQ
-VARIABLE CAQ-N
-
-: COPY-ARGV-Q ( src-argv src-argq src-argc --- )
-  \ Overwrite the global ARGV/ARGC with a segment, carrying each
-  \ entry's own ARGV-QUOTED flag with it from a parallel byte array
-  \ captured at split time.
-  \
-  \ There used to be a bare COPY-ARGV beside this, moving the words
-  \ and not the flags, and leaving ARGV-QUOTED holding whatever a
-  \ PREVIOUS tokenization left at each index. Every stale-flag bug
-  \ this project has had was a call to it: Iteration 28's vanishing
-  \ "&&" (an earlier segment's expansion result, always marked
-  \ quoted, sat at the same index and hid a real operator),
-  \ Iteration 47's literal ";", Iteration 49's group body. Two of
-  \ its call sites were fixed in 28 and GOALS.md has carried "the
-  \ extent of the same hazard at the other call sites is unverified"
-  \ ever since.
-  \
-  \ It is verified now, by deleting the word: the last caller went
-  \ with CMDSUB-TOKENIZE in Iteration 105, and the two loops are one
-  \ loop here. A word that moves words without their flags no longer
-  \ exists to be called by accident. FORTH-STYLE.md section 8, which
-  \ says every copy carries the flags - now by construction rather
-  \ than by remembering.
-  \
-  \ The zero guard is not optional: CAQ-N can be 0 (an empty pipeline
-  \ segment), and this kernel's DO with start = limit runs the entire
-  \ unsigned range.
-  SHADOW{ CAQ-ARGV CAQ-ARGQ CAQ-N }
-  CAQ-N @ ARGC !
-  CAQ-N @ 0 > IF
-    CAQ-N @ 0 DO
-      CAQ-ARGQ @ I +       C@ ARGV-QUOTED I +       C!
-      CAQ-ARGV @ I CELLS + @  ARGV        I CELLS + !
-      \ Whether the word's NAME part was quoted - what an assignment
-      \ is checked by - was not carried, and kept a previous word's
-      \ value: after a case arm `'a*b')`, `r=x ;;` was "command not
-      \ found" (Iteration 257). The copies are raw token text, so it
-      \ is the first character's being a quote or a backslash.
-      CAQ-ARGV @ I CELLS + @ C@
-      DUP 39 = OVER 34 = OR SWAP 92 = OR
-      ARGV-NAME-QUOTED I + C!
-    LOOP
-  THEN
-  0 ARGV CAQ-N @ CELLS + ! ;
-
-
-
 \ ==================================================================
 \ Moved ahead of RUN-PIPELINE and RUN-SIMPLE-OR-PIPELINE, both of
 \ which now recognise a group as an ordinary command (Iteration 49).
 \ ==================================================================
 
-: LINE-IS? ( c-addr u --- f )  \ does the current tokenized ARGV[0]
-                                 \ equal this literal, exactly, and
-                                 \ unquoted? (a quoted 'if'/'then'/etc
-                                 \ is just a literal argument, same
-                                 \ reasoning as ARGV-QUOTED elsewhere)
-  ARGC @ 0 = IF 2DROP 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 2DROP 0 EXIT THEN
-  ARGV @ STR0= ;
-
-DEFER RUN-TOKENIZED-CALL
-
-
-1 CELLS ARGS-BUFFER: ARGV-GROUP-BODY
-1 ARGS-BUFFER: ARGQ-GROUP-BODY   \ the body's own quoted flags
-1 ARGS-BUFFER: ARGQ-SHIFT        \ likewise for ARGV-SHIFT
-\ Carrying each word's quoted flag with the word, rather than leaving
-\ ARGV-QUOTED holding whatever a previous tokenization left at that
-\ index. Bash attaches flags to the word itself (WORD_DESC); this file
-\ keeps parallel arrays, and EVERY stale-flag bug it has had -
-\ Iteration 28's vanishing '&&', Iteration 47's literal ';', and the
-\ group body's own ';' surviving into a pipeline stage - is a copy
-\ that moved words without them. See GOALS.md's notes on Ramey's bash
-\ chapter.
-VARIABLE ARGC-GROUP-BODY
-VARIABLE GROUP-PID
-
-VARIABLE SG-ADDR
-VARIABLE SG-LEN
-
-: SPLIT-GROUP ( c-addr u --- f )
-  \ ARGV[0] is the opening "(" or "{" (checked by the caller); c-addr u
-  \ is the matching closer. Everything between them goes to
-  \ ARGV-GROUP-BODY/ARGQ-GROUP-BODY (may be empty, e.g. "( )").
-  \ f = 0 and nothing touched if the line ends first - an unterminated
-  \ group, not reported as an error, matching this file's sparse error
-  \ handling elsewhere.
-  \
-  \ This replaces SPLIT-GROUP-PAREN and SPLIT-GROUP-BRACE, which were
-  \ the same twenty lines differing only in the closing token - and
-  \ neither tracked depth, so "( a ( b ) c )" stopped at the INNER
-  \ ')'. Counting depth here fixes that as a side effect of merging
-  \ them.
-  SG-LEN ! SG-ADDR !
-  1 PR-I !
-  1 GRP-DEPTH !
-  0 ARGC-GROUP-BODY !
-  BEGIN
-    AT-END? IF 0 ELSE
-      SG-ADDR @ SG-LEN @ AT-TOKEN? GRP-DEPTH @ 1 = AND 0=
-    THEN
-  WHILE
-    PR-I @ ARGV@ ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-GROUP-BODY ARGC-GROUP-BODY @ + C!
-    ARGC-GROUP-BODY @ 1+ ARGC-GROUP-BODY !
-    PR-I @ GRP-TRACK
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-GROUP-BODY ARGC-GROUP-BODY @ CELLS + !
-  AT-END? IF 0 EXIT THEN
-  -1 ;
-
-: SPLIT-GROUP-PAREN ( --- f )  S" )" SPLIT-GROUP ;
-: SPLIT-GROUP-BRACE ( --- f )  S" }" SPLIT-GROUP ;
-
-: DO-SUBSHELL ( --- )
-  \ SPLIT-GROUP-PAREN has already run (see RUN-TOKENIZED), leaving the
-  \ body in ARGV-GROUP-BODY/ARGC-GROUP-BODY. Forks; the child copies
-  \ the body into the global ARGV/ARGC (safe - COPY-ARGV-Q inside a
-  \ freshly forked child is the same pattern RUN-PIPELINE's own sides
-  \ already use) and runs it via RUN-TOKENIZED-CALL, so the body's own
-  \ ';'/'&&'/'||'/'|' all work normally, then exits with whatever
-  \ LAST-STATUS that left behind. The parent waits and takes the
-  \ child's exit status as this command's own.
-  FORK DUP GROUP-PID !
-  0 = IF
-    ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
-    RUN-TOKENIZED-CALL
-    LAST-STATUS @ SYS-EXIT
-  THEN
-  GROUP-PID @ WAITPID DROP
-  8 RSHIFT 255 AND LAST-STATUS ! ;
-
-: DO-BRACE-GROUP ( --- )
-  \ Same as DO-SUBSHELL, but no fork - the body runs directly in this
-  \ shell, so any cd/variable/export changes inside it persist
-  \ afterward. That's the whole reason a brace group exists as a
-  \ separate construct from a subshell.
-  ARGV-GROUP-BODY ARGQ-GROUP-BODY ARGC-GROUP-BODY @ COPY-ARGV-Q
-  RUN-TOKENIZED-CALL ;
-
-DEFER DO-MULTILINE-GROUP-CALL   \ patched to (DO-MULTILINE-GROUP) once
                                 \ that and MG-SUB? exist, far below.
 
-: DISPATCH-GROUP ( --- f )
-  \ The one place a leading '(' or '{' is turned into a group. Returns
-  \ true if it handled the line, in which case the caller must EXIT.
-  \
-  \ This used to be two verbatim copies, in RUN-TOKENIZED and in
-  \ RUN-SIMPLE-OR-PIPELINE, and they had drifted apart: only the
-  \ RUN-TOKENIZED copy carried the ARGC=1 multi-line arm below. So a
-  \ group that opened on one line was recognized when it WAS the whole
-  \ line, and not when it followed '&&' or '||' - "true && {" ran the
-  \ body correctly but left status 127, because the lone '{' segment
-  \ fell through to be executed as a command name. Iteration 151 found
-  \ the divergence by inspecting the file's largest duplicated block;
-  \ 152 merged them, which is the fix.
-  \
-  \ ARGC=1 means the group opener is the entire line/segment, so the
-  \ body arrives on following lines and DO-MULTILINE-GROUP collects
-  \ them. Reached through a DEFER because DO-MULTILINE-GROUP needs the
-  \ tokenizer and cannot be defined this early.
-  ARGC @ 1 = IF
-    S" (" LINE-IS? IF -1 DO-MULTILINE-GROUP-CALL -1 EXIT THEN
-    S" {" LINE-IS? IF  0 DO-MULTILINE-GROUP-CALL -1 EXIT THEN
-  THEN
-  \ Otherwise the group closes on this same line. Guarded by
-  \ AT-GROUP-END? because if a pipe follows the group this must fall
-  \ through to SPLIT-PIPE, or the group runs alone and the rest of the
-  \ pipeline is dropped - which is exactly what "(echo hi) | tr a-z
-  \ A-Z" did without it.
-  AT-GROUP-END? IF
-    S" (" LINE-IS? IF SPLIT-GROUP-PAREN IF DO-SUBSHELL THEN -1 EXIT THEN
-    S" {" LINE-IS? IF SPLIT-GROUP-BRACE IF DO-BRACE-GROUP THEN -1 EXIT THEN
-  THEN
-  0 ;
-
 1 CELLS ARGS-BUFFER: PIPE-PIDS
-VARIABLE PL-I
-VARIABLE PL-PREV-RD
-VARIABLE PL-RD
-VARIABLE PL-WR
-VARIABLE PL-START
-VARIABLE PL-END
-VARIABLE PL-J
-
-: PIPE-SEG-TO-ARGV ( --- )
-  \ Copy PIPE-ARGV[PL-START .. PL-END) into the global ARGV/ARGC. Only
-  \ ever called inside a freshly forked child, so clobbering the global
-  \ ARGV is safe - the same reasoning RUN-CMDSUB-CHILD and DO-SUBSHELL
-  \ already rely on.
-  0 PL-J !
-  BEGIN PL-START @ PL-J @ + PL-END @ < WHILE
-    PIPE-ARGV PL-START @ PL-J @ + CELLS + @  ARGV PL-J @ CELLS + !
-    PIPE-ARGQ PL-START @ PL-J @ + + C@       ARGV-QUOTED PL-J @ + C!
-    PL-J @ 1+ PL-J !
-  REPEAT
-  0 ARGV PL-J @ CELLS + !
-  PL-J @ ARGC ! ;
-
-: PIPE-STAGE-INTERNAL? ( --- f )
-  \ Does this pipeline stage have to run inside the shell rather than
-  \ being exec'd? Groups, compound commands, builtins and functions
-  \ all do; anything else is an external command and goes straight to
-  \ exec, so an ordinary pipeline still costs no extra process.
-  \
-  \ It runs in the forked child either way, so a builtin in a pipeline
-  \ cannot affect this shell - "printf x | read a" leaves $a unset
-  \ here exactly as it does in bash. That is the POSIX behaviour, not
-  \ a limitation of running it in the child.
-  \ Groups qualify because SPLIT-GROUP already captured their whole
-  \ body from the current line. Multi-line compound commands
-  \ (if/while/for/case) deliberately do NOT: their body lines are read
-  \ from the input *after* the stage starts, and a forked child cannot
-  \ do that reliably - it shares the script's file offset with the
-  \ parent, so the two race for the same lines. Tried directly and it
-  \ misbehaves exactly that way. Making them work means capturing the
-  \ body before forking, which is its own piece of work.
-  S" ("     LINE-IS? IF -1 EXIT THEN
-  S" {"     LINE-IS? IF -1 EXIT THEN
-  ARGC @ 0 = IF 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 0 EXIT THEN
-  ARGV @ FIND-BUILTIN 0= 0= IF -1 EXIT THEN
-  ARGV @ FIND-FUNC -1 <> ;
-
 
 \ ------------------------------------------------------------------
 \ A compound command as the last pipeline stage
@@ -4462,108 +3883,6 @@ VARIABLE PL-J
 \ child shares the script's file offset and would race for the body
 \ lines (Iteration 57).
 
-LINE-MAX BUFFER: RAW-LINE-BUF
-VARIABLE RAW-LINE-LEN
-
-8192     BUFFER: PIPE-BODY
-LINE-MAX BUFFER: PIPE-RAW
-LINE-MAX BUFFER: PIPE-RAW-FULL
-VARIABLE PIPE-BODY-LEN
-VARIABLE PIPE-RAW-LEN
-VARIABLE PIPE-RAW-FULL-LEN
-VARIABLE PIPE-HAVE-BODY
-VARIABLE PLS-I
-
-DEFER PREPARE-PIPE-CALL
-
-VARIABLE REPLAY-ACTIVE?
-VARIABLE REPLAY-SRC
-VARIABLE REPLAY-ARENA?
-VARIABLE REPLAY-LEN
-VARIABLE REPLAY-POS
-
-: RUN-PIPELINE ( --- )
-  \ Runs PIPE-NSEG segments connected by PIPE-NSEG-1 pipes. The old
-  \ version handled exactly one pipe; this is the same shape
-  \ generalized to a loop carrying one file descriptor forward.
-  \
-  \ Each iteration: create this segment's outgoing pipe (unless it is
-  \ the last), fork, and in the child wire the previous segment's read
-  \ end onto stdin and this pipe's write end onto stdout. The parent
-  \ closes both ends it no longer needs - which is what makes each
-  \ stage actually see EOF - and carries the read end forward.
-  \
-  \ Builtins still aren't supported in a pipeline: every segment runs
-  \ via RUN-CHILD, the same scope limit as before.
-  SHADOW{ | PL-I PL-PREV-RD PL-RD PL-WR PL-START PL-END PL-J }
-  -1 PL-PREV-RD !
-  BEGIN PL-I @ PIPE-NSEG @ < WHILE
-    PL-START @ PL-END !
-    BEGIN
-      PL-END @ PIPE-ARGC @ < IF PL-END @ PIPE-AT-BAR? 0= ELSE 0 THEN
-    WHILE
-      PL-END @ 1+ PL-END !
-    REPEAT
-    PL-I @ 1+ PIPE-NSEG @ < IF
-      PIPE DROP PL-WR ! PL-RD !
-    ELSE
-      -1 PL-RD !  -1 PL-WR !
-    THEN
-    FORK
-    DUP 0 = IF
-      DROP
-      PL-PREV-RD @ 0 < 0= IF
-        PL-PREV-RD @ 0 DUP2 DROP
-        PL-PREV-RD @ CLOSE-FILE DROP
-      THEN
-      PL-WR @ 0 < 0= IF
-        PL-WR @ 1 DUP2 DROP
-        PL-WR @ CLOSE-FILE DROP
-        PL-RD @ CLOSE-FILE DROP
-      THEN
-      PIPE-SEG-TO-ARGV
-      \ Redirections on this stage are parsed and applied here, AFTER
-      \ the pipe's own dup2s, so an explicit "> file" on a stage
-      \ overrides the pipe as POSIX requires. This retires the
-      \ "pipes and redirection are mutually exclusive" limit recorded
-      \ in Iteration 7: stages used to go straight to RUN-CHILD with
-      \ their redirection tokens still in ARGV, where the command saw
-      \ them as ordinary arguments.
-      PARSE-REDIRECTIONS
-      APPLY-REDIRECTIONS
-      PIPE-HAVE-BODY @ PL-I @ 1+ PIPE-NSEG @ = AND IF
-        PIPE-RAW RAW-LINE-BUF PIPE-RAW-LEN @ MOVE
-        PIPE-RAW-LEN @ RAW-LINE-LEN !
-        PIPE-BODY REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
-        PIPE-BODY-LEN @ REPLAY-LEN !  0 REPLAY-POS !
-        RUN-TOKENIZED-CALL
-        LAST-STATUS @ SYS-EXIT
-      THEN
-      PIPE-STAGE-INTERNAL? IF
-        RUN-TOKENIZED-CALL
-        LAST-STATUS @ SYS-EXIT
-      THEN
-      RUN-CHILD
-      127 SYS-EXIT
-    THEN
-    PIPE-PIDS PL-I @ CELLS + !
-    PL-PREV-RD @ 0 < 0= IF PL-PREV-RD @ CLOSE-FILE DROP THEN
-    PL-WR @ 0 < 0= IF PL-WR @ CLOSE-FILE DROP THEN
-    PL-RD @ PL-PREV-RD !
-    PL-END @ 1+ PL-START !
-    PL-I @ 1+ PL-I !
-  REPEAT
-  \ Reap every child, not just the last: leaving them unreaped would
-  \ accumulate zombies for the life of the shell. Only the last
-  \ segment's status becomes the pipeline's, matching POSIX (a real
-  \ shell also exposes the rest via PIPESTATUS; not done here).
-  0 PL-I !
-  BEGIN PL-I @ PIPE-NSEG @ < WHILE
-    PIPE-PIDS PL-I @ CELLS + @ WAITPID DROP
-    PL-I @ 1+ PIPE-NSEG @ < IF DROP ELSE 8 RSHIFT 255 AND LAST-STATUS ! THEN
-    PL-I @ 1+ PL-I !
-  REPEAT ;
-
 \ ==================================================================
 \ '&&'/'||' - a pipeline runs only if the operator connecting it to
 \ the previous one permits it, based on the previous pipeline's own
@@ -4579,67 +3898,6 @@ VARIABLE REPLAY-POS
 \ literal argument, not an operator (AT-AND?/AT-OR? both check
 \ ARGV-QUOTED@, same as AT-PIPE?/AT-SEMI?).
 \ ==================================================================
-
-1 CELLS ARGS-BUFFER: ARGV-AO-LEFT
-1 CELLS ARGS-BUFFER: ARGV-AO-REST
-1 ARGS-BUFFER: ARGQ-AO-LEFT
-1 ARGS-BUFFER: ARGQ-AO-REST
-VARIABLE ARGC-AO-LEFT
-VARIABLE ARGC-AO-REST
-VARIABLE ANDOR-OP        ( 1 = && was found, 2 = || was found )
-VARIABLE AO-PENDING-OP   \ which of the above applies to the NEXT
-                          \ piece about to be considered
-VARIABLE AO-CONTINUE
-
-: AT-AND? ( --- f )  S" &&" AT-OP? ;
-
-: AT-OR? ( --- f )  S" ||" AT-OP? ;
-
-: SPLIT-ANDOR ( --- f )  \ f = -1 if a && or || token was found in the
-                          \ *global* ARGV/ARGC (not touched by this
-                          \ word itself, only scanned) - the piece
-                          \ before it is in ARGV-AO-LEFT/ARGC-AO-LEFT
-                          \ (each entry's own ARGV-QUOTED flag at split
-                          \ time mirrored into ARGQ-AO-LEFT, for
-                          \ COPY-ARGV-Q to restore later - see its own
-                          \ comment for why this matters), which
-                          \ operator it was in ANDOR-OP, and everything
-                          \ after it (which may itself contain further
-                          \ &&/||, not yet split) in ARGV-AO-REST/
-                          \ ARGC-AO-REST/ARGQ-AO-REST. f = 0 if
-                          \ neither was found at all (nothing touched
-                          \ except ARGC-AO-LEFT, harmlessly reset).
-  SHADOW{ | PR-I }
-  0 GRP-DEPTH !
-  0 ARGC-AO-LEFT !
-  BEGIN AT-END? AT-AND? OR AT-OR? OR 0= WHILE
-    PR-I @ GRP-TRACK
-    PR-I @ ARGV@ ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-AO-LEFT ARGC-AO-LEFT @ + C!
-    ARGC-AO-LEFT @ 1+ ARGC-AO-LEFT !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-AO-LEFT ARGC-AO-LEFT @ CELLS + !
-  AT-END? IF 0 EXIT THEN
-  AT-AND? IF 1 ANDOR-OP ! ELSE 2 ANDOR-OP ! THEN
-  PR-I @ 1+ PR-I !                    ( skip the "&&"/"||" token itself )
-  0 ARGC-AO-REST !
-  BEGIN AT-END? 0= WHILE
-    PR-I @ ARGV@ ARGV-AO-REST ARGC-AO-REST @ CELLS + !
-    PR-I @ ARGV-QUOTED@ ARGQ-AO-REST ARGC-AO-REST @ + C!
-    ARGC-AO-REST @ 1+ ARGC-AO-REST !
-    PR-I @ 1+ PR-I !
-  REPEAT
-  0 ARGV-AO-REST ARGC-AO-REST @ CELLS + !
-  -1 ;
-
-: AO-SHOULD-RUN? ( --- f )  \ does AO-PENDING-OP (the operator right
-                              \ before the piece about to be
-                              \ considered) permit running it, given
-                              \ the previous piece's own LAST-STATUS?
-  AO-PENDING-OP @ 0 = IF -1 EXIT THEN
-  AO-PENDING-OP @ 1 = IF LAST-STATUS @ 0= EXIT THEN
-  LAST-STATUS @ 0 <> ;
 
 DEFER TRY-ASSIGNMENT-CALL   \ patched to TRY-ASSIGNMENT's own xt right
                                \ after it's defined, further down (the
@@ -4661,26 +3919,8 @@ DEFER TRY-ASSIGNMENT-CALL   \ patched to TRY-ASSIGNMENT's own xt right
                                \ just path-searched as a literal,
                                \ failing command name.
 
-
 \ Moved ahead of RUN-SIMPLE-OR-PIPELINE, which now uses both for
 \ pipeline negation ( ! cmd ).
-
-1 CELLS ARGS-BUFFER: ARGV-SHIFT
-VARIABLE ARGC-SHIFT
-
-: SHIFT-ARGV-DOWN ( --- )  \ copies ARGV[1..ARGC-1] into
-                            \ ARGV-SHIFT[0..] - "the rest of this
-                            \ line" as its own command, used to run
-                            \ if's condition (the part after "if").
-  0 ARGC-SHIFT !
-  ARGC @ 1 > IF
-    ARGC @ 1 DO
-      I ARGV@ ARGV-SHIFT ARGC-SHIFT @ CELLS + !
-      I ARGV-QUOTED@ ARGQ-SHIFT ARGC-SHIFT @ + C!
-      ARGC-SHIFT @ 1+ ARGC-SHIFT !
-    LOOP
-  THEN
-  0 ARGV-SHIFT ARGC-SHIFT @ CELLS + ! ;
 
 \ ==================================================================
 \ Assignment words (Iteration 256)
@@ -4764,209 +4004,11 @@ VARIABLE TA-E
   TA-REC @ FREE DROP ;
 
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
-  SPLIT-PIPE
-  PIPE-PRESENT? @ IF
-    PIPE-SEGMENTS-OK? IF RUN-PIPELINE THEN
-  ELSE
-    PARSE-REDIRECTIONS
-    ARGC @ 0 > IF
-      DISPATCH 0= IF RUN-EXTERNAL THEN
-    THEN
+  \ A simple command from the tree has no pipes (Iteration 265).
+  PARSE-REDIRECTIONS
+  ARGC @ 0 > IF
+    DISPATCH 0= IF RUN-EXTERNAL THEN
   THEN ;
-
-: RUN-SIMPLE-OR-PIPELINE ( --- )  \ runs whatever's currently in the
-                                    \ global ARGV/ARGC as one pipeline
-                                    \ (or simple command) - the logic
-                                    \ that used to be inline at the end
-                                    \ of RUN-TOKENIZED, factored out
-                                    \ here so RUN-AND-OR-CHAIN below
-                                    \ can call it once per &&/||-
-                                    \ separated piece. A no-op if
-                                    \ SUPPRESS-EXEC? is set - this line
-                                    \ is being read only to correctly
-                                    \ consume a skipped if/while
-                                    \ branch's own body, not actually
-                                    \ run. Also a no-op once
-                                    \ RETURN-PENDING? is set - once a
-                                    \ "return" builtin has run within
-                                    \ the current function, nothing
-                                    \ further in that same logical line
-                                    \ (or any later line of that
-                                    \ function's own body) should run
-                                    \ either, regardless of ';'/'&&'/
-                                    \ '||' structure. Likewise once
-                                    \ LOOP-CONTROL-PENDING? is set (a
-                                    \ "break"/"continue" has run) -
-                                    \ nothing further in the current
-                                    \ loop iteration's own body (or the
-                                    \ body of any function called from
-                                    \ within it) should run either.
-  \ PREPARE-PIPE-CALL first, because it may re-tokenize the whole line
-  \ from raw text - and then expand, once. It used to sit further
-  \ down, which was fine while tokenizing and expanding were the same
-  \ act; now it would throw away an expanded ARGV and leave a raw one
-  \ in its place.
-  PREPARE-PIPE-CALL
-  \ Expansion happens HERE, not during tokenizing: this is the point
-  \ at which one command is about to run, and everything earlier on
-  \ its line already has. That is what makes
-  \ `FOO=bar; echo $FOO` print bar (Iteration 114).
-  \
-  \ Exactly once per ARGV. Expanding an already-expanded list would
-  \ re-split its results and, since the source and destination buffers
-  \ would then be the same one, corrupt them outright. That is why the
-  \ call sits below the group handling rather than above it: a group's
-  \ body is carved out of ARGV and then run through RUN-TOKENIZED,
-  \ which expands it at its own leaf.
-  SUPPRESS-EXEC? @ RETURN-PENDING? @ OR LOOP-CONTROL-PENDING? @ OR
-  IF EXIT THEN
-  \ A trailing unquoted '&' runs the command in the background: fork,
-  \ do not wait, report success immediately, and remember the child's
-  \ pid for $!. The '&' itself is dropped first, so everything below
-  \ sees an ordinary command - the child then runs it by recursing
-  \ into this same word.
-  ARGC @ 1 > IF
-    ARGC @ 1- DUP ARGV-QUOTED@ 0= SWAP ARGV@ DUP CSTRLEN S" &" STR= AND IF
-      ARGC @ 1- ARGC !
-      0 ARGV ARGC @ CELLS + !
-      FORK DUP 0 = IF
-        DROP
-        RECURSE
-        LAST-STATUS @ SYS-EXIT
-      THEN
-      BG-PID !
-      0 LAST-STATUS !
-      EXIT
-    THEN
-  THEN
-  \ A '&&'/'||'/';' segment, or a pipeline stage, can itself be a
-  \ group - "[ x ] || { echo fail; exit 1; }". Checked here as well as
-  \ at the line level, since segments never pass through RUN-TOKENIZED.
-  DISPATCH-GROUP IF EXIT THEN
-  EXPAND-WORDS
-  \ An expansion that failed - a division by zero - stops the command,
-  \ with status 1, as bash does; dash ends the script (Iteration 257).
-  EXPANSION-FAILED? @ IF 1 LAST-STATUS ! EXIT THEN
-  TRY-ASSIGNMENT-CALL IF EXIT THEN
-  S" !" LINE-IS? IF
-    \ Pipeline negation: run the rest and invert its status. POSIX
-    \ negates the whole pipeline, which is why this sits here - ahead
-    \ of SPLIT-PIPE - rather than being treated as a command name.
-    SHIFT-ARGV-DOWN
-    ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
-    RECURSE
-    LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !
-    EXIT
-  THEN
-  PREFIX-COUNT ?DUP IF
-    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE
-    EXIT
-  THEN
-  RUN-EXPANDED ;
-
-VARIABLE AO-REST
-VARIABLE AO-RESTQ
-VARIABLE AO-RESTC
-VARIABLE AO-TEXT       \ the heap block the saved rest's words live in
-VARIABLE AO-OLD-TEXT   \ the one the words being run now live in
-VARIABLE AO-SAVED-OP
-VARIABLE AO-J
-
-VARIABLE SRT-DST
-VARIABLE SRT-N
-VARIABLE SRT-SIZE
-VARIABLE SRT-AT
-VARIABLE SRT-I
-
-: COPY-WORDS-TEXT ( argv-addr n --- block )
-\ COPY-REST-TEXT's core, for a word array at an address.
-  SHADOW{ SRT-DST SRT-N | SRT-SIZE SRT-AT SRT-I }
-  BEGIN SRT-I @ SRT-N @ < WHILE
-    SRT-DST @ SRT-I @ CELLS + @ CSTRLEN 1+ SRT-SIZE @ + SRT-SIZE !
-    SRT-I @ 1+ SRT-I !
-  REPEAT
-  SRT-SIZE @ 1 MAX ALLOCATE ABORT" shell: out of memory"
-  DUP SRT-AT !
-  0 SRT-I !
-  BEGIN SRT-I @ SRT-N @ < WHILE
-    SRT-DST @ SRT-I @ CELLS + @
-    DUP CSTRLEN 1+ DUP >R SRT-AT @ SWAP MOVE
-    SRT-AT @ SRT-DST @ SRT-I @ CELLS + !
-    SRT-AT @ R> + SRT-AT !
-    SRT-I @ 1+ SRT-I !
-  REPEAT ;
-
-: COPY-REST-TEXT ( argv-offset n --- block )
-\ A saved rest of a line - what follows a `;`, `&&` or `||` - is a list
-\ of pointers into the token buffers. Running the first command can
-\ overwrite those: a FUNCTION's body is tokenized into the same buffers.
-\ So `f; echo after` lost "after", and `f && echo after` ran a leftover
-\ word of f's body as a command (found in Iteration 255). The words are
-\ copied into a heap block of their own, and the saved list pointed at
-\ it; the caller frees the block once the rest has run. A heap block,
-\ not the arena: the arena moves when it grows, and these pointers are
-\ used while commands run.
-  SWAP BODY@ SWAP COPY-WORDS-TEXT ;
-
-: AO-SAVE-REST ( --- )
-  \ Copy the &&/||-remainder out of the shared ARGV-AO-REST arrays
-  \ into per-invocation arena storage BEFORE running the piece before
-  \ it. Running that piece can recurse all the way back into
-  \ SPLIT-ANDOR - a group whose body contains "&&" does exactly that -
-  \ which overwrites the remainder. Iteration 50 fixed the identical
-  \ shape in RUN-TOKENIZED for ';' and recorded that this word had it
-  \ too and had simply never been hit; it is hit by
-  \ "{ true && echo inner; } && echo outer", which printed
-  \ "inner inner".
-  ARGC-AO-REST @ AO-RESTC !
-  ARGS-CAP @ CELLS BODY-ALLOC AO-REST !
-  ARGS-CAP @       BODY-ALLOC AO-RESTQ !
-  0 AO-J !
-  BEGIN AO-J @ AO-RESTC @ < WHILE
-    ARGV-AO-REST AO-J @ CELLS + @  AO-REST  @ BODY@ AO-J @ CELLS + !
-    ARGQ-AO-REST AO-J @ +      C@  AO-RESTQ @ BODY@ AO-J @ +       C!
-    AO-J @ 1+ AO-J !
-  REPEAT
-  AO-TEXT @ AO-OLD-TEXT !
-  AO-REST @ AO-RESTC @ COPY-REST-TEXT AO-TEXT ! ;
-
-: AO-LOAD-REST ( --- )
-  AO-REST @ BODY@ AO-RESTQ @ BODY@ AO-RESTC @ COPY-ARGV-Q ;
-
-: RUN-AND-OR-CHAIN ( --- )
-  \ AO-CONTINUE, AO-PENDING-OP and the arena pointers are locals, not
-  \ globals: every one of them is held across RUN-SIMPLE-OR-PIPELINE,
-  \ which can recurse into this same word.
-  BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | AO-REST AO-RESTQ AO-RESTC AO-J AO-CONTINUE AO-PENDING-OP AO-SAVED-OP AO-TEXT AO-OLD-TEXT }
-  AO-SAVE-REST
-  ANDOR-OP @ AO-SAVED-OP !
-  ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
-  RUN-SIMPLE-OR-PIPELINE
-  AO-SAVED-OP @ AO-PENDING-OP !
-  AO-LOAD-REST
-  -1 AO-CONTINUE !
-  BEGIN AO-CONTINUE @ WHILE
-    SPLIT-ANDOR IF
-      AO-SAVE-REST
-      ANDOR-OP @ AO-SAVED-OP !
-      AO-SHOULD-RUN? IF
-        ARGV-AO-LEFT ARGQ-AO-LEFT ARGC-AO-LEFT @ COPY-ARGV-Q
-        RUN-SIMPLE-OR-PIPELINE
-      THEN
-      AO-SAVED-OP @ AO-PENDING-OP !
-      AO-LOAD-REST
-      \ The words just run lived in the previous block; the ones loaded
-      \ now live in the new one.
-      AO-OLD-TEXT @ ?DUP IF FREE DROP THEN  0 AO-OLD-TEXT !
-    ELSE
-      AO-SHOULD-RUN? IF RUN-SIMPLE-OR-PIPELINE THEN
-      0 AO-CONTINUE !
-    THEN
-  REPEAT
-  AO-OLD-TEXT @ ?DUP IF FREE DROP THEN
-  AO-TEXT @ ?DUP IF FREE DROP THEN ;
-
 
 \ ==================================================================
 \ Control structures: if/then/else/fi
@@ -4990,7 +4032,6 @@ VARIABLE SRT-I
 \ once that word is defined below) rather than trying to reorder
 \ around it.
 \ ==================================================================
-
 
 \ ==================================================================
 \ '( list )' subshells and '{ list ; }' brace groups. Both require
@@ -5017,8 +4058,6 @@ VARIABLE SRT-I
 \ split as if it belonged to the outer line.
 \ ==================================================================
 
-
-
 \ ==================================================================
 \ Shell-local variable assignment: a standalone "NAME=value" line
 \ (the *entire* line - not a command with an assignment-looking
@@ -5028,7 +4067,6 @@ VARIABLE SRT-I
 \ now) sets a shell-local variable via SET-SHVAR rather than being
 \ looked up as a command name.
 \ ==================================================================
-
 
 : TRY-ASSIGNMENT ( --- f )  \ f = -1 if ARGV was a standalone
                               \ "NAME=value" assignment word (already
@@ -5053,11 +4091,6 @@ VARIABLE SRT-I
   -1 ;
 ' TRY-ASSIGNMENT IS TRY-ASSIGNMENT-CALL
 
-
-
-
-VARIABLE SHFILE-FID
-VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
                             \ READ-NEXT-INPUT-LINE below knows to read
                             \ from SHFILE-FID rather than the real
                             \ process stdin - if/while's own internal
@@ -5073,8 +4106,6 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
                             \ own "then"/body/"fi" lines were never
                             \ seen at all when invoked this way, and
                             \ the whole command was silently a no-op.
-
-
 
 \ ==================================================================
 \ Replaying a stored body as an INPUT SOURCE
@@ -5102,22 +4133,6 @@ VARIABLE SHFILE-ACTIVE?   \ true while running via SH-FILE, so
 \ is active (a nested while reading its own body, say) consumes them
 \ from the outer body and leaves the position correctly advanced.
 
-\ Whether a replay is in progress. A separate flag rather than
-\ "REPLAY-SRC is non-zero", because REPLAY-SRC became an arena OFFSET
-\ and the very first allocation legitimately has offset 0 - so the
-\ outermost loop in a script silently did not replay at all.
-\ True when REPLAY-SRC is an OFFSET into the body arena (a while/for
-\ body), false when it is a plain address (a function body, which
-\ lives in a function's own heap block). The distinction is needed
-\ because the arena can be RESIZEd - and so relocated - part way
-\ through a replay: a nested loop inside the body being replayed
-\ allocates its own storage before it reads a single line. Resolving
-\ the address per line rather than caching it is what makes that safe.
-VARIABLE RNL-OFF
-VARIABLE RNL-BODY
-VARIABLE RNL-CUR
-VARIABLE RNL-LEN
-
 \ (INPUT-EOF? is declared with the line readers, near the top of the file.)
 \ True when the current input source has genuinely run out, as opposed
 \ to having produced an empty line - the two are reported identically
@@ -5129,35 +4144,6 @@ VARIABLE RNL-LEN
 \ its own length, and READ-LINE returns a flag. ACCEPT cannot
 \ distinguish them, so the interactive path is left alone - a real
 \ shell prompts for continuation there indefinitely too.
-
-: REPLAY-NEXT-LINE ( off body --- u2 )
-  SHADOW{ RNL-OFF RNL-BODY | RNL-CUR RNL-LEN }
-  REPLAY-POS @ REPLAY-LEN @ < 0= IF -1 INPUT-EOF? ! 0 EXIT THEN
-  REPLAY-ARENA? @ IF REPLAY-SRC @ BODY@ ELSE REPLAY-SRC @ THEN
-  REPLAY-POS @ + RNL-CUR !
-  RNL-CUR @ CSTRLEN RNL-LEN !
-  REPLAY-POS @ RNL-LEN @ + 1+ REPLAY-POS !
-  RNL-OFF @ RNL-LEN @ + 1+ RNL-BODY @ BUF-ENSURE
-  RNL-CUR @ RNL-BODY @ @ RNL-OFF @ + RNL-LEN @ MOVE
-  RNL-LEN @ ;
-
-: READ-NEXT-INPUT-LINE ( off body --- u2 )
-  \ Reads one line of "current input" - from the real process stdin
-  \ via ACCEPT (preserving its backspace/delete editing, which matters
-  \ for a genuinely interactive session) when not running via
-  \ SH-FILE, or from the open script file via READ-LINE (discarding
-  \ its own flag/ior - EOF just gives u2=0, the same as running out
-  \ of lines already meant here) when SHFILE-ACTIVE? is true.
-  0 INPUT-EOF? !  0 LONG-LINE? !
-  REPLAY-ACTIVE? @ IF REPLAY-NEXT-LINE EXIT THEN
-  SHFILE-ACTIVE? @ IF
-    SHFILE-FID @ READ-LINE-INTO        ( u2 flag )
-    0= IF -1 INPUT-EOF? ! THEN
-  ELSE
-    ACCEPT-INTO
-  THEN ;
-
-' READ-NEXT-INPUT-LINE IS READ-INPUT-CALL
 
 \ ==================================================================
 \ Operator normalization: ';', '|', '&', '<', '>' (and their doubled
@@ -5196,62 +4182,6 @@ VARIABLE RNL-LEN
 \ for its own future iteration rather than risking this one.
 \ ==================================================================
 
-: OP-CHAR? ( c --- f )
-  DUP 59 = IF DROP -1 EXIT THEN    ( ; )
-  DUP 124 = IF DROP -1 EXIT THEN   ( | )
-  DUP 38 = IF DROP -1 EXIT THEN    ( & )
-  DUP 60 = IF DROP -1 EXIT THEN    ( < )
-  DUP 62 = IF DROP -1 EXIT THEN    ( > )
-  DUP 40 = IF DROP -1 EXIT THEN    ( ( )
-  DUP 41 = IF DROP -1 EXIT THEN    \ )  - a backslash comment: "( ) )"
-                                   \ relied on PARSE skipping a leading )
-  DROP 0 ;
-
-: NORM-DOUBLED-OP? ( c --- f )  \ one of &, |, >, ; - the four
-                                  \ operator characters with a
-                                  \ two-character doubled form (&&,
-                                  \ ||, >>, ;; - the last being case's
-                                  \ own "end of arm" marker, needed as
-                                  \ its own single token rather than
-                                  \ two separate ';' ones)
-  DUP 38 = IF DROP -1 EXIT THEN
-  DUP 124 = IF DROP -1 EXIT THEN
-  DUP 62 = IF DROP -1 EXIT THEN
-  DUP 60 = IF DROP -1 EXIT THEN    ( < , for "<<" here-documents )
-  59 = ;
-
-VARIABLE NORM-LEN
-VARIABLE NORM-I
-VARIABLE NORM-U
-VARIABLE NORM-IN-SQ?
-VARIABLE NORM-IN-DQ?
-VARIABLE NORM-C
-VARIABLE UNTERMINATED-QUOTE?
-VARIABLE UNTERMINATED-CMDSUB?  \ a "$(" or backquote still open at end
-                                \ of line - the command text continues
-                                \ on the next one, exactly as an open
-                                \ quote does (Iteration 105)
-VARIABLE NORM-IN-CMDSUB?   \ true while copying through a $(...)
-                            \ region verbatim. '(' and ')' are
-                            \ self-delimiting operators everywhere
-                            \ else now, but inside a command
-                            \ substitution they are part of the
-                            \ substituted text - and "$(" must stay
-                            \ fused for EXPAND-VAR to recognise it at
-                            \ all. Same shape as NORM-IN-ARITH? below.
-VARIABLE NORM-IN-BQ?
-VARIABLE NORM-CMDSUB-DEPTH \ nested "(" inside the substitution, so a
-                            \ "(" in the command text is not mistaken
-                            \ for its closing ")"
-VARIABLE NORM-IN-ARITH?    \ true while copying through a $((...))
-                            \ region verbatim - operators like <, >,
-                            \ &, | are meaningful to the arithmetic
-                            \ grammar itself (e.g. "<=", "&&") and
-                            \ must not get shell-level spacing
-                            \ inserted around them, the same reason
-                            \ quoted regions are already copied
-                            \ through untouched rather than normalized.
-VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                             \ within the arithmetic expression itself,
                             \ so a nested "(...)" inside it isn't
                             \ mistaken for the expansion's own closing
@@ -5260,442 +4190,11 @@ VARIABLE NORM-ARITH-DEPTH  \ how many extra, unmatched "(" are open
                             \ this is the same problem solved once
                             \ more, earlier in the pipeline.
 
-: NORM-COMMENT-START? ( --- f )
-  \ True if the '#' at the current position begins a comment: POSIX
-  \ says '#' introduces one only at the start of a word, so it must be
-  \ the first character of the line or follow whitespace. That is
-  \ exactly what keeps "$#", "${#VAR}", "${VAR#pat}" and a literal
-  \ "a#b" working - in all of those the '#' follows a non-blank.
-  NORM-LEN @ 0= IF -1 EXIT THEN
-  NORM-BUF NORM-LEN @ 1- + C@ WS? ;
-
-: NORM-CLOSE ( --- )
-  \ Ends the word currently being emitted, if any.
-  \
-  \ Word boundaries are recorded HERE, by the pass that already knows
-  \ where they are. NORMALIZE-OPERATORS tracks single quotes, double
-  \ quotes, $(...), backquotes and $((...)) because it must not space
-  \ out operators inside them - which is the same question as "does
-  \ this whitespace separate two words". Deriving it a second time in
-  \ the tokenizer would be two answers to one question, and
-  \ FORTH-STYLE.md section 11 is about what happens next.
-  NORM-WSTART @ -1 = IF EXIT THEN
-  NORM-WCOUNT @ ROOM-FOR-ARG? IF
-    NORM-WSTART @                    NORM-WORDS NORM-WCOUNT @ CELLS + !
-    NORM-LEN @ NORM-WSTART @ -       NORM-WLENS NORM-WCOUNT @ CELLS + !
-    NORM-WCOUNT @ 1+ NORM-WCOUNT !
-  ELSE
-    \ This, not the tokenizer, is where a line with too many words
-    \ loses them: NORM-WCOUNT is capped here, so a check in
-    \ TOKENIZE-RAW could never see the overflow. Only at
-    \ ARGS-HARD-MAX since Iteration 250; at MAX-ARGS (64) before.
-    -1 ARGS-OVERFLOW? !
-  THEN
-  -1 NORM-WSTART ! ;
-
-: NORM-EMIT ( c --- )
-  NORM-LEN @ BUFFER-SIZE NORM-BUF 1- < IF
-    \ A word opens at the first non-blank emitted while none is open.
-    \ Blanks never open one, so the separators - both the line's own
-    \ and the ones inserted around an operator - fall between words
-    \ rather than starting a new one. A blank INSIDE a word (quoted,
-    \ or within a $(...)) arrives with the word already open and
-    \ leaves it open, which is exactly right.
-    DUP WS? 0= NORM-WSTART @ -1 = AND IF NORM-LEN @ NORM-WSTART ! THEN
-    NORM-BUF NORM-LEN @ + C!
-    NORM-LEN @ 1+ NORM-LEN !
-  ELSE
-    DROP        ( buffer full - the character was being left on the
-                  data stack until Iteration 112 )
-  THEN ;
-
-: NORM-PEEK ( offset --- c )  \ byte at LINE-BUF[NORM-I + offset], or
-                                \ 0 if that would be beyond NORM-U
-  NORM-I @ + DUP NORM-U @ < IF
-    LINE-BUF SWAP + C@
-  ELSE
-    DROP 0
-  THEN ;
-
-: NORM-AT-CMDSUB-START? ( --- f )  \ "$(" but not "$((" ?
-  NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 <> AND ;
-
-: NORM-AT-ARITH-START? ( --- f )  \ is "$((" starting right at the
-                                     \ current position?
-  NORM-C @ 36 = 1 NORM-PEEK 40 = AND 2 NORM-PEEK 40 = AND ;
-
-VARIABLE NORM-SKIPD
-
-: NORM-SKIP-CMDSUB ( --- )
-  \ Copies a "$(...)" region verbatim from INSIDE double quotes,
-  \ counting parens. The double-quote branch below does not otherwise
-  \ recognise a command substitution, so the quotes inside one were
-  \ taken for the enclosing quote's closer: `"cmd: $(echo "a b")"`
-  \ left this pass believing the string ended after `echo `.
-  \
-  \ That was harmless while nothing acted on where a word ended.
-  \ Iteration 112 made this pass the authority on that, and the
-  \ boundary landed in the middle of the substitution.
-  NORM-C @ NORM-EMIT
-  1 NORM-PEEK NORM-EMIT
-  NORM-I @ 2 + NORM-I !
-  0 NORM-SKIPD !
-  BEGIN
-    NORM-I @ NORM-U @ < IF
-      0 NORM-PEEK 41 = NORM-SKIPD @ 0= AND 0=
-    ELSE 0 THEN
-  WHILE
-    0 NORM-PEEK 40 = IF NORM-SKIPD @ 1+ NORM-SKIPD ! THEN
-    0 NORM-PEEK 41 = IF NORM-SKIPD @ 1- NORM-SKIPD ! THEN
-    0 NORM-PEEK NORM-EMIT
-    NORM-I @ 1+ NORM-I !
-  REPEAT
-  NORM-I @ NORM-U @ < IF
-    41 NORM-EMIT
-    NORM-I @ 1+ NORM-I !
-  THEN ;
-
-: NORM-SKIP-BQ ( --- )
-  \ The same for a backquoted region inside double quotes.
-  NORM-C @ NORM-EMIT
-  NORM-I @ 1+ NORM-I !
-  BEGIN
-    NORM-I @ NORM-U @ < IF 0 NORM-PEEK 96 <> ELSE 0 THEN
-  WHILE
-    0 NORM-PEEK NORM-EMIT
-    NORM-I @ 1+ NORM-I !
-  REPEAT
-  NORM-I @ NORM-U @ < IF
-    96 NORM-EMIT
-    NORM-I @ 1+ NORM-I !
-  THEN ;
-
-: NORMALIZE-OPERATORS ( u --- u2 )  \ LINE-BUF holds u raw bytes;
-                                      \ result (u2 bytes) is in
-                                      \ NORM-BUF, not LINE-BUF itself -
-                                      \ the caller copies it back.
-  SHADOW{ NORM-U | NORM-LEN NORM-IN-SQ? NORM-IN-DQ? NORM-IN-ARITH? NORM-ARITH-DEPTH NORM-IN-BQ? NORM-IN-CMDSUB? NORM-CMDSUB-DEPTH NORM-I NORM-C }
-  0 NORM-WCOUNT !  -1 NORM-WSTART !
-  \ Spacing the operators at most triples the text.
-  NORM-U @ 3 * 8 + ENSURE-BUFFER NORM-BUF
-  BEGIN NORM-I @ NORM-U @ < WHILE
-    0 NORM-PEEK NORM-C !
-    NORM-IN-ARITH? @ IF
-      NORM-C @ 40 = IF NORM-ARITH-DEPTH @ 1+ NORM-ARITH-DEPTH ! THEN
-      NORM-C @ 41 = NORM-ARITH-DEPTH @ 0 = AND 1 NORM-PEEK 41 = AND IF
-        \ The closing "))" is consumed as a UNIT. Leaving arith-mode on
-        \ the first ')' and letting the second fall through was
-        \ harmless until Iteration 48 made ')' a self-delimiting
-        \ operator - after which the second one got a space inserted
-        \ before it, turning "$((x*2))" into "$((x*2) )" and breaking
-        \ every arithmetic expansion. Found by run-arith.
-        0 NORM-IN-ARITH? !
-        41 NORM-EMIT  41 NORM-EMIT
-        NORM-I @ 2 + NORM-I !
-      ELSE
-        NORM-C @ 41 = NORM-ARITH-DEPTH @ 0 > AND IF
-          NORM-ARITH-DEPTH @ 1- NORM-ARITH-DEPTH !
-        THEN
-        NORM-C @ NORM-EMIT
-        NORM-I @ 1+ NORM-I !
-      THEN
-    ELSE NORM-IN-BQ? @ IF
-      NORM-C @ 96 = IF 0 NORM-IN-BQ? ! THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-IN-CMDSUB? @ IF
-      NORM-C @ 40 = IF NORM-CMDSUB-DEPTH @ 1+ NORM-CMDSUB-DEPTH ! THEN
-      NORM-C @ 41 = IF
-        NORM-CMDSUB-DEPTH @ 0 > IF
-          NORM-CMDSUB-DEPTH @ 1- NORM-CMDSUB-DEPTH !
-        ELSE
-          0 NORM-IN-CMDSUB? !
-        THEN
-      THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-IN-SQ? @ IF
-      NORM-C @ 39 = IF 0 NORM-IN-SQ? ! THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-IN-DQ? @ NORM-AT-CMDSUB-START? AND IF
-      NORM-SKIP-CMDSUB
-    ELSE NORM-IN-DQ? @ NORM-C @ 96 = AND IF
-      NORM-SKIP-BQ
-    ELSE NORM-IN-DQ? @ IF
-      \ A backslash inside double quotes escapes the next character,
-      \ so an escaped quote must not be counted as the closing one.
-      \ This tracking used to be approximate and it did not matter,
-      \ because nothing acted on the state; once an unterminated quote
-      \ became a diagnosed syntax error, `echo "a\"b"` started
-      \ reporting one. The actual unescaping still happens later, in
-      \ COPY-DOUBLE-QUOTED - here both characters are simply copied.
-      NORM-C @ 92 = NORM-I @ 1+ NORM-U @ < AND IF
-        NORM-C @ NORM-EMIT
-        1 NORM-PEEK NORM-EMIT
-        NORM-I @ 2 + NORM-I !
-      ELSE
-        NORM-C @ 34 = IF 0 NORM-IN-DQ? ! THEN
-        NORM-C @ NORM-EMIT
-        NORM-I @ 1+ NORM-I !
-      THEN
-    ELSE NORM-C @ 96 = IF
-      \ A backquoted region is copied verbatim for the same reason a
-      \ $(...) one is: the operators inside belong to the substituted
-      \ command, not to this line.
-      -1 NORM-IN-BQ? !
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 39 = IF
-      -1 NORM-IN-SQ? !
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 34 = IF
-      -1 NORM-IN-DQ? !
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    ELSE NORM-C @ 92 = IF
-      ( a backslash outside quotes escapes the next character -
-        copied verbatim, including if it happens to be an operator
-        character, so it stays unspaced/literal like everywhere else
-        this shell already treats a backslash-escaped char )
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-      NORM-I @ NORM-U @ < IF
-        0 NORM-PEEK NORM-EMIT
-        NORM-I @ 1+ NORM-I !
-      THEN
-    ELSE NORM-C @ 35 = NORM-COMMENT-START? AND IF
-      \ A comment runs to end of line: stop copying entirely by
-      \ jumping the read position to the end. Quoted '#' never gets
-      \ here (the quote branches above consume it), and neither does
-      \ a backslash-escaped one.
-      NORM-CLOSE
-      NORM-U @ NORM-I !
-    ELSE NORM-AT-CMDSUB-START? IF
-      \ "$(" starting here: copy both characters verbatim and switch
-      \ into cmdsub-mode, so the parens belonging to the substitution
-      \ are not spaced out as operators.
-      -1 NORM-IN-CMDSUB? !
-      0 NORM-CMDSUB-DEPTH !
-      NORM-C @ NORM-EMIT
-      1 NORM-PEEK NORM-EMIT
-      NORM-I @ 2 + NORM-I !
-    ELSE NORM-AT-ARITH-START? IF
-      \ "$((" starting here - copy all three characters verbatim and
-      \ switch into arith-mode, so operators meaningful to the
-      \ arithmetic grammar itself ("<=", "&&", etc.) inside it don't
-      \ get shell-level spacing inserted around them - see
-      \ NORM-IN-ARITH?'s own comment above.
-      -1 NORM-IN-ARITH? !
-      0 NORM-ARITH-DEPTH !
-      NORM-C @ NORM-EMIT
-      1 NORM-PEEK NORM-EMIT
-      2 NORM-PEEK NORM-EMIT
-      NORM-I @ 3 + NORM-I !
-    ELSE NORM-C @ OP-CHAR? IF
-      NORM-CLOSE
-      32 NORM-EMIT
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-      NORM-C @ NORM-DOUBLED-OP? IF
-        0 NORM-PEEK NORM-C @ = IF
-          NORM-C @ NORM-EMIT
-          NORM-I @ 1+ NORM-I !
-        THEN
-      THEN
-      \ ">&" and "<&" are single redirection operators (fd duplication)
-      \ and must not be split into '>' and '&' - '&' on its own means
-      \ something quite different.
-      NORM-C @ 62 = NORM-C @ 60 = OR IF
-        0 NORM-PEEK 38 = IF
-          38 NORM-EMIT
-          NORM-I @ 1+ NORM-I !
-        THEN
-      THEN
-      \ "<<-" is its own operator (strip leading tabs), so the '-'
-      \ stays attached to the "<<" that was just emitted.
-      NORM-C @ 60 = IF
-        0 NORM-PEEK 45 = IF
-          45 NORM-EMIT
-          NORM-I @ 1+ NORM-I !
-        THEN
-      THEN
-      NORM-CLOSE
-      32 NORM-EMIT
-    ELSE
-      NORM-C @ WS? IF NORM-CLOSE THEN
-      NORM-C @ NORM-EMIT
-      NORM-I @ 1+ NORM-I !
-    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-  REPEAT
-  NORM-CLOSE
-  \ A quote still open at end of line is a syntax error, not something
-  \ to paper over. POSIX: single quotes cannot contain single quotes,
-  \ so "'''" is an empty string followed by an unterminated quote -
-  \ which is exactly what the 2.2.2 conformance case checks.
-  \ This shell has no line continuation, so end of line really is the
-  \ end of the word; a multi-line quoted string is not supported and
-  \ would be reported here rather than silently mis-parsed.
-  NORM-IN-SQ? @ NORM-IN-DQ? @ OR UNTERMINATED-QUOTE? !
-  \ Likewise for a command substitution: "$(" or a backquote still
-  \ open means the command text continues on the next line, which is
-  \ what JOIN-OPEN-QUOTES acts on.
-  \
-  \ NORM-IN-CMDSUB?/NORM-CMDSUB-DEPTH are scratch locals now. They
-  \ were plain globals and were not reset on entry, so a line ending
-  \ inside a $(...) left the flag set into the NEXT call, which would
-  \ have copied that whole line through verbatim. Nothing had reached
-  \ it because nothing acted on the state at end of line - the same
-  \ shape as the quote tracking before Iteration 60.
-  NORM-IN-CMDSUB? @ NORM-IN-BQ? @ OR UNTERMINATED-CMDSUB? !
-  NORM-LEN @ ;
-
-VARIABLE JQ-LEN
-VARIABLE JQ-N
-VARIABLE JQ-GUARD
-VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
-
-: JOIN-OPEN-QUOTES ( u --- u2 )
-  \ LINE-BUF holds u bytes. A quote still open at end of line means the
-  \ string continues on the next one:
-  \
-  \     echo "a
-  \     b"
-  \
-  \ so read further lines, joined by the newline that separated them,
-  \ until the quote closes. The same applies to a "$(" or backquote
-  \ still open, whose command text continues the same way - the
-  \ newline is kept, and CMDSUB-SPLIT-LINES turns it back into a line
-  \ boundary for the substituted text (Iteration 105). Iteration 60 made an open quote a syntax
-  \ error, which is right at end of INPUT and wrong at end of line -
-  \ that check now only fires when this word gives up.
-  \
-  \ NORMALIZE-OPERATORS is re-run purely to test: it is a pure
-  \ function of LINE-BUF into NORM-BUF and sets UNTERMINATED-QUOTE?,
-  \ so calling it twice costs a pass over the line and nothing else.
-  \ JQ-GUARD stops a runaway at EOF, where READ-INPUT-CALL reports an
-  \ empty line and end-of-input identically.
-  JQ-LEN !
-  0 JQ-GUARD !
-  \ In -c mode the command string is the whole input, so there is
-  \ nothing to continue onto and asking would block on ACCEPT reading
-  \ the terminal. An open quote there is a genuine syntax error.
-  \ Still normalizes once on the way out: this word's callers rely on
-  \ NORM-BUF and the word spans being valid when it returns, and skip
-  \ normalizing again themselves (Iteration 119).
-  NO-MORE-INPUT? @ IF JQ-LEN @ NORMALIZE-OPERATORS DROP JQ-LEN @ EXIT THEN
-  BEGIN
-    JQ-LEN @ NORMALIZE-OPERATORS DROP
-    UNTERMINATED-QUOTE? @ UNTERMINATED-CMDSUB? @ OR
-    JQ-GUARD @ 4096 < AND
-    JQ-LEN @ LINE-HARD-MAX < AND
-  WHILE
-    JQ-GUARD @ 1+ JQ-GUARD !
-    JQ-LEN @ 2 + ENSURE-BUFFER LINE-BUF
-    10 LINE-BUF JQ-LEN @ + C!
-    JQ-LEN @ 1+ JQ-LEN !
-    JQ-LEN @ BUFFER-BODY LINE-BUF READ-INPUT-CALL JQ-N !
-    LONG-LINE? @ IF 0 EXIT THEN        \ nothing of it may run
-    JQ-N @ 0= IF JQ-LEN @ EXIT THEN
-    JQ-LEN @ JQ-N @ + JQ-LEN !
-  REPEAT
-  JQ-LEN @ ;
-
-: NORM-TOKENIZE ( u --- )
-  \ LINE-BUF holds u raw bytes: normalize the operators, copy the
-  \ result back over LINE-BUF and tokenize it.
-  \
-  \ This shape appeared verbatim in four places and, in a fifth, did
-  \ not appear where it should have: DO-WHILE re-tokenized its stored
-  \ condition text with no normalization at all, because
-  \ SAVE-WHILE-COND stores the line as it was typed. So `while a;b`
-  \ in a condition never had its ';' spaced out - a latent bug nobody
-  \ had hit, found by scoping Stage 1b of PARSE-EXPAND-PLAN.md rather
-  \ than by anything failing (Iteration 110).
-  \
-  \ `TOKENIZE` reads `NORM-BUF` directly rather than having it copied
-  \ back over `LINE-BUF` first. That copy needed a fallback for when
-  \ the normalized text did not fit `LINE-BUF` - `NORM-MAX` is 512
-  \ and `LINE-MAX` is 256 - in which case the ORIGINAL line was
-  \ tokenized instead, silently, with its operators unspaced. Reading
-  \ `NORM-BUF` where it already is removes the copy, the ceiling and
-  \ the fallback together.
-  NORMALIZE-OPERATORS TOKENIZE ;
-
-: READ-LINE-INTO-ARGV ( --- )  \ reads one line from stdin, tokenizes
-                                 \ it into ARGV/ARGC - no redirect/pipe
-                                 \ parsing or dispatch, just enough to
-                                 \ inspect ARGV[0] for a keyword.
-                                 \ Also stashes a raw (pre-tokenize,
-                                 \ pre-expansion) copy in RAW-LINE-BUF,
-                                 \ needed by DO-WHILE below to capture
-                                 \ a loop's condition/body text so it
-                                 \ can be re-expanded fresh on every
-                                 \ iteration rather than frozen at its
-                                 \ first reading.
-  0 BUFFER-BODY LINE-BUF READ-NEXT-INPUT-LINE
-  \ The newline is the echo of an INTERACTIVELY typed line. A replayed
-  \ line - a loop body, a function body, a command substitution - was
-  \ never typed, and echoing one printed a blank line before every
-  \ iteration of a one-line loop under `-c` (Iteration 117). It never
-  \ showed before because `-c` had no way to run a loop at all.
-  SHFILE-ACTIVE? @ 0= REPLAY-ACTIVE? @ 0= AND IF CR THEN
-  JOIN-CONTINUATIONS
-  JOIN-OPEN-QUOTES
-  DUP RAW-LINE-LEN !
-  RAW-LINE-LEN @ 1+ ENSURE-BUFFER RAW-LINE-BUF
-  LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
-  \ this exact line - that is how it decides whether a quote is still
-  \ open - so NORM-BUF and the word spans are already there.
-  \ Normalizing a second time was pure repeated work on every line of
-  \ every loop body (Iteration 119).
-  TOKENIZE
-  \ Checked AFTER normalizing, since NORMALIZE-OPERATORS is what sets
-  \ the flag - JOIN-OPEN-QUOTES gives up without normalizing in -c
-  \ mode, so the flag can otherwise be a stale one from the previous
-  \ line. Tokenizing an unterminated line first is harmless: an
-  \ unclosed quote just consumes to end of input, and nothing runs.
-  UNTERMINATED-QUOTE? @ IF
-    ." shell: syntax error: unterminated quote" CR
-    2 LAST-STATUS !
-  THEN ;
-
 \ Moved down here in Iteration 105: it now installs the substituted
 \ text as a replay input source and reads it through
 \ READ-LINE-INTO-ARGV, so it must come after that word and after the
 \ REPLAY-*/SHFILE-ACTIVE? declarations. Reaching it from
 \ EXPAND-CMDSUB, far above, is what RUN-CMDSUB-CHILD-CALL is for.
-
-: RUN-CMDSUB-CHILD ( --- )
-  \ Runs the substituted text inside the child EXPAND-CMDSUB forked,
-  \ so clobbering the global ARGV/ARGC/LINE-BUF is safe.
-  \
-  \ The text is installed as a replay input source and read line by
-  \ line through READ-LINE-INTO-ARGV, exactly as a loop body is. That
-  \ is what gives a $(...) the whole language rather than a private
-  \ subset: several commands, ';', '&&', pipes, redirection,
-  \ if/while/for, functions, and nested $(...) - the inner one is
-  \ expanded by the ordinary tokenizer running here.
-  \
-  \ It costs one extra fork for a plain external command, which used
-  \ to be exec'd directly from this child. Correctness over the fork:
-  \ the alternative is keeping a second, weaker parser to avoid it.
-  \ SHFILE-ACTIVE? only decides whether READ-LINE-INTO-ARGV echoes a
-  \ newline for an interactive session. This child's stdout is the
-  \ capture pipe, so that echo would be captured as output - set here
-  \ rather than tested for, since a command substitution is never
-  \ interactive.
-  -1 SHFILE-ACTIVE? !
-  CMDSUB-LINES REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
-  CMDSUB-LINES-LEN @ REPLAY-LEN !  0 REPLAY-POS !
-  BEGIN REPLAY-POS @ REPLAY-LEN @ < WHILE
-    READ-LINE-INTO-ARGV
-    RUN-TOKENIZED-CALL
-  REPEAT
-  LAST-STATUS @ SYS-EXIT ;
-' RUN-CMDSUB-CHILD IS RUN-CMDSUB-CHILD-CALL
 
 \ ==================================================================
 \ Same-line 'then'/'fi'/'else' continuation: "if true; then echo hi;
@@ -5727,262 +4226,6 @@ VARIABLE NO-MORE-INPUT?   \ set by SH-C: the command string is all there is
 \ DO-IF - preserving it correctly would mean propagating a pending
 \ remainder *up* the call stack, a bigger change than this one.
 \ ==================================================================
-
-1 CELLS ARGS-BUFFER: ARGV-PENDING
-1 ARGS-BUFFER: ARGQ-PENDING   \ each pending token's quoted flag
-VARIABLE ARGC-PENDING
-VARIABLE PENDING-REMAINDER?
-
-VARIABLE LAST-LINE-PENDING?  \ did the last logical line come from pending words?
-VARIABLE PENDING-TEXT       \ the block the pending words live in
-VARIABLE PENDING-TEXT-OLD   \ the one before: the words being run now
-
-: PENDING-KEEP-TEXT ( --- )
-\ Pending words - the rest of a line after `then`, `do`, `;;` or
-\ `in` - are pointers into the token buffers, which running the part
-\ before them can overwrite (a function's body is tokenized into the
-\ same buffers). They get a heap block of their own (Iteration 257, as
-\ `;` got in 255). The words being run now were the PREVIOUS pending
-\ ones, so that block is kept one generation more; the one before it is
-\ freed.
-  PENDING-TEXT-OLD @ ?DUP IF FREE DROP THEN
-  PENDING-TEXT @ PENDING-TEXT-OLD !
-  ARGV-PENDING ARGC-PENDING @ COPY-WORDS-TEXT PENDING-TEXT ! ;
-
-: READ-NEXT-LOGICAL-LINE ( --- )
-  \ Either continues where a previous same-line split left off, or
-  \ genuinely reads a new line of input - transparently, so DO-IF's
-  \ own then/else/fi search doesn't need to know or care which.
-  PENDING-REMAINDER? @ DUP LAST-LINE-PENDING? !  IF
-    0 PENDING-REMAINDER? !
-    \ COPY-ARGV-Q, not COPY-ARGV: the pending remainder must carry its
-    \ tokens' quoted flags with it, or a stale flag left at the same
-    \ index by an earlier expansion hides a real operator. Exactly the
-    \ hazard Iteration 28 found and fixed for the ';'/'&&' splitters -
-    \ this call site was missed, and it surfaced as
-    \ "if ...; then echo two; elif ..." echoing a literal ";".
-    ARGV-PENDING ARGQ-PENDING ARGC-PENDING @ COPY-ARGV-Q
-  ELSE
-    READ-LINE-INTO-ARGV
-  THEN ;
-
-VARIABLE SAK-I
-VARIABLE SAK-J
-
-VARIABLE SAEK-DEPTH
-VARIABLE SAEK-WHICH
-
-
-VARIABLE SAEK-KW1-ADDR
-VARIABLE SAEK-KW1-LEN
-VARIABLE SAEK-KW2-ADDR
-VARIABLE SAEK-KW2-LEN
-VARIABLE SAEK-KW3-ADDR
-VARIABLE SAEK-KW3-LEN
-
-: SPLIT-AT-3 ( a1 u1 a2 u2 a3 u3 --- which )
-  \ Like SPLIT-AT-KEYWORD, but scans for *either* of two keywords in
-  \ one pass, splitting at whichever one is actually found first
-  \ (which = 1 for the first keyword, 2 for the second, 0 if neither
-  \ is present at all - same truncate/pending-remainder side effects
-  \ as SPLIT-AT-KEYWORD either way, and the same "if"/"fi" nesting-
-  \ depth tracking). DO-IF needs this rather than two separate
-  \ SPLIT-AT-KEYWORD calls, since "else" and "fi" can both be present
-  \ in the same remaining line (e.g. "then a; else b; fi") - checking
-  \ for "fi" first would find the *later* one, incorrectly swallowing
-  \ a real "else" in between as if it were ordinary body text (found
-  \ by testing this exact case directly: both branches of an if/else
-  \ on one line silently failed to run at all).
-  SHADOW{ SAEK-KW1-ADDR SAEK-KW1-LEN SAEK-KW2-ADDR SAEK-KW2-LEN SAEK-KW3-ADDR SAEK-KW3-LEN | SAEK-DEPTH SAK-I SAK-J SAEK-WHICH }
-  BEGIN SAK-I @ ARGC @ < WHILE
-    0 SAEK-WHICH !
-    SAK-I @ ARGV-QUOTED@ 0= IF
-      SAK-I @ ARGV@ DUP CSTRLEN S" if" STR= IF
-        SAEK-DEPTH @ 1+ SAEK-DEPTH !
-      ELSE
-        SAEK-DEPTH @ 0 = IF
-          SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW1-ADDR @ SAEK-KW1-LEN @ STR=
-          IF 1 SAEK-WHICH !
-          ELSE
-            SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW2-ADDR @ SAEK-KW2-LEN @ STR=
-            IF 2 SAEK-WHICH !
-            ELSE
-              SAK-I @ ARGV@ DUP CSTRLEN SAEK-KW3-ADDR @ SAEK-KW3-LEN @ STR=
-              IF 3 SAEK-WHICH ! THEN
-            THEN
-          THEN
-        ELSE
-          SAK-I @ ARGV@ DUP CSTRLEN S" fi" STR= IF
-            SAEK-DEPTH @ 1- SAEK-DEPTH !
-          THEN
-        THEN
-      THEN
-    THEN
-    SAEK-WHICH @ 0 <> IF
-      0 ARGC-PENDING !
-      SAK-I @ 1+ SAK-J !
-      BEGIN SAK-J @ ARGC @ < WHILE
-        SAK-J @ ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
-        SAK-J @ ARGV-QUOTED@ ARGQ-PENDING ARGC-PENDING @ + C!
-        ARGC-PENDING @ 1+ ARGC-PENDING !
-        SAK-J @ 1+ SAK-J !
-      REPEAT
-      0 ARGV-PENDING ARGC-PENDING @ CELLS + !
-      PENDING-KEEP-TEXT
-      -1 PENDING-REMAINDER? !
-      SAK-I @ ARGC !
-      0 ARGV SAK-I @ CELLS + !
-      SAEK-WHICH @ EXIT
-    THEN
-    SAK-I @ 1+ SAK-I !
-  REPEAT
-  0 ;
-
-: SPLIT-AT-EITHER-KEYWORD ( c-addr1 u1 c-addr2 u2 --- which )
-  \ The two-alternative case of SPLIT-AT-3, passing the second keyword
-  \ twice; a match on the duplicate reports 3, which means the same
-  \ thing as 2 here.
-  2DUP SPLIT-AT-3 DUP 3 = IF DROP 2 THEN ;
-
-: SPLIT-AT-KEYWORD ( c-addr u --- f )
-  \ The one-keyword case of SPLIT-AT-EITHER-KEYWORD above, which it
-  \ now simply defers to by passing the same keyword as both
-  \ alternatives - the two words previously carried ~35 lines of
-  \ identical scanning, splitting and if/fi depth-tracking logic
-  \ between them. f = -1 if the keyword was found (ARGV truncated to
-  \ what came before it, everything after it left in
-  \ ARGV-PENDING/PENDING-REMAINDER? for READ-NEXT-LOGICAL-LINE), 0 if
-  \ not (nothing touched). With both alternatives identical the
-  \ underlying word can only ever answer 0 or 1, so 0= 0= is just
-  \ that normalized to this word's own -1/0 convention.
-  2DUP SPLIT-AT-EITHER-KEYWORD 0= 0= ;
-
-VARIABLE COND-TRUE?
-VARIABLE IF-ELIF-SKIP
-
-: DO-IF ( --- )
-  SHADOW{ | IF-ELIF-SKIP }
-  \ ARGV[0] is "if"; the rest of the line is the condition command,
-  \ up to an optional unquoted "then" on the *same* line (checked via
-  \ SPLIT-AT-KEYWORD - see the comment above it for the full design).
-  \ Supports nesting, including inside a branch that itself doesn't
-  \ execute: COND-TRUE? and SUPPRESS-EXEC? are both saved on the
-  \ return stack at entry (COND-TRUE? first, then SUPPRESS-EXEC? on
-  \ top of it) and restored right before every exit. Every body line
-  \ is always run through RUN-TOKENIZED-CALL regardless of whether
-  \ this branch should actually execute anything - what changes is
-  \ SUPPRESS-EXEC?'s own value beforehand, which DO-ASSIGN and
-  \ RUN-SIMPLE-OR-PIPELINE both check before actually doing anything.
-  \ This is what lets a nested if/while inside a *skipped* branch
-  \ still correctly consume its own then/body/fi (so its "fi" is never
-  \ mistaken for this if's own) without actually running anything
-  \ inside it - unlike only gating whether RUN-TOKENIZED-CALL itself
-  \ gets called, which is what an earlier version of this fix did
-  \ before testing directly surfaced that it broke exactly this case.
-  \ (while/do/done does NOT support nesting yet - its condition/body
-  \ are buffered as raw text across possibly many buffer-sized values,
-  \ not simple scalars, so nesting it would need considerably more
-  \ than this; left for its own future iteration.)
-  COND-TRUE? @ >R
-  SUPPRESS-EXEC? @ >R
-  SHIFT-ARGV-DOWN
-  ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
-  S" then" SPLIT-AT-KEYWORD DROP
-  SUPPRESS-EXEC? @ IF
-    0 COND-TRUE? !
-  ELSE
-    RUN-TOKENIZED-CALL
-    LAST-STATUS @ 0 = COND-TRUE? !
-  THEN
-  PENDING-REMAINDER? @ 0= IF
-    READ-NEXT-LOGICAL-LINE
-    S" then" LINE-IS? 0= IF
-      ." if: expected 'then'" CR
-      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
-    THEN
-  THEN
-  R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
-  \ One flat loop over the remaining branches. COND-TRUE? means "some
-  \ branch has been taken", not just "the first condition was true" -
-  \ that is what lets elif chain: each elif evaluates its condition
-  \ only if nothing has been taken yet, and "else" runs only if
-  \ nothing has. The nested else-loop the previous version used exists
-  \ in this shape as an ordinary iteration.
-  BEGIN
-    READ-NEXT-LOGICAL-LINE
-    INPUT-EOF? @ IF
-      ." shell: syntax error: unexpected end of input, expected 'fi'" CR
-      2 LAST-STATUS !
-      R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
-    THEN
-    S" elif" S" else" S" fi" SPLIT-AT-3
-    DUP 3 = IF                          ( fi )
-      DROP
-      RUN-TOKENIZED-CALL
-      \ POSIX: if no branch was taken, the if exits 0 - not with the
-      \ failed condition's status. Read COND-TRUE? ("some branch has
-      \ been taken") before restoring it. This only became visible
-      \ once something looked at the status afterwards, which is what
-      \ "fi && echo m" does.
-      COND-TRUE? @ 0= IF 0 LAST-STATUS ! THEN
-      R> SUPPRESS-EXEC? ! R> COND-TRUE? !
-      \ Anything after the "fi" belongs to the enclosing line, not to
-      \ the if: "if ...; fi && echo m" must still run the "&& echo m".
-      \ It used to be discarded here. Run through RUN-TOKENIZED like
-      \ any line, so a leading "&&" splits with an empty left-hand
-      \ side and therefore tests the if's own exit status - which is
-      \ exactly the semantics wanted. Groups got this in Iteration 49
-      \ via AT-GROUP-END?; the compound commands never did.
-      PENDING-REMAINDER? @ ARGC-PENDING @ 0 > AND IF
-        READ-NEXT-LOGICAL-LINE
-        RUN-TOKENIZED-CALL
-      ELSE
-        0 PENDING-REMAINDER? !
-      THEN
-      EXIT
-    THEN
-    DUP 2 = IF                          ( else )
-      DROP
-      RUN-TOKENIZED-CALL
-      R@ COND-TRUE? @ OR SUPPRESS-EXEC? !
-    ELSE DUP 1 = IF                     ( elif COND [; then] )
-      DROP
-      RUN-TOKENIZED-CALL                \ body text preceding the elif
-      R@ COND-TRUE? @ OR IF-ELIF-SKIP !
-      READ-NEXT-LOGICAL-LINE            \ the condition
-      S" then" SPLIT-AT-KEYWORD DROP
-      IF-ELIF-SKIP @ IF
-        \ A branch was already taken, or the whole if is suppressed:
-        \ the condition is still consumed - it may span constructs -
-        \ but must not run, and must not change COND-TRUE?.
-        -1 SUPPRESS-EXEC? !
-        RUN-TOKENIZED-CALL
-      ELSE
-        0 SUPPRESS-EXEC? !
-        RUN-TOKENIZED-CALL
-        LAST-STATUS @ 0 = IF -1 COND-TRUE? ! THEN
-      THEN
-      PENDING-REMAINDER? @ 0= IF
-        READ-NEXT-LOGICAL-LINE
-        S" then" LINE-IS? 0= IF
-          ." if: expected 'then' after 'elif'" CR
-          R> SUPPRESS-EXEC? ! R> COND-TRUE? ! EXIT
-        THEN
-      THEN
-      IF-ELIF-SKIP @ IF
-        \ A branch was already taken: this elif's body is suppressed
-        \ whatever COND-TRUE? says. Deriving suppression from
-        \ COND-TRUE? alone here was wrong - it is true precisely
-        \ *because* an earlier branch ran, so the body ran too.
-        -1 SUPPRESS-EXEC? !
-      ELSE
-        R@ COND-TRUE? @ 0= OR SUPPRESS-EXEC? !
-      THEN
-    ELSE                                ( ordinary body line )
-      DROP
-      RUN-TOKENIZED-CALL
-    THEN THEN
-  0 UNTIL ;
 
 \ ==================================================================
 \ while/do/done
@@ -6029,317 +4272,8 @@ VARIABLE IF-ELIF-SKIP
 \ image and nothing at runtime until the first loop or function is
 \ actually seen.
 
-4096 CONSTANT WHILE-BODY-MAX
-VARIABLE WHILE-COND-BUF     \ pointers into the arena, not buffers
-VARIABLE WHILE-COND-LEN
-VARIABLE WHILE-BODY-BUF
-VARIABLE WHILE-BODY-LEN
-VARIABLE RAW-SKIP-I
-
-VARIABLE RLS-ADDR
-VARIABLE RLS-WANT
-VARIABLE RLS-LEN
-VARIABLE RLS-I
-VARIABLE RLS-POS
-VARIABLE RLS-SQ?
-VARIABLE RLS-DQ?
-
-: SAME-LINE-DO? ( --- f )
-  \ Is the last token of the current line an unquoted "do"? That is
-  \ the "while COND; do" / "for X in W; do" shape. Checking the LAST
-  \ token specifically, rather than "is there a do anywhere", so a
-  \ condition that merely mentions do (`while grep do file`) is not
-  \ mistaken for it.
-  ARGC @ 2 < IF 0 EXIT THEN
-  ARGC @ 1- DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN S" do" STR= ;
-
-: RAW-LAST-CHAR ( c-addr u c --- pos | -1 )
-  \ Offset of the last UNQUOTED ';' in raw text, or -1. Needed because
-  \ a while condition is stored as raw text (so it can be re-expanded
-  \ fresh each iteration), not as tokens - so the "; do" tail has to be
-  \ trimmed off the raw text, not off ARGV. The last one rather than
-  \ the first, so "while a; b; do" keeps the whole compound condition.
-  SHADOW{ RLS-ADDR RLS-LEN RLS-WANT | RLS-I RLS-POS RLS-SQ? RLS-DQ? }
-  -1 RLS-POS !
-  BEGIN RLS-I @ RLS-LEN @ < WHILE
-    RLS-ADDR @ RLS-I @ + C@
-    DUP 39 = RLS-DQ? @ 0= AND IF RLS-SQ? @ 0= RLS-SQ? ! THEN
-    DUP 34 = RLS-SQ? @ 0= AND IF RLS-DQ? @ 0= RLS-DQ? ! THEN
-    RLS-WANT @ = RLS-SQ? @ 0= AND RLS-DQ? @ 0= AND IF RLS-I @ RLS-POS ! THEN
-    RLS-I @ 1+ RLS-I !
-  REPEAT
-  RLS-POS @ ;
-
-: FOR-AT-SEMI? ( i --- f )
-  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN S" ;" STR= ;
-
-: SAVE-WHILE-COND ( --- )
-  \ RAW-LINE-BUF/RAW-LINE-LEN holds the raw "while ..." line just
-  \ read. Skips its own leading whitespace, the literal "while" (5
-  \ characters), and more whitespace, then saves whatever remains
-  \ into WHILE-COND-BUF (NUL-terminated) - the condition text, with
-  \ no expansion applied yet (that happens fresh each iteration when
-  \ it's re-tokenized).
-  0 RAW-SKIP-I !
-  BEGIN
-    RAW-SKIP-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF RAW-SKIP-I @ + C@ WS? ELSE 0 THEN
-  WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
-  RAW-SKIP-I @ 5 + RAW-SKIP-I !
-  BEGIN
-    RAW-SKIP-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF RAW-SKIP-I @ + C@ WS? ELSE 0 THEN
-  WHILE RAW-SKIP-I @ 1+ RAW-SKIP-I ! REPEAT
-  RAW-LINE-LEN @ RAW-SKIP-I @ > IF
-    RAW-LINE-LEN @ RAW-SKIP-I @ - WHILE-COND-LEN !
-    RAW-LINE-BUF RAW-SKIP-I @ + WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ MOVE
-  ELSE
-    0 WHILE-COND-LEN !
-  THEN
-  SAME-LINE-DO? IF
-    WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ 59 RAW-LAST-CHAR
-    DUP -1 <> IF WHILE-COND-LEN ! ELSE DROP THEN
-  THEN
-  0 WHILE-COND-BUF @ BODY@ WHILE-COND-LEN @ + C! ;
-
-VARIABLE WHILE-BODY-CAP   \ this body's current arena capacity
-
-: BODY-ENSURE ( n --- ok? )
-  \ Make room for n more bytes in the body being captured, growing it
-  \ if needed. A body can be extended in place exactly when it is the
-  \ TOPMOST arena allocation, which during a capture it always is:
-  \ nothing else allocates while lines are being appended (a nested
-  \ loop inside the body is still just text at this point; it does not
-  \ allocate until it runs). So bumping the arena extends this body.
-  \
-  \ BODY-ALLOC may RESIZE and therefore relocate the arena. Harmless:
-  \ WHILE-BODY-BUF holds an offset, not a pointer.
-  WHILE-BODY-LEN @ + 1+ WHILE-BODY-CAP @ > IF
-    WHILE-BODY-BUF @ WHILE-BODY-CAP @ + BODY-ARENA-TOP @ = IF
-      WHILE-BODY-MAX BODY-ALLOC DROP
-      WHILE-BODY-CAP @ WHILE-BODY-MAX + WHILE-BODY-CAP !
-      -1
-    ELSE
-      0
-    THEN
-  ELSE
-    -1
-  THEN ;
-
-: APPEND-RAW-LINE-TO-BODY ( --- )
-  \ Appends the current RAW-LINE-BUF/RAW-LINE-LEN (NUL-terminated) to
-  \ the end of the body being captured, growing the body as needed so
-  \ there is no fixed maximum body size.
-  \
-  \ It used to drop any line that would not fit in a fixed 4096-byte
-  \ buffer, silently and with no error - which showed up as a script
-  \ producing quietly WRONG output rather than failing, once a body
-  \ was large enough. Found by diffing a generated 60-loop script
-  \ against bash. If a body somehow still cannot be grown (it is not
-  \ the topmost allocation, which should not happen during a capture)
-  \ that is now reported rather than passed over in silence.
-  RAW-LINE-LEN @ BODY-ENSURE 0= IF
-    ." shell: loop body too large to store" CR
-    EXIT
-  THEN
-  RAW-LINE-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
-  WHILE-BODY-LEN @ RAW-LINE-LEN @ + WHILE-BODY-LEN !
-  0 WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @ + C!
-  WHILE-BODY-LEN @ 1+ WHILE-BODY-LEN ! ;
-
-
-VARIABLE BODY-DEPTH
-
-VARIABLE TE-I
-VARIABLE TE-A
-VARIABLE TE-U
-VARIABLE OL-DO
-VARIABLE OL-DONE
-VARIABLE OL-I
-
-: TOK-EQ? ( i c-addr u --- f )
-  \ Is ARGV[i] this exact unquoted word? LINE-IS? asks the same
-  \ question but only ever of ARGV[0].
-  SHADOW{ TE-I TE-A TE-U }
-  TE-I @ ARGC @ < 0= IF 0 EXIT THEN
-  TE-I @ ARGV-QUOTED@ IF 0 EXIT THEN
-  TE-I @ ARGV@ DUP CSTRLEN TE-A @ TE-U @ STR= ;
-
-: ONE-LINE-LOOP? ( --- f )
-  \ Is the whole loop on this one line - "for i in 1 2; do echo $i;
-  \ done"? True when there is an unquoted "do" that is not the last
-  \ token and an unquoted "done" after it.
-  \
-  \ The LAST "done" is taken, so a one-line loop nested inside another
-  \ belongs to the outer one; the inner is then a body line and is
-  \ recognised again when it runs.
-  SHADOW{ | OL-I }
-  -1 OL-DO !  -1 OL-DONE !
-  BEGIN OL-I @ ARGC @ < WHILE
-    OL-DO @ -1 = IF
-      OL-I @ S" do" TOK-EQ? IF OL-I @ OL-DO ! THEN
-    ELSE
-      OL-I @ S" done" TOK-EQ? IF OL-I @ OL-DONE ! THEN
-    THEN
-    OL-I @ 1+ OL-I !
-  REPEAT
-  OL-DO @ ARGC @ 1- = IF -1 OL-DO ! THEN
-  OL-DO @ -1 <> OL-DONE @ -1 <> AND ;
-
-: CAPTURE-CONTINUE? ( --- f )
-  \ Called once per line while capturing a while/for body. True if the
-  \ line belongs to the body, false if it is the "done" that closes
-  \ THIS loop.
-  \
-  \ The depth count is what makes a loop nested inside another loop
-  \ work: without it the outer capture stopped at the INNER loop's
-  \ "done", so the outer body was truncated and the outer "done" was
-  \ left to execute as a stray top-level line. Same shape as
-  \ SPLIT-AT-KEYWORD's own if/fi depth tracking, and found the same
-  \ way - by testing a nested loop directly rather than by
-  \ inspection. Only "while"/"for" open a "done"; "do" and "if" do
-  \ not, so they are not counted.
-  \
-  \ BODY-DEPTH is declared as a local by DO-WHILE/DO-FOR, so captures
-  \ nest too.
-  INPUT-EOF? @ IF
-    ." shell: syntax error: unexpected end of input, expected 'done'" CR
-    2 LAST-STATUS !
-    0 EXIT
-  THEN
-  S" done" LINE-IS? IF
-    BODY-DEPTH @ 0 > IF BODY-DEPTH @ 1- BODY-DEPTH ! -1 ELSE 0 THEN
-  ELSE
-    S" while" LINE-IS? S" for" LINE-IS? OR S" until" LINE-IS? OR IF
-      \ Only a loop that stays open: one whose `done` is on this same
-      \ line closes itself, and counting it swallowed the outer `done`
-      \ ("expected 'done'" at end of input; fixed in Iteration 256).
-      ONE-LINE-LOOP? 0= IF BODY-DEPTH @ 1+ BODY-DEPTH ! THEN
-    THEN
-    -1
-  THEN ;
-
-DEFER RUN-LINE-CALL
 \ RUN-LINE is the last word in the file; the suffix after a "done" or
 \ "esac" is run as an ordinary line, so this reaches it the usual way.
-
-VARIABLE SUF-BUF        \ arena offset of the saved suffix text
-VARIABLE SUF-LEN
-VARIABLE SUF-KWLEN
-VARIABLE SUF-I
-VARIABLE LOOP-RAN?      \ did this loop execute its body even once?
-
-: SAVE-COMPOUND-SUFFIX ( kwlen --- )
-  \ RAW-LINE-BUF holds the line that closes a while/for/case -
-  \ "done && echo m", say. CAPTURE-CONTINUE? and DO-CASE both detect
-  \ that line with LINE-IS?, which looks only at ARGV[0], so
-  \ everything after the keyword used to be dropped in silence.
-  \
-  \ The RAW text is saved, not the tokens. ARGV entries point into
-  \ LINE-BUF, and running the loop reads lines - which overwrites it.
-  \ Copying the pointer array the way RT-SAVE-REST does would not
-  \ help here: that solves a shared-array problem, not a text-lifetime
-  \ one. This is the distinction Iteration 101 recorded and is why
-  \ this was not a mechanical repeat of 92's fix for "fi": DO-IF
-  \ reaches its "fi" AFTER the body has run, and a loop reaches its
-  \ "done" before.
-  SHADOW{ SUF-KWLEN | SUF-I }
-  0 SUF-LEN !
-  BEGIN
-    SUF-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF SUF-I @ + C@ WS? ELSE 0 THEN
-  WHILE SUF-I @ 1+ SUF-I ! REPEAT
-  SUF-I @ SUF-KWLEN @ + SUF-I !
-  BEGIN
-    SUF-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF SUF-I @ + C@ WS? ELSE 0 THEN
-  WHILE SUF-I @ 1+ SUF-I ! REPEAT
-  RAW-LINE-LEN @ SUF-I @ > IF
-    RAW-LINE-LEN @ SUF-I @ - SUF-LEN !
-    SUF-LEN @ 1+ BODY-ALLOC SUF-BUF !
-    RAW-LINE-BUF SUF-I @ + SUF-BUF @ BODY@ SUF-LEN @ MOVE
-  THEN ;
-
-: RUN-COMPOUND-SUFFIX ( --- )
-  \ Runs whatever followed the terminator, once the construct itself
-  \ has finished, as an ordinary line. A leading "&&" then splits with
-  \ an empty left-hand side and so tests the construct's own exit
-  \ status - the same thing DO-IF does after "fi" (Iteration 92).
-  SUF-LEN @ 0= IF EXIT THEN
-  SUF-BUF @ BODY@ LINE-BUF SUF-LEN @ MOVE
-  SUF-LEN @  0 SUF-LEN !
-  RUN-LINE-CALL ;
-
-VARIABLE JT-FROM
-VARIABLE JT-TO
-VARIABLE JT-I
-VARIABLE JT-LEN
-VARIABLE RA-A
-VARIABLE RA-U
-VARIABLE OL-END
-
-
-: RAW-APPEND ( c-addr u --- )
-  \ Appends one word and a separating space at JT-LEN, which is
-  \ JOIN-ARGV-TO-RAW's local and so belongs to the join in progress.
-  SHADOW{ RA-A RA-U }
-  RA-U @ JT-LEN @ + 2 + ENSURE-BUFFER RAW-LINE-BUF
-  RA-U @ JT-LEN @ + LINE-HARD-MAX < IF
-    RA-A @ RAW-LINE-BUF JT-LEN @ + RA-U @ MOVE
-    JT-LEN @ RA-U @ + JT-LEN !
-    32 RAW-LINE-BUF JT-LEN @ + C!
-    JT-LEN @ 1+ JT-LEN !
-  THEN ;
-
-: JOIN-ARGV-TO-RAW ( from to --- )
-  \ Rebuilds RAW-LINE-BUF from ARGV[from..to), one space between
-  \ words. The tokens are raw - quotes and '$' still in them, since
-  \ Iteration 114 - so the result is a line that means exactly what
-  \ that part of the original line meant. Original spacing is lost,
-  \ which nothing depends on.
-  \
-  \ Safe to overwrite RAW-LINE-BUF here: every caller has already
-  \ taken what it needs out of it.
-  SHADOW{ JT-FROM JT-TO | JT-I JT-LEN }
-  JT-FROM @ JT-I !
-  BEGIN JT-I @ JT-TO @ < JT-I @ ARGC @ < AND WHILE
-    JT-I @ ARGV@ DUP CSTRLEN RAW-APPEND
-    JT-I @ 1+ JT-I !
-  REPEAT
-  JT-LEN @ 0 > IF JT-LEN @ 1- JT-LEN ! THEN   ( the trailing space )
-  JT-LEN @ RAW-LINE-LEN !
-  0 RAW-LINE-BUF JT-LEN @ + C! ;
-
-
-: CAPTURE-ONE-LINE-LOOP ( --- )
-  \ Splits a one-line loop into the three pieces the multi-line path
-  \ produces by reading further lines: the body, the suffix after
-  \ "done", and a header left in ARGV.
-  \
-  \ The body is stored as text, exactly as APPEND-RAW-LINE-TO-BODY
-  \ stores a body line read from input, so everything downstream -
-  \ DO-WHILE-BODY, nesting, break/continue - is unchanged and unaware.
-  \
-  \ ARGC is cut back to the header before the caller expands anything:
-  \ the body's words must not be expanded now, when the loop is being
-  \ set up, but each time the body runs. Without that,
-  \ "for i in 1 2; do echo $i; done" expands $i once, before i exists.
-  0 WHILE-BODY-LEN !
-  OL-DO @ 1+ OL-DONE @ JOIN-ARGV-TO-RAW
-  RAW-LINE-LEN @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
-  OL-DONE @ ARGC @ JOIN-ARGV-TO-RAW
-  4 SAVE-COMPOUND-SUFFIX                  ( "done" )
-  OL-DO @ ARGC !
-  0 ARGV ARGC @ CELLS + ! ;
-
-: JOIN-WHILE-COND ( --- )
-  \ Rebuilds RAW-LINE-BUF as just "while COND", so SAVE-WHILE-COND can
-  \ read it the way it reads any while line. A trailing ";" before the
-  \ "do" is dropped - it separated the condition from the "do" and is
-  \ not part of the condition.
-  OL-DO @ OL-END !
-  OL-END @ 1- 0 > IF
-    OL-END @ 1- S" ;" TOK-EQ? IF OL-END @ 1- OL-END ! THEN
-  THEN
-  0 OL-END @ JOIN-ARGV-TO-RAW ;
 
 \ ==================================================================
 \ Shell functions: name() { <body> } - definition, invocation,
@@ -6351,7 +4285,6 @@ VARIABLE OL-END
 \ once immediately after being read.
 \ ==================================================================
 
-
 \ Each function's body is a heap block of its own, sized to fit
 \ (Iteration 249); until then they were 2048-byte slots and a longer
 \ body was cut short without a word. A redefined function's old block
@@ -6360,7 +4293,6 @@ VARIABLE OL-END
 MAX-FUNCS CELLS BUFFER: FUNC-BODY-PTRS
 MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
-VARIABLE FD-DEPTH            \ nested "{" depth while capturing a body
 MAX-FUNCS CELLS BUFFER: FUNC-BODY-LENS
 
 : FUNC-BODY-SLOT ( i --- addr )  CELLS FUNC-BODY-PTRS + @ ;
@@ -6403,457 +4335,9 @@ VARIABLE SF-I
   DUP SF-I @ CELLS FUNC-BODY-PTRS + !
   SF-BODY-ADDR @ SWAP SF-BODY-LEN @ MOVE ;
 
-VARIABLE FUNC-CUR-I
-
-: RUN-FUNC-BODY ( i --- )
-  \ i is the function's own table index. Installs its stored body as
-  \ the current input source and reads lines the ordinary way, exactly
-  \ as DO-WHILE-BODY does - so a nested if/while/for inside a function
-  \ body works, and so does recursion: REPLAY-SRC/LEN/POS and
-  \ FUNC-CUR-I are locals, so an inner invocation cannot disturb an
-  \ outer, still-in-progress one's position.
-  \
-  \ FUNC-DEPTH tracks call nesting so "return" outside any function
-  \ can be diagnosed. The loop stops as soon as RETURN-PENDING? is set
-  \ (by a "return" somewhere in this invocation's body, possibly
-  \ several ';'/'&&'/'||'-chained segments deep - see
-  \ RUN-SIMPLE-OR-PIPELINE), which is then reset before returning, so
-  \ an outer caller never sees a stale, already-consumed return. It
-  \ also stops as soon as LOOP-CONTROL-PENDING? is set (a
-  \ "break"/"continue" meant for a while/for loop further out that
-  \ called this function from its body) - but unlike RETURN-PENDING?
-  \ that flag is deliberately left untouched here, so it keeps
-  \ propagating outward until DO-WHILE-BODY consumes it.
-  \
-  \ ARGV[1..] - the call arguments, still the live global ARGV at this
-  \ point - become this invocation's $1.. ; the caller's own
-  \ positional parameters are saved keyed by FUNC-DEPTH and restored
-  \ when this returns, so recursive and nested calls each see only
-  \ their own.
-  SHADOW{ FUNC-CUR-I | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
-  FUNC-CUR-I @ FUNC-SUBSH-SLOT C@ IF
-    \ "f() ( ... )": run the whole body in a child, so nothing it does
-    \ reaches this shell. Recursing here rather than duplicating the
-    \ loop below - the child clears its own flag first so it does not
-    \ fork again on the way in.
-    FORK DUP 0 = IF
-      DROP
-      0 FUNC-CUR-I @ FUNC-SUBSH-SLOT C!
-      FUNC-CUR-I @ RECURSE
-      LAST-STATUS @ SYS-EXIT
-    THEN
-    WAITPID DROP 8 RSHIFT 255 AND LAST-STATUS !
-    EXIT
-  THEN
-  \ SAVE-POS-PARAMS indexes POS-PARAMS-SAVE by depth with no bound of
-  \ its own: past MAX-POS-PARAM-DEPTH it would MOVE a full parameter
-  \ block past the end of that buffer. Nothing had hit it because
-  \ shadow.4's own save stack overflows at a similar depth first - but
-  \ that is an accident of two unrelated limits, and its ABORT kills
-  \ the shell rather than reporting a shell error.
-  FUNC-DEPTH @ MAX-POS-PARAM-DEPTH < 0= IF
-    ." shell: function recursion too deep" CR
-    1 LAST-STATUS !
-    EXIT
-  THEN
-  FUNC-DEPTH @ SAVE-POS-PARAMS
-  SET-POS-PARAMS-FROM-ARGV
-  FUNC-DEPTH @ 1+ FUNC-DEPTH !
-  FUNC-CUR-I @ FUNC-BODY-SLOT REPLAY-SRC !  -1 REPLAY-ACTIVE? !
-  FUNC-CUR-I @ FUNC-BODY-LEN-SLOT @ REPLAY-LEN !
-  BEGIN
-    REPLAY-POS @ REPLAY-LEN @ <
-    RETURN-PENDING? @ 0= AND
-    LOOP-CONTROL-PENDING? @ 0= AND
-  WHILE
-    READ-LINE-INTO-ARGV
-    RUN-TOKENIZED-CALL
-  REPEAT
-  0 RETURN-PENDING? !
-  FUNC-DEPTH @ 1- FUNC-DEPTH !
-  FUNC-DEPTH @ RESTORE-POS-PARAMS ;
-' RUN-FUNC-BODY IS RUN-FUNC-BODY-CALL
-
-\ ==================================================================
-\ eval (Iteration 256)
-\ ==================================================================
-\ The arguments, joined by spaces, are shell input: parsed and run line
-\ by line, the way a function body is replayed. The text is a heap block
-\ of this call's own, so an eval inside an eval has its own.
-VARIABLE EVAL-TEXT
-VARIABLE EVAL-LEN
-
-: DO-EVAL ( --- )
-  SHADOW{ | EVAL-TEXT EVAL-LEN REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
-  TREE-MODE? @ IF TREE-EVAL-CALL EXIT THEN
-  0 LAST-STATUS !
-  ARGC @ 2 < IF EXIT THEN
-  ARGC @ 1 ?DO I ARGV@ CSTRLEN 1+ EVAL-LEN @ + EVAL-LEN ! LOOP
-  EVAL-LEN @ 1+ ALLOCATE ABORT" shell: out of memory" EVAL-TEXT !
-  0 EVAL-LEN !
-  ARGC @ 1 ?DO
-    I ARGV@ DUP CSTRLEN >R EVAL-TEXT @ EVAL-LEN @ + R@ MOVE
-    EVAL-LEN @ R> + EVAL-LEN !
-    32 EVAL-TEXT @ EVAL-LEN @ + C!  EVAL-LEN @ 1+ EVAL-LEN !
-  LOOP
-  \ A replay source is lines ending in NUL: every newline is one, and so
-  \ is the space after the last argument.
-  EVAL-LEN @ 0 ?DO EVAL-TEXT @ I + C@ 10 = IF 0 EVAL-TEXT @ I + C! THEN LOOP
-  0 EVAL-TEXT @ EVAL-LEN @ 1- + C!
-  EVAL-TEXT @ REPLAY-SRC !  0 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
-  EVAL-LEN @ REPLAY-LEN !  0 REPLAY-POS !
-  BEGIN
-    REPLAY-POS @ REPLAY-LEN @ <
-    RETURN-PENDING? @ 0= AND
-    LOOP-CONTROL-PENDING? @ 0= AND
-  WHILE
-    READ-LINE-INTO-ARGV
-    RUN-TOKENIZED-CALL
-  REPEAT
-  EVAL-TEXT @ FREE DROP ;
+: DO-EVAL ( --- )   \ the arguments, joined, parsed and run (tree.4)
+  TREE-EVAL-CALL ;
 ' DO-EVAL S" eval" BUILTIN
-
-
-64 BUFFER: FUNCDEF-NAME-BUF
-VARIABLE FBC-I
-VARIABLE FBC-D
-VARIABLE FD-CLOSE
-
-: FIND-BODY-CLOSE ( --- idx | -1 )
-  \ ARGV[0] should be the body's opening "{" (or "("); returns the
-  \ index of the brace that closes it, or -1 if it is not there.
-  \
-  \ By depth rather than "the last token": a definition nested inside
-  \ another, or anything following the closing brace on the same
-  \ line, both leave tokens after it.
-  SHADOW{ | FBC-I FBC-D }
-  0 FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? 0= IF -1 EXIT THEN
-  BEGIN FBC-I @ ARGC @ < WHILE
-    FBC-I @ FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN TOK-EQ? IF
-      FBC-D @ 1+ FBC-D !
-    THEN
-    FBC-I @ FUNCDEF-SUBSHELL? @ IF S" )" ELSE S" }" THEN TOK-EQ? IF
-      FBC-D @ 1- FBC-D !
-      FBC-D @ 0= IF FBC-I @ EXIT THEN
-    THEN
-    FBC-I @ 1+ FBC-I !
-  REPEAT
-  -1 ;
-
-VARIABLE FDL-I
-
-: FD-OPENS-BRACE? ( --- f )
-  \ Does this body line open a nested brace block? A nested function
-  \ header ("func_c() {") ends with "{", as does a multi-line group.
-  ARGC @ 0 = IF 0 EXIT THEN
-  ARGC @ 1- DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN S" {" STR= ;
-
-: FD-BODY-END? ( --- f )
-  \ True only at the "}" that closes THIS function. Without the depth
-  \ count a nested definition's own "}" ended the outer body early,
-  \ truncating it - the "nested function definitions are not
-  \ supported" limit recorded in Iteration 43.
-  INPUT-EOF? @ IF
-    ." shell: syntax error: unexpected end of input, expected '}'" CR
-    2 LAST-STATUS !
-    -1 EXIT
-  THEN
-  S" }" LINE-IS? IF
-    FD-DEPTH @ 0 > IF FD-DEPTH @ 1- FD-DEPTH ! 0 ELSE -1 THEN
-  ELSE
-    FD-OPENS-BRACE? IF FD-DEPTH @ 1+ FD-DEPTH ! THEN
-    0
-  THEN ;
-
-VARIABLE FDC-DEPTH
-VARIABLE FDC-I
-
-: FDC-OPENER? ( i --- f )
-  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN
-  2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
-  2DUP S" while" STR= IF 2DROP -1 EXIT THEN
-  2DUP S" until" STR= IF 2DROP -1 EXIT THEN
-  2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
-       S" case"  STR= ;
-
-: FDC-CLOSER? ( i --- f )
-  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN
-  2DUP S" fi"   STR= IF 2DROP -1 EXIT THEN
-  2DUP S" done" STR= IF 2DROP -1 EXIT THEN
-       S" esac" STR= ;
-
-: FDC-BALANCED? ( --- f )
-  \ Is the compound command on this line already complete? "f() if
-  \ true; then x; fi" is; "f() if true" continues on later lines.
-  SHADOW{ | FDC-I FDC-DEPTH }
-  BEGIN FDC-I @ ARGC @ < WHILE
-    FDC-I @ FDC-OPENER? IF FDC-DEPTH @ 1+ FDC-DEPTH ! THEN
-    FDC-I @ FDC-CLOSER? IF FDC-DEPTH @ 1- FDC-DEPTH ! THEN
-    FDC-I @ 1+ FDC-I !
-  REPEAT
-  FDC-DEPTH @ 1 < ;
-
-: FDC-LINE-END? ( --- f )   \ closes the compound body, counting nesting
-  INPUT-EOF? @ IF
-    ." shell: syntax error: unexpected end of input" CR
-    2 LAST-STATUS !
-    -1 EXIT
-  THEN
-  S" fi" LINE-IS? S" done" LINE-IS? OR S" esac" LINE-IS? OR IF
-    FDC-DEPTH @ 0 > IF FDC-DEPTH @ 1- FDC-DEPTH ! 0 ELSE -1 THEN
-  ELSE
-    S" if" LINE-IS? S" while" LINE-IS? OR S" until" LINE-IS? OR
-    S" for" LINE-IS? OR S" case" LINE-IS? OR IF
-      FDC-DEPTH @ 1+ FDC-DEPTH !
-    THEN
-    0
-  THEN ;
-
-: FD-RAW-AFTER-PAREN ( --- )
-  \ Shift RAW-LINE-BUF left so it starts just past the header's ")",
-  \ leaving the compound command's own text as if it were a line of
-  \ its own - APPEND-RAW-LINE-TO-BODY then stores it unchanged. Safe
-  \ to clobber RAW-LINE-BUF here: the header tokens have already been
-  \ read out of ARGV.
-  0 FDC-I !
-  BEGIN
-    FDC-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF FDC-I @ + C@ 41 <> ELSE 0 THEN
-  WHILE FDC-I @ 1+ FDC-I ! REPEAT
-  FDC-I @ RAW-LINE-LEN @ < IF FDC-I @ 1+ FDC-I ! THEN
-  BEGIN
-    FDC-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF FDC-I @ + C@ WS? ELSE 0 THEN
-  WHILE FDC-I @ 1+ FDC-I ! REPEAT
-  RAW-LINE-LEN @ FDC-I @ - 0 > IF
-    RAW-LINE-BUF FDC-I @ + RAW-LINE-BUF RAW-LINE-LEN @ FDC-I @ - MOVE
-    RAW-LINE-LEN @ FDC-I @ - RAW-LINE-LEN !
-  ELSE
-    0 RAW-LINE-LEN !
-  THEN ;
-
-: DO-FUNCDEF ( --- )
-  \ ARGV[0] ends with "()" - a function definition header. Requires
-  \ "{" later on the same line (the common "name() {" style), on its
-  \ own separate line, or with the WHOLE body on one line -
-  \ "f() { echo hi; }" - which FIND-BODY-CLOSE handles by locating
-  \ the matching brace among the tokens (Iteration 118). Stores the captured body (raw text, NUL-separated lines, the
-  \ same shape while/for's own bodies use) via SET-FUNC, keyed by the
-  \ name extracted from ARGV[0] - a later definition with the same
-  \ name simply replaces it.
-  BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP }
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  0 ARGV@ FUNCDEF-NAME-BUF 64 SAFE-CSTR-COPY DROP   \ ARGV[0] is now the bare name
-  \ POSIX allows a function body to be any compound command, so
-  \ "f() ( ... )" is as valid as "f() { ... }" - and it means something
-  \ different: the body runs in a subshell, so its assignments and cd
-  \ do not affect the caller. Which form was used is recorded per
-  \ function and honoured by RUN-FUNC-BODY.
-  0 FUNCDEF-SUBSHELL? !
-  \ Drop the three header tokens - name, "(" and ")" - before looking
-  \ for the body opener. Scanning the whole line instead finds the
-  \ parameter list's own "(" at index 1 and mistakes every brace
-  \ function for a subshell one, which is exactly what happened.
-  ARGC @ 3 > IF
-    ARGC @ 3 - 0 DO
-      I 3 + CELLS ARGV + @    I CELLS ARGV + !
-      I 3 + ARGV-QUOTED + C@  I ARGV-QUOTED + C!
-    LOOP
-    ARGC @ 3 - ARGC !
-  ELSE
-    0 ARGC !
-  THEN
-  0 ARGC @ CELLS ARGV + !
-  ARGC @ 0 > IF
-    S" (" 0 ARGV@ STR0= IF -1 FUNCDEF-SUBSHELL? ! THEN
-  THEN
-  \ POSIX allows ANY compound command as a body, not only { } or ( ).
-  \ "f() if true; then x; fi" is valid, and is what function.sh uses.
-  \ Detected here, before the brace/paren path: the rest of the line
-  \ is stored as the body's first line and further lines are read
-  \ until the construct's own terminator.
-  ARGC @ 0 > FUNCDEF-SUBSHELL? @ 0= AND IF
-    0 FDC-OPENER? IF
-      0 WHILE-BODY-LEN !
-      FDC-BALANCED? 0= FDC-DEPTH !
-      FD-RAW-AFTER-PAREN
-      APPEND-RAW-LINE-TO-BODY
-      FDC-DEPTH @ IF
-        \ Depth counts constructs opened INSIDE the body; the outer
-        \ one's own terminator is what ends the capture, so this
-        \ starts at 0 rather than 1.
-        0 FDC-DEPTH !
-        BEGIN
-          READ-NEXT-LOGICAL-LINE
-          FDC-LINE-END? 0=
-        WHILE
-          ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
-        REPEAT
-        APPEND-RAW-LINE-TO-BODY
-      THEN
-      FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
-      SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN
-      EXIT
-    THEN
-  THEN
-  \ The whole body on one line - "f() { echo hi; }". The opener is
-  \ ARGV[0] and its closer is the last token, so the body is simply
-  \ the tokens between them, joined back into a line and stored the
-  \ way a body line read from input is stored. Same shape as
-  \ Iteration 117's one-line loop, and possible for the same reason:
-  \ since Iteration 114 the tokens are still the words as written, so
-  \ nothing in the body has been expanded yet.
-  \
-  \ The LAST closer, so a definition nested inside another belongs to
-  \ the outer one.
-  FIND-BODY-CLOSE DUP 0 > IF
-    FD-CLOSE !
-    0 WHILE-BODY-LEN !
-    1 FD-CLOSE @ JOIN-ARGV-TO-RAW
-    RAW-LINE-LEN @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
-    FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
-    SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN
-    \ Anything after the closing brace is the rest of the line and
-    \ still has to run - "outer() { inner() { echo deep; }; inner; }"
-    \ stores the inner definition and then calls it, both from the
-    \ outer body's single stored line.
-    FD-CLOSE @ 1+ ARGC @ < IF
-      FD-CLOSE @ 1+ ARGC @ JOIN-ARGV-TO-RAW
-      RAW-LINE-BUF LINE-BUF RAW-LINE-LEN @ MOVE
-      RAW-LINE-LEN @ RUN-LINE-CALL
-    THEN
-    EXIT
-  THEN
-  DROP
-  FUNCDEF-SUBSHELL? @ IF S" (" ELSE S" {" THEN SPLIT-AT-KEYWORD DROP
-  PENDING-REMAINDER? @ 0= IF
-    READ-NEXT-LOGICAL-LINE
-    S" {" LINE-IS? IF 0 FUNCDEF-SUBSHELL? ! ELSE
-      S" (" LINE-IS? IF -1 FUNCDEF-SUBSHELL? ! ELSE
-        ." function: expected '{' or '('" CR EXIT
-      THEN
-    THEN
-  THEN
-  0 WHILE-BODY-LEN !
-  0 FD-DEPTH !
-  BEGIN
-    READ-NEXT-LOGICAL-LINE
-    FUNCDEF-SUBSHELL? @ IF S" )" LINE-IS? ELSE FD-BODY-END? THEN 0= WHILE
-    ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
-  REPEAT
-  FUNCDEF-NAME-BUF WHILE-BODY-BUF @ BODY@ WHILE-BODY-LEN @
-  SUPPRESS-EXEC? @ 0= IF SET-FUNC ELSE DROP 2DROP THEN ;
-
-VARIABLE WHILE-BODY-I
-VARIABLE WHILE-BODY-CUR
-
-: DO-WHILE-BODY ( --- )
-  \ Runs each stored body line once, in order, by installing the body
-  \ as the current input source and then reading lines the ordinary
-  \ way - so a nested if/while/for inside the body reads its own
-  \ continuation lines from the body too. Stops early if
-  \ LOOP-CONTROL-PENDING? is set (by "break"/"continue", run either
-  \ directly here or by a function called from within - see
-  \ RUN-FUNC-BODY on why that word checks but never resets this flag).
-  \ Either way this word - and only this word - resets it before
-  \ returning: the iteration it was scoped to has now ended.
-  \ LOOP-BREAK? is deliberately left alone; that is the outer loop's
-  \ own check, made right after this returns.
-  SHADOW{ | REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
-  WHILE-BODY-BUF @ REPLAY-SRC !  -1 REPLAY-ARENA? !  -1 REPLAY-ACTIVE? !
-  WHILE-BODY-LEN @ REPLAY-LEN !
-  BEGIN
-    REPLAY-POS @ REPLAY-LEN @ <
-    LOOP-CONTROL-PENDING? @ 0= AND
-    \ A "return" inside a loop inside a function ends the body too,
-    \ and must keep propagating - RUN-FUNC-BODY is what consumes it.
-    \ Without this, "while : ; do return; done" spun forever: the
-    \ return set RETURN-PENDING?, nothing here looked at it, and the
-    \ condition was ":".
-    RETURN-PENDING? @ 0= AND
-  WHILE
-    READ-LINE-INTO-ARGV
-    RUN-TOKENIZED-CALL
-  REPEAT
-  0 LOOP-CONTROL-PENDING? ! ;
-
-VARIABLE UNTIL-NEXT   0 UNTIL-NEXT !
-VARIABLE LOOP-UNTIL?
-
-: DO-WHILE ( --- )
-  \ ARGV[0] is "while"; RAW-LINE-BUF holds the raw line just read.
-  \ The condition text and the body get their own arena storage for
-  \ this invocation, so a while nested inside another loop's body no
-  \ longer overwrites the outer one's. BODY-ARENA-TOP is taken as an
-  \ argument local (see BODY-ALLOC's comment) so it is restored on
-  \ every exit path, releasing both automatically.
-  \ `until` is this loop with the test inverted (Iteration 256): the
-  \ dispatcher sets UNTIL-NEXT, and it is taken into a local here, so a
-  \ nested loop keeps its own kind.
-  UNTIL-NEXT @ BODY-ARENA-TOP @
-  SHADOW{ LOOP-UNTIL? BODY-ARENA-TOP | WHILE-COND-BUF WHILE-COND-LEN WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
-  0 UNTIL-NEXT !
-  RAW-LINE-LEN @ 1+ BODY-ALLOC WHILE-COND-BUF !
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  0 WHILE-BODY-LEN !
-  0 BODY-DEPTH !
-  ONE-LINE-LOOP? IF
-    \ Body and suffix first: both rebuild RAW-LINE-BUF, and
-    \ SAVE-WHILE-COND reads it.
-    CAPTURE-ONE-LINE-LOOP
-    JOIN-WHILE-COND
-    SAVE-WHILE-COND
-  ELSE
-    SAVE-WHILE-COND
-    SAME-LINE-DO? 0= IF
-      READ-LINE-INTO-ARGV
-      S" do" LINE-IS? 0= IF
-        ." while: expected 'do'" CR EXIT
-      THEN
-    THEN
-    BEGIN
-      READ-LINE-INTO-ARGV
-      CAPTURE-CONTINUE?
-    WHILE
-      APPEND-RAW-LINE-TO-BODY
-    REPEAT
-    \ An unterminated body is a syntax error: report it and run
-    \ nothing, rather than executing however much of it was read.
-    INPUT-EOF? @ IF EXIT THEN
-    4 SAVE-COMPOUND-SUFFIX                ( "done" )
-  THEN
-  \ LOOP-DEPTH lets break/continue outside any loop be diagnosed;
-  \ LOOP-BREAK? is reset fresh for this loop, then checked *before*
-  \ each re-evaluation of the real condition below - if the previous
-  \ iteration's own DO-WHILE-BODY call set it (via "break"), the real
-  \ condition is skipped entirely rather than needlessly re-run, and
-  \ this Forth-level WHILE simply stops.
-  LOOP-DEPTH @ 1+ LOOP-DEPTH !
-  0 LOOP-BREAK? !
-  BEGIN
-    LOOP-BREAK? @ 0= RETURN-PENDING? @ 0= AND IF
-      WHILE-COND-BUF @ BODY@ LINE-BUF WHILE-COND-LEN @ MOVE
-      WHILE-COND-LEN @ NORM-TOKENIZE
-      RUN-TOKENIZED-CALL
-      LAST-STATUS @ 0 =  LOOP-UNTIL? @ IF 0= THEN
-    ELSE
-      0
-    THEN
-  WHILE
-    -1 LOOP-RAN? !
-    DO-WHILE-BODY
-  REPEAT
-  0 LOOP-BREAK? !
-  LOOP-DEPTH @ 1- LOOP-DEPTH !
-  \ POSIX: a loop's status is that of the last body it ran, or zero if
-  \ it ran none - NOT the status of the condition that stopped it. The
-  \ same rule Iteration 92 applied to an untaken "if", and invisible
-  \ for the same reason until something looked at the status
-  \ afterwards, which "done && echo m" now does.
-  LOOP-RAN? @ 0= IF 0 LAST-STATUS ! THEN
-  RUN-COMPOUND-SUFFIX ;
 
 \ ==================================================================
 \ for VAR in word1 word2 ... / do / <body> / done
@@ -6871,134 +4355,6 @@ VARIABLE LOOP-UNTIL?
 \ Does not validate that ARGV[2] is actually "in" (matching this
 \ shell's sparse error handling elsewhere) - it's simply skipped over.
 \ ==================================================================
-
-VARIABLE FOR-WORDS-BUF   \ pointer into the arena
-VARIABLE FOR-WORDS-LEN
-VARIABLE FOR-VARNAME-BUF \ pointer into the arena
-VARIABLE FW-I
-VARIABLE FW-WORDLEN
-
-: FOR-IMPLICIT? ( --- f )   \ `for NAME` with no `in`: the list is "$@"
-  ARGC @ 3 < IF -1 EXIT THEN
-  2 ARGV-QUOTED@ IF -1 EXIT THEN
-  2 ARGV@ DUP CSTRLEN S" in" STR= 0= ;
-
-: SAVE-FOR-POS-PARAMS ( --- )
-  \ The positional parameters as the list (Iteration 256; it was empty).
-  0 FOR-WORDS-LEN !
-  POS-PARAM-COUNT @ 0 ?DO
-    I POS-PARAM-SLOT CSTRLEN 1+ FOR-WORDS-LEN @ + FOR-WORDS-LEN !
-  LOOP
-  FOR-WORDS-LEN @ 1+ BODY-ALLOC FOR-WORDS-BUF !
-  0 FOR-WORDS-LEN !
-  POS-PARAM-COUNT @ 0 ?DO
-    I POS-PARAM-SLOT DUP CSTRLEN 1+ DUP FW-WORDLEN !
-    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ + SWAP MOVE
-    FOR-WORDS-LEN @ FW-WORDLEN @ + FOR-WORDS-LEN !
-  LOOP ;
-
-: SAVE-FOR-WORDS ( --- )
-  \ ARGV[1] (the loop variable name) into FOR-VARNAME-BUF; ARGV[3..]
-  \ (the word list, skipping ARGV[2]'s assumed "in") into
-  \ FOR-WORDS-BUF/FOR-WORDS-LEN.
-  ARGV 1 CELLS + @ FOR-VARNAME-BUF @ BODY@ 64 SAFE-CSTR-COPY DROP
-  FOR-IMPLICIT? IF SAVE-FOR-POS-PARAMS EXIT THEN
-  \ Measured first, then stored in exactly that much arena. Until
-  \ Iteration 251 the list had 256 bytes and a longer one was cut short
-  \ without a word - a 1,000-item list ran 88 times.
-  0 FOR-WORDS-LEN !
-  3 FW-I !
-  BEGIN
-    FW-I @ ARGC @ < IF FW-I @ FOR-AT-SEMI? 0= ELSE 0 THEN
-  WHILE
-    FW-I @ ARGV@ CSTRLEN 1+ FOR-WORDS-LEN @ + FOR-WORDS-LEN !
-    FW-I @ 1+ FW-I !
-  REPEAT
-  FOR-WORDS-LEN @ 1+ BODY-ALLOC FOR-WORDS-BUF !
-  0 FOR-WORDS-LEN !
-  3 FW-I !
-  BEGIN
-    FW-I @ ARGC @ < IF FW-I @ FOR-AT-SEMI? 0= ELSE 0 THEN
-  WHILE
-    FW-I @ ARGV@ DUP CSTRLEN 1+ DUP FW-WORDLEN !     ( src n )
-    FOR-WORDS-BUF @ BODY@ FOR-WORDS-LEN @ + SWAP MOVE
-    FOR-WORDS-LEN @ FW-WORDLEN @ + FOR-WORDS-LEN !
-    FW-I @ 1+ FW-I !
-  REPEAT ;
-
-VARIABLE FOR-WORD-I
-VARIABLE FOR-WORD-CUR
-
-: DO-FOR-ITERATE ( --- )
-  \ For each stored word (NUL-separated in FOR-WORDS-BUF/
-  \ FOR-WORDS-LEN), sets the loop variable (SET-SHVAR) and replays the
-  \ stored body (DO-WHILE-BODY, shared with while - see above). A
-  \ no-op if SUPPRESS-EXEC? is set - this whole for loop sits inside a
-  \ skipped if/else branch, so do/body/done were still correctly
-  \ consumed above, but nothing should actually run. LOOP-DEPTH/
-  \ LOOP-BREAK? mirror DO-WHILE's own use of them exactly - see its
-  \ comment for why LOOP-BREAK? is checked before each word rather
-  \ than only at the very end.
-  SUPPRESS-EXEC? @ IF EXIT THEN
-  0 FOR-WORD-I !
-  LOOP-DEPTH @ 1+ LOOP-DEPTH !
-  0 LOOP-BREAK? !
-  BEGIN
-    FOR-WORD-I @ FOR-WORDS-LEN @ <
-    LOOP-BREAK? @ 0= AND
-    RETURN-PENDING? @ 0= AND
-  WHILE
-    FOR-WORDS-BUF @ BODY@ FOR-WORD-I @ + FOR-WORD-CUR !
-    FOR-VARNAME-BUF @ BODY@ FOR-WORD-CUR @ SET-SHVAR
-    -1 LOOP-RAN? !
-    DO-WHILE-BODY
-    FOR-WORD-I @ FOR-WORD-CUR @ CSTRLEN + 1+ FOR-WORD-I !
-  REPEAT
-  0 LOOP-BREAK? !
-  LOOP-DEPTH @ 1- LOOP-DEPTH !
-  LOOP-RAN? @ 0= IF 0 LAST-STATUS ! THEN ;
-
-: DO-FOR ( --- )
-  \ ARGV[0] is "for"; ARGV[1] is the loop variable name; ARGV[3..] is
-  \ the word list (ARGV[2], assumed "in", is skipped over). Body, word
-  \ list and variable name all get their own arena storage for this
-  \ invocation, same as DO-WHILE - and DO-FOR-ITERATE, called below,
-  \ reads these same names, which works because a local IS the
-  \ variable and holds this invocation's value for the whole call.
-  BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP FOR-WORDS-BUF FOR-WORDS-LEN FOR-VARNAME-BUF FOR-WORD-I FOR-WORD-CUR BODY-DEPTH SUF-BUF SUF-LEN LOOP-RAN? }
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  64             BODY-ALLOC FOR-VARNAME-BUF !
-  \ The word list is expanded before it is saved: `for i in $list`
-  \ iterates over the words $list expands to. DO-FOR reads ARGV
-  \ directly and never reaches RUN-SIMPLE-OR-PIPELINE, so it asks for
-  \ expansion itself.
-  0 WHILE-BODY-LEN !
-  0 BODY-DEPTH !
-  ONE-LINE-LOOP? IF
-    CAPTURE-ONE-LINE-LOOP
-    EXPAND-WORDS
-    SAVE-FOR-WORDS
-  ELSE
-    EXPAND-WORDS
-    SAVE-FOR-WORDS
-    SAME-LINE-DO? 0= IF
-      READ-LINE-INTO-ARGV
-      S" do" LINE-IS? 0= IF
-        ." for: expected 'do'" CR EXIT
-      THEN
-    THEN
-    BEGIN
-      READ-LINE-INTO-ARGV
-      CAPTURE-CONTINUE?
-    WHILE
-      APPEND-RAW-LINE-TO-BODY
-    REPEAT
-    INPUT-EOF? @ IF EXIT THEN
-    4 SAVE-COMPOUND-SUFFIX                ( "done" )
-  THEN
-  DO-FOR-ITERATE
-  RUN-COMPOUND-SUFFIX ;
 
 \ ==================================================================
 \ Glob-pattern matching (*, ?, [...] with a-z ranges and [!...]/[^...]
@@ -7268,212 +4624,6 @@ VARIABLE TP-MATCH-LEN
 \ before testing it as a pattern.
 \ ==================================================================
 
-256 BUFFER: CASE-WORD-BUF
-VARIABLE CASE-WORD-LEN
-256 BUFFER: CASE-PATLAST-BUF
-VARIABLE CASE-PATLAST-LEN
-VARIABLE CA-I
-VARIABLE CASE-MATCHED?
-
-: CASE-ARM-MATCHES? ( --- f )
-  \ ARGV/ARGC hold the current pattern-arm line (e.g. ["hello)"] or
-  \ ["world","|","hello)"]). The last token's own trailing ')' is
-  \ stripped into CASE-PATLAST-BUF; every non-'|' token (including
-  \ that stripped last one) is tried as an independent alternative
-  \ against the saved CASE-WORD-BUF - any one matching is enough to
-  \ select this arm, matching real shells' "PAT1|PAT2|..." semantics.
-  \ No trailing-')' stripping any more: DO-CASE splits the arm at its
-  \ ')' before calling this, and Iteration 48 made ')' its own token
-  \ in any case, so every remaining token is a whole pattern.
-  SHADOW{ | CA-I }
-  BEGIN CA-I @ ARGC @ < WHILE
-    \ '|' separates alternatives; ')' is now its own token too, since
-    \ Iteration 48 made parens self-delimiting - before that it stayed
-    \ fused to the last pattern and was stripped below. Both are
-    \ skipped rather than treated as patterns; without this the ')'
-    \ would be tried as an empty pattern, which would wrongly match a
-    \ case word that happened to be empty.
-    CA-I @ ARGV-QUOTED@ 0= IF
-      CA-I @ ARGV@ DUP CSTRLEN S" |" STR=
-      CA-I @ ARGV@ DUP CSTRLEN S" )" STR= OR
-    ELSE 0 THEN
-    0= IF
-      CA-I @ ARGV@ DUP CSTRLEN
-      \ A pattern with any quoted or escaped part is compared as it
-      \ stands (Iteration 257): 'a*b' matched axb, and '' never matched.
-      \ A pattern that mixes quoted and bare parts is literal too - a
-      \ narrowing, since the quoting of single characters is not kept.
-      CA-I @ ARGV-QUOTED@ IF
-        CASE-WORD-BUF CASE-WORD-LEN @ STR= IF -1 EXIT THEN
-      ELSE
-        CASE-WORD-BUF CASE-WORD-LEN @ GLOB-MATCH IF -1 EXIT THEN
-      THEN
-    THEN
-    CA-I @ 1+ CA-I !
-  REPEAT
-  0 ;
-
-: CASE-TAKE-WORD ( --- )
-\ The case word is what lies between `case` and `in` after expansion,
-\ put back together: POSIX does no field splitting on it, and an empty
-\ expansion is the empty word rather than no word - `case $w in` with
-\ w empty took "in" as the word (Iteration 257). Joined with single
-\ spaces, which is exact unless IFS changed the spacing.
-  0 CASE-WORD-LEN !
-  1 ENSURE-BUFFER CASE-WORD-BUF
-  ARGC @ 1- 1 ?DO
-    I ARGV@ DUP CSTRLEN                         ( a u )
-    CASE-WORD-LEN @ OVER + 2 + ENSURE-BUFFER CASE-WORD-BUF
-    I 1 > IF 32 CASE-WORD-BUF CASE-WORD-LEN @ + C!  CASE-WORD-LEN @ 1+ CASE-WORD-LEN ! THEN
-    >R CASE-WORD-BUF CASE-WORD-LEN @ + R@ MOVE
-    CASE-WORD-LEN @ R> + CASE-WORD-LEN !
-  LOOP
-  0 CASE-WORD-BUF CASE-WORD-LEN @ + C! ;
-
-: CASE-SPLIT-IN ( --- )
-\ `case WORD in PATTERN) ...` on one line: what follows `in` is the next
-\ logical line, as a pattern on the next physical line would be. It was
-\ ignored (Iteration 257). Split at word 3 exactly - `case in in` is a
-\ valid line whose word is "in".
-  ARGC @ 3 > 0= IF EXIT THEN
-  2 S" in" TOK-EQ? 0= IF EXIT THEN
-  0 ARGC-PENDING !
-  ARGC @ 3 ?DO
-    I ARGV@ ARGV-PENDING ARGC-PENDING @ CELLS + !
-    I ARGV-QUOTED@ ARGQ-PENDING ARGC-PENDING @ + C!
-    ARGC-PENDING @ 1+ ARGC-PENDING !
-  LOOP
-  0 ARGV-PENDING ARGC-PENDING @ CELLS + !
-  PENDING-KEEP-TEXT
-  -1 PENDING-REMAINDER? !
-  3 ARGC !  0 ARGV 3 CELLS + ! ;
-
-: DO-CASE ( --- )
-  \ ARGV[0] is "case"; ARGV[1] is the case word (already $VAR-
-  \ expanded during tokenizing); ARGV[2] is skipped, assumed "in" (not
-  \ validated, matching for's own convention). Respects an enclosing
-  \ SUPPRESS-EXEC? throughout - a matched arm's body only actually runs
-  \ if the outer context wasn't already suppressed either. Once one arm
-  \ has matched, every later one is skipped without even being tested,
-  \ via CASE-MATCHED? - real case statements never fall through the
-  \ way a C switch can (found and fixed as a real bug: an earlier
-  \ version set CASE-MATCHED? but never actually checked it, so a
-  \ later arm - even a non-matching one - kept right on being tested
-  \ and, if it matched, running its body too).
-  BODY-ARENA-TOP @  SHADOW{ BODY-ARENA-TOP | SUF-BUF SUF-LEN }
-  SUPPRESS-EXEC? @ >R
-  \ Same as DO-FOR: the case word is read straight out of ARGV, so
-  \ this path asks for expansion itself.
-  CASE-SPLIT-IN
-  EXPAND-WORDS
-  CASE-TAKE-WORD
-  0 CASE-MATCHED? !
-  BEGIN
-    READ-NEXT-LOGICAL-LINE
-    INPUT-EOF? @ IF
-      ." shell: syntax error: unexpected end of input, expected 'esac'" CR
-      2 LAST-STATUS !
-      R> SUPPRESS-EXEC? ! EXIT
-    THEN
-    S" esac" LINE-IS? 0=
-  WHILE
-    \ "pat) body ;;" all on one line: split at the ')' so ARGV holds
-    \ only the patterns and the body becomes the pending remainder,
-    \ exactly as DO-IF handles a same-line "then".
-    S" )" SPLIT-AT-KEYWORD DROP
-    \ The patterns are expanded, the body is not - the body goes back
-    \ through RUN-TOKENIZED, which expands each of its commands at the
-    \ point that command runs. Splitting at the ')' first is what
-    \ separates the two, and is why this call is here rather than at
-    \ the top of the loop.
-    EXPAND-WORDS
-    CASE-MATCHED? @ 0= CASE-ARM-MATCHES? AND IF
-      -1 CASE-MATCHED? !
-      R@ SUPPRESS-EXEC? !
-    ELSE
-      -1 SUPPRESS-EXEC? !
-    THEN
-    BEGIN
-      READ-NEXT-LOGICAL-LINE
-      INPUT-EOF? @ IF
-        ." shell: syntax error: unexpected end of input, expected 'esac'" CR
-        2 LAST-STATUS !
-        R> SUPPRESS-EXEC? ! EXIT
-      THEN
-      S" esac" LINE-IS? IF
-        \ The suffix is cut from the raw line, which is not this line
-        \ when it came from pending words - a one-line case - so it is
-        \ rebuilt from them first (Iteration 257).
-        LAST-LINE-PENDING? @ IF 0 ARGC @ JOIN-ARGV-TO-RAW THEN
-        4 SAVE-COMPOUND-SUFFIX
-        R> SUPPRESS-EXEC? ! RUN-COMPOUND-SUFFIX EXIT
-      THEN
-      S" ;;" LINE-IS? IF -1 ELSE
-        \ ";;" may end this arm from within a body line rather than
-        \ having a line of its own.
-        S" ;;" SPLIT-AT-KEYWORD IF
-          RUN-TOKENIZED-CALL
-          ARGC-PENDING @ 0= IF 0 PENDING-REMAINDER? ! THEN
-          -1
-        ELSE
-          RUN-TOKENIZED-CALL
-          0
-        THEN
-      THEN
-    UNTIL
-  REPEAT
-  LAST-LINE-PENDING? @ IF 0 ARGC @ JOIN-ARGV-TO-RAW THEN   \ as above
-  4 SAVE-COMPOUND-SUFFIX                  ( "esac" )
-  R> SUPPRESS-EXEC? !
-  RUN-COMPOUND-SUFFIX ;
-
-VARIABLE FD-ADDR
-VARIABLE FD-LEN
-
-: FUNCDEF-NAME? ( --- f )
-  \ Is this line a function-definition header?
-  \
-  \ Since Iteration 48 made '(' and ')' self-delimiting, "name() {"
-  \ tokenizes as four tokens - name, "(", ")", "{" - not as a single
-  \ "name()" token with the parens fused on, which is what this used
-  \ to look for. Checking the three-token shape instead. (Missing this
-  \ is what broke every function test when parens became operators.)
-  ARGC @ 3 < IF 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 0 EXIT THEN
-  1 ARGV-QUOTED@ IF 0 EXIT THEN
-  2 ARGV-QUOTED@ IF 0 EXIT THEN
-  1 ARGV@ DUP CSTRLEN S" (" STR= 0= IF 0 EXIT THEN
-  2 ARGV@ DUP CSTRLEN S" )" STR= 0= IF 0 EXIT THEN
-  0 ARGV@ CSTRLEN 0 > ;
-
-VARIABLE RT-REST
-VARIABLE RT-RESTQ
-VARIABLE RT-RESTC
-VARIABLE RT-TEXT   \ the heap block the saved rest's words live in
-VARIABLE RT-I
-
-: RT-SAVE-REST ( --- )
-  \ Copy the ';'-remainder out of the shared ARGV-SEMI-REST arrays into
-  \ per-invocation arena storage, BEFORE running the part before the
-  \ ';'.
-  \
-  \ Those arrays are globals, and running the left-hand part can
-  \ recurse all the way back into SPLIT-SEMI - a brace group does
-  \ exactly that, since its body is run through RUN-TOKENIZED. The
-  \ remainder was then overwritten and silently dropped:
-  \ "{ echo x; { echo y; }; echo z; }" printed x and y but never z.
-  \ Pre-existing; it needed a group nested inside a ';' list to show.
-  ARGC-SEMI-REST @ RT-RESTC !
-  ARGS-CAP @ CELLS BODY-ALLOC RT-REST !
-  ARGS-CAP @       BODY-ALLOC RT-RESTQ !
-  0 RT-I !
-  BEGIN RT-I @ RT-RESTC @ < WHILE
-    ARGV-SEMI-REST RT-I @ CELLS + @  RT-REST  @ BODY@ RT-I @ CELLS + !
-    ARGQ-SEMI-REST RT-I @ +      C@  RT-RESTQ @ BODY@ RT-I @ +       C!
-    RT-I @ 1+ RT-I !
-  REPEAT
-  RT-REST @ RT-RESTC @ COPY-REST-TEXT RT-TEXT ! ;
-
 \ ==================================================================
 \ Aliases
 \ ==================================================================
@@ -7488,39 +4638,6 @@ VARIABLE RT-I
 \ shells suppress re-expansion of the alias currently being expanded;
 \ a depth cap is cruder but needs no per-expansion state, and the
 \ failure mode is a diagnosed stop rather than a hang.
-
-: AL-APPEND ( c-addr u --- )
-  SHADOW{ AL-NAME AL-LEN }
-  ALIAS-LINE-LEN @ AL-LEN @ + 2 + ENSURE-BUFFER ALIAS-LINE
-  ALIAS-LINE-LEN @ AL-LEN @ + LINE-HARD-MAX < IF
-    AL-NAME @ ALIAS-LINE ALIAS-LINE-LEN @ + AL-LEN @ MOVE
-    ALIAS-LINE-LEN @ AL-LEN @ + ALIAS-LINE-LEN !
-    32 ALIAS-LINE ALIAS-LINE-LEN @ + C!
-    ALIAS-LINE-LEN @ 1+ ALIAS-LINE-LEN !
-  THEN ;
-
-: TRY-ALIAS ( --- f )
-  \ f = -1 if ARGV[0] was an alias and the rebuilt line has been run.
-  ARGC @ 0 = IF 0 EXIT THEN
-  0 ARGV-QUOTED@ IF 0 EXIT THEN
-  ALIAS-DEPTH @ 8 > IF
-    ." alias: expansion too deep" CR
-    0 EXIT
-  THEN
-  ARGV @ FIND-ALIAS DUP -1 = IF DROP 0 EXIT THEN
-  0 ALIAS-LINE-LEN !
-  ALIAS-VALUE-SLOT DUP CSTRLEN AL-APPEND
-  1 AL-I !
-  BEGIN AL-I @ ARGC @ < WHILE
-    AL-I @ ARGV@ DUP CSTRLEN AL-APPEND
-    AL-I @ 1+ AL-I !
-  REPEAT
-  ALIAS-LINE LINE-BUF ALIAS-LINE-LEN @ MOVE
-  ALIAS-DEPTH @ 1+ ALIAS-DEPTH !
-  ALIAS-LINE-LEN @ NORM-TOKENIZE
-  RUN-TOKENIZED-CALL
-  ALIAS-DEPTH @ 1- ALIAS-DEPTH !
-  -1 ;
 
 : DO-ALIAS ( --- )
   0 LAST-STATUS !
@@ -7552,356 +4669,3 @@ VARIABLE RT-I
 
 ' DO-ALIAS   S" alias"   BUILTIN
 ' DO-UNALIAS S" unalias" BUILTIN
-
-VARIABLE MG-SUB?
-VARIABLE MG-DEPTH
-
-: MG-END? ( --- f )
-  \ True at the ")" or "}" that closes THIS group, counting nesting -
-  \ the same shape as FD-BODY-END? and CAPTURE-CONTINUE?.
-  INPUT-EOF? @ IF
-    ." shell: syntax error: unexpected end of input, unterminated group" CR
-    2 LAST-STATUS !
-    -1 EXIT
-  THEN
-  MG-SUB? @ IF S" )" LINE-IS? ELSE S" }" LINE-IS? THEN IF
-    MG-DEPTH @ 0 > IF MG-DEPTH @ 1- MG-DEPTH ! 0 ELSE -1 THEN
-  ELSE
-    MG-SUB? @ IF S" (" LINE-IS? ELSE FD-OPENS-BRACE? THEN IF
-      MG-DEPTH @ 1+ MG-DEPTH !
-    THEN
-    0
-  THEN ;
-
-: DO-MULTILINE-GROUP ( --- )
-  \ A group whose opener is alone on its line:
-  \
-  \     (
-  \         echo a
-  \     )
-  \
-  \ SPLIT-GROUP only handles a group contained in one line, so this
-  \ captures the body the way DO-WHILE and DO-FUNCDEF do and replays
-  \ it through DO-WHILE-BODY. A "(" group runs in a fork, a "{" group
-  \ in this shell - the same distinction SPLIT-GROUP's two callers
-  \ make.
-  \
-  \ Known wart: DO-WHILE-BODY clears LOOP-CONTROL-PENDING? on the way
-  \ out, so a "break" inside a multi-line group nested in a loop is
-  \ swallowed rather than propagating. Reusing it is still better than
-  \ a second copy of the replay loop; the flag handling wants
-  \ factoring out when something needs it.
-  BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | WHILE-BODY-BUF WHILE-BODY-LEN WHILE-BODY-CAP MG-DEPTH }
-  WHILE-BODY-MAX BODY-ALLOC WHILE-BODY-BUF !  WHILE-BODY-MAX WHILE-BODY-CAP !
-  0 WHILE-BODY-LEN !
-  BEGIN
-    READ-NEXT-LOGICAL-LINE
-    MG-END? 0=
-  WHILE
-    ARGC @ 0 > IF APPEND-RAW-LINE-TO-BODY THEN
-  REPEAT
-  INPUT-EOF? @ IF EXIT THEN
-  MG-SUB? @ IF
-    FORK DUP 0 = IF
-      DROP
-      DO-WHILE-BODY
-      LAST-STATUS @ SYS-EXIT
-    THEN
-    WAITPID DROP 8 RSHIFT 255 AND LAST-STATUS !
-  ELSE
-    DO-WHILE-BODY
-  THEN ;
-
-: (DO-MULTILINE-GROUP) ( sub? --- )
-  \ The DEFER'd form DISPATCH-GROUP calls. It takes the subshell flag
-  \ on the stack rather than having each caller store MG-SUB? itself,
-  \ so that variable stays private to this end of the file.
-  MG-SUB? ! DO-MULTILINE-GROUP ;
-
-' (DO-MULTILINE-GROUP) IS DO-MULTILINE-GROUP-CALL
-
-VARIABLE PP-I
-VARIABLE PP-BAR
-
-: PP-COMPOUND-AFTER-PIPE? ( --- f )
-  \ Scanned from ARGV, before SPLIT-PIPE has run: is the token after
-  \ the last unquoted "|" a multi-line compound keyword?
-  -1 PP-BAR !  0 PP-I !
-  BEGIN PP-I @ ARGC @ < WHILE
-    PP-I @ ARGV-QUOTED@ 0= IF
-      PP-I @ ARGV@ DUP CSTRLEN S" |" STR= IF PP-I @ PP-BAR ! THEN
-    THEN
-    PP-I @ 1+ PP-I !
-  REPEAT
-  PP-BAR @ -1 = IF 0 EXIT THEN
-  PP-BAR @ 1+ DUP ARGC @ < 0= IF DROP 0 EXIT THEN
-  DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN
-  2DUP S" while" STR= IF 2DROP -1 EXIT THEN
-  2DUP S" until" STR= IF 2DROP -1 EXIT THEN
-  2DUP S" for"   STR= IF 2DROP -1 EXIT THEN
-  2DUP S" if"    STR= IF 2DROP -1 EXIT THEN
-       S" case"  STR= ;
-
-: PB-APPEND ( --- )
-  PIPE-BODY-LEN @ RAW-LINE-LEN @ + 1+ 8192 < IF
-    RAW-LINE-BUF PIPE-BODY PIPE-BODY-LEN @ + RAW-LINE-LEN @ MOVE
-    PIPE-BODY-LEN @ RAW-LINE-LEN @ + PIPE-BODY-LEN !
-    0 PIPE-BODY PIPE-BODY-LEN @ + C!
-    PIPE-BODY-LEN @ 1+ PIPE-BODY-LEN !
-  THEN ;
-
-: PP-TRIM-TO-STAGE ( --- )
-  RAW-LINE-BUF RAW-LINE-LEN @ 124 RAW-LAST-CHAR
-  DUP -1 = IF DROP EXIT THEN
-  1+ PLS-I !
-  BEGIN
-    PLS-I @ RAW-LINE-LEN @ < IF RAW-LINE-BUF PLS-I @ + C@ WS? ELSE 0 THEN
-  WHILE PLS-I @ 1+ PLS-I ! REPEAT
-  RAW-LINE-LEN @ PLS-I @ - 0 > IF
-    RAW-LINE-BUF PLS-I @ + RAW-LINE-BUF RAW-LINE-LEN @ PLS-I @ - MOVE
-    RAW-LINE-LEN @ PLS-I @ - RAW-LINE-LEN !
-  ELSE
-    0 RAW-LINE-LEN !
-  THEN ;
-
-: PREPARE-COMPOUND-PIPE ( --- )
-  0 PIPE-HAVE-BODY !
-  PP-COMPOUND-AFTER-PIPE? 0= IF EXIT THEN
-  \ If the construct is already complete on this line there is nothing
-  \ to capture - and capturing anyway would swallow the NEXT line as
-  \ body. A fully one-line "while ...; do ...; done" is complete, and
-  \ DO-WHILE handles it directly since Iteration 117.
-  FDC-BALANCED? IF EXIT THEN
-  RAW-LINE-LEN @ 1+ ENSURE-BUFFER PIPE-RAW-FULL
-  RAW-LINE-BUF PIPE-RAW-FULL RAW-LINE-LEN @ MOVE
-  RAW-LINE-LEN @ PIPE-RAW-FULL-LEN !
-  0 PIPE-BODY-LEN !
-  0 FDC-DEPTH !
-  BEGIN
-    READ-NEXT-LOGICAL-LINE
-    FDC-LINE-END? 0=
-  WHILE
-    ARGC @ 0 > IF PB-APPEND THEN
-  REPEAT
-  PB-APPEND
-  PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
-  PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
-  PP-TRIM-TO-STAGE
-  RAW-LINE-LEN @ 1+ ENSURE-BUFFER PIPE-RAW
-  RAW-LINE-BUF PIPE-RAW RAW-LINE-LEN @ MOVE
-  RAW-LINE-LEN @ PIPE-RAW-LEN !
-  PIPE-RAW-FULL RAW-LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
-  PIPE-RAW-FULL-LEN @ RAW-LINE-LEN !
-  PIPE-RAW-FULL LINE-BUF PIPE-RAW-FULL-LEN @ MOVE
-  PIPE-RAW-FULL-LEN @ NORM-TOKENIZE
-  -1 PIPE-HAVE-BODY ! ;
-
-' PREPARE-COMPOUND-PIPE IS PREPARE-PIPE-CALL
-
-: RUN-TOKENIZED ( --- )
-  BODY-ARENA-TOP @
-  SHADOW{ BODY-ARENA-TOP | RT-REST RT-RESTQ RT-RESTC RT-I RT-TEXT }
-  \ Alias expansion first: it is textual, and the rebuilt line must
-  \ go through every check below as if it had been typed.
-  TRY-ALIAS IF EXIT THEN
-  \ Acts on the currently-tokenized ARGV/ARGC: '(' / '{' group
-  \ detection first of all (see DO-SUBSHELL/DO-BRACE-GROUP - a
-  \ group's own ';'/'&&'/'||' must stay scoped to its body rather than
-  \ being split as if it belonged to the outer line, so this has to
-  \ run before any of that), then control-structure keywords (for the
-  \ same reason as groups - "if true; then echo hi; fi" needs "if" to
-  \ see its own ';'/"then"/"fi" intact, not have the outer ';'-split
-  \ carve it up first; while/for don't support same-line "do" yet, but
-  \ moving their own detection here too avoids a *worse*, different
-  \ misbehavior than simply keeping "do" on its own line already was -
-  \ "while true; do" was already broken before this reordering too),
-  \ then ';' splitting (so each ';'-separated piece gets the full
-  \ treatment below on its own - see SPLIT-SEMI), then assignment
-  \ detection, then &&/|| splitting (see SPLIT-ANDOR/RUN-AND-OR-CHAIN
-  \ - POSIX gives '&&'/'||' equal, left-to-right precedence, tighter
-  \ than ';' but looser than '|'), then a plain pipeline/simple command
-  \ (RUN-SIMPLE-OR-PIPELINE, which is what each &&/||-separated piece
-  \ above also runs through). Shared by RUN-LINE (after its own
-  \ TOKENIZE call, below) and DO-IF's own body-line handling above (via
-  \ RUN-TOKENIZED-CALL, patched to this word's xt right after it's
-  \ defined).
-  \ A group is handled here only when it IS the entire line. If
-  \ anything follows its closing ')'/'}' - a pipe, a '&&', a ';' -
-  \ fall through to the splitters instead, which now know not to
-  \ split inside the group (GRP-DEPTH), and the group ends up as one
-  \ segment handled by RUN-SIMPLE-OR-PIPELINE below. Before this, a
-  \ trailing pipe or operator after a group was silently dropped -
-  \ the scope limit recorded in Iteration 20.
-  DISPATCH-GROUP IF EXIT THEN
-  S" if" LINE-IS? IF DO-IF EXIT THEN
-  S" while" LINE-IS? IF DO-WHILE EXIT THEN
-  S" until" LINE-IS? IF -1 UNTIL-NEXT ! DO-WHILE EXIT THEN
-  S" for" LINE-IS? IF DO-FOR EXIT THEN
-  S" case" LINE-IS? IF DO-CASE EXIT THEN
-  FUNCDEF-NAME? IF DO-FUNCDEF EXIT THEN
-  SPLIT-SEMI IF
-    RT-SAVE-REST
-    ARGV-SEMI-LEFT ARGQ-SEMI-LEFT ARGC-SEMI-LEFT @ COPY-ARGV-Q
-    RUN-TOKENIZED-CALL
-    RT-REST @ BODY@ RT-RESTQ @ BODY@ RT-RESTC @ COPY-ARGV-Q
-    RUN-TOKENIZED-CALL
-    RT-TEXT @ FREE DROP
-    EXIT
-  THEN
-  SPLIT-ANDOR IF
-    RUN-AND-OR-CHAIN
-    EXIT
-  THEN
-  RUN-SIMPLE-OR-PIPELINE ;
-' RUN-TOKENIZED IS RUN-TOKENIZED-CALL
-
-
-: RUN-LINE ( u --- )  \ LINE-BUF already holds u bytes: tokenize, then
-                        \ act on it via RUN-TOKENIZED.
-                        \ Shared by the interactive loop (SH1) and -c
-                        \ mode (SH-C) below, so both go through
-                        \ identical logic. Note: redirection only
-                        \ applies to external commands (see
-                        \ APPLY-REDIRECTIONS) - "pwd > file" doesn't
-                        \ redirect the builtin's own output in v0.2.
-                        \ Also stashes a raw copy, same reason as
-                        \ READ-LINE-INTO-ARGV above - taken *before*
-                        \ operator normalization, so it holds the
-                        \ line exactly as given, unmodified.
-  JOIN-CONTINUATIONS
-  JOIN-OPEN-QUOTES
-  DUP RAW-LINE-LEN !
-  RAW-LINE-LEN @ 1+ ENSURE-BUFFER RAW-LINE-BUF
-  LINE-BUF RAW-LINE-BUF RAW-LINE-LEN @ MOVE
-  \ TOKENIZE, not NORM-TOKENIZE: JOIN-OPEN-QUOTES has just normalized
-  \ this exact line - that is how it decides whether a quote is still
-  \ open - so NORM-BUF and the word spans are already there.
-  \ Normalizing a second time was pure repeated work on every line of
-  \ every loop body (Iteration 119).
-  TOKENIZE
-  UNTERMINATED-QUOTE? @ IF
-    ." shell: syntax error: unterminated quote" CR
-    2 LAST-STATUS ! EXIT
-  THEN
-  \ A line with more words than ARGV holds is refused rather than run
-  \ short. Running it would execute a command the script did not
-  \ write, which is strictly worse than not running it - and the old
-  \ behaviour did exactly that, silently. Reported on fd 2, like the
-  \ other Iteration 154 diagnostic and unlike the older ones above.
-  ARGS-OVERFLOW? @ IF
-    0 ARGS-OVERFLOW? !
-    S" shell: too many arguments" ERR-TYPE ERR-NL
-    1 LAST-STATUS ! EXIT
-  THEN
-  RUN-TOKENIZED-CALL ;
-' RUN-LINE IS RUN-LINE-CALL
-
-: SH1 ( --- )  \ process one interactively-read line; returns either way
-  \ Nothing can point into a retired buffer between commands.
-  BUF-FREE-RETIRED
-  SH-PROMPT
-  0 BUFFER-BODY LINE-BUF ACCEPT-INTO
-  \ Terminates the prompt line, so it belongs with the prompt on fd 2
-  \ rather than on stdout. As a CR it put a stray newline into the
-  \ output of every piped script.
-  SH-NL 1 2 WRITE-FILE DROP
-  RUN-LINE ;
-
-: SH ( --- )
-  BEGIN SH1 0 UNTIL ;
-
-: SH-FILE ( c-addr --- )  \ c-addr: a NUL-terminated file path (from
-                            \ SYS-ARG). Opens it read-only, runs each
-                            \ line through RUN-LINE the same way SH1
-                            \ does for one interactively-read line
-                            \ (READ-LINE's own u2 lines up exactly with
-                            \ what RUN-LINE expects), and exits with
-                            \ the last command's status once EOF is
-                            \ reached - matching `sh script.sh`. An
-                            \ "exit" mid-script still exits immediately
-                            \ via SYS-EXIT inside RUN-LINE's own
-                            \ DISPATCH, same as everywhere else. No
-                            \ error message on a missing/unreadable
-                            \ file, just a nonzero exit status -
-                            \ matching this shell's existing sparse
-                            \ error handling elsewhere (see
-                            \ APPLY-REDIRECTIONS).
-  R/O OPEN-FOR 0= IF 127 SYS-EXIT THEN
-  SHFILE-FID !
-  -1 SHFILE-ACTIVE? !
-  BEGIN
-    BUF-FREE-RETIRED   \ between commands: see SH1
-    0 BUFFER-BODY LINE-BUF SHFILE-FID @ READ-LINE-INTO
-  WHILE
-    RUN-LINE
-  REPEAT
-  DROP
-  SHFILE-FID @ CLOSE-FILE DROP
-  LAST-STATUS @ SYS-EXIT ;
-
-VARIABLE SHC-LEN
-
-: SH-C ( c-addr --- )  \ c-addr: a NUL-terminated command string (from
-                        \ SYS-ARG). Runs it once and exits with its status -
-                        \ never returns. The same one logical line SH1
-                        \ would read - ';'/'&&'/'||' chaining all work
-                        \ (RUN-LINE/RUN-TOKENIZED handle those, not
-                        \ TOKENIZE itself), but no if/while/for, which
-                        \ need multiple lines.
-  -1 NO-MORE-INPUT? !
-  DUP CSTRLEN SHC-LEN !
-  \ Grown to fit first: until Iteration 249 a -c string longer than
-  \ LINE-BUF was copied past its end.
-  SHC-LEN @ LINE-HARD-MAX > IF DROP LINE-TOO-LONG LAST-STATUS @ SYS-EXIT THEN
-  SHC-LEN @ 1+ ENSURE-BUFFER LINE-BUF
-  LINE-BUF SHC-LEN @ MOVE
-  SHC-LEN @ RUN-LINE
-  LAST-STATUS @ SYS-EXIT ;
-
-: MAIN ( --- )  \ entry point once shell.4 is loaded: `relf kernel.img -c
-                  \ "cmd"` (via SYS-ARGC/SYS-ARG, exposing relf's own argv
-                  \ beyond the image path) runs one command non-interactively
-                  \ and exits with its status - matching invoking any real
-                  \ shell binary as `sh -c "cmd"`. `relf kernel.img
-                  \ script.sh` (via relfsh) runs script.sh's contents line
-                  \ by line and exits with the last command's status -
-                  \ matching `sh script.sh` (see SH-FILE). Any further
-                  \ arguments beyond the script path are currently ignored
-                  \ (shell.4 has no positional-parameter support yet).
-                  \ No args at all falls through to the ordinary
-                  \ interactive loop.
-  \ The body arena is heap memory, so its base address is meaningless
-  \ after an image is saved and reloaded. Reset here, at the boot
-  \ word, rather than relying on it happening to be zero because no
-  \ loop ran during the image build.
-  \ Every pool.4 buffer's pointer was zeroed by RESET-BUFFERS before
-  \ this image was written, because a heap address means nothing after
-  \ a save and reload. Nothing below may touch a buffer before this
-  \ runs, so it is the first thing in the boot word.
-  ALLOC-BUFFERS
-  GETPID SHELL-PID !
-  0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
-  \ A turnkey image boots straight here from COLD, so WARM and QUIT -
-  \ which normally set up the search order and the input source -
-  \ never run. Nothing in the shell needed them until the `forth`
-  \ builtin, whose EVALUATE calls FIND and segfaulted on an empty
-  \ search order. Doing that setup here rather than in COLD keeps the
-  \ kernel unchanged and keeps it where the reason for it lives.
-  2 #ORDER !
-  FORTH-WORDLIST CONTEXT !
-  FORTH-WORDLIST CONTEXT CELL+ !
-  FORTH-WORDLIST CURRENT !
-  TIB SRC !  0 SID !
-  INCLUDE-BUFFER INCLUDE-POINTER !
-  SYS-ARGC 2 = IF
-    S" -c" 0 SYS-ARG STR0= IF
-      1 SYS-ARG SH-C
-    THEN
-  THEN
-  SYS-ARGC 0 > IF
-    SET-POS-PARAMS-FROM-SYS-ARGS
-    0 SYS-ARG SH-FILE
-  THEN
-  SH ;

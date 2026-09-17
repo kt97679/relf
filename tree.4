@@ -1316,10 +1316,6 @@ VARIABLE SUBLIST-XT
   CMDSUB-LINE-BUF SWAP TREE-RUN-TEXT
   LAST-STATUS @ SYS-EXIT ;
 
-\ The tree path's entry: `relfsh` with RELF_TREE set in the environment,
-\ until Stage C makes it the only one.
-CREATE RELF-TREE-NAME  82 C, 69 C, 76 C, 70 C, 95 C, 84 C, 82 C, 69 C, 69 C, 0 C,
-
 : READ-WHOLE-FILE ( c-addr --- addr u | 0 0 )
   DUP CSTRLEN R/O OPEN-FILE IF DROP 0 0 EXIT THEN
   >R R@ FILE-SIZE 2DROP
@@ -1327,18 +1323,11 @@ CREATE RELF-TREE-NAME  82 C, 69 C, 76 C, 70 C, 95 C, 84 C, 82 C, 69 C, 69 C, 0 C
   2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
   SWAP ;
 
-\ The line path's hooks, chosen by TREE-MODE? when they run. (`'` inside
-\ a definition would read its name at run time, so they are set here.)
-: FUNC-BODY-EITHER ( i --- )
-  TREE-MODE? @ IF TREE-RUN-FUNC ELSE RUN-FUNC-BODY THEN ;
-: CMDSUB-CHILD-EITHER ( --- )
-  TREE-MODE? @ IF TREE-CMDSUB ELSE RUN-CMDSUB-CHILD THEN ;
-' FUNC-BODY-EITHER IS RUN-FUNC-BODY-CALL
-' CMDSUB-CHILD-EITHER IS RUN-CMDSUB-CHILD-CALL
+' TREE-RUN-FUNC IS RUN-FUNC-BODY-CALL
+' TREE-CMDSUB IS RUN-CMDSUB-CHILD-CALL
 ' TREE-EVAL IS TREE-EVAL-CALL
 
-: MAIN2 ( --- )
-  -1 TREE-MODE? !
+: RUN-SOURCES ( --- )   \ -c, a script, or standard input
   0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
@@ -1357,9 +1346,7 @@ CREATE RELF-TREE-NAME  82 C, 69 C, 76 C, 70 C, 95 C, 84 C, 82 C, 69 C, 69 C, 0 C
   0 ISATTY INTERACTIVE? !
   TREE-RUN LAST-STATUS @ SYS-EXIT ;
 
-: MAIN-SELECT ( --- )
-  RELF-TREE-NAME GETENV 0= IF MAIN EXIT THEN
-  \ MAIN's own setup
+: MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
   GETPID SHELL-PID !
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
@@ -1369,7 +1356,7 @@ CREATE RELF-TREE-NAME  82 C, 69 C, 76 C, 70 C, 95 C, 84 C, 82 C, 69 C, 69 C, 0 C
   FORTH-WORDLIST CURRENT !
   TIB SRC !  0 SID !
   INCLUDE-BUFFER INCLUDE-POINTER !
-  MAIN2 ;
+  RUN-SOURCES ;
 
 \ ==================================================================
 \ Entry: parse a text, printing each complete command's tree

@@ -7,7 +7,9 @@
 # wrote. Iteration 248 made that an error; 249 made the buffers grow, so
 # a long line simply runs, and 252 lifted the limit on values. What is
 # still limited, and must be REPORTED rather than silently wrong, is
-# tested here too: the 1 MB ceiling on a line.
+# tested here too: the kernel's limit on an exec's arguments. (Until
+# Iteration 265 a line past 1 MB was refused; scripts are no longer read
+# by lines.)
 . "$(dirname "$0")/lib.sh"
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
@@ -33,12 +35,13 @@ assert_output_equals "a 50,000-character line runs from stdin" "50001" "$out"
 out=$("$THIS_SH" -c "echo $(pad c 3000) | wc -c" 2>&1 | tr -d ' ')
 assert_output_equals "a 3,000-character -c command runs" "3001" "$out"
 
-# The ceiling: past 1 MB a line is reported and nothing of it runs.
-{ printf 'echo '; pad d 1100000; printf '\necho "after st=$?"\n'; } > "$t/huge.sh"
+# A 1.1 MB argument reaches the command, and the kernel refuses the exec:
+# reported, status 126, and the script goes on - as bash and dash do.
+{ printf '/bin/echo '; pad d 1100000; printf '\necho "after st=$?"\n'; } > "$t/huge.sh"
 out=$("$THIS_SH" "$t/huge.sh" 2>/dev/null)
-assert_output_equals "a line past the 1 MB ceiling runs nothing, and the script goes on" "after st=2" "$out"
+assert_output_equals "an argument list too long for exec: status 126, and the script goes on" "after st=126" "$out"
 err=$("$THIS_SH" "$t/huge.sh" 2>&1 >/dev/null)
-assert_output_equals "the ceiling is reported on stderr" "shell: line too long" "$err"
+assert_output_contains "and it is reported on stderr" "argument list too long" "$err"
 
 # A variable's value has no fixed limit since Iteration 252. At 255
 # characters, until then, a longer value was dropped - and until 249 the

@@ -1156,8 +1156,10 @@ L_execve: SPILL(); { t_flush(); /* argv-addr path-addr --- ior */
     char *path = (char*)(uintptr_t)DS0;
     char **argv = (char**)(uintptr_t)DS1;
     execve(path, argv, environ);
-    /* only reached if execve itself failed */
-    DS1 = (UNS64)200;
+    /* only reached if execve itself failed: -errno, as READ and WRITE
+     * report (Iteration 265; it was a constant 200, so the shell could
+     * not tell "not found" from "found but cannot run").  */
+    DS1 = (UNS64)(INT64)-errno;
     dsp += CELL_BYTES;
     FILLNEXT();
 }

@@ -146,7 +146,7 @@ PRIMITIVE FILE-SIZE
 \ here must match cv8.c's dispatch table exactly, since PRIMITIVE
 \ assigns opcodes sequentially as each of these lines is processed.
 PRIMITIVE FORK      ( --- pid )
-PRIMITIVE EXECVE    ( argv-addr path-addr --- ior )
+PRIMITIVE EXECVE    ( argv-addr path-addr --- ior )   \ ior: -errno
 PRIMITIVE WAITPID   ( pid --- status ior )
 PRIMITIVE PIPE      ( --- fd-read fd-write ior )
 PRIMITIVE DUP2      ( oldfd newfd --- ior )

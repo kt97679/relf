@@ -74,4 +74,12 @@ assert_output_equals "50 arguments still run" "50" "$out"
 err=$(timeout 10 "$THIS_SH" "$t/ok.sh" 2>&1 >/dev/null)
 assert_output_equals "50 arguments report nothing" "" "$err"
 
+# Not found is 127, found but not runnable is 126 and says why
+# (XCU 2.9.1.1; Iteration 265 - it was 127 and "not found" for both).
+"$THIS_SH" -c "/nonexistent/command" < /dev/null > /dev/null 2>&1
+assert_status "a missing command is status 127" 127 "$?"
+err=$("$THIS_SH" -c "/etc/passwd" < /dev/null 2>&1 >/dev/null)
+assert_status "a command that cannot run is status 126" 126 "$("$THIS_SH" -c "/etc/passwd" < /dev/null > /dev/null 2>&1; echo $?)"
+assert_output_contains "and the reason is given" "permission denied" "$err"
+
 report

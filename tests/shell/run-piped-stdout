@@ -48,10 +48,10 @@ echo $x')"
 assert_output_equals "silent script produces empty stdout" \
     "" "$(pipe_out 'true')"
 
-# The prompt has not been deleted, only moved. If it vanished
-# entirely, interactive use would regress silently and no other test
-# would notice.
+# No prompt either, when standard input is not a terminal: bash and dash
+# write none (Iteration 265; this used to assert one on stderr). The
+# prompt on a terminal is run-interactive's business.
 err=$(printf 'true\n' | timeout 10 "$THIS_SH" 2>&1 >/dev/null)
-assert_output_contains "prompt still written, on stderr" "$" "$err"
+assert_output_equals "no prompt when stdin is a pipe" "" "$err"
 
 report

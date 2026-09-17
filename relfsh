@@ -24,7 +24,7 @@
 # each: this script 12.68s, bare `relf kernel.img` 0.061s. The prebuilt
 # image starts in ~1.8ms, ~128x faster, which is also what makes the
 # shell test suite bearable to run. The image boots straight into
-# shell.4's MAIN via kernel.4's BOOT hook, so relf's own "Welcome to
+# tree.4's MAIN via kernel.4's BOOT hook, so relf's own "Welcome to
 # Forth" banner and QUIT's "OK" acknowledgements never appear - stdout
 # is now exactly what the shell itself writes, which is what the
 # mrsh-suite's byte-for-byte comparison against bash needs.
@@ -37,11 +37,11 @@
 #
 # How this works: relf's own argv beyond the image path (e.g. "-c",
 # "command", or a script path) is exposed to Forth via the
-# SYS-ARGC/SYS-ARG primitives; shell.4's MAIN word inspects those and
+# SYS-ARGC/SYS-ARG primitives; tree.4's MAIN word inspects those and
 # either runs one command via SH-C, runs a script file via SH-FILE, or
 # falls through to the ordinary interactive SH loop - see shell.4 for
 # that logic. This script's job is just to feed relf the two-line
-# Forth bootstrap ("load shell.4, then call MAIN") ahead of whatever
+# Forth bootstrap ("load shell.4 and tree.4, then call MAIN") ahead of whatever
 # else is on stdin, via `cat`, so interactive/piped-script use still
 # sees its own input afterward rather than that input being consumed
 # by the bootstrap step.
@@ -102,7 +102,7 @@ build_shell_img() {
     tmp="$DIR/$tmp_base"
     (
         cd "$DIR" || exit 1
-        printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tree.4" INCLUDED\n%s MAIN-SELECT SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
+        printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tree.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
             "'" "$tmp_base" \
             | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
     )
@@ -119,11 +119,11 @@ if needs_rebuild && ! build_shell_img; then
     # failing outright, so a broken/unwritable image directory
     # degrades to "slow" instead of "no shell at all".
     if [ -n "$1" ]; then
-        printf 'S" %s/pool.4" INCLUDED\nS" %s/shadow.4" INCLUDED\nS" %s/shell.4" INCLUDED\nS" %s/tree.4" INCLUDED\nMAIN\n' "$DIR" "$DIR" "$DIR" "$DIR" \
+        printf 'S" %s/extend.4" INCLUDED\nS" %s/pool.4" INCLUDED\nS" %s/shadow.4" INCLUDED\nS" %s/shell.4" INCLUDED\nS" %s/tree.4" INCLUDED\nMAIN\n' "$DIR" "$DIR" "$DIR" "$DIR" "$DIR" \
             | exec "$RELF_BIN" "$RELF_IMG" "$@"
     else
         {
-            printf 'S" %s/pool.4" INCLUDED\nS" %s/shadow.4" INCLUDED\nS" %s/shell.4" INCLUDED\nS" %s/tree.4" INCLUDED\nMAIN\n' "$DIR" "$DIR" "$DIR" "$DIR"
+            printf 'S" %s/extend.4" INCLUDED\nS" %s/pool.4" INCLUDED\nS" %s/shadow.4" INCLUDED\nS" %s/shell.4" INCLUDED\nS" %s/tree.4" INCLUDED\nMAIN\n' "$DIR" "$DIR" "$DIR" "$DIR" "$DIR"
             cat
         } | exec "$RELF_BIN" "$RELF_IMG" "$@"
     fi

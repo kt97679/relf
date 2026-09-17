@@ -5,9 +5,9 @@
 # the echo alone cannot produce.
 #
 # Written before the command-tree rewrite (COMMAND-TREE-PLAN.md), which
-# moves prompting into the input source. Not asserted, because this
-# shell does not do them yet: a "> " prompt on continuation lines, and
-# Ctrl-D leaving with the last command's status (it leaves with 0).
+# moved prompting into the input source; the "> " prompt on continuation
+# lines and Ctrl-D leaving with the last command's status came with it
+# (Iteration 265).
 . "$(dirname "$0")/lib.sh"
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cc -O2 -o "$t/pty" "$(dirname "$0")/../io/pty.c" 2>/dev/null || {
@@ -51,5 +51,11 @@ printf 'echo x\n' | PTY_TIMEOUT_MS=5000 "$t/pty" "$(printf '\004')" 300 "$sh_pat
 st=$?
 assert_output_contains "Ctrl-D at the prompt ends the session" "icanon=1" "$(cat "$t/eof")"
 assert_status "and the session ends by itself, not by the timeout" 0 "$st"
+
+out=$(typed 'if true\nthen\n  echo cont-$((6+6))\nfi\nexit\n')
+assert_output_contains "continuation lines are prompted with > " "> " "$out"
+
+printf 'false\n' | PTY_TIMEOUT_MS=5000 "$t/pty" "$(printf '\004')" 300 "$sh_path" > /dev/null 2>&1
+assert_status "Ctrl-D leaves with the last command's status" 1 "$?"
 
 report

@@ -293,6 +293,19 @@ range in a block of their own (`FT-*`), the line path's function table
 holding only the names. Aliases are substituted in the source text by the
 parser (`TRY-ALIAS`, `SPLICE`).
 
+**Stage C status (Iteration 265): done.** `tree.4`'s `MAIN` is the boot
+word and the only entry; `RELF_TREE` is gone. `tools/dead-words.py`
+found what nothing could reach any more - 343 definitions and 7 `IS`
+lines, 3,168 lines of `shell.4` - and removed them; the suites, run
+before and after, are the check that it removed nothing live, and
+`tests/verify` now counts unreachable definitions (0). The four
+assertions were rewritten (an empty subshell is a syntax error; no
+prompt on a pipe; an argument list too long for exec is status 126 and
+the script goes on), and two the old path could not pass were added to
+`run-interactive` (the `> ` prompt; Ctrl-D keeps the last status).
+Shell images: 79,680 -> 56,128 bytes (64-bit), 73,824 -> 52,116
+(32-bit), against Iteration 264's, which carried both paths.
+
 **Stage C — switch and delete.** `MAIN` becomes the tree path; the old
 machinery listed above is deleted in the same commit, with `tests/verify`
 green; `GOALS.md`'s "Still open" list is re-audited, since most of its

@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,738    kernel-shell.img     72,912
-    32-bit   kernel32.img   8,230    kernel32-shell.img   67,528
+    64-bit   kernel.img     8,754    kernel-shell.img     56,128
+    32-bit   kernel32.img   8,242    kernel32-shell.img   52,116
 
 **Seventy-three primitives**: 35 direct, with one-byte opcodes, and 38
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1005,7 +1005,7 @@ of this file:
   `END-REDIRECT`), so `read x < file`, `pwd > f` and `f > out` work, and
   a redirection that cannot be opened is reported and the command does
   not run - for external commands too, which ran regardless before.
-- **Redirection on a COMPOUND command is still dropped**: `while read
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Redirection on a COMPOUND command is still dropped**~~: `while read
   l; do ...; done < file`, `{ ...; } > f 2>&1`, `if ...; fi > f`. The
   same undo list is the tool; the work is in `DISPATCH-GROUP` and the
   compound runners, which consume the redirection words as part of the
@@ -1030,7 +1030,7 @@ of this file:
   **fixed in Iteration 257** (`SM/REM`). The same change stopped a
   division by zero from killing the shell with SIGFPE: it is reported,
   and the command does not run, status 1, as in bash.
-- **A reserved word cannot be a `for` list value.**
+- **[Fixed by the command tree, Iterations 264-265]** ~~**A reserved word cannot be a `for` list value.**~~
   `for x in do done; do ...; done` iterates over nothing.
 - ~~**Quoted and escaped patterns in `case`**~~ and ~~**an empty
   `case` word**~~ - **fixed in Iteration 257**. A pattern with any
@@ -1047,7 +1047,8 @@ of this file:
   against bash). A line past 1 MB (`LINE-HARD-MAX`) is reported and
   discarded, so a binary file costs a message, not the memory.
 - **What is still fixed, now that lines are not.** Growable since
-  Iterations 249-252: lines (to 1 MB), the words of a line (to 65,536),
+  Iterations 249-252: lines of standard input and of `read` (to 1 MB;
+  a script file or -c string is not read by lines since 265), the words of a command (to 65,536),
   positional parameters, the text a line expands to and command
   substitution output (to 16 MB each, then "expansion too large"),
   `for` lists, here-document bodies, variable values, and the variable
@@ -1059,17 +1060,17 @@ of this file:
     long"; until 252 a longer value left the old one in place).
   - Not this shell's: Linux refuses a single exec argument over 128 KB,
     which a long `echo` meets because `echo` here is `/bin/echo`.
-- **`for` after `&&` or `||` is not recognised** (`true && for i in 1;
+- **[Fixed by the command tree, Iterations 264-265]** ~~**`for` after `&&` or `||` is not recognised**~~ (`true && for i in 1;
   do ...; done` is "for: command not found"), in this and earlier
   builds.
-- **A one-line `for` inside a multi-line `for` is a syntax error**
+- **[Fixed by the command tree, Iterations 264-265]** ~~**A one-line `for` inside a multi-line `for` is a syntax error**~~
   ("unexpected end of input, expected 'done'"). Recorded in Iteration
   251; earlier builds fail the same way.
-- **An assignment inside the first stage of a pipeline reaches the
-  parent** (`echo ${x:=v} | cat; echo $x` prints `v` here and nothing
+- **[Fixed by the command tree, Iterations 264-265]** ~~**An assignment inside the first stage of a pipeline reaches the
+  parent**~~ (`echo ${x:=v} | cat; echo $x` prints `v` here and nothing
   in dash and bash, which run every stage in a subshell). Recorded in
   Iteration 252.
-- **A `-c` string with newlines is one line.** `relfsh -c 'echo one
+- **[Fixed by the command tree, Iterations 264-265]** ~~**A `-c` string with newlines is one line.**~~ `relfsh -c 'echo one
   <newline> echo two'` prints "one", a newline and "echo two", so a
   here-document or any second command in a `-c` string does not work.
   Recorded in Iteration 251; earlier builds behave the same.
@@ -1078,7 +1079,7 @@ of this file:
   all still use `."`. Iteration 153 moved the prompt and 154 added
   `ERR-TYPE`/`ERR-CSTR`/`ERR-NL` on fd 2, but the older messages were
   left alone - a separate change with its own test churn.
-- **Nine dead variables in `shell.4`**, one occurrence each:
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Nine dead variables in `shell.4`**~~, one occurrence each:
   `IN-ASSIGN-CONTEXT?`, `PW-FID`, `WT-PID`, `FDL-I`, `WHILE-BODY-I`,
   `WHILE-BODY-CUR`, `CASE-PATLAST-LEN`, `FD-ADDR`, `FD-LEN`.
 - **The duplication pass is two blocks deep.** Iteration 152 found the
@@ -1096,7 +1097,7 @@ of this file:
   `${var%pattern}` only. It needs a primitive that reads a directory
   (escaped, so no opcode). Found in Iteration 257; `tests/posix`'s
   2.6.6 case.
-- **Syntax errors do not end a script.** POSIX (XCU 2.8.1) says a
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Syntax errors do not end a script.**~~ POSIX (XCU 2.8.1) says a
   non-interactive shell reports a syntax error on stderr and EXITS;
   bash and dash do. This shell mostly runs what it can: `if; then echo
   A; fi` prints A, `echo A; ; echo B` runs both, `{ echo A` does nothing
@@ -1104,14 +1105,14 @@ of this file:
   messages go to stdout. 29 of `tests/matrix`'s 32 error scripts fail
   (two are inconclusive). The command-tree parser is the place to fix
   it (Iteration 262).
-- **Interactive gaps** (Iteration 262, `tests/shell/run-interactive`):
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Interactive gaps**~~ (Iteration 262, `tests/shell/run-interactive`):
   no `> ` prompt on continuation lines, and Ctrl-D leaves with status 0
   rather than the last command's.
-- **Compound commands in pipelines, after `&&`/`||`, and redirected**
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Compound commands in pipelines, after `&&`/`||`, and redirected**~~
   are the largest group of `tests/matrix`'s 129 construct failures; a
   multi-line `if` whose `then` has a command on the same line loses
   its `elif` branch; `n=0; while ...; done` reports status 1.
-- **A multi-line loop after `;` loops FOR EVER**: `n=0; while [ ... ]`
+- **[Fixed by the command tree, Iterations 264-265]** ~~**A multi-line loop after `;` loops FOR EVER**~~: `n=0; while [ ... ]`
   with `do` on the next line prints "while: expected 'do'" without end,
   in this and earlier builds. The loop reads its condition from the raw
   line, which here starts with `n=0;`. The same-line fault class
@@ -1121,10 +1122,10 @@ of this file:
   against 6936, where only the second copy carried the `ARGC @ 1 =`
   multi-line arm; the two are now a single `DISPATCH-GROUP`. Covered
   by `tests/diff/cases/multiline-group-segment.sh`.
-- **`&` is treated as a line terminator, not a list terminator.**
+- **[Fixed by the command tree, Iterations 264-265]** ~~**`&` is treated as a line terminator, not a list terminator.**~~
   `true & echo after` passes `&` and `echo` and `after` as arguments
   to `true`. A command may follow `&` on the same line.
-- **`$( (list) )` is read as arithmetic.** POSIX requires the space to
+- **[Fixed by the command tree, Iterations 264-265]** ~~**`$( (list) )` is read as arithmetic.**~~ POSIX requires the space to
   disambiguate a command substitution whose first token is a subshell
   from `$((` arithmetic expansion; this shell ignores it, so
   `x=$( (echo n) )` yields the empty string. `$((echo n))` likewise
@@ -1136,7 +1137,7 @@ of this file:
   `esac` is rebuilt from them. Pending words also got text of their own,
   as the rest after `;` did in 255, so a function called in one arm no
   longer corrupts the next.
-- **Content after a nested `fi` on the same line is dropped**,
+- **[Fixed by the command tree, Iterations 264-265]** ~~**Content after a nested `fi` on the same line is dropped**~~,
   silently. The un-nested form works.
 
   The last four are one fault with four faces: the line is the unit of
@@ -1633,14 +1634,12 @@ before anything else, because every number here is relative to it.
    endless loop after `;`, and the saved-rest-of-line hazard 255 and 257
    kept finding. Staged A (parser and tree printer) to D (measure);
    the new path is built beside the old one until it passes everything.
-   **Stage A done in Iteration 263** (`tree.4`, `tests/parse`), **Stage B
-   in 264**: the executor runs beside the old path, selected by
-   `RELF_TREE=1`, and passes everything the old path passes except four
-   shell assertions that encode the old path's non-POSIX behaviour. It
-   fixes all 158 of `tests/matrix`'s known failures and five POSIX cases,
-   and uses 39-43% less CPU on the benchmark scripts. **Stage C - make it
-   the only path and delete the old machinery - is the next piece of
-   work**; COMMAND-TREE-PLAN.md lists what it involves.
+   **Stages A-C done in Iterations 263-265**: `tree.4` parses and
+   executes; the line-based shell is deleted (343 definitions, 3,168
+   lines of `shell.4`); `tests/matrix` passes 420 of 420 and
+   `tests/posix` 44 of 46. **Stage D - profile again and decide on
+   compiling trees to Forth - is next**, alongside the POSIX gaps below
+   (pathname expansion, non-whitespace `IFS`, `set -e`, `trap`).
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while
