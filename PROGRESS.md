@@ -267,6 +267,7 @@ do not trust the absence of a line below.
 - **269** — echo/printf/true/false builtins; exec without fork; command location cache
 - **270** — non-whitespace IFS (tests/posix 46/46); set -e -u -x -f -n -o, $-, `.`, exec, type, hash
 - **271** — trap and signals; kill, umask, times, local; `set` lists variables; Ctrl-C at the prompt
+- **272** — hashed variable index; `set` on an empty table; size lines split
 
 ### Not tied to an iteration
 
@@ -16150,3 +16151,54 @@ leaves the shell running", which the previous build also fails.
 tests/verify: shell files 69 -> 70, assertions 597 -> 599; sizes
 x86-64 97,936 -> 106,488 - the engine's code grew 1,171 bytes and its
 stripped file crossed a page (+4,096), the shell image grew 4,456.
+
+## Iteration 272: a hashed variable table
+
+GOALS.md's item 7. `FIND-SHVAR` compared the name with every variable:
+a loop doing a few lookups an iteration took 220 ms with no variables,
+308 with 50 and 1,007 with 500 (dash: 7-8 ms throughout), and every
+`$HOME` or `$PATH` - environment variables, not in the table - paid the
+whole scan before `getenv`.
+
+**The index.** `SHVAR-INDEX` is open addressing over the existing table:
+a slot holds a variable's number plus one, or 0, and the index is at
+least twice the table's capacity, so at most half full. `SHVAR-HASHES`
+keeps each name's hash, so most slots are rejected without comparing
+names. A new variable is inserted; a removal (which moves the last entry
+into the hole) or a growing table marks the index stale, and the next
+lookup rebuilds it. `MAIN` marks it stale too, since its buffer is new
+in every process image.
+
+**Two measurements changed the first version.** Its hash, h*31+c, gave
+`var_0` .. `var_499` nearly consecutive values, and linear probing made
+one long run of them: 500 variables still cost 290 ms, and the profile
+was FIND-SHVAR from end to end. FNV-1a with a final mix fixed that (500
+variables: 257 ms). And hashing a name costs more than scanning a table
+of two or three variables - the loop benchmark ran 9% slower - so up to
+eight variables `FIND-SHVAR-SCAN` compares first characters and then
+names, as before but without `DO`/`I` (`I` is a colon word, and the
+first rewrite with it still cost 2% in dispatches). Now: 0 variables
+226 ms, 50 229, 500 252; the benchmarks' dispatch counts are within
+half a percent of 271's, and their times within the noise.
+
+**A crash found on the way**: `set` with no shell variables at all ran
+its sort loop as `0 1 ?DO`, which in this kernel runs through every
+number (`?DO` skips only when start equals limit). `run-traps` had not
+caught it because its script defines variables first; `run-limits`
+now checks `env -i ... set`, which the previous build fails.
+
+**The comparison itself went wrong once**: the "previous build" files
+were extracted before 271 was committed, so a first profile compared
+272 with 270 and blamed this iteration for 271's traps and builtins. The
+benchmark's baseline is now taken from HEAD after each commit.
+
+**Size lines split.** `tests/verify`'s `size:x86_64` and `size:i386` are
+the stripped engine plus the shell image, and move in 4 KB steps when the
+engine's file crosses a page. Four new lines give the parts: the
+engine's code (`size`'s text) and each shell image.
+
+`tests/diff/cases/variables-272.sh` (300 variables, a third unset, one
+recreated, a local, exported and unset ones) matches bash.
+
+tests/verify: size:engine-code-*, size:image-* new; diff cases 35 -> 36,
+parse verdicts 141 -> 142, shell assertions 599 -> 600; sizes.

@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,882    kernel-shell.img     71,504
-    32-bit   kernel32.img   8,370    kernel32-shell.img   66,340
+    64-bit   kernel.img     8,882    kernel-shell.img     72,064
+    32-bit   kernel32.img   8,370    kernel32-shell.img   66,880
 
 **Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1664,7 +1664,11 @@ before anything else, because every number here is relative to it.
    shell surviving Ctrl-C. Left of dash's builtins: `jobs`, `fg`, `bg`
    (job control); `set` lists only the shell's own variables, not the
    whole environment.
-7. **A hashed variable table**; functions and builtins likewise.
+7. ~~**A hashed variable table**~~ **done in Iteration 272**: an index
+   over the table, used past eight variables; 500 variables no longer
+   cost a scan per lookup (a loop 1,007 -> 252 ms). Functions (16 at
+   most) and builtins (a linked list, first-character filtered) are
+   still searched in order - worth it only if a profile says so.
 8. **Words encoded at parse time, and a one-pass expander**, `$(...)`
    parsed once and kept with the word (dash's `CTLESC`/`CTLVAR`/
    `CTLBACKQ`). The largest item: expansion is 40-75% of the

@@ -1487,6 +1487,7 @@ VARIABLE SUBLIST-XT
   FORTH-WORDLIST CURRENT !
   TIB SRC !  0 SID !
   INCLUDE-BUFFER INCLUDE-POINTER !
+  0 SHVAR-INDEX-OK? !     \ its buffer is new: build it on the first lookup
   RUN-SOURCES ;
 
 \ ==================================================================

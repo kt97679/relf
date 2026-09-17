@@ -501,12 +501,50 @@ MAX-SHVARS SHVAR-NAME-MAX * BUFFER: SHVAR-NAMES
 MAX-SHVARS CELLS BUFFER: SHVAR-VALS    \ each value's block; 0 before it is set
 MAX-SHVARS CELLS BUFFER: SHVAR-VCAPS   \ that block's size
 MAX-SHVARS BUFFER: SHVAR-RO   \ readonly flag per slot
+MAX-SHVARS CELLS BUFFER: SHVAR-HASHES   \ each name's hash (Iteration 272)
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
 CREATE EMPTY-CSTR 0 C,
 : SHVAR-NAME-SLOT ( i --- addr )   SHVAR-NAME-MAX * SHVAR-NAMES + ;
 : SHVAR-VALUE-SLOT ( i --- addr )
   CELLS SHVAR-VALS + @ ?DUP 0= IF EMPTY-CSTR THEN ;
+
+\ ---- the index (Iteration 272) ----
+\ FIND-SHVAR searched every variable, comparing names: 25 microseconds a
+\ lookup with 500 variables, and every $HOME or $PATH - which live in the
+\ environment, not the table - paid the whole scan before getenv. dash
+\ hashes (DASH-COMPARISON.md). SHVAR-INDEX is open addressing over the
+\ table: each slot holds a variable's number plus one, or 0; it is at
+\ least twice the table's capacity, so never more than half full. An
+\ added variable is inserted; a removal (which moves the last entry) or
+\ a growing table marks the index stale, and the next lookup rebuilds
+\ it. SHVAR-HASHES keeps each name's hash, so most slots are rejected
+\ without comparing names.
+256 CONSTANT INDEX-START
+INDEX-START CELLS BUFFER: SHVAR-INDEX
+VARIABLE SHVAR-INDEX-SIZE   INDEX-START SHVAR-INDEX-SIZE !
+VARIABLE SHVAR-INDEX-OK?    0 SHVAR-INDEX-OK? !
+
+: NAME-HASH ( c-addr --- h )
+  \ FNV-1a with a final mix. The first version, h*31+c, gave var_0 ..
+  \ var_499 nearly consecutive hashes, and linear probing turned them
+  \ into one long run that most lookups walked.
+  2166136261 SWAP
+  BEGIN DUP C@ ?DUP WHILE ROT XOR 16777619 * SWAP 1+ REPEAT DROP
+  DUP 16 RSHIFT XOR  73244475 *  DUP 16 RSHIFT XOR ;
+: IDX-MASK ( --- m )   SHVAR-INDEX-SIZE @ 1- ;
+: IDX-SLOT ( k --- addr )   CELLS SHVAR-INDEX + ;
+: INDEX-INSERT ( i --- )
+  DUP CELLS SHVAR-HASHES + @ IDX-MASK AND
+  BEGIN DUP IDX-SLOT @ WHILE 1+ IDX-MASK AND REPEAT
+  IDX-SLOT SWAP 1+ SWAP ! ;
+: INDEX-REBUILD ( --- )
+  INDEX-START BEGIN DUP SHVAR-CAP @ 2* < WHILE 2* REPEAT
+  DUP CELLS ENSURE-BUFFER SHVAR-INDEX
+  DUP SHVAR-INDEX-SIZE !
+  SHVAR-INDEX SWAP CELLS 0 FILL
+  SHVAR-COUNT @ 0 ?DO I INDEX-INSERT LOOP
+  -1 SHVAR-INDEX-OK? ! ;
 
 : GROW-SHVARS ( --- f )
 \ Room for one more variable? Doubles the table if it can.
@@ -517,7 +555,8 @@ CREATE EMPTY-CSTR 0 C,
   DUP CELLS ENSURE-BUFFER SHVAR-VALS
   DUP CELLS ENSURE-BUFFER SHVAR-VCAPS
   DUP ENSURE-BUFFER SHVAR-RO
-  SHVAR-CAP !  -1 ;
+  DUP CELLS ENSURE-BUFFER SHVAR-HASHES
+  SHVAR-CAP !  0 SHVAR-INDEX-OK? !  -1 ;
 
 VARIABLE SVV-SRC
 VARIABLE SVV-I
@@ -540,18 +579,33 @@ VARIABLE SVV-NEW
     SVV-SRC @ SVV-I @ CELLS SHVAR-VALS + @ SVV-LEN @ 1+ MOVE
   THEN ;
 
-VARIABLE FS-I
 
-: FIND-SHVAR ( name-addr --- i | -1 )  \ linear scan; name-addr is a
-                                         \ NUL-terminated C string.
-  SHADOW{ | FS-I }
-  BEGIN FS-I @ SHVAR-COUNT @ < WHILE
-    DUP FS-I @ SHVAR-NAME-SLOT CSTR= IF
-      DROP FS-I @ EXIT
-    THEN
-    FS-I @ 1+ FS-I !
+VARIABLE FSS-I
+: FIND-SHVAR-SCAN ( name-addr --- i | -1 )   \ a small table: every entry
+  \ A variable, not DO and I - I is a colon word, and this is hot.
+  0 FSS-I !
+  BEGIN FSS-I @ SHVAR-COUNT @ < WHILE
+    FSS-I @ SHVAR-NAME-SLOT                  ( name slot )
+    OVER C@ OVER C@ = IF
+      OVER CSTR= IF FSS-I @ NIP EXIT THEN
+    ELSE DROP THEN
+    FSS-I @ 1+ FSS-I !
+  REPEAT DROP -1 ;
+
+: FIND-SHVAR ( name-addr --- i | -1 )   \ through the index
+  \ Up to eight variables a scan is cheaper than hashing the name - the
+  \ loop benchmark ran 9% slower through the index alone.
+  SHVAR-COUNT @ 8 > 0= IF FIND-SHVAR-SCAN EXIT THEN
+  SHVAR-INDEX-OK? @ 0= IF INDEX-REBUILD THEN
+  DUP NAME-HASH                             ( name h )
+  DUP IDX-MASK AND                          ( name h k )
+  BEGIN DUP IDX-SLOT @ ?DUP WHILE           ( name h k i+1 )
+    1- DUP CELLS SHVAR-HASHES + @ 3 PICK = IF
+      DUP SHVAR-NAME-SLOT 4 PICK CSTR= IF NIP NIP NIP EXIT THEN
+    THEN DROP
+    1+ IDX-MASK AND
   REPEAT
-  DROP -1 ;
+  DROP 2DROP -1 ;
 
 : GET-SHVAR ( name-addr --- value-addr | 0 )
   FIND-SHVAR
@@ -610,6 +664,8 @@ VARIABLE SV-IDX
       EXIT
     THEN
     SHVAR-COUNT @ DUP 1+ SHVAR-COUNT !
+    SV-NAME @ NAME-HASH OVER CELLS SHVAR-HASHES + !
+    SHVAR-INDEX-OK? @ IF DUP INDEX-INSERT THEN
     DUP SHVAR-RO + 0 SWAP C!        \ new slots start writable
   THEN
   SV-IDX !
@@ -645,7 +701,9 @@ VARIABLE SV-IDX
     DUP CELLS SHVAR-VALS + @   2 PICK CELLS SHVAR-VALS + !
     DUP CELLS SHVAR-VCAPS + @  2 PICK CELLS SHVAR-VCAPS + !
     DUP SHVAR-RO + C@          2 PICK SHVAR-RO + C!
+    DUP CELLS SHVAR-HASHES + @ 2 PICK CELLS SHVAR-HASHES + !
   THEN
+  0 SHVAR-INDEX-OK? !
   \ The last slot is free now: no block, so the next variable to take
   \ it allocates its own instead of freeing one it does not own.
   0 OVER CELLS SHVAR-VALS + !  0 OVER CELLS SHVAR-VCAPS + !
@@ -4527,23 +4585,24 @@ VARIABLE LOCALS#
 
 \ set with no arguments: the variables, sorted, quoted for reuse
 256 BUFFER: SV-ORDER
-: SV-NAME ( k --- c-addr )   CELLS SV-ORDER + @ SHVAR-NAME-SLOT ;
+: SVO-NAME ( k --- c-addr )   CELLS SV-ORDER + @ SHVAR-NAME-SLOT ;
 : SV-LESS? ( j k --- f )
-  SV-NAME DUP CSTRLEN ROT SV-NAME DUP CSTRLEN 2SWAP COMPARE 0< ;
+  SVO-NAME DUP CSTRLEN ROT SVO-NAME DUP CSTRLEN 2SWAP COMPARE 0< ;
 : LIST-VARIABLES ( --- )
   SHVAR-COUNT @ CELLS 1 MAX ENSURE-BUFFER SV-ORDER
   SHVAR-COUNT @ 0 ?DO I SV-ORDER I CELLS + ! LOOP
-  SHVAR-COUNT @ 1 ?DO
+  \ `n 1 ?DO` with n = 0 would run through every number: guarded
+  SHVAR-COUNT @ 1 > IF SHVAR-COUNT @ 1 DO
     I BEGIN
       DUP 0> IF DUP DUP 1- SV-LESS? ELSE 0 THEN
     WHILE
       DUP CELLS SV-ORDER + DUP 1 CELLS - 2DUP @ SWAP @ ROT ! SWAP !
       1-
     REPEAT DROP
-  LOOP
+  LOOP THEN
   SHVAR-COUNT @ 0 ?DO
-    I SV-NAME DUP CSTRLEN TYPE 61 EMIT
-    I SV-NAME LOOKUP-VAR ?DUP IF SQUOTED. ELSE S" ''" TYPE THEN CR
+    I SVO-NAME DUP CSTRLEN TYPE 61 EMIT
+    I SVO-NAME LOOKUP-VAR ?DUP IF SQUOTED. ELSE S" ''" TYPE THEN CR
   LOOP ;
 
 ' DO-TRAP         S" trap"     BUILTIN

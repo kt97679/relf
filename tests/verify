@@ -167,6 +167,13 @@ S=$(sh tests/sizes 2>/dev/null)
 # labelled "shell.4" inside each - so track which section we are in.
 emit size:x86_64 "$(echo "$S" | awk '/^== x86-64/{s=1} /^== i386/{s=0} s && /^shell.4 /{print $5; exit}')"
 emit size:i386   "$(echo "$S" | awk '/^== i386/{s=1} /^== not a shell/{s=0} s && /^shell.4 /{print $5; exit}')"
+# The parts separately (Iteration 272): the totals above move in 4 KB
+# steps whenever the stripped engine crosses a page, which hides what
+# changed. The engine's code (size's text), and each shell image.
+emit size:engine-code-x86_64 "$(size relf 2>/dev/null | awk 'NR==2 {print $1}')"
+emit size:engine-code-i386   "$(size relf32 2>/dev/null | awk 'NR==2 {print $1}')"
+emit size:image-x86_64       "$(wc -c < kernel-shell.img | tr -d ' ')"
+emit size:image-i386         "$(wc -c < kernel32-shell.img | tr -d ' ')"
 
 # ---------------------------------------------------------------
 # Compare, or record.
