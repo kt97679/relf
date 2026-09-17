@@ -1171,6 +1171,21 @@ VARIABLE IFS-CACHED?
     -1 ARGS-OVERFLOW? !
   THEN ;
 
+VARIABLE PATTERN-CAPTURE?   \ a trim's pattern is being captured (EMIT-QUOTED)
+VARIABLE PATTERN-NEXT?      \ ... the next capture is one
+VARIABLE QUOTE-DEPTH        \ inside real double quotes
+
+\ Quoted characters in a trim's pattern are literal (XCU 2.6.2): while
+\ one is captured, a quoted * ? [ or \ is written with a backslash before
+\ it, and the trim matches with GM-ESCAPES? on. QUOTE-DEPTH counts real
+\ double quotes, which CAPTURE-BRACED-WORD's forced IN-DQ-CONTEXT? hides.
+\ (Iteration 273: `${x#*\*}` and `${z#\[ab\]}` treated them as patterns.)
+: EMIT-QUOTED ( c --- )
+  PATTERN-CAPTURE? @ IF
+    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR IF 92 EMIT-TOK-CHAR THEN
+  THEN
+  EMIT-TOK-CHAR ;
+
 \ ---- shell options (Iteration 270): set -e -u -x -f -n ----
 VARIABLE OPT-ERREXIT
 VARIABLE OPT-NOUNSET
@@ -1201,7 +1216,7 @@ DEFER GLOB-FIELDS-CALL
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
   IN-DQ-CONTEXT? @ TOKEN-IS-ASSIGN-PREFIX? OR IF
-    EMIT-TOK-CHAR
+    QUOTE-DEPTH @ IF EMIT-QUOTED ELSE EMIT-TOK-CHAR THEN
     EXIT
   THEN
   DUP IFS-CHAR? IF
@@ -2183,7 +2198,11 @@ VARIABLE EBW-NAMELEN
   \
   \ Field splitting is suppressed: a pattern is one pattern, and an
   \ assigned value is one value.
-  IN-DQ-CONTEXT? @ TOK-OUT @ OUT-BASE - SHADOW{ IN-DQ-CONTEXT? CBW-START }
+  \ PATTERN-NEXT? says whether this is a trim's pattern; the quote depth
+  \ starts again at 0 inside it - `"${x#*}"`'s star is still a pattern.
+  PATTERN-NEXT? @  0 PATTERN-NEXT? !  0
+  IN-DQ-CONTEXT? @ TOK-OUT @ OUT-BASE -
+  SHADOW{ PATTERN-CAPTURE? QUOTE-DEPTH IN-DQ-CONTEXT? CBW-START }
   -1 IN-DQ-CONTEXT? !
   EXPAND-BRACED-WORD
   \ CBW-START is an OFFSET, and the rewind is by offset: the buffer may
@@ -2238,6 +2257,24 @@ VARIABLE EBW-NAMELEN
   DUP 0= IF DROP ELSE
     TYPE0-TO-TOK-SPLIT
   THEN ;
+
+\ A trim's pattern may hold another ${...} - `${d%/${d##*/}}` - whose
+\ expansion reuses VARNAME-BUF and the trim flags. They are kept on a
+\ small stack around the capture (Iteration 273; nested trims used the
+\ inner one's name and flags).
+256 BUFFER: TRIM-SAVES
+VARIABLE TRIM-SAVES#
+: SAVE-TRIM-STATE ( --- )
+  TRIM-SAVES# @ 66 + ENSURE-BUFFER TRIM-SAVES
+  VARNAME-BUF  TRIM-SAVES TRIM-SAVES# @ +  64 MOVE
+  PEW-SUFFIX? @ 0<> 1 AND  TRIM-SAVES TRIM-SAVES# @ + 64 + C!
+  PEW-LONGEST? @ 0<> 1 AND  TRIM-SAVES TRIM-SAVES# @ + 65 + C!
+  66 TRIM-SAVES# +! ;
+: RESTORE-TRIM-STATE ( --- )
+  -66 TRIM-SAVES# +!
+  TRIM-SAVES TRIM-SAVES# @ +  VARNAME-BUF  64 MOVE
+  TRIM-SAVES TRIM-SAVES# @ + 64 + C@ 0<> PEW-SUFFIX? !
+  TRIM-SAVES TRIM-SAVES# @ + 65 + C@ 0<> PEW-LONGEST? ! ;
 
 : EXPAND-BRACED-VAR ( --- )
   \ TOK-POS is right after the opening '{'.
@@ -2323,7 +2360,8 @@ VARIABLE EBW-NAMELEN
       TOK-POS @ 1+ TOK-POS !
       -1 PEW-LONGEST? !
     THEN
-    CAPTURE-BRACED-WORD
+    -1 PATTERN-NEXT? !
+    SAVE-TRIM-STATE CAPTURE-BRACED-WORD RESTORE-TRIM-STATE
     TRIM-PARAM-CALL
     EXIT
   THEN
@@ -2335,7 +2373,8 @@ VARIABLE EBW-NAMELEN
       TOK-POS @ 1+ TOK-POS !
       -1 PEW-LONGEST? !
     THEN
-    CAPTURE-BRACED-WORD
+    -1 PATTERN-NEXT? !
+    SAVE-TRIM-STATE CAPTURE-BRACED-WORD RESTORE-TRIM-STATE
     TRIM-PARAM-CALL
     EXIT
   THEN
@@ -2446,7 +2485,7 @@ VARIABLE EBW-NAMELEN
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 39 <> ELSE 0 THEN
   WHILE
-    TOK-POS @ C@ EMIT-TOK-CHAR
+    TOK-POS @ C@ EMIT-QUOTED
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
@@ -2459,6 +2498,7 @@ VARIABLE EBW-NAMELEN
   \ characters inside double quotes.
   -1 TOK-WAS-QUOTED? !
   -1 IN-DQ-CONTEXT? !
+  1 QUOTE-DEPTH +!
   TOK-POS @ 1+ TOK-POS !
   BEGIN
     TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 34 <> ELSE 0 THEN
@@ -2471,13 +2511,13 @@ VARIABLE EBW-NAMELEN
         \ before $ ` " \ (and newline). '$' and '`' were missing, so
         \ "\$a" kept its backslash instead of producing a literal $.
         DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR IF
-          EMIT-TOK-CHAR
+          EMIT-QUOTED
         ELSE
-          92 EMIT-TOK-CHAR EMIT-TOK-CHAR
+          92 EMIT-QUOTED EMIT-QUOTED
         THEN
         TOK-POS @ 1+ TOK-POS !
       ELSE
-        92 EMIT-TOK-CHAR
+        92 EMIT-QUOTED
         TOK-POS @ 1+ TOK-POS !
       THEN
     ELSE TOK-POS @ C@ 36 = IF
@@ -2486,10 +2526,11 @@ VARIABLE EBW-NAMELEN
       TOK-POS @ 1+ TOK-POS !
       96 EXPAND-CMDSUB
     ELSE
-      TOK-POS @ C@ EMIT-TOK-CHAR
+      TOK-POS @ C@ EMIT-QUOTED
       TOK-POS @ 1+ TOK-POS !
     THEN THEN THEN
   REPEAT
+  -1 QUOTE-DEPTH +!
   0 IN-DQ-CONTEXT? !
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
 
@@ -2499,7 +2540,7 @@ VARIABLE EBW-NAMELEN
   -1 TOK-WAS-QUOTED? !
   TOK-POS @ 1+ TOK-POS !
   TOK-POS @ TOK-END @ < IF
-    TOK-POS @ C@ EMIT-TOK-CHAR
+    TOK-POS @ C@ EMIT-QUOTED
     TOK-POS @ 1+ TOK-POS !
   THEN ;
 
@@ -5714,6 +5755,64 @@ VARIABLE FPM-I
 : FPM-MATCHES? ( --- f )
   FPM-PAT-ADDR @ FPM-PAT-LEN @ FPM-CANDIDATE GLOB-MATCH ;
 
+\ ---- trims without trying every length (Iteration 273) ----
+\ `${s##*/}` tried every prefix with GLOB-MATCH: O(n^2), and half of the
+\ str benchmark. A pattern that is a literal with at most one star, at
+\ one end - *LIT, LIT*, LIT, * - is answered by one substring search.
+\ Anything with ? [ \ or another star takes the general path.
+VARIABLE TF-LIT
+VARIABLE TF-LEN
+VARIABLE TF-LEAD?
+VARIABLE TF-TRAIL?
+: TRIM-SHAPE ( pat len --- f )
+  0 TF-LEAD? !  0 TF-TRAIL? !
+  DUP IF OVER C@ 42 = IF -1 TF-LEAD? !  1 /STRING THEN THEN
+  TF-LEAD? @ 0= IF
+    DUP IF 2DUP + 1- C@ 42 = IF -1 TF-TRAIL? !  1- THEN THEN
+  THEN
+  TF-LEN !  TF-LIT !
+  TF-LIT @ TF-LEN @ + TF-LIT @ ?DO
+    I C@ DUP 42 = OVER 63 = OR OVER 91 = OR SWAP 92 = OR IF UNLOOP 0 EXIT THEN
+  LOOP -1 ;
+: LIT-AT? ( addr --- f )   TF-LEN @ TF-LIT @ TF-LEN @ COMPARE 0= ;
+: STARTS-WITH? ( a n --- f )
+  TF-LEN @ < IF DROP 0 EXIT THEN LIT-AT? ;
+: ENDS-WITH? ( a n --- f )
+  DUP TF-LEN @ < IF 2DROP 0 EXIT THEN + TF-LEN @ - LIT-AT? ;
+: FIND-FWD ( a n --- pos | -1 )   \ the literal's first occurrence
+  TF-LEN @ - DUP 0< IF 2DROP -1 EXIT THEN
+  1+ 0 ?DO DUP I + LIT-AT? IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
+: FIND-BWD ( a n --- pos | -1 )   \ its last
+  TF-LEN @ - DUP 0< IF 2DROP -1 EXIT THEN
+  BEGIN DUP 0< 0= WHILE
+    2DUP + LIT-AT? IF NIP EXIT THEN
+    1-
+  REPEAT 2DROP -1 ;
+
+: TRIM-FAST ( --- len -1 | 0 )   \ FIND-TRIM-LEN's arguments are in its locals
+  FPM-PAT-ADDR @ FPM-PAT-LEN @ TRIM-SHAPE 0= IF 0 EXIT THEN
+  FPM-VAL-ADDR @ FPM-VAL-LEN @
+  TF-LEAD? @ IF                               \ *LIT
+    FPM-SUFFIX? @ IF
+      ENDS-WITH? IF FPM-LONGEST? @ IF FPM-VAL-LEN @ ELSE TF-LEN @ THEN ELSE -1 THEN
+    ELSE
+      FPM-LONGEST? @ IF FIND-BWD ELSE FIND-FWD THEN
+      DUP 0< 0= IF TF-LEN @ + THEN
+    THEN
+    -1 EXIT
+  THEN
+  TF-TRAIL? @ IF                              \ LIT*
+    FPM-SUFFIX? @ IF
+      FPM-LONGEST? @ IF FIND-FWD ELSE FIND-BWD THEN
+      DUP 0< 0= IF FPM-VAL-LEN @ SWAP - THEN
+    ELSE
+      STARTS-WITH? IF FPM-LONGEST? @ IF FPM-VAL-LEN @ ELSE TF-LEN @ THEN ELSE -1 THEN
+    THEN
+    -1 EXIT
+  THEN
+  FPM-SUFFIX? @ IF ENDS-WITH? ELSE STARTS-WITH? THEN   \ LIT
+  IF TF-LEN @ ELSE -1 THEN -1 ;
+
 : FIND-TRIM-LEN ( pat-addr pat-len val-addr val-len suffix? longest? --- match-len | -1 )
   \ One word replacing what were four near-identical ones
   \ (FIND-SHORTEST/LONGEST-PREFIX/SUFFIX-LEN). They only ever differed
@@ -5724,6 +5823,7 @@ VARIABLE FPM-I
   \ matches at all - including 0 and the full value length - in which
   \ case POSIX says the value is emitted unchanged.
   SHADOW{ FPM-PAT-ADDR FPM-PAT-LEN FPM-VAL-ADDR FPM-VAL-LEN FPM-SUFFIX? FPM-LONGEST? | FPM-I }
+  TRIM-FAST IF EXIT THEN
   FPM-LONGEST? @ IF FPM-VAL-LEN @ FPM-I ! THEN
   BEGIN
     FPM-MATCHES? 0=
@@ -5767,7 +5867,8 @@ VARIABLE TP-MATCH-LEN
   DUP 0= IF DROP EXIT THEN
   DUP CSTRLEN TP-VAL-LEN ! TP-VAL-ADDR !
   PEWORD-BUF PEWORD-LEN @ TP-VAL-ADDR @ TP-VAL-LEN @
-  PEW-SUFFIX? @ PEW-LONGEST? @ FIND-TRIM-LEN
+  PEW-SUFFIX? @ PEW-LONGEST? @
+  -1 GM-ESCAPES? !  FIND-TRIM-LEN  0 GM-ESCAPES? !
   TP-MATCH-LEN !
   TP-MATCH-LEN @ -1 = IF
     TP-VAL-ADDR @ TP-VAL-LEN @ TYPE-N-TO-TOK

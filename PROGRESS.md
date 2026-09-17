@@ -268,6 +268,7 @@ do not trust the absence of a line below.
 - **270** — non-whitespace IFS (tests/posix 46/46); set -e -u -x -f -n -o, $-, `.`, exec, type, hash
 - **271** — trap and signals; kill, umask, times, local; `set` lists variables; Ctrl-C at the prompt
 - **272** — hashed variable index; `set` on an empty table; size lines split
+- **273** — EXPANSION-PLAN.md; its Stage 0: trims by substring search; quoted and nested trim patterns
 
 ### Not tied to an iteration
 
@@ -16202,3 +16203,51 @@ recreated, a local, exported and unset ones) matches bash.
 
 tests/verify: size:engine-code-*, size:image-* new; diff cases 35 -> 36,
 parse verdicts 141 -> 142, shell assertions 599 -> 600; sizes.
+
+## Iteration 273: EXPANSION-PLAN.md, and its Stage 0
+
+**The plan.** GOALS.md's item 8 gets its document, as the command tree
+did: `EXPANSION-PLAN.md`. Measured first: expansion is 34-43% of the
+benchmarks' dispatches, and pattern matching 51% of `str`'s; per
+operation `y=$x$x` is 6.3 µs (dash 0.09), `$((...))` 11.9 (0.21). The
+expander rediscovers on every run what the lexer already knew - quoting,
+where each expansion ends, assignments, split and pattern characters -
+and parses `$(...)` a third time in the child. The plan: words encoded
+by the lexer with one control introducer byte (so literal runs are one
+memchr and one MOVE), command substitutions kept as subtrees, an
+expander that splits only recorded regions and globs only flagged words;
+staged 0 (trims), A (encoding), B (expander beside the old one), C
+(switch and delete), D (arithmetic and subtrees).
+
+**Stage 0: trims.** `FIND-TRIM-LEN` tried every length with
+`GLOB-MATCH`, O(n^2) per `${s##*/}`. `TRIM-FAST` answers the patterns
+that are a literal with at most one star at one end - `*LIT`, `LIT*`,
+`LIT`, `*` - with one substring search (`FIND-FWD`, `FIND-BWD`,
+`STARTS-WITH?`, `ENDS-WITH?`); anything with `?`, `[`, `\` or another
+star takes the general path. `str`: 22.8 M dispatches -> 11.9 M, time
+0.79 of 272's; the other benchmarks unchanged.
+
+**Two older faults**, found by the new differential case
+(`trims-273.sh`, every form against bash; dash agrees with bash on all
+of it):
+- Quoted pattern characters were patterns: `${x#*\*}` stripped nothing
+  and `${z#\[ab\]}` matched `a`. While a trim's pattern is captured,
+  `EMIT-QUOTED` now writes a quoted `* ? [ \` with a backslash, and the
+  trim matches with `GM-ESCAPES?` on. `QUOTE-DEPTH` counts real double
+  quotes, which `CAPTURE-BRACED-WORD`'s forced double-quote context had
+  hidden; it starts at 0 inside the pattern, since `"${x#*}"`'s star is
+  still a pattern.
+- A trim inside another trim's pattern - `${d%/${d##*/}}` - ran with the
+  inner one's variable name and flags. `SAVE-TRIM-STATE` and
+  `RESTORE-TRIM-STATE` keep them on a small stack around the capture.
+
+Both belong to the class Stage A removes structurally.
+
+A slip on the way: `EMIT-QUOTED` was first placed after a word that uses
+it; the load failed, the build saved a 21 KB image without a shell in
+it, and running that hung the session until the tool's time limit. The
+lesson is old - every command that runs a freshly built shell gets a
+timeout.
+
+tests/verify: parse verdicts 142 -> 143 (the new case); the shell
+images grew 1,096 bytes (x86-64) and 1,024 (i386), the engine not at all.
