@@ -270,6 +270,7 @@ do not trust the absence of a line below.
 - **272** — hashed variable index; `set` on an empty table; size lines split
 - **273** — EXPANSION-PLAN.md; its Stage 0: trims by substring search; quoted and nested trim patterns
 - **274** — expansion Stage A: the lexer encodes each word; tree-dump -e; parse cases
+- **275** — expansion Stage B begun: the encoded path for simple words, behind RELF_EXP
 
 ### Not tied to an iteration
 
@@ -16299,3 +16300,42 @@ arithmetic - which the previous build fails. Everything else is
 unchanged: the encoding is written and not yet read.
 
 tests/verify: parse:encoded new (4); sizes.
+
+## Iteration 275: expansion Stage B - the encoded path, beside the old one
+
+`XE-TRY` in tree.4 expands a word from the encoding Stage A wrote:
+literal runs copied whole with `EMIT-RUN`, quoted runs, quoted
+characters, and plain parameters - `$name`, `${name}`, `${#name}`, the
+positional ones, `$@ $* $# $? $$ $! $-`. A word whose encoding holds
+anything else - an operator form, arithmetic, a command substitution, a
+tilde - is declined and `EXPAND-WORDS` scans it as before, so the two
+paths run side by side until Stage C. `RELF_EXP=1` selects it (as
+`RELF_TREE` did in 264); the word's node reaches the expander through
+`ARGV-NODES`/`EW-NODES`, filled by `ADD-WORD`.
+
+**Every suite passes both ways** - matrix 420/420, tests/diff 37,
+tests/posix 46/46, mrsh 21/21, the shell files - and
+`tests/shell/run-encoded` runs a battery under both paths and against
+bash, asserting all three agree.
+
+**One regression, from a subtlety worth recording.** A lone digit word
+is handed to the old expander as `"2"`, quoted, so that `echo 2 > f`
+is not read as `2>` (Iteration 264). Its encoding says a plain `2`, so
+the encoded path produced an unquoted digit and the redirection swallowed
+the argument: `g 1 2 > file` lost `$2`. Those synthesised words now keep
+to the old path.
+
+**Two measured decisions.** The first version re-scanned each encoding
+to decide whether it could expand it; the lexer knows already, so it
+sets `WF-ENC-SIMPLE` and `XE-TRY` is a flag test. And parameter names
+now end with a NUL byte in the encoding rather than a control pair, so a
+lookup reads the name in place instead of copying it to a buffer.
+
+**Where it stands: about neutral.** Dispatches against the scanning
+path: `str` -2.7%, `loop` +1.5%, `fn` +1.5%, `arith` +0.8%. That is
+expected at this point - the words in these benchmarks are short, every
+unquoted value is still split character by character, and arithmetic
+still declines. The win the plan is for comes with the rest of the
+constructs and with splitting by recorded regions.
+
+tests/verify unchanged apart from sizes and one new shell file.

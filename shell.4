@@ -2680,6 +2680,21 @@ VARIABLE PW-ULEN   \ username length
     SCAN-TOKEN-CHAR
   REPEAT ;
 
+1 CELLS ARGS-BUFFER: ARGV-NODES   \ each word's tree node, when it has one
+1 CELLS ARGS-BUFFER: EW-NODES     \ ... copied like EW-ARGV (Iteration 275)
+DEFER ENC-EXPAND-CALL   ( node --- f )   \ tree.4 sets it; only reached
+                                         \ when OPT-ENC? is set, which
+                                         \ tree.4's MAIN decides
+VARIABLE OPT-ENC?       \ RELF_EXP=1: the encoded path, where it can
+
+: EMIT-RUN ( c-addr u --- )   \ a whole run of literal bytes
+  DUP 0= IF 2DROP EXIT THEN
+  BEGIN TOK-OUT @ OVER + TOK-OUT-END @ > WHILE
+    GROW-OUT 0= IF 2DROP EXPANSION-TOO-LARGE EXIT THEN
+  REPEAT
+  TUCK TOK-OUT @ SWAP MOVE
+  TOK-OUT @ + TOK-OUT ! ;
+
 1 CELLS ARGS-BUFFER: EW-ARGV
 1 ARGS-BUFFER: EW-ARGQ
 1 ARGS-BUFFER: EW-LIT
@@ -2725,6 +2740,7 @@ VARIABLE EW-I
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
     ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
+    ARGV-NODES EW-I @ CELLS + @  EW-NODES EW-I @ CELLS + !
     ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
     ARGV-LITERAL EW-I @ + C@       EW-LIT EW-I @ + C!
     EW-I @ 1+ EW-I !
@@ -2760,7 +2776,11 @@ VARIABLE EW-I
     ARGC @ ROOM-FOR-ARG? IF
       TOK-OUT @ ARGV ARGC @ CELLS + !
       EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
-      SCAN-TOKEN
+      \ the encoded path where it can (EXPANSION-PLAN.md Stage B), else
+      \ this word is scanned as before
+      OPT-ENC? @ IF EW-NODES EW-I @ CELLS + @ ELSE 0 THEN
+      ?DUP IF ENC-EXPAND-CALL ELSE 0 THEN
+      IF TOK-END @ TOK-POS ! ELSE SCAN-TOKEN THEN
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
       \ POSIX: an unquoted expansion that produces nothing yields NO

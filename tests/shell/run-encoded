@@ -1,0 +1,35 @@
+#!/bin/sh
+# tests/shell/run-encoded - EXPANSION-PLAN.md Stage B (Iteration 275):
+# words expanded from their encoding must give exactly what the scanning
+# expander gives. RELF_EXP=1 selects the encoded path where it can take a
+# word - literal runs, quoted runs, quoted characters and plain
+# parameters - and declines the rest, so this battery exercises both.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+cat > "$t/battery.sh" <<'BAT'
+x=hello; y='a b'; z=; unset u
+echo plain a-b.c "$x" '$x' "pre${x}post" "a$x-b"
+echo $x $y "$y" ${x} ${#x} ${#y} "$z" [$z] "${z}x" $u "${u}" ${#u}
+set -- p1 "p 2" p3
+echo $# $1 "$1" $@ "$@" $* "$*" ${#1} "$@$x" "${x}${y}"
+printf '[%s]' $y; echo
+printf '[%s]' "$y"; echo
+IFS=:; v=a::b:; printf '[%s]' $v; echo; v2='x y'; printf '[%s]' $v2; echo; unset IFS
+echo 'q'"$x"'r' "\$x" "\\" '\' "a""b" '' ""
+echo ${x:-d} ${u:-d} ${u:=e} ${x#h} ${x%o} ~ $((1+1)) $(echo s) `echo b`
+w='a*b'; echo "$w" $w
+touch f1.txt f2.txt && echo *.txt "*.txt" $x*.txt
+g() { echo "in g: $1 $# $*"; }
+g one two
+echo "end $? $#"
+BAT
+out0=$(cd "$t" && "$SH" battery.sh 2>&1)
+out1=$(cd "$t" && RELF_EXP=1 "$SH" battery.sh 2>&1)
+assert_output_equals "the encoded path gives what the scanning one gives" "$out0" "$out1"
+# and both agree with bash, where it is available
+if command -v bash > /dev/null 2>&1; then
+    outb=$(cd "$t" && bash battery.sh 2>&1)
+    assert_output_equals "... and what bash gives" "$outb" "$out1"
+fi
+report

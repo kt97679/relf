@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,882    kernel-shell.img     76,544
-    32-bit   kernel32.img   8,370    kernel32-shell.img   71,148
+    64-bit   kernel.img     8,882    kernel-shell.img     78,104
+    32-bit   kernel32.img   8,370    kernel32-shell.img   72,600
 
 **Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1677,9 +1677,14 @@ before anything else, because every number here is relative to it.
    by substring search, `str` 0.79x - **and Stage A in 274**: the lexer
    writes each word's encoded form beside its text, with each command
    substitution's text kept separately, and `tree-dump -e` prints it;
-   `tests/parse` checks four encoded cases. Next: Stage B, the one-pass
-   expander beside the old one, then C (switch and delete) and D
-   (arithmetic compiled, substitutions as subtrees).
+   `tests/parse` checks four encoded cases. **Stage B begun in 275**:
+   the encoded path expands the words that hold only literal runs,
+   quoted runs, escapes and plain parameters, selected by `RELF_EXP=1`,
+   with every suite passing both ways; it is neutral so far, since the
+   splitting is still per character. Left: the operator forms,
+   arithmetic, substitutions and tildes, then region splitting, then C
+   (switch and delete) and D (arithmetic compiled, substitutions as
+   subtrees).
 9. **`vfork` or `posix_spawn`** as an engine primitive (about 75 µs per
    external command); after 4 and 5.
 10. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, superseded, and

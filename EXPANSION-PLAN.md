@@ -138,7 +138,16 @@ form, nested `${a:-${b:-"c"}}`, `$(case x in x) ...)`, backquotes with
 escaped backquotes, `$((...))` holding parameters, tildes in and out of
 assignments, a literal 0x81.
 
-**Stage B — the expander, beside the old one.** `EXPAND-ENC` producing
+**Stage B — the expander, beside the old one.** *(Iteration 275: begun.
+`XE-TRY` in tree.4 takes the words whose encoding holds only literal
+runs, quoted runs, quoted characters and plain parameters - the lexer
+marks those `WF-ENC-SIMPLE` - and declines the rest, which
+`EXPAND-WORDS` scans as before. `RELF_EXP=1` selects it; every suite
+passes both ways. Still to do: the operator forms, arithmetic,
+substitutions, tildes, and then the point of the exercise - splitting by
+recorded regions instead of per character, which is what will make it
+faster. As it stands it is about neutral: `str` -2.7% of the dispatches,
+the loop +1.5%.)* `EXPAND-ENC` producing
 the same ARGV the old path produces, chosen by an environment variable
 for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,

@@ -43,6 +43,7 @@
 4 CONSTANT WF-EXPAND     \ contains $ or `
 8 CONSTANT WF-SPECIAL    \ contains ~ * ? or a closed [...] (Iterations 266, 267)
 16 CONSTANT WF-BRACKET   \ scanning: a [ was seen
+32 CONSTANT WF-ENC-SIMPLE \ its encoding holds only what Stage B expands
 
 256 BUFFER: TREE-BUF
 VARIABLE TREE-TOP
@@ -206,7 +207,8 @@ DEFER PARSE-SUBLIST   \ for $(...): parse a compound list up to `)`
 1 CONSTANT ENC-SQ         \ a single-quoted run: nothing inside is special
 2 CONSTANT ENC-DQ         \ a double-quoted run: expansions still apply
 3 CONSTANT ENC-ESC        \ one quoted character follows
-4 CONSTANT ENC-VAR        \ an operator byte, a name, ENC-END, maybe a word
+4 CONSTANT ENC-VAR        \ an operator byte, a NUL-terminated name,
+                          \ and for the operator forms a word and ENC-END
 5 CONSTANT ENC-ARITH      \ $((...)): the expression, raw, then ENC-END
 6 CONSTANT ENC-CMDSUB     \ one byte: which substitution of this word
 7 CONSTANT ENC-TILDE      \ a position byte, the user name, ENC-END
@@ -235,6 +237,7 @@ VARIABLE ENC#
 VARIABLE ENC-MUTE         \ inside a raw region: the codes are not written
 VARIABLE ENC-SUBS         \ command substitutions recorded so far
 VARIABLE ENC-BASE         \ where this word's encoding starts in ENC-BUF
+VARIABLE ENC-COMPLEX?     \ this word holds what Stage B cannot expand yet
 VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
                           \ inside a $(...) are lexed too, and append here
 
@@ -272,6 +275,7 @@ VARIABLE ER-END
 64 BUFFER: ENC-SUB-POS    \ (start, end) source positions, a pair each
 : ENC-SUB-BEGIN ( --- )   \ before muting: at the start of the text
   ENC-MUTE @ IF EXIT THEN
+  -1 ENC-COMPLEX? !
   ENC-CMDSUB ENC-CODE,  ENC-SUBS @ ENC-SUB-BASE @ - ENC-C,
   ENC-SUBS @ 1+ 2* CELLS ENSURE-BUFFER ENC-SUB-POS
   SRC-POS @ ENC-SUB-POS ENC-SUBS @ 2* CELLS + !
@@ -334,7 +338,7 @@ DEFER SCAN-DOLLAR
 
 : SCAN-ARITH ( --- )      \ at $((: to past the matching ))
   3 SRC-SKIP
-  ENC-ARITH ENC-CODE,
+  ENC-ARITH ENC-CODE,  -1 ENC-COMPLEX? !
   SRC-POS @ >R  1 ENC-MUTE +!
   2
   BEGIN
@@ -362,10 +366,12 @@ DEFER SCAN-DOLLAR
   \ The words inside are lexed too, and each resets the encoding buffer:
   \ this word's encoding so far is kept across the parse (Iteration 274).
   ENC# @ >R  ENC-SUBS @ >R  ENC-MUTE @ >R  ENC-BASE @ >R  ENC-SUB-BASE @ >R
+  ENC-COMPLEX? @ >R
   TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
   0 TK-VALID? !  -1 NO-ALIAS? !
   PARSE-SUBLIST
   R> NO-ALIAS? !  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START !
+  R> ENC-COMPLEX? !
   R> ENC-SUB-BASE !  R> ENC-BASE !  R> ENC-MUTE !  R> ENC-SUBS !  R> ENC# !
   -1 ENC-MUTE +!
   ENC-SUB-END ;
@@ -410,8 +416,7 @@ DEFER SCAN-DOLLAR
   2 SRC-SKIP
   ENC-VAR ENC-CODE,
   0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND IF
-    1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME
-    ENC-END ENC-CODE,
+    1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME  0 ENC-C,
     0 SRC-C 125 = IF 1 SRC-SKIP THEN EXIT
   THEN
   \ the operator is only known after the name, so the name is written to
@@ -419,7 +424,8 @@ DEFER SCAN-DOLLAR
   ENC# @ >R  0 ENC-C,                     \ the operator's place
   SCAN-BRACE-NAME
   SCAN-BRACE-OP DUP R> ENC-BUF + C!       ( op )
-  ENC-END ENC-CODE,
+  DUP EV-PLAIN <> OVER EV-LENGTH <> AND IF -1 ENC-COMPLEX? ! THEN
+  0 ENC-C,                                \ the name's end
   EV-PLAIN <> IF                          \ a word follows, up to the }
     BEGIN
       0 SRC-C
@@ -448,7 +454,7 @@ DEFER SCAN-DOLLAR
   1 SRC-C DUP SPECIAL-PARAM? SWAP 48 - 10 U< OR IF
     1 SRC-SKIP
     ENC-VAR ENC-CODE,  EV-PLAIN ENC-C,  0 SRC-C ENC-C,  1 SRC-SKIP
-    ENC-END ENC-CODE, EXIT
+    0 ENC-C, EXIT
   THEN
   1 SRC-C NAME-CHAR? IF
     1 SRC-SKIP
@@ -456,7 +462,7 @@ DEFER SCAN-DOLLAR
     BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
       0 SRC-C ENC-C,  1 SRC-SKIP
     REPEAT
-    ENC-END ENC-CODE, EXIT
+    0 ENC-C, EXIT
   THEN
   36 ENC-LIT,  1 SRC-SKIP ;
 ' SCAN-DOLLAR-IMPL IS SCAN-DOLLAR
@@ -470,7 +476,7 @@ DEFER SCAN-DOLLAR
   TILDE-CLASS DUP 0< IF
     DROP 126 ENC-LIT, 1 SRC-SKIP EXIT
   THEN
-  ENC-TILDE ENC-CODE,  ENC-C,
+  ENC-TILDE ENC-CODE,  ENC-C,  -1 ENC-COMPLEX? !
   1 SRC-SKIP
   BEGIN
     0 SRC-C DUP -1 <> IF
@@ -483,7 +489,7 @@ DEFER SCAN-DOLLAR
 
 : SCAN-WORD ( --- )       \ at a word's first character
   SRC-POS @ TK-START !  0 TK-FLAGS !
-  ENC# @ ENC-BASE !  ENC-SUBS @ ENC-SUB-BASE !  0 ENC-MUTE !
+  ENC# @ ENC-BASE !  ENC-SUBS @ ENC-SUB-BASE !  0 ENC-MUTE !  0 ENC-COMPLEX? !
   0 SRC-C DUP 39 = OVER 34 = OR SWAP 92 = OR IF WF-NAME-Q TK-FLAGS ! THEN
   BEGIN
     0 SRC-C
@@ -521,6 +527,7 @@ DEFER SCAN-DOLLAR
       0
     THEN THEN THEN THEN THEN THEN
   UNTIL
+  ENC-COMPLEX? @ 0= IF WF-ENC-SIMPLE TK-FLAGS @ OR TK-FLAGS ! THEN
   SRC-POS @ TK-END ! ;
 
 : ALL-DIGITS? ( c-addr u --- f )
@@ -1090,6 +1097,9 @@ VARIABLE PE-N
       DUP ENC-ESC = IF DROP 1 PE-I +! S" esc(" TYPE PE-C EMIT 41 EMIT ELSE
       DUP ENC-VAR = IF
         DROP 1 PE-I +! S" var(" TYPE PE-C .OP-NAME 44 EMIT
+        1 PE-I +!                            \ the name, NUL-terminated
+        BEGIN PE-I @ PE-N @ < IF PE-C ELSE 0 THEN WHILE PE-C EMIT 1 PE-I +! REPEAT
+        62 EMIT
       ELSE
       DUP ENC-ARITH = IF DROP S" arith<" TYPE ELSE
       DUP ENC-CMDSUB = IF DROP 1 PE-I +! S" sub" TYPE PE-C 48 + EMIT ELSE
@@ -1277,12 +1287,15 @@ CREATE W-LTAND  60 C, 38 C, 0 C,
 CREATE W-DLT    60 C, 60 C, 0 C,
 CREATE W-DLTD   60 C, 60 C, 45 C, 0 C,
 
+VARIABLE ARGV-NODE-NEXT   \ the node of the word being added, if it has one
+
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
   DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0= ARGV-LITERAL ARGC @ + C!
   DUP WF-QUOTED AND 0= 0= ARGV-QUOTED ARGC @ + C!
   WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
   ARGV ARGC @ CELLS + !
+  ARGV-NODE-NEXT @ ARGV-NODES ARGC @ CELLS + !  0 ARGV-NODE-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ A plain one-digit word goes in quoted: laid out before a redirection,
 \ `echo 2 > f` would otherwise read as `echo 2> f`. The line path has
@@ -1292,10 +1305,116 @@ CREATE W-QDIGITS  34 C, 48 C, 34 C, 0 C,  34 C, 49 C, 34 C, 0 C,
                   34 C, 52 C, 34 C, 0 C,  34 C, 53 C, 34 C, 0 C,
                   34 C, 54 C, 34 C, 0 C,  34 C, 55 C, 34 C, 0 C,
                   34 C, 56 C, 34 C, 0 C,  34 C, 57 C, 34 C, 0 C,
+\ ==================================================================
+\ Expanding a word from its encoding (EXPANSION-PLAN.md Stage B)
+\ ==================================================================
+\ Iteration 275, the first step: literal runs (copied whole), quoted
+\ runs, quoted characters and plain parameters. A word whose encoding
+\ holds anything else - an operator form, arithmetic, a command
+\ substitution, a tilde - is declined, and EXPAND-WORDS scans it as
+\ before, so both paths run side by side until Stage C.
+VARIABLE XE-A             \ the encoded bytes
+VARIABLE XE-N
+VARIABLE XE-I
+VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
+VARIABLE XR-START
+VARIABLE XP-OP
+VARIABLE XP-LEN
+VARIABLE XP-NAME          \ where the name is, in the encoding
+
+: XE-C ( --- c )        XE-A @ XE-I @ + C@ ;
+
+: XE-LIT-RUN ( --- )   \ the literal bytes up to the next control byte
+  XE-I @ XR-START !
+  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-SPECIAL? @ IF
+    XE-I @ XR-START @ ?DO XE-A @ I + C@ GLOB-MARK EMIT-TOK-CHAR LOOP
+  ELSE
+    XE-A @ XR-START @ +  XE-I @ XR-START @ -  EMIT-RUN
+  THEN ;
+
+: XE-QUOTED-RUN ( --- )   \ inside '...': literal to the run's end
+  XE-I @ XR-START !
+  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-A @ XR-START @ +  XE-I @ XR-START @ -  EMIT-RUN ;
+
+: XE-VALUE ( c-addr --- )   \ a parameter's value: split when unquoted
+  IN-DQ-CONTEXT? @ IF DUP CSTRLEN EMIT-RUN ELSE TYPE0-TO-TOK-SPLIT THEN ;
+
+: XE-PARAM ( --- )   \ at the operator byte
+  XE-C XP-OP !  1 XE-I +!
+  XE-A @ XE-I @ + XP-NAME !                 \ the name is NUL-terminated here
+  BEGIN XE-I @ XE-N @ < IF XE-C ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-A @ XE-I @ + XP-NAME @ - XP-LEN !
+  XE-I @ XE-N @ < IF 1 XE-I +! THEN
+  XP-LEN @ 1 = XP-OP @ EV-PLAIN = AND IF
+    XP-NAME @ C@
+    DUP 64 = IF DROP -1 EMIT-ALL-POS-PARAMS EXIT THEN
+    DUP 42 = IF DROP 0 EMIT-ALL-POS-PARAMS EXIT THEN
+    DUP 35 = IF DROP POS-PARAM-COUNT @ EMIT-DECIMAL EXIT THEN
+    DUP 63 = IF DROP LAST-STATUS @ EMIT-DECIMAL EXIT THEN
+    DUP 36 = IF DROP SHELL-PID @ EMIT-DECIMAL EXIT THEN
+    DUP 33 = IF DROP BG-PID @ EMIT-DECIMAL EXIT THEN
+    DUP 45 = IF DROP EMIT-OPTION-FLAGS EXIT THEN
+    DROP
+  THEN
+  XP-OP @ EV-LENGTH = IF
+    XP-NAME @ LOOKUP-VAR
+    DUP 0= IF DROP XP-NAME @ XP-LEN @ NOUNSET-CHECK 0 ELSE CSTRLEN THEN
+    EMIT-DECIMAL EXIT
+  THEN
+  XP-NAME @ LOOKUP-VAR ?DUP IF
+    XE-VALUE
+  ELSE
+    XP-NAME @ XP-LEN @ NOUNSET-CHECK
+  THEN ;
+
+: XE-WALK ( --- )
+  BEGIN XE-I @ XE-N @ < WHILE
+    XE-C ENC-CTL = IF
+      1 XE-I +!
+      XE-C
+      DUP ENC-CTL = IF DROP ENC-CTL GLOB-MARK EMIT-TOK-CHAR 1 XE-I +! ELSE
+      DUP ENC-SQ = IF
+        DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  XE-QUOTED-RUN
+      ELSE
+      DUP ENC-DQ = IF
+        DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  -1 IN-DQ-CONTEXT? !
+      ELSE
+      DUP ENC-END = IF
+        DROP 1 XE-I +!  0 IN-DQ-CONTEXT? !
+      ELSE
+      DUP ENC-ESC = IF
+        DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  XE-C EMIT-TOK-CHAR  1 XE-I +!
+      ELSE
+      ENC-VAR = IF
+        1 XE-I +!  XE-PARAM
+      THEN THEN THEN THEN THEN THEN
+    ELSE
+      IN-DQ-CONTEXT? @ IF XE-QUOTED-RUN ELSE XE-LIT-RUN THEN
+    THEN
+  REPEAT ;
+
+: XE-TRY ( node --- f )   \ expanded here? then EXPAND-WORDS goes on
+  DUP 1 XF@ WF-ENC-SIMPLE AND 0= IF DROP 0 EXIT THEN   \ decided when lexed
+  DUP 3 XF@ ?DUP 0= IF 2DROP 0 EXIT THEN    \ no encoding: the old path
+  XE-N !
+  DUP 2 XF@ XSTR XE-A !
+  1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
+  0 XE-I !  0 IN-DQ-CONTEXT? !
+  XE-WALK
+  0 IN-DQ-CONTEXT? !
+  -1 ;
+' XE-TRY IS ENC-EXPAND-CALL
+
 : ADD-WORD ( word --- )
+  DUP ARGV-NODE-NEXT !
   DUP 0 XF@ XSTR SWAP 1 XF@                 ( c-addr flags )
   OVER CSTRLEN 1 = 2 PICK C@ 48 - 10 U< AND OVER WF-QUOTED AND 0= AND IF
-    DROP C@ 48 - 4 * W-QDIGITS + WF-QUOTED
+    \ a lone digit goes in quoted, as `"2"`, so a following > is not read
+    \ as `2>`; the encoding says plain 2, so that word keeps to the old
+    \ path (Iteration 275)
+    DROP C@ 48 - 4 * W-QDIGITS + WF-QUOTED  0 ARGV-NODE-NEXT !
   THEN
   ARGV-ADD ;
 
@@ -1805,7 +1924,9 @@ VARIABLE SUBLIST-XT
   FORTH-WORDLIST CURRENT !
   TIB SRC !  0 SID !
   INCLUDE-BUFFER INCLUDE-POINTER !
-  0 SHVAR-INDEX-OK? !     \ its buffer is new: build it on the first lookup
+  0 SHVAR-INDEX-OK? !
+  S" RELF_EXP" ENVNAMBUF SWAP MOVE  0 ENVNAMBUF 8 + C!
+  ENVNAMBUF GETENV ?DUP IF C@ 48 <> ELSE 0 THEN OPT-ENC? !     \ its buffer is new: build it on the first lookup
   RUN-SOURCES ;
 
 \ ==================================================================
