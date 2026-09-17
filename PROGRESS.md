@@ -271,6 +271,7 @@ do not trust the absence of a line below.
 - **273** — EXPANSION-PLAN.md; its Stage 0: trims by substring search; quoted and nested trim patterns
 - **274** — expansion Stage A: the lexer encodes each word; tree-dump -e; parse cases
 - **275** — expansion Stage B begun: the encoded path for simple words, behind RELF_EXP
+- **276** — Stage B continued: every construct on the encoded path; three faults left there
 
 ### Not tied to an iteration
 
@@ -16339,3 +16340,38 @@ still declines. The win the plan is for comes with the rest of the
 constructs and with splitting by recorded regions.
 
 tests/verify unchanged apart from sizes and one new shell file.
+
+## Iteration 276: Stage B continued - every construct, and what is still wrong
+
+The encoded path now handles what it declined in 275: the operator forms
+(`:-` `-` `:=` `=` `:?` `?` `:+` `+`), the four trims, arithmetic,
+command substitutions and tilde prefixes. `RUN-CMDSUB-TEXT` is split out
+of `EXPAND-CMDSUB` so both paths run a substitution the same way;
+arithmetic reuses `AE-EVAL` on the expression the lexer kept, and a
+tilde `PASSWD-HOME`. The walker is recursive now - `XE-ITEM` handles one
+item and says whether it ended a region, `XE-REGION` runs to a region's
+end - because quoted runs and an operator's word end with the same
+marker.
+
+**Faults found and fixed while doing it**, each of the same family as
+the ones Stage A's dump caught - state that must nest:
+- a substitution's index was read with the arguments the wrong way round,
+  so every `$(...)` expanded to nothing;
+- the enclosing double quotes reached inside an operator's word, so
+  `"${s##*/}"` matched a literal star and trimmed nothing (the scanning
+  path resets its quote depth for exactly this);
+- quoted text inside a trim's pattern was not escaped, so `${s##"$p"}`
+  matched as a pattern;
+- the capture offset and the parameter's name, operator and value were
+  globals, so a trim inside another trim's pattern used the inner one's.
+
+**Three faults are still open on that path** and are written here rather
+than left to be rediscovered: a segmentation fault on very long values
+(`long-values.sh`, `same-line-expansion.sh`), and one `braced-word.sh`
+case that counts 3 where it should count 2. The encoded path is opt-in
+(`RELF_EXP=1`) and off by default; with it off every suite passes -
+matrix 420/420, tests/diff 37, tests/posix 46/46, tests/parse, the shell
+files - so this iteration changes nothing that runs by default. Stage B
+is not finished until `RELF_EXP=1` is suite-clean too.
+
+tests/verify: sizes only.

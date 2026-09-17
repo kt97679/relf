@@ -1928,6 +1928,62 @@ VARIABLE ARITH-DEPTH
 VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 
+: RUN-CMDSUB-TEXT ( c-addr u --- )   \ run it in a child; its output here
+  \ Split out of EXPAND-CMDSUB (Iteration 276), so the encoded path -
+  \ which has each substitution's text from the lexer - runs it the same
+  \ way.
+  DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
+  DUP CS-COPY-I !
+  CMDSUB-LINE-BUF SWAP MOVE
+  0 CMDSUB-LINE-BUF CS-COPY-I @ + C!
+  CS-COPY-I @ CMDSUB-SPLIT-LINES
+  CS-NONBLANK? @ IF
+    PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
+    FORK DUP CMDSUB-PID !
+    0 = IF
+      CMDSUB-PIPE-WR @ 1 DUP2 DROP
+      CMDSUB-PIPE-WR @ CLOSE-FILE DROP
+      CMDSUB-PIPE-RD @ CLOSE-FILE DROP
+      CHILD-RESET-TRAPS
+      RUN-CMDSUB-CHILD-CALL
+      127 SYS-EXIT
+    THEN
+    CMDSUB-PIPE-WR @ CLOSE-FILE DROP
+    CMDSUB-PIPE-RD @ READ-ALL-CMDSUB-OUTPUT
+    CMDSUB-PIPE-RD @ CLOSE-FILE DROP
+    \ its status is the status of a command that is only assignments
+    \ (XCU 2.9.1; Iteration 269 - it was dropped)
+    CMDSUB-PID @ WAITPID DROP 8 RSHIFT 255 AND CMDSUB-STATUS !
+    -1 CMDSUB-RAN? !
+    BEGIN                                    ( strip trailing newlines )
+      CMDSUB-OUT-LEN @ 0 > IF
+        CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 1- + C@ 10 =
+      ELSE 0 THEN
+    WHILE
+      CMDSUB-OUT-LEN @ 1- CMDSUB-OUT-LEN !
+    REPEAT
+    \ CMDSUB-OUT-LEN can genuinely be 0 here (the substituted command
+    \ produced no output at all, e.g. $(true) or $(printf)) - guarded
+    \ explicitly rather than relying on "0 0 DO ... LOOP" to mean
+    \ zero iterations. It doesn't in this kernel: DO/LOOP here treats
+    \ start=limit as wrapping through the *entire* unsigned range
+    \ rather than skipping the loop, so an unguarded zero-length splice
+    \ here read (and wrote, via EMIT-TOK-CHAR) billions of bytes past
+    \ CMDSUB-OUT-BUF until it hit unmapped memory and segfaulted -
+    \ found via mrsh's async.sh (see PROGRESS.md's crash-hardening
+    \ entry) and reproduced down to a single command: `echo $(true)`.
+    CMDSUB-OUT-LEN @ 0 > IF
+      \ EMIT-EXPANDED-CHAR, not EMIT-TOK-CHAR: an *unquoted* command
+      \ substitution is subject to IFS field splitting exactly as an
+      \ unquoted $VAR is, so "for c in $(echo a s d f)" runs four
+      \ times. EMIT-EXPANDED-CHAR checks IN-DQ-CONTEXT? itself, so
+      \ "$(...)" inside double quotes still yields one word.
+      CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
+        DUP I + C@ EMIT-EXPANDED-CHAR
+      LOOP DROP
+    THEN
+  THEN ;
+
 : EXPAND-CMDSUB ( closer --- )
   \ TOK-POS is just inside the substitution; `closer` is the character
   \ that ends it - ')' for $(...), '`' for the backquote form, which
@@ -1984,53 +2040,7 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
   \ branch of ${VAR:-$(cmd)} that is not taken - the word is still
   \ scanned, to find where it ends, but a shell that ran the command
   \ anyway would be visibly wrong (Iteration 104).
-  CS-COPY-I @ CMDSUB-SPLIT-LINES
-  CS-NONBLANK? @ IF
-    PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
-    FORK DUP CMDSUB-PID !
-    0 = IF
-      CMDSUB-PIPE-WR @ 1 DUP2 DROP
-      CMDSUB-PIPE-WR @ CLOSE-FILE DROP
-      CMDSUB-PIPE-RD @ CLOSE-FILE DROP
-      CHILD-RESET-TRAPS
-      RUN-CMDSUB-CHILD-CALL
-      127 SYS-EXIT
-    THEN
-    CMDSUB-PIPE-WR @ CLOSE-FILE DROP
-    CMDSUB-PIPE-RD @ READ-ALL-CMDSUB-OUTPUT
-    CMDSUB-PIPE-RD @ CLOSE-FILE DROP
-    \ its status is the status of a command that is only assignments
-    \ (XCU 2.9.1; Iteration 269 - it was dropped)
-    CMDSUB-PID @ WAITPID DROP 8 RSHIFT 255 AND CMDSUB-STATUS !
-    -1 CMDSUB-RAN? !
-    BEGIN                                    ( strip trailing newlines )
-      CMDSUB-OUT-LEN @ 0 > IF
-        CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 1- + C@ 10 =
-      ELSE 0 THEN
-    WHILE
-      CMDSUB-OUT-LEN @ 1- CMDSUB-OUT-LEN !
-    REPEAT
-    \ CMDSUB-OUT-LEN can genuinely be 0 here (the substituted command
-    \ produced no output at all, e.g. $(true) or $(printf)) - guarded
-    \ explicitly rather than relying on "0 0 DO ... LOOP" to mean
-    \ zero iterations. It doesn't in this kernel: DO/LOOP here treats
-    \ start=limit as wrapping through the *entire* unsigned range
-    \ rather than skipping the loop, so an unguarded zero-length splice
-    \ here read (and wrote, via EMIT-TOK-CHAR) billions of bytes past
-    \ CMDSUB-OUT-BUF until it hit unmapped memory and segfaulted -
-    \ found via mrsh's async.sh (see PROGRESS.md's crash-hardening
-    \ entry) and reproduced down to a single command: `echo $(true)`.
-    CMDSUB-OUT-LEN @ 0 > IF
-      \ EMIT-EXPANDED-CHAR, not EMIT-TOK-CHAR: an *unquoted* command
-      \ substitution is subject to IFS field splitting exactly as an
-      \ unquoted $VAR is, so "for c in $(echo a s d f)" runs four
-      \ times. EMIT-EXPANDED-CHAR checks IN-DQ-CONTEXT? itself, so
-      \ "$(...)" inside double quotes still yields one word.
-      CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 0 DO
-        DUP I + C@ EMIT-EXPANDED-CHAR
-      LOOP DROP
-    THEN
-  THEN ;
+  CMDSUB-LINE-BUF CS-COPY-I @ RUN-CMDSUB-TEXT ;
 
 VARIABLE EAP-I
 VARIABLE EAP-AT

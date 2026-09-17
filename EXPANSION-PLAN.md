@@ -147,7 +147,16 @@ passes both ways. Still to do: the operator forms, arithmetic,
 substitutions, tildes, and then the point of the exercise - splitting by
 recorded regions instead of per character, which is what will make it
 faster. As it stands it is about neutral: `str` -2.7% of the dispatches,
-the loop +1.5%.)* `EXPAND-ENC` producing
+the loop +1.5%.)*
+
+   *(Iteration 276: the rest of the constructs - the operator forms,
+   the trims, arithmetic, command substitutions and tildes - so the
+   encoded path takes every word. `RUN-CMDSUB-TEXT` is split out of
+   `EXPAND-CMDSUB` and shared. Known and not yet fixed on that path:
+   a crash on very long values (`tests/diff/cases/long-values.sh`,
+   `same-line-expansion.sh`) and a wrong count in one `braced-word.sh`
+   case. The default path is unaffected and every suite passes with it;
+   `RELF_EXP=1` is not yet suite-clean, so Stage B is not finished.)* `EXPAND-ENC` producing
 the same ARGV the old path produces, chosen by an environment variable
 for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,
