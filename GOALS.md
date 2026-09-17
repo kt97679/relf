@@ -1714,6 +1714,25 @@ dry.
 - **A fix and `tests/verify --update` go in the same commit**, so
   `tests/BASELINE` always records what the tree does.
 
+## What dash does that this shell does not: `DASH-COMPARISON.md`
+
+Iteration 268 read dash's source and measured both shells an operation
+at a time (`tools/op-bench.py`). In-process work is 25-170 times dash's
+(interpretation); a command that is a builtin in dash and a program here
+(`echo`, `printf`, `true`, `false`) is 260-750 times (a fork and an
+exec); external commands are 1.1-1.3 times. Its ranked list is the next
+queue:
+
+1. **Builtins `echo`, `printf`, `true`, `false`**, then `.`, `exec`,
+   `kill`, `trap`, `type`, `local`, `umask`, `times`.
+2. **Exec without forking** in a child with one command left (command
+   substitution, pipeline stage, subshell, background, `sh -c`).
+3. **A command-location cache** instead of trial `execve`s along `PATH`.
+4. **A hashed variable table**; functions and builtins likewise.
+5. **Words encoded at parse time and a one-pass expander**, with
+   `$(...)` parsed once - its own plan document first.
+6. **`vfork`/`posix_spawn`** as an engine primitive.
+
 ## Next architectural work: `COMMAND-TREE-PLAN.md`
 
 `PARSE-EXPAND-PLAN.md` below is the history this grew out of; its Stage 2

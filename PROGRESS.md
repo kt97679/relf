@@ -263,6 +263,7 @@ do not trust the absence of a line below.
 - **265** — command tree Stage C: the tree path is the shell; the line-based shell deleted
 - **266** — command tree Stage D: measured; parse-time decisions instead of a tree compiler
 - **267** — pathname expansion; directory primitives
+- **268** — DASH-COMPARISON.md: how dash runs a script; tools/op-bench.py
 
 ### Not tied to an iteration
 
@@ -15932,3 +15933,44 @@ fails it.
 
 tests/verify: posix 44/2 -> 45/1; diff cases 30 -> 31, parse verdicts
 136 -> 137; sizes.
+
+## Iteration 268: how dash runs a script
+
+Asked: how dash executes scripts, how that differs from this shell, what
+could be reused, and whether dash's speed comes from having more
+builtins. `DASH-COMPARISON.md` has the answer; this is its summary.
+
+**Read**: dash 0.5.12's source, from the Ubuntu archive (the version of
+`/bin/dash` here) - input, main loop, stack allocator, parser, word
+encoding, expander, evaluator, command and variable lookup, arithmetic,
+builtin table. Since Iterations 263-265 this shell has dash's shape
+(parse a complete command into a tree, run it, drop it). The differences
+that remain: dash encodes each word at parse time with control bytes
+(quoted characters escaped, expansions delimited, `$(...)` parsed into
+a node list stored with the word) and expands it in one pass with
+`strcspn` and bulk copies, splitting only recorded regions; it hashes
+variables and commands and remembers where each external command was
+found; it starts commands with `vfork` and, in a child with one command
+left, execs without forking; it has 38 builtins to this shell's 23 -
+`echo`, `printf`, `true` and `false` among the missing.
+
+**Measured** with the new `tools/op-bench.py` (each operation in a loop,
+CPU of the shell and its children): in-process operations 25-170 times
+dash; `true` 750 times and `echo` 260 times, because here they are
+programs (about 800 µs a call); external commands 1.1-1.3 times, the
+excess being `fork` against `vfork` (~75 µs), trial `execve`s along
+`PATH` (~70 µs), and a second fork when a command substitution or a
+pipeline stage runs a program (~230 µs).
+
+**So**: more builtins do not explain the benchmark scripts, whose loops
+call only what is in-process in both shells; they do explain most of
+the difference on ordinary scripts. The ranked list of what to take
+from dash is in DASH-COMPARISON.md and now heads GOALS.md's queue: the
+four builtins; exec without fork in one-command children; a command
+location cache; a hashed variable table; parse-time word encoding with a
+one-pass expander (a plan document first); `vfork` or `posix_spawn` in
+the engine. Checked on the way: dash reads standard input in 8 KB
+blocks, so `read` in a script fed on stdin gets nothing where bash and
+this shell give it the next line.
+
+No shell or engine change; tests/verify unchanged.
