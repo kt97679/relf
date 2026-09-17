@@ -280,7 +280,8 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 4 (Iteration 258): the one-byte branches take two opcodes
+/*  Version 5 (Iteration 259): slot operands are relative to themselves.
+ *  Version 4 (Iteration 258): the one-byte branches take two opcodes
  *  after the folded band, and loop and POSTPONE operands changed form.
  *  Version 2 (Iteration 243): the five locals cells moved out of the
  *  file header into the image itself, at offset 8 (see LOCHDR).
@@ -288,7 +289,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 4
+#define CV8_VERSION 5
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -834,10 +835,17 @@ L_lit32: SPILL();   /* lit32   */ { UNS64 v = LD32(ip);
  *  another VM (CV8.md 10).
  *  The slot/variable operand is a 16-bit little-endian value v; the
  *  address is base + (v << SCALE), the same compressed pointer calls use. */
+/*  A slot operand is the variable's offset from the OPERAND itself
+ *  (Iteration 259; from the image base until then): two bytes, 15 bits
+ *  signed, or three with the top bit set, 23 bits signed. Code sits a
+ *  few hundred bytes after the variables it uses, so nine in ten are the
+ *  short form, where half were. SEXT sign-extends a b-bit field at
+ *  either cell width.  */
+#define SEXT(v, b) (((v) ^ ((UNS64)1 << ((b) - 1))) - ((UNS64)1 << ((b) - 1)))
 #define SLOT() (t = BYTE(ip), \
         (t & 0x80) ? (t = ((t & 0x7F) << 16) | ((UNS64)BYTE(ip + 1) << 8) \
-                         | BYTE(ip + 2), ip += 3, cbase + (t << SCALE)) \
-                   : (t = (t << 8) | BYTE(ip + 1), ip += 2, cbase + (t << SCALE)))
+                         | BYTE(ip + 2), ip += 3, ip - 3 + (SEXT(t, 23) << SCALE)) \
+                   : (t = (t << 8) | BYTE(ip + 1), ip += 2, ip - 2 + (SEXT(t, 15) << SCALE)))
 L_lit0: PUSHT(0); NEXT();
 L_lit1: PUSHT(1); NEXT();
 L_litm1: PUSHT(~(UNS64)0); NEXT();

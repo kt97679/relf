@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/image-audit.py IMAGE [CELLBYTES] - how a CV8 image (format 4)
+"""tools/image-audit.py IMAGE [CELLBYTES] - how a CV8 image (format 5)
 encodes its references.
 
 Walks the dictionary, decodes every colon body, and reports branches (and
@@ -73,9 +73,13 @@ for name, cnt, xt, end in bodies:
         elif op == 0x7E: ip += 2; S['ESC'] += 1; continue
         elif 0x64 <= op <= 0x69:
             if img[ip+1] & 0x80:
-                v = ((img[ip+1] & 0x7F) << 16) | img[ip+2] << 8 | img[ip+3]; S['slot far'] += 1; SLOTS.append((ip, ip+4, v)); ip += 4
+                v = ((img[ip+1] & 0x7F) << 16) | img[ip+2] << 8 | img[ip+3]
+                v = (v ^ 0x400000) - 0x400000              # 23 bits signed, from the operand
+                S['slot far'] += 1; SLOTS.append((ip, ip+4, ip + 1 + v)); ip += 4
             else:
-                v = (img[ip+1] << 8) | img[ip+2]; S['slot near'] += 1; SLOTS.append((ip, ip+3, v)); ip += 3
+                v = (img[ip+1] << 8) | img[ip+2]
+                v = (v ^ 0x4000) - 0x4000                  # 15 bits signed, from the operand
+                S['slot near'] += 1; SLOTS.append((ip, ip+3, ip + 1 + v)); ip += 3
             continue
         elif op == 0x00: S['NOOP'] += 1; ip += 1; continue
         elif op >= 0x80:
@@ -107,7 +111,9 @@ for k, v in sorted(hist.items()):
 
 def model(name, refs, near_bits, near_len, far_len):
     base_near = sum(1 for s, e, t in refs if t < (1 << near_bits))
-    pc_near = sum(1 for s, e, t in refs if -(1 << (near_bits-1)) <= t - e < (1 << (near_bits-1)))
+    # pc-relative: from the operand (s + 1) for slots, from the next
+    # instruction (e) for calls, as each would be encoded
+    pc_near = sum(1 for s, e, t in refs if -(1 << (near_bits-1)) <= t - (s + 1 if name == "slots" else e) < (1 << (near_bits-1)))
     # hybrid: one bit less for each, either one may be used
     hb = near_bits - 1
     hyb = sum(1 for s, e, t in refs if t < (1 << hb) or -(1 << (hb-1)) <= t - e < (1 << (hb-1)))

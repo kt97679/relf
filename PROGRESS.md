@@ -254,6 +254,7 @@ do not trust the absence of a line below.
 - **256** — until, eval, for w, NAME=value cmd; nested one-line loops
 - **257** — division, ${#}, "$*", case patterns and one-line case; division by zero
 - **258** — encoding audit: short backward branches; loops end in a branch; nothing in code aligned
+- **259** — variable slots relative to themselves
 
 ### Not tied to an iteration
 
@@ -15505,3 +15506,35 @@ the per-build bias (loop 1.03 [1.01-1.07], the rest 1.00-1.01).
 
 tests/verify: sizes only - x86-64 94,434 -> 92,955, i386 83,509 ->
 82,826.
+
+## Iteration 259: variable slots relative to themselves
+
+The largest item in 258's audit. A slot operand - after `VAR@`, `VAR!`
+and the four locals opcodes - names a variable's parameter field. It was
+an offset from START: two bytes when it fit 15 bits, three otherwise. In
+a 66 KB shell image half the variables lie past 32 KB, so 2,209 of 4,380
+slots were three bytes, although the code using a variable usually sits
+a few hundred bytes after its declaration.
+
+**Now the offset is from the operand's own first byte**, signed: 15 bits
+in two bytes (±16 KB), 23 in three (±4 MB). Every slot is emitted
+immediately after its opcode, so `SLOT,` (kernel.4) and `SLOT,-T`
+(cross.4) subtract `HERE`/`THERE` where they subtracted START, and
+refuse a distance past ±4 MB. The engine's `SLOT()` adds the operand's
+address instead of the base - one addition either way - sign-extending
+with `(v ^ s) - s`, which is correct at both cell widths. Format
+version 5.
+
+**Measured** (`tools/image-audit.py`, whose slot model now decodes the
+signed form): 3,843 short and 536 long on 64-bit, exactly the number the
+audit predicted; the long ones are mostly kernel variables used from the
+shell. Shell images 66,115 -> 64,474 (64-bit, -2.5%) and 60,822 ->
+59,337 (32-bit). The kernel grew 48 bytes - `SLOT,` itself, with its
+range check; it is too small to have had long slots. Speed: loop 0.99,
+fn 1.00, str 0.94, arith 1.02, start 1.02 against 258.
+
+With 258, the shell image is 67,594 -> 64,474 bytes (-4.6%) for the two
+iterations.
+
+tests/verify: sizes only - x86-64 92,955 -> 91,314, i386 82,826 ->
+81,341.

@@ -142,7 +142,8 @@ call is near. Building with `-DVARCALL=0` restores a fixed 15-bit call
 if you ever want it.
 
 Slot operands (`VAR@`, `VAR!`, the locals opcodes) use the same trick
-(`VARSLOT`): one leading bit selects a 15-bit or 23-bit payload. Without
+(`VARSLOT`): one leading bit selects a 15-bit or 23-bit payload - SIGNED,
+and counted from the operand itself since Iteration 259 (see §7.2). Without
 it slots were a fixed 16 bits, so **variables had to live in the first
 512 KB while code could span 32 MB** - an asymmetry that would have
 failed silently in a larger system.
@@ -219,7 +220,7 @@ engine uses. `LIT` is primitive 2 and keeps a 2-byte operand.
 | `BRANCH`, `?BRANCH` | 2 bytes, **signed byte offset from the operand itself** |
 | `BRANCH8`, `?BRANCH8` | 1 byte, signed, from the operand; backward branches that reach |
 | `ADDI`, `EQI` | 1 byte, signed −128..127 |
-| specialised slot ops | 2 bytes, a scaled offset like a call |
+| specialised slot ops | 2 or 3 bytes, a signed offset from the operand (§7.2) |
 | `(LOOP)`, `(+LOOP)` | none: the call is followed by a branch back to the loop's start |
 | `(?DO)` | none: followed by a 16-bit branch to the loop's exit |
 | `(POSTPONE)` | 3 bytes, big-endian, the xt as an offset from START |
@@ -279,8 +280,8 @@ limits I had not been tracking - the binding one was not the call reach.
 | VM memory (`MEMSIZE`) | 16 MB | 16 MB | build parameter, **not** format |
 | call reach, near form | 16 KB | 16 KB | format |
 | call reach, far form | **4 MB** | 4 MB | format |
-| slot reach, near form | 32 KB | 32 KB | format |
-| slot reach, far form | **8 MB** | 8 MB | format |
+| slot reach, near form | ±16 KB of the operand | ±16 KB | format |
+| slot reach, far form | **±4 MB** of the operand | ±4 MB | format |
 | literal width | full cell | full cell | format |
 | branch, within one word | ±32 KB | ±32 KB | format |
 | opcode space | 128 + a reserved second bank | same | format |
@@ -433,7 +434,7 @@ first built as `attic/cv8b.4` for translated images.
 | 0 | 4 | magic `CV8` + `'0'+SCALE` — `CV80` today |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
-| 6 | 1 | **format version** (4); the engine runs only its own |
+| 6 | 1 | **format version** (5); the engine runs only its own |
 | 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
 | 8 | cell | thread **count** *T* (32 — the hashed word list) |
 | +cell | *T*·cell | the thread heads, `START`-relative |
@@ -450,6 +451,8 @@ than breaking the format, older images keep working on newer engines,
 and an older engine refuses a newer image with a clear message instead
 of misreading it. Before Iteration 194 the magic was compared byte for
 byte, so any change to the format invalidated every image.
+
+**Version 5** (Iteration 259) made slot operands relative to themselves.
 
 **Version 4** (Iteration 258) added `BRANCH8`/`?BRANCH8` after the folded
 band and changed the loop, `(POSTPONE)` and string operand forms.
@@ -631,10 +634,19 @@ are two handlers and save 400 bytes.
 0x63 VAR@ slot16      0x64 VAR! slot16
 ```
 
-`slot16` is scaled exactly like a call, so the address is
-`base + (v << SCALE)` — here pointing at the **parameter field**, not the
-body. This replaces call/`DOVAR`/`@` with one dispatch. This is the JVM's
-`getstatic`/`putstatic`.
+The slot is the address of the variable's **parameter field**, not its
+body, given as a signed offset from the operand's own first byte:
+`operand + v`. Two bytes carry 15 bits (±16 KB), three with the top bit
+set carry 23 (±4 MB); `SLOT,` refuses anything further. This replaces
+call/`DOVAR`/`@` with one dispatch - the JVM's `getstatic`/`putstatic`.
+
+Until Iteration 259 the offset was from the image base, like a call's.
+Code usually follows the variables it uses by a few hundred bytes, but
+half of a 66 KB shell image lies past the 32 KB the short form reached
+from the base, so 2,209 of 4,380 slots were three bytes. Counted from the
+operand, 3,843 are two bytes; the 536 left are mostly kernel variables
+used from the shell. Calls stay base-relative: measured, that is better
+for them (§ "Things that will bite you" and PROGRESS.md 258).
 
 ### 7.3 Locals
 

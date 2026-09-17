@@ -314,10 +314,14 @@ NO-PEEP-T
 \ so 0 is a safe "none".
 
 : SLOT,-T ( t-addr --- )
-\ A slot operand: a byte offset like a call, 2 bytes big-endian, or 3
-\ with the top bit set.
-  DUP 32768 < IF DUP 8 RSHIFT C,-T 255 AND C,-T
-  ELSE DUP 16 RSHIFT 128 OR C,-T DUP 8 RSHIFT 255 AND C,-T 255 AND C,-T
+\ A slot operand: the offset from the operand itself, 15 signed bits in
+\ 2 bytes, or 23 in 3 with the top bit set. kernel.4's SLOT, is the same.
+  THERE -
+  DUP -4194304 < OVER 4194303 > OR ABORT" cross: slot beyond reach"
+  DUP -16384 < OVER 16383 > OR IF
+    DUP 16 RSHIFT 127 AND 128 OR C,-T DUP 8 RSHIFT 255 AND C,-T 255 AND C,-T
+  ELSE
+    DUP 8 RSHIFT 127 AND C,-T 255 AND C,-T
   THEN ;
 
 : CALLBYTES-T ( t-addr v --- )
@@ -429,7 +433,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  4 IMAGE-HDR 6 + C!          \ format version
+  5 IMAGE-HDR 6 + C!          \ format version
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,

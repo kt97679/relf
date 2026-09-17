@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,642    kernel-shell.img     66,115
-    32-bit   kernel32.img   8,130    kernel32-shell.img   60,822
+    64-bit   kernel.img     8,690    kernel-shell.img     64,474
+    32-bit   kernel32.img   8,178    kernel32-shell.img   59,337
 
 **Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1352,14 +1352,13 @@ once. Both are done; the rest keep their order.
    every way out, and only in the process that changed it.
    `tests/io/pty.c` runs the tests on a pseudo-terminal.
 
-4a. **Image encoding: two measured opportunities** (Iteration 258's
-   audit, `tools/image-audit.py`). Variable slots as offsets from the
-   instruction rather than from START would make 3,843 of 4,380 near
-   instead of 2,171 - about 1.7 KB of the 64-bit shell image, the largest
-   single item. A pass that shrinks a finished definition's forward
-   branches to `BRANCH8` would save about 1.36 KB (97% fit). Calls are
-   best left base-relative: pc-relative is worse, and allowing either
-   saves only 3%.
+4a. **Image encoding** (Iteration 258's audit, `tools/image-audit.py`).
+   ~~Variable slots relative to the instruction~~ **done in Iteration
+   259**: 3,843 of 4,380 slots are short where 2,171 were, 1.6 KB off
+   the 64-bit shell image. Still open: a pass that shrinks a finished
+   definition's forward branches to `BRANCH8` would save about 1.36 KB
+   (97% fit). Calls are best left base-relative: pc-relative is worse,
+   and allowing either saves only 3%.
 
 5. **The rest of the growable-buffer work.** Iteration 249 did the
    line buffers, 250 the word arrays and positional parameters, 251

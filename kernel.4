@@ -1312,11 +1312,18 @@ VARIABLE LAST-CALLXT ( --- a-addr )
   DUP 255 AND C, 8 RSHIFT 255 AND C, ;
 
 : SLOT, ( a-addr --- )
-\ A slot operand naming a-addr: its offset from the image base, two
-\ bytes big-endian if it fits 15 bits, else three with the top bit set.
-  START @ -
-  DUP 32768 < IF DUP 8 RSHIFT C, 255 AND C,
-  ELSE DUP 16 RSHIFT 128 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
+\ A slot operand naming a-addr, compiled right after its opcode: the
+\ offset from the operand itself, two bytes big-endian if it fits 15
+\ signed bits, else three with the top bit set - 23 signed bits. It was
+\ the offset from START until Iteration 259, and half of the shell's
+\ slots needed the long form; from here nine in ten are short.
+  HERE -
+  DUP -4194304 < OVER 4194303 > OR ABORT" slot beyond reach"
+  DUP -16384 < OVER 16383 > OR IF
+    DUP 16 RSHIFT 127 AND 128 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C,
+  ELSE
+    DUP 8 RSHIFT 127 AND C, 255 AND C,
+  THEN ;
 
 VARIABLE STATE ( --- a-addr)
 \ Variable that holds the compiler state, 0 is interpreting 1 is compiling.

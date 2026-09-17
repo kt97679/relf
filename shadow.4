@@ -195,8 +195,8 @@ LSAVE-MAX                             START @  8 + 2 CELLS + !
   \ Compile locals opcode op on slot i - the one place any code is
   \ generated, shared by all four emit loops below.
   \
-  \ The slot operand is a scaled offset from the image base, like a
-  \ call, so the compiled code stays position-independent: a saved
+  \ The slot operand is an offset from itself (Iteration 259; from the
+  \ image base before), so the compiled code stays position-independent: a saved
   \ image (see save-system.4) reloads at a different address every
   \ run. Until Iteration 243 this compiled `LIT offset` and a call to
   \ the runtime word, and the translator rewrote the pair into the
