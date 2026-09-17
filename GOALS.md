@@ -1859,6 +1859,32 @@ destination is right, not that we have arrived.
 
 ## External references (potentially reusable ideas, not yet mined)
 
+**Read in Iteration 280: pForth** (https://github.com/philburk/pforth),
+reached by way of gitlab.com/mschwartz/mykesforth and its sibling
+nixforth ("Phil Burk's pForth reimagined"), neither of which can be read
+from here - GitLab renders its pages in the browser, and the container's
+proxy does not allow gitlab.com. pForth is the closest published cousin
+of this engine: portable C, a token dispatch, a saved dictionary image.
+What it says about our choices, and the one thing worth taking:
+
+- **A headerless image.** `ffSaveForth(file, entry, NameSize, CodeSize)`
+  writes the names as their own chunk, and `NameSize` of 0 leaves them
+  out entirely - a deployable image that can no longer be extended
+  interactively. Measured here: 21% of `kernel-shell.img` is headers
+  (17.5 KB of 80.8 KB, 13.2 KB of it names). A `--strip` save would cost
+  the `forth` builtin and any runtime lookup, and is worth its own
+  iteration. See PROGRESS.md's Iteration 280 entry.
+- **Code-relative tokens** (`LOCAL_CODEREL_TO_ABS`): pForth stores
+  secondaries as offsets from the code base, as Iterations 258-259 made
+  this engine do, and reaches absolute addresses the same way. Nothing
+  to take; it does confirm the choice was not exotic.
+- **A chunked image file** (P4DI/P4NM/P4CD: info, names, code). Ours is
+  one block with a fixpoint check. Chunks would only buy the optional
+  name space above.
+- Not applicable: pForth refuses an image whose cell size differs from
+  the running engine's; this project cross-builds a separate image per
+  width, which is the same answer.
+
 Not read/evaluated in depth yet — listed here so a future session knows
 where to look before reinventing something, rather than as an endorsement
 of any specific approach. Update this list with findings (useful or not)

@@ -275,6 +275,7 @@ do not trust the absence of a line below.
 - **277** — Stage B passes both ways: the three faults fixed; a tilde rule corrected
 - **278** — splitting by recorded regions; str -16% of the dispatches
 - **279** — the walker's cursor and name scan; str -16.9%, loop +3.1%
+- **280** — read pForth (mykesforth is unreachable); the headerless-image idea, measured
 
 ### Not tied to an iteration
 
@@ -16476,3 +16477,35 @@ than Stage C, which removes the double bookkeeping altogether.
 Every suite passes both ways; no behaviour changed.
 
 tests/verify: sizes only.
+
+## Iteration 280: what mykesforth's neighbourhood has to offer
+
+Asked to look at gitlab.com/mschwartz/mykesforth and the links in it.
+**It cannot be read from here**: GitLab renders its repository and wiki
+pages in the browser, so a fetch returns the empty shell, and the
+container's proxy answers `host_not_allowed` for gitlab.com. The
+author's GitHub account holds no mirror of it - only mirrors of other
+people's Forths (jonesforth, sixtyforth, OSX-Forth) and `goforth`, a
+pForth port. The one thing the search did give is that his sibling
+project, nixforth, is "Phil Burk's pForth reimagined", and pForth is
+readable.
+
+**pForth read, and it is the closest published cousin of this engine**:
+a portable C core, a token dispatch, and a dictionary saved as an image.
+Three notes, kept in GOALS.md's external-references section:
+
+- **The idea worth taking: names as their own chunk, optional.**
+  `ffSaveForth` takes a name-space size, and zero writes the image
+  without any name fields. Measured here with `tools/image-audit.py`:
+  1,558 words, and 17,558 bytes of `kernel-shell.img`'s 80,768 are
+  headers - 21%, of which 13.2 KB is the names themselves. A stripped
+  save would cost the `forth` builtin and any runtime `FIND`, so it
+  wants a flag and its own iteration rather than a change of default.
+- **Code-relative tokens**: pForth stores secondaries as offsets from
+  the code base and converts them on use, which is what Iterations
+  258-259 arrived at here. Confirmation rather than a lesson.
+- **Cell size**: pForth refuses an image built for another cell size;
+  this project cross-builds one image per width, which is the same
+  answer arrived at differently.
+
+No code changed.
