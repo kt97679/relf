@@ -170,18 +170,20 @@ for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,
 IFS, pathname and here-document cases in particular.
 
-**Stage C — switch and delete.** *(Iteration 281 removed the three
-reasons a word could not take the encoded path: `$@`/`$*` words expand
-character by character within it, as the scanner did; a lone digit word
-is plain text marked literal and quoted, and the literal fast path now
-keeps a word's quoting; and a here-document's body - already built as one
-double-quoted word - is lexed into an encoded word by `ENCODE-TEXT` and
-always expanded through the encoded path. Every word now either takes
-the literal fast path or has an encoding, so the switch and the deletion
-can be one iteration.)*
+**Stage C — switch and delete.** *(Done in Iteration 282. The encoded
+path is the only one; `RELF_EXP` is gone. `SCAN-TOKEN` and
+`SCAN-TOKEN-CHAR` were removed and `tools/dead-words.py` found the other
+64 definitions that died with them - the quote copiers, `EXPAND-VAR`,
+`EXPAND-BRACED-VAR` and its word capture, `EXPAND-ARITH`,
+`EXPAND-CMDSUB`'s scanning half, the tilde words, the old trim path and
+their variables. shell.4 6,073 -> 5,281 lines; the 64-bit image 80,768 ->
+76,920 bytes.*
 
-**Stage C — switch and delete.** The old expander and its helpers go,
-found with `tools/dead-words.py`; the raw text leaves the word node.
+*What it did not buy is speed: against the scanning path the figures are
+what Stage B measured - `str` -16.8%, `arith` -4.9%, `loop` +3.1%, `fn`
++1.9%. The overhead on short words is the walker's own structure -
+`XE-TRY`'s entry and `XE-ITEM`'s dispatch - not the double bookkeeping,
+which is what I expected the deletion to remove.)*
 
 **Stage D — measure, then arithmetic.** Profile again. Compile each
 `$((...))` into a small tree at parse time (or Forth code, if the tree

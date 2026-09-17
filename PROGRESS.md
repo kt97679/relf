@@ -277,6 +277,7 @@ do not trust the absence of a line below.
 - **279** — the walker's cursor and name scan; str -16.9%, loop +3.1%
 - **280** — read pForth (mykesforth is unreachable); the headerless-image idea, measured
 - **281** — the last three words that could not be encoded; Stage C's precondition met
+- **282** — Stage C: the encoded expander is the only one; the scanner deleted
 
 ### Not tied to an iteration
 
@@ -16545,3 +16546,32 @@ prompt on the shell's own dictionary, which is a main reason this shell
 exists.
 
 tests/verify: sizes only.
+
+## Iteration 282: Stage C - the scanning expander is gone
+
+`EXPAND-WORDS` expands every word from its encoding; `RELF_EXP` is gone,
+and so is the scanning expander. Removing `SCAN-TOKEN` and
+`SCAN-TOKEN-CHAR` made 64 more definitions unreachable, and
+`tools/dead-words.py` named them one at a time until it reported none:
+the quote copiers, `EXPAND-VAR`, `EXPAND-BRACED-VAR` with its word
+capture and modifier parsing, `EXPAND-ARITH`, `EXPAND-CMDSUB`'s scanning
+half (`RUN-CMDSUB-TEXT`, split out in 276, stays), the tilde words, the
+old trim path with its saved state, and their variables.
+
+**Sizes**: shell.4 6,073 -> 5,281 lines, tree.4 2,404; the 64-bit image
+80,768 -> 76,920 bytes.
+
+**Speed, honestly**: against 281's default - the scanning path - `str`
+-16.8% of the dispatches, `arith` -4.9%, `loop` +3.1%, `fn` +1.9%. I
+expected the deletion to take back what the short-word workloads lose,
+on the grounds that each word was being prepared for both paths. It did
+not: the cost is the walker's own shape, `XE-TRY`'s entry and
+`XE-ITEM`'s dispatch chain, and it is still there. Whether that matters
+depends on the script: `str`-shaped work - parameter operations,
+patterns, substitutions - is common in real shell scripts, and a loop
+whose body is `[ $i -lt N ]` is not.
+
+`tests/shell/run-encoded` compared the two paths; with one path left it
+now checks the same battery against bash.
+
+tests/verify: sizes; shell:dead-words stays 0.

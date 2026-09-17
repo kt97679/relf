@@ -1718,8 +1718,9 @@ VARIABLE XS-PREV          \ where the text after the last region begins
     THEN
   THEN ;
 
-: XE-TRY ( node --- f )   \ expanded here? then EXPAND-WORDS goes on
-  DUP 3 XF@ ?DUP 0= IF 2DROP 0 EXIT THEN    \ no encoding: the old path
+: XE-TRY ( node --- )   \ the word, from its encoding
+  ?DUP 0= IF EXIT THEN                      \ no node: an empty word
+  DUP 3 XF@ ?DUP 0= IF DROP EXIT THEN       \ nothing to expand
   OVER 2 XF@ XSTR                            ( node len addr )
   SWAP OVER + XE-END !  XE-P !               ( node )
   DUP 4 XF@ XE-SUBS !
@@ -1730,8 +1731,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   TOK-OUT @ OUT-BASE - >R
   XE-WALK
   0 IN-DQ-CONTEXT? !
-  R> XE-SPLIT
-  -1 ;
+  R> XE-SPLIT ;
 ' XE-TRY IS ENC-EXPAND-CALL
 
 : ADD-WORD ( word --- )
@@ -1797,10 +1797,8 @@ DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesti
   0 ARGC !  0 ARGV !
   HDX-BUF HDX# @ 1- ENCODE-TEXT-CALL
   EXEC-BASE @ >R  TREE-BUF EXEC-BASE !
-  OPT-ENC? @ >R  -1 OPT-ENC? !               \ the body is encoded: expand it so
   ADD-WORD
   -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
-  R> OPT-ENC? !
   R> EXEC-BASE !
   JOIN-ARGV HEREDOC-SET ;
 
@@ -2198,13 +2196,6 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
 \ parse, all of it.
 VARIABLE SUBLIST-XT
 ' PARSE-SUBLIST SUBLIST-XT !XT
-: TREE-CMDSUB-END ( c-addr u --- n )
-  DUP >R  >R >R  SOURCE@  R> R>  NEST-SOURCE  -1 NO-ALIAS? !
-  SUBLIST-XT @XT CATCH IF R@ ELSE SRC-POS @ 1- THEN
-  >R SOURCE! R>
-  R> MIN 0 MAX ;
-' TREE-CMDSUB-END IS TREE-CMDSUB-END-CALL
-
 : TREE-EVAL ( --- )   \ eval's arguments, joined with spaces
   0 LAST-STATUS !
   ARGC @ 2 < IF EXIT THEN
@@ -2274,8 +2265,7 @@ VARIABLE SUBLIST-XT
   TIB SRC !  0 SID !
   INCLUDE-BUFFER INCLUDE-POINTER !
   0 SHVAR-INDEX-OK? !
-  S" RELF_EXP" ENVNAMBUF SWAP MOVE  0 ENVNAMBUF 8 + C!
-  ENVNAMBUF GETENV ?DUP IF C@ 48 <> ELSE 0 THEN OPT-ENC? !     \ its buffer is new: build it on the first lookup
+     \ its buffer is new: build it on the first lookup
   RUN-SOURCES ;
 
 \ ==================================================================

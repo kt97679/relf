@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,882    kernel-shell.img     78,104
-    32-bit   kernel32.img   8,370    kernel32-shell.img   72,600
+    64-bit   kernel.img     8,882    kernel-shell.img     76,920
+    32-bit   kernel32.img   8,370    kernel32-shell.img   75,628
 
 **Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1677,7 +1677,14 @@ before anything else, because every number here is relative to it.
    by substring search, `str` 0.79x - **and Stage A in 274**: the lexer
    writes each word's encoded form beside its text, with each command
    substitution's text kept separately, and `tree-dump -e` prints it;
-   `tests/parse` checks four encoded cases. **Stage B begun in 275**:
+   `tests/parse` checks four encoded cases. **Stages B and C done in
+   275-282**: the encoded expander is the only one, and the scanning
+   expander is deleted (shell.4 6,073 -> 5,281 lines). Measured against
+   it: `str` -16.8% of the dispatches, `arith` -4.9%, `loop` +3.1%, `fn`
+   +1.9%. Left: Stage D - arithmetic compiled at parse time, command
+   substitutions run from their parsed subtrees - and the walker's
+   per-word entry, which is what the short-word workloads pay.
+   *(The history below is kept for the record.)* **Stage B begun in 275**:
    the encoded path expands the words that hold only literal runs,
    quoted runs, escapes and plain parameters, selected by `RELF_EXP=1`,
    with every suite passing both ways; it is neutral so far, since the

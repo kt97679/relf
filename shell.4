@@ -138,7 +138,6 @@ VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to 
 \ this file already requires for SHADOW{ itself.
 
 DEFER TREE-EVAL-CALL  \ eval's text, parsed and run as a tree
-DEFER TREE-CMDSUB-END-CALL  \ ( c-addr u --- n ) where $(...)'s text ends
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ branch has already determined this whole
                           \ region shouldn't execute anything (either
@@ -982,8 +981,6 @@ VARIABLE TOK-WAS-QUOTED?
   DUP 97 < 0= OVER 123 < AND IF DROP -1 EXIT THEN   ( a-z )
   DROP 0 ;
 
-64 BUFFER: VARNAME-BUF
-VARIABLE VN-LEN
 24 BUFFER: DIGIT-BUF
 VARIABLE DIGIT-N
 
@@ -1091,26 +1088,6 @@ VARIABLE IN-DQ-CONTEXT?      \ true while currently inside a real,
                                \ by testing directly: a bare, unquoted
                                \ $x came out completely empty).
 
-VARIABLE IN-BRACED-WORD?     \ true while scanning the word of a
-                               \ ${VAR:-word}. Literal text there is
-                               \ part of the expansion's result and is
-                               \ field-split when unquoted, so
-                               \ "n ${nope:-a b c}" passes three
-                               \ arguments; literal text in an ordinary
-                               \ word never is, since SCAN-TOKEN stops
-                               \ at the separator instead of emitting
-                               \ it.
-
-VARIABLE EXPAND-SUPPRESSED?  \ true while a word is being scanned only
-                               \ to find where it ends, not for its
-                               \ value - the untaken branch of
-                               \ ${VAR:-word}. Everything is still
-                               \ dispatched (that is what makes the two
-                               \ branches agree about the word's
-                               \ extent), but a $(...) inside must not
-                               \ actually run. See
-                               \ EXPAND-BRACED-WORD-ASIDE.
-
 4 BUFFER: IFS-NM
 VARIABLE IFSC-C
 VARIABLE IFSC-P
@@ -1172,7 +1149,6 @@ VARIABLE IFS-CACHED?
   THEN ;
 
 VARIABLE PATTERN-CAPTURE?   \ a trim's pattern is being captured (EMIT-QUOTED)
-VARIABLE PATTERN-NEXT?      \ ... the next capture is one
 VARIABLE QUOTE-DEPTH        \ inside real double quotes
 
 \ Quoted characters in a trim's pattern are literal (XCU 2.6.2): while
@@ -1302,10 +1278,6 @@ LINE-MAX BUFFER: CMDSUB-LINES     \ the same text, NUL-separated per
 VARIABLE CMDSUB-LINES-LEN
 VARIABLE CS-POS
 VARIABLE CS-COPY-I
-VARIABLE CS-SQ?
-VARIABLE CS-DQ?
-VARIABLE CS-CLOSER
-VARIABLE CS-DEPTH        \ nested "$(" still open within this one
 VARIABLE CS-NONBLANK?
 
 256 CONSTANT CMDSUB-OUT-MAX   \ where the output buffer starts; it grows
@@ -1891,47 +1863,6 @@ VARIABLE ANS-NEG
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
   AE-EXPR ;
 
-256 BUFFER: ARITH-EXPR-BUF
-VARIABLE ARITH-EXPR-LEN
-VARIABLE ARITH-DEPTH
-
-: EXPAND-ARITH ( --- )
-  \ TOK-POS is right after "$((" (both opening parens already
-  \ consumed by the caller). Scans for the matching "))" - tracking
-  \ how many *extra*, unmatched "(" are open within the expression
-  \ itself (ARITH-DEPTH), so a nested "(...)" inside the expression
-  \ (e.g. "$(( (1+2)*3 ))") isn't mistaken for the arithmetic
-  \ expansion's own closing "))" - before evaluating the extracted
-  \ text (via AE-EVAL) and emitting the result as a decimal number.
-  \ Bounds-checked against ARITH-EXPR-BUF's own fixed size the same
-  \ defensive way this file already handles other fixed-size copies -
-  \ an expression longer than that is silently truncated rather than
-  \ overflowing, not reported as an error.
-  0 ARITH-DEPTH !
-  0 ARITH-EXPR-LEN !
-  BEGIN
-    TOK-POS @ TOK-END @ < IF
-      TOK-POS @ C@ 41 = ARITH-DEPTH @ 0 = AND
-      TOK-POS @ 1+ TOK-END @ < AND
-      TOK-POS @ 1+ C@ 41 = AND
-      0=
-    ELSE
-      0
-    THEN
-  WHILE
-    TOK-POS @ C@ 40 = IF ARITH-DEPTH @ 1+ ARITH-DEPTH ! THEN
-    TOK-POS @ C@ 41 = IF
-      ARITH-DEPTH @ 0 > IF ARITH-DEPTH @ 1- ARITH-DEPTH ! THEN
-    THEN
-    ARITH-EXPR-LEN @ 255 < IF
-      TOK-POS @ C@ ARITH-EXPR-BUF ARITH-EXPR-LEN @ + C!
-      ARITH-EXPR-LEN @ 1+ ARITH-EXPR-LEN !
-    THEN
-    TOK-POS @ 1+ TOK-POS !
-  REPEAT
-  TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
-  ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL ;
-
 VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 
@@ -1990,64 +1921,6 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
       LOOP DROP
     THEN
   THEN ;
-
-: EXPAND-CMDSUB ( closer --- )
-  \ TOK-POS is just inside the substitution; `closer` is the character
-  \ that ends it - ')' for $(...), '`' for the backquote form, which
-  \ is otherwise identical. Parameterising the terminator was all the
-  \ backquote form needed; a second copy of this word would have been
-  \ exactly the duplication FORTH-STYLE.md warns about.
-  CS-CLOSER !
-  0 CS-COPY-I !
-  0 CS-SQ? !  0 CS-DQ? !  0 CS-DEPTH !
-  \ The tree lexer finds the closing paren, by parsing the text: the
-  \ loop below counts only $( and so ended a $(...) at a case pattern's
-  \ `)` or a function definition's `()` (Iteration 264). The loop is
-  \ still what finds a backquote's end.
-  CS-CLOSER @ 41 = IF
-    TOK-POS @ TOK-END @ OVER - TREE-CMDSUB-END-CALL     ( n )
-    DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
-    TOK-POS @ CMDSUB-LINE-BUF 2 PICK MOVE
-    DUP CS-COPY-I !  TOK-POS +!
-  ELSE
-  BEGIN
-    TOK-POS @ TOK-END @ < IF
-      TOK-POS @ C@ CS-CLOSER @ <> CS-SQ? @ OR CS-DQ? @ OR CS-DEPTH @ 0 <> OR
-    ELSE 0 THEN
-  WHILE
-    \ A ')' inside quotes belongs to the command text, not to the
-    \ substitution: $(echo "a)b") must not stop at the first ')'.
-    TOK-POS @ C@ 39 = CS-DQ? @ 0= AND IF CS-SQ? @ 0= CS-SQ? ! THEN
-    TOK-POS @ C@ 34 = CS-SQ? @ 0= AND IF CS-DQ? @ 0= CS-DQ? ! THEN
-    \ A nested "$(" opens another level, so its own ')' does not close
-    \ this one - "$(echo $(echo x))". Only for the paren form; the
-    \ backquote form has no nesting to track.
-    CS-CLOSER @ 41 = CS-SQ? @ 0= AND CS-DQ? @ 0= AND IF
-      TOK-POS @ C@ 36 = TOK-POS @ 1+ TOK-END @ < AND IF
-        TOK-POS @ 1+ C@ 40 = IF CS-DEPTH @ 1+ CS-DEPTH ! THEN
-      THEN
-      TOK-POS @ C@ 41 = CS-DEPTH @ 0 > AND IF
-        CS-DEPTH @ 1- CS-DEPTH !
-      THEN
-    THEN
-    CS-COPY-I @ 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
-    CS-COPY-I @ LINE-HARD-MAX < IF
-      TOK-POS @ C@ CMDSUB-LINE-BUF CS-COPY-I @ + C!
-      CS-COPY-I @ 1+ CS-COPY-I !
-    THEN
-    TOK-POS @ 1+ TOK-POS !
-  REPEAT
-  THEN
-  \ The text, NUL-terminated: tree mode's child reads it up to the NUL.
-  CS-COPY-I @ 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
-  0 CMDSUB-LINE-BUF CS-COPY-I @ + C!
-  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN   ( skip closing paren )
-  EXPAND-SUPPRESSED? @ IF EXIT THEN
-  \ The text has been consumed; the command must not run. This is the
-  \ branch of ${VAR:-$(cmd)} that is not taken - the word is still
-  \ scanned, to find where it ends, but a shell that ran the command
-  \ anyway would be visibly wrong (Iteration 104).
-  CMDSUB-LINE-BUF CS-COPY-I @ RUN-CMDSUB-TEXT ;
 
 VARIABLE EAP-I
 VARIABLE EAP-AT
@@ -2117,143 +1990,12 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
 \ string comparison, unlike the modifiers here.
 \ ==================================================================
 
-256 BUFFER: PEWORD-BUF
-VARIABLE PEWORD-LEN
-VARIABLE PEW-COLON?
-VARIABLE PEW-SUFFIX?     \ set by EXPAND-BRACED-VAR before calling
-                          \ TRIM-PARAM-CALL: true for %/%% (suffix
-                          \ removal), false for #/## (prefix removal).
-VARIABLE PEW-LONGEST?    \ true for %%/## (longest match), false for
-                          \ %/# (shortest match).
-DEFER TRIM-PARAM-CALL   \ patched to TRIM-PARAM's own xt right after
-                          \ it's defined, much further down (the same
-                          \ deferred-word pattern already used for
-                          \ RUN-TOKENIZED-CALL/RUN-FUNC-BODY-CALL/
-                          \ TRY-ASSIGNMENT-CALL) - needed since
-                          \ TRIM-PARAM depends on GLOB-MATCH, defined
-                          \ far later in the file than EXPAND-BRACED-
-                          \ VAR is.
-
-DEFER SCAN-CHAR-CALL
 \ SCAN-TOKEN's one-character dispatch - quotes, backslash, '$', a
 \ backquote, an assignment tilde. Patched to the real word far below,
 \ where COPY-DOUBLE-QUOTED and friends exist; needed here because the
 \ "word" in ${VAR:-word} is ordinary word text and gets expanded by
 \ exactly the same machinery as any other, rather than by a second
 \ copy of it.
-
-VARIABLE CBW-START   \ an offset from OUT-BASE
-VARIABLE SKIP-OFF    \ likewise
-VARIABLE EBW-NAME       \ arena offset of the saved name
-VARIABLE EBW-NAMELEN
-
-: EXPAND-BRACED-WORD ( --- )
-  \ TOK-POS is at the first character of the word in ${VAR:-word}.
-  \ Expands it in place into the token being built, and consumes the
-  \ closing '}'.
-  \
-  \ A '}' at this level ends the word; one inside quotes, or inside a
-  \ nested ${...} or $(...), does not, because the dispatch consumes
-  \ those regions whole. Nesting therefore works without being
-  \ arranged for.
-  \
-  \ VARNAME-BUF is saved across the scan and put back afterwards. This
-  \ word introduced reentrancy where there was none - the old
-  \ READ-PEWORD only copied bytes - and an inner $NAME writes its own
-  \ name into that same buffer, which both TRIM-PARAM and
-  \ ${VAR:=word}'s SET-SHVAR read after the scan returns.
-  \ "${x#$HOME}" trimmed HOME from HOME and quietly gave empty.
-  \ FORTH-STYLE.md section 9, found by testing rather than by reading.
-  \
-  \ Per-invocation arena storage rather than a second fixed buffer,
-  \ since the nesting has no bound: BODY-ARENA-TOP is a local, so the
-  \ allocation is released on every exit path.
-  IN-BRACED-WORD? @ BODY-ARENA-TOP @
-  SHADOW{ IN-BRACED-WORD? BODY-ARENA-TOP | EBW-NAME EBW-NAMELEN }
-  -1 IN-BRACED-WORD? !
-  VN-LEN @ 1+ EBW-NAMELEN !
-  EBW-NAMELEN @ BODY-ALLOC EBW-NAME !
-  VARNAME-BUF EBW-NAME @ BODY@ EBW-NAMELEN @ MOVE
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 125 <> ELSE 0 THEN
-  WHILE
-    SCAN-CHAR-CALL
-  REPEAT
-  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
-  EBW-NAME @ BODY@ VARNAME-BUF EBW-NAMELEN @ MOVE
-  EBW-NAMELEN @ 1- VN-LEN ! ;
-
-: EXPAND-BRACED-WORD-ASIDE ( --- )
-  \ Consumes the word without letting any of it be seen: the branch of
-  \ ${VAR:-word} that is not taken.
-  \
-  \ Deliberately the same scan as the live path rather than a separate
-  \ skipper. Two scanners would be two answers to "where does this word
-  \ end", and FORTH-STYLE.md section 11 is about exactly that: copies
-  \ drift, and here they would drift on quoted braces.
-  \
-  \ Three things make the scan invisible. TOK-OUT is declared as a
-  \ local, so it is restored on exit and whatever was written is
-  \ rewound. IN-DQ-CONTEXT? suppresses field splitting, which would
-  \ otherwise advance ARGC for a "$@" in the discarded word.
-  \ EXPAND-SUPPRESSED? stops a $(...) from running.
-  IN-DQ-CONTEXT? @ EXPAND-SUPPRESSED? @ TOK-OUT @ OUT-BASE -
-  SHADOW{ IN-DQ-CONTEXT? EXPAND-SUPPRESSED? SKIP-OFF }
-  -1 IN-DQ-CONTEXT? !
-  -1 EXPAND-SUPPRESSED? !
-  EXPAND-BRACED-WORD
-  \ Rewind by offset: the buffer may have moved (Iteration 251).
-  OUT-BASE SKIP-OFF @ + TOK-OUT ! ;
-
-: CAPTURE-BRACED-WORD ( --- )
-  \ Expands the word and leaves the result in PEWORD-BUF instead of in
-  \ the token: what ${VAR%pattern} needs, since the pattern is matched
-  \ against rather than emitted, and what ${VAR:=word} needs for the
-  \ value it assigns.
-  \
-  \ The token buffer is the scratch space - expand into it and rewind.
-  \
-  \ Field splitting is suppressed: a pattern is one pattern, and an
-  \ assigned value is one value.
-  \ PATTERN-NEXT? says whether this is a trim's pattern; the quote depth
-  \ starts again at 0 inside it - `"${x#*}"`'s star is still a pattern.
-  PATTERN-NEXT? @  0 PATTERN-NEXT? !  0
-  IN-DQ-CONTEXT? @ TOK-OUT @ OUT-BASE -
-  SHADOW{ PATTERN-CAPTURE? QUOTE-DEPTH IN-DQ-CONTEXT? CBW-START }
-  -1 IN-DQ-CONTEXT? !
-  EXPAND-BRACED-WORD
-  \ CBW-START is an OFFSET, and the rewind is by offset: the buffer may
-  \ have moved while the word expanded (Iteration 251).
-  TOK-OUT @ OUT-BASE - CBW-START @ -
-  DUP 1+ ENSURE-BUFFER PEWORD-BUF
-  PEWORD-LEN !
-  OUT-BASE CBW-START @ + PEWORD-BUF PEWORD-LEN @ MOVE
-  0 PEWORD-BUF PEWORD-LEN @ + C!
-  OUT-BASE CBW-START @ + TOK-OUT ! ;
-
-: USE-BRACED-WORD? ( value-or-0 --- f )
-  \ Does this modifier's word apply? True when the variable is unset,
-  \ or empty and the modifier was written with a ':'. The three
-  \ branches below all asked this in the same two nested IFs; asking it
-  \ once is what lets each branch be a plain choice between two words.
-  DUP 0= IF DROP -1 EXIT THEN
-  CSTRLEN 0= PEW-COLON? @ AND ;
-
-: READ-VARNAME ( --- )
-  \ Reads a POSIX portable variable name from TOK-POS into
-  \ VARNAME-BUF, *without* consuming whatever follows (unlike the
-  \ plain, unmodified ${NAME} path, which consumes through the closing
-  \ '}' itself) - stops right at the first non-name character, so the
-  \ caller can inspect what comes next to detect a modifier.
-  0 VN-LEN !
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ NAME-CHAR? ELSE 0 THEN
-  WHILE
-    TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
-    VN-LEN @ 1+ VN-LEN !
-    TOK-POS @ 1+ TOK-POS !
-  REPEAT
-  0 VARNAME-BUF VN-LEN @ + C! ;
 
 : EMIT-OPTION-FLAGS ( --- )   \ $-
   OPT-ERREXIT @ IF 101 EMIT-TOK-CHAR THEN
@@ -2267,306 +2009,9 @@ VARIABLE EBW-NAMELEN
   S" shell: " ERR-TYPE ERR-TYPE S" : parameter not set" ERR-TYPE ERR-NL
   -1 UNSET-FATAL? !  -1 EXPANSION-FAILED? ! ;
 
-: EMIT-LOOKED-UP-VAR ( value-addr-or-0 --- )
-  \ Shared with the plain ${NAME}/$NAME paths below: emits a looked-up
-  \ value if found, otherwise emits nothing (an unset variable
-  \ expands to empty).
-  DUP 0= IF DROP ELSE
-    TYPE0-TO-TOK-SPLIT
-  THEN ;
-
-\ A trim's pattern may hold another ${...} - `${d%/${d##*/}}` - whose
-\ expansion reuses VARNAME-BUF and the trim flags. They are kept on a
-\ small stack around the capture (Iteration 273; nested trims used the
-\ inner one's name and flags).
-256 BUFFER: TRIM-SAVES
-VARIABLE TRIM-SAVES#
-: SAVE-TRIM-STATE ( --- )
-  TRIM-SAVES# @ 66 + ENSURE-BUFFER TRIM-SAVES
-  VARNAME-BUF  TRIM-SAVES TRIM-SAVES# @ +  64 MOVE
-  PEW-SUFFIX? @ 0<> 1 AND  TRIM-SAVES TRIM-SAVES# @ + 64 + C!
-  PEW-LONGEST? @ 0<> 1 AND  TRIM-SAVES TRIM-SAVES# @ + 65 + C!
-  66 TRIM-SAVES# +! ;
-: RESTORE-TRIM-STATE ( --- )
-  -66 TRIM-SAVES# +!
-  TRIM-SAVES TRIM-SAVES# @ +  VARNAME-BUF  64 MOVE
-  TRIM-SAVES TRIM-SAVES# @ + 64 + C@ 0<> PEW-SUFFIX? !
-  TRIM-SAVES TRIM-SAVES# @ + 65 + C@ 0<> PEW-LONGEST? ! ;
-
-: EXPAND-BRACED-VAR ( --- )
-  \ TOK-POS is right after the opening '{'.
-  \ ${#} is $#, not the length of a variable with an empty name.
-  TOK-POS @ 1+ TOK-END @ < IF
-    TOK-POS @ C@ 35 = TOK-POS @ 1+ C@ 125 = AND IF
-      TOK-POS @ 2 + TOK-POS !
-      POS-PARAM-COUNT @ EMIT-DECIMAL
-      EXIT
-    THEN
-  THEN
-  TOK-POS @ TOK-END @ < TOK-POS @ C@ 35 = AND IF   ( ${#VAR}: length )
-    TOK-POS @ 1+ TOK-POS !
-    READ-VARNAME
-    TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
-    VARNAME-BUF LOOKUP-VAR DUP 0= IF
-      DROP VARNAME-BUF DUP CSTRLEN NOUNSET-CHECK 0
-    ELSE CSTRLEN THEN
-    EMIT-DECIMAL
-    EXIT
-  THEN
-  READ-VARNAME
-  TOK-POS @ TOK-END @ < 0= IF        ( ran off the end - malformed;
-                                        fall back to a plain lookup )
-    VARNAME-BUF LOOKUP-VAR EMIT-LOOKED-UP-VAR
-    EXIT
-  THEN
-  TOK-POS @ C@ 125 = IF               ( ${NAME}: plain, unmodified )
-    TOK-POS @ 1+ TOK-POS !
-    VARNAME-BUF LOOKUP-VAR
-    DUP 0= IF VARNAME-BUF DUP CSTRLEN NOUNSET-CHECK THEN
-    EMIT-LOOKED-UP-VAR
-    EXIT
-  THEN
-  -1 PEW-COLON? !
-  TOK-POS @ C@ 58 = IF                ( ':' introducer, optional )
-    TOK-POS @ 1+ TOK-POS !
-  ELSE
-    0 PEW-COLON? !
-  THEN
-  TOK-POS @ TOK-END @ < 0= IF EXIT THEN   ( malformed - bail quietly )
-  TOK-POS @ C@
-  DUP 45 = IF                         ( '-': default value )
-    DROP TOK-POS @ 1+ TOK-POS !
-    VARNAME-BUF LOOKUP-VAR
-    DUP USE-BRACED-WORD? IF
-      DROP EXPAND-BRACED-WORD
-    ELSE
-      EXPAND-BRACED-WORD-ASIDE
-      EMIT-LOOKED-UP-VAR
-    THEN
-    EXIT
-  THEN
-  DUP 61 = IF                         ( '=': assign default )
-    DROP TOK-POS @ 1+ TOK-POS !
-    VARNAME-BUF LOOKUP-VAR
-    DUP USE-BRACED-WORD? IF
-      DROP
-      CAPTURE-BRACED-WORD
-      VARNAME-BUF PEWORD-BUF SET-SHVAR
-      PEWORD-BUF TYPE0-TO-TOK-SPLIT
-    ELSE
-      EXPAND-BRACED-WORD-ASIDE
-      EMIT-LOOKED-UP-VAR
-    THEN
-    EXIT
-  THEN
-  DUP 43 = IF                         ( '+': alternate value )
-    DROP TOK-POS @ 1+ TOK-POS !
-    VARNAME-BUF LOOKUP-VAR
-    USE-BRACED-WORD? IF               ( unset/empty: no alternate )
-      EXPAND-BRACED-WORD-ASIDE
-    ELSE
-      EXPAND-BRACED-WORD
-    THEN
-    EXIT
-  THEN
-  DUP 37 = IF                         ( '%' or '%%': suffix removal )
-    DROP TOK-POS @ 1+ TOK-POS !
-    -1 PEW-SUFFIX? !
-    0 PEW-LONGEST? !
-    TOK-POS @ TOK-END @ < TOK-POS @ C@ 37 = AND IF
-      TOK-POS @ 1+ TOK-POS !
-      -1 PEW-LONGEST? !
-    THEN
-    -1 PATTERN-NEXT? !
-    SAVE-TRIM-STATE CAPTURE-BRACED-WORD RESTORE-TRIM-STATE
-    TRIM-PARAM-CALL
-    EXIT
-  THEN
-  DUP 35 = IF                         ( '#' or '##': prefix removal )
-    DROP TOK-POS @ 1+ TOK-POS !
-    0 PEW-SUFFIX? !
-    0 PEW-LONGEST? !
-    TOK-POS @ TOK-END @ < TOK-POS @ C@ 35 = AND IF
-      TOK-POS @ 1+ TOK-POS !
-      -1 PEW-LONGEST? !
-    THEN
-    -1 PATTERN-NEXT? !
-    SAVE-TRIM-STATE CAPTURE-BRACED-WORD RESTORE-TRIM-STATE
-    TRIM-PARAM-CALL
-    EXIT
-  THEN
-  DROP ;                              ( unrecognized modifier: bail )
-
-
-: EXPAND-VAR ( --- )
-  \ TOK-POS is at the '$' character.
-  -1 TOK-WAS-QUOTED? !
-  TOK-POS @ 1+ TOK-POS !
-  TOK-POS @ TOK-END @ < 0= IF 36 EMIT-TOK-CHAR EXIT THEN
-  TOK-POS @ C@
-  DUP 63 = IF                     ( $? )
-    DROP TOK-POS @ 1+ TOK-POS !
-    LAST-STATUS @ EMIT-DECIMAL
-    EXIT
-  THEN
-  DUP 33 = IF                     ( $! - most recent background pid )
-    DROP TOK-POS @ 1+ TOK-POS !
-    BG-PID @ EMIT-DECIMAL
-    EXIT
-  THEN
-  DUP 36 = IF                     ( $$ )
-    DROP TOK-POS @ 1+ TOK-POS !
-    \ The SHELL's process ID, recorded at startup: POSIX says a subshell
-    \ expands $$ as its parent does. GETPID here gave a command
-    \ substitution its own (fixed in Iteration 255).
-    SHELL-PID @ EMIT-DECIMAL
-    EXIT
-  THEN
-  DUP 45 = IF                     ( $- : the option letters )
-    DROP TOK-POS @ 1+ TOK-POS !
-    EMIT-OPTION-FLAGS
-    EXIT
-  THEN
-  DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
-    48 -
-    TOK-POS @ 1+ TOK-POS !
-    1-
-    DUP POS-PARAM-COUNT @ < IF
-      POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
-    ELSE
-      DROP TOK-POS @ 1- 1 NOUNSET-CHECK
-    THEN
-    EXIT
-  THEN
-  DUP 35 = IF                     ( $# )
-    DROP TOK-POS @ 1+ TOK-POS !
-    POS-PARAM-COUNT @ EMIT-DECIMAL
-    EXIT
-  THEN
-  DUP 64 = IF                     ( $@ )
-    DROP TOK-POS @ 1+ TOK-POS !
-    -1 EMIT-ALL-POS-PARAMS
-    EXIT
-  THEN
-  DUP 42 = IF                     ( $* )
-    DROP TOK-POS @ 1+ TOK-POS !
-    0 EMIT-ALL-POS-PARAMS
-    EXIT
-  THEN
-  DUP 40 = IF                     \ command substitution, or
-                                   \ arithmetic expansion if doubled
-    DROP
-    TOK-POS @ 1+ TOK-END @ < TOK-POS @ 1+ C@ 40 = AND IF
-      TOK-POS @ 2 + TOK-POS !
-      EXPAND-ARITH
-    ELSE
-      TOK-POS @ 1+ TOK-POS !          ( skip '(' )
-      41 EXPAND-CMDSUB
-    THEN
-    EXIT
-  THEN
-  DUP 123 = IF                    ( ${...} )
-    DROP TOK-POS @ 1+ TOK-POS !
-    EXPAND-BRACED-VAR
-    EXIT
-  THEN
-  DUP NAME-CHAR? 0= IF
-    DROP 36 EMIT-TOK-CHAR          ( $ not followed by a name: literal $ )
-    EXIT
-  THEN
-  DROP
-  0 VN-LEN !
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ NAME-CHAR? ELSE 0 THEN
-  WHILE
-    TOK-POS @ C@ VARNAME-BUF VN-LEN @ + C!
-    VN-LEN @ 1+ VN-LEN !
-    TOK-POS @ 1+ TOK-POS !
-  REPEAT
-  0 VARNAME-BUF VN-LEN @ + C!
-  VARNAME-BUF LOOKUP-VAR DUP 0= IF
-    DROP VARNAME-BUF VN-LEN @ NOUNSET-CHECK
-  ELSE
-    TYPE0-TO-TOK-SPLIT
-  THEN ;
-
-: COPY-SINGLE-QUOTED ( --- )
-  \ TOK-POS is at the opening '. Copies everything up to (not
-  \ including) the matching closing ' verbatim - no escapes at all
-  \ recognized inside single quotes, matching POSIX. An unterminated
-  \ quote just consumes to the end of the input rather than erroring
-  \ (a real shell would prompt for a continuation line - not done
-  \ here yet).
-  -1 TOK-WAS-QUOTED? !
-  TOK-POS @ 1+ TOK-POS !
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 39 <> ELSE 0 THEN
-  WHILE
-    TOK-POS @ C@ EMIT-QUOTED
-    TOK-POS @ 1+ TOK-POS !
-  REPEAT
-  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
-
-: COPY-DOUBLE-QUOTED ( --- )
-  \ Like COPY-SINGLE-QUOTED, but recognizes \" and \\ as escapes for a
-  \ literal " or \. Any other backslash (e.g. \n) is passed through
-  \ as-is (backslash and the following character both kept), matching
-  \ POSIX's own rule that backslash is only special before specific
-  \ characters inside double quotes.
-  -1 TOK-WAS-QUOTED? !
-  -1 IN-DQ-CONTEXT? !
-  1 QUOTE-DEPTH +!
-  TOK-POS @ 1+ TOK-POS !
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ 34 <> ELSE 0 THEN
-  WHILE
-    TOK-POS @ C@ 92 = IF
-      TOK-POS @ 1+ TOK-END @ < IF
-        TOK-POS @ 1+ TOK-POS !
-        TOK-POS @ C@
-        \ POSIX: inside double quotes a backslash is special only
-        \ before $ ` " \ (and newline). '$' and '`' were missing, so
-        \ "\$a" kept its backslash instead of producing a literal $.
-        DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR IF
-          EMIT-QUOTED
-        ELSE
-          92 EMIT-QUOTED EMIT-QUOTED
-        THEN
-        TOK-POS @ 1+ TOK-POS !
-      ELSE
-        92 EMIT-QUOTED
-        TOK-POS @ 1+ TOK-POS !
-      THEN
-    ELSE TOK-POS @ C@ 36 = IF
-      EXPAND-VAR
-    ELSE TOK-POS @ C@ 96 = IF
-      TOK-POS @ 1+ TOK-POS !
-      96 EXPAND-CMDSUB
-    ELSE
-      TOK-POS @ C@ EMIT-QUOTED
-      TOK-POS @ 1+ TOK-POS !
-    THEN THEN THEN
-  REPEAT
-  -1 QUOTE-DEPTH +!
-  0 IN-DQ-CONTEXT? !
-  TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN ;
-
-: COPY-ESCAPED-CHAR ( --- )
-  \ TOK-POS is at a backslash outside any quotes: makes the next
-  \ character literal (e.g. \| for a literal pipe character).
-  -1 TOK-WAS-QUOTED? !
-  TOK-POS @ 1+ TOK-POS !
-  TOK-POS @ TOK-END @ < IF
-    TOK-POS @ C@ EMIT-QUOTED
-    TOK-POS @ 1+ TOK-POS !
-  THEN ;
-
 64  BUFFER: PW-HOME
 64  BUFFER: PW-WANT
-VARIABLE PW-I
 VARIABLE PW-LEN
-VARIABLE PW-ULEN   \ username length
-
 : PASSWD-HOME ( name-addr name-len --- addr | 0 )
   \ A named user's home directory. Returns 0 for an unknown user,
   \ which leaves "~nosuchuser" literal - what POSIX requires.
@@ -2601,109 +2046,10 @@ VARIABLE PW-ULEN   \ username length
   PW-HOME BUFFER-SIZE PW-HOME SAFE-COPY-NUL DROP
   PW-HOME ;
 
-: TRY-TILDE-USER ( --- )
-  \ "~user" / "~user/path". Leaves the word untouched if the name is
-  \ not in the password file.
-  0 PW-I !
-  BEGIN
-    TOK-POS @ 1+ PW-I @ + TOK-END @ < IF
-      TOK-POS @ 1+ PW-I @ + C@ DUP 47 <> SWAP WS? 0= AND
-    ELSE 0 THEN
-  WHILE PW-I @ 1+ PW-I ! REPEAT
-  PW-I @ 0= IF EXIT THEN
-  \ Keep the length somewhere PASSWD-HOME cannot reach: it calls
-  \ PW-FIELD, which uses PW-I as its own cursor. Reusing one scratch
-  \ variable across a call that reaches it is the hazard
-  \ FORTH-STYLE.md section 9 is about, and it cost "~root/x" its
-  \ "/x".
-  PW-I @ PW-ULEN !
-  TOK-POS @ 1+ PW-ULEN @ PASSWD-HOME
-  DUP 0= IF DROP EXIT THEN
-  TOK-POS @ 1+ PW-ULEN @ + TOK-POS !
-  TYPE0-TO-TOK-SPLIT ;
-
-: TRY-TILDE-EXPAND ( --- )
-  \ Called once, right at the start of SCAN-TOKEN, before any other
-  \ character of the token is processed - POSIX tilde expansion only
-  \ applies to a bare "~" right at the very start of a word, never one
-  \ appearing anywhere else within it. A no-op unless TOK-POS is
-  \ sitting on an unquoted "~" that's either the whole token (followed
-  \ by whitespace or end of input) or immediately followed by "/".
-  \ Scope limit: only this bare "~" form (expanding to $HOME) is
-  \ supported - "~user" (another user's home directory, needing a
-  \ password-database lookup this shell has no access to) and "~+"/
-  \ "~-" ($PWD/$OLDPWD, and this shell doesn't track $OLDPWD at all)
-  \ are not implemented; a "~" in either of those shapes is left
-  \ untouched, same as any other literal character.
-  TOK-POS @ C@ 126 <> IF EXIT THEN
-  TOK-POS @ 1+ TOK-END @ < IF
-    TOK-POS @ 1+ C@ DUP 47 = SWAP WS? OR 0= IF TRY-TILDE-USER EXIT THEN
-  THEN
-  TOK-POS @ 1+ TOK-POS !
-  S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
-  ENVNAMBUF LOOKUP-VAR DUP 0= IF DROP ELSE
-    TYPE0-TO-TOK-SPLIT
-  THEN ;
-
-: ASSIGN-TILDE-POINT? ( --- f )
-  \ Are we at a point in an ASSIGNMENT word where a tilde expands -
-  \ i.e. directly after the '=' or after a ':'?
-  TOKEN-IS-ASSIGN-PREFIX? 0= IF 0 EXIT THEN
-  TOK-OUT @ ARGV ARGC @ CELLS + @ > 0= IF 0 EXIT THEN
-  TOK-OUT @ 1- C@ DUP 61 = SWAP 58 = OR ;
-
-: SCAN-TOKEN-CHAR ( --- )
-  \ Dispatches the one character at TOK-POS, consuming it (or the whole
-  \ quoted/expanded region it opens) and emitting its content at
-  \ TOK-OUT.
-  \
-  \ Factored out of SCAN-TOKEN so EXPAND-BRACED-WORD can use it: the
-  \ word in ${VAR:-word} is ordinary word text, and the alternative was
-  \ a second copy of this dispatch that would have had to be kept in
-  \ step with this one.
-  TOK-POS @ C@
-  DUP 96 = IF
-    DROP
-    -1 TOK-WAS-QUOTED? !
-    TOK-POS @ 1+ TOK-POS !
-    96 EXPAND-CMDSUB
-  ELSE DUP 39 = IF DROP COPY-SINGLE-QUOTED
-  ELSE DUP 34 = IF DROP COPY-DOUBLE-QUOTED
-  ELSE DUP 92 = IF DROP COPY-ESCAPED-CHAR
-  ELSE DUP 36 = IF DROP EXPAND-VAR
-  ELSE DUP 126 = ASSIGN-TILDE-POINT? AND IF
-    \ POSIX expands a tilde in an ASSIGNMENT after the '=' and after
-    \ each unquoted ':', so "a=~/stuff" and "PATH=~/bin:~/sbin" both
-    \ work. Elsewhere in a word '~' is literal, which is why this is
-    \ not simply "is the character a tilde" - and why it is here and
-    \ not in COPY-DOUBLE-QUOTED, where a tilde stays literal too.
-    DROP TRY-TILDE-EXPAND
-  ELSE
-    IN-BRACED-WORD? @ IF EMIT-EXPANDED-CHAR ELSE GLOB-MARK EMIT-TOK-CHAR THEN
-    TOK-POS @ 1+ TOK-POS !
-  THEN THEN THEN THEN THEN THEN ;
-
-' SCAN-TOKEN-CHAR IS SCAN-CHAR-CALL
-
-: SCAN-TOKEN ( --- )
-  \ Reads from TOK-POS in LINE-BUF, writing the *unquoted, expanded*
-  \ content via EMIT-TOK-CHAR into TOK-BUF, until unquoted whitespace
-  \ or the end of input. The two buffers are separate, so the output
-  \ can be longer than the input it came from.
-  TRY-TILDE-EXPAND
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? 0= ELSE 0 THEN
-  WHILE
-    SCAN-TOKEN-CHAR
-  REPEAT ;
 
 1 CELLS ARGS-BUFFER: ARGV-NODES   \ each word's tree node, when it has one
 1 CELLS ARGS-BUFFER: EW-NODES     \ ... copied like EW-ARGV (Iteration 275)
-DEFER ENC-EXPAND-CALL   ( node --- f )   \ tree.4 sets it; only reached
-                                         \ when OPT-ENC? is set, which
-                                         \ tree.4's MAIN decides
-VARIABLE OPT-ENC?       \ RELF_EXP=1: the encoded path, where it can
-
+DEFER ENC-EXPAND-CALL   ( node --- )   \ tree.4: expand a word's encoding
 : EMIT-RUN ( c-addr u --- )   \ a whole run of literal bytes
   DUP 0= IF 2DROP EXIT THEN
   BEGIN TOK-OUT @ OVER + TOK-OUT-END @ > WHILE
@@ -2796,11 +2142,9 @@ VARIABLE EW-I
     ARGC @ ROOM-FOR-ARG? IF
       TOK-OUT @ ARGV ARGC @ CELLS + !
       EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
-      \ the encoded path where it can (EXPANSION-PLAN.md Stage B), else
-      \ this word is scanned as before
-      OPT-ENC? @ IF EW-NODES EW-I @ CELLS + @ ELSE 0 THEN
-      ?DUP IF ENC-EXPAND-CALL ELSE 0 THEN
-      IF TOK-END @ TOK-POS ! ELSE SCAN-TOKEN THEN
+      \ every word is expanded from its encoding (Stage C)
+      EW-NODES EW-I @ CELLS + @ ENC-EXPAND-CALL
+      TOK-END @ TOK-POS !
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
       \ POSIX: an unquoted expansion that produces nothing yields NO
@@ -2820,7 +2164,8 @@ VARIABLE EW-I
         ARGC @ 1+ ARGC !
       THEN
     ELSE
-      SCAN-TOKEN
+      EW-NODES EW-I @ CELLS + @ ENC-EXPAND-CALL
+      TOK-END @ TOK-POS !
       0 EMIT-TOK-CHAR
     THEN
     BEGIN
@@ -5870,53 +5215,6 @@ VARIABLE TF-TRAIL?
     FPM-LONGEST? @ IF FPM-I @ 1- ELSE FPM-I @ 1+ THEN FPM-I !
   REPEAT
   FPM-MATCHES? IF FPM-I @ ELSE -1 THEN ;
-
-: TYPE-N-TO-TOK ( addr n --- )
-  \ Like TYPE0-TO-TOK, but for a known-length span rather than a
-  \ NUL-terminated C string - the remaining portion after a prefix/
-  \ suffix match isn't itself NUL-terminated at the right point
-  \ The zero guard is not optional: this kernel's DO with start = limit
-  \ runs the whole unsigned range rather than zero iterations
-  \ (FORTH-STYLE.md section 12). n IS zero whenever a trim consumes the
-  \ entire value - "${p%%/*}", "${p##*}" - and every one of those
-  \ segfaulted.
-  DUP 0 > IF
-    0 DO
-      DUP I + C@ EMIT-TOK-CHAR
-    LOOP
-  ELSE
-    DROP
-  THEN
-  DROP ;
-
-VARIABLE TP-VAL-ADDR
-VARIABLE TP-VAL-LEN
-VARIABLE TP-MATCH-LEN
-
-: TRIM-PARAM ( --- )
-  \ VARNAME-BUF names the variable; PEWORD-BUF/PEWORD-LEN holds the
-  \ already-read pattern; PEW-SUFFIX?/PEW-LONGEST? (set by
-  \ EXPAND-BRACED-VAR before calling TRIM-PARAM-CALL) select which of
-  \ the four removal modes applies. An unset variable expands to
-  \ empty (nothing to trim).
-  SHADOW{ | TP-VAL-ADDR TP-VAL-LEN TP-MATCH-LEN }
-  VARNAME-BUF LOOKUP-VAR
-  DUP 0= IF DROP EXIT THEN
-  DUP CSTRLEN TP-VAL-LEN ! TP-VAL-ADDR !
-  PEWORD-BUF PEWORD-LEN @ TP-VAL-ADDR @ TP-VAL-LEN @
-  PEW-SUFFIX? @ PEW-LONGEST? @
-  -1 GM-ESCAPES? !  FIND-TRIM-LEN  0 GM-ESCAPES? !
-  TP-MATCH-LEN !
-  TP-MATCH-LEN @ -1 = IF
-    TP-VAL-ADDR @ TP-VAL-LEN @ TYPE-N-TO-TOK
-  ELSE
-    PEW-SUFFIX? @ IF
-      TP-VAL-ADDR @ TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
-    ELSE
-      TP-VAL-ADDR @ TP-MATCH-LEN @ + TP-VAL-LEN @ TP-MATCH-LEN @ - TYPE-N-TO-TOK
-    THEN
-  THEN ;
-' TRIM-PARAM IS TRIM-PARAM-CALL
 
 \ ==================================================================
 \ case WORD in / PATTERN1) / <body> / ;; / PATTERN2|PATTERN3) / ... /

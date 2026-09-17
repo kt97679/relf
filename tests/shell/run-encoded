@@ -1,9 +1,10 @@
 #!/bin/sh
-# tests/shell/run-encoded - EXPANSION-PLAN.md Stage B (Iteration 275):
-# words expanded from their encoding must give exactly what the scanning
-# expander gives. RELF_EXP=1 selects the encoded path where it can take a
-# word - literal runs, quoted runs, quoted characters and plain
-# parameters - and declines the rest, so this battery exercises both.
+# tests/shell/run-encoded - the expander (EXPANSION-PLAN.md). Until
+# Stage C (Iteration 282) this ran the battery through both the encoded
+# and the scanning path and required them to agree; the scanning path is
+# gone, so it now checks the battery against bash. The cases are the ones
+# the two paths disagreed on while both existed: quoting, field
+# splitting, IFS, "$@", operator forms, patterns and pathname expansion.
 . "$(dirname "$0")/lib.sh"
 case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
@@ -24,12 +25,9 @@ g() { echo "in g: $1 $# $*"; }
 g one two
 echo "end $? $#"
 BAT
-out0=$(cd "$t" && "$SH" battery.sh 2>&1)
-out1=$(cd "$t" && RELF_EXP=1 "$SH" battery.sh 2>&1)
-assert_output_equals "the encoded path gives what the scanning one gives" "$out0" "$out1"
-# and both agree with bash, where it is available
+out1=$(cd "$t" && "$SH" battery.sh 2>&1)
 if command -v bash > /dev/null 2>&1; then
     outb=$(cd "$t" && bash battery.sh 2>&1)
-    assert_output_equals "... and what bash gives" "$outb" "$out1"
+    assert_output_equals "the battery gives what bash gives" "$outb" "$out1"
 fi
 report
