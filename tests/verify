@@ -79,7 +79,7 @@ CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eigh
 rm -rf "$CROSS"
 if mkdir -p "$CROSS" 2>/dev/null; then
     for f in relf relf32 kernel.img kernel32.img relfsh \
-             extend.4 pool.4 shadow.4 save-system.4 shell.4; do
+             extend.4 pool.4 shadow.4 save-system.4 shell.4 tree.4; do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
     ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1
@@ -133,6 +133,14 @@ emit posix:passed       "$(echo "$P" | cut -d' ' -f1)"
 emit posix:failed       "$(echo "$P" | cut -d' ' -f2)"
 emit posix:inconclusive "$(echo "$P" | cut -d' ' -f3)"
 emit posix:cases "$(ls tests/posix/cases/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+
+# tests/parse: the command-tree parser (Iteration 263), its trees and its
+# syntax verdicts against dash -n.
+PR=$(sh tests/parse/run 2>&1 | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) failed; verdicts: \([0-9]*\) agree, \([0-9]*\) disagree ==$/\1 \2 \3 \4/p')
+emit parse:passed           "$(echo "$PR" | cut -d' ' -f1)"
+emit parse:failed           "$(echo "$PR" | cut -d' ' -f2)"
+emit parse:verdicts-agree   "$(echo "$PR" | cut -d' ' -f3)"
+emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f4)"
 
 # tests/matrix: every construct in every context, and the syntax errors,
 # against bash and dash (Iteration 262). A regression - a case that fails

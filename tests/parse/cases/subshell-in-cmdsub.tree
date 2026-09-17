@@ -1,0 +1,1 @@
+(list (simple (assign "x=$( (echo inner) )")))

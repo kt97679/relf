@@ -1,0 +1,1 @@
+(list (simple "sleep" "1") & (simple "echo" "after") (simple "wait"))

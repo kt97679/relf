@@ -1,0 +1,1 @@
+(list (simple (assign "n=0")) (while (list (simple "[" "$n" "-lt" "2" "]")) (list (simple (assign "n=$((n+1))")))))

@@ -1,0 +1,3 @@
+(list (function "f" (subshell (list (simple "echo" "sub")))))
+(list (function "g" (group (list (simple "echo" "g")) (redir > "log"))))
+(list (function "h" (if (list (simple "true")) (list (simple "echo" "h")))))

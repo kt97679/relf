@@ -1,0 +1,1 @@
+(list (group (list (simple "echo" "a") (simple "echo" "b"))))

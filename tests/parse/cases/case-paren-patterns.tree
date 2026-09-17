@@ -1,0 +1,1 @@
+(list (case "$1" (item [ "a" "b" ] (list (simple "echo" "ab"))) (item [ "*" ] (list (simple "echo" "other")))))

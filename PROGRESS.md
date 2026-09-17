@@ -258,6 +258,7 @@ do not trust the absence of a line below.
 - **260** — interpreter hot spots: 2SWAP, libc string primitives, DOES> @ inlined
 - **261** — COMMAND-TREE-PLAN.md: parse once into a tree, execute the tree
 - **262** — test coverage before the rewrite: matrix, interactive, syntax errors, dead code
+- **263** — command tree Stage A: tree.4, the lexer and parser; CATCH and THROW
 
 ### Not tied to an iteration
 
@@ -15654,3 +15655,59 @@ status.
 tests/verify: matrix lines new; shell assertions 577 -> 590 in 68 files;
 sizes 95,476 -> 95,076 (x86-64) and 81,415 -> 81,023 (i386), the dead
 code.
+
+## Iteration 263: the command-tree parser (Stage A)
+
+`tree.4`, loaded into the shell image after `shell.4`, builds a tree for
+each complete command and prints it; nothing executes it yet. The
+syntax-error policy for Stage B was agreed: POSIX, a non-interactive
+shell exits.
+
+**CATCH and THROW first.** extend.4's `THROW` was a stub that aborted.
+The standard's reference implementation replaces it, on the kernel's
+`SP@`/`SP!`/`RP@`/`RP!`, with tests for normal return, a thrown code,
+`0 THROW`, nesting and return-stack unwinding. A syntax error THROWs out
+of the recursive descent; so nothing in `tree.4` uses `SHADOW{` locals,
+which a THROW would leave unrestored - per-call state is on the stacks.
+
+**The pieces**, as COMMAND-TREE-PLAN.md describes them:
+- a tree arena addressed by offsets (a pool.4 buffer, so it grows), and
+  a vector builder whose nested vectors share one stack;
+- the input as a whole text, with a line count for messages;
+- one lexer: blanks, `\\` newline, comments, the seventeen operators,
+  IO numbers, and words scanned through quotes, backquotes, `${...}`,
+  `$((...))` by depth and `$(...)` BY PARSING ITS CONTENTS - the tree it
+  builds is thrown away, and it is what finds the right `)` after a case
+  pattern's. Here-document bodies are read when the newline after their
+  command is lexed, `<<-` stripping tabs, and stored on the redirection;
+- a recursive-descent parser for XCU 2.10: complete commands, lists,
+  and-or, pipelines with `!`, simple commands (assignments only before
+  the command word, redirections anywhere), subshells, groups, `if` with
+  `elif`, `while`, `until`, `for` with and without `in`, `case` with `(`
+  and `|`, function definitions (compound bodies only, as POSIX says)
+  and redirections on every compound command. Reserved words are only
+  recognised where the grammar allows one, so `for x in do done` lists
+  two words;
+- a printer, and the development builtin `tree-dump FILE`.
+
+Two bugs on the way, both caught before a commit: `['] DUMP-PROGRAM
+CATCH` compiled an absolute address and crashed the saved image (the xt
+is kept with shadow.4's `!XT` now), and the first `TOKEN-WORD` tried to
+skip a DO-loop iteration it could not skip.
+
+**Checked.** `tests/parse/run`: 22 cases whose trees were read and
+checked by hand - the same-line shapes (`cmd & more`, a group across
+lines, text after a nested `fi`, `n=0; while` with `do` below, one-line
+`case`), groups in pipelines, redirected compounds, `$( (list) )`,
+here-document variants, in functions and inside `$(...)`, comments and
+continuations, reserved words as arguments. And every script of the
+other suites gets `dash -n`'s syntax verdict (136 agree); across those
+plus the 390 wrapped matrix cases, 526 of 529 agreed, and the three
+exceptions are listed with their reasons (dash's simple-command
+function bodies, two cases POSIX leaves undefined). Both cell widths.
+
+Not yet: alias substitution and continuation prompts, which belong to
+Stage B's input sources.
+
+tests/verify: parse lines new; sizes +8.5 KB, the parser beside the old
+one until Stage C (x86-64 95,076 -> 103,848, i386 81,023 -> 89,548).

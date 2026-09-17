@@ -1,0 +1,1 @@
+(list (if (list (simple "true")) (list (if (list (simple "true")) (list (simple "echo" "a"))) (simple "echo" "b"))) (simple "echo" "c"))

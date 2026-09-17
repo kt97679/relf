@@ -6,9 +6,33 @@
 
 \ COMPARE is a kernel primitive since Iteration 260 (memcmp).
 
-: THROW ( f --- )
-\ Will abort if f is nonzero, a preliminary substitute for real THROW.
-  ABORT" Throw Exception" ;
+\ ---- ANS EXCEPTION: CATCH and THROW (Iteration 263) ----------------
+\ The reference implementation from the standard. HANDLER holds the
+\ return-stack address of the innermost CATCH's frame: the saved data
+\ stack pointer and the previous handler. THROW with a nonzero code
+\ restores both stacks to that frame and returns from its CATCH with
+\ the code; CATCH returns 0 when the word finished normally. THROW
+\ with no CATCH around it aborts, as the stub it replaces did.
+\
+\ A word THROWn through must not hold shadow.4 locals: SHADOW{ restores
+\ them on its own exits only, and THROW takes none of those.
+VARIABLE HANDLER   0 HANDLER !
+
+: CATCH ( i*x xt --- j*x 0 | i*x n )
+  SP@ >R  HANDLER @ >R
+  RP@ HANDLER !
+  EXECUTE
+  R> HANDLER !
+  R> DROP  0 ;
+
+: THROW ( k*x n --- k*x | i*x n )
+  ?DUP IF
+    HANDLER @ 0= IF ABORT" Throw Exception" THEN
+    HANDLER @ RP!
+    R> HANDLER !
+    R> SWAP >R
+    SP! DROP R>
+  THEN ;
 
 \ ---- ANS CORE EXT ---------------------------------------------------
 \ This file is loaded twice: by the cross-compile host, before cross.4,

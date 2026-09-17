@@ -1,0 +1,1 @@
+(list (function "f" (group (list (simple "cat" (redir << "EOF" (body "in function\n")))))))

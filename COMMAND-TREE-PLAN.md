@@ -224,7 +224,15 @@ new path is built BESIDE the old one and only becomes the default when it
 passes everything the old one passes; `master` never has a half-working
 shell.
 
-**Stage A — lexer, parser, tree, and a tree printer.** No execution. A
+**Stage A — lexer, parser, tree, and a tree printer.** **Done in
+Iteration 263**: `tree.4`, loaded after `shell.4`; the development
+builtin `tree-dump FILE`; `tests/parse/run` (22 expected trees, and 136
+scripts' syntax verdicts agreeing with `dash -n`, three justified
+exceptions listed with their reasons). Syntax errors unwind with
+`CATCH`/`THROW`, which extend.4 now implements properly; `tree.4`
+therefore uses no `SHADOW{` locals. Not yet in the lexer: alias
+substitution, and prompting for more input - both belong with Stage B's
+input sources. Originally: No execution. A
 builtin-free Forth entry, `PARSE-FILE ( c-addr u --- )`, parses a script
 and prints its tree in a fixed text form. Acceptance: every script in
 `tests/` (shell cases, differential cases, POSIX cases, mrsh cases, the

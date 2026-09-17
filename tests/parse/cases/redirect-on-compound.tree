@@ -1,0 +1,3 @@
+(list (while (list (simple "read" "l")) (list (simple "echo" "\"$l\"")) (redir < "in.txt")))
+(list (group (list (simple "echo" "a") (simple "echo" "b")) (redir > "out") (redir 2 >& "1")))
+(list (if (list (simple "true")) (list (simple "echo" "x")) (redir >> "log")))

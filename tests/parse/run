@@ -1,0 +1,50 @@
+#!/bin/sh
+# tests/parse/run - the command-tree parser (tree.4), Stage A of
+# COMMAND-TREE-PLAN.md (Iteration 263). Nothing is executed yet.
+#
+# 1. cases/NAME.sh must print exactly cases/NAME.tree under the
+#    development builtin `tree-dump`. The cases are the shapes the
+#    rewrite is for - same-line compounds, redirected compounds, groups
+#    in pipelines, here-documents in functions and in $(...), reserved
+#    words as arguments - each tree read and checked by hand.
+# 2. Every script in the other suites must get the same syntax verdict
+#    as `dash -n`, apart from VERDICT-EXCEPTIONS, where the reason is
+#    written beside each entry.
+set -u
+cd "$(dirname "$0")" || exit 1
+THIS_SH=${THIS_SH:-../../relfsh}
+case $THIS_SH in /*) ;; *) THIS_SH=$(pwd)/$THIS_SH ;; esac
+here=$(pwd)
+pass=0; fail=0; agree=0; disagree=0
+
+for f in cases/*.sh; do
+    want=$(cat "${f%.sh}.tree")
+    got=$("$THIS_SH" -c "tree-dump $here/$f" 2>&1)
+    if [ "$got" = "$want" ]; then
+        pass=$((pass + 1))
+    else
+        fail=$((fail + 1))
+        echo "FAIL: $f"
+        echo "  want: $want"
+        echo "  got:  $got"
+    fi
+done
+
+if command -v dash > /dev/null 2>&1; then
+    for f in ../diff/cases/*.sh ../posix/cases/*.sh ../bench-vm/*.sh \
+             ../matrix/errors/*.sh $(find ../mrsh-suite -name '*.sh' | sort); do
+        grep -q "^${f#../} " VERDICT-EXCEPTIONS && continue
+        "$THIS_SH" -c "tree-dump $here/$f" > /dev/null 2>&1; a=$?
+        dash -n "$f" > /dev/null 2>&1; b=$?
+        [ "$a" = 0 ] || a=2; [ "$b" = 0 ] || b=2
+        if [ "$a" = "$b" ]; then
+            agree=$((agree + 1))
+        else
+            disagree=$((disagree + 1))
+            echo "VERDICT: $f - tree-dump $a, dash -n $b"
+        fi
+    done
+fi
+
+echo "== $pass passed, $fail failed; verdicts: $agree agree, $disagree disagree =="
+[ "$fail" = 0 ] && [ "$disagree" = 0 ]

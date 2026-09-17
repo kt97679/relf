@@ -1,0 +1,3 @@
+matrix/errors/e28.sh dash accepts a simple command as a function body; POSIX and bash do not
+mrsh-suite/vendor/conformance/2.2.3-backquote-nonterminated-dquote.undefined.sh behaviour undefined by POSIX
+mrsh-suite/vendor/conformance/2.2.3-backquote-nonterminated-squote.undefined.sh behaviour undefined by POSIX

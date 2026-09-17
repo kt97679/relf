@@ -1,0 +1,1 @@
+(list (and-or (pipe ! (simple "grep" "-q" "x" "f")) && (simple "echo" "no") || (group (list (simple "echo" "yes")))))

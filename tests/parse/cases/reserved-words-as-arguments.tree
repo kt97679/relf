@@ -1,0 +1,1 @@
+(list (for "x" [ "do" "done" "if" ] (list (simple "echo" "if" "then" "fi" "\"$x\""))))

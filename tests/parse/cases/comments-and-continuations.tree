@@ -1,0 +1,2 @@
+(list (simple "echo" "ab" "\"c#d\"" "e#f"))
+(list (simple "echo" "g" "h"))

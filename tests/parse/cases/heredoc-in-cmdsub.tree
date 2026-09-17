@@ -1,0 +1,1 @@
+(list (simple (assign "v=$(cat <<EOF\ninside\nEOF\n)")))

@@ -1,0 +1,1 @@
+(list (simple "echo" "`echo \\`date\\``" "\"`pwd`\""))

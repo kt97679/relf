@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,738    kernel-shell.img     64,140
-    32-bit   kernel32.img   8,230    kernel32-shell.img   59,003
+    64-bit   kernel.img     8,738    kernel-shell.img     72,912
+    32-bit   kernel32.img   8,230    kernel32-shell.img   67,528
 
 **Seventy-two primitives**: 35 direct, with one-byte opcodes, and 37
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -430,6 +430,9 @@ how to test; this is what exists:
    extensions from becoming the standard. This is the successor to
    layer 4 now that layer 4 is passed, and the layer that will grow.
    See its own `README.md`.
+7. **`tests/parse/`** (Iteration 263) - the command-tree parser alone:
+   expected trees for the shapes the rewrite is for, and every other
+   suite's scripts checked to get the same syntax verdict as `dash -n`.
 6. **`tests/matrix/`** (Iteration 262) - combinations. Thirty small
    construct templates (every compound command, one-line and
    multi-line, functions, nesting, here-documents, comments, line
@@ -1630,7 +1633,9 @@ before anything else, because every number here is relative to it.
    endless loop after `;`, and the saved-rest-of-line hazard 255 and 257
    kept finding. Staged A (parser and tree printer) to D (measure);
    the new path is built beside the old one until it passes everything.
-   The **next piece of work**.
+   **Stage A done in Iteration 263** (`tree.4`, `tests/parse`); Stage B,
+   the executor as a second entry point, is the next piece of work -
+   and with it the syntax-error policy, agreed to follow POSIX (exit).
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while

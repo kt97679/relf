@@ -93,6 +93,29 @@ AG1                         5 EXPECT=
 : BC1 ( --- n ) [COMPILE] TRUE ;
 BC1                        -1 EXPECT=
 
+\ ---- CATCH and THROW (Iteration 263) --------------------------------
+: T1 ( --- n )  9 ;
+: C1 ( --- n n )  1 2 ['] T1 CATCH ;
+C1                 0 EXPECT=  9 EXPECT=  2 EXPECT=  1 EXPECT=
+: T2 ( --- )  1 2 3 42 THROW ;
+: C2 ( --- n n )  5 ['] T2 CATCH ;
+C2                 42 EXPECT=  5 EXPECT=
+: T3 ( n --- )  DUP 3 = IF 7 THROW THEN DROP ;
+: C3 ( n --- n n )  ['] T3 CATCH ;
+1 C3               0 EXPECT=
+3 C3               7 EXPECT=
+: T4 ( --- )  0 THROW 11 ;
+: C4 ( --- n n )  ['] T4 CATCH ;
+C4                 0 EXPECT=  11 EXPECT=
+\ nested: the inner CATCH takes the inner THROW, the outer the outer
+: T5 ( --- )  ['] T2 CATCH DROP 2DROP 99 THROW ;
+: C5 ( --- n )  ['] T5 CATCH ;
+C5                 99 EXPECT=
+\ the return stack is unwound too
+: T6 ( --- )  1 >R 2 >R 3 >R 13 THROW ;
+: C6 ( --- n n )  8 >R ['] T6 CATCH R> ;
+C6                 8 EXPECT=  13 EXPECT=
+
 \ ---- ENVIRONMENT? ---------------------------------------------------
 \ Unrecognised queries return false, which is all this answers.
 S" WORDLISTS" ENVIRONMENT?      0 EXPECT=

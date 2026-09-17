@@ -1,0 +1,1 @@
+(list (pipe (for "i" [ "1" "2" ] (list (while (list (simple "false")) (list (simple ":"))) (until (list (simple "true")) (list (simple ":"))) (case "$i" (item [ "1" ] (list (if (list (simple "true")) (list (simple "echo" "one")))))))) (simple "sort")))

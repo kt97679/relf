@@ -1,0 +1,2 @@
+(list (simple "cat" (redir << "A" (body "line $a\n"))) (simple "cat" (redir <<- "\"B\"" (body "tab-stripped $b\n"))))
+(list (simple "echo" "after"))

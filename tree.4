@@ -1,0 +1,764 @@
+\ tree.4 - the shell's lexer and parser: a complete command at a time,
+\ into a tree. Stage A of COMMAND-TREE-PLAN.md (Iteration 263): the tree
+\ is built and printed, not yet executed. Loaded after shell.4.
+\
+\ Words here are called recursively - `$(...)` is lexed by parsing its
+\ contents - and a syntax error unwinds with THROW (extend.4). So no word
+\ in this file uses shadow.4's SHADOW{ locals, which THROW would leave
+\ unrestored: per-call state lives on the data and return stacks, and
+\ globals hold only the current token and the input.
+
+\ ==================================================================
+\ The tree arena
+\ ==================================================================
+\ A growable buffer addressed by OFFSETS, so it may move while it grows.
+\ A node is a type cell followed by field cells. Offset 0 is never a
+\ node (the arena starts with a zero cell), so 0 means "none".
+
+1 CONSTANT T-WORD       \ fields: text, flags
+2 CONSTANT T-VEC        \ fields: count, items...
+3 CONSTANT T-LIST       \ fields: vec of (and-or, separator) pairs
+4 CONSTANT T-ANDOR      \ fields: vec of pipeline, op, pipeline, ...
+5 CONSTANT T-PIPE       \ fields: bang, vec of commands
+6 CONSTANT T-SIMPLE     \ fields: vec of (tag, node) pairs
+7 CONSTANT T-SUBSHELL   \ fields: redirs, body
+8 CONSTANT T-GROUP      \ fields: redirs, body
+9 CONSTANT T-IF         \ fields: redirs, vec of cond/body, else
+10 CONSTANT T-WHILE     \ fields: redirs, cond, body
+11 CONSTANT T-UNTIL     \ fields: redirs, cond, body
+12 CONSTANT T-FOR       \ fields: redirs, name, words (0: "$@"), body
+13 CONSTANT T-CASE      \ fields: redirs, word, vec of items
+14 CONSTANT T-CASEITEM  \ fields: vec of patterns, body (0: none)
+15 CONSTANT T-FUNCDEF   \ fields: redirs, name, body
+16 CONSTANT T-REDIR     \ fields: fd (-1: default), op, word, here-doc text
+
+\ SIMPLE item tags
+0 CONSTANT I-ASSIGN
+1 CONSTANT I-WORD
+2 CONSTANT I-REDIR
+
+\ word flags
+1 CONSTANT WF-QUOTED     \ some part is quoted or escaped
+2 CONSTANT WF-NAME-Q     \ the first character is a quote or backslash
+4 CONSTANT WF-EXPAND     \ contains $ or `
+
+256 BUFFER: TREE-BUF
+VARIABLE TREE-TOP
+
+: TREE-RESET ( --- )   0 TREE-BUF !  1 CELLS TREE-TOP ! ;
+: TREE-ALLOT ( n --- off )   \ n bytes, zeroed, at an aligned offset
+  ALIGNED TREE-TOP @ SWAP                   ( off n )
+  2DUP + DUP ENSURE-BUFFER TREE-BUF TREE-TOP !
+  OVER TREE-BUF + SWAP 0 FILL ;
+: T@ ( off --- x )   TREE-BUF + @ ;
+: T! ( x off --- )   TREE-BUF + ! ;
+: NODE ( type nfields --- off )
+  1+ CELLS TREE-ALLOT  TUCK T! ;
+: F@ ( off i --- x )   1+ CELLS + T@ ;
+: F! ( x off i --- )   1+ CELLS + T! ;
+: TSTR ( off --- c-addr )   TREE-BUF + ;   \ a string's address, for now
+
+\ The vector builder: items are pushed on a stack of cells and made into
+\ a T-VEC node in one piece. Builders nest - a vector is built while an
+\ outer one is still open - so each remembers its base.
+256 BUFFER: VEC-BUF
+VARIABLE VEC-TOP
+
+: >VEC ( x --- )
+  VEC-TOP @ 1+ CELLS ENSURE-BUFFER VEC-BUF
+  VEC-BUF VEC-TOP @ CELLS + !  1 VEC-TOP +! ;
+: VEC-MARK ( --- base )   VEC-TOP @ ;
+: VEC> ( base --- off )
+  VEC-TOP @ OVER -                          ( base n )
+  DUP 2 + CELLS TREE-ALLOT                  ( base n off )
+  T-VEC OVER T!  2DUP CELL+ T!              ( base n off )
+  SWAP 0 ?DO                                ( base off )
+    OVER I + CELLS VEC-BUF + @
+    OVER I 2 + CELLS + T!
+  LOOP
+  SWAP VEC-TOP ! ;
+: V# ( vec --- n )   CELL+ T@ ;
+: V@ ( vec i --- x )   2 + CELLS + T@ ;
+
+\ ==================================================================
+\ The input
+\ ==================================================================
+\ Stage A reads a whole text: a script file, or a string.
+VARIABLE SRC-ADDR
+VARIABLE SRC-LEN
+VARIABLE SRC-POS
+VARIABLE SRC-LINE
+
+: SRC-C ( i --- c | -1 )   \ the character i past the position
+  SRC-POS @ + DUP SRC-LEN @ < IF SRC-ADDR @ + C@ ELSE DROP -1 THEN ;
+: SRC-SKIP ( n --- )
+  0 ?DO
+    SRC-POS @ SRC-LEN @ < IF
+      SRC-POS @ SRC-ADDR @ + C@ 10 = IF 1 SRC-LINE +! THEN
+      1 SRC-POS +!
+    THEN
+  LOOP ;
+
+\ ==================================================================
+\ Errors
+\ ==================================================================
+\ A syntax error is reported and THROWn; the complete command is lost.
+1 CONSTANT E-SYNTAX
+
+: SYNTAX ( c-addr u --- )
+  S" shell: syntax error at line " ERR-TYPE
+  SRC-LINE @ N>STR DUP CSTRLEN ERR-TYPE
+  S" : " ERR-TYPE ERR-TYPE ERR-NL
+  E-SYNTAX THROW ;
+
+\ ==================================================================
+\ Tokens
+\ ==================================================================
+1 CONSTANT K-WORD
+2 CONSTANT K-NEWLINE
+3 CONSTANT K-EOF
+4 CONSTANT K-OP
+5 CONSTANT K-IONUM
+
+1 CONSTANT OP-SEMI       2 CONSTANT OP-AMP        3 CONSTANT OP-PIPE
+4 CONSTANT OP-AND        5 CONSTANT OP-OR         6 CONSTANT OP-DSEMI
+7 CONSTANT OP-LPAREN     8 CONSTANT OP-RPAREN
+9 CONSTANT OP-LESS      10 CONSTANT OP-GREAT     11 CONSTANT OP-DGREAT
+12 CONSTANT OP-LESSAND  13 CONSTANT OP-GREATAND  14 CONSTANT OP-LESSGREAT
+15 CONSTANT OP-DLESS    16 CONSTANT OP-DLESSDASH 17 CONSTANT OP-CLOBBER
+
+VARIABLE TK-KIND
+VARIABLE TK-OP
+VARIABLE TK-START
+VARIABLE TK-END
+VARIABLE TK-FLAGS
+VARIABLE TK-VALID?
+
+: TK-TEXT ( --- c-addr u )   SRC-ADDR @ TK-START @ +  TK-END @ TK-START @ - ;
+
+: BLANK? ( c --- f )   DUP 32 = SWAP 9 = OR ;
+: OP-CHAR? ( c --- f )
+  DUP 59 = OVER 38 = OR OVER 124 = OR OVER 40 = OR
+  OVER 41 = OR OVER 60 = OR SWAP 62 = OR ;
+
+\ ---- here-documents waiting for their bodies ----
+256 BUFFER: HD-PEND
+VARIABLE HD-PEND#
+256 BUFFER: HD-TEXT
+VARIABLE HD-TEXT#
+
+: HD-ADD ( redir --- )
+  HD-PEND# @ 1+ CELLS ENSURE-BUFFER HD-PEND
+  HD-PEND HD-PEND# @ CELLS + !  1 HD-PEND# +! ;
+: HD-APPEND ( c-addr u --- )
+  HD-TEXT# @ OVER + 1+ ENSURE-BUFFER HD-TEXT
+  HD-TEXT HD-TEXT# @ + SWAP DUP HD-TEXT# +! MOVE ;
+
+DEFER PARSE-SUBLIST   \ for $(...): parse a compound list up to `)`
+
+\ ---- scanning a word ----
+DEFER SCAN-DOLLAR
+
+: SCAN-SQUOTE ( --- )     \ at ': to past the closing '
+  1 SRC-SKIP
+  BEGIN
+    0 SRC-C DUP -1 = IF DROP S" unterminated single quote" SYNTAX THEN
+    1 SRC-SKIP 39 =
+  UNTIL ;
+
+: SCAN-BACKQUOTE ( --- )  \ at `: to past the closing `
+  1 SRC-SKIP
+  BEGIN
+    0 SRC-C
+    DUP -1 = IF DROP S" unterminated backquote" SYNTAX THEN
+    DUP 92 = IF DROP 2 SRC-SKIP 0 ELSE
+    96 = IF 1 SRC-SKIP -1 ELSE 1 SRC-SKIP 0 THEN THEN
+  UNTIL ;
+
+: SCAN-DQUOTE ( --- )     \ at ": to past the closing "
+  1 SRC-SKIP
+  BEGIN
+    0 SRC-C
+    DUP -1 = IF DROP S" unterminated double quote" SYNTAX THEN
+    DUP 34 = IF DROP 1 SRC-SKIP -1 ELSE
+    DUP 92 = IF DROP 2 SRC-SKIP 0 ELSE
+    DUP 96 = IF DROP SCAN-BACKQUOTE 0 ELSE
+    36 = IF SCAN-DOLLAR 0 ELSE 1 SRC-SKIP 0
+    THEN THEN THEN THEN
+  UNTIL ;
+
+: SCAN-ARITH ( --- )      \ at $((: to past the matching ))
+  3 SRC-SKIP 2
+  BEGIN
+    0 SRC-C
+    DUP -1 = IF DROP S" unterminated arithmetic expansion" SYNTAX THEN
+    DUP 40 = IF DROP 1+ 1 SRC-SKIP ELSE
+    DUP 41 = IF DROP 1- 1 SRC-SKIP ELSE
+    DUP 36 = IF DROP SCAN-DOLLAR ELSE
+    DUP 39 = IF DROP SCAN-SQUOTE ELSE
+    34 = IF SCAN-DQUOTE ELSE 1 SRC-SKIP
+    THEN THEN THEN THEN THEN
+    DUP 0=
+  UNTIL DROP ;
+
+: SCAN-CMDSUB ( --- )     \ at $(: parse the contents, to past the )
+  2 SRC-SKIP
+  \ The contents are a program: parse it, which is the only way to find
+  \ the right `)` past a case pattern's. The tree it builds is thrown
+  \ away; the token being scanned is saved around it.
+  TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R
+  0 TK-VALID? !
+  PARSE-SUBLIST
+  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START ! ;
+
+: SCAN-BRACE ( --- )      \ at ${: to past the matching }
+  2 SRC-SKIP 1
+  BEGIN
+    0 SRC-C
+    DUP -1 = IF DROP S" unterminated parameter expansion" SYNTAX THEN
+    DUP 125 = IF DROP 1- 1 SRC-SKIP ELSE
+    DUP 92 = IF DROP 2 SRC-SKIP ELSE
+    DUP 36 = IF DROP SCAN-DOLLAR ELSE
+    DUP 39 = IF DROP SCAN-SQUOTE ELSE
+    DUP 34 = IF DROP SCAN-DQUOTE ELSE
+    96 = IF SCAN-BACKQUOTE ELSE 1 SRC-SKIP
+    THEN THEN THEN THEN THEN THEN
+    DUP 0=
+  UNTIL DROP ;
+
+: SCAN-DOLLAR-IMPL ( --- )           \ at $
+  WF-EXPAND TK-FLAGS @ OR TK-FLAGS !
+  1 SRC-C 40 = IF
+    2 SRC-C 40 = IF SCAN-ARITH ELSE SCAN-CMDSUB THEN EXIT
+  THEN
+  1 SRC-C 123 = IF SCAN-BRACE EXIT THEN
+  1 SRC-SKIP ;
+' SCAN-DOLLAR-IMPL IS SCAN-DOLLAR
+
+: SCAN-WORD ( --- )       \ at a word's first character
+  SRC-POS @ TK-START !  0 TK-FLAGS !
+  0 SRC-C DUP 39 = OVER 34 = OR SWAP 92 = OR IF WF-NAME-Q TK-FLAGS ! THEN
+  BEGIN
+    0 SRC-C
+    DUP -1 = OVER BLANK? OR OVER 10 = OR OVER OP-CHAR? OR IF
+      DROP -1
+    ELSE DUP 92 = IF
+      DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !
+      1 SRC-C -1 = IF 1 ELSE 2 THEN SRC-SKIP 0
+    ELSE DUP 39 = IF
+      DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !  SCAN-SQUOTE 0
+    ELSE DUP 34 = IF
+      DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !  SCAN-DQUOTE 0
+    ELSE DUP 96 = IF
+      DROP WF-EXPAND TK-FLAGS @ OR TK-FLAGS !  SCAN-BACKQUOTE 0
+    ELSE 36 = IF
+      SCAN-DOLLAR 0
+    ELSE
+      1 SRC-SKIP 0
+    THEN THEN THEN THEN THEN THEN
+  UNTIL
+  SRC-POS @ TK-END ! ;
+
+: ALL-DIGITS? ( c-addr u --- f )
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER + SWAP ?DO I C@ 48 - 9 U> IF UNLOOP 0 EXIT THEN LOOP -1 ;
+
+: SCAN-OP ( --- )         \ at an operator character
+  K-OP TK-KIND !
+  0 SRC-C 1 SRC-C
+  OVER 59 = IF NIP 59 = IF OP-DSEMI 2 ELSE OP-SEMI 1 THEN ELSE
+  OVER 38 = IF NIP 38 = IF OP-AND 2 ELSE OP-AMP 1 THEN ELSE
+  OVER 124 = IF NIP 124 = IF OP-OR 2 ELSE OP-PIPE 1 THEN ELSE
+  OVER 40 = IF 2DROP OP-LPAREN 1 ELSE
+  OVER 41 = IF 2DROP OP-RPAREN 1 ELSE
+  OVER 60 = IF NIP
+    DUP 60 = IF DROP 2 SRC-C 45 = IF OP-DLESSDASH 3 ELSE OP-DLESS 2 THEN ELSE
+    DUP 38 = IF DROP OP-LESSAND 2 ELSE
+    62 = IF OP-LESSGREAT 2 ELSE OP-LESS 1 THEN THEN THEN
+  ELSE NIP
+    DUP 62 = IF DROP OP-DGREAT 2 ELSE
+    DUP 38 = IF DROP OP-GREATAND 2 ELSE
+    124 = IF OP-CLOBBER 2 ELSE OP-GREAT 1 THEN THEN THEN
+  THEN THEN THEN THEN THEN THEN
+  SRC-SKIP TK-OP ! ;
+
+\ ---- reading the bodies ----
+: STRIP-QUOTES ( c-addr u --- )   \ the delimiter, into HD-TEXT
+  0 HD-TEXT# !
+  OVER + SWAP ?DO
+    I C@ DUP 39 = OVER 34 = OR SWAP 92 = OR 0= IF
+      I 1 HD-APPEND
+    THEN
+  LOOP ;
+
+VARIABLE HD-DELIM
+VARIABLE HD-DELIM#
+VARIABLE HR-NODE
+VARIABLE HR-DASH?
+
+: HD-STORE ( --- off )   \ HD-TEXT, NUL-terminated, into the tree
+  HD-TEXT# @ 1+ TREE-ALLOT  HD-TEXT OVER TSTR HD-TEXT# @ MOVE ;
+
+\ A here-document's body: the lines after the command, up to one that is
+\ exactly the delimiter (quotes removed; leading tabs stripped for <<-).
+\ The body is stored raw; whether it is expanded is the word's business.
+: READ-HEREDOC ( redir --- )
+  DUP HR-NODE !  1 F@ OP-DLESSDASH = HR-DASH? !
+  HR-NODE @ 2 F@ 0 F@ TSTR DUP CSTRLEN STRIP-QUOTES
+  HD-TEXT# @ HD-DELIM# !  HD-STORE HD-DELIM !
+  0 HD-TEXT# !
+  BEGIN SRC-POS @ SRC-LEN @ < WHILE
+    HR-DASH? @ IF BEGIN 0 SRC-C 9 = WHILE 1 SRC-SKIP REPEAT THEN
+    SRC-POS @
+    BEGIN 0 SRC-C DUP -1 <> SWAP 10 <> AND WHILE 1 SRC-SKIP REPEAT
+    DUP SRC-ADDR @ +  SRC-POS @ ROT -       ( c-addr u )
+    1 SRC-SKIP
+    2DUP HD-DELIM @ TSTR HD-DELIM# @ COMPARE 0= IF
+      2DROP HD-STORE HR-NODE @ 3 F! EXIT
+    THEN
+    HD-APPEND  SH-NL 1 HD-APPEND
+  REPEAT
+  \ end of input before the delimiter: the body is what was read
+  HD-STORE HR-NODE @ 3 F! ;
+
+: READ-HEREDOCS ( --- )
+  HD-PEND# @ 0 ?DO HD-PEND I CELLS + @ READ-HEREDOC LOOP
+  0 HD-PEND# ! ;
+
+\ ---- the lexer ----
+: LEX ( --- )
+  BEGIN
+    0 SRC-C DUP BLANK? IF DROP 1 SRC-SKIP 0 ELSE
+    92 = 1 SRC-C 10 = AND IF 2 SRC-SKIP 0 ELSE -1 THEN THEN
+  UNTIL
+  0 SRC-C 35 = IF
+    BEGIN 0 SRC-C DUP -1 <> SWAP 10 <> AND WHILE 1 SRC-SKIP REPEAT
+  THEN
+  0 SRC-C
+  DUP -1 = IF DROP K-EOF TK-KIND ! EXIT THEN
+  DUP 10 = IF DROP 1 SRC-SKIP K-NEWLINE TK-KIND ! READ-HEREDOCS EXIT THEN
+  OP-CHAR? IF SCAN-OP EXIT THEN
+  SCAN-WORD K-WORD TK-KIND !
+  0 SRC-C DUP 60 = SWAP 62 = OR TK-TEXT ALL-DIGITS? AND IF
+    K-IONUM TK-KIND !
+  THEN ;
+
+: PEEK ( --- )   TK-VALID? @ 0= IF LEX -1 TK-VALID? ! THEN ;
+: NEXT ( --- )   PEEK 0 TK-VALID? ! ;
+: KIND? ( k --- f )   PEEK TK-KIND @ = ;
+: OP? ( op --- f )   PEEK TK-KIND @ K-OP = SWAP TK-OP @ = AND ;
+: KW? ( c-addr u --- f )   \ this unquoted word?
+  PEEK TK-KIND @ K-WORD = TK-FLAGS @ WF-QUOTED AND 0= AND IF
+    TK-TEXT COMPARE 0=
+  ELSE 2DROP 0 THEN ;
+: LINEBREAK ( --- )   BEGIN K-NEWLINE KIND? WHILE NEXT REPEAT ;
+
+\ A word node from the current token. Its text drops backslash-newline
+\ pairs outside single quotes - the one change the lexer makes to a word.
+VARIABLE TW-DST
+VARIABLE TW-SQ
+VARIABLE TW-DQ
+VARIABLE TW-I
+
+: TW-PUT ( c --- )   TW-DST @ C!  1 TW-DST +! ;
+: TW-C ( i --- c )   SRC-ADDR @ + C@ ;
+
+: TOKEN-WORD ( --- node )
+  TK-END @ TK-START @ - 1+ TREE-ALLOT       ( soff )
+  DUP TSTR TW-DST !  0 TW-SQ !  0 TW-DQ !  TK-START @ TW-I !
+  BEGIN TW-I @ TK-END @ < WHILE
+    TW-I @ TW-C
+    DUP 39 = TW-DQ @ 0= AND IF TW-SQ @ 0= TW-SQ ! THEN
+    DUP 34 = TW-SQ @ 0= AND IF TW-DQ @ 0= TW-DQ ! THEN
+    DUP 92 = TW-SQ @ 0= AND TW-I @ 1+ TK-END @ < AND IF
+      TW-I @ 1+ TW-C 10 = IF
+        DROP                                \ a continuation: dropped
+      ELSE
+        TW-PUT TW-I @ 1+ TW-C TW-PUT        \ an escape: both kept
+      THEN
+      2 TW-I +!
+    ELSE
+      TW-PUT 1 TW-I +!
+    THEN
+  REPEAT
+  T-WORD 2 NODE  TUCK 0 F!  TK-FLAGS @ OVER 1 F! ;
+
+\ ==================================================================
+\ The parser: XCU 2.10's grammar, by recursive descent
+\ ==================================================================
+128 BUFFER: MSG-BUF
+VARIABLE MSG#
+: MSG+ ( c-addr u --- )   \ append to the message being built
+  DUP MSG# @ + 1+ ENSURE-BUFFER MSG-BUF
+  MSG-BUF MSG# @ + SWAP DUP MSG# +! MOVE ;
+
+: EXPECT-KW ( c-addr u --- )
+  2DUP KW? IF 2DROP NEXT EXIT THEN
+  0 MSG# !  S" expected '" MSG+  MSG+  S" '" MSG+
+  MSG-BUF MSG# @ SYNTAX ;
+: EXPECT-OP ( op c-addr u --- )   ROT OP? IF 2DROP NEXT ELSE SYNTAX THEN ;
+
+: CLOSER? ( --- f )   \ a token that ends a compound list
+  K-EOF KIND? OP-RPAREN OP? OR OP-DSEMI OP? OR IF -1 EXIT THEN
+  S" then" KW? S" else" KW? OR S" elif" KW? OR S" fi" KW? OR
+  S" do" KW? OR S" done" KW? OR S" esac" KW? OR S" }" KW? OR ;
+
+: NAME-TOKEN? ( --- f )   \ an unquoted word that is a valid name
+  K-WORD KIND? TK-FLAGS @ WF-QUOTED AND 0= AND IF TK-TEXT VALID-NAME? ELSE 0 THEN ;
+
+: ASSIGN-TOKEN? ( --- f )   \ NAME=... with the name unquoted
+  K-WORD KIND? 0= IF 0 EXIT THEN
+  TK-FLAGS @ WF-NAME-Q AND IF 0 EXIT THEN
+  TK-TEXT 61 SCAN NIP                       ( rest )
+  DUP 0= IF EXIT THEN
+  TK-END @ TK-START @ - SWAP -              ( namelen )
+  SRC-ADDR @ TK-START @ + SWAP VALID-NAME? ;
+
+DEFER PARSE-AND-OR
+DEFER PARSE-COMMAND
+
+: SEPARATOR ( --- sep | -1 )   \ ; 0, & 1, or none
+  OP-SEMI OP? IF NEXT 0 EXIT THEN
+  OP-AMP OP? IF NEXT 1 EXIT THEN
+  -1 ;
+
+: LIST-NODE ( vec --- node )   T-LIST 1 NODE TUCK 0 F! ;
+
+: PARSE-COMPOUND-LIST ( empty-ok? --- node )
+  LINEBREAK
+  CLOSER? IF
+    0= IF S" empty command list" SYNTAX THEN
+    VEC-MARK VEC> LIST-NODE EXIT
+  THEN DROP
+  VEC-MARK
+  BEGIN
+    PARSE-AND-OR >VEC
+    SEPARATOR DUP 0< IF
+      DROP 0 >VEC
+      K-NEWLINE KIND? 0= IF CLOSER? 0= IF
+        S" unexpected token" SYNTAX
+      THEN THEN
+    ELSE >VEC THEN
+    LINEBREAK
+    CLOSER?
+  UNTIL
+  VEC> LIST-NODE ;
+
+: PARSE-SUBLIST-IMPL ( --- )   \ the contents of $(...), up to its )
+  -1 PARSE-COMPOUND-LIST DROP
+  OP-RPAREN S" expected ')' to end a command substitution" EXPECT-OP ;
+' PARSE-SUBLIST-IMPL IS PARSE-SUBLIST
+
+: PARSE-COMPLETE ( --- node )   \ a list up to a newline or the end
+  VEC-MARK
+  BEGIN
+    PARSE-AND-OR >VEC
+    SEPARATOR DUP 0< IF DROP 0 >VEC -1 ELSE
+      >VEC K-NEWLINE KIND? K-EOF KIND? OR
+    THEN
+  UNTIL
+  K-NEWLINE KIND? K-EOF KIND? OR 0= IF S" unexpected token" SYNTAX THEN
+  VEC> LIST-NODE ;
+
+: PARSE-PIPELINE ( --- node )
+  0 S" !" KW? IF NEXT DROP -1 THEN
+  VEC-MARK PARSE-COMMAND >VEC
+  BEGIN OP-PIPE OP? WHILE NEXT LINEBREAK PARSE-COMMAND >VEC REPEAT
+  VEC>                                      ( bang vec )
+  T-PIPE 2 NODE  TUCK 1 F!  TUCK 0 F! ;
+
+: PARSE-AND-OR-IMPL ( --- node )
+  VEC-MARK PARSE-PIPELINE >VEC
+  BEGIN OP-AND OP? OP-OR OP? OR WHILE
+    OP-AND OP? IF 1 ELSE 2 THEN >VEC
+    NEXT LINEBREAK PARSE-PIPELINE >VEC
+  REPEAT
+  VEC> T-ANDOR 1 NODE TUCK 0 F! ;
+' PARSE-AND-OR-IMPL IS PARSE-AND-OR
+
+\ ---- redirections ----
+: REDIR-START? ( --- f )
+  K-IONUM KIND? IF -1 EXIT THEN
+  K-OP KIND? 0= IF 0 EXIT THEN
+  TK-OP @ OP-LESS < 0= TK-OP @ OP-CLOBBER > 0= AND ;
+
+: TEXT>N ( c-addr u --- n )
+  0 ROT ROT OVER + SWAP ?DO 10 * I C@ 48 - + LOOP ;
+
+: PARSE-REDIRECT ( --- node )
+  -1 K-IONUM KIND? IF DROP TK-TEXT TEXT>N NEXT THEN   ( fd )
+  REDIR-START? 0= K-OP KIND? 0= OR IF S" expected a redirection" SYNTAX THEN
+  TK-OP @ NEXT                              ( fd op )
+  K-WORD KIND? 0= IF S" expected a word after a redirection" SYNTAX THEN
+  T-REDIR 4 NODE                            ( fd op node )
+  TUCK 1 F!  TUCK 0 F!
+  TOKEN-WORD OVER 2 F!  NEXT
+  DUP 1 F@ DUP OP-DLESS = SWAP OP-DLESSDASH = OR IF DUP HD-ADD THEN ;
+
+: PARSE-REDIRS ( node --- node )   \ a compound command's redirections
+  REDIR-START? IF
+    VEC-MARK BEGIN PARSE-REDIRECT >VEC REDIR-START? 0= UNTIL
+    VEC> OVER 0 F!
+  THEN ;
+
+\ ---- simple commands ----
+: SIMPLE-ITEM ( words --- words' done? )
+  PEEK
+  REDIR-START? IF I-REDIR >VEC PARSE-REDIRECT >VEC 0 EXIT THEN
+  K-WORD KIND? 0= IF -1 EXIT THEN
+  DUP 0= ASSIGN-TOKEN? AND IF I-ASSIGN ELSE 1+ I-WORD THEN
+  >VEC TOKEN-WORD >VEC NEXT 0 ;
+
+: PARSE-SIMPLE ( first-word | 0 --- node )
+  VEC-MARK SWAP                              ( base first )
+  ?DUP IF I-WORD >VEC >VEC 1 ELSE 0 THEN     ( base words )
+  BEGIN SIMPLE-ITEM UNTIL DROP               ( base )
+  DUP VEC-TOP @ = IF S" expected a command" SYNTAX THEN
+  VEC> T-SIMPLE 1 NODE TUCK 0 F! ;
+
+\ ---- compound commands ----
+: PARSE-GROUP ( --- node )
+  NEXT 0 PARSE-COMPOUND-LIST S" }" EXPECT-KW
+  T-GROUP 2 NODE TUCK 1 F! ;
+
+: PARSE-SUBSHELL ( --- node )
+  NEXT 0 PARSE-COMPOUND-LIST
+  OP-RPAREN S" expected ')'" EXPECT-OP
+  T-SUBSHELL 2 NODE TUCK 1 F! ;
+
+: PARSE-IF ( --- node )
+  NEXT VEC-MARK
+  0 PARSE-COMPOUND-LIST >VEC  S" then" EXPECT-KW  0 PARSE-COMPOUND-LIST >VEC
+  BEGIN S" elif" KW? WHILE
+    NEXT 0 PARSE-COMPOUND-LIST >VEC  S" then" EXPECT-KW  0 PARSE-COMPOUND-LIST >VEC
+  REPEAT
+  S" else" KW? IF NEXT 0 PARSE-COMPOUND-LIST ELSE 0 THEN   ( base else )
+  S" fi" EXPECT-KW
+  >R VEC> R>                                ( vec else )
+  T-IF 3 NODE  TUCK 2 F!  TUCK 1 F! ;
+
+: PARSE-LOOP ( type --- node )   \ while or until
+  NEXT
+  0 PARSE-COMPOUND-LIST  S" do" EXPECT-KW
+  0 PARSE-COMPOUND-LIST  S" done" EXPECT-KW   ( type cond body )
+  ROT 3 NODE  TUCK 2 F!  TUCK 1 F! ;
+
+: PARSE-FOR ( --- node )
+  NEXT
+  NAME-TOKEN? 0= IF S" expected a name after 'for'" SYNTAX THEN
+  TOKEN-WORD NEXT                           ( name )
+  OP-SEMI OP? IF
+    NEXT 0                                  ( name 0 )
+  ELSE
+    LINEBREAK
+    S" in" KW? IF
+      NEXT VEC-MARK
+      BEGIN K-WORD KIND? WHILE TOKEN-WORD >VEC NEXT REPEAT
+      VEC>                                  ( name words )
+      OP-SEMI OP? IF NEXT ELSE
+        K-NEWLINE KIND? IF NEXT ELSE S" expected ';' or a newline" SYNTAX THEN
+      THEN
+    ELSE 0 THEN
+  THEN
+  LINEBREAK S" do" EXPECT-KW
+  0 PARSE-COMPOUND-LIST  S" done" EXPECT-KW   ( name words body )
+  T-FOR 4 NODE  TUCK 3 F!  TUCK 2 F!  TUCK 1 F! ;
+
+: PARSE-CASE-ITEM ( --- item )
+  OP-LPAREN OP? IF NEXT THEN
+  VEC-MARK
+  BEGIN
+    K-WORD KIND? 0= IF S" expected a pattern" SYNTAX THEN
+    TOKEN-WORD >VEC NEXT
+    OP-PIPE OP?
+  WHILE NEXT REPEAT
+  VEC>                                      ( pats )
+  OP-RPAREN S" expected ')' after a pattern" EXPECT-OP
+  LINEBREAK
+  OP-DSEMI OP? S" esac" KW? OR IF 0 ELSE -1 PARSE-COMPOUND-LIST THEN
+  T-CASEITEM 2 NODE  TUCK 1 F!  TUCK 0 F!
+  OP-DSEMI OP? IF NEXT LINEBREAK ELSE
+    S" esac" KW? 0= IF S" expected ';;' or 'esac'" SYNTAX THEN
+  THEN ;
+
+: PARSE-CASE ( --- node )
+  NEXT
+  K-WORD KIND? 0= IF S" expected a word after 'case'" SYNTAX THEN
+  TOKEN-WORD NEXT                           ( word )
+  LINEBREAK S" in" EXPECT-KW LINEBREAK
+  VEC-MARK
+  BEGIN S" esac" KW? 0= WHILE
+    K-EOF KIND? IF S" expected 'esac'" SYNTAX THEN
+    PARSE-CASE-ITEM >VEC
+  REPEAT
+  NEXT VEC>                                 ( word items )
+  T-CASE 3 NODE  TUCK 2 F!  TUCK 1 F! ;
+
+: COMPOUND-START? ( --- f )
+  OP-LPAREN OP? S" {" KW? OR S" if" KW? OR S" while" KW? OR
+  S" until" KW? OR S" for" KW? OR S" case" KW? OR ;
+
+: PARSE-COMPOUND ( --- node )
+  OP-LPAREN OP? IF PARSE-SUBSHELL ELSE
+  S" {" KW? IF PARSE-GROUP ELSE
+  S" if" KW? IF PARSE-IF ELSE
+  S" while" KW? IF T-WHILE PARSE-LOOP ELSE
+  S" until" KW? IF T-UNTIL PARSE-LOOP ELSE
+  S" for" KW? IF PARSE-FOR ELSE
+  PARSE-CASE
+  THEN THEN THEN THEN THEN THEN
+  PARSE-REDIRS ;
+
+: PARSE-FUNCDEF ( name --- node )
+  NEXT OP-RPAREN S" expected ')' after '('" EXPECT-OP
+  LINEBREAK
+  COMPOUND-START? 0= IF S" a function body must be a compound command" SYNTAX THEN
+  PARSE-COMPOUND                            ( name body )
+  T-FUNCDEF 3 NODE  TUCK 2 F!  TUCK 1 F! ;
+
+: PARSE-COMMAND-IMPL ( --- node )
+  PEEK
+  K-EOF KIND? IF S" unexpected end of input" SYNTAX THEN
+  COMPOUND-START? IF PARSE-COMPOUND EXIT THEN
+  CLOSER? IF S" unexpected token" SYNTAX THEN
+  K-WORD KIND? IF
+    NAME-TOKEN? IF
+      TOKEN-WORD NEXT                       ( w )
+      OP-LPAREN OP? IF PARSE-FUNCDEF EXIT THEN
+      PARSE-SIMPLE EXIT
+    THEN
+  THEN
+  0 PARSE-SIMPLE ;
+' PARSE-COMMAND-IMPL IS PARSE-COMMAND
+
+\ ==================================================================
+\ Printing a tree
+\ ==================================================================
+DEFER PRINT-NODE
+
+: .STR ( off --- )   \ quoted, with " \ and newline escaped
+  34 EMIT
+  TSTR DUP CSTRLEN OVER + SWAP ?DO
+    I C@ DUP 10 = IF DROP 92 EMIT 110 EMIT ELSE
+    DUP 34 = OVER 92 = OR IF 92 EMIT THEN EMIT THEN
+  LOOP
+  34 EMIT ;
+: .SP ( --- )   32 EMIT ;
+: .VEC ( vec --- )   \ items, space-separated
+  DUP V# 0 ?DO .SP DUP I V@ PRINT-NODE LOOP DROP ;
+: .REDIRS ( node --- )   0 F@ ?DUP IF .VEC THEN ;
+: .OP ( op --- )
+  CASE
+    OP-LESS OF ." <" ENDOF        OP-GREAT OF ." >" ENDOF
+    OP-DGREAT OF ." >>" ENDOF     OP-LESSAND OF ." <&" ENDOF
+    OP-GREATAND OF ." >&" ENDOF   OP-LESSGREAT OF ." <>" ENDOF
+    OP-DLESS OF ." <<" ENDOF      OP-DLESSDASH OF ." <<-" ENDOF
+    OP-CLOBBER OF ." >|" ENDOF
+  ENDCASE ;
+
+: PRINT-NODE-IMPL ( node --- )
+  ?DUP 0= IF ." ()" EXIT THEN
+  DUP T@ CASE
+  T-WORD OF 0 F@ .STR ENDOF
+  T-VEC OF ." [" .VEC ."  ]" ENDOF
+  T-LIST OF
+    ." (list"
+    0 F@ DUP V# 0 ?DO
+      .SP DUP I V@ PRINT-NODE
+      DUP I 1+ V@ IF ."  &" THEN
+    2 +LOOP DROP ." )"
+  ENDOF
+  T-ANDOR OF
+    0 F@ DUP V# 1 = IF 0 V@ PRINT-NODE ELSE
+      ." (and-or"
+      DUP V# 0 ?DO
+        .SP DUP I V@ PRINT-NODE
+        I 1+ OVER V# < IF DUP I 1+ V@ 1 = IF ."  &&" ELSE ."  ||" THEN THEN
+      2 +LOOP DROP ." )"
+    THEN
+  ENDOF
+  T-PIPE OF
+    DUP 0 F@ 0= OVER 1 F@ V# 1 = AND IF
+      1 F@ 0 V@ PRINT-NODE
+    ELSE
+      ." (pipe" DUP 0 F@ IF ."  !" THEN 1 F@ .VEC ." )"
+    THEN
+  ENDOF
+  T-SIMPLE OF
+    ." (simple"
+    0 F@ DUP V# 0 ?DO
+      DUP I V@ CASE
+        I-ASSIGN OF ."  (assign " ENDOF
+        I-REDIR OF .SP ENDOF
+        .SP
+      ENDCASE
+      DUP I 1+ V@ PRINT-NODE
+      DUP I V@ I-ASSIGN = IF ." )" THEN
+    2 +LOOP DROP ." )"
+  ENDOF
+  T-SUBSHELL OF ." (subshell " DUP 1 F@ PRINT-NODE .REDIRS ." )" ENDOF
+  T-GROUP OF ." (group " DUP 1 F@ PRINT-NODE .REDIRS ." )" ENDOF
+  T-IF OF
+    ." (if"
+    DUP 1 F@ DUP V# 0 ?DO
+      .SP DUP I V@ PRINT-NODE .SP DUP I 1+ V@ PRINT-NODE
+    2 +LOOP DROP
+    DUP 2 F@ ?DUP IF ."  (else " PRINT-NODE ." )" THEN
+    .REDIRS ." )"
+  ENDOF
+  T-WHILE OF ." (while " DUP 1 F@ PRINT-NODE .SP DUP 2 F@ PRINT-NODE .REDIRS ." )" ENDOF
+  T-UNTIL OF ." (until " DUP 1 F@ PRINT-NODE .SP DUP 2 F@ PRINT-NODE .REDIRS ." )" ENDOF
+  T-FOR OF
+    ." (for " DUP 1 F@ PRINT-NODE
+    DUP 2 F@ ?DUP IF .SP PRINT-NODE ELSE ."  $@" THEN
+    .SP DUP 3 F@ PRINT-NODE .REDIRS ." )"
+  ENDOF
+  T-CASE OF ." (case " DUP 1 F@ PRINT-NODE DUP 2 F@ .VEC .REDIRS ." )" ENDOF
+  T-CASEITEM OF ." (item " DUP 0 F@ PRINT-NODE .SP 1 F@ PRINT-NODE ." )" ENDOF
+  T-FUNCDEF OF ." (function " DUP 1 F@ PRINT-NODE .SP DUP 2 F@ PRINT-NODE .REDIRS ." )" ENDOF
+  T-REDIR OF
+    ." (redir "
+    DUP 0 F@ DUP 0< IF DROP ELSE . THEN
+    DUP 1 F@ .OP .SP DUP 2 F@ PRINT-NODE
+    DUP 3 F@ ?DUP IF ."  (body " .STR ." )" THEN
+    DROP ." )"
+  ENDOF
+  ." (?)"
+  ENDCASE ;
+' PRINT-NODE-IMPL IS PRINT-NODE
+
+\ ==================================================================
+\ Entry: parse a text, printing each complete command's tree
+\ ==================================================================
+: PARSE-INIT ( c-addr u --- )
+  SRC-LEN !  SRC-ADDR !  0 SRC-POS !  1 SRC-LINE !
+  0 TK-VALID? !  0 VEC-TOP !  0 HD-PEND# !  TREE-RESET ;
+
+: DUMP-PROGRAM ( --- )
+  BEGIN
+    LINEBREAK
+    K-EOF KIND? 0=
+  WHILE
+    TREE-RESET
+    PARSE-COMPLETE PRINT-NODE CR
+    K-NEWLINE KIND? IF NEXT THEN
+  REPEAT ;
+
+\ tree-dump FILE: print FILE's trees; status 0, or 2 at a syntax error.
+\ A development builtin for Stage A (tests/parse).
+\ An xt kept as an offset from START (shadow.4's !XT): ['] would compile
+\ an absolute address, wrong once the saved image loads elsewhere.
+VARIABLE DUMP-XT
+' DUMP-PROGRAM DUMP-XT !XT
+
+: DO-TREE-DUMP ( --- )
+  ARGC @ 2 < IF 2 LAST-STATUS ! EXIT THEN
+  1 ARGV@ DUP CSTRLEN R/O OPEN-FILE IF DROP 2 LAST-STATUS ! EXIT THEN
+  >R R@ FILE-SIZE 2DROP                     ( size )
+  DUP 1+ ALLOCATE DROP                      ( size buf )
+  2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
+  2DUP SWAP PARSE-INIT
+  NIP
+  DUMP-XT @XT CATCH IF 2 ELSE 0 THEN LAST-STATUS !
+  FREE DROP ;
+' DO-TREE-DUMP S" tree-dump" BUILTIN

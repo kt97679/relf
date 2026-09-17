@@ -1,0 +1,1 @@
+(list (pipe (simple "printf" "x") (group (list (simple "read" "v") (simple "echo" "\"$v\"")))))
