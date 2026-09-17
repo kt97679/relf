@@ -276,6 +276,7 @@ do not trust the absence of a line below.
 - **278** — splitting by recorded regions; str -16% of the dispatches
 - **279** — the walker's cursor and name scan; str -16.9%, loop +3.1%
 - **280** — read pForth (mykesforth is unreachable); the headerless-image idea, measured
+- **281** — the last three words that could not be encoded; Stage C's precondition met
 
 ### Not tied to an iteration
 
@@ -16509,3 +16510,38 @@ Three notes, kept in GOALS.md's external-references section:
   answer arrived at differently.
 
 No code changed.
+
+## Iteration 281: the last words that could not be encoded
+
+Stage C deletes the scanning expander, which needs every word to be
+expandable from its encoding. Three kinds were not:
+
+- **`$@` and `$*`** make field boundaries of their own, which the region
+  splitting has no room for. Those words now expand character by
+  character inside the encoded path, as the scanner did (`XE-PERCHAR?`,
+  set from the lexer's `WF-AT-PARAM`), with no regions recorded. They no
+  longer decline.
+- **A lone digit word** is handed over quoted, so that `echo 2 > f` is
+  not read as `2>`. It was the literal text `"2"`, quotes and all, for
+  the scanner to strip. It is now the plain text `2`, marked literal so
+  neither expander touches it and quoted for the redirection rule - and
+  `COPY-LITERAL`, the literal fast path, now keeps a word's quoting
+  instead of clearing it, which is what made the first attempt read the
+  digit as a descriptor again.
+- **A here-document's body** was expanded as raw text. Iteration 264
+  already builds it as one double-quoted word; `ENCODE-TEXT` now lexes
+  that word, so it has an encoding like any other, and its expansion
+  always takes the encoded path (the scanner cannot expand the lexed
+  form: it re-scans the text to find a substitution's end).
+
+Every word now either takes the literal fast path or has an encoding.
+Both paths pass every suite - matrix 420/420, tests/diff 37,
+tests/posix 46/46, mrsh 21/21, the shell files.
+
+**And a decision, recorded so it is not re-proposed**: pForth's
+headerless image (Iteration 280) is **not wanted**. Stripping the name
+fields would save 17 KB of 80 KB but end the `forth` builtin, a Forth
+prompt on the shell's own dictionary, which is a main reason this shell
+exists.
+
+tests/verify: sizes only.

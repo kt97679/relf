@@ -1867,13 +1867,14 @@ proxy does not allow gitlab.com. pForth is the closest published cousin
 of this engine: portable C, a token dispatch, a saved dictionary image.
 What it says about our choices, and the one thing worth taking:
 
-- **A headerless image.** `ffSaveForth(file, entry, NameSize, CodeSize)`
+- **A headerless image** - `ffSaveForth(file, entry, NameSize, CodeSize)`
   writes the names as their own chunk, and `NameSize` of 0 leaves them
-  out entirely - a deployable image that can no longer be extended
-  interactively. Measured here: 21% of `kernel-shell.img` is headers
-  (17.5 KB of 80.8 KB, 13.2 KB of it names). A `--strip` save would cost
-  the `forth` builtin and any runtime lookup, and is worth its own
-  iteration. See PROGRESS.md's Iteration 280 entry.
+  out entirely. Measured here: 21% of `kernel-shell.img` is headers
+  (17.5 KB of 80.8 KB, 13.2 KB of it names). **Settled: not wanted.**
+  It would cost the `forth` builtin and any runtime lookup, and that
+  builtin - a Forth prompt inside the shell, on the shell's own
+  dictionary - is a main reason this shell exists. 17 KB is not worth
+  it. Left here so it is not re-proposed.
 - **Code-relative tokens** (`LOCAL_CODEREL_TO_ABS`): pForth stores
   secondaries as offsets from the code base, as Iterations 258-259 made
   this engine do, and reaches absolute addresses the same way. Nothing

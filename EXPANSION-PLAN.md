@@ -170,6 +170,16 @@ for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,
 IFS, pathname and here-document cases in particular.
 
+**Stage C — switch and delete.** *(Iteration 281 removed the three
+reasons a word could not take the encoded path: `$@`/`$*` words expand
+character by character within it, as the scanner did; a lone digit word
+is plain text marked literal and quoted, and the literal fast path now
+keeps a word's quoting; and a here-document's body - already built as one
+double-quoted word - is lexed into an encoded word by `ENCODE-TEXT` and
+always expanded through the encoded path. Every word now either takes
+the literal fast path or has an encoding, so the switch and the deletion
+can be one iteration.)*
+
 **Stage C — switch and delete.** The old expander and its helpers go,
 found with `tools/dead-words.py`; the raw text leaves the word node.
 

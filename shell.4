@@ -2715,6 +2715,7 @@ VARIABLE OPT-ENC?       \ RELF_EXP=1: the encoded path, where it can
 1 CELLS ARGS-BUFFER: EW-ARGV
 1 ARGS-BUFFER: EW-ARGQ
 1 ARGS-BUFFER: EW-LIT
+1 ARGS-BUFFER: EW-QUOT      \ the word's own quoting, for COPY-LITERAL
 VARIABLE EW-ARGC
 VARIABLE EW-I
 
@@ -2726,7 +2727,8 @@ VARIABLE EW-I
   \ in comes out as it went in: copied, not scanned a character at a time
   \ (Iteration 266 - scanning was 40% of a loop's dispatches).
   TOK-OUT @ ARGV ARGC @ CELLS + !
-  0 ARGV-NAME-QUOTED ARGC @ + C!  0 ARGV-QUOTED ARGC @ + C!
+  EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
+  EW-QUOT EW-I @ + C@ ARGV-QUOTED ARGC @ + C!
   TOK-END @ TOK-POS @ - 1+                  ( n, the NUL too )
   TOK-POS @ TOK-OUT @ 2 PICK MOVE
   TOK-OUT +!  ARGC @ 1+ ARGC !
@@ -2759,6 +2761,7 @@ VARIABLE EW-I
     ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
     ARGV-NODES EW-I @ CELLS + @  EW-NODES EW-I @ CELLS + !
     ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
+    ARGV-QUOTED EW-I @ + C@        EW-QUOT EW-I @ + C!
     ARGV-LITERAL EW-I @ + C@       EW-LIT EW-I @ + C!
     EW-I @ 1+ EW-I !
   REPEAT

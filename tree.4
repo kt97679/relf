@@ -1306,22 +1306,18 @@ CREATE W-DLTD   60 C, 60 C, 45 C, 0 C,
 
 VARIABLE ARGV-NODE-NEXT   \ the node of the word being added, if it has one
 
+VARIABLE ARGV-FORCE-LITERAL?   \ a synthesised word with nothing to expand
+
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
-  DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0= ARGV-LITERAL ARGC @ + C!
+  DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0=
+  ARGV-FORCE-LITERAL? @ OR  0 ARGV-FORCE-LITERAL? !
+  ARGV-LITERAL ARGC @ + C!
   DUP WF-QUOTED AND 0= 0= ARGV-QUOTED ARGC @ + C!
   WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
   ARGV ARGC @ CELLS + !
   ARGV-NODE-NEXT @ ARGV-NODES ARGC @ CELLS + !  0 ARGV-NODE-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
-\ A plain one-digit word goes in quoted: laid out before a redirection,
-\ `echo 2 > f` would otherwise read as `echo 2> f`. The line path has
-\ that bug; the tree knows which digits are descriptors.
-CREATE W-QDIGITS  34 C, 48 C, 34 C, 0 C,  34 C, 49 C, 34 C, 0 C,
-                  34 C, 50 C, 34 C, 0 C,  34 C, 51 C, 34 C, 0 C,
-                  34 C, 52 C, 34 C, 0 C,  34 C, 53 C, 34 C, 0 C,
-                  34 C, 54 C, 34 C, 0 C,  34 C, 55 C, 34 C, 0 C,
-                  34 C, 56 C, 34 C, 0 C,  34 C, 57 C, 34 C, 0 C,
 \ ==================================================================
 \ Expanding a word from its encoding (EXPANSION-PLAN.md Stage B)
 \ ==================================================================
@@ -1336,6 +1332,9 @@ VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
 VARIABLE XE-SUBS          \ its command substitutions' texts
 VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
 VARIABLE XE-IN-WORD?      \ inside ${x:-word}: even its literal text is split
+VARIABLE XE-PERCHAR?      \ this word holds $@ or $*, whose fields are its own:
+                          \ everything in it is emitted a character at a time,
+                          \ as the scanning path did, and no regions are kept
 VARIABLE XR-START
 VARIABLE XP-OP
 VARIABLE XP-LEN
@@ -1416,6 +1415,7 @@ VARIABLE XM-U
 : XE-VALUE ( c-addr --- )   \ a parameter's value: split when unquoted
   IN-DQ-CONTEXT? @ IF DUP CSTRLEN XE-QUOTED-TEXT EXIT THEN
   XE-NOSPLIT? @ IF DUP CSTRLEN EMIT-RUN EXIT THEN   \ captured, but not quoted
+  XE-PERCHAR? @ IF TYPE0-TO-TOK-SPLIT EXIT THEN
   XE-REGION-BEGIN  DUP CSTRLEN EMIT-RUN  XE-REGION-END ;
 
 256 BUFFER: XW-BUF        \ an operator form's word, expanded
@@ -1460,6 +1460,7 @@ VARIABLE XP-VAL
 : XE-VALUE-N ( c-addr u --- )   \ part of a value: split when unquoted
   IN-DQ-CONTEXT? @ IF XE-QUOTED-TEXT EXIT THEN
   XE-NOSPLIT? @ IF EMIT-RUN EXIT THEN
+  XE-PERCHAR? @ IF 0 ?DO DUP I + C@ EMIT-EXPANDED-CHAR LOOP DROP EXIT THEN
   XE-REGION-BEGIN  EMIT-RUN  XE-REGION-END ;
 
 : XE-WORD-ASIDE-SAFE ( pattern? --- )   \ the word may hold another of these
@@ -1580,10 +1581,14 @@ VARIABLE XP-VAL
       IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
       RUN-CMDSUB-TEXT  R> IN-DQ-CONTEXT? !
     ELSE
-      \ unquoted: its output is one region, split with the rest
-      IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
-      XE-REGION-BEGIN  RUN-CMDSUB-TEXT  XE-REGION-END
-      R> IN-DQ-CONTEXT? !
+      XE-PERCHAR? @ IF
+        RUN-CMDSUB-TEXT                        \ splits as it emits
+      ELSE
+        \ unquoted: its output is one region, split with the rest
+        IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
+        XE-REGION-BEGIN  RUN-CMDSUB-TEXT  XE-REGION-END
+        R> IN-DQ-CONTEXT? !
+      THEN
     THEN
   ELSE 2DROP THEN ;
 
@@ -1694,6 +1699,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
 
 : XE-SPLIT ( start-off --- )   \ XCU 2.6.5, over the recorded regions only
   XE-REG# @ 0= IF DROP EXIT THEN
+  XE-PERCHAR? @ IF DROP EXIT THEN
   TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN   \ an assignment is not split
   DUP XS-FS !  DUP XS-PREV !  DROP
   0 XS-PEND? !
@@ -1713,11 +1719,11 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   THEN ;
 
 : XE-TRY ( node --- f )   \ expanded here? then EXPAND-WORDS goes on
-  DUP 1 XF@ WF-AT-PARAM AND IF DROP 0 EXIT THEN   \ $@ / $*: the old path
   DUP 3 XF@ ?DUP 0= IF 2DROP 0 EXIT THEN    \ no encoding: the old path
   OVER 2 XF@ XSTR                            ( node len addr )
   SWAP OVER + XE-END !  XE-P !               ( node )
   DUP 4 XF@ XE-SUBS !
+  DUP 1 XF@ WF-AT-PARAM AND 0<> XE-PERCHAR? !
   1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
   0 XE-REG# !
   0 IN-DQ-CONTEXT? !
@@ -1735,7 +1741,10 @@ VARIABLE XS-PREV          \ where the text after the last region begins
     \ a lone digit goes in quoted, as `"2"`, so a following > is not read
     \ as `2>`; the encoding says plain 2, so that word keeps to the old
     \ path (Iteration 275)
-    DROP C@ 48 - 4 * W-QDIGITS + WF-QUOTED  0 ARGV-NODE-NEXT !
+    \ plain text, marked quoted so a following > is not read as `2>`,
+    \ and literal so neither expander touches it (Iteration 281)
+    DROP C@ 48 - 2* W-DIGITS + WF-QUOTED  0 ARGV-NODE-NEXT !
+    -1 ARGV-FORCE-LITERAL? !
   THEN
   ARGV-ADD ;
 
@@ -1766,6 +1775,8 @@ VARIABLE HDX#
   DUP 1+ ENSURE-BUFFER HEREDOC-BUF
   DUP HEREDOC-LEN !  HEREDOC-BUF SWAP MOVE ;
 
+DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesting
+
 : PREPARE-HEREDOC ( redir --- )
   DUP 3 XF@ 0= IF DROP EXIT THEN
   DUP 2 XF@ 1 XF@ WF-QUOTED AND IF
@@ -1780,8 +1791,18 @@ VARIABLE HDX#
     THEN
   LOOP
   34 HDX-C,  0 HDX-C,
-  0 ARGC !  0 ARGV !  HDX-BUF WF-QUOTED ARGV-ADD
-  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !  JOIN-ARGV HEREDOC-SET ;
+  \ The body is now a double-quoted word: lex it, so it has an encoding
+  \ like any other word (Iteration 281). Its node is in TREE-BUF, which
+  \ is what EXEC-BASE must be while it is expanded.
+  0 ARGC !  0 ARGV !
+  HDX-BUF HDX# @ 1- ENCODE-TEXT-CALL
+  EXEC-BASE @ >R  TREE-BUF EXEC-BASE !
+  OPT-ENC? @ >R  -1 OPT-ENC? !               \ the body is encoded: expand it so
+  ADD-WORD
+  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
+  R> OPT-ENC? !
+  R> EXEC-BASE !
+  JOIN-ARGV HEREDOC-SET ;
 
 : PREPARE-HEREDOCS ( redirs-vec --- )
   DUP XV# 0 ?DO DUP I XV@ PREPARE-HEREDOC LOOP DROP ;
@@ -2159,6 +2180,13 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
   0 TK-VALID? !  0 HD-PEND# !  -1 NESTED? !
   0 SRC-SPLICED !  0 AL-ACTIVE# !  0 ALIAS-NEXT? ! ;
 : END-SOURCE ( --- )   SRC-SPLICED @ ?DUP IF FREE DROP THEN ;
+
+: ENCODE-TEXT ( c-addr u --- node )   \ lex it as one word, for its encoding
+  >R >R SOURCE@ R> R>  NEST-SOURCE
+  SCAN-WORD TOKEN-WORD
+  >R  END-SOURCE SOURCE!  R> ;
+
+' ENCODE-TEXT IS ENCODE-TEXT-CALL
 
 : TREE-RUN-TEXT ( c-addr u --- )
   >R >R SOURCE@ R> R>  NEST-SOURCE
