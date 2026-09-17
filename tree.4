@@ -472,8 +472,19 @@ DEFER SCAN-DOLLAR
   -1 SRC-C DUP 61 = IF DROP ET-AFTER-EQ EXIT THEN
   58 = IF ET-AFTER-COLON EXIT THEN
   -1 ;
+: TILDE-PREFIX? ( --- f )
+  \ A tilde prefix runs to the first unquoted / or the word's end, and is
+  \ expanded only if nothing in it is quoted (XCU 2.6.1): `~"/stuff"` is
+  \ literal, as dash has it (Iteration 277).
+  1
+  BEGIN
+    DUP SRC-C DUP -1 <> IF DUP NAME-CHAR? OVER 45 = OR SWAP 46 = OR ELSE DROP 0 THEN
+  WHILE 1+ REPEAT
+  SRC-C
+  DUP 39 = OVER 34 = OR OVER 92 = OR OVER 36 = OR SWAP 96 = OR 0= ;
+
 : SCAN-TILDE-PREFIX ( --- )   \ at ~ : its user name, up to / or the word's end
-  TILDE-CLASS DUP 0< IF
+  TILDE-CLASS DUP 0< TILDE-PREFIX? 0= OR IF
     DROP 126 ENC-LIT, 1 SRC-SKIP EXIT
   THEN
   ENC-TILDE ENC-CODE,  ENC-C,  -1 ENC-COMPLEX? !
@@ -1318,6 +1329,8 @@ VARIABLE XE-N
 VARIABLE XE-I
 VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
 VARIABLE XE-SUBS          \ its command substitutions' texts
+VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
+VARIABLE XE-IN-WORD?      \ inside ${x:-word}: even its literal text is split
 VARIABLE XR-START
 VARIABLE XP-OP
 VARIABLE XP-LEN
@@ -1328,11 +1341,15 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
 : XE-LIT-RUN ( --- )   \ the literal bytes up to the next control byte
   XE-I @ XR-START !
   BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-IN-WORD? @ IF
+    \ a substituted word is an expansion result: split, literal text too
+    XE-I @ XR-START @ ?DO XE-A @ I + C@ EMIT-EXPANDED-CHAR LOOP
+  ELSE
   XE-SPECIAL? @ IF
     XE-I @ XR-START @ ?DO XE-A @ I + C@ GLOB-MARK EMIT-TOK-CHAR LOOP
   ELSE
     XE-A @ XR-START @ +  XE-I @ XR-START @ -  EMIT-RUN
-  THEN ;
+  THEN THEN ;
 
 : XE-QUOTED-RUN ( --- )   \ inside '...': literal to the run's end
   XE-I @ XR-START !
@@ -1351,7 +1368,9 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
   THEN ;
 
 : XE-VALUE ( c-addr --- )   \ a parameter's value: split when unquoted
-  IN-DQ-CONTEXT? @ IF DUP CSTRLEN XE-QUOTED-TEXT ELSE TYPE0-TO-TOK-SPLIT THEN ;
+  IN-DQ-CONTEXT? @ IF DUP CSTRLEN XE-QUOTED-TEXT EXIT THEN
+  XE-NOSPLIT? @ IF DUP CSTRLEN EMIT-RUN EXIT THEN   \ captured, but not quoted
+  TYPE0-TO-TOK-SPLIT ;
 
 256 BUFFER: XW-BUF        \ an operator form's word, expanded
 VARIABLE XW-LEN
@@ -1384,8 +1403,9 @@ DEFER XE-DQ-REGION        ( --- )
 : XE-WORD-ASIDE ( --- )   \ the word after a parameter, into XW-BUF
   TOK-OUT @ OUT-BASE - >R                    \ on the stack: one of these nests
   XE-REGION-CALL                             \ stops at the word's end
-  TOK-OUT @ OUT-BASE - R@ - DUP 1+ ENSURE-BUFFER XW-BUF
-  DUP XW-LEN !
+  TOK-OUT @ OUT-BASE - R@ -                  ( length )
+  DUP 1+ ENSURE-BUFFER XW-BUF
+  XW-LEN !
   OUT-BASE R@ +  XW-BUF  XW-LEN @ MOVE
   0 XW-BUF XW-LEN @ + C!
   OUT-BASE R> + TOK-OUT ! ;                  \ taken back out of the output
@@ -1393,7 +1413,9 @@ DEFER XE-DQ-REGION        ( --- )
 VARIABLE XP-VAL
 
 : XE-VALUE-N ( c-addr u --- )   \ part of a value: split when unquoted
-  IN-DQ-CONTEXT? @ IF XE-QUOTED-TEXT ELSE 0 ?DO DUP I + C@ EMIT-EXPANDED-CHAR LOOP DROP THEN ;
+  IN-DQ-CONTEXT? @ IF XE-QUOTED-TEXT EXIT THEN
+  XE-NOSPLIT? @ IF EMIT-RUN EXIT THEN
+  0 ?DO DUP I + C@ EMIT-EXPANDED-CHAR LOOP DROP ;
 
 : XE-WORD-ASIDE-SAFE ( pattern? --- )   \ the word may hold another of these
   XP-NAME @ >R  XP-OP @ >R  XP-VAL @ >R
@@ -1401,25 +1423,34 @@ VARIABLE XP-VAL
   \ the enclosing double quotes do not reach inside the word: `"${x#*}"`
   \ still has a pattern (XCU 2.6.2; CAPTURE-BRACED-WORD does the same)
   IN-DQ-CONTEXT? @ >R  0 IN-DQ-CONTEXT? !
+  XE-NOSPLIT? @ >R  -1 XE-NOSPLIT? !
   XE-WORD-ASIDE
+  R> XE-NOSPLIT? !
   R> IN-DQ-CONTEXT? !
   R> PATTERN-CAPTURE? !
   R> XP-VAL !  R> XP-OP !  R> XP-NAME ! ;
+
+: XE-WORD-INLINE ( --- )   \ ${x:-word}: into the output, and split
+  XE-IN-WORD? @ >R  -1 XE-IN-WORD? !
+  XE-REGION-CALL
+  R> XE-IN-WORD? ! ;
 
 : XE-PARAM-OP ( --- )   \ the operator forms: defaults, assign, error, trims
   XP-NAME @ LOOKUP-VAR XP-VAL !               \ the name is in the encoding
   XP-OP @ EV-TRIM-PRE < IF                   \ - = ? + , with or without :
     XP-OP @ EV-COLON AND IF
-      XP-VAL @ ?DUP IF C@ 0= ELSE -1 THEN    \ unset or empty counts
+      \ unset or empty counts. ?DUP left the 0 here when it was unset,
+      \ and the extra cell corrupted whatever ran next (Iteration 277).
+      XP-VAL @ DUP 0= IF DROP -1 ELSE C@ 0= THEN
     ELSE
       XP-VAL @ 0=
     THEN
     XP-OP @ EV-COLON 1- AND                  ( unset? op )
     DUP EV-ALT = IF
-      DROP IF XE-SKIP-WORD ELSE 0 XE-WORD-ASIDE-SAFE XW-BUF XE-VALUE THEN EXIT
+      DROP IF XE-SKIP-WORD ELSE XE-WORD-INLINE THEN EXIT
     THEN
     DUP EV-DEFAULT = IF
-      DROP IF 0 XE-WORD-ASIDE-SAFE XW-BUF XE-VALUE ELSE XE-SKIP-WORD XP-VAL @ XE-VALUE THEN EXIT
+      DROP IF XE-WORD-INLINE ELSE XE-SKIP-WORD XP-VAL @ XE-VALUE THEN EXIT
     THEN
     DUP EV-ASSIGN = IF
       DROP IF
@@ -1499,7 +1530,11 @@ VARIABLE XP-VAL
   XE-SUBS @ ?DUP 0= IF DROP EXIT THEN         ( n vec )
   SWAP                                        ( vec n )
   DUP 2 PICK XV# < IF
-    XV@ XSTR DUP CSTRLEN RUN-CMDSUB-TEXT
+    XV@ XSTR DUP CSTRLEN
+    XE-NOSPLIT? @ IF                         \ a captured word is not split
+      IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
+      RUN-CMDSUB-TEXT  R> IN-DQ-CONTEXT? !
+    ELSE RUN-CMDSUB-TEXT THEN
   ELSE 2DROP THEN ;
 
 : XE-TILDE ( --- )   \ a tilde prefix: its class, then the user name

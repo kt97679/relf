@@ -272,6 +272,7 @@ do not trust the absence of a line below.
 - **274** — expansion Stage A: the lexer encodes each word; tree-dump -e; parse cases
 - **275** — expansion Stage B begun: the encoded path for simple words, behind RELF_EXP
 - **276** — Stage B continued: every construct on the encoded path; three faults left there
+- **277** — Stage B passes both ways: the three faults fixed; a tilde rule corrected
 
 ### Not tied to an iteration
 
@@ -16373,5 +16374,43 @@ case that counts 3 where it should count 2. The encoded path is opt-in
 matrix 420/420, tests/diff 37, tests/posix 46/46, tests/parse, the shell
 files - so this iteration changes nothing that runs by default. Stage B
 is not finished until `RELF_EXP=1` is suite-clean too.
+
+tests/verify: sizes only.
+
+## Iteration 277: Stage B passes both ways
+
+The three faults 276 left on the encoded path are fixed, and every suite
+now passes with `RELF_EXP=1` as well as without - matrix 420/420,
+tests/diff 37, tests/posix 46/46, mrsh 21/21, tests/parse, the shell
+files - which is Stage B's acceptance condition.
+
+**The crash was one cell.** `XE-WORD-ASIDE` grew its buffer with the
+word's length, duplicated it and stored it once, leaving a cell on the
+data stack every time an operator form's word was expanded. The symptom
+was baffling until the pattern showed: `echo ${n:=abc}` was fine but
+`: ${n:=abc}; echo ok` crashed - the leak only bit whatever ran next. A
+second leak of the same kind: the "unset or empty" test for the `:`
+forms used `?DUP`, which leaves the 0 when the variable is unset.
+
+**And one real semantic fault.** `n ${nope:-"a b" c}` gave three fields
+where bash and dash give two: the word was captured into a buffer and
+then split as one string, losing which parts were quoted. The
+value-producing forms - `:-` and `:+` - now expand the word straight
+into the output, so its own quoting applies; the capture stays only
+where the word is needed as a string (`:=`, `:?` and the trims), where
+`XE-NOSPLIT?` suppresses splitting rather than pretending to be inside
+quotes. A substituted word's literal text is still split, since POSIX
+treats the whole substitution as an expansion result (`XE-IN-WORD?`).
+
+**A tilde rule, corrected against dash.** `~"/stuff"` must not expand:
+a tilde prefix runs to the first unquoted `/` or the word's end and is
+expanded only if nothing in it is quoted (XCU 2.6.1). The encoded path
+expanded it; `TILDE-PREFIX?` now looks past the user name and declines
+when a quote, backslash, `$` or backquote follows. mrsh's `word.sh`
+caught it.
+
+**Still neutral in speed**, by dispatches: loop +0.2%, fn -1.1%, str
++2%, arith -1.9%. Field splitting is still per character, which is what
+the next step - splitting by recorded regions - replaces.
 
 tests/verify: sizes only.

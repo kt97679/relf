@@ -152,11 +152,12 @@ the loop +1.5%.)*
    *(Iteration 276: the rest of the constructs - the operator forms,
    the trims, arithmetic, command substitutions and tildes - so the
    encoded path takes every word. `RUN-CMDSUB-TEXT` is split out of
-   `EXPAND-CMDSUB` and shared. Known and not yet fixed on that path:
-   a crash on very long values (`tests/diff/cases/long-values.sh`,
-   `same-line-expansion.sh`) and a wrong count in one `braced-word.sh`
-   case. The default path is unaffected and every suite passes with it;
-   `RELF_EXP=1` is not yet suite-clean, so Stage B is not finished.)* `EXPAND-ENC` producing
+   `EXPAND-CMDSUB` and shared. Iteration 277 fixed the three
+   faults left there, and **every suite now passes both ways**, which is
+   this stage's acceptance condition. It is still about neutral in
+   dispatches (loop +0.2%, fn -1.1%, str +2%, arith -1.9%), because
+   field splitting is still done a character at a time - the region
+   splitting below is the next step, and the one that pays.)* `EXPAND-ENC` producing
 the same ARGV the old path produces, chosen by an environment variable
 for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,
