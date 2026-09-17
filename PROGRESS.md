@@ -256,6 +256,7 @@ do not trust the absence of a line below.
 - **258** — encoding audit: short backward branches; loops end in a branch; nothing in code aligned
 - **259** — variable slots relative to themselves
 - **260** — interpreter hot spots: 2SWAP, libc string primitives, DOES> @ inlined
+- **261** — COMMAND-TREE-PLAN.md: parse once into a tree, execute the tree
 
 ### Not tied to an iteration
 
@@ -15582,3 +15583,28 @@ its slot are a byte or two longer than the call they replace) and 59,337
 -> 59,395. The engine's code grew 861 bytes (five primitives and their
 libc imports) and its stripped x86-64 file crossed a page: tests/verify
 size:x86_64 91,314 -> 95,476, size:i386 81,341 -> 81,415.
+
+## Iteration 261: the command-tree design
+
+Step 2 of the plan agreed after Iteration 259, written before any code:
+`COMMAND-TREE-PLAN.md`. One lexer over five input sources (script, stdin,
+`-c`, `eval`, command substitution) with newline as a token, a
+recursive-descent parser for XCU 2.10's grammar building nodes in an
+offset-addressed tree arena, and an executor that walks the nodes and
+reuses the expansion, dispatch, builtin and redirection machinery
+unchanged. It replaces the flat `ARGV` and its splitting passes, the
+replay input source, the pending remainder, the same-line adapters and
+`if`'s execute-as-you-read - roughly the middle third of `shell.4`.
+
+The case for it, from this session's own measurements: six of
+`tests/posix`'s ten failures are the line-as-unit class, and so are the
+endless loop after `;` (256) and the saved-rest-of-line bugs 255 and 257
+found; and about 40% of the loop benchmark's dispatches after 260 are
+the shell re-reading lines it has already read.
+
+Stages: A, lexer, parser and a tree printer checked against every script
+in `tests/` and `dash -n`; B, the executor as a second entry point
+(`MAIN2`), all compound commands included, until it matches or beats the
+old path on every suite; C, switch and delete; D, profile again and only
+then decide on compiling trees to Forth. `PARSE-EXPAND-PLAN.md`'s Stage 2
+is marked superseded; GOALS.md's queue points at the new plan.

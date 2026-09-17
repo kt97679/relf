@@ -1,5 +1,10 @@
 # PARSE-EXPAND-PLAN.md — separating parsing from expansion
 
+> **Stage 2 is superseded by `COMMAND-TREE-PLAN.md`** (Iteration 261):
+> rather than caching tokenized body lines, every complete command is
+> parsed once into a tree and the tree is executed. Stages 1, 3 and 4
+> below are done and stay as the record.
+
 A design for the one remaining architectural change in `shell.4`,
 written before any code because it is large enough that starting with
 an edit would be the wrong move. Read `GOALS.md`'s notes on Ramey's

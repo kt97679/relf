@@ -1591,10 +1591,16 @@ before anything else, because every number here is relative to it.
    architectural risk, and they would take `tests/posix` from 25/21 to
    about 29/17. Do these first for a reason beyond their size: **the corpus
    has only ever gone down, so it is unproven as a driver of work.**
-2. **`PARSE-EXPAND-PLAN.md` Stage 2** - cache tokenized body lines.
-   Two justifications, and the second was found later: it is the loop
-   benchmark's fix *and* it removes the whole same-line fault class
-   (Iterations 143, 144). Four POSIX failures go with it.
+2. **`COMMAND-TREE-PLAN.md`** (Iteration 261), which supersedes
+   `PARSE-EXPAND-PLAN.md` Stage 2: parse each complete command once into
+   a tree and execute the tree. It is the loop benchmark's fix - about
+   40% of the dispatches after Iteration 260 are the shell re-reading
+   its own lines - *and* it removes the whole same-line fault class
+   (Iterations 143, 144): six of `tests/posix`'s ten failures, the
+   endless loop after `;`, and the saved-rest-of-line hazard 255 and 257
+   kept finding. Staged A (parser and tree printer) to D (measure);
+   the new path is built beside the old one until it passes everything.
+   The **next piece of work**.
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while
@@ -1665,7 +1671,12 @@ dry.
 - **A fix and `tests/verify --update` go in the same commit**, so
   `tests/BASELINE` always records what the tree does.
 
-## Next architectural work: `PARSE-EXPAND-PLAN.md`
+## Next architectural work: `COMMAND-TREE-PLAN.md`
+
+`PARSE-EXPAND-PLAN.md` below is the history this grew out of; its Stage 2
+is superseded by `COMMAND-TREE-PLAN.md` (Iteration 261).
+
+### The earlier plan: `PARSE-EXPAND-PLAN.md`
 
 **Stage 1 is done** (Iterations 108, 112, 113, 114). Expansion writes
 into its own buffer, so the in-place-growth bug class no longer
