@@ -27,8 +27,13 @@ assert_output_contains "quoted < is a literal argument, not redirection" "a < b"
 out=$("$THIS_SH" -c "echo a '|' b" < /dev/null 2>&1)
 assert_output_contains "quoted | is a literal argument, not a pipe" "a | b" "$out"
 
-"$THIS_SH" -c "'cd' /tmp" < /dev/null > /dev/null 2>&1
-assert_status "quoted 'cd' is not treated as the builtin" 127 "$?"
+# Quoting a command name does not stop it being a builtin - only a
+# reserved word stops being one when quoted (bash and dash agree; until
+# Iteration 269 this asserted the opposite).
+out=$("$THIS_SH" -c "'cd' /tmp && pwd" < /dev/null 2>&1)
+assert_output_equals "a quoted builtin name is still the builtin" "/tmp" "$out"
+out=$("$THIS_SH" -c "'if' true" < /dev/null 2>&1)
+assert_output_contains "a quoted reserved word is not one" "not found" "$out"
 
 # The following few assertions adapt the overlapping subset of mrsh's
 # (https://github.com/emersion/mrsh) POSIX conformance test

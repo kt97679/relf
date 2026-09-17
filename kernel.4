@@ -203,6 +203,7 @@ PRIMITIVE ISATTY    ( fd --- flag )   \ Iteration 264
 PRIMITIVE OPEN-DIR  ( c-addr --- dirp | 0 )   \ a NUL-terminated path
 PRIMITIVE READ-DIR  ( dirp --- c-addr | 0 )   \ the next name, NUL-terminated
 PRIMITIVE CLOSE-DIR ( dirp --- )
+PRIMITIVE ACCESS    ( c-addr mode --- ior )   \ access(2), mode 1 = X_OK (Iteration 269)
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

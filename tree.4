@@ -903,8 +903,26 @@ VARIABLE EXEC-BASE
 : XSTR ( off --- c-addr )   EXEC-BASE @ + ;
 
 DEFER EXEC   ( node --- )
+DEFER EXEC-FINAL-CALL   ( node --- )
 
 : STOP? ( --- f )   RETURN-PENDING? @ LOOP-CONTROL-PENDING? @ OR ;
+
+\ A node that is one foreground simple command and nothing else: a
+\ process with only that left to do execs it instead of forking
+\ (EXEC-LAST? in shell.4; Iteration 269).
+VARIABLE WANT-EXEC?
+: ONE-SIMPLE? ( node --- f )
+  BEGIN
+    DUP X@ T-LIST = IF
+      0 XF@ DUP XV# 2 = OVER 1 XV@ 0= AND IF 0 XV@ ELSE DROP 0 EXIT THEN
+    ELSE DUP X@ T-ANDOR = IF
+      0 XF@ DUP XV# 1 = IF 0 XV@ ELSE DROP 0 EXIT THEN
+    ELSE DUP X@ T-PIPE = IF
+      DUP 0 XF@ 0= OVER 1 XF@ XV# 1 = AND IF 1 XF@ 0 XV@ ELSE DROP 0 EXIT THEN
+    ELSE
+      X@ T-SIMPLE = EXIT
+    THEN THEN THEN
+  AGAIN ;
 : WAIT-STATUS ( pid --- status )   WAITPID DROP 8 RSHIFT 255 AND ;
 
 \ ---- simple commands ----
@@ -998,15 +1016,23 @@ VARIABLE HDX#
   THEN ;
 
 : EXPAND-AND-RUN ( --- )   \ ARGV's raw words: what the line path does next
-  TOO-MANY? IF EXIT THEN
+  WANT-EXEC? @  0 WANT-EXEC? !  >R          \ taken now, so nothing nested sees it
+  TOO-MANY? IF R> DROP EXIT THEN
+  0 CMDSUB-RAN? !
   EXPAND-WORDS
-  TOO-MANY? IF EXIT THEN
-  EXPANSION-FAILED? @ IF 1 LAST-STATUS ! EXIT THEN
-  TRY-ASSIGNMENT-CALL IF EXIT THEN
-  PREFIX-COUNT ?DUP IF
-    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE EXIT
+  TOO-MANY? IF R> DROP EXIT THEN
+  EXPANSION-FAILED? @ IF R> DROP 1 LAST-STATUS ! EXIT THEN
+  TRY-ASSIGNMENT-CALL IF
+    R> DROP
+    CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN EXIT
   THEN
-  RUN-EXPANDED ;
+  R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
+  PREFIX-COUNT ?DUP IF
+    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE
+  ELSE
+    RUN-EXPANDED
+  THEN
+  0 EXEC-LAST? ! ;
 
 : EXEC-SIMPLE ( node --- )
   DUP 1 XF@ DUP 0= NO-REDIRS? !
@@ -1029,7 +1055,7 @@ VARIABLE HDX#
 
 \ ---- lists, and-or, pipelines ----
 : EXEC-BG ( node --- )
-  FORK DUP 0= IF DROP EXEC LAST-STATUS @ SYS-EXIT THEN
+  FORK DUP 0= IF DROP EXEC-FINAL-CALL LAST-STATUS @ SYS-EXIT THEN
   BG-PID !  DROP  0 LAST-STATUS ! ;
 
 : EXEC-LIST ( node --- )
@@ -1064,7 +1090,7 @@ VARIABLE PS-WR
       DROP
       PS-PREV @ 0< 0= IF PS-PREV @ 0 DUP2 DROP PS-PREV @ CLOSE-FD THEN
       PS-WR @ 0< 0= IF PS-WR @ 1 DUP2 DROP PS-WR @ CLOSE-FD PS-RD @ CLOSE-FD THEN
-      PS-VEC @ I XV@ EXEC
+      PS-VEC @ I XV@ EXEC-FINAL-CALL
       LAST-STATUS @ SYS-EXIT
     THEN
     PIPE-PIDS I CELLS + !
@@ -1086,7 +1112,7 @@ VARIABLE PS-WR
     DROP
     DUP REDIR-SETUP APPLY-REDIRECTIONS
     REDIR-FAILED? @ IF 1 SYS-EXIT THEN
-    1 XF@ EXEC LAST-STATUS @ SYS-EXIT
+    1 XF@ EXEC-FINAL-CALL LAST-STATUS @ SYS-EXIT
   THEN
   NIP WAIT-STATUS LAST-STATUS ! ;
 
@@ -1252,6 +1278,10 @@ CREATE NO-TEXT 0 C,
   DROP EXEC-COMPOUND ;
 ' EXEC-IMPL IS EXEC
 
+: EXEC-FINAL ( node --- )   \ the last thing this process does
+  DUP ONE-SIMPLE? WANT-EXEC? !  EXEC  0 WANT-EXEC? ! ;
+' EXEC-FINAL IS EXEC-FINAL-CALL
+
 \ ---- running a source ----
 : PARSE-ONE ( --- node | 0 )   \ the next complete command, or 0 at the end
   LINEBREAK
@@ -1262,6 +1292,22 @@ VARIABLE PARSE-ONE-XT
 ' PARSE-ONE PARSE-ONE-XT !XT
 
 VARIABLE NESTED?   \ running eval's or $(...)'s text, not the shell's input
+VARIABLE EXIT-AFTER?   \ this process ends when this source does: its last command may exec
+VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
+
+: AT-END-OF-SOURCE? ( --- f )
+  \ Only blanks, newlines and comments left in a whole-text source. Not
+  \ found by lexing: that could report the NEXT command's syntax error
+  \ before this one runs, and outside the CATCH that reports it.
+  TK-VALID? @ IF TK-KIND @ K-EOF = EXIT THEN
+  SRC-POS @
+  BEGIN DUP SRC-LEN @ < WHILE
+    SRC-ADDR @ OVER + C@
+    DUP 32 = OVER 9 = OR OVER 10 = OR IF DROP 1+ ELSE
+    35 = IF
+      BEGIN DUP SRC-LEN @ < IF SRC-ADDR @ OVER + C@ 10 <> ELSE 0 THEN WHILE 1+ REPEAT
+    ELSE DROP 0 EXIT THEN THEN
+  REPEAT DROP -1 ;
 
 : SKIP-INPUT ( --- )   \ after an interactive syntax error: drop the line
   SRC-LEN @ SRC-POS !  0 TK-VALID? !  0 HD-PEND# ! ;
@@ -1285,7 +1331,12 @@ VARIABLE NESTED?   \ running eval's or $(...)'s text, not the shell's input
     ELSE
       ?DUP 0= IF EXIT THEN
       TREE-BUF EXEC-BASE !
-      EXEC
+      \ the source's last command, in a process that ends with it
+      EXIT-AFTER? @ SRC-DEPTH @ 0= AND SRC-STDIN? @ 0= AND IF
+        AT-END-OF-SOURCE? IF EXEC-FINAL ELSE EXEC THEN
+      ELSE
+        EXEC
+      THEN
       -1
     THEN DROP
   AGAIN ;
@@ -1309,7 +1360,9 @@ VARIABLE NESTED?   \ running eval's or $(...)'s text, not the shell's input
 : END-SOURCE ( --- )   SRC-SPLICED @ ?DUP IF FREE DROP THEN ;
 
 : TREE-RUN-TEXT ( c-addr u --- )
-  >R >R SOURCE@ R> R>  NEST-SOURCE TREE-RUN  END-SOURCE SOURCE! ;
+  >R >R SOURCE@ R> R>  NEST-SOURCE
+  1 SRC-DEPTH +!  TREE-RUN  -1 SRC-DEPTH +!
+  END-SOURCE SOURCE! ;
 
 \ Where a $(...) whose text starts at c-addr ends: the length of its
 \ text, without the closing paren. Found by parsing it; if it does not
@@ -1333,8 +1386,12 @@ VARIABLE SUBLIST-XT
 
 : TREE-CMDSUB ( --- )   \ in the child: $(...)'s text
   \ The line path's length counts a NUL after the text; up to it only.
+  \ The child ends with this text, so its last command may exec: the text
+  \ runs as the child's top-level source, not as a nested one.
   CMDSUB-LINE-BUF CMDSUB-LINES-LEN @ 0 SCAN DROP CMDSUB-LINE-BUF -
-  CMDSUB-LINE-BUF SWAP TREE-RUN-TEXT
+  CMDSUB-LINE-BUF SWAP
+  -1 EXIT-AFTER? !  -1 SRC-DEPTH +!
+  TREE-RUN-TEXT
   LAST-STATUS @ SYS-EXIT ;
 
 : READ-WHOLE-FILE ( c-addr --- addr u | 0 0 )
@@ -1349,10 +1406,11 @@ VARIABLE SUBLIST-XT
 ' TREE-EVAL IS TREE-EVAL-CALL
 
 : RUN-SOURCES ( --- )   \ -c, a script, or standard input
-  0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !
+  0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !  0 EXIT-AFTER? !  0 SRC-DEPTH !
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG DUP CSTRLEN PARSE-INIT
+      -1 EXIT-AFTER? !
       TREE-RUN LAST-STATUS @ SYS-EXIT
     THEN
   THEN
@@ -1361,6 +1419,7 @@ VARIABLE SUBLIST-XT
     0 SYS-ARG READ-WHOLE-FILE
     OVER 0= IF 2DROP 127 SYS-EXIT THEN
     PARSE-INIT
+    -1 EXIT-AFTER? !
     TREE-RUN LAST-STATUS @ SYS-EXIT
   THEN
   0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !

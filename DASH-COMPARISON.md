@@ -150,6 +150,14 @@ Three classes:
 
 ## 3. What to take from dash
 
+**Status (Iteration 269): items 1-3 are done** - the four builtins, exec
+without fork, the location cache. Measured again with
+`tools/op-bench.py`: `echo` 838 -> 5.5 µs (dash 2.5), `true` 776 -> about
+0 (dash 1.0), `$(echo x)` 969 -> 169 (dash 81), `$(/bin/true)` 927 -> 746
+(dash 637), `/bin/true | /bin/true` 1,727 -> 1,343 (dash 1,245),
+`/usr/bin/true` 721 -> 661 (dash 564). In-process work is unchanged, as
+expected: 20-30 times dash's.
+
 In order of payoff for effort:
 
 1. **Builtins: `echo`, `printf`, `true`, `false`.** Then `.`, `exec`,

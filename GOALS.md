@@ -150,10 +150,10 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,794    kernel-shell.img     59,456
-    32-bit   kernel32.img   8,282    kernel32-shell.img   55,180
+    64-bit   kernel.img     8,802    kernel-shell.img     63,816
+    32-bit   kernel32.img   8,294    kernel32-shell.img   59,252
 
-**Seventy-six primitives**: 35 direct, with one-byte opcodes, and 41
+**Seventy-seven primitives**: 35 direct, with one-byte opcodes, and 42
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
@@ -940,7 +940,7 @@ genuine POSIX gap, just not one this criterion measures.
 mrsh issue #145 — mrsh does not run it either. So the honest reading
 of the current result (re-run in Iteration 248) is:
 
-- **20 of 21** by `run.sh`'s own arithmetic, which scores every
+- **21 of 21** since Iteration 269 (20 until then) by `run.sh`'s own arithmetic, which scores every
   vendored file.
 - **20 of 20** against the set mrsh itself actually runs.
 
@@ -1394,6 +1394,11 @@ once. Both are done; the rest keep their order.
    (97% fit). Calls are best left base-relative: pc-relative is worse,
    and allowing either saves only 3%.
 
+4b. **`I`, `(LOOP)` and `(+LOOP)` as engine opcodes.** Colon
+   definitions today, and 8% of the shell's loop benchmark dispatches
+   (Iteration 266's profile); every Forth `DO` loop pays them. A format
+   change (direct opcodes), so with a version bump.
+
 5. **The rest of the growable-buffer work.** Iteration 249 did the
    line buffers, 250 the word arrays and positional parameters, 251
    expansion output, command substitution, `for` lists and
@@ -1625,31 +1630,43 @@ before anything else, because every number here is relative to it.
    architectural risk, and they would take `tests/posix` from 25/21 to
    about 29/17. Do these first for a reason beyond their size: **the corpus
    has only ever gone down, so it is unproven as a driver of work.**
-2. **`COMMAND-TREE-PLAN.md`** (Iteration 261), which supersedes
-   `PARSE-EXPAND-PLAN.md` Stage 2: parse each complete command once into
-   a tree and execute the tree. It is the loop benchmark's fix - about
-   40% of the dispatches after Iteration 260 are the shell re-reading
-   its own lines - *and* it removes the whole same-line fault class
-   (Iterations 143, 144): six of `tests/posix`'s ten failures, the
-   endless loop after `;`, and the saved-rest-of-line hazard 255 and 257
-   kept finding. Staged A (parser and tree printer) to D (measure);
-   the new path is built beside the old one until it passes everything.
-   **Stages A-C done in Iterations 263-265**: `tree.4` parses and
-   executes; the line-based shell is deleted (343 definitions, 3,168
-   lines of `shell.4`); `tests/matrix` passes 420 of 420 and
-   `tests/posix` 44 of 46. **Stage D (266) decided against compiling
-   trees to Forth for now**: the tree walk is 5-15% of the dispatches,
-   expansion 40-75% (COMMAND-TREE-PLAN.md has the table). Parse-time
-   decisions for the expander and dispatcher are the better next step,
-   and 266 took three; the POSIX gaps below (non-whitespace `IFS`,
-   `set -e`, `trap`) are the other open line - pathname expansion was
-   done in 267, and `tests/posix` is 45 of 46.
-3. **Redirection's undo list** (Ramey's design, in the bash-
-   architecture section below). **Half done in Iteration 255**:
-   builtins and functions. What remains is compound commands - `while
-   read ...; done < file`, the commonest file-reading idiom in shell
-   scripting, and two POSIX failures.
-4. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, superseded, and
+2. ~~**`COMMAND-TREE-PLAN.md`**~~ **Done, Iterations 261-266.** Parse
+   each complete command once into a tree and execute the tree: `tree.4`
+   parses and executes, the line-based shell is deleted (343
+   definitions), `tests/matrix` passes 420 of 420. Stage D (266) decided
+   against compiling trees to Forth for now - the tree walk is 5-15% of
+   the dispatches, expansion 40-75% - and took three parse-time
+   decisions instead. ~~**Redirection's undo list for compound
+   commands**~~ came with it (264): every compound node carries its
+   redirections.
+
+   The items below are ordered by payoff for effort, from
+   DASH-COMPARISON.md (268) and the POSIX gaps that remain
+   (`tests/posix` 45 of 46 after 267's pathname expansion).
+
+3. ~~**Builtins `echo`, `printf`, `true`, `false`.**~~ **Done in
+   Iteration 269**: `echo` 838 -> 5.5 µs a call, `true` 776 -> about 0.
+   Still to add, as dash has them: `.`, `exec`, `kill`, `trap`, `type`,
+   `local`, `umask`, `times`.
+4. ~~**Exec without forking in a child with one command left.**~~ **Done
+   in 269**: a pipeline stage's, subshell's, background job's or command
+   substitution's only command, and the last command of a script or `-c`
+   string. `$(/bin/true)` 927 -> 746 µs, a two-program pipeline 1,727 ->
+   1,343.
+5. ~~**Find external commands once.**~~ **Done in 269**: a name -> path
+   cache, filled with `access(2)` before the fork and dropped when `PATH`
+   changes; the trial `execve`s are gone. `/usr/bin/true` 721 -> 661 µs
+   (the rest of dash's lead there is `vfork`, item 9).
+6. **Non-whitespace `IFS`** - the last `tests/posix` failure - and
+   `set -e`, `trap`, `exec`, `type`, `hash`: the POSIX backlog.
+7. **A hashed variable table**; functions and builtins likewise.
+8. **Words encoded at parse time, and a one-pass expander**, `$(...)`
+   parsed once and kept with the word (dash's `CTLESC`/`CTLVAR`/
+   `CTLBACKQ`). The largest item: expansion is 40-75% of the
+   dispatches. Its own plan document first.
+9. **`vfork` or `posix_spawn`** as an engine primitive (about 75 µs per
+   external command); after 4 and 5.
+10. ~~**Engine: SOD16, on branch `token16`.**~~ **Done, superseded, and
    retired.** SOD16 won the Iteration 156-167 comparison, CV8 replaced
    it at 189, and Iteration 218 retired it along with every other
    encoding - the ladder had answered its question. `sod16.4`,
@@ -1666,16 +1683,16 @@ before anything else, because every number here is relative to it.
    part SOD16 makes cheaper while omitting the dependent load it makes
    dearer.
 
-5. ~~**Superinstructions**~~ - **closed by measurement (Iteration
+11. ~~**Superinstructions**~~ - **closed by measurement (Iteration
    157).** Every packed encoding costs 21-68% in dispatch to buy
    density a plain 16-bit token gets more of anyway. That includes
    SOD32's own 5-bit x 6 format, the best of them, at 1.21x on x86-64
    and 1.68x on i386. `DENSITY-PLAN.md` option B should not be
    re-proposed without new evidence.
-6. ~~**A `FILL` primitive.**~~ **Done in Iteration 260**, with `MOVE`,
+12. ~~**A `FILL` primitive.**~~ **Done in Iteration 260**, with `MOVE`,
    `COMPARE`, `SCAN` and `CSTRLEN`: libc's memory and string functions
    behind escaped primitives, where the kernel had byte loops.
-7. **Phase 3, the Forth-hosted assembler.** Goal 1's last piece, never
+13. **Phase 3, the Forth-hosted assembler.** Goal 1's last piece, never
    started in 149 iterations, and the prerequisite for phase 4.
 
 The rest of the POSIX backlog - pattern matching, the tokenizer, and
@@ -1717,21 +1734,11 @@ dry.
 ## What dash does that this shell does not: `DASH-COMPARISON.md`
 
 Iteration 268 read dash's source and measured both shells an operation
-at a time (`tools/op-bench.py`). In-process work is 25-170 times dash's
-(interpretation); a command that is a builtin in dash and a program here
-(`echo`, `printf`, `true`, `false`) is 260-750 times (a fork and an
-exec); external commands are 1.1-1.3 times. Its ranked list is the next
-queue:
-
-1. **Builtins `echo`, `printf`, `true`, `false`**, then `.`, `exec`,
-   `kill`, `trap`, `type`, `local`, `umask`, `times`.
-2. **Exec without forking** in a child with one command left (command
-   substitution, pipeline stage, subshell, background, `sh -c`).
-3. **A command-location cache** instead of trial `execve`s along `PATH`.
-4. **A hashed variable table**; functions and builtins likewise.
-5. **Words encoded at parse time and a one-pass expander**, with
-   `$(...)` parsed once - its own plan document first.
-6. **`vfork`/`posix_spawn`** as an engine primitive.
+at a time (`tools/op-bench.py`): in-process work is 25-170 times dash's
+(interpretation), a command that is a builtin in dash and a program here
+260-750 times (a fork and an exec), external commands 1.1-1.3 times. Its
+ranked list of what to take is merged into the shell queue above, items
+2-8.
 
 ## Next architectural work: `COMMAND-TREE-PLAN.md`
 

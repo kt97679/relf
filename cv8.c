@@ -99,7 +99,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    41
+#define NESC    42
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -744,7 +744,7 @@ static void virtual_machine(void) {
         &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
         &&L_rawmode,
         &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
-        &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir,
+        &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir, &&L_access,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1145,6 +1145,10 @@ L_readdir: SPILL(); { /* dirp --- c-addr | 0 */
 }
 L_closedir: SPILL(); /* dirp --- */
     closedir((DIR *)(uintptr_t)DS0);
+    dsp += CELL_BYTES;
+    FILLNEXT();
+L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 269) */
+    DS1 = access((const char *)(uintptr_t)DS1, (int)DS0) ? (UNS64)(INT64)-errno : 0;
     dsp += CELL_BYTES;
     FILLNEXT();
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */

@@ -622,7 +622,12 @@ VARIABLE SV-IDX
     EXIT
   THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
-  SV-VALUE @ SV-IDX @ SET-SHVAR-VALUE ;
+  SV-VALUE @ SV-IDX @ SET-SHVAR-VALUE
+  \ A variable in the environment - inherited, or exported - is exported
+  \ with its new value (XCU 2.5.3, 2.9.1): `PATH=/x` changed only the
+  \ shell's copy, so commands kept being found along the old PATH
+  \ (Iteration 269).
+  SV-NAME @ GETENV IF SV-VALUE @ SV-NAME @ SETENV DROP THEN ;
 
 : REMOVE-SHVAR ( name-addr --- )  \ shifts the last entry into the
                                     \ removed slot rather than
@@ -1757,6 +1762,9 @@ VARIABLE ARITH-DEPTH
   TOK-POS @ TOK-END @ < IF TOK-POS @ 2 + TOK-POS ! THEN   \ skip the closing double-paren
   ARITH-EXPR-BUF ARITH-EXPR-LEN @ AE-EVAL EMIT-DECIMAL ;
 
+VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
+VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
+
 : EXPAND-CMDSUB ( closer --- )
   \ TOK-POS is just inside the substitution; `closer` is the character
   \ that ends it - ')' for $(...), '`' for the backquote form, which
@@ -1827,7 +1835,10 @@ VARIABLE ARITH-DEPTH
     CMDSUB-PIPE-WR @ CLOSE-FILE DROP
     CMDSUB-PIPE-RD @ READ-ALL-CMDSUB-OUTPUT
     CMDSUB-PIPE-RD @ CLOSE-FILE DROP
-    CMDSUB-PID @ WAITPID DROP DROP
+    \ its status is the status of a command that is only assignments
+    \ (XCU 2.9.1; Iteration 269 - it was dropped)
+    CMDSUB-PID @ WAITPID DROP 8 RSHIFT 255 AND CMDSUB-STATUS !
+    -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
       CMDSUB-OUT-LEN @ 0 > IF
         CMDSUB-OUT-BUF CMDSUB-OUT-LEN @ 1- + C@ 10 =
@@ -2775,36 +2786,88 @@ VARIABLE EXEC-ERR
 : NOTE-EXEC-ERR ( ior --- )
   DUP -2 = OVER -20 = OR EXEC-ERR @ OR IF DROP ELSE EXEC-ERR ! THEN ;
 
-: TRY-DIR ( c-addr u --- )
-  PATHBUF B-RESET
-  B-STR
-  47 B-CHAR
-  ARGV @ B-CSTR
-  B-FINISH
-  ARGV PATHBUF EXECVE NOTE-EXEC-ERR ;
 
-: SEARCH-PATH ( --- )  \ only returns if every PATH candidate failed
-  S" PATH" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!  ( NUL-terminate "PATH" )
-  ENVNAMBUF GETENV
-  DUP 0= IF DROP EXIT THEN
-  DUP CSTRLEN OVER + PATH-END2 !
-  PATH-CUR !
-  BEGIN PATH-CUR @ PATH-END2 @ < WHILE
-    PATH-CUR @             ( start of this dir entry )
-    BEGIN
-      PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ C@ 58 <> ELSE 0 THEN
-    WHILE PATH-CUR @ 1+ PATH-CUR ! REPEAT
-    ( start ) PATH-CUR @ OVER -   ( start len )
-    TRY-DIR
-    PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ 1+ PATH-CUR ! THEN
-  REPEAT ;
+\ ---- where external commands are (Iteration 269) ----
+\ dash finds a command along PATH once and remembers it; this shell
+\ tried execve in each directory, every time - about 70 microseconds on a
+\ nine-entry PATH (DASH-COMPARISON.md). The parent now looks the name up
+\ before forking, with access(2), and keeps name -> path; the entries are
+\ dropped whenever PATH is not what they were found with. The child
+\ execs the remembered path, and falls back to the search if that fails.
+256 BUFFER: CC-TEXT        \ entries: name NUL path NUL, one after another
+VARIABLE CC#
+256 BUFFER: CC-PATHVAL     \ the PATH the entries were found with
+VARIABLE CC-PATHLEN
+VARIABLE CCF-NAME
+VARIABLE CCF-LEN
+VARIABLE CMD-RESOLVED      \ the path found for this command, or 0
+
+: CC-CURRENT-PATH ( --- c-addr u )
+  S" PATH" ENVNAMBUF SWAP MOVE  0 ENVNAMBUF 4 + C!
+  ENVNAMBUF GETENV DUP IF DUP CSTRLEN ELSE 0 THEN ;
+
+: CC-CHECK ( --- )   \ forget the entries if PATH changed
+  CC-CURRENT-PATH 2DUP CC-PATHVAL CC-PATHLEN @ COMPARE IF
+    DUP 1+ ENSURE-BUFFER CC-PATHVAL
+    DUP CC-PATHLEN !  CC-PATHVAL SWAP MOVE  0 CC# !
+  ELSE 2DROP THEN ;
+
+: CC-FIND ( name --- path | 0 )
+  DUP CCF-NAME !  CSTRLEN CCF-LEN !
+  0 BEGIN DUP CC# @ < WHILE                  ( off )
+    DUP CC-TEXT + DUP CSTRLEN                ( off e elen )
+    2DUP CCF-NAME @ CCF-LEN @ COMPARE 0= IF
+      + 1+ NIP EXIT                          ( path )
+    THEN
+    + 1+ DUP CSTRLEN + 1+ CC-TEXT - NIP      ( off' )
+  REPEAT DROP 0 ;
+
+: CC-ADD ( name path --- )   \ both NUL-terminated
+  OVER CSTRLEN OVER CSTRLEN + 2 + CC# @ + ENSURE-BUFFER CC-TEXT
+  SWAP DUP CSTRLEN 1+ >R  CC-TEXT CC# @ + R@ MOVE  R> CC# +!
+  DUP CSTRLEN 1+ >R  CC-TEXT CC# @ + R@ MOVE  R> CC# +! ;
+
+VARIABLE LC-ANY?   \ look for any file, not only an executable one
+: EXECUTABLE-FILE? ( c-addr --- f )   \ executable (or, with LC-ANY?, existing), not a directory
+  DUP LC-ANY? @ IF 0 ELSE 1 THEN ACCESS IF DROP 0 EXIT THEN
+  OPEN-DIR ?DUP IF CLOSE-DIR 0 ELSE -1 THEN ;
+
+VARIABLE LC-AT
+VARIABLE LC-END
+: LOCATE-COMMAND ( name --- path | 0 )
+  CC-CHECK
+  DUP CC-FIND ?DUP IF NIP EXIT THEN
+  CC-PATHVAL LC-AT !  CC-PATHVAL CC-PATHLEN @ + LC-END !
+  BEGIN LC-AT @ LC-END @ < WHILE
+    LC-AT @                                   ( name dir )
+    BEGIN LC-AT @ LC-END @ < IF LC-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 LC-AT +! REPEAT
+    LC-AT @ OVER -                            ( name dir len )
+    DUP IF
+      PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
+      PATHBUF EXECUTABLE-FILE? IF
+        DUP PATHBUF CC-ADD  CC-FIND EXIT
+      THEN
+    ELSE 2DROP THEN
+    LC-AT @ LC-END @ < IF 1 LC-AT +! THEN
+  REPEAT
+  DROP 0 ;
 
 : RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; exits 126 or 127 if it cannot
   0 EXEC-ERR !
+  CMD-RESOLVED @ ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
   ARGV @ DUP CSTRLEN HAS-SLASH? IF
     ARGV ARGV @ EXECVE NOTE-EXEC-ERR
   ELSE
-    SEARCH-PATH
+    \ No remembered path, or it failed: look again, here. An executable
+    \ first; failing that, any file, so that one found but not runnable
+    \ is 126 with its reason (bash; a directory is skipped, as bash and
+    \ dash both do).
+    0 CC# !  0 LC-ANY? !
+    ARGV @ LOCATE-COMMAND ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
+    EXEC-ERR @ 0= IF
+      0 CC# !  -1 LC-ANY? !
+      ARGV @ LOCATE-COMMAND ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
+    THEN
   THEN
   \ Reached only when the exec failed, which every caller follows with
   \ `127 SYS-EXIT`. Until Iteration 154 nothing was printed at all:
@@ -3747,6 +3810,275 @@ VARIABLE GO-NMLEN
 ' DO-BRACKET-TEST S" ["        BUILTIN
 ' DO-CD           S" cd"       BUILTIN
 ' DO-PWD          S" pwd"      BUILTIN
+
+\ ==================================================================
+\ true, false, echo, printf (Iteration 269)
+\ ==================================================================
+\ Programs until now: a fork and an exec, about 800 microseconds, where
+\ dash spends one to three (DASH-COMPARISON.md). echo follows the
+\ echo scripts here have always run, /bin/echo, which is also bash's:
+\ options -n -e -E, escapes only with -e. printf follows POSIX and
+\ GNU: %s %b %c %d %i %u %o %x %X %%, flags - 0 + space, width and
+\ precision (either may be *), the format reused while arguments remain.
+
+: /STRING ( c-addr u n --- c-addr' u' )   ROT OVER + ROT ROT - ;
+
+: DO-TRUE ( --- )    0 LAST-STATUS ! ;
+: DO-FALSE ( --- )   1 LAST-STATUS ! ;
+
+\ ---- backslash escapes, for echo -e, printf's format and %b ----
+VARIABLE EA            \ the string being written
+VARIABLE EU
+VARIABLE ESC-STOP?     \ \c: nothing more is written
+VARIABLE ESC-MODE      \ 0: printf's format (\NNN, \"); 1: echo and %b (\0NNN)
+VARIABLE OV
+VARIABLE ON
+
+: EC ( i --- c | -1 )   DUP EU @ < IF EA @ + C@ ELSE DROP -1 THEN ;
+: OCTAL-RUN ( i max --- )   \ OV: the value of up to max octal digits at i; ON: how many
+  0 OV !  0 ON !
+  0 ?DO
+    DUP I + EC DUP 48 - 8 U< 0= IF DROP LEAVE THEN
+    48 - OV @ 8 * + OV !  1 ON +!
+  LOOP DROP ;
+: HEXV ( c --- n | -1 )
+  DUP 48 - 10 U< IF 48 - EXIT THEN
+  32 OR DUP 97 - 6 U< IF 87 - EXIT THEN
+  DROP -1 ;
+: HEX-RUN ( i max --- )
+  0 OV !  0 ON !
+  0 ?DO
+    DUP I + EC HEXV DUP 0< IF DROP LEAVE THEN
+    OV @ 16 * + OV !  1 ON +!
+  LOOP DROP ;
+
+: EMIT-ESCAPE ( i --- i' )   \ i is at a backslash
+  DUP 1+ EC
+  DUP -1 = IF DROP 92 EMIT 1+ EXIT THEN
+  DUP 97 = IF DROP 7 EMIT 2 + EXIT THEN
+  DUP 98 = IF DROP 8 EMIT 2 + EXIT THEN
+  DUP 99 = IF DROP -1 ESC-STOP? ! 2 + EXIT THEN
+  DUP 101 = IF DROP 27 EMIT 2 + EXIT THEN
+  DUP 102 = IF DROP 12 EMIT 2 + EXIT THEN
+  DUP 110 = IF DROP 10 EMIT 2 + EXIT THEN
+  DUP 114 = IF DROP 13 EMIT 2 + EXIT THEN
+  DUP 116 = IF DROP 9 EMIT 2 + EXIT THEN
+  DUP 118 = IF DROP 11 EMIT 2 + EXIT THEN
+  DUP 92 = IF DROP 92 EMIT 2 + EXIT THEN
+  DUP 120 = IF
+    DROP DUP 2 + 2 HEX-RUN
+    ON @ IF OV @ EMIT 2 + ON @ + ELSE 92 EMIT 1+ THEN EXIT
+  THEN
+  ESC-MODE @ IF
+    DUP 48 = IF DROP DUP 2 + 3 OCTAL-RUN OV @ 255 AND EMIT 2 + ON @ + EXIT THEN
+  ELSE
+    DUP 48 - 8 U< IF DROP DUP 1+ 3 OCTAL-RUN OV @ 255 AND EMIT 1+ ON @ + EXIT THEN
+    DUP 34 = IF DROP 34 EMIT 2 + EXIT THEN
+  THEN
+  DROP 92 EMIT 1+ ;                          \ unknown: the backslash stays
+
+: EMIT-ESCAPED ( c-addr u --- )   \ until the end, or a \c
+  EU !  EA !  0
+  BEGIN DUP EU @ < ESC-STOP? @ 0= AND WHILE
+    DUP EC 92 = IF EMIT-ESCAPE ELSE DUP EC EMIT 1+ THEN
+  REPEAT DROP ;
+
+\ ---- echo ----
+VARIABLE EO-I
+VARIABLE EO-NONL?
+VARIABLE EO-ESC?
+
+: ECHO-OPTION? ( c-addr --- f )   \ - followed only by n, e and E
+  DUP C@ 45 <> IF DROP 0 EXIT THEN
+  1+ DUP C@ 0= IF DROP 0 EXIT THEN
+  BEGIN DUP C@ WHILE
+    DUP C@ DUP 110 = OVER 101 = OR SWAP 69 = OR 0= IF DROP 0 EXIT THEN
+    1+
+  REPEAT DROP -1 ;
+
+: DO-ECHO ( --- )
+  0 EO-NONL? !  0 EO-ESC? !  0 ESC-STOP? !  1 ESC-MODE !
+  1 EO-I !
+  BEGIN EO-I @ ARGC @ < IF EO-I @ ARGV@ ECHO-OPTION? ELSE 0 THEN WHILE
+    EO-I @ ARGV@ 1+
+    BEGIN DUP C@ WHILE
+      DUP C@ DUP 110 = IF -1 EO-NONL? ! THEN
+      DUP 101 = IF -1 EO-ESC? ! THEN
+      69 = IF 0 EO-ESC? ! THEN
+      1+
+    REPEAT DROP
+    1 EO-I +!
+  REPEAT
+  BEGIN EO-I @ ARGC @ < ESC-STOP? @ 0= AND WHILE
+    EO-I @ ARGV@ DUP CSTRLEN
+    EO-ESC? @ IF EMIT-ESCAPED ELSE TYPE THEN
+    1 EO-I +!
+    EO-I @ ARGC @ < ESC-STOP? @ 0= AND IF 32 EMIT THEN
+  REPEAT
+  EO-NONL? @ ESC-STOP? @ OR 0= IF CR THEN
+  0 LAST-STATUS ! ;
+
+\ ---- printf ----
+VARIABLE PF-ARG        \ the next argument
+VARIABLE PF-STATUS
+VARIABLE PF-LEFT
+VARIABLE PF-ZERO
+VARIABLE PF-PLUS
+VARIABLE PF-SPACE
+VARIABLE PF-WIDTH
+VARIABLE PF-PREC       \ -1: none
+VARIABLE PF-START      \ where the conversion being read began
+VARIABLE PF-UPPER      \ %X
+CREATE NUL-BYTE 0 C,
+256 BUFFER: PF-BUF     \ a formatted number
+VARIABLE PF#
+
+: NEXT-ARG ( --- c-addr u )   \ the next argument, or an empty string
+  PF-ARG @ ARGC @ < IF
+    PF-ARG @ ARGV@ DUP CSTRLEN  1 PF-ARG +!
+  ELSE
+    SH-NL 0
+  THEN ;
+
+: PF-BAD-NUMBER ( c-addr u --- )
+  S" printf: " ERR-TYPE ERR-TYPE S" : invalid number" ERR-TYPE ERR-NL
+  1 PF-STATUS ! ;
+
+VARIABLE PN-A
+VARIABLE PN-U
+: PARSE-PF-NUMBER ( c-addr u --- n )
+  \ decimal, 0NNN octal, 0xNN hex, or 'c / "c for a character's code
+  2DUP PN-U ! PN-A !
+  BEGIN DUP IF OVER C@ WS? ELSE 0 THEN WHILE 1 /STRING REPEAT
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ DUP 39 = SWAP 34 = OR IF
+    DUP 1 > IF DROP 1+ C@ ELSE 2DROP 0 THEN EXIT
+  THEN
+  1 >R                                       \ the sign
+  OVER C@ 45 = IF R> DROP -1 >R 1 /STRING ELSE
+  OVER C@ 43 = IF 1 /STRING THEN THEN
+  10 >R                                      \ the base
+  DUP 1 > IF OVER C@ 48 = IF
+    OVER 1+ C@ 32 OR 120 = IF R> DROP 16 >R 2 /STRING ELSE R> DROP 8 >R 1 /STRING THEN
+  THEN THEN
+  0 ROT ROT                                  ( value c-addr u )
+  BEGIN DUP WHILE
+    OVER C@ HEXV DUP 0< OVER R@ < 0= OR IF
+      DROP PN-A @ PN-U @ PF-BAD-NUMBER
+      2DROP R> DROP R> * EXIT
+    THEN
+    >R ROT R> SWAP R@ * + ROT ROT
+    1 /STRING
+  REPEAT
+  2DROP R> DROP R> * ;
+
+: PF-DIGITS ( i --- i' n )   \ a decimal number in the format
+  0 BEGIN OVER EC DUP 48 - 10 U< WHILE 48 - SWAP 10 * + SWAP 1+ SWAP REPEAT
+  DROP ;
+
+: PF-C, ( c --- )   PF# @ 1+ ENSURE-BUFFER PF-BUF  PF-BUF PF# @ + C!  1 PF# +! ;
+: PF-PAD ( c-addr u --- )   \ written in the field's width
+  PF-WIDTH @ OVER - 0 MAX
+  PF-LEFT @ IF >R TYPE R> SPACES ELSE SPACES TYPE THEN ;
+
+: PF-INTEGER ( n base signed? upper? --- )
+  PF-UPPER !  >R >R                          ( n  R: signed base )
+  BASE @ SWAP R> BASE !                      ( oldbase n  R: signed )
+  0 PF# !
+  R@ IF DUP 0< IF 45 PF-C, NEGATE ELSE
+    PF-PLUS @ IF 43 PF-C, ELSE PF-SPACE @ IF 32 PF-C, THEN THEN
+  THEN THEN
+  R> DROP
+  0 <# #S #>                                 ( oldbase addr len  R: upper )
+  \ the precision is a minimum number of digits
+  PF-PREC @ OVER - 0 MAX 0 ?DO 48 PF-C, LOOP
+  \ zero padding goes after the sign, when there is no precision
+  PF-ZERO @ PF-LEFT @ 0= AND PF-PREC @ 0< AND IF
+    PF-WIDTH @ PF# @ - OVER - 0 MAX 0 ?DO 48 PF-C, LOOP
+  THEN
+  0 ?DO
+    DUP I + C@ PF-UPPER @ 0= IF DUP 65 - 26 U< IF 32 + THEN THEN PF-C,
+  LOOP DROP
+  BASE !
+  PF-BUF PF# @ PF-PAD ;
+
+: PF-NUMBER-ARG ( --- n )   NEXT-ARG PARSE-PF-NUMBER ;
+
+: PF-CONVERSION ( i --- i' )   \ i is at a %
+  DUP PF-START !
+  1+ DUP EC 37 = IF 37 EMIT 1+ EXIT THEN
+  0 PF-LEFT !  0 PF-ZERO !  0 PF-PLUS !  0 PF-SPACE !  0 PF-WIDTH !  -1 PF-PREC !
+  BEGIN
+    DUP EC DUP 45 = OVER 48 = OR OVER 43 = OR OVER 32 = OR SWAP 35 = OR
+  WHILE
+    DUP EC
+    DUP 45 = IF -1 PF-LEFT ! THEN
+    DUP 48 = IF -1 PF-ZERO ! THEN
+    DUP 43 = IF -1 PF-PLUS ! THEN
+    32 = IF -1 PF-SPACE ! THEN
+    1+
+  REPEAT
+  DUP EC 42 = IF
+    1+ PF-NUMBER-ARG DUP 0< IF NEGATE -1 PF-LEFT ! THEN PF-WIDTH !
+  ELSE
+    PF-DIGITS PF-WIDTH !
+  THEN
+  DUP EC 46 = IF
+    1+ DUP EC 42 = IF 1+ PF-NUMBER-ARG ELSE PF-DIGITS THEN
+    DUP 0< IF DROP -1 THEN PF-PREC !
+  THEN
+  DUP EC
+  DUP 115 = IF DROP                          \ %s
+    NEXT-ARG PF-PREC @ 0< 0= IF PF-PREC @ MIN THEN PF-PAD 1+ EXIT
+  THEN
+  DUP 98 = IF DROP                           \ %b
+    EA @ >R EU @ >R
+    1 ESC-MODE !  NEXT-ARG EMIT-ESCAPED  0 ESC-MODE !
+    R> EU ! R> EA !
+    1+ EXIT
+  THEN
+  DUP 99 = IF DROP                           \ %c: a NUL for an empty argument
+    NEXT-ARG ?DUP IF 1 MIN ELSE DROP NUL-BYTE 1 THEN PF-PAD 1+ EXIT
+  THEN
+  DUP 100 = OVER 105 = OR IF DROP  PF-NUMBER-ARG 10 -1 0 PF-INTEGER 1+ EXIT THEN
+  DUP 117 = IF DROP  PF-NUMBER-ARG 10 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 111 = IF DROP  PF-NUMBER-ARG 8 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 120 = IF DROP  PF-NUMBER-ARG 16 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 88 = IF DROP  PF-NUMBER-ARG 16 0 -1 PF-INTEGER 1+ EXIT THEN
+  DROP
+  S" printf: " ERR-TYPE
+  EA @ PF-START @ +  OVER 1+ EU @ MIN PF-START @ -  ERR-TYPE
+  S" : invalid conversion specification" ERR-TYPE ERR-NL
+  1 PF-STATUS !  -1 ESC-STOP? !
+  DROP EU @ ;
+
+: PF-FORMAT ( c-addr u --- )   \ the format, once
+  EU !  EA !  0 ESC-MODE !
+  0
+  BEGIN DUP EU @ < ESC-STOP? @ 0= AND WHILE
+    DUP EC DUP 92 = IF DROP EMIT-ESCAPE ELSE
+      37 = IF PF-CONVERSION ELSE DUP EC EMIT 1+ THEN
+    THEN
+  REPEAT DROP ;
+
+: DO-PRINTF ( --- )
+  ARGC @ 2 < IF
+    S" printf: usage: printf format [arguments]" ERR-TYPE ERR-NL
+    2 LAST-STATUS ! EXIT
+  THEN
+  0 PF-STATUS !  0 ESC-STOP? !  2 PF-ARG !
+  BEGIN
+    PF-ARG @ >R
+    1 ARGV@ DUP CSTRLEN PF-FORMAT
+    \ again while arguments remain and the last pass used some
+    ESC-STOP? @ 0=  PF-ARG @ ARGC @ < AND  PF-ARG @ R> > AND 0=
+  UNTIL
+  PF-STATUS @ LAST-STATUS ! ;
+
+' DO-TRUE         S" true"     BUILTIN
+' DO-FALSE        S" false"    BUILTIN
+' DO-ECHO         S" echo"     BUILTIN
+' DO-PRINTF       S" printf"   BUILTIN
 ' DO-EXPORT       S" export"   BUILTIN
 ' DO-UNSET        S" unset"    BUILTIN
 ' DO-EXIT         S" exit"     BUILTIN
@@ -3810,18 +4142,25 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
   \ end is closed, which the restore just did.
   HD-WRITER @ ?DUP IF WAITPID 2DROP 0 HD-WRITER ! THEN ;
 
+VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
+
 : DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
   \ A quoted 'cd' is a literal argument, not the builtin - same
   \ reasoning as ARGV-QUOTED everywhere else. Functions are checked
   \ after builtins, so a builtin name cannot be overridden by a
   \ function, matching real shells.
-  ARGC @ 0 > 0 ARGV-QUOTED@ 0= AND IF
+  \ Builtins and functions are found whether or not the name was quoted
+  \ or came from an expansion (`"echo" x`, `$cmd x`); reserved words are
+  \ the parser's business since the command tree (Iteration 269).
+  ARGC @ 0 > IF
     ARGV @ FIND-BUILTIN ?DUP IF
+      0 EXEC-LAST? !
       >R BEGIN-REDIRECT R>
       REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
       END-REDIRECT -1 EXIT
     THEN
     ARGV @ FIND-FUNC DUP -1 <> IF
+      0 EXEC-LAST? !
       >R BEGIN-REDIRECT R>
       REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE RUN-FUNC-BODY-CALL THEN
       END-REDIRECT -1 EXIT
@@ -3834,7 +4173,20 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
 \ Main loop
 \ ==================================================================
 
+\ Exec without forking when nothing follows the command in this process
+\ - dash's EV_EXIT (Iteration 269; DASH-COMPARISON.md): a pipeline stage's
+\ or a subshell's only command, the last of a script. tree.4 decides; the
+\ flag is set only once the words are expanded, and DISPATCH clears it
+\ before a builtin or a function runs.
+
 : RUN-EXTERNAL ( --- )
+  ARGV @ DUP CSTRLEN HAS-SLASH? IF 0 ELSE ARGV @ LOCATE-COMMAND THEN CMD-RESOLVED !
+  EXEC-LAST? @ IF
+    0 EXEC-LAST? !
+    APPLY-REDIRECTIONS
+    REDIR-FAILED? @ IF 1 SYS-EXIT THEN
+    RUN-CHILD 127 SYS-EXIT
+  THEN
   FORK
   DUP 0 = IF
     DROP APPLY-REDIRECTIONS

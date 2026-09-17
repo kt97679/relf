@@ -264,6 +264,7 @@ do not trust the absence of a line below.
 - **266** — command tree Stage D: measured; parse-time decisions instead of a tree compiler
 - **267** — pathname expansion; directory primitives
 - **268** — DASH-COMPARISON.md: how dash runs a script; tools/op-bench.py
+- **269** — echo/printf/true/false builtins; exec without fork; command location cache
 
 ### Not tied to an iteration
 
@@ -15974,3 +15975,80 @@ blocks, so `read` in a script fed on stdin gets nothing where bash and
 this shell give it the next line.
 
 No shell or engine change; tests/verify unchanged.
+
+## Iteration 269: what dash does, first three items
+
+GOALS.md's shell queue now carries DASH-COMPARISON.md's list in order,
+with the POSIX gaps between; the command-tree and compound-redirection
+items are marked done; the engine queue gained the loop-word opcodes.
+Then the first three items.
+
+**Builtins `true`, `false`, `echo`, `printf`.** Programs until now.
+`echo` behaves as the `/bin/echo` scripts here always ran, which is also
+bash's builtin: `-n -e -E` (combined too), escapes only with `-e`,
+including `\c`, `\0NNN` and `\xHH`. `printf` does `%s %b %c %d %i %u %o
+%x %X %%`, the flags `- 0 + space`, width and precision with `*`,
+numbers in decimal, octal, hex or `'c`, a NUL for `%c` of an empty
+argument, and reuses the format while arguments remain; an invalid
+number or conversion is reported with status 1. A battery's standard
+output is byte-identical to coreutils' and to bash's builtins. Two bugs
+on the way: the invalid-conversion path left two values on the stack
+(a crash), and `%x` read the loop index through `R@` for its case flag.
+
+**Quoted command names.** `DISPATCH` looked for builtins and functions
+only when the command word was unquoted, and an expansion's result counts
+as quoted, so `$cmd args` and `"echo" x` ran programs. POSIX, bash and
+dash find builtins either way - only reserved words stop being reserved
+when quoted, and that is the parser's business now. `run-quote` asserted
+the old behaviour and asserts the new.
+
+**Exec without forking** (dash's `EV_EXIT`). A process with one command
+left execs it: the only command of a pipeline stage, a subshell or a
+background job (`EXEC-FINAL`), and the last command of a script, a `-c`
+string or a command substitution's text (`EXIT-AFTER?`, `SRC-DEPTH` -
+not `eval`'s, which the shell outlives). `ONE-SIMPLE?` accepts only a
+node that is exactly one foreground simple command; the intent becomes
+`EXEC-LAST?` only after the words are expanded, so command-substitution
+children forked during expansion never see it; `DISPATCH` clears it
+before a builtin or a function runs, so an external command inside a
+function does not replace the shell. The first version found "last" by
+lexing the next token outside the CATCH - a syntax error in the NEXT
+command then hung the shell (`tests/matrix` error.e32 caught it) and
+would have been reported before the current command ran; it is now
+`AT-END-OF-SOURCE?`, which looks at the remaining text for anything but
+blanks, newlines and comments.
+
+**Where commands are.** A new escaped primitive, `ACCESS` (access(2)).
+`LOCATE-COMMAND` looks a name up along `PATH` before the fork and keeps
+name -> path in `CC-TEXT`; the entries are dropped when `PATH` is not the
+value they were found with (compared on each lookup, so no hook into the
+variable code is needed). The child execs the remembered path; if there
+was none, or it fails, it looks again in its own process - an executable
+first, then any file, so a command found but not runnable is 126 with
+its reason and a directory is skipped (bash; dash says 127 for both).
+`SEARCH-PATH` and `TRY-DIR`, which tried `execve` in every directory, are
+gone. The first version passed `LOCATE-COMMAND` nothing on the stack -
+`HAS-SLASH?` consumes the address as well as the length - and the
+one-cell underflow was below the stack guard's reach.
+
+**Two older bugs** found by the new tests: a command that is only
+assignments ignored its command substitution's status (`v=$(false)` left
+`$?` 0; XCU 2.9.1 wants the substitution's), and assigning a variable
+inherited from the environment - `PATH=...` - changed only the shell's
+copy, so commands went on being found along the old `PATH`. `SET-SHVAR`
+now re-exports a variable that is in the environment. With both,
+mrsh's `2.2.3-alias-expansion.fail.sh` passes for the right reason (the
+alias makes the substitution's text a syntax error, and that status now
+reaches the script): mrsh 20/21 -> 21/21.
+
+**Measured** (`tools/op-bench.py`, µs per operation, dash in brackets):
+`echo` 838 -> 5.5 [2.5], `true` 776 -> ~0 [1.0], `$(echo x)` 969 -> 169
+[81], `$(/bin/true)` 927 -> 746 [637], `/bin/true | /bin/true` 1,727 ->
+1,343 [1,245], `/usr/bin/true` 721 -> 661 [564]. In-process work is
+unchanged, 20-30 times dash's.
+
+New differential cases, all identical to bash: `builtins-269.sh`,
+`exec-last.sh` and `command-path.sh` (the previous build fails the last
+two). tests/verify: mrsh 20/1 -> 21/0; parse verdicts 137 -> 140; shell
+assertions 595 -> 596; sizes (x86-64 90,392 -> 94,752, i386 77,216 ->
+81,292).
