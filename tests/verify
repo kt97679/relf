@@ -142,6 +142,21 @@ emit parse:failed           "$(echo "$PR" | cut -d' ' -f2)"
 emit parse:verdicts-agree   "$(echo "$PR" | cut -d' ' -f3)"
 emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f4)"
 
+# The command-tree path (RELF_TREE=1): Stage B of COMMAND-TREE-PLAN.md
+# (Iteration 264), run through the same suites until it is the only path.
+TREE_SH=/tmp/relf-verify-treesh.$$
+printf '#!/bin/sh\nRELF_TREE=1 exec "%s/relfsh" "$@"\n' "$PWD" > "$TREE_SH"
+chmod +x "$TREE_SH"
+TM=$(THIS_SH="$TREE_SH" sh tests/matrix/run 2>&1 | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) failed, .*; \([0-9]*\) regressions.*/\1 \2 \3/p')
+emit tree:matrix-passed      "$(echo "$TM" | cut -d' ' -f1)"
+emit tree:matrix-failed      "$(echo "$TM" | cut -d' ' -f2)"
+emit tree:diff-failed        "$(THIS_SH="$TREE_SH" sh tests/diff/run-all 2>&1 | sed -n 's/^[0-9]* differential case(s), \([0-9]*\) failed$/\1/p' | tail -1)"
+emit tree:posix-passed       "$(RELFSH="$TREE_SH" sh tests/posix/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, .*/\1/p' | tail -1)"
+emit tree:mrsh-passed        "$(RELFSH="$TREE_SH" bash tests/mrsh-suite/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, .*/\1/p' | tail -1)"
+emit tree:parse-passed       "$(THIS_SH="$TREE_SH" sh tests/parse/run 2>&1 | sed -n 's/^== \([0-9]*\) passed.*/\1/p')"
+emit tree:shell-failed       "$( (cd tests/shell && THIS_SH="$TREE_SH" ./run-all 2>&1) | grep -c '^FAIL')"
+rm -f "$TREE_SH"
+
 # tests/matrix: every construct in every context, and the syntax errors,
 # against bash and dash (Iteration 262). A regression - a case that fails
 # and is not in KNOWN-FAILING - is reported whatever the totals say.

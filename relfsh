@@ -102,7 +102,7 @@ build_shell_img() {
     tmp="$DIR/$tmp_base"
     (
         cd "$DIR" || exit 1
-        printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tree.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
+        printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" tree.4" INCLUDED\n%s MAIN-SELECT SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
             "'" "$tmp_base" \
             | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
     )

@@ -148,6 +148,9 @@ VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to 
 \ so it survives being saved into an image) live in shadow.4, which
 \ this file already requires for SHADOW{ itself.
 
+VARIABLE TREE-MODE?   \ running through tree.4's parser and executor (Iteration 264)
+DEFER TREE-EVAL-CALL  \ eval's text, parsed and run as a tree
+DEFER TREE-CMDSUB-END-CALL  \ ( c-addr u --- n ) where $(...)'s text ends
 VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ branch has already determined this whole
                           \ region shouldn't execute anything (either
@@ -1799,6 +1802,15 @@ VARIABLE ARITH-DEPTH
   CS-CLOSER !
   0 CS-COPY-I !
   0 CS-SQ? !  0 CS-DQ? !  0 CS-DEPTH !
+  \ In tree mode the tree lexer finds the closing paren, by parsing the
+  \ text: the loop below counts only $( and so ended a $(...) at a case
+  \ pattern's `)` or a function definition's `()` (Iteration 264).
+  CS-CLOSER @ 41 = TREE-MODE? @ AND IF
+    TOK-POS @ TOK-END @ OVER - TREE-CMDSUB-END-CALL     ( n )
+    DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
+    TOK-POS @ CMDSUB-LINE-BUF 2 PICK MOVE
+    DUP CS-COPY-I !  TOK-POS +!
+  ELSE
   BEGIN
     TOK-POS @ TOK-END @ < IF
       TOK-POS @ C@ CS-CLOSER @ <> CS-SQ? @ OR CS-DQ? @ OR CS-DEPTH @ 0 <> OR
@@ -1826,6 +1838,10 @@ VARIABLE ARITH-DEPTH
     THEN
     TOK-POS @ 1+ TOK-POS !
   REPEAT
+  THEN
+  \ The text, NUL-terminated: tree mode's child reads it up to the NUL.
+  CS-COPY-I @ 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
+  0 CMDSUB-LINE-BUF CS-COPY-I @ + C!
   TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN   ( skip closing paren )
   EXPAND-SUPPRESSED? @ IF EXIT THEN
   \ The text has been consumed; the command must not run. This is the
@@ -2740,6 +2756,9 @@ VARIABLE HD-WR
   HD-LINE HD-S @ + ;
 
 : HD-READ ( delim-addr --- )
+  \ In tree mode the body was read with the command, and HEREDOC-BUF
+  \ already holds it.
+  TREE-MODE? @ IF DROP EXIT THEN
   \ Consume input lines into HEREDOC-BUF until one equals the
   \ delimiter. Reads through READ-NEXT-INPUT-LINE, so a here-document
   \ inside a loop body or a function reads from the stored body just
@@ -6466,6 +6485,7 @@ VARIABLE EVAL-LEN
 
 : DO-EVAL ( --- )
   SHADOW{ | EVAL-TEXT EVAL-LEN REPLAY-ACTIVE? REPLAY-SRC REPLAY-ARENA? REPLAY-LEN REPLAY-POS }
+  TREE-MODE? @ IF TREE-EVAL-CALL EXIT THEN
   0 LAST-STATUS !
   ARGC @ 2 < IF EXIT THEN
   ARGC @ 1 ?DO I ARGV@ CSTRLEN 1+ EVAL-LEN @ + EVAL-LEN ! LOOP

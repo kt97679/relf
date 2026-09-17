@@ -30,5 +30,12 @@ shell:4byte 1
 shell:8byte 1
 shell:assertions 590
 shell:files 68
-size:i386 89548
-size:x86_64 103848
+size:i386 95848
+size:x86_64 110616
+tree:diff-failed 0
+tree:matrix-failed 0
+tree:matrix-passed 420
+tree:mrsh-passed 20
+tree:parse-passed 22
+tree:posix-passed 44
+tree:shell-failed 4

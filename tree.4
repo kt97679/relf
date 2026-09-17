@@ -83,14 +83,50 @@ VARIABLE VEC-TOP
 \ ==================================================================
 \ The input
 \ ==================================================================
-\ Stage A reads a whole text: a script file, or a string.
+\ A whole text (a script file, a -c string, eval's or $(...)'s text), or
+\ standard input, read a line at a time when the lexer needs more - a
+\ shell must not read past the line it is running, since the commands
+\ it runs may read the rest (Iteration 264). The lexer never looks past
+\ a newline it has not yet returned, so a command runs before the next
+\ line is asked for.
 VARIABLE SRC-ADDR
 VARIABLE SRC-LEN
 VARIABLE SRC-POS
 VARIABLE SRC-LINE
+VARIABLE SRC-STDIN?     \ reading standard input
+VARIABLE SRC-EOF?       \ ... and it has ended
+VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
+VARIABLE CMD-START?     \ the next line read begins a command: "$ ", else "> "
+\ alias state (see TRY-ALIAS)
+VARIABLE NO-ALIAS?
+VARIABLE ALIAS-NEXT?     \ a value ended in a blank: the word at ALIAS-NEXT-AT is a candidate
+VARIABLE ALIAS-NEXT-AT
+VARIABLE SRC-SPLICED     \ the heap block a splice copied the source into, or 0
+16 CONSTANT MAX-ALIAS-NEST
+CREATE AL-ACTIVE  MAX-ALIAS-NEST 2* CELLS ALLOT   \ (alias, end offset) pairs
+VARIABLE AL-ACTIVE#
+LINE-MAX BUFFER: STDIN-TEXT
+
+: REFILL-STDIN ( --- f )   \ one more line of standard input, or false
+  SRC-EOF? @ IF 0 EXIT THEN
+  INTERACTIVE? @ IF
+    CMD-START? @ IF SH-PROMPT ELSE S" > " ERR-TYPE THEN
+  THEN
+  0 CMD-START? !
+  SRC-LEN @ BUFFER-BODY STDIN-TEXT 0 READ-LINE-INTO     ( u flag )
+  0= IF DROP -1 SRC-EOF? ! 0 EXIT THEN
+  SRC-LEN @ + DUP 2 + ENSURE-BUFFER STDIN-TEXT
+  10 OVER STDIN-TEXT + C!  1+ SRC-LEN !
+  STDIN-TEXT SRC-ADDR !  -1 ;
 
 : SRC-C ( i --- c | -1 )   \ the character i past the position
-  SRC-POS @ + DUP SRC-LEN @ < IF SRC-ADDR @ + C@ ELSE DROP -1 THEN ;
+  BEGIN
+    DUP SRC-POS @ + SRC-LEN @ < 0=
+  WHILE
+    SRC-STDIN? @ 0= IF DROP -1 EXIT THEN
+    REFILL-STDIN 0= IF DROP -1 EXIT THEN
+  REPEAT
+  SRC-POS @ + SRC-ADDR @ + C@ ;
 : SRC-SKIP ( n --- )
   0 ?DO
     SRC-POS @ SRC-LEN @ < IF
@@ -206,10 +242,10 @@ DEFER SCAN-DOLLAR
   \ The contents are a program: parse it, which is the only way to find
   \ the right `)` past a case pattern's. The tree it builds is thrown
   \ away; the token being scanned is saved around it.
-  TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R
-  0 TK-VALID? !
+  TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
+  0 TK-VALID? !  -1 NO-ALIAS? !
   PARSE-SUBLIST
-  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START ! ;
+  R> NO-ALIAS? !  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START ! ;
 
 : SCAN-BRACE ( --- )      \ at ${: to past the matching }
   2 SRC-SKIP 1
@@ -307,7 +343,7 @@ VARIABLE HR-DASH?
   HR-NODE @ 2 F@ 0 F@ TSTR DUP CSTRLEN STRIP-QUOTES
   HD-TEXT# @ HD-DELIM# !  HD-STORE HD-DELIM !
   0 HD-TEXT# !
-  BEGIN SRC-POS @ SRC-LEN @ < WHILE
+  BEGIN 0 SRC-C -1 <> WHILE
     HR-DASH? @ IF BEGIN 0 SRC-C 9 = WHILE 1 SRC-SKIP REPEAT THEN
     SRC-POS @
     BEGIN 0 SRC-C DUP -1 <> SWAP 10 <> AND WHILE 1 SRC-SKIP REPEAT
@@ -329,7 +365,7 @@ VARIABLE HR-DASH?
 : LEX ( --- )
   BEGIN
     0 SRC-C DUP BLANK? IF DROP 1 SRC-SKIP 0 ELSE
-    92 = 1 SRC-C 10 = AND IF 2 SRC-SKIP 0 ELSE -1 THEN THEN
+    92 = IF 1 SRC-C 10 = IF 2 SRC-SKIP 0 ELSE -1 THEN ELSE -1 THEN THEN
   UNTIL
   0 SRC-C 35 = IF
     BEGIN 0 SRC-C DUP -1 <> SWAP 10 <> AND WHILE 1 SRC-SKIP REPEAT
@@ -413,6 +449,74 @@ VARIABLE MSG#
   DUP 0= IF EXIT THEN
   TK-END @ TK-START @ - SWAP -              ( namelen )
   SRC-ADDR @ TK-START @ + SWAP VALID-NAME? ;
+
+\ ---- aliases (XCU 2.3.1) ----
+\ An unquoted word in command position that names an alias is replaced,
+\ in the source text itself, by the alias's value, which is then lexed
+\ as if it had been written there. An alias is not expanded again
+\ inside its own expansion; a value ending in a blank makes the next
+\ word a candidate too. Not while finding where a $(...) ends - its
+\ text is parsed again when it runs (Iteration 264).
+256 BUFFER: AL-NAME-BUF
+
+: AL-ENTRY ( k --- addr )   2* CELLS AL-ACTIVE + ;
+: AL-EXPIRE ( --- )         \ drop the expansions the lexer has left
+  0  AL-ACTIVE# @ 0 ?DO
+    I AL-ENTRY CELL+ @ TK-START @ > IF
+      I AL-ENTRY OVER AL-ENTRY 2 CELLS MOVE  1+
+    THEN
+  LOOP AL-ACTIVE# ! ;
+: AL-ACTIVE? ( i --- f )
+  AL-ACTIVE# @ 0 ?DO
+    DUP I AL-ENTRY @ = IF DROP UNLOOP -1 EXIT THEN
+  LOOP DROP 0 ;
+: AL-SHIFT ( delta --- )    \ the expansions around the token grow or shrink
+  ALIAS-NEXT-AT @ TK-START @ > IF DUP ALIAS-NEXT-AT +! THEN
+  AL-ACTIVE# @ 0 ?DO
+    I AL-ENTRY CELL+ @ TK-START @ > IF DUP I AL-ENTRY CELL+ +! THEN
+  LOOP DROP ;
+
+\ Replace the current token's text with c-addr u, and lex it next.
+: SPLICE ( c-addr u --- )
+  DUP TK-END @ TK-START @ - - >R            ( a u  R: delta )
+  SRC-LEN @ R@ +                            ( a u newlen )
+  SRC-STDIN? @ IF
+    DUP 1+ ENSURE-BUFFER STDIN-TEXT
+    STDIN-TEXT TK-END @ +  DUP R@ +  SRC-LEN @ TK-END @ -  MOVE
+    STDIN-TEXT SRC-ADDR !
+  ELSE
+    DUP 1 MAX ALLOCATE DROP                 ( a u newlen blk )
+    SRC-ADDR @ OVER TK-START @ MOVE
+    SRC-ADDR @ TK-END @ +  OVER TK-END @ + R@ +  SRC-LEN @ TK-END @ -  MOVE
+    SRC-SPLICED @ ?DUP IF FREE DROP THEN
+    DUP SRC-SPLICED !  SRC-ADDR !
+  THEN
+  SRC-LEN !
+  SRC-ADDR @ TK-START @ + SWAP MOVE
+  R> AL-SHIFT
+  TK-START @ SRC-POS !  0 TK-VALID? ! ;
+
+: TRY-ALIAS ( --- f )   \ the current token was an alias, and is replaced
+  NO-ALIAS? @ IF 0 EXIT THEN
+  K-WORD KIND? 0= IF 0 EXIT THEN
+  TK-FLAGS @ WF-QUOTED AND IF 0 EXIT THEN
+  AL-EXPIRE
+  TK-END @ TK-START @ - DUP 2 + ENSURE-BUFFER AL-NAME-BUF
+  TK-TEXT AL-NAME-BUF SWAP MOVE  0 AL-NAME-BUF ROT + C!
+  AL-NAME-BUF FIND-ALIAS
+  DUP 0< IF DROP 0 EXIT THEN
+  DUP AL-ACTIVE? IF DROP 0 EXIT THEN
+  AL-ACTIVE# @ MAX-ALIAS-NEST < 0= IF DROP 0 EXIT THEN
+  DUP ALIAS-VALUE-SLOT DUP CSTRLEN          ( i a u )
+  2DUP + 1- C@ OVER 0<> AND DUP 32 = SWAP 9 = OR IF
+    \ where the name ends: SPLICE moves it to where the value ends
+    -1 ALIAS-NEXT? !  TK-END @ ALIAS-NEXT-AT !
+  THEN
+  ROT AL-ACTIVE# @ AL-ENTRY !               ( a u )
+  DUP TK-START @ + AL-ACTIVE# @ AL-ENTRY CELL+ !
+  1 AL-ACTIVE# +!
+  SPLICE -1 ;
+: EXPAND-ALIASES ( --- )   BEGIN PEEK TRY-ALIAS 0= UNTIL ;
 
 DEFER PARSE-AND-OR
 DEFER PARSE-COMMAND
@@ -501,8 +605,28 @@ DEFER PARSE-COMMAND
     VEC> OVER 0 F!
   THEN ;
 
+256 BUFFER: JOIN-BUF
+VARIABLE JOIN#
+: JOIN-C, ( c --- )
+  JOIN# @ 2 + ENSURE-BUFFER JOIN-BUF  JOIN-BUF JOIN# @ + C!  1 JOIN# +! ;
+: JOIN-S, ( c-addr u --- )
+  DUP JOIN# @ + 2 + ENSURE-BUFFER JOIN-BUF
+  JOIN-BUF JOIN# @ + SWAP DUP JOIN# +! MOVE ;
+: JOIN-ARGV-FROM ( i0 --- c-addr u )   \ ARGV's words from i0, space-joined
+  0 JOIN# !
+  ARGC @ OVER ?DO
+    I OVER > IF 32 JOIN-C, THEN
+    I ARGV@ DUP CSTRLEN JOIN-S,
+  LOOP DROP
+  0 JOIN-C,  -1 JOIN# +!                    \ NUL-terminated, not counted
+  JOIN-BUF JOIN# @ ;
+: JOIN-ARGV ( --- c-addr u )   0 JOIN-ARGV-FROM ;
+
 \ ---- simple commands ----
 : SIMPLE-ITEM ( words --- words' done? )
+  ALIAS-NEXT? @ IF
+    PEEK TK-START @ ALIAS-NEXT-AT @ < 0= IF 0 ALIAS-NEXT? ! EXPAND-ALIASES THEN
+  THEN
   PEEK
   REDIR-START? IF I-REDIR >VEC PARSE-REDIRECT >VEC 0 EXIT THEN
   K-WORD KIND? 0= IF -1 EXIT THEN
@@ -613,11 +737,16 @@ DEFER PARSE-COMMAND
   NEXT OP-RPAREN S" expected ')' after '('" EXPECT-OP
   LINEBREAK
   COMPOUND-START? 0= IF S" a function body must be a compound command" SYNTAX THEN
+  \ The body's nodes are all allocated while it is parsed, so they are
+  \ the arena range [start, end): defining the function copies it.
+  TREE-TOP @ >R
   PARSE-COMPOUND                            ( name body )
-  T-FUNCDEF 3 NODE  TUCK 2 F!  TUCK 1 F! ;
+  T-FUNCDEF 5 NODE  TUCK 2 F!  TUCK 1 F!
+  R> OVER 3 F!  TREE-TOP @ OVER 4 F! ;
 
 : PARSE-COMMAND-IMPL ( --- node )
-  PEEK
+  0 ALIAS-NEXT? !
+  EXPAND-ALIASES
   K-EOF KIND? IF S" unexpected end of input" SYNTAX THEN
   COMPOUND-START? IF PARSE-COMPOUND EXIT THEN
   CLOSER? IF S" unexpected token" SYNTAX THEN
@@ -727,22 +856,538 @@ DEFER PRINT-NODE
   ENDCASE ;
 ' PRINT-NODE-IMPL IS PRINT-NODE
 
+: PARSE-INIT ( c-addr u --- )
+  SRC-LEN !  SRC-ADDR !  0 SRC-POS !  1 SRC-LINE !  0 SRC-STDIN? !
+  0 SRC-SPLICED !  0 AL-ACTIVE# !  0 NO-ALIAS? !  0 ALIAS-NEXT? !
+  0 TK-VALID? !  0 VEC-TOP !  0 HD-PEND# !  TREE-RESET ;
+
+\ ==================================================================
+\ Stage B: executing the tree (Iteration 264)
+\ ==================================================================
+\ Node offsets are relative to EXEC-BASE: the arena being executed - the
+\ parse arena, or a function's own copy of its body. The parse arena can
+\ move when eval parses during execution; a base saved before that still
+\ reads the old block, which pool.4 keeps until the next top-level
+\ command.
+\
+\ A simple command is laid out in ARGV the way the line-based path laid
+\ it out - its assignments, words and redirections as raw words, each
+\ redirection as an optional one-digit descriptor word, an operator word
+\ and a target - so expansion, assignment, redirection and dispatch are
+\ the same code for both paths until the old one is deleted.
+
+VARIABLE EXEC-BASE
+: X@ ( off --- x )   EXEC-BASE @ + @ ;
+: XF@ ( node i --- x )   1+ CELLS + X@ ;
+: XV# ( vec --- n )   CELL+ X@ ;
+: XV@ ( vec i --- x )   2 + CELLS + X@ ;
+: XSTR ( off --- c-addr )   EXEC-BASE @ + ;
+
+DEFER EXEC   ( node --- )
+
+: STOP? ( --- f )   RETURN-PENDING? @ LOOP-CONTROL-PENDING? @ OR ;
+: WAIT-STATUS ( pid --- status )   WAITPID DROP 8 RSHIFT 255 AND ;
+
+\ ---- simple commands ----
+CREATE W-DIGITS  48 C, 0 C, 49 C, 0 C, 50 C, 0 C, 51 C, 0 C, 52 C, 0 C,
+                 53 C, 0 C, 54 C, 0 C, 55 C, 0 C, 56 C, 0 C, 57 C, 0 C,
+CREATE W-LT     60 C, 0 C,
+CREATE W-GT     62 C, 0 C,
+CREATE W-DGT    62 C, 62 C, 0 C,
+CREATE W-GTAND  62 C, 38 C, 0 C,
+CREATE W-LTAND  60 C, 38 C, 0 C,
+CREATE W-DLT    60 C, 60 C, 0 C,
+CREATE W-DLTD   60 C, 60 C, 45 C, 0 C,
+
+: ARGV-ADD ( c-addr flags --- )
+  ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
+  DUP WF-QUOTED AND 0= 0= ARGV-QUOTED ARGC @ + C!
+  WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
+  ARGV ARGC @ CELLS + !
+  ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
+\ A plain one-digit word goes in quoted: laid out before a redirection,
+\ `echo 2 > f` would otherwise read as `echo 2> f`. The line path has
+\ that bug; the tree knows which digits are descriptors.
+CREATE W-QDIGITS  34 C, 48 C, 34 C, 0 C,  34 C, 49 C, 34 C, 0 C,
+                  34 C, 50 C, 34 C, 0 C,  34 C, 51 C, 34 C, 0 C,
+                  34 C, 52 C, 34 C, 0 C,  34 C, 53 C, 34 C, 0 C,
+                  34 C, 54 C, 34 C, 0 C,  34 C, 55 C, 34 C, 0 C,
+                  34 C, 56 C, 34 C, 0 C,  34 C, 57 C, 34 C, 0 C,
+: ADD-WORD ( word --- )
+  DUP 0 XF@ XSTR SWAP 1 XF@                 ( c-addr flags )
+  OVER CSTRLEN 1 = 2 PICK C@ 48 - 10 U< AND OVER WF-QUOTED AND 0= AND IF
+    DROP C@ 48 - 4 * W-QDIGITS + WF-QUOTED
+  THEN
+  ARGV-ADD ;
+
+: OP>WORD ( op --- c-addr )
+  DUP OP-LESS = OVER OP-LESSGREAT = OR IF DROP W-LT EXIT THEN
+  DUP OP-GREAT = OVER OP-CLOBBER = OR IF DROP W-GT EXIT THEN
+  DUP OP-DGREAT = IF DROP W-DGT EXIT THEN
+  DUP OP-GREATAND = IF DROP W-GTAND EXIT THEN
+  DUP OP-LESSAND = IF DROP W-LTAND EXIT THEN
+  OP-DLESS = IF W-DLT ELSE W-DLTD THEN ;
+
+: ADD-REDIR ( redir --- )
+  DUP 0 XF@ DUP 0< 0= OVER 10 < AND IF 2* W-DIGITS + 0 ARGV-ADD ELSE DROP THEN
+  DUP 1 XF@ OP>WORD 0 ARGV-ADD
+  2 XF@ ADD-WORD ;
+
+\ A here-document's body, into HEREDOC-BUF. With an unquoted delimiter
+\ it is expanded as a double-quoted word would be, except that `"` is
+\ not special (XCU 2.7.4) - so each `"` is escaped first, and a `\`
+\ before one is doubled. Done before the command's words are laid out,
+\ since expanding uses ARGV (Iteration 264).
+256 BUFFER: HDX-BUF
+VARIABLE HDX#
+: HDX-C, ( c --- )
+  HDX# @ 2 + ENSURE-BUFFER HDX-BUF  HDX-BUF HDX# @ + C!  1 HDX# +! ;
+
+: HEREDOC-SET ( c-addr u --- )
+  DUP 1+ ENSURE-BUFFER HEREDOC-BUF
+  DUP HEREDOC-LEN !  HEREDOC-BUF SWAP MOVE ;
+
+: PREPARE-HEREDOC ( redir --- )
+  DUP 3 XF@ 0= IF DROP EXIT THEN
+  DUP 2 XF@ 1 XF@ WF-QUOTED AND IF
+    3 XF@ XSTR DUP CSTRLEN HEREDOC-SET EXIT
+  THEN
+  0 HDX# !  34 HDX-C,
+  3 XF@ XSTR DUP CSTRLEN OVER + SWAP ?DO
+    I C@ 34 = IF 92 HDX-C, 34 HDX-C, ELSE
+      I C@ 92 = I 1+ C@ 34 = AND IF 92 HDX-C, 92 HDX-C, ELSE
+        I C@ HDX-C,
+      THEN
+    THEN
+  LOOP
+  34 HDX-C,  0 HDX-C,
+  0 ARGC !  0 ARGV !  HDX-BUF WF-QUOTED ARGV-ADD
+  EXPAND-WORDS JOIN-ARGV HEREDOC-SET ;
+
+: PREPARE-HEREDOCS ( redirs-vec --- )
+  DUP XV# 0 ?DO DUP I XV@ PREPARE-HEREDOC LOOP DROP ;
+: PREPARE-SIMPLE-HEREDOCS ( items-vec --- )
+  DUP XV# 0 ?DO
+    DUP I XV@ I-REDIR = IF DUP I 1+ XV@ PREPARE-HEREDOC THEN
+  2 +LOOP DROP ;
+
+: TOO-MANY? ( --- f )   \ words were dropped: refuse rather than run short
+  ARGS-OVERFLOW? @ DUP IF
+    0 ARGS-OVERFLOW? !
+    S" shell: too many arguments" ERR-TYPE ERR-NL  1 LAST-STATUS !
+  THEN ;
+
+: EXPAND-AND-RUN ( --- )   \ ARGV's raw words: what the line path does next
+  TOO-MANY? IF EXIT THEN
+  EXPAND-WORDS
+  TOO-MANY? IF EXIT THEN
+  EXPANSION-FAILED? @ IF 1 LAST-STATUS ! EXIT THEN
+  TRY-ASSIGNMENT-CALL IF EXIT THEN
+  PREFIX-COUNT ?DUP IF
+    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE EXIT
+  THEN
+  RUN-EXPANDED ;
+
+: EXEC-SIMPLE ( node --- )
+  DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS
+  0 ARGC !  0 ARGV !
+  0 XF@ DUP XV# 0 ?DO
+    DUP I 1+ XV@  OVER I XV@ I-REDIR = IF ADD-REDIR ELSE ADD-WORD THEN
+  2 +LOOP DROP
+  EXPAND-AND-RUN ;
+
+\ A compound command's redirections, expanded into the REDIR tables.
+: REDIR-SETUP ( node --- )
+  0 ARGC !  0 ARGV !  0 REDIR-N !
+  0 XF@ ?DUP IF
+    DUP PREPARE-HEREDOCS
+    0 ARGC !  0 ARGV !
+    DUP XV# 0 ?DO DUP I XV@ ADD-REDIR LOOP DROP
+    EXPAND-WORDS PARSE-REDIRECTIONS
+  THEN ;
+
+\ ---- lists, and-or, pipelines ----
+: EXEC-BG ( node --- )
+  FORK DUP 0= IF DROP EXEC LAST-STATUS @ SYS-EXIT THEN
+  BG-PID !  DROP  0 LAST-STATUS ! ;
+
+: EXEC-LIST ( node --- )
+  0 XF@ DUP XV# 0 ?DO
+    STOP? IF LEAVE THEN
+    DUP I XV@  OVER I 1+ XV@ IF EXEC-BG ELSE EXEC THEN
+  2 +LOOP DROP ;
+
+: EXEC-ANDOR ( node --- )
+  0 XF@ DUP 0 XV@ EXEC
+  DUP XV# 1 ?DO
+    STOP? IF LEAVE THEN
+    DUP I XV@ 1 =  LAST-STATUS @ 0=  = IF DUP I 1+ XV@ EXEC THEN
+  2 +LOOP DROP ;
+
+VARIABLE PS-VEC
+VARIABLE PS-N
+VARIABLE PS-PREV
+VARIABLE PS-RD
+VARIABLE PS-WR
+
+: CLOSE-FD ( fd --- )   DUP 0< IF DROP ELSE CLOSE-FILE DROP THEN ;
+
+\ Stages run in children, so these globals are never in use twice in one
+\ process.
+: RUN-STAGES ( vec --- )
+  DUP PS-VEC !  XV# PS-N !  -1 PS-PREV !
+  PS-N @ 1+ GROW-ARGS
+  PS-N @ 0 ?DO
+    I PS-N @ 1- < IF PIPE DROP PS-WR ! PS-RD ! ELSE -1 PS-WR ! -1 PS-RD ! THEN
+    FORK DUP 0= IF
+      DROP
+      PS-PREV @ 0< 0= IF PS-PREV @ 0 DUP2 DROP PS-PREV @ CLOSE-FD THEN
+      PS-WR @ 0< 0= IF PS-WR @ 1 DUP2 DROP PS-WR @ CLOSE-FD PS-RD @ CLOSE-FD THEN
+      PS-VEC @ I XV@ EXEC
+      LAST-STATUS @ SYS-EXIT
+    THEN
+    PIPE-PIDS I CELLS + !
+    PS-PREV @ CLOSE-FD  PS-WR @ CLOSE-FD
+    PS-RD @ PS-PREV !
+  LOOP
+  PS-N @ 0 ?DO
+    PIPE-PIDS I CELLS + @ WAIT-STATUS
+    I PS-N @ 1- = IF LAST-STATUS ! ELSE DROP THEN
+  LOOP ;
+
+: EXEC-PIPE ( node --- )
+  DUP 1 XF@ DUP XV# 1 = IF 0 XV@ EXEC ELSE RUN-STAGES THEN
+  0 XF@ IF LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS ! THEN ;
+
+\ ---- compound commands ----
+: EXEC-SUBSHELL ( node --- )
+  FORK DUP 0= IF
+    DROP
+    DUP REDIR-SETUP APPLY-REDIRECTIONS
+    REDIR-FAILED? @ IF 1 SYS-EXIT THEN
+    1 XF@ EXEC LAST-STATUS @ SYS-EXIT
+  THEN
+  NIP WAIT-STATUS LAST-STATUS ! ;
+
+: EXEC-IF ( node --- )
+  DUP 1 XF@                                 ( node vec )
+  DUP XV# 0 ?DO
+    DUP I XV@ EXEC
+    STOP? IF 2DROP UNLOOP EXIT THEN
+    LAST-STATUS @ 0= IF I 1+ XV@ EXEC DROP UNLOOP EXIT THEN
+  2 +LOOP DROP
+  2 XF@ ?DUP IF EXEC ELSE 0 LAST-STATUS ! THEN ;
+
+\ After a loop body: consume a break or continue aimed at this loop.
+\ Leaves true when the loop must stop.
+: LOOP-AFTER-BODY ( --- stop? )
+  RETURN-PENDING? @ IF -1 EXIT THEN
+  LOOP-CONTROL-PENDING? @ IF
+    0 LOOP-CONTROL-PENDING? !
+    LOOP-BREAK? @ IF 0 LOOP-BREAK? ! -1 EXIT THEN
+  THEN 0 ;
+
+: EXEC-LOOP ( node until? --- )
+  LOOP-DEPTH @ 1+ LOOP-DEPTH !
+  0 >R                                      \ the loop's status
+  BEGIN
+    OVER 1 XF@ EXEC
+    STOP? IF 0 ELSE LAST-STATUS @ 0= OVER XOR THEN   ( node until? run? )
+  WHILE
+    OVER 2 XF@ EXEC
+    R> DROP LAST-STATUS @ >R
+    LOOP-AFTER-BODY IF 2DROP R> LAST-STATUS ! LOOP-DEPTH @ 1- LOOP-DEPTH ! EXIT THEN
+  REPEAT
+  2DROP R> LAST-STATUS !
+  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
+
+\ for: the words are expanded once, and copied out of ARGV, which the
+\ body will overwrite.
+: ARGV>BLOCK ( --- block n )   \ ARGV's words, NUL-separated, in a heap block
+  0 ARGC @ 0 ?DO I ARGV@ CSTRLEN 1+ + LOOP
+  1 MAX ALLOCATE DROP DUP
+  ARGC @ 0 ?DO
+    I ARGV@ DUP CSTRLEN 1+ >R OVER R@ MOVE R> +
+  LOOP DROP
+  ARGC @ ;
+
+: EXEC-FOR ( node --- )
+  DUP 2 XF@ ?DUP IF
+    0 ARGC !  0 ARGV !
+    DUP XV# 0 ?DO DUP I XV@ ADD-WORD LOOP DROP
+    EXPAND-WORDS
+    EXPANSION-FAILED? @ IF DROP 1 LAST-STATUS ! EXIT THEN
+  ELSE
+    \ no `in`: the positional parameters
+    0 ARGC !  0 ARGV !
+    POS-PARAM-COUNT @ 0 ?DO I POS-PARAM-SLOT 1 ARGV-ADD LOOP
+  THEN
+  ARGV>BLOCK                                ( node block n )
+  LOOP-DEPTH @ 1+ LOOP-DEPTH !
+  0 LAST-STATUS !
+  OVER SWAP 0 ?DO                           ( node block p )
+    2 PICK 1 XF@ 0 XF@ XSTR OVER SET-SHVAR
+    2 PICK 3 XF@ EXEC
+    DUP CSTRLEN 1+ +
+    LOOP-AFTER-BODY IF LEAVE THEN
+  LOOP DROP
+  FREE DROP DROP
+  LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
+
+\ case: the word and each pattern are expanded without field splitting -
+\ joined back if they split.
+: EXPAND-ONE ( word --- c-addr u quoted? )
+  0 ARGC !  0 ARGV !  ADD-WORD EXPAND-WORDS
+  ARGC @ IF 0 ARGV-QUOTED@ ELSE 0 THEN >R JOIN-ARGV R> ;
+
+256 BUFFER: CASE-TEXT
+VARIABLE CASE-TEXT#
+
+: PATTERN-MATCHES? ( pattern --- f )
+  EXPAND-ONE IF
+    CASE-TEXT CASE-TEXT# @ COMPARE 0=
+  ELSE
+    CASE-TEXT CASE-TEXT# @ GLOB-MATCH
+  THEN ;
+
+: EXEC-CASE ( node --- )
+  DUP 1 XF@ EXPAND-ONE DROP                 ( node a u )
+  DUP 1+ ENSURE-BUFFER CASE-TEXT
+  DUP CASE-TEXT# !  CASE-TEXT SWAP MOVE
+  0 LAST-STATUS !
+  2 XF@ DUP XV# 0 ?DO                       ( items )
+    DUP I XV@                               ( items item )
+    DUP 0 XF@ DUP XV# 0 ?DO                 ( items item pats )
+      DUP I XV@ PATTERN-MATCHES? IF
+        DROP 1 XF@ ?DUP IF EXEC THEN
+        DROP UNLOOP UNLOOP EXIT
+      THEN
+    LOOP 2DROP
+  LOOP DROP ;
+
+\ Functions: the body's range of the arena is copied into a block of its
+\ own, and run with EXEC-BASE pointing so that its offsets land in it.
+MAX-FUNCS CELLS BUFFER: FT-BLOCK
+MAX-FUNCS CELLS BUFFER: FT-BASE
+MAX-FUNCS CELLS BUFFER: FT-NODE
+CREATE NO-TEXT 0 C,
+
+: EXEC-FUNCDEF ( node --- )
+  DUP 1 XF@ 0 XF@ XSTR NO-TEXT 0 SET-FUNC
+  DUP 1 XF@ 0 XF@ XSTR FIND-FUNC            ( node i )
+  DUP 0< IF 2DROP 1 LAST-STATUS ! EXIT THEN
+  OVER 4 XF@ 2 PICK 3 XF@ -                 ( node i len )
+  DUP 1 MAX ALLOCATE DROP                   ( node i len block )
+  3 PICK 3 XF@ XSTR OVER 3 PICK MOVE NIP    ( node i block )
+  OVER CELLS FT-BLOCK + DUP @ ?DUP IF BUF-RETIRE THEN
+  OVER SWAP !                               ( node i block )
+  2 PICK 3 XF@ -  OVER CELLS FT-BASE + !    ( node i )
+  CELLS FT-NODE + SWAP 2 XF@ SWAP !
+  0 LAST-STATUS ! ;
+
+: TREE-RUN-FUNC ( i --- )
+  FUNC-DEPTH @ MAX-POS-PARAM-DEPTH < 0= IF
+    DROP S" shell: function recursion too deep" ERR-TYPE ERR-NL
+    1 LAST-STATUS ! EXIT
+  THEN
+  DUP CELLS FT-BLOCK + @ 0= IF DROP 0 LAST-STATUS ! EXIT THEN
+  FUNC-DEPTH @ SAVE-POS-PARAMS
+  SET-POS-PARAMS-FROM-ARGV
+  FUNC-DEPTH @ 1+ FUNC-DEPTH !
+  EXEC-BASE @ >R
+  DUP CELLS FT-BASE + @ EXEC-BASE !
+  CELLS FT-NODE + @ EXEC
+  R> EXEC-BASE !
+  0 RETURN-PENDING? !
+  FUNC-DEPTH @ 1- FUNC-DEPTH !
+  FUNC-DEPTH @ RESTORE-POS-PARAMS ;
+
+: EXEC-BARE ( node --- )   \ a compound command, its redirections applied
+  DUP X@
+  DUP T-IF = IF DROP EXEC-IF EXIT THEN
+  DUP T-WHILE = IF DROP 0 EXEC-LOOP EXIT THEN
+  DUP T-UNTIL = IF DROP -1 EXEC-LOOP EXIT THEN
+  DUP T-FOR = IF DROP EXEC-FOR EXIT THEN
+  DUP T-CASE = IF DROP EXEC-CASE EXIT THEN
+  DROP 1 XF@ EXEC ;                         \ a group
+
+: EXEC-COMPOUND ( node --- )
+  DUP 0 XF@ 0= IF EXEC-BARE EXIT THEN
+  DUP REDIR-SETUP
+  >R BEGIN-REDIRECT R>
+  REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXEC-BARE THEN
+  END-REDIRECT ;
+
+: EXEC-IMPL ( node --- )
+  ?DUP 0= IF EXIT THEN
+  STOP? IF DROP EXIT THEN
+  DUP X@
+  DUP T-SIMPLE = IF DROP EXEC-SIMPLE EXIT THEN
+  DUP T-LIST = IF DROP EXEC-LIST EXIT THEN
+  DUP T-ANDOR = IF DROP EXEC-ANDOR EXIT THEN
+  DUP T-PIPE = IF DROP EXEC-PIPE EXIT THEN
+  DUP T-SUBSHELL = IF DROP EXEC-SUBSHELL EXIT THEN
+  DUP T-FUNCDEF = IF DROP EXEC-FUNCDEF EXIT THEN
+  DROP EXEC-COMPOUND ;
+' EXEC-IMPL IS EXEC
+
+\ ---- running a source ----
+: PARSE-ONE ( --- node | 0 )   \ the next complete command, or 0 at the end
+  LINEBREAK
+  K-EOF KIND? IF 0 EXIT THEN
+  PARSE-COMPLETE
+  K-NEWLINE KIND? IF NEXT THEN ;
+VARIABLE PARSE-ONE-XT
+' PARSE-ONE PARSE-ONE-XT !XT
+
+VARIABLE NESTED?   \ running eval's or $(...)'s text, not the shell's input
+
+: SKIP-INPUT ( --- )   \ after an interactive syntax error: drop the line
+  SRC-LEN @ SRC-POS !  0 TK-VALID? !  0 HD-PEND# ! ;
+
+\ Parse and execute complete commands until the source ends. A syntax
+\ error ends a non-interactive shell with status 2 (XCU 2.8.1); an
+\ interactive one drops the rest of the line; eval's text returns 2.
+: TREE-RUN ( --- )
+  BEGIN
+    NESTED? @ 0= IF
+      BUF-FREE-RETIRED
+      SRC-STDIN? @ IF SRC-POS @ SRC-LEN @ = IF 0 SRC-POS ! 0 SRC-LEN ! 0 AL-ACTIVE# ! THEN THEN
+      TREE-RESET  -1 CMD-START? !
+    THEN
+    PARSE-ONE-XT @XT CATCH
+    ?DUP IF
+      DROP 2 LAST-STATUS !
+      NESTED? @ IF EXIT THEN
+      INTERACTIVE? @ 0= IF 2 SYS-EXIT THEN
+      SKIP-INPUT 0
+    ELSE
+      ?DUP 0= IF EXIT THEN
+      TREE-BUF EXEC-BASE !
+      EXEC
+      -1
+    THEN DROP
+  AGAIN ;
+
+\ A nested source - eval's text, $(...)'s - saves the shell's on the data
+\ stack: the nested work leaves the stack as it found it, a THROW too.
+: SOURCE@ ( --- x*19 )
+  SRC-ADDR @ SRC-LEN @ SRC-POS @ SRC-LINE @ SRC-STDIN? @
+  TK-VALID? @ TK-KIND @ TK-OP @ TK-START @ TK-END @
+  TK-FLAGS @ NESTED? @ TREE-TOP @ EXEC-BASE @ HD-PEND#  @
+  SRC-SPLICED @ AL-ACTIVE# @ NO-ALIAS? @ ALIAS-NEXT? @ ;
+: SOURCE! ( x*19 --- )
+  ALIAS-NEXT? ! NO-ALIAS? ! AL-ACTIVE# ! SRC-SPLICED !
+  HD-PEND# ! EXEC-BASE ! TREE-TOP ! NESTED? ! TK-FLAGS !
+  TK-END ! TK-START ! TK-OP ! TK-KIND ! TK-VALID? !
+  SRC-STDIN? ! SRC-LINE ! SRC-POS ! SRC-LEN ! SRC-ADDR ! ;
+: NEST-SOURCE ( c-addr u --- )
+  SRC-LEN !  SRC-ADDR !  0 SRC-POS !  1 SRC-LINE !  0 SRC-STDIN? !
+  0 TK-VALID? !  0 HD-PEND# !  -1 NESTED? !
+  0 SRC-SPLICED !  0 AL-ACTIVE# !  0 ALIAS-NEXT? ! ;
+: END-SOURCE ( --- )   SRC-SPLICED @ ?DUP IF FREE DROP THEN ;
+
+: TREE-RUN-TEXT ( c-addr u --- )
+  >R >R SOURCE@ R> R>  NEST-SOURCE TREE-RUN  END-SOURCE SOURCE! ;
+
+\ Where a $(...) whose text starts at c-addr ends: the length of its
+\ text, without the closing paren. Found by parsing it; if it does not
+\ parse, all of it.
+VARIABLE SUBLIST-XT
+' PARSE-SUBLIST SUBLIST-XT !XT
+: TREE-CMDSUB-END ( c-addr u --- n )
+  DUP >R  >R >R  SOURCE@  R> R>  NEST-SOURCE  -1 NO-ALIAS? !
+  SUBLIST-XT @XT CATCH IF R@ ELSE SRC-POS @ 1- THEN
+  >R SOURCE! R>
+  R> MIN 0 MAX ;
+' TREE-CMDSUB-END IS TREE-CMDSUB-END-CALL
+
+: TREE-EVAL ( --- )   \ eval's arguments, joined with spaces
+  0 LAST-STATUS !
+  ARGC @ 2 < IF EXIT THEN
+  1 JOIN-ARGV-FROM                          ( a u )
+  DUP 1 MAX ALLOCATE DROP                   ( a u block )
+  DUP >R SWAP DUP >R MOVE R> R>             ( u block )
+  SWAP OVER >R TREE-RUN-TEXT R> FREE DROP ;
+
+: TREE-CMDSUB ( --- )   \ in the child: $(...)'s text
+  \ The line path's length counts a NUL after the text; up to it only.
+  CMDSUB-LINE-BUF CMDSUB-LINES-LEN @ 0 SCAN DROP CMDSUB-LINE-BUF -
+  CMDSUB-LINE-BUF SWAP TREE-RUN-TEXT
+  LAST-STATUS @ SYS-EXIT ;
+
+\ The tree path's entry: `relfsh` with RELF_TREE set in the environment,
+\ until Stage C makes it the only one.
+CREATE RELF-TREE-NAME  82 C, 69 C, 76 C, 70 C, 95 C, 84 C, 82 C, 69 C, 69 C, 0 C,
+
+: READ-WHOLE-FILE ( c-addr --- addr u | 0 0 )
+  DUP CSTRLEN R/O OPEN-FILE IF DROP 0 0 EXIT THEN
+  >R R@ FILE-SIZE 2DROP
+  DUP 1+ ALLOCATE DROP
+  2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
+  SWAP ;
+
+\ The line path's hooks, chosen by TREE-MODE? when they run. (`'` inside
+\ a definition would read its name at run time, so they are set here.)
+: FUNC-BODY-EITHER ( i --- )
+  TREE-MODE? @ IF TREE-RUN-FUNC ELSE RUN-FUNC-BODY THEN ;
+: CMDSUB-CHILD-EITHER ( --- )
+  TREE-MODE? @ IF TREE-CMDSUB ELSE RUN-CMDSUB-CHILD THEN ;
+' FUNC-BODY-EITHER IS RUN-FUNC-BODY-CALL
+' CMDSUB-CHILD-EITHER IS RUN-CMDSUB-CHILD-CALL
+' TREE-EVAL IS TREE-EVAL-CALL
+
+: MAIN2 ( --- )
+  -1 TREE-MODE? !
+  0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !
+  SYS-ARGC 2 = IF
+    S" -c" 0 SYS-ARG STR0= IF
+      1 SYS-ARG DUP CSTRLEN PARSE-INIT
+      TREE-RUN LAST-STATUS @ SYS-EXIT
+    THEN
+  THEN
+  SYS-ARGC 0 > IF
+    SET-POS-PARAMS-FROM-SYS-ARGS
+    0 SYS-ARG READ-WHOLE-FILE
+    OVER 0= IF 2DROP 127 SYS-EXIT THEN
+    PARSE-INIT
+    TREE-RUN LAST-STATUS @ SYS-EXIT
+  THEN
+  0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
+  0 ISATTY INTERACTIVE? !
+  TREE-RUN LAST-STATUS @ SYS-EXIT ;
+
+: MAIN-SELECT ( --- )
+  RELF-TREE-NAME GETENV 0= IF MAIN EXIT THEN
+  \ MAIN's own setup
+  ALLOC-BUFFERS
+  GETPID SHELL-PID !
+  0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
+  2 #ORDER !
+  FORTH-WORDLIST CONTEXT !
+  FORTH-WORDLIST CONTEXT CELL+ !
+  FORTH-WORDLIST CURRENT !
+  TIB SRC !  0 SID !
+  INCLUDE-BUFFER INCLUDE-POINTER !
+  MAIN2 ;
+
 \ ==================================================================
 \ Entry: parse a text, printing each complete command's tree
 \ ==================================================================
-: PARSE-INIT ( c-addr u --- )
-  SRC-LEN !  SRC-ADDR !  0 SRC-POS !  1 SRC-LINE !
-  0 TK-VALID? !  0 VEC-TOP !  0 HD-PEND# !  TREE-RESET ;
 
 : DUMP-PROGRAM ( --- )
+  \ Each command's tree is dropped after printing - back to where the
+  \ arena was, since the tree path may be executing the caller's tree.
+  TREE-TOP @ >R
   BEGIN
     LINEBREAK
     K-EOF KIND? 0=
   WHILE
-    TREE-RESET
+    R@ TREE-TOP !
     PARSE-COMPLETE PRINT-NODE CR
     K-NEWLINE KIND? IF NEXT THEN
-  REPEAT ;
+  REPEAT
+  R> TREE-TOP ! ;
 
 \ tree-dump FILE: print FILE's trees; status 0, or 2 at a syntax error.
 \ A development builtin for Stage A (tests/parse).
@@ -757,8 +1402,10 @@ VARIABLE DUMP-XT
   >R R@ FILE-SIZE 2DROP                     ( size )
   DUP 1+ ALLOCATE DROP                      ( size buf )
   2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
-  2DUP SWAP PARSE-INIT
-  NIP
-  DUMP-XT @XT CATCH IF 2 ELSE 0 THEN LAST-STATUS !
-  FREE DROP ;
+  2DUP SWAP                                 ( size buf buf size )
+  >R >R SOURCE@ R> R> NEST-SOURCE           \ a source of its own
+  DUMP-XT @XT CATCH IF 2 ELSE 0 THEN >R
+  END-SOURCE SOURCE!
+  R> LAST-STATUS !
+  NIP FREE DROP ;
 ' DO-TREE-DUMP S" tree-dump" BUILTIN

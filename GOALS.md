@@ -153,7 +153,7 @@ and the rule every consumer must share.
     64-bit   kernel.img     8,738    kernel-shell.img     72,912
     32-bit   kernel32.img   8,230    kernel32-shell.img   67,528
 
-**Seventy-two primitives**: 35 direct, with one-byte opcodes, and 37
+**Seventy-three primitives**: 35 direct, with one-byte opcodes, and 38
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
@@ -1633,9 +1633,14 @@ before anything else, because every number here is relative to it.
    endless loop after `;`, and the saved-rest-of-line hazard 255 and 257
    kept finding. Staged A (parser and tree printer) to D (measure);
    the new path is built beside the old one until it passes everything.
-   **Stage A done in Iteration 263** (`tree.4`, `tests/parse`); Stage B,
-   the executor as a second entry point, is the next piece of work -
-   and with it the syntax-error policy, agreed to follow POSIX (exit).
+   **Stage A done in Iteration 263** (`tree.4`, `tests/parse`), **Stage B
+   in 264**: the executor runs beside the old path, selected by
+   `RELF_TREE=1`, and passes everything the old path passes except four
+   shell assertions that encode the old path's non-POSIX behaviour. It
+   fixes all 158 of `tests/matrix`'s known failures and five POSIX cases,
+   and uses 39-43% less CPU on the benchmark scripts. **Stage C - make it
+   the only path and delete the old machinery - is the next piece of
+   work**; COMMAND-TREE-PLAN.md lists what it involves.
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while

@@ -259,6 +259,7 @@ do not trust the absence of a line below.
 - **261** — COMMAND-TREE-PLAN.md: parse once into a tree, execute the tree
 - **262** — test coverage before the rewrite: matrix, interactive, syntax errors, dead code
 - **263** — command tree Stage A: tree.4, the lexer and parser; CATCH and THROW
+- **264** — command tree Stage B: the executor beside the old path (RELF_TREE=1)
 
 ### Not tied to an iteration
 
@@ -15711,3 +15712,63 @@ Stage B's input sources.
 
 tests/verify: parse lines new; sizes +8.5 KB, the parser beside the old
 one until Stage C (x86-64 95,076 -> 103,848, i386 81,023 -> 89,548).
+
+## Iteration 264: the command-tree executor (Stage B)
+
+`tree.4` now executes its trees. `MAIN-SELECT`, the image's boot word,
+runs the old `MAIN` unless `RELF_TREE` is set, when `MAIN2` runs scripts,
+`-c` strings and standard input through the new lexer, parser and
+executor. COMMAND-TREE-PLAN.md has the table of results; in short, on both
+cell widths the tree path passes every suite the old path passes, fixes
+all 158 known `tests/matrix` failures (420 of 420, syntax errors
+included - a non-interactive shell now exits 2 on one, as POSIX says) and
+five POSIX cases (44 of 46), and fails four shell assertions that encode
+the old behaviour and are listed there for Stage C.
+
+**How it is built.** Node offsets are resolved against `EXEC-BASE`: the
+parse arena, or a function's own copy of its body's arena range, which
+needs no relocation. Simple commands reuse the whole line path from
+`EXPAND-WORDS` on, laid out in ARGV the way it expects; compound
+commands' redirections go through `PARSE-REDIRECTIONS` into
+`BEGIN-REDIRECT`/`END-REDIRECT`; pipelines fork a child per stage that
+executes its node, so a group or a loop is a stage like any other;
+`eval` and command substitution parse their text as nested sources (the
+lexer's state saved on the data stack, so a THROW restores it too).
+Standard input is read a line at a time and the lexer never looks past a
+newline it has not returned, so a command runs before the next line is
+asked for, and `read` in a script fed on stdin gets the lines after it.
+Here-documents with an unquoted delimiter are expanded (as a
+double-quoted word, with `"` escaped); aliases are substituted by
+splicing the value into the source text, with the recursion guard and
+the trailing-blank rule (XCU 2.3.1) - the same output as bash on a
+battery of cases. `ISATTY`, a new escaped primitive, decides prompts and
+whether a syntax error ends the shell.
+
+**Bugs found on the way.**
+- The line path finds the end of a `$(...)` by counting `$(` only, so a
+  case pattern's `)`, or a function definition's `()`, ended it. In tree
+  mode `EXPAND-CMDSUB` asks the tree lexer.
+- `echo 2 > f` is `echo 2> f` to `PARSE-REDIRECTIONS`, which cannot tell
+  a one-digit argument from a descriptor; the tree path quotes such an
+  argument. The line path keeps the bug (`tests/matrix`'s func.*.redirect).
+- Command-substitution text was never NUL-terminated, and its length
+  counted a NUL; the tree child reads up to the NUL now, so both are
+  fixed where it matters.
+- `' X` inside a colon definition reads X at run time: `MAIN2` printed
+  "Not found". The hooks are chosen at load time by small selector words.
+- A variable used before its definition made `tree.4` fail to load, and
+  `relfsh` fell back to its slow path, which waited on stdin - a hang, not
+  an error. Worth remembering when a build seems to stop.
+- `tools/bench-vm.py` ran its commands with `os.execv` on the first word,
+  so `env VAR=1 ...` failed in the child and the results were nonsense
+  (0.05). It takes leading `NAME=value` words now, and a child that
+  cannot exec exits 127.
+- `run-unset` checked the last line of output, which only worked while
+  prompts were printed on a pipe; it counts the value's occurrences now.
+
+**Speed.** CPU time against the old path, 7 rounds: loop 0.61
+[0.60-0.65], fn 0.57, str 0.60, arith 0.57, start 1.03 - the re-reading
+of lines is gone. Stage D measures again after Stage C.
+
+tests/verify: tree:* lines new (the tree path through the matrix,
+differential, POSIX, mrsh, parse and shell suites); engine and image sizes.

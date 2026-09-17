@@ -31,7 +31,7 @@ assert_output_contains "a loop typed across lines runs (2)" "loop-bb" "$out"
 
 out=$(typed 'cat <<EOF\nhere-doc-line\nEOF\necho after-$((3+3))\nexit\n')
 assert_output_contains "a here-document typed at the prompt is read" "after-6" "$out"
-n=$(printf '%s\n' "$out" | grep -c '^here-doc-line$')
+n=$(printf '%s\n' "$out" | grep -c 'here-doc-line$')
 assert_output_equals "the here-document body is printed once, besides its echo" "2" "$n"
 
 out=$(typed 'f() {\n  echo fn-$1$1\n}\nf z\nexit\n')

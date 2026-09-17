@@ -9,9 +9,11 @@ cd "$(dirname "$0")" || exit 1
 out=$(printf 'export FOO=bar123\necho $FOO\nunset FOO\necho $FOO\nexit\n' | "$THIS_SH" 2>&1)
 assert_output_contains "FOO is set before unset" "bar123" "$out"
 
-last_line=$(echo "$out" | tail -1 | tr -d '\r')
+# The value must appear once: before unset, not after. (This used to
+# test the last output line, which depended on prompts being printed.)
+n=$(echo "$out" | tr -d '\r' | grep -c 'bar123')
 TESTS_RUN=$((TESTS_RUN + 1))
-if [ -n "$last_line" ] && echo "$last_line" | grep -q "bar123"; then
+if [ "$n" != 1 ]; then
     TESTS_FAILED=$((TESTS_FAILED + 1))
     echo "FAIL: \$FOO expands to empty after unset"
     echo "  actual output:"

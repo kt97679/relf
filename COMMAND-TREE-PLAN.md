@@ -254,6 +254,45 @@ should show the new code's instructions run about as thoroughly as the
 old code's were (95%).
 `tests/verify` gets a `shell2:` line for the duration of this stage.
 
+**Stage B status (Iteration 264): done beside the old path.** `MAIN2`,
+chosen by `RELF_TREE=1` through `MAIN-SELECT` (now the image's boot word),
+runs scripts, `-c` strings and standard input (a line at a time, `$ ` and
+`> ` prompts on a terminal, `ISATTY` deciding) through lexer, parser and
+executor. Measured through the tree path, on both cell widths:
+
+| suite | old path | tree path |
+|---|---|---|
+| tests/matrix | 262 pass, 158 fail | **420 pass, 0 fail** |
+| tests/posix | 36 pass, 10 fail | **44 pass, 2 fail** (IFS, globbing) |
+| tests/diff | 30 / 30 | 30 / 30 |
+| tests/mrsh | 20 / 21 | 20 / 21 (the same case) |
+| tests/parse | 22, 136 agree | 22, 136 agree |
+| tests/shell | all pass | all but 4 assertions, below |
+| benchmarks (CPU) | 1.00 | loop 0.61, fn 0.57, str 0.60, arith 0.57, start 1.03 |
+
+The four assertions encode the old path's behaviour, which the tree path
+changes deliberately; Stage C rewrites them:
+- `run-group`: `( )` exits 0. It is a syntax error in POSIX, bash and dash.
+- `run-piped-stdout`: a prompt is written when standard input is a pipe.
+  bash and dash write none; `run-interactive` covers the prompt on a
+  terminal, which is what that assertion was guarding.
+- `run-long-line` (two): a line past 1 MB is refused and the script goes
+  on. The tree path does not read a script by lines, so there is no line
+  ceiling; the case to test instead is what a huge word does.
+
+What Stage B reuses from the line path, and which Stage C must keep or
+move: simple commands are laid out in ARGV as the line path laid them
+out - including redirections as separate words, with a one-digit
+argument quoted so that `echo 2 > f` is not `echo 2> f` - and then go
+through `EXPAND-WORDS`, `TRY-ASSIGNMENT`, `PREFIX-COUNT`/`TEMP-ASSIGN`,
+`RUN-EXPANDED`, `PARSE-REDIRECTIONS`, `DISPATCH` and `RUN-EXTERNAL`.
+`EXPAND-CMDSUB` asks the tree lexer where a `$(...)` ends
+(`TREE-CMDSUB-END`); its own paren counter is still used for backquotes.
+`HD-READ` is a no-op in tree mode. Functions keep their body's arena
+range in a block of their own (`FT-*`), the line path's function table
+holding only the names. Aliases are substituted in the source text by the
+parser (`TRY-ALIAS`, `SPLICE`).
+
 **Stage C — switch and delete.** `MAIN` becomes the tree path; the old
 machinery listed above is deleted in the same commit, with `tests/verify`
 green; `GOALS.md`'s "Still open" list is re-audited, since most of its
