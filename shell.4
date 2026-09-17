@@ -1252,6 +1252,64 @@ VARIABLE CMDSUB-OUT-LEN
   0 CMDSUB-LINES CS-POS @ + C!
   CS-POS @ 1+ CMDSUB-LINES-LEN ! ;
 
+\ ==================================================================
+\ Traps (Iteration 271)
+\ ==================================================================
+\ TRAPS holds, per condition - 0 is EXIT, then the signal numbers - 0
+\ for the default action, -1 for ignored, or a heap copy of the action.
+\ A caught signal only raises a flag in the engine; CHECK-TRAPS runs the
+\ actions between commands. A subshell resets the caught ones.
+65 CONSTANT TRAP-SLOTS
+CREATE TRAPS  TRAP-SLOTS CELLS ALLOT
+TRAPS TRAP-SLOTS CELLS 0 FILL
+VARIABLE IN-TRAP?
+VARIABLE TRAP-COPY
+VARIABLE TRAP-SAVED-STATUS
+DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
+
+: TRAP@ ( sig --- x )   CELLS TRAPS + @ ;
+: TRAP! ( x sig --- )   CELLS TRAPS + ! ;
+: TRAP-ACTION? ( x --- f )   DUP 0= SWAP -1 = OR 0= ;   \ a command, not default or ignored
+: TRAP-FREE ( sig --- )
+  DUP TRAP@ DUP TRAP-ACTION? IF FREE DROP ELSE DROP THEN
+  0 SWAP TRAP! ;
+
+: COPY-TRAP ( str --- )   \ a private copy into TRAP-COPY: the action may change the trap
+  DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP TRAP-COPY ! SWAP MOVE ;
+
+: RUN-TRAP ( sig --- )
+  TRAP@ DUP TRAP-ACTION? 0= IF DROP EXIT THEN
+  IN-TRAP? @ IF DROP EXIT THEN
+  -1 IN-TRAP? !
+  COPY-TRAP
+  LAST-STATUS @ TRAP-SAVED-STATUS !
+  TRAP-COPY @ TRAP-RUN-CALL
+  TRAP-SAVED-STATUS @ LAST-STATUS !        \ $? is what it was (XCU 2.14 trap)
+  TRAP-COPY @ FREE DROP
+  0 IN-TRAP? ! ;
+
+: CHECK-TRAPS ( --- )
+  IN-TRAP? @ IF EXIT THEN
+  BEGIN SIGNALS-PENDING ?DUP WHILE RUN-TRAP REPEAT ;
+
+: SHELL-EXIT ( status --- )   \ the shell ends: its EXIT trap runs first, once
+  TRAP-SAVED-STATUS !
+  0 TRAP@ TRAP-ACTION? IF
+    0 TRAP@ COPY-TRAP  0 TRAP-FREE
+    TRAP-SAVED-STATUS @ DUP >R LAST-STATUS !
+    -1 IN-TRAP? !
+    TRAP-COPY @ TRAP-RUN-CALL
+    R> TRAP-SAVED-STATUS !
+  THEN
+  TRAP-SAVED-STATUS @ SYS-EXIT ;
+
+: CHILD-RESET-TRAPS ( --- )   \ a subshell: caught signals to their default, no EXIT trap
+  TRAP-SLOTS 1 DO
+    I TRAP@ TRAP-ACTION? IF I 0 SIGNAL-ACTION DROP I TRAP-FREE THEN
+  LOOP
+  0 TRAP@ TRAP-ACTION? IF 0 TRAP-FREE THEN
+  0 IN-TRAP? ! ;
+
 DEFER RUN-CMDSUB-CHILD-CALL
 
 VARIABLE CS-FD
@@ -1861,6 +1919,7 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
       CMDSUB-PIPE-WR @ 1 DUP2 DROP
       CMDSUB-PIPE-WR @ CLOSE-FILE DROP
       CMDSUB-PIPE-RD @ CLOSE-FILE DROP
+      CHILD-RESET-TRAPS
       RUN-CMDSUB-CHILD-CALL
       127 SYS-EXIT
     THEN
@@ -3529,9 +3588,9 @@ VARIABLE RW-NAME
 
 : DO-EXIT ( --- )
   ARGC @ 1 > IF
-    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SYS-EXIT
+    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SHELL-EXIT
   ELSE
-    LAST-STATUS @ SYS-EXIT
+    LAST-STATUS @ SHELL-EXIT
   THEN ;
 
 VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
@@ -3605,7 +3664,10 @@ VARIABLE SET-I
   0 ARGV ARGC @ CELLS + !
   SET-POS-PARAMS-FROM-ARGV ;
 
+DEFER LIST-VARIABLES-CALL   \ set with no arguments (defined further on)
+
 : DO-SET ( --- )
+  ARGC @ 1 = IF LIST-VARIABLES-CALL 0 LAST-STATUS ! EXIT THEN
   \ Options (Iteration 270): -e -u -x -f -n and their + forms, -o and +o
   \ by name, set -o / set +o to list them. What follows the options, or
   \ follows `--`, becomes the positional parameters; with only options,
@@ -4239,6 +4301,257 @@ VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-RE
 
 ' DO-EXEC         S" exec"     BUILTIN
 ' DO-HASH         S" hash"     BUILTIN
+
+\ ---- trap, kill, umask, times, local (Iteration 271) ----
+CREATE SH-DASH  45 C, 0 C,
+: ALL-DECIMAL? ( c-addr u --- f )
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER + SWAP ?DO I C@ 48 - 10 U< 0= IF UNLOOP 0 EXIT THEN LOOP -1 ;
+: STRING-PREFIX? ( c-addr u prefix pu --- f )
+  ROT OVER < IF DROP 2DROP 0 EXIT THEN
+  TUCK COMPARE 0= ;
+: PARSE-SIGNED ( c-addr u --- n )
+  DUP IF OVER C@ 45 = IF 1 /STRING PARSE-DECIMAL NEGATE EXIT THEN THEN
+  PARSE-DECIMAL ;
+
+\ signal names 0..31, space-separated; 0 is EXIT
+CREATE SIG-NAMES-TEXT
+  S" EXIT HUP INT QUIT ILL TRAP ABRT BUS FPE KILL USR1 SEGV USR2 PIPE ALRM TERM STKFLT CHLD CONT STOP TSTP TTIN TTOU URG XCPU XFSZ VTALRM PROF WINCH IO PWR SYS "
+  DUP C, HERE SWAP DUP ALLOT MOVE
+: SIG-NAME ( n --- c-addr u | 0 0 )   \ the nth name
+  DUP 0< OVER 31 > OR IF DROP 0 0 EXIT THEN
+  SIG-NAMES-TEXT COUNT                      ( n a u )
+  ROT 0 ?DO 32 SCAN 1 /STRING LOOP          ( a' u' )
+  2DUP 32 SCAN NIP - ;
+
+64 BUFFER: SIG-UPPER
+: PARSE-SIG ( c-addr --- n | -1 )   \ a number, or a name with or without SIG
+  DUP C@ 48 - 10 U< IF
+    DUP CSTRLEN 2DUP ALL-DECIMAL? IF PARSE-DECIMAL NIP DUP 64 > IF DROP -1 THEN EXIT THEN
+    2DROP DROP -1 EXIT
+  THEN
+  DUP CSTRLEN 60 MIN                        ( a u )
+  0 ?DO DUP I + C@ DUP 97 - 26 U< IF 32 - THEN SIG-UPPER I + C! LOOP
+  CSTRLEN 60 MIN SIG-UPPER SWAP             ( upper u )
+  2DUP S" SIG" STRING-PREFIX? IF 3 /STRING THEN
+  32 0 DO
+    2DUP I SIG-NAME COMPARE 0= IF 2DROP I UNLOOP EXIT THEN
+  LOOP
+  2DROP -1 ;
+
+: SQUOTED. ( c-addr --- )   \ as a single-quoted shell word
+  39 EMIT
+  BEGIN DUP C@ WHILE
+    DUP C@ 39 = IF S" '" TYPE 34 EMIT 39 EMIT 34 EMIT 39 EMIT ELSE DUP C@ EMIT THEN   \ '"'"' as dash writes it
+    1+
+  REPEAT DROP
+  39 EMIT ;
+
+: LIST-TRAPS ( --- )
+  TRAP-SLOTS 0 DO
+    I TRAP@ ?DUP IF
+      S" trap -- " TYPE
+      DUP -1 = IF DROP S" ''" TYPE ELSE SQUOTED. THEN
+      32 EMIT
+      I SIG-NAME ?DUP IF TYPE ELSE DROP I 0 <# #S #> TYPE THEN CR
+    THEN
+  LOOP ;
+
+VARIABLE TR-ACTION
+: TRAP-SET ( sig --- )   \ TR-ACTION: "-" default, "" ignore, else a command
+  DUP TRAP-FREE
+  TR-ACTION @ S" -" ROT STR0= IF
+    DUP IF 0 SIGNAL-ACTION DROP ELSE DROP THEN EXIT
+  THEN
+  TR-ACTION @ C@ 0= IF
+    -1 OVER TRAP!
+    DUP IF 1 SIGNAL-ACTION DROP ELSE DROP THEN EXIT
+  THEN
+  DUP IF
+    DUP 2 SIGNAL-ACTION IF
+      S" shell: trap: " ERR-TYPE SIG-NAME ERR-TYPE S" : cannot be trapped" ERR-TYPE ERR-NL
+      1 LAST-STATUS ! EXIT
+    THEN
+  THEN
+  TR-ACTION @ DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP >R SWAP MOVE
+  R> SWAP TRAP! ;
+
+: TRAP-BAD ( c-addr --- )
+  S" shell: trap: " ERR-TYPE ERR-CSTR S" : bad trap" ERR-TYPE ERR-NL  1 LAST-STATUS ! ;
+
+: DO-TRAP ( --- )
+  \ trap                 list the traps
+  \ trap action cond...  set them: action "-" resets, "" ignores
+  \ trap cond / trap N...  reset (a lone condition, or numbers first)
+  0 LAST-STATUS !
+  ARGC @ 1 = IF LIST-TRAPS EXIT THEN
+  1 ARGV@ S" --" ROT STR0= IF DROP-ARGV0 THEN
+  ARGC @ 1 = IF LIST-TRAPS EXIT THEN
+  ARGC @ 2 =  1 ARGV@ DUP CSTRLEN ALL-DECIMAL? OR IF
+    SH-DASH TR-ACTION !  1
+  ELSE
+    1 ARGV@ TR-ACTION !  2
+  THEN
+  ARGC @ SWAP ?DO
+    I ARGV@ PARSE-SIG DUP 0< IF DROP I ARGV@ TRAP-BAD ELSE TRAP-SET THEN
+  LOOP ;
+
+VARIABLE KILL-SIG
+: DO-KILL ( --- )
+  \ kill [-s name | -name | -n] pid...; kill -l [status]
+  0 LAST-STATUS !  15 >R  1
+  ARGC @ 2 < IF
+    R> 2DROP S" shell: kill: usage: kill [-s sig | -sig] pid... | -l [status]" ERR-TYPE ERR-NL
+    2 LAST-STATUS ! EXIT
+  THEN
+  DUP ARGV@ S" -l" ROT STR0= IF
+    R> 2DROP
+    ARGC @ 2 = IF
+      32 1 DO I SIG-NAME TYPE I 31 < IF 32 EMIT THEN LOOP CR EXIT
+    THEN
+    2 ARGV@ DUP CSTRLEN PARSE-DECIMAL DUP 128 > IF 128 - THEN
+    SIG-NAME ?DUP IF TYPE CR ELSE DROP 1 LAST-STATUS ! THEN EXIT
+  THEN
+  DUP ARGV@ S" -s" ROT STR0= IF
+    1+ DUP ARGC @ < IF DUP ARGV@ PARSE-SIG ELSE -1 THEN R> DROP >R 1+
+  ELSE DUP ARGV@ C@ 45 = IF
+    DUP ARGV@ S" --" ROT STR0= IF 1+ ELSE
+      DUP ARGV@ 1+ PARSE-SIG R> DROP >R 1+
+    THEN
+  THEN THEN
+  R> DUP KILL-SIG !  0< IF
+    DROP S" shell: kill: bad signal" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT
+  THEN
+  DUP ARGC @ < 0= IF DROP S" shell: kill: no process given" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT THEN
+  ARGC @ SWAP ?DO
+    I ARGV@ DUP CSTRLEN PARSE-SIGNED KILL-SIG @ KILL IF
+      S" shell: kill: " ERR-TYPE I ARGV@ ERR-CSTR S" : no such process" ERR-TYPE ERR-NL
+      1 LAST-STATUS !
+    THEN
+  LOOP ;
+
+: .OCT4 ( n --- )   BASE @ >R 8 BASE ! 0 <# # # # # #> TYPE R> BASE ! ;
+: .PERMS ( bits --- )   \ rwx of the low three bits
+  DUP 4 AND IF 114 EMIT THEN DUP 2 AND IF 119 EMIT THEN 1 AND IF 120 EMIT THEN ;
+VARIABLE UM-PERM
+: UMASK-SYMBOLIC ( c-addr --- ok? )   \ u=rwx,g=rx,o= and +/- forms
+  BEGIN
+    0 >R                                    \ who mask
+    BEGIN DUP C@ DUP 117 = IF R> 448 OR >R THEN
+      DUP 103 = IF R> 56 OR >R THEN
+      DUP 111 = IF R> 7 OR >R THEN
+      DUP 97 = IF R> 511 OR >R THEN
+      DUP 117 = OVER 103 = OR OVER 111 = OR SWAP 97 = OR
+    WHILE 1+ REPEAT
+    R@ 0= IF R> DROP 511 >R THEN
+    DUP C@ DUP 61 <> OVER 43 <> AND SWAP 45 <> AND IF R> 2DROP 0 EXIT THEN
+    DUP C@ >R 1+                            ( a  R: who op )
+    0 BEGIN OVER C@ DUP 114 = IF DROP 292 OR ELSE
+      DUP 119 = IF DROP 146 OR ELSE
+      DUP 120 = IF DROP 73 OR ELSE DROP -1 THEN THEN THEN
+      DUP -1 <> WHILE SWAP 1+ SWAP
+    REPEAT DROP                             ( a perms )
+    R> R>                                   ( a perms op who )
+    ROT OVER AND                            ( a op who perms&who )
+    ROT DUP 61 = IF DROP UM-PERM @ ROT INVERT AND OR UM-PERM ! ELSE
+      43 = IF UM-PERM @ OR UM-PERM ! DROP ELSE UM-PERM @ SWAP INVERT AND UM-PERM ! DROP THEN
+    THEN
+    DUP C@ 44 = WHILE 1+
+  REPEAT
+  C@ 0= ;
+
+: DO-UMASK ( --- )
+  0 LAST-STATUS !
+  0 UMASK DUP UMASK DROP                    ( mask )
+  ARGC @ 1 = IF .OCT4 CR EXIT THEN
+  1 ARGV@ S" -S" ROT STR0= IF
+    INVERT 511 AND
+    S" u=" TYPE DUP 6 RSHIFT .PERMS  S" ,g=" TYPE DUP 3 RSHIFT .PERMS
+    S" ,o=" TYPE .PERMS CR EXIT
+  THEN
+  1 ARGV@ DUP C@ 48 - 8 U< IF
+    NIP 0 SWAP
+    BEGIN DUP C@ WHILE
+      DUP C@ 48 - DUP 8 U< 0= IF 2DROP DROP S" shell: umask: bad mask" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN
+      ROT 8 * + SWAP 1+
+    REPEAT DROP
+    511 AND UMASK DROP EXIT
+  THEN
+  SWAP INVERT 511 AND UM-PERM !
+  UMASK-SYMBOLIC IF UM-PERM @ INVERT 511 AND UMASK DROP ELSE
+    S" shell: umask: bad mask" ERR-TYPE ERR-NL 1 LAST-STATUS !
+  THEN ;
+
+: .MS ( ms --- )   \ 0m0.012s
+  60000 /MOD 0 <# #S #> TYPE 109 EMIT
+  1000 /MOD 0 <# #S #> TYPE 46 EMIT
+  0 <# # # # #> TYPE 115 EMIT ;
+: DO-TIMES ( --- )
+  CPU-TIMES 2SWAP SWAP .MS 32 EMIT .MS CR SWAP .MS 32 EMIT .MS CR
+  0 LAST-STATUS ! ;
+
+\ local: a function's variable, restored when the function returns (dash)
+256 BUFFER: LOCALS
+VARIABLE LOCALS#
+: STRDUP ( c-addr u --- block )   \ NUL-terminated heap copy
+  DUP 1+ ALLOCATE DROP DUP >R SWAP DUP >R MOVE R> R@ + 0 SWAP C! R> ;
+: LOCAL-PUSH ( x --- )
+  LOCALS# @ 1+ CELLS ENSURE-BUFFER LOCALS  LOCALS LOCALS# @ CELLS + !  1 LOCALS# +! ;
+: LOCAL-POP ( --- x )   -1 LOCALS# +!  LOCALS LOCALS# @ CELLS + @ ;
+
+: LOCALS-RESTORE ( mark --- )
+  BEGIN LOCALS# @ OVER > WHILE
+    LOCAL-POP LOCAL-POP                     ( name old | name 0 )
+    DUP IF 2DUP SET-SHVAR ELSE OVER REMOVE-SHVAR THEN
+    ?DUP IF FREE DROP THEN
+    FREE DROP
+  REPEAT DROP ;
+
+: DO-LOCAL ( --- )
+  0 LAST-STATUS !
+  FUNC-DEPTH @ 0= IF
+    S" shell: local: not in a function" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT
+  THEN
+  ARGC @ 1 ?DO
+    I ARGV@ DUP CSTRLEN 2DUP 61 SCAN NIP -  ( a namelen )
+    2DUP VALID-NAME? 0= IF
+      DROP S" shell: local: " ERR-TYPE ERR-CSTR S" : bad variable name" ERR-TYPE ERR-NL
+      1 LAST-STATUS !
+    ELSE
+      2DUP STRDUP                           ( a n name )
+      DUP LOOKUP-VAR ?DUP IF DUP CSTRLEN STRDUP ELSE 0 THEN   ( a n name old )
+      LOCAL-PUSH DUP LOCAL-PUSH             ( a n name )
+      >R + DUP C@ IF 1+ R@ SWAP SET-SHVAR ELSE DROP THEN R> DROP
+    THEN
+  LOOP ;
+
+\ set with no arguments: the variables, sorted, quoted for reuse
+256 BUFFER: SV-ORDER
+: SV-NAME ( k --- c-addr )   CELLS SV-ORDER + @ SHVAR-NAME-SLOT ;
+: SV-LESS? ( j k --- f )
+  SV-NAME DUP CSTRLEN ROT SV-NAME DUP CSTRLEN 2SWAP COMPARE 0< ;
+: LIST-VARIABLES ( --- )
+  SHVAR-COUNT @ CELLS 1 MAX ENSURE-BUFFER SV-ORDER
+  SHVAR-COUNT @ 0 ?DO I SV-ORDER I CELLS + ! LOOP
+  SHVAR-COUNT @ 1 ?DO
+    I BEGIN
+      DUP 0> IF DUP DUP 1- SV-LESS? ELSE 0 THEN
+    WHILE
+      DUP CELLS SV-ORDER + DUP 1 CELLS - 2DUP @ SWAP @ ROT ! SWAP !
+      1-
+    REPEAT DROP
+  LOOP
+  SHVAR-COUNT @ 0 ?DO
+    I SV-NAME DUP CSTRLEN TYPE 61 EMIT
+    I SV-NAME LOOKUP-VAR ?DUP IF SQUOTED. ELSE S" ''" TYPE THEN CR
+  LOOP ;
+
+' DO-TRAP         S" trap"     BUILTIN
+' DO-KILL         S" kill"     BUILTIN
+' DO-UMASK        S" umask"    BUILTIN
+' DO-TIMES        S" times"    BUILTIN
+' DO-LOCAL        S" local"    BUILTIN
+' LIST-VARIABLES IS LIST-VARIABLES-CALL
 ' DO-EXPORT       S" export"   BUILTIN
 ' DO-UNSET        S" unset"    BUILTIN
 ' DO-EXIT         S" exit"     BUILTIN

@@ -204,6 +204,12 @@ PRIMITIVE OPEN-DIR  ( c-addr --- dirp | 0 )   \ a NUL-terminated path
 PRIMITIVE READ-DIR  ( dirp --- c-addr | 0 )   \ the next name, NUL-terminated
 PRIMITIVE CLOSE-DIR ( dirp --- )
 PRIMITIVE ACCESS    ( c-addr mode --- ior )   \ access(2), mode 1 = X_OK (Iteration 269)
+\ Iteration 271: for the shell's kill, umask, times and trap.
+PRIMITIVE KILL      ( pid sig --- ior )
+PRIMITIVE UMASK     ( mask --- old )
+PRIMITIVE CPU-TIMES ( --- user sys child-user child-sys )   \ milliseconds
+PRIMITIVE SIGNAL-ACTION ( signo action --- ior )   \ 0 default, 1 ignore, 2 catch
+PRIMITIVE SIGNALS-PENDING ( --- signo | 0 )        \ lowest caught signal, cleared
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

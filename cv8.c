@@ -50,6 +50,7 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <stdlib.h>
@@ -57,6 +58,8 @@
 #include <stdint.h>
 #include <errno.h>
 #include <dirent.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
 #include <poll.h>
 #include <termios.h>
 #include <stddef.h>
@@ -99,7 +102,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    42
+#define NESC    47
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -607,6 +610,10 @@ static void load_image(const char *name) {
  *  targets).
  */
 
+#define NSIG_FLAGS 65
+static volatile sig_atomic_t sig_flag[NSIG_FLAGS];
+static void sig_catch(int sig) { if (sig > 0 && sig < NSIG_FLAGS) sig_flag[sig] = 1; }
+
 #define PROF(k)
 #define PROFC(t)
 #define PROFIP(a)
@@ -745,6 +752,7 @@ static void virtual_machine(void) {
         &&L_rawmode,
         &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
         &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir, &&L_access,
+        &&L_kill, &&L_umask, &&L_cputimes, &&L_sigaction, &&L_sigpending,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1147,6 +1155,52 @@ L_closedir: SPILL(); /* dirp --- */
     closedir((DIR *)(uintptr_t)DS0);
     dsp += CELL_BYTES;
     FILLNEXT();
+/*  Signals, kill, umask, times (Iteration 271: the shell's trap, kill,
+ *  umask and times). A caught signal only raises a flag; the shell
+ *  looks at the flags between commands, which is when POSIX runs a
+ *  trap's action. SIGSEGV and SIGBUS stay with the stack guard.  */
+L_kill: SPILL(); /* pid sig --- ior */
+    DS1 = kill((pid_t)(INT64)DS1, (int)DS0) ? (UNS64)(INT64)-errno : 0;
+    dsp += CELL_BYTES;
+    FILLNEXT();
+L_umask: SPILL(); /* mask --- old */
+    DS0 = (UNS64)umask((mode_t)DS0);
+    FILLNEXT();
+L_cputimes: SPILL(); { /* --- user sys child-user child-sys : milliseconds */
+    struct rusage s, c;
+    getrusage(RUSAGE_SELF, &s);
+    getrusage(RUSAGE_CHILDREN, &c);
+    PUSH((UNS64)(s.ru_utime.tv_sec * 1000 + s.ru_utime.tv_usec / 1000));
+    PUSH((UNS64)(s.ru_stime.tv_sec * 1000 + s.ru_stime.tv_usec / 1000));
+    PUSH((UNS64)(c.ru_utime.tv_sec * 1000 + c.ru_utime.tv_usec / 1000));
+    PUSH((UNS64)(c.ru_stime.tv_sec * 1000 + c.ru_stime.tv_usec / 1000));
+    FILLNEXT();
+}
+L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore, 2 catch */
+    int sig = (int)DS1, act = (int)DS0;
+    if (sig <= 0 || sig >= NSIG_FLAGS || sig == SIGSEGV || sig == SIGBUS
+        || sig == SIGKILL || sig == SIGSTOP) {
+        DS1 = (UNS64)(INT64)-EINVAL;
+    } else {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof sa);
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sa.sa_handler = act == 1 ? SIG_IGN : act == 2 ? sig_catch : SIG_DFL;
+        sig_flag[sig] = 0;
+        DS1 = sigaction(sig, &sa, (struct sigaction *)0) ? (UNS64)(INT64)-errno : 0;
+    }
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_sigpending: SPILL(); { /* --- signo | 0 : the lowest caught signal, now cleared */
+    int i;
+    UNS64 r = 0;
+    for (i = 1; i < NSIG_FLAGS; i++)
+        if (sig_flag[i]) { sig_flag[i] = 0; r = (UNS64)i; break; }
+    PUSH(r);
+    FILLNEXT();
+}
 L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 269) */
     DS1 = access((const char *)(uintptr_t)DS1, (int)DS0) ? (UNS64)(INT64)-errno : 0;
     dsp += CELL_BYTES;

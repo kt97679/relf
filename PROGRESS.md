@@ -266,6 +266,7 @@ do not trust the absence of a line below.
 - **268** — DASH-COMPARISON.md: how dash runs a script; tools/op-bench.py
 - **269** — echo/printf/true/false builtins; exec without fork; command location cache
 - **270** — non-whitespace IFS (tests/posix 46/46); set -e -u -x -f -n -o, $-, `.`, exec, type, hash
+- **271** — trap and signals; kill, umask, times, local; `set` lists variables; Ctrl-C at the prompt
 
 ### Not tied to an iteration
 
@@ -16103,3 +16104,49 @@ Still open in this line: `trap`, `kill`, `local`, `umask`, `times`, and
 
 tests/verify: posix 45/1 -> 46/0; parse verdicts 140 -> 141 (the new
 diff case); shell files 68 -> 69, assertions 596 -> 597; sizes.
+
+## Iteration 271: trap, kill, umask, times, local
+
+**Engine.** Five escaped primitives: `KILL`, `UMASK`, `CPU-TIMES`
+(milliseconds, from getrusage), `SIGNAL-ACTION ( signo action --- ior )`
+- default, ignore or catch - and `SIGNALS-PENDING ( --- signo | 0 )`. A
+caught signal's handler only sets a flag (`sig_flag`, `volatile
+sig_atomic_t`); SIGSEGV and SIGBUS stay with the stack guard, and KILL
+and STOP are refused. 82 primitives, 47 of them escaped.
+
+**Traps.** `TRAPS` holds, for EXIT and each signal, default, ignored or
+a heap copy of the action. `CHECK-TRAPS` runs the actions of caught
+signals between commands - at the top of `TREE-RUN` and after each
+pipeline - on a private copy of the action, with `$?` put back
+afterwards (XCU 2.14). `SHELL-EXIT` runs the EXIT trap once (cleared
+first, so an `exit` inside it ends the shell) and exits with the status
+it was given; every way the shell ends goes through it - `exit`, the end
+of the input, `set -e`, `set -u`, a syntax error - and so does the end of
+a subshell, pipeline stage, background job or command substitution,
+which reset the caught signals and the EXIT trap when they start
+(`CHILD-RESET-TRAPS`) and so run only traps set inside them. Ignored
+signals stay ignored in children. `trap` lists in dash's form, resets
+with `-` or a lone condition, ignores with `''`. An interactive shell
+catches INT, QUIT and TERM - caught, not ignored, so exec gives the
+programs it runs their defaults - and survives Ctrl-C at the prompt.
+
+**Builtins.** `kill` (`-s name`, `-name`, `-n`, `--`, `-l [status]`);
+`umask` (octal, `-S`, and symbolic `u=rwx,g=,o=` with `=`, `+`, `-`);
+`times`; `local` (dash's: the variable keeps its value until assigned,
+and is restored - or unset again - when the function returns, via
+`LOCALS` and `LOCALS-RESTORE` in `TREE-RUN-FUNC`); and `set` with no
+arguments lists the shell's variables, sorted, quoted as dash quotes
+them. Reviewing the code before building found three bugs: `kill` read
+its signal with `R@` inside a DO loop (the loop's frame), umask's `+`
+dropped the wrong item, and the local restore popped its pair in the
+wrong order. `tests/verify`'s unreachable-definition count caught a
+buffer declared and never used.
+
+**Checked.** `tests/shell/run-traps` runs a script covering all of this
+against `traps.expected`, which is dash's output - identical; the
+previous build fails it. `run-interactive` gained "Ctrl-C at the prompt
+leaves the shell running", which the previous build also fails.
+
+tests/verify: shell files 69 -> 70, assertions 597 -> 599; sizes
+x86-64 97,936 -> 106,488 - the engine's code grew 1,171 bytes and its
+stripped file crossed a page (+4,096), the shell image grew 4,456.

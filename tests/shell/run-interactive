@@ -58,4 +58,9 @@ assert_output_contains "continuation lines are prompted with > " "> " "$out"
 printf 'false\n' | PTY_TIMEOUT_MS=5000 "$t/pty" "$(printf '\004')" 300 "$sh_path" > /dev/null 2>&1
 assert_status "Ctrl-D leaves with the last command's status" 1 "$?"
 
+# Ctrl-C at the prompt does not end an interactive shell (Iteration
+# 271): the session is still there when the helper gives up on it.
+printf 'echo before-int\n' | PTY_TIMEOUT_MS=2000 "$t/pty" "$(printf '\003')" 300 "$sh_path" > /dev/null 2>&1
+assert_status "Ctrl-C at the prompt leaves the shell running" 124 "$?"
+
 report

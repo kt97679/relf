@@ -150,10 +150,10 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,802    kernel-shell.img     67,000
-    32-bit   kernel32.img   8,294    kernel32-shell.img   62,300
+    64-bit   kernel.img     8,882    kernel-shell.img     71,504
+    32-bit   kernel32.img   8,370    kernel32-shell.img   66,340
 
-**Seventy-seven primitives**: 35 direct, with one-byte opcodes, and 42
+**Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
@@ -1659,9 +1659,11 @@ before anything else, because every number here is relative to it.
    (the rest of dash's lead there is `vfork`, item 9).
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
-   -x -f -n -o`, `$-` and `.`, also in 270. Still open: `trap`, and
-   `kill`, `local`, `umask`, `times`; `set` alone does not list the
-   variables yet.
+   -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,
+   `local`, `umask`, `times`, `set` alone~~ in 271, with an interactive
+   shell surviving Ctrl-C. Left of dash's builtins: `jobs`, `fg`, `bg`
+   (job control); `set` lists only the shell's own variables, not the
+   whole environment.
 7. **A hashed variable table**; functions and builtins likewise.
 8. **Words encoded at parse time, and a one-pass expander**, `$(...)`
    parsed once and kept with the word (dash's `CTLESC`/`CTLVAR`/

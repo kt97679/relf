@@ -1,0 +1,14 @@
+#!/bin/sh
+# tests/shell/run-traps - trap, local, kill, umask, times and `set` with
+# no arguments (Iteration 271), against traps.expected, which is dash's
+# output for traps.sh. Traps: EXIT, a caught USR1, an ignored HUP kept
+# by a subshell, a subshell's own EXIT trap, a trapped INT that exits
+# with the EXIT trap running after it; local variables restored when the
+# function returns; kill -l, a failing kill; umask in octal and in
+# symbolic forms; times; and set's listing with its quoting.
+. "$(dirname "$0")/lib.sh"
+here=$(cd "$(dirname "$0")" && pwd)
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+out=$(cd /tmp && "$SH" "$here/traps.sh" 2>&1; echo "rc=$?")
+assert_output_equals "traps.sh gives dash's output" "$(cat "$here/traps.expected")" "$out"
+report

@@ -1,0 +1,26 @@
+trap -- 'echo bye $?' EXIT
+got-usr1
+after-usr1
+trap -- 'echo bye $?' EXIT
+trap -- '' HUP
+trap -- '' HUP
+in-sub
+sub-body
+sub-exit
+in f: inner
+after f: outer outer-w
+g u=[unset]
+u=global
+KILL
+TERM
+kill st=1
+0022
+u=rwx,g=rx,o=rx
+0077
+u=rwx,g=,o=
+times st=0
+x='1'
+y='it'"'"'s'
+trapped-int
+bye 7
+rc=7
