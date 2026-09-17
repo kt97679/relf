@@ -154,10 +154,15 @@ the loop +1.5%.)*
    encoded path takes every word. `RUN-CMDSUB-TEXT` is split out of
    `EXPAND-CMDSUB` and shared. Iteration 277 fixed the three
    faults left there, and **every suite now passes both ways**, which is
-   this stage's acceptance condition. It is still about neutral in
-   dispatches (loop +0.2%, fn -1.1%, str +2%, arith -1.9%), because
-   field splitting is still done a character at a time - the region
-   splitting below is the next step, and the one that pays.)* `EXPAND-ENC` producing
+   this stage's acceptance condition. Iteration 278 added the region
+   splitting: an unquoted expansion's result is copied whole and its
+   output range recorded, and the word is split once over those ranges,
+   with the pattern characters in them found by SCAN. Against the
+   scanning path: str -16%, arith -4%, loop +3.9%, fn +2.9% - the two
+   that got worse are dominated by very short words, where the walker's
+   per-byte cursor work is not yet paid for. Words holding an unquoted
+   `$@` or `$*` keep to the scanning path: their field boundaries are
+   their own.)* `EXPAND-ENC` producing
 the same ARGV the old path produces, chosen by an environment variable
 for the duration; the whole of `tests/verify` run both ways, as 264 did.
 Acceptance: every suite equal or better, `tests/diff`'s expansion,

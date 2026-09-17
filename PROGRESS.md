@@ -273,6 +273,7 @@ do not trust the absence of a line below.
 - **275** — expansion Stage B begun: the encoded path for simple words, behind RELF_EXP
 - **276** — Stage B continued: every construct on the encoded path; three faults left there
 - **277** — Stage B passes both ways: the three faults fixed; a tilde rule corrected
+- **278** — splitting by recorded regions; str -16% of the dispatches
 
 ### Not tied to an iteration
 
@@ -16414,3 +16415,40 @@ caught it.
 the next step - splitting by recorded regions - replaces.
 
 tests/verify: sizes only.
+
+## Iteration 278: splitting by recorded regions
+
+The change EXPANSION-PLAN.md is for. An unquoted expansion's result - a
+parameter's value, a command substitution's output - is now copied whole
+with `EMIT-RUN` and its output range recorded; when the word is done,
+`XE-SPLIT` runs the XCU 2.6.5 rules once, over those ranges only. The
+pattern characters inside a region are found with `SCAN`, the engine's
+memchr, in three passes rather than a test on every character emitted,
+and `GLOB-FIELDS` now looks at every mark rather than a sorted slice,
+since region marks arrive grouped by character.
+
+**Measured, against the scanning path** (dispatches): `str` -16%,
+`arith` -4%, `loop` +3.9%, `fn` +2.9%. The two that are worse are
+dominated by very short words - `$i`, `$((i+1))` - where the walker's
+per-byte cursor work is not paid for by copying four characters in bulk;
+the next thing to try there is keeping the cursor on the stack rather
+than in a variable.
+
+**Three faults of my own on the way**, each found by a suite:
+- the first splitter walked every character of the word, not just the
+  regions, which made the loop benchmark 8% worse; it now visits the
+  regions and resolves the pending whitespace at the text between them;
+- absorbing leading whitespace moved the splitter's own field start but
+  not the field's recorded start, so `  a b` kept its leading spaces;
+- an assignment's value must not be split at all - `x=$v` with a space
+  in `v` ran the second word as a command - which the scanning path
+  checks per character and the splitter now checks once.
+
+**And one measurement that paid immediately**: the first version scanned
+each word's encoding at every execution to find an unquoted `$@` or
+`$*`, which those words need their own field boundaries for. That scan
+was the single biggest addition in the loop's profile (390,000
+dispatches); the lexer now sets `WF-AT-PARAM` and those words keep to
+the scanning path.
+
+Every suite passes both ways. tests/verify: sizes only.

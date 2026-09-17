@@ -44,6 +44,7 @@
 8 CONSTANT WF-SPECIAL    \ contains ~ * ? or a closed [...] (Iterations 266, 267)
 16 CONSTANT WF-BRACKET   \ scanning: a [ was seen
 32 CONSTANT WF-ENC-SIMPLE \ its encoding holds only what Stage B expands
+64 CONSTANT WF-AT-PARAM   \ it holds $@ or $*, whose fields are its own
 
 256 BUFFER: TREE-BUF
 VARIABLE TREE-TOP
@@ -381,7 +382,10 @@ DEFER SCAN-DOLLAR
   OVER 33 = OR SWAP 45 = OR ;
 
 : SCAN-BRACE-NAME ( --- )   \ ${ ... : the name, or a special parameter
-  0 SRC-C SPECIAL-PARAM? IF 0 SRC-C ENC-C, 1 SRC-SKIP EXIT THEN
+  0 SRC-C SPECIAL-PARAM? IF
+    0 SRC-C DUP 64 = OVER 42 = OR IF WF-AT-PARAM TK-FLAGS @ OR TK-FLAGS ! THEN
+    ENC-C, 1 SRC-SKIP EXIT
+  THEN
   BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
     0 SRC-C ENC-C, 1 SRC-SKIP
   REPEAT ;
@@ -453,6 +457,8 @@ DEFER SCAN-DOLLAR
   \ own loop does not see it again
   1 SRC-C DUP SPECIAL-PARAM? SWAP 48 - 10 U< OR IF
     1 SRC-SKIP
+    0 SRC-C DUP 64 = OVER 42 = OR IF WF-AT-PARAM TK-FLAGS @ OR TK-FLAGS ! THEN
+    DROP
     ENC-VAR ENC-CODE,  EV-PLAIN ENC-C,  0 SRC-C ENC-C,  1 SRC-SKIP
     0 ENC-C, EXIT
   THEN
@@ -1367,10 +1373,51 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
     EMIT-RUN
   THEN ;
 
+\ ---- splitting by regions (EXPANSION-PLAN.md; Iteration 278) ----
+\ An unquoted expansion's result is copied whole and its output range
+\ recorded; when the word is done, the field splitting runs once over
+\ those ranges (dash's recordregion/ifsbreakup). Pattern characters
+\ inside a region are found with SCAN - the engine's memchr - rather
+\ than tested one at a time on the way out.
+256 BUFFER: XE-REGIONS     \ (start, end) output offsets, a pair each
+VARIABLE XE-REG#
+VARIABLE XE-REG-START
+
+: XE-REGION-BEGIN ( --- )
+  TOK-OUT @ OUT-BASE - XE-REG-START ! ;
+VARIABLE XM-CH
+VARIABLE XM-A
+VARIABLE XM-U
+: XE-MARK-CHAR ( char --- )   \ every one of them in the region, by SCAN
+  XM-CH !
+  XM-A @ XM-U @
+  BEGIN DUP WHILE
+    2DUP XM-CH @ SCAN                         ( a u a2 u2 )
+    DUP 0= IF
+      2DROP 2DROP 0 0
+    ELSE
+      OVER OUT-BASE - GLOB-MARK-OFF
+      SWAP 1+ SWAP 1-
+      2SWAP 2DROP
+    THEN
+  REPEAT 2DROP ;
+: XE-MARK-PATTERNS ( from to --- )
+  OVER - DUP 0= IF 2DROP EXIT THEN
+  XM-U !  OUT-BASE + XM-A !
+  42 XE-MARK-CHAR  63 XE-MARK-CHAR  91 XE-MARK-CHAR ;
+
+: XE-REGION-END ( --- )
+  TOK-OUT @ OUT-BASE - XE-REG-START @ = IF EXIT THEN
+  XE-REG# @ 1+ 2* CELLS ENSURE-BUFFER XE-REGIONS
+  XE-REG-START @ XE-REGIONS XE-REG# @ 2* CELLS + !
+  TOK-OUT @ OUT-BASE - XE-REGIONS XE-REG# @ 2* 1+ CELLS + !
+  1 XE-REG# +!
+  XE-REG-START @ TOK-OUT @ OUT-BASE - XE-MARK-PATTERNS ;
+
 : XE-VALUE ( c-addr --- )   \ a parameter's value: split when unquoted
   IN-DQ-CONTEXT? @ IF DUP CSTRLEN XE-QUOTED-TEXT EXIT THEN
   XE-NOSPLIT? @ IF DUP CSTRLEN EMIT-RUN EXIT THEN   \ captured, but not quoted
-  TYPE0-TO-TOK-SPLIT ;
+  XE-REGION-BEGIN  DUP CSTRLEN EMIT-RUN  XE-REGION-END ;
 
 256 BUFFER: XW-BUF        \ an operator form's word, expanded
 VARIABLE XW-LEN
@@ -1415,7 +1462,7 @@ VARIABLE XP-VAL
 : XE-VALUE-N ( c-addr u --- )   \ part of a value: split when unquoted
   IN-DQ-CONTEXT? @ IF XE-QUOTED-TEXT EXIT THEN
   XE-NOSPLIT? @ IF EMIT-RUN EXIT THEN
-  0 ?DO DUP I + C@ EMIT-EXPANDED-CHAR LOOP DROP ;
+  XE-REGION-BEGIN  EMIT-RUN  XE-REGION-END ;
 
 : XE-WORD-ASIDE-SAFE ( pattern? --- )   \ the word may hold another of these
   XP-NAME @ >R  XP-OP @ >R  XP-VAL @ >R
@@ -1531,10 +1578,15 @@ VARIABLE XP-VAL
   SWAP                                        ( vec n )
   DUP 2 PICK XV# < IF
     XV@ XSTR DUP CSTRLEN
-    XE-NOSPLIT? @ IF                         \ a captured word is not split
+    XE-NOSPLIT? @ IN-DQ-CONTEXT? @ OR IF     \ captured or quoted: not split
       IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
       RUN-CMDSUB-TEXT  R> IN-DQ-CONTEXT? !
-    ELSE RUN-CMDSUB-TEXT THEN
+    ELSE
+      \ unquoted: its output is one region, split with the rest
+      IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
+      XE-REGION-BEGIN  RUN-CMDSUB-TEXT  XE-REGION-END
+      R> IN-DQ-CONTEXT? !
+    THEN
   ELSE 2DROP THEN ;
 
 : XE-TILDE ( --- )   \ a tilde prefix: its class, then the user name
@@ -1601,15 +1653,80 @@ VARIABLE XP-VAL
 
 : XE-WALK ( --- )   BEGIN XE-I @ XE-N @ < WHILE XE-ITEM DROP REPEAT ;
 
+VARIABLE XS-FS
+VARIABLE XS-WSP
+VARIABLE XS-PEND?
+
+: XS-CLOSE ( nul-off next-off --- )   \ end the field here, start one there
+  SWAP OUT-BASE + 0 SWAP C!
+  ARGC @ ROOM-FOR-ARG? IF
+    ARGC @ 1+ ARGC !
+    OUT-BASE + ARGV ARGC @ CELLS + !
+    0 ARGV-QUOTED ARGC @ + C!  0 ARGV-NAME-QUOTED ARGC @ + C!
+  ELSE
+    DROP -1 ARGS-OVERFLOW? !
+  THEN ;
+
+VARIABLE XS-PREV          \ where the text after the last region begins
+: XS-CONTENT-AT ( off --- )   \ content here: any pending whitespace ends a field
+  XS-PEND? @ IF
+    XS-WSP @ SWAP DUP XS-FS !  XS-CLOSE
+    0 XS-PEND? !
+  ELSE DROP THEN ;
+
+: XS-REGION-SPLIT ( from to --- )   \ the state machine, over one region
+  SWAP ?DO
+    OUT-BASE I + C@
+    DUP IFS-CHAR? IF
+      DUP 32 = OVER 9 = OR SWAP 10 = OR IF
+        I XS-FS @ > IF
+          XS-PEND? @ 0= IF I XS-WSP !  -1 XS-PEND? ! THEN
+        ELSE
+          I 1+ DUP XS-FS !  OUT-BASE + ARGV ARGC @ CELLS + !
+        THEN
+      ELSE                                   \ ends one field, even an empty one
+        XS-PEND? @ IF XS-WSP @ ELSE I THEN
+        I 1+ DUP XS-FS !  XS-CLOSE
+        0 XS-PEND? !
+      THEN
+    ELSE
+      DROP I XS-CONTENT-AT
+    THEN
+  LOOP ;
+
+: XE-SPLIT ( start-off --- )   \ XCU 2.6.5, over the recorded regions only
+  XE-REG# @ 0= IF DROP EXIT THEN
+  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN   \ an assignment is not split
+  DUP XS-FS !  DUP XS-PREV !  DROP
+  0 XS-PEND? !
+  XE-REG# @ 0 ?DO
+    XE-REGIONS I 2* CELLS + @                ( start )
+    DUP XS-PREV @ > IF XS-PREV @ XS-CONTENT-AT THEN   \ text before this region
+    XE-REGIONS I 2* 1+ CELLS + @             ( start end )
+    DUP XS-PREV !
+    XS-REGION-SPLIT
+  LOOP
+  XS-PEND? @ IF
+    TOK-OUT @ OUT-BASE - XS-PREV @ > IF
+      XS-PREV @ XS-CONTENT-AT                \ text after the last region
+    ELSE
+      XS-WSP @ OUT-BASE + TOK-OUT !          \ trailing whitespace: dropped
+    THEN
+  THEN ;
+
 : XE-TRY ( node --- f )   \ expanded here? then EXPAND-WORDS goes on
+  DUP 1 XF@ WF-AT-PARAM AND IF DROP 0 EXIT THEN   \ $@ / $*: the old path
   DUP 3 XF@ ?DUP 0= IF 2DROP 0 EXIT THEN    \ no encoding: the old path
   XE-N !
   DUP 2 XF@ XSTR XE-A !
   DUP 4 XF@ XE-SUBS !
   1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
+  0 XE-REG# !
   0 XE-I !  0 IN-DQ-CONTEXT? !
+  TOK-OUT @ OUT-BASE - >R
   XE-WALK
   0 IN-DQ-CONTEXT? !
+  R> XE-SPLIT
   -1 ;
 ' XE-TRY IS ENC-EXPAND-CALL
 

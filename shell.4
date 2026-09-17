@@ -1212,6 +1212,13 @@ DEFER GLOB-FIELDS-CALL
     THEN THEN
   THEN ;
 
+: GLOB-MARK-OFF ( off --- )   \ an unquoted pattern character already written
+  NO-GLOB? @ OPT-NOGLOB @ OR IF DROP EXIT THEN
+  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
+  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+  1 GLOB-MARKS# +! ;
+
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
@@ -5556,13 +5563,12 @@ VARIABLE GP#
 VARIABLE GF-OFF
 VARIABLE GF-LEN
 VARIABLE GF-M
-VARIABLE GF-M0
 VARIABLE GF-K
 VARIABLE GF-N
 
 : MARKED? ( off --- f )
-  GF-K @ 0 ?DO
-    GLOB-MARKS GF-M0 @ I + CELLS + @ OVER = IF DROP UNLOOP -1 EXIT THEN
+  GLOB-MARKS# @ 0 ?DO
+    GLOB-MARKS I CELLS + @ OVER = IF DROP UNLOOP -1 EXIT THEN
   LOOP DROP 0 ;
 
 : BUILD-GLOB-PATTERN ( --- )
@@ -5725,16 +5731,14 @@ VARIABLE GWK-NLEN
   GF-N @ 0 ?DO
     EW-ARGV I CELLS + @ GF-OFF !
     GF-OFF @ OUT-BASE + CSTRLEN GF-LEN !
-    BEGIN
-      GF-M @ GLOB-MARKS# @ < IF GLOB-MARKS GF-M @ CELLS + @ GF-OFF @ < ELSE 0 THEN
-    WHILE 1 GF-M +! REPEAT
-    GF-M @ GF-M0 !
-    BEGIN
-      GF-M @ GLOB-MARKS# @ < IF
-        GLOB-MARKS GF-M @ CELLS + @ GF-OFF @ GF-LEN @ + <
-      ELSE 0 THEN
-    WHILE 1 GF-M +! REPEAT
-    GF-M @ GF-M0 @ - GF-K !
+    \ any mark inside this field. The marks were in order while they
+    \ were made one character at a time; region marks (Iteration 278)
+    \ come grouped by character, so every mark is looked at.
+    0 GF-K !
+    GLOB-MARKS# @ 0 ?DO
+      GLOB-MARKS I CELLS + @
+      DUP GF-OFF @ < 0= SWAP GF-OFF @ GF-LEN @ + < AND IF 1 GF-K +! THEN
+    LOOP
     GF-K @ IF I 1- REDIR-OP-FIELD? IF 0 ELSE GLOB-ONE THEN ELSE 0 THEN
     0= IF
       ARGC @ ROOM-FOR-ARG? IF
