@@ -185,7 +185,14 @@ what Stage B measured - `str` -16.8%, `arith` -4.9%, `loop` +3.1%, `fn`
 `XE-TRY`'s entry and `XE-ITEM`'s dispatch - not the double bookkeeping,
 which is what I expected the deletion to remove.)*
 
-**Stage D — measure, then arithmetic.** *(Iteration 283 did the
+**Stage D — measure, then arithmetic.** *(Iteration 284 measured the other half: every `AE-*` word - the whole
+arithmetic reader and evaluator - is 10% of the arithmetic benchmark's
+dispatches, and compiling would remove only the reading part of that.
+Larger in the same profile: `EXPAND-WORDS`'s per-word bookkeeping at 7%,
+then `FIND-BUILTIN` and `FIND-SHVAR-SCAN`. So arithmetic compilation
+waits for a reason better than "the plan says so".)*
+
+*(Iteration 283 did the
 substitutions: the lexer's parse of a `$(...)` is kept with the word
 instead of being thrown away, and the child runs that subtree rather
 than parsing the text again. A loop of 300 two-command substitutions:

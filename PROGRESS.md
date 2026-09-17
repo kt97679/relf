@@ -279,6 +279,7 @@ do not trust the absence of a line below.
 - **281** — the last three words that could not be encoded; Stage C's precondition met
 - **282** — Stage C: the encoded expander is the only one; the scanner deleted
 - **283** — command substitutions run from their parsed subtrees (-9% on a substitution loop)
+- **284** — measured: compiling arithmetic is not worth it; a second assignment word is split
 
 ### Not tied to an iteration
 
@@ -16605,3 +16606,38 @@ pass, and `$(...)` still stores that text as well as the subtree, which
 only the printer needs now.
 
 tests/verify: sizes only.
+
+## Iteration 284: two measurements and a bug, no code
+
+**Compiling arithmetic is not worth doing now.** Stage D's remaining
+item was to parse `$((...))` once instead of on every evaluation. The
+profile of `tests/bench-vm/arith.sh` says the whole arithmetic reader and
+evaluator - every `AE-*` word - is 1,435,700 of 14,302,647 dispatches,
+**10%**, and compiling would remove only the reading half of that. The
+same profile's larger items are `EXPAND-WORDS`'s own per-word
+bookkeeping (7%), `FIND-BUILTIN`, `FIND-SHVAR-SCAN` and `ARGV-ADD`.
+Arithmetic compilation stays in EXPANSION-PLAN.md, marked with this
+measurement, rather than being done because the plan said so.
+
+**A change I made and reverted.** `NAME-CHAR?` is 4% of that benchmark,
+and I took it for `TOKEN-IS-ASSIGN-PREFIX?`, which scans the word's
+output for a `NAME=` prefix. So I carried the parser's own verdict
+instead - it tags assignment words already - through `ARGV-ASSIGN` into
+`WORD-IS-ASSIGN?`. Every suite passed, and the dispatch counts went the
+wrong way: loop +2.8%, fn +2.2%, arith +0.9%, str -0.5%. The old
+predicate exits at once for every word after the first, so the scan was
+already rare, and `NAME-CHAR?`'s share comes from the arithmetic reader.
+Reverted; measured before keeping, which is the rule.
+
+**A bug found while testing it, in both builds and not caused by
+either**: an assignment word after the first has its value field-split.
+
+    v="a b"; x=1 y=$v sh -c 'echo "[$y]"'     # bash: [a b]
+                                              # here: b: command not found
+
+A single assignment word is correct (`y=$v cmd` gives `a b`), so the
+suppression is tied to the first word - `TOKEN-IS-ASSIGN-PREFIX?` gives
+up when `ARGC` is not 0. The parser's tag is the right answer; the fix
+belongs with a test case, and is the next iteration.
+
+No code changed.
