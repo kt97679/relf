@@ -98,7 +98,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    32
+#define NESC    37
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -742,6 +742,7 @@ static void virtual_machine(void) {
         &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
         &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
         &&L_rawmode,
+        &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1098,6 +1099,37 @@ L_rawmode: SPILL(); { /* fd flag --- ior */
     dsp += CELL_BYTES;
     FILLNEXT();
 }
+/*  Memory and strings, from libc (Iteration 260). The kernel had them
+ *  as byte-at-a-time threaded loops, and after one fix to 2SWAP the
+ *  shell's two hottest words by dispatch count were string loops.  */
+L_move: SPILL(); { /* c-addr1 c-addr2 u --- */
+    if (DS0) memmove((void *)(uintptr_t)DS1, (void *)(uintptr_t)DS2, (size_t)DS0);
+    dsp += 3 * CELL_BYTES;
+    FILLNEXT();
+}
+L_fill: SPILL(); { /* c-addr u c --- */
+    if (DS1) memset((void *)(uintptr_t)DS2, (int)(DS0 & 255), (size_t)DS1);
+    dsp += 3 * CELL_BYTES;
+    FILLNEXT();
+}
+L_compare: SPILL(); { /* c-addr1 u1 c-addr2 u2 --- n : -1, 0 or 1 */
+    size_t u1 = (size_t)DS2, u2 = (size_t)DS0;
+    int r = memcmp((void *)(uintptr_t)DS3, (void *)(uintptr_t)DS1, u1 < u2 ? u1 : u2);
+    DS3 = (UNS64)(INT64)(r < 0 ? -1 : r > 0 ? 1 : u1 < u2 ? -1 : u1 > u2 ? 1 : 0);
+    dsp += 3 * CELL_BYTES;
+    FILLNEXT();
+}
+L_scan: SPILL(); { /* c-addr1 u1 c --- c-addr2 u2 : from the first c, or the end and 0 */
+    UNS64 a = DS2, u = DS1;
+    const char *p = u ? memchr((void *)(uintptr_t)a, (int)(DS0 & 255), (size_t)u) : 0;
+    if (p) { DS1 = a + u - (UNS64)(uintptr_t)p; DS2 = (UNS64)(uintptr_t)p; }
+    else   { DS1 = 0; DS2 = a + u; }
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_cstrlen: SPILL(); /* c-addr --- u : a NUL-terminated string's length */
+    DS0 = (UNS64)strlen((const char *)(uintptr_t)DS0);
+    FILLNEXT();
 L_write: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
     t_flush();
     DS2 = (UNS64)(INT64)t_write((int)DS0, DS2, DS1);

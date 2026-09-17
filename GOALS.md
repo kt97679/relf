@@ -150,10 +150,10 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,690    kernel-shell.img     64,474
-    32-bit   kernel32.img   8,178    kernel32-shell.img   59,337
+    64-bit   kernel.img     8,738    kernel-shell.img     64,540
+    32-bit   kernel32.img   8,230    kernel32-shell.img   59,395
 
-**Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
+**Seventy-two primitives**: 35 direct, with one-byte opcodes, and 37
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
 so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
@@ -1623,9 +1623,9 @@ before anything else, because every number here is relative to it.
    SOD32's own 5-bit x 6 format, the best of them, at 1.21x on x86-64
    and 1.68x on i386. `DENSITY-PLAN.md` option B should not be
    re-proposed without new evidence.
-6. **A `FILL` primitive.** `FILL` is a per-byte threaded loop, which
-   is most of what boot-time buffer zeroing costs (Iteration 136). A
-   memset one-liner that helps everything.
+6. ~~**A `FILL` primitive.**~~ **Done in Iteration 260**, with `MOVE`,
+   `COMPARE`, `SCAN` and `CSTRLEN`: libc's memory and string functions
+   behind escaped primitives, where the kernel had byte loops.
 7. **Phase 3, the Forth-hosted assembler.** Goal 1's last piece, never
    started in 149 iterations, and the prerequisite for phase 4.
 

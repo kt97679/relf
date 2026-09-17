@@ -189,6 +189,15 @@ PRIMITIVE POLL      ( a-addr n ms --- n' )
 \ as it was (flag false): 0 or a negative errno. Ctrl-C still works, and
 \ the engine puts the terminal back on every way out. See KEY?.
 PRIMITIVE RAW-MODE  ( fd flag --- ior )
+\ Memory and strings, from libc (Iteration 260): these five were
+\ byte-at-a-time threaded loops, and the shell spends a quarter of its
+\ dispatches in string loops. COMPARE answers -1, 0 or 1; CSTRLEN is the
+\ length of a NUL-terminated string, the shell's and the OS's currency.
+PRIMITIVE MOVE      ( c-addr1 c-addr2 u --- )
+PRIMITIVE FILL      ( c-addr u c --- )
+PRIMITIVE COMPARE   ( c-addr1 u1 c-addr2 u2 --- n )
+PRIMITIVE SCAN      ( c-addr1 u1 c --- c-addr2 u2 )
+PRIMITIVE CSTRLEN   ( c-addr --- u )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -620,24 +629,9 @@ VARIABLE DPL ( --- a-addr)
 : ROLL ( u ---)
 \  Move stack cell number u to the top. 1 ROLL is SWAP, 2 ROLL is ROT etc.
   1 + CELLS DUP SP@ + CELL+ @ SWAP
-  SP@ CELL+ DUP CELL+ ROT CMOVE> DROP ;
+  SP@ CELL+ DUP CELL+ ROT MOVE DROP ;
 
-: MOVE ( c-addr1 c-addr2 u --- )
-\ Copy a block of u bytes starting at c-addr1 to c-addr2. Order is such
-\ that partially overlapping blocks are copied intact.
-  >R 2DUP U< IF R> CMOVE> ELSE R> CMOVE THEN ;
 
-: FILL ( c-addr u c ---)
-\ Fill a block of u bytes starting at c-addr with character c.
-  OVER IF >R
-  BEGIN
-   R@ ROT DUP >R C! R> 1 + SWAP
-   -1 + DUP 0=
-  UNTIL
-  R>
-  THEN
-  2DROP DROP
-;
 
 : 2OVER ( d1 d2 --- d1 d2 d1)
 \ Take a copy of the second double number of the stack and push it on the
@@ -645,8 +639,10 @@ VARIABLE DPL ( --- a-addr)
   03 PICK 03 PICK ;
 
 : 2SWAP ( d1 d2 --- d2 d1)
-\ Swap the top two double numbers on the stack.
-  03 ROLL 03 ROLL ;
+\ Swap the top two double numbers on the stack. It was `3 ROLL 3 ROLL`,
+\ and ROLL moves the stack a byte at a time: 41% of the dispatches in
+\ the shell's loop benchmark were those bytes (Iteration 260).
+  ROT >R ROT R> ;
 
 \ PART 6: FILE ACCESS WORDS.
 
@@ -705,20 +701,6 @@ VARIABLE SRC  ( --- addr)
 VARIABLE #SRC ( --- addr)
 \ This variable holds the length of the current input source.
 
-: SCAN ( c-addr1 u1 c --- c-addr2 u2 )
-\ Find the first occurrence of character c in the string c-addr1 u1
-\ c-addr2 u2 is the remaining part of the string starting with that char.
-\ It is a zero-length string if c was not found.
-  BEGIN
-   OVER
-  WHILE
-   ROT DUP C@ >R OVER R> =
-   IF
-    ROT ROT DROP EXIT
-   THEN
-   1+ ROT ROT SWAP 1- SWAP
-  REPEAT DROP
-;
 
 : READ-SOME ( c-addr u fd --- n )
 \ One read(2), retried when a signal interrupted it (EINTR, 4): n bytes,
@@ -1408,6 +1390,17 @@ FOLD-TABLE
   LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
   OP, R> 4 + ALIGNED SLOT, -1 ;   \ >BODY, which is defined later
 
+: DOES-FETCH? ( xt --- f )
+\ Is xt a `CREATE ... DOES> @ ;` word - a buffer from pool.4's BUFFER:,
+\ say? Its body is DODOES and a far call to the tail, and DOES> starts
+\ every tail with R> (DODOES leaves the parameter field on the return
+\ stack), so this tail is R> and the folded @;EXIT.
+  DUP C@ DODOES-TOK = 0= IF DROP 0 EXIT THEN
+  1+ DUP C@ 63 AND 16 LSHIFT OVER 1+ C@ 8 LSHIFT OR SWAP 2 + C@ OR
+  START @ +
+  DUP C@ [OP] R> = 0= IF DROP 0 EXIT THEN
+  1+ C@  [OP] @ FOLD-OP DROP = ;
+
 : COMPILE, ( xt --- )
 \ Add the execution semantics of xt to the current definition. A word
 \ with the MACRO bit is a primitive or an opcode word: its body starts
@@ -1422,6 +1415,13 @@ FOLD-TABLE
       NO-PEEP HERE LAST-OP ! OP,
     THEN
   ELSE
+    \ A word whose DOES> part is `@ ;` compiles to VAR@ on its data
+    \ field: one dispatch where the call, the DOES> prologue, the fetch
+    \ and the return were four - 6.7% of the shell's loop was that, for
+    \ its buffers (Iteration 260).
+    DUP DOES-FETCH? IF
+      NO-PEEP 100 OP, 4 + ALIGNED SLOT, NO-PEEP EXIT
+    THEN
     CALL,
   THEN ;
 

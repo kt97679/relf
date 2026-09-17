@@ -255,6 +255,7 @@ do not trust the absence of a line below.
 - **257** — division, ${#}, "$*", case patterns and one-line case; division by zero
 - **258** — encoding audit: short backward branches; loops end in a branch; nothing in code aligned
 - **259** — variable slots relative to themselves
+- **260** — interpreter hot spots: 2SWAP, libc string primitives, DOES> @ inlined
 
 ### Not tied to an iteration
 
@@ -15538,3 +15539,46 @@ iterations.
 
 tests/verify: sizes only - x86-64 92,955 -> 91,314, i386 82,826 ->
 81,341.
+
+## Iteration 260: interpreter hot spots
+
+Step 1 of the plan agreed after 259: cheap wins before any change to how
+the shell parses. A throwaway engine with `PROFIP` counting dispatches
+per instruction address, mapped to words through `tools/image-audit.py`'s
+dictionary walk, profiled the four `tests/bench-vm` workloads. The loop
+benchmark took about 50,000 dispatches per iteration.
+
+- **`2SWAP` was `3 ROLL 3 ROLL`**, and `ROLL` moved the stack a byte at a
+  time through `CMOVE>`: 41% of the loop's dispatches. It is
+  `ROT >R ROT R>` now. 50,000 -> 29,000 dispatches per iteration.
+- **Strings.** Then `STR=` (a byte loop in a locals frame) and `CSTRLEN`
+  were a quarter of every workload. Five escaped primitives - no opcode
+  moves - put libc under the kernel's byte loops: `MOVE` (memmove),
+  `FILL` (memset, GOALS.md's old item 6), `COMPARE` (memcmp; -1/0/1 as
+  the standard says, where extend.4's returned the difference - every
+  caller tested for zero), `SCAN` (memchr) and `CSTRLEN` (strlen, the
+  shell's and the OS's string currency). `STR=` is `COMPARE 0=`. The
+  kernel's `MOVE`, `FILL` and `SCAN`, extend.4's `COMPARE` and shell.4's
+  `CSTRLEN` are gone; `ROLL` uses `MOVE`. The bootstrap needed the OLD
+  extend.4 for its first stage, because cross.4 uses `COMPARE` and the
+  old kernel does not have it; later bootstraps start from a kernel that
+  does. 29,000 -> 21,000.
+- **`DOES> @` words compile to `VAR@`.** Every use of a pool.4 buffer
+  was a call, the `DOES>` prologue, `R>`, `@` and a return - 6.7% of the
+  loop. `COMPILE,` now recognises a word whose tail is `R>` and the
+  folded `@;EXIT` (`DOES-FETCH?`) and compiles `VAR@` on its data field,
+  as `PEEP-VAR` does for variables; any `CREATE ... DOES> @ ;` word
+  benefits. The first version looked for `@;EXIT` alone and matched
+  nothing: `DOES>` begins every tail with `R>`. 21,000 -> 19,000.
+
+**Measured** against 259, 7 rounds: loop 0.64 [0.60-0.70], fn 0.69,
+str 0.73, arith 0.65, start 1.00. What is left at the top of the profile
+is the shell re-reading its own lines - `NORM-PEEK`,
+`NORMALIZE-OPERATORS`, `TOKENIZE-RAW`, the keyword literals' `(S")` -
+which is step 2's business: parse once into a command tree.
+
+Sizes: kernel 8,690 -> 8,738; shell images 64,474 -> 64,540 (a `VAR@` and
+its slot are a byte or two longer than the call they replace) and 59,337
+-> 59,395. The engine's code grew 861 bytes (five primitives and their
+libc imports) and its stripped x86-64 file crossed a page: tests/verify
+size:x86_64 91,314 -> 95,476, size:i386 81,341 -> 81,415.

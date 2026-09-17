@@ -253,8 +253,8 @@ VARIABLE LOOP-DEPTH        \ how many while/for loops are currently
 \ Forth's own length-prefixed convention - these bridge the two.
 \ ==================================================================
 
-: CSTRLEN ( c-addr --- u )
-  DUP BEGIN DUP C@ WHILE CHAR+ REPEAT SWAP - ;
+\ CSTRLEN is a kernel primitive since Iteration 260 (strlen); this
+\ was a threaded loop, and the second-hottest word in the shell.
 
 \ ------------------------------------------------------------------
 \ Writing to stderr.
@@ -453,15 +453,9 @@ VARIABLE SEQ-BLEN
 VARIABLE SEQ-I
 
 : STR= ( c-addr1 u1 c-addr2 u2 --- f )
-  SHADOW{ SEQ-A SEQ-ALEN SEQ-B SEQ-BLEN | SEQ-I }
-  SEQ-ALEN @ SEQ-BLEN @ <> IF 0 EXIT THEN
-  BEGIN SEQ-I @ SEQ-ALEN @ < WHILE
-    SEQ-A @ SEQ-I @ + C@
-    SEQ-B @ SEQ-I @ + C@
-    <> IF 0 EXIT THEN
-    SEQ-I @ 1+ SEQ-I !
-  REPEAT
-  -1 ;
+\ The kernel's COMPARE, which is memcmp (Iteration 260). This was a
+\ byte loop in a locals frame, and the hottest word in the shell.
+  COMPARE 0= ;
 
 \ Compare a Forth string against a NUL-terminated C string (used for
 \ command-name matching, since ARGV entries are C strings post-tokenize).
