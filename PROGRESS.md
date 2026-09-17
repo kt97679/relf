@@ -280,6 +280,7 @@ do not trust the absence of a line below.
 - **282** — Stage C: the encoded expander is the only one; the scanner deleted
 - **283** — command substitutions run from their parsed subtrees (-9% on a substitution loop)
 - **284** — measured: compiling arithmetic is not worth it; a second assignment word is split
+- **285** — fixed: every assignment in a prefix keeps its value whole
 
 ### Not tied to an iteration
 
@@ -16641,3 +16642,33 @@ up when `ARGC` is not 0. The parser's tag is the right answer; the fix
 belongs with a test case, and is the next iteration.
 
 No code changed.
+
+## Iteration 285: every assignment in a prefix, not just the first
+
+284's bug: `x=1 y=$v cmd` with a space in `v` split y's value and ran the
+second field as a command. `TOKEN-IS-ASSIGN-PREFIX?` answered "is this an
+assignment" by looking at the word being built - and gave up whenever
+`ARGC` was not 0, so only the first word could be one.
+
+The fix is the parser's own verdict: it already tags a simple command's
+items `I-ASSIGN`, and that tag now travels with the word (`ARGV-ASSIGN`,
+`EW-ASSIGN`, `WORD-IS-ASSIGN?`) instead of being guessed from the output.
+It is right in both directions - `x=1 y=$v cmd` keeps y whole, while
+`show a=$v` and `echo a=$v b`, where the word is an argument that merely
+contains `=`, still split, as bash and dash do.
+
+**A first attempt, discarded**: keeping the guess but tracking "every
+word so far was an assignment" in a flag. It fixed the reported case and
+then failed `show a=$v` after another command had run - the state leaked
+in a way I could not account for quickly, which is reason enough not to
+keep it when the parser knows the answer for certain.
+
+The cost is the 2% of dispatches 284 measured for carrying the tag
+(loop +2.8%, fn +2.2%). Paid knowingly: the shell was wrong.
+
+`tests/diff/cases/assign-prefix-285.sh` - several assignments in one
+prefix, values with spaces, a pattern character, empty values, `IFS`,
+command substitutions and tildes in assignments, and the arguments that
+must still split - matches bash; the previous build fails it.
+
+tests/verify: diff cases 37 -> 38; sizes.

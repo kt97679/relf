@@ -1027,6 +1027,7 @@ VARIABLE IFS-SPLIT-PENDING?  \ true once an IFS character has been
                                \ field, and multiple consecutive IFS
                                \ characters collapse into a single
                                \ split rather than several empty ones.
+VARIABLE WORD-IS-ASSIGN?   \ the parser called this word an assignment
 VARIABLE TAP-S
 VARIABLE TAP-L
 VARIABLE TAP-I
@@ -1049,7 +1050,11 @@ VARIABLE TAP-I
   \ covers "q=$p" and "x=$(...)" and correctly excludes an argument.
   \ A second assignment in "a=1 b=$p cmd" is not covered - POSIX
   \ allows a run of them - and is a known narrowing.
-  ARGC @ 0 <> IF 0 EXIT THEN
+  \ The parser tagged this word (Iteration 285). The old test - "no words
+  \ yet, and what is built so far looks like NAME=" - gave up whenever
+  \ ARGC was not 0, so only the FIRST assignment's value was kept whole:
+  \ `x=1 y=$v cmd` split y's value and ran the second field as a command.
+  WORD-IS-ASSIGN? @ 0= IF 0 EXIT THEN
   ARGV ARGC @ CELLS + @ TAP-S !
   TAP-S @ 0= IF 0 EXIT THEN
   TOK-OUT @ TAP-S @ - TAP-L !
@@ -2055,6 +2060,8 @@ VARIABLE PW-LEN
   PW-HOME ;
 
 
+1 ARGS-BUFFER: ARGV-ASSIGN        \ the parser's verdict, per word
+1 ARGS-BUFFER: EW-ASSIGN
 1 CELLS ARGS-BUFFER: ARGV-NODES   \ each word's tree node, when it has one
 1 CELLS ARGS-BUFFER: EW-NODES     \ ... copied like EW-ARGV (Iteration 275)
 DEFER ENC-EXPAND-CALL   ( node --- )   \ tree.4: expand a word's encoding
@@ -2114,6 +2121,7 @@ VARIABLE EW-I
   BEGIN EW-I @ EW-ARGC @ < WHILE
     ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
     ARGV-NODES EW-I @ CELLS + @  EW-NODES EW-I @ CELLS + !
+    ARGV-ASSIGN EW-I @ + C@      EW-ASSIGN EW-I @ + C!
     ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
     ARGV-QUOTED EW-I @ + C@        EW-QUOT EW-I @ + C!
     ARGV-LITERAL EW-I @ + C@       EW-LIT EW-I @ + C!
@@ -2137,6 +2145,7 @@ VARIABLE EW-I
   0 ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
+    EW-ASSIGN EW-I @ + C@ WORD-IS-ASSIGN? !
     EW-ARGV EW-I @ CELLS + @ TOK-POS !
     TOK-POS @ DUP CSTRLEN + TOK-END !
     EW-LIT EW-I @ + C@ IF LITERAL-FITS? ELSE 0 THEN IF

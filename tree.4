@@ -1324,6 +1324,8 @@ VARIABLE ARGV-NODE-NEXT   \ the node of the word being added, if it has one
 
 VARIABLE ARGV-FORCE-LITERAL?   \ a synthesised word with nothing to expand
 
+VARIABLE ARGV-ASSIGN-NEXT   \ the parser tagged this word an assignment
+
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
   DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0=
@@ -1333,6 +1335,7 @@ VARIABLE ARGV-FORCE-LITERAL?   \ a synthesised word with nothing to expand
   WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
   ARGV ARGC @ CELLS + !
   ARGV-NODE-NEXT @ ARGV-NODES ARGC @ CELLS + !  0 ARGV-NODE-NEXT !
+  ARGV-ASSIGN-NEXT @ ARGV-ASSIGN ARGC @ + C!    0 ARGV-ASSIGN-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ ==================================================================
 \ Expanding a word from its encoding (EXPANSION-PLAN.md Stage B)
@@ -1877,6 +1880,7 @@ DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesti
   IF DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS THEN
   0 ARGC !  0 ARGV !
   0 XF@ DUP XV# 0 ?DO
+    DUP I XV@ I-ASSIGN = 1 AND ARGV-ASSIGN-NEXT !
     DUP I 1+ XV@  OVER I XV@ I-REDIR = IF ADD-REDIR ELSE ADD-WORD THEN
   2 +LOOP DROP
   EXPAND-AND-RUN ;
