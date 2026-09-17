@@ -1,0 +1,6 @@
+if false
+then echo A
+elif true
+then echo B
+else echo C
+fi

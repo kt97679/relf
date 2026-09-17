@@ -1,0 +1,121 @@
+#!/bin/sh
+# tests/matrix/run [--update-known] - every construct in every context.
+#
+# constructs/NAME.one and constructs/NAME.multi are small scripts: one
+# compound command (or a few), written on one line or across several.
+# Each is wrapped in every context below - after `;`, after `&&`, inside
+# a function, a loop, an if, a subshell or a command substitution, piped,
+# redirected, in the background, followed by more - and the result is
+# run by this shell and by the reference shells, stdout and exit status
+# compared. A case the references disagree on is inconclusive and not
+# scored.
+#
+# Written in Iteration 262, before the command-tree rewrite
+# (COMMAND-TREE-PLAN.md): the suites exercised nearly every path of the
+# old parser, but almost none of these combinations, and a first matrix
+# found 43 of 144 differing from bash. KNOWN-FAILING lists the cases this
+# shell gets wrong today. A case that fails and is not on the list is a
+# REGRESSION, and the run fails; a listed case that passes is reported as
+# fixed, so the list can be updated (--update-known) in the same commit.
+set -u
+cd "$(dirname "$0")" || exit 1
+THIS_SH="${THIS_SH:-../../relfsh}"
+REFS="${MATRIX_REFS:-bash dash}"
+UPDATE=0
+[ "${1:-}" = "--update-known" ] && UPDATE=1
+
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+
+CONTEXTS="plain after-semi after-and after-or then-more in-func in-loop
+in-if in-subshell cmdsub piped redirect background"
+
+# wrap CONTEXT FILE: the case script on stdout
+wrap() {
+    case $1 in
+    plain)       cat "$2" ;;
+    after-semi)  printf 'echo pre; ';  cat "$2" ;;
+    after-and)   printf 'true && ';    cat "$2" ;;
+    after-or)    printf 'false || ';   cat "$2" ;;
+    then-more)   cat "$2"; printf 'echo post\n' ;;
+    in-func)     printf 'm() {\n'; cat "$2"; printf '}\nm\n' ;;
+    in-loop)     printf 'for i in 1; do\n'; cat "$2"; printf 'done\n' ;;
+    in-if)       printf 'if true; then\n'; cat "$2"; printf 'fi\n' ;;
+    in-subshell) printf '(\n'; cat "$2"; printf ')\n' ;;
+    cmdsub)      printf 'v=$(\n'; cat "$2"; printf ')\necho "[$v]"\n' ;;
+    piped)       sed '$ s/$/ | tr A-Z a-z/' "$2" ;;
+    redirect)    sed "\$ s|\$| > $T/out; cat $T/out|" "$2" ;;
+    background)  sed '$ s/$/ \&/' "$2"; printf 'wait\n' ;;
+    esac
+    printf 'echo "st=$?"\n'
+}
+
+run() { # run SHELL SCRIPT: stdout and status, one string
+    timeout 10 $1 "$2" < /dev/null 2> /dev/null
+    echo "rc=$?"
+}
+
+pass=0; fail=0; inconcl=0; regress=0; fixed=0
+: > "$T/failing"
+for f in constructs/*; do
+    c=${f#constructs/}
+    for x in $CONTEXTS; do
+        name="$c.$x"
+        wrap "$x" "$f" > "$T/case.sh"
+        want=""; agree=1
+        for r in $REFS; do
+            got=$(run "$r" "$T/case.sh")
+            if [ -z "$want" ]; then want=$got
+            elif [ "$got" != "$want" ]; then agree=0; fi
+        done
+        if [ "$agree" = 0 ]; then inconcl=$((inconcl + 1)); continue; fi
+        mine=$(run "$THIS_SH" "$T/case.sh")
+        known=0
+        grep -qx "$name" KNOWN-FAILING 2>/dev/null && known=1
+        if [ "$mine" = "$want" ]; then
+            pass=$((pass + 1))
+            if [ "$known" = 1 ]; then
+                fixed=$((fixed + 1)); echo "fixed:      $name"
+            fi
+        else
+            fail=$((fail + 1)); echo "$name" >> "$T/failing"
+            if [ "$known" = 0 ]; then
+                regress=$((regress + 1)); echo "REGRESSION: $name"
+                if [ -n "${MATRIX_VERBOSE:-}" ]; then
+                    echo "  script:"; sed 's/^/    /' "$T/case.sh"
+                    echo "  want: $want" | tr '\n' '|'; echo
+                    echo "  got:  $mine" | tr '\n' '|'; echo
+                fi
+            fi
+        fi
+    done
+done
+# errors/*.sh: scripts with a syntax error, run as they are. POSIX (XCU
+# 2.8.1) says a non-interactive shell reports it and exits; what runs
+# before the complete command that holds the error must still run.
+for f in errors/*.sh; do
+    name="error.${f#errors/}"
+    want=""; agree=1
+    for r in $REFS; do
+        got=$(run "$r" "$f")
+        if [ -z "$want" ]; then want=$got
+        elif [ "$got" != "$want" ]; then agree=0; fi
+    done
+    if [ "$agree" = 0 ]; then inconcl=$((inconcl + 1)); continue; fi
+    mine=$(run "$THIS_SH" "$f")
+    known=0
+    grep -qx "$name" KNOWN-FAILING 2>/dev/null && known=1
+    if [ "$mine" = "$want" ]; then
+        pass=$((pass + 1))
+        [ "$known" = 1 ] && { fixed=$((fixed + 1)); echo "fixed:      $name"; }
+    else
+        fail=$((fail + 1)); echo "$name" >> "$T/failing"
+        [ "$known" = 0 ] && { regress=$((regress + 1)); echo "REGRESSION: $name"; }
+    fi
+done
+
+if [ "$UPDATE" = 1 ]; then
+    sort "$T/failing" > KNOWN-FAILING
+    echo "KNOWN-FAILING rewritten: $(wc -l < KNOWN-FAILING) cases"
+fi
+echo "== $pass passed, $fail failed, $inconcl inconclusive; $regress regressions, $fixed fixed =="
+[ "$regress" = 0 ]

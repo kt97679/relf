@@ -1,0 +1,1 @@
+for x in a b; do if [ $x = b ]; then echo N$x; fi; done

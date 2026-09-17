@@ -162,7 +162,7 @@ VARIABLE SUPPRESS-EXEC?  \ true when an enclosing if's own then/else
                           \ if's own - it just must not actually run
                           \ anything while doing so. Checked at every
                           \ point that would otherwise execute a
-                          \ command (DO-ASSIGN, RUN-SIMPLE-OR-PIPELINE)
+                          \ command (TRY-ASSIGNMENT, RUN-SIMPLE-OR-PIPELINE)
                           \ rather than only gating whether
                           \ RUN-TOKENIZED-CALL is invoked at all, which
                           \ is what let a nested if inside a false
@@ -185,7 +185,7 @@ VARIABLE RETURN-PENDING?  \ true from the moment a "return" builtin
                            \ RUN-SIMPLE-OR-PIPELINE, the one place
                            \ this needs to be checked, the same reason
                            \ SUPPRESS-EXEC? is checked only there
-                           \ (and DO-ASSIGN) rather than at every
+                           \ (and TRY-ASSIGNMENT) rather than at every
                            \ splitting word individually.
 VARIABLE FUNC-DEPTH        \ how many RUN-FUNC-BODY calls are
                            \ currently on the way down (0 at the top
@@ -410,9 +410,6 @@ VARIABLE PARSE-N
   THEN
   PARSE-N @ ;
 
-: TYPE0 ( c-addr --- )
-  DUP CSTRLEN TYPE ;
-
 \ ==================================================================
 \ String builder: append bytes/strings into a buffer via a cursor.
 \ B-RESET points the cursor at a buffer; B-CHAR/B-CSTR/B-STR append;
@@ -518,7 +515,7 @@ VARIABLE VALUE-FAILED?
 \ ==================================================================
 \ Shell-local variables: POSIX "shell parameters" distinct from the
 \ OS environment - a standalone "NAME=value" line (see ASSIGNMENT-
-\ EQPOS/DO-ASSIGN further down) sets one of these without exporting
+\ EQPOS/TRY-ASSIGNMENT further down) sets one of these without exporting
 \ it, so it expands via $NAME/${NAME} (see LOOKUP-VAR, used by
 \ EXPAND-VAR below) but a child process never sees it - unlike
 \ `export NAME=value`, which sets both this table and calls SETENV
@@ -838,7 +835,7 @@ VARIABLE SPPD-DEPTH
 \ whether *any* part of a token came from inside quotes or an escape
 \ is recorded in the parallel ARGV-QUOTED array, so a token like '<'
 \ or "cd" that happens to match an operator or builtin name isn't
-\ mistaken for one downstream (see PARSE-REDIRECTIONS, AT-PIPE?,
+\ mistaken for one downstream (see PARSE-REDIRECTIONS,
 \ DISPATCH) - it stays a literal argument, matching real shells.
 \ ==================================================================
 
@@ -935,11 +932,6 @@ VARIABLE TOK-WAS-QUOTED?
 
 : WS? ( c --- f )  DUP 32 = SWAP 9 = OR ;
 
-: SKIP-WS ( --- )
-  BEGIN
-    TOK-POS @ TOK-END @ < IF TOK-POS @ C@ WS? ELSE 0 THEN
-  WHILE TOK-POS @ 1+ TOK-POS ! REPEAT ;
-
 : EMIT-TOK-CHAR ( c --- )
   \ A full buffer grows (GROW-OUT); only past EXPAND-HARD-MAX is output
   \ dropped, and then it is reported.
@@ -996,11 +988,6 @@ VARIABLE DIGIT-N
   DIGIT-N @ 0 DO
     DIGIT-BUF DIGIT-N @ 1- I - + C@ EMIT-TOK-CHAR
   LOOP ;
-
-: TYPE0-TO-TOK ( c-addr --- )  \ copies a NUL-terminated C string's
-                                 \ characters into the token being
-                                 \ built - the expanded value, from GETENV
-  BEGIN DUP C@ DUP WHILE EMIT-TOK-CHAR CHAR+ REPEAT 2DROP ;
 
 \ ==================================================================
 \ IFS field splitting: an *unquoted* $VAR/${...}/$(...)/$((...))
@@ -1181,15 +1168,11 @@ VARIABLE IFSC-P
     EMIT-TOK-CHAR
   THEN ;
 
-: TYPE0-TO-TOK-SPLIT ( c-addr --- )  \ like TYPE0-TO-TOK, but the
-                                       \ copied characters are subject
-                                       \ to IFS field splitting - used
-                                       \ for an *unquoted* $VAR/${...}/
-                                       \ $(...)/$((...)) result;
-                                       \ TYPE0-TO-TOK itself remains
-                                       \ used for GETENV/other paths
-                                       \ that don't go through
-                                       \ expansion at all.
+: TYPE0-TO-TOK-SPLIT ( c-addr --- )  \ copies a NUL-terminated string
+                                       \ into the token being built,
+                                       \ subject to IFS field splitting:
+                                       \ an unquoted $VAR, ${...}, $(...)
+                                       \ or $((...)) result
   BEGIN DUP C@ DUP WHILE EMIT-EXPANDED-CHAR CHAR+ REPEAT 2DROP ;
 
 \ ==================================================================
@@ -2359,29 +2342,9 @@ VARIABLE EBW-NAMELEN
 256 BUFFER: PW-LINE
 64  BUFFER: PW-HOME
 64  BUFFER: PW-WANT
-VARIABLE PW-FID
-VARIABLE PW-N
 VARIABLE PW-I
-VARIABLE PW-F
-VARIABLE PW-S
 VARIABLE PW-LEN
-VARIABLE PW-ULEN   \ username length; PW-I is clobbered by PW-FIELD
-
-: PW-FIELD ( n --- addr len )   \ field n of PW-LINE, ':'-separated
-  PW-F !
-  0 PW-I !  0 PW-S !
-  BEGIN
-    PW-S @ PW-F @ < PW-I @ PW-N @ < AND
-  WHILE
-    PW-LINE PW-I @ + C@ 58 = IF PW-S @ 1+ PW-S ! THEN
-    PW-I @ 1+ PW-I !
-  REPEAT
-  PW-LINE PW-I @ +
-  PW-I @
-  BEGIN
-    PW-I @ PW-N @ < IF PW-LINE PW-I @ + C@ 58 <> ELSE 0 THEN
-  WHILE PW-I @ 1+ PW-I ! REPEAT
-  PW-I @ SWAP - ;
+VARIABLE PW-ULEN   \ username length
 
 : PASSWD-HOME ( name-addr name-len --- addr | 0 )
   \ A named user's home directory. Returns 0 for an unknown user,
@@ -3335,26 +3298,9 @@ VARIABLE DA-EQ
 
 : DO-ASSIGN-AT ( c-addr eqpos --- )
   \ Split a validated "NAME=value" word at its '=' and record it.
-  \ Factored out of DO-ASSIGN so `readonly NAME=value` uses the same
-  \ code rather than a second copy of the splitting.
+  \ Shared by assignment lines and `readonly NAME=value`.
   SPLIT-ASSIGN-AT
   ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR ;
-
-: DO-ASSIGN ( eqpos --- )  \ ARGV[0] is a validated "NAME=value"
-                            \ assignment word (see ASSIGNMENT-EQPOS)
-                            \ and eqpos is its '='s offset. Splits it
-                            \ into ASSIGN-NAME-BUF/ASSIGN-VALUE-BUF and
-                            \ records it via SET-SHVAR - does NOT
-                            \ export it (see DO-EXPORT for how export
-                            \ interacts with this). A no-op (not even
-                            \ touching LAST-STATUS) if SUPPRESS-EXEC?
-                            \ is set - this line is being read only to
-                            \ correctly consume a skipped if/while
-                            \ branch's own body, not actually run.
-  SUPPRESS-EXEC? @ IF DROP EXIT THEN
-  0 VALUE-FAILED? !
-  ARGV @ SWAP DO-ASSIGN-AT
-  VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS ! ;
 
 \ ==================================================================
 \ The builtin table
@@ -4198,8 +4144,6 @@ VARIABLE ARGC-SEMI-REST
   REPEAT
   0 ARGV-SEMI-REST ARGC-SEMI-REST @ CELLS + !
   -1 ;
-
-: AT-PIPE? ( --- f )  S" |" AT-OP? ;
 
 : PIPE-AT-BAR? ( i --- f )   \ is PIPE-ARGV[i] an unquoted "|" ?
   DUP PIPE-ARGQ + C@ IF DROP 0 EXIT THEN
@@ -5090,11 +5034,6 @@ VARIABLE SRT-I
   -1 ;
 ' TRY-ASSIGNMENT IS TRY-ASSIGNMENT-CALL
 
-
-: RUN-SHIFTED ( --- )  \ runs ARGV-SHIFT/ARGC-SHIFT the same way a
-                        \ normal top-level line would be
-  ARGV-SHIFT ARGQ-SHIFT ARGC-SHIFT @ COPY-ARGV-Q
-  RUN-TOKENIZED-CALL ;
 
 
 

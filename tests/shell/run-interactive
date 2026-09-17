@@ -1,0 +1,55 @@
+#!/bin/sh
+# tests/shell/run-interactive - the shell on a real terminal (Iteration
+# 262). tests/io/pty.c runs it on a pseudo-terminal and types the input.
+# The terminal echoes what is typed, so each check looks for output that
+# the echo alone cannot produce.
+#
+# Written before the command-tree rewrite (COMMAND-TREE-PLAN.md), which
+# moves prompting into the input source. Not asserted, because this
+# shell does not do them yet: a "> " prompt on continuation lines, and
+# Ctrl-D leaving with the last command's status (it leaves with 0).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+cc -O2 -o "$t/pty" "$(dirname "$0")/../io/pty.c" 2>/dev/null || {
+    echo "run-interactive: no C compiler - skipped"; report; exit 0; }
+case "$THIS_SH" in /*) sh_path=$THIS_SH ;; *) sh_path=$(pwd)/$THIS_SH ;; esac
+
+typed() { # typed INPUT [KEYS]: the session's output, CRs removed
+    printf '%b' "$1" | PTY_TIMEOUT_MS=5000 "$t/pty" "${2:-}" 150 "$sh_path" 2>&1 | tr -d '\r'
+}
+
+out=$(typed 'echo hi-$((1+1))\nexit\n')
+assert_output_contains "the prompt is shown" '$ ' "$out"
+assert_output_contains "a command runs" "hi-2" "$out"
+
+out=$(typed 'if true\nthen\n  echo in-$((2+2))\nfi\nexit\n')
+assert_output_contains "a compound command typed across lines runs" "in-4" "$out"
+
+out=$(typed 'for x in a b\ndo\n  echo loop-$x$x\ndone\nexit\n')
+assert_output_contains "a loop typed across lines runs (1)" "loop-aa" "$out"
+assert_output_contains "a loop typed across lines runs (2)" "loop-bb" "$out"
+
+out=$(typed 'cat <<EOF\nhere-doc-line\nEOF\necho after-$((3+3))\nexit\n')
+assert_output_contains "a here-document typed at the prompt is read" "after-6" "$out"
+n=$(printf '%s\n' "$out" | grep -c '^here-doc-line$')
+assert_output_equals "the here-document body is printed once, besides its echo" "2" "$n"
+
+out=$(typed 'f() {\n  echo fn-$1$1\n}\nf z\nexit\n')
+assert_output_contains "a function typed across lines is defined" "fn-zz" "$out"
+
+out=$(typed 'fi\necho still-$((4+4))\nexit\n')
+assert_output_contains "a misplaced keyword does not end the shell" "still-8" "$out"
+
+out=$(typed 'echo "open\nquote"\necho q-$((5+5))\nexit\n')
+assert_output_contains "a quote typed across lines is joined" "q-10" "$out"
+
+typed 'exit 3\n' > /dev/null
+printf 'exit 3\n' | PTY_TIMEOUT_MS=5000 "$t/pty" "" 150 "$sh_path" > /dev/null 2>&1
+assert_status "exit sets the session's status" 3 "$?"
+
+printf 'echo x\n' | PTY_TIMEOUT_MS=5000 "$t/pty" "$(printf '\004')" 300 "$sh_path" > "$t/eof" 2>&1
+st=$?
+assert_output_contains "Ctrl-D at the prompt ends the session" "icanon=1" "$(cat "$t/eof")"
+assert_status "and the session ends by itself, not by the timeout" 0 "$st"
+
+report

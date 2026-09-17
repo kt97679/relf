@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,738    kernel-shell.img     64,540
-    32-bit   kernel32.img   8,230    kernel32-shell.img   59,395
+    64-bit   kernel.img     8,738    kernel-shell.img     64,140
+    32-bit   kernel32.img   8,230    kernel32-shell.img   59,003
 
 **Seventy-two primitives**: 35 direct, with one-byte opcodes, and 37
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -430,6 +430,21 @@ how to test; this is what exists:
    extensions from becoming the standard. This is the successor to
    layer 4 now that layer 4 is passed, and the layer that will grow.
    See its own `README.md`.
+6. **`tests/matrix/`** (Iteration 262) - combinations. Thirty small
+   construct templates (every compound command, one-line and
+   multi-line, functions, nesting, here-documents, comments, line
+   continuation, `!`, and-or) each run in thirteen contexts (after `;`,
+   `&&`, `||`, followed by more, inside a function, loop, `if`,
+   subshell and `$(...)`, piped, redirected, in the background), plus
+   32 scripts with syntax errors, scored like layer 5 against bash and
+   dash. `KNOWN-FAILING` lists what this shell gets wrong; a failure not
+   on it is a REGRESSION and fails `tests/verify` whatever the totals
+   say, and a listed case that passes is reported as fixed. This is the
+   net for `COMMAND-TREE-PLAN.md`: the old suites run 95% of the parser's
+   instructions, but almost none of these combinations.
+
+`tools/coverage.py` measures layers 2-6 against `shell.4`: which words
+never run and which run only in part.
 
 A `run-*` file must be executable and is picked up by `run-all`
 automatically. Run them through `run-all` rather than directly:
@@ -1078,6 +1093,21 @@ of this file:
   `${var%pattern}` only. It needs a primitive that reads a directory
   (escaped, so no opcode). Found in Iteration 257; `tests/posix`'s
   2.6.6 case.
+- **Syntax errors do not end a script.** POSIX (XCU 2.8.1) says a
+  non-interactive shell reports a syntax error on stderr and EXITS;
+  bash and dash do. This shell mostly runs what it can: `if; then echo
+  A; fi` prints A, `echo A; ; echo B` runs both, `{ echo A` does nothing
+  and says nothing, a stray `fi` is "command not found", and the
+  messages go to stdout. 29 of `tests/matrix`'s 32 error scripts fail
+  (two are inconclusive). The command-tree parser is the place to fix
+  it (Iteration 262).
+- **Interactive gaps** (Iteration 262, `tests/shell/run-interactive`):
+  no `> ` prompt on continuation lines, and Ctrl-D leaves with status 0
+  rather than the last command's.
+- **Compound commands in pipelines, after `&&`/`||`, and redirected**
+  are the largest group of `tests/matrix`'s 129 construct failures; a
+  multi-line `if` whose `then` has a command on the same line loses
+  its `elif` branch; `n=0; while ...; done` reports status 1.
 - **A multi-line loop after `;` loops FOR EVER**: `n=0; while [ ... ]`
   with `do` on the next line prints "while: expected 'do'" without end,
   in this and earlier builds. The loop reads its condition from the raw

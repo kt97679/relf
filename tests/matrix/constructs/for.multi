@@ -1,0 +1,4 @@
+for x in a b
+do
+  echo F$x
+done

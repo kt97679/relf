@@ -134,6 +134,17 @@ emit posix:failed       "$(echo "$P" | cut -d' ' -f2)"
 emit posix:inconclusive "$(echo "$P" | cut -d' ' -f3)"
 emit posix:cases "$(ls tests/posix/cases/*.sh 2>/dev/null | wc -l | tr -d ' ')"
 
+# tests/matrix: every construct in every context, and the syntax errors,
+# against bash and dash (Iteration 262). A regression - a case that fails
+# and is not in KNOWN-FAILING - is reported whatever the totals say.
+M=$(sh tests/matrix/run 2>&1)
+MS=$(echo "$M" | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) inconclusive; \([0-9]*\) regressions, \([0-9]*\) fixed ==$/\1 \2 \3 \4 \5/p')
+emit matrix:passed       "$(echo "$MS" | cut -d' ' -f1)"
+emit matrix:failed       "$(echo "$MS" | cut -d' ' -f2)"
+emit matrix:inconclusive "$(echo "$MS" | cut -d' ' -f3)"
+emit matrix:regressions  "$(echo "$MS" | cut -d' ' -f4)"
+emit matrix:known-failing "$(wc -l < tests/matrix/KNOWN-FAILING | tr -d ' ')"
+
 # ---------------------------------------------------------------
 # 4. Sizes. Cheap, and the number the engine work is chasing.
 # ---------------------------------------------------------------

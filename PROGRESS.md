@@ -257,6 +257,7 @@ do not trust the absence of a line below.
 - **259** — variable slots relative to themselves
 - **260** — interpreter hot spots: 2SWAP, libc string primitives, DOES> @ inlined
 - **261** — COMMAND-TREE-PLAN.md: parse once into a tree, execute the tree
+- **262** — test coverage before the rewrite: matrix, interactive, syntax errors, dead code
 
 ### Not tied to an iteration
 
@@ -15608,3 +15609,48 @@ in `tests/` and `dash -n`; B, the executor as a second entry point
 old path on every suite; C, switch and delete; D, profile again and only
 then decide on compiling trees to Forth. `PARSE-EXPAND-PLAN.md`'s Stage 2
 is marked superseded; GOALS.md's queue points at the new plan.
+
+## Iteration 262: is there enough test coverage for the rewrite?
+
+Asked before starting COMMAND-TREE-PLAN.md. Measured two ways.
+
+**Code coverage.** A coverage engine - `cv8.c` with every dispatch
+marking its instruction in a byte map shared (`MAP_SHARED`) with forked
+children - ran the shell, differential, POSIX and mrsh suites and the
+benchmarks. 331 of shell.4's 341 colon words ran, and 94% of their
+instructions (95% in the part the rewrite replaces). Of the ten never
+entered, seven were dead code, now deleted with four variables only one
+of them used: `DO-ASSIGN` (superseded in 256), `RUN-SHIFTED`,
+`AT-PIPE?`, `SKIP-WS`, `TYPE0`, `TYPE0-TO-TOK`, `PW-FIELD` (the
+/etc/passwd parser `GETPWHOME` replaced). The other three were the 1 MB
+and 16 MB ceilings and `ARGS-BUFFER:`, which runs at build time.
+`tools/coverage.py` does all of this; its result now: 334 words, two
+never entered (the ceilings), 95% of instructions.
+
+**Combination coverage** was the gap. A generated set of constructs in
+contexts differed from bash in 43 of 144 cases, all real bugs, none of
+them in the suites. `tests/matrix` makes it permanent: 30 construct
+templates x 13 contexts, plus 32 scripts with syntax errors, scored
+against the consensus of bash and dash as tests/posix is.
+`KNOWN-FAILING` holds today's 158 failures; a failure not on it is a
+regression, and `tests/verify` reports `matrix:regressions`. 262 pass, 2
+are inconclusive. Among the failures: compound commands piped,
+redirected or after `&&`/`||`; a multi-line `if` whose `then` carries a
+command loses its `elif`; `n=0; while ...` reports status 1; unquoted
+here-documents are not expanded; and 29 of the error scripts, because
+this shell carries on after a syntax error where POSIX (XCU 2.8.1), bash
+and dash exit - `if; then echo A; fi` prints A. COMMAND-TREE-PLAN.md now
+asks for that decision in Stage B, and counts the matrix in Stage B's
+acceptance.
+
+**Interactive input** had no shell-level tests. `tests/shell/run-interactive`
+drives the shell on a pseudo-terminal (the Iteration 254 helper): the
+prompt, a command, `if`, a loop, a function and a quote typed across
+lines, a here-document at the prompt, a misplaced keyword not ending the
+session, `exit 3`, and Ctrl-D. Two gaps recorded, not asserted: no `> `
+continuation prompt, and Ctrl-D leaving with 0 rather than the last
+status.
+
+tests/verify: matrix lines new; shell assertions 577 -> 590 in 68 files;
+sizes 95,476 -> 95,076 (x86-64) and 81,415 -> 81,023 (i386), the dead
+code.

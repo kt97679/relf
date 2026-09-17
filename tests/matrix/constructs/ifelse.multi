@@ -1,0 +1,6 @@
+if false
+then
+  echo T
+else
+  echo E
+fi

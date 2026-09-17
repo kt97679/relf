@@ -1,0 +1,5 @@
+set -- p q
+for x
+do
+  echo P$x
+done

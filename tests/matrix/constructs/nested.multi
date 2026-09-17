@@ -1,0 +1,6 @@
+for x in a b
+do
+  case $x in
+    b) if true; then echo N$x; fi ;;
+  esac
+done

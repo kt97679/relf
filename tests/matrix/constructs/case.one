@@ -1,0 +1,1 @@
+case ab in x|a*) echo C1 ;; *) echo C2 ;; esac

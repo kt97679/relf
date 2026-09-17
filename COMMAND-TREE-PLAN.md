@@ -172,10 +172,13 @@ PARSE-IF / -WHILE / -UNTIL / -FOR / -CASE / -GROUP / -SUBSHELL
 PARSE-REDIRECT           [IO_NUMBER] op word
 ```
 
-A syntax error is reported with the token and line number and discards
-the rest of the complete command, as `sh` does; a non-interactive shell
-then continues with the next command, as this shell does today (dash
-exits - a separate decision, recorded, not changed here).
+A syntax error is reported on stderr with the token and line number and
+discards the rest of the complete command. **What happens next is a
+decision to take with Stage B**: POSIX (XCU 2.8.1) requires a
+non-interactive shell to exit, and bash and dash do; this shell has
+carried on. `tests/matrix`'s 32 error scripts are scored against the
+POSIX behaviour, so adopting it turns 29 known failures into passes. An
+interactive shell carries on either way.
 
 Interactive input: when the parser needs a token and the source is at the
 end of a line, the source prompts `> ` and reads another. That replaces
@@ -235,8 +238,12 @@ environment variable or a flag, not by default) runs scripts through
 lexer → parser → executor. All compound commands, functions, pipelines,
 redirections, `eval` and command substitution are in this stage: a
 partial executor cannot be compared against the suites. Acceptance: the
-whole of `tests/verify`'s shell suite, `tests/diff` and `tests/mrsh`, run
-with `MAIN2`, at least as good as with `MAIN`; `tests/posix` better.
+whole of `tests/verify`'s shell suite (including `run-interactive`),
+`tests/diff` and `tests/mrsh`, run with `MAIN2`, at least as good as with
+`MAIN`; `tests/posix` better; and `tests/matrix` (Iteration 262) with no
+regressions and most of its 158 known failures fixed. `tools/coverage.py`
+should show the new code's instructions run about as thoroughly as the
+old code's were (95%).
 `tests/verify` gets a `shell2:` line for the duration of this stage.
 
 **Stage C — switch and delete.** `MAIN` becomes the tree path; the old
