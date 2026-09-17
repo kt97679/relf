@@ -158,9 +158,11 @@ the loop +1.5%.)*
    splitting: an unquoted expansion's result is copied whole and its
    output range recorded, and the word is split once over those ranges,
    with the pattern characters in them found by SCAN. Against the
-   scanning path: str -16%, arith -4%, loop +3.9%, fn +2.9% - the two
-   that got worse are dominated by very short words, where the walker's
-   per-byte cursor work is not yet paid for. Words holding an unquoted
+   scanning path, after Iteration 279's walker work (a pointer cursor
+   instead of an offset, and the parameter name's end found by SCAN):
+   str -16.9%, arith -4.9%, loop +3.1%, fn +2.0%. The two that are worse
+   are dominated by very short words, where the per-word entry and the
+   item dispatch are not paid for by copying four characters in bulk. Words holding an unquoted
    `$@` or `$*` keep to the scanning path: their field boundaries are
    their own.)* `EXPAND-ENC` producing
 the same ARGV the old path produces, chosen by an environment variable

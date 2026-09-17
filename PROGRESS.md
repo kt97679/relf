@@ -274,6 +274,7 @@ do not trust the absence of a line below.
 - **276** — Stage B continued: every construct on the encoded path; three faults left there
 - **277** — Stage B passes both ways: the three faults fixed; a tilde rule corrected
 - **278** — splitting by recorded regions; str -16% of the dispatches
+- **279** — the walker's cursor and name scan; str -16.9%, loop +3.1%
 
 ### Not tied to an iteration
 
@@ -16452,3 +16453,26 @@ dispatches); the lexer now sets `WF-AT-PARAM` and those words keep to
 the scanning path.
 
 Every suite passes both ways. tests/verify: sizes only.
+
+## Iteration 279: the walker's per-byte work
+
+Two changes from 278's profile, both in the encoded expander's inner
+walk. The cursor was an offset added to a base on every access; it is a
+pointer now, with an end pointer beside it, which takes two dispatches
+off each read and one off each step. And a parameter's name, which ends
+with a NUL in the encoding, is measured with `SCAN` - the engine's
+memchr - instead of a loop over its characters.
+
+Against the scanning path, by dispatches: `str` -16.9% (was -16.0),
+`arith` -4.9% (-4.0), `loop` +3.1% (+3.9), `fn` +2.0% (+2.9).
+
+What is left on the short-word workloads is structural rather than
+per-byte: `XE-TRY`'s entry (three node fields, the flags, the region
+reset) and `XE-ITEM`'s dispatch chain, about 90 dispatches an iteration
+each in the loop's profile, against the scanning path's `EXPAND-VAR` and
+`SCAN-TOKEN-CHAR` which it removes. Chasing it further is worth less
+than Stage C, which removes the double bookkeeping altogether.
+
+Every suite passes both ways; no behaviour changed.
+
+tests/verify: sizes only.

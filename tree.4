@@ -1330,9 +1330,8 @@ CREATE W-QDIGITS  34 C, 48 C, 34 C, 0 C,  34 C, 49 C, 34 C, 0 C,
 \ holds anything else - an operator form, arithmetic, a command
 \ substitution, a tilde - is declined, and EXPAND-WORDS scans it as
 \ before, so both paths run side by side until Stage C.
-VARIABLE XE-A             \ the encoded bytes
-VARIABLE XE-N
-VARIABLE XE-I
+VARIABLE XE-P             \ where the walk is, in the encoded bytes
+VARIABLE XE-END           \ ... and where they end
 VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
 VARIABLE XE-SUBS          \ its command substitutions' texts
 VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
@@ -1342,28 +1341,28 @@ VARIABLE XP-OP
 VARIABLE XP-LEN
 VARIABLE XP-NAME          \ where the name is, in the encoding
 
-: XE-C ( --- c )        XE-A @ XE-I @ + C@ ;
+: XE-C ( --- c )        XE-P @ C@ ;
 
 : XE-LIT-RUN ( --- )   \ the literal bytes up to the next control byte
-  XE-I @ XR-START !
-  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-P @ XR-START !
+  BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
   XE-IN-WORD? @ IF
     \ a substituted word is an expansion result: split, literal text too
-    XE-I @ XR-START @ ?DO XE-A @ I + C@ EMIT-EXPANDED-CHAR LOOP
+    XE-P @ XR-START @ ?DO I C@ EMIT-EXPANDED-CHAR LOOP
   ELSE
   XE-SPECIAL? @ IF
-    XE-I @ XR-START @ ?DO XE-A @ I + C@ GLOB-MARK EMIT-TOK-CHAR LOOP
+    XE-P @ XR-START @ ?DO I C@ GLOB-MARK EMIT-TOK-CHAR LOOP
   ELSE
-    XE-A @ XR-START @ +  XE-I @ XR-START @ -  EMIT-RUN
+    XR-START @  XE-P @ XR-START @ -  EMIT-RUN
   THEN THEN ;
 
 : XE-QUOTED-RUN ( --- )   \ inside '...': literal to the run's end
-  XE-I @ XR-START !
-  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
+  XE-P @ XR-START !
+  BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
   PATTERN-CAPTURE? @ IF
-    XE-I @ XR-START @ ?DO XE-A @ I + C@ EMIT-QUOTED LOOP
+    XE-P @ XR-START @ ?DO I C@ EMIT-QUOTED LOOP
   ELSE
-    XE-A @ XR-START @ +  XE-I @ XR-START @ -  EMIT-RUN
+    XR-START @  XE-P @ XR-START @ -  EMIT-RUN
   THEN ;
 
 : XE-QUOTED-TEXT ( c-addr u --- )   \ quoted text: literal in a trim's pattern
@@ -1426,24 +1425,23 @@ DEFER XE-DQ-REGION        ( --- )
 
 : XE-SKIP-WORD ( --- )   \ past an operator form's word, expanding nothing
   1 >R                                       \ nesting of ENC-END
-  BEGIN XE-I @ XE-N @ < R@ 0 > AND WHILE
+  BEGIN XE-P @ XE-END @ < R@ 0 > AND WHILE
     XE-C ENC-CTL = IF
-      1 XE-I +!
+      1 XE-P +!
       XE-C
       DUP ENC-CTL = IF DROP ELSE
       DUP ENC-END = IF DROP R> 1- >R ELSE
-      DUP ENC-ESC = IF DROP 1 XE-I +! ELSE
+      DUP ENC-ESC = IF DROP 1 XE-P +! ELSE
       DUP ENC-SQ = OVER ENC-DQ = OR OVER ENC-ARITH = OR IF DROP R> 1+ >R ELSE
       DUP ENC-VAR = IF
-        DROP 1 XE-I +!                       \ the operator byte
-        BEGIN XE-I @ XE-N @ < IF XE-C ELSE 0 THEN WHILE 1 XE-I +! REPEAT
-        XE-I @ XE-N @ < IF 1 XE-I +! THEN
-        XE-A @ XE-I @ 1- + C@ DROP           \ the word, if any, ends with ENC-END
+        DROP 1 XE-P +!                       \ the operator byte
+        BEGIN XE-P @ XE-END @ < IF XE-C ELSE 0 THEN WHILE 1 XE-P +! REPEAT
+        XE-P @ XE-END @ < IF 1 XE-P +! THEN
       ELSE
-      ENC-CMDSUB = IF 1 XE-I +! THEN
+      ENC-CMDSUB = IF 1 XE-P +! THEN
       THEN THEN THEN THEN THEN
-      1 XE-I +!
-    ELSE 1 XE-I +! THEN
+      1 XE-P +!
+    ELSE 1 XE-P +! THEN
   REPEAT
   R> DROP ;
 
@@ -1534,11 +1532,11 @@ VARIABLE XP-VAL
   THEN ;
 
 : XE-PARAM ( --- )   \ at the operator byte
-  XE-C XP-OP !  1 XE-I +!
-  XE-A @ XE-I @ + XP-NAME !                 \ the name is NUL-terminated here
-  BEGIN XE-I @ XE-N @ < IF XE-C ELSE 0 THEN WHILE 1 XE-I +! REPEAT
-  XE-A @ XE-I @ + XP-NAME @ - XP-LEN !
-  XE-I @ XE-N @ < IF 1 XE-I +! THEN
+  XE-C XP-OP !  1 XE-P +!
+  XE-P @ DUP XP-NAME !                       \ NUL-terminated in the encoding
+  XE-END @ OVER - 0 SCAN DROP                ( name end )
+  DUP XP-NAME @ - XP-LEN !
+  XE-END @ < IF XP-NAME @ XP-LEN @ + 1+ ELSE XE-END @ THEN XE-P !
   XP-LEN @ 1 = XP-OP @ EV-PLAIN = AND IF
     XP-NAME @ C@
     DUP 64 = IF DROP -1 EMIT-ALL-POS-PARAMS EXIT THEN
@@ -1565,15 +1563,15 @@ VARIABLE XP-VAL
   XE-PARAM-OP ;
 
 : XE-ARITH ( --- )   \ the expression's text, up to ENC-END
-  XE-A @ XE-I @ +                            ( addr )
-  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
-  XE-A @ XE-I @ + OVER -                     ( addr u )
+  XE-P @                            ( addr )
+  BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
+  XE-P @ OVER -                     ( addr u )
   AE-EVAL EMIT-DECIMAL
-  XE-I @ XE-N @ < IF 2 XE-I +! THEN ;
+  XE-P @ XE-END @ < IF 2 XE-P +! THEN ;
 
 : XE-CMDSUB ( --- )   \ substitution number XE-C of this word
   XE-C                                       ( n )
-  1 XE-I +!
+  1 XE-P +!
   XE-SUBS @ ?DUP 0= IF DROP EXIT THEN         ( n vec )
   SWAP                                        ( vec n )
   DUP 2 PICK XV# < IF
@@ -1591,11 +1589,11 @@ VARIABLE XP-VAL
 
 : XE-TILDE ( --- )   \ a tilde prefix: its class, then the user name
   XE-C                                       ( class )
-  1 XE-I +!
-  XE-A @ XE-I @ +                            ( class addr )
-  BEGIN XE-I @ XE-N @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-I +! REPEAT
-  XE-A @ XE-I @ + OVER -                     ( class addr u )
-  XE-I @ XE-N @ < IF 2 XE-I +! THEN
+  1 XE-P +!
+  XE-P @                            ( class addr )
+  BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
+  XE-P @ OVER -                     ( class addr u )
+  XE-P @ XE-END @ < IF 2 XE-P +! THEN
   2 PICK ET-START <> TOKEN-IS-ASSIGN-PREFIX? 0= AND IF
     \ ~ after = or : counts only in an assignment: the text as it stands
     ROT DROP 126 EMIT-TOK-CHAR EMIT-RUN EXIT
@@ -1614,10 +1612,10 @@ VARIABLE XP-VAL
   THEN ;
 
 : XE-SQ-REGION ( --- )   \ '...': literal bytes until the run's end
-  BEGIN XE-I @ XE-N @ < WHILE
+  BEGIN XE-P @ XE-END @ < WHILE
     XE-C ENC-CTL = IF
-      1 XE-I +!
-      XE-C ENC-CTL = IF ENC-CTL EMIT-TOK-CHAR 1 XE-I +! ELSE 1 XE-I +! EXIT THEN
+      1 XE-P +!
+      XE-C ENC-CTL = IF ENC-CTL EMIT-TOK-CHAR 1 XE-P +! ELSE 1 XE-P +! EXIT THEN
     ELSE
       XE-QUOTED-RUN
     THEN
@@ -1627,22 +1625,22 @@ VARIABLE XP-VAL
   XE-C ENC-CTL <> IF
     IN-DQ-CONTEXT? @ IF XE-QUOTED-RUN ELSE XE-LIT-RUN THEN  0 EXIT
   THEN
-  1 XE-I +!
+  1 XE-P +!
   XE-C
-  DUP ENC-CTL = IF DROP ENC-CTL GLOB-MARK EMIT-TOK-CHAR 1 XE-I +!  0 EXIT THEN
-  DUP ENC-END = IF DROP 1 XE-I +!  -1 EXIT THEN
-  DUP ENC-SQ = IF DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  XE-SQ-REGION  0 EXIT THEN
-  DUP ENC-DQ = IF DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  XE-DQ-REGION  0 EXIT THEN
+  DUP ENC-CTL = IF DROP ENC-CTL GLOB-MARK EMIT-TOK-CHAR 1 XE-P +!  0 EXIT THEN
+  DUP ENC-END = IF DROP 1 XE-P +!  -1 EXIT THEN
+  DUP ENC-SQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-SQ-REGION  0 EXIT THEN
+  DUP ENC-DQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-DQ-REGION  0 EXIT THEN
   DUP ENC-ESC = IF
-    DROP 1 XE-I +!  -1 TOK-WAS-QUOTED? !  XE-C EMIT-QUOTED  1 XE-I +!  0 EXIT
+    DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-C EMIT-QUOTED  1 XE-P +!  0 EXIT
   THEN
-  DUP ENC-VAR = IF DROP 1 XE-I +!  XE-PARAM  0 EXIT THEN
-  DUP ENC-ARITH = IF DROP 1 XE-I +!  XE-ARITH  0 EXIT THEN
-  DUP ENC-CMDSUB = IF DROP 1 XE-I +!  XE-CMDSUB  0 EXIT THEN
-  ENC-TILDE = IF 1 XE-I +!  XE-TILDE THEN  0 ;
+  DUP ENC-VAR = IF DROP 1 XE-P +!  XE-PARAM  0 EXIT THEN
+  DUP ENC-ARITH = IF DROP 1 XE-P +!  XE-ARITH  0 EXIT THEN
+  DUP ENC-CMDSUB = IF DROP 1 XE-P +!  XE-CMDSUB  0 EXIT THEN
+  ENC-TILDE = IF 1 XE-P +!  XE-TILDE THEN  0 ;
 
 : XE-REGION ( --- )   \ items until the region's end
-  BEGIN XE-I @ XE-N @ < WHILE XE-ITEM IF EXIT THEN REPEAT ;
+  BEGIN XE-P @ XE-END @ < WHILE XE-ITEM IF EXIT THEN REPEAT ;
 ' XE-REGION IS XE-REGION-CALL
 
 : XE-DQ-REGION-IMPL ( --- )
@@ -1651,7 +1649,7 @@ VARIABLE XP-VAL
   R> IN-DQ-CONTEXT? ! ;
 ' XE-DQ-REGION-IMPL IS XE-DQ-REGION
 
-: XE-WALK ( --- )   BEGIN XE-I @ XE-N @ < WHILE XE-ITEM DROP REPEAT ;
+: XE-WALK ( --- )   BEGIN XE-P @ XE-END @ < WHILE XE-ITEM DROP REPEAT ;
 
 VARIABLE XS-FS
 VARIABLE XS-WSP
@@ -1717,12 +1715,12 @@ VARIABLE XS-PREV          \ where the text after the last region begins
 : XE-TRY ( node --- f )   \ expanded here? then EXPAND-WORDS goes on
   DUP 1 XF@ WF-AT-PARAM AND IF DROP 0 EXIT THEN   \ $@ / $*: the old path
   DUP 3 XF@ ?DUP 0= IF 2DROP 0 EXIT THEN    \ no encoding: the old path
-  XE-N !
-  DUP 2 XF@ XSTR XE-A !
+  OVER 2 XF@ XSTR                            ( node len addr )
+  SWAP OVER + XE-END !  XE-P !               ( node )
   DUP 4 XF@ XE-SUBS !
   1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
   0 XE-REG# !
-  0 XE-I !  0 IN-DQ-CONTEXT? !
+  0 IN-DQ-CONTEXT? !
   TOK-OUT @ OUT-BASE - >R
   XE-WALK
   0 IN-DQ-CONTEXT? !
