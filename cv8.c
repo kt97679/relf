@@ -280,13 +280,15 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 2 (Iteration 243): the five locals cells moved out of the
+/*  Version 4 (Iteration 258): the one-byte branches take two opcodes
+ *  after the folded band, and loop and POSTPONE operands changed form.
+ *  Version 2 (Iteration 243): the five locals cells moved out of the
  *  file header into the image itself, at offset 8 (see LOCHDR).
  *  Version 3 (Iteration 247): the synthetic opcodes are numbered from
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 3
+#define CV8_VERSION 4
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -746,6 +748,9 @@ static void virtual_machine(void) {
      *  are fixed. The folded order is kernel.4's fold list.  */
     static const void *const other_ops[128] = {
         [NSYN] = &&L_lit32, &&L_dovar, &&L_dodoes, &&L_lit8, &&L_lit8x,
+        /*  After the folded band: the one-byte-offset branches
+         *  (Iteration 258).  */
+        [NSYN + 5 + 23] = &&L_branch8, &&L_0branch8,
         [NSYN + 5 + 11] = &&LX_lit,
         [NSYN + 5 + 15] = &&LX_drop,
         [NSYN + 5 + 16] = &&LX_dup,
@@ -780,7 +785,7 @@ static void virtual_machine(void) {
                    "NDIRECT does not match the direct primitive table");
     _Static_assert(sizeof escaped_prims / sizeof *escaped_prims == NESC,
                    "NESC does not match the escaped primitive table");
-    _Static_assert(NSYN + 5 + 23 <= 0x61,
+    _Static_assert(NSYN + 5 + 23 + 2 <= 0x61,
                    "the folded band has reached the specialised band");
     /*  The opcode table, and the selector table ESC indexes with a whole
      *  byte - so a selector past NESC lands on a diagnosis, not past
@@ -895,6 +900,11 @@ L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
     }
     ip = cbase + (t << SCALE); NEXT();
 L_branch:  /* branch  */ ip += (int16_t)LD16(ip); NEXT();
+/*  BRANCH8 and ?BRANCH8: the same, with a one-byte signed offset, also
+ *  from the operand. The compiler uses them for backward branches, whose
+ *  distance it knows - nine in ten fit (Iteration 258).  */
+L_branch8:  ip += (int8_t)BYTE(ip); NEXT();
+L_0branch8: t = tos; POPT(); if (t) ip += 1; else ip += (int8_t)BYTE(ip); NEXT();
 L_0branch: t = tos; POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
 L_drop: POPT(); NEXT();
 L_dup: PUSHT(tos); NEXT();

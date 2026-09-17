@@ -299,31 +299,27 @@ VARIABLE R0 ( --- a-addr)
 \ The DO LOOP related words use the return stack. The top of the
 \ return stack is the loop counter (I) and the next cell is the limit.
 
-\ (LOOP) and (+LOOP) are followed by an inline loop start address.
-\ (?DO) and (LEAVE) are followed by an inline leave address.
-\ The inline parameters are accessed through the return stack.
-\ They can 'jump' by returning to a different address.
+\ (LOOP) and (+LOOP) are followed by a branch back to the loop's start,
+\ and (?DO) by a branch to its exit (Iteration 258; each was followed by
+\ an inline cell until then). They decide by where they RETURN: into the
+\ branch, to take it, or past it. The branch is two bytes or three.
 \ These words are called 'subroutines', not macros.
 
 \ To access the loop parameters on the return stack, the DO LOOP words must
 \ first pop their OWN return address!
 
+: SKIP-BRANCH ( a --- a' )
+\ Past the branch instruction at a.
+  DUP C@ BRANCH8-TOK = IF 2 ELSE 3 THEN + ;
+
 : (DO)   ( n1 n2 ---)
 \ Runtime part of DO.
   R> ROT ROT SWAP >R >R >R ;
 : (?DO)  ( n1 n2 ---)
-\ Runtime part of ?DO
-\
-\ The inline leave operand is an offset RELATIVE to the cell holding
-\ it, like (LOOP)'s loop-back and like every branch - hence DUP @ +
-\ rather than @. It was an absolute address until Iteration 232, which
-\ never showed because nothing CROSS-COMPILED uses ?DO: kernel.4 only
-\ defines it and shell.4 does not use it at all. A word compiled at
-\ RUN time and then saved kept the builder's address, and extend.4's
-\ GET-ORDER was the first such word to reach a saved image.
-   2DUP - IF R> ROT ROT SWAP >R >R CELL+ >R
-                  ELSE 2DROP R> DUP @ + >R \ Jump to leave address
-                  THEN ;
+\ Runtime part of ?DO. An empty loop returns into the branch to the exit;
+\ any other is entered past it.
+   2DUP = IF 2DROP EXIT THEN
+   R> ROT ROT SWAP >R >R SKIP-BRANCH >R ;
 : I ( --- n )
 \ Return the counter (index) of the innermost DO LOOP
      R> R@ SWAP >R ;
@@ -332,23 +328,18 @@ VARIABLE R0 ( --- a-addr)
 \ Return the counter (index) of the next loop outer to the innermost DO LOOP
   RP@ CELLBYTES-TOK CELLBYTES-TOK CELLBYTES-TOK + + + @ ;
 
-: (LEAVE)   ( --- )
-\ Runtime part of LEAVE. The operand is relative to its own cell - see
-\ (?DO).
-  R> DUP @ + R> DROP R> DROP >R ; \ Remove loop parameters and replace
-                            \ top of ret stack by the leave address.
-
 : UNLOOP ( --- )
-\ Remove one set of loop parameters from the return stack.
+\ Remove one set of loop parameters from the return stack. LEAVE is this
+\ and a branch to the loop's exit.
    R> R> R> 2DROP >R ;
 
 : (LOOP) ( ---)
 \ Runtime part of LOOP
   R> R> 1 + DUP R@ =   \ Add 1 to count and compare to limit.
   IF
-   R> 2DROP CELL+ >R \ Discard parameters and skip leave address.
+   R> 2DROP SKIP-BRANCH >R \ Discard parameters and step over the branch.
   ELSE
-   >R DUP @ + >R  \ Repush counter and jump to loop start address.
+   >R >R           \ Repush counter, and return into the branch back.
   THEN ;
 
 : (+LOOP) ( n ---)
@@ -369,20 +360,20 @@ VARIABLE R0 ( --- a-addr)
      2DUP XOR >R             \ ret index' n x        R: x^n limit
      DUP ROT +               \ ret index' x x'
      XOR R> AND 0 <          \ ret index' crossed?
-     IF R> 2DROP CELL+ >R
-     ELSE >R DUP @ + >R THEN ;
+     IF R> 2DROP SKIP-BRANCH >R
+     ELSE >R >R THEN ;
 
 
 
 : (.") ( --- )
 \ Runtime part of ."
 \ This expects an in-line counted string.
-  R> COUNT 2DUP TYPE + ALIGNED >R ;
+  R> COUNT 2DUP TYPE + >R ;
 
 : (S")  ( --- c-addr u )
 \ Runtime part of S"
 \ It returns address and length of an in-line counted string.
-  R> COUNT 2DUP + ALIGNED >R ;
+  R> COUNT 2DUP + >R ;
 
 32 CONSTANT BL ( --- 32 )
 \ Constant 32, the blank character
@@ -1228,7 +1219,7 @@ VARIABLE CURRENT ( --- addr)
 : (ABORT") ( f --- )
 \ Runtime part of ABORT"
            IF R> COUNT TYPE SPACE HERE COUNT TYPE CR WARM
-           ELSE R> COUNT + ALIGNED >R THEN ;
+           ELSE R> COUNT + >R THEN ;
 
 
 : ALLOT ( n --- )
@@ -1463,10 +1454,13 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Create a definition that returns x when executed.
   HEADER REVEAL LIT, EXIT, ;
 
+: OPERAND3@ ( a --- u )   \ a three-byte operand, high byte first
+  DUP C@ 16 LSHIFT OVER 1+ C@ 8 LSHIFT OR SWAP 2 + C@ OR ;
+
 : (POSTPONE) ( --- )
-\ Runtime for POSTPONE.
-\ has inline argument.
-  R> DUP DUP @ + SWAP CELL+ >R
+\ Followed by the xt to compile, three bytes from START (Iteration 258:
+\ it was a cell relative to itself, aligned).
+  R> DUP 3 + >R OPERAND3@ START @ +
   DUP >NAME C@ 64 AND IF EXECUTE ELSE COMPILE, THEN
 ;
 
@@ -1483,9 +1477,16 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Patch the operand at a-addr so its branch lands on HERE.
   NO-PEEP HERE OVER - SWAP 2DUP C! 1+ SWAP 8 RSHIFT SWAP C! ;
 
-: <RESOLVE ( a-addr --- )
-\ Emit a branch operand jumping back to a-addr.
-  NO-PEEP HERE - W, ;
+: BACK, ( dest op16 op8 --- )
+\ Compile a backward branch to dest. Its distance is known, so it takes
+\ the one-byte-offset form when that reaches - nine backward branches
+\ in ten (Iteration 258). Both offsets count from the operand.
+  NO-PEEP ROT HERE 1+ -                 ( op16 op8 off )
+  DUP -128 < IF
+    SWAP DROP SWAP OP, W,
+  ELSE
+    SWAP OP, C, DROP
+  THEN NO-PEEP ;
 
 : BEGIN ( --- x )
 \ Start a BEGIN UNTIL or BEGIN WHILE REPEAT loop.
@@ -1495,11 +1496,11 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Form a loop with matching BEGIN.
 \ Runtime: A flag is take from the stack
 \ each time UNTIL is encountered and the loop iterates until it is nonzero.
-  NO-PEEP [OP] ?BRANCH OP, <RESOLVE ; IMMEDIATE
+  [OP] ?BRANCH 0BRANCH8-TOK BACK, ; IMMEDIATE
 
 : AGAIN ( x --- )
 \ End a BEGIN AGAIN loop: branch back unconditionally.
-  NO-PEEP [OP] BRANCH OP, <RESOLVE ; IMMEDIATE
+  [OP] BRANCH BRANCH8-TOK BACK, ; IMMEDIATE
 
 : IF    ( --- x)
 \ Start an IF THEN or IF ELSE THEN construction.
@@ -1526,7 +1527,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 
 : REPEAT ( x1 x2 --- )
 \ part of BEGIN WHILE REPEAT construction.
-  NO-PEEP [OP] BRANCH OP, <RESOLVE >RESOLVE ; IMMEDIATE
+  [OP] BRANCH BRANCH8-TOK BACK, >RESOLVE ; IMMEDIATE
 
 VARIABLE POCKET ( --- a-addr )
 \ Buffer for S" strings that are interpreted.
@@ -1548,62 +1549,60 @@ VARIABLE POCKET ( --- a-addr )
 \ Compile the first character of "ccc" as a literal.
   CHAR LITERAL ; IMMEDIATE
 
-: OPERAND-ALIGN ( --- )
-\ (LOOP), (+LOOP), (?DO), (LEAVE) and (POSTPONE) are followed by an
-\ inline CELL, read with @. Pad with NOOPs so that it is aligned: they
-\ execute, once, before the call. Calls to kernel words are two bytes.
-  BEGIN HERE 2 + CELLBYTES-TOK 1- AND WHILE 0 C, REPEAT ;
-
 : DO ( --- x)
 \ Start a DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1.
   POSTPONE (DO) NO-PEEP 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
 
+: LEAVE-LINK, ( --- )
+\ The operand of a branch to the loop's exit, not known yet. Until the
+\ loop ends, the operands of its ?DO and LEAVEs form a chain from 'LEAVE,
+\ each holding the distance back to the one before (0 ends it).
+  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN
+  HERE 'LEAVE ! W, ;
+
 : ?DO ( --- x )
 \ Start a ?DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1. Exit immediately if n1 = n2.
-  OPERAND-ALIGN POSTPONE (?DO) 'LEAVE @ HERE 'LEAVE ! 0 , NO-PEEP HERE
-  ; IMMEDIATE
+  POSTPONE (?DO) [OP] BRANCH OP, 'LEAVE @ 0 'LEAVE ! LEAVE-LINK,
+  NO-PEEP HERE ; IMMEDIATE
 
 : LEAVE ( --- )
-\ Runtime: leave the matching DO LOOP immediately.
-\ All places where a leave address for the loop is needed are in a linked
-\ list, starting with 'LEAVE variable, the other links in the cells where
-\ the leave addresses will come.
-  OPERAND-ALIGN POSTPONE (LEAVE) HERE 'LEAVE @ , 'LEAVE ! NO-PEEP ; IMMEDIATE
+\ Runtime: leave the matching DO LOOP immediately - drop the loop and
+\ branch to its exit.
+  POSTPONE UNLOOP [OP] BRANCH OP, LEAVE-LINK, NO-PEEP ; IMMEDIATE
 
-: RESOLVE-LEAVE
-\ Resolve the references to the leave addresses of the loop.
-\
-\ Each cell gets HERE MINUS ITS OWN ADDRESS, not HERE: the operand is
-\ relative, so that a word compiled at run time and then saved by
-\ SAVE-SYSTEM still works when the image reloads at a different base.
-\ (?DO) and (LEAVE) add the cell's address back.
-          'LEAVE @
-          BEGIN DUP WHILE DUP @ SWAP HERE OVER - SWAP ! REPEAT DROP ;
+: RESOLVE-LEAVE ( --- )
+\ Point every branch in the chain at HERE, the loop's exit.
+  'LEAVE @
+  BEGIN ?DUP WHILE
+    DUP W@ ?DUP IF OVER SWAP - ELSE 0 THEN     ( a next )
+    SWAP >RESOLVE
+  REPEAT ;
 
 : LOOP  ( x --- )
 \ End a DO LOOP.
 \ Runtime: Add 1 to the count and if it is equal to the limit leave the loop.
-  OPERAND-ALIGN POSTPONE (LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
-  ; IMMEDIATE
+  POSTPONE (LOOP) [OP] BRANCH BRANCH8-TOK BACK,
+  RESOLVE-LEAVE 'LEAVE ! NO-PEEP ; IMMEDIATE
 
 : +LOOP ( x --- )
 \ End a DO +LOOP
 \ Runtime: ( n ---) Add n to the count and exit if this crosses the
 \ boundary between limit-1 and limit.
-  OPERAND-ALIGN POSTPONE (+LOOP) HERE - , RESOLVE-LEAVE 'LEAVE ! NO-PEEP
-  ; IMMEDIATE
+  POSTPONE (+LOOP) [OP] BRANCH BRANCH8-TOK BACK,
+  RESOLVE-LEAVE 'LEAVE ! NO-PEEP ; IMMEDIATE
 
 : RECURSE ( --- )
 \ Compile a call to the current (not yet finished) definition.
   LAST @ NAME> CALL, ; IMMEDIATE
 
 : STRING, ( c-addr u --- )
-\ Compile the string as a counted string, then align.
-  DUP C, HERE OVER ALLOT SWAP MOVE ALIGN ;
+\ A counted string in the code, unpadded: the code is bytes, and the
+\ runtimes return to the byte after it (Iteration 258).
+  DUP C, HERE OVER ALLOT SWAP MOVE ;
 
 : ."  ( "ccc<quote>" --- )
 \ Parse a string delimited by " and compile the following runtime semantics.
@@ -1627,10 +1626,9 @@ VARIABLE POCKET ( --- a-addr )
 1 ABORT" " ;
 
 : POSTPONE ( "ccc" --- )
-\ Parse the next word delimited by spaces and compile the following runtime.
-\ Runtime: depending on immediateness EXECUTE or compile the execution
-\ semantics of the parsed word.
-  OPERAND-ALIGN POSTPONE (POSTPONE) ' HERE - , NO-PEEP ; IMMEDIATE
+  POSTPONE (POSTPONE) ' START @ -
+  DUP 16 RSHIFT 255 AND C, DUP 8 RSHIFT 255 AND C, 255 AND C,
+  NO-PEEP ; IMMEDIATE
 
 : IMMEDIATE ( --- )
 \ Make last definition immediate, so that it will be executed even in

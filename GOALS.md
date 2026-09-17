@@ -150,13 +150,13 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,742    kernel-shell.img     67,594
-    32-bit   kernel32.img   8,138    kernel32-shell.img   61,505
+    64-bit   kernel.img     8,642    kernel-shell.img     66,115
+    32-bit   kernel32.img   8,130    kernel32-shell.img   60,822
 
 **Sixty-seven primitives**: 35 direct, with one-byte opcodes, and 32
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
 `kernel.4`. The synthetic opcodes are numbered from the direct count,
-so an escaped primitive costs no opcode (Iteration 247); 34 opcodes
+so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
 are free. `CV8-REFERENCE.md` 3.2 has the map.
 
 **Descriptor I/O is three primitives**: `READ` and `WRITE` (Iteration
@@ -1345,6 +1345,15 @@ once. Both are done; the rest keep their order.
    echo, Ctrl-C still working; the engine puts the terminal back on
    every way out, and only in the process that changed it.
    `tests/io/pty.c` runs the tests on a pseudo-terminal.
+
+4a. **Image encoding: two measured opportunities** (Iteration 258's
+   audit, `tools/image-audit.py`). Variable slots as offsets from the
+   instruction rather than from START would make 3,843 of 4,380 near
+   instead of 2,171 - about 1.7 KB of the 64-bit shell image, the largest
+   single item. A pass that shrinks a finished definition's forward
+   branches to `BRANCH8` would save about 1.36 KB (97% fit). Calls are
+   best left base-relative: pc-relative is worse, and allowing either
+   saves only 3%.
 
 5. **The rest of the growable-buffer work.** Iteration 249 did the
    line buffers, 250 the word arrays and positional parameters, 251

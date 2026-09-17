@@ -253,6 +253,7 @@ do not trust the absence of a line below.
 - **255** — redirections on builtins and functions; what follows a function call; $$
 - **256** — until, eval, for w, NAME=value cmd; nested one-line loops
 - **257** — division, ${#}, "$*", case patterns and one-line case; division by zero
+- **258** — encoding audit: short backward branches; loops end in a branch; nothing in code aligned
 
 ### Not tied to an iteration
 
@@ -15446,3 +15447,61 @@ directory-reading primitive. Recorded in GOALS.md.
 
 tests/verify: posix 30/16 -> 36/10; sizes 93,642 -> 94,434 (x86-64),
 82,749 -> 83,509 (i386).
+
+## Iteration 258: an audit of how the image refers to itself
+
+Asked: are references relative everywhere, do backward branches use the
+compact form, and are 2-byte forward branches enough? `tools/image-audit.py`
+walks the dictionary, decodes every colon body and measures each kind of
+reference. On the 64-bit shell image, before this iteration:
+
+- **Everything was relative** - branches to their operand, loop and leave
+  cells to themselves, calls and variable slots to START, links to the
+  name. (`tests/verify` already proved it another way: images rebuilt
+  under ASLR are byte-identical.)
+- **Backward branches were all 16-bit**: 187, of which 164 fit a byte.
+- **Forward branches**: 1,388, the longest 875 bytes, so 16 bits is
+  ample - and 1,347 (97%) would fit a byte.
+- **Loop operands were CELLS**: `(LOOP)`, `(+LOOP)`, `(?DO)`, `(LEAVE)`
+  and `(POSTPONE)` were followed by an inline 8-byte cell, aligned with
+  NOOPs (266 of them in the image), although every loop offset fit a
+  byte. The NOOPs executed once per loop.
+- **Strings were cell-padded**: 752 bytes of padding after 222 inline
+  strings, in code that is bytes.
+- **Calls**: base-relative (as they are) is better than pc-relative
+  (6,977 bytes against 7,113); allowing either would save 3%.
+- **Variable slots**: pc-relative would make 3,843 of 4,380 near instead
+  of 2,171, about 1.7 KB - the largest single item. Not done here.
+
+**What changed (format version 4).**
+
+- `BRANCH8` and `?BRANCH8`, two synthetic opcodes after the folded band,
+  take a one-byte signed offset from the operand. `BACK,` (kernel.4) and
+  `BACK-T` (cross.4) compile every backward branch - UNTIL, AGAIN,
+  REPEAT, LOOP - in that form when it reaches, since its distance is
+  known. Forward branches stay 16-bit; shrinking them needs a pass over
+  a finished definition, recorded in GOALS.md.
+- **A loop now ends in a real branch.** `(LOOP)` and `(+LOOP)` are
+  followed by a branch back to the start: they return INTO it to go
+  round, or past it - `SKIP-BRANCH` reads its opcode for the length -
+  when done. `(?DO)` is followed by a forward branch that an empty loop
+  returns into. `LEAVE` is `UNLOOP` plus a forward branch, so `(LEAVE)`
+  is gone; the unresolved operands of a loop's `?DO` and `LEAVE`s chain
+  through `'LEAVE`, each holding the distance back to the one before,
+  and `RESOLVE-LEAVE` walks it. A loop that goes round is now one branch
+  dispatch where it was `DUP @ + >R`: a ten-million-iteration Forth loop
+  runs in 143-159 ms against 152-174.
+- `(POSTPONE)` takes its xt as three bytes from START; strings are no
+  longer padded; `OPERAND-ALIGN`, `FAR-ALIGN-T` and cross.4's check that
+  the loop runtimes sit in near-call reach are gone - nothing in code is
+  aligned.
+
+**After** (`tools/image-audit.py kernel-shell.img`): 197 backward
+branches are `BRANCH8`, and the 23 still 16-bit are all longer than 127;
+no NOOP, inline cell or string padding is left; code 39,692 -> 38,145
+bytes. Images: kernel 8,742 -> 8,642, 64-bit shell 67,594 -> 66,115
+(-2.2%), 32-bit shell 61,505 -> 60,822. Shell workloads unchanged within
+the per-build bias (loop 1.03 [1.01-1.07], the rest 1.00-1.01).
+
+tests/verify: sizes only - x86-64 94,434 -> 92,955, i386 83,509 ->
+82,826.

@@ -173,7 +173,9 @@ With 35 direct and 32 escaped primitives (Iteration 254):
 | `0x26` | `LIT8` — 1-byte unsigned operand |
 | `0x27` | `LIT8;EXIT` |
 | `0x28`–`0x3E` | folded `primitive;EXIT`, in the fold-list order (23) |
-| `0x3F`–`0x60` | **free** — 34 opcodes |
+| `0x3F` | `BRANCH8` — 1-byte signed offset (Iteration 258) |
+| `0x40` | `?BRANCH8` — likewise |
+| `0x41`–`0x60` | **free** — 32 opcodes |
 | `0x61`–`0x7C` | specialised opcodes (§7) — 28 of them |
 | `0x7D` | `LIT64` — a full cell, little-endian |
 | `0x7E` | `ESC` + a selector byte: 32 OS/libc primitives of 256 selectors |
@@ -215,12 +217,28 @@ engine uses. `LIT` is primitive 2 and keeps a 2-byte operand.
 | `LIT32` | 4 bytes, signed little-endian, sign-extended to a cell |
 | `LIT64` | `CELL_BYTES` bytes, little-endian — for values outside int32 |
 | `BRANCH`, `?BRANCH` | 2 bytes, **signed byte offset from the operand itself** |
+| `BRANCH8`, `?BRANCH8` | 1 byte, signed, from the operand; backward branches that reach |
 | `ADDI`, `EQI` | 1 byte, signed −128..127 |
 | specialised slot ops | 2 bytes, a scaled offset like a call |
-| `(LOOP)`, `(POSTPONE)`, inline strings | **cell-sized and cell-aligned**, unchanged from the cell image |
+| `(LOOP)`, `(+LOOP)` | none: the call is followed by a branch back to the loop's start |
+| `(?DO)` | none: followed by a 16-bit branch to the loop's exit |
+| `(POSTPONE)` | 3 bytes, big-endian, the xt as an offset from START |
+| inline strings | a count byte and the text, unpadded |
 
 Two conventions matter when writing a compiler:
 
+- **A backward branch takes `BRANCH8`/`?BRANCH8` when its offset fits
+  -128..127** (`BACK,`), since its distance is known when it is compiled;
+  forward branches are always 16-bit, patched by `>RESOLVE`. Measured in
+  Iteration 258 on the 64-bit shell image: every forward branch is
+  within 875 bytes, and 97% would fit a byte - reachable only by a pass
+  that shrinks a finished definition.
+- **Loops decide by where they return.** `(LOOP)` and `(+LOOP)` return
+  INTO the branch after them to go round again, and past it (two bytes
+  or three, by its opcode) when done; `(?DO)` returns into its forward
+  branch for an empty loop. `LEAVE` is `UNLOOP` and a forward branch;
+  until the loop ends, the operands of its `?DO` and `LEAVE`s chain
+  through `'LEAVE`, each holding the distance back to the previous.
 - **Branch offsets are measured from the operand's own position**, not
   from the byte after it. `ip += (int16_t)LD16(ip)`. Getting this wrong
   produces an image that runs and then jumps two bytes off; it cost me a
@@ -275,10 +293,9 @@ not call its own oldest words' neighbours from its newest - the first
 ceiling a growing system meets. At today's 60 KB it is 70x away. The
 remedy is a fourth call width, not a return to aligned bodies.
 
-A second, tighter limit is not in the format: the kernel's
-`OPERAND-ALIGN` assumes calls to `(LOOP)`, `(+LOOP)`, `(?DO)`,
-`(LEAVE)` and `(POSTPONE)` take the two-byte form, so those words must
-sit in the first 16 KB. `cross.4` checks this when it saves the kernel.
+(Until Iteration 258 a second, tighter limit came from the kernel's
+`OPERAND-ALIGN`, which assumed the loop runtimes sat in the first 16 KB.
+Nothing is aligned in code now.)
 
 `MEMSIZE` covers the image, all runtime dictionary growth and the
 stacks. It is a plain parameter: every reference in an image is
@@ -416,7 +433,7 @@ first built as `attic/cv8b.4` for translated images.
 | 0 | 4 | magic `CV8` + `'0'+SCALE` — `CV80` today |
 | 4 | 1 | cell width in bytes (8 or 4) |
 | 5 | 1 | `'L'` if specialised opcodes are used, else 0 |
-| 6 | 1 | **format version** (3); the engine runs only its own |
+| 6 | 1 | **format version** (4); the engine runs only its own |
 | 7 | 1 | **feature bitmap**: 1 varcall, 2 varslot, 4 spec, 8 lit64 |
 | 8 | cell | thread **count** *T* (32 — the hashed word list) |
 | +cell | *T*·cell | the thread heads, `START`-relative |
@@ -433,6 +450,9 @@ than breaking the format, older images keep working on newer engines,
 and an older engine refuses a newer image with a clear message instead
 of misreading it. Before Iteration 194 the magic was compared byte for
 byte, so any change to the format invalidated every image.
+
+**Version 4** (Iteration 258) added `BRANCH8`/`?BRANCH8` after the folded
+band and changed the loop, `(POSTPONE)` and string operand forms.
 
 **Version 3** (Iteration 247) renumbered the synthetic opcodes (§3.2).
 The same byte means different things in versions 2 and 3, and each
@@ -742,10 +762,9 @@ places. A committed engine should:
 - **Branch offsets are from the operand, not past it** (§3.3).
 - **Never execute alignment padding.** SOD16 lost 17% of dispatches to
   `NOOP`s before data bodies.
-- **`(LOOP)` operands are still cell-aligned**, so NOOP padding before
-  them *is* executed, once per loop iteration. The shell barely uses
-  `DO` loops; a kernel that did should make `(LOOP)` read an `ALIGNED`
-  operand.
+- **Nothing in code is aligned** since Iteration 258: not loop operands
+  (which used to be cells, padded with NOOPs that executed once per
+  loop), not `(POSTPONE)`'s xt, not strings. Data bodies still are.
 - **`LIT8` is unsigned.** `-1` needs `LIT32` unless the `0x62` opcode is
   enabled. Values outside int32 need `LIT64`: until Iteration 194 they
   were silently masked to 32 bits, so `$123456789ABC` evaluated

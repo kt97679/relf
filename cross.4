@@ -252,6 +252,9 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 : LIT8-OP   ( --- n ) NSYN 3 + ;
 : LIT8X-OP  ( --- n ) NSYN 4 + ;
 : FOLD-BASE ( --- n ) NSYN 5 + ;
+\ The one-byte-offset branches follow the folded band (Iteration 258).
+: BRANCH8-OP  ( --- n ) NSYN 5 + 23 + ;
+: 0BRANCH8-OP ( --- n ) NSYN 5 + 24 + ;
 1 CONSTANT EXIT-OP
 2 CONSTANT LIT16-OP
 3 CONSTANT BRANCH-OP
@@ -396,17 +399,17 @@ NO-PEEP-T
 : >RESOLVE-T ( t-addr --- )
   NO-PEEP-T THERE OVER - SWAP 2DUP C!-T 1+ SWAP 8 RSHIFT SWAP C!-T ;
 : <RESOLVE-T ( t-addr --- ) NO-PEEP-T THERE - W,-T ;
-: OPERAND-ALIGN-T ( --- )
-\ NOOPs until a two-byte call would leave the next byte cell-aligned,
-\ so the inline cell after (LOOP), (?DO), (LEAVE) and (POSTPONE) is
-\ aligned. kernel.4's OPERAND-ALIGN does the same at run time.
-  BEGIN THERE 2 + TARGET-CELL-BYTES @ 1- AND WHILE 0 C,-T REPEAT ;
-
-\ A forward call is three bytes, so LOOP and POSTPONE below count
-\ three rather than the two OPERAND-ALIGN-T assumes: pad to one byte
-\ before a cell boundary.
-: FAR-ALIGN-T ( --- )
-  BEGIN THERE 3 + TARGET-CELL-BYTES @ 1- AND WHILE 0 C,-T REPEAT ;
+: BACK-T ( dest op16 op8 --- )
+\ A backward branch: the one-byte-offset form when the distance fits.
+\ kernel.4's BACK, is the same.
+  NO-PEEP-T ROT THERE 1+ -              ( op16 op8 off )
+  DUP -128 < IF
+    SWAP DROP SWAP C,-T W,-T
+  ELSE
+    SWAP C,-T C,-T DROP
+  THEN NO-PEEP-T ;
+: OPERAND3-T ( n --- )   \ a three-byte operand, high byte first
+  DUP 16 RSHIFT 255 AND C,-T DUP 8 RSHIFT 255 AND C,-T 255 AND C,-T ;
 
 CREATE IMAGE-HDR 8 ALLOT
 VARIABLE IMAGE-FID
@@ -426,7 +429,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  3 IMAGE-HDR 6 + C!          \ format version
+  4 IMAGE-HDR 6 + C!          \ format version
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -495,6 +498,8 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : DOVAR-TOK  DOVAR-OP LITERAL-T ;
 : DODOES-TOK DODOES-OP LITERAL-T ;
 : LIT8-TOK   LIT8-OP LITERAL-T ;
+: BRANCH8-TOK BRANCH8-OP LITERAL-T ;
+: 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
 : LIT8X-TOK  LIT8X-OP LITERAL-T ;
 : FOLD-BASE-TOK FOLD-BASE LITERAL-T ;
 : #FOLD-TOK  #FOLD LITERAL-T ;
@@ -570,12 +575,12 @@ TRANSIENT DEFINITIONS FORTH
 T]
 
 : BEGIN NO-PEEP-T THERE ;
-: UNTIL NO-PEEP-T 0BRANCH-OP C,-T <RESOLVE-T ;
+: UNTIL 0BRANCH-OP 0BRANCH8-OP BACK-T ;
 : IF NO-PEEP-T 0BRANCH-OP C,-T >MARK-T ;
 : THEN >RESOLVE-T ;
 : ELSE NO-PEEP-T BRANCH-OP C,-T >MARK-T SWAP >RESOLVE-T ;
 : WHILE NO-PEEP-T 0BRANCH-OP C,-T >MARK-T SWAP ;
-: REPEAT NO-PEEP-T BRANCH-OP C,-T <RESOLVE-T >RESOLVE-T ;
+: REPEAT BRANCH-OP BRANCH8-OP BACK-T >RESOLVE-T ;
 
 FORWARD (DO)
 FORWARD (LOOP)
@@ -585,13 +590,12 @@ FORWARD (POSTPONE)
 
 
 : DO [ TRANSIENT ] (DO) [ FORTH ] NO-PEEP-T THERE ;
-: LOOP FAR-ALIGN-T [ TRANSIENT ] (LOOP) [ FORTH ] THERE - ,-T NO-PEEP-T ;
+: LOOP [ TRANSIENT ] (LOOP) [ FORTH ] BRANCH-OP BRANCH8-OP BACK-T ;
 : ." [ TRANSIENT ] (.") [ FORTH ] 34 WORD COUNT DUP 1+ >R
-      THERE PLACE-T R> ALLOT-T ALIGN-T NO-PEEP-T ;
-: POSTPONE FAR-ALIGN-T [ TRANSIENT ] (POSTPONE) [ FORTH ] T' THERE - ,-T
-      NO-PEEP-T ;
+      THERE PLACE-T R> ALLOT-T NO-PEEP-T ;
+: POSTPONE [ TRANSIENT ] (POSTPONE) [ FORTH ] T' OPERAND3-T NO-PEEP-T ;
 : ABORT" [ TRANSIENT ] (ABORT") [ FORTH ] 34 WORD COUNT DUP 1+ >R
-      THERE PLACE-T R> ALLOT-T ALIGN-T NO-PEEP-T ;
+      THERE PLACE-T R> ALLOT-T NO-PEEP-T ;
 
 : \ POSTPONE \ ; IMMEDIATE
 : ( POSTPONE ( ; IMMEDIATE \ Move duplicates of comment words to TRANSIENT
@@ -686,19 +690,13 @@ RESOLVE (POSTPONE)
 T' FORTH-WORDLIST >BODY-T PUBLISH-WORDLIST
 THERE   T' DP             >BODY-T !-T
 
-\ kernel.4's OPERAND-ALIGN assumes a call to these is the two-byte near
-\ form, which at a call scale of 0 reaches 16 KB. A kernel that grew
-\ past that would misalign every inline operand, silently.
-: NEAR? ( t-addr --- )
-  16384 < 0= ABORT" cross: kernel runtime words beyond near-call reach" ;
-T' (POSTPONE) NEAR?   T' (LEAVE) NEAR?   T' (+LOOP) NEAR?
 
 \ The folded band is numbered from the primitive count and grows up
 \ towards the fixed specialised band at 0x61 (97). Each primitive added
 \ moves it up one; past the headroom the two would share opcodes and the
 \ engine would decode one as the other, silently.
 : MAP-FITS? ( --- )
-  FOLD-BASE #FOLD + 97 > ABORT" cross: folded band reaches the specialised opcodes" ;
+  FOLD-BASE #FOLD + 2 + 97 > ABORT" cross: folded band reaches the specialised opcodes" ;
 MAP-FITS?
 
 SAVE-IMAGE kernel.img \ Save the newly constructed Forth system to disk.
