@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,802    kernel-shell.img     63,816
-    32-bit   kernel32.img   8,294    kernel32-shell.img   59,252
+    64-bit   kernel.img     8,802    kernel-shell.img     67,000
+    32-bit   kernel32.img   8,294    kernel32-shell.img   62,300
 
 **Seventy-seven primitives**: 35 direct, with one-byte opcodes, and 42
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1657,8 +1657,11 @@ before anything else, because every number here is relative to it.
    cache, filled with `access(2)` before the fork and dropped when `PATH`
    changes; the trial `execve`s are gone. `/usr/bin/true` 721 -> 661 µs
    (the rest of dash's lead there is `vfork`, item 9).
-6. **Non-whitespace `IFS`** - the last `tests/posix` failure - and
-   `set -e`, `trap`, `exec`, `type`, `hash`: the POSIX backlog.
+6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
+   is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
+   -x -f -n -o`, `$-` and `.`, also in 270. Still open: `trap`, and
+   `kill`, `local`, `umask`, `times`; `set` alone does not list the
+   variables yet.
 7. **A hashed variable table**; functions and builtins likewise.
 8. **Words encoded at parse time, and a one-pass expander**, `$(...)`
    parsed once and kept with the word (dash's `CTLESC`/`CTLVAR`/

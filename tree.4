@@ -907,6 +907,29 @@ DEFER EXEC-FINAL-CALL   ( node --- )
 
 : STOP? ( --- f )   RETURN-PENDING? @ LOOP-CONTROL-PENDING? @ OR ;
 
+\ set -e (Iteration 270). A failing pipeline ends the shell, except
+\ while ERR-IGNORE is up: in an if, while or until condition, in any
+\ but the last element of an && / || list, and under `!` (XCU 2.8.1,
+\ set -e). A compound command's own status does not count - its
+\ pipelines were checked as they ran - but a function call's does.
+VARIABLE ERR-IGNORE
+: ERREXIT-CHECK ( --- )
+  LAST-STATUS @ IF
+    OPT-ERREXIT @ ERR-IGNORE @ 0= AND IF LAST-STATUS @ SYS-EXIT THEN
+  THEN ;
+: EXEC-IGNORING ( node --- )   1 ERR-IGNORE +!  EXEC  -1 ERR-IGNORE +! ;
+
+\ set -u: an unset parameter fails the command, and ends a
+\ non-interactive shell with status 2 (dash).
+: EXPANSION-OK? ( --- f )
+  UNSET-FATAL? @ IF
+    0 UNSET-FATAL? !
+    INTERACTIVE? @ 0= IF 2 SYS-EXIT THEN
+    0 EXPANSION-FAILED? !  1 LAST-STATUS !  0 EXIT
+  THEN
+  EXPANSION-FAILED? @ IF 1 LAST-STATUS !  0 EXIT THEN
+  -1 ;
+
 \ A node that is one foreground simple command and nothing else: a
 \ process with only that left to do execs it instead of forking
 \ (EXEC-LAST? in shell.4; Iteration 269).
@@ -1021,7 +1044,8 @@ VARIABLE HDX#
   0 CMDSUB-RAN? !
   EXPAND-WORDS
   TOO-MANY? IF R> DROP EXIT THEN
-  EXPANSION-FAILED? @ IF R> DROP 1 LAST-STATUS ! EXIT THEN
+  EXPANSION-OK? 0= IF R> DROP EXIT THEN
+  PREFIX-COUNT ARGC @ = IF XTRACE-ARGV THEN    \ set -x: an assignment-only command
   TRY-ASSIGNMENT-CALL IF
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN EXIT
@@ -1065,10 +1089,15 @@ VARIABLE HDX#
   2 +LOOP DROP ;
 
 : EXEC-ANDOR ( node --- )
-  0 XF@ DUP 0 XV@ EXEC
+  0 XF@
+  DUP XV# 1 = IF 0 XV@ EXEC EXIT THEN
+  DUP 0 XV@ EXEC-IGNORING                    \ not the last: set -e ignored
   DUP XV# 1 ?DO
     STOP? IF LEAVE THEN
-    DUP I XV@ 1 =  LAST-STATUS @ 0=  = IF DUP I 1+ XV@ EXEC THEN
+    DUP I XV@ 1 =  LAST-STATUS @ 0=  = IF
+      DUP I 1+ XV@
+      I 2 + 2 PICK XV# < IF EXEC-IGNORING ELSE EXEC THEN
+    THEN
   2 +LOOP DROP ;
 
 VARIABLE PS-VEC
@@ -1103,8 +1132,18 @@ VARIABLE PS-WR
   LOOP ;
 
 : EXEC-PIPE ( node --- )
-  DUP 1 XF@ DUP XV# 1 = IF 0 XV@ EXEC ELSE RUN-STAGES THEN
-  0 XF@ IF LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS ! THEN ;
+  DUP 0 XF@ IF                               \ ! pipeline: set -e ignored
+    1 ERR-IGNORE +!
+    DUP 1 XF@ DUP XV# 1 = IF 0 XV@ EXEC ELSE RUN-STAGES THEN
+    -1 ERR-IGNORE +!
+    DROP LAST-STATUS @ 0= IF 1 ELSE 0 THEN LAST-STATUS !  EXIT
+  THEN
+  1 XF@ DUP XV# 1 = IF
+    0 XV@ DUP EXEC
+    X@ DUP T-SIMPLE = SWAP T-SUBSHELL = OR IF ERREXIT-CHECK THEN
+  ELSE
+    RUN-STAGES ERREXIT-CHECK
+  THEN ;
 
 \ ---- compound commands ----
 : EXEC-SUBSHELL ( node --- )
@@ -1119,7 +1158,7 @@ VARIABLE PS-WR
 : EXEC-IF ( node --- )
   DUP 1 XF@                                 ( node vec )
   DUP XV# 0 ?DO
-    DUP I XV@ EXEC
+    DUP I XV@ EXEC-IGNORING
     STOP? IF 2DROP UNLOOP EXIT THEN
     LAST-STATUS @ 0= IF I 1+ XV@ EXEC DROP UNLOOP EXIT THEN
   2 +LOOP DROP
@@ -1138,7 +1177,7 @@ VARIABLE PS-WR
   LOOP-DEPTH @ 1+ LOOP-DEPTH !
   0 >R                                      \ the loop's status
   BEGIN
-    OVER 1 XF@ EXEC
+    OVER 1 XF@ EXEC-IGNORING
     STOP? IF 0 ELSE LAST-STATUS @ 0= OVER XOR THEN   ( node until? run? )
   WHILE
     OVER 2 XF@ EXEC
@@ -1163,7 +1202,7 @@ VARIABLE PS-WR
     0 ARGC !  0 ARGV !
     DUP XV# 0 ?DO DUP I XV@ ADD-WORD LOOP DROP
     EXPAND-WORDS
-    EXPANSION-FAILED? @ IF DROP 1 LAST-STATUS ! EXIT THEN
+    EXPANSION-OK? 0= IF DROP EXIT THEN
   ELSE
     \ no `in`: the positional parameters
     0 ARGC !  0 ARGV !
@@ -1268,6 +1307,8 @@ CREATE NO-TEXT 0 C,
 : EXEC-IMPL ( node --- )
   ?DUP 0= IF EXIT THEN
   STOP? IF DROP EXIT THEN
+  \ set -n: a non-interactive shell reads commands and runs none
+  OPT-NOEXEC @ IF INTERACTIVE? @ 0= IF DROP EXIT THEN THEN
   DUP X@
   DUP T-SIMPLE = IF DROP EXEC-SIMPLE EXIT THEN
   DUP T-LIST = IF DROP EXEC-LIST EXIT THEN
@@ -1476,3 +1517,95 @@ VARIABLE DUMP-XT
   R> LAST-STATUS !
   NIP FREE DROP ;
 ' DO-TREE-DUMP S" tree-dump" BUILTIN
+
+\ ==================================================================
+\ `.` and `type` (Iteration 270)
+\ ==================================================================
+VARIABLE DS-AT
+VARIABLE DS-END
+: DOT-SEARCH ( name --- path | 0 )   \ a readable file along PATH, in PATHBUF
+  CC-CURRENT-PATH OVER + DS-END !  DS-AT !
+  BEGIN DS-AT @ DS-END @ < WHILE
+    DS-AT @
+    BEGIN DS-AT @ DS-END @ < IF DS-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 DS-AT +! REPEAT
+    DS-AT @ OVER -                            ( name dir len )
+    DUP IF
+      PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
+      PATHBUF 4 ACCESS 0= IF
+        PATHBUF OPEN-DIR ?DUP IF CLOSE-DIR ELSE DROP PATHBUF EXIT THEN
+      THEN
+    ELSE 2DROP THEN
+    DS-AT @ DS-END @ < IF 1 DS-AT +! THEN
+  REPEAT DROP 0 ;
+
+: DOT-FIND ( name --- path | 0 )
+  \ A name with a slash is itself; otherwise the first readable file
+  \ along PATH, and then the current directory (bash; dash stops at PATH).
+  DUP DUP CSTRLEN HAS-SLASH? IF EXIT THEN
+  DUP DOT-SEARCH ?DUP IF NIP EXIT THEN
+  DUP 4 ACCESS 0= IF EXIT THEN
+  DROP 0 ;
+
+: DO-DOT ( --- )
+  ARGC @ 2 < IF
+    S" shell: .: filename argument required" ERR-TYPE ERR-NL  2 LAST-STATUS ! EXIT
+  THEN
+  1 ARGV@ DOT-FIND ?DUP 0= IF
+    S" shell: .: " ERR-TYPE 1 ARGV@ ERR-CSTR S" : not found" ERR-TYPE ERR-NL
+    1 LAST-STATUS ! EXIT
+  THEN
+  READ-WHOLE-FILE                             ( addr u | 0 0 )
+  OVER 0= IF
+    2DROP S" shell: .: cannot read " ERR-TYPE 1 ARGV@ ERR-CSTR ERR-NL
+    1 LAST-STATUS ! EXIT
+  THEN
+  \ arguments after the file are its positional parameters while it runs
+  ARGC @ 2 > DUP >R IF
+    FUNC-DEPTH @ MAX-POS-PARAM-DEPTH < 0= IF
+      R> DROP DROP FREE DROP
+      S" shell: .: nested too deep" ERR-TYPE ERR-NL  1 LAST-STATUS ! EXIT
+    THEN
+    DROP-ARGV0
+    FUNC-DEPTH @ SAVE-POS-PARAMS  SET-POS-PARAMS-FROM-ARGV
+    FUNC-DEPTH @ 1+ FUNC-DEPTH !
+  THEN
+  1 DOT-DEPTH +!
+  0 LAST-STATUS !
+  OVER >R TREE-RUN-TEXT R> FREE DROP
+  -1 DOT-DEPTH +!
+  0 RETURN-PENDING? !
+  R> IF FUNC-DEPTH @ 1- FUNC-DEPTH !  FUNC-DEPTH @ RESTORE-POS-PARAMS THEN ;
+
+: KEYWORD? ( c-addr --- f )
+  >R
+  S" if" R@ STR0=  S" then" R@ STR0= OR  S" else" R@ STR0= OR
+  S" elif" R@ STR0= OR  S" fi" R@ STR0= OR  S" case" R@ STR0= OR
+  S" esac" R@ STR0= OR  S" for" R@ STR0= OR  S" while" R@ STR0= OR
+  S" until" R@ STR0= OR  S" do" R@ STR0= OR  S" done" R@ STR0= OR
+  S" in" R@ STR0= OR  S" {" R@ STR0= OR  S" }" R@ STR0= OR
+  S" !" R@ STR0= OR
+  R> DROP ;
+
+: TYPE-ONE ( c-addr --- found? )   \ dash's wording
+  DUP DUP CSTRLEN TYPE
+  DUP KEYWORD? IF DROP S"  is a shell keyword" TYPE CR -1 EXIT THEN
+  DUP FIND-ALIAS DUP 0< 0= IF
+    NIP S"  is an alias for " TYPE ALIAS-VALUE-SLOT DUP CSTRLEN TYPE CR -1 EXIT
+  THEN DROP
+  DUP FIND-FUNC -1 <> IF DROP S"  is a shell function" TYPE CR -1 EXIT THEN
+  DUP FIND-BUILTIN IF DROP S"  is a shell builtin" TYPE CR -1 EXIT THEN
+  DUP DUP CSTRLEN HAS-SLASH? IF
+    DUP 1 ACCESS 0= IF S"  is " TYPE DUP CSTRLEN TYPE CR -1 EXIT THEN
+    DROP S" : not found" TYPE CR 0 EXIT
+  THEN
+  LOCATE-COMMAND ?DUP IF S"  is " TYPE DUP CSTRLEN TYPE CR -1 EXIT THEN
+  S" : not found" TYPE CR 0 ;
+
+: DO-TYPE ( --- )
+  0 LAST-STATUS !
+  ARGC @ 1 ?DO
+    I ARGV@ TYPE-ONE 0= IF 127 LAST-STATUS ! THEN
+  LOOP ;
+
+' DO-DOT S" ." BUILTIN
+' DO-TYPE S" type" BUILTIN

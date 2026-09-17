@@ -1,0 +1,64 @@
+#!/bin/sh
+# tests/shell/run-options - set -e -u -x -f -n and -o, $-, `.`, exec,
+# type and hash (Iteration 270). Each line runs in a shell of its own,
+# since -e and -u end it. The expected output, options.expected, is
+# dash's where bash and dash agree; where they do not, this shell does
+# what bash does: an invalid `set` option, a missing `.` file and a
+# failed exec redirection report and go on (dash exits 2), and `.` passes
+# its arguments (dash 0.5.12 ignores them). `type` of a missing name is
+# dash's: on stdout, status 127.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+here=$(cd "$(dirname "$0")" && pwd)
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+cat > "$t/dotfile.sh" <<'DOT'
+echo "in dot: $# [$1]"
+dotvar=set-in-dot
+return 3
+echo not-reached
+DOT
+cd "$t" || exit 1
+run() { printf '%s => ' "$1"; "$SH" -c "$1" 2>/dev/null; echo "st=$?"; }
+{
+run 'set -e; false; echo no'
+run 'set -e; false || true; echo yes1'
+run 'set -e; if false; then :; fi; echo yes2'
+run 'set -e; while false; do :; done; echo yes3'
+run 'set -e; ! true; echo yes4'
+run 'set -e; false && true; echo yes5'
+run 'set -e; { false && true; }; echo yes6'
+run 'set -e; f() { false && true; }; f; echo no7'
+run 'set -e; (false); echo no8'
+run 'set -e; x=$(false); echo no9'
+run 'set -e; false | true; echo yes10'
+run 'set -e; true | false; echo no11'
+run 'set -e; set +e; false; echo yes12'
+run 'set -o errexit; false; echo no13'
+run 'set -u; echo $nosuch; echo no14'
+run 'set -u; echo ${nosuch}; echo no15'
+run 'set -u; echo ${nosuch-dflt}; echo yes16'
+run 'set -u; echo "$@" ok17'
+run 'set -u; x=1; echo $x ok18'
+run 'set -f; echo /tm*; set +f; echo /tm*'
+run 'set -n; echo no19'
+run 'set -- a b; set -e; echo "$# $1 $2"'
+run 'set a b c; echo $#; set --; echo $#'
+run 'set -e -u; echo ok20'
+run 'set -eu; echo ok21'
+run 'set -q; echo after'
+run 'set -eu; case $- in *e*u*|*u*e*) echo has-eu;; esac'
+run 'set -x; x=1; echo "$x" a  b 2>&1'
+run 'set -o | grep -c " off"; set -e; set -o | grep errexit; set +o | grep errexit'
+run '. ./dotfile.sh x y; echo "st=$? $dotvar $#"'
+run 'set -- p q; . ./dotfile.sh; echo "st=$? $# $1"'
+run '. ./nosuchfile; echo "after st=$?"'
+run 'exec 3>fd3.txt; echo via3 >&3; exec 3>&-; cat fd3.txt'
+run 'exec /bin/echo replaced; echo no'
+run 'exec nosuchcmd; echo no'
+run 'type if; type echo; f() { :; }; type f; alias ll="ls -l"; type ll; type sh'
+run 'type nosuch; echo $?'
+run 'hash -r; hash; hash sh; hash; hash nosuch; echo $?'
+} > "$t/out" 2>&1
+sed "s|$(command -v sh)|SH-PATH|" "$t/out" > "$t/out2"
+assert_output_equals "set, \$-, ., exec, type and hash" "$(cat "$here/options.expected")" "$(cat "$t/out2")"
+report

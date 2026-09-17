@@ -265,6 +265,7 @@ do not trust the absence of a line below.
 - **267** — pathname expansion; directory primitives
 - **268** — DASH-COMPARISON.md: how dash runs a script; tools/op-bench.py
 - **269** — echo/printf/true/false builtins; exec without fork; command location cache
+- **270** — non-whitespace IFS (tests/posix 46/46); set -e -u -x -f -n -o, $-, `.`, exec, type, hash
 
 ### Not tied to an iteration
 
@@ -16052,3 +16053,53 @@ New differential cases, all identical to bash: `builtins-269.sh`,
 two). tests/verify: mrsh 20/1 -> 21/0; parse verdicts 137 -> 140; shell
 assertions 595 -> 596; sizes (x86-64 90,392 -> 94,752, i386 77,216 ->
 81,292).
+
+## Iteration 270: the POSIX backlog - IFS, set options, `.`, exec, type, hash
+
+**Field splitting** (XCU 2.6.5). Every IFS character was treated as
+whitespace. Now whitespace ends a field that has something in it, and
+any other IFS character ends exactly one field, even an empty one -
+`a::b` with `IFS=:` is `a`, `""`, `b` - with adjacent whitespace part of
+the same delimiter, and a trailing one adding no field. `tests/posix`
+45/1 -> **46/0**, its last failure. Two bugs on the way: a field made by
+a split kept the "name quoted" flag of whatever ran before, which
+decides whether an empty last field is dropped, and `"$@"` lost a
+trailing empty parameter (`set -- a ""` gave one word) - a field split
+inside double quotes is quoted, so an empty one stays. `IFS` is now
+looked up once per expansion rather than once per character.
+`tests/diff/cases/ifs-270.sh` matches bash and dash.
+
+**`set` options.** `set` took every argument as a positional parameter,
+so `set -e` made `$1` "-e". Now `-e -u -x -f -n` and their `+` forms,
+combined (`-eu`), `-o`/`+o` by name, `set -o` and `set +o` to list, `--`
+and `-`; with only options the parameters stay. And `$-`.
+- **-e**: a failing pipeline ends the shell unless `ERR-IGNORE` is up -
+  in an if/while/until condition, any but the last element of an
+  and-or list, or under `!`. A compound command's own status is not
+  checked (its pipelines were), but a function call's and a subshell's
+  are: `{ false && true; }` goes on, `f() { false && true; }; f` does
+  not, as in bash and dash.
+- **-u**: an unset `$name`, `${name}`, `${#name}` or `$1` is reported
+  and fails the command; a non-interactive shell exits 2 (dash).
+- **-x**: each command after expansion, and assignment-only commands,
+  as `+ words` on stderr (dash's form). **-f**: no pathname expansion.
+  **-n**: a non-interactive shell runs nothing (checked in `EXEC-IMPL`,
+  so the rest of the `set -n` line is skipped too, as in dash).
+
+**`.`** runs a file as a nested source in the current shell, found by
+path, along `PATH` or in the current directory; arguments become its
+positional parameters while it runs (bash; dash 0.5.12 ignores them),
+and `return` ends it (`DOT-DEPTH`). **`exec`** replaces the shell with a
+program, or without one keeps its redirections (`KEEP-REDIRECTS?`,
+`REDIRECT-FORGET`). **`type`** and **`hash`** follow dash's wording.
+
+Where bash and dash disagree this shell does what bash does: an invalid
+`set` option, a missing `.` file and a failed `exec` redirection report
+and go on (dash exits 2). `tests/shell/run-options` holds the battery
+with its expected output; its differences from dash are exactly those.
+
+Still open in this line: `trap`, `kill`, `local`, `umask`, `times`, and
+`set` alone listing the variables.
+
+tests/verify: posix 45/1 -> 46/0; parse verdicts 140 -> 141 (the new
+diff case); shell files 68 -> 69, assertions 596 -> 597; sizes.

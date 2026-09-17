@@ -1,0 +1,79 @@
+set -e; false; echo no => st=1
+set -e; false || true; echo yes1 => yes1
+st=0
+set -e; if false; then :; fi; echo yes2 => yes2
+st=0
+set -e; while false; do :; done; echo yes3 => yes3
+st=0
+set -e; ! true; echo yes4 => yes4
+st=0
+set -e; false && true; echo yes5 => yes5
+st=0
+set -e; { false && true; }; echo yes6 => yes6
+st=0
+set -e; f() { false && true; }; f; echo no7 => st=1
+set -e; (false); echo no8 => st=1
+set -e; x=$(false); echo no9 => st=1
+set -e; false | true; echo yes10 => yes10
+st=0
+set -e; true | false; echo no11 => st=1
+set -e; set +e; false; echo yes12 => yes12
+st=0
+set -o errexit; false; echo no13 => st=1
+set -u; echo $nosuch; echo no14 => st=2
+set -u; echo ${nosuch}; echo no15 => st=2
+set -u; echo ${nosuch-dflt}; echo yes16 => dflt
+yes16
+st=0
+set -u; echo "$@" ok17 => ok17
+st=0
+set -u; x=1; echo $x ok18 => 1 ok18
+st=0
+set -f; echo /tm*; set +f; echo /tm* => /tm*
+/tmp
+st=0
+set -n; echo no19 => st=0
+set -- a b; set -e; echo "$# $1 $2" => 2 a b
+st=0
+set a b c; echo $#; set --; echo $# => 3
+0
+st=0
+set -e -u; echo ok20 => ok20
+st=0
+set -eu; echo ok21 => ok21
+st=0
+set -q; echo after => after
+st=0
+set -eu; case $- in *e*u*|*u*e*) echo has-eu;; esac => has-eu
+st=0
+set -x; x=1; echo "$x" a  b 2>&1 => 1 a b
+st=0
+set -o | grep -c " off"; set -e; set -o | grep errexit; set +o | grep errexit => 5
+errexit         on
+set -o errexit
+st=0
+. ./dotfile.sh x y; echo "st=$? $dotvar $#" => in dot: 2 [x]
+st=3 set-in-dot 0
+st=0
+set -- p q; . ./dotfile.sh; echo "st=$? $# $1" => in dot: 2 [p]
+st=3 2 p
+st=0
+. ./nosuchfile; echo "after st=$?" => after st=1
+st=0
+exec 3>fd3.txt; echo via3 >&3; exec 3>&-; cat fd3.txt => via3
+st=0
+exec /bin/echo replaced; echo no => replaced
+st=0
+exec nosuchcmd; echo no => st=127
+type if; type echo; f() { :; }; type f; alias ll="ls -l"; type ll; type sh => if is a shell keyword
+echo is a shell builtin
+f is a shell function
+ll is an alias for ls -l
+sh is SH-PATH
+st=0
+type nosuch; echo $? => nosuch: not found
+127
+st=0
+hash -r; hash; hash sh; hash; hash nosuch; echo $? => SH-PATH
+1
+st=0

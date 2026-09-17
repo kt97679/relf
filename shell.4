@@ -1064,6 +1064,9 @@ VARIABLE IFSC-P
   IFS-NM LOOKUP-VAR ?DUP 0= IF 32 EXIT THEN
   C@ ?DUP 0= IF -1 THEN ;
 
+VARIABLE IFS-CACHE      \ IFS's value, or 0 when unset
+VARIABLE IFS-CACHED?
+
 : IFS-CHAR? ( c --- f )
   \ Is c a field separator? POSIX: the characters in $IFS, defaulting
   \ to space/tab/newline when IFS is unset. This used to be hardcoded
@@ -1073,8 +1076,13 @@ VARIABLE IFSC-P
   \ An IFS that is set but *empty* correctly disables splitting
   \ entirely, since no character is a member of an empty set.
   IFSC-C !
-  73 IFS-NM C!  70 IFS-NM 1+ C!  83 IFS-NM 2 + C!  0 IFS-NM 3 + C!
-  IFS-NM LOOKUP-VAR IFSC-P !
+  \ IFS is looked up once per expansion (Iteration 270; it was once per
+  \ character). EXPAND-WORDS clears IFS-CACHED?.
+  IFS-CACHED? @ 0= IF
+    73 IFS-NM C!  70 IFS-NM 1+ C!  83 IFS-NM 2 + C!  0 IFS-NM 3 + C!
+    IFS-NM LOOKUP-VAR IFS-CACHE !  -1 IFS-CACHED? !
+  THEN
+  IFS-CACHE @ IFSC-P !
   IFSC-P @ 0= IF
     IFSC-C @ 32 = IFSC-C @ 9 = OR IFSC-C @ 10 = OR EXIT
   THEN
@@ -1091,13 +1099,27 @@ VARIABLE IFSC-P
   \ The NUL goes through EMIT-TOK-CHAR, which may grow the buffer; it
   \ used to be stored directly, one past a full buffer.
   0 EMIT-TOK-CHAR
-  0 ARGV-QUOTED ARGC @ + C!
+  \ Inside double quotes this is "$@" separating parameters: the fields
+  \ are quoted, and an empty one - `set -- a ""` - is kept. The new
+  \ field's flags, which the end of the word reads to decide whether an
+  \ empty last field is dropped, were left from whatever ran before
+  \ (Iteration 270).
+  IN-DQ-CONTEXT? @ 0<> ARGV-QUOTED ARGC @ + C!
   ARGC @ ROOM-FOR-ARG? IF
     ARGC @ 1+ ARGC !
     TOK-OUT @ ARGV ARGC @ CELLS + !
+    IN-DQ-CONTEXT? @ 0<> DUP ARGV-QUOTED ARGC @ + C!  ARGV-NAME-QUOTED ARGC @ + C!
   ELSE
     -1 ARGS-OVERFLOW? !
   THEN ;
+
+\ ---- shell options (Iteration 270): set -e -u -x -f -n ----
+VARIABLE OPT-ERREXIT
+VARIABLE OPT-NOUNSET
+VARIABLE OPT-XTRACE
+VARIABLE OPT-NOGLOB
+VARIABLE OPT-NOEXEC
+VARIABLE UNSET-FATAL?      \ set -u met an unset parameter: the command fails
 
 \ ---- pathname expansion: where the unquoted pattern characters are ----
 \ An unquoted * ? or [ - written in the word, or produced by an unquoted
@@ -1110,7 +1132,7 @@ DEFER GLOB-FIELDS-CALL
 
 : GLOB-MARK ( c --- c )
   DUP 42 = OVER 63 = OR OVER 91 = OR IF
-    NO-GLOB? @ 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
+    NO-GLOB? @ OPT-NOGLOB @ OR 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
       GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
       TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
       1 GLOB-MARKS# +!
@@ -1125,8 +1147,18 @@ DEFER GLOB-FIELDS-CALL
     EXIT
   THEN
   DUP IFS-CHAR? IF
-    DROP
-    -1 IFS-SPLIT-PENDING? !
+    \ XCU 2.6.5: IFS whitespace ends a field that has something in it;
+    \ any other IFS character ends exactly one field, even an empty one
+    \ - `a::b` with IFS=: is a, "" and b - and whitespace next to it is
+    \ part of the same delimiter. A trailing delimiter leaves an empty
+    \ last field, which the end of the word drops (Iteration 270; every
+    \ IFS character was treated as whitespace).
+    DUP 32 = OVER 9 = OR SWAP 10 = OR IF
+      -1 IFS-SPLIT-PENDING? !
+    ELSE
+      IFS-SPLIT-HERE
+      0 IFS-SPLIT-PENDING? !
+    THEN
   ELSE
     IFS-SPLIT-PENDING? @ IF
       0 IFS-SPLIT-PENDING? !
@@ -2070,6 +2102,18 @@ VARIABLE EBW-NAMELEN
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C! ;
 
+: EMIT-OPTION-FLAGS ( --- )   \ $-
+  OPT-ERREXIT @ IF 101 EMIT-TOK-CHAR THEN
+  OPT-NOGLOB @ IF 102 EMIT-TOK-CHAR THEN
+  OPT-NOEXEC @ IF 110 EMIT-TOK-CHAR THEN
+  OPT-NOUNSET @ IF 117 EMIT-TOK-CHAR THEN
+  OPT-XTRACE @ IF 120 EMIT-TOK-CHAR THEN ;
+
+: NOUNSET-CHECK ( c-addr u --- )   \ an unset parameter was expanded
+  OPT-NOUNSET @ 0= IF 2DROP EXIT THEN
+  S" shell: " ERR-TYPE ERR-TYPE S" : parameter not set" ERR-TYPE ERR-NL
+  -1 UNSET-FATAL? !  -1 EXPANSION-FAILED? ! ;
+
 : EMIT-LOOKED-UP-VAR ( value-addr-or-0 --- )
   \ Shared with the plain ${NAME}/$NAME paths below: emits a looked-up
   \ value if found, otherwise emits nothing (an unset variable
@@ -2092,7 +2136,9 @@ VARIABLE EBW-NAMELEN
     TOK-POS @ 1+ TOK-POS !
     READ-VARNAME
     TOK-POS @ TOK-END @ < IF TOK-POS @ 1+ TOK-POS ! THEN
-    VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP 0 ELSE CSTRLEN THEN
+    VARNAME-BUF LOOKUP-VAR DUP 0= IF
+      DROP VARNAME-BUF DUP CSTRLEN NOUNSET-CHECK 0
+    ELSE CSTRLEN THEN
     EMIT-DECIMAL
     EXIT
   THEN
@@ -2104,7 +2150,9 @@ VARIABLE EBW-NAMELEN
   THEN
   TOK-POS @ C@ 125 = IF               ( ${NAME}: plain, unmodified )
     TOK-POS @ 1+ TOK-POS !
-    VARNAME-BUF LOOKUP-VAR EMIT-LOOKED-UP-VAR
+    VARNAME-BUF LOOKUP-VAR
+    DUP 0= IF VARNAME-BUF DUP CSTRLEN NOUNSET-CHECK THEN
+    EMIT-LOOKED-UP-VAR
     EXIT
   THEN
   -1 PEW-COLON? !
@@ -2176,6 +2224,7 @@ VARIABLE EBW-NAMELEN
   THEN
   DROP ;                              ( unrecognized modifier: bail )
 
+
 : EXPAND-VAR ( --- )
   \ TOK-POS is at the '$' character.
   -1 TOK-WAS-QUOTED? !
@@ -2200,6 +2249,11 @@ VARIABLE EBW-NAMELEN
     SHELL-PID @ EMIT-DECIMAL
     EXIT
   THEN
+  DUP 45 = IF                     ( $- : the option letters )
+    DROP TOK-POS @ 1+ TOK-POS !
+    EMIT-OPTION-FLAGS
+    EXIT
+  THEN
   DUP 48 - DUP 0 > SWAP 10 < AND IF  ( $1-$9: positional parameters )
     48 -
     TOK-POS @ 1+ TOK-POS !
@@ -2207,7 +2261,7 @@ VARIABLE EBW-NAMELEN
     DUP POS-PARAM-COUNT @ < IF
       POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
     ELSE
-      DROP
+      DROP TOK-POS @ 1- 1 NOUNSET-CHECK
     THEN
     EXIT
   THEN
@@ -2257,7 +2311,9 @@ VARIABLE EBW-NAMELEN
     TOK-POS @ 1+ TOK-POS !
   REPEAT
   0 VARNAME-BUF VN-LEN @ + C!
-  VARNAME-BUF LOOKUP-VAR DUP 0= IF DROP ELSE
+  VARNAME-BUF LOOKUP-VAR DUP 0= IF
+    DROP VARNAME-BUF VN-LEN @ NOUNSET-CHECK
+  ELSE
     TYPE0-TO-TOK-SPLIT
   THEN ;
 
@@ -2506,6 +2562,7 @@ VARIABLE EW-I
   \ of becoming `a`.
   0 EXPANSION-FAILED? !
   0 GLOB-MARKS# !
+  0 IFS-CACHED? !
   ARGC @ EW-ARGC !
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
@@ -3477,14 +3534,17 @@ VARIABLE RW-NAME
     LAST-STATUS @ SYS-EXIT
   THEN ;
 
+VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
+
 : DO-RETURN ( --- )
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL LAST-STATUS !
   THEN
-  FUNC-DEPTH @ 0 > IF
+  \ from a function, or from a file run by `.` (Iteration 270)
+  FUNC-DEPTH @ DOT-DEPTH @ + 0 > IF
     -1 RETURN-PENDING? !
   ELSE
-    ." return: not in a function" CR
+    S" shell: return: not in a function" ERR-TYPE ERR-NL  1 LAST-STATUS !
   THEN ;
 
 : DO-BREAK ( --- )
@@ -3501,29 +3561,87 @@ VARIABLE RW-NAME
     ." continue: not in a loop" CR  1 LAST-STATUS !
   THEN ;
 
+: OPT-LETTER ( c --- addr | 0 )
+  DUP 101 = IF DROP OPT-ERREXIT EXIT THEN
+  DUP 117 = IF DROP OPT-NOUNSET EXIT THEN
+  DUP 120 = IF DROP OPT-XTRACE EXIT THEN
+  DUP 102 = IF DROP OPT-NOGLOB EXIT THEN
+  110 = IF OPT-NOEXEC EXIT THEN
+  0 ;
+: OPT-NAME ( c-addr --- addr | 0 )
+  >R
+  S" errexit" R@ STR0= IF R> DROP OPT-ERREXIT EXIT THEN
+  S" nounset" R@ STR0= IF R> DROP OPT-NOUNSET EXIT THEN
+  S" xtrace" R@ STR0= IF R> DROP OPT-XTRACE EXIT THEN
+  S" noglob" R@ STR0= IF R> DROP OPT-NOGLOB EXIT THEN
+  S" noexec" R@ STR0= IF R> DROP OPT-NOEXEC EXIT THEN
+  R> DROP 0 ;
+: .OPT ( c-addr u addr on? --- )   \ one line of set -o or set +o
+  IF
+    >R 2DUP TYPE 16 OVER - 1 MAX SPACES 2DROP
+    R> @ IF S" on" ELSE S" off" THEN TYPE CR
+  ELSE
+    @ IF S" set -o " ELSE S" set +o " THEN TYPE TYPE CR
+  THEN ;
+: LIST-OPTIONS ( minus? --- )   \ set -o, or set +o
+  DUP IF S" Current option settings" TYPE CR THEN >R
+  S" errexit" OPT-ERREXIT R@ .OPT
+  S" noexec" OPT-NOEXEC R@ .OPT
+  S" noglob" OPT-NOGLOB R@ .OPT
+  S" nounset" OPT-NOUNSET R@ .OPT
+  S" xtrace" OPT-XTRACE R@ .OPT
+  R> DROP ;
+
+: SET-BAD-OPTION ( c-addr --- )
+  S" shell: set: " ERR-TYPE ERR-CSTR S" : invalid option" ERR-TYPE ERR-NL
+  2 LAST-STATUS ! ;
+
+VARIABLE SET-I
+: SET-PARAMS-FROM ( i --- )   \ ARGV[i..] become the positional parameters
+  ARGC @ OVER - 0 ?DO                        ( i )
+    DUP I + ARGV@  ARGV I 1+ CELLS + !
+  LOOP
+  ARGC @ SWAP - 1+ ARGC !
+  0 ARGV ARGC @ CELLS + !
+  SET-POS-PARAMS-FROM-ARGV ;
+
 : DO-SET ( --- )
-  \ "set a b c" replaces whichever positional parameters are currently
-  \ active. Scope limit: option flags (-e, -x) are not handled, so
-  \ "set -e" would be treated as setting $1 to the literal "-e".
-  \ "set -- a b c" is the standard way to set the parameters safely:
-  \ the "--" marks the end of options so a value beginning with '-'
-  \ is not mistaken for one. It must not itself become $1.
-  ARGC @ 1 > IF
-    S" --" 1 ARGV@ STR0= IF
-      \ shifted in place; SHIFT-ARGV-DOWN itself is defined further
-      \ down the file. ARGC is at least 2 here, so the loop count is
-      \ at least 1 - this kernel's DO with start = limit would run the
-      \ whole unsigned range.
-      ARGC @ 1- 0 DO
-        I 1+ CELLS ARGV + @     I CELLS ARGV + !
-        I 1+ ARGV-QUOTED + C@   I ARGV-QUOTED + C!
-      LOOP
-      ARGC @ 1- ARGC !
-      0 ARGC @ CELLS ARGV + !
+  \ Options (Iteration 270): -e -u -x -f -n and their + forms, -o and +o
+  \ by name, set -o / set +o to list them. What follows the options, or
+  \ follows `--`, becomes the positional parameters; with only options,
+  \ they are left alone. It used to take every argument as a parameter,
+  \ so `set -e` set $1 to -e.
+  0 LAST-STATUS !
+  1 SET-I !
+  BEGIN SET-I @ ARGC @ < WHILE
+    SET-I @ ARGV@
+    DUP S" --" ROT STR0= IF DROP SET-I @ 1+ SET-PARAMS-FROM EXIT THEN
+    DUP S" -" ROT STR0= IF DROP 0 OPT-XTRACE ! SET-I @ 1+ SET-PARAMS-FROM EXIT THEN
+    DUP C@ DUP 45 = SWAP 43 = OR OVER 1+ C@ 0<> AND 0= IF
+      DROP SET-I @ SET-PARAMS-FROM EXIT
     THEN
-  THEN
-  SET-POS-PARAMS-FROM-ARGV
-  0 LAST-STATUS ! ;
+    DUP C@ 45 =                              ( arg on? )
+    OVER 1+ C@ 111 = 2 PICK 2 + C@ 0= AND IF   \ -o / +o
+      NIP
+      SET-I @ 1+ ARGC @ < IF
+        1 SET-I +!
+        SET-I @ ARGV@ OPT-NAME ?DUP IF ! ELSE
+          DROP SET-I @ ARGV@ SET-BAD-OPTION EXIT
+        THEN
+      ELSE
+        LIST-OPTIONS
+      THEN
+    ELSE
+      SWAP 1+
+      BEGIN DUP C@ WHILE
+        DUP C@ OPT-LETTER ?DUP IF 2 PICK SWAP ! ELSE
+          2DROP SET-I @ ARGV@ SET-BAD-OPTION EXIT
+        THEN
+        1+
+      REPEAT 2DROP
+    THEN
+    1 SET-I +!
+  REPEAT ;
 
 LINE-MAX BUFFER: FORTH-BUF
 VARIABLE FTH-LEN
@@ -4079,6 +4197,48 @@ VARIABLE PN-U
 ' DO-FALSE        S" false"    BUILTIN
 ' DO-ECHO         S" echo"     BUILTIN
 ' DO-PRINTF       S" printf"   BUILTIN
+
+VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-REDIRECT)
+
+\ ---- exec and hash (Iteration 270) ----
+: DROP-ARGV0 ( --- )   \ the command's words without its name
+  ARGC @ 1 ?DO
+    I ARGV@  ARGV I 1- CELLS + !
+    I ARGV-QUOTED + C@  ARGV-QUOTED I 1- + C!
+  LOOP
+  ARGC @ 1- ARGC !  0 ARGV ARGC @ CELLS + ! ;
+
+: DO-EXEC ( --- )
+  \ Without a command, the redirections stay (END-REDIRECT keeps them).
+  \ With one, it replaces the shell: found as any command is, executed
+  \ as a program even if a builtin has the name - as bash and dash do.
+  ARGC @ 2 < IF -1 KEEP-REDIRECTS? !  0 LAST-STATUS ! EXIT THEN
+  DROP-ARGV0
+  ARGV @ DUP CSTRLEN HAS-SLASH? IF 0 ELSE ARGV @ LOCATE-COMMAND THEN CMD-RESOLVED !
+  RUN-CHILD ;                                \ EXECVE flushes the output first
+
+: DO-HASH ( --- )
+  \ hash: the remembered paths; hash -r: forget them; hash NAME...:
+  \ look them up now. (dash's forms.)
+  0 LAST-STATUS !
+  ARGC @ 1 = IF
+    CC-CHECK
+    0 BEGIN DUP CC# @ < WHILE
+      DUP CC-TEXT + DUP CSTRLEN + 1+        ( off path )
+      DUP DUP CSTRLEN TYPE CR
+      DUP CSTRLEN + 1+ CC-TEXT - NIP
+    REPEAT DROP EXIT
+  THEN
+  1 ARGV@ S" -r" ROT STR0= IF 0 CC# ! EXIT THEN
+  ARGC @ 1 ?DO
+    I ARGV@ LOCATE-COMMAND 0= IF
+      S" shell: hash: " ERR-TYPE I ARGV@ ERR-CSTR S" : not found" ERR-TYPE ERR-NL
+      1 LAST-STATUS !
+    THEN
+  LOOP ;
+
+' DO-EXEC         S" exec"     BUILTIN
+' DO-HASH         S" hash"     BUILTIN
 ' DO-EXPORT       S" export"   BUILTIN
 ' DO-UNSET        S" unset"    BUILTIN
 ' DO-EXIT         S" exit"     BUILTIN
@@ -4136,8 +4296,19 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
   REDIR-N @ IF FLUSH-OUTPUT REDIRECT-SAVE APPLY-REDIRECTIONS
   ELSE 0 0 0 REDIR-FAILED? ! THEN ;
 
+: REDIRECT-FORGET ( fd0 .. fdn-1 n base --- )   \ keep them: close the copies
+  UNDO-BASE !
+  BEGIN DUP WHILE
+    1- SWAP DROP
+    DUP UNDO-BASE @ + CLOSE-FILE DROP
+  REPEAT DROP ;
+
 : END-REDIRECT ( undo --- )
-  OVER IF FLUSH-OUTPUT REDIRECT-RESTORE ELSE 2DROP THEN
+  OVER IF
+    FLUSH-OUTPUT
+    KEEP-REDIRECTS? @ IF REDIRECT-FORGET ELSE REDIRECT-RESTORE THEN
+  ELSE 2DROP THEN
+  0 KEEP-REDIRECTS? !
   \ A here-document writer (a body over 4 KB) ends once the pipe's read
   \ end is closed, which the restore just did.
   HD-WRITER @ ?DUP IF WAITPID 2DROP 0 HD-WRITER ! THEN ;
@@ -4402,10 +4573,19 @@ VARIABLE TA-E
 
 VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 
+: XTRACE-ARGV ( --- )   \ set -x: the command, expanded, on stderr
+  OPT-XTRACE @ 0= IF EXIT THEN
+  S" + " ERR-TYPE
+  ARGC @ 0 ?DO
+    I IF S"  " ERR-TYPE THEN
+    I ARGV@ ERR-CSTR
+  LOOP ERR-NL ;
+
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
   \ A simple command from the tree has no pipes (Iteration 265), and the
   \ tree says whether it has redirections at all (Iteration 266).
   NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
+  XTRACE-ARGV
   ARGC @ 0 > IF
     DISPATCH 0= IF RUN-EXTERNAL THEN
   THEN ;
