@@ -1866,16 +1866,22 @@ VARIABLE ANS-NEG
 VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 
-: RUN-CMDSUB-TEXT ( c-addr u --- )   \ run it in a child; its output here
-  \ Split out of EXPAND-CMDSUB (Iteration 276), so the encoded path -
-  \ which has each substitution's text from the lexer - runs it the same
-  \ way.
+VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
+DEFER RUN-CMDSUB-JOB-CALL
+
+: RUN-CMDSUB-TEXT ( c-addr u --- )   \ text the child parses and runs
   DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
   DUP CS-COPY-I !
   CMDSUB-LINE-BUF SWAP MOVE
   0 CMDSUB-LINE-BUF CS-COPY-I @ + C!
   CS-COPY-I @ CMDSUB-SPLIT-LINES
-  CS-NONBLANK? @ IF
+  0 CMDSUB-NODE !
+  RUN-CMDSUB-JOB-CALL ;
+
+: RUN-CMDSUB-JOB ( --- )   \ fork, let the child produce it, read it here
+  \ Split out of EXPAND-CMDSUB (276) and split again in 283: the child's
+  \ work - a parsed subtree, or text to parse - is the caller's business.
+  CS-NONBLANK? @ CMDSUB-NODE @ 0<> OR IF      \ text with something in it, or a subtree
     PIPE DROP CMDSUB-PIPE-WR ! CMDSUB-PIPE-RD !
     FORK DUP CMDSUB-PID !
     0 = IF
@@ -1921,6 +1927,8 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
       LOOP DROP
     THEN
   THEN ;
+
+' RUN-CMDSUB-JOB IS RUN-CMDSUB-JOB-CALL
 
 VARIABLE EAP-I
 VARIABLE EAP-AT

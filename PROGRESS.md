@@ -278,6 +278,7 @@ do not trust the absence of a line below.
 - **280** — read pForth (mykesforth is unreachable); the headerless-image idea, measured
 - **281** — the last three words that could not be encoded; Stage C's precondition met
 - **282** — Stage C: the encoded expander is the only one; the scanner deleted
+- **283** — command substitutions run from their parsed subtrees (-9% on a substitution loop)
 
 ### Not tied to an iteration
 
@@ -16575,3 +16576,32 @@ whose body is `[ $i -lt N ]` is not.
 now checks the same battery against bash.
 
 tests/verify: sizes; shell:dead-words stays 0.
+
+## Iteration 283: substitutions parsed once
+
+`$(...)` was parsed three times: by the lexer, to find the `)` (the tree
+thrown away); by the child, from the text; and again on every execution.
+`PARSE-SUBLIST` kept dropping the node it built and `SCAN-CMDSUB` wound
+`TREE-TOP` back over it. Now the subtree is kept, the word node carries
+it (field 5, beside the texts in field 4), and the child runs it with
+`EXEC-FINAL-CALL` - which also gives it 269's exec-without-fork when the
+substitution is a single simple command.
+
+`RUN-CMDSUB-TEXT` is split into the text copy and `RUN-CMDSUB-JOB`, the
+fork-and-read half both paths use; backquotes keep the text path, since
+their contents are scanned rather than parsed.
+
+**Measured**: a loop of 300 substitutions whose body is two commands,
+419 -> 381 ms (-9%). The benchmarks in `tests/bench-vm` have no
+substitutions and are unchanged.
+
+Three faults of mine while wiring it, all found by the suites: the
+subtree lookup took its arguments in the wrong order (every `$(...)`
+crashed), its cleanup dropped one item too few, and the shared job still
+gated on the flag the text path sets, so a subtree produced nothing.
+
+Left in Stage D: arithmetic is still evaluated from its text on every
+pass, and `$(...)` still stores that text as well as the subtree, which
+only the printer needs now.
+
+tests/verify: sizes only.

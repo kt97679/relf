@@ -274,12 +274,20 @@ VARIABLE ER-END
 \ inside another's text belong to it - as the source range of its text,
 \ which TOKEN-WORD copies into the tree.
 64 BUFFER: ENC-SUB-POS    \ (start, end) source positions, a pair each
+256 BUFFER: ENC-SUB-NODES   \ the parsed subtree of each substitution, or 0
+: ENC-SUB-NODE! ( node --- )   \ for the one ENC-SUB-BEGIN just recorded
+  ENC-MUTE @ 1 > IF DROP EXIT THEN           \ nested in another's text
+  ENC-SUBS @ 1+ CELLS ENSURE-BUFFER ENC-SUB-NODES
+  ENC-SUB-NODES ENC-SUBS @ 1- CELLS + ! ;
+
 : ENC-SUB-BEGIN ( --- )   \ before muting: at the start of the text
   ENC-MUTE @ IF EXIT THEN
   -1 ENC-COMPLEX? !
   ENC-CMDSUB ENC-CODE,  ENC-SUBS @ ENC-SUB-BASE @ - ENC-C,
   ENC-SUBS @ 1+ 2* CELLS ENSURE-BUFFER ENC-SUB-POS
   SRC-POS @ ENC-SUB-POS ENC-SUBS @ 2* CELLS + !
+  ENC-SUBS @ 1+ CELLS ENSURE-BUFFER ENC-SUB-NODES
+  0 ENC-SUB-NODES ENC-SUBS @ CELLS + !       \ a backquote has no subtree
   1 ENC-SUBS +! ;
 : ENC-SUB-END ( --- )     \ after unmuting: past the closing ) or `
   ENC-MUTE @ IF EXIT THEN
@@ -368,10 +376,13 @@ DEFER SCAN-DOLLAR
   \ this word's encoding so far is kept across the parse (Iteration 274).
   ENC# @ >R  ENC-SUBS @ >R  ENC-MUTE @ >R  ENC-BASE @ >R  ENC-SUB-BASE @ >R
   ENC-COMPLEX? @ >R
-  TK-START @ >R  TK-FLAGS @ >R  TREE-TOP @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
+  \ The tree it builds is kept now (Iteration 283): the child runs it
+  \ instead of parsing the text again. TREE-TOP is not wound back.
+  TK-START @ >R  TK-FLAGS @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
   0 TK-VALID? !  -1 NO-ALIAS? !
-  PARSE-SUBLIST
-  R> NO-ALIAS? !  R> VEC-TOP !  R> TREE-TOP !  R> TK-FLAGS !  R> TK-START !
+  PARSE-SUBLIST                              ( node )
+  ENC-SUB-NODE!
+  R> NO-ALIAS? !  R> VEC-TOP !  R> TK-FLAGS !  R> TK-START !
   R> ENC-COMPLEX? !
   R> ENC-SUB-BASE !  R> ENC-BASE !  R> ENC-MUTE !  R> ENC-SUBS !  R> ENC# !
   -1 ENC-MUTE +!
@@ -677,6 +688,7 @@ VARIABLE CST-DST
 VARIABLE TW-ENC-OFF
 VARIABLE TW-ENC-LEN
 VARIABLE TW-SUBS-VEC
+VARIABLE TW-SUB-NODES
 : TOKEN-WORD-ENC ( --- )   \ the encoding and each substitution's text
   ENC# @ ENC-BASE @ - TW-ENC-LEN !
   TW-ENC-LEN @ IF
@@ -692,6 +704,9 @@ VARIABLE TW-SUBS-VEC
     COPY-SRC-TEXT >VEC
   LOOP
   VEC> TW-SUBS-VEC !
+  VEC-MARK
+  ENC-SUBS @ ENC-SUB-BASE @ ?DO ENC-SUB-NODES I CELLS + @ >VEC LOOP
+  VEC> TW-SUB-NODES !
   ENC-BASE @ ENC# !  ENC-SUB-BASE @ ENC-SUBS ! ;
 
 : TOKEN-WORD ( --- node )
@@ -713,8 +728,9 @@ VARIABLE TW-SUBS-VEC
     THEN
   REPEAT
   TOKEN-WORD-ENC
-  T-WORD 5 NODE  TUCK 0 F!  TK-FLAGS @ OVER 1 F!
-  TW-ENC-OFF @ OVER 2 F!  TW-ENC-LEN @ OVER 3 F!  TW-SUBS-VEC @ OVER 4 F! ;
+  T-WORD 6 NODE  TUCK 0 F!  TK-FLAGS @ OVER 1 F!
+  TW-ENC-OFF @ OVER 2 F!  TW-ENC-LEN @ OVER 3 F!  TW-SUBS-VEC @ OVER 4 F!
+  TW-SUB-NODES @ OVER 5 F! ;
 
 \ ==================================================================
 \ The parser: XCU 2.10's grammar, by recursive descent
@@ -846,7 +862,7 @@ DEFER PARSE-COMMAND
   VEC> LIST-NODE ;
 
 : PARSE-SUBLIST-IMPL ( --- )   \ the contents of $(...), up to its )
-  -1 PARSE-COMPOUND-LIST DROP
+  -1 PARSE-COMPOUND-LIST                     ( node )
   OP-RPAREN S" expected ')' to end a command substitution" EXPECT-OP ;
 ' PARSE-SUBLIST-IMPL IS PARSE-SUBLIST
 
@@ -1330,6 +1346,7 @@ VARIABLE XE-P             \ where the walk is, in the encoded bytes
 VARIABLE XE-END           \ ... and where they end
 VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
 VARIABLE XE-SUBS          \ its command substitutions' texts
+VARIABLE XE-SUB-NODES     \ ... and their parsed subtrees, where there are any
 VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
 VARIABLE XE-IN-WORD?      \ inside ${x:-word}: even its literal text is split
 VARIABLE XE-PERCHAR?      \ this word holds $@ or $*, whose fields are its own:
@@ -1576,6 +1593,25 @@ VARIABLE XP-VAL
   XE-SUBS @ ?DUP 0= IF DROP EXIT THEN         ( n vec )
   SWAP                                        ( vec n )
   DUP 2 PICK XV# < IF
+    \ the subtree the lexer parsed, if this one has it (Iteration 283)
+    XE-SUB-NODES @ ?DUP IF
+      OVER XV@ ?DUP IF                       ( vec n node )
+        CMDSUB-NODE !  2DROP
+        XE-NOSPLIT? @ IN-DQ-CONTEXT? @ OR XE-PERCHAR? @ 0= AND IF
+          IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
+          RUN-CMDSUB-JOB-CALL  R> IN-DQ-CONTEXT? !
+        ELSE
+          XE-PERCHAR? @ IF
+            RUN-CMDSUB-JOB-CALL
+          ELSE
+            IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
+            XE-REGION-BEGIN  RUN-CMDSUB-JOB-CALL  XE-REGION-END
+            R> IN-DQ-CONTEXT? !
+          THEN
+        THEN
+        EXIT
+      THEN
+    THEN
     XV@ XSTR DUP CSTRLEN
     XE-NOSPLIT? @ IN-DQ-CONTEXT? @ OR IF     \ captured or quoted: not split
       IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
@@ -1724,6 +1760,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   OVER 2 XF@ XSTR                            ( node len addr )
   SWAP OVER + XE-END !  XE-P !               ( node )
   DUP 4 XF@ XE-SUBS !
+  DUP 5 XF@ XE-SUB-NODES !
   DUP 1 XF@ WF-AT-PARAM AND 0<> XE-PERCHAR? !
   1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
   0 XE-REG# !
@@ -2204,7 +2241,10 @@ VARIABLE SUBLIST-XT
   DUP >R SWAP DUP >R MOVE R> R>             ( u block )
   SWAP OVER >R TREE-RUN-TEXT R> FREE DROP ;
 
-: TREE-CMDSUB ( --- )   \ in the child: $(...)'s text
+: TREE-CMDSUB ( --- )   \ in the child: a parsed subtree, or text
+  CMDSUB-NODE @ ?DUP IF
+    EXEC-FINAL-CALL  LAST-STATUS @ SHELL-EXIT
+  THEN
   \ The line path's length counts a NUL after the text; up to it only.
   \ The child ends with this text, so its last command may exec: the text
   \ runs as the child's top-level source, not as a nested one.

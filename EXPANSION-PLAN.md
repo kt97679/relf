@@ -185,6 +185,14 @@ what Stage B measured - `str` -16.8%, `arith` -4.9%, `loop` +3.1%, `fn`
 `XE-TRY`'s entry and `XE-ITEM`'s dispatch - not the double bookkeeping,
 which is what I expected the deletion to remove.)*
 
+**Stage D — measure, then arithmetic.** *(Iteration 283 did the
+substitutions: the lexer's parse of a `$(...)` is kept with the word
+instead of being thrown away, and the child runs that subtree rather
+than parsing the text again. A loop of 300 two-command substitutions:
+419 -> 381 ms. Backquotes still carry text - they are not parsed while
+scanned - and so does `$(...)`, for the printer. Arithmetic is still
+evaluated from text on every pass.)*
+
 **Stage D — measure, then arithmetic.** Profile again. Compile each
 `$((...))` into a small tree at parse time (or Forth code, if the tree
 walk shows), and command-substitution children run their subtree.

@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,882    kernel-shell.img     76,920
-    32-bit   kernel32.img   8,370    kernel32-shell.img   75,628
+    64-bit   kernel.img     8,882    kernel-shell.img     77,384
+    32-bit   kernel32.img   8,370    kernel32-shell.img   71,452
 
 **Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
