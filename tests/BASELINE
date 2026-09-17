@@ -31,5 +31,5 @@ shell:8byte 1
 shell:assertions 595
 shell:dead-words 0
 shell:files 68
-size:i386 74140
-size:x86_64 87064
+size:i386 74596
+size:x86_64 87584

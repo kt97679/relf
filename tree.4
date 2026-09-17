@@ -41,6 +41,7 @@
 1 CONSTANT WF-QUOTED     \ some part is quoted or escaped
 2 CONSTANT WF-NAME-Q     \ the first character is a quote or backslash
 4 CONSTANT WF-EXPAND     \ contains $ or `
+8 CONSTANT WF-SPECIAL    \ contains ~ * ? or [ (Iteration 266)
 
 256 BUFFER: TREE-BUF
 VARIABLE TREE-TOP
@@ -290,6 +291,9 @@ DEFER SCAN-DOLLAR
     ELSE 36 = IF
       SCAN-DOLLAR 0
     ELSE
+      0 SRC-C DUP 126 = OVER 42 = OR OVER 63 = OR SWAP 91 = OR IF
+        WF-SPECIAL TK-FLAGS @ OR TK-FLAGS !
+      THEN
       1 SRC-SKIP 0
     THEN THEN THEN THEN THEN THEN
   UNTIL
@@ -633,12 +637,20 @@ VARIABLE JOIN#
   DUP 0= ASSIGN-TOKEN? AND IF I-ASSIGN ELSE 1+ I-WORD THEN
   >VEC TOKEN-WORD >VEC NEXT 0 ;
 
+: HAS-REDIR? ( items --- f )   \ any redirection among a simple command's items
+  0 SWAP DUP V# 0 ?DO
+    DUP I V@ I-REDIR = IF NIP -1 SWAP LEAVE THEN
+  2 +LOOP DROP ;
+
 : PARSE-SIMPLE ( first-word | 0 --- node )
   VEC-MARK SWAP                              ( base first )
   ?DUP IF I-WORD >VEC >VEC 1 ELSE 0 THEN     ( base words )
   BEGIN SIMPLE-ITEM UNTIL DROP               ( base )
   DUP VEC-TOP @ = IF S" expected a command" SYNTAX THEN
-  VEC> T-SIMPLE 1 NODE TUCK 0 F! ;
+  \ field 1: has redirections - decided here, so running the command
+  \ skips looking for them (Iteration 266)
+  VEC> DUP HAS-REDIR?                        ( vec f )
+  T-SIMPLE 2 NODE  TUCK 1 F!  TUCK 0 F! ;
 
 \ ---- compound commands ----
 : PARSE-GROUP ( --- node )
@@ -901,6 +913,7 @@ CREATE W-DLTD   60 C, 60 C, 45 C, 0 C,
 
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
+  DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0= ARGV-LITERAL ARGC @ + C!
   DUP WF-QUOTED AND 0= 0= ARGV-QUOTED ARGC @ + C!
   WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
   ARGV ARGC @ CELLS + !
@@ -989,7 +1002,8 @@ VARIABLE HDX#
   RUN-EXPANDED ;
 
 : EXEC-SIMPLE ( node --- )
-  DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS
+  DUP 1 XF@ DUP 0= NO-REDIRS? !
+  IF DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS THEN
   0 ARGC !  0 ARGV !
   0 XF@ DUP XV# 0 ?DO
     DUP I 1+ XV@  OVER I XV@ I-REDIR = IF ADD-REDIR ELSE ADD-WORD THEN

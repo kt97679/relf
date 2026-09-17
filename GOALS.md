@@ -150,8 +150,8 @@ and the rule every consumer must share.
 
 **Image sizes, the numbers to quote** (`tests/sizes` has the totals):
 
-    64-bit   kernel.img     8,754    kernel-shell.img     56,128
-    32-bit   kernel32.img   8,242    kernel32-shell.img   52,116
+    64-bit   kernel.img     8,754    kernel-shell.img     56,648
+    32-bit   kernel32.img   8,242    kernel32-shell.img   52,572
 
 **Seventy-three primitives**: 35 direct, with one-byte opcodes, and 38
 OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
@@ -1637,9 +1637,12 @@ before anything else, because every number here is relative to it.
    **Stages A-C done in Iterations 263-265**: `tree.4` parses and
    executes; the line-based shell is deleted (343 definitions, 3,168
    lines of `shell.4`); `tests/matrix` passes 420 of 420 and
-   `tests/posix` 44 of 46. **Stage D - profile again and decide on
-   compiling trees to Forth - is next**, alongside the POSIX gaps below
-   (pathname expansion, non-whitespace `IFS`, `set -e`, `trap`).
+   `tests/posix` 44 of 46. **Stage D (266) decided against compiling
+   trees to Forth for now**: the tree walk is 5-15% of the dispatches,
+   expansion 40-75% (COMMAND-TREE-PLAN.md has the table). Parse-time
+   decisions for the expander and dispatcher are the better next step,
+   and 266 took three; the POSIX gaps below (pathname expansion,
+   non-whitespace `IFS`, `set -e`, `trap`) are the other open line.
 3. **Redirection's undo list** (Ramey's design, in the bash-
    architecture section below). **Half done in Iteration 255**:
    builtins and functions. What remains is compound commands - `while

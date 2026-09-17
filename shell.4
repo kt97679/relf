@@ -861,6 +861,7 @@ VARIABLE EXP-OVERFLOW?   \ reported once per line
 \ need.
 VARIABLE TOK-WAS-QUOTED?
 1 ARGS-BUFFER: ARGV-QUOTED   ( one byte flag per ARGV entry )
+1 ARGS-BUFFER: ARGV-LITERAL   \ the word has nothing to expand (tree.4 knows; Iteration 266)
 1 ARGS-BUFFER: ARGV-NAME-QUOTED  \ true if THIS token's very
                                           \ first character came from
                                           \ inside a quote - used only
@@ -2438,8 +2439,23 @@ VARIABLE PW-ULEN   \ username length
 
 1 CELLS ARGS-BUFFER: EW-ARGV
 1 ARGS-BUFFER: EW-ARGQ
+1 ARGS-BUFFER: EW-LIT
 VARIABLE EW-ARGC
 VARIABLE EW-I
+
+: LITERAL-FITS? ( --- f )   \ the word at TOK-POS fits the output as it is
+  TOK-OUT @ TOK-END @ TOK-POS @ - 1+ + TOK-OUT-END @ <
+  ARGC @ ROOM-FOR-ARG? AND ;
+: COPY-LITERAL ( --- )
+  \ A word the parser saw no quote, expansion, tilde or pattern character
+  \ in comes out as it went in: copied, not scanned a character at a time
+  \ (Iteration 266 - scanning was 40% of a loop's dispatches).
+  TOK-OUT @ ARGV ARGC @ CELLS + !
+  0 ARGV-NAME-QUOTED ARGC @ + C!  0 ARGV-QUOTED ARGC @ + C!
+  TOK-END @ TOK-POS @ - 1+                  ( n, the NUL too )
+  TOK-POS @ TOK-OUT @ 2 PICK MOVE
+  TOK-OUT +!  ARGC @ 1+ ARGC !
+  TOK-END @ TOK-POS ! ;
 
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
@@ -2465,6 +2481,7 @@ VARIABLE EW-I
   BEGIN EW-I @ EW-ARGC @ < WHILE
     ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
     ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
+    ARGV-LITERAL EW-I @ + C@       EW-LIT EW-I @ + C!
     EW-I @ 1+ EW-I !
   REPEAT
   \ Write into whichever of the two buffers the current words are NOT
@@ -2487,6 +2504,9 @@ VARIABLE EW-I
   BEGIN EW-I @ EW-ARGC @ < WHILE
     EW-ARGV EW-I @ CELLS + @ TOK-POS !
     TOK-POS @ DUP CSTRLEN + TOK-END !
+    EW-LIT EW-I @ + C@ IF LITERAL-FITS? ELSE 0 THEN IF
+      COPY-LITERAL
+    ELSE
     BEGIN
     0 TOK-WAS-QUOTED? !
     0 EMPTY-AT-WORD? !
@@ -2525,6 +2545,7 @@ VARIABLE EW-I
     REPEAT
     TOK-POS @ TOK-END @ < 0=
     UNTIL
+    THEN
     EW-I @ 1+ EW-I !
   REPEAT
   0 ARGV ARGC @ CELLS + ! ;
@@ -3152,9 +3173,13 @@ VARIABLE FB-E
   BUILTIN-LIST @ FB-E !
   BEGIN FB-E @ WHILE
     FB-E @ START @ +
-    DUP 3 CELLS +  OVER 2 CELLS + @   ( entry name-addr name-len )
-    FB-NAME @ STR0= IF
-      CELL+ @ START @ + EXIT
+    \ The first characters first: most entries differ there, and a full
+    \ compare measures the name each time (Iteration 266).
+    DUP 3 CELLS + C@ FB-NAME @ C@ = IF
+      DUP 3 CELLS +  OVER 2 CELLS + @   ( entry name-addr name-len )
+      FB-NAME @ STR0= IF
+        CELL+ @ START @ + EXIT
+      THEN
     THEN
     @ FB-E !
   REPEAT
@@ -4003,9 +4028,12 @@ VARIABLE TA-E
   REPEAT
   TA-REC @ FREE DROP ;
 
+VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
+
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
-  \ A simple command from the tree has no pipes (Iteration 265).
-  PARSE-REDIRECTIONS
+  \ A simple command from the tree has no pipes (Iteration 265), and the
+  \ tree says whether it has redirections at all (Iteration 266).
+  NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
   ARGC @ 0 > IF
     DISPATCH 0= IF RUN-EXTERNAL THEN
   THEN ;

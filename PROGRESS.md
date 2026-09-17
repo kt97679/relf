@@ -261,6 +261,7 @@ do not trust the absence of a line below.
 - **263** — command tree Stage A: tree.4, the lexer and parser; CATCH and THROW
 - **264** — command tree Stage B: the executor beside the old path (RELF_TREE=1)
 - **265** — command tree Stage C: the tree path is the shell; the line-based shell deleted
+- **266** — command tree Stage D: measured; parse-time decisions instead of a tree compiler
 
 ### Not tied to an iteration
 
@@ -15840,3 +15841,43 @@ tests/verify: matrix 262/158 -> 420/0, posix 36/10 -> 44/2, shell
 assertions 590 -> 595, `shell:dead-words` 0, `tree:*` removed; shell
 images 79,680 -> 56,128 (64-bit) and 73,824 -> 52,116 (32-bit); sizes
 (engine and image) x86-64 110,616 -> 87,064, i386 95,848 -> 74,140.
+
+## Iteration 266: Stage D - measure, then decide
+
+The profiling engine (Iteration 260's, rebuilt from the current `cv8.c`)
+counted the tree path's dispatches and a script grouped them by the file
+and kind of word they fall in. The loop benchmark took 9,737 dispatches
+per iteration - half of 260's 19,000 - and the tree walk, the executor
+in `tree.4`, was 15% of them (fn 14%, arith 12%, str 5%); expansion was
+40-76%. COMMAND-TREE-PLAN.md has the table and the decision: compiling
+trees to threaded code would buy at most that 5-15%, so not now.
+
+What the tree allows instead is deciding at parse time what running a
+command will need:
+
+- **Literal words skip the expander.** The lexer now flags `~ * ? [`
+  (`WF-SPECIAL`) beside quotes and `$`/backquote; a word with none of
+  them is marked in the new `ARGV-LITERAL` by `ARGV-ADD`, and
+  `EXPAND-WORDS` copies it (`COPY-LITERAL`) instead of scanning it a
+  character at a time. Every caller of `EXPAND-WORDS` is in tree.4 and
+  fills ARGV through `ARGV-ADD`, which is what makes the flag safe.
+  9,737 -> 9,132.
+- **Commands without redirections skip the redirection scan** and the
+  here-document pass. A simple command node has a second field, set by
+  the parser (`HAS-REDIR?`); `EXEC-SIMPLE` sets `NO-REDIRS?`, and
+  `RUN-EXPANDED` skips `PARSE-REDIRECTIONS`, whose compaction is the
+  identity then. 9,132 -> 7,944.
+- **`FIND-BUILTIN` compares first characters first**, before measuring
+  and comparing the whole name.
+
+CPU against 265, 7 rounds: loop 0.88 [0.87-0.90], fn 0.90, str 0.97,
+arith 0.95, start 1.00. The loop benchmark is now about 63 ms, from 171
+at Iteration 259 - 2.7 times faster, and still some twenty times dash.
+
+Recorded as next, in the plan: the expander's own bookkeeping
+(`EXPAND-WORDS` is still 7.5% on its own), variable lookup, builtin
+lookup resolved per node, and `I`/`(LOOP)`/`(+LOOP)` - colon definitions,
+8% of the loop's dispatches - as engine opcodes.
+
+tests/verify: sizes only (x86-64 87,064 -> 87,584, i386 74,140 ->
+74,596).

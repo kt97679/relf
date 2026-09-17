@@ -315,6 +315,35 @@ parser entries should be gone.
 on step 3 (compiling trees to Forth), with the tree walker's share of the
 dispatches as the number to argue from.
 
+**Stage D result (Iteration 266): do not compile trees to Forth, now.**
+Dispatches per iteration of the loop benchmark were about 50,000 before
+Iteration 260, 19,000 after it, and 9,737 on the tree path. Grouped by
+where they are spent (tree path, before 266's changes):
+
+| | loop | fn | str | arith |
+|---|---|---|---|---|
+| expansion (shell.4) | 40% | 40% | 76% | 49% |
+| kernel and libraries | 21% | 20% | 9% | 19% |
+| variables, assignment, builtins | 16% | 17% | 9% | 16% |
+| **tree walk (tree.4 executor)** | **15%** | **14%** | **5%** | **12%** |
+| dispatch and redirections | 8% | 9% | 1% | 4% |
+| parser | 0.1% | 0.3% | 0.4% | 0.2% |
+
+Compiling a tree to threaded code could remove at most the tree walk's
+5-15%, less what the compiled code itself costs - a compiler for a
+tenth. What the tree does make possible is the same idea applied where
+the time is: deciding at parse time what running a command needs.
+Iteration 266 did three such things - literal words skip the expander,
+commands without redirections skip the redirection scan and the
+here-document pass, builtin lookup compares first characters first -
+for 7,944 dispatches per loop iteration and 0.88-0.97 of 265's CPU time.
+The next ones are the same kind: the expander's own bookkeeping
+(`EXPAND-WORDS` alone is 7.5%), variable lookup, a builtin lookup
+resolved per command node, and the Forth loop words `I`, `(LOOP)` and
+`(+LOOP)` - colon definitions, 8% of the loop's dispatches - as engine
+opcodes. Compiling trees stays on the table if the tree walk's share
+grows once those are done.
+
 ## Risks, and what to watch
 
 - **Two answers to "where does a word end."** Stage A adds the new
