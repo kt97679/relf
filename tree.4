@@ -249,27 +249,6 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
 : ENC-LIT, ( c --- )      \ a literal byte of the word's text
   ENC-MUTE @ IF DROP EXIT THEN
   DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT ;
-VARIABLE ER-I
-VARIABLE ER-END
-: ENC-RAW ( from to --- )
-  \ The source text as it stands, line continuations dropped. Only the
-  \ outermost raw region copies: the ones nested in it are muted, and it
-  \ copies their text along with its own.
-  ENC-MUTE @ IF 2DROP EXIT THEN
-  ER-END !  ER-I !
-  BEGIN ER-I @ ER-END @ < WHILE
-    ER-I @ SRC-ADDR @ + C@
-    DUP 92 = ER-I @ 1+ ER-END @ < AND IF
-      ER-I @ 1+ SRC-ADDR @ + C@ 10 = IF
-        DROP 2 ER-I +!                     \ a continuation: neither byte
-      ELSE
-        DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT  1 ER-I +!
-      THEN
-    ELSE
-      DUP ENC-CTL = IF ENC-CTL ENC-PUT THEN ENC-PUT  1 ER-I +!
-    THEN
-  REPEAT ;
-
 \ Each command substitution in a word is recorded once - the ones nested
 \ inside another's text belong to it - as the source range of its text,
 \ which TOKEN-WORD copies into the tree.
@@ -348,21 +327,23 @@ DEFER SCAN-DOLLAR
 : SCAN-ARITH ( --- )      \ at $((: to past the matching ))
   3 SRC-SKIP
   ENC-ARITH ENC-CODE,  -1 ENC-COMPLEX? !
-  SRC-POS @ >R  1 ENC-MUTE +!
+  \ The expression is encoded like a word (Iteration 286): POSIX expands
+  \ parameters and command substitutions in it before it is evaluated,
+  \ and it used to reach the evaluator as written.
   2
   BEGIN
     0 SRC-C
     DUP -1 = IF DROP S" unterminated arithmetic expansion" SYNTAX THEN
-    DUP 40 = IF DROP 1+ 1 SRC-SKIP ELSE
-    DUP 41 = IF DROP 1- 1 SRC-SKIP ELSE
+    DUP 40 = IF DROP 1+ 40 ENC-LIT, 1 SRC-SKIP ELSE
+    DUP 41 = IF DROP 1- DUP 1 > IF 41 ENC-LIT, THEN 1 SRC-SKIP ELSE
     DUP 36 = IF DROP SCAN-DOLLAR ELSE
     DUP 39 = IF DROP SCAN-SQUOTE ELSE
-    34 = IF SCAN-DQUOTE ELSE 1 SRC-SKIP
-    THEN THEN THEN THEN THEN
+    DUP 34 = IF DROP SCAN-DQUOTE ELSE
+    96 = IF SCAN-BACKQUOTE ELSE
+      0 SRC-C ENC-LIT, 1 SRC-SKIP
+    THEN THEN THEN THEN THEN THEN
     DUP 0=
   UNTIL DROP
-  -1 ENC-MUTE +!
-  R> SRC-POS @ 2 - ENC-RAW              \ without the closing ))
   ENC-END ENC-CODE, ;
 
 : SCAN-CMDSUB ( --- )     \ at $(: parse the contents, to past the )
@@ -1583,12 +1564,9 @@ VARIABLE XP-VAL
   THEN
   XE-PARAM-OP ;
 
-: XE-ARITH ( --- )   \ the expression's text, up to ENC-END
-  XE-P @                            ( addr )
-  BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
-  XE-P @ OVER -                     ( addr u )
-  AE-EVAL EMIT-DECIMAL
-  XE-P @ XE-END @ < IF 2 XE-P +! THEN ;
+: XE-ARITH ( --- )   \ the expression, expanded, then evaluated
+  0 XE-WORD-ASIDE-SAFE              \ into XW-BUF: not split, not globbed
+  XW-BUF XW-LEN @ AE-EVAL EMIT-DECIMAL ;
 
 : XE-CMDSUB ( --- )   \ substitution number XE-C of this word
   XE-C                                       ( n )

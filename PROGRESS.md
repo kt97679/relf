@@ -281,6 +281,7 @@ do not trust the absence of a line below.
 - **283** — command substitutions run from their parsed subtrees (-9% on a substitution loop)
 - **284** — measured: compiling arithmetic is not worth it; a second assignment word is split
 - **285** — fixed: every assignment in a prefix keeps its value whole
+- **286** — expansions inside $(( )) are performed; ~, octal and hex constants
 
 ### Not tied to an iteration
 
@@ -16672,3 +16673,35 @@ command substitutions and tildes in assignments, and the arguments that
 must still split - matches bash; the previous build fails it.
 
 tests/verify: diff cases 37 -> 38; sizes.
+
+## Iteration 286: arithmetic expands before it evaluates
+
+POSIX expands parameters and command substitutions in an arithmetic
+expression before evaluating it (XCU 2.6.4). The expression's text went
+to the evaluator as written, so `$((1 + ${#v}))` was 1, `$((1 + $(echo
+2)))` was 1, and `$(($v))` read rubbish. The scanning expander did the
+same, so this was not a regression - it had simply never been tested.
+
+The encoding makes the fix small: `SCAN-ARITH` encodes the expression as
+it encodes a word - `$x`, `${#v}`, `$(...)`, backquotes and quotes all
+become codes, only the parentheses it counts stay literal - and
+`XE-ARITH` expands that into a buffer with `XE-WORD-ASIDE-SAFE` (no
+splitting, no globbing) before calling `AE-EVAL`.
+
+**Two more gaps the new case found**, both in the evaluator:
+- `~` (bitwise not) was not implemented: `$(( ~0 ))` gave 0.
+- Only decimal constants were read, so `$(( 010 + 0x10 ))` came to 10
+  rather than 24. `AE-PARSE-NUMBER` now reads C's forms, as POSIX asks.
+
+**Why the suites missed all three.** Every arithmetic case in
+`tests/posix`, `tests/matrix`, `tests/diff` and `tests/bench-vm` used
+bare names and decimal literals - `$((i+1))`, `$((a*b))` - which work.
+Nothing wrote `${#v}` or `$(cmd)` inside `$(( ))`, and nothing used a
+constant that is not decimal. `tests/diff/cases/arith-expansions-286.sh`
+now covers the expansions, nested parentheses, every operator including
+`~` and the shifts, the constant forms, and arithmetic in an assignment
+and inside quotes; it matches dash, and dash matches bash on all of it.
+
+`ENC-RAW`, which copied the expression's text, is gone with it.
+
+tests/verify: diff cases 38 -> 39; parse verdicts 143 -> 145; sizes.

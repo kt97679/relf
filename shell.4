@@ -1482,15 +1482,32 @@ VARIABLE AE-END
 : AE-DIGIT? ( c --- f )
   DUP 48 < 0= SWAP 58 < AND ;
 
+: AE-HEX-DIGIT ( c --- n | -1 )
+  DUP 48 - 10 U< IF 48 - EXIT THEN
+  32 OR DUP 97 - 6 U< IF 87 - EXIT THEN
+  DROP -1 ;
+
+VARIABLE AE-BASE
 : AE-PARSE-NUMBER ( --- n )
+  \ C's constants, as POSIX asks (XCU 2.6.4): 0x.. hexadecimal, a leading
+  \ 0 octal, otherwise decimal. Only decimal was read until Iteration
+  \ 286, so `$(( 010 + 0x10 ))` came to 10 rather than 24.
+  10 AE-BASE !
+  AE-POS @ C@ 48 = IF
+    AE-POS @ 1+ AE-END @ < IF AE-POS @ 1+ C@ 32 OR 120 = ELSE 0 THEN IF
+      16 AE-BASE !  AE-POS @ 2 + AE-POS !
+    ELSE
+      8 AE-BASE !   AE-POS @ 1+ AE-POS !
+    THEN
+  THEN
   0
   BEGIN
-    AE-POS @ AE-END @ < IF AE-POS @ C@ AE-DIGIT? ELSE 0 THEN
+    AE-POS @ AE-END @ < IF AE-POS @ C@ AE-HEX-DIGIT ELSE -1 THEN
+    DUP 0< 0= OVER AE-BASE @ < AND
   WHILE
-    10 * AE-POS @ C@ 48 - +
+    SWAP AE-BASE @ * +
     AE-POS @ 1+ AE-POS !
-  REPEAT ;
-
+  REPEAT DROP ;
 64 BUFFER: AE-VARNAME-BUF
 VARIABLE AE-VN-LEN
 
@@ -1561,6 +1578,11 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
   AE-POS @ C@ 33 = IF                    ( unary '!' logical not )
     AE-POS @ 1+ AE-POS !
     RECURSE AE-TRUTHY? 0= AE-BOOL-TO-INT
+    EXIT
+  THEN
+  AE-POS @ C@ 126 = IF                   ( unary '~' bitwise not )
+    AE-POS @ 1+ AE-POS !
+    RECURSE INVERT
     EXIT
   THEN
   AE-POS @ C@ AE-DIGIT? IF
