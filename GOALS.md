@@ -254,8 +254,14 @@ writes, forks, execs or exits.
   branched off it; by 217 `master` was 72 commits behind and nothing
   was merging back. `cv8` fast-forwarded into `master` cleanly - there
   was never any divergence, only neglect - and both `cv8` and
-  `token16` are gone. If a branch appears again, merge it back or
-  delete it; do not let it run for seventy iterations.
+  `token16` were to go. They did not, upstream: the Iteration 243
+  handover still carried `origin/cv8` (as the default branch) and
+  `origin/token16`. Checked at Iteration 258: both, and the old
+  `origin/master`, are ancestors of `master`, so `master`
+  fast-forwards over them and both branches can be deleted with
+  nothing lost. The bundles carry `master` only. If a branch appears
+  again, merge it back or delete it; do not let it run for seventy
+  iterations.
 
   Some of the work also lives in a SEPARATE repository,
   `kt97679/forth-vm-evolution`, which is the article's working code.
