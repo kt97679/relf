@@ -1657,6 +1657,22 @@ before anything else, because every number here is relative to it.
    cache, filled with `access(2)` before the fork and dropped when `PATH`
    changes; the trial `execve`s are gone. `/usr/bin/true` 721 -> 661 µs
    (the rest of dash's lead there is `vfork`, item 9).
+5a. **Expansions inside `$(( ))` are not performed** (found while
+   benchmarking, Iteration 285; it predates the expansion rewrite - the
+   scanning path did the same). POSIX expands parameters and command
+   substitutions in the expression before evaluating it. Here the
+   expression's text goes to the evaluator as written, so `${#v}` and
+   `$(cmd)` inside arithmetic are ignored and `$((\$v))` reads
+   rubbish:
+
+       v=abcd; echo $((1 + ${#v}))      # dash 5, here 1
+       echo $((1 + $(echo 2)))          # dash 3, here 1
+       v=abcd; echo $(($v))             # dash 0, here 54562
+
+   The encoding makes the fix natural: let the lexer encode the
+   expression as it encodes a word, expand it at evaluation time into a
+   buffer, and hand that to the evaluator.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,
