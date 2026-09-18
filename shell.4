@@ -3949,8 +3949,13 @@ CREATE SIG-NAMES-TEXT
 64 BUFFER: SIG-UPPER
 : PARSE-SIG ( c-addr --- n | -1 )   \ a number, or a name with or without SIG
   DUP C@ 48 - 10 U< IF
-    DUP CSTRLEN 2DUP ALL-DECIMAL? IF PARSE-DECIMAL NIP DUP 64 > IF DROP -1 THEN EXIT THEN
-    2DROP DROP -1 EXIT
+    \ PARSE-DECIMAL takes both of them: the NIP here ate one of the
+    \ CALLER's stack items, and the 2DROP DROP below one too many.
+    \ `trap 'x' 2` wrecked the shell's own stack, and the damage showed
+    \ up as a return stack overflow in whatever ran next; by name it
+    \ never went down this path (Iteration 291).
+    DUP CSTRLEN 2DUP ALL-DECIMAL? IF PARSE-DECIMAL DUP 64 > IF DROP -1 THEN EXIT THEN
+    2DROP -1 EXIT
   THEN
   DUP CSTRLEN 60 MIN                        ( a u )
   0 ?DO DUP I + C@ DUP 97 - 26 U< IF 32 - THEN SIG-UPPER I + C! LOOP
@@ -3989,12 +3994,10 @@ VARIABLE TR-ACTION
     -1 OVER TRAP!
     DUP IF 1 SIGNAL-ACTION DROP ELSE DROP THEN EXIT
   THEN
-  DUP IF
-    DUP 2 SIGNAL-ACTION IF
-      S" shell: trap: " ERR-TYPE SIG-NAME ERR-TYPE S" : cannot be trapped" ERR-TYPE ERR-NL
-      1 LAST-STATUS ! EXIT
-    THEN
-  THEN
+  \ KILL and STOP cannot be caught; bash and dash both take the trap
+  \ quietly and let it never fire, so the failure is not reported
+  \ (Iteration 291).
+  DUP IF DUP 2 SIGNAL-ACTION DROP THEN
   TR-ACTION @ DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP >R SWAP MOVE
   R> SWAP TRAP! ;
 

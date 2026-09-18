@@ -286,6 +286,7 @@ do not trust the absence of a line below.
 - **288** — read: IFS fields, backslashes, line continuation, end-of-file status
 - **289** — cd -, PWD/OLDPWD, alias listing, unalias -a; the probe finishes clean
 - **290** — probing job control and signals: trap with a numeric condition breaks the shell
+- **291** — the numeric signal bug: one stray NIP; signals get a differential case
 
 ### Not tied to an iteration
 
@@ -16833,3 +16834,36 @@ reading together with `DO-TRAP` and `DO-KILL`, which is the next
 iteration.
 
 No code changed. Recorded in GOALS.md with the reproduction.
+
+## Iteration 291: one stray NIP
+
+290's bug, found: `PARSE-SIG`'s numeric branch reads
+
+    DUP CSTRLEN 2DUP ALL-DECIMAL? IF PARSE-DECIMAL NIP ... THEN
+    2DROP DROP -1
+
+`PARSE-DECIMAL` takes both the address and the length, so the `NIP`
+took one of the CALLER's items, and the `2DROP DROP` in the other
+branch one too many. Every numeric condition therefore ate a cell of
+whatever the shell was holding, and the wreckage surfaced as a return
+stack overflow in the next command - which is why it looked like a
+fault in trap delivery rather than in a number parser. Setting a trap
+by NAME never went down that path, which is why everything else worked.
+
+The measurement that found it: `DEPTH` either side of `PARSE-SIG`
+showed the numeric path consuming its argument and pushing nothing,
+where a correct call leaves the stack one deeper. Reproducing that
+shape in a three-line word made the missing `NIP` obvious. My earlier
+guess - the early `EXIT`s - was wrong, as 290 recorded.
+
+**And one behaviour matched to both references**: `trap 'x' KILL` was
+reported as "cannot be trapped"; bash and dash both take it quietly and
+let it never fire, so the failure is no longer reported.
+
+`tests/diff/cases/signals-291.sh` - conditions by number and by name,
+`0` for EXIT, `''` to ignore, `-` to reset, a bad number and a bad name,
+`kill` by number, name and `-s`, `kill -0`, `kill -l`, a subshell's own
+EXIT trap - matches bash and dash exactly. Nothing in the suites had
+ever named a signal by number.
+
+tests/verify: diff cases 42 -> 43; sizes.
