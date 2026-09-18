@@ -77,3 +77,52 @@ defeats the branch predictor.
 So: a self-hosted shell in the same size class as dash, starting as
 fast, passing the same conformance suites, missing four features of
 substance, and an order of magnitude slower at in-process work.
+
+## Assessment (Iteration 316)
+
+A system-shaped script - option parsing, `${...}` work, a 200-iteration
+loop, a few externals - measured today:
+
+    dash 4.7 ms    bash 8.6 ms    this shell 28.2 ms
+    6.0x dash, 3.3x bash, 24 ms of absolute difference
+
+**Where it stands.** Feature coverage is level with dash apart from
+`fg`/`bg`. Correctness is level on everything both are tested against:
+52 differential cases against bash and dash, 420 matrix cases, the POSIX
+and mrsh suites, and 22 interactive cases on a pseudo-terminal, all
+passing. It is 122 KB against dash's 130 KB, starts in 1.23 ms against
+0.97, and has a line editor with history, which dash does not.
+
+**Is the speed a show stopper? It depends entirely on the duty.**
+
+- *Interactive use*: no. Everything a person waits for here is
+  microseconds against the tens of milliseconds a human notices. The
+  editor, history and prompts are indistinguishable from dash's.
+- *Scripts that mostly run programs* - build wrappers, init scripts,
+  `configure` - largely no. Starting a process is 1.0-1.2x dash here,
+  and that is where such scripts spend their time. The 6x above is on
+  the part that is not the fork.
+- *Scripts that do heavy work in the shell itself* - parsing files in
+  pure shell, long `while read` loops - yes. That is where 20-26x lives,
+  and no amount of tuning at this level will hide it.
+- */bin/sh for a distribution*: no, and it should not pretend
+  otherwise. dash exists because boot time and package scripts add up,
+  and a 6x multiplier on the shell-side half of that is the wrong
+  trade.
+
+**Why the gap will not close by tuning.** PERFORMANCE.md and
+RESEARCH-VM.md measured it: dispatch costs 3.36 ns against the engine's
+own 0.82 in a tight loop - indirect branches the predictor cannot
+follow - and the profile is flat. Half of a realistic script's
+dispatches are in general-purpose Forth words, expansion is 24%, the
+tree walk 8%. Careful work might find 2x. Native compilation is what
+closes 6x, and that is Phase 4, not an afternoon.
+
+**Where it is genuinely competitive.** Not on throughput. On being a
+shell you can open: `forth` drops into the system the shell is written
+in, live, and the whole implementation is 8,000 lines of readable source
+that rebuilds itself from its own image. For a small system where a
+self-contained 122 KB shell plus engine matters, or for anyone who wants
+to read and change a POSIX shell rather than use one, that is a real
+offer. As a faster dash it is not, and saying so is more useful than
+optimism.

@@ -311,6 +311,7 @@ do not trust the absence of a line below.
 - **313** — the ^C cases: a signal sent while the editor waits is not seen at all
 - **314** — ^C at the prompt works: the editor polls instead of blocking
 - **315** — ^C during a command; every interactive case now matches dash
+- **316** — an assessment: where this shell competes and where it does not
 
 ### Not tied to an iteration
 
@@ -17657,3 +17658,20 @@ Expansion, at 24%, is the only shell-shaped block big enough to repay
 more work per primitive.
 
 tests/verify: interactive 21 -> 22 passing, 1 -> 0 divergent; sizes.
+
+## Iteration 316: an assessment
+
+Measured a system-shaped script - option parsing, parameter expansion, a
+200-iteration loop, a few externals: dash 4.7 ms, bash 8.6 ms, this
+shell 28.2 ms. Six times dash, but 24 ms of absolute difference.
+
+The assessment is in VERSUS-DASH.md. In short: level with dash on
+features bar `fg`/`bg`, level on correctness against everything both are
+tested against, smaller than dash, and slower - by a factor that does
+not matter interactively, barely matters for script work dominated by
+running programs, and matters a great deal for heavy in-shell text
+processing. It should not be anyone's `/bin/sh` for a distribution, and
+it is a real offer for a small system or for anyone who wants a POSIX
+shell they can read, change and open with `forth` while it runs.
+
+No code changed.
