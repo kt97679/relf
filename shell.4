@@ -2160,6 +2160,14 @@ VARIABLE EW-I
   TOK-OUT +!  ARGC @ 1+ ARGC !
   TOK-END @ TOK-POS ! ;
 
+VARIABLE ARGV-NONLITERAL   \ how many of this command's words need expanding
+
+: ALL-LITERAL? ( --- f )   \ no word needs expanding, splitting or globbing
+  \ Counted as the words were added (tree.4's ARGV-ADD) rather than
+  \ scanned here: the scan cost a command with any expansion in it about
+  \ ten dispatches a word to learn nothing.
+  ARGV-NONLITERAL @ 0= ;
+
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
   \ rebuilds ARGV from the results.
@@ -2181,17 +2189,22 @@ VARIABLE EW-I
   0 EXPANSION-FAILED? !
   0 GLOB-MARKS# !
   0 IFS-CACHED? !
+  \ Nothing to expand: every word is literal text the lexer already put
+  \ in the tree, and ARGV points at it with its flags set. The pass
+  \ below would copy all of it into the output buffer to arrive at the
+  \ same thing (Iteration 293).
+  ARGC @ 0 > IF ALL-LITERAL? IF EXIT THEN THEN
   ARGC @ EW-ARGC !
-  0 EW-I !
-  BEGIN EW-I @ EW-ARGC @ < WHILE
-    ARGV EW-I @ CELLS + @    EW-ARGV EW-I @ CELLS + !
-    ARGV-NODES EW-I @ CELLS + @  EW-NODES EW-I @ CELLS + !
-    ARGV-ASSIGN EW-I @ + C@      EW-ASSIGN EW-I @ + C!
-    ARGV-NAME-QUOTED EW-I @ + C@   EW-ARGQ EW-I @ + C!
-    ARGV-QUOTED EW-I @ + C@        EW-QUOT EW-I @ + C!
-    ARGV-LITERAL EW-I @ + C@       EW-LIT EW-I @ + C!
-    EW-I @ 1+ EW-I !
-  REPEAT
+  \ The word's own entries are saved before the second pass overwrites
+  \ ARGV with the fields it produces. Six MOVEs, not six copies per word:
+  \ cell-at-a-time was 840 dispatches of every loop iteration in
+  \ tests/bench-vm, 9% of it (PERFORMANCE.md, Iteration 293).
+  ARGV             EW-ARGV  EW-ARGC @ CELLS MOVE
+  ARGV-NODES       EW-NODES EW-ARGC @ CELLS MOVE
+  ARGV-ASSIGN      EW-ASSIGN EW-ARGC @ MOVE
+  ARGV-NAME-QUOTED EW-ARGQ  EW-ARGC @ MOVE
+  ARGV-QUOTED      EW-QUOT  EW-ARGC @ MOVE
+  ARGV-LITERAL     EW-LIT   EW-ARGC @ MOVE
   \ Write into whichever of the two buffers the current words are NOT
   \ in. Normally that is EXP-BUF, since the words come from
   \ TOKENIZE-RAW. But a group used as a pipeline stage has its body
@@ -2945,9 +2958,7 @@ VARIABLE BI-ADDR
 VARIABLE BI-LEN
 VARIABLE BI-HERE
 
-DEFER REINDEX-BUILTINS   ( --- )   \ set below, once the index exists
-: NO-REINDEX ( --- ) ;
-' NO-REINDEX IS REINDEX-BUILTINS
+VARIABLE BUILTINS-CHANGED?   \ the index is rebuilt at the next lookup
 
 : BUILTIN ( xt c-addr u --- )
   SHADOW{ BI-XT BI-ADDR BI-LEN | BI-HERE }
@@ -2961,27 +2972,7 @@ DEFER REINDEX-BUILTINS   ( --- )   \ set below, once the index exists
   BI-LEN @ ALLOT
   ALIGN
   BI-HERE @ START @ - BUILTIN-LIST !
-  REINDEX-BUILTINS ;          \ a builtin registered later joins the index
-
-VARIABLE FB-NAME
-VARIABLE FB-E
-
-: FIND-BUILTIN ( c-addr --- xt | 0 )
-  SHADOW{ FB-NAME | FB-E }
-  BUILTIN-LIST @ FB-E !
-  BEGIN FB-E @ WHILE
-    FB-E @ START @ +
-    \ The first characters first: most entries differ there, and a full
-    \ compare measures the name each time (Iteration 266).
-    DUP 3 CELLS + C@ FB-NAME @ C@ = IF
-      DUP 3 CELLS +  OVER 2 CELLS + @   ( entry name-addr name-len )
-      FB-NAME @ STR0= IF
-        CELL+ @ START @ + EXIT
-      THEN
-    THEN
-    @ FB-E !
-  REPEAT
-  0 ;
+  -1 BUILTINS-CHANGED? ! ;    \ a builtin registered later joins the index
 
 DEFER FIND-BUILTIN-CALL   ( c-addr --- xt | 0 )
 : BUILTIN-NAME? ( c-addr --- f )  FIND-BUILTIN-CALL 0= 0= ;
@@ -3031,7 +3022,7 @@ VARIABLE BI-H
   REPEAT ;
 
 : FIND-BUILTIN-HASHED ( c-addr --- xt | 0 )
-  BI-INDEX-SIZE @ 0= IF FIND-BUILTIN EXIT THEN
+  BUILTINS-CHANGED? @ IF BUILD-BUILTIN-INDEX 0 BUILTINS-CHANGED? ! THEN
   DUP DUP CSTRLEN BI-NAME-HASH BI-MASK AND   ( name k )
   BEGIN
     DUP BI-SLOT @ ?DUP WHILE                 ( name k entry )
@@ -3042,7 +3033,6 @@ VARIABLE BI-H
     DROP 1+ BI-MASK AND
   REPEAT
   2DROP 0 ;
-' BUILD-BUILTIN-INDEX IS REINDEX-BUILTINS
 ' FIND-BUILTIN-HASHED IS FIND-BUILTIN-CALL
 
 \ The alias TABLE lives here, ahead of DO-COMMAND, which has to

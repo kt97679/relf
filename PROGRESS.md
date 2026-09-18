@@ -288,6 +288,7 @@ do not trust the absence of a line below.
 - **290** — probing job control and signals: trap with a numeric condition breaks the shell
 - **291** — the numeric signal bug: one stray NIP; signals get a differential case
 - **292** — why dash and bash are faster (PERFORMANCE.md); the builtin table is hashed
+- **293** — the expander's per-word bookkeeping; dispatch counts overstate what the clock shows
 
 ### Not tied to an iteration
 
@@ -16904,5 +16905,35 @@ The remaining list, in measured order, is in PERFORMANCE.md: the
 per-word bookkeeping in `EXPAND-WORDS` (840 dispatches an iteration),
 `I`/`(LOOP)`/`(+LOOP)` as opcodes (663), tree field reads (436), and
 arithmetic still evaluated from text (318).
+
+tests/verify: sizes.
+
+## Iteration 293: per-word bookkeeping, and a lesson about the metric
+
+`EXPAND-WORDS` saved six parallel arrays a cell at a time before the
+expansion pass overwrites `ARGV`: 840 dispatches of every loop
+iteration. It is six `MOVE`s now. And a command whose words are ALL
+literal skips the pass altogether - `ARGV` already points at the lexer's
+text with the flags set - with the test made O(1) by counting
+non-literal words as they are added rather than scanning for them.
+
+**Dispatches** against 291: loop -6.8%, fn -7.2%, str -2.7%, arith
+-3.1%, a literal-heavy script -17.8%.
+
+**The clock disagrees.** Interleaving the builds and taking minima over
+21 rounds: loop +0.3%, str -0.2%, fn +3.5%, literal-heavy -5.8%. Only
+the workload the fast path is for actually got faster; `fn` went the
+wrong way while its dispatch count fell 7%.
+
+That is the iteration's real finding. A `MOVE` is one dispatch but a
+call into memcpy, and the copies it replaced were the cheapest
+dispatches there are; dispatch counts also say nothing about cache
+behaviour or branch prediction. PERFORMANCE.md's ranking was built from
+dispatch counts, and the rest of it now carries a note to re-measure on
+the clock first.
+
+Kept, because the literal path is a real gain for scripts that run many
+short fixed commands and nothing regressed beyond noise. The old linear
+`FIND-BUILTIN` went with the hashed index of 292.
 
 tests/verify: sizes.

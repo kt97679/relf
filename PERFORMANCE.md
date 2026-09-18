@@ -104,3 +104,43 @@ explicit length.
 None of these changes the shape: this shell will stay an AST walker,
 like both references. The difference that remains after all of them is
 the cost of interpreting rather than compiling, and that is Phase 4.
+
+## Iteration 293: the per-word bookkeeping, and what measuring it taught
+
+Two changes to `EXPAND-WORDS`:
+
+- **The save loop is six `MOVE`s.** It copied six parallel arrays a cell
+  at a time before the expansion pass overwrites `ARGV`; the arrays are
+  contiguous, so one memcpy each does it whatever the word count.
+- **A command whose words are all literal skips the pass entirely.**
+  `ARGV` already points at the lexer's text in the tree with the flags
+  set, and the pass would copy all of it into the output buffer to
+  arrive at the same thing. Whether any word needs expanding is counted
+  as the words are added (`ARGV-NONLITERAL`), so the test is one read -
+  scanning the words cost a command with any expansion in it about ten
+  dispatches a word to learn nothing.
+
+**Dispatches** (against Iteration 291): loop -6.8%, fn -7.2%, str -2.7%,
+arith -3.1%, and a literal-heavy script -17.8%.
+
+**Wall clock, interleaving the builds and taking minima over 21 rounds:**
+
+    loop      +0.3%      str   -0.2%
+    fn        +3.5%      literal-heavy  -5.8%
+
+So the only workload that actually got faster is the one the fast path
+is for. **The dispatch count overstated every other figure**, and `fn`
+went the wrong way while its dispatches fell 7%. Two reasons, both worth
+remembering before the next round of this work:
+
+- A `MOVE` is one dispatch but a call into memcpy; the cell-at-a-time
+  copies it replaced were about the cheapest dispatches there are,
+  predicted perfectly by the branch predictor.
+- Dispatch counts say nothing about cache behaviour or branch
+  prediction, and the shell image is now big enough for both to matter.
+
+The changes are kept: the literal path is a real gain on the kind of
+script that runs many short fixed commands, and nothing regressed beyond
+measurement noise. But the ranking in the section above was built from
+dispatch counts, and items 2 to 4 of it should be re-measured on the
+clock before anyone spends an iteration on them.

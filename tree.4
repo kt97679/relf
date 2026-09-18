@@ -1309,8 +1309,10 @@ VARIABLE ARGV-ASSIGN-NEXT   \ the parser tagged this word an assignment
 
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
+  ARGC @ 0= IF 0 ARGV-NONLITERAL ! THEN     \ a fresh command's count
   DUP WF-QUOTED WF-EXPAND OR WF-SPECIAL OR AND 0=
   ARGV-FORCE-LITERAL? @ OR  0 ARGV-FORCE-LITERAL? !
+  DUP 0= IF 1 ARGV-NONLITERAL +! THEN       \ EXPAND-WORDS reads it
   ARGV-LITERAL ARGC @ + C!
   DUP WF-QUOTED AND 0= 0= ARGV-QUOTED ARGC @ + C!
   WF-NAME-Q AND 0= 0= ARGV-NAME-QUOTED ARGC @ + C!
@@ -2278,7 +2280,6 @@ VARIABLE SUBLIST-XT
 
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
-  BUILD-BUILTIN-INDEX                        \ the table is fixed by now
   GETPID SHELL-PID !
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !
