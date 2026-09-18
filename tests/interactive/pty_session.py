@@ -133,7 +133,8 @@ class Session:
         return True
 
     def send_signal_char(self, ch, wait=True):
-        return self.send({'INTR': b'\x03', 'EOF': b'\x04', 'QUIT': b'\x1c'}[ch], wait=wait)
+        return self.send({'INTR': b'\x03', 'EOF': b'\x04', 'QUIT': b'\x1c',
+                          'SUSP': b'\x1a'}[ch], wait=wait)
 
     def prompts_from_env(self, env):
         """Use the shell's own PS1/PS2 when the case sets them."""

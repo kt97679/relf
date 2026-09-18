@@ -1,0 +1,11 @@
+<PS1>sleep 5
+^Z[1] + Stopped                    sleep 5
+<PS1>jobs
+[1] + Stopped                    sleep 5
+<PS1>bg
+[1] sleep 5
+<PS1>kill %1
+<PS1>echo alive
+alive
+[1] + Terminated                 sleep 5
+<PS1>exit

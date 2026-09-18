@@ -34,6 +34,10 @@ CASES = [
     ("edit-kill-line", {}, ["echo rubbish\x15echo kept\n", ("exit\n", 'nowait')]),
     ("history-recall", {}, ["echo first\n", "echo second\n", "\x1b[A\x1b[A", "\n", ("exit\n", 'nowait')]),
     ("history-down", {}, ["echo one\n", "echo two\n", "\x1b[A\x1b[A", "\x1b[B", "\n", ("exit\n", 'nowait')]),
+    # job control (Iterations 320-322): ^Z stops the command, jobs shows
+    # it, bg resumes it, kill %1 ends it.
+    ("job-control", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", "jobs\n", "bg\n",
+                         "kill %1\n", "echo alive\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
 ]

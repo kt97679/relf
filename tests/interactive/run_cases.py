@@ -30,7 +30,7 @@ def run_case(shell, steps, env, raw=False):
         if isinstance(step, tuple): step, kind = step; nowait = (kind == 'nowait')
         if isinstance(step, (int, float)):
             time.sleep(step); s.drain(0.2); continue
-        if step in ('INTR', 'EOF', 'QUIT'):
+        if step in ('INTR', 'EOF', 'QUIT', 'SUSP'):
             s.send_signal_char(step, wait=not nowait)
         else:
             s.send(step, wait=not nowait)

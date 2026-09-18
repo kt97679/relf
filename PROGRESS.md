@@ -317,6 +317,7 @@ do not trust the absence of a line below.
 - **319** — cd keeps the logical path; -P, -L and CDPATH
 - **320** — fg and bg, process groups and the terminal; the last POSIX builtins
 - **321** — foreground process groups; ^Z still does not stop a job
+- **322** — ^Z works: an ignored signal is inherited through exec
 
 ### Not tied to an iteration
 
@@ -17834,5 +17835,46 @@ than at the job-control code. `TERM-RAW` clears `ICANON`, `ECHO` and
 `IEXTEN` and keeps `ISIG`, and `TERM-RESTORE` puts back what was saved -
 the next step is to check what the terminal's `lflag` and `VSUSP`
 actually are while a command runs, from outside the shell.
+
+tests/verify: sizes.
+
+## Iteration 322: ^Z, and a signal inherited through exec
+
+321's puzzle, measured rather than guessed. The terminal settings while a
+command runs are identical to dash's - `ISIG` on, `VSUSP` 26 - and the
+process groups and terminal ownership were right. What was wrong was
+inheritance: an interactive shell **ignores** `TSTP`, `TTIN` and `TTOU`
+(Iteration 320), and `SIG_IGN` survives `exec`, so every command it ran
+inherited a process that cannot be stopped. A child puts the three back
+to their default now, and `^Z` stops a job.
+
+With that, job control reads as dash reads it:
+
+    $ sleep 5
+    ^Z[1] + Stopped                    sleep 5
+    $ jobs
+    [1] + Stopped                    sleep 5
+    $ bg
+    [1] sleep 5
+    $ kill %1
+
+`kill` takes `%n` and `%%` as well, and the notice sits on the same line
+as the echoed `^Z`, as dash puts it.
+
+**And a consequence worth naming**: with the job in its own group, `^C`
+no longer reaches the shell, so the newline dash writes after an
+interrupt had to move to where the job is reaped.
+
+**Three stack faults in one small word.** `KILL-JOB-PID` was written by
+juggling twice and crashed twice - `ALL-DECIMAL?` consuming the address
+it still needed, then a `2DROP` too many. It uses variables now. That is
+the third iteration running in which this exact mistake cost a build
+cycle; the rule is written in PROGRESS 308 and I keep not following it.
+
+`tests/interactive/cases.py` gains a job-control case, listed as
+divergent for two remaining differences: the completion notice appears
+one prompt earlier here, and a job killed by a signal is reported `Done`
+rather than `Terminated`, because it is noticed as gone before
+`WAIT-NOHANG` reaps it and the status is lost.
 
 tests/verify: sizes.

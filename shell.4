@@ -130,6 +130,8 @@ PATH-MAX BUFFER: CWDBUF
 
 VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE SHELL-PID   \ $$ - set once, in MAIN
+VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
+VARIABLE SHELL-PGID     \ the shell's own group, to take the terminal back
 VARIABLE BG-PID   \ pid of the most recent background command, for $!
 VARIABLE LAST-STATUS   ( exit status of the last foreground command, decoded to a plain 0-255 code regardless of whether it came from a builtin or WAITPID )
 
@@ -1346,7 +1348,16 @@ VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
   THEN
   TRAP-SAVED-STATUS @ SYS-EXIT ;
 
+: CHILD-RESET-JOB-SIGNALS ( --- )
+  \ An interactive shell IGNORES TSTP, TTIN and TTOU (Iteration 320), and
+  \ SIG_IGN survives exec - so every command it ran inherited a shell
+  \ that cannot be stopped, and ^Z did nothing. A child puts them back
+  \ to their default (Iteration 322).
+  JOB-CONTROL? @ 0= IF EXIT THEN
+  20 0 SIGNAL-ACTION DROP  21 0 SIGNAL-ACTION DROP  22 0 SIGNAL-ACTION DROP ;
+
 : CHILD-RESET-TRAPS ( --- )   \ a subshell: caught signals to their default, no EXIT trap
+  CHILD-RESET-JOB-SIGNALS
   TRAP-SLOTS 1 DO
     I TRAP@ TRAP-ACTION? IF I 0 SIGNAL-ACTION DROP I TRAP-FREE THEN
   LOOP
@@ -4504,6 +4515,8 @@ VARIABLE TR-ACTION
   LOOP ;
 
 VARIABLE KILL-SIG
+DEFER KILL-JOB-PID   ( c-addr --- pid | 0 )   \ the job table is below
+
 : DO-KILL ( --- )
   \ kill [-s name | -name | -n] pid...; kill -l [status]
   0 LAST-STATUS !  15 >R  1
@@ -4531,7 +4544,9 @@ VARIABLE KILL-SIG
   THEN
   DUP ARGC @ < 0= IF DROP S" shell: kill: no process given" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT THEN
   ARGC @ SWAP ?DO
-    I ARGV@ DUP CSTRLEN PARSE-SIGNED KILL-SIG @ KILL IF
+    \ a %n job specifier names the job's process group (Iteration 322)
+    I ARGV@ KILL-JOB-PID ?DUP IF NEGATE ELSE I ARGV@ DUP CSTRLEN PARSE-SIGNED THEN
+    KILL-SIG @ KILL IF
       S" shell: kill: " ERR-TYPE I ARGV@ ERR-CSTR S" : no such process" ERR-TYPE ERR-NL
       1 LAST-STATUS !
     THEN
@@ -4771,8 +4786,6 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 \ flag is set only once the words are expanded, and DISPATCH clears it
 \ before a builtin or a function runs.
 
-VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
-VARIABLE SHELL-PGID
 DEFER FG-STOPPED-CALL   ( pid --- )   \ the job table, defined below
 VARIABLE FG-PID
 
@@ -4793,6 +4806,10 @@ VARIABLE FG-PID
     2DROP                                      ( pid )
     FG-STOPPED-CALL
   ELSE
+    \ Killed by ^C or ^\ : the terminal echoed it, and dash starts the
+    \ next prompt on a fresh line. The shell no longer sees the signal
+    \ itself now that the job has its own process group (Iteration 322).
+    DUP 127 AND DUP 2 = SWAP 3 = OR IF ERR-NL THEN
     NIP WAIT->STATUS LAST-STATUS !  DROP
   THEN ;
 
@@ -4809,7 +4826,7 @@ VARIABLE FG-PID
     DROP
     \ Job control: the command gets its own process group, so ^Z and ^C
     \ from the terminal reach it rather than the shell (Iteration 321).
-    JOB-CONTROL? @ IF 0 0 SETPGID DROP THEN
+    JOB-CONTROL? @ IF 0 0 SETPGID DROP CHILD-RESET-JOB-SIGNALS THEN
     APPLY-REDIRECTIONS
     REDIR-FAILED? @ IF 1 SYS-EXIT THEN
     RUN-CHILD 127 SYS-EXIT
@@ -6143,7 +6160,7 @@ VARIABLE FG-T
   JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP
   0 JOB-STATES JOB-SEL @ CELLS + !
   91 EMIT JOB-NUMS JOB-SEL @ CELLS + @ 0 <# #S #> TYPE 93 EMIT 32 EMIT
-  JOB-SEL @ .JOB-TEXT S"  &" TYPE CR
+  JOB-SEL @ .JOB-TEXT CR                       \ dash prints no trailing &
   0 LAST-STATUS ! ;
 
 : FG-TEXT ( --- c-addr )   \ the command as typed, from ARGV
@@ -6162,11 +6179,37 @@ VARIABLE FG-T
   FG-TEXT JOB-TEXT-NEXT !
   JOB-ADD
   1 JOB-STATES JOB# @ 1- CELLS + !
-  ERR-NL
+  \ no newline first: the terminal has echoed ^C or ^Z and dash puts the
+  \ notice on that same line
   JOB# @ 1- -1 .JOB-NOTICE                     \ -1 reads as "Stopped"
   148 LAST-STATUS ! ;
 
 ' FG-STOPPED IS FG-STOPPED-CALL
+
+VARIABLE KJ-WANT
+VARIABLE KJ-PID
+
+: KILL-JOB-PID-IMPL ( c-addr --- pid | 0 )   \ %n, %% or not a job at all
+  \ Written with variables after two stack-juggled versions crashed - the
+  \ standing lesson of Iterations 308 and 317.
+  DUP C@ 37 <> IF DROP 0 EXIT THEN
+  1+                                           ( past the % )
+  DUP C@ DUP 37 = SWAP 0= OR IF                \ `%%` or a bare `%`
+    DROP
+    JOB# @ 0= IF 0 EXIT THEN
+    JOB-PIDS JOB# @ 1- CELLS + @ EXIT
+  THEN
+  DUP DUP CSTRLEN ALL-DECIMAL? 0= IF DROP 0 EXIT THEN
+  DUP CSTRLEN PARSE-DECIMAL KJ-WANT !
+  0 KJ-PID !
+  JOB# @ 0 ?DO
+    JOB-NUMS I CELLS + @ KJ-WANT @ = IF
+      JOB-PIDS I CELLS + @ KJ-PID !
+    THEN
+  LOOP
+  KJ-PID @ ;
+
+' KILL-JOB-PID-IMPL IS KILL-JOB-PID
 
 ' DO-FG      S" fg"      BUILTIN
 ' DO-BG      S" bg"      BUILTIN
