@@ -1144,6 +1144,7 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
   EMIT-TOK-CHAR ;
 
 \ ---- shell options (Iteration 270): set -e -u -x -f -n ----
+VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
 VARIABLE OPT-ERREXIT
 VARIABLE OPT-NOUNSET
 VARIABLE OPT-XTRACE
@@ -1915,6 +1916,16 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
 DEFER RUN-CMDSUB-JOB-CALL
 
+: WAIT->STATUS ( raw --- status )
+  \ wait(2)'s status word. A child killed by a signal exits 128+n, as
+  \ both references report it; only the normal-exit byte was read until
+  \ Iteration 299, so `kill $p; wait $p` said 0 where they say 143.
+  DUP 127 AND ?DUP IF                        \ terminated by a signal
+    NIP 128 +
+  ELSE
+    8 RSHIFT 255 AND
+  THEN ;
+
 : RUN-CMDSUB-TEXT ( c-addr u --- )   \ text the child parses and runs
   DUP 2 + ENSURE-BUFFER CMDSUB-LINE-BUF
   DUP CS-COPY-I !
@@ -1943,7 +1954,7 @@ DEFER RUN-CMDSUB-JOB-CALL
     CMDSUB-PIPE-RD @ CLOSE-FILE DROP
     \ its status is the status of a command that is only assignments
     \ (XCU 2.9.1; Iteration 269 - it was dropped)
-    CMDSUB-PID @ WAITPID DROP 8 RSHIFT 255 AND CMDSUB-STATUS !
+    CMDSUB-PID @ WAITPID DROP WAIT->STATUS CMDSUB-STATUS !
     -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
       CMDSUB-OUT-LEN @ 0 > IF
@@ -3294,6 +3305,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   DUP 117 = IF DROP OPT-NOUNSET EXIT THEN
   DUP 120 = IF DROP OPT-XTRACE EXIT THEN
   DUP 102 = IF DROP OPT-NOGLOB EXIT THEN
+  DUP 109 = IF DROP OPT-MONITOR EXIT THEN
   110 = IF OPT-NOEXEC EXIT THEN
   0 ;
 : OPT-NAME ( c-addr --- addr | 0 )
@@ -3303,6 +3315,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" xtrace" R@ STR0= IF R> DROP OPT-XTRACE EXIT THEN
   S" noglob" R@ STR0= IF R> DROP OPT-NOGLOB EXIT THEN
   S" noexec" R@ STR0= IF R> DROP OPT-NOEXEC EXIT THEN
+  S" monitor" R@ STR0= IF R> DROP OPT-MONITOR EXIT THEN
   R> DROP 0 ;
 : .OPT ( c-addr u addr on? --- )   \ one line of set -o or set +o
   IF
@@ -3314,6 +3327,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
 : LIST-OPTIONS ( minus? --- )   \ set -o, or set +o
   DUP IF S" Current option settings" TYPE CR THEN >R
   S" errexit" OPT-ERREXIT R@ .OPT
+  S" monitor" OPT-MONITOR R@ .OPT
   S" noexec" OPT-NOEXEC R@ .OPT
   S" noglob" OPT-NOGLOB R@ .OPT
   S" nounset" OPT-NOUNSET R@ .OPT
@@ -3637,13 +3651,13 @@ VARIABLE GO-NMLEN
   0 LAST-STATUS !
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL WAITPID
-    DUP 0= IF DROP 8 RSHIFT 255 AND LAST-STATUS ! ELSE 2DROP THEN
+    DUP 0= IF DROP WAIT->STATUS LAST-STATUS ! ELSE 2DROP THEN
     EXIT
   THEN
   BEGIN
     -1 WAITPID          ( raw ior )
     DUP 0= WHILE
-    DROP 8 RSHIFT 255 AND LAST-STATUS !
+    DROP WAIT->STATUS LAST-STATUS !
   REPEAT
   2DROP ;
 
@@ -4379,10 +4393,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
     RUN-CHILD 127 SYS-EXIT
   ELSE
     WAITPID DROP           ( raw wait status )
-    8 RSHIFT 255 AND       ( decode WEXITSTATUS - the normal-exit case only;
-                              a signal-terminated child isn't distinguished
-                              from one that exited with that same low byte
-                              in v0.1 - see PROGRESS.md )
+    WAIT->STATUS
     LAST-STATUS !
   THEN ;
 
@@ -5511,6 +5522,53 @@ VARIABLE TF-TRAIL?
     ELSE DROP THEN
     AL-I @ 1+ AL-I !
   REPEAT ;
+
+\ ---- background jobs (Iteration 299) ----
+\ Every `&` records its child. `jobs` reports the ones still running and
+\ forgets the rest; a finished job is dropped when it is noticed, as both
+\ references do. dash prints no command text for a job in a script, and
+\ this follows dash.
+64 CELLS BUFFER: JOB-PIDS
+64 CELLS BUFFER: JOB-NUMS
+VARIABLE JOB#           \ how many are recorded
+VARIABLE JOB-NEXT       \ the next job number to hand out
+VARIABLE JB-I
+VARIABLE JB-K
+
+: JOB-ADD ( pid --- )
+  JOB# @ 1+ CELLS ENSURE-BUFFER JOB-PIDS
+  JOB# @ 1+ CELLS ENSURE-BUFFER JOB-NUMS
+  JOB-PIDS JOB# @ CELLS + !
+  JOB-NEXT @ 1+ DUP JOB-NEXT !  JOB-NUMS JOB# @ CELLS + !
+  JOB# @ 1+ JOB# ! ;
+
+: JOB-ALIVE? ( pid --- f )   0 KILL 0= ;   \ KILL takes ( pid sig )
+
+: JOB-PRUNE ( --- )   \ drop the ones that have finished
+  0 JB-K !
+  JOB# @ 0 ?DO
+    JOB-PIDS I CELLS + @ DUP JOB-ALIVE? IF
+      JB-K @ CELLS JOB-PIDS + !
+      JOB-NUMS I CELLS + @  JB-K @ CELLS JOB-NUMS + !
+      JB-K @ 1+ JB-K !
+    ELSE DROP THEN
+  LOOP
+  JB-K @ JOB# ! ;
+
+: DO-JOBS ( --- )
+  0 LAST-STATUS !
+  JOB-PRUNE
+  \ newest first, as dash prints them; `+` is the most recent, `-` the
+  \ one before it
+  JOB# @ 0 ?DO
+    JOB# @ 1- I - JB-I !
+    91 EMIT  JOB-NUMS JB-I @ CELLS + @ 0 <# #S #> TYPE  93 EMIT 32 EMIT
+    JOB# @ 1- JB-I @ = IF 43 ELSE JOB# @ 2 - JB-I @ = IF 45 ELSE 32 THEN THEN EMIT
+    S"  Running" TYPE
+    20 SPACES CR
+  LOOP ;
+
+' DO-JOBS    S" jobs"    BUILTIN
 
 ' DO-ALIAS   S" alias"   BUILTIN
 ' DO-UNALIAS S" unalias" BUILTIN

@@ -1,0 +1,34 @@
+#!/bin/sh
+# tests/shell/run-jobs - the jobs builtin and set -m (Iteration 299).
+# Not a differential case: dash and bash print jobs differently (dash
+# gives no command text in a script and lists newest first, bash gives
+# the text and lists oldest first), so this checks the shape dash has,
+# which is the one followed here.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+
+out=$($SH -c 'sleep 1 & sleep 1 & jobs' 2>&1)
+assert_output_equals "two running jobs, newest first" \
+"[2] + Running                    
+[1] - Running                    " "$out"
+
+out=$($SH -c 'sleep 0.05 & wait; jobs' 2>&1)
+assert_output_equals "a finished job is forgotten" "" "$out"
+
+out=$($SH -c 'jobs' 2>&1)
+assert_output_equals "no jobs, no output" "" "$out"
+
+out=$($SH -c 'sleep 1 & jobs; jobs' 2>&1 | wc -l)
+assert_output_equals "jobs does not consume the list" "2" "$out"
+
+out=$($SH -c 'set -m; echo "rc=$?"; set -o | grep monitor' 2>&1)
+assert_output_equals "set -m is accepted and listed" "rc=0
+monitor         on" "$out"
+
+out=$($SH -c 'set +m; set -o | grep monitor' 2>&1)
+assert_output_equals "set +m turns it off" "monitor         off" "$out"
+
+out=$($SH -c 'sleep 1 & p=$!; kill $p; wait $p; echo $?' 2>&1)
+assert_output_equals "a killed job reports 128+n" "143" "$out"
+
+report

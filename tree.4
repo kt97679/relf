@@ -1288,7 +1288,7 @@ VARIABLE WANT-EXEC?
       X@ T-SIMPLE = EXIT
     THEN THEN THEN
   AGAIN ;
-: WAIT-STATUS ( pid --- status )   WAITPID DROP 8 RSHIFT 255 AND ;
+: WAIT-STATUS ( pid --- status )   WAITPID DROP WAIT->STATUS ;
 
 \ ---- simple commands ----
 CREATE W-DIGITS  48 C, 0 C, 49 C, 0 C, 50 C, 0 C, 51 C, 0 C, 52 C, 0 C,
@@ -1880,7 +1880,7 @@ DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesti
 \ ---- lists, and-or, pipelines ----
 : EXEC-BG ( node --- )
   FORK DUP 0= IF DROP CHILD-RESET-TRAPS EXEC-FINAL-CALL LAST-STATUS @ SHELL-EXIT THEN
-  BG-PID !  DROP  0 LAST-STATUS ! ;
+  DUP BG-PID !  JOB-ADD  DROP  0 LAST-STATUS ! ;
 
 : EXEC-LIST ( node --- )
   0 XF@ DUP XV# 0 ?DO

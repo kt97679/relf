@@ -294,6 +294,7 @@ do not trust the absence of a line below.
 - **296** — the hang: `>&-` never closed anything; a failed duplicate went unreported
 - **297** — `exec 3>file` opened the file and lost it; the close that followed the open
 - **298** — `<>` opens for reading and writing; the rest of the redirection sweep is clean
+- **299** — a signal-killed child exits 128+n; the jobs builtin and set -m
 
 ### Not tied to an iteration
 
@@ -17113,3 +17114,37 @@ closing, a failed duplicate unreported, `exec` losing any descriptor
 above 2, `$0` empty, and `<>` unimplemented.
 
 tests/verify: diff cases 46 -> 47; parse verdicts 152 -> 153; sizes.
+
+## Iteration 299: 128+n, and the jobs builtin
+
+Probing the one area the suites cannot reach by construction - job
+control - found the more important bug outside it.
+
+**A child killed by a signal reported 0.** Only wait(2)'s normal-exit
+byte was read, so `kill $p; wait $p` gave 0 where both references give
+143, and the same everywhere a status is taken: a foreground command, a
+command substitution, a condition, a pipeline. One decoder now serves
+all five places and reports 128+n for a signal death, as XCU 2.8.2 says.
+This has been wrong since the first fork in Iteration 5, noted in the
+source as a v0.1 limitation and never revisited.
+
+`tests/diff/cases/signal-status-299.sh` - TERM and KILL, background and
+foreground, in a substitution, in an `if`, through a pipeline, beside
+ordinary exits - matches bash and dash.
+
+**`jobs` and `set -m`.** Every `&` now records its child; `jobs` reports
+the ones still running, newest first, and forgets the rest. dash prints
+no command text for a job in a script and this follows dash, byte for
+byte. `set -m` and `set +m` are accepted and listed by `set -o`; the
+option does nothing else, since job control proper - process groups and
+the terminal - needs primitives the engine does not have.
+
+`tests/shell/run-jobs` covers it: two running jobs, a finished one
+forgotten, `jobs` twice in a row, the option's listing, and 128+n. It is
+not a differential case: dash and bash print jobs quite differently.
+
+Left for job control proper: `fg`, `bg`, `%n` job specifiers, and the
+"Terminated" notices both references print. All of them want process
+groups and `tcsetpgrp`, which are engine work.
+
+tests/verify: diff cases 47 -> 48; a new shell test file; sizes.
