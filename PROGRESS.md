@@ -320,6 +320,7 @@ do not trust the absence of a line below.
 - **322** — ^Z works: an ignored signal is inherited through exec
 - **323** — an attempt at the notice's status, reverted; what was measured
 - **324** — the notice keeps the job's status: Terminated, not Done
+- **325** — character classes in patterns: [[:alpha:]] and the rest
 
 ### Not tied to an iteration
 
@@ -17944,3 +17945,31 @@ itself - `forth JOB-PIDS @ 143 JOB-MARK-DONE` - proved it worked in
 seconds, which pointed straight at the callers.
 
 tests/verify: sizes.
+
+## Iteration 325: character classes
+
+Asked whether POSIX is finished, and swept what had not been checked:
+bracket expressions, the shell variables, special-builtin errors. One
+gap, and a common one: **character classes did not work**.
+`[[:alpha:]]` matched nothing, in `case` and in pathname expansion
+alike.
+
+Two changes. `BRACKET-END`, which finds the closing `]`, now steps over
+a `[:name:]` - its own `]` was ending the bracket expression early, so
+the matcher never saw a complete one. And the matcher answers the twelve
+classes for the C locale, the only one this shell claims: `alpha digit
+alnum upper lower space blank punct print graph cntrl xdigit`.
+
+`tests/diff/cases/classes-325.sh` - each class, two classes in one
+bracket, a negated class, classes in pathname expansion and in `${}`
+trims - matches bash and dash.
+
+Everything else in the sweep was already right: bracket ranges, a
+literal `-`, `]` first in a bracket, `${v%[0-4]}`, `PS4`, `PWD`,
+`getopts`, `unset -f/-v`, `readonly -p`, `times`.
+
+**Still not POSIX, and recorded**: `LINENO` is unset (dash does not have
+it either; bash does), and `ENV` is not read at an interactive shell's
+startup.
+
+tests/verify: diff cases 55 -> 56; sizes.

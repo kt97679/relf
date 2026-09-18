@@ -1722,6 +1722,11 @@ before anything else, because every number here is relative to it.
    them landed in 308), and the readonly behaviour, where dash and bash
    differ anyway. `ulimit` was finished in 308.
 
+5j. **Left after the sweep of Iteration 325**: `LINENO` is never set
+   (bash has it, dash does not), and `ENV` is not read when an
+   interactive shell starts. Character classes were the sweep's one real
+   find and are done.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,

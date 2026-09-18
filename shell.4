@@ -5474,9 +5474,61 @@ VARIABLE BM-MATCHED?
   BEGIN
     DUP GM-PLEN @ < IF DUP GM-PATTERN @ + C@ 93 <> ELSE 0 THEN
   WHILE
-    1+
+    \ "[:name:]" carries a `]` of its own: step over it, or the bracket
+    \ expression looks as if it ended there (Iteration 325).
+    DUP GM-PATTERN @ + C@ 91 =
+    OVER 1+ GM-PLEN @ < IF OVER 1+ GM-PATTERN @ + C@ 58 = ELSE 0 THEN
+    AND IF
+      2 +
+      BEGIN
+        DUP 1+ GM-PLEN @ < IF
+          DUP GM-PATTERN @ + C@ 58 = OVER 1+ GM-PATTERN @ + C@ 93 = AND 0=
+        ELSE 0 THEN
+      WHILE 1+ REPEAT
+      DUP GM-PLEN @ < IF 2 + THEN
+    ELSE
+      1+
+    THEN
   REPEAT
   DUP GM-PLEN @ < IF 1+ THEN ;
+
+VARIABLE CC-TEXT       \ the class name in the pattern, just past "[:"
+VARIABLE CC-CHAR       \ the character being tested
+VARIABLE CC-LEN        \ how long "[:name:]" was, so the scan can step over it
+VARIABLE CC-I
+
+: CC-IS? ( name-addr u --- f )   \ does the pattern name this class
+  0 CC-I !
+  BEGIN CC-I @ OVER < WHILE
+    OVER CC-I @ + C@  CC-TEXT @ CC-I @ + C@ <> IF 2DROP 0 EXIT THEN
+    CC-I @ 1+ CC-I !
+  REPEAT
+  NIP 2 + CC-LEN !  -1 ;      \ NIP already dropped the name
+
+: CC-ALPHA? ( c --- f )  DUP 65 - 26 U< SWAP 97 - 26 U< OR ;
+: CC-DIGIT? ( c --- f )  48 - 10 U< ;
+
+: CC-MATCH? ( p --- f )
+  \ [:alpha:] and the rest (XCU 9.3.5), answered for the C locale, which
+  \ is the only one this shell claims (Iteration 325). CC-LEN is left as
+  \ the length of the whole "[:name:]" so the caller can step over it.
+  2 + GM-PATTERN @ + CC-TEXT !
+  S" alpha:]"  CC-IS? IF CC-CHAR @ CC-ALPHA? EXIT THEN
+  S" digit:]"  CC-IS? IF CC-CHAR @ CC-DIGIT? EXIT THEN
+  S" alnum:]"  CC-IS? IF CC-CHAR @ CC-ALPHA? CC-CHAR @ CC-DIGIT? OR EXIT THEN
+  S" upper:]"  CC-IS? IF CC-CHAR @ 65 - 26 U< EXIT THEN
+  S" lower:]"  CC-IS? IF CC-CHAR @ 97 - 26 U< EXIT THEN
+  S" space:]"  CC-IS? IF CC-CHAR @ 32 = CC-CHAR @ 9 - 5 U< OR EXIT THEN
+  S" blank:]"  CC-IS? IF CC-CHAR @ 32 = CC-CHAR @ 9 = OR EXIT THEN
+  S" xdigit:]" CC-IS? IF
+    CC-CHAR @ CC-DIGIT? CC-CHAR @ 65 - 6 U< OR CC-CHAR @ 97 - 6 U< OR EXIT THEN
+  S" punct:]"  CC-IS? IF
+    CC-CHAR @ 33 - 15 U< CC-CHAR @ 58 - 7 U< OR
+    CC-CHAR @ 91 - 6 U< OR CC-CHAR @ 123 - 4 U< OR EXIT THEN
+  S" print:]"  CC-IS? IF CC-CHAR @ 32 - 95 U< EXIT THEN
+  S" graph:]"  CC-IS? IF CC-CHAR @ 33 - 94 U< EXIT THEN
+  S" cntrl:]"  CC-IS? IF CC-CHAR @ 32 < CC-CHAR @ 127 = OR EXIT THEN
+  0 CC-LEN !  0 ;
 
 : BRACKET-MATCHES? ( p p2 char --- f )
   \ p is GM-PATTERN's index of the opening '[', p2 the index right
@@ -5501,9 +5553,17 @@ VARIABLE BM-MATCHED?
       AND IF -1 BM-MATCHED? ! THEN
       BM-I @ 3 + BM-I !
     ELSE
+    \ "[:name:]" names a class rather than two characters
+    BM-I @ GM-PATTERN @ + C@ 91 =
+    BM-I @ 1+ BM-END @ < IF BM-I @ 1+ GM-PATTERN @ + C@ 58 = ELSE 0 THEN
+    AND IF
+      BM-CHAR @ CC-CHAR !
+      BM-I @ CC-MATCH? IF -1 BM-MATCHED? ! THEN
+      CC-LEN @ ?DUP IF BM-I @ + BM-I ! ELSE BM-I @ 1+ BM-I ! THEN
+    ELSE
       BM-I @ GM-PATTERN @ + C@ BM-CHAR @ = IF -1 BM-MATCHED? ! THEN
       BM-I @ 1+ BM-I !
-    THEN
+    THEN THEN
   REPEAT
   BM-MATCHED? @ BM-NEG? @ IF 0= ELSE THEN ;
 
