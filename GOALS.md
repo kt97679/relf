@@ -1695,10 +1695,13 @@ before anything else, because every number here is relative to it.
    sweep that began in 295 is finished: ordering, compound commands,
    high descriptors, failures and `/dev/null` all match both references.
 
-5g. **The interactive gaps left after Iterations 302 and 303**: the
-   newline dash writes after `^C` before its next prompt, and job
-   completion notices. Cursor keys, line editing and history are done
-   (edit.4); `-i` is still unimplemented.
+5g. **A signal sent to the shell from outside is not seen while it waits
+   for input** (Iteration 313). With an INT trap set and the shell at its
+   prompt, `kill -INT` to the pid, `killpg` to its group and `^C` on the
+   terminal all produce nothing, and nothing fires at the next command
+   either; a self-sent `kill -INT $$` works. Process groups check out.
+   The two `^C` interactive cases wait on this. Next: what `SigCgt` says
+   in /proc while it waits, and whether `sig_catch` runs at all.
 
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process

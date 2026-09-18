@@ -308,6 +308,7 @@ do not trust the absence of a line below.
 - **310** — the notice's command text: a pipeline keeps its vector in field 1
 - **311** — chasing the intermittent job case: what it is not
 - **312** — the flakiness was the harness: a prompt has to be stable, not just present
+- **313** — the ^C cases: a signal sent while the editor waits is not seen at all
 
 ### Not tied to an iteration
 
@@ -17568,3 +17569,36 @@ sees it, which is the next thing to look at - but the handling is in
 place for when it does.
 
 tests/verify: sizes.
+
+## Iteration 313: where ^C goes
+
+The two remaining interactive cases need the shell to notice `^C` typed
+at its prompt. It does not, and the reason is not what 312 guessed
+(`EINTR` swallowed by the byte read). Measured, in order:
+
+- **The byte read does not retry.** `t_read` returns `-errno`, so an
+  interrupted read comes back as -4 and the editor would see it.
+- **Self-sent signals work.** `trap 'echo GOT-INT' INT` then `kill -INT
+  $$` prints `GOT-INT` at once.
+- **Signals sent from outside do not arrive at all.** With the same trap
+  set and the shell waiting at its prompt: `kill -INT <pid>` - nothing.
+  `killpg` to its process group - nothing. `^C` on the terminal -
+  nothing. Not even at the next command boundary, where `CHECK-TRAPS`
+  would run a pending trap.
+- **The process groups are right.** In the session, `ps -o
+  pid,pgid,tpgid -p $$` reports 129 / 129 / 129: the shell is the
+  foreground group of its terminal, so the terminal's `^C` has the right
+  destination.
+
+So a signal that the shell does not send itself is lost somewhere
+between the kernel and `SIGNALS-PENDING`, while the shell waits in
+`READ-SOME`. That is a different fault from the one in the interactive
+cases, and a more interesting one: it would affect any script waiting on
+input, not just the editor.
+
+The next step is at the engine, not the shell: check what `sigaction`
+the process actually has installed while it waits (`/proc/<pid>/status`
+SigCgt), and whether `sig_catch` runs at all - a one-line write from the
+handler settles it.
+
+No code changed; both cases stay in KNOWN-DIVERGENT.
