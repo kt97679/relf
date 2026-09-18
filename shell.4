@@ -4837,29 +4837,56 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
 
 VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 
-: DISPATCH ( --- f )  \ f = -1 if handled as a builtin, 0 if not
+: SPECIAL-BUILTIN? ( c-addr --- f )
+  \ XCU 2.14: the special builtins are found BEFORE functions and
+  \ everything else after, so a function may override `true` but not
+  \ `exit`. This shell looked up every builtin first, so no function
+  \ could override one at all (Iteration 330).
+  DUP CSTRLEN                                  ( a u )
+  2DUP S" break"    STR= IF 2DROP -1 EXIT THEN
+  2DUP S" :"        STR= IF 2DROP -1 EXIT THEN
+  2DUP S" continue" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" ."        STR= IF 2DROP -1 EXIT THEN
+  2DUP S" eval"     STR= IF 2DROP -1 EXIT THEN
+  2DUP S" exec"     STR= IF 2DROP -1 EXIT THEN
+  2DUP S" exit"     STR= IF 2DROP -1 EXIT THEN
+  2DUP S" export"   STR= IF 2DROP -1 EXIT THEN
+  2DUP S" readonly" STR= IF 2DROP -1 EXIT THEN
+  2DUP S" return"   STR= IF 2DROP -1 EXIT THEN
+  2DUP S" set"      STR= IF 2DROP -1 EXIT THEN
+  2DUP S" shift"    STR= IF 2DROP -1 EXIT THEN
+  2DUP S" times"    STR= IF 2DROP -1 EXIT THEN
+  2DUP S" trap"     STR= IF 2DROP -1 EXIT THEN
+  2DUP S" unset"    STR= IF 2DROP -1 EXIT THEN
+  2DROP 0 ;
+
+: RUN-A-BUILTIN ( xt --- )
+  0 EXEC-LAST? !
+  >R BEGIN-REDIRECT R>
+  REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
+  END-REDIRECT ;
+
+: RUN-A-FUNCTION ( i --- )
+  0 EXEC-LAST? !
+  >R BEGIN-REDIRECT R>
+  REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE RUN-FUNC-BODY-CALL THEN
+  END-REDIRECT ;
+
+: DISPATCH ( --- f )  \ f = -1 if handled here, 0 if not
   \ A quoted 'cd' is a literal argument, not the builtin - same
-  \ reasoning as ARGV-QUOTED everywhere else. Functions are checked
-  \ after builtins, so a builtin name cannot be overridden by a
-  \ function, matching real shells.
-  \ Builtins and functions are found whether or not the name was quoted
-  \ or came from an expansion (`"echo" x`, `$cmd x`); reserved words are
-  \ the parser's business since the command tree (Iteration 269).
-  ARGC @ 0 > IF
-    ARGV @ FIND-BUILTIN-CALL ?DUP IF
-      0 EXEC-LAST? !
-      >R BEGIN-REDIRECT R>
-      REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
-      END-REDIRECT -1 EXIT
-    THEN
-    NO-FUNCTIONS? @ IF -1 ELSE ARGV @ FIND-FUNC THEN DUP -1 <> IF
-      0 EXEC-LAST? !
-      >R BEGIN-REDIRECT R>
-      REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE RUN-FUNC-BODY-CALL THEN
-      END-REDIRECT -1 EXIT
-    THEN
-    DROP
+  \ reasoning as ARGV-QUOTED everywhere else. Builtins and functions are
+  \ found whether or not the name was quoted or came from an expansion
+  \ (`"echo" x`, `$cmd x`); reserved words are the parser's business
+  \ since the command tree (Iteration 269).
+  ARGC @ 0 = IF 0 EXIT THEN
+  ARGV @ SPECIAL-BUILTIN? IF
+    ARGV @ FIND-BUILTIN-CALL ?DUP IF RUN-A-BUILTIN -1 EXIT THEN
   THEN
+  NO-FUNCTIONS? @ IF -1 ELSE ARGV @ FIND-FUNC THEN DUP -1 <> IF
+    RUN-A-FUNCTION -1 EXIT
+  THEN
+  DROP
+  ARGV @ FIND-BUILTIN-CALL ?DUP IF RUN-A-BUILTIN -1 EXIT THEN
   0 ;
 
 \ ==================================================================

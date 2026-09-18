@@ -325,6 +325,7 @@ do not trust the absence of a line below.
 - **327** — the pure-sh-bible as a corpus: read at end of input
 - **328** — bash's manual where the references agree: getopts operands, ${#*}
 - **329** — busybox's ash suite: break n, continue n, and case's exit status
+- **330** — behaviours, not files: a catalogue, and functions overriding builtins
 
 ### Not tied to an iteration
 
@@ -18105,3 +18106,36 @@ now, against dash's 211**, and the remaining 55 are worth walking
 through one at a time.
 
 tests/verify: diff cases 59 -> 60; sizes.
+
+## Iteration 330: behaviours, not files
+
+The busybox suite is busybox's work under its own licence, so none of it
+is copied here. What can be taken is what it ESTABLISHES: a behaviour of
+POSIX shells is a fact, not anyone's expression of one. So each test
+worth having is read, the behaviour written down in this project's own
+words in `tests/from-others/CATALOGUE.md`, and a case written here from
+that description.
+
+Six entries so far. The third of them was the iteration's fix:
+
+**A function may override a regular builtin, but not a special one.**
+XCU 2.14 searches special builtins, then functions, then everything
+else. This shell looked up every builtin before functions, so
+`true() { echo x; }` did nothing at all. `DISPATCH` follows the
+standard's order now, with `SPECIAL-BUILTIN?` naming the fifteen that
+cannot be shadowed.
+
+`tests/diff/cases/builtin-override-330.sh` overrides `true`, `echo`,
+`cd` and `pwd`, checks each in a pipeline, a subshell and a command
+substitution, and checks that `unset -f` gives the builtin back. It
+matches bash and dash.
+
+**Three more behaviours are catalogued but not implemented**, and are in
+GOALS.md: a backslash-newline inside an operator, a command substitution
+inside a here-document being shell code rather than text - where
+backquotes CRASH this shell today - and a quoted empty string beside
+"$@" yielding one empty word when there are no parameters.
+
+busybox suite: 168 of 357, against dash's 211.
+
+tests/verify: diff cases 60 -> 61; sizes.
