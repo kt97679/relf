@@ -1,0 +1,3 @@
+<PS1>echo one
+one
+<PS1>

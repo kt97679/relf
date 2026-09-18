@@ -1,0 +1,5 @@
+<PS1>
+<PS1>
+<PS1>echo after-blanks
+after-blanks
+<PS1>exit

@@ -1,0 +1,7 @@
+#!/bin/sh
+# tests/interactive/run - the interactive cases, on a pseudo-terminal.
+# THIS_SH selects the shell (default ../../relfsh); --record SHELL
+# rewrites expected/ from that shell, which is how they were taken from
+# dash. Needs python3 for pty.fork; the other suites do not.
+here=$(cd "$(dirname "$0")" && pwd)
+exec python3 "$here/run_cases.py" "$@"

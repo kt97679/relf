@@ -7,6 +7,9 @@ ext:4byte 1
 ext:8byte 1
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
+interactive:divergent 7
+interactive:failed 0
+interactive:passed 9
 io:4byte 1
 io:8byte 1
 matrix:failed 0

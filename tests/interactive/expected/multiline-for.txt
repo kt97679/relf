@@ -1,0 +1,6 @@
+<PS1>for i in 1 2
+<PS2>do echo $i
+<PS2>done
+1
+2
+<PS1>exit

@@ -1,0 +1,3 @@
+XX> echo hi
+hi
+XX> exit

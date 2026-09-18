@@ -1,0 +1,6 @@
+<PS1>f() {
+<PS2>echo in-f
+<PS2>}
+<PS1>f
+in-f
+<PS1>exit

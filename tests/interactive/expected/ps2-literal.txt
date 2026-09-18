@@ -1,0 +1,5 @@
+XX> for i in 1
+YY> do echo $i
+YY> done
+1
+XX> exit

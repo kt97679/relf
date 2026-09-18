@@ -1,0 +1,6 @@
+<PS1>sleep 0.1 &
+<PS1>wait
+[1] + Done                       sleep 0.1
+<PS1>echo done
+done
+<PS1>exit

@@ -1,0 +1,6 @@
+<PS1>echo one
+one
+<PS1>x=5
+<PS1>echo $x
+5
+<PS1>exit

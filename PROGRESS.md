@@ -296,6 +296,7 @@ do not trust the absence of a line below.
 - **298** — `<>` opens for reading and writing; the rest of the redirection sweep is clean
 - **299** — a signal-killed child exits 128+n; the jobs builtin and set -m
 - **300** — nested backquotes; a line continuation in $(( )) - a regression from 286
+- **301** — a pseudo-terminal harness: the interactive shell is testable, and seven gaps are named
 
 ### Not tied to an iteration
 
@@ -17182,3 +17183,44 @@ Everything else in the sweep matched, including that aliases are not
 expanded in a script, which all three shells agree on.
 
 tests/verify: diff cases 48 -> 49; parse verdicts 153 -> 154; sizes.
+
+## Iteration 301: a harness for the interactive shell
+
+`INTERACTIVE.md` is the write-up. `pty.fork()` gives a pseudo-terminal
+and a child on the far end of it; the child execs the shell, which sees
+a terminal on all three descriptors and runs interactively, and the test
+types lines in and reads what comes back.
+
+**Synchronisation was the whole difficulty.** Sleeping between steps
+produced a different transcript on almost every run: the terminal echoes
+a typed line at once while the command's output arrives later, so a step
+sent too early interleaves with the last one. What works is waiting for
+a prompt that arrives AFTER the point the line was sent - checking the
+whole buffer returns immediately, because the previous prompt is still
+the last thing in it. One change, and every case became reproducible.
+
+Transcripts are normalised so shells that prompt differently can be
+compared, and two cases opt out of that to check the prompt STRING
+itself: with prompts normalised away, a shell that ignores `PS1` looks
+exactly like one that honours it.
+
+Expectations are recorded from dash, so the suite means "behave as dash
+does at a prompt". **Nine of sixteen cases pass**: basic commands, three
+multi-line constructs, a function typed over several lines, a quote
+continued across a newline, `$?` at the prompt, an unknown command,
+background jobs.
+
+**Seven do not, and each is a real gap** (listed in
+tests/interactive/KNOWN-DIVERGENT so the suite stays green and the list
+stays visible): `PS1` and `PS2` are ignored - the prompt is always `$ `;
+a blank line at the prompt asks for a continuation instead of
+reprompting; `^C` at the prompt neither discards the line nor prompts
+afresh; `^C` during a command is not followed by a newline; `^D` prints
+no newline before exiting; and there are no `[1] + Done` notices. `-i`
+is unimplemented too: it is taken for a file name.
+
+The harness also runs other shells - `THIS_SH=/bin/bash sh
+tests/interactive/run` - which is how the accepted divergences were
+checked against a second reference.
+
+tests/verify: three new lines, interactive:passed/failed/divergent.

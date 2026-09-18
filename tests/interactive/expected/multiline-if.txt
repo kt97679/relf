@@ -1,0 +1,5 @@
+<PS1>if true
+<PS2>then echo yes
+<PS2>fi
+yes
+<PS1>exit

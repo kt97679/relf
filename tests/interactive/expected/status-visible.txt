@@ -1,0 +1,7 @@
+<PS1>false
+<PS1>echo $?
+1
+<PS1>true
+<PS1>echo $?
+0
+<PS1>exit

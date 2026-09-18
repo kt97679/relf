@@ -1,0 +1,6 @@
+<PS1>x="a
+<PS2>b"
+<PS1>echo "[$x]"
+[a
+b]
+<PS1>exit

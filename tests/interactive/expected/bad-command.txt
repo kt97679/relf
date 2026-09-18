@@ -1,0 +1,5 @@
+<PS1>nosuchcmd
+<NOTFOUND>
+<PS1>echo $?
+127
+<PS1>exit

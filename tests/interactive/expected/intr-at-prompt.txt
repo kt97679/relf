@@ -1,0 +1,6 @@
+<PS1>echo before
+before
+<PS1>^C
+<PS1>echo after
+after
+<PS1>exit
