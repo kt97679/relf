@@ -3,4 +3,6 @@
 # PS2, blank lines, the newline on ^D).
 intr-at-prompt      # ^C at the prompt: dash prints a newline and prompts afresh
 intr-during-command # ^C during a command: dash prints a newline before the prompt
-job-in-background   # no "[1] + Done" notices: job control proper is not implemented
+job-in-background   # the notice is printed now (Iteration 309) but without the
+                    # command's text: EXEC-BG's node is a wrapper and walking
+                    # down to the simple command has not worked yet

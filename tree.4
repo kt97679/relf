@@ -140,7 +140,11 @@ LINE-MAX BUFFER: STDIN-TEXT
   \ it, as before.
   \ Only at a real terminal: `-i` with a pipe on standard input still
   \ prompts, but there is nothing to edit (Iteration 306).
+  \ what finished since the last prompt, as both references report it
+  INTERACTIVE? @ CMD-START? @ AND IF JOB-NOTICES JOB-NOTICES-GONE THEN
   INTERACTIVE? @ 0 ISATTY AND IF EDIT-LINE EXIT THEN
+  \ not a terminal, so nothing to edit - but `-i` still prompts
+  INTERACTIVE? @ IF CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN THEN
   CMD-START? @ >R                            \ were we starting a command
   SRC-LEN @ >R                               \ where this line begins
   SRC-LEN @ BUFFER-BODY STDIN-TEXT 0 READ-LINE-INTO     ( u flag )
@@ -1944,7 +1948,33 @@ DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesti
   THEN ;
 
 \ ---- lists, and-or, pipelines ----
+128 BUFFER: BG-TEXT-BUF
+VARIABLE BG-T
+
+: BG-TEXT ( node --- c-addr )   \ the command's words, for the job notice
+  0 BG-T !  0 BG-TEXT-BUF C!
+  \ `cmd &` hands EXEC-BG a wrapper (a one-item list or and-or), not the
+  \ command itself; walk down to it.
+  8 0 DO
+    DUP X@ T-SIMPLE = IF LEAVE THEN
+    DUP 0 XF@ DUP XV# 1 = IF 0 XV@ NIP ELSE DROP LEAVE THEN
+  LOOP
+  DUP X@ T-SIMPLE = 0= IF DROP BG-TEXT-BUF EXIT THEN
+  0 XF@ DUP XV# 0 ?DO
+    DUP I XV@ I-REDIR = 0= IF
+      DUP I 1+ XV@ 0 XF@ XSTR                ( vec text )
+      DUP CSTRLEN                            ( vec text u )
+      BG-T @ IF 32 BG-TEXT-BUF BG-T @ + C! 1 BG-T +! THEN
+      DUP BG-T @ + 126 > IF 2DROP ELSE
+        DUP >R  BG-TEXT-BUF BG-T @ +  SWAP MOVE  R> BG-T +!
+      THEN
+    THEN
+  2 +LOOP DROP
+  0 BG-TEXT-BUF BG-T @ + C!
+  BG-TEXT-BUF ;
+
 : EXEC-BG ( node --- )
+  DUP BG-TEXT JOB-TEXT-NEXT !                \ recorded before the fork
   FORK DUP 0= IF DROP CHILD-RESET-TRAPS EXEC-FINAL-CALL LAST-STATUS @ SHELL-EXIT THEN
   DUP BG-PID !  JOB-ADD  DROP  0 LAST-STATUS ! ;
 

@@ -304,6 +304,7 @@ do not trust the absence of a line below.
 - **306** — `command NAME args` and `-p` (it only did `-v`); the `-i` flag
 - **307** — the `command -p` bug reduced and fixed; `set -C` with a FILE-KIND primitive
 - **308** — ulimit over every resource, on new getrlimit/setrlimit primitives
+- **309** — job completion notices at the prompt (without the command text yet)
 
 ### Not tied to an iteration
 
@@ -17442,3 +17443,30 @@ The lesson is the one from Iteration 307's `MOVE`: a word that takes
 more than two values wants variables, not juggling.
 
 tests/verify: a new shell test file; sizes; three new primitives.
+
+## Iteration 309: job notices
+
+Before each interactive prompt the shell now reports what finished, as
+both references do:
+
+    [1] + Done
+
+Two sources feed it: `WAIT-NOHANG` (308's primitive) reaps children that
+ended since the last prompt and reports them with their real status -
+`Done`, `Done(N)` or `Terminated` - and a second pass reports jobs whose
+process is simply gone, which is how a job the shell already `wait`ed
+for still gets announced. The layout follows dash's: the number, `+` or
+`-` for the two most recent, the status padded into a column of 27.
+
+**What is missing is the command's text.** dash prints `[1] + Done
+sleep 0.1`; this prints the notice without the text, because
+`EXEC-BG` is handed a wrapper node rather than the simple command and my
+walk down to it did not find one. The case stays in
+tests/interactive/KNOWN-DIVERGENT with that reason written down rather
+than a guess committed.
+
+Also fixed on the way: the cooked interactive path had lost its prompt
+when the line editor went in (Iteration 303), so `-i` with a pipe on
+standard input printed no prompt at all.
+
+tests/verify: sizes.

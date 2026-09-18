@@ -5688,16 +5688,30 @@ VARIABLE TF-TRAIL?
 \ this follows dash.
 64 CELLS BUFFER: JOB-PIDS
 64 CELLS BUFFER: JOB-NUMS
+128 CONSTANT JOB-TEXT-MAX
+64 JOB-TEXT-MAX * BUFFER: JOB-TEXT-POOL
+VARIABLE JOB-TEXT-NEXT       \ the text being recorded for the next JOB-ADD
 VARIABLE JOB#           \ how many are recorded
 VARIABLE JOB-NEXT       \ the next job number to hand out
 VARIABLE JB-I
 VARIABLE JB-K
+
+: JOB-TEXT-SLOT ( i --- addr )   JOB-TEXT-MAX * JOB-TEXT-POOL + ;
 
 : JOB-ADD ( pid --- )
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-PIDS
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-NUMS
   JOB-PIDS JOB# @ CELLS + !
   JOB-NEXT @ 1+ DUP JOB-NEXT !  JOB-NUMS JOB# @ CELLS + !
+  \ the command's text, as the notice will print it
+  JOB-TEXT-NEXT @ ?DUP IF
+    DUP CSTRLEN 1+ JOB-TEXT-MAX MIN            ( src n )
+    JOB# @ JOB-TEXT-SLOT SWAP MOVE
+    0 JOB# @ JOB-TEXT-SLOT JOB-TEXT-MAX 1- + C!
+  ELSE
+    0 JOB# @ JOB-TEXT-SLOT C!
+  THEN
+  0 JOB-TEXT-NEXT !
   JOB# @ 1+ JOB# ! ;
 
 : JOB-ALIVE? ( pid --- f )   0 KILL 0= ;   \ KILL takes ( pid sig )
@@ -5708,10 +5722,66 @@ VARIABLE JB-K
     JOB-PIDS I CELLS + @ DUP JOB-ALIVE? IF
       JB-K @ CELLS JOB-PIDS + !
       JOB-NUMS I CELLS + @  JB-K @ CELLS JOB-NUMS + !
+      I JOB-TEXT-SLOT  JB-K @ JOB-TEXT-SLOT  JOB-TEXT-MAX MOVE
       JB-K @ 1+ JB-K !
     ELSE DROP THEN
   LOOP
   JB-K @ JOB# ! ;
+
+: .JOB-STATUS ( status --- )   \ as dash words it
+  DUP 0= IF DROP S" Done" TYPE EXIT THEN
+  DUP 128 > IF DROP S" Terminated" TYPE EXIT THEN
+  S" Done(" TYPE 0 <# #S #> TYPE 41 EMIT ;
+
+VARIABLE JN-I
+VARIABLE JN-STATUS
+VARIABLE JN-WIDTH
+
+: .JOB-NOTICE ( i status --- )   \ [n] + Done<pad>text, as dash prints it
+  JN-STATUS !  JN-I !
+  91 EMIT  JOB-NUMS JN-I @ CELLS + @ 0 <# #S #> TYPE  93 EMIT 32 EMIT
+  JOB# @ 1- JN-I @ = IF 43 ELSE JOB# @ 2 - JN-I @ = IF 45 ELSE 32 THEN THEN EMIT
+  32 EMIT
+  JN-STATUS @ 0= IF 4 ELSE JN-STATUS @ 128 > IF 10 ELSE 8 THEN THEN JN-WIDTH !
+  JN-STATUS @ .JOB-STATUS
+  27 JN-WIDTH @ - 0 MAX SPACES
+  JN-I @ JOB-TEXT-SLOT DUP C@ IF DUP CSTRLEN TYPE ELSE DROP THEN CR ;
+
+: JOB-FORGET ( i --- )   \ drop one job, keeping the others in order
+  JOB# @ 1- OVER ?DO
+    I 1+ CELLS JOB-PIDS + @  I CELLS JOB-PIDS + !
+    I 1+ CELLS JOB-NUMS + @  I CELLS JOB-NUMS + !
+    I 1+ JOB-TEXT-SLOT  I JOB-TEXT-SLOT  JOB-TEXT-MAX MOVE
+  LOOP DROP
+  JOB# @ 1- JOB# ! ;
+
+: JOB-NOTICES ( --- )   \ before an interactive prompt, as both references do
+  BEGIN
+    WAIT-NOHANG                              ( pid status )
+    OVER 0= IF 2DROP EXIT THEN
+    SWAP >R                                  \ the pid goes on the return stack
+    WAIT->STATUS
+    -1 JOB# @ 0 ?DO
+      JOB-PIDS I CELLS + @ R@ = IF DROP I LEAVE THEN
+    LOOP                                     ( status i | status -1 )
+    DUP 0< IF 2DROP ELSE
+      SWAP OVER SWAP .JOB-NOTICE JOB-FORGET  \ report it, then forget it
+    THEN
+    R> DROP
+  AGAIN ;
+
+: JOB-NOTICES-GONE ( --- )
+  \ A job the shell already waited for has been reaped, so WAIT-NOHANG
+  \ will never see it; both references still report it at the next
+  \ prompt. Anything no longer alive is Done as far as we can tell.
+  BEGIN
+    -1 JOB# @ 0 ?DO
+      JOB-PIDS I CELLS + @ JOB-ALIVE? 0= IF DROP I LEAVE THEN
+    LOOP
+    DUP 0< IF DROP EXIT THEN
+    DUP 0 .JOB-NOTICE                        ( i )
+    JOB-FORGET
+  AGAIN ;
 
 : DO-JOBS ( --- )
   0 LAST-STATUS !
