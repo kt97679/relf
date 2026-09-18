@@ -292,6 +292,7 @@ do not trust the absence of a line below.
 - **294** — the expansion path's fixed toll; the interpreter's real cost is branch misprediction
 - **295** — $0 expanded to nothing; a five-line script that hangs the shell, recorded
 - **296** — the hang: `>&-` never closed anything; a failed duplicate went unreported
+- **297** — `exec 3>file` opened the file and lost it; the close that followed the open
 
 ### Not tied to an iteration
 
@@ -17049,3 +17050,35 @@ the leak in one run. The automatic reducer from 295 also misled me once:
 the file it left on disk was its last TRIAL, not the minimum it printed.
 
 tests/verify: diff cases 44 -> 45; sizes.
+
+## Iteration 297: opening onto the descriptor you are opening
+
+296 left a puzzle: checking a failed duplicate broke `exec 3>file; echo
+x >&3`. The check was right and the shell was wrong.
+
+`exec 3>file` opened the file, copied the new descriptor onto 3, and
+closed the original - but **the open lands on 3 itself** when 3 is the
+lowest free descriptor. The copy was a no-op and the close then shut the
+only descriptor there was. `exec >file` and `exec </dev/null` worked
+because 0 and 1 are never the lowest free one, which is why this
+survived: every test anyone had written used those.
+
+    exec 3>f; echo via3 >&3; cat f      # dash: via3   here: f was empty
+                                        #              and via3 went to stdout
+
+The copy and close are skipped when the open already landed on the
+target. With that right, 296's reverted check goes back in: writing to a
+descriptor that is not open now fails the command, as XCU 2.7.6 says
+and as both references do.
+
+`tests/diff/cases/fd-exec-297.sh` - `exec` on descriptors 3 to 7, a
+child inheriting one, reading back, appending, two in one command,
+closing and then using them - matches bash and dash; the build from
+Iteration 291 fails it.
+
+That is three faults from one probe line: `>&-` not closing (296), a
+failed duplicate going unreported (296, reverted, now fixed), and this.
+All three were in redirection code that the suites exercised only on
+descriptors 0, 1 and 2.
+
+tests/verify: diff cases 45 -> 46; sizes.

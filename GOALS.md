@@ -1687,12 +1687,9 @@ before anything else, because every number here is relative to it.
    the descriptor and left it open. `tests/diff/cases/fd-close-296.sh`
    covers it.
 
-5e. **Writing to a descriptor that is not open is not reported.** `echo
-   x >&3` with 3 closed writes to standard output here; both references
-   fail the command. `DUP2`'s result is dropped in
-   `APPLY-REDIRECTIONS`. Checking it (Iteration 296) broke `exec
-   3>file; echo x >&3`, so the reason a freshly opened descriptor looks
-   closed to the next command has to be found first.
+5e. ~~**Writing to a descriptor that is not open is not reported**~~
+   **fixed in Iteration 297**, once the reason it could not be checked
+   was found: `exec 3>file` never really kept fd 3.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u

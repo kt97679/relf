@@ -2416,17 +2416,32 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
         \ Duplicating from a descriptor that is not open fails, and the
         \ command must not run (XCU 2.7.6); the result used to be dropped,
         \ so `echo x >&3` with 3 closed quietly wrote to stdout instead.
-        \ Reporting a failed duplicate was tried in 296 and reverted: it
-        \ broke `exec 3>file; echo x >&3`, which both references accept.
-        \ The result is dropped, as before.
+        \ Duplicating from a descriptor that is not open fails, and the
+        \ command must not run (XCU 2.7.6). 296 tried this and had to
+        \ revert it: `exec 3>file` did not really keep fd 3, so the very
+        \ next command looked wrong. With that fixed the check stands.
         DUP CSTRLEN PARSE-DECIMAL
-        REDIR-FD  AR-I @ CELLS + @ DUP2 DROP
+        REDIR-FD  AR-I @ CELLS + @ DUP2 IF
+          S" shell: " ERR-TYPE
+          REDIR-TGT AR-I @ CELLS + @ ERR-CSTR
+          S" : bad file descriptor" ERR-TYPE ERR-NL
+          -1 REDIR-FAILED? !
+        THEN
       THEN
     ELSE
       DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN
       REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-FOR IF
-        DUP REDIR-FD AR-I @ CELLS + @ DUP2 DROP
-        CLOSE-FILE DROP
+        \ The open may land ON the target: 3 is the lowest free
+        \ descriptor when the target is 3. Copying it onto itself does
+        \ nothing and the close below then shut it, which is why
+        \ `exec 3>file` never persisted while `exec >file` did
+        \ (Iteration 297).
+        REDIR-FD AR-I @ CELLS + @                ( fd target )
+        2DUP = IF
+          2DROP
+        ELSE
+          2DUP DUP2 DROP  DROP CLOSE-FILE DROP
+        THEN
       ELSE
         \ Reported, and the command is not run (Iteration 255). It used
         \ to be skipped silently, so `read x < missing` read the shell's
