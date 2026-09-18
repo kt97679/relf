@@ -2910,18 +2910,42 @@ VARIABLE EX-I
   THEN
   0 LAST-STATUS ! ;
 
+VARIABLE UN-I
+VARIABLE UN-FUNCS?
+DEFER REMOVE-FUNC-CALL   ( name-addr --- )   \ the function table is below
+DEFER FT-SHIFT-CALL      ( i --- i )   \ tree.4 moves its own row
+
 : DO-UNSET ( --- )
   \ unset NAME - removes an exported environment variable and, if
   \ present, a shell-local one (REMOVE-SHVAR) too. Silently does
   \ nothing if given no argument or a name that was never set
   \ (matching real shells: unsetting an already-unset name isn't an
   \ error).
-  ARGC @ 1 > IF
-    ARGV 1 CELLS + @ DUP REMOVE-SHVAR UNSETENV
-    IF 1 ELSE 0 THEN LAST-STATUS !
-  ELSE
-    0 LAST-STATUS !
-  THEN ;
+  \ `-f` removes a function, which it never did until Iteration 326, and
+  \ a readonly variable cannot be unset at all (XCU unset).
+  0 LAST-STATUS !
+  ARGC @ 1 = IF EXIT THEN
+  1 UN-I !  0 UN-FUNCS? !
+  S" -f" 1 ARGV@ STR0= IF -1 UN-FUNCS? !  2 UN-I ! THEN
+  S" -v" 1 ARGV@ STR0= IF 2 UN-I ! THEN
+  BEGIN UN-I @ ARGC @ < WHILE
+    UN-FUNCS? @ IF
+      UN-I @ ARGV@ REMOVE-FUNC-CALL
+    ELSE
+      UN-I @ ARGV@ FIND-SHVAR DUP 0< 0= IF
+        DUP SHVAR-RO + C@ IF
+          DROP
+          S" shell: unset: " ERR-TYPE UN-I @ ARGV@ ERR-CSTR
+          S" : is read only" ERR-TYPE ERR-NL  1 LAST-STATUS !
+        ELSE
+          DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
+        THEN
+      ELSE
+        DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
+      THEN
+    THEN
+    UN-I @ 1+ UN-I !
+  REPEAT ;
 
 16 CONSTANT MAX-FUNCS
 64 CONSTANT FUNC-NAME-MAX
@@ -5361,6 +5385,19 @@ MAX-FUNCS CELLS BUFFER: FUNC-BODY-PTRS
 MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
 MAX-FUNCS CELLS BUFFER: FUNC-BODY-LENS
+
+: REMOVE-FUNC ( name-addr --- )   \ forget a function, for `unset -f`
+  FIND-FUNC DUP 0< IF DROP EXIT THEN
+  FUNC-COUNT @ 1- OVER ?DO
+    I 1+ FUNC-NAME-SLOT  I FUNC-NAME-SLOT  FUNC-NAME-MAX MOVE
+    I 1+ CELLS FUNC-BODY-PTRS + @  I CELLS FUNC-BODY-PTRS + !
+    I 1+ CELLS FUNC-BODY-LENS + @  I CELLS FUNC-BODY-LENS + !
+    \ tree.4 keeps its own parsed body beside these, indexed the same way
+    I FT-SHIFT-CALL DROP
+  LOOP DROP
+  FUNC-COUNT @ 1- FUNC-COUNT ! ;
+
+' REMOVE-FUNC IS REMOVE-FUNC-CALL
 
 : FUNC-BODY-SLOT ( i --- addr )  CELLS FUNC-BODY-PTRS + @ ;
 : FUNC-BODY-LEN-SLOT ( i --- addr )  CELLS FUNC-BODY-LENS + ;

@@ -321,6 +321,7 @@ do not trust the absence of a line below.
 - **323** — an attempt at the notice's status, reverted; what was measured
 - **324** — the notice keeps the job's status: Terminated, not Done
 - **325** — character classes in patterns: [[:alpha:]] and the rest
+- **326** — dash's manual page as a checklist: unset -f, and readonly unset
 
 ### Not tied to an iteration
 
@@ -17973,3 +17974,36 @@ it either; bash does), and `ENV` is not read at an interactive shell's
 startup.
 
 tests/verify: diff cases 55 -> 56; sizes.
+
+## Iteration 326: dash's manual page as the checklist
+
+A better test list than one of mine, because it was written by someone
+else: every `.Ss` section and `.It` item of dash.1, walked against this
+shell. All 31 documented builtins are present. Two faults and one
+conformance gap came out of it.
+
+- **`unset -f` removed nothing.** The function stayed callable. It
+  removes one now - and the table it removes from is two tables: the
+  shell's names and bodies, and tree.4's parsed rows beside them.
+  Removing the name alone left the next function calling the dead one's
+  body, which is what the third test in the case catches.
+- **A readonly variable could be unset.** POSIX says it cannot; `unset`
+  now refuses and reports, with status 1.
+- **`unset` took one operand.** It takes a list, with `-f` and `-v`.
+
+`tests/diff/cases/manpage-326.sh` matches bash and dash: `continue` in a
+`case` inside a loop, `for` with no `in`, a function with a redirection
+on its definition, `!` on a command and on a pipeline, `return`,
+`local` with and without a value, `break 2`, `continue 2`, `shift n`,
+`unset -f` with functions either side of the one removed, `unset -v`,
+`${x=default}`, `${#x}`, a nested expansion, `until`, grouping and a
+subshell.
+
+**Recorded, not fixed**: dash ends a non-interactive shell when a
+*special* builtin fails - `shift 5` with three parameters stops the
+script - where this shell reports and carries on, as bash does outside
+POSIX mode. That is a deliberate difference between the two references,
+and following dash would change the behaviour of every script that
+relies on bash's.
+
+tests/verify: diff cases 56 -> 57; sizes.

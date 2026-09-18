@@ -1722,6 +1722,12 @@ before anything else, because every number here is relative to it.
    them landed in 308), and the readonly behaviour, where dash and bash
    differ anyway. `ulimit` was finished in 308.
 
+5k. **A special builtin's error should end a non-interactive shell**
+   (XCU 2.8.1): dash stops the script on `shift 5` with three
+   parameters, this shell reports and continues, as bash does outside
+   POSIX mode. Found by the manual-page sweep of Iteration 326. Changing
+   it affects every script, so it wants a decision rather than a patch.
+
 5j. **Left after the sweep of Iteration 325**: `LINENO` is never set
    (bash has it, dash does not), and `ENV` is not read when an
    interactive shell starts. Character classes were the sweep's one real
