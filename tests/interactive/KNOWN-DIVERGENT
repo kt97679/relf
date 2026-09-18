@@ -3,6 +3,8 @@
 # PS2, blank lines, the newline on ^D).
 intr-at-prompt      # ^C at the prompt: dash prints a newline and prompts afresh
 intr-during-command # ^C during a command: dash prints a newline before the prompt
-job-in-background   # the notice and its text are right now (Iteration 310) and
-                    # the transcript matches dash, but the case is intermittent:
-                    # roughly one run in three ends at the `wait` line
+job-in-background   # the notice and its text match dash (310). Listed because the
+                    # case is intermittent - see PROGRESS.md 311 for what is
+                    # known: it fails about a third of the time when this
+                    # runner is started fresh, and never when the same session
+                    # is driven from a warm Python process

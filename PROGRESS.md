@@ -306,6 +306,7 @@ do not trust the absence of a line below.
 - **308** — ulimit over every resource, on new getrlimit/setrlimit primitives
 - **309** — job completion notices at the prompt (without the command text yet)
 - **310** — the notice's command text: a pipeline keeps its vector in field 1
+- **311** — chasing the intermittent job case: what it is not
 
 ### Not tied to an iteration
 
@@ -17499,3 +17500,35 @@ race in this shell's reaping or in the harness, and it wants its own
 iteration rather than a guess.
 
 tests/verify: sizes.
+
+## Iteration 311: the intermittent job case, narrowed but not caught
+
+310 left `job-in-background` failing about one run in three. An
+iteration of measurement, and no fix: what follows is what it is NOT, so
+the next attempt does not repeat it.
+
+- **The shell does not die.** A session that loses the notice answers
+  `echo alive` perfectly afterwards when the step is sent; the earlier
+  reading of "exit status 1" was the harness killing a session it had
+  given up on.
+- **It is not the reaping race it looked like.** `sleep 0.1 &` then
+  `wait`, with a long sleep or a short one, re-prompted in 12 of 12
+  runs; `wait` with the job already reaped by the notice pass returns 0
+  and prompts normally.
+- **It is not the editor.** The same script through `-i` with a pipe on
+  standard input - no editor, no raw mode - prints the notice and
+  `done` every time.
+- **It does not reproduce in-process.** Calling the runner's own
+  `run_case` in a loop from one Python process matched dash six times
+  out of six; the same case through `python3 run_cases.py
+  job-in-background`, a fresh process each time, failed two of six.
+
+That last point is the lead worth following: the difference between the
+two is process startup and the first few hundred milliseconds of the
+session, not anything the shell does with the job. The failing
+transcripts end at the `wait` line with nothing after it, so the next
+step is to log what the master side of the terminal sees, with
+timestamps, across many fresh runs - rather than another hypothesis
+about reaping.
+
+No code changed.
