@@ -67,8 +67,9 @@ def strip_escapes(t):
     return ESCAPES.sub('', t)
 
 class Session:
-    def __init__(self, argv, env=None, cwd='/tmp', prompts=('$ ', '# ', '> ')):
+    def __init__(self, argv, env=None, cwd='/tmp', prompts=('$ ', '# ', '> '), settle=0.08):
         self.prompts = prompts
+        self.settle = settle
         self.out = ''
         self.pid, self.fd = pty.fork()
         if self.pid == 0:                      # the child IS the shell
@@ -102,12 +103,24 @@ class Session:
         """
         end = time.time() + timeout
         while time.time() < end:
-            # rendered, not raw: a line editor finishes its redraw with a
-            # cursor-position sequence, so the raw tail is never the prompt
+            # Rendered, not raw: a line editor finishes its redraw with a
+            # cursor-position sequence, so the raw tail is never the prompt.
             tail = render(self.out[mark:])
-            if any(tail.rstrip('\n').endswith(p.rstrip()) or tail.endswith(p)
-                   for p in self.prompts):
-                return True
+            looks_done = any(tail.rstrip('\n').endswith(p.rstrip()) or tail.endswith(p)
+                             for p in self.prompts)
+            if looks_done:
+                # ... and STABLE. An editor rewrites its line from column 0
+                # on every keystroke, so a read that ends just after the
+                # "\r$ " of a redraw renders as a bare prompt while the
+                # line is still being typed. Accepting that sent the next
+                # line into the middle of the previous one, which is what
+                # made job-in-background fail about a third of the time
+                # (Iteration 312). A quiet moment tells the two apart.
+                before = len(self.out)
+                self._read(self.settle)
+                if len(self.out) == before:
+                    return True
+                continue
             if not self._read(0.1):
                 continue
         return False

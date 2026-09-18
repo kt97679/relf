@@ -100,7 +100,6 @@ VARIABLE SRC-LINE
 VARIABLE SRC-STDIN?     \ reading standard input
 VARIABLE SRC-EOF?       \ ... and it has ended
 VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
-DEFER RUN-TRAP-CALL     ( sig --- )   \ shell.4's, for an interrupted read
 
 : BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs
   OVER + SWAP ?DO

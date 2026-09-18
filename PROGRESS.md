@@ -307,6 +307,7 @@ do not trust the absence of a line below.
 - **309** — job completion notices at the prompt (without the command text yet)
 - **310** — the notice's command text: a pipeline keeps its vector in field 1
 - **311** — chasing the intermittent job case: what it is not
+- **312** — the flakiness was the harness: a prompt has to be stable, not just present
 
 ### Not tied to an iteration
 
@@ -17532,3 +17533,38 @@ timestamps, across many fresh runs - rather than another hypothesis
 about reaping.
 
 No code changed.
+
+## Iteration 312: the intermittent case was my harness
+
+311 said the next step was a timestamped log rather than another
+hypothesis. It took one failing trace:
+
+    0.004 SEND  'sleep 0.1 &\n'
+    0.004 read  '\r$ s\x1b[K\r\x1b[3C\r$ sl\x1b[K ...'
+    0.004 prompt? True                  <- wrong
+    0.004 SEND  'wait\n'
+
+The line editor rewrites its line from column 0 on every keystroke, so
+the stream is full of `\r$ ` sequences. A read that ends just after one
+renders as a bare prompt, and `wait_prompt` returned while the previous
+line was still being typed - sending the next line into the middle of
+it. Nothing to do with reaping, jobs or the shell at all: the three
+theories of 310 and 311 were all wrong because the evidence was never
+about the shell.
+
+The fix is one idea: a prompt must be **stable**. When the tail looks
+like a prompt the driver waits a settling moment and re-reads; if
+anything more arrived, it was a redraw and the wait continues. Six
+consecutive traces matched afterwards, then three full suite runs.
+`job-in-background` is out of KNOWN-DIVERGENT and the interactive suite
+is 20 of 22 with the two `^C` cases left.
+
+**And a step towards those two.** A read cut short by a signal is no
+longer taken for end of input: `SIGNALS-PENDING` distinguishes them, the
+trap runs, and the line is cancelled. The editor also prints `^C`
+itself, since with `ECHO` off nothing else does. Neither case passes
+yet - the byte-level read appears to retry on `EINTR` before the editor
+sees it, which is the next thing to look at - but the handling is in
+place for when it does.
+
+tests/verify: sizes.

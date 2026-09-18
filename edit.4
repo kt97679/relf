@@ -13,6 +13,7 @@
 \ Everything is written to fd 2, where the prompt goes, so that a piped
 \ stdout still carries only what the script printed.
 
+DEFER RUN-TRAP-CALL              \ shell.4's RUN-TRAP, for an interrupted read
 VARIABLE CMD-START?              \ the next line begins a command: PS1, else PS2
                                  \ (declared here: tree.4 loads after this)
 LINE-MAX BUFFER: ED-BUF          \ the line being edited
@@ -157,11 +158,22 @@ LINE-MAX BUFFER: HIST-SAVED
   ED-REDRAW
   BEGIN ED-DONE @ 0= WHILE
     ED-GET-BYTE DUP -1 = IF
-      DROP 3 ED-DONE !                          \ the terminal closed
+      DROP
+      \ A read cut short by a signal is not end of input: ^C cancels the
+      \ line, and dash writes a newline before its next prompt
+      \ (Iteration 312).
+      SIGNALS-PENDING ?DUP IF
+        RUN-TRAP-CALL  2 ED-DONE !
+      ELSE
+        3 ED-DONE !                             \ the terminal closed
+      THEN
     ELSE
       ED-KEY-ACT ED-REDRAW
     THEN
   REPEAT
+  \ With ECHO off nothing shows ^C, which the terminal driver prints for
+  \ a shell in cooked mode; the editor prints it (Iteration 312).
+  ED-DONE @ 2 = IF 94 ED-CH 67 ED-CH THEN
   10 ED-CH                                      \ the newline the user typed
   ED-DONE @ 3 = IF ED-BUF 0 0 EXIT THEN
   ED-DONE @ 2 = IF ED-BUF 0 -1 EXIT THEN        \ ^C: an empty line
