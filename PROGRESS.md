@@ -305,6 +305,7 @@ do not trust the absence of a line below.
 - **307** — the `command -p` bug reduced and fixed; `set -C` with a FILE-KIND primitive
 - **308** — ulimit over every resource, on new getrlimit/setrlimit primitives
 - **309** — job completion notices at the prompt (without the command text yet)
+- **310** — the notice's command text: a pipeline keeps its vector in field 1
 
 ### Not tied to an iteration
 
@@ -17468,5 +17469,33 @@ than a guess committed.
 Also fixed on the way: the cooked interactive path had lost its prompt
 when the line editor went in (Iteration 303), so `-i` with a pipe on
 standard input printed no prompt at all.
+
+tests/verify: sizes.
+
+## Iteration 310: the notice's command text
+
+309 left the notices printing without the command. `tree-dump` answered
+it in one line: `sleep 0.1 &` parses to `(list (simple "sleep" "0.1") &)`,
+so `EXEC-BG` is handed the and-or, and walking down to the simple
+command has to know that **a pipeline keeps its vector in field 1** -
+field 0 is its `!` flag - while an and-or keeps it in field 0. Reading
+field 0 for both is why the walk found nothing.
+
+    [1] + Done                       sleep 0.1
+
+matches dash's transcript exactly now.
+
+**And a second fault behind the first**: the walk was written with
+`DO ... LEAVE`, twice, with the node still on the stack. That left the
+interactive shell exiting after the first background job while working
+perfectly in a script. Rewritten with `BEGIN/WHILE`, it is correct in
+both. The non-interactive path was never affected, which is why
+`sleep 0.1 & wait; echo after` kept passing while the pty session died.
+
+The case stays in tests/interactive/KNOWN-DIVERGENT, but for a different
+reason than before: the transcript matches, and the case is intermittent
+- about one run in three ends early at the `wait` line. That is either a
+race in this shell's reaping or in the harness, and it wants its own
+iteration rather than a guess.
 
 tests/verify: sizes.

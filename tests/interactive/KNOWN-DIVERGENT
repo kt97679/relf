@@ -3,6 +3,6 @@
 # PS2, blank lines, the newline on ^D).
 intr-at-prompt      # ^C at the prompt: dash prints a newline and prompts afresh
 intr-during-command # ^C during a command: dash prints a newline before the prompt
-job-in-background   # the notice is printed now (Iteration 309) but without the
-                    # command's text: EXEC-BG's node is a wrapper and walking
-                    # down to the simple command has not worked yet
+job-in-background   # the notice and its text are right now (Iteration 310) and
+                    # the transcript matches dash, but the case is intermittent:
+                    # roughly one run in three ends at the `wait` line

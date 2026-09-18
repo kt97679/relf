@@ -1953,12 +1953,20 @@ VARIABLE BG-T
 
 : BG-TEXT ( node --- c-addr )   \ the command's words, for the job notice
   0 BG-T !  0 BG-TEXT-BUF C!
-  \ `cmd &` hands EXEC-BG a wrapper (a one-item list or and-or), not the
-  \ command itself; walk down to it.
-  8 0 DO
-    DUP X@ T-SIMPLE = IF LEAVE THEN
-    DUP 0 XF@ DUP XV# 1 = IF 0 XV@ NIP ELSE DROP LEAVE THEN
-  LOOP
+  \ `cmd &` hands EXEC-BG an and-or, not the command; walk down to the
+  \ simple command. The vector is field 0 of an and-or but field 1 of a
+  \ pipeline, whose field 0 is the `!` flag - reading field 0 for both
+  \ is why Iteration 309's notices came out with no command text.
+  \ Written with BEGIN/WHILE rather than DO/LEAVE: two LEAVEs with the
+  \ node still on the stack left the interactive shell exiting after the
+  \ first background job.
+  BEGIN
+    DUP 0<> IF DUP X@ T-SIMPLE <> ELSE 0 THEN
+  WHILE
+    DUP X@ T-PIPE = 1 AND XF@                ( vec )
+    DUP XV# 1 = IF 0 XV@ ELSE DROP 0 THEN
+  REPEAT
+  DUP 0= IF DROP BG-TEXT-BUF EXIT THEN
   DUP X@ T-SIMPLE = 0= IF DROP BG-TEXT-BUF EXIT THEN
   0 XF@ DUP XV# 0 ?DO
     DUP I XV@ I-REDIR = 0= IF
