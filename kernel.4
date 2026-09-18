@@ -210,6 +210,8 @@ PRIMITIVE UMASK     ( mask --- old )
 PRIMITIVE CPU-TIMES ( --- user sys child-user child-sys )   \ milliseconds
 PRIMITIVE SIGNAL-ACTION ( signo action --- ior )   \ 0 default, 1 ignore, 2 catch
 PRIMITIVE SIGNALS-PENDING ( --- signo | 0 )        \ lowest caught signal, cleared
+PRIMITIVE TERM-RAW     ( fd --- ior )   \ Iteration 303: the line editor
+PRIMITIVE TERM-RESTORE ( fd --- ior )
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

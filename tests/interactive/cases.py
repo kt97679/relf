@@ -24,6 +24,16 @@ CASES = [
     # raw: the transcript is NOT prompt-normalised, so the prompt string
     # itself is what is being checked - normalising would hide a shell
     # that ignores PS1 altogether.
+    # The line editor (Iteration 303). dash has no editor at all - an
+    # arrow key reaches it as three bytes and goes into the command - so
+    # these expectations cannot come from dash; they are recorded from
+    # this shell and read as a description of what it does.
+    ("edit-cursor", {}, ["echo XY", "\x1b[D\x1b[D", "Z\n", ("exit\n", 'nowait')]),
+    ("edit-backspace", {}, ["echo abc\x7f\x7fZ\n", ("exit\n", 'nowait')]),
+    ("edit-home-end", {}, ["echo mid", "\x01", "\x05", "!\n", ("exit\n", 'nowait')]),
+    ("edit-kill-line", {}, ["echo rubbish\x15echo kept\n", ("exit\n", 'nowait')]),
+    ("history-recall", {}, ["echo first\n", "echo second\n", "\x1b[A\x1b[A", "\n", ("exit\n", 'nowait')]),
+    ("history-down", {}, ["echo one\n", "echo two\n", "\x1b[A\x1b[A", "\x1b[B", "\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
 ]

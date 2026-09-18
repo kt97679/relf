@@ -85,3 +85,41 @@ looking at a behaviour, not for asserting on it.
 
 It needs python3, which the other suites do not; `tests/verify` records
 its three numbers alongside the rest.
+
+## The line editor (Iteration 303)
+
+Until 303 an interactive line came from the terminal driver's cooked
+mode: it could be typed and backspaced over, and nothing else. An arrow
+key arrived as three bytes and went into the command, so correcting
+`echo hi` ran `echo h^[[Di`. There was no history.
+
+`edit.4` reads one byte at a time and does the editing itself:
+
+| key | effect |
+|---|---|
+| left, right, `^B`, `^F` | move the cursor |
+| Home, End, `^A`, `^E` | start and end of the line |
+| backspace, Delete, `^D` | delete before, under the cursor |
+| `^K`, `^U` | kill to the end, kill the line |
+| up, down | walk the history (32 lines) |
+| `^C` | abandon the line, prompt afresh |
+| `^D` on an empty line | end of input |
+
+Two engine primitives support it: `TERM-RAW`, which turns off `ICANON`
+and `ECHO` while leaving `ISIG` alone - so `^C` still raises a signal -
+and `TERM-RESTORE`. Redrawing is a carriage return, the prompt, the
+line, an erase-to-end and a cursor move, all to fd 2 where the prompt
+goes.
+
+**The harness had to learn to render.** A line editor rewrites its line
+on every keystroke, so the raw stream is a run of half-typed lines; the
+old transcript, which only removed carriage returns, turned the session
+into nonsense. `render()` now replays the stream the way a terminal
+would - CR to column 0, `ESC[K` erases from the cursor, `ESC[nC` moves
+right, a newline finishes the line - so a transcript is what a person
+would SEE. A shell in cooked mode, which writes each line once, renders
+unchanged, so dash's recorded expectations still hold.
+
+Six cases cover the editor. They cannot be recorded from dash, which has
+no editor at all, so they are recorded from this shell and read as a
+description of what it does.

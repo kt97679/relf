@@ -13,6 +13,52 @@ shell asks for the next one (or until the timeout, which is a failure).
 import os, pty, re, select, signal, time
 
 ESCAPES = re.compile(r'\x1b\[[?0-9;]*[a-zA-Z]|\x1b[()][A-Z0-9]|\x1b.')
+CSI = re.compile(r'\x1b\[([?0-9;]*)([a-zA-Z])')
+
+def render(stream):
+    """What a person would SEE, not what the shell wrote.
+
+    A line editor redraws: it returns to column 0 with a carriage
+    return, writes the prompt and the line again, erases to the end of
+    the line and moves the cursor back. Dropping the carriage returns
+    turns that into a run of half-typed lines; a shell in the terminal's
+    cooked mode, which writes each line once, comes out unchanged. So
+    the stream is replayed the way a terminal would: CR moves to column
+    0, ESC[K erases from the cursor, ESC[nC moves right, and each line
+    is finished when a newline arrives.
+    """
+    lines, cur, col, i = [], [], 0, 0
+    def put(ch):
+        nonlocal col
+        while len(cur) < col: cur.append(' ')
+        if col < len(cur): cur[col] = ch
+        else: cur.append(ch)
+        col += 1
+    while i < len(stream):
+        c = stream[i]
+        if c == '\x1b':
+            m = CSI.match(stream, i)
+            if m:
+                arg, fn = m.group(1), m.group(2)
+                if fn == 'K' and arg in ('', '0'):
+                    del cur[col:]
+                elif fn == 'C':
+                    col += int(arg or 1)
+                elif fn == 'D':
+                    col = max(0, col - int(arg or 1))
+                i = m.end(); continue
+            i += 2; continue                      # any other escape: skip it
+        if c == '\r':
+            col = 0
+        elif c == '\n':
+            lines.append(''.join(cur)); cur, col = [], 0
+        elif c == '\b':
+            col = max(0, col - 1)
+        else:
+            put(c)
+        i += 1
+    if cur: lines.append(''.join(cur))
+    return '\n'.join(lines)
 
 def strip_escapes(t):
     """Terminal control sequences are not behaviour. bash turns on
@@ -56,8 +102,11 @@ class Session:
         """
         end = time.time() + timeout
         while time.time() < end:
-            tail = self.out[mark:].replace('\r', '')
-            if any(tail.endswith(p) for p in self.prompts):
+            # rendered, not raw: a line editor finishes its redraw with a
+            # cursor-position sequence, so the raw tail is never the prompt
+            tail = render(self.out[mark:])
+            if any(tail.rstrip('\n').endswith(p.rstrip()) or tail.endswith(p)
+                   for p in self.prompts):
                 return True
             if not self._read(0.1):
                 continue
@@ -106,7 +155,7 @@ class Session:
         shells that prompt differently can be compared. The case's own
         PS1/PS2 are replaced first: they are longer, and a plain "> "
         rule would eat the tail of "P1> "."""
-        t = strip_escapes(self.out.replace('\r', ''))
+        t = render(self.out)
         pairs = []
         if env:
             if 'PS1' in env: pairs.append((env['PS1'], '<PS1>'))
@@ -119,4 +168,4 @@ class Session:
         return t
 
     def raw(self):
-        return strip_escapes(self.out.replace('\r', ''))
+        return render(self.out)

@@ -48,6 +48,7 @@
  */
 
 #include <unistd.h>
+#include <termios.h>
 #include <pwd.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -61,7 +62,6 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <poll.h>
-#include <termios.h>
 #include <stddef.h>
 
 /*  kernel.4's FD-POLL lays a struct pollfd out by hand, in two cells on
@@ -80,6 +80,9 @@ extern char **environ;
  * of this; SYS-ARG(0) is argv[2], the first argument after the image
  * path, matching a shell's own convention of not exposing its own
  * name via the primitives that expose *its* arguments. */
+static struct termios term_save;
+static int term_saved;
+
 static int g_argc;
 static char **g_argv;
 
@@ -102,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    47
+#define NESC    49
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -753,6 +756,7 @@ static void virtual_machine(void) {
         &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
         &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir, &&L_access,
         &&L_kill, &&L_umask, &&L_cputimes, &&L_sigaction, &&L_sigpending,
+        &&L_termraw, &&L_termrestore,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1213,6 +1217,27 @@ L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 26
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;
     FILLNEXT();
+L_termraw: SPILL(); { /* fd --- ior : character-at-a-time input for the
+                        line editor (Iteration 303). ICANON and ECHO go;
+                        ISIG stays, so ^C still raises SIGINT, and OPOST
+                        stays, so a newline still writes CR LF. */
+    int fd = (int)DS0;
+    struct termios tio;          /* not `t`: the dispatch loop owns that */
+    if (tcgetattr(fd, &tio)) { DS0 = (UNS64)(INT64)-errno; FILLNEXT(); }
+    if (!term_saved) { term_save = tio; term_saved = 1; }
+    tio.c_lflag &= ~(ICANON | ECHO | IEXTEN);
+    tio.c_iflag &= ~(ICRNL | INLCR);
+    tio.c_cc[VMIN] = 1;
+    tio.c_cc[VTIME] = 0;
+    DS0 = tcsetattr(fd, TCSADRAIN, &tio) ? (UNS64)(INT64)-errno : 0;
+    FILLNEXT();
+}
+L_termrestore: SPILL(); { /* fd --- ior : back to the settings TERM-RAW saw */
+    int fd = (int)DS0;
+    DS0 = term_saved && tcsetattr(fd, TCSADRAIN, &term_save)
+          ? (UNS64)(INT64)-errno : 0;
+    FILLNEXT();
+}
 L_write: SPILL(); { /* c-addr u fd --- n : n < 0 is -errno */
     t_flush();
     DS2 = (UNS64)(INT64)t_write((int)DS0, DS2, DS1);

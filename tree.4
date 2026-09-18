@@ -100,7 +100,6 @@ VARIABLE SRC-LINE
 VARIABLE SRC-STDIN?     \ reading standard input
 VARIABLE SRC-EOF?       \ ... and it has ended
 VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
-VARIABLE CMD-START?     \ the next line read begins a command: PS1, else PS2
 DEFER RUN-TRAP-CALL     ( sig --- )   \ shell.4's, for an interrupted read
 
 : BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs
@@ -117,11 +116,25 @@ CREATE AL-ACTIVE  MAX-ALIAS-NEST 2* CELLS ALLOT   \ (alias, end offset) pairs
 VARIABLE AL-ACTIVE#
 LINE-MAX BUFFER: STDIN-TEXT
 
+: EDIT-LINE ( --- f )   \ one edited line, into the source buffer
+  0 TERM-RAW DROP
+  ED-LINE                                    ( c-addr u flag )
+  0 TERM-RESTORE DROP
+  0= IF 2DROP -1 SRC-EOF? ! 0 EXIT THEN      ( c-addr u )
+  DUP SRC-LEN @ + 2 + ENSURE-BUFFER STDIN-TEXT
+  DUP >R  STDIN-TEXT SRC-LEN @ +  SWAP MOVE  \ the length stays on R
+  R@ 0= CMD-START? @ AND 0= IF 0 CMD-START? ! THEN
+  SRC-LEN @ R> +
+  10 OVER STDIN-TEXT + C!  1+ SRC-LEN !
+  STDIN-TEXT SRC-ADDR !  -1 ;
+
 : REFILL-STDIN ( --- f )   \ one more line of standard input, or false
   SRC-EOF? @ IF 0 EXIT THEN
-  INTERACTIVE? @ IF
-    CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
-  THEN
+  \ At a terminal the line is edited here (edit.4, Iteration 303): the
+  \ arrow keys, the usual control characters, and a history the up and
+  \ down arrows walk. Elsewhere the terminal driver's cooked mode reads
+  \ it, as before.
+  INTERACTIVE? @ IF EDIT-LINE EXIT THEN
   CMD-START? @ >R                            \ were we starting a command
   SRC-LEN @ >R                               \ where this line begins
   SRC-LEN @ BUFFER-BODY STDIN-TEXT 0 READ-LINE-INTO     ( u flag )

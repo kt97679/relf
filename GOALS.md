@@ -1695,12 +1695,10 @@ before anything else, because every number here is relative to it.
    sweep that began in 295 is finished: ordering, compound commands,
    high descriptors, failures and `/dev/null` all match both references.
 
-5g. **The interactive gaps named in Iteration 301** (see INTERACTIVE.md
-   and tests/interactive/KNOWN-DIVERGENT): `PS1`/`PS2` ignored, a blank
-   line taken for a continuation, `^C` at the prompt not discarding the
-   line, no newline after `^C` or before exit on `^D`, no job notices,
-   and `-i` unimplemented. The first two are the cheapest and the most
-   visible.
+5g. **The interactive gaps left after Iterations 302 and 303**: the
+   newline dash writes after `^C` before its next prompt, and job
+   completion notices. Cursor keys, line editing and history are done
+   (edit.4); `-i` is still unimplemented.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u

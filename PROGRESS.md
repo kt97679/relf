@@ -298,6 +298,7 @@ do not trust the absence of a line below.
 - **300** — nested backquotes; a line continuation in $(( )) - a regression from 286
 - **301** — a pseudo-terminal harness: the interactive shell is testable, and seven gaps are named
 - **302** — PS1/PS2, blank lines, the newline on ^D; an interruptible signal mode
+- **303** — a line editor: cursor keys, editing keys and history; the harness renders
 
 ### Not tied to an iteration
 
@@ -17258,3 +17259,43 @@ was-start` compiles `R:`, because a `( ... )` comment ends at its first
 file.
 
 tests/verify: interactive 9 -> 13 passing, 7 -> 3 divergent; sizes.
+
+## Iteration 303: a line editor
+
+The interactive shell now edits its line. `edit.4` reads a byte at a
+time and handles the arrow keys, Home and End, Delete and backspace,
+`^A ^B ^E ^F ^K ^U`, `^C` to abandon a line, `^D` for end of input, and
+a 32-line history the up and down arrows walk - keeping the half-typed
+line while it is browsed and giving it back on the way down.
+
+Two escaped primitives support it: `TERM-RAW` turns off `ICANON` and
+`ECHO` but leaves `ISIG`, so `^C` still raises a signal and 302's
+interrupt handling still works; `TERM-RESTORE` puts the terminal back.
+Both engines were rebuilt and both kernels re-bootstrapped to the
+fixpoint.
+
+**The harness had to learn to render.** An editor rewrites its line on
+every keystroke, so the old transcript - which only dropped carriage
+returns - turned a session into a run of half-typed lines and all 13
+cases failed. `render()` replays the stream as a terminal would: CR to
+column 0, `ESC[K` erases from the cursor, `ESC[nC` moves right, a
+newline finishes the line. A shell in cooked mode renders unchanged, so
+dash's expectations still hold, and prompt-waiting is rendered too,
+because an editor ends its redraw with a cursor-position sequence rather
+than with the prompt.
+
+Six new cases cover the editor - a cursor correction, backspaces, Home
+and End, `^U`, and history up and down. They cannot come from dash,
+which has no editor, so they are recorded from this shell.
+
+**19 of 22 interactive cases pass**, with the three from 302 still
+divergent. Everything else is unchanged: matrix 420, differential 49,
+POSIX 46, mrsh 21, both widths.
+
+Four of my own mistakes on the way, all cheap but worth the record: this
+Forth has no `2>R` and no `>=`; the C dispatch loop already owns the
+name `t`; and the comment lint from 302 caught its own mistake pattern
+in new code, which is the first time a tool written here has paid for
+itself the same week.
+
+tests/verify: interactive 13 -> 19 passing; sizes; a new file, edit.4.

@@ -1,0 +1,168 @@
+\ edit.4 - the interactive line editor (Iteration 303)
+\
+\ Until now an interactive line came from the terminal driver in its
+\ cooked mode: it could be typed and backspaced over, and nothing else.
+\ An arrow key arrived as three bytes and was inserted into the command,
+\ so `echo hi` with a cursor correction ran as `echo h^[[Di`. There was
+\ no history at all.
+\
+\ With TERM-RAW (Iteration 303's engine primitive) the shell reads one
+\ byte at a time and does the editing itself: the arrow keys, the usual
+\ control characters, and a history the up and down arrows walk.
+\
+\ Everything is written to fd 2, where the prompt goes, so that a piped
+\ stdout still carries only what the script printed.
+
+VARIABLE CMD-START?              \ the next line begins a command: PS1, else PS2
+                                 \ (declared here: tree.4 loads after this)
+LINE-MAX BUFFER: ED-BUF          \ the line being edited
+VARIABLE ED-LEN
+VARIABLE ED-POS                  \ the cursor, 0 .. ED-LEN
+VARIABLE ED-PROMPT-LEN
+VARIABLE ED-DONE                 \ 0 editing, 1 accepted, 2 cancelled, 3 end of input
+2 BUFFER: ED-KEY
+
+32 CONSTANT HIST-SLOTS
+256 CONSTANT HIST-SLOT-SIZE
+HIST-SLOTS HIST-SLOT-SIZE * BUFFER: HIST-BUF
+VARIABLE HIST#                   \ how many lines are stored (up to HIST-SLOTS)
+VARIABLE HIST-VIEW               \ which one is shown; HIST# means "the new line"
+VARIABLE HIST-SAVED-LEN          \ the new line, kept while history is walked
+VARIABLE HIST-DST
+LINE-MAX BUFFER: HIST-SAVED
+
+: HIST-SLOT ( i --- addr )   HIST-SLOT-SIZE * HIST-BUF + ;
+
+: HIST-ADD ( c-addr u --- )   \ the newest line, oldest dropped
+  DUP 0= IF 2DROP EXIT THEN
+  DUP HIST-SLOT-SIZE 1- > IF DROP HIST-SLOT-SIZE 1- THEN
+  HIST# @ HIST-SLOTS = IF                   \ full: shift them all down
+    HIST-SLOTS 1- 0 ?DO
+      I 1+ HIST-SLOT  I HIST-SLOT  HIST-SLOT-SIZE MOVE
+    LOOP
+    HIST-SLOTS 1- HIST# !
+  THEN
+  HIST# @ HIST-SLOT HIST-DST !               ( c-addr u )
+  DUP >R  HIST-DST @ SWAP MOVE               \ the text
+  0 HIST-DST @ R> + C!                       \ and its terminator
+  HIST# @ 1+ HIST# ! ;
+
+\ ---- the screen ----
+
+: ED-OUT ( c-addr u --- )   ERR-TYPE ;
+: ED-CH ( c --- )   ED-KEY C!  ED-KEY 1 ED-OUT ;
+
+: ED-CSI ( --- )   27 ED-CH  91 ED-CH ;
+
+: ED-NUM ( n --- )   \ a small decimal, for a control sequence
+  0 <# #S #> ED-OUT ;
+
+: ED-REDRAW ( --- )
+  13 ED-CH                                   \ column 0
+  CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
+  ED-BUF ED-LEN @ ED-OUT
+  ED-CSI 75 ED-CH                            \ erase to end of line
+  13 ED-CH
+  ED-PROMPT-LEN @ ED-POS @ + ?DUP IF ED-CSI ED-NUM 67 ED-CH THEN ;
+
+\ ---- editing ----
+
+: ED-INSERT ( c --- )
+  ED-LEN @ LINE-MAX 2 - < 0= IF DROP EXIT THEN
+  ED-BUF ED-POS @ + DUP 1+                   ( c src dst )
+  ED-LEN @ ED-POS @ - MOVE                   \ make room
+  ED-BUF ED-POS @ + C!
+  1 ED-LEN +!  1 ED-POS +! ;
+
+: ED-BACKSPACE ( --- )
+  ED-POS @ 0= IF EXIT THEN
+  ED-BUF ED-POS @ + DUP 1-                   ( src dst )
+  ED-LEN @ ED-POS @ - MOVE
+  -1 ED-LEN +!  -1 ED-POS +! ;
+
+: ED-DELETE ( --- )   \ the character under the cursor
+  ED-POS @ ED-LEN @ < 0= IF EXIT THEN
+  ED-BUF ED-POS @ + 1+ DUP 1-
+  ED-LEN @ ED-POS @ - 1- MOVE
+  -1 ED-LEN +! ;
+
+: ED-KILL-TO-END ( --- )   ED-POS @ ED-LEN ! ;
+
+: ED-KILL-LINE ( --- )   0 ED-LEN !  0 ED-POS ! ;
+
+: ED-SET-LINE ( c-addr u --- )   \ replace what is being edited
+  DUP LINE-MAX 2 - > IF DROP LINE-MAX 2 - THEN
+  DUP ED-LEN !  DUP ED-POS !
+  ED-BUF SWAP MOVE ;
+
+\ ---- history ----
+
+: ED-HIST-UP ( --- )
+  HIST-VIEW @ 0= IF EXIT THEN
+  HIST-VIEW @ HIST# @ = IF                   \ leaving the new line: keep it
+    ED-BUF HIST-SAVED ED-LEN @ MOVE  ED-LEN @ HIST-SAVED-LEN !
+  THEN
+  HIST-VIEW @ 1- DUP HIST-VIEW !
+  HIST-SLOT DUP CSTRLEN ED-SET-LINE ;
+
+: ED-HIST-DOWN ( --- )
+  HIST-VIEW @ HIST# @ < 0= IF EXIT THEN
+  HIST-VIEW @ 1+ DUP HIST-VIEW !
+  DUP HIST# @ = IF
+    DROP HIST-SAVED HIST-SAVED-LEN @ ED-SET-LINE
+  ELSE
+    HIST-SLOT DUP CSTRLEN ED-SET-LINE
+  THEN ;
+
+\ ---- keys ----
+
+: ED-GET-BYTE ( --- c | -1 )
+  ED-KEY 1 0 READ-SOME DUP 1 = IF DROP ED-KEY C@ ELSE DROP -1 THEN ;
+
+: ED-ESCAPE ( --- )   \ an arrow or a home/end key: ESC [ x
+  ED-GET-BYTE DUP 91 = SWAP 79 = OR 0= IF EXIT THEN
+  ED-GET-BYTE
+  DUP 65 = IF DROP ED-HIST-UP        EXIT THEN   \ up
+  DUP 66 = IF DROP ED-HIST-DOWN      EXIT THEN   \ down
+  DUP 67 = IF DROP
+    ED-POS @ ED-LEN @ < IF 1 ED-POS +! THEN EXIT THEN   \ right
+  DUP 68 = IF DROP
+    ED-POS @ 0 > IF -1 ED-POS +! THEN EXIT THEN         \ left
+  DUP 72 = IF DROP 0 ED-POS ! EXIT THEN                 \ home
+  DUP 70 = IF DROP ED-LEN @ ED-POS ! EXIT THEN          \ end
+  51 = IF ED-GET-BYTE 126 = IF ED-DELETE THEN THEN ;    \ delete
+
+: ED-KEY-ACT ( c --- )
+  DUP 10 = OVER 13 = OR IF DROP 1 ED-DONE ! EXIT THEN
+  DUP 27 = IF DROP ED-ESCAPE EXIT THEN
+  DUP 127 = OVER 8 = OR IF DROP ED-BACKSPACE EXIT THEN
+  DUP 1 = IF DROP 0 ED-POS ! EXIT THEN            \ ^A
+  DUP 5 = IF DROP ED-LEN @ ED-POS ! EXIT THEN     \ ^E
+  DUP 2 = IF DROP ED-POS @ 0 > IF -1 ED-POS +! THEN EXIT THEN   \ ^B
+  DUP 6 = IF DROP ED-POS @ ED-LEN @ < IF 1 ED-POS +! THEN EXIT THEN \ ^F
+  DUP 11 = IF DROP ED-KILL-TO-END EXIT THEN       \ ^K
+  DUP 21 = IF DROP ED-KILL-LINE EXIT THEN         \ ^U
+  DUP 4 = IF DROP                                 \ ^D: end of input if empty
+    ED-LEN @ 0= IF 3 ED-DONE ! ELSE ED-DELETE THEN EXIT THEN
+  DUP 3 = IF DROP 2 ED-DONE ! EXIT THEN           \ ^C
+  DUP 12 = IF DROP EXIT THEN                      \ ^L: redraw, which happens anyway
+  DUP 32 < IF DROP EXIT THEN                      \ other control characters
+  ED-INSERT ;
+
+: ED-LINE ( --- c-addr u flag )   \ flag: -1 a line, 0 end of input
+  0 ED-LEN !  0 ED-POS !  0 ED-DONE !
+  HIST# @ HIST-VIEW !  0 HIST-SAVED-LEN !
+  CMD-START? @ IF PS1-NM PS1-DEFAULT ELSE PS2-NM PS2-DEFAULT THEN
+  PROMPT-STRING NIP ED-PROMPT-LEN !
+  ED-REDRAW
+  BEGIN ED-DONE @ 0= WHILE
+    ED-GET-BYTE DUP -1 = IF
+      DROP 3 ED-DONE !                          \ the terminal closed
+    ELSE
+      ED-KEY-ACT ED-REDRAW
+    THEN
+  REPEAT
+  10 ED-CH                                      \ the newline the user typed
+  ED-DONE @ 3 = IF ED-BUF 0 0 EXIT THEN
+  ED-DONE @ 2 = IF ED-BUF 0 -1 EXIT THEN        \ ^C: an empty line
+  ED-BUF ED-LEN @ 2DUP HIST-ADD -1 ;

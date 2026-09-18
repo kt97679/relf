@@ -1,7 +1,7 @@
 core:4byte 1
 core:8byte 1
 core:okmarkers 2129
-crosspath:kernel-shell.img reproduces
+crosspath:kernel-shell.img DIFFERS
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
@@ -9,7 +9,7 @@ image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 interactive:divergent 3
 interactive:failed 0
-interactive:passed 13
+interactive:passed 19
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -33,11 +33,11 @@ rebuild:kernel32-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
 shell:assertions 608
-shell:dead-words 0
+shell:dead-words 7
 shell:files 72
-size:engine-code-i386 15854
-size:engine-code-x86_64 21258
-size:i386 96544
-size:image-i386 74492
-size:image-x86_64 80168
-size:x86_64 115200
+size:engine-code-i386 17054
+size:engine-code-x86_64 21610
+size:i386 98172
+size:image-i386 76120
+size:image-x86_64 81912
+size:x86_64 116944

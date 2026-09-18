@@ -1,0 +1,7 @@
+<PS1>echo one
+one
+<PS1>echo two
+two
+<PS1>echo two
+two
+<PS1>exit
