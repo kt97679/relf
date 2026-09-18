@@ -3,9 +3,9 @@
 # (PS1, PS2, blank lines, the newline on ^D), 310 and 312 (the job
 # notice and its text), 314 and 315 (^C at the prompt and during a
 # command). Keep using this file rather than deleting a failing case.
-job-control         # ^Z, jobs, bg and kill %1 all work and read as dash reads
-                    # them; two differences remain (Iteration 322): the
-                    # completion notice appears one prompt earlier here, and a
-                    # job killed by a signal is reported Done rather than
-                    # Terminated - the job is noticed as gone before
-                    # WAIT-NOHANG reaps it, so its status is lost
+job-control         # ^Z, jobs, bg, kill %1 and the wording of every notice
+                    # match dash as of Iteration 324. What differs is WHEN the
+                    # completion notice appears: this shell reaps in the notice
+                    # pass, so it reports at the first prompt after the job
+                    # ends, while dash reaps in its wait loop and reports one
+                    # prompt later. Both are before a prompt, as POSIX asks.

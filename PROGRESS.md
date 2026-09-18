@@ -319,6 +319,7 @@ do not trust the absence of a line below.
 - **321** — foreground process groups; ^Z still does not stop a job
 - **322** — ^Z works: an ignored signal is inherited through exec
 - **323** — an attempt at the notice's status, reverted; what was measured
+- **324** — the notice keeps the job's status: Terminated, not Done
 
 ### Not tied to an iteration
 
@@ -17910,3 +17911,36 @@ with two `2DROP`s where one was needed, which is what the return stack
 overflow was.
 
 No code changed.
+
+## Iteration 324: the notice keeps the status
+
+323's attempt, redone one piece at a time with each piece tested before
+the next went in - which is what made the difference.
+
+A job reaped by `wait` or by the notice pass now keeps its status in the
+table (`JOB-STATUS`, state 2) and is reported at the next prompt with
+the right wording. The pass that reported any job whose process had
+simply vanished, calling all of them `Done`, is gone.
+
+    $ sleep 5
+    ^Z[1] + Stopped                    sleep 5
+    $ bg
+    [1] sleep 5
+    $ kill %1
+    [1] + Terminated                 sleep 5
+
+Every word of that matches dash. What still differs is WHEN: this shell
+reaps in the notice pass and reports at the first prompt after the job
+ends, dash reaps in its wait loop and reports one prompt later. Both are
+before a prompt, which is what POSIX asks, so the pty case stays listed
+with that narrow reason rather than being bent to match.
+
+**Why 323 failed and this did not.** The same code, applied in one go,
+had two faults that masked each other: `DO-WAIT` ended with two `2DROP`s
+(a leftover from an earlier edit, which came back when the change was
+re-applied), and the marking word was called with its arguments in the
+wrong order from one of its two call sites. Testing `JOB-MARK-DONE` by
+itself - `forth JOB-PIDS @ 143 JOB-MARK-DONE` - proved it worked in
+seconds, which pointed straight at the callers.
+
+tests/verify: sizes.

@@ -3978,19 +3978,31 @@ VARIABLE GO-NMLEN
     THEN
   0 UNTIL ;
 
+VARIABLE DW-PID
+DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
+
 : DO-WAIT ( --- )
   \ wait [pid]: with an operand, wait for that child; with none, wait
   \ for all of them. A shell with no children at all is not an error.
   0 LAST-STATUS !
+  \ Whatever `wait` reaps is recorded in the job table, so the notice
+  \ still appears at the next prompt (Iteration 324). Variables, because
+  \ the pid has to outlive the status.
   ARGC @ 1 > IF
-    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL WAITPID
-    DUP 0= IF DROP WAIT->STATUS LAST-STATUS ! ELSE 2DROP THEN
+    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL DW-PID !
+    DW-PID @ WAITPID                           ( raw ior )
+    0= IF
+      DUP WAIT->STATUS LAST-STATUS !
+      DW-PID @ SWAP JOB-MARK-DONE-CALL
+    ELSE DROP THEN
     EXIT
   THEN
   BEGIN
-    -1 WAITPID          ( raw ior )
-    DUP 0= WHILE
-    DROP WAIT->STATUS LAST-STATUS !
+    -1 WAIT-JOB                                ( pid raw )
+    OVER 0< 0= WHILE
+    DUP 127 AND 127 = IF 2DROP EXIT THEN       \ stopped: it stays a job
+    DUP WAIT->STATUS LAST-STATUS !
+    JOB-MARK-DONE-CALL                         ( consumes pid and raw )
   REPEAT
   2DROP
   ;   \ the job stays until the prompt reports it (Iteration 320)
@@ -5980,7 +5992,8 @@ VARIABLE TF-TRAIL?
 \ this follows dash.
 64 CELLS BUFFER: JOB-PIDS
 64 CELLS BUFFER: JOB-NUMS
-64 CELLS BUFFER: JOB-STATES  \ 0 running, 1 stopped (Iteration 320)
+64 CELLS BUFFER: JOB-STATES  \ 0 running, 1 stopped, 2 finished (320, 324)
+64 CELLS BUFFER: JOB-STATUS  \ how a finished job ended, kept for its notice
 128 CONSTANT JOB-TEXT-MAX
 64 JOB-TEXT-MAX * BUFFER: JOB-TEXT-POOL
 VARIABLE JOB-TEXT-NEXT       \ the text being recorded for the next JOB-ADD
@@ -6063,32 +6076,44 @@ VARIABLE JN-WIDTH
   JOB# @ 1- JOB# !
   JOB# @ 0= IF 0 JOB-NEXT ! THEN ;
 
+VARIABLE JMD-PID
+VARIABLE JMD-STATUS
+
+: JOB-MARK-DONE ( pid status --- )
+  \ A job the shell has reaped keeps its status until the next prompt
+  \ reports it. Variables, not juggling: this word is called from two
+  \ places with the values in different orders (Iteration 324).
+  WAIT->STATUS JMD-STATUS !  JMD-PID !         \ the raw word, decoded here
+  JOB# @ 0 ?DO
+    JOB-PIDS I CELLS + @ JMD-PID @ = IF
+      JMD-STATUS @ JOB-STATUS I CELLS + !
+      2 JOB-STATES I CELLS + !
+    THEN
+  LOOP ;
+
 : JOB-NOTICES ( --- )   \ before an interactive prompt, as both references do
   BEGIN
     WAIT-NOHANG                              ( pid status )
     OVER 0= IF 2DROP EXIT THEN
-    SWAP >R                                  \ the pid goes on the return stack
-    WAIT->STATUS
-    -1 JOB# @ 0 ?DO
-      JOB-PIDS I CELLS + @ R@ = IF DROP I LEAVE THEN
-    LOOP                                     ( status i | status -1 )
-    DUP 0< IF 2DROP ELSE
-      SWAP OVER SWAP .JOB-NOTICE JOB-FORGET  \ report it, then forget it
-    THEN
-    R> DROP
+    \ ( pid raw-status ) - record it; the prompt reports it afterwards
+    JOB-MARK-DONE
   AGAIN ;
 
-: JOB-NOTICES-GONE ( --- )
-  \ A job the shell already waited for has been reaped, so WAIT-NOHANG
-  \ will never see it; both references still report it at the next
-  \ prompt. Anything no longer alive is Done as far as we can tell.
+VARIABLE JND-I
+
+: JOB-NOTICES-DONE ( --- )
+  \ Report each finished job and forget it. This replaces a pass that
+  \ looked for a job whose process was simply gone and called every one
+  \ of them `Done`, losing the status of anything killed by a signal
+  \ (Iteration 324).
   BEGIN
-    -1 JOB# @ 0 ?DO
-      JOB-PIDS I CELLS + @ JOB-ALIVE? 0= IF DROP I LEAVE THEN
+    -1 JND-I !
+    JOB# @ 0 ?DO
+      JOB-STATES I CELLS + @ 2 = JND-I @ 0< AND IF I JND-I ! THEN
     LOOP
-    DUP 0< IF DROP EXIT THEN
-    DUP 0 .JOB-NOTICE                        ( i )
-    JOB-FORGET
+    JND-I @ 0< IF EXIT THEN
+    JND-I @  JOB-STATUS JND-I @ CELLS + @  .JOB-NOTICE
+    JND-I @ JOB-FORGET
   AGAIN ;
 
 : DO-JOBS ( --- )
@@ -6213,6 +6238,8 @@ VARIABLE KJ-PID
 
 ' DO-FG      S" fg"      BUILTIN
 ' DO-BG      S" bg"      BUILTIN
+
+' JOB-MARK-DONE IS JOB-MARK-DONE-CALL
 
 ' DO-JOBS    S" jobs"    BUILTIN
 

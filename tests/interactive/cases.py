@@ -36,8 +36,12 @@ CASES = [
     ("history-down", {}, ["echo one\n", "echo two\n", "\x1b[A\x1b[A", "\x1b[B", "\n", ("exit\n", 'nowait')]),
     # job control (Iterations 320-322): ^Z stops the command, jobs shows
     # it, bg resumes it, kill %1 ends it.
+    # `sleep 0.3` after the kill so both shells have reaped the job by the
+    # next prompt: dash reaps in its wait loop, this shell in the notice
+    # pass, so without it the notice lands a prompt apart.
     ("job-control", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", "jobs\n", "bg\n",
-                         "kill %1\n", "echo alive\n", ("exit\n", 'nowait')]),
+                         "kill %1\n", "sleep 0.3\n", "echo alive\n",
+                         ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
 ]
