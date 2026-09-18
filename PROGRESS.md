@@ -293,6 +293,7 @@ do not trust the absence of a line below.
 - **295** — $0 expanded to nothing; a five-line script that hangs the shell, recorded
 - **296** — the hang: `>&-` never closed anything; a failed duplicate went unreported
 - **297** — `exec 3>file` opened the file and lost it; the close that followed the open
+- **298** — `<>` opens for reading and writing; the rest of the redirection sweep is clean
 
 ### Not tied to an iteration
 
@@ -17082,3 +17083,33 @@ All three were in redirection code that the suites exercised only on
 descriptors 0, 1 and 2.
 
 tests/verify: diff cases 45 -> 46; sizes.
+
+## Iteration 298: `<>`, and the end of that thread
+
+The rest of the redirection sweep, against both references: the order of
+`2>&1 >file` against `>file 2>&1`, redirections on `while`, `for`, `if`,
+`case`, a subshell, a group and a function, several redirections in one
+command, appending against truncating, descriptors up to 9, a
+redirection that fails, and input from `/dev/null`. All of it matches.
+
+One gap: **`<>`**. The parser recognised it - `OP-LESSGREAT` has been in
+the operator table all along - but `OP>WORD`, which hands a redirection
+to the executor as the operator's TEXT, handed it over as a plain `<`.
+So it opened read-only and failed outright on a file that did not exist.
+It now has its own operator word, its own code in the executor, and an
+open that creates the file when it is not there and truncates nothing.
+
+A stack error of mine on the way, caught by the suites before it could
+be committed: the new `OPEN-OR-CREATE` mishandled `OPEN-FOR`'s two
+results, which cost 30 matrix cases and a return stack overflow.
+
+`tests/diff/cases/redirect-rw-298.sh` - a new file created by `<>`,
+reading from one opened that way, writing over the start of an existing
+file, and `cat <>` on a missing file - matches bash and dash.
+
+That closes the thread 295 opened: five faults from probing what the
+suites only ever exercised on descriptors 0, 1 and 2 - `>&-` not
+closing, a failed duplicate unreported, `exec` losing any descriptor
+above 2, `$0` empty, and `<>` unimplemented.
+
+tests/verify: diff cases 46 -> 47; parse verdicts 152 -> 153; sizes.

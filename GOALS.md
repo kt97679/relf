@@ -1691,6 +1691,10 @@ before anything else, because every number here is relative to it.
    **fixed in Iteration 297**, once the reason it could not be checked
    was found: `exec 3>file` never really kept fd 3.
 
+5f. ~~**`<>` unimplemented**~~ fixed in Iteration 298. The redirection
+   sweep that began in 295 is finished: ordering, compound commands,
+   high descriptors, failures and `/dev/null` all match both references.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,

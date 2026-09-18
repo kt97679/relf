@@ -2313,7 +2313,8 @@ VARIABLE AR-I
   2DUP S" >&" STR= IF 2DROP 4 EXIT THEN
   2DUP S" <&" STR= IF 2DROP 5 EXIT THEN
   2DUP S" <<" STR= IF 2DROP 6 EXIT THEN
-       S" <<-" STR= IF 7 EXIT THEN
+  2DUP S" <<-" STR= IF 2DROP 7 EXIT THEN
+       S" <>"  STR= IF 8 EXIT THEN            \ reading and writing
   0 ;
 
 : REDIR-ADD ( fd op --- )
@@ -2370,6 +2371,18 @@ VARIABLE AR-I
 
 VARIABLE REDIR-FAILED?   \ set by APPLY-REDIRECTIONS when an open fails
 VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
+
+: OPEN-OR-CREATE ( c-addr fam --- fid ok? )
+  \ `<>` names a file that need not exist yet; every other form either
+  \ creates it itself (W/O, A/O) or has to find it (R/O).
+  2DUP OPEN-FOR                              ( c-addr fam fid ok? )
+  IF >R 2DROP R> -1 EXIT THEN                ( c-addr fam fid )
+  DROP                                       ( c-addr fam )
+  R/W = IF
+    DUP CSTRLEN R/W CREATE-FILE 0=
+  ELSE
+    DROP 0 0
+  THEN ;
 
 : APPLY-REDIRECTIONS ( --- )
   \ Runs in the forked child, before RUN-CHILD/EXECVE. A redirection
@@ -2429,8 +2442,11 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
         THEN
       THEN
     ELSE
-      DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN
-      REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-FOR IF
+      \ `<>` (op 8) opens for both, creating the file if it is not there
+      \ and truncating nothing (XCU 2.7.1); it used to be handed to the
+      \ shell as a plain `<`, so it failed on a file that did not exist.
+      DUP 8 = IF DROP R/W ELSE DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN THEN
+      REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-OR-CREATE IF
         \ The open may land ON the target: 3 is the lowest free
         \ descriptor when the target is 3. Copying it onto itself does
         \ nothing and the close below then shut it, which is why
