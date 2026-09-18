@@ -3750,25 +3750,94 @@ VARIABLE GO-NMLEN
 \ PROGRESS.md's Iteration 124 entry.
 \ ------------------------------------------------------------------
 
-: TYPE-UNSIGNED ( u --- )   \ print without Forth's trailing space
-  0 <# #S #> TYPE ;
 
-: TYPE-FSIZE ( --- )
-  GETFSIZE DUP 0< IF DROP ." unlimited" ELSE TYPE-UNSIGNED THEN CR ;
 
-: ULIMIT-ARG ( c-addr --- n )   \ "unlimited" or a block count
-  DUP CSTRLEN 2DUP S" unlimited" 2SWAP STR= IF 2DROP -1 EXIT THEN
-  PARSE-DECIMAL ;
+
+\ ---- ulimit (Iteration 308) ----
+\ It handled only -f, through SETFSIZE. GETRLIMIT and SETRLIMIT (the new
+\ escaped primitives) give the rest. The units are POSIX's: -f and -c
+\ count 512-byte blocks, -d -l -m -s -v kilobytes, -t seconds, and -n -u
+\ are plain counts.
+
+VARIABLE UL-RES        \ which resource
+VARIABLE UL-SCALE      \ the operand's unit, in bytes (1 for a count)
+VARIABLE UL-HARD?      \ -H
+VARIABLE UL-SOFT?      \ -S
+VARIABLE UL-I
+VARIABLE UL-NEW
+VARIABLE UL-SOFT-CUR
+VARIABLE UL-HARD-CUR
+
+: UL-SELECT ( c --- f )   \ the resource letter, into UL-RES and UL-SCALE
+  1 UL-SCALE !
+  DUP 116 = IF DROP 0 UL-RES ! -1 EXIT THEN            \ -t  cpu seconds
+  DUP 102 = IF DROP 1 UL-RES ! 512 UL-SCALE ! -1 EXIT THEN   \ -f  file size
+  DUP 100 = IF DROP 2 UL-RES ! 1024 UL-SCALE ! -1 EXIT THEN  \ -d  data
+  DUP 115 = IF DROP 3 UL-RES ! 1024 UL-SCALE ! -1 EXIT THEN  \ -s  stack
+  DUP 99  = IF DROP 4 UL-RES ! 512 UL-SCALE ! -1 EXIT THEN   \ -c  core
+  DUP 109 = IF DROP 5 UL-RES ! 1024 UL-SCALE ! -1 EXIT THEN  \ -m  resident
+  DUP 117 = IF DROP 6 UL-RES ! -1 EXIT THEN             \ -u  processes
+  DUP 110 = IF DROP 7 UL-RES ! -1 EXIT THEN             \ -n  open files
+  DUP 108 = IF DROP 8 UL-RES ! 1024 UL-SCALE ! -1 EXIT THEN  \ -l  locked
+  118 = IF 9 UL-RES ! 1024 UL-SCALE ! -1 EXIT THEN      \ -v  address space
+  0 ;
+
+: .UL-VALUE ( v --- )   \ -1 is no limit
+  DUP -1 = IF DROP S" unlimited" TYPE EXIT THEN
+  UL-SCALE @ / 0 <# #S #> TYPE ;
+
+: UL-REPORT ( --- )
+  UL-RES @ GETRLIMIT                         ( soft hard ior )
+  IF 2DROP S" ulimit: cannot read limit" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN
+  UL-HARD? @ IF NIP ELSE DROP THEN           ( value )
+  .UL-VALUE CR ;
+
+: UL-APPLY ( value --- )
+  \ POSIX: -H sets the hard limit, -S the soft one, neither sets both.
+  \ Written with variables after a stack-juggled version crashed.
+  UL-NEW !
+  UL-RES @ GETRLIMIT                         ( soft hard ior )
+  IF 2DROP S" ulimit: cannot read limit" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN
+  UL-HARD-CUR !  UL-SOFT-CUR !
+  UL-HARD? @ UL-SOFT? @ OR 0= IF
+    UL-NEW @ UL-NEW @                        ( soft hard )
+  ELSE
+    UL-HARD? @ IF
+      UL-SOFT-CUR @ UL-NEW @
+    ELSE
+      UL-NEW @ UL-HARD-CUR @
+    THEN
+  THEN
+  UL-RES @ SETRLIMIT IF
+    S" ulimit: cannot set limit" ERR-TYPE ERR-NL 1 LAST-STATUS !
+  THEN ;
+
+: UL-PARSE-VALUE ( c-addr --- v )
+  \ STR= takes all four: keep a copy of the address for the number path
+  DUP  DUP CSTRLEN S" unlimited" STR= IF DROP -1 EXIT THEN
+  DUP CSTRLEN PARSE-DECIMAL UL-SCALE @ * ;
 
 : DO-ULIMIT ( --- )
   0 LAST-STATUS !
-  ARGC @ 1 = IF TYPE-FSIZE EXIT THEN
-  S" -f" 1 ARGV@ STR0= 0= IF
-    ." ulimit: only -f is supported" CR 1 LAST-STATUS ! EXIT
-  THEN
-  ARGC @ 2 = IF TYPE-FSIZE EXIT THEN
-  2 ARGV@ ULIMIT-ARG SETFSIZE IF
-    ." ulimit: cannot set limit" CR 1 LAST-STATUS !
+  102 UL-SELECT DROP                         \ -f is the default resource
+  0 UL-HARD? !  0 UL-SOFT? !
+  1 UL-I !
+  BEGIN
+    UL-I @ ARGC @ < IF UL-I @ ARGV@ C@ 45 = ELSE 0 THEN
+  WHILE
+    UL-I @ ARGV@ 1+ C@                       ( letter )
+    DUP 72 = IF DROP -1 UL-HARD? ! ELSE
+    DUP 83 = IF DROP -1 UL-SOFT? ! ELSE
+      UL-SELECT 0= IF
+        S" ulimit: bad option" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT
+      THEN
+    THEN THEN
+    UL-I @ 1+ UL-I !
+  REPEAT
+  UL-I @ ARGC @ < IF
+    UL-I @ ARGV@ UL-PARSE-VALUE UL-APPLY
+  ELSE
+    UL-REPORT
   THEN ;
 
 ' DO-WAIT         S" wait"     BUILTIN

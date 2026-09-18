@@ -213,6 +213,9 @@ PRIMITIVE SIGNALS-PENDING ( --- signo | 0 )        \ lowest caught signal, clear
 PRIMITIVE TERM-RAW     ( fd --- ior )   \ Iteration 303: the line editor
 PRIMITIVE TERM-RESTORE ( fd --- ior )
 PRIMITIVE FILE-KIND     ( c-addr --- kind )   \ Iteration 307: 0 none, 1 regular, 2 dir, 3 other
+PRIMITIVE GETRLIMIT     ( resource --- soft hard ior )   \ Iteration 308
+PRIMITIVE SETRLIMIT     ( soft hard resource --- ior )
+PRIMITIVE WAIT-NOHANG   ( --- pid status )   \ 0 0 if nothing has finished
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

@@ -1,52 +1,29 @@
 #!/bin/sh
-# run-ulimit - the ulimit builtin. POSIX specifies exactly one
-# resource, the file-size limit, in 512-byte blocks; bash reports
-# 1024-byte blocks, which is why this is a hand-written test rather
-# than a differential case against bash (see GOALS.md's four test
-# layers - bash is the wrong oracle here). The values below are what
-# POSIX and dash agree on.
-cd "$(dirname "$0")" || exit 1
-. ./lib.sh
+# tests/shell/run-ulimit - ulimit over the whole set of resources
+# (Iteration 308). Not a differential case: the limits themselves differ
+# from machine to machine, so each check is against dash on THIS machine
+# or against a value this shell just set.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 
-# A bare "ulimit" reports the soft file-size limit. In this test
-# environment it starts unlimited.
-out=$(printf 'ulimit\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-assert_output_contains "bare ulimit reports the soft limit" "unlimited" "$out"
+for opt in -f -t -d -s -c -m -n -l -v; do
+    want=$(dash -c "ulimit $opt" 2>/dev/null)
+    got=$($SH -c "ulimit $opt" 2>&1)
+    [ -n "$want" ] && assert_output_equals "ulimit $opt reads what dash reads" "$want" "$got"
+done
 
-# "ulimit -f N" sets it, and a later bare ulimit reads back the same
-# number - in blocks, not bytes.
-out=$(printf 'ulimit -f 100\nulimit\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-assert_output_contains "ulimit -f 100 then ulimit reports 100" "100" "$out"
-
-# 100 blocks is 51200 bytes, and POSIX sets the hard limit too when
-# neither -H nor -S is given. Both columns of /proc/self/limits must
-# move, which is the assertion mrsh's own ulimit.sh makes and the one
-# that caught setting only rlim_cur (Iteration 125).
-if [ -e /proc/self/limits ]; then
-    out=$(printf 'ulimit -f 100\ngrep "Max file size" /proc/self/limits\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-    assert_output_contains "ulimit -f sets the soft limit in bytes" "51200" "$out"
-    TESTS_RUN=$((TESTS_RUN + 1))
-    if echo "$out" | grep "Max file size" | grep -q "unlimited"; then
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        echo "FAIL: ulimit -f must set the hard limit as well as the soft one"
-        echo "$out" | sed 's/^/    /'
-    fi
-fi
-
-# "ulimit -f unlimited" is accepted where it is permitted. Note it
-# cannot RAISE a limit already lowered in this process: setting -f
-# without -H or -S lowers the hard limit too, and an unprivileged
-# process may not raise that back. dash refuses identically (its
-# status is 2 where ours is 1; POSIX requires only nonzero).
-out=$(printf 'ulimit -f unlimited\nulimit\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-assert_output_contains "ulimit -f unlimited is accepted" "unlimited" "$out"
-
-out=$(printf 'ulimit -f 100\nulimit -f unlimited\necho status=$?\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-assert_output_contains "raising a lowered hard limit is refused, not silently ignored" "status=1" "$out"
-
-# An unsupported resource option is diagnosed rather than ignored.
-out=$(printf 'ulimit -n 10\necho status=$?\nexit\n' | "$THIS_SH" 2>&1 | tr -d '\r')
-assert_output_contains "an unsupported option is diagnosed" "only -f is supported" "$out"
-assert_output_contains "and reports failure" "status=1" "$out"
-
+assert_output_equals "a limit can be lowered and read back" "100" \
+  "$($SH -c 'ulimit -n 100; ulimit -n' 2>&1)"
+assert_output_equals "-S sets the soft limit only" "50" \
+  "$($SH -c 'ulimit -S -n 50; ulimit -n' 2>&1)"
+assert_output_equals "... and leaves the hard one" "$(dash -c 'ulimit -H -n')" \
+  "$($SH -c 'ulimit -S -n 50; ulimit -H -n' 2>&1)"
+assert_output_equals "-f counts 512-byte blocks" "10" \
+  "$($SH -c 'ulimit -f 10; ulimit -f' 2>&1)"
+assert_output_equals "a lowered limit is inherited" "100" \
+  "$($SH -c 'ulimit -n 100; '"$SH"' -c "ulimit -n"' 2>&1)"
+assert_output_equals "an unknown option is refused" "2" \
+  "$($SH -c 'ulimit -Z 2>/dev/null; echo $?' 2>&1)"
+assert_output_equals "with no option it reports -f" "$($SH -c 'ulimit -f')" \
+  "$($SH -c 'ulimit' 2>&1)"
 report

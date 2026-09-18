@@ -1707,8 +1707,9 @@ before anything else, because every number here is relative to it.
    -p`; ending the shell when a readonly variable is assigned; job
    notices; and `-i`. **Closed since**: `set -a`, `-v` (305), `command`
    in every form and `-i` (306), `set -C` (307). **Left**: `fg`/`bg`
-   with process groups, `ulimit` past `-f` (getrlimit), job notices, and
-   the readonly behaviour, where dash and bash differ anyway.
+   with process groups, job notices (the `WAIT-NOHANG` primitive for
+   them landed in 308), and the readonly behaviour, where dash and bash
+   differ anyway. `ulimit` was finished in 308.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u

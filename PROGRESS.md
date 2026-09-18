@@ -303,6 +303,7 @@ do not trust the absence of a line below.
 - **305** — set -a and -v; RESEARCH-VM.md opened; noclobber needs a stat primitive
 - **306** — `command NAME args` and `-p` (it only did `-v`); the `-i` flag
 - **307** — the `command -p` bug reduced and fixed; `set -C` with a FILE-KIND primitive
+- **308** — ulimit over every resource, on new getrlimit/setrlimit primitives
 
 ### Not tied to an iteration
 
@@ -17417,3 +17418,27 @@ That leaves `fg`/`bg` (process groups), `ulimit` past `-f` (getrlimit)
 and job notices as the gaps against dash - all engine work.
 
 tests/verify: diff cases 51 -> 52; sizes; a new primitive.
+
+## Iteration 308: ulimit, properly
+
+`ulimit` handled `-f` and nothing else, through `SETFSIZE`. Three new
+escaped primitives - `GETRLIMIT`, `SETRLIMIT` and `WAIT-NOHANG` (the
+last for the job notices still to come) - and it now covers `-t -f -d -s
+-c -m -u -n -l -v`, with `-H` and `-S`, `unlimited`, and POSIX's units:
+512-byte blocks for `-f` and `-c`, kilobytes for `-d -l -m -s -v`,
+seconds for `-t`, plain counts for `-n -u`. Both engines rebuilt, both
+kernels re-bootstrapped.
+
+`tests/shell/run-ulimit` reads every resource and compares with dash on
+the same machine, then sets limits and reads them back, checks `-S`
+leaves the hard limit alone, that a lowered limit is inherited by a
+child shell, and that an unknown option is refused.
+
+**Three stack errors of mine in one word**, each caught by running it
+rather than by reading it: `UL-APPLY` juggled four values and crashed
+(rewritten with variables), `UL-PARSE-VALUE` let `STR=` consume the
+address it still needed, and an earlier version had a stray `ROT ROT`.
+The lesson is the one from Iteration 307's `MOVE`: a word that takes
+more than two values wants variables, not juggling.
+
+tests/verify: a new shell test file; sizes; three new primitives.

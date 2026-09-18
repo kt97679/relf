@@ -105,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    50
+#define NESC    53
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -762,6 +762,7 @@ static void virtual_machine(void) {
         &&L_kill, &&L_umask, &&L_cputimes, &&L_sigaction, &&L_sigpending,
         &&L_termraw, &&L_termrestore,
         &&L_filekind,
+        &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1222,6 +1223,36 @@ L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 26
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;
     FILLNEXT();
+L_getrlimit: SPILL(); { /* resource --- soft hard ior : RLIM_INFINITY
+                         comes back as -1 (Iteration 308, for ulimit) */
+    struct rlimit rl;
+    int r = (int)DS0;
+    if (getrlimit(r, &rl)) {
+        DS0 = 0; PUSH(0); PUSH((UNS64)(INT64)-errno);
+    } else {
+        DS0 = (rl.rlim_cur == RLIM_INFINITY) ? (UNS64)(INT64)-1 : (UNS64)rl.rlim_cur;
+        PUSH((rl.rlim_max == RLIM_INFINITY) ? (UNS64)(INT64)-1 : (UNS64)rl.rlim_max);
+        PUSH(0);
+    }
+    FILLNEXT();
+}
+L_setrlimit: SPILL(); { /* soft hard resource --- ior : -1 means infinity */
+    struct rlimit rl;
+    int r = (int)DS0;
+    rl.rlim_cur = ((INT64)DS2 == -1) ? RLIM_INFINITY : (rlim_t)DS2;
+    rl.rlim_max = ((INT64)DS1 == -1) ? RLIM_INFINITY : (rlim_t)DS1;
+    DS2 = setrlimit(r, &rl) ? (UNS64)(INT64)-errno : 0;
+    dsp += 2 * CELL_BYTES;
+    FILLNEXT();
+}
+L_waitnohang: SPILL(); { /* --- pid status : 0 0 when nothing has finished
+                          (Iteration 308, for the job notices) */
+    int status = 0;
+    pid_t pid = waitpid(-1, &status, WNOHANG);
+    PUSH((pid > 0) ? (UNS64)(INT64)pid : 0);
+    PUSH((pid > 0) ? (UNS64)status : 0);
+    FILLNEXT();
+}
 L_filekind: SPILL(); { /* c-addr --- kind : 0 none, 1 regular, 2 directory,
                         3 anything else. `set -C` has to tell a regular
                         file from a device: O_EXCL alone would refuse
