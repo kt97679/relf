@@ -216,6 +216,8 @@ PRIMITIVE FILE-KIND     ( c-addr --- kind )   \ Iteration 307: 0 none, 1 regular
 PRIMITIVE GETRLIMIT     ( resource --- soft hard ior )   \ Iteration 308
 PRIMITIVE SETRLIMIT     ( soft hard resource --- ior )
 PRIMITIVE WAIT-NOHANG   ( --- pid status )   \ 0 0 if nothing has finished
+PRIMITIVE GETPPID       ( --- pid )          \ Iteration 318: $PPID
+PRIMITIVE ENV-AT        ( i --- c-addr | 0 ) \ environ[i], for `export -p`
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

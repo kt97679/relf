@@ -105,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    53
+#define NESC    55
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -763,6 +763,7 @@ static void virtual_machine(void) {
         &&L_termraw, &&L_termrestore,
         &&L_filekind,
         &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
+        &&L_getppid, &&L_envat,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1223,6 +1224,16 @@ L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 26
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;
     FILLNEXT();
+L_getppid: SPILL(); /* --- pid : for $PPID (Iteration 318) */
+    PUSH((UNS64)(INT64)getppid());
+    FILLNEXT();
+L_envat: SPILL(); { /* i --- c-addr | 0 : environ[i], for `export -p` */
+    UNS64 i = DS0, n = 0;
+    char **e = environ;
+    while (e[n] && n < i) n++;
+    DS0 = (e[n] && n == i) ? (UNS64)(uintptr_t)e[n] : 0;
+    FILLNEXT();
+}
 L_getrlimit: SPILL(); { /* resource --- soft hard ior : RLIM_INFINITY
                          comes back as -1 (Iteration 308, for ulimit) */
     struct rlimit rl;

@@ -1,12 +1,20 @@
 #!/bin/sh
-# run-export - export must genuinely set an environment variable that
-# a subsequently-run child process inherits. Verified via a real
-# external command (env) rather than from within the shell itself,
-# since shell.4 has no $VAR expansion yet to check this any other way.
-cd "$(dirname "$0")" || exit 1
-. ./lib.sh
+# tests/shell/run-export - `export -p` and `export` with no operands
+# (Iteration 318), against dash's format. Not a differential case: bash
+# prints `declare -x NAME="value"` where dash and this shell print
+# `export NAME='value'`.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 
-out=$(printf 'export RELFTESTVAR=marker12345\nenv\nexit\n' | "$THIS_SH" 2>&1)
-assert_output_contains "exported var is visible to a child process" "RELFTESTVAR=marker12345" "$out"
-
+assert_output_equals "export -p lists a variable as dash does" \
+  "$(FOO=bar dash -c 'export FOO; export -p | grep "^export FOO="')" \
+  "$(FOO=bar $SH -c 'export FOO; export -p | grep "^export FOO="' 2>&1)"
+assert_output_equals "export with no operands lists too" \
+  "$(FOO=bar dash -c 'export FOO; export | grep "^export FOO="')" \
+  "$(FOO=bar $SH -c 'export FOO; export | grep "^export FOO="' 2>&1)"
+assert_output_equals "a quote in the value is escaped as dash escapes it" \
+  "$(dash -c 'V="it'\''s"; export V; export -p | grep "^export V="')" \
+  "$($SH -c 'V="it'\''s"; export V; export -p | grep "^export V="' 2>&1)"
+assert_output_equals "the listing is not empty" "yes" \
+  "$($SH -c 'export -p | grep -q "^export " && echo yes' 2>&1)"
 report

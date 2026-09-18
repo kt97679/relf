@@ -1702,10 +1702,9 @@ before anything else, because every number here is relative to it.
    caught normally, but a BLOCKING READ IS NOT INTERRUPTED here, which
    is why the editor now waits in short polls instead.
 
-5i. **Found by the POSIX sweep of Iteration 317, still open**: `PPID` is
-   unset; `CDPATH` is not consulted by `cd`; `cd -P` and `cd -L` are
-   taken for directory names; `command -V` is unimplemented; `export -p`
-   prints nothing. None is hard, and each wants a differential case.
+5i. **Left from the POSIX sweep of 317**: `CDPATH` is not consulted by
+   `cd`, and `cd -P`/`cd -L` are taken for directory names. `PPID`,
+   `command -V` and `export -p` were done in 318.
 
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process

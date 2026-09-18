@@ -2398,10 +2398,15 @@ VARIABLE SUBLIST-XT
   THEN
   TREE-RUN LAST-STATUS @ SHELL-EXIT ;
 
+32 BUFFER: PPID-BUF
+
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
   DEFAULT-SHELL-NAME SHELL-NAME !            \ $0 until a script names itself
   GETPID SHELL-PID !
+  \ $PPID, which POSIX sets at startup and this shell never did
+  GETPPID 0 <# #S #> PPID-BUF SWAP DUP >R MOVE  0 PPID-BUF R> + C!
+  PPID-NM PPID-BUF SET-SHVAR
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !
   FORTH-WORDLIST CONTEXT !

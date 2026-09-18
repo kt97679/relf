@@ -34,9 +34,11 @@ printf 'alias a1=first\nalias a1="%s"\necho "st=$?"\n' "$(head -c 300 /dev/zero 
 out=$(timeout 10 "$THIS_SH" "$t/alias.sh" 2>&1)
 assert_output_contains "a too-long alias value is reported" "value too long" "$out"
 
-# `set` alone with no shell variables at all (Iteration 272: its sort loop
-# ran `0 1 ?DO` and crashed).
-out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1)
-assert_output_equals "set with an empty table prints nothing" "st=0" "$out"
+# `set` alone with almost no shell variables (Iteration 272: its sort loop
+# ran `0 1 ?DO` and crashed). Since Iteration 318 the shell sets PPID at
+# startup, so the table is never quite empty; the point of the case is
+# that `set` survives a table of one.
+out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+assert_output_equals "set with an almost empty table" "st=0" "$out"
 
 report

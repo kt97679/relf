@@ -313,6 +313,7 @@ do not trust the absence of a line below.
 - **315** — ^C during a command; every interactive case now matches dash
 - **316** — an assessment: where this shell competes and where it does not
 - **317** — POSIX sweep: test's grammar (-a, -o, !, parens) and its file tests
+- **318** — command -V, export -p, $PPID; two new primitives
 
 ### Not tied to an iteration
 
@@ -17706,3 +17707,33 @@ variables (the lesson of 308, made again), and two branches of the
 primary parser leaving the argument on the stack.
 
 tests/verify: diff cases 52 -> 53; sizes.
+
+## Iteration 318: three more from the sweep
+
+- **`command -V`** printed nothing at all. It reports what a name is, in
+  dash's words: a shell builtin, a shell keyword, a shell function, or
+  the path it resolves to.
+- **`export -p`, and `export` with no operands**, listed nothing. They
+  walk the environment now - `ENV-AT`, a new escaped primitive - and
+  print `export NAME='value'`, quoting an embedded quote by closing and
+  reopening as dash does.
+- **`$PPID`** was never set. `GETPPID`, the other new primitive, is read
+  once at startup.
+
+Both engines rebuilt and both kernels re-bootstrapped.
+
+`tests/diff/cases/command-export-318.sh` matches bash for `-V` and
+`PPID`; `export -p` gets `tests/shell/run-export` instead, because bash
+prints `declare -x NAME="value"` where dash and this shell print `export
+NAME='value'`, and `command -V` on a function is left out for the same
+reason - bash prints the body.
+
+Setting `PPID` broke one assertion, correctly: `run-limits` checked that
+`set` prints nothing when the variable table is empty, and the table is
+never empty now. The case still checks what it was written for - that
+`set` survives a nearly empty table - with the `PPID` line filtered.
+
+Left from the sweep: `CDPATH`, `cd -P/-L`, and `fg`/`bg`.
+
+tests/verify: diff cases 53 -> 54; a new shell test; sizes; two new
+primitives.

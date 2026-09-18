@@ -2704,7 +2704,33 @@ CREATE PWD-NM     80 C, 87 C, 68 C, 0 C,
   CWDBUF PATH-MAX GETCWD DROP CWDBUF SWAP TYPE CR
   0 LAST-STATUS ! ;
 
+VARIABLE EX-I
+
+: .EXPORT-LINE ( c-addr --- )   \ NAME=VALUE printed as `export NAME='VALUE'`
+  S" export " TYPE
+  BEGIN DUP C@ DUP 0<> SWAP 61 <> AND WHILE DUP C@ EMIT 1+ REPEAT
+  DUP C@ 61 = IF
+    1+ [CHAR] = EMIT [CHAR] ' EMIT
+    BEGIN DUP C@ ?DUP WHILE
+      \ a quote inside the value, closed and reopened as dash does it
+      DUP 39 = IF DROP S" '" TYPE 34 EMIT 39 EMIT 34 EMIT S" '" TYPE ELSE EMIT THEN  1+
+    REPEAT
+    [CHAR] ' EMIT
+  THEN
+  DROP CR ;
+
+: EXPORT-LIST ( --- )   \ everything in the environment, as the shell reads it
+  0 EX-I !
+  BEGIN EX-I @ ENV-AT ?DUP WHILE
+    .EXPORT-LINE
+    EX-I @ 1+ EX-I !
+  REPEAT
+  0 LAST-STATUS ! ;
+
 : DO-EXPORT ( --- )
+  \ `export` alone and `export -p` list what is exported (Iteration 318)
+  ARGC @ 1 = IF EXPORT-LIST EXIT THEN
+  ARGC @ 2 = IF S" -p" 1 ARGV@ STR0= IF EXPORT-LIST EXIT THEN THEN
   \ export NAME=VALUE - finds '=' in ARGV[1], splits it, records it
   \ as both a shell-local variable (SET-SHVAR) and an environment
   \ variable (SETENV) - so subsequently-expanded $NAME sees the same
@@ -3279,8 +3305,23 @@ VARIABLE DO-I
   DROP
   0 LAST-STATUS ! ;
 
+VARIABLE CMD-VERBOSE?   \ `command -V`: a sentence, not just the word
+VARIABLE CMD-KIND       \ 0 builtin, 1 keyword, 2 function, 3 a path
+
 : CMD-V-FOUND ( c-addr u --- )   \ report a hit and exit 0
-  TYPE CR 0 LAST-STATUS ! ;
+  \ `-v` prints the word or path; `-V` says what it is, as dash words it
+  CMD-VERBOSE? @ IF
+    2 ARGV@ DUP CSTRLEN TYPE S"  is " TYPE
+    CMD-KIND @ 3 = IF TYPE ELSE
+      2DROP
+      CMD-KIND @ 1 = IF S" a shell keyword" TYPE ELSE
+      CMD-KIND @ 2 = IF S" a shell function" TYPE ELSE
+                        S" a shell builtin" TYPE THEN THEN
+    THEN
+  ELSE
+    TYPE
+  THEN
+  CR 0 LAST-STATUS ! ;
 
 : PATH-LOOKUP? ( --- f )
   \ Is ARGV[1] findable in PATH? Prints the full path if so. Same
@@ -3300,7 +3341,7 @@ VARIABLE DO-I
     PATH-CUR @ OVER -
     PATHBUF B-RESET B-STR 47 B-CHAR ARGV 1 CELLS + @ B-CSTR B-FINISH
     PATHBUF TEST-FILE-EXISTS? IF
-      PATHBUF DUP CSTRLEN CMD-V-FOUND
+      3 CMD-KIND !  PATHBUF DUP CSTRLEN CMD-V-FOUND   \ a path, so print it
       -1 EXIT
     THEN
     PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ 1+ PATH-CUR ! THEN
@@ -3335,6 +3376,7 @@ VARIABLE RW-NAME
 DEFER DROP-ARGV0-CALL   ( --- )   \ defined below, used by `command`
 DEFER DISPATCH-CALL     ( --- f )
 DEFER RUN-EXTERNAL-CALL ( --- )
+CREATE PPID-NM  80 C, 80 C, 73 C, 68 C, 0 C,   \ $PPID (Iteration 318)
 CREATE PATH-NM  80 C, 65 C, 84 C, 72 C, 0 C,
 CREATE DEFAULT-PATH                          \ what `command -p` looks in
   47 C, 98 C, 105 C, 110 C, 58 C,
@@ -3368,9 +3410,10 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
     R> IF PATH-NM CMD-SAVED-PATH SET-SHVAR THEN
     EXIT
   THEN
-  S" -v" 1 ARGV@ STR0= 0= IF COMMAND-RUN EXIT THEN
+  S" -V" 1 ARGV@ STR0= -1 = IF -1 ELSE 0 THEN CMD-VERBOSE? !  0 CMD-KIND !
+  S" -v" 1 ARGV@ STR0= CMD-VERBOSE? @ OR 0= IF COMMAND-RUN EXIT THEN
   ARGC @ 3 < IF 1 LAST-STATUS ! EXIT THEN
-  S" -v" 1 ARGV@ STR0= 0= IF 1 LAST-STATUS ! EXIT THEN
+  S" -v" 1 ARGV@ STR0= CMD-VERBOSE? @ OR 0= IF 1 LAST-STATUS ! EXIT THEN
   \ POSIX: command -v reports reserved words and aliases too, not just
   \ functions, builtins and PATH entries. Order matters - an alias
   \ shadows a command of the same name, and a reserved word is not a
@@ -3378,11 +3421,11 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   \ a path operand answers for itself, if it can be run (XCU `command`)
   2 ARGV@ DUP CSTRLEN HAS-SLASH? IF
     2 ARGV@ 1 ACCESS 0= IF
-      2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+      3 CMD-KIND !  2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
     ELSE 1 LAST-STATUS ! EXIT THEN
   THEN
   2 ARGV@ RESERVED-WORD? IF
-    2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+    1 CMD-KIND !  2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
   THEN
   2 ARGV@ FIND-ALIAS DUP -1 <> IF
     ." alias " 2 ARGV@ DUP CSTRLEN TYPE
@@ -3393,7 +3436,7 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   THEN
   DROP
   2 ARGV@ FIND-FUNC -1 <> IF
-    2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+    2 CMD-KIND !  2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
   THEN
   2 ARGV@ BUILTIN-NAME? IF
     2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
