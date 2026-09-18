@@ -105,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    55
+#define NESC    59
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -764,6 +764,7 @@ static void virtual_machine(void) {
         &&L_filekind,
         &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
         &&L_getppid, &&L_envat,
+        &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1224,6 +1225,36 @@ L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 26
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;
     FILLNEXT();
+L_setpgid: SPILL(); { /* pid pgid --- ior : job control (Iteration 320) */
+    DS1 = setpgid((pid_t)DS1, (pid_t)DS0) ? (UNS64)(INT64)-errno : 0;
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_tcsetpgrp: SPILL(); { /* fd pgid --- ior : hand the terminal over */
+    sigset_t block, old;
+    int r;
+    /*  A shell that is not the foreground group is stopped by SIGTTOU
+     *  when it calls this, which is exactly what it is trying to
+     *  prevent, so the signal is blocked across the call.  */
+    sigemptyset(&block);
+    sigaddset(&block, SIGTTOU);
+    sigprocmask(SIG_BLOCK, &block, &old);
+    r = tcsetpgrp((int)DS1, (pid_t)DS0);
+    sigprocmask(SIG_SETMASK, &old, (sigset_t *)0);
+    DS1 = r ? (UNS64)(INT64)-errno : 0;
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_tcgetpgrp: SPILL(); /* fd --- pgid | -1 */
+    DS0 = (UNS64)(INT64)tcgetpgrp((int)DS0);
+    FILLNEXT();
+L_waitjob: SPILL(); { /* pid --- status raw : waits, reporting a stop too */
+    int status = 0;
+    pid_t pid = waitpid((pid_t)DS0, &status, WUNTRACED);
+    DS0 = (pid > 0) ? (UNS64)(INT64)pid : (UNS64)(INT64)-1;
+    PUSH((UNS64)status);
+    FILLNEXT();
+}
 L_getppid: SPILL(); /* --- pid : for $PPID (Iteration 318) */
     PUSH((UNS64)(INT64)getppid());
     FILLNEXT();

@@ -1704,7 +1704,10 @@ before anything else, because every number here is relative to it.
 
 5i. ~~**Left from the POSIX sweep of 317**~~ all done: `PPID`, `command
    -V`, `export -p` (318), `CDPATH`, `cd -P/-L` and the logical `pwd`
-   (319). Only `fg`/`bg` remain, and they need process groups.
+   (319). `fg`/`bg` landed in 320. **What job control still lacks**: a foreground
+   command runs in the shell's process group, so `^Z` cannot stop it -
+   each foreground job needs its own group with the terminal handed
+   over and back; and `kill %n` does not take a job specifier.
 
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process

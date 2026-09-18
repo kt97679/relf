@@ -1985,7 +1985,11 @@ VARIABLE BG-T
 
 : EXEC-BG ( node --- )
   DUP BG-TEXT JOB-TEXT-NEXT !                \ recorded before the fork
-  FORK DUP 0= IF DROP CHILD-RESET-TRAPS EXEC-FINAL-CALL LAST-STATUS @ SHELL-EXIT THEN
+  FORK DUP 0= IF
+    DROP CHILD-RESET-TRAPS
+    JOB-CONTROL? @ IF 0 0 SETPGID DROP THEN    \ the job gets its own group
+    EXEC-FINAL-CALL LAST-STATUS @ SHELL-EXIT
+  THEN
   DUP BG-PID !  JOB-ADD  DROP  0 LAST-STATUS ! ;
 
 : EXEC-LIST ( node --- )
@@ -2369,6 +2373,18 @@ VARIABLE SUBLIST-XT
       0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
       -1 INTERACTIVE? !
       2 3 SIGNAL-ACTION DROP  3 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP
+    \ Job control: the shell takes its own process group and the
+    \ terminal, so a job can be handed the terminal and taken back
+    \ (Iteration 320). Only at a terminal - a pipe has no foreground.
+    0 ISATTY IF
+      -1 JOB-CONTROL? !  -1 OPT-MONITOR !
+      GETPID DUP SHELL-PGID !  0 SWAP SETPGID DROP
+      0 SHELL-PGID @ TCSETPGRP DROP
+      \ An interactive shell ignores these: without them ^Z would stop
+      \ the shell itself, since it is the foreground group now. A job
+      \ started with & still gets its own group and can be stopped.
+      20 1 SIGNAL-ACTION DROP  21 1 SIGNAL-ACTION DROP  22 1 SIGNAL-ACTION DROP
+    THEN
       TREE-RUN LAST-STATUS @ SHELL-EXIT
     THEN
   THEN
@@ -2395,6 +2411,18 @@ VARIABLE SUBLIST-XT
   \ usual - exec resets a caught signal, not an ignored one (Iteration 271).
   INTERACTIVE? @ IF
     2 3 SIGNAL-ACTION DROP  3 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP
+    \ Job control: the shell takes its own process group and the
+    \ terminal, so a job can be handed the terminal and taken back
+    \ (Iteration 320). Only at a terminal - a pipe has no foreground.
+    0 ISATTY IF
+      -1 JOB-CONTROL? !  -1 OPT-MONITOR !
+      GETPID DUP SHELL-PGID !  0 SWAP SETPGID DROP
+      0 SHELL-PGID @ TCSETPGRP DROP
+      \ An interactive shell ignores these: without them ^Z would stop
+      \ the shell itself, since it is the foreground group now. A job
+      \ started with & still gets its own group and can be stopped.
+      20 1 SIGNAL-ACTION DROP  21 1 SIGNAL-ACTION DROP  22 1 SIGNAL-ACTION DROP
+    THEN
   THEN
   TREE-RUN LAST-STATUS @ SHELL-EXIT ;
 

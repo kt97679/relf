@@ -315,6 +315,7 @@ do not trust the absence of a line below.
 - **317** — POSIX sweep: test's grammar (-a, -o, !, parens) and its file tests
 - **318** — command -V, export -p, $PPID; two new primitives
 - **319** — cd keeps the logical path; -P, -L and CDPATH
+- **320** — fg and bg, process groups and the terminal; the last POSIX builtins
 
 ### Not tied to an iteration
 
@@ -17764,3 +17765,42 @@ until the buffer filled.
 That closes the POSIX sweep of 317 apart from `fg`/`bg`.
 
 tests/verify: diff cases 54 -> 55; sizes.
+
+## Iteration 320: fg and bg
+
+The last two POSIX builtins. Four new escaped primitives - `SETPGID`,
+`TCSETPGRP`, `TCGETPGRP` and `WAIT-JOB`, which reports a stop as well as
+an exit - and the shell now does what a job-control shell does at a
+terminal: it takes its own process group and the terminal at startup,
+gives each `&` job a group of its own, and hands the terminal to a job
+that `fg` brings forward, taking it back afterwards.
+
+`fg` prints the command it resumed, continues the job with `SIGCONT`,
+waits for it, and reports a stop rather than treating it as an exit.
+`bg` continues a stopped job and prints `[n] command &`. Both take `%n`
+and `%%`, and `jobs` shows each job's state and command.
+
+`TCSETPGRP` blocks `SIGTTOU` across the call: a shell that is not the
+foreground group is stopped by that signal when it tries to take the
+terminal, which is exactly what it is trying to prevent.
+
+The interactive shell also ignores `TSTP`, `TTIN` and `TTOU` now.
+Without that, `^Z` would stop the shell itself, since the shell is the
+foreground group; a job started with `&` still has its own group and can
+be stopped.
+
+A job takes the lowest number no current job holds, so `[1]` is reused
+as soon as the previous job has been reported - which is what dash
+appears to do. A first attempt had `wait` clear the table instead, and
+that silently removed the completion notice: the pty case caught it.
+
+`tests/shell/run-jobcontrol` covers what works without a terminal, and
+the pty suite still passes all 22.
+
+**Not done**: a foreground command still runs in the shell's own process
+group, so `^Z` cannot stop it - it needs each foreground job in its own
+group with the terminal handed over and taken back on every command,
+which is a bigger change than the rest of this and wants its own
+iteration. `kill %n` does not take a job specifier either.
+
+tests/verify: a new shell test file; sizes; four new primitives.

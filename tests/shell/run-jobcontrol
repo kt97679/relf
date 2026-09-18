@@ -1,0 +1,26 @@
+#!/bin/sh
+# tests/shell/run-jobcontrol - fg, bg and the job table (Iteration 320).
+# Not a differential case: job numbering and the wording of the notices
+# differ between dash and bash, and neither reports them at all when
+# standard input is not a terminal. The pty cases in tests/interactive
+# cover the interactive side; this checks what works without one.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+
+assert_output_equals "fg with no jobs is an error" "1" \
+  "$($SH -c 'fg 2>/dev/null; echo $?' 2>&1)"
+assert_output_equals "bg with no jobs is an error" "1" \
+  "$($SH -c 'bg 2>/dev/null; echo $?' 2>&1)"
+assert_output_equals "fg waits for a background job" "done" \
+  "$($SH -c 'sleep 0.1 & fg > /dev/null; echo done' 2>&1)"
+assert_output_equals "fg reports the command it resumed" "sleep 0.1" \
+  "$($SH -c 'sleep 0.1 & fg' 2>&1)"
+assert_output_equals "a job number that does not exist is refused" "1" \
+  "$($SH -c 'sleep 0.1 & fg %9 2>/dev/null; echo $?; wait' 2>&1 | head -1)"
+assert_output_equals "%1 names the first job" "sleep 0.1" \
+  "$($SH -c 'sleep 0.1 & fg %1' 2>&1)"
+assert_output_equals "jobs lists a running job with its command" "1" \
+  "$($SH -c 'sleep 0.2 & jobs | grep -c "sleep 0.2"; wait' 2>&1)"
+assert_output_equals "numbering restarts once the table empties" "[1]" \
+  "$($SH -c 'sleep 0.05 & wait; jobs >/dev/null; sleep 0.2 & jobs | cut -d" " -f1; wait' 2>&1)"
+report

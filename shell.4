@@ -3981,7 +3981,9 @@ VARIABLE GO-NMLEN
     DUP 0= WHILE
     DROP WAIT->STATUS LAST-STATUS !
   REPEAT
-  2DROP ;
+  2DROP
+  ;   \ the job stays until the prompt reports it (Iteration 320)
+
 
 \ ------------------------------------------------------------------
 \ ulimit - POSIX specifies exactly one resource, the file size limit,
@@ -5930,21 +5932,33 @@ VARIABLE TF-TRAIL?
 \ this follows dash.
 64 CELLS BUFFER: JOB-PIDS
 64 CELLS BUFFER: JOB-NUMS
+64 CELLS BUFFER: JOB-STATES  \ 0 running, 1 stopped (Iteration 320)
 128 CONSTANT JOB-TEXT-MAX
 64 JOB-TEXT-MAX * BUFFER: JOB-TEXT-POOL
 VARIABLE JOB-TEXT-NEXT       \ the text being recorded for the next JOB-ADD
 VARIABLE JOB#           \ how many are recorded
 VARIABLE JOB-NEXT       \ the next job number to hand out
+VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
+VARIABLE SHELL-PGID
 VARIABLE JB-I
 VARIABLE JB-K
 
 : JOB-TEXT-SLOT ( i --- addr )   JOB-TEXT-MAX * JOB-TEXT-POOL + ;
 
+: JOB-NUM-TAKEN? ( n --- f )
+  0 JOB# @ 0 ?DO OVER JOB-NUMS I CELLS + @ = OR LOOP NIP ;
+
 : JOB-ADD ( pid --- )
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-PIDS
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-NUMS
   JOB-PIDS JOB# @ CELLS + !
-  JOB-NEXT @ 1+ DUP JOB-NEXT !  JOB-NUMS JOB# @ CELLS + !
+  \ the lowest number no current job holds, which is how dash appears to
+  \ reuse [1] as soon as the previous job has been reported
+  1 BEGIN
+    DUP JOB-NUM-TAKEN?
+  WHILE 1+ REPEAT
+  JOB-NUMS JOB# @ CELLS + !
+  0 JOB-STATES JOB# @ CELLS + !
   \ the command's text, as the notice will print it
   JOB-TEXT-NEXT @ ?DUP IF
     DUP CSTRLEN 1+ JOB-TEXT-MAX MIN            ( src n )
@@ -5964,11 +5978,13 @@ VARIABLE JB-K
     JOB-PIDS I CELLS + @ DUP JOB-ALIVE? IF
       JB-K @ CELLS JOB-PIDS + !
       JOB-NUMS I CELLS + @  JB-K @ CELLS JOB-NUMS + !
+      JOB-STATES I CELLS + @  JB-K @ CELLS JOB-STATES + !
       I JOB-TEXT-SLOT  JB-K @ JOB-TEXT-SLOT  JOB-TEXT-MAX MOVE
       JB-K @ 1+ JB-K !
     ELSE DROP THEN
   LOOP
-  JB-K @ JOB# ! ;
+  JB-K @ JOB# !
+  JOB# @ 0= IF 0 JOB-NEXT ! THEN ;             \ numbering restarts when empty
 
 : .JOB-STATUS ( status --- )   \ as dash words it
   DUP 0= IF DROP S" Done" TYPE EXIT THEN
@@ -5993,9 +6009,11 @@ VARIABLE JN-WIDTH
   JOB# @ 1- OVER ?DO
     I 1+ CELLS JOB-PIDS + @  I CELLS JOB-PIDS + !
     I 1+ CELLS JOB-NUMS + @  I CELLS JOB-NUMS + !
+    I 1+ CELLS JOB-STATES + @  I CELLS JOB-STATES + !
     I 1+ JOB-TEXT-SLOT  I JOB-TEXT-SLOT  JOB-TEXT-MAX MOVE
   LOOP DROP
-  JOB# @ 1- JOB# ! ;
+  JOB# @ 1- JOB# !
+  JOB# @ 0= IF 0 JOB-NEXT ! THEN ;
 
 : JOB-NOTICES ( --- )   \ before an interactive prompt, as both references do
   BEGIN
@@ -6034,9 +6052,69 @@ VARIABLE JN-WIDTH
     JOB# @ 1- I - JB-I !
     91 EMIT  JOB-NUMS JB-I @ CELLS + @ 0 <# #S #> TYPE  93 EMIT 32 EMIT
     JOB# @ 1- JB-I @ = IF 43 ELSE JOB# @ 2 - JB-I @ = IF 45 ELSE 32 THEN THEN EMIT
-    S"  Running" TYPE
-    20 SPACES CR
+    JOB-STATES JB-I @ CELLS + @ IF S"  Stopped" TYPE 20 SPACES
+    ELSE S"  Running" TYPE 20 SPACES THEN
+    JB-I @ JOB-TEXT-SLOT DUP C@ IF DUP CSTRLEN TYPE ELSE DROP THEN CR
   LOOP ;
+
+VARIABLE JOB-SEL       \ the job `fg`/`bg` picked
+
+: JOB-BY-SPEC ( --- i | -1 )   \ %n, %% or nothing: the most recent
+  ARGC @ 1 = IF JOB# @ 1- EXIT THEN
+  1 ARGV@ DUP C@ 37 = IF 1+ THEN                 ( c-addr past the % )
+  DUP C@ 0= IF DROP JOB# @ 1- EXIT THEN
+  DUP C@ 37 = IF DROP JOB# @ 1- EXIT THEN        \ %%
+  DUP CSTRLEN ALL-DECIMAL? 0= IF DROP -1 EXIT THEN
+  1 ARGV@ DUP C@ 37 = IF 1+ THEN DUP CSTRLEN PARSE-DECIMAL   ( n )
+  -1 SWAP JOB# @ 0 ?DO
+    DUP JOB-NUMS I CELLS + @ = IF SWAP DROP I SWAP THEN
+  LOOP DROP ;
+
+: JOB-NO-SUCH ( --- )
+  S" shell: no such job" ERR-TYPE ERR-NL  1 LAST-STATUS ! ;
+
+: .JOB-TEXT ( i --- )   JOB-TEXT-SLOT DUP C@ IF DUP CSTRLEN TYPE ELSE DROP THEN ;
+
+: JOB-WAIT-FG ( i --- )   \ wait for it, noting a stop
+  DUP JOB-PIDS SWAP CELLS + @                    ( i pid )
+  WAIT-JOB                                       ( i pid' status )
+  OVER 0< IF 2DROP DROP 0 LAST-STATUS ! EXIT THEN
+  DUP 127 AND 127 = IF                           \ stopped, not finished
+    2DROP 1 SWAP JOB-STATES SWAP CELLS + !
+    ERR-NL  0 LAST-STATUS !
+  ELSE
+    NIP WAIT->STATUS LAST-STATUS !
+    JOB-FORGET
+  THEN ;
+
+: DO-FG ( --- )
+  JOB-PRUNE
+  JOB# @ 0= IF JOB-NO-SUCH EXIT THEN
+  JOB-BY-SPEC DUP 0< IF DROP JOB-NO-SUCH EXIT THEN
+  JOB-SEL !
+  JOB-SEL @ .JOB-TEXT CR                         \ as both references do
+  FLUSH-OUTPUT
+  JOB-CONTROL? @ IF
+    0 JOB-PIDS JOB-SEL @ CELLS + @ TCSETPGRP DROP
+  THEN
+  JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP   \ SIGCONT to the group
+  0 JOB-STATES JOB-SEL @ CELLS + !
+  JOB-SEL @ JOB-WAIT-FG
+  JOB-CONTROL? @ IF 0 SHELL-PGID @ TCSETPGRP DROP THEN ;
+
+: DO-BG ( --- )
+  JOB-PRUNE
+  JOB# @ 0= IF JOB-NO-SUCH EXIT THEN
+  JOB-BY-SPEC DUP 0< IF DROP JOB-NO-SUCH EXIT THEN
+  JOB-SEL !
+  JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP
+  0 JOB-STATES JOB-SEL @ CELLS + !
+  91 EMIT JOB-NUMS JOB-SEL @ CELLS + @ 0 <# #S #> TYPE 93 EMIT 32 EMIT
+  JOB-SEL @ .JOB-TEXT S"  &" TYPE CR
+  0 LAST-STATUS ! ;
+
+' DO-FG      S" fg"      BUILTIN
+' DO-BG      S" bg"      BUILTIN
 
 ' DO-JOBS    S" jobs"    BUILTIN
 

@@ -218,6 +218,10 @@ PRIMITIVE SETRLIMIT     ( soft hard resource --- ior )
 PRIMITIVE WAIT-NOHANG   ( --- pid status )   \ 0 0 if nothing has finished
 PRIMITIVE GETPPID       ( --- pid )          \ Iteration 318: $PPID
 PRIMITIVE ENV-AT        ( i --- c-addr | 0 ) \ environ[i], for `export -p`
+PRIMITIVE SETPGID       ( pid pgid --- ior )     \ Iteration 320: job control
+PRIMITIVE TCSETPGRP     ( fd pgid --- ior )
+PRIMITIVE TCGETPGRP     ( fd --- pgid | -1 )
+PRIMITIVE WAIT-JOB      ( pid --- pid' status )  \ reports a stop as well
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

@@ -8,9 +8,9 @@
 case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 
 out=$($SH -c 'sleep 1 & sleep 1 & jobs' 2>&1)
-assert_output_equals "two running jobs, newest first" \
-"[2] + Running                    
-[1] - Running                    " "$out"
+assert_output_equals "two running jobs, newest first, with their commands" \
+"[2] + Running                    sleep 1
+[1] - Running                    sleep 1" "$out"
 
 out=$($SH -c 'sleep 0.05 & wait; jobs' 2>&1)
 assert_output_equals "a finished job is forgotten" "" "$out"
