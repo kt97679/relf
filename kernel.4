@@ -212,6 +212,7 @@ PRIMITIVE SIGNAL-ACTION ( signo action --- ior )   \ 0 default, 1 ignore, 2 catc
 PRIMITIVE SIGNALS-PENDING ( --- signo | 0 )        \ lowest caught signal, cleared
 PRIMITIVE TERM-RAW     ( fd --- ior )   \ Iteration 303: the line editor
 PRIMITIVE TERM-RESTORE ( fd --- ior )
+PRIMITIVE FILE-KIND     ( c-addr --- kind )   \ Iteration 307: 0 none, 1 regular, 2 dir, 3 other
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

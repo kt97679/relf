@@ -302,6 +302,7 @@ do not trust the absence of a line below.
 - **304** — measured the distance to dash (VERSUS-DASH.md): four features, 7.6x on real work
 - **305** — set -a and -v; RESEARCH-VM.md opened; noclobber needs a stat primitive
 - **306** — `command NAME args` and `-p` (it only did `-v`); the `-i` flag
+- **307** — the `command -p` bug reduced and fixed; `set -C` with a FILE-KIND primitive
 
 ### Not tied to an iteration
 
@@ -17386,3 +17387,33 @@ guessed at, and the case covers everything else.
 tests/diff/cases/command-306.sh matches bash.
 
 tests/verify: diff cases 50 -> 51; sizes.
+
+## Iteration 307: a reduced bug, and noclobber
+
+**306's mystery, reduced to two lines** by the automatic reducer:
+
+    command -p echo two
+    command echo a b c | cat      # prints nothing here
+
+`command -p` saves `PATH`, substitutes a default and restores it - and
+the save was written `CMD-SAVED-PATH SWAP DUP CSTRLEN 1+ MOVE`, which is
+`MOVE ( src dst u )` with its arguments the wrong way round: it copied
+the EMPTY buffer over `PATH`. Every command after a `command -p` was
+then unfindable, which is why the failure needed the rest of the file to
+show up and why two-line reproductions written by hand kept passing.
+The reducer found it in one run.
+
+**`set -C` (noclobber)**, deferred in 305 for want of a way to tell a
+regular file from a device. `FILE-KIND ( c-addr --- kind )` is the new
+escaped primitive - 0 none, 1 regular, 2 directory, 3 anything else -
+and `>` under `-C` now refuses only a regular file, so `> /dev/null`
+still works, `>|` overrides, `>>` is unaffected. Both engines rebuilt
+and both kernels re-bootstrapped to the fixpoint.
+
+`tests/diff/cases/noclobber-307.sh` and the restored line in
+`command-306.sh` match bash.
+
+That leaves `fg`/`bg` (process groups), `ulimit` past `-f` (getrlimit)
+and job notices as the gaps against dash - all engine work.
+
+tests/verify: diff cases 51 -> 52; sizes; a new primitive.

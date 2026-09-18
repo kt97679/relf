@@ -105,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    49
+#define NESC    50
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -761,6 +761,7 @@ static void virtual_machine(void) {
         &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir, &&L_access,
         &&L_kill, &&L_umask, &&L_cputimes, &&L_sigaction, &&L_sigpending,
         &&L_termraw, &&L_termrestore,
+        &&L_filekind,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1221,6 +1222,19 @@ L_access: SPILL(); /* c-addr mode --- ior : access(2); 0 or -errno (Iteration 26
 L_isatty: SPILL(); /* fd --- flag (Iteration 264: is the shell interactive?) */
     DS0 = isatty((int)DS0) ? ~(UNS64)0 : 0;
     FILLNEXT();
+L_filekind: SPILL(); { /* c-addr --- kind : 0 none, 1 regular, 2 directory,
+                        3 anything else. `set -C` has to tell a regular
+                        file from a device: O_EXCL alone would refuse
+                        `> /dev/null`, which no reference shell does
+                        (Iteration 307). */
+    struct stat st;
+    const char *path = (const char *)(uintptr_t)DS0;
+    if (stat(path, &st)) DS0 = 0;
+    else if (S_ISREG(st.st_mode)) DS0 = 1;
+    else if (S_ISDIR(st.st_mode)) DS0 = 2;
+    else DS0 = 3;
+    FILLNEXT();
+}
 L_termraw: SPILL(); { /* fd --- ior : character-at-a-time input for the
                         line editor (Iteration 303). ICANON and ECHO go;
                         ISIG stays, so ^C still raises SIGINT, and OPOST

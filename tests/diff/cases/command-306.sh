@@ -17,6 +17,6 @@ command command echo nested
 g() { command echo "inside a function"; }
 g
 v=$(command echo substituted); echo "[$v]"
-# One line is deliberately absent: `command echo a b c | cat` appended
-# here prints nothing, while the same line after a two-line prelude is
-# correct. It needs the rest of this file to show up (GOALS.md, 306).
+command echo a b c | cat
+command -p echo after-p
+echo "PATH still works: $(ls /dev/null)"

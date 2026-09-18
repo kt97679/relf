@@ -1700,28 +1700,15 @@ before anything else, because every number here is relative to it.
    completion notices. Cursor keys, line editing and history are done
    (edit.4); `-i` is still unimplemented.
 
-5h0. **`command BUILTIN ... | cat` prints nothing as the LAST command of
-   a script** (found in Iteration 306 while writing the test for
-   `command`). It needs context: appending that line to
-   tests/diff/cases/command-306.sh reproduces it every time, while the
-   same line after a two-line prelude is correct, as is `-c`. So it is
-   not simply the exec-without-fork of a final command. The automatic
-   reducer from Iteration 295 - drop a line, keep what still fails - is
-   the tool for it.
-
-5h1. **`set -C` (noclobber) needs a `stat` primitive.** The engine has
-   the exclusive-create mode (`X/O`, Iteration 305), but `O_EXCL` alone
-   refuses `> /dev/null`; dash and bash check that the target is a
-   regular file first. A `FILE-KIND ( c-addr --- kind )` primitive would
-   finish it.
-
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process
    groups they need; `set -C`, `-a`, `-v`, `-b` and the option names
    `ignoreeof`, `nolog`, `vi`, `emacs`; `ulimit` beyond `-f`; `command
    -p`; ending the shell when a readonly variable is assigned; job
-   notices; and `-i`. The `set` options are the cheapest of these and
-   the most likely to appear in a real script.
+   notices; and `-i`. **Closed since**: `set -a`, `-v` (305), `command`
+   in every form and `-i` (306), `set -C` (307). **Left**: `fg`/`bg`
+   with process groups, `ulimit` past `-f` (getrlimit), job notices, and
+   the readonly behaviour, where dash and bash differ anyway.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u

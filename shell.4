@@ -1145,6 +1145,7 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
 
 \ ---- shell options (Iteration 270): set -e -u -x -f -n ----
 VARIABLE RD-SKIP?      \ this redirection was refused: do not open anything
+VARIABLE OPT-NOCLOBBER \ set -C: `>` will not overwrite an existing regular file
 VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
 VARIABLE OPT-VERBOSE   \ set -v: each line of input is echoed as it is read
 VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
@@ -2071,6 +2072,7 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
   OPT-NOEXEC @ IF 110 EMIT-TOK-CHAR THEN
   OPT-NOUNSET @ IF 117 EMIT-TOK-CHAR THEN
   OPT-ALLEXPORT @ IF 97 EMIT-TOK-CHAR THEN
+  OPT-NOCLOBBER @ IF 67 EMIT-TOK-CHAR THEN
   OPT-VERBOSE @ IF 118 EMIT-TOK-CHAR THEN
   OPT-XTRACE @ IF 120 EMIT-TOK-CHAR THEN ;
 
@@ -2460,7 +2462,17 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
         THEN
       THEN
     ELSE
+      \ set -C: `>` refuses a file that is there, but only a REGULAR one -
+      \ `> /dev/null` must still work, which is why this needs FILE-KIND
+      \ rather than O_EXCL alone (XCU 2.7.2, Iteration 307).
       0 RD-SKIP? !
+      DUP 2 = OPT-NOCLOBBER @ AND IF
+        REDIR-TGT AR-I @ CELLS + @ FILE-KIND 1 = IF
+          S" shell: cannot create " ERR-TYPE
+          REDIR-TGT AR-I @ CELLS + @ ERR-CSTR S" : file exists" ERR-TYPE ERR-NL
+          -1 REDIR-FAILED? !  -1 RD-SKIP? !
+        THEN
+      THEN
       \ `<>` (op 8) opens for both, creating the file if it is not there
       \ and truncating nothing (XCU 2.7.1); it used to be handed to the
       \ shell as a plain `<`, so it failed on a file that did not exist.
@@ -3277,8 +3289,11 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   ARGC @ 2 < IF 0 LAST-STATUS ! EXIT THEN
   S" -p" 1 ARGV@ STR0= IF
     DROP-ARGV0-CALL
+    \ MOVE takes ( src dst u ): written the other way round in Iteration
+    \ 306 it copied the EMPTY buffer over PATH, so every command after a
+    \ `command -p` went missing.
     PATH-NM LOOKUP-VAR ?DUP IF
-      CMD-SAVED-PATH SWAP DUP CSTRLEN 1+ MOVE -1
+      DUP CSTRLEN 1+ CMD-SAVED-PATH SWAP MOVE -1
     ELSE 0 THEN >R
     PATH-NM DEFAULT-PATH SET-SHVAR
     COMMAND-RUN
@@ -3362,6 +3377,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   DUP 120 = IF DROP OPT-XTRACE EXIT THEN
   DUP 102 = IF DROP OPT-NOGLOB EXIT THEN
   DUP 109 = IF DROP OPT-MONITOR EXIT THEN
+  DUP 67 = IF DROP OPT-NOCLOBBER EXIT THEN   \ -C (Iteration 307)
   DUP 97 = IF DROP OPT-ALLEXPORT EXIT THEN   \ -a
   DUP 118 = IF DROP OPT-VERBOSE EXIT THEN    \ -v
   110 = IF OPT-NOEXEC EXIT THEN
@@ -3376,6 +3392,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" verbose" R@ STR0= IF R> DROP OPT-VERBOSE EXIT THEN
   S" noexec" R@ STR0= IF R> DROP OPT-NOEXEC EXIT THEN
   S" monitor" R@ STR0= IF R> DROP OPT-MONITOR EXIT THEN
+  S" noclobber" R@ STR0= IF R> DROP OPT-NOCLOBBER EXIT THEN
   R> DROP 0 ;
 : .OPT ( c-addr u addr on? --- )   \ one line of set -o or set +o
   IF
@@ -3389,6 +3406,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" allexport" OPT-ALLEXPORT R@ .OPT
   S" errexit" OPT-ERREXIT R@ .OPT
   S" monitor" OPT-MONITOR R@ .OPT
+  S" noclobber" OPT-NOCLOBBER R@ .OPT
   S" noexec" OPT-NOEXEC R@ .OPT
   S" noglob" OPT-NOGLOB R@ .OPT
   S" nounset" OPT-NOUNSET R@ .OPT
