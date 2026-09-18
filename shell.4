@@ -1487,6 +1487,12 @@ VARIABLE AE-END
 
 VARIABLE EXPANSION-FAILED?   \ an expansion error: the command must not run
 VARIABLE AE-BASE
+: AE-BASE-DIGIT ( c --- n | -1 )   \ 0-9 a-z A-Z, for `base#digits`
+  DUP 48 - 10 U< IF 48 - EXIT THEN
+  DUP 97 - 26 U< IF 97 - 10 + EXIT THEN
+  DUP 65 - 26 U< IF 65 - 10 + EXIT THEN
+  DROP -1 ;
+
 : AE-PARSE-NUMBER ( --- n )
   \ C's constants, as POSIX asks (XCU 2.6.4): 0x.. hexadecimal, a leading
   \ 0 octal, otherwise decimal. Only decimal was read until Iteration
@@ -1508,6 +1514,25 @@ VARIABLE AE-BASE
     AE-POS @ 1+ AE-POS !
   REPEAT DROP
   \ `09` is not an octal constant: both references reject it
+  \ `base#digits` (Iteration 331): the number just read was the base,
+  \ and this took it for the whole value - `$((2#101))` gave 2.
+  AE-POS @ AE-END @ < IF
+    AE-POS @ C@ 35 = IF
+      DUP 2 < 0= OVER 37 < AND IF   \ a base between 2 and 36
+        AE-BASE !
+        AE-POS @ 1+ AE-POS !
+        0
+        BEGIN
+          AE-POS @ AE-END @ < IF AE-POS @ C@ AE-BASE-DIGIT ELSE -1 THEN
+          DUP 0< 0= OVER AE-BASE @ < AND
+        WHILE
+          SWAP AE-BASE @ * +
+          AE-POS @ 1+ AE-POS !
+        REPEAT DROP
+        EXIT
+      THEN
+    THEN
+  THEN
   AE-POS @ AE-END @ < IF
     AE-POS @ C@ AE-HEX-DIGIT 0< 0= IF
       S" shell: bad arithmetic constant" ERR-TYPE ERR-NL
@@ -1561,6 +1586,30 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
                       \ AE-OR through this deferred call, patched
                       \ right after AE-OR itself is defined below.
 
+VARIABLE AE-QUIET   \ >0: in the branch of ?: whose value is discarded
+
+32 BUFFER: AE-NUMBUF
+VARIABLE AE-SN-NAME
+
+: AE-STORE-NUMBER ( c-addr n --- )   \ name = n, as an assignment would
+  \ Formats the number here rather than with N>STR, which is defined
+  \ further down with the rest of the assignment machinery.
+  AE-QUIET @ IF 2DROP EXIT THEN
+  SWAP AE-SN-NAME !
+  DUP 0< >R ABS 0 <# #S R> IF 45 HOLD THEN #>   ( a u )
+  DUP >R AE-NUMBUF SWAP MOVE
+  0 AE-NUMBUF R> + C!
+  AE-SN-NAME @ AE-NUMBUF SET-SHVAR ;
+
+: AE-PREFIX-STEP ( up? --- n )   \ ++a / --a: assign, then yield
+  AE-POS @ 2 + AE-POS !
+  AE-SKIP-WS
+  AE-POS @ C@ 36 = IF AE-POS @ 1+ AE-POS ! THEN
+  AE-READ-VARNAME
+  AE-LOOKUP-NUMERIC
+  SWAP IF 1+ ELSE 1- THEN
+  DUP AE-VARNAME-BUF SWAP AE-STORE-NUMBER ;
+
 : AE-PRIMARY ( --- n )
   AE-SKIP-WS
   AE-POS @ AE-END @ < 0= IF 0 EXIT THEN
@@ -1570,6 +1619,13 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
     AE-SKIP-WS
     AE-POS @ AE-END @ < IF AE-POS @ C@ 41 = IF AE-POS @ 1+ AE-POS ! THEN THEN
     EXIT
+  THEN
+  \ `++a` and `--a` assign before yielding the value
+  AE-POS @ 1+ AE-END @ < IF
+    AE-POS @ C@ DUP 43 = SWAP 45 = OR
+    AE-POS @ C@ AE-POS @ 1+ C@ = AND IF
+      AE-POS @ C@ 43 = AE-PREFIX-STEP EXIT
+    THEN
   THEN
   AE-POS @ C@ 45 = IF                    ( unary '-' )
     AE-POS @ 1+ AE-POS !
@@ -1602,10 +1658,19 @@ DEFER AE-OR-CALL   \ AE-PRIMARY (a parenthesized subexpression is a
   \ with or without it here and both mean the same thing.
   AE-POS @ C@ 36 = IF AE-POS @ 1+ AE-POS ! THEN
   AE-READ-VARNAME
-  AE-LOOKUP-NUMERIC ;
+  AE-LOOKUP-NUMERIC
+  \ `a++` and `a--` (Iteration 331): these parsed as a variable followed
+  \ by two unary signs and assigned nothing, so `$((a++))` left a alone.
+  AE-POS @ 1+ AE-END @ < IF
+    AE-POS @ C@ DUP 43 = SWAP 45 = OR
+    AE-POS @ C@ AE-POS @ 1+ C@ = AND IF
+      AE-POS @ C@ 43 = IF DUP 1+ ELSE DUP 1- THEN
+      AE-VARNAME-BUF SWAP AE-STORE-NUMBER
+      AE-POS @ 2 + AE-POS !
+    THEN
+  THEN ;
 
 
-VARIABLE AE-QUIET   \ >0: in the branch of ?: whose value is discarded
 
 : AE-DIV ( n1 n2 --- quot rem )
 \ Division as C and POSIX arithmetic do it: the quotient truncated

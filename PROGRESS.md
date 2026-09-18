@@ -326,6 +326,7 @@ do not trust the absence of a line below.
 - **328** — bash's manual where the references agree: getopts operands, ${#*}
 - **329** — busybox's ash suite: break n, continue n, and case's exit status
 - **330** — behaviours, not files: a catalogue, and functions overriding builtins
+- **331** — bash's areas, probed not copied: base#digits, ++ and --
 
 ### Not tied to an iteration
 
@@ -18139,3 +18140,29 @@ backquotes CRASH this shell today - and a quoted empty string beside
 busybox suite: 168 of 357, against dash's 211.
 
 tests/verify: diff cases 60 -> 61; sizes.
+
+## Iteration 331: bash's areas, probed rather than copied
+
+bash's test files could not be fetched here, and would be bash's work in
+any case. The same method went one level further back: take the AREAS
+its suite covers - variables and environments, redirection, arithmetic,
+expansion, quoting, functions, traps - and establish each behaviour by
+asking bash and dash directly. Four more entries in
+tests/from-others/CATALOGUE.md, two of them faults here.
+
+- **`base#digits` returned the base.** `$((2#101))` was 2. Bases 2 to
+  36 are read now, with letters for the digits above 9.
+- **`++` and `--` assigned nothing.** They parsed as a pair of unary
+  signs, so `$((a++))` yielded the right value and left the variable
+  alone - worse than either reference, since dash rejects them outright
+  and bash assigns. Both forms work now, prefix and postfix, and neither
+  assigns in the untaken branch of `?:`. The prefix check has to come
+  before the unary-minus branch, or `--a` reads as `-(-a)`.
+
+`tests/diff/cases/arith-bash-331.sh` matches bash. It is the second case
+here that deliberately does not match dash, which rejects all of this.
+
+The other two entries - assignments in front of a command, and the
+newline handling of command substitution - were already right.
+
+tests/verify: diff cases 61 -> 62; sizes.

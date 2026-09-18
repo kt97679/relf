@@ -44,3 +44,35 @@ and which case here covers it.
    adjacent quoted empty string still produces one empty word**, so
    `"$@"""` is a single empty argument.
    → not yet implemented here; recorded in GOALS.md
+
+## From bash's own suite, by probing bash rather than reading it (Iteration 331)
+
+bash's test files could not be fetched here, and would be its work in
+any case. What was done instead is the same thing one level further
+back: take the *areas* its suite covers - variables and environments,
+redirection, arithmetic, expansion, quoting, functions, traps - and
+establish each behaviour by asking bash and dash directly. The
+descriptions below are of the behaviour; the cases are written here from
+them.
+
+7. **Arithmetic understands `base#digits`** for bases 2 to 36, with the
+   digits above 9 written as letters, so `2#101` is 5, `16#ff` is 255
+   and `36#z` is 35. This shell returned the base itself.
+   → `tests/diff/cases/arith-bash-331.sh`
+
+8. **`++` and `--` assign.** `a++` yields the old value and leaves the
+   variable one higher; `++a` assigns first and yields the new value;
+   `--` likewise downwards. This shell parsed them as a pair of unary
+   signs, so the value came out right and the variable never changed -
+   the worst of the two behaviours, since dash rejects them outright and
+   bash assigns. They must not assign in the untaken branch of `?:`.
+   → `tests/diff/cases/arith-bash-331.sh`
+
+9. **A variable assignment in front of a command is visible to that
+   command and gone afterwards**, including when the command is a
+   function; a `local` in a function is visible to the functions it
+   calls. (Already correct here.)
+
+10. **A command substitution's trailing newlines are removed, but inner
+    ones are kept**, and an empty substitution yields an empty word.
+    (Already correct here.)
