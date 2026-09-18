@@ -287,6 +287,7 @@ do not trust the absence of a line below.
 - **289** — cd -, PWD/OLDPWD, alias listing, unalias -a; the probe finishes clean
 - **290** — probing job control and signals: trap with a numeric condition breaks the shell
 - **291** — the numeric signal bug: one stray NIP; signals get a differential case
+- **292** — why dash and bash are faster (PERFORMANCE.md); the builtin table is hashed
 
 ### Not tied to an iteration
 
@@ -16867,3 +16868,41 @@ EXIT trap - matches bash and dash exactly. Nothing in the suites had
 ever named a signal by number.
 
 tests/verify: diff cases 42 -> 43; sizes.
+
+## Iteration 292: where the 20x actually is
+
+`PERFORMANCE.md` is the write-up; the short version:
+
+- **Neither reference compiles to anything.** dash's `evaltree` is a
+  `switch` over a node tree, read here in its source; bash walks a
+  `COMMAND` tree the same way (stated from prior knowledge - github's
+  raw host is not reachable from this container, so it was not read).
+  This shell has the same shape.
+- **The engine's dispatch is not the problem**: 240 million dispatches
+  in 196 ms, **0.82 ns - about 2.4 cycles - each**.
+- **The cost is dispatches per shell operation**: 9,289 of them for one
+  iteration of the loop benchmark, against roughly 3,500 cycles in dash.
+  Two multiplying factors: each dispatch does about what one machine
+  instruction does in compiled C (only native code fixes that), and
+  several operations here take tens or hundreds of dispatches where dash
+  takes a handful (ordinary algorithmic gaps, fixable now).
+
+The clearest of those was `FIND-BUILTIN`: a linked-list walk, 532
+dispatches an iteration, where dash bsearches a sorted table. The table
+is fixed once the file has loaded, so it is hashed once into an
+open-addressed index; a builtin registered at runtime rebuilds it.
+
+**Measured**: loop -4.2%, fn -5.4%, str -1.5%, arith -1.8% dispatches.
+
+**A bug found on the way**: builtin names are stored without a
+terminator, so hashing to the NUL ran on into the next entry whenever a
+name exactly filled a cell. `continue` - eight characters - was the only
+one affected, and disappeared from the shell until the index hashed by
+explicit length instead. The suites caught it.
+
+The remaining list, in measured order, is in PERFORMANCE.md: the
+per-word bookkeeping in `EXPAND-WORDS` (840 dispatches an iteration),
+`I`/`(LOOP)`/`(+LOOP)` as opcodes (663), tree field reads (436), and
+arithmetic still evaluated from text (318).
+
+tests/verify: sizes.

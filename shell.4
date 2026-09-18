@@ -2945,6 +2945,10 @@ VARIABLE BI-ADDR
 VARIABLE BI-LEN
 VARIABLE BI-HERE
 
+DEFER REINDEX-BUILTINS   ( --- )   \ set below, once the index exists
+: NO-REINDEX ( --- ) ;
+' NO-REINDEX IS REINDEX-BUILTINS
+
 : BUILTIN ( xt c-addr u --- )
   SHADOW{ BI-XT BI-ADDR BI-LEN | BI-HERE }
   \ ALIGN first: HERE after a colon definition is not aligned, and the
@@ -2956,7 +2960,8 @@ VARIABLE BI-HERE
   BI-ADDR @ HERE BI-LEN @ MOVE
   BI-LEN @ ALLOT
   ALIGN
-  BI-HERE @ START @ - BUILTIN-LIST ! ;
+  BI-HERE @ START @ - BUILTIN-LIST !
+  REINDEX-BUILTINS ;          \ a builtin registered later joins the index
 
 VARIABLE FB-NAME
 VARIABLE FB-E
@@ -2978,7 +2983,67 @@ VARIABLE FB-E
   REPEAT
   0 ;
 
-: BUILTIN-NAME? ( c-addr --- f )  FIND-BUILTIN 0= 0= ;
+DEFER FIND-BUILTIN-CALL   ( c-addr --- xt | 0 )
+: BUILTIN-NAME? ( c-addr --- f )  FIND-BUILTIN-CALL 0= 0= ;
+
+\ ---- the builtin index (Iteration 292) ----
+\ FIND-BUILTIN walked the whole list comparing names: 532 dispatches of
+\ every loop iteration in tests/bench-vm, 6% of it, where dash bsearches
+\ a sorted table in about six comparisons. The table is fixed once the
+\ file has loaded, so it is hashed once, the same way the variables are
+\ (Iteration 272) - open addressing, at least twice the entries.
+128 CELLS BUFFER: BI-INDEX
+VARIABLE BI-INDEX-SIZE
+VARIABLE BI-COUNT
+VARIABLE BI-E
+VARIABLE BI-H
+
+: BI-SLOT ( k --- addr )   CELLS BI-INDEX + ;
+: BI-MASK ( --- m )        BI-INDEX-SIZE @ 1- ;
+: BI-ENTRY-NAME ( entry --- c-addr )   3 CELLS + ;
+
+: BI-NAME-HASH ( c-addr u --- h )   \ FNV-1a over exactly u bytes
+  \ NAME-HASH reads to a NUL, and a builtin's name is stored WITHOUT
+  \ one: for a name that exactly fills a cell - `continue` is eight
+  \ characters - it ran on into the next entry, so the table's hash and
+  \ the lookup's disagreed and that one builtin went missing.
+  \ The accumulator is a variable, not the return stack: the loop index
+  \ lives there, so an R> inside a ?DO would take that instead.
+  2166136261 BI-H !
+  OVER + SWAP ?DO I C@ BI-H @ XOR 16777619 * BI-H ! LOOP
+  BI-H @ DUP 16 RSHIFT XOR  73244475 *  DUP 16 RSHIFT XOR ;
+
+: BI-INSERT ( entry --- )
+  DUP DUP BI-ENTRY-NAME SWAP 2 CELLS + @ BI-NAME-HASH BI-MASK AND
+  BEGIN DUP BI-SLOT @ WHILE 1+ BI-MASK AND REPEAT
+  BI-SLOT ! ;
+
+: BUILD-BUILTIN-INDEX ( --- )
+  0 BI-COUNT !
+  BUILTIN-LIST @ BI-E !
+  BEGIN BI-E @ WHILE 1 BI-COUNT +!  BI-E @ START @ + @ BI-E ! REPEAT
+  16 BEGIN DUP BI-COUNT @ 2* < WHILE 2* REPEAT
+  DUP BI-INDEX-SIZE !  CELLS ENSURE-BUFFER BI-INDEX
+  BI-INDEX BI-INDEX-SIZE @ CELLS 0 FILL
+  BUILTIN-LIST @ BI-E !
+  BEGIN BI-E @ WHILE
+    BI-E @ START @ + DUP BI-INSERT  @ BI-E !
+  REPEAT ;
+
+: FIND-BUILTIN-HASHED ( c-addr --- xt | 0 )
+  BI-INDEX-SIZE @ 0= IF FIND-BUILTIN EXIT THEN
+  DUP DUP CSTRLEN BI-NAME-HASH BI-MASK AND   ( name k )
+  BEGIN
+    DUP BI-SLOT @ ?DUP WHILE                 ( name k entry )
+    DUP BI-ENTRY-NAME OVER 2 CELLS + @       ( name k entry addr len )
+    4 PICK STR0= IF
+      NIP NIP CELL+ @ START @ + EXIT         \ its xt
+    THEN
+    DROP 1+ BI-MASK AND
+  REPEAT
+  2DROP 0 ;
+' BUILD-BUILTIN-INDEX IS REINDEX-BUILTINS
+' FIND-BUILTIN-HASHED IS FIND-BUILTIN-CALL
 
 \ The alias TABLE lives here, ahead of DO-COMMAND, which has to
 \ report an alias. The expansion machinery (TRY-ALIAS/DO-ALIAS)
@@ -4263,7 +4328,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   \ or came from an expansion (`"echo" x`, `$cmd x`); reserved words are
   \ the parser's business since the command tree (Iteration 269).
   ARGC @ 0 > IF
-    ARGV @ FIND-BUILTIN ?DUP IF
+    ARGV @ FIND-BUILTIN-CALL ?DUP IF
       0 EXEC-LAST? !
       >R BEGIN-REDIRECT R>
       REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN

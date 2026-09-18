@@ -2278,6 +2278,7 @@ VARIABLE SUBLIST-XT
 
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
+  BUILD-BUILTIN-INDEX                        \ the table is fixed by now
   GETPID SHELL-PID !
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !
@@ -2408,7 +2409,7 @@ VARIABLE DS-END
     NIP S"  is an alias for " TYPE ALIAS-VALUE-SLOT DUP CSTRLEN TYPE CR -1 EXIT
   THEN DROP
   DUP FIND-FUNC -1 <> IF DROP S"  is a shell function" TYPE CR -1 EXIT THEN
-  DUP FIND-BUILTIN IF DROP S"  is a shell builtin" TYPE CR -1 EXIT THEN
+  DUP FIND-BUILTIN-CALL IF DROP S"  is a shell builtin" TYPE CR -1 EXIT THEN
   DUP DUP CSTRLEN HAS-SLASH? IF
     DUP 1 ACCESS 0= IF S"  is " TYPE DUP CSTRLEN TYPE CR -1 EXIT THEN
     DROP S" : not found" TYPE CR 0 EXIT
