@@ -295,6 +295,7 @@ do not trust the absence of a line below.
 - **297** — `exec 3>file` opened the file and lost it; the close that followed the open
 - **298** — `<>` opens for reading and writing; the rest of the redirection sweep is clean
 - **299** — a signal-killed child exits 128+n; the jobs builtin and set -m
+- **300** — nested backquotes; a line continuation in $(( )) - a regression from 286
 
 ### Not tied to an iteration
 
@@ -17148,3 +17149,36 @@ Left for job control proper: `fg`, `bg`, `%n` job specifiers, and the
 groups and `tcsetpgrp`, which are engine work.
 
 tests/verify: diff cases 47 -> 48; a new shell test file; sizes.
+
+## Iteration 300: nested backquotes, and a regression of my own
+
+The last area nothing had swept: parsing and quoting corners - nested
+substitutions of both kinds, line continuations everywhere they are
+allowed, `eval` in six forms, aliases, `case` patterns with quoted
+operators, negation. Two differences from both references.
+
+**Nested backquotes.** `` `echo \`echo deep\`` `` gave the inner text
+back literally. In the backquoted form a backslash keeps its meaning
+except before `` ` ``, `\` or `$`, where it is removed from the command
+the child runs (XCU 2.6.3); the text was handed over still escaped, so
+the child saw literal backticks. The copy that puts a substitution's
+text into the tree now strips those three, and only for the backquoted
+form - `$(...)` has no such rule.
+
+**A line continuation inside `$(( ))`.** `$(( 1 +\` newline `2 ))` came
+to 1 rather than 3. This one is mine: until Iteration 286 the expression
+was copied by `ENC-RAW`, which dropped continuations, and the encoder
+that replaced it did not. The 283 build gets it right and every build
+since 286 does not - a regression that lived through fourteen
+iterations because the arithmetic case written in 286 had no
+continuation in it.
+
+`tests/diff/cases/quoting-300.sh` - both of those, continuations in a
+word, in quotes, in an assignment, `eval` in six forms, `${...}` with
+quoted patterns, `case` with a quoted `|` and `)`, negation - matches
+bash and dash; the 291 build fails it.
+
+Everything else in the sweep matched, including that aliases are not
+expanded in a script, which all three shells agree on.
+
+tests/verify: diff cases 48 -> 49; parse verdicts 153 -> 154; sizes.
