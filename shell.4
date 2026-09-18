@@ -2580,17 +2580,45 @@ VARIABLE LC-END
 \ propagate back from.
 \ ==================================================================
 
+CREATE HOMEBUF-NM  72 C, 79 C, 77 C, 69 C, 0 C,
+CREATE OLDPWD-NM  79 C, 76 C, 68 C, 80 C, 87 C, 68 C, 0 C,
+CREATE PWD-NM     80 C, 87 C, 68 C, 0 C,
+
+: CD-REMEMBER ( --- )   \ PWD and OLDPWD across the move (XCU cd)
+  PWD-NM LOOKUP-VAR ?DUP IF OLDPWD-NM SWAP SET-SHVAR THEN
+  CWDBUF PATH-MAX GETCWD DROP  0 CWDBUF ROT + C!
+  PWD-NM CWDBUF SET-SHVAR ;
+
+: CD-FAILED ( name --- )
+  S" shell: cd: " ERR-TYPE ERR-CSTR S" : no such directory" ERR-TYPE ERR-NL
+  1 LAST-STATUS ! ;
+
 : DO-CD ( --- )
+  \ `cd -` goes back to OLDPWD and writes where it landed; the
+  \ diagnostics went to standard output until Iteration 289.
   ARGC @ 1 > IF
-    ARGV 1 CELLS + @ CHDIR
-    IF ." cd: no such directory" CR 1 LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
-  ELSE
-    S" HOME" ENVNAMBUF SWAP MOVE 0 ENVNAMBUF 4 + C!
-    ENVNAMBUF GETENV DUP 0= IF
-      DROP 0 LAST-STATUS !
-    ELSE
-      CHDIR IF 1 ELSE 0 THEN LAST-STATUS !
+    S" -" 1 ARGV@ STR0= IF
+      OLDPWD-NM LOOKUP-VAR ?DUP 0= IF
+        S" shell: cd: OLDPWD not set" ERR-TYPE ERR-NL  1 LAST-STATUS ! EXIT
+      THEN
+      DUP CHDIR IF
+        CD-FAILED
+      ELSE
+        DROP CD-REMEMBER  0 LAST-STATUS !
+        PWD-NM LOOKUP-VAR ?DUP IF DUP CSTRLEN TYPE CR THEN
+      THEN
+      EXIT
     THEN
+    1 ARGV@ DUP CHDIR IF
+      CD-FAILED
+    ELSE
+      DROP CD-REMEMBER  0 LAST-STATUS !
+    THEN
+  ELSE
+    HOMEBUF-NM LOOKUP-VAR ?DUP 0= IF
+      S" shell: cd: HOME not set" ERR-TYPE ERR-NL  1 LAST-STATUS ! EXIT
+    THEN
+    DUP CHDIR IF CD-FAILED ELSE DROP CD-REMEMBER 0 LAST-STATUS ! THEN
   THEN ;
 
 : DO-PWD ( --- )
@@ -5359,13 +5387,29 @@ VARIABLE TF-TRAIL?
 \ a depth cap is cruder but needs no per-expansion state, and the
 \ failure mode is a diagnosed stop rather than a hang.
 
+: .ALIAS ( i --- )   \ as XCU asks: a form the shell can read back
+  DUP ALIAS-NAME-SLOT DUP CSTRLEN TYPE 61 EMIT
+  ALIAS-VALUE-SLOT SQUOTED. CR ;
+
 : DO-ALIAS ( --- )
+  \ With no operands, every alias; with a name and no `=`, that one
+  \ (Iteration 289 - both printed nothing).
   0 LAST-STATUS !
+  ARGC @ 1 = IF
+    ALIAS-COUNT @ 0 ?DO I .ALIAS LOOP EXIT
+  THEN
   1 AL-I !
   BEGIN AL-I @ ARGC @ < WHILE
     AL-I @ ARGV@ ASSIGNMENT-EQPOS
     DUP -1 = IF
       DROP
+      AL-I @ ARGV@ FIND-ALIAS DUP -1 <> IF
+        .ALIAS
+      ELSE
+        DROP
+        S" shell: alias: " ERR-TYPE AL-I @ ARGV@ ERR-CSTR
+        S" : not found" ERR-TYPE ERR-NL  1 LAST-STATUS !
+      THEN
     ELSE
       AL-I @ ARGV@ SWAP SPLIT-ASSIGN-AT
       ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-ALIAS
@@ -5375,6 +5419,9 @@ VARIABLE TF-TRAIL?
 
 : DO-UNALIAS ( --- )
   0 LAST-STATUS !
+  ARGC @ 1 > IF                              \ -a: all of them (Iteration 289)
+    S" -a" 1 ARGV@ STR0= IF 0 ALIAS-COUNT ! EXIT THEN
+  THEN
   1 AL-I !
   BEGIN AL-I @ ARGC @ < WHILE
     AL-I @ ARGV@ FIND-ALIAS DUP -1 <> IF

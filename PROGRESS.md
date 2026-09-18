@@ -284,6 +284,7 @@ do not trust the absence of a line below.
 - **286** — expansions inside $(( )) are performed; ~, octal and hex constants
 - **287** — coverage probed; the arithmetic audit: ternary, comma, invalid constants
 - **288** — read: IFS fields, backslashes, line continuation, end-of-file status
+- **289** — cd -, PWD/OLDPWD, alias listing, unalias -a; the probe finishes clean
 
 ### Not tied to an iteration
 
@@ -16769,3 +16770,33 @@ The old blank-splitting helpers went with it (`RD-SKIP-WS`, `RD-SET`).
 
 tests/verify: diff cases 40 -> 41; sizes; the kernel image grew by the
 new variable.
+
+## Iteration 289: cd and alias, and the rest of the probe
+
+The last two faults 287 collected:
+
+- **`cd -`** was unsupported, and every `cd` diagnostic went to standard
+  output. `cd -` now returns to `OLDPWD` and writes where it landed;
+  `cd` keeps `PWD` and `OLDPWD` across every move; a failure, and an
+  unset `HOME` or `OLDPWD`, are reported on standard error with the
+  operand named.
+- **`alias`** printed nothing when given no operands or a plain name. It
+  now writes each one as `name='value'`, quoted so the shell can read it
+  back, and reports an unknown name on standard error. `unalias -a`,
+  which the case turned up, removes them all.
+
+**The rest of the probe found nothing.** Redirection forms (`exec 3>`,
+`>&`, `>>`, `<`, `<&`, an indented here-document, a group's
+redirection), `case` patterns (`?`, `*`, bracket ranges, negation,
+quoted patterns, the empty word), `getopts` (clustered options, an
+option with an argument, `OPTIND` after `shift`), and `trap` (EXIT in a
+subshell, a signal, listing) all match dash exactly.
+
+Two differences from bash are worth recording as deliberate: bash does
+not expand aliases in a script at all, so the differential case only
+lists them; and `cd` to a missing directory is status 1 here and in
+bash, 2 in dash.
+
+tests/diff/cases/cd-alias-289.sh matches bash.
+
+tests/verify: diff cases 41 -> 42; sizes.

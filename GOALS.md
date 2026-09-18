@@ -1667,9 +1667,14 @@ before anything else, because every number here is relative to it.
    agree on all of these; this shell does not):
    - ~~`read` does not process backslashes, ignores `IFS` and
      mis-reports end of file~~ **fixed in Iteration 288.**
-   - `cd -` is unsupported (and says so on stdout).
-   - `alias NAME` does not print that alias's definition.
-   Each wants a differential case with its fix.
+   - ~~`cd -` is unsupported (and says so on stdout)~~ **fixed in
+     Iteration 289**, with `PWD`/`OLDPWD` and the diagnostics moved to
+     standard error.
+   - ~~`alias NAME` does not print that alias's definition~~ **fixed in
+     289**, along with `alias` with no operands and `unalias -a`.
+   The probe of the remaining thin places - redirection forms, `case`
+   patterns, `getopts` and `trap` - found nothing further: this shell
+   matches dash on all of it.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
