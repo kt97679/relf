@@ -1704,10 +1704,12 @@ before anything else, because every number here is relative to it.
 
 5i. ~~**Left from the POSIX sweep of 317**~~ all done: `PPID`, `command
    -V`, `export -p` (318), `CDPATH`, `cd -P/-L` and the logical `pwd`
-   (319). `fg`/`bg` landed in 320. **What job control still lacks**: a foreground
-   command runs in the shell's process group, so `^Z` cannot stop it -
-   each foreground job needs its own group with the terminal handed
-   over and back; and `kill %n` does not take a job specifier.
+   (319). `fg`/`bg` landed in 320. **What job control still lacks** (321): foreground jobs now have
+   their own group and the terminal, but `^Z` still does not stop one -
+   the child keeps running and `ps` shows it `S+`, so the line
+   discipline is not raising `SIGTSTP`; check the terminal's `lflag`
+   and `VSUSP` from outside while a command runs. `kill %n` does not
+   take a job specifier either.
 
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process

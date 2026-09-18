@@ -4771,6 +4771,31 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 \ flag is set only once the words are expanded, and DISPATCH clears it
 \ before a builtin or a function runs.
 
+VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
+VARIABLE SHELL-PGID
+DEFER FG-STOPPED-CALL   ( pid --- )   \ the job table, defined below
+VARIABLE FG-PID
+
+: FOREGROUND-CHILD ( pid --- )
+  \ Hands the terminal to the child's group, waits for it to finish or
+  \ stop, and takes the terminal back. A stopped command becomes a job,
+  \ reported as dash reports it (Iteration 321).
+  DUP FG-PID !
+  \ The parent sets it too, since either side may run first. Written
+  \ `DUP 0 SWAP SETPGID` it read setpgid(0, child) - the SHELL joining
+  \ the child's group, which is the opposite of the intent.
+  DUP DUP SETPGID DROP                         ( pid )
+  0 FG-PID @ TCSETPGRP DROP
+  FG-PID @ WAIT-JOB                            ( pid' status )
+  0 SHELL-PGID @ TCSETPGRP DROP
+  OVER 0< IF 2DROP DROP 0 LAST-STATUS ! EXIT THEN
+  DUP 127 AND 127 = IF                         \ stopped, not finished
+    2DROP                                      ( pid )
+    FG-STOPPED-CALL
+  ELSE
+    NIP WAIT->STATUS LAST-STATUS !  DROP
+  THEN ;
+
 : RUN-EXTERNAL ( --- )
   ARGV @ DUP CSTRLEN HAS-SLASH? IF 0 ELSE ARGV @ LOCATE-COMMAND THEN CMD-RESOLVED !
   EXEC-LAST? @ IF
@@ -4781,13 +4806,19 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   THEN
   FORK
   DUP 0 = IF
-    DROP APPLY-REDIRECTIONS
+    DROP
+    \ Job control: the command gets its own process group, so ^Z and ^C
+    \ from the terminal reach it rather than the shell (Iteration 321).
+    JOB-CONTROL? @ IF 0 0 SETPGID DROP THEN
+    APPLY-REDIRECTIONS
     REDIR-FAILED? @ IF 1 SYS-EXIT THEN
     RUN-CHILD 127 SYS-EXIT
   ELSE
-    WAITPID DROP           ( raw wait status )
-    WAIT->STATUS
-    LAST-STATUS !
+    JOB-CONTROL? @ IF FOREGROUND-CHILD ELSE
+      WAITPID DROP           ( raw wait status )
+      WAIT->STATUS
+      LAST-STATUS !
+    THEN
   THEN ;
 
 CREATE PS1-NM  80 C, 83 C, 49 C, 0 C,
@@ -5938,8 +5969,6 @@ VARIABLE TF-TRAIL?
 VARIABLE JOB-TEXT-NEXT       \ the text being recorded for the next JOB-ADD
 VARIABLE JOB#           \ how many are recorded
 VARIABLE JOB-NEXT       \ the next job number to hand out
-VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
-VARIABLE SHELL-PGID
 VARIABLE JB-I
 VARIABLE JB-K
 
@@ -5987,6 +6016,7 @@ VARIABLE JB-K
   JOB# @ 0= IF 0 JOB-NEXT ! THEN ;             \ numbering restarts when empty
 
 : .JOB-STATUS ( status --- )   \ as dash words it
+  DUP -1 = IF DROP S" Stopped" TYPE EXIT THEN
   DUP 0= IF DROP S" Done" TYPE EXIT THEN
   DUP 128 > IF DROP S" Terminated" TYPE EXIT THEN
   S" Done(" TYPE 0 <# #S #> TYPE 41 EMIT ;
@@ -6000,7 +6030,8 @@ VARIABLE JN-WIDTH
   91 EMIT  JOB-NUMS JN-I @ CELLS + @ 0 <# #S #> TYPE  93 EMIT 32 EMIT
   JOB# @ 1- JN-I @ = IF 43 ELSE JOB# @ 2 - JN-I @ = IF 45 ELSE 32 THEN THEN EMIT
   32 EMIT
-  JN-STATUS @ 0= IF 4 ELSE JN-STATUS @ 128 > IF 10 ELSE 8 THEN THEN JN-WIDTH !
+  JN-STATUS @ -1 = IF 7 ELSE
+  JN-STATUS @ 0= IF 4 ELSE JN-STATUS @ 128 > IF 10 ELSE 8 THEN THEN THEN JN-WIDTH !
   JN-STATUS @ .JOB-STATUS
   27 JN-WIDTH @ - 0 MAX SPACES
   JN-I @ JOB-TEXT-SLOT DUP C@ IF DUP CSTRLEN TYPE ELSE DROP THEN CR ;
@@ -6058,6 +6089,8 @@ VARIABLE JN-WIDTH
   LOOP ;
 
 VARIABLE JOB-SEL       \ the job `fg`/`bg` picked
+VARIABLE FG-T
+128 BUFFER: FG-TEXT-BUF
 
 : JOB-BY-SPEC ( --- i | -1 )   \ %n, %% or nothing: the most recent
   ARGC @ 1 = IF JOB# @ 1- EXIT THEN
@@ -6112,6 +6145,28 @@ VARIABLE JOB-SEL       \ the job `fg`/`bg` picked
   91 EMIT JOB-NUMS JOB-SEL @ CELLS + @ 0 <# #S #> TYPE 93 EMIT 32 EMIT
   JOB-SEL @ .JOB-TEXT S"  &" TYPE CR
   0 LAST-STATUS ! ;
+
+: FG-TEXT ( --- c-addr )   \ the command as typed, from ARGV
+  0 FG-T !  0 FG-TEXT-BUF C!
+  ARGC @ 0 ?DO
+    FG-T @ IF 32 FG-TEXT-BUF FG-T @ + C! 1 FG-T +! THEN
+    I ARGV@ DUP CSTRLEN                        ( addr u )
+    DUP FG-T @ + JOB-TEXT-MAX 2 - > IF 2DROP ELSE
+      DUP >R  FG-TEXT-BUF FG-T @ +  SWAP MOVE  R> FG-T +!
+    THEN
+  LOOP
+  0 FG-TEXT-BUF FG-T @ + C!
+  FG-TEXT-BUF ;
+
+: FG-STOPPED ( pid --- )   \ a stopped foreground command becomes a job
+  FG-TEXT JOB-TEXT-NEXT !
+  JOB-ADD
+  1 JOB-STATES JOB# @ 1- CELLS + !
+  ERR-NL
+  JOB# @ 1- -1 .JOB-NOTICE                     \ -1 reads as "Stopped"
+  148 LAST-STATUS ! ;
+
+' FG-STOPPED IS FG-STOPPED-CALL
 
 ' DO-FG      S" fg"      BUILTIN
 ' DO-BG      S" bg"      BUILTIN

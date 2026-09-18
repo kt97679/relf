@@ -8,8 +8,8 @@ ext:8byte 1
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 interactive:divergent 0
-interactive:failed 0
-interactive:passed 22
+interactive:failed 1
+interactive:passed 21
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -37,7 +37,7 @@ shell:dead-words 0
 shell:files 73
 size:engine-code-i386 18466
 size:engine-code-x86_64 23410
-size:i386 108384
-size:image-i386 82208
-size:image-x86_64 88376
-size:x86_64 127504
+size:i386 108792
+size:image-i386 82616
+size:image-x86_64 88824
+size:x86_64 127952
