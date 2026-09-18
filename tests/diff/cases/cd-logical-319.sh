@@ -1,0 +1,21 @@
+# cd-logical-319.sh - `cd` keeps the LOGICAL path (XCU cd), `-P` asks for
+# the resolved one, and CDPATH is searched for a relative operand. Until
+# Iteration 319 `cd` was chdir plus getcwd, so `cd /tmp/link` left PWD at
+# the resolved path and CDPATH was ignored entirely.
+d=/tmp/relf-319-fixed
+rm -rf $d
+mkdir -p $d/real $d/other
+ln -sf real $d/link
+cd $d/link; echo "pwd=$(pwd)"; echo "PWD=$PWD"
+cd ..; echo "after-dotdot=$(pwd)"
+cd $d/link; echo "physical=$(pwd -P)"; echo "logical=$(pwd -L)"
+cd -P $d/link; echo "cd -P=$(pwd)"
+cd $d; cd ./real; echo "dot-slash=$(pwd)"
+cd $d/./real/.; echo "dots=$(pwd)"
+cd $d/link/..; echo "through-link=$(pwd)"
+CDPATH=$d; cd other; echo "cdpath=$(pwd)"
+CDPATH=/nonexistent:$d; cd real; echo "cdpath-second=$(pwd)"
+unset CDPATH
+cd $d; cd real; echo "no-cdpath=$(pwd)"
+cd /; echo "root=$(pwd)"
+cd /tmp; rm -rf $d

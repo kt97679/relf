@@ -314,6 +314,7 @@ do not trust the absence of a line below.
 - **316** — an assessment: where this shell competes and where it does not
 - **317** — POSIX sweep: test's grammar (-a, -o, !, parens) and its file tests
 - **318** — command -V, export -p, $PPID; two new primitives
+- **319** — cd keeps the logical path; -P, -L and CDPATH
 
 ### Not tied to an iteration
 
@@ -17737,3 +17738,29 @@ Left from the sweep: `CDPATH`, `cd -P/-L`, and `fg`/`bg`.
 
 tests/verify: diff cases 53 -> 54; a new shell test; sizes; two new
 primitives.
+
+## Iteration 319: cd, as POSIX defines it
+
+`cd` was `chdir` followed by `getcwd`, so the shell always held the
+resolved path: `cd /tmp/link` left `PWD` at `/tmp/real`, where both
+references keep `/tmp/link`.
+
+It now builds the path POSIX's way - from `PWD` and the operand, folded
+lexically so `.` disappears and `..` removes the component before it,
+without resolving symlinks - and changes to that. `-P` asks for the old
+behaviour, `-L` is the default, and `pwd` prints `$PWD` unless `-P` is
+given. `CDPATH` is searched for a relative operand, each entry in turn,
+with the destination printed when it came from there, as XCU says.
+
+`tests/diff/cases/cd-logical-319.sh` - a symlinked directory, `..`
+through it, `-P` and `-L` on both `cd` and `pwd`, `./` and repeated
+slashes, `CDPATH` with a miss before a hit, and `/` - matches bash.
+
+Two faults of mine on the way, both found by running it: the CDPATH
+branch left its entry pointer on the stack, and the canonicaliser was
+handed its own output buffer as input, which built `/tmp/cdt/tmp/cdt/...`
+until the buffer filled.
+
+That closes the POSIX sweep of 317 apart from `fg`/`bg`.
+
+tests/verify: diff cases 54 -> 55; sizes.
