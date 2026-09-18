@@ -140,6 +140,9 @@ LINE-MAX BUFFER: STDIN-TEXT
   \ Only at a real terminal: `-i` with a pipe on standard input still
   \ prompts, but there is nothing to edit (Iteration 306).
   \ what finished since the last prompt, as both references report it
+  \ ^C while a command ran: the terminal echoed it, and dash starts the
+  \ next prompt on a fresh line (Iteration 315).
+  INT-SEEN? @ INTERACTIVE? @ AND IF ERR-NL 0 INT-SEEN? ! THEN
   INTERACTIVE? @ CMD-START? @ AND IF JOB-NOTICES JOB-NOTICES-GONE THEN
   INTERACTIVE? @ 0 ISATTY AND IF EDIT-LINE EXIT THEN
   \ not a terminal, so nothing to edit - but `-i` still prompts

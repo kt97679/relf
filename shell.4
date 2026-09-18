@@ -1326,9 +1326,14 @@ DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
   TRAP-COPY @ FREE DROP
   0 IN-TRAP? ! ;
 
+VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
+
 : CHECK-TRAPS ( --- )
   IN-TRAP? @ IF EXIT THEN
-  BEGIN SIGNALS-PENDING ?DUP WHILE RUN-TRAP REPEAT ;
+  BEGIN SIGNALS-PENDING ?DUP WHILE
+    DUP 2 = IF -1 INT-SEEN? ! THEN             \ ^C during a command
+    RUN-TRAP
+  REPEAT ;
 
 : SHELL-EXIT ( status --- )   \ the shell ends: its EXIT trap runs first, once
   TRAP-SAVED-STATUS !

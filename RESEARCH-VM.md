@@ -84,3 +84,33 @@ measured, and on what.
 
 - **305**: nothing yet beyond what is summarised above, which comes from
   Iterations 292 to 294 and is recorded in PERFORMANCE.md.
+
+- **315**: where a realistic script's dispatches go, by phase. The
+  script is the one PERFORMANCE.md uses - 400 lines through a `while
+  read` loop with trims, `case` matching and arithmetic, plus four
+  external commands - and the words are grouped by their prefix:
+
+        49.5%  kernel + other      (MOVE, SCAN, arithmetic on the stack,
+                                    the Forth words everything is built from)
+        23.9%  expansion
+        11.6%  name lookup         (variables, builtins, functions)
+         8.3%  tree walk + exec
+         3.5%  builtins + redirection
+         2.5%  arithmetic
+         0.7%  lexing/parsing
+
+  **Two things this says about the questions above.** The tree walk -
+  `EXEC-*`, `X@`, `XF@` - is 8%, so *the representation of the program
+  is not where the time goes*, and a different one for the shell would
+  be fighting for a fraction of that. Half of everything is in the
+  general-purpose Forth underneath: the words a shared machine would
+  have to make cheaper are not shell-shaped at all, they are `MOVE`,
+  `SCAN`, comparisons and stack arithmetic.
+
+  That points away from "a better IR for both" and towards the two
+  levers already named: more work per primitive on the paths that are
+  hot (expansion is the only shell-shaped block big enough to matter at
+  24%), and making dispatch itself cheaper, which is superinstructions
+  or native code. Lexing is 0.7%, which also retires the idea that
+  parsing once into a shared form would buy anything - it already is
+  parsed once.

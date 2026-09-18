@@ -310,6 +310,7 @@ do not trust the absence of a line below.
 - **312** — the flakiness was the harness: a prompt has to be stable, not just present
 - **313** — the ^C cases: a signal sent while the editor waits is not seen at all
 - **314** — ^C at the prompt works: the editor polls instead of blocking
+- **315** — ^C during a command; every interactive case now matches dash
 
 ### Not tied to an iteration
 
@@ -17632,3 +17633,27 @@ definition.
 all, so the fix belongs with the interrupt handling rather than edit.4.
 
 tests/verify: interactive 20 -> 21 passing, 2 -> 1 divergent; sizes.
+
+## Iteration 315: the last interactive divergence
+
+`^C` typed while a command runs now starts the next prompt on a fresh
+line, as dash does. `CHECK-TRAPS` notes that the signal it consumed was
+an `INT`, and the interactive prompt writes a newline before the next
+one; the editor's own cancel clears that note, so a `^C` at the prompt
+does not print two.
+
+**tests/interactive/KNOWN-DIVERGENT is empty**: all 22 cases match dash,
+three suite runs in a row. The list of seven from Iteration 301 is
+closed - `PS1`, `PS2`, blank lines and `^D` in 302, the job notice in
+310, its text and the flaky harness in 312, `^C` at the prompt in 314,
+`^C` during a command here.
+
+**And an evidence entry for RESEARCH-VM.md**: where a realistic script's
+dispatches actually go. The tree walk is 8%, lexing 0.7%, and half of
+everything is the general-purpose Forth underneath - `MOVE`, `SCAN`,
+comparisons, stack arithmetic. That argues against a shared
+representation being worth much: the program's form is not what costs.
+Expansion, at 24%, is the only shell-shaped block big enough to repay
+more work per primitive.
+
+tests/verify: interactive 21 -> 22 passing, 1 -> 0 divergent; sizes.

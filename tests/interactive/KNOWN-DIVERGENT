@@ -1,6 +1,5 @@
-# Cases this shell does not match yet, kept here so the suite stays green
-# while the list stays visible. Four entries went in Iteration 302 (PS1,
-# PS2, blank lines, the newline on ^D).
-intr-during-command # ^C while a command runs: dash writes a newline before its
-                    # next prompt; the shell is not in the editor then, so the
-                    # fix belongs with the interrupt handling, not edit.4
+# Cases this shell does not match yet. The list is empty: every
+# interactive case matches dash as of Iteration 315. Entries went in 302
+# (PS1, PS2, blank lines, the newline on ^D), 310 and 312 (the job
+# notice and its text), 314 and 315 (^C at the prompt and during a
+# command). Keep using this file rather than deleting a failing case.

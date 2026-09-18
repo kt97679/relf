@@ -178,6 +178,7 @@ LINE-MAX BUFFER: HIST-SAVED
       ED-SIGNAL @ ?DUP IF
         0 ED-SIGNAL !
         RUN-TRAP-CALL  2 ED-DONE !              \ ^C: the line is abandoned
+        0 INT-SEEN? !                           \ handled here, not at the prompt
       ELSE
         3 ED-DONE !                             \ the terminal closed
       THEN
