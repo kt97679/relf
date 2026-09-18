@@ -144,3 +144,62 @@ script that runs many short fixed commands, and nothing regressed beyond
 measurement noise. But the ranking in the section above was built from
 dispatch counts, and items 2 to 4 of it should be re-measured on the
 clock before anyone spends an iteration on them.
+
+## Iteration 294: is there more in the shell's own logic?
+
+Asked directly, and answered with measurements rather than opinion.
+
+**Where the cost sits, per operation, against dash** (loop overhead
+subtracted, best of seven):
+
+    x=abc                0.02 us dash    0.17 us here     8x
+    true                 0.02            ~0
+    f (a function call)  0.15            3.16            21x
+    [ $i -lt 9 ]         0.28            8.12            29x
+    x=$y                 0.05            5.50           104x
+    ${#y}                0.10            5.04            51x
+    $((i+1))             0.02           10.76          many
+
+The shape is unmistakable: anything with **no** expansion is within an
+order of magnitude of dash, and anything **with** one costs 5-11 us
+whatever the expansion is. The cost is not in any particular construct;
+it is a fixed toll on the expansion path.
+
+**Two things were found in that path and one of them was real.**
+
+- `TOKEN-IS-ASSIGN-PREFIX?` still scanned the word's output for a
+  `NAME=` prefix, on every marked character and every split test, to
+  confirm what the parser's tag (Iteration 285) already said. It returns
+  the tag now: 90 dispatches off every assignment that expands anything.
+- Variable lookup uses a linear scan below eight variables. Removing
+  that threshold - always hashing - made things **worse** (x=$y +2.1%,
+  loop +3.1% dispatches), so the threshold stays.
+
+**And then the number that matters.** The shell's own effective dispatch
+cost is **3.36 ns**, against **0.82 ns** for the same engine in a tight
+loop: **4.1x**. It is not the instruction cache - the loop benchmark
+touches only 4,383 distinct image offsets, a few kilobytes. It is the
+indirect branch: a tight loop alternates two tokens and the predictor
+gets them every time, while the shell's token stream is thousands of
+different words in an order nothing can predict, and each miss costs
+what a dozen dispatches would.
+
+That reframes the whole exercise:
+
+1. Every dispatch removed from a hot path is worth 3.36 ns, not 0.82 -
+   four times better than the raw rate suggests.
+2. But the profile is now flat. After the builtin index and the two
+   changes above, no single word is more than about 6% of a loop
+   iteration; the rest is a long tail of 1-3% items. Revisiting the
+   shell's logic word by word therefore buys 1-3% at a time, which on
+   this machine is inside the noise of a single run and has to be
+   measured by interleaving builds.
+3. The levers that could still matter are the ones that change the
+   NUMBER of dispatches by a lot, not by a little: doing whole
+   operations in one primitive (as `MOVE`, `SCAN` and `COMPARE` already
+   do), superinstructions in the engine - which also cut the
+   mispredictions - or native compilation, which is Phase 4.
+
+So: worth revisiting, but not word by word. The remaining shell-level
+work should be judged by whether it removes hundreds of dispatches from
+a path, not tens.

@@ -289,6 +289,7 @@ do not trust the absence of a line below.
 - **291** — the numeric signal bug: one stray NIP; signals get a differential case
 - **292** — why dash and bash are faster (PERFORMANCE.md); the builtin table is hashed
 - **293** — the expander's per-word bookkeeping; dispatch counts overstate what the clock shows
+- **294** — the expansion path's fixed toll; the interpreter's real cost is branch misprediction
 
 ### Not tied to an iteration
 
@@ -16935,5 +16936,45 @@ the clock first.
 Kept, because the literal path is a real gain for scripts that run many
 short fixed commands and nothing regressed beyond noise. The old linear
 `FIND-BUILTIN` went with the hashed index of 292.
+
+tests/verify: sizes.
+
+## Iteration 294: what is left in the shell's own logic
+
+Measured per operation against dash: everything WITHOUT an expansion is
+within an order of magnitude - a literal assignment 8x, a function call
+21x, `true` too fast to measure - and everything WITH one costs 5 to 11
+microseconds whatever it expands. The toll is on the expansion path
+itself, not on any construct.
+
+Two things found there:
+
+- `TOKEN-IS-ASSIGN-PREFIX?` still scanned the word's output for a
+  `NAME=` prefix on every marked character and every split test, to
+  confirm what the parser's tag has said since 285. It returns the tag
+  now. Dispatches against 291: loop -6.9%, str -3.4%, arith -3.9%, an
+  `x=$y` loop -6.1%. On the clock, interleaved: -1 to -3% against 293.
+- Always hashing variable lookups - removing the scan used below eight
+  variables - made things worse (+2.1% on `x=$y`, +3.1% on loop), so the
+  threshold stays. Recorded so nobody tries it again.
+
+**The number that reframes the rest**: the shell's effective dispatch
+cost is **3.36 ns** against **0.82 ns** for the same engine in a tight
+loop - **4.1x**. Not the instruction cache: the loop benchmark touches
+4,383 distinct image offsets. It is the indirect branch. A tight loop
+alternates two tokens and the predictor never misses; the shell's stream
+is thousands of words in an unpredictable order, and each miss costs
+what a dozen dispatches would.
+
+So each removed dispatch is worth four times the raw rate - but the
+profile is flat now: nothing above ~6% of an iteration, and a long tail
+of 1-3% items whose effect is inside this machine's noise. Word-by-word
+revisiting is not the way forward; what would matter is anything that
+removes hundreds of dispatches from a path at once - more work per
+primitive, superinstructions (which also cut the mispredictions), or
+native compilation.
+
+The scan helpers `TAP-S`/`TAP-L`/`TAP-I`/`TAP-NAME-CHAR?` went with the
+predicate.
 
 tests/verify: sizes.
