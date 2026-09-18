@@ -3857,6 +3857,8 @@ VARIABLE RD-VI
     READ-BUF RD-POS @ + C@ IFS-CHAR? IF 1 RD-POS +!  RD-SKIP-IFS-WS THEN
   THEN ;
 
+CREATE EMPTY-STRING 0 C,   \ for `read` at end of input
+
 : DO-READ ( --- )
   \ XCU's read: fields split by IFS (not just blanks, as this did), a
   \ backslash quoting the next character and joining lines unless -r, and
@@ -3866,7 +3868,18 @@ VARIABLE RD-VI
   ARGC @ 1 > IF
     S" -r" 1 ARGV@ STR0= IF -1 RD-RAW? !  2 RD-VI ! THEN
   THEN
-  RD-GET-LINE 0= IF 1 LAST-STATUS ! EXIT THEN
+  RD-GET-LINE 0= IF
+    \ End of input with nothing read: POSIX still assigns - to the empty
+    \ string - and leaving the variables alone made the common idiom
+    \ `while read -r line || [ -n "$line" ]` loop for ever (Iteration 327).
+    RD-VI @ ARGC @ < IF
+      RD-VI @ BEGIN DUP ARGC @ < WHILE
+        DUP ARGV@ EMPTY-STRING SET-SHVAR
+        1+
+      REPEAT DROP
+    THEN
+    1 LAST-STATUS ! EXIT
+  THEN
   0 RD-POS !
   ARGC @ RD-VI @ > 0= IF
     RD-EOF? @ IF 1 ELSE 0 THEN LAST-STATUS ! EXIT

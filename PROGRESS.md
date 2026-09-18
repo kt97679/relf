@@ -322,6 +322,7 @@ do not trust the absence of a line below.
 - **324** — the notice keeps the job's status: Terminated, not Done
 - **325** — character classes in patterns: [[:alpha:]] and the rest
 - **326** — dash's manual page as a checklist: unset -f, and readonly unset
+- **327** — the pure-sh-bible as a corpus: read at end of input
 
 ### Not tied to an iteration
 
@@ -18007,3 +18008,37 @@ and following dash would change the behaviour of every script that
 relies on bash's.
 
 tests/verify: diff cases 56 -> 57; sizes.
+
+## Iteration 327: someone else's shell code
+
+dylanaraps/pure-sh-bible is a corpus of pure-POSIX idioms written by
+someone with no interest in this shell, which makes it a better test
+than anything written here. Thirteen of its functions and two dozen of
+its snippets, run in dash, bash and this shell.
+
+**One fault, and a serious one.** Several of the bible's functions are
+built on
+
+    while IFS= read -r line || [ -n "$line" ]; do ... done < "$1"
+
+At end of input `read` returns 1, and POSIX has it assign the empty
+string to its variables. This shell left them untouched, so `$line`
+kept the last line for ever and **the loop never ended**. The test run
+produced a megabyte of repeated output before it was killed - which is
+how it was found.
+
+`read` now clears its variables when it reaches end of input with
+nothing read.
+
+`tests/diff/cases/pure-sh-bible-327.sh` is the corpus itself: the
+strip, trim, split, quote, dirname and basename functions with the
+bible's own example inputs, the line-counting and head functions, the
+read loop over a file with and without a trailing newline, and the
+end-of-input assignment. It matches bash and dash.
+
+Everything else the corpus exercises was already right: `${1##$2}`,
+`${1%%[![:space:]]*}` (which needed 325's character classes), `$*`
+with a set `IFS`, `set -f` around a split, `${x:+...}`, and the
+`case`-based contains/starts-with/ends-with tests.
+
+tests/verify: diff cases 57 -> 58; sizes.
