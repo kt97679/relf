@@ -299,6 +299,7 @@ do not trust the absence of a line below.
 - **301** — a pseudo-terminal harness: the interactive shell is testable, and seven gaps are named
 - **302** — PS1/PS2, blank lines, the newline on ^D; an interruptible signal mode
 - **303** — a line editor: cursor keys, editing keys and history; the harness renders
+- **304** — measured the distance to dash (VERSUS-DASH.md): four features, 7.6x on real work
 
 ### Not tied to an iteration
 
@@ -17299,3 +17300,30 @@ in new code, which is the first time a tool written here has paid for
 itself the same week.
 
 tests/verify: interactive 13 -> 19 passing; sizes; a new file, edit.4.
+
+## Iteration 304: how far behind dash this shell is
+
+Asked, and answered with measurements rather than impressions;
+VERSUS-DASH.md is the write-up.
+
+**Features.** Of the 31 POSIX builtins, two are missing: `fg` and `bg`,
+which need process groups and terminal handover. Beyond those: `set -C`,
+`-a`, `-v`, `-b` and four option names; `ulimit` past `-f`; `command
+-p`; ending the shell when a readonly variable is assigned; job
+notices; and `-i`. Everything else a POSIX script uses is present and
+tested. Two things go the other way: a line editor with history, which
+dash has none of, and `forth`.
+
+**Correctness.** POSIX 46/46, mrsh 21/21, differential 49/49, matrix
+420/420, interactive 19/22 with three known divergences.
+
+**Speed.** 20 to 26 times dash on the in-process benchmarks, **7.6x on a
+realistic script** (a `while read` loop over 400 lines with trims, case
+matching and arithmetic, plus four external commands), and at parity
+whenever a process is involved.
+
+**Size and startup.** Engine and image together are 121,720 bytes
+against dash's 129,784; startup is 1.23 ms against 0.97. bash is
+1,446,024 bytes and 1.39 ms.
+
+No code changed.

@@ -1700,6 +1700,14 @@ before anything else, because every number here is relative to it.
    completion notices. Cursor keys, line editing and history are done
    (edit.4); `-i` is still unimplemented.
 
+5h. **The features dash has and this shell does not** (measured in
+   Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process
+   groups they need; `set -C`, `-a`, `-v`, `-b` and the option names
+   `ignoreeof`, `nolog`, `vi`, `emacs`; `ulimit` beyond `-f`; `command
+   -p`; ending the shell when a readonly variable is assigned; job
+   notices; and `-i`. The `set` options are the cheapest of these and
+   the most likely to appear in a real script.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,
