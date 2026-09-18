@@ -1723,10 +1723,9 @@ before anything else, because every number here is relative to it.
    differ anyway. `ulimit` was finished in 308.
 
 5m. **Catalogued in tests/from-others/CATALOGUE.md, not yet done**: a
-   backslash-newline inside an operator; a command substitution inside
-   a here-document treated as shell code, where backquotes CRASH this
-   shell today; and a quoted empty string beside "$@" yielding one
-   empty word when there are no positional parameters.
+   quoted empty string beside `"$@"` yields one empty word when there
+   are no positional parameters, so `"$@"""` is one empty argument.
+   The other two entries were done in Iteration 332.
 
 5l. **54 busybox ash tests that dash passes and this shell does not**
    (Iteration 329, after three were fixed). `tools/busybox-suite.sh`

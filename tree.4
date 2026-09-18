@@ -601,16 +601,27 @@ DEFER SCAN-DOLLAR
   DUP 0= IF 2DROP 0 EXIT THEN
   OVER + SWAP ?DO I C@ 48 - 9 U> IF UNLOOP 0 EXIT THEN LOOP -1 ;
 
+VARIABLE OP-LA   \ offset of the operator's second character
+
+: OP-LA-INIT ( --- )
+  \ A backslash-newline between the two characters of an operator is a
+  \ line continuation, so `&\` newline `&` is `&&` (Iteration 332).
+  1 OP-LA !
+  BEGIN OP-LA @ SRC-C 92 = OP-LA @ 1+ SRC-C 10 = AND WHILE
+    2 OP-LA +!
+  REPEAT ;
+
 : SCAN-OP ( --- )         \ at an operator character
   K-OP TK-KIND !
-  0 SRC-C 1 SRC-C
+  OP-LA-INIT
+  0 SRC-C OP-LA @ SRC-C
   OVER 59 = IF NIP 59 = IF OP-DSEMI 2 ELSE OP-SEMI 1 THEN ELSE
   OVER 38 = IF NIP 38 = IF OP-AND 2 ELSE OP-AMP 1 THEN ELSE
   OVER 124 = IF NIP 124 = IF OP-OR 2 ELSE OP-PIPE 1 THEN ELSE
   OVER 40 = IF 2DROP OP-LPAREN 1 ELSE
   OVER 41 = IF 2DROP OP-RPAREN 1 ELSE
   OVER 60 = IF NIP
-    DUP 60 = IF DROP 2 SRC-C 45 = IF OP-DLESSDASH 3 ELSE OP-DLESS 2 THEN ELSE
+    DUP 60 = IF DROP OP-LA @ 1+ SRC-C 45 = IF OP-DLESSDASH 3 ELSE OP-DLESS 2 THEN ELSE
     DUP 38 = IF DROP OP-LESSAND 2 ELSE
     62 = IF OP-LESSGREAT 2 ELSE OP-LESS 1 THEN THEN THEN
   ELSE NIP
@@ -618,6 +629,7 @@ DEFER SCAN-DOLLAR
     DUP 38 = IF DROP OP-GREATAND 2 ELSE
     124 = IF OP-CLOBBER 2 ELSE OP-GREAT 1 THEN THEN THEN
   THEN THEN THEN THEN THEN THEN
+  DUP 1 > IF OP-LA @ 1- + THEN               \ plus any continuation skipped
   SRC-SKIP TK-OP ! ;
 
 \ ---- reading the bodies ----
@@ -1878,19 +1890,60 @@ VARIABLE HDX#
 
 DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesting
 
+VARIABLE HDX-P
+VARIABLE HDX-END
+VARIABLE HDX-DEPTH
+
+: HDX-SUB-VERBATIM ( --- )   \ at "$(": copy through the matching ')'
+  36 HDX-C, 40 HDX-C,  2 HDX-P +!
+  1 HDX-DEPTH !
+  BEGIN
+    HDX-P @ HDX-END @ < HDX-DEPTH @ 0 > AND
+  WHILE
+    HDX-P @ C@ DUP 40 = IF 1 HDX-DEPTH +! THEN
+    DUP 41 = IF -1 HDX-DEPTH +! THEN
+    HDX-C,  1 HDX-P +!
+  REPEAT ;
+
+: HDX-TICK-VERBATIM ( --- )   \ at a backquote: copy through its partner
+  96 HDX-C,  1 HDX-P +!
+  BEGIN HDX-P @ HDX-END @ < IF HDX-P @ C@ 96 <> ELSE 0 THEN WHILE
+    HDX-P @ C@ HDX-C,  1 HDX-P +!
+  REPEAT
+  HDX-P @ HDX-END @ < IF 96 HDX-C,  1 HDX-P +! THEN ;
+
+: HDX-BODY ( c-addr u --- )
+  \ The body is handed to the expander as one double-quoted word, so its
+  \ own quotes are escaped - but a command substitution inside it is
+  \ shell code, and escaping ITS quotes made `$(echo "x")` print "x"
+  \ (Iteration 332). Substitutions are copied through untouched.
+  OVER + HDX-END !  HDX-P !
+  BEGIN HDX-P @ HDX-END @ < WHILE
+    HDX-P @ C@ 36 = HDX-P @ 1+ HDX-END @ < AND
+    IF HDX-P @ 1+ C@ 40 = ELSE 0 THEN
+    IF
+      HDX-SUB-VERBATIM
+    ELSE
+      HDX-P @ C@ 96 = IF
+        HDX-TICK-VERBATIM
+      ELSE
+        HDX-P @ C@ 34 = IF 92 HDX-C, 34 HDX-C, ELSE
+          HDX-P @ C@ 92 = HDX-P @ 1+ HDX-END @ < AND
+          IF HDX-P @ 1+ C@ 34 = ELSE 0 THEN
+          IF 92 HDX-C, 92 HDX-C, ELSE HDX-P @ C@ HDX-C, THEN
+        THEN
+        1 HDX-P +!
+      THEN
+    THEN
+  REPEAT ;
+
 : PREPARE-HEREDOC ( redir --- )
   DUP 3 XF@ 0= IF DROP EXIT THEN
   DUP 2 XF@ 1 XF@ WF-QUOTED AND IF
     3 XF@ XSTR DUP CSTRLEN HEREDOC-SET EXIT
   THEN
   0 HDX# !  34 HDX-C,
-  3 XF@ XSTR DUP CSTRLEN OVER + SWAP ?DO
-    I C@ 34 = IF 92 HDX-C, 34 HDX-C, ELSE
-      I C@ 92 = I 1+ C@ 34 = AND IF 92 HDX-C, 92 HDX-C, ELSE
-        I C@ HDX-C,
-      THEN
-    THEN
-  LOOP
+  3 XF@ XSTR DUP CSTRLEN HDX-BODY
   34 HDX-C,  0 HDX-C,
   \ The body is now a double-quoted word: lex it, so it has an encoding
   \ like any other word (Iteration 281). Its node is in TREE-BUF, which

@@ -327,6 +327,7 @@ do not trust the absence of a line below.
 - **329** — busybox's ash suite: break n, continue n, and case's exit status
 - **330** — behaviours, not files: a catalogue, and functions overriding builtins
 - **331** — bash's areas, probed not copied: base#digits, ++ and --
+- **332** — the catalogue's own list: here-document substitutions, split operators
 
 ### Not tied to an iteration
 
@@ -18166,3 +18167,32 @@ The other two entries - assignments in front of a command, and the
 newline handling of command substitution - were already right.
 
 tests/verify: diff cases 61 -> 62; sizes.
+
+## Iteration 332: working the catalogue
+
+Two of the three behaviours catalogued but unimplemented are done.
+
+**A command substitution inside a here-document is shell code.** The
+body is handed to the expander as one double-quoted word, with its
+quotes escaped so they survive - and the escaping reached inside
+substitutions too, so `$(echo "x")` printed `"x"`. Substitutions are
+copied through untouched now, `$( )` with nesting counted and backquotes
+to their partner, so the expander sees the code as written.
+
+**A backslash-newline between the two characters of an operator is a
+continuation.** `&\` newline `&` is `&&`, and likewise `||` and `;;`.
+This was a syntax error here. The operator scanner looks past any
+continuation for its second character and counts the skipped characters
+when it consumes the operator.
+
+`tests/diff/cases/heredoc-continuation-332.sh` covers both, with
+quoted and unquoted delimiters, nested substitutions, backquotes,
+single quotes inside a substitution, and the three split operators. It
+matches bash and dash.
+
+busybox suite: 173 of 357, up from 168; dash is at 211.
+
+The third catalogued behaviour - a quoted empty string beside `"$@"`
+yielding one empty word when there are no parameters - is still open.
+
+tests/verify: diff cases 62 -> 63; sizes.

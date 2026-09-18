@@ -33,12 +33,12 @@ and which case here covers it.
 4. **A backslash-newline is removed before tokens are recognised**, so
    an operator may be split across lines: `&\`+newline+`&` is `&&`,
    `|\`+newline+`|` is `||`, and `;\`+newline+`;` is `;;`.
-   → not yet implemented here; recorded in GOALS.md
+   → `tests/diff/cases/heredoc-continuation-332.sh`
 
 5. **A command substitution inside a here-document is shell code**: the
    quotes within it are quotes, not literal characters, and backquotes
    work as well as `$( )`.
-   → not yet implemented here; recorded in GOALS.md
+   → `tests/diff/cases/heredoc-continuation-332.sh`
 
 6. **`"$@"` with no positional parameters produces no words, but any
    adjacent quoted empty string still produces one empty word**, so
