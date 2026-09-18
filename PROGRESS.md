@@ -318,6 +318,7 @@ do not trust the absence of a line below.
 - **320** — fg and bg, process groups and the terminal; the last POSIX builtins
 - **321** — foreground process groups; ^Z still does not stop a job
 - **322** — ^Z works: an ignored signal is inherited through exec
+- **323** — an attempt at the notice's status, reverted; what was measured
 
 ### Not tied to an iteration
 
@@ -17878,3 +17879,34 @@ rather than `Terminated`, because it is noticed as gone before
 `WAIT-NOHANG` reaps it and the status is lost.
 
 tests/verify: sizes.
+
+## Iteration 323: an attempt reverted
+
+322 left two differences in the job-control case: the completion notice
+appears one prompt earlier than dash's, and a job killed by a signal is
+reported `Done` rather than `Terminated`.
+
+**What was measured.** `WAIT-NOHANG` does report the signal: after `kill
+%1` it returns the raw status 15, which decodes to 143. The status is
+lost afterwards, not before - so the design was right and the fault is
+in where the notice is produced.
+
+**What was attempted.** A job reaped by `wait` or by the notice pass
+would keep its status in the table (`JOB-STATUS`, state 2) and be
+reported at the next prompt, replacing the pass that reports a job whose
+process is simply gone. The pieces went in, `wait` kept working and its
+exit statuses stayed right - but jobs stopped being marked: after `sleep
+0.1 & wait` the table still showed the job running, with the deferred
+word assigned and the pid matching. I ran out of time to find why.
+
+**Reverted**, so the tree keeps 322's behaviour: notices arrive, with
+`Done` where dash says `Terminated`. A half-finished replacement that
+loses notices altogether is worse than a known wording difference.
+
+Two stack faults were found and fixed along the way and are worth
+recording even though the change is reverted: `2DUP` already leaves
+( pid status ) - the `SWAP` after it was wrong - and `DO-WAIT` ended
+with two `2DROP`s where one was needed, which is what the return stack
+overflow was.
+
+No code changed.
