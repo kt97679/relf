@@ -324,6 +324,7 @@ do not trust the absence of a line below.
 - **326** — dash's manual page as a checklist: unset -f, and readonly unset
 - **327** — the pure-sh-bible as a corpus: read at end of input
 - **328** — bash's manual where the references agree: getopts operands, ${#*}
+- **329** — busybox's ash suite: break n, continue n, and case's exit status
 
 ### Not tied to an iteration
 
@@ -18075,3 +18076,32 @@ here-document, pipeline exit status, `umask -S`, `kill -l`, and
 `${#name}` for a set and an unset name.
 
 tests/verify: diff cases 58 -> 59; sizes.
+
+## Iteration 329: another shell's test suite
+
+busybox's ash ships 357 tests, each a script with its expected output.
+Run against dash they give 211 passes; against this shell, 164. The
+difference - **58 tests dash passes and this shell did not** - is a list
+of real faults, and three came out of the first four inspected.
+
+- **`break n` and `continue n` ignored their operand.** `break 2` left
+  one loop. Each loop now decrements the count on its way out and
+  leaves the request standing for the loop above, so a break passes
+  through as many as it was asked for. Nested `for` loops happened to
+  look right because both were ending anyway, which is why this survived
+  the earlier sweeps.
+- **`case` reset `$?` on entry**, so `false || case a in a) echo $?;;
+  esac` printed 0 where the references print 1. It leaves the status
+  alone now and sets 0 only when nothing matched, which POSIX asks for.
+
+`tests/diff/cases/loop-control-329.sh` covers `break 2` and `continue 2`
+out of `while` and `for` in both orders, `break 3`, and five `case`
+statuses. It matches bash and dash.
+
+The suite is not vendored - it is busybox's, under its own licence - so
+`tools/busybox-suite.sh` runs it from wherever it is fetched and prints
+the gap against dash. That number is the thing to watch: **167 of 357
+now, against dash's 211**, and the remaining 55 are worth walking
+through one at a time.
+
+tests/verify: diff cases 59 -> 60; sizes.

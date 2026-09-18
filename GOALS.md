@@ -1722,6 +1722,12 @@ before anything else, because every number here is relative to it.
    them landed in 308), and the readonly behaviour, where dash and bash
    differ anyway. `ulimit` was finished in 308.
 
+5l. **55 busybox ash tests that dash passes and this shell does not**
+   (Iteration 329, after three were fixed). `tools/busybox-suite.sh`
+   lists them: heredocs with an empty delimiter, backslash-newline in
+   several places, `$?` after a trap, glob edge cases, and more. Each is
+   a small script with its expected output, so each is a short session.
+
 5k. **A special builtin's error should end a non-interactive shell**
    (XCU 2.8.1): dash stops the script on `shift 5` with three
    parameters, this shell reports and continues, as bash does outside

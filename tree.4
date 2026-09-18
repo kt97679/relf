@@ -2086,6 +2086,10 @@ VARIABLE PS-WR
 : LOOP-AFTER-BODY ( --- stop? )
   RETURN-PENDING? @ IF -1 EXIT THEN
   LOOP-CONTROL-PENDING? @ IF
+    \ `break n` and `continue n` pass through n-1 loops on their way out
+    \ (Iteration 329): each one stops and leaves the request standing.
+    LOOP-LEVEL @ 1- LOOP-LEVEL !
+    LOOP-LEVEL @ 0 > IF -1 EXIT THEN
     0 LOOP-CONTROL-PENDING? !
     LOOP-BREAK? @ IF 0 LOOP-BREAK? ! -1 EXIT THEN
   THEN 0 ;
@@ -2157,16 +2161,18 @@ VARIABLE CASE-TEXT#
   DUP 1 XF@ EXPAND-ONE DROP                 ( node a u )
   DUP 1+ ENSURE-BUFFER CASE-TEXT
   DUP CASE-TEXT# !  CASE-TEXT SWAP MOVE
-  0 LAST-STATUS !
+  \ `$?` stands until a body runs; `case` itself only sets it when no
+  \ pattern matched, which the reset here used to hide (Iteration 329).
   2 XF@ DUP XV# 0 ?DO                       ( items )
     DUP I XV@                               ( items item )
     DUP 0 XF@ DUP XV# 0 ?DO                 ( items item pats )
       DUP I XV@ PATTERN-MATCHES? IF
-        DROP 1 XF@ ?DUP IF EXEC THEN
+        DROP 1 XF@ ?DUP IF EXEC ELSE 0 LAST-STATUS ! THEN
         DROP UNLOOP UNLOOP EXIT
       THEN
     LOOP 2DROP
-  LOOP DROP ;
+  LOOP DROP
+  0 LAST-STATUS ! ;                          \ nothing matched
 
 \ Functions: the body's range of the arena is copied into a block of its
 \ own, and run with EXEC-BASE pointing so that its offsets land in it.

@@ -209,6 +209,7 @@ VARIABLE LOOP-CONTROL-PENDING?  \ true from the moment "break" or
                            \ nested function calls separate the
                            \ break/continue from the loop iteration
                            \ that actually needs to see it.
+VARIABLE LOOP-LEVEL     \ how many loops a break or continue leaves
 VARIABLE LOOP-BREAK?       \ true only if it was specifically "break"
                            \ (not "continue") that set
                            \ LOOP-CONTROL-PENDING? - survives past
@@ -3634,8 +3635,18 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
     S" shell: return: not in a function" ERR-TYPE ERR-NL  1 LAST-STATUS !
   THEN ;
 
+: LOOP-COUNT-ARG ( --- n )
+  \ `break [n]` and `continue [n]` leave n loops (XCU); the operand was
+  \ ignored entirely until Iteration 329, so `break 2` broke one loop.
+  ARGC @ 1 > IF
+    1 ARGV@ DUP CSTRLEN PARSE-DECIMAL
+    DUP 1 < IF DROP 1 THEN
+  ELSE 1 THEN
+  LOOP-DEPTH @ MIN ;
+
 : DO-BREAK ( --- )
   LOOP-DEPTH @ 0 > IF
+    LOOP-COUNT-ARG LOOP-LEVEL !
     -1 LOOP-CONTROL-PENDING? !  -1 LOOP-BREAK? !  0 LAST-STATUS !
   ELSE
     ." break: not in a loop" CR  1 LAST-STATUS !
@@ -3643,6 +3654,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
 
 : DO-CONTINUE ( --- )
   LOOP-DEPTH @ 0 > IF
+    LOOP-COUNT-ARG LOOP-LEVEL !
     -1 LOOP-CONTROL-PENDING? !  0 LAST-STATUS !
   ELSE
     ." continue: not in a loop" CR  1 LAST-STATUS !
