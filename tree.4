@@ -1625,6 +1625,13 @@ VARIABLE XP-VAL
     DROP
   THEN
   XP-OP @ EV-LENGTH = IF
+    \ ${#*} and ${#@} count the positional parameters (XCU 2.6.2); this
+    \ looked them up as ordinary names and printed 0 (Iteration 328).
+    XP-LEN @ 1 = IF
+      XP-NAME @ C@ DUP 42 = SWAP 64 = OR IF
+        POS-PARAM-COUNT @ EMIT-DECIMAL EXIT
+      THEN
+    THEN
     XP-NAME @ LOOKUP-VAR
     DUP 0= IF DROP XP-NAME @ XP-LEN @ NOUNSET-CHECK 0 ELSE CSTRLEN THEN
     EMIT-DECIMAL EXIT

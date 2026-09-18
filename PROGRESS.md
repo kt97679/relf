@@ -323,6 +323,7 @@ do not trust the absence of a line below.
 - **325** — character classes in patterns: [[:alpha:]] and the rest
 - **326** — dash's manual page as a checklist: unset -f, and readonly unset
 - **327** — the pure-sh-bible as a corpus: read at end of input
+- **328** — bash's manual where the references agree: getopts operands, ${#*}
 
 ### Not tied to an iteration
 
@@ -18042,3 +18043,35 @@ with a set `IFS`, `set -f` around a split, `${x:+...}`, and the
 `case`-based contains/starts-with/ends-with tests.
 
 tests/verify: diff cases 57 -> 58; sizes.
+
+## Iteration 328: bash's manual, where the two references agree
+
+Most of bash's manual describes bash. The useful part is where bash and
+dash agree, because that is behaviour this shell should have. Probing
+the expansion, redirection and builtin sections found two faults.
+
+- **`getopts` ignored its own operands.** XCU has `getopts optstring
+  name [arg...]` walk those arguments instead of the positional
+  parameters. This shell always walked the positional parameters, so
+  `getopts "ab:" o -b val` reported nothing. Both the option scan and
+  the argument fetch go through `GO-COUNT` and `GO-SLOT` now, which
+  answer from whichever list applies.
+- **Silent mode did not name the offending option.** With a leading `:`
+  in the optstring, a missing argument or an unknown option puts that
+  letter in `OPTARG`; this left it empty.
+- **`${#*}` and `${#@}` printed 0.** They count the positional
+  parameters. The expansion was looking them up as ordinary variable
+  names.
+
+`tests/diff/cases/bash-manual-328.sh` matches bash exactly. It is the
+first case here that deliberately does **not** match dash: on `${#*}`
+dash prints the length of `"$*"` where bash and XCU 2.6.2 count the
+parameters, and the standard decides it.
+
+Everything else probed was already right: `$@` and `$*` quoted and
+unquoted, the four `${...-+}` forms with and without the colon,
+`<<-` with a quoted and an unquoted delimiter, expansion inside a
+here-document, pipeline exit status, `umask -S`, `kill -l`, and
+`${#name}` for a set and an unset name.
+
+tests/verify: diff cases 58 -> 59; sizes.

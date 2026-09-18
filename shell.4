@@ -3961,6 +3961,20 @@ VARIABLE GO-NMLEN
   GO-IND @ GO-LASTIND !
   0 LAST-STATUS ! ;
 
+VARIABLE GO-OPERANDS?   \ arguments were given to getopts itself
+
+: GO-COUNT ( --- n )   \ how many words getopts is walking
+  GO-OPERANDS? @ IF ARGC @ 3 - ELSE POS-PARAM-COUNT @ THEN ;
+
+: GO-SLOT ( i --- c-addr )   \ the i'th of them, counting from 1
+  GO-OPERANDS? @ IF 2 + ARGV@ ELSE 1- POS-PARAM-SLOT THEN ;
+
+CREATE GO-CHARBUF 2 ALLOT
+
+: GO-OPTARG-CHAR! ( c --- )   \ OPTARG = that one character
+  GO-CHARBUF C!  0 GO-CHARBUF 1+ C!
+  GO-CHARBUF GO-OPTARG! ;
+
 : DO-GETOPTS ( --- )
   \ getopts OPTSTRING NAME - parse the positional parameters one
   \ option at a time, per POSIX. OPTIND is a shell variable so a
@@ -3970,12 +3984,15 @@ VARIABLE GO-NMLEN
   ARGC @ 3 < IF 2 LAST-STATUS ! EXIT THEN
   1 ARGV@ GO-OPTS !
   2 ARGV@ GO-NAME !
+  \ `getopts optstring name [arg...]`: the operands stand in for the
+  \ positional parameters, which this ignored until Iteration 328.
+  ARGC @ 3 > IF -1 ELSE 0 THEN GO-OPERANDS? !
   GO-OPTIND@ GO-IND !
   GO-IND @ GO-LASTIND @ <> IF 1 GO-CPOS ! THEN
   GO-CPOS @ 0= IF 1 GO-CPOS ! THEN
   BEGIN
-    GO-IND @ POS-PARAM-COUNT @ > IF 63 GO-DONE EXIT THEN
-    GO-IND @ 1- POS-PARAM-SLOT GO-ARG !
+    GO-IND @ GO-COUNT > IF 63 GO-DONE EXIT THEN
+    GO-IND @ GO-SLOT GO-ARG !
     GO-ARG @ C@ 45 <> IF 63 GO-DONE EXIT THEN
     GO-ARG @ CSTRLEN 1 = IF 63 GO-DONE EXIT THEN
     GO-ARG @ CSTRLEN 2 = GO-ARG @ 1+ C@ 45 = AND IF
@@ -3988,7 +4005,12 @@ VARIABLE GO-NMLEN
     ELSE
       GO-C @ GO-FIND-OPT GO-POS !
       GO-POS @ -1 = IF
-        GO-CLEAR-OPTARG 63 GO-SETNAME GO-STEP GO-FINISH EXIT
+        GO-OPTS @ C@ 58 = IF
+          GO-C @ GO-OPTARG-CHAR!                 \ silent mode names it too
+        ELSE
+          GO-CLEAR-OPTARG
+        THEN
+        63 GO-SETNAME GO-STEP GO-FINISH EXIT
       THEN
       GO-OPTS @ GO-POS @ 1+ + C@ 58 = IF
         \ this option takes an argument: the rest of this word if
@@ -3996,10 +4018,13 @@ VARIABLE GO-NMLEN
         GO-CPOS @ 1+ GO-CPOS !
         GO-ARG @ GO-CPOS @ + C@ 0= IF
           GO-IND @ 1+ GO-IND !
-          GO-IND @ POS-PARAM-COUNT @ > IF
+          GO-IND @ GO-COUNT > IF
+            \ A missing argument in silent mode names the option in OPTARG
+            \ (XCU getopts); this left OPTARG empty until Iteration 328.
+            GO-OPTS @ C@ 58 = IF GO-C @ GO-OPTARG-CHAR! THEN
             58 GO-SETNAME
           ELSE
-            GO-IND @ 1- POS-PARAM-SLOT GO-OPTARG!
+            GO-IND @ GO-SLOT GO-OPTARG!
             GO-IND @ 1+ GO-IND !
             GO-C @ GO-SETNAME
           THEN
