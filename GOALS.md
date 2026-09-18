@@ -1695,13 +1695,12 @@ before anything else, because every number here is relative to it.
    sweep that began in 295 is finished: ordering, compound commands,
    high descriptors, failures and `/dev/null` all match both references.
 
-5g. **A signal sent to the shell from outside is not seen while it waits
-   for input** (Iteration 313). With an INT trap set and the shell at its
-   prompt, `kill -INT` to the pid, `killpg` to its group and `^C` on the
-   terminal all produce nothing, and nothing fires at the next command
-   either; a self-sent `kill -INT $$` works. Process groups check out.
-   The two `^C` interactive cases wait on this. Next: what `SigCgt` says
-   in /proc while it waits, and whether `sig_catch` runs at all.
+5g. **`^C` while a command runs** should be followed by a newline before
+   the next prompt, as dash does (the last interactive divergence). The
+   shell is not in the editor then, so it belongs with the interrupt
+   handling. Iteration 314 settled the rest: signals are delivered and
+   caught normally, but a BLOCKING READ IS NOT INTERRUPTED here, which
+   is why the editor now waits in short polls instead.
 
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process

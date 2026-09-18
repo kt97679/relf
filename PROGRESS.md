@@ -309,6 +309,7 @@ do not trust the absence of a line below.
 - **311** — chasing the intermittent job case: what it is not
 - **312** — the flakiness was the harness: a prompt has to be stable, not just present
 - **313** — the ^C cases: a signal sent while the editor waits is not seen at all
+- **314** — ^C at the prompt works: the editor polls instead of blocking
 
 ### Not tied to an iteration
 
@@ -17602,3 +17603,32 @@ SigCgt), and whether `sig_catch` runs at all - a one-line write from the
 handler settles it.
 
 No code changed; both cases stay in KNOWN-DIVERGENT.
+
+## Iteration 314: ^C at the prompt
+
+313's conclusion was wrong in an instructive way. Signals are **not**
+lost: `/proc/<pid>/status` shows `SIGINT` caught, unblocked, while the
+process sleeps in `read`; an uncaught `SIGUSR1` kills it at once; and
+with a trap set, `kill -INT` fires the trap - at the next command, which
+is where POSIX puts it. What I read as "no signal" in 313 was my probe
+draining for half a second and giving up before the trap ran.
+
+What is true is narrower: **the blocking read is not interrupted**, with
+or without `SA_RESTART`, so an interactive shell waiting for a line
+notices nothing until the line is finished.
+
+The editor waits in short polls now - `KEY?` and a 5 ms sleep - and
+checks `SIGNALS-PENDING` between them. A `^C` at the prompt runs any
+`INT` trap, abandons the line, prints `^C` and prompts afresh, which is
+what dash does. `intr-at-prompt` passes and the interactive suite is
+**21 of 22**.
+
+A shell that answers `^C` 5 ms late is better than one that ignores it,
+and the cost is a poll per keystroke on a path that is idle by
+definition.
+
+`intr-during-command` is the one left: dash writes a newline after the
+`^C` before its next prompt, and there the shell is not in the editor at
+all, so the fix belongs with the interrupt handling rather than edit.4.
+
+tests/verify: interactive 20 -> 21 passing, 2 -> 1 divergent; sizes.

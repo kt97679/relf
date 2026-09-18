@@ -20,6 +20,7 @@ LINE-MAX BUFFER: ED-BUF          \ the line being edited
 VARIABLE ED-LEN
 VARIABLE ED-POS                  \ the cursor, 0 .. ED-LEN
 VARIABLE ED-PROMPT-LEN
+VARIABLE ED-SIGNAL               \ a signal seen while waiting for a key
 VARIABLE ED-DONE                 \ 0 editing, 1 accepted, 2 cancelled, 3 end of input
 2 BUFFER: ED-KEY
 
@@ -118,7 +119,19 @@ LINE-MAX BUFFER: HIST-SAVED
 \ ---- keys ----
 
 : ED-GET-BYTE ( --- c | -1 )
-  ED-KEY 1 0 READ-SOME DUP 1 = IF DROP ED-KEY C@ ELSE DROP -1 THEN ;
+  \ Waits in short polls rather than in a blocking read, so a signal is
+  \ noticed between them. Relying on the read failing with EINTR did not
+  \ work (Iteration 313 measured it: the signal arrives and the handler
+  \ runs, but the read carries on), and a shell that ignores ^C at its
+  \ prompt is worse than one that answers it 10 ms later.
+  BEGIN
+    SIGNALS-PENDING ?DUP IF ED-SIGNAL ! -1 EXIT THEN
+    KEY? IF
+      ED-KEY 1 0 READ-SOME DUP 1 = IF DROP ED-KEY C@ EXIT THEN
+      DROP -1 EXIT                             \ end of input
+    THEN
+    5 MS
+  AGAIN ;
 
 : ED-ESCAPE ( --- )   \ an arrow or a home/end key: ESC [ x
   ED-GET-BYTE DUP 91 = SWAP 79 = OR 0= IF EXIT THEN
@@ -162,8 +175,9 @@ LINE-MAX BUFFER: HIST-SAVED
       \ A read cut short by a signal is not end of input: ^C cancels the
       \ line, and dash writes a newline before its next prompt
       \ (Iteration 312).
-      SIGNALS-PENDING ?DUP IF
-        RUN-TRAP-CALL  2 ED-DONE !
+      ED-SIGNAL @ ?DUP IF
+        0 ED-SIGNAL !
+        RUN-TRAP-CALL  2 ED-DONE !              \ ^C: the line is abandoned
       ELSE
         3 ED-DONE !                             \ the terminal closed
       THEN

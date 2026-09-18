@@ -1,5 +1,6 @@
 # Cases this shell does not match yet, kept here so the suite stays green
 # while the list stays visible. Four entries went in Iteration 302 (PS1,
 # PS2, blank lines, the newline on ^D).
-intr-at-prompt      # ^C at the prompt: dash prints a newline and prompts afresh
-intr-during-command # ^C during a command: dash prints a newline before the prompt
+intr-during-command # ^C while a command runs: dash writes a newline before its
+                    # next prompt; the shell is not in the editor then, so the
+                    # fix belongs with the interrupt handling, not edit.4
