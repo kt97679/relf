@@ -1676,6 +1676,20 @@ before anything else, because every number here is relative to it.
    patterns, `getopts` and `trap` - found nothing further: this shell
    matches dash on all of it.
 
+5c. **`trap` with a numeric condition breaks the shell** (found by the
+   probe of Iteration 290, and not yet fixed):
+
+       trap 'echo N' 2      # relf: return stack overflow
+       trap 'echo N' INT    # fine
+
+   Measured with `DEPTH` around `PARSE-SIG`: the numeric path returns
+   the right value and the right data-stack depth, but leaves the
+   RETURN stack unbalanced - the overflow arrives at the next command.
+   The name path is balanced on the return stack but leaves one extra
+   item on the data stack. Both halves of that word want reading with
+   its callers (`DO-TRAP`, `DO-KILL`), not patching by guesswork; a
+   first attempt at restructuring its early exits changed nothing.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,

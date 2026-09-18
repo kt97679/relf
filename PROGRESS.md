@@ -285,6 +285,7 @@ do not trust the absence of a line below.
 - **287** — coverage probed; the arithmetic audit: ternary, comma, invalid constants
 - **288** — read: IFS fields, backslashes, line continuation, end-of-file status
 - **289** — cd -, PWD/OLDPWD, alias listing, unalias -a; the probe finishes clean
+- **290** — probing job control and signals: trap with a numeric condition breaks the shell
 
 ### Not tied to an iteration
 
@@ -16800,3 +16801,35 @@ bash, 2 in dash.
 tests/diff/cases/cd-alias-289.sh matches bash.
 
 tests/verify: diff cases 41 -> 42; sizes.
+
+## Iteration 290: a probe that found a live bug, and no fix yet
+
+The sweep continued into what the suites never exercise: traps with
+numeric conditions, `getopts` in silent mode, `set -e` around functions,
+loops, groups and traps, background jobs with `wait`, and `command -v`.
+Everything matched dash except one thing, which matters more than the
+rest:
+
+    trap 'echo N' 2      # relf: return stack overflow
+    trap 'echo N' INT    # fine
+
+A trap set by signal NUMBER breaks the shell; by name it is fine. Every
+numeric condition does it, including `0` for EXIT. Measured with `DEPTH`
+either side of `PARSE-SIG`: the numeric path gives the right value and
+leaves the data stack correct, but the return stack unbalanced - the
+overflow arrives when the NEXT command runs, which is what made it look
+like a trap-delivery fault at first. The name path is the other way
+round: return stack correct, one item left on the data stack.
+
+Two probes of my own were wrong before the measurement was right: the
+first sent signals with `kill -2 $$` from inside a subshell, where `$$`
+is the parent, so the script killed itself; the second under-flowed the
+data stack and I read the resulting message as evidence about
+`ALL-DECIMAL?`. Neither word is at fault.
+
+Restructuring `PARSE-SIG`'s early exits changed nothing, so that guess
+is recorded as wrong and reverted rather than committed. The word wants
+reading together with `DO-TRAP` and `DO-KILL`, which is the next
+iteration.
+
+No code changed. Recorded in GOALS.md with the reproduction.
