@@ -1681,6 +1681,23 @@ before anything else, because every number here is relative to it.
    `PARSE-DECIMAL` with a `NIP`, eating one of the caller's stack
    items. `tests/diff/cases/signals-291.sh` covers the area.
 
+5d. **A script can hang the shell** (found by the probe of Iteration
+   295, not yet diagnosed). Reduced automatically to five lines:
+
+       f() { cat <<E6
+       E6
+       }
+       echo "R1"; exec 3>&1; echo via3 >&3; exec 3>&-
+       exec 4</tmp/f1; read l <&4; echo "R2 [$l]"; exec 4<&-
+
+   with any file at /tmp/f1. It hangs every time, and needs all three
+   parts: a function whose body holds a here-document, the `exec 3`
+   pair, and the `exec 4` line. Each part alone, and any two of them,
+   run correctly. `read l <&4` on its own is fine, so the fault is in
+   what the here-document or the `exec` pair leaves behind - the
+   here-document writer child (`HD-WRITER`) and the descriptor
+   bookkeeping in `BEGIN-REDIRECT`/`END-REDIRECT` are where to look.
+
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u
    -x -f -n -o`, `$-` and `.`, also in 270. ~~`trap`, `kill`,

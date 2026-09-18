@@ -797,6 +797,10 @@ VARIABLE PB-AT
   POS-BLOCK @ ?DUP IF FREE DROP THEN
   POS-BLOCK !  PB-N @ POS-PARAM-COUNT ! ;
 
+CREATE DEFAULT-SHELL-NAME  115 C, 104 C, 0 C,   \ "sh"
+VARIABLE SHELL-NAME   \ set by MAIN: an address stored at load time is
+                      \ not relocated when the image is loaded elsewhere
+
 : POS-DIGIT-LOOKUP ( name-addr --- value-addr | 0 )
   \ A decimal name from 1 up names a positional parameter; "0" is the
   \ script name, not ours. Any number of digits: ${10} reaches here as
@@ -808,6 +812,9 @@ VARIABLE PB-AT
     DUP C@ 48 - DUP 9 U> IF 2DROP DROP 0 EXIT THEN   ( n p d )
     ROT 10 * + SWAP 1+
   REPEAT DROP                                       ( n )
+  \ $0: the script's name, or the shell's own (XCU 2.5.1). It gave
+  \ nothing at all until Iteration 295.
+  DUP 0= IF DROP SHELL-NAME @ EXIT THEN
   DUP 1 < IF DROP 0 EXIT THEN
   1-
   DUP POS-PARAM-COUNT @ < 0= IF DROP 0 EXIT THEN

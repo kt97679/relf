@@ -2262,6 +2262,7 @@ VARIABLE SUBLIST-XT
   THEN
   SYS-ARGC 0 > IF
     SET-POS-PARAMS-FROM-SYS-ARGS
+    0 SYS-ARG SHELL-NAME !                   \ $0 is the script (XCU 2.5.1)
     0 SYS-ARG READ-WHOLE-FILE
     OVER 0= IF 2DROP 127 SYS-EXIT THEN
     PARSE-INIT
@@ -2280,6 +2281,7 @@ VARIABLE SUBLIST-XT
 
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
+  DEFAULT-SHELL-NAME SHELL-NAME !            \ $0 until a script names itself
   GETPID SHELL-PID !
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !

@@ -290,6 +290,7 @@ do not trust the absence of a line below.
 - **292** — why dash and bash are faster (PERFORMANCE.md); the builtin table is hashed
 - **293** — the expander's per-word bookkeeping; dispatch counts overstate what the clock shows
 - **294** — the expansion path's fixed toll; the interpreter's real cost is branch misprediction
+- **295** — $0 expanded to nothing; a five-line script that hangs the shell, recorded
 
 ### Not tied to an iteration
 
@@ -16978,3 +16979,41 @@ The scan helpers `TAP-S`/`TAP-L`/`TAP-I`/`TAP-NAME-CHAR?` went with the
 predicate.
 
 tests/verify: sizes.
+
+## Iteration 295: $0, and a hang worth more than it
+
+Two sweeps of areas the suites never touch - parameter corners
+(positional parameters, `$#`, `$*`, `"$@"`, every `${...}` operator, the
+special parameters) and here-documents, redirections, functions and
+loops.
+
+**Parameters came back almost clean**: 23 cases, one difference. `$0`
+expanded to nothing. `POS-DIGIT-LOOKUP` rejected index 0 and nothing
+else supplied it, so `$0` was empty everywhere - in a script, in a
+function, in a subshell. It is now the script's path, and `sh` for `-c`
+and for standard input. `tests/diff/cases/dollar-zero-295.sh` matches
+bash and dash.
+
+A relocation trap on the way: the default name was stored into its
+variable at load time, and an address written then is not relocated when
+the image is loaded at a different base. `-c` segfaulted until `MAIN`
+set it at startup instead.
+
+**The second sweep found a hang**, which matters more than the fix
+above. Reduced automatically - a loop that drops one line at a time and
+keeps the ones that preserve the failure - from 40 lines to five:
+
+    f() { cat <<E6
+    E6
+    }
+    echo "R1"; exec 3>&1; echo via3 >&3; exec 3>&-
+    exec 4</tmp/f1; read l <&4; echo "R2 [$l]"; exec 4<&-
+
+It needs all three parts; any two of them run correctly, and `read l
+<&4` alone is fine. So something the here-document or the `exec` pair
+leaves behind - the here-document writer child, or the descriptor
+bookkeeping around builtins - makes the last line block forever. Not
+diagnosed here; recorded in GOALS.md with the reproduction rather than
+guessed at, and it is the next iteration.
+
+tests/verify: diff cases 43 -> 44; sizes.
