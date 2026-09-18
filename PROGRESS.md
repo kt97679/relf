@@ -283,6 +283,7 @@ do not trust the absence of a line below.
 - **285** — fixed: every assignment in a prefix keeps its value whole
 - **286** — expansions inside $(( )) are performed; ~, octal and hex constants
 - **287** — coverage probed; the arithmetic audit: ternary, comma, invalid constants
+- **288** — read: IFS fields, backslashes, line continuation, end-of-file status
 
 ### Not tied to an iteration
 
@@ -16739,3 +16740,32 @@ lists, precedence, the constant forms, the assignment forms, nested and
 side-effecting ternaries, and division by zero; it matches bash.
 
 tests/verify: diff cases 39 -> 40; parse verdicts 145 -> 146; sizes.
+
+## Iteration 288: read, as XCU has it
+
+Three of the faults 287 collected were in one builtin. `read` split its
+line on blanks, never looked at `IFS`, ignored backslashes, and returned
+0 when the line ended at end of file without a newline.
+
+It now follows XCU's `read`: fields are split by `IFS` - whitespace
+members collapsing, a non-whitespace member ending exactly one field -
+the last variable takes the rest with trailing `IFS` whitespace removed,
+a backslash quotes the next character and a backslash at the end of a
+line joins the next one, both unless `-r` is given, and the status is 1
+when the line ended at end of file.
+
+**The kernel had to say so.** `READ-LINE` knew whether a newline ended
+the line - `RL-END` takes it as an argument - but did not report it, and
+nothing else could tell an EOF-terminated last line from a complete one.
+`RL-NEWLINE?` now carries it out, which is the whole engine-side change.
+
+`tests/diff/cases/read-288.sh` - the backslash forms, `-r`, a line with
+no final newline, `IFS=:` with empty fields, `IFS==`, several blanks
+between fields, a continuation, leading and trailing blanks, one
+variable taking a whole line, and an empty line - matches bash and dash
+on every line; the previous build fails it.
+
+The old blank-splitting helpers went with it (`RD-SKIP-WS`, `RD-SET`).
+
+tests/verify: diff cases 40 -> 41; sizes; the kernel image grew by the
+new variable.

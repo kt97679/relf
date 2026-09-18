@@ -1665,9 +1665,8 @@ before anything else, because every number here is relative to it.
 
 5b. **Found by the coverage probe of Iteration 287** (dash and bash
    agree on all of these; this shell does not):
-   - `read` does not process backslashes - `printf 'a\\ b c\\n' | read x y`
-     should give `x="a b"`, `y="c"` - ignores a prefix assignment to
-     `IFS`, and returns 0 rather than 1 at end of file without a newline.
+   - ~~`read` does not process backslashes, ignores `IFS` and
+     mis-reports end of file~~ **fixed in Iteration 288.**
    - `cd -` is unsupported (and says so on stdout).
    - `alias NAME` does not print that alias's definition.
    Each wants a differential case with its fix.

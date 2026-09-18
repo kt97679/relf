@@ -3315,69 +3315,97 @@ VARIABLE FTH-I
 LINE-MAX        BUFFER: READ-BUF     \ grows: see LINE-BUF
 SHVAR-VALUE-MAX BUFFER: READ-FIELD
 VARIABLE RD-LEN
+VARIABLE RD-FLEN
+VARIABLE RD-RAW?
+VARIABLE RD-EOF?
 VARIABLE RD-POS
 VARIABLE RD-VI
-VARIABLE RD-NAME
-VARIABLE RD-S
-VARIABLE RD-E
+: RD-EMIT ( c --- )   \ a character of the field being built
+  RD-FLEN @ 2 + ENSURE-BUFFER READ-FIELD
+  READ-FIELD RD-FLEN @ + C!  1 RD-FLEN +! ;
 
-: RD-SKIP-WS ( --- )
+: RD-ESCAPED? ( --- f )   \ is the character at RD-POS quoted by a backslash
+  RD-RAW? @ IF 0 EXIT THEN
+  READ-BUF RD-POS @ + C@ 92 = ;
+
+: RD-GET-LINE ( --- got? )   \ a logical line: \-newline joins the next
+  0 RD-LEN !  0 RD-EOF? !
   BEGIN
-    RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ WS? ELSE 0 THEN
-  WHILE RD-POS @ 1+ RD-POS ! REPEAT ;
+    RD-LEN @ BUFFER-BODY READ-BUF 0 READ-LINE-INTO   ( u flag )
+    LONG-LINE? @ IF 2DROP 0 EXIT THEN
+    SWAP RD-LEN @ + RD-LEN !                          ( flag )
+    RL-NEWLINE? @ 0= IF -1 RD-EOF? ! THEN
+    0= IF RD-LEN @ 0 > EXIT THEN                      \ nothing came
+    RD-RAW? @ 0= RD-LEN @ 0 > AND IF
+      READ-BUF RD-LEN @ 1- + C@ 92 =
+    ELSE 0 THEN
+  WHILE
+    RD-LEN @ 1- RD-LEN !                              \ the backslash goes
+  REPEAT
+  -1 ;
 
-: RD-SET ( name-addr start end --- )   \ assign READ-BUF[start,end)
-  SHADOW{ RD-NAME RD-S RD-E }
-  READ-BUF RD-S @ + RD-E @ RD-S @ -
-  DUP 1+ ENSURE-BUFFER READ-FIELD
-  READ-FIELD BUFFER-SIZE READ-FIELD VALUE-COPY
-  RD-NAME @ READ-FIELD SET-SHVAR ;
+: RD-IFS-WS? ( c --- f )   \ an IFS character that is also whitespace
+  DUP IFS-CHAR? SWAP DUP 32 = OVER 9 = OR SWAP 10 = OR AND ;
+
+: RD-SKIP-IFS-WS ( --- )
+  BEGIN
+    RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ RD-IFS-WS? ELSE 0 THEN
+  WHILE 1 RD-POS +! REPEAT ;
+
+: RD-ASSIGN ( name --- )   \ READ-FIELD, as built, to that variable
+  0 READ-FIELD RD-FLEN @ + C!
+  READ-FIELD SET-SHVAR ;
+
+: RD-FIELD ( last? --- )   \ one field from RD-POS, escapes removed
+  0 RD-FLEN !
+  BEGIN
+    RD-POS @ RD-LEN @ < IF
+      DUP IF -1 ELSE READ-BUF RD-POS @ + C@ IFS-CHAR? 0= THEN
+    ELSE 0 THEN
+  WHILE
+    RD-ESCAPED? IF
+      1 RD-POS +!
+      RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ RD-EMIT  1 RD-POS +! THEN
+    ELSE
+      READ-BUF RD-POS @ + C@ RD-EMIT  1 RD-POS +!
+    THEN
+  REPEAT
+  DROP ;
+
+: RD-TRIM-FIELD ( --- )   \ the last field keeps no trailing IFS whitespace
+  BEGIN
+    RD-FLEN @ 0 > IF READ-FIELD RD-FLEN @ 1- + C@ RD-IFS-WS? ELSE 0 THEN
+  WHILE -1 RD-FLEN +! REPEAT ;
+
+: RD-DELIMITER ( --- )   \ past one delimiter and the whitespace around it
+  RD-SKIP-IFS-WS
+  RD-POS @ RD-LEN @ < IF
+    READ-BUF RD-POS @ + C@ IFS-CHAR? IF 1 RD-POS +!  RD-SKIP-IFS-WS THEN
+  THEN ;
 
 : DO-READ ( --- )
-  \ read [-r] NAME... - one line from the real stdin, split on
-  \ whitespace, one field per name; the LAST name receives everything
-  \ that remains, trailing blanks trimmed, per POSIX.
-  \
-  \ Reads fd 0 directly rather than through READ-NEXT-INPUT-LINE:
-  \ that word reads the *script* when one is running, which is what
-  \ if/while need, but `read` must take the process's own stdin or
-  \ "while read x" over a pipe would consume the script instead.
-  \ READ-LINE's flag distinguishes a genuine EOF (status 1) from an
-  \ empty line, which ACCEPT alone could not.
-  \
-  \ -r is accepted and ignored: this shell does no backslash
-  \ processing on the line either way, so -r is already the behaviour.
-  SHADOW{ | RD-VI }
-  0 VALUE-FAILED? !
-  0 BUFFER-BODY READ-BUF 0 READ-LINE-INTO
-  LONG-LINE? @ IF 2DROP EXIT THEN      \ reported; the variables are left alone
-  0= IF DROP 1 LAST-STATUS ! EXIT THEN
-  RD-LEN !
-  0 RD-POS !
-  1 RD-VI !
+  \ XCU's read: fields split by IFS (not just blanks, as this did), a
+  \ backslash quoting the next character and joining lines unless -r, and
+  \ status 1 when the line ended at end of file (Iteration 288).
+  0 VALUE-FAILED? !  0 IFS-CACHED? !
+  0 RD-RAW? !  1 RD-VI !
   ARGC @ 1 > IF
-    S" -r" 1 ARGV@ STR0= IF 2 RD-VI ! THEN
+    S" -r" 1 ARGV@ STR0= IF -1 RD-RAW? !  2 RD-VI ! THEN
   THEN
-  ARGC @ RD-VI @ > 0= IF 0 LAST-STATUS ! EXIT THEN
-  BEGIN
-    RD-LEN @ 0 > IF READ-BUF RD-LEN @ 1- + C@ WS? ELSE 0 THEN
-  WHILE
-    RD-LEN @ 1- RD-LEN !
-  REPEAT
+  RD-GET-LINE 0= IF 1 LAST-STATUS ! EXIT THEN
+  0 RD-POS !
+  ARGC @ RD-VI @ > 0= IF
+    RD-EOF? @ IF 1 ELSE 0 THEN LAST-STATUS ! EXIT
+  THEN
+  RD-SKIP-IFS-WS
   BEGIN RD-VI @ ARGC @ < WHILE
-    RD-SKIP-WS
-    RD-POS @
-    RD-VI @ 1+ ARGC @ < IF
-      BEGIN
-        RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ WS? 0= ELSE 0 THEN
-      WHILE RD-POS @ 1+ RD-POS ! REPEAT
-    ELSE
-      RD-LEN @ RD-POS !
-    THEN
-    RD-VI @ ARGV@ SWAP RD-POS @ RD-SET
-    RD-VI @ 1+ RD-VI !
+    RD-VI @ 1+ ARGC @ < 0=                   ( last? )
+    DUP RD-FIELD
+    IF RD-TRIM-FIELD ELSE RD-DELIMITER THEN
+    RD-VI @ ARGV@ RD-ASSIGN
+    1 RD-VI +!
   REPEAT
-  VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS ! ;
+  VALUE-FAILED? @ IF 2 ELSE RD-EOF? @ IF 1 ELSE 0 THEN THEN LAST-STATUS ! ;
 
 64 BUFFER: GO-NMBUF
 8  BUFFER: GO-VALBUF

@@ -753,6 +753,8 @@ VARIABLE #SRC ( --- addr)
   DUP >R WRITE-FILE ?DUP IF R> DROP EXIT THEN
   10 SP@ 1 R> WRITE-FILE SWAP DROP ;
 
+VARIABLE RL-NEWLINE?   \ did the line just read end at a newline
+
 : RL-END ( c-addr p nl? flag ior --- u2 flag ior )
 \ READ-LINE's result from its end pointer p. When the line ended at a
 \ newline (nl?), a CR just before it is part of the terminator: CRLF
@@ -761,7 +763,8 @@ VARIABLE #SRC ( --- addr)
 \ full buffer look one short, and a caller growing its buffer took the
 \ line for finished (Iteration 249).
   >R >R >R OVER -
-  R> IF DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN THEN
+  R> DUP RL-NEWLINE? !                   \ the shell's `read` needs this
+  IF DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN THEN
   SWAP DROP R> R> ;
 
 : RL-BYTES ( c-addr u1 fid --- u2 flag ior )
