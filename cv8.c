@@ -458,7 +458,7 @@ static void udiv(UNS64 *a, UNS64 *b, UNS64 *c) {
  *  virtual machine I/O primitives' shared state
  */
 
-#define NOPENMODES 10
+#define NOPENMODES 11
 static const int open_flags[NOPENMODES] = {
     O_WRONLY | O_CREAT | O_TRUNC,  /* w  */
     O_WRONLY | O_CREAT | O_TRUNC,  /* wb : same, no text/binary distinction */
@@ -476,7 +476,11 @@ static const int open_flags[NOPENMODES] = {
      *  Until Iteration 245 it masked every mode down to w/wb, so a file
      *  created R/W could not be read back.  */
     O_RDWR | O_CREAT | O_TRUNC,    /* w+  */
-    O_RDWR | O_CREAT | O_TRUNC     /* w+b */
+    O_RDWR | O_CREAT | O_TRUNC,    /* w+b */
+    /*  set -C: create, but refuse a file that is already there. POSIX
+     *  gives the shell O_EXCL for noclobber, which also lets `> /dev/null`
+     *  through, since the open succeeds on a device (Iteration 305).  */
+    O_WRONLY | O_CREAT | O_EXCL,   /* x */
 };
 
 /*

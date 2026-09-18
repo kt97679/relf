@@ -300,6 +300,7 @@ do not trust the absence of a line below.
 - **302** — PS1/PS2, blank lines, the newline on ^D; an interruptible signal mode
 - **303** — a line editor: cursor keys, editing keys and history; the harness renders
 - **304** — measured the distance to dash (VERSUS-DASH.md): four features, 7.6x on real work
+- **305** — set -a and -v; RESEARCH-VM.md opened; noclobber needs a stat primitive
 
 ### Not tied to an iteration
 
@@ -17327,3 +17328,37 @@ against dash's 129,784; startup is 1.23 ms against 0.97. bash is
 1,446,024 bytes and 1.39 ms.
 
 No code changed.
+
+## Iteration 305: two options, and a research thread opened
+
+**RESEARCH-VM.md** starts the standing question of whether one machine
+could serve Forth and the shell, whether Forth could use the shell's
+AST, and whether a third representation would suit both. It opens with
+what is already measured - the engine's 0.82 ns dispatch against the
+shell's effective 3.36 ns, the 8,300 dispatches an iteration, the flat
+profile - and names the experiments that would settle each question.
+Evidence is added there as it is taken.
+
+**Closing gaps**, from VERSUS-DASH.md's list:
+
+- **`set -a` (allexport)**: an assignment exports as well. It is one
+  line in the assignment path, plus the option's letter, name, `$-` and
+  `set -o` entries.
+- **`set -v` (verbose)**: each line of input is echoed to standard error
+  as it is read - from both the cooked path and the editor.
+
+**`set -C` (noclobber) is not shipped**, deliberately. POSIX gives the
+shell `O_EXCL` for it, and the engine now has that mode (`X/O`), but
+`O_EXCL` alone also refuses `> /dev/null`, which both references allow:
+they check that the target is a regular file. That needs a `stat`
+primitive the engine does not have. A half-right `-C` is worse than
+none - it would silently fail to protect, or refuse a device - so the
+option is left out and recorded in GOALS.md with what it needs.
+
+Three mistakes on the way, all caught by tests rather than review: the
+`>|` operator reached the executor as `>` (fixed, it has its own
+operator word now), `>|` then defaulted to descriptor 0 because only
+`>`, `>>` and `>&` were listed as writing, and `SETENV` takes its
+arguments the other way round from what I assumed.
+
+tests/verify: diff cases 49 -> 50; sizes; the new engine mode.

@@ -48,7 +48,7 @@ set -eu; case $- in *e*u*|*u*e*) echo has-eu;; esac => has-eu
 st=0
 set -x; x=1; echo "$x" a  b 2>&1 => 1 a b
 st=0
-set -o | grep -c " off"; set -e; set -o | grep errexit; set +o | grep errexit => 6
+set -o | grep -c " off"; set -e; set -o | grep errexit; set +o | grep errexit => 8
 errexit         on
 set -o errexit
 st=0

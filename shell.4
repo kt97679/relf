@@ -1144,6 +1144,9 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
   EMIT-TOK-CHAR ;
 
 \ ---- shell options (Iteration 270): set -e -u -x -f -n ----
+VARIABLE RD-SKIP?      \ this redirection was refused: do not open anything
+VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
+VARIABLE OPT-VERBOSE   \ set -v: each line of input is echoed as it is read
 VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
 VARIABLE OPT-ERREXIT
 VARIABLE OPT-NOUNSET
@@ -2067,6 +2070,8 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
   OPT-NOGLOB @ IF 102 EMIT-TOK-CHAR THEN
   OPT-NOEXEC @ IF 110 EMIT-TOK-CHAR THEN
   OPT-NOUNSET @ IF 117 EMIT-TOK-CHAR THEN
+  OPT-ALLEXPORT @ IF 97 EMIT-TOK-CHAR THEN
+  OPT-VERBOSE @ IF 118 EMIT-TOK-CHAR THEN
   OPT-XTRACE @ IF 120 EMIT-TOK-CHAR THEN ;
 
 : NOUNSET-CHECK ( c-addr u --- )   \ an unset parameter was expanded
@@ -2325,7 +2330,8 @@ VARIABLE AR-I
   2DUP S" <&" STR= IF 2DROP 5 EXIT THEN
   2DUP S" <<" STR= IF 2DROP 6 EXIT THEN
   2DUP S" <<-" STR= IF 2DROP 7 EXIT THEN
-       S" <>"  STR= IF 8 EXIT THEN            \ reading and writing
+  2DUP S" <>"  STR= IF 2DROP 8 EXIT THEN      \ reading and writing
+       S" >|"  STR= IF 9 EXIT THEN            \ truncate whatever noclobber says
   0 ;
 
 : REDIR-ADD ( fd op --- )
@@ -2358,7 +2364,8 @@ VARIABLE AR-I
       REDIR-ADD
     ELSE
       PR-I @ REDIR-OP-AT ?DUP IF
-        DUP 2 = OVER 3 = OR OVER 4 = OR IF 1 ELSE 0 THEN SWAP   ( fd op )
+        \ which descriptor it defaults to: `>`, `>>`, `>&` and `>|` write
+        DUP 2 = OVER 3 = OR OVER 4 = OR OVER 9 = OR IF 1 ELSE 0 THEN SWAP
         PR-I @ 1+ PR-I !
         REDIR-ADD
       ELSE
@@ -2453,21 +2460,32 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
         THEN
       THEN
     ELSE
+      0 RD-SKIP? !
       \ `<>` (op 8) opens for both, creating the file if it is not there
       \ and truncating nothing (XCU 2.7.1); it used to be handed to the
       \ shell as a plain `<`, so it failed on a file that did not exist.
+      \ X/O (the engine's exclusive create, added in Iteration 305) is
+      \ what `set -C` will use once a stat primitive can tell a regular
+      \ file from a device: O_EXCL alone also refuses `> /dev/null`,
+      \ which both references allow.
       DUP 8 = IF DROP R/W ELSE DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN THEN
-      REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-OR-CREATE IF
+      \ refused by noclobber: nothing to open, and the message is already out
+      RD-SKIP? @ IF DROP -1 ELSE
+        REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-OR-CREATE
+      THEN
+      IF
         \ The open may land ON the target: 3 is the lowest free
         \ descriptor when the target is 3. Copying it onto itself does
         \ nothing and the close below then shut it, which is why
         \ `exec 3>file` never persisted while `exec >file` did
         \ (Iteration 297).
-        REDIR-FD AR-I @ CELLS + @                ( fd target )
-        2DUP = IF
-          2DROP
-        ELSE
-          2DUP DUP2 DROP  DROP CLOSE-FILE DROP
+        RD-SKIP? @ 0= IF
+          REDIR-FD AR-I @ CELLS + @              ( fd target )
+          2DUP = IF
+            2DROP
+          ELSE
+            2DUP DUP2 DROP  DROP CLOSE-FILE DROP
+          THEN
         THEN
       ELSE
         \ Reported, and the command is not run (Iteration 255). It used
@@ -2960,7 +2978,9 @@ VARIABLE DA-EQ
   \ Split a validated "NAME=value" word at its '=' and record it.
   \ Shared by assignment lines and `readonly NAME=value`.
   SPLIT-ASSIGN-AT
-  ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR ;
+  ASSIGN-NAME-BUF ASSIGN-VALUE-BUF SET-SHVAR
+  \ set -a: an assignment exports as well (XCU 2.14 `set`, Iteration 305)
+  OPT-ALLEXPORT @ IF ASSIGN-VALUE-BUF ASSIGN-NAME-BUF SETENV DROP THEN ;
 
 \ ==================================================================
 \ The builtin table
@@ -3306,6 +3326,8 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   DUP 120 = IF DROP OPT-XTRACE EXIT THEN
   DUP 102 = IF DROP OPT-NOGLOB EXIT THEN
   DUP 109 = IF DROP OPT-MONITOR EXIT THEN
+  DUP 97 = IF DROP OPT-ALLEXPORT EXIT THEN   \ -a
+  DUP 118 = IF DROP OPT-VERBOSE EXIT THEN    \ -v
   110 = IF OPT-NOEXEC EXIT THEN
   0 ;
 : OPT-NAME ( c-addr --- addr | 0 )
@@ -3314,6 +3336,8 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" nounset" R@ STR0= IF R> DROP OPT-NOUNSET EXIT THEN
   S" xtrace" R@ STR0= IF R> DROP OPT-XTRACE EXIT THEN
   S" noglob" R@ STR0= IF R> DROP OPT-NOGLOB EXIT THEN
+  S" allexport" R@ STR0= IF R> DROP OPT-ALLEXPORT EXIT THEN
+  S" verbose" R@ STR0= IF R> DROP OPT-VERBOSE EXIT THEN
   S" noexec" R@ STR0= IF R> DROP OPT-NOEXEC EXIT THEN
   S" monitor" R@ STR0= IF R> DROP OPT-MONITOR EXIT THEN
   R> DROP 0 ;
@@ -3326,11 +3350,13 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   THEN ;
 : LIST-OPTIONS ( minus? --- )   \ set -o, or set +o
   DUP IF S" Current option settings" TYPE CR THEN >R
+  S" allexport" OPT-ALLEXPORT R@ .OPT
   S" errexit" OPT-ERREXIT R@ .OPT
   S" monitor" OPT-MONITOR R@ .OPT
   S" noexec" OPT-NOEXEC R@ .OPT
   S" noglob" OPT-NOGLOB R@ .OPT
   S" nounset" OPT-NOUNSET R@ .OPT
+  S" verbose" OPT-VERBOSE R@ .OPT
   S" xtrace" OPT-XTRACE R@ .OPT
   R> DROP ;
 

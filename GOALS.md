@@ -1700,6 +1700,12 @@ before anything else, because every number here is relative to it.
    completion notices. Cursor keys, line editing and history are done
    (edit.4); `-i` is still unimplemented.
 
+5h1. **`set -C` (noclobber) needs a `stat` primitive.** The engine has
+   the exclusive-create mode (`X/O`, Iteration 305), but `O_EXCL` alone
+   refuses `> /dev/null`; dash and bash check that the target is a
+   regular file first. A `FILE-KIND ( c-addr --- kind )` primitive would
+   finish it.
+
 5h. **The features dash has and this shell does not** (measured in
    Iteration 304, VERSUS-DASH.md): `fg` and `bg` with the process
    groups they need; `set -C`, `-a`, `-v`, `-b` and the option names

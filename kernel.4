@@ -670,6 +670,7 @@ VARIABLE DPL ( --- a-addr)
 \ Read write file access mode.
 
 06 CONSTANT A/O ( --- mode)
+10 CONSTANT X/O ( --- mode)   \ create, but not over an existing file
 \ Write only, append (create if missing, never truncate) file access
 \ mode - added for shell.4's ">>" redirection (see PROGRESS.md,
 \ Iteration 7); none of the three modes above create a missing file
