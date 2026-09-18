@@ -4397,20 +4397,25 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
     LAST-STATUS !
   THEN ;
 
+CREATE PS1-NM  80 C, 83 C, 49 C, 0 C,
+CREATE PS2-NM  80 C, 83 C, 50 C, 0 C,
+CREATE PS1-DEFAULT  36 C, 32 C, 0 C,       \ "$ "
+CREATE PS2-DEFAULT  62 C, 32 C, 0 C,       \ "> "
+
+: PROMPT-STRING ( name-cstr default --- c-addr u )
+  SWAP LOOKUP-VAR ?DUP IF NIP THEN         ( addr )
+  DUP CSTRLEN ;
+
 : SH-PROMPT ( --- )
-  \ To fd 2, not stdout. Every reference shell - bash, dash, mksh,
-  \ ksh, yash, posh and busybox - writes its prompt to stderr, and for
-  \ a good reason: `... | relfsh` had the prompt interleaved into the
-  \ shell's own output, so a piped script's stdout was not what the
-  \ script printed. `printf 'echo hi\n' | relfsh` produced "$ \nhi\n$ "
-  \ where every other shell produces "hi\n".
-  \
-  \ This shell still PRINTS a prompt when stdin is not a terminal,
-  \ which the others do not - that needs an isatty the engine has no
-  \ primitive for, and adding one means touching cross.4's
-  \ hand-embedded dispatch numbers, deliberately not done here. On
-  \ stderr the remaining divergence no longer corrupts stdout.
-  S" $ " 2 WRITE-FILE DROP ;
+  \ $PS1, or "$ ". To fd 2, not stdout: every reference shell writes its
+  \ prompt to stderr, and `... | relfsh` otherwise had the prompt
+  \ interleaved into the shell's own output. PS1 was ignored entirely
+  \ until Iteration 302 - the prompt was always "$ ".
+  PS1-NM PS1-DEFAULT PROMPT-STRING ERR-TYPE ;
+
+: SH-PROMPT2 ( --- )   \ $PS2, or "> ", for a line that continues one
+  PS2-NM PS2-DEFAULT PROMPT-STRING ERR-TYPE ;
+
 
 \ ==================================================================
 \ Pipes: a single "cmd1 | cmd2" per line

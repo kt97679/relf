@@ -1176,7 +1176,11 @@ L_cputimes: SPILL(); { /* --- user sys child-user child-sys : milliseconds */
     PUSH((UNS64)(c.ru_stime.tv_sec * 1000 + c.ru_stime.tv_usec / 1000));
     FILLNEXT();
 }
-L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore, 2 catch */
+L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore,
+                          2 catch, 3 catch WITHOUT SA_RESTART, so a read
+                          in progress fails with EINTR instead of being
+                          resumed - what an interactive shell needs to
+                          notice ^C at its prompt (Iteration 302) */
     int sig = (int)DS1, act = (int)DS0;
     if (sig <= 0 || sig >= NSIG_FLAGS || sig == SIGSEGV || sig == SIGBUS
         || sig == SIGKILL || sig == SIGSTOP) {
@@ -1185,8 +1189,9 @@ L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore, 2 catch *
         struct sigaction sa;
         memset(&sa, 0, sizeof sa);
         sigemptyset(&sa.sa_mask);
-        sa.sa_flags = SA_RESTART;
-        sa.sa_handler = act == 1 ? SIG_IGN : act == 2 ? sig_catch : SIG_DFL;
+        sa.sa_flags = act == 3 ? 0 : SA_RESTART;
+        sa.sa_handler = act == 1 ? SIG_IGN
+                      : (act == 2 || act == 3) ? sig_catch : SIG_DFL;
         sig_flag[sig] = 0;
         DS1 = sigaction(sig, &sa, (struct sigaction *)0) ? (UNS64)(INT64)-errno : 0;
     }

@@ -297,6 +297,7 @@ do not trust the absence of a line below.
 - **299** — a signal-killed child exits 128+n; the jobs builtin and set -m
 - **300** — nested backquotes; a line continuation in $(( )) - a regression from 286
 - **301** — a pseudo-terminal harness: the interactive shell is testable, and seven gaps are named
+- **302** — PS1/PS2, blank lines, the newline on ^D; an interruptible signal mode
 
 ### Not tied to an iteration
 
@@ -17224,3 +17225,36 @@ tests/interactive/run` - which is how the accepted divergences were
 checked against a second reference.
 
 tests/verify: three new lines, interactive:passed/failed/divergent.
+
+## Iteration 302: four of the seven interactive gaps
+
+301's harness named seven; four are fixed and the suite went from 9
+cases passing to 13.
+
+- **`PS1` and `PS2`.** The prompt was always `$ ` and the continuation
+  always `> `. Both come from the environment now, with those as the
+  defaults.
+- **A blank line at the prompt** asked for a continuation. The flag that
+  chooses between the two prompts was cleared after every line read; it
+  is now kept when the line is blank AND a command was about to start,
+  so a blank line inside a construct still continues it.
+- **`^D`** left the line unfinished: a newline is written before exiting.
+
+**And an engine change for the fourth.** `SIGNAL-ACTION` installed every
+handler with `SA_RESTART`, so a read in progress was resumed and `^C`
+typed at a prompt was not noticed until the line was submitted. It takes
+a new action 3 - catch, but let the read fail with `EINTR` - which the
+interactive shell now uses for `INT`. When a read ends that way the line
+is cancelled, any `INT` trap runs, and the prompt comes back.
+
+Two cases still differ, both the same cosmetic thing: dash writes a
+newline after `^C` before its next prompt and this does not. Named in
+tests/interactive/KNOWN-DIVERGENT rather than rushed.
+
+**A lint for a mistake I have now made three times.** `( u addr u )   R:
+was-start` compiles `R:`, because a `( ... )` comment ends at its first
+`)`. It cost a build cycle in Iterations 286, 291 and again here, so
+`tools/lint-comments.py` checks for it; it is clean across every Forth
+file.
+
+tests/verify: interactive 9 -> 13 passing, 7 -> 3 divergent; sizes.

@@ -49,17 +49,18 @@ Nine cases pass: basic commands, three kinds of multi-line construct, a
 function typed over several lines, a quote continued across a newline,
 exit status at the prompt, an unknown command, and background jobs.
 
-Seven do not, and each is a real gap:
+Seven did not when the harness was written. **Iteration 302 fixed four**
+- `PS1`, `PS2`, the blank line, and the newline on `^D` - leaving three:
 
 | case | what dash does | what this shell does |
 |---|---|---|
-| `ps1-literal` | uses `$PS1` | always prints `$ ` |
-| `ps2-literal` | uses `$PS2` for continuations | always prints `$ ` |
-| `empty-lines` | a blank line reprompts with PS1 | asks for a continuation |
-| `intr-at-prompt` | `^C` discards the line, prompts afresh | keeps the line, no new prompt |
+| `intr-at-prompt` | newline after `^C`, then a fresh prompt | the line is cancelled, but no newline |
 | `intr-during-command` | newline after `^C`, then the prompt | prompt on the same line |
-| `eof-exits` | a newline before exiting | none |
 | `job-in-background` | `[1] + Done ...` notices | nothing |
+
+Noticing `^C` at all needed an engine change: `SIGNAL-ACTION` installed
+handlers with `SA_RESTART`, so the read was resumed and the interrupt
+went unseen until the line was submitted. Action 3 catches without it.
 
 `-i` is also unimplemented: `relfsh -i` treats the flag as a file name.
 Interactivity is decided by `isatty` alone, so a piped script cannot be

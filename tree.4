@@ -100,7 +100,13 @@ VARIABLE SRC-LINE
 VARIABLE SRC-STDIN?     \ reading standard input
 VARIABLE SRC-EOF?       \ ... and it has ended
 VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
-VARIABLE CMD-START?     \ the next line read begins a command: "$ ", else "> "
+VARIABLE CMD-START?     \ the next line read begins a command: PS1, else PS2
+DEFER RUN-TRAP-CALL     ( sig --- )   \ shell.4's, for an interrupted read
+
+: BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs
+  OVER + SWAP ?DO
+    I C@ DUP 32 <> SWAP 9 <> AND IF UNLOOP 0 EXIT THEN
+  LOOP -1 ;
 \ alias state (see TRY-ALIAS)
 VARIABLE NO-ALIAS?
 VARIABLE ALIAS-NEXT?     \ a value ended in a blank: the word at ALIAS-NEXT-AT is a candidate
@@ -114,11 +120,32 @@ LINE-MAX BUFFER: STDIN-TEXT
 : REFILL-STDIN ( --- f )   \ one more line of standard input, or false
   SRC-EOF? @ IF 0 EXIT THEN
   INTERACTIVE? @ IF
-    CMD-START? @ IF SH-PROMPT ELSE S" > " ERR-TYPE THEN
+    CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
   THEN
-  0 CMD-START? !
+  CMD-START? @ >R                            \ were we starting a command
+  SRC-LEN @ >R                               \ where this line begins
   SRC-LEN @ BUFFER-BODY STDIN-TEXT 0 READ-LINE-INTO     ( u flag )
-  0= IF DROP -1 SRC-EOF? ! 0 EXIT THEN
+  0= IF
+    DROP R> DROP R> DROP
+    \ A signal interrupted the read rather than ending the input: cancel
+    \ the line and prompt afresh, as an interactive shell does for ^C.
+    INTERACTIVE? @ IF
+      SIGNALS-PENDING ?DUP IF
+        RUN-TRAP-CALL  ERR-NL
+        0 SRC-LEN !  0 SRC-POS !  -1 CMD-START? !
+        RECURSE EXIT
+      THEN
+    THEN
+    -1 SRC-EOF? !
+    INTERACTIVE? @ IF ERR-NL THEN            \ ^D leaves the line unfinished
+    0 EXIT
+  THEN
+  \ A blank line typed at a command's start does not begin a
+  \ continuation: prompt with PS1 again, as both references do.
+  R> R>                                      ( u start was-start )
+  >R  STDIN-TEXT +  OVER                     ( u addr u; was-start on R )
+  BLANK-RUN?  R> AND                         ( u blank-and-was-start )
+  0= IF 0 CMD-START? ! THEN                  ( u )
   SRC-LEN @ + DUP 2 + ENSURE-BUFFER STDIN-TEXT
   10 OVER STDIN-TEXT + C!  1+ SRC-LEN !
   STDIN-TEXT SRC-ADDR !  -1 ;
@@ -2264,6 +2291,7 @@ VARIABLE SUBLIST-XT
   2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
   SWAP ;
 
+' RUN-TRAP IS RUN-TRAP-CALL
 ' TREE-RUN-FUNC IS RUN-FUNC-BODY-CALL
 ' TREE-CMDSUB IS RUN-CMDSUB-CHILD-CALL
 ' TREE-EVAL IS TREE-EVAL-CALL
@@ -2294,7 +2322,7 @@ VARIABLE SUBLIST-XT
   \ are caught rather than ignored, so the programs it runs get them as
   \ usual - exec resets a caught signal, not an ignored one (Iteration 271).
   INTERACTIVE? @ IF
-    2 2 SIGNAL-ACTION DROP  3 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP
+    2 3 SIGNAL-ACTION DROP  3 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP
   THEN
   TREE-RUN LAST-STATUS @ SHELL-EXIT ;
 

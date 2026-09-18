@@ -1,9 +1,6 @@
-# Cases this shell does not match yet. Each is a real gap, kept here so
-# the suite stays green while the list stays visible (Iteration 301).
-job-in-background  # no "[1] + Done" notices: job control proper is not implemented
-intr-at-prompt     # ^C at the prompt should discard the line and prompt afresh
-intr-during-command # ^C should be followed by a newline before the prompt
-eof-exits          # ^D should print a newline before exiting
-empty-lines        # a blank line at the prompt asks for a continuation here
-ps1-literal        # PS1 from the environment is ignored; the prompt is always "$ "
-ps2-literal        # PS2 likewise
+# Cases this shell does not match yet, kept here so the suite stays green
+# while the list stays visible. Four entries went in Iteration 302 (PS1,
+# PS2, blank lines, the newline on ^D).
+intr-at-prompt      # ^C at the prompt: dash prints a newline and prompts afresh
+intr-during-command # ^C during a command: dash prints a newline before the prompt
+job-in-background   # no "[1] + Done" notices: job control proper is not implemented
