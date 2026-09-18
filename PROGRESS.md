@@ -301,6 +301,7 @@ do not trust the absence of a line below.
 - **303** — a line editor: cursor keys, editing keys and history; the harness renders
 - **304** — measured the distance to dash (VERSUS-DASH.md): four features, 7.6x on real work
 - **305** — set -a and -v; RESEARCH-VM.md opened; noclobber needs a stat primitive
+- **306** — `command NAME args` and `-p` (it only did `-v`); the `-i` flag
 
 ### Not tied to an iteration
 
@@ -17362,3 +17363,26 @@ operator word now), `>|` then defaulted to descriptor 0 because only
 arguments the other way round from what I assumed.
 
 tests/verify: diff cases 49 -> 50; sizes; the new engine mode.
+
+## Iteration 306: `command`, and `-i`
+
+**`command NAME args` did nothing at all** - it printed nothing and
+returned 0 - because only `command -v` had ever been implemented. It now
+runs the command as if it were not a function (a `NO-FUNCTIONS?` flag
+the dispatcher honours), `-p` runs it with a default `PATH` around the
+call, and `-v` answers for a path operand as well as a name.
+
+**`-i`** was taken for a file name. `relfsh -i` now prompts and runs
+standard input whether or not it is a terminal - and the line editor is
+used only when it IS one, so `-i` with a pipe prompts and reads plainly
+rather than redrawing at something that cannot show it.
+
+**A bug found while writing the test**: `command BUILTIN ... | cat` as
+the LAST command of a script prints nothing, while the same line is
+correct mid-script and with `-c`. What differs is 269's
+exec-without-fork for a final command; recorded in GOALS.md rather than
+guessed at, and the case covers everything else.
+
+tests/diff/cases/command-306.sh matches bash.
+
+tests/verify: diff cases 50 -> 51; sizes.

@@ -1700,6 +1700,15 @@ before anything else, because every number here is relative to it.
    completion notices. Cursor keys, line editing and history are done
    (edit.4); `-i` is still unimplemented.
 
+5h0. **`command BUILTIN ... | cat` prints nothing as the LAST command of
+   a script** (found in Iteration 306 while writing the test for
+   `command`). It needs context: appending that line to
+   tests/diff/cases/command-306.sh reproduces it every time, while the
+   same line after a two-line prelude is correct, as is `-c`. So it is
+   not simply the exec-without-fork of a final command. The automatic
+   reducer from Iteration 295 - drop a line, keep what still fails - is
+   the tool for it.
+
 5h1. **`set -C` (noclobber) needs a `stat` primitive.** The engine has
    the exclusive-create mode (`X/O`, Iteration 305), but `O_EXCL` alone
    refuses `> /dev/null`; dash and bash check that the target is a

@@ -138,7 +138,9 @@ LINE-MAX BUFFER: STDIN-TEXT
   \ arrow keys, the usual control characters, and a history the up and
   \ down arrows walk. Elsewhere the terminal driver's cooked mode reads
   \ it, as before.
-  INTERACTIVE? @ IF EDIT-LINE EXIT THEN
+  \ Only at a real terminal: `-i` with a pipe on standard input still
+  \ prompts, but there is nothing to edit (Iteration 306).
+  INTERACTIVE? @ 0 ISATTY AND IF EDIT-LINE EXIT THEN
   CMD-START? @ >R                            \ were we starting a command
   SRC-LEN @ >R                               \ where this line begins
   SRC-LEN @ BUFFER-BODY STDIN-TEXT 0 READ-LINE-INTO     ( u flag )
@@ -2320,6 +2322,16 @@ VARIABLE SUBLIST-XT
 
 : RUN-SOURCES ( --- )   \ -c, a script, or standard input
   0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !  0 EXIT-AFTER? !  0 SRC-DEPTH !
+  \ `-i`: a terminal is not required for the prompts and the editing
+  \ (XCU `sh`). It was taken for a file name until Iteration 306.
+  SYS-ARGC 1 = IF
+    S" -i" 0 SYS-ARG STR0= IF
+      0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
+      -1 INTERACTIVE? !
+      2 3 SIGNAL-ACTION DROP  3 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP
+      TREE-RUN LAST-STATUS @ SHELL-EXIT
+    THEN
+  THEN
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG DUP CSTRLEN PARSE-INIT

@@ -3252,16 +3252,52 @@ VARIABLE RW-NAME
   S" }"     RW-NAME @ STR0= IF -1 EXIT THEN
   S" !"     RW-NAME @ STR0= ;
 
+DEFER DROP-ARGV0-CALL   ( --- )   \ defined below, used by `command`
+DEFER DISPATCH-CALL     ( --- f )
+DEFER RUN-EXTERNAL-CALL ( --- )
+CREATE PATH-NM  80 C, 65 C, 84 C, 72 C, 0 C,
+CREATE DEFAULT-PATH                          \ what `command -p` looks in
+  47 C, 98 C, 105 C, 110 C, 58 C,
+  47 C, 117 C, 115 C, 114 C, 47 C, 98 C, 105 C, 110 C, 0 C,
+1024 BUFFER: CMD-SAVED-PATH
+VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
+
+: COMMAND-RUN ( --- )
+  \ `command NAME args` runs it as if it were not a function. It did
+  \ nothing at all until Iteration 306: `command echo hi` printed
+  \ nothing and returned 0.
+  DROP-ARGV0-CALL
+  ARGC @ 0= IF 0 LAST-STATUS ! EXIT THEN
+  -1 NO-FUNCTIONS? !
+  DISPATCH-CALL 0= IF RUN-EXTERNAL-CALL THEN
+  0 NO-FUNCTIONS? ! ;
+
 : DO-COMMAND ( --- )
-  \ command -v NAME. The other forms (command NAME args, -p, -V) are
-  \ not implemented; -v is what scripts actually use to test for a
-  \ command's existence.
+  \ command -v NAME, and command [-p] NAME args.
+  ARGC @ 2 < IF 0 LAST-STATUS ! EXIT THEN
+  S" -p" 1 ARGV@ STR0= IF
+    DROP-ARGV0-CALL
+    PATH-NM LOOKUP-VAR ?DUP IF
+      CMD-SAVED-PATH SWAP DUP CSTRLEN 1+ MOVE -1
+    ELSE 0 THEN >R
+    PATH-NM DEFAULT-PATH SET-SHVAR
+    COMMAND-RUN
+    R> IF PATH-NM CMD-SAVED-PATH SET-SHVAR THEN
+    EXIT
+  THEN
+  S" -v" 1 ARGV@ STR0= 0= IF COMMAND-RUN EXIT THEN
   ARGC @ 3 < IF 1 LAST-STATUS ! EXIT THEN
   S" -v" 1 ARGV@ STR0= 0= IF 1 LAST-STATUS ! EXIT THEN
   \ POSIX: command -v reports reserved words and aliases too, not just
   \ functions, builtins and PATH entries. Order matters - an alias
   \ shadows a command of the same name, and a reserved word is not a
   \ command at all.
+  \ a path operand answers for itself, if it can be run (XCU `command`)
+  2 ARGV@ DUP CSTRLEN HAS-SLASH? IF
+    2 ARGV@ 1 ACCESS 0= IF
+      2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
+    ELSE 1 LAST-STATUS ! EXIT THEN
+  THEN
   2 ARGV@ RESERVED-WORD? IF
     2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
   THEN
@@ -4384,7 +4420,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
       REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
       END-REDIRECT -1 EXIT
     THEN
-    ARGV @ FIND-FUNC DUP -1 <> IF
+    NO-FUNCTIONS? @ IF -1 ELSE ARGV @ FIND-FUNC THEN DUP -1 <> IF
       0 EXEC-LAST? !
       >R BEGIN-REDIRECT R>
       REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE RUN-FUNC-BODY-CALL THEN
@@ -4636,6 +4672,10 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
     I IF S"  " ERR-TYPE THEN
     I ARGV@ ERR-CSTR
   LOOP ERR-NL ;
+
+' DROP-ARGV0 IS DROP-ARGV0-CALL
+' DISPATCH IS DISPATCH-CALL
+' RUN-EXTERNAL IS RUN-EXTERNAL-CALL
 
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
   \ A simple command from the tree has no pipes (Iteration 265), and the
