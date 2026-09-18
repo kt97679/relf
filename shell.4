@@ -2863,6 +2863,10 @@ VARIABLE TEST-B
 VARIABLE TEST-U-OP
 VARIABLE TEST-U-OPERAND
 
+: TEST-FILE-SIZE ( c-addr --- u )   \ 0 if it cannot be opened
+  DUP CSTRLEN R/O OPEN-FILE IF DROP 0 EXIT THEN
+  >R R@ FILE-SIZE 2DROP R> CLOSE-FILE DROP ;
+
 : TEST-UNARY? ( op-addr operand-addr --- f )
   \ -f/-d are approximated as "does this path exist at all" (same as
   \ -e) - this kernel has no real stat/access primitive to actually
@@ -2871,33 +2875,92 @@ VARIABLE TEST-U-OPERAND
   S" -z" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= EXIT THEN
   S" -n" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ CSTRLEN 0= 0= EXIT THEN
   S" -e" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
-  S" -f" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
-  S" -d" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-EXISTS? EXIT THEN
+  S" -f" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND 1 = EXIT THEN
+  \ -f and -d answered "does it exist" until Iteration 317; FILE-KIND
+  \ (added in 307 for `set -C`) can tell them apart, and ACCESS answers
+  \ -r -w -x, which were missing altogether.
+  S" -d" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND 2 = EXIT THEN
+  S" -r" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 4 ACCESS 0= EXIT THEN
+  S" -w" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 2 ACCESS 0= EXIT THEN
+  S" -x" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 1 ACCESS 0= EXIT THEN
+  S" -s" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-SIZE 0 > EXIT THEN
   0 ;
 
-: EVAL-TEST-ARGS ( --- f )  \ TEST-START/TEST-END already set by the
-                              \ caller - evaluates ARGV[TEST-START,
-                              \ TEST-END) as a test expression.
+VARIABLE TP-I          \ the cursor, an index from TEST-START
+VARIABLE TP-BAD?       \ a malformed expression
+
+: TP-ARG ( --- c-addr | 0 )   TP-I @ TEST-NARGS < IF TP-I @ TEST-ARGN ELSE 0 THEN ;
+: TP-ARG-AT ( n --- c-addr | 0 )
+  TP-I @ + DUP TEST-NARGS < IF TEST-ARGN ELSE DROP 0 THEN ;
+VARIABLE TP-T
+VARIABLE TP-TU
+
+: TP-IS? ( c-addr text-addr u --- f )   \ is the argument this text
+  \ Four values, so they go in variables: juggling them got the order
+  \ wrong and crashed (the lesson of Iteration 308, again).
+  TP-TU !  TP-T !
+  ?DUP 0= IF 0 EXIT THEN
+  DUP CSTRLEN TP-T @ TP-TU @ STR= ;
+
+: TP-BINARY-OP? ( c-addr --- f )   \ one of the two-operand operators
+  ?DUP 0= IF 0 EXIT THEN
+  DUP S" =" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" !=" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" -eq" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" -ne" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" -lt" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" -le" TP-IS? IF DROP -1 EXIT THEN
+  DUP S" -gt" TP-IS? IF DROP -1 EXIT THEN
+      S" -ge" TP-IS? ;
+
+DEFER TP-EXPR-CALL   ( --- f )
+
+: TP-PRIMARY ( --- f )
+  TP-ARG ?DUP 0= IF -1 TP-BAD? ! 0 EXIT THEN
+  DUP S" (" TP-IS? IF
+    DROP 1 TP-I +!
+    TP-EXPR-CALL
+    TP-ARG S" )" TP-IS? IF 1 TP-I +! ELSE -1 TP-BAD? ! THEN
+    EXIT
+  THEN
+  DUP TEST-IS-BANG? IF
+    DROP 1 TP-I +!  RECURSE 0= EXIT           \ a Forth word names itself so
+  THEN
+  \ a binary operator in the middle makes this three arguments
+  1 TP-ARG-AT TP-BINARY-OP? IF
+    1 TP-ARG-AT  2 TP-ARG-AT                 ( a op b )
+    DUP 0= IF 2DROP DROP -1 TP-BAD? ! 0 EXIT THEN
+    TEST-BINARY? 3 TP-I +! EXIT
+  THEN
+  \ a unary operator takes one argument, and anything else is a string
+  DUP C@ 45 = 1 TP-ARG-AT 0<> AND IF
+    1 TP-ARG-AT TEST-UNARY? 2 TP-I +! EXIT   ( op operand )
+  THEN
+  CSTRLEN 0= 0= 1 TP-I +! ;
+
+: TP-AND ( --- f )
+  TP-PRIMARY
+  BEGIN TP-ARG S" -a" TP-IS? WHILE
+    1 TP-I +!  TP-PRIMARY AND
+  REPEAT ;
+
+: TP-OR ( --- f )
+  TP-AND
+  BEGIN TP-ARG S" -o" TP-IS? WHILE
+    1 TP-I +!  TP-AND OR
+  REPEAT ;
+
+' TP-OR IS TP-EXPR-CALL
+
+: EVAL-TEST-ARGS ( --- f )
+  \ POSIX's test grammar: primaries joined by -a and -o, negated with !,
+  \ grouped with ( ). Until Iteration 317 this counted arguments instead,
+  \ handling at most four, so `[ 1 -eq 1 -a 2 -eq 2 ]` was false.
   TEST-NARGS 0 = IF 0 EXIT THEN
-  TEST-NARGS 1 = IF
-    0 TEST-ARGN CSTRLEN 0= 0= EXIT
-  THEN
-  TEST-NARGS 2 = IF
-    0 TEST-ARGN TEST-IS-BANG? IF
-      1 TEST-ARGN CSTRLEN 0= EXIT
-    ELSE
-      0 TEST-ARGN 1 TEST-ARGN TEST-UNARY? EXIT
-    THEN
-  THEN
-  TEST-NARGS 3 = IF
-    0 TEST-ARGN 1 TEST-ARGN 2 TEST-ARGN TEST-BINARY? EXIT
-  THEN
-  TEST-NARGS 4 = IF
-    0 TEST-ARGN TEST-IS-BANG? IF
-      1 TEST-ARGN 2 TEST-ARGN 3 TEST-ARGN TEST-BINARY? 0= EXIT
-    THEN
-  THEN
-  0 ;
+  0 TP-I !  0 TP-BAD? !
+  TP-OR
+  TP-I @ TEST-NARGS < IF DROP 0 -1 TP-BAD? ! THEN
+  TP-BAD? @ IF DROP 0 THEN ;
 
 : DO-TEST ( --- )  \ ARGV[0] is "test" - evaluates ARGV[1..ARGC).
   1 TEST-START !

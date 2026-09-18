@@ -312,6 +312,7 @@ do not trust the absence of a line below.
 - **314** — ^C at the prompt works: the editor polls instead of blocking
 - **315** — ^C during a command; every interactive case now matches dash
 - **316** — an assessment: where this shell competes and where it does not
+- **317** — POSIX sweep: test's grammar (-a, -o, !, parens) and its file tests
 
 ### Not tied to an iteration
 
@@ -17675,3 +17676,33 @@ it is a real offer for a small system or for anyone who wants a POSIX
 shell they can read, change and open with `forth` while it runs.
 
 No code changed.
+
+## Iteration 317: what POSIX still wanted
+
+A sweep of the POSIX utilities and variables nothing had checked, against
+dash. Most were already right - `pwd -P/-L`, `hash -r`, `getopts`,
+`unset -f/-v`, `readonly -p`, `kill -s`, `times`, `PS4`, `PWD`. What was
+not:
+
+- **`test` handled at most four arguments and had no grammar.** `[ 1 -eq
+  1 -a 2 -eq 2 ]` was false, which is the kind of thing a real script
+  does constantly. It is a recursive-descent parser now - primaries
+  joined by `-a` and `-o`, negated with `!`, grouped with `( )`.
+- **`-f` and `-d` both meant "exists"**, so `[ -f /tmp ]` was true.
+  `FILE-KIND`, added in 307 for `set -C`, tells them apart.
+- **`-r`, `-w`, `-x` and `-s` did not exist.** `ACCESS` answers the first
+  three; `-s` opens and asks the size.
+
+`tests/diff/cases/test-grammar-317.sh` - 21 expressions including
+grouping, chained `-a`, mixed negation and the file tests - matches bash
+and dash.
+
+Still open after the sweep, and recorded in GOALS.md: `PPID`, `CDPATH`,
+`cd -P/-L`, `command -V`, `export -p`, and `fg`/`bg`.
+
+Two stack errors of mine on the way, both caught by running it: a
+four-value comparison helper written by juggling rather than with
+variables (the lesson of 308, made again), and two branches of the
+primary parser leaving the argument on the stack.
+
+tests/verify: diff cases 52 -> 53; sizes.
