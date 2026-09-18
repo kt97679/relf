@@ -291,6 +291,7 @@ do not trust the absence of a line below.
 - **293** — the expander's per-word bookkeeping; dispatch counts overstate what the clock shows
 - **294** — the expansion path's fixed toll; the interpreter's real cost is branch misprediction
 - **295** — $0 expanded to nothing; a five-line script that hangs the shell, recorded
+- **296** — the hang: `>&-` never closed anything; a failed duplicate went unreported
 
 ### Not tied to an iteration
 
@@ -17017,3 +17018,34 @@ diagnosed here; recorded in GOALS.md with the reproduction rather than
 guessed at, and it is the next iteration.
 
 tests/verify: diff cases 43 -> 44; sizes.
+
+## Iteration 296: `>&-` did not close
+
+295's hang, diagnosed by looking at the descriptors rather than at the
+code: a script that ran `exec 3>&1; ...; exec 3>&-` left fd 3 open
+afterwards, where dash had freed it. `APPLY-REDIRECTIONS` read a
+duplicating redirection's target with `PARSE-DECIMAL`, and `"-"` parses
+as 0 - so `exec 3>&-` duplicated STANDARD INPUT onto fd 3 and kept it
+open for good. With a copy of the input pipe held open, a later read
+waited for an end of file that could never come. Both `>&-` and `<&-`
+now close, and the five-line reproduction from 295 matches dash.
+
+**A second change, tried and reverted.** `DUP2`'s result is dropped, so
+duplicating from a descriptor that is not open does nothing quietly and
+the command runs anyway - `echo x >&3` with 3 closed writes to standard
+output instead of failing. Reporting it broke `exec 3>file; echo x >&3`,
+which both references accept, so the check came out again rather than be
+shipped half-understood. Recorded in GOALS.md as its own item.
+
+`tests/diff/cases/fd-close-296.sh` - closing and reusing descriptors,
+reading from one after it is opened, a here-document in a function, a
+group's redirection - matches bash and dash.
+
+Three of my own theories were wrong before the measurement was right:
+that the script's own descriptor was being clobbered, that `read <&4`
+ignored its redirection, and that the here-document writer was at fault.
+Listing `/proc/self/fd` after each step and comparing with dash showed
+the leak in one run. The automatic reducer from 295 also misled me once:
+the file it left on disk was its last TRIAL, not the minimum it printed.
+
+tests/verify: diff cases 44 -> 45; sizes.

@@ -1681,22 +1681,18 @@ before anything else, because every number here is relative to it.
    `PARSE-DECIMAL` with a `NIP`, eating one of the caller's stack
    items. `tests/diff/cases/signals-291.sh` covers the area.
 
-5d. **A script can hang the shell** (found by the probe of Iteration
-   295, not yet diagnosed). Reduced automatically to five lines:
+5d. ~~**A script can hang the shell**~~ **fixed in Iteration 296**: the
+   cause was `exec 3>&-`. A closing redirection's target was read as a
+   number, and `"-"` parses as 0, so it duplicated standard input onto
+   the descriptor and left it open. `tests/diff/cases/fd-close-296.sh`
+   covers it.
 
-       f() { cat <<E6
-       E6
-       }
-       echo "R1"; exec 3>&1; echo via3 >&3; exec 3>&-
-       exec 4</tmp/f1; read l <&4; echo "R2 [$l]"; exec 4<&-
-
-   with any file at /tmp/f1. It hangs every time, and needs all three
-   parts: a function whose body holds a here-document, the `exec 3`
-   pair, and the `exec 4` line. Each part alone, and any two of them,
-   run correctly. `read l <&4` on its own is fine, so the fault is in
-   what the here-document or the `exec` pair leaves behind - the
-   here-document writer child (`HD-WRITER`) and the descriptor
-   bookkeeping in `BEGIN-REDIRECT`/`END-REDIRECT` are where to look.
+5e. **Writing to a descriptor that is not open is not reported.** `echo
+   x >&3` with 3 closed writes to standard output here; both references
+   fail the command. `DUP2`'s result is dropped in
+   `APPLY-REDIRECTIONS`. Checking it (Iteration 296) broke `exec
+   3>file; echo x >&3`, so the reason a freshly opened descriptor looks
+   closed to the next command has to be found first.
 
 6. ~~**Non-whitespace `IFS`**~~ **done in Iteration 270** - `tests/posix`
    is 46 of 46 - with ~~`set -e`, `exec`, `type`, `hash`~~ and `set -u

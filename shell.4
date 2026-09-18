@@ -2407,8 +2407,21 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
     DUP 4 = OVER 5 = OR IF
       \ "2>&1": duplicate the named source descriptor onto the target.
       DROP
-      REDIR-TGT AR-I @ CELLS + @ DUP CSTRLEN PARSE-DECIMAL
-      REDIR-FD  AR-I @ CELLS + @ DUP2 DROP
+      \ `>&-` and `<&-` close it (XCU 2.7.6). The target was read as a
+      \ number, and PARSE-DECIMAL of "-" is 0, so `exec 3>&-` made fd 3 a
+      \ copy of STDIN and left it open for good (Iteration 296).
+      REDIR-TGT AR-I @ CELLS + @ DUP C@ 45 = IF
+        DROP  REDIR-FD AR-I @ CELLS + @ CLOSE-FILE DROP
+      ELSE
+        \ Duplicating from a descriptor that is not open fails, and the
+        \ command must not run (XCU 2.7.6); the result used to be dropped,
+        \ so `echo x >&3` with 3 closed quietly wrote to stdout instead.
+        \ Reporting a failed duplicate was tried in 296 and reverted: it
+        \ broke `exec 3>file; echo x >&3`, which both references accept.
+        \ The result is dropped, as before.
+        DUP CSTRLEN PARSE-DECIMAL
+        REDIR-FD  AR-I @ CELLS + @ DUP2 DROP
+      THEN
     ELSE
       DUP 1 = IF DROP R/O ELSE 3 = IF A/O ELSE W/O THEN THEN
       REDIR-TGT AR-I @ CELLS + @ SWAP OPEN-FOR IF
