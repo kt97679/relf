@@ -2382,7 +2382,14 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
       \ not to be re-read as an operator), so it cannot distinguish
       \ "" from ${nope:-}. ARGV-NAME-QUOTED records an actual leading
       \ quote character, which is the question being asked here.
+      \ An empty word is dropped - but not a redirection's target. The
+      \ operator and its target travel as words, so dropping an empty
+      \ delimiter (`<<- $a` with a empty) shifted every redirection
+      \ after it: the here-document ended up with the wrong file
+      \ descriptor and its reader hung on a pipe nobody closed
+      \ (Iteration 344).
       ARGV ARGC @ CELLS + @ C@ 0=
+      REDIR-TARGET-WORD? @ 0= AND
       ARGV-NAME-QUOTED ARGC @ + C@ 0=
       EMPTY-AT-WORD? @ WORD-IS-ONLY-AT? AND OR AND IF
         TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )

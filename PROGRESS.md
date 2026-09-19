@@ -339,6 +339,7 @@ do not trust the absence of a line below.
 - **341** — case patterns keep their quoting, per character
 - **342** — return in a loop's condition
 - **343** — a length of -1 from the joiner; the here-document hang narrowed
+- **344** — an empty redirection target is not dropped
 
 ### Not tied to an iteration
 
@@ -18537,3 +18538,31 @@ ARGC and ARGV to expand the body, and with an empty delimiter that reset
 escapes into the command being run. The catalogue now points there.
 
 tests/verify: sizes.
+
+## Iteration 344: an empty redirection target is not dropped
+
+The catalogue pointed at PREPARE-HEREDOC clobbering the command's words.
+It was next door to that: **the delimiter is a word of the command**,
+since an operator and its target travel through the expander as words,
+and an empty word is dropped. So `cat <<- $a` with `a` empty left the
+redirection table one word short, every redirection after it shifted,
+the here-document took the wrong file descriptor, and whatever tried to
+read it hung on a pipe nobody closed.
+
+An empty word is still dropped - but not one tagged as a redirection's
+target, which the parser has marked since Iteration 335.
+
+Three sessions went on this. What finally located it was a pair of
+contrasts rather than another guess: `: <<- $a` worked while
+`cat <<- $a` hung, so the text was reaching the pipe correctly and the
+fault was in the plumbing; and `cat <<- $a > file` reported the FILE as
+missing, which only makes sense if the redirections had shifted by one.
+
+`tests/diff/cases/heredoc-empty-delim-344.sh` covers an empty and an
+unset delimiter, a set one beside them, a quoted empty delimiter, a
+here-document with another redirection after it, one read by a builtin,
+and one piped. It matches bash and dash.
+
+busybox suite: 182 of 357, up from 180; dash is at 211.
+
+tests/verify: diff cases 72 -> 73; sizes.
