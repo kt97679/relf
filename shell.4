@@ -436,22 +436,15 @@ VARIABLE B-SRC
                                      \ shell-variable names below).
   SWAP DUP CSTRLEN ROT STR0= ;
 
-VARIABLE SCN-SRC
-VARIABLE SCN-LEN
-VARIABLE SCN-DEST
-VARIABLE SCN-MAX
 
 : SAFE-COPY-NUL ( src-addr u dest-addr dest-max --- ok? )
-  \ Copies u bytes from src-addr into dest-addr and NUL-terminates
-  \ the result, but only if u+1 fits within dest-max - otherwise
-  \ leaves dest-addr untouched and returns false, rather than
-  \ truncating or overflowing a fixed-size slot. Explicit variables
-  \ rather than stack-juggling for all four arguments, matching this
-  \ shell's own established preference (see e.g. CMDSUB-* words).
-  SHADOW{ SCN-SRC SCN-LEN SCN-DEST SCN-MAX }
-  SCN-LEN @ 1+ SCN-MAX @ > IF 0 EXIT THEN
-  SCN-SRC @ SCN-DEST @ SCN-LEN @ MOVE
-  0 SCN-DEST @ SCN-LEN @ + C!
+  \ On the stack rather than through SHADOW{ }: four saves and four
+  \ restores cost more than the copy itself in a word this hot - 1.8%
+  \ of a realistic script's dispatches (Iteration 365).
+  >R OVER 1+ R> > IF 2DROP DROP 0 EXIT THEN   ( src u dest )
+  DUP >R  OVER >R                             \ the return stack holds dest then u
+  SWAP MOVE
+  R> R> + 0 SWAP C!
   -1 ;
 
 VARIABLE SCC-SRC
@@ -1001,12 +994,27 @@ VARIABLE TOK-WAS-QUOTED?
 \ as quoted/escaped content (see ARGV-QUOTED).
 \ ==================================================================
 
+\ Laid down in the dictionary rather than a BUFFER:, since a buffer's
+\ contents are not part of the saved image - the first version answered
+\ 0 for every character (Iteration 365).
+\ ... and filled by a word rather than an interpreted loop, which this
+\ Forth's ?DO cannot run outside a definition.
+CREATE NAME-CHAR-TABLE 256 ALLOT
+: NAME-TABLE-FILL ( --- )
+  256 0 ?DO
+    I 95 =
+    I 48 < 0= I 58 < AND OR
+    I 65 < 0= I 91 < AND OR
+    I 97 < 0= I 123 < AND OR
+    1 AND I NAME-CHAR-TABLE + C!
+  LOOP ;
+NAME-TABLE-FILL
+
 : NAME-CHAR? ( c --- f )  \ POSIX portable variable-name characters
-  DUP 95 = IF DROP -1 EXIT THEN                  ( underscore )
-  DUP 48 < 0= OVER 58 < AND IF DROP -1 EXIT THEN    ( 0-9 )
-  DUP 65 < 0= OVER 91 < AND IF DROP -1 EXIT THEN    ( A-Z )
-  DUP 97 < 0= OVER 123 < AND IF DROP -1 EXIT THEN   ( a-z )
-  DROP 0 ;
+  \ A table rather than four range tests: this is called once per
+  \ character of every word the shell looks at, and was 5.0% of a
+  \ realistic script's dispatches (Iteration 365).
+  255 AND NAME-CHAR-TABLE + C@ 0<> ;
 
 24 BUFFER: DIGIT-BUF
 VARIABLE DIGIT-N
@@ -3490,19 +3498,13 @@ DEFER TP-EXPR-CALL   ( --- f )
 \ can reuse it instead of reimplementing the split (Iteration 51).
 \ ==================================================================
 
-VARIABLE AW-I
 
-: FIND-EQ-OR-END ( c-addr --- offset )  \ offset of the first '=' in
-                                          \ c-addr, or its CSTRLEN if
-                                          \ none is found before the
-                                          \ terminating NUL.
-  0 AW-I !
-  BEGIN
-    DUP AW-I @ + C@ DUP 0 <> SWAP 61 <> AND
-  WHILE
-    AW-I @ 1+ AW-I !
-  REPEAT
-  DROP AW-I @ ;
+: FIND-EQ-OR-END ( c-addr --- offset )   \ the first '=', or the length
+  \ CSTRLEN and SCAN are both engine primitives, so this is a handful of
+  \ dispatches whatever the word's length; the loop it replaces cost
+  \ three a character and was 3.6% of a realistic script
+  \ (Iteration 365).
+  DUP CSTRLEN  2DUP 61 SCAN  NIP  -  NIP ;
 
 : VALID-NAME? ( c-addr u --- f )  \ is (c-addr u) a non-empty,
                                     \ POSIX-valid variable name? (first

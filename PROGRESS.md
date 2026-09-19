@@ -360,6 +360,7 @@ do not trust the absence of a line below.
 - **362** — assessed Lisp, Lua and MicroPython as substrates: no, and why
 - **363** — quotes in a ${} word: literal in a value, quoting in a pattern
 - **364** — quoting inside a run of whitespace
+- **365** — re-profiled and three hot words fixed: -6.7% dispatches, -2.9% time
 
 ### Not tied to an iteration
 
@@ -19136,3 +19137,43 @@ saying why.
 busybox suite: **203 of 357**, up from 202; dash is at 211.
 
 tests/verify: diff cases 85 -> 86; sizes.
+
+## Iteration 365: re-profiled, and three hot words
+
+The profile everything has been quoting is from Iteration 292. Seventy
+iterations later it is stale - 362 cited a linear builtin walk that 293
+had already replaced with a hash - so the first step was a new
+measurement, not an optimisation.
+
+`tools/profile.py` counts dispatches per word, the way
+`tools/coverage.py` marks instructions. On a system-shaped script it
+named three words worth fixing, and all three are now fixed: the
+variable-name character test (four range tests per character, now a
+256-byte table), the scan for `=` in a possible assignment (a Forth loop
+per character, now `CSTRLEN` and `SCAN`, both engine primitives), and
+the safe string copy (four `SHADOW{ }` saves and restores around one
+`MOVE`, now the stack).
+
+**25,124,271 dispatches to 23,431,348, down 6.7%; wall clock, paired and
+interleaved over 13 rounds, median 0.971.** The two-to-one gap between
+dispatch counts and wall clock is exactly what Iteration 293 recorded,
+and it held.
+
+Three traps, each cost a rebuild and each is now a comment in the
+source:
+
+- **`BUFFER:` memory is not saved in the image.** The table read as
+  zeros the moment it was built into an image rather than filled in the
+  session that made it.
+- **`?DO` cannot run outside a definition here**, so filling a table
+  with an interpreted loop is silently wrong.
+- **The profiler must build the image first.** Otherwise 45% of the
+  profile is `SEARCH-WORDLIST` and friends - the text interpreter
+  compiling the shell, not the shell running.
+
+Left at the top: `EXPAND-WORDS` 6.5% and `ARGV-ADD` 3.5%, the per-word
+bookkeeping, which has grown by four flags and an array since 293 as
+correctness fixes landed on it. Restructuring rather than substitution,
+and its own iteration.
+
+tests/verify: a new tool; sizes.

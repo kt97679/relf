@@ -203,3 +203,45 @@ That reframes the whole exercise:
 So: worth revisiting, but not word by word. The remaining shell-level
 work should be judged by whether it removes hundreds of dispatches from
 a path, not tens.
+
+## Iteration 365: re-profiled, seventy iterations on
+
+The profile above was taken at Iteration 292 and quoted ever since,
+including in Iteration 362's assessment of other languages - where one
+of the two "cheap experiments" it named, the linear builtin walk, had
+already been fixed in 293. A number in a document is not a measurement.
+
+`tools/profile.py` builds a counting engine from cv8.c the way
+`tools/coverage.py` builds a marking one, runs a workload, and
+attributes every dispatch to a colon definition. On a system-shaped
+script - 300 iterations of parameter trims, `case` matching, arithmetic
+and `set --` - it found **25.1 million dispatches**, and named three
+words worth fixing:
+
+    5.0%  NAME-CHAR?       four range tests per character
+    3.6%  FIND-EQ-OR-END   a Forth loop looking for '='
+    1.8%  SAFE-COPY-NUL    four saves and restores around one MOVE
+
+All three are now what they should have been: a 256-byte table in the
+dictionary, `CSTRLEN` and `SCAN` (both engine primitives), and the
+stack.
+
+**Dispatches: 25,124,271 to 23,431,348, down 6.7%.**
+**Wall clock, interleaved and paired over 13 rounds: median 0.971**, so
+a 2.9% saving - the ratio 293 warned about, dispatch counts overstating
+wall clock by about two to one, holding again.
+
+Three things the session taught, all recorded where they bit:
+
+- `BUFFER:` memory is not part of the saved image. The first version of
+  the table read as zeros in every session after the one that built it.
+- This Forth's `?DO` cannot run outside a definition, so a table filled
+  by an interpreted loop is silently wrong rather than an error.
+- The profiler must build the image before it starts counting, or half
+  the profile is the text interpreter compiling the shell.
+
+What the new profile leaves at the top is `EXPAND-WORDS` at 6.5% and
+`ARGV-ADD` at 3.5% - the per-word bookkeeping, which has grown by four
+flags and an array since 293 as correctness fixes landed on it. That is
+the next piece of work, and it is a restructuring rather than a
+substitution.
