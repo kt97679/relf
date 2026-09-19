@@ -346,6 +346,7 @@ do not trust the absence of a line below.
 - **348** — the backquote crash fixed: a re-fetch outside its test
 - **349** — assignments beside a redirection reach the shell
 - **350** — the other order of assignment and redirection; command's options
+- **351** — a pool for here-document bodies; numbered ones catalogued
 
 ### Not tied to an iteration
 
@@ -18722,5 +18723,26 @@ than added to: the assignment orders in `assign-redirect-349.sh`, the
 option orders in `wait-job-status-345.sh`. Both match bash.
 
 busybox suite: 191 of 357; dash is at 211.
+
+tests/verify: sizes.
+
+## Iteration 351: a pool for here-document bodies
+
+**One buffer held one here-document.** A command with two of them -
+`cmd <<A 3<<B` - prepared both into the same place, so both ran from
+whichever was prepared last. Each body is appended to a pool now and
+remembered by offset and length, in preparation order, which is the
+order the redirections are applied in; a command resets the pool before
+it prepares anything. Eight per command, which is more than any script
+here uses and bounded on purpose.
+
+**What that did not fix**, and is catalogued as entry 30: a
+here-document on a numbered descriptor. `cat 3<<E` followed by `<&3`
+reads the body in dash and finds fd 3 closed here, and `exec 3<<E` the
+same. The observations, without a theory this time: the parse is right -
+`tree-dump` prints the descriptor - an unnumbered here-document works in
+both simple and compound commands, and the redirection table's
+descriptor field is written from the parsed value. The next session
+should watch what reaches `DUP2`.
 
 tests/verify: sizes.

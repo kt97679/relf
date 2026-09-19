@@ -2460,6 +2460,13 @@ VARIABLE ARGC2
 8192 CONSTANT HEREDOC-MAX   \ where the body buffer starts; it grows
 HEREDOC-MAX BUFFER: HEREDOC-BUF
 VARIABLE HEREDOC-LEN
+8 CONSTANT MAX-HEREDOCS   \ per command; more are ignored
+MAX-HEREDOCS CELLS BUFFER: HD-OFFS
+MAX-HEREDOCS CELLS BUFFER: HD-LENS
+VARIABLE HD-N        \ how many this command has prepared
+VARIABLE HD-POOL#    \ where the next one goes in HEREDOC-BUF
+VARIABLE HD-USE      \ which one the next redirection takes
+VARIABLE HD-ADDR     \ where the one being written starts
 VARIABLE HD-RD
 VARIABLE HD-WR
 
@@ -2576,16 +2583,24 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
       \ they grew, a 100 KB body hung the shell for ever.
       DROP
       PIPE DROP HD-WR ! HD-RD !
+      \ each here-document in turn, in the order they were prepared
+      HD-USE @ HD-N @ < IF
+        HD-OFFS HD-USE @ CELLS + @ HEREDOC-BUF + HD-ADDR !
+        HD-LENS HD-USE @ CELLS + @ HEREDOC-LEN !
+        1 HD-USE +!
+      ELSE
+        HEREDOC-BUF HD-ADDR !
+      THEN
       HEREDOC-LEN @ 4096 > IF
         FORK DUP 0= IF
           DROP
           HD-RD @ CLOSE-FILE DROP
-          HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+          HD-ADDR @ HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
           0 SYS-EXIT
         THEN
         HD-WRITER !   \ reaped by END-REDIRECT when a builtin read it
       ELSE
-        HEREDOC-BUF HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
+        HD-ADDR @ HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
       THEN
       HD-WR @ CLOSE-FILE DROP
       HD-RD @ REDIR-FD AR-I @ CELLS + @ DUP2 DROP

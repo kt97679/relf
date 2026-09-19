@@ -1966,8 +1966,20 @@ VARIABLE HDX#
   HDX# @ 2 + ENSURE-BUFFER HDX-BUF  HDX-BUF HDX# @ + C!  1 HDX# +! ;
 
 : HEREDOC-SET ( c-addr u --- )
-  DUP 1+ ENSURE-BUFFER HEREDOC-BUF
-  DUP HEREDOC-LEN !  HEREDOC-BUF SWAP MOVE ;
+  \ One buffer held one here-document, so a command with two of them -
+  \ `cmd <<A 3<<B` - ran both from whichever was prepared last
+  \ (Iteration 351). Each is appended to the pool and remembered by
+  \ offset and length, in the order they are prepared, which is the
+  \ order the redirections are applied in.
+  HD-N @ MAX-HEREDOCS < 0= IF 2DROP EXIT THEN
+  HD-POOL# @ OVER + 1+ ENSURE-BUFFER HEREDOC-BUF
+  DUP HD-LENS HD-N @ CELLS + !
+  HD-POOL# @ HD-OFFS HD-N @ CELLS + !
+  DUP >R  HEREDOC-BUF HD-POOL# @ +  SWAP MOVE
+  R> HD-POOL# +!
+  1 HD-N +!
+  \ the last one prepared is still the one a single here-document uses
+  HD-LENS HD-N @ 1- CELLS + @ HEREDOC-LEN ! ;
 
 DEFER ENCODE-TEXT-CALL   ( c-addr u --- node )   \ defined with the source nesting
 
@@ -2037,9 +2049,14 @@ VARIABLE HDX-DEPTH
   R> EXEC-BASE !
   JOIN-ARGV HEREDOC-SET ;
 
+: HEREDOCS-RESET ( --- )   \ a fresh command: its own pool
+  0 HD-N !  0 HD-POOL# !  0 HD-USE ! ;
+
 : PREPARE-HEREDOCS ( redirs-vec --- )
+  HEREDOCS-RESET
   DUP XV# 0 ?DO DUP I XV@ PREPARE-HEREDOC LOOP DROP ;
 : PREPARE-SIMPLE-HEREDOCS ( items-vec --- )
+  HEREDOCS-RESET
   DUP XV# 0 ?DO
     DUP I XV@ I-REDIR = IF DUP I 1+ XV@ PREPARE-HEREDOC THEN
   2 +LOOP DROP ;

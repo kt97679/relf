@@ -197,3 +197,18 @@ them.
 28. **`command` takes more than one option.** `command -p -V name` and
     `command -v -p name` are both valid.
     → `tests/diff/cases/wait-job-status-345.sh`
+
+## Eighth batch from busybox's ash suite (Iteration 351)
+
+29. **A command may have more than one here-document.**
+    `cmd <<A 3<<B` feeds A to standard input and B to file descriptor 3.
+    Two things were wrong here, and only the first is fixed: one buffer
+    held one prepared body, so both redirections ran from whichever was
+    prepared last.
+
+30. **A here-document on a numbered descriptor reaches that
+    descriptor.** `cat 3<<E` then `<&3` reads the body in dash; here fd
+    3 is not open. Observed, not explained: the parse is right -
+    `tree-dump` prints `(redir 3 << "E" (body ...))` - and an unnumbered
+    here-document works, in simple commands and compounds alike. Also
+    `exec 3<<E` leaves fd 3 closed. (Not fixed.)
