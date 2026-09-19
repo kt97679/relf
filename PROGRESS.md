@@ -354,6 +354,7 @@ do not trust the absence of a line below.
 - **356** — the length of a special parameter; command's not-found report
 - **357** — assignments applied left to right as they expand; readonly reports
 - **358** — positional parameters are fields, not a space-joined string
+- **359** — an empty quoted field: measured, attempted, reverted
 
 ### Not tied to an iteration
 
@@ -18968,3 +18969,29 @@ notes as a difference between the two.
 busybox suite: **198 of 357**, up from 197; dash is at 211.
 
 tests/verify: diff cases 82 -> 83; sizes.
+
+## Iteration 359: an empty quoted field
+
+`echo a "$e"$b c` with `e` unset and `b=" b "` prints two spaces between
+`a` and `b`: the quoted part contributes no characters, but it makes the
+leading space in `$b` end a field rather than be absorbed. This shell
+prints one space.
+
+**The attempt**: carry a field-level flag beside the word-level one,
+set where the expander enters a quoted region and cleared at each field
+break, and let it authorise the split that the emptiness otherwise
+suppresses. It changed nothing at all.
+
+**What that rules out**, which is the useful part. A non-empty quoted
+part in the same position splits correctly - `"x"$b` gives two arguments
+here as in dash - so the splitting logic is right and the flag plumbing
+works. The word-level flag is also set for `""`, since `""$v` with `v`
+empty yields one empty argument. So the shell knows the WORD was quoted
+and does not know the FIELD was, and the region handler that would set
+the field flag is evidently never reached for an empty pair of quotes.
+That points at what the encoder emits for `""` inside a larger word.
+
+The attempt is reverted rather than left in place: an inert flag is
+worse than none, and the measurement is what the next session needs.
+
+No behaviour changed.

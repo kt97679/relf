@@ -279,3 +279,21 @@ them.
     and inside an assignment nothing is split at all, so both forms
     join.
     → `tests/diff/cases/ifs-fields-358.sh`
+
+40. **An empty field made by quoting is a field.** With `e` unset and
+    `b=" b "`, `echo a "$e"$b c` prints `a`, an empty argument, `b`, `c`
+    - two spaces between `a` and `b`. The quoted part contributes no
+    characters, but it means the leading IFS space in `$b` ends a field
+    rather than being absorbed as leading whitespace.
+
+    What Iteration 359 measured. The same word with a NON-empty quoted
+    part splits correctly: `"x"$b` gives two arguments here and in dash.
+    The word-level quoted flag is set either way - `""$v` with v empty
+    yields one empty argument, as it should. So the shell knows the word
+    was quoted; what it does not know is that the FIELD was. An attempt
+    to carry that as a field-level flag, set where the expander enters a
+    quoted region and cleared at each field break, changed nothing,
+    which says the expander never enters a region for an empty pair of
+    quotes. The next session should look at what the encoder emits for
+    `""` inside a larger word, since the marker appears to be dropped
+    there. (Not fixed; the attempt was reverted rather than left inert.)
