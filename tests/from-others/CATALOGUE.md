@@ -386,6 +386,16 @@ them.
     → `tests/diff/cases/expansion-word-371.sh`
 
 52. **A space inside a `${...}` word splits a surrounding word.**
-    `H${x:+ }H` is two fields; here it is one. `${x:+b c}` splits
-    correctly, so what is missing is the split when text precedes the
-    expansion in the same word. (Not fixed.)
+    `H${x:+ }H` is two fields. The split was left pending by the
+    expansion and then never performed, because the text that ended the
+    run of whitespace arrived in BULK - through the run emitter rather
+    than character by character - and only the per-character path knew
+    about a pending split.
+    → `tests/diff/cases/quoted-field-run-364.sh`
+
+53. **A redirection's saved descriptors belong to the shell.** A
+    redirected command could see fd 64 - and fd 63, this shell's script
+    file - in `/proc/self/fd`. Real shells mark those copies
+    close-on-exec; this shell has no fcntl, so the child closes
+    everything above 9 before it execs.
+    → `tests/diff/cases/saved-fd-372.sh`

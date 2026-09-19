@@ -2323,6 +2323,18 @@ VARIABLE PW-LEN
 DEFER ENC-EXPAND-CALL   ( node --- )   \ tree.4: expand a word's encoding
 : EMIT-RUN ( c-addr u --- )   \ a whole run of literal bytes
   DUP 0= IF 2DROP EXIT THEN
+  \ A split left pending by an expansion is performed here, because the
+  \ text that ends the run of whitespace may arrive in bulk rather than
+  \ character by character: `H${x:+ }H` is two fields, and was one
+  \ because the trailing `H` came through this word (Iteration 372).
+  IFS-SPLIT-PENDING? @ IF
+    0 IFS-SPLIT-PENDING? !
+    TOK-OUT @ ARGV ARGC @ CELLS + @ <> QUOTE-BEFORE-RUN? @ OR
+    QUOTE-IN-RUN? @ OR AFTER-RUN-BREAK? @ OR IF
+      IFS-SPLIT-HERE
+    THEN
+    0 AFTER-RUN-BREAK? !
+  THEN
   BEGIN TOK-OUT @ OVER + TOK-OUT-END @ > WHILE
     GROW-OUT 0= IF 2DROP EXPANSION-TOO-LARGE EXIT THEN
   REPEAT
@@ -2985,7 +2997,22 @@ VARIABLE LC-END
   REPEAT
   DROP 0 ;
 
+VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
+
+: CLOSE-SAVED-FDS ( --- )
+  \ The copies a redirection keeps so it can put descriptors back are
+  \ the shell's business, not the command's: `find /proc/self/fd` in a
+  \ redirected command listed fd 64 as well as its own (Iteration 372).
+  \ Real shells mark them close-on-exec; this shell has no fcntl, so
+  \ the child closes the range before it execs.
+  \ Everything above 9 goes: the saved copies from 64 up, and the
+  \ script's own descriptor, which this shell keeps at 63 and which a
+  \ redirected `ls /proc/self/fd` could otherwise see. Descriptors 0 to
+  \ 9 are the script's to use and are left alone.
+  UNDO-BASE @ 10 ?DO I CLOSE-FILE DROP LOOP ;
+
 : RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; exits 126 or 127 if it cannot
+  CLOSE-SAVED-FDS
   0 EXEC-ERR !
   CMD-RESOLVED @ ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
   ARGV @ DUP CSTRLEN HAS-SLASH? IF
@@ -5208,7 +5235,6 @@ VARIABLE LOCALS#
 \ change hands in either direction - otherwise a builtin's output would
 \ follow whichever descriptor 1 is when the buffer happens to fill.
 
-VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
 
 : FLUSH-OUTPUT ( --- )   PAD 0 1 WRITE DROP ;   \ WRITE flushes first
 

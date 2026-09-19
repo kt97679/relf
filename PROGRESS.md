@@ -367,6 +367,7 @@ do not trust the absence of a line below.
 - **369** — here-document delimiters, `<<-` continuations, quoted dashes in brackets
 - **370** — quoted brackets, and dashes from expansions
 - **371** — stale marks from the aside capture; escapes in a ${} word
+- **372** — a pending split through the bulk emitter; saved descriptors; PARITY with dash
 
 ### Not tied to an iteration
 
@@ -19370,3 +19371,34 @@ while `${x:+b c}` splits correctly - so what is missing is the split
 when text precedes the expansion in the same word.
 
 tests/verify: diff cases 88 -> 89; sizes.
+
+## Iteration 372: parity with dash on busybox's suite
+
+Two fixes, and the count this work has been walking towards.
+
+**A split left pending by an expansion is performed even when the text
+that ends it arrives in bulk.** `H${x:+ }H` is two fields, and was one:
+the space inside the word set the pending flag, and then the trailing
+`H` came through the run emitter, which knew nothing about it. Only the
+per-character path did. `${x:+b c}` had always worked, which is why this
+took a discriminating pair to see - text before the expansion or not.
+
+**A redirection's saved descriptors belong to the shell.** A redirected
+command could see fd 64 in `/proc/self/fd`, and fd 63 as well - this
+shell's own script file. Real shells mark those copies close-on-exec;
+with no fcntl here, the child closes everything above 9 before it execs,
+which is also what POSIX allows: 0 to 9 are the script's, the rest are
+the shell's.
+
+**busybox's ash suite: 211 of 357 - the same score as dash.** Six
+sessions ago it was 164. The remaining fourteen are not the same
+fourteen dash fails, though: this shell passes fourteen that dash does
+not - the arithmetic ternary and comma operators, big numbers, huge
+here-documents, `export` without an assignment, backslashes in a `for`
+list, and more - and fails fourteen dash passes, all of them catalogued
+with what is in the way.
+
+That is what parity on someone else's suite looks like: not the same
+shell, but no longer behind.
+
+tests/verify: diff cases 89 -> 90; sizes.
