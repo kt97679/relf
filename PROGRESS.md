@@ -361,6 +361,7 @@ do not trust the absence of a line below.
 - **363** — quotes in a ${} word: literal in a value, quoting in a pattern
 - **364** — quoting inside a run of whitespace
 - **365** — re-profiled and three hot words fixed: -6.7% dispatches, -2.9% time
+- **366** — the name validator; and bundles that can be pulled
 
 ### Not tied to an iteration
 
@@ -19177,3 +19178,29 @@ correctness fixes landed on it. Restructuring rather than substitution,
 and its own iteration.
 
 tests/verify: a new tool; sizes.
+
+## Iteration 366: the validator, and a bundle that can be pulled
+
+**The bundles could not be pulled.** `git bundle create FILE master
+cell-engine-final` writes those two refs and no HEAD, and `git pull
+FILE` with no refspec asks for HEAD - so every bundle this project has
+produced failed with `couldn't find remote ref HEAD`. Adding HEAD to
+the ref list fixes it; verified by pulling one into a fresh repository
+rather than by reading the manual.
+
+That is worth a note beyond the fix: the bundles were the deliverable of
+every iteration and no test covered them. The suites check the shell to
+the byte and said nothing about whether anyone could receive it.
+
+**And one more hot word.** `VALID-NAME?` called `NAME-CHAR?` per
+character - a colon definition around a table read since 365, so five
+dispatches where two would do. It reads the table directly now.
+
+**Dispatches 23,431,348 to 23,208,897.** Over the two iterations
+together: 25,124,271 to 23,208,897, **down 7.6%**, with wall clock
+paired and interleaved over 13 rounds at **median 0.964**. The
+two-to-one ratio between dispatch savings and wall-clock savings has now
+held three times, which makes it a rule of thumb for this engine rather
+than an observation.
+
+tests/verify: sizes.

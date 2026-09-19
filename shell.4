@@ -3506,19 +3506,14 @@ DEFER TP-EXPR-CALL   ( --- f )
   \ (Iteration 365).
   DUP CSTRLEN  2DUP 61 SCAN  NIP  -  NIP ;
 
-: VALID-NAME? ( c-addr u --- f )  \ is (c-addr u) a non-empty,
-                                    \ POSIX-valid variable name? (first
-                                    \ character not a digit, every
-                                    \ character NAME-CHAR? - which
-                                    \ itself does allow digits, correct
-                                    \ for every character *after* the
-                                    \ first).
+: VALID-NAME? ( c-addr u --- f )  \ a non-empty, POSIX-valid name?
+  \ The table NAME-CHAR? reads is indexed straight from here, so the
+  \ loop is two dispatches a character rather than five (Iteration 366).
   DUP 0= IF 2DROP 0 EXIT THEN
   OVER C@ DUP 48 < 0= SWAP 58 < AND IF 2DROP 0 EXIT THEN
-  0 DO
-    DUP I + C@ NAME-CHAR? 0= IF UNLOOP DROP 0 EXIT THEN
-  LOOP
-  DROP -1 ;
+  OVER + SWAP ?DO
+    I C@ NAME-CHAR-TABLE + C@ 0= IF UNLOOP 0 EXIT THEN
+  LOOP -1 ;
 
 : ASSIGNMENT-EQPOS ( c-addr --- eqpos | -1 )  \ c-addr: a NUL-
                                                 \ terminated string

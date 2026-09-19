@@ -245,3 +245,14 @@ What the new profile leaves at the top is `EXPAND-WORDS` at 6.5% and
 flags and an array since 293 as correctness fixes landed on it. That is
 the next piece of work, and it is a restructuring rather than a
 substitution.
+
+## Iteration 366: the validator, and the bundle
+
+`VALID-NAME?` walked its word calling `NAME-CHAR?`, which since 365 is a
+table read behind a colon definition: five dispatches a character where
+two would do. It indexes the table itself now.
+
+**Dispatches 23,431,348 to 23,208,897.** Against the profile before 365
+began: **25,124,271 to 23,208,897, down 7.6%**, and wall clock paired
+over 13 rounds **median 0.964**. The two-to-one ratio between the two
+measures holds for a third time.
