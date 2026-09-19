@@ -2274,15 +2274,26 @@ VARIABLE PS-WR
 VARIABLE CASE-TEXT#
 
 : PATTERN-MATCHES? ( pattern --- f )
-  \ A pattern with any quoting in it is compared literally. That is
-  \ wrong for a partly quoted pattern - `a\*b*` loses its live star -
-  \ and Iteration 339's attempt to build the pattern from the glob marks
-  \ failed because the marks are offsets into the expansion buffer while
-  \ EXPAND-ONE returns its text elsewhere. Catalogued as entry 16.
-  EXPAND-ONE IF
-    CASE-TEXT CASE-TEXT# @ COMPARE 0=
-  ELSE
+  \ The glob marks say which metacharacters were unquoted - the literal
+  \ fast path records them too since Iteration 341 - so the pattern can
+  \ be built with the quoted ones escaped and matched with escapes on.
+  \ A partly quoted pattern then keeps both halves: `a\*b*` matches
+  \ `a*bc` and not `axbc`. Before this a pattern with any quoting in it
+  \ was compared literally, right for `a\*` by accident and wrong for
+  \ `[\q]`.
+  0 ARGC !  0 ARGV !  ADD-WORD
+  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
+  \ Only a pattern with quoting in it needs the marks: without any, the
+  \ text is the pattern and the old path is exactly right.
+  ARGC @ 1 = IF 0 ARGV-QUOTED@ ELSE 0 THEN IF
+    0 ARGV@ DUP CSTRLEN PATTERN-FROM-MARKS
+    -1 GM-ESCAPES? !
     CASE-TEXT CASE-TEXT# @ GLOB-MATCH
+    0 GM-ESCAPES? !
+  ELSE
+    ARGC @ IF 0 ARGV-QUOTED@ ELSE 0 THEN >R JOIN-ARGV R>
+    IF CASE-TEXT CASE-TEXT# @ COMPARE 0=
+    ELSE CASE-TEXT CASE-TEXT# @ GLOB-MATCH THEN
   THEN ;
 
 : EXEC-CASE ( node --- )

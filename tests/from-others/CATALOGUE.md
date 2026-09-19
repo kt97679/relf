@@ -117,25 +117,10 @@ them.
     looks as if it ended at the first `]`.
     → `tests/diff/cases/bracket-escape-337.sh` (pathname expansion)
 
-16. **The same holds for a `case` pattern.** This shell compares a
-    pattern literally whenever any part of it was quoted, which is right
-    for `a\*` by accident and wrong for `[\q]` and for a partly quoted
-    pattern like `a\*b*`. The route to a proper fix is the glob marks -
-    the list of offsets of UNQUOTED metacharacters that pathname
-    expansion already keeps, with `BUILD-GLOB-PATTERN` escaping the
-    rest - but the marks are offsets into the expansion buffer while
-    `EXPAND-ONE` hands back its text from elsewhere, so the two have to
-    be brought into the same frame of reference first.
-
-    Iteration 340 got most of the way: the marks are recorded now even
-    when pathname expansion is off (the decision to expand against the
-    file system moved to its own test), and with a pattern built from
-    them every spelling matched dash - `[\q]`, `a\*`, `a\*b*`, plain
-    `a*c`. What defeated it was the OTHER patterns in a list: a literal
-    pattern that does not match is handed through from the tree rather
-    than the expansion buffer, and the fallback path for it crashed. The
-    next attempt should start there - with a literal pattern and no
-    match - rather than with the quoting.
+16. **The same holds for a `case` pattern**: the quoting is per
+    character, so `[\q]` matches `q`, `a\*` matches only a literal star,
+    and `a\*b*` keeps the escaped star and the live one.
+    → `tests/diff/cases/case-quoting-341.sh`
 
 17. **A backslash-newline inside a reserved word is a continuation**, so
     a line ending `i\` followed by `f true; then` is `if true; then`.

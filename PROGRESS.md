@@ -336,6 +336,7 @@ do not trust the absence of a line below.
 - **338** — a continuation inside a reserved word
 - **339** — special parameters in the operator forms; ${#+word}
 - **340** — groundwork for case patterns: the glob marks, recorded and gated
+- **341** — case patterns keep their quoting, per character
 
 ### Not tied to an iteration
 
@@ -18444,3 +18445,42 @@ the next session on it should read how `EXPAND-ONE` and the literal fast
 path hand a word back before changing anything.
 
 tests/verify: sizes.
+
+## Iteration 341: case patterns, at the third attempt
+
+Reading first, as the last entry said to. Two things came out of it that
+two sessions of patching had not.
+
+**The literal fast path copies a word into the expansion buffer without
+recording any glob marks.** That is why a plain `a*` pattern had no
+marks at all, and why building a pattern from them escaped its star.
+`COPY-LITERAL` marks the metacharacters it copies now - a literal word
+has no quoting, so every one of them is live.
+
+**And the marks only matter when something was quoted.** With no quoting
+the text IS the pattern and the old path is exactly right. Making that
+the condition removed the crash that defeated both earlier attempts: it
+was never about where the word lived, it was that an unquoted literal
+pattern has nothing to reconstruct and was being run through the
+reconstruction anyway.
+
+So a `case` pattern now keeps its quoting per character:
+
+    case 'a*bc' in a\*b*)   matches
+    case  axbc  in a\*b*)   does not
+    case   q    in [\q])    matches
+
+`tests/diff/cases/case-quoting-341.sh` covers sixteen spellings -
+escaped brackets, escaped stars and question marks, partly quoted
+patterns, fully quoted ones, alternatives, and the plain literal and
+live-metacharacter cases beside them. It matches bash and dash.
+
+busybox suite: 180 of 357; dash is at 211.
+
+**On method**: the two failed attempts changed code and then reasoned
+about the result; this one read `COPY-LITERAL` and `JOIN-ARGV` first and
+found the answer in the reading. The entry that said to do that was
+written after the second failure, which is the part of the process
+working as intended.
+
+tests/verify: diff cases 70 -> 71; sizes.

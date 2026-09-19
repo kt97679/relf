@@ -2236,6 +2236,8 @@ VARIABLE EW-I
 : LITERAL-FITS? ( --- f )   \ the word at TOK-POS fits the output as it is
   TOK-OUT @ TOK-END @ TOK-POS @ - 1+ + TOK-OUT-END @ <
   ARGC @ ROOM-FOR-ARG? AND ;
+VARIABLE CL-N   \ the literal word's length, for the mark scan
+
 : COPY-LITERAL ( --- )
   \ A word the parser saw no quote, expansion, tilde or pattern character
   \ in comes out as it went in: copied, not scanned a character at a time
@@ -2243,8 +2245,17 @@ VARIABLE EW-I
   TOK-OUT @ ARGV ARGC @ CELLS + !
   EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
   EW-QUOT EW-I @ + C@ ARGV-QUOTED ARGC @ + C!
+  \ A literal word has no quoting in it, so every metacharacter in it is
+  \ live: mark them, since a `case` pattern is matched from the marks
+  \ and this path never recorded any (Iteration 341).
   TOK-END @ TOK-POS @ - 1+                  ( n, the NUL too )
+  DUP CL-N !
   TOK-POS @ TOK-OUT @ 2 PICK MOVE
+  CL-N @ 1- 0 ?DO
+    TOK-POS @ I + C@ DUP 42 = OVER 63 = OR SWAP 91 = OR IF
+      TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
+    THEN
+  LOOP
   TOK-OUT +!  ARGC @ 1+ ARGC !
   TOK-END @ TOK-POS ! ;
 
@@ -5924,6 +5935,13 @@ VARIABLE GF-N
   LOOP ;
 
 \ the path being built
+: PATTERN-FROM-MARKS ( c-addr u --- pattern-addr pattern-len )
+  \ Escapes the metacharacters the marks did not record - the quoted
+  \ ones - and leaves the live ones alone (Iteration 341).
+  GF-LEN !  OUT-BASE - GF-OFF !
+  BUILD-GLOB-PATTERN
+  GP-BUF GP# @ ;
+
 256 BUFFER: GW-PATH
 : GW-C, ( c pos --- pos' )
   DUP 2 + ENSURE-BUFFER GW-PATH  TUCK GW-PATH + C!  1+ ;
