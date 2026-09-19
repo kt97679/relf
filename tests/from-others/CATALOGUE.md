@@ -138,3 +138,18 @@ them.
     length of `+word`; `${#}` is still the count and `${#name}` still a
     length.
     → `tests/diff/cases/special-param-339.sh`
+
+## Fifth batch from busybox's ash suite (Iterations 341-342)
+
+20. **`return` in a loop's condition leaves its own status.**
+    `while return 2; do :; done` in a function returns 2; the loop's own
+    saved status must not overwrite it.
+    → `tests/diff/cases/return-in-condition-342.sh`
+
+21. **A here-document delimiter is not expanded.** `cat <<- $a` ends at
+    a line reading `$a`, whether or not `a` is set. This shell gets it
+    right when `a` HAS a value and produces an empty body when it does
+    not, which is the odd part: the parse is identical either way -
+    `tree-dump` shows the same delimiter and body - so something reads
+    the variable at run time. (Not yet fixed. Start by asking whether
+    the body or the delimiter is what comes out empty.)

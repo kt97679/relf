@@ -337,6 +337,7 @@ do not trust the absence of a line below.
 - **339** — special parameters in the operator forms; ${#+word}
 - **340** — groundwork for case patterns: the glob marks, recorded and gated
 - **341** — case patterns keep their quoting, per character
+- **342** — return in a loop's condition
 
 ### Not tied to an iteration
 
@@ -18484,3 +18485,27 @@ written after the second failure, which is the part of the process
 working as intended.
 
 tests/verify: diff cases 70 -> 71; sizes.
+
+## Iteration 342: return in a loop's condition
+
+Catalogue entry 20. A loop keeps the status it had before it started and
+restores it when it ends - which is right for a loop that finishes, and
+wrong when a `return` in the CONDITION ended it. `while return 2; do :;
+done` in a function reported 0. The saved status is dropped now when a
+return is pending.
+
+`tests/diff/cases/return-in-condition-342.sh` covers a return from the
+condition of `while` and `until`, from the body of `while` and `for`,
+after a loop, and the ordinary statuses beside them. It matches bash and
+dash.
+
+**And a find that is not yet a fix**, catalogued as entry 21: a
+here-document whose delimiter contains `$a` works when `a` has a value
+and yields an empty body when it does not. The parse is identical either
+way - `tree-dump` prints the same delimiter and the same body - so
+something reads the variable at run time. Three probes narrowed it that
+far and the fourth would have been a guess, so it is written down
+instead: the next session should ask whether it is the body or the
+delimiter that comes out empty.
+
+tests/verify: diff cases 71 -> 72; sizes.

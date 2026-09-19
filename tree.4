@@ -2228,7 +2228,10 @@ VARIABLE PS-WR
     R> DROP LAST-STATUS @ >R
     LOOP-AFTER-BODY IF 2DROP R> LAST-STATUS ! LOOP-DEPTH @ 1- LOOP-DEPTH ! EXIT THEN
   REPEAT
-  2DROP R> LAST-STATUS !
+  \ A `return` in the CONDITION leaves its own status, which the loop's
+  \ saved one used to overwrite: `while return 2; do :; done` reported 0
+  \ (Iteration 342).
+  2DROP RETURN-PENDING? @ IF R> DROP ELSE R> LAST-STATUS ! THEN
   LOOP-DEPTH @ 1- LOOP-DEPTH ! ;
 
 \ for: the words are expanded once, and copied out of ARGV, which the
