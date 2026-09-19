@@ -344,6 +344,7 @@ do not trust the absence of a line below.
 - **346** — getopts reports its errors; a backquote crash catalogued
 - **347** — the backquote crash re-measured: the text, not the output
 - **348** — the backquote crash fixed: a re-fetch outside its test
+- **349** — assignments beside a redirection reach the shell
 
 ### Not tied to an iteration
 
@@ -18674,3 +18675,29 @@ substitution one.
 busybox suite: **190 of 357**, up from 186; dash is at 211.
 
 tests/verify: diff cases 74 -> 75; sizes.
+
+## Iteration 349: assignments beside a redirection
+
+A command made of assignments and redirections only sets the variables
+in the shell itself. This shell asked "is this assignments only?" before
+the redirection words were taken out of the argument list, so `> f
+var=ok` saw three words, decided it was a command, and ran `var=ok`.
+The question is asked again after the redirections are parsed out now,
+and the assignments are applied there.
+
+`tests/diff/cases/assign-redirect-349.sh` covers a redirection before
+one assignment and before several, the files being created, and a
+temporary assignment beside a real command, and matches bash and dash.
+
+**Left, and catalogued as entry 27**: `var=ok > f`, with the assignment
+FIRST. That path applies the assignment temporarily and restores it
+afterwards; the flag that says "these were the shell's own" is set too
+late for the restore to see it. The prefix count has to be taken before
+the redirection words are removed - a two-line change that ran out of
+room this session, with the reason written down rather than guessed at
+next time.
+
+**Also catalogued (entry 28)**: `command` reads one option, so
+`command -p -V name` treats `-V` as the name.
+
+tests/verify: diff cases 75 -> 76; sizes.

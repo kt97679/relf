@@ -22,7 +22,7 @@ mrsh:passed 21
 parse:encoded 4
 parse:failed 0
 parse:passed 26
-parse:verdicts-agree 181
+parse:verdicts-agree 182
 parse:verdicts-differ 0
 posix:cases 48
 posix:failed 0
@@ -37,7 +37,7 @@ shell:dead-words 0
 shell:files 74
 size:engine-code-i386 18466
 size:engine-code-x86_64 23410
-size:i386 113820
-size:image-i386 87644
-size:image-x86_64 94176
-size:x86_64 133304
+size:i386 113924
+size:image-i386 87748
+size:image-x86_64 94280
+size:x86_64 133408

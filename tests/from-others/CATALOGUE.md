@@ -181,3 +181,20 @@ them.
     re-fetched a character outside the test that decides whether to skip
     one, so each such backslash left a value on the stack.
     → `tests/diff/cases/backquote-escape-348.sh`
+
+## Seventh batch from busybox's ash suite (Iteration 349)
+
+27. **A command of assignments and redirections only sets the variables
+    in the shell itself**, in either order: `> f var=ok` and
+    `var=ok > f` both leave `var` set afterwards.
+    `> f var=ok` works here since Iteration 349; **`var=ok > f` does
+    not** - with the assignment first the caller applies it temporarily
+    and restores it afterwards, and the flag that says "these were the
+    shell's own" is set too late for that path to see. The count of
+    prefixes has to be taken before the redirection words are removed,
+    which is the edit that ran out of room.
+    → `tests/diff/cases/assign-redirect-349.sh`
+
+28. **`command` takes more than one option.** `command -p -V name` and
+    `command -v -p name` are both valid; this shell reads one option and
+    treats the second as the command name. (Not yet implemented.)

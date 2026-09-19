@@ -5340,12 +5340,29 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 ' DISPATCH IS DISPATCH-CALL
 ' RUN-EXTERNAL IS RUN-EXTERNAL-CALL
 
+VARIABLE ASSIGNED-HERE?   \ this command's assignments were permanent
+
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
   \ A simple command from the tree has no pipes (Iteration 265), and the
   \ tree says whether it has redirections at all (Iteration 266).
   NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
   XTRACE-ARGV
   ARGC @ 0 > IF
+    \ Assignments with a redirection beside them: the test in
+    \ EXPAND-AND-RUN runs before the redirection words are taken out of
+    \ ARGV, so `> f var=ok` and `var=ok > f` both missed it - the first
+    \ ran the assignment as a command, the second lost it
+    \ (Iteration 349).
+    PREFIX-COUNT ARGC @ = IF
+      REDIR-N @ 0 > IF
+        BEGIN-REDIRECT
+        REDIR-FAILED? @ IF 1 LAST-STATUS ! END-REDIRECT EXIT THEN
+        END-REDIRECT
+      THEN
+      TRY-ASSIGNMENT-CALL DROP
+      -1 ASSIGNED-HERE? !                    \ do not restore them afterwards
+      EXIT
+    THEN
     DISPATCH 0= IF RUN-EXTERNAL THEN
   ELSE
     \ A command that is only redirections still performs them - `> f`
@@ -5356,6 +5373,11 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
       REDIR-FAILED? @ IF 1 ELSE 0 THEN LAST-STATUS !
       END-REDIRECT
     THEN
+    \ `var=ok > f` leaves no words at all once the redirection is taken
+    \ out, and its assignment is the shell's own: the caller applied it
+    \ already, so it just must not be restored (Iteration 349).
+    PREFIX-COUNT 0 > IF -1 ASSIGNED-HERE? ! THEN
+
   THEN ;
 
 \ ==================================================================

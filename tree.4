@@ -2064,7 +2064,12 @@ VARIABLE HDX-DEPTH
   THEN
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
   PREFIX-COUNT ?DUP IF
-    TEMP-ASSIGN >R RUN-EXPANDED R> TEMP-RESTORE
+    0 ASSIGNED-HERE? !
+    TEMP-ASSIGN >R RUN-EXPANDED
+    \ ... unless the command turned out to be assignments and
+    \ redirections only, in which case they are the shell's own
+    \ (Iteration 349).
+    ASSIGNED-HERE? @ IF R> DROP ELSE R> TEMP-RESTORE THEN
   ELSE
     RUN-EXPANDED
   THEN
