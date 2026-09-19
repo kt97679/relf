@@ -117,10 +117,16 @@ them.
     looks as if it ended at the first `]`.
     → `tests/diff/cases/bracket-escape-337.sh` (pathname expansion)
 
-16. **The same holds for a `case` pattern**, where this shell matches
-    with escapes turned off, so a backslash inside a bracket never
-    reaches the matcher. (Not yet implemented here: `case q in [\q])`
-    does not match.)
+16. **The same holds for a `case` pattern.** This shell compares a
+    pattern literally whenever any part of it was quoted, which is right
+    for `a\*` by accident and wrong for `[\q]` and for a partly quoted
+    pattern like `a\*b*`. The route to a proper fix is the glob marks -
+    the list of offsets of UNQUOTED metacharacters that pathname
+    expansion already keeps, with `BUILD-GLOB-PATTERN` escaping the
+    rest - but the marks are offsets into the expansion buffer while
+    `EXPAND-ONE` hands back its text from elsewhere, so the two have to
+    be brought into the same frame of reference first. (Iteration 339
+    tried it the other way round and reverted.)
 
 17. **A backslash-newline inside a reserved word is a continuation**, so
     a line ending `i\` followed by `f true; then` is `if true; then`.
@@ -129,6 +135,12 @@ them.
     the continuation was still in it at the comparison.
     → `tests/diff/cases/continuation-338.sh`
 
-18. **A newline in an alternate value survives**: unquoted, `H${x+` +
-    newline + `}H` splits into two fields; quoted, it keeps the newline.
-    (Not yet implemented here: the newline is dropped.)
+18. ~~A newline in an alternate value~~ - not a newline problem at all.
+    The test uses `${$+...}`, and the special parameters had no value in
+    the operator forms, so the alternate was never taken.
+    → `tests/diff/cases/special-param-339.sh`
+
+19. **`${#+word}` names the parameter `#` with an operator**, not the
+    length of `+word`; `${#}` is still the count and `${#name}` still a
+    length.
+    → `tests/diff/cases/special-param-339.sh`

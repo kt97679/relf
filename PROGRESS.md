@@ -334,6 +334,7 @@ do not trust the absence of a line below.
 - **336** — exit inside a trap; and zombies reaped while builtins run
 - **337** — escapes inside bracket expressions; three more behaviours catalogued
 - **338** — a continuation inside a reserved word
+- **339** — special parameters in the operator forms; ${#+word}
 
 ### Not tied to an iteration
 
@@ -18384,3 +18385,32 @@ is further along - worth its own session rather than a guess at the end
 of this one.
 
 tests/verify: diff cases 68 -> 69; sizes.
+
+## Iteration 339: special parameters with an operator
+
+Catalogue entry 18 was mis-stated, which the measurement corrected: the
+test that looked like a newline being dropped was `${$+...}`, and the
+newline was never the problem. **The special parameters had no value in
+the operator forms.** `${$+set}`, `${?+set}` and `${#+set}` all read as
+unset, because those forms look the name up as an ordinary variable and
+`$`, `?`, `#` and `!` are not variables. They have values now, formatted
+where the lookup fails.
+
+**And `${#+word}` was parsed as a length.** `${#` is the count when `}`
+follows and a length when a name follows, but an operator after it means
+the parameter is `#`.
+
+`tests/diff/cases/special-param-339.sh` covers every special parameter
+with `+`, `-` and `:+`, the count and the length beside them, and
+matches bash and dash.
+
+**An attempt on entry 16 failed and was reverted.** A `case` pattern
+with any quoting in it is compared literally, which is right for `a\*`
+by accident and wrong for `[\q]`. The proper route is the glob marks -
+the offsets of unquoted metacharacters that pathname expansion already
+keeps - but they are offsets into the expansion buffer while
+`EXPAND-ONE` returns its text from elsewhere, so matching them up is the
+first piece of work, not the last. The catalogue now says so, and the
+tree is back to the working behaviour.
+
+tests/verify: diff cases 69 -> 70; sizes.

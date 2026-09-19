@@ -469,7 +469,10 @@ DEFER SCAN-DOLLAR
 : SCAN-BRACE ( --- )      \ at ${: to past the matching }
   2 SRC-SKIP
   ENC-VAR ENC-CODE,
-  0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND IF
+  \ `${#}` is the count and `${#name}` a length, but `${#+word}` names
+  \ the parameter `#` with an operator after it (Iteration 339).
+  0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND
+  1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR 0= AND IF
     1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME  0 ENC-C,
     0 SRC-C 125 = IF 1 SRC-SKIP THEN EXIT
   THEN
@@ -1611,8 +1614,27 @@ VARIABLE XP-VAL
   XE-REGION-CALL
   R> XE-IN-WORD? ! ;
 
+32 BUFFER: SP-BUF
+
+: SP-NUMBER ( n --- c-addr )   \ into SP-BUF, NUL-terminated
+  DUP 0< >R ABS 0 <# #S R> IF 45 HOLD THEN #>
+  DUP >R SP-BUF SWAP MOVE  0 SP-BUF R> + C!
+  SP-BUF ;
+
+: SPECIAL-PARAM-VALUE ( c-addr --- c-addr' | 0 )
+  \ `$`, `?`, `#`, `!` and `-` have values that LOOKUP-VAR knows nothing
+  \ about, so `${$+set}` and `${?+set}` read as unset (Iteration 339).
+  DUP CSTRLEN 1 <> IF DROP 0 EXIT THEN
+  C@
+  DUP 36 = IF DROP SHELL-PID @ SP-NUMBER EXIT THEN
+  DUP 63 = IF DROP LAST-STATUS @ SP-NUMBER EXIT THEN
+  DUP 35 = IF DROP POS-PARAM-COUNT @ SP-NUMBER EXIT THEN
+  DUP 33 = IF DROP BG-PID @ ?DUP IF SP-NUMBER ELSE 0 THEN EXIT THEN
+  DROP 0 ;
+
 : XE-PARAM-OP ( --- )   \ the operator forms: defaults, assign, error, trims
   XP-NAME @ LOOKUP-VAR XP-VAL !               \ the name is in the encoding
+  XP-VAL @ 0= IF XP-NAME @ SPECIAL-PARAM-VALUE XP-VAL ! THEN
   XP-OP @ EV-TRIM-PRE < IF                   \ - = ? + , with or without :
     XP-OP @ EV-COLON AND IF
       \ unset or empty counts. ?DUP left the 0 here when it was unset,
@@ -2252,6 +2274,11 @@ VARIABLE PS-WR
 VARIABLE CASE-TEXT#
 
 : PATTERN-MATCHES? ( pattern --- f )
+  \ A pattern with any quoting in it is compared literally. That is
+  \ wrong for a partly quoted pattern - `a\*b*` loses its live star -
+  \ and Iteration 339's attempt to build the pattern from the glob marks
+  \ failed because the marks are offsets into the expansion buffer while
+  \ EXPAND-ONE returns its text elsewhere. Catalogued as entry 16.
   EXPAND-ONE IF
     CASE-TEXT CASE-TEXT# @ COMPARE 0=
   ELSE
