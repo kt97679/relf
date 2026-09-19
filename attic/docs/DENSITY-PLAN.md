@@ -1,4 +1,4 @@
-# DENSITY-PLAN.md — making the image smaller without paying for it
+# attic/docs/DENSITY-PLAN.md — making the image smaller without paying for it
 
 > **Historical.** Written before the encoding work began. Most of it
 > was done by CV8 and byte-granular headers; see `CV8.md` and

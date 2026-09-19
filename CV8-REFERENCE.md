@@ -1,7 +1,7 @@
 # CV8-REFERENCE.md — the CV8 format and engine, in detail
 
 This is the reference: what a CV8 image contains, byte by byte, and what
-the engine does with it. `CV8.md` argues *why* this design; `VM-SURVEY.md`
+the engine does with it. `CV8.md` argues *why* this design; `attic/docs/VM-SURVEY.md`
 covers the specialised opcodes and where they were borrowed from;
 `XARCH.md` covers other architectures. This file assumes you want to
 implement or debug it.
@@ -69,7 +69,7 @@ operation with one 16-bit token, and got the image to 0.41x. Tokens
 0–255 were primitives; 256 and above were **word numbers**, indexes into
 a table of addresses built at load time. It was measured 1.25x slower
 than the cell engine, which is what prompted the brief in
-`INNER-INTERPRETER.md`.
+`attic/docs/INNER-INTERPRETER.md`.
 
 **CPT16** (Iteration 189) came from re-examining that slowdown. Most of
 it turned out not to be the table at all — it was VM registers living in
@@ -83,7 +83,7 @@ units.
 8. Once calls no longer need to be a whole unit wide, most operations
 fit in one byte, and the image drops another 13–16% at no measured cost
 on x86-64 — and a small gain on i386. The specialised opcodes
-(`VM-SURVEY.md`, §7 here) were added in Iteration 190, and are what took
+(`attic/docs/VM-SURVEY.md`, §7 here) were added in Iteration 190, and are what took
 it from "denser" to "several times faster".
 
 ### The ideas it borrows

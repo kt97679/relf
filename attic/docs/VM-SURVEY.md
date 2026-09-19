@@ -1,4 +1,4 @@
-# VM-SURVEY.md — what other VMs do, and what this shell borrowed
+# attic/docs/VM-SURVEY.md — what other VMs do, and what this shell borrowed
 
 > **Iteration 191, `XARCH.md`:** the specialisations below were checked
 > on AArch64, ARMv7 and RISC-V 64 under qemu - 0.13-0.24 of today's
@@ -67,7 +67,7 @@ by one extra engine page. The opcodes cost about 1.7 KB of `.text` on
 - The locals fallback path is tested separately (§1.1).
 
 **`dash` is still about 40x faster on loops.** That gap is this shell
-re-parsing every line (`PARSE-EXPAND-PLAN.md`), not the VM. No VM idea
+re-parsing every line (`attic/docs/PARSE-EXPAND-PLAN.md`), not the VM. No VM idea
 closes it.
 
 ---

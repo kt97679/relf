@@ -1,6 +1,6 @@
-# PARSE-EXPAND-PLAN.md — separating parsing from expansion
+# attic/docs/PARSE-EXPAND-PLAN.md — separating parsing from expansion
 
-> **Stage 2 is superseded by `COMMAND-TREE-PLAN.md`** (Iteration 261):
+> **Stage 2 is superseded by `attic/docs/COMMAND-TREE-PLAN.md`** (Iteration 261):
 > rather than caching tokenized body lines, every complete command is
 > parsed once into a tree and the tree is executed. Stages 1, 3 and 4
 > below are done and stay as the record.

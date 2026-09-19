@@ -1,14 +1,19 @@
-# How far behind dash is this shell? (measured, Iteration 304)
+# How far behind dash is this shell? (measured 304, refreshed 368)
 
-Every figure here was measured on this container with the build at
-Iteration 303, against dash 0.5.12 and bash 5.x.
+Every figure here was measured on this container against dash 0.5.12 and
+bash 5.x. The feature section is current as of Iteration 368; the timing
+section is from Iteration 303 and is now pessimistic - Iterations
+365-367 took 14% off the dispatch count and about 11% off the wall
+clock, and `PERFORMANCE.md` carries the current profile and method.
 
 ## Features: close, with four real gaps
 
-Of the 31 POSIX special and regular builtins, this shell has all but
-two: **`fg` and `bg`**. `jobs` exists (Iteration 299) but keeps a job
-table rather than doing job control: there are no process groups and no
-terminal handover, which is what `fg`/`bg` need.
+Of the 31 POSIX special and regular builtins, this shell now has all
+31. `fg` and `bg` landed with real job control in Iterations 320-324:
+process groups per job, the terminal handed over and taken back, `^Z`
+stopping a foreground job, and `kill %n`. That paragraph used to say
+they were the two missing builtins, which is how a document goes stale
+while the tests stay green.
 
 The other gaps, in the order they would bite a script:
 
@@ -126,3 +131,26 @@ self-contained 122 KB shell plus engine matters, or for anyone who wants
 to read and change a POSIX shell rather than use one, that is a real
 offer. As a faster dash it is not, and saying so is more useful than
 optimism.
+
+## What changed after Iteration 304 (written at 368)
+
+**Features.** Job control (`fg`, `bg`, `^Z`, `kill %n`), `getopts` with
+operands and silent mode, `command` with several options, `ulimit` over
+every resource, `cd` with logical paths and `CDPATH`, `test` with a real
+grammar, character classes in patterns, and about forty smaller
+behaviours found by reading other shells' test suites -
+`tests/from-others/CATALOGUE.md` lists them with what each one taught.
+
+**Correctness.** 86 differential cases where there were 49, and busybox's
+ash suite at 203 of 357 against dash's own 211.
+
+**Speed.** A pure in-process script - 300 iterations of trims, `case`
+matching and arithmetic, no external commands - runs in 65 ms here
+against 2.7 ms in dash and 7.2 ms in bash. That ratio is the honest one
+for interpretation alone, and matches PERFORMANCE.md's 18-28x range; the
+6x figure above is for a script that also spawns processes, where the
+fork and exec dominate and this shell is at parity.
+
+**Size.** Engine 44,216 bytes plus a 96,728-byte shell image against
+dash's 129,784. The shell image has grown with the features above; the
+engine has not changed since Iteration 243.

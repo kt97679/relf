@@ -188,7 +188,7 @@ In order of payoff for effort:
    unnecessary), and run a command substitution's tree in the child
    without parsing it again. It replaces most of `shell.4`'s expansion
    code rather than adding to it; it deserves its own plan document,
-   as COMMAND-TREE-PLAN.md did.
+   as attic/docs/COMMAND-TREE-PLAN.md did.
 6. **Start processes with `vfork` or `posix_spawn`.** About 75 µs per
    external command. A VM cannot safely run Forth in a vfork child, so
    this is an engine primitive that forks, applies the redirections

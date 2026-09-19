@@ -118,7 +118,28 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Where things stand (Iteration 253)
+## Where things stand (Iteration 368)
+
+The shell is the work now; the engine has been stable since Iteration
+243. Current counts, all green: differential 86 cases, matrix 420,
+POSIX 46, mrsh 21, interactive 22 with one listed divergence, every
+file in `tests/shell`, no dead words, both cell widths. busybox's ash
+suite, run from outside the tree by `tools/busybox-suite.sh`, is at 203
+of 357 against dash's 211 - near parity on a suite written for another
+shell.
+
+The standing worklist is no longer in this file. It is
+`tests/from-others/CATALOGUE.md`: behaviours learned from other
+projects' test suites, written in this project's own words, each either
+implemented and covered by a case here or marked open with what is in
+the way. `DOCS.md` says what every document is for.
+
+Performance: three iterations of profiling (365-367) took a
+system-shaped script from 25.1M dispatches to 21.6M, 14% fewer, and
+about 11% off the wall clock. `PERFORMANCE.md` has the method and the
+current profile; `tools/profile.py` reproduces it.
+
+## Where things stood (Iteration 253)
 
 The state a reader needs before anything else in this file, because
 several sections below describe a system with more parts than it now
@@ -205,14 +226,14 @@ writes, forks, execs or exits.
   read that entry (~700). A citation elsewhere in this repository
   always gives an iteration number, which is what to search for.
 
-- `INNER-INTERPRETER.md` is a design brief, not a record: it collects
+- `attic/docs/INNER-INTERPRETER.md` is a design brief, not a record: it collects
   the measured constraints on `NEXT` and the alternatives to it, for a
   discussion that has not happened yet. It will be stale the moment
   that discussion reaches a conclusion.
 
 - **These two documents are the ones that can go stale.**
   `PROGRESS.md` only makes claims about the past and cannot rot;
-  `GOALS.md` and `PARSE-EXPAND-PLAN.md` make claims about the present
+  `GOALS.md` and `attic/docs/PARSE-EXPAND-PLAN.md` make claims about the present
   tense, and they rot silently and in the worst direction — describing
   finished work as unfinished, in the file a new session is told to
   trust first. Iteration 122 found five such claims, some eighty
@@ -443,7 +464,7 @@ how to test; this is what exists:
    dash. `KNOWN-FAILING` lists what this shell gets wrong; a failure not
    on it is a REGRESSION and fails `tests/verify` whatever the totals
    say, and a listed case that passes is reported as fixed. This is the
-   net for `COMMAND-TREE-PLAN.md`: the old suites run 95% of the parser's
+   net for `attic/docs/COMMAND-TREE-PLAN.md`: the old suites run 95% of the parser's
    instructions, but almost none of these combinations.
 
 `tools/coverage.py` measures layers 2-6 against `shell.4`: which words
@@ -549,7 +570,7 @@ stand".
   `run_tests.sh` - it takes minutes and is noisy. Iteration 116's
   measurement: loop 944ms, spawn ~155ms, startup ~235ms, against
   dash's 4/72/98. The loop figure is the one Stage 2 of
-  `PARSE-EXPAND-PLAN.md` exists to move.
+  `attic/docs/PARSE-EXPAND-PLAN.md` exists to move.
 
 - **Every engine ratio in this repository comes from a single build,
   and that is worth about ±5%.** The article repository measured the
@@ -650,11 +671,11 @@ will change as phases E/F land and as loop bodies move to an arena, so
 tuning now would be tuning something about to be rewritten. The levers
 that will still be there afterwards, in rough order of value:
 
-**Now measured, and planned: see `DENSITY-PLAN.md`** (Iterations 130,
-131) **and `VM-RESEARCH.md`** (Iteration 139), which reviews the
+**Now measured, and planned: see `attic/docs/DENSITY-PLAN.md`** (Iterations 130,
+131) **and `attic/docs/VM-RESEARCH.md`** (Iteration 139), which reviews the
 published work and finds three larger options the plan did not have -
 including token threading - designed in detail in
-`TOKEN-THREADING.md`, the only idea found that attacks the
+`attic/docs/TOKEN-THREADING.md`, the only idea found that attacks the
 x86-64 size problem, and a measured 9% figure for the
 variable-length encoding this file had rejected on reasoning alone. Two options, both of which should also make the image *faster*:
 constant-pushing primitives over the range -1..63 (4,560 bytes on
@@ -677,12 +698,12 @@ a decision rather than a plan.
    tokenizer's hot path.
 3. Nothing else looks large: the compiled code is ~88K and most of it
    is real. **The way to shrink it is the code encoding, not the
-   content** - see `SOD16.md`. The 0.34x this line used to quote was a
+   content** - see `attic/docs/SOD16.md`. The 0.34x this line used to quote was a
    DECODE microbenchmark; the whole-image figure, measured on a booting
    token image in Iteration 185, is **0.40x**, and engine + image goes
    from 229,160 to **106,240** - smaller than `dash`. The same
    measurement cost 1.25x on interpretation speed; see
-   `INNER-INTERPRETER.md`.
+   `attic/docs/INNER-INTERPRETER.md`.
 4. **Headerless words came up again in Iteration 158** and were
    rejected again, this time with a number: the 314 words that
    profitably become `M:` macros carry 4,456 bytes of headers, 26.9%
@@ -690,7 +711,7 @@ a decision rather than a plan.
 5. **Macro inlining (`M:`) is worth ~5-6%, and the naive form is a
    size REGRESSION.** Inlining every eligible word made the image
    bigger, 17,481 -> 18,763 cells; it only pays when selected by call
-   count. `VM-RESEARCH.md` explains why the ceiling is low - this
+   count. `attic/docs/VM-RESEARCH.md` explains why the ceiling is low - this
    source is already factored by hand, so there is little left for
    either factoring or inlining to find.
 
@@ -1116,7 +1137,7 @@ of this file:
   with `do` on the next line prints "while: expected 'do'" without end,
   in this and earlier builds. The loop reads its condition from the raw
   line, which here starts with `n=0;`. The same-line fault class
-  `PARSE-EXPAND-PLAN.md` Stage 2 addresses; recorded in Iteration 256.
+  `attic/docs/PARSE-EXPAND-PLAN.md` Stage 2 addresses; recorded in Iteration 256.
 - ~~**A multi-line `{ ... }` after `&&` returns 127**~~ — fixed in
   Iteration 152. The cause was one duplicated block, `shell.4` 4248
   against 6936, where only the second copy carried the `ARGC @ 1 =`
@@ -1143,7 +1164,7 @@ of this file:
   The last four are one fault with four faces: the line is the unit of
   both input and body storage, so each construct needs its own
   same-line adapter and the ones that never got one are broken. See
-  Iterations 143 and 144, and `PARSE-EXPAND-PLAN.md` Stage 2, which
+  Iterations 143 and 144, and `attic/docs/PARSE-EXPAND-PLAN.md` Stage 2, which
   fixes the class rather than the instances.
 - **`trap`, `exec`, `hash`, `type`**, none of which anything has
   needed yet. `ulimit` landed in Iteration 125 — POSIX specifies only
@@ -1344,6 +1365,21 @@ against a second reference (`dash`) before being recorded, because
   applies tilde-after-`=` to assignment *words*; an argument to `echo`
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
+
+## What to do next, in order (as of Iteration 368)
+
+1. **The open catalogue entries**, in
+   `tests/from-others/CATALOGUE.md`: each names a behaviour, what this
+   shell does instead, and what was measured about it.
+2. **The per-word bookkeeping**, `EXPAND-WORDS` at 6.7% and `ARGV-ADD`
+   at 3.7% of a realistic script. Five parallel byte arrays that could
+   be one record, seven flag clears that could be one fill; a
+   restructuring rather than a substitution, with `tools/profile.py` in
+   the loop.
+3. **The remaining busybox gap**, eight tests behind dash. Several are
+   deliberate divergences already recorded; the rest are listed by
+   `tools/busybox-suite.sh`.
+4. The older queue below, which is still accurate about the engine.
 
 ## What to do next, in order (as of Iteration 248)
 
@@ -1606,7 +1642,7 @@ before anything else, because every number here is relative to it.
   deferral (Iteration 131).
 - **Register VMs: closed.** Measured elsewhere at 26% larger bytecode
   for 46% fewer executed instructions - the wrong direction for goal 3
-  (Shi et al., TACO 2008; `VM-RESEARCH.md`).
+  (Shi et al., TACO 2008; `attic/docs/VM-RESEARCH.md`).
 - **Replicating the dispatch site: measured, gains nothing here.** GCC
   had merged 68 `NEXT()` sites into 5; forcing 66 apart changed the
   benchmark by nothing on this hardware. That also devalues a
@@ -1630,7 +1666,7 @@ before anything else, because every number here is relative to it.
    architectural risk, and they would take `tests/posix` from 25/21 to
    about 29/17. Do these first for a reason beyond their size: **the corpus
    has only ever gone down, so it is unproven as a driver of work.**
-2. ~~**`COMMAND-TREE-PLAN.md`**~~ **Done, Iterations 261-266.** Parse
+2. ~~**`attic/docs/COMMAND-TREE-PLAN.md`**~~ **Done, Iterations 261-266.** Parse
    each complete command once into a tree and execute the tree: `tree.4`
    parses and executes, the line-based shell is deleted (343
    definitions), `tests/matrix` passes 420 of 420. Stage D (266) decided
@@ -1759,7 +1795,7 @@ before anything else, because every number here is relative to it.
    parsed once and kept with the word (dash's `CTLESC`/`CTLVAR`/
    `CTLBACKQ`). The largest item: expansion is 34-43% of the
    dispatches, pattern matching another 51% of `str`'s.
-   **`EXPANSION-PLAN.md` written (Iteration 273), Stage 0 done** - trims
+   **`attic/docs/EXPANSION-PLAN.md` written (Iteration 273), Stage 0 done** - trims
    by substring search, `str` 0.79x - **and Stage A in 274**: the lexer
    writes each word's encoded form beside its text, with each command
    substitution's text kept separately, and `tree-dump -e` prints it;
@@ -1784,9 +1820,9 @@ before anything else, because every number here is relative to it.
    retired.** SOD16 won the Iteration 156-167 comparison, CV8 replaced
    it at 189, and Iteration 218 retired it along with every other
    encoding - the ladder had answered its question. `sod16.4`,
-   `cpt16.4` and `sod16.c` are in `attic/`; `SOD16.md`,
-   `TOKEN-THREADING.md`, `ENCODING-COMPARISON.md` and
-   `INNER-INTERPRETER.md` are the historical record and should be read
+   `cpt16.4` and `sod16.c` are in `attic/`; `attic/docs/SOD16.md`,
+   `attic/docs/TOKEN-THREADING.md`, `attic/docs/ENCODING-COMPARISON.md` and
+   `attic/docs/INNER-INTERPRETER.md` are the historical record and should be read
    as such. `CV8.md` describes what actually runs.
 
    Two conclusions from that comparison were corrected by measuring
@@ -1801,7 +1837,7 @@ before anything else, because every number here is relative to it.
    157).** Every packed encoding costs 21-68% in dispatch to buy
    density a plain 16-bit token gets more of anyway. That includes
    SOD32's own 5-bit x 6 format, the best of them, at 1.21x on x86-64
-   and 1.68x on i386. `DENSITY-PLAN.md` option B should not be
+   and 1.68x on i386. `attic/docs/DENSITY-PLAN.md` option B should not be
    re-proposed without new evidence.
 12. ~~**A `FILL` primitive.**~~ **Done in Iteration 260**, with `MOVE`,
    `COMPARE`, `SCAN` and `CSTRLEN`: libc's memory and string functions
@@ -1854,12 +1890,12 @@ at a time (`tools/op-bench.py`): in-process work is 25-170 times dash's
 ranked list of what to take is merged into the shell queue above, items
 2-8.
 
-## Next architectural work: `COMMAND-TREE-PLAN.md`
+## Next architectural work: `attic/docs/COMMAND-TREE-PLAN.md`
 
-`PARSE-EXPAND-PLAN.md` below is the history this grew out of; its Stage 2
-is superseded by `COMMAND-TREE-PLAN.md` (Iteration 261).
+`attic/docs/PARSE-EXPAND-PLAN.md` below is the history this grew out of; its Stage 2
+is superseded by `attic/docs/COMMAND-TREE-PLAN.md` (Iteration 261).
 
-### The earlier plan: `PARSE-EXPAND-PLAN.md`
+### The earlier plan: `attic/docs/PARSE-EXPAND-PLAN.md`
 
 **Stage 1 is done** (Iterations 108, 112, 113, 114). Expansion writes
 into its own buffer, so the in-place-growth bug class no longer

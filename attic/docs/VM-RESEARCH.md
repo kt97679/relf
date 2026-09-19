@@ -1,6 +1,6 @@
-# VM-RESEARCH.md — what the literature says, and what of it applies here
+# attic/docs/VM-RESEARCH.md — what the literature says, and what of it applies here
 
-Written in Iteration 139, after `DENSITY-PLAN.md` had reached a
+Written in Iteration 139, after `attic/docs/DENSITY-PLAN.md` had reached a
 design by reasoning from measurements of this image alone. The point
 of reading the field afterwards was to find out what had already been
 tried and measured elsewhere. Three things in the plan are confirmed
@@ -33,7 +33,7 @@ Its measured results:
   with 800 superinstructions needed ~100MB of memory; 1600 needed
   ~300MB and 1.5 hours.
 
-**Caution for `DENSITY-PLAN.md`'s K=128.** The plan says to measure
+**Caution for `attic/docs/DENSITY-PLAN.md`'s K=128.** The plan says to measure
 engine growth per K. Ertl's result says to measure *speed* per K too,
 because the engine's instruction-cache footprint can turn the curve
 around before the size curve does.
@@ -95,7 +95,7 @@ rediscovering it.
 `GOALS.md`'s phase 5 records a byte-granular opcode encoding being
 considered and rejected, on the grounds that `CALL` — which currently
 has *zero* encoding overhead, since the offset is the instruction —
-would need a marker byte and realignment. `DENSITY-PLAN.md` inherited
+would need a marker byte and realignment. `attic/docs/DENSITY-PLAN.md` inherited
 that reasoning and extended it into a principle: a density scheme is
 safe when it removes work and unsafe when it adds a decoding step.
 
@@ -248,6 +248,6 @@ jump table.
    fund the rest.
 
 Items 5, 6 and 7 are each larger than anything currently in
-`DENSITY-PLAN.md`, and none of them was reachable by measuring this
+`attic/docs/DENSITY-PLAN.md`, and none of them was reachable by measuring this
 image. That is the argument for having read the field, and for doing
 it earlier next time.

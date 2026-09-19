@@ -28,8 +28,18 @@ fi
 for c in "$dir"/*.sh; do
     [ -e "$c" ] || continue
     run=$((run + 1))
-    got=$(timeout 10 "$THIS_SH" "$c" </dev/null 2>/dev/null); gs=$?
-    want=$(timeout 10 "$REF_SH" "$c" </dev/null 2>/dev/null); ws=$?
+    # Each case runs in a scratch directory of its own. A case that
+    # creates files relative to the current directory - or one run by a
+    # half-built shell, where `$d` does not expand and `mkdir $d` makes
+    # a directory called `$d` - cannot litter the tree that way
+    # (Iteration 368: one such directory had been sitting in the
+    # repository root).
+    work=$(mktemp -d)
+    case $THIS_SH in /*) sh_abs=$THIS_SH ;; *) sh_abs=$PWD/$THIS_SH ;; esac
+    case $c in /*) case_abs=$c ;; *) case_abs=$PWD/$c ;; esac
+    got=$(cd "$work" && timeout 10 "$sh_abs" "$case_abs" </dev/null 2>/dev/null); gs=$?
+    want=$(cd "$work" && timeout 10 "$REF_SH" "$case_abs" </dev/null 2>/dev/null); ws=$?
+    rm -rf "$work"
     if [ "$got" != "$want" ] || [ "$gs" != "$ws" ]; then
         failed=$((failed + 1))
         echo "FAIL: $(basename "$c")  (status $gs, want $ws)"

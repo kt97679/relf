@@ -1,4 +1,4 @@
-# TOKEN-THREADING.md — the proposed change, in detail
+# attic/docs/TOKEN-THREADING.md — the proposed change, in detail
 
 > **Historical.** Proposed at Iteration 139, superseded by CV8 at 189,
 > and the encoding it argued against was retired at 218. Its density
@@ -9,7 +9,7 @@ Proposed in Iteration 139, measured in 140, prototyped in 141, written
 out here in 142 because it is by a wide margin the largest change ever
 proposed for this project and the cost is in places nobody has looked
 yet. **This is a design under consideration, not a plan of record.**
-Read `VM-RESEARCH.md` and `PROGRESS.md`'s Iterations 139-141 first.
+Read `attic/docs/VM-RESEARCH.md` and `PROGRESS.md`'s Iterations 139-141 first.
 
 ## 1. The change in one paragraph
 
@@ -265,5 +265,5 @@ It would also arrive on top of Iteration 137's 42%. Two changes each
 costing 15-40% of loop time, landed for size, would leave this shell
 meaningfully slower than the one that already loses to `dash` by 236x.
 That is a real argument for reverting 137 if this lands, and for
-running Stage 2 of `PARSE-EXPAND-PLAN.md` first so there is headroom to
+running Stage 2 of `attic/docs/PARSE-EXPAND-PLAN.md` first so there is headroom to
 spend.

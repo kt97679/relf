@@ -12,7 +12,7 @@ discussion rather than to record a decision. Everything here is
 measured unless it says otherwise, and it says where each number came
 from so it can be re-run or disbelieved.
 
-Read `GOALS.md` first for what the project is for, and `SOD16.md` for
+Read `GOALS.md` first for what the project is for, and `attic/docs/SOD16.md` for
 the token-encoding work this brief comes out of. This file does not
 repeat them; it collects the parts that constrain the inner
 interpreter, and adds what was learned by building one and measuring
@@ -89,7 +89,7 @@ return address and lets `EXIT` jump to it. `COLD` agrees:
 
 So an xt must be something `ip` can be set to. A design where "an xt is
 a word number" contradicts this, and that contradiction stood
-unexamined in `SOD16.md` for about twenty iterations, costing at least
+unexamined in `attic/docs/SOD16.md` for about twenty iterations, costing at least
 two wrong turns. A *call token* may be an index; an *xt* may not.
 
 ### 2.4 Nothing may store an absolute address
@@ -114,7 +114,7 @@ the whole check and it must say VERIFIED.
 
 ## 3. What was built, and what it measured
 
-A complete 16-bit token encoding (`SOD16.md`), translated from the cell
+A complete 16-bit token encoding (`attic/docs/SOD16.md`), translated from the cell
 image, booting and running the shell at both cell widths.
 
 **Encoding.** One 16-bit token per operation. `< 256` is a primitive
@@ -193,7 +193,7 @@ blend and moves with the call density of the code being run.
 
 ### 3.4 The word table is not free
 
-`SOD16.md` called it "OUTSIDE the image", which is true of the image's
+`attic/docs/SOD16.md` called it "OUTSIDE the image", which is true of the image's
 size and says nothing about the cache. It is 8 bytes per word of hot,
 randomly-accessed memory, touched on **every call**. At 1,082 words it
 is 8.7 KB and cheap; at 65,535 words it is 511 KB and the ratio
@@ -262,7 +262,7 @@ with eight executable lines changed.
 
 The method that worked, stated because it kept catching things:
 
-- **Check against the source, not against these notes.** `SOD16.md` was
+- **Check against the source, not against these notes.** `attic/docs/SOD16.md` was
   confidently wrong about branch offsets, about xts, and about the word
   table being free. Each error cost iterations. `grep` beats recall.
 - **A measurement that agrees with itself proves nothing.** A round

@@ -1,6 +1,6 @@
-# COMMAND-TREE-PLAN.md — parse once into a tree, execute the tree
+# attic/docs/COMMAND-TREE-PLAN.md — parse once into a tree, execute the tree
 
-Written at Iteration 261, before any code, as `PARSE-EXPAND-PLAN.md` was:
+Written at Iteration 261, before any code, as `attic/docs/PARSE-EXPAND-PLAN.md` was:
 the change is large enough that starting with an edit would be the wrong
 move. It supersedes that plan's Stage 2, which asked for tokenized body
 lines to be cached; this goes the rest of the way, to the shape Ramey
@@ -78,7 +78,7 @@ asks for more input in the middle of a command.
 ### 2. The lexer
 
 One scanner, replacing `JOIN-CONTINUATIONS`, `JOIN-OPEN-QUOTES`,
-`NORMALIZE-OPERATORS` and `TOKENIZE-RAW` - PARSE-EXPAND-PLAN.md's rule
+`NORMALIZE-OPERATORS` and `TOKENIZE-RAW` - attic/docs/PARSE-EXPAND-PLAN.md's rule
 that the codebase must not have two answers to "where does a word end"
 still holds; the old four are deleted when the switch is made, not kept
 beside it.

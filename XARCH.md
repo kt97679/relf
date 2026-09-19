@@ -1,7 +1,7 @@
 # XARCH.md — AArch64, ARMv7 and RISC-V, under qemu
 
 Iteration 191, branch `cv8`. This file checks whether `CV8.md` and
-`VM-SURVEY.md`, measured on one x86 machine, hold on the other ISAs
+`attic/docs/VM-SURVEY.md`, measured on one x86 machine, hold on the other ISAs
 that matter to a small shell: 64-bit ARM, 32-bit ARM and RISC-V. The
 tools are in `tools/lab/xarch/` (see its README), and the raw results
 are the `results-*.txt` files there.

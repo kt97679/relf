@@ -363,6 +363,7 @@ do not trust the absence of a line below.
 - **365** — re-profiled and three hot words fixed: -6.7% dispatches, -2.9% time
 - **366** — the name validator; and bundles that can be pulled
 - **367** — AND does not short-circuit; and a `[` is not always a pattern
+- **368** — a runaway directory, ten documents to the attic, and an index
 
 ### Not tied to an iteration
 
@@ -19233,3 +19234,42 @@ away is memory-touching work rather than stack dispatches - the
 two-to-one rule is about the KIND of work removed, not a constant.
 
 tests/verify: sizes.
+
+## Iteration 368: housekeeping, with one real bug in it
+
+**A directory called `$d` in the repository root.** Created by a
+differential case during one of Iteration 365's broken builds: with
+variable expansion not working, `mkdir -p $d` makes a directory with
+that name, and the case then wrote its files into it. The directory is
+gone, and so is the way it got there: `tests/diff/run-all` gives every
+case a scratch directory of its own now, so neither a case nor a
+half-built shell can write into the tree. 2,218 leftover `/tmp/relf-*`
+directories from interrupted runs went too.
+
+**Ten documents to `attic/docs/`.** Every one of them already carried a
+banner saying what superseded it - SOD16, token threading, the inner
+interpreter, the density plan, the encoding comparison, the VM research
+and survey, and the three plans whose work is done. Their reasoning is
+still the best record of why the current design is what it is, so they
+are kept, not deleted. References to them in the live documents and in
+`shell.4` and `tree.4` now point at the new path; references in
+PROGRESS.md do not, because that file is a log of what was true when it
+was written.
+
+**`DOCS.md`**, new: what each document is for, and which are retired.
+Fourteen live files, ten retired.
+
+**Two stale sections refreshed.** GOALS.md said "where things stand" as
+of Iteration 253 and "what to do next" as of 248; both are now current,
+and the worklist points at `tests/from-others/CATALOGUE.md`, which is
+where it actually lives. VERSUS-DASH.md said `fg` and `bg` were the two
+missing builtins - they landed at 320-324 - and its timing section is
+marked as pessimistic with a pointer to PERFORMANCE.md.
+
+**PROGRESS.md is not split**, though it is 968 KB. Its own preamble
+records the decision and the reason: the oldest entries are the ones
+other documents cite most, and every citation is of the form
+"PROGRESS.md's Iteration N entry". Moving them would break those
+citations to save a file size that costs nothing to search.
+
+No code changed; the runner and the documents did.

@@ -9,7 +9,7 @@ The engine encoding chosen in Iterations 156-167, being built on branch
 `token16`. This file is the brief: what it is, what is decided and why,
 what is built, what is next, and what will bite.
 
-Read this before `TOKEN-THREADING.md` or `DENSITY-PLAN.md`, both of
+Read this before `attic/docs/TOKEN-THREADING.md` or `attic/docs/DENSITY-PLAN.md`, both of
 which describe designs that were measured and set aside.
 
 ---
@@ -546,7 +546,7 @@ SOD16 call token is a word *number*, and a word number can only name a
 word start, so these calls have no representation at all. Measured on
 this image: **93 words**, 81 through `pool.4`'s `BUFFER:` (target
 `+176` inside its body) and 12 through `kernel.4`'s `DEFER` (`+40`).
-The 12 include the `DEFER` cells `SOD16.md` already discusses under
+The 12 include the `DEFER` cells `attic/docs/SOD16.md` already discusses under
 "an xt is a word number" - the xt *stored* in a `DEFER` was settled;
 the call *to* the `DEFER` runtime was not.
 
@@ -717,7 +717,7 @@ derived; regenerate it rather than looking for it.
     python3 tools/sod16.py /tmp/dump3.txt  4 --emit /tmp/shell.tk
     python3 tools/sod16.py /tmp/dump64.txt 8
 
-    # every size in ENCODING-COMPARISON.md
+    # every size in attic/docs/ENCODING-COMPARISON.md
     python3 tools/encoding-census.py
 
     # the dispatch core, on real translated bodies
@@ -732,7 +732,7 @@ report zero words.
 
 ## Where the numbers live
 
-- `ENCODING-COMPARISON.md` - the full comparison, regenerated in
+- `attic/docs/ENCODING-COMPARISON.md` - the full comparison, regenerated in
   Iteration 161 after the census bug. Do not quote the Iteration 156
   figures.
 - `PROGRESS.md` Iterations 156-167 - the reasoning, including the

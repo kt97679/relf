@@ -1,6 +1,6 @@
-# EXPANSION-PLAN.md — words encoded at parse time, expanded in one pass
+# attic/docs/EXPANSION-PLAN.md — words encoded at parse time, expanded in one pass
 
-Written at Iteration 273, before any code, as COMMAND-TREE-PLAN.md was.
+Written at Iteration 273, before any code, as attic/docs/COMMAND-TREE-PLAN.md was.
 GOALS.md's queue item 8, from DASH-COMPARISON.md: dash's parser rewrites
 each word with control bytes, and its expander walks that in one pass;
 this shell's parser keeps the word as written, and the expander scans it
@@ -109,7 +109,7 @@ Independent of the encoding, and the cheapest win in this plan.
 
 ## Staging
 
-As COMMAND-TREE-PLAN.md: each stage leaves `tests/verify` green and is
+As attic/docs/COMMAND-TREE-PLAN.md: each stage leaves `tests/verify` green and is
 committed separately; the new path is built beside the old one.
 
 **Stage 0 — trims.** The star-and-literal fast path in `FIND-TRIM-LEN`,

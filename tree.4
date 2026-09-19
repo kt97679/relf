@@ -1,5 +1,5 @@
 \ tree.4 - the shell's lexer and parser: a complete command at a time,
-\ into a tree. Stage A of COMMAND-TREE-PLAN.md (Iteration 263): the tree
+\ into a tree. Stage A of attic/docs/COMMAND-TREE-PLAN.md (Iteration 263): the tree
 \ is built and printed, not yet executed. Loaded after shell.4.
 \
 \ Words here are called recursively - `$(...)` is lexed by parsing its
@@ -250,7 +250,7 @@ VARIABLE HD-TEXT#
 DEFER PARSE-SUBLIST   \ for $(...): parse a compound list up to `)`
 
 \ ---- words encoded while they are scanned ----
-\ EXPANSION-PLAN.md Stage A (Iteration 274). The scanners below already
+\ attic/docs/EXPANSION-PLAN.md Stage A (Iteration 274). The scanners below already
 \ walk every construct with the right rules; each now also writes the
 \ word's encoded form into ENC-BUF, which TOKEN-WORD copies into the
 \ tree. Every control sequence starts with ENC-CTL, so a literal run is
@@ -1478,7 +1478,7 @@ VARIABLE ARGV-RTGT-NEXT     \ ... or tagged it a redirection's target
   ARGV-RTGT-NEXT @ ARGV-REDIR-TGT ARGC @ + C!   0 ARGV-RTGT-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ ==================================================================
-\ Expanding a word from its encoding (EXPANSION-PLAN.md Stage B)
+\ Expanding a word from its encoding (attic/docs/EXPANSION-PLAN.md Stage B)
 \ ==================================================================
 \ Iteration 275, the first step: literal runs (copied whole), quoted
 \ runs, quoted characters and plain parameters. A word whose encoding
@@ -1531,7 +1531,7 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
     EMIT-RUN
   THEN ;
 
-\ ---- splitting by regions (EXPANSION-PLAN.md; Iteration 278) ----
+\ ---- splitting by regions (attic/docs/EXPANSION-PLAN.md; Iteration 278) ----
 \ An unquoted expansion's result is copied whole and its output range
 \ recorded; when the word is done, the field splitting runs once over
 \ those ranges (dash's recordregion/ifsbreakup). Pattern characters

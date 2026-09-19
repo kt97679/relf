@@ -9,13 +9,13 @@
 > **`CV8-REFERENCE.md`** is the format-and-engine reference: opcode
 > map, image layout, worked byte examples, and the rules a compiler
 > must follow. **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
-> 3.3's cache attribution). **Iteration 190 adds `VM-SURVEY.md`**: five specialisations borrowed
+> 3.3's cache attribution). **Iteration 190 adds `attic/docs/VM-SURVEY.md`**: five specialisations borrowed
 > from the JVM, CPython, Lua and Gforth - locals as frame-slot opcodes
 > above all - take CV8 to ~0.33x its own time (0.16-0.23x of today's
 > engine) and 9-11% smaller. Read it after this file.
 
 Iteration 189, branch `cv8` (from `token16`). This answers
-`INNER-INTERPRETER.md`. Read that first; this file does not repeat its
+`attic/docs/INNER-INTERPRETER.md`. Read that first; this file does not repeat its
 constraints, it measures against them.
 
 **Everything below is measured unless it says otherwise.** Every
@@ -77,7 +77,7 @@ product of separately measured ratios; see §3 for the pieces.
 
 ## 1. What the brief had wrong, and why it matters
 
-`INNER-INTERPRETER.md` §3.3 attributed SOD16's 1.25x to the word-table
+`attic/docs/INNER-INTERPRETER.md` §3.3 attributed SOD16's 1.25x to the word-table
 dependent load. That mechanism is real in `tools/thread-chase`.
 End to end it is not what cost the time.
 
@@ -441,7 +441,7 @@ pays for its decoding.
 
 ---
 
-## 6. Answers to `INNER-INTERPRETER.md` §5
+## 6. Answers to `attic/docs/INNER-INTERPRETER.md` §5
 
 1. **Is the dependent load avoidable with a narrow token?** Yes, by
    scaling instead of indexing (§1.3). It also turned out not to be the
@@ -464,7 +464,7 @@ pays for its decoding.
      see the register statics (§1.1) or the executed padding (§1.2),
      which together cost about 35%.
    - Single-layout engine comparisons are ±5% noise (§2.2).
-   - VM-RESEARCH.md's 10% for CPython's tail-call interpreter was the
+   - attic/docs/VM-RESEARCH.md's 10% for CPython's tail-call interpreter was the
      pre-correction figure.
 
 ---

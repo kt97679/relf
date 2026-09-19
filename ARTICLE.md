@@ -2,7 +2,7 @@
 
 Working notes for an article about how this project's virtual machine
 got to where it is. Nothing here is a design document; `CV8.md`,
-`CV8-REFERENCE.md`, `VM-SURVEY.md` and `XARCH.md` are. This file exists
+`CV8-REFERENCE.md`, `attic/docs/VM-SURVEY.md` and `XARCH.md` are. This file exists
 so that the *story* — especially the parts where a measurement
 overturned the previous conclusion — is not lost as the code moves on.
 
@@ -75,7 +75,7 @@ cachegrind *counts* (243K vs 9K). Weighed against instruction counts the
 rates are 0.06% vs 0.012% — worth roughly 1–3% of run time, not the
 explanation. The real causes were EXIT folding and TOS caching.
 
-**(c) Iteration 189 overturns the design brief.** `INNER-INTERPRETER.md`
+**(c) Iteration 189 overturns the design brief.** `attic/docs/INNER-INTERPRETER.md`
 attributed SOD16's 1.25x slowdown to the word table's dependent load.
 It was mostly two other things: VM registers living in file-scope
 statics (~20%, because a cell store may alias them, so GCC reloaded `ip`
@@ -97,7 +97,7 @@ code for the same 63 handlers. Wrong about the direction of both.
   SOD32 than to what was benchmarked. **Do not quote this number
   without re-measuring or labelling it as historical.**
 - **The Iteration 156 size census** used 1,059 words and an older
-  dictionary; `ENCODING-COMPARISON.md` warns not to quote its 156
+  dictionary; `attic/docs/ENCODING-COMPARISON.md` warns not to quote its 156
   numbers.
 - All timings in this repo are from **one** machine: an Intel Xeon
   under KVM, one vCPU. ARM and RISC-V figures are qemu *instruction
@@ -137,7 +137,7 @@ more instructions everywhere).
 
 ## 4a. Measured tables the article will want
 
-### The tiny kernel words (`VM-SURVEY.md` §7.4)
+### The tiny kernel words (`attic/docs/VM-SURVEY.md` §7.4)
 
 Two- and three-operation colon words in `kernel.4`, turned into opcodes.
 Static call sites are from the shell image before substitution; dynamic
@@ -188,7 +188,7 @@ matters: it is what stands between "two spare" and "comfortable".
 ## 5. Ideas borrowed, and from where
 
 For the "where the ideas came from" section the reviewer asked for.
-Full table in `VM-SURVEY.md` §2; short form:
+Full table in `attic/docs/VM-SURVEY.md` §2; short form:
 
 - separated engine + portable image — **SOD32**
 - relative (position-independent) references — **RelF**
@@ -243,10 +243,10 @@ the work:
 
 - `PROGRESS.md` — the full iteration log, and the primary source.
 - `GOALS.md` §"Why RelF specifically" — the prehistory and its caveat.
-- `ENCODING-COMPARISON.md` — the size census and the dispatch costs.
+- `attic/docs/ENCODING-COMPARISON.md` — the size census and the dispatch costs.
 - `CV8.md` — why CV8, with the method section on layout noise.
 - `CV8-REFERENCE.md` — the format, with worked byte examples.
-- `VM-SURVEY.md` — what other VMs do and what was borrowed.
+- `attic/docs/VM-SURVEY.md` — what other VMs do and what was borrowed.
 - `XARCH.md` — ARM/RISC-V, and correction (b).
 - `tools/pack-bench.c`, `varint-bench.c`, `dispatch-bench.c` — the
   microbenchmarks behind rows 5 and 6.

@@ -221,5 +221,5 @@ measured against the old assembly engines, and the current C engine is
 architecturally closer to SOD32 than to what was benchmarked.
 
 **The token-threading row** uses assumed field widths and is the least
-grounded line in the table; `TOKEN-THREADING.md`'s worked sample is the
+grounded line in the table; `attic/docs/TOKEN-THREADING.md`'s worked sample is the
 better datum for that scheme.
