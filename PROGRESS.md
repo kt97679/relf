@@ -335,6 +335,7 @@ do not trust the absence of a line below.
 - **337** — escapes inside bracket expressions; three more behaviours catalogued
 - **338** — a continuation inside a reserved word
 - **339** — special parameters in the operator forms; ${#+word}
+- **340** — groundwork for case patterns: the glob marks, recorded and gated
 
 ### Not tied to an iteration
 
@@ -18414,3 +18415,32 @@ first piece of work, not the last. The catalogue now says so, and the
 tree is back to the working behaviour.
 
 tests/verify: diff cases 69 -> 70; sizes.
+
+## Iteration 340: groundwork, and a second reverted attempt
+
+The one change that stands: **the glob marks are recorded even when
+pathname expansion is off**, and the decision to expand against the file
+system moved to its own test rather than being implied by the marks
+existing. That is what a `case` pattern needs - the marks are how an
+unquoted `*` is told from a quoted one - and it costs nothing when
+globbing is off.
+
+**The attempt on top of it failed again, differently.** With a pattern
+built from the marks, every spelling matched dash: `[\q]`, `a\*`,
+`a\*b*` and plain `a*c` all behaved. What broke was the rest of a
+pattern list: a literal pattern that does NOT match - `case ab in x)` -
+is handed through from the tree rather than the expansion buffer, and
+the fallback path for it crashed. Two range tests on the address did not
+save it, which says the difference is not where the word lives but how
+it got there.
+
+Reverted to the working matcher, with the finding written into the
+catalogue: **the next attempt should start from a literal pattern that
+does not match**, not from the quoting. That is the case I kept
+breaking, and it is one line to reproduce.
+
+Two reverted attempts in a row on the same entry is a signal in itself:
+the next session on it should read how `EXPAND-ONE` and the literal fast
+path hand a word back before changing anything.
+
+tests/verify: sizes.

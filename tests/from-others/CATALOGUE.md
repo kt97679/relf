@@ -125,8 +125,17 @@ them.
     expansion already keeps, with `BUILD-GLOB-PATTERN` escaping the
     rest - but the marks are offsets into the expansion buffer while
     `EXPAND-ONE` hands back its text from elsewhere, so the two have to
-    be brought into the same frame of reference first. (Iteration 339
-    tried it the other way round and reverted.)
+    be brought into the same frame of reference first.
+
+    Iteration 340 got most of the way: the marks are recorded now even
+    when pathname expansion is off (the decision to expand against the
+    file system moved to its own test), and with a pattern built from
+    them every spelling matched dash - `[\q]`, `a\*`, `a\*b*`, plain
+    `a*c`. What defeated it was the OTHER patterns in a list: a literal
+    pattern that does not match is handed through from the tree rather
+    than the expansion buffer, and the fallback path for it crashed. The
+    next attempt should start there - with a literal pattern and no
+    match - rather than with the quoting.
 
 17. **A backslash-newline inside a reserved word is a continuation**, so
     a line ending `i\` followed by `f true; then` is `if true; then`.

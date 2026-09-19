@@ -1171,7 +1171,10 @@ DEFER GLOB-FIELDS-CALL
 
 : GLOB-MARK ( c --- c )
   DUP 42 = OVER 63 = OR OVER 91 = OR IF
-    NO-GLOB? @ OPT-NOGLOB @ OR 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
+    \ Recorded even when pathname expansion is off, because a `case`
+    \ pattern is still a pattern and these marks are how an unquoted
+    \ metacharacter is told from a quoted one (Iteration 340).
+    TOKEN-IS-ASSIGN-PREFIX? 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
       GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
       TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
       1 GLOB-MARKS# +!
@@ -1179,7 +1182,6 @@ DEFER GLOB-FIELDS-CALL
   THEN ;
 
 : GLOB-MARK-OFF ( off --- )   \ an unquoted pattern character already written
-  NO-GLOB? @ OPT-NOGLOB @ OR IF DROP EXIT THEN
   TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
   GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
   GLOB-MARKS GLOB-MARKS# @ CELLS + !
@@ -2394,7 +2396,10 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
     EW-I @ 1+ EW-I !
   REPEAT
   0 ARGV ARGC @ CELLS + !
-  GLOB-MARKS# @ IF GLOB-FIELDS-CALL THEN ;
+  \ The marks are recorded even when pathname expansion is off, since a
+  \ `case` pattern needs them; the decision to expand against the file
+  \ system is taken here instead (Iteration 340).
+  GLOB-MARKS# @ NO-GLOB? @ 0= AND OPT-NOGLOB @ 0= AND IF GLOB-FIELDS-CALL THEN ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
