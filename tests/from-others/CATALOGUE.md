@@ -371,10 +371,21 @@ them.
     and `]`.
     → `tests/diff/cases/bracket-dash-369.sh`
 
-50. **A dash produced by ARITHMETIC inside double quotes** is still
-    treated as a range here: `f[0"$((-9))"]` matches ten characters
-    where dash matches three. The same expression through a variable is
-    right, and `EMIT-DECIMAL` does not mark anything, so something in
-    the region machinery marks that dash without being asked. (Not
-    fixed; the next session should find what records a mark for a word
-    whose only dash comes from arithmetic.)
+50. **A dash produced by ARITHMETIC** follows the same rule as any
+    other: live unquoted, a member when quoted. What was marking it was
+    the aside capture - the expression's SOURCE is emitted into the
+    output to be expanded, marks are recorded for it, and then the text
+    is taken back out while the marks stay, pointing at offsets the
+    result reuses.
+    → `tests/diff/cases/expansion-word-371.sh`
+
+51. **A backslash in a `${...}` word quotes what follows**, unless the
+    expansion is itself inside double quotes, where the double-quote
+    rule applies. This shell used the double-quote rule always, so
+    `${x:+a\*b}` kept its backslash.
+    → `tests/diff/cases/expansion-word-371.sh`
+
+52. **A space inside a `${...}` word splits a surrounding word.**
+    `H${x:+ }H` is two fields; here it is one. `${x:+b c}` splits
+    correctly, so what is missing is the split when text precedes the
+    expansion in the same word. (Not fixed.)

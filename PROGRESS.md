@@ -366,6 +366,7 @@ do not trust the absence of a line below.
 - **368** — a runaway directory, ten documents to the attic, and an index
 - **369** — here-document delimiters, `<<-` continuations, quoted dashes in brackets
 - **370** — quoted brackets, and dashes from expansions
+- **371** — stale marks from the aside capture; escapes in a ${} word
 
 ### Not tied to an iteration
 
@@ -19339,3 +19340,33 @@ guess for this one.
 busybox suite: **206 of 357**, up from 205; dash is at 211.
 
 tests/verify: sizes.
+
+## Iteration 371: stale marks, and escapes in a ${} word
+
+**The marks were stale.** Catalogue entry 50 asked what marked a dash
+that `EMIT-DECIMAL` never touched. The answer, found by printing every
+mark as it was recorded: the aside capture. To evaluate `$(( ... ))` the
+expander emits the expression's SOURCE into the output buffer, expands
+it there, copies it aside and then rewinds `TOK-OUT` - but the glob
+marks recorded during that emission stayed, pointing at offsets the
+RESULT would go on to occupy. `f[0"$((-9))"]` marked the `-` of the
+source text, and the `-` of the result landed on it. The marks are
+rewound with the text now.
+
+**And an unquoted arithmetic result is a region**, like any other
+unquoted expansion, so a minus sign in it is a live range:
+`f[0$((-9))]` is `f[0-9]` while `f[0"$((-9))"]` is three characters.
+
+**A backslash in a `${...}` word quotes what follows** unless the
+expansion is inside double quotes, where the double-quote rule applies -
+this shell used the double-quote rule always, so `${x:+a\*b}` kept its
+backslash. The scanner knows which case it is in since Iteration 363.
+
+busybox suite: **208 of 357**, up from 206; dash is at 211. Three tests
+behind the reference on a suite written for a third shell.
+
+**Catalogued as entry 52**: `H${x:+ }H` should be two fields and is one,
+while `${x:+b c}` splits correctly - so what is missing is the split
+when text precedes the expansion in the same word.
+
+tests/verify: diff cases 88 -> 89; sizes.

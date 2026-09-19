@@ -325,6 +325,17 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
   ENC-MUTE @ IF EXIT THEN
   SRC-POS @ 1- ENC-SUB-POS ENC-SUBS @ 1- 2* 1+ CELLS + ! ;
 
+: ENC-WORD-ESCAPE ( --- )   \ a backslash outside quotes: it quotes
+  \ whatever follows. Used for the word of a `${...}` when the
+  \ expansion is not itself inside double quotes - that word took the
+  \ double-quote rule before, so `${x:+a\*b}` kept its backslash
+  \ (Iteration 371).
+  1 SRC-C
+  DUP -1 = IF DROP 92 ENC-LIT, 1 SRC-SKIP EXIT THEN
+  DUP 10 = IF DROP 2 SRC-SKIP EXIT THEN                \ a continuation
+  ENC-ESC ENC-CODE, ENC-C,
+  2 SRC-SKIP ;
+
 : ENC-DQ-ESCAPE ( --- )   \ a backslash inside double quotes
   1 SRC-C
   DUP -1 = IF DROP 92 ENC-LIT, 1 SRC-SKIP EXIT THEN
@@ -504,7 +515,9 @@ DEFER SCAN-DOLLAR
       0 SRC-C
       DUP -1 = IF DROP S" unterminated parameter expansion" SYNTAX THEN
       DUP 125 = IF DROP -1 ELSE
-      DUP 92 = IF DROP ENC-DQ-ESCAPE 0 ELSE
+      DUP 92 = IF DROP
+        SCAN-IN-DQ? @ IF ENC-DQ-ESCAPE ELSE ENC-WORD-ESCAPE THEN 0
+      ELSE
       DUP 36 = IF DROP SCAN-DOLLAR 0 ELSE
       DUP 39 = BRACE-VALUE-WORD? @ 0= AND IF DROP SCAN-SQUOTE 0 ELSE
       DUP 34 = IF DROP SCAN-DQUOTE 0 ELSE
@@ -1704,6 +1717,13 @@ DEFER XE-DQ-REGION        ( --- )
   R> DROP ;
 
 : XE-WORD-ASIDE ( --- )   \ the word after a parameter, into XW-BUF
+  \ The text is emitted into the output and then taken back out, so any
+  \ glob marks recorded while emitting it point at offsets the real
+  \ expansion will reuse: `f[0"$((-9))"]` marked the `-` of the
+  \ arithmetic SOURCE, and the `-` of its result then landed on that
+  \ offset and read as a live range (Iteration 371). The marks are
+  \ rewound with the text.
+  GLOB-MARKS# @ >R  GLOB-META# @ >R
   TOK-OUT @ OUT-BASE - >R                    \ on the stack: one of these nests
   XE-REGION-CALL                             \ stops at the word's end
   TOK-OUT @ OUT-BASE - R@ -                  ( length )
@@ -1711,7 +1731,8 @@ DEFER XE-DQ-REGION        ( --- )
   XW-LEN !
   OUT-BASE R@ +  XW-BUF  XW-LEN @ MOVE
   0 XW-BUF XW-LEN @ + C!
-  OUT-BASE R> + TOK-OUT ! ;                  \ taken back out of the output
+  OUT-BASE R> + TOK-OUT !                    \ taken back out of the output
+  R> GLOB-META# !  R> GLOB-MARKS# ! ;
 
 VARIABLE XP-VAL
 
@@ -1852,7 +1873,16 @@ VARIABLE XP-VAL
 
 : XE-ARITH ( --- )   \ the expression, expanded, then evaluated
   0 XE-WORD-ASIDE-SAFE              \ into XW-BUF: not split, not globbed
-  XW-BUF XW-LEN @ AE-EVAL EMIT-DECIMAL ;
+  \ The RESULT is a region like any other unquoted expansion, so a
+  \ minus sign in it is a live range: `f[0$((-9))]` is `f[0-9]` while
+  \ `f[0"$((-9))"]` is three characters (Iteration 371).
+  IN-DQ-CONTEXT? @ IF
+    XW-BUF XW-LEN @ AE-EVAL EMIT-DECIMAL
+  ELSE
+    XE-REGION-BEGIN
+    XW-BUF XW-LEN @ AE-EVAL EMIT-DECIMAL
+    XE-REGION-END
+  THEN ;
 
 : XE-CMDSUB ( --- )   \ substitution number XE-C of this word
   XE-C                                       ( n )
