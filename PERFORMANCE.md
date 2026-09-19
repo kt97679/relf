@@ -256,3 +256,31 @@ two would do. It indexes the table itself now.
 began: **25,124,271 to 23,208,897, down 7.6%**, and wall clock paired
 over 13 rounds **median 0.964**. The two-to-one ratio between the two
 measures holds for a third time.
+
+## Iteration 367: two things the profiler found that reading had not
+
+**`AND` does not short-circuit.** The test that decides whether an empty
+field is dropped read as one expression, and one of its terms was
+`WORD-IS-ONLY-AT?` - four string comparisons - so it ran for every word
+the shell expanded, not for the empty ones it was written for. Nested
+tests instead.
+
+**A `[` is only a pattern when a `]` follows.** Iteration 341 taught the
+literal fast path to mark `*`, `?` and `[` so that `case` patterns kept
+their quoting. Every `[ ... ]` test command has a `[` in it, so every
+test command since then has dragged its word through pathname
+expansion - 3.4% of a loop benchmark, and `GLOB-FIELDS` at 1.9% of a
+realistic script. The bracket is remembered now and marked only if the
+word closes it.
+
+**Dispatches 23,208,897 to 21,607,230.** Over the three optimisation
+iterations: **25,124,271 to 21,607,230, down 14.0%.** Wall clock, paired
+and interleaved over 13 rounds against the image from before 365:
+
+    realistic script   median 0.891
+    a `[ ]` loop       median 0.952
+
+The realistic script gains more than the dispatch count predicts for
+once, because what went away - `GLOB-FIELDS` and its mark bookkeeping -
+is memory-touching work rather than the cheap stack dispatches the
+earlier changes removed.

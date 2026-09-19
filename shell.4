@@ -2320,6 +2320,7 @@ VARIABLE EW-I
   TOK-OUT @ TOK-END @ TOK-POS @ - 1+ + TOK-OUT-END @ <
   ARGC @ ROOM-FOR-ARG? AND ;
 VARIABLE CL-N   \ the literal word's length, for the mark scan
+VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
 
 : COPY-LITERAL ( --- )
   \ A word the parser saw no quote, expansion, tilde or pattern character
@@ -2334,10 +2335,23 @@ VARIABLE CL-N   \ the literal word's length, for the mark scan
   TOK-END @ TOK-POS @ - 1+                  ( n, the NUL too )
   DUP CL-N !
   TOK-POS @ TOK-OUT @ 2 PICK MOVE
+  \ `*` and `?` always make the word a pattern; a `[` only does when a
+  \ `]` follows it, so `[ $x ]` - every test command in every script -
+  \ does not drag the whole word through pathname expansion. That cost
+  \ 3.4% of a loop benchmark's dispatches from Iteration 341 until this
+  \ one (Iteration 367).
+  -1 CL-BRACKET !
   CL-N @ 1- 0 ?DO
-    TOK-POS @ I + C@ DUP 42 = OVER 63 = OR SWAP 91 = OR IF
+    TOK-POS @ I + C@
+    DUP 42 = OVER 63 = OR IF
       TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
-    THEN
+    ELSE
+      DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
+      DUP 93 = CL-BRACKET @ 0< 0= AND IF
+        TOK-OUT @ CL-BRACKET @ + OUT-BASE - GLOB-MARK-OFF
+        -1 CL-BRACKET !
+      THEN
+    THEN DROP
   LOOP
   TOK-OUT +!  ARGC @ 1+ ARGC !
   TOK-END @ TOK-POS ! ;
@@ -2527,20 +2541,27 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
       \ not to be re-read as an operator), so it cannot distinguish
       \ "" from ${nope:-}. ARGV-NAME-QUOTED records an actual leading
       \ quote character, which is the question being asked here.
-      \ An empty word is dropped - but not a redirection's target. The
-      \ operator and its target travel as words, so dropping an empty
-      \ delimiter (`<<- $a` with a empty) shifted every redirection
-      \ after it: the here-document ended up with the wrong file
-      \ descriptor and its reader hung on a pipe nobody closed
-      \ (Iteration 344).
-      ARGV ARGC @ CELLS + @ C@ 0=
-      REDIR-TARGET-WORD? @ 0= AND
       \ An empty field is dropped only when nothing in the word was
       \ quoted. The parser's flag covers `""` at the start of a word;
       \ TOK-WAS-QUOTED? covers quoting that appeared during expansion,
-      \ as in `${x:+''}`, which was being dropped (Iteration 355).
-      ARGV-NAME-QUOTED ARGC @ + C@ 0=  TOK-WAS-QUOTED? @ 0= AND
-      EMPTY-AT-WORD? @ WORD-IS-ONLY-AT? AND OR AND IF
+      \ as in `${x:+''}` (Iteration 355). A redirection target is kept
+      \ whatever it holds (Iteration 344).
+      \
+      \ Written as nested tests rather than one expression: AND does
+      \ not short-circuit, so WORD-IS-ONLY-AT? - four string compares -
+      \ ran for every word the shell expanded (Iteration 367).
+      ARGV ARGC @ CELLS + @ C@ 0= IF
+        REDIR-TARGET-WORD? @ IF
+          0                                   \ a target is never dropped
+        ELSE
+          ARGV-NAME-QUOTED ARGC @ + C@ 0= TOK-WAS-QUOTED? @ 0= AND IF
+            -1                                \ nothing quoted it: drop
+          ELSE
+            EMPTY-AT-WORD? @ IF WORD-IS-ONLY-AT? ELSE 0 THEN
+          THEN
+        THEN
+      ELSE 0 THEN
+      IF
         TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )
       ELSE
         ARGC @ 1+ ARGC !

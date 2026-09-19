@@ -362,6 +362,7 @@ do not trust the absence of a line below.
 - **364** — quoting inside a run of whitespace
 - **365** — re-profiled and three hot words fixed: -6.7% dispatches, -2.9% time
 - **366** — the name validator; and bundles that can be pulled
+- **367** — AND does not short-circuit; and a `[` is not always a pattern
 
 ### Not tied to an iteration
 
@@ -19202,5 +19203,33 @@ paired and interleaved over 13 rounds at **median 0.964**. The
 two-to-one ratio between dispatch savings and wall-clock savings has now
 held three times, which makes it a rule of thumb for this engine rather
 than an observation.
+
+tests/verify: sizes.
+
+## Iteration 367: two things reading had not found
+
+**`AND` does not short-circuit**, and the test deciding whether an empty
+field is dropped had `WORD-IS-ONLY-AT?` - four string comparisons - as
+one of its terms. It ran for every word expanded rather than for the
+empty ones it guards. Nested tests instead, which also reads better.
+
+**A `[` is only a pattern when a `]` follows it.** Iteration 341 taught
+the literal fast path to mark `*`, `?` and `[` so `case` patterns keep
+their quoting, and from that day every `[ ... ]` test command - the most
+common command in any script - marked its `[` and dragged the word
+through pathname expansion. The profiler found it in a loop benchmark
+that has no globs in it at all: `GLOB-FIELDS`, 3.4% of the dispatches.
+
+The bracket is remembered and marked only when the word closes it, which
+is also the POSIX rule for what makes a bracket expression.
+
+**Dispatches 23,208,897 to 21,607,230; over the three iterations
+25,124,271 to 21,607,230, down 14.0%.** Wall clock against the image
+from before this work, paired and interleaved over 13 rounds: the
+realistic script at **median 0.891**, a `[ ]` loop at **0.952**.
+
+For once the wall clock beat the dispatch prediction, because what went
+away is memory-touching work rather than stack dispatches - the
+two-to-one rule is about the KIND of work removed, not a constant.
 
 tests/verify: sizes.
