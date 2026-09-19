@@ -357,6 +357,7 @@ do not trust the absence of a line below.
 - **359** — an empty quoted field: measured, attempted, reverted
 - **360** — a bare return in a trap; and where the splitting really happens
 - **361** — an empty quoted field is a field
+- **362** — assessed Lisp, Lua and MicroPython as substrates: no, and why
 
 ### Not tied to an iteration
 
@@ -19054,3 +19055,27 @@ about quoted trim patterns - something else consults the same quoting.
 The cases that broke are the lead for next time.
 
 tests/verify: diff cases 83 -> 84; sizes.
+
+## Iteration 362: would another language suit this better?
+
+Asked whether Lisp, Lua, MicroPython or something else would make this
+project faster and smaller. The assessment is in RESEARCH-VM.md, with
+this machine's numbers.
+
+The short of it. On size, nothing else is close: the whole system is
+132 KB against Lua's 265 KB core library alone, Python's 9 MB runtime,
+Perl's 4 MB. On speed, the engine dispatches in 0.82 ns and is not the
+bottleneck - one loop iteration costs 9,289 dispatches here against
+3,500 cycles in dash, and the profile of that iteration is dominated by
+per-word bookkeeping and a linear builtin walk, which are algorithmic
+and would survive any rewrite. The phase split is 49.5% kernel words,
+23.9% expansion, 11.6% lookup: byte and memory work, where a
+garbage-collected string type would be a step backwards for a program
+that forks for nearly every command.
+
+So: no. The two cheap experiments named in the assessment - hashing the
+builtin lookup and trimming the bookkeeping - touch a sixth of the loop
+between them, which is more than a substrate swap would buy and keeps
+every test.
+
+No code changed.

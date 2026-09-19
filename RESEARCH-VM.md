@@ -169,3 +169,57 @@ escape hatch a user-facing programming environment where people extend
 the syntax themselves. Until then, the cheap and specific fix -
 a `CSTR,"` parsing word - buys the only benefit identified, at a
 hundredth of the cost.
+
+## Would another language or VM suit this project better? (Iteration 362)
+
+Asked directly: Lisp, Lua, MicroPython, something else. Answered with
+this machine's own numbers.
+
+**Size.** The whole system - engine plus kernel image plus shell image -
+is 132 KB on x86_64, against dash's 130 KB. The engine's code is 23 KB;
+the kernel image is 9 KB; everything else is the shell. On the same
+machine: Lua 5.4's core library is **265 KB** with no shell in it,
+twice this system entire. Python's runtime is **9 MB**, its binary 8 MB.
+Perl is 4 MB. mawk, one of the smallest real interpreters packaged, is
+171 KB. A small Lisp (femtolisp and friends) lands around 100-150 KB -
+the only candidate in the same order of magnitude, and still five times
+the engine here. Forth's threaded model is why: the runtime is tiny
+because the program IS data in an image.
+
+**Speed, and what is actually slow.** The engine dispatches in 0.82 ns,
+about 2.4 cycles. That is not the bottleneck and a faster VM would not
+help it. What costs is how MANY dispatches a shell operation takes: one
+iteration of a counting loop is 9,289 dispatches here against roughly
+3,500 cycles in dash, and the profile of that iteration is 840
+dispatches of per-word bookkeeping (five arrays copied) and 532 of a
+linear walk down the builtin list. Those are algorithmic, and they would
+still be there after a rewrite in any language.
+
+The phase split says the same thing: 49.5% of dispatches are kernel
+words - MOVE, SCAN, stack arithmetic - 23.9% expansion, 11.6% name
+lookup. That is byte and memory work. Lua's register VM is genuinely
+faster at arithmetic and table code, which is 2.5% of this profile, and
+it would do the string work through a garbage-collected immutable string
+type: every `${x#pattern}` allocating, in a program that forks for
+almost every command. For this workload that is a poor trade.
+
+**What would genuinely be better, by goal.**
+
+- *Fastest shell*: C. That is dash, and it is 130 KB and 6x faster.
+  Nothing about this project's shape beats a C shell at being a C shell.
+- *This project's shape, but faster*: Forth with native code generation
+  for hot words - the standing Phase 4 item - plus the two algorithmic
+  fixes named above. Both keep every test and the bootstrap.
+- *Easiest for other people to extend*: Lua or a small Lisp, at four to
+  ten times the size and with a garbage collector in a process that
+  forks constantly.
+- *Smallest self-hosting system with an image*: what is here already.
+
+**Verdict: no, and the measurement says why.** The substrate is not what
+makes this shell 6x slower than dash; the number of operations per shell
+operation is, and that is the same in any language. The cheap
+experiments are hashing the builtin lookup (532 dispatches an iteration)
+and trimming the per-word bookkeeping (840), which between them touch a
+sixth of the loop before any knock-on effects - more than a VM swap
+would buy, at a fraction of the cost, and without discarding 360
+iterations of tests.
