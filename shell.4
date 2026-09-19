@@ -5710,6 +5710,8 @@ VARIABLE BM-MATCHED?
   BEGIN
     DUP GM-PLEN @ < IF DUP GM-PATTERN @ + C@ 93 <> ELSE 0 THEN
   WHILE
+    \ a backslash hides the next character, `]` included (Iteration 337)
+    DUP GM-PATTERN @ + C@ 92 = OVER 1+ GM-PLEN @ < AND IF 1+ THEN
     \ "[:name:]" carries a `]` of its own: step over it, or the bracket
     \ expression looks as if it ended there (Iteration 325).
     DUP GM-PATTERN @ + C@ 91 =
@@ -5797,6 +5799,9 @@ VARIABLE CC-I
       BM-I @ CC-MATCH? IF -1 BM-MATCHED? ! THEN
       CC-LEN @ ?DUP IF BM-I @ + BM-I ! ELSE BM-I @ 1+ BM-I ! THEN
     ELSE
+      BM-I @ GM-PATTERN @ + C@ 92 = BM-I @ 1+ BM-END @ 1- < AND IF
+        BM-I @ 1+ BM-I !                     \ escaped: the next one, literally
+      THEN
       BM-I @ GM-PATTERN @ + C@ BM-CHAR @ = IF -1 BM-MATCHED? ! THEN
       BM-I @ 1+ BM-I !
     THEN THEN

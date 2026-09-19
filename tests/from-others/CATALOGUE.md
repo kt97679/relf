@@ -108,3 +108,26 @@ them.
     zombie, and `kill -0` on a zombie succeeds - so a script that spins
     on `kill -0 $!` waiting for its child never sees it finish.
     → `tests/diff/cases/trap-exit-336.sh`
+
+## Fourth batch from busybox's ash suite (Iteration 337)
+
+15. **A backslash inside a bracket expression hides the character after
+    it**, so `[\q]` matches `q` and `[\]]` matches `]`. The scan for the
+    closing bracket has to skip the escaped character too, or `[\]]`
+    looks as if it ended at the first `]`.
+    → `tests/diff/cases/bracket-escape-337.sh` (pathname expansion)
+
+16. **The same holds for a `case` pattern**, where this shell matches
+    with escapes turned off, so a backslash inside a bracket never
+    reaches the matcher. (Not yet implemented here: `case q in [\q])`
+    does not match.)
+
+17. **A backslash-newline inside a reserved word is a continuation**, so
+    a line ending `i\` followed by `f true; then` is `if true; then`.
+    This shell joins the word but marks it quoted, and a quoted word is
+    not a reserved word, so it becomes a syntax error. (Not yet
+    implemented here.)
+
+18. **A newline in an alternate value survives**: unquoted, `H${x+` +
+    newline + `}H` splits into two fields; quoted, it keeps the newline.
+    (Not yet implemented here: the newline is dropped.)

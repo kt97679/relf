@@ -332,6 +332,7 @@ do not trust the absence of a line below.
 - **334** — a command that is only redirections; and a lookahead that asked for input
 - **335** — a redirection's target is not field-split
 - **336** — exit inside a trap; and zombies reaped while builtins run
+- **337** — escapes inside bracket expressions; three more behaviours catalogued
 
 ### Not tied to an iteration
 
@@ -18323,3 +18324,36 @@ counted as a pass on the runs where it happened to match - so the
 baseline captured 23/0 and every later run reported a difference. A
 listed case is counted as divergent now whichever way it goes, with
 NOW-PASSES still printed for information.
+
+## Iteration 337: escapes inside bracket expressions
+
+A fourth batch from the busybox gap list. Four behaviours read and
+written down as catalogue entries 15 to 18; one implemented, three
+recorded with what is in the way.
+
+**A backslash inside a bracket expression hides the character after
+it**, so `[\q]` matches `q`. Both halves of the matcher needed it: the
+scan for the closing bracket has to step over the escaped character, or
+`[\]]` looks as if it ended at the first `]`, and the member test has
+to compare the character after the backslash. Pathname expansion is
+right now.
+
+**What is in the way of the other three**, all catalogued:
+
+- The same pattern in a `case` statement still fails, because case
+  patterns are matched with escapes turned off - a different route into
+  the matcher that this fix does not touch.
+- `i\` + newline + `f true` should read as `if true`. The word is
+  joined correctly, but the backslash marks it quoted, and a quoted word
+  is never a reserved word.
+- A newline inside `${x+...}` should survive the expansion; it is being
+  dropped.
+
+Each is a small, understood piece of work rather than a mystery, which
+is what the catalogue is for.
+
+`tests/diff/cases/bracket-escape-337.sh` covers the escaped bracket in
+pathname expansion, with a range and a two-member set beside it, and
+matches bash.
+
+tests/verify: diff cases 67 -> 68; sizes.
