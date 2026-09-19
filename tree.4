@@ -337,6 +337,8 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
   2 SRC-SKIP ;
 
 \ ---- scanning a word ----
+VARIABLE SCAN-IN-DQ?   \ the scanner is inside double quotes
+VARIABLE BRACE-VALUE-WORD?   \ ... and this ${} word is a value, not a pattern
 DEFER SCAN-DOLLAR
 
 : SCAN-SQUOTE ( --- )     \ at ': to past the closing '
@@ -365,6 +367,7 @@ DEFER SCAN-DOLLAR
 
 : SCAN-DQUOTE ( --- )     \ at ": to past the closing "
   1 SRC-SKIP
+  SCAN-IN-DQ? @ >R  -1 SCAN-IN-DQ? !
   ENC-DQ ENC-CODE,
   BEGIN
     0 SRC-C
@@ -375,6 +378,7 @@ DEFER SCAN-DOLLAR
     36 = IF SCAN-DOLLAR 0 ELSE 0 SRC-C ENC-LIT, 1 SRC-SKIP 0
     THEN THEN THEN THEN
   UNTIL
+  R> SCAN-IN-DQ? !
   ENC-END ENC-CODE, ;
 
 : SCAN-ARITH ( --- )      \ at $((: to past the matching ))
@@ -486,6 +490,13 @@ DEFER SCAN-DOLLAR
   ENC# @ >R  0 ENC-C,                     \ the operator's place
   SCAN-BRACE-NAME
   SCAN-BRACE-OP DUP R> ENC-BUF + C!       ( op )
+  \ Inside double quotes a single quote is literal text in a VALUE word
+  \ - `"${x:+'b c' d}"` is one field with the quotes in it - while in a
+  \ trim PATTERN it still quotes, so `"${x##*'*'}"` matches a literal
+  \ star. Both references agree on the pair (Iteration 363).
+  \ the value operators are below EV-TRIM-PRE, with or without their
+  \ colon; masking the colon off first mapped the trims into that range
+  DUP EV-TRIM-PRE < SCAN-IN-DQ? @ AND BRACE-VALUE-WORD? !
   DUP EV-PLAIN <> OVER EV-LENGTH <> AND IF -1 ENC-COMPLEX? ! THEN
   0 ENC-C,                                \ the name's end
   EV-PLAIN <> IF                          \ a word follows, up to the }
@@ -495,7 +506,7 @@ DEFER SCAN-DOLLAR
       DUP 125 = IF DROP -1 ELSE
       DUP 92 = IF DROP ENC-DQ-ESCAPE 0 ELSE
       DUP 36 = IF DROP SCAN-DOLLAR 0 ELSE
-      DUP 39 = IF DROP SCAN-SQUOTE 0 ELSE
+      DUP 39 = BRACE-VALUE-WORD? @ 0= AND IF DROP SCAN-SQUOTE 0 ELSE
       DUP 34 = IF DROP SCAN-DQUOTE 0 ELSE
       96 = IF SCAN-BACKQUOTE 0 ELSE
         0 SRC-C ENC-LIT, 1 SRC-SKIP 0
@@ -1963,6 +1974,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   XE-WALK
   0 IN-DQ-CONTEXT? !
   R> XE-SPLIT ;
+' XQ-BETWEEN? IS QUOTED-BETWEEN?
 ' XE-TRY IS ENC-EXPAND-CALL
 : XE-NOSPLIT-ON  ( --- )   -1 XE-NOSPLIT? ! ;
 : XE-NOSPLIT-OFF ( --- )    0 XE-NOSPLIT? ! ;

@@ -1203,6 +1203,8 @@ DEFER GLOB-FIELDS-CALL
   GLOB-MARKS GLOB-MARKS# @ CELLS + !
   1 GLOB-MARKS# +! ;
 
+DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
+
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
@@ -1231,7 +1233,13 @@ DEFER GLOB-FIELDS-CALL
       \ otherwise this is leading IFS whitespace at the very start of
       \ the token, which should be absorbed rather than producing a
       \ spurious empty leading field.
-      TOK-OUT @ ARGV ARGC @ CELLS + @ <> IF
+      \ ... or if quoting contributed to this field even though it left
+      \ no characters. An alternate value is emitted character by
+      \ character rather than as a region, so `${x:+'' ''}` reaches
+      \ this path and not the region splitter (Iteration 363).
+      TOK-OUT @ ARGV ARGC @ CELLS + @ <>
+      ARGV ARGC @ CELLS + @ OUT-BASE -  TOK-OUT @ OUT-BASE -
+      QUOTED-BETWEEN? OR IF
         IFS-SPLIT-HERE
       THEN
     THEN

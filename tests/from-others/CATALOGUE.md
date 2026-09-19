@@ -314,7 +314,17 @@ them.
 42. **Inside double quotes, a single quote in a `${...}` word is
     literal** while a double quote still quotes: `"${x:+'b c' d}"` is
     one field reading `'b c' d`. This shell drops the single quotes.
-    An attempt in Iteration 361 - a scanner flag saying "inside double
-    quotes" - broke two existing cases about quoted trim patterns and
-    was reverted; the flag is right but something else consults the same
-    quoting, and the trim cases say where to look. (Not fixed.)
+    The flag from Iteration 361 was right; what it lacked was the
+    distinction the trim cases were pointing at. A single quote is
+    literal in a VALUE word (`:-`, `:+`, `:=`, `:?` and their plain
+    forms) and still quotes in a trim PATTERN (`#`, `##`, `%`, `%%`), so
+    `"${x##*'*'}"` matches a literal star. The operator is known before
+    the word is scanned, so the scanner sets the flag from it.
+    → `tests/diff/cases/quoted-in-word-363.sh`
+
+43. **A trailing empty quoted field inside a `${...}` word.**
+    `${x:+b ''}` is two fields; `${x:+'' b}` is two here since Iteration
+    363 but `${x:+b ''}` is one. The quote marks that fixed the leading
+    case are recorded at output offsets, and for a word captured aside
+    into its own buffer those offsets do not line up with the output the
+    splitter walks. (Not fixed.)

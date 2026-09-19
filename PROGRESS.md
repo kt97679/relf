@@ -358,6 +358,7 @@ do not trust the absence of a line below.
 - **360** — a bare return in a trap; and where the splitting really happens
 - **361** — an empty quoted field is a field
 - **362** — assessed Lisp, Lua and MicroPython as substrates: no, and why
+- **363** — quotes in a ${} word: literal in a value, quoting in a pattern
 
 ### Not tied to an iteration
 
@@ -19079,3 +19080,29 @@ between them, which is more than a substrate swap would buy and keeps
 every test.
 
 No code changed.
+
+## Iteration 363: quotes in a ${} word
+
+Catalogue entry 42, and the lead from Iteration 361 was the right one.
+Within double quotes a single quote is literal text in a VALUE word -
+`"${x:+'b c' d}"` is one field with the quotes still in it - and still
+quotes in a trim PATTERN, so `"${x##*'*'}"` matches a literal star.
+Both references agree on the pair. 361 got the first half right and
+broke the second, because its flag did not know which kind of word
+followed.
+
+The operator is read before the word is scanned, so the scanner now sets
+the flag from it. **The first version masked the colon off the operator
+before comparing**, which folded the trims into the value range and
+broke the trims again in exactly the same way - the same mistake twice
+in two sessions, caught in one run by the cases 361 had left behind.
+
+busybox suite: **202 of 357**, up from 201; dash is at 211.
+
+**Catalogued as entry 43**: `${x:+b ''}` should be two fields and is
+one, while `${x:+'' b}` is two. The quote marks that fixed the leading
+case are output offsets, and a word captured aside into its own buffer
+does not share that frame - the same class of problem as Iteration 340's
+glob marks, and probably the same fix.
+
+tests/verify: diff cases 84 -> 85; sizes.
