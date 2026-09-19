@@ -310,3 +310,11 @@ them.
 41. **`return` with no operand inside a trap** takes the status the
     shell had when the trap was entered, as `exit` does.
     → `tests/diff/cases/trap-return-355.sh`
+
+42. **Inside double quotes, a single quote in a `${...}` word is
+    literal** while a double quote still quotes: `"${x:+'b c' d}"` is
+    one field reading `'b c' d`. This shell drops the single quotes.
+    An attempt in Iteration 361 - a scanner flag saying "inside double
+    quotes" - broke two existing cases about quoted trim patterns and
+    was reverted; the flag is right but something else consults the same
+    quoting, and the trim cases say where to look. (Not fixed.)

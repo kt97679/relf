@@ -1526,6 +1526,24 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
 \ those ranges (dash's recordregion/ifsbreakup). Pattern characters
 \ inside a region are found with SCAN - the engine's memchr - rather
 \ than tested one at a time on the way out.
+\ Where quoting contributed, as offsets: an empty quoted part leaves no
+\ characters, so this is all the splitter has to tell `""$b` from
+\ leading whitespace. One offset was not enough - `"$e"$b"$e"` has an
+\ empty field at each end and the later quote hid the earlier one.
+16 CONSTANT MAX-QUOTE-MARKS
+MAX-QUOTE-MARKS CELLS BUFFER: XQ-MARKS
+VARIABLE XQ-N
+
+: XQ-MARK ( --- )   \ quoting happened at the current output position
+  XQ-N @ MAX-QUOTE-MARKS < IF
+    TOK-OUT @ OUT-BASE - XQ-MARKS XQ-N @ CELLS + !  1 XQ-N +!
+  THEN ;
+
+: XQ-BETWEEN? ( from to --- f )   \ any quoting in this span
+  0 XQ-N @ 0 ?DO
+    XQ-MARKS I CELLS + @                     ( from to f off )
+    DUP 3 PICK < 0= SWAP 3 PICK > 0= AND OR
+  LOOP NIP NIP ;
 256 BUFFER: XE-REGIONS     \ (start, end) output offsets, a pair each
 VARIABLE XE-REG#
 VARIABLE XE-REG-START
@@ -1828,8 +1846,10 @@ VARIABLE XP-VAL
   XE-C
   DUP ENC-CTL = IF DROP ENC-CTL GLOB-MARK EMIT-TOK-CHAR 1 XE-P +!  0 EXIT THEN
   DUP ENC-END = IF DROP 1 XE-P +!  -1 EXIT THEN
-  DUP ENC-SQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-SQ-REGION  0 EXIT THEN
-  DUP ENC-DQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-DQ-REGION  0 EXIT THEN
+  DUP ENC-SQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !
+    XQ-MARK  XE-SQ-REGION  0 EXIT THEN
+  DUP ENC-DQ = IF DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !
+    XQ-MARK  XE-DQ-REGION  0 EXIT THEN
   DUP ENC-ESC = IF
     DROP 1 XE-P +!  -1 TOK-WAS-QUOTED? !  XE-C EMIT-QUOTED  1 XE-P +!  0 EXIT
   THEN
@@ -1879,7 +1899,15 @@ VARIABLE XS-PREV          \ where the text after the last region begins
         I XS-FS @ > IF
           XS-PEND? @ 0= IF I XS-WSP !  -1 XS-PEND? ! THEN
         ELSE
-          I 1+ DUP XS-FS !  OUT-BASE + ARGV ARGC @ CELLS + !
+          \ Leading whitespace is absorbed - unless quoting contributed
+          \ to this field before it, in which case the field is empty
+          \ but real: `"$e"$b` is an empty argument and then `b`
+          \ (Iteration 361).
+          XS-FS @ I XQ-BETWEEN? IF
+            I  I 1+ DUP XS-FS !  XS-CLOSE
+          ELSE
+            I 1+ DUP XS-FS !  OUT-BASE + ARGV ARGC @ CELLS + !
+          THEN
         THEN
       ELSE                                   \ ends one field, even an empty one
         XS-PEND? @ IF XS-WSP @ ELSE I THEN
@@ -1908,7 +1936,14 @@ VARIABLE XS-PREV          \ where the text after the last region begins
     TOK-OUT @ OUT-BASE - XS-PREV @ > IF
       XS-PREV @ XS-CONTENT-AT                \ text after the last region
     ELSE
-      XS-WSP @ OUT-BASE + TOK-OUT !          \ trailing whitespace: dropped
+      \ Trailing whitespace is dropped - unless quoting came after it
+      \ and left nothing: `$b"$e"` ends with an empty field, not with
+      \ the whitespace trimmed away (Iteration 361).
+      XS-WSP @ TOK-OUT @ OUT-BASE - XQ-BETWEEN? IF
+        XS-WSP @  TOK-OUT @ OUT-BASE -  XS-CLOSE
+      ELSE
+        XS-WSP @ OUT-BASE + TOK-OUT !
+      THEN
     THEN
   THEN ;
 
@@ -1922,6 +1957,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   DUP 1 XF@ WF-AT-PARAM AND 0<> XE-PERCHAR? !
   1 XF@ WF-SPECIAL AND 0<> XE-SPECIAL? !
   0 XE-REG# !
+  0 XQ-N !
   0 IN-DQ-CONTEXT? !
   TOK-OUT @ OUT-BASE - >R
   XE-WALK

@@ -356,6 +356,7 @@ do not trust the absence of a line below.
 - **358** — positional parameters are fields, not a space-joined string
 - **359** — an empty quoted field: measured, attempted, reverted
 - **360** — a bare return in a trap; and where the splitting really happens
+- **361** — an empty quoted field is a field
 
 ### Not tied to an iteration
 
@@ -19022,3 +19023,34 @@ entire subsystem. Worth remembering: when a fix "changes nothing", make
 it change everything and see whether the answer moves.
 
 tests/verify: sizes.
+
+## Iteration 361: an empty quoted field is a field
+
+Two sessions of measurement paid off in one change. `echo a "$e"$b c`
+with `e` unset and `b=" b "` must print an empty argument between `a`
+and `b`, and `$b"$e"` must end with one. The quoted part emits no
+characters, so the splitter - which works over recorded regions after
+the fact, as Iteration 360 established - had nothing to tell it from
+leading or trailing whitespace, and absorbed it.
+
+The expander now records the output offset wherever quoting
+contributes, and the splitter asks whether any of those offsets falls in
+the span it is about to absorb. If one does, the whitespace ends an
+empty field instead.
+
+**One offset was not enough.** The first version kept only the last
+position, which works for `"$e"$b` and for `$b"$e"` but not for
+`"$e"$b"$e"`, where the trailing quote overwrote the leading one and the
+first empty field disappeared. Sixteen marks, the same shape as the glob
+marks beside them.
+
+busybox suite: **201 of 357**, up from 198; dash is at 211.
+
+**And an attempt reverted**, catalogued as entry 42: inside double
+quotes a single quote in a `${...}` word is literal, so
+`"${x:+'b c' d}"` is one field with the quotes in it. A scanner flag
+for "inside double quotes" got that right and broke two existing cases
+about quoted trim patterns - something else consults the same quoting.
+The cases that broke are the lead for next time.
+
+tests/verify: diff cases 83 -> 84; sizes.
