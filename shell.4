@@ -2202,7 +2202,9 @@ VARIABLE PW-LEN
 
 
 1 ARGS-BUFFER: ARGV-ASSIGN        \ the parser's verdict, per word
+1 ARGS-BUFFER: ARGV-REDIR-TGT     \ this word is a redirection's target
 1 ARGS-BUFFER: EW-ASSIGN
+1 ARGS-BUFFER: EW-RTGT
 1 CELLS ARGS-BUFFER: ARGV-NODES   \ each word's tree node, when it has one
 1 CELLS ARGS-BUFFER: EW-NODES     \ ... copied like EW-ARGV (Iteration 275)
 DEFER ENC-EXPAND-CALL   ( node --- )   \ tree.4: expand a word's encoding
@@ -2264,6 +2266,10 @@ CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
   2DUP OA-BRACE  OA-MATCH? IF 2DROP -1 EXIT THEN
        OA-QBRACE OA-MATCH? ;
 
+DEFER NOSPLIT-ON    ( --- )   \ tree.4's: expand this word without splitting
+DEFER NOSPLIT-OFF   ( --- )
+VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
+
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
   \ rebuilds ARGV from the results.
@@ -2298,6 +2304,7 @@ CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
   ARGV             EW-ARGV  EW-ARGC @ CELLS MOVE
   ARGV-NODES       EW-NODES EW-ARGC @ CELLS MOVE
   ARGV-ASSIGN      EW-ASSIGN EW-ARGC @ MOVE
+  ARGV-REDIR-TGT   EW-RTGT  EW-ARGC @ MOVE
   ARGV-NAME-QUOTED EW-ARGQ  EW-ARGC @ MOVE
   ARGV-QUOTED      EW-QUOT  EW-ARGC @ MOVE
   ARGV-LITERAL     EW-LIT   EW-ARGC @ MOVE
@@ -2320,6 +2327,10 @@ CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
   0 EW-I !
   BEGIN EW-I @ EW-ARGC @ < WHILE
     EW-ASSIGN EW-I @ + C@ WORD-IS-ASSIGN? !
+    \ XCU 2.7: the word after a redirection operator is expanded but NOT
+    \ field-split, so `v='a b'; > $v` writes to one file named `a b`.
+    \ This shell split it like any other word until Iteration 335.
+    EW-RTGT EW-I @ + C@ REDIR-TARGET-WORD? !
     EW-ARGV EW-I @ CELLS + @ TOK-POS !
     TOK-POS @ DUP CSTRLEN + TOK-END !
     EW-LIT EW-I @ + C@ IF LITERAL-FITS? ELSE 0 THEN IF
@@ -2334,7 +2345,9 @@ CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
       TOK-OUT @ ARGV ARGC @ CELLS + !
       EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
       \ every word is expanded from its encoding (Stage C)
+      REDIR-TARGET-WORD? @ IF NOSPLIT-ON THEN
       EW-NODES EW-I @ CELLS + @ ENC-EXPAND-CALL
+      NOSPLIT-OFF
       TOK-END @ TOK-POS !
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
@@ -2356,7 +2369,9 @@ CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
         ARGC @ 1+ ARGC !
       THEN
     ELSE
+      REDIR-TARGET-WORD? @ IF NOSPLIT-ON THEN
       EW-NODES EW-I @ CELLS + @ ENC-EXPAND-CALL
+      NOSPLIT-OFF
       TOK-END @ TOK-POS !
       0 EMIT-TOK-CHAR
     THEN

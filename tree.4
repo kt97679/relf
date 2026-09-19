@@ -1396,6 +1396,7 @@ VARIABLE ARGV-NODE-NEXT   \ the node of the word being added, if it has one
 VARIABLE ARGV-FORCE-LITERAL?   \ a synthesised word with nothing to expand
 
 VARIABLE ARGV-ASSIGN-NEXT   \ the parser tagged this word an assignment
+VARIABLE ARGV-RTGT-NEXT     \ ... or tagged it a redirection's target
 
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
@@ -1409,6 +1410,7 @@ VARIABLE ARGV-ASSIGN-NEXT   \ the parser tagged this word an assignment
   ARGV ARGC @ CELLS + !
   ARGV-NODE-NEXT @ ARGV-NODES ARGC @ CELLS + !  0 ARGV-NODE-NEXT !
   ARGV-ASSIGN-NEXT @ ARGV-ASSIGN ARGC @ + C!    0 ARGV-ASSIGN-NEXT !
+  ARGV-RTGT-NEXT @ ARGV-REDIR-TGT ARGC @ + C!   0 ARGV-RTGT-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ ==================================================================
 \ Expanding a word from its encoding (EXPANSION-PLAN.md Stage B)
@@ -1850,6 +1852,10 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   0 IN-DQ-CONTEXT? !
   R> XE-SPLIT ;
 ' XE-TRY IS ENC-EXPAND-CALL
+: XE-NOSPLIT-ON  ( --- )   -1 XE-NOSPLIT? ! ;
+: XE-NOSPLIT-OFF ( --- )    0 XE-NOSPLIT? ! ;
+' XE-NOSPLIT-ON  IS NOSPLIT-ON
+' XE-NOSPLIT-OFF IS NOSPLIT-OFF
 
 : ADD-WORD ( word --- )
   DUP ARGV-NODE-NEXT !
@@ -1878,6 +1884,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
 : ADD-REDIR ( redir --- )
   DUP 0 XF@ DUP 0< 0= OVER 10 < AND IF 2* W-DIGITS + 0 ARGV-ADD ELSE DROP THEN
   DUP 1 XF@ OP>WORD 0 ARGV-ADD
+  1 ARGV-RTGT-NEXT !                         \ the target is not field-split
   2 XF@ ADD-WORD ;
 
 \ A here-document's body, into HEREDOC-BUF. With an unquoted delimiter

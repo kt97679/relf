@@ -90,4 +90,7 @@ them.
 12. **The word after a redirection operator is not field-split.** With
     `v='a b'`, `echo x >$v` writes to the single file named `a b` rather
     than to two files; a shell that splits it either writes to the first
-    or reports an ambiguity. (Not yet implemented here.)
+    or reports an ambiguity. What a shell does when the target expands to
+    several fields is unspecified - bash calls it an ambiguous redirect,
+    dash uses the single name it read - and this shell follows dash.
+    → `tests/diff/cases/redir-target-335.sh`

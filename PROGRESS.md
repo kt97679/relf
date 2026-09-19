@@ -330,6 +330,7 @@ do not trust the absence of a line below.
 - **332** — the catalogue's own list: here-document substitutions, split operators
 - **333** — the last catalogued behaviour: a quoted empty word beside "$@"
 - **334** — a command that is only redirections; and a lookahead that asked for input
+- **335** — a redirection's target is not field-split
 
 ### Not tied to an iteration
 
@@ -18254,3 +18255,31 @@ truncation of an existing file. It matches bash and dash.
 busybox suite: 177 of 357, up from 174; dash is at 211.
 
 tests/verify: diff cases 64 -> 65; sizes.
+
+## Iteration 335: a redirection's target is not field-split
+
+Catalogue entry 12. XCU 2.7 expands the word after a redirection
+operator but does not field-split it, so `v='a b'; > $v` writes to the
+one file named `a b`. This shell expanded it like any other word, so the
+target became two words: the redirection took the first and the rest
+were passed to the command.
+
+The parser tags the target when it adds it - a per-word flag beside the
+assignment flag it already keeps - and the expander is told not to split
+that one word. Two deferred words carry the instruction across the file
+boundary, which is how the rest of this code passes such things; a first
+attempt stored tree.4's variable address in a cell in shell.4 and
+crashed, because the cell was still zero when the expander first ran.
+
+`tests/diff/cases/redir-target-335.sh` covers a variable target, a
+quoted name with a space, a target built from an expansion, input and
+output redirections through variables, and a name that looks like a
+glob. It matches bash and dash.
+
+A target that expands to SEVERAL fields is unspecified: bash calls it an
+ambiguous redirect, dash writes to the single name it read. This shell
+follows dash, and the catalogue says so.
+
+busybox suite: 178 of 357; dash is at 211.
+
+tests/verify: diff cases 65 -> 66; sizes.
