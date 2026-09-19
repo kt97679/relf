@@ -777,9 +777,16 @@ VARIABLE CST-DST
         \ nested `\`...\`` reached the child still escaped and ran as
         \ literal text (Iteration 300).
         CST-BQ? @ IF
-          CST-I @ 1+ SRC-ADDR @ + C@
-          DUP 96 = OVER 92 = OR SWAP 36 = OR IF DROP 1 CST-I +! THEN
-          CST-I @ SRC-ADDR @ + C@
+          \ Inside backquotes a backslash is removed only before ` \ or
+          \ $ (Iteration 300). The re-fetch below belongs INSIDE that
+          \ test: outside it, every other backslash pushed a second
+          \ character and left the first on the stack, so a backquote
+          \ containing any other escape overflowed it (Iteration 348).
+          CST-I @ 1+ SRC-ADDR @ + C@                ( c next )
+          DUP 96 = OVER 92 = OR SWAP 36 = OR IF     ( c )
+            DROP  1 CST-I +!
+            CST-I @ SRC-ADDR @ + C@
+          THEN
         THEN
         CST-DST @ C!  1 CST-DST +!  1 CST-I +!
       THEN

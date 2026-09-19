@@ -175,13 +175,9 @@ them.
     to the offending letter.
     → `tests/shell/run-getopts-msg`
 
-26. **A backslash inside a backquote substitution CRASHES this shell.**
-    `x=`echo "a\3b"`` is enough, and so is `x=`echo a\3b`` without the
-    quotes; `$( )` with the same text is fine, and the crash comes at
-    parse time, not from the child's output - `x=`echo "plain"`` works
-    and the escaped backslash `\\` works too. Iteration 346 catalogued
-    this as an output-byte problem, which Iteration 347 corrected by
-    measuring: the text is what matters. `SCAN-BACKQUOTE` steps over a
-    backslash and the character after it when looking for the closing
-    backquote, while the word encoder around it does not, so the two
-    disagree about where the text ends. (Not fixed.)
+26. **A backslash inside a backquote substitution** is removed only
+    before a backquote, a backslash or a dollar; every other backslash
+    stays. This shell crashed on any of the others - the copier
+    re-fetched a character outside the test that decides whether to skip
+    one, so each such backslash left a value on the stack.
+    → `tests/diff/cases/backquote-escape-348.sh`

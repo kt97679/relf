@@ -343,6 +343,7 @@ do not trust the absence of a line below.
 - **345** — wait %n, bare wait's status, and the first substitution in an assignment
 - **346** — getopts reports its errors; a backquote crash catalogued
 - **347** — the backquote crash re-measured: the text, not the output
+- **348** — the backquote crash fixed: a re-fetch outside its test
 
 ### Not tied to an iteration
 
@@ -18646,3 +18647,30 @@ short. This iteration cost a session because of that. Entries from now
 on should say what was varied and what held still, which this one does.
 
 No code changed.
+
+## Iteration 348: the backquote crash
+
+347 named the place to look, and the fault was four lines in. Copying a
+backquote's text into the tree, the copier asks whether a backslash
+stands before a backquote, a backslash or a dollar - the three POSIX
+removes - and if so steps over it. The re-fetch of the character to
+store sat **outside** that test:
+
+    DUP 96 = OVER 92 = OR SWAP 36 = OR IF DROP 1 CST-I +! THEN
+    CST-I @ SRC-ADDR @ + C@        \ ran either way
+
+Taken when the test was false, it pushed a second character and left the
+first on the stack. Every other backslash in a backquote leaked one
+value, and the stack overflowed into a fault. Moving the re-fetch inside
+the test is the whole fix.
+
+`tests/diff/cases/backquote-escape-348.sh` covers an unquoted backslash,
+an escaped quote, dollar and backslash, a tab, a nested backquote, two
+commands in one substitution and a function call, and matches bash. On
+`echo "a\3b"` bash and this shell print the backslash where dash's echo
+turns it into a control character - an echo difference, not a
+substitution one.
+
+busybox suite: **190 of 357**, up from 186; dash is at 211.
+
+tests/verify: diff cases 74 -> 75; sizes.
