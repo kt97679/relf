@@ -1039,6 +1039,10 @@ VARIABLE JOIN#
     I ARGV@ DUP CSTRLEN JOIN-S,
   LOOP DROP
   0 JOIN-C,  -1 JOIN# +!                    \ NUL-terminated, not counted
+  \ With no words at all that leaves -1, which a caller then takes for a
+  \ length: a here-document whose body expanded to nothing handed -1 to
+  \ the writer and hung (Iteration 343).
+  JOIN# @ 0< IF 0 JOIN# ! THEN
   JOIN-BUF JOIN# @ ;
 : JOIN-ARGV ( --- c-addr u )   0 JOIN-ARGV-FROM ;
 

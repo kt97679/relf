@@ -148,8 +148,18 @@ them.
 
 21. **A here-document delimiter is not expanded.** `cat <<- $a` ends at
     a line reading `$a`, whether or not `a` is set. This shell gets it
-    right when `a` HAS a value and produces an empty body when it does
-    not, which is the odd part: the parse is identical either way -
-    `tree-dump` shows the same delimiter and body - so something reads
-    the variable at run time. (Not yet fixed. Start by asking whether
-    the body or the delimiter is what comes out empty.)
+    right when `a` HAS a value and HANGS when it does not.
+
+    What Iteration 343 established. The parse is not at fault: put the
+    same here-document inside a function that is never called and the
+    script parses and runs to the end. The hang is at execution, and the
+    shape of it is a `cat` waiting on a pipe that is never written or
+    closed. `a=` (set but empty) hangs as well as `unset a`, while
+    `X$a` and `"$a"` as delimiters both work - so what matters is that
+    the delimiter's expansion is EMPTY, not that the variable is unset.
+    And `cat <<- $a > /tmp/out` reports `cat: /tmp/out` as a missing
+    FILE, so the other redirection has become an argument: the
+    preparation is clobbering the command's own words. That is where the
+    next session should look - `PREPARE-HEREDOC` resets ARGC and ARGV to
+    expand the body, and something about an empty delimiter lets that
+    reset escape.

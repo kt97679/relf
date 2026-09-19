@@ -338,6 +338,7 @@ do not trust the absence of a line below.
 - **340** — groundwork for case patterns: the glob marks, recorded and gated
 - **341** — case patterns keep their quoting, per character
 - **342** — return in a loop's condition
+- **343** — a length of -1 from the joiner; the here-document hang narrowed
 
 ### Not tied to an iteration
 
@@ -18509,3 +18510,30 @@ instead: the next session should ask whether it is the body or the
 delimiter that comes out empty.
 
 tests/verify: diff cases 71 -> 72; sizes.
+
+## Iteration 343: a -1 length, and the hang narrowed
+
+**Fixed**: joining no words at all returned a length of **-1**. The
+joiner writes a NUL and then subtracts it from the count, which is right
+for one word or ten and wrong for none. A caller that takes that as a
+length writes 2^64 bytes. Nothing in the suites was reaching it, but a
+negative length is never right and it was one line.
+
+**Narrowed, not fixed**: the here-document with an empty delimiter. The
+catalogue asked whether the body or the delimiter comes out empty; the
+answer is neither, and the question was the wrong one. What is true:
+
+- The parse is fine. The same here-document inside a function that is
+  never called parses and the script runs to the end.
+- The hang is a `cat` waiting on a pipe that is never written or closed.
+- `a=` hangs as well as `unset a`, and `X$a` and `"$a"` both work - so
+  it is the delimiter expanding to EMPTY that matters.
+- `cat <<- $a > /tmp/out` reports `/tmp/out` as a missing file, so the
+  other redirection has become an argument: **the preparation is
+  clobbering the command's own words**.
+
+That last line is the finding worth having. `PREPARE-HEREDOC` resets
+ARGC and ARGV to expand the body, and with an empty delimiter that reset
+escapes into the command being run. The catalogue now points there.
+
+tests/verify: sizes.
