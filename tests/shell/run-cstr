@@ -1,0 +1,54 @@
+#!/bin/sh
+# tests/shell/run-cstr - CSTR," , the word that lays down the
+# NUL-terminated strings this shell keeps (Iteration 354). The Forth
+# text is single-quoted inside each script, so the shell hands its
+# double quotes to the hatch untouched rather than eating them.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+
+# N. prints a number with no trailing space, so the expectations below
+# are exactly what the word produced.
+run() {  # run the Forth text in $1 through the hatch
+    printf "forth ': N. ( n --- ) 0 <# #S #> TYPE ;'\n" > "$t/f.sh"
+    printf "forth '%s'\n" "$1" >> "$t/f.sh"
+    "$THIS_SH" "$t/f.sh" 2>&1
+}
+
+assert_output_equals "text and length" "hello 5" \
+  "$(run 'CREATE A CSTR," hello" A DUP CSTRLEN TYPE SPACE A CSTRLEN N. CR')"
+# One space after the word is the separator the interpreter ate, so
+# `CSTR," "` is the empty string and `CSTR,"  x"` keeps one leading
+# space - the same rule as S" ".
+assert_output_equals "empty text is a length of zero" "0" \
+  "$(run 'CREATE B CSTR," " B CSTRLEN N. CR')"
+assert_output_equals "a doubled space keeps one" " x 2" \
+  "$(run 'CREATE L CSTR,"  x" L DUP CSTRLEN TYPE SPACE L CSTRLEN N. CR')"
+assert_output_equals "spaces inside are kept" "a b c 5" \
+  "$(run 'CREATE C CSTR," a b c" C DUP CSTRLEN TYPE SPACE C CSTRLEN N. CR')"
+assert_output_equals "no escape processing" 'a\nb 4' \
+  "$(run 'CREATE D CSTR," a\nb" D DUP CSTRLEN TYPE SPACE D CSTRLEN N. CR')"
+assert_output_equals "a dollar is just a character" '$x 2' \
+  "$(run 'CREATE E CSTR," $x" E DUP CSTRLEN TYPE SPACE E CSTRLEN N. CR')"
+assert_output_equals "the terminator is written" "0" \
+  "$(run 'CREATE F CSTR," xy" F 2 + C@ N. CR')"
+assert_output_equals "two in a row stay apart" "one two" \
+  "$(run 'CREATE G CSTR," one" CREATE H CSTR," two" G DUP CSTRLEN TYPE SPACE H DUP CSTRLEN TYPE CR')"
+# `I` and `J` are already names in this Forth, so the pair below uses
+# names of its own rather than a redefinition notice.
+assert_output_equals "what follows is unharmed" "42" \
+  "$(run 'CREATE PAD-ONE CSTR," pad" 42 CONSTANT FORTY-TWO FORTY-TWO N. CR')"
+assert_output_equals "one character" "x 1" \
+  "$(run 'CREATE K CSTR," x" K DUP CSTRLEN TYPE SPACE K CSTRLEN N. CR')"
+
+# the converted literals still name what they named
+assert_output_equals "PATH is still found by name" "/usr/bin/ls" \
+  "$("$THIS_SH" -c 'command -v ls' 2>&1)"
+assert_output_equals "PWD is still set by name" "yes" \
+  "$("$THIS_SH" -c 'cd /tmp; [ "$PWD" = /tmp ] && echo yes' 2>&1)"
+assert_output_equals "HOME is still read by name" "yes" \
+  "$("$THIS_SH" -c 'cd ~ && [ "$(pwd)" = "$HOME" ] && echo yes' 2>&1)"
+assert_output_equals "IFS is still read by name" "a:b" \
+  "$("$THIS_SH" -c 'IFS=:; set -- a b; echo "$*"' 2>&1)"
+assert_output_equals "PS2 is still read by name" "sh" \
+  "$("$THIS_SH" -c 'echo "${0##*/}"' 2>&1)"
+report

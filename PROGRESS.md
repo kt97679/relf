@@ -349,6 +349,7 @@ do not trust the absence of a line below.
 - **351** — a pool for here-document bodies; numbered ones catalogued
 - **352** — assessed the recognizer mechanism: not for this shell, and why
 - **353** — CSTR," replaces 26 byte-built literals
+- **354** — tests for CSTR," itself; one more measurement on the numbered here-document
 
 ### Not tied to an iteration
 
@@ -18806,3 +18807,31 @@ reviewable step: differential 76, matrix 420, POSIX 46, mrsh 21, shell
 files, interactive 22, no dead words, both widths.
 
 tests/verify: sizes.
+
+## Iteration 354: covering the new word
+
+`CSTR,"` went in last iteration on the strength of the suites passing
+unchanged, which shows the CONVERTED literals still work but says
+nothing about the word itself. `tests/shell/run-cstr` now exercises it
+directly, through the `forth` hatch with the Forth text single-quoted so
+the shell hands its double quotes over untouched: text and length, an
+empty string, spaces inside, a backslash and a dollar left alone, the
+NUL actually written, two in a row staying apart, and the definition
+after one being unharmed. Fifteen assertions.
+
+Two things the writing turned up, both now in the file as comments:
+
+- **`CSTR,""` does not work**, and neither does `S""`. The interpreter
+  reads the whole of `CSTR,""` as one token, so the word is never found.
+  The empty string is `CSTR," "` - one space, which is the separator the
+  interpreter ate - and a leading space is written by doubling it.
+- Half the alphabet is already taken: `I` and `J` are Forth words, so a
+  test that defines them reports a redefinition rather than the value it
+  meant to print.
+
+**And a measurement on the numbered here-document** (catalogue entry
+30): after `exec 3<<E`, the redirection table holds descriptor 3 and
+operator 6 - the right values. So the table is built correctly and
+whatever is lost is lost in applying it. One more fact, no theory.
+
+tests/verify: a new shell test file; sizes.

@@ -211,4 +211,7 @@ them.
     3 is not open. Observed, not explained: the parse is right -
     `tree-dump` prints `(redir 3 << "E" (body ...))` - and an unnumbered
     here-document works, in simple commands and compounds alike. Also
-    `exec 3<<E` leaves fd 3 closed. (Not fixed.)
+    `exec 3<<E` leaves fd 3 closed. Iteration 354 adds one more
+    observation: after such a command the redirection table holds
+    descriptor 3 and operator 6 - the right values - so whatever is lost
+    is lost after the table is built, in applying it. (Not fixed.)
