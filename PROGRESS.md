@@ -355,6 +355,7 @@ do not trust the absence of a line below.
 - **357** — assignments applied left to right as they expand; readonly reports
 - **358** — positional parameters are fields, not a space-joined string
 - **359** — an empty quoted field: measured, attempted, reverted
+- **360** — a bare return in a trap; and where the splitting really happens
 
 ### Not tied to an iteration
 
@@ -18995,3 +18996,29 @@ The attempt is reverted rather than left in place: an inert flag is
 worse than none, and the measurement is what the next session needs.
 
 No behaviour changed.
+
+## Iteration 360: a bare return, and where splitting happens
+
+**`return` with no operand inside a trap** takes the status the shell
+had when the trap was entered - the same rule `exit` got in Iteration
+336, and the same one-line shape. busybox's suite has a test for each.
+
+**And 359's mystery, settled by a cheap experiment.** Rather than
+another theory, I forced the branch I suspected to split
+unconditionally and rebuilt: nothing changed at all. So an unquoted
+variable's value never goes through the per-character emitter. It is
+written out whole, its extent recorded as a REGION, and `XE-SPLIT`
+walks the regions afterwards - splitting inside each one and treating
+the text between them as literal.
+
+That explains everything 359 measured. A quoted part that emits no
+characters leaves no text between regions, so the splitter has nothing
+to see; a non-empty one leaves text and works. The fix belongs in that
+pass, where a region starting a word needs to know whether quoting came
+before it, and the catalogue now says so.
+
+Making the wrong branch unconditional cost one rebuild and ruled out an
+entire subsystem. Worth remembering: when a fix "changes nothing", make
+it change everything and see whether the answer moves.
+
+tests/verify: sizes.

@@ -294,6 +294,19 @@ them.
     to carry that as a field-level flag, set where the expander enters a
     quoted region and cleared at each field break, changed nothing,
     which says the expander never enters a region for an empty pair of
-    quotes. The next session should look at what the encoder emits for
-    `""` inside a larger word, since the marker appears to be dropped
-    there. (Not fixed; the attempt was reverted rather than left inert.)
+    quotes.
+
+    Iteration 360 found where it really happens, by forcing the
+    suspected branch to split unconditionally and seeing NOTHING change:
+    an unquoted variable's value is not emitted character by character
+    at all. It is written out whole and its extent recorded as a region,
+    and `XE-SPLIT` walks those regions afterwards, splitting inside each
+    and taking the text between them as literal. A quoted part that
+    emits no characters leaves no text between regions, so the splitter
+    cannot tell it was there. The fix belongs in that pass - a region
+    that starts a word needs to know whether quoting preceded it - not
+    in the per-character emitter. (Still not fixed.)
+
+41. **`return` with no operand inside a trap** takes the status the
+    shell had when the trap was entered, as `exit` does.
+    → `tests/diff/cases/trap-return-355.sh`

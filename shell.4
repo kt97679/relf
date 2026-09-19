@@ -3914,6 +3914,11 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
 : DO-RETURN ( --- )
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL LAST-STATUS !
+  ELSE
+    \ `return` with no operand inside a trap takes the status the shell
+    \ had when the trap was entered, as `exit` does since Iteration 336,
+    \ not the status of the last command the trap ran (Iteration 360).
+    IN-TRAP? @ IF TRAP-SAVED-STATUS @ LAST-STATUS ! THEN
   THEN
   \ from a function, or from a file run by `.` (Iteration 270)
   FUNC-DEPTH @ DOT-DEPTH @ + 0 > IF

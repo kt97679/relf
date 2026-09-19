@@ -26,3 +26,13 @@ h() {
 h; echo "second=$?"
 trap - USR1 USR2
 (exit 5); echo "untouched=$?"
+# `return` with no operand inside a trap takes the status the shell had
+# when the trap was entered, as `exit` does (Iteration 360).
+k() {
+  trap 'echo bare; return' USR1
+  (exit 42)
+  kill -USR1 $$
+  echo "not reached"
+}
+k; echo "bare-return=$?"
+trap - USR1
