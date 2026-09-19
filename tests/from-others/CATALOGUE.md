@@ -154,3 +154,16 @@ them.
     shifted: the here-document took the wrong file descriptor and its
     reader hung on a pipe nobody closed.
     → `tests/diff/cases/heredoc-empty-delim-344.sh`
+
+## Sixth batch from busybox's ash suite (Iteration 345)
+
+22. **`wait %n` names a job**, as `kill %n` does, and reports that job's
+    status - including a job the shell has already reaped, whose status
+    it kept.
+    → `tests/diff/cases/wait-job-status-345.sh`
+
+23. **`wait` with no operands yields 0**, whatever the children did.
+
+24. **An assignment made only of command substitutions takes the status
+    of the FIRST of them.** `v=`exit 2` `false`` is 2 in bash and dash
+    alike, though XCU 2.9.1 reads as though it should be the last.

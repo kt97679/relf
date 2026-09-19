@@ -340,6 +340,7 @@ do not trust the absence of a line below.
 - **342** — return in a loop's condition
 - **343** — a length of -1 from the joiner; the here-document hang narrowed
 - **344** — an empty redirection target is not dropped
+- **345** — wait %n, bare wait's status, and the first substitution in an assignment
 
 ### Not tied to an iteration
 
@@ -18566,3 +18567,30 @@ and one piped. It matches bash and dash.
 busybox suite: 182 of 357, up from 180; dash is at 211.
 
 tests/verify: diff cases 72 -> 73; sizes.
+
+## Iteration 345: wait, and which substitution counts
+
+Three fixes, all from the busybox list.
+
+**`wait %n` names a job.** It was parsed as a number, came out 0 and
+waited for nothing. It resolves a job specifier the way `kill` has since
+Iteration 322 - and consults the job table when the child has already
+been reaped, since Iteration 336 made that common: the status is
+remembered there, and reporting 0 for it was wrong. An unknown job is an
+error.
+
+**`wait` with no operands yields 0**, whatever the children did. This
+reported the last child's status.
+
+**An assignment made only of command substitutions takes the status of
+the FIRST of them.** `v=`exit 2` `false`` is 2 in bash and in dash,
+where this shell said 1. XCU 2.9.1 reads as though it should be the
+last, so the two references agreeing settles it - and the case records
+that reasoning.
+
+One difference is deliberate: an unknown job specifier answers 127 as
+bash does, where dash answers 2. The case follows bash and says so.
+
+busybox suite: 186 of 357, up from 182; dash is at 211.
+
+tests/verify: diff cases 73 -> 74; sizes.

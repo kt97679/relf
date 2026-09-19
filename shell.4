@@ -2006,7 +2006,7 @@ DEFER AE-EXPR-CALL   ( --- n )
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
   AE-COMMA ;
 
-VARIABLE CMDSUB-STATUS   \ the last command substitution's exit status
+VARIABLE CMDSUB-STATUS   \ the FIRST command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 
 VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
@@ -2050,7 +2050,12 @@ DEFER RUN-CMDSUB-JOB-CALL
     CMDSUB-PIPE-RD @ CLOSE-FILE DROP
     \ its status is the status of a command that is only assignments
     \ (XCU 2.9.1; Iteration 269 - it was dropped)
-    CMDSUB-PID @ WAITPID DROP WAIT->STATUS CMDSUB-STATUS !
+    \ An assignment-only command takes the status of the FIRST
+    \ substitution in it, which is what both references report:
+    \ `v=`exit 2` `false`` is 2 in bash and dash alike. This kept the
+    \ last one and answered 1 (Iteration 345).
+    CMDSUB-PID @ WAITPID DROP WAIT->STATUS
+    CMDSUB-RAN? @ IF DROP ELSE CMDSUB-STATUS ! THEN
     -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
       CMDSUB-OUT-LEN @ 0 > IF
@@ -4188,6 +4193,9 @@ CREATE GO-CHARBUF 2 ALLOT
     THEN
   0 UNTIL ;
 
+DEFER KILL-JOB-PID   ( c-addr --- pid | 0 )   \ the job table is below
+DEFER JOB-STATUS-OF-CALL  ( pid --- status | -1 )
+DEFER JOB-FORGET-PID-CALL ( pid --- )
 VARIABLE DW-PID
 DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
 
@@ -4199,7 +4207,21 @@ DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
   \ still appears at the next prompt (Iteration 324). Variables, because
   \ the pid has to outlive the status.
   ARGC @ 1 > IF
-    ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL DW-PID !
+    \ `wait %1` names a job, as `kill` does (Iteration 345). An unknown
+    \ job is an error, and a job this shell has already reaped keeps its
+    \ status in the table - `wait` reports that rather than 0.
+    ARGV 1 CELLS + @ DUP C@ 37 = IF
+      KILL-JOB-PID ?DUP 0= IF
+        S" shell: wait: no such job" ERR-TYPE ERR-NL
+        127 LAST-STATUS ! EXIT
+      THEN
+      DW-PID !
+    ELSE
+      DUP CSTRLEN PARSE-DECIMAL DW-PID !
+    THEN
+    DW-PID @ JOB-STATUS-OF-CALL DUP 0< 0= IF
+      LAST-STATUS !  DW-PID @ JOB-FORGET-PID-CALL EXIT
+    THEN DROP
     DW-PID @ WAITPID                           ( raw ior )
     0= IF
       DUP WAIT->STATUS LAST-STATUS !
@@ -4215,6 +4237,9 @@ DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
     JOB-MARK-DONE-CALL                         ( consumes pid and raw )
   REPEAT
   2DROP
+  \ `wait` with no operands waits for every child and yields 0 (XCU
+  \ wait); this reported the last child's status (Iteration 345).
+  0 LAST-STATUS !
   ;   \ the job stays until the prompt reports it (Iteration 320)
 
 
@@ -4737,7 +4762,6 @@ VARIABLE TR-ACTION
   LOOP ;
 
 VARIABLE KILL-SIG
-DEFER KILL-JOB-PID   ( c-addr --- pid | 0 )   \ the job table is below
 
 : DO-KILL ( --- )
   \ kill [-s name | -name | -n] pid...; kill -l [status]
@@ -6578,6 +6602,20 @@ VARIABLE KJ-PID
 
 ' REAP-QUIETLY IS REAP-CALL
 
+: JOB-STATUS-OF ( pid --- status | -1 )   \ a job already reaped
+  JOB# @ 0 ?DO
+    JOB-PIDS I CELLS + @ OVER = JOB-STATES I CELLS + @ 2 = AND IF
+      DROP JOB-STATUS I CELLS + @ UNLOOP EXIT
+    THEN
+  LOOP DROP -1 ;
+
+: JOB-FORGET-PID ( pid --- )   \ once `wait` has reported it
+  JOB# @ 0 ?DO
+    JOB-PIDS I CELLS + @ OVER = IF DROP I JOB-FORGET UNLOOP EXIT THEN
+  LOOP DROP ;
+
+' JOB-STATUS-OF IS JOB-STATUS-OF-CALL
+' JOB-FORGET-PID IS JOB-FORGET-PID-CALL
 ' JOB-MARK-DONE IS JOB-MARK-DONE-CALL
 
 ' DO-JOBS    S" jobs"    BUILTIN
