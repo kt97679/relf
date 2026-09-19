@@ -351,6 +351,7 @@ do not trust the absence of a line below.
 - **353** — CSTR," replaces 26 byte-built literals
 - **354** — tests for CSTR," itself; one more measurement on the numbered here-document
 - **355** — four fixes: numbered here-documents, background stdin, trap return, quoted empty fields
+- **356** — the length of a special parameter; command's not-found report
 
 ### Not tied to an iteration
 
@@ -18867,3 +18868,37 @@ Four differential cases added; all match bash and dash.
 busybox suite: **193 of 357**, up from 190; dash is at 211.
 
 tests/verify: diff cases 76 -> 80; sizes.
+
+## Iteration 356: lengths and not-found
+
+**`${#?}` is the length of `$?`.** Two faults, one on top of the other.
+The length form looked its name up as an ordinary variable, so every
+special parameter answered 0; and the parse sent `${#?}` down the
+operator path, because Iteration 339 taught the scanner that an operator
+character after `#` means the parameter is `#` - which is right for
+`${#+word}` and wrong for `${#?}`, where the next character is the
+closing brace. Both are fixed, and the case covers the pair together so
+neither can be reverted alone.
+
+**`command` reports a name it cannot find** and answers greater than
+zero: `nosuchcmd: not found` for `-V`, as dash words it. This said
+nothing and answered 1.
+
+That last one made an older case fail, which is the useful part: it
+asserted `rc=1`, which was bash's answer rather than the standard's.
+POSIX asks only for a status greater than zero, so the case asks that
+now and says why in a comment - a test that pinned an arbitrary choice
+has become one that pins the requirement.
+
+**Catalogued, not fixed** (entry 36): assignments in one command are
+expanded and applied left to right, so `X=1.2 X=${X#1} B=${X%%.*}` sets
+B. Both references do it; this shell expands every word first. The fix
+is not to apply them earlier, because the command's own words must still
+see the old values - `A=1 echo $A` prints nothing in both references -
+so the assignment words have to be expanded after the command words, one
+at a time. That is a change to the shape of expansion, worth its own
+iteration.
+
+busybox suite: **195 of 357**, up from 193; dash is at 211.
+
+tests/verify: diff cases 80 -> 81; sizes.

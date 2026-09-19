@@ -10,7 +10,10 @@ command f 2>/dev/null || echo "command f: rc=$?"
 command -v f
 command -v echo
 command -v /bin/sh
-command -v nosuchthing > /dev/null 2>&1; echo "missing rc=$?"
+# The exact status for a name that is not found differs between the
+# references: bash says 1, dash and this shell say 127, and POSIX asks
+# only for "greater than zero" (Iteration 356).
+command -v nosuchthing > /dev/null 2>&1; [ $? -gt 0 ] && echo "missing is an error"
 command true; echo "true rc=$?"
 command false; echo "false rc=$?"
 command command echo nested

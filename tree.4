@@ -471,8 +471,13 @@ DEFER SCAN-DOLLAR
   ENC-VAR ENC-CODE,
   \ `${#}` is the count and `${#name}` a length, but `${#+word}` names
   \ the parameter `#` with an operator after it (Iteration 339).
+  \ `${#}` is the count, `${#name}` a length, `${#+word}` the parameter
+  \ `#` with an operator - and `${#?}` is the LENGTH of `$?`, since what
+  \ follows the `?` is the closing brace rather than a word
+  \ (Iterations 339, 356).
   0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND
-  1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR 0= AND IF
+  1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR
+  2 SRC-C 125 <> AND 0= AND IF
     1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME  0 ENC-C,
     0 SRC-C 125 = IF 1 SRC-SKIP THEN EXIT
   THEN
@@ -1720,7 +1725,10 @@ VARIABLE XP-VAL
         POS-PARAM-COUNT @ EMIT-DECIMAL EXIT
       THEN
     THEN
-    XP-NAME @ LOOKUP-VAR
+    \ `${#?}` is the length of `$?`, and so for the other specials: the
+    \ lookup here only knew ordinary variables and answered 0
+    \ (Iteration 356).
+    XP-NAME @ LOOKUP-VAR ?DUP 0= IF XP-NAME @ SPECIAL-PARAM-VALUE THEN
     DUP 0= IF DROP XP-NAME @ XP-LEN @ NOUNSET-CHECK 0 ELSE CSTRLEN THEN
     EMIT-DECIMAL EXIT
   THEN

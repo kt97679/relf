@@ -234,3 +234,25 @@ them.
     the quoting that appears during expansion counts as much as a quote
     at the start of the word.
     → `tests/diff/cases/quoted-empty-355.sh`
+
+## Tenth batch from busybox's ash suite (Iteration 356)
+
+34. **`${#?}` is the length of `$?`**, and so for the other special
+    parameters; `${#+word}` remains the parameter `#` with an operator.
+    What tells them apart is whether a brace or a word follows.
+    → `tests/diff/cases/special-length-356.sh`
+
+35. **`command` reports a name it cannot find** - `NAME: not found` for
+    `-V` - and answers greater than zero. dash and this shell say 127,
+    bash says 1; POSIX asks only for non-zero.
+    → `tests/diff/cases/command-306.sh`
+
+36. **Assignments in one command are expanded and applied left to
+    right**, so `X=usbdev1.2 X=${X#usbdev} B=${X%%.*}` leaves B as `1`.
+    Both references do this and this shell does not: it expands every
+    word first and applies the assignments afterwards, so each one sees
+    the values from before the command. The command's own words must
+    still see the OLD values - `A=1 echo $A` prints nothing in both
+    references - so the fix cannot simply apply them earlier; the
+    assignment words have to be expanded after the command words, one at
+    a time, each after the previous is applied. (Not fixed.)

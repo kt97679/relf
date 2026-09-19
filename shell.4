@@ -3816,7 +3816,14 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
     2 ARGV@ DUP CSTRLEN CMD-V-FOUND EXIT
   THEN
   ARGV 2 CELLS + @ ARGV 1 CELLS + !   \ PATH-LOOKUP? reads ARGV[1]
-  PATH-LOOKUP? 0= IF 1 LAST-STATUS ! THEN ;
+  PATH-LOOKUP? 0= IF
+    \ Not found is status 127, and `-V` says so in dash's words; this
+    \ answered 1 and said nothing (Iteration 356).
+    CMD-VERBOSE? @ IF
+      ARGV 1 CELLS + @ ERR-CSTR  S" : not found" ERR-TYPE ERR-NL
+    THEN
+    127 LAST-STATUS !
+  THEN ;
 
 \ The builtins that used to be written inline in DISPATCH's chain.
 
