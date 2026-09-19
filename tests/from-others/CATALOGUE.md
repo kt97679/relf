@@ -175,10 +175,13 @@ them.
     to the offending letter.
     → `tests/shell/run-getopts-msg`
 
-26. **A backquote substitution whose output holds a byte below 32 or
-    127 CRASHES this shell.** `x=`printf "\3"`` is enough; `$( )` with
-    the same output is fine, and the byte's position in the output does
-    not matter. Since the two substitution forms differ only in how the
-    command is stored and run - a parsed subtree for `$( )`, text for
-    backquotes - the fault is on the backquote path between running the
-    child and inserting its output. (Not fixed.)
+26. **A backslash inside a backquote substitution CRASHES this shell.**
+    `x=`echo "a\3b"`` is enough, and so is `x=`echo a\3b`` without the
+    quotes; `$( )` with the same text is fine, and the crash comes at
+    parse time, not from the child's output - `x=`echo "plain"`` works
+    and the escaped backslash `\\` works too. Iteration 346 catalogued
+    this as an output-byte problem, which Iteration 347 corrected by
+    measuring: the text is what matters. `SCAN-BACKQUOTE` steps over a
+    backslash and the character after it when looking for the closing
+    backquote, while the word encoder around it does not, so the two
+    disagree about where the text ends. (Not fixed.)

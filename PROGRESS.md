@@ -342,6 +342,7 @@ do not trust the absence of a line below.
 - **344** — an empty redirection target is not dropped
 - **345** — wait %n, bare wait's status, and the first substitution in an assignment
 - **346** — getopts reports its errors; a backquote crash catalogued
+- **347** — the backquote crash re-measured: the text, not the output
 
 ### Not tied to an iteration
 
@@ -18620,3 +18621,28 @@ and inserting its output, which is where the next session should read.
 busybox suite: 186 of 357; dash is at 211.
 
 tests/verify: a new shell test file; sizes.
+
+## Iteration 347: the backquote crash, re-measured
+
+Iteration 346 wrote the crash down as "a backquote whose OUTPUT holds a
+control byte". That was wrong, and a session of reading the output path
+found nothing because the output path is shared with `$( )`, which works.
+
+Measuring instead: `x=`echo "a\3b"`` crashes, and so does
+`x=`echo a\3b`` without the quotes; `x=`echo "plain"`` is fine and so is
+`x=`echo "a\\\\b"`` with the backslash escaped. **It is a backslash in
+the backquote's TEXT, at parse time** - nothing to do with what the
+child prints, and nothing to do with control characters.
+
+`SCAN-BACKQUOTE` steps over a backslash and the character after it when
+looking for the closing backquote, while the encoder wrapping it does
+not. The two then disagree about where the text ends, which is the shape
+of a crash that only appears when a backslash is inside. That is written
+into the catalogue as the place to start.
+
+**The lesson is about the catalogue, not the bug**: an entry is only
+worth as much as the measurement behind it, and 346's was one probe
+short. This iteration cost a session because of that. Entries from now
+on should say what was varied and what held still, which this one does.
+
+No code changed.
