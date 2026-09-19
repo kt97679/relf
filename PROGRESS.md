@@ -331,6 +331,7 @@ do not trust the absence of a line below.
 - **333** — the last catalogued behaviour: a quoted empty word beside "$@"
 - **334** — a command that is only redirections; and a lookahead that asked for input
 - **335** — a redirection's target is not field-split
+- **336** — exit inside a trap; and zombies reaped while builtins run
 
 ### Not tied to an iteration
 
@@ -18283,3 +18284,42 @@ follows dash, and the catalogue says so.
 busybox suite: 178 of 357; dash is at 211.
 
 tests/verify: diff cases 65 -> 66; sizes.
+
+## Iteration 336: exit inside a trap, and zombies
+
+Catalogue entries 13 and 14, from the signal end of the busybox gap
+list.
+
+**`exit` with no operand inside a trap takes the status the shell had
+when the trap was entered**, not the status of the last command the trap
+itself ran. `trap 'echo done; exit' EXIT` was replacing the script's
+status with the echo's 0. The status is already saved for `$?` inside
+the trap; `exit` now reads the same value.
+
+**A background child that has exited is reaped even while the shell runs
+builtins.** Until something waits for it, it stays a zombie, and
+`kill -0` on a zombie succeeds - so a script spinning on `kill -0 $!`
+never saw its child finish, and busybox's own test killed the shell
+after two seconds to prove it. The check at each command boundary reaps
+what has finished and remembers the statuses.
+
+**The cost is guarded.** A reap is a system call, and one per command
+would be visible - the whole dispatch is 3.4 ns. It happens only when
+the job table is not empty, which is one load and a branch otherwise:
+the 20,000-iteration loop still runs in 592 ms, unchanged.
+
+`tests/diff/cases/trap-exit-336.sh` covers the trap status with and
+without an operand, a trap that runs a command first, a trap in a
+function, the spin on `kill -0`, and the status of a waited-for
+background command. It matches bash and dash.
+
+busybox suite: 179 of 357; dash is at 211.
+
+tests/verify: diff cases 66 -> 67; sizes.
+
+**And the interactive baseline was flaky.** `tests/verify` records the
+pass and divergence counts, and a case listed in KNOWN-DIVERGENT was
+counted as a pass on the runs where it happened to match - so the
+baseline captured 23/0 and every later run reported a difference. A
+listed case is counted as divergent now whichever way it goes, with
+NOW-PASSES still printed for information.

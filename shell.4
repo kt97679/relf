@@ -130,6 +130,7 @@ PATH-MAX BUFFER: CWDBUF
 
 VARIABLE ARGC          ( number of tokens in the current command line )
 VARIABLE SHELL-PID   \ $$ - set once, in MAIN
+VARIABLE JOB#           \ how many are recorded
 VARIABLE JOB-CONTROL?   \ process groups and the terminal are in play
 VARIABLE SHELL-PGID     \ the shell's own group, to take the terminal back
 VARIABLE BG-PID   \ pid of the most recent background command, for $!
@@ -1331,8 +1332,15 @@ DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
 
 VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
 
+DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
+
 : CHECK-TRAPS ( --- )
   IN-TRAP? @ IF EXIT THEN
+  \ A background child that has exited stays a zombie until someone
+  \ waits for it, and `kill -0` on a zombie succeeds - so a script
+  \ spinning on `kill -0 $!` never saw its child finish (Iteration 336).
+  \ Only paid when there are jobs: a syscall per command otherwise.
+  JOB# @ 0 > IF REAP-CALL THEN
   BEGIN SIGNALS-PENDING ?DUP WHILE
     DUP 2 = IF -1 INT-SEEN? ! THEN             \ ^C during a command
     RUN-TRAP
@@ -3720,7 +3728,11 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   ARGC @ 1 > IF
     ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL SHELL-EXIT
   ELSE
-    LAST-STATUS @ SHELL-EXIT
+    \ `exit` with no operand inside a trap takes the status the shell
+    \ had when the trap was entered, not the status of the last command
+    \ the trap itself ran (XCU 2.14 trap). This used the latter, so
+    \ `trap 'echo x; exit' EXIT` always exited 0 (Iteration 336).
+    IN-TRAP? @ IF TRAP-SAVED-STATUS @ ELSE LAST-STATUS @ THEN SHELL-EXIT
   THEN ;
 
 VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
@@ -6281,7 +6293,6 @@ VARIABLE TF-TRAIL?
 128 CONSTANT JOB-TEXT-MAX
 64 JOB-TEXT-MAX * BUFFER: JOB-TEXT-POOL
 VARIABLE JOB-TEXT-NEXT       \ the text being recorded for the next JOB-ADD
-VARIABLE JOB#           \ how many are recorded
 VARIABLE JOB-NEXT       \ the next job number to hand out
 VARIABLE JB-I
 VARIABLE JB-K
@@ -6522,6 +6533,15 @@ VARIABLE KJ-PID
 
 ' DO-FG      S" fg"      BUILTIN
 ' DO-BG      S" bg"      BUILTIN
+
+: REAP-QUIETLY ( --- )   \ collect finished children, remembering statuses
+  BEGIN
+    WAIT-NOHANG                              ( pid status )
+    OVER 0= IF 2DROP EXIT THEN
+    JOB-MARK-DONE
+  AGAIN ;
+
+' REAP-QUIETLY IS REAP-CALL
 
 ' JOB-MARK-DONE IS JOB-MARK-DONE-CALL
 

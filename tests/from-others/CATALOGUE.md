@@ -94,3 +94,17 @@ them.
     several fields is unspecified - bash calls it an ambiguous redirect,
     dash uses the single name it read - and this shell follows dash.
     → `tests/diff/cases/redir-target-335.sh`
+
+## Third batch from busybox's ash suite (Iteration 336)
+
+13. **`exit` with no operand inside a trap uses the status the shell had
+    when the trap was entered**, not the status of the last command the
+    trap itself ran. So `trap 'echo done; exit' EXIT` preserves the
+    script's status rather than replacing it with the echo's 0.
+    → `tests/diff/cases/trap-exit-336.sh`
+
+14. **A background child that has exited must be reaped even while the
+    shell is running builtins.** Until it is waited for it stays a
+    zombie, and `kill -0` on a zombie succeeds - so a script that spins
+    on `kill -0 $!` waiting for its child never sees it finish.
+    → `tests/diff/cases/trap-exit-336.sh`

@@ -80,7 +80,13 @@ def main():
         got = run_case([shell] + extra, steps, env, raw)
         if got == want:
             passed += 1
-            if name in div: print(f"NOW-PASSES {name} (listed as divergent)")
+            if name in div:
+                # A listed case counts as divergent whichever way it goes:
+                # job-control turns on timing, and a baseline recording one
+                # outcome fails whenever the other happens.
+                print(f"NOW-PASSES {name} (listed; still counted divergent)")
+                passed -= 1
+                skipped += 1
         elif name in div:
             skipped += 1
         else:
