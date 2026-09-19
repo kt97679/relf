@@ -563,9 +563,20 @@ DEFER SCAN-DOLLAR
     DUP -1 = OVER BLANK? OR OVER 10 = OR OVER OP-CHAR? OR IF
       DROP -1
     ELSE DUP 92 = IF
-      DROP WF-QUOTED TK-FLAGS @ OR TK-FLAGS !
-      1 SRC-C DUP -1 = IF DROP 92 ENC-LIT, ELSE
-        DUP 10 = IF DROP ELSE ENC-ESC ENC-CODE, ENC-C, THEN
+      \ A backslash-newline is a line continuation, not quoting: marking
+      \ the word quoted made `i\` + newline + `f` fail to read as the
+      \ reserved word `if`, since a quoted word is never reserved
+      \ (Iteration 338).
+      DROP
+      1 SRC-C DUP -1 = IF
+        DROP 92 ENC-LIT,  WF-QUOTED TK-FLAGS @ OR TK-FLAGS !
+      ELSE
+        DUP 10 = IF
+          DROP
+        ELSE
+          WF-QUOTED TK-FLAGS @ OR TK-FLAGS !
+          ENC-ESC ENC-CODE, ENC-C,
+        THEN
       THEN
       1 SRC-C -1 = IF 1 ELSE 2 THEN SRC-SKIP 0
     ELSE DUP 39 = IF
@@ -703,9 +714,33 @@ VARIABLE HR-DASH?
 : NEXT ( --- )   PEEK 0 TK-VALID? ! ;
 : KIND? ( k --- f )   PEEK TK-KIND @ = ;
 : OP? ( op --- f )   PEEK TK-KIND @ K-OP = SWAP TK-OP @ = AND ;
+64 BUFFER: KW-JOINED
+VARIABLE KW-J
+VARIABLE KW-P
+VARIABLE KW-END
+
+: KW-JOIN ( c-addr u --- c-addr u )
+  \ The token's text is the raw source, so a line continuation inside a
+  \ word is still in it: `i\` + newline + `f` reads as four characters
+  \ and never matched `if` (Iteration 338). Joined here, and only when a
+  \ backslash is actually present.
+  2DUP 92 SCAN NIP 0= IF EXIT THEN
+  2DUP + KW-END !  DROP KW-P !
+  0 KW-J !
+  BEGIN KW-P @ KW-END @ < KW-J @ 63 < AND WHILE
+    KW-P @ C@ 92 = KW-P @ 1+ KW-END @ < AND
+    IF KW-P @ 1+ C@ 10 = ELSE 0 THEN
+    IF
+      2 KW-P +!
+    ELSE
+      KW-P @ C@ KW-JOINED KW-J @ + C!  1 KW-J +!  1 KW-P +!
+    THEN
+  REPEAT
+  KW-JOINED KW-J @ ;
+
 : KW? ( c-addr u --- f )   \ this unquoted word?
   PEEK TK-KIND @ K-WORD = TK-FLAGS @ WF-QUOTED AND 0= AND IF
-    TK-TEXT COMPARE 0=
+    TK-TEXT KW-JOIN COMPARE 0=
   ELSE 2DROP 0 THEN ;
 : LINEBREAK ( --- )   BEGIN K-NEWLINE KIND? WHILE NEXT REPEAT ;
 

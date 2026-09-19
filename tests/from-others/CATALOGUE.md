@@ -124,9 +124,10 @@ them.
 
 17. **A backslash-newline inside a reserved word is a continuation**, so
     a line ending `i\` followed by `f true; then` is `if true; then`.
-    This shell joins the word but marks it quoted, and a quoted word is
-    not a reserved word, so it becomes a syntax error. (Not yet
-    implemented here.)
+    This shell joined the word but marked it quoted, and a quoted word
+    is not a reserved word; the token's text is also the raw source, so
+    the continuation was still in it at the comparison.
+    → `tests/diff/cases/continuation-338.sh`
 
 18. **A newline in an alternate value survives**: unquoted, `H${x+` +
     newline + `}H` splits into two fields; quoted, it keeps the newline.

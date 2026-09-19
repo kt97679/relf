@@ -333,6 +333,7 @@ do not trust the absence of a line below.
 - **335** — a redirection's target is not field-split
 - **336** — exit inside a trap; and zombies reaped while builtins run
 - **337** — escapes inside bracket expressions; three more behaviours catalogued
+- **338** — a continuation inside a reserved word
 
 ### Not tied to an iteration
 
@@ -18357,3 +18358,29 @@ pathname expansion, with a range and a two-member set beside it, and
 matches bash.
 
 tests/verify: diff cases 67 -> 68; sizes.
+
+## Iteration 338: a continuation inside a reserved word
+
+Catalogue entry 17. A backslash-newline is a line continuation
+everywhere, including in the middle of a reserved word, so a line ending
+`i\` followed by `f true; then` is `if true; then`.
+
+**Two things were wrong, and the first hid the second.** The backslash
+marked the word quoted, and a quoted word is never reserved. Fixing that
+alone changed nothing, because the token's text is a slice of the raw
+source: the backslash and the newline were still in it when the word was
+compared with `if`, `while` and the rest. The comparison joins
+continuations now, and only when a backslash is actually present, so the
+usual path is one scan as before.
+
+`tests/diff/cases/continuation-338.sh` splits `if`, `while`, `for`,
+`case` and a command name across lines, with an escaped space and a
+continuation inside double quotes beside them. It matches bash and dash.
+
+**Catalogue entry 18 is still open**: a newline inside `${x+...}` is
+dropped where it should survive. The brace scanner encodes ordinary
+characters one at a time and a newline is not special to it, so the loss
+is further along - worth its own session rather than a guess at the end
+of this one.
+
+tests/verify: diff cases 68 -> 69; sizes.
