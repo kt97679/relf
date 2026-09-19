@@ -4124,9 +4124,11 @@ VARIABLE GO-OPERANDS?   \ arguments were given to getopts itself
 
 CREATE GO-CHARBUF 2 ALLOT
 
+: GO-CHAR-BUF ( c --- c-addr )   \ that one character, NUL-terminated
+  GO-CHARBUF C!  0 GO-CHARBUF 1+ C!  GO-CHARBUF ;
+
 : GO-OPTARG-CHAR! ( c --- )   \ OPTARG = that one character
-  GO-CHARBUF C!  0 GO-CHARBUF 1+ C!
-  GO-CHARBUF GO-OPTARG! ;
+  GO-CHAR-BUF GO-OPTARG! ;
 
 : DO-GETOPTS ( --- )
   \ getopts OPTSTRING NAME - parse the positional parameters one
@@ -4162,6 +4164,9 @@ CREATE GO-CHARBUF 2 ALLOT
           GO-C @ GO-OPTARG-CHAR!                 \ silent mode names it too
         ELSE
           GO-CLEAR-OPTARG
+          \ Outside silent mode getopts reports the unknown option, in
+          \ dash's words; this said nothing at all (Iteration 346).
+          S" Illegal option -" ERR-TYPE  GO-C @ GO-CHAR-BUF ERR-CSTR  ERR-NL
         THEN
         63 GO-SETNAME GO-STEP GO-FINISH EXIT
       THEN
@@ -4174,8 +4179,14 @@ CREATE GO-CHARBUF 2 ALLOT
           GO-IND @ GO-COUNT > IF
             \ A missing argument in silent mode names the option in OPTARG
             \ (XCU getopts); this left OPTARG empty until Iteration 328.
-            GO-OPTS @ C@ 58 = IF GO-C @ GO-OPTARG-CHAR! THEN
-            58 GO-SETNAME
+            GO-OPTS @ C@ 58 = IF
+              GO-C @ GO-OPTARG-CHAR!  58 GO-SETNAME
+            ELSE
+              S" No arg for -" ERR-TYPE
+              GO-C @ GO-CHAR-BUF ERR-CSTR
+              S"  option" ERR-TYPE ERR-NL
+              GO-CLEAR-OPTARG  63 GO-SETNAME
+            THEN
           ELSE
             GO-IND @ GO-SLOT GO-OPTARG!
             GO-IND @ 1+ GO-IND !

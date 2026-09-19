@@ -167,3 +167,18 @@ them.
 24. **An assignment made only of command substitutions takes the status
     of the FIRST of them.** `v=`exit 2` `false`` is 2 in bash and dash
     alike, though XCU 2.9.1 reads as though it should be the last.
+
+25. **`getopts` reports an unknown option and a missing argument**
+    unless the optstring starts with a colon. dash writes
+    `Illegal option -q`, bash `illegal option -- q`; this shell follows
+    dash. In that mode `OPTARG` is left empty, where silent mode sets it
+    to the offending letter.
+    → `tests/shell/run-getopts-msg`
+
+26. **A backquote substitution whose output holds a byte below 32 or
+    127 CRASHES this shell.** `x=`printf "\3"`` is enough; `$( )` with
+    the same output is fine, and the byte's position in the output does
+    not matter. Since the two substitution forms differ only in how the
+    command is stored and run - a parsed subtree for `$( )`, text for
+    backquotes - the fault is on the backquote path between running the
+    child and inserting its output. (Not fixed.)

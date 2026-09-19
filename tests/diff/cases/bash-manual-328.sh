@@ -15,13 +15,13 @@ set --; echo "empty-count=${#*} ${#@}"
 set -- a b c; echo "at=[$(printf '<%s>' "$@")] star=[$(printf '<%s>' "$*")]"
 u=; echo "defaults=[${u:-d}][${u-d}][${u:+s}][${u+s}]"
 unset v; echo "unset-plus=[${v+set}]"
-getopts "ab" o -a; echo "operand=$o $OPTIND"
-OPTIND=1; getopts "ab:" o -b val; echo "operand-arg=$o [$OPTARG] $OPTIND"
-OPTIND=1; getopts ":ab:" o -b; echo "silent-missing=$o [$OPTARG]"
-OPTIND=1; getopts ":ab" o -x; echo "silent-unknown=$o [$OPTARG]"
+getopts "ab" o -a 2>/dev/null; echo "operand=$o $OPTIND"
+OPTIND=1; getopts "ab:" o -b val 2>/dev/null; echo "operand-arg=$o [$OPTARG] $OPTIND"
+OPTIND=1; getopts ":ab:" o -b 2>/dev/null; echo "silent-missing=$o [$OPTARG]"
+OPTIND=1; getopts ":ab" o -x 2>/dev/null; echo "silent-unknown=$o [$OPTARG]"
 OPTIND=1; getopts "ab" o -x 2>/dev/null; echo "loud-unknown=$o [$OPTARG]"
 OPTIND=1; set -- -a -b v rest
-while getopts "ab:" o; do echo "opt=[$o:$OPTARG]"; done
+while getopts "ab:" o 2>/dev/null; do echo "opt=[$o:$OPTARG]"; done
 shift $((OPTIND-1)); echo "after=$*"
 cat <<-'EOF2'
 	literal $HOME in a stripped heredoc

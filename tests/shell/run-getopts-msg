@@ -1,0 +1,23 @@
+#!/bin/sh
+# tests/shell/run-getopts-msg - getopts reports an unknown option and a
+# missing argument outside silent mode (Iteration 346). Not a
+# differential case: bash and dash word the message differently, and
+# this shell follows dash.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+
+assert_output_equals "an unknown option is reported as dash reports it" \
+  "$(dash -c 'set -- -q; getopts "we" v' 2>&1)" \
+  "$($SH -c 'set -- -q; getopts "we" v' 2>&1)"
+assert_output_equals "a missing argument is reported as dash reports it" \
+  "$(dash -c 'set -- -e; getopts "we:" v' 2>&1)" \
+  "$($SH -c 'set -- -e; getopts "we:" v' 2>&1)"
+assert_output_equals "silent mode says nothing" "" \
+  "$($SH -c 'set -- -q; getopts ":we" v' 2>&1)"
+assert_output_equals "silent mode still sets OPTARG" "q" \
+  "$($SH -c 'set -- -q; getopts ":we" v; echo "$OPTARG"' 2>&1)"
+assert_output_equals "loud mode leaves OPTARG empty" "" \
+  "$($SH -c 'set -- -q; getopts "we" v 2>/dev/null; echo "$OPTARG"' 2>&1)"
+assert_output_equals "a known option says nothing" "w" \
+  "$($SH -c 'set -- -w; getopts "we" v; echo "$v"' 2>&1)"
+report

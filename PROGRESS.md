@@ -341,6 +341,7 @@ do not trust the absence of a line below.
 - **343** — a length of -1 from the joiner; the here-document hang narrowed
 - **344** — an empty redirection target is not dropped
 - **345** — wait %n, bare wait's status, and the first substitution in an assignment
+- **346** — getopts reports its errors; a backquote crash catalogued
 
 ### Not tied to an iteration
 
@@ -18594,3 +18595,28 @@ bash does, where dash answers 2. The case follows bash and says so.
 busybox suite: 186 of 357, up from 182; dash is at 211.
 
 tests/verify: diff cases 73 -> 74; sizes.
+
+## Iteration 346: getopts speaks up, and a crash written down
+
+**`getopts` said nothing at all** when it met an unknown option or an
+option missing its argument. Outside silent mode both are reported;
+this shell now words them as dash does. Two existing differential cases
+had to send that diagnostic to `/dev/null`, because bash words it
+differently - the wording itself is checked in `tests/shell/run-getopts-msg`
+against dash.
+
+A mistake caught by those cases: the first version built the message
+with the word that assigns `OPTARG`, so a loud-mode error set `OPTARG`
+to the offending letter, which only silent mode should do. The two jobs
+have separate words now.
+
+**And a crash, catalogued rather than guessed at** (entry 26): a
+backquote substitution whose output contains a byte below 32 or 127
+crashes the shell. `x=`printf "\3"`` is the whole reproduction. `$( )`
+with the same output is fine, and the position of the byte does not
+matter - so the fault is on the backquote path between running the child
+and inserting its output, which is where the next session should read.
+
+busybox suite: 186 of 357; dash is at 211.
+
+tests/verify: a new shell test file; sizes.
