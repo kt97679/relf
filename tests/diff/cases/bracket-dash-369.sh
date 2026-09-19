@@ -19,3 +19,15 @@ echo f[0"-"9]
 echo f[0-9]
 echo f[09]
 cd /tmp; rm -rf $d
+# A `]` is marked and escaped the same way: quoted it is a member,
+# unquoted it terminates the bracket (Iteration 370).
+case ']' in [a\]]) echo "bracket-member";; *) echo "no";; esac
+case a in [a\]]) echo "a-still-member";; *) echo "no";; esac
+case ']' in []]) echo "leading-bracket";; *) echo "no";; esac
+case b in [abc]) echo "plain-set";; *) echo "no";; esac
+# and an unquoted dash from an expansion is a live range, a quoted one
+# is a member
+x=-9
+case 5 in [0$x]) echo "expanded-range";; *) echo "no";; esac
+case 5 in [0"$x"]) echo "no";; *) echo "quoted-member";; esac
+case - in [0"$x"]) echo "quoted-dash-member";; *) echo "no";; esac

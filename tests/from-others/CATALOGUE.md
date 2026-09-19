@@ -355,3 +355,26 @@ them.
     position themselves relative to the `$`, so removing a continuation
     after it means either re-basing all four or normalising the line
     before the lexer sees it; neither is small. (Not fixed.)
+
+## Thirteenth batch from busybox's ash suite (Iteration 370)
+
+48. **A quoted `]` inside a bracket expression is a member**, so
+    `[a\]]` matches `a` and `]`. Like the dash, it has to be marked when
+    unquoted - otherwise escaping it would break every ordinary
+    `[abc]` - and marked without counting as a reason to expand the word.
+    → `tests/diff/cases/bracket-dash-369.sh`
+
+49. **A dash from an unquoted expansion is a live range.**
+    `x=-9; echo f[0$x]` is `f[0-9]`, while `f[0"$x"]` is the three
+    characters. Expansion regions mark their metacharacters in a
+    separate pass, which knew about `*`, `?` and `[` but not about `-`
+    and `]`.
+    → `tests/diff/cases/bracket-dash-369.sh`
+
+50. **A dash produced by ARITHMETIC inside double quotes** is still
+    treated as a range here: `f[0"$((-9))"]` matches ten characters
+    where dash matches three. The same expression through a variable is
+    right, and `EMIT-DECIMAL` does not mark anything, so something in
+    the region machinery marks that dash without being asked. (Not
+    fixed; the next session should find what records a mark for a word
+    whose only dash comes from arithmetic.)

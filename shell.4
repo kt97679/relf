@@ -1199,12 +1199,13 @@ VARIABLE NO-GLOB?          \ the caller wants no pathname expansion
 DEFER GLOB-FIELDS-CALL
 
 : GLOB-MARK ( c --- c )
-  \ A `-` is marked as well, because a quoted one inside a bracket is a
-  \ literal rather than a range - `[0"-"9]` matches three characters,
+  \ A `-` and a `]` are marked as well: a quoted `-` inside a bracket is
+  \ a literal rather than a range, and a quoted `]` is a member rather
+  \ than the terminator - `[0"-"9]` matches three characters,
   \ not ten (Iteration 369). It does not count towards GLOB-META#,
   \ which is what decides whether the word goes to the file system at
   \ all: a word with a dash in it is not a pattern.
-  DUP 45 = IF
+  DUP 45 = OVER 93 = OR IF
     TOKEN-IS-ASSIGN-PREFIX? 0= IF
       GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
       TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
@@ -2365,7 +2366,7 @@ VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
     DUP 42 = OVER 63 = OR IF
       TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
     ELSE
-      DUP 45 = IF
+      DUP 45 = OVER 93 = OR IF
         TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH
       THEN
       DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
@@ -6252,7 +6253,9 @@ VARIABLE GF-N
   0 GP# !
   GF-LEN @ 0 ?DO
     GF-OFF @ I + OUT-BASE + C@
-    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR OVER 45 = OR IF
+    \ `]` is escaped when quoted too, so `[a\]]` keeps its member and
+    \ its terminator apart (Iteration 370).
+    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR OVER 45 = OR OVER 93 = OR IF
       GF-OFF @ I + MARKED? 0= IF 92 GP-C, THEN
     THEN GP-C,
   LOOP ;

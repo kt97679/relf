@@ -1625,6 +1625,20 @@ VARIABLE XE-REG-START
 VARIABLE XM-CH
 VARIABLE XM-A
 VARIABLE XM-U
+: XE-MARK-DASH ( char --- )   \ marked, but not a reason to glob
+  XM-CH !
+  XM-A @ XM-U @
+  BEGIN DUP WHILE
+    2DUP XM-CH @ SCAN                         ( a u a2 u2 )
+    DUP 0= IF
+      2DROP 2DROP 0 0
+    ELSE
+      OVER OUT-BASE - GLOB-MARK-DASH
+      SWAP 1+ SWAP 1-
+      2SWAP 2DROP
+    THEN
+  REPEAT 2DROP ;
+
 : XE-MARK-CHAR ( char --- )   \ every one of them in the region, by SCAN
   XM-CH !
   XM-A @ XM-U @
@@ -1641,7 +1655,12 @@ VARIABLE XM-U
 : XE-MARK-PATTERNS ( from to --- )
   OVER - DUP 0= IF 2DROP EXIT THEN
   XM-U !  OUT-BASE + XM-A !
-  42 XE-MARK-CHAR  63 XE-MARK-CHAR  91 XE-MARK-CHAR ;
+  42 XE-MARK-CHAR  63 XE-MARK-CHAR  91 XE-MARK-CHAR
+  \ `-` and `]` are marked here too, so an unquoted expansion's dash is
+  \ a live range - `x=-9; echo f[0$x]` is `f[0-9]` - while a quoted one
+  \ stays a member (Iteration 370). They go through GLOB-MARK-DASH,
+  \ which does not count them as a reason to expand the word.
+  45 XE-MARK-DASH  93 XE-MARK-DASH ;
 
 : XE-REGION-END ( --- )
   TOK-OUT @ OUT-BASE - XE-REG-START @ = IF EXIT THEN

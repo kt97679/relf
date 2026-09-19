@@ -365,6 +365,7 @@ do not trust the absence of a line below.
 - **367** — AND does not short-circuit; and a `[` is not always a pattern
 - **368** — a runaway directory, ten documents to the attic, and an index
 - **369** — here-document delimiters, `<<-` continuations, quoted dashes in brackets
+- **370** — quoted brackets, and dashes from expansions
 
 ### Not tied to an iteration
 
@@ -19307,3 +19308,34 @@ checked the shell; this is the first check that the delivery works.
 busybox suite: **205 of 357**, up from 203; dash is at 211.
 
 tests/verify: a new check, `bundle:pullable`; diff cases 86 -> 88.
+
+## Iteration 370: quoted brackets, and dashes from expansions
+
+Two more from the same corner of pattern matching, both found by
+busybox's punctuation sweep.
+
+**A quoted `]` inside a bracket expression is a member**, so `[a\]]`
+matches `a` and `]`. The pattern builder escapes it now - and, as with
+the dash in 369, it has to be MARKED when unquoted, or escaping would
+break every ordinary `[abc]`. Marked, but not counted: a word with a
+`]` in it is not a pattern.
+
+**A dash from an unquoted expansion is a live range.** `x=-9; echo
+f[0$x]` is `f[0-9]` and `f[0"$x"]` is three characters. Expansion
+regions mark their metacharacters in a separate pass from the
+per-character path, and that pass knew about `*`, `?` and `[` but not
+the two characters 369 added. Both passes agree now.
+
+`ash-quoting/quoted_punct` - every ASCII punctuation character, escaped,
+in a bracket - passes.
+
+**One sub-case is catalogued rather than fixed** (entry 50): a dash
+produced by ARITHMETIC inside double quotes is still treated as a range.
+The same value through a variable is right, and `EMIT-DECIMAL` marks
+nothing, so something in the region machinery is marking a character
+nobody asked it to. That is a measurement for the next session, not a
+guess for this one.
+
+busybox suite: **206 of 357**, up from 205; dash is at 211.
+
+tests/verify: sizes.
