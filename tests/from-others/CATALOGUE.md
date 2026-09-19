@@ -322,9 +322,9 @@ them.
     the word is scanned, so the scanner sets the flag from it.
     → `tests/diff/cases/quoted-in-word-363.sh`
 
-43. **A trailing empty quoted field inside a `${...}` word.**
-    `${x:+b ''}` is two fields; `${x:+'' b}` is two here since Iteration
-    363 but `${x:+b ''}` is one. The quote marks that fixed the leading
-    case are recorded at output offsets, and for a word captured aside
-    into its own buffer those offsets do not line up with the output the
-    splitter walks. (Not fixed.)
+43. **Quoting inside a run of IFS whitespace.** `${x:+b '' c}` is three
+    fields, `${x:+b ''}` two, `${x:+'' b}` two, and `${x:+ '' }` one:
+    the quoted part closes a field only when there is something to
+    close, and a run of whitespace is broken in two by quoting that
+    falls inside it.
+    → `tests/diff/cases/quoted-field-run-364.sh`

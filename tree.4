@@ -1546,15 +1546,27 @@ MAX-QUOTE-MARKS CELLS BUFFER: XQ-MARKS
 VARIABLE XQ-N
 
 : XQ-MARK ( --- )   \ quoting happened at the current output position
+  IFS-SPLIT-PENDING? @ IF
+    -1 QUOTE-IN-RUN? !
+  ELSE
+    -1 QUOTE-BEFORE-RUN? !
+  THEN
   XQ-N @ MAX-QUOTE-MARKS < IF
     TOK-OUT @ OUT-BASE - XQ-MARKS XQ-N @ CELLS + !  1 XQ-N +!
   THEN ;
 
-: XQ-BETWEEN? ( from to --- f )   \ any quoting in this span
-  0 XQ-N @ 0 ?DO
-    XQ-MARKS I CELLS + @                     ( from to f off )
-    DUP 3 PICK < 0= SWAP 3 PICK > 0= AND OR
-  LOOP NIP NIP ;
+VARIABLE XQ-FROM
+VARIABLE XQ-TO
+
+: XQ-BETWEEN? ( from to --- f )   \ any quoting in this span, ends included
+  \ Written with variables after the stack version answered wrongly and
+  \ cost two sessions: PICK counts from the top, and the operands it
+  \ reached were not the ones the comment claimed (Iteration 364).
+  XQ-TO !  XQ-FROM !
+  XQ-N @ 0 ?DO
+    XQ-MARKS I CELLS + @
+    DUP XQ-FROM @ < 0=  SWAP XQ-TO @ > 0=  AND IF -1 UNLOOP EXIT THEN
+  LOOP 0 ;
 256 BUFFER: XE-REGIONS     \ (start, end) output offsets, a pair each
 VARIABLE XE-REG#
 VARIABLE XE-REG-START
@@ -1908,7 +1920,17 @@ VARIABLE XS-PREV          \ where the text after the last region begins
     DUP IFS-CHAR? IF
       DUP 32 = OVER 9 = OR SWAP 10 = OR IF
         I XS-FS @ > IF
-          XS-PEND? @ 0= IF I XS-WSP !  -1 XS-PEND? ! THEN
+          XS-PEND? @ 0= IF
+            I XS-WSP !  -1 XS-PEND? !
+          ELSE
+            \ Quoting inside a run of whitespace breaks it in two, with
+            \ an empty field between: `${x:+b '' c}` is three fields,
+            \ not two (Iteration 364).
+            XS-WSP @ I XQ-BETWEEN? IF
+              XS-WSP @  I DUP XS-FS !  XS-CLOSE
+              I XS-WSP !
+            THEN
+          THEN
         ELSE
           \ Leading whitespace is absorbed - unless quoting contributed
           \ to this field before it, in which case the field is empty

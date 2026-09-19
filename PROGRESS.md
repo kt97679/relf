@@ -359,6 +359,7 @@ do not trust the absence of a line below.
 - **361** — an empty quoted field is a field
 - **362** — assessed Lisp, Lua and MicroPython as substrates: no, and why
 - **363** — quotes in a ${} word: literal in a value, quoting in a pattern
+- **364** — quoting inside a run of whitespace
 
 ### Not tied to an iteration
 
@@ -19106,3 +19107,32 @@ does not share that frame - the same class of problem as Iteration 340's
 glob marks, and probably the same fix.
 
 tests/verify: diff cases 84 -> 85; sizes.
+
+## Iteration 364: quoting inside a run of whitespace
+
+Catalogue entry 43, and the last of the empty-field family.
+`${x:+b '' c}` is three fields, `${x:+b ''}` two, `${x:+'' b}` two, and
+`${x:+ '' }` one. The rules that fell out, each now a line in the
+splitter: quoting inside a run of whitespace breaks the run in two; the
+whitespace after such a break is still a delimiter, so the next content
+starts a field of its own; whitespace still pending at the word's end
+closes a field when quoting followed it; and none of that happens unless
+there is a field to close.
+
+**The measurement that mattered.** Offsets cannot express any of this.
+Pending whitespace is not emitted, so a quote before the run and a quote
+after it are recorded at the SAME output offset - which is why the
+offset test from Iteration 361 answered correctly for the leading case
+and wrongly for every other. What the splitter needs is the ORDER, so
+each is now noted as it happens: one flag for quoting while whitespace
+is pending, one for quoting before it.
+
+**And a bug in the predicate itself**, found by unit-testing it through
+the `forth` hatch after two sessions of it "not firing": the stack
+version of "is there a quote mark in this span" used PICK indices that
+reached the wrong operands. Rewritten with variables, with a comment
+saying why.
+
+busybox suite: **203 of 357**, up from 202; dash is at 211.
+
+tests/verify: diff cases 85 -> 86; sizes.

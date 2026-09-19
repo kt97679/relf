@@ -1043,6 +1043,10 @@ VARIABLE DIGIT-N
 \ so no new quote-tracking is needed here at all.
 \ ==================================================================
 
+VARIABLE IFS-RUN-START       \ where the current run of IFS whitespace began
+VARIABLE AFTER-RUN-BREAK?    \ ... and a quoted break has already split it
+VARIABLE QUOTE-IN-RUN?       \ quoting happened while whitespace was pending
+VARIABLE QUOTE-BEFORE-RUN?   \ ... or before it, in this same field
 VARIABLE IFS-SPLIT-PENDING?  \ true once an IFS character has been
                                \ seen but not yet resolved - the
                                \ actual split is deferred until the
@@ -1220,7 +1224,30 @@ DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
     \ last field, which the end of the word drops (Iteration 270; every
     \ IFS character was treated as whitespace).
     DUP 32 = OVER 9 = OR SWAP 10 = OR IF
-      -1 IFS-SPLIT-PENDING? !
+      IFS-SPLIT-PENDING? @ IF
+        \ Quoting inside a run of whitespace breaks the run in two, with
+        \ an empty field between: `${x:+b '' c}` is three fields
+        \ (Iteration 364).
+        \ ... and the quoting has to come AFTER the whitespace started,
+        \ which an offset cannot tell since pending whitespace is not
+        \ emitted: `${x:+'' }` is one field and `${x:+b ''}` is two.
+        \ ... and only when there is a field to close, as at the word's
+        \ end: `${x:+ '' }` is one empty field, not two.
+        QUOTE-IN-RUN? @
+        TOK-OUT @ ARGV ARGC @ CELLS + @ <> QUOTE-BEFORE-RUN? @ OR AND IF
+          IFS-SPLIT-HERE
+          0 QUOTE-IN-RUN? !
+          TOK-OUT @ OUT-BASE - IFS-RUN-START !
+          \ the whitespace after the break is still a delimiter, so the
+          \ next content starts a field of its own even though this one
+          \ is empty
+          -1 AFTER-RUN-BREAK? !
+        THEN
+      ELSE
+        -1 IFS-SPLIT-PENDING? !
+        0 QUOTE-IN-RUN? !
+        TOK-OUT @ OUT-BASE - IFS-RUN-START !
+      THEN
     ELSE
       IFS-SPLIT-HERE
       0 IFS-SPLIT-PENDING? !
@@ -1239,9 +1266,10 @@ DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
       \ this path and not the region splitter (Iteration 363).
       TOK-OUT @ ARGV ARGC @ CELLS + @ <>
       ARGV ARGC @ CELLS + @ OUT-BASE -  TOK-OUT @ OUT-BASE -
-      QUOTED-BETWEEN? OR IF
+      QUOTED-BETWEEN? OR  AFTER-RUN-BREAK? @ OR IF
         IFS-SPLIT-HERE
       THEN
+      0 AFTER-RUN-BREAK? !
     THEN
     GLOB-MARK EMIT-TOK-CHAR
   THEN ;
@@ -2451,6 +2479,9 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
     ELSE
     BEGIN
     0 TOK-WAS-QUOTED? !
+    0 AFTER-RUN-BREAK? !
+    0 QUOTE-IN-RUN? !
+    0 QUOTE-BEFORE-RUN? !
     0 EMPTY-AT-WORD? !
     0 IFS-SPLIT-PENDING? !
     0 IN-DQ-CONTEXT? !
@@ -2461,6 +2492,20 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
       REDIR-TARGET-WORD? @ IF NOSPLIT-ON THEN
       EW-NODES EW-I @ CELLS + @ ENC-EXPAND-CALL
       NOSPLIT-OFF
+      \ Whitespace still pending at the word's end is a delimiter when
+      \ quoting followed it: `${x:+b ''}` ends with an empty field
+      \ (Iteration 364).
+      \ ... and only when there is a field to close: with nothing before
+      \ the whitespace, `${x:+ ''}` is the one empty field the quotes
+      \ make, not two.
+      \ Offsets cannot tell quoting before the whitespace from quoting
+      \ after it, since pending whitespace is not emitted, so each is
+      \ noted as it happens.
+      IFS-SPLIT-PENDING? @ QUOTE-IN-RUN? @ AND
+      TOK-OUT @ ARGV ARGC @ CELLS + @ <> QUOTE-BEFORE-RUN? @ OR
+      AND IF
+        IFS-SPLIT-HERE  0 IFS-SPLIT-PENDING? !  0 QUOTE-IN-RUN? !
+      THEN
       TOK-END @ TOK-POS !
       0 EMIT-TOK-CHAR
       TOK-WAS-QUOTED? @ ARGV-QUOTED ARGC @ + C!
