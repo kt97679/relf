@@ -1722,10 +1722,9 @@ before anything else, because every number here is relative to it.
    them landed in 308), and the readonly behaviour, where dash and bash
    differ anyway. `ulimit` was finished in 308.
 
-5m. **Catalogued in tests/from-others/CATALOGUE.md, not yet done**: a
-   quoted empty string beside `"$@"` yields one empty word when there
-   are no positional parameters, so `"$@"""` is one empty argument.
-   The other two entries were done in Iteration 332.
+5m. ~~**Catalogued but not done**~~ - all ten entries of
+   tests/from-others/CATALOGUE.md are implemented and covered as of
+   Iteration 333. The catalogue is where the next batch goes.
 
 5l. **54 busybox ash tests that dash passes and this shell does not**
    (Iteration 329, after three were fixed). `tools/busybox-suite.sh`

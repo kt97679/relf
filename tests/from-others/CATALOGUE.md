@@ -43,7 +43,7 @@ and which case here covers it.
 6. **`"$@"` with no positional parameters produces no words, but any
    adjacent quoted empty string still produces one empty word**, so
    `"$@"""` is a single empty argument.
-   → not yet implemented here; recorded in GOALS.md
+   → `tests/diff/cases/at-empty-333.sh`
 
 ## From bash's own suite, by probing bash rather than reading it (Iteration 331)
 

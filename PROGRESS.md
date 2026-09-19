@@ -328,6 +328,7 @@ do not trust the absence of a line below.
 - **330** — behaviours, not files: a catalogue, and functions overriding builtins
 - **331** — bash's areas, probed not copied: base#digits, ++ and --
 - **332** — the catalogue's own list: here-document substitutions, split operators
+- **333** — the last catalogued behaviour: a quoted empty word beside "$@"
 
 ### Not tied to an iteration
 
@@ -18196,3 +18197,30 @@ The third catalogued behaviour - a quoted empty string beside `"$@"`
 yielding one empty word when there are no parameters - is still open.
 
 tests/verify: diff cases 62 -> 63; sizes.
+
+## Iteration 333: the catalogue is clear
+
+The last of the catalogued behaviours. An unsatisfied `"$@"` produces
+no field, which this shell had right - but it dropped the whole WORD,
+so `"$@"""` produced nothing where it should produce one empty
+argument: the quoted empty string beside the parameter is a word in its
+own right.
+
+The word is dropped now only when it holds nothing else, which its own
+source text answers: `$@`, `"$@"`, `${@}` or `"${@}"` and nothing more.
+A cleverer test failed first - counting the non-quote characters cannot
+tell `"$@"` from `"$@"""`, since the extra quotes are exactly
+what is being counted out.
+
+A Forth note for later: a double quote cannot be written inside `S" "`,
+so the four spellings are built byte by byte with `CREATE`.
+
+`tests/diff/cases/at-empty-333.sh` covers the parameter empty, holding
+two words, and holding one empty word, each with the quoted empty
+string before, after and on both sides, as a `for` list and as a
+function's arguments. It matches bash and dash.
+
+All ten entries in tests/from-others/CATALOGUE.md are implemented and
+covered now. busybox suite: 174 of 357, against dash 211.
+
+tests/verify: diff cases 63 -> 64; sizes.

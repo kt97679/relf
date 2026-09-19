@@ -2244,6 +2244,26 @@ VARIABLE ARGV-NONLITERAL   \ how many of this command's words need expanding
   \ ten dispatches a word to learn nothing.
   ARGV-NONLITERAL @ 0= ;
 
+\ The four spellings of "nothing but $@" - built byte by byte because a
+\ double quote cannot be written inside S" ".
+CREATE OA-BARE   2 C, 36 C, 64 C,                                  \ $@
+CREATE OA-QUOTED 4 C, 34 C, 36 C, 64 C, 34 C,                      \ "$@"
+CREATE OA-BRACE  4 C, 36 C, 123 C, 64 C, 125 C,                    \ ${@}
+CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
+
+: OA-MATCH? ( a u counted --- f )   COUNT STR= ;
+
+: WORD-IS-ONLY-AT? ( --- f )
+  \ An unsatisfied "$@" produces no field - but only when the word holds
+  \ nothing else. `"$@"""` still produces one empty field, because the
+  \ quoted empty string beside it is a word in its own right (Iteration
+  \ 333). The word's own source text answers it.
+  EW-ARGV EW-I @ CELLS + @ DUP CSTRLEN      ( a u )
+  2DUP OA-BARE   OA-MATCH? IF 2DROP -1 EXIT THEN
+  2DUP OA-QUOTED OA-MATCH? IF 2DROP -1 EXIT THEN
+  2DUP OA-BRACE  OA-MATCH? IF 2DROP -1 EXIT THEN
+       OA-QBRACE OA-MATCH? ;
+
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
   \ rebuilds ARGV from the results.
@@ -2329,7 +2349,8 @@ VARIABLE ARGV-NONLITERAL   \ how many of this command's words need expanding
       \ "" from ${nope:-}. ARGV-NAME-QUOTED records an actual leading
       \ quote character, which is the question being asked here.
       ARGV ARGC @ CELLS + @ C@ 0=
-      ARGV-NAME-QUOTED ARGC @ + C@ 0= EMPTY-AT-WORD? @ OR AND IF
+      ARGV-NAME-QUOTED ARGC @ + C@ 0=
+      EMPTY-AT-WORD? @ WORD-IS-ONLY-AT? AND OR AND IF
         TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )
       ELSE
         ARGC @ 1+ ARGC !
