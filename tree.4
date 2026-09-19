@@ -2121,6 +2121,13 @@ VARIABLE HDX-DEPTH
 128 BUFFER: BG-TEXT-BUF
 VARIABLE BG-T
 
+CREATE DEV-NULL-NAME CSTR," /dev/null"
+
+: BG-STDIN-NULL ( --- )   \ standard input of an asynchronous command
+  DEV-NULL-NAME DUP CSTRLEN R/O OPEN-FILE IF DROP EXIT THEN
+  DUP 0 DUP2 DROP
+  DUP 0 <> IF CLOSE-FILE DROP ELSE DROP THEN ;
+
 : BG-TEXT ( node --- c-addr )   \ the command's words, for the job notice
   0 BG-T !  0 BG-TEXT-BUF C!
   \ `cmd &` hands EXEC-BG an and-or, not the command; walk down to the
@@ -2156,6 +2163,11 @@ VARIABLE BG-T
   FORK DUP 0= IF
     DROP CHILD-RESET-TRAPS
     JOB-CONTROL? @ IF 0 0 SETPGID DROP THEN    \ the job gets its own group
+    \ An asynchronous command reads /dev/null unless it redirects its
+    \ own input (XCU 2.9.3), so `cat &` finishes instead of competing
+    \ with the shell for the terminal - or, in a script, swallowing the
+    \ rest of the file (Iteration 355).
+    BG-STDIN-NULL
     EXEC-FINAL-CALL LAST-STATUS @ SHELL-EXIT
   THEN
   DUP BG-PID !  JOB-ADD  DROP  0 LAST-STATUS ! ;

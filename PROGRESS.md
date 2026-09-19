@@ -350,6 +350,7 @@ do not trust the absence of a line below.
 - **352** — assessed the recognizer mechanism: not for this shell, and why
 - **353** — CSTR," replaces 26 byte-built literals
 - **354** — tests for CSTR," itself; one more measurement on the numbered here-document
+- **355** — four fixes: numbered here-documents, background stdin, trap return, quoted empty fields
 
 ### Not tied to an iteration
 
@@ -18835,3 +18836,34 @@ operator 6 - the right values. So the table is built correctly and
 whatever is lost is lost in applying it. One more fact, no theory.
 
 tests/verify: a new shell test file; sizes.
+
+## Iteration 355: four fixes
+
+**A here-document on a numbered descriptor.** The pipe's read end can
+land ON the descriptor being redirected - ask for `3<<E` and fd 3 is the
+lowest free one, so that is what `pipe` returns - and then the copy is a
+no-op and the close after it destroys the descriptor. The same shape as
+`exec 3>file` in Iteration 297, found the same way: by printing what
+reached the call. Three measured facts had ruled out the parser and the
+table first.
+
+**An asynchronous command reads /dev/null** unless it redirects its own
+input. `cat &` in a script was competing with the shell for the rest of
+the file, which is how busybox's suite catches it - the test hangs.
+
+**`return n` in a trap** sets the status that stands afterwards, where
+`$?` is otherwise restored to its value from before the trap. A first
+attempt also cleared the pending return, which stopped the enclosing
+function from returning at all and left the test spinning in the loop
+the return was meant to end; the return has to carry on out.
+
+**An empty field is dropped only when nothing in the word was quoted.**
+`${x:+\'\'}` makes one empty argument. This consulted only the parser's
+flag, which covers a quote at the START of a word, and not the quoting
+that appeared during expansion.
+
+Four differential cases added; all match bash and dash.
+
+busybox suite: **193 of 357**, up from 190; dash is at 211.
+
+tests/verify: diff cases 76 -> 80; sizes.

@@ -210,8 +210,27 @@ them.
     descriptor.** `cat 3<<E` then `<&3` reads the body in dash; here fd
     3 is not open. Observed, not explained: the parse is right -
     `tree-dump` prints `(redir 3 << "E" (body ...))` - and an unnumbered
-    here-document works, in simple commands and compounds alike. Also
-    `exec 3<<E` leaves fd 3 closed. Iteration 354 adds one more
-    observation: after such a command the redirection table holds
-    descriptor 3 and operator 6 - the right values - so whatever is lost
-    is lost after the table is built, in applying it. (Not fixed.)
+    here-document works, in simple commands and compounds alike.
+    Iteration 355 found it: the pipe's read end can land ON the
+    descriptor being redirected - fd 3 is the lowest free one when the
+    command says `3<<E` - so the copy is a no-op and the close after it
+    destroys the descriptor.
+    → `tests/diff/cases/heredoc-fd-355.sh`
+
+## Ninth batch from busybox's ash suite (Iteration 355)
+
+31. **An asynchronous command reads /dev/null** unless it redirects its
+    own input, so `cat &` in a script finishes instead of swallowing the
+    rest of the file.
+    → `tests/diff/cases/bg-stdin-355.sh`
+
+32. **`return n` in a trap sets the status that stands afterwards**,
+    where `$?` is otherwise put back to what it was before the trap; the
+    return also carries on out of the enclosing function.
+    → `tests/diff/cases/trap-return-355.sh`
+
+33. **An empty field is dropped only when NOTHING in the word was
+    quoted.** `${x:+\'\'}` and `${x:+""}` each make one empty argument:
+    the quoting that appears during expansion counts as much as a quote
+    at the start of the word.
+    → `tests/diff/cases/quoted-empty-355.sh`

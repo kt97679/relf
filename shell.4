@@ -1338,7 +1338,16 @@ DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
   COPY-TRAP
   LAST-STATUS @ TRAP-SAVED-STATUS !
   TRAP-COPY @ TRAP-RUN-CALL
-  TRAP-SAVED-STATUS @ LAST-STATUS !        \ $? is what it was (XCU 2.14 trap)
+  \ `$?` is what it was before the trap (XCU 2.14 trap) - unless the
+  \ trap ended with `return n`, which sets it and applies to the trap
+  \ rather than to whatever the shell was doing (Iteration 355).
+  RETURN-PENDING? @ IF
+    \ the return carries on out of the enclosing function, keeping the
+    \ status it was given; clearing it here stopped the function from
+    \ returning at all and the loop below it spun for ever
+  ELSE
+    TRAP-SAVED-STATUS @ LAST-STATUS !
+  THEN
   TRAP-COPY @ FREE DROP
   0 IN-TRAP? ! ;
 
@@ -2407,7 +2416,11 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
       \ (Iteration 344).
       ARGV ARGC @ CELLS + @ C@ 0=
       REDIR-TARGET-WORD? @ 0= AND
-      ARGV-NAME-QUOTED ARGC @ + C@ 0=
+      \ An empty field is dropped only when nothing in the word was
+      \ quoted. The parser's flag covers `""` at the start of a word;
+      \ TOK-WAS-QUOTED? covers quoting that appeared during expansion,
+      \ as in `${x:+''}`, which was being dropped (Iteration 355).
+      ARGV-NAME-QUOTED ARGC @ + C@ 0=  TOK-WAS-QUOTED? @ 0= AND
       EMPTY-AT-WORD? @ WORD-IS-ONLY-AT? AND OR AND IF
         TOK-OUT @ 1- TOK-OUT !      ( un-emit the NUL )
       ELSE
@@ -2615,8 +2628,17 @@ VARIABLE HD-WRITER       \ a here-document writer to reap, or 0
         HD-ADDR @ HEREDOC-LEN @ HD-WR @ WRITE-FILE DROP
       THEN
       HD-WR @ CLOSE-FILE DROP
-      HD-RD @ REDIR-FD AR-I @ CELLS + @ DUP2 DROP
-      HD-RD @ CLOSE-FILE DROP
+      \ The pipe's read end can land ON the descriptor being redirected -
+      \ `cat 3<<E` gets fd 3 for the read end, since 3 is the lowest
+      \ free one - and then the copy is a no-op and the close below
+      \ destroys it. Same shape as `exec 3>file` in Iteration 297
+      \ (Iteration 355).
+      HD-RD @ REDIR-FD AR-I @ CELLS + @ = IF
+        0 REDIR-FAILED? !
+      ELSE
+        HD-RD @ REDIR-FD AR-I @ CELLS + @ DUP2 DROP
+        HD-RD @ CLOSE-FILE DROP
+      THEN
     ELSE
     DUP 4 = OVER 5 = OR IF
       \ "2>&1": duplicate the named source descriptor onto the target.
