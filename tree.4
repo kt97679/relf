@@ -606,8 +606,14 @@ VARIABLE OP-LA   \ offset of the operator's second character
 : OP-LA-INIT ( --- )
   \ A backslash-newline between the two characters of an operator is a
   \ line continuation, so `&\` newline `&` is `&&` (Iteration 332).
+  \ The second character is only looked at when the first is a
+  \ backslash: SRC-C asks for MORE INPUT when it reads past the end, so
+  \ probing both unconditionally made an interactive `cmd &` prompt for
+  \ a continuation line (Iteration 334).
   1 OP-LA !
-  BEGIN OP-LA @ SRC-C 92 = OP-LA @ 1+ SRC-C 10 = AND WHILE
+  BEGIN
+    OP-LA @ SRC-C 92 = IF OP-LA @ 1+ SRC-C 10 = ELSE 0 THEN
+  WHILE
     2 OP-LA +!
   REPEAT ;
 

@@ -5262,6 +5262,15 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
   XTRACE-ARGV
   ARGC @ 0 > IF
     DISPATCH 0= IF RUN-EXTERNAL THEN
+  ELSE
+    \ A command that is only redirections still performs them - `> f`
+    \ creates or truncates f - and yields 0 (XCU 2.9.1). This shell did
+    \ nothing at all with such a command until Iteration 334.
+    REDIR-N @ 0 > IF
+      BEGIN-REDIRECT
+      REDIR-FAILED? @ IF 1 ELSE 0 THEN LAST-STATUS !
+      END-REDIRECT
+    THEN
   THEN ;
 
 \ ==================================================================

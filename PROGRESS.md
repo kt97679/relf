@@ -329,6 +329,7 @@ do not trust the absence of a line below.
 - **331** — bash's areas, probed not copied: base#digits, ++ and --
 - **332** — the catalogue's own list: here-document substitutions, split operators
 - **333** — the last catalogued behaviour: a quoted empty word beside "$@"
+- **334** — a command that is only redirections; and a lookahead that asked for input
 
 ### Not tied to an iteration
 
@@ -18224,3 +18225,32 @@ All ten entries in tests/from-others/CATALOGUE.md are implemented and
 covered now. busybox suite: 174 of 357, against dash 211.
 
 tests/verify: diff cases 63 -> 64; sizes.
+
+## Iteration 334: bare redirections, and a lookahead that asked for input
+
+A second batch from the busybox gap list, catalogued as entries 11 and
+12.
+
+**A command that is only redirections still performs them.** `> f`
+creates or truncates f and yields 0. This shell did nothing at all with
+such a command - which is why several of the suite's tests failed at
+their setup lines rather than at what they meant to check, and why the
+globbing failures looked like globbing failures: the files were never
+created.
+
+**And a regression of my own, caught by the pty suite.** Iteration 332's
+operator scanner looked one character further ahead than before, to see
+whether a backslash-newline sat between an operator's two characters.
+`SRC-C` ASKS FOR MORE INPUT when it reads past the end of the buffer, so
+at an interactive prompt `sleep 0.1 &` made the shell print `> ` and
+wait for a continuation line. The second character is only looked at now
+when the first is a backslash. Worth remembering: in this lexer, a
+lookahead is not free of side effects.
+
+`tests/diff/cases/bare-redirect-334.sh` covers `>`, `>>` and `<` with no
+command, in a loop, through a variable, into a subdirectory, and the
+truncation of an existing file. It matches bash and dash.
+
+busybox suite: 177 of 357, up from 174; dash is at 211.
+
+tests/verify: diff cases 64 -> 65; sizes.

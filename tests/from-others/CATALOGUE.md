@@ -76,3 +76,18 @@ them.
 10. **A command substitution's trailing newlines are removed, but inner
     ones are kept**, and an empty substitution yields an empty word.
     (Already correct here.)
+
+## Second batch from busybox's ash suite (Iteration 334)
+
+11. **A command that is only redirections still performs them.** `> f`
+    creates or truncates f and yields 0, with no command run; the same
+    holds for `< f`, which opens and closes it. This shell did nothing
+    at all with such a command, which is why several of the suite's
+    tests failed at their setup lines rather than at what they meant to
+    check.
+    → `tests/diff/cases/bare-redirect-334.sh`
+
+12. **The word after a redirection operator is not field-split.** With
+    `v='a b'`, `echo x >$v` writes to the single file named `a b` rather
+    than to two files; a shell that splits it either writes to the first
+    or reports an ambiguity. (Not yet implemented here.)
