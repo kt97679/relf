@@ -352,6 +352,7 @@ do not trust the absence of a line below.
 - **354** — tests for CSTR," itself; one more measurement on the numbered here-document
 - **355** — four fixes: numbered here-documents, background stdin, trap return, quoted empty fields
 - **356** — the length of a special parameter; command's not-found report
+- **357** — assignments applied left to right as they expand; readonly reports
 
 ### Not tied to an iteration
 
@@ -18902,3 +18903,36 @@ iteration.
 busybox suite: **195 of 357**, up from 193; dash is at 211.
 
 tests/verify: diff cases 80 -> 81; sizes.
+
+## Iteration 357: assignments, left to right
+
+Catalogue entry 36, the one that needed a change to the shape of
+expansion. The requirement has two halves that pull against each other:
+each assignment sees the ones before it, and the command's own words see
+none of them. `X=usbdev1.2 X=${X#usbdev} B=${X%%.*}` must set B, while
+`x=old; x=new echo "$x"` must print `old`.
+
+The expander walks the words in order, and the assignments come first,
+so the two halves fit in one pass: apply each assignment the moment its
+own expansion finishes, and put every one of them back when the run of
+assignments ends - which is exactly when the first command word is about
+to be expanded. `TEMP-ASSIGN` and `TRY-ASSIGNMENT` then do their usual
+work on the finished values, unaware any of it happened.
+
+Eight prefixes are remembered, which is more than any script here uses.
+The save keeps the name and the old value; a variable that did not exist
+is removed again rather than set empty.
+
+**A restore written backwards** cost the first attempt: `2DUP SWAP
+SET-SHVAR` sets a variable named after the old VALUE. The test that
+caught it was `x=old; x=new echo "$x"`, which printed `new` twice over.
+
+**And a readonly assignment now reports itself**: the message goes to
+standard error, where it used to go to standard output, and the status
+is 2 rather than 0. Two parts are catalogued rather than done: with a
+redirection beside it the status is still 0, and dash ends the script
+where this shell carries on.
+
+busybox suite: **197 of 357**, up from 195; dash is at 211.
+
+tests/verify: diff cases 81 -> 82; sizes.

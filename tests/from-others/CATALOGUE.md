@@ -256,3 +256,16 @@ them.
     references - so the fix cannot simply apply them earlier; the
     assignment words have to be expanded after the command words, one at
     a time, each after the previous is applied. (Not fixed.)
+
+37. **Assigning to a readonly variable is an error**: the message goes
+    to standard error and the status is 2. Done in Iteration 357 for a
+    plain assignment. Two parts are not: with a redirection beside it
+    the status is still 0 here, because the assignment is applied before
+    the redirection is in place and the caller overwrites the status;
+    and dash ENDS a non-interactive shell on it, which this shell does
+    not, in line with the other special-builtin differences.
+
+38. **A special builtin keeps the variables assigned in front of it.**
+    `VAR=val2 eval ...` leaves VAR set in dash and ash; this shell
+    follows bash and drops it. Deliberate, recorded in GOALS.md 5k, and
+    the reason busybox's var_leak stays red.

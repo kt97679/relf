@@ -687,7 +687,13 @@ VARIABLE SV-IDX
   \ (plain assignment, export, ${VAR:=word}, a for loop's own control
   \ variable) is covered by one test.
   SV-IDX @ SHVAR-RO + C@ IF
-    ." shell: readonly variable" CR
+    \ A readonly variable cannot be assigned to: the message goes to
+    \ standard error, as every other diagnostic does, and the status is
+    \ 2 (Iteration 357). This wrote to standard OUTPUT and left the
+    \ status at 0, so a script could not tell it had failed.
+    S" shell: " ERR-TYPE SV-NAME @ ERR-CSTR
+    S" : is read only" ERR-TYPE ERR-NL
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
     EXIT
   THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
@@ -2317,6 +2323,48 @@ DEFER NOSPLIT-ON    ( --- )   \ tree.4's: expand this word without splitting
 DEFER NOSPLIT-OFF   ( --- )
 VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
 
+\ ---- assignment prefixes, applied as they are expanded (Iteration 357)
+\ Each one is applied the moment its own expansion is finished, so the
+\ next prefix sees it; the originals are put back before the command's
+\ own words are expanded, and TEMP-ASSIGN or TRY-ASSIGNMENT applies the
+\ finished values afterwards as it always did.
+
+8 CONSTANT MAX-PREFIX-SAVE
+MAX-PREFIX-SAVE CELLS BUFFER: EWA-NAMES
+MAX-PREFIX-SAVE CELLS BUFFER: EWA-OLDS
+VARIABLE EWA-N
+VARIABLE EWA-RUN?     \ still inside the leading run of assignments
+
+DEFER EQPOS-CALL       ( c-addr --- eqpos | -1 )   \ defined further down
+DEFER SPLIT-ASSIGN-CALL ( c-addr eqpos --- )
+DEFER STRDUP-CALL      ( c-addr --- a )
+DEFER NAME-BUF-CALL    ( --- c-addr )
+DEFER VALUE-BUF-CALL   ( --- c-addr )
+
+: EWA-APPLY ( c-addr --- )   \ NAME=value, expanded
+  DUP EQPOS-CALL DUP -1 = IF 2DROP EXIT THEN
+  SPLIT-ASSIGN-CALL
+  EWA-N @ MAX-PREFIX-SAVE < IF
+    NAME-BUF-CALL STRDUP-CALL EWA-NAMES EWA-N @ CELLS + !
+    NAME-BUF-CALL GET-SHVAR ?DUP IF STRDUP-CALL ELSE 0 THEN
+    EWA-OLDS EWA-N @ CELLS + !
+    1 EWA-N +!
+    NAME-BUF-CALL VALUE-BUF-CALL SET-SHVAR
+  THEN ;
+
+: EWA-UNDO ( --- )   \ put the originals back
+  BEGIN EWA-N @ 0 > WHILE
+    -1 EWA-N +!
+    EWA-NAMES EWA-N @ CELLS + @
+    EWA-OLDS EWA-N @ CELLS + @ ?DUP IF
+      2DUP SET-SHVAR FREE DROP           \ ( name old ) is the order it wants
+    ELSE
+      DUP REMOVE-SHVAR
+    THEN
+    FREE DROP
+  REPEAT
+  0 EWA-RUN? ! ;
+
 : EXPAND-WORDS ( --- )
   \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
   \ rebuilds ARGV from the results.
@@ -2336,6 +2384,7 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
   \ re-splits rather than truncating - `"a b"` stays two words instead
   \ of becoming `a`.
   0 EXPANSION-FAILED? !
+  0 EWA-N !  -1 EWA-RUN? !
   0 GLOB-MARKS# !
   0 IFS-CACHED? !
   \ Nothing to expand: every word is literal text the lexer already put
@@ -2441,8 +2490,19 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
     TOK-POS @ TOK-END @ < 0=
     UNTIL
     THEN
+    \ An assignment prefix is applied as soon as it is expanded, so the
+    \ next one sees it: `X=1.2 X=${X#1} B=${X%%.*}` sets B (XCU 2.9.1,
+    \ Iteration 357). The command's own words must still see the values
+    \ from before the command, so everything applied here is put back
+    \ when the run of prefixes ends.
+    EW-ASSIGN EW-I @ + C@ EWA-RUN? @ AND IF
+      ARGC @ 0 > IF ARGV ARGC @ 1- CELLS + @ EWA-APPLY THEN
+    ELSE
+      EWA-RUN? @ IF EWA-UNDO THEN
+    THEN
     EW-I @ 1+ EW-I !
   REPEAT
+  EWA-RUN? @ IF EWA-UNDO THEN
   0 ARGV ARGC @ CELLS + !
   \ The marks are recorded even when pathname expansion is off, since a
   \ `case` pattern needs them; the decision to expand against the file
@@ -3351,12 +3411,12 @@ DEFER TP-EXPR-CALL   ( --- f )
                              \ excluded from the range evaluated.
   ARGC @ 2 < IF
     ." [: missing matching ']'" CR
-    2 LAST-STATUS !
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
     EXIT
   THEN
   ARGC @ 1- ARGV@ S" ]" ROT STR0= 0= IF
     ." [: missing matching ']'" CR
-    2 LAST-STATUS !
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
     EXIT
   THEN
   1 TEST-START !
@@ -4694,7 +4754,7 @@ VARIABLE PN-U
 : DO-PRINTF ( --- )
   ARGC @ 2 < IF
     S" printf: usage: printf format [arguments]" ERR-TYPE ERR-NL
-    2 LAST-STATUS ! EXIT
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports EXIT
   THEN
   0 PF-STATUS !  0 ESC-STOP? !  2 PF-ARG !
   BEGIN
@@ -4856,7 +4916,7 @@ VARIABLE KILL-SIG
   0 LAST-STATUS !  15 >R  1
   ARGC @ 2 < IF
     R> 2DROP S" shell: kill: usage: kill [-s sig | -sig] pid... | -l [status]" ERR-TYPE ERR-NL
-    2 LAST-STATUS ! EXIT
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports EXIT
   THEN
   DUP ARGV@ S" -l" ROT STR0= IF
     R> 2DROP
@@ -5537,6 +5597,13 @@ VARIABLE RE-PREFIX        \ how many assignment prefixes it had
   0 ?DO I ARGV@ I ASSIGN-WORD? DO-ASSIGN-AT LOOP
   VALUE-FAILED? @ IF 2 ELSE 0 THEN LAST-STATUS !
   -1 ;
+' ASSIGNMENT-EQPOS IS EQPOS-CALL
+' SPLIT-ASSIGN-AT IS SPLIT-ASSIGN-CALL
+' STRDUP IS STRDUP-CALL
+: EWA-NAME-BUF  ( --- c-addr )  ASSIGN-NAME-BUF ;
+: EWA-VALUE-BUF ( --- c-addr )  ASSIGN-VALUE-BUF ;
+' EWA-NAME-BUF IS NAME-BUF-CALL
+' EWA-VALUE-BUF IS VALUE-BUF-CALL
 ' TRY-ASSIGNMENT IS TRY-ASSIGNMENT-CALL
 
                             \ READ-NEXT-INPUT-LINE below knows to read
