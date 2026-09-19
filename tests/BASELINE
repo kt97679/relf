@@ -37,7 +37,7 @@ shell:dead-words 0
 shell:files 74
 size:engine-code-i386 18466
 size:engine-code-x86_64 23410
-size:i386 114456
-size:image-i386 88280
-size:image-x86_64 94864
-size:x86_64 133992
+size:i386 114484
+size:image-i386 88308
+size:image-x86_64 94896
+size:x86_64 134024

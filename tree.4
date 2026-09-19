@@ -1430,15 +1430,15 @@ VARIABLE WANT-EXEC?
 \ ---- simple commands ----
 CREATE W-DIGITS  48 C, 0 C, 49 C, 0 C, 50 C, 0 C, 51 C, 0 C, 52 C, 0 C,
                  53 C, 0 C, 54 C, 0 C, 55 C, 0 C, 56 C, 0 C, 57 C, 0 C,
-CREATE W-LT     60 C, 0 C,
-CREATE W-GT     62 C, 0 C,
-CREATE W-DGT    62 C, 62 C, 0 C,
-CREATE W-GTAND  62 C, 38 C, 0 C,
-CREATE W-LTAND  60 C, 38 C, 0 C,
-CREATE W-LTGT   60 C, 62 C, 0 C,   \ <> : reading and writing (Iteration 298)
-CREATE W-GTPIPE 62 C, 124 C, 0 C,  \ >| : truncate even under set -C (305)
-CREATE W-DLT    60 C, 60 C, 0 C,
-CREATE W-DLTD   60 C, 60 C, 45 C, 0 C,
+CREATE W-LT     CSTR," <"
+CREATE W-GT     CSTR," >"
+CREATE W-DGT    CSTR," >>"
+CREATE W-GTAND  CSTR," >&"
+CREATE W-LTAND  CSTR," <&"
+CREATE W-LTGT   CSTR," <>"   \ <> : reading and writing (Iteration 298)
+CREATE W-GTPIPE CSTR," >|"   \ >| : truncate even under set -C (305)
+CREATE W-DLT    CSTR," <<"
+CREATE W-DLTD   CSTR," <<-"
 
 VARIABLE ARGV-NODE-NEXT   \ the node of the word being added, if it has one
 
@@ -2359,7 +2359,7 @@ VARIABLE CASE-TEXT#
 MAX-FUNCS CELLS BUFFER: FT-BLOCK
 MAX-FUNCS CELLS BUFFER: FT-BASE
 MAX-FUNCS CELLS BUFFER: FT-NODE
-CREATE NO-TEXT 0 C,
+CREATE NO-TEXT CSTR," "
 
 : FT-SHIFT ( i --- i )   \ move row i+1 down to i, for `unset -f`
   DUP 1+ CELLS FT-BLOCK + @  OVER CELLS FT-BLOCK + !

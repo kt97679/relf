@@ -348,6 +348,7 @@ do not trust the absence of a line below.
 - **350** — the other order of assignment and redirection; command's options
 - **351** — a pool for here-document bodies; numbered ones catalogued
 - **352** — assessed the recognizer mechanism: not for this shell, and why
+- **353** — CSTR," replaces 26 byte-built literals
 
 ### Not tied to an iteration
 
@@ -18777,3 +18778,31 @@ literal syntaxes, or a `forth` hatch meant for other people to extend -
 and proposes the cheap fix for the only benefit found.
 
 No code changed.
+
+## Iteration 353: a word for the strings this shell keeps
+
+Following 352's assessment: the cheap fix, not the elegant mechanism.
+
+    CREATE PATH-NM  80 C, 65 C, 84 C, 72 C, 0 C,
+    CREATE PATH-NM  CSTR," PATH"
+
+`CSTR,"` parses to the closing quote and lays the text down
+NUL-terminated. `S" "` cannot serve here, since it yields an address and
+a length where every caller of these wants a C string - which is why
+they were written a byte at a time in the first place, and why my note
+in 352 was wrong about the reason. Only two of them held a double
+quote; the other twenty-six were simply the long way round.
+
+Twenty-six converted, sixteen in shell.4 and ten in tree.4.
+
+**Six stay byte-built, with a line saying why**: four are COUNTED
+strings, where this word lays down a NUL-terminated one, and two of
+those hold a double quote, which `PARSE` would read as the end of the
+text. Converting them would need a second word and a different
+delimiter, which is more mechanism than four literals are worth.
+
+Every suite passed unchanged, which is the point of doing this in one
+reviewable step: differential 76, matrix 420, POSIX 46, mrsh 21, shell
+files, interactive 22, no dead words, both widths.
+
+tests/verify: sizes.

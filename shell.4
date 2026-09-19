@@ -273,6 +273,16 @@ CREATE SH-NL 10 C,   \ a single newline byte. An empty S" " does not
 
 : ERR-TYPE ( c-addr u --- )   2 WRITE-FILE DROP ;
 : ERR-CSTR ( c-addr --- )     DUP CSTRLEN ERR-TYPE ;
+
+: CSTR," ( "text<quote>" --- )
+  \ A NUL-terminated string laid down here, for the names and fixed
+  \ words this shell keeps: `CREATE PATH-NM CSTR," PATH"` where it used
+  \ to be four `C,`s and a hand-written 0 (Iteration 353). `S" "` cannot
+  \ serve, since it yields an address and a length where every caller of
+  \ these wants a C string.
+  [CHAR] " PARSE                             ( c-addr u )
+  DUP >R  HERE SWAP MOVE
+  R> ALLOT  0 C, ;
 : ERR-NL   ( --- )            SH-NL 1 ERR-TYPE ;
 
 \ ==================================================================
@@ -507,7 +517,7 @@ MAX-SHVARS BUFFER: SHVAR-RO   \ readonly flag per slot
 MAX-SHVARS CELLS BUFFER: SHVAR-HASHES   \ each name's hash (Iteration 272)
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
-CREATE EMPTY-CSTR 0 C,
+CREATE EMPTY-CSTR CSTR," "
 : SHVAR-NAME-SLOT ( i --- addr )   SHVAR-NAME-MAX * SHVAR-NAMES + ;
 : SHVAR-VALUE-SLOT ( i --- addr )
   CELLS SHVAR-VALS + @ ?DUP 0= IF EMPTY-CSTR THEN ;
@@ -801,7 +811,7 @@ VARIABLE PB-AT
   POS-BLOCK @ ?DUP IF FREE DROP THEN
   POS-BLOCK !  PB-N @ POS-PARAM-COUNT ! ;
 
-CREATE DEFAULT-SHELL-NAME  115 C, 104 C, 0 C,   \ "sh"
+CREATE DEFAULT-SHELL-NAME  CSTR," sh"
 VARIABLE SHELL-NAME   \ set by MAIN: an address stored at load time is
                       \ not relocated when the image is loaded elsewhere
 
@@ -2272,8 +2282,10 @@ VARIABLE ARGV-NONLITERAL   \ how many of this command's words need expanding
   \ ten dispatches a word to learn nothing.
   ARGV-NONLITERAL @ 0= ;
 
-\ The four spellings of "nothing but $@" - built byte by byte because a
-\ double quote cannot be written inside S" ".
+\ The four spellings of "nothing but $@". These stay byte-built: they
+\ are COUNTED strings, where CSTR," lays down a NUL-terminated one, and
+\ two of them hold a double quote, which PARSE would read as the end of
+\ the text (Iteration 353).
 CREATE OA-BARE   2 C, 36 C, 64 C,                                  \ $@
 CREATE OA-QUOTED 4 C, 34 C, 36 C, 64 C, 34 C,                      \ "$@"
 CREATE OA-BRACE  4 C, 36 C, 123 C, 64 C, 125 C,                    \ ${@}
@@ -2823,10 +2835,10 @@ VARIABLE LC-END
 \ propagate back from.
 \ ==================================================================
 
-CREATE HOMEBUF-NM  72 C, 79 C, 77 C, 69 C, 0 C,
-CREATE OLDPWD-NM  79 C, 76 C, 68 C, 80 C, 87 C, 68 C, 0 C,
-CREATE PWD-NM     80 C, 87 C, 68 C, 0 C,
-CREATE CDPATH-NM  67 C, 68 C, 80 C, 65 C, 84 C, 72 C, 0 C,
+CREATE HOMEBUF-NM  CSTR," HOME"
+CREATE OLDPWD-NM  CSTR," OLDPWD"
+CREATE PWD-NM     CSTR," PWD"
+CREATE CDPATH-NM  CSTR," CDPATH"
 
 
 : CD-FAILED ( name --- )
@@ -3695,8 +3707,8 @@ VARIABLE RW-NAME
 DEFER DROP-ARGV0-CALL   ( --- )   \ defined below, used by `command`
 DEFER DISPATCH-CALL     ( --- f )
 DEFER RUN-EXTERNAL-CALL ( --- )
-CREATE PPID-NM  80 C, 80 C, 73 C, 68 C, 0 C,   \ $PPID (Iteration 318)
-CREATE PATH-NM  80 C, 65 C, 84 C, 72 C, 0 C,
+CREATE PPID-NM  CSTR," PPID"   \ $PPID (Iteration 318)
+CREATE PATH-NM  CSTR," PATH"
 CREATE DEFAULT-PATH                          \ what `command -p` looks in
   47 C, 98 C, 105 C, 110 C, 58 C,
   47 C, 117 C, 115 C, 114 C, 47 C, 98 C, 105 C, 110 C, 0 C,
@@ -4046,7 +4058,7 @@ VARIABLE RD-VI
     READ-BUF RD-POS @ + C@ IFS-CHAR? IF 1 RD-POS +!  RD-SKIP-IFS-WS THEN
   THEN ;
 
-CREATE EMPTY-STRING 0 C,   \ for `read` at end of input
+CREATE EMPTY-STRING CSTR," "   \ for `read` at end of input
 
 : DO-READ ( --- )
   \ XCU's read: fields split by IFS (not just blanks, as this did), a
@@ -4518,7 +4530,7 @@ VARIABLE PF-WIDTH
 VARIABLE PF-PREC       \ -1: none
 VARIABLE PF-START      \ where the conversion being read began
 VARIABLE PF-UPPER      \ %X
-CREATE NUL-BYTE 0 C,
+CREATE NUL-BYTE CSTR," "
 256 BUFFER: PF-BUF     \ a formatted number
 VARIABLE PF#
 
@@ -4712,7 +4724,7 @@ VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-RE
 ' DO-HASH         S" hash"     BUILTIN
 
 \ ---- trap, kill, umask, times, local (Iteration 271) ----
-CREATE SH-DASH  45 C, 0 C,
+CREATE SH-DASH  CSTR," -"
 : ALL-DECIMAL? ( c-addr u --- f )
   DUP 0= IF 2DROP 0 EXIT THEN
   OVER + SWAP ?DO I C@ 48 - 10 U< 0= IF UNLOOP 0 EXIT THEN LOOP -1 ;
@@ -5158,10 +5170,10 @@ VARIABLE FG-PID
     THEN
   THEN ;
 
-CREATE PS1-NM  80 C, 83 C, 49 C, 0 C,
-CREATE PS2-NM  80 C, 83 C, 50 C, 0 C,
-CREATE PS1-DEFAULT  36 C, 32 C, 0 C,       \ "$ "
-CREATE PS2-DEFAULT  62 C, 32 C, 0 C,       \ "> "
+CREATE PS1-NM  CSTR," PS1"
+CREATE PS2-NM  CSTR," PS2"
+CREATE PS1-DEFAULT  CSTR," $ "   \ "$ "
+CREATE PS2-DEFAULT  CSTR," > "   \ "> "
 
 : PROMPT-STRING ( name-cstr default --- c-addr u )
   SWAP LOOKUP-VAR ?DUP IF NIP THEN         ( addr )
@@ -6047,7 +6059,7 @@ VARIABLE GF-N
 : GW-C, ( c pos --- pos' )
   DUP 2 + ENSURE-BUFFER GW-PATH  TUCK GW-PATH + C!  1+ ;
 : GW-NUL ( pos --- )   DUP 1+ ENSURE-BUFFER GW-PATH  0 SWAP GW-PATH + C! ;
-CREATE DOT-PATH  46 C, 0 C,
+CREATE DOT-PATH  CSTR," ."
 
 : COMP-END ( i --- j )   \ the next unescaped / in the pattern, or its end
   BEGIN DUP GP# @ < IF DUP GP-BUF + C@ 47 <> ELSE 0 THEN WHILE
