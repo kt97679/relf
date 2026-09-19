@@ -269,3 +269,13 @@ them.
     `VAR=val2 eval ...` leaves VAR set in dash and ash; this shell
     follows bash and drops it. Deliberate, recorded in GOALS.md 5k, and
     the reason busybox's var_leak stays red.
+
+## Eleventh batch from busybox's ash suite (Iteration 358)
+
+39. **Unquoted `$*` and `$@` make one field per positional parameter**,
+    whatever IFS holds - `IFS=:; for x in $*` gives a field per
+    parameter, not one field split on colons. Quoted `"$*"` joins with
+    IFS's first character, or with nothing when IFS is set and empty,
+    and inside an assignment nothing is split at all, so both forms
+    join.
+    → `tests/diff/cases/ifs-fields-358.sh`

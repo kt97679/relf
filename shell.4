@@ -2145,22 +2145,31 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
     \ Iteration 46, in the one place that emits a character of its own
     \ rather than copying a value.
     EAP-I @ 0 > IF
-      EAP-AT @ IN-DQ-CONTEXT? @ AND IF
-        \ The field break needs room reserved too. IFS-SPLIT-HERE
-        \ writes a NUL and advances TOK-OUT, so it grows the output by
-        \ one byte like the separator below does. It is balanced when
-        \ EMIT-EXPANDED-CHAR calls it - the IFS character that
-        \ triggered the split was consumed from the input and not
-        \ emitted - but here nothing was consumed: "$@" synthesises the
-        \ break out of nothing. Without this, "1  $@  2" with three
-        \ parameters lost its "  2" (Iteration 103).
+      \ Unquoted, each positional parameter is a field of its own,
+      \ whatever IFS holds: `IFS=:; for x in $*` gives one field per
+      \ parameter. This emitted a space and left the splitting to IFS,
+      \ which worked only while IFS contained a space (Iteration 358).
+      \
+      \ The field break needs room reserved too. IFS-SPLIT-HERE writes
+      \ a NUL and advances TOK-OUT, so it grows the output by one byte
+      \ like the separator below. It is balanced when
+      \ EMIT-EXPANDED-CHAR calls it - the IFS character that triggered
+      \ the split was consumed from the input and not emitted - but
+      \ here nothing was consumed: the break is synthesised. Without
+      \ this, `"1  $@  2"` with three parameters lost its "  2"
+      \ (Iteration 103).
+      \ ... but an assignment's value is not split, so `v=$*` joins
+      \ like the quoted form rather than making fields.
+      \ Inside an assignment nothing is split, so both forms join with
+      \ IFS's first character - `v="$@"` is one value, not two words.
+      WORD-IS-ASSIGN? @ 0=
+      IN-DQ-CONTEXT? @ 0= EAP-AT @ IN-DQ-CONTEXT? @ AND OR AND IF
         IFS-SPLIT-HERE
-      ELSE EAP-AT @ 0= IN-DQ-CONTEXT? @ AND IF
-        \ "$*" joins with IFS's first character (Iteration 257).
-        IFS-FIRST DUP 0< IF DROP ELSE EMIT-EXPANDED-CHAR THEN
       ELSE
-        32 EMIT-EXPANDED-CHAR
-      THEN THEN
+        \ `"$*"` joins with IFS's first character, and with nothing at
+        \ all when IFS is set and empty (Iteration 257).
+        IFS-FIRST DUP 0< IF DROP ELSE EMIT-EXPANDED-CHAR THEN
+      THEN
     THEN
     EAP-I @ POS-PARAM-SLOT TYPE0-TO-TOK-SPLIT
     EAP-I @ 1+ EAP-I !

@@ -353,6 +353,7 @@ do not trust the absence of a line below.
 - **355** — four fixes: numbered here-documents, background stdin, trap return, quoted empty fields
 - **356** — the length of a special parameter; command's not-found report
 - **357** — assignments applied left to right as they expand; readonly reports
+- **358** — positional parameters are fields, not a space-joined string
 
 ### Not tied to an iteration
 
@@ -18936,3 +18937,34 @@ where this shell carries on.
 busybox suite: **197 of 357**, up from 195; dash is at 211.
 
 tests/verify: diff cases 81 -> 82; sizes.
+
+## Iteration 358: fields, not a joined string
+
+Unquoted `$*` and `$@` expand to **one field per positional
+parameter**. This shell emitted a space between them and left the
+splitting to IFS, which gives the right answer only while IFS contains a
+space: with `IFS=:` the parameters came back as a single field, and with
+IFS set empty they were run together.
+
+The rule has three arms and each is now written where the separator is
+chosen: unquoted makes a field break; quoted `"$@"` makes one too;
+quoted `"$*"` joins with IFS's first character, or with nothing when IFS
+is set and empty. Inside an assignment nothing is split, so both forms
+join - `v="$@"` is one value rather than two words, which is what made
+the busybox test print `d e: command not found` after the first fix.
+
+Four attempts at the edit failed before one applied: the block carries
+two long comments, and the text I matched against kept including them.
+Replacing the block by line number worked. Something to remember for
+heavily commented code.
+
+`tests/diff/cases/ifs-fields-358.sh` covers all three arms with IFS
+empty, set to a colon, and unset, in a `for` list and in assignments,
+with one parameter and with none. It matches bash and dash, except one
+spelling left out on purpose: `v="$@"` with IFS empty joins with a space
+in bash and with nothing in dash and here, which busybox's own suite
+notes as a difference between the two.
+
+busybox suite: **198 of 357**, up from 197; dash is at 211.
+
+tests/verify: diff cases 82 -> 83; sizes.
