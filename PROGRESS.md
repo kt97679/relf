@@ -347,6 +347,7 @@ do not trust the absence of a line below.
 - **349** — assignments beside a redirection reach the shell
 - **350** — the other order of assignment and redirection; command's options
 - **351** — a pool for here-document bodies; numbered ones catalogued
+- **352** — assessed the recognizer mechanism: not for this shell, and why
 
 ### Not tied to an iteration
 
@@ -18746,3 +18747,33 @@ descriptor field is written from the parsed value. The next session
 should watch what reaches `DUP2`.
 
 tests/verify: sizes.
+
+## Iteration 352: would a recognizer mechanism help?
+
+Asked, and answered with measurements rather than taste; the assessment
+is in RESEARCH-VM.md.
+
+The short of it: this shell's text interpreter runs twice - when an
+image is built, and behind the `forth` builtin. The whole source is
+82,769 tokens and interpreting it takes 78 ms, so a recognizer list in
+place of `FIND` plus a number fallback would cost single-digit
+milliseconds a build and nothing at run time, where the shell's own
+lexer and parser do all the work and `EVALUATE` appears at one call
+site.
+
+The one real irritation it might address is that 32 literals in the
+source are built byte by byte - 125 bytes in all - because a double
+quote cannot appear inside `S" "`. But that token has a prefix, so a
+parsing word fixes it in a dozen lines; recognizers are for bare tokens.
+
+Against that: the kernel image is 9,090 bytes and every image carries
+it, the kernel is the file that must re-converge through the
+cross-compiler, and an unused mechanism would fail the no-dead-words
+check.
+
+So: no. It would be an elegant answer to a question this project does
+not ask. The assessment names what would change that - a family of
+literal syntaxes, or a `forth` hatch meant for other people to extend -
+and proposes the cheap fix for the only benefit found.
+
+No code changed.

@@ -114,3 +114,58 @@ measured, and on what.
   or native code. Lexing is 0.7%, which also retires the idea that
   parsing once into a shared form would buy anything - it already is
   parsed once.
+
+## Would a recognizer mechanism help? (assessed Iteration 352)
+
+A recognizer, in the Forth 200x sense, replaces the text interpreter's
+hard-wired "look the word up, and if that fails try to read it as a
+number" with a list of recognizers, each offered the token in turn and
+each answering either "not mine" or "mine, and here is how to interpret,
+compile and postpone it". It is how a Forth gains `0x1F`, `'c'`,
+`"string"`, floats or typed addresses without anyone editing
+`INTERPRET`.
+
+**Where this shell's text interpreter is actually used.** Twice: while
+building an image, and behind the `forth` builtin. The whole source -
+kernel, extensions, shell, editor, tree - is 82,769 tokens, and
+interpreting all of it takes **78 ms**, about 0.9 us a token. At run
+time the shell never interprets anything: its own lexer, parser and
+expander are compiled Forth, and `EVALUATE` appears at exactly one call
+site, the escape hatch.
+
+**So the three things a recognizer could improve, measured:**
+
+1. *Shell speed*: nothing. The interpreter is not on any path a script
+   touches. PERFORMANCE.md's profile has no INTERPRET, FIND or NUMBER?
+   in it at all.
+2. *Build speed*: a recognizer list costs a few comparisons per token
+   where there is now one `FIND` and a fallback. On 83,000 tokens at
+   0.9 us that is single-digit milliseconds - real, and irrelevant.
+3. *Expressiveness*: this is the honest one. The source builds **32
+   literals byte by byte** - 125 bytes in all, things like
+   `CREATE OA-QUOTED 4 C, 34 C, 36 C, 64 C, 34 C,` - because a double
+   quote cannot appear inside `S" "`. That is the only real irritation
+   a literal syntax would remove.
+
+**And point 3 does not need a recognizer.** A parsing word - `CSTR," ... "`
+with its own escape convention - solves it in a dozen lines and needs no
+change to `INTERPRET`, because the token has a prefix. Recognizers earn
+their keep when a BARE token must be given meaning, which is not what
+any of these 32 cases are.
+
+**Costs, against this project's own measures.** The kernel image is
+9,090 bytes and every image inherits it; a recognizer stack with its
+token/action tables is perhaps half a kilobyte to a kilobyte of that,
+against a shell that advertises 122 KB total versus dash's 130 KB. The
+kernel is also the file that must re-converge to a fixpoint through the
+cross-compiler, which is the riskiest change in the repository, and the
+no-dead-words rule means the mechanism must then be used by something.
+
+**Verdict: no, not for this shell.** It is an elegant answer to a
+question this project does not ask. Two things would change that:
+adding a family of literal syntaxes to the Forth layer (floats, typed
+addresses, string escapes) rather than the one; or making the `forth`
+escape hatch a user-facing programming environment where people extend
+the syntax themselves. Until then, the cheap and specific fix -
+a `CSTR,"` parsing word - buys the only benefit identified, at a
+hundredth of the cost.
