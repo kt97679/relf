@@ -3698,9 +3698,30 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   DISPATCH-CALL 0= IF RUN-EXTERNAL-CALL THEN
   0 NO-FUNCTIONS? ! ;
 
+: DROP-ARGV1 ( --- )   \ the second word, out of the list
+  ARGC @ 2 ?DO
+    I ARGV@  ARGV I 1- CELLS + !
+    I ARGV-QUOTED + C@  ARGV-QUOTED I 1- + C!
+  LOOP
+  ARGC @ 1- ARGC !  0 ARGV ARGC @ CELLS + ! ;
+
 : DO-COMMAND ( --- )
   \ command -v NAME, and command [-p] NAME args.
   ARGC @ 2 < IF 0 LAST-STATUS ! EXIT THEN
+  \ More than one option: `command -p -V name` and `command -v -p name`
+  \ are both valid, and this read one option and took the next for the
+  \ name (Iteration 350). `-p` is noted and taken out of the list so the
+  \ rest reads as it always has.
+  ARGC @ 3 > IF
+    S" -p" 1 ARGV@ STR0= IF
+      2 ARGV@ C@ 45 = IF DROP-ARGV1 THEN
+    ELSE
+      S" -p" 2 ARGV@ STR0= IF
+        ARGC @ 3 ?DO I ARGV@ ARGV I 1- CELLS + ! LOOP
+        ARGC @ 1- ARGC !  0 ARGV ARGC @ CELLS + !
+      THEN
+    THEN
+  THEN
   S" -p" 1 ARGV@ STR0= IF
     DROP-ARGV0-CALL
     \ MOVE takes ( src dst u ): written the other way round in Iteration
@@ -5341,6 +5362,7 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 ' RUN-EXTERNAL IS RUN-EXTERNAL-CALL
 
 VARIABLE ASSIGNED-HERE?   \ this command's assignments were permanent
+VARIABLE RE-PREFIX        \ how many assignment prefixes it had
 
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
   \ A simple command from the tree has no pipes (Iteration 265), and the
@@ -5376,7 +5398,7 @@ VARIABLE ASSIGNED-HERE?   \ this command's assignments were permanent
     \ `var=ok > f` leaves no words at all once the redirection is taken
     \ out, and its assignment is the shell's own: the caller applied it
     \ already, so it just must not be restored (Iteration 349).
-    PREFIX-COUNT 0 > IF -1 ASSIGNED-HERE? ! THEN
+    RE-PREFIX @ 0 > IF -1 ASSIGNED-HERE? ! THEN
 
   THEN ;
 

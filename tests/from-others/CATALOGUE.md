@@ -187,14 +187,13 @@ them.
 27. **A command of assignments and redirections only sets the variables
     in the shell itself**, in either order: `> f var=ok` and
     `var=ok > f` both leave `var` set afterwards.
-    `> f var=ok` works here since Iteration 349; **`var=ok > f` does
-    not** - with the assignment first the caller applies it temporarily
-    and restores it afterwards, and the flag that says "these were the
-    shell's own" is set too late for that path to see. The count of
-    prefixes has to be taken before the redirection words are removed,
-    which is the edit that ran out of room.
+    `> f var=ok` works since Iteration 349 and `var=ok > f` since 350:
+    with the assignment first the caller applies it temporarily, and the
+    count of prefixes has to be taken before `TEMP-ASSIGN` removes them
+    from the list - not merely before the redirection words go, which is
+    what 349's attempt assumed.
     → `tests/diff/cases/assign-redirect-349.sh`
 
 28. **`command` takes more than one option.** `command -p -V name` and
-    `command -v -p name` are both valid; this shell reads one option and
-    treats the second as the command name. (Not yet implemented.)
+    `command -v -p name` are both valid.
+    → `tests/diff/cases/wait-job-status-345.sh`

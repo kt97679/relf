@@ -345,6 +345,7 @@ do not trust the absence of a line below.
 - **347** — the backquote crash re-measured: the text, not the output
 - **348** — the backquote crash fixed: a re-fetch outside its test
 - **349** — assignments beside a redirection reach the shell
+- **350** — the other order of assignment and redirection; command's options
 
 ### Not tied to an iteration
 
@@ -18701,3 +18702,25 @@ next time.
 `command -p -V name` treats `-V` as the name.
 
 tests/verify: diff cases 75 -> 76; sizes.
+
+## Iteration 350: the other order, and command's options
+
+**`var=ok > f` now sets the variable too.** 349 left this one and named
+the wrong two lines: the count of assignment prefixes has to be taken
+before `TEMP-ASSIGN` takes the prefixes OUT of the argument list, not
+merely before the redirection words go. With the count captured in the
+caller, the permanent-assignment path sets its flag and the temporary
+one knows not to restore.
+
+**`command` takes more than one option.** `command -p -V name` and
+`command -v -p name` are both valid; this read one option and took the
+next for the name. `-p` is noted and lifted out of the list, so the rest
+of the builtin reads as it always has.
+
+Both cases are covered by existing differential files, extended rather
+than added to: the assignment orders in `assign-redirect-349.sh`, the
+option orders in `wait-job-status-345.sh`. Both match bash.
+
+busybox suite: 191 of 357; dash is at 211.
+
+tests/verify: sizes.

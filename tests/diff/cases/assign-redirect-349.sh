@@ -4,8 +4,9 @@
 # argument list, so `> f var=ok` ran the assignment as a command
 # (Iteration 349).
 #
-# `var=ok > f` - the assignment FIRST, the redirection after - is still
-# wrong here and is catalogued as entry 27.
+# `var=ok > f` - the assignment FIRST - was fixed in Iteration 350: the
+# prefix count has to be taken before TEMP-ASSIGN removes the prefixes
+# from the list.
 #
 # The `v3=tmp :` line matches BASH: POSIX has an assignment before a
 # SPECIAL builtin persist, which dash does and bash does not outside
@@ -13,6 +14,8 @@
 # builtin differences (GOALS.md 5k).
 d=/tmp/relf-349.$$
 rm -rf $d; mkdir -p $d; cd $d
+var=first >f0
+echo "assignment-first=$var"
 >f var=ok
 echo "after-redirect=$var"
 >g x=1 y=2

@@ -20,3 +20,5 @@ w=plain; echo "no-sub=$?"
 ( (exit 7) & (exit 8) & wait %1; echo "first-of-two=$?" )
 ( (exit 7) & wait; echo "wait-all=$?" )
 ( wait %9 2>/dev/null; echo "no-such-job=$?" )
+command -p -V echo
+command -v -p echo

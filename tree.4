@@ -2065,12 +2065,17 @@ VARIABLE HDX-DEPTH
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
   PREFIX-COUNT ?DUP IF
     0 ASSIGNED-HERE? !
+    \ Remembered here because TEMP-ASSIGN takes the prefixes out of the
+    \ argument list: after it, a command like `var=ok > f` has no words
+    \ left to count (Iteration 350).
+    DUP RE-PREFIX !
     TEMP-ASSIGN >R RUN-EXPANDED
     \ ... unless the command turned out to be assignments and
     \ redirections only, in which case they are the shell's own
     \ (Iteration 349).
     ASSIGNED-HERE? @ IF R> DROP ELSE R> TEMP-RESTORE THEN
   ELSE
+    0 RE-PREFIX !
     RUN-EXPANDED
   THEN
   0 EXEC-LAST? ! ;
