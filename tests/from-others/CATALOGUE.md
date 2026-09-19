@@ -328,3 +328,30 @@ them.
     close, and a run of whitespace is broken in two by quoting that
     falls inside it.
     → `tests/diff/cases/quoted-field-run-364.sh`
+
+## Twelfth batch from busybox's ash suite (Iteration 369)
+
+44. **A here-document delimiter undergoes quote removal**, not "drop
+    every quote character": `<<"\name"` ends at a line reading `\name`,
+    and a backslash inside double quotes keeps itself unless what
+    follows is one of the four it can quote there.
+    → `tests/diff/cases/heredoc-delim-369.sh`
+
+45. **A backslash-newline may sit inside `<<-` as well as `<<`**, so
+    `cat <<\` + newline + `- EOF` is a stripping here-document.
+    → `tests/diff/cases/heredoc-delim-369.sh`
+
+46. **A quoted `-` inside a bracket expression is a member, not a
+    range**: `[0"-"9]` matches three characters where `[0-9]` matches
+    ten. The dash has to be marked like the other metacharacters so the
+    pattern builder can escape it when quoted - but without counting as
+    a reason to expand the word against the file system, since a word
+    with a dash in it is not a pattern.
+    → `tests/diff/cases/bracket-dash-369.sh`
+
+47. **A backslash-newline between `$` and what it names** is invisible:
+    `echo 1:$\` + newline + `1` prints `1:1`. This shell prints `$1`.
+    The scanners for `$name`, `${...}`, `$(...)` and `$((...))` all
+    position themselves relative to the `$`, so removing a continuation
+    after it means either re-basing all four or normalising the line
+    before the lexer sees it; neither is small. (Not fixed.)

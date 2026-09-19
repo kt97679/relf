@@ -364,6 +364,7 @@ do not trust the absence of a line below.
 - **366** — the name validator; and bundles that can be pulled
 - **367** — AND does not short-circuit; and a `[` is not always a pattern
 - **368** — a runaway directory, ten documents to the attic, and an index
+- **369** — here-document delimiters, `<<-` continuations, quoted dashes in brackets
 
 ### Not tied to an iteration
 
@@ -19273,3 +19274,36 @@ other documents cite most, and every citation is of the form
 citations to save a file size that costs nothing to search.
 
 No code changed; the runner and the documents did.
+
+## Iteration 369: three from the gap list, and a test for the deliverable
+
+**A here-document delimiter undergoes quote removal**, which is not the
+same as dropping every quote character. This shell stripped backslashes
+along with the quotes, so `<<"\name"` waited for a line reading `name`,
+never found one, and swallowed the rest of the script. Proper quote
+removal now: single quotes make everything literal, a backslash outside
+them keeps the character after it, and inside double quotes it keeps
+ITSELF unless what follows is one of the four it can quote there.
+
+**A `<<-` may be split by a continuation too.** Iteration 332 taught the
+operator scanner to look past a backslash-newline for an operator's
+second character; the third needed the same, so `cat <<\` + newline +
+`- EOF` reads as `<<-`.
+
+**A quoted `-` inside a bracket expression is a member, not a range.**
+Two faults, one on top of the other: the pattern builder did not escape
+a quoted dash, and the matcher read `[0\-9]` as a range from backslash
+to `9` - empty - because it tested for a range before resolving the
+escape. The dash is marked like the other metacharacters now, but
+counted separately: a word with a dash in it is not a pattern, and
+counting it as one would send every `a-b` to the file system. That
+distinction is why `GLOB-META#` exists beside `GLOB-MARKS#`.
+
+**And a test for the thing this project hands over.** 368 found that no
+bundle had ever been pullable; `tests/verify` now builds one, clones it,
+and checks the clone is at the same commit. The suites have always
+checked the shell; this is the first check that the delivery works.
+
+busybox suite: **205 of 357**, up from 203; dash is at 211.
+
+tests/verify: a new check, `bundle:pullable`; diff cases 86 -> 88.

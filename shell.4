@@ -1194,10 +1194,23 @@ VARIABLE UNSET-FATAL?      \ set -u met an unset parameter: the command fails
 \ are expanded, a field holding one is a pattern (Iteration 267).
 256 BUFFER: GLOB-MARKS
 VARIABLE GLOB-MARKS#
+VARIABLE GLOB-META#   \ of those, the ones that make the word a pattern
 VARIABLE NO-GLOB?          \ the caller wants no pathname expansion
 DEFER GLOB-FIELDS-CALL
 
 : GLOB-MARK ( c --- c )
+  \ A `-` is marked as well, because a quoted one inside a bracket is a
+  \ literal rather than a range - `[0"-"9]` matches three characters,
+  \ not ten (Iteration 369). It does not count towards GLOB-META#,
+  \ which is what decides whether the word goes to the file system at
+  \ all: a word with a dash in it is not a pattern.
+  DUP 45 = IF
+    TOKEN-IS-ASSIGN-PREFIX? 0= IF
+      GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+      TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+      1 GLOB-MARKS# +!
+    THEN
+  THEN
   DUP 42 = OVER 63 = OR OVER 91 = OR IF
     \ Recorded even when pathname expansion is off, because a `case`
     \ pattern is still a pattern and these marks are how an unquoted
@@ -1205,15 +1218,21 @@ DEFER GLOB-FIELDS-CALL
     TOKEN-IS-ASSIGN-PREFIX? 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
       GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
       TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-      1 GLOB-MARKS# +!
+      1 GLOB-MARKS# +!  1 GLOB-META# +!
     THEN THEN
   THEN ;
+
+: GLOB-MARK-DASH ( off --- )   \ an unquoted `-`: marked, but not a pattern
+  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
+  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+  1 GLOB-MARKS# +! ;
 
 : GLOB-MARK-OFF ( off --- )   \ an unquoted pattern character already written
   TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
   GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
   GLOB-MARKS GLOB-MARKS# @ CELLS + !
-  1 GLOB-MARKS# +! ;
+  1 GLOB-MARKS# +!  1 GLOB-META# +! ;
 
 DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
 
@@ -2346,6 +2365,9 @@ VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
     DUP 42 = OVER 63 = OR IF
       TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
     ELSE
+      DUP 45 = IF
+        TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH
+      THEN
       DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
       DUP 93 = CL-BRACKET @ 0< 0= AND IF
         TOK-OUT @ CL-BRACKET @ + OUT-BASE - GLOB-MARK-OFF
@@ -2452,7 +2474,7 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
   \ of becoming `a`.
   0 EXPANSION-FAILED? !
   0 EWA-N !  -1 EWA-RUN? !
-  0 GLOB-MARKS# !
+  0 GLOB-MARKS# !  0 GLOB-META# !
   0 IFS-CACHED? !
   \ Nothing to expand: every word is literal text the lexer already put
   \ in the tree, and ARGV points at it with its flags set. The pass
@@ -2598,7 +2620,7 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
   \ The marks are recorded even when pathname expansion is off, since a
   \ `case` pattern needs them; the decision to expand against the file
   \ system is taken here instead (Iteration 340).
-  GLOB-MARKS# @ NO-GLOB? @ 0= AND OPT-NOGLOB @ 0= AND IF GLOB-FIELDS-CALL THEN ;
+  GLOB-META# @ NO-GLOB? @ 0= AND OPT-NOGLOB @ 0= AND IF GLOB-FIELDS-CALL THEN ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;
@@ -6091,10 +6113,20 @@ VARIABLE CC-I
     BM-I @ 1+ BM-I !
   THEN
   BEGIN BM-I @ BM-END @ 1- < WHILE
+    \ An escape is resolved BEFORE the range test, or `[0\-9]` reads as
+    \ a range from backslash to 9 - empty, so the pattern matched
+    \ nothing at all (Iteration 369).
+    BM-I @ GM-PATTERN @ + C@ 92 = BM-I @ 1+ BM-END @ 1- < AND IF
+      BM-I @ 1+ BM-I !
+      BM-I @ GM-PATTERN @ + C@ BM-CHAR @ = IF -1 BM-MATCHED? ! THEN
+      BM-I @ 1+ BM-I !
+      0
+    ELSE
     BM-I @ 1+ BM-END @ 1- < IF
       BM-I @ 1+ GM-PATTERN @ + C@ 45 =
       BM-I @ 2 + BM-END @ 1- < AND
     ELSE 0 THEN
+    THEN
     IF
       BM-CHAR @ BM-I @ GM-PATTERN @ + C@ < 0=
       BM-I @ 2 + GM-PATTERN @ + C@ BM-CHAR @ < 0=
@@ -6109,9 +6141,6 @@ VARIABLE CC-I
       BM-I @ CC-MATCH? IF -1 BM-MATCHED? ! THEN
       CC-LEN @ ?DUP IF BM-I @ + BM-I ! ELSE BM-I @ 1+ BM-I ! THEN
     ELSE
-      BM-I @ GM-PATTERN @ + C@ 92 = BM-I @ 1+ BM-END @ 1- < AND IF
-        BM-I @ 1+ BM-I !                     \ escaped: the next one, literally
-      THEN
       BM-I @ GM-PATTERN @ + C@ BM-CHAR @ = IF -1 BM-MATCHED? ! THEN
       BM-I @ 1+ BM-I !
     THEN THEN
@@ -6223,7 +6252,7 @@ VARIABLE GF-N
   0 GP# !
   GF-LEN @ 0 ?DO
     GF-OFF @ I + OUT-BASE + C@
-    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR IF
+    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR OVER 45 = OR IF
       GF-OFF @ I + MARKED? 0= IF 92 GP-C, THEN
     THEN GP-C,
   LOOP ;

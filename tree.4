@@ -632,6 +632,7 @@ DEFER SCAN-DOLLAR
   OVER + SWAP ?DO I C@ 48 - 9 U> IF UNLOOP 0 EXIT THEN LOOP -1 ;
 
 VARIABLE OP-LA   \ offset of the operator's second character
+VARIABLE OP-LA3  \ ... and of a third, for `<<-`
 
 : OP-LA-INIT ( --- )
   \ A backslash-newline between the two characters of an operator is a
@@ -657,7 +658,18 @@ VARIABLE OP-LA   \ offset of the operator's second character
   OVER 40 = IF 2DROP OP-LPAREN 1 ELSE
   OVER 41 = IF 2DROP OP-RPAREN 1 ELSE
   OVER 60 = IF NIP
-    DUP 60 = IF DROP OP-LA @ 1+ SRC-C 45 = IF OP-DLESSDASH 3 ELSE OP-DLESS 2 THEN ELSE
+    \ `<<-` may have a continuation between its second and third
+    \ characters too: `cat <<\` + newline + `- EOF` is `<<-`
+    \ (Iteration 369).
+    DUP 60 = IF DROP
+      OP-LA @ 1+ OP-LA3 !
+      BEGIN
+        OP-LA3 @ SRC-C 92 = IF OP-LA3 @ 1+ SRC-C 10 = ELSE 0 THEN
+      WHILE
+        2 OP-LA3 +!
+      REPEAT
+      OP-LA3 @ SRC-C 45 = IF OP-DLESSDASH 3 ELSE OP-DLESS 2 THEN
+    ELSE
     DUP 38 = IF DROP OP-LESSAND 2 ELSE
     62 = IF OP-LESSGREAT 2 ELSE OP-LESS 1 THEN THEN THEN
   ELSE NIP
@@ -665,17 +677,54 @@ VARIABLE OP-LA   \ offset of the operator's second character
     DUP 38 = IF DROP OP-GREATAND 2 ELSE
     124 = IF OP-CLOBBER 2 ELSE OP-GREAT 1 THEN THEN THEN
   THEN THEN THEN THEN THEN THEN
-  DUP 1 > IF OP-LA @ 1- + THEN               \ plus any continuation skipped
+  \ plus any continuation skipped, in either gap
+  DUP 3 = IF
+    DROP OP-LA3 @ 1+
+  ELSE
+    DUP 1 > IF OP-LA @ 1- + THEN
+  THEN
   SRC-SKIP TK-OP ! ;
 
 \ ---- reading the bodies ----
+VARIABLE SQ-SQ?   \ inside single quotes
+VARIABLE SQ-DQ?   \ inside double quotes
+
+CREATE SQ-ONE 2 ALLOT
+: HD-APPEND-CHAR ( c --- )   SQ-ONE C!  SQ-ONE 1 HD-APPEND ;
+
 : STRIP-QUOTES ( c-addr u --- )   \ the delimiter, into HD-TEXT
-  0 HD-TEXT# !
-  OVER + SWAP ?DO
-    I C@ DUP 39 = OVER 34 = OR SWAP 92 = OR 0= IF
-      I 1 HD-APPEND
-    THEN
-  LOOP ;
+  \ Quote removal, not "drop every quote character": a backslash keeps
+  \ the character after it, and inside double quotes it keeps ITSELF
+  \ unless what follows is one of the four it can quote there. This
+  \ dropped every backslash, so `<<"\name"` waited for `name` and
+  \ swallowed the rest of the script (Iteration 369).
+  0 HD-TEXT# !  0 SQ-SQ? !  0 SQ-DQ? !
+  OVER + SWAP                                ( end cur )
+  BEGIN 2DUP U> WHILE
+    DUP C@                                   ( end cur c )
+    DUP 39 = SQ-DQ? @ 0= AND IF
+      DROP SQ-SQ? @ 0= SQ-SQ? !
+    ELSE DUP 34 = SQ-SQ? @ 0= AND IF
+      DROP SQ-DQ? @ 0= SQ-DQ? !
+    ELSE DUP 92 = SQ-SQ? @ 0= AND IF
+      DROP
+      1+                                     \ past the backslash
+      2DUP U> IF
+        DUP C@                               ( end cur c2 )
+        SQ-DQ? @ IF
+          DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR 0= IF
+            92 HD-APPEND-CHAR                \ it quotes nothing here
+          THEN
+        THEN
+        DROP DUP 1 HD-APPEND
+      ELSE
+        92 HD-APPEND-CHAR                    \ a trailing backslash
+      THEN
+    ELSE
+      DROP DUP 1 HD-APPEND                   \ the character at cur
+    THEN THEN THEN
+    1+
+  REPEAT 2DROP ;
 
 VARIABLE HD-DELIM
 VARIABLE HD-DELIM#

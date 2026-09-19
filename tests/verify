@@ -183,6 +183,25 @@ emit size:image-x86_64       "$(wc -c < kernel-shell.img | tr -d ' ')"
 emit size:image-i386         "$(wc -c < kernel32-shell.img | tr -d ' ')"
 
 # ---------------------------------------------------------------
+# The deliverable itself (Iteration 369)
+# ---------------------------------------------------------------
+# Every session hands over a git bundle, and for 368 iterations none of
+# them could be pulled: `git bundle create FILE master TAG` writes those
+# refs and no HEAD, while `git pull FILE` asks for HEAD. The suites said
+# nothing, because nothing tested the thing being handed over. This
+# builds a bundle, clones it, and checks the clone has the same commit.
+echo "== the bundle ==" >&2
+bwork=$(mktemp -d)
+if git bundle create "$bwork/t.bundle" HEAD master >/dev/null 2>&1 &&
+   git clone -q "$bwork/t.bundle" "$bwork/clone" >/dev/null 2>&1 &&
+   [ "$(git rev-parse HEAD)" = "$(git -C "$bwork/clone" rev-parse HEAD)" ]; then
+    emit bundle:pullable 1
+else
+    emit bundle:pullable 0
+fi
+rm -rf "$bwork"
+
+# ---------------------------------------------------------------
 # Compare, or record.
 # ---------------------------------------------------------------
 sort -o "$OUT" "$OUT"
