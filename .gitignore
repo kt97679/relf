@@ -4,3 +4,6 @@ build/
 attic/tools/proto_gen.h
 fatest1.txt
 FATEST2.TXT
+
+# written by `make`: which image the native engine runs (Iteration 397)
+.relf-native-img

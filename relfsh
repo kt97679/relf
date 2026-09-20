@@ -52,7 +52,28 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 # (e.g. RELF_BIN=./relf32 RELF_IMG=./kernel32.img for the i386 image -
 # see tests/run_tests.sh) without needing a second copy of this script.
 RELF_BIN=${RELF_BIN:-"$DIR/relf"}
-RELF_IMG=${RELF_IMG:-"$DIR/kernel.img"}
+
+# Which image the native engine can actually run. A cell is a pointer:
+# on a 64-bit host that is kernel.img, on a 32-bit one - ARMv7, i386 -
+# it is kernel32.img, and handing the 8-byte image to a 4-byte engine
+# gets "not a RelF image, or built for a different encoding or cell
+# width", which is what `make` on an ARMv7 board reported
+# (Iteration 397).
+#
+# The Makefile leaves the answer in .relf-native-img, which costs a
+# builtin read; without it - a checkout that has not been built yet -
+# ask getconf, which costs a process, but only that once.
+if [ -z "${RELF_IMG:-}" ]; then
+    if [ -f "$DIR/.relf-native-img" ]; then
+        read RELF_IMG < "$DIR/.relf-native-img"
+        case "$RELF_IMG" in /*) ;; *) RELF_IMG="$DIR/$RELF_IMG" ;; esac
+    else
+        case $(getconf LONG_BIT 2>/dev/null) in
+            32) RELF_IMG="$DIR/kernel32.img" ;;
+            *)  RELF_IMG="$DIR/kernel.img" ;;
+        esac
+    fi
+fi
 
 # Resolved against the caller's directory now, because build_shell_img
 # runs the engine from a subshell that has cd'd to $DIR. A relative

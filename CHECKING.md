@@ -81,6 +81,20 @@ mysteriously. Nothing else about the environment should matter:
 `make portability` runs the whole shell suite again with a foreign
 `HOME`, `USER` and `TERM` and requires the same result.
 
+## On a 32-bit machine
+
+A cell is a pointer, so the native engine on ARMv7 or i386 runs the
+4-byte image, `kernel32.img` - `kernel.img` is the 8-byte one and that
+engine will call it "not a RelF image, or built for a different encoding
+or cell width". `make` works this out from `getconf LONG_BIT` and builds
+the native pair; `relfsh` reads the answer from `.relf-native-img`,
+which `make` writes. `make HOSTBITS=32` shows a 64-bit machine what a
+32-bit one does.
+
+One thing that build cannot do: hold a limit or a size that needs more
+than 32 bits. `ulimit -l` on a machine with more than 2 GB of lockable
+memory reads back wrapped. GOALS.md records it.
+
 ## The i386 half
 
 Half of `make verify` builds and runs a 4-byte-cell engine, which needs

@@ -118,6 +118,16 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
+## Known limits of the 4-byte-cell build (Iteration 397)
+
+A limit, a file size or an arithmetic value that does not fit a CELL
+cannot be represented in the 4-byte build. `ulimit -l` on a machine with
+3.4 GB of lockable memory reads back wrapped, where dash - which keeps
+limits in a 64-bit `rlim_t` whatever the pointer width - reads them
+exactly. The fix, if it is ever wanted, is for the engine to return such
+values as a double cell rather than one; the test suite compares only
+where the value fits, and says so.
+
 ## Where things stand (Iteration 368)
 
 The shell is the work now; the engine has been stable since Iteration

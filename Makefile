@@ -24,6 +24,23 @@
 
 CC      ?= cc
 CFLAGS  ?= -O2 -Wall
+
+# How wide a cell is on THIS host. On a 32-bit machine - ARMv7, i386,
+# anything where a pointer is 4 bytes - the native engine runs the
+# 4-byte image, and `kernel.img` (8-byte) is not a RelF image as far as
+# it is concerned. `make` on an ARMv7 board said exactly that and
+# stopped (Iteration 397). Override with HOSTBITS=32 to see what such a
+# host does from a 64-bit one.
+HOSTBITS ?= $(shell getconf LONG_BIT 2>/dev/null || echo 64)
+ifeq ($(HOSTBITS),32)
+NATIVE_IMG       = kernel32.img
+NATIVE_SHELL_IMG = kernel32-shell.img
+OTHER_SHELL_IMG  =
+else
+NATIVE_IMG       = kernel.img
+NATIVE_SHELL_IMG = kernel-shell.img
+OTHER_SHELL_IMG  = kernel32-shell.img
+endif
 # The i386 engine is built non-PIE: PIE costs it the TOS register, and
 # README.md's compilation section has said so since Iteration 243.
 CFLAGS32 ?= -m32 -O2 -Wall -fno-pie -no-pie
@@ -73,7 +90,18 @@ help:
 # ------------------------------------------------------------------
 # Engines
 # ------------------------------------------------------------------
-engines: relf relf32
+ifeq ($(HOSTBITS),32)
+engines: relf .relf-native-img
+else
+engines: relf relf32 .relf-native-img
+endif
+
+# Which image relfsh should reach for when nothing says otherwise. A
+# file rather than a probe, so the wrapper pays a builtin read instead
+# of a process on every one of the thousands of invocations a suite
+# makes (Iteration 397).
+.relf-native-img: Makefile
+	@echo $(NATIVE_IMG) > $@
 
 relf: cv8.c
 	$(CC) $(CFLAGS) -o $@ $<
@@ -89,7 +117,9 @@ relf32: cv8.c
 # editing shell.4 leaves a current image behind rather than making the
 # next command pay for it.
 # ------------------------------------------------------------------
-shell-images: kernel-shell.img kernel32-shell.img
+# On a 64-bit host both are built; on a 32-bit one there is only the
+# native 4-byte pair, and the 8-byte image cannot be run at all.
+shell-images: $(NATIVE_SHELL_IMG) $(OTHER_SHELL_IMG)
 
 kernel-shell.img: relf kernel.img $(SHELL_SOURCES)
 	@./relfsh -c true </dev/null >/dev/null
@@ -99,8 +129,15 @@ kernel-shell.img: relf kernel.img $(SHELL_SOURCES)
 # loader says so - noisily - on every invocation. Ubuntu and Mint set
 # one system-wide (libgtk3-nocsd), so this is most people's first
 # impression of `make` (Iteration 389).
+ifeq ($(HOSTBITS),32)
+# The native engine IS the 4-byte one here: there is no -m32 build, and
+# relf32 would be a second copy of relf.
+kernel32-shell.img: relf kernel32.img $(SHELL_SOURCES)
+	@LD_PRELOAD= RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
+else
 kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES)
 	@LD_PRELOAD= RELF_BIN=./relf32 RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
+endif
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.

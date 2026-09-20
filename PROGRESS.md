@@ -392,6 +392,7 @@ do not trust the absence of a line below.
 - **394** — a suite that died silently; and the i386 half as a host fact
 - **395** — a test that asserted the machine's HOME
 - **396** — a loader message inside the test output
+- **397** — a 32-bit HOST, where kernel.img is the wrong image
 
 ### Not tied to an iteration
 
@@ -20244,3 +20245,37 @@ which is what an exported CFLAGS or a distribution's hardening default
 does.
 
 tests/verify: a new key, `toolchain:cflags`.
+
+## Iteration 397: a 32-bit host
+
+An ARMv7 board, `make clean && make verify`:
+
+    not a RelF image, or built for a different encoding or cell width.
+    Cannot open image file.
+
+A cell is a pointer. On ARMv7 the native engine has 4-byte cells, so the
+image it can run is `kernel32.img` - and everything here defaulted to
+`kernel.img`, the 8-byte one, because every machine this has ever run on
+was 64-bit. The i386 build was always treated as the SECOND, cross-built
+half; on a 32-bit host it is the only half there is.
+
+`make` works the width out from `getconf LONG_BIT` and builds the native
+pair - on such a host there is no `-m32` cross build and `relf32` would
+be a second copy of `relf`. `relfsh` needs the same answer on every one
+of the thousands of invocations a suite makes, so `make` writes it to
+`.relf-native-img` and the wrapper reads it with a builtin; without the
+file - a checkout not yet built - it asks `getconf` once.
+
+`make HOSTBITS=32` makes a 64-bit machine build and behave as a 32-bit
+one, which is how this was tested here: a native `cc -m32`, the 4-byte
+image, and the wrapper finding it.
+
+**And the i386 `ulimit` failure in the same report is a real limit of
+that build.** dash keeps a limit in `rlim_t`, 64 bits wide whatever the
+pointer is; this shell keeps it in a cell. A 3.4 GB memlock limit does
+not fit in four bytes, and came back as 4294319080. The suite compares
+only where the value fits, GOALS.md records the limitation, and the fix
+- returning such values as a double cell - is written down rather than
+done.
+
+tests/verify: sizes.
