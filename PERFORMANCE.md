@@ -284,3 +284,37 @@ The realistic script gains more than the dispatch count predicts for
 once, because what went away - `GLOB-FIELDS` and its mark bookkeeping -
 is memory-touching work rather than the cheap stack dispatches the
 earlier changes removed.
+
+## Iteration 373: a cache that the clock refused
+
+The profile after 372 put variable lookup at the top of what is left:
+`NAME-HASH` 3.9% and `FIND-SHVAR` 2.6%, together 6.5%. `NAME-HASH`
+walks a name a character at a time, about eleven dispatches each, and a
+script reads the same handful of names over and over.
+
+So: a 64-entry cache in front of the index, keyed on the first
+character and the length - two primitives - with a hit confirmed by
+`CSTR=`, and a generation counter bumped by anything that could move an
+entry.
+
+It worked, and every suite passed. **Dispatches fell 4.9%, from
+22,033,160 to 20,956,261.** Wall clock, paired and interleaved over 15
+rounds against the build from the hour before: **median 0.9925.**
+
+Three quarters of one per cent, for a cache with an invalidation
+obligation on every table mutation, 1.5 KB of buffer, and a correctness
+argument that has to be re-checked every time the variable table
+changes. Reverted.
+
+**Why the ratio broke.** The three earlier optimisations removed cheap
+stack dispatches and gained about half of what the count promised. This
+one removed cheap dispatches and ADDED a `CSTR=` - a real memory
+comparison - plus a cache line touched per lookup. Dispatch counts
+measure dispatches; they are a proxy for time only while the work per
+dispatch is constant. That is the caveat to put beside the
+two-to-one rule from 365-367: it holds when you remove work, not when
+you trade cheap work for expensive work.
+
+The remaining profile is `EXPAND-WORDS` 6.6% and `ARGV-ADD` 3.7%, and
+both are bookkeeping made of exactly the kind of cheap dispatch that
+the rule applies to. That is where the next attempt should go.

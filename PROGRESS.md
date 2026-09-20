@@ -368,6 +368,7 @@ do not trust the absence of a line below.
 - **370** — quoted brackets, and dashes from expansions
 - **371** — stale marks from the aside capture; escapes in a ${} word
 - **372** — a pending split through the bulk emitter; saved descriptors; PARITY with dash
+- **373** — a variable-lookup cache: built, measured, reverted
 
 ### Not tied to an iteration
 
@@ -19402,3 +19403,34 @@ That is what parity on someone else's suite looks like: not the same
 shell, but no longer behind.
 
 tests/verify: diff cases 89 -> 90; sizes.
+
+## Iteration 373: a cache that the clock refused
+
+With parity reached, the profile's top item was variable lookup:
+`NAME-HASH` 3.9% plus `FIND-SHVAR` 2.6%. `NAME-HASH` walks the name a
+character at a time and a script reads the same names over and over, so
+a cache in front of the index is the obvious move.
+
+Built it: 64 entries, keyed on the first character and the length,
+a hit confirmed by `CSTR=`, and a generation counter bumped by anything
+that could move an entry - insertion, removal, growth. Every suite
+passed, including the ones that unset and redefine variables in the same
+script.
+
+**Dispatches fell 4.9%. The clock moved 0.75%** - median 0.9925, paired
+and interleaved over fifteen rounds against the build from an hour
+earlier.
+
+So it is out. Not because it was wrong, but because three quarters of a
+per cent does not pay for a cache that every future change to the
+variable table has to reason about.
+
+**And it corrects the rule this project has been quoting.** Iterations
+365 to 367 found dispatch savings turning into about half as much wall
+clock, three times running, and PERFORMANCE.md called that a rule of
+thumb for this engine. It holds when work is REMOVED. This change
+removed cheap stack dispatches and added a `CSTR=` - a real memory
+comparison - per lookup, and the two nearly cancelled. The rule is about
+the kind of work, not the count.
+
+No code changed. The measurement is the result.
