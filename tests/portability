@@ -119,10 +119,18 @@ if [ -x ./relfsh ] && command -v timeout >/dev/null 2>&1 &&
     # A pipe with a writer that never writes, which is what a terminal
     # is until someone types. The writer is killed straight after, or
     # this check would sit waiting for its own stand-in.
+    # The allowance is measured, not guessed: an ARMv7 board takes
+    # longer than a 200-second timeout and reported "did not finish",
+    # which was this check's clock rather than the suite's behaviour
+    # (Iteration 399). Five times a normal run, and never less than 300s.
+    t0=$(date +%s)
+    sh tests/diff/run-all >/dev/null 2>&1 || true
+    normal=$(( $(date +%s) - t0 ))
+    allow=$(( normal * 5 )); [ "$allow" -lt 300 ] && allow=300
     mkfifo "$TMPP/tty" 2>/dev/null
-    sleep 600 > "$TMPP/tty" &
+    sleep $(( allow + 60 )) > "$TMPP/tty" &
     writer=$!
-    if timeout 200 sh tests/diff/run-all < "$TMPP/tty" >/dev/null 2>&1; then
+    if timeout "$allow" sh tests/diff/run-all < "$TMPP/tty" >/dev/null 2>&1; then
         ok "the differential suite finishes with a terminal-like stdin"
     else
         bad "terminal-like stdin" "the differential suite did not finish"

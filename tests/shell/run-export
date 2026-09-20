@@ -4,6 +4,14 @@
 # prints `declare -x NAME="value"` where dash and this shell print
 # `export NAME='value'`.
 . "$(dirname "$0")/lib.sh"
+
+# Everything below quotes dash's exact wording, so without dash there is
+# nothing to compare against (Iteration 399).
+if [ "${HAVE_DASH:-0}" != 1 ]; then
+    echo "SKIP ($(basename "$0")): dash is not installed; its wording is what these compare against"
+    report
+    exit 0
+fi
 case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 
 assert_output_equals "export -p lists a variable as dash does" \

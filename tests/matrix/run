@@ -41,6 +41,21 @@ set -u
 cd "$(dirname "$0")" || exit 1
 THIS_SH="${THIS_SH:-../../relfsh}"
 REFS="${MATRIX_REFS:-bash dash}"
+# Only the references that are actually installed. A missing one used to
+# "disagree" with the present one, which made every case inconclusive:
+# a Gentoo board with bash and no dash scored 0 passed, 422 inconclusive
+# (Iteration 399). The list is printed, because a run against one
+# reference and a run against two are not the same measurement.
+_avail=""
+for _r in $REFS; do
+    command -v "$_r" >/dev/null 2>&1 && _avail="$_avail $_r"
+done
+REFS=${_avail# }
+if [ -z "$REFS" ]; then
+    echo "== matrix: no reference shell installed (tried: ${MATRIX_REFS:-bash dash}) - skipping =="
+    exit 0
+fi
+echo "== matrix references: $REFS =="
 UPDATE=0
 [ "${1:-}" = "--update-known" ] && UPDATE=1
 

@@ -34,6 +34,12 @@
 # plenty of systems and in neither place on some. Checked once, here,
 # so a machine without them is told which one is missing rather than
 # shown a page of failures about the shell (Iteration 395).
+# Three files compare this shell's wording against DASH's, because bash
+# words the same messages differently. dash is not everywhere - a Gentoo
+# ARM board has bash and no dash - so those comparisons are skipped
+# rather than failed (Iteration 399).
+if command -v dash >/dev/null 2>&1; then HAVE_DASH=1; else HAVE_DASH=0; fi
+
 for _u in /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh; do
     if [ ! -x "$_u" ]; then
         echo "SKIP: this suite names $_u by absolute path, and it is not here."

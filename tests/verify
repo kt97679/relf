@@ -204,6 +204,11 @@ emit shell:dead-words "$(python3 tools/dead-words.py shell.4 tree.4 2>/dev/null 
 # and is not in KNOWN-FAILING - is reported whatever the totals say.
 M=$(sh tests/matrix/run 2>&1)
 MS=$(echo "$M" | sed -n 's/^== \([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) inconclusive; \([0-9]*\) regressions, \([0-9]*\) fixed ==$/\1 \2 \3 \4 \5/p')
+# Which reference shells the matrix could use. A run against bash and
+# dash and a run against bash alone are different measurements, and the
+# counts are only comparable within one (Iteration 399).
+MATRIX_REFS_USED=$(echo "$M" | sed -n 's/^== matrix references: \(.*\) ==/\1/p' | head -1)
+emit matrix:refs "$MATRIX_REFS_USED"
 emit matrix:passed       "$(echo "$MS" | cut -d' ' -f1)"
 emit matrix:failed       "$(echo "$MS" | cut -d' ' -f2)"
 emit matrix:inconclusive "$(echo "$MS" | cut -d' ' -f3)"
@@ -315,6 +320,10 @@ machine_dependent() {
         # what the REFERENCE shells disagree about. Comparing `passed`
         # as well just repeats the machine's answer (Iteration 396).
         posix:inconclusive|matrix:inconclusive|posix:passed) return 0 ;;
+        matrix:refs) return 0 ;;
+        matrix:passed|matrix:failed|matrix:known-failing|matrix:regressions)
+            [ "$MATRIX_REFS_USED" = "$(awk '$1=="matrix:refs" {sub(/^[^ ]+[ ]/,""); print}' "$BASE")" ] && return 1
+            return 0 ;;
         toolchain:cc|toolchain:cflags) return 0 ;;
         # `skipped` and `missing` are what a host without a 32-bit
         # toolchain reports; they are facts about the host.
@@ -352,8 +361,13 @@ if [ "$RT" != 0 ]; then
     # is only as useful as what it contains (Iteration 393).
     # Not a loose grep: `no errors` matched the old pattern, so a
     # passing line was reported as the failure (Iteration 394).
-    grep -nE '^(FAIL|SKIP)|^==.*(FAIL|SKIP)|No such file|Permission denied|command not found' \
-        /tmp/verify-run.log | tail -12 | sed 's/^/    /'
+    # With the lines that follow them: a bare `FAIL: PS1 expands a
+    # command substitution` says nothing from another machine, where
+    # the expected and actual values are the whole story
+    # (Iteration 399).
+    grep -nE -A6 '^FAIL' /tmp/verify-run.log | tail -40 | sed 's/^/    /'
+    grep -nE '^SKIP|No such file|Permission denied|command not found' \
+        /tmp/verify-run.log | tail -8 | sed 's/^/    /'
     echo "    --- last 25 lines ---"
     tail -25 /tmp/verify-run.log | sed 's/^/    /'
     echo ""

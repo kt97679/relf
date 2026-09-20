@@ -70,6 +70,16 @@ terminal that never answers, and a loader message on every exec.
 proves it by running one of them with a hostile preload and in a second
 locale.
 
+## Reference shells
+
+The differential suite compares against `bash`; the matrix uses `bash`
+and `dash` and scores a case only where the ones present agree; three
+shell-test files quote `dash`'s exact wording and skip without it. None
+of them is required - the suite says what it could use and adjusts -
+but with both installed you are measuring what this project measures.
+
+    make matrix                 # prints "matrix references: ..." first
+
 ## What the suites assume about your machine
 
     /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh

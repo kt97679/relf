@@ -394,6 +394,7 @@ do not trust the absence of a line below.
 - **396** — a loader message inside the test output
 - **397** — a 32-bit HOST, where kernel.img is the wrong image
 - **398** — the core suite on a 32-bit host: native and other, not 8 and 4
+- **399** — a machine with no dash: four suites that assumed one
 
 ### Not tied to an iteration
 
@@ -20316,3 +20317,42 @@ the other width.
 from another machine, so `tests/verify` prints the failing check.
 
 tests/verify: the 4-byte and 8-byte keys may now read `skipped`.
+
+## Iteration 399: a machine with no dash
+
+The ARMv7 board now runs its native half all the way through, and what
+it reported is a machine without `dash`:
+
+    ./run-export: line 15: dash: command not found
+    FAIL: a quote in the value is escaped as dash escapes it
+
+**Three shell-test files quote dash's exact wording**, because bash
+words the same messages differently - `export -p`, getopts' complaints,
+and a hard limit. Without dash there is nothing to compare against, so
+they skip and say so rather than fail. `run-ulimit` skips only its
+comparison loop; the rest of that file tests this shell against itself.
+
+**The matrix counted a MISSING reference as a disagreeing one**, which
+made every case inconclusive: 0 passed, 422 inconclusive. It uses the
+references that are installed now, prints which, and `tests/verify`
+records them - because a run against bash and dash and a run against
+bash alone are not the same measurement, and the counts are only
+comparable within one.
+
+**And the terminal-like-stdin check timed itself out.** It allowed the
+differential suite 200 seconds, which is generous here and not on a
+Tegra board; it measures a normal run now and allows five times that.
+A check whose clock is wrong reports the thing it is checking as broken,
+which is worse than not checking.
+
+**One report-quality fix**: a bare `FAIL: PS1 expands a command
+substitution` names the assertion and nothing else. The failure tail
+carries the lines that follow each FAIL now - the expected and actual
+values - because that is the whole content of a report from a machine I
+cannot see.
+
+Three of those four are the same mistake in different clothes: a test
+that assumes the machine has what this one has. dash, a fast processor,
+two reference shells.
+
+tests/verify: a new key, `matrix:refs`.

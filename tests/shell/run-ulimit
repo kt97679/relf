@@ -13,7 +13,9 @@ case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
 # (Iteration 397). Compared only where the value fits, and the
 # limitation is recorded in GOALS.md rather than papered over.
 cell_max=$($SH -c 'echo $((0x7FFFFFFF))' 2>/dev/null)
-for opt in -f -t -d -s -c -m -n -l -v; do
+# The comparison loop needs dash; the rest of this file does not
+# (Iteration 399).
+for opt in $([ "${HAVE_DASH:-0}" = 1 ] && echo -f -t -d -s -c -m -n -l -v); do
     want=$(dash -c "ulimit $opt" 2>/dev/null)
     got=$($SH -c "ulimit $opt" 2>&1)
     case $want in
@@ -32,7 +34,11 @@ assert_output_equals "a limit can be lowered and read back" "100" \
   "$($SH -c 'ulimit -n 100; ulimit -n' 2>&1)"
 assert_output_equals "-S sets the soft limit only" "50" \
   "$($SH -c 'ulimit -S -n 50; ulimit -n' 2>&1)"
-assert_output_equals "... and leaves the hard one" "$(dash -c 'ulimit -H -n')" \
+# The hard limit is whatever this machine's is - read with dash where
+# there is one, and with this shell itself otherwise, which still checks
+# that lowering the SOFT limit left the hard one alone (Iteration 399).
+hard_n=$([ "${HAVE_DASH:-0}" = 1 ] && dash -c 'ulimit -H -n' || $SH -c 'ulimit -H -n')
+assert_output_equals "... and leaves the hard one" "$hard_n" \
   "$($SH -c 'ulimit -S -n 50; ulimit -H -n' 2>&1)"
 assert_output_equals "-f counts 512-byte blocks" "10" \
   "$($SH -c 'ulimit -f 10; ulimit -f' 2>&1)"
