@@ -622,6 +622,22 @@ VARIABLE SV-NAME
 VARIABLE SV-VALUE
 VARIABLE SV-IDX
 
+VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
+
+\ XCU 2.8.1: an error in a SPECIAL builtin ends a non-interactive shell.
+\ This shell reported and carried on, as bash does outside its POSIX
+\ mode, and GOALS.md 5k left the choice open since Iteration 326 because
+\ it changes the behaviour of every script. yash's POSIX suite settles
+\ it: 199 of its cases in one file test this rule, dash and mrsh both
+\ follow it, and POSIX conformance is what this shell is for. Decided
+\ and implemented in Iteration 376.
+\
+\ It is the ERROR that is fatal, not a non-zero status: `eval false` and
+\ `. script-that-fails` report the command's status and are not errors
+\ of the builtin, so only the usage and operand paths call this.
+\ Deferred because SHELL-EXIT is defined further down.
+DEFER SPECIAL-ERROR   ( status --- )
+
 : SET-SHVAR ( name-addr value-addr --- )  \ both NUL-terminated C
                                             \ strings. Updates an
                                             \ existing slot if the
@@ -686,7 +702,8 @@ VARIABLE SV-IDX
     \ status at 0, so a script could not tell it had failed.
     S" shell: " ERR-TYPE SV-NAME @ ERR-CSTR
     S" : is read only" ERR-TYPE ERR-NL
-    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
+    -1 VALUE-FAILED? !                       \ the status the caller reports
+    2 SPECIAL-ERROR                          \ XCU 2.8.1 (Iteration 376)
     EXIT
   THEN
   SV-NAME @ SV-IDX @ SHVAR-NAME-SLOT SHVAR-NAME-MAX SAFE-CSTR-COPY DROP
@@ -3330,7 +3347,7 @@ DEFER FT-SHIFT-CALL      ( i --- i )   \ tree.4 moves its own row
         DUP SHVAR-RO + C@ IF
           DROP
           S" shell: unset: " ERR-TYPE UN-I @ ARGV@ ERR-CSTR
-          S" : is read only" ERR-TYPE ERR-NL  1 LAST-STATUS !
+          S" : is read only" ERR-TYPE ERR-NL  1 SPECIAL-ERROR
         ELSE
           DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
         THEN
@@ -3829,13 +3846,20 @@ VARIABLE DO-I
     DO-I @ 1+ DO-I !
   REPEAT ;
 
+
+: (SPECIAL-ERROR) ( status --- )
+  LAST-STATUS !
+  INTERACTIVE? @ 0= IF LAST-STATUS @ SHELL-EXIT THEN ;
+' (SPECIAL-ERROR) IS SPECIAL-ERROR
+
 : DO-SHIFT ( --- )
   \ shift [n]: drop the first n positional parameters. Out-of-range
   \ n is an error and leaves the parameters untouched, per POSIX.
   1
   ARGC @ 1 > IF DROP ARGV 1 CELLS + @ DUP CSTRLEN PARSE-DECIMAL THEN
   DUP POS-PARAM-COUNT @ > IF
-    DROP ." shift: count out of range" CR 1 LAST-STATUS ! EXIT
+    DROP S" shell: shift: count out of range" ERR-TYPE ERR-NL
+    2 SPECIAL-ERROR EXIT
   THEN
   \ "shift 0" is valid and a no-op. Without this guard the count of 0
   \ reaches DO as "0 0 DO", which in this kernel runs the entire
@@ -4124,7 +4148,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
 
 : SET-BAD-OPTION ( c-addr --- )
   S" shell: set: " ERR-TYPE ERR-CSTR S" : invalid option" ERR-TYPE ERR-NL
-  2 LAST-STATUS ! ;
+  2 SPECIAL-ERROR ;
 
 VARIABLE SET-I
 : SET-PARAMS-FROM ( i --- )   \ ARGV[i..] become the positional parameters

@@ -42,8 +42,7 @@ set -e -u; echo ok20 => ok20
 st=0
 set -eu; echo ok21 => ok21
 st=0
-set -q; echo after => after
-st=0
+set -q; echo after => st=2
 set -eu; case $- in *e*u*|*u*e*) echo has-eu;; esac => has-eu
 st=0
 set -x; x=1; echo "$x" a  b 2>&1 => 1 a b

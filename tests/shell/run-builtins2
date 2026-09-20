@@ -8,16 +8,24 @@ out=$("$THIS_SH" "$t/a.sh" 2>/dev/null)
 assert_output_contains "shift drops the first parameter" "1=b n=2"  "$out"
 assert_output_contains "shift n drops n"                 "after=0"  "$out"
 
+# Since Iteration 376 an error in a special builtin ends a
+# non-interactive shell (XCU 2.8.1), so the script stops at the `shift`
+# and its status is the shell's.
 printf 'shift 5\necho "st=$?"\n' > "$t/b.sh"
-out=$("$THIS_SH" "$t/b.sh" 2>/dev/null)
-assert_output_contains "shift past the end is an error" "st=1" "$out"
+out=$("$THIS_SH" "$t/b.sh" 2>/dev/null); st=$?
+assert_output_equals "shift past the end ends the script" "" "$out"
+assert_output_equals "... with a non-zero status" "yes" "$([ "$st" -ne 0 ] && echo yes)"
 
-printf 'readonly R=1\nR=2\necho "R=$R"\nW=1\nW=2\necho "W=$W"\n' > "$t/c.sh"
+# An assignment to a readonly variable is one of those errors too, so
+# the script ends there; the ordinary assignment is checked separately.
+printf 'readonly R=1\nR=2\necho "R=$R"\n' > "$t/c.sh"
 out=$("$THIS_SH" "$t/c.sh" 2>/dev/null)
-assert_output_contains "readonly refuses reassignment" "R=1" "$out"
+assert_output_equals "assigning to a readonly ends the script" "" "$out"
+printf 'W=1\nW=2\necho "W=$W"\n' > "$t/c2.sh"
+out=$("$THIS_SH" "$t/c2.sh" 2>/dev/null)
 assert_output_contains "ordinary variables still assign" "W=2" "$out"
 
-printf 'V=7\nreadonly V\nV=8\necho "V=$V"\n' > "$t/d.sh"
+printf 'V=7\nreadonly V\n(V=8) 2>/dev/null\necho "V=$V"\n' > "$t/d.sh"
 out=$("$THIS_SH" "$t/d.sh" 2>/dev/null)
 assert_output_contains "readonly NAME marks an existing variable" "V=7" "$out"
 

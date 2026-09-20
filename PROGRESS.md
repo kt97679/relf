@@ -371,6 +371,7 @@ do not trust the absence of a line below.
 - **373** — a variable-lookup cache: built, measured, reverted
 - **374** — what the bookkeeping costs: 1%, so the refactor is off
 - **375** — yash's POSIX suite, and the two invocation forms it wanted
+- **376** — a special builtin's error ends the shell: GOALS 5k decided
 
 ### Not tied to an iteration
 
@@ -19501,3 +19502,41 @@ That is the same shape as the bundle bug in 368: the ways in and out of
 this shell were the least tested part of it.
 
 tests/verify: a new shell test file; sizes.
+
+## Iteration 376: the decision GOALS.md 5k was waiting for
+
+Iteration 326 found that XCU 2.8.1 makes an error in a SPECIAL builtin
+end a non-interactive shell, that dash does this, and that this shell
+reported and carried on as bash does outside its POSIX mode. It was
+written down as item 5k with the note that changing it affects every
+script, so it wants a decision rather than a patch.
+
+yash's suite supplied the evidence. `error-p.tst` is 214 cases and
+almost all of them test this rule; dash passes 133 of them and this
+shell passed 13. POSIX requires it, dash and mrsh do it, and POSIX
+conformance is what this shell is for. Decided: implement it.
+
+**What is fatal is the ERROR, not the status.** `eval false` reports 1
+and carries on, because that is the command's status and not an error of
+`eval`; the same for a `.` script that ends in a failure. Only the usage
+and operand paths are fatal, so the change is a word - `SPECIAL-ERROR` -
+called from those paths rather than a blanket rule over exit statuses.
+Six of them so far: `shift` past the end, an assignment to a readonly
+variable, `unset` of one, an invalid option to `set`, a syntax error
+inside `eval`, and `${x?}` on an unset parameter, which XCU 2.6.2 gives
+the same treatment.
+
+**Three of this project's own tests asserted the old behaviour** and
+were rewritten - `shift 5` now ends the script rather than reporting
+`st=1`, and two checks that needed to see what happened after a refused
+assignment run it in a subshell. That is the cost item 5k was warning
+about, and it was three tests rather than three hundred.
+
+**yash's POSIX suite: 1216 to 1325 of 1731.** busybox stays at 211,
+where it is level with dash.
+
+`tests/shell/run-special-error` covers both halves of the rule. It is
+not a differential case because `tests/diff` compares against bash,
+which applies the rule only in POSIX mode.
+
+tests/verify: two new shell test files; sizes.

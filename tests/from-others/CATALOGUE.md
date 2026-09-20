@@ -424,3 +424,17 @@ wrapper rather than the usual relative one.
     positional parameters from the rest. Only the two-argument form was
     handled.
     → `tests/shell/run-invocation`
+
+56. **A syntax error inside `eval` ends a non-interactive shell.**
+    `eval fi; echo reached` printed `reached` here and prints nothing in
+    dash. The top level already exited; the nested parse returned
+    instead, which is right for a command substitution's own parse and
+    wrong for eval's.
+    → `tests/shell/run-special-error`
+
+57. **An error in a special builtin ends a non-interactive shell**
+    (XCU 2.8.1) - and it is the ERROR that is fatal, not a non-zero
+    status, so `eval false` and a `.` script that fails carry on. This
+    was GOALS.md item 5k, left open since Iteration 326 as needing a
+    decision; yash's suite provided the evidence.
+    → `tests/shell/run-special-error`

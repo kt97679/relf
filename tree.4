@@ -99,7 +99,8 @@ VARIABLE SRC-POS
 VARIABLE SRC-LINE
 VARIABLE SRC-STDIN?     \ reading standard input
 VARIABLE SRC-EOF?       \ ... and it has ended
-VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on errors
+\ INTERACTIVE? is declared in shell.4, which loads first and needs it
+\ for SPECIAL-ERROR (Iteration 376).
 
 : BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs
   OVER + SWAP ?DO
@@ -1809,6 +1810,10 @@ VARIABLE XP-VAL
         S" shell: " ERR-TYPE XP-NAME @ ERR-CSTR S" : " ERR-TYPE
         XW-LEN @ IF XW-BUF ERR-CSTR ELSE S" parameter not set" ERR-TYPE THEN
         ERR-NL
+        \ `${x?}` ends a non-interactive shell, as `set -u` does (XCU
+        \ 2.6.2). This reported the error and carried on, so a script
+        \ using it as a guard ran everything after it (Iteration 376).
+        -1 UNSET-FATAL? !
         -1 EXPANSION-FAILED? !
       ELSE XE-SKIP-WORD XP-VAL @ XE-VALUE THEN
     ELSE DROP THEN EXIT
@@ -2655,6 +2660,8 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
 \ Parse and execute complete commands until the source ends. A syntax
 \ error ends a non-interactive shell with status 2 (XCU 2.8.1); an
 \ interactive one drops the rest of the line; eval's text returns 2.
+VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
+
 : TREE-RUN ( --- )
   BEGIN
     CHECK-TRAPS
@@ -2666,7 +2673,16 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
     PARSE-ONE-XT @XT CATCH
     ?DUP IF
       DROP 2 LAST-STATUS !
-      NESTED? @ IF EXIT THEN
+      \ A syntax error inside `eval` ends a non-interactive shell, as
+      \ one at the top level does: `eval fi; echo reached` printed
+      \ `reached` here and prints nothing in dash (XCU 2.8.1, and eval
+      \ is a special builtin). Other nesting - a command substitution's
+      \ own parse - is a child, and returning is right there
+      \ (Iteration 376).
+      NESTED? @ IF
+        EVAL-ACTIVE? @ INTERACTIVE? @ 0= AND IF 2 SHELL-EXIT THEN
+        EXIT
+      THEN
       INTERACTIVE? @ 0= IF 2 SHELL-EXIT THEN
       SKIP-INPUT 0
     ELSE
@@ -2723,7 +2739,9 @@ VARIABLE SUBLIST-XT
   1 JOIN-ARGV-FROM                          ( a u )
   DUP 1 MAX ALLOCATE DROP                   ( a u block )
   DUP >R SWAP DUP >R MOVE R> R>             ( u block )
-  SWAP OVER >R TREE-RUN-TEXT R> FREE DROP ;
+  EVAL-ACTIVE? @ >R  -1 EVAL-ACTIVE? !
+  SWAP OVER >R TREE-RUN-TEXT R> FREE DROP
+  R> EVAL-ACTIVE? ! ;
 
 : TREE-CMDSUB ( --- )   \ in the child: a parsed subtree, or text
   CMDSUB-NODE @ ?DUP IF

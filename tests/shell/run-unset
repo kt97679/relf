@@ -36,7 +36,9 @@ assert_status "unsetting an already-unset name is not an error" 0 "$?"
 # unset moves the table's last entry into the hole. Its readonly flag
 # stayed behind until Iteration 252, so here b stopped being readonly.
 # (The refusal message itself still goes to stdout - GOALS.md.)
-out=$(printf 'a=1\nb=2\nreadonly b\nunset a\nb=3\necho "b=$b"\n' | "$THIS_SH" 2>/dev/null | grep '^b=')
+# Since Iteration 376 the refused assignment ends the shell, so the
+# check runs it in a subshell and reads b afterwards.
+out=$(printf 'a=1\nb=2\nreadonly b\nunset a\n(b=3) 2>/dev/null\necho "b=$b"\n' | "$THIS_SH" 2>/dev/null | grep '^b=')
 assert_output_equals "unset keeps another variable's readonly flag" "b=2" "$out"
 
 # More variables than the table's starting 32, then unset among them.

@@ -1,0 +1,44 @@
+#!/bin/sh
+# tests/shell/run-special-error - XCU 2.8.1: an error in a special
+# builtin ends a non-interactive shell (Iteration 376). Not a
+# differential case, because tests/diff compares against bash, which
+# applies this rule only in POSIX mode; dash, mrsh and yash's POSIX
+# suite all agree with what is checked here.
+. "$(dirname "$0")/lib.sh"
+
+check() {   # check NAME SCRIPT EXPECTED-OUTPUT
+    got=$(printf '%s\n' "$2" | "$THIS_SH" 2>/dev/null)
+    assert_output_equals "$1" "$3" "$got"
+}
+
+check "shift past the end stops the script" \
+      'set -- a; shift 5; echo REACHED' ""
+check "assigning to a readonly stops it" \
+      'readonly R=1; R=2; echo REACHED' ""
+check "an invalid option to set stops it" \
+      'set -q; echo REACHED' ""
+check "unset of a readonly stops it" \
+      'readonly R=1; unset R; echo REACHED' ""
+check "a syntax error in eval stops it" \
+      'eval fi; echo REACHED' ""
+check "an unset parameter with ? stops it" \
+      'unset a; echo ${a?}; echo REACHED' ""
+
+# ... but a non-zero STATUS from a special builtin is not an error of
+# the builtin, and the shell carries on.
+check "eval false is not an error of eval" \
+      'eval false; echo REACHED' "REACHED"
+check "a false in a dot script is not an error of dot" \
+      'echo false > /tmp/relf-376-dot.sh; . /tmp/relf-376-dot.sh; echo REACHED; rm -f /tmp/relf-376-dot.sh' \
+      "REACHED"
+check "an ordinary builtin error does not stop it" \
+      'cd /no/such/dir; echo REACHED' "REACHED"
+check "a failed external command does not stop it" \
+      'nosuchcommand-xyz; echo REACHED' "REACHED"
+
+# Inside a subshell it is the subshell that ends.
+check "a subshell absorbs it" \
+      '(set -- a; shift 5) 2>/dev/null; echo REACHED' "REACHED"
+check "... and reports a non-zero status" \
+      '(set -- a; shift 5) 2>/dev/null; [ $? -ne 0 ] && echo NONZERO' "NONZERO"
+report

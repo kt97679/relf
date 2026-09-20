@@ -1768,11 +1768,14 @@ before anything else, because every number here is relative to it.
    several places, `$?` after a trap, glob edge cases, and more. Each is
    a small script with its expected output, so each is a short session.
 
-5k. **A special builtin's error should end a non-interactive shell**
-   (XCU 2.8.1): dash stops the script on `shift 5` with three
-   parameters, this shell reports and continues, as bash does outside
-   POSIX mode. Found by the manual-page sweep of Iteration 326. Changing
-   it affects every script, so it wants a decision rather than a patch.
+5k. ~~**A special builtin's error should end a non-interactive
+   shell**~~ **decided and done in Iteration 376.** The evidence that
+   settled it: POSIX requires it (XCU 2.8.1), dash and mrsh do it, and
+   yash's POSIX suite has 199 cases in one file that test it - against
+   bash's non-POSIX-mode behaviour, which is what this shell had.
+   `tests/shell/run-special-error` covers it, including the other half
+   of the rule: a non-zero STATUS from a special builtin is not an error
+   of the builtin, so `eval false` carries on.
 
 5j. **Left after the sweep of Iteration 325**: `LINENO` is never set
    (bash has it, dash does not), and `ENV` is not read when an
