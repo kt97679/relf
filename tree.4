@@ -350,6 +350,8 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
 
 \ ---- scanning a word ----
 VARIABLE SCAN-IN-DQ?   \ the scanner is inside double quotes
+VARIABLE TILDE-AT-START?   \ the scanner is at a ${} word's first character
+DEFER SCAN-TILDE-CALL   \ SCAN-TILDE-PREFIX, defined after SCAN-BRACE
 VARIABLE BRACE-VALUE-WORD?   \ ... and this ${} word is a value, not a pattern
 DEFER SCAN-DOLLAR
 
@@ -512,6 +514,13 @@ DEFER SCAN-DOLLAR
   DUP EV-PLAIN <> OVER EV-LENGTH <> AND IF -1 ENC-COMPLEX? ! THEN
   0 ENC-C,                                \ the name's end
   EV-PLAIN <> IF                          \ a word follows, up to the }
+    \ A `~` at the START of that word is a tilde prefix, as it is at the
+    \ start of any other word: `HOME=/foo; echo ${a-~}` prints /foo in
+    \ dash and bash, and printed `~` here (Iteration 381). Inside double
+    \ quotes it stays literal, which SCAN-IN-DQ? already knows.
+    0 SRC-C 126 = SCAN-IN-DQ? @ 0= AND IF
+      -1 TILDE-AT-START? !  SCAN-TILDE-CALL  0 TILDE-AT-START? !
+    THEN
     BEGIN
       0 SRC-C
       DUP -1 = IF DROP S" unterminated parameter expansion" SYNTAX THEN
@@ -557,6 +566,10 @@ DEFER SCAN-DOLLAR
 ' SCAN-DOLLAR-IMPL IS SCAN-DOLLAR
 
 : TILDE-CLASS ( --- class | -1 )   \ where this ~ stands in the word
+  \ A `${...}` word's first character counts as a word start, so
+  \ `${a-~}` expands the tilde even though the character before it is
+  \ the operator (Iteration 381).
+  TILDE-AT-START? @ IF ET-START EXIT THEN
   SRC-POS @ TK-START @ = IF ET-START EXIT THEN
   -1 SRC-C DUP 61 = IF DROP ET-AFTER-EQ EXIT THEN
   58 = IF ET-AFTER-COLON EXIT THEN
@@ -586,6 +599,8 @@ DEFER SCAN-DOLLAR
     0 SRC-C ENC-C,  1 SRC-SKIP
   REPEAT
   ENC-END ENC-CODE, ;
+' SCAN-TILDE-PREFIX IS SCAN-TILDE-CALL
+
 
 : SCAN-WORD ( --- )       \ at a word's first character
   SRC-POS @ TK-START !  0 TK-FLAGS !

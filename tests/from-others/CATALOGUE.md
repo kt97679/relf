@@ -515,3 +515,21 @@ wrapper rather than the usual relative one.
     comparison, which is why the three-character forms check that the
     first two characters match.
     → `tests/diff/cases/arith-bash-331.sh`
+
+## From yash's cd and parameter tests (Iteration 381)
+
+71. **CDPATH is not searched when the operand begins with `./` or
+    `../`** (XCU `cd` step 5). This shell searched it, so `cd ./dev`
+    could land in a CDPATH directory instead of the one asked for.
+    → `tests/diff/cases/cd-logical-319.sh`
+
+72. **An empty CDPATH entry means the current directory, and a
+    destination found there is not announced.** `cd` prints the new
+    directory only when the operand was found somewhere else.
+    → `tests/diff/cases/cd-logical-319.sh`
+
+73. **A `~` at the start of a `${...}` word is a tilde prefix**:
+    `HOME=/foo; echo ${a-~}` prints `/foo`. The character before it is
+    the operator, so the "where does this tilde stand" test said "not at
+    a word start" and left it literal.
+    → `tests/diff/cases/quoted-in-word-363.sh`

@@ -19,3 +19,23 @@ unset CDPATH
 cd $d; cd real; echo "no-cdpath=$(pwd)"
 cd /; echo "root=$(pwd)"
 cd /tmp; rm -rf $d
+# CDPATH's two rules that were wrong until Iteration 381: it is not
+# searched when the operand begins with `./` or `../`, and an operand
+# found through an EMPTY entry - which means the current directory - is
+# not announced. A fixed name, like the one above: the output is
+# compared between two shells, so it cannot carry a pid.
+c=/tmp/relf-381-fixed
+rm -rf $c; mkdir -p $c/dev $c/p1/x $c/p2/dev
+cd $c
+CDPATH=$c/p1::$c/p2; cd dev; pwd
+cd $c
+CDPATH=$c/p2; cd ./dev; pwd
+cd $c
+CDPATH=$c/p2; cd ../relf-381-fixed/dev; pwd
+cd $c
+CDPATH=$c/p2; cd dev; pwd
+cd $c
+CDPATH=$c/p1; cd x; pwd
+cd $c
+CDPATH=:$c/p2; cd dev; pwd
+cd /tmp; rm -rf $c

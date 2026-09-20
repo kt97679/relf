@@ -3155,6 +3155,7 @@ VARIABLE CD-PHYS?               \ -P was given
 VARIABLE CD-I
 VARIABLE CD-SEG                 \ where the current component starts
 VARIABLE CD-PRINT?              \ the destination came from CDPATH
+VARIABLE CD-FROM-DOT?           \ ... from an empty entry, which means "."
 
 : CD-PUSH ( c --- )
   CD-LEN @ PATH-MAX 2 - < IF
@@ -3230,8 +3231,19 @@ VARIABLE CD-PRINT?              \ the destination came from CDPATH
     CD-PATH CHDIR 0= IF CD-SET-PWD -1 ELSE 0 THEN
   THEN ;
 
+: CD-DOT-PREFIX? ( c-addr --- f )   \ starts with `./` or `../`
+  DUP C@ 46 = 0= IF DROP 0 EXIT THEN
+  DUP 1+ C@ 47 = IF DROP -1 EXIT THEN
+  DUP 1+ C@ 46 = IF 2 + C@ 47 = EXIT THEN
+  DROP 0 ;
+
 : CD-TRY-CDPATH ( c-addr --- f )   \ each CDPATH entry in turn (XCU cd)
   DUP C@ 47 = IF DROP 0 EXIT THEN                 \ absolute: not a search
+  \ ... and neither is an operand that begins with `./` or `../`: XCU
+  \ `cd` step 5 says CDPATH is not used for those, and this shell was
+  \ searching it, so `cd ./dev` could land somewhere else entirely
+  \ (Iteration 381).
+  DUP CD-DOT-PREFIX? IF DROP 0 EXIT THEN
   CDPATH-NM LOOKUP-VAR ?DUP 0= IF DROP 0 EXIT THEN
   SWAP >R                                          \ the operand goes on R
   BEGIN DUP C@ WHILE
@@ -3241,12 +3253,16 @@ VARIABLE CD-PRINT?              \ the destination came from CDPATH
     WHILE
       DUP C@ CD-PUSH 1+
     REPEAT
-    CD-LEN @ 0= IF 46 CD-PUSH THEN                 \ an empty entry means "."
+    \ An empty entry means the current directory, and a destination
+    \ found there is NOT announced - XCU `cd` prints only when the
+    \ operand was found somewhere else (Iteration 381).
+    CD-LEN @ 0= IF 46 CD-PUSH  -1 CD-FROM-DOT? !
+                ELSE 0 CD-FROM-DOT? ! THEN
     CD-PATH CD-LEN @ 1- + C@ 47 <> IF 47 CD-PUSH THEN
     R@ CD-PUSH-STR  0 CD-PATH CD-LEN @ + C!
     CD-PATH CHDIR 0= IF
       R> DROP  DROP                            \ the operand and the entry list
-      -1 CD-PRINT? !
+      CD-FROM-DOT? @ 0= CD-PRINT? !
       CD-PHYS? @ 0= IF
         CD-PATH CD-TMP CD-LEN @ 1+ MOVE  CD-TMP CD-CANON
       THEN
@@ -3278,7 +3294,13 @@ VARIABLE CD-PRINT?              \ the destination came from CDPATH
     THEN
     CD-I @ ARGV@ DUP CD-TRY-CDPATH IF
       DROP 0 LAST-STATUS !
-      PWD-NM LOOKUP-VAR ?DUP IF DUP CSTRLEN TYPE CR THEN
+      \ Announced only when the operand was found somewhere other than
+      \ the current directory: an empty CDPATH entry means `.`, and
+      \ `cd dev` through one is as quiet as a plain `cd dev`
+      \ (Iteration 381).
+      CD-PRINT? @ IF
+        PWD-NM LOOKUP-VAR ?DUP IF DUP CSTRLEN TYPE CR THEN
+      THEN
       EXIT
     THEN
     DUP CD-TO IF DROP 0 LAST-STATUS ! ELSE CD-FAILED THEN

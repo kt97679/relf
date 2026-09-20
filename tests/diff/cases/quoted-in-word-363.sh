@@ -22,3 +22,16 @@ f ${x:+'' b}
 u=
 echo "default=[${u:-'q'}]"
 echo "default-quoted=[${u:-"q"}]"
+# A `~` at the START of a ${...} word is a tilde prefix, as it is at the
+# start of any other word (Iteration 381). Inside double quotes, and
+# anywhere but the first character, it stays literal.
+HOME=/tmp/relf-home
+unset a
+echo "default=${a-~}"
+echo "default-slash=${a-~/x}"
+b=b; echo "alternate=${b+~}"
+unset c; echo "assign=${c=~}"; echo "assigned=$c"
+echo "escaped=${a-\~}"
+echo "quoted=\"${a-~}\""
+echo "middle=${a-x~y}"
+echo "plain-word=$(cd /; echo ~)"

@@ -376,6 +376,7 @@ do not trust the absence of a line below.
 - **378** — file-type tests, an engine primitive, and a FIFO that hung the shell
 - **379** — umask's symbolic forms, and three POSIX rules from yash
 - **380** — four arithmetic bugs: short-circuiting, signs, shifts, assignments
+- **381** — CDPATH's two rules, and a tilde in a ${} word; busybox 212, past dash
 
 ### Not tied to an iteration
 
@@ -19684,5 +19685,36 @@ characters match, or `x <= 3` would parse as an assignment.
 Worth noting where these came from: four bugs in a part of the shell
 with its own differential case, its own suite entries and 259 iterations
 of use. They were found by someone else's tests, not by ours.
+
+tests/verify: sizes.
+
+## Iteration 381: CDPATH, a tilde, and past dash on busybox
+
+**CDPATH is not searched for an operand beginning with `./` or `../`**
+(XCU `cd` step 5). This shell searched it, so with a CDPATH set,
+`cd ./dev` could land somewhere else entirely - the one shape a user
+writes precisely to avoid that.
+
+**An empty CDPATH entry means the current directory, and arriving
+through one is not announced.** `cd` prints the new directory only when
+the operand was found somewhere other than where the shell already was.
+
+**A `~` at the start of a `${...}` word is a tilde prefix.**
+`HOME=/foo; echo ${a-~}` prints `/foo` in dash and bash and printed `~`
+here. The reason is worth keeping: the test for "where does this tilde
+stand" looks at the character BEFORE it, which inside a `${}` word is
+the operator, so the tilde was never at a word start. A flag set while
+the brace scanner reads its word's first character fixes it, and inside
+double quotes SCAN-IN-DQ? already keeps it literal.
+
+**busybox's ash suite: 212 of 357, one ahead of dash.** The tilde fix
+took it past. yash's POSIX suite: 1583 to 1590 of 1731.
+
+A note on the case that fought back: `cd-logical-319.sh` uses a fixed
+directory name rather than `$$`, because a differential case is run by
+two shells and their output is compared - a pid makes it unmatchable.
+The new block had to follow suit, and comparing it by hand with process
+substitution ran both shells AT ONCE in that one directory, which
+produced a diff full of failures that the suite itself never saw.
 
 tests/verify: sizes.
