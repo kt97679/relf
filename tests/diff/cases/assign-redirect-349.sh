@@ -30,3 +30,14 @@ echo "temporary=[$var2]"
 >h a=1 b=2 c=3
 echo "three=$a$b$c"
 cd /tmp; rm -rf $d
+# A redirection may come BEFORE the assignments, and the words after it
+# are still a prefix: `</dev/null foo=bar echo hi` runs echo, not
+# foo=bar. The redirections travel through ARGV as words, and the prefix
+# was counted before they were taken out (Iteration 385).
+cd /tmp
+</dev/null lead1=one echo "lead=$lead1"
+>/tmp/relf-385.out lead2=two echo redirected
+cat /tmp/relf-385.out
+</dev/null a1=1 b1=2 echo "two=$a1$b1"
+</dev/null lead3=three </dev/null echo </dev/null "interleaved=$lead3"
+rm -f /tmp/relf-385.out

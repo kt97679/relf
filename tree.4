@@ -2304,10 +2304,19 @@ VARIABLE HDX-DEPTH
   EXPAND-WORDS
   TOO-MANY? IF R> DROP EXIT THEN
   EXPANSION-OK? 0= IF R> DROP EXIT THEN
+  \ The redirections come out of ARGV FIRST. They travel as words -
+  \ operator, target and any fd number - so counting the assignment
+  \ prefix before removing them stopped at a LEADING redirection, and
+  \ `</dev/null foo=bar echo hi` ran `foo=bar` as the command
+  \ (Iteration 385). RUN-EXPANDED did this, and is told not to repeat it.
+  NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
+  -1 REDIRS-PARSED? !
   PREFIX-COUNT ARGC @ = IF XTRACE-ARGV THEN    \ set -x: an assignment-only command
   TRY-ASSIGNMENT-CALL IF
     R> DROP
-    CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN EXIT
+    CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN
+    APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
+    EXIT
   THEN
   \ A command that expanded to NOTHING takes the status of its last
   \ command substitution, the same rule as an assignment-only command
@@ -2316,6 +2325,7 @@ VARIABLE HDX-DEPTH
   ARGC @ 0= IF
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
+    APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
     EXIT
   THEN
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL

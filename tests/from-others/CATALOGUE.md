@@ -571,3 +571,11 @@ wrapper rather than the usual relative one.
     assignment. `readonly a=1` then `a=2 set` listed every variable
     here.
     → `tests/shell/run-special-error`
+
+79. **A redirection may come BEFORE the assignments**, and the words
+    after it are still a command prefix: `</dev/null foo=bar echo hi`
+    runs `echo`. Redirections travel through ARGV as words - operator,
+    target and any fd number - and the assignment prefix was counted
+    before they were taken out, so a leading one stopped the count at
+    zero and the first assignment became the command name.
+    → `tests/diff/cases/assign-redirect-349.sh`

@@ -5783,6 +5783,7 @@ VARIABLE TA-E
   REPEAT
   TA-REC @ FREE DROP ;
 
+VARIABLE REDIRS-PARSED?   \ EXPAND-AND-RUN already took them out of ARGV
 VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 
 : XTRACE-ARGV ( --- )   \ set -x: the command, expanded, on stderr
@@ -5800,10 +5801,24 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 VARIABLE ASSIGNED-HERE?   \ this command's assignments were permanent
 VARIABLE RE-PREFIX        \ how many assignment prefixes it had
 
+: APPLY-BARE-REDIRS ( --- )
+  \ The redirections of a command that never reaches RUN-EXPANDED: one
+  \ that was assignments only, or whose words all expanded away. They
+  \ are parsed out of ARGV before the prefix is counted (Iteration 385),
+  \ so the paths that return early have to perform them themselves.
+  REDIR-N @ 0 > IF
+    BEGIN-REDIRECT
+    REDIR-FAILED? @ IF 1 LAST-STATUS ! THEN
+    END-REDIRECT
+  THEN ;
+
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
   \ A simple command from the tree has no pipes (Iteration 265), and the
   \ tree says whether it has redirections at all (Iteration 266).
-  NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
+  REDIRS-PARSED? @ 0= IF
+    NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
+  THEN
+  0 REDIRS-PARSED? !
   XTRACE-ARGV
   ARGC @ 0 > IF
     \ Assignments with a redirection beside them: the test in

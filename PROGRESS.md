@@ -380,6 +380,7 @@ do not trust the absence of a line below.
 - **382** — aliases after prefixes, and aliases that expand to nothing
 - **383** — redirection errors on special builtins; yash's error suite complete
 - **384** — a Makefile, and the benchmark script moved into the tree
+- **385** — a redirection before the assignments
 
 ### Not tied to an iteration
 
@@ -19818,3 +19819,32 @@ nothing now parses as no command rather than an error, and the parse
 comparison agrees with the reference on one more case.
 
 tests/verify: the new baseline line; no sizes moved.
+
+## Iteration 385: a redirection before the assignments
+
+`</dev/null foo=bar echo hi` ran `foo=bar` as the command. A redirection
+may stand anywhere among a simple command's words, including before the
+assignments, and the words after it are still a prefix.
+
+The cause is a two-line ordering. Redirections travel through ARGV as
+words - operator, target, and an fd number where there is one - and
+`PARSE-REDIRECTIONS` takes them out again. The assignment prefix was
+counted BEFORE that, so a leading redirection stopped the count at zero:
+no assignment was applied, and the first one became the command name.
+
+The redirections come out first now. That moved work that
+`RUN-EXPANDED` used to do, which broke the two paths that never reach
+it - a command that was assignments only, and one whose words all
+expanded away - because they had been relying on it to perform the
+redirections as well as parse them. `APPLY-BARE-REDIRS` is that half,
+and both paths call it.
+
+Worth recording as a shape: moving a step earlier is not free when the
+step did two things and only one of them was wanted earlier. The
+differential suite caught it immediately - `bare-redirect-334.sh` and
+`assign-redirect-349.sh`, the two cases written for exactly those two
+paths.
+
+**yash's POSIX suite: 1641 to 1643 of 1731.** busybox holds at 212.
+
+tests/verify: sizes.
