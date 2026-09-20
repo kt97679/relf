@@ -467,3 +467,28 @@ wrapper rather than the usual relative one.
     link; `-s` opens only a regular file or a directory, and answers 0
     for anything else, as dash does.
     → `tests/diff/cases/test-filetypes-378.sh`
+
+## From yash's POSIX suite, continued (Iteration 379)
+
+63. **`umask`'s symbolic forms**: a clause may hold more than one
+    operator (`u=r+w`), and the permission part may name another who
+    (`g=u` copies u's current bits, as `chmod` does). Both were refused
+    as a bad mask. `-S` before an operand is ignored rather than
+    printing.
+    → `tests/shell/run-umask`
+
+64. **An assignment before a SPECIAL builtin persists** (XCU 2.9.1):
+    `v=tmp :` leaves `v` set afterwards, while `v=tmp cd .` does not.
+    The same POSIX-versus-bash choice as entry 57, decided the same way.
+    → `tests/shell/run-special-error`
+
+65. **`set -u` applies to the trim operators.** `${foo#bar}` on an unset
+    parameter is an error; only the forms that handle unset themselves -
+    `-`, `+`, `=`, `?` and their `:` variants - are exempt.
+    → `tests/shell/run-options`
+
+66. **A command that expands to nothing takes the status of its last
+    command substitution**: `$(false)` alone is 1. The rule was already
+    implemented for assignment-only commands (Iteration 345) and not for
+    this one.
+    → `tests/diff/cases/`, covered by the empty-command checks

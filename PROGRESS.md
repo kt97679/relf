@@ -374,6 +374,7 @@ do not trust the absence of a line below.
 - **376** — a special builtin's error ends the shell: GOALS 5k decided
 - **377** — the shell's own command line, parsed properly: +204 cases
 - **378** — file-type tests, an engine primitive, and a FIFO that hung the shell
+- **379** — umask's symbolic forms, and three POSIX rules from yash
 
 ### Not tied to an iteration
 
@@ -19614,3 +19615,40 @@ hangs on a file type no test ever creates is invisible, however green
 the suites are. This one survived 377 iterations.
 
 tests/verify: the engine changed, so both images and every size move.
+
+## Iteration 379: four from yash, and what 376 implied
+
+**`umask`'s symbolic forms.** A clause may hold more than one operator -
+`u=r+w` is `=r` then `+w` - and the permission part may name another
+who, so `g=u` copies u's current bits the way `chmod` does. Both were
+refused as a bad mask. The parser is rewritten around named variables
+rather than a return-stack juggle, which is what let the two shapes be
+added at all. `-S` before an operand is ignored now, as the standard
+says.
+
+**An assignment before a special builtin persists** (XCU 2.9.1):
+`v=tmp :` leaves `v` set. This is the other half of what Iteration 376
+decided - the same POSIX-against-bash choice, settled by the same
+evidence - and it had been catalogued as a deliberate divergence since
+Iteration 330. Two subtleties: whether the command is special has to be
+decided BEFORE it runs, because `eval` replaces ARGV with what it
+evaluates, and it has to be read past the assignment prefixes, which are
+still in front of the command name at that point.
+
+**`set -u` applies to the trim operators.** `${foo#bar}` on an unset
+parameter is an error; only `-`, `+`, `=`, `?` and their `:` variants
+are exempt, because those handle unset themselves.
+
+**A command that expands to nothing** takes the status of its last
+command substitution, so `$(false)` alone is 1. The rule was already
+there for assignment-only commands, from Iteration 345, and this is the
+same rule one line further on.
+
+**yash's POSIX suite: 1545 to 1575 of 1731.** busybox stays at 211.
+
+One differential case had to give up a line: `v3=tmp :` is now the POSIX
+behaviour, which bash - the reference `tests/diff` compares against -
+only does in POSIX mode. It moved to `tests/shell/run-special-error`,
+where the reference is the standard.
+
+tests/verify: a new shell test file; sizes.

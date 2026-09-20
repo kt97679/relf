@@ -23,9 +23,10 @@ echo "two=$x$y"
 test -f f && test -f g && echo "files-made"
 var2=tmp true
 echo "temporary=[$var2]"
-v3=keep
-v3=tmp : 
-echo "still=[$v3]"
+# `v3=tmp :` used to be checked here. Since Iteration 379 an assignment
+# before a SPECIAL builtin persists (XCU 2.9.1), which bash does only in
+# POSIX mode - so it moved to tests/shell/run-special-error, where the
+# reference is the standard rather than bash.
 >h a=1 b=2 c=3
 echo "three=$a$b$c"
 cd /tmp; rm -rf $d

@@ -1,0 +1,32 @@
+#!/bin/sh
+# tests/shell/run-umask - the symbolic forms of `umask` (Iteration 379).
+# Not a differential case: tests/diff compares against bash, which
+# refuses `g=u` and `u=r+w` outright. dash accepts both, POSIX describes
+# both (XCU `umask` defers to `chmod`'s symbolic_mode), and yash's suite
+# requires them.
+. "$(dirname "$0")/lib.sh"
+
+m() {   # m NAME SYMBOLIC EXPECTED
+    got=$(printf 'umask 022\numask %s\numask\n' "$2" | "$THIS_SH" 2>&1)
+    assert_output_equals "$1" "$3" "$got"
+}
+
+m "one who, one op"            "u=rw"              "0122"
+m "several ops in one clause"  "u=r+w"             "0122"
+m "a who as the permissions"   "g=u"               "0002"
+m "... and o from g"           "o=g"               "0022"
+m "two clauses"                "u+w,g-w"           "0022"
+m "all three"                  "a=rwx"             "0000"
+m "mixed ops and clauses"      "u=r+w,g=wx,o+xr"   "0142"
+m "no who means all"           "=rwx"              "0000"
+m "plus with no who"           "+w"                "0000"
+
+assert_output_equals "-S prints symbolically" "u=rwx,g=,o=" \
+  "$(printf 'umask 077\numask -S\n' | "$THIS_SH" 2>&1)"
+assert_output_equals "-S with an operand sets and prints nothing" "0000" \
+  "$(printf 'umask -S 000\numask\n' | "$THIS_SH" 2>&1)"
+assert_output_equals "a bad mask is refused" "0022" \
+  "$(printf 'umask 022\numask zz\numask\n' | "$THIS_SH" 2>/dev/null)"
+assert_output_equals "... with a non-zero status" "yes" \
+  "$(printf 'umask zz\n' | "$THIS_SH" 2>/dev/null; [ $? -ne 0 ] && echo yes)"
+report

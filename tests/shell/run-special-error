@@ -41,4 +41,20 @@ check "a subshell absorbs it" \
       '(set -- a; shift 5) 2>/dev/null; echo REACHED' "REACHED"
 check "... and reports a non-zero status" \
       '(set -- a; shift 5) 2>/dev/null; [ $? -ne 0 ] && echo NONZERO' "NONZERO"
+
+# XCU 2.9.1: an assignment before a SPECIAL builtin persists after it,
+# while one before any other command does not (Iteration 379).
+check "an assignment before : persists" \
+      'v=keep; v=tmp :; echo "$v"' "tmp"
+check "... before eval too" \
+      'v=keep; v=tmp eval echo x; echo "$v"' "x
+tmp"
+check "... and before export" \
+      'v=keep; v=tmp export w=1; echo "$v$w"' "tmp1"
+check "but not before an ordinary builtin" \
+      'v=keep; v=tmp cd .; echo "$v"' "keep"
+check "nor before an external command" \
+      'v=keep; v=tmp /bin/true; echo "$v"' "keep"
+check "nor before a function" \
+      'f() { :; }; v=keep; v=tmp f; echo "$v"' "keep"
 report

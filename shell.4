@@ -5140,42 +5140,90 @@ VARIABLE KILL-SIG
 : .PERMS ( bits --- )   \ rwx of the low three bits
   DUP 4 AND IF 114 EMIT THEN DUP 2 AND IF 119 EMIT THEN 1 AND IF 120 EMIT THEN ;
 VARIABLE UM-PERM
-: UMASK-SYMBOLIC ( c-addr --- ok? )   \ u=rwx,g=rx,o= and +/- forms
+VARIABLE UM-SKIP   \ 1 when `-S` precedes the operand
+VARIABLE UMS-A        \ the cursor into the symbolic mask
+VARIABLE UMS-WHO      \ which of u, g, o this clause is about
+VARIABLE UMS-OP       \ =, + or -
+VARIABLE UMS-PERM     \ the bits it names
+
+: UMS-WHO-BITS ( c --- bits|0 )
+  DUP 117 = IF DROP 448 EXIT THEN            \ u
+  DUP 103 = IF DROP  56 EXIT THEN            \ g
+  DUP 111 = IF DROP   7 EXIT THEN            \ o
+      97  = IF      511 EXIT THEN            \ a
+  0 ;
+
+: UMS-PERM-BITS ( c --- bits|0 )
+  DUP 114 = IF DROP 292 EXIT THEN            \ r
+  DUP 119 = IF DROP 146 EXIT THEN            \ w
+      120 = IF       73 EXIT THEN            \ x
+  0 ;
+
+: UMS-SPREAD ( n --- bits )   \ one field's 0..7 into all three
+  DUP 6 LSHIFT  OVER 3 LSHIFT OR  SWAP OR ;
+
+: UMS-FROM-WHO ( c --- bits | -1 )
+  \ `g=u` copies u's CURRENT permissions rather than naming letters
+  \ (XCU `chmod`, which `umask` follows). This was rejected as a bad
+  \ mask until Iteration 379.
+  DUP 117 = IF DROP UM-PERM @ 6 RSHIFT 7 AND UMS-SPREAD EXIT THEN
+  DUP 103 = IF DROP UM-PERM @ 3 RSHIFT 7 AND UMS-SPREAD EXIT THEN
+      111 = IF      UM-PERM @        7 AND UMS-SPREAD EXIT THEN
+  -1 ;
+
+: UMS-OP-CHAR? ( c --- f )
+  DUP 61 = OVER 43 = OR SWAP 45 = OR ;
+
+: UMS-APPLY ( --- )
+  UMS-PERM @ UMS-WHO @ AND                   ( bits )
+  UMS-OP @ 61 = IF                           \ =
+    UM-PERM @ UMS-WHO @ INVERT AND OR UM-PERM ! EXIT
+  THEN
+  UMS-OP @ 43 = IF UM-PERM @ OR UM-PERM ! EXIT THEN
+  INVERT UM-PERM @ AND UM-PERM ! ;           \ -
+
+: UMASK-SYMBOLIC ( c-addr --- ok? )   \ u=rwx,g=rx,o= and the +/- forms
+  \ A clause is who-letters, then one or more op-and-permission groups:
+  \ `u=r+w` is two groups, which the previous version read as one and
+  \ refused (Iteration 379).
+  UMS-A !
   BEGIN
-    0 >R                                    \ who mask
-    BEGIN DUP C@ DUP 117 = IF R> 448 OR >R THEN
-      DUP 103 = IF R> 56 OR >R THEN
-      DUP 111 = IF R> 7 OR >R THEN
-      DUP 97 = IF R> 511 OR >R THEN
-      DUP 117 = OVER 103 = OR OVER 111 = OR SWAP 97 = OR
-    WHILE 1+ REPEAT
-    R@ 0= IF R> DROP 511 >R THEN
-    DUP C@ DUP 61 <> OVER 43 <> AND SWAP 45 <> AND IF R> 2DROP 0 EXIT THEN
-    DUP C@ >R 1+                            ( a  R: who op )
-    0 BEGIN OVER C@ DUP 114 = IF DROP 292 OR ELSE
-      DUP 119 = IF DROP 146 OR ELSE
-      DUP 120 = IF DROP 73 OR ELSE DROP -1 THEN THEN THEN
-      DUP -1 <> WHILE SWAP 1+ SWAP
-    REPEAT DROP                             ( a perms )
-    R> R>                                   ( a perms op who )
-    ROT OVER AND                            ( a op who perms&who )
-    ROT DUP 61 = IF DROP UM-PERM @ ROT INVERT AND OR UM-PERM ! ELSE
-      43 = IF UM-PERM @ OR UM-PERM ! DROP ELSE UM-PERM @ SWAP INVERT AND UM-PERM ! DROP THEN
-    THEN
-    DUP C@ 44 = WHILE 1+
+    0 UMS-WHO !
+    BEGIN UMS-A @ C@ UMS-WHO-BITS ?DUP WHILE
+      UMS-WHO @ OR UMS-WHO !  1 UMS-A +!
+    REPEAT
+    UMS-WHO @ 0= IF 511 UMS-WHO ! THEN
+    UMS-A @ C@ UMS-OP-CHAR? 0= IF 0 EXIT THEN
+    BEGIN UMS-A @ C@ UMS-OP-CHAR? WHILE
+      UMS-A @ C@ UMS-OP !  1 UMS-A +!
+      UMS-A @ C@ UMS-FROM-WHO DUP -1 <> IF
+        UMS-PERM !  1 UMS-A +!
+      ELSE
+        DROP  0 UMS-PERM !
+        BEGIN UMS-A @ C@ UMS-PERM-BITS ?DUP WHILE
+          UMS-PERM @ OR UMS-PERM !  1 UMS-A +!
+        REPEAT
+      THEN
+      UMS-APPLY
+    REPEAT
+    UMS-A @ C@ 44 = WHILE 1 UMS-A +!
   REPEAT
-  C@ 0= ;
+  UMS-A @ C@ 0= ;
 
 : DO-UMASK ( --- )
-  0 LAST-STATUS !
+  0 LAST-STATUS !  0 UM-SKIP !
   0 UMASK DUP UMASK DROP                    ( mask )
   ARGC @ 1 = IF .OCT4 CR EXIT THEN
-  1 ARGV@ S" -S" ROT STR0= IF
+  \ `-S` with an operand sets the mask and prints nothing: the option
+  \ asks for symbolic OUTPUT, and there is no output when a mask is
+  \ given (XCU `umask`; Iteration 379).
+  1 ARGV@ S" -S" ROT STR0= ARGC @ 2 = AND IF
     INVERT 511 AND
     S" u=" TYPE DUP 6 RSHIFT .PERMS  S" ,g=" TYPE DUP 3 RSHIFT .PERMS
     S" ,o=" TYPE .PERMS CR EXIT
   THEN
-  1 ARGV@ DUP C@ 48 - 8 U< IF
+  ARGC @ 2 > IF S" -S" 1 ARGV@ STR0= IF 1 UM-SKIP ! THEN THEN
+  UM-SKIP @ 1+ ARGV@ DUP C@ 48 - 8 U< IF
     NIP 0 SWAP
     BEGIN DUP C@ WHILE
       DUP C@ 48 - DUP 8 U< 0= IF 2DROP DROP S" shell: umask: bad mask" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN

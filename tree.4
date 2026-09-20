@@ -1822,7 +1822,11 @@ VARIABLE XP-VAL
   \ characters are literal (Iteration 273)
   -1 XE-WORD-ASIDE-SAFE
   XP-NAME @ LOOKUP-VAR XP-VAL !               \ it may have moved
-  XP-VAL @ 0= IF EXIT THEN
+  \ `set -u` applies to the trim operators too: only the forms that
+  \ handle an unset parameter themselves - `-`, `+`, `=`, `?` and their
+  \ `:` variants - are exempt (XCU 2.6.2). This exited quietly
+  \ (Iteration 379).
+  XP-VAL @ 0= IF XP-NAME @ XP-LEN @ NOUNSET-CHECK EXIT THEN
   XW-BUF XW-LEN @  XP-VAL @ DUP CSTRLEN
   XP-OP @ EV-TRIM-SUF < 0=  XP-OP @ 1 AND 0<>
   -1 GM-ESCAPES? !  FIND-TRIM-LEN  0 GM-ESCAPES? !   ( match-len | -1 )
@@ -2260,6 +2264,15 @@ VARIABLE HDX-DEPTH
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN EXIT
   THEN
+  \ A command that expanded to NOTHING takes the status of its last
+  \ command substitution, the same rule as an assignment-only command
+  \ (XCU 2.9.1): `$(false)` alone is 1, and answered 0 here
+  \ (Iteration 379).
+  ARGC @ 0= IF
+    R> DROP
+    CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
+    EXIT
+  THEN
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
   PREFIX-COUNT ?DUP IF
     0 ASSIGNED-HERE? !
@@ -2267,11 +2280,25 @@ VARIABLE HDX-DEPTH
     \ argument list: after it, a command like `var=ok > f` has no words
     \ left to count (Iteration 350).
     DUP RE-PREFIX !
+    \ Whether this is a special builtin has to be decided BEFORE the
+    \ command runs, since `eval` replaces ARGV with what it evaluates -
+    \ and read at PREFIX-COUNT, because the assignments are still in
+    \ front of the command name at this point.
+    ARGC @ PREFIX-COUNT > IF PREFIX-COUNT ARGV@ SPECIAL-BUILTIN? ELSE 0 THEN >R
     TEMP-ASSIGN >R RUN-EXPANDED
     \ ... unless the command turned out to be assignments and
     \ redirections only, in which case they are the shell's own
     \ (Iteration 349).
-    ASSIGNED-HERE? @ IF R> DROP ELSE R> TEMP-RESTORE THEN
+    \ Assignments before a SPECIAL builtin persist (XCU 2.9.1), so
+    \ `X=1 : ; echo $X` prints 1. This shell undid them like any other
+    \ command's, which is bash's behaviour outside POSIX mode; the
+    \ evidence that decided GOALS.md 5k in Iteration 376 decides this
+    \ too (Iteration 379).
+    \ The return stack holds the record, and below it whether the
+    \ command was a special builtin.
+    R> R>                                 ( record special? )
+    ASSIGNED-HERE? @ OR                   ( record keep? )
+    IF DROP ELSE TEMP-RESTORE THEN
   ELSE
     0 RE-PREFIX !
     RUN-EXPANDED
