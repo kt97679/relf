@@ -378,6 +378,7 @@ do not trust the absence of a line below.
 - **380** — four arithmetic bugs: short-circuiting, signs, shifts, assignments
 - **381** — CDPATH's two rules, and a tilde in a ${} word; busybox 212, past dash
 - **382** — aliases after prefixes, and aliases that expand to nothing
+- **383** — redirection errors on special builtins; yash's error suite complete
 
 ### Not tied to an iteration
 
@@ -19751,3 +19752,33 @@ pipeline continue. Both need alias substitution where a reserved word is
 expected, which is a different place in the parser.
 
 tests/verify: a new shell test file; sizes.
+
+## Iteration 383: yash's error suite, all of it
+
+Two fixes, and `error-p.tst` goes from 169 of 214 to **214 of 214** -
+dash passes 133.
+
+**A redirection that fails on a special builtin ends a non-interactive
+shell.** It is an error in that builtin, so XCU 2.8.1 applies:
+`: < /nonexistent` stops the script. The status elsewhere stays 1 rather
+than dash's 2, because this project's differential cases compare against
+bash and POSIX asks only for non-zero - a place where two references
+disagree and the tests decide.
+
+**An assignment that fails means the command does not run.** The
+non-interactive shell has already ended by the time this matters, so the
+bug only showed interactively: `readonly a=1` then `a=2 set` ran `set`
+anyway, which listed every variable in the shell. The prefix assignments
+are applied, and now the command runs only if they all succeeded.
+
+Finding it took a detour worth recording. The 15 remaining failures were
+all "spares interactive shell" cases, and the first theory was that our
+prompts went to stdout and polluted the comparison. They do not - they
+have always gone to stderr. Reading the actual diff rather than
+theorising about it showed a list of variables where the test wanted one
+word.
+
+**yash's POSIX suite: 1595 to 1641 of 1731**, against dash's 1650. Nine
+apart. busybox holds at 212, one ahead of dash.
+
+tests/verify: sizes.

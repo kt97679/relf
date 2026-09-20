@@ -57,4 +57,23 @@ check "nor before an external command" \
       'v=keep; v=tmp /bin/true; echo "$v"' "keep"
 check "nor before a function" \
       'f() { :; }; v=keep; v=tmp f; echo "$v"' "keep"
+
+# A redirection that fails on a special builtin is an error in that
+# builtin, so it ends the shell too (Iteration 383).
+check "a failed redirection on : stops the script" \
+      ': < /nonexistent; echo REACHED' ""
+check "... on eval as well" \
+      'eval echo x < /nonexistent; echo REACHED' ""
+check "a subshell absorbs that too" \
+      '( : < /nonexistent ) 2>/dev/null; echo REACHED' "REACHED"
+check "an ordinary builtin carries on" \
+      'cd / < /nonexistent 2>/dev/null; echo REACHED' "REACHED"
+check "and so does an external command" \
+      '/bin/true < /nonexistent 2>/dev/null; echo REACHED' "REACHED"
+
+# An assignment that failed means the command does not run at all: a
+# non-interactive shell has already ended, and an interactive one skips
+# it rather than running it without the assignment (Iteration 383).
+got=$(printf 'readonly a=1\na=2 set\necho reached\n' | "$THIS_SH" -i +m 2>/dev/null)
+assert_output_equals "a failed assignment skips the command" "reached" "$got"
 report

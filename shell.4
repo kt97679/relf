@@ -5479,7 +5479,19 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 : RUN-A-BUILTIN ( xt --- )
   0 EXEC-LAST? !
   >R BEGIN-REDIRECT R>
-  REDIR-FAILED? @ IF DROP 1 LAST-STATUS ! ELSE EXECUTE THEN
+  \ A redirection that fails on a SPECIAL builtin ends a non-interactive
+  \ shell, like any other error in one (XCU 2.8.1): `: < /nonexistent`
+  \ stops the script (Iteration 383). Everywhere else the status stays
+  \ 1, which is bash's and what this project's cases compare against;
+  \ dash reports 2, and POSIX asks only for non-zero.
+  REDIR-FAILED? @ IF
+    DROP
+    ARGC @ 0 > IF ARGV @ SPECIAL-BUILTIN? ELSE 0 THEN IF
+      2 SPECIAL-ERROR
+    ELSE
+      1 LAST-STATUS !
+    THEN
+  ELSE EXECUTE THEN
   END-REDIRECT ;
 
 : RUN-A-FUNCTION ( i --- )

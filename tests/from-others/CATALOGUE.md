@@ -556,3 +556,18 @@ wrapper rather than the usual relative one.
     pipeline continue onto the next line. Neither works here: reserved
     words are recognised before alias substitution is tried at that
     position. (Not fixed.)
+
+## From yash's error tests (Iteration 383)
+
+77. **A redirection that fails on a SPECIAL builtin ends a
+    non-interactive shell**, like any other error in one:
+    `: < /nonexistent` stops the script. The status elsewhere stays 1,
+    which is bash's; dash reports 2 and POSIX asks only for non-zero.
+    → `tests/shell/run-special-error`
+
+78. **An assignment that fails means the command does not run at all.**
+    A non-interactive shell has already ended by then; an interactive
+    one has to SKIP the command rather than run it without the
+    assignment. `readonly a=1` then `a=2 set` listed every variable
+    here.
+    → `tests/shell/run-special-error`

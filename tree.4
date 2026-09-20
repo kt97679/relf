@@ -2330,7 +2330,14 @@ VARIABLE HDX-DEPTH
     \ and read at PREFIX-COUNT, because the assignments are still in
     \ front of the command name at this point.
     ARGC @ PREFIX-COUNT > IF PREFIX-COUNT ARGV@ SPECIAL-BUILTIN? ELSE 0 THEN >R
-    TEMP-ASSIGN >R RUN-EXPANDED
+    0 VALUE-FAILED? !
+    TEMP-ASSIGN >R
+    \ An assignment that failed - a readonly variable - means the
+    \ command does not run at all. A non-interactive shell has already
+    \ ended by now (SPECIAL-ERROR); interactively it carries on, and
+    \ carried on into the command, which `a=2 set` then made obvious by
+    \ listing every variable (Iteration 383).
+    VALUE-FAILED? @ 0= IF RUN-EXPANDED THEN
     \ ... unless the command turned out to be assignments and
     \ redirections only, in which case they are the shell's own
     \ (Iteration 349).
