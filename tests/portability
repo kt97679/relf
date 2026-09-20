@@ -131,7 +131,8 @@ fi
 # locale's own; this shell has neither, so a suite that compares it with
 # another shell has to say which locale it means.
 # ------------------------------------------------------------------
-for f in tests/diff/run-all tests/matrix/run; do
+for f in tests/diff/run-all tests/matrix/run tests/shell/run-all \
+         tests/posix/run.sh tests/run_tests.sh tests/verify; do
     if grep -q '^LC_ALL=C' "$f" && grep -q '^export LC_ALL' "$f"; then
         ok "$f pins LC_ALL"
     else

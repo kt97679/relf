@@ -43,3 +43,4 @@ size:i386 156668
 size:image-i386 93624
 size:image-x86_64 100528
 size:x86_64 139656
+toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

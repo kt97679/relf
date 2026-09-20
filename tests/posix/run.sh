@@ -48,6 +48,15 @@
 # defined and comparing it would test nothing about conformance. Same
 # choice mrsh's own harness makes.
 
+# Byte order and byte classes for every shell this suite runs: pathname
+# expansion sorts by LC_COLLATE, `[a-z]` is a collation range and
+# `[[:alpha:]]` is a locale's own idea of a letter. This shell has no
+# locale support - it is always the C locale - so a suite that compares
+# it with another shell, or with recorded output, has to say which
+# locale it means. A checkout in en_US.UTF-8 saw the difference
+# (Iterations 390 and 393).
+LC_ALL=C
+export LC_ALL
 cd "$(dirname "$0")" || exit 1
 RELFSH="${RELFSH:-../../relfsh}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-10}"

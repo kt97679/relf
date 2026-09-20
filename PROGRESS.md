@@ -388,6 +388,7 @@ do not trust the absence of a line below.
 - **390** — two faults in the test setup, both reported from outside
 - **391** — tests for the scaffolding; PS4; CHECKING.md
 - **392** — the suites inherited the terminal, and waited there
+- **393** — a baseline that travels: machine-dependent lines, and the locale everywhere
 
 ### Not tied to an iteration
 
@@ -20087,3 +20088,40 @@ that has only ever run in one has never been asked the question a
 terminal asks.**
 
 tests/verify: two new portability checks.
+
+## Iteration 393: a baseline that travels
+
+The same checkout, now running to the end, reported six differences.
+Three of them were true and useless.
+
+**`size:x86_64 174640` against a baseline of 139656** is that machine's
+compiler, not this project's code. `size:engine-code-*` matched exactly
+- the same source through a different gcc gave the same code size and a
+differently sized binary - which is the clearest possible statement that
+a byte count of a linked binary is a property of the toolchain.
+`tests/verify` records `toolchain:cc` now and compares the size lines
+only against a baseline taken with the same compiler; otherwise it
+prints them as `machine` and does not count them. The same for
+`posix:inconclusive`, which counts cases the REFERENCE shells disagree
+about - a fact about which shells are installed.
+
+What stays strict is everything that depends on the code: every suite's
+pass and fail counts, dead words, both image fixpoints, the bundle.
+
+**And `tests/run_tests.sh exited 1 - see /tmp/verify-run.log` is a bad
+report from another machine**, because the log is on that machine. It
+prints the failing lines and the tail of the log now: a report should
+contain what it is reporting.
+
+**The locale pin was in two suites and wanted to be in six.** Iteration
+390 pinned `LC_ALL=C` in the differential runner and the matrix, which
+are the two that compare against another shell - but `tests/shell` and
+`tests/posix` compare against RECORDED output, which is the same
+problem, and `run_tests.sh` and `verify` run all of them. All six pin it
+now, and `tests/portability` checks all six.
+
+That is the likely cause of the remaining `shell:4byte 0` and
+`shell:8byte 0` in that report: a suite comparing recorded output, in a
+UTF-8 locale, on a machine where this shell sorts bytes.
+
+tests/verify: a new key, `toolchain:cc`.

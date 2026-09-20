@@ -30,6 +30,15 @@
 # (Iteration 392). The interactive pty harness makes its own terminal
 # and is unaffected.
 exec < /dev/null
+# Byte order and byte classes for every shell this suite runs: pathname
+# expansion sorts by LC_COLLATE, `[a-z]` is a collation range and
+# `[[:alpha:]]` is a locale's own idea of a letter. This shell has no
+# locale support - it is always the C locale - so a suite that compares
+# it with another shell, or with recorded output, has to say which
+# locale it means. A checkout in en_US.UTF-8 saw the difference
+# (Iterations 390 and 393).
+LC_ALL=C
+export LC_ALL
 cd "$(dirname "$0")/.." || exit 1
 BASE=tests/BASELINE
 UPDATE=0
@@ -197,6 +206,12 @@ emit size:image-i386         "$(wc -c < kernel32-shell.img | tr -d ' ')"
 echo "== the scaffolding ==" >&2
 emit portability:problems "$(sh tests/portability 2>/dev/null | awk '/^portability:/ {print $4+0}')"
 
+# Which compiler produced the binaries whose sizes are recorded below.
+# The size lines mean nothing across toolchains, and this is how the
+# comparison knows (Iteration 393).
+CC_ID=$(${CC:-cc} --version 2>/dev/null | head -1)
+emit toolchain:cc "$CC_ID"
+
 # ---------------------------------------------------------------
 # The deliverable itself (Iteration 369)
 # ---------------------------------------------------------------
@@ -232,14 +247,41 @@ if [ ! -e "$BASE" ]; then
     exit 2
 fi
 
+# Some of what this records is a property of the CODE and some is a
+# property of the MACHINE. A byte size depends on the compiler that
+# produced the binary; whether a POSIX case is inconclusive depends on
+# whether the reference shells installed here agree about it. Comparing
+# those against a baseline recorded elsewhere reports a difference that
+# is true and useless - which is what a checkout on another machine saw
+# (Iteration 393).
+#
+# So the size lines are compared only when the toolchain matches the one
+# the baseline was recorded with, and the inconclusive counts are
+# reported without being counted as a difference. `failed` and `passed`
+# stay strict everywhere.
+machine_dependent() {
+    case $1 in
+        size:*)
+            [ "$CC_ID" = "$(awk '$1=="toolchain:cc" {sub(/^toolchain:cc /,""); print}' "$BASE")" ] && return 1
+            return 0 ;;
+        posix:inconclusive|matrix:inconclusive) return 0 ;;
+        toolchain:cc) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 echo ""
 bad=0
 while read -r k v; do
-    want=$(awk -v k="$k" '$1==k {print $2}' "$BASE")
+    # The rest of the line, not just the second field: a value may hold
+    # spaces (the compiler's version string does).
+    want=$(awk -v k="$k" '$1==k {sub(/^[^ ]+[ ]/,""); print}' "$BASE")
     if [ -z "$want" ]; then
         printf 'NEW      %-22s %s\n' "$k" "$v"; bad=1
     elif [ "$want" = "$v" ]; then
         printf 'ok       %-22s %s\n' "$k" "$v"
+    elif machine_dependent "$k"; then
+        printf 'machine  %-22s %s (baseline %s, not compared here)\n' "$k" "$v" "$want"
     else
         printf 'CHANGED  %-22s %s (baseline %s)\n' "$k" "$v" "$want"; bad=1
     fi
@@ -250,7 +292,19 @@ while read -r k v; do
 done < "$BASE"
 
 echo ""
-if [ "$RT" != 0 ]; then echo "tests/run_tests.sh exited $RT - see /tmp/verify-run.log"; bad=1; fi
+if [ "$RT" != 0 ]; then
+    echo "tests/run_tests.sh exited $RT. The last lines of its log:"
+    echo ""
+    # Printed here rather than pointed at: a report from another machine
+    # is only as useful as what it contains (Iteration 393).
+    grep -nE 'FAIL|SKIP|error|Error|cannot|not found' /tmp/verify-run.log \
+        | tail -12 | sed 's/^/    /'
+    echo "    ---"
+    tail -6 /tmp/verify-run.log | sed 's/^/    /'
+    echo ""
+    echo "    (the whole log is /tmp/verify-run.log)"
+    bad=1
+fi
 if [ "$bad" = 0 ]; then echo "VERIFIED: everything matches $BASE"
 else echo "DIFFERENCES ABOVE. If they are intended, commit the fix and"
      echo "tests/verify --update together."; fi

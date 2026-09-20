@@ -47,6 +47,19 @@ If you hit one anyway, this says where it stopped:
     make verify 2>&1 | tail -20      # the last line is the step it is in
     sh -x tests/verify 2>&1 | tail -40   # every command, as it runs
 
+## Lines `make verify` prints that are not failures
+
+    machine  size:x86_64  174640 (baseline 139656, not compared here)
+
+A byte size depends on the compiler that produced the binary, and
+whether a POSIX case is inconclusive depends on which reference shells
+are installed. `tests/verify` records the compiler it measured with, and
+compares the size lines only against a baseline taken with that same
+compiler; otherwise it prints them as `machine` and moves on. What it
+always compares is what depends on the CODE: every suite's pass and fail
+counts, the dead-word count, both image fixpoints, and whether the
+bundle can be cloned.
+
 ## Things that depend on your machine rather than on the code
 
     locale                              # C? UTF-8? see below
