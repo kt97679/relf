@@ -389,6 +389,7 @@ do not trust the absence of a line below.
 - **391** — tests for the scaffolding; PS4; CHECKING.md
 - **392** — the suites inherited the terminal, and waited there
 - **393** — a baseline that travels: machine-dependent lines, and the locale everywhere
+- **394** — a suite that died silently; and the i386 half as a host fact
 
 ### Not tied to an iteration
 
@@ -20125,3 +20126,43 @@ That is the likely cause of the remaining `shell:4byte 0` and
 UTF-8 locale, on a machine where this shell sorts bytes.
 
 tests/verify: a new key, `toolchain:cc`.
+
+## Iteration 394: the step that failed without saying so
+
+The report from that checkout was precise enough to find it without
+seeing the machine: every 8-byte suite passed, every 4-byte one read 0,
+and the log ENDED at the last passing line. Nothing failed loudly; the
+script simply stopped.
+
+`run_shell_test_suite` is
+
+    output=$(... tests/shell/run-all ...)
+    status=$?
+
+and this script runs under `set -e`. When the suite inside fails, the
+ASSIGNMENT fails, and `set -e` ends the script there - before `status`
+is read, before `$output` is echoed, before the `FAIL` line. The log
+ends after the previous step and says nothing at all. `|| status=$?`
+keeps the failure local, and the same shape in `run_suite` had the same
+latent fault.
+
+So the immediate cause of `shell:8byte 0` on that machine is still
+unknown - but it will print itself next time, which is the point.
+
+**Three smaller things in the same report.** `tests/verify` said
+`cannot open kernel32-shell.img` on its way through the sizes, because a
+missing i386 artifact was not a case it considered; it reports `missing`
+now. The `*:4byte` keys read `skipped` rather than 0 when the host has
+no 32-bit toolchain, and `skipped` and `missing` are host facts rather
+than differences. And the failure tail grepped for `error`, which
+matched `no errors` in a PASSING line and reported it as the failure.
+
+**A note on the size line.** The compiler string matched exactly and the
+sizes still differed by 35 KB, with `size:engine-code-x86_64` identical:
+same compiler, same code, different binary. Something else about that
+machine - link flags, a distribution default - decides it. Which is the
+argument for `toolchain:cc` gating those lines rather than trusting
+them.
+
+tests/verify: `size:image-*` may now read `missing`; `*:4byte` may read
+`skipped`.

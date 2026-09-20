@@ -117,12 +117,23 @@ fi
 echo "== core, shell, differential =="
 emit core:8byte  "$(grep -c 'PASS (8-byte cells):' /tmp/verify-run.log)"
 emit shell:8byte "$(grep -c 'PASS (8-byte cells shell' /tmp/verify-run.log)"
-emit core:4byte  "$(grep -c 'PASS (4-byte cells, i386):' /tmp/verify-run.log)"
-emit shell:4byte "$(grep -c 'PASS (4-byte cells, i386 shell' /tmp/verify-run.log)"
+# A host without a 32-bit toolchain skips the i386 half, and that is a
+# property of the machine rather than of this shell: `skipped` says so,
+# where a bare 0 looked like a failure (Iteration 394).
+i386_state() {   # i386_state MARKER
+    if grep -q 'SKIP: gcc -m32 not available' /tmp/verify-run.log ||
+       grep -q 'SKIP: the i386 engine cannot run here' /tmp/verify-run.log; then
+        echo skipped
+    else
+        grep -c "$1" /tmp/verify-run.log
+    fi
+}
+emit core:4byte  "$(i386_state 'PASS (4-byte cells, i386):')"
+emit shell:4byte "$(i386_state 'PASS (4-byte cells, i386 shell')"
 emit ext:8byte    "$(grep -c 'PASS (8-byte cells extension suites)' /tmp/verify-run.log)"
-emit ext:4byte    "$(grep -c 'PASS (4-byte cells, i386 extension suites)' /tmp/verify-run.log)"
+emit ext:4byte    "$(i386_state 'PASS (4-byte cells, i386 extension suites)')"
 emit io:8byte     "$(grep -c 'PASS (8-byte cells I/O suite)' /tmp/verify-run.log)"
-emit io:4byte     "$(grep -c 'PASS (4-byte cells, i386 I/O suite)' /tmp/verify-run.log)"
+emit io:4byte     "$(i386_state 'PASS (4-byte cells, i386 I/O suite)')"
 emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1)"
 # Both base images are now regenerated from cross.4 + kernel.4 on every
 # run and compared against the committed artifacts. The 8-byte one is
@@ -194,9 +205,12 @@ emit size:i386   "$(echo "$S" | awk '/^== i386/{s=1} /^== not a shell/{s=0} s &&
 # steps whenever the stripped engine crosses a page, which hides what
 # changed. The engine's code (size's text), and each shell image.
 emit size:engine-code-x86_64 "$(size relf 2>/dev/null | awk 'NR==2 {print $1}')"
-emit size:engine-code-i386   "$(size relf32 2>/dev/null | awk 'NR==2 {print $1}')"
-emit size:image-x86_64       "$(wc -c < kernel-shell.img | tr -d ' ')"
-emit size:image-i386         "$(wc -c < kernel32-shell.img | tr -d ' ')"
+emit size:engine-code-i386   "$(size relf32 2>/dev/null | awk 'NR==2 {print $1}' || true)"
+emit size:image-x86_64       "$([ -f kernel-shell.img ] && wc -c < kernel-shell.img | tr -d ' ' || echo missing)"
+# `missing` rather than a shell error on stderr and an empty value: the
+# i386 half is skipped wherever there is no 32-bit toolchain, and that
+# is a normal state, not a broken one (Iteration 394).
+emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-shell.img | tr -d ' ' || echo missing)"
 
 # ---------------------------------------------------------------
 # The scaffolding (Iteration 391)
@@ -266,7 +280,10 @@ machine_dependent() {
             return 0 ;;
         posix:inconclusive|matrix:inconclusive) return 0 ;;
         toolchain:cc) return 0 ;;
-        *) return 1 ;;
+        # `skipped` and `missing` are what a host without a 32-bit
+        # toolchain reports; they are facts about the host.
+        *) if [ "$2" = skipped ] || [ "$2" = missing ]; then return 0; fi
+           return 1 ;;
     esac
 }
 
@@ -280,7 +297,7 @@ while read -r k v; do
         printf 'NEW      %-22s %s\n' "$k" "$v"; bad=1
     elif [ "$want" = "$v" ]; then
         printf 'ok       %-22s %s\n' "$k" "$v"
-    elif machine_dependent "$k"; then
+    elif machine_dependent "$k" "$v"; then
         printf 'machine  %-22s %s (baseline %s, not compared here)\n' "$k" "$v" "$want"
     else
         printf 'CHANGED  %-22s %s (baseline %s)\n' "$k" "$v" "$want"; bad=1
@@ -297,10 +314,12 @@ if [ "$RT" != 0 ]; then
     echo ""
     # Printed here rather than pointed at: a report from another machine
     # is only as useful as what it contains (Iteration 393).
-    grep -nE 'FAIL|SKIP|error|Error|cannot|not found' /tmp/verify-run.log \
-        | tail -12 | sed 's/^/    /'
-    echo "    ---"
-    tail -6 /tmp/verify-run.log | sed 's/^/    /'
+    # Not a loose grep: `no errors` matched the old pattern, so a
+    # passing line was reported as the failure (Iteration 394).
+    grep -nE '^(FAIL|SKIP)|^==.*(FAIL|SKIP)|No such file|Permission denied|command not found' \
+        /tmp/verify-run.log | tail -12 | sed 's/^/    /'
+    echo "    --- last 25 lines ---"
+    tail -25 /tmp/verify-run.log | sed 's/^/    /'
     echo ""
     echo "    (the whole log is /tmp/verify-run.log)"
     bad=1

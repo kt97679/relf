@@ -60,6 +60,19 @@ always compares is what depends on the CODE: every suite's pass and fail
 counts, the dead-word count, both image fixpoints, and whether the
 bundle can be cloned.
 
+## The i386 half
+
+Half of `make verify` builds and runs a 4-byte-cell engine, which needs
+a 32-bit toolchain and a 32-bit loader:
+
+    sudo apt install gcc-multilib libc6-i386     # Debian/Ubuntu
+
+Without them the suite skips that half and says so; the `*:4byte` lines
+then read `skipped` and the i386 sizes read `missing`, and neither
+counts as a difference. With them, the i386 half is a second complete
+run of everything at a different cell width, which is where several of
+this project's worst bugs were caught.
+
 ## Things that depend on your machine rather than on the code
 
     locale                              # C? UTF-8? see below

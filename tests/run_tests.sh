@@ -60,9 +60,15 @@ done
 run_suite() {
     # $1 = engine binary, $2 = image, $3 = label
     local engine="$1" image="$2" label="$3"
-    local output status ok_count
-    output=$( { cat "${TESTFILES[@]}"; echo BYE; } | timeout 30 "$engine" "$image" 2>&1 )
-    status=$?
+    local output ok_count
+    # `output=$(...)` under `set -e` exits the script the moment the
+    # command fails - BEFORE the next line can read its status, and
+    # before anything is echoed. A failing step then looks like the
+    # script stopping for no reason, which is exactly what a checkout
+    # reported: the log ended after the passing step and said nothing
+    # (Iteration 394). `|| status=$?` keeps the failure local.
+    local status=0
+    output=$( { cat "${TESTFILES[@]}"; echo BYE; } | timeout 30 "$engine" "$image" 2>&1 ) || status=$?
 
     echo "$output"
 
@@ -87,7 +93,7 @@ run_shell_test_suite() {
     # this engine/image pair, via relfsh with RELF_BIN/RELF_IMG
     # overridden so the same wrapper script drives either cell width.
     local engine="$1" image="$2" label="$3"
-    local output status
+    local output
     # 180s, not 60s. It measured 59.3s on the machine this was raised on,
     # close enough to the old limit to fail intermittently.
     #
@@ -103,9 +109,9 @@ run_shell_test_suite() {
     # GOALS.md. Unrelated to Iteration 39's locals conversion either
     # way: timed at 59.3s both with the conversion and with it stashed
     # out entirely.
+    local status=0
     output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/relfsh" \
-        timeout 180 tests/shell/run-all 2>&1)
-    status=$?
+        timeout 180 tests/shell/run-all 2>&1) || status=$?
     echo "$output"
     if [ "$status" -ne 0 ]; then
         echo "FAIL ($label shell test suite): see failures above"
@@ -230,8 +236,18 @@ run_shell_test_suite relf kernel.img "8-byte cells"
 echo "== Building relf32 (i386, 4-byte cells) =="
 if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c 2>/tmp/relf32_build.log; then
     echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
+    echo "      install gcc-multilib (Debian/Ubuntu) to run the i386 half"
 else
     echo "== Cross-compiling a 4-byte-cell target image =="
+    # Compiling for i386 is not the same as being able to RUN an i386
+    # binary: a host can have the compiler and not the loader. Checked
+    # here, so a missing loader is a SKIP with a reason rather than a
+    # cascade of failures (Iteration 394).
+    if ! ./relf32 kernel32.img -c ':' >/dev/null 2>&1 &&
+       ! echo BYE | ./relf32 kernel32.img >/dev/null 2>&1; then
+        echo "SKIP: the i386 engine cannot run here (no 32-bit loader?)"
+        echo "      install libc6-i386 (Debian/Ubuntu) to run the i386 half"
+    else
     cross_compile_image 4 /tmp/relf-regen-kernel32.img "4-byte cells, i386"
     check_image_reproduces /tmp/relf-regen-kernel32.img kernel32.img "4-byte cells, i386"
     cp /tmp/relf-regen-kernel32.img kernel32.img
@@ -241,6 +257,7 @@ else
     run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"
     run_io_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
+    fi
 fi
 
 # ------------------------------------------------------------------
