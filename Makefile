@@ -139,8 +139,12 @@ images: relf $(KERNEL_SOURCES)
 # ------------------------------------------------------------------
 # Suites
 # ------------------------------------------------------------------
+# Each script is run the way its shebang asks: run_tests.sh uses bash
+# arrays, `local` and `set -o pipefail`, and `sh tests/run_tests.sh` on a
+# machine where /bin/sh is dash fails at line 36 (Iteration 390 - the
+# Makefile got this wrong from the start).
 test: all
-	@sh tests/run_tests.sh
+	@bash tests/run_tests.sh
 
 diff: all
 	@tests/diff/run-all
@@ -152,10 +156,10 @@ posix: all
 	@sh tests/posix/run.sh
 
 mrsh: all
-	@bash tests/mrsh-suite/run.sh
+	@sh tests/mrsh-suite/run.sh
 
 shell: all
-	@cd tests/shell && ./run-all
+	@cd tests/shell && sh ./run-all
 
 interactive: all
 	@cd tests/interactive && $(PYTHON) run_cases.py

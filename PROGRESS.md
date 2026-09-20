@@ -385,6 +385,7 @@ do not trust the absence of a line below.
 - **387** — the yash corpus runner, and both corpora wired into the Makefile
 - **388** — aliases that expand to reserved words; ahead of dash on both corpora
 - **389** — prompts are expanded; and LD_PRELOAD cleared for the i386 build
+- **390** — two faults in the test setup, both reported from outside
 
 ### Not tied to an iteration
 
@@ -19977,3 +19978,38 @@ LD_PRELOAD now: a preload library for the host can never apply to a
 32-bit process anyway.
 
 tests/verify: four new assertions; sizes.
+
+## Iteration 390: the tests, not the shell
+
+Two reports from a real checkout, both about this project's own
+scaffolding.
+
+**`make test` failed at line 36 of `run_tests.sh`: `Illegal option -o
+pipefail`.** That script has said `#!/bin/bash` since it was written and
+uses bash arrays, `local` and `pipefail`; `tests/verify` knows this and
+runs it with bash. The Makefile of Iteration 384 ran it with `sh`, which
+works only where /bin/sh is bash. Fixed, and the other targets checked
+against their scripts' shebangs at the same time.
+
+**`make diff` reported `classes-325.sh` failing with six identical lines
+of "want" and "got".** The report was the bug: it printed the first six
+lines of each side, and every case that agrees for six lines and
+diverges on the seventh looked like that. It prints a real diff now,
+labelled with which side is which, plus a byte dump when the two sides
+look identical - which is what a trailing space or a CR looks like from
+here.
+
+**And the case itself was locale-dependent**, which is the real finding.
+Pathname expansion sorts its matches by LC_COLLATE, `[a-z]` is a
+collation range, and `[[:alpha:]]` is a locale's own idea of a letter.
+This shell has none of that: it compares bytes, which is the C locale's
+behaviour. The reference shell, in a UTF-8 locale, sorts `a1 b2 ZZ`
+where this shell sorts `ZZ a1 b2` - so a suite that compares the two
+has to pin the locale, and `tests/diff/run-all` and `tests/matrix/run`
+now export `LC_ALL=C`. README.md says so where someone will read it
+before wondering.
+
+A differential suite is a measuring instrument, and an instrument that
+reads differently in different rooms is measuring the room.
+
+tests/verify: sizes.

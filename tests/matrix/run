@@ -17,6 +17,12 @@
 # shell gets wrong today. A case that fails and is not on the list is a
 # REGRESSION, and the run fails; a listed case that passes is reported as
 # fixed, so the list can be updated (--update-known) in the same commit.
+# Byte order for both shells: pathname expansion sorts by LC_COLLATE,
+# and this shell has no locale support - it is always the C locale
+# (Iteration 390).
+LC_ALL=C
+export LC_ALL
+
 set -u
 cd "$(dirname "$0")" || exit 1
 THIS_SH="${THIS_SH:-../../relfsh}"

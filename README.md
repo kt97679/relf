@@ -27,6 +27,12 @@ libc-based C:
 cc -O2 -Wall -o relf cv8.c
 cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
 
+The shell has no locale support: character classes, ranges and the order
+pathname expansion returns its matches in are all byte-based, which is
+the C locale's behaviour. The test suites pin `LC_ALL=C` for that reason
+- a differential suite compares two shells, and in a UTF-8 locale the
+reference sorts `ZZ a1 b2` differently and `[a-z]` can match `Z`.
+
 or `make`, which builds both engines and both shell images and is the
 index of everything else this project does - `make help` lists the
 targets, `make verify` runs every suite against tests/BASELINE. What

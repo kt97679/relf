@@ -17,6 +17,20 @@
 set -u
 THIS_SH="${THIS_SH:-./relfsh}"
 REF_SH="${REF_SH:-/bin/bash}"
+# A differential suite compares two shells, so it has to fix the things
+# that are locale-dependent in BOTH of them: which characters are in
+# `[[:alpha:]]`, whether `[a-z]` matches `Z`, and above all the ORDER
+# pathname expansion returns its matches in, which POSIX ties to
+# LC_COLLATE. This shell sorts in byte order - it has no locale support
+# at all - so the suite asks the reference for byte order too. Without
+# this, cases that glob passed in the C locale and failed in a UTF-8 one
+# (Iteration 390, reported from a user's machine).
+LC_ALL=C
+export LC_ALL
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT INT TERM
+
 dir=$(dirname "$0")/cases
 run=0; failed=0
 
@@ -43,8 +57,30 @@ for c in "$dir"/*.sh; do
     if [ "$got" != "$want" ] || [ "$gs" != "$ws" ]; then
         failed=$((failed + 1))
         echo "FAIL: $(basename "$c")  (status $gs, want $ws)"
-        printf '%s\n' "$want" | sed 's/^/    want: /' | head -6
-        printf '%s\n' "$got"  | sed 's/^/    got:  /' | head -6
+        # The first SIX lines of each used to be printed, which said
+        # nothing whenever a case agreed for six lines and diverged on
+        # the seventh - and most of them do (Iteration 390). A real diff
+        # instead, and a byte dump when the two sides look identical,
+        # which is what a trailing space or a CR looks like from here.
+        printf '%s\n' "$want" > "$TMP/want"
+        printf '%s\n' "$got"  > "$TMP/got"
+        if command -v diff >/dev/null 2>&1; then
+            echo "    (- is $REF_SH, + is this shell)"
+            diff -u "$TMP/want" "$TMP/got" | sed -n '3,20p' | sed 's/^/    /'
+        else
+            printf '%s\n' "$want" | sed 's/^/    want: /' | head -10
+            printf '%s\n' "$got"  | sed 's/^/    got:  /' | head -10
+        fi
+        if [ "$(cat "$TMP/want")" = "$(cat "$TMP/got")" ] 2>/dev/null; then
+            echo "    (the text matches: the difference is invisible)"
+        fi
+        if cmp -s "$TMP/want" "$TMP/got"; then
+            :
+        elif [ "$(tr -d '[:space:]' < "$TMP/want")" = "$(tr -d '[:space:]' < "$TMP/got")" ]; then
+            echo "    (only whitespace differs - first 3 lines as bytes:)"
+            head -3 "$TMP/want" | od -c | sed 's/^/    want /' | head -4
+            head -3 "$TMP/got"  | od -c | sed 's/^/    got  /' | head -4
+        fi
     fi
 done
 echo "$run differential case(s), $failed failed"
