@@ -370,6 +370,7 @@ do not trust the absence of a line below.
 - **372** — a pending split through the bulk emitter; saved descriptors; PARITY with dash
 - **373** — a variable-lookup cache: built, measured, reverted
 - **374** — what the bookkeeping costs: 1%, so the refactor is off
+- **375** — yash's POSIX suite, and the two invocation forms it wanted
 
 ### Not tied to an iteration
 
@@ -19467,3 +19468,36 @@ And a technique worth keeping: to price something you cannot remove
 without changing behaviour, **do it twice and halve the difference**.
 
 No code changed.
+
+## Iteration 375: a new corpus, and one option worth 228 cases
+
+busybox's suite is spent at parity, so: yash's. It ships 253 test files,
+about a hundred of them written for any POSIX shell.
+
+**Two pieces of scaffolding, both about the harness.** It drives itself
+with aliases and `LINENO`, so it runs under `bash -O expand_aliases`
+rather than dash - dash has no `LINENO` and bash ignores aliases in
+scripts, so neither alone will do. And it copies the testee into a
+temporary directory, which breaks a relative wrapper; an absolute one
+fixes that. The first run without it showed 149 passes and looked like a
+catastrophe; it was measuring `exec: relf: not found`.
+
+**With the scaffolding right: 983 passed, 748 failed** against dash's
+1650 and 125.
+
+**Then one miss accounted for 228 of them.** `sh -s` reads commands from
+standard input and takes its operands as positional parameters, and most
+of yash's cases start the shell that way. This shell had no `-s`: it
+fell through to "run the file named by the first argument", found none,
+and exited 127. With `-s` - and the longer `sh -c command name args`,
+which was also missing - the suite reads **1211 passed, 520 failed**.
+
+`tests/shell/run-invocation` covers all six ways the shell can be
+started, which nothing had checked before: the two `-c` forms, `-s` with
+and without operands and with and without `--`, a script with
+parameters, and a bare pipe.
+
+That is the same shape as the bundle bug in 368: the ways in and out of
+this shell were the least tested part of it.
+
+tests/verify: a new shell test file; sizes.

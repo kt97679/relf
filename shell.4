@@ -780,9 +780,11 @@ MAX-POS-PARAM-DEPTH 2* CELLS BUFFER: POS-SAVE   \ block, count per depth
   CELLS POS-BLOCK @ + @ ;
 
 VARIABLE POS-FROM-SYS?   \ POS-BUILD's source: relf's argv, or ARGV
+VARIABLE POS-SYS-SKIP    \ how many of relf's own arguments to pass over
+1 POS-SYS-SKIP !         \ ... the script name, unless `-s` says otherwise
 
 : POS-SRC ( i --- c-addr )   \ the i-th new parameter, 0-based
-  1+ POS-FROM-SYS? @ IF SYS-ARG ELSE ARGV@ THEN ;
+  POS-FROM-SYS? @ IF POS-SYS-SKIP @ + SYS-ARG ELSE 1+ ARGV@ THEN ;
 
 VARIABLE PB-N
 VARIABLE PB-SIZE
@@ -840,10 +842,14 @@ VARIABLE SHELL-NAME   \ set by MAIN: an address stored at load time is
   \ still holds the calling line, and by `set`.
   0 POS-FROM-SYS? !  ARGC @ 1- 0 MAX POS-BUILD ;
 
-: SET-POS-PARAMS-FROM-SYS-ARGS ( --- )
-  \ The parameters become relf's own arguments after the script path,
-  \ so "relfsh script.sh arg1 arg2" has $1 and $2 from the start.
-  -1 POS-FROM-SYS? !  SYS-ARGC 1- 0 MAX POS-BUILD ;
+: SET-POS-PARAMS-FROM-SYS-ARGS-AT ( skip --- )
+  \ The parameters are relf's own arguments after the first `skip` of
+  \ them: one for `relfsh script.sh arg1 arg2`, more for `-s` and for
+  \ `-c command name args` (Iteration 375).
+  DUP POS-SYS-SKIP !
+  -1 POS-FROM-SYS? !  SYS-ARGC SWAP - 0 MAX POS-BUILD ;
+
+: SET-POS-PARAMS-FROM-SYS-ARGS ( --- )   1 SET-POS-PARAMS-FROM-SYS-ARGS-AT ;
 
 : SAVE-POS-PARAMS ( depth --- )
   \ The caller's block moves onto the save stack; the parameters are

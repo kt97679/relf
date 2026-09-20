@@ -1,0 +1,28 @@
+#!/bin/sh
+# tests/shell/run-invocation - how the shell may be started: -c with and
+# without a name, -s with and without operands, a script, and standard
+# input (Iteration 375). `-s` and the longer `-c` form were missing, and
+# a harness that feeds a script on stdin with arguments got nothing at
+# all - most of yash's POSIX suite is written that way.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+
+assert_output_equals "-s reads standard input" "hi" \
+  "$(echo 'echo hi' | "$SH" -s 2>&1)"
+assert_output_equals "-s -- takes operands as parameters" "[a][b]" \
+  "$(echo 'echo "[$1][$2]"' | "$SH" -s -- a b 2>&1)"
+assert_output_equals "-s takes operands without --" "[x]" \
+  "$(echo 'echo "[$1]"' | "$SH" -s x y 2>&1)"
+assert_output_equals "-s counts its parameters" "2" \
+  "$(echo 'echo $#' | "$SH" -s -- a b 2>&1)"
+assert_output_equals "-c with a name sets \$0" "name arg" \
+  "$("$SH" -c 'echo "$0 $1"' name arg 2>&1)"
+assert_output_equals "-c alone still works" "plain" \
+  "$("$SH" -c 'echo plain' 2>&1)"
+assert_output_equals "standard input without -s" "piped" \
+  "$(echo 'echo piped' | "$SH" 2>&1)"
+assert_output_equals "a script file still takes parameters" "s1 s2" \
+  "$(printf 'echo "$1 $2"\n' > /tmp/relf-375.sh; "$SH" /tmp/relf-375.sh s1 s2 2>&1; rm -f /tmp/relf-375.sh)"
+assert_output_equals "-s with no operands has none" "0" \
+  "$(echo 'echo $#' | "$SH" -s 2>&1)"
+report

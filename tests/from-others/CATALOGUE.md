@@ -399,3 +399,28 @@ them.
     close-on-exec; this shell has no fcntl, so the child closes
     everything above 9 before it execs.
     → `tests/diff/cases/saved-fd-372.sh`
+
+## From yash's POSIX suite (Iteration 375)
+
+yash ships 253 test files, about a hundred of them written "for any
+POSIX-compliant shell" and named `-p.tst`. They are read the same way as
+busybox's: the behaviour goes in this project's own words, the cases
+here are written from that.
+
+Two pieces of scaffolding first, both about the harness rather than the
+shell. It drives itself with aliases and `LINENO`, so it has to run
+under `bash -O expand_aliases` rather than dash; and it copies the
+testee into a temporary directory, so this shell needs an absolute-path
+wrapper rather than the usual relative one.
+
+54. **`sh -s` reads commands from standard input and takes its operands
+    as positional parameters**, with an optional `--` before them. Most
+    of yash's suite starts the shell that way. This shell had no `-s` at
+    all: it fell through to "run the file named by the first argument",
+    found none, and exited 127 - 228 of the suite's cases in one miss.
+    → `tests/shell/run-invocation`
+
+55. **`sh -c command name args...`** sets `$0` from the name and the
+    positional parameters from the rest. Only the two-argument form was
+    handled.
+    → `tests/shell/run-invocation`

@@ -2776,6 +2776,31 @@ VARIABLE SUBLIST-XT
       TREE-RUN LAST-STATUS @ SHELL-EXIT
     THEN
   THEN
+  \ `sh -s [--] [args]`: the commands come from standard input and the
+  \ operands are the positional parameters. Without this, a harness
+  \ that feeds a script on stdin with arguments gets nothing at all -
+  \ yash's suite uses it for most of its cases (Iteration 375).
+  SYS-ARGC 0 > IF
+    S" -s" 0 SYS-ARG STR0= IF
+      SYS-ARGC 1 > IF
+        S" --" 1 SYS-ARG STR0= IF 2 ELSE 1 THEN
+      ELSE 1 THEN
+      SET-POS-PARAMS-FROM-SYS-ARGS-AT
+      0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
+      TREE-RUN LAST-STATUS @ SHELL-EXIT
+    THEN
+  THEN
+  \ `sh -c command [name [args]]`: the name becomes $0 and the rest the
+  \ positional parameters.
+  SYS-ARGC 2 > IF
+    S" -c" 0 SYS-ARG STR0= IF
+      2 SYS-ARG SHELL-NAME !
+      3 SET-POS-PARAMS-FROM-SYS-ARGS-AT
+      1 SYS-ARG DUP CSTRLEN PARSE-INIT
+      -1 EXIT-AFTER? !
+      TREE-RUN LAST-STATUS @ SHELL-EXIT
+    THEN
+  THEN
   SYS-ARGC 2 = IF
     S" -c" 0 SYS-ARG STR0= IF
       1 SYS-ARG DUP CSTRLEN PARSE-INIT
