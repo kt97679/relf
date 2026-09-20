@@ -32,6 +32,21 @@ is which - `-` is the reference shell, `+` is this one. If the two sides
 look identical, it prints the first lines as bytes, which is what a
 trailing space or a CR looks like from there.
 
+## If a suite seems to hang
+
+It is waiting for your terminal. A case that runs the shell without
+redirecting stdin inherits whatever the suite inherited: `/dev/null` in
+a container, and the terminal on a real machine, where it waits for ever
+(Iteration 392 - reported from a checkout, invisible here). Every suite
+closes its own stdin now, and `make portability` checks both that they
+say so and that the differential suite finishes when stdin never
+delivers.
+
+If you hit one anyway, this says where it stopped:
+
+    make verify 2>&1 | tail -20      # the last line is the step it is in
+    sh -x tests/verify 2>&1 | tail -40   # every command, as it runs
+
 ## Things that depend on your machine rather than on the code
 
     locale                              # C? UTF-8? see below

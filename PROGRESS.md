@@ -387,6 +387,7 @@ do not trust the absence of a line below.
 - **389** — prompts are expanded; and LD_PRELOAD cleared for the i386 build
 - **390** — two faults in the test setup, both reported from outside
 - **391** — tests for the scaffolding; PS4; CHECKING.md
+- **392** — the suites inherited the terminal, and waited there
 
 ### Not tied to an iteration
 
@@ -20051,3 +20052,38 @@ things that depend on the machine rather than the code - the locale, and
 a system-wide LD_PRELOAD.
 
 tests/verify: a new check; sizes.
+
+## Iteration 392: a suite that waits for your terminal
+
+Reported: `make verify` printed `== reproducible build ==` and stopped,
+needing a Ctrl-C. Here it has never once hung.
+
+The difference is stdin. A case that runs this shell without redirecting
+stdin inherits whatever the suite inherited - and in this container that
+is `/dev/null`, which gives EOF at once, while on a real machine it is
+the terminal, which gives nothing at all until someone types. The suite
+sits there, with no output, in a step that looks like it should be
+finishing a build.
+
+Every harness closes its own stdin now: `run_tests.sh`, `verify`, the
+differential runner, the matrix and the shell tests. The interactive pty
+harness is left alone - it makes its own terminal, which is the point of
+it.
+
+**And two checks so this cannot come back**: `tests/portability`
+verifies each harness says `exec < /dev/null`, and then runs the
+differential suite with a pipe whose writer never writes - a terminal's
+behaviour, without a terminal. That check needed a second thought of its
+own: the obvious `sleep 300 | suite` waits for the sleep even after the
+suite finishes, so the stand-in writer goes into the background through
+a FIFO and is killed the moment the suite returns.
+
+`CHECKING.md` gains the two commands that would have named this in
+seconds: `make verify 2>&1 | tail -20` for the step it stopped in, and
+`sh -x tests/verify` for the command.
+
+The shape worth keeping: **a container is not a terminal, and a suite
+that has only ever run in one has never been asked the question a
+terminal asks.**
+
+tests/verify: two new portability checks.

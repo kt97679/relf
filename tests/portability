@@ -85,6 +85,46 @@ if [ -f Makefile ]; then
 fi
 
 # ------------------------------------------------------------------
+# 2b. Every suite closes its own stdin.
+#
+# A case that runs the shell without redirecting stdin inherits whatever
+# the suite inherited. From a container that is /dev/null and nothing
+# happens; from a terminal it is the terminal, and the suite waits there
+# for ever. `make verify` did exactly that on a real checkout
+# (Iteration 392).
+# ------------------------------------------------------------------
+for f in tests/run_tests.sh tests/verify tests/diff/run-all \
+         tests/matrix/run tests/shell/run-all; do
+    if grep -q '^exec < /dev/null' "$f"; then
+        ok "$f closes its stdin"
+    else
+        bad "$f" "does not close its stdin: a stray read would wait on the terminal"
+    fi
+done
+
+# ------------------------------------------------------------------
+# 2c. And the suites finish when stdin never delivers, which is what a
+#     terminal looks like until someone types. Cheap version: the
+#     differential suite, under a pipe that stays open.
+# ------------------------------------------------------------------
+if [ -x ./relfsh ] && command -v timeout >/dev/null 2>&1 &&
+   command -v mkfifo >/dev/null 2>&1; then
+    # A pipe with a writer that never writes, which is what a terminal
+    # is until someone types. The writer is killed straight after, or
+    # this check would sit waiting for its own stand-in.
+    mkfifo "$TMPP/tty" 2>/dev/null
+    sleep 600 > "$TMPP/tty" &
+    writer=$!
+    if timeout 200 sh tests/diff/run-all < "$TMPP/tty" >/dev/null 2>&1; then
+        ok "the differential suite finishes with a terminal-like stdin"
+    else
+        bad "terminal-like stdin" "the differential suite did not finish"
+    fi
+    kill "$writer" 2>/dev/null
+    wait "$writer" 2>/dev/null
+fi
+
+# ------------------------------------------------------------------
 # 3. The comparing suites pin the locale.
 #
 # Pathname expansion sorts by LC_COLLATE and character classes are a

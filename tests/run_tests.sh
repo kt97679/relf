@@ -35,6 +35,13 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# The suite's own stdin is closed: a case that runs this shell without
+# redirecting stdin would otherwise inherit the TERMINAL and wait there
+# for ever - which is what `make verify` did on a real checkout, while
+# in a container, where stdin is /dev/null, it had never once hung
+# (Iteration 392). The interactive pty harness makes its own terminal
+# and is unaffected.
+exec < /dev/null
 
 TESTFILES=(tester.fr)
 for f in tests/*.fth; do
