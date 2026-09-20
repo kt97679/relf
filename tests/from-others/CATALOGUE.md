@@ -454,9 +454,16 @@ wrapper rather than the usual relative one.
     prints `a` and `alias --` prints them all. dash does not do this;
     yash's suite requires it and so does XCU 1.4.
 
-61. **`test -b -c -g -h -L -u -k -S`** are all missing here: the
-    `FILE-KIND` primitive answers none, regular, directory or other,
-    which cannot tell a block device from a socket or see the set-user
-    bits. 19 of yash's `test-p.tst` cases want them, and the fix is an
-    engine change - a wider `FILE-KIND`, or a `STAT-MODE` beside it.
-    (Not fixed.)
+61. **`test -b -c -p -S -h -L -u -g -k`** were all missing: `FILE-KIND`
+    answers none, regular, directory or other, which cannot tell a block
+    device from a socket or see the set-user bit. Done in Iteration 378
+    with a `FILE-MODE` primitive beside it, which returns `st_mode` and
+    takes a flag for stat or lstat, so `-h` can see a link.
+    → `tests/diff/cases/test-filetypes-378.sh`
+
+62. **`test -e` and `test -s` must not OPEN the file.** Opening a FIFO
+    with no writer blocks for ever, so `test -e pipe` hung this shell.
+    Nothing here had ever made a FIFO. `-e` is a stat that follows the
+    link; `-s` opens only a regular file or a directory, and answers 0
+    for anything else, as dash does.
+    → `tests/diff/cases/test-filetypes-378.sh`

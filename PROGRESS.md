@@ -373,6 +373,7 @@ do not trust the absence of a line below.
 - **375** — yash's POSIX suite, and the two invocation forms it wanted
 - **376** — a special builtin's error ends the shell: GOALS 5k decided
 - **377** — the shell's own command line, parsed properly: +204 cases
+- **378** — file-type tests, an engine primitive, and a FIFO that hung the shell
 
 ### Not tied to an iteration
 
@@ -19575,3 +19576,41 @@ or other. Nineteen of yash's cases want them and the fix is an engine
 change, which is its own iteration.
 
 tests/verify: sizes.
+
+## Iteration 378: the file tests, and a FIFO that hung the shell
+
+`test -b -c -p -S -h -L -u -g -k` were all missing, because `FILE-KIND`
+- the primitive added in Iteration 307 - answers only none, regular,
+directory or other. That cannot tell a block device from a socket, and
+says nothing about the set-user bit.
+
+**So the engine grew a primitive**: `FILE-MODE ( c-addr follow? --- mode
+)`, returning `st_mode` from `stat` or, with the flag false, from
+`lstat`, so `-h` can see a symbolic link. NESC 59 to 60, both kernel
+images cross-compiled again from `cross.4` and `kernel.4`, and the
+fixpoint still holds. The nine predicates decode the bits in shell.4,
+where the constants are visible and commented rather than hidden in C.
+
+**And then the new case hung.** Every piece of it ran correctly alone,
+which was the clue: the hang needed the whole file. Bisecting the file
+itself by truncation rather than by rewriting found it at the `for` loop
+over six files - one of them a FIFO.
+
+`test -e` OPENED the file to see whether it was there, and opening a
+FIFO with no writer waits for the other end. For ever. `test -s` did the
+same to ask its size. Nothing in this project had ever created a FIFO,
+so `mkfifo` in a new test found a hang that had been there since the
+`test` builtin was written.
+
+Both ask stat now: `-e` follows the link, and `-s` opens only a regular
+file or a directory and answers 0 for anything else, which is what dash
+reports for a FIFO or a device.
+
+**yash's POSIX suite: 1529 to 1545 of 1731**, `test-p.tst` alone from
+213 to 227 of 232. busybox stays at 211, level with dash.
+
+The lesson is about the corpus rather than the code: a predicate that
+hangs on a file type no test ever creates is invisible, however green
+the suites are. This one survived 377 iterations.
+
+tests/verify: the engine changed, so both images and every size move.

@@ -105,7 +105,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    59
+#define NESC    60
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -765,6 +765,7 @@ static void virtual_machine(void) {
         &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
         &&L_getppid, &&L_envat,
         &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
+        &&L_filemode,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1306,6 +1307,19 @@ L_filekind: SPILL(); { /* c-addr --- kind : 0 none, 1 regular, 2 directory,
     else if (S_ISREG(st.st_mode)) DS0 = 1;
     else if (S_ISDIR(st.st_mode)) DS0 = 2;
     else DS0 = 3;
+    FILLNEXT();
+}
+L_filemode: SPILL(); { /* c-addr follow? --- mode : the file's st_mode, or
+                          0 if it cannot be read. follow? false uses
+                          lstat, so `test -h` can see a symbolic link.
+                          The shell decodes the bits, which is why this
+                          returns the mode rather than a kind
+                          (Iteration 378). */
+    struct stat st;
+    const char *path = (const char *)(uintptr_t)DS1;
+    int r = DS0 ? stat(path, &st) : lstat(path, &st);
+    DS1 = r ? 0 : (UNS64)st.st_mode;
+    dsp += CELL_BYTES;
     FILLNEXT();
 }
 L_termraw: SPILL(); { /* fd --- ior : character-at-a-time input for the

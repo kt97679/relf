@@ -866,7 +866,6 @@ VARIABLE SHELL-NAME   \ set by MAIN: an address stored at load time is
   DUP POS-SYS-SKIP !
   -1 POS-FROM-SYS? !  SYS-ARGC SWAP - 0 MAX POS-BUILD ;
 
-: SET-POS-PARAMS-FROM-SYS-ARGS ( --- )   1 SET-POS-PARAMS-FROM-SYS-ARGS-AT ;
 
 : SAVE-POS-PARAMS ( depth --- )
   \ The caller's block moves onto the save stack; the parameters are
@@ -3426,11 +3425,12 @@ VARIABLE TEST-END
   THEN ;
 
 : TEST-FILE-EXISTS? ( c-addr --- f )
-  R/O OPEN-FOR IF
-    CLOSE-FILE DROP -1
-  ELSE
-    DROP 0
-  THEN ;
+  \ Asked by stat rather than by opening the file: `test -e` on a FIFO
+  \ with no writer blocked for ever, because opening one waits for the
+  \ other end. No suite here had ever made a FIFO (Iteration 378).
+  \ stat, not lstat: `-e` follows the link, so a broken one is not
+  \ there.
+  -1 FILE-MODE 0<> ;
 
 : TEST-IS-BANG? ( c-addr --- f )
   S" !" ROT STR0= ;
@@ -3467,8 +3467,18 @@ VARIABLE TEST-U-OP
 VARIABLE TEST-U-OPERAND
 
 : TEST-FILE-SIZE ( c-addr --- u )   \ 0 if it cannot be opened
+  \ Only a regular file or a directory is opened: a FIFO would block
+  \ and a device has no size to report, and dash answers 0 for both
+  \ (Iteration 378).
+  DUP -1 FILE-MODE 61440 AND DUP 32768 = SWAP 16384 = OR 0= IF DROP 0 EXIT THEN
   DUP CSTRLEN R/O OPEN-FILE IF DROP 0 EXIT THEN
   >R R@ FILE-SIZE 2DROP R> CLOSE-FILE DROP ;
+
+: FILE-KIND-IS ( c-addr --- kind-bits )   \ S_IFMT of the file itself
+  -1 FILE-MODE 61440 AND ;
+
+: LINK-KIND-IS ( c-addr --- kind-bits )   \ ... without following a link
+  0 FILE-MODE 61440 AND ;
 
 : TEST-UNARY? ( op-addr operand-addr --- f )
   \ -f/-d are approximated as "does this path exist at all" (same as
@@ -3487,6 +3497,21 @@ VARIABLE TEST-U-OPERAND
   S" -w" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 2 ACCESS 0= EXIT THEN
   S" -x" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 1 ACCESS 0= EXIT THEN
   S" -s" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-FILE-SIZE 0 > EXIT THEN
+  \ The rest read the mode bits. `FILE-MODE` is an engine primitive
+  \ added in Iteration 378 because `FILE-KIND` answers only none,
+  \ regular, directory or other, which cannot tell a block device from
+  \ a socket or see the set-user bit. The constants are the ones
+  \ <sys/stat.h> fixes: this shell targets Linux, and a port would
+  \ have to check them.
+  S" -b" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND-IS 24576 = EXIT THEN
+  S" -c" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND-IS 8192  = EXIT THEN
+  S" -p" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND-IS 4096  = EXIT THEN
+  S" -S" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ FILE-KIND-IS 49152 = EXIT THEN
+  S" -h" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ LINK-KIND-IS 40960 = EXIT THEN
+  S" -L" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ LINK-KIND-IS 40960 = EXIT THEN
+  S" -u" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 2048 AND 0<> EXIT THEN
+  S" -g" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 1024 AND 0<> EXIT THEN
+  S" -k" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 512  AND 0<> EXIT THEN
   0 ;
 
 VARIABLE TP-I          \ the cursor, an index from TEST-START
