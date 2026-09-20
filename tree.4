@@ -1017,6 +1017,14 @@ VARIABLE MSG#
   R> AL-SHIFT
   TK-START @ SRC-POS !  0 TK-VALID? ! ;
 
+VARIABLE ALIAS-VANISHED?   \ an alias expanded to nothing, or to blanks
+
+: AL-BLANK? ( c-addr u --- f )   \ empty, or spaces and tabs only
+  DUP 0= IF 2DROP -1 EXIT THEN
+  OVER + SWAP ?DO
+    I C@ DUP 32 <> SWAP 9 <> AND IF UNLOOP 0 EXIT THEN
+  LOOP -1 ;
+
 : TRY-ALIAS ( --- f )   \ the current token was an alias, and is replaced
   NO-ALIAS? @ IF 0 EXIT THEN
   K-WORD KIND? 0= IF 0 EXIT THEN
@@ -1033,6 +1041,9 @@ VARIABLE MSG#
     \ where the name ends: SPLICE moves it to where the value ends
     -1 ALIAS-NEXT? !  TK-END @ ALIAS-NEXT-AT !
   THEN
+  \ A value that is empty or all blanks leaves no command behind, which
+  \ PARSE-SIMPLE has to be told about (Iteration 382).
+  2DUP AL-BLANK? IF -1 ALIAS-VANISHED? ! THEN
   ROT AL-ACTIVE# @ AL-ENTRY !               ( a u )
   DUP TK-START @ + AL-ACTIVE# @ AL-ENTRY CELL+ !
   1 AL-ACTIVE# +!
@@ -1148,14 +1159,25 @@ VARIABLE JOIN#
 : JOIN-ARGV ( --- c-addr u )   0 JOIN-ARGV-FROM ;
 
 \ ---- simple commands ----
+VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
+
 : SIMPLE-ITEM ( words --- words' done? )
   ALIAS-NEXT? @ IF
     PEEK TK-START @ ALIAS-NEXT-AT @ < 0= IF 0 ALIAS-NEXT? ! EXPAND-ALIASES THEN
   THEN
+  \ A word is still in COMMAND NAME position after the assignments and
+  \ redirections that precede it, so `>/dev/null e args` and
+  \ `a=A s args` both expand an alias named `e` or `s` (XCU 2.3.1).
+  \ Expansion happened once, at the start of the command, so neither
+  \ did - and neither does dash (Iteration 382). An assignment is not a
+  \ command name, so it is not expanded.
+  DUP 0= SI-PREFIX? @ AND IF
+    PEEK K-WORD KIND? ASSIGN-TOKEN? 0= AND IF EXPAND-ALIASES THEN
+  THEN
   PEEK
-  REDIR-START? IF I-REDIR >VEC PARSE-REDIRECT >VEC 0 EXIT THEN
+  REDIR-START? IF -1 SI-PREFIX? ! I-REDIR >VEC PARSE-REDIRECT >VEC 0 EXIT THEN
   K-WORD KIND? 0= IF -1 EXIT THEN
-  DUP 0= ASSIGN-TOKEN? AND IF I-ASSIGN ELSE 1+ I-WORD THEN
+  DUP 0= ASSIGN-TOKEN? AND IF -1 SI-PREFIX? ! I-ASSIGN ELSE 1+ I-WORD THEN
   >VEC TOKEN-WORD >VEC NEXT 0 ;
 
 : HAS-REDIR? ( items --- f )   \ any redirection among a simple command's items
@@ -1166,8 +1188,16 @@ VARIABLE JOIN#
 : PARSE-SIMPLE ( first-word | 0 --- node )
   VEC-MARK SWAP                              ( base first )
   ?DUP IF I-WORD >VEC >VEC 1 ELSE 0 THEN     ( base words )
+  0 SI-PREFIX? !
   BEGIN SIMPLE-ITEM UNTIL DROP               ( base )
-  DUP VEC-TOP @ = IF S" expected a command" SYNTAX THEN
+  \ An alias may expand to nothing at all - `alias a=` and then a line
+  \ holding just `a` - and that is not an error: the line holds no
+  \ command, and the exit status is left alone. Only then, though:
+  \ `echo A; ; echo B` and `if; then ...` must stay errors, which is
+  \ what ALIAS-VANISHED? is for (Iteration 382).
+  DUP VEC-TOP @ = IF
+    ALIAS-VANISHED? @ 0= IF S" expected a command" SYNTAX THEN
+  THEN
   \ field 1: has redirections - decided here, so running the command
   \ skips looking for them (Iteration 266)
   VEC> DUP HAS-REDIR?                        ( vec f )
@@ -1278,7 +1308,7 @@ VARIABLE JOIN#
   R> OVER 3 F!  TREE-TOP @ OVER 4 F! ;
 
 : PARSE-COMMAND-IMPL ( --- node )
-  0 ALIAS-NEXT? !
+  0 ALIAS-NEXT? !  0 ALIAS-VANISHED? !
   EXPAND-ALIASES
   K-EOF KIND? IF S" unexpected end of input" SYNTAX THEN
   COMPOUND-START? IF PARSE-COMPOUND EXIT THEN
@@ -2321,6 +2351,11 @@ VARIABLE HDX-DEPTH
   0 EXEC-LAST? ! ;
 
 : EXEC-SIMPLE ( node --- )
+  \ A command with no items at all is one an alias expanded away. It
+  \ runs nothing and leaves the exit status alone, so `false` followed
+  \ by a line holding only a blank alias still reports 1
+  \ (Iteration 382).
+  DUP 0 XF@ XV# 0= IF DROP EXIT THEN
   DUP 1 XF@ DUP 0= NO-REDIRS? !
   IF DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS THEN
   0 ARGC !  0 ARGV !

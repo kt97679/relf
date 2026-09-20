@@ -1,0 +1,56 @@
+#!/bin/sh
+# tests/shell/run-alias-position - a word is still in COMMAND NAME
+# position after the assignments and redirections before it, so an alias
+# there is substituted (XCU 2.3.1); and an alias may expand to nothing
+# or to blanks, which leaves no command and does not touch the exit
+# status (Iteration 382).
+#
+# Not a differential case: tests/diff compares against bash, which does
+# not expand aliases in scripts at all unless expand_aliases is set.
+# dash agrees with everything checked here.
+. "$(dirname "$0")/lib.sh"
+
+run() {   # run NAME SCRIPT EXPECTED
+    got=$(printf '%s\n' "$2" | "$THIS_SH" 2>&1)
+    assert_output_equals "$1" "$3" "$got"
+}
+
+run "a plain alias" \
+    'alias e=echo
+e plain' "plain"
+run "after a redirection" \
+    'alias e=echo
+>/dev/null e nope
+echo after' "after"
+run "after an assignment" \
+    'alias s=echo
+a=A s hello' "hello"
+run "after both" \
+    'alias s=echo
+a=A >/dev/null s nope
+echo after' "after"
+run "an assignment is not a command name" \
+    'alias a=oops
+a=1 echo fine' "fine"
+run "an alias that expands to nothing" \
+    'alias n=
+n
+echo after' "after"
+run "... leaves the status alone" \
+    'alias n=
+false
+n
+echo "st=$?"' "st=1"
+run "an alias of blanks does the same" \
+    'alias b=" "
+false
+b
+echo "st=$?"' "st=1"
+run "and a true status survives it" \
+    'alias b=" "
+true
+b
+echo "st=$?"' "st=0"
+run "an empty command is still an error" \
+    'echo A; ; echo B' "shell: syntax error at line 1: expected a command"
+report

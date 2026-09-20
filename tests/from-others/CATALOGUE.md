@@ -533,3 +533,26 @@ wrapper rather than the usual relative one.
     the operator, so the "where does this tilde stand" test said "not at
     a word start" and left it literal.
     → `tests/diff/cases/quoted-in-word-363.sh`
+
+## From yash's alias tests (Iteration 382)
+
+74. **A word is still in command name position after the assignments
+    and redirections that precede it**, so `>/dev/null e args` and
+    `a=A s args` substitute an alias named `e` or `s` (XCU 2.3.1). An
+    assignment itself is not a command name and is not substituted.
+    → `tests/shell/run-alias-position`
+
+75. **An alias may expand to nothing, or to blanks.** The line then
+    holds no command at all: nothing runs and the exit status is left
+    alone, so `false` followed by a line holding only a blank alias
+    still reports 1. The parser must stay strict everywhere else -
+    `echo A; ; echo B` and `if; then` are still errors - which is why
+    the "this command vanished" flag is set by the alias substitution
+    itself rather than inferred from an empty command.
+    → `tests/shell/run-alias-position`
+
+76. **An alias may expand to a reserved word**, so `alias begin={` makes
+    `begin ...; }` a group, and a blank alias before a newline lets a
+    pipeline continue onto the next line. Neither works here: reserved
+    words are recognised before alias substitution is tried at that
+    position. (Not fixed.)

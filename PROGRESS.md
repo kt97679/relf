@@ -377,6 +377,7 @@ do not trust the absence of a line below.
 - **379** — umask's symbolic forms, and three POSIX rules from yash
 - **380** — four arithmetic bugs: short-circuiting, signs, shifts, assignments
 - **381** — CDPATH's two rules, and a tilde in a ${} word; busybox 212, past dash
+- **382** — aliases after prefixes, and aliases that expand to nothing
 
 ### Not tied to an iteration
 
@@ -19718,3 +19719,35 @@ substitution ran both shells AT ONCE in that one directory, which
 produced a diff full of failures that the suite itself never saw.
 
 tests/verify: sizes.
+
+## Iteration 382: where an alias may stand, and what happens when it
+## expands to nothing
+
+**A word is still in command name position after the assignments and
+redirections before it** (XCU 2.3.1), so `>/dev/null e args` and
+`a=A s args` substitute an alias. Substitution happened once, at the
+start of the command, so neither did. An assignment is not a command
+name, and is still not substituted.
+
+**An alias may expand to nothing at all, or to blanks**, and then the
+line holds no command: nothing runs, and the exit status is left alone.
+Two halves to that - the parser has to accept a simple command with no
+items, and the executor has to skip one - and one trap. Accepting any
+empty command broke four of the matrix's error cases at once: `echo A; ;
+echo B` and `if; then echo A; fi` are still syntax errors and must stay
+that way. So the permission is not inferred from the empty command; it
+is a flag the alias substitution sets when the value it spliced was
+empty or all blanks.
+
+That is the useful shape here: when a fix has to relax a check, relax it
+for the case that earned it, not for the shape the case happens to have.
+
+`alias-p.tst`: 31 of 67 to 36. **yash's POSIX suite: 1590 to 1595 of
+1731**; busybox holds at 212, one ahead of dash.
+
+**Catalogued as entry 76**: an alias that expands to a RESERVED word -
+`alias begin={` - and a blank alias before a newline that lets a
+pipeline continue. Both need alias substitution where a reserved word is
+expected, which is a different place in the parser.
+
+tests/verify: a new shell test file; sizes.
