@@ -183,6 +183,14 @@ emit size:image-x86_64       "$(wc -c < kernel-shell.img | tr -d ' ')"
 emit size:image-i386         "$(wc -c < kernel32-shell.img | tr -d ' ')"
 
 # ---------------------------------------------------------------
+# The scaffolding (Iteration 391)
+# ---------------------------------------------------------------
+# Shebangs against interpreters, the locale pins, and the bundle. Two
+# reports from a real checkout found faults here that no suite watched.
+echo "== the scaffolding ==" >&2
+emit portability:problems "$(sh tests/portability 2>/dev/null | awk '/^portability:/ {print $4+0}')"
+
+# ---------------------------------------------------------------
 # The deliverable itself (Iteration 369)
 # ---------------------------------------------------------------
 # Every session hands over a git bundle, and for 368 iterations none of

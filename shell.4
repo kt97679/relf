@@ -5812,9 +5812,17 @@ VARIABLE TA-E
 VARIABLE REDIRS-PARSED?   \ EXPAND-AND-RUN already took them out of ARGV
 VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 
+CREATE PS4-DEFAULT  CSTR," + "   \ "+ "
+CREATE PS4-NM       CSTR," PS4"
+
 : XTRACE-ARGV ( --- )   \ set -x: the command, expanded, on stderr
   OPT-XTRACE @ 0= IF EXIT THEN
-  S" + " ERR-TYPE
+  \ $PS4, expanded, or "+ ". The variable was ignored entirely - the
+  \ prefix was always "+ " - which the PS1 work of Iteration 389
+  \ makes obvious: PS4 is a prompt like the others (XCU 2.5.3), and
+  \ this one is written at execution time, where expanding it disturbs
+  \ nothing (Iteration 391).
+  PS4-NM PS4-DEFAULT PROMPT-STRING ERR-TYPE
   ARGC @ 0 ?DO
     I IF S"  " ERR-TYPE THEN
     I ARGV@ ERR-CSTR

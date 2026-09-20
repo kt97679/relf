@@ -25,6 +25,7 @@ parse:failed 0
 parse:passed 26
 parse:verdicts-agree 199
 parse:verdicts-differ 0
+portability:problems 0
 posix:cases 48
 posix:failed 0
 posix:inconclusive 2
@@ -38,7 +39,7 @@ shell:dead-words 0
 shell:files 79
 size:engine-code-i386 18665
 size:engine-code-x86_64 23613
-size:i386 156624
-size:image-i386 93580
-size:image-x86_64 100480
-size:x86_64 139608
+size:i386 156668
+size:image-i386 93624
+size:image-x86_64 100528
+size:x86_64 139656

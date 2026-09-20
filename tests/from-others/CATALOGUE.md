@@ -608,3 +608,9 @@ wrapper rather than the usual relative one.
     additionally interprets its own `\u`, `\h`, `\w`, `\[` escapes,
     which are not POSIX and which neither dash nor this shell touches.
     → `tests/shell/run-invocation`
+
+83. **`PS4` is a prompt too.** The `set -x` prefix was always `+ `; the
+    variable was ignored entirely. It is expanded like PS1 and PS2 -
+    and it is written at execution time, where expanding it disturbs
+    nothing.
+    → `tests/diff/cases/verbose-386.sh`

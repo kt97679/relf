@@ -34,7 +34,8 @@ KERNEL_SOURCES = kernel.4 cross.4 extend.4
 
 .PHONY: all help engines shell-images images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
-        busybox yash lint dead-words sizes profile bench bundle clean distclean
+        busybox yash portability lint dead-words sizes profile bench bundle \
+        clean distclean
 
 all: engines shell-images
 
@@ -55,6 +56,7 @@ help:
 	@echo '  verify         every suite, against tests/BASELINE'
 	@echo '  verify-update  ... and record the result as the new baseline'
 	@echo ''
+	@echo '  portability    the scaffolding: shebangs, locale pins, the bundle'
 	@echo '  lint           comment lint over the Forth sources'
 	@echo '  dead-words     unreachable definitions'
 	@echo '  sizes          this shell against every other one installed'
@@ -188,6 +190,9 @@ yash: all
 # ------------------------------------------------------------------
 # Tools
 # ------------------------------------------------------------------
+portability: all
+	@sh tests/portability
+
 lint:
 	@$(PYTHON) tools/lint-comments.py *.4
 

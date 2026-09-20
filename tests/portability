@@ -1,0 +1,138 @@
+#!/bin/sh
+# tests/portability - the scaffolding, not the shell.
+#
+# Added at Iteration 391, after two reports from a real checkout that
+# this project's own suites could not have caught:
+#
+#   - `make test` ran a #!/bin/bash script with `sh`, which works only
+#     where /bin/sh is bash (Iteration 390);
+#   - a differential case failed in a UTF-8 locale and passed in C,
+#     because pathname expansion sorts by LC_COLLATE and this shell
+#     sorts bytes (Iteration 390).
+#
+# Both are properties of the scripts and the Makefile rather than of the
+# shell, so nothing was watching them. This is what watches them.
+#
+# Prints one line per check and a count; exits non-zero if any failed.
+cd "$(dirname "$0")/.." || exit 2
+problems=0
+checked=0
+TMPP=$(mktemp -d)
+trap 'rm -rf "$TMPP"' EXIT INT TERM
+
+say() { printf '%-58s %s\n' "$1" "$2"; }
+bad() { problems=$((problems + 1)); say "$1" "PROBLEM: $2"; }
+ok()  { checked=$((checked + 1)); [ -n "${VERBOSE:-}" ] && say "$1" ok; return 0; }
+
+# ------------------------------------------------------------------
+# 1. Every script parses under the interpreter its shebang names.
+# ------------------------------------------------------------------
+for f in tests/run_tests.sh tests/verify tests/sizes tests/bench \
+         tests/diff/run-all tests/matrix/run tests/shell/run-all \
+         tests/posix/run.sh tests/mrsh-suite/run.sh tests/portability \
+         tools/*.sh relfsh; do
+    [ -f "$f" ] || continue
+    case $(head -1 "$f") in
+        '#!/bin/bash'|'#!'*bash) interp=bash ;;
+        '#!/bin/sh'|'#!'*sh)     interp=sh ;;
+        *) bad "$f" "no shebang"; continue ;;
+    esac
+    if [ "$interp" = sh ]; then
+        # Checked with dash when there is one: a #!/bin/sh script that
+        # only parses under bash is the fault reported at Iteration 390.
+        checker=$(command -v dash || command -v sh)
+    else
+        checker=$(command -v bash)
+    fi
+    if [ -z "$checker" ]; then
+        say "$f" "skipped: no $interp"
+    elif "$checker" -n "$f" 2>/dev/null; then
+        ok "$f ($interp syntax)"
+    else
+        bad "$f" "does not parse under $checker, though its shebang says $interp"
+    fi
+done
+
+# ------------------------------------------------------------------
+# 2. The Makefile runs each script the way its shebang asks.
+# ------------------------------------------------------------------
+if [ -f Makefile ]; then
+    # Recipe lines only - lines starting with a tab - so that a comment
+    # ABOUT the mistake is not read as the mistake (which is what the
+    # first version of this check did). The interpreter is the first
+    # word of the recipe, after any `@`.
+    awk '
+        /^\t/ {
+            line = $0
+            sub(/^\t@?/, "", line)
+            split(line, w, /[ \t]+/)
+            interp = w[1]
+            if (interp != "sh" && interp != "bash") next
+            script = w[2]
+            if (script == "") next
+            print interp, script
+        }
+    ' Makefile > "$TMPP/recipes"
+    while read -r interp script; do
+        [ -f "$script" ] || continue
+        case $(head -1 "$script") in *bash) want=bash ;; *) want=sh ;; esac
+        if [ "$want" = bash ] && [ "$interp" != bash ]; then
+            bad "Makefile: $interp $script" "that script needs bash"
+        else
+            ok "Makefile: $interp $script"
+        fi
+    done < "$TMPP/recipes"
+fi
+
+# ------------------------------------------------------------------
+# 3. The comparing suites pin the locale.
+#
+# Pathname expansion sorts by LC_COLLATE and character classes are a
+# locale's own; this shell has neither, so a suite that compares it with
+# another shell has to say which locale it means.
+# ------------------------------------------------------------------
+for f in tests/diff/run-all tests/matrix/run; do
+    if grep -q '^LC_ALL=C' "$f" && grep -q '^export LC_ALL' "$f"; then
+        ok "$f pins LC_ALL"
+    else
+        bad "$f" "compares two shells without pinning LC_ALL"
+    fi
+done
+
+# ------------------------------------------------------------------
+# 4. The differential suite gives the same answer in another locale.
+#
+# The point of the pin, tested rather than asserted. Skipped when the
+# machine has only one locale.
+# ------------------------------------------------------------------
+alt=$(locale -a 2>/dev/null | grep -iE 'utf-?8' | grep -viE '^(C|POSIX)' | head -1)
+[ -z "$alt" ] && alt=$(locale -a 2>/dev/null | grep -i 'utf' | head -1)
+if [ -n "$alt" ] && [ -x ./relfsh ]; then
+    a=$(LC_ALL=C tests/diff/run-all 2>&1 | tail -1)
+    b=$(LC_ALL=$alt tests/diff/run-all 2>&1 | tail -1)
+    if [ "$a" = "$b" ]; then
+        ok "the differential suite reads the same in $alt"
+    else
+        bad "locale independence" "C says '$a', $alt says '$b'"
+    fi
+else
+    say "locale independence" "skipped: no second locale installed"
+fi
+
+# ------------------------------------------------------------------
+# 5. The bundle this project hands over can be pulled.
+# ------------------------------------------------------------------
+if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+    w=$(mktemp -d)
+    if git bundle create "$w/t.bundle" HEAD master >/dev/null 2>&1 &&
+       git clone -q "$w/t.bundle" "$w/clone" >/dev/null 2>&1 &&
+       [ "$(git rev-parse HEAD)" = "$(git -C "$w/clone" rev-parse HEAD)" ]; then
+        ok "a bundle of HEAD can be cloned"
+    else
+        bad "git bundle" "cannot be cloned - check that HEAD is included"
+    fi
+    rm -rf "$w"
+fi
+
+echo "portability: $checked checks, $problems problem(s)"
+[ "$problems" -eq 0 ]

@@ -386,6 +386,7 @@ do not trust the absence of a line below.
 - **388** — aliases that expand to reserved words; ahead of dash on both corpora
 - **389** — prompts are expanded; and LD_PRELOAD cleared for the i386 build
 - **390** — two faults in the test setup, both reported from outside
+- **391** — tests for the scaffolding; PS4; CHECKING.md
 
 ### Not tied to an iteration
 
@@ -20013,3 +20014,40 @@ A differential suite is a measuring instrument, and an instrument that
 reads differently in different rooms is measuring the room.
 
 tests/verify: sizes.
+
+## Iteration 391: watching the scaffolding
+
+Iteration 390 fixed two faults reported from a real checkout - a
+Makefile that ran a bash script with `sh`, and a differential case that
+only passed in the C locale. Neither could have been caught here,
+because nothing was watching the scripts and the Makefile themselves.
+
+`tests/portability` watches them now, and it is a suite about this
+project rather than about the shell:
+
+- every script parses under the interpreter its shebang names, with
+  `dash -n` for the `#!/bin/sh` ones, so a bashism in a POSIX script is
+  a failure here rather than on someone else's machine;
+- every Makefile recipe runs its script with an interpreter that
+  script's shebang would accept - read from the recipe lines only, since
+  the first version of the check matched a COMMENT about the mistake and
+  reported the mistake;
+- the two comparing suites pin `LC_ALL`;
+- the differential suite gives the same answer in a second locale, when
+  the machine has one - the pin tested rather than asserted;
+- a bundle of HEAD can be cloned, which is Iteration 369's check moved
+  where it belongs.
+
+`make portability`, and `tests/verify` records `portability:problems`.
+
+**And `PS4` turned out to be a third prompt nobody read.** `set -x`
+always printed `+ `, whatever PS4 said. Iteration 389 expanded PS1 and
+PS2 and did not look further; this one is written at execution time,
+where expanding it disturbs nothing at all.
+
+**`CHECKING.md`** is the other half of the answer to "what can I run to
+catch more of these": the commands, what each would catch, and the two
+things that depend on the machine rather than the code - the locale, and
+a system-wide LD_PRELOAD.
+
+tests/verify: a new check; sizes.
