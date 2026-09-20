@@ -382,6 +382,7 @@ do not trust the absence of a line below.
 - **384** — a Makefile, and the benchmark script moved into the tree
 - **385** — a redirection before the assignments
 - **386** — `set -b`, and `set -v` that actually does something
+- **387** — the yash corpus runner, and both corpora wired into the Makefile
 
 ### Not tied to an iteration
 
@@ -19877,3 +19878,31 @@ missing rather than inert.
 **yash's POSIX suite: 1643 to 1648 of 1731.** busybox holds at 212.
 
 tests/verify: a new differential case; sizes.
+
+## Iteration 387: the corpus runners
+
+busybox's suite has had `tools/busybox-suite.sh` since Iteration 297.
+yash's has had nothing: every measurement in Iterations 375 to 386 was
+made by a script living in `/tmp`, which is exactly the fault Iteration
+384 fixed for the benchmark.
+
+`tools/yash-suite.sh` is that script, in the tree, with the two pieces
+of scaffolding in its header where the next person will find them: the
+harness drives itself with aliases and `$LINENO`, so it has to run under
+`bash -O expand_aliases` - dash has no LINENO and bash ignores aliases
+in scripts, so neither alone will do - and it COPIES the testee into a
+temporary directory, so a relative wrapper breaks and the script writes
+an absolute one. Neither suite is vendored; they belong to their own
+projects under their own licences, and each script's header says how to
+fetch them.
+
+Both are `make` targets now:
+
+    BUSYBOX_TESTS=/path/to/ash_test make busybox
+    YASH_TESTS=/path/to/yash/tests  make yash
+
+Each prints its own score, the reference's, and the list of tests the
+reference passes and this shell does not - which is the list these last
+thirteen iterations have been working down.
+
+No shell code changed.

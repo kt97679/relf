@@ -23,6 +23,7 @@ historical documents moved to `attic/docs/`.
 | `ARTICLE.md` | working notes for a write-up of the VM's evolution |
 | `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' suites, in this project's own words |
 | `Makefile` | the index of the builds and suites; `make help` lists them |
+| `tools/busybox-suite.sh`, `tools/yash-suite.sh` | run the two external corpora and report what the reference passes and this shell does not |
 
 ## Retired, in `attic/docs/`
 

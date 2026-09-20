@@ -34,7 +34,7 @@ KERNEL_SOURCES = kernel.4 cross.4 extend.4
 
 .PHONY: all help engines shell-images images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
-        lint dead-words sizes profile bench bundle clean distclean
+        busybox yash lint dead-words sizes profile bench bundle clean distclean
 
 all: engines shell-images
 
@@ -64,7 +64,9 @@ help:
 	@echo ''
 	@echo '  clean          build products; distclean also the shell images'
 	@echo ''
-	@echo 'External corpora (not in this tree): tools/busybox-suite.sh.'
+	@echo 'External corpora (fetched, not vendored - see each script'"'"'s header):'
+	@echo '  busybox        BUSYBOX_TESTS=/path/to/ash_test make busybox'
+	@echo '  yash           YASH_TESTS=/path/to/yash/tests make yash'
 
 # ------------------------------------------------------------------
 # Engines
@@ -158,6 +160,21 @@ verify: all
 
 verify-update: all
 	@sh tests/verify --update
+
+# ------------------------------------------------------------------
+# External corpora. Neither suite is vendored - they belong to their
+# own projects, under their own licences - so each target wants the
+# path to a fetched copy. The script headers say how to fetch them.
+# ------------------------------------------------------------------
+busybox: all
+	@test -n "$(BUSYBOX_TESTS)" || { \
+	    echo 'set BUSYBOX_TESTS=/path/to/busybox/shell/ash_test'; exit 1; }
+	@sh tools/busybox-suite.sh "$(BUSYBOX_TESTS)" "$$(pwd)/relfsh"
+
+yash: all
+	@test -n "$(YASH_TESTS)" || { \
+	    echo 'set YASH_TESTS=/path/to/yash/tests'; exit 1; }
+	@sh tools/yash-suite.sh "$(YASH_TESTS)" "$$(pwd)/relfsh"
 
 # ------------------------------------------------------------------
 # Tools
