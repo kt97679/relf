@@ -318,3 +318,38 @@ you trade cheap work for expensive work.
 The remaining profile is `EXPAND-WORDS` 6.6% and `ARGV-ADD` 3.7%, and
 both are bookkeeping made of exactly the kind of cheap dispatch that
 the rule applies to. That is where the next attempt should go.
+
+## Iteration 374: what the per-word bookkeeping actually costs
+
+`EXPAND-WORDS` at 6.6% of dispatches and `ARGV-ADD` at 3.7% have been
+the standing next target since 365. Before refactoring forty-five call
+sites, two measurements.
+
+**The first was invalid, and worth recording as such.** Stripping the
+flag clears and five of the seven array copies gave 8.6% fewer
+dispatches and a 7% faster run - but with the arrays gone, words took
+the literal fast path that the missing data no longer disqualified them
+from. The experiment measured a different shell, not the bookkeeping.
+
+**The second adds work instead of removing it**, which keeps behaviour
+identical: do each thing TWICE and see what the second copy costs.
+
+    seven flag clears, per word        0.45%
+    seven array copies, per command    0.62%
+
+So the whole of the per-word bookkeeping is worth about **1%** of this
+script's run - not the 7% the broken experiment suggested, and not the
+10.3% its dispatch share implies.
+
+**Why the share misleads here.** These are stores and short `MOVE`s of
+a few bytes: cheap per dispatch. The run's time goes on the
+memory-touching work inside expansion and on the processes it starts.
+Dispatch counts are a good guide to where the interpreter is BUSY and a
+poor one to where the time IS, and the gap widens exactly where the
+work per dispatch is smallest.
+
+**So the refactor is not worth doing**, and the performance thread ends
+here: 365-367 took 14% off the dispatch count and about 11% off the
+clock; 373 and 374 established what the rest is not. To go further
+would take native compilation of hot words - the standing Phase 4 item -
+rather than more bookkeeping.

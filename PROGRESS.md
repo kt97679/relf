@@ -369,6 +369,7 @@ do not trust the absence of a line below.
 - **371** — stale marks from the aside capture; escapes in a ${} word
 - **372** — a pending split through the bulk emitter; saved descriptors; PARITY with dash
 - **373** — a variable-lookup cache: built, measured, reverted
+- **374** — what the bookkeeping costs: 1%, so the refactor is off
 
 ### Not tied to an iteration
 
@@ -19434,3 +19435,35 @@ comparison - per lookup, and the two nearly cancelled. The rule is about
 the kind of work, not the count.
 
 No code changed. The measurement is the result.
+
+## Iteration 374: measuring before refactoring
+
+The per-word bookkeeping was next: `EXPAND-WORDS` 6.6% of dispatches,
+`ARGV-ADD` 3.7%, five parallel byte arrays and seven flag clears. Forty-
+five call sites would have to change, so the first job was to find out
+what they are worth.
+
+**Attempt one was invalid.** Strip the flag clears and five of the seven
+copies, and the run is 7% faster - but with the arrays gone, words took
+the literal fast path that the missing data no longer disqualified them
+from. It measured a different shell.
+
+**Attempt two adds work instead of removing it**: do each thing twice,
+behaviour unchanged, and see what the second copy costs.
+
+    seven flag clears, per word        0.45%
+    seven array copies, per command    0.62%
+
+About **1% in total**, against a dispatch share of 10.3%. The refactor
+is off.
+
+**The lesson is the one 373 started.** Dispatch counts say where the
+interpreter is busy, not where the time is, and the two diverge most
+exactly where the work per dispatch is smallest - stores and short
+moves. Both figures are now in PERFORMANCE.md beside the two-to-one rule
+they qualify.
+
+And a technique worth keeping: to price something you cannot remove
+without changing behaviour, **do it twice and halve the difference**.
+
+No code changed.
