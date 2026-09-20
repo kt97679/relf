@@ -59,6 +59,21 @@ export LC_ALL
 # (Iteration 396). No test here wants a preload.
 unset LD_PRELOAD
 
+# A cell is a pointer. On a 64-bit host the native engine runs the
+# 8-byte image and the 4-byte one is a cross build; on a 32-bit host -
+# ARMv7, i386 - it is the other way round and there is no cross build at
+# all. This script assumed the first arrangement everywhere, so on an
+# ARMv7 board it fed the 8-byte image to a 4-byte engine and stopped at
+# "Cross-compiling an 8-byte-cell target image" (Iteration 398).
+HOSTBITS=${HOSTBITS:-$(getconf LONG_BIT 2>/dev/null || echo 64)}
+if [ "$HOSTBITS" = 32 ]; then
+    NATIVE_BYTES=4; NATIVE_IMG=kernel32.img
+    OTHER_BYTES=8;  OTHER_IMG=kernel.img
+else
+    NATIVE_BYTES=8; NATIVE_IMG=kernel.img
+    OTHER_BYTES=4;  OTHER_IMG=kernel32.img
+fi
+
 TESTFILES=(tester.fr)
 for f in tests/*.fth; do
     TESTFILES+=("$f")
@@ -185,14 +200,16 @@ cross_compile_image() {
     local bytes="$1" dest="$2" label="$3"
     local wd
     wd=$(mktemp -d)
-    cp extend.4 cross.4 kernel.4 kernel.img relf "$wd/"
+    # The HOST's image, whatever width that is: cross.4 targets either
+    # width, but it has to RUN somewhere first (Iteration 398).
+    cp extend.4 cross.4 kernel.4 "$NATIVE_IMG" relf "$wd/"
     if [ "$bytes" != 8 ]; then
         sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
     fi
     (
         cd "$wd"
         printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-            | timeout 60 ./relf kernel.img > boot.log 2>&1
+            | timeout 60 ./relf "$NATIVE_IMG" > boot.log 2>&1
         if grep -qiE "undefined word|segmentation fault" boot.log; then
             echo "FAIL: $label cross-compile failed (see boot.log below)"
             cat boot.log
@@ -220,25 +237,45 @@ check_image_reproduces() {
     fi
 }
 
-echo "== Building relf (default, 8-byte cells) =="
-cc -O2 -Wall -o relf cv8.c
+echo "== Building relf (native, $NATIVE_BYTES-byte cells) =="
+# ${CC} rather than a bare `cc`, so a 64-bit machine can be told to
+# build and test as a 32-bit one: CC='cc -m32 -fno-pie -no-pie'
+# HOSTBITS=32 tests/run_tests.sh (Iteration 398).
+${CC:-cc} -O2 -Wall -o relf cv8.c
 # The compare-on-every-push build, for a target without an MMU, is not
 # what runs here - so check at least that it still compiles cleanly.
-cc -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard cv8.c
+${CC:-cc} -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard cv8.c
 rm -f /tmp/relf-noguard
 
-echo "== Cross-compiling an 8-byte-cell target image =="
+# The native half: cross-compile the host's own image, check it is the
+# one committed, and run everything against it. The labels stay
+# width-based, because that is what they measure and what tests/verify
+# reads (Iteration 398).
+echo "== Cross-compiling a $NATIVE_BYTES-byte-cell target image =="
 # Regenerated BEFORE the suites, so the tests below run against an
 # image built from the sources in the tree rather than against a
 # committed binary that may no longer match them.
-cross_compile_image 8 /tmp/relf-regen-kernel.img "8-byte cells"
-check_image_reproduces /tmp/relf-regen-kernel.img kernel.img "8-byte cells"
+cross_compile_image "$NATIVE_BYTES" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+check_image_reproduces /tmp/relf-regen-native.img "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
 
-echo "== Running test suite (8-byte cells) =="
-run_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
-run_ext_suites ./relf /tmp/relf-regen-kernel.img "8-byte cells"
-run_io_suite ./relf /tmp/relf-regen-kernel.img "8-byte cells"
-run_shell_test_suite relf kernel.img "8-byte cells"
+echo "== Running test suite ($NATIVE_BYTES-byte cells) =="
+run_suite ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_ext_suites ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_io_suite ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_shell_test_suite relf "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
+
+# RUNNING the other width needs an engine for it: on a 64-bit host the
+# -m32 cross build, on a 32-bit host nothing at all. Its IMAGE can still
+# be cross-compiled and checked either way - cross.4 targets either
+# width - which on a 32-bit host is the only thing that can be said
+# about the 8-byte side.
+if [ "$HOSTBITS" = 32 ]; then
+    echo "== Cross-compiling a $OTHER_BYTES-byte-cell target image =="
+    cross_compile_image "$OTHER_BYTES" /tmp/relf-regen-other.img "$OTHER_BYTES-byte cells"
+    check_image_reproduces /tmp/relf-regen-other.img "$OTHER_IMG" "$OTHER_BYTES-byte cells"
+    echo "SKIP: this host is 32-bit, so the 8-byte half cannot be run here"
+    echo "      (its image was cross-compiled and checked just above)"
+else
 
 echo "== Building relf32 (i386, 4-byte cells) =="
 if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c 2>/tmp/relf32_build.log; then
@@ -266,6 +303,7 @@ else
     run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
     fi
 fi
+fi   # HOSTBITS
 
 # ------------------------------------------------------------------
 # Size report. Tracked deliberately, not decoratively: shell.4 is going

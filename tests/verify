@@ -122,25 +122,36 @@ fi
 # 2. Core, shell and differential suites, both cell widths.
 # ---------------------------------------------------------------
 echo "== core, shell, differential =="
-emit core:8byte  "$(grep -c 'PASS (8-byte cells):' /tmp/verify-run.log)"
-emit shell:8byte "$(grep -c 'PASS (8-byte cells shell' /tmp/verify-run.log)"
+width_state() {  # width_state WIDTH-LABEL MARKER-PATTERN
+    # A half that was skipped reports `skipped`, not 0: on a 32-bit host
+    # the 8-byte half cannot run at all, and on a host without a 32-bit
+    # toolchain the 4-byte half cannot. Either is a fact about the
+    # machine (Iterations 394, 398). The marker patterns tolerate the
+    # `, i386` the CROSS build adds, since the same width is native
+    # elsewhere.
+    if grep -q "SKIP: .*$1" /tmp/verify-run.log ||
+       grep -q 'SKIP: gcc -m32 not available' /tmp/verify-run.log ||
+       grep -q 'SKIP: the i386 engine cannot run here' /tmp/verify-run.log ||
+       grep -q 'SKIP: this host is 32-bit' /tmp/verify-run.log; then
+        case $1 in
+            '8-byte cells') grep -q 'SKIP: this host is 32-bit' /tmp/verify-run.log && { echo skipped; return; } ;;
+            '4-byte cells') grep -qE 'SKIP: (gcc -m32|the i386 engine)' /tmp/verify-run.log && { echo skipped; return; } ;;
+        esac
+    fi
+    grep -c "$2" /tmp/verify-run.log
+}
+
+emit core:8byte  "$(width_state '8-byte cells' 'PASS (8-byte cells):')"
+emit shell:8byte "$(width_state '8-byte cells' 'PASS (8-byte cells shell')"
 # A host without a 32-bit toolchain skips the i386 half, and that is a
 # property of the machine rather than of this shell: `skipped` says so,
 # where a bare 0 looked like a failure (Iteration 394).
-i386_state() {   # i386_state MARKER
-    if grep -q 'SKIP: gcc -m32 not available' /tmp/verify-run.log ||
-       grep -q 'SKIP: the i386 engine cannot run here' /tmp/verify-run.log; then
-        echo skipped
-    else
-        grep -c "$1" /tmp/verify-run.log
-    fi
-}
-emit core:4byte  "$(i386_state 'PASS (4-byte cells, i386):')"
-emit shell:4byte "$(i386_state 'PASS (4-byte cells, i386 shell')"
-emit ext:8byte    "$(grep -c 'PASS (8-byte cells extension suites)' /tmp/verify-run.log)"
-emit ext:4byte    "$(i386_state 'PASS (4-byte cells, i386 extension suites)')"
-emit io:8byte     "$(grep -c 'PASS (8-byte cells I/O suite)' /tmp/verify-run.log)"
-emit io:4byte     "$(i386_state 'PASS (4-byte cells, i386 I/O suite)')"
+emit core:4byte  "$(width_state '4-byte cells' 'PASS (4-byte cells\(, i386\)\?):')"
+emit shell:4byte "$(width_state '4-byte cells' 'PASS (4-byte cells\(, i386\)\? shell')"
+emit ext:8byte    "$(width_state '8-byte cells' 'PASS (8-byte cells extension suites)')"
+emit ext:4byte    "$(width_state '4-byte cells' 'PASS (4-byte cells\(, i386\)\? extension suites)')"
+emit io:8byte     "$(width_state '8-byte cells' 'PASS (8-byte cells I/O suite)')"
+emit io:4byte     "$(width_state '4-byte cells' 'PASS (4-byte cells\(, i386\)\? I/O suite)')"
 emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1)"
 # Both base images are now regenerated from cross.4 + kernel.4 on every
 # run and compared against the committed artifacts. The 8-byte one is
@@ -149,8 +160,8 @@ emit core:okmarkers "$(sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /t
 # it before Iteration 155, so "cross.4 still produces what we ship" was
 # unverified for the width the project develops on - the width the
 # engine work is about to change.
-emit image:8byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
-emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells, i386): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
+emit image:8byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
+emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
 emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"
@@ -225,7 +236,11 @@ emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-sh
 # Shebangs against interpreters, the locale pins, and the bundle. Two
 # reports from a real checkout found faults here that no suite watched.
 echo "== the scaffolding ==" >&2
-emit portability:problems "$(sh tests/portability 2>/dev/null | awk '/^portability:/ {print $4+0}')"
+sh tests/portability > /tmp/verify-portability.log 2>&1 || true
+emit portability:problems "$(awk '/^portability:/ {print $4+0}' /tmp/verify-portability.log)"
+# The count alone is no use from another machine: a report saying
+# `portability:problems 1` names nothing (Iteration 398).
+grep -i 'PROBLEM' /tmp/verify-portability.log | sed 's/^/  portability: /' >&2 || true
 
 # Which compiler produced the binaries whose sizes are recorded below.
 # The size lines mean nothing across toolchains, and this is how the

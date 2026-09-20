@@ -38,7 +38,16 @@ assert_output_contains "a too-long alias value is reported" "value too long" "$o
 # ran `0 1 ?DO` and crashed). Since Iteration 318 the shell sets PPID at
 # startup, so the table is never quite empty; the point of the case is
 # that `set` survives a table of one.
-out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+# `env -i` is the point of the case - an almost empty variable table -
+# but it also wipes RELF_BIN and RELF_IMG, which are how the suite says
+# WHICH engine and image to test. Without them this ran the native pair
+# while claiming to test the other width (Iteration 398).
+if [ -n "${RELF_BIN:-}" ]; then
+    out=$(env -i RELF_BIN="$RELF_BIN" RELF_IMG="${RELF_IMG:-}" \
+          "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+else
+    out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+fi
 assert_output_equals "set with an almost empty table" "st=0" "$out"
 
 report

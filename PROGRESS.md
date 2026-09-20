@@ -393,6 +393,7 @@ do not trust the absence of a line below.
 - **395** — a test that asserted the machine's HOME
 - **396** — a loader message inside the test output
 - **397** — a 32-bit HOST, where kernel.img is the wrong image
+- **398** — the core suite on a 32-bit host: native and other, not 8 and 4
 
 ### Not tied to an iteration
 
@@ -20279,3 +20280,39 @@ only where the value fits, GOALS.md records the limitation, and the fix
 done.
 
 tests/verify: sizes.
+
+## Iteration 398: native and other, not 8 and 4
+
+The ARMv7 board got as far as
+
+    == Building relf (default, 8-byte cells) ==
+    == Cross-compiling an 8-byte-cell target image ==
+
+and stopped. `tests/run_tests.sh` had the same assumption 397 took out
+of the Makefile: that the host is 64-bit, that its image is
+`kernel.img`, and that the 4-byte build is the second, cross-built half.
+On a 32-bit host every one of those is the other way round.
+
+It runs the NATIVE width now, whatever that is: cross-compile the host's
+own image, check it is the one committed, run everything against it.
+The other width's IMAGE is still cross-compiled and checked - cross.4
+targets either width from either host - and only RUNNING it needs an
+engine that exists. On a 32-bit host that is nothing, and the 8-byte
+half is skipped with a reason.
+
+`tests/verify` reads the same markers, so it became width-based too:
+`PASS (4-byte cells...` matches whether or not the cross build's
+`, i386` is there, and a half that was skipped reports `skipped` rather
+than 0.
+
+**And `CC` is honoured**, which made this testable here: `CC='cc -m32
+-fno-pie -no-pie' HOSTBITS=32 tests/run_tests.sh` is a 64-bit machine
+rehearsing an ARMv7 one. The rehearsal found its own bug immediately -
+a case that runs the shell under `env -i`, which wipes `RELF_BIN` and
+`RELF_IMG` and so quietly tested the native pair while claiming to test
+the other width.
+
+**One more from that report**: `portability:problems 1` names nothing
+from another machine, so `tests/verify` prints the failing check.
+
+tests/verify: the 4-byte and 8-byte keys may now read `skipped`.

@@ -81,6 +81,15 @@ mysteriously. Nothing else about the environment should matter:
 `make portability` runs the whole shell suite again with a foreign
 `HOME`, `USER` and `TERM` and requires the same result.
 
+## Pretending to be a 32-bit machine
+
+    CC='cc -m32 -fno-pie -no-pie' HOSTBITS=32 make verify
+
+builds and tests as a 32-bit host would - native 4-byte engine, 4-byte
+image, no cross half. On a 64-bit machine with `gcc-multilib` that is a
+faithful rehearsal of an ARMv7 board, and it is how the 32-bit support
+here was written.
+
 ## On a 32-bit machine
 
 A cell is a pointer, so the native engine on ARMv7 or i386 runs the
