@@ -231,8 +231,8 @@ emit size:i386   "$(echo "$S" | awk '/^== i386/{s=1} /^== not a shell/{s=0} s &&
 # The parts separately (Iteration 272): the totals above move in 4 KB
 # steps whenever the stripped engine crosses a page, which hides what
 # changed. The engine's code (size's text), and each shell image.
-emit size:engine-code-x86_64 "$(size relf 2>/dev/null | awk 'NR==2 {print $1}')"
-emit size:engine-code-i386   "$(size relf32 2>/dev/null | awk 'NR==2 {print $1}' || true)"
+emit size:engine-code-x86_64 "$([ -x relf ] && size relf 2>/dev/null | awk 'NR==2 {print $1}' || echo missing)"
+emit size:engine-code-i386   "$([ -x relf32 ] && size relf32 2>/dev/null | awk 'NR==2 {print $1}' || echo missing)"
 emit size:image-x86_64       "$([ -f kernel-shell.img ] && wc -c < kernel-shell.img | tr -d ' ' || echo missing)"
 # `missing` rather than a shell error on stderr and an empty value: the
 # i386 half is skipped wherever there is no 32-bit toolchain, and that

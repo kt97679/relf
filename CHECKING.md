@@ -70,6 +70,15 @@ terminal that never answers, and a loader message on every exec.
 proves it by running one of them with a hostile preload and in a second
 locale.
 
+## After a pull
+
+    make
+
+The engines are build products and are not in the repository - 40 KB of
+C through `cc`. `make` builds them, and rebuilds them when `uname -m`
+changes, so a checkout copied or shared between machines cannot end up
+exec'ing a binary for the wrong architecture. `make clean` removes them.
+
 ## A prompt through the environment
 
     PS1='[mine] ' relfsh          # works where /bin/sh is dash

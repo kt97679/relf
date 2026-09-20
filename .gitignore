@@ -7,3 +7,10 @@ FATEST2.TXT
 
 # written by `make`: which image the native engine runs (Iteration 397)
 .relf-native-img
+
+# The engines are build products - 40 KB of C through cc. They were
+# TRACKED until Iteration 402, which put an x86-64 binary in an ARMv7
+# checkout, where `make` saw a file newer than cv8.c and used it:
+#   ./relfsh: line 144: relf: cannot execute binary file: Exec format error
+relf
+relf32

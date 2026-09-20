@@ -397,6 +397,7 @@ do not trust the absence of a line below.
 - **399** — a machine with no dash: four suites that assumed one
 - **400** — bash clears PS1, so the wrapper never sees it
 - **401** — the most negative cell, printed backwards through memory
+- **402** — the engines leave the repository
 
 ### Not tied to an iteration
 
@@ -20443,3 +20444,35 @@ bug was reachable on 8-byte cells all along - it took a machine with a
 narrower cell to make the same mistake cheap enough to hit.
 
 tests/verify: three new assertions.
+
+## Iteration 402: the engines leave the repository
+
+    make clean && make verify
+    ./relfsh: line 144: /home/kvt/relf/relf: cannot execute binary file:
+        Exec format error
+
+`relf` and `relf32` were TRACKED. A pull put an x86-64 binary into an
+ARMv7 checkout, with a fresh mtime, so `make` saw a file newer than
+cv8.c, decided it was up to date, and handed it to the kernel.
+
+They are build products: forty kilobytes of C through `cc`. They are out
+of the repository now, in `.gitignore`, and removed by `make clean`.
+The four `.img` files stay, because an image can only be cross-compiled
+by an image - the bootstrap needs one to exist - and an image is
+architecture-independent, which is the whole point of the CV8 encoding.
+
+**And `make` rebuilds an engine when the MACHINE changes**, not only
+when the source does: `.relf-arch` holds `uname -m`, and a difference
+forces the rebuild. That covers the checkout someone already has, a
+shared NFS home, or a directory copied between machines - all of which
+look, to make, like a binary newer than its source.
+
+Two smaller things followed: `tests/sizes` measures the i386 engine only
+where there is one, rather than whatever foreign binary is lying about,
+and `tests/verify` reports `missing` for an absent engine. That ARMv7
+report had `size:engine-code-i386 18665` marked `ok` - the x86 number,
+read off the committed x86 binary, on a board that cannot run it. A
+measurement that agrees for the wrong reason is worse than one that
+disagrees.
+
+tests/verify: `size:engine-code-*` may now read `missing`.

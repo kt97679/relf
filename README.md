@@ -33,6 +33,11 @@ the C locale's behaviour. The test suites pin `LC_ALL=C` for that reason
 - a differential suite compares two shells, and in a UTF-8 locale the
 reference sorts `ZZ a1 b2` differently and `[a-z]` can match `Z`.
 
+The engines are not committed - they are build products, and a binary
+for one architecture in a checkout on another is a trap rather than a
+convenience. The four `.img` files ARE committed: an image can only be
+cross-compiled by an image, so the bootstrap needs one to exist.
+
 or `make`, which builds both engines and both shell images and is the
 index of everything else this project does - `make help` lists the
 targets, `make verify` runs every suite against tests/BASELINE. What

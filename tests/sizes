@@ -122,7 +122,15 @@ done
 
 # ---------------- 32-bit ----------------
 header "i386 (4-byte cells)"
+# Only where there IS an i386 engine. It is a build product since
+# Iteration 402, so on a machine that never built one - an ARMv7 board,
+# say - there is nothing to measure, and measuring a foreign binary
+# that happened to be lying around is worse than saying so.
+if [ -x relf32 ] && [ -f kernel32-shell.img ]; then
 ours relf32 kernel32-shell.img "shell.4"
+else
+echo "   (no i386 engine here - skipped)"
+fi
 found=0
 for f in build/shells-i386/*; do
     [ -e "$f" ] || continue

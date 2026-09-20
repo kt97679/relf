@@ -103,10 +103,20 @@ endif
 .relf-native-img: Makefile
 	@echo $(NATIVE_IMG) > $@
 
-relf: cv8.c
+# Rebuilt when the machine changes as well as when the source does. A
+# binary from another architecture is newer than cv8.c and looks up to
+# date, which is how an x86-64 engine ended up being exec'd on an ARMv7
+# board (Iteration 402). The stamp holds `uname -m`.
+HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
+
+.PHONY: force-arch-check
+.relf-arch: force-arch-check
+	@printf '%s\n' '$(HOSTARCH)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(HOSTARCH)' > $@
+
+relf: cv8.c .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 
-relf32: cv8.c
+relf32: cv8.c .relf-arch
 	$(CC) $(CFLAGS32) -o $@ $<
 
 # ------------------------------------------------------------------
@@ -258,6 +268,11 @@ bundle:
 clean:
 	@rm -f *.o core boot.log
 	@rm -rf build
+
+# The engines go with `clean` now that they are build products rather
+# than tracked files: on a machine where the last build was for another
+# architecture, keeping them is the fault above (Iteration 402).
+	@rm -f relf relf32 .relf-arch .relf-native-img
 
 distclean: clean
 	@rm -f kernel-shell.img kernel32-shell.img
