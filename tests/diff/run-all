@@ -27,6 +27,13 @@ REF_SH="${REF_SH:-/bin/bash}"
 # (Iteration 390, reported from a user's machine).
 LC_ALL=C
 # The suite's own stdin is closed: a case that runs this shell without
+# A preload library the loader cannot use prints a line to stderr on
+# every exec - Ubuntu and Mint set one system-wide (libgtk3-nocsd), and
+# it cannot be loaded into the 32-bit engine at all. The tests capture
+# stderr, so that line became part of what they compared, and every
+# i386 assertion failed with the right answer one line down
+# (Iteration 396). No test here wants a preload.
+unset LD_PRELOAD
 # redirecting stdin would otherwise inherit the TERMINAL and wait there
 # for ever - which is what `make verify` did on a real checkout, while
 # in a container, where stdin is /dev/null, it had never once hung

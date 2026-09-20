@@ -39,6 +39,13 @@ exec < /dev/null
 # (Iterations 390 and 393).
 LC_ALL=C
 export LC_ALL
+# A preload library the loader cannot use prints a line to stderr on
+# every exec - Ubuntu and Mint set one system-wide (libgtk3-nocsd), and
+# it cannot be loaded into the 32-bit engine at all. The tests capture
+# stderr, so that line became part of what they compared, and every
+# i386 assertion failed with the right answer one line down
+# (Iteration 396). No test here wants a preload.
+unset LD_PRELOAD
 cd "$(dirname "$0")/.." || exit 1
 BASE=tests/BASELINE
 UPDATE=0
@@ -225,6 +232,13 @@ emit portability:problems "$(sh tests/portability 2>/dev/null | awk '/^portabili
 # comparison knows (Iteration 393).
 CC_ID=$(${CC:-cc} --version 2>/dev/null | head -1)
 emit toolchain:cc "$CC_ID"
+# The flags matter as much as the compiler: a checkout reported a binary
+# 35 KB larger with the SAME compiler string and the same `size` output
+# for its code, which is what an exported CFLAGS - or a distribution's
+# default hardening - does. Recorded so the size lines can tell "this
+# project changed" from "this machine builds differently"
+# (Iteration 396).
+emit toolchain:cflags "${CFLAGS:-<unset>}"
 
 # ---------------------------------------------------------------
 # The deliverable itself (Iteration 369)
@@ -276,10 +290,17 @@ fi
 machine_dependent() {
     case $1 in
         size:*)
-            [ "$CC_ID" = "$(awk '$1=="toolchain:cc" {sub(/^toolchain:cc /,""); print}' "$BASE")" ] && return 1
+            [ "$CC_ID" = "$(awk '$1=="toolchain:cc" {sub(/^toolchain:cc /,""); print}' "$BASE")" ] &&
+            [ "${CFLAGS:-<unset>}" = "$(awk '$1=="toolchain:cflags" {sub(/^toolchain:cflags /,""); print}' "$BASE")" ] &&
+            return 1
             return 0 ;;
-        posix:inconclusive|matrix:inconclusive) return 0 ;;
-        toolchain:cc) return 0 ;;
+        # `passed` is `cases` minus `inconclusive` minus `failed`, and
+        # the first two of those are already compared - strictly for
+        # cases and failed, not at all for inconclusive, which counts
+        # what the REFERENCE shells disagree about. Comparing `passed`
+        # as well just repeats the machine's answer (Iteration 396).
+        posix:inconclusive|matrix:inconclusive|posix:passed) return 0 ;;
+        toolchain:cc|toolchain:cflags) return 0 ;;
         # `skipped` and `missing` are what a host without a 32-bit
         # toolchain reports; they are facts about the host.
         *) if [ "$2" = skipped ] || [ "$2" = missing ]; then return 0; fi

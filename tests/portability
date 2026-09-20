@@ -14,6 +14,13 @@
 # shell, so nothing was watching them. This is what watches them.
 #
 # Prints one line per check and a count; exits non-zero if any failed.
+# A preload library the loader cannot use prints a line to stderr on
+# every exec - Ubuntu and Mint set one system-wide (libgtk3-nocsd), and
+# it cannot be loaded into the 32-bit engine at all. The tests capture
+# stderr, so that line became part of what they compared, and every
+# i386 assertion failed with the right answer one line down
+# (Iteration 396). No test here wants a preload.
+unset LD_PRELOAD
 cd "$(dirname "$0")/.." || exit 2
 problems=0
 checked=0
@@ -159,7 +166,25 @@ for f in tests/diff/run-all tests/matrix/run tests/shell/run-all \
     else
         bad "$f" "compares two shells without pinning LC_ALL"
     fi
+    # A preload the loader cannot use writes to stderr on every exec,
+    # and these suites capture stderr (Iteration 396).
+    if grep -q '^unset LD_PRELOAD' "$f"; then
+        ok "$f clears LD_PRELOAD"
+    else
+        bad "$f" "captures stderr without clearing LD_PRELOAD"
+    fi
 done
+
+# ... and the suite survives one being set, which is the point.
+if [ -x ./relfsh ] && [ -f /tmp/relf-preload-probe.so ]; then
+    a=$(sh tests/diff/run-all 2>&1 | tail -1)
+    b=$(LD_PRELOAD=/tmp/relf-preload-probe.so sh tests/diff/run-all 2>&1 | tail -1)
+    if [ "$a" = "$b" ]; then
+        ok "the differential suite ignores a hostile LD_PRELOAD"
+    else
+        bad "LD_PRELOAD" "clean '$a', preloaded '$b'"
+    fi
+fi
 
 # ------------------------------------------------------------------
 # 4. The differential suite gives the same answer in another locale.

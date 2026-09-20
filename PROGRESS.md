@@ -391,6 +391,7 @@ do not trust the absence of a line below.
 - **393** — a baseline that travels: machine-dependent lines, and the locale everywhere
 - **394** — a suite that died silently; and the i386 half as a host fact
 - **395** — a test that asserted the machine's HOME
+- **396** — a loader message inside the test output
 
 ### Not tied to an iteration
 
@@ -20206,3 +20207,40 @@ has not been wrong once in this sequence - the harness around it has
 been wrong five times, and only because someone ran it somewhere else.
 
 tests/verify: sizes.
+
+## Iteration 396: the third thing a machine holds
+
+The i386 half ran for the first time on that checkout, and 17 of its
+test files failed with the right answer one line down:
+
+    expected exactly:
+        u=rwx,g=,o=
+    actual:
+        ERROR: ld.so: object 'libgtk3-nocsd.so.0' from LD_PRELOAD cannot
+        be preloaded (cannot open shared object file): ignored.
+        u=rwx,g=,o=
+
+Ubuntu and Mint set that preload system-wide. It cannot be loaded into a
+32-bit process at all, so the loader says so on every exec - and these
+tests capture stderr, so the message became part of what they compared.
+Iteration 389 cleared `LD_PRELOAD` for the i386 image build and stopped
+there; the tests needed it more.
+
+Every suite unsets it now, beside the locale pin and the closed stdin.
+Those three are the same kind of thing: something a machine can hold
+that changes what a test SEES rather than what the shell DOES.
+`tests/portability` checks all three in every suite, and proves the
+preload one by running the differential suite with a hostile preload set
+- reproduced here with a 64-bit stub, which fails to load into the i386
+engine exactly as theirs does.
+
+**Two report lines that were noise are now labelled as such.**
+`posix:passed` is `cases` minus `inconclusive` minus `failed`, and the
+middle term counts what the REFERENCE shells disagree about - so
+comparing `passed` just repeats the machine's answer. And the size gate
+now includes `CFLAGS`: that checkout had the same compiler string, the
+same `size` output for the engine's code, and a binary 35 KB larger,
+which is what an exported CFLAGS or a distribution's hardening default
+does.
+
+tests/verify: a new key, `toolchain:cflags`.

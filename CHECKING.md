@@ -60,6 +60,16 @@ always compares is what depends on the CODE: every suite's pass and fail
 counts, the dead-word count, both image fixpoints, and whether the
 bundle can be cloned.
 
+## What the suites take out of your environment
+
+Before running anything they set `LC_ALL=C`, close their own stdin and
+`unset LD_PRELOAD`. All three are things a machine can hold that change
+what a test sees rather than what the shell does: a collation order, a
+terminal that never answers, and a loader message on every exec.
+`make portability` checks that each suite does all three, and then
+proves it by running one of them with a hostile preload and in a second
+locale.
+
 ## What the suites assume about your machine
 
     /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh

@@ -51,6 +51,13 @@ exec < /dev/null
 # (Iterations 390 and 393).
 LC_ALL=C
 export LC_ALL
+# A preload library the loader cannot use prints a line to stderr on
+# every exec - Ubuntu and Mint set one system-wide (libgtk3-nocsd), and
+# it cannot be loaded into the 32-bit engine at all. The tests capture
+# stderr, so that line became part of what they compared, and every
+# i386 assertion failed with the right answer one line down
+# (Iteration 396). No test here wants a preload.
+unset LD_PRELOAD
 
 TESTFILES=(tester.fr)
 for f in tests/*.fth; do
