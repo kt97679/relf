@@ -49,12 +49,23 @@ assert_output_equals "a lone -- ends the options" "[-x]" \
 # command substitutions and arithmetic. bash's own escapes - \u, \h,
 # \w, \[ - are bash's, and are left alone here as they are by dash
 # (Iteration 389).
+# PS1 is set INSIDE the shell rather than handed to it in the
+# environment, and the LAST prompt is the one checked - the first is
+# written before the assignment runs. Passing it in the environment
+# works only where /bin/sh is dash: bash, running a non-interactive
+# script, clears PS1 before exec'ing anything, so the wrapper lost it on
+# a Gentoo box and this shell printed its default (Iteration 400).
+last_prompt() {   # the prompts after the assignment, default one removed
+    # The first prompt is written before the assignment runs, so it is
+    # the shell's default `$ `; everything after it is what PS1 made.
+    printf '%s\nexit\n' "$1" | "$SH" -i 2>&1 >/dev/null | sed 's/^\$ //'
+}
 assert_output_equals "PS1 expands a command substitution" "[S] " \
-  "$(printf 'exit\n' | PS1='[$(echo S)] ' "$SH" -i 2>&1 >/dev/null)"
+  "$(last_prompt "PS1='[\$(echo S)] '")"
 assert_output_equals "PS1 expands parameters and arithmetic" "d5 " \
-  "$(printf 'exit\n' | PS1='${x-d}$((2+3)) ' "$SH" -i 2>&1 >/dev/null)"
-assert_output_equals "PS1 leaves bash's escapes alone" '\\u@\\h ' \
-  "$(printf 'exit\n' | PS1='\\u@\\h ' "$SH" -i 2>&1 >/dev/null)"
+  "$(last_prompt "PS1='\${x-d}\$((2+3)) '")"
+assert_output_equals "PS1 leaves bash's escapes alone" '\u@\h ' \
+  "$(last_prompt 'PS1='"'"'\u@\h '"'"'')"
 assert_output_equals "a continued line still parses with a live PS2" "[a
 b]" \
   "$(printf 'x="a\nb"\necho "[$x]"\n' | PS2='p$(echo Q)> ' "$SH" -i 2>/dev/null)"

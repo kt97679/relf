@@ -179,7 +179,11 @@ emit posix:failed       "$(echo "$P" | cut -d' ' -f2)"
 emit posix:inconclusive "$(echo "$P" | cut -d' ' -f3)"
 
 echo "== interactive (a pseudo-terminal) =="
-I=$(sh tests/interactive/run 2>&1 | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) known-divergent.*/\1 \2 \3/p')
+IOUT=$(sh tests/interactive/run 2>&1)
+I=$(echo "$IOUT" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) known-divergent.*/\1 \2 \3/p')
+# Which pty cases failed, and what they saw: a count alone says nothing
+# from a machine I cannot look at (Iteration 400).
+echo "$IOUT" | grep -A2 '^FAIL' | sed 's/^/  interactive: /' >&2 || true
 emit interactive:passed    "$(echo "$I" | cut -d' ' -f1)"
 emit interactive:failed    "$(echo "$I" | cut -d' ' -f2)"
 emit interactive:divergent "$(echo "$I" | cut -d' ' -f3)"

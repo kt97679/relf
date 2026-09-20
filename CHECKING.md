@@ -70,6 +70,18 @@ terminal that never answers, and a loader message on every exec.
 proves it by running one of them with a hostile preload and in a second
 locale.
 
+## A prompt through the environment
+
+    PS1='[mine] ' relfsh          # works where /bin/sh is dash
+                                  # does nothing where it is bash
+
+`relfsh` is a `#!/bin/sh` script, and **bash, running a non-interactive
+script, clears PS1 from the environment** before exec'ing anything. On
+Debian and Ubuntu `/bin/sh` is dash and the prompt arrives; on Gentoo,
+Arch and Fedora it is bash and it does not. Set it inside the shell
+instead - `PS1='[mine] '` at the prompt, or in the file `$ENV` names -
+which works everywhere.
+
 ## Reference shells
 
 The differential suite compares against `bash`; the matrix uses `bash`

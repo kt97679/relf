@@ -395,6 +395,7 @@ do not trust the absence of a line below.
 - **397** — a 32-bit HOST, where kernel.img is the wrong image
 - **398** — the core suite on a 32-bit host: native and other, not 8 and 4
 - **399** — a machine with no dash: four suites that assumed one
+- **400** — bash clears PS1, so the wrapper never sees it
 
 ### Not tied to an iteration
 
@@ -20356,3 +20357,43 @@ that assumes the machine has what this one has. dash, a fast processor,
 two reference shells.
 
 tests/verify: a new key, `matrix:refs`.
+
+## Iteration 400: bash clears PS1
+
+The failure detail arrived and named it exactly:
+
+    FAIL: PS1 expands a command substitution
+      expected exactly:
+        [S] 
+      actual:
+        $ 
+
+Not a wrong expansion - the default prompt. PS1 never reached the shell
+at all. The test hands it over in the environment:
+
+    PS1='[$(echo S)] ' "$SH" -i
+
+and `$SH` is `relfsh`, a `#!/bin/sh` script. **bash, running a
+non-interactive script, clears PS1 from its environment**, so on a
+machine where /bin/sh is bash the wrapper execs the engine without it.
+On Debian and Ubuntu /bin/sh is dash, which keeps it - which is why
+this passed here and on the first reporter's machine, and failed on a
+Gentoo board.
+
+The test sets PS1 INSIDE the shell now and reads the prompt after the
+assignment, which works whatever /bin/sh is. And the behaviour itself is
+worth knowing rather than fixing: a wrapper script cannot recover a
+variable its interpreter removed before it started. CHECKING.md says so
+where someone whose prompt does not arrive will find it.
+
+**And the interactive failures get their detail too.** That suite
+reported `interactive:failed 3` and nothing else; `tests/verify` prints
+the failing cases and what they saw, like the shell suite's.
+
+This is the seventh fault this sequence has found, and the seventh that
+is not in the shell. The pattern by now is unmistakable: everything that
+broke was something the harness ASSUMED about the machine - its /bin/sh,
+its locale, its terminal, its compiler, its HOME, its preload, its
+reference shells, its clock.
+
+tests/verify: sizes.
