@@ -1038,8 +1038,6 @@ NAME-TABLE-FILL
   \ realistic script's dispatches (Iteration 365).
   255 AND NAME-CHAR-TABLE + C@ 0<> ;
 
-24 BUFFER: DIGIT-BUF
-VARIABLE DIGIT-N
 
 : EMIT-DECIMAL ( n --- )
   \ Appends n's decimal digits via EMIT-TOK-CHAR (used for $? and $$).
@@ -1995,15 +1993,12 @@ VARIABLE AE-BIT-C
 VARIABLE AE-EVAL-LEN
 
 24 BUFFER: AE-NUMBUF
-VARIABLE ANS-I
-VARIABLE ANS-N
 64 BUFFER: AE-ASGN-NAME
 VARIABLE AE-ASGN-OP
 VARIABLE AE-SAVE-POS
 VARIABLE AE-ASGN-C
 VARIABLE AE-SLOT
 
-VARIABLE ANS-NEG
 
 : N>STR ( n --- c-addr )
   \ The same double-cell conversion as EMIT-DECIMAL, for the same

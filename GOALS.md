@@ -118,6 +118,21 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
+## Open: the WIDENING cross-compile (Iteration 403)
+
+Cross-compiling the 8-byte image from a 4-byte host - an ARMv7 board
+building the 64-bit image - does not yet reproduce the committed one.
+Two causes are fixed: `!-T` and `@-T` shifted by up to 56 bits on a
+32-bit host, which is undefined and filled the high halves with
+whatever the compiler chose, and `HDR,` wrote the host's cell into an
+8-byte field and emitted the bytes the PREVIOUS field had left beyond
+it. With both fixed the header is byte-for-byte right and the image is
+still **16 bytes larger**, with every thread head shifted by 16 - so
+something in the layout still depends on the host's cell width rather
+than the target's. The narrowing direction (8-byte host, 4-byte target)
+reproduces exactly, which is why this went unnoticed: nobody had ever
+built the wide image from a narrow machine.
+
 ## Known limits of the 4-byte-cell build (Iteration 397)
 
 A limit, a file size or an arithmetic value that does not fit a CELL

@@ -17,6 +17,14 @@ echo A9 $((n+=1)) $n $((n-=2)) $n $((n*=3)) $n
 echo A10 $((n/=2)) $n $((n%=4)) $n
 echo A11 $((1,2)) $((z=5)) $z
 echo A12 $(( +5 )) $(( - -5 )) $(( !!5 ))
-echo A13 $((2147483647+1)) $((-2147483648-1))
+# A13 asked what happens one past 2^31, which is a question about the
+# CELL rather than about arithmetic: an 8-byte build answers
+# 2147483648, a 4-byte build wraps, and both are right for their width
+# (Iteration 403 - an ARMv7 board). Asked of the shell's own boundary
+# instead, so the answer is the same everywhere: one past the largest
+# value is negative, and one before the smallest is positive.
+big=1; while [ $((big*2)) -gt 0 ]; do big=$((big*2)); done
+echo A13 $([ $((big*2-1+1)) -lt 0 ] && echo wraps-negative) \
+        $([ $((0-big*2+1-1)) -gt 0 ] && echo wraps-positive)
 echo A14 "$((1+1))" '$((1+1))'
 echo A15 $((1/0)) "rc=$?" 2>/dev/null

@@ -76,11 +76,16 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
 \ often enough, from enough different contexts, that avoiding DO/LOOP's
 \ own return-stack usage entirely was the safer fix.
 : @-T  ( t-addr --- x)
+  \ ... and the same on the way back: a byte beyond the host's cell has
+  \ nowhere to go, so it is read past rather than shifted into
+  \ nothing (Iteration 403).
   0 0
   BEGIN
     DUP TARGET-CELL-BYTES @ <
   WHILE
-    >R OVER R@ CHARS + C@-T R@ 8 * LSHIFT OR R> 1+
+    >R
+    R@ 1 CELLS < IF OVER R@ CHARS + C@-T R@ 8 * LSHIFT OR THEN
+    R> 1+
   REPEAT
   DROP SWAP DROP
   \ Sign-extend when the target cell is narrower than this host's own
@@ -98,11 +103,19 @@ CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
     THEN
   THEN ;
 : !-T  ( x t-addr ---)
+  \ A byte beyond the HOST's own cell cannot be shifted out of x: the
+  \ shift count would reach the cell width, which is undefined, and on
+  \ a 4-byte host targeting 8 bytes it filled the high half with
+  \ whatever the compiler felt like. Those bytes are the sign
+  \ extension, which is what a wider target wants (Iteration 403 - an
+  \ ARMv7 board cross-compiling the 8-byte image).
   0
   BEGIN
     DUP TARGET-CELL-BYTES @ <
   WHILE
-    >R OVER R@ 8 * RSHIFT OVER R@ CHARS + C!-T R> 1+
+    >R
+    R@ 1 CELLS < IF OVER R@ 8 * RSHIFT ELSE OVER 0< IF 255 ELSE 0 THEN THEN
+    OVER R@ CHARS + C!-T R> 1+
   REPEAT
   DROP 2DROP ;
 
@@ -418,8 +431,17 @@ NO-PEEP-T
 CREATE IMAGE-HDR 8 ALLOT
 VARIABLE IMAGE-FID
 : HDR, ( x --- )
-\ Write one TARGET cell. The host cell is at least as wide and the
-\ host is little-endian, so its low bytes are the target cell.
+\ Write one TARGET cell, little-endian. The host cell is NOT always at
+\ least as wide - a 32-bit host can cross-compile the 8-byte image -
+\ and this wrote the host's cell into the buffer and then emitted
+\ TARGET-CELL-BYTES of it, so the bytes beyond the host's cell were
+\ whatever the previous header field had left there. The 8-byte image
+\ built on an ARMv7 board differed from the committed one in every
+\ header field's high half (Iteration 403). Filled with the sign
+\ first, which is what a wider target wants and what a same-width or
+\ narrower one overwrites anyway.
+  DUP 0< IF 255 ELSE 0 THEN >R
+  IMAGE-HDR TARGET-CELL-BYTES @ R> FILL
   IMAGE-HDR ! IMAGE-HDR TARGET-CELL-BYTES @ IMAGE-FID @ WRITE-FILE
   ABORT" Can't write file" ;
 

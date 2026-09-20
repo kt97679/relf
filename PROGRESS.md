@@ -398,6 +398,7 @@ do not trust the absence of a line below.
 - **400** — bash clears PS1, so the wrapper never sees it
 - **401** — the most negative cell, printed backwards through memory
 - **402** — the engines leave the repository
+- **403** — undefined shifts in the cross-compiler; and a dead-word regression
 
 ### Not tied to an iteration
 
@@ -20476,3 +20477,41 @@ measurement that agrees for the wrong reason is worse than one that
 disagrees.
 
 tests/verify: `size:engine-code-*` may now read `missing`.
+
+## Iteration 403: shifting by the width of the cell
+
+The board's remaining differential failure was not a bug: `$((2147483647+1))`
+is 2147483648 on an 8-byte build and wraps on a 4-byte one, and both are
+right. The case asks the shell for its own boundary now - `big=1; while
+[ $((big*2)) -gt 0 ]; do big=$((big*2)); done` - so it tests the same
+property at either width.
+
+**A dead-word regression of my own.** Iteration 401 replaced both
+number-to-text converters and left five variables behind; `verify
+--update` then recorded `shell:dead-words 5` as the new normal. The
+board's report is what showed it, marked `ok`. A baseline is only a
+check if what goes into it was looked at, and a count that was 0 for
+four hundred iterations becoming 5 deserved a glance.
+
+**And the widening cross-compile.** `IMAGE-FIXPOINT (8-byte cells):
+DIFFERS` on a 32-bit host - the first time anyone has built the 64-bit
+image from a 32-bit machine. Two real faults found and fixed:
+
+- `!-T` and `@-T` walk a target cell byte by byte with `x >> (i*8)`.
+  On a 4-byte host targeting 8 bytes, i reaches 7 and the shift count
+  reaches 56 - undefined for a 32-bit cell, and in practice the high
+  half came out as a copy of something else. Those bytes are the sign
+  extension, which is what a wider target wants.
+- `HDR,` said in its own comment "the host cell is at least as wide",
+  which is exactly the assumption that fails. It wrote the host's cell
+  into the buffer and emitted TARGET-CELL-BYTES of it, so the bytes
+  beyond the host's cell were whatever the PREVIOUS header field had
+  left there.
+
+With both fixed the header is byte-for-byte correct and the image is
+still 16 bytes larger, every thread head shifted by 16. Something in
+the layout still follows the host's width. That is written down in
+GOALS.md with what is known, rather than guessed at here.
+
+Both images still reproduce exactly from a 64-bit host: the guards only
+apply to bytes a narrow host cannot reach.
