@@ -579,3 +579,19 @@ wrapper rather than the usual relative one.
     before they were taken out, so a leading one stopped the count at
     zero and the first assignment became the command name.
     → `tests/diff/cases/assign-redirect-349.sh`
+
+## From yash's option tests (Iteration 386)
+
+80. **`set -b` / `set -o notify` exists.** POSIX lists it and every
+    reference shell has it; this shell refused it as an invalid option.
+    Accepted and reported in `$-` now, like `-m`: a finished job is
+    announced at the next prompt either way.
+    → `tests/shell/run-options`
+
+81. **`set -v` writes each line of input to standard error as the shell
+    reads it.** It was accepted, reported in `$-`, and did nothing.
+    Where it is printed matters: at the point the lexer crosses a
+    newline the command before it has not run yet, so `set -v` on the
+    first line would miss the second. Printing where the next COMMAND
+    is about to be parsed gives dash's order.
+    → `tests/diff/cases/verbose-386.sh`

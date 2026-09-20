@@ -381,6 +381,7 @@ do not trust the absence of a line below.
 - **383** — redirection errors on special builtins; yash's error suite complete
 - **384** — a Makefile, and the benchmark script moved into the tree
 - **385** — a redirection before the assignments
+- **386** — `set -b`, and `set -v` that actually does something
 
 ### Not tied to an iteration
 
@@ -19848,3 +19849,31 @@ paths.
 **yash's POSIX suite: 1641 to 1643 of 1731.** busybox holds at 212.
 
 tests/verify: sizes.
+
+## Iteration 386: two options, one of which was a decoration
+
+**`set -b` / `set -o notify`** was refused as an invalid option. POSIX
+lists it and every reference shell has it. It is accepted and reported
+in `$-` now, on the same terms as `-m`: this shell announces a finished
+job at the next prompt either way, so the option changes nothing it
+does - but a script that sets it no longer dies.
+
+**`set -v` was a decoration.** It was accepted, stored, and reported in
+`$-`, and nothing anywhere read the flag. It writes each line of input
+to standard error as the shell reads it now.
+
+Where the line is printed turned out to be the whole problem. The
+obvious place is where the lexer steps past a newline - and there, the
+command on the line before has not run yet, so `set -v` on the first
+line of a script misses the second. Printing where the next COMMAND is
+about to be parsed puts it after the previous line has executed, which
+is dash's order, and the two shells' stderr now matches line for line.
+
+An option that is stored and never read is worse than a missing one: it
+answers `$-` correctly, so nothing notices. This is the second decoration
+this corpus has found - `-s` in Iteration 375 was the first, and it was
+missing rather than inert.
+
+**yash's POSIX suite: 1643 to 1648 of 1731.** busybox holds at 212.
+
+tests/verify: a new differential case; sizes.

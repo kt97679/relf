@@ -1203,6 +1203,8 @@ VARIABLE OPT-NOCLOBBER \ set -C: `>` will not overwrite an existing regular file
 VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
 VARIABLE OPT-VERBOSE   \ set -v: each line of input is echoed as it is read
 VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
+VARIABLE OPT-NOTIFY    \ set -b: the same - a finished job is reported at the
+                       \ next prompt either way (Iteration 386)
 VARIABLE OPT-ERREXIT
 VARIABLE OPT-NOUNSET
 VARIABLE OPT-XTRACE
@@ -2333,6 +2335,7 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
 \ copy of it.
 
 : EMIT-OPTION-FLAGS ( --- )   \ $-
+  OPT-NOTIFY @ IF 98 EMIT-TOK-CHAR THEN      \ -b (Iteration 386)
   OPT-ERREXIT @ IF 101 EMIT-TOK-CHAR THEN
   OPT-NOGLOB @ IF 102 EMIT-TOK-CHAR THEN
   OPT-NOEXEC @ IF 110 EMIT-TOK-CHAR THEN
@@ -4205,6 +4208,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   DUP 120 = IF DROP OPT-XTRACE EXIT THEN
   DUP 102 = IF DROP OPT-NOGLOB EXIT THEN
   DUP 109 = IF DROP OPT-MONITOR EXIT THEN
+  DUP 98 = IF DROP OPT-NOTIFY EXIT THEN      \ -b (Iteration 386)
   DUP 67 = IF DROP OPT-NOCLOBBER EXIT THEN   \ -C (Iteration 307)
   DUP 97 = IF DROP OPT-ALLEXPORT EXIT THEN   \ -a
   DUP 118 = IF DROP OPT-VERBOSE EXIT THEN    \ -v
@@ -4220,6 +4224,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" verbose" R@ STR0= IF R> DROP OPT-VERBOSE EXIT THEN
   S" noexec" R@ STR0= IF R> DROP OPT-NOEXEC EXIT THEN
   S" monitor" R@ STR0= IF R> DROP OPT-MONITOR EXIT THEN
+  S" notify" R@ STR0= IF R> DROP OPT-NOTIFY EXIT THEN
   S" noclobber" R@ STR0= IF R> DROP OPT-NOCLOBBER EXIT THEN
   R> DROP 0 ;
 : .OPT ( c-addr u addr on? --- )   \ one line of set -o or set +o
@@ -4234,6 +4239,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
   S" allexport" OPT-ALLEXPORT R@ .OPT
   S" errexit" OPT-ERREXIT R@ .OPT
   S" monitor" OPT-MONITOR R@ .OPT
+  S" notify" OPT-NOTIFY R@ .OPT
   S" noclobber" OPT-NOCLOBBER R@ .OPT
   S" noexec" OPT-NOEXEC R@ .OPT
   S" noglob" OPT-NOGLOB R@ .OPT

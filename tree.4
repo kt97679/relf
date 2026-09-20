@@ -185,6 +185,7 @@ LINE-MAX BUFFER: STDIN-TEXT
     REFILL-STDIN 0= IF DROP -1 EXIT THEN
   REPEAT
   SRC-POS @ + SRC-ADDR @ + C@ ;
+
 : SRC-SKIP ( n --- )
   0 ?DO
     SRC-POS @ SRC-LEN @ < IF
@@ -2756,6 +2757,26 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
 \ interactive one drops the rest of the line; eval's text returns 2.
 VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
 
+: VERBOSE-LINE ( --- )
+  \ `set -v` writes each line of input to standard error as the shell
+  \ reads it (XCU `set`). The option was accepted and reported in `$-`
+  \ and did nothing at all until Iteration 386.
+  \
+  \ Printed where the next COMMAND is about to be parsed rather than
+  \ where the lexer crosses a newline: by the time a newline is
+  \ crossed, the command before it has not run yet, so `set -v` on the
+  \ first line would miss the second. Here the line before has already
+  \ executed, which is dash's order.
+  OPT-VERBOSE @ 0= IF EXIT THEN
+  NESTED? @ IF EXIT THEN
+  SRC-POS @ SRC-LEN @ < 0= IF EXIT THEN
+  SRC-POS @ DUP                                        ( start end )
+  BEGIN
+    DUP SRC-LEN @ < IF DUP SRC-ADDR @ + C@ 10 <> ELSE 0 THEN
+  WHILE 1+ REPEAT
+  OVER - SWAP SRC-ADDR @ + SWAP                        ( addr len )
+  ERR-TYPE ERR-NL ;
+
 : TREE-RUN ( --- )
   BEGIN
     CHECK-TRAPS
@@ -2764,6 +2785,7 @@ VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
       SRC-STDIN? @ IF SRC-POS @ SRC-LEN @ = IF 0 SRC-POS ! 0 SRC-LEN ! 0 AL-ACTIVE# ! THEN THEN
       TREE-RESET  -1 CMD-START? !
     THEN
+    VERBOSE-LINE
     PARSE-ONE-XT @XT CATCH
     ?DUP IF
       DROP 2 LAST-STATUS !
