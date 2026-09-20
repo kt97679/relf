@@ -379,6 +379,7 @@ do not trust the absence of a line below.
 - **381** — CDPATH's two rules, and a tilde in a ${} word; busybox 212, past dash
 - **382** — aliases after prefixes, and aliases that expand to nothing
 - **383** — redirection errors on special builtins; yash's error suite complete
+- **384** — a Makefile, and the benchmark script moved into the tree
 
 ### Not tied to an iteration
 
@@ -19782,3 +19783,38 @@ word.
 apart. busybox holds at 212, one ahead of dash.
 
 tests/verify: sizes.
+
+## Iteration 384: a Makefile
+
+Everything this project does was already a script or a one-liner
+recorded somewhere in PROGRESS.md. The Makefile is the index of them:
+`make` builds both engines and both shell images, `make help` lists the
+rest, and `make verify` is the whole acceptance run.
+
+**What it deliberately does not do is rebuild `kernel.img`.** That image
+is simultaneously what `cross.4` produces and what `cross.4` runs on, so
+rebuilding it is a fixpoint step, not a compile, and a wrong one is not
+a broken build but a subtly different shell. `make check-images`
+verifies it still reproduces; `make images` refuses to install a
+different image unless `IMAGES_FORCE=1` says so, and prints what to read
+afterwards. `make clean` leaves the committed images and engines alone -
+`distclean` removes the two shell images, which a build regenerates.
+
+The engine flags are the ones README.md has documented since Iteration
+243, including `-fno-pie -no-pie` for i386, where PIE costs the engine
+its TOS register. Building by hand with different flags is how the
+engine sizes in tests/BASELINE could drift without anyone noticing;
+now there is one place that says what the build is.
+
+**And the benchmark script moved into the tree.** `tools/profile.py`
+defaulted to `/tmp/realistic.sh` - the file every figure in
+PERFORMANCE.md was measured on, living outside the repository, where a
+container restart would have taken it and left the numbers
+unreproducible. It is `tests/bench-vm/realistic.sh` now.
+
+One baseline line moved: `parse:verdicts-agree` 197 to 198. That is
+Iteration 382's work - a line holding only an alias that expands to
+nothing now parses as no command rather than an error, and the parse
+comparison agrees with the reference on one more case.
+
+tests/verify: the new baseline line; no sizes moved.

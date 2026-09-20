@@ -22,6 +22,7 @@ historical documents moved to `attic/docs/`.
 | `FORTH-STYLE.md` | the practices that have prevented bugs here, and the ones that have not |
 | `ARTICLE.md` | working notes for a write-up of the VM's evolution |
 | `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' suites, in this project's own words |
+| `Makefile` | the index of the builds and suites; `make help` lists them |
 
 ## Retired, in `attic/docs/`
 

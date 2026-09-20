@@ -41,7 +41,7 @@ open(os.path.join(work, 'prof.c'), 'w').write(src)
 subprocess.run(['cc', '-O2', '-o', engine, os.path.join(work, 'prof.c')], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 
-command = sys.argv[1] if len(sys.argv) > 1 else './relfsh /tmp/realistic.sh'
+command = sys.argv[1] if len(sys.argv) > 1 else './relfsh tests/bench-vm/realistic.sh'
 env = dict(os.environ, RELF_BIN=engine)
 # The wrapper rebuilds the image when the engine changes, and that build
 # is the text interpreter's work, not the shell's: run once to build,

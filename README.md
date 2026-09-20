@@ -27,6 +27,15 @@ libc-based C:
 cc -O2 -Wall -o relf cv8.c
 cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
 
+or `make`, which builds both engines and both shell images and is the
+index of everything else this project does - `make help` lists the
+targets, `make verify` runs every suite against tests/BASELINE. What
+`make` deliberately does NOT do is rebuild kernel.img: that image is
+both what cross.4 produces and what cross.4 runs on, so rebuilding it
+is a fixpoint step rather than a compile. `make check-images` verifies
+it still reproduces; `make images IMAGES_FORCE=1` is the deliberate
+replacement, for an engine or kernel.4 change.
+
 For a different architecture, use that architecture's C compiler (e.g.
 aarch64-linux-gnu-gcc for ARM64); nothing else changes. Until Iteration
 243 the engine was relf.c, which ran cell-threaded images; it is in
