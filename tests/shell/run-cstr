@@ -41,12 +41,23 @@ assert_output_equals "one character" "x 1" \
   "$(run 'CREATE K CSTR," x" K DUP CSTRLEN TYPE SPACE K CSTRLEN N. CR')"
 
 # the converted literals still name what they named
-assert_output_equals "PATH is still found by name" "/usr/bin/ls" \
-  "$("$THIS_SH" -c 'command -v ls' 2>&1)"
+# These check that the converted literals still NAME what they named -
+# PATH, PWD, HOME - so the values have to be this test's own. They were
+# `/usr/bin/ls` and the machine's real HOME, which is a fact about the
+# machine: `ls` is /bin/ls on plenty of systems, and a HOME that does
+# not exist fails a `cd` (Iteration 395). The stub directory goes in
+# FRONT of the real PATH rather than replacing it - relfsh needs
+# `dirname` to find its own engine.
+envdir=$(mktemp -d)
+mkdir -p "$envdir/bin" "$envdir/home"
+printf '#!/bin/sh\necho stub\n' > "$envdir/bin/onlyhere"; chmod +x "$envdir/bin/onlyhere"
+assert_output_equals "PATH is still found by name" "$envdir/bin/onlyhere" \
+  "$(PATH="$envdir/bin:$PATH" "$THIS_SH" -c 'command -v onlyhere' 2>&1)"
 assert_output_equals "PWD is still set by name" "yes" \
   "$("$THIS_SH" -c 'cd /tmp; [ "$PWD" = /tmp ] && echo yes' 2>&1)"
 assert_output_equals "HOME is still read by name" "yes" \
-  "$("$THIS_SH" -c 'cd ~ && [ "$(pwd)" = "$HOME" ] && echo yes' 2>&1)"
+  "$(HOME="$envdir/home" "$THIS_SH" -c 'cd ~ && [ "$(pwd)" = "$HOME" ] && echo yes' 2>&1)"
+rm -rf "$envdir"
 assert_output_equals "IFS is still read by name" "a:b" \
   "$("$THIS_SH" -c 'IFS=:; set -- a b; echo "$*"' 2>&1)"
 assert_output_equals "PS2 is still read by name" "sh" \

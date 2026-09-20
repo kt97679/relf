@@ -15,7 +15,11 @@ case "$out" in
     *"#"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "FAIL: comment text leaked into output: $out" ;;
 esac
 
-out=$("$THIS_SH" -c 'echo "len=${#HOME} trim=${HOME#/} lit=a#b"' 2>/dev/null)
+# A variable this test sets, not $HOME: the assertions were `len=5` and
+# `trim=root`, which is a fact about the machine the test was written on
+# - true where HOME is /root and false everywhere else (Iteration 395,
+# reported from a checkout where it is /home/kvt).
+out=$("$THIS_SH" -c 'V=/root; echo "len=${#V} trim=${V#/} lit=a#b"' 2>/dev/null)
 assert_output_contains "\${#VAR} still a length"      "len=5"     "$out"
 assert_output_contains "\${VAR#pat} still a trim"     "trim=root" "$out"
 assert_output_contains "'#' inside a word is literal" "lit=a#b"   "$out"

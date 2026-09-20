@@ -29,6 +29,21 @@
 # substring assertions are kept because rewriting 63 files at once
 # would be a large untested change, not because they are preferred.
 
+# The utilities these tests name by absolute path. They are Ubuntu's
+# paths, which is where the suite was written; `true` lives in /bin on
+# plenty of systems and in neither place on some. Checked once, here,
+# so a machine without them is told which one is missing rather than
+# shown a page of failures about the shell (Iteration 395).
+for _u in /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh; do
+    if [ ! -x "$_u" ]; then
+        echo "SKIP: this suite names $_u by absolute path, and it is not here."
+        echo "      (coreutils and a /bin/sh are what it expects; see CHECKING.md)"
+        exit 77
+    fi
+done
+unset _u
+
+
 : "${THIS_SH:=../../relfsh}"
 
 TESTS_RUN=0

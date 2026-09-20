@@ -390,6 +390,7 @@ do not trust the absence of a line below.
 - **392** — the suites inherited the terminal, and waited there
 - **393** — a baseline that travels: machine-dependent lines, and the locale everywhere
 - **394** — a suite that died silently; and the i386 half as a host fact
+- **395** — a test that asserted the machine's HOME
 
 ### Not tied to an iteration
 
@@ -20166,3 +20167,42 @@ them.
 
 tests/verify: `size:image-*` may now read `missing`; `*:4byte` may read
 `skipped`.
+
+## Iteration 395: `len=5`
+
+With the silent death fixed, the checkout reported what had been failing
+all along:
+
+    FAIL: ${#VAR} still a length
+    FAIL: ${VAR#pat} still a trim
+
+The test ran `echo "len=${#HOME} trim=${HOME#/}"` and asserted `len=5`
+and `trim=root`. That is not a fact about `#` in a word - it is a fact
+about the machine the test was written on, where HOME is `/root`. On a
+machine where HOME is `/home/kvt` it is 9 and `home/kvt`. The test has
+its own variable now.
+
+Two more in the same file: `command -v ls` was asserted to be
+`/usr/bin/ls`, and the HOME test did `cd ~`, which needs the real HOME
+to exist. Both own their values now - a stub in a temporary directory,
+and a HOME the test makes.
+
+**The general guard**: `tests/portability` runs the whole shell suite a
+second time with a `HOME`, `USER` and `TERM` that are not this
+machine's, and requires the same answer. That check finds this class
+outright, and it found the second one while I was writing it.
+
+**And the suites name five utilities by absolute path** - `/usr/bin/true`
+and friends, 60 times over. Those are Ubuntu's paths; `true` is in /bin
+on other systems. `tests/shell/lib.sh` checks them once and says which
+one is missing, rather than producing a page of failures about the
+shell.
+
+Five reports from that checkout, five faults, none of them in the shell:
+a Makefile running bash scripts with sh, a locale-dependent comparison,
+a suite that inherited the terminal, a step that died without printing,
+and now a test that asserted whose machine it was on. The shell itself
+has not been wrong once in this sequence - the harness around it has
+been wrong five times, and only because someone ran it somewhere else.
+
+tests/verify: sizes.

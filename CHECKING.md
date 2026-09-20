@@ -60,6 +60,17 @@ always compares is what depends on the CODE: every suite's pass and fail
 counts, the dead-word count, both image fixpoints, and whether the
 bundle can be cloned.
 
+## What the suites assume about your machine
+
+    /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh
+
+named by absolute path in the shell tests, because that is where they
+are on the machine the suite was written on. `tests/shell/lib.sh`
+checks them once and says which is missing rather than failing
+mysteriously. Nothing else about the environment should matter:
+`make portability` runs the whole shell suite again with a foreign
+`HOME`, `USER` and `TERM` and requires the same result.
+
 ## The i386 half
 
 Half of `make verify` builds and runs a 4-byte-cell engine, which needs

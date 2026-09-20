@@ -125,6 +125,27 @@ if [ -x ./relfsh ] && command -v timeout >/dev/null 2>&1 &&
 fi
 
 # ------------------------------------------------------------------
+# 2d. The shell suite gives the same answer in somebody else's
+#     environment.
+#
+# A test that asserts `${#HOME}` is 5 is asserting that the machine's
+# HOME is /root. That one passed here for 395 iterations and failed the
+# first time anyone else ran it. This runs the whole suite again with a
+# HOME, USER and PATH that are not this machine's, and requires the same
+# result (Iteration 395).
+# ------------------------------------------------------------------
+if [ -x ./relfsh ]; then
+    here=$(cd tests/shell && THIS_SH="$PWD/../../relfsh" sh ./run-all 2>&1 | tail -1)
+    there=$(cd tests/shell && HOME=/home/nobody-at-all USER=nobody LOGNAME=nobody \
+            TERM=dumb THIS_SH="$PWD/../../relfsh" sh ./run-all 2>&1 | tail -1)
+    if [ "$here" = "$there" ]; then
+        ok "tests/shell reads the same in a foreign environment"
+    else
+        bad "environment independence" "here '$here', elsewhere '$there'"
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 3. The comparing suites pin the locale.
 #
 # Pathname expansion sorts by LC_COLLATE and character classes are a
