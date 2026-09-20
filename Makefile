@@ -92,8 +92,13 @@ shell-images: kernel-shell.img kernel32-shell.img
 kernel-shell.img: relf kernel.img $(SHELL_SOURCES)
 	@./relfsh -c true </dev/null >/dev/null
 
+# LD_PRELOAD is cleared for the i386 build: a preload library for the
+# host architecture can never be loaded into a 32-bit process, and the
+# loader says so - noisily - on every invocation. Ubuntu and Mint set
+# one system-wide (libgtk3-nocsd), so this is most people's first
+# impression of `make` (Iteration 389).
 kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES)
-	@RELF_BIN=./relf32 RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
+	@LD_PRELOAD= RELF_BIN=./relf32 RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.

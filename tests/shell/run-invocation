@@ -44,4 +44,18 @@ assert_output_equals "-u from the command line is in effect" "" \
   "$(echo 'echo ${nosuchvar}; echo REACHED' | "$SH" -su 2>/dev/null)"
 assert_output_equals "a lone -- ends the options" "[-x]" \
   "$(echo 'echo "[$1]"' | "$SH" -s -- -x 2>&1)"
+
+# A prompt is expanded before it is written (XCU 2.5.3): parameters,
+# command substitutions and arithmetic. bash's own escapes - \u, \h,
+# \w, \[ - are bash's, and are left alone here as they are by dash
+# (Iteration 389).
+assert_output_equals "PS1 expands a command substitution" "[S] " \
+  "$(printf 'exit\n' | PS1='[$(echo S)] ' "$SH" -i 2>&1 >/dev/null)"
+assert_output_equals "PS1 expands parameters and arithmetic" "d5 " \
+  "$(printf 'exit\n' | PS1='${x-d}$((2+3)) ' "$SH" -i 2>&1 >/dev/null)"
+assert_output_equals "PS1 leaves bash's escapes alone" '\\u@\\h ' \
+  "$(printf 'exit\n' | PS1='\\u@\\h ' "$SH" -i 2>&1 >/dev/null)"
+assert_output_equals "a continued line still parses with a live PS2" "[a
+b]" \
+  "$(printf 'x="a\nb"\necho "[$x]"\n' | PS2='p$(echo Q)> ' "$SH" -i 2>/dev/null)"
 report

@@ -33,12 +33,12 @@ rebuild:kernel-shell.img reproduces
 rebuild:kernel32-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 716
+shell:assertions 720
 shell:dead-words 0
 shell:files 79
 size:engine-code-i386 18665
 size:engine-code-x86_64 23613
-size:i386 156328
-size:image-i386 93284
-size:image-x86_64 100152
-size:x86_64 139280
+size:i386 156624
+size:image-i386 93580
+size:image-x86_64 100480
+size:x86_64 139608

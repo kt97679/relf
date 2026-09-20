@@ -384,6 +384,7 @@ do not trust the absence of a line below.
 - **386** — `set -b`, and `set -v` that actually does something
 - **387** — the yash corpus runner, and both corpora wired into the Makefile
 - **388** — aliases that expand to reserved words; ahead of dash on both corpora
+- **389** — prompts are expanded; and LD_PRELOAD cleared for the i386 build
 
 ### Not tied to an iteration
 
@@ -19933,3 +19934,46 @@ down what they establish in this project's own words, write our own case
 from that, fix, measure.
 
 tests/verify: three new assertions; sizes.
+
+## Iteration 389: a prompt is a word, not a string
+
+Reported from a real environment: `./relfsh` printed
+
+    \[\e[38;5;202m\]$(byobu_prompt_status)\[\e[00m\]\u@\h:\w...
+
+verbatim. Two separate things, and only one of them is this shell's
+fault.
+
+**The `\u`, `\h`, `\w` and `\[` escapes are bash's**, not POSIX, and
+neither dash nor this shell interprets them. A bash PS1 exported into
+any POSIX shell looks like that.
+
+**But `$(...)` in a prompt is ours.** XCU 2.5.3 says PS1, PS2 and PS4
+are expanded before being written - parameter expansion, command
+substitution, arithmetic - and this shell wrote the value as it stood.
+It expands now, and matches dash character for character on the prompts
+tried.
+
+The implementation is the interesting part. A here-document body is
+expanded under exactly these rules, so the machinery existed: lex the
+text as a double-quoted word, expand it, join the result. What it was
+not built for is being called DURING a parse - and a PS2 prompt is
+written in the middle of one, with the parser's tree half-built and the
+word being expanded allocated in it. Saving the allocation pointer and
+the command's words was not enough; the continued line still came apart.
+
+So PS2 is expanded at the START of the command, where PS1 is written,
+and kept. A `$(date)` in a continuation prompt is therefore the time the
+command began rather than the moment the line wrapped. That is a real
+difference from dash, it is written down here, and it costs the parse
+nothing.
+
+**And the LD_PRELOAD message** in the same report - `object
+'libgtk3-nocsd.so.0' from LD_PRELOAD cannot be preloaded` - is the
+loader refusing to put a host-architecture library into the 32-bit
+engine. Ubuntu and Mint set that preload system-wide, so it is most
+people's first impression of `make`. The i386 image build clears
+LD_PRELOAD now: a preload library for the host can never apply to a
+32-bit process anyway.
+
+tests/verify: four new assertions; sizes.

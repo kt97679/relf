@@ -598,3 +598,13 @@ wrapper rather than the usual relative one.
     first line would miss the second. Printing where the next COMMAND
     is about to be parsed gives dash's order.
     → `tests/diff/cases/verbose-386.sh`
+
+## Found by a user's own environment (Iteration 389)
+
+82. **A prompt is expanded before it is written** (XCU 2.5.3): PS1, PS2
+    and PS4 undergo parameter expansion, command substitution and
+    arithmetic expansion. This shell printed the value literally, so a
+    prompt holding `$(...)` showed the text of it. dash expands; bash
+    additionally interprets its own `\u`, `\h`, `\w`, `\[` escapes,
+    which are not POSIX and which neither dash nor this shell touches.
+    → `tests/shell/run-invocation`

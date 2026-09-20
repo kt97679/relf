@@ -2270,15 +2270,34 @@ VARIABLE HDX-DEPTH
     THEN
   REPEAT ;
 
-: PREPARE-HEREDOC ( redir --- )
-  DUP 3 XF@ 0= IF DROP EXIT THEN
-  DUP 2 XF@ 1 XF@ WF-QUOTED AND IF
-    3 XF@ XSTR DUP CSTRLEN HEREDOC-SET EXIT
-  THEN
+DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
+
+: EXPAND-DQ-TEXT-SAFE ( c-addr u --- c-addr' u' )
+  \ ... and the same from inside a parse, which is where a PS2 prompt is
+  \ written: the word it builds is allocated in the tree the parser is
+  \ still filling, so the allocation pointer, the command's words and
+  \ the base the expander reads nodes from all have to be put back
+  \ (Iteration 389). A here-document is expanded at execution time and
+  \ needs none of this.
+  \ Nothing to expand, nothing to disturb: the common case, and the one
+  \ that matters, since the default prompts hold no expansions at all.
+  2DUP 36 SCAN NIP 0= >R  2DUP 96 SCAN NIP 0= R> AND IF EXIT THEN
+  TREE-TOP @ >R  EXEC-BASE @ >R  ARGC @ >R  ARGV @ >R
+  TOK-OUT @ >R  TOK-POS @ >R  TOK-END @ >R
+  EXPAND-DQ-TEXT-INNER
+  R> TOK-END !  R> TOK-POS !  R> TOK-OUT !
+  R> ARGV !  R> ARGC !  R> EXEC-BASE !  R> TREE-TOP ! ;
+
+: EXPAND-DQ-TEXT-INNER-IMPL ( c-addr u --- c-addr' u' )
+  \ Text expanded as if it stood inside double quotes: parameters,
+  \ command substitutions and arithmetic, and nothing else - no
+  \ splitting, no pathname expansion. A here-document body is exactly
+  \ this, and so is a prompt (XCU 2.5.3), which is why it is a word of
+  \ its own since Iteration 389.
   0 HDX# !  34 HDX-C,
-  3 XF@ XSTR DUP CSTRLEN HDX-BODY
+  HDX-BODY
   34 HDX-C,  0 HDX-C,
-  \ The body is now a double-quoted word: lex it, so it has an encoding
+  \ The text is now a double-quoted word: lex it, so it has an encoding
   \ like any other word (Iteration 281). Its node is in TREE-BUF, which
   \ is what EXEC-BASE must be while it is expanded.
   0 ARGC !  0 ARGV !
@@ -2287,7 +2306,16 @@ VARIABLE HDX-DEPTH
   ADD-WORD
   -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
   R> EXEC-BASE !
-  JOIN-ARGV HEREDOC-SET ;
+  JOIN-ARGV ;
+' EXPAND-DQ-TEXT-INNER-IMPL IS EXPAND-DQ-TEXT-INNER
+' EXPAND-DQ-TEXT-SAFE IS EXPAND-DQ-TEXT-CALL
+
+: PREPARE-HEREDOC ( redir --- )
+  DUP 3 XF@ 0= IF DROP EXIT THEN
+  DUP 2 XF@ 1 XF@ WF-QUOTED AND IF
+    3 XF@ XSTR DUP CSTRLEN HEREDOC-SET EXIT
+  THEN
+  3 XF@ XSTR DUP CSTRLEN EXPAND-DQ-TEXT-INNER HEREDOC-SET ;
 
 : HEREDOCS-RESET ( --- )   \ a fresh command: its own pool
   0 HD-N !  0 HD-POOL# !  0 HD-USE ! ;
