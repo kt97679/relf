@@ -1683,6 +1683,9 @@ VARIABLE AE-VN-LEN
     DUP C@ 45 = IF
       1+ DUP CSTRLEN PARSE-DECIMAL NEGATE
     ELSE
+      \ A leading `+` is as valid as a leading `-`: `p=+1; $((p))`
+      \ is 1, and read as characters it was -49 (Iteration 380).
+      DUP C@ 43 = IF 1+ THEN
       DUP CSTRLEN PARSE-DECIMAL
     THEN
   THEN ;
@@ -1843,6 +1846,14 @@ VARIABLE AE-SH-C
   AE-SH-C @ 60 = AE-SH-C @ 62 = OR
   AE-POS @ 1+ C@ AE-SH-C @ = AND ;
 
+: AE-ARSHIFT ( n k --- n' )
+  \ An arithmetic shift: `-14 >> 3` is -2, not a huge positive number.
+  \ Forth's RSHIFT is logical, so the sign bit was shifted in as data
+  \ (Iteration 380). A floored division by two to the k, which is what
+  \ an arithmetic right shift is.
+  1 SWAP LSHIFT DUP 0= IF 2DROP 0 EXIT THEN
+  SWAP S>D ROT FM/MOD NIP ;
+
 : AE-SHIFT ( --- n )
   \ C/POSIX precedence: shifts bind tighter than the relational
   \ operators and looser than "+"/"-". AE-REL below now calls this
@@ -1855,7 +1866,7 @@ VARIABLE AE-SH-C
     AE-POS @ C@ 60 = IF
       AE-POS @ 2 + AE-POS !  AE-ADD LSHIFT
     ELSE
-      AE-POS @ 2 + AE-POS !  AE-ADD RSHIFT
+      AE-POS @ 2 + AE-POS !  AE-ADD AE-ARSHIFT
     THEN
   REPEAT ;
 
@@ -1953,8 +1964,16 @@ VARIABLE AE-BIT-C
     ELSE 0 THEN
   WHILE
     AE-POS @ 2 + AE-POS !
-    AE-BITOR
-    SWAP AE-TRUTHY? SWAP AE-TRUTHY? AND AE-BOOL-TO-INT
+    \ `&&` evaluates its right operand only when the left is true, so
+    \ `x=0; $((x && 1/0))` is 0 rather than a complaint. The right side
+    \ is still PARSED, to move the cursor past it, with AE-QUIET set -
+    \ the same flag the untaken branch of `?:` uses (Iteration 380).
+    AE-TRUTHY? IF
+      AE-BITOR AE-TRUTHY? AE-BOOL-TO-INT
+    ELSE
+      1 AE-QUIET +!  AE-BITOR DROP  -1 AE-QUIET +!
+      0
+    THEN
   REPEAT ;
 
 : AE-OR ( --- n )
@@ -1966,8 +1985,14 @@ VARIABLE AE-BIT-C
     ELSE 0 THEN
   WHILE
     AE-POS @ 2 + AE-POS !
-    AE-AND
-    SWAP AE-TRUTHY? SWAP AE-TRUTHY? OR AE-BOOL-TO-INT
+    \ ... and `||` evaluates its right operand only when the left is
+    \ false.
+    AE-TRUTHY? IF
+      1 AE-QUIET +!  AE-AND DROP  -1 AE-QUIET +!
+      1
+    ELSE
+      AE-AND AE-TRUTHY? AE-BOOL-TO-INT
+    THEN
   REPEAT ;
 
 VARIABLE AE-EVAL-LEN
@@ -2018,6 +2043,25 @@ VARIABLE ANS-NEG
   AE-ASGN-C @ 61 = IF
     AE-POS @ 1+ AE-END @ < IF AE-POS @ 1+ C@ 61 = IF 0 EXIT THEN THEN
     0 AE-ASGN-OP !  AE-POS @ 1+ AE-POS !  -1 EXIT
+  THEN
+  \ `<<=` and `>>=`: three characters, and the first two must match, so
+  \ `x <= 3` stays a comparison (Iteration 380).
+  AE-ASGN-C @ 60 = AE-ASGN-C @ 62 = OR IF
+    AE-POS @ 2 + AE-END @ < IF
+      AE-POS @ 1+ C@ AE-ASGN-C @ =  AE-POS @ 2 + C@ 61 =  AND IF
+        AE-ASGN-C @ AE-ASGN-OP !  AE-POS @ 3 + AE-POS !  -1 EXIT
+      THEN
+    THEN
+    0 EXIT
+  THEN
+  \ `&=`, `^=` and `|=`: two characters, and `&&` or `||` is not one.
+  AE-ASGN-C @ 38 = AE-ASGN-C @ 94 = OR AE-ASGN-C @ 124 = OR IF
+    AE-POS @ 1+ AE-END @ < IF
+      AE-POS @ 1+ C@ 61 = IF
+        AE-ASGN-C @ AE-ASGN-OP !  AE-POS @ 2 + AE-POS !  -1 EXIT
+      THEN
+    THEN
+    0 EXIT
   THEN
   AE-ASGN-C @ AE-MUL-OP? AE-ASGN-C @ AE-ADD-OP? OR 0= IF 0 EXIT THEN
   AE-POS @ 1+ AE-END @ < 0= IF 0 EXIT THEN
@@ -2084,8 +2128,13 @@ DEFER AE-EXPR-CALL   ( --- n )
     DUP 45 = IF DROP AE-ASGN-OLD SWAP - ELSE
     DUP 42 = IF DROP AE-ASGN-OLD * ELSE
     DUP 47 = IF DROP AE-ASGN-OLD SWAP / ELSE
+    DUP 60 = IF DROP AE-ASGN-OLD SWAP LSHIFT ELSE
+    DUP 62 = IF DROP AE-ASGN-OLD SWAP AE-ARSHIFT ELSE
+    DUP 38 = IF DROP AE-ASGN-OLD AND ELSE
+    DUP 94 = IF DROP AE-ASGN-OLD XOR ELSE
+    DUP 124 = IF DROP AE-ASGN-OLD OR ELSE
                 DROP AE-ASGN-OLD SWAP MOD
-    THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN
   THEN
   AE-QUIET @ IF EXIT THEN                    \ the untaken branch assigns nothing
   DUP N>STR

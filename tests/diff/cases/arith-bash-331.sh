@@ -21,3 +21,26 @@ echo "signs: $((3 - -2)) $((- -2)) $((3 + +2))"
 a=1; echo "spaced: $((a + +2))"
 i=0; while [ $i -lt 3 ]; do i=$((i+1)); done; echo "loop: $i"
 a=5; b=$((a++ + 1)); echo "expr: $b $a"
+# `&&` and `||` evaluate their right operand only when they must, so an
+# error or an assignment on the dead side never happens (Iteration 380).
+x=0; echo "and-short=$((x && 1/0))"
+x=1; echo "or-short=$((x || 1/0))"
+y=5; echo "and-noassign=$((0 && (y=9))) $y"
+y=5; echo "or-noassign=$((1 || (y=9))) $y"
+y=5; echo "and-assign=$((1 && (y=9))) $y"
+y=5; echo "or-assign=$((0 || (y=9))) $y"
+echo "table=$((1 && 1))$((1 && 0))$((0 && 1))$((0 && 0))$((1 || 1))$((1 || 0))$((0 || 1))$((0 || 0))"
+echo "nested=$((1 && 1 && 0 || 1))"
+# Three more from yash's arith-p.tst (Iteration 380): a value with a
+# leading `+` is a number, `>>` on a negative is an ARITHMETIC shift,
+# and the bitwise compound assignments exist.
+p=+1; m=-1; echo "signs=$((p)) $((m))"
+echo "arshift=$((-14>>3)) $((14>>3)) $((-1>>1)) $((-8>>2)) $((0>>0))"
+echo "lshift=$((3<<2)) $((5<<3)) $((1<<0))"
+g=7;  echo "shl-assign=$((g<<=2)) $g"
+h=30; echo "shr-assign=$((h>>=2)) $h"
+i=3;  echo "and-assign=$((i&=5)) $i"
+j=3;  echo "xor-assign=$((j^=5)) $j"
+k=3;  echo "or-assign=$((k|=5)) $k"
+x=2;  echo "not-an-assignment=$((x<=3)) $x"
+y=8;  echo "still-compares=$((y>=8)) $y"

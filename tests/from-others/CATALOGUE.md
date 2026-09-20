@@ -492,3 +492,26 @@ wrapper rather than the usual relative one.
     implemented for assignment-only commands (Iteration 345) and not for
     this one.
     → `tests/diff/cases/`, covered by the empty-command checks
+
+## From yash's arithmetic tests (Iteration 380)
+
+67. **`&&` and `||` evaluate their right operand only when they must.**
+    `x=0; $((x && 1/0))` is 0, not a division by zero, and
+    `$((0 && (y=9)))` leaves `y` alone. The dead side is still parsed,
+    to move the cursor past it.
+    → `tests/diff/cases/arith-bash-331.sh`
+
+68. **A value with a leading `+` is a number**: `p=+1; $((p))` is 1.
+    Read as characters it came out as -49.
+    → `tests/diff/cases/arith-bash-331.sh`
+
+69. **`>>` is an ARITHMETIC shift**: `$((-14>>3))` is -2, not a huge
+    positive number. Forth's `RSHIFT` is logical, so the sign bit was
+    being shifted in as data.
+    → `tests/diff/cases/arith-bash-331.sh`
+
+70. **`<<=`, `>>=`, `&=`, `^=` and `|=`** were missing; only the five
+    arithmetic compound assignments existed. `x <= 3` must stay a
+    comparison, which is why the three-character forms check that the
+    first two characters match.
+    → `tests/diff/cases/arith-bash-331.sh`

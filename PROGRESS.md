@@ -375,6 +375,7 @@ do not trust the absence of a line below.
 - **377** — the shell's own command line, parsed properly: +204 cases
 - **378** — file-type tests, an engine primitive, and a FIFO that hung the shell
 - **379** — umask's symbolic forms, and three POSIX rules from yash
+- **380** — four arithmetic bugs: short-circuiting, signs, shifts, assignments
 
 ### Not tied to an iteration
 
@@ -19652,3 +19653,36 @@ only does in POSIX mode. It moved to `tests/shell/run-special-error`,
 where the reference is the standard.
 
 tests/verify: a new shell test file; sizes.
+
+## Iteration 380: four arithmetic bugs
+
+yash's `arith-p.tst` found four, all in expressions this shell has been
+evaluating since Iteration 121.
+
+**`&&` and `||` did not short-circuit.** `x=0; $((x && 1/0))` reported a
+division by zero where POSIX requires 0. The dead side still has to be
+PARSED, to move the cursor past it, so it is evaluated with `AE-QUIET`
+set - the flag the untaken branch of `?:` has used since it was written.
+No new machinery, and `$((0 && (y=9)))` now leaves `y` alone as well.
+
+**A value with a leading `+` was not a number.** `p=+1; $((p))` gave
+-49: the `+` fell through to the character path. Only `-` had been
+considered.
+
+**`>>` was a LOGICAL shift.** `$((-14>>3))` was 2305843009213693950
+rather than -2, because Forth's `RSHIFT` shifts the sign bit in as data.
+It is a floored division by two to the k now, which is what an
+arithmetic right shift is.
+
+**Five compound assignments were missing**: `<<=`, `>>=`, `&=`, `^=`,
+`|=`. The three-character forms have to check that the first two
+characters match, or `x <= 3` would parse as an assignment.
+
+`arith-p.tst` goes from 36 of 43 to 42. **yash's POSIX suite: 1575 to
+1583 of 1731**; busybox stays at 211.
+
+Worth noting where these came from: four bugs in a part of the shell
+with its own differential case, its own suite entries and 259 iterations
+of use. They were found by someone else's tests, not by ours.
+
+tests/verify: sizes.
