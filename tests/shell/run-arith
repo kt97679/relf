@@ -84,4 +84,16 @@ out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
 assert_output_contains "arithmetic expansion used as a command's own argument" "matched123" "$out"
 
 rm -f "$TMP_SCRIPT"
+
+# The most negative cell, which NEGATE cannot make positive. Until
+# Iteration 401 converting it to text left a digit loop with nothing to
+# print and then ran `0 0 DO ... LOOP` - the whole cell range, backwards
+# through memory. Width-independent by construction: the shell is asked
+# for its own boundary rather than a fixed number.
+assert_output_equals "the most negative value prints" "yes" \
+  "$("$THIS_SH" -c 'v=1; while [ $v -gt 0 ]; do v=$((v*2)); done; case $v in -*) echo yes;; *) echo "[$v]";; esac' 2>&1)"
+assert_output_equals "... and survives an assignment" "yes" \
+  "$("$THIS_SH" -c 'v=1; while [ $v -gt 0 ]; do v=$((v*2)); done; w=$v; [ "$w" = "$v" ] && echo yes' 2>&1)"
+assert_output_equals "... and is one less than the largest" "yes" \
+  "$("$THIS_SH" -c 'v=1; while [ $v -gt 0 ]; do v=$((v*2)); done; [ $((v-1)) -gt 0 ] && echo yes' 2>&1)"
 report

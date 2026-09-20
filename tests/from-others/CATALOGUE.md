@@ -614,3 +614,14 @@ wrapper rather than the usual relative one.
     and it is written at execution time, where expanding it disturbs
     nothing.
     → `tests/diff/cases/verbose-386.sh`
+
+## Found by an ARMv7 board (Iteration 401)
+
+84. **The most negative cell value could not be printed.** `$((1<<31))`
+    in the 4-byte build - and `$((1<<63))` in the 8-byte one - crashed
+    the shell. Both converters negated a negative value and then fed a
+    digit loop, and NEGATE cannot make the most negative cell positive:
+    the loop produced no digits, and the `0 0 DO ... LOOP` that printed
+    them ran the whole cell range backwards through memory. They go
+    through the double-cell conversion now.
+    → `tests/shell/run-arith`

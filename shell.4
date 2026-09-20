@@ -1043,20 +1043,15 @@ VARIABLE DIGIT-N
 
 : EMIT-DECIMAL ( n --- )
   \ Appends n's decimal digits via EMIT-TOK-CHAR (used for $? and $$).
-  \ An explicit divide/mod loop rather than the pictured-numeric-output
-  \ words, to keep this self-contained and easy to verify directly.
-  DUP 0< IF 45 EMIT-TOK-CHAR NEGATE THEN
-  DUP 0= IF DROP 48 EMIT-TOK-CHAR EXIT THEN
-  0 DIGIT-N !
-  BEGIN DUP 0 > WHILE
-    DUP 10 MOD 48 +  DIGIT-BUF DIGIT-N @ + C!
-    DIGIT-N @ 1+ DIGIT-N !
-    10 /
-  REPEAT
-  DROP
-  DIGIT-N @ 0 DO
-    DIGIT-BUF DIGIT-N @ 1- I - + C@ EMIT-TOK-CHAR
-  LOOP ;
+  \ Through the double-cell conversion, because NEGATE cannot make the
+  \ most negative cell positive: `$((1<<31))` in the 4-byte build left
+  \ the old divide-and-collect loop with zero digits, and the
+  \ `DIGIT-N @ 0 DO ... LOOP` that followed then ran the whole cell
+  \ range, writing backwards out of its buffer until it reached an
+  \ unmapped page. An ARMv7 board found it; the 8-byte build has the
+  \ same fault at $((1<<63)) and nothing had ever asked (Iteration 401).
+  S>D TUCK DABS <# #S ROT SIGN #>           ( c-addr u )
+  OVER + SWAP ?DO I C@ EMIT-TOK-CHAR LOOP ;
 
 \ ==================================================================
 \ IFS field splitting: an *unquoted* $VAR/${...}/$(...)/$((...))
@@ -2011,30 +2006,15 @@ VARIABLE AE-SLOT
 VARIABLE ANS-NEG
 
 : N>STR ( n --- c-addr )
-  \ Decimal text for n, NUL-terminated, built from the END of
-  \ AE-NUMBUF backwards so no reversal pass is needed. Returns a
-  \ pointer to the first digit, which is somewhere inside the buffer.
-  \ Needed because a variable's value is a string: an arithmetic
-  \ assignment has to write one back.
-  SHADOW{ ANS-N | ANS-I ANS-NEG }
-  0 AE-NUMBUF 23 + C!
-  22 ANS-I !
-  ANS-N @ 0< IF -1 ANS-NEG ! ANS-N @ NEGATE ANS-N ! THEN
-  ANS-N @ 0= IF
-    48 AE-NUMBUF ANS-I @ + C!
-    ANS-I @ 1- ANS-I !
-  ELSE
-    BEGIN ANS-N @ 0 > WHILE
-      ANS-N @ 10 MOD 48 + AE-NUMBUF ANS-I @ + C!
-      ANS-N @ 10 / ANS-N !
-      ANS-I @ 1- ANS-I !
-    REPEAT
-  THEN
-  ANS-NEG @ IF
-    45 AE-NUMBUF ANS-I @ + C!
-    ANS-I @ 1- ANS-I !
-  THEN
-  AE-NUMBUF ANS-I @ 1+ + ;
+  \ The same double-cell conversion as EMIT-DECIMAL, for the same
+  \ reason: NEGATE cannot make the most negative cell positive, and
+  \ the digit loop it fed then wrote backwards out of its buffer
+  \ (Iteration 401).
+  S>D TUCK DABS <# #S ROT SIGN #>           ( c-addr u )
+  23 MIN  DUP >R
+  AE-NUMBUF SWAP MOVE
+  0 AE-NUMBUF R@ + C!
+  R> DROP  AE-NUMBUF ;
 
 : AE-ASGN-OP? ( --- f )
   \ At AE-POS: "=" (not "=="), or one of "+= -= *= /= %=".

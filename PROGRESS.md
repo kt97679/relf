@@ -396,6 +396,7 @@ do not trust the absence of a line below.
 - **398** — the core suite on a 32-bit host: native and other, not 8 and 4
 - **399** — a machine with no dash: four suites that assumed one
 - **400** — bash clears PS1, so the wrapper never sees it
+- **401** — the most negative cell, printed backwards through memory
 
 ### Not tied to an iteration
 
@@ -20397,3 +20398,48 @@ its locale, its terminal, its compiler, its HOME, its preload, its
 reference shells, its clock.
 
 tests/verify: sizes.
+
+## Iteration 401: the most negative cell
+
+The ARMv7 board ran the differential suite and found a segmentation
+fault:
+
+    FAIL: arith-audit-287.sh  (status 70, want 1)
+
+`$((1<<31))` in the 4-byte build. Reproduced here in one line against
+the i386 engine, and it is a real bug in this shell, not in a harness:
+the first one in eight reports.
+
+Both number-to-text converters began
+
+    DUP 0< IF 45 EMIT-TOK-CHAR NEGATE THEN
+
+and NEGATE cannot make the most negative cell positive - it returns it
+unchanged. The digit loop that followed asks `DUP 0 >`, which is false,
+so it produced NO digits; and the loop that printed them was
+
+    DIGIT-N @ 0 DO ... LOOP
+
+`0 0 DO` is not a no-op. It runs the whole cell range, and the body
+indexed backwards from the buffer, so it walked down through memory
+until it reached an unmapped page. On a 4-byte build that is 2^32
+iterations from a 24-byte buffer; on an 8-byte build the same fault
+waits at `$((1<<63))`, and nothing had ever asked for it.
+
+Both converters go through the double-cell conversion now - `S>D TUCK
+DABS <# #S ROT SIGN #>` - which handles the boundary because the
+magnitude is taken as a DOUBLE, where it fits.
+
+The regression test asks the shell for its own boundary rather than
+naming a number, so it tests 2^31 on a 4-byte build and 2^63 on an
+8-byte one:
+
+    v=1; while [ $v -gt 0 ]; do v=$((v*2)); done
+
+**Two things worth recording beyond the fix.** `?DO` versus `DO` is a
+Forth trap this project has hit before; a loop whose count can be zero
+must be `?DO`, and the grep for `0 DO` elsewhere found none. And the
+bug was reachable on 8-byte cells all along - it took a machine with a
+narrower cell to make the same mistake cheap enough to hit.
+
+tests/verify: three new assertions.
