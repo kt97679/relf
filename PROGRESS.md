@@ -383,6 +383,7 @@ do not trust the absence of a line below.
 - **385** — a redirection before the assignments
 - **386** — `set -b`, and `set -v` that actually does something
 - **387** — the yash corpus runner, and both corpora wired into the Makefile
+- **388** — aliases that expand to reserved words; ahead of dash on both corpora
 
 ### Not tied to an iteration
 
@@ -19906,3 +19907,29 @@ reference passes and this shell does not - which is the list these last
 thirteen iterations have been working down.
 
 No shell code changed.
+
+## Iteration 388: an alias may be a closing brace
+
+`alias b='{'` and `alias c='}'`, then `b echo grouped; c`, was a syntax
+error here and a group in dash. Alias substitution ran where a COMMAND
+was about to be parsed - and a compound list tests for its CLOSER before
+deciding it has another command, so the `}` was never expanded.
+
+One line: the closer test expands aliases first. A word in command
+position after a separator is in command position whether it turns out
+to be a command or a closing keyword, which is what XCU 2.3.1 says and
+what makes the rule simple rather than special.
+
+`if`, `then` and `fi` come from aliases too, now, for the same reason.
+
+**Both external corpora are now ahead of dash:**
+
+    busybox ash suite   213 of 357   dash 211
+    yash POSIX suite   1653 of 1731  dash 1650
+
+Five sessions ago those numbers were 164 and - the suite had not been
+run at all. The method did not change: read someone else's tests, write
+down what they establish in this project's own words, write our own case
+from that, fix, measure.
+
+tests/verify: three new assertions; sizes.

@@ -551,11 +551,14 @@ wrapper rather than the usual relative one.
     itself rather than inferred from an empty command.
     → `tests/shell/run-alias-position`
 
-76. **An alias may expand to a reserved word**, so `alias begin={` makes
-    `begin ...; }` a group, and a blank alias before a newline lets a
-    pipeline continue onto the next line. Neither works here: reserved
-    words are recognised before alias substitution is tried at that
-    position. (Not fixed.)
+76. **An alias may expand to a reserved word**, so `alias b='{'` opens a
+    group and `alias c='}'` closes one, and an alias may be `if`, `then`
+    or `fi`. Substitution was tried only where a COMMAND was about to be
+    parsed, so a closing keyword - which is tested before that - never
+    saw it. Done in Iteration 388: the closer test expands first. The
+    remaining half, a blank alias before a newline letting a pipeline
+    continue onto the next line, is still open.
+    → `tests/shell/run-alias-position`
 
 ## From yash's error tests (Iteration 383)
 

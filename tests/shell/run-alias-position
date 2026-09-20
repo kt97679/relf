@@ -53,4 +53,19 @@ b
 echo "st=$?"' "st=0"
 run "an empty command is still an error" \
     'echo A; ; echo B' "shell: syntax error at line 1: expected a command"
+
+# An alias may expand to a reserved word, and a word in command position
+# after a separator is still in command position - so a closing `}` can
+# come from one (Iteration 388).
+run "an alias can open and close a group" \
+    'alias b="{"
+alias c="}"
+b echo grouped; c' "grouped"
+run "an alias can be a keyword" \
+    'alias i2=if
+alias t2=then
+alias f2=fi
+i2 true; t2 echo kw; f2' "kw"
+run "a group still needs its closer" \
+    '{ echo x' "shell: syntax error at line 2: expected '}'"
 report

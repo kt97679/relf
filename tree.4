@@ -956,7 +956,15 @@ VARIABLE MSG#
   MSG-BUF MSG# @ SYNTAX ;
 : EXPECT-OP ( op c-addr u --- )   ROT OP? IF 2DROP NEXT ELSE SYNTAX THEN ;
 
+DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
+
 : CLOSER? ( --- f )   \ a token that ends a compound list
+  \ An alias may expand to a reserved word, and `}` after a `;` is in
+  \ command position, so `alias c='}'` closes a group (XCU 2.3.1).
+  \ Substitution happened only where a COMMAND was about to be parsed,
+  \ so the closer was tested before it (Iteration 388). Deferred
+  \ because EXPAND-ALIASES is defined further down.
+  EXPAND-ALIASES-CALL
   K-EOF KIND? OP-RPAREN OP? OR OP-DSEMI OP? OR IF -1 EXIT THEN
   S" then" KW? S" else" KW? OR S" elif" KW? OR S" fi" KW? OR
   S" do" KW? OR S" done" KW? OR S" esac" KW? OR S" }" KW? OR ;
@@ -1050,6 +1058,7 @@ VARIABLE ALIAS-VANISHED?   \ an alias expanded to nothing, or to blanks
   1 AL-ACTIVE# +!
   SPLICE -1 ;
 : EXPAND-ALIASES ( --- )   BEGIN PEEK TRY-ALIAS 0= UNTIL ;
+' EXPAND-ALIASES IS EXPAND-ALIASES-CALL
 
 DEFER PARSE-AND-OR
 DEFER PARSE-COMMAND
