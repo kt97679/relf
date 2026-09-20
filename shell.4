@@ -6656,6 +6656,14 @@ VARIABLE TF-TRAIL?
     ALIAS-COUNT @ 0 ?DO I .ALIAS LOOP EXIT
   THEN
   1 AL-I !
+  \ `--` ends the options, and `alias --` alone still prints them all
+  \ (XCU 1.4; Iteration 377).
+  ARGC @ 1 > IF
+    S" --" 1 ARGV@ STR0= IF
+      2 AL-I !
+      ARGC @ 2 = IF ALIAS-COUNT @ 0 ?DO I .ALIAS LOOP EXIT THEN
+    THEN
+  THEN
   BEGIN AL-I @ ARGC @ < WHILE
     AL-I @ ARGV@ ASSIGNMENT-EQPOS
     DUP -1 = IF
@@ -6680,6 +6688,7 @@ VARIABLE TF-TRAIL?
     S" -a" 1 ARGV@ STR0= IF 0 ALIAS-COUNT ! EXIT THEN
   THEN
   1 AL-I !
+  ARGC @ 1 > IF S" --" 1 ARGV@ STR0= IF 2 AL-I ! THEN THEN
   BEGIN AL-I @ ARGC @ < WHILE
     AL-I @ ARGV@ FIND-ALIAS DUP -1 <> IF
       ALIAS-COUNT @ 1- OVER <> IF
@@ -6687,7 +6696,14 @@ VARIABLE TF-TRAIL?
         ALIAS-COUNT @ 1- ALIAS-VALUE-SLOT OVER ALIAS-VALUE-SLOT ALIAS-VALUE-MAX MOVE
       THEN
       DROP ALIAS-COUNT @ 1- ALIAS-COUNT !
-    ELSE DROP THEN
+    ELSE
+      \ Removing an alias that is not defined is an error (XCU
+      \ `unalias`): this answered 0 and said nothing (Iteration 377).
+      DROP
+      S" shell: unalias: " ERR-TYPE AL-I @ ARGV@ ERR-CSTR
+      S" : not found" ERR-TYPE ERR-NL
+      1 LAST-STATUS !
+    THEN
     AL-I @ 1+ AL-I !
   REPEAT ;
 

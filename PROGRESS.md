@@ -372,6 +372,7 @@ do not trust the absence of a line below.
 - **374** — what the bookkeeping costs: 1%, so the refactor is off
 - **375** — yash's POSIX suite, and the two invocation forms it wanted
 - **376** — a special builtin's error ends the shell: GOALS 5k decided
+- **377** — the shell's own command line, parsed properly: +204 cases
 
 ### Not tied to an iteration
 
@@ -19540,3 +19541,37 @@ not a differential case because `tests/diff` compares against bash,
 which applies the rule only in POSIX mode.
 
 tests/verify: two new shell test files; sizes.
+
+## Iteration 377: the shell's own command line
+
+yash's `shift-p.tst` starts every case with `sh -es a`, and this shell
+read `-es` as a file name. Its argument handling was four exact string
+comparisons - `-i`, `-s`, `-c` with two arguments, `-c` with more - and
+anything else was a script.
+
+So: a real parser, the one XCU `sh` describes. Option letters may be
+combined and repeated, `-o name` and `+o name` take the next argument,
+`--` ends them, and what remains is a script and its parameters, or the
+operands of `-c` or `-s`. The letters go through `OPT-LETTER`, the same
+table the `set` builtin uses, so `sh -e` and `set -e` cannot drift
+apart. The interactive setup - signals, process group, terminal - came
+out into `INTERACTIVE-SETUP`, since it was written twice.
+
+**yash's POSIX suite: 1325 to 1529 of 1731**, against dash's 1650. Two
+iterations ago it was 983.
+
+**And two alias fixes**: `unalias` on a name that is not an alias is an
+error (it answered 0 and said nothing), and `--` ends the options of
+both `alias` and `unalias` - which dash does not do, and XCU 1.4 and
+yash's suite both want.
+
+`tests/shell/run-invocation` is now 17 assertions over every way the
+shell can be started, including `-e`, `-f` and `-u` given on the command
+line rather than through `set`.
+
+**Catalogued as entry 61**: `test -b -c -g -h -L -u -k -S` are missing,
+because the `FILE-KIND` primitive answers only none, regular, directory
+or other. Nineteen of yash's cases want them and the fix is an engine
+change, which is its own iteration.
+
+tests/verify: sizes.

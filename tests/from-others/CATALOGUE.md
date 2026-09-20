@@ -438,3 +438,25 @@ wrapper rather than the usual relative one.
     was GOALS.md item 5k, left open since Iteration 326 as needing a
     decision; yash's suite provided the evidence.
     → `tests/shell/run-special-error`
+
+58. **The shell's own option letters may be combined and repeated**:
+    `sh -es a` is `-e -s` with `a` as the first positional parameter,
+    `-o name` takes the next argument, and `--` ends them. This shell
+    compared the first argument against four exact strings, so `-es` was
+    read as a file name. 204 of yash's cases start a shell this way.
+    → `tests/shell/run-invocation`
+
+59. **`unalias` on a name that is not an alias is an error**, status 1
+    with a message. This answered 0 and said nothing.
+    → busybox and yash both check it
+
+60. **`--` ends the options of `alias` and `unalias`**, so `alias -- a`
+    prints `a` and `alias --` prints them all. dash does not do this;
+    yash's suite requires it and so does XCU 1.4.
+
+61. **`test -b -c -g -h -L -u -k -S`** are all missing here: the
+    `FILE-KIND` primitive answers none, regular, directory or other,
+    which cannot tell a block device from a socket or see the set-user
+    bits. 19 of yash's `test-p.tst` cases want them, and the fix is an
+    engine change - a wider `FILE-KIND`, or a `STAT-MODE` beside it.
+    (Not fixed.)

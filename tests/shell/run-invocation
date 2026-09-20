@@ -25,4 +25,23 @@ assert_output_equals "a script file still takes parameters" "s1 s2" \
   "$(printf 'echo "$1 $2"\n' > /tmp/relf-375.sh; "$SH" /tmp/relf-375.sh s1 s2 2>&1; rm -f /tmp/relf-375.sh)"
 assert_output_equals "-s with no operands has none" "0" \
   "$(echo 'echo $#' | "$SH" -s 2>&1)"
+
+# Option letters may be combined and repeated, `-o name` takes the next
+# argument, and `--` ends them (Iteration 377).
+assert_output_equals "combined -es takes an operand" "a" \
+  "$(echo 'echo $1' | "$SH" -es a 2>&1)"
+assert_output_equals "-s after another option still reads stdin" "1" \
+  "$(echo 'set -- x; shift 0 && echo $#' | "$SH" -es 2>&1)"
+assert_output_equals "-e from the command line is in effect" "" \
+  "$(echo 'false; echo REACHED' | "$SH" -se 2>&1)"
+assert_output_equals "-f from the command line turns globbing off" '/no-such*' \
+  "$(echo 'echo /no-such*' | "$SH" -sf 2>&1)"
+assert_output_equals "-o name sets an option" "" \
+  "$(echo 'false; echo REACHED' | "$SH" -s -o errexit 2>&1)"
+assert_output_equals "+o name clears one" "REACHED" \
+  "$(echo 'false; echo REACHED' | "$SH" -s -o errexit +o errexit 2>&1)"
+assert_output_equals "-u from the command line is in effect" "" \
+  "$(echo 'echo ${nosuchvar}; echo REACHED' | "$SH" -su 2>/dev/null)"
+assert_output_equals "a lone -- ends the options" "[-x]" \
+  "$(echo 'echo "[$1]"' | "$SH" -s -- -x 2>&1)"
 report
