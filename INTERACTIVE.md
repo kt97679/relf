@@ -98,6 +98,7 @@ key arrived as three bytes and went into the command, so correcting
 | key | effect |
 |---|---|
 | left, right, `^B`, `^F` | move the cursor |
+| Home, End in every dialect | `ESC [ H`/`F`, `ESC O H`/`F` (xterm), `ESC [ 1 ~`/`4 ~` (screen, tmux, the console), `ESC [ 7 ~`/`8 ~` (rxvt); any other sequence is read whole and ignored rather than typed in (Iteration 412) |
 | Home, End, `^A`, `^E` | start and end of the line |
 | backspace, Delete, `^D` | delete before, under the cursor |
 | `^K`, `^U` | kill to the end, kill the line |

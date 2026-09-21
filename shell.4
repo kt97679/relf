@@ -5567,16 +5567,155 @@ CREATE PS2-DEFAULT  CSTR," > "   \ "> "
 
 DEFER EXPAND-DQ-TEXT-CALL   ( c-addr u --- c-addr' u' )   \ tree.4
 
+\ ---- bash's prompt escapes (Iteration 412) ----
+\
+\ A PS1 inherited from the environment is nearly always written for
+\ bash - byobu exports one full of `\[\e[38;5;202m\]` and `\u@\h:\w` -
+\ and printing it verbatim, as dash does, showed a line of escape codes
+\ where a prompt should be. Iteration 389 decided to leave these alone
+\ because dash does; a user looking at the result on an Ubuntu laptop
+\ is the evidence that decided otherwise. POSIX specifies expansion of
+\ PS1 and says nothing of backslashes, so decoding them breaks nothing
+\ a conforming script can see. They are decoded BEFORE parameter
+\ expansion, as bash does:
+\
+\   \u user  \h host  \H full host  \w cwd, ~ for HOME  \W its last part
+\   \$ # for root, else $   \n \r \a \e \\   \nnn octal   \s the shell
+\   \[ \] around bytes that take no room on screen
+\
+\ `\[` and `\]` decode to the bytes 1 and 2, which is readline's own
+\ trick: they survive expansion, so the width can be measured on the
+\ FINAL text, command substitutions and all, and then they are removed.
+\ The editor needs that width to put the cursor in the right column.
+\ Anything else after a backslash is left as it was. Not yet: the time
+\ and date escapes, \! and \#, and a real effective-uid test for \$,
+\ which uses $USER for now.
+
+512 BUFFER: PD-BUF               \ the decoded prompt
+VARIABLE PD-N
+VARIABLE PD-SRC
+VARIABLE PD-LEN
+VARIABLE PD-I
+VARIABLE PD-A
+VARIABLE PD-U
+VARIABLE PD-H
+VARIABLE PD-HL
+VARIABLE PD-J
+VARIABLE PD-INV
+VARIABLE PROMPT-WIDTH            \ columns the last prompt takes on screen
+64 BUFFER: PD-HOST
+VARIABLE PD-HOST#
+CREATE PD-USER-NM  CSTR," USER"
+CREATE PD-HOME-NM  CSTR," HOME"
+CREATE PD-PWD-NM   CSTR," PWD"
+
+: PD-C ( c --- )   PD-N @ 2 + ENSURE-BUFFER PD-BUF  PD-BUF PD-N @ + C!  1 PD-N +! ;
+: PD-S ( c-addr u --- )   0 ?DO DUP I + C@ PD-C LOOP DROP ;
+: PD-VAR ( name-cstr --- )   LOOKUP-VAR ?DUP IF DUP CSTRLEN PD-S THEN ;
+: PD-NEXT ( --- c )   PD-SRC @ PD-I @ + C@  1 PD-I +! ;
+
+: PD-HOSTNAME ( --- c-addr u )   \ the kernel's, read once
+  PD-HOST# @ IF PD-HOST PD-HOST# @ EXIT THEN
+  S" /proc/sys/kernel/hostname" R/O OPEN-FILE IF DROP PD-HOST 0 EXIT THEN
+  >R  PD-HOST 63 R@ READ-FILE DROP  R> CLOSE-FILE DROP
+  DUP IF DUP 1- PD-HOST + C@ 10 = IF 1- THEN THEN
+  DUP PD-HOST# !  PD-HOST SWAP ;
+
+: PD-SHORT ( c-addr u --- c-addr u' )   \ up to the first dot
+  DUP 0 ?DO OVER I + C@ 46 = IF DROP I UNLOOP EXIT THEN LOOP ;
+
+: PD-TILDE ( --- )   \ \w: PWD, with HOME shown as ~
+  PD-PWD-NM LOOKUP-VAR ?DUP 0= IF EXIT THEN  DUP CSTRLEN PD-U !  PD-A !
+  PD-HOME-NM LOOKUP-VAR ?DUP IF DUP CSTRLEN PD-HL !  PD-H ! ELSE 0 PD-HL ! THEN
+  PD-HL @ IF PD-U @ PD-HL @ < 0= IF
+    PD-A @ PD-HL @ PD-H @ PD-HL @ COMPARE 0= IF
+      PD-U @ PD-HL @ =  PD-A @ PD-HL @ + C@ 47 =  OR IF
+        126 PD-C  PD-A @ PD-HL @ +  PD-U @ PD-HL @ -  PD-S  EXIT
+  THEN THEN THEN THEN
+  PD-A @ PD-U @ PD-S ;
+
+: PD-BASENAME ( --- )   \ \W: the last part of PWD, ~ for HOME
+  PD-PWD-NM LOOKUP-VAR ?DUP 0= IF EXIT THEN  DUP CSTRLEN PD-U !  PD-A !
+  PD-HOME-NM LOOKUP-VAR ?DUP IF
+    DUP CSTRLEN PD-A @ PD-U @ COMPARE 0= IF 126 PD-C EXIT THEN
+  THEN
+  PD-U @ 1 = IF PD-A @ 1 PD-S EXIT THEN
+  PD-U @ BEGIN DUP 0> WHILE
+    DUP 1- PD-A @ + C@ 47 = IF PD-A @ OVER +  PD-U @ ROT -  PD-S EXIT THEN
+    1-
+  REPEAT
+  DROP PD-A @ PD-U @ PD-S ;
+
+: PD-OCTAL ( n --- )   \ \nnn: up to two more octal digits
+  2 0 DO
+    PD-I @ PD-LEN @ < IF
+      PD-SRC @ PD-I @ + C@ DUP 48 56 WITHIN IF
+        48 - SWAP 8 * +  1 PD-I +!
+      ELSE DROP LEAVE THEN
+    ELSE LEAVE THEN
+  LOOP
+  255 AND PD-C ;
+
+: PD-DOLLAR ( --- )   \ \$: # for root
+  PD-USER-NM LOOKUP-VAR ?DUP IF
+    DUP CSTRLEN S" root" COMPARE 0= IF 35 ELSE 36 THEN
+  ELSE 36 THEN PD-C ;
+
+: PD-ESCAPE ( c --- )   \ the character after a backslash
+  DUP 117 = IF DROP PD-USER-NM PD-VAR EXIT THEN            \ u
+  DUP 104 = IF DROP PD-HOSTNAME PD-SHORT PD-S EXIT THEN    \ h
+  DUP 72  = IF DROP PD-HOSTNAME PD-S EXIT THEN             \ H
+  DUP 119 = IF DROP PD-TILDE EXIT THEN                     \ w
+  DUP 87  = IF DROP PD-BASENAME EXIT THEN                  \ W
+  DUP 36  = IF DROP PD-DOLLAR EXIT THEN                    \ $
+  DUP 110 = IF DROP 10 PD-C EXIT THEN                      \ n
+  DUP 114 = IF DROP 13 PD-C EXIT THEN                      \ r
+  DUP 97  = IF DROP 7 PD-C EXIT THEN                       \ a
+  DUP 101 = IF DROP 27 PD-C EXIT THEN                      \ e
+  DUP 92  = IF DROP 92 PD-C EXIT THEN                      \ backslash
+  DUP 91  = IF DROP 1 PD-C EXIT THEN                       \ [ : takes no room
+  DUP 93  = IF DROP 2 PD-C EXIT THEN                       \ ] : ... to here
+  DUP 115 = IF DROP S" relfsh" PD-S EXIT THEN              \ s
+  DUP 48 56 WITHIN IF 48 - PD-OCTAL EXIT THEN              \ nnn
+  92 PD-C PD-C ;                                           \ anything else, as it was
+
+: PROMPT-DECODE ( c-addr u --- c-addr' u' )
+  PD-LEN !  PD-SRC !  0 PD-N !  0 PD-I !
+  BEGIN PD-I @ PD-LEN @ < WHILE
+    PD-NEXT DUP 92 = IF
+      DROP PD-I @ PD-LEN @ < IF PD-NEXT PD-ESCAPE ELSE 92 PD-C THEN
+    ELSE
+      PD-C
+    THEN
+  REPEAT
+  PD-BUF PD-N @ ;
+
+: PROMPT-VISIBLE ( c-addr u --- c-addr u' )   \ markers out, width measured
+  \ In place: the text only ever shrinks. A UTF-8 continuation byte
+  \ takes no column of its own, and a newline starts the count again,
+  \ since the cursor arithmetic is about the LAST line of the prompt.
+  0 PROMPT-WIDTH !  0 PD-J !  0 PD-INV !
+  OVER SWAP 0 ?DO
+    DUP I + C@
+    DUP 1 = IF DROP -1 PD-INV ! ELSE
+    DUP 2 = IF DROP 0 PD-INV ! ELSE
+      DUP 10 = IF 0 PROMPT-WIDTH ! ELSE
+        PD-INV @ 0= IF DUP 192 AND 128 <> IF 1 PROMPT-WIDTH +! THEN THEN
+      THEN
+      OVER PD-J @ + C!  1 PD-J +!
+    THEN THEN
+  LOOP
+  DROP PD-J @ ;
+
 : PROMPT-STRING ( name-cstr default --- c-addr u )
+  \ Decoded, expanded - parameters, command substitutions and
+  \ arithmetic, as XCU 2.5.3 says of PS1, PS2 and PS4 (Iteration 389) -
+  \ and measured.
   SWAP LOOKUP-VAR ?DUP IF NIP THEN         ( addr )
   DUP CSTRLEN
-  \ A prompt is expanded before it is written: parameters, command
-  \ substitutions and arithmetic, as XCU 2.5.3 says of PS1, PS2 and
-  \ PS4. This shell printed the value literally, so a prompt holding
-  \ `$(...)` showed the text of it (Iteration 389). The escapes bash
-  \ writes into a prompt - `\u`, `\h`, `\w`, `\[` - are bash's own
-  \ and are not expanded here, nor by dash.
-  EXPAND-DQ-TEXT-CALL ;
+  PROMPT-DECODE
+  EXPAND-DQ-TEXT-CALL
+  PROMPT-VISIBLE ;
 
 256 BUFFER: PS2-TEXT      \ PS2, already expanded
 VARIABLE PS2-TEXT#

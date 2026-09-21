@@ -625,3 +625,16 @@ wrapper rather than the usual relative one.
     them ran the whole cell range backwards through memory. They go
     through the double-cell conversion now.
     → `tests/shell/run-arith`
+
+## From the Advanced Bash-Scripting Guide (Iteration 412)
+
+`tools/absg-suite.py`: 1081 examples, 58 that dash runs cleanly and
+repeatably, and this shell agrees on 57.
+
+85. **`[ "" -eq 0 ]` is true here and an error in dash.** An empty operand
+    to an integer comparison is not a number; dash reports `Illegal
+    number` and `test` returns 2, so `if [ "$UID" -eq 0 ]` - `UID` being
+    bash's, and unset in dash and here - takes the else branch. This
+    shell read the empty string as 0 and told an ordinary user they
+    were root. NOT YET FIXED.
+    → the guide's `internal_variables` chapter, example 30

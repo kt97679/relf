@@ -407,6 +407,7 @@ do not trust the absence of a line below.
 - **409** — ^R: reverse incremental history search
 - **410** — a build that saves a broken image fails now, and says why
 - **411** — TAB completes filenames
+- **412** — Home/End under tmux; bash's prompt escapes; a guide's worth of examples
 
 ### Not tied to an iteration
 
@@ -20809,3 +20810,55 @@ already contains an escaped blank, and sorting the list.
 Sizes, each with its cause (prompts/09): `size:image-x86_64` 101128 ->
 102408 and `size:image-i386` 94200 -> 95400 - sixteen new words and
 three growable buffers, about 1.3 KB an image. Nothing else moved.
+
+## Iteration 412: what a user sees in the first minute
+
+Three reports from the two machines, and a corpus.
+
+**Home and End did nothing under byobu.** The editor read ONE byte
+after `ESC [`, which covers xterm's `ESC [ H` and `ESC [ F` - and
+nothing else. screen, tmux and the Linux console send `ESC [ 1 ~` and
+`ESC [ 4 ~`, rxvt `ESC [ 7 ~` and `ESC [ 8 ~`; and any sequence with a
+parameter, like ^-right's `ESC [ 1 ; 5 C`, left its tail in the line as
+typed text. The whole sequence is read now and dispatched on its
+parameter and final byte. Five new checks in the pty suite, one per
+dialect; against the previous editor exactly the screen/tmux, rxvt and
+^-right checks fail and xterm's pass - which is the report.
+
+**On the Ubuntu laptop the prompt was a line of escape codes.** byobu
+exports a bash PS1 - `\[\e[38;5;202m\]...\u@\h:\w` - and on Ubuntu
+`/bin/sh` is dash, which passes it through; on the Gentoo board
+`/bin/sh` is bash, which strips it (Iteration 400), so the board showed
+`$ `. Iteration 389 had decided to leave bash's escapes alone because
+dash does. The laptop is the evidence that decided otherwise, and POSIX
+says nothing of backslashes in PS1, so decoding them breaks nothing a
+conforming script can see. `\u \h \H \w \W \$ \n \r \a \e \\ \nnn
+\s \[ \]` are decoded before expansion, as bash does. `\[` and `\]`
+become bytes 1 and 2 - readline's own trick - so they survive
+expansion and the WIDTH can be measured on the final text; the editor
+uses that width, not the byte count, for the cursor column, which is
+checked by editing the middle of a line after a coloured prompt.
+
+**On the board, the new build check reported a false failure.** It
+copied only `kernel.img` into its scratch tree, so on a 32-bit host the
+wrapper reached for `kernel32.img`, found nothing, and failed for the
+wrong reason. Width-blind, the week after nine faults of that shape. It
+copies both images and the native-image marker now.
+
+**And the Advanced Bash-Scripting Guide**, as `tools/absg-suite.py`.
+The examples are embedded in Pollen markup as balanced
+`\u25caexample{...}` blocks and are arbitrary scripts from a book, so
+the runner considers only the chapters about the language, skips any
+example naming a command that changes the system, and runs each in an
+empty temporary directory with a timeout and stdin closed. Of 1081
+examples, 58 are ones dash runs cleanly and repeatably - and this shell
+agrees on 57. The 58th is a real bug: `[ "" -eq 0 ]` is true here and
+an error in dash, so the guide's am-i-root example told an ordinary
+user they were root. Catalogued, and first in GOALS.md.
+
+**The baseline, recorded twice.** The first `verify --update` of this
+iteration recorded `interactive:failed 1` and the plain run straight
+after it said 0: a pty case lost a race while the machine was running
+the whole suite, and the flake went into the baseline. Re-recorded on a
+quiet machine, where the recording run and the checking run agreed. A
+recorded value is committed only when two runs agree on it.

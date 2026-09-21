@@ -49,11 +49,28 @@ scr = keys("\x12")
 check("... and older again", "'e': echo beta" in scr)
 scr = keys("\x1b[D")
 check("any other key accepts, then acts", scr.rstrip().endswith("$ echo beta"))
+# Home and End, in every dialect a terminal speaks (Iteration 412):
+# xterm's ESC [ H / ESC [ F and ESC O H / ESC O F, screen, tmux and the
+# Linux console's ESC [ 1 ~ / ESC [ 4 ~, rxvt's ESC [ 7 ~ / ESC [ 8 ~.
+def edit_line(seq):
+    # keys() returns the whole rendered screen as ONE string here (it is
+    # a list in complete-probe.py); the edited line is its last line.
+    return keys(seq).rstrip("\n").split("\n")[-1].rstrip()
+for home, end, who in (("\x1b[H", "\x1b[F", "xterm"), ("\x1bOH", "\x1bOF", "xterm, application mode"),
+                       ("\x1b[1~", "\x1b[4~", "screen, tmux, the console"),
+                       ("\x1b[7~", "\x1b[8~", "rxvt")):
+    keys("\x15mid")
+    got_home = edit_line(home + "<")
+    got_end = edit_line(end + ">")
+    check("Home and End under %s" % who, got_home == "$ <mid" and got_end == "$ <mid>")
+# a sequence with parameters must not leave its tail in the line
+keys("\x15ab")
+check("^-right leaves no garbage", edit_line("\x1b[1;5C") == "$ ab")
 keys("\x15exit\n")
 
 failed = [n for n, ok in checks if not ok]
 for n, ok in checks:
     if not ok:
         print("FAIL search-probe: %s" % n)
-print("%d search checks, %d failed" % (len(checks), len(failed)))
+print("%d search and editing checks, %d failed" % (len(checks), len(failed)))
 sys.exit(len(failed))

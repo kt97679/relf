@@ -147,18 +147,42 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
     5 MS
   AGAIN ;
 
-: ED-ESCAPE ( --- )   \ an arrow or a home/end key: ESC [ x
+: ED-HOME ( --- )   0 ED-POS ! ;
+: ED-END  ( --- )   ED-LEN @ ED-POS ! ;
+
+VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
+
+: ED-ESCAPE ( --- )   \ ESC [ params final, or ESC O final
+  \ The whole sequence is read, parameters and all, and then acted on.
+  \ The old reader took ONE byte after `ESC [`, which covered xterm's
+  \ `ESC [ H` and `ESC [ F` - and nothing else. Home and End are
+  \ `ESC [ 1 ~` and `ESC [ 4 ~` under screen, tmux (so byobu) and the
+  \ Linux console, `ESC [ 7 ~` and `ESC [ 8 ~` under rxvt; and a
+  \ sequence with a parameter, like ^-right's `ESC [ 1 ; 5 C`, left its
+  \ tail to be typed into the line as text. Reported by a user whose
+  \ Home and End did nothing (Iteration 412).
   ED-GET-BYTE DUP 91 = SWAP 79 = OR 0= IF EXIT THEN
-  ED-GET-BYTE
-  DUP 65 = IF DROP ED-HIST-UP        EXIT THEN   \ up
-  DUP 66 = IF DROP ED-HIST-DOWN      EXIT THEN   \ down
+  0 ED-CSI-P !
+  BEGIN ED-GET-BYTE DUP 48 58 WITHIN WHILE          \ the first parameter
+    48 -  ED-CSI-P @ 10 * +  ED-CSI-P !
+  REPEAT
+  BEGIN DUP 59 = OVER 48 58 WITHIN OR WHILE         \ any further ones
+    DROP ED-GET-BYTE
+  REPEAT                                            ( final )
+  DUP 126 = IF DROP                                 \ ESC [ n ~
+    ED-CSI-P @
+    DUP 1 = OVER 7 = OR IF DROP ED-HOME EXIT THEN
+    DUP 4 = OVER 8 = OR IF DROP ED-END EXIT THEN
+    3 = IF ED-DELETE THEN EXIT
+  THEN
+  DUP 65 = IF DROP ED-HIST-UP        EXIT THEN      \ up
+  DUP 66 = IF DROP ED-HIST-DOWN      EXIT THEN      \ down
   DUP 67 = IF DROP
     ED-POS @ ED-LEN @ < IF 1 ED-POS +! THEN EXIT THEN   \ right
   DUP 68 = IF DROP
     ED-POS @ 0 > IF -1 ED-POS +! THEN EXIT THEN         \ left
-  DUP 72 = IF DROP 0 ED-POS ! EXIT THEN                 \ home
-  DUP 70 = IF DROP ED-LEN @ ED-POS ! EXIT THEN          \ end
-  51 = IF ED-GET-BYTE 126 = IF ED-DELETE THEN THEN ;    \ delete
+  DUP 72 = IF DROP ED-HOME EXIT THEN                \ home, xterm
+  70 = IF ED-END THEN ;                             \ end, xterm
 
 \ ---- completion: TAB ----
 \
@@ -412,7 +436,10 @@ VARIABLE ED-PAT-U
   0 ED-LEN !  0 ED-POS !  0 ED-DONE !  0 ED-SEARCHING !
   HIST# @ HIST-VIEW !  0 HIST-SAVED-LEN !
   CMD-START? @ IF PS1-NM PS1-DEFAULT ELSE PS2-NM PS2-DEFAULT THEN
-  PROMPT-STRING NIP ED-PROMPT-LEN !
+  \ The prompt's WIDTH, not its length: an escape sequence in it takes
+  \ bytes and no columns, and the cursor arithmetic is in columns
+  \ (Iteration 412).
+  PROMPT-STRING 2DROP PROMPT-WIDTH @ ED-PROMPT-LEN !
   ED-REDRAW
   BEGIN ED-DONE @ 0= WHILE
     ED-GET-BYTE DUP -1 = IF

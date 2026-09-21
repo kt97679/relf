@@ -64,8 +64,16 @@ assert_output_equals "PS1 expands a command substitution" "[S] " \
   "$(last_prompt "PS1='[\$(echo S)] '")"
 assert_output_equals "PS1 expands parameters and arithmetic" "d5 " \
   "$(last_prompt "PS1='\${x-d}\$((2+3)) '")"
-assert_output_equals "PS1 leaves bash's escapes alone" '\u@\h ' \
-  "$(last_prompt 'PS1='"'"'\u@\h '"'"'')"
+# bash's escapes are decoded (Iteration 412). This assertion used to say
+# the opposite - "PS1 leaves bash's escapes alone", as dash does - and a
+# user's byobu prompt printed as a line of escape codes is what changed
+# the decision.
+assert_output_equals "PS1 decodes \\u and \\W" "someone [tmp] " \
+  "$(cd /tmp && USER=someone last_prompt 'PS1='"'"'\u [\W] '"'"'')"
+assert_output_equals "\\[ \\] leave only what they enclose" "$(printf '\033[1mB\033[0m ')" \
+  "$(last_prompt 'PS1='"'"'\[\e[1m\]B\[\e[0m\] '"'"'')"
+assert_output_equals "an unknown escape is left as it was" '\q ' \
+  "$(last_prompt 'PS1='"'"'\q '"'"'')"
 assert_output_equals "a continued line still parses with a live PS2" "[a
 b]" \
   "$(printf 'x="a\nb"\necho "[$x]"\n' | PS2='p$(echo Q)> ' "$SH" -i 2>/dev/null)"

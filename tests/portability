@@ -237,17 +237,24 @@ fi
 # ------------------------------------------------------------------
 if [ -x ./relf ] && [ -f kernel.img ]; then
     scratch=$(mktemp -d)
-    cp relf relfsh kernel.img extend.4 pool.4 shadow.4 save-system.4 \
-       shell.4 edit.4 tree.4 "$scratch/" 2>/dev/null
+    # BOTH images, and the marker that says which is native: the first
+    # version copied only kernel.img, so on a 32-bit host the wrapper
+    # reached for kernel32.img, found nothing, and failed for the wrong
+    # reason - which this check then reported as the build accepting a
+    # broken source. It was width-blind, on an ARMv7 board, the week
+    # after nine faults of exactly that shape (Iteration 412).
+    cp relf relfsh kernel.img kernel32.img extend.4 pool.4 shadow.4 \
+       save-system.4 shell.4 edit.4 tree.4 "$scratch/" 2>/dev/null
+    [ -f .relf-native-img ] && cp .relf-native-img "$scratch/"
     printf ': BROKEN-ON-PURPOSE ( --- ) 2>R ;\n' | cat - "$scratch/edit.4" > "$scratch/e" &&
         mv "$scratch/e" "$scratch/edit.4"
     msg=$(cd "$scratch" && RELF_IMG= RELF_BIN= ./relfsh -c true </dev/null 2>&1 >/dev/null)
     rc=$?
     if [ "$rc" != 0 ] && echo "$msg" | grep -q 'Undefined word' &&
-       [ ! -f "$scratch/kernel-shell.img" ]; then
+       [ ! -f "$scratch/kernel-shell.img" ] && [ ! -f "$scratch/kernel32-shell.img" ]; then
         ok "a broken source fails the build and says why"
     else
-        bad "the image build" "a broken source was accepted (status $rc)"
+        bad "the image build" "a broken source was accepted (status $rc): $(echo "$msg" | head -2 | tr '\n' ' ')"
     fi
     rm -rf "$scratch"
 fi
