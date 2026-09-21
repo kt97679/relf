@@ -96,6 +96,12 @@ keys("\x15ech\t");         check("a builtin completes too", line() == "$ echo ")
 keys("\x15ls; zq-a\t");    check("after ; is command position", line() == "$ ls; zq-alpha ")
 keys("\x15if zq-a\t");     check("after a keyword is command position", line() == "$ if zq-alpha ")
 keys("\x15./bet\t");       check("a first word with a slash is a path", line() == "$ ./beta ")
+# Aliases and functions are commands too (Iteration 419). Both are
+# defined at the prompt first, so they exist only in this session.
+keys("\x15zqfunc() { :; }\n")
+keys("\x15alias zqalias=true\n")
+keys("\x15zqf\t");        check("a function completes as a command", line() == "$ zqfunc ")
+keys("\x15zqal\t");       check("an alias completes as a command", line() == "$ zqalias ")
 scr = keys_until("\x15\t", "candidates")
 check("TAB on nothing gives a count, not a flood", "candidates" in " ".join(scr[-3:]))
 keys("\x15exit\n")

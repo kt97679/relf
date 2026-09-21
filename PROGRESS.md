@@ -414,6 +414,7 @@ do not trust the absence of a line below.
 - **416** — the board confirms the widening fix; TAB on an empty line was slow there
 - **417** — FORTH-STYLE catches up; the fourth host/target combination; the prompt's clock
 - **418** — completing a word that already holds an escaped blank
+- **419** — the function and alias tables grow; both complete as commands
 
 ### Not tied to an iteration
 
@@ -21119,3 +21120,37 @@ quotes.
 Sizes, with their cause: the images grew about 300 bytes -
 CMP-UNESCAPE, CMP-ESCAPED? and the unescaped-prefix buffer. Nothing
 else moved.
+
+## Iteration 419: sixteen functions
+
+Adding aliases and functions to command completion meant reading their
+tables, and the function table was sixteen entries, fixed: the
+seventeenth definition said "shell: too many functions" and was not
+made. The aliases were thirty-two. Both were diagnosed rather than
+silent - FORTH-STYLE's minimum - but a shell library defines dozens of
+functions, so the minimum was not enough.
+
+Seven parallel arrays make up the function table, four in shell.4 and
+three in tree.4, and all are growable buffers. The table doubles when
+full now; tree.4 grows its three through a DEFER, since it is loaded
+after the word that decides. The alias table does the same with its
+two. A hundred of each, and an `unset -f` from the middle of the
+function table, which compacts it, are a regression test.
+
+**Then TAB segfaulted - on the 8-byte build only.** The first version
+of the completion walked both tables with one word taking an execution
+token, `['] ALIAS-NAME-SLOT ... EXECUTE`, and `[']` compiles the word's
+ABSOLUTE address into the image. The 8-byte engine loads somewhere new
+on every run; the 4-byte engine is built `-no-pie` and loads at the same
+address every time, where the stale address happened to be right. That
+is FORTH-STYLE.md section 6, "the rule with the most teeth", broken for
+the fourth time in the project's history - and the first time it passed
+at one width and failed at the other. Two plain loops now, an audit
+found no other compiled xt in the sources, and section 6 records the
+width twist.
+
+Twenty-one completion checks, both widths.
+
+Recorded changes, with their causes: `shell:assertions` 728 -> 729, the
+hundred-functions test; the images about 350 bytes larger - FUNC-GROW,
+ALIAS-GROW, FT-GROW, the DEFER and the two collection loops.

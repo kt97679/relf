@@ -121,6 +121,14 @@ and anything pointing into a `RESIZE`-able arena.
 > measured, 7 moves in 15 calls — so a raw pointer into a growable
 > arena is a use-after-free waiting to happen (Iteration 44).
 
+> A fourth, in Iteration 419: `['] ALIAS-NAME-SLOT ... EXECUTE` in the
+> completion code compiled an absolute xt into the shell image, and TAB
+> segfaulted - but only on the 8-byte build. The 4-byte engine is built
+> `-no-pie` and loads at the same address every time, so a stale
+> address happened to be right there. **A position bug can pass at one
+> width and fail at the other**, which is one more reason every
+> interactive probe runs at both.
+
 The corollary is that **offsets make growth safe**: because nothing
 outside the body arena holds a pointer into it, the arena can be
 `RESIZE`d freely. That is what removed two hardcoded limits.

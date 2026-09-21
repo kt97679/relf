@@ -3406,8 +3406,11 @@ DEFER FT-SHIFT-CALL      ( i --- i )   \ tree.4 moves its own row
     UN-I @ 1+ UN-I !
   REPEAT ;
 
-16 CONSTANT MAX-FUNCS
+16 CONSTANT MAX-FUNCS           \ the table's FIRST size; it doubles when full
 64 CONSTANT FUNC-NAME-MAX
+VARIABLE FUNC-CAP                \ how many rows the arrays hold now
+MAX-FUNCS FUNC-CAP !
+DEFER FUNC-GROW-CALL   ( cap --- )   \ tree.4's three arrays, grown alongside
 
 MAX-FUNCS FUNC-NAME-MAX * BUFFER: FUNC-NAMES
 VARIABLE FUNC-COUNT
@@ -3876,7 +3879,7 @@ VARIABLE BI-H
 \ stays further down, where NORMALIZE-OPERATORS and TOKENIZE are
 \ available.
 
-32  CONSTANT MAX-ALIASES
+32  CONSTANT MAX-ALIASES          \ the FIRST size; it doubles when full (419)
 64  CONSTANT ALIAS-NAME-MAX
 256 CONSTANT ALIAS-VALUE-MAX
 MAX-ALIASES ALIAS-NAME-MAX  * BUFFER: ALIAS-NAMES
@@ -3885,6 +3888,14 @@ VARIABLE ALIAS-COUNT
 VARIABLE AL-I
 VARIABLE AL-NAME
 VARIABLE AL-VALUE
+
+VARIABLE ALIAS-CAP
+MAX-ALIASES ALIAS-CAP !
+
+: ALIAS-GROW ( --- )   \ the alias table doubles rather than refusing
+  ALIAS-CAP @ 2* ALIAS-CAP !
+  ALIAS-CAP @ ALIAS-NAME-MAX  * ENSURE-BUFFER ALIAS-NAMES
+  ALIAS-CAP @ ALIAS-VALUE-MAX * ENSURE-BUFFER ALIAS-VALUES ;
 
 : ALIAS-NAME-SLOT  ( i --- addr )  ALIAS-NAME-MAX  * ALIAS-NAMES  + ;
 : ALIAS-VALUE-SLOT ( i --- addr )  ALIAS-VALUE-MAX * ALIAS-VALUES + ;
@@ -3905,9 +3916,7 @@ VARIABLE AL-VALUE
   THEN
   AL-NAME @ FIND-ALIAS AL-I !
   AL-I @ -1 = IF
-    ALIAS-COUNT @ MAX-ALIASES < 0= IF
-      ." alias: too many aliases" CR EXIT
-    THEN
+    ALIAS-COUNT @ ALIAS-CAP @ < 0= IF ALIAS-GROW THEN
     ALIAS-COUNT @ AL-I !
     ALIAS-COUNT @ 1+ ALIAS-COUNT !
   THEN
@@ -6399,6 +6408,21 @@ MAX-FUNCS BUFFER: FUNC-SUBSH
 VARIABLE FUNCDEF-SUBSHELL?   \ set by DO-FUNCDEF, read by SET-FUNC
 MAX-FUNCS CELLS BUFFER: FUNC-BODY-LENS
 
+: FUNC-GROW ( --- )   \ double every array the function table is made of
+  \ The table was 16 functions, fixed: the seventeenth said "too many
+  \ functions" and was not defined, and a shell library defines dozens.
+  \ Seven parallel arrays make it up - four here, three in tree.4,
+  \ which grows its own through FUNC-GROW-CALL - and all are growable
+  \ buffers, so it doubles instead (Iteration 419). Nothing holds an
+  \ address into these arrays across a call that can define a
+  \ function, which is what makes moving them safe.
+  FUNC-CAP @ 2* FUNC-CAP !
+  FUNC-CAP @ FUNC-NAME-MAX * ENSURE-BUFFER FUNC-NAMES
+  FUNC-CAP @ CELLS ENSURE-BUFFER FUNC-BODY-PTRS
+  FUNC-CAP @ ENSURE-BUFFER FUNC-SUBSH
+  FUNC-CAP @ CELLS ENSURE-BUFFER FUNC-BODY-LENS
+  FUNC-CAP @ FUNC-GROW-CALL ;
+
 : REMOVE-FUNC ( name-addr --- )   \ forget a function, for `unset -f`
   FIND-FUNC DUP 0< IF DROP EXIT THEN
   FUNC-COUNT @ 1- OVER ?DO
@@ -6435,10 +6459,7 @@ VARIABLE SF-I
   SF-NAME @ FIND-FUNC
   DUP -1 = IF
     DROP
-    FUNC-COUNT @ MAX-FUNCS < 0= IF
-      ." shell: too many functions" CR
-      EXIT
-    THEN
+    FUNC-COUNT @ FUNC-CAP @ < 0= IF FUNC-GROW THEN
     FUNC-COUNT @ SF-I !
     FUNC-COUNT @ 1+ FUNC-COUNT !
   ELSE

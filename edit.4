@@ -208,7 +208,8 @@ VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
 \ a command instead: the builtins, and the executables on PATH
 \ (Iteration 414). A word that already holds escaped characters -
 \ `my\ n` - is unescaped before it is matched (Iteration 418). Not yet:
-\ a word inside quotes, and functions and aliases as commands.
+\ a word inside quotes. Aliases and functions complete as commands too
+\ (Iteration 419).
 
 VARIABLE CMP-START               \ where the word under the cursor begins
 VARIABLE CMP-SLASH               \ where its name part begins
@@ -422,10 +423,35 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
     @
   REPEAT ;
 
+\ Two loops rather than one taking an execution token: `['] X` compiles
+\ X's ABSOLUTE address into the image, and the 8-byte engine is loaded
+\ somewhere different on every run, so the first version - one loop and
+\ an EXECUTE - jumped into nothing and TAB segfaulted. The 4-byte engine
+\ is built -no-pie at a fixed address, so it passed there, which is the
+\ only reason this was not caught at once (Iteration 419). FORTH-STYLE.md
+\ section 6: never compile an absolute address that outlives the build.
+: CMP-COLLECT-ALIASES ( --- )
+  ALIAS-COUNT @ 0 ?DO
+    I ALIAS-NAME-SLOT DUP CSTRLEN ?DUP IF CMP-ADD ELSE DROP THEN
+  LOOP ;
+
+: CMP-COLLECT-FUNCS ( --- )
+  FUNC-COUNT @ 0 ?DO
+    I FUNC-NAME-SLOT DUP CSTRLEN ?DUP IF CMP-ADD ELSE DROP THEN
+  LOOP ;
+
 : CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
   0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !
   CMP-COMMAND? DUP CMP-CMD? !
-  IF CMP-COLLECT-BUILTINS CMP-COLLECT-PATH ELSE CMP-COLLECT-DIR THEN ;
+  IF
+    \ The shell's own names first - aliases and functions, which are
+    \ commands as much as anything on PATH (Iteration 419) - then the
+    \ builtins, then PATH. The duplicate check drops an overlap.
+    CMP-COLLECT-ALIASES CMP-COLLECT-FUNCS
+    CMP-COLLECT-BUILTINS CMP-COLLECT-PATH
+  ELSE
+    CMP-COLLECT-DIR
+  THEN ;
 
 : CMP-COMMON ( --- )   \ CMP-LCP, over every candidate, in one walk
   CMP-BUF DUP CSTRLEN CMP-LCP !

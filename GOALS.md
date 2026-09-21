@@ -1401,8 +1401,8 @@ minute at the prompt.
 
 **Tab completion - filenames DONE (411), command names and a sorted
 listing DONE (414), escaped characters in the word DONE (418).** Still
-open: a word inside quotes (`"my n<TAB>`), and functions and aliases
-as command candidates. The original note follows.
+open: a word inside quotes (`"my n<TAB>`). Functions and aliases
+complete as commands since Iteration 419. The original note follows.
 Nothing was bound to TAB. What exists to build on:
 `OPEN-DIR` and `READ-DIR` are engine primitives (kernel.4), pathname
 expansion already matches a pattern against a directory's names

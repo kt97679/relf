@@ -50,4 +50,19 @@ else
 fi
 assert_output_equals "set with an almost empty table" "st=0" "$out"
 
+
+# The function and alias tables grow (Iteration 419). They were 16 and
+# 32 entries, fixed, and the next definition was refused with "too many
+# functions" - a shell library defines dozens. A hundred of each, and a
+# removal from the middle of the function table, which compacts it.
+out=$("$THIS_SH" -c '
+i=1; while [ $i -le 100 ]; do eval "f$i() { echo f$i; }"; i=$((i+1)); done
+f1; f17; f100; unset -f f50; f51
+i=1; while [ $i -le 100 ]; do alias a$i=true; i=$((i+1)); done
+alias a100' 2>&1)
+assert_output_equals "a hundred functions and a hundred aliases" "f1
+f17
+f100
+f51
+a100='true'" "$out"
 report

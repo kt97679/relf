@@ -2693,6 +2693,13 @@ CREATE NO-TEXT CSTR," "
 
 ' FT-SHIFT IS FT-SHIFT-CALL
 
+: FT-GROW ( cap --- )   \ this file's three rows of the function table
+  DUP CELLS ENSURE-BUFFER FT-BLOCK
+  DUP CELLS ENSURE-BUFFER FT-BASE
+  CELLS ENSURE-BUFFER FT-NODE ;
+
+' FT-GROW IS FUNC-GROW-CALL
+
 : EXEC-FUNCDEF ( node --- )
   DUP 1 XF@ 0 XF@ XSTR NO-TEXT 0 SET-FUNC
   DUP 1 XF@ 0 XF@ XSTR FIND-FUNC            ( node i )
