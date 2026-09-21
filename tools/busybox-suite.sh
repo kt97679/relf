@@ -17,9 +17,18 @@ run() {  # run every test under $1, print "passed failed", list failures on fd 3
     for t in "$DIR"/*/*.tests; do
         d=$(dirname "$t"); b=$(basename "$t" .tests)
         [ -f "$d/$b.right" ] || continue
-        out=$( (cd "$d" && timeout 10 $1 "$b.tests" 2>&1) || true )
+        st=0
+        out=$( (cd "$d" && timeout 10 $1 "$b.tests" 2>&1) ) || st=$?
         if [ "$out" = "$(cat "$d/$b.right")" ]; then p=$((p+1))
-        else f=$((f+1)); echo "$(basename "$d")/$b" >&3; fi
+        else
+            f=$((f+1))
+            # Severity first (Iteration 421): a pass count weighs a crash
+            # the same as a reworded message, so each failure says which.
+            sev=wrong
+            [ "$st" = 124 ] && sev=HANG
+            case $out in *"segmentation fault"*|*"stack guard"*|*"stack overflow"*|*"stack underflow"*|*Aborted*|*"core dumped"*) sev=CRASH ;; esac
+            echo "$(basename "$d")/$b $sev" >&3
+        fi
     done
     echo "$p $f"
 }
@@ -28,5 +37,10 @@ theirs=$(run dash 3> /tmp/bb-dash.txt)
 echo "this shell: $ours (passed failed)"
 echo "dash:       $theirs (passed failed)"
 echo "--- tests dash passes and this shell does not:"
-sort /tmp/bb-dash.txt > /tmp/bb-dash-s.txt
-sort /tmp/bb-ours.txt | comm -13 /tmp/bb-dash-s.txt -
+cut -d' ' -f1 /tmp/bb-dash.txt | sort > /tmp/bb-dash-s.txt
+sort /tmp/bb-ours.txt | join -v1 - /tmp/bb-dash-s.txt 2>/dev/null || sort /tmp/bb-ours.txt
+echo "--- by severity (all of this shell's failures):"
+for sev in CRASH HANG wrong; do
+    printf '%-6s %s\n' "$sev" "$(grep -c " $sev\$" /tmp/bb-ours.txt)"
+done
+grep -E ' (CRASH|HANG)$' /tmp/bb-ours.txt | sed 's/^/  /' || true

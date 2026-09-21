@@ -1385,23 +1385,20 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
-## FIRST: a crash (found in Iteration 420, not yet fixed)
+## Crashes: how they are looked for now (Iteration 421)
 
-    case x in 2) echo p;; esac        # segmentation fault
+The crash that stood here - `case x in 2)` - is fixed, with three more
+found the same day. Crashes are now looked for on purpose, and worked in
+order of severity:
 
-A LITERAL single-digit case pattern with a literal subject crashes the
-shell. `12)`, `[2])`, and `case $x in 2)` do not; `case a in b|2)` does.
-The parse tree is identical to `case x in a)` apart from the text, so
-it is evaluation: `PATTERN-MATCHES?` builds a one-word ARGV and calls
-EXPAND-WORDS. Suspect: ARGV redirection handling (Iteration 385), for
-which a lone digit is the shape of a file descriptor, reading the NEXT
-ARGV slot without checking ARGC - stale when the subject took the
-literal fast path, valid when `$x` had just used ARGV. Found by yash's
-case-p.tst:281; the committed build of 419 crashes too.
+- `tools/crashfuzz.py [--seconds N]` - mutated snippets, both widths,
+  crash and hang only, findings shrunk to a few lines;
+- `make busybox` and `make yash` report CRASH / HANG / wrong for this
+  shell's failures, and `YASH_KEEP=DIR` keeps yash's result files;
+- a crash in the engine becomes a Forth backtrace with gdb and
+  `tools/image-where.py` (FORTH-STYLE.md section 13).
 
-Also from that yash run, smaller: `break 0` and `continue 0` succeed
-silently where dash reports an error and, both being special builtins,
-exits.
+Open from the triage: busybox `ash-z_slow/many_ifs` times out at 10 s.
 
 ## Next (Iteration 412)
 

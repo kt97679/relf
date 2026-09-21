@@ -416,6 +416,7 @@ do not trust the absence of a line below.
 - **418** — completing a word that already holds an escaped blank
 - **419** — the function and alias tables grow; both complete as commands
 - **420** — completing inside quotes; a case-pattern crash found and recorded
+- **421** — four crashes fixed; a crash fuzzer; the corpora ranked by severity
 
 ### Not tied to an iteration
 
@@ -21181,3 +21182,66 @@ busybox, fetched at master for the same purpose: this shell passes 209
 and fails 148 of 357; dash passes 207. Recorded sizes, with their cause:
 the images grew about 400 bytes - the quote-aware scan and insertion,
 less the unescaper that became dead.
+
+## Iteration 421: crashes first
+
+Asked whether to keep raising the pass counts, the answer was to rank by
+severity instead - crash, hang, wrong result, wrong wording - because a
+count weighs a segfault the same as a reworded message. This iteration
+is the first pass down that list.
+
+**`case x in 2)`.** gdb on a `-O0 -g` engine gave the fault - a `@` of
+0 - and `ip - cbase`; the return stack, less `cbase`, and a new tool,
+`tools/image-where.py`, which walks a saved image's dictionary, made it
+a Forth backtrace: `EXEC-CASE -> PATTERN-MATCHES? -> PATTERN-FROM-MARKS`.
+`ADD-WORD` flags a lone digit `QUOTED` to mean "not a file descriptor";
+the matcher read the flag as "a quoted pattern" and walked a mark table
+nothing had filled in. With `$x` as the subject, marks from its
+expansion happened to be lying about. Text that is not in the expansion
+buffer is matched as the text it is now. The first version of that
+check crashed at the SAME instruction - the word it called, `OUT-BASE`,
+is `OUT-BODY @ @`, and `OUT-BODY` is 0 until something has been expanded
+- and the second backtrace said so at once.
+
+**`break 0`, `continue 0`**, and a count that is not a number, were
+clamped to 1. They are errors now, and as special builtins they end a
+non-interactive shell, as in dash.
+
+**The corpus runners report severity**: CRASH, HANG or wrong, for each
+of this shell's failures; yash keeps its result files under
+`YASH_KEEP`, and names a file that timed out, which used to look like a
+file with fewer cases.
+
+**And a crash-only fuzzer**, `tools/crashfuzz.py`. It mutates snippets
+from the differential cases and yash's inputs, runs each at both widths
+in a scratch directory under process, memory and time limits, reports
+only engine faults and hangs dash does not share, and shrinks each to a
+few lines. Its first 200 seconds found two bugs:
+
+- a command name of 250 characters or more segfaulted: the PATH search
+  builds "dir/name" with `B-CHAR`, which has no bound, into a 256-byte
+  `PATHBUF`. All three sites grow it to fit first.
+- ANY expansion in `PS4` crashed `set -x` - a regression from Iteration
+  391, whose test assigned PS4 in double quotes and so stored nothing to
+  expand. PS4 was expanded inside the trace, while the traced command's
+  words were still in the expansion buffers. It is expanded at the start
+  of each simple command now, where that is exactly as safe as the
+  command's own expansion, with a guard against re-entry, since a
+  `$(...)` in PS4 runs a command that would expand PS4 again. `PS4='+
+  $(echo L): '` works here and is a syntax error in dash.
+
+**`getopts` with `OPTIND=0`** segfaulted - found by the busybox triage,
+pinned by the same gdb route to `DO-GETOPTS`. `GO-SLOT` counts from 1,
+so 0 asked for positional parameter -1. Below 1 is a fresh start now, as
+in dash, and an OPTIND that is not a number is an error rather than an
+index (`abc` read as 5451).
+
+FORTH-STYLE.md records the lessons: a flag with two meanings is a
+sentinel (section 7); a writer with no bound, and expanding at a moment
+when something else is being expanded (12); crash fuzzing, gdb
+backtraces, and severity ranking (13).
+
+Recorded changes, with their causes: `parse:verdicts-agree` 200 -> 201,
+the new differential case; `shell:assertions` 729 -> 742 - four for
+break and continue, two for long names, four for PS4, three for
+getopts; the images about 550 bytes larger for the fixes.

@@ -76,4 +76,14 @@ check "and so does an external command" \
 # it rather than running it without the assignment (Iteration 383).
 got=$(printf 'readonly a=1\na=2 set\necho reached\n' | "$THIS_SH" -i +m 2>/dev/null)
 assert_output_equals "a failed assignment skips the command" "reached" "$got"
+# break and continue need a positive count (Iteration 421, from yash).
+# The count was clamped to 1, so `break 0` quietly broke one loop; now it
+# is an error, and a special builtin's error ends the shell.
+out=$("$THIS_SH" -c 'for i in 1; do break 0; done; echo after' 2>&1); st=$?
+assert_output_contains "break 0 is reported" "bad number" "$out"
+assert_output_equals "... and ends a non-interactive shell" "2" "$st"
+out=$("$THIS_SH" -c 'for i in 1 2; do continue abc; done; echo after' 2>&1)
+assert_output_contains "continue abc is reported" "bad number" "$out"
+out=$("$THIS_SH" -c 'for i in 1 2; do for j in a b; do break 2; done; echo no; done; echo ok' 2>&1)
+assert_output_equals "a valid count still works" "ok" "$out"
 report

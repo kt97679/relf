@@ -96,4 +96,25 @@ assert_output_equals "an unknown escape is left as it was" '\q ' \
 assert_output_equals "a continued line still parses with a live PS2" "[a
 b]" \
   "$(printf 'x="a\nb"\necho "[$x]"\n' | PS2='p$(echo Q)> ' "$SH" -i 2>/dev/null)"
+# PS4 holding an expansion, under set -x (Iteration 421, found by
+# tools/crashfuzz.py). It was expanded while the traced command's own
+# words were in the expansion buffers, and ANY expansion in it - even a
+# plain variable - crashed the next traced command. 391's test assigned
+# PS4 in double quotes, so the stored value had nothing left to expand.
+out=$("$THIS_SH" -c 'foo=Q; PS4='"'"'[$foo] '"'"'; set -x; echo hi; echo there' 2>&1)
+assert_output_equals "PS4 with a variable, under set -x" "[Q] echo hi
+hi
+[Q] echo there
+there" "$out"
+out=$("$THIS_SH" -c 'foo=XY; PS4='"'"'${foo#X} '"'"'; set -x; echo hi' 2>&1)
+assert_output_equals "... with a trim" "Y echo hi
+hi" "$out"
+out=$("$THIS_SH" -c 'PS4='"'"'+ $(echo L): '"'"'; set -x; x=1; echo $x' 2>&1)
+assert_output_equals "... with a command substitution, not traced itself" "+ L: x=1
++ L: echo 1
+1" "$out"
+out=$("$THIS_SH" -c 'PS4='"'"'[$?] '"'"'; set -x; false; echo after' 2>&1)
+assert_output_equals "... and \$? as of the command before" "[0] false
+[1] echo after
+after" "$out"
 report

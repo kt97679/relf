@@ -3037,6 +3037,10 @@ VARIABLE LC-END
     BEGIN LC-AT @ LC-END @ < IF LC-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 LC-AT +! REPEAT
     LC-AT @ OVER -                            ( name dir len )
     DUP IF
+      \ Grown to fit first: B-CHAR has no bound, and a command name of 250
+      \ characters ran PATHBUF's 256 bytes into CWDBUF and on (Iteration 421,
+      \ found by tools/crashfuzz.py).
+      2 PICK CSTRLEN OVER + 2 + ENSURE-BUFFER PATHBUF
       PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
       PATHBUF EXECUTABLE-FILE? IF
         DUP PATHBUF CC-ADD  CC-FIND EXIT
@@ -4034,6 +4038,7 @@ VARIABLE CMD-KIND       \ 0 builtin, 1 keyword, 2 function, 3 a path
       PATH-CUR @ PATH-END2 @ < IF PATH-CUR @ C@ 58 <> ELSE 0 THEN
     WHILE PATH-CUR @ 1+ PATH-CUR ! REPEAT
     PATH-CUR @ OVER -
+    ARGV 1 CELLS + @ CSTRLEN OVER + 2 + ENSURE-BUFFER PATHBUF   \ grown to fit (421)
     PATHBUF B-RESET B-STR 47 B-CHAR ARGV 1 CELLS + @ B-CSTR B-FINISH
     PATHBUF TEST-FILE-EXISTS? IF
       3 CMD-KIND !  PATHBUF DUP CSTRLEN CMD-V-FOUND   \ a path, so print it
@@ -4200,18 +4205,33 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
     S" shell: return: not in a function" ERR-TYPE ERR-NL  1 LAST-STATUS !
   THEN ;
 
-: LOOP-COUNT-ARG ( --- n )
+: DIGITS-ONLY? ( c-addr u --- f )   \ at least one digit, and nothing else
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER + SWAP DO I C@ 48 58 WITHIN 0= IF UNLOOP 0 EXIT THEN LOOP -1 ;
+
+: LOOP-COUNT-ARG ( name-cstr --- n | 0 )   \ 0: not a count, and reported
   \ `break [n]` and `continue [n]` leave n loops (XCU); the operand was
   \ ignored entirely until Iteration 329, so `break 2` broke one loop.
-  ARGC @ 1 > IF
-    1 ARGV@ DUP CSTRLEN PARSE-DECIMAL
-    DUP 1 < IF DROP 1 THEN
-  ELSE 1 THEN
-  LOOP-DEPTH @ MIN ;
+  \ The count must be a positive integer. This clamped anything below 1
+  \ up to 1, so `break 0`, `break -1` and `break abc` all quietly meant
+  \ `break 1`; dash reports them, and as these are special builtins a
+  \ non-interactive shell then exits (Iteration 421, from yash's
+  \ break-p.tst and continue-p.tst).
+  ARGC @ 1 > 0= IF DROP 1 LOOP-DEPTH @ MIN EXIT THEN
+  1 ARGV@ DUP CSTRLEN 2DUP DIGITS-ONLY? IF PARSE-DECIMAL ELSE 2DROP 0 THEN
+  DUP 1 < IF
+    DROP S" shell: " ERR-TYPE ERR-CSTR S" : " ERR-TYPE
+    1 ARGV@ ERR-CSTR S" : bad number" ERR-TYPE ERR-NL
+    2 SPECIAL-ERROR  0 EXIT
+  THEN
+  NIP LOOP-DEPTH @ MIN ;
+
+CREATE BREAK-NM     CSTR," break"
+CREATE CONTINUE-NM  CSTR," continue"
 
 : DO-BREAK ( --- )
   LOOP-DEPTH @ 0 > IF
-    LOOP-COUNT-ARG LOOP-LEVEL !
+    BREAK-NM LOOP-COUNT-ARG ?DUP 0= IF EXIT THEN LOOP-LEVEL !
     -1 LOOP-CONTROL-PENDING? !  -1 LOOP-BREAK? !  0 LAST-STATUS !
   ELSE
     ." break: not in a loop" CR  1 LAST-STATUS !
@@ -4219,7 +4239,7 @@ VARIABLE DOT-DEPTH   \ files being run by `.` (tree.4)
 
 : DO-CONTINUE ( --- )
   LOOP-DEPTH @ 0 > IF
-    LOOP-COUNT-ARG LOOP-LEVEL !
+    CONTINUE-NM LOOP-COUNT-ARG ?DUP 0= IF EXIT THEN LOOP-LEVEL !
     -1 LOOP-CONTROL-PENDING? !  0 LAST-STATUS !
   ELSE
     ." continue: not in a loop" CR  1 LAST-STATUS !
@@ -4496,9 +4516,21 @@ VARIABLE GO-NMLEN
   GO-NMBUF ;
 
 : GO-OPTIND@ ( --- n )
+  \ At least 1. GO-SLOT counts from 1, so `OPTIND=0` asked for
+  \ positional parameter -1, before the start of the table, and getopts
+  \ segfaulted; dash takes 0 - or anything below 1, or not a number - as
+  \ a fresh start (Iteration 421, found by the busybox triage:
+  \ ash-getopts/getopt_optarg, and pinned with gdb to DO-GETOPTS).
+  \ And a value that is not a number is an error, not an index: `abc`
+  \ read as 5451. 0 means 0 if returned: DO-GETOPTS stops, status 2.
   S" OPTIND" >NM LOOKUP-VAR
   DUP 0= IF DROP 1 EXIT THEN
-  DUP CSTRLEN PARSE-DECIMAL ;
+  DUP CSTRLEN 0= IF DROP 1 EXIT THEN
+  DUP DUP CSTRLEN DIGITS-ONLY? 0= IF
+    S" shell: getopts: OPTIND: " ERR-TYPE ERR-CSTR S" : bad number" ERR-TYPE ERR-NL
+    0 EXIT
+  THEN
+  DUP CSTRLEN PARSE-DECIMAL 1 MAX ;
 
 : GO-OPTIND! ( n --- )   N>STR S" OPTIND" >NM SWAP SET-SHVAR ;
 : GO-OPTARG! ( c-addr --- )  S" OPTARG" >NM SWAP SET-SHVAR ;
@@ -4569,7 +4601,7 @@ CREATE GO-CHARBUF 2 ALLOT
   \ `getopts optstring name [arg...]`: the operands stand in for the
   \ positional parameters, which this ignored until Iteration 328.
   ARGC @ 3 > IF -1 ELSE 0 THEN GO-OPERANDS? !
-  GO-OPTIND@ GO-IND !
+  GO-OPTIND@ ?DUP 0= IF 2 LAST-STATUS ! EXIT THEN GO-IND !
   GO-IND @ GO-LASTIND @ <> IF 1 GO-CPOS ! THEN
   GO-CPOS @ 0= IF 1 GO-CPOS ! THEN
   BEGIN
@@ -6044,14 +6076,37 @@ VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 CREATE PS4-DEFAULT  CSTR," + "   \ "+ "
 CREATE PS4-NM       CSTR," PS4"
 
+512 BUFFER: PS4-TEXT             \ PS4, expanded before the command's own words
+VARIABLE XTRACE-IN-PS4?          \ PS4 is being expanded: trace nothing
+VARIABLE PS4-TEXT#
+
+: XTRACE-PREPARE ( --- )   \ at the start of a simple command
+  \ PS4 is expanded HERE, before the command's words are, and kept.
+  \ Iteration 391 expanded it inside XTRACE-ARGV and said expanding it
+  \ there "disturbs nothing" - but the command's words are in the
+  \ expansion buffers at that point, and any PS4 holding an expansion,
+  \ even `[$foo]`, crashed `set -x` on the next command. 391's test
+  \ assigned PS4 in double quotes, so the stored value had no `$` left.
+  \ Found by tools/crashfuzz.py (Iteration 421). Here, expanding is
+  \ exactly as safe as the command's own expansion, which comes next.
+  \ And not re-entered: a command substitution in PS4 runs a simple
+  \ command, which would prepare PS4 again, and again - `PS4='+ $(echo
+  \ L): '` overflowed the return stack. The commands PS4 itself runs are
+  \ not traced, as in bash; the subshell inherits the flag.
+  OPT-XTRACE @ 0= IF EXIT THEN
+  XTRACE-IN-PS4? @ IF EXIT THEN
+  -1 XTRACE-IN-PS4? !
+  PS4-NM PS4-DEFAULT PROMPT-STRING
+  DUP 1+ ENSURE-BUFFER PS4-TEXT
+  DUP PS4-TEXT# !  PS4-TEXT SWAP MOVE
+  0 XTRACE-IN-PS4? ! ;
+
 : XTRACE-ARGV ( --- )   \ set -x: the command, expanded, on stderr
   OPT-XTRACE @ 0= IF EXIT THEN
-  \ $PS4, expanded, or "+ ". The variable was ignored entirely - the
-  \ prefix was always "+ " - which the PS1 work of Iteration 389
-  \ makes obvious: PS4 is a prompt like the others (XCU 2.5.3), and
-  \ this one is written at execution time, where expanding it disturbs
-  \ nothing (Iteration 391).
-  PS4-NM PS4-DEFAULT PROMPT-STRING ERR-TYPE
+  XTRACE-IN-PS4? @ IF EXIT THEN
+  \ $PS4, expanded, or "+ " - a prompt like the others (XCU 2.5.3;
+  \ Iteration 391), expanded by XTRACE-PREPARE before the words were.
+  PS4-TEXT PS4-TEXT# @ ERR-TYPE
   ARGC @ 0 ?DO
     I IF S"  " ERR-TYPE THEN
     I ARGV@ ERR-CSTR

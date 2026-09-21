@@ -2411,6 +2411,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   \ by a line holding only a blank alias still reports 1
   \ (Iteration 382).
   DUP 0 XF@ XV# 0= IF DROP EXIT THEN
+  XTRACE-PREPARE                           \ PS4, before the words (421)
   DUP 1 XF@ DUP 0= NO-REDIRS? !
   IF DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS THEN
   0 ARGC !  0 ARGV !
@@ -2652,6 +2653,22 @@ VARIABLE CASE-TEXT#
   \ Only a pattern with quoting in it needs the marks: without any, the
   \ text is the pattern and the old path is exactly right.
   ARGC @ 1 = IF 0 ARGV-QUOTED@ ELSE 0 THEN IF
+    \ The marks describe text in the expansion buffer, and only there.
+    \ A lone digit is not: ADD-WORD swaps it for a static string and
+    \ flags it QUOTED - meaning "an ordinary word, not a descriptor",
+    \ for the redirection scan - so this branch took it for a quoted
+    \ pattern and read a mark table nothing had filled in. `case x in
+    \ 2)` was a segmentation fault; `case $x in 2)` matched only
+    \ because the expansion before it had left marks lying about.
+    \ Text that is not in the buffer is matched as the text it is
+    \ (Iteration 421; found by yash's case-p.tst, located with gdb and
+    \ tools/image-where.py).
+    \ Asking first whether there IS a buffer: OUT-BASE is `OUT-BODY @ @`,
+    \ and OUT-BODY stays 0 until something has actually been expanded -
+    \ the first version of this test crashed at the same instruction.
+    OUT-BODY @ IF 0 ARGV@ OUT-BASE TOK-OUT @ WITHIN ELSE 0 THEN 0= IF
+      0 ARGV@ DUP CSTRLEN CASE-TEXT CASE-TEXT# @ COMPARE 0= EXIT
+    THEN
     0 ARGV@ DUP CSTRLEN PATTERN-FROM-MARKS
     -1 GM-ESCAPES? !
     CASE-TEXT CASE-TEXT# @ GLOB-MATCH
@@ -3110,6 +3127,7 @@ VARIABLE DS-END
     BEGIN DS-AT @ DS-END @ < IF DS-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 DS-AT +! REPEAT
     DS-AT @ OVER -                            ( name dir len )
     DUP IF
+      2 PICK CSTRLEN OVER + 2 + ENSURE-BUFFER PATHBUF   \ grown to fit (421)
       PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
       PATHBUF 4 ACCESS 0= IF
         PATHBUF OPEN-DIR ?DUP IF CLOSE-DIR ELSE DROP PATHBUF EXIT THEN

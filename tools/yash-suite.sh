@@ -45,9 +45,18 @@ run() {   # run every -p file against $1, print "passed failed"
     for t in "$DIR"/*-p.tst; do
         b=$(basename "$t")
         case $b in sig*|job-p.tst|fg-p.tst|bg-p.tst|testtty-p.tst|kill*) continue ;; esac
+        st=0
         ( cd "$DIR" && rm -f "${b%.tst}.trs" \
           && LANG=C LC_ALL=C timeout 25 bash -O expand_aliases \
-               ./run-test.sh "$1" "$b" >/dev/null 2>&1 ) || true
+               ./run-test.sh "$1" "$b" >/dev/null 2>&1 ) || st=$?
+        # A file that timed out reports only the cases before the hang,
+        # which made a hang look like a smaller file. It is named now, and
+        # YASH_KEEP=DIR keeps every result file for the crash scan below
+        # (Iteration 421).
+        [ "$st" = 124 ] && echo "%%% FAILED: $b: HANG (the whole file timed out)" >&3
+        if [ -n "${YASH_KEEP:-}" ] && [ "$1" = "$WRAP" ]; then
+            mkdir -p "$YASH_KEEP" && cp "$DIR/${b%.tst}.trs" "$YASH_KEEP/" 2>/dev/null || true
+        fi
         p=$(grep -c '^%%% PASSED' "$DIR/${b%.tst}.trs" 2>/dev/null) || p=0
         f=$(grep -c '^%%% FAILED' "$DIR/${b%.tst}.trs" 2>/dev/null) || f=0
         pass=$((pass + p)); fail=$((fail + f))
@@ -72,5 +81,12 @@ if command -v "$REF" >/dev/null 2>&1; then
              "$(sort -o "$OURS.s" "$OURS"; echo "$OURS.s")" \
       | sed 's/^%%% FAILED: /  /'
     rm -f "$REFS" "$REFS.s" "$OURS.s"
+fi
+if [ -n "${YASH_KEEP:-}" ]; then
+    echo
+    echo "--- crashes and hangs in this shell's results:"
+    grep -l -E 'segmentation fault|stack guard|stack overflow|stack underflow|Aborted|core dumped' \
+        "$YASH_KEEP"/*.trs 2>/dev/null | sed 's|.*/|  CRASH in |' || true
+    grep 'HANG' "$OURS" 2>/dev/null | sed 's/^%%% FAILED: /  /' || true
 fi
 rm -f "$OURS" "$WRAP"

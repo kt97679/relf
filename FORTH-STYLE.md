@@ -144,6 +144,14 @@ legitimately hold. Use a separate flag.
 > loop in every script silently did not replay. Fixed with an explicit
 > `REPLAY-ACTIVE?`. (Iteration 44)
 
+> **A flag with two meanings is a sentinel too** (Iteration 421).
+> `ADD-WORD` flags a lone digit `QUOTED` to mean "an ordinary word, not a
+> file descriptor", for the redirection scan. The case-pattern matcher
+> read the same flag as "this pattern was quoted" and walked a glob-mark
+> table nothing had filled in: `case x in 2)` was a segmentation fault.
+> One bit, two readers, two meanings. Give the second meaning its own
+> flag, or make every reader ask the question it means.
+
 ## 8. Keep flags with the data they describe
 
 Parallel arrays drift. If a word describes another word, attach it.
@@ -285,6 +293,19 @@ Audit periodically, not only when touching a feature.
   that stores through a computed address needs a test that actually
   executes it; this one was caught only because the pty suite typed a
   line.
+- **A writer with no bound is an overflow waiting for a long input.**
+  `B-CHAR` stores and advances, and nothing checks where; `PATHBUF` is 256
+  bytes, and a 250-character command name ran the `PATH` search's
+  "dir/name" into the next buffer (Iteration 421, found by the crash
+  fuzzer). Size the destination to the input before building into it -
+  every growable `BUFFER:` has `ENSURE-BUFFER` for exactly this.
+- **Expand at a moment when nothing else is being expanded.** `PS4` was
+  expanded inside the trace of a command whose own words were still in
+  the expansion buffers, and any expansion in `PS4` corrupted them. The
+  safe moment is the start of the command, where it is exactly as safe as
+  the command's own expansion - and guard against re-entry, because a
+  `$(...)` in `PS4` runs a command that would expand `PS4` again
+  (Iteration 421).
 - **A walk inside a loop over the same list is quadratic.** `CMP-NTH`
   finds the i-th completion candidate by walking from the start; called
   for each candidate inside a loop over candidates, for every addition,
@@ -334,6 +355,21 @@ Audit periodically, not only when touching a feature.
   completion; `search-probe.py` and `complete-probe.py` are assertions,
   each named for the rule it checks, run with the same suite.
   (Iterations 409-411)
+- **Look for crashes on purpose.** `tools/crashfuzz.py` mutates snippets
+  and reports only what the engine calls a crash, or a hang where dash
+  finishes - so it cannot report a false difference - and shrinks each
+  finding to a few lines. Its first 200 seconds found two bugs, one of
+  them a regression four iterations old. Three earlier segfaults had each
+  been found by accident.
+- **A crash in the engine can be read as a Forth backtrace.** Build the
+  engine with `-O0 -g`, run the image under gdb, and at the SIGSEGV print
+  `ip - cbase` and the return-stack cells minus `cbase`;
+  `tools/image-where.py IMAGE` names the word each offset is in. That
+  turned "segmentation fault" into `EXEC-CASE -> PATTERN-MATCHES? ->
+  PATTERN-FROM-MARKS` in one run (Iteration 421).
+- **Rank failures by severity before counting them.** A pass count weighs
+  a crash the same as a reworded message. The corpus runners report
+  CRASH, HANG and wrong separately; work down that list.
 - **When two builds differ, make the compiler say what it did.** The
   widening cross-compile was "located" by comparing bytes — the first
   offset where one image equalled the other shifted by sixteen — and

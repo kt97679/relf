@@ -33,4 +33,13 @@ assert_output_contains "'set --' takes a leading-dash value literally" "1=[-x]" 
 printf 'set -- -- -x\necho "1=[$1] 2=[$2]"\n' > "$t/e.sh"
 out=$("$THIS_SH" "$t/e.sh" 2>/dev/null)
 assert_output_contains "a second -- is an ordinary parameter" "1=[--] 2=[-x]" "$out"
+# OPTIND below 1 is a fresh start (Iteration 421). GO-SLOT counts from
+# 1, so OPTIND=0 read positional parameter -1 and getopts segfaulted -
+# found by the busybox triage, pinned with gdb. And OPTIND that is not a
+# number is an error, not an index: `abc` used to read as 5451.
+out=$("$THIS_SH" -c 'set -- -w 1; OPTIND=0; getopts "w:" v; echo "st=$? v=$v OPTARG=$OPTARG OPTIND=$OPTIND"' 2>&1)
+assert_output_equals "OPTIND=0 starts again, as dash does" "st=0 v=w OPTARG=1 OPTIND=3" "$out"
+out=$("$THIS_SH" -c 'set -- -a; OPTIND=abc; getopts a v; echo "st=$?"' 2>&1)
+assert_output_contains "OPTIND=abc is reported" "bad number" "$out"
+assert_output_contains "... and getopts fails with 2" "st=2" "$out"
 report

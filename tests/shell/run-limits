@@ -65,4 +65,12 @@ f17
 f100
 f51
 a100='true'" "$out"
+# A long command name (Iteration 421, found by tools/crashfuzz.py). The
+# PATH search built "dir/name" into a 256-byte buffer with no bound, and a
+# name of 250 characters ran it into the next buffer and a segfault.
+long=$(printf '%1000s' '' | tr ' ' q)
+out=$("$THIS_SH" -c "$long; echo status=\$?" 2>/dev/null)
+assert_output_equals "a 1000-character command name is merely not found" "status=127" "$out"
+out=$("$THIS_SH" -c "command -v $long; echo status=\$?" 2>/dev/null)
+assert_output_equals "... and command -v says so too, as dash does" "status=127" "$out"
 report
