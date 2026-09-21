@@ -59,6 +59,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <dirent.h>
+#include <time.h>          /* LOCAL-TIME: time, localtime_r (Iteration 417) */
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <poll.h>
@@ -105,7 +106,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    60
+#define NESC    61
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -765,7 +766,7 @@ static void virtual_machine(void) {
         &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
         &&L_getppid, &&L_envat,
         &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
-        &&L_filemode,
+        &&L_filemode, &&L_localtime,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1320,6 +1321,24 @@ L_filemode: SPILL(); { /* c-addr follow? --- mode : the file's st_mode, or
     int r = DS0 ? stat(path, &st) : lstat(path, &st);
     DS1 = r ? 0 : (UNS64)st.st_mode;
     dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_localtime: SPILL(); { /* --- sec min hour mday mon year wday : the local
+                          time, broken down as C has it - mon 0..11, year
+                          less 1900, wday 0 for Sunday. The engine had no
+                          wall clock at all; the prompt's time and date
+                          escapes, \\t \\T \\@ \\A \\d, are what asked for
+                          one (Iteration 417). */
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    PUSH((UNS64)tm.tm_sec);
+    PUSH((UNS64)tm.tm_min);
+    PUSH((UNS64)tm.tm_hour);
+    PUSH((UNS64)tm.tm_mday);
+    PUSH((UNS64)tm.tm_mon);
+    PUSH((UNS64)tm.tm_year);
+    PUSH((UNS64)tm.tm_wday);
     FILLNEXT();
 }
 L_termraw: SPILL(); { /* fd --- ior : character-at-a-time input for the

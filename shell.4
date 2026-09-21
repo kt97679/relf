@@ -5626,9 +5626,10 @@ DEFER EXPAND-DQ-TEXT-CALL   ( c-addr u --- c-addr' u' )   \ tree.4
 \ trick: they survive expansion, so the width can be measured on the
 \ FINAL text, command substitutions and all, and then they are removed.
 \ The editor needs that width to put the cursor in the right column.
-\ Anything else after a backslash is left as it was. Not yet: the time
-\ and date escapes, \! and \#, and a real effective-uid test for \$,
-\ which uses $USER for now.
+\ Anything else after a backslash is left as it was. \! and \# (the
+\ history number), a real effective-uid test for \$, and the time and
+\ date escapes - from a clock primitive the engine gained for them - all
+\ came in Iteration 417.
 
 512 BUFFER: PD-BUF               \ the decoded prompt
 VARIABLE PD-N
@@ -5695,10 +5696,72 @@ CREATE PD-PWD-NM   CSTR," PWD"
   LOOP
   255 AND PD-C ;
 
-: PD-DOLLAR ( --- )   \ \$: # for root
-  PD-USER-NM LOOKUP-VAR ?DUP IF
-    DUP CSTRLEN S" root" COMPARE 0= IF 35 ELSE 36 THEN
-  ELSE 36 THEN PD-C ;
+VARIABLE PD-EUID                 \ the effective uid; -2 until read, -1 unknown
+-2 PD-EUID !
+2048 BUFFER: PD-STATUS           \ /proc/self/status, while it is read
+VARIABLE PD-SN
+
+: PD-NUMBER ( i --- i' n )   \ the decimal number at PD-STATUS + i, after blanks
+  BEGIN DUP PD-SN @ < IF DUP PD-STATUS + C@ DUP 32 = SWAP 9 = OR ELSE 0 THEN WHILE 1+ REPEAT
+  0 SWAP
+  BEGIN DUP PD-SN @ < IF DUP PD-STATUS + C@ 48 58 WITHIN ELSE 0 THEN WHILE
+    DUP PD-STATUS + C@ 48 -  ROT 10 * +  SWAP 1+
+  REPEAT
+  SWAP ;
+
+: PD-READ-EUID ( --- uid )   \ the Uid: line's second field, or -1
+  \ No engine primitive gives the effective uid, and $USER is only what
+  \ someone set: `sudo -E` keeps it, `su` may not change it. Linux says
+  \ what is true in /proc/self/status - "Uid:", then the real,
+  \ EFFECTIVE, saved and filesystem uids - and the shell cannot change
+  \ its own, so it is read once (Iteration 417).
+  S" /proc/self/status" R/O OPEN-FILE IF DROP -1 EXIT THEN
+  >R  PD-STATUS 2047 R@ READ-FILE DROP  PD-SN !  R> CLOSE-FILE DROP
+  PD-SN @ 4 - 0 MAX 0 ?DO
+    PD-STATUS I + 4 S" Uid:" COMPARE 0= IF
+      I 4 + PD-NUMBER DROP  PD-NUMBER NIP  UNLOOP EXIT
+    THEN
+  LOOP
+  -1 ;
+
+
+: PD-DOLLAR ( --- )   \ \$: # for the superuser, else $
+  PD-EUID @ -2 = IF PD-READ-EUID PD-EUID ! THEN
+  PD-EUID @ 0< IF                        \ no /proc: $USER, as before
+    PD-USER-NM LOOKUP-VAR ?DUP IF
+      DUP CSTRLEN S" root" COMPARE 0= IF 35 ELSE 36 THEN
+    ELSE 36 THEN PD-C EXIT
+  THEN
+  PD-EUID @ 0= IF 35 ELSE 36 THEN PD-C ;
+
+\ \! and \#: the number the next history entry will have. The history
+\ is in edit.4, loaded after this file, so it arrives through a DEFER;
+\ the 0 pushed before the call is what an unpatched one leaves.
+DEFER HIST-NEXT-CALL                \ ( 0 --- n )
+
+: PD-HISTNUM ( --- )   0 HIST-NEXT-CALL N>STR DUP CSTRLEN PD-S ;
+
+\ The time and date escapes, from the engine's LOCAL-TIME (Iteration 417):
+\   \t 13:05:09   \T 01:05:09   \@ 01:05 PM   \A 13:05   \d Mon Sep 21
+7 CELLS BUFFER: PD-TM            \ sec min hour mday mon year wday
+
+: PD-NOW ( --- )   LOCAL-TIME  7 0 DO  PD-TM 6 I - CELLS + !  LOOP ;
+: PD-TM@ ( i --- n )   CELLS PD-TM + @ ;
+: PD-2D ( n --- )   DUP 10 < IF 48 PD-C THEN N>STR DUP CSTRLEN PD-S ;
+: PD-12 ( hour --- hour' )   12 MOD ?DUP 0= IF 12 THEN ;
+: PD-HM ( hour --- )   PD-2D 58 PD-C 1 PD-TM@ PD-2D ;
+
+: PD-TIME ( c --- )   \ one of t T @ A d
+  PD-NOW
+  DUP 116 = IF DROP 2 PD-TM@ PD-HM 58 PD-C 0 PD-TM@ PD-2D EXIT THEN        \ t
+  DUP 84  = IF DROP 2 PD-TM@ PD-12 PD-HM 58 PD-C 0 PD-TM@ PD-2D EXIT THEN  \ T
+  DUP 64  = IF DROP 2 PD-TM@ PD-12 PD-HM 32 PD-C
+               2 PD-TM@ 12 < IF S" AM" ELSE S" PM" THEN PD-S EXIT THEN     \ @
+  DUP 65  = IF DROP 2 PD-TM@ PD-HM EXIT THEN                                \ A
+  DROP                                                                       \ d
+  S" SunMonTueWedThuFriSat" DROP 6 PD-TM@ 3 * + 3 PD-S  32 PD-C
+  S" JanFebMarAprMayJunJulAugSepOctNovDec" DROP 4 PD-TM@ 3 * + 3 PD-S  32 PD-C
+  3 PD-TM@ PD-2D ;
 
 : PD-ESCAPE ( c --- )   \ the character after a backslash
   DUP 117 = IF DROP PD-USER-NM PD-VAR EXIT THEN            \ u
@@ -5715,6 +5778,10 @@ CREATE PD-PWD-NM   CSTR," PWD"
   DUP 91  = IF DROP 1 PD-C EXIT THEN                       \ [ : takes no room
   DUP 93  = IF DROP 2 PD-C EXIT THEN                       \ ] : ... to here
   DUP 115 = IF DROP S" relfsh" PD-S EXIT THEN              \ s
+  DUP 116 = OVER 84 = OR OVER 64 = OR OVER 65 = OR OVER 100 = OR
+    IF PD-TIME EXIT THEN                                   \ t T @ A d
+  DUP 33  = IF DROP PD-HISTNUM EXIT THEN                   \ ! history number
+  DUP 35  = IF DROP PD-HISTNUM EXIT THEN                   \ # command number
   DUP 48 56 WITHIN IF 48 - PD-OCTAL EXIT THEN              \ nnn
   92 PD-C PD-C ;                                           \ anything else, as it was
 

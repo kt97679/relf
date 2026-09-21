@@ -72,6 +72,25 @@ assert_output_equals "PS1 decodes \\u and \\W" "someone [tmp] " \
   "$(cd /tmp && USER=someone last_prompt 'PS1='"'"'\u [\W] '"'"'')"
 assert_output_equals "\\[ \\] leave only what they enclose" "$(printf '\033[1mB\033[0m ')" \
   "$(last_prompt 'PS1='"'"'\[\e[1m\]B\[\e[0m\] '"'"'')"
+# \$ follows the EFFECTIVE uid, not $USER (Iteration 417): USER is set
+# to the opposite answer, so this passes only if it is ignored - as root
+# here, and as an ordinary user on anyone else's machine.
+if [ "$(id -u)" = 0 ]; then want_dollar='#'; liar=someone; else want_dollar='$'; liar=root; fi
+assert_output_equals "\\$ follows the effective uid, not USER" "$want_dollar " \
+  "$(USER=$liar last_prompt 'PS1='"'"'\$ '"'"'')"
+# The time and date escapes (Iteration 417), against date(1) read on
+# either side, so a minute ticking over between the readings cannot fail
+# it.
+before=$(LC_ALL=C date '+%a %b %d %H:%M')
+got=$(last_prompt 'PS1='"'"'\d \A'"'"'')
+after=$(LC_ALL=C date '+%a %b %d %H:%M')
+if [ "$got" = "$before" ] || [ "$got" = "$after" ]; then ok_dt=yes; else ok_dt="[$got] vs [$before]"; fi
+assert_output_equals "\\d and \\A agree with date" yes "$ok_dt"
+case $(last_prompt 'PS1='"'"'\t|\T|\@'"'"'') in
+    [0-2][0-9]:[0-5][0-9]:[0-5][0-9]'|'[01][0-9]:[0-5][0-9]:[0-5][0-9]'|'[01][0-9]:[0-5][0-9]' '[AP]M) ok_t=yes ;;
+    *) ok_t=no ;;
+esac
+assert_output_equals "\\t \\T \\@ have their shapes" yes "$ok_t"
 assert_output_equals "an unknown escape is left as it was" '\q ' \
   "$(last_prompt 'PS1='"'"'\q '"'"'')"
 assert_output_equals "a continued line still parses with a live PS2" "[a

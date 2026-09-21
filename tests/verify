@@ -167,6 +167,8 @@ emit image:8byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells[^)]*): \(.
 # half to run it again, so it reads `skipped` there.
 widening=$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells, from a 4-byte host): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)
 emit image:widening "${widening:-skipped}"
+narrow=$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells, from a 4-byte host): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)
+emit image:narrow-host "${narrow:-skipped}"
 emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
 emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"

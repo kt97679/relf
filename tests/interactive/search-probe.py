@@ -66,6 +66,17 @@ for home, end, who in (("\x1b[H", "\x1b[F", "xterm"), ("\x1bOH", "\x1bOF", "xter
 # a sequence with parameters must not leave its tail in the line
 keys("\x15ab")
 check("^-right leaves no garbage", edit_line("\x1b[1;5C") == "$ ab")
+# The prompt's \! counts history entries (Iteration 417), so it must
+# advance by one for each line entered at the terminal.
+s2 = Session([sh], env=dict(os.environ, PS1='<\\!> ', RELF_PS1='<\\!> '), prompts=('> ',))
+s2.wait_prompt(Session.TIMEOUT, 0)
+s2.send("echo a\n"); s2.send("echo b\n")
+while s2._read(Session.SETTLE + 0.1):
+    pass
+seen = [l for l in render(s2.out).split("\n") if l.strip()]
+nums = [l.split(">")[0].lstrip("<") for l in seen if l.startswith("<")]
+check("\\! advances with each entry", len(nums) >= 3 and nums[-3:] == ["1", "2", "3"])
+s2.send("exit\n", wait=False)
 keys("\x15exit\n")
 
 failed = [n for n, ok in checks if not ok]

@@ -310,6 +310,18 @@ else
     check_image_reproduces "$wd/kernel.img" kernel.img "8-byte cells, from a 4-byte host"
     rm -rf "$wd"
 
+    # ... and the fourth combination, the 4-byte engine building its own
+    # width. On a 32-bit host that is the native fixpoint; here it was
+    # the one combination nothing ran, which FORTH-STYLE.md 15 claimed
+    # was covered until the claim was checked (Iteration 417).
+    wd=$(mktemp -d)
+    cp extend.4 cross.4 kernel.4 kernel32.img relf32 "$wd/"
+    sed -i "s/^8 TARGET-CELL-BYTES !\$/4 TARGET-CELL-BYTES !/" "$wd/cross.4"
+    ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
+        | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
+    check_image_reproduces "$wd/kernel.img" kernel32.img "4-byte cells, from a 4-byte host"
+    rm -rf "$wd"
+
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"

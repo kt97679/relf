@@ -1389,10 +1389,8 @@ against a second reference (`dash`) before being recorded, because
 
 1. DONE (413): `[ "" -eq 0 ]` is an error, and the guide agrees 58/58.
 2. DONE (413): the rest of the guide classified - nothing fixable here.
-3. **The prompt escapes still missing**: time and date (`\t \T \@ \A
-   \d \D{}`), `\!` and `\#`, and a real effective-uid test for `\$`,
-   which reads $USER for now. An engine primitive for geteuid would
-   settle the last one.
+3. DONE (417): `\t \T \@ \A \d`, `\!` and `\#`, and `\$` from the real
+   effective uid. Still missing: `\D{format}`, `\j`, `\l`, `\v`, `\V`.
 
 ## The interactive editor's two missing features (Iteration 407)
 

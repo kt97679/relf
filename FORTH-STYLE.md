@@ -202,6 +202,15 @@ Audit periodically, not only when touching a feature.
   asking of each one whether its count can be zero — do that after
   adding any loop, and prefer a differential case that exercises the
   zero path.
+  **And again in Iteration 401**, with a twist the audit question
+  misses: `EMIT-DECIMAL` and `N>STR` printed their digits with
+  `DIGIT-N @ 0 DO`, after a loop that produced no digits ONLY for the
+  most negative cell — which `NEGATE` returns unchanged, so the digit
+  loop's `DUP 0 >` was false at once. Asked "can this count be zero?",
+  a reader thinking of ordinary numbers answers no. Ask it of the
+  type's boundary values — zero, one, the largest and the most negative
+  cell — not the typical ones. `$((1<<31))` segfaulted on a 4-byte
+  build; the 8-byte build had the same fault waiting at `$((1<<63))`.
 - **A multi-line `( ... )` comment can corrupt parsing** once enough
   code precedes it, surfacing as a cascade of unrelated "Undefined
   word" errors. Use `\` line comments for anything multi-line. A
@@ -233,7 +242,46 @@ Audit periodically, not only when touching a feature.
   nothing when its 32 slots are full, so the 33rd variable produces
   wrong output rather than an error. Same for `MAX-FUNCS`,
   `MAX-ARGS`. Growable is the goal; diagnosing overflow is the
-  minimum.
+  minimum. Line-editor history was one until Iteration 408 — 32 slots
+  of 256 bytes, so the 33rd command evicted the first and a longer line
+  was cut short, both without a word. A user asked "why 32?", and
+  there was no answer.
+- **`ENSURE-BUFFER` can move the buffer.** Growing a `BUFFER:` may
+  reallocate it, so an address taken before the growth points at freed
+  memory after it. Grow first, then take every address:
+
+  ```forth
+  HIST-TEXT# @ OVER + 1+ ENSURE-BUFFER HIST-TEXT   \ grow ...
+  HIST-TEXT HIST-TEXT# @ + SWAP MOVE              \ ... THEN address it
+  ```
+
+  Every growable buffer written since Iteration 408 says so in a
+  comment at the point of growth.
+- **`AND` and `OR` do not short-circuit.** `A B OR IF` evaluates `B`
+  even when `A` has already decided — harmless for a comparison, fatal
+  when `B` is only defined on some inputs: `1 32 LSHIFT` is undefined
+  on a 4-byte cell, so a guard written as `CELLBYTES 4 = ... OR` still
+  runs it there. Put the deciding test first and `EXIT` out of it
+  (Iteration 415; the same fact cost a profiling detour in 367).
+- **The kernel is small; check a word exists before relying on it.**
+  There is no `2>R` here. Iteration 409 used it, the definition
+  aborted, every later word in the file was undefined, and
+  `SAVE-SYSTEM` still wrote an image — one that booted into the bare
+  Forth prompt instead of the shell. Since Iteration 410 the image
+  build refuses any build whose log complains, so this now fails
+  loudly; before that it failed silently and `make` said success.
+- **A stack slip in an address computation stores somewhere else.**
+  `0 HIST-TEXT HIST-TEXT# @ R@ + C!` — one `+` short — stored a
+  terminator at an OFFSET rather than an address, a wild write that
+  surfaced as a segfault on the first command (Iteration 408). Any word
+  that stores through a computed address needs a test that actually
+  executes it; this one was caught only because the pty suite typed a
+  line.
+- **A walk inside a loop over the same list is quadratic.** `CMP-NTH`
+  finds the i-th completion candidate by walking from the start; called
+  for each candidate inside a loop over candidates, for every addition,
+  it made collecting a few thousand names cubic, and TAB on an empty
+  line never finished (Iteration 414). Walk once, carrying a pointer.
 
 ## 13. Testing
 
@@ -267,6 +315,25 @@ Audit periodically, not only when touching a feature.
   produced a wrong entry in `PROGRESS.md` that survived an iteration
   (fork/exec vs. compile time). If a claim is checkable in one
   command, check it.
+- **A check must be able to fail — show it failing.** Run a new check
+  against the code from before the fix: the image-build check against
+  the old wrapper (it exits 0 and installs a broken image), the Home/End
+  checks against the old editor (exactly the screen/tmux and rxvt ones
+  fail). A check never seen failing may not be checking anything.
+  (Iterations 410, 412)
+- **Where there is no reference to record from, state the rule.** The
+  pty transcripts are recorded from dash, and dash has no `^R` and no
+  completion; `search-probe.py` and `complete-probe.py` are assertions,
+  each named for the rule it checks, run with the same suite.
+  (Iterations 409-411)
+- **When two builds differ, make the compiler say what it did.** The
+  widening cross-compile was "located" by comparing bytes — the first
+  offset where one image equalled the other shifted by sixteen — and
+  the answer was wrong: a run of zeros equals itself shifted by any
+  amount. Logging `ALLOT-T`, then every header, then every literal, on
+  both hosts, and diffing the logs, found it in three steps. Trivial
+  matches are the first thing an inference-by-comparison finds.
+  (Iterations 405, 415)
 
 ## 14. When a DSL is worth building
 
@@ -298,3 +365,49 @@ generalizes.
 
 **The test that settled it:** add the missing primitives, convert real
 code, and see whether the pain remains. It did not.
+
+## 15. Two cell widths, and a cross-compiler between them
+
+This system runs at 8-byte and 4-byte cells, and `cross.4` builds
+either width's image on either width's host. Everything below was found
+by running the other width, or the other host — most of it by an ARMv7
+board, after four hundred iterations on x86-64 alone.
+
+- **`NEGATE` cannot make the most negative cell positive.** It returns
+  it unchanged. Converting a signed number digit by digit after
+  `DUP 0< IF NEGATE THEN` therefore fails at exactly one value. Take
+  the magnitude as a DOUBLE, where it fits:
+
+  ```forth
+  S>D TUCK DABS <# #S ROT SIGN #>     \ c-addr u, correct for every cell
+  ```
+
+  (Iteration 401)
+- **A shift by the cell width or more is undefined.** The engine's
+  `LSHIFT` and `RSHIFT` are C shifts. `x 32 RSHIFT` on a 4-byte cell is
+  not 0; in practice it was `x`, and the cross-compiler filled the high
+  half of 8-byte fields with copies of the low half. Guard any shift
+  whose count can reach the width. (Iteration 403)
+- **A literal the host cannot hold wraps, silently.** On a 4-byte host
+  `4294967296` reads as 0 and `2147483648` as its negative, with no
+  error. Target source must not contain a literal of 2^31 or more:
+  compute it at run time - `1 31 LSHIFT` - AFTER the narrow-cell case
+  has exited, so the computation only runs where it is defined. Of 388
+  literals in `kernel.4`, two did this, and an 8-byte image built on a
+  32-bit host had a `LITERAL` that tested the wrong range. (Iteration
+  415)
+- **Cross-compiler words must ask about the host, not only the
+  target.** `TARGET-CELL-BYTES` says what is being built; `1 CELLS` says
+  what is doing the building, and arithmetic happens in the second.
+  `LITERAL-T` asked only about the target, and its fits-in-32-bits test
+  was always false on a 32-bit host; `SIGNED-T` asked both and was
+  right. The kernel's own `LITERAL` asks about the width it runs on
+  (`CELLBYTES-TOK`), which is the same question in the other place.
+  (Iterations 403, 415)
+- **Test both widths, and both hosts.** Four combinations: an 8-byte
+  host building each width, and a 4-byte host building each width. For
+  four hundred iterations only the first two were ever run, and the
+  fourth hid two bugs. `tests/run_tests.sh` now runs all four wherever
+  an i386 engine can be built, and `make HOSTBITS=32` with
+  `CC='cc -m32 -fno-pie -no-pie'` makes a 64-bit machine behave as a
+  32-bit host.

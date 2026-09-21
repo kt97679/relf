@@ -412,6 +412,7 @@ do not trust the absence of a line below.
 - **414** — TAB completes command names; the listing is sorted
 - **415** — the widening cross-compile, fixed; and the lead that pointed the wrong way
 - **416** — the board confirms the widening fix; TAB on an empty line was slow there
+- **417** — FORTH-STYLE catches up; the fourth host/target combination; the prompt's clock
 
 ### Not tied to an iteration
 
@@ -21046,3 +21047,51 @@ accepting: the rebuilt image contains the new "about N candidates"
 message and the committed one does not, so the new code is in it - it
 is the same size by coincidence, a string and two variables removed, a
 string and three added.
+
+## Iteration 417: writing it down, and a clock
+
+**FORTH-STYLE.md caught up with fifteen iterations.** §12 gains the
+latest `0 0 DO` - the one whose count was zero only for the most
+negative cell, which an audit thinking of ordinary numbers passes - and
+history as another silently full table, and five new hazards: a
+growable buffer that moves, `AND`/`OR` that do not short-circuit, a
+kernel without `2>R`, a missing `+` that stores to an offset, and a walk
+inside a loop over the same list. §13 gains three testing habits: show
+a check failing, state the rule where there is no reference, and make
+the compiler say what it did. And a new §15, on two cell widths and the
+cross-compiler between them: `NEGATE` and the most negative cell, shifts
+by the width, literals a host cannot hold, asking about the host as
+well as the target, and testing all four host/target combinations.
+
+**Writing §15 caught a false claim in it.** It said `run_tests.sh` ran
+all four combinations. On x86 it ran three: nothing built the 4-byte
+image WITH the 32-bit engine. The sentence was not softened; the fourth
+check was added, and `tests/verify` records it as `image:narrow-host`.
+
+**The prompt's remaining escapes.** `\$` reads the EFFECTIVE uid now,
+from the `Uid:` line of /proc/self/status - `$USER` is only what someone
+set, and `sudo -E` keeps it - falling back to `$USER` where there is no
+/proc; the test sets USER to the opposite answer, so it passes only if
+USER is ignored. `\!` and `\#` give the next history number, which
+lives in edit.4, loaded after the prompt code, so it arrives through a
+DEFER with a default pushed before the call. And `\t \T \@ \A \d` needed
+a clock the engine did not have: `LOCAL-TIME`, `time` and `localtime_r`
+broken down onto the stack, NESC 60 to 61, both base images regenerated
+and reproducing on the first pass. The escapes agree with date(1) at
+both widths; the test reads date on either side of the prompt, so a
+minute turning over between the two cannot fail it.
+
+**Reading the recording before committing caught a regression**:
+`shell:dead-words 0 -> 1`. `PD-ROOT-NM` was defined as a counted string
+and then never used - the code compared with `S" root"` instead. Removed,
+recorded again; the recording and the check agree on 0. The other
+changed lines, each with its cause: `image:narrow-host` is the fourth
+combination; `shell:assertions` 725 -> 728 are the uid, date and time
+checks; `size:engine-code-*` grew about 400 bytes for the LOCAL-TIME
+handler; the images grew about 0.9 KB for the escapes, the uid reader
+and the history DEFER - 24 bytes less than the first recording, which
+was the dead string.
+
+The laptop, meanwhile, verified 416 clean - with `image:widening
+reproduces` on a real multilib machine, the first run of that check
+anywhere but here.

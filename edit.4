@@ -44,6 +44,9 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
 : HIST-SLOT ( i --- addr )   \ the i-th line, NUL-terminated
   CELLS HIST-OFF + @ HIST-TEXT + ;
 
+: HIST-NEXT ( 0 --- n )   DROP HIST# @ 1+ ;   \ for the prompt's \! and \#
+' HIST-NEXT IS HIST-NEXT-CALL
+
 : HIST-ADD ( c-addr u --- )   \ the newest line
   DUP 0= IF 2DROP EXIT THEN
   \ Both buffers grow BEFORE any address into them is taken: growing
