@@ -20,6 +20,75 @@ https://github.com/kt97679/relf) working toward:
 3. **Minimalism and simplicity as the top priority** — above raw
    performance, when the two trade off against each other.
 
+## How this file is kept
+
+This file is the PRESENT: what the project is for, how it is built and
+tested, what is open now, and what has been tried and rejected. The
+past is `PROGRESS.md`, one entry per iteration, append-only. When a
+section here stops describing the present - a snapshot of where things
+stood, a "next" list that is done - it moves to
+`attic/docs/GOALS-HISTORY.md` rather than accumulating here. How the log
+and the register below are used, and why, is `prompts/12-progress-log.md`.
+
+## Open now
+
+The one current queue. Worked in order of severity
+(`prompts/13-severity-first.md`): crashes and hangs, then wrong results
+ordinary scripts hit, then edge cases and wording.
+
+1. **Crashes found by `tools/crashfuzz.py`, not yet fixed** (Iteration
+   424; reproducers in `tests/crashers/`): `printf` with no arguments
+   segfaults at both widths; launching background jobs in an unbounded
+   loop (`until ]; do $i & done`) segfaults.
+2. **A backslash from an expansion, in pathname expansion** (424): dash
+   and bash treat it as escaping the next character when the word is
+   globbed; case patterns do since 424, pathname expansion does not.
+   Needs a second kind of glob mark - active in the pattern, not
+   counting toward "this word is a pattern". busybox
+   glob_bkslash_in_var, var_unbackslash1; yash quote-p.tst:583.
+3. **`export NAME` with no value is not remembered** (422), so a later
+   assignment does not reach children. Needs a pending-export list.
+4. **`${#a}` is not field-split** when IFS holds digits (424). Rare.
+5. **`a=b exec 1>&1` exports `a`**, as bash does and dash does not
+   (424). Behaves like bash; low priority.
+6. **Prompt escapes still missing**: `\D{format}`, `\j`, `\l`, `\v`,
+   `\V` (417).
+7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423).
+8. **`intr-at-prompt` loses a race under full-suite load** (406, again
+   in 423): passes alone, fails about one verify in five on one CPU.
+9. **The remaining corpus failures**: yash 108 (21 of them alias edge
+   cases), busybox 147; `make yash` and `make busybox` list them with
+   their severity.
+
+## Tried and rejected - do not retry without new evidence
+
+One line each: what, the number that decided it, and where the evidence
+is. Add to this list whenever an attempt is reverted or priced out; read
+it before starting anything it could cover.
+
+- **Headerless words** - 16,400 bytes saved, but extending the shell in
+  Forth needs `FIND`, which needs headers. A decision (131).
+- **A register VM** - 26% larger bytecode for 46% fewer instructions
+  elsewhere, the wrong trade for size (research; `attic/docs/VM-RESEARCH.md`).
+- **Replicating the dispatch site** - GCC merged 68 sites into 5;
+  forcing 66 apart changed the benchmark by nothing here (140). Devalues
+  a tail-call interpreter for the same reason.
+- **Byte-granular offsets; variable-length branch offsets** - the width
+  an offset needs; relaxation. Rejected twice (GOALS history, 131-149).
+- **Iteration 137's locals rewrite** - reverted in 149. If re-applied,
+  `SS-SCRUB` must scrub `LE-A LE-N LE-ARGS LE-P LE-Q LX-N` or images
+  stop reproducing.
+- **Compiling `$((...))` once** - the whole arithmetic evaluator is 10% of
+  the arithmetic benchmark and compiling removes only the reading half
+  (284).
+- **A variable-lookup cache** - built: 4.9% fewer dispatches, 0.75% less
+  time; reverted (373). The profile that suggests it never changes.
+- **Refactoring per-word expansion bookkeeping** - priced at ~1% by doing
+  the work twice, not done (374; the method is
+  `prompts/10-price-before-refactor.md`).
+- **A field-level quoting flag for an empty quoted field** - changed
+  nothing, reverted; the case is still open (359).
+
 ## Why RelF specifically, not SOD32 or a hybrid design
 
 This was decided after directly benchmarking multiple VM designs (SOD32,
@@ -118,15 +187,6 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## The widening cross-compile - FIXED (Iteration 415)
-
-An 8-byte image cross-compiled on a 32-bit host is byte-identical to
-the committed one now, and so are the other three host/target
-combinations. The cause, and why the notes that stood here were wrong,
-is in PROGRESS.md under Iteration 415. tests/run_tests.sh checks the
-widening direction on every run that has an i386 engine, and
-tests/verify records it as `image:widening`.
-
 ## Known limits of the 4-byte-cell build (Iteration 397)
 
 A limit, a file size or an arithmetic value that does not fit a CELL
@@ -136,84 +196,6 @@ limits in a 64-bit `rlim_t` whatever the pointer width - reads them
 exactly. The fix, if it is ever wanted, is for the engine to return such
 values as a double cell rather than one; the test suite compares only
 where the value fits, and says so.
-
-## Where things stand (Iteration 368)
-
-The shell is the work now; the engine has been stable since Iteration
-243. Current counts, all green: differential 86 cases, matrix 420,
-POSIX 46, mrsh 21, interactive 22 with one listed divergence, every
-file in `tests/shell`, no dead words, both cell widths. busybox's ash
-suite, run from outside the tree by `tools/busybox-suite.sh`, is at 203
-of 357 against dash's 211 - near parity on a suite written for another
-shell.
-
-The standing worklist is no longer in this file. It is
-`tests/from-others/CATALOGUE.md`: behaviours learned from other
-projects' test suites, written in this project's own words, each either
-implemented and covered by a case here or marked open with what is in
-the way. `DOCS.md` says what every document is for.
-
-Performance: three iterations of profiling (365-367) took a
-system-shaped script from 25.1M dispatches to 21.6M, 14% fewer, and
-about 11% off the wall clock. `PERFORMANCE.md` has the method and the
-current profile; `tools/profile.py` reproduces it.
-
-## Where things stood (Iteration 253)
-
-The state a reader needs before anything else in this file, because
-several sections below describe a system with more parts than it now
-has.
-
-**One engine, and it hosts itself.** `cv8.c` runs CV8: a byte stream
-of 1-byte opcodes with 2- or 3-byte compressed-pointer calls. `cross.4`
-runs on the committed CV8 `kernel.img` and compiles `kernel.4` into a
-new one, byte-identical; `kernel.4`'s own compiler emits the same
-encoding for everything loaded at run time, including the shell. No
-other engine, translator or language is involved. `relf.c`, the cell
-engine that bootstrapped every image until Iteration 243, is in
-`attic/` with the translator and the encoding lab; the tag
-`cell-engine-final` is the last commit they built.
-
-**The compiler emits what the translator used to add.** The
-specialised opcodes (`CV8-REFERENCE.md` 7) were the difference between
-the cell product and CV8, and only `tools/layout.py` emitted them. They
-are now peepholes in `kernel.4` and `cross.4`, `OPCODE` declarations
-for the tiny kernel words, and opcodes emitted by `shadow.4`. Measured:
-the natively compiled shell runs at 0.99-1.02 of the translated one's
-time on every `tests/bench-vm` workload, and 3.3-4.4x faster than the
-cell product it replaced.
-
-**Headers are byte-granular** (Iteration 244): a 1-3 byte backward
-link, an unpadded name, an unaligned body, and so a call scale of 0.
-Only parameter fields are aligned. `CV8-REFERENCE.md` 5 has the layout
-and the rule every consumer must share.
-
-**Image sizes, the numbers to quote** (`tests/sizes` has the totals):
-
-    64-bit   kernel.img     8,882    kernel-shell.img     77,384
-    32-bit   kernel32.img   8,370    kernel32-shell.img   71,452
-
-**Eighty-two primitives**: 35 direct, with one-byte opcodes, and 47
-OS/libc ones behind ESC + a selector, declared after `ESCAPED` in
-`kernel.4`. The synthetic opcodes are numbered from the direct count,
-so an escaped primitive costs no opcode (Iteration 247); 32 opcodes
-are free. `CV8-REFERENCE.md` 3.2 has the map.
-
-**Descriptor I/O is three primitives**: `READ` and `WRITE` (Iteration
-245), one read(2) or write(2) each, returning a count or a negative
-errno, and `POLL` (246), one poll(2); `RAW-MODE` (254) sets a terminal
-to a byte at a time. `FD-POLL` wraps it for one
-descriptor; `KEY?` and `MS` are built on it, and `KEY` uses it to wait. Everything else is Forth on top, in `kernel.4`: `KEY` (one
-byte, retrying `EINTR`), `ACCEPT` on `KEY`, `READ-FILE` and
-`WRITE-FILE` (looping over short counts), `WRITE-LINE`, and
-`READ-LINE`. Nothing reads ahead: `READ-LINE` reads a block from a
-descriptor that can seek and seeks back over what follows the
-newline, and reads anything else a byte at a time, so a pipe or
-terminal shared with a child never loses a byte. The one buffer left
-is the engine's for `TYPE`, flushed by every primitive that reads,
-writes, forks, execs or exits.
-
-**Single branch `master`.**
 
 ## Repository conventions
 
@@ -1385,182 +1367,14 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
-## Crashes: how they are looked for now (Iteration 421)
+## Crashes: how they are looked for here (Iteration 421)
 
-The crash that stood here - `case x in 2)` - is fixed, with three more
-found the same day. Crashes are now looked for on purpose, and worked in
-order of severity:
-
-- `tools/crashfuzz.py [--seconds N]` - mutated snippets, both widths,
-  crash and hang only, findings shrunk to a few lines;
-- `make busybox` and `make yash` report CRASH / HANG / wrong for this
-  shell's failures, and `YASH_KEEP=DIR` keeps yash's result files;
-- a crash in the engine becomes a Forth backtrace with gdb and
-  `tools/image-where.py` (FORTH-STYLE.md section 13).
-
-busybox `ash-z_slow/many_ifs` passes, 6856 of 6856 (Iterations 422-423:
-read's remainder, and case patterns and subjects that were field-split).
-It takes 12 s here against dash's 7.5 - worth profiling some day; the
-runner gives the slow directory a minute.
-
-Open (Iteration 424): **a backslash from an expansion, in PATHNAME
-expansion.** dash and bash treat it as escaping the next character when
-the word is globbed: `b='test*.TMP/\name'; printf '%s' $b` matches
-`testdir.TMP/name`. A word whose only glob characters are escaped
-(`a\*b`) is not a pattern at all and stays as written. Case patterns do
-this since 424; pathname expansion still writes such a backslash into
-the pattern as a literal, because the glob marks record only unquoted
-`* ? [`. The fix is a second kind of mark - an unquoted backslash that
-is active in the pattern but does NOT count toward "this word is a
-pattern" (so `a\xb` alone never globs). busybox glob_bkslash_in_var and
-var_unbackslash1, yash quote-p.tst:583.
-
-Also open: `export NAME` for a name with no value is not remembered, so a
-later `NAME=value` does not reach children. This shell's "exported" is
-"in the process environment"; the fix is a small pending-export list that
-assignment consults.
-
-## Next (Iteration 412)
-
-1. DONE (413): `[ "" -eq 0 ]` is an error, and the guide agrees 58/58.
-2. DONE (413): the rest of the guide classified - nothing fixable here.
-3. DONE (417): `\t \T \@ \A \d`, `\!` and `\#`, and `\$` from the real
-   effective uid. Still missing: `\D{format}`, `\j`, `\l`, `\v`, `\V`.
-
-## The interactive editor's two missing features (Iteration 407)
-
-Raised by a user of the shell, and the honest answer is that they are
-the most visible gaps left: everything else in the standing queue is
-conformance detail, and these are what a person notices in the first
-minute at the prompt.
-
-**Tab completion - filenames DONE (411), command names and a sorted
-listing DONE (414), escaped characters in the word DONE (418).** Still
-open: a word inside quotes (`"my n<TAB>`). Functions and aliases
-complete as commands since Iteration 419. The original note follows.
-Nothing was bound to TAB. What exists to build on:
-`OPEN-DIR` and `READ-DIR` are engine primitives (kernel.4), pathname
-expansion already matches a pattern against a directory's names
-(`GLOB-FIELDS` in shell.4), and the editor has the line buffer, the
-cursor and a redraw. The work: find the word under the cursor, decide
-whether it is in command position (complete from PATH and the builtin
-table) or an operand (complete as a path), collect the matches, insert
-the longest common prefix, and on a second TAB print the candidates and
-redraw the prompt. Quoting matters: a completed name containing a space
-must come back quoted, or the completion breaks the line it completed.
-
-**History search - DONE (Iteration 409).** `^R` with readline's
-prompt and rules; see edit.4 and tests/interactive/search-probe.py.
-The original note follows. `HIST-BUF` holds 32 lines and the arrows
-walk them, so the storage is there. What is missing is incremental reverse search:
-^R enters a search mode with its own prompt (`(reverse-i-search)`),
-each keystroke extends the pattern and shows the most recent match,
-^R again steps to the next older one, RETURN accepts the line, ^G or
-^C restores what was being typed. The editor's redraw already handles a
-line that is shorter than the previous one, which is the fiddly part.
-
-Both are in `edit.4`, both are testable through the pty harness in
-`tests/interactive`, and neither touches the shell's semantics - which
-is why they can be done in any order relative to the conformance work.
-Order suggested: history search first (smaller, self-contained, no
-quoting questions), then completion.
-
-## What to do next, in order (as of Iteration 368)
-
-1. **The open catalogue entries**, in
-   `tests/from-others/CATALOGUE.md`: each names a behaviour, what this
-   shell does instead, and what was measured about it.
-2. **The per-word bookkeeping**, `EXPAND-WORDS` at 6.7% and `ARGV-ADD`
-   at 3.7% of a realistic script. Five parallel byte arrays that could
-   be one record, seven flag clears that could be one fill; a
-   restructuring rather than a substitution, with `tools/profile.py` in
-   the loop.
-3. **The remaining busybox gap**, eight tests behind dash. Several are
-   deliberate divergences already recorded; the rest are listed by
-   `tools/busybox-suite.sh`.
-4. The older queue below, which is still accurate about the engine.
-
-## What to do next, in order (as of Iteration 248)
-
-The first two items were ordered around the `relf.c` retirement:
-kernel semantics before it, while the cell engine was the simplest
-thing to debug against, and engine work after it, so it would be done
-once. Both are done; the rest keep their order.
-
-1. ~~**`+LOOP` boundary conformance.**~~ **Done** (Iteration 243), and
-   smaller than planned: no biased index was needed. The overflow test
-   the bias enables can be computed from the unbiased `index - limit`,
-   so only `(+LOOP)` changed - `(DO)`, `I`, `J`, `UNLOOP` and `LEAVE` did
-   not, and `I` stayed cheap. `tests/coreplus-loop.fth` carries the
-   standard's four `+LOOP` sections.
-
-2. ~~**Adapt `cv8.4` for cross-compilation**, then retire `relf.c`.~~
-   **Done** (Iteration 243). `cv8.4` was merged into `kernel.4` and
-   `cross.4` emits CV8, so the class of load-time obstacles the entry
-   below describes never had to be solved one by one: nothing is
-   translated any more. The measurement that made it safe - the
-   specialised opcodes - is under "Where things stand".
-
-3. ~~**`GUARD`.**~~ **On by default since Iteration 253.** One
-   unreadable page below each stack replaces the compare on every push:
-   3-6% faster at 64-bit (every workload's interval excludes 1.0),
-   neutral at 32. The `tests/diff` regression that kept it off since 206
-   was a real bug the guard exposed - `PASSWD-HOME` dropped one cell too
-   many from its caller's stack on every `~user` - and it is fixed. The
-   guard above the empty data stack makes an underflow of two cells or
-   more a fault; `-DGUARD=0` brings back the compares for a target
-   without an MMU.
-
-4. ~~**`KEY?` plus a termios/fcntl primitive.**~~ **`KEY?` done**
-   (Iteration 246), on `POLL` rather than `fcntl`: poll(2) waits
-   without changing the descriptor's flags, which every process sharing
-   it would see. The non-blocking `KEY` hazard is fixed with it.
-   **Terminal raw mode done too** (Iteration 254): `RAW-MODE ( fd flag
-   --- ior )`, escaped, hides `struct termios`. A byte at a time without
-   echo, Ctrl-C still working; the engine puts the terminal back on
-   every way out, and only in the process that changed it.
-   `tests/io/pty.c` runs the tests on a pseudo-terminal.
-
-4a. **Image encoding** (Iteration 258's audit, `tools/image-audit.py`).
-   ~~Variable slots relative to the instruction~~ **done in Iteration
-   259**: 3,843 of 4,380 slots are short where 2,171 were, 1.6 KB off
-   the 64-bit shell image. Still open: a pass that shrinks a finished
-   definition's forward branches to `BRANCH8` would save about 1.36 KB
-   (97% fit). Calls are best left base-relative: pc-relative is worse,
-   and allowing either saves only 3%.
-
-4b. **`I`, `(LOOP)` and `(+LOOP)` as engine opcodes.** Colon
-   definitions today, and 8% of the shell's loop benchmark dispatches
-   (Iteration 266's profile); every Forth `DO` loop pays them. A format
-   change (direct opcodes), so with a version bump.
-
-5. **The rest of the growable-buffer work.** Iteration 249 did the
-   line buffers, 250 the word arrays and positional parameters, 251
-   expansion output, command substitution, `for` lists and
-   here-documents, 252 variable values and the variable table. What is
-   left is the alias table and name lengths, all reported rather than
-   silent; worth doing only if a real script meets them. Each by the same rule: grow before any
-   pointer into the table is taken, retire rather than free, and
-   diagnose whatever stays fixed.
-
-6. **A cooperative multitasker**, the other thing `POLL` was chosen
-   for: `PAUSE` switches tasks, and when every task is waiting on a
-   descriptor the scheduler makes one poll(2) over all of them. Two
-   things to settle first. The engine checks both stacks against the
-   MAIN stacks' limits, so task stacks must lie inside the VM's memory
-   or the limits need a way to change. And poll(2) sees descriptors,
-   not child processes, so waiting on a background job needs a
-   SIGCHLD self-pipe or pidfd_open. `FD-POLL` is already reentrant -
-   it keeps its struct on the data stack - for this reason.
-
-A SMALLER THING, left so it is not re-proposed:
-
-- **`forth.img` is NOT worth building.** SOD32 builds one - kernel.img
-  plus extend.4th, saved - and cross-compiles from it. Measured here:
-  cross-compile 19ms total, bare boot 2ms, boot + extend.4 3ms. So
-  extend.4 costs about 1ms of 19, and a `forth.img` buys 5% in
-  exchange for another tracked binary to keep in sync and scrub. Left
-  here so it is not re-proposed.
+The method is `prompts/13-severity-first.md`. This project's tools for
+it: `tools/crashfuzz.py [--seconds N]` (mutated snippets, both widths,
+crash and hang only, shrunk); `make busybox` and `make yash` print
+CRASH / HANG / wrong per failure, `YASH_KEEP=DIR` keeping yash's result
+files; and gdb with `tools/image-where.py` for a Forth-level backtrace
+(`FORTH-STYLE.md` section 13). Reproducers live in `tests/crashers/`.
 
 ## Known shortcuts to revisit
 
@@ -1736,25 +1550,8 @@ before anything else, because every number here is relative to it.
 
 ### Settled, so nobody re-proposes them
 
-- **Headerless words: rejected.** 16,400 bytes, and extending the
-  shell in Forth needs `FIND`, which needs headers. A decision, not a
-  deferral (Iteration 131).
-- **Register VMs: closed.** Measured elsewhere at 26% larger bytecode
-  for 46% fewer executed instructions - the wrong direction for goal 3
-  (Shi et al., TACO 2008; `attic/docs/VM-RESEARCH.md`).
-- **Replicating the dispatch site: measured, gains nothing here.** GCC
-  had merged 68 `NEXT()` sites into 5; forcing 66 apart changed the
-  benchmark by nothing on this hardware. That also devalues a
-  tail-call interpreter, whose reported gain rests on the same
-  mechanism (Iteration 140).
-- **Byte-granular *offsets*: still rejected.** Byte-granular
-  *indices* are not - see token threading below. The objection was
-  always about the width an offset needs.
-- **Variable-length branch offsets: rejected**, twice. They need
-  assembler relaxation.
-- **Iteration 137's locals rewrite: reverted** in 149. If it is ever
-  re-applied, `SS-SCRUB` must scrub `LE-A`, `LE-N`, `LE-ARGS`, `LE-P`,
-  `LE-Q` and `LX-N`, or the image stops reproducing.
+Moved to "Tried and rejected" near the top of this file, which is
+where the next session looks first.
 
 ### The queue
 
@@ -1963,25 +1760,25 @@ dry.
 
 ### Method that must survive contact with all of the above
 
-- **Measure before proposing** - and measure the *harness* too. Three
-  separate wrong conclusions this project reached came from a broken
-  oracle, not broken code: the mrsh reference shell (124), the token
-  decoder (135, 141), and two benchmarks that flattered the same
-  answer (140, 141).
-- **Compare against something that is not this system.** Every
-  benchmark here compared RelF against RelF, which cannot see a defect
-  that was present at the first commit. A 4x regression in the outer
-  interpreter survived 200 iterations of careful measurement for
-  exactly that reason, and was found in an afternoon by running SOD32
-  on the same input. A ratio against your own previous build tells you
-  whether you improved; it never tells you whether you are slow.
-- **Check why a test passes**, not just that it does. `ulimit.sh`
-  passed for two years' worth of iterations while `ulimit` did not
-  exist (122).
-- **One feature per test case.** A case exercising two attributes the
-  fault to whichever one you were thinking about (147).
-- **A fix and `tests/verify --update` go in the same commit**, so
-  `tests/BASELINE` always records what the tree does.
+Each rule is stated once, in `prompts/`; this project's instances stay
+here as the evidence for it.
+
+- Measure before proposing, and measure the HARNESS -
+  `prompts/03-audit-tooling.md`. Here: three wrong conclusions came
+  from a broken oracle - the mrsh reference shell (124), the token
+  decoder (135, 141), two flattering benchmarks (140, 141).
+- Compare against something that is not this system -
+  `prompts/02-escape-recall.md`. Here: a 4x regression in the outer
+  interpreter survived 200 iterations of RelF-against-RelF measurement
+  and was found in an afternoon by running SOD32 on the same input.
+- Check why a test passes, not just that it does -
+  `prompts/03-audit-tooling.md`. Here: `ulimit.sh` passed while `ulimit`
+  did not exist (122).
+- One feature per test case. Here: a case exercising two attributes
+  the fault to whichever one you were thinking about (147).
+- A fix and `tests/verify --update` go in the same commit, and a changed
+  line is explained before it is recorded -
+  `prompts/09-baseline-discipline.md`.
 
 ## What dash does that this shell does not: `DASH-COMPARISON.md`
 

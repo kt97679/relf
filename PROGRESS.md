@@ -420,6 +420,7 @@ do not trust the absence of a line below.
 - **422** — a value dimension for the matrix; test's counted rules; export, IFS, OPTIND, read
 - **423** — case patterns and subjects are not field-split; many_ifs passes
 - **424** — command takes special properties away; backslashes in case patterns
+- **425** — the log that stops retries; the documents deduplicated against prompts/
 
 ### Not tied to an iteration
 
@@ -21361,3 +21362,44 @@ busybox tests remain that dash passes; this iteration read all of them.
 Recorded changes, with their causes: `shell:assertions` 762 -> 765,
 the three `command` tests; the images about 60 bytes larger - the flag,
 its save and restore, and the escape switch.
+
+## Iteration 425: stating each thing once
+
+Asked for two things: that the prompts make the progress log a way of
+NOT retrying what already failed, and that the documents stop repeating
+each other and the prompts.
+
+**`prompts/12-progress-log.md`**: search the log before trying an
+approach; record failed and reverted attempts with the number that
+decided them; keep a short register of rejected approaches where the
+next session looks first; correct wrong entries forward, never by
+editing. Its examples are this project's: the variable-lookup cache
+(373), the per-word refactor priced at 1% (374), 317's grammar and
+422's counted rules, and the "sixteen bytes after TIB" lead that was
+wrong and corrected forward in 415. **`prompts/13-severity-first.md`**:
+classify failures before fixing any, work crashes first, look for them
+on purpose, get a backtrace in the runtime's own terms - the method of
+Iterations 420-424, stated as a method. `07-git-handoff` points at 12.
+
+**Measured before deduplicating**: sentences shared between documents
+- none beyond two lines of prompt template. The duplication was
+TOPICAL: rules restated in project documents, and `GOALS.md` carrying
+history. The pairs that looked like duplicates (DASH-COMPARISON and
+VERSUS-DASH, CV8 and CV8-REFERENCE) are not: each states a distinct
+role and points at its partner.
+
+- **GOALS.md** is the present now: how it is kept, ONE "Open now" list
+  in severity order, and a "Tried and rejected" register consolidated
+  from the old "Settled" list and the log's reverted attempts. Seven
+  stale sections - three snapshots of where things stood, four "next"
+  lists, all done or carried into "Open now" - moved unchanged to
+  `attic/docs/GOALS-HISTORY.md`. Its "Method" section lists each rule's
+  prompt and keeps this project's instances as evidence.
+- **CHECKING.md, FORTH-STYLE.md, PERFORMANCE.md** keep their commands,
+  facts and evidence, and point to prompts 03, 08, 09, 10, 11 and 13 for
+  the reasoning they had restated.
+- **DOCS.md** says it once: process guidance lives in `prompts/`, and
+  project documents refer to it.
+
+The fuzzer's five reproducers are committed in `tests/crashers/`, with a
+README saying they are open to-dos rather than tests.

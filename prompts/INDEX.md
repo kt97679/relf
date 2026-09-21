@@ -30,6 +30,8 @@ fetched lazily when their trigger conditions are met.
 | `09-baseline-discipline` | re-record a recorded value that changed | nothing is recorded - then ask why not |
 | `10-price-before-refactor` | restructure something that works, on the strength of a profile | the change is required for correctness |
 | `11-report-from-elsewhere` | write output someone on another machine will paste back, or read one | the reader has the machine |
+| `12-progress-log` | try an approach, or finish an attempt that worked, failed or was reverted | nothing is being tried |
+| `13-severity-first` | work through a list of failures, or decide whether a pass count is the goal | one failure, already understood |
 
 ## The one that is hardest to self-apply
 

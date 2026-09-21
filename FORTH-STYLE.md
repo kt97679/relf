@@ -337,39 +337,38 @@ Audit periodically, not only when touching a feature.
 - **Check *why* a test passes.** `run-case` stayed green through a
   change that was still wrong — the leftover `)` became an empty
   pattern that happened to match nothing. A green suite says the
-  behaviour is right, not the reasoning. (Iteration 48)
+  behaviour is right, not the reasoning. (Iteration 48) The general rule:
+  `prompts/03-audit-tooling.md`.
 - **A hang is a test result.** `run-break-continue` hanging was the
   clearest signal that function parsing had broken.
 - **Measure before concluding.** Claiming a cause without checking it
   produced a wrong entry in `PROGRESS.md` that survived an iteration
   (fork/exec vs. compile time). If a claim is checkable in one
-  command, check it.
+  command, check it. The general rule:
+  `prompts/10-price-before-refactor.md`.
 - **A check must be able to fail — show it failing.** Run a new check
   against the code from before the fix: the image-build check against
   the old wrapper (it exits 0 and installs a broken image), the Home/End
   checks against the old editor (exactly the screen/tmux and rxvt ones
   fail). A check never seen failing may not be checking anything.
-  (Iterations 410, 412)
+  (Iterations 410, 412) The general rule:
+  `prompts/03-audit-tooling.md`.
 - **Where there is no reference to record from, state the rule.** The
   pty transcripts are recorded from dash, and dash has no `^R` and no
   completion; `search-probe.py` and `complete-probe.py` are assertions,
   each named for the rule it checks, run with the same suite.
   (Iterations 409-411)
-- **Look for crashes on purpose.** `tools/crashfuzz.py` mutates snippets
-  and reports only what the engine calls a crash, or a hang where dash
-  finishes - so it cannot report a false difference - and shrinks each
-  finding to a few lines. Its first 200 seconds found two bugs, one of
-  them a regression four iterations old. Three earlier segfaults had each
-  been found by accident.
+- **Look for crashes on purpose, and rank failures by severity** - the
+  method is `prompts/13-severity-first.md`. This project's tool is
+  `tools/crashfuzz.py`; its first 200 seconds found two bugs, one of them
+  a regression four iterations old, and three earlier segfaults had each
+  been found by accident (Iteration 421).
 - **A crash in the engine can be read as a Forth backtrace.** Build the
   engine with `-O0 -g`, run the image under gdb, and at the SIGSEGV print
   `ip - cbase` and the return-stack cells minus `cbase`;
   `tools/image-where.py IMAGE` names the word each offset is in. That
   turned "segmentation fault" into `EXEC-CASE -> PATTERN-MATCHES? ->
   PATTERN-FROM-MARKS` in one run (Iteration 421).
-- **Rank failures by severity before counting them.** A pass count weighs
-  a crash the same as a reworded message. The corpus runners report
-  CRASH, HANG and wrong separately; work down that list.
 - **When two builds differ, make the compiler say what it did.** The
   widening cross-compile was "located" by comparing bytes — the first
   offset where one image equalled the other shifted by sixteen — and

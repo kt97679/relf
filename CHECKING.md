@@ -8,6 +8,13 @@ locale.
 
 Everything below is a `make` target; `make help` lists them all.
 
+This file is the project-specific part: the commands, and the facts about
+this repository's suites. The reasoning behind them is stated once, in
+`prompts/`: why a suite must not depend on the machine it runs on is
+`08-run-it-elsewhere.md`, what a failure report must contain is
+`11-report-from-elsewhere.md`, and why a recorded number is explained
+before it is re-recorded is `09-baseline-discipline.md`.
+
 ## The five-minute pass
 
     make                  # both engines, both shell images
@@ -63,10 +70,10 @@ bundle can be cloned.
 ## What the suites take out of your environment
 
 Before running anything they set `LC_ALL=C`, close their own stdin and
-`unset LD_PRELOAD`. All three are things a machine can hold that change
-what a test sees rather than what the shell does: a collation order, a
-terminal that never answers, and a loader message on every exec.
-`make portability` checks that each suite does all three, and then
+`unset LD_PRELOAD` - a collation order, a terminal that never answers,
+and a loader message on every exec (`prompts/08-run-it-elsewhere.md`
+explains the class). `make portability` checks that each suite does all
+three, and then
 proves it by running one of them with a hostile preload and in a second
 locale.
 
@@ -208,6 +215,7 @@ does it by itself.
 
 A failing case, with the diff the runner prints, is the whole bug
 report: it names the construct, both shells' answers, and the file to
-put a new case in. `tests/from-others/CATALOGUE.md` is where behaviours
+put a new case in (`prompts/11-report-from-elsewhere.md` says why that
+is enough). `tests/from-others/CATALOGUE.md` is where behaviours
 learned from other projects' suites are written down before they are
 fixed.

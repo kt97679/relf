@@ -53,7 +53,8 @@ the one kind of binary the project cannot rebuild without.
 3. **Keep an append-only log** — one entry per session — with what was
    done, what it cost, what was learned, and what is open. Name the
    files that changed. A future session reads the last few entries and
-   knows where it is.
+   knows where it is. What goes in it, and how it stops the next
+   session retrying a rejected idea, is `12-progress-log`.
 
 4. **Record decisions where they will be found again**, not only in the
    log: a decision about the code belongs in a comment beside the code,

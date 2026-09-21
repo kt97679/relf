@@ -3,6 +3,13 @@
 Measured, not assumed. Figures are best-of-five CPU time on this
 container, and dispatch counts come from the counting engine.
 
+This file is the record of what was measured here. The method it
+follows - price a change before paying for it, price what cannot be
+removed by doing it twice, and convert a proxy like dispatch counts to
+time at least once - is `prompts/10-price-before-refactor.md`, and the
+optimisations measured and rejected are indexed in GOALS.md's "Tried and
+rejected" register so they are not rebuilt.
+
 ## The question
 
 In-process work here costs 18-28x dash and 8-10x bash:

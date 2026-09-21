@@ -30,6 +30,8 @@ describe are ones any measurement or write-up project can reproduce.
 | [09-baseline-discipline](09-baseline-discipline.md) | when a recorded value changes | a check quietly converted into a record of whatever happened last |
 | [10-price-before-refactor](10-price-before-refactor.md) | before restructuring working code | paying for a prize nobody measured; a proxy metric mistaken for time |
 | [11-report-from-elsewhere](11-report-from-elsewhere.md) | when writing or reading a remote failure report | a round trip spent asking what the output should have said |
+| [12-progress-log](12-progress-log.md) | before trying an approach, and when any attempt ends | re-deriving and re-paying for an idea that was already tried and rejected |
+| [13-severity-first](13-severity-first.md) | when working a list of failures | a segfault weighed the same as a reworded message; crashes found only by accident |
 
 ## The two that mattered most
 
