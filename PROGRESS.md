@@ -415,6 +415,7 @@ do not trust the absence of a line below.
 - **417** — FORTH-STYLE catches up; the fourth host/target combination; the prompt's clock
 - **418** — completing a word that already holds an escaped blank
 - **419** — the function and alias tables grow; both complete as commands
+- **420** — completing inside quotes; a case-pattern crash found and recorded
 
 ### Not tied to an iteration
 
@@ -21154,3 +21155,29 @@ Twenty-one completion checks, both widths.
 Recorded changes, with their causes: `shell:assertions` 728 -> 729, the
 hundred-functions test; the images about 350 bytes larger - FUNC-GROW,
 ALIAS-GROW, FT-GROW, the DEFER and the two collection loops.
+
+## Iteration 420: inside quotes, and a crash
+
+**TAB inside quotes.** The word under the cursor is found by a forward
+scan from the start of the line that follows the quoting rules, instead
+of a backward scan to a blank: a blank inside `'...'` or `"..."` or after
+a backslash does not end the word, and `; | & ( ) < >` do even without a
+blank, so `ls;zq<TAB>` is command position too. The word's quoting is
+removed before it is matched. What is inserted is escaped for the quote
+in force - nothing inside `'...'` except `'\''`, only `" \ $ `` inside
+`"..."` - and a finished name closes its quote, while a directory leaves
+it open so TAB can carry on inside. The backward scan's unescaper
+became dead and went. Twenty-six completion checks, both widths.
+
+**And the corpora were fetched again** - yash at 2.56.1, busybox at
+master - to give this and later turns a before-and-after. yash: this
+shell passes 1652 and fails 123; dash passes 1650. Among the cases dash
+passes and this shell does not was a CRASH: `case x in 2) echo p;;
+esac` - any literal single-digit pattern with a literal subject - is a
+segmentation fault, and the committed 419 build does it too. It is
+characterised in GOALS.md and is the first thing next.
+
+busybox, fetched at master for the same purpose: this shell passes 209
+and fails 148 of 357; dash passes 207. Recorded sizes, with their cause:
+the images grew about 400 bytes - the quote-aware scan and insertion,
+less the unescaper that became dead.

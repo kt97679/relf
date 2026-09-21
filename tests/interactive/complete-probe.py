@@ -86,6 +86,14 @@ keys("\x15cat my\\ n\t");      check("an escaped blank stays inside the word", l
 keys("\x15cat my\\ d\t");      check("... and a directory completes past it", line() == "$ cat my\\ dir/")
 keys("\x15cat my\\ dir/in\t"); check("... and so does a name inside that directory", line() == "$ cat my\\ dir/inner\\ file ")
 keys("\x15cat zz\t");   check("no candidate leaves the line alone", line() == "$ cat zz")
+# Inside quotes (Iteration 420): the quote is part of the word, its
+# contents are matched unquoted, a finished name closes it, and a
+# directory leaves it open so TAB can carry on inside.
+keys('\x15cat "my n\t');       check("inside double quotes, and the quote is closed", line() == '$ cat "my notes" ')
+keys('\x15cat "my d\t');       check("... a directory leaves it open", line() == '$ cat "my dir/')
+keys('\x15cat "my dir/in\t');  check("... and completes inside it", line() == '$ cat "my dir/inner file" ')
+keys("\x15cat 'my n\t");       check("inside single quotes", line() == "$ cat 'my notes' ")
+
 # command position (Iteration 414)
 keys("\x15zq-a\t");        check("a first word completes from PATH", line() == "$ zq-alpha ")
 keys("\x15zq-\t")
@@ -94,6 +102,7 @@ check("the listing is sorted, and executables only",
       "zq-alpha  zq-beta  zq-gamma" in " ".join(scr[-3:]) and "zq-plain" not in " ".join(scr[-3:]))
 keys("\x15ech\t");         check("a builtin completes too", line() == "$ echo ")
 keys("\x15ls; zq-a\t");    check("after ; is command position", line() == "$ ls; zq-alpha ")
+keys("\x15ls;zq-a\t");     check("... with no blank after the ;", line() == "$ ls;zq-alpha ")
 keys("\x15if zq-a\t");     check("after a keyword is command position", line() == "$ if zq-alpha ")
 keys("\x15./bet\t");       check("a first word with a slash is a path", line() == "$ ./beta ")
 # Aliases and functions are commands too (Iteration 419). Both are

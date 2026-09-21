@@ -42,9 +42,9 @@ shell:dead-words 0
 shell:files 79
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
-size:i386 163028
-size:image-i386 99976
-size:image-x86_64 107256
-size:x86_64 146384
+size:i386 163424
+size:image-i386 100372
+size:image-x86_64 107680
+size:x86_64 146808
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

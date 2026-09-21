@@ -1385,6 +1385,24 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
+## FIRST: a crash (found in Iteration 420, not yet fixed)
+
+    case x in 2) echo p;; esac        # segmentation fault
+
+A LITERAL single-digit case pattern with a literal subject crashes the
+shell. `12)`, `[2])`, and `case $x in 2)` do not; `case a in b|2)` does.
+The parse tree is identical to `case x in a)` apart from the text, so
+it is evaluation: `PATTERN-MATCHES?` builds a one-word ARGV and calls
+EXPAND-WORDS. Suspect: ARGV redirection handling (Iteration 385), for
+which a lone digit is the shape of a file descriptor, reading the NEXT
+ARGV slot without checking ARGC - stale when the subject took the
+literal fast path, valid when `$x` had just used ARGV. Found by yash's
+case-p.tst:281; the committed build of 419 crashes too.
+
+Also from that yash run, smaller: `break 0` and `continue 0` succeed
+silently where dash reports an error and, both being special builtins,
+exits.
+
 ## Next (Iteration 412)
 
 1. DONE (413): `[ "" -eq 0 ]` is an error, and the guide agrees 58/58.

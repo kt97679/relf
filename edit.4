@@ -212,7 +212,11 @@ VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
 \ (Iteration 419).
 
 VARIABLE CMP-START               \ where the word under the cursor begins
-VARIABLE CMP-SLASH               \ where its name part begins
+VARIABLE CMP-Q                   \ the quote the cursor is inside: 0, ' or "
+VARIABLE CMP-SL                  \ where the name part begins in CMP-W
+VARIABLE CMP-HASSLASH            \ the word names a directory as well
+VARIABLE CMP-W#
+256 BUFFER: CMP-W                \ the word, its quoting removed
 VARIABLE CMP-N                   \ how many candidates
 VARIABLE CMP-USED                \ bytes used in CMP-BUF
 VARIABLE CMP-LCP                 \ how many leading bytes they all share
@@ -227,8 +231,6 @@ VARIABLE CMP-P1
 64 CELLS BUFFER: CMP-IDX         \ the candidates, sorted, for the listing
 CREATE CMP-PATH-NM  CSTR," PATH"
 
-VARIABLE CMP-UN
-VARIABLE CMP-UI
 VARIABLE CMP-PFX#
 256 BUFFER: CMP-PFX              \ the name part as typed, backslashes removed
 
@@ -250,20 +252,8 @@ VARIABLE CMP-PFX#
     1-
   REPEAT ;
 
-: CMP-UNESCAPE ( src u dest --- n )   \ backslash escapes removed; n bytes out
-  \ dest must have room for u bytes; unescaping only ever shrinks.
-  0 CMP-UN !  0 CMP-UI !  >R
-  BEGIN CMP-UI @ OVER < WHILE
-    OVER CMP-UI @ + C@
-    DUP 92 = IF
-      DROP 1 CMP-UI +!
-      CMP-UI @ OVER < IF OVER CMP-UI @ + C@ ELSE 92 THEN
-    THEN
-    R@ CMP-UN @ + C!  1 CMP-UN +!  1 CMP-UI +!
-  REPEAT
-  2DROP R> DROP CMP-UN @ ;
 
-: CMP-WORD-START ( --- )   ED-POS @ CMP-WORD-FROM CMP-START ! ;
+
 
 : CMP-PREV ( i --- j )   \ the last non-blank before i, or -1
   BEGIN
@@ -271,22 +261,62 @@ VARIABLE CMP-PFX#
     DUP ED-BUF + C@ DUP 32 = SWAP 9 = OR 0=
   UNTIL ;
 
-: CMP-SPLIT ( --- )   \ CMP-SLASH, and the directory in CMP-DIR
-  CMP-START @ CMP-SLASH !
-  ED-POS @ CMP-START @ ?DO
-    ED-BUF I + C@ 47 = IF I 1+ CMP-SLASH ! THEN
-  LOOP
-  \ Both parts are unescaped - `my\ dir/in` names the directory
-  \ `my dir` and the prefix `in` - and grown before they are written.
-  CMP-SLASH @ CMP-START @ = IF
-    46 CMP-DIR C!  0 CMP-DIR 1+ C!
-  ELSE
-    CMP-SLASH @ CMP-START @ - 2 + ENSURE-BUFFER CMP-DIR
-    ED-BUF CMP-START @ +  CMP-SLASH @ CMP-START @ -  CMP-DIR CMP-UNESCAPE
-    CMP-DIR + 0 SWAP C!
+: CMP-W-ADD ( c --- )   CMP-W CMP-W# @ + C!  1 CMP-W# +! ;
+: CMP-AT ( i --- c )   ED-BUF + C@ ;
+
+: CMP-STEP-SQ ( i --- i' )   \ inside '...': only ' ends it
+  DUP CMP-AT 39 = IF 0 CMP-Q ! ELSE DUP CMP-AT CMP-W-ADD THEN 1+ ;
+
+: CMP-STEP-DQ ( i --- i' )   \ inside "...": \ escapes only " \ $ `
+  DUP CMP-AT 34 = IF 0 CMP-Q ! 1+ EXIT THEN
+  DUP CMP-AT 92 = IF
+    DUP 1+ ED-POS @ < IF
+      DUP 1+ CMP-AT DUP 34 = OVER 92 = OR OVER 36 = OR SWAP 96 = OR IF
+        1+ DUP CMP-AT CMP-W-ADD 1+ EXIT
+      THEN
+    THEN
   THEN
-  ED-POS @ CMP-SLASH @ - 2 + ENSURE-BUFFER CMP-PFX
-  ED-BUF CMP-SLASH @ +  ED-POS @ CMP-SLASH @ -  CMP-PFX CMP-UNESCAPE CMP-PFX# !
+  DUP CMP-AT CMP-W-ADD 1+ ;
+
+: CMP-SEPARATOR? ( c --- flag )   \ ends a word when it is not quoted
+  DUP 32 = OVER 9 = OR  OVER 59 = OR  OVER 124 = OR  OVER 38 = OR
+  OVER 40 = OR  OVER 41 = OR  OVER 60 = OR  SWAP 62 = OR ;
+
+: CMP-STEP-UQ ( i --- i' )   \ outside quotes
+  DUP CMP-AT CMP-SEPARATOR? IF 1+ DUP CMP-START !  0 CMP-W# ! EXIT THEN
+  DUP CMP-AT DUP 39 = SWAP 34 = OR IF DUP CMP-AT CMP-Q ! 1+ EXIT THEN
+  DUP CMP-AT 92 = IF
+    1+ DUP ED-POS @ < IF DUP CMP-AT CMP-W-ADD 1+ THEN EXIT
+  THEN
+  DUP CMP-AT CMP-W-ADD 1+ ;
+
+: CMP-SCAN ( --- )   \ CMP-START, CMP-Q, and the word with its quoting removed
+  \ Forward from the start of the line, following the quoting rules,
+  \ rather than back from the cursor to a blank: a blank inside quotes
+  \ or after a backslash does not end the word, and `;` `|` `&` `(` `)`
+  \ `<` `>` do even without a blank - so `"my n`, `my\ n` and `ls;zq`
+  \ are all seen as the shell would see them (Iteration 420).
+  0 CMP-START !  0 CMP-Q !  0 CMP-W# !
+  ED-POS @ 2 + ENSURE-BUFFER CMP-W
+  0 BEGIN DUP ED-POS @ < WHILE
+    CMP-Q @ 39 = IF CMP-STEP-SQ ELSE
+    CMP-Q @ 34 = IF CMP-STEP-DQ ELSE CMP-STEP-UQ THEN THEN
+  REPEAT
+  DROP ;
+
+: CMP-SPLIT ( --- )   \ the directory in CMP-DIR, the name part in CMP-PFX
+  CMP-SCAN
+  0 CMP-SL !  0 CMP-HASSLASH !
+  CMP-W# @ 0 ?DO CMP-W I + C@ 47 = IF I 1+ CMP-SL !  -1 CMP-HASSLASH ! THEN LOOP
+  CMP-HASSLASH @ IF
+    CMP-SL @ 2 + ENSURE-BUFFER CMP-DIR
+    CMP-W CMP-DIR CMP-SL @ MOVE  0 CMP-DIR CMP-SL @ + C!
+  ELSE
+    46 CMP-DIR C!  0 CMP-DIR 1+ C!
+  THEN
+  CMP-W# @ CMP-SL @ - CMP-PFX# !
+  CMP-PFX# @ 2 + ENSURE-BUFFER CMP-PFX
+  CMP-W CMP-SL @ +  CMP-PFX  CMP-PFX# @ MOVE
   0 CMP-PFX CMP-PFX# @ + C! ;
 
 : CMP-PREFIX ( --- c-addr u )   CMP-PFX CMP-PFX# @ ;   \ unescaped
@@ -305,7 +335,7 @@ VARIABLE CMP-PFX#
   S" !" STR= ;
 
 : CMP-COMMAND? ( --- flag )   \ the word names a command: first, and no slash
-  CMP-SLASH @ CMP-START @ <> IF 0 EXIT THEN
+  CMP-HASSLASH @ IF 0 EXIT THEN
   CMP-START @ CMP-PREV DUP 0< IF DROP -1 EXIT THEN        \ first on the line
   ED-BUF + C@                                              \ after ; | & (
   DUP 59 = OVER 124 = OR OVER 38 = OR SWAP 40 = OR IF -1 EXIT THEN
@@ -469,15 +499,26 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
   OVER 62 64 WITHIN OR  OVER 91 94 WITHIN OR  OVER 96 = OR
   SWAP 123 127 WITHIN OR ;
 
-: CMP-INSERT ( c-addr u --- )   \ typed into the line, specials escaped
-  0 ?DO
-    DUP I + C@ DUP CMP-SPECIAL? IF 92 ED-INSERT THEN ED-INSERT
-  LOOP
-  DROP ;
+: CMP-PUT ( c --- )   \ one character, escaped for the quoting in force
+  CMP-Q @ 39 = IF                              \ '...': a ' must become '\''
+    DUP 39 = IF DROP 39 ED-INSERT 92 ED-INSERT 39 ED-INSERT 39 ED-INSERT EXIT THEN
+    ED-INSERT EXIT
+  THEN
+  CMP-Q @ 34 = IF                              \ "...": only " \ $ ` need it
+    DUP 34 = OVER 92 = OR OVER 36 = OR OVER 96 = OR IF 92 ED-INSERT THEN
+    ED-INSERT EXIT
+  THEN
+  DUP CMP-SPECIAL? IF 92 ED-INSERT THEN ED-INSERT ;
 
-: CMP-FINISH ( --- )   \ after a single candidate: `/` or a blank
-  CMP-CMD? @ IF 32 ED-INSERT EXIT THEN
-  0 CMP-NTH CMP-IS-DIR? IF 47 ELSE 32 THEN ED-INSERT ;
+: CMP-INSERT ( c-addr u --- )   \ typed into the line, escaped as it must be
+  0 ?DO DUP I + C@ CMP-PUT LOOP DROP ;
+
+: CMP-FINISH ( --- )   \ after a single candidate
+  \ A directory gets `/` and any quote stays open, so TAB can carry on
+  \ inside it; anything else closes the quote and gets a blank.
+  CMP-CMD? @ 0= IF 0 CMP-NTH CMP-IS-DIR? IF 47 ED-INSERT EXIT THEN THEN
+  CMP-Q @ ?DUP IF ED-INSERT THEN
+  32 ED-INSERT ;
 
 : CMP-LESS? ( j --- flag )   \ entry j sorts before entry j-1
   DUP CELLS CMP-IDX + @ DUP CSTRLEN
@@ -512,7 +553,7 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
   10 ED-CH ;
 
 : ED-COMPLETE ( --- )
-  CMP-WORD-START CMP-SPLIT CMP-COLLECT
+  CMP-SPLIT CMP-COLLECT
   CMP-N @ 0= IF 7 ED-CH EXIT THEN             \ nothing: the bell
   CMP-COMMON
   CMP-PREFIX NIP                              ( typed )
