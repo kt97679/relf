@@ -1729,7 +1729,10 @@ VARIABLE XM-U
   \ a live range - `x=-9; echo f[0$x]` is `f[0-9]` - while a quoted one
   \ stays a member (Iteration 370). They go through GLOB-MARK-DASH,
   \ which does not count them as a reason to expand the word.
-  45 XE-MARK-DASH  93 XE-MARK-DASH ;
+  \ A backslash is marked the same way: live in a pattern, where it
+  \ escapes the next character, but no reason to glob (Iteration 428;
+  \ shell.4's GLOB-MARK-BACKSLASH is the per-character path).
+  45 XE-MARK-DASH  93 XE-MARK-DASH  92 XE-MARK-DASH ;
 
 : XE-REGION-END ( --- )
   TOK-OUT @ OUT-BASE - XE-REG-START @ = IF EXIT THEN

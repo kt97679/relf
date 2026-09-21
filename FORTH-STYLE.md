@@ -306,6 +306,13 @@ Audit periodically, not only when touching a feature.
   seven, and 419 grew all seven through one word and a `DEFER` - that is
   the shape: a single grow word that names every array, so a new array
   cannot be forgotten in one of several places.
+- **A rule with a fast path and a slow path changes in both.** The
+  expander marks pattern characters per character (`EMIT-EXPANDED-CHAR`)
+  and per region (`XE-MARK-PATTERNS`, for whole expansion values). The
+  first fix for backslashes in patterns changed only the first, and made
+  things worse - `a\*b` from a variable matched a file `a\b` - because
+  variable values take the second (Iteration 428). Before changing how
+  a character is treated, find every place it can arrive from.
 - **A writer with no bound is an overflow waiting for a long input.**
   `B-CHAR` stores and advances, and nothing checks where; `PATHBUF` is 256
   bytes, and a 250-character command name ran the `PATH` search's

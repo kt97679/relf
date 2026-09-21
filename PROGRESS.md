@@ -423,6 +423,7 @@ do not trust the absence of a line below.
 - **425** — the log that stops retries; the documents deduplicated against prompts/
 - **426** — the fuzzer's two crashes: a swallowed EXIT, and a job table that grew two arrays of five
 - **427** — an arithmetic error ends a non-interactive shell; 257's choice reversed on evidence
+- **428** — a backslash from an expansion escapes in pathname expansion
 
 ### Not tied to an iteration
 
@@ -21478,3 +21479,43 @@ Recorded changes, with their causes: `shell:assertions` 768 -> 773,
 five for the arithmetic errors (division and remainder, each with its
 status, and the branch not taken); the images 8 bytes larger, the two
 flag stores.
+
+## Iteration 428: backslashes from expansions, in pathname expansion
+
+`b='test*.TMP/\name'; echo $b` matches `testdir.TMP/name` in dash and
+bash, and printed the pattern here. The log was searched first: the
+iteration that introduced pathname expansion chose to escape "every
+backslash" in a pattern, and nothing since had revisited it.
+
+The rule, from eleven forms checked against both shells: a backslash an
+unquoted expansion produced is live in a pattern and escapes the next
+character; a `* ? [` is live only after an even run of such
+backslashes; and a word with no live glob character is not a pattern
+at all - `a\*b` from a variable stays as written even when a file
+`a*b` exists.
+
+The machinery nearly had it. Marks already came in two kinds - `* ? [`,
+which make a word a pattern, and `-` and `]`, which are marked but do
+not - and the pattern builder escapes only UNMARKED characters. So a
+backslash from an expansion is now a mark of the second kind, and a new
+`FIELD-IS-PATTERN?` decides per field by live glob characters, walking
+the marks rather than the field. It replaces a count of every mark,
+which had also been sending fields whose only mark was a `-` to the file
+system, harmlessly until a backslash could be one.
+
+**The first attempt made things worse**: `a\*b` matched a file `a\b`.
+It marked backslashes in `EMIT-EXPANDED-CHAR`, the per-character path,
+but variable values reach the output through `XE-MARK-PATTERNS`, which
+marks a whole region at once; the backslash went unmarked and was
+escaped, and the star counted as live. Both paths mark it now.
+FORTH-STYLE.md section 12 records the shape: a rule with a fast path
+and a slow path changes in both.
+
+busybox glob_bkslash_in_var passes. var_unbackslash1, filed with it,
+turned out to be a different bug - line continuation inside an
+expansion - and is GOALS.md's item 2 now. A differential case covers
+six forms and matches bash, and dash at 4 bytes.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 210 -> 211,
+the new differential case; the images 200 bytes larger - the backslash
+mark, `BS-RUN-BEFORE` and `FIELD-IS-PATTERN?`.

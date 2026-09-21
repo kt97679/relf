@@ -1253,6 +1253,19 @@ DEFER GLOB-FIELDS-CALL
   GLOB-MARKS GLOB-MARKS# @ CELLS + !
   1 GLOB-MARKS# +!  1 GLOB-META# +! ;
 
+: GLOB-MARK-BACKSLASH ( c --- c )
+  \ A backslash produced by an unquoted expansion is live in a pattern:
+  \ it escapes the next character, as dash and bash have it - so
+  \ `b='test*.TMP/\name'; echo $b` matches testdir.TMP/name. Marked
+  \ like `-` and `]`, which BUILD-GLOB-PATTERN then leaves unescaped,
+  \ and like them it does not count towards GLOB-META#: a word whose
+  \ only special character is such a backslash is not a pattern
+  \ (Iteration 428; busybox glob_bkslash_in_var, yash quote-p.tst:583).
+  TOKEN-IS-ASSIGN-PREFIX? IF EXIT THEN
+  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+  TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+  1 GLOB-MARKS# +! ;
+
 DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
 
 : EMIT-EXPANDED-CHAR ( c --- )
@@ -1317,6 +1330,7 @@ DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
       THEN
       0 AFTER-RUN-BREAK? !
     THEN
+    DUP 92 = IF GLOB-MARK-BACKSLASH THEN
     GLOB-MARK EMIT-TOK-CHAR
   THEN ;
 
@@ -6845,6 +6859,32 @@ VARIABLE GF-N
     GLOB-MARKS I CELLS + @ OVER = IF DROP UNLOOP -1 EXIT THEN
   LOOP DROP 0 ;
 
+: BS-RUN-BEFORE ( off --- n )   \ marked backslashes just before off
+  0 SWAP
+  BEGIN
+    1- DUP GF-OFF @ < 0= IF
+      DUP OUT-BASE + C@ 92 = IF DUP MARKED? ELSE 0 THEN
+    ELSE 0 THEN
+  WHILE SWAP 1+ SWAP REPEAT
+  DROP ;
+
+: FIELD-IS-PATTERN? ( --- f )   \ a live * ? [ among the field's marks
+  \ Live means unescaped: an even run of marked backslashes before it -
+  \ `a\*b` from a variable is not a pattern, and stays as written even
+  \ when a file `a*b` exists (bash, dash). Counting every mark, as this
+  \ did, sent a field whose only mark was a `-`, a `]` or now such a
+  \ backslash to the file system; for a backslash that would have
+  \ unescaped it (Iteration 428). Walks the marks, not the field, so a
+  \ long field costs nothing extra.
+  GLOB-MARKS# @ 0 ?DO
+    GLOB-MARKS I CELLS + @                                  ( off )
+    DUP GF-OFF @ < 0= OVER GF-OFF @ GF-LEN @ + < AND IF
+      DUP OUT-BASE + C@ DUP 42 = OVER 63 = OR SWAP 91 = OR IF
+        BS-RUN-BEFORE 1 AND 0= IF UNLOOP -1 EXIT THEN
+      ELSE DROP THEN
+    ELSE DROP THEN
+  LOOP 0 ;
+
 : BUILD-GLOB-PATTERN ( --- )
   0 GP# !
   GF-LEN @ 0 ?DO
@@ -7017,11 +7057,7 @@ VARIABLE GWK-NLEN
     \ any mark inside this field. The marks were in order while they
     \ were made one character at a time; region marks (Iteration 278)
     \ come grouped by character, so every mark is looked at.
-    0 GF-K !
-    GLOB-MARKS# @ 0 ?DO
-      GLOB-MARKS I CELLS + @
-      DUP GF-OFF @ < 0= SWAP GF-OFF @ GF-LEN @ + < AND IF 1 GF-K +! THEN
-    LOOP
+    FIELD-IS-PATTERN? GF-K !
     GF-K @ IF I 1- REDIR-OP-FIELD? IF 0 ELSE GLOB-ONE THEN ELSE 0 THEN
     0= IF
       ARGC @ ROOM-FOR-ARG? IF
