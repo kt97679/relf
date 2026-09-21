@@ -1203,7 +1203,8 @@ VARIABLE OPT-NOUNSET
 VARIABLE OPT-XTRACE
 VARIABLE OPT-NOGLOB
 VARIABLE OPT-NOEXEC
-VARIABLE UNSET-FATAL?      \ set -u met an unset parameter: the command fails
+VARIABLE UNSET-FATAL?      \ an expansion error that ends a non-interactive shell
+                           \ (set -u and ${x?} first; arithmetic errors since 427)
 
 \ ---- pathname expansion: where the unquoted pattern characters are ----
 \ An unquoted * ? or [ - written in the word, or produced by an unquoted
@@ -1652,7 +1653,7 @@ VARIABLE AE-BASE
   AE-POS @ AE-END @ < IF
     AE-POS @ C@ AE-HEX-DIGIT 0< 0= IF
       S" shell: bad arithmetic constant" ERR-TYPE ERR-NL
-      -1 EXPANSION-FAILED? !
+      -1 EXPANSION-FAILED? !  -1 UNSET-FATAL? !   \ fatal too (427)
     THEN
   THEN ;
 64 BUFFER: AE-VARNAME-BUF
@@ -1799,7 +1800,11 @@ VARIABLE AE-SN-NAME
   DUP 0= IF
     AE-QUIET @ IF 2DROP 0 0 EXIT THEN         \ `1?2:1/0` must not complain
     2DROP S" shell: division by zero" ERR-TYPE ERR-NL
-    -1 EXPANSION-FAILED? !
+    \ An expansion error ends a non-interactive shell (XCU 2.8.1), as
+    \ `${x?}` and `set -u` already did; this one only failed the
+    \ command, so a script ran on past it - into an infinite loop, in
+    \ the case tools/crashfuzz.py found (Iteration 427).
+    -1 EXPANSION-FAILED? !  -1 UNSET-FATAL? !
     0 0 EXIT
   THEN
   SWAP S>D ROT SM/REM SWAP ;

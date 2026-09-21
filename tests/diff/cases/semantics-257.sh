@@ -23,10 +23,11 @@ case in in in) echo in-word ;; esac
 case z in
   z) echo multi ;;
 esac
-echo $((1/0)) after-div
-echo "st=$?"
-x=$((5%0))
-echo "st=$? x=[$x]"
+# Division and remainder by zero were checked here against bash, which
+# reports the error and carries on. POSIX makes an expansion error end a
+# non-interactive shell (XCU 2.8.1), dash does, and this shell does since
+# Iteration 427 - so those checks are in tests/shell/run-special-error,
+# against dash's behaviour, and GOALS.md lists the divergence from bash.
 echo $((7/2)) ok
 for w in '' x; do case $w in '') echo E;; *) echo N;; esac; done
 x=''

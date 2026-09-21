@@ -51,6 +51,10 @@ ordinary scripts hit, then edge cases and wording.
 4. **`${#a}` is not field-split** when IFS holds digits (424). Rare.
 5. **`a=b exec 1>&1` exports `a`**, as bash does and dash does not
    (424). Behaves like bash; low priority.
+5b. **`return` outside a function, in a loop, repeats its error forever**
+   (found by the fuzzer, 426). POSIX leaves it unspecified; bash reports
+   and carries on, as this shell does, and dash leaves the script. Only
+   worth changing if dash's reading is adopted as policy.
 6. **Prompt escapes still missing**: `\D{format}`, `\j`, `\l`, `\v`,
    `\V` (417).
 7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423).
@@ -1361,6 +1365,15 @@ against a second reference (`dash`) before being recorded, because
   costs none since Iteration 124 moved the harness to `sh`, upstream's
   own default. bash is the outlier here, which is why the reference
   shell mattered more than it looked.
+- **An arithmetic error ends a non-interactive shell** (Iteration 427).
+  `echo $((1/0)); echo after`: bash reports it and carries on; POSIX
+  makes an expansion error fatal in a non-interactive shell (XCU 2.8.1),
+  dash exits with status 2, and so does this shell. Iteration 257 had
+  chosen bash's behaviour while fixing a crash - its entry says so and
+  names dash's - and 427 reversed it on new evidence: the POSIX table,
+  this list's own rule, and a fuzzer case where carrying on led into an
+  infinite loop. The checks moved from the bash-differential cases to
+  `tests/shell/run-special-error`.
 - **Tilde after `=` in a non-assignment word.** `echo other=~/y`:
   bash expands the tilde, dash does not, and neither do we. POSIX
   applies tilde-after-`=` to assignment *words*; an argument to `echo`

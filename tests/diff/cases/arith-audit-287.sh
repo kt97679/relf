@@ -27,4 +27,6 @@ big=1; while [ $((big*2)) -gt 0 ]; do big=$((big*2)); done
 echo A13 $([ $((big*2-1+1)) -lt 0 ] && echo wraps-negative) \
         $([ $((0-big*2+1-1)) -gt 0 ] && echo wraps-positive)
 echo A14 "$((1+1))" '$((1+1))'
-echo A15 $((1/0)) "rc=$?" 2>/dev/null
+# A15, a division by zero, was here; it ends the shell now, as POSIX and
+# dash have it, where bash carries on - see tests/shell/run-special-error
+# and GOALS.md (Iteration 427).

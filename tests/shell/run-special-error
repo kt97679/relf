@@ -95,4 +95,16 @@ out=$("$THIS_SH" -c 'command shift 5; echo "after:$?"' 2>/dev/null)
 assert_output_equals "command shift past the end goes on" "after:2" "$out"
 out=$("$THIS_SH" -c 'readonly x=1; eval x=2; echo NOT-REACHED' 2>/dev/null)
 assert_output_equals "... while bare eval still ends the shell" "" "$out"
+# An arithmetic error is an expansion error, and ends a non-interactive
+# shell with status 2 (XCU 2.8.1; Iteration 427, found by the fuzzer as
+# a script that ran on past one into an infinite loop).
+out=$("$THIS_SH" -c 'echo $((1/0)); echo after' 2>/dev/null); st=$?
+assert_output_equals "division by zero ends the shell" "" "$out"
+assert_output_equals "... with status 2" "2" "$st"
+out=$("$THIS_SH" -c 'x=$((5%0)); echo after' 2>/dev/null); st=$?
+assert_output_equals "a remainder by zero in an assignment ends it too" "" "$out"
+assert_output_equals "... with status 2" "2" "$st"
+out=$("$THIS_SH" -c 'echo $(( 1 ? 2 : 1/0 )); echo ok' 2>&1)
+assert_output_equals "... but a branch not taken is not an error" "2
+ok" "$out"
 report

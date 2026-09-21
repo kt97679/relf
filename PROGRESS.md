@@ -422,6 +422,7 @@ do not trust the absence of a line below.
 - **424** — command takes special properties away; backslashes in case patterns
 - **425** — the log that stops retries; the documents deduplicated against prompts/
 - **426** — the fuzzer's two crashes: a swallowed EXIT, and a job table that grew two arrays of five
+- **427** — an arithmetic error ends a non-interactive shell; 257's choice reversed on evidence
 
 ### Not tied to an iteration
 
@@ -21440,3 +21441,40 @@ grows in one word that names them all.
 Recorded changes, with their causes: `shell:assertions` 765 -> 768,
 the three regression tests from the reproducers; the images 56 bytes
 larger - three more ENSURE-BUFFERs and two EXITs that are now code.
+
+## Iteration 427: reversing a recorded choice
+
+The fuzzer's second run found `$((x/0))` followed by an infinite loop:
+this shell reported the division by zero and ran on into the loop,
+where dash had already exited. POSIX makes an expansion error end a
+non-interactive shell (XCU 2.8.1). `${x?}` and `set -u` already did, by
+setting `UNSET-FATAL?` beside `EXPANSION-FAILED?`; the two arithmetic
+errors set only the second. Both set the first too now, and the flag's
+comment says what it has become: any expansion error that ends a
+non-interactive shell. Interactive shells carry on, and a branch not
+taken - `1 ? 2 : 1/0` - still does not complain.
+
+**The log said this had been decided the other way.** Iteration 257,
+fixing a crash, wrote "status 1, as bash does (dash ends the script)".
+Read before changing it, as prompts/12 asks: 257 was protecting against
+two things, the SIGFPE crash and running with 0 substituted, and exiting
+avoids both. It did not weigh POSIX, or this project's own rule that
+where bash and POSIX disagree it follows POSIX - which is the new
+evidence, together with the infinite loop. Reversed, and recorded in
+GOALS.md's list of deliberate divergences from bash with that history,
+so a later session does not reverse it back.
+
+Two bash-differential cases had encoded bash's behaviour -
+`semantics-257` ran on after the division, `arith-audit-287` exited 1.
+Their division-by-zero lines moved to `tests/shell/run-special-error`,
+which checks the POSIX behaviour directly.
+
+The same fuzzer run also found `return` outside a function repeating its
+error forever inside a loop - unspecified by POSIX, bash-like here, left
+and listed - and a script that sources itself, which the engine's
+return-stack guard stops cleanly.
+
+Recorded changes, with their causes: `shell:assertions` 768 -> 773,
+five for the arithmetic errors (division and remainder, each with its
+status, and the branch not taken); the images 8 bytes larger, the two
+flag stores.
