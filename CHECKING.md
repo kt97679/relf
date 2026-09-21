@@ -91,6 +91,16 @@ Arch and Fedora it is bash and it does not. Set it inside the shell
 instead - `PS1='[mine] '` at the prompt, or in the file `$ENV` names -
 which works everywhere.
 
+## The pty suite and a busy machine
+
+`make interactive` drives the shell through a pseudo-terminal, so it is
+the one suite whose answers depend on timing: it waits for a prompt and
+then for a quiet moment, and on a loaded machine a redraw can arrive
+after that moment has passed. If a single case fails and then passes on
+a re-run, that is what happened. Both waits can be lengthened:
+
+    RELF_PTY_SETTLE=0.5 RELF_PTY_TIMEOUT=20 make interactive
+
 ## Reference shells
 
 The differential suite compares against `bash`; the matrix uses `bash`

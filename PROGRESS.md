@@ -401,6 +401,7 @@ do not trust the absence of a line below.
 - **403** — undefined shifts in the cross-compiler; and a dead-word regression
 - **404** — a prompt channel bash cannot strip; and three honest counts
 - **405** — the board verifies clean; and the widening bug located to one offset
+- **406** — the pty suite had a clock assumption of its own
 
 ### Not tied to an iteration
 
@@ -20581,3 +20582,31 @@ shell, and one open bug narrowed from "the images differ" to a single
 offset and two lines of source.
 
 tests/verify: `shell:assertions` is informational.
+
+## Iteration 406: the last clock assumption
+
+The board verified clean twice running. The x86-64 box failed one pty
+case, `intr-at-prompt`, which had passed on its previous run - the
+signature of timing rather than behaviour.
+
+Confirmed here rather than assumed: the pty suite passes on an idle
+container and fails under four busy loops, then passes again when they
+stop. Its two waits were constants tuned on an idle machine - a quiet
+moment of 0.08s and a prompt timeout of 5s - and on a loaded one the
+line editor's redraw arrives after the quiet moment has passed, so the
+transcript comes out interleaved.
+
+That is the same shape as every other fault in this sequence: something
+this container's conditions made invisible. It joins the locale, the
+terminal, the compiler, the preload, the reference shells and the
+portability suite's own 200-second allowance, which Iteration 399 had to
+measure rather than guess.
+
+The waits are 0.20s and 10s now, and both take an override -
+`RELF_PTY_SETTLE` and `RELF_PTY_TIMEOUT` - so a slow or busy machine can
+say so rather than fail. CHECKING.md explains what a single pty case
+failing and then passing means.
+
+And the interactive failure report shows six lines rather than two: a
+pty transcript's `want` and `got` are several lines each, and two of
+them showed neither.

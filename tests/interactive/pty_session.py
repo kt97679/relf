@@ -67,9 +67,20 @@ def strip_escapes(t):
     return ESCAPES.sub('', t)
 
 class Session:
-    def __init__(self, argv, env=None, cwd='/tmp', prompts=('$ ', '# ', '> '), settle=0.08):
+    # How long a "quiet moment" is, and how long to wait for a prompt.
+    # Both were fixed constants tuned on an idle container, which is a
+    # clock assumption like any other: on a loaded machine the redraw
+    # arrives after the quiet moment has passed and the transcript comes
+    # out interleaved. An x86 box reported `intr-at-prompt` failing on
+    # one run and passing on the next, and the same suite fails here
+    # under four busy loops (Iteration 406). Overridable, so a slow or
+    # busy machine can say so.
+    SETTLE  = float(os.environ.get('RELF_PTY_SETTLE', '0.20'))
+    TIMEOUT = float(os.environ.get('RELF_PTY_TIMEOUT', '10.0'))
+
+    def __init__(self, argv, env=None, cwd='/tmp', prompts=('$ ', '# ', '> '), settle=None):
         self.prompts = prompts
-        self.settle = settle
+        self.settle = self.SETTLE if settle is None else settle
         self.out = ''
         self.pid, self.fd = pty.fork()
         if self.pid == 0:                      # the child IS the shell
@@ -125,11 +136,11 @@ class Session:
                 continue
         return False
 
-    def send(self, text, wait=True, timeout=5.0):
+    def send(self, text, wait=True, timeout=None):
         mark = len(self.out)
         os.write(self.fd, text.encode() if isinstance(text, str) else text)
         if wait:
-            return self.wait_prompt(timeout, mark)
+            return self.wait_prompt(self.TIMEOUT if timeout is None else timeout, mark)
         return True
 
     def send_signal_char(self, ch, wait=True):
