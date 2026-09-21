@@ -329,9 +329,16 @@ machine_dependent() {
         # verdicts are a comparison against `dash -n`: both counts say
         # what the machine could compare, not what the shell does
         # (Iteration 404). `shell:files` and `parse:failed` stay strict.
-        shell:assertions|parse:verdicts-agree|parse:verdicts-differ)
+        parse:verdicts-agree|parse:verdicts-differ)
             command -v dash >/dev/null 2>&1 && return 1
             return 0 ;;
+        # How many checks RAN, which depends on the machine in more ways
+        # than one: three files need dash, and run-ulimit skips a
+        # comparison whose limit exceeds a cell - an Ubuntu box with 3.4
+        # GB of lockable memory runs one fewer than this one
+        # (Iteration 405). What matters is that none FAILED, and
+        # shell:4byte, shell:8byte and shell:files say that.
+        shell:assertions) return 0 ;;
         matrix:refs) return 0 ;;
         matrix:passed|matrix:failed|matrix:known-failing|matrix:regressions)
             [ "$MATRIX_REFS_USED" = "$(awk '$1=="matrix:refs" {sub(/^[^ ]+[ ]/,""); print}' "$BASE")" ] && return 1

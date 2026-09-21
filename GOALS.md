@@ -118,7 +118,25 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Open: the WIDENING cross-compile (Iteration 403)
+## Open: the WIDENING cross-compile (Iterations 403, 405)
+
+**Where it is.** The two images are byte-identical for their first 2716
+bytes, and byte-identical again from there to the end - the 32-bit host
+simply emits SIXTEEN EXTRA ZERO BYTES at that one point, and every
+address after it is therefore 16 higher. Offset 2716 is inside the zero
+run that follows the definition named `TIB`:
+
+    VARIABLE TIB ( --- addr)
+    80 CHARS-T ALLOT-T
+
+so 80 bytes are allotted from a 64-bit host and 96 from a 32-bit one.
+`CHARS-T` is a no-op and `ALLOT-T` is `DP-T +!`, neither of which looks
+at the host's width, so the next session should print `THERE` on both
+hosts either side of those two lines and find which word between the
+header and the buffer pads differently. Everything else in this file's
+earlier note still holds.
+
+## Open: the WIDENING cross-compile - earlier notes (Iteration 403)
 
 Cross-compiling the 8-byte image from a 4-byte host - an ARMv7 board
 building the 64-bit image - does not yet reproduce the committed one.

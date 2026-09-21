@@ -400,6 +400,7 @@ do not trust the absence of a line below.
 - **402** — the engines leave the repository
 - **403** — undefined shifts in the cross-compiler; and a dead-word regression
 - **404** — a prompt channel bash cannot strip; and three honest counts
+- **405** — the board verifies clean; and the widening bug located to one offset
 
 ### Not tied to an iteration
 
@@ -20547,3 +20548,36 @@ reporting the same known difference as a failure every run trains
 people to ignore the report.
 
 tests/verify: `core:okmarkers` may read `skipped`; a new `known` verdict.
+
+## Iteration 405: VERIFIED, on a machine I have never seen
+
+    VERIFIED: everything matches tests/BASELINE
+
+on an ARMv7 Tegra board running Gentoo, from a checkout that began
+eleven reports ago by failing at `make`. Every line of that run is now
+`ok`, `machine`, or the one `known` open bug.
+
+The x86-64 box had one line left: `shell:assertions 722` against 723.
+That count is how many checks RAN, and it depends on the machine in
+more ways than dash's presence - `run-ulimit` skips a comparison whose
+limit exceeds a cell, and that machine has 3.4 GB of lockable memory
+where this one has less. What matters is that none FAILED, which
+`shell:4byte`, `shell:8byte` and `shell:files` already say. The count is
+informational now.
+
+**And the widening cross-compile is located.** The 8-byte image built on
+a 32-bit host is byte-identical to the committed one for 2716 bytes, and
+byte-identical again from there to the end: the narrow host emits
+sixteen extra zero bytes at exactly one point, which is why every thread
+head afterwards is 16 higher. The point is inside the zero run after the
+definition named `TIB` - `VARIABLE TIB` then `80 CHARS-T ALLOT-T` - so
+one of those lines allots 96 bytes instead of 80 when the host is
+narrower than the target. GOALS.md carries the finding and the next
+step: print `THERE` either side of those two lines on both hosts.
+
+That is what a remote bug report is worth when the reporter keeps
+running it: eleven rounds, nine faults in the scaffolding, two in the
+shell, and one open bug narrowed from "the images differ" to a single
+offset and two lines of source.
+
+tests/verify: `shell:assertions` is informational.
