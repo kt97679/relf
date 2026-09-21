@@ -24,6 +24,7 @@ historical documents moved to `attic/docs/`.
 | `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' suites, in this project's own words |
 | `Makefile` | the index of the builds and suites; `make help` lists them |
 | `CHECKING.md` | what to run after pulling, and what each check would catch |
+| `prompts/` | reusable prompts for this kind of work; `prompts/INDEX.md` is the dispatcher. `01`-`06` are from another project, `07`-`11` were written here (Iteration 407) |
 | `tools/busybox-suite.sh`, `tools/yash-suite.sh` | run the two external corpora and report what the reference passes and this shell does not |
 
 ## Retired, in `attic/docs/`

@@ -1409,6 +1409,38 @@ against a second reference (`dash`) before being recorded, because
   is not one. bash is being permissive with any `name=value`-shaped
   word. (Iteration 98.)
 
+## The interactive editor's two missing features (Iteration 407)
+
+Raised by a user of the shell, and the honest answer is that they are
+the most visible gaps left: everything else in the standing queue is
+conformance detail, and these are what a person notices in the first
+minute at the prompt.
+
+**Tab completion.** Nothing is bound to TAB. What exists to build on:
+`OPEN-DIR` and `READ-DIR` are engine primitives (kernel.4), pathname
+expansion already matches a pattern against a directory's names
+(`GLOB-FIELDS` in shell.4), and the editor has the line buffer, the
+cursor and a redraw. The work: find the word under the cursor, decide
+whether it is in command position (complete from PATH and the builtin
+table) or an operand (complete as a path), collect the matches, insert
+the longest common prefix, and on a second TAB print the candidates and
+redraw the prompt. Quoting matters: a completed name containing a space
+must come back quoted, or the completion breaks the line it completed.
+
+**History search.** `HIST-BUF` holds 32 lines and the arrows walk them,
+so the storage is there. What is missing is incremental reverse search:
+^R enters a search mode with its own prompt (`(reverse-i-search)`),
+each keystroke extends the pattern and shows the most recent match,
+^R again steps to the next older one, RETURN accepts the line, ^G or
+^C restores what was being typed. The editor's redraw already handles a
+line that is shorter than the previous one, which is the fiddly part.
+
+Both are in `edit.4`, both are testable through the pty harness in
+`tests/interactive`, and neither touches the shell's semantics - which
+is why they can be done in any order relative to the conformance work.
+Order suggested: history search first (smaller, self-contained, no
+quoting questions), then completion.
+
 ## What to do next, in order (as of Iteration 368)
 
 1. **The open catalogue entries**, in

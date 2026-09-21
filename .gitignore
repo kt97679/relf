@@ -14,3 +14,25 @@ FATEST2.TXT
 #   ./relfsh: line 144: relf: cannot execute binary file: Exec format error
 relf
 relf32
+
+# Python bytecode. tests/interactive/__pycache__ was TRACKED until
+# Iteration 407: three .pyc files, regenerated on every run, that
+# turned up as modifications in `git status` on any machine with a
+# different Python (Iteration 407).
+__pycache__/
+*.py[co]
+
+# What the suites leave behind: yash's harness writes a .trs beside each
+# test file, the differential and matrix runners work in mktemp
+# directories, and tests/verify writes its logs to /tmp - but a run
+# interrupted mid-way can leave these here.
+*.trs
+*.tmp
+boot.log
+core
+
+# Editor and patch leftovers
+*~
+*.orig
+*.rej
+.*.swp

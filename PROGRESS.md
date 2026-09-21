@@ -402,6 +402,7 @@ do not trust the absence of a line below.
 - **404** — a prompt channel bash cannot strip; and three honest counts
 - **405** — the board verifies clean; and the widening bug located to one offset
 - **406** — the pty suite had a clock assumption of its own
+- **407** — bytecode out of the repository; a prompt library; the editor's gaps named
 
 ### Not tied to an iteration
 
@@ -20610,3 +20611,39 @@ failing and then passing means.
 And the interactive failure report shows six lines rather than two: a
 pty transcript's `want` and `got` are several lines each, and two of
 them showed neither.
+
+## Iteration 407: what the repository should and should not hold
+
+**Three `.pyc` files were tracked.** `tests/interactive/__pycache__`,
+regenerated on every run, showing up as modifications on any machine
+with a different Python. Removed, and `.gitignore` widened to the rest
+of what a run can leave behind: bytecode, `.trs` files from yash's
+harness, `boot.log`, `core`, editor and patch leftovers. Checked that
+none of the new rules would hide something the project actually tracks.
+
+**A prompt library.** Copied from the project it was written in
+(`prompts/01`-`06`: framing a measurement, searching rather than
+recalling, auditing your own tooling, two kinds of review, handling
+feedback) and extended with five this project earned:
+
+- `07-git-handoff` - the repository is the handoff. Everything the work
+  depends on lives in it; commit messages carry reasoning; the bundle is
+  tested by cloning it. Written because a benchmark script lived in
+  `/tmp` and 368 bundles were handed over before anyone pulled one.
+- `08-run-it-elsewhere` - a suite that has run in one place measures
+  that place. The table of nine faults and what differed is the whole
+  argument.
+- `09-baseline-discipline` - a baseline you update without looking is
+  not a check. Written because `dead-words 0` became `5` and was
+  recorded rather than read.
+- `10-price-before-refactor` - price it first, by adding work rather
+  than removing it, and convert the proxy to the real quantity once.
+- `11-report-from-elsewhere` - a report is only worth what it contains.
+
+**And the editor's two missing features are named in GOALS.md** with
+what exists to build on: `OPEN-DIR`/`READ-DIR` primitives and the
+existing pattern matcher for completion, `HIST-BUF` and the redraw for
+search. History search first - it is smaller and raises no quoting
+questions - then completion.
+
+No shell code changed.
