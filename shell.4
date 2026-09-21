@@ -5110,7 +5110,7 @@ VARIABLE PN-U
 : DO-PRINTF ( --- )
   ARGC @ 2 < IF
     S" printf: usage: printf format [arguments]" ERR-TYPE ERR-NL
-    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports EXIT
+    2 LAST-STATUS !  -1 VALUE-FAILED? !  EXIT \ the status the caller reports
   THEN
   0 PF-STATUS !  0 ESC-STOP? !  2 PF-ARG !
   BEGIN
@@ -5272,7 +5272,7 @@ VARIABLE KILL-SIG
   0 LAST-STATUS !  15 >R  1
   ARGC @ 2 < IF
     R> 2DROP S" shell: kill: usage: kill [-s sig | -sig] pid... | -l [status]" ERR-TYPE ERR-NL
-    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports EXIT
+    2 LAST-STATUS !  -1 VALUE-FAILED? !  EXIT \ the status the caller reports
   THEN
   DUP ARGV@ S" -l" ROT STR0= IF
     R> 2DROP
@@ -7264,8 +7264,17 @@ VARIABLE JB-K
   0 JOB# @ 0 ?DO OVER JOB-NUMS I CELLS + @ = OR LOOP NIP ;
 
 : JOB-ADD ( pid --- )
+  \ ALL FIVE arrays grow, before any address into them is taken. Two
+  \ did - JOB-PIDS and JOB-NUMS - and the other three stayed at 64, so
+  \ the 65th background job wrote its state, status and text past the
+  \ end of theirs: `: &` in a loop of a hundred ended in "free():
+  \ invalid pointer" (Iteration 426, found by tools/crashfuzz.py). A fix
+  \ that covers part of a set of parallel arrays is the same bug later.
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-PIDS
   JOB# @ 1+ CELLS ENSURE-BUFFER JOB-NUMS
+  JOB# @ 1+ CELLS ENSURE-BUFFER JOB-STATES
+  JOB# @ 1+ CELLS ENSURE-BUFFER JOB-STATUS
+  JOB# @ 1+ JOB-TEXT-MAX * ENSURE-BUFFER JOB-TEXT-POOL
   JOB-PIDS JOB# @ CELLS + !
   \ the lowest number no current job holds, which is how dash appears to
   \ reuse [1] as soon as the previous job has been reported

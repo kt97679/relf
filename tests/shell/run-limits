@@ -76,4 +76,15 @@ out=$("$THIS_SH" -c "$long; echo status=\$?" 2>/dev/null)
 assert_output_equals "a 1000-character command name is merely not found" "status=127" "$out"
 out=$("$THIS_SH" -c "command -v $long; echo status=\$?" 2>/dev/null)
 assert_output_equals "... and command -v says so too, as dash does" "status=127" "$out"
+# From the crash fuzzer (Iteration 426). printf and kill with no
+# arguments printed their usage and fell through: the EXIT after it had
+# been swallowed by a `\` comment in Iteration 357, and printf then
+# segfaulted formatting nothing. And the job table grew two of its five
+# arrays, so the 65th background job wrote past the other three.
+out=$("$THIS_SH" -c 'printf; echo "after:$?"' 2>/dev/null)
+assert_output_equals "printf with no arguments reports and goes on" "after:2" "$out"
+out=$("$THIS_SH" -c 'kill; echo "after:$?"' 2>/dev/null)
+assert_output_equals "kill with no arguments reports and goes on" "after:2" "$out"
+out=$("$THIS_SH" -c 'i=0; while [ $i -lt 300 ]; do : & i=$((i+1)); done; wait; echo "done $i"' 2>&1)
+assert_output_equals "three hundred background jobs" "done 300" "$out"
 report

@@ -293,6 +293,19 @@ Audit periodically, not only when touching a feature.
   that stores through a computed address needs a test that actually
   executes it; this one was caught only because the pty suite typed a
   line.
+- **A `\` comment runs to the end of the line, and takes any code with
+  it.** `-1 VALUE-FAILED? !  \ the status the caller reports EXIT`
+  compiles no `EXIT`: one edit in Iteration 357 appended that comment to
+  two lines ending in `EXIT`, and `printf` and `kill` with no arguments
+  fell through their usage messages - `printf` into a segfault. The
+  mirror of the `( )` trap; `tools/lint-comments.py` checks both now
+  (Iteration 426).
+- **Grow every array of a parallel set, in one word.** The job table is
+  five arrays; `JOB-ADD` grew two of them, and the 65th background job
+  wrote past the other three (Iteration 426). The function table is
+  seven, and 419 grew all seven through one word and a `DEFER` - that is
+  the shape: a single grow word that names every array, so a new array
+  cannot be forgotten in one of several places.
 - **A writer with no bound is an overflow waiting for a long input.**
   `B-CHAR` stores and advances, and nothing checks where; `PATHBUF` is 256
   bytes, and a 250-character command name ran the `PATH` search's

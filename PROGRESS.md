@@ -421,6 +421,7 @@ do not trust the absence of a line below.
 - **423** — case patterns and subjects are not field-split; many_ifs passes
 - **424** — command takes special properties away; backslashes in case patterns
 - **425** — the log that stops retries; the documents deduplicated against prompts/
+- **426** — the fuzzer's two crashes: a swallowed EXIT, and a job table that grew two arrays of five
 
 ### Not tied to an iteration
 
@@ -21403,3 +21404,39 @@ role and points at its partner.
 
 The fuzzer's five reproducers are committed in `tests/crashers/`, with a
 README saying they are open to-dos rather than tests.
+
+## Iteration 426: the fuzzer's two crashes
+
+The log was searched first, as prompts/12 now asks: nothing about
+printf with no arguments, nothing about a job-table limit.
+
+**`printf` with no arguments** printed its usage and segfaulted. The
+line after the usage message was
+
+    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports EXIT
+
+and the `EXIT` was inside the `\` comment, so execution fell through
+into formatting with no format at all. A check was written into
+`tools/lint-comments.py` for code swallowed by a `\` comment - a control
+word ending a comment that follows code - and run over every source
+BEFORE the fix, so it could be seen failing: it found this line and a
+second, identical one in `kill`, which printed its usage and then "no
+such process". `git log -S` puts both in Iteration 357, one edit that
+appended a comment to two lines ending in EXIT. Both fixed; the lint is
+clean.
+
+**Background jobs past 64** corrupted the heap - "free(): invalid
+pointer". `JOB-ADD` grew two of the job table's five parallel arrays,
+`JOB-PIDS` and `JOB-NUMS`, and left the states, statuses and text pool
+at 64 entries. All five grow now; a thousand background jobs work at
+both widths.
+
+All five reproducers pass, and as `tests/crashers/README.md` requires,
+each became an assertion in `tests/shell/run-limits` and the files were
+deleted in the same commit. FORTH-STYLE.md section 12 gains both
+lessons: a `\` comment takes code with it, and a set of parallel arrays
+grows in one word that names them all.
+
+Recorded changes, with their causes: `shell:assertions` 765 -> 768,
+the three regression tests from the reproducers; the images 56 bytes
+larger - three more ENSURE-BUFFERs and two EXITs that are now code.

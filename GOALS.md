@@ -36,10 +36,10 @@ The one current queue. Worked in order of severity
 (`prompts/13-severity-first.md`): crashes and hangs, then wrong results
 ordinary scripts hit, then edge cases and wording.
 
-1. **Crashes found by `tools/crashfuzz.py`, not yet fixed** (Iteration
-   424; reproducers in `tests/crashers/`): `printf` with no arguments
-   segfaults at both widths; launching background jobs in an unbounded
-   loop (`until ]; do $i & done`) segfaults.
+1. **No known crashes.** The fuzzer's last findings - `printf` and
+   `kill` with no arguments, and the job table past 64 jobs - were fixed
+   in Iteration 426. Run `tools/crashfuzz.py` after any change to the
+   parser, the expander or the job code.
 2. **A backslash from an expansion, in pathname expansion** (424): dash
    and bash treat it as escaping the next character when the word is
    globbed; case patterns do since 424, pathname expansion does not.
