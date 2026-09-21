@@ -399,6 +399,7 @@ do not trust the absence of a line below.
 - **401** — the most negative cell, printed backwards through memory
 - **402** — the engines leave the repository
 - **403** — undefined shifts in the cross-compiler; and a dead-word regression
+- **404** — a prompt channel bash cannot strip; and three honest counts
 
 ### Not tied to an iteration
 
@@ -20515,3 +20516,34 @@ GOALS.md with what is known, rather than guessed at here.
 
 Both images still reproduce exactly from a 64-bit host: the guards only
 apply to bytes a narrow host cannot reach.
+
+## Iteration 404: a channel bash cannot strip
+
+The board's two remaining test failures were the pty prompt cases, and
+they are Iteration 400's finding again: the harness hands PS1 and PS2 to
+the shell in the environment, and where /bin/sh is bash the wrapper
+loses them before the engine starts.
+
+A wrapper cannot recover a variable its interpreter removed, so the
+answer is a name bash has no opinion about: `relfsh` reads `RELF_PS1`
+and `RELF_PS2` and exports them as PS1 and PS2. The pty harness sets
+both spellings, which dash and bash testees ignore.
+
+**Reproduced here before fixing**, which is the part worth keeping: a
+copy of the wrapper with its shebang pointed at bash, run against the
+same suite, gives 20 passed and 2 failed - their numbers exactly - and
+22 passed with the fix. A fault on a machine I cannot reach is still
+reproducible if the difference is understood precisely enough.
+
+**And three counts that were measuring the machine**: `core:okmarkers`
+belongs to the 8-byte half and reads `skipped` where that half is;
+`shell:assertions` and the parse verdicts depend on dash being
+installed, since three test files and the whole verdict comparison need
+it. All three say so now instead of reporting a difference.
+
+**The widening cross-compile is labelled `known`** rather than
+`CHANGED`: it is a real open bug, written down in GOALS.md, and
+reporting the same known difference as a failure every run trains
+people to ignore the report.
+
+tests/verify: `core:okmarkers` may read `skipped`; a new `known` verdict.

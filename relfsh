@@ -51,6 +51,14 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 # Overridable so the same wrapper can drive either cell-width build
 # (e.g. RELF_BIN=./relf32 RELF_IMG=./kernel32.img for the i386 image -
 # see tests/run_tests.sh) without needing a second copy of this script.
+# bash, running a non-interactive script, clears PS1 and PS2 from the
+# environment before it execs anything - so a prompt handed to this
+# wrapper is lost wherever /bin/sh is bash, which is most distributions
+# other than Debian's (Iteration 400 found it; 404 gives it a way
+# through). RELF_PS1 and RELF_PS2 are special to no shell and survive.
+if [ -n "${RELF_PS1:-}" ]; then PS1=$RELF_PS1; export PS1; fi
+if [ -n "${RELF_PS2:-}" ]; then PS2=$RELF_PS2; export PS2; fi
+
 RELF_BIN=${RELF_BIN:-"$DIR/relf"}
 
 # Which image the native engine can actually run. A cell is a pointer:

@@ -20,6 +20,15 @@ DEFAULT_ENV = {'PS1': '$ ', 'PS2': '> '}   # so any shell prompts alike
 
 def run_case(shell, steps, env, raw=False):
     env = dict(DEFAULT_ENV, **(env or {}))
+    # RELF_PS1/RELF_PS2 beside PS1/PS2: where /bin/sh is bash - Gentoo,
+    # Arch, Fedora - bash clears PS1 and PS2 before exec'ing the engine
+    # from the relfsh wrapper, so the prompts a case asks for never
+    # arrive and every prompt-shaped expectation fails (Iteration 404).
+    # dash and bash testees ignore the RELF_ names; this shell reads
+    # them in the wrapper.
+    for k in ('PS1', 'PS2'):
+        if k in env:
+            env['RELF_' + k] = env[k]
     argv = shell if isinstance(shell, list) else [shell]
     s = Session(argv, env=env)
     s.prompts_from_env(env)
