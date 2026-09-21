@@ -44,10 +44,13 @@ assert_output_contains "a too-long alias value is reported" "value too long" "$o
 # while claiming to test the other width (Iteration 398).
 if [ -n "${RELF_BIN:-}" ]; then
     out=$(env -i RELF_BIN="$RELF_BIN" RELF_IMG="${RELF_IMG:-}" \
-          "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+          "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | tail -1)
 else
-    out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | grep -v '^PPID=')
+    out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | tail -1)
 fi
+# Only the last line: since Iteration 422 the shell also sets IFS and
+# OPTIND at startup, as POSIX asks, so the table holds three variables,
+# and IFS's value spans lines. What matters is that `set` finished.
 assert_output_equals "set with an almost empty table" "st=0" "$out"
 
 

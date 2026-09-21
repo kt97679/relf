@@ -1398,7 +1398,17 @@ order of severity:
 - a crash in the engine becomes a Forth backtrace with gdb and
   `tools/image-where.py` (FORTH-STYLE.md section 13).
 
-Open from the triage: busybox `ash-z_slow/many_ifs` times out at 10 s.
+Open from the triage: busybox `ash-z_slow/many_ifs` - 15.6 s here
+against dash's 7.5, over the runner's 10 s limit, and 749 of its 6856
+table lines still differ (1045 before Iteration 422's `read` fix). The
+remaining ones are all `set x $x` splitting, where a direct reproduction
+agrees with dash and bash - so the difference is in how the test drives
+its `split` function, not yet found.
+
+Also open: `export NAME` for a name with no value is not remembered, so a
+later `NAME=value` does not reach children. This shell's "exported" is
+"in the process environment"; the fix is a small pending-export list that
+assignment consults.
 
 ## Next (Iteration 412)
 

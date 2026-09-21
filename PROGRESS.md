@@ -417,6 +417,7 @@ do not trust the absence of a line below.
 - **419** — the function and alias tables grow; both complete as commands
 - **420** — completing inside quotes; a case-pattern crash found and recorded
 - **421** — four crashes fixed; a crash fuzzer; the corpora ranked by severity
+- **422** — a value dimension for the matrix; test's counted rules; export, IFS, OPTIND, read
 
 ### Not tied to an iteration
 
@@ -21245,3 +21246,49 @@ Recorded changes, with their causes: `parse:verdicts-agree` 200 -> 201,
 the new differential case; `shell:assertions` 729 -> 742 - four for
 break and continue, two for long names, four for PS4, three for
 getopts; the images about 550 bytes larger for the fixes.
+
+## Iteration 422: the value dimension, and what it and the triage found
+
+**The construct matrix held its values still.** Thirty constructs in
+fourteen contexts, each with one fixed value - which is how `case x in
+2)` could segfault for as long as anyone can tell without the matrix
+noticing. `tools/gen-value-cases.py` writes eight differential cases
+that hold the construct still and vary the value instead: a lone digit,
+zero, a negative number, empty strings, blanks, glob characters, dashes,
+a hash, a bang, a backslash, a dollar, an assignment-shaped word and a
+300-character word, each as literal source text so the parser sees it.
+
+**It found a divergence at once**: `[ '!' = '!' ]` was an error here and
+true in bash and dash. POSIX decides `test` with one to four arguments
+by their NUMBER, before any grammar - with three, a binary operator in
+the middle wins over a leading `!` or `(`. Iteration 317 replaced the
+old counting with a grammar so that long `-a`/`-o` chains work, and lost
+the counted rules on the way. Both now: the counted rules for up to four
+arguments, the grammar beyond. Sixteen forms checked against dash.
+
+**From the yash failures dash passes**, three that everyday scripts hit:
+
+- `export a=A b c=C` handled its first operand and ignored the rest;
+- `IFS` was not set at startup - splitting still worked, since an unset
+  IFS splits on blanks, until `old=$IFS; IFS=:; ...; IFS=$old` restored
+  it EMPTY and turned splitting off for the rest of the script. It is
+  space, tab, newline at startup now, replacing an inherited one;
+- `OPTIND` was not set at startup either.
+
+**And from busybox's `many_ifs`**, a real `read` bug: the last
+variable's remainder loses a single closing delimiter when it holds
+exactly one field - `b:` becomes `b`, `b :` becomes `b`, while `b::`
+and `b:c:` keep everything - and this shell kept it. An escaped
+delimiter is text and stays; `RD-FIELD` records where the last escaped
+character landed so the rule can tell. `many_ifs` went from 1045
+failing lines to 749; the rest are its `set x $x` family, where direct
+reproductions agree with dash and bash, and are written up in GOALS.md.
+
+A test that asserted the variable table held only PPID at startup now
+checks what it was for - that `set` finishes - since IFS and OPTIND are
+there too, as POSIX asks.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 201 -> 209,
+the eight value cases; `shell:assertions` 742 -> 762 - eight for test's
+counted rules, four for startup and export, eight for read; the images
+about 390 bytes larger for the four fixes.

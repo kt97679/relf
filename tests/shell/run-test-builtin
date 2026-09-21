@@ -70,4 +70,13 @@ assert_status "a bare, non-empty string alone succeeds" 0 "$?"
 "$THIS_SH" -c 'test ""' > /dev/null 2>&1
 assert_status "a bare, empty string alone fails" 1 "$?"
 
+# One to four arguments are decided by their NUMBER (XCU test,
+# Iteration 422): a binary operator in the middle of three wins over a
+# leading ! or (, and ! alone is a non-empty string.
+for t in "[ '!' = '!' ]:0" "[ '(' = '(' ]:0" "[ ! = x ]:1" "[ ! ]:0" "[ ! ! ]:1" \
+         "[ ! '!' = '!' ]:1" "[ ! x = y ]:0" "[ 1 -eq 1 -a 2 -eq 2 ]:0"; do
+    expr=${t%:*}; want=${t##*:}
+    got=$("$THIS_SH" -c "$expr; echo \$?" 2>&1)
+    assert_output_equals "counted: $expr" "$want" "$got"
+done
 report

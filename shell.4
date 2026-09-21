@@ -3332,45 +3332,28 @@ VARIABLE EX-I
   REPEAT
   0 LAST-STATUS ! ;
 
+: EXPORT-ONE ( c-addr --- )   \ one operand: NAME=value, or NAME
+  DUP CSTRLEN 0 ?DO
+    DUP I + C@ 61 = IF               \ NAME=value: split at the '=' in place
+      DUP I + 0 SWAP C!
+      DUP I CHARS + CHAR+            ( name value )
+      2DUP SET-SHVAR
+      SWAP SETENV DROP
+      UNLOOP EXIT
+    THEN
+  LOOP
+  \ A bare NAME exports the value it has. One exported while it has none
+  \ is not remembered yet: this shell's "exported" is "in the process
+  \ environment", and there is nothing to put there.
+  DUP GET-SHVAR ?DUP IF SWAP SETENV DROP ELSE DROP THEN ;
+
 : DO-EXPORT ( --- )
-  \ `export` alone and `export -p` list what is exported (Iteration 318)
+  \ EVERY operand. This handled ARGV[1] and ignored the rest, so
+  \ `export a=A b c=C` set a and left b unexported and c unassigned -
+  \ found by yash's export-p.tst (Iteration 422).
   ARGC @ 1 = IF EXPORT-LIST EXIT THEN
   ARGC @ 2 = IF S" -p" 1 ARGV@ STR0= IF EXPORT-LIST EXIT THEN THEN
-  \ export NAME=VALUE - finds '=' in ARGV[1], splits it, records it
-  \ as both a shell-local variable (SET-SHVAR) and an environment
-  \ variable (SETENV) - so subsequently-expanded $NAME sees the same
-  \ value whether or not it's also inherited by a child process.
-  \ export NAME (no '=') exports an already-set shell-local variable
-  \ into the environment too, if there is one - a no-op otherwise (no
-  \ "mark for future export" tracking yet, a real but small gap
-  \ against full POSIX export semantics).
-  ARGC @ 1 > IF
-    ARGV 1 CELLS + @ DUP CSTRLEN
-    \ u (ARGV[1]'s length) can be 0 (e.g. `export ""`), guarded for
-    \ the same reason as HAS-SLASH?/B-STR above.
-    ( c-addr u ) DUP 0 > IF
-      0 DO
-        DUP I + C@ 61 = IF          ( found '=' at offset I within c-addr )
-          DUP I + 0 SWAP C!         ( NUL the '=' in place: c-addr )
-          DUP I CHARS + CHAR+       ( c-addr value-addr )
-          2DUP SET-SHVAR
-          SWAP SETENV DROP
-          0 LAST-STATUS !
-          UNLOOP EXIT
-        THEN
-      LOOP
-      DROP
-      ( no '=' found: bare NAME - export an existing shell-local value )
-      ARGV 1 CELLS + @ GET-SHVAR
-      DUP 0 <> IF
-        ARGV 1 CELLS + @ SETENV DROP
-      ELSE
-        DROP
-      THEN
-    ELSE
-      2DROP
-    THEN
-  THEN
+  ARGC @ 1 ?DO I ARGV@ EXPORT-ONE LOOP
   0 LAST-STATUS ! ;
 
 VARIABLE UN-I
@@ -3669,6 +3652,26 @@ DEFER TP-EXPR-CALL   ( --- f )
   \ handling at most four, so `[ 1 -eq 1 -a 2 -eq 2 ]` was false.
   TEST-NARGS 0 = IF 0 EXIT THEN
   0 TP-I !  0 TP-BAD? !
+  \ ... and POSIX decides one to four arguments by their NUMBER, before
+  \ any grammar: 317 replaced counting with the grammar so that long -a
+  \ and -o chains work, and lost the counted rules on the way. With
+  \ three, a binary operator in the middle wins over a leading `!` or
+  \ `(`, so `[ ! = ! ]` compares two strings; `!` alone is a non-empty
+  \ string; `! X` negates X's one-argument test; `! A op B` negates the
+  \ comparison. The grammar took each leading `!` as an operator and
+  \ found the rest malformed - `[ '!' = '!' ]` was an error where bash
+  \ and dash say true - which the construct matrix's new value dimension
+  \ found at once (tools/gen-value-cases.py, Iteration 422).
+  TEST-NARGS 1 = IF 0 TP-ARG-AT CSTRLEN 0<> EXIT THEN
+  TEST-NARGS 2 = IF 0 TP-ARG-AT TEST-IS-BANG? IF
+    1 TP-ARG-AT CSTRLEN 0= EXIT
+  THEN THEN
+  TEST-NARGS 3 = IF 1 TP-ARG-AT TP-BINARY-OP? IF
+    0 TP-ARG-AT 1 TP-ARG-AT 2 TP-ARG-AT TEST-BINARY? EXIT
+  THEN THEN
+  TEST-NARGS 4 = IF 0 TP-ARG-AT TEST-IS-BANG? IF 2 TP-ARG-AT TP-BINARY-OP? IF
+    1 TP-ARG-AT 2 TP-ARG-AT 3 TP-ARG-AT TEST-BINARY? 0= EXIT
+  THEN THEN THEN
   TP-OR
   TP-I @ TEST-NARGS < IF DROP 0 -1 TP-BAD? ! THEN
   TP-BAD? @ IF DROP 0 THEN ;
@@ -4430,8 +4433,10 @@ VARIABLE RD-VI
   0 READ-FIELD RD-FLEN @ + C!
   READ-FIELD SET-SHVAR ;
 
+VARIABLE RD-LAST-ESC   \ where the last escaped character landed, or -1
+
 : RD-FIELD ( last? --- )   \ one field from RD-POS, escapes removed
-  0 RD-FLEN !
+  0 RD-FLEN !  -1 RD-LAST-ESC !
   BEGIN
     RD-POS @ RD-LEN @ < IF
       DUP IF -1 ELSE READ-BUF RD-POS @ + C@ IFS-CHAR? 0= THEN
@@ -4439,17 +4444,38 @@ VARIABLE RD-VI
   WHILE
     RD-ESCAPED? IF
       1 RD-POS +!
-      RD-POS @ RD-LEN @ < IF READ-BUF RD-POS @ + C@ RD-EMIT  1 RD-POS +! THEN
+      RD-POS @ RD-LEN @ < IF
+        RD-FLEN @ RD-LAST-ESC !
+        READ-BUF RD-POS @ + C@ RD-EMIT  1 RD-POS +!
+      THEN
     ELSE
       READ-BUF RD-POS @ + C@ RD-EMIT  1 RD-POS +!
     THEN
   REPEAT
   DROP ;
 
-: RD-TRIM-FIELD ( --- )   \ the last field keeps no trailing IFS whitespace
-  BEGIN
-    RD-FLEN @ 0 > IF READ-FIELD RD-FLEN @ 1- + C@ RD-IFS-WS? ELSE 0 THEN
-  WHILE -1 RD-FLEN +! REPEAT ;
+: RD-TRIM-WS ( n --- n' )   \ n, less READ-FIELD's trailing IFS whitespace
+  BEGIN DUP 0 > IF DUP 1- READ-FIELD + C@ RD-IFS-WS? ELSE 0 THEN WHILE 1- REPEAT ;
+
+: RD-HAS-IFS? ( n --- f )   \ an IFS character in READ-FIELD's first n bytes
+  0 ?DO READ-FIELD I + C@ IFS-CHAR? IF -1 UNLOOP EXIT THEN LOOP 0 ;
+
+: RD-TRIM-FIELD ( --- )   \ the last variable's remainder, as POSIX trims it
+  \ Trailing IFS whitespace goes; and when what is left is ONE field
+  \ closed by a single non-whitespace delimiter, the delimiter goes too:
+  \ `b:` gives b and `b :` gives b, while `b::` and `b:c:` hold more
+  \ than one field and keep everything. This did only the first step,
+  \ so `echo :: | IFS=": " read x y` left y as ":" where dash and bash
+  \ leave it empty - busybox's many_ifs found it, 1045 of its 6856
+  \ cases (Iteration 422). A delimiter that was escaped is text.
+  RD-FLEN @ RD-TRIM-WS RD-FLEN !
+  RD-FLEN @ 0= IF EXIT THEN
+  RD-FLEN @ 1-                                    ( m: the last character )
+  DUP READ-FIELD + C@ DUP IFS-CHAR? SWAP RD-IFS-WS? 0= AND
+  OVER RD-LAST-ESC @ <> AND 0= IF DROP EXIT THEN   \ not a bare closing delimiter
+  RD-TRIM-WS
+  DUP RD-HAS-IFS? IF DROP EXIT THEN                \ more than one field: all stay
+  RD-FLEN ! ;
 
 : RD-DELIMITER ( --- )   \ past one delimiter and the whitespace around it
   RD-SKIP-IFS-WS

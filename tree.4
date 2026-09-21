@@ -3053,6 +3053,10 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   RUN-STDIN ;
 
 32 BUFFER: PPID-BUF
+CREATE STARTUP-IFS-NM  CSTR," IFS"
+CREATE IFS-DEFAULT  32 C, 9 C, 10 C, 0 C,   \ space, tab, newline
+CREATE OPTIND-NM    CSTR," OPTIND"
+CREATE OPTIND-ONE   CSTR," 1"
 
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
@@ -3061,6 +3065,14 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   \ $PPID, which POSIX sets at startup and this shell never did
   GETPPID 0 <# #S #> PPID-BUF SWAP DUP >R MOVE  0 PPID-BUF R> + C!
   PPID-NM PPID-BUF SET-SHVAR
+  \ IFS and OPTIND, which POSIX also sets at startup and this shell left
+  \ unset (Iteration 422, from yash's fsplit-p.tst and getopts-p.tst).
+  \ An unset IFS still splits on blanks, so nothing looked wrong - until
+  \ the everyday `old=$IFS; IFS=:; ...; IFS=$old` restored it EMPTY and
+  \ turned field splitting off for the rest of the script. An IFS from
+  \ the environment is replaced, as dash and bash replace it.
+  STARTUP-IFS-NM IFS-DEFAULT SET-SHVAR
+  OPTIND-NM OPTIND-ONE SET-SHVAR
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !
   FORTH-WORDLIST CONTEXT !

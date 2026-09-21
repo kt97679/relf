@@ -26,7 +26,7 @@ mrsh:passed 21
 parse:encoded 4
 parse:failed 0
 parse:passed 26
-parse:verdicts-agree 201
+parse:verdicts-agree 209
 parse:verdicts-differ 0
 portability:problems 0
 posix:cases 48
@@ -37,14 +37,14 @@ rebuild:kernel-shell.img reproduces
 rebuild:kernel32-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 742
+shell:assertions 762
 shell:dead-words 0
 shell:files 79
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
-size:i386 163964
-size:image-i386 100912
-size:image-x86_64 108240
-size:x86_64 147368
+size:i386 164340
+size:image-i386 101288
+size:image-x86_64 108632
+size:x86_64 147760
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

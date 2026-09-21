@@ -45,4 +45,14 @@ assert_status "a quoted 'NAME=value' alone is a literal command, not an assignme
 "$THIS_SH" -c "FOO=bar123" < /dev/null > /dev/null 2>&1
 assert_status "a successful standalone assignment exits 0" 0 "$?"
 
+# Startup and export (Iteration 422, from yash): IFS and OPTIND are set
+# at startup, an inherited IFS is replaced, and export takes EVERY operand.
+out=$(env -i PATH="$PATH" IFS=Q RELF_BIN="${RELF_BIN:-}" RELF_IMG="${RELF_IMG:-}" "$THIS_SH" -c 'printf "[%s]" "$IFS"' | od -An -c | tr -d ' ')
+assert_output_equals "IFS starts as space, tab, newline" '[\t\n]' "$out"
+out=$("$THIS_SH" -c 'echo "$OPTIND"')
+assert_output_equals "OPTIND starts at 1" "1" "$out"
+out=$("$THIS_SH" -c 'old=$IFS; IFS=:; IFS=$old; set -- "x y"; set -- $1; echo $#')
+assert_output_equals "saving and restoring IFS keeps splitting" "2" "$out"
+out=$("$THIS_SH" -c 'a=X b=B c=X; export a=A b c=C; sh -c "echo \$a \$b \$c"')
+assert_output_equals "export takes every operand" "A B C" "$out"
 report

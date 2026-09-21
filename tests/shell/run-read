@@ -51,4 +51,16 @@ assert_output_contains "read takes one line from a file"        "shell:m1" "$out
 assert_output_contains "a file's remainder is left for a child" "m2"       "$out"
 assert_output_contains "the child gets ALL of the file remainder" "m3"     "$out"
 
+# The last variable's remainder (Iteration 422, from busybox's
+# many_ifs): trailing IFS whitespace goes, and a remainder that is ONE
+# field closed by a single non-whitespace delimiter loses the delimiter
+# too. Each pair below is what dash and bash give.
+for pair in '::|()()' 'a:b:|(a)(b)' 'a:b::|(a)(b::)' 'a:b:c:|(a)(b:c:)' \
+            'a: :|(a)()' 'a:b :|(a)(b)' 'a:b: |(a)(b)'; do
+    input=${pair%|*}; want=${pair#*|}
+    got=$(printf '%s\n' "$input" | "$THIS_SH" -c 'IFS=": " read x y; printf "(%s)(%s)" "$x" "$y"')
+    assert_output_equals "read remainder: $input" "$want" "$got"
+done
+got=$(printf '%s\n' 'a:b\:' | "$THIS_SH" -c 'IFS=: read x y; printf "(%s)(%s)" "$x" "$y"')
+assert_output_equals "an escaped delimiter is text, and stays" "(a)(b:)" "$got"
 report
