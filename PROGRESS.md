@@ -419,6 +419,7 @@ do not trust the absence of a line below.
 - **421** — four crashes fixed; a crash fuzzer; the corpora ranked by severity
 - **422** — a value dimension for the matrix; test's counted rules; export, IFS, OPTIND, read
 - **423** — case patterns and subjects are not field-split; many_ifs passes
+- **424** — command takes special properties away; backslashes in case patterns
 
 ### Not tied to an iteration
 
@@ -21331,3 +21332,32 @@ pty case that loses a race under load (Iteration 406); it passed three
 times alone, and a second check run agreed with the recording. It has
 now flaked twice under the full suite, which makes it worth a look of
 its own rather than a re-run each time.
+
+## Iteration 424: from the busybox failures dash passes
+
+With the corpora re-run one after the other - this container has a
+single CPU, and running them alongside anything else turns slow cases
+into "hangs" - busybox stands at 210 passed, no crashes, no hangs, and
+yash at 1667 passed, up eight, with no crashes or hangs either. Eleven
+busybox tests remain that dash passes; this iteration read all of them.
+
+- **`command` takes a special builtin's special properties away** (XCU
+  command), and here it did not: `readonly x=1; command eval x=2` ended
+  the shell. `(SPECIAL-ERROR)` now checks a flag that `COMMAND-RUN`
+  sets around its dispatch. busybox readonly1 passes.
+- **A backslash from an expansion escapes in a case pattern**: `b='a\*b';
+  case 'a*b' in $b)` matches in dash and bash, and did not here, because
+  an unquoted pattern was matched with escapes off. The same rule in
+  pathname expansion is open, written up in GOALS.md - it needs a second
+  kind of glob mark.
+- Two were not bugs: `and_or_and_backgrounding` is a race between a 0.1 s
+  and a 0.2 s sleep that a loaded single CPU loses (the whole and-or list
+  IS backgrounded, checked with a one-second gap), and `var_leaks` is
+  `a=b exec 1>&1`, where this shell behaves as bash does and the test's
+  own comment says so.
+- Left for later, with the reason: `${#a}` with digits in IFS is not
+  split (rare), and two signal tests.
+
+Recorded changes, with their causes: `shell:assertions` 762 -> 765,
+the three `command` tests; the images about 60 bytes larger - the flag,
+its save and restore, and the escape switch.

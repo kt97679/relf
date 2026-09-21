@@ -2690,8 +2690,13 @@ VARIABLE CASE-TEXT#
     0 GM-ESCAPES? !
   ELSE
     ARGC @ IF 0 ARGV-QUOTED@ ELSE 0 THEN >R JOIN-ARGV R>
+    \ A pattern with no quoting in it can only have got a backslash from
+    \ an expansion, and in a pattern that backslash escapes the next
+    \ character, as dash and bash have it: `b='a\*b'; case 'a*b' in
+    \ $b)` matches (Iteration 424, busybox's glob_bkslash_in_var and
+    \ yash's quote-p.tst). It was matched with escapes off.
     IF CASE-TEXT CASE-TEXT# @ COMPARE 0=
-    ELSE CASE-TEXT CASE-TEXT# @ GLOB-MATCH THEN
+    ELSE -1 GM-ESCAPES? !  CASE-TEXT CASE-TEXT# @ GLOB-MATCH  0 GM-ESCAPES? ! THEN
   THEN ;
 
 : EXEC-CASE ( node --- )

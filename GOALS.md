@@ -1403,6 +1403,18 @@ read's remainder, and case patterns and subjects that were field-split).
 It takes 12 s here against dash's 7.5 - worth profiling some day; the
 runner gives the slow directory a minute.
 
+Open (Iteration 424): **a backslash from an expansion, in PATHNAME
+expansion.** dash and bash treat it as escaping the next character when
+the word is globbed: `b='test*.TMP/\name'; printf '%s' $b` matches
+`testdir.TMP/name`. A word whose only glob characters are escaped
+(`a\*b`) is not a pattern at all and stays as written. Case patterns do
+this since 424; pathname expansion still writes such a backslash into
+the pattern as a literal, because the glob marks record only unquoted
+`* ? [`. The fix is a second kind of mark - an unquoted backslash that
+is active in the pattern but does NOT count toward "this word is a
+pattern" (so `a\xb` alone never globs). busybox glob_bkslash_in_var and
+var_unbackslash1, yash quote-p.tst:583.
+
 Also open: `export NAME` for a name with no value is not remembered, so a
 later `NAME=value` does not reach children. This shell's "exported" is
 "in the process environment"; the fix is a small pending-export list that

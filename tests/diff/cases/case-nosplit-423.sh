@@ -18,3 +18,9 @@ g='a:b'; case $g in 'a:b') printf 'IFS character in subject\n';; *) printf 'no\n
 IFS=' 	
 '
 case $(printf ' y ') in ' y ') printf 'command substitution subject\n';; *) printf 'no\n';; esac
+# A backslash from an expansion escapes in a case pattern (Iteration 424,
+# busybox's glob_bkslash_in_var and yash's quote-p.tst): it was matched
+# with escapes off, so `a\*b` from a variable did not match `a*b`.
+b='a\*b'; case 'a*b' in $b) printf 'escaped star matches a star\n';; *) printf 'no\n';; esac
+b='a\*b'; case 'axb' in $b) printf 'wrong\n';; *) printf 'escaped star is not a glob\n';; esac
+b='a*b'; case 'axb' in $b) printf 'plain star globs\n';; *) printf 'no\n';; esac

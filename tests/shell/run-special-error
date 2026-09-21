@@ -86,4 +86,13 @@ out=$("$THIS_SH" -c 'for i in 1 2; do continue abc; done; echo after' 2>&1)
 assert_output_contains "continue abc is reported" "bad number" "$out"
 out=$("$THIS_SH" -c 'for i in 1 2; do for j in a b; do break 2; done; echo no; done; echo ok' 2>&1)
 assert_output_equals "a valid count still works" "ok" "$out"
+# `command` takes a special builtin's special properties away (XCU
+# command; Iteration 424, from busybox's ash-vars/readonly1): its error
+# is reported and the shell goes on, where without `command` it ends.
+out=$("$THIS_SH" -c 'readonly x=1; command eval x=2; echo "after:$?"' 2>/dev/null)
+assert_output_equals "command eval on a readonly variable goes on" "after:2" "$out"
+out=$("$THIS_SH" -c 'command shift 5; echo "after:$?"' 2>/dev/null)
+assert_output_equals "command shift past the end goes on" "after:2" "$out"
+out=$("$THIS_SH" -c 'readonly x=1; eval x=2; echo NOT-REACHED' 2>/dev/null)
+assert_output_equals "... while bare eval still ends the shell" "" "$out"
 report

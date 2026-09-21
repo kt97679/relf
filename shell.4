@@ -3976,8 +3976,16 @@ VARIABLE DO-I
   REPEAT ;
 
 
+VARIABLE VIA-COMMAND?   \ `command` is running this: no special properties
+
 : (SPECIAL-ERROR) ( status --- )
+  \ Not under `command`, which exists partly to take a special builtin's
+  \ special properties away (XCU command): `command eval x=2` on a
+  \ readonly x reports and goes on, where bare `eval x=2` ends a
+  \ non-interactive shell. This ended it either way (Iteration 424,
+  \ from busybox's ash-vars/readonly1).
   LAST-STATUS !
+  VIA-COMMAND? @ IF EXIT THEN
   INTERACTIVE? @ 0= IF LAST-STATUS @ SHELL-EXIT THEN ;
 ' (SPECIAL-ERROR) IS SPECIAL-ERROR
 
@@ -4093,9 +4101,9 @@ VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
   \ nothing and returned 0.
   DROP-ARGV0-CALL
   ARGC @ 0= IF 0 LAST-STATUS ! EXIT THEN
-  -1 NO-FUNCTIONS? !
+  -1 NO-FUNCTIONS? !  VIA-COMMAND? @ >R  -1 VIA-COMMAND? !
   DISPATCH-CALL 0= IF RUN-EXTERNAL-CALL THEN
-  0 NO-FUNCTIONS? ! ;
+  R> VIA-COMMAND? !  0 NO-FUNCTIONS? ! ;
 
 : DROP-ARGV1 ( --- )   \ the second word, out of the list
   ARGC @ 2 ?DO
