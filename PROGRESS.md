@@ -404,6 +404,7 @@ do not trust the absence of a line below.
 - **406** — the pty suite had a clock assumption of its own
 - **407** — bytecode out of the repository; a prompt library; the editor's gaps named
 - **408** — history holds the session; and a line is no longer 256 characters
+- **409** — ^R: reverse incremental history search
 
 ### Not tied to an iteration
 
@@ -20689,3 +20690,45 @@ there now (`PORTABILITY_QUICK=1`) and stay in `make portability`, where
 nothing else is running. The rule from `prompts/09` applied to its own
 author: a changed line gets a sentence before it is recorded, and this
 one would have read "flaky", which is not a reason to record it.
+
+## Iteration 409: ^R
+
+Reverse incremental history search, with readline's prompt and rules:
+
+    (reverse-i-search)'al': echo alpha
+
+`^R` starts it; each printable key extends the pattern and shows the
+newest line containing it; `^R` again steps to the next older match;
+backspace shortens the pattern; a pattern that matches nothing shows
+`(failed reverse-i-search)` and keeps the last good match; `^G` restores
+what was being typed. Any other control key - RETURN, an arrow, `^A`,
+`^E` - accepts the match into the line and is THEN acted on, which is
+why RETURN runs the found command at once and an arrow leaves you
+editing it. An accepted match also moves the history position there,
+so the up arrow walks on from the line you found.
+
+**The first build of it booted into the bare Forth prompt.** The
+substring matcher used `2>R`, which this kernel does not have; the
+definition aborted, `ED-LINE` was left undefined, and `MAIN SET-BOOT`
+saved an image whose boot word was the default. Nothing in `make`
+failed, because the image was still written. The matcher keeps its
+pattern in two variables now - and the lesson is written beside it.
+
+**And the first test of it was wrong in an instructive way.** It
+expected `^R e` to find `echo gamma`, the newest of the three lines
+typed - but an earlier check had pressed RETURN on `echo alpha`, which
+put `echo alpha` back into history as the newest line. The code was
+right; the test had forgotten that searching history changes it.
+
+`tests/interactive/search-probe.py` runs with the pty suite: eight
+checks, each naming one of the rules above. It is assertion-shaped
+rather than transcript-shaped because the transcripts in `expected/` are
+recorded from dash, and dash has no `^R` to record. It passes on both
+cell widths, and a deliberately broken check is reported by name.
+
+Next: tab completion.
+
+Sizes, each with its cause as prompts/09 asks: `size:image-x86_64`
+100200 -> 101128 and `size:image-i386` 93348 -> 94200, about 0.9 KB per
+image - eleven new words, the two search prompts as strings, and two
+growable buffers. Nothing else moved.

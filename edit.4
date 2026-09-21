@@ -160,6 +160,79 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
   DUP 70 = IF DROP ED-LEN @ ED-POS ! EXIT THEN          \ end
   51 = IF ED-GET-BYTE 126 = IF ED-DELETE THEN THEN ;    \ delete
 
+\ ---- reverse incremental history search: ^R ----
+\
+\ Iteration 409, asked for by a user of the shell once history held
+\ the whole session (408): what is the point of keeping every line if
+\ the only way back is the up arrow, one at a time.
+\
+\ ^R starts it, with readline's own prompt, `(reverse-i-search)'pat': `
+\ followed by the newest history line containing the pattern. Each
+\ printable key extends the pattern; ^R again steps to the next older
+\ match; backspace shortens it; ^G restores what was being typed. Any
+\ other control key - RETURN, an arrow, ^A, ^E - accepts the match
+\ into the line and is THEN acted on, which is readline's rule and why
+\ RETURN runs the found command at once.
+
+VARIABLE ED-SEARCHING             \ -1 while a search is under way
+VARIABLE ED-SEARCH-HIT            \ the matching history entry, or -1
+VARIABLE ED-SEARCH-FAIL           \ -1 when the pattern matches nothing
+VARIABLE ED-SEARCH-LEN
+VARIABLE ED-SEARCH-ORIG-LEN
+64 BUFFER: ED-SEARCH-PAT          \ grown as the pattern is typed
+LINE-MAX BUFFER: ED-SEARCH-ORIG   \ the line as it was when ^R was pressed
+
+VARIABLE ED-PAT-A
+VARIABLE ED-PAT-U
+
+: ED-CONTAINS? ( c-addr u pat u2 --- flag )   \ pat occurs in c-addr u
+  \ The pattern in variables rather than on the return stack: this
+  \ kernel has no 2>R, and the first version of this word used it,
+  \ which left ED-LINE undefined and the shell image booting into the
+  \ bare Forth prompt instead (Iteration 409).
+  ED-PAT-U !  ED-PAT-A !
+  ED-PAT-U @ 0= IF 2DROP -1 EXIT THEN
+  BEGIN DUP ED-PAT-U @ < 0= WHILE              ( a u )
+    OVER ED-PAT-U @ ED-PAT-A @ ED-PAT-U @ COMPARE 0= IF 2DROP -1 EXIT THEN
+    1 /STRING
+  REPEAT
+  2DROP 0 ;
+
+: ED-SEARCH-FROM ( i --- )   \ the newest entry at or before i holding the pattern
+  BEGIN DUP 0< 0= WHILE
+    DUP HIST-SLOT DUP CSTRLEN ED-SEARCH-PAT ED-SEARCH-LEN @ ED-CONTAINS? IF
+      ED-SEARCH-HIT !  0 ED-SEARCH-FAIL !  EXIT
+    THEN
+    1-
+  REPEAT
+  DROP -1 ED-SEARCH-FAIL ! ;              \ the last good match stays shown
+
+: ED-SEARCH-BEGIN ( --- )
+  ED-LEN @ 2 + ENSURE-BUFFER ED-SEARCH-ORIG
+  ED-BUF ED-SEARCH-ORIG ED-LEN @ MOVE  ED-LEN @ ED-SEARCH-ORIG-LEN !
+  0 ED-SEARCH-LEN !  -1 ED-SEARCH-HIT !  0 ED-SEARCH-FAIL !
+  -1 ED-SEARCHING ! ;
+
+: ED-SEARCH-ACCEPT ( --- )   \ the match becomes the line being edited
+  ED-SEARCH-HIT @ 0< 0= IF
+    ED-SEARCH-HIT @ DUP HIST-VIEW !           \ the arrows walk on from here
+    HIST-SLOT DUP CSTRLEN ED-SET-LINE
+  THEN
+  0 ED-SEARCHING ! ;
+
+: ED-SEARCH-CANCEL ( --- )   \ ^G: as if ^R had never been pressed
+  ED-SEARCH-ORIG ED-SEARCH-ORIG-LEN @ ED-SET-LINE
+  0 ED-SEARCHING ! ;
+
+: ED-SEARCH-REDRAW ( --- )
+  13 ED-CH
+  ED-SEARCH-FAIL @ IF S" (failed reverse-i-search)'" ELSE S" (reverse-i-search)'" THEN
+  ED-OUT
+  ED-SEARCH-PAT ED-SEARCH-LEN @ ED-OUT
+  S" ': " ED-OUT
+  ED-SEARCH-HIT @ 0< 0= IF ED-SEARCH-HIT @ HIST-SLOT DUP CSTRLEN ED-OUT THEN
+  ED-CSI 75 ED-CH ;                          \ erase to end of line
+
 : ED-KEY-ACT ( c --- )
   DUP 10 = OVER 13 = OR IF DROP 1 ED-DONE ! EXIT THEN
   DUP 27 = IF DROP ED-ESCAPE EXIT THEN
@@ -174,11 +247,26 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
     ED-LEN @ 0= IF 3 ED-DONE ! ELSE ED-DELETE THEN EXIT THEN
   DUP 3 = IF DROP 2 ED-DONE ! EXIT THEN           \ ^C
   DUP 12 = IF DROP EXIT THEN                      \ ^L: redraw, which happens anyway
+  DUP 18 = IF DROP ED-SEARCH-BEGIN EXIT THEN      \ ^R: search the history
   DUP 32 < IF DROP EXIT THEN                      \ other control characters
   ED-INSERT ;
 
+: ED-SEARCH-KEY ( c --- )
+  DUP 18 = IF DROP                                \ ^R: the next older match
+    ED-SEARCH-HIT @ 0> IF ED-SEARCH-HIT @ 1- ED-SEARCH-FROM THEN EXIT THEN
+  DUP 7 = IF DROP ED-SEARCH-CANCEL EXIT THEN      \ ^G
+  DUP 127 = OVER 8 = OR IF DROP                   \ backspace: a shorter pattern
+    ED-SEARCH-LEN @ 0= IF EXIT THEN
+    -1 ED-SEARCH-LEN +!
+    ED-SEARCH-LEN @ IF HIST# @ 1- ED-SEARCH-FROM
+    ELSE -1 ED-SEARCH-HIT !  0 ED-SEARCH-FAIL ! THEN EXIT THEN
+  DUP 32 < IF ED-SEARCH-ACCEPT ED-KEY-ACT EXIT THEN   \ accept, then act
+  ED-SEARCH-LEN @ 2 + ENSURE-BUFFER ED-SEARCH-PAT
+  ED-SEARCH-PAT ED-SEARCH-LEN @ + C!  1 ED-SEARCH-LEN +!
+  ED-SEARCH-HIT @ 0< IF HIST# @ 1- ELSE ED-SEARCH-HIT @ THEN ED-SEARCH-FROM ;
+
 : ED-LINE ( --- c-addr u flag )   \ flag: -1 a line, 0 end of input
-  0 ED-LEN !  0 ED-POS !  0 ED-DONE !
+  0 ED-LEN !  0 ED-POS !  0 ED-DONE !  0 ED-SEARCHING !
   HIST# @ HIST-VIEW !  0 HIST-SAVED-LEN !
   CMD-START? @ IF PS1-NM PS1-DEFAULT ELSE PS2-NM PS2-DEFAULT THEN
   PROMPT-STRING NIP ED-PROMPT-LEN !
@@ -197,7 +285,8 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
         3 ED-DONE !                             \ the terminal closed
       THEN
     ELSE
-      ED-KEY-ACT ED-REDRAW
+      ED-SEARCHING @ IF ED-SEARCH-KEY ELSE ED-KEY-ACT THEN
+      ED-SEARCHING @ IF ED-SEARCH-REDRAW ELSE ED-REDRAW THEN
     THEN
   REPEAT
   \ With ECHO off nothing shows ^C, which the terminal driver prints for

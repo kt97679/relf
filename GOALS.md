@@ -1427,8 +1427,10 @@ the longest common prefix, and on a second TAB print the candidates and
 redraw the prompt. Quoting matters: a completed name containing a space
 must come back quoted, or the completion breaks the line it completed.
 
-**History search.** `HIST-BUF` holds 32 lines and the arrows walk them,
-so the storage is there. What is missing is incremental reverse search:
+**History search - DONE (Iteration 409).** `^R` with readline's
+prompt and rules; see edit.4 and tests/interactive/search-probe.py.
+The original note follows. `HIST-BUF` holds 32 lines and the arrows
+walk them, so the storage is there. What is missing is incremental reverse search:
 ^R enters a search mode with its own prompt (`(reverse-i-search)`),
 each keystroke extends the pattern and shows the most recent match,
 ^R again steps to the next older one, RETURN accepts the line, ^G or
