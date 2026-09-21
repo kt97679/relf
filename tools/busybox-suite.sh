@@ -18,7 +18,11 @@ run() {  # run every test under $1, print "passed failed", list failures on fd 3
         d=$(dirname "$t"); b=$(basename "$t" .tests)
         [ -f "$d/$b.right" ] || continue
         st=0
-        out=$( (cd "$d" && timeout 10 $1 "$b.tests" 2>&1) ) || st=$?
+        # ash-z_slow is slow by design - many_ifs runs 6856 cases and
+        # takes dash 7.5 s here - so it gets a minute rather than ten
+        # seconds, or a correct run is reported as a hang (Iteration 423).
+        lim=10; case $d in *z_slow*) lim=60 ;; esac
+        out=$( (cd "$d" && timeout $lim $1 "$b.tests" 2>&1) ) || st=$?
         if [ "$out" = "$(cat "$d/$b.right")" ]; then p=$((p+1))
         else
             f=$((f+1))

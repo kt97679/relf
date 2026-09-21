@@ -2634,7 +2634,12 @@ VARIABLE PS-WR
 \ case: the word and each pattern are expanded without field splitting -
 \ joined back if they split.
 : EXPAND-ONE ( word --- c-addr u quoted? )   \ no pathname expansion
-  0 ARGC !  0 ARGV !  ADD-WORD  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
+  \ The case subject - this word's only caller - is not field-split
+  \ either, and for the same reason as the pattern: it was, and the
+  \ fields were joined back with single blanks, so `g='a  b'; case $g
+  \ in 'a  b')` did not match (Iteration 423).
+  0 ARGC !  0 ARGV !  1 ARGV-RTGT-NEXT !  ADD-WORD
+  -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
   ARGC @ IF 0 ARGV-QUOTED@ ELSE 0 THEN >R JOIN-ARGV R> ;
 
 256 BUFFER: CASE-TEXT
@@ -2648,7 +2653,17 @@ VARIABLE CASE-TEXT#
   \ `a*bc` and not `axbc`. Before this a pattern with any quoting in it
   \ was compared literally, right for `a\*` by accident and wrong for
   \ `[\q]`.
-  0 ARGC !  0 ARGV !  ADD-WORD
+  \ A case pattern is not field-split (XCU 2.9.4.3: tilde, parameter,
+  \ command and arithmetic expansion, and quote removal - nothing else),
+  \ so the word goes in tagged as a redirection target is, which is the
+  \ one tag that means exactly that: expanded without splitting, and
+  \ never dropped when empty. It was split, so a pattern whose value
+  \ began or ended with a blank, or held a non-blank IFS character, lost
+  \ them - `v=' '; case ' ' in $v)` did not match - and `a b` matched
+  \ only because its two fields were joined back with a space. Found
+  \ through busybox's many_ifs, whose driver skips table rows with
+  \ exactly this construct (Iteration 423).
+  0 ARGC !  0 ARGV !  1 ARGV-RTGT-NEXT !  ADD-WORD
   -1 NO-GLOB? ! EXPAND-WORDS 0 NO-GLOB? !
   \ Only a pattern with quoting in it needs the marks: without any, the
   \ text is the pattern and the old path is exactly right.

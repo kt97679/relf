@@ -418,6 +418,7 @@ do not trust the absence of a line below.
 - **420** — completing inside quotes; a case-pattern crash found and recorded
 - **421** — four crashes fixed; a crash fuzzer; the corpora ranked by severity
 - **422** — a value dimension for the matrix; test's counted rules; export, IFS, OPTIND, read
+- **423** — case patterns and subjects are not field-split; many_ifs passes
 
 ### Not tied to an iteration
 
@@ -21292,3 +21293,41 @@ Recorded changes, with their causes: `parse:verdicts-agree` 201 -> 209,
 the eight value cases; `shell:assertions` 742 -> 762 - eight for test's
 counted rules, four for startup and export, eight for read; the images
 about 390 bytes larger for the four fixes.
+
+## Iteration 423: many_ifs, all 6856
+
+The 749 lines of busybox's `many_ifs` that 422 left - all its `set x $x`
+family - could not be reproduced directly: this shell and dash agree
+on every one. The difference was in the test's DRIVER, which skips
+table rows with `case ' ' in $f1$d1|$d1$f2) continue ;; esac`. A case
+pattern is not field-split (XCU 2.9.4.3), and this shell split it: a
+pattern whose value was a lone blank matched nothing, so the driver ran
+rows the table was never meant to test, and their "expected" values did
+not apply. `a b` had matched only because its two fields were joined
+back with a space.
+
+The pattern goes into the expansion tagged as a redirection target is,
+which is the one existing tag that means "expanded without splitting,
+never dropped when empty". That took the failures from 749 to 257.
+
+**The last 257 printed identical expected and actual values** - the
+failure was in the script's own `case $g in "$r")`, and it was the
+SUBJECT: `case $g` was split and joined back with single blanks, so a
+value with a double blank no longer equalled itself. `EXPAND-ONE`, whose
+only caller is the case subject, takes the same tag. many_ifs: 6856 of
+6856.
+
+That subject bug is the one that matters outside the test: `case $x in`
+quietly changed `$x` whenever it held runs of blanks or IFS characters.
+
+The busybox runner gives `ash-z_slow` a minute rather than ten seconds:
+many_ifs takes dash 7.5 s here and this shell 12, and a correct run was
+being reported as a hang.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 209 -> 210,
+the new differential case; the images 8 bytes larger, the two tags.
+The first check run after the recording failed `intr-at-prompt`, the
+pty case that loses a race under load (Iteration 406); it passed three
+times alone, and a second check run agreed with the recording. It has
+now flaked twice under the full suite, which makes it worth a look of
+its own rather than a re-run each time.
