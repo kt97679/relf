@@ -405,6 +405,7 @@ do not trust the absence of a line below.
 - **407** — bytecode out of the repository; a prompt library; the editor's gaps named
 - **408** — history holds the session; and a line is no longer 256 characters
 - **409** — ^R: reverse incremental history search
+- **410** — a build that saves a broken image fails now, and says why
 
 ### Not tied to an iteration
 
@@ -20732,3 +20733,39 @@ Sizes, each with its cause as prompts/09 asks: `size:image-x86_64`
 100200 -> 101128 and `size:image-i386` 93348 -> 94200, about 0.9 KB per
 image - eleven new words, the two search prompts as strings, and two
 growable buffers. Nothing else moved.
+
+## Iteration 410: written is not the same as working
+
+Iteration 409's first build of `^R` produced a shell image that booted
+into the bare Forth prompt, and `make` reported success. Two faults in
+the wrapper made that possible:
+
+- the build's output went to `/dev/null`, so `Undefined word 2>R` was
+  printed to nobody;
+- the only test of success was "the image file is not empty" - and
+  SAVE-SYSTEM writes an image whether or not the sources compiled,
+  with the default boot word if MAIN never got defined.
+
+`relfsh` keeps the build log now and asks the new image to be a shell
+before installing it: `relf NEW-IMAGE -c 'echo relf-shell-ok'` must
+print exactly that. It also refuses a build whose log complains at all,
+because a definition that aborts at the END of a file leaves a working
+shell with one word missing, which the probe cannot see - the first
+test of this check broke the last word of edit.4 and the build still
+passed. Either way the build says why, with the log's own lines:
+
+    relfsh: the build said:
+        Undefined word 2>R
+        Undefined word ED-LINE
+        Not found MAIN
+
+and it exits non-zero WITHOUT falling back to the source bootstrap.
+The fallback exists for an image directory it cannot write to; for
+broken sources it would only fail the same way, slower, with the Forth
+banner on stdout.
+
+`tests/portability` builds a deliberately broken copy of the tree in a
+scratch directory and requires the build to fail and name the cause.
+Run against the previous wrapper, the same scenario exits 0 and
+installs the broken image - so the check can fail, which is the thing
+worth knowing about a check (prompts/03).

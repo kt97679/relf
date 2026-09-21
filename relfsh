@@ -133,17 +133,58 @@ build_shell_img() {
         cd "$DIR" || exit 1
         printf 'S" extend.4" INCLUDED\nS" pool.4" INCLUDED\nS" shadow.4" INCLUDED\nS" save-system.4" INCLUDED\nS" shell.4" INCLUDED\nS" edit.4" INCLUDED\nS" tree.4" INCLUDED\n%s MAIN SET-BOOT\nS" %s" SAVE-SYSTEM\nBYE\n' \
             "'" "$tmp_base" \
-            | "$RELF_BIN" "$RELF_IMG" >/dev/null 2>&1
+            | "$RELF_BIN" "$RELF_IMG" > "$tmp_base.log" 2>&1
     )
-    if [ -s "$tmp" ]; then
-        mv -f "$tmp" "$SHELL_IMG"
-        return 0
+    if [ ! -s "$tmp" ]; then
+        rm -f "$tmp" "$tmp.log"
+        return 1                        # nothing written: the fallback applies
     fi
-    rm -f "$tmp"
-    return 1
+    # Written is not the same as working. A definition that aborts part
+    # way through a source file leaves every later word undefined, and
+    # SAVE-SYSTEM still writes an image - with the default boot word, so
+    # it starts the bare Forth prompt instead of the shell. That is what
+    # the first build of ^R did (Iteration 409), and `make` reported
+    # success, because the log went to /dev/null and a non-empty file
+    # was the whole test. So the new image is asked to be a shell before
+    # it is installed, and if it is not, the build says why (Iteration
+    # 410). stdout only: a preload the loader rejects writes to stderr.
+    probe=$("$RELF_BIN" "$tmp" -c 'echo relf-shell-ok' 2>/dev/null </dev/null)
+    # ... and the build must not have complained at all: a definition
+    # that aborts at the END of a file leaves a working shell with one
+    # word missing, which the probe cannot see.
+    complaint=$(tr -d '\r' < "$tmp.log" |
+        grep -E 'Undefined word|[Uu]nderflow|[Oo]verflow|Can.t |not unique' | head -1)
+    if [ "$probe" != relf-shell-ok ] || [ -n "$complaint" ]; then
+        {
+            if [ "$probe" != relf-shell-ok ]; then
+                echo "relfsh: $SHELL_IMG built, but it does not start the shell."
+            else
+                echo "relfsh: $SHELL_IMG built, but the build reported errors."
+            fi
+            echo "relfsh: the build said:"
+            tr -d '\r' < "$tmp.log" |
+                grep -vE '^(Redefining: |OK$|Welcome to Forth)' |
+                grep -v '^[[:space:]]*$' | head -20 | sed 's/^/    /'
+        } >&2
+        rm -f "$tmp" "$tmp.log"
+        return 2                        # the sources are broken: no fallback
+    fi
+    mv -f "$tmp" "$SHELL_IMG"
+    rm -f "$tmp.log"
+    return 0
 }
 
-if needs_rebuild && ! build_shell_img; then
+build_rc=0
+if needs_rebuild; then
+    build_shell_img || build_rc=$?
+fi
+# A build that WORKED but produced something other than a shell means the
+# sources are broken, and the source bootstrap below would only fail the
+# same way, more slowly and with the Forth banner on stdout. Stop.
+if [ "$build_rc" = 2 ]; then
+    exit 1
+fi
+if [ "$build_rc" != 0 ]; then
     # Fall back to the original source-bootstrap path rather than
     # failing outright, so a broken/unwritable image directory
     # degrades to "slow" instead of "no shell at all".
