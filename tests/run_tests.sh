@@ -296,6 +296,20 @@ else
     check_image_reproduces /tmp/relf-regen-kernel32.img kernel32.img "4-byte cells, i386"
     cp /tmp/relf-regen-kernel32.img kernel32.img
 
+    # The widening direction, from a narrow host: the 32-bit engine
+    # cross-compiling the 8-byte image. It differed until Iteration 415 -
+    # LITERAL-T sent every literal that was not tiny through a test
+    # whose constant a 32-bit cell cannot hold, and kernel.4's own
+    # LITERAL contained two such constants - and nothing checked it
+    # except an ARMv7 board. Checked here now, on every run that has an
+    # i386 engine.
+    wd=$(mktemp -d)
+    cp extend.4 cross.4 kernel.4 kernel32.img relf32 "$wd/"
+    ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
+        | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
+    check_image_reproduces "$wd/kernel.img" kernel.img "8-byte cells, from a 4-byte host"
+    rm -rf "$wd"
+
     echo "== Running test suite (4-byte cells, i386) =="
     run_suite ./relf32 kernel32.img "4-byte cells, i386"
     run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"

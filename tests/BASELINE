@@ -8,6 +8,7 @@ ext:4byte 1
 ext:8byte 1
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
+image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
 interactive:passed 22
@@ -40,8 +41,8 @@ shell:dead-words 0
 shell:files 79
 size:engine-code-i386 18665
 size:engine-code-x86_64 23613
-size:i386 161528
-size:image-i386 98484
+size:i386 161544
+size:image-i386 98500
 size:image-x86_64 105688
 size:x86_64 144816
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

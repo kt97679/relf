@@ -410,6 +410,7 @@ do not trust the absence of a line below.
 - **412** — Home/End under tmux; bash's prompt escapes; a guide's worth of examples
 - **413** — test's integer operands; .gitignore in the handoff prompt and the suite
 - **414** — TAB completes command names; the listing is sorted
+- **415** — the widening cross-compile, fixed; and the lead that pointed the wrong way
 
 ### Not tied to an iteration
 
@@ -20946,3 +20947,65 @@ Sizes, each with its cause (prompts/09): `size:image-x86_64` 104432 ->
 the command-position test with its eight keyword strings, the PATH
 walk, the builtin walk, the sort, and the index buffer. Nothing else
 moved.
+
+## Iteration 415: the widening cross-compile
+
+An 8-byte image built by a 32-bit host differed from the committed one.
+Iteration 403 fixed two undefined shifts and the header; the image was
+still 16 bytes longer, and Iteration 405 recorded where: **"sixteen
+extra zero bytes inside the run after the definition named TIB"**.
+
+**That lead was wrong, and it is worth saying how.** It came from
+looking for the first offset at which one image equalled the other
+shifted by sixteen - and a run of zero bytes equals itself shifted by
+any amount. The first long zero run in the image was TIB's buffer, so
+that is where the comparison "found" the insertion. The real difference
+was two thousand bytes later. A search that can match trivially will,
+and it matched the first trivial thing it met.
+
+**What found it was instrumentation, not inspection.** `ALLOT-T` was
+made to print every allotment on both hosts, then `"HEADER` every
+definition's name and address, then `LITERAL-T` every literal. The
+definitions' addresses parted company in steps of FOUR bytes - the host
+cell - growing at some definitions and shrinking at others, and the
+first step was inside `SLOT,`, which compiles negative literals. That
+pointed at the literal encoder, and there it was:
+
+    DUP 2147483648 + 4294967296 U< IF LIT32-OP C,-T 32,-T EXIT THEN
+    LIT64-OP C,-T DUP 32,-T 32 RSHIFT 32,-T ;
+
+On a 32-bit host `4294967296` does not fit a cell and wraps to 0, so
+the test was always false: every literal that was not tiny came out as
+a 9-byte LIT64 instead of a 5-byte LIT32, and the LIT64 path shifted by
+32 besides. The kernel's own `LITERAL` has always asked about the width
+of the cell it runs on; `LITERAL-T` asked only about the target's. It
+asks about the host's too now.
+
+**That made the image 16 bytes SHORTER instead of longer** - which said
+something else was host-dependent. Logging the literals' values on both
+hosts found exactly two, of 388, that differed: `2147483648` and
+`4294967296`, the bounds in `kernel.4`'s own `LITERAL`, which a 32-bit
+host reads as `-2147483648` and `0`. So an 8-byte image built on the
+ARMv7 board did not merely have a different layout - its `LITERAL`
+tested the wrong range, and would have compiled some literals wrongly.
+The bounds are computed at run time now, `1 31 LSHIFT` and `1 31 LSHIFT
+2*`, after the 4-byte case has already left.
+
+Both base images were regenerated - `make images IMAGES_FORCE=1`, then
+`make check-images` for the fixpoint, which held on the first pass - and
+all four host/target combinations now produce identical images:
+
+    64-bit host -> 8-byte target: IDENTICAL to kernel.img
+    64-bit host -> 4-byte target: IDENTICAL to kernel32.img
+    32-bit host -> 4-byte target: IDENTICAL to kernel32.img
+    32-bit host -> 8-byte target: IDENTICAL to kernel.img
+
+`tests/run_tests.sh` checks the last of those on every run with an i386
+engine, which is every run on a 64-bit x86 machine with gcc-multilib -
+so it no longer waits for someone with an ARM board. `tests/verify`
+records `image:widening`, and the `known` label that has kept this bug
+visible without failing runs since Iteration 404 is gone: a DIFFERS
+there is a regression now.
+
+kernel32.img grew 16 bytes (the 4-byte `LITERAL` has an extra early
+exit); kernel.img is the same size with different bytes.

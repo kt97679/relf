@@ -162,6 +162,11 @@ emit core:okmarkers "$(if grep -q 'SKIP: this host is 32-bit' /tmp/verify-run.lo
 # unverified for the width the project develops on - the width the
 # engine work is about to change.
 emit image:8byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
+# The 8-byte image built by a 4-byte engine (Iteration 415). On a 32-bit
+# host image:8byte-fixpoint above IS this check, and there is no i386
+# half to run it again, so it reads `skipped` there.
+widening=$(sed -n 's/.*IMAGE-FIXPOINT (8-byte cells, from a 4-byte host): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)
+emit image:widening "${widening:-skipped}"
 emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
 emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
@@ -363,14 +368,9 @@ while read -r k v; do
         printf 'NEW      %-22s %s\n' "$k" "$v"; bad=1
     elif [ "$want" = "$v" ]; then
         printf 'ok       %-22s %s\n' "$k" "$v"
-    elif [ "$k" = image:8byte-fixpoint ] && [ "$v" = DIFFERS ] &&
-         [ "$(getconf LONG_BIT 2>/dev/null)" = 32 ]; then
-        # Known and open: cross-compiling the WIDE image from a narrow
-        # host still lays it out 16 bytes longer (GOALS.md, Iteration
-        # 403). Reported every run, and not counted as a difference
-        # here, because it is the same difference every time and it is
-        # written down (Iteration 404).
-        printf 'known     %-22s %s (open bug: the widening cross-compile, see GOALS.md)\n' "$k" "$v"
+    # The widening cross-compile was labelled `known` from Iteration 404
+    # until 415 fixed it. A DIFFERS there is a regression now, and is
+    # reported as one.
     elif machine_dependent "$k" "$v"; then
         printf 'machine  %-22s %s (baseline %s, not compared here)\n' "$k" "$v" "$want"
     else

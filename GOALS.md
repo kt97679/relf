@@ -118,38 +118,14 @@ another. `CV8-REFERENCE.md` 3.2 has the map.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
-## Open: the WIDENING cross-compile (Iterations 403, 405)
+## The widening cross-compile - FIXED (Iteration 415)
 
-**Where it is.** The two images are byte-identical for their first 2716
-bytes, and byte-identical again from there to the end - the 32-bit host
-simply emits SIXTEEN EXTRA ZERO BYTES at that one point, and every
-address after it is therefore 16 higher. Offset 2716 is inside the zero
-run that follows the definition named `TIB`:
-
-    VARIABLE TIB ( --- addr)
-    80 CHARS-T ALLOT-T
-
-so 80 bytes are allotted from a 64-bit host and 96 from a 32-bit one.
-`CHARS-T` is a no-op and `ALLOT-T` is `DP-T +!`, neither of which looks
-at the host's width, so the next session should print `THERE` on both
-hosts either side of those two lines and find which word between the
-header and the buffer pads differently. Everything else in this file's
-earlier note still holds.
-
-## Open: the WIDENING cross-compile - earlier notes (Iteration 403)
-
-Cross-compiling the 8-byte image from a 4-byte host - an ARMv7 board
-building the 64-bit image - does not yet reproduce the committed one.
-Two causes are fixed: `!-T` and `@-T` shifted by up to 56 bits on a
-32-bit host, which is undefined and filled the high halves with
-whatever the compiler chose, and `HDR,` wrote the host's cell into an
-8-byte field and emitted the bytes the PREVIOUS field had left beyond
-it. With both fixed the header is byte-for-byte right and the image is
-still **16 bytes larger**, with every thread head shifted by 16 - so
-something in the layout still depends on the host's cell width rather
-than the target's. The narrowing direction (8-byte host, 4-byte target)
-reproduces exactly, which is why this went unnoticed: nobody had ever
-built the wide image from a narrow machine.
+An 8-byte image cross-compiled on a 32-bit host is byte-identical to
+the committed one now, and so are the other three host/target
+combinations. The cause, and why the notes that stood here were wrong,
+is in PROGRESS.md under Iteration 415. tests/run_tests.sh checks the
+widening direction on every run that has an i386 engine, and
+tests/verify records it as `image:widening`.
 
 ## Known limits of the 4-byte-cell build (Iteration 397)
 

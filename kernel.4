@@ -1355,8 +1355,17 @@ VARIABLE STATE ( --- a-addr)
   DUP -1 = IF DROP 99 OP, EXIT THEN             \ push -1
   DUP 256 U< IF HERE LAST-OP ! LIT8-TOK OP, C, EXIT THEN
   DUP 65536 U< IF HERE LAST-OP ! [OP] LIT OP, W, EXIT THEN
-  \ A 64-bit cell holds values a signed 32-bit field cannot.
-  DUP 2147483648 + 4294967296 U< CELLBYTES-TOK 4 = OR IF
+  CELLBYTES-TOK 4 = IF LIT32-TOK OP, DUP W, 16 RSHIFT W, EXIT THEN
+  \ A 64-bit cell holds values a signed 32-bit field cannot: the field
+  \ holds -2^31 .. 2^31-1. Both bounds are COMPUTED rather than written.
+  \ They were the literals 2147483648 and 4294967296, which a 4-byte host
+  \ cross-compiling this file cannot hold - they wrap to -2147483648 and
+  \ 0 - so an 8-byte image built on an ARMv7 board had a LITERAL that
+  \ tested the wrong range. They were the only two literals, of 388,
+  \ whose value depended on the host (Iteration 415). The 4-byte case
+  \ leaves above, so `1 31 LSHIFT 2*` is only ever computed where it is
+  \ 2^32.
+  DUP 1 31 LSHIFT +  1 31 LSHIFT 2*  U< IF
     LIT32-TOK OP, DUP W, 16 RSHIFT W, EXIT
   THEN
   125 OP, DUP DUP W, 16 RSHIFT W, 32 RSHIFT DUP W, 16 RSHIFT W, ;

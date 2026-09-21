@@ -366,7 +366,17 @@ NO-PEEP-T
   DUP -1 = IF DROP LIT0-OP 2 + C,-T EXIT THEN
   DUP 256 U< IF THERE LAST-OP-T ! LIT8-OP C,-T C,-T EXIT THEN
   DUP 65536 U< IF THERE LAST-OP-T ! LIT16-OP C,-T W,-T EXIT THEN
-  TARGET-CELL-BYTES @ 4 = IF LIT32-OP C,-T 32,-T EXIT THEN
+  \ A 4-byte HOST holds nothing a signed 32-bit literal cannot, so it
+  \ always wants LIT32 - and it must not reach the test below, where
+  \ 4294967296 does not fit its cell and wraps to 0, so `U<` is always
+  \ false and EVERY such literal came out as a 9-byte LIT64 instead of a
+  \ 5-byte LIT32, with the LIT64 path's `32 RSHIFT` undefined on a
+  \ 32-bit cell besides. That was the widening cross-compile's whole
+  \ difference: an ARMv7 board building the 8-byte image grew every
+  \ definition holding such a literal by four bytes (Iteration 415).
+  \ The kernel's own LITERAL has always asked about the cell width it
+  \ runs on (CELLBYTES-TOK); this one asked only about the target's.
+  TARGET-CELL-BYTES @ 4 =  1 CELLS 4 =  OR IF LIT32-OP C,-T 32,-T EXIT THEN
   DUP 2147483648 + 4294967296 U< IF LIT32-OP C,-T 32,-T EXIT THEN
   LIT64-OP C,-T DUP 32,-T 32 RSHIFT 32,-T ;
 
