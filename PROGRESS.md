@@ -408,6 +408,7 @@ do not trust the absence of a line below.
 - **410** — a build that saves a broken image fails now, and says why
 - **411** — TAB completes filenames
 - **412** — Home/End under tmux; bash's prompt escapes; a guide's worth of examples
+- **413** — test's integer operands; .gitignore in the handoff prompt and the suite
 
 ### Not tied to an iteration
 
@@ -20862,3 +20863,53 @@ after it said 0: a pty case lost a race while the machine was running
 the whole suite, and the flake went into the baseline. Re-recorded on a
 quiet machine, where the recording run and the checking run agreed. A
 recorded value is committed only when two runs agree on it.
+
+## Iteration 413: what test calls a number
+
+The guide's one divergence, `[ "" -eq 0 ]` being true, turned out to be
+one of three faults in how `test` reads an integer operand, mapped
+against dash before touching anything:
+
+| operand | dash | this shell, before |
+|---|---|---|
+| `""`, `abc`, `1x` | error, status 2 | read as 0, or false |
+| `" 3"`, `"3 "` | accepted | false |
+| `+5` | accepted | false |
+
+An operand is blanks, an optional sign, at least one digit, blanks, and
+nothing else; anything else prints `test: X: bad number` and makes the
+status 2. And a malformed expression - `[ 1 -eq ]` - returns 2 now
+rather than 1, which made it indistinguishable from a comparison that
+was merely false. All eleven probes agree with dash; the differential
+case agrees with bash; the guide agrees 58 of 58.
+
+The rest of the guide was classified by dash's first complaint and
+holds nothing this shell can fix: interactive transcripts, placeholders,
+bashisms the filter misses, and scripts that want arguments. `make
+absg` runs it.
+
+**And the handoff prompt learned about `.gitignore`**, from this
+project's own two failures in opposite directions - compiled engines
+and `.pyc` files tracked by accident, and the equal danger of a pattern
+like `*.img` hiding the one binary a self-hosting project cannot
+rebuild. It lists what to ignore (interpreter caches, build products by
+exact name, machine-local state, what an interrupted run leaves, editor
+debris), what never to ignore (anything that cannot be regenerated),
+and two checks. Both went into `tests/portability` at once:
+
+    git ls-files -ci --exclude-standard    # a rule that hides a tracked file
+    git status --porcelain                 # after the suites: nothing untracked
+
+The second is a check on everything the build and the suites generate,
+run at the moment they have all just run.
+
+**The first recording of this iteration baselined a real problem.** Both
+runs agreed - on `portability:problems 1`. Agreement is not the same as
+correctness: the new untracked-files check had flagged the test case
+being written, because this workflow verifies before committing and a
+new file is untracked until then. The check judges only a tree with no
+work in progress now, which is what someone who has just pulled is
+running; it was re-recorded, and the recording and the check agree on
+0. The rule from prompts/09, sharpened by its third outing in two days:
+two runs agreeing is necessary, and each changed line still needs its
+sentence - "1 problem" would have read "my own check, misfiring".

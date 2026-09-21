@@ -3465,13 +3465,40 @@ VARIABLE TEST-END
 : TEST-NARGS ( --- n )  TEST-END @ TEST-START @ - ;
 : TEST-ARGN ( i --- c-addr )  TEST-START @ + ARGV@ ;
 
-: TEST-PARSE-INT ( c-addr --- n )  \ handles an optional leading "-",
-                                      \ unlike PARSE-DECIMAL alone
-  DUP C@ 45 = IF
-    1+ DUP CSTRLEN PARSE-DECIMAL NEGATE
-  ELSE
-    DUP CSTRLEN PARSE-DECIMAL
-  THEN ;
+VARIABLE TEST-NUM-BAD?          \ an operand to -eq and friends was not a number
+VARIABLE TPI-NEG
+VARIABLE TPI-N
+VARIABLE TPI-DIGITS
+
+: TEST-BLANKS ( c-addr --- c-addr' )   \ past spaces and tabs
+  BEGIN DUP C@ DUP 32 = SWAP 9 = OR WHILE 1+ REPEAT ;
+
+: TEST-PARSE-INT ( c-addr --- n )
+  \ An integer operand is blanks, an optional sign, at least one digit,
+  \ and blanks - and nothing else. Anything else is an error, and the
+  \ comparison's status is 2, as dash has it.
+  \
+  \ This read the empty string, and anything that was not a number, as
+  \ 0: `[ "" -eq 0 ]` was TRUE, so the Advanced Bash-Scripting Guide's
+  \ am-i-root example - `[ "$UID" -eq 0 ]`, UID being bash's and unset
+  \ here - told an ordinary user they were root. And it refused what
+  \ dash accepts: a `+` sign, and blanks around the digits
+  \ (Iteration 413).
+  DUP >R
+  TEST-BLANKS
+  0 TPI-NEG !
+  DUP C@ 45 = IF -1 TPI-NEG ! 1+ ELSE DUP C@ 43 = IF 1+ THEN THEN
+  0 TPI-N !  0 TPI-DIGITS !
+  BEGIN DUP C@ 48 58 WITHIN WHILE
+    DUP C@ 48 -  TPI-N @ 10 * +  TPI-N !  1 TPI-DIGITS +!  1+
+  REPEAT
+  TEST-BLANKS
+  C@ 0<>  TPI-DIGITS @ 0=  OR IF
+    S" test: " ERR-TYPE  R> ERR-CSTR  S" : bad number" ERR-TYPE ERR-NL
+    -1 TEST-NUM-BAD? !  0 EXIT
+  THEN
+  R> DROP
+  TPI-N @  TPI-NEG @ IF NEGATE THEN ;
 
 : TEST-FILE-EXISTS? ( c-addr --- f )
   \ Asked by stat rather than by opening the file: `test -e` on a FIFO
@@ -3642,7 +3669,13 @@ DEFER TP-EXPR-CALL   ( --- f )
 : DO-TEST ( --- )  \ ARGV[0] is "test" - evaluates ARGV[1..ARGC).
   1 TEST-START !
   ARGC @ TEST-END !
-  EVAL-TEST-ARGS IF 0 ELSE 1 THEN LAST-STATUS ! ;
+  0 TEST-NUM-BAD? !
+  \ 2, not 1, for an expression that could not be evaluated - a
+  \ missing operand, or an operand that is not a number. It was 1,
+  \ which made `[ 1 -eq ]` indistinguishable from a comparison that
+  \ was merely false (Iteration 413).
+  EVAL-TEST-ARGS  TP-BAD? @ TEST-NUM-BAD? @ OR IF DROP 2 ELSE IF 0 ELSE 1 THEN THEN
+  LAST-STATUS ! ;
 
 : DO-BRACKET-TEST ( --- )  \ ARGV[0] is "[" - like DO-TEST, but the
                              \ last argument must be a matching "]",
@@ -3659,7 +3692,13 @@ DEFER TP-EXPR-CALL   ( --- f )
   THEN
   1 TEST-START !
   ARGC @ 1- TEST-END !
-  EVAL-TEST-ARGS IF 0 ELSE 1 THEN LAST-STATUS ! ;
+  0 TEST-NUM-BAD? !
+  \ 2, not 1, for an expression that could not be evaluated - a
+  \ missing operand, or an operand that is not a number. It was 1,
+  \ which made `[ 1 -eq ]` indistinguishable from a comparison that
+  \ was merely false (Iteration 413).
+  EVAL-TEST-ARGS  TP-BAD? @ TEST-NUM-BAD? @ OR IF DROP 2 ELSE IF 0 ELSE 1 THEN THEN
+  LAST-STATUS ! ;
 
 \ ==================================================================
 \ Assignment machinery, moved ahead of DISPATCH so `readonly NAME=value`

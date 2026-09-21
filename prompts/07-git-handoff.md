@@ -28,6 +28,15 @@ no `HEAD`, and `git pull FILE` asks for `HEAD`. Every handover had been
 broken, and no test covered it, because the deliverable was the one
 thing nobody tested.
 
+The ignore file failed in both directions. Two compiled engines were
+TRACKED for four hundred iterations, and the first time the checkout
+reached an ARMv7 board `make` saw an x86-64 binary newer than its
+source and handed it to the kernel: `Exec format error`. Three `.pyc`
+files were tracked too, and turned up as modifications on every
+machine with a different Python. And the opposite fault is as easy: an
+ignore rule broad enough to catch `*.img` would have silently dropped
+the one kind of binary the project cannot rebuild without.
+
 ## Do this
 
 1. **Everything the work depends on is in the repository.** Scripts,
@@ -68,6 +77,50 @@ thing nobody tested.
    genuinely cannot be regenerated — and say in the README which is
    which and why.
 
+7. **Set up `.gitignore` before the first commit, and audit it when
+   anything new starts being generated.** Everything a build, a test
+   run or a tool leaves behind is either ignored or deliberately
+   committed - never tracked by accident:
+
+   - **Interpreter caches**: `__pycache__/`, `*.py[co]`, `.pytest_cache/`,
+     `node_modules/`, `.mypy_cache/`. They are regenerated per machine
+     and per interpreter version, so a tracked one is a spurious diff
+     on every other machine.
+   - **Build products**: compiled binaries, object files, generated
+     headers - by exact name where the name is fixed (`relf`, `relf32`)
+     rather than by a pattern that could catch something else.
+   - **Machine-local state**: files a build writes about THIS machine
+     (an architecture stamp, a "which image is native" marker). They
+     are correct only where they were written.
+   - **What an interrupted run leaves**: logs, `core`, temporary files,
+     per-test result files (`*.trs`), scratch directories.
+   - **Editor and patch debris**: `*~`, `.*.swp`, `*.orig`, `*.rej`.
+
+   And the other half, which is the one that costs data:
+
+   - **Never ignore what cannot be regenerated.** A self-hosting
+     project's bootstrap image, test fixtures, recorded expectations,
+     vendored inputs. If an ignore rule is a pattern (`*.img`, `*.bin`,
+     `*.log`), check it against `git ls-files` - a pattern that matches
+     a tracked file is a trap for the next person who deletes and
+     re-adds it.
+   - **Comment each block with why**, the way code is commented. A
+     rule nobody can explain gets deleted, and a rule that is explained
+     tells the next person which way to lean.
+
+   Checks worth running, and worth putting in the acceptance suite:
+
+       git ls-files -ci --exclude-standard   # tracked files an ignore rule matches
+       git status --porcelain --ignored      # after a full build and test run:
+                                             # every !! line should be expected,
+                                             # and there should be no ?? lines
+       git ls-files | grep -E '__pycache__|\.py[co]$|\.o$|~$'
+
+   The first finds a rule that would hide a tracked file. The second,
+   run after a complete build and test cycle, finds anything the cycle
+   generates that nobody decided about: an untracked (`??`) file there
+   is either a missing ignore rule or a missing `git add`.
+
 ## Artifact required
 
 Before ending the session, produce:
@@ -75,4 +128,6 @@ Before ending the session, produce:
 - the log entry, with the iteration or session number;
 - the commit message body (not just a subject line);
 - the bundle command you ran **and** the output of the clone check;
+- the output of `git status --porcelain` after the build and test run:
+  empty, or each line explained;
 - one line naming what a future session should pick up first.

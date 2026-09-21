@@ -1411,15 +1411,8 @@ against a second reference (`dash`) before being recorded, because
 
 ## Next (Iteration 412)
 
-1. **`[ "" -eq 0 ]` must be an error**, not true - catalogue entry 85,
-   found by the Advanced Bash-Scripting Guide corpus. `test` reads an
-   empty or non-numeric operand to `-eq`, `-ne`, `-lt`, `-le`, `-gt`,
-   `-ge` as 0; dash says `Illegal number` and returns 2.
-2. **Mine the guide further.** 129 examples pass the bashism filter and
-   only 58 of those run cleanly under dash; the other 71 are worth a
-   look for ones that fail for a fixable reason (a missing file, a
-   `read` from the closed stdin) rather than a bashism the filter
-   missed.
+1. DONE (413): `[ "" -eq 0 ]` is an error, and the guide agrees 58/58.
+2. DONE (413): the rest of the guide classified - nothing fixable here.
 3. **The prompt escapes still missing**: time and date (`\t \T \@ \A
    \d \D{}`), `\!` and `\#`, and a real effective-uid test for `\$`,
    which reads $USER for now. An engine primitive for geteuid would

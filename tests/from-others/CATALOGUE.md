@@ -636,5 +636,18 @@ repeatably, and this shell agrees on 57.
     number` and `test` returns 2, so `if [ "$UID" -eq 0 ]` - `UID` being
     bash's, and unset in dash and here - takes the else branch. This
     shell read the empty string as 0 and told an ordinary user they
-    were root. NOT YET FIXED.
+    were root. FIXED in Iteration 413, with its two neighbours: a `+`
+    sign and blanks around the digits are ACCEPTED, as dash has it, and
+    a malformed expression (`[ 1 -eq ]`) returns 2 rather than 1.
+    → `tests/diff/cases/test-integers-413.sh`
     → the guide's `internal_variables` chapter, example 30
+
+The guide is exhausted at 58 of 58. The 69 examples that pass the
+bashism filter and still do not run under dash are, by dash's first
+complaint: 22 interactive transcripts (`bash$ ...` lines printed in the
+book, not scripts), placeholders like `command1`, bashisms the filter
+does not catch (arrays, `for ((...))`), and scripts that exit early
+without the arguments or input they expect. None is a divergence this
+shell can fix. The transcripts could become a corpus of their own - a
+command and the output the book says it prints - but separating the two
+reliably is a project, not a filter.

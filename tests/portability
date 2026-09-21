@@ -274,5 +274,41 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
     rm -rf "$w"
 fi
 
+# ------------------------------------------------------------------
+# 6. The ignore file, both ways (Iteration 413, prompts/07 item 7).
+#
+# A tracked file that an ignore rule matches is a trap for whoever next
+# deletes and re-adds it. And an untracked file after the suites have
+# run is something a build or a test generates that nobody decided
+# about - which is how two compiled engines and three .pyc files came
+# to be committed here in the first place.
+# ------------------------------------------------------------------
+if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+    hidden=$(git ls-files -ci --exclude-standard 2>/dev/null)
+    if [ -z "$hidden" ]; then
+        ok "no tracked file is matched by an ignore rule"
+    else
+        bad ".gitignore" "a rule matches tracked files: $(echo $hidden | head -c 120)"
+    fi
+    # Judged only on a tree with no work in progress. The workflow here
+    # verifies BEFORE committing, so mid-change a new source file is
+    # untracked because it is new, not because a build made it - the
+    # first version of this check flagged the test case being written,
+    # and the baseline recorded the flag (Iteration 413). On a clean
+    # checkout, which is what someone who has just pulled is running,
+    # an untracked file after the suites can only be something they
+    # generated.
+    stray=$(git status --porcelain 2>/dev/null | sed -n 's/^?? //p')
+    wip=$(git status --porcelain --untracked-files=no 2>/dev/null |
+          grep -v -e 'kernel-shell.img$' -e 'kernel32-shell.img$' -e 'tests/BASELINE$')
+    if [ -n "$wip" ]; then
+        say "untracked files" "not judged: the tree has uncommitted changes"
+    elif [ -z "$stray" ]; then
+        ok "nothing the build or the suites generate is left untracked"
+    else
+        bad "untracked files" "$(echo $stray | head -c 160) - ignore them or add them"
+    fi
+fi
+
 echo "portability: $checked checks, $problems problem(s)"
 [ "$problems" -eq 0 ]

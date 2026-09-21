@@ -51,7 +51,7 @@ KERNEL_SOURCES = kernel.4 cross.4 extend.4
 
 .PHONY: all help engines shell-images images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
-        busybox yash portability lint dead-words sizes profile bench bundle \
+        busybox yash absg portability lint dead-words sizes profile bench bundle \
         clean distclean
 
 all: engines shell-images
@@ -73,6 +73,7 @@ help:
 	@echo '  verify         every suite, against tests/BASELINE'
 	@echo '  verify-update  ... and record the result as the new baseline'
 	@echo ''
+	@echo '  absg           the Advanced Bash-Scripting Guide examples (ABSG=/path)'
 	@echo '  portability    the scaffolding: shebangs, locale pins, the bundle'
 	@echo '  lint           comment lint over the Forth sources'
 	@echo '  dead-words     unreachable definitions'
@@ -237,6 +238,13 @@ yash: all
 # ------------------------------------------------------------------
 # Tools
 # ------------------------------------------------------------------
+# The Advanced Bash-Scripting Guide's examples that dash runs cleanly,
+# compared against this shell (Iteration 412). Not vendored:
+#   git clone https://github.com/pmarinov/bash-scripting-guide /tmp/absg
+ABSG ?= /tmp/absg
+absg: all
+	@ABSG=$(ABSG) $(PYTHON) tools/absg-suite.py
+
 portability: all
 	@sh tests/portability
 
