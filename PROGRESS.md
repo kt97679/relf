@@ -411,6 +411,7 @@ do not trust the absence of a line below.
 - **413** — test's integer operands; .gitignore in the handoff prompt and the suite
 - **414** — TAB completes command names; the listing is sorted
 - **415** — the widening cross-compile, fixed; and the lead that pointed the wrong way
+- **416** — the board confirms the widening fix; TAB on an empty line was slow there
 
 ### Not tied to an iteration
 
@@ -21009,3 +21010,39 @@ there is a regression now.
 
 kernel32.img grew 16 bytes (the 4-byte `LITERAL` has an extra early
 exit); kernel.img is the same size with different bytes.
+
+## Iteration 416: what the board said about 415
+
+    ok       image:8byte-fixpoint   reproduces
+
+on the ARMv7 board, where for twelve iterations it had said DIFFERS: the
+widening fix, confirmed on the machine that found the bug.
+
+**One pty check failed there**, and it was a clock again: "TAB on
+nothing gives a count, not a flood". TAB on an empty line reads every
+directory on PATH, tests each name's execute bit, and checked each new
+name against every one already collected - quadratic, up to a thousand.
+It took 0.46 s in the container and longer on the Tegra, and the probe
+read the screen after a 0.3 s quiet moment, before the answer arrived.
+
+Both halves fixed. Past 100 candidates - bash's own threshold for
+asking before it lists - nothing will be listed, so the rest are only
+COUNTED: no duplicate check, no execute-bit test, but their shared
+prefix is still folded in, and a name that should not have counted can
+only make that prefix shorter, never wrong. The count says "about".
+0.46 s became 0.21 s here, and it counts all 2600 names rather than
+stopping at a thousand. And the check waits for what it expects to see,
+up to RELF_PTY_TIMEOUT, instead of for a quiet moment; it passes under
+six busy loops, the nearest thing here to a slow board.
+
+**And a known divergence passed**: `job-control`, whose documented
+difference is WHICH prompt a finished job's notice appears before. That
+depends on how fast the killed job exits, so on a slow machine this
+shell's notice lands where dash's does. A race, not a regression; the
+note in KNOWN-DIVERGENT says so now.
+
+The baseline did not move at all, which needed checking rather than
+accepting: the rebuilt image contains the new "about N candidates"
+message and the committed one does not, so the new code is in it - it
+is the same size by coincidence, a string and two variables removed, a
+string and three added.

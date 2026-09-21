@@ -44,6 +44,25 @@ def keys(k):
 def line():
     return keys("")[-1]
 
+def keys_until(k, marker):
+    # For a slow operation, wait for what it should produce rather than
+    # for a quiet moment: TAB on an empty line reads every directory on
+    # PATH, and on an ARMv7 board that outlasted the 0.3 s quiet window
+    # keys() waits for, so the check read the screen too early and
+    # failed (Iteration 416). Session.TIMEOUT is RELF_PTY_TIMEOUT.
+    import time
+    m = len(s.out)
+    s.send(k, wait=False)
+    t0 = time.time()
+    while marker not in render(s.out[m:]) and time.time() - t0 < Session.TIMEOUT:
+        s._read(0.1)
+    while s._read(Session.SETTLE + 0.1):
+        pass
+    lines = render(s.out).split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
 checks = []
 def check(name, ok):
     checks.append((name, ok))
@@ -69,7 +88,8 @@ keys("\x15ech\t");         check("a builtin completes too", line() == "$ echo ")
 keys("\x15ls; zq-a\t");    check("after ; is command position", line() == "$ ls; zq-alpha ")
 keys("\x15if zq-a\t");     check("after a keyword is command position", line() == "$ if zq-alpha ")
 keys("\x15./bet\t");       check("a first word with a slash is a path", line() == "$ ./beta ")
-scr = keys("\x15\t");      check("TAB on nothing gives a count, not a flood", "candidates" in " ".join(scr[-3:]))
+scr = keys_until("\x15\t", "candidates")
+check("TAB on nothing gives a count, not a flood", "candidates" in " ".join(scr[-3:]))
 keys("\x15exit\n")
 shutil.rmtree(d, ignore_errors=True)
 shutil.rmtree(bindir, ignore_errors=True)

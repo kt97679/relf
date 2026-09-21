@@ -9,3 +9,9 @@ job-control         # ^Z, jobs, bg, kill %1 and the wording of every notice
                     # pass, so it reports at the first prompt after the job
                     # ends, while dash reaps in its wait loop and reports one
                     # prompt later. Both are before a prompt, as POSIX asks.
+                    # Which prompt that is depends on how fast the killed job
+                    # exits, so on a slow machine this shell's notice lands
+                    # where dash's does and the case PASSES: an ARMv7 board
+                    # reported NOW-PASSES (Iteration 416). It is a race, not
+                    # a regression either way; the harness reports it and
+                    # still counts it here.

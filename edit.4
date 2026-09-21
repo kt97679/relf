@@ -283,9 +283,19 @@ CREATE CMP-PATH-NM  CSTR," PATH"
 
 : CMP-NTH ( i --- c-addr )   CMP-BUF SWAP 0 ?DO DUP CSTRLEN + 1+ LOOP ;
 
-VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
+VARIABLE CMP-EXTRA               \ candidates counted beyond the stored ones
+VARIABLE CMP-XLCP                \ ... and how much of the first they share
 
-1000 CONSTANT CMP-MAX
+\ Past this many, candidates are COUNTED rather than stored: nothing is
+\ listed past it (bash asks before listing more than 100), so the only
+\ things still needed are how many there are and what they all share.
+\ Counting skips the duplicate check and the execute-bit test - the
+\ two costs that grow with PATH - which on an ARMv7 board made TAB on
+\ an empty line slow enough to fail a pty check waiting 0.3 s for it
+\ (Iteration 416). Folding a name that is not executable, or is a
+\ duplicate, into the shared prefix can only make it shorter, so the
+\ insertion stays safe; the count says "about".
+100 CONSTANT CMP-STORE
 
 : CMP-HAVE? ( c-addr u --- flag )   \ already a candidate
   \ One walk down the buffer. It called CMP-NTH for each candidate -
@@ -298,9 +308,22 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
   LOOP
   DROP 2DROP 0 ;
 
+: CMP-SHARED ( a b --- n )   \ leading bytes two NUL-terminated names share
+  0 CMP-K !
+  BEGIN
+    OVER CMP-K @ + C@  OVER CMP-K @ + C@
+    OVER = SWAP 0<> AND
+  WHILE
+    1 CMP-K +!
+  REPEAT
+  2DROP CMP-K @ ;
+
 : CMP-ADD ( c-addr u --- )   \ a candidate, if it matches and is new
-  CMP-N @ CMP-MAX < 0= IF 2DROP -1 CMP-TOO-MANY? ! EXIT THEN
   2DUP CMP-MATCH? 0= IF 2DROP EXIT THEN
+  CMP-N @ CMP-STORE < 0= IF                   \ counted, not stored
+    DROP CMP-BUF SWAP CMP-SHARED CMP-XLCP @ MIN CMP-XLCP !
+    1 CMP-EXTRA +!  EXIT
+  THEN
   2DUP CMP-HAVE? IF 2DROP EXIT THEN
   \ Grown before the address is taken: growing moves it.
   DUP CMP-USED @ + 2 + ENSURE-BUFFER CMP-BUF
@@ -328,7 +351,10 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
   BEGIN DUP READ-DIR ?DUP WHILE               ( dirp name )
     CMP-CMD? @ IF
       DUP DUP CSTRLEN CMP-MATCH? IF
-        DUP CMP-IS-EXEC? IF DUP CSTRLEN CMP-ADD ELSE DROP THEN
+        \ The execute-bit test only while candidates are still stored.
+        CMP-N @ CMP-STORE < IF
+          DUP CMP-IS-EXEC? IF DUP CSTRLEN CMP-ADD ELSE DROP THEN
+        ELSE DUP CSTRLEN CMP-ADD THEN
       ELSE DROP THEN
     ELSE
       DUP CSTRLEN CMP-ADD
@@ -358,19 +384,9 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
   REPEAT ;
 
 : CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
-  0 CMP-N !  0 CMP-USED !  0 CMP-TOO-MANY? !
+  0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !
   CMP-COMMAND? DUP CMP-CMD? !
   IF CMP-COLLECT-BUILTINS CMP-COLLECT-PATH ELSE CMP-COLLECT-DIR THEN ;
-
-: CMP-SHARED ( a b --- n )   \ leading bytes two NUL-terminated names share
-  0 CMP-K !
-  BEGIN
-    OVER CMP-K @ + C@  OVER CMP-K @ + C@
-    OVER = SWAP 0<> AND
-  WHILE
-    1 CMP-K +!
-  REPEAT
-  2DROP CMP-K @ ;
 
 : CMP-COMMON ( --- )   \ CMP-LCP, over every candidate, in one walk
   CMP-BUF DUP CSTRLEN CMP-LCP !
@@ -379,7 +395,8 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
     2DUP CMP-SHARED CMP-LCP @ MIN CMP-LCP !
     DUP CSTRLEN + 1+
   LOOP
-  2DROP ;
+  2DROP
+  CMP-XLCP @ CMP-LCP @ MIN CMP-LCP ! ;        \ and the counted ones
 
 : CMP-SPECIAL? ( c --- flag )   \ a character the shell would read specially
   DUP 32 = OVER 9 = OR
@@ -421,12 +438,8 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
   \ word offers everything on PATH, which is thousands of names that
   \ nobody reads (Iteration 414).
   10 ED-CH
-  CMP-TOO-MANY? @ IF
-    S" more than " ED-OUT  CMP-MAX N>STR DUP CSTRLEN ED-OUT
-    S"  candidates - type more to narrow them" ED-OUT 10 ED-CH EXIT
-  THEN
-  CMP-N @ 200 > IF
-    CMP-N @ N>STR DUP CSTRLEN ED-OUT
+  CMP-EXTRA @ IF
+    S" about " ED-OUT  CMP-N @ CMP-EXTRA @ + N>STR DUP CSTRLEN ED-OUT
     S"  candidates - type more to narrow them" ED-OUT 10 ED-CH EXIT
   THEN
   CMP-SORT
@@ -436,18 +449,15 @@ VARIABLE CMP-TOO-MANY?           \ collection stopped at CMP-MAX
 : ED-COMPLETE ( --- )
   CMP-WORD-START CMP-SPLIT CMP-COLLECT
   CMP-N @ 0= IF 7 ED-CH EXIT THEN             \ nothing: the bell
-  \ Stopped short: what the collected ones share may be more than all
-  \ of them share, so nothing is inserted - only the count is shown.
-  CMP-TOO-MANY? @ IF CMP-LIST EXIT THEN
   CMP-COMMON
   CMP-PREFIX NIP                              ( typed )
   CMP-LCP @ OVER > IF                         \ more is shared than was typed
     0 CMP-NTH OVER +  CMP-LCP @ ROT -  CMP-INSERT
-    CMP-N @ 1 = IF CMP-FINISH THEN
+    CMP-N @ 1 = CMP-EXTRA @ 0= AND IF CMP-FINISH THEN
     EXIT
   THEN
   DROP
-  CMP-N @ 1 = IF CMP-FINISH EXIT THEN         \ typed in full already
+  CMP-N @ 1 = CMP-EXTRA @ 0= AND IF CMP-FINISH EXIT THEN   \ typed in full
   CMP-LIST ;
 
 \ ---- reverse incremental history search: ^R ----
