@@ -413,6 +413,7 @@ do not trust the absence of a line below.
 - **415** — the widening cross-compile, fixed; and the lead that pointed the wrong way
 - **416** — the board confirms the widening fix; TAB on an empty line was slow there
 - **417** — FORTH-STYLE catches up; the fourth host/target combination; the prompt's clock
+- **418** — completing a word that already holds an escaped blank
 
 ### Not tied to an iteration
 
@@ -21095,3 +21096,26 @@ was the dead string.
 The laptop, meanwhile, verified 416 clean - with `image:widening
 reproduces` on a real multilib machine, the first run of that check
 anywhere but here.
+
+## Iteration 418: `my\ n<TAB>`
+
+TAB turned `my` into `my\ notes` - and TAB after `my\ n` did nothing.
+The word was taken to start after the escaped blank, so the prefix was
+`n`; and the prefix was matched with its backslash still in it. Three
+cases failed before any code changed: a name past the blank, a
+directory past it, and a name inside that directory.
+
+A blank after an odd run of backslashes is part of the word now, and
+both the directory part and the prefix are unescaped before they are
+used - `my\ dir/in` opens `my dir` and matches `in`. What is inserted is
+escaped as before, so the line stays one word.
+
+The probe's scratch directory gained `my dir/inner file`, which made
+`my` ambiguous - `my notes` and `my dir` - so the old check for an
+escaped blank now expects the shared part, `my\ `, and three new checks
+cover the rest. Nineteen, both widths. Still open: a word inside
+quotes.
+
+Sizes, with their cause: the images grew about 300 bytes -
+CMP-UNESCAPE, CMP-ESCAPED? and the unescaped-prefix buffer. Nothing
+else moved.

@@ -206,8 +206,9 @@ VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
 \ In command position - first on the line, after `;` `|` `&` `(`, or
 \ after a word like `then` or `do` - a word with no slash completes as
 \ a command instead: the builtins, and the executables on PATH
-\ (Iteration 414). Not yet: a word that already contains an escaped
-\ blank, functions and aliases.
+\ (Iteration 414). A word that already holds escaped characters -
+\ `my\ n` - is unescaped before it is matched (Iteration 418). Not yet:
+\ a word inside quotes, and functions and aliases as commands.
 
 VARIABLE CMP-START               \ where the word under the cursor begins
 VARIABLE CMP-SLASH               \ where its name part begins
@@ -225,11 +226,41 @@ VARIABLE CMP-P1
 64 CELLS BUFFER: CMP-IDX         \ the candidates, sorted, for the listing
 CREATE CMP-PATH-NM  CSTR," PATH"
 
-: CMP-WORD-FROM ( i --- start )   \ back from i to a blank or the start
+VARIABLE CMP-UN
+VARIABLE CMP-UI
+VARIABLE CMP-PFX#
+256 BUFFER: CMP-PFX              \ the name part as typed, backslashes removed
+
+: CMP-ESCAPED? ( i --- flag )   \ an odd run of backslashes ends just before i
+  0 SWAP
+  BEGIN DUP 0> IF DUP 1- ED-BUF + C@ 92 = ELSE 0 THEN WHILE
+    1- SWAP 1+ SWAP
+  REPEAT
+  DROP 1 AND ;
+
+: CMP-WORD-FROM ( i --- start )   \ back from i to an unescaped blank
+  \ A blank after an odd run of backslashes is part of the word: TAB
+  \ turns `my` into `my\ notes`, and TAB after `my\ n` must see one
+  \ word, not `n` after a separator (Iteration 418).
   BEGIN DUP 0> WHILE
-    DUP 1- ED-BUF + C@ DUP 32 = SWAP 9 = OR IF EXIT THEN
+    DUP 1- ED-BUF + C@ DUP 32 = SWAP 9 = OR IF
+      DUP 1- CMP-ESCAPED? 0= IF EXIT THEN
+    THEN
     1-
   REPEAT ;
+
+: CMP-UNESCAPE ( src u dest --- n )   \ backslash escapes removed; n bytes out
+  \ dest must have room for u bytes; unescaping only ever shrinks.
+  0 CMP-UN !  0 CMP-UI !  >R
+  BEGIN CMP-UI @ OVER < WHILE
+    OVER CMP-UI @ + C@
+    DUP 92 = IF
+      DROP 1 CMP-UI +!
+      CMP-UI @ OVER < IF OVER CMP-UI @ + C@ ELSE 92 THEN
+    THEN
+    R@ CMP-UN @ + C!  1 CMP-UN +!  1 CMP-UI +!
+  REPEAT
+  2DROP R> DROP CMP-UN @ ;
 
 : CMP-WORD-START ( --- )   ED-POS @ CMP-WORD-FROM CMP-START ! ;
 
@@ -244,15 +275,20 @@ CREATE CMP-PATH-NM  CSTR," PATH"
   ED-POS @ CMP-START @ ?DO
     ED-BUF I + C@ 47 = IF I 1+ CMP-SLASH ! THEN
   LOOP
+  \ Both parts are unescaped - `my\ dir/in` names the directory
+  \ `my dir` and the prefix `in` - and grown before they are written.
   CMP-SLASH @ CMP-START @ = IF
-    S" ."
+    46 CMP-DIR C!  0 CMP-DIR 1+ C!
   ELSE
-    ED-BUF CMP-START @ +  CMP-SLASH @ CMP-START @ -
-  THEN                                        ( c-addr u )
-  DUP 2 + ENSURE-BUFFER CMP-DIR
-  DUP >R  CMP-DIR SWAP MOVE  0 CMP-DIR R> + C! ;
+    CMP-SLASH @ CMP-START @ - 2 + ENSURE-BUFFER CMP-DIR
+    ED-BUF CMP-START @ +  CMP-SLASH @ CMP-START @ -  CMP-DIR CMP-UNESCAPE
+    CMP-DIR + 0 SWAP C!
+  THEN
+  ED-POS @ CMP-SLASH @ - 2 + ENSURE-BUFFER CMP-PFX
+  ED-BUF CMP-SLASH @ +  ED-POS @ CMP-SLASH @ -  CMP-PFX CMP-UNESCAPE CMP-PFX# !
+  0 CMP-PFX CMP-PFX# @ + C! ;
 
-: CMP-PREFIX ( --- c-addr u )   ED-BUF CMP-SLASH @ +  ED-POS @ CMP-SLASH @ - ;
+: CMP-PREFIX ( --- c-addr u )   CMP-PFX CMP-PFX# @ ;   \ unescaped
 
 : CMP-AFTER-KEYWORD? ( --- flag )   \ the word before is one a command follows
   CMP-START @ CMP-PREV DUP 0< IF DROP 0 EXIT THEN  1+     ( end )

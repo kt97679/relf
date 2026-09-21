@@ -17,7 +17,9 @@ from pty_session import Session, render
 
 d = tempfile.mkdtemp(prefix='relf-complete-')
 os.mkdir(os.path.join(d, 'alpine'))
-for f in ('alpha.txt', 'beta', 'my notes', '.hidden', os.path.join('alpine', 'inner.c')):
+os.mkdir(os.path.join(d, 'my dir'))
+for f in ('alpha.txt', 'beta', 'my notes', '.hidden', os.path.join('alpine', 'inner.c'),
+          os.path.join('my dir', 'inner file')):
     open(os.path.join(d, f), 'w').close()
 # A directory of commands at the front of PATH (Iteration 414): three
 # executables whose sorted order is not the order they were made in,
@@ -75,8 +77,14 @@ scr = keys("\t")
 tail = " ".join(scr[-3:])
 check("... and a second TAB lists them", "alpha.txt" in tail and "alpine" in tail)
 check("... with the line redrawn under the list", scr[-1] == "$ cat alp")
-keys("\x15cat my\t");   check("a blank in a name comes back escaped", line() == "$ cat my\\ notes ")
+keys("\x15cat my\t");   check("a blank in a name comes back escaped", line() == "$ cat my\\ ")
 keys("\x15cat .h\t");   check("dot-files are offered to a dot prefix", line() == "$ cat .hidden ")
+# A word that already holds an escaped blank (Iteration 418): it is one
+# word, and it is unescaped before it is matched - in the name and in
+# the directory part alike.
+keys("\x15cat my\\ n\t");      check("an escaped blank stays inside the word", line() == "$ cat my\\ notes ")
+keys("\x15cat my\\ d\t");      check("... and a directory completes past it", line() == "$ cat my\\ dir/")
+keys("\x15cat my\\ dir/in\t"); check("... and so does a name inside that directory", line() == "$ cat my\\ dir/inner\\ file ")
 keys("\x15cat zz\t");   check("no candidate leaves the line alone", line() == "$ cat zz")
 # command position (Iteration 414)
 keys("\x15zq-a\t");        check("a first word completes from PATH", line() == "$ zq-alpha ")
