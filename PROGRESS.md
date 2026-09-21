@@ -406,6 +406,7 @@ do not trust the absence of a line below.
 - **408** — history holds the session; and a line is no longer 256 characters
 - **409** — ^R: reverse incremental history search
 - **410** — a build that saves a broken image fails now, and says why
+- **411** — TAB completes filenames
 
 ### Not tied to an iteration
 
@@ -20769,3 +20770,42 @@ scratch directory and requires the build to fail and name the cause.
 Run against the previous wrapper, the same scenario exits 0 and
 installs the broken image - so the check can fail, which is the thing
 worth knowing about a check (prompts/03).
+
+## Iteration 411: TAB
+
+Filename completion for the word under the cursor. Everything up to its
+last `/` names the directory (`.` if there is none) and the rest is a
+prefix; the directory's entries that begin with it are the candidates.
+One candidate goes in whole, followed by `/` for a directory - so TAB
+again carries on inside it - and a blank for anything else. Several
+insert what they all share; when that is no more than was typed, TAB
+lists them and redraws the line under the list. No candidate rings the
+bell. Dot-files are offered only to a dot prefix, and `.` and `..`
+never. A completed name is typed in with its special characters
+escaped, so `my notes` comes back as `my\ notes` rather than breaking
+the line it completed.
+
+Built on what was already there: `OPEN-DIR`, `READ-DIR` and
+`CLOSE-DIR` from the engine, `FILE-MODE` from Iteration 378 for the
+directory test, and the growable buffers for the candidate list.
+
+**The new build check caught nothing this time, which is the point of
+running it every time.** The completion code compiled on the first
+build, and the build said so by installing the image rather than by
+being silent.
+
+**Four of the first test run's nine checks failed, and all four were
+the test.** It stripped trailing whitespace from the rendered screen -
+which removed exactly the blank a completed name is followed by. The
+rendering keeps trailing blanks now and drops only empty trailing lines.
+
+`tests/interactive/complete-probe.py` builds its own scratch directory,
+so its answers depend on nothing in the machine's filesystem, and runs
+with the pty suite beside the `^R` checks. Nine checks, both widths.
+
+Still open, in GOALS.md: command names in command position, a word that
+already contains an escaped blank, and sorting the list.
+
+Sizes, each with its cause (prompts/09): `size:image-x86_64` 101128 ->
+102408 and `size:image-i386` 94200 -> 95400 - sixteen new words and
+three growable buffers, about 1.3 KB an image. Nothing else moved.

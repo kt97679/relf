@@ -11,6 +11,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 out=$(python3 "$here/run_cases.py" "$@"); rc=$?
 if [ $# -eq 0 ]; then
     probe=$(python3 "$here/search-probe.py" 2>&1); prc=$?
+    # TAB completion, the same way (Iteration 410)
+    probe2=$(python3 "$here/complete-probe.py" 2>&1); prc2=$?
+    probe=$(printf '%s\n%s\n' "$probe" "$probe2"); prc=$((prc + prc2))
     printf '%s\n' "$probe" | grep '^FAIL' || true
     if [ "$prc" -ne 0 ]; then
         out=$(printf '%s\n' "$out" | awk -v n="$prc" '

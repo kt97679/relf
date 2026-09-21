@@ -2,7 +2,7 @@ bundle:pullable 1
 core:4byte 1
 core:8byte 1
 core:okmarkers 2129
-crosspath:kernel-shell.img DIFFERS
+crosspath:kernel-shell.img missing
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
@@ -40,9 +40,9 @@ shell:dead-words 0
 shell:files 79
 size:engine-code-i386 18665
 size:engine-code-x86_64 23613
-size:i386 157244
-size:image-i386 94200
-size:image-x86_64 101128
-size:x86_64 140256
+size:i386 158444
+size:image-i386 95400
+size:image-x86_64 102408
+size:x86_64 141536
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

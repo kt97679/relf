@@ -160,6 +160,148 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
   DUP 70 = IF DROP ED-LEN @ ED-POS ! EXIT THEN          \ end
   51 = IF ED-GET-BYTE 126 = IF ED-DELETE THEN THEN ;    \ delete
 
+\ ---- completion: TAB ----
+\
+\ Iteration 410. The word under the cursor is completed as a path:
+\ everything up to its last `/` names a directory (`.` if there is no
+\ slash), the rest is a prefix, and the directory's entries that begin
+\ with it are the candidates. One candidate is inserted whole, with `/`
+\ after a directory and a space after anything else. Several insert
+\ what they all share; when they share nothing more than was typed,
+\ TAB lists them and the line is redrawn under the list. No candidate
+\ rings the bell. Dot-files are offered only to a prefix that starts
+\ with a dot, as every shell does, and `.` and `..` never.
+\
+\ A completed name is typed into the line with its special characters
+\ escaped - a file called `my notes` comes back as `my\ notes` -
+\ because an unescaped completion would break the line it completed.
+\
+\ Not yet: command names in command position (PATH and the builtins),
+\ and a word that already contains an escaped blank.
+
+VARIABLE CMP-START               \ where the word under the cursor begins
+VARIABLE CMP-SLASH               \ where its name part begins
+VARIABLE CMP-N                   \ how many candidates
+VARIABLE CMP-USED                \ bytes used in CMP-BUF
+VARIABLE CMP-LCP                 \ how many leading bytes they all share
+VARIABLE CMP-K
+VARIABLE CMP-PN
+1024 BUFFER: CMP-BUF             \ the candidates, NUL-terminated, end to end
+256 BUFFER: CMP-DIR              \ the directory to read
+256 BUFFER: CMP-PATH             \ directory and candidate, for FILE-MODE
+
+: CMP-WORD-START ( --- )   \ back from the cursor to a blank or the start
+  ED-POS @
+  BEGIN DUP 0> WHILE
+    DUP 1- ED-BUF + C@ DUP 32 = SWAP 9 = OR IF CMP-START ! EXIT THEN
+    1-
+  REPEAT
+  CMP-START ! ;
+
+: CMP-SPLIT ( --- )   \ CMP-SLASH, and the directory in CMP-DIR
+  CMP-START @ CMP-SLASH !
+  ED-POS @ CMP-START @ ?DO
+    ED-BUF I + C@ 47 = IF I 1+ CMP-SLASH ! THEN
+  LOOP
+  CMP-SLASH @ CMP-START @ = IF
+    S" ."
+  ELSE
+    ED-BUF CMP-START @ +  CMP-SLASH @ CMP-START @ -
+  THEN                                        ( c-addr u )
+  DUP 2 + ENSURE-BUFFER CMP-DIR
+  DUP >R  CMP-DIR SWAP MOVE  0 CMP-DIR R> + C! ;
+
+: CMP-PREFIX ( --- c-addr u )   ED-BUF CMP-SLASH @ +  ED-POS @ CMP-SLASH @ - ;
+
+: CMP-MATCH? ( name --- flag )   \ a NUL-terminated directory entry
+  DUP CSTRLEN                                 ( a u )
+  OVER C@ 46 = IF                             \ a dot-file, or . or ..
+    OVER 1+ C@ 0= IF 2DROP 0 EXIT THEN
+    OVER 1+ C@ 46 = IF OVER 2 + C@ 0= IF 2DROP 0 EXIT THEN THEN
+    CMP-PREFIX NIP 0= IF 2DROP 0 EXIT THEN
+    CMP-PREFIX DROP C@ 46 <> IF 2DROP 0 EXIT THEN
+  THEN
+  DUP CMP-PREFIX NIP < IF 2DROP 0 EXIT THEN
+  DROP CMP-PREFIX NIP  CMP-PREFIX COMPARE 0= ;
+
+: CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
+  0 CMP-N !  0 CMP-USED !
+  CMP-DIR OPEN-DIR ?DUP 0= IF EXIT THEN       ( dirp )
+  BEGIN DUP READ-DIR ?DUP WHILE               ( dirp name )
+    DUP CMP-MATCH? IF
+      \ Grown before the address is taken: growing moves it.
+      DUP CSTRLEN DUP CMP-USED @ + 2 + ENSURE-BUFFER CMP-BUF
+      >R  CMP-BUF CMP-USED @ + R@ MOVE
+      0 CMP-BUF CMP-USED @ R@ + + C!
+      R> 1+ CMP-USED +!  1 CMP-N +!
+    ELSE
+      DROP
+    THEN
+  REPEAT
+  CLOSE-DIR ;
+
+: CMP-NTH ( i --- c-addr )   CMP-BUF SWAP 0 ?DO DUP CSTRLEN + 1+ LOOP ;
+
+: CMP-SHARED ( a b --- n )   \ leading bytes two NUL-terminated names share
+  0 CMP-K !
+  BEGIN
+    OVER CMP-K @ + C@  OVER CMP-K @ + C@
+    OVER = SWAP 0<> AND
+  WHILE
+    1 CMP-K +!
+  REPEAT
+  2DROP CMP-K @ ;
+
+: CMP-COMMON ( --- )   \ CMP-LCP, over every candidate
+  0 CMP-NTH DUP CSTRLEN CMP-LCP !
+  CMP-N @ 1 ?DO
+    DUP I CMP-NTH CMP-SHARED CMP-LCP @ MIN CMP-LCP !
+  LOOP
+  DROP ;
+
+: CMP-SPECIAL? ( c --- flag )   \ a character the shell would read specially
+  DUP 32 = OVER 9 = OR
+  OVER 33 37 WITHIN OR  OVER 38 43 WITHIN OR  OVER 59 61 WITHIN OR
+  OVER 62 64 WITHIN OR  OVER 91 94 WITHIN OR  OVER 96 = OR
+  SWAP 123 127 WITHIN OR ;
+
+: CMP-INSERT ( c-addr u --- )   \ typed into the line, specials escaped
+  0 ?DO
+    DUP I + C@ DUP CMP-SPECIAL? IF 92 ED-INSERT THEN ED-INSERT
+  LOOP
+  DROP ;
+
+: CMP-IS-DIR? ( name --- flag )   \ CMP-DIR/name is a directory
+  DUP CSTRLEN CMP-DIR CSTRLEN + 3 + ENSURE-BUFFER CMP-PATH
+  CMP-DIR CMP-PATH CMP-DIR CSTRLEN MOVE
+  CMP-DIR CSTRLEN CMP-PN !
+  CMP-PATH CMP-PN @ 1- + C@ 47 <> IF 47 CMP-PATH CMP-PN @ + C!  1 CMP-PN +! THEN
+  DUP CSTRLEN >R  CMP-PATH CMP-PN @ + R@ MOVE  R> CMP-PN +!
+  0 CMP-PATH CMP-PN @ + C!
+  CMP-PATH -1 FILE-MODE 61440 AND 16384 = ;
+
+: CMP-FINISH ( --- )   \ after a single candidate: `/` or a blank
+  0 CMP-NTH CMP-IS-DIR? IF 47 ELSE 32 THEN ED-INSERT ;
+
+: CMP-LIST ( --- )   \ the candidates, under the line; the redraw follows
+  10 ED-CH
+  CMP-N @ 0 ?DO I CMP-NTH DUP CSTRLEN ED-OUT S"   " ED-OUT LOOP
+  10 ED-CH ;
+
+: ED-COMPLETE ( --- )
+  CMP-WORD-START CMP-SPLIT CMP-COLLECT
+  CMP-N @ 0= IF 7 ED-CH EXIT THEN             \ nothing: the bell
+  CMP-COMMON
+  CMP-PREFIX NIP                              ( typed )
+  CMP-LCP @ OVER > IF                         \ more is shared than was typed
+    0 CMP-NTH OVER +  CMP-LCP @ ROT -  CMP-INSERT
+    CMP-N @ 1 = IF CMP-FINISH THEN
+    EXIT
+  THEN
+  DROP
+  CMP-N @ 1 = IF CMP-FINISH EXIT THEN         \ typed in full already
+  CMP-LIST ;
+
 \ ---- reverse incremental history search: ^R ----
 \
 \ Iteration 409, asked for by a user of the shell once history held
@@ -248,6 +390,7 @@ VARIABLE ED-PAT-U
   DUP 3 = IF DROP 2 ED-DONE ! EXIT THEN           \ ^C
   DUP 12 = IF DROP EXIT THEN                      \ ^L: redraw, which happens anyway
   DUP 18 = IF DROP ED-SEARCH-BEGIN EXIT THEN      \ ^R: search the history
+  DUP 9 = IF DROP ED-COMPLETE EXIT THEN           \ TAB: complete the word
   DUP 32 < IF DROP EXIT THEN                      \ other control characters
   ED-INSERT ;
 
