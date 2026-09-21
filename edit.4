@@ -24,29 +24,37 @@ VARIABLE ED-SIGNAL               \ a signal seen while waiting for a key
 VARIABLE ED-DONE                 \ 0 editing, 1 accepted, 2 cancelled, 3 end of input
 2 BUFFER: ED-KEY
 
-32 CONSTANT HIST-SLOTS
-256 CONSTANT HIST-SLOT-SIZE
-HIST-SLOTS HIST-SLOT-SIZE * BUFFER: HIST-BUF
-VARIABLE HIST#                   \ how many lines are stored (up to HIST-SLOTS)
+\ History: every line of the session, however many and however long.
+\
+\ It was 32 slots of 256 bytes - 8 KB, fixed - so the 33rd command
+\ pushed the 1st out and a line over 255 characters was silently
+\ truncated, which is the shape of line a person most wants back
+\ (Iteration 408). Now the text goes into one growing arena, entries
+\ NUL-terminated end to end, with a growing array of offsets beside
+\ it. Memory is what was actually typed: a thousand commands of fifty
+\ characters is fifty kilobytes.
+1024 BUFFER: HIST-TEXT            \ the lines, NUL-terminated, end to end
+64 CELLS BUFFER: HIST-OFF         \ where each one starts in HIST-TEXT
+VARIABLE HIST-TEXT#              \ bytes used in HIST-TEXT
+VARIABLE HIST#                   \ how many lines are stored
 VARIABLE HIST-VIEW               \ which one is shown; HIST# means "the new line"
 VARIABLE HIST-SAVED-LEN          \ the new line, kept while history is walked
-VARIABLE HIST-DST
-LINE-MAX BUFFER: HIST-SAVED
+LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
 
-: HIST-SLOT ( i --- addr )   HIST-SLOT-SIZE * HIST-BUF + ;
+: HIST-SLOT ( i --- addr )   \ the i-th line, NUL-terminated
+  CELLS HIST-OFF + @ HIST-TEXT + ;
 
-: HIST-ADD ( c-addr u --- )   \ the newest line, oldest dropped
+: HIST-ADD ( c-addr u --- )   \ the newest line
   DUP 0= IF 2DROP EXIT THEN
-  DUP HIST-SLOT-SIZE 1- > IF DROP HIST-SLOT-SIZE 1- THEN
-  HIST# @ HIST-SLOTS = IF                   \ full: shift them all down
-    HIST-SLOTS 1- 0 ?DO
-      I 1+ HIST-SLOT  I HIST-SLOT  HIST-SLOT-SIZE MOVE
-    LOOP
-    HIST-SLOTS 1- HIST# !
-  THEN
-  HIST# @ HIST-SLOT HIST-DST !               ( c-addr u )
-  DUP >R  HIST-DST @ SWAP MOVE               \ the text
-  0 HIST-DST @ R> + C!                       \ and its terminator
+  \ Both buffers grow BEFORE any address into them is taken: growing
+  \ one moves it.
+  HIST-TEXT# @ OVER + 1+ ENSURE-BUFFER HIST-TEXT
+  HIST# @ 1+ CELLS ENSURE-BUFFER HIST-OFF
+  HIST-TEXT# @ HIST# @ CELLS HIST-OFF + !    ( c-addr u )
+  DUP >R
+  HIST-TEXT HIST-TEXT# @ + SWAP MOVE         \ the length is on the return stack
+  0 HIST-TEXT HIST-TEXT# @ + R@ + C!       \ the terminator
+  R> 1+ HIST-TEXT# +!
   HIST# @ 1+ HIST# ! ;
 
 \ ---- the screen ----
@@ -70,7 +78,12 @@ LINE-MAX BUFFER: HIST-SAVED
 \ ---- editing ----
 
 : ED-INSERT ( c --- )
-  ED-LEN @ LINE-MAX 2 - < 0= IF DROP EXIT THEN
+  \ The line grows as it is typed rather than stopping at LINE-MAX.
+  \ 256 characters is not many for a shell line - a pipeline with two
+  \ absolute paths reaches it - and the old behaviour was to drop the
+  \ keystroke silently (Iteration 408). Grown BEFORE any address into
+  \ the buffer is taken, since growing moves it.
+  ED-LEN @ 2 + ENSURE-BUFFER ED-BUF
   ED-BUF ED-POS @ + DUP 1+                   ( c src dst )
   ED-LEN @ ED-POS @ - MOVE                   \ make room
   ED-BUF ED-POS @ + C!
@@ -93,7 +106,7 @@ LINE-MAX BUFFER: HIST-SAVED
 : ED-KILL-LINE ( --- )   0 ED-LEN !  0 ED-POS ! ;
 
 : ED-SET-LINE ( c-addr u --- )   \ replace what is being edited
-  DUP LINE-MAX 2 - > IF DROP LINE-MAX 2 - THEN
+  DUP 2 + ENSURE-BUFFER ED-BUF
   DUP ED-LEN !  DUP ED-POS !
   ED-BUF SWAP MOVE ;
 
@@ -102,6 +115,7 @@ LINE-MAX BUFFER: HIST-SAVED
 : ED-HIST-UP ( --- )
   HIST-VIEW @ 0= IF EXIT THEN
   HIST-VIEW @ HIST# @ = IF                   \ leaving the new line: keep it
+    ED-LEN @ 2 + ENSURE-BUFFER HIST-SAVED
     ED-BUF HIST-SAVED ED-LEN @ MOVE  ED-LEN @ HIST-SAVED-LEN !
   THEN
   HIST-VIEW @ 1- DUP HIST-VIEW !

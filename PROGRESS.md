@@ -403,6 +403,7 @@ do not trust the absence of a line below.
 - **405** — the board verifies clean; and the widening bug located to one offset
 - **406** — the pty suite had a clock assumption of its own
 - **407** — bytecode out of the repository; a prompt library; the editor's gaps named
+- **408** — history holds the session; and a line is no longer 256 characters
 
 ### Not tied to an iteration
 
@@ -20647,3 +20648,44 @@ search. History search first - it is smaller and raises no quoting
 questions - then completion.
 
 No shell code changed.
+
+## Iteration 408: why 32?
+
+Asked by a user of the shell, and there was no good answer. History was
+32 slots of 256 bytes - eight kilobytes, fixed - so the 33rd command
+pushed out the 1st, and a line over 255 characters was silently
+truncated on its way in.
+
+Both limits are gone. The lines go into one growing arena,
+NUL-terminated end to end, with a growing array of offsets beside it;
+memory is what was actually typed, which for a thousand commands of
+fifty characters is fifty kilobytes. And the edited line grows as it is
+typed rather than dropping keystrokes at `LINE-MAX`, which was 256 - not
+many for a shell line with two absolute paths in it.
+
+The one trap, hit while writing it: `ENSURE-BUFFER` can MOVE the buffer,
+so every address into it must be taken AFTER the growth, not before. A
+missing `+` in the same word stored a terminator at the offset rather
+than at the address, which the pty suite caught as a segmentation fault
+on the first command.
+
+`tests/interactive/history-probe.py` types forty commands and a
+three-hundred-character line and walks back to the oldest. It is not in
+the default suite - forty commands through a pseudo-terminal take twenty
+seconds - and the header says when to run it.
+
+Next: the history search this makes worth having, then completion.
+
+Sizes: the image grew 8 bytes - the offsets array and the two growable
+buffers cost that much header - and the baseline records it.
+
+**And a flake recorded as a baseline, found within the hour of writing
+the prompt that warns against it.** The first `verify --update` of this
+iteration recorded `portability:problems 1`; the plain run after it
+said 0. `tests/portability`'s two dynamic checks re-run whole suites -
+under a terminal-like stdin, and in a second locale - and inside
+`verify` they compete with the suite they are timing. They are skipped
+there now (`PORTABILITY_QUICK=1`) and stay in `make portability`, where
+nothing else is running. The rule from `prompts/09` applied to its own
+author: a changed line gets a sentence before it is recorded, and this
+one would have read "flaky", which is not a reason to record it.

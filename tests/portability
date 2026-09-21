@@ -114,7 +114,16 @@ done
 #     terminal looks like until someone types. Cheap version: the
 #     differential suite, under a pipe that stays open.
 # ------------------------------------------------------------------
-if [ -x ./relfsh ] && command -v timeout >/dev/null 2>&1 &&
+# The two dynamic checks below run whole suites again - under a
+# terminal-like stdin, and in a second locale. That is minutes of work
+# and it competes with whatever else is running, so from inside
+# tests/verify they are skipped: a timing-sensitive check that shares a
+# machine with the suite it is timing reported a problem once and none
+# the next time, and the baseline recorded the flake (Iteration 408).
+# `make portability` runs them.
+if [ -n "${PORTABILITY_QUICK:-}" ]; then
+    say "the dynamic re-runs" "skipped (PORTABILITY_QUICK); run 'make portability'"
+elif [ -x ./relfsh ] && command -v timeout >/dev/null 2>&1 &&
    command -v mkfifo >/dev/null 2>&1; then
     # A pipe with a writer that never writes, which is what a terminal
     # is until someone types. The writer is killed straight after, or
@@ -200,7 +209,9 @@ fi
 # The point of the pin, tested rather than asserted. Skipped when the
 # machine has only one locale.
 # ------------------------------------------------------------------
-alt=$(locale -a 2>/dev/null | grep -iE 'utf-?8' | grep -viE '^(C|POSIX)' | head -1)
+alt=""
+[ -z "${PORTABILITY_QUICK:-}" ] &&
+  alt=$(locale -a 2>/dev/null | grep -iE 'utf-?8' | grep -viE '^(C|POSIX)' | head -1)
 [ -z "$alt" ] && alt=$(locale -a 2>/dev/null | grep -i 'utf' | head -1)
 if [ -n "$alt" ] && [ -x ./relfsh ]; then
     a=$(LC_ALL=C tests/diff/run-all 2>&1 | tail -1)

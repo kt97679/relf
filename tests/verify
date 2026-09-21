@@ -248,7 +248,7 @@ emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-sh
 # Shebangs against interpreters, the locale pins, and the bundle. Two
 # reports from a real checkout found faults here that no suite watched.
 echo "== the scaffolding ==" >&2
-sh tests/portability > /tmp/verify-portability.log 2>&1 || true
+PORTABILITY_QUICK=1 sh tests/portability > /tmp/verify-portability.log 2>&1 || true
 emit portability:problems "$(awk '/^portability:/ {print $4+0}' /tmp/verify-portability.log)"
 # The count alone is no use from another machine: a report saying
 # `portability:problems 1` names nothing (Iteration 398).

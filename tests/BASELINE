@@ -42,7 +42,7 @@ size:engine-code-i386 18665
 size:engine-code-x86_64 23613
 size:i386 156392
 size:image-i386 93348
-size:image-x86_64 100192
-size:x86_64 139320
+size:image-x86_64 100200
+size:x86_64 139328
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
