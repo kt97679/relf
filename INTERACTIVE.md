@@ -103,7 +103,7 @@ key arrived as three bytes and went into the command, so correcting
 | backspace, Delete, `^D` | delete before, under the cursor |
 | `^K`, `^U` | kill to the end, kill the line |
 | up, down | walk the history - every line of the session, of any length (Iteration 408; it was 32 lines of 255 characters) |
-| TAB | complete the word under the cursor as a path: one candidate whole (with `/` or a blank), several to what they share, a second TAB lists them; special characters come back escaped (Iteration 411) |
+| TAB | a first word (or one after `;` `|` `&` `(` or a keyword) completes as a command - builtins and executables on PATH (Iteration 414); anything else completes as a path: one candidate whole (with `/` or a blank), several to what they share, a second TAB lists them; special characters come back escaped (Iteration 411) |
 | `^R` | reverse incremental search: type to narrow, `^R` for an older match, `^G` to give up, RETURN to run it, any other key to accept and edit (Iteration 409) |
 | `^C` | abandon the line, prompt afresh |
 | `^D` on an empty line | end of input |

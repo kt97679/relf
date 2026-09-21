@@ -409,6 +409,7 @@ do not trust the absence of a line below.
 - **411** — TAB completes filenames
 - **412** — Home/End under tmux; bash's prompt escapes; a guide's worth of examples
 - **413** — test's integer operands; .gitignore in the handoff prompt and the suite
+- **414** — TAB completes command names; the listing is sorted
 
 ### Not tied to an iteration
 
@@ -20913,3 +20914,35 @@ running; it was re-recorded, and the recording and the check agree on
 0. The rule from prompts/09, sharpened by its third outing in two days:
 two runs agreeing is necessary, and each changed line still needs its
 sentence - "1 problem" would have read "my own check, misfiring".
+
+## Iteration 414: command names
+
+A word in command position - first on the line, after `;` `|` `&` `(`,
+or after `if` `then` `else` `elif` `do` `while` `until` `!` - and with
+no slash in it completes as a command: the builtins, walked from the
+same list the builtin hash index is built from, and every executable on
+PATH (a regular file with an execute bit; an empty PATH entry is `.`).
+A first word WITH a slash is still a path, so `./bet` finds `./beta`.
+The listing is sorted now, as every shell's is - it was in directory
+order, which is no order at all.
+
+**The first version never finished on an empty line.** TAB there offers
+everything on PATH, thousands of names, and the duplicate check found
+each existing candidate with `CMP-NTH` - a walk from the start - inside
+a loop over the candidates, for every addition. That is the count
+squared per addition and its CUBE to collect. The walks are linear now,
+collection stops at a thousand candidates, and past that TAB shows the
+count and inserts nothing - what a thousand of them share may be more
+than all of them share. Past two hundred it shows the count rather than
+the names; nobody reads two hundred names.
+
+`complete-probe.py` builds its own PATH directory for this: three
+executables whose sorted order is not the order they were made in, so
+the sortedness check cannot pass by luck, and one file without an
+execute bit that must never be offered. Sixteen checks, both widths.
+
+Sizes, each with its cause (prompts/09): `size:image-x86_64` 104432 ->
+105688 and `size:image-i386` 97272 -> 98484, about 1.2 KB an image -
+the command-position test with its eight keyword strings, the PATH
+walk, the builtin walk, the sort, and the index buffer. Nothing else
+moved.

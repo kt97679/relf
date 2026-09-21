@@ -1425,10 +1425,9 @@ the most visible gaps left: everything else in the standing queue is
 conformance detail, and these are what a person notices in the first
 minute at the prompt.
 
-**Tab completion - filenames DONE (Iteration 411).** Still open:
-command names in command position (PATH and the builtins), a word
-that already contains an escaped blank, and sorting the listed
-candidates - they come in directory order. The original note follows.
+**Tab completion - filenames DONE (411), command names and a sorted
+listing DONE (414).** Still open: a word that already contains an
+escaped blank, and functions and aliases as command candidates. The original note follows.
 Nothing was bound to TAB. What exists to build on:
 `OPEN-DIR` and `READ-DIR` are engine primitives (kernel.4), pathname
 expansion already matches a pattern against a directory's names
