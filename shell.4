@@ -4238,36 +4238,38 @@ VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-RE
   LOOP
   ARGC @ 1- ARGC !  0 ARGV ARGC @ CELLS + ! ;
 
-: DO-COMMAND ( --- )
-  \ command -v NAME, and command [-p] NAME args.
-  ARGC @ 2 < IF 0 LAST-STATUS ! EXIT THEN
-  \ More than one option: `command -p -V name` and `command -v -p name`
-  \ are both valid, and this read one option and took the next for the
-  \ name (Iteration 350). `-p` is noted and taken out of the list so the
-  \ rest reads as it always has.
-  ARGC @ 3 > IF
-    S" -p" 1 ARGV@ STR0= IF
-      2 ARGV@ C@ 45 = IF DROP-ARGV1 THEN
-    ELSE
-      S" -p" 2 ARGV@ STR0= IF
-        ARGC @ 3 ?DO I ARGV@ ARGV I 1- CELLS + ! LOOP
-        ARGC @ 1- ARGC !  0 ARGV ARGC @ CELLS + !
-      THEN
-    THEN
-  THEN
-  S" -p" 1 ARGV@ STR0= IF
-    DROP-ARGV0-CALL
-    \ MOVE takes ( src dst u ): written the other way round in Iteration
-    \ 306 it copied the EMPTY buffer over PATH, so every command after a
-    \ `command -p` went missing.
-    PATH-NM LOOKUP-VAR ?DUP IF
-      DUP CSTRLEN 1+ CMD-SAVED-PATH SWAP MOVE -1
-    ELSE 0 THEN >R
-    PATH-NM DEFAULT-PATH SET-SHVAR
-    COMMAND-RUN
-    R> IF PATH-NM CMD-SAVED-PATH SET-SHVAR THEN
-    EXIT
-  THEN
+VARIABLE CMD-P?       \ command -p: the default PATH
+VARIABLE CMD-BRIEF?   \ command -v
+CREATE CMD-OPT-v  CSTR," -v"
+CREATE CMD-OPT-V  CSTR," -V"
+
+: CMD-OPTIONS ( --- )   \ the leading options, alone or combined, out of ARGV
+  \ Every letter of every option word: `command -pv cat` is -p and -v.
+  \ Only whole words `-p`, `-v` and `-V` were known, so `-pv` was run as
+  \ a command called -pv; and `-p` beside another option was dropped,
+  \ so `command -p -v cat` looked along the wrong PATH (Iteration 443,
+  \ yash command-p.tst:275, :280). `--` ends them.
+  0 CMD-P? !  0 CMD-BRIEF? !  0 CMD-VERBOSE? !
+  BEGIN
+    ARGC @ 1 > IF 1 ARGV@ C@ 45 = 1 ARGV@ 1+ C@ 0<> AND ELSE 0 THEN
+  WHILE
+    S" --" 1 ARGV@ STR0= IF DROP-ARGV1 EXIT THEN
+    1 ARGV@ 1+
+    BEGIN DUP C@ WHILE
+      DUP C@ 112 = IF -1 CMD-P? ! THEN
+      DUP C@ 118 = IF -1 CMD-BRIEF? ! THEN
+      DUP C@  86 = IF -1 CMD-VERBOSE? ! THEN
+      1+
+    REPEAT DROP
+    DROP-ARGV1
+  REPEAT ;
+
+: CMD-INSERT-OPTION ( c-addr --- )   \ back in at ARGV[1], where CMD-REST reads it
+  1 ARGC @ 1- DO  I ARGV@  ARGV I 1+ CELLS + !  -1 +LOOP
+  ARGV CELL+ !
+  1 ARGC +!  0 ARGV ARGC @ CELLS + ! ;
+
+: CMD-REST ( --- )   \ describe (option at ARGV[1]) or run
   S" -V" 1 ARGV@ STR0= -1 = IF -1 ELSE 0 THEN CMD-VERBOSE? !  0 CMD-KIND !
   S" -v" 1 ARGV@ STR0= CMD-VERBOSE? @ OR 0= IF COMMAND-RUN EXIT THEN
   ARGC @ 3 < IF 1 LAST-STATUS ! EXIT THEN
@@ -4308,6 +4310,26 @@ VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-RE
     THEN
     127 LAST-STATUS !
   THEN ;
+
+: CMD-WITH-DEFAULT-PATH ( --- )   \ -p: the rest, looking along the default PATH
+  \ The saved PATH is grown to fit: it was copied into a fixed 1024
+  \ bytes, and a longer PATH would have run past them. An unset PATH is
+  \ unset again afterwards, rather than left as the default.
+  PATH-NM LOOKUP-VAR ?DUP IF
+    DUP CSTRLEN 1+ DUP ENSURE-BUFFER CMD-SAVED-PATH
+    CMD-SAVED-PATH SWAP MOVE -1
+  ELSE 0 THEN >R
+  PATH-NM DEFAULT-PATH SET-SHVAR
+  CMD-REST
+  R> IF PATH-NM CMD-SAVED-PATH SET-SHVAR ELSE PATH-NM REMOVE-SHVAR THEN ;
+
+: DO-COMMAND ( --- )
+  CMD-OPTIONS
+  ARGC @ 2 < IF 0 LAST-STATUS ! EXIT THEN
+  CMD-VERBOSE? @ IF CMD-OPT-V ELSE CMD-BRIEF? @ IF CMD-OPT-v ELSE 0 THEN THEN
+  ?DUP IF CMD-INSERT-OPTION THEN
+  CMD-P? @ IF CMD-WITH-DEFAULT-PATH EXIT THEN
+  CMD-REST ;
 
 \ The builtins that used to be written inline in DISPATCH's chain.
 

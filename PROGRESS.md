@@ -438,6 +438,7 @@ do not trust the absence of a line below.
 - **440** — a captured word takes its regions with it; an operator needs an operand
 - **441** — cd's options, every letter; "$@""$@" with no parameters is no field
 - **442** — a trim's pattern is a context of its own: tildes, and substitutions that match
+- **443** — command's options, alone or combined; -p with -v
 
 ### Not tied to an iteration
 
@@ -22003,3 +22004,28 @@ yash on this build: **1718 passed, 57 failed** (1710 at 438's build; dash
 
 Recorded changes, with their causes: `parse:verdicts-agree` 220 -> 221,
 the pattern case; the images about 100 bytes larger.
+
+## Iteration 443: command's options
+
+`command -pv cat` - how a portable script finds a program along the
+default PATH - was run as a command called `-pv` (yash command-p.tst:275,
+:280). DO-COMMAND knew three whole words, `-p`, `-v` and `-V`, and
+juggled their positions; and where `-p` stood beside another option it
+was simply dropped, so even `command -p -v cat` looked along the user's
+PATH, not the default one.
+
+`CMD-OPTIONS` reads every letter of every leading option word into
+flags and takes the words out, `--` ending them. The description code,
+which reads its option at ARGV[1], is kept whole as `CMD-REST`, and
+`DO-COMMAND` puts back one canonical `-v` or `-V` for it. `-p` now wraps
+either branch - describing or running - in the default PATH.
+
+Two things on the way: the user's PATH was saved into a fixed 1024-byte
+buffer with no bound, and a longer PATH would have run past it - it is
+grown to fit now; and an unset PATH was left set to the default
+afterwards - it is unset again. Twelve forms match dash, apart from
+which directory of the default PATH a program is found in.
+
+Recorded changes, with their causes: `shell:assertions` 823 -> 826, the
+three for command; the images 280 bytes larger. The first check run was
+cut off by the end of a session; a second one agreed with the recording.

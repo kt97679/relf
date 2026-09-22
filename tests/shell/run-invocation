@@ -145,4 +145,14 @@ for pair in '-P -L -PL:/dev' '-LP:/real/dev' '-PL:/dev' '-L -P:/real/dev'; do
     assert_output_equals "cd $opts" "$want" "$got"
 done
 rm -rf "$d441"
+# command's options, alone or combined, -p with any of them (Iteration
+# 443, yash command-p.tst:275, :280).
+out=$("$THIS_SH" -c 'PATH=; command -pv cat' 2>&1)
+case $out in */cat) got=found ;; *) got="[$out]" ;; esac
+assert_output_equals "command -pv finds cat along the default PATH" "found" "$got"
+out=$("$THIS_SH" -c 'PATH=; command -p -v cat >/dev/null; echo "st=$?"' 2>&1)
+assert_output_equals "... and -p -v does too" "st=0" "$out"
+out=$("$THIS_SH" -c 'unset PATH; command -p echo x; echo "[${PATH-unset}]"' 2>&1)
+assert_output_equals "an unset PATH is unset again afterwards" "x
+[unset]" "$out"
 report
