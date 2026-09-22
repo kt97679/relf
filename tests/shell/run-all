@@ -13,6 +13,21 @@
 # (Iteration 392). The interactive pty harness makes its own terminal
 # and is unaffected.
 exec < /dev/null
+# Every assert_* a test file calls must exist in lib.sh. A call to one
+# that does not prints "not found" on stderr and counts nothing, so the
+# assertion silently never exists - Iteration 434 wrote one
+# (`assert_output_not_contains`) and the file reported one assertion
+# fewer, and passed.
+here_=$(cd "$(dirname "$0")" && pwd)
+undefined_=$(for f_ in "$here_"/run-*; do [ "$f_" = "$here_/run-all" ] || cat "$f_"; done |
+    grep -v '^[[:space:]]*#' | grep -o 'assert_[a-z][a-z_]*' | sort -u | while read -r a; do
+    grep -q "^$a *()" "$here_/lib.sh" || echo "$a"
+done)
+if [ -n "$undefined_" ]; then
+    echo "tests/shell: assertions used but not defined in lib.sh: $undefined_"
+    echo "tests/shell: 1 test file(s) had failures"
+    exit 1
+fi
 # Byte order and byte classes for every shell this suite runs: pathname
 # expansion sorts by LC_COLLATE, `[a-z]` is a collation range and
 # `[[:alpha:]]` is a locale's own idea of a letter. This shell has no

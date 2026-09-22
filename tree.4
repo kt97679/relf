@@ -530,9 +530,13 @@ DEFER SCAN-DOLLAR
   \ `#` with an operator - and `${#?}` is the LENGTH of `$?`, since what
   \ follows the `?` is the closing brace rather than a word
   \ (Iterations 339, 356).
+  \ And `${#:-word}` and the other colon forms are the parameter `#` too:
+  \ `${#:=x}` printed `0:=x}` (Iteration 434, yash param-p.tst:268).
   0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND
   1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR
-  2 SRC-C 125 <> AND 0= AND IF
+  2 SRC-C 125 <> AND
+  1 SRC-C 58 =  2 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR  AND  OR
+  0= AND IF
     1 SRC-SKIP  EV-LENGTH ENC-C,  SCAN-BRACE-NAME  0 ENC-C,
     0 SRC-C 125 = IF 1 SRC-SKIP THEN EXIT
   THEN
@@ -1805,7 +1809,14 @@ VARIABLE XW-LEN
 DEFER XE-REGION-CALL      ( --- )   \ items until a region's end
 DEFER XE-DQ-REGION        ( --- )
 
+VARIABLE XSK-WORD?   \ the parameter being skipped has a word of its own
+
 : XE-SKIP-WORD ( --- )   \ past an operator form's word, expanding nothing
+  \ A nested parameter with an operator has a word of its own, ended by
+  \ its own ENC-END, and only its operator and name were skipped - so
+  \ that END closed the OUTER word: `a=a; echo ${a-x${a-x}x}b}` printed
+  \ axb} for ab} (Iteration 434, yash param-p.tst:151). Every operator
+  \ but the plain and the length forms has a word.
   1 >R                                       \ nesting of ENC-END
   BEGIN XE-P @ XE-END @ < R@ 0 > AND WHILE
     XE-C ENC-CTL = IF
@@ -1814,11 +1825,19 @@ DEFER XE-DQ-REGION        ( --- )
       DUP ENC-CTL = IF DROP ELSE
       DUP ENC-END = IF DROP R> 1- >R ELSE
       DUP ENC-ESC = IF DROP 1 XE-P +! ELSE
-      DUP ENC-SQ = OVER ENC-DQ = OR OVER ENC-ARITH = OR IF DROP R> 1+ >R ELSE
+      \ A tilde is ended by an END as well: `${a-~/p}` stopped the skip at
+      \ the tilde and printed the rest (434).
+      DUP ENC-SQ = OVER ENC-DQ = OR OVER ENC-ARITH = OR OVER ENC-TILDE = OR IF DROP R> 1+ >R ELSE
       DUP ENC-VAR = IF
         DROP 1 XE-P +!                       \ the operator byte
+        XE-C DUP EV-PLAIN <> SWAP EV-LENGTH <> AND XSK-WORD? !
         BEGIN XE-P @ XE-END @ < IF XE-C ELSE 0 THEN WHILE 1 XE-P +! REPEAT
-        XE-P @ XE-END @ < IF 1 XE-P +! THEN
+        \ ... to the name's NUL, which the common step below skips. This
+        \ skipped it here too, and the common step then took the first
+        \ byte of the nested word - harmless for a literal, but the
+        \ ENC-CTL of a further nested item hid that item, so a second
+        \ level of nesting still ended the skip early (434).
+        XSK-WORD? @ IF R> 1+ >R THEN         \ its word ends with its own END
       ELSE
       ENC-CMDSUB = IF 1 XE-P +! THEN
       THEN THEN THEN THEN THEN
@@ -1909,6 +1928,15 @@ VARIABLE XP-VAL
     THEN
     DUP EV-ASSIGN = IF
       DROP IF
+        \ Only a variable can be assigned: `${1:=x}` and `${*:=x}` are
+        \ errors that end a non-interactive shell, as in dash; they set
+        \ a variable called `1` here (Iteration 434, yash param-p.tst:198
+        \ and :202).
+        XP-NAME @ C@ DUP NAME-CHAR? SWAP 48 - 10 U< 0= AND 0= IF
+          XE-SKIP-WORD
+          S" shell: " ERR-TYPE XP-NAME @ ERR-CSTR S" : bad variable name" ERR-TYPE ERR-NL
+          -1 UNSET-FATAL? !  -1 EXPANSION-FAILED? !  EXIT
+        THEN
         0 XE-WORD-ASIDE-SAFE
         XP-NAME @ XW-BUF SET-SHVAR
         XW-BUF XE-VALUE

@@ -429,6 +429,7 @@ do not trust the absence of a line below.
 - **431** — the braced-word fix, finished: one splitter, and quotes placed before the blanks they precede
 - **432** — set -a for the shell's own assignments; OPTARG unset; the dot builtin as a special builtin
 - **433** — a file with no #! line is run as a script, by this shell
+- **434** — skipping a nested word; ${1:=x} is an error; ${#:=x}; an assertion that could not exist
 
 ### Not tied to an iteration
 
@@ -21716,3 +21717,37 @@ already was. Recorded again: the images are 560 bytes larger than at
 Recorded changes, with their causes: `shell:assertions` 785 -> 790 and
 `shell:files` 79 -> 80, the new `run-noshebang`; the images 560 bytes
 larger, for `TRY-EXEC` and the script runner.
+
+## Iteration 434: three from yash's param-p.tst, and a harness hole
+
+- **A skipped word stopped early** (param-p.tst:151): `a=a; echo
+  ${a-x${a-x}x}b}` printed axb} for ab}. `XE-SKIP-WORD` counts nested
+  words by their ENC-END, and a nested parameter WITH an operator has a
+  word of its own that it did not count; the first fix counted it, and
+  one level of nesting passed. Two levels still failed - and only with a
+  literal before the nested parameter, which is what gave it away:
+  evaluation was right, so the encoding was, and the skip's ENC-VAR
+  branch skipped the name's NUL and then the common step after the
+  branch skipped the next byte too - the first byte of the nested word,
+  harmless for a literal, fatal for the ENC-CTL of a further nested
+  item. The NUL is left to the common step now. A tilde leading a
+  skipped word - `${a-~/p}` - had the same hole and is counted too.
+  Fourteen forms match dash.
+- **`${1:=x}` and `${*:=x}` are errors** (:198, :202): only a variable
+  can be assigned, and dash exits with "bad variable name"; this set a
+  variable called 1. Not when nothing would be assigned: `set -- a;
+  echo ${1:=x}` is a.
+- **`${#:=x}` is the parameter `#` with `:=`** (:268): the colon forms
+  were read as the length of something, and printed `0:=x}`.
+
+**And an assertion that could not exist.** A new test called
+`assert_output_not_contains`, which lib.sh does not define. The call
+printed "not found" on stderr, counted nothing, and the file reported
+one assertion fewer and passed - noticed only because the count was one
+short. `tests/shell/run-all` now checks that every `assert_*` a test file
+calls is defined, before running anything; shown failing on a probe
+file first, then clean.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 213 -> 215,
+the two new differential cases; `shell:assertions` 790 -> 793, the
+three for `${1:=x}`; the images 136 bytes larger.

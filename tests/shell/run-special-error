@@ -123,4 +123,14 @@ assert_output_equals "... with status 2" "2" "$st"
 out=$("$THIS_SH" -c 'command . "$1"/nosuch; echo "reached:$?"' sh "$dd" 2>/dev/null)
 assert_output_equals "... but not under command" "reached:2" "$out"
 rm -rf "$dd"
+# Only a variable can be assigned by ${name:=word}: a positional or a
+# special parameter is an error that ends the shell, as in dash (bash
+# warns and goes on). Iteration 434, yash param-p.tst:198, :202.
+out=$("$THIS_SH" -c 'echo ${1:=x}; echo after' 2>&1)
+assert_output_contains "\${1:=x} is an error" "bad variable name" "$out"
+case $out in *after*) reached=yes ;; *) reached=no ;; esac
+assert_output_equals "... that ends the shell" "no" "$reached"
+out=$("$THIS_SH" -c 'set -- a; echo ${1:=x}; echo after' 2>&1)
+assert_output_equals "... but not when nothing would be assigned" "a
+after" "$out"
 report
