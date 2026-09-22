@@ -533,6 +533,10 @@ DEFER SCAN-DOLLAR
 
 : SCAN-BRACE ( --- )      \ at ${: to past the matching }
   2 SRC-SKIP
+  \ A continuation straight after the `${` must not hide a `#`:
+  \ `${\`+newline+`#3}` is the length of $3 (Iteration 445, busybox
+  \ ash-parsing/bkslash_newline4; the rest of the braces since 429).
+  SKIP-CONTINUATIONS
   ENC-VAR ENC-CODE,
   \ `${#}` is the count and `${#name}` a length, but `${#+word}` names
   \ the parameter `#` with an operator after it (Iteration 339).
@@ -583,9 +587,14 @@ DEFER SCAN-DOLLAR
       DUP 92 = IF DROP
         SCAN-IN-DQ? @ IF ENC-DQ-ESCAPE ELSE ENC-WORD-ESCAPE THEN 0
       ELSE
-      DUP 36 = IF DROP SCAN-DOLLAR 0 ELSE
+      \ A nested ${...} sets BRACE-VALUE-WORD? for ITS word, and it was
+      \ not put back, so after `"${x+''}"` inside a trim's pattern the
+      \ pattern's own '' read as two quote characters, not as quoting:
+      \ `x="''''"; echo "${x#"${x+''}"''}"` printed nothing where dash
+      \ and bash print '' (Iteration 445, busybox quote_in_varexp1).
+      DUP 36 = IF DROP BRACE-VALUE-WORD? @ >R SCAN-DOLLAR R> BRACE-VALUE-WORD? ! 0 ELSE
       DUP 39 = BRACE-VALUE-WORD? @ 0= AND IF DROP SCAN-SQUOTE 0 ELSE
-      DUP 34 = IF DROP SCAN-DQUOTE 0 ELSE
+      DUP 34 = IF DROP BRACE-VALUE-WORD? @ >R SCAN-DQUOTE R> BRACE-VALUE-WORD? ! 0 ELSE
       96 = IF SCAN-BACKQUOTE 0 ELSE
         0 SRC-C ENC-LIT, 1 SRC-SKIP 0
       THEN THEN THEN THEN THEN THEN

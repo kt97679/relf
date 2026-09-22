@@ -440,6 +440,7 @@ do not trust the absence of a line below.
 - **442** — a trim's pattern is a context of its own: tildes, and substitutions that match
 - **443** — command's options, alone or combined; -p with -v
 - **444** — reserved words are not aliases; a vanished alias leaves the command owed
+- **445** — yash 1723; a continuation before a length `#`; a nested brace's quoting left behind
 
 ### Not tied to an iteration
 
@@ -22066,3 +22067,37 @@ recording and the check agree, with no problem and no failure.
 
 Recorded changes, with their causes: `shell:assertions` 826 -> 827, the
 alias assertion; the images 136 bytes larger.
+
+## Iteration 445: two from busybox's six
+
+yash on 444's build: **1723 passed, 52 failed** (1718; dash 1650), no
+crashes or hangs. busybox has six failures left that dash passes; two
+were read and fixed:
+
+- **A continuation straight after `${` hid a `#`** (ash-parsing/
+  bkslash_newline4): `$\`+newline+`{\`+newline+`#3}` is the length of
+  $3. Iteration 429 skipped continuations throughout the braces except
+  before the length check, the one place that looks at a fixed offset
+  first.
+- **A nested `${...}` left its quoting behind** (ash-quoting/
+  quote_in_varexp1): with x set to four apostrophes,
+  `echo "${x#"${x+''}"''}"` prints two of them in dash and bash, and
+  printed nothing here. BRACE-VALUE-WORD? - "a value word inside double
+  quotes, where single quotes are literal" - is one global, and the
+  nested `${x+''}` set it for its own word and did not put it back; the
+  outer pattern's own two apostrophes then read as characters rather
+  than as quoting, so the pattern was all four and took everything.
+  Saved and restored around the nested scans now. The same idea as
+  442's tilde: a trim's pattern is a context of its own, and nothing
+  from around it may leak in - nor from inside it leak out.
+
+The other four busybox tests: two signal tests, `a=b exec` exporting
+(bash's behaviour, deliberate), and `${#a}` with digits in IFS (rare).
+
+Recorded changes, with their causes: `parse:verdicts-agree` 221 -> 222,
+the new differential case; the images about 20 bytes larger.
+
+The log entry for this iteration failed to write twice before this one:
+its text holds runs of apostrophes, which ended the Python string that
+carried it. Written from a file instead - the same lesson as Iteration
+441's patch, now for prose as well as code.
