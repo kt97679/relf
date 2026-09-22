@@ -435,6 +435,7 @@ do not trust the absence of a line below.
 - **437** — any assignment to PATH forgets where commands were
 - **438** — busybox 216; \" in double-quoted backquotes; command exec keeps its redirections
 - **439** — set -v echoes each line once; THIS_SH made absolute for every test
+- **440** — a captured word takes its regions with it; an operator needs an operand
 
 ### Not tied to an iteration
 
@@ -21912,3 +21913,33 @@ seen to pass with a relative THIS_SH.
 
 Recorded changes, with their causes: `shell:assertions` 811 -> 813, the
 two for set -v; the images 200 bytes larger.
+
+## Iteration 440: the same bug a second time, and missing operands
+
+**An arithmetic result inside a braced word was split even when quoted**
+(yash fsplit-p.tst:36): with IFS=' 0', `${a+"$((708))"}` and even
+`"${a+$((708))}"` gave 7 and 8. Only arithmetic - a parameter or `$( )`
+in the same place was left whole - and `XE-ARITH` checks the quoting
+correctly, so the cause was elsewhere: `XE-WORD-ASIDE`, which captures
+the expression by expanding it into the output and taking it back out.
+Since 431 a braced word's literal text is a region, so capturing `708`
+recorded one; the text went and the region stayed, over the offsets the
+result then took, and XE-SPLIT split it. Iteration 371 had found exactly
+this for glob marks and rewound them with the text. Split regions and
+quote records - the other two records bound to output offsets - are
+rewound too now. FORTH-STYLE.md section 12 has the rule.
+
+**An operator with nothing after it** (arith-p.tst:367): `$((1 +))`,
+`$((-))`, `$((--))` and `$(( () ))` were 1, 0, -1 and 0; they are syntax
+errors in dash and bash. `AE-PRIMARY` returned 0 at the end of the
+expression, or before a `)`, and `AE-PREFIX-STEP` took an empty name;
+both report a missing operand now, once, as an expansion error that ends
+a non-interactive shell. A blank expression is still 0, as in bash
+(dash calls it an error). `$((--$x))` - `--5` after expansion - is -1
+here and an error in bash; left, and rare. The first build used
+`/STRING`, which is not defined that early in shell.4, and the build's
+own check refused the image.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 218 -> 219,
+the capture case; `shell:assertions` 813 -> 819, the six for missing
+operands; the images 176 bytes larger.

@@ -313,6 +313,15 @@ Audit periodically, not only when touching a feature.
   such script with `/bin/sh` - correct output, wrong shell, and only a
   test that asked WHICH shell caught it (Iteration 433). Read until the
   read returns less, or into a buffer of known size.
+- **Everything bound to a position rewinds with it.** The expander keeps
+  several records that name output offsets - glob marks, split regions,
+  quote records - and `XE-WORD-ASIDE` expands a word into the output and
+  takes it back out. Iteration 371 found the marks left behind and
+  rewound them; 431 made literal text in a braced word a REGION, and the
+  regions left behind split an arithmetic result that later landed on
+  the same offsets (Iteration 440). When a new kind of positional record
+  appears, or an old kind is produced somewhere new, look for every place
+  that rewinds positions.
 - **A rule with a fast path and a slow path changes in both.** The
   expander marks pattern characters per character (`EMIT-EXPANDED-CHAR`)
   and per region (`XE-MARK-PATTERNS`, for whole expansion values). The

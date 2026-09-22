@@ -1870,6 +1870,13 @@ VARIABLE XSK-WORD?   \ the parameter being skipped has a word of its own
   \ arithmetic SOURCE, and the `-` of its result then landed on that
   \ offset and read as a live range (Iteration 371). The marks are
   \ rewound with the text.
+  \ So are the split regions and the quote records, which are bound to
+  \ output offsets in the same way - the same bug, a second time: since
+  \ 431 a braced word's literal text is a region, and capturing the
+  \ `708` of `${a+"$((708))"}` left one over the offsets where the
+  \ arithmetic RESULT then went, which XE-SPLIT split at IFS=0 into 7 and
+  \ 8 (Iteration 440, yash fsplit-p.tst:36).
+  XE-REG# @ >R  XQ-N @ >R
   GLOB-MARKS# @ >R  GLOB-META# @ >R
   TOK-OUT @ OUT-BASE - >R                    \ on the stack: one of these nests
   XE-REGION-CALL                             \ stops at the word's end
@@ -1879,7 +1886,8 @@ VARIABLE XSK-WORD?   \ the parameter being skipped has a word of its own
   OUT-BASE R@ +  XW-BUF  XW-LEN @ MOVE
   0 XW-BUF XW-LEN @ + C!
   OUT-BASE R> + TOK-OUT !                    \ taken back out of the output
-  R> GLOB-META# !  R> GLOB-MARKS# ! ;
+  R> GLOB-META# !  R> GLOB-MARKS# !
+  R> XQ-N !  R> XE-REG# ! ;
 
 VARIABLE XP-VAL
 

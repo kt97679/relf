@@ -143,4 +143,13 @@ cat <&3' 2>&1)
 assert_output_equals "command exec 3<<END keeps fd 3" "here" "$out"
 out=$("$THIS_SH" -c 'command exec echo replaced; echo not-reached' 2>&1)
 assert_output_equals "command exec CMD still replaces the shell" "replaced" "$out"
+# An operator with no operand is an arithmetic error - $((1 +)), $((-)),
+# $((--)), $(( () )) - and ends the shell; a blank expression is still 0
+# (Iteration 440, yash arith-p.tst:367).
+for e in '1 +' '-' '--' '()' '1+()'; do
+    out=$("$THIS_SH" -c "echo \$(($e)); echo reached" 2>/dev/null)
+    assert_output_equals "\$(($e)) is an error that ends the shell" "" "$out"
+done
+out=$("$THIS_SH" -c 'x=5; echo $(( )) $((--x)) $((x++)) $x' 2>&1)
+assert_output_equals "... while blank, --x and x++ still work" "0 4 4 5" "$out"
 report

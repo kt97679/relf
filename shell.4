@@ -1752,18 +1752,30 @@ VARIABLE AE-SN-NAME
   0 AE-NUMBUF R> + C!
   AE-SN-NAME @ AE-NUMBUF SET-SHVAR ;
 
+: AE-NO-OPERAND ( --- 0 )   \ an operator with nothing after it
+  \ `$((1 +))`, `$((-))`, `$((--))` and `$(( () ))` were 1, 0, -1 and 0;
+  \ they are syntax errors in dash and bash, and an expansion error ends
+  \ a non-interactive shell (Iteration 440, yash arith-p.tst:367). Said
+  \ once, however deep the recursion that found it.
+  EXPANSION-FAILED? @ 0= IF
+    S" shell: arithmetic: an operand is missing" ERR-TYPE ERR-NL
+  THEN
+  -1 EXPANSION-FAILED? !  -1 UNSET-FATAL? !  0 ;
+
 : AE-PREFIX-STEP ( up? --- n )   \ ++a / --a: assign, then yield
   AE-POS @ 2 + AE-POS !
   AE-SKIP-WS
   AE-POS @ C@ 36 = IF AE-POS @ 1+ AE-POS ! THEN
   AE-READ-VARNAME
+  AE-VARNAME-BUF C@ 0= IF DROP AE-NO-OPERAND EXIT THEN   \ `--` alone (440)
   AE-LOOKUP-NUMERIC
   SWAP IF 1+ ELSE 1- THEN
   DUP AE-VARNAME-BUF SWAP AE-STORE-NUMBER ;
 
 : AE-PRIMARY ( --- n )
   AE-SKIP-WS
-  AE-POS @ AE-END @ < 0= IF 0 EXIT THEN
+  AE-POS @ AE-END @ < 0= IF AE-NO-OPERAND EXIT THEN
+  AE-POS @ C@ 41 = IF AE-NO-OPERAND EXIT THEN   \ `()`, or an operator before `)`
   AE-POS @ C@ 40 = IF                    ( '(' )
     AE-POS @ 1+ AE-POS !
     AE-OR-CALL
@@ -2173,6 +2185,10 @@ DEFER AE-EXPR-CALL   ( --- n )
   \ Copies (c-addr u) into ARITH-BUF (a private copy, so the
   \ evaluator's own AE-POS/AE-END never alias the main tokenizer's
   \ LINE-BUF/TOK-POS/TOK-END) and evaluates it as a full expression.
+  \ A blank expression is 0, as in bash - not a missing operand (dash
+  \ calls it an error; POSIX does not say).
+  2DUP BEGIN DUP IF OVER C@ DUP 32 = OVER 9 = OR SWAP 10 = OR ELSE 0 THEN WHILE SWAP 1+ SWAP 1- REPEAT
+  NIP 0= IF 2DROP 0 EXIT THEN
   DUP AE-EVAL-LEN !
   ARITH-BUF SWAP MOVE
   ARITH-BUF AE-POS !
