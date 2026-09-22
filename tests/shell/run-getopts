@@ -42,4 +42,12 @@ assert_output_equals "OPTIND=0 starts again, as dash does" "st=0 v=w OPTARG=1 OP
 out=$("$THIS_SH" -c 'set -- -a; OPTIND=abc; getopts a v; echo "st=$?"' 2>&1)
 assert_output_contains "OPTIND=abc is reported" "bad number" "$out"
 assert_output_contains "... and getopts fails with 2" "st=2" "$out"
+# OPTARG is UNSET, not empty, when there is no argument - POSIX, bash and
+# yash's suite; dash leaves it empty (Iteration 432).
+out=$("$THIS_SH" -c 'OPTARG=x; getopts ab o -a; echo "${OPTARG-un}${OPTARG-set}"')
+assert_output_equals "an option without an argument unsets OPTARG" "unset" "$out"
+out=$("$THIS_SH" -c 'OPTARG=x; getopts "" o -a 2>/dev/null; echo "${OPTARG-un}${OPTARG-set}"')
+assert_output_equals "... so does an unknown option" "unset" "$out"
+out=$("$THIS_SH" -c 'OPTARG=x; getopts :a: v -a; echo "$v|$OPTARG"')
+assert_output_equals "... while in silent mode it names the option" ":|a" "$out"
 report

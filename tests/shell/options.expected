@@ -63,8 +63,7 @@ st=0
 set -- p q; . ./dotfile.sh; echo "st=$? $# $1" => in dot: 2 [p]
 st=3 2 p
 st=0
-. ./nosuchfile; echo "after st=$?" => after st=1
-st=0
+. ./nosuchfile; echo "after st=$?" => st=2
 exec 3>fd3.txt; echo via3 >&3; exec 3>&-; cat fd3.txt => via3
 st=0
 exec /bin/echo replaced; echo no => replaced

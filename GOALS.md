@@ -1376,6 +1376,11 @@ against a second reference (`dash`) before being recorded, because
   costs none since Iteration 124 moved the harness to `sh`, upstream's
   own default. bash is the outlier here, which is why the reference
   shell mattered more than it looked.
+- **OPTARG is unset after an option without an argument** (Iteration
+  432) - here dash is the outlier: POSIX says unset, bash unsets it, and
+  yash's suite tests for it (getopts-p.tst:66), while dash leaves it
+  empty. The one place in this list where the second reference, not the
+  first, disagrees with POSIX.
 - **An arithmetic error ends a non-interactive shell** (Iteration 427).
   `echo $((1/0)); echo after`: bash reports it and carries on; POSIX
   makes an expansion error fatal in a non-interactive shell (XCU 2.8.1),

@@ -107,4 +107,20 @@ assert_output_equals "... with status 2" "2" "$st"
 out=$("$THIS_SH" -c 'echo $(( 1 ? 2 : 1/0 )); echo ok' 2>&1)
 assert_output_equals "... but a branch not taken is not an error" "2
 ok" "$out"
+# The dot builtin (Iteration 432, yash dot-p.tst): $? inside the script
+# starts as the status before it, an empty file gives 0, and a file that
+# cannot be read ends a non-interactive shell - but not under `command`.
+# (No `cd`: run-all passes THIS_SH as a relative path.)
+dd=$(mktemp -d); printf 'echo $?\n(exit 3)\n' > "$dd/f1"; : > "$dd/empty"
+out=$("$THIS_SH" -c '(exit 5); . "$1"/f1; echo "st=$?"' sh "$dd")
+assert_output_equals "the dot script sees the status before it" "5
+st=3" "$out"
+out=$("$THIS_SH" -c '(exit 1); . "$1"/empty; echo "st=$?"' sh "$dd")
+assert_output_equals "an empty dot script gives 0" "st=0" "$out"
+out=$("$THIS_SH" -c '. "$1"/nosuch; echo reached' sh "$dd" 2>/dev/null); st=$?
+assert_output_equals "a missing dot script ends the shell" "" "$out"
+assert_output_equals "... with status 2" "2" "$st"
+out=$("$THIS_SH" -c 'command . "$1"/nosuch; echo "reached:$?"' sh "$dd" 2>/dev/null)
+assert_output_equals "... but not under command" "reached:2" "$out"
+rm -rf "$dd"
 report

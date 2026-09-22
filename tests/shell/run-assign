@@ -55,4 +55,14 @@ out=$("$THIS_SH" -c 'old=$IFS; IFS=:; IFS=$old; set -- "x y"; set -- $1; echo $#
 assert_output_equals "saving and restoring IFS keeps splitting" "2" "$out"
 out=$("$THIS_SH" -c 'a=X b=B c=X; export a=A b c=C; sh -c "echo \$a \$b \$c"')
 assert_output_equals "export takes every operand" "A B C" "$out"
+# Assignments the shell makes are assignments, so `set -a` exports them:
+# read, the for variable, getopts (Iteration 432; yash read-p.tst:55).
+out=$(printf 'A B\n' | "$THIS_SH" -c 'set -a; read a b; sh -c "echo [\$a] [\$b]"')
+assert_output_equals "set -a exports what read assigns" "[A] [B]" "$out"
+out=$("$THIS_SH" -c 'set -a; for fv in x; do :; done; sh -c "echo [\$fv]"')
+assert_output_equals "... and the for variable" "[x]" "$out"
+out=$("$THIS_SH" -c 'set -a; getopts a: gv -a val; sh -c "echo [\$gv] [\$OPTARG]"')
+assert_output_equals "... and getopts' variable and OPTARG" "[a] [val]" "$out"
+out=$(printf 'Q\n' | "$THIS_SH" -c 'read q; sh -c "echo [\$q]"')
+assert_output_equals "... and without set -a, nothing" "[]" "$out"
 report

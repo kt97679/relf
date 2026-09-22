@@ -2686,7 +2686,7 @@ VARIABLE PS-WR
   LOOP-DEPTH @ 1+ LOOP-DEPTH !
   0 LAST-STATUS !
   OVER SWAP 0 ?DO                           ( node block p )
-    2 PICK 1 XF@ 0 XF@ XSTR OVER SET-SHVAR
+    2 PICK 1 XF@ 0 XF@ XSTR OVER SET-SHVAR-A     \ exported under set -a (432)
     2 PICK 3 XF@ EXEC
     DUP CSTRLEN 1+ +
     LOOP-AFTER-BODY IF LEAVE THEN
@@ -3239,18 +3239,30 @@ VARIABLE DS-END
   DUP 4 ACCESS 0= IF EXIT THEN
   DROP 0 ;
 
+: DOT-TEXT-EMPTY? ( addr u --- f )   \ only blanks and comments: no command
+  BEGIN DUP WHILE
+    OVER C@ DUP 32 = OVER 9 = OR SWAP 10 = OR IF
+      1 /STRING
+    ELSE OVER C@ 35 = IF
+      BEGIN DUP IF OVER C@ 10 <> ELSE 0 THEN WHILE 1 /STRING REPEAT
+    ELSE 2DROP 0 EXIT THEN THEN
+  REPEAT 2DROP -1 ;
+
 : DO-DOT ( --- )
+  \ `.` is a special builtin: a file it cannot find or read ends a
+  \ non-interactive shell (XCU 2.8.1), and under `command` does not.
+  \ This set status 1 and went on (Iteration 432, yash dot-p.tst).
   ARGC @ 2 < IF
-    S" shell: .: filename argument required" ERR-TYPE ERR-NL  2 LAST-STATUS ! EXIT
+    S" shell: .: filename argument required" ERR-TYPE ERR-NL  2 SPECIAL-ERROR EXIT
   THEN
   1 ARGV@ DOT-FIND ?DUP 0= IF
     S" shell: .: " ERR-TYPE 1 ARGV@ ERR-CSTR S" : not found" ERR-TYPE ERR-NL
-    1 LAST-STATUS ! EXIT
+    2 SPECIAL-ERROR EXIT
   THEN
   READ-WHOLE-FILE                             ( addr u | 0 0 )
   OVER 0= IF
     2DROP S" shell: .: cannot read " ERR-TYPE 1 ARGV@ ERR-CSTR ERR-NL
-    1 LAST-STATUS ! EXIT
+    2 SPECIAL-ERROR EXIT
   THEN
   \ arguments after the file are its positional parameters while it runs
   ARGC @ 2 > DUP >R IF
@@ -3263,7 +3275,10 @@ VARIABLE DS-END
     FUNC-DEPTH @ 1+ FUNC-DEPTH !
   THEN
   1 DOT-DEPTH +!
-  0 LAST-STATUS !
+  \ $? inside the script starts as the status before `.` - `(exit 5);
+  \ . ./f` where f says `echo $?` prints 5. It was reset to 0 here. A
+  \ file with no command in it still gives 0, as POSIX asks (432).
+  2DUP DOT-TEXT-EMPTY? IF 0 LAST-STATUS ! THEN
   OVER >R TREE-RUN-TEXT R> FREE DROP
   -1 DOT-DEPTH +!
   0 RETURN-PENDING? !

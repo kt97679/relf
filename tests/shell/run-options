@@ -54,6 +54,9 @@ run 'set -b; echo "[$-]"; set +b; echo "[$-]"'
 run 'set -o notify; echo "[$-]"; set +o notify; echo "[$-]"'
 run '. ./dotfile.sh x y; echo "st=$? $dotvar $#"'
 run 'set -- p q; . ./dotfile.sh; echo "st=$? $# $1"'
+# A dot script that cannot be read ends a non-interactive shell, status
+# 2, as in dash: `.` is a special builtin (Iteration 432; it was status 1
+# and the shell went on).
 run '. ./nosuchfile; echo "after st=$?"'
 run 'exec 3>fd3.txt; echo via3 >&3; exec 3>&-; cat fd3.txt'
 run 'exec /bin/echo replaced; echo no'

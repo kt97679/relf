@@ -1194,6 +1194,15 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
 VARIABLE RD-SKIP?      \ this redirection was refused: do not open anything
 VARIABLE OPT-NOCLOBBER \ set -C: `>` will not overwrite an existing regular file
 VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
+
+: SET-SHVAR-A ( name-addr value-addr --- )   \ an assignment the shell makes
+  \ ... is an assignment too, so under `set -a` it is exported: the
+  \ variables `read`, `for` and `getopts` set. They called SET-SHVAR, and
+  \ only `name=value` words consulted the option, so `set -a; read a`
+  \ left a unexported (Iteration 432, yash read-p.tst:55; dash agrees
+  \ for all three).
+  2DUP SET-SHVAR
+  OPT-ALLEXPORT @ IF SWAP SETENV DROP ELSE 2DROP THEN ;
 VARIABLE OPT-VERBOSE   \ set -v: each line of input is echoed as it is read
 VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
 VARIABLE OPT-NOTIFY    \ set -b: the same - a finished job is reported at the
@@ -4458,7 +4467,7 @@ VARIABLE RD-VI
 
 : RD-ASSIGN ( name --- )   \ READ-FIELD, as built, to that variable
   0 READ-FIELD RD-FLEN @ + C!
-  READ-FIELD SET-SHVAR ;
+  READ-FIELD SET-SHVAR-A ;
 
 VARIABLE RD-LAST-ESC   \ where the last escaped character landed, or -1
 
@@ -4585,12 +4594,12 @@ VARIABLE GO-NMLEN
   THEN
   DUP CSTRLEN PARSE-DECIMAL 1 MAX ;
 
-: GO-OPTIND! ( n --- )   N>STR S" OPTIND" >NM SWAP SET-SHVAR ;
-: GO-OPTARG! ( c-addr --- )  S" OPTARG" >NM SWAP SET-SHVAR ;
+: GO-OPTIND! ( n --- )   N>STR S" OPTIND" >NM SWAP SET-SHVAR-A ;
+: GO-OPTARG! ( c-addr --- )  S" OPTARG" >NM SWAP SET-SHVAR-A ;
 
 : GO-SETNAME ( c --- )   \ set the user's variable to one character
   GO-VALBUF C!  0 GO-VALBUF 1+ C!
-  GO-NAME @ GO-VALBUF SET-SHVAR ;
+  GO-NAME @ GO-VALBUF SET-SHVAR-A ;
 
 : GO-FIND-OPT ( c --- pos | -1 )
   GO-C !
@@ -4610,9 +4619,10 @@ VARIABLE GO-NMLEN
 : GO-CLEAR-OPTARG ( --- )
   \ An option that takes no argument leaves OPTARG unset, so a value
   \ from a previous iteration must not linger - "opt=a arg=val" where
-  \ the val belonged to the -c before it.
-  0 GO-VALBUF C!
-  S" OPTARG" >NM GO-VALBUF SET-SHVAR ;
+  \ the val belonged to the -c before it. UNSET, as POSIX says and this
+  \ comment always did: it stored an empty string, which `${OPTARG-x}`
+  \ tells apart (Iteration 432, yash getopts-p.tst:91 and :123).
+  S" OPTARG" >NM DUP REMOVE-SHVAR UNSETENV DROP ;
 
 : GO-STEP ( --- )   \ finished with this character; advance if at end
   GO-CPOS @ 1+ GO-CPOS !

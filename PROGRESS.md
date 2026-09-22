@@ -427,6 +427,7 @@ do not trust the absence of a line below.
 - **429** — line continuation inside $ constructs
 - **430** — the corpora re-run; fields out of order in a braced word: diagnosed, attempted, reverted
 - **431** — the braced-word fix, finished: one splitter, and quotes placed before the blanks they precede
+- **432** — set -a for the shell's own assignments; OPTARG unset; the dot builtin as a special builtin
 
 ### Not tied to an iteration
 
@@ -21639,3 +21640,36 @@ counted neither way, so the total no longer moves between runs.
 Recorded changes, with their causes: `parse:verdicts-agree` 212 -> 213,
 the case moved in from `attic/pending/`; the images 72 bytes larger -
 the region route, its DEFER, and the two offsets.
+
+## Iteration 432: three small POSIX points, from yash's list
+
+Each was checked against dash before it was written.
+
+- **`set -a` exports the assignments the shell makes itself**: the
+  variables `read`, `for` and `getopts` set, and OPTARG and OPTIND. They
+  called SET-SHVAR, and only `name=value` words consulted the option.
+  One word, `SET-SHVAR-A`, sets and exports under `-a`; all six sites use
+  it. yash read-p.tst:55.
+- **OPTARG is unset, not empty, when an option has no argument.**
+  `GO-CLEAR-OPTARG`'s own comment said "leaves OPTARG unset"; it stored
+  an empty string, which `${OPTARG-x}` tells apart. It removes the
+  variable now. dash leaves it empty here - POSIX, bash and yash's suite
+  say unset - so this is recorded in GOALS.md's list of divergences,
+  the one entry where the second reference is the outlier. yash
+  getopts-p.tst:91, :123 (and :66, which dash fails too).
+- **The dot builtin is a special builtin**: a file it cannot find or
+  read ends a non-interactive shell with status 2, as in dash, and under
+  `command` does not; `$?` inside the script starts as the status before
+  the `.` (it was reset to 0); and a file with no command in it - blanks
+  and comments only - still gives 0, as POSIX asks. yash dot-p.tst:25,
+  :52, :84.
+
+`tests/shell/options.expected` recorded the old behaviour for a missing
+dot file - "after st=1" - and was changed to the new one; its test says
+why. Three of the new assertions passed alone and failed under
+`run-all`: they ran `cd` before `"$THIS_SH"`, which `run-all` passes as
+a relative path. They use absolute paths for the files instead.
+
+Recorded changes, with their causes: `shell:assertions` 773 -> 785 -
+four for set -a, three for OPTARG, five for the dot builtin; the images
+120 bytes larger, for `SET-SHVAR-A` and `DOT-TEXT-EMPTY?`.
