@@ -3231,6 +3231,61 @@ VARIABLE DS-END
     DS-AT @ DS-END @ < IF 1 DS-AT +! THEN
   REPEAT DROP 0 ;
 
+\ ---- a file with no #! line (Iteration 433) ----
+CREATE PROC-CMDLINE  CSTR," /proc/self/cmdline"
+CREATE BIN-SH        CSTR," /bin/sh"
+64 CELLS BUFFER: SCRIPT-ARGV
+4096 CONSTANT CMDLINE-MAX
+CMDLINE-MAX 1+ BUFFER: CMDLINE-BUF   \ allocated when first used, not in the image:
+                                     \ CREATE ... ALLOT put 4 KB of zeros in both (433)
+
+: READ-CMDLINE ( --- addr u | 0 0 )   \ this process's argv, NUL-separated
+  \ READ, not sized: /proc files report size 0, and READ-WHOLE-FILE,
+  \ which asks FILE-SIZE, read nothing - so the first version of this
+  \ ran every such script with /bin/sh (Iteration 433).
+  PROC-CMDLINE DUP CSTRLEN R/O OPEN-FILE IF DROP 0 0 EXIT THEN
+  >R  CMDLINE-BUF CMDLINE-MAX R@ READ-FILE  R> CLOSE-FILE DROP   ( u ior )
+  IF DROP 0 0 EXIT THEN
+  0 CMDLINE-BUF 2 PICK + C!
+  CMDLINE-BUF SWAP ;
+
+: SCRIPT-BINARY? ( path --- f )   \ a NUL in its first 80 bytes
+  \ ENOEXEC also means a binary for another machine; running that as a
+  \ script would print garbage, so it is reported as bash reports it.
+  READ-WHOLE-FILE                              ( addr u | 0 0 )
+  OVER 0= IF 2DROP 0 EXIT THEN
+  OVER SWAP 80 MIN 0 SCAN NIP 0<>              ( addr f )
+  SWAP FREE DROP ;
+
+: SCRIPT-ARGS! ( first --- )   \ ARGV[1..] into SCRIPT-ARGV from `first` on
+  ARGC @ 1 ?DO  I ARGV@  OVER I 1- + CELLS SCRIPT-ARGV + !  LOOP
+  ARGC @ 1- + CELLS SCRIPT-ARGV +  0 SWAP ! ;
+
+: (EXEC-AS-SCRIPT) ( path --- )
+  \ Run it with THIS shell - the engine and image this process was
+  \ started with, argv[0] and argv[1] in /proc/self/cmdline, which the
+  \ wrapper makes absolute - so the script sees the same shell; and
+  \ failing that with /bin/sh, which is what dash does.
+  DUP SCRIPT-BINARY? IF DROP -8 NOTE-EXEC-ERR EXIT THEN
+  ARGC @ 4 + CELLS ENSURE-BUFFER SCRIPT-ARGV
+  READ-CMDLINE                                 ( path addr u | path 0 0 )
+  OVER IF
+    OVER DUP CSTRLEN 1+ +                      ( path addr u image )
+    2 PICK 2 PICK + OVER > IF                  \ argv[1] is inside it
+      2 PICK SCRIPT-ARGV !                     \ the engine
+      SCRIPT-ARGV CELL+ !                      \ the image
+      2 PICK SCRIPT-ARGV 2 CELLS + !           \ the script
+      3 SCRIPT-ARGS!
+      SCRIPT-ARGV 2 PICK EXECVE DROP           \ the engine; returns only if it failed
+    ELSE DROP THEN
+  THEN 2DROP                                   ( path )
+  BIN-SH SCRIPT-ARGV !
+  DUP SCRIPT-ARGV CELL+ !
+  2 SCRIPT-ARGS!
+  SCRIPT-ARGV BIN-SH EXECVE DROP
+  DROP -8 NOTE-EXEC-ERR ;
+' (EXEC-AS-SCRIPT) IS EXEC-AS-SCRIPT
+
 : DOT-FIND ( name --- path | 0 )
   \ A name with a slash is itself; otherwise the first readable file
   \ along PATH, and then the current directory (bash; dash stops at PATH).

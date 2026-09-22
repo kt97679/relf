@@ -306,6 +306,13 @@ Audit periodically, not only when touching a feature.
   seven, and 419 grew all seven through one word and a `DEFER` - that is
   the shape: a single grow word that names every array, so a new array
   cannot be forgotten in one of several places.
+- **A file's size is not always its length.** `/proc` files report size
+  0, so `READ-WHOLE-FILE`, which asks `FILE-SIZE`, reads nothing from
+  them. The first version of the no-`#!` runner read
+  `/proc/self/cmdline` that way, found nothing, and quietly ran every
+  such script with `/bin/sh` - correct output, wrong shell, and only a
+  test that asked WHICH shell caught it (Iteration 433). Read until the
+  read returns less, or into a buffer of known size.
 - **A rule with a fast path and a slow path changes in both.** The
   expander marks pattern characters per character (`EMIT-EXPANDED-CHAR`)
   and per region (`XE-MARK-PATTERNS`, for whole expansion values). The

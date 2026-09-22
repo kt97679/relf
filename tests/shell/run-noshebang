@@ -1,0 +1,33 @@
+#!/bin/sh
+# tests/shell/run-noshebang - an executable file with no #! line is a
+# shell script (XCU 2.9.1.1): execve fails with ENOEXEC, and the shell
+# runs it - with ITSELF, the engine and image it was started with, and
+# failing that with /bin/sh as dash does. It was "cannot execute", 126
+# (Iteration 433, yash simple-p.tst:186, :201, :223, :237).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+mkdir "$t/bin"
+printf 'echo external\nprintf "[%%s]" "$@"; echo\n' > "$t/bin/ext_cmd"
+# Two commands: the last command of a script is exec'd in place
+# (Iteration 269), and `tr` alone would read its OWN command line.
+cat > "$t/bin/who" <<'WHO'
+tr '\0' ' ' < /proc/$$/cmdline; echo
+WHO
+printf '\177ELF\0\0\0not really' > "$t/bin/fakebin"
+chmod a+x "$t/bin/ext_cmd" "$t/bin/who" "$t/bin/fakebin"
+
+out=$("$THIS_SH" -c 'PATH=$1:$PATH; ext_cmd a " b "' sh "$t/bin" 2>&1)
+assert_output_equals "found along PATH, run as a script" "external
+[a][ b ]" "$out"
+out=$("$THIS_SH" -c '"$1"/ext_cmd x; echo "st=$?"' sh "$t/bin" 2>&1)
+assert_output_equals "named with a slash, and its status" "external
+[x]
+st=0" "$out"
+out=$("$THIS_SH" -c '"$1"/who' sh "$t/bin" 2>&1)
+assert_output_contains "run by this shell, not /bin/sh" "shell.img" "$out"
+out=$("$THIS_SH" -c '"$1"/fakebin; echo "st=$?"' sh "$t/bin" 2>&1)
+assert_output_contains "a binary for another machine is still refused" "st=126" "$out"
+out=$("$THIS_SH" -c 'PATH=$1:$PATH; ext_cmd p | tr a-z A-Z' sh "$t/bin" 2>&1)
+assert_output_equals "... and as a pipeline stage" "EXTERNAL
+[P]" "$out"
+report

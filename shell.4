@@ -3092,22 +3092,33 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
   \ 9 are the script's to use and are left alone.
   UNDO-BASE @ 10 ?DO I CLOSE-FILE DROP LOOP ;
 
+DEFER EXEC-AS-SCRIPT   ( path --- )   \ tree.4: returns only if it could not
+
+: TRY-EXEC ( path --- )   \ exec it; a file with no #! line is a script
+  \ execve fails with ENOEXEC for an executable text file that does not
+  \ start with #!, and the shell must then run it as a shell script
+  \ (XCU 2.9.1.1). This reported "cannot execute" and exited 126, so a
+  \ script written without a #! line - common - could not be run by
+  \ name at all (Iteration 433, yash simple-p.tst:186 and more).
+  DUP ARGV SWAP EXECVE                      ( path ior )
+  DUP -8 = IF DROP EXEC-AS-SCRIPT ELSE NIP NOTE-EXEC-ERR THEN ;
+
 : RUN-CHILD ( --- )  \ resolve ARGV[0] and exec it; exits 126 or 127 if it cannot
   CLOSE-SAVED-FDS
   0 EXEC-ERR !
-  CMD-RESOLVED @ ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
+  CMD-RESOLVED @ ?DUP IF TRY-EXEC THEN
   ARGV @ DUP CSTRLEN HAS-SLASH? IF
-    ARGV ARGV @ EXECVE NOTE-EXEC-ERR
+    ARGV @ TRY-EXEC
   ELSE
     \ No remembered path, or it failed: look again, here. An executable
     \ first; failing that, any file, so that one found but not runnable
     \ is 126 with its reason (bash; a directory is skipped, as bash and
     \ dash both do).
     0 CC# !  0 LC-ANY? !
-    ARGV @ LOCATE-COMMAND ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
+    ARGV @ LOCATE-COMMAND ?DUP IF TRY-EXEC THEN
     EXEC-ERR @ 0= IF
       0 CC# !  -1 LC-ANY? !
-      ARGV @ LOCATE-COMMAND ?DUP IF ARGV SWAP EXECVE NOTE-EXEC-ERR THEN
+      ARGV @ LOCATE-COMMAND ?DUP IF TRY-EXEC THEN
     THEN
   THEN
   \ Reached only when the exec failed, which every caller follows with

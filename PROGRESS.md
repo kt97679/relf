@@ -428,6 +428,7 @@ do not trust the absence of a line below.
 - **430** — the corpora re-run; fields out of order in a braced word: diagnosed, attempted, reverted
 - **431** — the braced-word fix, finished: one splitter, and quotes placed before the blanks they precede
 - **432** — set -a for the shell's own assignments; OPTARG unset; the dot builtin as a special builtin
+- **433** — a file with no #! line is run as a script, by this shell
 
 ### Not tied to an iteration
 
@@ -21673,3 +21674,45 @@ a relative path. They use absolute paths for the files instead.
 Recorded changes, with their causes: `shell:assertions` 773 -> 785 -
 four for set -a, three for OPTARG, five for the dot builtin; the images
 120 bytes larger, for `SET-SHVAR-A` and `DOT-TEXT-EMPTY?`.
+
+## Iteration 433: scripts without a #! line
+
+yash's simple-p.tst:186 and its neighbours failed with "cannot execute":
+their commands are executable text files with no `#!` line, and execve
+refuses those with ENOEXEC. POSIX has the shell run such a file as a
+script (XCU 2.9.1.1), and scripts written that way are common. This
+shell reported the error and exited 126. The log had nothing on it.
+
+`TRY-EXEC` replaces the four exec sites in `RUN-CHILD`; on ENOEXEC it
+hands the path to `EXEC-AS-SCRIPT`, which re-execs THIS shell - argv[0]
+and argv[1] of the process, the engine and the image, which the wrapper
+makes absolute - with the script and its arguments, and falls back to
+`/bin/sh`, dash's choice, if that fails. A file with a NUL in its first
+80 bytes is a binary for another machine rather than a script, and is
+still refused, as bash refuses it.
+
+Two faults on the way, both caught by the new test file:
+
+- **The first version ran every such script with /bin/sh.** It read
+  `/proc/self/cmdline` with `READ-WHOLE-FILE`, which sizes the read by
+  `FILE-SIZE`, and /proc files report size 0. The output was right and
+  the shell was wrong; only an assertion that asked which shell ran the
+  script saw it. `READ-CMDLINE` reads into a 4 KB buffer instead.
+- **A stack slip in the exec**: `SCRIPT-ARGV OVER EXECVE` passed the
+  command line's LENGTH as the program. Caught by tracing the stack by
+  hand before the first build, not by a run.
+
+The test's own probe needed a second command: the last command of a
+script is exec'd in place (Iteration 269), so a one-line `tr ... <
+/proc/$$/cmdline` read the command line of `tr`.
+
+**A third fault, found in the recording.** The first verify recorded the
+images 4.6 KB larger: `CREATE CMDLINE-BUF 4097 ALLOT` put four kilobytes
+of zeros into both saved images, against the memory policy of Iteration
+41. It is a `BUFFER:` now, allocated when first used, as `SCRIPT-ARGV`
+already was. Recorded again: the images are 560 bytes larger than at
+432, and the recording and the check agree.
+
+Recorded changes, with their causes: `shell:assertions` 785 -> 790 and
+`shell:files` 79 -> 80, the new `run-noshebang`; the images 560 bytes
+larger, for `TRY-EXEC` and the script runner.
