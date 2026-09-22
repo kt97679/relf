@@ -445,6 +445,7 @@ do not trust the absence of a line below.
 - **447** — a trap that never ran; a wait that never noticed a signal
 - **448** — 447's other half: a trap belongs between commands, not inside one
 - **449** — busybox 219; $! is the last process of a background pipeline
+- **450** — yash 1724; an unquoted ${#a} is field-split
 
 ### Not tied to an iteration
 
@@ -22223,3 +22224,20 @@ whose last stage is a builtin reading its input.
 
 Recorded changes, with their causes: `shell:assertions` 831 -> 833, the
 two for $!; the images about 220 bytes larger.
+
+## Iteration 450: an unquoted length is a field like any other
+
+yash after 449: **1724 passed, 51 failed** (1723; dash 1650), no crashes
+or hangs.
+
+`${#a}` went out as literal digits, so it was never field-split:
+`a=abcdefghijkl; IFS=1; printf '[%s]' ${#a}` is `[][2]` in dash and was
+`[12]` here (busybox ash-vars/var_wordsplit_ifs2, which passes now). The
+number goes through XE-VALUE, the path a variable's value takes, so it
+splits when unquoted and does not when quoted - as the arithmetic result
+already did. `${#@}` still counts the parameters, as bash does and as
+Iteration 328 decided; dash gives the length of `$*` there.
+
+Recorded changes, with their causes: the 4-byte images 4 bytes larger,
+the 8-byte ones unchanged - N>STR and XE-VALUE in place of
+EMIT-DECIMAL. Nothing else moved.

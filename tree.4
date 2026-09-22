@@ -2058,7 +2058,7 @@ VARIABLE XP-VAL
     \ looked them up as ordinary names and printed 0 (Iteration 328).
     XP-LEN @ 1 = IF
       XP-NAME @ C@ DUP 42 = SWAP 64 = OR IF
-        POS-PARAM-COUNT @ EMIT-DECIMAL EXIT
+        POS-PARAM-COUNT @ N>STR XE-VALUE EXIT
       THEN
     THEN
     \ `${#?}` is the length of `$?`, and so for the other specials: the
@@ -2066,7 +2066,11 @@ VARIABLE XP-VAL
     \ (Iteration 356).
     XP-NAME @ LOOKUP-VAR ?DUP 0= IF XP-NAME @ SPECIAL-PARAM-VALUE THEN
     DUP 0= IF DROP XP-NAME @ XP-LEN @ NOUNSET-CHECK 0 ELSE CSTRLEN THEN
-    EMIT-DECIMAL EXIT
+    \ Through XE-VALUE, like any other expansion result, so an unquoted
+    \ length is field-split: `a=abcdefghijkl; IFS=1; printf "[%s]" ${#a}`
+    \ is [][2] in dash and was [12] here (Iteration 450, busybox
+    \ ash-vars/var_wordsplit_ifs2). The digits went out as literal text.
+    N>STR XE-VALUE EXIT
   THEN
   XP-OP @ EV-PLAIN = IF
     XP-NAME @ LOOKUP-VAR ?DUP IF
