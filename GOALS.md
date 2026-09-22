@@ -40,12 +40,10 @@ ordinary scripts hit, then edge cases and wording.
    `kill` with no arguments, and the job table past 64 jobs - were fixed
    in Iteration 426. Run `tools/crashfuzz.py` after any change to the
    parser, the expander or the job code.
-2. **Line continuation inside an expansion** (found 428): `$a\` newline
-   `d` is `$ad`, and `$\` newline `(` is `$(`, because backslash-newline
-   goes before anything else is read; this shell reads `$a` and then
-   the rest. busybox var_unbackslash1, and about ten of yash's
-   quote-p.tst failures (19, 103, 143, 169, 195, 209, 225, 301, 342,
-   364). A lexer change.
+2. **Line continuation elsewhere in yash's quote-p.tst** (19, 103, 143,
+   169, 195, 209, 225): inside reserved words, operators and function
+   definitions. Inside `$` constructs it is done (429); check which of
+   these remain after the next full yash run before starting.
 3. **`export NAME` with no value is not remembered** (422), so a later
    assignment does not reach children. Needs a pending-export list.
 4. **`${#a}` is not field-split** when IFS holds digits (424). Rare.
@@ -60,6 +58,12 @@ ordinary scripts hit, then edge cases and wording.
 7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423).
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
+8b. **An unidentified differential case failed once** (429): one
+   recording run captured `diff:failed 1`, and nine runs since - four
+   under verify's own conditions - passed. The name was lost because the
+   check run overwrote the log; `tests/verify` now prints `diff: FAIL:
+   <case>` lines, so the next occurrence identifies itself. Do not
+   re-record past it: read the name, then run that case alone.
 9. **The remaining corpus failures**: yash 108 (21 of them alias edge
    cases), busybox 147; `make yash` and `make busybox` list them with
    their severity.

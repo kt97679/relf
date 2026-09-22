@@ -424,6 +424,7 @@ do not trust the absence of a line below.
 - **426** — the fuzzer's two crashes: a swallowed EXIT, and a job table that grew two arrays of five
 - **427** — an arithmetic error ends a non-interactive shell; 257's choice reversed on evidence
 - **428** — a backslash from an expansion escapes in pathname expansion
+- **429** — line continuation inside $ constructs
 
 ### Not tied to an iteration
 
@@ -21519,3 +21520,46 @@ six forms and matches bash, and dash at 4 bytes.
 Recorded changes, with their causes: `parse:verdicts-agree` 210 -> 211,
 the new differential case; the images 200 bytes larger - the backslash
 mark, `BS-RUN-BEFORE` and `FIELD-IS-PATTERN?`.
+
+## Iteration 429: line continuation inside `$` constructs
+
+`$a\` newline `d` is `$ad`, `$\` newline `(` is `$(`, and `${a\` newline
+`d}` is `${ad}`: a backslash-newline goes before anything else is read.
+Here the first two read as `$a` then `d`, and the third was a syntax
+error. The log was searched first: Iteration 70 joined continuations at
+the reading end "so nothing downstream needs to know", and the command
+tree's scanner later took that over - TOKEN-WORD drops them from word
+TEXT - but the encoder, which builds what is actually expanded, still
+met them: its `$` dispatch reads fixed offsets from the `$`, and its name
+loops stop at the backslash.
+
+Rather than teach every scanner about continuations, `DOLLAR-JOIN`, at
+each `$`, moves a continuation that follows it to IN FRONT of it, in the
+source buffer - `$\`+newline+`(` becomes `\`+newline+`$(` - and steps
+past it with SRC-SKIP, which counts the line. Every fixed-offset test
+after it then sees the characters joined, and the continuation is still
+in the text for TOKEN-WORD to drop. One between the parentheses of
+`$((` is moved out the same way. The name loops, and the start of a
+`${...}` operator, simply skip continuations, since the encoding is not
+a copy of the source. The address is taken after SRC-C, which may
+refill standard input and move the buffer.
+
+Checked against dash at both widths, on a file and on interactive
+input: joined where they should be, kept in single quotes and in a
+quoted here-document, joined in an unquoted one, and a syntax error
+after them still reported on the right line. busybox var_unbackslash1
+passes. A differential case matches bash.
+
+**A flake, not identified.** The first recording captured `diff:failed
+1`; its check run passed, so the two disagreed and nothing was
+committed. The failing case could not be named: the differential suite
+runs inside `tests/run_tests.sh`, whose log the check run overwrote.
+Nine runs since have passed - four of them under verify's conditions,
+twenty of the likeliest suspect (`bg-stdin-355`) alone. `tests/verify`
+now copies `FAIL:` lines into its own output, so the next occurrence
+names its case; GOALS.md lists it as open. Recorded again and checked:
+the two agree.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 211 -> 212,
+the new differential case; the images 216 bytes larger, for
+`DOLLAR-JOIN` and its helpers.

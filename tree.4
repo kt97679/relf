@@ -450,16 +450,52 @@ DEFER SCAN-DOLLAR
   DUP 64 = OVER 42 = OR OVER 35 = OR OVER 63 = OR OVER 36 = OR
   OVER 33 = OR SWAP 45 = OR ;
 
+\ ---- line continuation inside $ constructs (Iteration 429) ----
+\ A backslash-newline goes before anything else is read (XCU 2.2.1), so
+\ `$a\` newline `d` is `$ad` and `$\` newline `(` is `$(`. Word TEXT
+\ drops continuations already (TOKEN-WORD); the encoder did not, because
+\ the dispatch below reads fixed offsets from the `$` and the name loops
+\ stop at the backslash - `$a\`+newline+`d` read as `$a` then `d`, and
+\ `${a\`+newline+`d}` was a syntax error. busybox var_unbackslash1,
+\ yash quote-p.tst.
+: SKIP-CONTINUATIONS ( --- )   \ past any backslash-newline at the position
+  BEGIN 0 SRC-C 92 = IF 1 SRC-C 10 = ELSE 0 THEN WHILE 2 SRC-SKIP REPEAT ;
+
+: SRC-CONT-AT? ( k --- f )   \ a backslash-newline just after the character at k
+  DUP 1+ SRC-C 92 = IF 2 + SRC-C 10 = ELSE DROP 0 THEN ;
+
+: SRC-CONT-BEFORE ( k --- )   \ move that continuation in front of the character
+  \ In the source itself, so every fixed-offset test after it sees the
+  \ characters joined, and the continuation is still in the text for
+  \ TOKEN-WORD to drop. The address is taken AFTER SRC-C, which may
+  \ refill standard input and move the buffer.
+  DUP SRC-C                                   ( k c )
+  SWAP SRC-POS @ + SRC-ADDR @ +               ( c addr )
+  92 OVER C!  10 OVER 1+ C!  2 + C! ;
+
+: DOLLAR-JOIN ( --- )   \ at a $: continuations out of the way of the dispatch
+  BEGIN
+    0 SRC-CONT-AT? IF
+      0 SRC-CONT-BEFORE  2 SRC-SKIP  -1     \ $\nl... -> \nl$..., and past it
+    ELSE
+      1 SRC-C 40 = IF                        \ $(\nl( -> $\nl((, then as above
+        1 SRC-CONT-AT? IF 1 SRC-CONT-BEFORE -1 ELSE 0 THEN
+      ELSE 0 THEN
+    THEN
+  0= UNTIL ;
+
 : SCAN-BRACE-NAME ( --- )   \ ${ ... : the name, or a special parameter
+  SKIP-CONTINUATIONS
   0 SRC-C SPECIAL-PARAM? IF
     0 SRC-C DUP 64 = OVER 42 = OR IF WF-AT-PARAM TK-FLAGS @ OR TK-FLAGS ! THEN
     ENC-C, 1 SRC-SKIP EXIT
   THEN
-  BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
+  BEGIN SKIP-CONTINUATIONS 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
     0 SRC-C ENC-C, 1 SRC-SKIP
   REPEAT ;
 
 : SCAN-BRACE-OP ( --- op )   \ the operator after the name, or EV-PLAIN
+  SKIP-CONTINUATIONS
   0 SRC-C 125 = IF EV-PLAIN EXIT THEN
   0 SRC-C 58 = IF                        \ the : forms
     1 SRC-SKIP
@@ -541,6 +577,7 @@ DEFER SCAN-DOLLAR
   0 SRC-C 125 = IF 1 SRC-SKIP ELSE S" unterminated parameter expansion" SYNTAX THEN ;
 
 : SCAN-DOLLAR-IMPL ( --- )           \ at $
+  DOLLAR-JOIN
   WF-EXPAND TK-FLAGS @ OR TK-FLAGS !
   1 SRC-C 40 = IF
     2 SRC-C 40 = IF SCAN-ARITH ELSE SCAN-CMDSUB THEN EXIT
@@ -558,7 +595,7 @@ DEFER SCAN-DOLLAR
   1 SRC-C NAME-CHAR? IF
     1 SRC-SKIP
     ENC-VAR ENC-CODE,  EV-PLAIN ENC-C,
-    BEGIN 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
+    BEGIN SKIP-CONTINUATIONS 0 SRC-C DUP -1 <> SWAP NAME-CHAR? AND WHILE
       0 SRC-C ENC-C,  1 SRC-SKIP
     REPEAT
     0 ENC-C, EXIT

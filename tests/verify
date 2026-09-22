@@ -171,6 +171,12 @@ narrow=$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells, from a 4-byte host): \(.*\) =
 emit image:narrow-host "${narrow:-skipped}"
 emit image:4byte-fixpoint "$(sed -n 's/.*IMAGE-FIXPOINT (4-byte cells[^)]*): \(.*\) ==/\1/p' /tmp/verify-run.log | head -1)"
 emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' /tmp/verify-run.log | head -1)"
+# WHICH case, not only how many (Iteration 429). A recording run once
+# captured `diff:failed 1` that the check run did not reproduce, and the
+# log that named the case was overwritten by the check run itself, so a
+# flaky case could not be told from a real one. The names go into this
+# script's own output, which the caller keeps.
+grep '^FAIL: ' /tmp/verify-run.log | sed 's/^/  diff: /' | head -20
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"
 
