@@ -32,11 +32,13 @@ REF=${3:-dash}
 case "$SH" in /*) ;; *) SH=$(pwd)/$SH ;; esac
 
 # An absolute wrapper: the harness copies the testee, and relfsh finds
-# its engine and image relative to its own location.
+# its engine and image relative to its own location. It passes its own
+# name as RELF_ARGV0, so $0 is what the harness invoked - its `sh`
+# symlink, or $TESTEE - and not relfsh's path (Iteration 436).
 WRAP=$(mktemp)
 cat > "$WRAP" <<WRAPPER
 #!/bin/sh
-exec $SH "\$@"
+RELF_ARGV0=\$0 exec $SH "\$@"
 WRAPPER
 chmod +x "$WRAP"
 

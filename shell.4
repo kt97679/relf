@@ -3708,9 +3708,25 @@ DEFER TP-EXPR-CALL   ( --- f )
   TEST-NARGS 3 = IF 1 TP-ARG-AT TP-BINARY-OP? IF
     0 TP-ARG-AT 1 TP-ARG-AT 2 TP-ARG-AT TEST-BINARY? EXIT
   THEN THEN
-  TEST-NARGS 4 = IF 0 TP-ARG-AT TEST-IS-BANG? IF 2 TP-ARG-AT TP-BINARY-OP? IF
-    1 TP-ARG-AT 2 TP-ARG-AT 3 TP-ARG-AT TEST-BINARY? 0= EXIT
-  THEN THEN THEN
+  \ With three, -a and -o in the middle are binary too: the AND or OR of
+  \ two one-argument tests - `test ! -a ""` is "!" AND "", false (POSIX,
+  \ bash). The grammar read it as ! ( -a "" ) (Iteration 436).
+  TEST-NARGS 3 = IF
+    S" -a" 1 TP-ARG-AT STR0= IF 0 TP-ARG-AT CSTRLEN 0<> 2 TP-ARG-AT CSTRLEN 0<> AND EXIT THEN
+    S" -o" 1 TP-ARG-AT STR0= IF 0 TP-ARG-AT CSTRLEN 0<> 2 TP-ARG-AT CSTRLEN 0<> OR EXIT THEN
+  THEN
+  \ With four and a leading `!`, the three after it are ONE test, negated:
+  \ `! "" -a ""` is ! ( "" -a "" ), true. This applied that only when the
+  \ middle was a comparison, and otherwise left `!` to the grammar, which
+  \ binds it tighter: ( ! "" ) -a "" (Iteration 436, yash test-p.tst:362,
+  \ :363).
+  TEST-NARGS 4 = IF 0 TP-ARG-AT TEST-IS-BANG? IF
+    2 TP-ARG-AT TP-BINARY-OP? IF
+      1 TP-ARG-AT 2 TP-ARG-AT 3 TP-ARG-AT TEST-BINARY? 0= EXIT
+    THEN
+    S" -a" 2 TP-ARG-AT STR0= IF 1 TP-ARG-AT CSTRLEN 0<> 3 TP-ARG-AT CSTRLEN 0<> AND 0= EXIT THEN
+    S" -o" 2 TP-ARG-AT STR0= IF 1 TP-ARG-AT CSTRLEN 0<> 3 TP-ARG-AT CSTRLEN 0<> OR 0= EXIT THEN
+  THEN THEN
   TP-OR
   TP-I @ TEST-NARGS < IF DROP 0 -1 TP-BAD? ! THEN
   TP-BAD? @ IF DROP 0 THEN ;
@@ -4982,6 +4998,17 @@ VARIABLE EO-ESC?
     1+
   REPEAT DROP -1 ;
 
+: OUTPUT-FAILED? ( c-addr u --- f )   \ after a builtin's output: could it be written?
+  \ A zero-length write to fd 1, which flushes first, and fails with
+  \ EBADF if fd 1 is closed: `echo >&-` returned 0 here, where dash and
+  \ POSIX make it fail (Iteration 436, yash redir-p.tst:302). A flush
+  \ that fails for another reason - a full disk - is not seen: the
+  \ engine's buffer drops that error.
+  PAD 0 1 WRITE 0< IF
+    S" shell: " ERR-TYPE ERR-TYPE S" : write error" ERR-TYPE ERR-NL
+    1 LAST-STATUS !  -1
+  ELSE 2DROP 0 THEN ;
+
 : DO-ECHO ( --- )
   0 EO-NONL? !  0 EO-ESC? !  0 ESC-STOP? !  1 ESC-MODE !
   1 EO-I !
@@ -5002,7 +5029,7 @@ VARIABLE EO-ESC?
     EO-I @ ARGC @ < ESC-STOP? @ 0= AND IF 32 EMIT THEN
   REPEAT
   EO-NONL? @ ESC-STOP? @ OR 0= IF CR THEN
-  0 LAST-STATUS ! ;
+  0 LAST-STATUS !  S" echo" OUTPUT-FAILED? DROP ;
 
 \ ---- printf ----
 VARIABLE PF-ARG        \ the next argument
@@ -5159,7 +5186,7 @@ VARIABLE PN-U
     \ again while arguments remain and the last pass used some
     ESC-STOP? @ 0=  PF-ARG @ ARGC @ < AND  PF-ARG @ R> > AND 0=
   UNTIL
-  PF-STATUS @ LAST-STATUS ! ;
+  PF-STATUS @ LAST-STATUS !  S" printf" OUTPUT-FAILED? DROP ;
 
 ' DO-TRUE         S" true"     BUILTIN
 ' DO-FALSE        S" false"    BUILTIN
@@ -5546,6 +5573,7 @@ VARIABLE LOCALS#
 
 
 : FLUSH-OUTPUT ( --- )   PAD 0 1 WRITE DROP ;   \ WRITE flushes first
+
 
 : REDIRECT-SAVE ( --- fd0 .. fdn-1 n base )
   REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  LOOP

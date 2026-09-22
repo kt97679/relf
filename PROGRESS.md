@@ -431,6 +431,7 @@ do not trust the absence of a line below.
 - **433** — a file with no #! line is run as a script, by this shell
 - **434** — skipping a nested word; ${1:=x} is an error; ${#:=x}; an assertion that could not exist
 - **435** — a tilde is not split; a lone - is ignored; $0 is the invocation name
+- **436** — yash 1699/76; a regression from 435 caught; $0 through a wrapper; ${...} in here-documents; test's -a and -o; write errors
 
 ### Not tied to an iteration
 
@@ -21780,3 +21781,45 @@ deliberate divergence; the line was dropped from the bash comparison.
 Recorded changes, with their causes: `parse:verdicts-agree` 215 -> 216,
 the tilde case; `shell:assertions` 793 -> 797, the four in
 run-invocation; the images 96 bytes larger.
+
+## Iteration 436: yash at 1699, and a regression the corpus caught
+
+yash, re-run after 431-435: **1699 passed, 76 failed**, from 1671; no
+crashes or hangs; dash 1650. Three of its new failures were my own:
+
+- **`sh -s -- -` lost its `-`** (test-p.tst:64): 435 skipped a lone `-`
+  after the options unconditionally, and after `--` it is an operand -
+  dash keeps it, and yash's test-p.tst passes every expression that way.
+  Skipped only when the options did not end with `--` now.
+- **$0 through a wrapper** (function-p.tst:124, startup-p.tst:79): 435
+  made $0 the name relfsh was invoked by, but the yash runner reaches
+  relfsh through a wrapper script, and the harness's name for the shell -
+  its `sh` symlink, or $TESTEE - is the WRAPPER's $0. The old constant
+  "sh" had passed function-p.tst:124 by coincidence. The runner's wrapper
+  passes its $0 as RELF_ARGV0, and relfsh keeps a value it is given.
+
+And four more from the list:
+
+- **A `${...}` in an unquoted here-document is shell text**
+  (redir-p.tst:335): the body goes to the expander as one double-quoted
+  word with its quotes escaped, and `$( )` and backquotes were already
+  copied through untouched (332) - `${...}` was not, so `${foo%"oo"}` had
+  a pattern with quote characters in it. It is copied through now, and
+  the escapes a body honours, `\$ \\ \``, are copied as pairs, so an
+  escaped `\${` is never taken for one.
+- **`test` with three and four arguments and -a/-o** (test-p.tst:362,
+  :363): with four and a leading `!`, the three after it are one test,
+  negated - 422 did that only when the middle was a comparison, and the
+  grammar bound `!` tighter; with three, -a and -o in the middle are
+  binary. Twelve forms match bash, which is POSIX here; dash is the
+  outlier on four of them, and yash's expectations agree with bash.
+- **echo and printf fail when their output cannot be written**
+  (redir-p.tst:302): `echo >&-` returned 0. A zero-length write to fd 1
+  after the output - which flushes, and fails with EBADF on a closed
+  descriptor - is checked, status 1 and a message. A flush that fails
+  for another reason, a full disk, is still not seen: the engine's
+  buffer drops that error.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 216 -> 217,
+the here-document case; `shell:assertions` 797 -> 808 - eight for test,
+one for `sh -s -- -`, two for write errors; the images 432 bytes larger.

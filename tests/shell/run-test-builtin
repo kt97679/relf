@@ -79,4 +79,12 @@ for t in "[ '!' = '!' ]:0" "[ '(' = '(' ]:0" "[ ! = x ]:1" "[ ! ]:0" "[ ! ! ]:1"
     got=$("$THIS_SH" -c "$expr; echo \$?" 2>&1)
     assert_output_equals "counted: $expr" "$want" "$got"
 done
+# Three and four arguments, -a and -o (Iteration 436, yash test-p.tst:362,
+# :363): with four and a leading !, the three after it are one test.
+for t in '[ ! "" -a "" ]:0' '[ ! 0 -a "" ]:0' '[ ! -a "" ]:1' '[ "" -a "" ]:1' \
+         '[ 1 -o "" ]:0' '[ ! 1 -o "" ]:1' '[ ! ! -n "" ]:1' '[ ! ! -n 1 ]:0'; do
+    expr=${t%:*}; want=${t##*:}
+    got=$("$THIS_SH" -c "$expr; echo \$?" 2>&1)
+    assert_output_equals "counted: $expr" "$want" "$got"
+done
 report

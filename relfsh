@@ -205,5 +205,7 @@ fi
 # The name this shell was invoked by, for $0 under -s and interactively
 # - the engine sees only its own path. The shell takes it out of the
 # environment at startup (Iteration 435).
-RELF_ARGV0=$0; export RELF_ARGV0
+# A wrapper that execs relfsh may pass ITS name on the same way (the yash
+# runner's does, so that the harness's `sh` is $0): kept, not replaced.
+RELF_ARGV0=${RELF_ARGV0:-$0}; export RELF_ARGV0
 exec "$RELF_BIN" "$SHELL_IMG" "$@"

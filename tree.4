@@ -2339,13 +2339,39 @@ VARIABLE HDX-DEPTH
   REPEAT
   HDX-P @ HDX-END @ < IF 96 HDX-C,  1 HDX-P +! THEN ;
 
+: HDX-BRACE-VERBATIM ( --- )   \ at "${": copy through the matching '}'
+  36 HDX-C, 123 HDX-C,  2 HDX-P +!
+  1 HDX-DEPTH !
+  BEGIN
+    HDX-P @ HDX-END @ < HDX-DEPTH @ 0 > AND
+  WHILE
+    HDX-P @ C@ DUP 123 = IF 1 HDX-DEPTH +! THEN
+    DUP 125 = IF -1 HDX-DEPTH +! THEN
+    HDX-C,  1 HDX-P +!
+  REPEAT ;
+
 : HDX-BODY ( c-addr u --- )
   \ The body is handed to the expander as one double-quoted word, so its
   \ own quotes are escaped - but a command substitution inside it is
   \ shell code, and escaping ITS quotes made `$(echo "x")` print "x"
   \ (Iteration 332). Substitutions are copied through untouched.
+  \ A ${...} is copied through too: its word is shell text, and escaping
+  \ its quotes made `${foo%"oo"}` a pattern with quote characters in it,
+  \ so foooo stayed foooo (Iteration 436, yash redir-p.tst:335). And an
+  \ escape the body honours - \$ \\ \` - is copied as a pair, so an
+  \ escaped `\${` is never taken for one.
   OVER + HDX-END !  HDX-P !
   BEGIN HDX-P @ HDX-END @ < WHILE
+    HDX-P @ C@ 92 = HDX-P @ 1+ HDX-END @ < AND
+    IF HDX-P @ 1+ C@ DUP 36 = OVER 92 = OR SWAP 96 = OR ELSE 0 THEN
+    IF
+      HDX-P @ C@ HDX-C,  HDX-P @ 1+ C@ HDX-C,  2 HDX-P +!
+    ELSE
+    HDX-P @ C@ 36 = HDX-P @ 1+ HDX-END @ < AND
+    IF HDX-P @ 1+ C@ 123 = ELSE 0 THEN
+    IF
+      HDX-BRACE-VERBATIM
+    ELSE
     HDX-P @ C@ 36 = HDX-P @ 1+ HDX-END @ < AND
     IF HDX-P @ 1+ C@ 40 = ELSE 0 THEN
     IF
@@ -2361,7 +2387,7 @@ VARIABLE HDX-DEPTH
         THEN
         1 HDX-P +!
       THEN
-    THEN
+    THEN THEN THEN
   REPEAT ;
 
 DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
@@ -3114,7 +3140,11 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   \ A lone `-` after the options is the first operand, and ignored (XCU
   \ sh): `sh -c - 'echo OK'` runs `echo OK`. It was run as a command
   \ called `-` (Iteration 435, yash startup-p.tst:155, :160).
-  SA-I @ SYS-ARGC < IF
+  \ Not after `--`, which ended the options: there `-` is an operand,
+  \ and `sh -s -- -` has $1 = "-" (dash). Skipping it there too broke
+  \ yash's test-p.tst, which passes its expressions that way, and was
+  \ caught by the next run of that suite (Iteration 436).
+  SA-DONE? @ 0= SA-I @ SYS-ARGC < AND IF
     S" -" SA-I @ SYS-ARG STR0= IF 1 SA-I +! THEN
   THEN ;
 

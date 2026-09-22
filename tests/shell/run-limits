@@ -87,4 +87,10 @@ out=$("$THIS_SH" -c 'kill; echo "after:$?"' 2>/dev/null)
 assert_output_equals "kill with no arguments reports and goes on" "after:2" "$out"
 out=$("$THIS_SH" -c 'i=0; while [ $i -lt 300 ]; do : & i=$((i+1)); done; wait; echo "done $i"' 2>&1)
 assert_output_equals "three hundred background jobs" "done 300" "$out"
+# A builtin whose output cannot be written fails (Iteration 436, yash
+# redir-p.tst:302): echo and printf to a closed stdout return 1.
+out=$("$THIS_SH" -c 'echo foo >&-; echo "st=$?" >&2' 2>&1)
+assert_output_contains "echo to a closed stdout fails" "st=1" "$out"
+out=$("$THIS_SH" -c 'printf "x\n" >&-; echo "st=$?" >&2' 2>&1)
+assert_output_contains "printf to a closed stdout fails" "st=1" "$out"
 report

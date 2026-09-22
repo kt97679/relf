@@ -130,4 +130,8 @@ out=$(echo 'echo "${0##*/}"' | "$THIS_SH" -s 2>&1)
 assert_output_equals "\$0 under -s is the invocation name" "${THIS_SH##*/}" "$out"
 out=$("$THIS_SH" -c 'env | grep -c "^RELF_ARGV0="' 2>&1)
 assert_output_equals "... which nothing the shell starts inherits" "0" "$out"
+# ... but after `--`, a `-` is an operand: `sh -s -- -` has $1 = "-"
+# (dash). 435 skipped it there too, and broke yash's test-p.tst (436).
+out=$(echo 'echo "[$#][$1]"' | "$THIS_SH" -s -- - 2>&1)
+assert_output_equals "sh -s -- - keeps the -" "[1][-]" "$out"
 report
