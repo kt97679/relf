@@ -2509,18 +2509,35 @@ CREATE OA-QUOTED 4 C, 34 C, 36 C, 64 C, 34 C,                      \ "$@"
 CREATE OA-BRACE  4 C, 36 C, 123 C, 64 C, 125 C,                    \ ${@}
 CREATE OA-QBRACE 6 C, 34 C, 36 C, 123 C, 64 C, 125 C, 34 C,        \ "${@}"
 
-: OA-MATCH? ( a u counted --- f )   COUNT STR= ;
+
+VARIABLE OA-S
+VARIABLE OA-N
+: OA-STRIP ( a u counted --- a' u' f )   \ that form, stripped from the front
+  COUNT OA-N !  OA-S !                       ( a u )
+  DUP OA-N @ < IF 0 EXIT THEN
+  OVER OA-N @  OA-S @ OA-N @  STR= 0= IF 0 EXIT THEN
+  SWAP OA-N @ + SWAP OA-N @ -  -1 ;
 
 : WORD-IS-ONLY-AT? ( --- f )
   \ An unsatisfied "$@" produces no field - but only when the word holds
   \ nothing else. `"$@"""` still produces one empty field, because the
   \ quoted empty string beside it is a word in its own right (Iteration
   \ 333). The word's own source text answers it.
+  \ Nothing else includes another "$@": `"$@""$@"` with no parameters
+  \ is no field at all, as in dash; the whole word was compared with ONE
+  \ of the four forms, and made an empty field (Iteration 441, yash
+  \ param-p.tst:570). So the forms are stripped from the front until
+  \ nothing is left - or something else is.
   EW-ARGV EW-I @ CELLS + @ DUP CSTRLEN      ( a u )
-  2DUP OA-BARE   OA-MATCH? IF 2DROP -1 EXIT THEN
-  2DUP OA-QUOTED OA-MATCH? IF 2DROP -1 EXIT THEN
-  2DUP OA-BRACE  OA-MATCH? IF 2DROP -1 EXIT THEN
-       OA-QBRACE OA-MATCH? ;
+  DUP 0= IF 2DROP 0 EXIT THEN
+  BEGIN DUP WHILE
+    OA-QBRACE OA-STRIP IF ELSE
+    OA-BRACE  OA-STRIP IF ELSE
+    OA-QUOTED OA-STRIP IF ELSE
+    OA-BARE   OA-STRIP IF ELSE
+      2DROP 0 EXIT
+    THEN THEN THEN THEN
+  REPEAT 2DROP -1 ;
 
 DEFER NOSPLIT-ON    ( --- )   \ tree.4's: expand this word without splitting
 DEFER NOSPLIT-OFF   ( --- )
@@ -3318,13 +3335,31 @@ VARIABLE CD-FROM-DOT?           \ ... from an empty entry, which means "."
   REPEAT
   DROP R> DROP 0 ;
 
+VARIABLE CD-OPTS-DONE?   \ `--` was seen: what follows is the directory
+
 : DO-CD ( --- )
   0 CD-PHYS? !  0 CD-PRINT? !
   1 CD-I !
+  \ Every letter of every option word, the last -L or -P winning: only
+  \ the first letter was read, and only -P ever set anything, so
+  \ `cd -P -L dir` and `cd -PL dir` were physical where dash is logical
+  \ (Iteration 441, yash cd-p.tst:354). `--` ends the options.
+  0 CD-OPTS-DONE? !
   BEGIN
-    CD-I @ ARGC @ < IF CD-I @ ARGV@ C@ 45 = CD-I @ ARGV@ 1+ C@ 0<> AND ELSE 0 THEN
+    CD-OPTS-DONE? @ 0=  CD-I @ ARGC @ < AND IF
+      CD-I @ ARGV@ C@ 45 = CD-I @ ARGV@ 1+ C@ 0<> AND
+    ELSE 0 THEN
   WHILE
-    CD-I @ ARGV@ 1+ C@ 80 = IF -1 CD-PHYS? ! THEN   \ -P
+    S" --" CD-I @ ARGV@ STR0= IF
+      -1 CD-OPTS-DONE? !                        \ past it, and no more options
+    ELSE
+      CD-I @ ARGV@ 1+
+      BEGIN DUP C@ WHILE
+        DUP C@ 80 = IF -1 CD-PHYS? ! THEN     \ -P
+        DUP C@ 76 = IF 0 CD-PHYS? ! THEN      \ -L
+        1+
+      REPEAT DROP
+    THEN
     CD-I @ 1+ CD-I !
   REPEAT
   CD-I @ ARGC @ < IF

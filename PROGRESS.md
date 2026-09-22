@@ -436,6 +436,7 @@ do not trust the absence of a line below.
 - **438** — busybox 216; \" in double-quoted backquotes; command exec keeps its redirections
 - **439** — set -v echoes each line once; THIS_SH made absolute for every test
 - **440** — a captured word takes its regions with it; an operator needs an operand
+- **441** — cd's options, every letter; "$@""$@" with no parameters is no field
 
 ### Not tied to an iteration
 
@@ -21943,3 +21944,31 @@ own check refused the image.
 Recorded changes, with their causes: `parse:verdicts-agree` 218 -> 219,
 the capture case; `shell:assertions` 813 -> 819, the six for missing
 operands; the images 176 bytes larger.
+
+## Iteration 441: cd's options, and a word of nothing but "$@"
+
+- **cd reads every letter of every option word**, the last -L or -P
+  winning (yash cd-p.tst:354). It read only the first letter, and only
+  -P ever set anything, so -L never undid it: `cd -P -L dir` and `cd -PL
+  dir` were physical where dash is logical. `--` ends the options now,
+  so `cd -- -x` changes to a directory called -x. Nine forms match dash.
+  The first test of it used a symlink one level deep, where link/.. is
+  the same directory both ways and the modes cannot be told apart - dash
+  agreed with the shell, which is what showed the TEST was wrong; the
+  link is two levels deep now, as in yash's case.
+- **`"$@""$@"` with no positional parameters is no field** (param-p.tst
+  :570), as in dash and bash; it made one empty field.
+  `WORD-IS-ONLY-AT?` compared the word's text with exactly one of the
+  four spellings of "$@"; it strips spellings from the front now until
+  nothing is left - or something else is, as in `"$@"""`, which is still
+  one empty field. The comparison it used, `OA-MATCH?`, had no caller
+  left, the dead-word check said so, and it is gone.
+
+The first attempt at the second change did not apply at all: the patch
+script embedded the comment's `"$@"""` in a Python string and failed to
+parse. Anchoring the edit on the word's first and last lines, rather
+than on its text, is how quote-heavy code gets changed now.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 219 -> 220,
+the "$@" case; `shell:assertions` 819 -> 823, the four for cd; the
+images 192 bytes larger.

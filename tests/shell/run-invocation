@@ -134,4 +134,15 @@ assert_output_equals "... which nothing the shell starts inherits" "0" "$out"
 # (dash). 435 skipped it there too, and broke yash's test-p.tst (436).
 out=$(echo 'echo "[$#][$1]"' | "$THIS_SH" -s -- - 2>&1)
 assert_output_equals "sh -s -- - keeps the -" "[1][-]" "$out"
+# cd's options: every letter of every word, the last -L or -P winning;
+# `--` ends them (Iteration 441, yash cd-p.tst:354).
+# The link is two levels deep, so link/.. differs: physically real, logically
+# the top - a one-level link cannot tell the two modes apart.
+d441=$(mktemp -d); mkdir -p "$d441/real/sub" "$d441/real/dev" "$d441/dev"; ln -s real/sub "$d441/link"
+for pair in '-P -L -PL:/dev' '-LP:/real/dev' '-PL:/dev' '-L -P:/real/dev'; do
+    opts=${pair%:*}; want=${pair#*:}
+    got=$("$THIS_SH" -c "cd \"\$1\" && cd $opts link/../dev && echo \"\${PWD#\$1}\"" sh "$(cd "$d441" && pwd -P)" 2>&1)
+    assert_output_equals "cd $opts" "$want" "$got"
+done
+rm -rf "$d441"
 report
