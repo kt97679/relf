@@ -30,4 +30,11 @@ assert_output_contains "a binary for another machine is still refused" "st=126" 
 out=$("$THIS_SH" -c 'PATH=$1:$PATH; ext_cmd p | tr a-z A-Z' sh "$t/bin" 2>&1)
 assert_output_equals "... and as a pipeline stage" "EXTERNAL
 [P]" "$out"
+# Any assignment to PATH, even of its own value, forgets the remembered
+# command paths (XCU 2.9.1.1; Iteration 437, yash simple-p.tst:237).
+mkdir "$t/p1" "$t/p2"
+printf 'echo second\n' > "$t/p2/which"; chmod a+x "$t/p2/which"
+out=$("$THIS_SH" -c 'PATH=$1/p1:$1/p2:$PATH; which; printf "echo first\n" > "$1/p1/which"; chmod a+x "$1/p1/which"; PATH="$PATH"; which' sh "$t" 2>&1)
+assert_output_equals "PATH=\$PATH forgets where commands were" "second
+first" "$out"
 report

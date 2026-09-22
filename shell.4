@@ -638,6 +638,8 @@ VARIABLE INTERACTIVE?   \ standard input is a terminal: prompts, no exit on erro
 \ Deferred because SHELL-EXIT is defined further down.
 DEFER SPECIAL-ERROR   ( status --- )
 
+VARIABLE PATH-ASSIGNED?   \ PATH was assigned: forget remembered commands
+
 : SET-SHVAR ( name-addr value-addr --- )  \ both NUL-terminated C
                                             \ strings. Updates an
                                             \ existing slot if the
@@ -664,6 +666,12 @@ DEFER SPECIAL-ERROR   ( status --- )
                                             \ by testing directly: the
                                             \ name and value slots came
                                             \ out swapped).
+  \ Any assignment to PATH, even of the value it has, forgets the
+  \ remembered command paths (XCU 2.9.1.1, like `hash -r`); CC-CHECK sees
+  \ this flag. It compared values only, so `PATH="$PATH"` after a new
+  \ command appeared earlier on the path still ran the old one
+  \ (Iteration 437, yash simple-p.tst:237). One compare per assignment.
+  OVER DUP C@ 80 = IF S" PATH" ROT STR0= IF -1 PATH-ASSIGNED? ! THEN ELSE DROP THEN
   SHADOW{ SV-NAME SV-VALUE | SV-IDX }
   \ A name that does not fit is refused before an entry is made: the
   \ copy below used to fail silently, and a new entry kept whatever
@@ -3029,6 +3037,7 @@ VARIABLE CMD-RESOLVED      \ the path found for this command, or 0
   ENVNAMBUF GETENV DUP IF DUP CSTRLEN ELSE 0 THEN ;
 
 : CC-CHECK ( --- )   \ forget the entries if PATH changed
+  PATH-ASSIGNED? @ IF 0 PATH-ASSIGNED? !  0 CC# ! THEN   \ or was assigned at all
   CC-CURRENT-PATH 2DUP CC-PATHVAL CC-PATHLEN @ COMPARE IF
     DUP 1+ ENSURE-BUFFER CC-PATHVAL
     DUP CC-PATHLEN !  CC-PATHVAL SWAP MOVE  0 CC# !

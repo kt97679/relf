@@ -432,6 +432,7 @@ do not trust the absence of a line below.
 - **434** — skipping a nested word; ${1:=x} is an error; ${#:=x}; an assertion that could not exist
 - **435** — a tilde is not split; a lone - is ignored; $0 is the invocation name
 - **436** — yash 1699/76; a regression from 435 caught; $0 through a wrapper; ${...} in here-documents; test's -a and -o; write errors
+- **437** — any assignment to PATH forgets where commands were
 
 ### Not tied to an iteration
 
@@ -21823,3 +21824,27 @@ And four more from the list:
 Recorded changes, with their causes: `parse:verdicts-agree` 216 -> 217,
 the here-document case; `shell:assertions` 797 -> 808 - eight for test,
 one for `sh -s -- -`, two for write errors; the images 432 bytes larger.
+
+## Iteration 437: PATH="$PATH" forgets the remembered commands
+
+The command cache (Iteration 269) forgot its entries when PATH's VALUE
+changed. POSIX has ANY assignment to PATH forget them, like `hash -r`
+(XCU 2.9.1.1), and the difference is visible: a script that finds a
+command, then puts a new one of the same name earlier on the path and
+reassigns PATH - even to the value it has - ran the old one. yash
+simple-p.tst:237.
+
+`SET-SHVAR` - every assignment passes through it - sets a flag when the
+name is PATH, with one byte compare before the string compare, and
+`CC-CHECK` clears the cache when it finds the flag. The cache lives far
+below `SET-SHVAR` in the file, so the flag is how the two meet without
+a forward reference. An assertion in `run-noshebang` replays the case.
+
+The first version of the edit put the new lines in the middle of
+SET-SHVAR's header comment - a two-backslash test in the Python that
+placed it - which Forth accepts and a reader would not; moved below the
+comment before the build that was tested.
+
+Recorded changes, with their causes: `shell:assertions` 808 -> 809, the
+PATH assertion; the images 96 bytes larger. The first check run was cut
+off by the end of a session; a second one agreed with the recording.
