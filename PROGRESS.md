@@ -434,6 +434,7 @@ do not trust the absence of a line below.
 - **436** — yash 1699/76; a regression from 435 caught; $0 through a wrapper; ${...} in here-documents; test's -a and -o; write errors
 - **437** — any assignment to PATH forgets where commands were
 - **438** — busybox 216; \" in double-quoted backquotes; command exec keeps its redirections
+- **439** — set -v echoes each line once; THIS_SH made absolute for every test
 
 ### Not tied to an iteration
 
@@ -21879,3 +21880,35 @@ at 430's; dash 1650), no crashes or hangs - 436 to 438 together.
 Recorded changes, with their causes: `parse:verdicts-agree` 217 -> 218,
 the backquote case; `shell:assertions` 809 -> 811, the two for `command
 exec`; the images 168 bytes larger.
+
+## Iteration 439: set -v, once per line
+
+`set -v` echoes each line of input as it is read (yash option-p.tst:366,
+:384). Two faults, one per kind of source:
+
+- **Standard input** was echoed a buffer at a time: `VERBOSE-ECHO` wrote
+  STDIN-TEXT from its start, and while a command that spans lines is
+  parsed that buffer holds all of them, so each line of a three-line
+  `if` came out up to three times. It writes only the line just read,
+  from where `REFILL-STDIN` noted that it began.
+- **A script file**, read whole, was echoed a command at a time, from
+  the command's start to the next newline - so a `for` or an `if` showed
+  only its first line. `VERBOSE-REST` prints, once a command is parsed
+  and before it runs, the further lines the parse consumed; a
+  VERBOSE-UPTO mark keeps a line with two commands on it from printing
+  twice.
+
+Matches dash with `-v` on a file and on standard input, and with `set -v`
+turned on part-way through either.
+
+**And the test trap that caught three new tests in a row**, each passing
+alone and failing under `run-all`: the tests ran `"$THIS_SH"` after
+changing directory, and `run-all` passes the default, relative THIS_SH.
+432 and 433 worked around it in the tests themselves; 439's first run
+hit it again inside `run-options`, which had changed directory further
+up. `lib.sh` now makes THIS_SH absolute when it is sourced, so a test
+can change directory as it likes; a probe that does exactly that was
+seen to pass with a relative THIS_SH.
+
+Recorded changes, with their causes: `shell:assertions` 811 -> 813, the
+two for set -v; the images 200 bytes larger.

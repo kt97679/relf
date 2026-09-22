@@ -116,9 +116,15 @@ CREATE AL-ACTIVE  MAX-ALIAS-NEST 2* CELLS ALLOT   \ (alias, end offset) pairs
 VARIABLE AL-ACTIVE#
 LINE-MAX BUFFER: STDIN-TEXT
 
+VARIABLE VERBOSE-FROM   \ where the line just read begins in STDIN-TEXT
+
 : VERBOSE-ECHO ( --- )   \ set -v: the line as it was read (Iteration 305)
+  \ Only the line just read. This wrote the whole buffer, which holds
+  \ every line of a command still being parsed, so each line of an `if`
+  \ spanning three was echoed up to three times (Iteration 439, yash
+  \ option-p.tst:366, :384).
   OPT-VERBOSE @ 0= IF EXIT THEN
-  STDIN-TEXT SRC-LEN @ ERR-TYPE ;
+  STDIN-TEXT VERBOSE-FROM @ +  SRC-LEN @ VERBOSE-FROM @ -  ERR-TYPE ;
 
 : EDIT-LINE ( --- f )   \ one edited line, into the source buffer
   0 TERM-RAW DROP
@@ -134,6 +140,7 @@ LINE-MAX BUFFER: STDIN-TEXT
 
 : REFILL-STDIN ( --- f )   \ one more line of standard input, or false
   SRC-EOF? @ IF 0 EXIT THEN
+  SRC-LEN @ VERBOSE-FROM !                   \ the new line starts here
   \ At a terminal the line is edited here (edit.4, Iteration 303): the
   \ arrow keys, the usual control characters, and a history the up and
   \ down arrows walk. Elsewhere the terminal driver's cooked mode reads
@@ -2968,6 +2975,27 @@ VARIABLE SRC-DEPTH     \ nested sources: eval's and $(...)'s
 \ interactive one drops the rest of the line; eval's text returns 2.
 VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
 
+VARIABLE VERBOSE-UPTO   \ the source up to here has been echoed by set -v
+
+: VERBOSE-THROUGH ( from --- )   \ echo from `from` to the end of its line
+  DUP                                                  ( start end )
+  BEGIN
+    DUP SRC-LEN @ < IF DUP SRC-ADDR @ + C@ 10 <> ELSE 0 THEN
+  WHILE 1+ REPEAT
+  DUP 1+ VERBOSE-UPTO !
+  OVER - SWAP SRC-ADDR @ + SWAP                        ( addr len )
+  ERR-TYPE ERR-NL ;
+
+: VERBOSE-REST ( --- )   \ after a parse: the further lines it consumed
+  OPT-VERBOSE @ 0= IF EXIT THEN
+  NESTED? @ IF EXIT THEN
+  SRC-STDIN? @ IF EXIT THEN
+  BEGIN
+    VERBOSE-UPTO @ SRC-POS @ <  VERBOSE-UPTO @ SRC-LEN @ < AND
+  WHILE
+    VERBOSE-UPTO @ VERBOSE-THROUGH
+  REPEAT ;
+
 : VERBOSE-LINE ( --- )
   \ `set -v` writes each line of input to standard error as the shell
   \ reads it (XCU `set`). The option was accepted and reported in `$-`
@@ -2978,15 +3006,18 @@ VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
   \ crossed, the command before it has not run yet, so `set -v` on the
   \ first line would miss the second. Here the line before has already
   \ executed, which is dash's order.
+  \ ... and a command that spans lines has the lines after its first
+  \ printed by VERBOSE-REST once it is parsed, before it runs: only the
+  \ first line of a `for` or an `if` in a script file was echoed
+  \ (Iteration 439). VERBOSE-UPTO says how far has been printed, so a
+  \ line holding two commands is printed once. Standard input is echoed
+  \ as it is read, by REFILL-STDIN.
   OPT-VERBOSE @ 0= IF EXIT THEN
   NESTED? @ IF EXIT THEN
+  SRC-STDIN? @ IF EXIT THEN
   SRC-POS @ SRC-LEN @ < 0= IF EXIT THEN
-  SRC-POS @ DUP                                        ( start end )
-  BEGIN
-    DUP SRC-LEN @ < IF DUP SRC-ADDR @ + C@ 10 <> ELSE 0 THEN
-  WHILE 1+ REPEAT
-  OVER - SWAP SRC-ADDR @ + SWAP                        ( addr len )
-  ERR-TYPE ERR-NL ;
+  SRC-POS @ VERBOSE-UPTO @ < IF EXIT THEN              \ printed already
+  SRC-POS @ VERBOSE-THROUGH ;
 
 : TREE-RUN ( --- )
   BEGIN
@@ -3014,6 +3045,7 @@ VARIABLE EVAL-ACTIVE?   \ inside `eval`: a syntax error is the shell's
       SKIP-INPUT 0
     ELSE
       ?DUP 0= IF EXIT THEN
+      VERBOSE-REST
       TREE-BUF EXEC-BASE !
       \ the source's last command, in a process that ends with it
       EXIT-AFTER? @ SRC-DEPTH @ 0= AND SRC-STDIN? @ 0= AND IF

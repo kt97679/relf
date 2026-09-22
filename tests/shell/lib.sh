@@ -51,6 +51,16 @@ unset _u
 
 
 : "${THIS_SH:=../../relfsh}"
+# ... made absolute, once, here. A relative THIS_SH stops resolving the
+# moment a test changes directory, and three new tests in a row passed
+# alone - run with an absolute path - and failed under run-all, which
+# passes the default relative one (Iterations 432, 433, 439). A path
+# with no slash is a command name and is left for PATH to find.
+case $THIS_SH in
+    /*) ;;
+    */*) THIS_SH=$(cd "$(dirname "$THIS_SH")" && pwd)/$(basename "$THIS_SH") ;;
+esac
+export THIS_SH
 
 TESTS_RUN=0
 TESTS_FAILED=0

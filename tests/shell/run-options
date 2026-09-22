@@ -67,4 +67,18 @@ run 'hash -r; hash; hash sh; hash; hash nosuch; echo $?'
 } > "$t/out" 2>&1
 sed "s|$(command -v sh)|SH-PATH|" "$t/out" > "$t/out2"
 assert_output_equals "set, \$-, ., exec, type and hash" "$(cat "$here/options.expected")" "$(cat "$t/out2")"
+cd "$here"   # the cases above ran in $t; THIS_SH may be relative to here
+# set -v echoes each line once, as it is read - a command that spans
+# lines too, in a file and on standard input (Iteration 439, yash
+# option-p.tst:366, :384).
+printf 'echo 1\nif true; then\necho 2\nfi\necho a; echo b\n' > "$t/verb.sh"
+want='echo 1
+if true; then
+echo 2
+fi
+echo a; echo b'
+out=$("$THIS_SH" -v "$t/verb.sh" 2>&1 >/dev/null)
+assert_output_equals "set -v on a file: each line once" "$want" "$out"
+out=$("$THIS_SH" -v < "$t/verb.sh" 2>&1 >/dev/null)
+assert_output_equals "set -v on standard input: each line once" "$want" "$out"
 report
