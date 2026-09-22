@@ -81,4 +81,22 @@ out=$("$THIS_SH" -v "$t/verb.sh" 2>&1 >/dev/null)
 assert_output_equals "set -v on a file: each line once" "$want" "$out"
 out=$("$THIS_SH" -v < "$t/verb.sh" 2>&1 >/dev/null)
 assert_output_equals "set -v on standard input: each line once" "$want" "$out"
+# Aliases (Iteration 444, yash alias-p.tst:173, :510): a reserved word in
+# its place is never one, and an alias that vanishes after | && || leaves
+# the command still owed - on the next line if need be.
+cat > "$t/al.sh" <<'AL'
+alias if=: then=: else=: fi=: do=: done=:
+if true; then echo then; else echo else; fi
+for a in A; do echo $a; done
+alias a=
+echo foo | a
+tr a-z A-Z
+true && a
+echo after-and
+AL
+out=$(echo x | "$THIS_SH" "$t/al.sh" 2>&1)
+assert_output_equals "reserved words are not aliases; a vanished alias leaves the command owed" "then
+A
+FOO
+after-and" "$out"
 report

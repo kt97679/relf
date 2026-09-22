@@ -194,12 +194,18 @@ done
 
 # ... and the suite survives one being set, which is the point.
 if [ -x ./relfsh ] && [ -f /tmp/relf-preload-probe.so ]; then
-    a=$(sh tests/diff/run-all 2>&1 | tail -1)
-    b=$(LD_PRELOAD=/tmp/relf-preload-probe.so sh tests/diff/run-all 2>&1 | tail -1)
+    # Whole outputs kept, so a difference can NAME its case: Iteration
+    # 444 saw "clean 1 failed, preloaded 0 failed" - the intermittent
+    # differential case of Iteration 429, caught a second time - and only
+    # the summary lines had been kept, so it could not be told which.
+    a_all=$(sh tests/diff/run-all 2>&1); a=$(printf '%s\n' "$a_all" | tail -1)
+    b_all=$(LD_PRELOAD=/tmp/relf-preload-probe.so sh tests/diff/run-all 2>&1); b=$(printf '%s\n' "$b_all" | tail -1)
     if [ "$a" = "$b" ]; then
         ok "the differential suite ignores a hostile LD_PRELOAD"
     else
         bad "LD_PRELOAD" "clean '$a', preloaded '$b'"
+        printf '%s\n' "$a_all" | grep '^FAIL: ' | sed 's/^/    clean run: /'
+        printf '%s\n' "$b_all" | grep '^FAIL: ' | sed 's/^/    preloaded run: /'
     fi
 fi
 

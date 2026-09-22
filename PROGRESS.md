@@ -439,6 +439,7 @@ do not trust the absence of a line below.
 - **441** — cd's options, every letter; "$@""$@" with no parameters is no field
 - **442** — a trim's pattern is a context of its own: tildes, and substitutions that match
 - **443** — command's options, alone or combined; -p with -v
+- **444** — reserved words are not aliases; a vanished alias leaves the command owed
 
 ### Not tied to an iteration
 
@@ -22029,3 +22030,39 @@ which directory of the default PATH a program is found in.
 Recorded changes, with their causes: `shell:assertions` 823 -> 826, the
 three for command; the images 280 bytes larger. The first check run was
 cut off by the end of a session; a second one agreed with the recording.
+
+## Iteration 444: two from the alias cases
+
+The largest group left in yash's list is 21 alias cases, read first to
+see whether they share a cause. They do not - chained trailing blanks,
+recursion, line continuations in alias names, aliases for operators -
+and two were both plausible and local:
+
+- **A reserved word in its place is never an alias** (alias-p.tst:510;
+  XCU 2.3.1). `TRY-ALIAS` checked for a plain unquoted word and never
+  for a reserved one, so with `alias if=: then=: fi=:` an `if` became
+  `: true; : echo; :` and printed nothing. It asks RESERVED-WORD? first.
+- **An alias that vanishes where a command is owed** (:173): with `alias
+  a=`, `echo foo | a` and then `cat` on the next line is `echo foo | cat`
+  in dash - the command after `|` is still owed, and newlines may come
+  before it. Here the pipeline ended with an empty command. The parser
+  now parses again after `|`, `&&` and `||` when what it found was only
+  a vanished alias; at the start of a line a vanished alias is still a
+  line with no command, as Iteration 382 made it.
+
+The rest of the alias cases stay listed; `alias sudo='sudo '` - one
+level of trailing-blank chaining, the common idiom - already works.
+
+**The intermittent differential case, a second time.** The first
+recording for this iteration captured `portability:problems 1`:
+tests/portability's LD_PRELOAD check, which runs the differential suite
+twice and compares the summaries, saw "clean 1 failed, preloaded 0
+failed". It kept only the summary lines, so the case could not be named
+- the same loss as in 429. It keeps the whole outputs now and prints the
+FAIL lines on a difference. Ten runs since, three with a CPU hog beside
+them, passed; a suspicion that the check's broken-image step disturbed
+the tree was wrong - it works in a scratch copy. Recorded again: the
+recording and the check agree, with no problem and no failure.
+
+Recorded changes, with their causes: `shell:assertions` 826 -> 827, the
+alias assertion; the images 136 bytes larger.

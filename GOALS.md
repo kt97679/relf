@@ -61,12 +61,13 @@ ordinary scripts hit, then edge cases and wording.
 7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423).
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
-8b. **An unidentified differential case failed once** (429): one
-   recording run captured `diff:failed 1`, and nine runs since - four
-   under verify's own conditions - passed. The name was lost because the
-   check run overwrote the log; `tests/verify` now prints `diff: FAIL:
-   <case>` lines, so the next occurrence identifies itself. Do not
-   re-record past it: read the name, then run that case alone.
+8b. **An unidentified differential case fails now and then** (429, and
+   again in 444): once as `diff:failed 1` in a recording, once inside
+   tests/portability's LD_PRELOAD check ("clean 1 failed, preloaded 0
+   failed"). Ten more runs since, three of them under CPU load, passed.
+   Both places print `FAIL:` lines now (verify since 429, portability
+   since 444), so the next occurrence names its case. Do not re-record
+   past it: read the name, then run that case alone, many times.
 9. **The remaining corpus failures**: yash 108 (21 of them alias edge
    cases), busybox 147; `make yash` and `make busybox` list them with
    their severity.

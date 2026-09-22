@@ -1089,6 +1089,8 @@ DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
   TK-START @ SRC-POS !  0 TK-VALID? ! ;
 
 VARIABLE ALIAS-VANISHED?   \ an alias expanded to nothing, or to blanks
+VARIABLE EMPTY-VIA-ALIAS?  \ the command just parsed was such an alias, and nothing else
+VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
 
 : AL-BLANK? ( c-addr u --- f )   \ empty, or spaces and tabs only
   DUP 0= IF 2DROP -1 EXIT THEN
@@ -1103,6 +1105,11 @@ VARIABLE ALIAS-VANISHED?   \ an alias expanded to nothing, or to blanks
   AL-EXPIRE
   TK-END @ TK-START @ - DUP 2 + ENSURE-BUFFER AL-NAME-BUF
   TK-TEXT AL-NAME-BUF SWAP MOVE  0 AL-NAME-BUF ROT + C!
+  \ A reserved word in its place is never an alias (XCU 2.3.1): with
+  \ `alias if=: then=: fi=:`, `if true; then echo x; fi` still runs the
+  \ if - here it became `: true; : echo x; :`, and printed nothing
+  \ (Iteration 444, yash alias-p.tst:510).
+  AL-NAME-BUF RESERVED-WORD? IF 0 EXIT THEN
   AL-NAME-BUF FIND-ALIAS
   DUP 0< IF DROP 0 EXIT THEN
   DUP AL-ACTIVE? IF DROP 0 EXIT THEN
@@ -1168,10 +1175,23 @@ DEFER PARSE-COMMAND
   K-NEWLINE KIND? K-EOF KIND? OR 0= IF S" unexpected token" SYNTAX THEN
   VEC> LIST-NODE ;
 
+: PARSE-COMMAND-OWED ( --- node )   \ after | && ||, where a command is owed
+  \ An alias that vanishes there leaves the command still owed, and
+  \ newlines may come before it, as after the operator itself: with
+  \ `alias a=`, `echo foo | a` and then `cat` on the next line is `echo
+  \ foo | cat` in dash. Here the pipeline ended with an empty command, and
+  \ cat ran on its own (Iteration 444, yash alias-p.tst:173). At the start
+  \ of a line a vanished alias is still a line with no command (382).
+  BEGIN
+    0 EMPTY-VIA-ALIAS? !  PARSE-COMMAND
+    EMPTY-VIA-ALIAS? @
+  WHILE DROP LINEBREAK REPEAT ;
+
 : PARSE-PIPELINE ( --- node )
+  PIPE-FIRST-OWED? @ >R  0 PIPE-FIRST-OWED? !
   0 S" !" KW? IF NEXT DROP -1 THEN
-  VEC-MARK PARSE-COMMAND >VEC
-  BEGIN OP-PIPE OP? WHILE NEXT LINEBREAK PARSE-COMMAND >VEC REPEAT
+  VEC-MARK R> IF PARSE-COMMAND-OWED ELSE PARSE-COMMAND THEN >VEC
+  BEGIN OP-PIPE OP? WHILE NEXT LINEBREAK PARSE-COMMAND-OWED >VEC REPEAT
   VEC>                                      ( bang vec )
   T-PIPE 2 NODE  TUCK 1 F!  TUCK 0 F! ;
 
@@ -1179,7 +1199,7 @@ DEFER PARSE-COMMAND
   VEC-MARK PARSE-PIPELINE >VEC
   BEGIN OP-AND OP? OP-OR OP? OR WHILE
     OP-AND OP? IF 1 ELSE 2 THEN >VEC
-    NEXT LINEBREAK PARSE-PIPELINE >VEC
+    NEXT LINEBREAK -1 PIPE-FIRST-OWED? ! PARSE-PIPELINE >VEC
   REPEAT
   VEC> T-ANDOR 1 NODE TUCK 0 F! ;
 ' PARSE-AND-OR-IMPL IS PARSE-AND-OR
@@ -1269,6 +1289,7 @@ VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
   \ what ALIAS-VANISHED? is for (Iteration 382).
   DUP VEC-TOP @ = IF
     ALIAS-VANISHED? @ 0= IF S" expected a command" SYNTAX THEN
+    -1 EMPTY-VIA-ALIAS? !
   THEN
   \ field 1: has redirections - decided here, so running the command
   \ skips looking for them (Iteration 266)
