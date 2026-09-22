@@ -2702,6 +2702,8 @@ CREATE DEV-NULL-NAME CSTR," /dev/null"
 
 VARIABLE PS-VEC
 VARIABLE PS-N
+VARIABLE STAGES-FINAL?   \ this process has nothing to do after the pipeline
+VARIABLE PS-FINAL?       \ ... as this RUN-STAGES found it
 VARIABLE PS-PREV
 VARIABLE PS-RD
 VARIABLE PS-WR
@@ -2712,9 +2714,15 @@ VARIABLE PS-WR
 \ process.
 : RUN-STAGES ( vec --- )
   DUP PS-VEC !  XV# PS-N !  -1 PS-PREV !
+  STAGES-FINAL? @ PS-FINAL? !  0 STAGES-FINAL? !   \ not for a nested pipeline
   PS-N @ 1+ GROW-ARGS
   PS-N @ 0 ?DO
     I PS-N @ 1- < IF PIPE DROP PS-WR ! PS-RD ! ELSE -1 PS-WR ! -1 PS-RD ! THEN
+    PS-FINAL? @ I PS-N @ 1- = AND IF          \ the last stage, here
+      PS-PREV @ 0< 0= IF PS-PREV @ 0 DUP2 DROP PS-PREV @ CLOSE-FD THEN
+      PS-VEC @ I XV@ EXEC-FINAL-CALL
+      LAST-STATUS @ SHELL-EXIT
+    THEN
     FORK DUP 0= IF
       DROP CHILD-RESET-TRAPS
       PS-PREV @ 0< 0= IF PS-PREV @ 0 DUP2 DROP PS-PREV @ CLOSE-FD THEN
@@ -3017,8 +3025,23 @@ CREATE NO-TEXT CSTR," "
   DROP EXEC-COMPOUND ;
 ' EXEC-IMPL IS EXEC
 
+: ONE-PIPELINE ( node --- pipe | 0 )   \ the node IS one pipeline, or holds one
+  DUP X@ T-PIPE = IF EXIT THEN
+  DUP X@ T-ANDOR = IF 0 XF@ DUP XV# 1 = IF 0 XV@ EXIT THEN DROP 0 EXIT THEN
+  DROP 0 ;
+
 : EXEC-FINAL ( node --- )   \ the last thing this process does
-  DUP ONE-SIMPLE? WANT-EXEC? !  EXEC  0 WANT-EXEC? ! ;
+  \ ... so the last stage of a pipeline runs HERE rather than in a child
+  \ of this process: a background pipeline's $! is then the LAST
+  \ process, as POSIX and dash have it, and `kill $!` reaches the stage
+  \ that matters. It was the wrapper subshell, whose traps are the
+  \ default ones, so the signal killed it and left the stages running
+  \ (Iteration 449, yash param-p.tst:452). Only when the pipeline is the
+  \ whole of what is left: in `a | b && c | d`, `a | b` is not.
+  DUP ONE-PIPELINE ?DUP IF
+    DUP 0 XF@ 0= SWAP 1 XF@ XV# 1 > AND STAGES-FINAL? !
+  ELSE 0 STAGES-FINAL? ! THEN
+  DUP ONE-SIMPLE? WANT-EXEC? !  EXEC  0 WANT-EXEC? !  0 STAGES-FINAL? ! ;
 ' EXEC-FINAL IS EXEC-FINAL-CALL
 
 \ ---- running a source ----

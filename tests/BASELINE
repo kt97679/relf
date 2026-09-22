@@ -37,14 +37,14 @@ rebuild:kernel-shell.img reproduces
 rebuild:kernel32-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 831
+shell:assertions 833
 shell:dead-words 0
 shell:files 80
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
-size:i386 167828
-size:image-i386 104776
-size:image-x86_64 112296
-size:x86_64 151424
+size:i386 168036
+size:image-i386 104984
+size:image-x86_64 112520
+size:x86_64 151648
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

@@ -170,4 +170,11 @@ out=$("$THIS_SH" -c 'trap "echo Trap" USR1; (kill -s USR1 $$; echo b:$?; exit 3)
 assert_output_equals "the child finishes before its trap runs" "b:0
 Trap
 d:3" "$out"
+# $! is the LAST process of a background pipeline (Iteration 449, yash
+# param-p.tst:452): a signal sent to it reaches the stage that traps it.
+out=$("$THIS_SH" -c '{ sleep 0.4; } | { trap "echo TRAPPED; exit 0" USR1; sleep 0.4; } & sleep 0.15; kill -s USR1 $!; wait $!; echo "st=$?"' 2>&1)
+assert_output_equals "a signal to \$! reaches the last stage" "TRAPPED
+st=0" "$out"
+out=$("$THIS_SH" -c '(exit 3) | (exit 4) & wait $!; echo "last=$?"' 2>&1)
+assert_output_equals "... and its status is the pipeline's" "last=4" "$out"
 report

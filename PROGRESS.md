@@ -444,6 +444,7 @@ do not trust the absence of a line below.
 - **446** — busybox 218; break and continue in a loop's condition
 - **447** — a trap that never ran; a wait that never noticed a signal
 - **448** — 447's other half: a trap belongs between commands, not inside one
+- **449** — busybox 219; $! is the last process of a background pipeline
 
 ### Not tied to an iteration
 
@@ -22194,3 +22195,31 @@ corpus was the only thing that noticed, which is what a corpus is for.
 
 Recorded changes, with their causes: `shell:assertions` 830 -> 831, the
 trap-ordering assertion; the images 120 bytes larger.
+
+## Iteration 449: $! is the last process of a background pipeline
+
+busybox after 448: **219 passed, 138 failed** (217 after 447, 218 after
+446; dash 207), no crashes or hangs. Three failures that dash passes
+are left: signal1's ordering race, `a=b exec` exporting (bash's
+behaviour, deliberate) and `${#a}` with digits in IFS.
+
+`$!` named the wrong process for a background PIPELINE (yash
+param-p.tst:452). `cmd1 | cmd2 &` forks one wrapper subshell, which
+forks the stages, and `$!` was the wrapper - whose traps are the
+default ones, so `kill -s USR1 $!` killed it outright and left the
+stages running, where dash reaches the trap in the last stage.
+
+A process with nothing to do after a pipeline now runs the pipeline's
+LAST STAGE in itself rather than in a child: the wrapper's pid IS the
+last stage, so `$!` names it, a signal reaches it, and `wait $!` gets
+its status. The same idea as running the last command of a script in
+place (Iteration 269). Only when the pipeline is the whole of what is
+left - in `a | b && c | d`, `a | b` is not - and a nested RUN-STAGES
+does not inherit it.
+
+Fourteen pipeline shapes match dash, among them foreground pipelines,
+statuses from either end, `&&` chains, a pipeline in a loop and one
+whose last stage is a builtin reading its input.
+
+Recorded changes, with their causes: `shell:assertions` 831 -> 833, the
+two for $!; the images about 220 bytes larger.
