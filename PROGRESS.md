@@ -441,6 +441,7 @@ do not trust the absence of a line below.
 - **443** — command's options, alone or combined; -p with -v
 - **444** — reserved words are not aliases; a vanished alias leaves the command owed
 - **445** — yash 1723; a continuation before a length `#`; a nested brace's quoting left behind
+- **446** — busybox 218; break and continue in a loop's condition
 
 ### Not tied to an iteration
 
@@ -22101,3 +22102,32 @@ The log entry for this iteration failed to write twice before this one:
 its text holds runs of apostrophes, which ended the Python string that
 carried it. Written from a file instead - the same lesson as Iteration
 441's patch, now for prose as well as code.
+
+## Iteration 446: break and continue in a loop's condition
+
+busybox on 445's build: **218 passed, 139 failed** (216; dash 207), no
+crashes or hangs - the two from 445.
+
+**A break or continue in a loop's CONDITION belongs to that loop**:
+break leaves it and the script goes on, continue evaluates the
+condition again. Only the body consulted `LOOP-AFTER-BODY`, so the
+request was left standing, escaped the loop, and ended a non-interactive
+shell as a break outside one - `while break; do :; done; echo after`
+printed nothing where dash prints after. The condition is evaluated in
+a small loop of its own now, so a continue in it retries; seven loop
+shapes match dash.
+
+**And a loop checks for traps once round.** A `continue` in the body
+returns through the list executor without reaching the check that
+follows a pipeline, so a tight loop never saw a signal.
+
+**Still open, and not this**: busybox ash-signals/continue_and_trap1
+sends INT from a background subshell to the shell spinning in that
+loop, and the trap runs rarely or not at all - even in shapes that have
+no continue at all, and before 446 as well. The signal looks not to be
+reaching the shell rather than the loop failing to look: the next step
+is what the shell does with SIGINT's disposition while it has a
+background job, not the loop.
+
+Recorded changes, with their causes: the images about 70 bytes larger,
+for the condition's own loop and the trap checks; nothing else moved.

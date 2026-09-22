@@ -2777,12 +2777,34 @@ VARIABLE PS-WR
     LOOP-BREAK? @ IF 0 LOOP-BREAK? ! -1 EXIT THEN
   THEN 0 ;
 
+VARIABLE LP-STOP?   \ a break (or a return) in the loop's condition
+
 : EXEC-LOOP ( node until? --- )
   LOOP-DEPTH @ 1+ LOOP-DEPTH !
   0 >R                                      \ the loop's status
   BEGIN
-    OVER 1 XF@ EXEC-IGNORING
-    STOP? IF 0 ELSE LAST-STATUS @ 0= OVER XOR THEN   ( node until? run? )
+    \ A break or continue in the CONDITION belongs to this loop: break
+    \ leaves it and the script goes on, continue evaluates the condition
+    \ again. Only the body consulted LOOP-AFTER-BODY, so the request was
+    \ left standing, escaped the loop, and ended a non-interactive shell
+    \ as a break outside one: `while break; do :; done; echo after`
+    \ printed nothing where dash prints after (Iteration 446, busybox
+    \ ash-signals/continue_and_trap1).
+    \ Once round the loop is a place a trap may run, wherever the body
+    \ left off: a `continue` returns through the list executor without
+    \ reaching the check after a pipeline, so `while true; do continue;
+    \ done` never saw a signal and no trap ever ran (Iteration 446,
+    \ busybox ash-signals/continue_and_trap1).
+    CHECK-TRAPS
+    0 LP-STOP? !
+    BEGIN
+      OVER 1 XF@ EXEC-IGNORING
+      CHECK-TRAPS
+      LOOP-CONTROL-PENDING? @ 0= IF -1 ELSE LOOP-AFTER-BODY DUP LP-STOP? ! THEN
+    UNTIL
+    LP-STOP? @ IF 0 ELSE
+      STOP? IF 0 ELSE LAST-STATUS @ 0= OVER XOR THEN
+    THEN                                    ( node until? run? )
   WHILE
     OVER 2 XF@ EXEC
     R> DROP LAST-STATUS @ >R

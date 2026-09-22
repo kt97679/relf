@@ -68,6 +68,12 @@ ordinary scripts hit, then edge cases and wording.
    Both places print `FAIL:` lines now (verify since 429, portability
    since 444), so the next occurrence names its case. Do not re-record
    past it: read the name, then run that case alone, many times.
+8c. **A trap for INT rarely runs while the shell spins in a loop**
+   (446): busybox ash-signals/continue_and_trap1. Not the loop - it
+   checks for traps every time round since 446, and shapes with no
+   `continue` in them fail too. Look at SIGINT's disposition while the
+   shell has a background job, and at whether the signal arrives at all.
+
 9. **The remaining corpus failures**: yash 108 (21 of them alias edge
    cases), busybox 147; `make yash` and `make busybox` list them with
    their severity.
