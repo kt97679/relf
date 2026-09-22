@@ -307,6 +307,8 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
 \ Each command substitution in a word is recorded once - the ones nested
 \ inside another's text belong to it - as the source range of its text,
 \ which TOKEN-WORD copies into the tree.
+VARIABLE SCAN-IN-DQ?   \ the scanner is inside double quotes
+64 BUFFER: ENC-SUB-DQ     \ each substitution: was it inside double quotes?
 64 BUFFER: ENC-SUB-POS    \ (start, end) source positions, a pair each
 256 BUFFER: ENC-SUB-NODES   \ the parsed subtree of each substitution, or 0
 : ENC-SUB-NODE! ( node --- )   \ for the one ENC-SUB-BEGIN just recorded
@@ -322,6 +324,8 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
   SRC-POS @ ENC-SUB-POS ENC-SUBS @ 2* CELLS + !
   ENC-SUBS @ 1+ CELLS ENSURE-BUFFER ENC-SUB-NODES
   0 ENC-SUB-NODES ENC-SUBS @ CELLS + !       \ a backquote has no subtree
+  ENC-SUBS @ 1+ CELLS ENSURE-BUFFER ENC-SUB-DQ
+  SCAN-IN-DQ? @ ENC-SUB-DQ ENC-SUBS @ CELLS + !
   1 ENC-SUBS +! ;
 : ENC-SUB-END ( --- )     \ after unmuting: past the closing ) or `
   ENC-MUTE @ IF EXIT THEN
@@ -350,7 +354,6 @@ VARIABLE ENC-SUB-BASE     \ ... and its first substitution slot: the words
   2 SRC-SKIP ;
 
 \ ---- scanning a word ----
-VARIABLE SCAN-IN-DQ?   \ the scanner is inside double quotes
 VARIABLE TILDE-AT-START?   \ the scanner is at a ${} word's first character
 DEFER SCAN-TILDE-CALL   \ SCAN-TILDE-PREFIX, defined after SCAN-BRACE
 VARIABLE BRACE-VALUE-WORD?   \ ... and this ${} word is a value, not a pattern
@@ -896,6 +899,7 @@ VARIABLE TW-I
 VARIABLE CST-I
 VARIABLE CST-END
 VARIABLE CST-BQ?   \ the text is a backquoted substitution's
+VARIABLE CST-DQ?   \ ... and it stood inside double quotes
 VARIABLE CST-DST
 : COPY-SRC-TEXT ( from to --- soff )   \ into the tree, NUL-terminated
   2DUP SWAP - 1+ TREE-ALLOT >R
@@ -918,8 +922,13 @@ VARIABLE CST-DST
           \ test: outside it, every other backslash pushed a second
           \ character and left the first on the stack, so a backquote
           \ containing any other escape overflowed it (Iteration 348).
+          \ And before `"` when the backquotes stand inside double quotes,
+          \ whose own escape that is: "`echo \"1\"`" runs echo "1" and
+          \ prints 1, in dash and yash; it printed "1" (Iteration 438,
+          \ yash cmdsub-p.tst:79).
           CST-I @ 1+ SRC-ADDR @ + C@                ( c next )
-          DUP 96 = OVER 92 = OR SWAP 36 = OR IF     ( c )
+          DUP 34 = CST-DQ? @ AND >R
+          DUP 96 = OVER 92 = OR SWAP 36 = OR R> OR IF     ( c )
             DROP  1 CST-I +!
             CST-I @ SRC-ADDR @ + C@
           THEN
@@ -948,10 +957,11 @@ VARIABLE TW-SUB-NODES
   VEC-MARK
   ENC-SUBS @ ENC-SUB-BASE @ ?DO
     ENC-SUB-NODES I CELLS + @ 0= CST-BQ? !   \ no subtree: a backquote
+    ENC-SUB-DQ I CELLS + @ CST-DQ? !
     ENC-SUB-POS I 2* CELLS + @
     ENC-SUB-POS I 2* 1+ CELLS + @
     COPY-SRC-TEXT >VEC
-    0 CST-BQ? !
+    0 CST-BQ? !  0 CST-DQ? !
   LOOP
   VEC> TW-SUBS-VEC !
   VEC-MARK

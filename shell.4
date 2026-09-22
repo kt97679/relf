@@ -4159,12 +4159,23 @@ CREATE DEFAULT-PATH                          \ what `command -p` looks in
 1024 BUFFER: CMD-SAVED-PATH
 VARIABLE NO-FUNCTIONS?   \ `command` looks past the function table
 
+VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-REDIRECT)
+
 : COMMAND-RUN ( --- )
   \ `command NAME args` runs it as if it were not a function. It did
   \ nothing at all until Iteration 306: `command echo hi` printed
   \ nothing and returned 0.
   DROP-ARGV0-CALL
   ARGC @ 0= IF 0 LAST-STATUS ! EXIT THEN
+  \ `command exec` with nothing to run keeps its redirections, as `exec`
+  \ does - that is exec's function, not one of the special properties
+  \ `command` removes. Dispatched, exec ran as a builtin of its own:
+  \ it applied the redirections a SECOND time, its END-REDIRECT kept that
+  \ copy and cleared the flag, and this command's END-REDIRECT then
+  \ restored the originals - `command exec 3<<END` left fd 3 closed
+  \ (Iteration 438, yash command-p.tst:42). The flag is for the
+  \ END-REDIRECT that applied them, this command's own.
+  ARGC @ 1 = IF S" exec" ARGV @ STR0= IF -1 KEEP-REDIRECTS? !  0 LAST-STATUS ! EXIT THEN THEN
   -1 NO-FUNCTIONS? !  VIA-COMMAND? @ >R  -1 VIA-COMMAND? !
   DISPATCH-CALL 0= IF RUN-EXTERNAL-CALL THEN
   R> VIA-COMMAND? !  0 NO-FUNCTIONS? ! ;
@@ -5202,7 +5213,6 @@ VARIABLE PN-U
 ' DO-ECHO         S" echo"     BUILTIN
 ' DO-PRINTF       S" printf"   BUILTIN
 
-VARIABLE KEEP-REDIRECTS?   \ exec with no command: its redirections stay (END-REDIRECT)
 
 \ ---- exec and hash (Iteration 270) ----
 : DROP-ARGV0 ( --- )   \ the command's words without its name

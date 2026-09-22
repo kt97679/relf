@@ -433,6 +433,7 @@ do not trust the absence of a line below.
 - **435** — a tilde is not split; a lone - is ignored; $0 is the invocation name
 - **436** — yash 1699/76; a regression from 435 caught; $0 through a wrapper; ${...} in here-documents; test's -a and -o; write errors
 - **437** — any assignment to PATH forgets where commands were
+- **438** — busybox 216; \" in double-quoted backquotes; command exec keeps its redirections
 
 ### Not tied to an iteration
 
@@ -21848,3 +21849,33 @@ comment before the build that was tested.
 Recorded changes, with their causes: `shell:assertions` 808 -> 809, the
 PATH assertion; the images 96 bytes larger. The first check run was cut
 off by the end of a session; a second one agreed with the recording.
+
+## Iteration 438: two from yash's list, and busybox at 216
+
+busybox, re-run: 216 passed, 141 failed, no crashes or hangs (214; dash
+207).
+
+- **`\"` inside double-quoted backquotes** (cmdsub-p.tst:79):
+  `"\`echo \"1\"\`"` runs `echo "1"` and prints 1, in dash and yash;
+  here it printed "1". A backquote's text loses the backslash before
+  `` ` `` `\` and `$` (Iteration 300), and inside double quotes before
+  `"` as well - that escape belongs to the enclosing quotes. Whether a
+  backquote stood inside double quotes is known while scanning and not
+  when its text is copied, so `ENC-SUB-BEGIN` records it for each
+  substitution, beside the subtree it already records.
+- **`command exec` keeps its redirections** (command-p.tst:42):
+  `command exec 3<<END` left fd 3 closed. `command` dispatched `exec`
+  as a builtin of its own, which applied the redirections a SECOND time;
+  exec's END-REDIRECT kept that copy and cleared the keep flag, and the
+  END-REDIRECT of `command` itself - the one that applied them first -
+  then restored the originals. With nothing to run, `command` now sets
+  the flag itself for its own END-REDIRECT and does not dispatch; `command
+  exec CMD` still replaces the shell.
+
+
+yash on this build: **1710 passed, 65 failed** (1699 at 435's build, 1671
+at 430's; dash 1650), no crashes or hangs - 436 to 438 together.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 217 -> 218,
+the backquote case; `shell:assertions` 809 -> 811, the two for `command
+exec`; the images 168 bytes larger.

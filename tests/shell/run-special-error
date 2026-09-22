@@ -133,4 +133,14 @@ assert_output_equals "... that ends the shell" "no" "$reached"
 out=$("$THIS_SH" -c 'set -- a; echo ${1:=x}; echo after' 2>&1)
 assert_output_equals "... but not when nothing would be assigned" "a
 after" "$out"
+# `command exec` with nothing to run keeps its redirections, as exec does
+# (Iteration 438, yash command-p.tst:42); with a command it still replaces
+# the shell.
+out=$("$THIS_SH" -c 'command exec 3<<END
+here
+END
+cat <&3' 2>&1)
+assert_output_equals "command exec 3<<END keeps fd 3" "here" "$out"
+out=$("$THIS_SH" -c 'command exec echo replaced; echo not-reached' 2>&1)
+assert_output_equals "command exec CMD still replaces the shell" "replaced" "$out"
 report
