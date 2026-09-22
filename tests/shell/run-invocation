@@ -117,4 +117,17 @@ out=$("$THIS_SH" -c 'PS4='"'"'[$?] '"'"'; set -x; false; echo after' 2>&1)
 assert_output_equals "... and \$? as of the command before" "[0] false
 [1] echo after
 after" "$out"
+# A lone `-` after the options is ignored (XCU sh), and $0 is the name
+# the shell was invoked by, passed by relfsh as RELF_ARGV0 and not
+# inherited (Iteration 435, yash startup-p.tst:79, :155, :160).
+out=$("$THIS_SH" -c - 'echo OK' 2>&1)
+assert_output_equals "sh -c - CMD ignores the -" "OK" "$out"
+printf 'echo "[$1]"\n' > "${TMPDIR:-/tmp}/inv435.$$"
+out=$("$THIS_SH" - "${TMPDIR:-/tmp}/inv435.$$" arg 2>&1)
+assert_output_equals "sh - FILE ARG ignores the -" "[arg]" "$out"
+rm -f "${TMPDIR:-/tmp}/inv435.$$"
+out=$(echo 'echo "${0##*/}"' | "$THIS_SH" -s 2>&1)
+assert_output_equals "\$0 under -s is the invocation name" "${THIS_SH##*/}" "$out"
+out=$("$THIS_SH" -c 'env | grep -c "^RELF_ARGV0="' 2>&1)
+assert_output_equals "... which nothing the shell starts inherits" "0" "$out"
 report

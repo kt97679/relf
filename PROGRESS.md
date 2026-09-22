@@ -430,6 +430,7 @@ do not trust the absence of a line below.
 - **432** — set -a for the shell's own assignments; OPTARG unset; the dot builtin as a special builtin
 - **433** — a file with no #! line is run as a script, by this shell
 - **434** — skipping a nested word; ${1:=x} is an error; ${#:=x}; an assertion that could not exist
+- **435** — a tilde is not split; a lone - is ignored; $0 is the invocation name
 
 ### Not tied to an iteration
 
@@ -21751,3 +21752,31 @@ file first, then clean.
 Recorded changes, with their causes: `parse:verdicts-agree` 213 -> 215,
 the two new differential cases; `shell:assertions` 790 -> 793, the
 three for `${1:=x}`; the images 136 bytes larger.
+
+## Iteration 435: a tilde, a hyphen, and $0
+
+- **A tilde's result is as if quoted** (XCU 2.6.1): not field-split and
+  not a pattern. `XE-TILDE` emitted the home directory through the
+  splitting path, so `HOME='/path/with  space'` made `~` two words - a
+  home directory with blanks in it broke every `cd ~/x`. It is literal
+  text now. Nine forms match dash. yash tilde-p.tst:218.
+- **A lone `-` after the options is ignored** (XCU sh): `sh -c - 'echo
+  OK'` ran a command called `-`, and `sh - script` read the script from
+  standard input. yash startup-p.tst:155, :160.
+- **$0 is the name the shell was invoked by**, under `-s`, interactively
+  and with `-c` and no name operand, as dash's is; it was the constant
+  "sh". Only the wrapper knows that name - the engine sees its own path -
+  so relfsh passes its $0 as RELF_ARGV0, and the shell takes it out of
+  the environment at startup so that nothing it runs inherits it. yash
+  startup-p.tst:79.
+
+One test expected the old $0: an assertion in `run-cstr` checked
+`${0##*/}` against "sh" - under the label "PS2 is still read by name",
+which it never checked. It expects the invocation name now, and says
+what it checks. One line of the new tilde case differed from bash on
+`x=~` in an ordinary argument, which GOALS.md already lists as a
+deliberate divergence; the line was dropped from the bash comparison.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 215 -> 216,
+the tilde case; `shell:assertions` 793 -> 797, the four in
+run-invocation; the images 96 bytes larger.

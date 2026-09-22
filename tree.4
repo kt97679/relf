@@ -2084,16 +2084,19 @@ VARIABLE XP-VAL
     ROT DROP 126 EMIT-TOK-CHAR EMIT-RUN EXIT
   THEN
   ROT DROP                                   ( addr u )
+  \ The result is as if quoted (XCU 2.6.1): not split, not a pattern.
+  \ It was emitted through the splitting path, so HOME='/p/with  space'
+  \ made `~` two words (Iteration 435, yash tilde-p.tst:218).
   DUP IF
     2DUP PASSWD-HOME ?DUP IF
-      >R 2DROP R> TYPE0-TO-TOK-SPLIT
+      >R 2DROP R> DUP CSTRLEN EMIT-RUN
     ELSE
       126 EMIT-TOK-CHAR EMIT-RUN             \ no such user: as written
     THEN
   ELSE
     2DROP
     S" HOME" ENVNAMBUF SWAP MOVE  0 ENVNAMBUF 4 + C!
-    ENVNAMBUF LOOKUP-VAR ?DUP IF TYPE0-TO-TOK-SPLIT ELSE 126 EMIT-TOK-CHAR THEN
+    ENVNAMBUF LOOKUP-VAR ?DUP IF DUP CSTRLEN EMIT-RUN ELSE 126 EMIT-TOK-CHAR THEN
   THEN ;
 
 : XE-SQ-REGION ( --- )   \ '...': literal bytes until the run's end
@@ -3107,7 +3110,13 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
       THEN
     THEN
     1 SA-I +!
-  REPEAT ;
+  REPEAT
+  \ A lone `-` after the options is the first operand, and ignored (XCU
+  \ sh): `sh -c - 'echo OK'` runs `echo OK`. It was run as a command
+  \ called `-` (Iteration 435, yash startup-p.tst:155, :160).
+  SA-I @ SYS-ARGC < IF
+    S" -" SA-I @ SYS-ARG STR0= IF 1 SA-I +! THEN
+  THEN ;
 
 : INTERACTIVE-SETUP ( --- )
   \ An interactive shell survives INT, QUIT and TERM (XCU 2.11). They
@@ -3164,6 +3173,7 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   RUN-STDIN ;
 
 32 BUFFER: PPID-BUF
+CREATE ARGV0-NM  CSTR," RELF_ARGV0"
 CREATE STARTUP-IFS-NM  CSTR," IFS"
 CREATE IFS-DEFAULT  32 C, 9 C, 10 C, 0 C,   \ space, tab, newline
 CREATE OPTIND-NM    CSTR," OPTIND"
@@ -3172,6 +3182,15 @@ CREATE OPTIND-ONE   CSTR," 1"
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
   DEFAULT-SHELL-NAME SHELL-NAME !            \ $0 until a script names itself
+  \ ... or the name the shell was invoked by, which only the wrapper
+  \ knows: relfsh passes its own $0 as RELF_ARGV0, and it is taken out of
+  \ the environment here so that nothing this shell starts inherits it.
+  \ `sh -s` and an interactive shell had $0 = "sh" (Iteration 435, yash
+  \ startup-p.tst:79; dash gives its own argv[0]).
+  ARGV0-NM GETENV ?DUP IF
+    DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP >R SWAP MOVE R> SHELL-NAME !
+    ARGV0-NM UNSETENV DROP
+  THEN
   GETPID SHELL-PID !
   \ $PPID, which POSIX sets at startup and this shell never did
   GETPPID 0 <# #S #> PPID-BUF SWAP DUP >R MOVE  0 PPID-BUF R> + C!

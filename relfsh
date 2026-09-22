@@ -202,4 +202,8 @@ fi
 # The prebuilt image boots straight into MAIN, so there is no bootstrap
 # to feed in and stdin belongs entirely to the shell - no `cat` chaining
 # needed for the interactive/piped case any more.
+# The name this shell was invoked by, for $0 under -s and interactively
+# - the engine sees only its own path. The shell takes it out of the
+# environment at startup (Iteration 435).
+RELF_ARGV0=$0; export RELF_ARGV0
 exec "$RELF_BIN" "$SHELL_IMG" "$@"
