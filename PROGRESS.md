@@ -426,6 +426,7 @@ do not trust the absence of a line below.
 - **428** — a backslash from an expansion escapes in pathname expansion
 - **429** — line continuation inside $ constructs
 - **430** — the corpora re-run; fields out of order in a braced word: diagnosed, attempted, reverted
+- **431** — the braced-word fix, finished: one splitter, and quotes placed before the blanks they precede
 
 ### Not tied to an iteration
 
@@ -21601,3 +21602,40 @@ the region route; make that branch leave the split pending), the
 register lists the attempt, and the test case waits in `attic/pending/`.
 The build's own check refused the first version of the attempt - a word
 used before its definition - which is what Iteration 410 added it for.
+
+## Iteration 431: the braced-word fix, finished
+
+Started from 430's plan: keep the region route for a braced word's
+literal text, and make the region splitter leave a split PENDING after a
+quoted empty. The plan was half right. The pending change went in, and
+the two cases still failed - so, rather than guess again, each shape was
+run on its own against bash and dash. Exactly two failed, both a quoted
+empty followed by trailing whitespace: `${x:+'' }` and `""${x:+ }`.
+
+**The cause was one level down, in `XQ-BETWEEN?`.** A quote is recorded
+at the output offset of the character that follows it, so a quoted
+empty just BEFORE a blank has the blank's own offset - and the checks
+for quoting AFTER the whitespace ("trailing whitespace is dropped
+unless quoting came after it", and "quoting inside a run of whitespace
+breaks it") include that offset, the check being inclusive at both
+ends. A quote before the whitespace read as a quote after it. Both
+checks start one past the whitespace's first blank now; the check for
+quoting BEFORE it stays inclusive, which is right for the same reason.
+
+All three changes together - literal text as a region, the pending
+split, the offset - match dash on the twelve forms of 430 and thirteen
+empty-field shapes, among them 361's `"$e"$b` and 364's `${x:+b '' c}`.
+`quoted-empty-355` and `quoted-field-run-364` pass, and the case that
+waited in `attic/pending/` is a differential case now.
+
+**The bash-scripting-guide corpus showed a difference that was not
+one.** special_chars-49 backgrounds a loop and races it against the next
+- the guide says the output varies - and the runner's check, two
+agreeing dash runs, let it through by luck. On a mismatch, and always
+for an example that backgrounds a job, the runner now asks dash six more
+times; an example dash disagrees with itself on is reported as racy and
+counted neither way, so the total no longer moves between runs.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 212 -> 213,
+the case moved in from `attic/pending/`; the images 72 bytes larger -
+the region route, its DEFER, and the two offsets.

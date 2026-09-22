@@ -61,6 +61,8 @@ def examples(path):
         yield text[k:m-1]
         i = m
 
+BACKGROUND = re.compile(r'(?<![&|])&(?!&)\s*($|#|;|\n)', re.M)   # a job put in the background
+
 def run(shell, script, d):
     env = {'PATH': os.environ['PATH'], 'HOME': d, 'LC_ALL': 'C', 'USER': 'someone'}
     try:
@@ -80,6 +82,7 @@ def main():
         sys.exit('no guide at %s: see the header of this file' % ABSG)
     counts = dict(found=0, language=0, safe=0, posix=0, dash_ok=0, agree=0)
     differ = []
+    racy = []
     for name in sorted(os.listdir(pages)):
         chapter = name.split('.')[0]
         for n, ex in enumerate(examples(os.path.join(pages, name))):
@@ -104,6 +107,25 @@ def main():
                 continue
             counts['dash_ok'] += 1
             mine = run([RELFSH], script, d)
+            # An example that puts a job in the background is checked for
+            # races every time, not only on a mismatch - otherwise it is
+            # counted when it happens to agree and not when it does not,
+            # and the total moves by one from run to run.
+            if mine != a or BACKGROUND.search(body):
+                # Two agreeing dash runs do not make an example
+                # deterministic: special_chars-49 backgrounds a loop and
+                # races it against the next one - the guide says so - and
+                # passed the check above by luck, then showed up as a
+                # difference two runs in three (Iteration 431). On a
+                # mismatch, ask dash more often; if it disagrees with
+                # ITSELF, the example is racy and counts neither way.
+                seen = {a} | {run(['dash'], script, d) for _ in range(6)}
+                if len(seen) > 1:
+                    counts['dash_ok'] -= 1
+                    counts['racy'] = counts.get('racy', 0) + 1
+                    racy.append('%s-%d' % (chapter, n))
+                    shutil.rmtree(d, ignore_errors=True)
+                    continue
             if mine == a:
                 counts['agree'] += 1
             else:
@@ -118,5 +140,7 @@ def main():
           % (counts['dash_ok'], counts['agree'], len(differ)))
     for t in differ:
         print('  differs: %s' % t)
+    if racy:
+        print('racy, so not counted (dash disagrees with itself): %s' % ' '.join(racy))
 
 main()

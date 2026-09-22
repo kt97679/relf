@@ -1657,12 +1657,24 @@ VARIABLE XP-NAME          \ where the name is, in the encoding
 
 : XE-C ( --- c )        XE-P @ C@ ;
 
+DEFER XE-LIT-REGION ( c-addr u --- )   \ literal text as a region: below
 : XE-LIT-RUN ( --- )   \ the literal bytes up to the next control byte
   XE-P @ XR-START !
   BEGIN XE-P @ XE-END @ < IF XE-C ENC-CTL <> ELSE 0 THEN WHILE 1 XE-P +! REPEAT
   XE-IN-WORD? @ IF
-    \ a substituted word is an expansion result: split, literal text too
-    XE-P @ XR-START @ ?DO I C@ EMIT-EXPANDED-CHAR LOOP
+    \ A substituted word is an expansion result: split, literal text
+    \ too. As a REGION, like the expansions beside it, so XE-SPLIT
+    \ splits all of them in order. It was split here, a character at a
+    \ time, while the expansions' regions were split at the end of the
+    \ word - two splitters in one word - so `${a+$b $c}` with b='x y'
+    \ and c='p q' made the blank's field before $b's second one and
+    \ gave x p y q (Iterations 430-431, yash fsplit-p.tst). A word with
+    \ $@ in it splits per character throughout, so it keeps that.
+    XE-PERCHAR? @ IF
+      XE-P @ XR-START @ ?DO I C@ EMIT-EXPANDED-CHAR LOOP
+    ELSE
+      XR-START @  XE-P @ XR-START @ -  XE-LIT-REGION
+    THEN
   ELSE
   XE-SPECIAL? @ IF
     XE-P @ XR-START @ ?DO I C@ GLOB-MARK EMIT-TOK-CHAR LOOP
@@ -1778,6 +1790,9 @@ VARIABLE XM-U
   TOK-OUT @ OUT-BASE - XE-REGIONS XE-REG# @ 2* 1+ CELLS + !
   1 XE-REG# +!
   XE-REG-START @ TOK-OUT @ OUT-BASE - XE-MARK-PATTERNS ;
+
+: (XE-LIT-REGION) ( c-addr u --- )   XE-REGION-BEGIN  EMIT-RUN  XE-REGION-END ;
+' (XE-LIT-REGION) IS XE-LIT-REGION
 
 : XE-VALUE ( c-addr --- )   \ a parameter's value: split when unquoted
   IN-DQ-CONTEXT? @ IF DUP CSTRLEN XE-QUOTED-TEXT EXIT THEN
@@ -2128,7 +2143,7 @@ VARIABLE XS-PREV          \ where the text after the last region begins
             \ Quoting inside a run of whitespace breaks it in two, with
             \ an empty field between: `${x:+b '' c}` is three fields,
             \ not two (Iteration 364).
-            XS-WSP @ I XQ-BETWEEN? IF
+            XS-WSP @ 1+ I XQ-BETWEEN? IF      \ strictly after its first blank
               XS-WSP @  I DUP XS-FS !  XS-CLOSE
               I XS-WSP !
             THEN
@@ -2137,9 +2152,13 @@ VARIABLE XS-PREV          \ where the text after the last region begins
           \ Leading whitespace is absorbed - unless quoting contributed
           \ to this field before it, in which case the field is empty
           \ but real: `"$e"$b` is an empty argument and then `b`
-          \ (Iteration 361).
+          \ (Iteration 361). Real, and then a delimiter like any other:
+          \ PENDING, so it ends the field only if content follows. This
+          \ closed the field and opened the next at once, so `${x:+'' }`,
+          \ once a braced word's literal text became a region, made two
+          \ empty fields rather than one (Iteration 431).
           XS-FS @ I XQ-BETWEEN? IF
-            I  I 1+ DUP XS-FS !  XS-CLOSE
+            I XS-WSP !  -1 XS-PEND? !
           ELSE
             I 1+ DUP XS-FS !  OUT-BASE + ARGV ARGC @ CELLS + !
           THEN
@@ -2174,7 +2193,11 @@ VARIABLE XS-PREV          \ where the text after the last region begins
       \ Trailing whitespace is dropped - unless quoting came after it
       \ and left nothing: `$b"$e"` ends with an empty field, not with
       \ the whitespace trimmed away (Iteration 361).
-      XS-WSP @ TOK-OUT @ OUT-BASE - XQ-BETWEEN? IF
+      \ AFTER it: from one past its first blank. A quote is recorded at
+      \ the offset of the character that follows it, so a quoted empty
+      \ just BEFORE the whitespace has the whitespace's own offset, and
+      \ counting it made `""${x:+ }` two fields (Iteration 431).
+      XS-WSP @ 1+ TOK-OUT @ OUT-BASE - XQ-BETWEEN? IF
         XS-WSP @  TOK-OUT @ OUT-BASE -  XS-CLOSE
       ELSE
         XS-WSP @ OUT-BASE + TOK-OUT !
