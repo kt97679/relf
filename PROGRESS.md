@@ -437,6 +437,7 @@ do not trust the absence of a line below.
 - **439** — set -v echoes each line once; THIS_SH made absolute for every test
 - **440** — a captured word takes its regions with it; an operator needs an operand
 - **441** — cd's options, every letter; "$@""$@" with no parameters is no field
+- **442** — a trim's pattern is a context of its own: tildes, and substitutions that match
 
 ### Not tied to an iteration
 
@@ -21972,3 +21973,33 @@ than on its text, is how quote-heavy code gets changed now.
 Recorded changes, with their causes: `parse:verdicts-agree` 219 -> 220,
 the "$@" case; `shell:assertions` 819 -> 823, the four for cd; the
 images 192 bytes larger.
+
+## Iteration 442: a trim's pattern is a context of its own
+
+Two from yash's param-p.tst, both about the pattern of `${a#pat}` and its
+kin, and both where the pattern inherited too much from around it:
+
+- **A leading tilde in a trim pattern is expanded even inside double
+  quotes** (:324): `"${a#~}"` strips the home directory in dash and bash,
+  and stripped nothing here. Iteration 381 made a braced word's leading
+  tilde a tilde prefix and kept it literal inside double quotes - right
+  for a VALUE word, where `"${a-~}"` is `~` in both shells, and wrong
+  for a pattern. The flag the scanner sets just above, BRACE-VALUE-WORD?,
+  is exactly "a value word inside double quotes", and is the test now.
+  `"${PWD#~}"` and `"${path#~/}"` are the everyday cases.
+- **An unquoted substitution's output is pattern text** (:359):
+  `${w#$(echo '*')b}` strips the shortest prefix matching `*b`. The
+  output was emitted as quoted text, to keep it from being split - and
+  in a pattern capture, quoted text has every special character escaped,
+  so the `*` was literal. `XC-PATTERN-RAW` sets the capture aside while
+  an unquoted substitution emits, so its characters reach the pattern
+  as they are; quoted, `${w#"$(echo '*')b"}`, they are still escaped.
+
+Both match dash and bash on all four lines of each yash case; a
+differential case covers them, with `${p#$(dirname "$p")/}`.
+
+yash on this build: **1718 passed, 57 failed** (1710 at 438's build; dash
+1650), no crashes or hangs - 439 to 442 together.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 220 -> 221,
+the pattern case; the images about 100 bytes larger.

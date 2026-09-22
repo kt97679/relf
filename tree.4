@@ -568,8 +568,12 @@ DEFER SCAN-DOLLAR
     \ A `~` at the START of that word is a tilde prefix, as it is at the
     \ start of any other word: `HOME=/foo; echo ${a-~}` prints /foo in
     \ dash and bash, and printed `~` here (Iteration 381). Inside double
-    \ quotes it stays literal, which SCAN-IN-DQ? already knows.
-    0 SRC-C 126 = SCAN-IN-DQ? @ 0= AND IF
+    \ quotes it stays literal - but only in a VALUE word, `"${a-~}"`: a
+    \ trim's pattern is a context of its own, and `"${a#~}"` strips the
+    \ home directory in dash (Iteration 442, yash param-p.tst:324).
+    \ BRACE-VALUE-WORD?, set just above, is exactly "a value word inside
+    \ double quotes".
+    0 SRC-C 126 = BRACE-VALUE-WORD? @ 0= AND IF
       -1 TILDE-AT-START? !  SCAN-TILDE-CALL  0 TILDE-AT-START? !
     THEN
     BEGIN
@@ -2056,6 +2060,19 @@ VARIABLE XP-VAL
     XE-REGION-END
   THEN ;
 
+VARIABLE XC-PC   \ PATTERN-CAPTURE?, set aside while a substitution emits
+
+: XC-PATTERN-RAW ( --- )   \ an UNQUOTED substitution in a pattern emits raw
+  \ Its output is pattern text - `${w#$(echo '*')b}` strips the shortest
+  \ prefix matching *b - but it was emitted as quoted text, which in a
+  \ pattern capture escapes every special character, so the * was
+  \ literal (Iteration 442, yash param-p.tst:359). Quoted, it stays
+  \ escaped: `${w#"$(echo '*')b"}` matches a literal *b.
+  PATTERN-CAPTURE? @ XC-PC !
+  IN-DQ-CONTEXT? @ IF EXIT THEN
+  0 PATTERN-CAPTURE? ! ;
+: XC-PATTERN-BACK ( --- )   XC-PC @ PATTERN-CAPTURE? ! ;
+
 : XE-CMDSUB ( --- )   \ substitution number XE-C of this word
   XE-C                                       ( n )
   1 XE-P +!
@@ -2067,8 +2084,10 @@ VARIABLE XP-VAL
       OVER XV@ ?DUP IF                       ( vec n node )
         CMDSUB-NODE !  2DROP
         XE-NOSPLIT? @ IN-DQ-CONTEXT? @ OR XE-PERCHAR? @ 0= AND IF
+          XC-PATTERN-RAW
           IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
           RUN-CMDSUB-JOB-CALL  R> IN-DQ-CONTEXT? !
+          XC-PATTERN-BACK
         ELSE
           XE-PERCHAR? @ IF
             RUN-CMDSUB-JOB-CALL
@@ -2083,8 +2102,10 @@ VARIABLE XP-VAL
     THEN
     XV@ XSTR DUP CSTRLEN
     XE-NOSPLIT? @ IN-DQ-CONTEXT? @ OR IF     \ captured or quoted: not split
+      XC-PATTERN-RAW
       IN-DQ-CONTEXT? @ >R  -1 IN-DQ-CONTEXT? !
       RUN-CMDSUB-TEXT  R> IN-DQ-CONTEXT? !
+      XC-PATTERN-BACK
     ELSE
       XE-PERCHAR? @ IF
         RUN-CMDSUB-TEXT                        \ splits as it emits
