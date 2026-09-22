@@ -1482,12 +1482,40 @@ DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
   TRAP-COPY @ FREE DROP
   0 IN-TRAP? ! ;
 
+VARIABLE DEFERRED-SIG   \ a signal taken during a foreground wait, for CHECK-TRAPS
+
+: WAITPID-UNINTERRUPTED ( pid --- raw ior )
+  \ A trapped signal must not cut short the wait for a foreground child.
+  \ Since 447 traps are caught without SA_RESTART, so the wait returns
+  \ early; running the trap there put it in the MIDDLE of a command -
+  \ `(kill -s USR1 $$; echo b; exit 3)` had the trap run before the
+  \ subshell's own output and left the status of an unfinished wait,
+  \ 255 (Iteration 448, busybox ash-signals/return_in_trap1). The signal
+  \ is set aside for CHECK-TRAPS, which runs between commands, and the
+  \ wait is made again. Not re-raised: if the child is already gone the
+  \ wait fails every time, and a re-raised signal would spin here.
+  BEGIN
+    DUP WAITPID                              ( pid raw ior )
+    DUP 0= IF ROT DROP EXIT THEN             ( raw 0 )
+    2DROP                                    ( pid )
+    SIGNALS-PENDING ?DUP IF
+      DEFERRED-SIG @ ?DUP IF RUN-TRAP THEN   \ one slot: run an older one now
+      DEFERRED-SIG !
+    ELSE
+      DROP -1 200 EXIT                       ( raw ior )
+    THEN
+  AGAIN ;
+
 VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
 
 DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
 : CHECK-TRAPS ( --- )
   IN-TRAP? @ IF EXIT THEN
+  \ A signal that arrived while the shell waited for a foreground child
+  \ was set aside there, to be run here - between commands, where a trap
+  \ belongs (Iteration 448).
+  DEFERRED-SIG @ ?DUP IF 0 DEFERRED-SIG ! RUN-TRAP THEN
   \ A background child that has exited stays a zombie until someone
   \ waits for it, and `kill -0` on a zombie succeeds - so a script
   \ spinning on `kill -0 $!` never saw its child finish (Iteration 336).
@@ -2255,7 +2283,7 @@ DEFER RUN-CMDSUB-JOB-CALL
     \ substitution in it, which is what both references report:
     \ `v=`exit 2` `false`` is 2 in bash and dash alike. This kept the
     \ last one and answered 1 (Iteration 345).
-    CMDSUB-PID @ WAITPID DROP WAIT->STATUS
+    CMDSUB-PID @ WAITPID-UNINTERRUPTED DROP WAIT->STATUS
     CMDSUB-RAN? @ IF DROP ELSE CMDSUB-STATUS ! THEN
     -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
@@ -5739,7 +5767,7 @@ VARIABLE LOCALS#
   0 KEEP-REDIRECTS? !
   \ A here-document writer (a body over 4 KB) ends once the pipe's read
   \ end is closed, which the restore just did.
-  HD-WRITER @ ?DUP IF WAITPID 2DROP 0 HD-WRITER ! THEN ;
+  HD-WRITER @ ?DUP IF WAITPID-UNINTERRUPTED 2DROP 0 HD-WRITER ! THEN ;
 
 VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 
@@ -5863,7 +5891,7 @@ VARIABLE FG-PID
     RUN-CHILD 127 SYS-EXIT
   ELSE
     JOB-CONTROL? @ IF FOREGROUND-CHILD ELSE
-      WAITPID DROP           ( raw wait status )
+      WAITPID-UNINTERRUPTED DROP   ( raw wait status )
       WAIT->STATUS
       LAST-STATUS !
     THEN

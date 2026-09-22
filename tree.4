@@ -1651,7 +1651,7 @@ VARIABLE WANT-EXEC?
       X@ T-SIMPLE = EXIT
     THEN THEN THEN
   AGAIN ;
-: WAIT-STATUS ( pid --- status )   WAITPID DROP WAIT->STATUS ;
+: WAIT-STATUS ( pid --- status )   WAITPID-UNINTERRUPTED DROP WAIT->STATUS ;
 
 \ ---- simple commands ----
 CREATE W-DIGITS  48 C, 0 C, 49 C, 0 C, 50 C, 0 C, 51 C, 0 C, 52 C, 0 C,

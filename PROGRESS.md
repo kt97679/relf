@@ -443,6 +443,7 @@ do not trust the absence of a line below.
 - **445** — yash 1723; a continuation before a length `#`; a nested brace's quoting left behind
 - **446** — busybox 218; break and continue in a loop's condition
 - **447** — a trap that never ran; a wait that never noticed a signal
+- **448** — 447's other half: a trap belongs between commands, not inside one
 
 ### Not tied to an iteration
 
@@ -22169,3 +22170,27 @@ read at a prompt would show.
 
 Recorded changes, with their causes: `shell:assertions` 827 -> 830, the
 three for traps and wait; the images 128 bytes larger.
+
+## Iteration 448: 447's other half - a trap belongs between commands
+
+The busybox run after 447 was 217, one DOWN from 218: continue_and_trap1
+passed, and ash-signals/return_in_trap1 and ash-misc/exitcode_trap5 had
+broken. Catching trapped signals without SA_RESTART let a signal cut
+short the wait for a FOREGROUND child as well, and the trap then ran in
+the middle of a command: `(kill -s USR1 $$; echo b:$?; exit 3)` had the
+trap before the subshell's own output, and the status of an unfinished
+wait - 255 - where dash has b:0, Trap, d:3.
+
+`WAITPID-UNINTERRUPTED` sets such a signal aside in DEFERRED-SIG and
+waits again; CHECK-TRAPS, which runs between commands, takes it up. Not
+re-raised to itself: if the child is already gone the wait fails every
+time, and a re-raised signal would spin. One slot is enough for the
+common case, and an older deferred signal runs when a second arrives.
+Every wait for a child uses it: a foreground command, a command
+substitution, the job-control path, the here-document writer.
+
+All three tests pass - the one 447 fixed and the two it broke - and the
+corpus was the only thing that noticed, which is what a corpus is for.
+
+Recorded changes, with their causes: `shell:assertions` 830 -> 831, the
+trap-ordering assertion; the images 120 bytes larger.
