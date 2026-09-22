@@ -442,6 +442,7 @@ do not trust the absence of a line below.
 - **444** — reserved words are not aliases; a vanished alias leaves the command owed
 - **445** — yash 1723; a continuation before a length `#`; a nested brace's quoting left behind
 - **446** — busybox 218; break and continue in a loop's condition
+- **447** — a trap that never ran; a wait that never noticed a signal
 
 ### Not tied to an iteration
 
@@ -22131,3 +22132,40 @@ background job, not the loop.
 
 Recorded changes, with their causes: the images about 70 bytes larger,
 for the condition's own loop and the trap checks; nothing else moved.
+
+## Iteration 447: a trap that never ran, and a wait that never noticed
+
+446 left the INT trap of busybox's ash-signals/continue_and_trap1 as
+open, with the evidence pointing at the signal rather than the loop.
+That was wrong, and the test said so: INT arrives in every shape tried,
+including a bare `while :; do :; done`. What stopped the trap was the
+flag beside it.
+
+**A trap ran with the shell's control flow still pending.** A `continue`
+in flight means "stop what you are doing", so the trap's own commands
+stopped at once and it did nothing at all. RUN-TRAP saves that state,
+clears it, runs the trap, and puts it back - and a break or continue the
+TRAP itself issues stands instead. The loop also consumes the request
+before it looks for traps now, rather than after.
+
+**And `wait` never noticed a signal.** POSIX has a wait a trapped signal
+interrupts run the trap and return 128+n; this returned 0, so a script
+looping on `wait` spun. Two things were in the way: a trapped signal was
+caught WITH SA_RESTART, so the wait was resumed rather than interrupted -
+caught without it now, as dash catches them - and the engine reports a
+failed waitpid with one code rather than -errno, so what happened is
+read from the pending signals instead: nothing pending is a real error
+(and `wait` on something that is not a child is 127, as in dash), an
+untrapped signal waits again, a trapped one gives 128+n.
+
+busybox continue_and_trap1 passes, three runs of three. signal1 now
+differs only in the order of two lines written by different processes,
+which is that test's own race.
+
+`read` was checked against the disposition change - a trapped signal
+during a read behaves as dash does, 1 on a closed pipe and the line when
+one arrives - and the pty suite passes, which is where an interrupted
+read at a prompt would show.
+
+Recorded changes, with their causes: `shell:assertions` 827 -> 830, the
+three for traps and wait; the images 128 bytes larger.

@@ -1456,7 +1456,19 @@ DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
   -1 IN-TRAP? !
   COPY-TRAP
   LAST-STATUS @ TRAP-SAVED-STATUS !
+  \ The trap's own commands run on a clean slate: a break or continue
+  \ pending when the signal arrived would have stopped them at once, so
+  \ a trap that fired while a `continue` was in flight did nothing at
+  \ all (Iteration 447, busybox ash-signals/continue_and_trap1). One the
+  \ TRAP issues stands, and what was pending before is put back.
+  LOOP-CONTROL-PENDING? @ >R  LOOP-BREAK? @ >R  LOOP-LEVEL @ >R
+  0 LOOP-CONTROL-PENDING? !  0 LOOP-BREAK? !
   TRAP-COPY @ TRAP-RUN-CALL
+  LOOP-CONTROL-PENDING? @ IF
+    R> DROP  R> DROP  R> DROP
+  ELSE
+    R> LOOP-LEVEL !  R> LOOP-BREAK? !  R> LOOP-CONTROL-PENDING? !
+  THEN
   \ `$?` is what it was before the trap (XCU 2.14 trap) - unless the
   \ trap ended with `return n`, which sets it and applies to the trap
   \ rather than to whatever the shell was doing (Iteration 355).
@@ -4852,6 +4864,15 @@ DEFER JOB-FORGET-PID-CALL ( pid --- )
 VARIABLE DW-PID
 DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
 
+: WAIT-SIGNAL-CASE ( --- n )   \ why the wait ended: 0 an error, 1 retry, -1 a trap ran
+  \ The engine reports a failed waitpid with one code, not -errno, so
+  \ what happened is read from the pending signals instead.
+  SIGNALS-PENDING ?DUP 0= IF 0 EXIT THEN       ( sig )
+  DUP TRAP@ TRAP-ACTION? 0= IF RUN-TRAP 1 EXIT THEN
+  DUP RUN-TRAP
+  128 + LAST-STATUS !
+  CHECK-TRAPS  -1 ;
+
 : DO-WAIT ( --- )
   \ wait [pid]: with an operand, wait for that child; with none, wait
   \ for all of them. A shell with no children at all is not an error.
@@ -4875,12 +4896,22 @@ DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
     DW-PID @ JOB-STATUS-OF-CALL DUP 0< 0= IF
       LAST-STATUS !  DW-PID @ JOB-FORGET-PID-CALL EXIT
     THEN DROP
-    DW-PID @ WAITPID                           ( raw ior )
-    0= IF
-      DUP WAIT->STATUS LAST-STATUS !
-      DW-PID @ SWAP JOB-MARK-DONE-CALL
-    ELSE DROP THEN
-    EXIT
+    \ Interrupted by a signal that has a trap: the trap runs and wait
+    \ returns 128+n (XCU wait). The error was dropped and wait returned
+    \ 0, so a loop around `wait` never saw the interruption (Iteration
+    \ 447, busybox ash-signals/signal1). Interrupted with no trap, it
+    \ waits again; any other error ends it, so a child that is already
+    \ gone cannot spin here.
+    BEGIN
+      DW-PID @ WAITPID                         ( raw ior )
+      DUP 0= IF
+        DROP  DUP WAIT->STATUS LAST-STATUS !
+        DW-PID @ SWAP JOB-MARK-DONE-CALL  EXIT
+      THEN
+      2DROP
+      WAIT-SIGNAL-CASE DUP 0= IF DROP 127 LAST-STATUS ! EXIT THEN
+      0< IF EXIT THEN                          \ a trap ran: 128+n stands
+    AGAIN
   THEN
   BEGIN
     -1 WAIT-JOB                                ( pid raw )
@@ -5400,7 +5431,11 @@ VARIABLE TR-ACTION
   \ KILL and STOP cannot be caught; bash and dash both take the trap
   \ quietly and let it never fire, so the failure is not reported
   \ (Iteration 291).
-  DUP IF DUP 2 SIGNAL-ACTION DROP THEN
+  \ Caught WITHOUT SA_RESTART (action 3), as dash catches them: a
+  \ blocking call in progress then fails with EINTR instead of being
+  \ resumed, which is how `wait` notices a trapped signal and returns
+  \ 128+n (Iteration 447, busybox ash-signals/signal1).
+  DUP IF DUP 3 SIGNAL-ACTION DROP THEN
   TR-ACTION @ DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP >R SWAP MOVE
   R> SWAP TRAP! ;
 

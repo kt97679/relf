@@ -2799,8 +2799,8 @@ VARIABLE LP-STOP?   \ a break (or a return) in the loop's condition
     0 LP-STOP? !
     BEGIN
       OVER 1 XF@ EXEC-IGNORING
-      CHECK-TRAPS
       LOOP-CONTROL-PENDING? @ 0= IF -1 ELSE LOOP-AFTER-BODY DUP LP-STOP? ! THEN
+      CHECK-TRAPS                             \ after the request is consumed
     UNTIL
     LP-STOP? @ IF 0 ELSE
       STOP? IF 0 ELSE LAST-STATUS @ 0= OVER XOR THEN

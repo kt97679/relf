@@ -152,4 +152,15 @@ for e in '1 +' '-' '--' '()' '1+()'; do
 done
 out=$("$THIS_SH" -c 'x=5; echo $(( )) $((--x)) $((x++)) $x' 2>&1)
 assert_output_equals "... while blank, --x and x++ still work" "0 4 4 5" "$out"
+# Traps and wait (Iteration 447, busybox ash-signals/continue_and_trap1
+# and signal1): a trap runs even while a continue is in flight, and a
+# wait a trapped signal interrupts returns 128+n.
+out=$("$THIS_SH" -c 'trap "echo T; exit" INT; (sleep 0.2; kill -INT $$) & while true; do continue; done' 2>&1)
+assert_output_equals "a trap runs in a loop that only continues" "T" "$out"
+out=$("$THIS_SH" -c 'trap "echo a" USR1; sleep 0.4 & (sleep 0.1; kill -USR1 $$) & wait %1; echo "wait=$?"' 2>&1)
+assert_output_equals "an interrupted wait returns 128+n" "a
+wait=138" "$out"
+out=$("$THIS_SH" -c 'sleep 0.1 & wait %1; echo "plain=$?"; wait 999999; echo "nochild=$?"' 2>&1)
+assert_output_equals "... while a plain wait is 0 and no such child is 127" "plain=0
+nochild=127" "$out"
 report
