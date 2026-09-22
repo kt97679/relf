@@ -40,10 +40,30 @@ ordinary scripts hit, then edge cases and wording.
    `kill` with no arguments, and the job table past 64 jobs - were fixed
    in Iteration 426. Run `tools/crashfuzz.py` after any change to the
    parser, the expander or the job code.
-2. **Line continuation elsewhere in yash's quote-p.tst** (19, 103, 143,
-   169, 195, 209, 225): inside reserved words, operators and function
-   definitions. Inside `$` constructs it is done (429); check which of
-   these remain after the next full yash run before starting.
+1b. **Fields out of order in a braced word** (found 430; yash
+   fsplit-p.tst:25): `${a+$b $c}` with b='x y', c='p q' gives x p y q,
+   not x y p q; `${u-$b $b}` likewise. Wrong results in a common idiom
+   (`${v:+$opts $more}`). Cause: two splitters in one word - literal
+   text in a braced word is split per character AS EMITTED
+   (`XE-LIT-RUN` via `EMIT-EXPANDED-CHAR`), while the expansions inside
+   it are regions split AT THE END by `XE-SPLIT`, which appends their
+   later fields after the literal text's. **Tried and reverted (430)**:
+   emitting the literal text as a region too. It fixes the order - all
+   twelve forms checked matched dash - but breaks `quoted-empty-355` and
+   `quoted-field-run-364`: `${x:+'' }` makes two empty fields, because
+   `XS-REGION-SPLIT`'s leading-whitespace branch, after a quoted empty,
+   closes the empty field AND opens the next one at once, where the
+   per-character splitter left the split pending and so dropped it at
+   the word's end. The next attempt should keep the region route and
+   make that branch leave the split pending (`XS-PEND?`), then re-run
+   both cases. The test case is ready in `attic/pending/`.
+2. **Line continuation in the remaining torture cases** of yash's
+   quote-p.tst (74, 209, 225, 301): between an IO number's digit and
+   its operator (`3\`+newline+`>>`), inside a `for` variable's name,
+   around a function's parentheses, and between `${` and `#`. The
+   others in that family pass since 429. A continuation-aware reader at
+   the source level would fix all four at once, but it is a refactor of
+   the lexer core for constructs nobody writes; last in severity.
 3. **`export NAME` with no value is not remembered** (422), so a later
    assignment does not reach children. Needs a pending-export list.
 4. **`${#a}` is not field-split** when IFS holds digits (424). Rare.
@@ -96,6 +116,10 @@ it before starting anything it could cover.
   `prompts/10-price-before-refactor.md`).
 - **A field-level quoting flag for an empty quoted field** - changed
   nothing, reverted; the case is still open (359).
+- **Splitting a braced word's literal text as a region, alone** - fixes
+  field order but breaks two quoted-empty cases (430). Not rejected:
+  needs the pending-split change in `XS-REGION-SPLIT` with it; see
+  "Open now" 1b.
 
 ## Why RelF specifically, not SOD32 or a hybrid design
 

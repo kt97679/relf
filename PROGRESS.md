@@ -425,6 +425,7 @@ do not trust the absence of a line below.
 - **427** — an arithmetic error ends a non-interactive shell; 257's choice reversed on evidence
 - **428** — a backslash from an expansion escapes in pathname expansion
 - **429** — line continuation inside $ constructs
+- **430** — the corpora re-run; fields out of order in a braced word: diagnosed, attempted, reverted
 
 ### Not tied to an iteration
 
@@ -21563,3 +21564,40 @@ the two agree.
 Recorded changes, with their causes: `parse:verdicts-agree` 211 -> 212,
 the new differential case; the images 216 bytes larger, for
 `DOLLAR-JOIN` and its helpers.
+
+## Iteration 430: the corpora, and a fix reverted with its reasons
+
+**The corpora**, re-run one at a time: busybox 214 passed, 143 failed,
+no crashes or hangs (210 at 423's build; dash 207); yash 1671 passed,
+104 failed, no crashes or hangs (1667; dash 1650). Five of yash's
+line-continuation cases pass since 429; the four left are torture tests
+- a continuation between `3` and `>>`, inside a `for` variable, around a
+function's parentheses, between `${` and `#` - and go to the bottom of
+the list: a source-level continuation reader would fix all four, but it
+is a refactor of the lexer's core for constructs nobody writes.
+
+**A real bug from yash's fsplit-p.tst:25**, and a common idiom:
+`${a+$b $c}` with b='x y' and c='p q' gives x p y q, where bash and dash
+give x y p q. The log had nothing on it. The cause is two splitters in
+one word: the literal text of a braced word goes through
+`EMIT-EXPANDED-CHAR`, which splits as it emits, while the expansions
+inside it are recorded as regions and split by `XE-SPLIT` at the end of
+the word - which appends their later fields after the ones the literal
+text already made.
+
+**The attempt**: emit the literal text as a region too, so one splitter
+does all of it, in order. Twelve forms matched dash, including the yash
+case, a quoted part inside the word, a `$@` word (which splits per
+character throughout and was left alone) and a literal `*` that must
+still glob. It failed two differential cases, `quoted-empty-355` and
+`quoted-field-run-364`: `${x:+'' }` made two empty fields where it
+should make one. The region splitter's leading-whitespace branch, after
+a quoted empty, closes the empty field and opens the next one at once;
+the per-character splitter left that split pending, and a pending split
+at the end of a word is dropped. **Reverted**, rather than reworking
+that branch at the end of a turn - its semantics took Iterations 355,
+361 and 364 to settle. GOALS.md carries the diagnosis and the plan (keep
+the region route; make that branch leave the split pending), the
+register lists the attempt, and the test case waits in `attic/pending/`.
+The build's own check refused the first version of the attempt - a word
+used before its definition - which is what Iteration 410 added it for.
