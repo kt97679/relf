@@ -246,6 +246,7 @@ VARIABLE TK-VALID?
 \ ---- here-documents waiting for their bodies ----
 256 BUFFER: HD-PEND
 VARIABLE HD-PEND#
+VARIABLE HDS-I     \ setting the pending list aside for a nested parse
 256 BUFFER: HD-TEXT
 VARIABLE HD-TEXT#
 
@@ -447,9 +448,29 @@ DEFER SCAN-DOLLAR
   \ The tree it builds is kept now (Iteration 283): the child runs it
   \ instead of parsing the text again. TREE-TOP is not wound back.
   TK-START @ >R  TK-FLAGS @ >R  VEC-TOP @ >R  NO-ALIAS? @ >R
+  \ A here-document still waiting for its body belongs to the command
+  \ AROUND this substitution, not to what is inside it: in
+  \ `cat <<OUTER; echo "$(cat <<INNER` the inner parse reached the end
+  \ of the line, read the pending list, and took INNER's lines as
+  \ OUTER's body - after which the `)` was never found (Iteration 461,
+  \ yash cmdsub-p.tst:139). Set aside for the nested parse, with the
+  \ count pushed last so the restore knows how many to take back. The
+  \ index is a global and may be used again by the parse between these
+  \ two loops, which is safe: neither loop spans it.
+  0 HDS-I !
+  BEGIN HDS-I @ HD-PEND# @ < WHILE
+    HD-PEND HDS-I @ CELLS + @ >R  1 HDS-I +!
+  REPEAT
+  HD-PEND# @ >R
+  0 HD-PEND# !
   0 TK-VALID? !  -1 NO-ALIAS? !
   PARSE-SUBLIST                              ( node )
   ENC-SUB-NODE!
+  R> HD-PEND# !
+  HD-PEND# @ HDS-I !
+  BEGIN HDS-I @ 0 > WHILE
+    -1 HDS-I +!  R> HD-PEND HDS-I @ CELLS + !
+  REPEAT
   R> NO-ALIAS? !  R> VEC-TOP !  R> TK-FLAGS !  R> TK-START !
   R> ENC-COMPLEX? !
   R> ENC-SUB-BASE !  R> ENC-BASE !  R> ENC-MUTE !  R> ENC-SUBS !  R> ENC# !

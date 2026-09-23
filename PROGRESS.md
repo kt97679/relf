@@ -456,6 +456,7 @@ do not trust the absence of a line below.
 - **458** — busybox 247; a signal that kills a command is named; a redirection target joins
 - **459** — yash 1742; a bracket expression that never closes is a literal [
 - **460** — a backslash is not a delimiter; an operator may be split by a continuation
+- **461** — yash 1745; a pending here-document belongs to the command around a substitution
 
 ### Not tied to an iteration
 
@@ -22581,3 +22582,38 @@ ordinary character and DOES delimit if IFS says so.
 
 Recorded changes, with their causes: `parse:verdicts-agree` 225 -> 226,
 the new differential case; the images about 24 bytes larger.
+
+## Iteration 461: whose here-document is it
+
+yash after 460: **1745 passed, 30 failed** (1742; dash 1650), no crashes
+or hangs - 459's bracket and 460's two backslash rules, as expected. Six
+of the 30 are cases dash passes.
+
+A here-document still waiting for its body belongs to the command AROUND
+a command substitution, not to what is inside it. In
+
+    cat <<\OUTER; echo "$(cat <<\INNER
+    inner
+    INNER
+    )"
+    outer
+    OUTER
+
+the substitution's text is parsed where it stands (Iteration 283), so
+the inner parse reached the end of that first line, read the pending
+list - which held OUTER - and took INNER's lines as OUTER's body. After
+that the `)` was never found and the whole thing was a syntax error.
+
+The pending list is set aside for the nested parse and put back
+afterwards, alongside the lexer state that was already saved there. Each
+piece had worked alone: a here-document with a substitution on the same
+line, a substitution carrying its own here-document, a substitution
+inside a here-document's body. It was the combination that had no owner.
+
+Five nested shapes match dash, among them two substitutions on one
+pending line and a substitution nested two deep with bodies at both
+levels.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 226 -> 227,
+the new differential case; the images about 100 bytes larger, for the
+two loops that set the pending list aside.
