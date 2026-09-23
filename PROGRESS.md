@@ -446,6 +446,7 @@ do not trust the absence of a line below.
 - **448** — 447's other half: a trap belongs between commands, not inside one
 - **449** — busybox 219; $! is the last process of a background pipeline
 - **450** — yash 1724; an unquoted ${#a} is field-split
+- **451** — many_ifs profiled: flat; a child no longer resets traps it has none of
 
 ### Not tied to an iteration
 
@@ -22241,3 +22242,37 @@ Iteration 328 decided; dash gives the length of `$*` there.
 Recorded changes, with their causes: the 4-byte images 4 bytes larger,
 the 8-byte ones unchanged - N>STR and XE-VALUE in place of
 EMIT-DECIMAL. Nothing else moved.
+
+## Iteration 451: the 12 seconds of many_ifs, profiled
+
+GOALS.md has carried "many_ifs takes 12 s here against dash's 7.5 -
+worth profiling some day" since Iteration 423. Profiled, with
+`tools/profile.py` on that workload: 828 million dispatches, and the
+profile is FLAT. The largest single share is `(LOOP)` at 5.6%, then
+EXPAND-WORDS at 4.8%, `+!` at 2.9%, SRC-C at 2.6%; nothing else is above
+2.6%. There is no hot spot to remove - the gap is the interpreter
+itself, which is what PERFORMANCE.md found for the shell as a whole.
+
+One line was waste rather than work: `TRAP-ACTION?`, 9.4 million
+dispatches, from `CHILD-RESET-TRAPS` walking every signal slot in every
+forked child - and this script sets no traps at all. `TRAP!`, where
+every trap is stored, keeps a count now, and a child with nothing to
+reset skips the loop.
+
+**It bought no time.** many_ifs: 12.1, 12.1, 12.2 s against a 12.0 s
+baseline, dash 7.5. About 2% of dispatches in a cheap loop is below the
+noise of the measurement, and dispatches are not cycles. The change is
+kept because it is small and removes real work per fork, and recorded
+here because the next reader of that profile should not expect the
+9.4 million to be worth a second.
+
+So the entry in GOALS.md becomes: profiled, flat, no cheap win; a
+faster many_ifs means a faster interpreter, which is the standing
+question of PERFORMANCE.md rather than a bug.
+
+The build refused the first version of this: `TRAP!` used
+`TRAP-ACTION?`, which is defined just after it - the check from
+Iteration 410 again.
+
+Recorded changes, with their causes: the images about 50 bytes larger,
+for the counter and the skip; nothing else moved.

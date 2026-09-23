@@ -70,7 +70,11 @@ ordinary scripts hit, then edge cases and wording.
    worth changing if dash's reading is adopted as policy.
 6. **Prompt escapes still missing**: `\D{format}`, `\j`, `\l`, `\v`,
    `\V` (417).
-7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423).
+7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423),
+   profiled in 451 and FLAT - `(LOOP)` 5.6%, EXPAND-WORDS 4.8%, nothing
+   else above 2.6%. No cheap win; it is the interpreter, which is
+   PERFORMANCE.md's standing question. Do not re-profile this workload
+   expecting a hot spot.
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
 8b. **An unidentified differential case fails now and then** (429, and

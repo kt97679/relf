@@ -1441,8 +1441,19 @@ VARIABLE TRAP-SAVED-STATUS
 DEFER TRAP-RUN-CALL   ( c-addr --- )   \ tree.4: run a trap's action
 
 : TRAP@ ( sig --- x )   CELLS TRAPS + @ ;
-: TRAP! ( x sig --- )   CELLS TRAPS + ! ;
 : TRAP-ACTION? ( x --- f )   DUP 0= SWAP -1 = OR 0= ;   \ a command, not default or ignored
+
+VARIABLE TRAPS-SET#   \ how many signals have an action
+
+: TRAP! ( x sig --- )
+  \ Counted here, where every trap is stored, so a forked child can skip
+  \ the reset loop when there is nothing to reset: it walked every
+  \ signal on every fork, which a script with no traps pays for at each
+  \ one - 9.4 million dispatches of TRAP-ACTION? alone in busybox's
+  \ many_ifs (Iteration 451). TRAP-ACTION? is 0 or -1, so the difference
+  \ of the old and new answers is the change.
+  DUP TRAP@ TRAP-ACTION?  2 PICK TRAP-ACTION?  -  TRAPS-SET# +!
+  CELLS TRAPS + ! ;
 : TRAP-FREE ( sig --- )
   DUP TRAP@ DUP TRAP-ACTION? IF FREE DROP ELSE DROP THEN
   0 SWAP TRAP! ;
@@ -1547,6 +1558,7 @@ DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
 : CHILD-RESET-TRAPS ( --- )   \ a subshell: caught signals to their default, no EXIT trap
   CHILD-RESET-JOB-SIGNALS
+  TRAPS-SET# @ 0= IF 0 IN-TRAP? ! EXIT THEN
   TRAP-SLOTS 1 DO
     I TRAP@ TRAP-ACTION? IF I 0 SIGNAL-ACTION DROP I TRAP-FREE THEN
   LOOP
