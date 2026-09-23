@@ -1863,6 +1863,7 @@ VARIABLE ARGV-FORCE-LITERAL?   \ a synthesised word with nothing to expand
 
 VARIABLE ARGV-ASSIGN-NEXT   \ the parser tagged this word an assignment
 VARIABLE ARGV-RTGT-NEXT     \ ... or tagged it a redirection's target
+VARIABLE ARGV-IONUM-NEXT    \ ... or the descriptor it read for one
 
 : ARGV-ADD ( c-addr flags --- )
   ARGC @ ROOM-FOR-ARG? 0= IF 2DROP -1 ARGS-OVERFLOW? ! EXIT THEN
@@ -1877,6 +1878,7 @@ VARIABLE ARGV-RTGT-NEXT     \ ... or tagged it a redirection's target
   ARGV-NODE-NEXT @ ARGV-NODES ARGC @ CELLS + !  0 ARGV-NODE-NEXT !
   ARGV-ASSIGN-NEXT @ ARGV-ASSIGN ARGC @ + C!    0 ARGV-ASSIGN-NEXT !
   ARGV-RTGT-NEXT @ ARGV-REDIR-TGT ARGC @ + C!   0 ARGV-RTGT-NEXT !
+  ARGV-IONUM-NEXT @ ARGV-IONUM ARGC @ + C!      0 ARGV-IONUM-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ ==================================================================
 \ Expanding a word from its encoding (attic/docs/EXPANSION-PLAN.md Stage B)
@@ -2587,6 +2589,7 @@ VARIABLE FDW-N
   \ shell take them.
   DUP 0 XF@ DUP 0< 0= IF
     DUP 10 < IF 2* W-DIGITS + ELSE FD>WORD THEN
+    1 ARGV-IONUM-NEXT !                     \ this word IS the descriptor
     0 ARGV-ADD
   ELSE DROP THEN
   DUP 1 XF@ OP>WORD 0 ARGV-ADD

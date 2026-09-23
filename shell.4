@@ -2520,8 +2520,10 @@ VARIABLE PW-LEN
 
 1 ARGS-BUFFER: ARGV-ASSIGN        \ the parser's verdict, per word
 1 ARGS-BUFFER: ARGV-REDIR-TGT     \ this word is a redirection's target
+1 ARGS-BUFFER: ARGV-IONUM         \ ... or the descriptor the PARSER read
 1 ARGS-BUFFER: EW-ASSIGN
 1 ARGS-BUFFER: EW-RTGT
+1 ARGS-BUFFER: EW-IONUM
 1 CELLS ARGS-BUFFER: ARGV-NODES   \ each word's tree node, when it has one
 1 CELLS ARGS-BUFFER: EW-NODES     \ ... copied like EW-ARGV (Iteration 275)
 DEFER ENC-EXPAND-CALL   ( node --- )   \ tree.4: expand a word's encoding
@@ -2565,6 +2567,7 @@ VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
   TOK-OUT @ ARGV ARGC @ CELLS + !
   EW-ARGQ EW-I @ + C@ ARGV-NAME-QUOTED ARGC @ + C!
   EW-QUOT EW-I @ + C@ ARGV-QUOTED ARGC @ + C!
+  EW-IONUM EW-I @ + C@ ARGV-IONUM ARGC @ + C!
   \ A literal word has no quoting in it, so every metacharacter in it is
   \ live: mark them, since a `case` pattern is matched from the marks
   \ and this path never recorded any (Iteration 341).
@@ -2723,6 +2726,7 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
   ARGV-NODES       EW-NODES EW-ARGC @ CELLS MOVE
   ARGV-ASSIGN      EW-ASSIGN EW-ARGC @ MOVE
   ARGV-REDIR-TGT   EW-RTGT  EW-ARGC @ MOVE
+  ARGV-IONUM       EW-IONUM EW-ARGC @ MOVE
   ARGV-NAME-QUOTED EW-ARGQ  EW-ARGC @ MOVE
   ARGV-QUOTED      EW-QUOT  EW-ARGC @ MOVE
   ARGV-LITERAL     EW-LIT   EW-ARGC @ MOVE
@@ -2910,21 +2914,22 @@ VARIABLE RA-FD
 VARIABLE RA-OP
 VARIABLE AR-I
 
-VARIABLE DT-A  VARIABLE DT-U  VARIABLE DT-I
-: DIGIT-TOKEN? ( i --- f )   \ a token that is nothing but digits
+: DIGIT-TOKEN? ( i --- f )   \ the descriptor the PARSER read, not a word that looks like one
   \ Any number of them, not one: `exec 23>file` names descriptor 23,
   \ and a one-character test left the redirection with no descriptor at
   \ all, so it took the default - `exec 23>f` redirected STDOUT, and
   \ `echo x >&23` then said "bad file descriptor" where bash writes x
   \ (Iteration 466, busybox ash-redir/redir2). dash rejects two digits
   \ outright; bash and this shell take them.
+  \ A descriptor is read when the command is TOKENIZED, so a word that
+  \ happens to be digits is never one, however it is followed: `P=5;
+  \ echo hi $P >f` puts `hi 5` in the file in bash, and here the 5 was
+  \ taken as a descriptor and vanished - `kill -0 $PID >/dev/null` lost
+  \ its operand the same way (Iteration 467, busybox
+  \ ash-signals/reap1). The parser marks the word it read as a
+  \ descriptor; only that one counts.
   DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN DT-U !  DT-A !  0 DT-I !
-  DT-U @ 0= IF 0 EXIT THEN
-  BEGIN DT-I @ DT-U @ < WHILE
-    DT-A @ DT-I @ + C@ AE-DIGIT? 0= IF 0 EXIT THEN
-    1 DT-I +!
-  REPEAT -1 ;
+  ARGV-IONUM SWAP + C@ 0<> ;
 
 : REDIR-OP-AT ( i --- op | 0 )   \ 1 "<"  2 ">"  3 ">>"  4 ">&"  5 "<&"
   DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN

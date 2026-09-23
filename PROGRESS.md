@@ -462,6 +462,7 @@ do not trust the absence of a line below.
 - **464** — a here-document's continued line is not its terminator
 - **465** — a test asked the host which shell `sh` is; the 8-byte rows on a 32-bit host
 - **466** — descriptors of two digits or more
+- **467** — a word that looks like a descriptor is not one
 
 ### Not tied to an iteration
 
@@ -22781,3 +22782,35 @@ the new differential case is the first whose parse `dash -n` rejects and
 this shell accepts, which is the whole point of it, so the verdict
 differs by design rather than by accident; the images about 300 bytes
 larger, for FD>WORD and its buffer.
+
+## Iteration 467: a descriptor is read, not recognised later
+
+busybox after 466: **248 passed, 109 failed** (247; dash 232), no crashes
+or hangs - the two redirection tests. But a new name appeared among the
+failures that dash passes, ash-signals/reap1, and it failed every run
+rather than now and then.
+
+Its loop is `while kill -0 $PID >/dev/null 2>&1`, and this shell said
+`kill: no process given` - the operand had gone. The redirection is
+what does it: the runtime re-reads a command's words to find its
+redirections, and decided "this word is a descriptor" from the TEXT -
+digits, followed by a redirection operator. `$PID` is digits, so the pid
+was eaten as a descriptor.
+
+**It predates 466**, which only widened it from one digit to any number:
+`P=5; echo hi $P >f` put `hi` in the file and lost the 5, where both
+references write `hi 5`. A descriptor is read when the command is
+tokenized (XCU 2.10.1: IO_NUMBER is a token), so a word that merely
+looks like one never is - which is why `echo hi 5 >f` keeps its 5 while
+`echo hi 5>f`, with no blank, does not.
+
+The parser knows which word it read as a descriptor, and says so now: a
+flag per word, carried through the expansion beside the one that marks a
+redirection's target, and the runtime accepts that flag alone. The text
+test is gone.
+
+reap1, redir2 and redir4 all pass.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 229 -> 230,
+the new differential case; the images about 70 bytes larger, for the
+flag array and its copy.
