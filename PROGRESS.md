@@ -474,6 +474,7 @@ do not trust the absence of a line below.
 - **476** — \j and \D{format} in prompts
 - **477** — a lint for tests that run the host's sh
 - **478** — the fuzzer's third grammar: 25133 scripts, clean
+- **479** — EXPANSION-ORDER.md: the design, before the code
 
 ### Not tied to an iteration
 
@@ -23150,3 +23151,12 @@ A clean run is a result too: the areas the first two grammars found bugs
 in were expansions and field splitting, and these seven reach further -
 redirection, quoting depth, arithmetic, loop control, traps - without
 finding one. The shell's image does not change in this iteration.
+
+## Iteration 479: the expansion order, designed before it is built
+
+EXPANSION-ORDER.md. What a word SEES of its own command's assignments
+was already right - `a=new echo "$a"` prints old everywhere - so the
+defect is narrower than GOALS.md had it: only WHEN an assignment's own
+expansions run is out of order. The note records how this shell and
+dash run a simple command, and a plan in three stages, each testable on
+its own, with the table of behaviour that must not move.

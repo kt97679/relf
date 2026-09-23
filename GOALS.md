@@ -41,16 +41,10 @@ ordinary scripts hit, then edge cases and wording.
    in Iteration 426. Run `tools/crashfuzz.py` after any change to the
    parser, the expander or the job code.
 1c. **The order of a simple command's expansions** (yash simple-p.tst:11,
-   :18): POSIX expands the command WORDS first, then performs the
-   redirections, then expands the assignments - so `a=$(cat f2)
-   3>|$(echo f2) true` creates f2 before cat reads it, and `a=$(...)
-   3>|f1 echo "$(test -f f1 ...)"` sees no f1 and no $a. This shell
-   expands everything in one pass, applying each assignment as it is
-   expanded (Iteration 357), and performs the redirections after that
-   pass. Fixing it means three phases - words, then BEGIN-REDIRECT, then
-   assignments - and the prefix-counting around ARGV assumes assignments
-   come first in it, so reordering the list alone will not do. Left as
-   the largest thing still open in the corpus lists.
+   :18). Designed in EXPANSION-ORDER.md (479): three stages - assignment
+   values after the words; then after the redirections for a builtin;
+   then, dash's way, redirections performed in the shell before the fork
+   for an external command.
 
    (Resolved and removed in 469: line continuation in yash's torture
    cases - 456, 457, 460; `export NAME` with no value - 469; `${#a}`
