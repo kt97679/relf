@@ -721,9 +721,30 @@ DEFER SCAN-DOLLAR
   ENC-COMPLEX? @ 0= IF WF-ENC-SIMPLE TK-FLAGS @ OR TK-FLAGS ! THEN
   SRC-POS @ TK-END ! ;
 
-: ALL-DIGITS? ( c-addr u --- f )
-  DUP 0= IF 2DROP 0 EXIT THEN
-  OVER + SWAP ?DO I C@ 48 - 9 U> IF UNLOOP 0 EXIT THEN LOOP -1 ;
+VARIABLE IOD-A  VARIABLE IOD-U  VARIABLE IOD-I  VARIABLE IOD-D
+
+: IONUM-TEXT? ( c-addr u --- f )   \ digits, with line continuations among them
+  IOD-U !  IOD-A !  0 IOD-I !  0 IOD-D !
+  BEGIN IOD-I @ IOD-U @ < WHILE
+    IOD-A @ IOD-I @ + C@ 92 =
+    IOD-I @ 1+ IOD-U @ < AND
+    IF IOD-A @ IOD-I @ 1+ + C@ 10 = ELSE 0 THEN
+    IF 2 IOD-I +!
+    ELSE
+      IOD-A @ IOD-I @ + C@ 48 - 9 U> IF 0 EXIT THEN
+      1 IOD-D +!  1 IOD-I +!
+    THEN
+  REPEAT
+  IOD-D @ 0<> ;
+
+: SRC-C-PAST-CONT ( --- c )   \ the next character, line continuations skipped
+  \ The second character is probed only when the first is a backslash:
+  \ SRC-C asks for more input past the end (Iteration 334).
+  0
+  BEGIN
+    DUP SRC-C 92 = IF DUP 1+ SRC-C 10 = ELSE 0 THEN
+  WHILE 2 + REPEAT
+  SRC-C ;
 
 VARIABLE OP-LA   \ offset of the operator's second character
 VARIABLE OP-LA3  \ ... and of a third, for `<<-`
@@ -868,7 +889,10 @@ VARIABLE HR-DASH?
   DUP 10 = IF DROP 1 SRC-SKIP K-NEWLINE TK-KIND ! READ-HEREDOCS EXIT THEN
   OP-CHAR? IF SCAN-OP EXIT THEN
   SCAN-WORD K-WORD TK-KIND !
-  0 SRC-C DUP 60 = SWAP 62 = OR TK-TEXT ALL-DIGITS? AND IF
+  \ ... and a line continuation may stand inside the number or between
+  \ it and the operator: `3\`+newline+`>f` redirects fd 3, and the 3 was
+  \ left as an argument (Iteration 456, yash quote-p.tst:225).
+  SRC-C-PAST-CONT DUP 60 = SWAP 62 = OR TK-TEXT IONUM-TEXT? AND IF
     K-IONUM TK-KIND !
   THEN ;
 
@@ -1286,8 +1310,14 @@ DEFER PARSE-COMMAND
   K-OP KIND? 0= IF 0 EXIT THEN
   TK-OP @ OP-LESS < 0= TK-OP @ OP-CLOBBER > 0= AND ;
 
+VARIABLE T2N
 : TEXT>N ( c-addr u --- n )
-  0 ROT ROT OVER + SWAP ?DO 10 * I C@ 48 - + LOOP ;
+  \ Anything that is not a digit is passed over, so a line continuation
+  \ inside an IO number does not corrupt it (Iteration 456).
+  0 T2N !
+  OVER + SWAP ?DO
+    I C@ 48 - DUP 9 U> IF DROP ELSE T2N @ 10 * + T2N ! THEN
+  LOOP T2N @ ;
 
 : PARSE-REDIRECT ( --- node )
   -1 K-IONUM KIND? IF DROP TK-TEXT TEXT>N NEXT THEN   ( fd )

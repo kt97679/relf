@@ -451,6 +451,7 @@ do not trust the absence of a line below.
 - **453** — yash 1727; alias names: odd characters, and continuations in them
 - **454** — yash 1738; a candidate word is a candidate anywhere
 - **455** — busybox 220; an alias that continues the construct around it
+- **456** — yash 1739; a line continuation in an IO number
 
 ### Not tied to an iteration
 
@@ -22418,3 +22419,40 @@ with the suite runner's own conditions - stdin closed, LC_ALL=C - and
 none failed. Over 430 runs: the trigger needs the suite around the case,
 not the case by itself, which is written into GOALS.md along with what
 to try next.
+
+## Iteration 456: a line continuation in an IO number
+
+yash after 455: **1739 passed, 36 failed** (1738; dash 1650), no crashes
+or hangs - and of those 36, twelve are cases dash passes and this shell
+does not. busybox holds at 220.
+
+`3\`+newline+`>f` redirects descriptor 3: the continuation goes before
+anything else is read. The digit was left as an ordinary argument,
+because the test for an IO number - digits, then `<` or `>` with no
+blank between - was made against the raw token text and the raw next
+character, both of which still held the continuation. Iteration 332 had
+done this for the two characters of an operator, and 369 for the third
+of `<<-`; this is the same rule one token earlier.
+
+`IONUM-TEXT?` allows continuations among the digits, `SRC-C-PAST-CONT`
+looks past them for the operator - probing the second character only
+when the first is a backslash, as Iteration 334 required - and `TEXT>N`
+passes over anything that is not a digit, so the number itself is right.
+`ALL-DIGITS?` lost its last caller and the dead-word check said so.
+
+A multi-digit IO number is a descriptor here and in bash, and an
+argument in dash, with or without a continuation: a difference that
+predates this and is not touched by it.
+
+**The flaky case named its LINE this time.** The check run after this
+iteration failed it again, and verify's own FAIL lines (429) said where:
+`current-job=`, which is `( (exit 5) & wait %%; ... )`. The case records
+bash's 127, "no such job"; this shell usually answers 127 and sometimes
+5, the job's status. On its own that line is 5 in bash, dash and here -
+so the 127 depends on what ran before it, in bash too. GOALS.md carries
+that and what to ask next. The recording was clean; the check is being
+run again.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 222 -> 223,
+the new differential case; the images about 250 bytes larger, for
+`IONUM-TEXT?`, `SRC-C-PAST-CONT` and the new `TEXT>N`.

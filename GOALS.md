@@ -77,22 +77,17 @@ ordinary scripts hit, then edge cases and wording.
    expecting a hot spot.
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
-8b. **`wait-job-status-345.sh` fails now and then** - named at last
-   (455), after three sightings (429, 444, 455) of an unnamed one. It
-   is a differential case full of background jobs and `wait %1`,
-   including a background pipeline. A hundred runs of it alone, on an
-   idle machine, all passed. Then 160 more while a busybox corpus ran
-   beside it, and 150 under the suite runner's own conditions - stdin
-   closed, LC_ALL=C - and none failed either: **over 430 runs, no
-   reproduction** (455). So the trigger is not the case alone; it needs
-   the suite around it. Next: run the whole differential suite in a
-   loop, keeping every FAIL, rather than the case on its own; and look
-   at what an earlier case leaves behind - a background process of its
-   own outliving it is the obvious candidate, since this case is all
-   background jobs and `wait %1`.
-9. **The remaining corpus failures**: yash 108 (21 of them alias edge
-   cases), busybox 147; `make yash` and `make busybox` list them with
-   their severity.
+8b. **`wait-job-status-345.sh` fails now and then, and the LINE is
+   known** (429, 444, 455, 456): `( (exit 5) & wait %%; echo
+   "current-job=$?" )`. The case records bash's answer, 127 - no such
+   job - and this shell usually gives 127 and sometimes 5, the status of
+   the job. Run on its own, that line is 5 in bash, dash and here, so
+   the 127 depends on what ran before it in the file, in bash as much as
+   here. Over 430 runs of the case alone never reproduced it (455).
+   Next: find what makes bash answer 127 there - the job table's state
+   after the earlier lines - and decide whether this shell should follow
+   it at all, or whether the case should stop asserting a number both
+   references disagree about.
 
 ## Tried and rejected - do not retry without new evidence
 
