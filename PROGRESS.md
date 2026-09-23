@@ -475,6 +475,7 @@ do not trust the absence of a line below.
 - **477** — a lint for tests that run the host's sh
 - **478** — the fuzzer's third grammar: 25133 scripts, clean
 - **479** — EXPANSION-ORDER.md: the design, before the code
+- **480** — the words before the assignments (stage 1)
 
 ### Not tied to an iteration
 
@@ -23160,3 +23161,41 @@ defect is narrower than GOALS.md had it: only WHEN an assignment's own
 expansions run is out of order. The note records how this shell and
 dash run a simple command, and a plan in three stages, each testable on
 its own, with the table of behaviour that must not move.
+
+## Iteration 480: the words before the assignments
+
+Stage 1 of EXPANSION-ORDER.md. `EXPAND-WORDS` expanded every entry in
+source order, so an assignment's command substitution ran before the
+command words'. Now, when a command has assignments, the words and
+redirection targets are expanded first, into the slots after the
+assignments', and then the assignments into slots 0 .. n-1. An
+assignment is always exactly one field, so its slot is known in
+advance and ARGV comes out in the order `PREFIX-COUNT` reads it by -
+no permutation. 357's assignment-as-you-go is kept: each is applied for
+the next and all are undone before the command. With no assignment the
+loop is the old one, entry by entry. The loop body became `EW-ENTRY`
+and its tail `EW-EWA`, unchanged, driven twice.
+
+yash simple-p.tst:11 now prints `file does not exist`.
+
+**The regression it exposed was a workaround.** wait-job-status-345's
+`v=\`exit 2\` \`false\`` failed at once: its status is that of the LAST
+command substitution performed, and both references answer 2 because
+they run the word's `false` first and the assignment's `exit 2` last.
+Iteration 345 had made this shell keep the FIRST substitution's status,
+because under source order that was what matched. With the order right,
+POSIX's own rule gives the references' answers - and the workaround had
+been wrong all along for two assignments: `a=$(exit 3) b=$(exit 4)` is 4
+in both, and first-wins made it 3.
+
+One row of the design note's must-not-move table cannot be a bash
+differential case: `x=1; x=2 : $((x+=10)); echo $x` is 2 in dash and in
+`bash --posix`, and 11 in plain bash, which does not persist an
+assignment before a special builtin. It is a shell assertion instead.
+
+Every row of the table held. The fuzzer ran clean over 21215 scripts.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 235 -> 236,
+the new differential case; `shell:assertions` 844 -> 845, the special
+builtin's assignment; the images about 190 bytes larger, for the second
+pass and its two small words.

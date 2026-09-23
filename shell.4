@@ -2328,7 +2328,7 @@ DEFER AE-EXPR-CALL   ( --- n )
   ARITH-BUF AE-EVAL-LEN @ + AE-END !
   AE-COMMA ;
 
-VARIABLE CMDSUB-STATUS   \ the FIRST command substitution's exit status
+VARIABLE CMDSUB-STATUS   \ the LAST command substitution's exit status
 VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 
 VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
@@ -2410,12 +2410,16 @@ VARIABLE RSD-SIG
     CMDSUB-PIPE-RD @ CLOSE-FILE DROP
     \ its status is the status of a command that is only assignments
     \ (XCU 2.9.1; Iteration 269 - it was dropped)
-    \ An assignment-only command takes the status of the FIRST
-    \ substitution in it, which is what both references report:
-    \ `v=`exit 2` `false`` is 2 in bash and dash alike. This kept the
-    \ last one and answered 1 (Iteration 345).
+    \ A command with no command word takes the status of the LAST
+    \ substitution PERFORMED (XCU 2.9.1). Iteration 345 kept the first
+    \ instead, because under the old order that was what matched: in
+    \ `v=`exit 2` `false`` both references answer 2 because they run the
+    \ word's `false` first and the assignment's `exit 2` last - and this
+    \ shell ran them in source order. With the words expanded before the
+    \ assignments (Iteration 480) the standard's rule gives the references'
+    \ answer, and the workaround gave the wrong one.
     CMDSUB-PID @ WAITPID-UNINTERRUPTED DROP REPORT-SIGNAL-DEATH WAIT->STATUS
-    CMDSUB-RAN? @ IF DROP ELSE CMDSUB-STATUS ! THEN
+    CMDSUB-STATUS !
     -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
       CMDSUB-OUT-LEN @ 0 > IF
@@ -2781,64 +2785,7 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
   REPEAT
   0 EWA-RUN? ! ;
 
-: EXPAND-WORDS ( --- )
-  \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
-  \ rebuilds ARGV from the results.
-  \
-  \ One raw word can produce several fields - IFS splitting of an
-  \ unquoted expansion - or none at all, which is why the raw list is
-  \ snapshotted first rather than rewritten in place.
-  \
-  \ SCAN-TOKEN stops at unquoted whitespace. That cannot occur inside
-  \ a raw word - the spans were cut at exactly those points - but it
-  \ certainly can inside a word that has already been expanded once,
-  \ and some paths do reach this twice: a group used as a pipeline
-  \ stage has its body carved out of an ARGV the enclosing line
-  \ expanded, then runs it through RUN-TOKENIZED, whose leaf expands
-  \ it again. So each word is scanned until its span is used up,
-  \ splitting at any whitespace left in the middle. A second pass then
-  \ re-splits rather than truncating - `"a b"` stays two words instead
-  \ of becoming `a`.
-  0 EXPANSION-FAILED? !
-  0 EWA-N !  -1 EWA-RUN? !
-  0 GLOB-MARKS# !  0 GLOB-META# !
-  0 IFS-CACHED? !
-  \ Nothing to expand: every word is literal text the lexer already put
-  \ in the tree, and ARGV points at it with its flags set. The pass
-  \ below would copy all of it into the output buffer to arrive at the
-  \ same thing (Iteration 293).
-  ARGC @ 0 > IF ALL-LITERAL? IF EXIT THEN THEN
-  ARGC @ EW-ARGC !
-  \ The word's own entries are saved before the second pass overwrites
-  \ ARGV with the fields it produces. Six MOVEs, not six copies per word:
-  \ cell-at-a-time was 840 dispatches of every loop iteration in
-  \ tests/bench-vm, 9% of it (PERFORMANCE.md, Iteration 293).
-  ARGV             EW-ARGV  EW-ARGC @ CELLS MOVE
-  ARGV-NODES       EW-NODES EW-ARGC @ CELLS MOVE
-  ARGV-ASSIGN      EW-ASSIGN EW-ARGC @ MOVE
-  ARGV-REDIR-TGT   EW-RTGT  EW-ARGC @ MOVE
-  ARGV-IONUM       EW-IONUM EW-ARGC @ MOVE
-  ARGV-NAME-QUOTED EW-ARGQ  EW-ARGC @ MOVE
-  ARGV-QUOTED      EW-QUOT  EW-ARGC @ MOVE
-  ARGV-LITERAL     EW-LIT   EW-ARGC @ MOVE
-  \ Write into whichever of the two buffers the current words are NOT
-  \ in. Normally that is EXP-BUF, since the words come from
-  \ TOKENIZE-RAW. But a group used as a pipeline stage has its body
-  \ carved out of an ARGV the enclosing line already expanded, and
-  \ that body is expanded again when it runs; reading and writing one
-  \ buffer at once corrupts it, where alternating merely re-splits -
-  \ which for an already-expanded word is what would have happened
-  \ anyway.
-  ARGC @ 0 > IF ARGV @ ELSE 0 THEN
-  DUP EXP-BUF 1- > SWAP EXP-BUF BUFFER-SIZE EXP-BUF + < AND IF
-    BUFFER-BODY TOK-BUF ELSE BUFFER-BODY EXP-BUF
-  THEN
-  DUP OUT-BODY !  0 EXP-OVERFLOW? !
-  DUP @ TOK-OUT !
-  DUP @ SWAP CELL+ @ + TOK-OUT-END !
-  0 ARGC !
-  0 EW-I !
-  BEGIN EW-I @ EW-ARGC @ < WHILE
+: EW-ENTRY ( --- )   \ expand entry EW-I into ARGV at ARGC (factored out at 480)
     EW-ASSIGN EW-I @ + C@ WORD-IS-ASSIGN? !
     \ XCU 2.7: the word after a redirection operator is expanded but NOT
     \ field-split, so `v='a b'; > $v` writes to one file named `a b`.
@@ -2936,13 +2883,106 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
     \ Iteration 357). The command's own words must still see the values
     \ from before the command, so everything applied here is put back
     \ when the run of prefixes ends.
+  ;
+
+: EW-EWA ( --- )   \ after an entry: 357's assignment-as-you-go
     EW-ASSIGN EW-I @ + C@ EWA-RUN? @ AND IF
       ARGC @ 0 > IF ARGV ARGC @ 1- CELLS + @ EWA-APPLY THEN
     ELSE
       EWA-RUN? @ IF EWA-UNDO THEN
     THEN
-    EW-I @ 1+ EW-I !
-  REPEAT
+  ;
+
+VARIABLE EW-END   \ where the words ended, while the assignments are expanded
+: EW-NASSIGN ( --- n )   \ how many entries the parser tagged assignments
+  0  EW-ARGC @ 0 ?DO EW-ASSIGN I + C@ IF 1+ THEN LOOP ;
+
+: EXPAND-WORDS ( --- )
+  \ ARGV holds the line's raw words. Expands each one into EXP-BUF and
+  \ rebuilds ARGV from the results.
+  \
+  \ One raw word can produce several fields - IFS splitting of an
+  \ unquoted expansion - or none at all, which is why the raw list is
+  \ snapshotted first rather than rewritten in place.
+  \
+  \ SCAN-TOKEN stops at unquoted whitespace. That cannot occur inside
+  \ a raw word - the spans were cut at exactly those points - but it
+  \ certainly can inside a word that has already been expanded once,
+  \ and some paths do reach this twice: a group used as a pipeline
+  \ stage has its body carved out of an ARGV the enclosing line
+  \ expanded, then runs it through RUN-TOKENIZED, whose leaf expands
+  \ it again. So each word is scanned until its span is used up,
+  \ splitting at any whitespace left in the middle. A second pass then
+  \ re-splits rather than truncating - `"a b"` stays two words instead
+  \ of becoming `a`.
+  0 EXPANSION-FAILED? !
+  0 EWA-N !  -1 EWA-RUN? !
+  0 GLOB-MARKS# !  0 GLOB-META# !
+  0 IFS-CACHED? !
+  \ Nothing to expand: every word is literal text the lexer already put
+  \ in the tree, and ARGV points at it with its flags set. The pass
+  \ below would copy all of it into the output buffer to arrive at the
+  \ same thing (Iteration 293).
+  ARGC @ 0 > IF ALL-LITERAL? IF EXIT THEN THEN
+  ARGC @ EW-ARGC !
+  \ The word's own entries are saved before the second pass overwrites
+  \ ARGV with the fields it produces. Six MOVEs, not six copies per word:
+  \ cell-at-a-time was 840 dispatches of every loop iteration in
+  \ tests/bench-vm, 9% of it (PERFORMANCE.md, Iteration 293).
+  ARGV             EW-ARGV  EW-ARGC @ CELLS MOVE
+  ARGV-NODES       EW-NODES EW-ARGC @ CELLS MOVE
+  ARGV-ASSIGN      EW-ASSIGN EW-ARGC @ MOVE
+  ARGV-REDIR-TGT   EW-RTGT  EW-ARGC @ MOVE
+  ARGV-IONUM       EW-IONUM EW-ARGC @ MOVE
+  ARGV-NAME-QUOTED EW-ARGQ  EW-ARGC @ MOVE
+  ARGV-QUOTED      EW-QUOT  EW-ARGC @ MOVE
+  ARGV-LITERAL     EW-LIT   EW-ARGC @ MOVE
+  \ Write into whichever of the two buffers the current words are NOT
+  \ in. Normally that is EXP-BUF, since the words come from
+  \ TOKENIZE-RAW. But a group used as a pipeline stage has its body
+  \ carved out of an ARGV the enclosing line already expanded, and
+  \ that body is expanded again when it runs; reading and writing one
+  \ buffer at once corrupts it, where alternating merely re-splits -
+  \ which for an already-expanded word is what would have happened
+  \ anyway.
+  ARGC @ 0 > IF ARGV @ ELSE 0 THEN
+  DUP EXP-BUF 1- > SWAP EXP-BUF BUFFER-SIZE EXP-BUF + < AND IF
+    BUFFER-BODY TOK-BUF ELSE BUFFER-BODY EXP-BUF
+  THEN
+  DUP OUT-BODY !  0 EXP-OVERFLOW? !
+  DUP @ TOK-OUT !
+  DUP @ SWAP CELL+ @ + TOK-OUT-END !
+  0 ARGC !
+  0 EW-I !
+  \ XCU 2.9.1: the words first, then the assignments (Iteration 480,
+  \ stage 1 of EXPANSION-ORDER.md). With no assignment the entries go in
+  \ order, as they always did. With some, the words and redirection
+  \ targets are expanded first, into the slots after the assignments',
+  \ and then the assignments, into slots 0 .. n-1 - an assignment is
+  \ always exactly one field, so its slot is known before - each applied
+  \ for the next as 357 made them, and all of them undone at the end. So
+  \ `a=$(echo A 3>|f1) 3>|f1 echo "$(test -f f1 || echo none $a)"` runs
+  \ the word's substitution before the assignment's, and prints `none`
+  \ (yash simple-p.tst:11). What a word sees was right already: an
+  \ assignment is applied only after the words.
+  EW-NASSIGN ?DUP 0= IF
+    BEGIN EW-I @ EW-ARGC @ < WHILE
+      EW-ENTRY EW-EWA
+      EW-I @ 1+ EW-I !
+    REPEAT
+  ELSE
+    ARGC !
+    BEGIN EW-I @ EW-ARGC @ < WHILE
+      EW-ASSIGN EW-I @ + C@ 0= IF EW-ENTRY THEN
+      EW-I @ 1+ EW-I !
+    REPEAT
+    ARGC @ EW-END !  0 ARGC !  0 EW-I !
+    BEGIN EW-I @ EW-ARGC @ < WHILE
+      EW-ASSIGN EW-I @ + C@ IF EW-ENTRY EW-EWA THEN
+      EW-I @ 1+ EW-I !
+    REPEAT
+    EW-END @ ARGC !
+  THEN
   EWA-RUN? @ IF EWA-UNDO THEN
   0 ARGV ARGC @ CELLS + !
   \ The marks are recorded even when pathname expansion is off, since a

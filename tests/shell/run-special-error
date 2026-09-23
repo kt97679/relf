@@ -211,4 +211,10 @@ end" "$out"
 # does; bash drops the job and says "no such job", 127 (Iteration 470).
 out=$("$THIS_SH" -c '( (exit 5) & sleep 0.2; wait %%; echo "st=$?" )' 2>&1)
 assert_output_equals "wait %% on a job already finished keeps its status" "st=5" "$out"
+# An assignment before a special builtin persists (XCU 2.14), and it is
+# applied AFTER the words are expanded, so the word's own side effect is
+# overwritten (Iteration 480). dash and `bash --posix` agree; plain bash,
+# which the differential suite runs, does not persist it at all.
+out=$("$THIS_SH" -c 'x=1; x=2 : $((x+=10)); echo "$x"' 2>&1)
+assert_output_equals "a special builtin's assignment is applied after its words" "2" "$out"
 report
