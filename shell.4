@@ -1244,6 +1244,9 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
 \ ---- shell options (Iteration 270): set -e -u -x -f -n ----
 VARIABLE RD-SKIP?      \ this redirection was refused: do not open anything
 VARIABLE OPT-NOCLOBBER \ set -C: `>` will not overwrite an existing regular file
+VARIABLE OPT-PIPEFAIL  \ set -o pipefail: a pipeline fails if any command in it does
+                       \ (POSIX.1-2024; Iteration 473) - its status is the last
+                       \ non-zero one, and 0 only if every command succeeded
 VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
 
 : SET-SHVAR-A ( name-addr value-addr --- )   \ an assignment the shell makes
@@ -4647,6 +4650,7 @@ CREATE CONTINUE-NM  CSTR," continue"
   S" monitor" R@ STR0= IF R> DROP OPT-MONITOR EXIT THEN
   S" notify" R@ STR0= IF R> DROP OPT-NOTIFY EXIT THEN
   S" noclobber" R@ STR0= IF R> DROP OPT-NOCLOBBER EXIT THEN
+  S" pipefail" R@ STR0= IF R> DROP OPT-PIPEFAIL EXIT THEN
   R> DROP 0 ;
 : .OPT ( c-addr u addr on? --- )   \ one line of set -o or set +o
   IF
@@ -4665,6 +4669,7 @@ CREATE CONTINUE-NM  CSTR," continue"
   S" noexec" OPT-NOEXEC R@ .OPT
   S" noglob" OPT-NOGLOB R@ .OPT
   S" nounset" OPT-NOUNSET R@ .OPT
+  S" pipefail" OPT-PIPEFAIL R@ .OPT
   S" verbose" OPT-VERBOSE R@ .OPT
   S" xtrace" OPT-XTRACE R@ .OPT
   R> DROP ;

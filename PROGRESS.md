@@ -468,6 +468,7 @@ do not trust the absence of a line below.
 - **470** — the intermittent differential case: bash's own race
 - **471** — a differential fuzzer; three field-splitting bugs it found
 - **472** — a wider fuzzing grammar; the rest of test's two-argument rule
+- **473** — set -o pipefail (POSIX.1-2024)
 
 ### Not tied to an iteration
 
@@ -22989,3 +22990,26 @@ A fresh run of the wider grammar: 24621 scripts, no finding.
 
 Recorded changes, with their causes: `parse:verdicts-agree` 232 -> 233,
 the new differential case; the images about 30 bytes larger.
+
+## Iteration 473: set -o pipefail
+
+The first of the two POSIX.1-2024 additions in the plan. With `pipefail`
+on, a pipeline's status is that of the LAST command in it that failed,
+and 0 only if every one succeeded; off, it is the last command's, as
+before. bash is the reference - the dash installed here, 0.5.12,
+predates it - and ten shapes agree with it, among them `!` in front,
+a command substitution, a subshell, and turning it off again.
+
+One interaction needed care. Since 449, a process whose last act is a
+pipeline runs that pipeline's final stage in place, so a background
+pipeline's `$!` is the right process - and a stage run in place leaves
+nobody to collect the other stages' statuses. With `pipefail` on, the
+final stage is forked like the rest. The case covers it: the last
+pipeline of a subshell.
+
+`set -o` lists it, which moved one golden number in
+tests/shell/options.expected - the count of options that are off, 10 to
+11 - and nothing else.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 233 -> 234,
+the new differential case; the images about 125 bytes larger.

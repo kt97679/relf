@@ -2942,6 +2942,7 @@ VARIABLE PS-VEC
 VARIABLE PS-N
 VARIABLE STAGES-FINAL?   \ this process has nothing to do after the pipeline
 VARIABLE PS-FINAL?       \ ... as this RUN-STAGES found it
+VARIABLE PS-FAIL         \ the status of the last stage that failed
 VARIABLE PS-PREV
 VARIABLE PS-RD
 VARIABLE PS-WR
@@ -2952,7 +2953,9 @@ VARIABLE PS-WR
 \ process.
 : RUN-STAGES ( vec --- )
   DUP PS-VEC !  XV# PS-N !  -1 PS-PREV !
-  STAGES-FINAL? @ PS-FINAL? !  0 STAGES-FINAL? !   \ not for a nested pipeline
+  \ Not with pipefail either: a last stage run in place leaves nobody to
+  \ collect the other stages' statuses (Iteration 473).
+  STAGES-FINAL? @ OPT-PIPEFAIL @ 0= AND PS-FINAL? !  0 STAGES-FINAL? !   \ not for a nested pipeline
   PS-N @ 1+ GROW-ARGS
   PS-N @ 0 ?DO
     I PS-N @ 1- < IF PIPE DROP PS-WR ! PS-RD ! ELSE -1 PS-WR ! -1 PS-RD ! THEN
@@ -2972,10 +2975,13 @@ VARIABLE PS-WR
     PS-PREV @ CLOSE-FD  PS-WR @ CLOSE-FD
     PS-RD @ PS-PREV !
   LOOP
+  0 PS-FAIL !
   PS-N @ 0 ?DO
     PIPE-PIDS I CELLS + @ WAIT-STATUS
+    DUP IF DUP PS-FAIL ! THEN                \ the last that failed, for pipefail
     I PS-N @ 1- = IF LAST-STATUS ! ELSE DROP THEN
-  LOOP ;
+  LOOP
+  OPT-PIPEFAIL @ IF PS-FAIL @ LAST-STATUS ! THEN ;
 
 : EXEC-PIPE ( node --- )
   DUP 0 XF@ IF                               \ ! pipeline: set -e ignored
