@@ -452,6 +452,7 @@ do not trust the absence of a line below.
 - **454** — yash 1738; a candidate word is a candidate anywhere
 - **455** — busybox 220; an alias that continues the construct around it
 - **456** — yash 1739; a line continuation in an IO number
+- **457** — busybox 242 with THIS_SH set; ${##1}; a continuation in a function name
 
 ### Not tied to an iteration
 
@@ -22456,3 +22457,45 @@ run again.
 Recorded changes, with their causes: `parse:verdicts-agree` 222 -> 223,
 the new differential case; the images about 250 bytes larger, for
 `IONUM-TEXT?`, `SRC-C-PAST-CONT` and the new `TEXT>N`.
+
+## Iteration 457: the runner was hiding 44 tests, and three of them were real
+
+yash after 456: **1740 passed, 35 failed** (1739; dash 1650) - the
+IO-number fix took quote-p.tst:225. Eleven of those 35 are cases dash
+passes.
+
+**The busybox runner never set `THIS_SH`**, the variable busybox's own
+harness gives a test so it can invoke the shell under test. 44 of the
+tests use it, and without it they failed here for BOTH shells - a fault
+of this runner, not of either shell, and it had been quietly costing
+measurement since the corpus was added. With it: **242 passed, 115
+failed** (220; dash 231, up from 207). Both shells gained; this one
+still leads.
+
+What it uncovered is the point: five failures that dash passes, where
+there had been two. Three are fixed here.
+
+- **A line continuation inside a function's NAME** (yash
+  quote-p.tst:209 as well): `f\`+newline+`n() { ... }` defines `fn`.
+  The name check read the raw token text, called it no name, and the
+  `(` after it had nowhere to go. Joined now, and only when a backslash
+  is there at all - the same shape as the alias name in 453 and the IO
+  number in 456. Three of these in a row suggests a fourth is waiting
+  somewhere.
+- **`${##1}` and `${#%1}`**: after `${#`, a `#` or `%` names the
+  parameter `#` with a trim after it, exactly as `+ - = ?` already did
+  (Iterations 339, 434). `${##}`, with the brace right after, stays the
+  LENGTH of `$#` - which the existing "not immediately a brace" test
+  decides, so both fall out of one rule.
+- **A trim of a special parameter came out empty**: the trim branch
+  re-reads the parameter after setting the word aside, and looked only
+  in the variables, where `#`, `$`, `?` and `!` are not. The branch
+  above it had the fallback; this one had lost it.
+
+busybox ash-vars/param_expand_len passes. The two left that dash passes
+are a signal test's ordering race and `a=b exec` exporting, plus two
+more the harness fix uncovered - a subshell's traps and a redirection
+whose target expands to a name with a space - which are next.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 223 -> 224,
+the new differential case; the images about 80 bytes larger.

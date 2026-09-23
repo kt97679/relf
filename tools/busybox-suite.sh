@@ -22,7 +22,11 @@ run() {  # run every test under $1, print "passed failed", list failures on fd 3
         # takes dash 7.5 s here - so it gets a minute rather than ten
         # seconds, or a correct run is reported as a hang (Iteration 423).
         lim=10; case $d in *z_slow*) lim=60 ;; esac
-        out=$( (cd "$d" && timeout $lim $1 "$b.tests" 2>&1) ) || st=$?
+        # THIS_SH is what busybox's own harness gives a test to invoke
+        # the shell under test with; 44 of these tests use it, and
+        # without it they failed here for both shells, which is a fault
+        # of this runner and not of either shell (Iteration 457).
+        out=$( (cd "$d" && THIS_SH="$1" timeout $lim $1 "$b.tests" 2>&1) ) || st=$?
         if [ "$out" = "$(cat "$d/$b.right")" ]; then p=$((p+1))
         else
             f=$((f+1))

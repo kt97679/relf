@@ -547,7 +547,12 @@ DEFER SCAN-DOLLAR
   \ And `${#:-word}` and the other colon forms are the parameter `#` too:
   \ `${#:=x}` printed `0:=x}` (Iteration 434, yash param-p.tst:268).
   0 SRC-C 35 = 1 SRC-C 125 <> AND 1 SRC-C -1 <> AND
-  1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR
+  \ `#` and `%` join them: `${##1}` is `$#` without a leading 1, and
+  \ `${##x}` is `$#` itself - while `${##}`, with the brace right after,
+  \ is the LENGTH of `$#`, which is what the test below the operators
+  \ decides (Iteration 457, busybox ash-vars/param_expand_len).
+  1 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR OVER 63 = OR
+  OVER 35 = OR SWAP 37 = OR
   2 SRC-C 125 <> AND
   1 SRC-C 58 =  2 SRC-C DUP 43 = OVER 45 = OR OVER 61 = OR SWAP 63 = OR  AND  OR
   0= AND IF
@@ -1094,24 +1099,6 @@ VARIABLE MSG#
   S" then" KW? S" else" KW? OR S" elif" KW? OR S" fi" KW? OR
   S" do" KW? OR S" done" KW? OR S" esac" KW? OR S" }" KW? OR ;
 
-: NAME-TOKEN? ( --- f )   \ an unquoted word that is a valid name
-  K-WORD KIND? TK-FLAGS @ WF-QUOTED AND 0= AND IF TK-TEXT VALID-NAME? ELSE 0 THEN ;
-
-: ASSIGN-TOKEN? ( --- f )   \ NAME=... with the name unquoted
-  K-WORD KIND? 0= IF 0 EXIT THEN
-  TK-FLAGS @ WF-NAME-Q AND IF 0 EXIT THEN
-  TK-TEXT 61 SCAN NIP                       ( rest )
-  DUP 0= IF EXIT THEN
-  TK-END @ TK-START @ - SWAP -              ( namelen )
-  SRC-ADDR @ TK-START @ + SWAP VALID-NAME? ;
-
-\ ---- aliases (XCU 2.3.1) ----
-\ An unquoted word in command position that names an alias is replaced,
-\ in the source text itself, by the alias's value, which is then lexed
-\ as if it had been written there. An alias is not expanded again
-\ inside its own expansion; a value ending in a blank makes the next
-\ word a candidate too. Not while finding where a $(...) ends - its
-\ text is parsed again when it runs (Iteration 264).
 256 BUFFER: AL-NAME-BUF
 
 VARIABLE AL-NEW-I     \ the expansion being spliced: recorded after it
@@ -1134,6 +1121,36 @@ VARIABLE ANC-SRC   \ TK-TEXT gives address AND length: the address, once
     THEN
   REPEAT
   0 AL-NAME-BUF ANC-OUT @ + C! ;
+
+: NAME-TOKEN? ( --- f )   \ an unquoted word that is a valid name
+  K-WORD KIND? TK-FLAGS @ WF-QUOTED AND 0= AND 0= IF 0 EXIT THEN
+  TK-TEXT VALID-NAME? IF -1 EXIT THEN
+  \ A line continuation may stand inside the name: `f\`+newline+`n() {
+  \ echo A; }` defines fn, and this read the raw text, called it no
+  \ name, and the `(` after it had nowhere to go (Iteration 457, yash
+  \ quote-p.tst:209). Looked at only when a backslash is there at all,
+  \ as KW-JOIN does for reserved words.
+  TK-TEXT 92 SCAN NIP 0= IF 0 EXIT THEN
+  TK-END @ TK-START @ - DUP 2 + ENSURE-BUFFER AL-NAME-BUF
+  AL-NAME-COPY
+  AL-NAME-BUF DUP CSTRLEN VALID-NAME? ;
+
+: ASSIGN-TOKEN? ( --- f )   \ NAME=... with the name unquoted
+  K-WORD KIND? 0= IF 0 EXIT THEN
+  TK-FLAGS @ WF-NAME-Q AND IF 0 EXIT THEN
+  TK-TEXT 61 SCAN NIP                       ( rest )
+  DUP 0= IF EXIT THEN
+  TK-END @ TK-START @ - SWAP -              ( namelen )
+  SRC-ADDR @ TK-START @ + SWAP VALID-NAME? ;
+
+\ ---- aliases (XCU 2.3.1) ----
+\ An unquoted word in command position that names an alias is replaced,
+\ in the source text itself, by the alias's value, which is then lexed
+\ as if it had been written there. An alias is not expanded again
+\ inside its own expansion; a value ending in a blank makes the next
+\ word a candidate too. Not while finding where a $(...) ends - its
+\ text is parsed again when it runs (Iteration 264).
+
 
 : AL-ENTRY ( k --- addr )   2* CELLS AL-ACTIVE + ;
 : AL-EXPIRE ( --- )         \ drop the expansions the lexer has left
@@ -2130,6 +2147,11 @@ VARIABLE XP-VAL
   \ characters are literal (Iteration 273)
   -1 XE-WORD-ASIDE-SAFE
   XP-NAME @ LOOKUP-VAR XP-VAL !               \ it may have moved
+  \ ... and a special parameter is in none of the variables, so a trim
+  \ of one came out empty: `${##x}` is `$#` without a leading x, which
+  \ is `$#` itself (Iteration 457, busybox ash-vars/param_expand_len).
+  \ The branch above has this fallback; this one had lost it.
+  XP-VAL @ 0= IF XP-NAME @ SPECIAL-PARAM-VALUE XP-VAL ! THEN
   \ `set -u` applies to the trim operators too: only the forms that
   \ handle an unset parameter themselves - `-`, `+`, `=`, `?` and their
   \ `:` variants - are exempt (XCU 2.6.2). This exited quietly
