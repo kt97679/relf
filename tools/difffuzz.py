@@ -113,7 +113,16 @@ def more(r, k, depth):
             'n=0; a=$((n+=1)) b=$((n*10)) sh -c \'echo "$a $b"\'; echo " n=$n"',
             'v=$(echo sub) ' + cmd + ' "$(echo word)" "${v-none}"; echo',
             'n=5; v=$((n*=2)) w=$n ' + cmd + ' "$n"; echo " n=$n"',
-            'v=`exit 3` `exit ' + str(r.randint(0, 4)) + '`; echo "st=$?"'])
+            'v=`exit 3` `exit ' + str(r.randint(0, 4)) + '`; echo "st=$?"',
+            # stage 2 (Iteration 482): a regular builtin's redirections are
+            # performed before its assignments are expanded
+            # - observed through a file the substitution writes, since the
+            # assignment itself is gone once the command is done. bash
+            # expands the assignment FIRST here, against XCU 2.9.1, so the
+            # references disagree and this is never reported; it stays as
+            # a canary, and tests/shell holds the real check.
+            'rm -f "$T/q" "$T/r"; v=$(test -e "$T/q" && echo yes >"$T/r" || echo no >"$T/r") 3>"$T/q" '
+            + r.choice(['true', "printf ''", 'test -n x', 'echo >/dev/null']) + '; cat "$T/r"'])
     if k == 31:          # IFS given to read
         return ("IFS=" + quote(r.choice([':', ' :', ',', ':,'])) + " read -r a b c <<'EOF'\n" +
                 r.choice(['a:b:c', ' a : b ', 'a,,b', 'x:y:z:w', ':lead', 'trail:']) +

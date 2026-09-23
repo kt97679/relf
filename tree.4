@@ -2843,11 +2843,23 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
     S" shell: too many arguments" ERR-TYPE ERR-NL  1 LAST-STATUS !
   THEN ;
 
+: STAGE2-ELIGIBLE? ( --- f )   \ a regular builtin: its redirections are the shell's
+  ARGC @ EW-PENDING# @ > 0= IF 0 EXIT THEN
+  EW-PENDING# @ ARGV@
+  DUP SPECIAL-BUILTIN? IF DROP 0 EXIT THEN
+  DUP S" command" ROT STR0= IF DROP 0 EXIT THEN   \ it runs other commands
+  DUP FIND-FUNC -1 <> IF DROP 0 EXIT THEN        \ a function of that name runs
+  FIND-BUILTIN-CALL 0<> ;
+
 : EXPAND-AND-RUN ( --- )   \ ARGV's raw words: what the line path does next
   WANT-EXEC? @  0 WANT-EXEC? !  >R          \ taken now, so nothing nested sees it
   TOO-MANY? IF R> DROP EXIT THEN
   0 CMDSUB-RAN? !
+  \ Where the command has redirections, EXPAND-WORDS may set its
+  \ assignments aside for after them (Iteration 482, below).
+  NO-REDIRS? @ 0= EW-DEFER? !  0 EW-PENDING# !
   EXPAND-WORDS
+  0 EW-DEFER? !
   TOO-MANY? IF R> DROP EXIT THEN
   EXPANSION-OK? 0= IF R> DROP EXIT THEN
   \ The redirections come out of ARGV FIRST. They travel as words -
@@ -2857,11 +2869,29 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   \ (Iteration 385). RUN-EXPANDED did this, and is told not to repeat it.
   NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
   -1 REDIRS-PARSED? !
+  \ XCU 2.9.1, step 3 before step 4 (Iteration 482, EXPANSION-ORDER.md
+  \ stage 2): where the shell performs a command's redirections itself -
+  \ a regular builtin - they are performed BEFORE its assignments are
+  \ expanded, so `a=$(cat f2) 3>|$(echo f2) true` finds f2 there (yash
+  \ simple-p.tst:18). BEGIN-REDIRECT's undo record waits on the stack,
+  \ under a flag, until the command is done; the builtin's own
+  \ BEGIN-REDIRECT then has nothing left to do. For anything else the
+  \ assignments come back at once, in stage 1's order.
+  EW-PENDING# @ IF
+    STAGE2-ELIGIBLE? IF
+      BEGIN-REDIRECT
+      REDIR-FAILED? @ IF
+        1 LAST-STATUS !  END-REDIRECT  0 EW-PENDING# !  R> DROP EXIT
+      THEN
+      EXPAND-PENDING  0 REDIR-N !  -1
+    ELSE EXPAND-PENDING 0 THEN
+  ELSE 0 THEN                                ( [undo] early? )
   PREFIX-COUNT ARGC @ = IF XTRACE-ARGV THEN    \ set -x: an assignment-only command
   TRY-ASSIGNMENT-CALL IF
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN
     APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
+    IF END-REDIRECT THEN
     EXIT
   THEN
   \ A command that expanded to NOTHING takes the status of its last
@@ -2872,6 +2902,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
     APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
+    IF END-REDIRECT THEN
     EXIT
   THEN
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
@@ -2911,6 +2942,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
     0 RE-PREFIX !
     RUN-EXPANDED
   THEN
+  IF END-REDIRECT THEN                       \ the early redirections, undone
   0 EXEC-LAST? ! ;
 
 : EXEC-SIMPLE ( node --- )

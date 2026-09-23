@@ -217,4 +217,13 @@ assert_output_equals "wait %% on a job already finished keeps its status" "st=5"
 # which the differential suite runs, does not persist it at all.
 out=$("$THIS_SH" -c 'x=1; x=2 : $((x+=10)); echo "$x"' 2>&1)
 assert_output_equals "a special builtin's assignment is applied after its words" "2" "$out"
+# A regular builtin's redirections are performed BEFORE its assignments
+# are expanded (XCU 2.9.1 step 3 before step 4; Iteration 482, stage 2 of
+# EXPANSION-ORDER.md). dash agrees; bash expands the assignment first.
+d=$(mktemp -d)
+out=$(cd "$d" && "$THIS_SH" -c 'v=$(test -e q && echo yes >r || echo no >r) 3>q true; cat r' 2>&1)
+assert_output_equals "a builtin's redirection is performed before its assignment" "yes" "$out"
+out=$(cd "$d" && rm -f f2 && "$THIS_SH" -c 'a=$(cat f2) 3>|$(echo f2) true; echo "st=$?"' 2>&1)
+assert_output_equals "... so an assignment may read the file it creates (yash simple-p.tst:18)" "st=0" "$out"
+rm -rf "$d"
 report

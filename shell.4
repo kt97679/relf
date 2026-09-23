@@ -2894,6 +2894,14 @@ DEFER VALUE-BUF-CALL   ( --- c-addr )
   ;
 
 VARIABLE EW-END   \ where the words ended, while the assignments are expanded
+VARIABLE EW-DEFER?     \ set the assignments aside for after the redirections (482)
+VARIABLE EW-PENDING#   \ how many are set aside
+VARIABLE PEND#
+1 CELLS ARGS-BUFFER: PEND-ARGV
+1 CELLS ARGS-BUFFER: PEND-NODES
+1 ARGS-BUFFER: PEND-ARGQ
+1 ARGS-BUFFER: PEND-QUOT
+1 ARGS-BUFFER: PEND-LIT
 : EW-NASSIGN ( --- n )   \ how many entries the parser tagged assignments
   0  EW-ARGC @ 0 ?DO EW-ASSIGN I + C@ IF 1+ THEN LOOP ;
 
@@ -2977,10 +2985,33 @@ VARIABLE EW-END   \ where the words ended, while the assignments are expanded
       EW-I @ 1+ EW-I !
     REPEAT
     ARGC @ EW-END !  0 ARGC !  0 EW-I !
-    BEGIN EW-I @ EW-ARGC @ < WHILE
-      EW-ASSIGN EW-I @ + C@ IF EW-ENTRY EW-EWA THEN
-      EW-I @ 1+ EW-I !
-    REPEAT
+    EW-DEFER? @ IF
+      \ Stage 2 (Iteration 482): the assignments wait until the command's
+      \ redirections are performed. Their entries are copied out - the
+      \ EW-* arrays are GLOB-FIELDS' scratch - and their slots hold their
+      \ raw text meanwhile, which is no operator and no descriptor.
+      0 PEND# !
+      BEGIN EW-I @ EW-ARGC @ < WHILE
+        EW-ASSIGN EW-I @ + C@ IF
+          EW-ARGV EW-I @ CELLS + @  DUP PEND-ARGV PEND# @ CELLS + !
+          ARGV PEND# @ CELLS + !
+          EW-NODES EW-I @ CELLS + @  PEND-NODES PEND# @ CELLS + !
+          EW-ARGQ EW-I @ + C@  PEND-ARGQ PEND# @ + C!
+          EW-QUOT EW-I @ + C@  PEND-QUOT PEND# @ + C!
+          EW-LIT EW-I @ + C@  PEND-LIT PEND# @ + C!
+          0 ARGV-QUOTED PEND# @ + C!  0 ARGV-IONUM PEND# @ + C!
+          0 ARGV-NAME-QUOTED PEND# @ + C!
+          1 PEND# +!
+        THEN
+        EW-I @ 1+ EW-I !
+      REPEAT
+      PEND# @ EW-PENDING# !
+    ELSE
+      BEGIN EW-I @ EW-ARGC @ < WHILE
+        EW-ASSIGN EW-I @ + C@ IF EW-ENTRY EW-EWA THEN
+        EW-I @ 1+ EW-I !
+      REPEAT
+    THEN
     EW-END @ ARGC !
   THEN
   EWA-RUN? @ IF EWA-UNDO THEN
@@ -2989,6 +3020,25 @@ VARIABLE EW-END   \ where the words ended, while the assignments are expanded
   \ `case` pattern needs them; the decision to expand against the file
   \ system is taken here instead (Iteration 340).
   GLOB-META# @ NO-GLOB? @ 0= AND OPT-NOGLOB @ 0= AND IF GLOB-FIELDS-CALL THEN ;
+
+: EXPAND-PENDING ( --- )   \ the assignments EXPAND-WORDS set aside, into slots 0 .. n-1
+  EW-PENDING# @ ?DUP 0= IF EXIT THEN
+  0 EW-PENDING# !
+  DUP EW-ARGC !
+  0 ?DO
+    PEND-ARGV I CELLS + @  EW-ARGV I CELLS + !
+    PEND-NODES I CELLS + @  EW-NODES I CELLS + !
+    1 EW-ASSIGN I + C!  0 EW-RTGT I + C!  0 EW-IONUM I + C!
+    PEND-ARGQ I + C@ EW-ARGQ I + C!
+    PEND-QUOT I + C@ EW-QUOT I + C!
+    PEND-LIT I + C@ EW-LIT I + C!
+  LOOP
+  ARGC @ >R  0 ARGC !  0 EW-I !
+  0 EWA-N !  -1 EWA-RUN? !
+  BEGIN EW-I @ EW-ARGC @ < WHILE  EW-ENTRY EW-EWA  EW-I @ 1+ EW-I !  REPEAT
+  EWA-RUN? @ IF EWA-UNDO THEN
+  R> ARGC !
+  0 ARGV ARGC @ CELLS + ! ;
 
 : ARGV-QUOTED@ ( i --- f )  ARGV-QUOTED + C@ ;
 : ARGV-NAME-QUOTED@ ( i --- f )  ARGV-NAME-QUOTED + C@ ;

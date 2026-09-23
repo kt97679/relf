@@ -477,6 +477,7 @@ do not trust the absence of a line below.
 - **479** — EXPANSION-ORDER.md: the design, before the code
 - **480** — the words before the assignments (stage 1)
 - **481** — yash 1751; a fuzzing family for stage 1, with teeth; stage 2's obstacles
+- **482** — a regular builtin's redirections before its assignments (stage 2)
 
 ### Not tied to an iteration
 
@@ -23222,3 +23223,54 @@ performed inside RUN-A-BUILTIN after TEMP-ASSIGN; GLOB-FIELDS uses the
 EW-* arrays as scratch, so a deferred pass must save its entries first;
 and redirections performed early must not be performed again. Each is
 manageable; together they are the next iteration's whole work.
+
+## Iteration 482: a regular builtin's redirections before its assignments
+
+Stage 2 of EXPANSION-ORDER.md, and the last of yash's expansion-order
+cases: `a=$(cat f2) 3>|$(echo f2) true` must be silent, because XCU
+2.9.1 performs the redirections (step 3) before it expands the
+assignments (step 4). It is.
+
+The first attempt at the edit, last turn, failed its own check - the
+code had comments between lines the replacement expected together - and
+wrote nothing; the check had been added after an edit half-applied at
+471. This one was built from the text read with its comments.
+
+How it works, where the shell performs a command's redirections itself -
+a regular builtin, not a special one, not `command`, not shadowed by a
+function:
+
+- `EXPAND-WORDS`, asked to (`EW-DEFER?`, when the command has
+  redirections at all), expands the words and sets the assignments
+  aside: their entries are copied out, because `GLOB-FIELDS` uses the
+  `EW-*` arrays as scratch, and their slots hold their raw text, which
+  is neither an operator nor a descriptor.
+- `EXPAND-AND-RUN` parses the redirections and performs them with
+  `BEGIN-REDIRECT`, whose undo record waits on the data stack under a
+  flag until the command is done; `EXPAND-PENDING` then expands the
+  assignments into their slots; the builtin's own `BEGIN-REDIRECT` finds
+  nothing left to do; `END-REDIRECT` comes at the end. Every other path
+  out of the word consumes the flag.
+- Anything else gets its assignments back at once, in stage 1's order.
+
+bash disagrees with POSIX here - it expands a builtin's assignment
+before its redirection - which matters for testing: the differential
+suite runs against bash, and the fuzzer reports only what both
+references agree on. So the check is two assertions in tests/shell,
+with dash's and the standard's answer, and a fuzzing shape kept as a
+canary. The shape was given teeth first: the 479 build answers `no`
+where this one and dash answer `yes`.
+
+Two shapes still differ from dash and were checked against the
+pre-change build, unchanged by this: a failed redirection's status is 1
+here and in bash and 2 in dash; and `v=$(cat m) >m command true` runs
+the assignment first here and in bash, since `command` is left out of
+stage 2 deliberately - it runs other commands.
+
+Stage 3, external commands - redirections performed in the shell before
+the fork, as dash does - remains, and so do special builtins and
+functions.
+
+Recorded changes, with their causes: `shell:assertions` 845 -> 847, the
+two for stage 2; the images about 900 bytes larger, for the deferral,
+EXPAND-PENDING, STAGE2-ELIGIBLE? and the five pending arrays.
