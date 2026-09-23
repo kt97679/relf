@@ -457,6 +457,7 @@ do not trust the absence of a line below.
 - **459** — yash 1742; a bracket expression that never closes is a literal [
 - **460** — a backslash is not a delimiter; an operator may be split by a continuation
 - **461** — yash 1745; a pending here-document belongs to the command around a substitution
+- **462** — a reserved word is not an alias only where one would be reserved
 
 ### Not tied to an iteration
 
@@ -22617,3 +22618,29 @@ levels.
 Recorded changes, with their causes: `parse:verdicts-agree` 226 -> 227,
 the new differential case; the images about 100 bytes larger, for the
 two loops that set the pending list aside.
+
+## Iteration 462: a reserved word, where one would be
+
+Iteration 444 stopped aliases expanding reserved words, because `alias
+if=:` must not turn `if true; then` into `: true; then`. It refused
+everywhere, and that is one word too wide: a reserved word is only
+reserved WHERE ONE WOULD BE.
+
+`alias f=' for ' w=' in ' in=' x '` and then `f w in 1 2` is `for x in
+1 2` in dash (yash alias-p.tst:298). The chain runs at one position -
+`w` gives ` in `, and that `in`, standing where a NAME belongs, gives
+` x ` - while the `in` after the name is the keyword and stays. Here the
+chain stopped at the first `in`, so the loop variable was `in` and `$x`
+was never set.
+
+`RESERVED-HERE?` says whether a reserved word would be one at the token
+about to be read. It is true everywhere except where `PARSE-FOR` reads
+the loop's name, and the window is exactly the name: the peek that
+expands happens in the NAME check, not in the `NEXT` before it, which
+the first version got wrong and the test caught at once.
+
+Four `for` shapes are unchanged, and `alias if=: then=: fi=:` still
+leaves `if true; then echo kept; fi` alone.
+
+Recorded changes, with their causes: `shell:assertions` 840 -> 841, the
+assertion for the name position; the images about 40 bytes larger.

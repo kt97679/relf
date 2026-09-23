@@ -107,6 +107,7 @@ VARIABLE SRC-EOF?       \ ... and it has ended
     I C@ DUP 32 <> SWAP 9 <> AND IF UNLOOP 0 EXIT THEN
   LOOP -1 ;
 \ alias state (see TRY-ALIAS)
+VARIABLE RESERVED-HERE?   \ a reserved word would be one in this position
 VARIABLE NO-ALIAS?
 VARIABLE ALIAS-NEXT?     \ a value ended in a blank: the word at ALIAS-NEXT-AT is a candidate
 VARIABLE ALIAS-NEXT-AT
@@ -1239,7 +1240,12 @@ VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
   \ `alias if=: then=: fi=:`, `if true; then echo x; fi` still runs the
   \ if - here it became `: true; : echo x; :`, and printed nothing
   \ (Iteration 444, yash alias-p.tst:510).
-  AL-NAME-BUF RESERVED-WORD? IF 0 EXIT THEN
+  \ ... where one would BE a reserved word. After `for`, the next word
+  \ is a name, so `alias in=' x '` expands there and `f w in 1` becomes
+  \ `for x in 1` in dash, while the `in` that follows the name stays the
+  \ keyword (Iteration 462, yash alias-p.tst:298). Refusing everywhere
+  \ stopped the chain one alias early.
+  AL-NAME-BUF RESERVED-WORD? RESERVED-HERE? @ AND IF 0 EXIT THEN
   AL-NAME-BUF FIND-ALIAS
   DUP 0< IF DROP 0 EXIT THEN
   DUP AL-ACTIVE? IF DROP 0 EXIT THEN
@@ -1487,8 +1493,11 @@ VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
 
 : PARSE-FOR ( --- node )
   NEXT
+  0 RESERVED-HERE? !                        \ the name is a name, not a keyword
   NAME-TOKEN? 0= IF S" expected a name after 'for'" SYNTAX THEN
-  TOKEN-WORD NEXT                           ( name )
+  TOKEN-WORD                                ( name )
+  -1 RESERVED-HERE? !
+  NEXT
   OP-SEMI OP? IF
     NEXT 0                                  ( name 0 )
   ELSE
@@ -1735,7 +1744,7 @@ VARIABLE PE-N
 
 : PARSE-INIT ( c-addr u --- )
   SRC-LEN !  SRC-ADDR !  0 SRC-POS !  1 SRC-LINE !  0 SRC-STDIN? !
-  0 SRC-SPLICED !  0 AL-ACTIVE# !  0 NO-ALIAS? !  0 ALIAS-NEXT? !
+  0 SRC-SPLICED !  0 AL-ACTIVE# !  0 NO-ALIAS? !  -1 RESERVED-HERE? !  0 ALIAS-NEXT? !
   0 TK-VALID? !  0 VEC-TOP !  0 HD-PEND# !  TREE-RESET ;
 
 \ ==================================================================

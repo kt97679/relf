@@ -174,4 +174,17 @@ subshell
 A" "$out"
 out=$("$THIS_SH" -c 'echo A; ; echo B' 2>&1)
 assert_output_contains "... while a bare ; is still an error" "syntax error" "$out"
+# A reserved word is not alias-expanded WHERE ONE WOULD BE (Iteration
+# 462, yash alias-p.tst:298). After `for` the next word is a name, so an
+# alias expands there; the `in` that follows the name stays the keyword.
+cat > "$t/al462.sh" <<'AL'
+alias f=' for ' w=' in ' in=' x '
+f w in 1 2; do echo "x=[$x] w=[$w] in=[$in]"; done
+alias if=: then=: fi=:
+if true; then echo kept; fi
+AL
+out=$("$THIS_SH" "$t/al462.sh" 2>&1)
+assert_output_equals "an alias in the name position of a for loop" "x=[1] w=[] in=[]
+x=[2] w=[] in=[]
+kept" "$out"
 report
