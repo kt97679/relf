@@ -460,6 +460,7 @@ do not trust the absence of a line below.
 - **462** — a reserved word is not an alias only where one would be reserved
 - **463** — yash 1747; a quoted `!` or `^` in a bracket expression
 - **464** — a here-document's continued line is not its terminator
+- **465** — a test asked the host which shell `sh` is; the 8-byte rows on a 32-bit host
 
 ### Not tied to an iteration
 
@@ -22714,3 +22715,33 @@ it does everywhere the two references disagree without POSIX deciding.
 Recorded changes, with their causes: `parse:verdicts-agree` 228 -> 229,
 the new differential case; the images about 190 bytes larger, for the
 continuation test and the two flags.
+
+## Iteration 465: a test that asked the host a question
+
+A report from an ARMv7 Gentoo machine: `tests/verify` failed there on one
+assertion of 458's, and passed here.
+
+    for s in HUP TERM USR2 INT PIPE; do sh -c "kill -$s $$"; done
+
+`sh` is dash on this machine and bash on that one, and **bash ignores
+SIGQUIT when it is not interactive** - `bash -c 'kill -QUIT $$'` exits 0
+and dies of nothing. So the child never died, the shell had nothing to
+report, and the `Quit` line was missing. The assertion was about THIS
+shell's reporting and it asked the host a question instead.
+
+The inner shell is the shell under test now, passed as `$0`. Proved
+both ways: with a `sh` that is bash first on PATH, the old form gives
+`Terminated`, `end` - their failure exactly - and the new one passes.
+
+**And five rows of the report were compared that could not hold there.**
+A 32-bit host builds no 8-byte pair at all, so `core:8byte`,
+`ext:8byte`, `io:8byte`, `shell:8byte` and `image:8byte-fixpoint` are
+facts about the machine. They report 0 rather than `missing`, which is
+what the existing rule looks for, so all five came back CHANGED with
+nothing wrong. They are machine-dependent when `kernel-shell.img` is not
+there.
+
+The rest of that report is the run stopping early: once the shell suite
+failed, the later stages never ran, which is why `diff:failed`,
+`core:okmarkers`, `parse:verdicts-agree` and several sizes came back
+empty rather than wrong.

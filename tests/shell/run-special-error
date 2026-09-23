@@ -181,11 +181,15 @@ assert_output_equals "... and its status is the pipeline's" "last=4" "$out"
 # report it - though bash's wording carries the script, line and pid, so
 # this is not a differential case (Iteration 458, busybox
 # ash-signals/catch, signal_read2, subshell). INT and PIPE are silent.
-out=$("$THIS_SH" -c 'for s in HUP TERM USR2 INT PIPE; do sh -c "kill -$s \$\$"; done' 2>&1)
+# The inner shell is the one under test, passed as $0: `sh` is bash on
+# some hosts, and bash IGNORES SIGQUIT when it is not interactive, so
+# nothing died and nothing was reported - this passed here and failed on
+# a Gentoo machine where /bin/sh is bash (Iteration 465).
+out=$("$THIS_SH" -c 'for s in HUP TERM USR2 INT PIPE; do "$0" -c "kill -$s \$\$"; done' "$THIS_SH" 2>&1)
 assert_output_equals "a signal that kills a command is named" "Hangup
 Terminated
 User defined signal 2" "$out"
-out=$("$THIS_SH" -c '( sh -c "kill -TERM \$\$" ); sh -c "kill -HUP \$\$" | cat; v=$(sh -c "kill -QUIT \$\$"); echo "end"' 2>&1)
+out=$("$THIS_SH" -c '( "$0" -c "kill -TERM \$\$" ); "$0" -c "kill -HUP \$\$" | cat; v=$("$0" -c "kill -QUIT \$\$"); echo "end"' "$THIS_SH" 2>&1)
 assert_output_equals "... in a subshell, a pipeline and a command substitution" "Terminated
 Hangup
 Quit
