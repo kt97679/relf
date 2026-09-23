@@ -1194,7 +1194,8 @@ VARIABLE QUOTE-DEPTH        \ inside real double quotes
 \ (Iteration 273: `${x#*\*}` and `${z#\[ab\]}` treated them as patterns.)
 : EMIT-QUOTED ( c --- )
   PATTERN-CAPTURE? @ IF
-    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR IF 92 EMIT-TOK-CHAR THEN
+    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR
+    OVER 33 = OR OVER 94 = OR IF 92 EMIT-TOK-CHAR THEN
   THEN
   EMIT-TOK-CHAR ;
 
@@ -1240,7 +1241,11 @@ DEFER GLOB-FIELDS-CALL
   \ not ten (Iteration 369). It does not count towards GLOB-META#,
   \ which is what decides whether the word goes to the file system at
   \ all: a word with a dash in it is not a pattern.
-  DUP 45 = OVER 93 = OR IF
+  \ `!` and `^` are marked the same way, and for the same reason: right
+  \ after a `[` either one negates the set, so a live one has to be told
+  \ from a quoted one. They are not patterns on their own either
+  \ (Iteration 463, busybox ash-quoting/quoted_punct).
+  DUP 45 = OVER 93 = OR OVER 33 = OR OVER 94 = OR IF
     TOKEN-IS-ASSIGN-PREFIX? 0= IF
       GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
       TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
@@ -2577,7 +2582,7 @@ VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
     DUP 42 = OVER 63 = OR IF
       TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
     ELSE
-      DUP 45 = OVER 93 = OR IF
+      DUP 45 = OVER 93 = OR OVER 33 = OR OVER 94 = OR IF
         TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH
       THEN
       DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
@@ -7171,15 +7176,26 @@ VARIABLE GF-N
     ELSE DROP THEN
   LOOP 0 ;
 
+VARIABLE GP-AFTER-LB?   \ the character just built was a live `[`
+
 : BUILD-GLOB-PATTERN ( --- )
-  0 GP# !
+  0 GP# !  0 GP-AFTER-LB? !
   GF-LEN @ 0 ?DO
     GF-OFF @ I + OUT-BASE + C@
     \ `]` is escaped when quoted too, so `[a\]]` keeps its member and
     \ its terminator apart (Iteration 370).
-    DUP 42 = OVER 63 = OR OVER 91 = OR OVER 92 = OR OVER 45 = OR OVER 93 = OR IF
+    \ `!` and `^` are escaped when quoted only where one would negate -
+    \ right after a live `[`. `case '!' in ['!']` read as "anything but
+    \ nothing" and matched nothing; escaping them everywhere instead
+    \ made `[!a]` literal, which the differential suite said at once
+    \ (Iteration 463, busybox ash-quoting/quoted_punct).
+    DUP 33 = OVER 94 = OR  GP-AFTER-LB? @ AND
+    OVER 42 = OR OVER 63 = OR OVER 91 = OR OVER 92 = OR
+    OVER 45 = OR OVER 93 = OR IF
       GF-OFF @ I + MARKED? 0= IF 92 GP-C, THEN
-    THEN GP-C,
+    THEN
+    DUP 91 = GF-OFF @ I + MARKED? AND GP-AFTER-LB? !
+    GP-C,
   LOOP ;
 
 \ the path being built

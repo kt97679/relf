@@ -458,6 +458,7 @@ do not trust the absence of a line below.
 - **460** — a backslash is not a delimiter; an operator may be split by a continuation
 - **461** — yash 1745; a pending here-document belongs to the command around a substitution
 - **462** — a reserved word is not an alias only where one would be reserved
+- **463** — yash 1747; a quoted `!` or `^` in a bracket expression
 
 ### Not tied to an iteration
 
@@ -22644,3 +22645,35 @@ leaves `if true; then echo kept; fi` alone.
 
 Recorded changes, with their causes: `shell:assertions` 840 -> 841, the
 assertion for the name position; the images about 40 bytes larger.
+
+## Iteration 463: a quoted negation
+
+yash after 462: **1747 passed, 28 failed** (1745; dash 1650), no crashes
+or hangs - 461's here-documents and 462's reserved word. Four of the 28
+are cases dash passes: two alias torture cases and the two on expansion
+order.
+
+busybox's list was mined a different way this time: for each test this
+shell fails, does BASH produce the expected output? 47 do. Most are
+bashisms the corpus tests on purpose - `${v/x/y}`, `$'...'`, process
+substitution, `local`, `read -n`, LINENO - but a few are not, and
+ash-quoting/quoted_punct is one: it checks every ASCII punctuation
+character as a quoted member of a bracket expression, and dash passes it
+too.
+
+Two characters failed here: `case '!' in ['!']` and the same for `^`.
+Right after a `[` either one negates the set, so a quoted one must be
+told apart from a live one - and no mark was ever recorded for them
+either way, because neither is a pattern character in its own right. Now
+they are marked where `-`, `]` and `\` are marked, in all three places
+that mark, and escaped when the pattern is built only where one would
+negate: right after a live `[`.
+
+Escaping them everywhere instead was the first version, and the
+differential suite failed two cases within the minute - `[![:alpha:]]`
+and `[!a].txt` had become literal. The second version marked the live
+ones in the expansion's path but not in the lexer's, so `case` was right
+and pathname expansion was still wrong. Three sites, one rule.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 227 -> 228,
+the new differential case; the images about 88 bytes larger.

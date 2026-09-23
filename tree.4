@@ -1999,7 +1999,12 @@ VARIABLE XM-U
   \ A backslash is marked the same way: live in a pattern, where it
   \ escapes the next character, but no reason to glob (Iteration 428;
   \ shell.4's GLOB-MARK-BACKSLASH is the per-character path).
-  45 XE-MARK-DASH  93 XE-MARK-DASH  92 XE-MARK-DASH ;
+  \ `!` and `^` too: right after a `[` either one negates the set, so a
+  \ live one must be told apart from a quoted one, and no mark was ever
+  \ recorded for them either way (Iteration 463, busybox
+  \ ash-quoting/quoted_punct).
+  45 XE-MARK-DASH  93 XE-MARK-DASH  92 XE-MARK-DASH
+  33 XE-MARK-DASH  94 XE-MARK-DASH ;
 
 : XE-REGION-END ( --- )
   TOK-OUT @ OUT-BASE - XE-REG-START @ = IF EXIT THEN
