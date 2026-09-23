@@ -22411,3 +22411,10 @@ Recorded changes, with their causes: `shell:assertions` 836 -> 838, the
 two for aliases that continue a construct; the images about 50 bytes
 larger. The first check run saw the flake above and a second agreed with
 the recording.
+
+**And it did not reproduce.** 100 runs of `wait-job-status-345.sh` alone
+on an idle machine, 160 with a busybox corpus running beside it, 150
+with the suite runner's own conditions - stdin closed, LC_ALL=C - and
+none failed. Over 430 runs: the trigger needs the suite around the case,
+not the case by itself, which is written into GOALS.md along with what
+to try next.

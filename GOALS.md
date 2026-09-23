@@ -81,10 +81,15 @@ ordinary scripts hit, then edge cases and wording.
    (455), after three sightings (429, 444, 455) of an unnamed one. It
    is a differential case full of background jobs and `wait %1`,
    including a background pipeline. A hundred runs of it alone, on an
-   idle machine, all passed, so the race needs the load of a full
-   verify. Next: run it in a loop WHILE a verify or a corpus runs
-   beside it, and look first at `wait %1` against a background pipeline,
-   whose last stage runs in the wrapper process since 449.
+   idle machine, all passed. Then 160 more while a busybox corpus ran
+   beside it, and 150 under the suite runner's own conditions - stdin
+   closed, LC_ALL=C - and none failed either: **over 430 runs, no
+   reproduction** (455). So the trigger is not the case alone; it needs
+   the suite around it. Next: run the whole differential suite in a
+   loop, keeping every FAIL, rather than the case on its own; and look
+   at what an earlier case leaves behind - a background process of its
+   own outliving it is the obvious candidate, since this case is all
+   background jobs and `wait %1`.
 9. **The remaining corpus failures**: yash 108 (21 of them alias edge
    cases), busybox 147; `make yash` and `make busybox` list them with
    their severity.
