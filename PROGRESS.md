@@ -447,6 +447,7 @@ do not trust the absence of a line below.
 - **449** — busybox 219; $! is the last process of a background pipeline
 - **450** — yash 1724; an unquoted ${#a} is field-split
 - **451** — many_ifs profiled: flat; a child no longer resets traps it has none of
+- **452** — the same alias again after a trailing blank
 
 ### Not tied to an iteration
 
@@ -22276,3 +22277,31 @@ Iteration 410 again.
 
 Recorded changes, with their causes: the images about 50 bytes larger,
 for the counter and the skip; nothing else moved.
+
+## Iteration 452: the same alias, again
+
+`alias d='echo '` makes the next word a candidate, and that word may be
+`d` itself - its own expansion is over by then. Here `d d x` became
+`echo d x` where dash has `echo echo x` (yash alias-p.tst:480). Distinct
+aliases chained correctly, which is what pointed at the recursion guard
+rather than at the candidacy.
+
+The guard was right and its bookkeeping was not. An expansion is
+recorded with the position where it ends, and `SPLICE` shifts every
+recorded expansion that ends past the token it replaces - including the
+one just recorded for THIS alias, whose end then moved by the difference
+between the value and the name and covered the word after it. Recorded
+after the splice now; `TK-START` does not move, so the end is the same
+number either side of it.
+
+Four shapes match dash, among them `d g g x` and `d d d x`. The
+remaining case of that yash test is the recursion rule itself - whether
+an alias that appears inside another's value may expand again - which is
+a separate question, still open.
+
+Not a differential case: bash does not expand aliases in a script
+unless `expand_aliases` is set, so the suite's bash would disagree with
+both this shell and dash. It is an assertion in `tests/shell` instead.
+
+Recorded changes, with their causes: `shell:assertions` 833 -> 834, the
+alias assertion; the images about 60 bytes larger.

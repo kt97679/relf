@@ -1060,6 +1060,8 @@ DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
 \ text is parsed again when it runs (Iteration 264).
 256 BUFFER: AL-NAME-BUF
 
+VARIABLE AL-NEW-I     \ the expansion being spliced: recorded after it
+VARIABLE AL-NEW-END
 : AL-ENTRY ( k --- addr )   2* CELLS AL-ACTIVE + ;
 : AL-EXPIRE ( --- )         \ drop the expansions the lexer has left
   0  AL-ACTIVE# @ 0 ?DO
@@ -1131,10 +1133,21 @@ VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
   \ A value that is empty or all blanks leaves no command behind, which
   \ PARSE-SIMPLE has to be told about (Iteration 382).
   2DUP AL-BLANK? IF -1 ALIAS-VANISHED? ! THEN
-  ROT AL-ACTIVE# @ AL-ENTRY !               ( a u )
-  DUP TK-START @ + AL-ACTIVE# @ AL-ENTRY CELL+ !
+  \ Recorded AFTER the splice. SPLICE shifts every active expansion that
+  \ ends past this token, and this one was already in the table, so its
+  \ end moved too - by the difference between the value and the name -
+  \ and covered the word after it. The same alias then read as still
+  \ active there and was not expanded: `alias d='echo '` made `d d x`
+  \ into `echo d x`, where dash has `echo echo x` (Iteration 452, yash
+  \ alias-p.tst:480). TK-START does not move, so the end is the same
+  \ number either side of the splice.
+  ROT AL-NEW-I !                            ( a u )
+  DUP TK-START @ + AL-NEW-END !
+  SPLICE
+  AL-NEW-I @ AL-ACTIVE# @ AL-ENTRY !
+  AL-NEW-END @ AL-ACTIVE# @ AL-ENTRY CELL+ !
   1 AL-ACTIVE# +!
-  SPLICE -1 ;
+  -1 ;
 : EXPAND-ALIASES ( --- )   BEGIN PEEK TRY-ALIAS 0= UNTIL ;
 ' EXPAND-ALIASES IS EXPAND-ALIASES-CALL
 

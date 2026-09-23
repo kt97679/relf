@@ -99,4 +99,20 @@ assert_output_equals "reserved words are not aliases; a vanished alias leaves th
 A
 FOO
 after-and" "$out"
+# An alias whose value ends in a blank makes the next word a candidate,
+# and the SAME alias may be that word (Iteration 452, yash
+# alias-p.tst:480). Not a differential case: bash does not expand aliases
+# in a script unless expand_aliases is set.
+cat > "$t/al452.sh" <<'AL'
+alias d='echo ' g='echo '
+d g x
+d d x
+d g g x
+d d d x
+AL
+out=$("$THIS_SH" "$t/al452.sh" 2>&1)
+assert_output_equals "the same alias again after a trailing blank" "echo x
+echo x
+echo echo x
+echo echo x" "$out"
 report
