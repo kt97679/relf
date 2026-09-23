@@ -2253,6 +2253,44 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
 DEFER RUN-CMDSUB-JOB-CALL
 
+: SIGNAL-TEXT ( n --- c-addr u | 0 0 )   \ how the references name a signal
+  DUP  1 = IF DROP S" Hangup" EXIT THEN
+  DUP  3 = IF DROP S" Quit" EXIT THEN
+  DUP  4 = IF DROP S" Illegal instruction" EXIT THEN
+  DUP  5 = IF DROP S" Trace/breakpoint trap" EXIT THEN
+  DUP  6 = IF DROP S" Aborted" EXIT THEN
+  DUP  7 = IF DROP S" Bus error" EXIT THEN
+  DUP  8 = IF DROP S" Floating point exception" EXIT THEN
+  DUP  9 = IF DROP S" Killed" EXIT THEN
+  DUP 10 = IF DROP S" User defined signal 1" EXIT THEN
+  DUP 11 = IF DROP S" Segmentation fault" EXIT THEN
+  DUP 12 = IF DROP S" User defined signal 2" EXIT THEN
+  DUP 14 = IF DROP S" Alarm clock" EXIT THEN
+  DUP 15 = IF DROP S" Terminated" EXIT THEN
+  DUP 24 = IF DROP S" CPU time limit exceeded" EXIT THEN
+  DUP 25 = IF DROP S" File size limit exceeded" EXIT THEN
+  DROP 0 0 ;
+
+VARIABLE RSD-SIG
+: REPORT-SIGNAL-DEATH ( raw --- raw )
+  \ A foreground command killed by a signal is reported, as dash and
+  \ bash report it: `sh -c 'kill -HUP $$'` says Hangup, and nothing was
+  \ said here at all (Iteration 458, busybox ash-signals/catch,
+  \ signal_read2 and subshell). INT and PIPE are silent in both
+  \ references - a ^C or a closed pipe is not news - and a signal with
+  \ no name of its own is given its number.
+  DUP 127 AND RSD-SIG !
+  RSD-SIG @ 0= IF EXIT THEN
+  RSD-SIG @ 127 = IF EXIT THEN                \ stopped, not killed
+  RSD-SIG @ 2 = IF EXIT THEN
+  RSD-SIG @ 13 = IF EXIT THEN
+  RSD-SIG @ SIGNAL-TEXT ?DUP IF
+    ERR-TYPE
+  ELSE
+    DROP S" Signal " ERR-TYPE  RSD-SIG @ N>STR ERR-CSTR
+  THEN
+  ERR-NL ;
+
 : WAIT->STATUS ( raw --- status )
   \ wait(2)'s status word. A child killed by a signal exits 128+n, as
   \ both references report it; only the normal-exit byte was read until
@@ -2295,7 +2333,7 @@ DEFER RUN-CMDSUB-JOB-CALL
     \ substitution in it, which is what both references report:
     \ `v=`exit 2` `false`` is 2 in bash and dash alike. This kept the
     \ last one and answered 1 (Iteration 345).
-    CMDSUB-PID @ WAITPID-UNINTERRUPTED DROP WAIT->STATUS
+    CMDSUB-PID @ WAITPID-UNINTERRUPTED DROP REPORT-SIGNAL-DEATH WAIT->STATUS
     CMDSUB-RAN? @ IF DROP ELSE CMDSUB-STATUS ! THEN
     -1 CMDSUB-RAN? !
     BEGIN                                    ( strip trailing newlines )
@@ -2332,6 +2370,8 @@ DEFER RUN-CMDSUB-JOB-CALL
 VARIABLE EAP-I
 VARIABLE EAP-AT
 VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
+
+VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
 
 : EMIT-ALL-POS-PARAMS ( at? --- )
   \ Emits every positional parameter. at? distinguishes $@ from $*,
@@ -2378,7 +2418,13 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
       \ like the quoted form rather than making fields.
       \ Inside an assignment nothing is split, so both forms join with
       \ IFS's first character - `v="$@"` is one value, not two words.
-      WORD-IS-ASSIGN? @ 0=
+      \ A redirection's TARGET is one word too: `echo x >"$@.out"` with
+      \ two parameters writes to `abc d e.out` in dash and in busybox's
+      \ ash, and bash calls it an ambiguous redirect. Here the fields
+      \ were made and then nothing was written at all, which is the
+      \ worst of the three (Iteration 458, busybox
+      \ ash-vars/var_expand_in_redir).
+      WORD-IS-ASSIGN? @ 0=  REDIR-TARGET-WORD? @ 0= AND
       IN-DQ-CONTEXT? @ 0= EAP-AT @ IN-DQ-CONTEXT? @ AND OR AND IF
         IFS-SPLIT-HERE
       ELSE
@@ -2593,7 +2639,6 @@ VARIABLE OA-N
 
 DEFER NOSPLIT-ON    ( --- )   \ tree.4's: expand this word without splitting
 DEFER NOSPLIT-OFF   ( --- )
-VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
 
 \ ---- assignment prefixes, applied as they are expanded (Iteration 357)
 \ Each one is applied the moment its own expansion is finished, so the
@@ -5904,6 +5949,7 @@ VARIABLE FG-PID
   ELSE
     JOB-CONTROL? @ IF FOREGROUND-CHILD ELSE
       WAITPID-UNINTERRUPTED DROP   ( raw wait status )
+      REPORT-SIGNAL-DEATH
       WAIT->STATUS
       LAST-STATUS !
     THEN

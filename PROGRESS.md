@@ -453,6 +453,7 @@ do not trust the absence of a line below.
 - **455** — busybox 220; an alias that continues the construct around it
 - **456** — yash 1739; a line continuation in an IO number
 - **457** — busybox 242 with THIS_SH set; ${##1}; a continuation in a function name
+- **458** — busybox 247; a signal that kills a command is named; a redirection target joins
 
 ### Not tied to an iteration
 
@@ -22499,3 +22500,34 @@ whose target expands to a name with a space - which are next.
 
 Recorded changes, with their causes: `parse:verdicts-agree` 223 -> 224,
 the new differential case; the images about 80 bytes larger.
+
+## Iteration 458: what a signal costs, said out loud
+
+busybox: **247 passed, 110 failed** (242 after 457's harness fix, 220
+before it; dash 231), no crashes or hangs. The five failures that 457's
+`THIS_SH` uncovered are all fixed, and the two left that dash passes are
+the ones that were there before: signal1's ordering race and `a=b exec`
+exporting.
+
+**A foreground command killed by a signal is reported.** dash and bash
+both say `Hangup`, `Terminated`, `User defined signal 2`; this shell
+said nothing at all, which is how three busybox tests were failing for
+one reason. Eleven signals match dash's wording now, in a command, a
+subshell, a pipeline and a command substitution. INT and PIPE are silent
+in both references - a ^C or a closed pipe is not news - and a signal
+with no name of its own is given its number.
+
+Not a differential case: bash's wording carries the script, the line and
+the pid (`file: line 5: 28167 Hangup  sh -c ...`), so the suite's bash
+would disagree with this shell and with dash together. Assertions in
+`tests/shell` instead, as for the aliases in 452.
+
+**And a redirection's target is one word.** `echo x >"$@.out"` with two
+parameters writes to `abc d e.out` in dash and in busybox's ash, and
+bash calls it an ambiguous redirect; here the fields were made and then
+nothing was written at all, which is the worst of the three. A target
+joins them now, as it already refused to split them.
+
+Recorded changes, with their causes: `shell:assertions` 838 -> 840, the
+two for signal reports; the images about 570 bytes larger, nearly all of
+it the fifteen signal descriptions.

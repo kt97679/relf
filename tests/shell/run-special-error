@@ -177,4 +177,17 @@ assert_output_equals "a signal to \$! reaches the last stage" "TRAPPED
 st=0" "$out"
 out=$("$THIS_SH" -c '(exit 3) | (exit 4) & wait $!; echo "last=$?"' 2>&1)
 assert_output_equals "... and its status is the pipeline's" "last=4" "$out"
+# A foreground command killed by a signal is reported, as dash and bash
+# report it - though bash's wording carries the script, line and pid, so
+# this is not a differential case (Iteration 458, busybox
+# ash-signals/catch, signal_read2, subshell). INT and PIPE are silent.
+out=$("$THIS_SH" -c 'for s in HUP TERM USR2 INT PIPE; do sh -c "kill -$s \$\$"; done' 2>&1)
+assert_output_equals "a signal that kills a command is named" "Hangup
+Terminated
+User defined signal 2" "$out"
+out=$("$THIS_SH" -c '( sh -c "kill -TERM \$\$" ); sh -c "kill -HUP \$\$" | cat; v=$(sh -c "kill -QUIT \$\$"); echo "end"' 2>&1)
+assert_output_equals "... in a subshell, a pipeline and a command substitution" "Terminated
+Hangup
+Quit
+end" "$out"
 report
