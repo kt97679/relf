@@ -52,16 +52,9 @@ ordinary scripts hit, then edge cases and wording.
    come first in it, so reordering the list alone will not do. Left as
    the largest thing still open in the corpus lists.
 
-2. **Line continuation in the remaining torture cases** of yash's
-   quote-p.tst (74, 209, 225, 301): between an IO number's digit and
-   its operator (`3\`+newline+`>>`), inside a `for` variable's name,
-   around a function's parentheses, and between `${` and `#`. The
-   others in that family pass since 429. A continuation-aware reader at
-   the source level would fix all four at once, but it is a refactor of
-   the lexer core for constructs nobody writes; last in severity.
-3. **`export NAME` with no value is not remembered** (422), so a later
-   assignment does not reach children. Needs a pending-export list.
-4. **`${#a}` is not field-split** when IFS holds digits (424). Rare.
+   (Resolved and removed in 469: line continuation in yash's torture
+   cases - 456, 457, 460; `export NAME` with no value - 469; `${#a}`
+   split by IFS - 450. PROGRESS.md has each.)
 5. **`a=b exec 1>&1` exports `a`**, as bash does and dash does not
    (424). Behaves like bash; low priority.
 5b. **`return` outside a function, in a loop, repeats its error forever**

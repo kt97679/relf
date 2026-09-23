@@ -640,6 +640,42 @@ DEFER SPECIAL-ERROR   ( status --- )
 
 VARIABLE PATH-ASSIGNED?   \ PATH was assigned: forget remembered commands
 
+\ Names exported while they have no value (Iteration 469). This shell's
+\ "exported" is "in the process environment", and a name with no value
+\ cannot go there - `export FOO` then `FOO=bar` left FOO out of every
+\ child's environment, where POSIX gives the name the export attribute
+\ at once and dash and bash pass bar on. Kept here until the name is
+\ assigned, which moves it into the environment, or unset, which drops
+\ the attribute. NUL after each name.
+256 BUFFER: XP-BUF
+VARIABLE XP#
+VARIABLE XPR-OFF
+VARIABLE XPR-N
+
+: XP-FIND ( name --- offset | -1 )
+  0
+  BEGIN DUP XP# @ < WHILE
+    2DUP XP-BUF + CSTR= IF NIP EXIT THEN
+    XP-BUF OVER + CSTRLEN 1+ +
+  REPEAT 2DROP -1 ;
+
+: XP-ADD ( name --- )
+  DUP XP-FIND 0< 0= IF DROP EXIT THEN
+  DUP CSTRLEN 1+
+  XP# @ OVER + ENSURE-BUFFER XP-BUF
+  XP-BUF XP# @ +  SWAP
+  DUP XP# +!
+  MOVE ;
+
+: XP-REMOVE ( name --- )
+  XP-FIND DUP 0< IF DROP EXIT THEN  XPR-OFF !
+  XP-BUF XPR-OFF @ + CSTRLEN 1+ XPR-N !
+  XP-BUF XPR-OFF @ + XPR-N @ +
+  XP-BUF XPR-OFF @ +
+  XP# @ XPR-OFF @ - XPR-N @ -
+  MOVE
+  XPR-N @ NEGATE XP# +! ;
+
 : SET-SHVAR ( name-addr value-addr --- )  \ both NUL-terminated C
                                             \ strings. Updates an
                                             \ existing slot if the
@@ -720,7 +756,13 @@ VARIABLE PATH-ASSIGNED?   \ PATH was assigned: forget remembered commands
   \ with its new value (XCU 2.5.3, 2.9.1): `PATH=/x` changed only the
   \ shell's copy, so commands kept being found along the old PATH
   \ (Iteration 269).
-  SV-NAME @ GETENV IF SV-VALUE @ SV-NAME @ SETENV DROP THEN ;
+  SV-NAME @ GETENV IF SV-VALUE @ SV-NAME @ SETENV DROP EXIT THEN
+  \ ... or exported earlier while it had no value
+  XP# @ IF
+    SV-NAME @ XP-FIND 0< 0= IF
+      SV-VALUE @ SV-NAME @ SETENV DROP  SV-NAME @ XP-REMOVE
+    THEN
+  THEN ;
 
 : REMOVE-SHVAR ( name-addr --- )  \ shifts the last entry into the
                                     \ removed slot rather than
@@ -3565,6 +3607,13 @@ VARIABLE EX-I
     .EXPORT-LINE
     EX-I @ 1+ EX-I !
   REPEAT
+  \ ... and the names exported with no value yet, as `export NAME`, which
+  \ is how dash lists them and how the list reads back in (Iteration 469).
+  0
+  BEGIN DUP XP# @ < WHILE
+    S" export " TYPE  XP-BUF OVER + DUP CSTRLEN TYPE CR
+    XP-BUF OVER + CSTRLEN 1+ +
+  REPEAT DROP
   0 LAST-STATUS ! ;
 
 : EXPORT-ONE ( c-addr --- )   \ one operand: NAME=value, or NAME
@@ -3577,10 +3626,12 @@ VARIABLE EX-I
       UNLOOP EXIT
     THEN
   LOOP
-  \ A bare NAME exports the value it has. One exported while it has none
-  \ is not remembered yet: this shell's "exported" is "in the process
-  \ environment", and there is nothing to put there.
-  DUP GET-SHVAR ?DUP IF SWAP SETENV DROP ELSE DROP THEN ;
+  \ A bare NAME exports the value it has; one with none is remembered
+  \ until it gets one (XP-ADD, Iteration 469). A name that is only in the
+  \ environment already is exported already.
+  DUP GET-SHVAR ?DUP IF SWAP SETENV DROP ELSE
+    DUP GETENV IF DROP ELSE XP-ADD THEN
+  THEN ;
 
 : DO-EXPORT ( --- )
   \ EVERY operand. This handled ARGV[1] and ignored the rest, so
@@ -3620,9 +3671,11 @@ DEFER FT-SHIFT-CALL      ( i --- i )   \ tree.4 moves its own row
           S" : is read only" ERR-TYPE ERR-NL  1 SPECIAL-ERROR
         ELSE
           DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
+          UN-I @ ARGV@ XP-REMOVE              \ unset drops the attribute
         THEN
       ELSE
         DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
+        UN-I @ ARGV@ XP-REMOVE
       THEN
     THEN
     UN-I @ 1+ UN-I !

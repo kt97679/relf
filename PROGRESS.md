@@ -464,6 +464,7 @@ do not trust the absence of a line below.
 - **466** — descriptors of two digits or more
 - **467** — a word that looks like a descriptor is not one
 - **468** — busybox 249; a trap may run inside a trap
+- **469** — a name exported before it has a value; GOALS.md pruned
 
 ### Not tied to an iteration
 
@@ -22845,3 +22846,34 @@ middle command raises another signal - runs `A`, `inner`, `B` in order.
 
 Recorded changes, with their causes: `shell:assertions` 841 -> 843, the
 two for nested traps; the images about 70 bytes larger.
+
+## Iteration 469: a name exported before it has a value
+
+The first of the steps agreed after 468: small, concrete fixes first.
+
+`export FOO` and then `FOO=bar` left FOO out of every child's
+environment, where dash and bash pass `bar` on. POSIX gives the name
+the export attribute at once; this shell's "exported" meant "in the
+process environment", and a name with no value cannot be put there, so
+the attribute was simply forgotten. GOALS.md had carried it since 422,
+as "needs a pending-export list".
+
+That is what it has now: `XP-BUF`, the names exported with no value. An
+assignment moves a listed name into the environment; `unset` drops it,
+as it drops the attribute; `export -p` lists it as `export NAME`, which
+is dash's form and reads back in. The check costs an assignment nothing
+while the list is empty, which is nearly always.
+
+Seven shapes match dash, among them the ones that must not change: an
+ordinary variable stays out of children, and one unset after its export
+stays out too.
+
+GOALS.md is pruned in the same iteration: three of its "open" entries
+were already fixed - the line-continuation torture cases, `${#a}` and
+IFS, and this one now. A fourth, `return` outside a function in a loop,
+turned out on a full reading to record a deliberate choice rather than
+a bug, and stays.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 230 -> 231,
+the new differential case; the images about 390 bytes larger, for the
+pending-export list and its three words.
