@@ -472,6 +472,7 @@ do not trust the absence of a line below.
 - **474** — $'...' (POSIX.1-2024)
 - **475** — LINENO
 - **476** — \j and \D{format} in prompts
+- **477** — a lint for tests that run the host's sh
 
 ### Not tied to an iteration
 
@@ -23105,3 +23106,26 @@ command line killed the call that ran it. Kill by PID.)
 Recorded changes, with their causes: `interactive:passed` 22 -> 23, the
 new pty case; the images about 1.2 KB larger, most of it the day and
 month names and the specifier table.
+
+## Iteration 477: a lint for tests that ask the host a question
+
+Step 9 of the plan. 465's bug was an assertion that ran `sh -c "kill
+-QUIT $$"`: dash here, bash on an ARMv7 Gentoo machine, and bash ignores
+SIGQUIT when it is not interactive, so the assertion passed here and
+failed there. `tools/lint-tests.py` looks for the same shape - a bare
+`sh -c` in tests/shell - and reports it unless the line says why with
+`# host-sh:`. Comments, the explicit `dash` calls that fetch the
+reference wording, and a test's NAME are not invocations and are not
+flagged.
+
+It found five, all in run-assign, each checking that an exported variable
+reaches a child: any POSIX shell passes them, but they still ran whatever
+`sh` the host had. The child is the shell under test now, given as `$0`,
+as 465 did - and the proof is a `sh` that is /bin/false first on PATH,
+with which run-assign still passes all sixteen.
+
+`make lint` runs it beside the comment lint, and tests/verify records
+its count as `shell:host-sh-tests`, where 0 is the only right answer.
+
+Recorded changes, with their causes: `shell:host-sh-tests 0`, the new
+key. The images do not move: nothing in the shell changed.

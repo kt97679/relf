@@ -40,6 +40,7 @@ shell:8byte 1
 shell:assertions 844
 shell:dead-words 0
 shell:files 80
+shell:host-sh-tests 0
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
 size:i386 172924

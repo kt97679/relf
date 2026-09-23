@@ -218,6 +218,10 @@ emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f5)"
 # Iteration 265 removed 343 of them with the line-based shell; none should
 # come back unnoticed.
 emit shell:dead-words "$(python3 tools/dead-words.py shell.4 tree.4 2>/dev/null | grep -c .)"
+# Tests that run the host's `sh` where they mean the shell under test
+# (tools/lint-tests.py, Iteration 477): 465's assertion passed here and
+# failed on a machine whose sh is bash. 0 is the only right answer.
+emit shell:host-sh-tests "$(python3 tools/lint-tests.py 2>/dev/null | grep -c 'runs the host sh')"
 
 # tests/matrix: every construct in every context, and the syntax errors,
 # against bash and dash (Iteration 262). A regression - a case that fails

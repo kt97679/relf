@@ -250,6 +250,7 @@ portability: all
 
 lint:
 	@$(PYTHON) tools/lint-comments.py *.4
+	@$(PYTHON) tools/lint-tests.py
 
 dead-words: all
 	@$(PYTHON) tools/dead-words.py shell.4 edit.4 tree.4
