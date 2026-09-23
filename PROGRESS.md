@@ -450,6 +450,7 @@ do not trust the absence of a line below.
 - **452** — the same alias again after a trailing blank
 - **453** — yash 1727; alias names: odd characters, and continuations in them
 - **454** — yash 1738; a candidate word is a candidate anywhere
+- **455** — busybox 220; an alias that continues the construct around it
 
 ### Not tied to an iteration
 
@@ -22367,3 +22368,46 @@ trailing-blank test.
 Recorded changes, with their causes: `shell:assertions` 835 -> 836, the
 assertion for the new positions; the images about 140 bytes larger, for
 the check in PEEK and `ALIAS-NEXT-BLANKS?`.
+
+## Iteration 455: an alias that continues the construct around it
+
+busybox after 454: **220 passed, 137 failed** (219; dash 207), no crashes
+or hangs. Two failures that dash passes are left, both known: signal1's
+ordering race and `a=b exec` exporting, which is bash's behaviour.
+
+An alias may expand to text that CONTINUES what encloses it - `alias
+e='`+newline+`esac'` closes the case it stands in, `alias r='`+newline+`)'`
+closes a subshell, `alias c=' cat << '` opens a here-document whose
+operand is the next word. By the time PEEK expands such an alias the
+parse has entered a simple command, which then holds no words, and that
+was "expected a command" where dash runs the construct.
+
+An expansion is what makes an empty command legitimate, as a vanished
+alias already did (Iteration 382): `echo A; ; echo B`, `if; then` and a
+bare `;` have no alias behind them and are still errors, which the tests
+check.
+
+**The flag is cleared when a command is parsed, not when one starts.**
+The first version cleared it at the start of PARSE-SIMPLE and nothing
+changed, because the list parser peeks the next token - expanding the
+alias - BEFORE entering PARSE-SIMPLE, so the reset wiped the flag that
+peek had just set. The same shape as 454's candidacy reset, one layer
+down.
+
+The parenthesis and here-document cases pass with it; what is left of
+that group is an alias to `case`'s own keywords in one shape, and the
+word after `for`.
+
+**The intermittent differential case has a name: `wait-job-status-345`.**
+It failed for the third time (429, 444, 455), and this time the
+machinery that 444 added said which: tests/portability kept the whole
+output and printed `clean run: FAIL: wait-job-status-345.sh`. The line
+was in /tmp/verify-portability.log and not in verify's own output, which
+forwards only lines saying PROBLEM - it forwards these too now. A
+hundred runs of that case alone all passed; it is background jobs and
+`wait %1`, and it needs a loaded machine. GOALS.md carries what to try.
+
+Recorded changes, with their causes: `shell:assertions` 836 -> 838, the
+two for aliases that continue a construct; the images about 50 bytes
+larger. The first check run saw the flake above and a second agreed with
+the recording.

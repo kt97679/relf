@@ -1150,6 +1150,7 @@ VARIABLE ANC-SRC   \ TK-TEXT gives address AND length: the address, once
 
 VARIABLE ALIAS-VANISHED?   \ an alias expanded to nothing, or to blanks
 VARIABLE EMPTY-VIA-ALIAS?  \ the command just parsed was such an alias, and nothing else
+VARIABLE ALIAS-EXPANDED-HERE?  \ an alias was expanded while parsing this command
 VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
 
 : AL-BLANK? ( c-addr u --- f )   \ empty, or spaces and tabs only
@@ -1199,6 +1200,7 @@ VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
   AL-NEW-I @ AL-ACTIVE# @ AL-ENTRY !
   AL-NEW-END @ AL-ACTIVE# @ AL-ENTRY CELL+ !
   1 AL-ACTIVE# +!
+  -1 ALIAS-EXPANDED-HERE? !
   -1 ;
 : EXPAND-ALIASES ( --- )   BEGIN PEEK TRY-ALIAS 0= UNTIL ;
 ' EXPAND-ALIASES IS EXPAND-ALIASES-CALL
@@ -1361,10 +1363,24 @@ VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
   \ command, and the exit status is left alone. Only then, though:
   \ `echo A; ; echo B` and `if; then ...` must stay errors, which is
   \ what ALIAS-VANISHED? is for (Iteration 382).
+  \ ... and an alias whose value CONTINUES the construct around it is
+  \ the same shape: `alias e='`+newline+`esac'` closes the case it stands
+  \ in, and the command it was read as holds no words. The parse had
+  \ entered a simple command by the time PEEK expanded it, so this said
+  \ "expected a command" where dash runs the case (Iteration 455, yash
+  \ alias-p.tst:359). An expansion here is what makes it not an error;
+  \ `echo A; ; echo B` and `if; then` have none, and still are.
   DUP VEC-TOP @ = IF
-    ALIAS-VANISHED? @ 0= IF S" expected a command" SYNTAX THEN
+    ALIAS-VANISHED? @ ALIAS-EXPANDED-HERE? @ OR 0= IF
+      S" expected a command" SYNTAX
+    THEN
     -1 EMPTY-VIA-ALIAS? !
   THEN
+  \ Cleared when the command is parsed, not when one starts: the list
+  \ parser peeks the next token - expanding the alias - BEFORE entering
+  \ PARSE-SIMPLE, so a reset at the start wiped the very flag that peek
+  \ had just set (Iteration 455).
+  0 ALIAS-EXPANDED-HERE? !
   \ field 1: has redirections - decided here, so running the command
   \ skips looking for them (Iteration 266)
   VEC> DUP HAS-REDIR?                        ( vec f )

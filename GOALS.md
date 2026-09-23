@@ -77,13 +77,14 @@ ordinary scripts hit, then edge cases and wording.
    expecting a hot spot.
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
-8b. **An unidentified differential case fails now and then** (429, and
-   again in 444): once as `diff:failed 1` in a recording, once inside
-   tests/portability's LD_PRELOAD check ("clean 1 failed, preloaded 0
-   failed"). Ten more runs since, three of them under CPU load, passed.
-   Both places print `FAIL:` lines now (verify since 429, portability
-   since 444), so the next occurrence names its case. Do not re-record
-   past it: read the name, then run that case alone, many times.
+8b. **`wait-job-status-345.sh` fails now and then** - named at last
+   (455), after three sightings (429, 444, 455) of an unnamed one. It
+   is a differential case full of background jobs and `wait %1`,
+   including a background pipeline. A hundred runs of it alone, on an
+   idle machine, all passed, so the race needs the load of a full
+   verify. Next: run it in a loop WHILE a verify or a corpus runs
+   beside it, and look first at `wait %1` against a background pipeline,
+   whose last stage runs in the wrapper process since 449.
 9. **The remaining corpus failures**: yash 108 (21 of them alias edge
    cases), busybox 147; `make yash` and `make busybox` list them with
    their severity.

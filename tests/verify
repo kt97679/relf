@@ -265,7 +265,8 @@ PORTABILITY_QUICK=1 sh tests/portability > /tmp/verify-portability.log 2>&1 || t
 emit portability:problems "$(awk '/^portability:/ {print $4+0}' /tmp/verify-portability.log)"
 # The count alone is no use from another machine: a report saying
 # `portability:problems 1` names nothing (Iteration 398).
-grep -i 'PROBLEM' /tmp/verify-portability.log | sed 's/^/  portability: /' >&2 || true
+grep -i -e 'PROBLEM' -e 'clean run:' -e 'preloaded run:' /tmp/verify-portability.log |
+    sed 's/^/  portability: /' >&2 || true
 
 # Which compiler produced the binaries whose sizes are recorded below.
 # The size lines mean nothing across toolchains, and this is how the

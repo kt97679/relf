@@ -151,4 +151,27 @@ assert_output_equals "a candidate in a case pattern, a function's parentheses, a
 F
 echo x
 echo y" "$out"
+# An alias whose value CONTINUES the construct around it - a closing
+# esac, a parenthesis, a here-document operator - leaves a command with
+# no words, which is not an error (Iteration 455, yash alias-p.tst:249,
+# :359). An empty command with no alias behind it still is.
+cat > "$t/al455.sh" <<'AL'
+alias c='case a in a) :' e='
+ esac </dev/null | cat -'
+c X; echo A; e
+alias l='
+(
+' r='
+)
+'
+v=A
+l echo subshell; v=B; r
+echo $v
+AL
+out=$("$THIS_SH" "$t/al455.sh" 2>&1)
+assert_output_equals "an alias that continues the construct around it" "A
+subshell
+A" "$out"
+out=$("$THIS_SH" -c 'echo A; ; echo B' 2>&1)
+assert_output_contains "... while a bare ; is still an error" "syntax error" "$out"
 report
