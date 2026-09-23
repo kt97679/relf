@@ -129,4 +129,26 @@ AL
 out=$("$THIS_SH" "$t/al453.sh" 2>&1)
 assert_output_equals "alias names: odd characters, and continuations in them" "ok
 joined" "$out"
+# A candidate word - one that follows an alias whose value ends in a
+# blank - is expanded WHEREVER it stands, not only among a simple
+# command's own words (Iteration 454, yash alias-p.tst:380, :439). A
+# candidacy reaches the next word, never across a newline.
+cat > "$t/al454.sh" <<'AL'
+alias c='case a in ' a=b p='(a)'
+c a) echo 1-1;; a) echo 1-2;; esac
+c p echo 2; esac
+alias f='f ' q='()'
+f q
+{ echo F; }
+f
+alias e='echo ' g='echo '
+e g x
+g g y
+AL
+out=$("$THIS_SH" "$t/al454.sh" 2>&1)
+assert_output_equals "a candidate in a case pattern, a function's parentheses, and on the next line" "1-2
+2
+F
+echo x
+echo y" "$out"
 report

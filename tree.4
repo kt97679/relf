@@ -872,7 +872,38 @@ VARIABLE HR-DASH?
     K-IONUM TK-KIND !
   THEN ;
 
-: PEEK ( --- )   TK-VALID? @ 0= IF LEX -1 TK-VALID? ! THEN ;
+DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
+
+: ALIAS-NEXT-BLANKS? ( --- f )   \ only blanks between the alias's value and here
+  \ A candidacy reaches the next WORD, not the next line: `c c` at the
+  \ end of a line left one standing, and it was taken up by the first
+  \ word of the line after (Iteration 454).
+  ALIAS-NEXT-AT @
+  BEGIN
+    DUP TK-START @ <
+  WHILE
+    DUP SRC-ADDR @ + C@ DUP 32 = OVER 9 = OR SWAP 92 = OR 0= IF DROP 0 EXIT THEN
+    1+
+  REPEAT DROP -1 ;
+VARIABLE IN-ALIAS-CHECK?   \ PEEK is already looking at a candidate
+
+: PEEK ( --- )
+  TK-VALID? @ 0= IF LEX -1 TK-VALID? ! THEN
+  \ A word that follows an alias whose value ended in a blank is a
+  \ candidate WHEREVER it stands (XCU 2.3.1): a case pattern, a
+  \ here-document delimiter, the word after `for`, the parentheses of a
+  \ function definition. SIMPLE-ITEM checked it, so only a simple
+  \ command's own words were candidates - `alias f=' for ' w=' in '`
+  \ made `f w in 1` a syntax error where dash runs the loop (Iteration
+  \ 454, yash alias-p.tst:232, :249, :298, :359, :380, :395, :404,
+  \ :411, :439, :453).
+  ALIAS-NEXT? @ IN-ALIAS-CHECK? @ 0= AND IF
+    TK-START @ ALIAS-NEXT-AT @ < 0= ALIAS-NEXT-BLANKS? AND IF
+      -1 IN-ALIAS-CHECK? !
+      0 ALIAS-NEXT? !  EXPAND-ALIASES-CALL
+      0 IN-ALIAS-CHECK? !
+    THEN
+  THEN ;
 : NEXT ( --- )   PEEK 0 TK-VALID? ! ;
 : KIND? ( k --- f )   PEEK TK-KIND @ = ;
 : OP? ( op --- f )   PEEK TK-KIND @ K-OP = SWAP TK-OP @ = AND ;
@@ -1027,7 +1058,6 @@ VARIABLE MSG#
   MSG-BUF MSG# @ SYNTAX ;
 : EXPECT-OP ( op c-addr u --- )   ROT OP? IF 2DROP NEXT ELSE SYNTAX THEN ;
 
-DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
 
 : CLOSER? ( --- f )   \ a token that ends a compound list
   \ An alias may expand to a reserved word, and `}` after a `;` is in

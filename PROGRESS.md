@@ -449,6 +449,7 @@ do not trust the absence of a line below.
 - **451** — many_ifs profiled: flat; a child no longer resets traps it has none of
 - **452** — the same alias again after a trailing blank
 - **453** — yash 1727; alias names: odd characters, and continuations in them
+- **454** — yash 1738; a candidate word is a candidate anywhere
 
 ### Not tied to an iteration
 
@@ -22334,3 +22335,35 @@ with variables instead of stack juggling, as the rest of that area is.
 Recorded changes, with their causes: `shell:assertions` 834 -> 835, the
 alias-name assertion; the images about 300 bytes larger, for
 `ALIAS-EQPOS` and `AL-NAME-COPY`.
+
+## Iteration 454: a candidate word is a candidate anywhere
+
+yash: **1738 passed, 37 failed** (1727; dash 1650), no crashes or hangs -
+eleven cases from one change.
+
+A word that follows an alias whose value ends in a blank is a candidate
+for alias substitution WHEREVER it stands (XCU 2.3.1): a case pattern,
+the parentheses of a function definition, a here-document delimiter,
+the word after `for`. The check lived in `SIMPLE-ITEM`, so only a simple
+command's own words were ever candidates, and `alias c='case a in '`
+followed by a pattern was a syntax error where dash matches.
+
+It lives in `PEEK` now - the one place every token arrives through -
+with a flag so that the expansion's own peeks do not re-enter it.
+
+**And a candidacy reaches the next WORD, not the next line.** The first
+version moved the check but kept the old positional test, "at or after
+where the alias value ended", and a candidacy left standing at the end
+of a line was taken up by the first word of the line after - which the
+simple-command parser used to hide by clearing the flag at the start of
+every command, and which then cleared the fresh candidacy of the
+command being parsed. `ALIAS-NEXT-BLANKS?` requires blanks, and nothing
+else, between the value and the candidate.
+
+Four alias cases are left: an alias to a parenthesis, to the word after
+`for`, to case and esac themselves, and the third line of the
+trailing-blank test.
+
+Recorded changes, with their causes: `shell:assertions` 835 -> 836, the
+assertion for the new positions; the images about 140 bytes larger, for
+the check in PEEK and `ALIAS-NEXT-BLANKS?`.
