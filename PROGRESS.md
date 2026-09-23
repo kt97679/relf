@@ -463,6 +463,7 @@ do not trust the absence of a line below.
 - **465** — a test asked the host which shell `sh` is; the 8-byte rows on a 32-bit host
 - **466** — descriptors of two digits or more
 - **467** — a word that looks like a descriptor is not one
+- **468** — busybox 249; a trap may run inside a trap
 
 ### Not tied to an iteration
 
@@ -22814,3 +22815,33 @@ reap1, redir2 and redir4 all pass.
 Recorded changes, with their causes: `parse:verdicts-agree` 229 -> 230,
 the new differential case; the images about 70 bytes larger, for the
 flag array and its copy.
+
+## Iteration 468: a trap inside a trap
+
+busybox after 467: **249 passed, 108 failed** (248; dash 232), no crashes
+or hangs. One new name among the failures dash passes, and like 467's it
+failed every run: ash-misc/exitcode_trap6.
+
+    trap "echo INT" int
+    trap "kill -int $$; exit" term
+    kill $$ &
+    (sleep 1; exit 42)
+
+The TERM trap sends the shell INT, and the INT trap should run INSIDE
+the TERM trap - between its two commands - before the `exit`, which
+must still use the status the TERM trap was entered with, 42. This
+shell refused to nest traps at all (`IN-TRAP?` made both RUN-TRAP and
+CHECK-TRAPS return at once), so the INT trap never ran.
+
+Traps nest now, with one exception: **the same signal waits** until its
+own trap is done, in DEFERRED-SIG - a trap that sends its own signal
+would otherwise recurse for ever. dash does recurse on that, printing
+until it crashes; this shell runs it again once the trap has finished,
+once per command boundary. What belongs to the outer trap is put back
+after the inner one: its action, and the `$?` it was entered with.
+
+The busybox test passes, and a two-level case - an outer trap whose
+middle command raises another signal - runs `A`, `inner`, `B` in order.
+
+Recorded changes, with their causes: `shell:assertions` 841 -> 843, the
+two for nested traps; the images about 70 bytes larger.

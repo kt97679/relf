@@ -194,4 +194,17 @@ assert_output_equals "... in a subshell, a pipeline and a command substitution" 
 Hangup
 Quit
 end" "$out"
+# Another signal's trap may run INSIDE a trap, between its commands, and
+# the outer trap's `exit` still uses the status it was entered with
+# (Iteration 468, busybox ash-misc/exitcode_trap6). The same signal waits
+# until the trap is done, so a trap that sends its own signal is bounded
+# - dash recurses on that until it crashes.
+out=$("$THIS_SH" -c 'trap "echo INT" INT; trap "kill -INT \$\$; exit" TERM; kill $$ & (sleep 0.3; exit 42)' 2>&1; echo "st=$?")
+assert_output_equals "a nested trap runs, and exit keeps the outer status" "INT
+st=42" "$out"
+out=$("$THIS_SH" -c 'trap "echo A; kill -USR2 \$\$; echo B" USR1; trap "echo inner" USR2; kill -USR1 $$; echo end' 2>&1)
+assert_output_equals "... in order, between the outer trap's commands" "A
+inner
+B
+end" "$out"
 report

@@ -1466,11 +1466,25 @@ VARIABLE TRAPS-SET#   \ how many signals have an action
 : COPY-TRAP ( str --- )   \ a private copy into TRAP-COPY: the action may change the trap
   DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP TRAP-COPY ! SWAP MOVE ;
 
+VARIABLE DEFERRED-SIG   \ a signal taken during a foreground wait, for CHECK-TRAPS
+VARIABLE TRAP-SIG-NOW   -1 TRAP-SIG-NOW !   \ whose trap is running; -1 for none
+
 : RUN-TRAP ( sig --- )
-  TRAP@ DUP TRAP-ACTION? 0= IF DROP EXIT THEN
-  IN-TRAP? @ IF DROP EXIT THEN
+  DUP TRAP@ TRAP-ACTION? 0= IF DROP EXIT THEN          ( sig )
+  \ Another signal's trap may run INSIDE this one, between its commands,
+  \ as in dash: `trap "kill -int $$; exit" term` runs the INT trap before
+  \ it exits (busybox ash-misc/exitcode_trap6). This refused to nest at
+  \ all, so the INT trap never ran (Iteration 468). The SAME signal waits
+  \ until this trap is done - one that sends its own signal would
+  \ otherwise recurse for ever.
+  DUP TRAP-SIG-NOW @ = IF DEFERRED-SIG ! EXIT THEN
+  \ ... and what belongs to the outer trap is put back afterwards: its
+  \ action, and the `$?` it was entered with, which an `exit` in it uses
+  \ - "a nested trap should not interfere with this".
+  TRAP-SIG-NOW @ >R  TRAP-COPY @ >R  TRAP-SAVED-STATUS @ >R  IN-TRAP? @ >R
+  DUP TRAP-SIG-NOW !
   -1 IN-TRAP? !
-  COPY-TRAP
+  TRAP@ COPY-TRAP
   LAST-STATUS @ TRAP-SAVED-STATUS !
   \ The trap's own commands run on a clean slate: a break or continue
   \ pending when the signal arrived would have stopped them at once, so
@@ -1496,9 +1510,8 @@ VARIABLE TRAPS-SET#   \ how many signals have an action
     TRAP-SAVED-STATUS @ LAST-STATUS !
   THEN
   TRAP-COPY @ FREE DROP
-  0 IN-TRAP? ! ;
+  R> IN-TRAP? !  R> TRAP-SAVED-STATUS !  R> TRAP-COPY !  R> TRAP-SIG-NOW ! ;
 
-VARIABLE DEFERRED-SIG   \ a signal taken during a foreground wait, for CHECK-TRAPS
 
 : WAITPID-UNINTERRUPTED ( pid --- raw ior )
   \ A trapped signal must not cut short the wait for a foreground child.
@@ -1527,7 +1540,6 @@ VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
 DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
 : CHECK-TRAPS ( --- )
-  IN-TRAP? @ IF EXIT THEN
   \ A signal that arrived while the shell waited for a foreground child
   \ was set aside there, to be run here - between commands, where a trap
   \ belongs (Iteration 448).
@@ -1563,6 +1575,7 @@ DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
 : CHILD-RESET-TRAPS ( --- )   \ a subshell: caught signals to their default, no EXIT trap
   CHILD-RESET-JOB-SIGNALS
+  -1 TRAP-SIG-NOW !
   TRAPS-SET# @ 0= IF 0 IN-TRAP? ! EXIT THEN
   TRAP-SLOTS 1 DO
     I TRAP@ TRAP-ACTION? IF I 0 SIGNAL-ACTION DROP I TRAP-FREE THEN
