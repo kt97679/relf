@@ -1531,6 +1531,7 @@ VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
   2 +LOOP DROP ;
 
 : PARSE-SIMPLE ( first-word | 0 --- node )
+  SRC-LINE @ >R                              \ where it begins, for $LINENO
   VEC-MARK SWAP                              ( base first )
   ?DUP IF I-WORD >VEC >VEC 1 ELSE 0 THEN     ( base words )
   0 SI-PREFIX? !
@@ -1561,7 +1562,9 @@ VARIABLE SI-PREFIX?   \ an assignment or redirection came before this word
   \ field 1: has redirections - decided here, so running the command
   \ skips looking for them (Iteration 266)
   VEC> DUP HAS-REDIR?                        ( vec f )
-  T-SIMPLE 2 NODE  TUCK 1 F!  TUCK 0 F! ;
+  \ field 2: the line the command began on, which EXEC-SIMPLE makes
+  \ $LINENO (Iteration 475)
+  T-SIMPLE 3 NODE  TUCK 1 F!  TUCK 0 F!  R> OVER 2 F! ;
 
 \ ---- compound commands ----
 : PARSE-GROUP ( --- node )
@@ -2911,6 +2914,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   0 EXEC-LAST? ! ;
 
 : EXEC-SIMPLE ( node --- )
+  DUP 2 XF@ CUR-LINENO !                    \ $LINENO (Iteration 475)
   \ A command with no items at all is one an alias expanded away. It
   \ runs nothing and leaves the exit status alone, so `false` followed
   \ by a line holding only a blank alias still reports 1

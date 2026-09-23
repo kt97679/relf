@@ -470,6 +470,7 @@ do not trust the absence of a line below.
 - **472** — a wider fuzzing grammar; the rest of test's two-argument rule
 - **473** — set -o pipefail (POSIX.1-2024)
 - **474** — $'...' (POSIX.1-2024)
+- **475** — LINENO
 
 ### Not tied to an iteration
 
@@ -23043,3 +23044,33 @@ and an unterminated quote - by design, as 466's was.
 Recorded changes, with their causes: `parse:verdicts-differ` 1 -> 2, by
 design as above; the images about 700 bytes larger, for the scanner and
 its escape table.
+
+## Iteration 475: LINENO
+
+POSIX's `LINENO` (XCU 2.5.3), the next step of the plan: the line the
+running command began on. It was never set here, which failed three of
+yash's cases and two of busybox's. The dash installed here does not set
+it either, so bash is the reference.
+
+Each simple command records `SRC-LINE` when its parse begins, in a
+third field of its node, and `EXEC-SIMPLE` publishes it before the
+command runs. `SRC-LINE` already counted every newline the lexer steps
+over - inside a command substitution, a parameter expansion, an
+arithmetic expansion or a here-document body - which is exactly the
+numbering yash's third case asks for: 4, 8 and 12 after expansions that
+span three lines each.
+
+`$LINENO` is answered in `LOOKUP-VAR` after every other lookup has
+failed, so no other name pays for it, and one store per command is the
+whole running cost. `N>STR` is defined later than `LOOKUP-VAR`, so it is
+reached through a DEFER rather than moved.
+
+POSIX lets an assignment take away LINENO's special meaning, and here it
+does: `LINENO=42; echo $LINENO` prints 42, where bash keeps counting.
+Recorded rather than matched - it is the standard's own allowance, and
+the simpler rule.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 234 -> 235,
+the new differential case; the images about 110 bytes larger. (The first
+check run died with the tool call that was waiting on it; a second
+agreed with the recording.)
