@@ -44,4 +44,9 @@ CASES = [
                          ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
+    # \j and \D{format} (Iteration 476). Only the escapes whose output does
+    # not depend on the clock are in the transcript - a literal %, and an
+    # unknown specifier kept as written; the date specifiers themselves were
+    # checked against `date +FORMAT`, which a golden file cannot do.
+    ("ps1-jobs-and-date", {"PS1": "[\\j|\\D{%%}|\\D{x%Qy}]> "}, ["sleep 30 &\n", "echo mark\n", ("exit\n", 'nowait')], 'raw'),
 ]

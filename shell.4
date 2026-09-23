@@ -6271,6 +6271,63 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
   S" JanFebMarAprMayJunJulAugSepOctNovDec" DROP 4 PD-TM@ 3 * + 3 PD-S  32 PD-C
   3 PD-TM@ PD-2D ;
 
+: PD-4D ( n --- )   N>STR DUP CSTRLEN PD-S ;
+: PD-SP2 ( n --- )   DUP 10 < IF 32 PD-C THEN N>STR DUP CSTRLEN PD-S ;
+: PD-FULLDAY ( wday --- )
+  DUP 0 = IF DROP S" Sunday" PD-S EXIT THEN    DUP 1 = IF DROP S" Monday" PD-S EXIT THEN
+  DUP 2 = IF DROP S" Tuesday" PD-S EXIT THEN   DUP 3 = IF DROP S" Wednesday" PD-S EXIT THEN
+  DUP 4 = IF DROP S" Thursday" PD-S EXIT THEN  DUP 5 = IF DROP S" Friday" PD-S EXIT THEN
+  DROP S" Saturday" PD-S ;
+: PD-FULLMON ( mon --- )
+  DUP 0 = IF DROP S" January" PD-S EXIT THEN   DUP 1 = IF DROP S" February" PD-S EXIT THEN
+  DUP 2 = IF DROP S" March" PD-S EXIT THEN     DUP 3 = IF DROP S" April" PD-S EXIT THEN
+  DUP 4 = IF DROP S" May" PD-S EXIT THEN       DUP 5 = IF DROP S" June" PD-S EXIT THEN
+  DUP 6 = IF DROP S" July" PD-S EXIT THEN      DUP 7 = IF DROP S" August" PD-S EXIT THEN
+  DUP 8 = IF DROP S" September" PD-S EXIT THEN DUP 9 = IF DROP S" October" PD-S EXIT THEN
+  DUP 10 = IF DROP S" November" PD-S EXIT THEN
+  DROP S" December" PD-S ;
+: PD-HMS ( --- )   2 PD-TM@ PD-2D 58 PD-C 1 PD-TM@ PD-2D 58 PD-C 0 PD-TM@ PD-2D ;
+: PD-SPEC ( c --- )   \ one %-specifier of \D{format}, as strftime has it
+  DUP 72  = IF DROP 2 PD-TM@ PD-2D EXIT THEN                       \ H
+  DUP 77  = IF DROP 1 PD-TM@ PD-2D EXIT THEN                       \ M
+  DUP 83  = IF DROP 0 PD-TM@ PD-2D EXIT THEN                       \ S
+  DUP 73  = IF DROP 2 PD-TM@ PD-12 PD-2D EXIT THEN                 \ I
+  DUP 112 = IF DROP 2 PD-TM@ 12 < IF S" AM" ELSE S" PM" THEN PD-S EXIT THEN  \ p
+  DUP 100 = IF DROP 3 PD-TM@ PD-2D EXIT THEN                       \ d
+  DUP 101 = IF DROP 3 PD-TM@ PD-SP2 EXIT THEN                      \ e
+  DUP 109 = IF DROP 4 PD-TM@ 1+ PD-2D EXIT THEN                    \ m
+  DUP 121 = IF DROP 5 PD-TM@ 100 MOD PD-2D EXIT THEN               \ y
+  DUP 89  = IF DROP 5 PD-TM@ 1900 + PD-4D EXIT THEN                \ Y
+  DUP 97  = IF DROP S" SunMonTueWedThuFriSat" DROP 6 PD-TM@ 3 * + 3 PD-S EXIT THEN  \ a
+  DUP 98  = OVER 104 = OR IF
+    DROP S" JanFebMarAprMayJunJulAugSepOctNovDec" DROP 4 PD-TM@ 3 * + 3 PD-S EXIT
+  THEN                                                             \ b h
+  DUP 65  = IF DROP 6 PD-TM@ PD-FULLDAY EXIT THEN                  \ A
+  DUP 66  = IF DROP 4 PD-TM@ PD-FULLMON EXIT THEN                  \ B
+  DUP 82  = IF DROP 2 PD-TM@ PD-2D 58 PD-C 1 PD-TM@ PD-2D EXIT THEN  \ R
+  DUP 84  = IF DROP PD-HMS EXIT THEN                               \ T
+  DUP 68  = IF DROP 4 PD-TM@ 1+ PD-2D 47 PD-C 3 PD-TM@ PD-2D 47 PD-C
+               5 PD-TM@ 100 MOD PD-2D EXIT THEN                    \ D
+  DUP 70  = IF DROP 5 PD-TM@ 1900 + PD-4D 45 PD-C 4 PD-TM@ 1+ PD-2D
+               45 PD-C 3 PD-TM@ PD-2D EXIT THEN                    \ F
+  DUP 110 = IF DROP 10 PD-C EXIT THEN                              \ n
+  DUP 116 = IF DROP 9 PD-C EXIT THEN                               \ t
+  DUP 37  = IF DROP 37 PD-C EXIT THEN                              \ %
+  37 PD-C PD-C ;                                                   \ anything else, as it was
+: PD-DATE ( --- )   \ \D{format}: the time, formatted (Iteration 476)
+  \ strftime's common specifiers; `\D{}` is the locale's time, which here
+  \ is %H:%M:%S. A \D not followed by a brace is left as it was.
+  PD-I @ PD-LEN @ < IF PD-SRC @ PD-I @ + C@ 123 = ELSE 0 THEN
+  0= IF 92 PD-C 68 PD-C EXIT THEN
+  1 PD-I +!  PD-NOW
+  PD-I @ PD-LEN @ < IF PD-SRC @ PD-I @ + C@ 125 = IF 1 PD-I +! PD-HMS EXIT THEN THEN
+  BEGIN PD-I @ PD-LEN @ < WHILE
+    PD-NEXT DUP 125 = IF DROP EXIT THEN
+    DUP 37 = IF
+      DROP PD-I @ PD-LEN @ < IF PD-NEXT PD-SPEC ELSE 37 PD-C THEN
+    ELSE PD-C THEN
+  REPEAT ;
+
 : PD-ESCAPE ( c --- )   \ the character after a backslash
   DUP 117 = IF DROP PD-USER-NM PD-VAR EXIT THEN            \ u
   DUP 104 = IF DROP PD-HOSTNAME PD-SHORT PD-S EXIT THEN    \ h
@@ -6288,6 +6345,11 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
   DUP 115 = IF DROP S" relfsh" PD-S EXIT THEN              \ s
   DUP 116 = OVER 84 = OR OVER 64 = OR OVER 65 = OR OVER 100 = OR
     IF PD-TIME EXIT THEN                                   \ t T @ A d
+  DUP 68  = IF DROP PD-DATE EXIT THEN                      \ D{format}
+  DUP 106 = IF DROP JOB# @ N>STR DUP CSTRLEN PD-S EXIT THEN \ j: jobs in the table
+  \ \v and \V are BASH's version, which this shell has not got, and \l the
+  \ terminal's name, which needs a readlink the engine lacks; all three
+  \ are left as they were, like any escape not listed (Iteration 476).
   DUP 33  = IF DROP PD-HISTNUM EXIT THEN                   \ ! history number
   DUP 35  = IF DROP PD-HISTNUM EXIT THEN                   \ # command number
   DUP 48 56 WITHIN IF 48 - PD-OCTAL EXIT THEN              \ nnn

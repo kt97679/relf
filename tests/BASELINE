@@ -12,7 +12,7 @@ image:narrow-host reproduces
 image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
-interactive:passed 22
+interactive:passed 23
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -42,9 +42,9 @@ shell:dead-words 0
 shell:files 80
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
-size:i386 171720
-size:image-i386 108668
-size:image-x86_64 116512
-size:x86_64 155640
+size:i386 172924
+size:image-i386 109872
+size:image-x86_64 117728
+size:x86_64 156856
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

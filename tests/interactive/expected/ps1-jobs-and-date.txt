@@ -1,0 +1,4 @@
+[0|%|x%Qy]> sleep 30 &
+[1|%|x%Qy]> echo mark
+mark
+[1|%|x%Qy]> exit

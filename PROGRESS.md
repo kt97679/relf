@@ -471,6 +471,7 @@ do not trust the absence of a line below.
 - **473** — set -o pipefail (POSIX.1-2024)
 - **474** — $'...' (POSIX.1-2024)
 - **475** — LINENO
+- **476** — \j and \D{format} in prompts
 
 ### Not tied to an iteration
 
@@ -23074,3 +23075,33 @@ Recorded changes, with their causes: `parse:verdicts-agree` 234 -> 235,
 the new differential case; the images about 110 bytes larger. (The first
 check run died with the tool call that was waiting on it; a second
 agreed with the recording.)
+
+## Iteration 476: \j and \D{format} in prompts
+
+The prompt escapes GOALS.md listed as missing. Two are added:
+
+- **`\D{format}`**, the time as `strftime` formats it: `%H %M %S %I %p`,
+  `%d %e %m %y %Y`, `%a %A %b %B %h`, `%R %T %D %F`, and `%n %t %%`. An
+  unknown specifier is kept as written, `\D{}` is the time as
+  `%H:%M:%S`, and a `\D` with no brace after it is left alone. It uses
+  the broken-down local time 417 gave the engine for `\t` and `\d`.
+- **`\j`**, the number of jobs in the table.
+
+Three are left as they were, deliberately, like any escape not listed:
+`\v` and `\V` are BASH's version, which this shell has not got, and
+`\l`, the terminal's name, needs a readlink the engine does not have.
+
+A prompt is only expanded interactively, so the checks are in two
+places. Every date specifier was compared with `date +FORMAT` through a
+pseudo-terminal - nineteen, all equal. The pty suite gains a case with
+only the escapes whose output does not depend on the clock: `\j` going
+from 0 to 1 when a job starts, `%%`, and an unknown specifier. Its job
+sleeps for thirty seconds so that it cannot finish during the case and
+turn into a `Done` line.
+
+(And for the second time, `pkill -f` with a pattern that was in its own
+command line killed the call that ran it. Kill by PID.)
+
+Recorded changes, with their causes: `interactive:passed` 22 -> 23, the
+new pty case; the images about 1.2 KB larger, most of it the day and
+month names and the specifier table.
