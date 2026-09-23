@@ -115,4 +115,18 @@ assert_output_equals "the same alias again after a trailing blank" "echo x
 echo x
 echo echo x
 echo echo x" "$out"
+# An alias name may hold characters a variable name may not, and a line
+# continuation inside one joins (Iteration 453, yash alias-p.tst:576,
+# :536).
+cat > "$t/al453.sh" <<'AL'
+alias Aa0_!%,@=echo
+Aa0_!%,@ ok
+alias eeee=echo
+ee\
+e\
+e joined
+AL
+out=$("$THIS_SH" "$t/al453.sh" 2>&1)
+assert_output_equals "alias names: odd characters, and continuations in them" "ok
+joined" "$out"
 report

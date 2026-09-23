@@ -7440,6 +7440,23 @@ VARIABLE TF-TRAIL?
   DUP ALIAS-NAME-SLOT DUP CSTRLEN TYPE 61 EMIT
   ALIAS-VALUE-SLOT SQUOTED. CR ;
 
+VARIABLE AEQ-I
+: ALIAS-EQPOS ( c-addr --- pos | -1 )   \ the `=` of an alias definition
+  \ An alias name is not a variable name: `alias Aa0_!%,@=echo` is a
+  \ definition in dash and bash, and ASSIGNMENT-EQPOS, which wants a
+  \ variable name before the `=`, called it a query and said "not found"
+  \ (Iteration 453, yash alias-p.tst:576). Anything up to the first `=`
+  \ will do, as long as there is something and it holds no `/`.
+  0 AEQ-I !
+  BEGIN
+    DUP AEQ-I @ + C@ DUP 0<> OVER 61 <> AND
+  WHILE
+    47 = IF DROP -1 EXIT THEN
+    1 AEQ-I +!
+  REPEAT
+  DROP
+  AEQ-I @ + C@ 61 =  AEQ-I @ 0<> AND IF AEQ-I @ ELSE -1 THEN ;
+
 : DO-ALIAS ( --- )
   \ With no operands, every alias; with a name and no `=`, that one
   \ (Iteration 289 - both printed nothing).
@@ -7457,7 +7474,7 @@ VARIABLE TF-TRAIL?
     THEN
   THEN
   BEGIN AL-I @ ARGC @ < WHILE
-    AL-I @ ARGV@ ASSIGNMENT-EQPOS
+    AL-I @ ARGV@ ALIAS-EQPOS
     DUP -1 = IF
       DROP
       AL-I @ ARGV@ FIND-ALIAS DUP -1 <> IF

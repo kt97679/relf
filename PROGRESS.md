@@ -448,6 +448,7 @@ do not trust the absence of a line below.
 - **450** — yash 1724; an unquoted ${#a} is field-split
 - **451** — many_ifs profiled: flat; a child no longer resets traps it has none of
 - **452** — the same alias again after a trailing blank
+- **453** — yash 1727; alias names: odd characters, and continuations in them
 
 ### Not tied to an iteration
 
@@ -22305,3 +22306,31 @@ both this shell and dash. It is an assertion in `tests/shell` instead.
 
 Recorded changes, with their causes: `shell:assertions` 833 -> 834, the
 alias assertion; the images about 60 bytes larger.
+
+## Iteration 453: alias names
+
+yash after 452: **1727 passed, 48 failed** (1724; dash 1650), no crashes
+or hangs - 452 took the trailing-blank case and the recursive one with
+it, since the same stale end had blocked both.
+
+Two more, both about the NAME:
+
+- **An alias name is not a variable name** (alias-p.tst:576): `alias
+  Aa0_!%,@=echo` is a definition in dash and bash, and here the `=` was
+  looked for with the rule for assignments, which wants a variable name
+  before it - so the word was read as a query and answered "not found".
+  Anything up to the first `=` will do now, as long as there is
+  something and it holds no `/`.
+- **A line continuation inside an alias name joins** (:536):
+  `ee\`+newline+`e\`+newline+`e` is `eeee`. The lookup used the token's
+  raw source text, backslashes and all.
+
+Both first versions segfaulted the image at startup, and the build
+check refused it: `TRY-ALIAS` runs for every command word, so a stack
+slip there is fatal at once. The slip was `TK-TEXT`, which returns an
+address AND a length - my loop pushed two values a character. Written
+with variables instead of stack juggling, as the rest of that area is.
+
+Recorded changes, with their causes: `shell:assertions` 834 -> 835, the
+alias-name assertion; the images about 300 bytes larger, for
+`ALIAS-EQPOS` and `AL-NAME-COPY`.

@@ -1062,6 +1062,25 @@ DEFER EXPAND-ALIASES-CALL   \ EXPAND-ALIASES, defined below
 
 VARIABLE AL-NEW-I     \ the expansion being spliced: recorded after it
 VARIABLE AL-NEW-END
+VARIABLE ANC-LEN
+VARIABLE ANC-I
+VARIABLE ANC-OUT
+VARIABLE ANC-SRC   \ TK-TEXT gives address AND length: the address, once
+: AL-NAME-COPY ( len --- )   \ the token's text into AL-NAME-BUF, joined
+  ANC-LEN !  0 ANC-I !  0 ANC-OUT !
+  TK-TEXT DROP ANC-SRC !
+  BEGIN ANC-I @ ANC-LEN @ < WHILE
+    ANC-SRC @ ANC-I @ + C@ 92 =
+    ANC-I @ 1+ ANC-LEN @ < AND
+    IF ANC-SRC @ ANC-I @ 1+ + C@ 10 = ELSE 0 THEN
+    IF 2 ANC-I +!
+    ELSE
+      ANC-SRC @ ANC-I @ + C@  AL-NAME-BUF ANC-OUT @ + C!
+      1 ANC-OUT +!  1 ANC-I +!
+    THEN
+  REPEAT
+  0 AL-NAME-BUF ANC-OUT @ + C! ;
+
 : AL-ENTRY ( k --- addr )   2* CELLS AL-ACTIVE + ;
 : AL-EXPIRE ( --- )         \ drop the expansions the lexer has left
   0  AL-ACTIVE# @ 0 ?DO
@@ -1115,7 +1134,10 @@ VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
   TK-FLAGS @ WF-QUOTED AND IF 0 EXIT THEN
   AL-EXPIRE
   TK-END @ TK-START @ - DUP 2 + ENSURE-BUFFER AL-NAME-BUF
-  TK-TEXT AL-NAME-BUF SWAP MOVE  0 AL-NAME-BUF ROT + C!
+  \ ... with its line continuations out: `ee\`+newline+`e\`+newline+`e`
+  \ is the name `eeee` (Iteration 453, yash alias-p.tst:536). The raw
+  \ source text was looked up, backslashes and all, and found nothing.
+  AL-NAME-COPY
   \ A reserved word in its place is never an alias (XCU 2.3.1): with
   \ `alias if=: then=: fi=:`, `if true; then echo x; fi` still runs the
   \ if - here it became `: true; : echo x; :`, and printed nothing
