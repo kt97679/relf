@@ -1893,7 +1893,7 @@ VARIABLE XE-END           \ ... and where they end
 VARIABLE XE-SPECIAL?      \ the word may hold unquoted pattern characters
 VARIABLE XE-SUBS          \ its command substitutions' texts
 VARIABLE XE-SUB-NODES     \ ... and their parsed subtrees, where there are any
-VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
+\ XE-NOSPLIT? is declared in shell.4, whose emitters read it (Iteration 471).
 VARIABLE XE-IN-WORD?      \ inside ${x:-word}: even its literal text is split
 VARIABLE XE-PERCHAR?      \ this word holds $@ or $*, whose fields are its own:
                           \ everything in it is emitted a character at a time,
@@ -2108,8 +2108,14 @@ VARIABLE XSK-WORD?   \ the parameter being skipped has a word of its own
   \ `708` of `${a+"$((708))"}` left one over the offsets where the
   \ arithmetic RESULT then went, which XE-SPLIT split at IFS=0 into 7 and
   \ 8 (Iteration 440, yash fsplit-p.tst:36).
+  \ And whether the word had quotes: quoting INSIDE a trim's pattern or
+  \ an assignment's word does not make the word AROUND it a quoted one,
+  \ so `${z#"*"}` with z empty is no field at all, where it was an empty
+  \ one - found by tools/difffuzz.py in its first real run, 365 shrunk
+  \ scripts that were nearly all this (Iteration 471).
   XE-REG# @ >R  XQ-N @ >R
   GLOB-MARKS# @ >R  GLOB-META# @ >R
+  TOK-WAS-QUOTED? @ >R
   TOK-OUT @ OUT-BASE - >R                    \ on the stack: one of these nests
   XE-REGION-CALL                             \ stops at the word's end
   TOK-OUT @ OUT-BASE - R@ -                  ( length )
@@ -2118,6 +2124,7 @@ VARIABLE XSK-WORD?   \ the parameter being skipped has a word of its own
   OUT-BASE R@ +  XW-BUF  XW-LEN @ MOVE
   0 XW-BUF XW-LEN @ + C!
   OUT-BASE R> + TOK-OUT !                    \ taken back out of the output
+  R> TOK-WAS-QUOTED? !
   R> GLOB-META# !  R> GLOB-MARKS# !
   R> XQ-N !  R> XE-REG# ! ;
 
@@ -3438,6 +3445,13 @@ VARIABLE SUBLIST-XT
   R> EVAL-ACTIVE? ! ;
 
 : TREE-CMDSUB ( --- )   \ in the child: a parsed subtree, or text
+  \ The word the substitution sits in is the PARENT's business: its
+  \ context does not reach the commands inside. A `case` subject is not
+  \ field-split (Iteration 423), and that leaked in, so `case "$(printf
+  \ %s $v)"` with v a blank left $v unsplit and the subject was " "
+  \ where dash and bash have "" (Iteration 471, found by
+  \ tools/difffuzz.py). A redirection target's joining (458) likewise.
+  0 XE-NOSPLIT? !  0 REDIR-TARGET-WORD? !
   CMDSUB-NODE @ ?DUP IF
     EXEC-FINAL-CALL  LAST-STATUS @ SHELL-EXIT
   THEN

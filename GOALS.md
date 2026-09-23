@@ -88,6 +88,16 @@ ordinary scripts hit, then edge cases and wording.
 - **`a=b exec 1>&1` exports a**, which is bash's behaviour and was
   chosen deliberately (ash-vars/var_leaks).
 
+## Tools for finding the next bug
+
+- `tools/crashfuzz.py` (421) mutates existing scripts and reports only
+  crashes and hangs.
+- `tools/difffuzz.py` (471) generates well-formed scripts and reports a
+  difference from dash AND bash where they agree with each other. Run it
+  after any change to expansion, splitting, quoting or the parser:
+  `python3 tools/difffuzz.py --seconds 300`. Its first hour found three
+  bugs behind 365 scripts; a clean run of a few minutes is the bar.
+
 ## Tried and rejected - do not retry without new evidence
 
 One line each: what, the number that decided it, and where the evidence

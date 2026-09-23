@@ -466,6 +466,7 @@ do not trust the absence of a line below.
 - **468** — busybox 249; a trap may run inside a trap
 - **469** — a name exported before it has a value; GOALS.md pruned
 - **470** — the intermittent differential case: bash's own race
+- **471** — a differential fuzzer; three field-splitting bugs it found
 
 ### Not tied to an iteration
 
@@ -22912,3 +22913,54 @@ own command line held the same text. Kill by PID.)
 Recorded changes, with their causes: `shell:assertions` 843 -> 844, the
 finished-job assertion. The images do not move: nothing in the shell
 changed, only a test that asked bash a question it answers two ways.
+
+## Iteration 471: a differential fuzzer, and what it found in its first hour
+
+Step 7 of the plan agreed after 468. `tools/difffuzz.py` GENERATES
+well-formed scripts from a grammar of the constructs this shell's bugs
+have lived in - parameter expansions and their operators, quoting, IFS
+and field splitting, patterns, here-documents, redirections, loops,
+functions, `read` - and compares standard output and exit status with
+dash. Every printed value goes through `printf '[%s]'`, so a field
+boundary cannot hide. Findings are shrunk line by line.
+
+Its rule for a finding is strict: **both references agree, and this
+shell differs**. Where dash and bash disagree - a leading non-whitespace
+IFS character inside a parameter, `$@` in a here-document with IFS empty
+- the question is open and not a finding. The first run had another
+problem, of mine: each shell ran in its own scratch directory passed as
+`$1`, so any `"$@"` printed two different paths and all 1531 "findings"
+were that.
+
+Then 20054 scripts and 365 shrunk differences, which were three bugs:
+
+1. **Quotes inside a trim's pattern leaked out** (321 of the 365). With
+   z empty, `${z#"*"}` is no field; here it was an empty one, because
+   the quoting INSIDE the pattern marked the whole word quoted.
+   `XE-WORD-ASIDE` saves and restores that flag now, as 440 made it do
+   for the regions and 371 for the glob marks - the same bug a third
+   time, in the one piece of state still left out. `${z:=""}` was the
+   same.
+2. **An empty parameter in an unquoted `$@` or `$*`** (40). `set -- a ''
+   b; printf '[%s]' $@` is [a][b] in both references and was [a][][b].
+   The fix is `POS-PARAM-BREAK`, the break between positional
+   parameters only: IFS splitting's empty field in `a::b` is real and
+   goes through the same `IFS-SPLIT-HERE`, which is untouched.
+3. **A command substitution inherited the word around it.** As a `case`
+   subject, which is not field-split (423), the commands INSIDE the
+   substitution stopped splitting too. `TREE-CMDSUB` clears that context
+   in the child. And the subject itself: `$*` as a `case` subject joins
+   with a space, and a parameter's leading blank survives, since IFS
+   characters are ordinary where a word is captured whole -
+   `XE-NOSPLIT?` moves to shell.4 so the emitters can read it.
+
+A fresh run then: 13678 scripts, one finding, and that one was the
+references disagreeing with each other, which is what tightened the rule.
+
+On the way, an edit applied to one file and failed on the other, and the
+build broke for the length of one command; every multi-file edit since
+checks all its replacements before it writes any.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 231 -> 232,
+the new differential case; the images about 100 bytes larger, for
+POS-PARAM-BREAK and the checks of XE-NOSPLIT?.

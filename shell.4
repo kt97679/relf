@@ -1332,6 +1332,8 @@ DEFER GLOB-FIELDS-CALL
 
 DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
 
+VARIABLE XE-NOSPLIT?      \ capturing a word as a string: no field splitting
+
 : EMIT-EXPANDED-CHAR ( c --- )
   \ Like EMIT-TOK-CHAR, but for a character coming from an unquoted
   \ expansion result, subject to IFS field splitting.
@@ -1339,7 +1341,11 @@ DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
     QUOTE-DEPTH @ IF EMIT-QUOTED ELSE EMIT-TOK-CHAR THEN
     EXIT
   THEN
-  DUP IFS-CHAR? IF
+  \ Where a word is captured whole - a `case` subject (Iteration 423) - an
+  \ IFS character is an ordinary one: `set -- ' lead'; case $@ in` has
+  \ the subject " lead" in dash and bash, and it was "lead" here
+  \ (Iteration 471, found by tools/difffuzz.py).
+  DUP IFS-CHAR? XE-NOSPLIT? @ 0= AND IF
     \ XCU 2.6.5: IFS whitespace ends a field that has something in it;
     \ any other IFS character ends exactly one field, even an empty one
     \ - `a::b` with IFS=: is a, "" and b - and whitespace next to it is
@@ -2433,6 +2439,19 @@ VARIABLE EMPTY-AT-WORD?   \ this word was an unsatisfied "$@"
 
 VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
 
+: POS-PARAM-BREAK ( --- )   \ between two positional parameters
+  \ Unquoted, an EMPTY parameter is no field: `set -- a '' b; printf
+  \ '[%s]' $@` is [a][b] in dash and bash, and was [a][][b] here - the
+  \ break committed the empty field it closed. Not inside double quotes,
+  \ where "$@" keeps it; not when the word already had quotes in it, as
+  \ in `""$@`; and not for IFS splitting, whose empty fields between two
+  \ `:` are real, which is why this is its own word and IFS-SPLIT-HERE
+  \ is untouched (Iteration 471, found by tools/difffuzz.py).
+  IN-DQ-CONTEXT? @ 0=
+  TOK-OUT @ ARGV ARGC @ CELLS + @ = AND
+  TOK-WAS-QUOTED? @ 0= AND IF EXIT THEN
+  IFS-SPLIT-HERE ;
+
 : EMIT-ALL-POS-PARAMS ( at? --- )
   \ Emits every positional parameter. at? distinguishes $@ from $*,
   \ which differ only INSIDE double quotes: "$@" gives one field per
@@ -2484,9 +2503,11 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
       \ were made and then nothing was written at all, which is the
       \ worst of the three (Iteration 458, busybox
       \ ash-vars/var_expand_in_redir).
-      WORD-IS-ASSIGN? @ 0=  REDIR-TARGET-WORD? @ 0= AND
+      \ ... and a word captured whole joins them as well: `set -- '' a;
+      \ case $* in` is " a" in dash and bash (Iteration 471).
+      WORD-IS-ASSIGN? @ 0=  REDIR-TARGET-WORD? @ 0= AND  XE-NOSPLIT? @ 0= AND
       IN-DQ-CONTEXT? @ 0= EAP-AT @ IN-DQ-CONTEXT? @ AND OR AND IF
-        IFS-SPLIT-HERE
+        POS-PARAM-BREAK
       ELSE
         \ `"$*"` joins with IFS's first character, and with nothing at
         \ all when IFS is set and empty (Iteration 257).
