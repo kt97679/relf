@@ -89,6 +89,19 @@ ordinary scripts hit, then edge cases and wording.
    it at all, or whether the case should stop asserting a number both
    references disagree about.
 
+## Deliberate divergences from busybox's ash
+
+- **`echo` does not process escape sequences** (466). dash turns `\t`
+  into a tab in `echo 'a\tb'`; bash prints it as written and takes
+  `-e` to do otherwise. This shell is bash's. Several busybox tests
+  expect dash's answer, ash-heredoc/heredoc_backslash1's last line
+  among them; they stay failing.
+- **A here-document line that joins to exactly the delimiter** (464):
+  busybox ends the document on it, dash does not, and this follows
+  dash (ash-heredoc/heredoc_bkslash_newline2).
+- **`a=b exec 1>&1` exports a**, which is bash's behaviour and was
+  chosen deliberately (ash-vars/var_leaks).
+
 ## Tried and rejected - do not retry without new evidence
 
 One line each: what, the number that decided it, and where the evidence

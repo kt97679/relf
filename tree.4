@@ -2564,8 +2564,31 @@ VARIABLE XS-PREV          \ where the text after the last region begins
   DUP OP-LESSAND = IF DROP W-LTAND EXIT THEN
   OP-DLESS = IF W-DLT ELSE W-DLTD THEN ;
 
+64 BUFFER: FDW-BUF   \ the digits of descriptors of two or more
+VARIABLE FDW#
+VARIABLE FDW-N
+
+: FD>WORD ( fd --- c-addr )   \ its digits, as a word of this command's
+  N>STR
+  DUP CSTRLEN 1+ FDW-N !
+  FDW# @ FDW-N @ + ENSURE-BUFFER FDW-BUF
+  FDW-BUF FDW# @ +                          ( src dst )
+  DUP >R  FDW-N @ MOVE
+  FDW-N @ FDW# +!
+  R> ;
+
 : ADD-REDIR ( redir --- )
-  DUP 0 XF@ DUP 0< 0= OVER 10 < AND IF 2* W-DIGITS + 0 ARGV-ADD ELSE DROP THEN
+  \ A descriptor of two digits or more gets its digits written out; the
+  \ table below holds one-character words only, and anything from 10 up
+  \ was DROPPED, which left the redirection with no descriptor at all -
+  \ so `exec 23>file` redirected stdout and `echo x >&23` then said
+  \ "bad file descriptor" where bash writes x (Iteration 466, busybox
+  \ ash-redir/redir2). dash refuses two digits outright; bash and this
+  \ shell take them.
+  DUP 0 XF@ DUP 0< 0= IF
+    DUP 10 < IF 2* W-DIGITS + ELSE FD>WORD THEN
+    0 ARGV-ADD
+  ELSE DROP THEN
   DUP 1 XF@ OP>WORD 0 ARGV-ADD
   1 ARGV-RTGT-NEXT !                         \ the target is not field-split
   2 XF@ ADD-WORD ;
@@ -2815,7 +2838,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   XTRACE-PREPARE                           \ PS4, before the words (421)
   DUP 1 XF@ DUP 0= NO-REDIRS? !
   IF DUP 0 XF@ PREPARE-SIMPLE-HEREDOCS THEN
-  0 ARGC !  0 ARGV !
+  0 ARGC !  0 ARGV !  0 FDW# !
   0 XF@ DUP XV# 0 ?DO
     DUP I XV@ I-ASSIGN = 1 AND ARGV-ASSIGN-NEXT !
     DUP I 1+ XV@  OVER I XV@ I-REDIR = IF ADD-REDIR ELSE ADD-WORD THEN
@@ -2824,10 +2847,10 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
 
 \ A compound command's redirections, expanded into the REDIR tables.
 : REDIR-SETUP ( node --- )
-  0 ARGC !  0 ARGV !  0 REDIR-N !
+  0 ARGC !  0 ARGV !  0 REDIR-N !  0 FDW# !
   0 XF@ ?DUP IF
     DUP PREPARE-HEREDOCS
-    0 ARGC !  0 ARGV !
+    0 ARGC !  0 ARGV !  0 FDW# !
     DUP XV# 0 ?DO DUP I XV@ ADD-REDIR LOOP DROP
     EXPAND-WORDS PARSE-REDIRECTIONS
   THEN ;

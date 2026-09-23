@@ -461,6 +461,7 @@ do not trust the absence of a line below.
 - **463** — yash 1747; a quoted `!` or `^` in a bracket expression
 - **464** — a here-document's continued line is not its terminator
 - **465** — a test asked the host which shell `sh` is; the 8-byte rows on a 32-bit host
+- **466** — descriptors of two digits or more
 
 ### Not tied to an iteration
 
@@ -22745,3 +22746,38 @@ The rest of that report is the run stopping early: once the shell suite
 failed, the later stages never ran, which is why `diff:failed`,
 `core:okmarkers`, `parse:verdicts-agree` and several sizes came back
 empty rather than wrong.
+
+## Iteration 466: descriptors of two digits
+
+busybox's ash-redir/redir2 and redir4 both pass now. They ask for
+descriptors above 9, which bash gives and dash refuses at the parse -
+so this follows bash, as it does for `${#*}`, for `wait` on a job that
+is gone, and for `echo`.
+
+The fault took three wrong guesses before the evidence settled it, and
+the evidence was one line: `exec 23>/tmp/f; echo to-stdout` put the
+output IN THE FILE. So `23>` was being applied to descriptor 1 - the
+number was read and then thrown away.
+
+Where: `ADD-REDIR` writes a redirection's descriptor into the command's
+words, and it did so from a table of one-character words, `0 <= fd <
+10`. Anything from 10 up was DROPPED, leaving the redirection with no
+descriptor, which then took the default. The two places I fixed first -
+a one-character test in the runtime's re-read, and its `C@ 48 -` - were
+real caps too, and both are needed, but neither is the one that decides.
+
+Multi-digit descriptors get their digits written into a buffer of the
+command's own, reset where the word list is.
+
+Also settled, from the same busybox mining: **the last line of
+ash-heredoc/heredoc_backslash1 is not a bug**. It is `echo`: dash
+processes escape sequences in its argument, bash does not without `-e`,
+and this shell matches bash exactly, `-e` included. Recorded in GOALS.md
+as a deliberate divergence, since it accounts for several of that
+corpus's failures on its own.
+
+Recorded changes, with their causes: `parse:verdicts-differ` 0 -> 1 -
+the new differential case is the first whose parse `dash -n` rejects and
+this shell accepts, which is the whole point of it, so the verdict
+differs by design rather than by accident; the images about 300 bytes
+larger, for FD>WORD and its buffer.

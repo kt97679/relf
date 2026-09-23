@@ -2910,9 +2910,21 @@ VARIABLE RA-FD
 VARIABLE RA-OP
 VARIABLE AR-I
 
-: DIGIT-TOKEN? ( i --- f )   \ a one-character token that is a digit
+VARIABLE DT-A  VARIABLE DT-U  VARIABLE DT-I
+: DIGIT-TOKEN? ( i --- f )   \ a token that is nothing but digits
+  \ Any number of them, not one: `exec 23>file` names descriptor 23,
+  \ and a one-character test left the redirection with no descriptor at
+  \ all, so it took the default - `exec 23>f` redirected STDOUT, and
+  \ `echo x >&23` then said "bad file descriptor" where bash writes x
+  \ (Iteration 466, busybox ash-redir/redir2). dash rejects two digits
+  \ outright; bash and this shell take them.
   DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
-  ARGV@ DUP CSTRLEN 1 = SWAP C@ AE-DIGIT? AND ;
+  ARGV@ DUP CSTRLEN DT-U !  DT-A !  0 DT-I !
+  DT-U @ 0= IF 0 EXIT THEN
+  BEGIN DT-I @ DT-U @ < WHILE
+    DT-A @ DT-I @ + C@ AE-DIGIT? 0= IF 0 EXIT THEN
+    1 DT-I +!
+  REPEAT -1 ;
 
 : REDIR-OP-AT ( i --- op | 0 )   \ 1 "<"  2 ">"  3 ">>"  4 ">&"  5 "<&"
   DUP ARGV-QUOTED@ IF DROP 0 EXIT THEN
@@ -2953,7 +2965,11 @@ VARIABLE AR-I
     PR-I @ DIGIT-TOKEN? PR-I @ 1+ ARGC @ < AND
     IF PR-I @ 1+ REDIR-OP-AT ELSE 0 THEN
     ?DUP IF
-      PR-I @ ARGV@ C@ 48 - SWAP        ( fd op )
+      \ The whole number, not its first character: `exec 23>file` names
+      \ descriptor 23, and this read a 2 (Iteration 466, busybox
+      \ ash-redir/redir2). dash rejects two digits outright; bash and
+      \ this shell take them.
+      PR-I @ ARGV@ DUP CSTRLEN PARSE-DECIMAL SWAP    ( fd op )
       PR-I @ 2 + PR-I !
       REDIR-ADD
     ELSE
