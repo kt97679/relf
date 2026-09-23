@@ -459,6 +459,7 @@ do not trust the absence of a line below.
 - **461** — yash 1745; a pending here-document belongs to the command around a substitution
 - **462** — a reserved word is not an alias only where one would be reserved
 - **463** — yash 1747; a quoted `!` or `^` in a bracket expression
+- **464** — a here-document's continued line is not its terminator
 
 ### Not tied to an iteration
 
@@ -22677,3 +22678,39 @@ and pathname expansion was still wrong. Three sites, one rule.
 
 Recorded changes, with their causes: `parse:verdicts-agree` 227 -> 228,
 the new differential case; the images about 88 bytes larger.
+
+## Iteration 464: a here-document's line, and which one ends it
+
+From the same busybox mining as 463, a failure where this shell differed
+from BOTH references rather than from one: ash-heredoc/heredoc_backslash1.
+
+With an unquoted delimiter a line ending in a backslash continues into
+the next, and **the line it continues into is not the terminator**:
+
+    cat <<EOF
+    c\
+    EOF
+    EOF
+
+is the body text `cEOF`, ended by the EOF after it. The first `EOF` was
+taken as the terminator here, which left the second to be run as a
+command - `EOF: command not found`, in the middle of a script that both
+references run without complaint.
+
+**And `<<-` strips the tabs that start a LOGICAL line.** A continued
+line does not start one, so its leading tab stays: `x\` + newline + tab
++ `EOF` is `x`, a tab, `EOF` in dash and bash, and was `xEOF` here. One
+rule, two places, both from the same reading.
+
+Whether the delimiter was quoted is the switch for both, and nothing
+recorded it: quote removal SHORTENS a quoted delimiter, so the two
+lengths answer the question without a new field.
+
+busybox's ash-heredoc/heredoc_bkslash_newline2 stays failing on purpose:
+there `EO\` + newline + `F` joins to exactly `EOF`, and busybox's ash
+ends the document on it while dash does not. This shell follows dash, as
+it does everywhere the two references disagree without POSIX deciding.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 228 -> 229,
+the new differential case; the images about 190 bytes larger, for the
+continuation test and the two flags.

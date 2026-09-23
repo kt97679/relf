@@ -883,20 +883,48 @@ VARIABLE HR-DASH?
 \ A here-document's body: the lines after the command, up to one that is
 \ exactly the delimiter (quotes removed; leading tabs stripped for <<-).
 \ The body is stored raw; whether it is expanded is the word's business.
+VARIABLE HDB-N
+: HD-LINE-CONTINUES? ( c-addr u --- f )   \ ends with an unescaped backslash
+  0 HDB-N !
+  BEGIN DUP 0 > WHILE
+    2DUP + 1- C@ 92 = 0= IF 2DROP HDB-N @ 1 AND 0<> EXIT THEN
+    1 HDB-N +!  1-
+  REPEAT 2DROP HDB-N @ 1 AND 0<> ;
+
+VARIABLE HD-CONT?     \ the line before this one ended in a continuation
+VARIABLE HD-QUOTED?   \ the delimiter was quoted, so the body is literal
+
 : READ-HEREDOC ( redir --- )
   DUP HR-NODE !  1 F@ OP-DLESSDASH = HR-DASH? !
-  HR-NODE @ 2 F@ 0 F@ TSTR DUP CSTRLEN STRIP-QUOTES
+  HR-NODE @ 2 F@ 0 F@ TSTR DUP CSTRLEN 2DUP STRIP-QUOTES
+  \ Quote removal shortens a quoted delimiter, which is how a literal
+  \ body is told here from one that expands (Iteration 464).
+  NIP HD-TEXT# @ <> HD-QUOTED? !
   HD-TEXT# @ HD-DELIM# !  HD-STORE HD-DELIM !
-  0 HD-TEXT# !
+  0 HD-TEXT# !  0 HD-CONT? !
   BEGIN 0 SRC-C -1 <> WHILE
-    HR-DASH? @ IF BEGIN 0 SRC-C 9 = WHILE 1 SRC-SKIP REPEAT THEN
+    \ `<<-` strips the tabs that start a LOGICAL line, and a continued
+    \ line does not start one: both references keep the tab in `x\` +
+    \ newline + tab + `EOF` (Iteration 464).
+    HR-DASH? @ HD-CONT? @ 0= AND IF
+      BEGIN 0 SRC-C 9 = WHILE 1 SRC-SKIP REPEAT
+    THEN
     SRC-POS @
     BEGIN 0 SRC-C DUP -1 <> SWAP 10 <> AND WHILE 1 SRC-SKIP REPEAT
     DUP SRC-ADDR @ +  SRC-POS @ ROT -       ( c-addr u )
     1 SRC-SKIP
-    2DUP HD-DELIM @ TSTR HD-DELIM# @ COMPARE 0= IF
-      2DROP HD-STORE HR-NODE @ 3 F! EXIT
+    \ A line that the one before it continued into is not a delimiter:
+    \ with an unquoted delimiter `c\` + newline + `EOF` is body text
+    \ reading `cEOF`, and the EOF after THAT ends the document. The
+    \ first was taken as the terminator here, which left the second to
+    \ be run as a command (Iteration 464, busybox
+    \ ash-heredoc/heredoc_backslash1).
+    HD-CONT? @ 0= IF
+      2DUP HD-DELIM @ TSTR HD-DELIM# @ COMPARE 0= IF
+        2DROP HD-STORE HR-NODE @ 3 F! EXIT
+      THEN
     THEN
+    HD-QUOTED? @ 0= IF 2DUP HD-LINE-CONTINUES? ELSE 0 THEN HD-CONT? !
     HD-APPEND  SH-NL 1 HD-APPEND
   REPEAT
   \ end of input before the delimiter: the body is what was read
