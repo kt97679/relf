@@ -465,6 +465,7 @@ do not trust the absence of a line below.
 - **467** — a word that looks like a descriptor is not one
 - **468** — busybox 249; a trap may run inside a trap
 - **469** — a name exported before it has a value; GOALS.md pruned
+- **470** — the intermittent differential case: bash's own race
 
 ### Not tied to an iteration
 
@@ -22877,3 +22878,37 @@ a bug, and stays.
 Recorded changes, with their causes: `parse:verdicts-agree` 230 -> 231,
 the new differential case; the images about 390 bytes larger, for the
 pending-export list and its three words.
+
+## Iteration 470: the intermittent case, explained - and it was bash
+
+`wait-job-status-345.sh` had failed about one verification in ten since
+Iteration 429, and 455 found its line: `( (exit 5) & wait %%; echo
+"current-job=$?" )`. The logged failure was `-current-job=127
++current-job=5`, and `-` is BASH.
+
+So the shell that varied was the reference. For a job that has already
+finished, dash and this shell still hold its status and `wait %%`
+returns 5; bash, in a non-interactive shell, drops a finished job from
+its table and says "no such job", 127. `(exit 5)` finishes almost at
+once, so bash's own answer raced: 5 when it reached `wait` before
+reaping the job, 127 when it reaped first - more often under the load of
+a full verification. This shell answered 5 every time. The 430 runs of
+455 never reproduced it because they measured this shell; the line
+needed bash to lose its race.
+
+The jobs that a job SPEC names sleep a moment first now, so bash always
+waits on a live job and both references agree; 40 runs beside a busybox
+corpus, the load that used to trigger it, all agree. The finished-job
+reading - dash's, and the one POSIX supports, since the status is known
+- is asserted in `tests/shell` where it is this shell's own.
+
+GOALS.md's 8b is closed with that explanation. The lesson worth keeping:
+when a differential case flakes, look at which side of the diff moved
+before assuming it was ours.
+
+(Also: `pkill -f busybox-suite.sh` killed the command that ran it, whose
+own command line held the same text. Kill by PID.)
+
+Recorded changes, with their causes: `shell:assertions` 843 -> 844, the
+finished-job assertion. The images do not move: nothing in the shell
+changed, only a test that asked bash a question it answers two ways.

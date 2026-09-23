@@ -207,4 +207,8 @@ assert_output_equals "... in order, between the outer trap's commands" "A
 inner
 B
 end" "$out"
+# `wait` on a job that has already finished returns its status, as dash
+# does; bash drops the job and says "no such job", 127 (Iteration 470).
+out=$("$THIS_SH" -c '( (exit 5) & sleep 0.2; wait %%; echo "st=$?" )' 2>&1)
+assert_output_equals "wait %% on a job already finished keeps its status" "st=5" "$out"
 report

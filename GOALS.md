@@ -70,17 +70,10 @@ ordinary scripts hit, then edge cases and wording.
    expecting a hot spot.
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
-8b. **`wait-job-status-345.sh` fails now and then, and the LINE is
-   known** (429, 444, 455, 456): `( (exit 5) & wait %%; echo
-   "current-job=$?" )`. The case records bash's answer, 127 - no such
-   job - and this shell usually gives 127 and sometimes 5, the status of
-   the job. Run on its own, that line is 5 in bash, dash and here, so
-   the 127 depends on what ran before it in the file, in bash as much as
-   here. Over 430 runs of the case alone never reproduced it (455).
-   Next: find what makes bash answer 127 there - the job table's state
-   after the earlier lines - and decide whether this shell should follow
-   it at all, or whether the case should stop asserting a number both
-   references disagree about.
+   (8b, the intermittent `wait-job-status-345.sh`, is resolved in 470:
+   the varying shell was BASH, which drops a finished job and answers
+   127 when it reaps before `wait %%` runs. The case's named jobs sleep
+   a moment now; the finished-job reading is asserted on its own.)
 
 ## Deliberate divergences from busybox's ash
 
