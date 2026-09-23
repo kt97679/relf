@@ -469,6 +469,7 @@ do not trust the absence of a line below.
 - **471** — a differential fuzzer; three field-splitting bugs it found
 - **472** — a wider fuzzing grammar; the rest of test's two-argument rule
 - **473** — set -o pipefail (POSIX.1-2024)
+- **474** — $'...' (POSIX.1-2024)
 
 ### Not tied to an iteration
 
@@ -23013,3 +23014,32 @@ tests/shell/options.expected - the count of options that are off, 10 to
 
 Recorded changes, with their causes: `parse:verdicts-agree` 233 -> 234,
 the new differential case; the images about 125 bytes larger.
+
+## Iteration 474: $'...'
+
+The second POSIX.1-2024 addition in the plan: dollar-single-quotes. A
+`$'...'` string is single-quoted, except that a backslash escape stands
+for the byte it names - `\n \t \r \a \b \e \f \v`, `\\ \' \"`, `\xHH`
+with one or two hex digits, `\ooo` with one to three octal digits, and
+`\cX` for a control character. An escape the standard does not define
+keeps its backslash, and `\0` ends the string's bytes; both as bash has
+them.
+
+It lives entirely in the scanner. `SCAN-DOLLAR-SQUOTE` emits the result
+as an ordinary single-quoted run, so the expander, the matcher and
+everything else past the scanner never learn it was anything else. It is
+reached from the word loop and not from `SCAN-DOLLAR`, because inside
+double quotes `$'` is a dollar and a quote, and SCAN-DOLLAR serves both.
+
+bash is the reference; dash 0.5.12, installed here, predates it. The
+case agrees with bash byte for byte, checked through `od -c`, including
+a `case` pattern matched against `$'\t'` and a variable holding
+`$'two\nlines'`.
+
+Recorded: `parse:verdicts-differ` goes 1 to 2. The new case is the
+second whose parse `dash -n` rejects - dash reads `$'it\'s'` as a dollar
+and an unterminated quote - by design, as 466's was.
+
+Recorded changes, with their causes: `parse:verdicts-differ` 1 -> 2, by
+design as above; the images about 700 bytes larger, for the scanner and
+its escape table.

@@ -379,6 +379,70 @@ DEFER SCAN-DOLLAR
   UNTIL
   ENC-END ENC-CODE, ;
 
+\ $'...' - POSIX.1-2024's dollar-single-quotes (Iteration 474): a
+\ single-quoted string in which a backslash escape stands for the byte it
+\ names. Encoded exactly as a single-quoted run, so nothing past the
+\ scanner knows it was ever anything else. A \0 ends the string's bytes,
+\ as bash has it; an escape POSIX does not define keeps its backslash.
+VARIABLE DSQ-NUL?
+VARIABLE DSQ-V
+VARIABLE DSQ-N
+: DSQ-EMIT ( c --- )
+  DSQ-NUL? @ IF DROP EXIT THEN
+  DUP 0= IF DROP -1 DSQ-NUL? ! EXIT THEN
+  ENC-LIT, ;
+: DSQ-HEX? ( c --- n | -1 )
+  DUP 48 58 WITHIN IF 48 - EXIT THEN
+  DUP 97 103 WITHIN IF 87 - EXIT THEN
+  DUP 65 71 WITHIN IF 55 - EXIT THEN
+  DROP -1 ;
+: DSQ-ESCAPE ( c --- )   \ the character after a backslash, already skipped
+  DUP 110 = IF DROP 10 DSQ-EMIT EXIT THEN
+  DUP 116 = IF DROP 9 DSQ-EMIT EXIT THEN
+  DUP 114 = IF DROP 13 DSQ-EMIT EXIT THEN
+  DUP 97 = IF DROP 7 DSQ-EMIT EXIT THEN
+  DUP 98 = IF DROP 8 DSQ-EMIT EXIT THEN
+  DUP 101 = IF DROP 27 DSQ-EMIT EXIT THEN
+  DUP 102 = IF DROP 12 DSQ-EMIT EXIT THEN
+  DUP 118 = IF DROP 11 DSQ-EMIT EXIT THEN
+  DUP 92 = OVER 39 = OR OVER 34 = OR IF DSQ-EMIT EXIT THEN
+  DUP 99 = IF                                 \ \cX: the control character
+    DROP 0 SRC-C DUP -1 = IF DROP EXIT THEN
+    1 SRC-SKIP
+    DUP 92 = IF 0 SRC-C 92 = IF 1 SRC-SKIP THEN THEN
+    31 AND DSQ-EMIT EXIT
+  THEN
+  DUP 120 = IF                                \ \xHH: one or two hex digits
+    DROP 0 DSQ-V !  0 DSQ-N !
+    BEGIN DSQ-N @ 2 < IF 0 SRC-C DSQ-HEX? DUP 0< 0= ELSE 0 0 THEN WHILE
+      DSQ-V @ 16 * + DSQ-V !  1 SRC-SKIP  1 DSQ-N +!
+    REPEAT DROP
+    DSQ-N @ 0= IF 92 DSQ-EMIT 120 DSQ-EMIT EXIT THEN
+    DSQ-V @ DSQ-EMIT EXIT
+  THEN
+  DUP 48 56 WITHIN IF                         \ \ooo: one to three octal digits
+    48 - DSQ-V !  0 DSQ-N !
+    BEGIN DSQ-N @ 2 < IF 0 SRC-C DUP 48 56 WITHIN ELSE 0 0 THEN WHILE
+      48 - DSQ-V @ 8 * + DSQ-V !  1 SRC-SKIP  1 DSQ-N +!
+    REPEAT DROP
+    DSQ-V @ 255 AND DSQ-EMIT EXIT
+  THEN
+  92 DSQ-EMIT DSQ-EMIT ;
+: SCAN-DOLLAR-SQUOTE ( --- )   \ at $': to past the closing '
+  2 SRC-SKIP  0 DSQ-NUL? !
+  ENC-SQ ENC-CODE,
+  BEGIN
+    0 SRC-C DUP -1 = IF DROP S" unterminated single quote" SYNTAX THEN
+    DUP 39 = IF DROP 1 SRC-SKIP ENC-END ENC-CODE, EXIT THEN
+    DUP 92 = IF
+      DROP 1 SRC-SKIP
+      0 SRC-C DUP -1 = IF DROP S" unterminated single quote" SYNTAX THEN
+      1 SRC-SKIP DSQ-ESCAPE
+    ELSE
+      DSQ-EMIT 1 SRC-SKIP
+    THEN
+  AGAIN ;
+
 : SCAN-BACKQUOTE ( --- )  \ at `: to past the closing `
   1 SRC-SKIP
   ENC-SUB-BEGIN
@@ -730,7 +794,14 @@ DEFER SCAN-DOLLAR
     ELSE DUP 96 = IF
       DROP WF-EXPAND TK-FLAGS @ OR TK-FLAGS !  SCAN-BACKQUOTE 0
     ELSE 36 = IF
-      SCAN-DOLLAR 0
+      \ `$'` opens a dollar-single-quoted string here, unquoted; inside
+      \ double quotes it is a dollar and a quote, which is why this is
+      \ not in SCAN-DOLLAR (Iteration 474).
+      1 SRC-C 39 = IF
+        WF-QUOTED TK-FLAGS @ OR TK-FLAGS !  SCAN-DOLLAR-SQUOTE 0
+      ELSE
+        SCAN-DOLLAR 0
+      THEN
     ELSE
       \ A [ is a pattern character only if a ] closes it (XCU 2.13.1):
       \ `[` and `]` alone, the test command, stay literal.
