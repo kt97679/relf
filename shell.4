@@ -3975,6 +3975,15 @@ DEFER TP-EXPR-CALL   ( --- f )
   TEST-NARGS 2 = IF 0 TP-ARG-AT TEST-IS-BANG? IF
     1 TP-ARG-AT CSTRLEN 0= EXIT
   THEN THEN
+  \ POSIX's two-argument rule, the rest of it: a unary primary applies
+  \ to the second argument whatever that looks like. `test -n =` is true
+  \ in both references; the general parser read the `=` as a binary
+  \ operator short of its right side and failed with 2 - reached by
+  \ `test "$z" = "$@"` with no parameters (Iteration 472, found by
+  \ tools/difffuzz.py).
+  TEST-NARGS 2 = IF 0 TP-ARG-AT C@ 45 = IF
+    0 TP-ARG-AT 1 TP-ARG-AT TEST-UNARY? EXIT
+  THEN THEN
   TEST-NARGS 3 = IF 1 TP-ARG-AT TP-BINARY-OP? IF
     0 TP-ARG-AT 1 TP-ARG-AT 2 TP-ARG-AT TEST-BINARY? EXIT
   THEN THEN

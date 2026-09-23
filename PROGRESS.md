@@ -467,6 +467,7 @@ do not trust the absence of a line below.
 - **469** — a name exported before it has a value; GOALS.md pruned
 - **470** — the intermittent differential case: bash's own race
 - **471** — a differential fuzzer; three field-splitting bugs it found
+- **472** — a wider fuzzing grammar; the rest of test's two-argument rule
 
 ### Not tied to an iteration
 
@@ -22964,3 +22965,27 @@ checks all its replacements before it writes any.
 Recorded changes, with their causes: `parse:verdicts-agree` 231 -> 232,
 the new differential case; the images about 100 bytes larger, for
 POS-PARAM-BREAK and the checks of XE-NOSPLIT?.
+
+## Iteration 472: a wider grammar, and `test -n =`
+
+The first grammar ran clean - 24614 scripts, no finding - so it was
+exhausted, and nine families were added to `tools/difffuzz.py`:
+arithmetic with a variable and the assignment operators, all four trim
+operators, `eval`, backquotes, pathname expansion against real files
+with `set -f` and without, `while read` loops, `shift`, the `test`
+operators, and functions given arguments.
+
+In its first run it found a `test` bug by a route no one would write on
+purpose: `test "$z" = "$@"` with no positional parameters is
+`test -n =` when z is `-n`. POSIX's two-argument rule says a unary
+primary applies to the second argument, whatever that looks like, so
+both references answer true. This shell answered 2, an error: the
+two-argument branch knew only the `!` half of the rule and handed the
+rest to the general parser, whose lookahead read `=` as a binary
+operator short of its right side. The other half is there now; fourteen
+`test` forms agree with dash, and `test -z =` and `[ -n = ]` with them.
+
+A fresh run of the wider grammar: 24621 scripts, no finding.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 232 -> 233,
+the new differential case; the images about 30 bytes larger.

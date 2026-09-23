@@ -26,7 +26,7 @@ mrsh:passed 21
 parse:encoded 4
 parse:failed 0
 parse:passed 26
-parse:verdicts-agree 232
+parse:verdicts-agree 233
 parse:verdicts-differ 1
 portability:problems 0
 posix:cases 48
@@ -42,9 +42,9 @@ shell:dead-words 0
 shell:files 80
 size:engine-code-i386 19126
 size:engine-code-x86_64 24010
-size:i386 170760
-size:image-i386 107708
-size:image-x86_64 115496
-size:x86_64 154624
+size:i386 170788
+size:image-i386 107736
+size:image-x86_64 115528
+size:x86_64 154656
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

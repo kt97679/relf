@@ -44,8 +44,45 @@ def word(r, depth=0):
 def quote(v):
     return "'" + v.replace("'", "'\\''") + "'"
 
+def more(r, k, depth):
+    """the constructs added once the first grammar ran clean (Iteration 472)"""
+    v = r.choice(['x', 'y', 'z'])
+    if k == 16:
+        op = r.choice(['n=n+1', 'n+=2', 'n*=3', 'n<<=1', 'n?1:2', '(n+1)*2', 'n==0', 'n>1&&1', '-n', '!n', 'n%3', 'n-=1'])
+        return 'n=' + str(r.randint(0, 5)) + "; printf '[%s]' $((" + op + ")) \"$n\"; echo"
+    if k == 17:
+        return "printf '[%s]' \"${" + v + r.choice(['%', '%%', '#', '##']) + r.choice(PATTERNS) + "}\" ${" + v + r.choice(['%', '##']) + r.choice(PATTERNS) + "}; echo"
+    if k == 18:
+        return "eval \"printf '[%s]' \\\"\\$" + v + "\\\" \\$" + v + "\"; echo"
+    if k == 19:
+        return "printf '[%s]' `printf '%s ' $" + v + "` \"`printf %s \\\"$" + v + "\\\"`\"; echo"
+    if k == 20:
+        return ('touch "$T/g1" "$T/g2" "$T/h1"; ' + r.choice(['set -f; ', 'set +f; ', '']) +
+                "printf '[%s]' " + r.choice(['./g*', './?1', './[gh]1', './[!g]*', './none*', '"./g*"']) + '; echo; set +f')
+    if k == 21:
+        return ("while read -r a b; do printf '<%s|%s>' \"$a\" \"$b\"; done <<'EOF'\n" +
+                '\n'.join(r.choice(VALUES + ['a b c', '  indent', 'x\\y']) for _ in range(r.randint(1, 3))) + '\nEOF\necho')
+    if k == 22:
+        return 'set -- ' + ' '.join(quote(r.choice(VALUES)) for _ in range(r.randint(1, 4))) + '; shift ' + str(r.randint(0, 2)) + "; printf '[%s]' $# \"$@\"; echo"
+    if k == 23:
+        a, b = word(r), word(r)
+        opx = r.choice(['=', '!=', '-z', '-n', '-eq', '-lt', '-gt'])
+        if opx in ('-z', '-n'):
+            return 'test ' + opx + ' ' + a + ' && echo T || echo F'
+        if opx in ('-eq', '-lt', '-gt'):
+            return 'test ' + str(r.randint(0, 3)) + ' ' + opx + ' ' + str(r.randint(0, 3)) + ' && echo T || echo F'
+        return 'test "' + a.strip('"') + '" ' + opx + ' "' + b.strip('"') + '" && echo T || echo F'
+    if k == 24:
+        return "f() { printf '[%s]' \"$#\" \"$@\"; }; f " + ' '.join(word(r) for _ in range(r.randint(0, 3))) + '; echo'
+    return None
+
 def statement(r, depth=0):
-    k = r.randrange(16)
+    k = r.randrange(25)
+    if k >= 16:
+        m = more(r, k, depth)
+        if m is not None:
+            return m
+        k = r.randrange(16)
     v = r.choice(['x', 'y', 'z'])
     if k == 0:
         return v + '=' + quote(r.choice(VALUES))
