@@ -473,6 +473,7 @@ do not trust the absence of a line below.
 - **475** — LINENO
 - **476** — \j and \D{format} in prompts
 - **477** — a lint for tests that run the host's sh
+- **478** — the fuzzer's third grammar: 25133 scripts, clean
 
 ### Not tied to an iteration
 
@@ -23129,3 +23130,23 @@ its count as `shell:host-sh-tests`, where 0 is the only right answer.
 
 Recorded changes, with their causes: `shell:host-sh-tests 0`, the new
 key. The images do not move: nothing in the shell changed.
+
+## Iteration 478: the fuzzer's third grammar, and a clean run
+
+Seven more families in `tools/difffuzz.py`: redirections on groups and
+simple commands (`2>&1`, `>&2`, `>>`, `exec 3>`, a here-document into a
+file), nested quoting (`"$(printf '%s' "a\"b")"`, `"${x:+"q $x"}"`, mixed
+`'a'"b"\c`, backquotes inside double quotes), arithmetic literals and
+precedence (hex, octal, `-7/2`, `7%-3`, nested `?:`, `~`, `!`), `break`
+and `continue` with a count, EXIT traps in subshells, `<<-`, and `read`
+with IFS given to it.
+
+25133 scripts, no finding. Before believing that, 280 scripts from the
+new families were run under dash alone and none was a syntax error or a
+missing command - two shells failing the same way would look like
+agreement.
+
+A clean run is a result too: the areas the first two grammars found bugs
+in were expansions and field splitting, and these seven reach further -
+redirection, quoting depth, arithmetic, loop control, traps - without
+finding one. The shell's image does not change in this iteration.

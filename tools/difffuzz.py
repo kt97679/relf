@@ -74,10 +74,42 @@ def more(r, k, depth):
         return 'test "' + a.strip('"') + '" ' + opx + ' "' + b.strip('"') + '" && echo T || echo F'
     if k == 24:
         return "f() { printf '[%s]' \"$#\" \"$@\"; }; f " + ' '.join(word(r) for _ in range(r.randint(0, 3))) + '; echo'
+    # --- Iteration 478: the third grammar ---
+    if k == 25:          # redirections on groups and simple commands
+        tgt = '"$T/r' + str(r.randint(1, 2)) + '"'
+        return r.choice([
+            '{ echo g1; echo g2 >&2; } > ' + tgt + ' 2>&1; cat ' + tgt,
+            '{ echo out; echo err >&2; } 2>/dev/null',
+            'echo first > ' + tgt + '; echo second >> ' + tgt + '; cat < ' + tgt,
+            '( echo sub >&2 ) 2>&1 | tr a-z A-Z',
+            'exec 3>' + tgt + '; echo via3 >&3; exec 3>&-; cat ' + tgt,
+            'cat <<EOF > ' + tgt + '\nbody $x\nEOF\ncat ' + tgt])
+    if k == 26:          # nested quoting
+        return r.choice([
+            'printf \'[%s]\' "$(printf \'%s\' "a\\"b")"; echo',
+            'printf \'[%s]\' "${' + v + ':+"q $' + v + '"}"; echo',
+            'printf \'[%s]\' \'a\'"b"\\c"$' + v + '"; echo',
+            'printf \'[%s]\' "`printf \'%s\' \\\\x`"; echo',
+            'printf \'[%s]\' "$(echo "$(echo "in \'$' + v + '\'")")"; echo'])
+    if k == 27:          # arithmetic literals and precedence
+        e = r.choice(['0x1f', '010', '1+2*3', '(1+2)*3', '7/2', '-7/2', '7%-3', '1<<4|1', '~5', '!0+!1',
+                      '3>2&&2>3||1', '1?2?3:4:5', '-(-(3))', '2*-3', '0x10+010+10'])
+        return "printf '[%s]' $((" + e + ")); echo"
+    if k == 28:          # break and continue with a count
+        return ('for i in 1 2 3; do for j in a b c; do [ $j = ' + r.choice(['a', 'b', 'c']) + ' ] && ' +
+                r.choice(['break', 'continue', 'break 2', 'continue 2']) + "; printf '%s%s ' $i $j; done; done; echo")
+    if k == 29:          # EXIT traps in subshells
+        return "( trap 'echo exiting' EXIT; echo body" + r.choice(['', '; exit 3', '; false']) + ' ); echo "st=$?"'
+    if k == 30:          # <<- strips leading tabs
+        return 'cat <<-EOF\n\tone\n\t\ttwo $' + v + '\n\tEOF'
+    if k == 31:          # IFS given to read
+        return ("IFS=" + quote(r.choice([':', ' :', ',', ':,'])) + " read -r a b c <<'EOF'\n" +
+                r.choice(['a:b:c', ' a : b ', 'a,,b', 'x:y:z:w', ':lead', 'trail:']) +
+                "\nEOF\nprintf '[%s]' \"$a\" \"$b\" \"$c\"; echo")
     return None
 
 def statement(r, depth=0):
-    k = r.randrange(25)
+    k = r.randrange(32)
     if k >= 16:
         m = more(r, k, depth)
         if m is not None:
