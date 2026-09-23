@@ -111,3 +111,43 @@ expand to other than one field - the fallback is a permutation of the
 pointer array and its parallel flag arrays after the second pass, which
 is safe because the pointers are into one buffer that only grows during
 a pass.
+
+## Stage 1 landed (480); what stage 2 has to get past (481)
+
+Stage 1 is Iteration 480, with yash simple-p.tst:11 passing; the
+reservation held - an assignment is always one entry, since `NAME=` is
+never empty and never split. It also retired a workaround: 345 had made
+an assignment-only command keep the FIRST substitution's status because
+under source order that matched the references; with the order right,
+POSIX's LAST-performed rule matches them instead.
+
+`tools/difffuzz.py` has a family for this now: prefix assignments whose
+values have side effects, beside words that observe them. It has teeth:
+the 479 build prints `[1][11]` for
+`n=0; v=$((n+=1)) printf "[%s]" "$n" $((n+=10))`, where 480, dash and
+bash print `[0][10]`.
+
+Reading the run path for stage 2 found three things the plan above did
+not know:
+
+1. A builtin's redirections are performed inside `RUN-A-BUILTIN`,
+   reached through `DISPATCH` from `RUN-EXPANDED` - AFTER `TEMP-ASSIGN`
+   in `EXPAND-AND-RUN` has applied the prefix. The assignment pass has
+   to move to between the redirections and `TEMP-ASSIGN`.
+2. `GLOB-FIELDS`, at the end of `EXPAND-WORDS`, uses the `EW-*` arrays
+   as its own scratch. A pass 2 deferred past `EXPAND-WORDS` must first
+   copy the pending assignment entries - text, node and flags - out of
+   them.
+3. Performed early, the redirections must not be performed again by
+   `RUN-A-BUILTIN` (so `REDIR-N` is 0 while it runs), and `END-REDIRECT`
+   must come after the command, before `TEMP-RESTORE`.
+
+The hook, then, for a regular builtin that has both redirections and
+assignments: pass 1 with the assignment slots holding their raw text as
+placeholders; `PARSE-REDIRECTIONS`; `BEGIN-REDIRECT`, stopping if it
+fails; pass 2 from the saved entries into slots 0 .. n-1; `TEMP-ASSIGN`;
+`RUN-EXPANDED` with no redirections of its own; `TEMP-RESTORE`;
+`END-REDIRECT`. A special builtin, a function and an external command
+keep stage 1's order until the same hook is shown safe for each. An
+assignment-only command with redirections, `a=$(cat f) >f`, is the same
+shape through `APPLY-BARE-REDIRS`.

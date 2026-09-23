@@ -476,6 +476,7 @@ do not trust the absence of a line below.
 - **478** — the fuzzer's third grammar: 25133 scripts, clean
 - **479** — EXPANSION-ORDER.md: the design, before the code
 - **480** — the words before the assignments (stage 1)
+- **481** — yash 1751; a fuzzing family for stage 1, with teeth; stage 2's obstacles
 
 ### Not tied to an iteration
 
@@ -23199,3 +23200,25 @@ Recorded changes, with their causes: `parse:verdicts-agree` 235 -> 236,
 the new differential case; `shell:assertions` 844 -> 845, the special
 builtin's assignment; the images about 190 bytes larger, for the second
 pass and its two small words.
+
+## Iteration 481: stage 1 measured, tested with teeth, and stage 2 read
+
+yash on 480's build: **1751 passed, 24 failed** (1750; dash 1650), no
+crashes or hangs - simple-p.tst:11 passes. Three failures dash passes
+are left: two alias torture cases and simple-p.tst:18, stage 2.
+
+`tools/difffuzz.py` gains the family EXPANSION-ORDER.md promised:
+prefix assignments whose values have side effects - `$((n+=1))`,
+`${w=set}`, a substitution - beside words that observe them, with a
+regular builtin or an external command. 23175 scripts, clean. And it can
+see the bug stage 1 fixed: the 479 tree, extracted and built, prints
+`[1][11]` for one of its shapes where 480, dash and bash print `[0][10]`
+- a clean run of a family that would have failed is worth recording as
+evidence, not only a clean run.
+
+Stage 2 was read before it was started, and three obstacles came out of
+the reading, now in EXPANSION-ORDER.md: the builtin's redirections are
+performed inside RUN-A-BUILTIN after TEMP-ASSIGN; GLOB-FIELDS uses the
+EW-* arrays as scratch, so a deferred pass must save its entries first;
+and redirections performed early must not be performed again. Each is
+manageable; together they are the next iteration's whole work.

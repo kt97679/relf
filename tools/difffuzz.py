@@ -102,6 +102,18 @@ def more(r, k, depth):
         return "( trap 'echo exiting' EXIT; echo body" + r.choice(['', '; exit 3', '; false']) + ' ); echo "st=$?"'
     if k == 30:          # <<- strips leading tabs
         return 'cat <<-EOF\n\tone\n\t\ttwo $' + v + '\n\tEOF'
+    if k == 32:          # prefix assignments whose values have side effects (Iteration 481)
+        # The words of a simple command are expanded before its assignments
+        # (EXPANSION-ORDER.md stage 1). No redirection beside them yet: which
+        # comes first, a redirection or an assignment, is stage 2.
+        cmd = r.choice(["printf '[%s]'", 'sh -c \'printf "[%s]" "$v" "$@"\' sh'])
+        return r.choice([
+            'n=' + str(r.randint(0, 3)) + '; v=$((n+=1)) ' + cmd + ' "$n" $((n+=10)); echo " n=$n"',
+            'unset w; v=${w=set} ' + cmd + ' "${w-unset}"; echo " w=${w-unset}"',
+            'n=0; a=$((n+=1)) b=$((n*10)) sh -c \'echo "$a $b"\'; echo " n=$n"',
+            'v=$(echo sub) ' + cmd + ' "$(echo word)" "${v-none}"; echo',
+            'n=5; v=$((n*=2)) w=$n ' + cmd + ' "$n"; echo " n=$n"',
+            'v=`exit 3` `exit ' + str(r.randint(0, 4)) + '`; echo "st=$?"'])
     if k == 31:          # IFS given to read
         return ("IFS=" + quote(r.choice([':', ' :', ',', ':,'])) + " read -r a b c <<'EOF'\n" +
                 r.choice(['a:b:c', ' a : b ', 'a,,b', 'x:y:z:w', ':lead', 'trail:']) +
@@ -109,7 +121,7 @@ def more(r, k, depth):
     return None
 
 def statement(r, depth=0):
-    k = r.randrange(32)
+    k = r.randrange(33)
     if k >= 16:
         m = more(r, k, depth)
         if m is not None:
