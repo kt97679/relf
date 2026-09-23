@@ -454,6 +454,7 @@ do not trust the absence of a line below.
 - **456** — yash 1739; a line continuation in an IO number
 - **457** — busybox 242 with THIS_SH set; ${##1}; a continuation in a function name
 - **458** — busybox 247; a signal that kills a command is named; a redirection target joins
+- **459** — yash 1742; a bracket expression that never closes is a literal [
 
 ### Not tied to an iteration
 
@@ -22531,3 +22532,24 @@ joins them now, as it already refused to split them.
 Recorded changes, with their causes: `shell:assertions` 838 -> 840, the
 two for signal reports; the images about 570 bytes larger, nearly all of
 it the fifteen signal descriptions.
+
+## Iteration 459: a bracket that never closes
+
+yash after 458: **1742 passed, 33 failed** (1740, 1739; dash 1650), no
+crashes or hangs - 457's function name took quote-p.tst:209 and :74 with
+it. Nine of the 33 are cases dash passes.
+
+A bracket expression that never closes is a literal `[` (XCU 2.13.1).
+`case [[ in [[)` matches in dash and in bash; here the rest of the
+pattern was swallowed by a bracket waiting for a `]` that never came, so
+nothing matched. `BRACKET-END` already knew - its loop ends either at a
+`]` or at the end of the pattern - and threw the answer away; it returns
+it now, and the matcher falls back to a literal `[`.
+
+Eleven patterns and six pathname shapes match dash, among them the ones
+that must NOT change: `[x]`, `[[:alpha:]]`, `[]]`, `[!b]`, and `[]`,
+which is literal in both references because the `]` right after the `[`
+is a member rather than the closer.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 224 -> 225,
+the new differential case; the images about 20 bytes larger.

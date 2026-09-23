@@ -6895,7 +6895,7 @@ VARIABLE BM-CHAR
 VARIABLE BM-END
 VARIABLE BM-MATCHED?
 
-: BRACKET-END ( p --- p2 )
+: BRACKET-END ( p --- p2 closed? )
   \ GM-PATTERN[p] is '[' - returns the index right after the matching
   \ ']'. A leading '!'/'^' (negation) and a ']' immediately after
   \ that (or right after the '[' itself) are skipped as not being the
@@ -6933,7 +6933,9 @@ VARIABLE BM-MATCHED?
       1+
     THEN
   REPEAT
-  DUP GM-PLEN @ < IF 1+ THEN ;
+  \ Whether a `]` was actually reached, which the caller needs: an
+  \ unterminated bracket expression is a literal `[` (Iteration 459).
+  DUP GM-PLEN @ < IF 1+ -1 ELSE 0 THEN ;
 
 VARIABLE CC-TEXT       \ the class name in the pattern, just past "[:"
 VARIABLE CC-CHAR       \ the character being tested
@@ -7046,9 +7048,18 @@ VARIABLE GM-ESCAPES?   \ pathname expansion: a backslash quotes a character
     -1 GCM-P @ 1+
   ELSE
     91 = IF
-      GCM-P @ BRACKET-END GCM-BEND !
-      GCM-P @ GCM-BEND @ GCM-CHAR @ BRACKET-MATCHES?
-      GCM-BEND @
+      \ A bracket expression that never closes is a literal `[` (XCU
+      \ 2.13.1): `case [[ in [[)` matches in dash and in bash, and here
+      \ the rest of the pattern was swallowed by a bracket waiting for a
+      \ `]` that never came (Iteration 459, yash case-p.tst:318).
+      GCM-P @ BRACKET-END SWAP GCM-BEND !     ( closed? )
+      IF
+        GCM-P @ GCM-BEND @ GCM-CHAR @ BRACKET-MATCHES?
+        GCM-BEND @
+      ELSE
+        91 GCM-CHAR @ =
+        GCM-P @ 1+
+      THEN
     ELSE
       GCM-P @ GM-PATTERN @ + C@ GCM-CHAR @ =
       GCM-P @ 1+
