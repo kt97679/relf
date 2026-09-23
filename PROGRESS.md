@@ -455,6 +455,7 @@ do not trust the absence of a line below.
 - **457** — busybox 242 with THIS_SH set; ${##1}; a continuation in a function name
 - **458** — busybox 247; a signal that kills a command is named; a redirection target joins
 - **459** — yash 1742; a bracket expression that never closes is a literal [
+- **460** — a backslash is not a delimiter; an operator may be split by a continuation
 
 ### Not tied to an iteration
 
@@ -22553,3 +22554,30 @@ is a member rather than the closer.
 
 Recorded changes, with their causes: `parse:verdicts-agree` 224 -> 225,
 the new differential case; the images about 20 bytes larger.
+
+## Iteration 460: a backslash is not a delimiter, and an operator may be split
+
+Two of yash's nine, both about a backslash.
+
+**A continuation between an operator's characters** (quote-p.tst:301):
+`${f:\`+newline+`+x}` is `${f:+x}`, and so for `##` and `%%` between
+their two `#`s. `SCAN-BRACE-OP` skips continuations before the operator,
+which 429 gave it, but not after reading its first character - so the
+`:` forms and the long trims stopped one character short. The rest of
+that yash case already passed: `$\`+newline+`f`, `${\`+newline+`f}`,
+`${#\`+newline+`f}` and `${f\`+newline+`#f}` were 429's work.
+
+**A backslash escapes the next character even when the backslash is
+itself an IFS character** (read-p.tst:185). With `IFS='\'`, `a\b` is the
+one field `ab` in dash and bash; here it split. The field scan tested
+IFS first, and so did the step over a delimiter between fields - which
+was the subtler half: with `IFS=' \'`, `A \ B` gave `A` and `B` where
+the references give `A` and ` B`, because the backslash was eaten as a
+delimiter and the space it was protecting with it.
+
+The whole yash line matches now, including its `[C\C-C\]`, and nine
+`read` shapes agree with dash - among them `-r`, where a backslash is an
+ordinary character and DOES delimit if IFS says so.
+
+Recorded changes, with their causes: `parse:verdicts-agree` 225 -> 226,
+the new differential case; the images about 24 bytes larger.

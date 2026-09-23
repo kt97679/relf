@@ -4692,7 +4692,14 @@ VARIABLE RD-LAST-ESC   \ where the last escaped character landed, or -1
   0 RD-FLEN !  -1 RD-LAST-ESC !
   BEGIN
     RD-POS @ RD-LEN @ < IF
-      DUP IF -1 ELSE READ-BUF RD-POS @ + C@ IFS-CHAR? 0= THEN
+      \ A backslash escapes what follows it even when the backslash is
+      \ itself an IFS character - it never delimits: with `IFS='\'`,
+      \ `a\b` is the one field `ab` in dash and bash, and the IFS test
+      \ came first here, so it split (Iteration 460, yash
+      \ read-p.tst:185).
+      DUP IF -1 ELSE
+        RD-ESCAPED? IF -1 ELSE READ-BUF RD-POS @ + C@ IFS-CHAR? 0= THEN
+      THEN
     ELSE 0 THEN
   WHILE
     RD-ESCAPED? IF
@@ -4733,7 +4740,13 @@ VARIABLE RD-LAST-ESC   \ where the last escaped character landed, or -1
 : RD-DELIMITER ( --- )   \ past one delimiter and the whitespace around it
   RD-SKIP-IFS-WS
   RD-POS @ RD-LEN @ < IF
-    READ-BUF RD-POS @ + C@ IFS-CHAR? IF 1 RD-POS +!  RD-SKIP-IFS-WS THEN
+    \ ... and a backslash here is not a delimiter either, whatever IFS
+    \ holds: it escapes the character after it, which belongs to the
+    \ NEXT field. With `IFS=' \'`, `A \ B` read as A and B, where dash
+    \ and bash give A and " B" (Iteration 460, yash read-p.tst:185).
+    RD-ESCAPED? 0= IF
+      READ-BUF RD-POS @ + C@ IFS-CHAR? IF 1 RD-POS +!  RD-SKIP-IFS-WS THEN
+    THEN
   THEN ;
 
 CREATE EMPTY-STRING CSTR," "   \ for `read` at end of input

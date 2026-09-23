@@ -508,7 +508,11 @@ DEFER SCAN-DOLLAR
   SKIP-CONTINUATIONS
   0 SRC-C 125 = IF EV-PLAIN EXIT THEN
   0 SRC-C 58 = IF                        \ the : forms
-    1 SRC-SKIP
+    \ A continuation may stand between the `:` and its operator, and
+    \ between the two characters of `##` and `%%`: `${f:\`+newline+`+x}`
+    \ is `${f:+x}` (Iteration 460, yash quote-p.tst:301). Only the
+    \ operator's FIRST character was reached past one.
+    1 SRC-SKIP  SKIP-CONTINUATIONS
     0 SRC-C
     DUP 45 = IF DROP 1 SRC-SKIP EV-DEFAULT EV-COLON + EXIT THEN
     DUP 61 = IF DROP 1 SRC-SKIP EV-ASSIGN EV-COLON + EXIT THEN
@@ -522,11 +526,11 @@ DEFER SCAN-DOLLAR
   DUP 63 = IF DROP 1 SRC-SKIP EV-ERROR EXIT THEN
   DUP 43 = IF DROP 1 SRC-SKIP EV-ALT EXIT THEN
   DUP 35 = IF
-    DROP 1 SRC-SKIP
+    DROP 1 SRC-SKIP  SKIP-CONTINUATIONS
     0 SRC-C 35 = IF 1 SRC-SKIP EV-TRIM-PRE-LONG ELSE EV-TRIM-PRE THEN EXIT
   THEN
   37 = IF
-    1 SRC-SKIP
+    1 SRC-SKIP  SKIP-CONTINUATIONS
     0 SRC-C 37 = IF 1 SRC-SKIP EV-TRIM-SUF-LONG ELSE EV-TRIM-SUF THEN EXIT
   THEN
   EV-PLAIN ;
