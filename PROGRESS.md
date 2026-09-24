@@ -492,6 +492,7 @@ do not trust the absence of a line below.
 - **494** — the tests' own files: one empty stray, one undocumented probe
 - **495** — the 1.8x drift bisected; the profiler and coverage tools, broken at 490, fixed
 - **496** — the three unaudited areas: prompts/, three documents read through, the tests' documents
+- **497** — two decisions of the user's recorded: prompts/ is kept whole, and an article is planned
 
 ### Not tied to an iteration
 
@@ -23800,3 +23801,28 @@ The crashers README is accurate - there are none.
 
 Only documents changed; the baseline should not move, and the
 verification run says whether it did.
+
+## Iteration 497: the ARMv7 board verifies the cleanup; two decisions recorded
+
+The Tegra ran `make verify` on 495: VERIFIED. It is the first run there
+since the shell images stopped being committed (489), and it shows the
+design working: `image-sum:kernel32-shell.img 4054803617/110872` - the
+board's natively built 4-byte shell image is byte for byte the one an
+x86-64 host built here, which is what the committed images used to
+prove. The 8-byte image reads `missing` there and is not compared, as
+designed. Its matrix passed 422 with bash alone as the reference, where
+before 487 it reported one false failure. And its `image:8byte-fixpoint`
+- the 8-byte kernel built by a 4-byte engine - reproduces, which is the
+claim 496 corrected CV8.md to make.
+
+Two decisions of the user's, recorded in GOALS.md so a later session
+does not undo them:
+
+- **prompts/ is kept whole.** 496 had noted four prompts this project
+  does not cite and left their fate to the user; the user extends the
+  library and uses it elsewhere, so nothing in it is removed here.
+- **An article about the Forth shell is planned**, for when the project
+  is judged complete - a line in GOALS.md's End state. That made one of
+  496's own records wrong: the override said `04` and `05` do not apply
+  because "nothing is published from this repository". They apply to
+  exactly that article; the override now says they wait for it.

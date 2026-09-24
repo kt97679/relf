@@ -246,11 +246,12 @@ it before starting anything it could cover.
 ## Method, and the evidence for it
 
 **Prompt overrides** (as `prompts/USAGE.md` asks a project to record
-them): skip `04-expert-review` and `05-reader-review` - nothing is
-published from this repository since the article moved elsewhere
-(489). `01-problem-framing`, `02-escape-recall` and `06-handling-review`
-apply as written: `01` to any benchmark, `02` to any design choice, and
-`06` to review feedback of any kind, the user's included.
+them): `04-expert-review` and `05-reader-review` wait for the article
+about the Forth shell (End state); until it is written, nothing is
+published from this repository. `01-problem-framing`,
+`02-escape-recall` and `06-handling-review` apply as written: `01` to
+any benchmark, `02` to any design choice, and `06` to review feedback of
+any kind, the user's included.
 
 Each rule is stated once, in `prompts/`; this project's instances stay
 here as the evidence for it.
@@ -296,6 +297,16 @@ here as the evidence for it.
   is the single biggest performance lever identified across everything
   tried, larger than any interpreter-level tuning.
 
+
+- **Then, an article about the Forth shell**, written when the project
+  is judged complete (the user's plan, recorded at 497). Its material is
+  already here: `PROGRESS.md`, the log of every attempt with its
+  deciding number; the measurements in `CV8.md`, `DASH.md` and
+  `PERFORMANCE.md`; and the corpus results. Keep them honest with that
+  reader in mind - an article can only be as true as its sources.
+  Prompts `04` and `05` apply to it. (The earlier article, about the
+  VM's evolution, lives in its own repository; `ARTICLE.md`, its working
+  notes, left this one at 489.)
 ## Why RelF specifically, not SOD32 or a hybrid design
 
 This was decided after directly benchmarking multiple VM designs (SOD32,
@@ -486,6 +497,12 @@ where the value fits, and says so.
   project actually had, before they were found here. When a design
   question comes up, check what bash does and why, rather than
   deriving it from scratch — and record the finding.
+- **`prompts/` is a library that outlives this project.** The user
+  extends it and uses it in other projects, so nothing in it is removed
+  here - not even a prompt this project does not cite (recorded at 497,
+  after 496 audited it). When a failure here teaches something a prompt
+  would have prevented, add to the library, as `prompts/USAGE.md`'s
+  "Growing the library" says.
 - **Watch for development-process wins, and raise them.** Alongside
   feature work, actively look for ways the *process* of working on
   this project could be faster or more reliable, and discuss them
