@@ -497,6 +497,7 @@ do not trust the absence of a line below.
 - **499** — the user's list for what comes next, recorded with its open questions
 - **500** — the user's answers to 499's questions, recorded as decisions
 - **501** — the opcode experiment: a 1 GB code space would cost nothing measurable
+- **502** — where the POSIX language's cost lives: no feature halves it; re-read text is the trouble
 
 ### Not tied to an iteration
 
@@ -23987,3 +23988,36 @@ run credited 58 million executions to `BYE` - `do_call` counts calls as
 at 512 up now, and the tool says why. And the first worst-case run
 took 1 ms: its 92-character line was cut at the kernel's 80-column
 `QUERY`, so the loop was never defined. The line is split.
+
+## Iteration 502: where the POSIX language's cost lives
+
+The analysis GOALS.md item 4 asked for before a new language is
+designed: which shell features cost the most. `tools/feature-cost.py`
+assigns each of the 821 colon definitions in the shell's three files to
+a feature by its name, with rules written out to be argued with, and
+counts per feature its **code** (non-comment, non-blank lines) and its
+**trouble** (how many iteration titles name it). 2.8% of the code, 91
+helpers of at most seven lines, is claimed by no rule - reached after
+two refinement passes, from 10.6%.
+
+The table is in SHELL-LANGUAGE.md, Part 1. What it says:
+
+- **No set of features halves the source.** The largest single feature
+  is the parser, 12.6%; every non-POSIX extra and every builtin that
+  could be its own program together make about 17%.
+- **The trouble is concentrated where features meet.** Quoting, field
+  splitting, redirections, command substitution, `set`'s options and
+  functions needed a fix every ten or so lines; the builtins one every
+  fifty or more. The meeting point is the expander's word, which passes
+  through seven stages whose rules depend on what came before, carried
+  in context flags - the flags whose leaks 471's fuzzer found.
+- **The parser is big but not troubled** (2.0 per 100 lines): its size
+  is the grammar's context dependence at the level of characters.
+
+The input for the design, then: a language in which text is never
+re-read. Every troublesome stage exists because POSIX sh turns values
+back into text and parses it again.
+
+The trouble measure is a proxy and a fuzzy one - titles, keywords - and
+the tool says so; it is kept, like opcode-mix.py, so the numbers can be
+regenerated for the article.

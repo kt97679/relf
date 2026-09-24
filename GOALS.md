@@ -199,7 +199,11 @@ work begins.
   different from what is used so far", convenient and expressive, more
   testable, simpler to implement, better formalized - the user asked
   for imagination here, not a variation on sh, csh or any other known
-  pattern. It is a design with examples before it is code.
+  pattern. It is a design with examples before it is code. **Analysis done at
+  502** (SHELL-LANGUAGE.md, Part 1): no set of features halves the
+  source - the largest is the parser at 12.6% - and the trouble is
+  concentrated where POSIX re-reads text: quoting, field splitting,
+  redirections, command substitution.
 - **Item 10 - no two-pass compiler**: the complexity is not worth the
   gain. The task is to find what else still stores a full cell where a
   compact offset would do.

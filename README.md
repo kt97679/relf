@@ -91,6 +91,7 @@ Each covers one topic; where one needs another, it says which.
 | `INTERACTIVE.md` | the interactive shell, its line editor, and how it is tested through a pty |
 | `FORTH-STYLE.md` | how to write Forth here, each rule with the incident behind it |
 | `EXPANSION-ORDER.md` | the order of a simple command's expansions: the design, and where it stopped |
+| `SHELL-LANGUAGE.md` | a shell language of our own: where the POSIX one's cost lives, and the design |
 | `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' test suites |
 
 ## Where it came from
