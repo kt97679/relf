@@ -151,3 +151,33 @@ fails; pass 2 from the saved entries into slots 0 .. n-1; `TEMP-ASSIGN`;
 keep stage 1's order until the same hook is shown safe for each. An
 assignment-only command with redirections, `a=$(cat f) >f`, is the same
 shape through `APPLY-BARE-REDIRS`.
+
+## Stage 2 landed (482); where the references part company (484)
+
+Stage 2 is Iteration 482, for a regular builtin: yash simple-p.tst:18
+passes, and with it the last of yash's expansion-order cases.
+
+Then the question for the rest was measured rather than assumed. The
+probe is `v=$(test -e q && echo yes >r || echo no >r) 3>q CMD; cat r` -
+`yes` if the redirection was performed before the assignment was
+expanded:
+
+| CMD | this shell | dash | bash --posix |
+|---|---|---|---|
+| `true`, a regular builtin | yes | yes | no |
+| `:`, a special builtin | no | yes | no |
+| `f`, a function | no | yes | no |
+| `/bin/true`, external | no | yes | no |
+
+dash follows XCU 2.9.1 for every kind of command; bash expands the
+assignments first for every kind. So for the three kinds stage 2 did not
+take, this shell agrees with bash and not with the standard - and no
+corpus tests them, since the references disagree.
+
+Taking them would be the standard's order and dash's, and it has real
+costs: a special builtin brings `exec`, whose redirections must outlive
+the command (the early undo record would take them back), and `eval`
+and `.`, which run other commands; stage 3 moves every external
+command's redirections into the shell before the fork. That is left
+here as the recorded next step, not done: the standard is on its side,
+and nothing that can be observed today asks for it.

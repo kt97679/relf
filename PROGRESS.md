@@ -479,6 +479,7 @@ do not trust the absence of a line below.
 - **481** — yash 1751; a fuzzing family for stage 1, with teeth; stage 2's obstacles
 - **482** — a regular builtin's redirections before its assignments (stage 2)
 - **483** — yash 1752, busybox 255; a command inherits the script's high descriptors
+- **484** — where the references part company on expansion order
 
 ### Not tied to an iteration
 
@@ -23311,3 +23312,17 @@ and passes with it.
 Recorded changes, with their causes: `shell:assertions` 847 -> 849, the
 two for inherited descriptors; the 4-byte image 4 bytes larger, the
 8-byte one unchanged.
+
+## Iteration 484: where the references part company
+
+Before extending stage 2, what each reference does was measured for the
+kinds of command it did not take. dash performs the redirections before
+the assignments for all of them, as XCU 2.9.1 says; `bash --posix`
+expands the assignments first for all of them. This shell follows dash
+for a regular builtin - the kind yash tests - and bash for the rest.
+
+The rest is left, and why is written into EXPANSION-ORDER.md: the
+standard is on its side, but `exec`'s kept redirections, `eval` and `.`
+and the fork all stand in the way, and no corpus asks - the references
+disagree, so none can. Deciding NOT to do a change, with the evidence
+beside the decision, is the point of having designed it first.

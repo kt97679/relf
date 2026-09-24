@@ -40,11 +40,11 @@ ordinary scripts hit, then edge cases and wording.
    `kill` with no arguments, and the job table past 64 jobs - were fixed
    in Iteration 426. Run `tools/crashfuzz.py` after any change to the
    parser, the expander or the job code.
-1c. **The order of a simple command's expansions** (yash simple-p.tst:11,
-   :18). Designed in EXPANSION-ORDER.md (479): three stages - assignment
-   values after the words; then after the redirections for a builtin;
-   then, dash's way, redirections performed in the shell before the fork
-   for an external command.
+1c. **The order of a simple command's expansions**: stages 1 and 2 done
+   (480, 482) - both yash cases pass. For a special builtin, a function
+   and an external command this shell still expands assignments before
+   redirections, as bash does and dash does not; the measurement and the
+   costs are in EXPANSION-ORDER.md. Worth doing only if something asks.
 
    (Resolved and removed in 469: line continuation in yash's torture
    cases - 456, 457, 460; `export NAME` with no value - 469; `${#a}`
