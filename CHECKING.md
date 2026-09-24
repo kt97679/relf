@@ -140,16 +140,14 @@ being the bootstrap seed.
 
 ## A prompt through the environment
 
-    PS1='[mine] ' relfsh          # works where /bin/sh is dash
-                                  # does nothing where it is bash
+    PS1='[mine] ' relfsh          # works everywhere since Iteration 506
 
-`relfsh` is a `#!/bin/sh` script, and **bash, running a non-interactive
-script, clears PS1 from the environment** before exec'ing anything. On
-Debian and Ubuntu `/bin/sh` is dash and the prompt arrives; on Gentoo,
-Arch and Fedora it is bash and it does not. Set it inside the shell
-instead - `PS1='[mine] '` at the prompt, or in the file `$ENV` names
-(read by an interactive shell since Iteration 504) - which works
-everywhere. A `relfsh` that is not a script would end the problem.
+Until Iteration 506 `relfsh` was a `#!/bin/sh` script, and **bash,
+running a non-interactive script, clears PS1 from the environment**
+before exec'ing anything - so where `/bin/sh` is bash (Gentoo, Arch,
+Fedora) the prompt never arrived. `relfsh` is a binary now, with no
+`/bin/sh` in between. The file `$ENV` names (read by an interactive
+shell since 504) is the other place to set it.
 
 ## The pty suite and a busy machine
 
@@ -199,9 +197,10 @@ A cell is a pointer, so the native engine on ARMv7 or i386 runs the
 4-byte image, `kernel32.img` - `kernel.img` is the 8-byte one and that
 engine will call it "not a RelF image, or built for a different encoding
 or cell width". `make` works this out from `getconf LONG_BIT` and builds
-the native pair; `relfsh` reads the answer from `.relf-native-img`,
-which `make` writes. `make HOSTBITS=32` shows a 64-bit machine what a
-32-bit one does.
+the native pair, and puts it inside `relfsh` - the engine with its
+shell image appended (Iteration 506). On a 64-bit machine it builds
+`relfsh32` as well, the 4-byte pair, which the suites run too.
+`make HOSTBITS=32` shows a 64-bit machine what a 32-bit one does.
 
 One thing that build cannot do: hold a limit or a size that needs more
 than 32 bits. `ulimit -l` on a machine with more than 2 GB of lockable

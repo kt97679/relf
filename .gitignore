@@ -48,3 +48,8 @@ core
 *.orig
 *.rej
 .*.swp
+
+# The shells are build products since Iteration 506: the engine with its
+# shell image inside (tools/embed.sh). relfsh was a script until then.
+relfsh
+relfsh32

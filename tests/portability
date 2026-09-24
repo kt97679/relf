@@ -37,7 +37,7 @@ ok()  { checked=$((checked + 1)); [ -n "${VERBOSE:-}" ] && say "$1" ok; return 0
 for f in tests/run_tests.sh tests/verify tests/sizes tests/bench \
          tests/diff/run-all tests/matrix/run tests/shell/run-all \
          tests/posix/run.sh tests/mrsh-suite/run.sh tests/portability \
-         tools/*.sh relfsh; do
+         tools/*.sh; do             # relfsh is a binary since Iteration 506
     [ -f "$f" ] || continue
     case $(head -1 "$f") in
         '#!/bin/bash'|'#!'*bash) interp=bash ;;
@@ -249,12 +249,17 @@ if [ -x ./relf ] && [ -f kernel.img ]; then
     # reason - which this check then reported as the build accepting a
     # broken source. It was width-blind, on an ARMv7 board, the week
     # after nine faults of exactly that shape (Iteration 412).
-    cp relf relfsh kernel.img kernel32.img extend.4 pool.4 shadow.4 \
-       save-system.4 shell.4 edit.4 tree.4 "$scratch/" 2>/dev/null
-    [ -f .relf-native-img ] && cp .relf-native-img "$scratch/"
+    srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
+    cp relf kernel.img kernel32.img tools/build-shell-image.sh $srcs "$scratch/" 2>/dev/null
     printf ': BROKEN-ON-PURPOSE ( --- ) 2>R ;\n' | cat - "$scratch/edit.4" > "$scratch/e" &&
         mv "$scratch/e" "$scratch/edit.4"
-    msg=$(cd "$scratch" && RELF_IMG= RELF_BIN= ./relfsh -c true </dev/null 2>&1 >/dev/null)
+    # The native pair, as the Makefile builds it (Iteration 506: the build
+    # moved from the relfsh script into tools/build-shell-image.sh).
+    case $(getconf LONG_BIT 2>/dev/null) in
+        32) k=kernel32.img o=kernel32-shell.img ;;
+        *)  k=kernel.img   o=kernel-shell.img ;;
+    esac
+    msg=$(cd "$scratch" && sh ./build-shell-image.sh ./relf $k $o $srcs </dev/null 2>&1 >/dev/null)
     rc=$?
     if [ "$rc" != 0 ] && echo "$msg" | grep -q 'Undefined word' &&
        [ ! -f "$scratch/kernel-shell.img" ] && [ ! -f "$scratch/kernel32-shell.img" ]; then
@@ -314,21 +319,6 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
     else
         bad "untracked files" "$(echo $stray | head -c 160) - ignore them or add them"
     fi
-fi
-
-# relfsh names the shell's sources twice - to see whether its image is
-# stale, and to load them - and cannot read the Makefile, since it must
-# run without one. Both lists must be the Makefile's SHELL_SOURCES, in
-# its order. tests/verify kept a list of its own, which lacked edit.4
-# from Iteration 303, and its long-path check was broken for 190
-# iterations without once failing (Iteration 498).
-want=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile | tr -s ' ')
-fresh=$(grep 'for f in "\$DIR/' relfsh | grep -o '"\$DIR/[a-z-]*\.4"' | grep -o '[a-z-]*\.4' | tr '\n' ' ' | sed 's/ $//')
-loads=$(grep 'INCLUDED' relfsh | grep -o 'S" [a-z-]*\.4" INCLUDED' | grep -o '[a-z-]*\.4' | tr '\n' ' ' | sed 's/ $//')
-if [ -n "$want" ] && [ "$fresh" = "$want" ] && [ "$loads" = "$want" ]; then
-    ok "relfsh's source lists are the Makefile's"
-else
-    bad "relfsh's source lists are the Makefile's" "Makefile [$want], freshness [$fresh], loads [$loads]"
 fi
 
 echo "portability: $checked checks, $problems problem(s)"

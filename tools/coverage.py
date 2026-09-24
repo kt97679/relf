@@ -54,7 +54,13 @@ commands = sys.argv[1:] or [
     'sh tests/parse/run',
     'bash tests/mrsh-suite/run.sh',
 ]
-env = dict(os.environ, RELF_BIN=engine)
+# The instrumented engine as a shell of its own (tools/embed.sh): since
+# Iteration 506 relfsh is a binary, so the suites are pointed at this
+# one through THIS_SH and RELFSH, and a command's ./relfsh is replaced.
+shell = os.path.join(work, 'relfsh')
+subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel-shell.img', shell], check=True)
+commands = [c.replace('./relfsh', shell) for c in commands]
+env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 for c in commands:
     r = subprocess.run(c, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     print(f'ran: {c}  ({r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""})')

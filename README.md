@@ -23,10 +23,11 @@ self-hosting (GOALS.md). What it is today:
     ./relfsh script.sh            # run a script
     ./relf kernel.img             # the bare Forth system; BYE leaves
 
-`relfsh` is a short POSIX `sh` script that runs the engine on the
-prebuilt shell image, and builds that image first when it is missing or
-older than its sources. `make verify` runs every suite; `make help`
-lists everything else.
+`relfsh` is one executable: the engine with the shell image appended
+to it, which the engine finds in itself at startup. `make` builds it,
+and rebuilds it when a source changes; on a 64-bit machine `relfsh32`
+is the 4-byte pair. `make verify` runs every suite; `make help` lists
+everything else. Install it by copying the one file.
 
 ## Building
 
@@ -71,8 +72,7 @@ suites pin `LC_ALL=C` for that reason.
 | `cross.4` | the cross-compiler that builds `kernel.img` |
 | `extend.4`, `pool.4`, `shadow.4`, `save-system.4` | extensions: search order, heap buffers, locals, saving an image |
 | `shell.4`, `tree.4`, `edit.4` | the shell: commands and expansion, the parser and executor, the line editor |
-| `relfsh` | the wrapper that runs the shell |
-| `tests/`, `tools/` | the suites, and the tools that measure and fuzz |
+| `tests/`, `tools/` | the suites; the tools that build the shell, measure and fuzz |
 | `forth-shell-examples/` | the shell extended from inside, with `forth`: new builtins, a prompt hook, network servers |
 | `prompts/` | reusable prompts for this kind of work; `prompts/INDEX.md` dispatches |
 

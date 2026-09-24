@@ -284,7 +284,12 @@ and must agree. Code that lays down cells after a colon definition must
 `ALIGN` first (`BUILTIN` in `shell.4` and `WORDLIST` in `extend.4` do).
 
 **Loading** is: check the header, read the rest into memory at the
-base, done. Every call, branch and slot is an offset, so there is no
+base, done. The image may be the engine's own file (Iteration 506):
+appended to it and followed by a 16-byte trailer - `RELFIMG1` and the
+image's length, eight bytes little-endian - which the engine looks for
+in `/proc/self/exe` before it looks at its arguments. Then its first
+argument is the program's, not an image's path. `relfsh` is built that
+way (`tools/embed.sh`). Every call, branch and slot is an offset, so there is no
 relocation pass.
 
 ## 5. The engine
@@ -442,7 +447,9 @@ Two Forth compilers emit CV8, and they are twins that must agree:
 - **`kernel.4`'s own compiler** compiles everything loaded at run time.
   The shell image is `kernel.img` with `extend.4 pool.4 shadow.4
   save-system.4 shell.4 edit.4 tree.4` loaded and `SAVE-SYSTEM` run;
-  `make` or `relfsh` itself builds it, and it is not committed.
+  `tools/build-shell-image.sh` builds it, `make` runs that, and it is
+  not committed; `tools/embed.sh` then appends it to the engine to make
+  `relfsh`.
   `tests/verify` checks that a rebuild is byte-identical, and records a
   checksum so that another machine's build is compared with this one's.
 

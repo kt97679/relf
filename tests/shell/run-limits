@@ -38,16 +38,12 @@ assert_output_contains "a too-long alias value is reported" "value too long" "$o
 # ran `0 1 ?DO` and crashed). Since Iteration 318 the shell sets PPID at
 # startup, so the table is never quite empty; the point of the case is
 # that `set` survives a table of one.
-# `env -i` is the point of the case - an almost empty variable table -
-# but it also wipes RELF_BIN and RELF_IMG, which are how the suite says
-# WHICH engine and image to test. Without them this ran the native pair
-# while claiming to test the other width (Iteration 398).
-if [ -n "${RELF_BIN:-}" ]; then
-    out=$(env -i RELF_BIN="$RELF_BIN" RELF_IMG="${RELF_IMG:-}" \
-          "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | tail -1)
-else
-    out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | tail -1)
-fi
+# `env -i` is the point of the case - an almost empty variable table.
+# It once also wiped RELF_BIN and RELF_IMG, which were how the suite
+# told the relfsh script WHICH engine to run, and so tested the wrong
+# width (Iteration 398); since 506 THIS_SH is a binary that carries its
+# own engine and image, and nothing needs passing.
+out=$(env -i "$THIS_SH" -c 'set; echo "st=$?"' 2>&1 | tail -1)
 # Only the last line: since Iteration 422 the shell also sets IFS and
 # OPTIND at startup, as POSIX asks, so the table holds three variables,
 # and IFS's value spans lines. What matters is that `set` finished.

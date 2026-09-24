@@ -29,10 +29,17 @@ out=$(typed 'for x in a b\ndo\n  echo loop-$x$x\ndone\nexit\n')
 assert_output_contains "a loop typed across lines runs (1)" "loop-aa" "$out"
 assert_output_contains "a loop typed across lines runs (2)" "loop-bb" "$out"
 
-out=$(typed 'cat <<EOF\nhere-doc-line\nEOF\necho after-$((3+3))\nexit\n')
+out=$(typed 'cat <<EOF | sed s/^/out:/\nhere-doc-line\nEOF\necho after-$((3+3))\nexit\n')
 assert_output_contains "a here-document typed at the prompt is read" "after-6" "$out"
-n=$(printf '%s\n' "$out" | grep -c 'here-doc-line$')
-assert_output_equals "the here-document body is printed once, besides its echo" "2" "$n"
+# The body's output is marked with `out:` so that nothing else can be
+# counted as it. How the TYPED line echoes depends on who holds the
+# terminal when it arrives - the terminal's own echo, a line identical to
+# the text, or the line editor's, after a `> ` prompt with cursor codes -
+# and that is timing: counting bare lines passed alone and failed under
+# load once relfsh became a binary (Iteration 506), which takes the
+# terminal ~2 ms sooner than the script-started shell did.
+n=$(printf '%s\n' "$out" | grep -c '^out:here-doc-line$')
+assert_output_equals "the here-document body is printed once" "1" "$n"
 
 out=$(typed 'f() {\n  echo fn-$1$1\n}\nf z\nexit\n')
 assert_output_contains "a function typed across lines is defined" "fn-zz" "$out"

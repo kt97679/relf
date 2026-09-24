@@ -47,7 +47,7 @@ assert_status "a successful standalone assignment exits 0" 0 "$?"
 
 # Startup and export (Iteration 422, from yash): IFS and OPTIND are set
 # at startup, an inherited IFS is replaced, and export takes EVERY operand.
-out=$(env -i PATH="$PATH" IFS=Q RELF_BIN="${RELF_BIN:-}" RELF_IMG="${RELF_IMG:-}" "$THIS_SH" -c 'printf "[%s]" "$IFS"' | od -An -c | tr -d ' ')
+out=$(env -i PATH="$PATH" IFS=Q "$THIS_SH" -c 'printf "[%s]" "$IFS"' | od -An -c | tr -d ' ')
 assert_output_equals "IFS starts as space, tab, newline" '[\t\n]' "$out"
 out=$("$THIS_SH" -c 'echo "$OPTIND"')
 assert_output_equals "OPTIND starts at 1" "1" "$out"

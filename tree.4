@@ -3827,6 +3827,7 @@ VARIABLE DS-END
 
 \ ---- a file with no #! line (Iteration 433) ----
 CREATE PROC-CMDLINE  CSTR," /proc/self/cmdline"
+CREATE PROC-EXE      CSTR," /proc/self/exe"
 CREATE BIN-SH        CSTR," /bin/sh"
 64 CELLS BUFFER: SCRIPT-ARGV
 4096 CONSTANT CMDLINE-MAX
@@ -3851,6 +3852,12 @@ CMDLINE-MAX 1+ BUFFER: CMDLINE-BUF   \ allocated when first used, not in the ima
   OVER SWAP 80 MIN 0 SCAN NIP 0<>              ( addr f )
   SWAP FREE DROP ;
 
+VARIABLE CE-N
+: CMDLINE-ENTRIES ( addr u --- n )   \ how many NUL-terminated strings
+  0 CE-N !  OVER + SWAP ?DO I C@ 0= IF 1 CE-N +! THEN LOOP  CE-N @ ;
+: CMDLINE-NTH ( addr n --- c-addr )   \ the n-th of them
+  0 ?DO DUP CSTRLEN 1+ + LOOP ;
+
 : SCRIPT-ARGS! ( first --- )   \ ARGV[1..] into SCRIPT-ARGV from `first` on
   ARGC @ 1 ?DO  I ARGV@  OVER I 1- + CELLS SCRIPT-ARGV + !  LOOP
   ARGC @ 1- + CELLS SCRIPT-ARGV +  0 SWAP ! ;
@@ -3864,14 +3871,20 @@ CMDLINE-MAX 1+ BUFFER: CMDLINE-BUF   \ allocated when first used, not in the ima
   ARGC @ 4 + CELLS ENSURE-BUFFER SCRIPT-ARGV
   READ-CMDLINE                                 ( path addr u | path 0 0 )
   OVER IF
-    OVER DUP CSTRLEN 1+ +                      ( path addr u image )
-    2 PICK 2 PICK + OVER > IF                  \ argv[1] is inside it
-      2 PICK SCRIPT-ARGV !                     \ the engine
-      SCRIPT-ARGV CELL+ !                      \ the image
-      2 PICK SCRIPT-ARGV 2 CELLS + !           \ the script
-      3 SCRIPT-ARGS!
-      SCRIPT-ARGV 2 PICK EXECVE DROP           \ the engine; returns only if it failed
-    ELSE DROP THEN
+    \ This process began as the engine and an image, or - since Iteration
+    \ 506 - as a binary carrying its image: its own leading arguments are
+    \ those beyond the program's SYS-ARGC. The script re-runs the same
+    \ way, through /proc/self/exe, with the script where the program's
+    \ arguments begin. Until 506 the image was assumed to be argv[1]; in
+    \ a binary that is the user's first argument, and a script with no
+    \ #! line under `relfsh -c` re-executed itself forever.
+    OVER SWAP CMDLINE-ENTRIES SYS-ARGC -       ( path addr base )
+    DUP 1 3 WITHIN IF
+      DUP 0 ?DO  OVER I CMDLINE-NTH  SCRIPT-ARGV I CELLS + !  LOOP
+      2 PICK OVER CELLS SCRIPT-ARGV + !        \ the script
+      DUP 1+ SCRIPT-ARGS!
+      SCRIPT-ARGV PROC-EXE EXECVE DROP         \ returns only if it failed
+    THEN
   THEN 2DROP                                   ( path )
   BIN-SH SCRIPT-ARGV !
   DUP SCRIPT-ARGV CELL+ !

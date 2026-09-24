@@ -89,6 +89,9 @@ static int term_saved;
 
 static int g_argc;
 static char **g_argv;
+static int g_argbase = 2;   /* argv[g_argbase] is the program's first argument:
+                               2 after an image's path, 1 when the image is
+                               the executable's own (Iteration 506) */
 
 
 /*  Call and slot operands name a BYTE offset from the image base: the
@@ -495,19 +498,52 @@ static const int open_flags[NOPENMODES] = {
  *  reload - a word using locals can run while the shell is compiled. */
 #define LOCHDR(k) CELL(cbase + 8 + (k) * CELL_BYTES)
 
+/*  An image may be the executable's own: appended to the engine, and
+ *  followed by a trailer - "RELFIMG1" and the image's length, eight
+ *  bytes little-endian. `relfsh` is built that way (tools/embed.sh), so
+ *  the shell is one file and needs no wrapper script (Iteration 506).
+ *  Returns the descriptor, positioned at the image, or -1.  */
+static int embedded_image(const char *self, long *len) {
+    UNS8 t[16];
+    UNS64 n = 0;
+    off_t end;
+    int i, fd = self ? open(self, O_RDONLY) : -1;
+    if (fd < 0) return -1;
+    end = lseek(fd, 0, SEEK_END);
+    if (end < 16 || lseek(fd, end - 16, SEEK_SET) < 0 || full_read(fd, t, 16) != 16
+        || memcmp(t, "RELFIMG1", 8) != 0) {
+        close(fd);
+        return -1;
+    }
+    for (i = 7; i >= 0; i--) n = (n << 8) | t[8 + i];
+    if (n == 0 || (off_t)n > end - 16 || lseek(fd, end - 16 - (off_t)n, SEEK_SET) < 0) {
+        close(fd);
+        return -1;
+    }
+    *len = (long)n;
+    return fd;
+}
+
+static void load_image_fd(int fd, long limit);
+
 static void load_image(const char *name) {
-    int fd;
+    int fd = open(name, O_RDONLY);
+    if (fd < 0) {
+        write_str(2, "Cannot open image file.\n");
+        exit(2);
+    }
+    load_image_fd(fd, -1);
+}
+
+/*  From fd's current offset; limit is the image's length in bytes, or
+ *  -1 to read to the end of the file.  */
+static void load_image_fd(int fd, long limit) {
     long len;
     UNS8 magic[8];
     UNS64 ntails, nthreads;
     UNS64 heads[MAX_THREADS];
     long i;
 
-    fd = open(name, O_RDONLY);
-    if (fd < 0) {
-        write_str(2, "Cannot open image file.\n");
-        exit(2);
-    }
     if (full_read(fd, magic, 8) != 8 || memcmp(magic, IMAGE_MAGIC, 5) != 0) {
         write_str(2, "not a RelF image, or built for a different encoding "
                      "or cell width.\n");
@@ -584,7 +620,8 @@ static void load_image(const char *name) {
     }
     base = (UNS8*)(((UNS64)(uintptr_t)mem + CELL_BYTES - 1)
                     & ~(UNS64)(CELL_BYTES - 1));
-    len = full_read(fd, base, MEMSIZE);
+    len = full_read(fd, base, limit < 0 ? MEMSIZE
+                    : limit - (long)(8 + CELL_BYTES * (2 + nthreads + 2 * ntails)));
     close(fd);
     if (len < 0) {
         write_str(2, "Error reading image file.\n");
@@ -1498,14 +1535,14 @@ L_getcwd: SPILL(); { /* addr max-len --- len ior */
     FILLNEXT();
 }
 L_sysargc: SPILL(); /* --- n */
-    PUSH((UNS64)(g_argc > 2 ? g_argc - 2 : 0));
+    PUSH((UNS64)(g_argc > g_argbase ? g_argc - g_argbase : 0));
     FILLNEXT();
 L_sysarg: SPILL(); { /* n --- c-addr */
     long n = (long)(INT64)DS0;
-    if (n < 0 || n + 2 >= g_argc) {
+    if (n < 0 || n + g_argbase >= g_argc) {
         DS0 = 0;
     } else {
-        DS0 = (UNS64)(uintptr_t)g_argv[n + 2];
+        DS0 = (UNS64)(uintptr_t)g_argv[n + g_argbase];
     }
     FILLNEXT();
 }
@@ -1629,13 +1666,26 @@ LX_rshift: tos = NOS >> tos; dsp += CELL_BYTES; EXITNEXT();
  */
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        write_str(2, "Usage: relf <filename>\n");
-        return 1;
-    }
+    long elen = 0;
+    int efd = embedded_image("/proc/self/exe", &elen);
+    if (efd < 0 && argv[0] && strchr(argv[0], '/'))
+        efd = embedded_image(argv[0], &elen);
     g_argc = argc;
     g_argv = argv;
-    load_image(argv[1]);
+    if (efd >= 0) {
+        /*  The shell reads its $0 from RELF_ARGV0, as the wrapper script
+         *  used to pass it: a login(1) name beginning with `-` arrives
+         *  intact now, since no /bin/sh stands in between.  */
+        g_argbase = 1;
+        if (!getenv("RELF_ARGV0")) setenv("RELF_ARGV0", argv[0], 1);
+        load_image_fd(efd, elen);
+    } else {
+        if (argc < 2) {
+            write_str(2, "Usage: relf <filename>\n");
+            return 1;
+        }
+        load_image(argv[1]);
+    }
     g_ip = (UNS64)(uintptr_t)base;
     g_rp = g_ip + MEMSIZE;
 #if GUARD

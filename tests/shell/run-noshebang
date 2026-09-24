@@ -24,7 +24,10 @@ assert_output_equals "named with a slash, and its status" "external
 [x]
 st=0" "$out"
 out=$("$THIS_SH" -c '"$1"/who' sh "$t/bin" 2>&1)
-assert_output_contains "run by this shell, not /bin/sh" "shell.img" "$out"
+# The script's command line names this shell: until Iteration 506 that
+# was the engine and a shell image; relfsh is a binary now, and runs the
+# script as `relfsh script` - its own path first, not /bin/sh.
+assert_output_contains "run by this shell, not /bin/sh" "$THIS_SH " "$out"
 out=$("$THIS_SH" -c '"$1"/fakebin; echo "st=$?"' sh "$t/bin" 2>&1)
 assert_output_contains "a binary for another machine is still refused" "st=126" "$out"
 out=$("$THIS_SH" -c 'PATH=$1:$PATH; ext_cmd p | tr a-z A-Z' sh "$t/bin" 2>&1)

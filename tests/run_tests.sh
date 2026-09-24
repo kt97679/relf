@@ -112,8 +112,11 @@ run_shell_test_suite() {
     # $1 = engine binary, $2 = image, $3 = label
     # Runs tests/shell/run-all (see that directory's lib.sh for the
     # bash-tests/-inspired THIS_SH convention this follows) against
-    # this engine/image pair, via relfsh with RELF_BIN/RELF_IMG
-    # overridden so the same wrapper script drives either cell width.
+    # this engine/image pair, through the shell binary built for it:
+    # relfsh, or relfsh32 for the 4-byte pair on a 64-bit host (since
+    # Iteration 506, when relfsh stopped being a wrapper script).
+    # RELF_BIN and RELF_IMG still name the engine and kernel, for the
+    # tests that run them bare.
     local engine="$1" image="$2" label="$3"
     local output
     # 180s, not 60s. It measured 59.3s on the machine this was raised on,
@@ -132,7 +135,9 @@ run_shell_test_suite() {
     # way: timed at 59.3s both with the conversion and with it stashed
     # out entirely.
     local status=0
-    output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/relfsh" \
+    local shell_bin=relfsh
+    case "$image" in kernel32.img) [ -x ./relfsh32 ] && shell_bin=relfsh32 ;; esac
+    output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/$shell_bin" \
         timeout 180 tests/shell/run-all 2>&1) || status=$?
     echo "$output"
     if [ "$status" -ne 0 ]; then

@@ -73,6 +73,13 @@ for i in kernel-shell.img kernel32-shell.img; do
     [ -e "$i" ] && cp "$i" "/tmp/verify-was-$i"
 done
 rm -f kernel-shell.img kernel32-shell.img
+# The rebuild is its own step since Iteration 506. Until then the relfsh
+# script rebuilt a missing image the first time the suite ran it, so the
+# test run below did it as a side effect; relfsh is a binary now, with
+# its image inside, and nothing else would - the first verification of
+# the binary recorded every image row as `missing`, which was caught
+# before it was committed.
+make -s shell-images shells >/dev/null 2>&1
 # run_tests.sh uses bash arrays and 'local'; it is not a POSIX script.
 bash tests/run_tests.sh > /tmp/verify-run.log 2>&1
 RT=$?
@@ -119,12 +126,14 @@ if mkdir -p "$CROSS" 2>/dev/null; then
     # the build here failed: the check reported DIFFERS, then `missing`,
     # and each was re-recorded into BASELINE as if it were the answer,
     # until Iteration 498 noticed that `missing` was what every machine
-    # said. tests/portability holds relfsh's own lists to the same one.
-    for f in relf relf32 kernel.img kernel32.img relfsh .relf-native-img \
-             $(sed -n 's/^SHELL_SOURCES *= *//p' Makefile); do
+    # said. Since 506 the build is tools/build-shell-image.sh's, run here
+    # as the Makefile runs it, with relative names.
+    srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
+    for f in relf kernel.img tools/build-shell-image.sh $srcs; do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
-    ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1
+    ( cd "$CROSS" && rm -f kernel-shell.img &&
+      sh ./build-shell-image.sh ./relf kernel.img kernel-shell.img $srcs ) >/dev/null 2>&1
     if [ -s "$CROSS/kernel-shell.img" ] && [ -e kernel-shell.img ]; then
         if cmp -s "$CROSS/kernel-shell.img" kernel-shell.img
         then emit crosspath:kernel-shell.img reproduces

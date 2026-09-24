@@ -50,13 +50,14 @@ open(os.path.join(work, 'prof.c'), 'w').write(src)
 subprocess.run(['cc', '-O2', '-o', engine, os.path.join(work, 'prof.c')], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 
-command = sys.argv[1] if len(sys.argv) > 1 else './relfsh tests/bench-vm/realistic.sh'
-env = dict(os.environ, RELF_BIN=engine)
-# The wrapper rebuilds the image when the engine changes, and that build
-# is the text interpreter's work, not the shell's: run once to build,
-# then zero the counters before the run that is measured.
-subprocess.run('./relfsh -c true', shell=True, env=env,
-               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+# The counting engine, made a shell of its own with the shell image in
+# it (tools/embed.sh). Until Iteration 506 relfsh was a script, and
+# RELF_BIN told it which engine to run; it is a binary now, so the
+# command's ./relfsh is this one, and the suites find it in THIS_SH.
+shell = os.path.join(work, 'relfsh')
+subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel-shell.img', shell], check=True)
+command = (sys.argv[1] if len(sys.argv) > 1 else './relfsh tests/bench-vm/realistic.sh').replace('./relfsh', shell)
+env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 r = subprocess.run(command, shell=True, env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

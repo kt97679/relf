@@ -117,11 +117,16 @@ def main():
     cc(build_counting(src), counter)
     mix = os.path.join(WORK, 'opmix.bin')
     open(mix, 'wb').write(bytes(1024 * 4))
-    env = dict(os.environ, RELF_BIN=counter, OPMIX=mix)
+    # The counting engine as a shell of its own (tools/embed.sh; relfsh
+    # is a binary since Iteration 506).
+    shell = os.path.join(WORK, 'relfsh-count')
+    subprocess.run(['sh', os.path.join(ROOT, 'tools/embed.sh'), counter,
+                    os.path.join(ROOT, 'kernel-shell.img'), shell], check=True)
+    env = dict(os.environ, OPMIX=mix, RELFSH=shell)
     for w in ('loop', 'fn', 'str', 'arith', 'realistic'):
-        subprocess.run(['./relfsh', 'tests/bench-vm/%s.sh' % w], cwd=ROOT, env=env,
+        subprocess.run([shell, 'tests/bench-vm/%s.sh' % w], cwd=ROOT, env=env,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
-    subprocess.run(['sh', 'tests/diff/run-all'], cwd=ROOT, env=dict(env, THIS_SH='./relfsh'),
+    subprocess.run(['sh', 'tests/diff/run-all'], cwd=ROOT, env=dict(env, THIS_SH=shell),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
     raw = open(mix, 'rb').read()
     counts = [int.from_bytes(raw[i*4:i*4+4], 'little') for i in range(1024)]

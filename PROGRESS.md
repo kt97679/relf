@@ -501,6 +501,7 @@ do not trust the absence of a line below.
 - **503** — Rill: a shell language designed from 502's measurements
 - **504** — startup files: /etc/profile, ~/.profile and $ENV, as dash reads them
 - **505** — forth-shell-examples: new builtins, PROMPT_COMMAND, and servers, with TCP in the engine
+- **506** — relfsh is a binary: the engine with the shell image inside it
 
 ### Not tied to an iteration
 
@@ -24138,3 +24139,68 @@ the new one's sits at 0x6f00, the linker having given the block a
 segment of its own with no bytes in the file. The row totals a stripped
 engine and an image, and its own comment warns it moves in steps when
 the engine crosses a boundary - this time, down. Checked, not assumed.
+
+## Iteration 506: relfsh is a binary
+
+GOALS.md items 7 and 8: `relfsh` is no longer a shell script. It is the
+engine with the shell image appended and a 16-byte trailer - `RELFIMG1`
+and the image's length - which the engine looks for in
+`/proc/self/exe` before it looks at its arguments; when it finds one,
+the program's arguments start at `argv[1]` instead of `argv[2]`. Three
+things the script could not do now simply happen: a login name
+beginning with `-` reaches the shell (504's limitation - a `-relfsh`
+reads `~/.profile`), `PS1` from the environment arrives where
+`/bin/sh` is bash, and the script's ~2 ms per start is gone - the
+binary starts in the engine's own time (1.01 ms against 1.00).
+
+What the script did is now in two tools the Makefile runs:
+`tools/build-shell-image.sh` builds a shell image with the script's
+validation - it must start the shell, and its build must not complain -
+and produces an image byte-identical to the script's; `tools/embed.sh`
+appends it to an engine. The Makefile passes `SHELL_SOURCES`, so the
+list of sources is kept once, and builds `relfsh` and, on a 64-bit
+host, `relfsh32`, which the suites run for the 4-byte pair.
+`.relf-native-img`, which told the script which image to pick, is gone.
+
+**A real bug the change exposed, found before committing**: a script
+with no `#!` line is run by the shell re-executing itself, and that code
+assumed `argv[1]` was always the image's path. In a binary it is the
+user's first argument, so `relfsh -c /path/noshebang` re-executed itself
+as `relfsh -c /path/noshebang` - forever, at 100% CPU; a portability
+check hung on it. The fix needs no flag: the shell's own leading
+arguments are however many its command line has beyond `SYS-ARGC`, 2 or
+1, and it re-executes through `/proc/self/exe` with exactly those - which
+also keeps `argv[0]`. Checked four ways: `relfsh`, `relfsh32`, the
+engine with an image file, and a binary started under a login name.
+
+Two slips of mine on the way: a `-ROT` this Forth does not have, which
+the build tool refused - and whose report showed nothing, because its
+display filter (inherited from the script) hid the very line; it now
+prints the first complaint itself. And, for the third time, a `pkill
+-f` whose pattern matched its own command line killed the call running
+it. Kill by PID.
+
+The test harness keeps `RELF_BIN`/`RELF_IMG` as the names of the engine
+and kernel under test, for the tests that run them bare, and picks the
+matching binary for `THIS_SH`. The profiler, the coverage tool,
+opcode-mix and the crash fuzzer embed their instrumented engines into
+shells of their own; the profiler and the fuzzer were run to check it.
+
+**And one more before the commit, the worst of them**: the first
+verification of the binary recorded every row that involves a shell
+image as `missing` - the rebuild checks, both checksums, the long-path
+check, the sizes. Verification deletes the shell images and relied on
+the test run to recreate them, which the relfsh SCRIPT did as a side
+effect of being run; the binary carries its own image and recreates
+nothing. `--update` then wrote those `missing`s into BASELINE as the
+expected answers - 498's failure again, in a new form - and only the
+check run's two empty size rows gave it away. The baseline was
+restored from the last commit, the rebuild made an explicit step
+(`make -s shell-images shells`), and the recording redone and READ
+before being trusted: no row missing, rebuilds and the long path
+reproduce.
+
+Recorded changes, with their causes: the engines' code 745 bytes larger
+at 64-bit and 689 at 32, the embedded-image loader; the shell images 152
+and 132 bytes larger, the re-exec fix; their checksums and the size
+totals with them.

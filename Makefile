@@ -51,18 +51,19 @@ PYTHON  ?= python3
 SHELL_SOURCES = extend.4 pool.4 shadow.4 save-system.4 shell.4 edit.4 tree.4
 KERNEL_SOURCES = kernel.4 cross.4 extend.4
 
-.PHONY: all help engines shell-images images check-images \
+.PHONY: all help engines shell-images shells images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
         busybox yash absg portability lint dead-words sizes profile bench bundle \
         clean distclean
 
-all: engines shell-images
+all: engines shell-images shells
 
 help:
 	@echo 'Targets:'
 	@echo '  all            engines and shell images (the default)'
 	@echo '  engines        relf and relf32 from cv8.c'
 	@echo '  shell-images   kernel-shell.img and kernel32-shell.img'
+	@echo '  shells         relfsh (and relfsh32): engine and image, one file'
 	@echo '  images         re-cross-compile the base images (see the header)'
 	@echo '  check-images   ... and only check they still reproduce'
 	@echo ''
@@ -94,17 +95,10 @@ help:
 # Engines
 # ------------------------------------------------------------------
 ifeq ($(HOSTBITS),32)
-engines: relf .relf-native-img
+engines: relf
 else
-engines: relf relf32 .relf-native-img
+engines: relf relf32
 endif
-
-# Which image relfsh should reach for when nothing says otherwise. A
-# file rather than a probe, so the wrapper pays a builtin read instead
-# of a process on every one of the thousands of invocations a suite
-# makes (Iteration 397).
-.relf-native-img: Makefile
-	@echo $(NATIVE_IMG) > $@
 
 # Rebuilt when the machine changes as well as when the source does. A
 # binary from another architecture is newer than cv8.c and looks up to
@@ -125,17 +119,17 @@ relf32: cv8.c .relf-arch
 # ------------------------------------------------------------------
 # Shell images
 #
-# relfsh builds these itself when they are older than their sources -
-# these rules just give make the same dependency list, so `make` after
-# editing shell.4 leaves a current image behind rather than making the
-# next command pay for it.
+# tools/build-shell-image.sh loads SHELL_SOURCES into a kernel image and
+# saves the result, refusing one that does not start the shell or whose
+# build reported errors. Until Iteration 506 the relfsh script did this,
+# on first use; relfsh is a binary now, and make is what keeps it current.
 # ------------------------------------------------------------------
 # On a 64-bit host both are built; on a 32-bit one there is only the
 # native 4-byte pair, and the 8-byte image cannot be run at all.
 shell-images: $(NATIVE_SHELL_IMG) $(OTHER_SHELL_IMG)
 
-kernel-shell.img: relf kernel.img $(SHELL_SOURCES)
-	@./relfsh -c true </dev/null >/dev/null
+kernel-shell.img: relf kernel.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@sh tools/build-shell-image.sh ./relf kernel.img $@ $(SHELL_SOURCES)
 
 # LD_PRELOAD is cleared for the i386 build: a preload library for the
 # host architecture can never be loaded into a 32-bit process, and the
@@ -145,12 +139,31 @@ kernel-shell.img: relf kernel.img $(SHELL_SOURCES)
 ifeq ($(HOSTBITS),32)
 # The native engine IS the 4-byte one here: there is no -m32 build, and
 # relf32 would be a second copy of relf.
-kernel32-shell.img: relf kernel32.img $(SHELL_SOURCES)
-	@LD_PRELOAD= RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
+kernel32-shell.img: relf kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf kernel32.img $@ $(SHELL_SOURCES)
 else
-kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES)
-	@LD_PRELOAD= RELF_BIN=./relf32 RELF_IMG=./kernel32.img ./relfsh -c true </dev/null >/dev/null
+kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 kernel32.img $@ $(SHELL_SOURCES)
 endif
+
+# ------------------------------------------------------------------
+# The shells: one file each, the engine with its shell image inside and
+# a trailer by which the engine finds it (tools/embed.sh; Iteration 506).
+# relfsh is the native pair; on a 64-bit host relfsh32 is the 4-byte
+# one, which the suites run too.
+# ------------------------------------------------------------------
+ifeq ($(HOSTBITS),32)
+SHELLS = relfsh
+else
+SHELLS = relfsh relfsh32
+endif
+shells: $(SHELLS)
+
+relfsh: relf $(NATIVE_SHELL_IMG) tools/embed.sh
+	@sh tools/embed.sh ./relf $(NATIVE_SHELL_IMG) $@
+
+relfsh32: relf32 kernel32-shell.img tools/embed.sh
+	@LD_PRELOAD= sh tools/embed.sh ./relf32 kernel32-shell.img $@
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.
@@ -283,7 +296,7 @@ clean:
 # The engines go with `clean` now that they are build products rather
 # than tracked files: on a machine where the last build was for another
 # architecture, keeping them is the fault above (Iteration 402).
-	@rm -f relf relf32 .relf-arch .relf-native-img
+	@rm -f relf relf32 relfsh relfsh32 .relf-arch .relf-native-img
 
 distclean: clean
 	@rm -f kernel-shell.img kernel32-shell.img

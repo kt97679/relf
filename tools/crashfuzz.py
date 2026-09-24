@@ -22,9 +22,10 @@ import os, random, re, subprocess, sys, tempfile, time, glob, shutil, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 RELFSH = os.path.join(ROOT, 'relfsh')
-WIDTHS = [{}]
-if os.path.exists(os.path.join(ROOT, 'relf32')) and os.path.exists(os.path.join(ROOT, 'kernel32.img')):
-    WIDTHS.append({'RELF_BIN': os.path.join(ROOT, 'relf32'), 'RELF_IMG': os.path.join(ROOT, 'kernel32.img')})
+RELFSH32 = os.path.join(ROOT, 'relfsh32')
+WIDTHS = [RELFSH]                       # the shells to try, by path: since
+if os.path.exists(RELFSH32):            # Iteration 506 each width is a binary
+    WIDTHS.append(RELFSH32)
 CRASH = re.compile(r'segmentation fault|stack guard|stack overflow|stack underflow|return stack|Aborted|core dumped|not a RelF image')
 DANGER = re.compile(r'\b(rm\s+-r|mkfs|dd|shutdown|reboot|halt|kill|killall|sudo|chmod\s+-R|chown|mount|umount|curl|wget|ssh|nc)\b|/dev/sd|>\s*/(?!dev/null|tmp)')
 TOKENS = ['0', '1', '2', '9', '10', '""', "''", '$#', '$@', '"$@"', '$*', '$?', '$$', '$0', '$1', '${x}', '${x-y}',
@@ -90,8 +91,8 @@ def run(shell_argv, script, env_extra, limit):
     shutil.rmtree(d, ignore_errors=True)
     return kind, out, time.time() - t0
 
-def verdict(script, env_extra, limit):
-    kind, out, _ = run([RELFSH], script, env_extra, limit)
+def verdict(script, shell, limit):
+    kind, out, _ = run([shell], script, {}, limit)
     m = CRASH.search(out)
     if m:
         return 'CRASH', m.group(0)
@@ -136,7 +137,7 @@ def main():
         if key in seen:
             continue
         seen.add(key)
-        width = '4-byte' if env_extra else '8-byte'
+        width = '4-byte' if env_extra == RELFSH32 else '8-byte'
         name = os.path.join(outdir, '%s-%s-%s.sh' % (v.lower(), width, key))
         open(name, 'w').write(small + '\n')
         found.append((v, width, why, name))

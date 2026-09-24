@@ -145,13 +145,16 @@ work begins.
    it costs about 2 ms of each start (DASH.md 1), and where `/bin/sh` is
    bash it loses `PS1` from the environment (CHECKING.md). The engine
    could recognise that it is the shell - by its name, or by an image
-   it carries.
+   it carries. **Done at 506**, with item 8.
 8. **`relfsh` as a single binary** - does it make sense? The shell image
    appended to the engine, found through `/proc/self/exe` or `argv[0]`,
    would make one file, drop the wrapper and its 2 ms, and remove the
    `PS1` problem. Costs: one binary per cell width, and the wrapper's
    rebuild-when-stale logic moves wholly into `make`. With item 5 the
-   loader would be assembly too.
+   loader would be assembly too. **Done at 506**: `relfsh` is the
+   engine with the shell image appended and a 16-byte trailer; `make`
+   builds it (`tools/build-shell-image.sh`, `tools/embed.sh`), and the
+   login name, `PS1` and the 2 ms of every start all arrive intact.
 9. **A thorough audit of all the sources**: dead code (`tools/dead-words.py`
    says none, but it sees only unreachable words), duplicated logic
    (FORTH-STYLE.md 11), and performance on the way.

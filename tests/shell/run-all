@@ -4,7 +4,7 @@
 # default 8-byte-cell build). See lib.sh for the THIS_SH convention.
 #
 # To test the 4-byte-cell (i386) build instead, point THIS_SH at
-# relfsh with RELF_BIN/RELF_IMG overridden - see tests/run_tests.sh
+# the shell binary for that width, relfsh or relfsh32 - see tests/run_tests.sh
 # for how the full suite does this.
 # The suite's own stdin is closed: a case that runs this shell without
 # redirecting stdin would otherwise inherit the TERMINAL and wait there

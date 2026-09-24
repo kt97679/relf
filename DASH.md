@@ -91,8 +91,11 @@ change.
 
     startup, -c :       dash 1.14 ms   this engine 1.05 ms   bash 1.17 ms
 
-The engine is timed as the `relfsh` wrapper finally runs it; the
-wrapper, a shell script, adds about 2 ms of its own.
+The engine was timed as the `relfsh` wrapper finally ran it; the
+wrapper, a shell script, added about 2 ms of its own. Since Iteration
+506 `relfsh` is a binary with the image inside it, and starts in the
+engine's own time: on a later run, relfsh 1.01 ms against the engine
+with an image file 1.00, dash 0.72 and bash 1.06.
 
 ### What that adds up to
 
