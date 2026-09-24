@@ -8,8 +8,8 @@
  *  There is NO WARRANTY.
  *
  *  The only engine since Iteration 243, when it replaced relf.c (the
- *  cell engine, now in attic/). CV8-REFERENCE.md describes the format
- *  and this engine in detail; CV8.md has the measurements behind it.
+ *  cell engine). CV8.md describes the format and this engine in detail,
+ *  and the measurements behind the design.
  *
  *  Code is a byte stream: one-byte opcodes, two- or three-byte calls
  *  to a byte offset from the image base, and a band of specialised
@@ -33,9 +33,9 @@
  *  tools/lab/gen-tos.py (TOS caching) and gen-fold.py (the folded
  *  primitive;EXIT band). This file is that output, specialised to the
  *  one configuration that was measured best and the fold table
- *  inlined. The lab sources are in attic/tools/lab/ for anyone who
- *  wants to measure a different configuration; nothing here depends
- *  on them any more.
+ *  inlined. The lab sources were removed with the attic at Iteration
+ *  489; `git show 9513df0:attic/tools/lab/vm-lab.c` still has them,
+ *  and nothing here depends on them.
  *
  *  ADDING A PRIMITIVE. An OS/libc one is escaped: append its PRIMITIVE
  *  line at the end of kernel.4's list, append its handler to
@@ -93,7 +93,6 @@ static char **g_argv;
  *  are not aligned (Iteration 243). It was 3 or 2 - the cell shift -
  *  while bodies were cell-aligned.  */
 #define SCALE 0
-#define SPEC 1
 
 /*  kernel.4's primitives, in PRIMITIVE order. The first NDIRECT have
  *  one-byte opcodes 0..NDIRECT-1; the NESC declared after ESCAPED - the
@@ -108,13 +107,6 @@ static char **g_argv;
 #define NDIRECT 35
 #define NESC    62
 #define NSYN    NDIRECT
-/*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
- *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
-#if defined(__arm__) && !defined(__aarch64__)
-#define SIGNTEST 0
-#else
-#define SIGNTEST 1
-#endif
 #define VMPUSH PUSH
 #define UNS8 unsigned char /* byte access; width-independent */
 
@@ -606,16 +598,14 @@ static void load_image(const char *name) {
      *
      *  The table construction was left here behind an unconditional
      *  `return` when SOD16 was retired from the engine; it is deleted
-     *  now that SOD16 is retired from the tree. See attic/.  */
+     *  now that SOD16 is retired from the tree.  */
 }
 
 /*
  *  Virtual machine itself: computed-goto threaded dispatch. Each
- *  primitive is a labeled block ending in NEXT; primitive tokens are
- *  (index * CELL_BYTES) + 1, matching cross.4's PRIMITIVE numbering
- *  (stride == sizeof(void*) on this host, since dispatch-table entries
- *  are pointer-sized - which is exactly CELL_BYTES on every host this
- *  targets).
+ *  handler is a labeled block ending in NEXT. A direct primitive's
+ *  opcode is its position in kernel.4's PRIMITIVE list; an escaped
+ *  one's selector is its position after ESCAPED (CV8.md 3.2).
  */
 
 #define NSIG_FLAGS 65
@@ -623,7 +613,6 @@ static volatile sig_atomic_t sig_flag[NSIG_FLAGS];
 static void sig_catch(int sig) { if (sig > 0 && sig < NSIG_FLAGS) sig_flag[sig] = 1; }
 
 #define PROF(k)
-#define PROFC(t)
 #define PROFIP(a)
 #define PROFDUMP
 

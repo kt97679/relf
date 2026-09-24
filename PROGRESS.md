@@ -485,6 +485,7 @@ do not trust the absence of a line below.
 - **487** — the Tegra verifies 486; the matrix asks bash for POSIX mode
 - **488** — two open items restored to GOALS.md, deleted by accident at 476
 - **489** — repository cleanup, part 1: only the files that are needed
+- **490** — the engine source: three dead macros, and comments that pointed at nothing
 
 ### Not tied to an iteration
 
@@ -23496,3 +23497,29 @@ command - leaving holes, and pasting the whole of the removed
 VM-SURVEY.md into this log where its `git show` example stood. Text for
 a document goes through a quoted here-document; values are passed in
 through the environment.
+
+## Iteration 490: the engine source - three dead macros, and stale comments
+
+Reading cv8.c against its reference for part 2 of the cleanup found:
+
+- `SIGNTEST`, chosen per architecture (0 on 32-bit ARM, 1 elsewhere)
+  from XARCH.md's qemu measurements, and read by nothing. It was the
+  switch for a sign-tested dispatch; since Iteration 243 the engine has
+  dispatched through a 256-entry table (`DISPATCH256`, part of the lab's
+  "measured-best configuration"), where there is no sign to test.
+- `SPEC`, defined as 1 and tested nowhere since the `#if SPEC` blocks
+  were unified away.
+- `PROFC`, one of four profiling hooks compiled out as empty macros;
+  the other three are used, it is not.
+
+And comments that described what is no longer so: the header pointed at
+`attic/` for relf.c and the lab sources (both gone with the attic at
+489 - the comment now names the commit that still has them); the
+dispatch comment gave primitive tokens as `index * CELL_BYTES + 1`, the
+cell engine's encoding, where a CV8 opcode is the primitive's position
+in kernel.4's list.
+
+Both engines were rebuilt and compared with the builds from before the
+change with `cmp`: byte-identical, at both widths. A change that cannot
+alter the binary needs no verification run beyond that - the baseline
+would record exactly what it recorded at 489.
