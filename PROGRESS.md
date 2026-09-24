@@ -489,6 +489,7 @@ do not trust the absence of a line below.
 - **491** — CV8.md: one document for the engine, checked against the source
 - **492** — DASH.md, measured afresh; PERFORMANCE.md takes the research questions
 - **493** — GOALS.md to the present; README rewritten; every document one topic
+- **494** — the tests' own files: one empty stray, one undocumented probe
 
 ### Not tied to an iteration
 
@@ -23668,3 +23669,22 @@ to 10, and 315,559 bytes of them (without PROGRESS.md) to 167,652 -
 with no topic in two places, and every number in them measured or
 checked against the source in these iterations rather than carried
 over.
+
+## Iteration 494: the tests' own files
+
+The last corner of "only the files we need": every file under tests/
+that is not in a directory its runner globs was checked for something
+that refers to it. What the first scan reported as unreferenced was
+mostly globbed after all - tests/posix/cases/*.sh, tests/*.fth,
+tests/ext/*.fth - or composed by path (tools/bench-vm.py's workloads);
+each was confirmed in its runner, not assumed. Two were real:
+
+- `tests/interactive/cases.py.new`: an EMPTY file, committed by
+  accident with Iteration 408. Removed.
+- `tests/interactive/history-probe.py`: a legitimate manual test, kept
+  out of the suite because it takes twenty seconds - and mentioned
+  nowhere, so nobody would know to run it. INTERACTIVE.md now documents
+  all three probes, and it was run: it passes.
+
+INTERACTIVE.md also said the pty suite was the only one needing python3;
+tests/verify runs two python lints now.

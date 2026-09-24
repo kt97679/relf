@@ -81,8 +81,16 @@ the same harness, but its sessions differ beyond the prompt - it echoes
 `exit` back, and reports jobs in its own format - so it is useful for
 looking at a behaviour, not for asserting on it.
 
-It needs python3, which the other suites do not; `tests/verify` records
-its three numbers alongside the rest.
+Three probes check what a transcript cannot show. `search-probe.py`
+(`^R`) and `complete-probe.py` (TAB) run with the suite, and a failed
+probe fails it. `history-probe.py` - forty commands, about twenty
+seconds - is run by hand after a change to `edit.4`'s history or its
+line buffer:
+
+    python3 tests/interactive/history-probe.py
+
+It needs python3, as the tools and the lints `tests/verify` runs do;
+`tests/verify` records its three numbers alongside the rest.
 
 ## The line editor (Iteration 303)
 
