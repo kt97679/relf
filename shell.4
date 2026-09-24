@@ -6507,11 +6507,17 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
 256 BUFFER: PS2-TEXT      \ PS2, already expanded
 VARIABLE PS2-TEXT#
 
+DEFER PROMPT-HOOK ( --- )
+\ Run before every primary prompt; nothing until something sets it - an
+\ extension loaded with `forth`, such as forth-shell-examples/
+\ prompt-command.4, which makes it bash's PROMPT_COMMAND (Iteration 505).
+
 : SH-PROMPT ( --- )
   \ $PS1, or "$ ". To fd 2, not stdout: every reference shell writes its
   \ prompt to stderr, and `... | relfsh` otherwise had the prompt
   \ interleaved into the shell's own output. PS1 was ignored entirely
   \ until Iteration 302 - the prompt was always "$ ".
+  PROMPT-HOOK
   PS1-NM PS1-DEFAULT PROMPT-STRING ERR-TYPE
   \ PS2 is expanded HERE, at the start of a command, and kept: a
   \ continuation prompt is written in the middle of a parse, and the

@@ -1,0 +1,32 @@
+\ tcp-echo.4 - a TCP echo server as a builtin: `tcp-echo PORT`.
+\ Every byte a client sends comes back. It listens on 127.0.0.1 only,
+\ serves one connection at a time, and runs until it is interrupted -
+\ so start it in the background:
+\     forth 'S" forth-shell-examples/tcp-echo.4" INCLUDED'
+\     tcp-echo 9000 &
+\ TCP-LISTEN, TCP-ACCEPT and TCP-CONNECT are engine primitives (CV8.md
+\ 2.2, Iteration 505); a socket is read and written with READ and WRITE,
+\ and closed with CLOSE-FILE, like any descriptor.
+
+4096 CONSTANT TE-SIZE
+CREATE TE-BUF  TE-SIZE ALLOT
+
+: TE-NUM ( c-addr --- n )
+  0 SWAP BEGIN DUP C@ DUP 48 58 WITHIN WHILE 48 - ROT 10 * + SWAP 1+ REPEAT 2DROP ;
+
+: TE-CONNECTION ( fd --- )   \ echo until the client closes
+  BEGIN
+    DUP TE-BUF TE-SIZE ROT READ           ( fd n )
+    DUP 0> WHILE
+    TE-BUF SWAP 2 PICK WRITE DROP         ( fd )
+  REPEAT DROP CLOSE-FILE DROP ;
+
+: DO-TCP-ECHO ( --- )
+  ARGC @ 2 < IF S" usage: tcp-echo PORT" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT THEN
+  1 ARGV@ TE-NUM -1 TCP-LISTEN IF
+    DROP S" tcp-echo: cannot listen" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT
+  THEN
+  BEGIN DUP TCP-ACCEPT 0= WHILE TE-CONNECTION REPEAT
+  DROP CLOSE-FILE DROP  1 LAST-STATUS ! ;
+
+' DO-TCP-ECHO S" tcp-echo" BUILTIN

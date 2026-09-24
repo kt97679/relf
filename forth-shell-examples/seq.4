@@ -1,0 +1,17 @@
+\ seq.4 - a new builtin, written in Forth: `seq FIRST LAST`.
+\ Load it, then use it like any command:
+\     forth 'S" forth-shell-examples/seq.4" INCLUDED'
+\     seq 1 5 | while read n; do echo "line $n"; done
+\ A builtin is a Forth word that reads its arguments from ARGC and ARGV@
+\ (NUL-terminated strings) and sets LAST-STATUS; BUILTIN names it.
+
+: SEQ-NUM ( c-addr --- n )   \ a decimal number, digits only
+  0 SWAP BEGIN DUP C@ DUP 48 58 WITHIN WHILE 48 - ROT 10 * + SWAP 1+ REPEAT 2DROP ;
+
+: DO-SEQ ( --- )
+  ARGC @ 3 < IF S" usage: seq FIRST LAST" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT THEN
+  2 ARGV@ SEQ-NUM 1+  1 ARGV@ SEQ-NUM
+  2DUP > IF ?DO I N>STR DUP CSTRLEN TYPE CR LOOP ELSE 2DROP THEN
+  0 LAST-STATUS ! ;
+
+' DO-SEQ S" seq" BUILTIN

@@ -500,6 +500,7 @@ do not trust the absence of a line below.
 - **502** — where the POSIX language's cost lives: no feature halves it; re-read text is the trouble
 - **503** — Rill: a shell language designed from 502's measurements
 - **504** — startup files: /etc/profile, ~/.profile and $ENV, as dash reads them
+- **505** — forth-shell-examples: new builtins, PROMPT_COMMAND, and servers, with TCP in the engine
 
 ### Not tied to an iteration
 
@@ -24088,3 +24089,52 @@ does not know. CHECKING.md's advice to set PS1 in the `$ENV` file, which
 Recorded changes, with their causes: `shell:assertions` 851 -> 861 and
 `shell:files` 80 -> 81, run-startup; both shell images about 500 bytes
 larger for the startup code, and their checksums with them.
+
+## Iteration 505: forth-shell-examples, and TCP in the engine
+
+GOALS.md item 12, as agreed at 500: examples of the `forth` builtin in
+`forth-shell-examples/`, with whatever primitives they need. Four, each
+a `.4` file loaded with `forth 'S" file" INCLUDED'`:
+
+- **seq.4** - `seq FIRST LAST`, the smallest complete builtin: a Forth
+  word reading `ARGC`/`ARGV@`, setting `LAST-STATUS`, named by `BUILTIN`.
+- **prompt-command.4** - bash's `PROMPT_COMMAND` in six lines. The shell
+  gains one hook for it, `PROMPT-HOOK`, a deferred word `SH-PROMPT`
+  calls before every primary prompt, which does nothing until set. The
+  example sets it to run `$PROMPT_COMMAND`, keeping `$?` around it.
+- **tcp-echo.4** and **http-hello.4** - an echo server and an HTTP
+  server answering with a counter, both on 127.0.0.1, run in the
+  background with `&`.
+
+The engine gains three escaped primitives - `TCP-LISTEN ( port
+loopback? --- fd ior )`, `TCP-ACCEPT ( fd --- fd' ior )`, `TCP-CONNECT
+( c-addr port --- fd ior )`, numeric IPv4 only, no name lookup -
+added as 486 added `DUP-FROM`: nothing in the opcode map moves, and the
+rebuilt kernels reproduce themselves. A socket is then just a
+descriptor, so `READ`, `WRITE` and `CLOSE-FILE` serve it.
+
+Tested as the README says to use them: tests/shell/run-examples loads
+each and exercises it - the servers from the background, with a python3
+client, skipped where python3 is missing - at both cell widths, so the
+32-bit engine's sockets are tested too. Two of the three things the
+examples lean on were checked to exist at run time first, not just
+while the image was built: `PICK`, `LOOKUP-VAR`, `N>STR`,
+`TREE-RUN-CSTR`, `BUILTIN` all do. The README also says what to know
+before loading anything: there is no isolation, and a Forth line is read
+80 columns at a time - which 501 found the hard way.
+
+Recorded changes, with their causes: `shell:assertions` 861 -> 867 and
+`shell:files` 81 -> 82, run-examples; both engines' code larger - 1,117
+bytes at 64-bit, 1,293 at 32 - for the three TCP handlers; both shell
+images 72-80 bytes larger for `PROMPT-HOOK`, their checksums with them.
+
+And one that moved the wrong way: **`size:i386` fell by 32,668 bytes**
+while that engine's code grew. Not the engine: built side by side,
+the previous commit's i386 engine and this one differ in LAYOUT. The
+old binary's data segment sat at file offset 0xef00, behind ~32 KB of
+alignment padding forced by the 16 MB VM memory block, which is
+64 KB-aligned so its guard pages fall on page boundaries (CV8.md 5.3);
+the new one's sits at 0x6f00, the linker having given the block a
+segment of its own with no bytes in the file. The row totals a stripped
+engine and an image, and its own comment warns it moves in steps when
+the engine crosses a boundary - this time, down. Checked, not assumed.

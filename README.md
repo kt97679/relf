@@ -73,6 +73,7 @@ suites pin `LC_ALL=C` for that reason.
 | `shell.4`, `tree.4`, `edit.4` | the shell: commands and expansion, the parser and executor, the line editor |
 | `relfsh` | the wrapper that runs the shell |
 | `tests/`, `tools/` | the suites, and the tools that measure and fuzz |
+| `forth-shell-examples/` | the shell extended from inside, with `forth`: new builtins, a prompt hook, network servers |
 | `prompts/` | reusable prompts for this kind of work; `prompts/INDEX.md` dispatches |
 
 ## The documents

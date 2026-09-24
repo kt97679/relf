@@ -1,0 +1,40 @@
+#!/bin/sh
+# forth-shell-examples/ (Iteration 505): each example loaded into the
+# shell and used as its README says. The network ones start a server in
+# the background and talk to it with python3, and are skipped without it.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+EX=$(cd ../../forth-shell-examples && pwd)
+
+out=$("$THIS_SH" -c "forth 'S\" $EX/seq.4\" INCLUDED' ; seq 3 6 | tr '\\n' ' '" 2>&1)
+assert_output_equals "seq.4: a builtin written in Forth" "3 4 5 6 " "$out"
+out=$("$THIS_SH" -c "forth 'S\" $EX/seq.4\" INCLUDED' ; seq; echo \"st=\$?\"" 2>&1)
+assert_output_contains "... with its usage error and status" "st=2" "$out"
+
+out=$(printf '%s\n' "forth 'S\" $EX/prompt-command.4\" INCLUDED'" "PROMPT_COMMAND='n=\$((n+1))'" "PS1='[\$n] '" 'false' 'echo "st=$?"' | "$THIS_SH" -i 2>&1 | tr '\n' ' ')
+assert_output_contains "prompt-command.4: the hook runs before each prompt" "[3]" "$out"
+assert_output_contains "... and keeps \$? as it was" "st=1" "$out"
+
+if command -v python3 >/dev/null 2>&1; then
+    p=$((20000 + $$ % 10000))
+    "$THIS_SH" -c "forth 'S\" $EX/tcp-echo.4\" INCLUDED' ; tcp-echo $p" >/dev/null 2>&1 & te=$!
+    "$THIS_SH" -c "forth 'S\" $EX/http-hello.4\" INCLUDED' ; http-hello $((p+1))" >/dev/null 2>&1 & hh=$!
+    sleep 1
+    out=$(timeout 10 python3 -c "
+import socket, sys, urllib.request
+s = socket.create_connection(('127.0.0.1', $p), timeout=5)
+s.sendall(b'ping\n'); s.shutdown(socket.SHUT_WR)
+got = b''
+while True:
+    d = s.recv(99)
+    if not d: break
+    got += d
+print(got.decode().strip(), end=' ')
+r = urllib.request.urlopen('http://127.0.0.1:%d/' % ($p + 1), timeout=5)
+print(r.status, r.read().decode().strip())
+" 2>&1)
+    kill $te $hh 2>/dev/null; wait $te $hh 2>/dev/null
+    assert_output_contains "tcp-echo.4: the bytes come back" "ping" "$out"
+    assert_output_contains "http-hello.4: an HTTP answer, counted" "200 Hello from a shell written in Forth. This is request 1." "$out"
+fi
+report

@@ -1,0 +1,15 @@
+\ prompt-command.4 - bash's PROMPT_COMMAND, in six lines of Forth.
+\ The shell calls PROMPT-HOOK before every primary prompt, and it does
+\ nothing until something sets it. This sets it to run $PROMPT_COMMAND:
+\     forth 'S" forth-shell-examples/prompt-command.4" INCLUDED'
+\     PROMPT_COMMAND='n=$((n+1))'  PS1='[$n] $ '
+\ $? is kept as it was, so a PS1 that shows the last status still does.
+
+CREATE PC-NM  CSTR," PROMPT_COMMAND"
+
+: RUN-PROMPT-COMMAND ( --- )
+  PC-NM LOOKUP-VAR ?DUP IF
+    LAST-STATUS @ >R  TREE-RUN-CSTR  R> LAST-STATUS !
+  THEN ;
+
+' RUN-PROMPT-COMMAND IS PROMPT-HOOK

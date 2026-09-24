@@ -1,0 +1,40 @@
+\ http-hello.4 - a small HTTP server as a builtin: `http-hello PORT`.
+\ It answers every request with a line of text and a counter, on
+\ 127.0.0.1, until it is interrupted:
+\     forth 'S" forth-shell-examples/http-hello.4" INCLUDED'
+\     http-hello 8080 &
+\     curl http://127.0.0.1:8080/
+\ The request is read and not parsed - the point is the plumbing: a
+\ socket, a counter kept in the shell, and a builtin serving it.
+
+4096 CONSTANT HH-SIZE
+CREATE HH-BUF  HH-SIZE ALLOT
+CREATE HH-CRLF  13 C, 10 C,
+VARIABLE HH-COUNT
+
+: HH-NUM ( c-addr --- n )
+  0 SWAP BEGIN DUP C@ DUP 48 58 WITHIN WHILE 48 - ROT 10 * + SWAP 1+ REPEAT 2DROP ;
+
+: HH-SEND ( fd c-addr u --- fd )   ROT DUP >R WRITE DROP R> ;
+: HH-LINE ( fd c-addr u --- fd )   HH-SEND HH-CRLF 2 HH-SEND ;
+
+: HH-RESPOND ( fd --- )
+  DUP HH-BUF HH-SIZE ROT READ DROP                  \ the request, unread
+  1 HH-COUNT +!
+  S" HTTP/1.0 200 OK" HH-LINE
+  S" Content-Type: text/plain" HH-LINE
+  S" Connection: close" HH-LINE
+  HH-CRLF 2 HH-SEND
+  S" Hello from a shell written in Forth. This is request " HH-SEND
+  HH-COUNT @ N>STR DUP CSTRLEN HH-SEND  S" ." HH-LINE
+  CLOSE-FILE DROP ;
+
+: DO-HTTP-HELLO ( --- )
+  ARGC @ 2 < IF S" usage: http-hello PORT" ERR-TYPE ERR-NL 2 LAST-STATUS ! EXIT THEN
+  1 ARGV@ HH-NUM -1 TCP-LISTEN IF
+    DROP S" http-hello: cannot listen" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT
+  THEN
+  BEGIN DUP TCP-ACCEPT 0= WHILE HH-RESPOND REPEAT
+  DROP CLOSE-FILE DROP  1 LAST-STATUS ! ;
+
+' DO-HTTP-HELLO S" http-hello" BUILTIN

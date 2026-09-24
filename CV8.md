@@ -76,7 +76,7 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 | `0x41`–`0x60` | free: 32 opcodes |
 | `0x61`–`0x7C` | 28 **specialised** opcodes (§6) |
 | `0x7D` | `LIT64`: a full cell, little-endian |
-| `0x7E` | `ESC` and a selector byte: the 62 **escaped** primitives |
+| `0x7E` | `ESC` and a selector byte: the 65 **escaped** primitives |
 | `0x7F` | free |
 | `0x80`–`0xBF` | the first byte of a two-byte call |
 | `0xC0`–`0xFF` | the first byte of a three-byte call |
@@ -108,7 +108,8 @@ through. The list, in selector order:
 > COMPARE SCAN CSTRLEN ISATTY OPEN-DIR READ-DIR CLOSE-DIR ACCESS KILL
 > UMASK CPU-TIMES SIGNAL-ACTION SIGNALS-PENDING TERM-RAW TERM-RESTORE
 > FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
-> TCSETPGRP TCGETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM`
+> TCSETPGRP TCGETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TCP-LISTEN
+> TCP-ACCEPT TCP-CONNECT`
 
 **Four places must agree on these numbers**, and a mismatch is silent -
 the image encodes one operation and the engine decodes another:
@@ -123,7 +124,7 @@ compiled.
 `escaped_prims[]` and raise `NESC`. Nothing moves. Then rebuild the
 kernels deliberately - `make images IMAGES_FORCE=1` - and check that
 they reproduce themselves with `make check-images` (Iteration 486 did
-exactly this for `DUP-FROM`). A hot primitive is direct: add it before
+exactly this for `DUP-FROM`, and 505 for the three TCP primitives). A hot primitive is direct: add it before
 `ESCAPED` in `kernel.4` and at the same position in `direct_prims[]`,
 and raise `NDIRECT`; that moves the synthetic opcodes up by one.
 

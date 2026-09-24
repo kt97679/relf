@@ -64,6 +64,9 @@
 #include <sys/stat.h>
 #include <poll.h>
 #include <stddef.h>
+#include <sys/socket.h>   /* TCP-LISTEN, -ACCEPT, -CONNECT (Iteration 505) */
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 /*  kernel.4's FD-POLL lays a struct pollfd out by hand, in two cells on
  *  the data stack: a 32-bit fd, then 16-bit events and revents, eight
@@ -105,7 +108,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    62
+#define NESC    65
 #define NSYN    NDIRECT
 #define VMPUSH PUSH
 #define UNS8 unsigned char /* byte access; width-independent */
@@ -756,6 +759,7 @@ static void virtual_machine(void) {
         &&L_getppid, &&L_envat,
         &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
         &&L_filemode, &&L_localtime, &&L_dupfrom,
+        &&L_tcplisten, &&L_tcpaccept, &&L_tcpconnect,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1424,6 +1428,48 @@ L_dupfrom: SPILL(); { /* fd floor --- fd' | -1 : the lowest FREE descriptor
 #endif
     DS1 = (UNS64)(INT64)r;
     dsp += CELL_BYTES;
+    FILLNEXT();
+}
+L_tcplisten: SPILL(); { /* port loopback? --- fd ior : a listening TCP
+                           socket, on 127.0.0.1 or on every address. The
+                           three TCP primitives are for the forth builtin's
+                           examples (Iteration 505); reads and writes are
+                           READ and WRITE, and CLOSE-FILE closes. */
+    int port = (int)DS1, lo = (int)DS0, one = 1;
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_port = htons((unsigned short)port);
+    a.sin_addr.s_addr = htonl(lo ? INADDR_LOOPBACK : INADDR_ANY);
+    if (fd >= 0 && (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0
+                    || bind(fd, (struct sockaddr *)&a, sizeof a) < 0
+                    || listen(fd, 16) < 0)) {
+        close(fd); fd = -1;
+    }
+    DS1 = (UNS64)(INT64)fd;
+    DS0 = fd < 0 ? 200 : 0;
+    FILLNEXT();
+}
+L_tcpaccept: SPILL(); { /* fd --- fd' ior : the next connection */
+    int s = accept((int)DS0, 0, 0);
+    DS0 = (UNS64)(INT64)s;
+    PUSH(s < 0 ? 200 : 0);
+    FILLNEXT();
+}
+L_tcpconnect: SPILL(); { /* c-addr port --- fd ior : c-addr a dotted IPv4
+                            address, NUL-terminated - no name lookup */
+    struct sockaddr_in a;
+    int fd = -1;
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_port = htons((unsigned short)DS0);
+    if (inet_pton(AF_INET, (char*)(uintptr_t)DS1, &a.sin_addr) == 1) {
+        fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd >= 0 && connect(fd, (struct sockaddr *)&a, sizeof a) < 0) { close(fd); fd = -1; }
+    }
+    DS1 = (UNS64)(INT64)fd;
+    DS0 = fd < 0 ? 200 : 0;
     FILLNEXT();
 }
 L_getenv: SPILL(); { /* c-addr --- addr */

@@ -175,7 +175,10 @@ work begins.
     `PROMPT_COMMAND`, or others. A server needs socket primitives the
     engine does not have (`socket`, `bind`, `listen`, `accept`) -
     escaped, so they move nothing (CV8.md 2.2); a prompt hook needs a
-    point in the prompt loop that calls a Forth word.
+    point in the prompt loop that calls a Forth word. **Done at 505**:
+    `forth-shell-examples/` - `seq`, `PROMPT_COMMAND` through a new
+    `PROMPT-HOOK`, a TCP echo server and an HTTP server - with
+    `TCP-LISTEN`, `TCP-ACCEPT` and `TCP-CONNECT` in the engine.
 
 **Decisions** (the user's answers, recorded at 500):
 
