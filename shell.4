@@ -721,7 +721,7 @@ VARIABLE XPR-N
   DUP -1 = IF
     DROP
     GROW-SHVARS 0= IF
-      \ GOALS.md's memory policy: a full fixed table must never fail
+      \ FORTH-STYLE.md's memory policy (16): a full fixed table must never fail
       \ silently. This used to just EXIT, so the 33rd variable was
       \ never set and every later use of it expanded to empty -
       \ wrong output rather than an error (found in Iteration 44,
@@ -1020,7 +1020,7 @@ VARIABLE EXP-OVERFLOW?   \ reported once per line
 \ "$@"'s field break (103).
 \
 \ With a separate output buffer the hazard does not exist: there is no
-\ shared buffer to overrun. That is item 2 of attic/docs/PARSE-EXPAND-PLAN.md,
+\ shared buffer to overrun. That is item 2 of the parse-and-expand plan (in git, 9513df0:attic/docs/),
 \ and the first part of its Stage 1 - the input line now survives
 \ tokenizing intact, which is what re-expanding it per command will
 \ need.

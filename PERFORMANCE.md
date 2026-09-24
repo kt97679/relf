@@ -11,6 +11,17 @@ optimisations measured and rejected are indexed in GOALS.md's "Tried and
 rejected" register so they are not rebuilt.
 
 
+
+**Every engine ratio here comes from a single build, and that is worth
+about ±5%.** Measured properly by the article's working repository: the
+variation is dominated by per-BUILD bias, not run-to-run noise. Three
+runs of the same binaries agree to 1-2%, but rebuild the tree and a
+stage moves five or ten percent, because where the compiler places
+code is worth that much and is fixed for a given binary. The widest
+spread, 12.6%, belonged to the cell engine - the baseline that divided
+every ratio of its day. So read a single-build figure as ±5%, and
+differences smaller than that as unresolved.
+
 ## Where it stands (Iteration 491)
 
 DASH.md §1 has today's operation-by-operation comparison with dash. In

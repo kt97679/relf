@@ -1,5 +1,5 @@
 \ tree.4 - the shell's lexer and parser: a complete command at a time,
-\ into a tree. Stage A of attic/docs/COMMAND-TREE-PLAN.md (Iteration 263): the tree
+\ into a tree. Stage A of the command-tree plan (Iteration 263; in git at 9513df0): the tree
 \ is built and printed, not yet executed. Loaded after shell.4.
 \
 \ Words here are called recursively - `$(...)` is lexed by parsing its
@@ -261,7 +261,7 @@ VARIABLE HD-TEXT#
 DEFER PARSE-SUBLIST   \ for $(...): parse a compound list up to `)`
 
 \ ---- words encoded while they are scanned ----
-\ attic/docs/EXPANSION-PLAN.md Stage A (Iteration 274). The scanners below already
+\ the expansion plan's Stage A (Iteration 274). The scanners below already
 \ walk every construct with the right rules; each now also writes the
 \ word's encoded form into ENC-BUF, which TOKEN-WORD copies into the
 \ tree. Every control sequence starts with ENC-CTL, so a literal run is
@@ -1955,7 +1955,7 @@ VARIABLE ARGV-IONUM-NEXT    \ ... or the descriptor it read for one
   ARGV-IONUM-NEXT @ ARGV-IONUM ARGC @ + C!      0 ARGV-IONUM-NEXT !
   ARGC @ 1+ ARGC !  0 ARGV ARGC @ CELLS + ! ;
 \ ==================================================================
-\ Expanding a word from its encoding (attic/docs/EXPANSION-PLAN.md Stage B)
+\ Expanding a word from its encoding (the expansion plan's Stage B)
 \ ==================================================================
 \ Iteration 275, the first step: literal runs (copied whole), quoted
 \ runs, quoted characters and plain parameters. A word whose encoding
@@ -2020,7 +2020,7 @@ DEFER XE-LIT-REGION ( c-addr u --- )   \ literal text as a region: below
     EMIT-RUN
   THEN ;
 
-\ ---- splitting by regions (attic/docs/EXPANSION-PLAN.md; Iteration 278) ----
+\ ---- splitting by regions (the expansion plan; Iteration 278) ----
 \ An unquoted expansion's result is copied whole and its output range
 \ recorded; when the word is done, the field splitting runs once over
 \ those ranges (dash's recordregion/ifsbreakup). Pattern characters

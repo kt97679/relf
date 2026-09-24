@@ -488,6 +488,7 @@ do not trust the absence of a line below.
 - **490** — the engine source: three dead macros, and comments that pointed at nothing
 - **491** — CV8.md: one document for the engine, checked against the source
 - **492** — DASH.md, measured afresh; PERFORMANCE.md takes the research questions
+- **493** — GOALS.md to the present; README rewritten; every document one topic
 
 ### Not tied to an iteration
 
@@ -23607,3 +23608,63 @@ superinstructions; native code), its headings demoted one level, and a
 short note at the top on where things stand. The five source comments
 that cited the old names now cite DASH.md; the shell images'
 checksums are unchanged.
+
+## Iteration 493: GOALS.md to the present, a new README, one topic each
+
+The last of the documentation cleanup asked for at 488.
+
+**GOALS.md**, 112,962 bytes to 34,314 - 2,015 lines to about 600. It
+called itself "the PRESENT", and two-thirds of it was the past: phases
+5, 6 and 8 (over 400 lines, done), a shell queue "written at Iteration
+149" whose "still open" items were struck through or long done, the
+article repository's merged improvements, a plan for the command tree
+that landed at 269, the Iteration 48 reading of bash. Those are deleted
+- PROGRESS.md and git have them - after each was read for anything
+still open: the two unstruck items (empty fields from non-whitespace
+IFS, `set -e`) were done at 270 and before. What was durable but on the
+wrong topic moved to the file that owns it:
+
+- cells as host pointers, and a cross-compiling host's cells being at
+  least the target's -> CV8.md 5.4; the rules for saving an image
+  (nothing absolute in the dictionary; SS-SCRUB) -> CV8.md 7;
+- the build environment -> README.md, rewritten: it still said "there
+  is no Makefile";
+- the test layers -> CHECKING.md, with the four added since (the pty
+  transcripts, the corpora, the fuzzers, the parser suite in order);
+- named locals and the memory policy -> FORTH-STYLE.md 4 and 16. Its
+  own section 4 still showed `{: :}` and `locals.4`, both renamed at
+  236, and its limits said 256 cells where shadow.4 has had 4,096 since
+  90; a later line even cited `{: :}` as "following Forth-2012 locals",
+  the opposite of why it was renamed;
+- the single-build ±5% caveat -> PERFORMANCE.md.
+
+The kept sections are reordered - direction and open items first,
+conventions and references last - and the two divergence lists and the
+two bug-hunting notes each become one section.
+
+**README.md** is rewritten from the patchwork it had become: the 2013
+original's "version 0.2" opening, a VM section describing the retired
+cell engine's `primitive * 8 + 1` tokens, a manual kernel rebuild that
+`make images` replaced, "the four .img files ARE committed", and a
+shell scope of "v0.8: a single pipe per line". The original author's
+introduction is kept, quoted, with the credit to SOD32 and the GPLv2
+terms. DOCS.md, the map of documents, is folded into it.
+
+**INTERACTIVE.md** said nine cases passed and three diverged, that job
+notices were missing and `-i` unimplemented; 23 of 24 pass, the one
+divergence is only WHEN a completion notice appears, and `-i` works.
+Checking `-i` found a small real gap, now GOALS 6b: `$-` shows no `i`
+(dash shows `si`). KNOWN-DIVERGENT's header said "The list is empty"
+above its one entry.
+
+**References**: every citation of a removed file or section outside
+PROGRESS.md was remapped - in tree.4, shell.4, shadow.4,
+tests/run_tests.sh, tests/verify and the Makefile's help - and a sweep
+finds none left. None of it changed a built byte: both shell images
+still match their recorded checksums.
+
+Before and after the whole cleanup, 488 to 493: 16 top-level documents
+to 10, and 315,559 bytes of them (without PROGRESS.md) to 167,652 -
+with no topic in two places, and every number in them measured or
+checked against the source in these iterations rather than carried
+over.

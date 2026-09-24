@@ -1,4 +1,4 @@
-# Testing the interactive shell (Iteration 301)
+# INTERACTIVE.md — the interactive shell, and how it is tested
 
 Everything this shell does at a prompt - the prompt itself, a signal
 typed at the keyboard, end of file from the terminal, a construct
@@ -43,28 +43,26 @@ honours it.
 Expectations are recorded from dash (`tests/interactive/run --record
 /usr/bin/dash`), so the suite says "behave as dash does at a prompt".
 
-## What it found
+## Where it stands (Iteration 493)
 
-Nine cases pass: basic commands, three kinds of multi-line construct, a
-function typed over several lines, a quote continued across a newline,
-exit status at the prompt, an unknown command, and background jobs.
+24 cases. 23 match their recorded transcripts; one, `job-control`, is
+listed in `KNOWN-DIVERGENT`. `^Z`, `jobs`, `bg`, `kill %1` and the
+wording of every notice match dash's since Iteration 324; what differs
+is WHEN a completion notice appears - this shell reaps in its notice
+pass and reports at the first prompt after the job ends, dash one
+prompt later. Both are before a prompt, as POSIX asks, and on a slow
+machine the two coincide and the case passes.
 
-Seven did not when the harness was written. **Iteration 302 fixed four**
-- `PS1`, `PS2`, the blank line, and the newline on `^D` - leaving three:
+When the harness was written, at Iteration 301, seven cases did not
+match: `PS1`, `PS2`, the blank line and the newline on `^D` (fixed in
+302), the job notice and its text (310, 312), and `^C` at the prompt
+and during a command (314, 315). Noticing `^C` at all needed an engine
+change: `SIGNAL-ACTION` installed handlers with `SA_RESTART`, so the
+read was resumed and the interrupt went unseen until the line was
+submitted.
 
-| case | what dash does | what this shell does |
-|---|---|---|
-| `intr-at-prompt` | newline after `^C`, then a fresh prompt | the line is cancelled, but no newline |
-| `intr-during-command` | newline after `^C`, then the prompt | prompt on the same line |
-| `job-in-background` | `[1] + Done ...` notices | nothing |
-
-Noticing `^C` at all needed an engine change: `SIGNAL-ACTION` installed
-handlers with `SA_RESTART`, so the read was resumed and the interrupt
-went unseen until the line was submitted. Action 3 catches without it.
-
-`-i` is also unimplemented: `relfsh -i` treats the flag as a file name.
-Interactivity is decided by `isatty` alone, so a piped script cannot be
-forced interactive and a terminal session cannot be forced not to be.
+`-i` forces an interactive shell - a piped script gets prompts - but
+`$-` does not show the `i` (nor the `s`) that dash puts there (GOALS.md).
 
 ## Running it
 

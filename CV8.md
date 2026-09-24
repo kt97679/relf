@@ -331,6 +331,21 @@ target without an MMU; they cost 3–6% at 64-bit and nothing measurable
 at 32. The block is aligned to 64 KB so the guards fall on page
 boundaries for pages up to that size.
 
+### 5.4 Cells are host pointers
+
+`CELL(a)` dereferences `a` as a **real host address**, not an index
+into an isolated array as SOD32's `mem[a & MEMMASK]` does. So the
+process's pointer width must equal the image's cell width: the 8-byte
+image runs on a 64-bit engine, the 4-byte image on a 32-bit one
+(`relf32`, or the native engine of a 32-bit host). It is a design
+property - it is what makes addressing cheap - not a bug to fix away.
+
+A second consequence, for cross-compiling: **the host that runs
+`cross.4` must have cells at least as wide as the target's**, because
+`cross.4`'s literal parsing and its `@-T`/`!-T` plumbing do host-cell
+arithmetic on values that end up in target cells. An 8-byte host can
+build a 4-byte kernel; a 4-byte host cannot build an 8-byte one.
+
 ## 6. The specialised opcodes
 
 Chosen from per-address execution profiles, not intuition. They are the
@@ -422,6 +437,25 @@ Two Forth compilers emit CV8, and they are twins that must agree:
   `make` or `relfsh` itself builds it, and it is not committed.
   `tests/verify` checks that a rebuild is byte-identical, and records a
   checksum so that another machine's build is compared with this one's.
+
+**Saving an image.** `save-system.4`'s `SAVE-SYSTEM` writes the
+running system from `START` to `HERE` behind a header, subtracting
+`START` back out of the two cells `COLD` relocates. `BOOT` holds the
+offset of the word to run at startup - `MAIN`, in the shell image. Two
+rules keep images reproducible and bootable anywhere:
+
+- **Nothing in the dictionary may hold an absolute address**, a PID, a
+  path, a time or a descriptor. An image loads at a different address
+  every run; the first turnkey images segfaulted on exactly this. Store
+  offsets from `START` (`!XT`, `@XT`), or add the cell to `SS-SCRUB`,
+  which blanks such cells in the saved copy - `COLD`, `WARM` and `QUIT`
+  set them again before anything reads them.
+- **Compiling new code inside a reloaded image works** (since Iteration
+  41), because the compile-time machinery holds offsets too. The
+  `forth` builtin depends on it.
+
+A prebuilt shell image starts about 128 times faster than compiling
+`shell.4` from source (Iteration 40: 1.8 ms against 253 ms).
 
 The specialised opcodes are emitted like this:
 

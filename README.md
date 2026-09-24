@@ -1,357 +1,117 @@
-This is README for the Relative Forth (RelF) version 0.2.
+# RelF — a self-hosting Forth, and a POSIX shell written in it
 
-It is still very preliminary version, but at least it can crosscompile itself
-and passes test suite by John Hayes.
+RelF, Relative Forth, is Kirill Timofeev's Forth system, derived from
+L.C. Benschop's SOD32. This repository refactors it towards full
+self-hosting (GOALS.md). What it is today:
 
-1. Introduction.
+- **An engine**, `cv8.c`: a small virtual machine in portable C that
+  runs a byte-coded Forth image (CV8.md). 39 KB stripped on x86-64.
+- **A Forth system that compiles itself**: `cross.4`, running on
+  `kernel.img`, compiles `kernel.4` into a new `kernel.img`, byte for
+  byte - no other language involved beyond the engine's C.
+- **A POSIX shell written in that Forth** - `shell.4`, `tree.4` and
+  `edit.4` - with job control, a line editor with history, and `$'...'`
+  and `set -o pipefail` from POSIX.1-2024. On yash's and busybox's test
+  suites it passes more cases than dash does (DASH.md), and `forth`
+  drops from it into the live system it is written in.
 
-The idea of RelF came to me after looking at SOD32 by L.C. Benschop. SOD32 is
-a very interesting project with separated engine and machine-independent
-forth-system binary image. But SOD32 is pretty slow due to many reasons. I
-became interested in speeding up SOD32. At least to some extent I succeeded.
-PLease note, that my primary platform was x86. I was pretty much surprised by
-benchmarks results, obtained on sparc-solaris, which can be found below.
-During this work a lot of changes in system design were introduced. The main
-one was organization of threaded code: reference to high-level definition
-contains now not address of this definition, but relative offset (thus the
-name - Relative Forth).
+## Quick start
 
-2. Compilation.
+    make                          # both engines, both shell images
+    ./relfsh -c 'echo hello'      # run one command
+    ./relfsh                      # interactive
+    ./relfsh script.sh            # run a script
+    ./relf kernel.img             # the bare Forth system; BYE leaves
 
-RelF is portable C targeting every architecture its libc supports
-(verified on x86-64 and ARM64 Linux, and i386). There is one engine,
-cv8.c, which runs CV8 images - a byte stream of one-byte opcodes and
-two- or three-byte relative calls (see CV8.md). It is plain
-libc-based C:
+`relfsh` is a short POSIX `sh` script that runs the engine on the
+prebuilt shell image, and builds that image first when it is missing or
+older than its sources. `make verify` runs every suite; `make help`
+lists everything else.
 
-cc -O2 -Wall -o relf cv8.c
-cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
+## Building
 
-The shell has no locale support: character classes, ranges and the order
-pathname expansion returns its matches in are all byte-based, which is
-the C locale's behaviour. The test suites pin `LC_ALL=C` for that reason
-- a differential suite compares two shells, and in a UTF-8 locale the
-reference sorts `ZZ a1 b2` differently and `[a-z]` can match `Z`.
+**Required**: a C compiler as `cc` (GCC or Clang), and its 32-bit
+support - `gcc-multilib` on Debian and Ubuntu - because the 4-byte-cell
+engine is built and tested on every change. Without it, `cc -m32` fails
+and half of every check is silently skipped. **Required for the
+tests**: `python3`, `bash`, `dash` and `timeout`.
 
-The engines are not committed - they are build products, and a binary
-for one architecture in a checkout on another is a trap rather than a
-convenience. The four `.img` files ARE committed: an image can only be
-cross-compiled by an image, so the bootstrap needs one to exist.
+**Recommended for the tests**: more reference shells - `mksh`, `yash`,
+`posh`, `ksh` and `busybox-static`. The POSIX suite scores a case only
+when every reference shell present agrees, so each one makes it
+stricter. `zsh` is deliberately not one: run as `zsh script.sh` it is
+not in POSIX mode.
 
-or `make`, which builds both engines and both shell images and is the
-index of everything else this project does - `make help` lists the
-targets, `make verify` runs every suite against tests/BASELINE. What
-`make` deliberately does NOT do is rebuild kernel.img: that image is
-both what cross.4 produces and what cross.4 runs on, so rebuilding it
-is a fixpoint step rather than a compile. `make check-images` verifies
-it still reproduces; `make images IMAGES_FORCE=1` is the deliberate
-replacement, for an engine or kernel.4 change.
+**What is committed, and what is built.** The sources, and the two
+kernel images, `kernel.img` (8-byte cells) and `kernel32.img` (4-byte):
+they are the bootstrap seed, since only an image can cross-compile an
+image. The engines (`relf`, `relf32`) and the shell images are build
+products, ignored by git. `make` does not rebuild the kernel images:
+`make images IMAGES_FORCE=1` does, deliberately, for a change to the
+engine's primitives or to `kernel.4`, and `make check-images` then
+confirms they reproduce themselves.
 
-For a different architecture, use that architecture's C compiler (e.g.
-aarch64-linux-gnu-gcc for ARM64); nothing else changes. Until Iteration
-243 the engine was relf.c, which ran cell-threaded images; it is in
-attic/, and the git tag cell-engine-final is the last commit it built.
+**Other architectures.** Use that architecture's C compiler; nothing
+else changes. The engine's cell width is the process's pointer width,
+so a 32-bit host builds the 4-byte engine and runs `kernel32.img`. One
+image serves every machine of the same cell width - images are
+little-endian, and position-independent. Checked on x86-64, i386, ARMv7
+(an NVIDIA Tegra, natively) and, under qemu, AArch64 and RISC-V.
 
-Cell width is the process's pointer width, chosen at compile time: a
-32-bit compiler produces the 4-byte-cell engine with no source
-changes. The i386 build is non-PIE because PIE costs the engine's TOS
-cache a register (CV8.md 5.1). A 4-byte-cell image is a different
-image, built separately - see below.
+**Locale.** The shell has none: character classes, ranges and the order
+of pathname expansion are byte-based, as in the C locale. The test
+suites pin `LC_ALL=C` for that reason.
 
-kernel.img is native host endianness (little-endian - see GOALS.md's
-non-goals) with a CV8 header recording the call scale, cell width and
-format version, so a mismatched image fails cleanly at load rather
-than silently misbehaving. Any two architectures that agree on both
-cell width and endianness can share one image unmodified.
+## The repository
 
-The kernel image is compiled by RelF itself: cross.4, running on the
-committed kernel.img, compiles kernel.4 into a new CV8 image. Nothing
-else is involved - no other engine, no translator, no other language.
-gforth is not usable as an alternative host: cross.4/extend.4/kernel.4
-rely on RelF-kernel-specific search-order words (CONTEXT, #ORDER,
-CURRENT) that gforth doesn't provide.
+| file | what it is |
+|---|---|
+| `cv8.c` | the engine |
+| `kernel.4` | the Forth kernel, and the run-time compiler |
+| `cross.4` | the cross-compiler that builds `kernel.img` |
+| `extend.4`, `pool.4`, `shadow.4`, `save-system.4` | extensions: search order, heap buffers, locals, saving an image |
+| `shell.4`, `tree.4`, `edit.4` | the shell: commands and expansion, the parser and executor, the line editor |
+| `relfsh` | the wrapper that runs the shell |
+| `tests/`, `tools/` | the suites, and the tools that measure and fuzz |
+| `prompts/` | reusable prompts for this kind of work; `prompts/INDEX.md` dispatches |
 
-To compile kernel with RelF you need to do the following:
-    a) start RelF with initial kernel: ./relf kernel.img
-    b) load extensions: S" extend.4" INCLUDED
-    c) load cross-compiler: S" cross.4" INCLUDED
+## The documents
 
-After a couple of moments RelF would exit and you'll get new kernel.img.
-Please, backup original kernel.img, since it would be overwritten during 
-crosscompilation.
+Each covers one topic; where one needs another, it says which.
 
-To cross-compile a *32-bit* (4-byte-cell) target image instead of the
-8-byte-cell default, edit the "8" in cross.4's own
-"VARIABLE TARGET-CELL-BYTES / 8 TARGET-CELL-BYTES !" lines (near the
-top of the file) to "4", then follow the same three steps above. This
-is a plain, direct source edit rather than something settable before
-including cross.4 - see the comment at that exact spot in cross.4 for
-why (a top-level IF/THEN silently corrupted the dictionary instead of
-erroring; see PROGRESS.md for the full account). Bootstrapping a new
-target cell width needs a cross-compile *host* whose own cells are at
-least as wide as the new target's - i.e. building a 4-byte-cell image
-needs to run on an 8-byte-cell (or wider) host; the reverse doesn't
-work. This doesn't apply to building for a *new architecture* at the
-*same* cell width (e.g. ARM64) - that needs no image rebuild at all,
-per above.
+| file | topic |
+|---|---|
+| `README.md` | what this is, how to build and run it |
+| `GOALS.md` | the direction: what is open, what was decided and why, what was tried and rejected, the conventions |
+| `PROGRESS.md` | the log, one entry per iteration, oldest first - read it through its Index |
+| `CHECKING.md` | what to run after pulling, what each suite is for, and what its failures mean |
+| `CV8.md` | the engine and its image format: the reference, and the reasons |
+| `DASH.md` | this shell against dash, how dash runs a script, and what was taken from it |
+| `PERFORMANCE.md` | where the shell's time goes, and the standing questions about the machine |
+| `INTERACTIVE.md` | the interactive shell, its line editor, and how it is tested through a pty |
+| `FORTH-STYLE.md` | how to write Forth here, each rule with the incident behind it |
+| `EXPANSION-ORDER.md` | the order of a simple command's expansions: the design, and where it stopped |
+| `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' test suites |
 
-3. Virtual Machine.
+## Where it came from
 
-Virtual machine uses 3 internal registers: instruction pointer (IP), data
-stack pointer (SP) and return stack pointer (RP). Cells are 8 bytes by
-default, or 4 bytes when built for a 32-bit host (see above).
+From the original README, by Kirill Timofeev (2013):
 
-IP can point to the cells of 2 types:
-a) containing reference to primitive;
-b) containing shift to high-level definition.
+> The idea of RelF came to me after looking at SOD32 by L.C. Benschop.
+> SOD32 is a very interesting project with separated engine and
+> machine-independent forth-system binary image. But SOD32 is pretty
+> slow due to many reasons. I became interested in speeding up SOD32.
+> At least to some extent I succeeded. [...] The main [change] was
+> organization of threaded code: reference to high-level definition
+> contains now not address of this definition, but relative offset
+> (thus the name - Relative Forth).
 
-Those 2 cases are distinguished in the following way. Since shift to
-high-level definition is obtained by subtracting one cell address from another
-cell address it should have 3 minor bits set to zeroes. Reference to primitive
-is constructed by adding 1 to address of function, implementing primitive, so
-it should look like number_of_primitive * 8 + 1 (8 - sizeof address). If ([IP]
-& 1) == 1, then IP points to cell, containing reference to primitive. In this
-case we jump (via computed goto - a GCC/Clang extension, not a
-function-pointer call - see GOALS.md phase 5) to the code implementing
-that primitive, indexed the same way: number_of_primitive * 8 + 1 is
-still the addressing scheme, just used to index a table of label
-addresses instead of function pointers. Otherwise, if
-([IP] & 1) == 0, IP points to cell, containing shift to high-level definition.
-In this case we push current IP to return stack and jump to high-level
-definition: IP = IP + [IP].
+The engine has since changed completely - CV8.md tells how - but that
+idea, a relative offset where other systems keep an address, is still
+the one it is built on. Upstream is https://github.com/kt97679/relf.
 
-Loops and branches are implemented using BRANCH (unconditional jump) and
-0BRANCH (conditional jump) primitives, which are followed by shift, which
-should be added to IP.
+## Licence
 
-RelF works in absolute addresses. During system initialization absolute
-address of system is pushed to the stack. It is used to adjust all system
-addresses, which should be absolute.
-
-4. Shell.
-
-An optional POSIX-flavored shell, shell.4, is layered on top of an
-already-bootstrapped kernel.img - it is not part of the base kernel
-image, kept separate deliberately so the base image stays minimal (see
-GOALS.md, goal 3). The easiest way to use it is via the relfsh wrapper
-script at the repo root, which gives it a normal single-executable
-interface:
-
-    ./relfsh -c 'echo hello'      run one command, exit with its status
-    ./relfsh                      interactive read-eval loop
-    printf 'cd /tmp\npwd\nexit\n' | ./relfsh
-                                   piped multi-line script
-
-relfsh is a thin POSIX-sh wrapper: it feeds relf the two-line Forth
-bootstrap (load shell.4, then call MAIN) ahead of whatever else is on
-its own stdin, so relf itself doesn't need to be invoked interactively
-just to reach the shell. The same two steps done by hand:
-
-    ./relf kernel.img
-    S" shell.4" INCLUDED
-    MAIN
-
-(MAIN checks whether relf was invoked with `-c "command"` - exposed to
-Forth via the SYS-ARGC/SYS-ARG primitives, which read relf's own argv
-beyond the image path - and either runs that one command via SH-C or
-falls through to the ordinary interactive SH loop; calling SH directly
-skips that check and always goes interactive.)
-
-This loads thirteen new process-control primitives' worth of shell
-logic (FORK/EXECVE/WAITPID/PIPE/DUP2/GETENV/SETENV/UNSETENV/SYS-EXIT/
-CHDIR/GETCWD/SYS-ARGC/SYS-ARG/GETPID are already compiled into
-kernel.img itself, same as any other primitive). Current (v0.8)
-scope: external commands are resolved via $PATH and run via
-fork/exec/wait, cd/pwd/export/unset/exit are supported as builtins, a
-single pipe per line (cmd1 | cmd2) wires two external commands
-together via a real pipe, redirection (<, >, >>) is supported for
-external commands, arguments can be quoted (single quotes are fully
-literal; double quotes recognize \" and \\ as escapes; a lone
-backslash escapes the next character) so they can contain spaces or
-literal shell metacharacters - echo 'a | b' prints "a | b" rather than
-starting a pipeline - a standalone "NAME=value" line (the whole line,
-not "NAME=value command args..." yet - a real, documented gap) sets a
-shell-local variable, distinct from the OS environment (POSIX's
-"shell parameter" vs "environment variable" - an unexported one isn't
-inherited by a child process, only export NAME=value calls SETENV as
-well), and $VAR/${VAR} expansion checks shell-local storage first,
-falling back to the inherited environment for anything this shell
-never itself assigned, with $? for the last command's exit status and
-$$ for this shell's own PID - correctly handling a value longer than
-its own $NAME/${NAME} reference text with more text following it on
-the same line (e.g. "echo $x in") is a real, independently-fixed
-correctness issue (see PROGRESS.md's Iteration 26 entry) rather than
-something that was always fine, since this shell's own in-place token
-compaction can otherwise let the write cursor overtake the read
-cursor and corrupt unread input. $(command) runs an external command with
-its stdout captured (all trailing newlines stripped, matching POSIX;
-internal newlines are kept) and spliced into the surrounding token -
-echo pre_$(echo mid)_$X
-concatenates with both literal text and $VAR expansion the same way
-${VAR}suffix already does, single-quoted $(...) stays fully literal
-while double-quoted $(...) still substitutes, but the substituted
-command's own text only gets a bare whitespace split (no quoting,
-expansion, pipes, or redirection within it yet, and no nested $(...)
-either), if/then/else/fi is supported (the condition is a normal
-command, run for its exit status) and supports nesting - a body line
-that's itself another if works correctly at any depth, regardless of
-whether the enclosing branch actually executes - and so is
-while/do/done, though while does not support nesting yet (its
-condition/body are buffered as raw text across dedicated buffers
-rather than a single scalar, a harder problem left for its own future
-work) - the condition and body are both genuinely re-evaluated fresh
-every iteration (including fresh $VAR/$?/$$ re-expansion, not frozen
-from the loop's first reading - "while test $? -eq 0" behaves the way
-you'd expect, updating each time around). for VAR in word1 word2 ...
-iterates its body once per word (expanded once, at the for line
-itself, not re-evaluated - matching POSIX), setting VAR each time -
-reusing while's own body-capture/replay mechanics, it shares the same
-limitation: a loop body cannot contain another multi-line construct
-at all (if/then/fi, or a nested while/for) - a body line that's itself
-an if silently misbehaves (its own body runs unconditionally,
-regardless of the if's condition), since the replay mechanism
-dispatches stored body lines independently rather than through a real
-read-ahead stream if/while/for could all share (a real, documented gap
-- see PROGRESS.md's Iteration 23 entry - left for its own future
-work). There's no until. case WORD in PATTERN) <body> ;; ... esac
-matches the first arm whose pattern matches (glob patterns: *, ?,
-[...] with a-z ranges and [!...]/[^...] negation, and | for multiple
-alternatives on one arm) and never falls through to a later one, the
-way a C switch can - requires each pattern arm on its own separate
-line, same as while/for's own scope limit. `;` separates multiple commands on one line,
-each run in sequence
-regardless of the previous
-one's own exit status - but a variable assigned or exported earlier in
-the same line via `;` isn't visible yet to a $VAR expansion later in
-that same line ("FOO=bar ;
-echo $FOO" prints nothing, though the same assignment on its own,
-separate line works correctly), since $VAR expansion happens once for
-the entire raw line up front, before any `;`-segment has actually run
-- a real, documented architectural gap (see PROGRESS.md's Iteration 18
-entry), not silent breakage. `&&`/`||` chain commands conditionally on
-the previous one's exit status - left-associative, equal precedence
-for both, evaluated left to right, correctly carrying the "compound
-status so far" through a skipped segment ("a && b || c" runs b and
-skips c if a succeeds, but skips b and runs c if a fails) - tighter
-precedence than `;`, looser than `|`. None of these operators need
-surrounding whitespace to be recognized - "true;echo hi", "a|cat", and
-"echo a>file" all parse correctly with no spaces at all, matching real
-shells (a quoted operator character stays literal, as always).
-if COND; then BODY; fi (and ...; else BODY2; fi) now work with
-then/else/fi all on the same line, at any nesting depth - a nested
-if's own else/fi is correctly distinguished from the outer one's, so
-"if a; then if b; then x; else y; fi; z; fi" runs the right pieces
-regardless of how deep it goes. while/for still require `do` on its
-own separate line - extending this to them is separate, still-open
-future work (see PROGRESS.md's Iteration 25 entry, including four
-real bugs found and fixed getting there). Content after the *final*
-fi on the same line (e.g. "if x; then y; fi; z") is silently dropped
-rather than run - a documented, deliberate scope limit, not silent
-breakage.
-`( )`/`{ }` are the one exception still requiring surrounding
-whitespace, since spacing them out unconditionally would break
-$(...) command substitution. `( list )` runs its body in a
-forked subshell - cd/variable/export changes inside it don't affect
-this shell - while `{ list ; }` runs its body directly in this shell
-instead, so those changes do persist; both require whitespace around
-the `(`/`)`/`{`/`}` tokens themselves, matching every other operator's
-convention here (a real gap against mrsh's own tests, which write
-"(cmd)" with no spaces - a trailing pipe or redirect after a group is
-also silently dropped rather than applied, for now). An expansion
-result, or a quoted
-token, is treated the same way: never re-split on whitespace and never
-re-interpreted as an operator/builtin/keyword, so e.g. a variable
-holding | stays a literal argument and echo 'if' prints "if" rather
-than starting a conditional. `-c` only ever runs commands on one
-logical line (`;`/`&&`/`||`-chaining all work, but no if/while, which
-need multiple lines), pipes and redirection can't be
-combined on the same line yet, only a single pipe per line is
-recognized (no a | b | c), and there's no ${VAR:-default}-style
-modifier or positional parameters. relfsh also supports running a
-script file directly (`relfsh script.sh`, matching `sh script.sh`) in
-addition to `-c` and interactive/piped-stdin use, and `exit` takes an
-optional status argument, defaulting to the previous command's own
-status ($?) rather than always 0 when none is given - if/while
-correctly read their own body lines (then/else/fi, do/done, and
-everything between) from wherever the script's input is actually
-coming from, whether that's a script file or piped/interactive stdin
-(a real, now-fixed bug: earlier versions always read from the real
-process stdin regardless, so if/while were silently no-ops whenever
-used inside a script file - see PROGRESS.md's Iteration 21 entry). See
-GOALS.md
-phase 7 (and goal 8, a separate, much larger effort to close the gap
-against a more complete reference shell) and PROGRESS.md's Iteration 5
-through 27 entries for the current state and what's planned next.
-tests/shell/ has a small test suite (structurally modeled on bash's
-own tests/ directory) exercising all of the above; run it directly
-via `tests/shell/run-all`, or as part of `tests/run_tests.sh`.
-
-Separately, GOALS.md's goal 8 adopts mrsh
-(https://github.com/emersion/mrsh)'s own test suite - vendored
-unmodified into tests/mrsh-suite/vendor/ - as an external, trackable
-target for how much further shell.4 has to go; run it via
-`tests/mrsh-suite/run.sh` (current: 1 passed, 20 failed, 3 skipped,
-crash-free, phase A and phase B both done (modulo a couple of
-documented, still-open items within phase B), phase C underway - see
-PROGRESS.md's Iteration 14 through 27 entries).
-
-5. Possible usage.
-
-The main advantages of this system is small size of both machine-dependent
-engine and of machine-independent binary system image. Due to those features
-it can be used:
-    * for development of plugins to different applications;
-    * as embedded programming language;
-    * etc ;).
-
-6. Benchmarks
-
-The numbers below predate phase 2 (32-bit cells, relfgcc/vm.asm/vm_tos.asm
-variants that no longer exist - see GOALS.md) and are kept only as a
-historical record; they are not representative of the current engine.
-
-Benchmarks results were obtained with the only test, calculating fiboncci
-numbers (fib.4). I used gforth-0.5.0 and sod32 from the authors home page
-(http://www.xs4all.nl/~lennartb/sod32.tar.gz). Numbers in table are user time,
-obtained by the following command:
-
-cat fib.4 | time relf kernel.img
-
-------------------+----------------+-------------------------+
-OS                | FreeBSD 4.11-S | SunOS 5.9               |
-CPU               | P1, 75 MHz     | UltraSparc III, 900 MHz |
-gforth            | 0.6.2          | 0.6.2                   |
-gcc               | 2.95.4         | 2.95.2                  |
-test              | fib 34         | fib 38                  |
-------------------+----------------+-------------------------+
-C                 |  4.73          | 2.9                     |
-relf              | 47.60          | 51.2                    |
-relfgcc           | 33.03          | 37.4                    |
-relf + vm.asm     | 16.53          |                         |
-relf + vm_tos.asm | 15.74          |                         |
-gforth            | 16.51          | 15.9                    |
-gforth-fast       | 13.21          | 12.4                    |
-sod32             | 72.73          | 43.1                    |
-------------------+----------------+-------------------------+
-
-------------------+--------------------------------+
-OS                | SuSe 9.2 (kernel 2.6.4-52-smp) |
-CPU               | Xeon 2.40GHz                   |
-gforth            | 0.6.2                          |
-gcc               | 3.3.3                          |
-test              | fib 40                         |
-------------------+--------------------------------+
-C                 |  3.89                          |
-relf              | 87.81                          |
-relfgcc           | 58.05                          |
-relf + vm.asm     |                                |
-relf + vm_tos.asm |                                |
-gforth            | 14.37                          |
-gforth-fast       |  7.70                          |
-sod32             | 89.66                          |
-spf               |  2.53                          |
-------------------+--------------------------------+
-
-7. Contact info.
-
-e-mail: kt97679@gmail.com
+GPLv2 only, as the RelF and SOD32 sources it derives from are
+("version 2", with no "or any later version"). Relicensing would need
+the permission of Kirill Timofeev and L.C. Benschop.

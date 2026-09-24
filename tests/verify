@@ -56,12 +56,13 @@ trap 'rm -f "$OUT"' EXIT INT TERM
 emit() { printf '%s %s\n' "$1" "$2" >> "$OUT"; }
 
 # ---------------------------------------------------------------
-# 1. Reproducible build. The images are tracked, so a rebuild that
-#    does not reproduce them byte for byte means either the build is
-#    nondeterministic or the committed image is stale. Both were true
-#    before Iteration 148: SS-SCRUB did not know about shadow.4's
-#    scratch variables or about #TIB, so every test run dirtied the
-#    working tree and no diff could be trusted.
+# 1. Reproducible build. A rebuild of the shell images must be byte
+#    for byte the one the last build made, or the build is
+#    nondeterministic - as it was before Iteration 148, when SS-SCRUB
+#    did not know about shadow.4's scratch variables or #TIB. The
+#    images were tracked until Iteration 489; now `image-sum:` records a
+#    checksum of each, which is what compares another machine's build
+#    with this one's.
 # ---------------------------------------------------------------
 echo "== reproducible build =="
 # Since 489 the shell images are not committed, so "before" is the one

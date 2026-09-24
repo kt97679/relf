@@ -5,12 +5,12 @@
 #
 # relf is built from cv8.c, the CV8 engine - portable, libc-based C,
 # built with a plain `cc`. Cell width is the host's pointer width,
-# chosen at compile time (GOALS.md phase 6), so a 32-bit compiler
+# chosen at compile time (CV8.md 5.4), so a 32-bit compiler
 # (`cc -m32`) produces the 4-byte-cell engine with no source changes.
 # The i386 build is non-PIE: PIE spends ebx on the GOT, which costs
 # the engine's TOS cache more than it saves (CV8.md 5.1).
 #
-# Images are native host endianness (see GOALS.md phase 5), not a
+# Images are native host endianness (GOALS.md, Non-goals), not a
 # portable on-disk format, and carry a CV8 header (CV8.md
 # 4.1) recording the cell width, so a mismatched image fails cleanly at
 # load instead of silently misbehaving. The 4-byte-cell image is a genuinely different

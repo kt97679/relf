@@ -77,7 +77,7 @@ help:
 	@echo ''
 	@echo '  absg           the Advanced Bash-Scripting Guide examples (ABSG=/path)'
 	@echo '  portability    the scaffolding: shebangs, locale pins, the bundle'
-	@echo '  lint           comment lint over the Forth sources'
+	@echo '  lint           comment lint over the Forth sources; host-sh lint over tests'
 	@echo '  dead-words     unreachable definitions'
 	@echo '  sizes          this shell against every other one installed'
 	@echo '  profile        dispatch counts per word, on a realistic script'

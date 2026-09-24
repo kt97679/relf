@@ -27,6 +27,50 @@ acceptance, the shell's own assertions and the interactive pty cases,
 then compares every count against `tests/BASELINE`. It prints
 `VERIFIED: everything matches` or names what moved.
 
+## The suites, and what each is for
+
+`make verify` runs them all against `tests/BASELINE`; `make help` lists
+the targets that run each alone.
+
+1. **The core suite** (`tests/run_tests.sh`, `make test`) - `tester.fr`,
+   John Hayes's 1993 CORE tests in RelF's `{ -> }` form, and the
+   Forth-level tests, on both cell widths; `tests/ext/` adds CORE EXT,
+   Memory-Allocation and File-Access, and `tests/io/` how the kernel
+   reads its terminal. Full Forth-2012 conformance is not a goal: cases
+   are taken from its suite where they apply.
+2. **The shell's own assertions** (`tests/shell/run-*`, `make shell`) -
+   for what bash is the *wrong* oracle for: this shell's diagnostics,
+   forms it rejects on purpose, its limits, and behaviour where the
+   references disagree. A `run-*` file is picked up by `run-all`; run it
+   through `run-all`, which sets `THIS_SH`.
+3. **The differential cases** (`tests/diff/cases/`, `make diff`) - plain
+   scripts run under this shell and bash, outputs compared, **no
+   hand-written expectations at all**. The strongest layer, and the one
+   to reach for first: add a case *before* changing behaviour. A case
+   must avoid what the two shells legitimately disagree on.
+4. **The construct matrix** (`tests/matrix/`, `make matrix`) - thirty
+   construct templates, each in thirteen contexts, and 32 syntax errors,
+   scored against bash in POSIX mode and dash; a case counts only when
+   they agree. A failure not in `KNOWN-FAILING` is a regression.
+5. **The parser** (`tests/parse/`) - expected trees, and every other
+   suite's scripts checked to get the same syntax verdict as `dash -n`.
+6. **POSIX and mrsh** (`tests/posix/`, `tests/mrsh-suite/`, `make posix
+   mrsh`) - cases derived from XCU itself, scored against the
+   *consensus* of the reference shells present, and mrsh's suite,
+   vendored unmodified, the outside view.
+7. **The pty transcripts** (`tests/interactive/`, `make interactive`) -
+   the line editor, prompts, job control and signals, through a real
+   pseudo-terminal (INTERACTIVE.md).
+8. **The external corpora** (`make busybox`, `make yash`) - fetched, not
+   vendored; each prints CRASH, HANG or wrong per failure, and what the
+   reference passes and this shell does not.
+9. **The fuzzers** (`tools/crashfuzz.py`, `tools/difffuzz.py`) - not in
+   `make verify`: run them after changes to the parser, the expander or
+   the job code (GOALS.md, "Tools for finding the next bug").
+
+`tools/coverage.py` measures layers 2-6 against `shell.4`: which words
+never run and which run only in part.
+
 ## When something fails
 
     make diff             # just the differential cases

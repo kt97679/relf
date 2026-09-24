@@ -1,8 +1,8 @@
-# Cases this shell does not match yet. The list is empty: every
-# interactive case matches dash as of Iteration 315. Entries went in 302
-# (PS1, PS2, blank lines, the newline on ^D), 310 and 312 (the job
-# notice and its text), 314 and 315 (^C at the prompt and during a
-# command). Keep using this file rather than deleting a failing case.
+# Cases this shell does not match yet: one, below. The others that were
+# listed here went in 302 (PS1, PS2, blank lines, the newline on ^D),
+# 310 and 312 (the job notice and its text), 314 and 315 (^C at the
+# prompt and during a command). Keep using this file rather than
+# deleting a failing case.
 job-control         # ^Z, jobs, bg, kill %1 and the wording of every notice
                     # match dash as of Iteration 324. What differs is WHEN the
                     # completion notice appears: this shell reaps in the notice

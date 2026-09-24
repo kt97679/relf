@@ -62,12 +62,17 @@ this language has.
 ## 4. Locals
 
 A local here **is an ordinary `VARIABLE`**, saved on entry to the
-declaring word and restored on every exit (`locals.4`). Consequences
-worth knowing:
+declaring word and restored on every exit - `shadow.4`, loaded before
+`shell.4`. That is what keeps the implementation small and what makes
+converting a word cheap: its body does not change, because `CA-N @` and
+`CA-N !` keep working. Converting is one declaration line and deleting
+the argument-popping stores.
 
 ```forth
-: COPY-ARGV ( src-argv src-argc --- )  {: CA-SRC CA-N :}
+: COPY-ARGV ( src-argv src-argc --- )  SHADOW{ CA-SRC CA-N }
   CA-N @ ARGC ! ...
+: GLOB-MATCH ( pat plen text tlen --- f )
+  SHADOW{ GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S }
 ```
 
 - Names before `|` are filled from the data stack, **left to right =
@@ -78,7 +83,7 @@ worth knowing:
   and take it straight back as an argument local:
 
   ```forth
-  BODY-ARENA-TOP @  {: BODY-ARENA-TOP | ... :}
+  BODY-ARENA-TOP @  SHADOW{ BODY-ARENA-TOP | ... }
   ```
 
   This is how the body arena gets stack-discipline deallocation for
@@ -87,10 +92,26 @@ worth knowing:
   name keep working** without being passed anything. `GLOB-MATCH`'s
   helpers read `GM-PATTERN` directly. A conventional locals frame would
   have forced rewriting every helper to take parameters.
-- **The whole `{: ... :}` must be on one physical line.** `WORD` does
-  not refill, and making it refill means calling `REFILL` mid-parse —
-  the mechanism behind the multi-line `( )` comment corruption in
-  Iteration 33. Diagnosed explicitly rather than misparsed.
+- `EXIT` and `;` are wrapped, so the restore happens on every exit
+  path, and they compile nothing extra in a word that declares none.
+- **The whole `SHADOW{ ... }` must be on one physical line.** `WORD`
+  does not refill, and making it refill means calling `REFILL`
+  mid-parse - the mechanism behind the multi-line `( )` comment
+  corruption in Iteration 33. Diagnosed explicitly rather than misparsed.
+- Limits: a local must already be a defined `VARIABLE`; 16 names per
+  definition (`LDECL-MAX`); 4,096 cells of live save stack
+  (`LSAVE-MAX`, raised from 256 in Iteration 90); `ABORT` inside a
+  locals-using word leaks its saved cells.
+- **It is not the standard's Locals word set**, which is optional, and
+  CORE stands without it. It was spelled `{: :}` until Iteration 236,
+  and was renamed so that standard code using that spelling fails
+  loudly instead of computing address arithmetic.
+- The engine runs the common case of `LSAVE` and `LRESTORE` as single
+  opcodes, falling back to the Forth words on their error paths
+  (CV8.md 6.3).
+- **A file `INCLUDED` into an unknown session must not inherit its
+  `BASE`**: `tester.fr` leaves it at 16, which once turned `shadow.4`'s
+  own `32 WORD` into `0x32 WORD`, delimiting names on the character `2`.
 
 ## 5. Naming
 
@@ -234,13 +255,13 @@ Audit periodically, not only when touching a feature.
   first. (Iteration 33)
 - **Do not inherit the caller's `BASE`.** A loadable file must save
   `BASE`, force `DECIMAL`, and restore it. `tester.fr` leaves `BASE`
-  at 16; `locals.4`'s `32 WORD` was read as `0x32` = the character
+  at 16; the locals file's `32 WORD` (`locals.4` then, `shadow.4` now) was read as `0x32` = the character
   `2`, so `WORD` delimited names on the digit 2. Prefer `[CHAR] x` and
   `BL` to numeric character constants. (Iteration 38)
 - **Define before use.** One linear source file; a word used before
   its definition is an "Undefined word" at load. This has caught
   something in roughly a third of iterations. For genuine mutual
-  recursion use `DEFER` / `IS` (`locals.4`):
+  recursion use `DEFER` / `IS` (`shadow.4`):
 
   ```forth
   DEFER FOO-CALL        \ callable from here on
@@ -425,10 +446,13 @@ generalizes.
 - The friction is a *missing primitive*, not syntax. The real costs
   here were no locals and no memory allocator — both closed by ~65
   and ~40 lines respectively, both immediately reused everywhere.
-- It is standard. `ALLOCATE`/`FREE`/`RESIZE` is Forth-2012's own
-  wordset, not an invention; `{: ... :}` follows Forth-2012 locals.
-  Standard spellings cost nothing to learn and are not a private
-  dialect.
+- It is standard where it can be. `ALLOCATE`/`FREE`/`RESIZE` is
+  Forth-2012's own wordset, not an invention, and a standard spelling
+  costs nothing to learn. The converse holds too: the locals were first
+  spelled with the standard's `{: :}`, and Iteration 236 renamed them
+  `SHADOW{ }` because their semantics are not the standard's - a
+  standard spelling on non-standard behaviour is worse than a private
+  one.
 - It composes with what exists. Locals compose with `>R`/`R>`, with
   the existing `VARIABLE`s, and with the deferred-word pattern.
 
@@ -490,3 +514,34 @@ board, after four hundred iterations on x86-64 alone.
   an i386 engine can be built, and `make HOSTBITS=32` with
   `CC='cc -m32 -fno-pie -no-pie'` makes a 64-bit machine behave as a
   32-bit host.
+
+## 16. Memory: ask for it when it is needed, outside the image
+
+Agreed at Iteration 41, and the reasons:
+
+- **Don't hardcode limits, and don't preallocate.** `CREATE name n
+  ALLOT` takes dictionary at compile time, so the space lands in every
+  saved image whether or not it is used. The first prebuilt shell image
+  was 253,528 bytes, of which 135,576 were such buffers and 77.3% zeros;
+  one unused 73,728-byte buffer was 29% of it.
+- **Prefer memory outside the image.** `ALLOCATE`, `FREE` and `RESIZE`
+  (primitives since Iteration 41, over the host's `malloc`) cost no
+  dictionary, are not written out by `SAVE-SYSTEM` and are not bounded
+  by the engine's `MEMSIZE`. `pool.4`'s `BUFFER:` is the front end: the
+  call site of a `CREATE`d buffer, three cells in the image, the space
+  allocated on first use.
+- **Growable rather than fixed, where the size genuinely varies.** The
+  body arena starts at 4 KB and doubles with `RESIZE`, with no maximum.
+- **Hold offsets, not pointers, into anything growable.** `RESIZE` may
+  move a block, and measurably does - 7 moves in 15 calls. That is safe
+  as long as nothing outside holds a raw pointer in. Where code does
+  hold addresses into a buffer, grow it the way `pool.4`'s `BUF-ENSURE`
+  does: allocate the new block and RETIRE the old one rather than
+  freeing it; the top-level loop frees retired blocks between commands.
+- **A full fixed table must never fail silently.** Several once did -
+  `SET-SHVAR` simply did nothing past 32 variables. Since Iterations
+  90 and 250-252 the tables report when full, and most grow.
+- **Heap memory is never saved in an image.** Anything `ALLOCATE`d is
+  process-local, which is why `BUFFER:` pointers are reset before a save:
+  an image carries declarations, never contents. State that must survive
+  into an image has to live in the dictionary, deliberately.
