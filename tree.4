@@ -3591,6 +3591,16 @@ VARIABLE SUBLIST-XT
 : TREE-RUN-CSTR ( c-addr --- )   DUP CSTRLEN TREE-RUN-TEXT ;
 ' TREE-RUN-CSTR IS TRAP-RUN-CALL
 
+\ Startup files (Iteration 504). A login shell - `-l`, or a name that
+\ begins with `-` - reads /etc/profile and then $HOME/.profile, as dash
+\ and ash do, even for -c; an interactive shell then reads the file that
+\ $ENV names, after parameter expansion (XCU 2.5.3, ENV). A file that
+\ cannot be read is passed over in silence, as dash passes it. The words
+\ that do it follow DO-DOT, which they call, at the end of this file.
+VARIABLE LOGIN?
+DEFER READ-PROFILES-CALL   ( --- )
+DEFER READ-ENV-FILE-CALL   ( --- )
+
 VARIABLE SA-I        \ how far through relf's own arguments the scan is
 VARIABLE SA-MODE     \ 0: a script or standard input; 1: -c; 2: -s
 VARIABLE SA-ON?      \ this option word turns options on, or off
@@ -3607,8 +3617,9 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
     DUP 99 = IF DROP 1 SA-MODE ! ELSE          \ -c
     DUP 115 = IF DROP 2 SA-MODE ! ELSE         \ -s
     DUP 105 = IF DROP -1 INTERACTIVE? ! ELSE   \ -i
+    DUP 108 = IF DROP -1 LOGIN? ! ELSE         \ -l: a login shell
       OPT-LETTER ?DUP IF SA-ON? @ SWAP ! THEN
-    THEN THEN THEN
+    THEN THEN THEN THEN
     1 SA-P +!
   REPEAT ;
 
@@ -3671,13 +3682,15 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   THEN ;
 
 : RUN-STDIN ( --- )   \ commands from standard input
+  INTERACTIVE? @ IF INTERACTIVE-SETUP READ-ENV-FILE-CALL THEN
   0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
-  INTERACTIVE? @ IF INTERACTIVE-SETUP THEN
   TREE-RUN LAST-STATUS @ SHELL-EXIT ;
 
 : RUN-SOURCES ( --- )   \ -c, a script, or standard input
   0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !  0 EXIT-AFTER? !  0 SRC-DEPTH !
+  0 LOGIN? !
   SHELL-PARSE-ARGS
+  LOGIN? @  SHELL-NAME @ C@ 45 =  OR IF READ-PROFILES-CALL THEN
   SA-MODE @ 1 = IF                             \ -c command [name [args]]
     SA-I @ SYS-ARGC < 0= IF
       S" shell: -c requires an argument" ERR-TYPE ERR-NL  2 SHELL-EXIT
@@ -3953,3 +3966,35 @@ CMDLINE-MAX 1+ BUFFER: CMDLINE-BUF   \ allocated when first used, not in the ima
 
 ' DO-DOT S" ." BUILTIN
 ' DO-TYPE S" type" BUILTIN
+
+\ ---- startup files (Iteration 504) ----
+CREATE STARTUP-DOT-NM   CSTR," ."
+CREATE ETC-PROFILE-NM   CSTR," /etc/profile"
+CREATE DOT-PROFILE-NM   CSTR," /.profile"
+CREATE ENV-NM           CSTR," ENV"
+4096 BUFFER: STARTUP-PATH
+
+: SOURCE-STARTUP-FILE ( path --- )   \ as `.` would run it, if it can be read
+  DUP 4 ACCESS IF DROP EXIT THEN              \ R_OK: missing is not an error
+  ARGV CELL+ !  STARTUP-DOT-NM ARGV !  0 ARGV 2 CELLS + !  2 ARGC !
+  DO-DOT ;          \ $? is the file's last status afterwards, as in dash
+
+: STARTUP-PATH-FROM ( c-addr u --- )   \ into STARTUP-PATH, NUL-terminated
+  4095 MIN DUP >R STARTUP-PATH SWAP MOVE  0 STARTUP-PATH R> + C! ;
+
+: READ-PROFILES ( --- )   \ a login shell's /etc/profile, then $HOME/.profile
+  ETC-PROFILE-NM SOURCE-STARTUP-FILE
+  HOMEBUF-NM LOOKUP-VAR ?DUP 0= IF EXIT THEN
+  DUP CSTRLEN DUP 4000 < 0= IF 2DROP EXIT THEN
+  DUP >R STARTUP-PATH SWAP MOVE
+  DOT-PROFILE-NM DUP CSTRLEN 1+ STARTUP-PATH R> + SWAP MOVE
+  STARTUP-PATH SOURCE-STARTUP-FILE ;
+
+: READ-ENV-FILE ( --- )   \ an interactive shell's $ENV, parameter-expanded
+  ENV-NM LOOKUP-VAR ?DUP 0= IF EXIT THEN
+  DUP C@ 0= IF DROP EXIT THEN
+  DUP CSTRLEN EXPAND-DQ-TEXT-SAFE STARTUP-PATH-FROM
+  STARTUP-PATH SOURCE-STARTUP-FILE ;
+
+' READ-PROFILES IS READ-PROFILES-CALL
+' READ-ENV-FILE IS READ-ENV-FILE-CALL

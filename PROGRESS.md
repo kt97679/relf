@@ -499,6 +499,7 @@ do not trust the absence of a line below.
 - **501** — the opcode experiment: a 1 GB code space would cost nothing measurable
 - **502** — where the POSIX language's cost lives: no feature halves it; re-read text is the trouble
 - **503** — Rill: a shell language designed from 502's measurements
+- **504** — startup files: /etc/profile, ~/.profile and $ENV, as dash reads them
 
 ### Not tied to an iteration
 
@@ -24050,3 +24051,40 @@ measured by building it; parts of it echo rc, fish and nushell, and its
 novelty is unchecked against the literature - `prompts/02` comes first
 for any claim that reaches the article. Four questions are left open,
 indentation-significant text blocks the sharpest of them.
+
+## Iteration 504: startup files
+
+The POSIX gap 499 found: this shell read no startup file at all. dash's
+behaviour was measured case by case first, and is what this does:
+
+- a **login shell** - `-l`, or a name beginning with `-` - reads
+  `/etc/profile` and then `$HOME/.profile`, even with `-c` or a piped
+  script;
+- an **interactive shell** then reads the file `$ENV` names, after
+  parameter expansion - `ENV='$HOME/.shrc'` is the usual form - through
+  `EXPAND-DQ-TEXT-SAFE`, the word that expands `PS1`;
+- a file that cannot be read is passed over in silence.
+
+Each file is run by `DO-DOT` itself, with `ARGV` set to `. path`, so a
+startup file behaves exactly as the same file given to `.`. `DO-DOT` is
+defined late in tree.4, after `RUN-SOURCES` and `MAIN`, so the two
+hooks are deferred words, filled in at the end of the file.
+
+**One assumption of mine was wrong, and a comparison caught it.** I
+reset `$?` to 0 after the startup files, "as in dash"; dash keeps the
+status of the profile's last command - 1, for a profile ending in
+`false`. The reset is gone: `.` already leaves the right status.
+
+Through the `relfsh` script, a name beginning with `-` cannot reach the
+engine - `/bin/sh` replaces `argv[0]` with the script's path - so the
+wrapper's `RELF_ARGV0` carries it, and GOALS.md item 7, `relfsh` as a
+binary, would carry it directly.
+
+tests/shell/run-startup: ten assertions, each dash's own answer first -
+run against dash, nine pass, and the tenth is `RELF_ARGV0`, which dash
+does not know. CHECKING.md's advice to set PS1 in the `$ENV` file, which
+499 had to withdraw, is true again.
+
+Recorded changes, with their causes: `shell:assertions` 851 -> 861 and
+`shell:files` 80 -> 81, run-startup; both shell images about 500 bytes
+larger for the startup code, and their checksums with them.

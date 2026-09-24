@@ -147,11 +147,9 @@ being the bootstrap seed.
 script, clears PS1 from the environment** before exec'ing anything. On
 Debian and Ubuntu `/bin/sh` is dash and the prompt arrives; on Gentoo,
 Arch and Fedora it is bash and it does not. Set it inside the shell
-instead - `PS1='[mine] '` at the prompt - which works everywhere. (This
-file used to suggest the file `$ENV` names as well; this shell reads no
-startup file yet, which Iteration 499 found. GOALS.md's list for what
-comes next has it, and a `relfsh` that is not a script would end the
-PS1 problem.)
+instead - `PS1='[mine] '` at the prompt, or in the file `$ENV` names
+(read by an interactive shell since Iteration 504) - which works
+everywhere. A `relfsh` that is not a script would end the problem.
 
 ## The pty suite and a busy machine
 

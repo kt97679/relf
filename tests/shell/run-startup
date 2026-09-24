@@ -1,0 +1,38 @@
+#!/bin/sh
+# Startup files (Iteration 504), as dash reads them: a login shell - `-l`,
+# or a name beginning with `-` - reads /etc/profile and then
+# $HOME/.profile, even for -c; an interactive shell then reads the file
+# $ENV names, after parameter expansion (XCU 2.5.3). A file that cannot
+# be read is passed over in silence. Each expectation below was dash's
+# answer first. /etc/profile is the host's and is not relied on: the
+# checks look only for what this test's own files print.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+
+h=$(mktemp -d)
+printf 'echo "[profile]"\nPROFILE_VAR=set\nhello() { echo "hi from profile"; }\nfalse\n' > "$h/.profile"
+printf 'echo "[envfile]"\n' > "$h/envrc"
+
+out=$(HOME=$h "$THIS_SH" -l -c 'echo cmd' 2>&1 | grep -v '^$')
+assert_output_contains "-l reads \$HOME/.profile, even with -c" "[profile]" "$out"
+out=$(HOME=$h "$THIS_SH" -c 'echo cmd' 2>&1)
+assert_output_equals "... and without -l, nothing is read" "cmd" "$out"
+out=$(HOME=$h "$THIS_SH" -l -c 'echo "$PROFILE_VAR"; hello' 2>&1 | grep -v '^\[profile\]')
+assert_output_contains "a profile's variables and functions stay defined" "set" "$out"
+assert_output_contains "... functions too" "hi from profile" "$out"
+out=$(HOME=$h "$THIS_SH" -l -c 'echo "st=$?"' 2>&1)
+assert_output_contains "\$? after the profile is its last command's" "st=1" "$out"
+out=$(echo 'echo cmd' | HOME=$h RELF_ARGV0=-relfsh "$THIS_SH" 2>&1)
+assert_output_contains "a name beginning with - is a login shell" "[profile]" "$out"
+
+out=$(echo 'echo cmd' | HOME=$h ENV='$HOME/envrc' "$THIS_SH" -i 2>/dev/null)
+assert_output_contains "an interactive shell reads \$ENV, parameter-expanded" "[envfile]" "$out"
+out=$(echo 'echo cmd' | HOME=$h ENV='$HOME/envrc' "$THIS_SH" -l -i 2>/dev/null | grep '^\[' | tr '\n' ' ')
+assert_output_equals "... after the profile, when it is both" "[profile] [envfile] " "$out"
+out=$(echo 'echo cmd' | HOME=$h ENV=/nonexistent "$THIS_SH" -i 2>&1 | grep -c -i 'not found\|cannot')
+assert_output_equals "a missing \$ENV file is passed over in silence" "0" "$out"
+out=$(echo 'echo cmd' | HOME=$h ENV='$HOME/envrc' "$THIS_SH" 2>&1)
+assert_output_equals "a non-interactive shell does not read \$ENV" "cmd" "$out"
+
+rm -rf "$h"
+report

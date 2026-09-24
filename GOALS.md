@@ -167,6 +167,10 @@ work begins.
     specifies both. The likely shape is dash's: a login shell (`-l`, or
     `argv[0]` beginning with `-`) reads `/etc/profile` and
     `$HOME/.profile`, an interactive shell then the file `$ENV` names.
+    **Done at 504**, as dash does it, `-l` and a name beginning with `-`
+    both. Through the `relfsh` script the second reaches the engine only
+    as `RELF_ARGV0` - `/bin/sh` replaces `argv[0]` with the script's
+    path - which item 7 would fix.
 12. **Examples of the `forth` builtin**: a network server,
     `PROMPT_COMMAND`, or others. A server needs socket primitives the
     engine does not have (`socket`, `bind`, `listen`, `accept`) -
