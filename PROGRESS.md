@@ -487,6 +487,7 @@ do not trust the absence of a line below.
 - **489** — repository cleanup, part 1: only the files that are needed
 - **490** — the engine source: three dead macros, and comments that pointed at nothing
 - **491** — CV8.md: one document for the engine, checked against the source
+- **492** — DASH.md, measured afresh; PERFORMANCE.md takes the research questions
 
 ### Not tied to an iteration
 
@@ -23569,3 +23570,40 @@ engine and a test script, were rewritten with their sections mapped to
 the new ones. Nothing built changed, and that was checked, not assumed:
 both engines byte-identical by `cmp`, both kernels reproduce
 themselves, both shell images match their recorded checksums.
+
+## Iteration 492: DASH.md, measured afresh; PERFORMANCE.md takes the questions
+
+**DASH.md** is DASH-COMPARISON.md (how dash runs a script, read from
+its source at 268) and VERSUS-DASH.md (the comparison, "measured 304,
+refreshed 368"). The reading of dash's source is kept as it was; every
+number is new. VERSUS-DASH.md had gone wrong, not just old: its table of
+gaps listed `set -C`, `-a`, `-v` and `-b` as unsupported, `ulimit` as
+`-f` only and job notices as absent - all present for a hundred
+iterations. Measured now:
+
+- corpora: yash 1752 against dash's 1650, busybox 255 against 231;
+- `set -o`: this shell has 11 options, pipefail among them; dash has
+  six this shell lacks (ignoreeof vi emacs privileged nolog debug);
+- `tools/op-bench.py`, operation by operation: in-process work 25-120x
+  dash, builtins at parity, processes within 1.1-1.8x;
+- startup 1.05 ms for the engine against dash's 1.14 and bash's 1.17
+  (the relfsh wrapper adds about 2 ms of its own); 157,968 bytes of
+  engine and 64-bit shell image against dash's 129,784.
+
+**And one finding the refresh turned up**: an empty loop iteration now
+costs 61 µs, where 268 measured 34.5 - on a machine where dash measures
+the 1.4 µs it did then. So it is this shell's own drift, about 1.8x over
+two hundred iterations of correctness work. Not profiled yet; recorded
+in DASH.md and at the top of PERFORMANCE.md, where the question lives.
+
+Of 268's six recommendations from dash, five were taken - builtins,
+exec in the last command, the location cache (269), a hashed variable
+table (272), parse-time word encoding (273-283) - and `vfork` was not;
+DASH.md §3 says so, where the old file still listed all six as advice.
+
+**PERFORMANCE.md** gains RESEARCH-VM.md as its last part, the standing
+questions about the machine (fewer, larger primitives; a shell bytecode;
+superinstructions; native code), its headings demoted one level, and a
+short note at the top on where things stand. The five source comments
+that cited the old names now cite DASH.md; the shell images'
+checksums are unchanged.

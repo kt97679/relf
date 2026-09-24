@@ -519,7 +519,7 @@ CREATE EMPTY-CSTR CSTR," "
 \ FIND-SHVAR searched every variable, comparing names: 25 microseconds a
 \ lookup with 500 variables, and every $HOME or $PATH - which live in the
 \ environment, not the table - paid the whole scan before getenv. dash
-\ hashes (DASH-COMPARISON.md). SHVAR-INDEX is open addressing over the
+\ hashes (DASH.md). SHVAR-INDEX is open addressing over the
 \ table: each slot holds a variable's number plus one, or 0; it is at
 \ least twice the table's capacity, so never more than half full. An
 \ added variable is inserted; a removal (which moves the last entry) or
@@ -3357,7 +3357,7 @@ VARIABLE EXEC-ERR
 \ ---- where external commands are (Iteration 269) ----
 \ dash finds a command along PATH once and remembers it; this shell
 \ tried execve in each directory, every time - about 70 microseconds on a
-\ nine-entry PATH (DASH-COMPARISON.md). The parent now looks the name up
+\ nine-entry PATH (DASH.md). The parent now looks the name up
 \ before forking, with access(2), and keeps name -> path; the entries are
 \ dropped whenever PATH is not what they were found with. The child
 \ execs the remembered path, and falls back to the search if that fails.
@@ -5372,7 +5372,7 @@ VARIABLE UL-HARD-CUR
 \ true, false, echo, printf (Iteration 269)
 \ ==================================================================
 \ Programs until now: a fork and an exec, about 800 microseconds, where
-\ dash spends one to three (DASH-COMPARISON.md). echo follows the
+\ dash spends one to three (DASH.md). echo follows the
 \ echo scripts here have always run, /bin/echo, which is also bash's:
 \ options -n -e -E, escapes only with -e. printf follows POSIX and
 \ GNU: %s %b %c %d %i %u %o %x %X %%, flags - 0 + space, width and
@@ -6150,7 +6150,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
 \ ==================================================================
 
 \ Exec without forking when nothing follows the command in this process
-\ - dash's EV_EXIT (Iteration 269; DASH-COMPARISON.md): a pipeline stage's
+\ - dash's EV_EXIT (Iteration 269; DASH.md): a pipeline stage's
 \ or a subshell's only command, the last of a script. tree.4 decides; the
 \ flag is set only once the words are expanded, and DISPATCH clears it
 \ before a builtin or a function runs.

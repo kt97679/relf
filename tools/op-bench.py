@@ -4,7 +4,7 @@
 Each operation runs in a `while` loop N times; the CPU time of the shell
 and its children (wait4), best of ROUNDS, is divided by N, and the empty
 loop's cost is subtracted from the others. Written for Iteration 268's
-comparison with dash (DASH-COMPARISON.md).
+comparison with dash (DASH.md).
 """
 import os, sys, tempfile
 
