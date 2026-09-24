@@ -13,8 +13,8 @@ COLD \ call to cold start location: the engine starts executing here,
      \ with the image's base address on the data stack.
 WARM \ call to warm start location.
 LOCALS-CELLS \ five cells at image offset 8, for the engine's locals
-     \ opcodes: shadow.4 fills them in when it loads (CV8-REFERENCE.md
-     \ 7.3), and SAVE-SYSTEM saves them with the rest of the image.
+     \ opcodes: shadow.4 fills them in when it loads (CV8.md
+     \ 6.3), and SAVE-SYSTEM saves them with the rest of the image.
 
 \ PART 1: LOW-LEVEL PRIMITIVES
 
@@ -126,7 +126,7 @@ PRIMITIVE RP!      ( a-addr ---)
 
 \ The OS/libc primitives: 3.2% of static sites and 0.006% of
 \ dispatches, so they sit behind ESC + a selector byte and leave the
-\ one-byte opcodes to the words that matter (CV8-REFERENCE.md 3.2).
+\ one-byte opcodes to the words that matter (CV8.md 2.2).
 \ Every primitive must be declared before the first definition that
 \ compiles anything: the synthetic opcodes are numbered from the total.
 ESCAPED
@@ -233,8 +233,8 @@ PRIMITIVE DUP-FROM      ( fd floor --- fd' | -1 )  \ Iteration 486: F_DUPFD_CLOE
 \ [DOVAR][pad to a cell][parameter field], and a DOES> body is
 \ [DODOES][call to the tail][pad][parameter field].
 
-\ The kernel words the engine implements as opcodes (CV8-REFERENCE.md
-\ 7.4). Declared like primitives, so COMPILE, inlines them; their
+\ The kernel words the engine implements as opcodes (CV8.md
+\ 6.4). Declared like primitives, so COMPILE, inlines them; their
 \ meaning is in cv8.c. They are declared here, before anything uses
 \ them, and not where their Forth definitions used to be.
 106 OPCODE 0=      ( x --- f )           \ true iff x is 0
@@ -1110,7 +1110,7 @@ VARIABLE CURRENT ( --- addr)
 \     128 <= tag < 192    d = (tag AND 63) << 8 OR [nfa-2]        14 bits
 \     tag >= 192          d = (tag AND 63) << 16 OR [nfa-2] << 8
 \                           OR [nfa-3]                            22 bits
-\ and d = 0 ends the thread (CV8-REFERENCE.md 5). Until Iteration 243 the
+\ and d = 0 ends the thread (CV8.md 4.2). Until Iteration 243 the
 \ link was a cell and names were padded to one.
 
 : PREV-NFA ( nfa --- nfa' | 0 )
@@ -1306,7 +1306,7 @@ VARIABLE LAST-CALLXT ( --- a-addr )
 \ ...and its target.
 
 \ The compiler rewrites four two-operation patterns into one opcode
-\ (CV8-REFERENCE.md 7): `LIT n +` and `LIT n =` into ADDI/EQI, and
+\ (CV8.md 6): `LIT n +` and `LIT n =` into ADDI/EQI, and
 \ `var @` and `var !` into VAR@/VAR!. It remembers where the last
 \ literal and the last call started, and the second half of a pattern
 \ rewinds HERE over the first. NOTHING MAY BRANCH BETWEEN THE TWO, so
@@ -1405,7 +1405,7 @@ FOLD-TABLE
 : CALL, ( a-addr --- )
 \ A call to the body at a-addr: its offset from the image base, two
 \ bytes if it fits 14 bits, else three. The call scale is 0, because
-\ bodies are not aligned (CV8-REFERENCE.md 3.4).
+\ bodies are not aligned (CV8.md 2.4).
   NO-PEEP HERE LAST-CALL ! DUP LAST-CALLXT !
   START @ -
   DUP 16384 < IF DUP 8 RSHIFT 128 OR C, 255 AND C,

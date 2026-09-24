@@ -204,7 +204,7 @@ from the DIRECT primitive count by both compilers (Iteration 247); the
 specialised band at 0x61-0x7E is written out, because it does not
 move. `cv8.c` checks its two counts against its tables at build time. A mismatch is
 silent: the image encodes one operation and the engine decodes
-another. `CV8-REFERENCE.md` 3.2 has the map.
+another. `CV8.md` 2.2 has the map.
 
 ## End state (what "done" looks like)
 
@@ -630,8 +630,9 @@ stand".
   **12.6%, belongs to the cell engine** - the baseline that divides
   every ratio in every table here. So a figure quoted from one build
   should be read as ±5% on most stages and ±13% on the baseline, and
-  differences smaller than that were never resolved. `CV8.md` section
-  2.2 already knew the mechanism (±4-5% from alignment alone, which is
+  differences smaller than that were never resolved. The CV8.md of
+  before Iteration 491 (`git show 3f07e7e:CV8.md`), section 2.2,
+  already knew the mechanism (±4-5% from alignment alone, which is
   what `tools/lab/layout-variants.sh` builds for); what was missing
   was that the baseline is the worst offender.
 

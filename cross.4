@@ -1,6 +1,6 @@
 \ Cross compiler to produce a CV8 binary image of RelF (Relative
 \ Forth) from kernel.4. Runs on a CV8 image: see README.md for the
-\ bootstrap, and CV8-REFERENCE.md for the format it emits.
+\ bootstrap, and CV8.md for the format it emits.
 \ Based on SOD32 by L.C. Benschop
 \ Copyright 2001 - 2005, Kirill Timofeev, kt97679@gmail.com
 \ The program is released under the GNU General Public License version 2.
@@ -221,7 +221,7 @@ ALSO TRANSIENT DEFINITIONS
 PREVIOUS DEFINITIONS
 
 
-\ PART 4: CODE GENERATION - CV8 (CV8-REFERENCE.md)
+\ PART 4: CODE GENERATION - CV8 (CV8.md)
 
 \ The target is a byte stream: one-byte opcodes, two- or three-byte
 \ calls, and the specialised opcodes the engine implements. Until
@@ -282,7 +282,7 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 126 CONSTANT ESC-OP
 : TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 \ Calls and slot operands name a byte offset: the call scale is 0,
-\ because bodies are not aligned (CV8-REFERENCE.md 3.4).
+\ because bodies are not aligned (CV8.md 2.4).
 
 \ The primitives with a folded "then EXIT" form, in the order the
 \ engine's table has them. Names, because their opcodes are not known
@@ -456,7 +456,7 @@ VARIABLE IMAGE-FID
   ABORT" Can't write file" ;
 
 : SAVE-IMAGE ( "name" --- )
-\ The CV8 header (CV8-REFERENCE.md 5.1), then the image: the thread
+\ The CV8 header (CV8.md 4.1), then the image: the thread
 \ heads, which are also in the image where COLD relocates them, and
 \ the DOES> tail count, always 0 because DODOES carries its target
 \ inline.
@@ -516,7 +516,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 
 : OPCODE ( op "name" --- )
 \ A kernel word the engine implements as an opcode of its own - the
-\ fifteen tiny words of CV8-REFERENCE.md 7.4. Declared exactly like a
+\ fifteen tiny words of CV8.md 6.4. Declared exactly like a
 \ primitive, so COMPILE, inlines it; the engine, not a Forth body,
 \ defines what it does.
   "HEADER THERE , DUP ,

@@ -1,566 +1,603 @@
-# CV8.md — the inner interpreter, measured end to end
+# CV8.md — the engine and its image format
 
-> **Iteration 194 widened the format** after an audit of its ceilings:
-> variable-width calls and slots (32 MB / 64 MB reach), `LIT64` (a
-> 64-bit literal was silently truncated), a reserved opcode bank, a
-> 16 MB `MEMSIZE`, and a version + feature bitmap in the header so
-> future widening is not a format break. See `CV8-REFERENCE.md` §3.5.
->
-> **`CV8-REFERENCE.md`** is the format-and-engine reference: opcode
-> map, image layout, worked byte examples, and the rules a compiler
-> must follow. **Iteration 191 adds `XARCH.md`** (ARM/RISC-V under qemu; corrects
-> 3.3's cache attribution). **Iteration 190 adds `attic/docs/VM-SURVEY.md`**: five specialisations borrowed
-> from the JVM, CPython, Lua and Gforth - locals as frame-slot opcodes
-> above all - take CV8 to ~0.33x its own time (0.16-0.23x of today's
-> engine) and 9-11% smaller. Read it after this file.
+A RelF image is a byte stream, and `cv8.c` is the engine that runs it.
+This file is both halves of that story:
 
-Iteration 189, branch `cv8` (from `token16`). This answers
-`attic/docs/INNER-INTERPRETER.md`. Read that first; this file does not repeat its
-constraints, it measures against them.
+- **Part I, the reference**: what every byte means, how an image is
+  laid out, and what the engine does with it. Every fact in it was
+  checked against the sources, and the examples are real bytes, dumped
+  from `kernel.img` at Iteration 491.
+- **Part II, the reasons**: the decisions behind the format, what each
+  was measured to buy, and how they hold on other architectures.
 
-**Everything below is measured unless it says otherwise.** Every
-number comes from `tools/lab/`. `tools/lab/build-cv8.sh` rebuilds every
-engine and image quoted here, at both cell widths, from a clean
-checkout, and smoke-tests each pair against `dash`.
+The sources of truth are `cv8.c` (the engine), `kernel.4` (the primitive
+list, the fold list, the specialised opcodes and the run-time compiler)
+and `cross.4` (the cross-compiler). Where this file and they disagree,
+they are right and this file has a bug. How each part came to be is in
+`PROGRESS.md`, cited here by iteration number.
 
 ---
 
-## 0. The answer, first
+# Part I — Reference
 
-**One encoding for both cell widths: a byte stream in which a call is a
-two-byte compressed pointer.**
+## 1. The idea
+
+An image holds **one byte per operation**. A call is two or three bytes
+holding the target's **byte offset from the image base**. Nothing in an
+image is a pointer, so an image is position-independent, and the same
+image runs on every machine of its cell width: `kernel.img` on 64-bit
+hosts, `kernel32.img` on 32-bit ones. The engine executes the byte
+stream **in place**; nothing is translated or relocated when an image
+loads.
+
+## 2. The byte stream
+
+### 2.1 Decoding
+
+```
+b = ip[0]
+b <  0x80        opcode b, one byte
+b =  10xxxxxx    call, two bytes:   v = (b & 0x3F) << 8  | ip[1]
+b =  11xxxxxx    call, three bytes: v = (b & 0x3F) << 16 | ip[1] << 8 | ip[2]
+                 the target is image base + v
+```
+
+That is the whole decoder: no length table, no prefix. The engine does
+not test the top bit. It dispatches every byte through a 256-entry
+table whose upper half all points at one shared call path:
 
 ```c
-t = ip[0];
-if (t < 0x80) { ip += 1; goto *dispatch[t]; }          /* opcode    */
-t = ((t & 0x7F) << 8) | ip[1]; ip += 2;                 /* 15 bits   */
-RPUSH(ip); ip = base + (t << S);                        /* no table  */
+#define NEXT() do { t = BYTE(ip); ip += 1; goto *dtab256[t]; } while (0)
+
+do_call:    /* ip is already past the first byte */
+    if (t & 0x40) { t = ((t & 0x3F) << 16) | ((UNS64)BYTE(ip) << 8) | BYTE(ip + 1);
+                    ip += 2; }
+    else          { t = ((t & 0x3F) << 8) | BYTE(ip); ip += 1; }
+    RPUSH(ip); ip = cbase + (t << SCALE);
+    NEXT();
 ```
 
-It comes with four other decisions. Each is measured separately below.
+(Profiling hooks, compiled out, are left out here.) `SCALE` is 0 at
+both cell widths since Iteration 244, so offsets are plain bytes.
 
-1. **VM registers are locals, not statics.** This is now done in
-   `relf.c`. It is worth about 1.22x on its own and changes nothing
-   else.
-2. **Data words get primitives.** `DOVAR` and `DODOES` become
-   primitives instead of calls to Forth runtimes. No alignment padding
-   is ever executed.
-3. **`EXIT` folds into the preceding primitive.** For a hot set of 23
-   primitives, "`+` then `EXIT`" becomes one opcode. This is worth
-   about 20%.
-4. **Top of stack is cached in a register on 64-bit.** On 32-bit only
-   if the build is non-PIE. This is the one place where 32 and 64 bit
-   should differ.
+### 2.2 The opcode map
 
-**Size.** Stripped engine plus image, counted the way `tests/sizes`
-does:
+| range | meaning |
+|---|---|
+| `0x00`–`0x22` | the 35 **direct** primitives, in `kernel.4`'s `PRIMITIVE` order: `NOOP EXIT LIT BRANCH ?BRANCH DROP DUP SWAP ROT OVER C@ @ C! ! AND OR XOR R> >R R@ = U< < + NEGATE LSHIFT RSHIFT UM* UM/MOD D+ TYPE SP@ SP! RP@ RP!` |
+| `0x23` | `LIT32`: a 4-byte signed operand |
+| `0x24` | `DOVAR`: a data word's body |
+| `0x25` | `DODOES`: a `DOES>` word's body |
+| `0x26` | `LIT8`: a 1-byte unsigned operand |
+| `0x27` | `LIT8;EXIT` |
+| `0x28`–`0x3E` | 23 **folded** `primitive;EXIT` opcodes, in the fold list's order: `+ = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT < U< OVER DROP DUP SWAP ROT >R R> R@ NEGATE` |
+| `0x3F` | `BRANCH8`: a 1-byte signed offset |
+| `0x40` | `?BRANCH8`: likewise |
+| `0x41`–`0x60` | free: 32 opcodes |
+| `0x61`–`0x7C` | 28 **specialised** opcodes (§6) |
+| `0x7D` | `LIT64`: a full cell, little-endian |
+| `0x7E` | `ESC` and a selector byte: the 62 **escaped** primitives |
+| `0x7F` | free |
+| `0x80`–`0xBF` | the first byte of a two-byte call |
+| `0xC0`–`0xFF` | the first byte of a three-byte call |
 
-| | x86-64 | i386 |
+Only two numbers in the map are fixed: the specialised band starts at
+`0x61`, and `LIT64` and `ESC` sit at `0x7D` and `0x7E`. Everything else
+is derived from the count of direct primitives, `NDIRECT`: the
+synthetic opcodes (`LIT32` through the folded band and the two short
+branches) start at `NSYN = NDIRECT`. So only a new **direct** primitive
+moves the map, by one, into the free band; `cv8.c` has a static
+assertion and `cross.4` a check (`MAP-FITS?`) that refuse a map whose
+branches reach `0x61`.
+
+**The escaped primitives cost no opcode.** They are the OS and libc
+interface - files, processes, signals, the terminal, memory
+(`MOVE FILL COMPARE SCAN CSTRLEN`) - declared after `ESCAPED` in
+`kernel.4`, and selector *n* is the *n*-th of them. There are 256
+selectors, and one the engine does not have is reported, not jumped
+through. The list, in selector order:
+
+> `BYE OPEN-FILE CLOSE-FILE SYSTEM REPOSITION-FILE FILE-POSITION
+> DELETE-FILE FILE-SIZE FORK EXECVE WAITPID PIPE DUP2 GETENV SETENV
+> SYS-EXIT CHDIR GETCWD SYS-ARGC SYS-ARG GETPID UNSETENV ALLOCATE FREE
+> RESIZE GETPWHOME GETFSIZE SETFSIZE READ WRITE POLL RAW-MODE MOVE FILL
+> COMPARE SCAN CSTRLEN ISATTY OPEN-DIR READ-DIR CLOSE-DIR ACCESS KILL
+> UMASK CPU-TIMES SIGNAL-ACTION SIGNALS-PENDING TERM-RAW TERM-RESTORE
+> FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
+> TCSETPGRP TCGETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM`
+
+**Four places must agree on these numbers**, and a mismatch is silent -
+the image encodes one operation and the engine decodes another:
+`cv8.c`'s `direct_prims[]`, `escaped_prims[]`, `NDIRECT` and `NESC`;
+`kernel.4`'s `PRIMITIVE` and `OPCODE` order and the fixed numbers in its
+compiler; `cross.4`'s PART 4 constants; and `shadow.4`'s locals
+opcodes. `cv8.c` checks its two counts against its tables when it is
+compiled.
+
+**Adding a primitive.** An OS or libc one is escaped: append its
+`PRIMITIVE` line at the end of `kernel.4`'s list, append its handler to
+`escaped_prims[]` and raise `NESC`. Nothing moves. Then rebuild the
+kernels deliberately - `make images IMAGES_FORCE=1` - and check that
+they reproduce themselves with `make check-images` (Iteration 486 did
+exactly this for `DUP-FROM`). A hot primitive is direct: add it before
+`ESCAPED` in `kernel.4` and at the same position in `direct_prims[]`,
+and raise `NDIRECT`; that moves the synthetic opcodes up by one.
+
+### 2.3 Operands
+
+| form | operand |
+|---|---|
+| `LIT8` | 1 byte, unsigned 0–255 |
+| `LIT` | 2 bytes, unsigned, little-endian |
+| `LIT32` | 4 bytes, signed, little-endian, sign-extended to a cell |
+| `LIT64` | a cell's bytes, little-endian: values outside 32 bits |
+| `BRANCH`, `?BRANCH` | 2 bytes, signed, little-endian, **from the operand itself** |
+| `BRANCH8`, `?BRANCH8` | 1 byte, signed, from the operand |
+| `ADDI`, `EQI` | 1 byte, signed −128..127 |
+| slot operands (§6) | 2 or 3 bytes, big-endian, signed, from the operand |
+| `(LOOP)`, `(+LOOP)` | none: the call is followed by a branch back to the loop's start |
+| `(?DO)` | none: the call is followed by a 16-bit branch to the loop's exit |
+| `(POSTPONE)` | 3 bytes, big-endian: the xt as an offset from `START` |
+| inline strings | a count byte and the text, unpadded |
+
+Rules a compiler must keep:
+
+- **A branch offset counts from the operand's own position**, not from
+  the byte after it: `ip += (int16_t)LD16(ip)`. Getting this wrong makes
+  an image that runs, then jumps two bytes off.
+- **Backward branches take `BRANCH8`/`?BRANCH8` when the offset fits**,
+  since the distance is known when they are compiled. Forward branches
+  are always 16-bit, patched when resolved.
+- **Loops decide by where they return.** `(LOOP)` and `(+LOOP)` return
+  into the branch after them to go round again, and past it when done;
+  `(?DO)` returns into its forward branch for an empty loop. `LEAVE` is
+  `UNLOOP` and a forward branch.
+- **Nothing in code is aligned** (Iteration 258). Multi-byte operands
+  are read by composing bytes, which GCC merges into one load on x86,
+  ARMv7 and AArch64 (§10). Do not use `memcpy` for them.
+- Calls and slots are big-endian because their first byte carries the
+  form bits; everything else is little-endian.
+
+### 2.4 Calls, and how far they reach
+
+A call names a **byte offset from the image base** - not a word number,
+so there is no word table, no load-time walk and no xt-to-number map;
+`COMPILE,` is arithmetic on the distance. This is HotSpot's
+compressed-oops decode, `base + (narrow << shift)`, with a shift of 0.
+The compiler picks the two- or three-byte form by distance, as it picks
+`LIT8`, `LIT` or `LIT32` by value.
+
+| limit | value | kind |
 |---|---|---|
-| today (`relf` + cell image) | 229,160 | 127,684 |
-| CV8 | **99,488** (0.43x) | **81,224** (0.64x) |
-| `dash` | 129,784 | — |
+| VM memory (`MEMSIZE`) | 16 MB | engine parameter, not format |
+| call reach, two-byte form | 16 KB | format |
+| call reach, three-byte form | **4 MB** | format |
+| slot reach, two-byte form | ±16 KB of the operand | format |
+| slot reach, three-byte form | ±4 MB of the operand | format |
+| branch, within one word | ±32 KB | format |
+| literal width | a full cell | format |
+| opcodes | 128, with 256 escaped selectors | format |
 
-**Speed.** Compared with the committed engine, CV8 is roughly
-**1.6–1.7x faster** on the shell workloads, at both widths. This is a
-product of separately measured ratios; see §3 for the pieces.
+**The three-byte call's reach, 4 MB, is below `MEMSIZE`**, so a
+dictionary grown past 4 MB could not reach its oldest words from its
+newest. It is the first ceiling a growing system would meet; today's
+shell image is about 120 KB, 35 times short of it. The remedy would be
+a fourth call width, not aligned bodies again.
 
-**Correctness.**
-- At both widths, and for both the PIE and non-PIE i386 builds, the
-  CV8 images pass `tests/diff` 20/20.
-- They pass every `tests/shell` file except one assertion in
-  `run-forth`, which compiles a new colon definition. The Forth
-  compiler still emits cells, and that is phase 3.
-- `tests/verify` on this branch matches the unmodified tree exactly.
+## 3. Worked examples
 
----
+Real bytes, compiled at the prompt of the 64-bit `kernel.img` at
+Iteration 491. Opcode values are hexadecimal.
 
-## 1. What the brief had wrong, and why it matters
-
-`attic/docs/INNER-INTERPRETER.md` §3.3 attributed SOD16's 1.25x to the word-table
-dependent load. That mechanism is real in `tools/thread-chase`.
-End to end it is not what cost the time.
-
-### 1.1 The VM registers lived in memory
-
-`ip`, `rp`, `dsp` and `t` were file-scope statics.
-- Every primitive stores through `CELL()`.
-- That is a `UNS64` store, and C's aliasing rules allow it to hit a
-  `UNS64` static.
-- So GCC reloaded and re-stored `ip` around every `NEXT`. The
-  disassembly shows `mov 0x...(%rip),%rdx` / `mov %rdx,0x...(%rip)` on
-  every dispatch.
-- Making them locals of `virtual_machine()` puts them in registers.
-
-On the same images, `bench-vm.py` gives these ratios against the old
-engine:
-
-| | loop | fn | str | arith | start |
-|---|---|---|---|---|---|
-| x86-64 | 0.82 | 0.79 | 0.80 | 0.82 | 0.91 |
-| i386   | 0.80 | 0.77 | 0.81 | 0.81 | 0.91 |
-
-This is larger than any encoding effect in this file. It is also
-invisible to a microbenchmark that keeps its own registers, which is
-why `thread-chase` never saw it.
-
-### 1.2 SOD16 executed its padding
-
-SOD16 lays out a data body as `[NOOP pad][call DOVAR][PFA]`. The pad
-keeps the parameter field cell-aligned, and it is *executed* on every
-variable reference: three NOOPs on 64-bit.
-- An instrumented engine (`vm-lab.c -DPROFILE=1`) shows **NOOP at 17.3%
-  of all dispatches** on `loop`: 579.7M against 479.3M with the pad
-  skipped.
-- Variables are 29% of all call targets. `DOVAR` alone is 25% of calls.
-
-### 1.3 With both fixed, the dependent load is invisible end to end
-
-Here is SOD16 against CPT16 with register locals and no executed
-padding. CPT16 is SOD16 with the table replaced by `base + (t << S)`.
-Each design was built with four compiler-flag layouts (§2.2):
-
-| | loop | str |
+| source | bytes | reading |
 |---|---|---|
-| SOD16 (table) | 0.89 – 0.98 | 0.87 – 0.94 |
-| CPT16 (no table) | 0.95 – 0.97 | 0.92 – 0.94 |
+| `32 CONSTANT BL` | `27 20` | `LIT8;EXIT` 32: a constant is two bytes |
+| `: X OVER OVER ;` | `09 36` | `OVER`, then `OVER;EXIT` (`0x28` + 14): the `EXIT` disappears |
+| `: X DUP + ;` | `06 28` | `DUP`, then `+;EXIT` |
+| `: X 1 + ;` | `7A 01` | `ADDI;EXIT` 1: `LIT 1 +` became one opcode, and folded |
+| `: X 5 = ;` | `7C 05` | `EQI;EXIT` 5 |
+| `: X -1 ;` | `63 01` | push −1 in one byte, then `EXIT` |
+| `: X $123456789 ;` | `7D 89 67 45 23 01 00 00 00 01` | `LIT64`, eight bytes little-endian, `EXIT` |
+| `VARIABLE VV` | `24 00 00 00 …` | `DOVAR`; the parameter field is at `align(xt + 4)` |
+| `: X VV @ ;` | `64 7F F0 01` | `VAR@`, slot `0x7FF0` = −16 from the operand: `VV`'s parameter field; then `EXIT` |
+| `: X IF 1 ELSE 2 THEN ;` | `04 06 00 62 03 04 00 26 02 01` | `?BRANCH` +6 to the `ELSE` part; push 1; `BRANCH` +4 past it; `LIT8 2`; `EXIT` |
 
-**These ranges are indistinguishable.** A single-layout run had shown
-CPT16 5% ahead, and that did not survive randomisation.
+The last line shows the folding rule at work: `LIT8 2` is **not** folded
+into `LIT8;EXIT`, because `THEN` makes the `EXIT` a branch target.
 
-The table's end-to-end cost on this core is below the noise. The case
-against it is **structural**:
-- **`COMPILE,`.** It needs an xt-to-word-number reverse map. With a
-  compressed pointer it is `START - S RSHIFT` arithmetic.
-- **Memory.** The table costs 8 bytes per word of hot memory.
-- **Loading.** It needs a load-time chain walk and a DOES> side table.
-- **Ceiling.** It caps the system at word count, which variables
-  exhaust. A compressed pointer caps it at image bytes instead.
+`: X 0 ?DO I DROP LOOP ;` shows a loop: `61` (push 0), `85 A7` (a
+two-byte call to `(?DO)`), `03 09 00` (its forward branch to the exit),
+`85 BB` (`I`), `05` (`DROP`), `85 E4` (`(LOOP)`), then `3F`, a one-byte
+branch back.
 
-So open question 1 has an answer. The dependent load is avoidable at
-any token width narrower than a pointer, by **scaling instead of
-indexing**. When call targets are aligned, the table maps
-`i → base + i·align`, and a linear function needs no table. HotSpot's
-compressed oops decode by exactly this formula: `base + (narrow <<
-shift)` (`compressedOops.inline.hpp`). 8086 Forths did the same thing
-with 16-byte segments ("segment threading").
+## 4. The image file
 
----
+### 4.1 Header
 
-## 2. Method
-
-### 2.1 The instrument
-
-`tools/lab/bench-vm.py ROUNDS CFG` works as follows.
-- It runs every (engine, image) pair on every workload once per round,
-  in shuffled order, with round 0 discarded as warmup.
-- It records **child CPU time** (user+sys via `wait4`) rather than wall
-  clock.
-- It forms ratios **per round** against the first configuration, so the
-  ratios are paired.
-- It reports the median ratio and a bootstrap 95% interval of that
-  median.
-
-The workloads are in `tests/bench-vm/`:
-- `loop` is `tests/bench`'s loop.
-- `fn` is function calls.
-- `str` is `${x##*/}`, `${x%/*}` and `case`.
-- `arith` is Fibonacci mod p.
-- `start` is 20 × `-c true`.
-
-Profiles and cachegrind showed all four script workloads have
-near-identical dispatch mixes, so `loop` and `str` stand for the rest in
-the layout runs.
-
-### 2.2 The noise that is not in the error bars
-
-**Code layout moves an engine by ±4–5% with no semantic change.**
-- The CV8 fold engine, built with `""`, `-falign-labels=16`,
-  `-falign-labels=32`, `-falign-jumps=32 -falign-labels=8`,
-  `-fno-reorder-blocks-and-partition` and `-O3`, spans 0.737–0.803 of
-  the same baseline.
-- Adding 41 never-executed folded handlers to an engine once made it
-  **8% faster**. The image and the dispatch count were identical,
-  checked with the profiler.
-
-This is Mytkowicz et al.'s "producing wrong data without doing anything
-obviously wrong" (ASPLOS 2009), and it has bitten this project before.
-Iteration 140 also found GCC merging dispatch sites. **The rule used
-here: any engine comparison under about 8% is built with four flag
-sets (`tools/lab/layout-variants.sh`), and the ranges are compared,
-not the points.**
-
-### 2.3 The caveats
-
-- One machine: an Intel Xeon (family 6, model 207) under KVM with one
-  vCPU.
-- i386 is measured by running 32-bit builds on that same x86-64 core.
-  No ARM numbers.
-- Cachegrind's branch model is simplistic, so use it for direction
-  only.
-
----
-
-## 3. The measurements, stage by stage
-
-### 3.1 Size
-
-Whole image, header included, from `build-cv8.sh`. The 32-bit-unit row
-is estimated by `tools/size-estimate.py`, whose 16-bit estimate
-reproduces the real image to the byte.
-
-| scheme | x86-64 | i386 |
+| offset | size | contents |
 |---|---|---|
-| cell (today) | 206,416 | 109,876 |
-| 32-bit units (estimated) | ~122,000 | ~108,900 |
-| SOD16 / CPT16 | 84,032 | 70,864 |
-| CPT16 + data prims + fold | 83,392 | 70,096 |
-| **CV8** + data prims + fold | **72,648** | **59,320** |
+| 0 | 4 | magic: `CV8` and `'0' + SCALE`, so `CV80` |
+| 4 | 1 | the cell width in bytes, 8 or 4 |
+| 5 | 1 | `'L'` when specialised opcodes are used |
+| 6 | 1 | the **format version**, 5 |
+| 7 | 1 | the **feature bitmap**: 1 variable-width calls, 2 variable-width slots, 4 specialised opcodes, 8 `LIT64` - 15 in every image today |
+| 8 | cell | the number of threads in the hashed word list, 32 |
+| … | 32 cells | the thread heads, relative to `START` |
+| … | cell | the number of `DOES>` tail entries, always 0 |
 
-**32-bit units are dominated.** They save nothing on i386 and are 1.47x
-the 16-bit size on 64-bit. That closes option D of the brief.
+`kernel.img`'s header is 280 bytes; `kernel32.img`'s, 144.
 
-**EXIT folding barely changes size**, saving 640–780 bytes. Most
-folded `EXIT`s were at a body's end, where cell alignment re-pads.
+The engine compares the first five bytes exactly, so a 32-bit image is
+refused by a 64-bit engine, and then **refuses any version but its
+own** (since Iteration 247, when a renumbering made each version's
+engine crash on the other's images). The feature bitmap lets a later
+addition set a bit instead of breaking the format. The tail entries are
+read and ignored: `DODOES` carries its target inline, and both
+compilers write none.
 
-Engine `.text` in bytes:
+Versions: 2 (243) moved the locals cells into the image; 3 (247)
+renumbered the synthetic opcodes; 4 (258) added the short branches and
+unaligned operands; 5 (259) made slot operands relative to themselves.
 
-| | x86-64 | i386 |
-|---|---|---|
-| `relf` | 5,518 | 5,428 |
-| CV8 + fold | 8,638 | 7,988 |
-| CV8 + fold + TOS | 9,758 | 7,940 |
-
-About 1.5 KB of that is the 23 folded handlers. **Folding all 64
-primitives costs about 10 KB of `.text`** against 700 bytes of image.
-Do not.
-
-### 3.2 Speed
-
-Each stage is measured against its predecessor, and ranges are over
-four layouts.
-
-**x86-64**, relative to one cell + reg build:
-
-| design | loop | str |
-|---|---|---|
-| cell + reg (4 layouts) | 0.96 – 1.04 | 0.93 – 1.02 |
-| CPT16, pad skipped | 0.95 – 0.97 | 0.92 – 0.94 |
-| CPT16 + data prims + fold | 0.75 – 0.80 | 0.71 – 0.79 |
-| CV8 + data prims + fold | 0.75 – 0.79 | 0.73 – 0.77 |
-| **CV8 + fold + TOS** | **0.69 – 0.77** | **0.69 – 0.77** |
-
-**i386**, relative to one cell + reg build:
-
-| design | loop | str |
-|---|---|---|
-| cell + reg (4 layouts) | 0.97 – 1.00 | 0.98 – 1.00 |
-| CPT16 + data prims + fold | 0.79 – 0.82 | 0.77 – 0.81 |
-| **CV8 + data prims + fold** | **0.70 – 0.76** | **0.68 – 0.75** |
-| CV8 + fold + TOS, PIE | 0.78 – 0.86 | 0.78 – 0.85 |
-| CV8 + fold, non-PIE | 0.75 | 0.74 |
-| **CV8 + fold + TOS, non-PIE** | **0.72** | **0.71** |
-
-### 3.3 What each stage buys, and why
-
-**Token vs cell** is about 5% on 64-bit and nothing on i386.
-
-> **Corrected in Iteration 191 (`XARCH.md` §5).** The miss *counts*
-> below are right, but weighed they are ~0.06% of instructions (cell)
-> against ~0.012% (token): roughly 1-3% of time, not the explanation
-> of CV8's x86 lead over `relf-new`. That comes mainly from EXIT
-> folding and TOS caching. The original reasoning is kept below.
-
-The reason was taken to be the data cache, not dispatch. Cachegrind on a 300-iteration
-loop shows **243K L1d misses for the cell image against 9K for every
-token image**. 156 KB of cell code does not fit a 48 KB L1d, and 50 KB
-of tokens nearly does.
-
-**Data primitives** cut dispatches by 12% (479M to 423M) and cut
-instructions by 8% in cachegrind, but bought **no measurable time**.
-They are kept for structure:
-- Data bodies become aligned call targets with no executed padding.
-- That is what allows S > 1.
-- It is size-neutral. `[DOVAR][pad][PFA]` and
-  `[DODOES][tail][pad][PFA]` fit in the space the pad already took.
-
-**EXIT folding** is the largest encoding-level win.
-- `EXIT` was 17% of dispatches. About 80% of `EXIT`s follow a
-  primitive: `+` 12%, `=` 9%, `!` 7%, `@` 6.5%, `LSHIFT` 5%.
-- Those are the kernel's tiny colon words: `: - NEGATE + ;`,
-  `: 0= 0 = ;`, `CELLS`.
-- Folding cut dispatches by a further 11% and modelled mispredictions
-  by 26%. The single shared `EXIT` dispatch is a poorly predicted
-  indirect branch, and folding gives every primitive its own.
-- **Calls almost never precede `EXIT` dynamically.** So tail-call
-  conversion, with its return-stack semantics risk, is not worth doing
-  here.
-
-**The byte stream is free on 64-bit and faster on i386.** It won in
-every one of four layout pairings on i386. The likely cause is register
-pressure: CV8 needs no `-256` bias, so `cbase` is the image base
-itself.
-
-**TOS caching depends on register count.**
-- On x86-64, with 16 GPRs, it is 5–8% faster in three of four layouts.
-- On i386 PIE, `ebx` holds the GOT, `rp` already spills, and `tos`
-  pushes `cbase` to the stack too. It is 3–18% slower.
-- A non-PIE i386 build frees `ebx`, and TOS becomes a win.
-
-This is exactly Ertl's finding that stack caching's value depends on
-the registers available (Ertl, *Stack Caching for Interpreters*, PLDI
-1995). ARM32 has 13 usable registers and is untested.
-
----
-
-## 4. The CV8 encoding, precisely
+### 4.2 Layout
 
 ```
-0x00-0x43   primitive, index = byte (kernel.4's 68, in PRIMITIVE order)
-0x43        LIT32   4-byte little-endian signed operand
-0x44        DOVAR   [DOVAR][pad to CELL][PFA]: push PFA, return
-0x45        DODOES  [DODOES][call form][pad][PFA]:
-                    RPUSH(PFA), jump to the DOES> tail
-0x46        LIT8    1-byte operand
-0x47        LIT8;EXIT
-0x48-0x5E   folded "primitive then EXIT", in the order of --fold-set
-            (LIT here means LIT16;EXIT)
-0x61-0x7C   specialised opcodes
-0x7D        LIT64
-0x7E        ESC + selector: one of the 32 escaped OS/libc primitives
-0x80-0xFF   call: target = base + ((b & 0x7F) << 8 | next) << S
+header (4.1)
+offset 0   a three-byte call to COLD - the entry point
+offset 3   a three-byte call to WARM
+offset 6   two zero bytes
+offset 8   the five locals cells (§6.3)
+           word 0: link, name, body - the OLDEST word first
+           word 1 ...
 ```
 
-**These numbers move.** Every boundary is derived from the number of
-`PRIMITIVE` lines in `kernel.4`; the map above is 67 primitives with
-the escaped band on, which is the default. `CV8-REFERENCE.md` §3.2 has
-the full table and the derivation. The specialised band sat at `0x60`
-until a 69th primitive pushed the folded band onto it.
+Each word is three fields, nothing padded (Iteration 244):
 
-**Operands.**
-- `LIT` is 2 bytes. `BRANCH` and `?BRANCH` take a 2-byte signed *byte*
-  offset from the operand, and all measured branches fit.
-- Inline strings and `(LOOP)`/`(POSTPONE)` operands keep **cell
-  granularity and alignment**, the SOD16 rule. `(S")`, `(LOOP)`,
-  `(POSTPONE)` and the rest need no kernel change.
-
-**Alignment.**
-- Every call target must be `1 << S` aligned.
-- Word bodies already are, because the name field is cell-aligned.
-- Data bodies are aligned because the primitives made them so.
-- The two DOES> tails get NOOP padding *before* them. That padding is
-  dead code after an `EXIT` and is never executed.
-
-**Reach, which is the design's limit.**
-- 15 bits × 2^S: **256 KB on 64-bit (S=3), 128 KB on 32-bit (S=2)**.
-- Today's images are 72 KB and 59 KB: 3.5x and 2.2x headroom.
-- The low window always contains the kernel, and so the hottest
-  targets.
-
-Beyond that there are two unbuilt remedies, in order:
-1. S=3 on 32-bit too, with bodies aligned to 8, at about 2 KB.
-2. A `FARCALL` opcode with a 3-byte operand for 16 MB × 2^S.
-
-SOD16's word-number ceiling of 65,280 words would have lasted longer
-at busybox scale. That is the one axis on which it wins.
-
-**Unaligned operands.** 16- and 32-bit operands are read with
-`memcpy`. That is one load on x86, ARMv7+ and ARM64, and byte loads
-where the ISA requires them.
-
----
-
-## 5. The design space, as the field has explored it
-
-What other VMs do, and what of it applies.
-
-**Forth threading.** Direct threading puts a code address per cell,
-which is what RelF has. Indirect threading adds a code field.
-Subroutine threading uses native calls. Token threading uses indices
-into a table, which is SOD16's table.
-
-*Segment threading* on the 8086 is the precedent for CPT/CV8. Words
-were aligned to 16-byte paragraphs and the token was the segment
-number: an address = base + token × 16, no table.
-
-Open Firmware's FCode is a byte-token format, 1 byte for the common
-set and 2 for the rest, detokenized at load. Gforth went
-primitive-centric in order to use superinstructions and stack caching.
-Ertl reported that the switch grew threaded code more than
-superinstructions recovered. RelF was always primitive-centric, so it
-has already paid that cost.
-
-**CPython.** It uses 16-bit code units: opcode plus 8-bit argument,
-with `EXTENDED_ARG` to widen. Dispatch is computed goto, and 3.14 adds
-a tail-calling interpreter. The first claims of about 10% were later
-corrected. A compiler bug in LLVM 19 had inflated them, and the
-corrected numbers are closer to a 3–5% geometric mean. Independent
-measurement on Raptor Lake found about 1–2% over computed goto when
-the compiler does not regress.
-
-Lesson for RelF: dispatch mechanics are a single-digit lever, and
-compiler layout effects are the same size as the effect. §2.2 finds
-the same.
-
-**Lua.** A register VM since 5.0, with fixed 32-bit instructions. Shi
-et al. measured register VMs at about 46% fewer instructions for about
-26% larger code (TACO 2008). That is the wrong direction for
-`GOALS.md` goal 3, and nothing here reopens it.
-
-**Ruby YARV.** A stack VM that translates its instruction sequence to
-**direct-threaded code**: each opcode is replaced by its handler
-address (`iseq_translate_direct_threaded_code`). That costs a
-pointer-sized slot per instruction. It is today's RelF cell image,
-chosen for speed. §3.3 shows that at this project's scale, the cell
-form is not even the faster one once the working set exceeds L1d.
-
-**JVM.** Byte-granular variable-length bytecode, interpreted in place.
-HotSpot's compressed oops are the CPT decode: a 32-bit value shifted
-by the object alignment, plus a heap base, reaching 32 GB with 8-byte
-alignment.
-
-**Dalvik.** 16-bit code units in a register VM, chosen for density on
-phones.
-
-**OCaml.** Bytecode on disk, translated to threaded code at load. It is
-the "dense at rest, fast in memory" point.
-
-That option was considered here and rejected:
-- The metric is disk *and* memory.
-- Load-time relocation of the whole image in C is exactly what
-  `layout.py` is, and it would have to be in the engine.
-- The `start` workload would pay it every time.
-
-**WebAssembly.** Titzer's in-place interpreter executes the compact
-binary directly, with a side table for control flow, instead of
-rewriting to an internal format. It performs **on par with interpreting
-a custom-designed internal format** (OOPSLA 2022). That is the same
-result as §3.3: once dispatch is sane, a compact encoding interpreted
-directly costs nothing against a wide one, and the smaller working set
-pays for its decoding.
-
----
-
-## 6. Answers to `attic/docs/INNER-INTERPRETER.md` §5
-
-1. **Is the dependent load avoidable with a narrow token?** Yes, by
-   scaling instead of indexing (§1.3). It also turned out not to be the
-   cost.
-2. **Decide on `loop` or `spawn`?** Moot. The recommended design is
-   faster than today on every workload, and `spawn` is fork/exec-bound
-   anyway.
-3. **Does the representation constrain phase 3 and phase 4?**
-   - A compressed pointer makes phase 3 *easier*. `COMPILE,` becomes
-     `DUP PRIMITIVE? IF emit-byte ELSE START @ - S RSHIFT emit-call
-     THEN`, with no table and no reverse map.
-   - Runtime-defined words need nothing, because the target address is
-     the token.
-   - For phase 4, a call token decodes to an address with arithmetic
-     alone, so a JIT or AOT can resolve it statically.
-4. **Smaller than A with no dependent load?** Yes: CV8 is 0.35x (64)
-   and 0.54x (32) of the cell image, with no second load.
-5. **What else was measuring the wrong thing?**
-   - `thread-chase` measured the call chain in isolation. It could not
-     see the register statics (§1.1) or the executed padding (§1.2),
-     which together cost about 35%.
-   - Single-layout engine comparisons are ±5% noise (§2.2).
-   - attic/docs/VM-RESEARCH.md's 10% for CPython's tail-call interpreter was the
-     pre-correction figure.
-
----
-
-## 7. What is not done, and what could go wrong
-
-- **The compiler.** `,`, `COMPILE,`, `LITERAL`, `IF`/`THEN`, `DOES>`
-  and `(;CODE)` all still emit cells. Every image here is translated
-  from a cell image, so `run-forth` fails. This is phase 3, and it is
-  the next real work.
-  - Branch resolution must write 2-byte byte offsets.
-  - `CREATE` must lay down `[DOVAR][pad]`.
-  - The compiler must choose LIT8/16/32 by value.
-  - It must emit folded opcodes only where no branch targets the
-    `EXIT`. The translator's rule (`fold_exit`) is the specification.
-- **`save-system.4`** has not been adapted. The images carry 16
-  variables with live-session absolute addresses from the dump
-  (`START`, `S0`, `LAST`, `CONTEXT`, …). `COLD` resets them, so every
-  image boots. But **token images are not byte-reproducible across
-  dumps**, and this was equally true of SOD16's. `SS-SCRUB` is the
-  real answer.
-- **`(LOOP)`/`(+LOOP)` padding is still executed.** Its NOOPs sit
-  before the call so that the operand lands aligned. The shell barely
-  uses `DO` loops. A kernel that did would want `(LOOP)` to read an
-  `ALIGNED` operand instead.
-- **Far calls are not built**; see §4.
-- **The folded-opcode set is fixed in two places**: `--fold-set` and
-  the engine's generated table. A real build should derive both from
-  one list in `kernel.4`.
-- **`(?DO)` and `(LEAVE)`** still store absolute addresses. This is
-  latent, as the brief says.
-- **The engine is generated.** `gen-fold.py` and `gen-tos.py` rewrite
-  `vm-lab.c` textually. That is right for a lab. A committed engine
-  should have the folded and TOS bodies written out, or produced by
-  one small, reviewed generator.
-
----
-
-## 8. Recommended order of work
-
-1. **Keep the `relf.c` change**: VM registers as locals. It is done and
-   verified.
-2. **Phase 3 against CV8**: a Forth-hosted compiler that emits the §4
-   encoding, with `run-forth` as its first test. Make the images
-   through `save-system.4`, not the translator.
-3. **Engine**: `cv8.c` written out from `vm-lab.c`'s `ENC=3` path. TOS
-   on when `CELL_BYTES == 8`. The fold set is generated from
-   `kernel.4`.
-4. **`FARCALL`** before the image passes about 200 KB (64-bit) or about
-   100 KB (32-bit).
-5. **Re-measure on real ARM hardware.** It is the one platform class
-   where the byte stream's unaligned 16-bit reads and the register
-   budget could change §3's conclusions.
-
----
-
-## 9. Reproduction
-
-```sh
-sudo apt-get install gcc-multilib valgrind          # -m32, cachegrind
-bash tools/lab/build-cv8.sh /tmp/cv8-build          # all images+engines
-cd /tmp/cv8-build && cat > cfg <<EOF
-cell|$OLDPWD|/tmp/cv8-build/relf64 kernel-shell.img {w}
-cv8t|$OLDPWD|/tmp/cv8-build/cv8t-64 /tmp/cv8-build/cv8-64.img {w}
-EOF
-python3 $OLDPWD/tools/lab/bench-vm.py 5 cfg        # paired CPU-time ratios
+```
+link   1-3 bytes: the distance back to the previous name in the same thread
+name   a count byte (bit 7 set, bit 6 immediate, bit 5 inline) and the characters
+body   CV8 bytes
 ```
 
-**Profiling.** `cc -DPROFILE=1` on `vm-lab.c`, then
-`VMPROF=/tmp/p.txt <engine> <image> script.sh`. `tools/lab/prof.py`
-summarises the dispatch mix. `tools/lab/hot.py` maps call targets to
-words, using `layout.py --symbols`.
+The link is read **backward** from the name, so its tag is the first
+byte read:
 
-**Translator options** (all in `tools/layout.py`). With no
-options, the output is byte-identical to `token16`'s tool; this was
-checked at both widths.
+| tag at name − 1 | length | distance |
+|---|---|---|
+| `0xxxxxxx` | 1 | the tag, 0–127 |
+| `10xxxxxx` | 2 | `(tag & 0x3F) << 8 \| [name−2]` |
+| `11xxxxxx` | 3 | `(tag & 0x3F) << 16 \| [name−2] << 8 \| [name−3]` |
 
-    --cpt S          call token = scaled image offset (S = shift)
-    --skip-pad       calls land past a data body's NOOP pad
-    --dataprims      DOVAR/DODOES primitives in data bodies
-    --fold           fold prim;EXIT (--fold-set NAMES restricts it)
-    --v8             the CV8 byte stream (with --cpt S)
-    --symbols FILE   body offset, size, kind, name per word
+A distance of 0 ends the thread. The engine never reads a link: that is
+the compilers' business (`PREV-NFA`, `HEADER`, `cross.4`'s `"HEADER`).
 
-**Sources**
+**A data body is the one aligned thing**: `[DOVAR or DODOES][three
+bytes][padding][parameter field]`, with the parameter field at
+`align(xt + 4)`. `>BODY`, `CREATE`, the engine's `DOVAR` and `DODOES`
+and both compilers' `VAR@`/`VAR!` peepholes all compute that address,
+and must agree. Code that lays down cells after a colon definition must
+`ALIGN` first (`BUILTIN` in `shell.4` and `WORDLIST` in `extend.4` do).
 
-- Ertl, *Stack Caching for Interpreters*, PLDI 1995.
-- Ertl, *Threaded Code Variations and Optimizations*, EuroForth 2001.
-- Shi, Casey, Ertl, Gregg, *Virtual Machine Showdown: Stack Versus
-  Registers*, TACO 2008.
-- Ierusalimschy, de Figueiredo, Celes, *The Implementation of Lua 5.0*,
-  J.UCS 11(7), 2005.
-- Titzer, *A Fast In-Place Interpreter for WebAssembly*, OOPSLA 2022,
-  doi:10.1145/3563311.
-- CPython tail-calling interpreter: python/cpython#128563 (and its
-  correction notice); nelhage/cpython-interp-perf.
-- HotSpot `compressedOops.inline.hpp`: `decode_raw`.
-- Mytkowicz, Diwan, Hauswirth, Sweeney, *Producing Wrong Data Without
-  Doing Anything Obviously Wrong!*, ASPLOS 2009.
+**Loading** is: check the header, read the rest into memory at the
+base, done. Every call, branch and slot is an offset, so there is no
+relocation pass.
+
+## 5. The engine
+
+### 5.1 Registers
+
+`ip`, `rp`, `dsp` and the scratch `t` are **locals of
+`virtual_machine()`** (the `VMREGS` macro), and the top of the data
+stack is cached in a local, `tos`. As statics they cost about a fifth
+of every workload, because C's aliasing rules let any cell store hit
+them, so the compiler reloaded them around every dispatch (§9).
+`dsp` points at the second stack item while `tos` holds the first;
+`SP@`, `DEPTH` and the OS primitives spill `tos` first, so Forth sees
+the stack it always did. The i386 build is non-PIE, because PIE spends
+`ebx` on the global offset table and the cached top of stack then costs
+more than it saves.
+
+### 5.2 Handlers
+
+158 labelled handlers: the direct and escaped primitives, the synthetic
+opcodes, the folded band and the specialised opcodes. Each ends in its
+own `NEXT()`, so each has its own indirect branch for the predictor to
+learn; only the call path is shared. A folded handler is the
+primitive's body followed by a return:
+
+```c
+L_plus:  tos += NOS; dsp += CELL_BYTES; NEXT();
+LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
+```
+
+### 5.3 Memory and stacks
+
+One static block of `MEMSIZE` (16 MB): the image at the bottom, the
+dictionary growing up from it, and the stacks at the top - 256 KB of
+data stack below 64 KB of return stack. Since Iteration 253 **each
+stack has an unreadable guard page below it** instead of a compare on
+every push (`GUARD`, on by default). A `SIGSEGV` handler reports which
+guard was hit and exits with status 70:
+
+```
+$ echo ': R RECURSE ; R' | ./relf kernel.img
+relf: return stack overflow                        (exit status 70)
+```
+
+The guard catches every push at the push itself, and the return stack's
+guard sits two cells above the empty data stack, so an underflow of two
+or more cells faults too. `-DGUARD=0` brings the compares back, for a
+target without an MMU; they cost 3–6% at 64-bit and nothing measurable
+at 32. The block is aligned to 64 KB so the guards fall on page
+boundaries for pages up to that size.
+
+## 6. The specialised opcodes
+
+Chosen from per-address execution profiles, not intuition. They are the
+difference between CV8 being denser and CV8 being several times faster
+(§9).
+
+### 6.1 The band
+
+| opcode | operation | opcode | operation |
+|---|---|---|---|
+| `0x61` | push 0 | `0x6F` | `2DUP` |
+| `0x62` | push 1 | `0x70` | `2DROP` |
+| `0x63` | push −1 | `0x71` | `CHAR+` |
+| `0x64` | `VAR@` slot | `0x72` | `1+` |
+| `0x65` | `VAR!` slot | `0x73` | `CELL+` |
+| `0x66` | `LSAVE` slot | `0x74` | `CELLS` |
+| `0x67` | `LRESTORE` slot | `0x75` | `1-` |
+| `0x68` | `L!` slot | `0x76` | `INVERT` |
+| `0x69` | `LZERO` slot | `0x77` | `COUNT` |
+| `0x6A` | `0=` | `0x78` | `ALIGNED` |
+| `0x6B` | `-` | `0x79` | `ADDI` n |
+| `0x6C` | `<>` | `0x7A` | `ADDI;EXIT` n |
+| `0x6D` | `0<` | `0x7B` | `EQI` n |
+| `0x6E` | `>` | `0x7C` | `EQI;EXIT` n |
+
+### 6.2 Constants, immediates and variables
+
+`LIT 0` alone had 556 static sites, and `-1` was a five-byte `LIT32`
+because `LIT8` is unsigned. `ADDI` and `EQI` are Lua 5.4's `OP_ADDI`
+and `OP_EQI`: honestly marginal in time, kept because they are four
+handlers and save about 400 bytes.
+
+`VAR@` and `VAR!` replace a call, `DOVAR` and `@` with one dispatch -
+the JVM's `getstatic`. The slot is the variable's parameter field, as a
+signed offset from the operand's own first byte: two bytes carry 15
+bits (±16 KB), three with the top bit set carry 23 (±4 MB). Counting
+from the operand rather than the base (Iteration 259) made nine slots in
+ten the short form, where it had been half: code sits a few hundred
+bytes after the variables it uses.
+
+### 6.3 Locals
+
+The largest single win - **0.41 to 0.54 of CV8's time on its own**,
+about two-thirds of what all the specialisations buy. Forth locals in
+`shadow.4` are shallow-bound: on entry each is saved to a save stack,
+on exit restored. As Forth, `LSAVE` was 23 operations and nine calls,
+and its save-stack pointer was the hottest call target in the whole
+shell. The opcodes do the same in one dispatch, on **the same
+Forth-visible save stack**, which the engine finds through the five
+cells at image offset 8:
+
+| cell | contents |
+|---|---|
+| 0 | offset of `LSAVE-SP`'s parameter field |
+| 1 | offset of `LSAVE-STACK`'s parameter field |
+| 2 | the value of `LSAVE-MAX` |
+| 3 | offset of `LSAVE`'s body, the fallback |
+| 4 | offset of `LRESTORE`'s body, the fallback |
+
+`kernel.4` reserves the cells and `shadow.4` fills them as it loads.
+**Deoptimisation**: whenever the Forth version would take its error
+path - overflow, underflow, no buffer - the opcode pushes the slot as
+`LIT` would and calls the Forth word, so the rare paths keep their
+behaviour and messages. That is the shape of CPython's specialising
+interpreter (PEP 659), and it is what makes specialising one
+instruction safe. It is also the design's one real wart: the engine
+knows the layout of a Forth data structure (§13).
+
+### 6.4 The tiny words
+
+`0x6A`–`0x78` are colon words of two or three operations that together
+took 6.4% of all dispatches as calls. They are declared in `kernel.4`
+with `OPCODE` and a number - `106 OPCODE 0=` - rather than defined in
+Forth: the engine is the definition, and `COMPILE,` inlines the byte.
+
+## 7. How images are built
+
+Two Forth compilers emit CV8, and they are twins that must agree:
+
+- **`cross.4`**, the cross-compiler, runs on `kernel.img` and compiles
+  `kernel.4` into a new `kernel.img` - a fixpoint. `make images` does
+  that in a temporary directory and installs the result only if it is
+  byte-identical, or with `IMAGES_FORCE=1` when a change is intended;
+  `make check-images` is the read-only half, and `tests/verify` runs it.
+  The kernel images are committed because they are the bootstrap seed.
+- **`kernel.4`'s own compiler** compiles everything loaded at run time.
+  The shell image is `kernel.img` with `extend.4 pool.4 shadow.4
+  save-system.4 shell.4 edit.4 tree.4` loaded and `SAVE-SYSTEM` run;
+  `make` or `relfsh` itself builds it, and it is not committed.
+  `tests/verify` checks that a rebuild is byte-identical, and records a
+  checksum so that another machine's build is compared with this one's.
+
+The specialised opcodes are emitted like this:
+
+- push 0, 1 and −1 come straight from `LIT,`.
+- `ADDI`, `EQI`, `VAR@` and `VAR!` are **peepholes**: `LIT,` and
+  `CALL,` remember where they started, and when `COMPILE,` of `+`, `=`,
+  `@` or `!` completes a pattern it rewinds over the first half.
+- **Folding** is done by `EXIT,` at `;`: the last operation and the
+  `EXIT` become one opcode.
+- Both are stopped by `NO-PEEP`, which everything that makes `HERE` a
+  branch target calls, so nothing can jump between the halves - the
+  `ELSE 2 THEN ;` example in §3.
+- The tiny words are inlined by `COMPILE,`; the locals opcodes are
+  emitted by `shadow.4`'s `L-EMIT`.
+
+---
+
+# Part II — Why it is this way
+
+## 8. Where CV8 comes from
+
+**CV8** stands for Compressed-pointer, Variable-length, 8-bit units:
+calls are compressed pointers, operations have variable length, and the
+unit is a byte. The name was coined in this project at Iteration 189 and
+is used nowhere else. It is the fifth encoding in a line, each a
+response to a measured problem with the one before:
+
+- **SOD32** (L.C. Benschop) separated the engine from a
+  machine-independent image - the property this project exists to keep.
+  It packed several 5-bit operations into a cell; measured at Iteration
+  157, the packing cost 1.06–1.19x in dispatch on x86-64 and 1.67x on
+  i386 for about 9% of size. CV8 keeps the separation and not the
+  packing.
+- **RelF** (Kirill Timofeev) is SOD32 sped up, and what this project
+  refactors. Its idea - a reference to a word holds a **relative
+  offset**, so the image is position-independent - is the one CV8's
+  calls carry further.
+- **SOD16** (Iterations 156–167) used 16-bit tokens: an image of 0.41x
+  the cell image's size, but 1.25x slower. Tokens above 255 indexed a
+  table of addresses built at load time.
+- **CPT16** (189) found that most of SOD16's slowdown was not the table
+  at all (§9), and removed the table anyway: when targets are aligned,
+  index-to-address is a linear function, and scaling replaces indexing.
+- **CV8** (189) narrowed the unit to a byte, and the image dropped a
+  further 13–16%; the specialised opcodes (190) made it fast.
+
+## 9. The decisions, and what each was measured to buy
+
+Measured on x86-64 and i386 unless it says otherwise; §10 covers the
+other architectures.
+
+- **VM registers are locals, not statics** - 1.22x on its own, the
+  largest single effect found in the whole investigation (189). A
+  store through a cell pointer may alias a static cell, so GCC reloaded
+  and re-stored `ip` around every dispatch. On load/store machines it is
+  worth more still: a third of all AArch64 instructions.
+- **No executed padding.** SOD16 padded data bodies with `NOOP`s that
+  ran on every variable reference: 17.3% of all dispatches.
+- **Data words are primitives** (`DOVAR`, `DODOES`): 12% fewer
+  dispatches, no measurable time. Kept for structure - it is what lets a
+  data body sit anywhere with its parameter field aligned.
+- **`EXIT` folds into the operation before it** - about 20%. `EXIT` was
+  17% of all dispatches, and 80% of them followed a primitive, because
+  the kernel is full of two-operation colon words. It also gives every
+  primitive's return its own predictable branch.
+- **Calls are compressed pointers, not a table index.** Once the
+  registers and the padding were fixed, the table's dependent load was
+  below the noise end to end. The case against the table is structural:
+  `COMPILE,` needed a reverse map, the table cost a cell of hot memory
+  per word and a walk at every load, and it capped the system at a word
+  count, which variables use up, instead of at image bytes.
+- **The top of the stack is cached** - 5–8% on x86-64; on i386 only
+  non-PIE, since with PIE the register it needs holds the GOT and the
+  cache cost 3–18%. Ertl found the same: stack caching's value depends
+  on the registers available.
+- **The unit is a byte** - free on x86-64, a small gain on i386, and
+  13–16% smaller than 16-bit tokens.
+- **The specialised opcodes** take CV8 to 0.13–0.23 of the old cell
+  engine's instructions (§10), the locals opcodes two-thirds of that.
+- **A 256-entry dispatch table** instead of a test of the top bit
+  (chosen at 243). Iteration 200 measured it 2–4% slower on x86, since
+  the test it replaces predicts almost perfectly; 226–227 measured it
+  1,600 bytes smaller. It is part of the configuration the engine was
+  written out in, and minimalism is this project's first priority.
+- **Guard pages instead of compares** (253): the compares cost 3–6% at
+  64-bit.
+- **Byte-granular headers** (244): the 64-bit kernel went from 11,638
+  bytes to 8,094, and the shell image of the day from 69,518 to 58,657.
+
+## 10. Other architectures
+
+Iteration 191 checked the design on AArch64, ARMv7 and RISC-V 64 under
+qemu. **qemu's wall time measures nothing here** - it is dominated by
+translating the guest's indirect branches, one per dispatch - so what
+it gave was correctness, exact guest instruction counts (the `libinsn`
+plugin; on in-order cores a much better proxy for time than on x86),
+and a simulated 32 KB L1. Branch prediction is modelled by nothing.
+
+- **Images are portable**: one image built on x86 ran on every
+  architecture, 12 of 12 engine/image pairs.
+- **The specialisations transfer**: guest instructions against the
+  cell engine of the day, whole runs:
+
+  | | x86-64 | AArch64 | ARMv7 | RISC-V 64 |
+  |---|---|---|---|---|
+  | registers as locals | 0.75–0.76 | 0.67 | 0.71 | 0.69–0.70 |
+  | CV8 | 0.61–0.64 | 0.60–0.62 | 0.60–0.62 | 0.63–0.67 |
+  | CV8 and the specialised opcodes | 0.13–0.22 | 0.13–0.23 | 0.13–0.22 | 0.15–0.24 |
+
+- **A CV8 dispatch costs one or two instructions more** than a
+  fixed-width cell dispatch everywhere, so CV8 alone gains less on an
+  in-order core than on x86; the specialisations remove dispatches
+  outright, which is why they transfer and CV8 alone may not.
+- **Operand loads are composed from bytes.** `memcpy` compiled, on
+  RISC-V, to byte loads, a stack round trip and a stack-protector
+  check; composing compiles to one load on ARMv7, AArch64 and x86.
+- A sign-tested dispatch saved 3.6–4.2% of instructions on AArch64 and
+  RISC-V and cost 3.0% on ARMv7. It has been moot since 243: the
+  256-entry table has no test at all.
+
+Since then the design has run on real ARMv7 hardware - an NVIDIA Tegra,
+32-bit, running the 4-byte image - where `make verify` has passed
+repeatedly, including after the engine gained `DUP-FROM` at 486.
+
+## 11. What was borrowed
+
+None of the mechanisms is new; the contribution is the combination and
+the measurements.
+
+| mechanism | from |
+|---|---|
+| a separated engine and a portable image | SOD32 |
+| relative, position-independent references | RelF |
+| a byte-granular instruction stream | the JVM; Open Firmware's FCode |
+| `base + (value << shift)` as a pointer | HotSpot's compressed oops; 8086 Forth's segment threading |
+| one-byte forms for the commonest constants | the JVM's `iconst_*`; YARV's operand unification |
+| locals as single-instruction slot access | the JVM's `iload`; CPython's `LOAD_FAST` |
+| specialise the common case, fall back for the rest | CPython 3.11's specialising interpreter (PEP 659) |
+| the primitive set chosen by frequency | Gforth; Proebsting's superoperators |
+| small immediate operands | Lua 5.4's `OP_ADDI`, `OP_EQI` |
+| interpreting the compact form in place | Titzer's in-place WebAssembly interpreter |
+
+The last row is where CV8 differs from most bytecode systems. OCaml and
+Ruby's YARV expand compact code into pointer-wide threaded code when it
+loads; CV8 executes the dense form directly, because size on disk *and*
+in memory both count here, and a load-time expansion would be charged to
+every shell start. Simulated, the cell image missed the L1 data cache
+about five times as often as the byte image.
+
+## 12. Things that will bite you
+
+- **Branch offsets count from the operand**, not past it (§2.3).
+- **Never fold an `EXIT` that anything branches to** (§3, §7).
+- **Never execute padding**: nothing in code is aligned, and data
+  bodies are entered at `DOVAR`/`DODOES`, never stepped into.
+- **Compute a parameter field one way everywhere**: `align(xt + 4)`.
+  Four defects in the byte-header work were two places computing the
+  same address differently (Iterations 213, 244).
+- **`LIT8` is unsigned**, and a value outside 32 bits needs `LIT64`:
+  until Iteration 194 such values were silently cut to 32 bits.
+- **The four places that number opcodes must agree** (§2.2), and
+  nothing but the build-time checks will say so.
+- **A new direct primitive moves the map**; an escaped one moves
+  nothing. Prefer escaped unless the primitive is hot.
+- **Rebuild the kernels deliberately**: `make images IMAGES_FORCE=1`
+  and `make check-images`, never a copy from elsewhere.
+
+## 13. Open questions
+
+- **One source for the numbering.** Four hand-maintained places (§2.2)
+  are the real risk in this design, more than any opcode. `kernel.4`
+  could emit the engine's tables as well as the compiler's.
+- **The locals opcodes know a Forth data structure** (§6.3). Making
+  `LSAVE` and `LRESTORE` real primitives, with the Forth versions
+  deleted, would remove the five cells and the fallback.
+- **The three-byte call's 4 MB reach** is below `MEMSIZE` (§2.4).
+- **The self-hosted assembler and native code** that `GOALS.md` names as
+  the end state: dispatch removal was measured at 4–4.75x, and inlining
+  at a further 2–2.2x - larger than anything the interpreter can do.

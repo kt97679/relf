@@ -162,7 +162,7 @@ VARIABLE LSAVE-SP
 \ ------------------------------------------------------------------
 
 \ The four runtime words above are what the engine's locals opcodes
-\ fall back to on their error paths (CV8-REFERENCE.md 7.3); the code
+\ fall back to on their error paths (CV8.md 6.3); the code
 \ compiled for a declaration is the opcodes themselves. save-system.4
 \ writes LSAVE-SP, LSAVE-STACK, LSAVE-MAX, LSAVE and LRESTORE into the
 \ image header, which is how the engine finds them.

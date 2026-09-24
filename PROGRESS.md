@@ -486,6 +486,7 @@ do not trust the absence of a line below.
 - **488** — two open items restored to GOALS.md, deleted by accident at 476
 - **489** — repository cleanup, part 1: only the files that are needed
 - **490** — the engine source: three dead macros, and comments that pointed at nothing
+- **491** — CV8.md: one document for the engine, checked against the source
 
 ### Not tied to an iteration
 
@@ -23523,3 +23524,48 @@ Both engines were rebuilt and compared with the builds from before the
 change with `cmp`: byte-identical, at both widths. A change that cannot
 alter the binary needs no verification run beyond that - the baseline
 would record exactly what it recorded at 489.
+
+## Iteration 491: one document for the engine, checked against the source
+
+CV8-REFERENCE.md ("the byte-by-byte reference"), CV8.md ("the inner
+interpreter, measured end to end") and XARCH.md (other architectures)
+are one document now, CV8.md: Part I the reference, Part II the reasons.
+28.8 KB, where the three were 67.6.
+
+The reference had drifted further than a count or two. Checked against
+cv8.c, kernel.4 and bytes parsed out of kernel.img:
+
+- **Right**: the opcode map's layout, the call and slot encodings, the
+  ceilings, the header table, the link encoding.
+- **Stale**: 47 escaped primitives (62 now) and a list that stopped at
+  Iteration 271; `NPRIM` for `NDIRECT`.
+- **Wrong numbers**: the specialised opcodes were listed one position
+  low throughout - the band moved to 0x61 when a 69th primitive pushed
+  the folded band onto it, and cv8.c said so while the reference never
+  followed.
+- **Wrong examples**: the worked bytes were from an image older than
+  Iteration 244, in the numbering 247 retired, and two of the example
+  words, `2DUP` and `COUNT`, are opcodes now. The new examples are
+  compiled at the current kernel's prompt and dumped: `BL` is `27 20`,
+  `: X 1 + ;` is `7A 01`, and `IF 1 ELSE 2 THEN ;` ends `26 02 01` -
+  the `EXIT` not folded, because `THEN` made it a branch target.
+- **Wrong engine**: a sign-tested `NEXT` with two-byte calls only, where
+  the engine has dispatched through a 256-entry table since 243 and
+  calls are two or three bytes; 124 handlers where there are 158.
+- **Removed tools as "the implementation"**: the lab engine, the
+  translator, `-DVARCALL=0`.
+- **History presented as present**: "images are not byte-reproducible"
+  - tests/verify checks that they are; the "production engine" list,
+  mostly done.
+
+Also found on the way: the prologue's calls to COLD and WARM use the
+three-byte form, which no document said; `L_gt` and `L_ugt` in cv8.c
+compute `<` and `U<` - renamed `L_lt` and `L_ult`; and a comment above
+the specialised opcodes still called a slot "a 16-bit little-endian
+value from the base", contradicting the true account right under it.
+
+References into the old documents, 17 of them in the Forth sources, the
+engine and a test script, were rewritten with their sections mapped to
+the new ones. Nothing built changed, and that was checked, not assumed:
+both engines byte-identical by `cmp`, both kernels reproduce
+themselves, both shell images match their recorded checksums.

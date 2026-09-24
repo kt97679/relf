@@ -54,8 +54,8 @@ VARIABLE SS-BUF
 CREATE SS-MAGIC 8 ALLOT
 
 : SS-SET-MAGIC ( --- )
-  \ The 8-byte CV8 magic the engine checks at load (CV8-REFERENCE.md
-  \ 5.1): "CV8", the call scale as a digit (0), the cell width, 'L' for
+  \ The 8-byte CV8 magic the engine checks at load (CV8.md
+  \ 4.1): "CV8", the call scale as a digit (0), the cell width, 'L' for
   \ the specialised opcodes, the format version, and the feature bits
   \ varcall | varslot | spec | lit64. Must agree with cv8.c's
   \ IMAGE_MAGIC, and with cross.4's SAVE-IMAGE, which writes the same

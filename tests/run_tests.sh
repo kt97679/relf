@@ -8,11 +8,11 @@
 # chosen at compile time (GOALS.md phase 6), so a 32-bit compiler
 # (`cc -m32`) produces the 4-byte-cell engine with no source changes.
 # The i386 build is non-PIE: PIE spends ebx on the GOT, which costs
-# the engine's TOS cache more than it saves (CV8.md 3.3).
+# the engine's TOS cache more than it saves (CV8.md 5.1).
 #
 # Images are native host endianness (see GOALS.md phase 5), not a
-# portable on-disk format, and carry a CV8 header (CV8-REFERENCE.md
-# 5.1) recording the cell width, so a mismatched image fails cleanly at
+# portable on-disk format, and carry a CV8 header (CV8.md
+# 4.1) recording the cell width, so a mismatched image fails cleanly at
 # load instead of silently misbehaving. The 4-byte-cell image is a genuinely different
 # image from kernel.img (not just a different engine build of the same
 # image) - it's cross-compiled separately, each run, from the same

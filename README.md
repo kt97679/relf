@@ -21,7 +21,7 @@ name - Relative Forth).
 RelF is portable C targeting every architecture its libc supports
 (verified on x86-64 and ARM64 Linux, and i386). There is one engine,
 cv8.c, which runs CV8 images - a byte stream of one-byte opcodes and
-two- or three-byte relative calls (see CV8-REFERENCE.md). It is plain
+two- or three-byte relative calls (see CV8.md). It is plain
 libc-based C:
 
 cc -O2 -Wall -o relf cv8.c
@@ -55,7 +55,7 @@ attic/, and the git tag cell-engine-final is the last commit it built.
 Cell width is the process's pointer width, chosen at compile time: a
 32-bit compiler produces the 4-byte-cell engine with no source
 changes. The i386 build is non-PIE because PIE costs the engine's TOS
-cache a register (CV8.md 3.3). A 4-byte-cell image is a different
+cache a register (CV8.md 5.1). A 4-byte-cell image is a different
 image, built separately - see below.
 
 kernel.img is native host endianness (little-endian - see GOALS.md's

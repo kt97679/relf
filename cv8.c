@@ -26,7 +26,7 @@
  *  Build:  cc -O2 -Wall -o relf cv8.c
  *          cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
  *  The i386 build is non-PIE because PIE spends ebx on the GOT, which
- *  costs the TOS cache more than it saves (CV8.md 3.3).
+ *  costs the TOS cache more than it saves (CV8.md 5.1).
  *
  *  HISTORY OF THIS FILE. It was tools/lab/vm-lab.c, a lab engine with
  *  a dozen build-time knobs for measuring encodings, run through
@@ -482,7 +482,7 @@ static const int open_flags[NOPENMODES] = {
 
 #define MAX_THREADS 4096
 #define MAX_TAILS 16
-/*  The locals opcodes (CV8-REFERENCE.md 7.3) reach shadow.4's save
+/*  The locals opcodes (CV8.md 6.3) reach shadow.4's save
  *  stack through five cells at image offset 8, which kernel.4 reserves
  *  and shadow.4 fills in when it loads: the save-stack pointer and the
  *  buffer cell (both as offsets of their parameter fields), the limit,
@@ -605,7 +605,7 @@ static void load_image(const char *name) {
  *  Virtual machine itself: computed-goto threaded dispatch. Each
  *  handler is a labeled block ending in NEXT. A direct primitive's
  *  opcode is its position in kernel.4's PRIMITIVE list; an escaped
- *  one's selector is its position after ESCAPED (CV8.md 3.2).
+ *  one's selector is its position after ESCAPED (CV8.md 2.2).
  */
 
 #define NSIG_FLAGS 65
@@ -731,7 +731,7 @@ static void virtual_machine(void) {
         &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
         &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
         &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
-        &&L_tor, &&L_rfetch, &&L_eq, &&L_ugt, &&L_gt, &&L_plus,
+        &&L_tor, &&L_rfetch, &&L_eq, &&L_ult, &&L_lt, &&L_plus,
         &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
         &&L_dplus, &&L_type, &&L_spfetch, &&L_spstore,
         &&L_rpfetch, &&L_rpstore,
@@ -783,8 +783,8 @@ static void virtual_machine(void) {
         [NSYN + 5 + 19] = &&LX_tor,
         [NSYN + 5 + 21] = &&LX_rfetch,
         [NSYN + 5 + 1] = &&LX_eq,
-        [NSYN + 5 + 13] = &&LX_ugt,
-        [NSYN + 5 + 12] = &&LX_gt,
+        [NSYN + 5 + 13] = &&LX_ult,
+        [NSYN + 5 + 12] = &&LX_lt,
         [NSYN + 5 + 0] = &&LX_plus,
         [NSYN + 5 + 22] = &&LX_negate,
         [NSYN + 5 + 4] = &&LX_lshift,
@@ -846,9 +846,7 @@ L_lit32: SPILL();   /* lit32   */ { UNS64 v = LD32(ip);
                            PUSH(v); ip += 4; } FILLNEXT();
 /*  Specialised opcodes at 0x61 (they were at 0x60 until a 69th
  *  primitive pushed the folded band onto it), each borrowed from
- *  another VM (CV8.md 10).
- *  The slot/variable operand is a 16-bit little-endian value v; the
- *  address is base + (v << SCALE), the same compressed pointer calls use. */
+ *  another VM (CV8.md 11). */
 /*  A slot operand is the variable's offset from the OPERAND itself
  *  (Iteration 259; from the image base until then): two bytes, 15 bits
  *  signed, or three with the top bit set, 23 bits signed. Code sits a
@@ -944,8 +942,10 @@ L_fromr: PUSHT(RS); rp += CELL_BYTES; NEXT();
 L_tor: RPUSH(tos); POPT(); NEXT();
 L_rfetch: PUSHT(RS); NEXT();
 L_eq: tos = -(UNS64)(NOS == tos); dsp += CELL_BYTES; NEXT();
-L_ugt: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; NEXT();
-L_gt: tos = -(UNS64)((INT64)NOS < (INT64)tos); dsp += CELL_BYTES; NEXT();
+/*  L_ult and L_lt are U< and <: they were named ugt and gt, after an
+ *  older operand order, until Iteration 491.  */
+L_ult: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; NEXT();
+L_lt: tos = -(UNS64)((INT64)NOS < (INT64)tos); dsp += CELL_BYTES; NEXT();
 L_plus: tos += NOS; dsp += CELL_BYTES; NEXT();
 L_negate: tos = -tos; NEXT();
 L_lshift: tos = NOS << tos; dsp += CELL_BYTES; NEXT();
@@ -1565,8 +1565,8 @@ LX_fromr: PUSHT(RS); rp += CELL_BYTES; EXITNEXT();
 LX_tor: RPUSH(tos); POPT(); EXITNEXT();
 LX_rfetch: PUSHT(RS); EXITNEXT();
 LX_eq: tos = -(UNS64)(NOS == tos); dsp += CELL_BYTES; EXITNEXT();
-LX_ugt: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; EXITNEXT();
-LX_gt: tos = -(UNS64)((INT64)NOS < (INT64)tos); dsp += CELL_BYTES; EXITNEXT();
+LX_ult: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; EXITNEXT();
+LX_lt: tos = -(UNS64)((INT64)NOS < (INT64)tos); dsp += CELL_BYTES; EXITNEXT();
 LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
 LX_negate: tos = -tos; EXITNEXT();
 LX_lshift: tos = NOS << tos; dsp += CELL_BYTES; EXITNEXT();
