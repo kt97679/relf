@@ -95,6 +95,101 @@ ordinary scripts hit, then edge cases and wording.
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
 
+## What comes next: the user's list (recorded at Iteration 499)
+
+The user's notes for the project's next phase, in their order, each
+with what is already known and what is still to be settled. Nothing
+here is started; an item's open questions are answered before its
+work begins.
+
+1. **Folded `primitive;EXIT` opcodes behind the escape** - measure what
+   it costs. Today they are 23 one-byte opcodes at `0x28`-`0x3E`, plus
+   `LIT8;EXIT`, `ADDI;EXIT` and `EQI;EXIT` (CV8.md 2.2). Behind `ESC`
+   each would cost one byte more and one more indirect jump - `L_esc`
+   reads a selector and dispatches again - and folding is frequent:
+   `EXIT` was 17% of all dispatches, 80% of them after a primitive
+   (CV8.md 9). The measurement: image size, dispatches and time on
+   `tests/bench-vm` and the shell suite, with both layouts. It is what
+   item 2 would need.
+2. **A two-bit selector**: `00` an opcode (64 of them), `01` a call
+   with a 14-bit offset (6 bits and one byte), `10` 22 bits, `11` 30
+   bits - a 1 GB code space, where today's three-byte call reaches 4 MB
+   and one-byte opcodes number 128. 95 of those 128 are in use
+   (CV8.md 2.2), so about 31 would move behind `ESC` - item 1 decides
+   which. Slot operands (`VAR@`, `VAR!`, the locals) reach ±4 MB with
+   the same trick and would want the same widening. An alternative to
+   weigh: keep 128 opcodes and spend the free `0x7F` on a rare
+   five-byte far call. Open: what the 1 GB is for (see the questions
+   below).
+3. **Profile the shell: what affects performance most.** A study across
+   workloads rather than the one empty loop: `tests/bench-vm`, the
+   corpora, real scripts; by subsystem - expansion, parsing, variable
+   lookup, the tree walk, builtins, process creation. Starting points:
+   `tools/profile.py` (working again since 495), PERFORMANCE.md, and the
+   two untried levers in item 7 of "Open now" above.
+4. **An alternative shell language** with better performance and
+   shorter code, keeping the shell's features. Open: whether it replaces
+   POSIX sh as the language users write, or is an internal form the
+   shell compiles sh into (see the questions below).
+   `prompts/02-escape-recall.md` applies before any candidate is named.
+5. **An assembly engine on raw syscalls: no libc** - GOALS' first end
+   state, deferred since phase 5 traded it for portability. `cv8.c`
+   uses libc for `malloc` (`ALLOCATE`), stdio-free I/O wrappers, `fork`,
+   `execve`, signals, `fcntl`, `localtime_r` and the terminal. Open:
+   which architecture first.
+6. **The assembly engine, self-hosted**: a Forth-hosted assembler
+   (`CODE ... END-CODE`) that emits the engine itself, as `cross.4`
+   emits the kernel - the second end state. Implies writing an
+   executable (an ELF file) from Forth.
+7. **`relfsh` not a shell script.** Today it is a POSIX `sh` wrapper:
+   it costs about 2 ms of each start (DASH.md 1), and where `/bin/sh` is
+   bash it loses `PS1` from the environment (CHECKING.md). The engine
+   could recognise that it is the shell - by its name, or by an image
+   it carries.
+8. **`relfsh` as a single binary** - does it make sense? The shell image
+   appended to the engine, found through `/proc/self/exe` or `argv[0]`,
+   would make one file, drop the wrapper and its 2 ms, and remove the
+   `PS1` problem. Costs: one binary per cell width, and the wrapper's
+   rebuild-when-stale logic moves wholly into `make`. With item 5 the
+   loader would be assembly too.
+9. **A thorough audit of all the sources**: dead code (`tools/dead-words.py`
+   says none, but it sees only unreachable words), duplicated logic
+   (FORTH-STYLE.md 11), and performance on the way.
+10. **A smaller image**: no buffers in the image - 142 are already
+    `BUFFER:`s, allocated on first use, and 7 fixed ones remain, some of
+    them tables that need their contents; no full-cell offsets where a
+    narrower field would do - `BUFFER:` descriptors, deferred xts and
+    the header's 32 thread heads are cells; and branches (see the
+    questions below).
+11. **A startup file.** This shell reads none today: not `$ENV` for an
+    interactive shell and not `~/.profile` for a login shell, both
+    checked at 499 - dash reads `.profile` as a login shell, and POSIX
+    specifies both. The likely shape is dash's: a login shell (`-l`, or
+    `argv[0]` beginning with `-`) reads `/etc/profile` and
+    `$HOME/.profile`, an interactive shell then the file `$ENV` names.
+12. **Examples of the `forth` builtin**: a network server,
+    `PROMPT_COMMAND`, or others. A server needs socket primitives the
+    engine does not have (`socket`, `bind`, `listen`, `accept`) -
+    escaped, so they move nothing (CV8.md 2.2); a prompt hook needs a
+    point in the prompt loop that calls a Forth word.
+
+**Questions to settle** (put to the user at 499):
+
+- Item 2: what is the 1 GB for - larger images, generated or JIT code,
+  data in the code space? And may the opcode count fall to 64 if item 1
+  shows the cost is acceptable?
+- Item 4: a new language for users, alongside or instead of POSIX sh -
+  or an internal representation the shell compiles sh into?
+- Item 10: forward branches are already two bytes, and backward ones
+  one byte where they fit. Was one byte for forward branches meant? 97%
+  would fit (Iteration 258), but it needs a pass that shrinks a finished
+  definition. And "no full cell offsets" - the `BUFFER:` descriptors and
+  deferred xts above, or something else?
+- Items 5 and 6: which architecture first - x86-64, or ARMv7 for the
+  Tegra?
+- Item 12: may the engine gain socket primitives for the example, and
+  should the examples live in an `examples/` directory?
+
 ## Known shortcuts to revisit
 
 Deliberate compromises that work today and are wrong in general. Each

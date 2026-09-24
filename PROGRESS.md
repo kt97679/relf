@@ -494,6 +494,7 @@ do not trust the absence of a line below.
 - **496** — the three unaudited areas: prompts/, three documents read through, the tests' documents
 - **497** — two decisions of the user's recorded: prompts/ is kept whole, and an article is planned
 - **498** — a check broken for 190 iterations: the long-path image build lacked edit.4
+- **499** — the user's list for what comes next, recorded with its open questions
 
 ### Not tied to an iteration
 
@@ -23869,3 +23870,37 @@ shown failing on a copy of relfsh with `edit.4` taken out of its loads.
 
 Recorded change, with its cause: `crosspath:kernel-shell.img missing ->
 reproduces`, the check working again.
+
+## Iteration 499: the user's list for what comes next
+
+The user set out twelve directions for the project's next phase, and
+asked for anything unclear to be raised. They are in GOALS.md, "What
+comes next", each with what is already known; nothing is started. The
+facts they rest on were checked, not recalled:
+
+- **No startup file is read.** Neither `$ENV` for an interactive shell
+  nor `~/.profile` for a login shell (`-l`); dash reads `.profile` as a
+  login shell, and POSIX specifies both. CHECKING.md had been advising
+  users to set PS1 "in the file `$ENV` names", which does nothing here:
+  corrected.
+- **The image's buffers**: 142 are `BUFFER:`s, allocated on first use;
+  7 fixed `CREATE ... ALLOT` ones remain, some of them tables whose
+  contents the image must carry.
+- **The escape's cost**: `L_esc` reads a selector byte and dispatches a
+  second time - invisible for the OS primitives (0.006% of
+  dispatches), not for the folded `EXIT`s, which is why the first item
+  on the list is the right measurement to make before the second.
+- **Branches**: forward ones are already two bytes, backward ones one
+  where they fit - so one of the list's items needs its intent
+  confirmed.
+
+Five questions went back to the user with the list: what the 1 GB code
+space is for; whether the alternative language is for users or
+internal; which branch and offset sizes were meant; which architecture
+the assembly engine targets first; and whether the engine may gain
+socket primitives for a `forth` example.
+
+On the article: every iteration's entry in this log, with its failed
+and reverted attempts and their deciding numbers, is the material the
+user plans to draw on - the Index at the top of this file is the way
+in.
