@@ -482,6 +482,7 @@ do not trust the absence of a line below.
 - **484** — where the references part company on expansion order
 - **485** — found: a script descriptor at 64 or above can be overwritten
 - **486** — saved descriptors from the kernel (a new engine primitive), not fixed slots
+- **487** — the Tegra verifies 486; the matrix asks bash for POSIX mode
 
 ### Not tied to an iteration
 
@@ -23389,3 +23390,45 @@ new handler, and the i386 engine's 45 smaller - the compiler lays the
 dispatch out differently, not a change of ours; both shell images about
 65 bytes SMALLER, since UNDO-BASE, its arithmetic and the child's range
 loop are gone. Both kernels and both shell images reproduce.
+
+## Iteration 487: the Tegra verifies 486, and its one matrix row explained
+
+The ARMv7 Tegra (Gentoo, gcc 16.2.0) ran `make verify` on 486's bundle:
+VERIFIED. The 4-byte engine with the new DUP-FROM primitive, both
+kernel fixpoints, the pty suite, POSIX 48/0, mrsh 21/0, the
+differential suite and the portability checks all agree; the 8-byte
+rows are reported as `skipped` now rather than CHANGED, which is 465's
+fix doing its job.
+
+One row had shown up on that machine at 465 and again now, never
+explained: `matrix:failed 1`, `matrix:regressions 1`, with `refs bash`
+only, since the board has no dash. Reproduced here exactly with
+`MATRIX_REFS=bash` - 421 passed, 1 failed - the case is error.e21,
+`for 1x in a` between two echoes:
+
+| shell | output | status |
+|---|---|---|
+| this shell | first, syntax error, stops | 2 |
+| dash | first, syntax error, stops | 2 |
+| bash --posix | first, error, stops | 2 |
+| plain bash | first, error, **next** | 0 |
+
+Plain bash takes a bad loop variable for a runtime error and carries
+on. The matrix consulted PLAIN bash, so on a machine without dash, bash
+alone outvoted the standard. Not a shell bug: a reference artifact.
+
+The matrix now asks bash for POSIX mode, the standard this shell is
+measured against - one line in its `run` helper. It changes both
+machines for the better: bash alone, the Tegra's situation, goes from
+421/1 failed to 422 passed, 0 failed; bash and dash together, this
+machine's, from 420 passed and 2 inconclusive to 421 and 1 - e21 itself,
+on which plain bash and dash disagreed, is now decided.
+
+The differential suite still runs plain bash. It has made one row
+unusable already (480's special-builtin assignment), and moving it to
+POSIX mode is a candidate - but 131 cases were recorded against plain
+bash, so that is its own measurement, not a line changed in passing.
+
+Recorded changes, with their causes: `matrix:passed` 420 -> 421 and
+`matrix:inconclusive` 2 -> 1, error.e21 now decided. Nothing in the
+shell or the engine changed.

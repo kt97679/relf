@@ -85,6 +85,13 @@ wrap() {
 }
 
 run() { # run SHELL SCRIPT: stdout and status, one string
+    # bash is asked for POSIX mode, the standard this shell is measured
+    # against (Iteration 487). Plain bash takes `for 1x in a` for a
+    # runtime error and carries on to the next line, status 0, where
+    # dash, `bash --posix` and this shell stop with status 2 - so on a
+    # machine with no dash, plain bash alone outvoted the standard, and
+    # the Gentoo board reported error.e21 as a regression every run.
+    case $1 in bash) set -- "bash --posix" "$2" ;; esac
     timeout 10 $1 "$2" < /dev/null 2> /dev/null
     echo "rc=$?"
 }

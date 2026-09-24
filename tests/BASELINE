@@ -16,9 +16,9 @@ interactive:passed 23
 io:4byte 1
 io:8byte 1
 matrix:failed 0
-matrix:inconclusive 2
+matrix:inconclusive 1
 matrix:known-failing 0
-matrix:passed 420
+matrix:passed 421
 matrix:refs bash dash
 matrix:regressions 0
 mrsh:failed 0
