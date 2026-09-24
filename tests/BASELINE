@@ -6,6 +6,8 @@ crosspath:kernel-shell.img missing
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
+image-sum:kernel-shell.img 1491864125/118840
+image-sum:kernel32-shell.img 4276521550/110836
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces

@@ -64,7 +64,11 @@ emit() { printf '%s %s\n' "$1" "$2" >> "$OUT"; }
 #    working tree and no diff could be trusted.
 # ---------------------------------------------------------------
 echo "== reproducible build =="
+# Since 489 the shell images are not committed, so "before" is the one
+# the last build made here - and a fresh clone has none, so it builds
+# one first, to have something to compare the rebuild with.
 for i in kernel-shell.img kernel32-shell.img; do
+    [ -e "$i" ] || make -s "$i" >/dev/null 2>&1
     [ -e "$i" ] && cp "$i" "/tmp/verify-was-$i"
 done
 rm -f kernel-shell.img kernel32-shell.img
@@ -79,6 +83,14 @@ for i in kernel-shell.img kernel32-shell.img; do
         emit "rebuild:$i" missing
     fi
     rm -f "/tmp/verify-was-$i"
+done
+# The checksum of each rebuilt image (POSIX cksum: CRC and length). With
+# the images no longer committed, this is what compares a build on
+# another machine with the one recorded here: the ARMv7 board's 4-byte
+# image must come out byte for byte the same as an x86-64 host's.
+for i in kernel-shell.img kernel32-shell.img; do
+    if [ -e "$i" ]; then emit "image-sum:$i" "$(cksum < "$i" | tr -s ' ' | tr ' ' '/')"
+    else emit "image-sum:$i" missing; fi
 done
 
 # ---------------------------------------------------------------

@@ -17,10 +17,12 @@
 # given. `make check-images` is the read-only half, and tests/verify
 # checks it on every run.
 #
-# The four .img files and the two engine binaries are COMMITTED, which
-# is why `make clean` leaves them alone; `make distclean` is the one
-# that removes build products, and even it does not touch the base
-# images.
+# Only the two KERNEL images, kernel.img and kernel32.img, are
+# committed: they are the bootstrap seed that cross.4 runs on, and
+# cannot be rebuilt from nothing. The engines (untracked since 402) and
+# the shell images (since 489) are build products; `make clean` removes
+# the engines, `make distclean` the shell images too, and nothing here
+# touches the kernel images.
 
 CC      ?= cc
 CFLAGS  ?= -O2 -Wall

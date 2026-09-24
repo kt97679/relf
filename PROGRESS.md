@@ -484,6 +484,7 @@ do not trust the absence of a line below.
 - **486** — saved descriptors from the kernel (a new engine primitive), not fixed slots
 - **487** — the Tegra verifies 486; the matrix asks bash for POSIX mode
 - **488** — two open items restored to GOALS.md, deleted by accident at 476
+- **489** — repository cleanup, part 1: only the files that are needed
 
 ### Not tied to an iteration
 
@@ -23449,3 +23450,49 @@ The lesson is the same one the atomic source edits learned at 471, for
 documents: a replacement bounded by "up to the next blank line" is a
 guess about the file's layout. Check what a document edit removed, not
 only what it added.
+
+## Iteration 489: repository cleanup, part 1 - only the files that are needed
+
+Asked to make the repository hold only what is needed, every tracked
+file was inventoried (609) and each doubtful one checked for what
+refers to it, rather than judged by its name.
+
+Removed, 65 files:
+- `ARTICLE.md`: working notes for an article since written elsewhere.
+- `changelog`: the 2013 original's, describing nasm sources that no
+  longer exist.
+- `STR` (a Forth error message redirected into a file), `hd3.sh` (a
+  scratch here-document script) and `fib.c` (2013, referenced by
+  nothing). `fib.4` stays: a test loads it.
+- `attic/`, 60 files: retired documents and tools, kept in the tree
+  "because the reasoning in them is often still the best record". Git
+  keeps them as well, and better: the last commit that has them is
+  9513df0, and `git show 9513df0:attic/docs/VM-SURVEY.md` reads
+  one.
+
+No longer tracked, 3 files - build products, now in .gitignore:
+- `kernel-shell.img` and `kernel32-shell.img`: `make`, or relfsh
+  itself, builds them in seconds. tests/verify records a checksum of
+  each (`image-sum:`), so a rebuild on the ARMv7 board is still
+  compared with this machine's byte for byte - the check the committed
+  images used to give, without a binary in the repository.
+- `.relf-arch`: the host architecture the last build was for. Tracked,
+  it made every build on the board dirty the tree.
+
+The two KERNEL images stay: cross.4 runs on kernel.img to produce it,
+so they are the bootstrap seed. The engines were not tracked at all -
+not since 402 - though the Makefile's header still said they were
+committed; that comment is corrected. Every tool in tools/ is still
+referenced by the Makefile, the verification or a document citing it
+for a measurement, so tools/ is whole.
+
+Documents that cite the removed files are part 2, with the rest of the
+documentation.
+
+A mistake on the way, repaired before it left this machine: the entry
+above was first written through an UNQUOTED here-document, to pass the
+commit hash in, and the shell ran every backtick-quoted name in it as a
+command - leaving holes, and pasting the whole of the removed
+VM-SURVEY.md into this log where its `git show` example stood. Text for
+a document goes through a quoted here-document; values are passed in
+through the environment.
