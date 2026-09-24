@@ -30,7 +30,23 @@ and anything that starts a process is within 1.1-1.8x. One thing in that
 table is new and unexplained: **an empty loop iteration costs 61 µs,
 where Iteration 268 measured 34.5** on a machine where dash measures the
 same 1.4 µs as then. Two hundred iterations of correctness work have
-made in-process work about 1.8x slower, and it has not been profiled.
+made in-process work about 1.8x slower.
+
+**Bisected at Iteration 495**, timing the same 20,000-iteration empty
+loop on each build (CPU time less startup, best of three, this machine):
+
+| Iteration | 268 | 300 | 330 | 335 | 340 | **341** | 345 | 355 | 360 | 390 | 420 | 445 | 470 | 494 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| µs | 31.2 | 38.3 | 41.4 | 43.2 | 43.5 | **50.7** | 50.6 | 51.4 | 56.2 | 52.5 | 51.9 | 51.9 | 52.8 | 54.4 |
+
+It came in steps between 268 and 360, and has been flat since - not the
+recent work. The one large step, Iteration 341 (+17%), added a
+per-character scan of every literal word to record pattern marks for
+`case`; its worst effect, `[` turning `[ $x ]` into a pattern, was
+undone at 367, and 365-367's optimisations took some more back. Today's
+profile of the loop is flat - the top word 4.6% - so there is no single
+cause left to remove. 495 made the scan skip words with no `[`, `*` or
+`?` in them: 3.9% fewer dispatches on the loop.
 The sections below are the measurements made so far, oldest first, and
 the last part is the standing research questions about the machine
 itself, formerly RESEARCH-VM.md.

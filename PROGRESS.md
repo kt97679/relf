@@ -490,6 +490,7 @@ do not trust the absence of a line below.
 - **492** — DASH.md, measured afresh; PERFORMANCE.md takes the research questions
 - **493** — GOALS.md to the present; README rewritten; every document one topic
 - **494** — the tests' own files: one empty stray, one undocumented probe
+- **495** — the 1.8x drift bisected; the profiler and coverage tools, broken at 490, fixed
 
 ### Not tied to an iteration
 
@@ -23688,3 +23689,54 @@ each was confirmed in its runner, not assumed. Two were real:
 
 INTERACTIVE.md also said the pty suite was the only one needing python3;
 tests/verify runs two python lints now.
+
+## Iteration 495: the drift bisected, and two tools I had broken
+
+**The bisection.** Iteration 492 found an empty loop iteration at 61 µs
+where 268 measured 34.5, with dash unchanged. Fourteen builds from
+history were extracted and timed on the same loop - trees from before
+402 run their own committed engines, later ones were compiled:
+
+| Iteration | 268 | 300 | 330 | 335 | 340 | **341** | 345 | 355 | 360 | 390 | 420 | 445 | 470 | 494 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| µs | 31.2 | 38.3 | 41.4 | 43.2 | 43.5 | **50.7** | 50.6 | 51.4 | 56.2 | 52.5 | 51.9 | 51.9 | 52.8 | 54.4 |
+
+So the drift is not the recent correctness work: it came in steps
+between 268 and 360 and has been flat for 130 iterations. The one large
+step was **Iteration 341**, "case patterns keep their quoting, per
+character", +17% on a loop with no `case` in it: it added a
+per-character scan of every literal word, to record the marks a `case`
+pattern is later built from. Its worst effect - a `[` word turned into
+a pattern, dragging `[ $x ]` through pathname expansion - was found and
+undone at 367, and 365-367's other optimisations took more back.
+
+**The scan, made to skip what it cannot use.** `-`, `]`, `!` and `^`
+matter only inside a bracket expression, so only after a `[`; a word
+with no `[`, `*` or `?` has nothing to mark, and three memchr calls
+(`SCAN`) now say so before the per-character loop runs. Timed, the
+difference was inside the noise, 52.9 against 54.4 µs, and I first
+read that as "not the cause". Counted, it is not noise: 24,065,313
+dispatches without it and 23,120,806 with it, **472 fewer per loop
+iteration, 3.9%** - consistent with the 1.5 µs. A timing within its
+noise is a reason to count, not a verdict.
+
+**Two tools I had broken.** The count needed `tools/profile.py`, and it
+did not compile its engine: `prof_base` undeclared. The profiler, and
+`tools/coverage.py`, build their engines by textual replacement in
+cv8.c, and the block they search for named `PROFC` - the macro
+Iteration 490 removed as dead. Python's `str.replace` does nothing when
+its text is missing, so both tools broke silently five iterations ago.
+490's check for dead macros looked only inside cv8.c, not at tools that
+treat cv8.c as text. Both now match the hooks as they are, and every
+replacement goes through a `patch()` that stops with a message unless
+its text occurs exactly once - an edit anywhere else can no longer
+break them quietly. Both were run: the profiler measured the above, and
+coverage compiled and ran the suites.
+
+**Where that leaves the drift**: today's profile of the loop is flat -
+the top word, `ARGV-ADD`, is 4.6% - so there is no single cause left to
+remove, and GOALS 7 now says to accept it as the price of those
+iterations' correctness, as it already said for many_ifs.
+
+Recorded changes, with their causes: both shell images about 40 bytes
+larger, for the precheck, and their `image-sum:` checksums with them.

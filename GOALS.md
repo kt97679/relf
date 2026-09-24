@@ -76,9 +76,11 @@ ordinary scripts hit, then edge cases and wording.
    expecting a hot spot. But see the next paragraph.
    **In-process work has drifted about 1.8x slower** since Iteration 268:
    an empty loop iteration is 61 µs where it was 34.5, on a machine
-   where dash still measures 1.4 (DASH.md §1, found at 492). That IS
-   worth profiling - not for a hot spot, but for which of two hundred
-   iterations of correctness work cost what.
+   where dash still measures 1.4 (DASH.md §1, found at 492). Bisected at
+   495 (PERFORMANCE.md): steps between 268 and 360, flat since; the
+   largest, 341's scan of literal words for pattern marks, is cheaper
+   now, and the profile is flat. Accept it as the price of those
+   iterations' correctness, as with many_ifs.
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
    (8b, the intermittent `wait-job-status-345.sh`, is resolved in 470:

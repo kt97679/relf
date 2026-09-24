@@ -15,28 +15,37 @@ import contextlib, io, os, re, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
+def patch(text, old, new):
+    """Replace old, which must occur exactly once. str.replace does nothing
+    when its text is missing, and a miss here once built an engine that
+    did not compile: Iteration 490 removed an unused macro from cv8.c
+    that this tool's pattern still named (found at 495)."""
+    n = text.count(old)
+    if n != 1:
+        sys.exit('%s: the text to patch occurs %d times, not once:\n%s'
+                 % (sys.argv[0], n, old[:300]))
+    return text.replace(old, new)
+
 work = tempfile.mkdtemp(prefix='relf-prof-')
 engine, counts = os.path.join(work, 'relf-prof'), os.path.join(work, 'counts.bin')
 
 SLOTS = 1 << 18
 src = open('cv8.c').read()
-src = src.replace('''#define PROF(k)
-#define PROFC(t)
+src = patch(src, '''#define PROF(k)
 #define PROFIP(a)
 #define PROFDUMP''', '''#include <sys/mman.h>
 static unsigned int *prof_map;
 static UNS64 prof_base;
 #define PROF(k)
-#define PROFC(t)
 #define PROFIP(a) (prof_map[((a) - prof_base) & 0x3FFFF]++)
 #define PROFDUMP''')
-src = src.replace('    NEXT();\ndo_call:', '''    prof_base = cbase;
+src = patch(src, '    NEXT();\ndo_call:', '''    prof_base = cbase;
     { int fd = open("%s", O_RDWR);
       prof_map = mmap(0, %d * sizeof(unsigned int),
                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       close(fd); }
     NEXT();
-do_call:''' % (counts, SLOTS), 1)
+do_call:''' % (counts, SLOTS))
 open(os.path.join(work, 'prof.c'), 'w').write(src)
 subprocess.run(['cc', '-O2', '-o', engine, os.path.join(work, 'prof.c')], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
@@ -54,9 +63,9 @@ r = subprocess.run(command, shell=True, env=env,
 print(f'ran: {command}  (status {r.returncode})')
 
 audit = open('tools/image-audit.py').read()
-audit = audit.replace("    ip = xt; far_target = xt\n    while ip < end:\n        op = img[ip]",
+audit = patch(audit, "    ip = xt; far_target = xt\n    while ip < end:\n        op = img[ip]",
                       "    ip = xt; far_target = xt\n    STARTS[name] = []\n    while ip < end:\n        STARTS[name].append(ip)\n        op = img[ip]")
-audit = audit.replace("CALLS=[]; SLOTS=[];", "CALLS=[]; SLOTS=[]; STARTS={};")
+audit = patch(audit, "CALLS=[]; SLOTS=[];", "CALLS=[]; SLOTS=[]; STARTS={};")
 g = {}
 sys.argv = ['image-audit', 'kernel-shell.img', '8']
 with contextlib.redirect_stdout(io.StringIO()):

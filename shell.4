@@ -2674,22 +2674,32 @@ VARIABLE CL-BRACKET   \ where an unclosed `[` sits in it, or -1
   \ does not drag the whole word through pathname expansion. That cost
   \ 3.4% of a loop benchmark's dispatches from Iteration 341 until this
   \ one (Iteration 367).
-  -1 CL-BRACKET !
-  CL-N @ 1- 0 ?DO
-    TOK-POS @ I + C@
-    DUP 42 = OVER 63 = OR IF
-      TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
-    ELSE
-      DUP 45 = OVER 93 = OR OVER 33 = OR OVER 94 = OR IF
-        TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH
-      THEN
-      DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
-      DUP 93 = CL-BRACKET @ 0< 0= AND IF
-        TOK-OUT @ CL-BRACKET @ + OUT-BASE - GLOB-MARK-OFF
-        -1 CL-BRACKET !
-      THEN
-    THEN DROP
-  LOOP
+  \ Only a word with `[`, `*` or `?` in it has anything to mark: `-`,
+  \ `]`, `!` and `^` matter only inside a bracket expression, so only
+  \ after a `[`. Most literal words - `-lt`, `]`, a number - have none of
+  \ the three, and three memchr calls say so where the loop below spent a
+  \ dozen dispatches a character: since 341 it had cost every literal
+  \ word that, 17% of an empty loop iteration (Iteration 495, found by
+  \ timing old builds against each other).
+  TOK-POS @ CL-N @ 1-
+  2DUP 91 SCAN NIP >R  2DUP 42 SCAN NIP >R  63 SCAN NIP  R> OR R> OR IF
+    -1 CL-BRACKET !
+    CL-N @ 1- 0 ?DO
+      TOK-POS @ I + C@
+      DUP 42 = OVER 63 = OR IF
+        TOK-OUT @ I + OUT-BASE - GLOB-MARK-OFF
+      ELSE
+        DUP 45 = OVER 93 = OR OVER 33 = OR OVER 94 = OR IF
+          TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH
+        THEN
+        DUP 91 = IF CL-BRACKET @ 0< IF I CL-BRACKET ! THEN THEN
+        DUP 93 = CL-BRACKET @ 0< 0= AND IF
+          TOK-OUT @ CL-BRACKET @ + OUT-BASE - GLOB-MARK-OFF
+          -1 CL-BRACKET !
+        THEN
+      THEN DROP
+    LOOP
+  THEN
   TOK-OUT +!  ARGC @ 1+ ARGC !
   TOK-END @ TOK-POS ! ;
 
