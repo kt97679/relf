@@ -20,7 +20,7 @@ stdout and exit status. Where they disagree, the harness reports
 The reason is `tests/diff/`'s weakness: it compares against bash
 alone, so every case has to be hand-checked for forms where bash and
 POSIX legitimately differ. `GOALS.md`'s "Where bash and POSIX
-disagree" section lists two, and Iteration 124 found that the choice
+disagree" section lists them, and Iteration 124 found that the choice
 of oracle had been silently costing the mrsh suite a genuine pass and
 buying it a hollow one — for eighty iterations, undetected. **One
 shell is not POSIX.** It is one implementation's reading of POSIX
@@ -98,9 +98,8 @@ Rules that have already cost time elsewhere in this project:
   splitting was correct all along (Iteration 147). If a case needs a
   second feature to express itself, use the form that already works
   and give the other feature its own case.
-- **Write the case before the fix.** `PARSE-EXPAND-PLAN.md` and
-  `FORTH-STYLE.md` §13 both say this; the differential layer is where
-  it pays most.
+- **Write the case before the fix.** `FORTH-STYLE.md` §13 says why;
+  the differential layer is where it pays most.
 
 ## Reference shells
 
@@ -112,17 +111,19 @@ Seven, on a fully-provisioned machine: `dash` (as `sh`), `bash`,
 `zsh` is deliberately excluded - see `run.sh`'s comment at the
 candidate list.
 
-## Current state
+## Current state (Iteration 496)
 
-Five seed cases, one per verdict path, written to prove the harness
-rather than to cover anything:
+48 cases across 24 sections of XCU, from 2.2.1 (the escape character)
+to 2.14 (special builtins). Against seven reference shells - `dash` as
+`sh`, `bash`, `mksh`, `ksh`, `yash`, `busybox sh` and `posh` - 46 pass
+and 2 are inconclusive, each for a real disagreement between the
+references:
 
-| case | verdict | why |
-|---|---|---|
-| `2.6.2-parameter-expansion-defaults.sh` | PASS | |
-| `2.5.2-special-parameters.sh` | PASS | |
-| `2.2.2-unterminated-single-quote.fail.sh` | PASS | |
-| `2.6.1-tilde-after-equals-in-argument.sh` | INCONCLUSIVE | bash expands, dash does not |
-| `2.9.1-assignment-prefix.sh` | FAIL | `NAME=value command` is a real, recorded gap |
+| case | the disagreement |
+|---|---|
+| `2.6.1-tilde-after-equals-in-argument.sh` | dash does not expand the tilde; bash and mksh do - kept as the worked example |
+| `2.6.4-arithmetic-variables.sh` | dash and posh differ |
 
-The corpus itself is not yet scoped. That is the next piece of work.
+The suite started, at Iteration 125, as five seed cases proving the
+harness; one of them, `2.9.1-assignment-prefix.sh`, was a recorded gap
+until `NAME=value command` was implemented at 256.

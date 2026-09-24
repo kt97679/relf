@@ -79,8 +79,15 @@ ordinary scripts hit, then edge cases and wording.
    where dash still measures 1.4 (DASH.md §1, found at 492). Bisected at
    495 (PERFORMANCE.md): steps between 268 and 360, flat since; the
    largest, 341's scan of literal words for pattern marks, is cheaper
-   now, and the profile is flat. Accept it as the price of those
-   iterations' correctness, as with many_ifs.
+   now, and there is no single cause left to remove - that much is the
+   price of those iterations' correctness, as with many_ifs.
+   **Two levers were never tried** (found at 496, in PERFORMANCE.md's
+   list from 292): `I`, `(LOOP)`, `(+LOOP)` and `(?DO)` are colon
+   definitions, 7.6% of an empty loop iteration's dispatches, and could
+   be engine opcodes like the tiny words of CV8.md 6.4; the tree's field
+   reads `X@`/`XF@`, 4.1%, could be primitives. Price each first
+   (`prompts/10-price-before-refactor.md`): a direct opcode moves the
+   map by one (CV8.md 2.2).
 8. **`intr-at-prompt` loses a race under full-suite load** (406, again
    in 423): passes alone, fails about one verify in five on one CPU.
    (8b, the intermittent `wait-job-status-345.sh`, is resolved in 470:
@@ -237,6 +244,13 @@ it before starting anything it could cover.
   the first attempt alone was not enough.
 
 ## Method, and the evidence for it
+
+**Prompt overrides** (as `prompts/USAGE.md` asks a project to record
+them): skip `04-expert-review` and `05-reader-review` - nothing is
+published from this repository since the article moved elsewhere
+(489). `01-problem-framing`, `02-escape-recall` and `06-handling-review`
+apply as written: `01` to any benchmark, `02` to any design choice, and
+`06` to review feedback of any kind, the user's included.
 
 Each rule is stated once, in `prompts/`; this project's instances stay
 here as the evidence for it.

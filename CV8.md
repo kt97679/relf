@@ -340,11 +340,14 @@ image runs on a 64-bit engine, the 4-byte image on a 32-bit one
 (`relf32`, or the native engine of a 32-bit host). It is a design
 property - it is what makes addressing cheap - not a bug to fix away.
 
-A second consequence, for cross-compiling: **the host that runs
-`cross.4` must have cells at least as wide as the target's**, because
-`cross.4`'s literal parsing and its `@-T`/`!-T` plumbing do host-cell
-arithmetic on values that end up in target cells. An 8-byte host can
-build a 4-byte kernel; a 4-byte host cannot build an 8-byte one.
+**`cross.4` builds either width's image on either width's host.** It
+once could not: its literal parsing and its `@-T`/`!-T` plumbing did
+host-cell arithmetic on values bound for target cells, so the host
+needed cells at least as wide as the target's. Iterations 403-415 made
+it ask about the host and the target separately, and `tests/verify`
+checks the result: `image:widening` is the 8-byte kernel built by the
+4-byte engine, and on a 32-bit machine `image:8byte-fixpoint` is that
+same build. FORTH-STYLE.md 15 has the rules it took.
 
 ## 6. The specialised opcodes
 

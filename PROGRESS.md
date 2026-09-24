@@ -491,6 +491,7 @@ do not trust the absence of a line below.
 - **493** — GOALS.md to the present; README rewritten; every document one topic
 - **494** — the tests' own files: one empty stray, one undocumented probe
 - **495** — the 1.8x drift bisected; the profiler and coverage tools, broken at 490, fixed
+- **496** — the three unaudited areas: prompts/, three documents read through, the tests' documents
 
 ### Not tied to an iteration
 
@@ -23740,3 +23741,62 @@ iterations' correctness, as it already said for many_ifs.
 
 Recorded changes, with their causes: both shell images about 40 bytes
 larger, for the precheck, and their `image-sum:` checksums with them.
+
+## Iteration 496: the three areas the cleanup had not audited
+
+Asked whether the cleanup was done, I named three areas I had not read
+through; this is them.
+
+**prompts/**, the prompt library. Nine of its thirteen prompts are cited
+from this repository; four are not - `01-problem-framing`, and
+`04`-`06`, which are about publishing a write-up and handling its
+reviews. But the library is its own thing, reusable across projects, and
+its USAGE.md already has the mechanism for "not applicable here": a
+per-project override, recorded in the project. So nothing is deleted;
+GOALS.md's Method section now records the overrides (skip 04 and 05 -
+nothing is published from here since the article moved; 01, 02 and 06
+apply). Inside the library, the index's account of its second family
+stopped at 11 of 13 prompts, and USAGE.md's compliance table at 06: both
+completed, the table from each prompt's own "Artifact required".
+
+**CHECKING.md, FORTH-STYLE.md, PERFORMANCE.md**, read through:
+
+- CHECKING.md: what verification always compares predated the image
+  checksums; "After a pull" said only the engines were build products;
+  the matrix's references predated bash's POSIX mode (487).
+- FORTH-STYLE.md illustrated its rules with words the command tree
+  retired at 264 - `AT-SEMI?`, `RUN-SIMPLE-OR-PIPELINE`, `COPY-ARGV-Q`
+  and six more, each checked absent - now with current words, each
+  checked present; "all 180+ definitions have a stack comment" is 821,
+  counted, all of them; 331 assertions are 851; a fixed-table rule was
+  in the present tense about tables that grow since 250-252; and its
+  differential layer was credited to the mrsh suite.
+- **A mistake of mine, found by it**: its section 15 says `cross.4`
+  builds either width's image on either host, and `tests/verify` checks
+  it (`image:widening`; on a 32-bit machine `image:8byte-fixpoint` is
+  that build). At 493 I had moved from GOALS.md into CV8.md 5.4 the
+  opposite claim - that a 4-byte host cannot build an 8-byte image -
+  true before 403-415, and copied without checking. Corrected.
+- PERFORMANCE.md's "What is left, in measured order" was a "next" list
+  from 292 in the present tense, and it changes 495's conclusion: of
+  its four items, the per-word bookkeeping was done (293, 374) and
+  compiled arithmetic rejected (284), but **`I`/`(LOOP)`/`(+LOOP)` as
+  engine opcodes and `X@`/`XF@` as primitives were never tried** - 7.6%
+  and 4.1% of the loop at 495. I had called the profile flat with no
+  lever left. The section is now an account of what became of each, and
+  the two open levers are in GOALS.md item 7, where open work lives.
+
+**The tests' documents**: the mrsh vendor README pointed at GOALS.md's
+removed goal 8 and said the suite needs "a feature list far beyond what
+shell.4 implements" - passed in full since 125; the POSIX README's
+"Current state" was its five seed cases from 125, one listed as a
+failing gap fixed at 256 - now 48 cases in 24 XCU sections, 46 passing
+against seven reference shells and 2 inconclusive, each a real
+disagreement, named; it also cited the removed PARSE-EXPAND-PLAN.md.
+CATALOGUE.md is a dated log by design, but two entries said "still
+open" about behaviours that, checked against dash, now work: two
+here-documents on one command, and a pipeline continued by an alias.
+The crashers README is accurate - there are none.
+
+Only documents changed; the baseline should not move, and the
+verification run says whether it did.

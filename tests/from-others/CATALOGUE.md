@@ -202,9 +202,10 @@ them.
 
 29. **A command may have more than one here-document.**
     `cmd <<A 3<<B` feeds A to standard input and B to file descriptor 3.
-    Two things were wrong here, and only the first is fixed: one buffer
-    held one prepared body, so both redirections ran from whichever was
-    prepared last.
+    Two things were wrong here: one buffer held one prepared body, so
+    both redirections ran from whichever was prepared last (fixed here),
+    and a here-document on a numbered descriptor did not reach it (entry
+    30, fixed at 355). Checked at 496: both bodies arrive, as in dash.
 
 30. **A here-document on a numbered descriptor reaches that
     descriptor.** `cat 3<<E` then `<&3` reads the body in dash; here fd
@@ -556,8 +557,9 @@ wrapper rather than the usual relative one.
     or `fi`. Substitution was tried only where a COMMAND was about to be
     parsed, so a closing keyword - which is tested before that - never
     saw it. Done in Iteration 388: the closer test expands first. The
-    remaining half, a blank alias before a newline letting a pipeline
-    continue onto the next line, is still open.
+    other half - an alias ending in `|`, or a blank alias after one,
+    letting a pipeline continue onto the next line - was open then, and
+    checked at 496 behaves as in dash.
     → `tests/shell/run-alias-position`
 
 ## From yash's error tests (Iteration 383)

@@ -134,23 +134,26 @@ name exactly filled a cell. `continue` - eight characters - was the only
 one affected, and it vanished from the shell. The index now hashes by
 explicit length.
 
-## What is left, in measured order
+## What was left at Iteration 292, and what became of it
 
-1. **`EXPAND-WORDS`'s per-word bookkeeping** (840/iteration). Five
-   parallel arrays are copied per word before expansion. Most words are
-   literals that need none of it.
-2. **`I`, `(LOOP)`, `(+LOOP)` as engine opcodes** (663/iteration, 7%).
-   They are colon definitions; dash's loop control is a C `for`. This is
-   already on the queue and is the cheapest large win left.
-3. **Tree field reads** `X@`/`XF@` (436/iteration) - candidates for
-   primitives.
-4. **Arithmetic from text on every pass** (`PARSE-DECIMAL`,
-   `AE-SKIP-WS`, 318/iteration) - Stage D's remaining item, and 287
-   measured the whole evaluator at 10% of the arithmetic benchmark.
+292 ended with a list in measured order. Its fate, checked at 496:
+
+1. **`EXPAND-WORDS`' per-word bookkeeping** (840 dispatches an
+   iteration then) - measured and reduced at 293 and 374, below.
+2. **`I`, `(LOOP)`, `(+LOOP)` as engine opcodes** (663, 7%) - never
+   done, and never rejected. At 495 they and `(?DO)` are still 7.6% of
+   an empty loop iteration's dispatches: the largest single lever the
+   profile shows. GOALS.md item 7.
+3. **The tree's field reads `X@` and `XF@` as primitives** (436) -
+   never done; 4.1% at 495. GOALS.md item 7.
+4. **Arithmetic compiled instead of evaluated from its text** (318) -
+   rejected at 284: the whole evaluator was 10% of the arithmetic
+   benchmark, and compiling removes only the reading half. In GOALS.md's
+   register of what was tried and rejected.
 
 None of these changes the shape: this shell will stay an AST walker,
-like both references. The difference that remains after all of them is
-the cost of interpreting rather than compiling, and that is Phase 4.
+like both references. What remains after all of them is the cost of
+interpreting rather than compiling - GOALS.md's end state.
 
 ## Iteration 293: the per-word bookkeeping, and what measuring it taught
 

@@ -48,6 +48,13 @@ artifact, not for a claim:
 | `04` | quoted text with concrete fixes, not general impressions |
 | `05` | the first three places a reader stopped |
 | `06` | a per-finding accepted/rejected line with reasons |
+| `07` | the log entry, a commit message body, and the bundle's clone check |
+| `08` | one line per environmental assumption: its value here, and whether the harness depends on it |
+| `09` | per changed value: old, new, one sentence of cause, and a verdict |
+| `10` | the prize measured before the change, and the achieved value beside it after |
+| `11` | the name, expected and actual values in the output itself; or a local reproduction |
+| `12` | the search for a prior attempt, and the log entry saying how this one ended |
+| `13` | every failure classed, the order they will be worked in, and each crash's reproducer |
 
 If a response says the prompt was considered but shows none of these, the
 prompt was not applied.

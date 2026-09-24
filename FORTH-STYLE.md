@@ -33,12 +33,12 @@ address was wanted, arguments in the wrong order. Design for that.
   word needs a paragraph of commentary to explain what is on the stack
   halfway through, split it.
 - **A word should do one thing, and its name should say which.**
-  `SPLIT-AT-KEYWORD` splits; `RUN-SIMPLE-OR-PIPELINE` runs. A word
-  that both decides and acts is a word whose callers cannot reuse the
-  decision.
+  `PARSE-SIMPLE` parses; `EXEC-SIMPLE` runs. A word that both decides
+  and acts is a word whose callers cannot reuse the decision.
 - **Prefer many small words to one large one**, even when the small
-  ones have only one caller. `AT-SEMI?`, `AT-PIPE?`, `AT-END?` exist so
-  the loops that use them read as English.
+  ones have only one caller. The body of `EXPAND-WORDS`' loop became
+  `EW-ENTRY` and its tail `EW-EWA` (Iteration 480) so that the loop
+  could be driven twice and still read as what it does.
 
 ## 3. Stack parameters: three is the practical limit
 
@@ -55,24 +55,23 @@ readable and starts being a source of defects.
 > the parameters could be named; on the stack it would have been
 > unmaintainable. (Iteration 39)
 
-**Every word gets a stack-effect comment**, without exception. All 180+
-definitions in `shell.4` have one. They are the only type signatures
-this language has.
+**Every word gets a stack-effect comment**, without exception. All 821
+definitions in `shell.4`, `tree.4` and `edit.4` have one (counted at
+Iteration 496). They are the only type signatures this language has.
 
 ## 4. Locals
 
 A local here **is an ordinary `VARIABLE`**, saved on entry to the
 declaring word and restored on every exit - `shadow.4`, loaded before
 `shell.4`. That is what keeps the implementation small and what makes
-converting a word cheap: its body does not change, because `CA-N @` and
-`CA-N !` keep working. Converting is one declaration line and deleting
+converting a word cheap: its body does not change, because `SV-NAME @`
+and `SV-IDX !` keep working. Converting is one declaration line and deleting
 the argument-popping stores.
 
 ```forth
-: COPY-ARGV ( src-argv src-argc --- )  SHADOW{ CA-SRC CA-N }
-  CA-N @ ARGC ! ...
-: GLOB-MATCH ( pat plen text tlen --- f )
-  SHADOW{ GM-PATTERN GM-PLEN GM-TEXT GM-TLEN | GM-P GM-S }
+: SET-SHVAR ( name-addr value-addr --- )
+  SHADOW{ SV-NAME SV-VALUE | SV-IDX }
+  ...
 ```
 
 - Names before `|` are filled from the data stack, **left to right =
@@ -115,14 +114,14 @@ the argument-popping stores.
 
 ## 5. Naming
 
-- `WORD-NAME` — hyphenated, verb-first for actions (`RUN-PIPELINE`,
-  `SAVE-WHILE-COND`), noun for values (`LINE-BUF`, `ARGC`).
-- `NAME?` — a predicate returning a flag. `AT-SEMI?`, `VALID-NAME?`.
+- `WORD-NAME` — hyphenated, verb-first for actions (`EXPAND-WORDS`,
+  `RUN-EXPANDED`), noun for values (`TOK-OUT`, `ARGC`).
+- `NAME?` — a predicate returning a flag. `IFS-CHAR?`, `VALID-NAME?`.
 - `NAME!` / `NAME@` — stores/fetches, matching Forth convention.
 - `(NAME)` — a runtime helper for a compiling word, not called
   directly.
 - **Per-word scratch gets a per-word prefix**: `GM-*` for
-  `GLOB-MATCH`, `NORM-*` for `NORMALIZE-OPERATORS`. This convention
+  `GLOB-MATCH`, `EW-*` for `EXPAND-WORDS`. This convention
   exists because there were no locals; **now that there are, prefer a
   local to a new prefixed global.** The prefixes that remain are a
   historical record of the workaround, not a pattern to extend.
@@ -184,8 +183,12 @@ Parallel arrays drift. If a word describes another word, attach it.
 > (Iteration 49). Bash's `WORD_DESC` bundles the flags with the word
 > and makes the whole class unrepresentable.
 
-Until the structure changes, the rule is: **every copy carries the
-flags** (`COPY-ARGV-Q`, never bare `COPY-ARGV`).
+`ARGV` has several parallel arrays now - quoted, name-quoted,
+descriptor-number, assignment - and the rule is unchanged: **every copy
+carries all the flags**, as `GLOB-FIELDS` and both passes of the
+expansion loop do. Iteration 467 was one more instance: `ARGV-IONUM`,
+not carried through expansion, let a word that merely looked like a
+descriptor number be taken for one.
 
 ## 9. Reentrancy: globals do not survive a recursive call
 
@@ -275,11 +278,12 @@ Audit periodically, not only when touching a feature.
   to address zero — a forgotten patch shows up as "nothing happened"
   instead of a segfault. This replaced fourteen hand-written
   variable/caller/patch triples (Iteration 77).
-- **A full fixed table must never fail silently.** `SET-SHVAR` does
-  nothing when its 32 slots are full, so the 33rd variable produces
-  wrong output rather than an error. Same for `MAX-FUNCS`,
-  `MAX-ARGS`. Growable is the goal; diagnosing overflow is the
-  minimum. Line-editor history was one until Iteration 408 — 32 slots
+- **A full fixed table must never fail silently.** `SET-SHVAR` once
+  did nothing when its 32 slots were full, so the 33rd variable produced
+  wrong output rather than an error, and the function and argument
+  tables were the same. They report when full since Iteration 90 and
+  grow since 250-252 (`MAX-FUNCS` is now only the function table's first
+  size). Growable is the goal; diagnosing overflow is the minimum. Line-editor history was one until Iteration 408 — 32 slots
   of 256 bytes, so the 33rd command evicted the first and a longer line
   was cut short, both without a word. A user asked "why 32?", and
   there was no answer.
@@ -371,18 +375,20 @@ Audit periodically, not only when touching a feature.
 
 ## 13. Testing
 
-**Three layers, all in use here:**
+**Three kinds of test, all in use here** (CHECKING.md lists the suites):
 
 - **Unit / isolated diagnostic.** Build the algorithm standalone,
   prove it, *then* wire it in. `GLOB-MATCH` passed 22 cases before
   touching `shell.4`; the arithmetic evaluator passed 22 and caught two
   bugs early. This is the single highest-value habit in the project.
 - **Regression.** `tests/shell/run-*` — one file per feature, added in
-  the same commit as the feature, never deleted. 331 assertions.
+  the same commit as the feature, never deleted. 851 assertions at
+  Iteration 495.
 - **Functional / differential.** Run the same script through `relfsh`
   and through `bash` and require identical stdout and exit status
-  (`tests/mrsh-suite/run.sh`). A reference implementation is worth more
-  than any number of hand-written expectations.
+  (`tests/diff/`; the matrix and the corpora compare with dash as
+  well). A reference implementation is worth more than any number of
+  hand-written expectations.
 
 **Habits that repeatedly paid:**
 

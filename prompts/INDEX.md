@@ -50,13 +50,15 @@ more patient and better informed than any real one.
 
 `01`-`06` came from a hardware-measurement project and are about
 choosing what to measure, searching rather than recalling, and
-publishing. `07`-`11` came from a self-hosting shell written over four
-hundred sessions and handed to someone with two ordinary machines; they
-are about work that OUTLIVES a session and software that runs somewhere
-other than where it was written. The second family's failures are
-cheaper to hit and easier to miss: nine of the eleven faults that
-sequence found were in the test harness rather than the program, and
-every one was something the original environment never varied.
+publishing. `07`-`13` came from a self-hosting shell written over four
+hundred sessions: `07`-`11` when it was handed to someone with two
+ordinary machines, `12` and `13` later, from keeping its log honest and
+from working its failures in the right order. They are about work that
+OUTLIVES a session and software that runs somewhere other than where it
+was written. That family's failures are cheaper to hit and easier to
+miss: nine of the eleven faults the handover found were in the test
+harness rather than the program, and every one was something the
+original environment never varied.
 
 ## Provenance
 

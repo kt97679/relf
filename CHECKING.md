@@ -108,8 +108,12 @@ are installed. `tests/verify` records the compiler it measured with, and
 compares the size lines only against a baseline taken with that same
 compiler; otherwise it prints them as `machine` and moves on. What it
 always compares is what depends on the CODE: every suite's pass and fail
-counts, the dead-word count, both image fixpoints, and whether the
-bundle can be cloned.
+counts, the dead-word count, both image fixpoints, whether the bundle
+can be cloned - and, since Iteration 489, the checksum of each rebuilt
+shell image (`image-sum:`), so that a build on another machine is
+compared byte for byte with the one recorded. A 32-bit host builds no
+8-byte image, so its `image-sum:kernel-shell.img` reads `missing` and is
+not compared; the 4-byte one is.
 
 ## What the suites take out of your environment
 
@@ -128,7 +132,11 @@ locale.
 The engines are build products and are not in the repository - 40 KB of
 C through `cc`. `make` builds them, and rebuilds them when `uname -m`
 changes, so a checkout copied or shared between machines cannot end up
-exec'ing a binary for the wrong architecture. `make clean` removes them.
+exec'ing a binary for the wrong architecture. The shell images are build
+products too, since Iteration 489: `make` builds them, and `relfsh` does
+if they are missing. `make clean` removes the engines, `make distclean`
+the shell images as well. Only the two kernel images are committed,
+being the bootstrap seed.
 
 ## A prompt through the environment
 
@@ -154,8 +162,10 @@ a re-run, that is what happened. Both waits can be lengthened:
 
 ## Reference shells
 
-The differential suite compares against `bash`; the matrix uses `bash`
-and `dash` and scores a case only where the ones present agree; three
+The differential suite compares against `bash`; the matrix uses `bash
+--posix` and `dash` and scores a case only where the ones present agree
+(POSIX mode since Iteration 487: plain bash alone outvoted the standard
+on a machine without dash); three
 shell-test files quote `dash`'s exact wording and skip without it. None
 of them is required - the suite says what it could use and adjusts -
 but with both installed you are measuring what this project measures.
