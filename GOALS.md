@@ -173,22 +173,38 @@ work begins.
     escaped, so they move nothing (CV8.md 2.2); a prompt hook needs a
     point in the prompt loop that calls a Forth word.
 
-**Questions to settle** (put to the user at 499):
+**Decisions** (the user's answers, recorded at 500):
 
-- Item 2: what is the 1 GB for - larger images, generated or JIT code,
-  data in the code space? And may the opcode count fall to 64 if item 1
-  shows the cost is acceptable?
-- Item 4: a new language for users, alongside or instead of POSIX sh -
-  or an internal representation the shell compiles sh into?
-- Item 10: forward branches are already two bytes, and backward ones
-  one byte where they fit. Was one byte for forward branches meant? 97%
-  would fit (Iteration 258), but it needs a pass that shrinks a finished
-  definition. And "no full cell offsets" - the `BUFFER:` descriptors and
-  deferred xts above, or something else?
-- Items 5 and 6: which architecture first - x86-64, or ARMv7 for the
-  Tegra?
-- Item 12: may the engine gain socket primitives for the example, and
-  should the examples live in an `examples/` directory?
+- **Item 2 - measure, don't adopt.** 16 MB is plenty for this project
+  and many others, but a large project could hit 4 MB easily, and this
+  Forth's speed is not yet what JIT or AOT could make it. So: an
+  experiment estimating the performance loss of two-bit tagging with
+  six-bit opcodes. Method, as agreed: count each opcode's executions on
+  the shell's workloads and its occurrences in the images (the
+  profiler's `PROF` hook); keep the 64 most executed as one-byte
+  opcodes; measure time with a variant engine that sends the other
+  ~31 through a second dispatch, as `ESC` would - real code, no format
+  change - and size from the static counts, a byte each. Calls under
+  4 MB keep their size in either scheme, so those two numbers are the
+  price of the 1 GB. A synthetic loop of nothing but moved opcodes
+  bounds the worst case.
+- **Item 4 - analysis first, then a language of our own.** First: which
+  shell features cause the most parsing and implementation complexity;
+  if dropping some would halve the shell's source, that is a finding in
+  itself. Then a shell language designed from scratch - "completely
+  different from what is used so far", convenient and expressive, more
+  testable, simpler to implement, better formalized - the user asked
+  for imagination here, not a variation on sh, csh or any other known
+  pattern. It is a design with examples before it is code.
+- **Item 10 - no two-pass compiler**: the complexity is not worth the
+  gain. The task is to find what else still stores a full cell where a
+  compact offset would do.
+- **Items 5 and 6 - x86-64 first.** The debugging loop has to run where
+  the code is written; on x86-64 it runs here, without relaying every
+  attempt through the user's machines.
+- **Item 12 - yes**: add whatever primitives the examples need, sockets
+  included (escaped, so nothing moves), and put the examples in
+  `forth-shell-examples/`.
 
 ## Known shortcuts to revisit
 

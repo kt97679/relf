@@ -495,6 +495,7 @@ do not trust the absence of a line below.
 - **497** — two decisions of the user's recorded: prompts/ is kept whole, and an article is planned
 - **498** — a check broken for 190 iterations: the long-path image build lacked edit.4
 - **499** — the user's list for what comes next, recorded with its open questions
+- **500** — the user's answers to 499's questions, recorded as decisions
 
 ### Not tied to an iteration
 
@@ -23904,3 +23905,32 @@ On the article: every iteration's entry in this log, with its failed
 and reverted attempts and their deciding numbers, is the material the
 user plans to draw on - the Index at the top of this file is the way
 in.
+
+## Iteration 500: the answers, recorded as decisions
+
+The user answered the five questions of 499; GOALS.md's "What comes
+next" now carries them as decisions:
+
+- **The two-bit call selector is an experiment, not a plan.** The user
+  weighed it: 16 MB is plenty for this project and many others, a large
+  project could hit 4 MB easily, and this Forth's speed is not what
+  JIT or AOT could make it. The user proposed an artificial test; I
+  proposed measuring on the real system instead, since the answer
+  depends on WHICH opcodes lose their one-byte form: per-opcode counts
+  from the profiler, the 64 hottest kept, the rest sent through a
+  second dispatch in a variant engine - no format change - and a
+  synthetic loop only as the worst-case bound.
+- **A shell language of our own**, after an analysis of which features
+  cost the most in parsing and implementation. The user asked for
+  imagination: a language unlike sh, csh or the rest - more testable,
+  simpler to implement, better formalized, still convenient and
+  expressive.
+- **No two-pass compiler** for smaller branches; look for other
+  full-cell fields that could be compact offsets instead.
+- **The assembly engine starts on x86-64**, so that it can be debugged
+  where it is written.
+- **The `forth` examples may bring any primitives they need**, sockets
+  included, in `forth-shell-examples/`.
+
+Iteration 500 of the log, and fitting that it is a list of what comes
+next rather than of what was done.
