@@ -55,6 +55,19 @@ ordinary scripts hit, then edge cases and wording.
    (found by the fuzzer, 426). POSIX leaves it unspecified; bash reports
    and carries on, as this shell does, and dash leaves the script. Only
    worth changing if dash's reading is adopted as policy.
+5c. **A script descriptor in the shell's spare range is overwritten**
+   (485). `REDIRECT-SAVE` dup2s each redirected descriptor onto a FIXED
+   slot, 64 + i, and `REDIRECT-RESTORE` closes those slots afterwards: so
+   `exec 65>f; echo x 3>/dev/null 4>/dev/null; echo y >&65` loses
+   descriptor 65 ("bad file descriptor"), where bash writes y. Rare - it
+   needs a script descriptor at 64 or above and a command with enough
+   redirections to reach it. dash asks the kernel for the lowest FREE
+   descriptor above a floor. The fix: an engine primitive for
+   `fcntl(fd, F_DUPFD_CLOEXEC, floor)`; the undo record carries each
+   copy's number instead of base + i; and close-on-exec takes over from
+   the child's closing of a fixed range, which 483 had to narrow. An
+   engine change, so it wants a Tegra build before it is trusted.
+
 6. **Prompt escapes**: `\D{format}` and `\j` came in 476. `\v` and
    `\V` stay as written on purpose - they are bash's version - and so
    does `\l`, which would need a readlink primitive in the engine.

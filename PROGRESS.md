@@ -480,6 +480,7 @@ do not trust the absence of a line below.
 - **482** — a regular builtin's redirections before its assignments (stage 2)
 - **483** — yash 1752, busybox 255; a command inherits the script's high descriptors
 - **484** — where the references part company on expansion order
+- **485** — found: a script descriptor at 64 or above can be overwritten
 
 ### Not tied to an iteration
 
@@ -23326,3 +23327,19 @@ standard is on its side, but `exec`'s kept redirections, `eval` and `.`
 and the fork all stand in the way, and no corpus asks - the references
 disagree, so none can. Deciding NOT to do a change, with the evidence
 beside the decision, is the point of having designed it first.
+
+## Iteration 485: a collision found and designed, not yet fixed
+
+Noted in passing at 466 and tested now: the shell keeps its saved copies
+of redirected descriptors at FIXED slots, 64 + i, so a script's own
+descriptor there is overwritten by a save and closed by the restore.
+`exec 65>f; echo x 3>/dev/null 4>/dev/null; echo y >&65` says "bad file
+descriptor", where bash writes y. A single redirection happened to miss
+it - the save of a closed descriptor fails harmlessly - which is why the
+first probe, at 64, passed.
+
+The fix wants an engine primitive, `fcntl(fd, F_DUPFD_CLOEXEC, floor)`,
+so it is designed in GOALS.md 5c rather than started at the end of a
+turn: the lowest free descriptor above the floor, as dash does, the
+copy's number carried in the undo record, and close-on-exec in place of
+the child's range closing. Rare in scripts; recorded so it is not lost.
