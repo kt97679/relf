@@ -239,4 +239,20 @@ assert_output_equals "a child inherits descriptor 23" "via-23" "$out"
 out=$("$THIS_SH" -c 'exec 200>"$1/g"; "$0" -c "echo via-200 >&200"; exec 200>&-; cat "$1/g"' "$THIS_SH" "$d" 2>&1)
 assert_output_equals "... and descriptor 200, outside the old range" "via-200" "$out"
 rm -rf "$d"
+# A script's own descriptor at 64 or above survives the shell's saving of
+# redirected descriptors (Iteration 486): the copies were made by dup2 onto
+# fixed slots, 64 + i, and the restore then closed those slots. They are
+# now the lowest FREE descriptors from 64 up, close-on-exec.
+d=$(mktemp -d)
+out=$("$THIS_SH" -c 'exec 65>"$1/f"; echo x 3>/dev/null 4>/dev/null >/dev/null; echo after >&65; exec 65>&-; cat "$1/f"' sh "$d" 2>&1)
+assert_output_equals "a descriptor at 65 outlives a command with two redirections" "after" "$out"
+# The copies are close-on-exec, so a command run inside the redirection
+# sees none of them. Descriptor 2 is open, so its save makes a real copy;
+# the check is for anything at 64 or above, where the copies live - the
+# redirections' own descriptors are rightly inherited and not counted.
+if [ -d /proc/self/fd ]; then
+    leaked=$("$THIS_SH" -c '{ ls /proc/self/fd | awk "\$1 >= 64" | wc -l; } 2>/dev/null' 2>&1)
+    assert_output_equals "... and a command inside redirections sees none of the copies" "0" "$(echo $leaked)"
+fi
+rm -rf "$d"
 report

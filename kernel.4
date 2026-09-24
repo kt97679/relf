@@ -224,6 +224,7 @@ PRIMITIVE TCGETPGRP     ( fd --- pgid | -1 )
 PRIMITIVE WAIT-JOB      ( pid --- pid' status )  \ reports a stop as well
 PRIMITIVE FILE-MODE     ( c-addr follow? --- mode )  \ Iteration 378: st_mode, 0 if none
 PRIMITIVE LOCAL-TIME    ( --- sec min hour mday mon year wday )  \ Iteration 417
+PRIMITIVE DUP-FROM      ( fd floor --- fd' | -1 )  \ Iteration 486: F_DUPFD_CLOEXEC
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

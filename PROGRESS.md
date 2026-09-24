@@ -481,6 +481,7 @@ do not trust the absence of a line below.
 - **483** — yash 1752, busybox 255; a command inherits the script's high descriptors
 - **484** — where the references part company on expansion order
 - **485** — found: a script descriptor at 64 or above can be overwritten
+- **486** — saved descriptors from the kernel (a new engine primitive), not fixed slots
 
 ### Not tied to an iteration
 
@@ -23343,3 +23344,48 @@ so it is designed in GOALS.md 5c rather than started at the end of a
 turn: the lowest free descriptor above the floor, as dash does, the
 copy's number carried in the undo record, and close-on-exec in place of
 the child's range closing. Rare in scripts; recorded so it is not lost.
+
+## Iteration 486: saved descriptors from the kernel, not fixed slots
+
+GOALS.md 5c, designed at 485. The shell saved each redirected descriptor
+by `dup2` onto a FIXED slot, 64 + i, and closed the slots when it put
+things back - so a script's own descriptor there was overwritten and
+then closed: `exec 65>f; echo x 3>/dev/null 4>/dev/null; echo y >&65`
+said "bad file descriptor" where bash writes y.
+
+**The engine gains its first primitive since Iteration 417**:
+`DUP-FROM ( fd floor --- fd' | -1 )`, `fcntl(fd, F_DUPFD_CLOEXEC,
+floor)` - the lowest FREE descriptor at or above the floor, closed on
+exec, with F_DUPFD and FD_CLOEXEC as the fallback where the combined
+flag is missing. It is an escaped primitive, added as cv8.c's own
+comment prescribes: its PRIMITIVE line appended to kernel.4, its handler
+to escaped_prims[], NESC 61 to 62, nothing else moving. The kernels were
+rebuilt with `make images IMAGES_FORCE=1` - a plain make does not touch
+them, deliberately - and `make check-images` then found both reproduce
+themselves byte for byte, so the fixpoint holds.
+
+In the shell: `REDIRECT-SAVE` takes each copy from `DUP-FROM` with a
+floor of 64 and keeps the copy's number beside its descriptor in the
+undo record, `-1` for a descriptor that was closed; `REDIRECT-RESTORE`
+and `REDIRECT-FORGET` read the pairs. `UNDO-BASE` is gone. And the
+child's closing of the copies before exec is gone with it - the kernel
+closes them now, which is what real shells do - leaving only the
+script's own descriptor at 63 for the child to close; that is the range
+483 had to narrow.
+
+Ten shapes agree with bash, among them nested and kept redirections, a
+function's, a here-document loop's, and descriptor 23 still inherited.
+The assertion for descriptor 65 fails on the build from before and
+passes on this one. The one for leaks was wrong as first written - it
+counted the redirections' own descriptors, which a child rightly
+inherits - and now looks only at 64 and up, where the copies live.
+
+The engine changed, on both widths: a run on the Tegra is the check
+this iteration most wants.
+
+Recorded changes, with their causes: `shell:assertions` 849 -> 851, the
+two for descriptors; the x86_64 engine's code 160 bytes larger for the
+new handler, and the i386 engine's 45 smaller - the compiler lays the
+dispatch out differently, not a change of ours; both shell images about
+65 bytes SMALLER, since UNDO-BASE, its arithmetic and the child's range
+loop are gone. Both kernels and both shell images reproduce.

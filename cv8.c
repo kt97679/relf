@@ -106,7 +106,7 @@ static char **g_argv;
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
 #define NDIRECT 35
-#define NESC    61
+#define NESC    62
 #define NSYN    NDIRECT
 /*  Measured in guest instructions (tools/lab/xarch, qemu): -3.6% on
  *  AArch64, -4.2% on RISC-V 64, +/-0.3% on x86, but +3.0% on ARMv7.  */
@@ -766,7 +766,7 @@ static void virtual_machine(void) {
         &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
         &&L_getppid, &&L_envat,
         &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
-        &&L_filemode, &&L_localtime,
+        &&L_filemode, &&L_localtime, &&L_dupfrom,
     };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
@@ -1416,6 +1416,23 @@ L_dup2: SPILL(); /* oldfd newfd --- ior */
     DS1 = (UNS64)((dup2((int)DS1, (int)DS0) < 0) ? 200 : 0);
     dsp += CELL_BYTES;
     FILLNEXT();
+L_dupfrom: SPILL(); { /* fd floor --- fd' | -1 : the lowest FREE descriptor
+                         at or above floor, a copy of fd, closed on exec.
+                         The shell saved a redirected descriptor by dup2 onto
+                         a fixed slot, 64 + i, which overwrote a script's own
+                         descriptor there; dash asks for a free one, and so
+                         does the shell now (Iteration 486). */
+    int fd = (int)DS1, floor = (int)DS0, r;
+#ifdef F_DUPFD_CLOEXEC
+    r = fcntl(fd, F_DUPFD_CLOEXEC, floor);
+#else
+    r = fcntl(fd, F_DUPFD, floor);
+    if (r >= 0) fcntl(r, F_SETFD, FD_CLOEXEC);
+#endif
+    DS1 = (UNS64)(INT64)r;
+    dsp += CELL_BYTES;
+    FILLNEXT();
+}
 L_getenv: SPILL(); { /* c-addr --- addr */
     char *v = getenv((char*)(uintptr_t)DS0);
     DS0 = (UNS64)(uintptr_t)v;

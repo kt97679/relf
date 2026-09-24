@@ -3424,15 +3424,15 @@ VARIABLE LC-END
   REPEAT
   DROP 0 ;
 
-VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
 
 : CLOSE-SAVED-FDS ( --- )
   \ The copies a redirection keeps so it can put descriptors back are
   \ the shell's business, not the command's: `find /proc/self/fd` in a
   \ redirected command listed fd 64 as well as its own (Iteration 372).
-  \ Real shells mark them close-on-exec; this shell has no fcntl, so
-  \ the child closes the range before it execs.
-  \ The saved copies from 64 up go, and the script's own descriptor,
+  \ Since Iteration 486 they are close-on-exec, as real shells make them,
+  \ and the kernel closes them at the exec; before, this shell had no
+  \ fcntl and the child closed a fixed range of them itself.
+  \ The script's own descriptor goes here,
   \ which this shell keeps at 63 and which a redirected `ls
   \ /proc/self/fd` could otherwise see. Descriptors 10 to 62 do NOT: they
   \ are the script's since Iteration 466 made them usable, and closing
@@ -3440,8 +3440,7 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
   \ flock 10`, a common idiom, found no descriptor 10, and `exec 23>f;
   \ ls /proc/self/fd` listed no 23 where bash does (Iteration 483). The shell holds nothing of its own in that range
   \ while running a script or a -c string - checked, not assumed.
-  63 CLOSE-FILE DROP
-  UNDO-BASE @ 64 ?DO I CLOSE-FILE DROP LOOP ;
+  63 CLOSE-FILE DROP ;
 
 DEFER EXEC-AS-SCRIPT   ( path --- )   \ tree.4: returns only if it could not
 
@@ -6019,7 +6018,9 @@ VARIABLE LOCALS#
 \ wrote to the terminal, `f > out` for a function f likewise.
 \
 \ Each descriptor a redirection will replace is first copied to a spare
-\ descriptor from UNDO-BASE up; afterwards every copy is put back, last
+\ descriptor - the lowest FREE one from 64 up, close-on-exec, as the
+\ kernel picks it (DUP-FROM, Iteration 486) - and each copy's number is
+\ kept beside its descriptor; afterwards every copy is put back, last
 \ first, and closed. A copy that could not be made means the descriptor
 \ was closed, so putting it back fails too, and the descriptor is closed
 \ instead. The descriptor list is kept on the DATA stack, not in the
@@ -6034,21 +6035,25 @@ VARIABLE LOCALS#
 : FLUSH-OUTPUT ( --- )   PAD 0 1 WRITE DROP ;   \ WRITE flushes first
 
 
-: REDIRECT-SAVE ( --- fd0 .. fdn-1 n base )
-  REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  LOOP
-  REDIR-N @  UNDO-BASE @
-  REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  OVER I + DUP2 DROP  LOOP
-  DUP REDIR-N @ + UNDO-BASE ! ;
+: REDIRECT-SAVE ( --- fd0 copy0 .. fdn-1 copyn-1 n 0 )
+  \ A fixed slot, 64 + i, overwrote a script's own descriptor there, and
+  \ the restore then closed it: `exec 65>f; echo x 3>/dev/null 4>/dev/null;
+  \ echo y >&65` lost descriptor 65 where bash writes y (Iteration 486).
+  \ A copy of -1 means the descriptor was closed: nothing to copy.
+  REDIR-N @ 0 ?DO  REDIR-FD I CELLS + @  DUP 64 DUP-FROM  LOOP
+  REDIR-N @ 0 ;
 
-: REDIRECT-RESTORE ( fd0 .. fdn-1 n base --- )
-  UNDO-BASE !
+: REDIRECT-RESTORE ( fd0 copy0 .. fdn-1 copyn-1 n 0 --- )
+  DROP
   BEGIN DUP WHILE
-    1- SWAP                         ( .. i fd )
-    OVER UNDO-BASE @ +              ( .. i fd copy )
-    2DUP SWAP DUP2 IF               \ no copy: the descriptor was closed
-      OVER CLOSE-FILE DROP
+    1- >R                           ( .. fd copy )
+    DUP 0< IF                       \ no copy: the descriptor was closed
+      DROP CLOSE-FILE DROP
+    ELSE
+      2DUP SWAP DUP2 DROP           \ put it back
+      CLOSE-FILE DROP DROP          \ and the copy goes
     THEN
-    CLOSE-FILE DROP DROP            ( .. i )
+    R>
   REPEAT DROP ;
 
 : BEGIN-REDIRECT ( --- undo )
@@ -6056,11 +6061,12 @@ VARIABLE LOCALS#
   REDIR-N @ IF FLUSH-OUTPUT REDIRECT-SAVE APPLY-REDIRECTIONS
   ELSE 0 0 0 REDIR-FAILED? ! THEN ;
 
-: REDIRECT-FORGET ( fd0 .. fdn-1 n base --- )   \ keep them: close the copies
-  UNDO-BASE !
+: REDIRECT-FORGET ( fd0 copy0 .. fdn-1 copyn-1 n 0 --- )   \ keep them: close the copies
+  DROP
   BEGIN DUP WHILE
-    1- SWAP DROP
-    DUP UNDO-BASE @ + CLOSE-FILE DROP
+    1- >R
+    DUP 0< IF DROP ELSE CLOSE-FILE DROP THEN  DROP
+    R>
   REPEAT DROP ;
 
 : END-REDIRECT ( undo --- )
