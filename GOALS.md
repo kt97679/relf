@@ -61,6 +61,20 @@ ordinary scripts hit, then edge cases and wording.
 6. **Prompt escapes**: `\D{format}` and `\j` came in 476. `\v` and
    `\V` stay as written on purpose - they are bash's version - and so
    does `\l`, which would need a readlink primitive in the engine.
+7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423),
+   profiled in 451 and FLAT - `(LOOP)` 5.6%, EXPAND-WORDS 4.8%, nothing
+   else above 2.6%. No cheap win; it is the interpreter, which is
+   PERFORMANCE.md's standing question. Do not re-profile this workload
+   expecting a hot spot.
+8. **`intr-at-prompt` loses a race under full-suite load** (406, again
+   in 423): passes alone, fails about one verify in five on one CPU.
+   (8b, the intermittent `wait-job-status-345.sh`, is resolved in 470:
+   the varying shell was BASH, which drops a finished job and answers
+   127 when it reaps before `wait %%` runs. The case's named jobs sleep
+   a moment now; the finished-job reading is asserted on its own.)
+   (Items 7 and 8 were deleted by accident in 476, when item 6 was
+   rewritten up to the next blank line and they had none before them;
+   restored in 488.)
 
 ## Deliberate divergences from busybox's ash
 

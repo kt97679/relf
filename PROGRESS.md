@@ -483,6 +483,7 @@ do not trust the absence of a line below.
 - **485** — found: a script descriptor at 64 or above can be overwritten
 - **486** — saved descriptors from the kernel (a new engine primitive), not fixed slots
 - **487** — the Tegra verifies 486; the matrix asks bash for POSIX mode
+- **488** — two open items restored to GOALS.md, deleted by accident at 476
 
 ### Not tied to an iteration
 
@@ -23432,3 +23433,19 @@ bash, so that is its own measurement, not a line changed in passing.
 Recorded changes, with their causes: `matrix:passed` 420 -> 421 and
 `matrix:inconclusive` 2 -> 1, error.e21 now decided. Nothing in the
 shell or the engine changed.
+
+## Iteration 488: two open items restored
+
+Asked whether anything was left to do, I read GOALS.md's open list to
+answer from the record - and it was two items short. Iteration 476
+rewrote item 6 by replacing everything up to the next blank line, and
+items 7 (many_ifs speed) and 8 (the `intr-at-prompt` race under load)
+followed it with no blank line between: they went with it, silently,
+and a list that is the project's PRESENT said less than was true for
+twelve iterations. `git show` on 476's commit showed exactly what went;
+both are restored word for word, with a note saying how they were lost.
+
+The lesson is the same one the atomic source edits learned at 471, for
+documents: a replacement bounded by "up to the next blank line" is a
+guess about the file's layout. Check what a document edit removed, not
+only what it added.
