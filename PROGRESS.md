@@ -478,6 +478,7 @@ do not trust the absence of a line below.
 - **480** — the words before the assignments (stage 1)
 - **481** — yash 1751; a fuzzing family for stage 1, with teeth; stage 2's obstacles
 - **482** — a regular builtin's redirections before its assignments (stage 2)
+- **483** — yash 1752, busybox 255; a command inherits the script's high descriptors
 
 ### Not tied to an iteration
 
@@ -23274,3 +23275,39 @@ functions.
 Recorded changes, with their causes: `shell:assertions` 845 -> 847, the
 two for stage 2; the images about 900 bytes larger, for the deferral,
 EXPAND-PENDING, STAGE2-ELIGIBLE? and the five pending arrays.
+
+## Iteration 483: a command inherits the script's high descriptors
+
+yash on 482's build: **1752 passed, 23 failed** (1751; dash 1650), no
+crashes or hangs - both expansion-order cases pass, and the only cases
+dash passes that this shell does not are the two alias torture tests.
+busybox: **255 passed, 102 failed** (250 at 468; dash 231), no crashes
+or hangs; the two it fails that dash passes are the known pair.
+
+Found while reading the child's path for stage 3: before `exec`, a
+forked child closed descriptors 10 to 63. That rule is older than
+Iteration 466, which made descriptors above 9 usable at all, and it
+assumed a script's own descriptors were 0 to 9. So `exec 23>f` worked in
+the shell and no command it ran ever inherited 23 - `exec 23>f; ls
+/proc/self/fd` lists 23 in bash and did not here, and `exec 10>lock;
+flock 10`, a common idiom, found no descriptor 10.
+
+The child now closes only what is the shell's: its saved copies, from 64
+up, and its script descriptor at 63. Before narrowing it, the shell's
+own open descriptors were listed while running a script and a -c string:
+0, 1 and 2, nothing in the range - checked, not assumed. Six shapes
+agree with bash, among them the number of descriptors a child sees, so
+nothing leaks.
+
+A correction of my own on the way: I first wrote that `flock -n 200`
+was the broken case. The assertion for 200 passed WITHOUT the fix - 200
+is outside 10..63 and was always inherited - so the claim was wrong, and
+the comment and the test say 10 now, with 200 kept as the control. The
+proof that the tests bite was redone properly, too: the first attempt
+stashed the test along with the fix and so ran the old test file.
+Stashing only shell.4, the descriptor-23 assertion fails without the fix
+and passes with it.
+
+Recorded changes, with their causes: `shell:assertions` 847 -> 849, the
+two for inherited descriptors; the 4-byte image 4 bytes larger, the
+8-byte one unchanged.

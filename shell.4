@@ -3432,11 +3432,16 @@ VARIABLE UNDO-BASE   64 UNDO-BASE !   \ next spare descriptor
   \ redirected command listed fd 64 as well as its own (Iteration 372).
   \ Real shells mark them close-on-exec; this shell has no fcntl, so
   \ the child closes the range before it execs.
-  \ Everything above 9 goes: the saved copies from 64 up, and the
-  \ script's own descriptor, which this shell keeps at 63 and which a
-  \ redirected `ls /proc/self/fd` could otherwise see. Descriptors 0 to
-  \ 9 are the script's to use and are left alone.
-  UNDO-BASE @ 10 ?DO I CLOSE-FILE DROP LOOP ;
+  \ The saved copies from 64 up go, and the script's own descriptor,
+  \ which this shell keeps at 63 and which a redirected `ls
+  \ /proc/self/fd` could otherwise see. Descriptors 10 to 62 do NOT: they
+  \ are the script's since Iteration 466 made them usable, and closing
+  \ them here meant a command never inherited one - `exec 10>lock;
+  \ flock 10`, a common idiom, found no descriptor 10, and `exec 23>f;
+  \ ls /proc/self/fd` listed no 23 where bash does (Iteration 483). The shell holds nothing of its own in that range
+  \ while running a script or a -c string - checked, not assumed.
+  63 CLOSE-FILE DROP
+  UNDO-BASE @ 64 ?DO I CLOSE-FILE DROP LOOP ;
 
 DEFER EXEC-AS-SCRIPT   ( path --- )   \ tree.4: returns only if it could not
 

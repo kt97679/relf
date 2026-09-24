@@ -226,4 +226,17 @@ assert_output_equals "a builtin's redirection is performed before its assignment
 out=$(cd "$d" && rm -f f2 && "$THIS_SH" -c 'a=$(cat f2) 3>|$(echo f2) true; echo "st=$?"' 2>&1)
 assert_output_equals "... so an assignment may read the file it creates (yash simple-p.tst:18)" "st=0" "$out"
 rm -rf "$d"
+# A descriptor above 9 is inherited by a command the shell runs (Iteration
+# 483): the child closed 10..63 before exec, so `exec 10>lock; flock 10`
+# found no descriptor 10. Descriptor 200 is the control - outside that
+# range, it was always inherited, and must stay so. The child here is
+# this shell, given as $0, so the check needs neither /proc nor a host
+# shell that takes two-digit descriptors. Without the fix the first of
+# these fails and the second passes, which is what was checked.
+d=$(mktemp -d)
+out=$("$THIS_SH" -c 'exec 23>"$1/f"; "$0" -c "echo via-23 >&23"; exec 23>&-; cat "$1/f"' "$THIS_SH" "$d" 2>&1)
+assert_output_equals "a child inherits descriptor 23" "via-23" "$out"
+out=$("$THIS_SH" -c 'exec 200>"$1/g"; "$0" -c "echo via-200 >&200"; exec 200>&-; cat "$1/g"' "$THIS_SH" "$d" 2>&1)
+assert_output_equals "... and descriptor 200, outside the old range" "via-200" "$out"
+rm -rf "$d"
 report
