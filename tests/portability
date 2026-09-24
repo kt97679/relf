@@ -316,5 +316,20 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
     fi
 fi
 
+# relfsh names the shell's sources twice - to see whether its image is
+# stale, and to load them - and cannot read the Makefile, since it must
+# run without one. Both lists must be the Makefile's SHELL_SOURCES, in
+# its order. tests/verify kept a list of its own, which lacked edit.4
+# from Iteration 303, and its long-path check was broken for 190
+# iterations without once failing (Iteration 498).
+want=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile | tr -s ' ')
+fresh=$(grep 'for f in "\$DIR/' relfsh | grep -o '"\$DIR/[a-z-]*\.4"' | grep -o '[a-z-]*\.4' | tr '\n' ' ' | sed 's/ $//')
+loads=$(grep 'INCLUDED' relfsh | grep -o 'S" [a-z-]*\.4" INCLUDED' | grep -o '[a-z-]*\.4' | tr '\n' ' ' | sed 's/ $//')
+if [ -n "$want" ] && [ "$fresh" = "$want" ] && [ "$loads" = "$want" ]; then
+    ok "relfsh's source lists are the Makefile's"
+else
+    bad "relfsh's source lists are the Makefile's" "Makefile [$want], freshness [$fresh], loads [$loads]"
+fi
+
 echo "portability: $checked checks, $problems problem(s)"
 [ "$problems" -eq 0 ]

@@ -2,7 +2,7 @@ bundle:pullable 1
 core:4byte 1
 core:8byte 1
 core:okmarkers 2129
-crosspath:kernel-shell.img missing
+crosspath:kernel-shell.img reproduces
 diff:failed 0
 ext:4byte 1
 ext:8byte 1

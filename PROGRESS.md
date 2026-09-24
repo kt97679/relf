@@ -493,6 +493,7 @@ do not trust the absence of a line below.
 - **495** — the 1.8x drift bisected; the profiler and coverage tools, broken at 490, fixed
 - **496** — the three unaudited areas: prompts/, three documents read through, the tests' documents
 - **497** — two decisions of the user's recorded: prompts/ is kept whole, and an article is planned
+- **498** — a check broken for 190 iterations: the long-path image build lacked edit.4
 
 ### Not tied to an iteration
 
@@ -23826,3 +23827,45 @@ does not undo them:
   496's own records wrong: the override said `04` and `05` do not apply
   because "nothing is published from this repository". They apply to
   exactly that article; the override now says they wait for it.
+
+## Iteration 498: a check that had been broken for 190 iterations
+
+A third machine verified 497: `fury`, real x86-64 hardware with the
+baseline's own compiler, so every row compared, sizes included - both
+shell images' checksums and both engines' code sizes identical to this
+container's. With the ARMv7 board, three machines agree on the 4-byte
+image, two of them real hardware.
+
+Reading its log for what was NOT said: `crosspath:kernel-shell.img
+missing`, marked `ok` because the baseline said `missing` too - as the
+board's logs had at 465 and 486. A check whose recorded answer is
+"missing" on every machine may not be checking anything
+(`prompts/03-audit-tooling.md`), so its history was read:
+
+- Iteration 150 added it: build the shell image under a deliberately
+  long path and compare it with the one built here. It guards two old
+  faults - the build machine's path and PID leaking into the image, and
+  an 80-column input limit that stopped builds past a ~36-character
+  path. Recorded: `reproduces`.
+- Iteration 303 added `edit.4`, the line editor. The check copies the
+  shell's sources into the long path from a list of its own, which did
+  not get `edit.4`: the build there broke, the check said `DIFFERS`, and
+  303's `--update` recorded `DIFFERS` as the answer.
+- From 410 a build with errors in its log installs no image at all, so
+  the check said `missing`, and 411's `--update` recorded that.
+
+So for 190 iterations it tested nothing, and twice its failure was
+re-recorded as normal - the exact fault `prompts/09-baseline-discipline.md`
+exists for, committed by this project to its own check. Built by hand
+with all seven sources, the long-path image reproduces byte for byte:
+the property it guards held throughout; only the check was broken.
+
+The check now takes its list from the Makefile's `SHELL_SOURCES`,
+where a new source file is added anyway, and copies `.relf-native-img`
+as the portability suite's twin of it does. `relfsh` has to keep lists
+of its own - it runs without `make` - so `tests/portability` gains a
+check that both of them are the Makefile's list in its order; it was
+shown failing on a copy of relfsh with `edit.4` taken out of its loads.
+
+Recorded change, with its cause: `crosspath:kernel-shell.img missing ->
+reproduces`, the check working again.

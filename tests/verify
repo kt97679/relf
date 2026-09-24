@@ -114,8 +114,14 @@ done
 CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eighty-columns
 rm -rf "$CROSS"
 if mkdir -p "$CROSS" 2>/dev/null; then
-    for f in relf relf32 kernel.img kernel32.img relfsh \
-             extend.4 pool.4 shadow.4 save-system.4 shell.4 tree.4; do
+    # The shell's sources are the Makefile's SHELL_SOURCES, not a list of
+    # this check's own. Its own copy lacked edit.4 from Iteration 303, so
+    # the build here failed: the check reported DIFFERS, then `missing`,
+    # and each was re-recorded into BASELINE as if it were the answer,
+    # until Iteration 498 noticed that `missing` was what every machine
+    # said. tests/portability holds relfsh's own lists to the same one.
+    for f in relf relf32 kernel.img kernel32.img relfsh .relf-native-img \
+             $(sed -n 's/^SHELL_SOURCES *= *//p' Makefile); do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
     ( cd "$CROSS" && rm -f kernel-shell.img && ./relfsh -c true ) >/dev/null 2>&1
