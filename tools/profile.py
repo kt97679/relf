@@ -55,7 +55,7 @@ open(counts, 'wb').write(bytes(SLOTS * 4))
 # RELF_BIN told it which engine to run; it is a binary now, so the
 # command's ./relfsh is this one, and the suites find it in THIS_SH.
 shell = os.path.join(work, 'relfsh')
-subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel-shell.img', shell], check=True)
+subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
 command = (sys.argv[1] if len(sys.argv) > 1 else './relfsh tests/bench-vm/realistic.sh').replace('./relfsh', shell)
 env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 open(counts, 'wb').write(bytes(SLOTS * 4))
@@ -68,7 +68,7 @@ audit = patch(audit, "    ip = xt; far_target = xt\n    while ip < end:\n       
                       "    ip = xt; far_target = xt\n    STARTS[name] = []\n    while ip < end:\n        STARTS[name].append(ip)\n        op = img[ip]")
 audit = patch(audit, "CALLS=[]; SLOTS=[];", "CALLS=[]; SLOTS=[]; STARTS={};")
 g = {}
-sys.argv = ['image-audit', 'kernel-shell.img', '8']
+sys.argv = ['image-audit', 'kernel64-shell.img', '8']
 with contextlib.redirect_stdout(io.StringIO()):
     exec(audit, g)
 

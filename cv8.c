@@ -23,7 +23,7 @@
  *  endianness (little-endian only). Dispatch is computed-goto threaded
  *  code (GCC/Clang "labels as values").
  *
- *  Build:  cc -O2 -Wall -o relf cv8.c
+ *  Build:  cc -O2 -Wall -o relf64 cv8.c    (-m32 ... -o relf32 for 4-byte cells)
  *          cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
  *  The i386 build is non-PIE because PIE spends ebx on the GOT, which
  *  costs the TOS cache more than it saves (CV8.md 5.1).
@@ -133,7 +133,7 @@ typedef int32_t  INT64;
 /*  How much memory the VM gets: dictionary at the bottom, return and
  *  data stacks at the top (see rp/dsp below). Raised from 256K to 1M
  *  in Iteration 40, after a prebuilt shell image measured 253,256
- *  bytes - i.e. kernel.img plus locals.4 plus shell.4 had come within
+ *  bytes - i.e. kernel64.img plus locals.4 plus shell.4 had come within
  *  a few KB of the old ceiling, with the stacks living in what was
  *  left. Overflowing it does not fail cleanly: the symptom is
  *  corrupted compilation reported as "Undefined word" against an
@@ -1681,7 +1681,7 @@ int main(int argc, char **argv) {
         load_image_fd(efd, elen);
     } else {
         if (argc < 2) {
-            write_str(2, "Usage: relf <filename>\n");
+            write_str(2, "Usage: relf64 IMAGE [ARGUMENT...]  (relf32 for a 4-byte image)\n");
             return 1;
         }
         load_image(argv[1]);

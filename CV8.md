@@ -6,7 +6,7 @@ This file is both halves of that story:
 - **Part I, the reference**: what every byte means, how an image is
   laid out, and what the engine does with it. Every fact in it was
   checked against the sources, and the examples are real bytes, dumped
-  from `kernel.img` at Iteration 491.
+  from `kernel64.img` at Iteration 491.
 - **Part II, the reasons**: the decisions behind the format, what each
   was measured to buy, and how they hold on other architectures.
 
@@ -25,7 +25,7 @@ they are right and this file has a bug. How each part came to be is in
 An image holds **one byte per operation**. A call is two or three bytes
 holding the target's **byte offset from the image base**. Nothing in an
 image is a pointer, so an image is position-independent, and the same
-image runs on every machine of its cell width: `kernel.img` on 64-bit
+image runs on every machine of its cell width: `kernel64.img` on 64-bit
 hosts, `kernel32.img` on 32-bit ones. The engine executes the byte
 stream **in place**; nothing is translated or relocated when an image
 loads.
@@ -191,7 +191,7 @@ a fourth call width, not aligned bodies again.
 
 ## 3. Worked examples
 
-Real bytes, compiled at the prompt of the 64-bit `kernel.img` at
+Real bytes, compiled at the prompt of the 64-bit `kernel64.img` at
 Iteration 491. Opcode values are hexadecimal.
 
 | source | bytes | reading |
@@ -230,7 +230,7 @@ branch back.
 | … | 32 cells | the thread heads, relative to `START` |
 | … | cell | the number of `DOES>` tail entries, always 0 |
 
-`kernel.img`'s header is 280 bytes; `kernel32.img`'s, 144.
+`kernel64.img`'s header is 280 bytes; `kernel32.img`'s, 144.
 
 The engine compares the first five bytes exactly, so a 32-bit image is
 refused by a 64-bit engine, and then **refuses any version but its
@@ -330,7 +330,7 @@ every push (`GUARD`, on by default). A `SIGSEGV` handler reports which
 guard was hit and exits with status 70:
 
 ```
-$ echo ': R RECURSE ; R' | ./relf kernel.img
+$ echo ': R RECURSE ; R' | ./relf64 kernel64.img
 relf: return stack overflow                        (exit status 70)
 ```
 
@@ -438,14 +438,14 @@ Forth: the engine is the definition, and `COMPILE,` inlines the byte.
 
 Two Forth compilers emit CV8, and they are twins that must agree:
 
-- **`cross.4`**, the cross-compiler, runs on `kernel.img` and compiles
-  `kernel.4` into a new `kernel.img` - a fixpoint. `make images` does
+- **`cross.4`**, the cross-compiler, runs on `kernel64.img` and compiles
+  `kernel.4` into a new `kernel64.img` - a fixpoint. `make images` does
   that in a temporary directory and installs the result only if it is
   byte-identical, or with `IMAGES_FORCE=1` when a change is intended;
   `make check-images` is the read-only half, and `tests/verify` runs it.
   The kernel images are committed because they are the bootstrap seed.
 - **`kernel.4`'s own compiler** compiles everything loaded at run time.
-  The shell image is `kernel.img` with `extend.4 pool.4 shadow.4
+  The shell image is `kernel64.img` with `extend.4 pool.4 shadow.4
   save-system.4 shell.4 edit.4 tree.4` loaded and `SAVE-SYSTEM` run;
   `tools/build-shell-image.sh` builds it, `make` runs that, and it is
   not committed; `tools/embed.sh` then appends it to the engine to make

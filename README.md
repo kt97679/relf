@@ -7,7 +7,7 @@ self-hosting (GOALS.md). What it is today:
 - **An engine**, `cv8.c`: a small virtual machine in portable C that
   runs a byte-coded Forth image (CV8.md). 39 KB stripped on x86-64.
 - **A Forth system that compiles itself**: `cross.4`, running on
-  `kernel.img`, compiles `kernel.4` into a new `kernel.img`, byte for
+  `kernel64.img`, compiles `kernel.4` into a new `kernel64.img`, byte for
   byte - no other language involved beyond the engine's C.
 - **A POSIX shell written in that Forth** - `shell.4`, `tree.4` and
   `edit.4` - with job control, a line editor with history, and `$'...'`
@@ -21,12 +21,15 @@ self-hosting (GOALS.md). What it is today:
     ./relfsh -c 'echo hello'      # run one command
     ./relfsh                      # interactive
     ./relfsh script.sh            # run a script
-    ./relf kernel.img             # the bare Forth system; BYE leaves
+    ./relf64 kernel64.img           # the bare Forth system; BYE leaves
 
 `relfsh` is one executable: the engine with the shell image appended
 to it, which the engine finds in itself at startup. `make` builds it,
-and rebuilds it when a source changes; on a 64-bit machine `relfsh32`
-is the 4-byte pair. `make verify` runs every suite; `make help` lists
+and rebuilds it when a source changes. Everything is named by cell
+width: the engines `relf64` and `relf32`, which run an image file given
+as their first argument (the kernels are bootstrapped with them); the
+kernels `kernel64.img` and `kernel32.img`; the shells `relfsh64` and
+`relfsh32`; and `relfsh`, a link to the one native to this machine. `make verify` runs every suite; `make help` lists
 everything else. Install it by copying the one file.
 
 ## Building
@@ -44,7 +47,7 @@ stricter. `zsh` is deliberately not one: run as `zsh script.sh` it is
 not in POSIX mode.
 
 **What is committed, and what is built.** The sources, and the two
-kernel images, `kernel.img` (8-byte cells) and `kernel32.img` (4-byte):
+kernel images, `kernel64.img` (8-byte cells) and `kernel32.img` (4-byte):
 they are the bootstrap seed, since only an image can cross-compile an
 image. The engines (`relf`, `relf32`) and the shell images are build
 products, ignored by git. `make` does not rebuild the kernel images:
@@ -69,7 +72,7 @@ suites pin `LC_ALL=C` for that reason.
 |---|---|
 | `cv8.c` | the engine |
 | `kernel.4` | the Forth kernel, and the run-time compiler |
-| `cross.4` | the cross-compiler that builds `kernel.img` |
+| `cross.4` | the cross-compiler that builds `kernel64.img` |
 | `extend.4`, `pool.4`, `shadow.4`, `save-system.4` | extensions: search order, heap buffers, locals, saving an image |
 | `shell.4`, `tree.4`, `edit.4` | the shell: commands and expansion, the parser and executor, the line editor |
 | `tests/`, `tools/` | the suites; the tools that build the shell, measure and fuzz |

@@ -10,7 +10,7 @@ import os, sys, tempfile
 
 ROUNDS = int(sys.argv[1]) if len(sys.argv) > 1 else 3
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RELF = [os.path.join(ROOT, 'relf'), os.path.join(ROOT, 'kernel-shell.img')]
+RELF = [os.path.join(ROOT, 'relf64'), os.path.join(ROOT, 'kernel64-shell.img')]
 DASH = ['/usr/bin/dash']
 
 OPS = [   # name, iterations, loop body

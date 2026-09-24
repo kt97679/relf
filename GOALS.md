@@ -418,7 +418,7 @@ here as the evidence for it.
   self-hosted assembler) replaces them.
 - **Fully self-hosted.** Forth already compiles the Forth image:
   `cross.4`, running on the CV8 engine, compiles `kernel.4` into the
-  CV8 `kernel.img` it runs on, byte for byte (Iteration 243). The remaining piece is Forth compiling the
+  CV8 `kernel64.img` it runs on, byte for byte (Iteration 243). The remaining piece is Forth compiling the
   *engine itself* (currently `cv8.c`, built by `gcc`) — a Forth-hosted
   native-code assembler, in the tradition of the classic Forth
   `ASSEMBLER` wordset / `CODE ... END-CODE` facility.
@@ -542,7 +542,7 @@ both, so it no longer carries accounts.
    call-flattening** (3). libc as the portability layer,
    native-endianness images with a magic header, computed-goto
    dispatch measured at ~1.30x. Verified on x86-64 and ARM64 running
-   the identical `kernel.img`. Call-flattening and the rejected
+   the identical `kernel64.img`. Call-flattening and the rejected
    byte-granular opcode encoding are covered in the phase 5 section
    below.
 6. **32-bit-cell targets.** **Done**, verified on i386 (4). Cell
@@ -712,7 +712,7 @@ What it says about our choices, and the one thing worth taking:
 
 - **A headerless image** - `ffSaveForth(file, entry, NameSize, CodeSize)`
   writes the names as their own chunk, and `NameSize` of 0 leaves them
-  out entirely. Measured here: 21% of `kernel-shell.img` is headers
+  out entirely. Measured here: 21% of `kernel64-shell.img` is headers
   (17.5 KB of 80.8 KB, 13.2 KB of it names). **Settled: not wanted.**
   It would cost the `forth` builtin and any runtime lookup, and that
   builtin - a Forth prompt inside the shell, on the shell's own

@@ -12,12 +12,12 @@ FATEST2.TXT
 .relf-arch
 
 # The shell images are build products: `make`, or relfsh itself, makes
-# them from kernel.img and the sources in seconds. Untracked at 489;
+# them from kernel64.img and the sources in seconds. Untracked at 489;
 # tests/verify records a checksum of each instead, so a rebuild on
 # another machine is still compared with this one's. The two KERNEL
-# images stay tracked - cross.4 runs on kernel.img to produce it, so
+# images stay tracked - cross.4 runs on kernel64.img to produce it, so
 # they are the bootstrap seed and cannot be rebuilt from nothing.
-kernel-shell.img
+kernel64-shell.img
 kernel32-shell.img
 
 # The engines are build products - 40 KB of C through cc. They were
@@ -53,3 +53,9 @@ core
 # shell image inside (tools/embed.sh). relfsh was a script until then.
 relfsh
 relfsh32
+
+# Named by cell width since Iteration 507: relf64 and relf32, relfsh64
+# and relfsh32, relfsh a link to the native one. (relf, above, is the
+# 8-byte engine's old name, still ignored in case a checkout has one.)
+relf64
+relfsh64

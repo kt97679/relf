@@ -22,8 +22,8 @@
 # Same defaults relfsh uses, so the file also works when run directly
 # through run-all with nothing set.
 D=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd) || exit 1
-BIN=${RELF_BIN:-"$D/relf"}
-IMG=${RELF_IMG:-"$D/kernel.img"}
+BIN=${RELF_BIN:-"$D/relf64"}
+IMG=${RELF_IMG:-"$D/kernel64.img"}
 
 # 70 is EX_SOFTWARE, chosen so a harness can tell an engine fault from
 # a Forth-level ABORT. 139 is the old behaviour (128 + SIGSEGV) and is

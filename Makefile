@@ -8,7 +8,7 @@
 # WHAT THIS DOES NOT DO
 # ==================================================================
 #
-# It does not rebuild kernel.img as a matter of course. That image is
+# It does not rebuild kernel64.img as a matter of course. That image is
 # simultaneously the image cross.4 PRODUCES and the image cross.4 RUNS
 # ON: rebuilding it is a fixpoint step, not a compile, and a wrong one
 # is not a broken build but a subtly different shell. `make images`
@@ -17,7 +17,7 @@
 # given. `make check-images` is the read-only half, and tests/verify
 # checks it on every run.
 #
-# Only the two KERNEL images, kernel.img and kernel32.img, are
+# Only the two KERNEL images, kernel64.img and kernel32.img, are
 # committed: they are the bootstrap seed that cross.4 runs on, and
 # cannot be rebuilt from nothing. The engines (untracked since 402) and
 # the shell images (since 489) are build products; `make clean` removes
@@ -29,18 +29,20 @@ CFLAGS  ?= -O2 -Wall
 
 # How wide a cell is on THIS host. On a 32-bit machine - ARMv7, i386,
 # anything where a pointer is 4 bytes - the native engine runs the
-# 4-byte image, and `kernel.img` (8-byte) is not a RelF image as far as
+# 4-byte image, and `kernel64.img` (8-byte) is not a RelF image as far as
 # it is concerned. `make` on an ARMv7 board said exactly that and
 # stopped (Iteration 397). Override with HOSTBITS=32 to see what such a
 # host does from a 64-bit one.
 HOSTBITS ?= $(shell getconf LONG_BIT 2>/dev/null || echo 64)
 ifeq ($(HOSTBITS),32)
+NATIVE_ENGINE    = relf32
 NATIVE_IMG       = kernel32.img
 NATIVE_SHELL_IMG = kernel32-shell.img
 OTHER_SHELL_IMG  =
 else
-NATIVE_IMG       = kernel.img
-NATIVE_SHELL_IMG = kernel-shell.img
+NATIVE_ENGINE    = relf64
+NATIVE_IMG       = kernel64.img
+NATIVE_SHELL_IMG = kernel64-shell.img
 OTHER_SHELL_IMG  = kernel32-shell.img
 endif
 # The i386 engine is built non-PIE: PIE costs it the TOS register, and
@@ -61,9 +63,9 @@ all: engines shell-images shells
 help:
 	@echo 'Targets:'
 	@echo '  all            engines and shell images (the default)'
-	@echo '  engines        relf and relf32 from cv8.c'
-	@echo '  shell-images   kernel-shell.img and kernel32-shell.img'
-	@echo '  shells         relfsh (and relfsh32): engine and image, one file'
+	@echo '  engines        relf64 and relf32 from cv8.c'
+	@echo '  shell-images   kernel64-shell.img and kernel32-shell.img'
+	@echo '  shells         relfsh64, relfsh32 (engine and image, one file), relfsh'
 	@echo '  images         re-cross-compile the base images (see the header)'
 	@echo '  check-images   ... and only check they still reproduce'
 	@echo ''
@@ -94,10 +96,13 @@ help:
 # ------------------------------------------------------------------
 # Engines
 # ------------------------------------------------------------------
+# Named by cell width since Iteration 507: relf64 and relf32, one of
+# them native. A 32-bit host builds relf32 with its own compiler flags,
+# not -m32.
 ifeq ($(HOSTBITS),32)
-engines: relf
+engines: relf32
 else
-engines: relf relf32
+engines: relf64 relf32
 endif
 
 # Rebuilt when the machine changes as well as when the source does. A
@@ -110,11 +115,16 @@ HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
 .relf-arch: force-arch-check
 	@printf '%s\n' '$(HOSTARCH)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(HOSTARCH)' > $@
 
-relf: cv8.c .relf-arch
+relf64: cv8.c .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 
+ifeq ($(HOSTBITS),32)
+relf32: cv8.c .relf-arch
+	$(CC) $(CFLAGS) -o $@ $<
+else
 relf32: cv8.c .relf-arch
 	$(CC) $(CFLAGS32) -o $@ $<
+endif
 
 # ------------------------------------------------------------------
 # Shell images
@@ -128,8 +138,8 @@ relf32: cv8.c .relf-arch
 # native 4-byte pair, and the 8-byte image cannot be run at all.
 shell-images: $(NATIVE_SHELL_IMG) $(OTHER_SHELL_IMG)
 
-kernel-shell.img: relf kernel.img $(SHELL_SOURCES) tools/build-shell-image.sh
-	@sh tools/build-shell-image.sh ./relf kernel.img $@ $(SHELL_SOURCES)
+kernel64-shell.img: relf64 kernel64.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@sh tools/build-shell-image.sh ./relf64 kernel64.img $@ $(SHELL_SOURCES)
 
 # LD_PRELOAD is cleared for the i386 build: a preload library for the
 # host architecture can never be loaded into a 32-bit process, and the
@@ -138,9 +148,9 @@ kernel-shell.img: relf kernel.img $(SHELL_SOURCES) tools/build-shell-image.sh
 # impression of `make` (Iteration 389).
 ifeq ($(HOSTBITS),32)
 # The native engine IS the 4-byte one here: there is no -m32 build, and
-# relf32 would be a second copy of relf.
-kernel32-shell.img: relf kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
-	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf kernel32.img $@ $(SHELL_SOURCES)
+# relf32 is built natively.
+kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 kernel32.img $@ $(SHELL_SOURCES)
 else
 kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
 	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 kernel32.img $@ $(SHELL_SOURCES)
@@ -152,15 +162,22 @@ endif
 # relfsh is the native pair; on a 64-bit host relfsh32 is the 4-byte
 # one, which the suites run too.
 # ------------------------------------------------------------------
+# relfsh64 and relfsh32 by width (Iteration 507), and relfsh a link to
+# the native one: the name people type, and the one the suites run.
 ifeq ($(HOSTBITS),32)
-SHELLS = relfsh
+SHELLS = relfsh32 relfsh
+NATIVE_SHELL = relfsh32
 else
-SHELLS = relfsh relfsh32
+SHELLS = relfsh64 relfsh32 relfsh
+NATIVE_SHELL = relfsh64
 endif
 shells: $(SHELLS)
 
-relfsh: relf $(NATIVE_SHELL_IMG) tools/embed.sh
-	@sh tools/embed.sh ./relf $(NATIVE_SHELL_IMG) $@
+relfsh64: relf64 kernel64-shell.img tools/embed.sh
+	@sh tools/embed.sh ./relf64 kernel64-shell.img $@
+
+relfsh: $(NATIVE_SHELL)
+	@ln -sf $(NATIVE_SHELL) $@
 
 relfsh32: relf32 kernel32-shell.img tools/embed.sh
 	@LD_PRELOAD= sh tools/embed.sh ./relf32 kernel32-shell.img $@
@@ -171,26 +188,26 @@ relfsh32: relf32 kernel32-shell.img tools/embed.sh
 check-images:
 	@$(MAKE) --no-print-directory images IMAGES_CHECK=1
 
-images: relf $(KERNEL_SOURCES)
+images: $(NATIVE_ENGINE) $(KERNEL_SOURCES)
 	@set -e; \
 	for bytes in 8 4; do \
-	    case $$bytes in 8) img=kernel.img ;; 4) img=kernel32.img ;; esac; \
+	    case $$bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac; \
 	    wd=$$(mktemp -d); \
-	    cp extend.4 cross.4 kernel.4 kernel.img relf "$$wd/"; \
+	    cp extend.4 cross.4 kernel.4 $(NATIVE_IMG) $(NATIVE_ENGINE) "$$wd/"; \
 	    if [ $$bytes != 8 ]; then \
 	        sed -i "s/^8 TARGET-CELL-BYTES !\$$/$$bytes TARGET-CELL-BYTES !/" "$$wd/cross.4"; \
 	    fi; \
 	    ( cd "$$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-	        | ./relf kernel.img >boot.log 2>&1 ); \
+	        | ./$(NATIVE_ENGINE) $(NATIVE_IMG) >boot.log 2>&1 ); \
 	    if grep -qiE 'undefined word|segmentation fault' "$$wd/boot.log"; then \
 	        echo "$$img: cross-compile failed"; cat "$$wd/boot.log"; rm -rf "$$wd"; exit 1; \
 	    fi; \
-	    if cmp -s "$$wd/kernel.img" "$$img"; then \
+	    if cmp -s "$$wd/built.img" "$$img"; then \
 	        echo "$$img: reproduces"; \
 	    elif [ "$$IMAGES_CHECK" = 1 ]; then \
 	        echo "$$img: DIFFERS from the committed image"; rm -rf "$$wd"; exit 1; \
 	    elif [ "$$IMAGES_FORCE" = 1 ]; then \
-	        cp "$$wd/kernel.img" "$$img"; echo "$$img: replaced (IMAGES_FORCE=1)"; \
+	        cp "$$wd/built.img" "$$img"; echo "$$img: replaced (IMAGES_FORCE=1)"; \
 	    else \
 	        echo "$$img: DIFFERS. The sources produce a different image than the"; \
 	        echo "         one committed. If that is intended - an engine change,"; \
@@ -287,7 +304,7 @@ bundle:
 # ------------------------------------------------------------------
 # Cleaning. The base images and the engine binaries are committed
 # artifacts; distclean removes what a build regenerates, and nothing
-# removes kernel.img or kernel32.img.
+# removes kernel64.img or kernel32.img.
 # ------------------------------------------------------------------
 clean:
 	@rm -f *.o core boot.log
@@ -296,7 +313,7 @@ clean:
 # The engines go with `clean` now that they are build products rather
 # than tracked files: on a machine where the last build was for another
 # architecture, keeping them is the fault above (Iteration 402).
-	@rm -f relf relf32 relfsh relfsh32 .relf-arch .relf-native-img
+	@rm -f relf relf64 relf32 relfsh relfsh64 relfsh32 .relf-arch .relf-native-img
 
 distclean: clean
-	@rm -f kernel-shell.img kernel32-shell.img
+	@rm -f kernel64-shell.img kernel32-shell.img

@@ -1,5 +1,5 @@
 #!/bin/bash
-# tests/run_tests.sh — build relf and run the full test suite against it,
+# tests/run_tests.sh — build the engines and run the full test suite on them,
 # for both the default (8-byte) cell width and the 32-bit (4-byte,
 # i386) target.
 #
@@ -14,7 +14,7 @@
 # portable on-disk format, and carry a CV8 header (CV8.md
 # 4.1) recording the cell width, so a mismatched image fails cleanly at
 # load instead of silently misbehaving. The 4-byte-cell image is a genuinely different
-# image from kernel.img (not just a different engine build of the same
+# image from kernel64.img (not just a different engine build of the same
 # image) - it's cross-compiled separately, each run, from the same
 # cross.4/kernel.4 source with TARGET-CELL-BYTES set to 4 instead of
 # cross.4's own default of 8. That's done here via a temporary copy of
@@ -67,10 +67,10 @@ unset LD_PRELOAD
 # "Cross-compiling an 8-byte-cell target image" (Iteration 398).
 HOSTBITS=${HOSTBITS:-$(getconf LONG_BIT 2>/dev/null || echo 64)}
 if [ "$HOSTBITS" = 32 ]; then
-    NATIVE_BYTES=4; NATIVE_IMG=kernel32.img
-    OTHER_BYTES=8;  OTHER_IMG=kernel.img
+    NATIVE_BYTES=4; NATIVE_IMG=kernel32.img; NATIVE_ENGINE=relf32
+    OTHER_BYTES=8;  OTHER_IMG=kernel64.img
 else
-    NATIVE_BYTES=8; NATIVE_IMG=kernel.img
+    NATIVE_BYTES=8; NATIVE_IMG=kernel64.img; NATIVE_ENGINE=relf64
     OTHER_BYTES=4;  OTHER_IMG=kernel32.img
 fi
 
@@ -124,7 +124,7 @@ run_shell_test_suite() {
     #
     # The reason is NOT fork/exec, which an earlier version of this
     # comment claimed: measured directly, 50 `relfsh -c true` runs take
-    # 12.68s while 50 bare `relf kernel.img` runs take 0.061s and 50
+    # 12.68s while 50 bare `relf kernel64.img` runs take 0.061s and 50
     # /bin/true take 0.040s. So ~99.5% of every relfsh invocation is
     # spent COMPILING shadow.4 + shell.4 from source, which relfsh's
     # bootstrap does afresh every single time it starts. ~253ms per
@@ -190,11 +190,11 @@ cross_compile_image() {
     # $1 = target cell bytes, $2 = destination path, $3 = label
     #
     # Regenerates a target image from cross.4 + kernel.4, using the
-    # COMMITTED kernel.img as the host the cross-compiler runs on.
+    # COMMITTED kernel64.img as the host the cross-compiler runs on.
     #
     # Both widths are built the same way and from the same sources.
     # Until Iteration 155 only the 4-byte image was regenerated; the
-    # 8-byte kernel.img was a committed artifact that nothing ever
+    # 8-byte kernel64.img was a committed artifact that nothing ever
     # rebuilt, so "cross.4 still produces the image we ship" was
     # unverified for the width the project actually develops on - and
     # that is the width whose image is also the host, which makes it
@@ -207,21 +207,21 @@ cross_compile_image() {
     wd=$(mktemp -d)
     # The HOST's image, whatever width that is: cross.4 targets either
     # width, but it has to RUN somewhere first (Iteration 398).
-    cp extend.4 cross.4 kernel.4 "$NATIVE_IMG" relf "$wd/"
+    cp extend.4 cross.4 kernel.4 "$NATIVE_IMG" "$NATIVE_ENGINE" "$wd/"
     if [ "$bytes" != 8 ]; then
         sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
     fi
     (
         cd "$wd"
         printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-            | timeout 60 ./relf "$NATIVE_IMG" > boot.log 2>&1
+            | timeout 60 "./$NATIVE_ENGINE" "$NATIVE_IMG" > boot.log 2>&1
         if grep -qiE "undefined word|segmentation fault" boot.log; then
             echo "FAIL: $label cross-compile failed (see boot.log below)"
             cat boot.log
             exit 1
         fi
     )
-    cp "$wd/kernel.img" "$dest"
+    cp "$wd/built.img" "$dest"
     rm -rf "$wd"
 }
 
@@ -242,11 +242,11 @@ check_image_reproduces() {
     fi
 }
 
-echo "== Building relf (native, $NATIVE_BYTES-byte cells) =="
+echo "== Building $NATIVE_ENGINE (native, $NATIVE_BYTES-byte cells) =="
 # ${CC} rather than a bare `cc`, so a 64-bit machine can be told to
 # build and test as a 32-bit one: CC='cc -m32 -fno-pie -no-pie'
 # HOSTBITS=32 tests/run_tests.sh (Iteration 398).
-${CC:-cc} -O2 -Wall -o relf cv8.c
+${CC:-cc} -O2 -Wall -o "$NATIVE_ENGINE" cv8.c
 # The compare-on-every-push build, for a target without an MMU, is not
 # what runs here - so check at least that it still compiles cleanly.
 ${CC:-cc} -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard cv8.c
@@ -264,10 +264,10 @@ cross_compile_image "$NATIVE_BYTES" /tmp/relf-regen-native.img "$NATIVE_BYTES-by
 check_image_reproduces /tmp/relf-regen-native.img "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
 
 echo "== Running test suite ($NATIVE_BYTES-byte cells) =="
-run_suite ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
-run_ext_suites ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
-run_io_suite ./relf /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
-run_shell_test_suite relf "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
+run_suite "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_ext_suites "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_io_suite "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_shell_test_suite "$NATIVE_ENGINE" "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
 
 # RUNNING the other width needs an engine for it: on a 64-bit host the
 # -m32 cross build, on a 32-bit host nothing at all. Its IMAGE can still
@@ -312,7 +312,7 @@ else
     cp extend.4 cross.4 kernel.4 kernel32.img relf32 "$wd/"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
-    check_image_reproduces "$wd/kernel.img" kernel.img "8-byte cells, from a 4-byte host"
+    check_image_reproduces "$wd/built.img" kernel64.img "8-byte cells, from a 4-byte host"
     rm -rf "$wd"
 
     # ... and the fourth combination, the 4-byte engine building its own
@@ -324,7 +324,7 @@ else
     sed -i "s/^8 TARGET-CELL-BYTES !\$/4 TARGET-CELL-BYTES !/" "$wd/cross.4"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
-    check_image_reproduces "$wd/kernel.img" kernel32.img "4-byte cells, from a 4-byte host"
+    check_image_reproduces "$wd/built.img" kernel32.img "4-byte cells, from a 4-byte host"
     rm -rf "$wd"
 
     echo "== Running test suite (4-byte cells, i386) =="
@@ -362,5 +362,5 @@ if [ -x /bin/bash ]; then
 fi
 
 echo "== Sizes (stripped engine + prebuilt shell image) =="
-report_sizes ./relf   kernel-shell.img   "x86-64 (8-byte)"
+report_sizes ./relf64 kernel64-shell.img   "x86-64 (8-byte)"
 report_sizes ./relf32 kernel32-shell.img "i386 (4-byte)"

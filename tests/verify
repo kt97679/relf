@@ -68,11 +68,11 @@ echo "== reproducible build =="
 # Since 489 the shell images are not committed, so "before" is the one
 # the last build made here - and a fresh clone has none, so it builds
 # one first, to have something to compare the rebuild with.
-for i in kernel-shell.img kernel32-shell.img; do
+for i in kernel64-shell.img kernel32-shell.img; do
     [ -e "$i" ] || make -s "$i" >/dev/null 2>&1
     [ -e "$i" ] && cp "$i" "/tmp/verify-was-$i"
 done
-rm -f kernel-shell.img kernel32-shell.img
+rm -f kernel64-shell.img kernel32-shell.img
 # The rebuild is its own step since Iteration 506. Until then the relfsh
 # script rebuilt a missing image the first time the suite ran it, so the
 # test run below did it as a side effect; relfsh is a binary now, with
@@ -83,7 +83,7 @@ make -s shell-images shells >/dev/null 2>&1
 # run_tests.sh uses bash arrays and 'local'; it is not a POSIX script.
 bash tests/run_tests.sh > /tmp/verify-run.log 2>&1
 RT=$?
-for i in kernel-shell.img kernel32-shell.img; do
+for i in kernel64-shell.img kernel32-shell.img; do
     if [ -e "/tmp/verify-was-$i" ] && [ -e "$i" ]; then
         if cmp -s "/tmp/verify-was-$i" "$i"; then emit "rebuild:$i" reproduces
         else emit "rebuild:$i" DIFFERS; fi
@@ -96,7 +96,7 @@ done
 # the images no longer committed, this is what compares a build on
 # another machine with the one recorded here: the ARMv7 board's 4-byte
 # image must come out byte for byte the same as an x86-64 host's.
-for i in kernel-shell.img kernel32-shell.img; do
+for i in kernel64-shell.img kernel32-shell.img; do
     if [ -e "$i" ]; then emit "image-sum:$i" "$(cksum < "$i" | tr -s ' ' | tr ' ' '/')"
     else emit "image-sum:$i" missing; fi
 done
@@ -129,21 +129,21 @@ if mkdir -p "$CROSS" 2>/dev/null; then
     # said. Since 506 the build is tools/build-shell-image.sh's, run here
     # as the Makefile runs it, with relative names.
     srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
-    for f in relf kernel.img tools/build-shell-image.sh $srcs; do
+    for f in relf64 kernel64.img tools/build-shell-image.sh $srcs; do
         [ -e "$f" ] && cp "$f" "$CROSS/"
     done
-    ( cd "$CROSS" && rm -f kernel-shell.img &&
-      sh ./build-shell-image.sh ./relf kernel.img kernel-shell.img $srcs ) >/dev/null 2>&1
-    if [ -s "$CROSS/kernel-shell.img" ] && [ -e kernel-shell.img ]; then
-        if cmp -s "$CROSS/kernel-shell.img" kernel-shell.img
-        then emit crosspath:kernel-shell.img reproduces
-        else emit crosspath:kernel-shell.img DIFFERS; fi
+    ( cd "$CROSS" && rm -f kernel64-shell.img &&
+      sh ./build-shell-image.sh ./relf64 kernel64.img kernel64-shell.img $srcs ) >/dev/null 2>&1
+    if [ -s "$CROSS/kernel64-shell.img" ] && [ -e kernel64-shell.img ]; then
+        if cmp -s "$CROSS/kernel64-shell.img" kernel64-shell.img
+        then emit crosspath:kernel64-shell.img reproduces
+        else emit crosspath:kernel64-shell.img DIFFERS; fi
     else
-        emit crosspath:kernel-shell.img missing
+        emit crosspath:kernel64-shell.img missing
     fi
     rm -rf "$CROSS"
 else
-    emit crosspath:kernel-shell.img skipped
+    emit crosspath:kernel64-shell.img skipped
 fi
 
 # ---------------------------------------------------------------
@@ -279,9 +279,9 @@ emit size:i386   "$(echo "$S" | awk '/^== i386/{s=1} /^== not a shell/{s=0} s &&
 # The parts separately (Iteration 272): the totals above move in 4 KB
 # steps whenever the stripped engine crosses a page, which hides what
 # changed. The engine's code (size's text), and each shell image.
-emit size:engine-code-x86_64 "$([ -x relf ] && size relf 2>/dev/null | awk 'NR==2 {print $1}' || echo missing)"
+emit size:engine-code-x86_64 "$([ -x relf64 ] && size relf64 2>/dev/null | awk 'NR==2 {print $1}' || echo missing)"
 emit size:engine-code-i386   "$([ -x relf32 ] && size relf32 2>/dev/null | awk 'NR==2 {print $1}' || echo missing)"
-emit size:image-x86_64       "$([ -f kernel-shell.img ] && wc -c < kernel-shell.img | tr -d ' ' || echo missing)"
+emit size:image-x86_64       "$([ -f kernel64-shell.img ] && wc -c < kernel64-shell.img | tr -d ' ' || echo missing)"
 # `missing` rather than a shell error on stderr and an empty value: the
 # i386 half is skipped wherever there is no 32-bit toolchain, and that
 # is a normal state, not a broken one (Iteration 394).
@@ -398,7 +398,7 @@ machine_dependent() {
         # below does not catch them, and an ARMv7 box reported five of
         # them CHANGED with nothing wrong (Iteration 465).
         core:8byte|ext:8byte|io:8byte|shell:8byte|image:8byte-fixpoint)
-            [ -f kernel-shell.img ] && return 1
+            [ -f kernel64-shell.img ] && return 1
             return 0 ;;
         # `skipped` and `missing` are what a host without a 32-bit
         # toolchain reports; they are facts about the host.

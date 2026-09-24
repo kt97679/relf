@@ -241,28 +241,28 @@ fi
 # shell before installing it (Iteration 410). Tested in a scratch copy
 # of the tree, so an interrupted run cannot leave these sources broken.
 # ------------------------------------------------------------------
-if [ -x ./relf ] && [ -f kernel.img ]; then
+case $(getconf LONG_BIT 2>/dev/null) in
+    32) e=relf32 k=kernel32.img o=kernel32-shell.img ;;
+    *)  e=relf64 k=kernel64.img o=kernel64-shell.img ;;
+esac
+if [ -x "./$e" ] && [ -f "$k" ]; then
     scratch=$(mktemp -d)
     # BOTH images, and the marker that says which is native: the first
-    # version copied only kernel.img, so on a 32-bit host the wrapper
+    # version copied only kernel64.img, so on a 32-bit host the wrapper
     # reached for kernel32.img, found nothing, and failed for the wrong
     # reason - which this check then reported as the build accepting a
     # broken source. It was width-blind, on an ARMv7 board, the week
     # after nine faults of exactly that shape (Iteration 412).
     srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
-    cp relf kernel.img kernel32.img tools/build-shell-image.sh $srcs "$scratch/" 2>/dev/null
+    cp "$e" "$k" tools/build-shell-image.sh $srcs "$scratch/" 2>/dev/null
     printf ': BROKEN-ON-PURPOSE ( --- ) 2>R ;\n' | cat - "$scratch/edit.4" > "$scratch/e" &&
         mv "$scratch/e" "$scratch/edit.4"
     # The native pair, as the Makefile builds it (Iteration 506: the build
     # moved from the relfsh script into tools/build-shell-image.sh).
-    case $(getconf LONG_BIT 2>/dev/null) in
-        32) k=kernel32.img o=kernel32-shell.img ;;
-        *)  k=kernel.img   o=kernel-shell.img ;;
-    esac
-    msg=$(cd "$scratch" && sh ./build-shell-image.sh ./relf $k $o $srcs </dev/null 2>&1 >/dev/null)
+    msg=$(cd "$scratch" && sh ./build-shell-image.sh "./$e" $k $o $srcs </dev/null 2>&1 >/dev/null)
     rc=$?
     if [ "$rc" != 0 ] && echo "$msg" | grep -q 'Undefined word' &&
-       [ ! -f "$scratch/kernel-shell.img" ] && [ ! -f "$scratch/kernel32-shell.img" ]; then
+       [ ! -f "$scratch/kernel64-shell.img" ] && [ ! -f "$scratch/kernel32-shell.img" ]; then
         ok "a broken source fails the build and says why"
     else
         bad "the image build" "a broken source was accepted (status $rc): $(echo "$msg" | head -2 | tr '\n' ' ')"
@@ -311,7 +311,7 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
     # generated.
     stray=$(git status --porcelain 2>/dev/null | sed -n 's/^?? //p')
     wip=$(git status --porcelain --untracked-files=no 2>/dev/null |
-          grep -v -e 'kernel-shell.img$' -e 'kernel32-shell.img$' -e 'tests/BASELINE$')
+          grep -v -e 'kernel64-shell.img$' -e 'kernel32-shell.img$' -e 'tests/BASELINE$')
     if [ -n "$wip" ]; then
         say "untracked files" "not judged: the tree has uncommitted changes"
     elif [ -z "$stray" ]; then

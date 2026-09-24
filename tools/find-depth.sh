@@ -44,7 +44,7 @@ ROOT=$PWD
 O=${1:-/tmp/find-depth}
 rm -rf "$O"; mkdir -p "$O"
 
-for f in "$ROOT"/*.4 "$ROOT"/kernel.img "$ROOT"/relf; do cp -L "$f" "$O/"; done
+for f in "$ROOT"/*.4 "$ROOT"/kernel64.img "$ROOT"/relf64; do cp -L "$f" "$O/"; done
 
 # The workload: interpreted arithmetic, half of whose tokens are
 # NUMBERS. A number is the worst case for a dictionary search because it
@@ -75,9 +75,9 @@ open(p, 'w').write(s)
 PY
 
 ( cd "$O" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\n' \
-    | ./relf kernel.img >/dev/null 2>&1 )
+    | ./relf64 kernel64.img >/dev/null 2>&1 )
 
-N=$( cd "$O" && ./relf kernel.img < "$O/work.fth" 2>&1 \
+N=$( cd "$O" && ./relf64 kernel64.img < "$O/work.fth" 2>&1 \
      | tr -d '\r' | grep -oE '[0-9]{3,}' | tail -1 )
 
 [ -n "$N" ] || { echo "find-depth: no counter in the output - did the "\

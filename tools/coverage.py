@@ -58,7 +58,7 @@ commands = sys.argv[1:] or [
 # Iteration 506 relfsh is a binary, so the suites are pointed at this
 # one through THIS_SH and RELFSH, and a command's ./relfsh is replaced.
 shell = os.path.join(work, 'relfsh')
-subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel-shell.img', shell], check=True)
+subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
 commands = [c.replace('./relfsh', shell) for c in commands]
 env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 for c in commands:
@@ -71,7 +71,7 @@ audit = patch(audit, "    ip = xt; far_target = xt\n    while ip < end:\n       
                       "    ip = xt; far_target = xt\n    STARTS[name] = []\n    while ip < end:\n        STARTS[name].append(ip)\n        op = img[ip]")
 audit = patch(audit, "CALLS=[]; SLOTS=[];", "CALLS=[]; SLOTS=[]; STARTS={};")
 g = {}
-sys.argv = ['image-audit', 'kernel-shell.img', '8']
+sys.argv = ['image-audit', 'kernel64-shell.img', '8']
 with contextlib.redirect_stdout(io.StringIO()):
     exec(audit, g)
 cov = open(bitmap, 'rb').read()

@@ -4,7 +4,7 @@
 \
 \ Why: `relfsh` compiles shadow.4 + shell.4 from source every single
 \ time it starts. Measured, 50 runs each: `relfsh -c true` 12.68s,
-\ bare `relf kernel.img` 0.061s, `/bin/true` 0.040s. That is ~253ms
+\ bare `relf kernel64.img` 0.061s, `/bin/true` 0.040s. That is ~253ms
 \ of compiling against ~1.2ms of actual engine startup - about 99.5%
 \ of every invocation, and the reason the shell test suite takes a
 \ minute. See PROGRESS.md's Iteration 40 entry.
@@ -37,7 +37,7 @@
 \ Without it, an image carries whatever happened to be in the
 \ interpreter's scratch buffers at save time - the first prebuilt
 \ shell image contained the literal text
-\ `S" /home/claude/relf/kernel-shell.img.tmp.476" SAVE-SYSTEM`, i.e.
+\ `S" /home/claude/relf/kernel64-shell.img.tmp.476" SAVE-SYSTEM`, i.e.
 \ the build machine's path and the builder's PID - plus a dozen cells
 \ holding absolute addresses that differ every run. All of it is
 \ re-initialized before use by COLD, WARM or QUIT, so zeroing it

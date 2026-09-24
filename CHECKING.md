@@ -112,7 +112,7 @@ counts, the dead-word count, both image fixpoints, whether the bundle
 can be cloned - and, since Iteration 489, the checksum of each rebuilt
 shell image (`image-sum:`), so that a build on another machine is
 compared byte for byte with the one recorded. A 32-bit host builds no
-8-byte image, so its `image-sum:kernel-shell.img` reads `missing` and is
+8-byte image, so its `image-sum:kernel64-shell.img` reads `missing` and is
 not compared; the 4-byte one is.
 
 ## What the suites take out of your environment
@@ -194,7 +194,7 @@ here was written.
 ## On a 32-bit machine
 
 A cell is a pointer, so the native engine on ARMv7 or i386 runs the
-4-byte image, `kernel32.img` - `kernel.img` is the 8-byte one and that
+4-byte image, `kernel32.img` - `kernel64.img` is the 8-byte one and that
 engine will call it "not a RelF image, or built for a different encoding
 or cell width". `make` works this out from `getconf LONG_BIT` and builds
 the native pair, and puts it inside `relfsh` - the engine with its
@@ -251,11 +251,11 @@ the reference passes and this shell does not. That list is the worklist.
 
 ## The engine and the images
 
-    make check-images     # kernel.img and kernel32.img still reproduce
+    make check-images     # kernel64.img and kernel32.img still reproduce
     make images IMAGES_FORCE=1
                           # ... and replace them, for an engine change
 
-`kernel.img` is both what `cross.4` produces and what `cross.4` runs on,
+`kernel64.img` is both what `cross.4` produces and what `cross.4` runs on,
 so rebuilding it is a fixpoint step rather than a compile. `make` never
 does it by itself.
 

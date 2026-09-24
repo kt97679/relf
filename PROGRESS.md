@@ -502,6 +502,7 @@ do not trust the absence of a line below.
 - **504** — startup files: /etc/profile, ~/.profile and $ENV, as dash reads them
 - **505** — forth-shell-examples: new builtins, PROMPT_COMMAND, and servers, with TCP in the engine
 - **506** — relfsh is a binary: the engine with the shell image inside it
+- **507** — everything named by cell width: relf64/relf32, kernel64/kernel32, relfsh64/relfsh32
 
 ### Not tied to an iteration
 
@@ -24204,3 +24205,41 @@ Recorded changes, with their causes: the engines' code 745 bytes larger
 at 64-bit and 689 at 32, the embedded-image loader; the shell images 152
 and 132 bytes larger, the re-exec fix; their checksums and the size
 totals with them.
+
+## Iteration 507: named by cell width
+
+At the user's suggestion, the files are named by what they are:
+
+| was | is |
+|---|---|
+| `kernel.img`, `kernel32.img` | `kernel64.img`, `kernel32.img` |
+| `kernel-shell.img`, `kernel32-shell.img` | `kernel64-shell.img`, `kernel32-shell.img` |
+| `relf` (the 8-byte engine), `relf32` | `relf64`, `relf32` |
+| `relfsh`, `relfsh32` | `relfsh64`, `relfsh32`, and `relfsh` a link to the native one |
+
+The bare engines stay, as the user asked and as the build needs: the
+kernels are the bootstrap seed, and only an engine given an image file
+can run them - to cross-compile the next kernel, and to build the shell
+images. `relfsh` stays as the name people type and the suites run.
+
+The kernel moved with `git mv`; the image names were replaced
+mechanically in 22 files; the engine's name, which also appears in
+`relfsh`, the upstream URL, `relf.c` and the engine's own messages, was
+changed context by context, and what stayed says "relf" meaning the
+system. `cross.4` now saves `built.img` - it wrote `kernel.img` for both
+widths, which a blanket rename would have turned into a 4-byte image
+called `kernel64.img`. And there is now a native ENGINE, as there was a
+native image: on a 32-bit host it is `relf32`, built without `-m32`,
+which also makes `make images` workable there - it ran the 8-byte
+kernel with whatever `relf` was, which on a 32-bit host could never
+work.
+
+Checked: built from clean, both shell images byte-identical to 506's
+(`cksum`), both kernels reproduce through the renamed recipe, the
+bare engine, both shells and the link run.
+
+Recorded changes, with their causes: three rows renamed with their
+files - `crosspath:`, `image-sum:` and `rebuild:kernel64-shell.img` -
+their values identical (reproduces, reproduces, the same checksum); the
+engines' code 32 and 64 bytes larger, for the usage message that now
+names both engines.

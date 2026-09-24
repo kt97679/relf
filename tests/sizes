@@ -109,7 +109,7 @@ theirs() {
 
 # ---------------- 64-bit ----------------
 header "x86-64 (8-byte cells)"
-ours relf kernel-shell.img "shell.4"
+ours relf64 kernel64-shell.img "shell.4"
 for s in dash posh mksh yash zsh ksh93 bash; do
     p=$(command -v "$s" 2>/dev/null) || continue
     p=$(readlink -f "$p")

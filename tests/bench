@@ -162,7 +162,7 @@ stats() {   # stats FILE -> "mean halfwidth_pct min median n"
 }
 
 SHELLS=""
-for sh in "$THIS_SH" "./relf kernel-shell.img" /bin/dash /bin/bash; do
+for sh in "$THIS_SH" "./relf64 kernel64-shell.img" /bin/dash /bin/bash; do
     set -- $sh
     [ -x "$1" ] || continue
     check_shell "$sh"

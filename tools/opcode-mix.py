@@ -121,7 +121,7 @@ def main():
     # is a binary since Iteration 506).
     shell = os.path.join(WORK, 'relfsh-count')
     subprocess.run(['sh', os.path.join(ROOT, 'tools/embed.sh'), counter,
-                    os.path.join(ROOT, 'kernel-shell.img'), shell], check=True)
+                    os.path.join(ROOT, 'kernel64-shell.img'), shell], check=True)
     env = dict(os.environ, OPMIX=mix, RELFSH=shell)
     for w in ('loop', 'fn', 'str', 'arith', 'realistic'):
         subprocess.run([shell, 'tests/bench-vm/%s.sh' % w], cwd=ROOT, env=env,
@@ -135,7 +135,7 @@ def main():
     escs = collections.Counter({i: counts[512 + i] for i in range(256) if counts[512 + i]})
     total = sum(counts[:256]) + sum(escs.values())
     st_out = subprocess.run([sys.executable, os.path.join(ROOT, 'tools/image-audit.py'),
-                             os.path.join(ROOT, 'kernel-shell.img'), '8', '--opcodes'],
+                             os.path.join(ROOT, 'kernel64-shell.img'), '8', '--opcodes'],
                             capture_output=True, text=True).stdout
     stat = collections.Counter(); code = 0
     for line in st_out.splitlines():
