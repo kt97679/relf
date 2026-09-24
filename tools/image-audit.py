@@ -7,6 +7,8 @@ which of them could use a shorter form), calls and variable slots with
 what base-relative, pc-relative or either would cost, inline operands and
 padding. Written for Iteration 258's audit; see PROGRESS.md."""
 import sys, struct, collections
+OPCODES = '--opcodes' in sys.argv                     # per-opcode static counts (Iteration 501)
+if OPCODES: sys.argv.remove('--opcodes')
 path = sys.argv[1]; C = int(sys.argv[2]) if len(sys.argv) > 2 else 8
 d = open(path, 'rb').read()
 fmt = '<Q' if C == 8 else '<I'
@@ -44,6 +46,7 @@ NDIRECT, NSYN = 35, 35
 EXITS = {0x01, 0x27} | set(range(NSYN+5, NSYN+5+23))
 B8, QB8 = NSYN+5+23, NSYN+5+24
 CALLS=[]; SLOTS=[]; S = collections.Counter(); hist = collections.defaultdict(list)
+OPS = collections.Counter(); ESCS = collections.Counter()
 def s16(v): return v - 65536 if v >= 32768 else v
 for name, cnt, xt, end in bodies:
     if cnt & 32 or xt >= end: continue                 # primitives, opcode words
@@ -51,6 +54,8 @@ for name, cnt, xt, end in bodies:
     ip = xt; far_target = xt
     while ip < end:
         op = img[ip]
+        if op < 0x80: OPS[op] += 1
+        if op == 0x7E: ESCS[img[ip+1]] += 1
         if op in (0x03, 0x04):                         # BRANCH ?BRANCH, s16 from operand
             off = s16(img[ip+1] | img[ip+2] << 8)
             tgt = ip + 1 + off
@@ -102,6 +107,11 @@ for name, cnt, xt, end in bodies:
             ip += 1
         if op in EXITS and ip > far_target: break
     S['code bytes'] += ip - xt
+if OPCODES:
+    for k in sorted(OPS): print('op', k, OPS[k])
+    for k in sorted(ESCS): print('esc', k, ESCS[k])
+    print('code', S['code bytes'])
+    sys.exit(0)
 print(f"{path}: {len(words)} words, image {len(img)} bytes")
 for k in sorted(S): print(f"  {k:28} {S[k]}")
 for k, v in sorted(hist.items()):

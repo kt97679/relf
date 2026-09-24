@@ -496,6 +496,7 @@ do not trust the absence of a line below.
 - **498** — a check broken for 190 iterations: the long-path image build lacked edit.4
 - **499** — the user's list for what comes next, recorded with its open questions
 - **500** — the user's answers to 499's questions, recorded as decisions
+- **501** — the opcode experiment: a 1 GB code space would cost nothing measurable
 
 ### Not tied to an iteration
 
@@ -23934,3 +23935,55 @@ next" now carries them as decisions:
 
 Iteration 500 of the log, and fitting that it is a list of what comes
 next rather than of what was done.
+
+## Iteration 501: what a two-bit call tag would cost - nothing measurable
+
+GOALS.md "What comes next", item 2, measured as agreed at 500. The
+scheme: a two-bit tag on every byte - `00` an opcode, `01`/`10`/`11`
+calls of 14, 22 and 30 bits - so 1 GB of code where the three-byte call
+reaches 4 MB, and 64 one-byte opcodes where CV8 has 128, 95 of them used.
+
+**The tool**: `tools/opcode-mix.py`. It builds an engine that counts
+every dispatched byte and every escape selector into a file shared by
+all its processes, runs `tests/bench-vm`'s five workloads and the
+differential suite on it, and takes static counts from
+`tools/image-audit.py --opcodes`, new for this. Then it keeps `ESC` and
+the 63 most executed opcodes and prices the rest; with `--tramp` it also
+builds a variant engine that sends the moved opcodes through one more
+indirect jump, preceded by the byte load a real selector costs - the
+escape's second dispatch, on real code, with no change to the format.
+
+**Results**, from 614 million dispatches:
+
+- The 31 opcodes that would move are **0.31% of all dispatches** - the
+  folded `AND;EXIT`, `RSHIFT`, `OVER;EXIT` and the like - and the image
+  would grow by **255 bytes, 0.35%** of its code.
+- **Timed**, paired and interleaved (`tools/bench-vm.py`, 12 rounds,
+  median ratio and 95% interval), the variant against the normal
+  engine: loop 1.007 [1.003-1.012], fn 1.007 [0.999-1.016], str 1.002
+  [0.989-1.012], arith 0.999 [0.986-1.008], realistic 1.006
+  [0.999-1.016]. Under 1%, and inside the noise on four of five.
+- **The worst case**, a loop made almost wholly of moved opcodes
+  (`ALIGNED CHAR+ INVERT`, twelve of about seventeen dispatches an
+  iteration): 18% slower - half a nanosecond per moved dispatch.
+- **And the finding the counts brought**: today's escape band is 0.78%
+  of dispatches - more than all 31 candidates together - because the
+  memory primitives joined it after its "0.006%" was measured:
+  `CSTRLEN`, `COMPARE`, `SCAN` and `MOVE`. Ranking every operation
+  together, those four promoted and 35 colder opcodes demoted, the
+  64-opcode layout has **fewer** second dispatches than today's 128:
+  0.61% against 0.78%, for 145 bytes.
+
+So the 1 GB code space costs nothing measurable, and a layout chosen
+by frequency would even be a little better than the present one. What
+is left is a format decision - a version bump, and the four places that
+number opcodes (CV8.md 2.2) - not a performance one. Recorded in
+CV8.md 13 and GOALS.md; the engine's escape comment and CV8.md 2.2 say
+what the band carries now.
+
+**Two slips of mine on the way, both caught by the numbers**: the first
+run credited 58 million executions to `BYE` - `do_call` counts calls as
+`PROF(256)`, where the tool had put escape selector 0; selectors live
+at 512 up now, and the tool says why. And the first worst-case run
+took 1 ms: its 92-character line was cut at the kernel's 80-column
+`QUERY`, so the loop was never defined. The line is split.

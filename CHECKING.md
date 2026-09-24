@@ -267,6 +267,8 @@ does it by itself.
     make bench            # speed against the reference shells
     make sizes            # size against every shell installed
     make profile          # dispatch counts per word, on a realistic script
+    python3 tools/opcode-mix.py --tramp   # per-opcode counts, and the price
+                                          # of a smaller opcode space (501)
 
 ## If you find something
 

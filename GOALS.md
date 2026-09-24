@@ -187,7 +187,11 @@ work begins.
   change - and size from the static counts, a byte each. Calls under
   4 MB keep their size in either scheme, so those two numbers are the
   price of the 1 GB. A synthetic loop of nothing but moved opcodes
-  bounds the worst case.
+  bounds the worst case. **Done at 501** (CV8.md 13): real workloads
+  0-0.7% slower, the worst case 18%, the image 255 bytes larger - and
+  with every operation ranked together, fewer second dispatches than
+  today. The 1 GB costs nothing measurable; whether to take it is now a
+  format decision only.
 - **Item 4 - analysis first, then a language of our own.** First: which
   shell features cause the most parsing and implementation complexity;
   if dropping some would halve the shell's source, that is a finding in

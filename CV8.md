@@ -93,7 +93,11 @@ branches reach `0x61`.
 **The escaped primitives cost no opcode.** They are the OS and libc
 interface - files, processes, signals, the terminal, memory
 (`MOVE FILL COMPARE SCAN CSTRLEN`) - declared after `ESCAPED` in
-`kernel.4`, and selector *n* is the *n*-th of them. There are 256
+`kernel.4`, and selector *n* is the *n*-th of them. Each costs a byte
+and a second dispatch, which is invisible for the OS calls and not
+quite for the memory primitives: on the shell's workloads the band is
+0.78% of all dispatches, `CSTRLEN`, `COMPARE`, `SCAN` and `MOVE` almost
+all of it (`tools/opcode-mix.py`, Iteration 501). There are 256
 selectors, and one the engine does not have is reported, not jumped
 through. The list, in selector order:
 
@@ -634,7 +638,18 @@ about five times as often as the byte image.
 - **The locals opcodes know a Forth data structure** (§6.3). Making
   `LSAVE` and `LRESTORE` real primitives, with the Forth versions
   deleted, would remove the five cells and the fallback.
-- **The three-byte call's 4 MB reach** is below `MEMSIZE` (§2.4).
+- **The three-byte call's 4 MB reach** is below `MEMSIZE` (§2.4). A
+  two-bit tag on every byte - `00` an opcode, then calls of 14, 22 and
+  30 bits - would reach 1 GB with 64 one-byte opcodes, and Iteration 501
+  measured the price on the shell's workloads (`tools/opcode-mix.py`):
+  the 31 opcodes that would move behind `ESC` are 0.31% of dispatches;
+  timed with a variant engine that gives them the second dispatch, real
+  workloads slow by 0-0.7% (95% intervals within 1.7%), and code made
+  of nothing else by 18%; the image grows by 255 bytes. Ranking every
+  operation together - today's escaped memory primitives included -
+  gives FEWER second dispatches than the present layout, 0.61% against
+  0.78%, for 145 bytes. The 1 GB would cost nothing measurable; taking
+  it is a format decision, not a performance one.
 - **The self-hosted assembler and native code** that `GOALS.md` names as
   the end state: dispatch removal was measured at 4–4.75x, and inlining
   at a further 2–2.2x - larger than anything the interpreter can do.

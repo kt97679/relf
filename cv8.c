@@ -904,7 +904,11 @@ L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.     
 L_esc:     /*  The escaped band: one more byte selects an OS/libc
             *  primitive. Half the primitive band was these, for 3.2% of
             *  static sites and 0.006% of dispatches; behind an escape
-            *  they cost a byte each and free 32 opcodes.  */
+            *  they cost a byte each and free 32 opcodes. The memory
+            *  primitives joined them later and are the hot ones: on the
+            *  shell's workloads the band is 0.78% of dispatches, and
+            *  CSTRLEN, COMPARE, SCAN and MOVE nearly all of it
+            *  (tools/opcode-mix.py, Iteration 501).  */
     t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
 L_badesc:
     write_str(2, "relf: image uses an escaped primitive this engine does not have\n");
