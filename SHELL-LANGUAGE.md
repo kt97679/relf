@@ -86,6 +86,186 @@ Every one of the troublesome stages exists because POSIX sh turns
 values back into text and parses that text again - splitting it,
 globbing it, removing quotes from it. Part 2 starts there.
 
-## Part 2 — the design
+## Part 2 — Rill (Iteration 503)
 
-(Iteration 503.)
+A design, not an implementation: what it is, how it reads, what it
+removes, and what is still open. Where an idea echoes an existing shell
+it says so; nothing here has yet been checked for novelty against the
+literature (`prompts/02-escape-recall.md` comes before any such claim
+goes into the article).
+
+### The five decisions
+
+1. **Text is never re-read.** A value is a value. `$x` is always one
+   argument, whatever it contains; nothing splits it, globs it or
+   removes quotes from it. Splitting is a function you call, globbing
+   happens only to patterns written in the source. This one rule deletes
+   field splitting, quote removal, the second pass of pathname expansion
+   and every context flag the expander carries.
+2. **A command is a value until it is used.** `make -j4` written as a
+   statement runs; the same words in parentheses are a *run*, a value
+   that can be piped, captured, timed, retried, run in the background -
+   or handed to a test that never runs it. Pipelines, command
+   substitution, background jobs and process substitution become four
+   uses of one thing instead of four mechanisms.
+3. **The world is an interface.** Everything a script does outside
+   itself - start a program, open a file, read the clock, list a
+   directory - goes through a small, named set of operations. The
+   interpreter is given a world. The real world runs programs; a
+   recording world prints what would happen (`--plan`); a scripted world
+   answers from a test's fixtures. Scripts become testable without a
+   container, and a dry run is not a feature anyone had to write.
+4. **Failure is a value, and it stops things.** A statement that fails
+   ends its block - `set -e`, but everywhere, with no exceptions buried
+   in the standard for `&&` lists and negation. Guarding a failure is
+   explicit: `try`, `??`, or a condition.
+5. **The grammar is context-free at the level of tokens.** Words are
+   separated by blanks; a fixed set of characters are operators
+   everywhere outside a string; there are two string forms. No aliases
+   rewriting input as it is read, no here-document bodies arriving
+   after their line, no words that are reserved only in some positions.
+
+### How it reads
+
+```rill
+# a command is a line of words, as always
+ls -la /tmp
+git log --oneline | head -5
+
+# variables: one value each; lists spread only with @
+name = world
+echo "hello {name}"            # "..." interpolates {expressions}; '...' is raw
+files = *.c                    # a pattern in the SOURCE: a list of paths
+cc @files -o app               # the list becomes arguments - explicitly
+echo "{#files} C files"        # #list is its length
+
+# capture is parentheses; splitting is a call
+today = (date +%F)             # text, trailing newline removed
+commits = lines (git log --oneline)
+for c in @commits { echo $c }
+
+# ports instead of descriptor numbers: in, out, err, and any you name
+make > build.log  err> errors.log
+make  err>out | less           # err joined to out, then piped
+diff (sort a.txt) (sort b.txt) # a run as an argument: a path to its output
+
+# failure stops the block; guarding is explicit
+try { make } else { echo "build failed: {status.code}" }
+rm stale.lock ?? true          # ?? - if the left fails, run the right
+if (test -f config) { load config }
+
+# structured concurrency instead of & and wait
+par {
+    make -C lib
+    make -C app
+}                              # waits for both; one failing cancels the other
+
+# text blocks instead of here-documents: the body is what is indented
+mail -s report ops <- text
+    Build {today} finished.
+    {#files} files compiled.
+echo done                      # the block ended with its indentation
+
+# functions: named parameters; output and return value are different things
+def greet who { echo "hi {who}" }
+def c-count dir -> number { return #(glob "{dir}/*.c") }
+
+# records, for tools that speak structure
+host = {name: "db1", port: 5432}
+ssh -p $host.port $host.name
+```
+
+What is gone: `IFS`, `set -e` and its exceptions, `$@` versus `$*`,
+quoting to *prevent* splitting, `eval` to re-read text, `&` and `$!` in
+scripts, `2>&1` numerals, `<<EOF` bodies, aliases (functions do what
+they did), backquotes, `$((...))` (numbers are values:
+`n = $n + 1`), `[ ]` as a program for conditions.
+
+What stays: typing `ls -la` works; `|`, `>`, `<`, `>>` mean what they
+always meant; `&` still backgrounds a job at the prompt, where job
+control is for people.
+
+### The core, formally
+
+The surface syntax is sugar over a kernel of twelve forms, and the
+kernel is what has a semantics:
+
+```
+e ::= t                      text literal
+    | [e ...]                list
+    | x                      variable
+    | glob p                 pattern from the source -> list of paths
+    | run c [e ...] P        a run: command c, arguments, port wiring P
+    | force e                run it; its value is a status
+    | capture e              run it; its value is its out, as text
+    | let x = e in e         binding
+    | seq e e                if the first fails, stop
+    | try e e                if the first fails, the second
+    | par [e ...]            fork all, join all, first failure cancels
+    | lam (x ...) e / e(e...) functions
+```
+
+Evaluation is a relation `W, E ⊢ e ⇓ v, W'` - an environment `E`, a
+world `W` before and after. The world is a value with seven operations:
+`spawn(program, argv, ports) -> handle`, `wait(handle) -> status`,
+`open(path, mode) -> port`, `read(port)`, `write(port, bytes)`,
+`glob(pattern) -> list`, `clock()`. That is the whole of the outside.
+Everything a POSIX shell spends its expander on - which characters of a
+word came from where - does not exist to be specified, because values
+are never text-with-history.
+
+### Testable, because of the world
+
+```rill
+# test/deploy.test.rill
+world = scripted {
+    rsync -a build/ $any:host:/srv -> ok
+    ssh $any systemctl restart app  -> fail 3
+}
+result = with $world { deploy prod }
+expect $result.status == fail
+expect $world.calls[0].argv == [rsync -a build/ web1:/srv]
+```
+
+A script's effects are data before they are actions, so a test can say
+exactly which programs would run, with which arguments, and what
+happens when one of them fails - without a container and without
+writing a mock of every program. `rill --plan deploy.rill` is the same
+mechanism with a world that records and does not act.
+
+### What it would cost to build here
+
+From Part 1's table, the machinery Rill does not need: field splitting
+(180 lines), most of quoting and word encoding (284), aliases (168),
+here-documents as a separate mechanism (137), parameter-expansion
+operators as syntax (250 - they become functions: `trim-prefix`,
+`default`), command substitution's text path (134), arithmetic's
+separate language (467 - numbers are values, and the evaluator's
+parser folds into the expression grammar), and most of the expander's
+context flags (a large part of 778). The lexer, context-free with two
+string forms and an indentation rule for text blocks, is a fraction of
+1,045 lines. Execution (927), job control, traps, redirections and
+the line editor are reused as they are.
+
+A guess, to be measured by building it: **about half the source for the
+same practical power** - which is the halving Part 1 found no feature
+list could give, obtained by a different model rather than fewer
+features. POSIX sh is not abandoned: `#!/bin/sh` scripts keep running
+on the shell that exists, and both languages share the engine, the
+executor and the job table.
+
+### Open questions
+
+- **Blocks by indentation** make text blocks context-free but give
+  whitespace meaning, which sh never did. The alternative is a
+  delimiter that must be alone on a line and is found by the lexer, not
+  after the line; indentation is the braver choice.
+- **Records at the prompt**: worth it only if tools emit them; Rill
+  could read JSON on a port marked for it and leave the rest as text.
+- **Interactive brevity**: `?? true` and `try` must not make one-liners
+  longer than sh's. The prompt may deserve a softer failure rule than
+  scripts.
+- **The kernel in Forth**: each kernel form maps onto a few Forth words,
+  and the world's seven operations onto engine primitives - which makes
+  `forth` the natural place to extend Rill, and the assembly engine of
+  item 5 its eventual floor.

@@ -203,7 +203,11 @@ work begins.
   502** (SHELL-LANGUAGE.md, Part 1): no set of features halves the
   source - the largest is the parser at 12.6% - and the trouble is
   concentrated where POSIX re-reads text: quoting, field splitting,
-  redirections, command substitution.
+  redirections, command substitution. **Designed at 503**: Rill
+  (SHELL-LANGUAGE.md, Part 2) - text never re-read, commands as values
+  until used, the world as an interface a test can replace, failure that
+  stops, and a grammar context-free at the token level. A design; its
+  "about half the source" is a guess to be measured by building it.
 - **Item 10 - no two-pass compiler**: the complexity is not worth the
   gain. The task is to find what else still stores a full cell where a
   compact offset would do.

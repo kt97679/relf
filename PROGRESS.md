@@ -498,6 +498,7 @@ do not trust the absence of a line below.
 - **500** — the user's answers to 499's questions, recorded as decisions
 - **501** — the opcode experiment: a 1 GB code space would cost nothing measurable
 - **502** — where the POSIX language's cost lives: no feature halves it; re-read text is the trouble
+- **503** — Rill: a shell language designed from 502's measurements
 
 ### Not tied to an iteration
 
@@ -24021,3 +24022,31 @@ back into text and parses it again.
 The trouble measure is a proxy and a fuzzy one - titles, keywords - and
 the tool says so; it is kept, like opcode-mix.py, so the numbers can be
 regenerated for the article.
+
+## Iteration 503: Rill, a shell language designed from the measurements
+
+SHELL-LANGUAGE.md, Part 2. The user asked for imagination - a language
+unlike sh or csh, convenient and expressive, but more testable, simpler
+to implement and better formalized. The design takes its central rule
+from 502's finding that the trouble lives wherever POSIX turns values
+back into text and reads it again: in Rill, **text is never re-read**.
+
+Five decisions follow, each aimed at a measured cost: values are never
+split or globbed after the fact (field splitting, quote removal, the
+expander's context flags go); **a command is a value until it is used**,
+so pipes, capture, background jobs and process substitution are four
+uses of one thing; **the world is an interface** - seven operations,
+spawn to clock - so a test can hand a script a scripted world and a dry
+run is the same mechanism with a recording one; **failure stops the
+block**, `set -e` without its exceptions, guarded explicitly with `try`
+and `??`; and **the grammar is context-free at the token level** - no
+aliases, no here-document bodies after their line, text blocks by
+indentation instead.
+
+The surface desugars into a kernel of twelve forms with a big-step
+semantics over an environment and a world. The document is honest about
+what it is: a design, whose "about half the source" is a guess to be
+measured by building it; parts of it echo rc, fish and nushell, and its
+novelty is unchecked against the literature - `prompts/02` comes first
+for any claim that reaches the article. Four questions are left open,
+indentation-significant text blocks the sharpest of them.
