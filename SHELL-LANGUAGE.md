@@ -762,3 +762,66 @@ one rule: when a block (or the program) ends, the world receives a
 TERM for each job bound to it that has not finished. Nothing about a
 job is hidden state; `jobs` is a function returning a list of job
 values.
+
+### The user's proposal: JSON in the environment, recognised (516)
+
+*Use JSON in environment variables, and let Rill detect whether a value
+is a plain string or JSON.* The export side is uncontroversial: a list
+or record, exported, becomes compact JSON - there is nothing else it
+could sensibly become. The question is recognition on the way in, and
+there the difficulty is that **many ordinary strings are already valid
+JSON**:
+
+| the environment says | detected as JSON, it becomes |
+|---|---|
+| `VERSION=1.0` | the number 1 - and `1.10` becomes 1.1 |
+| `PORT=08080` | not JSON (a leading zero) - text, while `PORT=8080` is a number |
+| `DEBUG=true` | a boolean, which `echo "$DEBUG"` must now print somehow |
+| `NAME=null` | nothing at all |
+| `GREETING="hi"` (quotes included) | `hi`, the quotes gone |
+
+The same value changes kind with its content - YAML 1.1's "Norway
+problem", where the country code `NO` was read as false. And anyone who
+controls a variable controls its kind: a value a script treated as
+text can arrive as a list.
+
+**Recognition that cannot misfire**: every environment value arrives
+as text, and a *structural operation* on text decodes it, there and
+then - field access, spreading, iterating:
+
+```rill
+echo $CFG                        # text, as it arrived
+echo $CFG.host                   # decodes CFG as JSON here - an error if it is not
+for t in $CFG.tags { ... }       # likewise
+export CFG = $cfg                # a record exports as JSON; nothing to write
+```
+
+Scalars are never converted, so `VERSION=1.0` stays `1.0`; a string
+that happens to be valid JSON stays a string until the script itself
+uses it as a structure; and no marker variable can go stale. It is the
+user's idea with the detection moved from the value's content to the
+script's own words - which is also why it does not break Rill's first
+rule: the text is read as structure because the script asked, by the
+operation it wrote.
+
+### What a process can exchange
+
+The user's model: a process has stdin, stdout, stderr and an
+environment, receives signals and returns an exit code, and data comes
+back only through stdout, stderr and the exit code. Right, with two
+refinements:
+
+- **The arguments** are an input channel too, and already a list of
+  strings - the one structured thing the contract hands over.
+- **Every inherited descriptor is a channel, not only 0, 1 and 2.** A
+  child inherits every open descriptor not marked close-on-exec, so a
+  parent that opens a pipe as descriptor 3 reads whatever the child
+  writes there. Programs use this now: `gpg --status-fd`, systemd's
+  socket activation (`LISTEN_FDS`), `dialog 3>&1`, bash's `coproc`.
+
+And three limits worth naming: the exit status is 8 bits, a signal
+carries at most one integer (`sigqueue`), and nothing a child does
+reaches its parent's environment - the copy is one-way, at `execve`.
+So the value port of Part 4 does not extend the contract: it uses a
+descriptor the contract already provides, and a program that is not
+Rill simply never writes to it.

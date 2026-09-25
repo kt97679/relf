@@ -511,6 +511,7 @@ do not trust the absence of a line below.
 - **513** — the assembly engine designed: 63 libc functions, and a Milestone 0 in C
 - **514** — QUESTIONS.md; 256-column lines; Rill specified; the assembly engine's decisions
 - **515** — Rill discussed: structured values across processes, and jobs with lifetimes
+- **516** — JSON in the environment, recognised by use; what a process can exchange; plugins; Q2-Q4 answered
 
 ### Not tied to an iteration
 
@@ -24530,3 +24531,41 @@ ordering every open question by the work it blocks: Q2 and Q3 before
 the assembly engine's next milestone; Q5 and Q6 before its fourth,
 each with a default; Q7, Q8, Q10 and Q11 before any Rill code; Q1 and
 Q9 blocking nothing.
+
+## Iteration 516: the user's proposals, weighed
+
+**JSON in environment variables, detected automatically.** Exporting a
+structure as JSON is uncontroversial. Detecting it on the way in by
+content misfires, because many ordinary strings are valid JSON:
+`VERSION=1.0` would become the number 1, `DEBUG=true` a boolean,
+`NAME=null` nothing, and `PORT=8080` a number while `PORT=08080` stays
+text - YAML's "Norway problem" - and whoever controls a variable
+controls its kind. The version that cannot misfire keeps the user's
+idea and moves the detection from the value's content to the script's
+words: every value arrives as text, and a structural operation on it
+(`$CFG.host`, iterating, spreading) decodes it there, an error if it is
+not JSON. Scalars are never converted. SHELL-LANGUAGE.md Part 4;
+QUESTIONS.md Q10, refined.
+
+**"We can't change the libc contract; data comes back only through
+stdout, stderr and the exit code."** Right, with two refinements: the
+arguments are an input channel too, and every inherited descriptor is
+a channel, not only 0-2 - a child writes to descriptor 3 if its parent
+opened one there, as `gpg --status-fd`, systemd's `LISTEN_FDS` and bash's
+`coproc` do. Which is why the value port needs no change to the
+contract. Written up as "What a process can exchange".
+
+**Forth plugins in image form.** What it would take - relocating the
+plugin's own calls, resolving its calls into the host by name, linking
+its headers into the hashed threads; slots and branches are relative
+already - and what it would buy, measured: loading the examples from
+source costs about 0.4 ms per KB, so it pays only for large extensions,
+source-free distribution, or as a step to the self-hosted assembler.
+CV8.md 13; QUESTIONS.md Q12.
+
+**Q2-Q4 answered**, as recommended: the call format stays (switching
+later is "not a big deal"); one source for the opcode numbering, as
+Milestone 1's first step; `LSAVE`/`LRESTORE` as real primitives - which,
+looked at closely, needs the engine to raise the Forth version's
+catchable `ABORT"`, so the five cells become one error word rather
+than none. QUESTIONS.md A6-A8.

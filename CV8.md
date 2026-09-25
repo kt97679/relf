@@ -658,6 +658,15 @@ about five times as often as the byte image.
   gives FEWER second dispatches than the present layout, 0.61% against
   0.78%, for 145 bytes. The 1 GB would cost nothing measurable; taking
   it is a format decision, not a performance one.
+- **Plugins in image form** (Iteration 516, QUESTIONS.md Q12): an
+  extension compiled against one shell image calls its words by
+  offset, so loading it into a running shell means relocating its own
+  calls by where it lands, resolving its calls into the host by name,
+  and linking its headers into the hashed threads; variable slots and
+  branches are relative and move as they are. A linker of perhaps 150
+  lines of Forth. Loading from source costs ~0.4 ms per KB, so it pays
+  only for large extensions, source-free distribution, or as a step
+  towards the next item.
 - **The self-hosted assembler and native code** that `GOALS.md` names as
   the end state: dispatch removal was measured at 4–4.75x, and inlining
   at a further 2–2.2x - larger than anything the interpreter can do.

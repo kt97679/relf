@@ -12,11 +12,8 @@ same iteration.
 
 ## What blocks what - in the order the work needs them
 
-1. **Before the assembly engine's Milestone 1**, the next work: **Q2**
-   (the two-bit call tag - after Milestone 1 it would cost both
-   engines) and **Q3** (one generated source for the opcode numbering,
-   proposed as Milestone 1's first step). Q4 is best settled at the
-   same time, but blocks nothing.
+1. *(Q2, Q3 and Q4, which blocked the assembly engine's Milestone 1,
+   were answered at 516.)*
 2. **Before its Milestone 4**: **Q5** (`~user`) and **Q6** (the time
    zone). Each has a default, recommended below, that the engine
    would follow unless you choose otherwise.
@@ -25,7 +22,7 @@ same iteration.
    points), **Q10** (structured values across processes), **Q11** (the
    default lifetime of a job).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
-   on purpose).
+   on purpose), Q12 (binary plugins).
 
 ## Open
 
@@ -42,29 +39,6 @@ parameter field that four past defects came from (FORTH-STYLE.md 12);
 (d) none.
 *Recommendation*: (a) if size matters to you - it is the only lever
 at both widths; I would leave (b) and (c). *Blocks*: nothing.
-
-**Q2. The two-bit call tag: take the format change? (501)**
-A 1 GB code space instead of 4 MB, with 64 one-byte opcodes; measured
-performance-neutral (with a frequency-ranked layout, fewer second
-dispatches than today: 0.61% against 0.78%, for 145 bytes). It is a
-format version and a renumbering of every opcode.
-*Recommendation*: not now - the shell image is 120 KB, and nothing
-needs more than 4 MB. But **decide before the assembly engine's
-Milestone 1**: after it, the change costs both engines.
-
-**Q3. One source for the opcode numbering? (CV8.md 13)**
-Four hand-maintained places number the opcodes (CV8.md 2.2), and the
-assembly engine would be a fifth. `kernel.4` - or a small generator -
-could emit the tables every engine includes.
-*Recommendation*: yes, as the first step of Milestone 1, so the
-assembly engine's table is generated rather than typed.
-
-**Q4. `LSAVE`/`LRESTORE` as real primitives? (CV8.md 13)**
-The locals opcodes know a Forth data structure (CV8.md 6.3); as real
-primitives, with the Forth versions deleted, five cells and a fallback
-go.
-*Recommendation*: yes, before the assembly engine - one special case
-fewer to port. Small.
 
 **Q5. `~user` without libc (513).**
 libc's `getpwnam` also asks NSS (LDAP, systemd-homed); an engine with no
@@ -91,7 +65,15 @@ margin (design C there).
 scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
 Rill", says why; it is easy to change.
 
-**Q10. Rill: how structured values cross a process boundary (515).**
+**Q10. Rill: how structured values cross a process boundary (515, 516).**
+*Refined at 516, from the user's proposal*: JSON in the environment,
+recognised - but by the script's use, not the value's content: every
+value arrives as text; a list or record exports as JSON automatically;
+a structural operation on text (`$CFG.host`, iterating, spreading)
+decodes it there, an error if it is not JSON; scalars are never
+converted, so `VERSION=1.0` stays `1.0`. SHELL-LANGUAGE.md Part 4 shows
+why detection by content misfires (the "Norway problem").
+*Recommendation now*: that. The earlier options follow.
 The environment is `NAME=VALUE` strings for every program, most not
 Rill. Options, argued in SHELL-LANGUAGE.md Part 4: (1) only text is
 exported, and a structure crosses by explicit encoding
@@ -115,6 +97,20 @@ ends; or it is stopped when the block that started it ends.
 is an accident; `with` binds a job to a block; `detach` lets one
 outlive the script; at the interactive prompt, jobs live as long as the
 shell, as in sh.
+
+**Q12. Forth plugins in image form? (516)** The user's thought: load
+compiled extensions, not source. What it takes: a plugin compiled
+against one shell image calls that image's words by their offsets, so
+loading it means relocating its own calls by where it lands, resolving
+its calls into the host by name (`FIND`), and linking its headers into
+the host's 32 hashed threads - a small linker, perhaps 150 lines of
+Forth; variable slots and branches are relative already and move
+untouched. What it buys, measured: loading from source costs about
+0.4 ms per KB, so for extensions of a few KB nothing; it matters for
+extensions of tens of KB, for distributing one without its source, and
+as a first step towards GOALS.md item 6, where Forth writes machine
+code into images. *Recommendation*: design recorded, build when an
+extension is big enough to need it. CV8.md 13.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:
@@ -150,6 +146,19 @@ named by cell width - `relf64`/`relf32`, `kernel64`/`kernel32`,
 whole - you extend it across projects - and the article about the
 Forth shell is written when the project is complete.
 
+**A6. The two-bit call tag (Q2; 501 -> 516).** Not now: the format
+stays, and switching later is not a big deal, in the user's words.
+
+**A7. One source for the opcode numbering (Q3; CV8.md 13 -> 516).**
+Yes, as the assembly engine's Milestone 1's first step.
+
+**A8. `LSAVE`/`LRESTORE` as real primitives (Q4; CV8.md 13 -> 516).**
+Yes. Looked at closely it is less small than first said: the Forth
+versions report overflow with `ABORT"`, a catchable error, and an engine
+that owns the save stack must still raise exactly that. So: the engine
+owns the stack, and the five cells at image offset 8 become one - a
+word the engine calls to report the error in Forth.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.
@@ -159,3 +168,13 @@ Forth shell is written when the project is complete.
   written at 514; Q7 and Q8 wait for you.
 - **The assembly engine**: x86-64 first, 32-bit later; the environment
   as the C engine has it - A2 and A3.
+
+## Your notes, captured (516)
+
+- **JSON in environment variables, detected** - Q10, refined: detection
+  by the script's use rather than the value's content.
+- **"Can't change the libc contract; data comes back only through
+  stdout, stderr and the exit code"** - right, with two refinements
+  (the arguments, and every inherited descriptor):
+  SHELL-LANGUAGE.md Part 4, "What a process can exchange".
+- **Forth plugins in image form** - Q12, with what it would take.
