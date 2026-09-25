@@ -529,6 +529,7 @@ do not trust the absence of a line below.
 - **531** — EXECUTE and @XT as opcodes: 14.95% fewer dispatches since 528
 - **532** — the first superinstructions: VAR@ fused with +, <, 1+, C@ - 4.62% fewer; 18.9% since 528
 - **533** — decoders read operand formats from opcodes.tab; compare-and-branch fused: 3.40% fewer, 21.6% since 528
+- **534** — measured in time against 527, dash and bash; BUF-ZERO is 0 FILL
 
 ### Not tied to an iteration
 
@@ -25266,3 +25267,41 @@ recording run.**
 **Next, found by the same analysis**: `BUF-ZERO` in pool.4 clears a
 buffer a cell at a time, `BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT` -
 five pairs of it at 0.83% each. It is `0 FILL`, one dispatch.
+
+## Iteration 534: what 528-533 bought, in time - and against dash and bash
+
+The user asked for it, and dispatch counts are not time. The shells as
+they were at 527 (built from that commit in a worktree) against today's,
+and dash 0.5.12 and bash 5.2.21, on tests/bench-vm's five workloads -
+10 paired rounds, ratios to the 527 C shell, 95% intervals:
+
+| config | loop | fn | str | arith | realistic |
+|---|---|---|---|---|---|
+| C shell, 527 | 101.6 ms | 58.4 ms | 56.5 ms | 81.6 ms | 92.1 ms |
+| C shell, 533 | 0.83 [.81-.87] | 0.86 [.79-.89] | 0.83 [.78-.85] | 0.81 [.79-.86] | 0.79 [.75-.82] |
+| asm shell, 527 | 1.03 [.98-1.06] | 0.97 [.93-1.01] | 0.98 [.95-.99] | 0.95 [.93-1.00] | 0.95 [.92-.98] |
+| asm shell, 533 | 0.83 [.79-.87] | 0.83 [.78-.85] | 0.80 [.78-.83] | 0.81 [.79-.86] | 0.78 [.76-.83] |
+| dash | 0.037 | 0.043 | 0.046 | 0.033 | 0.033 |
+| bash | 0.076 | 0.101 | 0.105 | 0.079 | 0.091 |
+
+**The optimization: 14-22% faster in time**, both engines, every
+interval clear of 1.0 - about what 21.6% fewer dispatches promised,
+since not all the time is dispatch. **Against dash and bash, checked a
+second way** (plain timing, and the four shells' output identical):
+the realistic workload takes dash 2.5 ms, bash 7.6 ms, relf 75.7 ms on
+the assembly engine and 81.9 on C - **~30x dash, ~10x bash**. Startup is
+the other way round: relf 287 us on the assembly engine, dash 748, bash
+1,108. The gap is not the dispatch rate but the amount of work - 17.5
+million Forth operations for a script dash runs in about 10 million
+cycles - and QUESTIONS.md Q16 puts what to do about it.
+
+(Two faults of mine on the way, both in the benchmark's configuration:
+dash and bash were named without paths, and bench-vm.py starts commands
+with execve, which searches no PATH - "FAILED", with dash itself fine.)
+
+**`BUF-ZERO` is `0 FILL`** (pool.4): a Forth loop storing a cell at a
+time, whose five opcode pairs were each 0.83% of the workload mix's
+dispatches. On the realistic workload, 0.49% fewer (17,593,772 to
+17,508,039) - it clears the many short-lived shells' buffers, which the
+mix has more of. Only the shell images change: pool.4 is not in the
+kernels.

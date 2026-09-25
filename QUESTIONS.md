@@ -23,6 +23,8 @@ same iteration.
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
    speed). *(Q14 was answered at 523.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
+6. **Strategic**: **Q16** (relf runs scripts ~30x slower than dash - what,
+   if anything, to do about it). Measured at 534; blocks nothing.
 
 ## Open
 
@@ -120,6 +122,37 @@ engine grows (54 escaped primitives are still stubs, and their names
 go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
+
+**Q16. Scripts run ~30x slower than dash: what to do? (534)** Measured,
+same machine, identical output from all four: the realistic workload
+takes dash 2.5 ms, bash 7.6 ms, relf 75.7 ms (assembly engine) or 81.9
+ms (C). relf STARTS fastest - 287 us against dash's 748 and bash's
+1,108 - and the 528-534 work made scripts ~20% faster; neither changes
+the order of magnitude. The cause is not the dispatch rate - both
+engines are at the hardware's (526) - but the amount of work: 17.5
+million Forth operations for a script dash runs in about 10 million CPU
+cycles in all. The shell's own inner work is fine-grained Forth: the
+profile's top words are variable lookup (NAME-HASH, FIND-SHVAR,
+VALID-NAME?), word expansion (EXPAND-WORDS, EW-ENTRY), argument building
+(ARGV-ADD) and the tree reader (X@, XF@). Options:
+(A) **Accept it.** relf's goals are size, simplicity and self-hosting;
+interactive use is dominated by startup, where relf leads. More
+superinstructions give tens of percent, not tens of times.
+(B) **Hot shell operations as engine primitives** - hashing a name,
+walking a variable chain, comparing strings, parsing a number: the
+places the profile names. Keeps the design; costs engine size (twice,
+C and assembly) and moves shell logic out of Forth. Perhaps 2-5x.
+(C) **Do less work per operation** - resolve variables to slots when a
+function or loop is parsed, expand constant words once, compile the
+parsed tree into threaded Forth instead of walking it. The largest
+gains (perhaps 5-10x on loops and functions), and the largest change;
+it is where Rill's "text never re-read" principle (SHELL-LANGUAGE.md)
+already points.
+*Recommendation*: (C) for Rill, designed in from the start, and for
+the POSIX shell only the cheapest part of (B) - the two or three
+primitives the profile ranks highest - measured one at a time as the
+opcodes were. Not before the user decides: it changes what the engine
+is for.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:

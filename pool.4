@@ -61,15 +61,18 @@ VARIABLE BUF-BODY
 VARIABLE BUF-SIZE
 VARIABLE BUF-PTR
 
-: BUF-ZERO ( addr u --- )   \ u is a whole number of cells
-  OVER + SWAP                          ( end addr )
-  BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT
-  2DROP ;
+: BUF-ZERO ( addr u --- )   \ clear u bytes
+\ FILL, one primitive, where this was a Forth loop storing a cell at a
+\ time - BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT - whose five pairs of
+\ opcodes were each 0.83% of the shell's dispatches (Iteration 534,
+\ tools/superinst.py).
+  0 FILL ;
 
 : BUF-ALLOC ( body --- )   \ give one descriptor its space
   DUP @ 0= IF
-    \ Round up to a whole cell so BUF-ZERO can work a cell at a time
-    \ without overrunning; a few bytes of slack per buffer is nothing
+    \ Round up to a whole cell - once so that BUF-ZERO, a cell-at-a-time
+    \ loop until 534, could not overrun; kept, since the buffers after it
+    \ stay cell-aligned. A few bytes of slack per buffer is nothing
     \ against the heap and the sizes are not all cell multiples.
     DUP CELL+ @ CELL+ 1- [ 1 CELLS 1- ] LITERAL INVERT AND BUF-SIZE !
     BUF-SIZE @ ALLOCATE ABORT" BUFFER: out of memory"
