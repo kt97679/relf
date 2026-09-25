@@ -519,6 +519,7 @@ do not trust the absence of a line below.
 - **521** — the assembly engine's Milestone 2: kernels, CORE suite and shell image all identical
 - **522** — the shell runs on the assembly engine: 130 of 131 differential cases
 - **523** — the assembly engine complete: every primitive, every suite, W^X, one 135 KB file
+- **524** — measured: the assembly shell is faster on shell work and starts 2.5x faster than dash
 
 ### Not tied to an iteration
 
@@ -24862,3 +24863,29 @@ binary has none.
 
 The engine is 15,624 bytes. What is left is Milestone 5: measuring it,
 since 520 found it about 8-12% slower than cv8.c on a dispatch loop.
+
+## Iteration 524: the first measurement of the assembly shell
+
+ASM-ENGINE.md, Milestone 5, first pass: `relfsh64` (cv8.c) against
+`relfshasm64` (the assembly engine), both single files, both with the
+same shell image. `tools/bench-vm.py`, 10 rounds, paired and
+interleaved, median ratio and 95% interval, assembly over cv8.c:
+
+| loop | fn | str | arith | realistic |
+|---|---|---|---|---|
+| 0.993 [0.984-1.000] | 0.980 [0.974-0.987] | 0.975 [0.971-0.980] | 0.978 [0.972-0.985] | 0.987 [0.982-0.992] |
+
+**Faster on the shell's own work**, 1-2.5%, with four of five intervals
+clear of 1.0 - where 520's tight Forth loop, pure dispatch, found it
+8-12% slower. A shell's time goes to starting and forking processes
+and to system calls, and a static binary with no libc and no dynamic
+loader does those cheaply.
+
+**Startup**, `-c :` 300 times: **291 us**, against relfsh64's 1,025 and
+dash's 725 - 3.5 times faster than the C-engine shell, 2.5 times faster
+than dash. There is no loader to run, no libc to initialise, and a
+15 KB engine to map.
+
+The dispatch loop itself is still slower than gcc's on pure Forth, and
+tuning it is the rest of Milestone 5 - QUESTIONS.md Q13's measurements
+say which directions cost speed.

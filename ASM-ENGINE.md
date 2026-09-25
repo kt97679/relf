@@ -131,7 +131,16 @@ are, rather than typed a fifth time.
    and the Forth image are in separate segments, W^X (A11).
 5. **Measure**: the paired benchmark against cv8.c. The point of an
    assembly engine was never only libc - it is also where the dispatch
-   loop can be exactly what it should be.
+   loop can be exactly what it should be. **First measured at 524**, the two
+   single-file shells side by side (`tools/bench-vm.py`, 10 rounds,
+   median ratio and 95% interval, assembly against cv8.c): loop 0.993
+   [0.984-1.000], fn 0.980 [0.974-0.987], str 0.975 [0.971-0.980], arith
+   0.978 [0.972-0.985], realistic 0.987 [0.982-0.992] - **faster on the
+   shell's own work**, where 520's tight Forth loop found it 8-12%
+   slower: a shell's time goes to processes and system calls, and a
+   static binary with no libc starts and forks cheaply. **Startup**:
+   291 us against relfsh64's 1,025 and dash's 725 - 3.5 times cv8.c's
+   shell, 2.5 times dash. The dispatch loop itself is still to tune.
 
 ## Open, for the user
 
