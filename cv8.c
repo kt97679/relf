@@ -110,8 +110,8 @@ static int g_argbase = 2;   /* argv[g_argbase] is the program's first argument:
  *  and let every escaped primitive push the map towards the fixed
  *  specialised band. Both counts are checked against the tables in
  *  virtual_machine().  */
-#define NDIRECT 35
-#define NESC    65
+#include "cv8-ops.h"   /* NDIRECT, NESC and the dispatch tables: generated
+                          from opcodes.tab (Iteration 518; CV8.md 2.2) */
 #define NSYN    NDIRECT
 #define VMPUSH PUSH
 #define UNS8 unsigned char /* byte access; width-independent */
@@ -783,76 +783,15 @@ static void virtual_machine(void) {
      * byte are a 15-bit scaled offset from the image base. */
     const UNS64 cbase = (UNS64)(uintptr_t)base;
     /*  The direct primitives, in kernel.4 order: opcodes 0..NDIRECT-1.  */
-    static const void *const direct_prims[] = {
-        &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop,
-        &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch,
-        &&L_cstore, &&L_store, &&L_and, &&L_or, &&L_xor, &&L_fromr,
-        &&L_tor, &&L_rfetch, &&L_eq, &&L_ult, &&L_lt, &&L_plus,
-        &&L_negate, &&L_lshift, &&L_rshift, &&L_ummult, &&L_umdiv,
-        &&L_dplus, &&L_type, &&L_spfetch, &&L_spstore,
-        &&L_rpfetch, &&L_rpstore,
-    };
+    static const void *const direct_prims[] = { CV8_OPS_DIRECT };
     /*  The escaped primitives, in kernel.4 order after ESCAPED:
      *  selectors 0..NESC-1.  */
-    static const void *const escaped_prims[] = {
-        &&L_bye, &&L_openfile, &&L_closefile,
-        &&L_system, &&L_reposfile, &&L_filepos, &&L_delfile, &&L_filesize,
-        &&L_fork, &&L_execve, &&L_waitpid, &&L_pipe, &&L_dup2,
-        &&L_getenv, &&L_setenv, &&L_sysexit, &&L_chdir, &&L_getcwd,
-        &&L_sysargc, &&L_sysarg, &&L_getpid, &&L_unsetenv,
-        &&L_allocate, &&L_free, &&L_resize, &&L_getpwhome,
-        &&L_getfsize, &&L_setfsize, &&L_read, &&L_write, &&L_poll,
-        &&L_rawmode,
-        &&L_move, &&L_fill, &&L_compare, &&L_scan, &&L_cstrlen,
-        &&L_isatty, &&L_opendir, &&L_readdir, &&L_closedir, &&L_access,
-        &&L_kill, &&L_umask, &&L_cputimes, &&L_sigaction, &&L_sigpending,
-        &&L_termraw, &&L_termrestore,
-        &&L_filekind,
-        &&L_getrlimit, &&L_setrlimit, &&L_waitnohang,
-        &&L_getppid, &&L_envat,
-        &&L_setpgid, &&L_tcsetpgrp, &&L_tcgetpgrp, &&L_waitjob,
-        &&L_filemode, &&L_localtime, &&L_dupfrom,
-        &&L_tcplisten, &&L_tcpaccept, &&L_tcpconnect,
-    };
+    static const void *const escaped_prims[] = { CV8_OPS_ESCAPED };
     /*  Every opcode that is not a direct primitive. The synthetic ones
      *  and the folded band are numbered from NSYN, and move when a
      *  DIRECT primitive is added; the specialised band, LIT64 and ESC
      *  are fixed. The folded order is kernel.4's fold list.  */
-    static const void *const other_ops[128] = {
-        [NSYN] = &&L_lit32, &&L_dovar, &&L_dodoes, &&L_lit8, &&L_lit8x,
-        /*  After the folded band: the one-byte-offset branches
-         *  (Iteration 258).  */
-        [NSYN + 5 + 23] = &&L_branch8, &&L_0branch8,
-        [NSYN + 5 + 11] = &&LX_lit,
-        [NSYN + 5 + 15] = &&LX_drop,
-        [NSYN + 5 + 16] = &&LX_dup,
-        [NSYN + 5 + 17] = &&LX_swap,
-        [NSYN + 5 + 18] = &&LX_rot,
-        [NSYN + 5 + 14] = &&LX_over,
-        [NSYN + 5 + 6] = &&LX_cfetch,
-        [NSYN + 5 + 3] = &&LX_fetch,
-        [NSYN + 5 + 7] = &&LX_cstore,
-        [NSYN + 5 + 2] = &&LX_store,
-        [NSYN + 5 + 8] = &&LX_and,
-        [NSYN + 5 + 9] = &&LX_or,
-        [NSYN + 5 + 10] = &&LX_xor,
-        [NSYN + 5 + 20] = &&LX_fromr,
-        [NSYN + 5 + 19] = &&LX_tor,
-        [NSYN + 5 + 21] = &&LX_rfetch,
-        [NSYN + 5 + 1] = &&LX_eq,
-        [NSYN + 5 + 13] = &&LX_ult,
-        [NSYN + 5 + 12] = &&LX_lt,
-        [NSYN + 5 + 0] = &&LX_plus,
-        [NSYN + 5 + 22] = &&LX_negate,
-        [NSYN + 5 + 4] = &&LX_lshift,
-        [NSYN + 5 + 5] = &&LX_rshift,
-        [0x61] = &&L_lit0, &&L_lit1, &&L_litm1, &&L_vf, &&L_vs,
-        &&L_lsave, &&L_lrest, &&L_lstore, &&L_lzero,
-        &&L_zeq, &&L_sub, &&L_ne, &&L_zlt, &&L_sgt, &&L_2dup, &&L_2drop,
-        &&L_charp, &&L_onep, &&L_cellp, &&L_cells, &&L_onem, &&L_invert,
-        &&L_count, &&L_aligned, &&L_addi, &&L_addix, &&L_eqi, &&L_eqix,
-        [0x7D] = &&L_lit64, [0x7E] = &&L_esc,
-    };
+    static const void *const other_ops[128] = { CV8_OPS_OTHER };
     _Static_assert(sizeof direct_prims / sizeof *direct_prims == NDIRECT,
                    "NDIRECT does not match the direct primitive table");
     _Static_assert(sizeof escaped_prims / sizeof *escaped_prims == NESC,

@@ -115,6 +115,13 @@ HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
 .relf-arch: force-arch-check
 	@printf '%s\n' '$(HOSTARCH)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(HOSTARCH)' > $@
 
+# The engine's dispatch tables, generated from opcodes.tab, the opcode
+# map's one source (Iteration 518). Committed, so `cc cv8.c` needs
+# nothing else; regenerated here whenever the table changes, and held to
+# it by tools/gen-opcodes.sh --check in tests/portability.
+cv8-ops.h: opcodes.tab tools/gen-opcodes.sh
+	@sh tools/gen-opcodes.sh > $@.tmp && mv -f $@.tmp $@
+
 # The 8-byte-cell targets exist only where they can run. On a 32-bit
 # host `relf64` used to be an ordinary rule - verification's rebuild step
 # asked for kernel64-shell.img, and make compiled a 32-bit engine under
@@ -125,15 +132,15 @@ ifeq ($(HOSTBITS),32)
 relf64 kernel64-shell.img relfsh64:
 	@echo "$@: an 8-byte-cell build cannot run on this 32-bit host" >&2; exit 1
 else
-relf64: cv8.c .relf-arch
+relf64: cv8.c cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 endif
 
 ifeq ($(HOSTBITS),32)
-relf32: cv8.c .relf-arch
+relf32: cv8.c cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 else
-relf32: cv8.c .relf-arch
+relf32: cv8.c cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS32) -o $@ $<
 endif
 

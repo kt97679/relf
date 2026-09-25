@@ -75,6 +75,7 @@ suites pin `LC_ALL=C` for that reason.
 | `cross.4` | the cross-compiler that builds `kernel64.img` |
 | `extend.4`, `pool.4`, `shadow.4`, `save-system.4` | extensions: search order, heap buffers, locals, saving an image |
 | `shell.4`, `tree.4`, `edit.4` | the shell: commands and expansion, the parser and executor, the line editor |
+| `opcodes.tab` | the opcode map's one source: the engine's tables are generated from it, the Forth checked against it |
 | `tests/`, `tools/` | the suites; the tools that build the shell, measure and fuzz |
 | `forth-shell-examples/` | the shell extended from inside, with `forth`: new builtins, a prompt hook, network servers |
 | `prompts/` | reusable prompts for this kind of work; `prompts/INDEX.md` dispatches |

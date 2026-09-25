@@ -513,6 +513,7 @@ do not trust the absence of a line below.
 - **515** — Rill discussed: structured values across processes, and jobs with lifetimes
 - **516** — JSON in the environment, recognised by use; what a process can exchange; plugins; Q2-Q4 answered
 - **517** — the locals save stack moves into the engine: five cells become one; format 6
+- **518** — the opcode map has one source: opcodes.tab; tables generated, the Forth checked
 
 ### Not tied to an iteration
 
@@ -24632,3 +24633,37 @@ test file's new lines; both shell images smaller - 192 bytes at 64-bit,
 engines' code 40 bytes smaller at 32-bit and 192 larger at 64, the new
 error path laid out differently by the compiler; checksums and totals
 with them. Every suite row as before.
+
+## Iteration 518: the opcode map's one source
+
+QUESTIONS.md A7: the assembly engine's first step. Four hand-kept
+places numbered the opcodes - cv8.c's tables and counts, kernel.4's
+declaration order and numbers, cross.4's constants, shadow.4's - and a
+mismatch between them is silent. The assembly engine would have been a
+fifth.
+
+**`opcodes.tab`** lists all 160 - 95 opcodes and 65 escape selectors -
+with kind, number, Forth name and handler. It was extracted from the
+sources mechanically, not typed, and **switching cv8.c to tables
+generated from it left both engines byte-identical** - which is how the
+table was shown to hold today's map exactly.
+
+- **Generated**: `cv8-ops.h` by `tools/gen-opcodes.sh` (POSIX sh and awk,
+  nothing more at build time); `make` remakes it when the table changes,
+  and it is committed so that `cc cv8.c` still needs nothing else.
+- **Checked**: `gen-opcodes.sh --check` - the table's own consistency,
+  kernel.4's PRIMITIVE order and OPCODE numbers, fifteen constants in
+  cross.4 and shadow.4, and that the committed header is current.
+  tests/portability runs it.
+- **Read**: `tools/opcodes.py`; opcode-mix.py's name lists and
+  image-audit.py's band positions, two more copies of the map, now come
+  from the table.
+
+**The checker was tested by breaking it**: five deliberate mismatches
+in a scratch copy - a constant in cross.4 and one in shadow.4, two
+primitives swapped, a tiny word renumbered, the table edited without
+regenerating. Four failed as they should. The fifth printed the right
+complaint and then said everything agreed: its loop read from a pipe,
+so it ran in a subshell and counted into a copy of the problem count.
+Fixed to read from a file, and all five fail now while the clean case
+passes. A check that has only ever passed has not been shown to work.

@@ -286,6 +286,17 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
 fi
 
 # ------------------------------------------------------------------
+# 5b. The opcode map has one source (Iteration 518): opcodes.tab. The
+#     engine's tables are generated from it; kernel.4's PRIMITIVE and
+#     OPCODE lines and cross.4's and shadow.4's constants must agree.
+# ------------------------------------------------------------------
+if msg=$(sh tools/gen-opcodes.sh --check 2>&1); then
+    ok "the opcode map agrees with opcodes.tab everywhere"
+else
+    bad "opcode map" "$(echo "$msg" | head -3 | tr '\n' ' ')"
+fi
+
+# ------------------------------------------------------------------
 # 6. The ignore file, both ways (Iteration 413, prompts/07 item 7).
 #
 # A tracked file that an ignore rule matches is a trap for whoever next

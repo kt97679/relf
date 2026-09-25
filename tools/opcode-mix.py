@@ -36,31 +36,13 @@ def patch(text, old, new):
         sys.exit('opcode-mix: the text to patch occurs %d times, not once:\n%s' % (n, old[:300]))
     return text.replace(old, new)
 
-# ---- opcode names, from the sources ----------------------------------
+# ---- opcode names, from opcodes.tab (Iteration 518) ----
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes
+
 def names():
-    k = open(os.path.join(ROOT, 'kernel.4')).read()
-    prims = re.findall(r'^PRIMITIVE\s+(\S+)', k, flags=re.M)
-    esc_at = k.index('\nESCAPED')
-    direct = re.findall(r'^PRIMITIVE\s+(\S+)', k[:esc_at], flags=re.M)
-    escaped = re.findall(r'^PRIMITIVE\s+(\S+)', k[esc_at:], flags=re.M)
-    nd = len(direct)
-    n = {i: direct[i] for i in range(nd)}
-    for i, s in enumerate(['LIT32', 'DOVAR', 'DODOES', 'LIT8', 'LIT8;EXIT']):
-        n[nd + i] = s
-    fold = ['+', '=', '!', '@', 'LSHIFT', 'RSHIFT', 'C@', 'C!', 'AND', 'OR', 'XOR', 'LIT',
-            '<', 'U<', 'OVER', 'DROP', 'DUP', 'SWAP', 'ROT', '>R', 'R>', 'R@', 'NEGATE']
-    for i, s in enumerate(fold):
-        n[nd + 5 + i] = s + ';EXIT'
-    n[nd + 5 + len(fold)] = 'BRANCH8'
-    n[nd + 6 + len(fold)] = '?BRANCH8'
-    spec = ['push0', 'push1', 'push-1', 'VAR@', 'VAR!', 'LSAVE', 'LRESTORE', 'L!', 'LZERO',
-            '0=', '-', '<>', '0<', '>', '2DUP', '2DROP', 'CHAR+', '1+', 'CELL+', 'CELLS',
-            '1-', 'INVERT', 'COUNT', 'ALIGNED', 'ADDI', 'ADDI;EXIT', 'EQI', 'EQI;EXIT']
-    for i, s in enumerate(spec):
-        n[0x61 + i] = s
-    n[0x7D] = 'LIT64'
-    n[0x7E] = 'ESC'
-    return n, escaped
+    ops, esc = opcodes.names()
+    return ops, [esc[i] for i in sorted(esc)]
 
 # ---- the engines ------------------------------------------------------
 HOOKS = '#define PROF(k)\n#define PROFIP(a)\n#define PROFDUMP'

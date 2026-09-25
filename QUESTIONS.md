@@ -150,7 +150,8 @@ Forth shell is written when the project is complete.
 stays, and switching later is not a big deal, in the user's words.
 
 **A7. One source for the opcode numbering (Q3; CV8.md 13 -> 516).**
-Yes, as the assembly engine's Milestone 1's first step.
+Yes, as the assembly engine's Milestone 1's first step. **Done at
+518**: `opcodes.tab`; the engine's tables generated, the Forth checked.
 
 **A8. `LSAVE`/`LRESTORE` as real primitives (Q4; CV8.md 13 -> 516).**
 Yes. Looked at closely it is less small than first said: the Forth

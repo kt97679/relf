@@ -78,6 +78,10 @@ gives UTC first (Q6), unless the user decides otherwise.
 
 ## Milestones after 0
 
+*Done first, at 518*: the opcode map has one source, `opcodes.tab`. The
+assembly engine's dispatch tables will be generated from it as cv8.c's
+are, rather than typed a fifth time.
+
 1. **The core**: dispatch, calls, branches, the arithmetic, memory and
    stack primitives, `read`/`write`/`exit`. Runs the bare kernel:
    `echo '2 3 + . BYE' | ./relfasm64 kernel64.img`.

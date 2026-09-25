@@ -111,22 +111,34 @@ through. The list, in selector order:
 > TCSETPGRP TCGETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TCP-LISTEN
 > TCP-ACCEPT TCP-CONNECT`
 
-**Four places must agree on these numbers**, and a mismatch is silent -
-the image encodes one operation and the engine decodes another:
-`cv8.c`'s `direct_prims[]`, `escaped_prims[]`, `NDIRECT` and `NESC`;
-`kernel.4`'s `PRIMITIVE` and `OPCODE` order and the fixed numbers in its
-compiler; `cross.4`'s PART 4 constants; and `shadow.4`'s locals
-opcodes. `cv8.c` checks its two counts against its tables when it is
-compiled.
+**The numbers have one source: `opcodes.tab`** (Iteration 518) - every
+opcode and escape selector, with its kind, Forth name and handler. A
+mismatch would be silent - the image encoding one operation and the
+engine decoding another - so nothing else is trusted to agree by care:
 
-**Adding a primitive.** An OS or libc one is escaped: append its
-`PRIMITIVE` line at the end of `kernel.4`'s list, append its handler to
-`escaped_prims[]` and raise `NESC`. Nothing moves. Then rebuild the
-kernels deliberately - `make images IMAGES_FORCE=1` - and check that
-they reproduce themselves with `make check-images` (Iteration 486 did
-exactly this for `DUP-FROM`, and 505 for the three TCP primitives). A hot primitive is direct: add it before
-`ESCAPED` in `kernel.4` and at the same position in `direct_prims[]`,
-and raise `NDIRECT`; that moves the synthetic opcodes up by one.
+- **generated**: `cv8-ops.h`, the engine's three dispatch tables and
+  its `NDIRECT` and `NESC`, made by `tools/gen-opcodes.sh` whenever the
+  table changes (and committed, so `cc cv8.c` needs nothing else);
+- **checked**: `kernel.4`'s `PRIMITIVE` lines in order and its
+  `N OPCODE` lines, and the opcode constants in `cross.4` and
+  `shadow.4`, which the Forth must state for itself - `gen-opcodes.sh
+  --check`, run by `tests/portability`, says what differs;
+- **read**: the Python tools load the table (`tools/opcodes.py`).
+
+Until 518 four hand-kept places had to agree. Switching the engine to
+the generated tables left both engines byte-identical, which is how
+the table was shown to hold today's map exactly; and the checker was
+itself tested by breaking each place on purpose.
+
+**Adding a primitive.** An OS or libc one is escaped: append an
+`escaped` line to `opcodes.tab` and its `PRIMITIVE` line at the end of
+`kernel.4`'s list, write its handler, and `make` - nothing moves. Then
+rebuild the kernels deliberately - `make images IMAGES_FORCE=1` - and
+check they reproduce themselves with `make check-images` (486 did this
+for `DUP-FROM`, 505 for the TCP primitives). A hot primitive is direct:
+a `direct` line in the table and a `PRIMITIVE` line before `ESCAPED`, at
+the same position; that moves the synthetic opcodes up by one, and
+`--check` lists every constant that must follow.
 
 ### 2.3 Operands
 
@@ -638,9 +650,6 @@ about five times as often as the byte image.
 
 ## 13. Open questions
 
-- **One source for the numbering.** Four hand-maintained places (§2.2)
-  are the real risk in this design, more than any opcode. `kernel.4`
-  could emit the engine's tables as well as the compiler's.
 - **The three-byte call's 4 MB reach** is below `MEMSIZE` (§2.4). A
   two-bit tag on every byte - `00` an opcode, then calls of 14, 22 and
   30 bits - would reach 1 GB with 64 one-byte opcodes, and Iteration 501

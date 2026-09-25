@@ -42,9 +42,15 @@ for i, n in enumerate(nfas):
     bodies.append((name, cnt, xt, end))
 INLINE3 = {xt_of[k] for k in ('(POSTPONE)',) if k in xt_of}
 STRINGS = {xt_of[k] for k in ('(S")', '(.")', '(ABORT")') if k in xt_of}
-NDIRECT, NSYN = 35, 35
-EXITS = {0x01, 0x27} | set(range(NSYN+5, NSYN+5+23))
-B8, QB8 = NSYN+5+23, NSYN+5+24
+# The band positions from opcodes.tab, the map's one source (Iteration
+# 518); this file kept its own copy of them until then.
+import os as _os
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import opcodes as _opcodes
+_rows = _opcodes.load()
+NDIRECT = NSYN = sum(1 for k, n, nm, h in _rows if k == 'direct')
+EXITS = {_opcodes.number('EXIT'), _opcodes.number('LIT8;EXIT')} | {n for k, n, nm, h in _rows if k == 'fold'}
+B8, QB8 = _opcodes.number('BRANCH8'), _opcodes.number('?BRANCH8')
 CALLS=[]; SLOTS=[]; S = collections.Counter(); hist = collections.defaultdict(list)
 OPS = collections.Counter(); ESCS = collections.Counter()
 def s16(v): return v - 65536 if v >= 32768 else v
