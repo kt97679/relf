@@ -205,6 +205,17 @@ relfsh32: relf32 kernel32-shell.img tools/embed.sh
 	@LD_PRELOAD= sh tools/embed.sh ./relf32 kernel32-shell.img $@
 
 # ------------------------------------------------------------------
+# The assembly engine (ASM-ENGINE.md): x86-64, no libc. Not part of
+# `all` until it runs everything cv8.c runs. Its dispatch tables come
+# from opcodes.tab, with a stub for each handler not written yet.
+# ------------------------------------------------------------------
+relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
+	@sh tools/gen-opcodes.sh --asm relfasm64.S > $@.tmp && mv -f $@.tmp $@
+
+relfasm64: relfasm64.S relfasm-ops.S
+	$(CC) -nostdlib -static -no-pie -o $@ relfasm64.S
+
+# ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.
 # ------------------------------------------------------------------
 check-images:

@@ -48,10 +48,50 @@ generate() {
     }' "$tab"
 }
 
-if [ "${1:-}" != --check ]; then
-    generate
-    exit 0
-fi
+# --asm SOURCE: the assembly engine's tables (ASM-ENGINE.md), and a stub
+# for every handler SOURCE does not define yet, which names the opcode
+# and exits - so the engine can be written one handler at a time and
+# never jumps into garbage on the rest.
+generate_asm() {
+    awk -v src="$1" '
+    function hex(s,   v, i) { v = 0; s = tolower(s); sub(/^0x/, "", s)
+        for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+        return v }
+    BEGIN { while ((getline line < src) > 0)
+                if (line ~ /^L[A-Za-z0-9_]*:/) { sub(/:.*/, "", line); def[line] = 1 } }
+    /^#/ || NF == 0 { next }
+    { kind = $1; name = $3; lab = $4
+      if (kind == "escaped") esc[nesc++] = lab; else op[hex($2)] = lab
+      if (!(lab in seen)) { seen[lab] = 1; order[nlab++] = lab; label_name[lab] = name } }
+    END {
+        print "/*  relfasm-ops.S - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
+        print " *  --asm; do not edit. The dispatch tables, and stubs for the handlers"
+        print " *  relfasm64.S does not have yet.  */"
+        print "    .section .rodata"
+        print "    .balign 8"
+        print "dispatch256:"
+        for (i = 0; i < 128; i++) printf "    .quad %s\n", (i in op) ? op[i] : "L_noop"
+        print "    .rept 128\n    .quad do_call\n    .endr"
+        print "esc_tab:"
+        for (i = 0; i < nesc; i++) printf "    .quad %s\n", esc[i]
+        printf "    .rept %d\n    .quad L_badesc\n    .endr\n", 256 - nesc
+        print "    .text"
+        for (i = 0; i < nlab; i++) {
+            l = order[i]; if (l in def) continue
+            printf "%s:\n    lea rsi, [rip + %s_name]\n    jmp unimpl\n", l, l
+            names = names sprintf("%s_name: .asciz \"%s (%s)\"\n", l, label_name[l], l)
+        }
+        print "    .section .rodata"
+        printf "%s", names
+        print "    .text"
+    }' "$tab"
+}
+
+case "${1:-}" in
+    --asm)   generate_asm "$2"; exit 0 ;;
+    --check) ;;
+    *)       generate; exit 0 ;;
+esac
 
 problems=0
 bad() { echo "gen-opcodes: $*" >&2; problems=$((problems + 1)); }

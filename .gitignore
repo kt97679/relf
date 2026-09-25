@@ -62,3 +62,7 @@ relfsh32
 relf64
 relfsh64
 kernel-shell.img
+
+# The assembly engine and its generated tables (Iteration 519).
+relfasm64
+relfasm-ops.S

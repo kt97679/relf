@@ -84,7 +84,14 @@ are, rather than typed a fifth time.
 
 1. **The core**: dispatch, calls, branches, the arithmetic, memory and
    stack primitives, `read`/`write`/`exit`. Runs the bare kernel:
-   `echo '2 3 + . BYE' | ./relfasm64 kernel64.img`.
+   `echo '2 3 + . BYE' | ./relfasm64 kernel64.img`. **Reached at 519**:
+   `relfasm64.S`, 28 KB static with no libc, runs the bare kernel and
+   the CORE word suite (`tester.fr`, `core-extra.fth`,
+   `coreplus-loop.fth`) with output byte-identical to cv8.c's for 2,040
+   OK markers - stopping where `shadow.fth` first opens a file, the
+   next milestone. Every opcode but the escaped ones is written; the
+   escaped ones are stubs generated from `opcodes.tab` that name
+   themselves and exit 99, and 54 of them are left.
 2. **Files**: the file primitives and `INCLUDED`. Then the strongest
    check there is: `cross.4` run on the assembly engine rebuilds both
    kernels byte-identically.

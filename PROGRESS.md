@@ -514,6 +514,7 @@ do not trust the absence of a line below.
 - **516** — JSON in the environment, recognised by use; what a process can exchange; plugins; Q2-Q4 answered
 - **517** — the locals save stack moves into the engine: five cells become one; format 6
 - **518** — the opcode map has one source: opcodes.tab; tables generated, the Forth checked
+- **519** — the assembly engine's Milestone 1: the core, identical to cv8.c on the CORE suite
 
 ### Not tied to an iteration
 
@@ -24667,3 +24668,39 @@ complaint and then said everything agreed: its loop read from a pipe,
 so it ran in a subshell and counted into a copy of the problem count.
 Fixed to read from a file, and all five fail now while the clean case
 passes. A check that has only ever passed has not been shown to work.
+
+## Iteration 519: the assembly engine's core
+
+ASM-ENGINE.md, Milestone 1. `relfasm64.S`: GNU `as` in Intel syntax,
+built by `cc -nostdlib -static -no-pie`, 28 KB, no libc. The machine
+keeps its state in registers for life - `r14` ip, `r13` the data-stack
+pointer, `r12` the cached top of stack, `r15` the return-stack pointer,
+`rbx` the image base - and `syscall` clobbers only `rax`, `rcx` and
+`r11`, so nothing is saved around one. The loader reads a version-6
+image as cv8.c does; the memory is 16 MB from `mmap`, 64 KB-aligned;
+dispatch is `movzx`/`inc`/`jmp [table]`.
+
+**The tables are generated** (`tools/gen-opcodes.sh --asm`, from
+opcodes.tab - 518's point), together with a stub for every handler the
+source does not have yet, which names its opcode and exits 99. So the
+engine was written, and run, one handler at a time, and never jumped
+into garbage. Every opcode but the escaped primitives is written - the
+direct primitives, the synthetic, folded, short-branch, specialised
+and tiny-word bands, `LIT64`, `ESC` - and of the escaped ones the
+memory primitives (`MOVE`, `FILL`, `COMPARE`, `SCAN`, `CSTRLEN`), `BYE`,
+`SYS-EXIT`, `READ`, `WRITE`, `SYS-ARGC`, `SYS-ARG`.
+
+**Where it stands**: the bare kernel's output is byte-identical to
+cv8.c's on arithmetic, definitions, variables and bases; and the CORE
+word suite - `tester.fr`, `core-extra.fth`, `coreplus-loop.fth` - runs
+byte-identically for 2,040 OK markers, stopping where `shadow.fth`
+first opens a file (`OPEN-FILE`, Milestone 2).
+
+**Two faithfulness points found by reading cv8.c, not by testing**:
+`UM/MOD` - cv8.c divides 128 bits and truncates the quotient, where x86's
+`div` traps when the quotient is wider than a cell, so the high half is
+reduced first; and `SP@`, which returns where the top item is *about to
+be* stored - cv8.c's `PUSH` computes `dsp + CELL` after its decrement.
+The second I got wrong first: `EMIT` (`SP@ 1 TYPE`) wrote NULs and `KEY`
+read into a cell nobody looked at, so the first run printed "Welcome
+to Forth" and two zero bytes, and saw no input.
