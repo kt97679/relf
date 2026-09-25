@@ -286,7 +286,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 9 (Iteration 538): no folded returns - the nineteen "then
+/*  Version 10 (Iteration 539): 64 one-byte opcodes - the nine least
+ *  executed direct primitives escaped, CHAR+ INVERT ALIGNED colon words
+ *  again; the direct and synthetic bands renumbered (A15).
+ *  Version 9 (Iteration 538): no folded returns - the nineteen "then
  *  EXIT" forms and LIT8;EXIT, ADDI;EXIT, EQI;EXIT gone; a body ends in
  *  EXIT, always (A15).
  *  Version 8 (Iteration 536): the folded returns renumbered, four that
@@ -308,7 +311,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 9
+#define CV8_VERSION 10
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -888,14 +891,11 @@ L_zlt: tos = -(UNS64)((INT64)tos < 0); NEXT();
 L_sgt: tos = -(UNS64)((INT64)tos < (INT64)NOS); dsp += CELL_BYTES; NEXT();
 L_2dup: { UNS64 a_ = NOS, b_ = tos; PUSHT(a_); PUSHT(b_); } NEXT();
 L_2drop: tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; NEXT();
-L_charp: tos += 1; NEXT();
 L_onep: tos += 1; NEXT();
 L_cellp: tos += CELL_BYTES; NEXT();
 L_cells: tos <<= CELL_SHIFT; NEXT();
 L_onem: tos -= 1; NEXT();
-L_invert: tos = ~tos; NEXT();
 L_count: { UNS64 a_ = tos; tos = a_ + 1; PUSHT(BYTE(a_)); } NEXT();
-L_aligned: tos = (tos + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1); NEXT();
 L_addi: tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; NEXT();
 L_eqi: tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
 L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */

@@ -534,6 +534,7 @@ do not trust the absence of a line below.
 - **536** — simplified: nine superinstructions and four unused folds gone; 111 one-byte opcodes -> 98; format 8
 - **537** — self-hosting M0 groundwork: the reference corpus, 450 instruction shapes with GNU as's bytes
 - **538** — no folded returns: 22 opcodes and handlers gone, a body ends in EXIT; 98 one-byte opcodes -> 76; format 9
+- **539** — 64 one-byte opcodes: nine cold primitives escaped, CHAR+ INVERT ALIGNED colon words; format 10
 
 ### Not tied to an iteration
 
@@ -25433,3 +25434,51 @@ assembly engine by 728 bytes, the C engine's code by 864 (i386) and
 1,376 (x86-64) - for 22 handlers gone; the images 121 and 185 bytes
 larger, every former fold site an operation and an EXIT again, less the
 folding machinery removed. Every suite row as before.
+
+## Iteration 539: 64 one-byte opcodes
+
+A15, the second half: from 76 one-byte opcodes to 64, by the cold
+ranking tools/superinst.py gives (taken with nothing else running).
+
+**Nine direct primitives escaped** - `NEGATE`, `LSHIFT`, `RSHIFT`,
+`UM/MOD`, `D+`, `TYPE`, `SP!`, `RP@`, `RP!`, each under 0.05% of the
+dispatches (two never executed). A primitive's number is its place among
+kernel.4's `PRIMITIVE` declarations - the first ones direct, those after
+`ESCAPED` behind ESC and a selector - so escaping one is moving its
+declaration: appended after the last escaped one, the nine take
+selectors 65-73 and no existing selector changes. The direct band closes
+up (26 primitives, 0x00-0x19) and the synthetic band, numbered from it,
+moves to 0x1A-0x1D; nothing hard-codes either (checked, both engines).
+opcodes.tab was rebuilt from the new order, and `--check`, which holds
+the declarations to it, agrees. **Not moved**: `NOOP`, the coldest of
+all - cross.4 fixes `EXIT` at 1, `LIT` at 2 and the branches at 3 and 4,
+all counted from `NOOP` at 0, and a zero byte running as a no-op is
+worth keeping; and `LIT`, `LIT64`, `LZERO`, forms the compilers emit.
+
+**Three tiny words colon words again**, their handlers gone from both
+engines: `CHAR+` is `1+`, `INVERT` is `-1 XOR`, and `ALIGNED` is `CELL+
+1- -1 CELLS AND` - right at either cell width because `CELL+` and `CELLS`
+are the engine's: 9 aligns to 16 with 8-byte cells and to 12 with 4-byte
+ones, checked on relf32 as well as both 64-bit engines. (The first test
+used 13, which rounds to 16 at both widths and proved nothing.)
+
+**Tested**: CORE identical on both engines; every moved word by hand on
+all three engines; the differential suite through both shells; the shell
+suite. **Cost: 2,572 dispatches in 20 million, 0.013%.** Format version
+10; the kernels cross-compiled by the version-9 engine and reproduced by
+the version-10 one.
+
+**The opcode set now**: 64 one-byte opcodes - 26 direct primitives, 4
+synthetic, 2 short branches, 11 specialised, 19 tiny and runtime words,
+`LIT64`, `ESC` - and 74 escaped. (First written from memory as 12 and
+18; counted from the table before the commit.) From 111 at 535: the superinstructions
+(536), every folded return (538), and now this. All 64 fit below 0x80
+where they were; packing them into 0x00-0x3F would be the two-bit tag's
+first step, if it is ever taken (A15).
+
+Recorded changes, with their causes: the assembly engine 40 bytes
+smaller and the C engine's code 64-168 bytes, three handlers gone; the
+images 192 and 204 bytes larger - each use of an escaped primitive a
+byte longer (`TYPE` alone has 101), and three colon definitions where
+opcode words were. Every suite row as before. (The check run finished
+after the session that started it; committed in the next.)

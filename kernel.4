@@ -90,39 +90,11 @@ PRIMITIVE <      ( n1 n2 --- f)
 PRIMITIVE +       ( w1 w2 --- w3)
 \ Add the top two numbers on the stack.
 
-PRIMITIVE NEGATE  ( n1 --- -n1)
-\ Negate top number on the stack.
-
-PRIMITIVE LSHIFT ( x1 u --- x2)
-\ Shift x1 left by u bits, zeros are added to the right.
-
-PRIMITIVE RSHIFT ( x1 u --- x2)
-\ Shift x1 right by u bits, zeros are added to the left.
-
 PRIMITIVE UM*     ( u1 u2 --- ud )
 \ Multiply two unsigned numbers, giving double result.
 
-PRIMITIVE UM/MOD ( ud u1 --- urem uquot)
-\ Divide the unsigned double number ud by u1, giving unsigned quotient
-\ and remainder.
-
-PRIMITIVE D+ ( d1 d2 --- d3)
-\ Add the double numbers d1 and d2.
-
-PRIMITIVE TYPE ( c-addr u --- )
-\ Output u characters starting at c-addr to the terminal.
-
 PRIMITIVE SP@      ( --- a-addr)
 \ Return the address of the stack pointer (before SP@ was executed).
-
-PRIMITIVE SP!      ( a-addr ---)
-\ Set the stack pointer to a-addr.
-
-PRIMITIVE RP@      ( --- a-addr)
-\ Return the address of the return stack pointer.
-
-PRIMITIVE RP!      ( a-addr ---)
-\ Set the return stack pointer to a-addr.
 
 \ The OS/libc primitives: 3.2% of static sites and 0.006% of
 \ dispatches, so they sit behind ESC + a selector byte and leave the
@@ -229,6 +201,38 @@ PRIMITIVE TCP-LISTEN    ( port loopback? --- fd ior )  \ Iteration 505: forth-sh
 PRIMITIVE TCP-ACCEPT    ( fd --- fd' ior )
 PRIMITIVE TCP-CONNECT   ( c-addr port --- fd ior )  \ a dotted IPv4 address
 
+\ Escaped since Iteration 539, from the direct band: the least executed
+\ of the one-byte primitives, moved so that 64 one-byte opcodes remain
+\ (QUESTIONS.md A15). Each use is ESC and a selector now - a byte and a
+\ dispatch more, on operations that run under 0.05% of the time.
+PRIMITIVE NEGATE  ( n1 --- -n1)
+\ Negate top number on the stack.
+
+PRIMITIVE LSHIFT ( x1 u --- x2)
+\ Shift x1 left by u bits, zeros are added to the right.
+
+PRIMITIVE RSHIFT ( x1 u --- x2)
+\ Shift x1 right by u bits, zeros are added to the left.
+
+PRIMITIVE UM/MOD ( ud u1 --- urem uquot)
+\ Divide the unsigned double number ud by u1, giving unsigned quotient
+\ and remainder.
+
+PRIMITIVE D+ ( d1 d2 --- d3)
+\ Add the double numbers d1 and d2.
+
+PRIMITIVE TYPE ( c-addr u --- )
+\ Output u characters starting at c-addr to the terminal.
+
+PRIMITIVE SP!      ( a-addr ---)
+\ Set the stack pointer to a-addr.
+
+PRIMITIVE RP@      ( --- a-addr)
+\ Return the address of the return stack pointer.
+
+PRIMITIVE RP!      ( a-addr ---)
+\ Set the return stack pointer to a-addr.
+
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
 
@@ -247,14 +251,17 @@ PRIMITIVE TCP-CONNECT   ( c-addr port --- fd ior )  \ a dotted IPv4 address
 110 OPCODE >       ( n1 n2 --- f )       \ signed
 111 OPCODE 2DUP    ( d --- d d )
 112 OPCODE 2DROP   ( d --- )
-113 OPCODE CHAR+   ( c-addr1 --- c-addr2 )
 114 OPCODE 1+      ( w1 --- w2 )
+: CHAR+ ( c-addr1 --- c-addr2 )  1+ ;   \ an opcode until 539
 115 OPCODE CELL+   ( a-addr1 --- a-addr2 )
 116 OPCODE CELLS   ( n1 --- n2 )
 117 OPCODE 1-      ( w1 --- w2 )
-118 OPCODE INVERT  ( x1 --- x2 )
 119 OPCODE COUNT   ( c-addr1 --- c-addr2 c )
-120 OPCODE ALIGNED ( c-addr --- a-addr )
+: INVERT ( x1 --- x2 )  -1 XOR ;      \ an opcode until 539
+: ALIGNED ( c-addr --- a-addr )      \ an opcode until 539
+\ Up to a cell boundary. CELL+ and CELLS are the engine's, so this is
+\ right at either cell width, as the opcode was.
+  CELL+ 1- -1 CELLS AND ;
 
 \ PART 3: SIMPLE DEFINITIONS
 

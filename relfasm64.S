@@ -37,7 +37,7 @@
     .equ PAGE,         4096
     .equ CELL,         8
     .equ LSAVE_MAX,    4096
-    .equ CV8_VERSION,  9
+    .equ CV8_VERSION,  10
     .equ FEATURES,     15            /* varcall varslot spec lit64 */
 
     .equ SYS_read,     0
@@ -780,7 +780,6 @@ L_2dup:     mov rax, [r13]
 L_2drop:    mov r12, [r13 + CELL]
             add r13, 2*CELL
             NEXT
-L_charp:
 L_onep:     inc r12
             NEXT
 L_cellp:    add r12, CELL
@@ -789,14 +788,9 @@ L_cells:    shl r12, 3
             NEXT
 L_onem:     dec r12
             NEXT
-L_invert:   not r12
-            NEXT
 L_count:    movzx eax, byte ptr [r12]
             inc r12
             PUSHT rax
-            NEXT
-L_aligned:  add r12, CELL - 1
-            and r12, -CELL
             NEXT
 L_addi:     movsx rax, byte ptr [r14]
             inc r14
