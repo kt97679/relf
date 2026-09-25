@@ -36,7 +36,8 @@
     [0x38] = &&LX_dup, [0x39] = &&LX_swap, [0x3A] = &&LX_rot, \
     [0x3B] = &&LX_tor, [0x3C] = &&LX_fromr, [0x3D] = &&LX_rfetch, \
     [0x3E] = &&LX_negate, [0x3F] = &&L_branch8, [0x40] = &&L_0branch8, \
-    [0x41] = &&L_plusstore, [0x42] = &&L_qdup, [0x61] = &&L_lit0, \
+    [0x41] = &&L_plusstore, [0x42] = &&L_qdup, [0x43] = &&L_i, \
+    [0x44] = &&L_loop, [0x45] = &&L_qdo, [0x61] = &&L_lit0, \
     [0x62] = &&L_lit1, [0x63] = &&L_litm1, [0x64] = &&L_vf, \
     [0x65] = &&L_vs, [0x66] = &&L_lsave, [0x67] = &&L_lrest, \
     [0x68] = &&L_lstore, [0x69] = &&L_lzero, [0x6A] = &&L_zeq, \
@@ -47,3 +48,4 @@
     [0x78] = &&L_aligned, [0x79] = &&L_addi, [0x7A] = &&L_addix, \
     [0x7B] = &&L_eqi, [0x7C] = &&L_eqix, [0x7D] = &&L_lit64, \
     [0x7E] = &&L_esc
+#define OPC_BRANCH8 0x3F   /* the loop opcodes step over it */

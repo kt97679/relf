@@ -525,6 +525,7 @@ do not trust the absence of a line below.
 - **527** — superinstruction candidates measured: 21% from 32 pairs, ~20% from eight runtime words
 - **528** — +! an opcode: 2.19% fewer dispatches; format 7; unassigned opcodes trap; the cold end tracked
 - **529** — ?DUP an opcode: 2.63% fewer dispatches; the loop words' failure diagnosed
+- **530** — the loop words as opcodes: I, (LOOP), (?DO) - 13.9% fewer dispatches since 528
 
 ### Not tied to an iteration
 
@@ -25073,3 +25074,52 @@ Recorded changes, with their causes: both shell images 170 bytes
 smaller, every `?DUP` one byte where a call was; the engines 24-56 bytes
 larger for the handler; relfshasm64 146 bytes smaller over all. Every
 suite row as before.
+
+## Iteration 530: the loop words, one at a time
+
+The second attempt, as 529 planned it: one word at a time, each rebuilt,
+tested on both engines and measured by exact dispatch count on the
+realistic workload.
+
+| step | dispatches | fewer |
+|---|---|---|
+| before 528 | 22,451,671 | |
+| `+!` (528) | 21,960,895 | 2.19% |
+| `?DUP` (529) | 21,382,736 | 2.63% |
+| **`I`** at 0x43 | 20,905,308 | 2.23% |
+| **`(LOOP)`** at 0x44 | 19,911,879 | 4.75% |
+| **`(?DO)`** at 0x45 | 19,325,386 | 2.95% |
+| in all | | **13.9%** |
+
+(`(LOOP)` and `(?DO)` saved more than their own bodies: each loop exit
+and entry also called `SKIP-BRANCH`, which is now done inside them.)
+
+**`I` first, alone** - never referenced forward, so if the diagnosis of
+529 was right it would simply work, and it did: both kernels reproduce,
+nested loops with `I` and `J` agree on both engines.
+
+**`(LOOP)` with 529's fix**: cross.4's `LOOP` emits the opcode byte
+itself - `NO-PEEP-T THERE LAST-OP-T ! LOOP-OP C,-T`, as an OPCODE word's
+compile action does - where it compiled a FORWARD reference that PART 10
+resolved into a call; `FORWARD (LOOP)` and `RESOLVE (LOOP)` are gone,
+and `LOOP-OP` is one of the constants `gen-opcodes.sh --check` holds to
+opcodes.tab. The engines find `OPC_BRANCH8` - the loop opcodes step over
+a short branch by two bytes and a long one by three - in the generated
+header (C) and in `relfasm-consts.S`, generated and included at the TOP
+of the assembly source, where GAS meets it before its use (the forward
+reference that broke the first attempt's build). Both kernels reproduce.
+
+**`(?DO)`** likewise. Tested, on both engines and against the committed
+529 build with the colon words: an empty range skips its body; a sum;
+a loop whose body is over 127 bytes, so that `LOOP` compiles a LONG
+branch back and the opcode must step over three bytes; nested loops
+with `J`. All agree. (The first long-body test was a 540-character line
+- over the 256-column limit, so its definition was cut and nothing
+printed; the test is a file of short lines now.)
+
+Recorded changes, with their causes: both shell images smaller - 520
+bytes at 64-bit, 548 at 32 - every `I`, `(LOOP)` and `(?DO)` one byte
+where a call was, and their colon bodies gone; the engines 176-264 bytes
+larger for the three handlers; relfshasm64 344 bytes smaller over all.
+Every suite row as before. (Verified in one session, committed in the
+next: the check run finished as the session's tool budget did.)

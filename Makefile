@@ -219,7 +219,10 @@ relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
 relfshasm64: relfasm64 kernel64-shell.img tools/embed.sh
 	@sh tools/embed.sh ./relfasm64 kernel64-shell.img $@
 
-relfasm64: relfasm64.S relfasm-ops.S
+relfasm-consts.S: opcodes.tab tools/gen-opcodes.sh
+	@sh tools/gen-opcodes.sh --asm-consts > $@.tmp && mv -f $@.tmp $@
+
+relfasm64: relfasm64.S relfasm-ops.S relfasm-consts.S
 	$(CC) -c -o relfasm64.o relfasm64.S
 	ld -Ttext=0x400000 --oformat binary -o $@ relfasm64.o
 	@chmod +x $@ && rm -f relfasm64.o

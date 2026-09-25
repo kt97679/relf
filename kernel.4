@@ -354,14 +354,16 @@ VARIABLE R0 ( --- a-addr)
 : (DO)   ( n1 n2 ---)
 \ Runtime part of DO.
   R> ROT ROT SWAP >R >R >R ;
-: (?DO)  ( n1 n2 ---)
-\ Runtime part of ?DO. An empty loop returns into the branch to the exit;
-\ any other is entered past it.
-   2DUP = IF 2DROP EXIT THEN
-   R> ROT ROT SWAP >R >R SKIP-BRANCH >R ;
-: I ( --- n )
-\ Return the counter (index) of the innermost DO LOOP
-     R> R@ SWAP >R ;
+69 OPCODE (?DO)   ( n1 n2 --- )         \ runtime part of ?DO
+\ An empty loop falls into the branch to the exit; any other is entered
+\ past it, the limit and counter on the return stack. An opcode since
+\ Iteration 530; nothing in cross.4 refers to it, so nothing calls it.
+67 OPCODE I       ( --- n )             \ the innermost DO LOOP's counter
+\ An opcode since Iteration 530; the colon word was R> R@ SWAP >R, its
+\ own return address lifted out of the way. As an opcode there is none:
+\ the counter is at the top of the return stack. It must never be
+\ CALLED, only inlined - which COMPILE, does for an OPCODE word; a
+\ forward reference in cross.4 would call it (see 529).
 
 : J  ( --- n)
 \ Return the counter (index) of the next loop outer to the innermost DO LOOP
@@ -372,14 +374,12 @@ VARIABLE R0 ( --- a-addr)
 \ and a branch to the loop's exit.
    R> R> R> 2DROP >R ;
 
-: (LOOP) ( ---)
-\ Runtime part of LOOP
-  R> R> 1 + DUP R@ =   \ Add 1 to count and compare to limit.
-  IF
-   R> 2DROP SKIP-BRANCH >R \ Discard parameters and step over the branch.
-  ELSE
-   >R >R           \ Repush counter, and return into the branch back.
-  THEN ;
+68 OPCODE (LOOP)  ( --- )               \ runtime part of LOOP
+\ Add 1 to the counter; at the limit, drop the parameters and step over
+\ the branch back, else fall into it. An opcode since Iteration 530.
+\ cross.4's LOOP emits it directly (LOOP-OP): a forward reference would
+\ CALL it, and the call's return address would sit where the counter
+\ belongs - which is how the first attempt failed (529).
 
 : (+LOOP) ( n ---)
 \ Runtime part of +LOOP

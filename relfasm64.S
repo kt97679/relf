@@ -30,6 +30,7 @@
  *      ld -Ttext=0x400000 --oformat binary -o relfasm64 relfasm64.o
  */
     .intel_syntax noprefix
+#include "relfasm-consts.S"          /* from opcodes.tab: OPC_BRANCH8 */
 
     .equ MEMSIZE,      16*1024*1024
     .equ RSTACK_BYTES, 65536
@@ -912,6 +913,36 @@ L_badop:    lea rsi, [rip + m_badop]  /* an opcode no table names */
             mov edx, m_badop_len
             mov edi, 2
             jmp die
+L_loop:     mov rax, [r15]           /* (LOOP), since 530: the counter at */
+            inc rax                  /* [r15], the limit at [r15 + 8]; at */
+            cmp rax, [r15 + CELL]    /* the limit, both dropped and the */
+            je 1f                    /* branch back stepped over */
+            mov [r15], rax
+            NEXT
+1:          add r15, 2*CELL
+            cmp byte ptr [r14], OPC_BRANCH8
+            je 2f
+            add r14, 3
+            NEXT
+2:          add r14, 2
+            NEXT
+L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
+            mov rcx, r12
+            mov r12, [r13 + CELL]
+            add r13, 2*CELL
+            cmp rcx, rax
+            je 1f                    /* empty: into the branch to the exit */
+            RPUSH rax
+            RPUSH rcx
+            cmp byte ptr [r14], OPC_BRANCH8
+            je 2f
+            add r14, 3
+            NEXT
+2:          add r14, 2
+1:          NEXT
+L_i:        mov rax, [r15]           /* I ( --- n ), since 530 */
+            PUSHT rax
+            NEXT
 L_qdup:     test r12, r12            /* ?DUP ( n --- 0 | n n ), since 529 */
             jz 1f
             sub r13, CELL

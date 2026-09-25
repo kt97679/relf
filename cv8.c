@@ -914,6 +914,31 @@ L_badesc:
 L_badop:   /* an opcode no table names: until 528 it did nothing */
     write_str(2, "relf: image uses an opcode this engine does not have\n");
     exit(2);
+L_loop: {   /* (LOOP), since 530: counter at rp[0], limit at rp[1]; at the
+             * limit both are dropped and the branch back stepped over */
+    UNS64 c = CELL(rp) + 1;
+    if (c == CELL(rp + CELL_BYTES)) {
+        rp += 2 * CELL_BYTES;
+        ip += BYTE(ip) == OPC_BRANCH8 ? 2 : 3;
+    } else {
+        CELL(rp) = c;
+    }
+    NEXT();
+}
+L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
+    UNS64 start = tos, limit = CELL(dsp);
+    tos = CELL(dsp + CELL_BYTES);
+    dsp += 2 * CELL_BYTES;
+    if (start != limit) {
+        RPUSH(limit);
+        RPUSH(start);
+        ip += BYTE(ip) == OPC_BRANCH8 ? 2 : 3;
+    }
+    NEXT();
+}
+L_i:   /* I ( --- n ): the loop counter, top of the return stack (530) */
+    PUSHT(CELL(rp));
+    NEXT();
 L_qdup:   /* ?DUP ( n --- 0 | n n ): an opcode since 529 */
     if (tos) PUSHT(tos);
     NEXT();

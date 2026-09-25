@@ -68,3 +68,4 @@ relfasm64
 relfshasm64
 relfasm64.o
 relfasm-ops.S
+relfasm-consts.S

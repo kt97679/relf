@@ -25,6 +25,7 @@ generate() {
     awk '
     /^#/ || NF == 0 { next }
     { kind = $1; num = $2; name = $3; lab = $4 }
+    name == "BRANCH8" { b8 = num }
     kind == "direct"  { d = d (nd++ ? ", " : "") "&&" lab; next }
     kind == "escaped" { e = e (ne++ ? ", " : "") "&&" lab; next }
     { o = o (no++ ? ", " : "") "[" num "] = &&" lab }
@@ -45,6 +46,7 @@ generate() {
         print "#define CV8_OPS_DIRECT \\";  print wrap(d)
         print "#define CV8_OPS_ESCAPED \\"; print wrap(e)
         print "#define CV8_OPS_OTHER \\";   print wrap(o)
+        printf "#define OPC_BRANCH8 %s   /* the loop opcodes step over it */\n", b8
     }' "$tab"
 }
 
@@ -84,8 +86,16 @@ generate_asm() {
     }' "$tab"
 }
 
+# --asm-consts: the constants the assembly source uses, for inclusion at
+# its TOP - GAS picks an instruction's form where it meets a symbol, and a
+# constant defined later is taken for memory (520, 529).
+generate_asm_consts() {
+    awk '/^#/ || NF == 0 { next } $3 == "BRANCH8" { printf "    .equ OPC_BRANCH8, %s\n", $2 }' "$tab"
+}
+
 case "${1:-}" in
     --asm)   generate_asm "$2"; exit 0 ;;
+    --asm-consts) generate_asm_consts; exit 0 ;;
     --check) ;;
     *)       generate; exit 0 ;;
 esac
@@ -154,6 +164,7 @@ cross.4 ADDI-OP ADDI
 cross.4 EQI-OP EQI
 cross.4 LIT64-OP LIT64
 cross.4 ESC-OP ESC
+cross.4 LOOP-OP (LOOP)
 shadow.4 LSAVE-OP LSAVE
 shadow.4 LRESTORE-OP LRESTORE
 shadow.4 L!-OP L!

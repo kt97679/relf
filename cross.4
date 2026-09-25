@@ -280,6 +280,7 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 123 CONSTANT EQI-OP      \ +1 is EQI;EXIT
 125 CONSTANT LIT64-OP
 126 CONSTANT ESC-OP
+ 68 CONSTANT LOOP-OP     \ (LOOP), an opcode since Iteration 530
 : TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 \ Calls and slot operands name a byte offset: the call scale is 0,
 \ because bodies are not aligned (CV8.md 2.4).
@@ -622,14 +623,17 @@ T]
 : REPEAT BRANCH-OP BRANCH8-OP BACK-T >RESOLVE-T ;
 
 FORWARD (DO)
-FORWARD (LOOP)
 FORWARD (.")
 FORWARD (ABORT")
 FORWARD (POSTPONE)
 
 
 : DO [ TRANSIENT ] (DO) [ FORTH ] NO-PEEP-T THERE ;
-: LOOP [ TRANSIENT ] (LOOP) [ FORTH ] BRANCH-OP BRANCH8-OP BACK-T ;
+\ (LOOP) is an opcode since 530, emitted here as an OPCODE word's own
+\ compile action emits it. It was a FORWARD reference, which PART 10
+\ resolves into a CALL - and a called (LOOP) finds the return address
+\ where the loop counter belongs (the failure of 529).
+: LOOP NO-PEEP-T THERE LAST-OP-T ! LOOP-OP C,-T BRANCH-OP BRANCH8-OP BACK-T ;
 : ." [ TRANSIENT ] (.") [ FORTH ] 34 WORD COUNT DUP 1+ >R
       THERE PLACE-T R> ALLOT-T NO-PEEP-T ;
 : POSTPONE [ TRANSIENT ] (POSTPONE) [ FORTH ] T' OPERAND3-T NO-PEEP-T ;
@@ -716,7 +720,6 @@ S" kernel.4" INCLUDED
 
 \ Resolve the forward references created by the cross compiler.
 RESOLVE (DO)
-RESOLVE (LOOP)
 RESOLVE (.")
 RESOLVE (ABORT")
 RESOLVE COLD
