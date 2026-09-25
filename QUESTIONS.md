@@ -22,6 +22,9 @@ same iteration.
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
    speed). *(Q14 was answered at 523.)*
+5. **Before the self-hosted assembler (GOALS.md item 6)**: **Q15** (fewer
+   dispatches - which new opcodes, if any). The opcode map is best
+   settled before a Forth assembler starts emitting the engine.
 
 ## Open
 
@@ -119,6 +122,27 @@ engine grows (54 escaped primitives are still stubs, and their names
 go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
+
+**Q15. Fewer dispatches: runtime words as opcodes, pairs fused, or
+both? (527)** Both engines dispatch at the CPU's indirect-jump rate
+(526), so speed now means fewer dispatches. Measured on the shell's
+workloads (`tools/superinst.py`, `tools/profile.py`):
+(A) **fusing the 32 most frequent adjacent pairs** - the free opcodes
+0x41-0x60, exactly 32 - saves **20.9% of all dispatches**: the variable
+fetch family (`VAR@ +`, `VAR@ VAR@`, `VAR@ <`, `VAR@ 1+`, `VAR@ C@`,
+`VAR@ 0=`, ~9.6%) and compare-and-branch (`EQI ?BRANCH`, `0= ?BRANCH`,
+`= ?BRANCH`, `AND ?BRANCH`, `< ?BRANCH`, `> ?BRANCH`, ~6.7%) lead it;
+(B) **small runtime words as opcodes** - `(LOOP)` 3.6%, `?DUP` 2.6%,
+`X@`/`XF@` 4.2%, `+!` 2.2% (six dispatches a use as a colon word), `I`
+2.1%, `DEFER` 2.0%, `SKIP-BRANCH` 1.9%, `(?DO)` 1.7% - about 20% of
+dispatches are inside these eight, with about nine opcodes; loop words
+and `X@`/`XF@` were already on 496's untried list.
+Either is a format change - new opcodes in both engines, a feature bit,
+the compiler emitting them - done through opcodes.tab, which generates
+the tables and checks the Forth. *Recommendation*: (B) first, one word at
+a time with a paired benchmark each - fewer opcodes, each a known
+operation - then `tools/superinst.py` again, and fuse the pairs that
+still pay. Before the self-hosted assembler, so it emits a settled map.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:

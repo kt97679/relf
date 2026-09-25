@@ -47,7 +47,7 @@ src = patch(src, '    NEXT();\ndo_call:', '''    prof_base = cbase;
     NEXT();
 do_call:''' % (counts, SLOTS))
 open(os.path.join(work, 'prof.c'), 'w').write(src)
-subprocess.run(['cc', '-O2', '-o', engine, os.path.join(work, 'prof.c')], check=True)
+subprocess.run(['cc', '-O2', '-I', ROOT, '-o', engine, os.path.join(work, 'prof.c')], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 
 # The counting engine, made a shell of its own with the shell image in
@@ -67,7 +67,9 @@ audit = open('tools/image-audit.py').read()
 audit = patch(audit, "    ip = xt; far_target = xt\n    while ip < end:\n        op = img[ip]",
                       "    ip = xt; far_target = xt\n    STARTS[name] = []\n    while ip < end:\n        STARTS[name].append(ip)\n        op = img[ip]")
 audit = patch(audit, "CALLS=[]; SLOTS=[];", "CALLS=[]; SLOTS=[]; STARTS={};")
-g = {}
+# __file__ for image-audit.py, which finds opcodes.tab by it since
+# Iteration 518 - exec'd without it, this failed until 527
+g = {'__file__': os.path.join(ROOT, 'tools', 'image-audit.py')}
 sys.argv = ['image-audit', 'kernel64-shell.img', '8']
 with contextlib.redirect_stdout(io.StringIO()):
     exec(audit, g)

@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""tools/superinst.py [K] - which opcode pairs and triples to fuse.
+
+Iteration 527 (ASM-ENGINE.md Milestone 5): both engines dispatch at the
+rate the CPU takes indirect jumps, so speed now means fewer dispatches,
+and a superinstruction - two or three operations as one opcode - is the
+way to fewer. This finds the candidates on real work:
+
+  1. counts every dispatch by its address, on the shell's workloads (the
+     five of tests/bench-vm and the differential suite), with the same
+     counting engine tools/profile.py builds, embedded as a shell;
+  2. decodes the shell image into instructions - address, opcode, length;
+  3. counts each pair of ADJACENT instructions by the executions of the
+     first: exact in straight-line code, where an operation that neither
+     calls nor branches is always followed by the next. A pair is not a
+     candidate if its first is a call, a branch or a return (the second
+     would not follow), if either is a call (its target is an operand),
+     or if its second is a branch target (a jump cannot land inside a
+     fused opcode). Triples likewise;
+  4. fuses the K most frequent pairs (default 32, the free opcodes
+     0x41-0x60) in a simulation, left to right through every body, and
+     reports the dispatches and bytes that would save.
+"""
+import os, struct, subprocess, sys, tempfile, collections
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(ROOT)
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import opcodes
+K = int(sys.argv[1]) if len(sys.argv) > 1 else 32
+
+def patch(text, old, new):
+    if text.count(old) != 1:
+        sys.exit('superinst: the text to patch occurs %d times, not once' % text.count(old))
+    return text.replace(old, new)
+
+# ---- 1. count dispatches by address ---------------------------------------
+work = tempfile.mkdtemp(prefix='relf-super-')
+engine, counts, shell = (os.path.join(work, n) for n in ('relf-count', 'counts.bin', 'relfsh'))
+SLOTS = 1 << 18
+src = open('cv8.c').read()
+src = patch(src, '#define PROF(k)\n#define PROFIP(a)\n#define PROFDUMP',
+            '#include <sys/mman.h>\nstatic unsigned int *prof_map;\nstatic UNS64 prof_base;\n'
+            '#define PROF(k)\n#define PROFIP(a) (prof_map[((a) - prof_base) & 0x3FFFF]++)\n#define PROFDUMP')
+src = patch(src, '    NEXT();\ndo_call:',
+            '    prof_base = cbase;\n    { int fd = open("%s", O_RDWR);\n'
+            '      prof_map = mmap(0, %d * sizeof(unsigned int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);\n'
+            '      close(fd); }\n    NEXT();\ndo_call:' % (counts, SLOTS))
+open(engine + '.c', 'w').write(src)
+subprocess.run(['cc', '-O2', '-I', ROOT, '-o', engine, engine + '.c'], check=True)
+subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
+open(counts, 'wb').write(bytes(SLOTS * 4))
+env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
+for w in ('loop', 'fn', 'str', 'arith', 'realistic'):
+    subprocess.run([shell, 'tests/bench-vm/%s.sh' % w], env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+subprocess.run(['sh', 'tests/diff/run-all'], env=env,
+               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
+raw = open(counts, 'rb').read()
+cnt = struct.unpack('<%dI' % SLOTS, raw)
+
+# ---- 2. decode the shell image into instructions --------------------------
+d = open('kernel64-shell.img', 'rb').read(); C = 8
+cell = lambda o: struct.unpack_from('<Q', d, o)[0]
+nth = cell(8)
+img = d[8 + C + nth * C + C:]
+heads = [cell(8 + C + i * C) for i in range(nth)]
+def prev(nfa):
+    tag = img[nfa - 1]
+    if tag < 128: return (nfa - tag if tag else 0), 1
+    if tag < 192: return nfa - (((tag & 63) << 8) | img[nfa - 2]), 2
+    return nfa - (((tag & 63) << 16) | (img[nfa - 2] << 8) | img[nfa - 3]), 3
+words = {}
+for h in heads:
+    n = h
+    while n:
+        c_ = img[n]; name = img[n + 1:n + 1 + (c_ & 31)].decode('latin1')
+        p, ll = prev(n); words[n] = (name, c_, ll); n = p
+nfas = sorted(words)
+xt_of = {}
+bodies = []
+for i, n in enumerate(nfas):
+    name, c_, ll = words[n]
+    xt = n + 1 + (c_ & 31)
+    end = (nfas[i + 1] - words[nfas[i + 1]][2]) if i + 1 < len(nfas) else len(img)
+    xt_of[name] = xt
+    bodies.append((name, c_, xt, end))
+INLINE3 = {xt_of[k] for k in ('(POSTPONE)',) if k in xt_of}
+STRINGS = {xt_of[k] for k in ('(S")', '(.")', '(ABORT")') if k in xt_of}
+N = opcodes.number
+EXIT, BR, QBR, B8, QB8 = N('EXIT'), N('BRANCH'), N('?BRANCH'), N('BRANCH8'), N('?BRANCH8')
+rows = opcodes.load()
+FOLD = {n for k, n, nm, h in rows if k == 'fold'} | {N('LIT8;EXIT'), N('ADDI;EXIT'), N('EQI;EXIT')}
+opname, escname = opcodes.names()
+SLOT_OPS = {n for k, n, nm, h in rows if nm in ('VAR@', 'VAR!', 'LSAVE', 'LRESTORE', 'L!', 'LZERO')}
+def s16(v): return v - 65536 if v >= 32768 else v
+code = []                                # per body: [(addr, key, length, kind)]
+for name, c_, xt, end in bodies:
+    if c_ & 32 or xt >= end or img[xt] in (0x24, 0x25):
+        continue
+    ins, targets = [], set()
+    ip = xt; far = xt
+    while ip < end:
+        op = img[ip]; a = ip; kind = 'op'; key = opname.get(op, '?%02X' % op)
+        if op in (BR, QBR):
+            off = s16(img[ip + 1] | img[ip + 2] << 8); targets.add(ip + 1 + off)
+            if off > 0: far = max(far, ip + 1 + off)
+            ip += 3; kind = 'branch'
+        elif op in (B8, QB8):
+            off = img[ip + 1] - 256 if img[ip + 1] >= 128 else img[ip + 1]; targets.add(ip + 1 + off)
+            if off > 0: far = max(far, ip + 1 + off)
+            ip += 2; kind = 'branch'
+        elif op == N('LIT'): ip += 3
+        elif op == N('LIT8') or op == N('LIT8;EXIT'): ip += 2
+        elif op == N('LIT32'): ip += 5
+        elif op == N('LIT64'): ip += 9
+        elif op in (N('ADDI'), N('ADDI;EXIT'), N('EQI'), N('EQI;EXIT')): ip += 2
+        elif op == N('ESC'):
+            key = 'ESC:' + escname.get(img[ip + 1], '?'); ip += 2
+        elif op in SLOT_OPS:
+            ip += 4 if img[ip + 1] & 0x80 else 3
+        elif op >= 0x80:
+            ln = 2 if op < 0xC0 else 3
+            t = ((op & 63) << 8) | img[ip + 1] if ln == 2 else ((op & 63) << 16) | img[ip + 1] << 8 | img[ip + 2]
+            ip += ln; kind = 'call'; key = 'call'
+            if t in INLINE3: ip += 3
+            elif t in STRINGS: ip = ip + 1 + img[ip]
+        else:
+            ip += 1
+        if op == EXIT or op in FOLD: kind = 'exit'
+        ins.append((a, key, ip - a, kind))
+        if (op == EXIT or op in FOLD) and ip > far:
+            break
+    code.append((name, ins, targets))
+
+# ---- 3. count adjacent pairs and triples ----------------------------------
+total = sum(cnt)
+pairs = collections.Counter(); triples = collections.Counter()
+for name, ins, targets in code:
+    for i in range(len(ins) - 1):
+        a, k1, l1, t1 = ins[i]
+        b, k2, l2, t2 = ins[i + 1]
+        if t1 != 'op' or t2 == 'call' or b in targets or cnt[a] == 0:
+            continue
+        pairs[(k1, k2)] += cnt[a]
+        if i + 2 < len(ins) and t2 == 'op':
+            c3, k3, l3, t3 = ins[i + 2]
+            if t3 != 'call' and c3 not in targets:
+                triples[(k1, k2, k3)] += cnt[a]
+print('%d dispatches counted; %d bodies decoded' % (total, len(code)))
+print('\nthe most executed adjacent pairs:')
+for (k1, k2), n in pairs.most_common(30):
+    print('  %-26s %12d  %5.2f%%' % (k1 + ' ' + k2, n, 100.0 * n / total))
+print('\nthe most executed adjacent triples:')
+for (k1, k2, k3), n in triples.most_common(15):
+    print('  %-36s %12d  %5.2f%%' % (' '.join((k1, k2, k3)), n, 100.0 * n / total))
+
+# ---- 4. fuse the top K pairs, in a simulation ------------------------------
+chosen = {p for p, n in pairs.most_common(K)}
+saved = 0; sites = 0
+for name, ins, targets in code:
+    i = 0
+    while i < len(ins) - 1:
+        a, k1, l1, t1 = ins[i]; b, k2, l2, t2 = ins[i + 1]
+        if t1 == 'op' and t2 != 'call' and b not in targets and (k1, k2) in chosen:
+            saved += cnt[a]; sites += 1; i += 2
+        else:
+            i += 1
+print('\nfusing the top %d pairs, left to right through every body:' % K)
+print('  %d dispatches saved, %.1f%% of all; %d sites, %d bytes of image'
+      % (saved, 100.0 * saved / total, sites, sites))

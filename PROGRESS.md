@@ -522,6 +522,7 @@ do not trust the absence of a line below.
 - **524** — measured: the assembly shell is faster on shell work and starts 2.5x faster than dash
 - **525** — the assembly engine joins make verify on x86-64 hosts: eight rows
 - **526** — the dispatch loop measured: both engines on the indirect-jump floor; tuning left out
+- **527** — superinstruction candidates measured: 21% from 32 pairs, ~20% from eight runtime words
 
 ### Not tied to an iteration
 
@@ -24941,3 +24942,42 @@ handlers, and none of the three changes is kept. (A lesson for the
 article's method: at this level a benchmark measures layout as much as
 code, and a change has to be bisected and repeated before it is
 believed.)
+
+## Iteration 527: where the dispatches could be saved
+
+The user's question after 526: before the self-hosted assembler, profile
+again for superinstruction candidates - pairs and triples of opcodes.
+Yes: the opcode map is best settled before a Forth assembler emits it.
+
+**`tools/superinst.py`** counts every dispatch by address on the shell's
+workloads (the five of tests/bench-vm and the differential suite),
+decodes the shell image into instructions, and counts each ADJACENT
+pair by the executions of its first - exact in straight-line code. A
+pair whose first is a call, a branch or a return does not qualify (the
+second would not follow), nor one with a call in it, nor one whose
+second is a branch target (no jump may land inside a fused opcode).
+Then it fuses the top K in a simulation, body by body.
+
+**Results**, from 516 million dispatches: fusing the **32 most frequent
+pairs** - there are exactly 32 free opcodes - **saves 20.9% of all
+dispatches**, at 3,733 sites (3.7 KB of image). Two families lead:
+variable fetch then something (`VAR@ +` 3.0%, `VAR@ VAR@` 2.7%, `VAR@ <`,
+`VAR@ 1+`, `VAR@ C@`, `VAR@ 0=`: ~9.6%), and compare-and-branch (`EQI
+?BRANCH` 1.5%, `0= ?BRANCH` 1.5%, `= ?BRANCH`, `AND ?BRANCH`, `<`, `>`:
+~6.7%). **The triples pointed somewhere else**: `DUP @ ROT + SWAP
+!;EXIT`, 4.3 million times at one count, is `+!` compiled as a colon
+word - six dispatches a use. And the per-word profile agrees: about 20%
+of dispatches are inside eight small runtime words - `(LOOP)`, `?DUP`,
+`X@`/`XF@`, `+!`, `I`, `DEFER`, `SKIP-BRANCH`, `(?DO)` - two of whose
+kind (loop words, `X@`/`XF@`) were on 496's untried list. QUESTIONS.md
+Q15 puts the choice, recommending the runtime words first.
+
+**Two regressions found on the way, both from 518 and both in tools**:
+every tool that compiles a patched engine in a temporary directory -
+profile.py, coverage.py, opcode-mix.py, and this one - failed, since
+cv8.c includes the generated cv8-ops.h, which a copy elsewhere cannot
+see; they take `-I` the repository now. And profile.py and coverage.py
+`exec` image-audit.py's source, which since 518 finds opcodes.tab by
+`__file__` - undefined in an exec; it is supplied. Nine iterations
+unnoticed, because nothing runs these tools on a schedule: the first
+use found them.
