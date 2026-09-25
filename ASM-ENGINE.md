@@ -109,7 +109,15 @@ are, rather than typed a fifth time.
    classes over one `MAP_NORESERVE` reservation) are written; the next
    stub the shell meets is `GETENV`.
 3. **Processes**: fork, exec, wait, pipes, descriptors, signals. The
-   shell starts; the differential suite runs.
+   shell starts; the differential suite runs. **Most of it at 522**: the
+   environment (kept by the engine, as decided), process identity,
+   descriptors, pipes, fork, exec, waiting (stops included), signals
+   (with the SA_RESTORER stub that libc would otherwise supply),
+   directories through `getdents64`, `CHDIR`. The shell runs on the
+   assembly engine, and **130 of the 131 differential cases pass** - the
+   one left is `~user`, `GETPWHOME`, QUESTIONS.md Q5. 13,020 bytes; 17
+   stubs left, the terminal, time, limits and sockets among them, and
+   the embedded-image trailer is still to come.
 4. **The rest**: terminal, directories, time, limits, sockets. Every
    suite, both through `relfsh`.
 5. **Measure**: the paired benchmark against cv8.c. The point of an

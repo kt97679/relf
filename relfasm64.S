@@ -44,6 +44,28 @@
     .equ SYS_lseek,    8
     .equ SYS_mmap,     9
     .equ SYS_unlink,   87
+    .equ SYS_execve,   59
+    .equ SYS_stat,     4
+    .equ SYS_lstat,    6
+    .equ SYS_ioctl,    16
+    .equ SYS_access,   21
+    .equ SYS_pipe,     22
+    .equ SYS_dup2,     33
+    .equ SYS_getpid,   39
+    .equ SYS_fork,     57
+    .equ SYS_wait4,    61
+    .equ SYS_kill,     62
+    .equ SYS_fcntl,    72
+    .equ SYS_getcwd,   79
+    .equ SYS_umask,    95
+    .equ SYS_setpgid,  109
+    .equ SYS_getppid,  110
+    .equ SYS_chdir,    80
+    .equ SYS_rt_sigaction, 13
+    .equ SYS_rt_sigreturn, 15
+    .equ NSIG_FLAGS,   65
+    .equ SYS_getdents64, 217
+    .equ DIRBUF,       4096
 
 /* ---- the stack, as cv8.c's macros ------------------------------------ */
     .macro NEXT
@@ -122,10 +144,15 @@
     .equ lsave_sp,     BSS_BASE + 32
     .equ heap_top,     BSS_BASE + 40
     .equ heap_end,     BSS_BASE + 48
+    .equ env_ptr,      BSS_BASE + 56     /* the environment: an array of */
+    .equ env_n,        BSS_BASE + 64 + 64   /* NAME=value pointers, its */
+    .equ env_cap,      BSS_BASE + 64 + 72   /* count and capacity */
     .equ hdr,          BSS_BASE + 64
-    .equ lsave_stack,  BSS_BASE + 128
+    .equ lsave_stack,  BSS_BASE + 256
     .equ free_lists,   lsave_stack + LSAVE_MAX*CELL    /* 64 lists, by class */
     .equ HEAP_RESERVE, 0x40000000       /* 1 GB of address space, not memory */
+    .equ scratch,      free_lists + 64*8   /* 256 bytes: a struct stat, a termios */
+    .equ sig_flag,     scratch + 256       /* 65 bytes: which signals were caught */
     .equ VM_OFF,       0x20000          /* 64 KB-aligned */
     .equ VM_BASE,      TEXTORG + VM_OFF
     .equ MEM_SIZE,     VM_OFF + MEMSIZE
@@ -1127,11 +1154,517 @@ L_resize:   mov rdi, [r13]           /* ( a-addr u --- a-addr' ior ) */
 6:          mov r12d, 202            /* failed: the old block stays, valid */
 7:          NEXT
 
+/* the environment (decided at 514: kept by the engine, as libc keeps it,
+ * so the two engines stay interchangeable): an array of NAME=value
+ * pointers, made from envp at first use and passed by EXECVE */
+env_init:                            /* the array, if there is none yet */
+            cmp qword ptr [env_ptr], 0
+            jne 9f
+            mov rsi, [envp_v]
+            xor ecx, ecx
+1:          cmp qword ptr [rsi + rcx*8], 0
+            je 2f
+            inc rcx
+            jmp 1b
+2:          mov [env_n], rcx
+            lea rdi, [rcx + 16]
+            mov [env_cap], rdi
+            shl rdi, 3
+            add rdi, 8
+            call alloc_block
+            mov [env_ptr], rax
+            mov rdi, rax
+            mov rsi, [envp_v]
+            mov rcx, [env_n]
+            inc rcx                  /* and its NULL */
+            rep movsq
+9:          ret
+env_find:                            /* rdi: a name -> rax its index or -1, rdx its value */
+            push rbx
+            mov r8, [env_ptr]
+            xor r9d, r9d
+1:          cmp r9, [env_n]
+            jae 8f
+            mov rsi, [r8 + r9*8]
+            xor ecx, ecx
+2:          mov al, [rdi + rcx]
+            test al, al
+            jz 3f
+            cmp al, [rsi + rcx]
+            jne 4f
+            inc rcx
+            jmp 2b
+3:          cmp byte ptr [rsi + rcx], '='
+            jne 4f
+            lea rdx, [rsi + rcx + 1]
+            mov rax, r9
+            pop rbx
+            ret
+4:          inc r9
+            jmp 1b
+8:          mov rax, -1
+            xor edx, edx
+            pop rbx
+            ret
+env_badname:                         /* rdi: a name -> ZF clear if it is not */
+            cmp byte ptr [rdi], 0    /* one setenv accepts: empty, or with = */
+            je 1f
+            mov rsi, rdi
+2:          mov al, [rsi]
+            test al, al
+            jz 3f
+            cmp al, '='
+            je 1f
+            inc rsi
+            jmp 2b
+3:          xor eax, eax             /* ZF set: a good name */
+            ret
+1:          or eax, 1                /* ZF clear */
+            ret
+L_getenv:   call env_init            /* ( c-addr --- addr|0 ) */
+            mov rdi, r12
+            call env_find
+            mov r12, rdx
+            NEXT
+L_envat:    call env_init            /* ( i --- c-addr|0 ) */
+            xor eax, eax
+            cmp r12, [env_n]
+            jae 1f
+            mov rcx, [env_ptr]
+            mov rax, [rcx + r12*8]
+1:          mov r12, rax
+            NEXT
+L_unsetenv: call env_init            /* ( c-addr --- ior ) */
+            mov rdi, r12
+            call env_badname
+            jnz 8f
+1:          mov rdi, r12
+            call env_find            /* every entry of that name */
+            test rax, rax
+            js 7f
+            mov rcx, [env_ptr]       /* shift the rest down, the NULL too */
+            mov rdx, [env_n]
+2:          mov r8, [rcx + rax*8 + 8]
+            mov [rcx + rax*8], r8
+            inc rax
+            cmp rax, rdx
+            jb 2b
+            dec qword ptr [env_n]
+            jmp 1b
+7:          xor r12d, r12d
+            NEXT
+8:          mov r12d, 200
+            NEXT
+L_setenv:   call env_init            /* ( value-addr name-addr --- ior ) */
+            mov rdi, r12
+            call env_badname
+            jnz 8f
+            mov rdi, r12             /* name=value, on the heap */
+            call strlen_rdi
+            mov r10, rax
+            mov rdi, [r13]
+            call strlen_rdi
+            lea rdi, [r10 + rax + 2]
+            push rax
+            push r10
+            call alloc_block
+            pop r10
+            pop r11
+            test rax, rax
+            jz 8f
+            mov rdi, rax
+            mov rsi, r12
+            mov rcx, r10
+            rep movsb
+            mov byte ptr [rdi], '='
+            inc rdi
+            mov rsi, [r13]
+            lea rcx, [r11 + 1]       /* the value and its NUL */
+            rep movsb
+            push rax
+            mov rdi, r12
+            call env_find
+            pop r9                   /* the new string */
+            test rax, rax
+            js 2f
+            mov rcx, [env_ptr]       /* replace the old one */
+            mov [rcx + rax*8], r9
+            jmp 7f
+2:          mov rax, [env_n]         /* append: grow first if full */
+            inc rax
+            cmp rax, [env_cap]
+            jb 3f
+            push r9
+            mov rdi, [env_cap]
+            shl rdi, 4               /* twice the capacity, in bytes */
+            add rdi, 8
+            call alloc_block
+            pop r9
+            test rax, rax
+            jz 8f
+            mov rdi, rax
+            mov rsi, [env_ptr]
+            mov rcx, [env_n]
+            inc rcx
+            rep movsq
+            mov rdi, [env_ptr]
+            mov [env_ptr], rax
+            push r9
+            call free_block
+            pop r9
+            shl qword ptr [env_cap], 1
+3:          mov rcx, [env_ptr]
+            mov rax, [env_n]
+            mov [rcx + rax*8], r9
+            inc rax
+            mov [env_n], rax
+            mov qword ptr [rcx + rax*8], 0
+7:          add r13, CELL
+            xor r12d, r12d
+            NEXT
+8:          add r13, CELL
+            mov r12d, 200
+            NEXT
+strlen_rdi:                          /* rdi: a NUL-terminated string -> rax */
+            xor eax, eax
+1:          cmp byte ptr [rdi + rax], 0
+            je 2f
+            inc rax
+            jmp 1b
+2:          ret
+L_execve:   call env_init            /* ( argv-addr path-addr --- ior ): -errno */
+            mov rdi, r12
+            mov rsi, [r13]
+            mov rdx, [env_ptr]
+            mov eax, SYS_execve
+            syscall
+            mov r12, rax
+            add r13, CELL
+            NEXT
+
+/* processes and descriptors (Milestone 3), each with cv8.c's result:
+ * -errno where cv8.c gives -errno, 200 or -1 where it gives those */
+    .macro SYSCALL1 nr               /* one argument from tos, result to tos */
+    mov rdi, r12
+    mov eax, \nr
+    syscall
+    mov r12, rax
+    .endm
+L_getpid:   mov eax, SYS_getpid
+            syscall
+            PUSHT rax
+            NEXT
+L_getppid:  mov eax, SYS_getppid
+            syscall
+            PUSHT rax
+            NEXT
+L_isatty:   mov rdi, r12             /* ( fd --- flag ): what isatty(3) asks */
+            mov esi, 0x5401          /* TCGETS */
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            xor r12d, r12d
+            test rax, rax
+            jnz 1f
+            not r12
+1:          NEXT
+L_getcwd:   mov rdi, [r13]           /* ( addr max --- len ior ) */
+            mov rsi, r12
+            mov eax, SYS_getcwd
+            syscall
+            test rax, rax
+            jle 1f
+            dec rax                  /* the kernel counts the NUL */
+            mov [r13], rax
+            xor r12d, r12d
+            NEXT
+1:          mov qword ptr [r13], 0
+            mov r12d, 200
+            NEXT
+L_umask:    SYSCALL1 SYS_umask       /* ( mask --- old ) */
+            NEXT
+L_access:   mov rdi, [r13]           /* ( c-addr mode --- ior ): 0 or -errno */
+            mov rsi, r12
+            mov eax, SYS_access
+            syscall
+            mov r12, rax
+            add r13, CELL
+            NEXT
+L_kill:     mov rdi, [r13]           /* ( pid sig --- ior ): 0 or -errno */
+            mov rsi, r12
+            mov eax, SYS_kill
+            syscall
+            mov r12, rax
+            add r13, CELL
+            NEXT
+L_setpgid:  mov rdi, [r13]           /* ( pid pgid --- ior ): 0 or -errno */
+            mov rsi, r12
+            mov eax, SYS_setpgid
+            syscall
+            mov r12, rax
+            add r13, CELL
+            NEXT
+L_pipe:     lea rdi, [scratch]       /* ( --- fd-read fd-write ior ) */
+            mov eax, SYS_pipe
+            syscall
+            sub r13, 3*CELL
+            mov [r13 + 2*CELL], r12
+            test rax, rax
+            js 1f
+            movsxd rax, dword ptr [scratch]
+            mov [r13 + CELL], rax
+            movsxd rax, dword ptr [scratch + 4]
+            mov [r13], rax
+            xor r12d, r12d
+            NEXT
+1:          mov qword ptr [r13 + CELL], 0
+            mov qword ptr [r13], 0
+            mov r12d, 200
+            NEXT
+L_dup2:     mov rdi, [r13]           /* ( oldfd newfd --- ior ): 0 or 200 */
+            mov rsi, r12
+            mov eax, SYS_dup2
+            syscall
+            add r13, CELL
+            xor r12d, r12d
+            test rax, rax
+            jns 1f
+            mov r12d, 200
+1:          NEXT
+L_dupfrom:  mov rdi, [r13]           /* ( fd floor --- fd' | -1 ) */
+            mov edx, r12d
+            mov esi, 1030            /* F_DUPFD_CLOEXEC */
+            mov eax, SYS_fcntl
+            syscall
+            add r13, CELL
+            mov r12, rax
+            test rax, rax
+            jns 1f
+            mov r12, -1
+1:          NEXT
+L_fork:     mov eax, SYS_fork        /* ( --- pid ): -1 if it failed */
+            syscall
+            test rax, rax
+            jns 1f
+            mov rax, -1
+1:          PUSHT rax
+            NEXT
+L_waitpid:  mov rdi, r12             /* ( pid --- status ior ) */
+            lea rsi, [scratch]
+            mov dword ptr [rsi], 0
+            xor edx, edx
+            xor r10d, r10d
+            mov eax, SYS_wait4
+            syscall
+            sub r13, CELL
+            test rax, rax
+            js 1f
+            movsxd rax, dword ptr [scratch]
+            mov [r13], rax
+            xor r12d, r12d
+            NEXT
+1:          mov qword ptr [r13], -1
+            mov r12d, 200
+            NEXT
+L_waitnohang: mov rdi, -1            /* ( --- pid status ): 0 0 if none has ended */
+            lea rsi, [scratch]
+            mov dword ptr [rsi], 0
+            mov edx, 1               /* WNOHANG */
+            xor r10d, r10d
+            mov eax, SYS_wait4
+            syscall
+            sub r13, 2*CELL
+            mov [r13 + CELL], r12
+            test rax, rax
+            jle 1f
+            mov [r13], rax
+            mov r12d, dword ptr [scratch]
+            NEXT
+1:          mov qword ptr [r13], 0
+            xor r12d, r12d
+            NEXT
+L_filekind: mov rdi, r12             /* ( c-addr --- 0 none, 1 file, 2 dir, 3 other ) */
+            lea rsi, [scratch]
+            mov eax, SYS_stat
+            syscall
+            xor r12d, r12d
+            test rax, rax
+            jnz 1f
+            mov eax, dword ptr [scratch + 24]   /* st_mode */
+            and eax, 0xF000
+            mov r12d, 3
+            cmp eax, 0x8000
+            jne 2f
+            mov r12d, 1
+2:          cmp eax, 0x4000
+            jne 1f
+            mov r12d, 2
+1:          NEXT
+L_filemode: mov rdi, [r13]           /* ( c-addr follow? --- st_mode | 0 ) */
+            lea rsi, [scratch]
+            mov eax, SYS_lstat
+            test r12, r12
+            jz 1f
+            mov eax, SYS_stat
+1:          syscall
+            add r13, CELL
+            xor r12d, r12d
+            test rax, rax
+            jnz 2f
+            mov r12d, dword ptr [scratch + 24]
+2:          NEXT
+
+/* signals (cv8.c: sig_catch, SIGACTION, SIGNALS-PENDING). A caught
+ * signal only sets its flag; the shell asks between commands. With no
+ * libc the restorer is ours: x86-64 Linux requires SA_RESTORER, a stub
+ * the handler returns to that calls rt_sigreturn - which then restores
+ * every register the signal found, so the handler may use any. */
+sig_catch:                           /* edi: the signal */
+            cmp edi, 0
+            jle 1f
+            cmp edi, NSIG_FLAGS
+            jge 1f
+            mov byte ptr [sig_flag + rdi], 1
+1:          ret
+sig_restorer:
+            mov eax, SYS_rt_sigreturn
+            syscall
+L_sigaction: mov rdi, [r13]          /* ( signo action --- ior ): 0 default, */
+            add r13, CELL            /* 1 ignore, 2 catch, 3 catch without */
+            cmp rdi, 0               /* SA_RESTART; 0 or -errno */
+            jle 8f
+            cmp rdi, NSIG_FLAGS
+            jge 8f
+            cmp rdi, 11              /* SIGSEGV */
+            je 8f
+            cmp rdi, 7               /* SIGBUS */
+            je 8f
+            cmp rdi, 9               /* SIGKILL */
+            je 8f
+            cmp rdi, 19              /* SIGSTOP */
+            je 8f
+            lea rsi, [scratch]       /* struct kernel_sigaction: handler, */
+            xor eax, eax             /* flags, restorer, mask */
+            cmp r12, 1
+            jne 1f
+            mov eax, 1               /* SIG_IGN */
+1:          cmp r12, 2
+            jb 2f
+            lea rax, [sig_catch]
+2:          mov [rsi], rax
+            mov eax, 0x14000000      /* SA_RESTART | SA_RESTORER */
+            cmp r12, 3
+            jne 3f
+            mov eax, 0x04000000      /* SA_RESTORER only */
+3:          mov [rsi + 8], rax
+            lea rax, [sig_restorer]
+            mov [rsi + 16], rax
+            mov qword ptr [rsi + 24], 0
+            mov byte ptr [sig_flag + rdi], 0
+            xor edx, edx
+            mov r10d, 8              /* sizeof the kernel's sigset */
+            mov eax, SYS_rt_sigaction
+            syscall
+            mov r12, rax
+            NEXT
+8:          mov r12, -22             /* -EINVAL */
+            NEXT
+L_sigpending: xor eax, eax           /* ( --- signo | 0 ): the lowest caught, */
+            mov ecx, 1               /* now cleared */
+1:          cmp ecx, NSIG_FLAGS
+            jge 2f
+            cmp byte ptr [sig_flag + rcx], 0
+            jne 3f
+            inc ecx
+            jmp 1b
+3:          mov byte ptr [sig_flag + rcx], 0
+            mov eax, ecx
+2:          PUSHT rax
+            NEXT
+
+/* directories (cv8.c: opendir, readdir, closedir): a handle is a heap
+ * block - the descriptor, a read position, the end of what was read,
+ * then a buffer of getdents64 entries whose names are handed out in
+ * place, as readdir hands out d_name */
+L_opendir:  mov rdi, r12             /* ( c-addr --- dirp | 0 ) */
+            mov esi, 0x90000         /* O_RDONLY | O_DIRECTORY | O_CLOEXEC */
+            mov eax, SYS_open
+            syscall
+            test rax, rax
+            js 8f
+            push rax
+            mov edi, 24 + DIRBUF
+            call alloc_block
+            pop rdi
+            test rax, rax
+            jz 7f
+            mov [rax], rdi
+            mov qword ptr [rax + 8], 0
+            mov qword ptr [rax + 16], 0
+            mov r12, rax
+            NEXT
+7:          mov eax, SYS_close       /* no memory: give the descriptor back */
+            syscall
+8:          xor r12d, r12d
+            NEXT
+L_readdir:  mov r8, r12              /* ( dirp --- c-addr | 0 ) */
+            mov rax, [r8 + 8]
+            cmp rax, [r8 + 16]
+            jb 2f
+            mov rdi, [r8]            /* the buffer is used up: read more */
+            lea rsi, [r8 + 24]
+            mov edx, DIRBUF
+            mov eax, SYS_getdents64
+            syscall
+            test rax, rax
+            jle 8f
+            mov [r8 + 16], rax
+            xor eax, eax
+            mov [r8 + 8], rax
+2:          lea rcx, [r8 + 24 + rax] /* struct linux_dirent64 */
+            movzx edx, word ptr [rcx + 16]   /* d_reclen */
+            add rax, rdx
+            mov [r8 + 8], rax
+            lea r12, [rcx + 19]      /* d_name */
+            NEXT
+8:          xor r12d, r12d
+            NEXT
+L_closedir: mov rdi, [r12]           /* ( dirp --- ) */
+            mov eax, SYS_close
+            syscall
+            mov rdi, r12
+            call free_block
+            POPT
+            NEXT
+
+L_chdir:    mov rdi, r12             /* ( c-addr --- ior ): 0 or 200 */
+            mov eax, SYS_chdir
+            syscall
+            xor r12d, r12d
+            test rax, rax
+            jns 1f
+            mov r12d, 200
+1:          NEXT
+L_waitjob:  mov rdi, r12             /* ( pid --- pid' raw ): waits, a stop */
+            lea rsi, [scratch]       /* reported too (WUNTRACED); pid' is */
+            mov dword ptr [rsi], 0   /* -1 if the wait failed */
+            mov edx, 2               /* WUNTRACED */
+            xor r10d, r10d
+            mov eax, SYS_wait4
+            syscall
+            test rax, rax
+            jg 1f
+            mov rax, -1
+1:          mov r12, rax
+            mov eax, dword ptr [scratch]
+            PUSHT rax
+            NEXT
+
 #include "relfasm-ops.S"
 
 /* ---- the end of the file, and the zero-filled tail after it ----------- */
 file_end:
     .equ FILE_SIZE,  file_end - ehdr   /* under 64 KB: the Makefile checks */
-    .if 128 + LSAVE_MAX*CELL + 64*8 > VM_OFF - (BSS_BASE - TEXTORG)
+    .if 256 + LSAVE_MAX*CELL + 64*8 + 256 + 72 > VM_OFF - (BSS_BASE - TEXTORG)
     .error "the variables no longer fit below the machine's memory"
     .endif

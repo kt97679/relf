@@ -517,6 +517,7 @@ do not trust the absence of a line below.
 - **519** — the assembly engine's Milestone 1: the core, identical to cv8.c on the CORE suite
 - **520** — the board's gawk finding fixed; the assembly engine made minimal: 11 KB, one segment
 - **521** — the assembly engine's Milestone 2: kernels, CORE suite and shell image all identical
+- **522** — the shell runs on the assembly engine: 130 of 131 differential cases
 
 ### Not tied to an iteration
 
@@ -24787,3 +24788,34 @@ hand without the probe, `cmp` agrees. The next stub the shell meets is
 QUESTIONS.md Q14: the one segment is writable and executable at once,
 as itsy-linux's is; a second program header for the tail would give
 W^X for 56 bytes.
+
+## Iteration 522: the shell runs on the assembly engine
+
+ASM-ENGINE.md, Milestone 3, most of it - led the whole way by the
+generated stubs, each run naming the next primitive the shell needed:
+
+- **The environment** (`GETENV`, `SETENV`, `UNSETENV`, `ENV-AT`, and
+  `EXECVE` passing it), kept by the engine as libc keeps it, as decided
+  at 514: an array of `NAME=value` pointers made from `envp` at first
+  use; empty names and names holding `=` refused with 200, as glibc's
+  failures make cv8.c report.
+- **Processes and descriptors**: `GETPID`, `GETPPID`, `ISATTY` (the
+  `TCGETS` ioctl, which is what `isatty(3)` asks), `GETCWD`, `CHDIR`,
+  `UMASK`, `ACCESS`, `KILL`, `SETPGID`, `PIPE`, `DUP2`, `DUP-FROM`,
+  `FORK`, `WAITPID`, `WAIT-NOHANG`, `WAIT-JOB` (stops reported),
+  `FILE-KIND`, `FILE-MODE` - each giving cv8.c's result exactly: `-errno`
+  where cv8.c gives `-errno`, 200 or -1 where it gives those.
+- **Signals**: a caught signal sets its flag, and `SIGNALS-PENDING`
+  returns and clears the lowest. With no libc the restorer is the
+  engine's own: x86-64 Linux requires `SA_RESTORER`, a stub that calls
+  `rt_sigreturn`, which restores every register the signal found.
+- **Directories**: `OPEN-DIR`, `READ-DIR`, `CLOSE-DIR` over `getdents64`,
+  names handed out in place as `readdir` hands out `d_name`.
+
+The shell's first `echo hi` came when the signals were in; external
+commands, pipes, globbing, command substitution and exit statuses when
+the directories were. Run through a two-line wrapper - the engine does
+not read an embedded image yet - **130 of the 131 differential cases
+pass**. The one that does not is `tilde.sh`, `~user`: `GETPWHOME`, which
+QUESTIONS.md Q5 is about. 13,020 bytes; 17 stubs left - the terminal,
+time, limits, `SYSTEM` and the sockets - and the trailer lookup of 506.
