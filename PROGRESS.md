@@ -530,6 +530,7 @@ do not trust the absence of a line below.
 - **532** — the first superinstructions: VAR@ fused with +, <, 1+, C@ - 4.62% fewer; 18.9% since 528
 - **533** — decoders read operand formats from opcodes.tab; compare-and-branch fused: 3.40% fewer, 21.6% since 528
 - **534** — measured in time against 527, dash and bash; BUF-ZERO is 0 FILL
+- **535** — optimization stopped (A13); self-hosting proposed: SELF-HOSTING.md, Q17
 
 ### Not tied to an iteration
 
@@ -25305,3 +25306,22 @@ dispatches. On the realistic workload, 0.49% fewer (17,593,772 to
 17,508,039) - it clears the many short-lived shells' buffers, which the
 mix has more of. Only the shell images change: pool.4 is not in the
 kernels.
+
+## Iteration 535: optimization stopped; self-hosting proposed
+
+The user's answer to Q16 (A13): simplicity first - no more optimizing;
+the low-hanging fruit is used, and the rest would cost minimalism. My
+check of that: the next pairs need two-operand opcodes and new operand
+formats, and the large gains need hot shell operations in the engine
+(Q16's B) or a compiling shell (C) - none of it low-hanging. Agreed.
+
+Next is self-hosting, and the user asked for concerns before it starts.
+They are in SELF-HOSTING.md - the proposal: a Forth-syntax assembler for
+the 53 mnemonics the assembly engine uses (1,938 instructions, 8 macros,
+89 constants, inventoried here), the engine translated into it once,
+checked byte for byte against the GNU `as` build and then against
+itself; milestones M0-M5 - and QUESTIONS.md Q17, four choices: the
+target and its test; the source's form; what to simplify before
+translating (four never-used folded opcodes, and - the user's call - the
+nine superinstructions of 532-533); and whether GOALS.md's JIT/AOT goal
+stays. No code until they are answered.

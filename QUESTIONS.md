@@ -23,8 +23,9 @@ same iteration.
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
    speed). *(Q14 was answered at 523.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
-6. **Strategic**: **Q16** (relf runs scripts ~30x slower than dash - what,
-   if anything, to do about it). Measured at 534; blocks nothing.
+6. *(Q16, the speed gap, was answered at 535: accepted.)*
+7. **Before self-hosting starts (SELF-HOSTING.md)**: **Q17** - four
+   choices; the design waits on them.
 
 ## Open
 
@@ -123,36 +124,37 @@ go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
 
-**Q16. Scripts run ~30x slower than dash: what to do? (534)** Measured,
-same machine, identical output from all four: the realistic workload
-takes dash 2.5 ms, bash 7.6 ms, relf 75.7 ms (assembly engine) or 81.9
-ms (C). relf STARTS fastest - 287 us against dash's 748 and bash's
-1,108 - and the 528-534 work made scripts ~20% faster; neither changes
-the order of magnitude. The cause is not the dispatch rate - both
-engines are at the hardware's (526) - but the amount of work: 17.5
-million Forth operations for a script dash runs in about 10 million CPU
-cycles in all. The shell's own inner work is fine-grained Forth: the
-profile's top words are variable lookup (NAME-HASH, FIND-SHVAR,
-VALID-NAME?), word expansion (EXPAND-WORDS, EW-ENTRY), argument building
-(ARGV-ADD) and the tree reader (X@, XF@). Options:
-(A) **Accept it.** relf's goals are size, simplicity and self-hosting;
-interactive use is dominated by startup, where relf leads. More
-superinstructions give tens of percent, not tens of times.
-(B) **Hot shell operations as engine primitives** - hashing a name,
-walking a variable chain, comparing strings, parsing a number: the
-places the profile names. Keeps the design; costs engine size (twice,
-C and assembly) and moves shell logic out of Forth. Perhaps 2-5x.
-(C) **Do less work per operation** - resolve variables to slots when a
-function or loop is parsed, expand constant words once, compile the
-parsed tree into threaded Forth instead of walking it. The largest
-gains (perhaps 5-10x on loops and functions), and the largest change;
-it is where Rill's "text never re-read" principle (SHELL-LANGUAGE.md)
-already points.
-*Recommendation*: (C) for Rill, designed in from the start, and for
-the POSIX shell only the cheapest part of (B) - the two or three
-primitives the profile ranks highest - measured one at a time as the
-opcodes were. Not before the user decides: it changes what the engine
-is for.
+**Q17. Self-hosting: four choices before the first line (535).**
+SELF-HOSTING.md is the proposal.
+(a) **Target and test**: the x86-64 assembly engine, assembled by Forth
+byte-identical to today's GNU `as` build, then rebuilding itself
+identical. `cv8.c` stays the portable engine and the bootstrap's first
+step; the ARM board is not self-hosted by this (an ARM assembler and
+engine would be a second project). *Recommendation*: yes.
+(b) **The source's form**: a Forth-syntax assembler - GOALS.md's `CODE
+... END-CODE` tradition, macros as colon words - with the engine
+translated into it once and relfasm64.S retired when the two agree; or
+a GNU-syntax reader in Forth, keeping relfasm64.S as the source and GNU
+`as` as an independent check forever. *Recommendation*: the Forth
+syntax - no parser to write and keep, which is the simpler thing.
+(c) **Simplify before translating**: every opcode is a handler to carry
+into the new source. Four folded forms have no use anywhere in the image
+(`<;EXIT`, `DUP;EXIT`, `ROT;EXIT`, `R@;EXIT`) and could go now. And the
+nine superinstructions of 532-533 - `VAR@+` and its three siblings, and
+the five compare-and-branch opcodes - are the part of 528-533 that
+bought speed with machinery: a peephole that rewrites compiled code,
+two new operand formats, nine handlers per engine; they were about 8%
+of the dispatches, some 7% of the time. The seven runtime-word opcodes
+(`+!`, `?DUP`, `I`, `(LOOP)`, `(?DO)`, `EXECUTE`, `@XT`) are different:
+they made the Forth side simpler too (no more `(LOOP)` lifting its own
+return address). *Recommendation*: remove the four unused folds; keep
+the runtime words; the nine superinstructions are your call - my lean,
+given simplicity first, is to remove them.
+(d) **JIT/AOT (GOALS.md goal 2)**: "eventually, native code for speed,
+built on the self-hosted assembler". With optimization stopped (A13),
+keep it as a distant possibility, or drop it from the goals?
+*Recommendation*: drop it - it is the most complex thing the goals name,
+and simplicity is above speed.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:
@@ -230,6 +232,13 @@ executed opcodes and pairs but also the RARELY executed ones, which
 could move out of the one-byte primitives - into the escape band, or
 into Forth - so the slots go where the dispatches are. The one-byte
 space is finite: 32 free slots.
+
+**A13. The speed gap (Q16; 534 -> 535): accepted.** "I really want relf
+and forth shell to be as simple as possible, so let's stop optimizations
+- we already used all the low-hanging fruit, and further changes would
+hurt minimalism and simplicity." Scripts run ~30x slower than dash and
+start fastest; that stands. No more opcodes or fusions for speed. Next:
+self-hosting - relf compiling its own engine (SELF-HOSTING.md, Q17).
 
 ## Your notes, captured (514)
 
