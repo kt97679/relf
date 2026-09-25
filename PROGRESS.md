@@ -521,6 +521,7 @@ do not trust the absence of a line below.
 - **523** — the assembly engine complete: every primitive, every suite, W^X, one 135 KB file
 - **524** — measured: the assembly shell is faster on shell work and starts 2.5x faster than dash
 - **525** — the assembly engine joins make verify on x86-64 hosts: eight rows
+- **526** — the dispatch loop measured: both engines on the indirect-jump floor; tuning left out
 
 ### Not tied to an iteration
 
@@ -24910,3 +24911,33 @@ made the engine "complete" at 523 is checked on every run now:
 Recorded and checked here: reproduces, reproduces, identical, 0, 1, 0,
 15,624 and 134,773 bytes; nothing else in BASELINE moved. It lengthens
 a verification by a few minutes - the suites run twice, once per engine.
+
+## Iteration 526: the dispatch loop is on the floor
+
+ASM-ENGINE.md, the rest of Milestone 5: tune the dispatch loop, which
+520 found 8-12% slower than cv8.c's on a pure Forth loop. Measured with
+nothing else running, interleaved, best of three per round, 100 million
+iterations of `1- DUP 0= UNTIL`:
+
+- **cv8.c and the assembly engine are level**, 319-324 ms each. 520's
+  gap was the noise of a busier machine.
+- **Three handler improvements, bisected**: `0=` by `cmp`/`sbb` in two
+  instructions for five - 320 ms, no change; `?BRANCH` testing the flag
+  before the pop, with a flag-preserving `lea` - 356 ms, 10% SLOWER;
+  `DUP` without the `mov r12, r12` its macro emitted - 356 ms, also 10%
+  slower. Removing a do-nothing instruction can only matter by moving
+  the code after it: the loop's handlers landed differently against
+  the cache lines and the predictor's tables.
+- **Aligning every handler to 16 bytes** made the plain and the tuned
+  engine alike 319-320 ms: layout no longer mattered, and nothing was
+  gained, for 1.2 KB.
+
+What that says: 400 million dispatches in 0.32 s is 0.8 ns each, about
+three cycles - the rate at which the CPU takes one indirect jump after
+another. Both engines are on that floor; the handler bodies are not what
+limits them. Speed from here means FEWER dispatches - superinstructions
+fusing frequent sequences, which change the image format - not better
+handlers, and none of the three changes is kept. (A lesson for the
+article's method: at this level a benchmark measures layout as much as
+code, and a change has to be bisected and repeated before it is
+believed.)

@@ -140,7 +140,18 @@ are, rather than typed a fifth time.
    slower: a shell's time goes to processes and system calls, and a
    static binary with no libc starts and forks cheaply. **Startup**:
    291 us against relfsh64's 1,025 and dash's 725 - 3.5 times cv8.c's
-   shell, 2.5 times dash. The dispatch loop itself is still to tune.
+   shell, 2.5 times dash. **The dispatch loop, measured at 526**: the
+   same 100-million-iteration loop runs in ~320 ms on cv8.c and on this
+   engine alike - 400 million dispatches at 0.8 ns, about three cycles,
+   the rate at which the CPU takes one indirect jump after another. Both
+   engines sit on that floor, so better handler bodies cannot help:
+   three were tried (`0=` by `cmp`/`sbb`, `?BRANCH` testing before the
+   pop, `DUP` without a redundant move), and two made the loop 10%
+   SLOWER - removing a do-nothing instruction among them - because they
+   moved the code after them; aligning every handler to 16 bytes made
+   every variant 320 ms again, and bought nothing but 1.2 KB. Speed from
+   here means fewer dispatches - superinstructions, a format change -
+   not better handlers. The engine is left as it was.
 
 ## Open, for the user
 
