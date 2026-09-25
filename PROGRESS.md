@@ -532,6 +532,7 @@ do not trust the absence of a line below.
 - **534** — measured in time against 527, dash and bash; BUF-ZERO is 0 FILL
 - **535** — optimization stopped (A13); self-hosting proposed: SELF-HOSTING.md, Q17
 - **536** — simplified: nine superinstructions and four unused folds gone; 111 one-byte opcodes -> 98; format 8
+- **537** — self-hosting M0 groundwork: the reference corpus, 450 instruction shapes with GNU as's bytes
 
 ### Not tied to an iteration
 
@@ -25371,3 +25372,22 @@ assembly engine by 696 bytes, the C engine's code by 916 (i386) and
 bytes larger, every formerly fused site two opcodes again, less the
 compiler code removed; `size:x86_64` 2,340 smaller, the stripped engine
 back below the 4 KB page it crossed at 532. Every suite row as before.
+
+## Iteration 537: what the Forth assembler has to match
+
+SELF-HOSTING.md M0's test, before its code: `tools/asm-corpus.py`
+disassembles the assembly engine's code, `_start` to `dispatch256` where
+the tables begin, and reduces it to instruction SHAPES - registers and
+size keywords kept, numbers generalised, jumps told apart by their
+encoding's length - keeping one real instance of each with the bytes GNU
+`as` chose. **2,765 instructions (the macros expanded), 11,024 bytes, 450
+shapes, 69 mnemonics as objdump names them**, in tests/asm-corpus.txt.
+
+Two faults of the first version, both caught by checking its output
+against the built engine: it read the OBJECT file, where every symbol
+address is still a 0 for the linker to fill (`lea rdi,ds:0x0`) - it
+links as the Makefile does now; and objdump wraps an instruction longer
+than 7 bytes onto a line with no text, which the parser skipped - so
+every long instruction was cut short (`lea rdi,ds:0x402d26` in 7 bytes
+of its 8). `--insn-width=16` now; and every one of the 450 lines' bytes
+is found whole in the engine's code.
