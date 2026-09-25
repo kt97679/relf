@@ -241,7 +241,7 @@ work begins.
   compact offset would do. **Audited at 509** (`tools/image-budget.py`):
   on the 64-bit shell image, buffer descriptors' size and link (~150),
   builtin entries' three fields (~50), DEFER cells (57), the header's
-  thread heads and the locals cells could be 4-byte fields - about 2 KB,
+  thread heads and the locals cell (five until 517) could be 4-byte fields - about 2 KB,
   under 2% of the image, and nothing at 32-bit, where cells are 4 bytes
   already. Larger, and not about cells: every DOVAR word carries three
   unused bytes, kept so one rule finds a parameter field (~2 KB, but the

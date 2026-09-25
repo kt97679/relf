@@ -286,7 +286,11 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 5 (Iteration 259): slot operands are relative to themselves.
+/*  Version 6 (Iteration 517): the locals save stack is the engine's, and
+ *  the five cells at offset 8 are one - LOCALS-FAILED's offset, the word
+ *  called on an overflow or underflow. A version-5 image's first cell
+ *  there is the old stack pointer's offset, not a word to call.
+ *  Version 5 (Iteration 259): slot operands are relative to themselves.
  *  Version 4 (Iteration 258): the one-byte branches take two opcodes
  *  after the folded band, and loop and POSTPONE operands changed form.
  *  Version 2 (Iteration 243): the five locals cells moved out of the
@@ -295,7 +299,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 5
+#define CV8_VERSION 6
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -488,15 +492,27 @@ static const int open_flags[NOPENMODES] = {
 
 #define MAX_THREADS 4096
 #define MAX_TAILS 16
-/*  The locals opcodes (CV8.md 6.3) reach shadow.4's save
- *  stack through five cells at image offset 8, which kernel.4 reserves
- *  and shadow.4 fills in when it loads: the save-stack pointer and the
- *  buffer cell (both as offsets of their parameter fields), the limit,
- *  and the LSAVE and LRESTORE bodies the opcodes fall back to. They
- *  live in the image rather than the file header so that they are
- *  valid as soon as shadow.4 is loaded, not only after a save and
+/*  The locals cell (CV8.md 6.3) at image offset 8, which kernel.4
+ *  reserves and shadow.4 fills in when it loads: the offset of
+ *  LOCALS-FAILED, the Forth word that reports a save-stack overflow or
+ *  underflow. It lives in the image rather than the file header so that
+ *  it is valid as soon as shadow.4 is loaded, not only after a save and
  *  reload - a word using locals can run while the shell is compiled. */
 #define LOCHDR(k) CELL(cbase + 8 + (k) * CELL_BYTES)
+
+/*  The locals save stack (Iteration 517; the Forth side's until then,
+ *  found through five cells at offset 8). Each LSAVE pushes a slot's
+ *  value, each LRESTORE pops it back; the one cell left at offset 8
+ *  names the Forth word that reports an overflow or underflow.
+ *  4096 since Iteration 90, raised from 256: each nested shell construct
+ *  declares several locals, so 256 ran out at about fifteen levels of
+ *  function recursion - shallower than shell.4's own MAX-POS-PARAM-DEPTH
+ *  of 32, so the shell's "recursion too deep" could never fire and the
+ *  user got this ABORT instead. A limit that pre-empts a higher-level
+ *  one is worse than a larger limit.  */
+#define LSAVE_MAX 4096
+static UNS64 lsave_stack[LSAVE_MAX];
+static long lsave_sp;
 
 /*  An image may be the executable's own: appended to the engine, and
  *  followed by a trailer - "RELFIMG1" and the image's length, eight
@@ -904,16 +920,15 @@ L_lit1: PUSHT(1); NEXT();
 L_litm1: PUSHT(~(UNS64)0); NEXT();
 L_vf: { UNS64 a = SLOT(); PUSHT(CELL(a)); } NEXT();
 L_vs: { UNS64 a = SLOT(); CELL(a) = tos; POPT(); } NEXT();
-L_lsave: { UNS64 a = SLOT(), lsp = cbase + LOCHDR(0);
-    UNS64 sp = CELL(lsp), stk = CELL(cbase + LOCHDR(1));
-    if ((INT64)sp >= (INT64)LOCHDR(2) || (INT64)sp < 0 || !stk) {
-        VMPUSH(a - cbase); RPUSH(ip); ip = cbase + LOCHDR(3); NEXT(); }
-    CELL(stk + sp * CELL_BYTES) = CELL(a); CELL(lsp) = sp + 1; } NEXT();
-L_lrest: { UNS64 a = SLOT(), lsp = cbase + LOCHDR(0);
-    UNS64 sp = CELL(lsp), stk = CELL(cbase + LOCHDR(1));
-    if ((INT64)sp <= 0 || !stk) {
-        VMPUSH(a - cbase); RPUSH(ip); ip = cbase + LOCHDR(4); NEXT(); }
-    CELL(lsp) = --sp; CELL(a) = CELL(stk + sp * CELL_BYTES); } NEXT();
+L_lsave: { UNS64 a = SLOT();
+    if (lsave_sp >= LSAVE_MAX) { VMPUSH(1); goto locals_failed; }
+    lsave_stack[lsave_sp++] = CELL(a); } NEXT();
+L_lrest: { UNS64 a = SLOT();
+    if (lsave_sp <= 0) { VMPUSH(2); goto locals_failed; }
+    CELL(a) = lsave_stack[--lsave_sp]; } NEXT();
+locals_failed:   /* 1 overflow, 2 underflow: LOCALS-FAILED says which, and aborts */
+    if (!LOCHDR(0)) { write_str(2, "relf: locals save stack overflow or underflow\n"); exit(70); }
+    RPUSH(ip); ip = cbase + LOCHDR(0); NEXT();
 L_lstore: { UNS64 a = SLOT(); CELL(a) = tos; POPT(); } NEXT();
 L_lzero:  { UNS64 a = SLOT(); CELL(a) = 0; } NEXT();
 /*  The kernel's hottest tiny colon words, as opcodes (Gforth-style

@@ -465,7 +465,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  5 IMAGE-HDR 6 + C!          \ format version
+  6 IMAGE-HDR 6 + C!          \ format version (6 since Iteration 517)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -484,11 +484,14 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Now define the words that do compile code.
 
 : LOCALS-CELLS ( --- )
-\ Reserve the five locals cells the engine reads at image offset 8.
-\ The two boot calls before them are three bytes each, so they end at
-\ 6 and the cells start at 8 on either cell width.
+\ Reserve the locals cell the engine reads at image offset 8: the
+\ offset of the word it calls when its save stack overflows or
+\ underflows (shadow.4's LOCALS-FAILED). Five cells until Iteration
+\ 517, when the save stack itself moved into the engine. The two boot
+\ calls before it are three bytes each, so they end at 6 and the cell
+\ starts at 8 on either cell width.
   ALIGN-T THERE 8 - ABORT" cross: LOCALS-CELLS is not at offset 8"
-  5 CELLS-T ALLOT-T ;
+  1 CELLS-T ALLOT-T ;
 
 : ESCAPED ( --- )
 \ Every PRIMITIVE after this one is reached through ESC.

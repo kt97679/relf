@@ -242,7 +242,9 @@ compilers write none.
 
 Versions: 2 (243) moved the locals cells into the image; 3 (247)
 renumbered the synthetic opcodes; 4 (258) added the short branches and
-unaligned operands; 5 (259) made slot operands relative to themselves.
+unaligned operands; 5 (259) made slot operands relative to themselves;
+6 (517) moved the locals save stack into the engine, leaving one cell
+at offset 8 where there were five.
 
 ### 4.2 Layout
 
@@ -251,7 +253,7 @@ header (4.1)
 offset 0   a three-byte call to COLD - the entry point
 offset 3   a three-byte call to WARM
 offset 6   two zero bytes
-offset 8   the five locals cells (§6.3)
+offset 8   the locals cell (§6.3)
            word 0: link, name, body - the OLDEST word first
            word 1 ...
 ```
@@ -406,26 +408,22 @@ about two-thirds of what all the specialisations buy. Forth locals in
 `shadow.4` are shallow-bound: on entry each is saved to a save stack,
 on exit restored. As Forth, `LSAVE` was 23 operations and nine calls,
 and its save-stack pointer was the hottest call target in the whole
-shell. The opcodes do the same in one dispatch, on **the same
-Forth-visible save stack**, which the engine finds through the five
-cells at image offset 8:
+shell. The opcodes do the same in one dispatch, and since Iteration
+517 **the save stack is the engine's**: 4096 cells, as the Forth one
+had. Only the error is Forth's. On an overflow or underflow the opcode
+pushes 1 or 2 and calls the word named by the one cell at image offset
+8 - `shadow.4`'s `LOCALS-FAILED`, which aborts with the same messages
+the Forth `LSAVE` and `LRESTORE` had, so a runaway recursion still
+reports `shadow: save stack overflow` and nothing else changes.
+`kernel.4` reserves the cell and `shadow.4` fills it as it loads.
 
-| cell | contents |
-|---|---|
-| 0 | offset of `LSAVE-SP`'s parameter field |
-| 1 | offset of `LSAVE-STACK`'s parameter field |
-| 2 | the value of `LSAVE-MAX` |
-| 3 | offset of `LSAVE`'s body, the fallback |
-| 4 | offset of `LRESTORE`'s body, the fallback |
-
-`kernel.4` reserves the cells and `shadow.4` fills them as it loads.
-**Deoptimisation**: whenever the Forth version would take its error
-path - overflow, underflow, no buffer - the opcode pushes the slot as
-`LIT` would and calls the Forth word, so the rare paths keep their
-behaviour and messages. That is the shape of CPython's specialising
-interpreter (PEP 659), and it is what makes specialising one
-instruction safe. It is also the design's one real wart: the engine
-knows the layout of a Forth data structure (§13).
+Until 517 the stack, its pointer and its limit were Forth's, the engine
+found them through five cells there, and the opcodes fell back to the
+Forth words on every error path - the shape of CPython's specialising
+interpreter (PEP 659), and the design's one real wart: the engine knew
+the layout of a Forth data structure. The cells went with it, and the
+format version with them (6): a version-5 image's first cell at offset 8
+is a stack pointer's offset, not a word to call.
 
 ### 6.4 The tiny words
 
@@ -643,9 +641,6 @@ about five times as often as the byte image.
 - **One source for the numbering.** Four hand-maintained places (§2.2)
   are the real risk in this design, more than any opcode. `kernel.4`
   could emit the engine's tables as well as the compiler's.
-- **The locals opcodes know a Forth data structure** (§6.3). Making
-  `LSAVE` and `LRESTORE` real primitives, with the Forth versions
-  deleted, would remove the five cells and the fallback.
 - **The three-byte call's 4 MB reach** is below `MEMSIZE` (§2.4). A
   two-bit tag on every byte - `00` an opcode, then calls of 14, 22 and
   30 bits - would reach 1 GB with 64 one-byte opcodes, and Iteration 501

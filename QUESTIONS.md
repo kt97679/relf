@@ -157,7 +157,8 @@ Yes. Looked at closely it is less small than first said: the Forth
 versions report overflow with `ABORT"`, a catchable error, and an engine
 that owns the save stack must still raise exactly that. So: the engine
 owns the stack, and the five cells at image offset 8 become one - a
-word the engine calls to report the error in Forth.
+word the engine calls to report the error in Forth. **Done at 517**,
+with the image format's version raised to 6.
 
 ## Your notes, captured (514)
 

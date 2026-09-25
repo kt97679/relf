@@ -1,13 +1,13 @@
 bundle:pullable 1
 core:4byte 1
 core:8byte 1
-core:okmarkers 2129
+core:okmarkers 2136
 crosspath:kernel64-shell.img reproduces
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
-image-sum:kernel32-shell.img 1254571470/111243
-image-sum:kernel64-shell.img 3380842979/119325
+image-sum:kernel32-shell.img 4004629952/111103
+image-sum:kernel64-shell.img 313328108/119133
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -43,11 +43,11 @@ shell:assertions 874
 shell:dead-words 0
 shell:files 83
 shell:host-sh-tests 0
-size:engine-code-i386 21127
-size:engine-code-x86_64 26064
-size:i386 141567
-size:image-i386 111243
-size:image-x86_64 119325
-size:x86_64 158461
+size:engine-code-i386 21087
+size:engine-code-x86_64 26256
+size:i386 141427
+size:image-i386 111103
+size:image-x86_64 119133
+size:x86_64 158269
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

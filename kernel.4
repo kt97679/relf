@@ -12,8 +12,8 @@ CROSS-COMPILE
 COLD \ call to cold start location: the engine starts executing here,
      \ with the image's base address on the data stack.
 WARM \ call to warm start location.
-LOCALS-CELLS \ five cells at image offset 8, for the engine's locals
-     \ opcodes: shadow.4 fills them in when it loads (CV8.md
+LOCALS-CELLS \ one cell at image offset 8, for the engine's locals
+     \ opcodes: shadow.4 fills it in when it loads (CV8.md
      \ 6.3), and SAVE-SYSTEM saves them with the rest of the image.
 
 \ PART 1: LOW-LEVEL PRIMITIVES

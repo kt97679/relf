@@ -66,7 +66,7 @@ CREATE SS-MAGIC 8 ALLOT
   [CHAR] 0 SS-MAGIC 3 + C!      \ call scale 0
   1 CELLS  SS-MAGIC 4 + C!
   [CHAR] L SS-MAGIC 5 + C!
-  5        SS-MAGIC 6 + C!
+  6        SS-MAGIC 6 + C!      \ format version (6 since Iteration 517)
   15       SS-MAGIC 7 + C! ;
 
 : SS-CELL, ( x --- )
@@ -150,9 +150,8 @@ CREATE SS-MAGIC 8 ALLOT
   HDR-HEAD SS-CELL  HDR-LEN SS-CELL
   S0    SS-CELL   R0      SS-CELL
   START SS-CELL
-  \ shadow.4's save-stack pointer. It is zero at save time when the
-  \ frames are balanced, but scrubbing it costs nothing and makes that
-  \ a property of the image rather than a hope.
+  \ shadow.4's save-stack pointer was scrubbed here until Iteration 517,
+  \ when the save stack moved into the engine, out of the image.
   \
   \ Iteration 137's LENTER/LEXIT added six more scratch cells here
   \ (LE-A holding a code address, plus its counts) and Iteration 148
@@ -160,9 +159,6 @@ CREATE SS-MAGIC 8 ALLOT
   \ If that change is ever re-applied, they must come back - a rebuilt
   \ image stops reproducing otherwise, which is what found them.
   \
-  \ This file therefore REQUIRES shadow.4 to be loaded first, which
-  \ relfsh already does.
-  LSAVE-SP SS-CELL
   \ This word's own working variables, and pool.4's - they hold a heap
   \ address and a file descriptor from the save that is in progress,
   \ so leaving them would make two saves of the same system differ.

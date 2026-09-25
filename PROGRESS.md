@@ -512,6 +512,7 @@ do not trust the absence of a line below.
 - **514** — QUESTIONS.md; 256-column lines; Rill specified; the assembly engine's decisions
 - **515** — Rill discussed: structured values across processes, and jobs with lifetimes
 - **516** — JSON in the environment, recognised by use; what a process can exchange; plugins; Q2-Q4 answered
+- **517** — the locals save stack moves into the engine: five cells become one; format 6
 
 ### Not tied to an iteration
 
@@ -24569,3 +24570,65 @@ Milestone 1's first step; `LSAVE`/`LRESTORE` as real primitives - which,
 looked at closely, needs the engine to raise the Forth version's
 catchable `ABORT"`, so the five cells become one error word rather
 than none. QUESTIONS.md A6-A8.
+
+## Iteration 517: the save stack is the engine's
+
+QUESTIONS.md A8, as decided at 516. The locals opcodes did their work
+on a save stack Forth owned - found through five cells at image offset
+8, the stack, its pointer, its limit and two fallback words - and fell
+back to Forth `LSAVE`/`LRESTORE` on every error path: the one place the
+engine knew a Forth data structure's layout (CV8.md 13 called it the
+design's one real wart).
+
+Now the engine owns the stack: 4096 cells, `LSAVE_MAX` in cv8.c, where
+Iteration 90's history of that number moved. What stays Forth's is the
+error, because the Forth versions reported overflow with a catchable
+`ABORT"` and an engine error would end the process instead: on an
+overflow or underflow the opcode pushes 1 or 2 and calls the word the
+one remaining cell names, `shadow.4`'s `LOCALS-FAILED`, which aborts
+with the old messages. The Forth `LSAVE`, `LRESTORE`, `LSAVE-STACK`,
+`LSAVE-SP` and `LSAVE-MAX` are gone, and so is `save-system.4`'s scrub
+of the stack pointer, since nothing of the stack is in the image.
+
+**A format change, so a version change**: the cell at offset 8 means
+something else, and a version-5 image run on this engine would call a
+stack pointer's offset as code. Version 6, in the three places that
+write or check it (cv8.c, cross.4, save-system.4) - and a bootstrap
+order to go with it: the recipe in `make images` builds the 64-bit kernel
+first and then runs it to build the 32-bit one, which the old engine
+cannot do once the kernel is version 6. So both kernels were
+cross-compiled by hand from the committed version-5 kernel with the old
+engine, the engine changed afterwards, and `make check-images` then
+confirmed the new engine rebuilds both byte-identically. Each kernel is
+four cells smaller. The new engine refuses a version-5 image with its
+usual message.
+
+Behaviour checked unchanged: a runaway recursion over a local reports
+`shadow: save stack overflow` at both widths, as before; shell
+functions with `local` recurse as before.
+
+A slip on the way: the first overflow test ran without a `timeout` of
+its own and hung until the call's limit - the test named a local that
+was never declared as a variable, and a word cannot name itself while
+being defined (`RECURSE`). Every test built to recurse runs under
+`timeout` now.
+
+**And a recording that would have lied, caught by reading it.** The
+first `--update` wrote a broken run into BASELINE as the expected
+answer: the core, extension, I/O and shell suites at 0, the fixpoints
+and the differential count empty. tests/shadow.fth ended with
+`{ LSAVE-SP @ -> 0 }` - the save stack balanced after every locals test
+- and `LSAVE-SP` no longer exists. BASELINE was restored from the last
+commit. The assertion was worth keeping, so it checks the same thing
+by behaviour now: a word that saves once per level runs 4096 levels
+deep, exactly `LSAVE_MAX`, which fits only if nothing before it leaked an
+entry - 4095 fits and 4096 overflows, both checked by hand. My search
+for the removed names had covered the sources and the documents, not
+the tests' own Forth files.
+
+Recorded changes, with their causes: `core:okmarkers` 2129 -> 2136, the
+test file's new lines; both shell images smaller - 192 bytes at 64-bit,
+140 at 32 - the Forth stack, the two fallbacks and four cells gone; the
+engines' code 40 bytes smaller at 32-bit and 192 larger at 64, the new
+error path laid out differently by the compiler; checksums and totals
+with them. Every suite row as before.

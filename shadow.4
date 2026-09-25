@@ -51,7 +51,7 @@
 \   - Every name must already be a defined VARIABLE (or any word that
 \     returns an address). An undefined name is diagnosed, not
 \     silently accepted.
-\   - LDECL-MAX names per definition, LSAVE-MAX cells of live
+\   - LDECL-MAX names per definition, LSAVE_MAX (the engine's) cells of live
 \     save-stack across all nested invocations. Both are checked.
 \
 \ EXIT and ; are wrapped below so the restore happens on EVERY exit
@@ -115,18 +115,21 @@ BASE @  DECIMAL
 \ Runtime: the save stack
 \ ------------------------------------------------------------------
 
-4096 CONSTANT LSAVE-MAX
-\ Raised from 256 in Iteration 90. Each nested shell construct
-\ declares several locals, so 256 cells ran out around fifteen levels
-\ of function recursion - shallower than shell.4's own
-\ MAX-POS-PARAM-DEPTH of 32, which meant the SHELL's "recursion too
-\ deep" diagnostic could never fire and the user got this file's
-\ ABORT instead, killing the shell. A limit that pre-empts a
-\ higher-level one is worse than a larger limit.
-LSAVE-MAX CELLS BUFFER: LSAVE-STACK
-VARIABLE LSAVE-SP
+\ The save stack is the engine's since Iteration 517 - 4096 cells,
+\ LSAVE_MAX in cv8.c, where the history of that number now lives. The
+\ LSAVE opcode pushes a slot's value, LRESTORE pops it back. Only the
+\ error is Forth's: the engine calls LOCALS-FAILED, through the cell
+\ at image offset 8, with 1 for an overflow and 2 for an underflow, so
+\ the messages and the ABORT are what they were. Until 517 the stack,
+\ its pointer and its limit were Forth's, and the engine found them
+\ through five cells there and fell back to Forth LSAVE and LRESTORE -
+\ the one place the engine knew a Forth data structure (CV8.md 6.3).
+: LOCALS-FAILED ( n --- )
+  DUP 1 = ABORT" shadow: save stack overflow"
+  2 = ABORT" shadow: save stack underflow" ;
 
-\ Each of these takes the slot as an OFFSET from START, not as an
+
+\ LZERO and L! take the slot as an OFFSET from START, not as an
 \ absolute address, and adds START itself. That is what makes a
 \ locals-using word survive being saved into an image and reloaded at
 \ a different address (see save-system.4): the only thing compiled
@@ -140,17 +143,6 @@ VARIABLE LSAVE-SP
 \ and corrupted compilation of shell.4. This version emits exactly
 \ the same two cells the original absolute-address version did.
 
-: LSAVE ( off --- )   \ push the slot's current value, so it can be
-                      \ put back when this invocation ends
-  LSAVE-SP @ LSAVE-MAX < 0= ABORT" shadow: save stack overflow"
-  START @ + @ LSAVE-STACK LSAVE-SP @ CELLS + !
-  LSAVE-SP @ 1+ LSAVE-SP ! ;
-
-: LRESTORE ( off --- )   \ pop the most recently saved value back
-  LSAVE-SP @ 0 > 0= ABORT" shadow: save stack underflow"
-  LSAVE-SP @ 1- LSAVE-SP !
-  LSAVE-STACK LSAVE-SP @ CELLS + @ SWAP START @ + ! ;
-
 : LZERO ( off --- )   \ initial value of a post-| scratch local
   0 SWAP START @ + ! ;
 
@@ -161,11 +153,9 @@ VARIABLE LSAVE-SP
 \ Compile time: the declaration currently being processed
 \ ------------------------------------------------------------------
 
-\ The four runtime words above are what the engine's locals opcodes
-\ fall back to on their error paths (CV8.md 6.3); the code
-\ compiled for a declaration is the opcodes themselves. save-system.4
-\ writes LSAVE-SP, LSAVE-STACK, LSAVE-MAX, LSAVE and LRESTORE into the
-\ image header, which is how the engine finds them.
+\ The code compiled for a declaration is the engine's locals opcodes
+\ themselves (CV8.md 6.3); on an overflow or underflow the engine calls
+\ LOCALS-FAILED above, which it finds through the cell at image offset 8.
 102 CONSTANT LSAVE-OP
 103 CONSTANT LRESTORE-OP
 104 CONSTANT L!-OP
@@ -178,18 +168,12 @@ VARIABLE LDECL-ARGS   \ how many of those take a data-stack argument
 
 0 LDECL-N !
 0 LDECL-ARGS !
-0 LSAVE-SP !
 
-\ The engine's locals opcodes find the save stack, its limit and the
-\ two fallback words through five cells at image offset 8, which
-\ kernel.4 reserves (LOCALS-CELLS). Filled in here, so the opcodes
+\ The engine's locals opcodes report an overflow or underflow through
+\ the cell at image offset 8, which kernel.4 reserves (LOCALS-CELLS):
+\ LOCALS-FAILED's offset from START. Filled in here, so the opcodes
 \ work from the moment this file is loaded, and saved with the image.
-\ All but the limit are offsets from START.
-LSAVE-SP START @ -                    START @  8 + !
-' LSAVE-STACK >BODY START @ -         START @  8 + CELL+ !
-LSAVE-MAX                             START @  8 + 2 CELLS + !
-' LSAVE START @ -                     START @  8 + 3 CELLS + !
-' LRESTORE START @ -                  START @  8 + 4 CELLS + !
+' LOCALS-FAILED START @ -             START @  8 + !
 
 : L-EMIT ( op i --- )
   \ Compile locals opcode op on slot i - the one place any code is

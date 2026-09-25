@@ -112,5 +112,12 @@ VARIABLE LT-S
 { 0 LT-SUMTO -> 0 }
 
 \ --- every path above must leave the save stack balanced ---
+\ The stack is the engine's since Iteration 517, so its depth cannot be
+\ read; this was { LSAVE-SP @ -> 0 }. Instead: fill it to its limit.
+\ LT-FILL saves once per level, and 4095 down to 0 is 4096 levels -
+\ exactly LSAVE_MAX - so it fits only if nothing above leaked an entry;
+\ one leaked save and the last level overflows, which aborts the run.
 
-{ LSAVE-SP @ -> 0 }
+VARIABLE LT-D
+: LT-FILL ( n --- )  SHADOW{ LT-D }  LT-D @ IF LT-D @ 1- RECURSE THEN ;
+{ 4095 LT-FILL -> }

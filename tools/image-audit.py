@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/image-audit.py IMAGE [CELLBYTES] - how a CV8 image (format 5)
+"""tools/image-audit.py IMAGE [CELLBYTES] - how a CV8 image (format 6)
 encodes its references.
 
 Walks the dictionary, decodes every colon body, and reports branches (and
