@@ -940,6 +940,14 @@ L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
             NEXT
 2:          add r14, 2
 1:          NEXT
+L_atxt:     mov r12, [r12]           /* @XT ( a-addr --- xt ), since 531 */
+            add r12, rbx             /* the image base, which START holds */
+            NEXT
+L_execute:  mov rax, r12             /* EXECUTE ( xt --- ): a call, since 531 */
+            POPT
+            RPUSH r14
+            mov r14, rax
+            NEXT
 L_i:        mov rax, [r15]           /* I ( --- n ), since 530 */
             PUSHT rax
             NEXT

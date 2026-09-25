@@ -936,6 +936,17 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
+L_atxt:   /* @XT ( a-addr --- xt ): the offset there, plus the image base (531) */
+    tos = CELL(tos) + cbase;
+    NEXT();
+L_execute: {   /* EXECUTE ( xt --- ): a call to xt, since 531 */
+    UNS64 x = tos;
+    tos = CELL(dsp);
+    dsp += CELL_BYTES;
+    RPUSH(ip);
+    ip = x;
+    NEXT();
+}
 L_i:   /* I ( --- n ): the loop counter, top of the return stack (530) */
     PUSHT(CELL(rp));
     NEXT();

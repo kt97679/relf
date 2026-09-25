@@ -82,6 +82,8 @@ tiny      0x42    ?DUP        L_qdup
 tiny      0x43    I           L_i
 tiny      0x44    (LOOP)      L_loop
 tiny      0x45    (?DO)       L_qdo
+tiny      0x46    EXECUTE     L_execute
+tiny      0x47    @XT         L_atxt
 spec      0x61    push0       L_lit0
 spec      0x62    push1       L_lit1
 spec      0x63    push-1      L_litm1

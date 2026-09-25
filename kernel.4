@@ -529,11 +529,21 @@ VARIABLE R0 ( --- a-addr)
 \ n3 is the remainder of n1 and n2.
   /MOD DROP ;
 
-: EXECUTE ( xt ---)
-\ Execute the word with execution token xt.
-\ Return from EXECUTE goes to xt pushed on the ret stack by >R, return from
-\ the word x1 returns to definition that calls EXECUTE
-  >R ;
+70 OPCODE EXECUTE ( xt --- )            \ execute the word with token xt
+\ An opcode since Iteration 531: a call to the token on the stack. It was
+\ the colon word >R ; - the token pushed as a return address for EXIT to
+\ jump to - two dispatches where this is one, and the return stack as
+\ deep while xt runs either way, which CATCH and THROW rely on. Unlike
+\ the loop words it reads nothing from the return stack, so it is right
+\ whether inlined or called.
+
+71 OPCODE @XT     ( a-addr --- xt )      \ an xt kept as an offset from START
+\ An xt stored in memory is kept as an offset from START, the image's
+\ address, so that it means the same after a save and a reload at another
+\ address (FORTH-STYLE.md 12). An opcode since Iteration 531 - every
+\ deferred word's call goes through it - where it was shadow.4's colon
+\ word @ START @ + ; the engine adds the image base it already holds.
+: !XT ( xt a-addr --- )  SWAP START @ - SWAP ! ;   \ its inverse
 
 \ PART 4: NUMERIC OUTPUT WORDS.
 

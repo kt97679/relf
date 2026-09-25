@@ -526,6 +526,7 @@ do not trust the absence of a line below.
 - **528** — +! an opcode: 2.19% fewer dispatches; format 7; unassigned opcodes trap; the cold end tracked
 - **529** — ?DUP an opcode: 2.63% fewer dispatches; the loop words' failure diagnosed
 - **530** — the loop words as opcodes: I, (LOOP), (?DO) - 13.9% fewer dispatches since 528
+- **531** — EXECUTE and @XT as opcodes: 14.95% fewer dispatches since 528
 
 ### Not tied to an iteration
 
@@ -25123,3 +25124,51 @@ where a call was, and their colon bodies gone; the engines 176-264 bytes
 larger for the three handlers; relfshasm64 344 bytes smaller over all.
 Every suite row as before. (Verified in one session, committed in the
 next: the check run finished as the session's tool budget did.)
+
+## Iteration 531: EXECUTE and @XT
+
+The next of Q15's runtime words: what a deferred word's call goes
+through. `DEFER`'s runtime is `DUP @ 0= IF DROP EXIT THEN @XT EXECUTE`,
+and both `@XT` and `EXECUTE` were colon words.
+
+- **`EXECUTE` at 0x46**: a call to the token on the stack, where the
+  colon word was `>R ;` - two dispatches, one now. Unlike the loop words
+  it reads nothing from the return stack, so it is right inlined or
+  called; and the return stack is exactly as deep while the token runs,
+  which `CATCH` and `THROW` depend on - checked: `CATCH` of a word that
+  `THROW`s, of one that does not, and nested, give output identical to
+  the committed build's (with the committed engine built from its own
+  cv8.c AND its own cv8-ops.h - the first try at that comparison
+  compiled the old source against the new header, and could not link).
+  0.30% fewer dispatches: one a use.
+- **`@XT` at 0x47**: an xt kept in memory is an offset from `START`, the
+  image's address (FORTH-STYLE.md 12), and `@XT` turns it back - `@
+  START @ +` as shadow.4's colon word; the opcode adds the image base the
+  engine holds in a register. An opcode word can only be declared in
+  kernel.4, so `@XT` and its inverse `!XT` (a colon word still - it runs
+  when something is stored, which is rare) moved from shadow.4 into the
+  kernel, after `START`. 0.89% fewer dispatches.
+
+The first `make` after the move failed, correctly: the shell image was
+built on the old kernel, which had no `@XT`, from a shadow.4 that no
+longer defined it, and the build tool's check refused it - "Undefined
+word @XT". Rebuilding the kernels first, as the recipe does, and
+everything built and reproduced.
+
+**Where it stands**: 22,451,671 dispatches before 528, 19,094,474 now -
+**14.95% fewer**, in seven opcodes of the 32 free.
+
+Recorded changes, with their causes: the shell images 8 and 16 bytes
+smaller - `EXECUTE` a byte where a call was, less the kernel headers
+`@XT` and `!XT` now have there; the engines 56-112 bytes larger for two
+handlers. Every suite row as before.
+
+**The pairs, measured again** (`tools/superinst.py`): the seven opcodes
+took the whole workload - benchmarks and differential suite - from 516
+million dispatches to 431 million, and fusing the top 32 pairs would
+still save 20.9% of what is left. Leading now: `VAR@ +` 3.7%, `VAR@
+VAR@` 3.3%, `VAR@ <` 2.0%, `0= ?BRANCH` 1.8%, `EQI ?BRANCH` 1.2%, `VAR@
+1+` 1.1%, `AND`/`<`/`>` then `?BRANCH` about 1% each, `VAR@ C@` 0.9%.
+And `push0 OVER ! CELL+ BRANCH8` at 0.74% for each of its pairs - an
+ERASE written out as a Forth loop somewhere, better fixed where it is
+than by any opcode.

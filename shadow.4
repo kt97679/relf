@@ -80,8 +80,8 @@ BASE @  DECIMAL
 \ rather than in shell.4 because both files need it and shell.4
 \ already requires this one to be loaded first for SHADOW{ itself.
 
-: !XT ( xt addr --- )  SWAP START @ - SWAP ! ;
-: @XT ( addr --- xt )  @ START @ + ;
+\ !XT and @XT are kernel.4's since Iteration 531 - @XT an opcode, since
+\ every deferred word's call goes through it.
 
 \ ------------------------------------------------------------------
 \ Forward declaration
