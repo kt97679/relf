@@ -536,6 +536,7 @@ do not trust the absence of a line below.
 - **538** — no folded returns: 22 opcodes and handlers gone, a body ends in EXIT; 98 one-byte opcodes -> 76; format 9
 - **539** — 64 one-byte opcodes: nine cold primitives escaped, CHAR+ INVERT ALIGNED colon words; format 10
 - **540** — the reference corpus from GNU as's listing: 453 real instruction shapes, no data taken for code
+- **541** — M0 begun: asm64.4, the Forth assembler's first encoder, and tools/asm-test.py - 8 of 453 shapes match
 
 ### Not tied to an iteration
 
@@ -25512,3 +25513,31 @@ before `_start`, which the disassembly's range began after - 4,562 bytes
 of data and 4 of alignment among them; **453 shapes, 56 mnemonics**, each
 line now the source text as written in relfasm64.S - the form the M2
 translation will read.
+
+## Iteration 541: M0 begun - the encoder, and its test
+
+**asm64.4**, the assembler in Forth, in its own ASSEMBLER vocabulary.
+Operands in Intel's order, destination first, then the mnemonic with a
+comma - `rax [ r13 8 ] mov,` is `mov rax, [r13 + 8]` - so that no
+mnemonic meets a Forth word (`and,` never `AND`). A memory operand is
+written between `[` and `]` - registers, a register scaled by `*1`..`*8`
+as the index, numbers summed into the displacement - with a size after
+it where no register gives one (`byte-ptr`, not `byte`, since `word`
+would shadow Forth's WORD). Each operand is one cell with its kind in
+the top byte; the one memory operand's fields sit in variables. `[`,
+`]` and `#` are defined last, so the assembler's own definitions never
+meet them. First families: the ALU group, `mov`, `lea`, `test`, the
+one-operand group, `push`/`pop`, and a few with no operands - encoded as
+GNU as does: an absolute address through a SIB with no base, the
+shortest displacement, the accumulator's short forms (for `al` too - a
+bug in the first draft, found reading it back, as was `RMR,` clearing
+the REX an 8-bit register like `sil` needs).
+
+**tools/asm-test.py**: each corpus line translated into this syntax -
+symbols' values from nm, a jump's target from its reference bytes - and
+assembled by relf at its own address; the bytes compared. **First pass:
+8 of 453 shapes assemble to GNU as's bytes.** The corpus now records each instance's
+address, which relative jumps need. Next: the families not yet written -
+shifts, `movzx`/`movsx`/`movsxd`, `imul`, `xchg`, `setcc`, `cmova`,
+`bsr`, the string instructions, jumps and calls - then every remaining
+mismatch, one by one.

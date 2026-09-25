@@ -1,0 +1,205 @@
+\ asm64.4 - an x86-64 assembler written in Forth (SELF-HOSTING.md).
+\
+\ Iteration 541, M0: the encoder. The assembly engine, relfasm64.S, is
+\ to be written in this and assembled by relf itself; tests/asm-corpus.txt
+\ is what it has to match - every instruction shape the engine uses, with
+\ the bytes GNU as made for it.
+\
+\ The syntax: operands in Intel's order - destination first - then the
+\ mnemonic, with a comma so it never meets a Forth word of the same name:
+\
+\     rax [ r13 8 ] mov,          mov rax, [r13 + 8]
+\     [ r14 ] byte-ptr 63 # cmp,  cmp byte ptr [r14], 63
+\     rdx [ rcx rax *8 8 ] lea,   lea rdx, [rcx + rax*8 + 8]
+\
+\ A memory operand is written between [ and ]: registers, a register
+\ scaled by *1 *2 *4 or *8 as the index, and numbers, summed into the
+\ displacement. A size, where no register gives one, follows it.
+
+VOCABULARY ASSEMBLER
+ALSO ASSEMBLER DEFINITIONS
+BASE @ DECIMAL
+
+\ ---- where the bytes go -------------------------------------------------
+VARIABLE ABUF      \ the buffer the code is laid down in
+VARIABLE THERE     \ where the next byte goes, in the buffer
+VARIABLE ORG       \ the address the buffer's first byte runs at
+: ASM-BUFFER ( org size --- )
+  ALLOCATE ABORT" asm64: no memory" DUP ABUF ! THERE !  ORG ! ;
+: HERE-A ( --- addr ) THERE @ ABUF @ - ORG @ + ;   \ the next byte's address
+: C,A ( c --- ) THERE @ C!  1 THERE +! ;
+: W,A ( w --- ) DUP C,A 8 RSHIFT C,A ;
+: L,A ( l --- ) DUP W,A 16 RSHIFT W,A ;
+: Q,A ( q --- ) DUP L,A 32 RSHIFT L,A ;
+
+\ ---- operands: one cell each, the kind in the top byte --------------------
+82 56 LSHIFT CONSTANT T-REG      \ R: a register
+88 56 LSHIFT CONSTANT T-IDX      \ X: a register scaled, as an index
+73 56 LSHIFT CONSTANT T-IMM      \ I: an immediate, its value in IMM
+77 56 LSHIFT CONSTANT T-MEM      \ M: the memory operand, in the M- variables
+255 56 LSHIFT CONSTANT T-MASK
+: KIND ( d --- k ) T-MASK AND ;
+: REG? ( d --- f ) KIND T-REG = ;
+: IMM? ( d --- f ) KIND T-IMM = ;
+: MEM? ( d --- f ) KIND T-MEM = ;
+: R# ( d --- n ) 15 AND ;                       \ the register's number
+: RSIZE ( d --- s ) 4 RSHIFT 15 AND ;            \ in bytes
+: REX8? ( d --- f ) 256 AND 0= 0= ;              \ spl bpl sil dil: need a REX
+: MSIZE ( m --- s ) 15 AND ;                     \ a memory operand's size, 0 unsaid
+
+: REG: ( n size "name" --- ) CREATE 4 LSHIFT OR T-REG OR , DOES> @ ;
+ 0 8 REG: rax   1 8 REG: rcx   2 8 REG: rdx   3 8 REG: rbx
+ 4 8 REG: rsp   5 8 REG: rbp   6 8 REG: rsi   7 8 REG: rdi
+ 8 8 REG: r8    9 8 REG: r9   10 8 REG: r10  11 8 REG: r11
+12 8 REG: r12  13 8 REG: r13  14 8 REG: r14  15 8 REG: r15
+ 0 4 REG: eax   1 4 REG: ecx   2 4 REG: edx   3 4 REG: ebx
+ 4 4 REG: esp   5 4 REG: ebp   6 4 REG: esi   7 4 REG: edi
+ 8 4 REG: r8d   9 4 REG: r9d  10 4 REG: r10d 11 4 REG: r11d
+12 4 REG: r12d 13 4 REG: r13d 14 4 REG: r14d 15 4 REG: r15d
+ 0 2 REG: ax    1 2 REG: cx    2 2 REG: dx    3 2 REG: bx
+ 6 2 REG: si    7 2 REG: di
+ 8 2 REG: r8w   9 2 REG: r9w  10 2 REG: r10w 11 2 REG: r11w
+12 2 REG: r12w 13 2 REG: r13w 14 2 REG: r14w 15 2 REG: r15w
+ 0 1 REG: al    1 1 REG: cl    2 1 REG: dl    3 1 REG: bl
+260 1 REG: spl 261 1 REG: bpl 262 1 REG: sil 263 1 REG: dil
+ 8 1 REG: r8b   9 1 REG: r9b  10 1 REG: r10b 11 1 REG: r11b
+12 1 REG: r12b 13 1 REG: r13b 14 1 REG: r14b 15 1 REG: r15b
+
+: SCALE: ( log2 "name" --- )
+  CREATE , DOES> @ 12 LSHIFT SWAP 255 AND OR T-IDX OR ;
+0 SCALE: *1   1 SCALE: *2   2 SCALE: *4   3 SCALE: *8
+
+VARIABLE IMM       \ the immediate
+VARIABLE M-BASE    \ the memory operand: base register number, or -1
+VARIABLE M-INDEX   \ index register number, or -1
+VARIABLE M-SCALE   \ log2 of the scale
+VARIABLE M-DISP    \ displacement
+VARIABLE M-DEPTH   \ the stack depth at [
+: byte-ptr  ( m --- m ) 1 OR ;
+: word-ptr  ( m --- m ) 2 OR ;
+: dword-ptr ( m --- m ) 4 OR ;
+: qword-ptr ( m --- m ) 8 OR ;
+
+\ ---- the encoding ------------------------------------------------------
+VARIABLE REX       \ W R X B as 8 4 2 1; 64 when a REX is needed anyway
+VARIABLE OPSIZE    \ the operation's size in bytes
+: OR! ( x a --- ) DUP @ ROT OR SWAP ! ;
+: REX-R ( n --- ) 8 AND IF 4 REX OR! THEN ;
+: REX-X ( n --- ) 8 AND IF 2 REX OR! THEN ;
+: REX-B ( n --- ) 8 AND IF 1 REX OR! THEN ;
+: REX-8 ( d --- ) DUP REG? IF REX8? IF 64 REX OR! THEN ELSE DROP THEN ;
+: REX, ( --- ) REX @ IF REX @ 15 AND 64 OR C,A THEN ;
+: OPC, ( op --- ) DUP 255 > IF DUP 8 RSHIFT C,A THEN 255 AND C,A ;
+: MODRM, ( mod reg rm --- ) 7 AND SWAP 7 AND 3 LSHIFT OR SWAP 6 LSHIFT OR C,A ;
+: DISP8? ( d --- f ) DUP -129 > SWAP 128 < AND ;
+: MEM-REX ( --- )
+  M-BASE @ 0< 0= IF M-BASE @ REX-B THEN
+  M-INDEX @ 0< 0= IF M-INDEX @ REX-X THEN ;
+: SIB, ( --- ) \ scale, index (4: none), base (5: none)
+  M-SCALE @ 6 LSHIFT
+  M-INDEX @ 0< IF 4 ELSE M-INDEX @ 7 AND THEN 3 LSHIFT OR
+  M-BASE @ 0< IF 5 ELSE M-BASE @ 7 AND THEN OR C,A ;
+: MEM, ( reg --- )
+\ ModRM, SIB and displacement for the memory operand, reg in the reg field
+\ - as GNU as chooses them: an absolute address through a SIB with
+\ neither base nor index; the shortest displacement that fits; rbp and
+\ r13 as base always with one, rsp and r12 always through a SIB.
+  M-BASE @ 0< IF 0 SWAP 4 MODRM, SIB, M-DISP @ L,A EXIT THEN
+  M-DISP @ 0= M-BASE @ 7 AND 5 <> AND IF 0 ELSE
+    M-DISP @ DISP8? IF 1 ELSE 2 THEN THEN      ( reg mod )
+  DUP >R SWAP
+  M-INDEX @ 0< M-BASE @ 7 AND 4 <> AND IF M-BASE @ MODRM, ELSE 4 MODRM, SIB, THEN
+  R> DUP 1 = IF DROP M-DISP @ C,A EXIT THEN
+  2 = IF M-DISP @ L,A THEN ;
+: SIZE-OF ( d --- s ) DUP REG? IF RSIZE ELSE MSIZE THEN ;
+: PREFIX, ( --- ) OPSIZE @ 2 = IF 102 C,A THEN ;
+: W? ( --- ) OPSIZE @ 8 = IF 8 REX OR! THEN ;
+
+\ An operation on r/m with a register (or an opcode extension) in the reg
+\ field: prefixes, REX, the opcode, ModRM and the rest. op8 is the
+\ opcode for byte operands, op the one for the others; they differ by 1
+\ where the byte form exists.
+VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
+: RM, ( rm reg# op --- )
+  >R X-REG ! X-RM !  0 REX !  W?
+  X-R8 @ IF 64 REX OR! THEN  0 X-R8 !      \ spl bpl sil dil in the reg field
+  X-REG @ REX-R
+  X-RM @ MEM? IF MEM-REX ELSE X-RM @ R# REX-B  X-RM @ REX-8 THEN
+  PREFIX, REX, R> OPC,
+  X-RM @ MEM? IF X-REG @ MEM, ELSE 3 X-REG @ X-RM @ R# MODRM, THEN ;
+: RMR, ( rm reg op --- )   \ as RM, with a register in the reg field
+  >R DUP REX8? IF -1 X-R8 ! THEN R# R> RM, ;
+: OPSIZE! ( s --- ) OPSIZE ! ;
+: BYTE? ( --- f ) OPSIZE @ 1 = ;
+
+\ ---- the ALU group: add or adc sbb and sub xor cmp ----------------------
+: IMM, ( --- ) \ an immediate of the operation's size, 4 at most
+  OPSIZE @ 1 = IF IMM @ C,A EXIT THEN
+  OPSIZE @ 2 = IF IMM @ W,A EXIT THEN  IMM @ L,A ;
+: ALU ( dst src k --- )
+  >R
+  DUP IMM? IF DROP                                   \ r/m, imm
+    DUP SIZE-OF OPSIZE!
+    BYTE? IF DUP R# 0= OVER REG? AND IF DROP       \ al: the short form
+        R> 8 * 4 + C,A IMM @ C,A EXIT THEN
+      R> 128 RM, IMM, EXIT THEN
+    IMM @ DISP8? IF R> 131 RM, IMM @ C,A EXIT THEN
+    DUP REG? IF DUP R# 0= IF DROP                    \ the accumulator's short form
+      0 REX ! W? PREFIX, REX, R> 8 * 5 + C,A IMM, EXIT THEN THEN
+    R> 129 RM, IMM, EXIT THEN
+  DUP MEM? IF                                        \ reg, r/m
+    OVER SIZE-OF OPSIZE!  SWAP R> 8 * 2 + BYTE? 0= - RMR, EXIT THEN
+  OVER SIZE-OF OPSIZE!  R> 8 * BYTE? 0= - RMR, ;     \ r/m, reg
+: add, 0 ALU ;  : or, 1 ALU ;  : adc, 2 ALU ;  : sbb, 3 ALU ;
+: and, 4 ALU ;  : sub, 5 ALU ;  : xor, 6 ALU ;  : cmp, 7 ALU ;
+
+\ ---- mov -------------------------------------------------------------------
+: mov, ( dst src --- )
+  DUP IMM? IF DROP DUP SIZE-OF OPSIZE!
+    DUP REG? IF
+      OPSIZE @ 8 = IF IMM @ -2147483649 > IMM @ 2147483648 < AND IF
+        0 199 RM, IMM @ L,A EXIT THEN                \ sign-extended imm32
+        0 REX ! W? DUP R# REX-B REX, R# 184 + C,A IMM @ Q,A EXIT THEN
+      0 REX ! W? DUP R# REX-B DUP REX-8 PREFIX, REX,
+      R# BYTE? IF 176 ELSE 184 THEN + C,A IMM, EXIT THEN
+    0 BYTE? IF 198 ELSE 199 THEN RM, IMM, EXIT THEN
+  DUP MEM? IF OVER SIZE-OF OPSIZE!  SWAP BYTE? IF 138 ELSE 139 THEN RMR, EXIT THEN
+  OVER SIZE-OF OPSIZE!  BYTE? IF 136 ELSE 137 THEN RMR, ;
+
+: lea, ( reg mem --- ) OVER RSIZE OPSIZE! SWAP 141 RMR, ;
+
+\ ---- test ---------------------------------------------------------------
+: test, ( dst src --- )
+  DUP IMM? IF DROP DUP SIZE-OF OPSIZE!
+    DUP REG? IF DUP R# 0= IF DROP
+      0 REX ! W? PREFIX, REX, BYTE? IF 168 ELSE 169 THEN C,A IMM, EXIT THEN THEN
+    0 BYTE? IF 246 ELSE 247 THEN RM, IMM, EXIT THEN
+  OVER SIZE-OF OPSIZE!  BYTE? IF 132 ELSE 133 THEN RMR, ;
+
+\ ---- one operand: inc dec not neg mul imul div idiv ---------------------
+: UNARY ( rm k op8 --- ) >R >R DUP SIZE-OF OPSIZE! R> R> BYTE? 0= - RM, ;
+: inc, 0 254 UNARY ;  : dec, 1 254 UNARY ;
+: not, 2 246 UNARY ;  : neg, 3 246 UNARY ;
+: mul, 4 246 UNARY ;  : div, 6 246 UNARY ;  : idiv, 7 246 UNARY ;
+
+\ ---- push pop --------------------------------------------------------------
+: push, ( reg --- ) 0 REX ! DUP R# REX-B REX, R# 7 AND 80 + C,A ;
+: pop,  ( reg --- ) 0 REX ! DUP R# REX-B REX, R# 7 AND 88 + C,A ;
+
+\ ---- no operands --------------------------------------------------------
+: syscall, 3845 OPC, ;   : ret, 195 C,A ;
+: std, 253 C,A ;   : cld, 252 C,A ;
+
+\ ---- and last, the words that would shadow Forth's while this is written --
+: [ ( --- ) DEPTH M-DEPTH ! ;
+: ] ( ... --- m )
+  -1 M-BASE ! -1 M-INDEX ! 0 M-SCALE ! 0 M-DISP !
+  BEGIN DEPTH M-DEPTH @ > WHILE
+    DUP KIND T-REG = IF R# M-BASE ! ELSE
+    DUP KIND T-IDX = IF DUP R# M-INDEX ! 12 RSHIFT 3 AND M-SCALE ! ELSE
+    M-DISP +! THEN THEN
+  REPEAT T-MEM ;
+: # ( n --- i ) IMM ! T-IMM ;
+
+BASE !
+PREVIOUS DEFINITIONS
