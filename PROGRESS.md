@@ -507,6 +507,7 @@ do not trust the absence of a line below.
 - **509** — the space audit: 2 KB in full cells, and headers are a fifth of the image
 - **510** — the source audit, first pass: four duplicates merged, four untested paths tested
 - **511** — the audit's second pass: two helpers extracted, and `[`'s error found on stdout
+- **512** — the audit's third pass: one PATH search, one file reader - and a documented trap walked into
 
 ### Not tied to an iteration
 
@@ -24378,3 +24379,37 @@ Recorded changes, with their causes: `shell:assertions` 872 -> 874, the
 two for `[`; both shell images smaller again, by 160 bytes at 64-bit and
 168 at 32 - the extractions - and their checksums and totals with them.
 Across 510 and 511 the audit has taken ~390 bytes from each image.
+
+## Iteration 512: one PATH search, one file reader
+
+The duplication scan's cold-path runs, after 510 and 511:
+
+- **`LOCATE-COMMAND` and `DOT-SEARCH`** each walked PATH, built
+  `dir/name` in PATHBUF and tested it - an executable file for a
+  command, a readable non-directory for `.` - with the same 23 words
+  between. `PATH-SEARCH ( name addr u readable? --- path | 0 )` is the
+  loop now, keeping 421's comment on growing PATHBUF first;
+  `READABLE-FILE?` is the dot builtin's test, named. The command cache
+  stays around the command's search, before and after.
+- **`DO-TREE-DUMP`** read its file with the six lines of
+  `READ-WHOLE-FILE`, defined 200 lines above it; it calls it now.
+- `(EXEC-AS-SCRIPT)`'s header still said the script ran with "argv[0]
+  and argv[1], which the wrapper makes absolute" - untrue since 506. It
+  says what happens now.
+
+**And a trap walked into, in plain sight**: the first version passed
+the test as an xt, `['] EXECUTABLE-FILE?`, and every command lookup
+segfaulted - `[']` compiles an absolute address, which the next run of
+the image does not share. FORTH-STYLE.md 12 says exactly this, and
+records `[']` as its fourth occurrence (Iteration 419). I had grepped
+for `[']` first; the one hit in tree.4 was the comment warning against
+it, and I read it as a use. Caught before the suites, at the first
+command run; it is the fifth in the guide's list now, with the rule
+stated where it will be read: before `[']`, an offset, a DEFER or a flag.
+
+Checked against dash: `.` along PATH, a command found and one not
+(127), a directory named on `.` refused.
+
+Recorded changes, with their causes: both shell images smaller, by 120
+bytes at 64-bit and 104 at 32 - the two merges - with their checksums
+and totals. The audit's three passes have taken ~500 bytes from each.

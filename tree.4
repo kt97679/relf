@@ -3787,10 +3787,9 @@ VARIABLE DUMP-XT
     1 ARGV@ S" -e" ROT STR0= IF -1 ENC-SHOW? ! DROP-ARGV0 THEN
   THEN
   ARGC @ 2 < IF 2 LAST-STATUS ! EXIT THEN
-  1 ARGV@ DUP CSTRLEN R/O OPEN-FILE IF DROP 2 LAST-STATUS ! EXIT THEN
-  >R R@ FILE-SIZE 2DROP                     ( size )
-  DUP 1+ ALLOCATE DROP                      ( size buf )
-  2DUP SWAP R@ READ-FILE 2DROP  R> CLOSE-FILE DROP
+  1 ARGV@ READ-WHOLE-FILE                   ( buf size | 0 0 )
+  OVER 0= IF 2DROP 2 LAST-STATUS ! EXIT THEN
+  SWAP                                      ( size buf )
   2DUP SWAP                                 ( size buf buf size )
   >R >R SOURCE@ R> R> NEST-SOURCE           \ a source of its own
   DUMP-XT @XT CATCH IF 2 ELSE 0 THEN >R
@@ -3802,23 +3801,8 @@ VARIABLE DUMP-XT
 \ ==================================================================
 \ `.` and `type` (Iteration 270)
 \ ==================================================================
-VARIABLE DS-AT
-VARIABLE DS-END
 : DOT-SEARCH ( name --- path | 0 )   \ a readable file along PATH, in PATHBUF
-  CC-CURRENT-PATH OVER + DS-END !  DS-AT !
-  BEGIN DS-AT @ DS-END @ < WHILE
-    DS-AT @
-    BEGIN DS-AT @ DS-END @ < IF DS-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 DS-AT +! REPEAT
-    DS-AT @ OVER -                            ( name dir len )
-    DUP IF
-      2 PICK CSTRLEN OVER + 2 + ENSURE-BUFFER PATHBUF   \ grown to fit (421)
-      PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
-      PATHBUF 4 ACCESS 0= IF
-        PATHBUF OPEN-DIR ?DUP IF CLOSE-DIR ELSE DROP PATHBUF EXIT THEN
-      THEN
-    ELSE 2DROP THEN
-    DS-AT @ DS-END @ < IF 1 DS-AT +! THEN
-  REPEAT DROP 0 ;
+  CC-CURRENT-PATH -1 PATH-SEARCH ;
 
 \ ---- a file with no #! line (Iteration 433) ----
 CREATE PROC-CMDLINE  CSTR," /proc/self/cmdline"
@@ -3858,10 +3842,9 @@ VARIABLE CE-N
   ARGC @ 1- + CELLS SCRIPT-ARGV +  0 SWAP ! ;
 
 : (EXEC-AS-SCRIPT) ( path --- )
-  \ Run it with THIS shell - the engine and image this process was
-  \ started with, argv[0] and argv[1] in /proc/self/cmdline, which the
-  \ wrapper makes absolute - so the script sees the same shell; and
-  \ failing that with /bin/sh, which is what dash does.
+  \ Run it with THIS shell - re-executed through /proc/self/exe with the
+  \ arguments it began with, as below - so the script sees the same
+  \ shell; and failing that with /bin/sh, which is what dash does.
   DUP SCRIPT-BINARY? IF DROP -8 NOTE-EXEC-ERR EXIT THEN
   ARGC @ 4 + CELLS ENSURE-BUFFER SCRIPT-ARGV
   READ-CMDLINE                                 ( path addr u | path 0 0 )

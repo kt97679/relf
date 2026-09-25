@@ -3401,29 +3401,44 @@ VARIABLE LC-ANY?   \ look for any file, not only an executable one
   DUP LC-ANY? @ IF 0 ELSE 1 THEN ACCESS IF DROP 0 EXIT THEN
   OPEN-DIR ?DUP IF CLOSE-DIR 0 ELSE -1 THEN ;
 
-VARIABLE LC-AT
-VARIABLE LC-END
-: LOCATE-COMMAND ( name --- path | 0 )
-  CC-CHECK
-  DUP CC-FIND ?DUP IF NIP EXIT THEN
-  CC-PATHVAL LC-AT !  CC-PATHVAL CC-PATHLEN @ + LC-END !
-  BEGIN LC-AT @ LC-END @ < WHILE
-    LC-AT @                                   ( name dir )
-    BEGIN LC-AT @ LC-END @ < IF LC-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 LC-AT +! REPEAT
-    LC-AT @ OVER -                            ( name dir len )
+: READABLE-FILE? ( path --- f )   \ readable, and not a directory
+  DUP 4 ACCESS IF DROP 0 EXIT THEN
+  OPEN-DIR ?DUP IF CLOSE-DIR 0 ELSE -1 THEN ;
+
+VARIABLE PS-AT
+VARIABLE PS-END
+VARIABLE PS-READ?
+: PATH-SEARCH ( name addr u readable? --- path | 0 )
+  \ The first directory of the PATH value addr u in which dir/name is an
+  \ executable file - or, with readable?, a readable one - built in
+  \ PATHBUF. LOCATE-COMMAND and the dot builtin's DOT-SEARCH had a copy
+  \ of this loop each until Iteration 512, differing only in the test.
+  \ A flag, not an xt: ['] compiles an absolute address, which the next
+  \ run of the image does not share - the first version of this took
+  \ one, and every command lookup segfaulted.
+  PS-READ? !  OVER + PS-END !  PS-AT !
+  BEGIN PS-AT @ PS-END @ < WHILE
+    PS-AT @                                   ( name dir )
+    BEGIN PS-AT @ PS-END @ < IF PS-AT @ C@ 58 <> ELSE 0 THEN WHILE 1 PS-AT +! REPEAT
+    PS-AT @ OVER -                            ( name dir len )
     DUP IF
       \ Grown to fit first: B-CHAR has no bound, and a command name of 250
       \ characters ran PATHBUF's 256 bytes into CWDBUF and on (Iteration 421,
       \ found by tools/crashfuzz.py).
       2 PICK CSTRLEN OVER + 2 + ENSURE-BUFFER PATHBUF
       PATHBUF B-RESET B-STR 47 B-CHAR DUP B-CSTR B-FINISH
-      PATHBUF EXECUTABLE-FILE? IF
-        DUP PATHBUF CC-ADD  CC-FIND EXIT
-      THEN
+      PATHBUF PS-READ? @ IF READABLE-FILE? ELSE EXECUTABLE-FILE? THEN
+      IF DROP PATHBUF EXIT THEN
     ELSE 2DROP THEN
-    LC-AT @ LC-END @ < IF 1 LC-AT +! THEN
+    PS-AT @ PS-END @ < IF 1 PS-AT +! THEN
   REPEAT
   DROP 0 ;
+
+: LOCATE-COMMAND ( name --- path | 0 )
+  CC-CHECK
+  DUP CC-FIND ?DUP IF NIP EXIT THEN
+  DUP CC-PATHVAL CC-PATHLEN @ 0 PATH-SEARCH   ( name path|0 )
+  DUP IF OVER SWAP CC-ADD CC-FIND ELSE NIP THEN ;
 
 
 : CLOSE-SAVED-FDS ( --- )

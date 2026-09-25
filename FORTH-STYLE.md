@@ -149,6 +149,13 @@ and anything pointing into a `RESIZE`-able arena.
 > width and fail at the other**, which is one more reason every
 > interactive probe runs at both.
 
+> A fifth, in Iteration 512, and in plain sight of this section: merging
+> two PATH searches, I passed the test as `['] EXECUTABLE-FILE?`, and
+> every command lookup segfaulted. A grep for `[']` had found one use in
+> tree.4 - which was the comment warning against it. The merged word
+> takes a flag now. **Before `[']`, `'` or `,` of an address in a word
+> the image keeps: an offset (`!XT`), a DEFER, or a flag.**
+
 The corollary is that **offsets make growth safe**: because nothing
 outside the body arena holds a pointer into it, the arena can be
 `RESIZE`d freely. That is what removed two hardcoded limits.
