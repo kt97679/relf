@@ -535,6 +535,7 @@ do not trust the absence of a line below.
 - **537** — self-hosting M0 groundwork: the reference corpus, 450 instruction shapes with GNU as's bytes
 - **538** — no folded returns: 22 opcodes and handlers gone, a body ends in EXIT; 98 one-byte opcodes -> 76; format 9
 - **539** — 64 one-byte opcodes: nine cold primitives escaped, CHAR+ INVERT ALIGNED colon words; format 10
+- **540** — the reference corpus from GNU as's listing: 453 real instruction shapes, no data taken for code
 
 ### Not tied to an iteration
 
@@ -25482,3 +25483,32 @@ images 192 and 204 bytes larger - each use of an escaped primitive a
 byte longer (`TYPE` alone has 101), and three colon definitions where
 opcode words were. Every suite row as before. (The check run finished
 after the session that started it; committed in the next.)
+
+## Iteration 540: the corpus, from the assembler's own listing
+
+M0 starts where 537 left its test, and the first look at it, regenerated
+for the engine as 539 left it, found it wrong: among its "mnemonics"
+were `(bad)`, `rex.X`, `gs`, `outs`, `data16`, and `add BYTE PTR
+[rax],al` - two zero bytes. The disassembly had taken data inside the
+code for instructions: the OPEN-FILE mode table (`.long`s after a
+`.balign 4`), and five strings - `/etc/passwd`, `/bin/sh`, `-c`,
+`/proc/self/exe`, `RELF_ARGV0=`. 537's check - every line's bytes occur
+in the engine - passes for such lines as well as for real ones, and so
+could not see it. (Not all the suspects were data: `std`/`cld` around a
+backward copy, `repe cmps` and `repne scas` are the engine's.)
+
+Disassembly guesses where the code is; the assembler KNOWS. tools/
+asm-corpus.py reads GNU `as`'s listing now (`-alm`, macros expanded),
+which gives every source line's address, bytes and text: a line whose
+first word after its labels is a directive is data or alignment, any
+other line with bytes is an instruction, and the bytes are taken from
+the linked engine at that offset (.text is the file from offset 0), so
+symbols have their final values. The listing marks macro-expanded lines
+with `>` - the first version kept the marks, and filed 34 shapes under
+the mnemonic `>`.
+
+**The corpus**: 2,577 instructions, 10,302 bytes - including the code
+before `_start`, which the disassembly's range began after - 4,562 bytes
+of data and 4 of alignment among them; **453 shapes, 56 mnemonics**, each
+line now the source text as written in relfasm64.S - the form the M2
+translation will read.

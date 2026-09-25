@@ -1,68 +1,93 @@
 #!/usr/bin/env python3
 """tools/asm-corpus.py - what the Forth assembler has to match (SELF-HOSTING.md M0)
 
-Assembles relfasm64.S with GNU as, disassembles its code - from _start
-to dispatch256, where the tables begin - and reduces it to instruction
-SHAPES: the mnemonic and operands with registers and size keywords kept
-and numbers generalised to N, plus the encoding's length for jumps and
-calls (the short and near forms are the choice an assembler makes). For
-each shape it keeps one real instance and its bytes, as GNU as chose
-them. Written to tests/asm-corpus.txt, one shape a line:
+GNU as assembles relfasm64.S with a listing (-alm: the macros expanded),
+which says, for every source line, its address, its bytes and its text.
+That is the ground truth this reads: a line whose first word (after any
+labels) is a directive is data or alignment; any other line with bytes
+is an instruction. The bytes are taken from the LINKED engine at the
+listed offset (.text is the file from offset 0), so that symbols have
+their final values.
 
-    <bytes in hex>  <instruction as objdump prints it>
+Instructions are reduced to SHAPES - the source text with registers and
+size keywords kept and every other operand (numbers, symbols, the
+expressions of them) generalised to N; jumps and calls told apart by the
+length of their encoding (a short or a near form is the choice an
+assembler makes). One real instance of each is kept, with its bytes and
+its source text, in tests/asm-corpus.txt:
 
-That file is M0's test: the Forth assembler must produce those bytes
-for every line. (Iteration 537.)
+    <bytes in hex>  <the instruction as written in relfasm64.S>
+
+Until Iteration 540 this disassembled the code instead, and so took the
+data inside it - the OPEN-FILE mode table, five strings, alignment
+padding - for instructions: `(bad)`, `rex.X`, `gs`, `outs`.
 """
-import os, re, subprocess, sys, tempfile, collections
+import os, re, subprocess, tempfile, collections
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 subprocess.run(['make', '-s', 'relfasm-ops.S', 'relfasm-consts.S'], check=True)
-obj = os.path.join(tempfile.mkdtemp(prefix='relf-corpus-'), 'r.o')
-subprocess.run(['cc', '-c', '-o', obj, 'relfasm64.S'], check=True)
-syms = {}
-for line in subprocess.run(['nm', '-n', obj], capture_output=True, text=True, check=True).stdout.split('\n'):
-    f = line.split()
-    if len(f) == 3: syms[f[2]] = int(f[0], 16)
-start, stop = syms['_start'], syms['dispatch256']
-# The LINKED file, as the Makefile links it: in the object file every
-# symbol's address is still a 0 waiting for the linker, and the bytes are
-# not the ones M3 compares against (the first version read the object).
-BASE = 0x400000
-flat = obj + '.bin'
-subprocess.run(['ld', '-Ttext=0x%x' % BASE, '--oformat', 'binary', '-o', flat, obj], check=True)
-# --insn-width=16: every instruction's bytes on its own line - by default
-# objdump wraps after 7 and continues on a line with no text, which the
-# parser skipped, cutting every longer instruction short (Iteration 537)
-dis = subprocess.run(['objdump', '-D', '-b', 'binary', '-m', 'i386:x86-64', '-M', 'intel', '--insn-width=16',
-                      '--adjust-vma=0x%x' % BASE, '--start-address=0x%x' % (BASE + start),
-                      '--stop-address=0x%x' % (BASE + stop), flat],
-                     capture_output=True, text=True, check=True).stdout
-insns = []
-for line in dis.split('\n'):
-    m = re.match(r'\s*([0-9a-f]+):\t([0-9a-f ]+?)\s*\t(.*)$', line)
-    if not m: continue
-    text = re.sub(r'\s+', ' ', m.group(3).split('#')[0]).strip()
-    text = re.sub(r' <[^>]*>', '', text)                 # objdump's target names
-    insns.append((m.group(2).replace(' ', ''), text))
+work = tempfile.mkdtemp(prefix='relf-corpus-')
+obj, lst, flat = (os.path.join(work, n) for n in ('r.o', 'r.lst', 'r.bin'))
+subprocess.run(['cc', '-c', '-Wa,-alm=' + lst, '-o', obj, 'relfasm64.S'], check=True)
+subprocess.run(['ld', '-Ttext=0x400000', '--oformat', 'binary', '-o', flat, obj], check=True)
+image = open(flat, 'rb').read()
 
-def shape(bytes_, text):
-    mn = text.split(' ', 1)[0]
-    ops = text[len(mn):]
-    if mn.startswith('j') or mn == 'call':
-        if re.match(r'^\s*[0-9a-f]+$', ops):              # a relative target
-            return '%s rel%d' % (mn, 8 if len(bytes_) // 2 == 2 else 32)
-    ops = re.sub(r'0x[0-9a-f]+|\b\d+\b', 'N', ops)
-    return mn + ops
+lines = []                                   # [addr, nbytes, text]
+for raw in open(lst, encoding='latin1'):
+    raw = raw.rstrip('\n')
+    m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+([0-9A-F]+)\s*\t?(.*)$', raw)
+    if m:
+        lines.append([int(m.group(1), 16), len(m.group(2)) // 2, m.group(3)]); continue
+    m = re.match(r'^\s*\d+\s+([0-9A-F]+)\s*$', raw)
+    if m and lines:                          # the same line's bytes, continued
+        lines[-1][1] += len(m.group(1)) // 2
 
+def clean(text):
+    text = re.sub(r'^\s*>+\s*', '', text)        # the listing's macro-expansion marks
+    text = re.sub(r'/\*.*?\*/', '', text)
+    text = re.sub(r'^\s*(?:[A-Za-z_.][\w.]*:|\d+:)\s*', '', text.strip())   # labels
+    text = re.sub(r'^\s*(?:[A-Za-z_.][\w.]*:|\d+:)\s*', '', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+REGS = set('''rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15
+eax ebx ecx edx esi edi ebp esp r8d r9d r10d r11d r12d r13d r14d r15d
+ax bx cx dx si di bp sp r8w r9w r10w r11w r12w r13w r14w r15w
+al bl cl dl sil dil bpl spl ah bh ch dh r8b r9b r10b r11b r12b r13b r14b r15b rip'''.split())
+KEEP = REGS | {'byte', 'word', 'dword', 'qword', 'ptr'}
+JUMPS = re.compile(r'^(j[a-z]+|call|loop[a-z]*)$')
+
+def shape(text, n):
+    mn, _, ops = text.partition(' ')
+    if JUMPS.match(mn) and '[' not in ops and ops.split(',')[0].strip().lower() not in REGS:
+        return '%s rel%d' % (mn, 8 if n == 2 else 32)
+    def gen(tok):
+        t = tok.group(0)
+        return t if t.lower() in KEEP else 'N'
+    ops = re.sub(r'[A-Za-z_.][\w.]*|0x[0-9a-fA-F]+|\d+[bf]?', gen, ops)
+    ops = re.sub(r'N(\s*[-+*/]\s*N)+', 'N', ops.replace(' ', ''))
+    return mn + ' ' + ops if ops else mn
+
+insns, data, pad = [], 0, 0
+for addr, n, text in lines:
+    t = clean(text)
+    if n == 0 or not t:
+        continue
+    if t.startswith('.'):
+        if t.split()[0] in ('.balign', '.align', '.p2align'): pad += n
+        else: data += n
+        continue
+    insns.append((addr, image[addr:addr + n].hex(), t))
+
+start = min(a for a, h, t in insns)
 seen = collections.OrderedDict()
-for b, t in insns:
-    seen.setdefault(shape(b, t), (b, t))
+for a, h, t in insns:
+    seen.setdefault(shape(t, len(h) // 2), (h, t))
 with open('tests/asm-corpus.txt', 'w') as out:
     out.write('# tests/asm-corpus.txt - generated by tools/asm-corpus.py from relfasm64.S\n')
-    out.write('# one line per instruction shape: GNU as bytes, then the instruction\n')
-    for s, (b, t) in seen.items():
-        out.write('%-30s %s\n' % (b, t))
-mn = collections.Counter(t.split(' ', 1)[0] for b, t in insns)
-print('%d instructions in %d bytes of code; %d distinct shapes; %d mnemonics'
-      % (len(insns), stop - start, len(seen), len(mn)))
+    out.write('# one line per instruction shape: the bytes GNU as made, then the source\n')
+    for s, (h, t) in seen.items():
+        out.write('%-26s %s\n' % (h, t))
+mn = collections.Counter(t.split(' ', 1)[0] for a, h, t in insns)
+print('%d instructions, %d bytes; %d bytes of data and %d of alignment among them;'
+      ' %d distinct shapes; %d mnemonics'
+      % (len(insns), sum(len(h) // 2 for a, h, t in insns), data, pad, len(seen), len(mn)))

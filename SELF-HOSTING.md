@@ -80,11 +80,13 @@ The same way everything here is: **byte for byte**.
 - **M0 - encoder.** The 53 mnemonics and their operand forms, each
   checked against GNU `as` on the same instruction: assemble a list of
   every instruction form the engine uses both ways, compare the bytes.
-  **The list exists** (Iteration 537): `tools/asm-corpus.py` disassembles
-  the linked engine's code - 2,765 instructions once the macros are
-  expanded, 11,024 bytes - into **450 distinct shapes**, each with one
-  real instance and the bytes GNU `as` chose, in `tests/asm-corpus.txt`;
-  every line's bytes occur whole in the built engine. One choice already
+  **The list exists** (Iterations 537, 540): `tools/asm-corpus.py`
+  reads GNU `as`'s own listing of relfasm64.S, macros expanded - each
+  line's address, bytes and source - and takes the bytes from the linked
+  engine: **2,577 instructions, 10,302 bytes, 453 distinct shapes, 56
+  mnemonics**, each shape with one real instance, its bytes and its
+  source text, in `tests/asm-corpus.txt`. (537's version disassembled
+  instead, and took the data inside the code for instructions.) One choice already
   visible: an absolute address is encoded with a SIB byte and no base
   (`48 89 04 25 disp32`), not RIP-relative.
 - **M1 - a program.** An ELF file that exits with status 42, written
