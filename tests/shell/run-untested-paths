@@ -1,0 +1,30 @@
+#!/bin/sh
+# Paths the suites never entered until Iteration 510, found by
+# tools/coverage.py: each worked, and nothing checked that it still does.
+# The first two are dash's behaviour exactly; the last two are this
+# shell's own limits, which dash does not have.
+cd "$(dirname "$0")" || exit 1
+. ./lib.sh
+d=$(mktemp -d)
+
+printf 'echo "sourced along PATH"\n' > "$d/dotme"
+out=$(PATH="$d:$PATH" "$THIS_SH" -c '. dotme' 2>&1)
+assert_output_equals ". finds a name without a slash along PATH (DOT-SEARCH)" "sourced along PATH" "$out"
+
+touch "$d/a*b" "$d/axb"
+out=$(cd "$d" && "$THIS_SH" -c 'echo a\*[b] a\*x*' 2>&1)
+assert_output_equals "an escaped glob character beside a live one (GLOB-MARK-BACKSLASH)" "a*b a*x*" "$out"
+
+# A line read from standard input is limited to 1 MiB (LINE-HARD-MAX);
+# a longer one is reported, the rest of it skipped, and the next line
+# runs. dash reads it whole.
+out=$({ printf 'echo '; printf '%1100000s' '' | tr ' ' x; printf '\necho after\n'; } | "$THIS_SH" 2>&1)
+assert_output_contains "a line over 1 MiB is reported (LINE-TOO-LONG)" "shell: line too long" "$out"
+assert_output_contains "... skipped, and the next line runs (DRAIN-LINE)" "after" "$out"
+
+# An expansion is limited to 16 MiB (EXPAND-HARD-MAX).
+out=$("$THIS_SH" -c 'x=$(printf "%9000000s" ""); y="$x$x"; echo "len ${#y}"' 2>&1 | head -3)
+assert_output_contains "an expansion over 16 MiB is refused (EXPANSION-TOO-LARGE)" "shell: expansion too large" "$out"
+
+rm -rf "$d"
+report

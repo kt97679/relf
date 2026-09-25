@@ -53,6 +53,10 @@ commands = sys.argv[1:] or [
     'sh tests/matrix/run',
     'sh tests/parse/run',
     'bash tests/mrsh-suite/run.sh',
+    # The pty suite, since Iteration 510: without it 18 of the 24 words
+    # never entered were prompt escapes and job-control reports, which
+    # only an interactive shell reaches - tested, just not counted.
+    'sh tests/interactive/run',
 ]
 # The instrumented engine as a shell of its own (tools/embed.sh): since
 # Iteration 506 relfsh is a binary, so the suites are pointed at this

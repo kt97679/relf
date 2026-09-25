@@ -102,7 +102,9 @@ VARIABLE SRC-EOF?       \ ... and it has ended
 \ INTERACTIVE? is declared in shell.4, which loads first and needs it
 \ for SPECIAL-ERROR (Iteration 376).
 
-: BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs
+: BLANK-RUN? ( c-addr u --- f )   \ nothing but spaces and tabs, or nothing
+  \ (aliases' AL-BLANK? was a copy with a redundant empty test: a
+  \ zero-length ?DO never runs; Iteration 510)
   OVER + SWAP ?DO
     I C@ DUP 32 <> SWAP 9 <> AND IF UNLOOP 0 EXIT THEN
   LOOP -1 ;
@@ -1319,12 +1321,6 @@ VARIABLE EMPTY-VIA-ALIAS?  \ the command just parsed was such an alias, and noth
 VARIABLE ALIAS-EXPANDED-HERE?  \ an alias was expanded while parsing this command
 VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
 
-: AL-BLANK? ( c-addr u --- f )   \ empty, or spaces and tabs only
-  DUP 0= IF 2DROP -1 EXIT THEN
-  OVER + SWAP ?DO
-    I C@ DUP 32 <> SWAP 9 <> AND IF UNLOOP 0 EXIT THEN
-  LOOP -1 ;
-
 : TRY-ALIAS ( --- f )   \ the current token was an alias, and is replaced
   NO-ALIAS? @ IF 0 EXIT THEN
   K-WORD KIND? 0= IF 0 EXIT THEN
@@ -1356,7 +1352,7 @@ VARIABLE PIPE-FIRST-OWED?  \ PARSE-PIPELINE's first command follows && or ||
   THEN
   \ A value that is empty or all blanks leaves no command behind, which
   \ PARSE-SIMPLE has to be told about (Iteration 382).
-  2DUP AL-BLANK? IF -1 ALIAS-VANISHED? ! THEN
+  2DUP BLANK-RUN? IF -1 ALIAS-VANISHED? ! THEN
   \ Recorded AFTER the splice. SPLICE shifts every active expansion that
   \ ends past this token, and this one was already in the table, so its
   \ end moved too - by the difference between the value and the name -
@@ -3721,7 +3717,6 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
 
 32 BUFFER: PPID-BUF
 CREATE ARGV0-NM  CSTR," RELF_ARGV0"
-CREATE STARTUP-IFS-NM  CSTR," IFS"
 CREATE IFS-DEFAULT  32 C, 9 C, 10 C, 0 C,   \ space, tab, newline
 CREATE OPTIND-NM    CSTR," OPTIND"
 CREATE OPTIND-ONE   CSTR," 1"
@@ -3748,7 +3743,7 @@ CREATE OPTIND-ONE   CSTR," 1"
   \ the everyday `old=$IFS; IFS=:; ...; IFS=$old` restored it EMPTY and
   \ turned field splitting off for the rest of the script. An IFS from
   \ the environment is replaced, as dash and bash replace it.
-  STARTUP-IFS-NM IFS-DEFAULT SET-SHVAR
+  IFS-NM IFS-DEFAULT SET-SHVAR
   OPTIND-NM OPTIND-ONE SET-SHVAR
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !

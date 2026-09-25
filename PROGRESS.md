@@ -505,6 +505,7 @@ do not trust the absence of a line below.
 - **507** — everything named by cell width: relf64/relf32, kernel64/kernel32, relfsh64/relfsh32
 - **508** — the ARMv7 board on 507: two things the rename left for a 32-bit host
 - **509** — the space audit: 2 KB in full cells, and headers are a fifth of the image
+- **510** — the source audit, first pass: four duplicates merged, four untested paths tested
 
 ### Not tied to an iteration
 
@@ -24306,3 +24307,41 @@ kept so that `forth` can find it. An image that kept names only for a
 documented extension API - what forth-shell-examples/README.md already
 lists - could be about a sixth smaller. The largest lever by far, and a
 trade-off in what `forth` can see; the user's to choose.
+
+## Iteration 510: the source audit, first pass
+
+GOALS.md item 9. Two measurements, both kept as tools.
+
+**Duplicated logic**: `tools/dup-scan.py` tokenizes every colon
+definition without its comments and reports runs of 12 or more words
+that two or more definitions share - 82 of them in the shell's six
+files. Many are Forth's few ways of doing a small thing; four were true
+copies, and are one word each now:
+
+- `AE-HEX-DIGIT` and `HEXV`, the same 24 words, are `HEX-DIGIT`;
+- `AL-BLANK?` and `BLANK-RUN?` answered alike in every case -
+  `AL-BLANK?`'s empty-string test was redundant, a zero-length `?DO`
+  never running - and `BLANK-RUN?` remains;
+- `DROP-ARGV0` and `DROP-ARGV1` differed in where their loop began, and
+  are both `DROP-ARGV-AT` with an index;
+- `IFS-CHAR?` and `IFS-FIRST` each wrote `I`, `F`, `S` and a NUL into a
+  four-byte buffer before every lookup - buffers are allocated at
+  startup, not saved - and tree.4 kept a constant `IFS` of its own
+  besides. `IFS-NM` is a constant in the image now, and the only one.
+
+**Code never run**: `tools/coverage.py` ran every suite on an
+instrumented engine: 90% of shell.4's and tree.4's instructions run,
+and 24 of 759 words never do. Eighteen are prompt escapes and job-control
+reports, which the pty suite tests but the tool did not run - it does
+now. Two run while the image is built. The other four were real gaps,
+each a path that worked with nothing checking it still did:
+`.` searching PATH for a name without a slash; a pattern mixing an
+escaped glob character with a live one (`a\*[b]`); an input line over
+the 1 MiB limit - reported, skipped, and the next line run, where dash
+has no limit; and an expansion over 16 MiB. tests/shell/run-untested-paths
+holds all four, the first two checked against dash first.
+
+Recorded changes, with their causes: `shell:assertions` 867 -> 872 and
+`shell:files` 82 -> 83, run-untested-paths; both shell images smaller,
+by 224 bytes at 64-bit and 232 at 32 - the four merges - and their
+checksums and the size totals with them.
