@@ -84,6 +84,10 @@ tiny      0x44    (LOOP)      L_loop
 tiny      0x45    (?DO)       L_qdo
 tiny      0x46    EXECUTE     L_execute
 tiny      0x47    @XT         L_atxt
+fuse      0x48    VAR@+       L_vfplus
+fuse      0x49    VAR@<       L_vflt
+fuse      0x4A    VAR@1+      L_vfonep
+fuse      0x4B    VAR@C@      L_vfcfetch
 spec      0x61    push0       L_lit0
 spec      0x62    push1       L_lit1
 spec      0x63    push-1      L_litm1

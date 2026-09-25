@@ -936,6 +936,14 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
+/*  The first superinstructions (532): VAR@ and the operation after it,
+ *  one dispatch. The compiler rewrites the VAR@ byte in place; the slot
+ *  operand after it is the variable's, as for VAR@. */
+L_vfplus:   { UNS64 a = SLOT(); tos += CELL(a); } NEXT();          /* VAR@ + */
+L_vflt:     { UNS64 a = SLOT();                                     /* VAR@ < */
+              tos = (UNS64)-(INT64)((INT64)tos < (INT64)CELL(a)); } NEXT();
+L_vfonep:   { UNS64 a = SLOT(); PUSHT(CELL(a) + 1); } NEXT();      /* VAR@ 1+ */
+L_vfcfetch: { UNS64 a = SLOT(); PUSHT(BYTE(CELL(a))); } NEXT();    /* VAR@ C@ */
 L_atxt:   /* @XT ( a-addr --- xt ): the offset there, plus the image base (531) */
     tos = CELL(tos) + cbase;
     NEXT();

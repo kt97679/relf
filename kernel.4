@@ -1318,6 +1318,13 @@ VARIABLE LAST-CALL ( --- a-addr )
 \ Where the last call starts, or 0...
 VARIABLE LAST-CALLXT ( --- a-addr )
 \ ...and its target.
+VARIABLE LAST-VAR ( --- a-addr )
+\ Where the last VAR@ opcode is, or 0: the first superinstructions
+\ (Iteration 532) rewrite it in place when +, <, 1+ or C@ follows.
+72 CONSTANT VAR@+OP     \ VAR@ then +, as one opcode (opcodes.tab)
+73 CONSTANT VAR@<OP     \ VAR@ then <
+74 CONSTANT VAR@1+OP    \ VAR@ then 1+
+75 CONSTANT VAR@C@OP    \ VAR@ then C@
 
 \ The compiler rewrites four two-operation patterns into one opcode
 \ (CV8.md 6): `LIT n +` and `LIT n =` into ADDI/EQI, and
@@ -1328,7 +1335,7 @@ VARIABLE LAST-CALLXT ( --- a-addr )
 \ not one of the halves, calls NO-PEEP. `;` folds a final operation and
 \ its EXIT into one opcode under the same rule.
 : NO-PEEP ( --- )
-  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! ;
+  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! 0 LAST-VAR ! ;
 
 : REWIND ( a-addr --- )
 \ Discard everything compiled from a-addr to HERE.
@@ -1442,7 +1449,21 @@ FOLD-TABLE
   DUP [OP] @ = IF DROP 100 ELSE
   [OP] ! = IF 101 ELSE 0 EXIT THEN THEN
   LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
+  DUP 100 = IF HERE LAST-VAR ! THEN
   OP, R> 4 + ALIGNED SLOT, -1 ;   \ >BODY, which is defined later
+: PEEP-VARX ( op --- f )
+\ Fold the operation just compiled into the VAR@ right before it, where
+\ it is one of the four the engines have fused forms of: the VAR@ byte
+\ is rewritten, its slot operand stays where it is - so its offset,
+\ which is relative to itself, stays right - and nothing is emitted.
+\ NO-PEEP clears LAST-VAR, so nothing that is a branch target between
+\ the two can be folded away (Iteration 532).
+  LAST-VAR @ 0= IF DROP 0 EXIT THEN
+  DUP [OP] + = IF DROP VAR@+OP ELSE
+  DUP [OP] < = IF DROP VAR@<OP ELSE
+  DUP [OP] 1+ = IF DROP VAR@1+OP ELSE
+  [OP] C@ = IF VAR@C@OP ELSE 0 EXIT THEN THEN THEN THEN
+  LAST-VAR @ C!  NO-PEEP -1 ;
 
 : DOES-FETCH? ( xt --- f )
 \ Is xt a `CREATE ... DOES> @ ;` word - a buffer from pool.4's BUFFER:,
@@ -1464,7 +1485,8 @@ FOLD-TABLE
     DUP C@ 126 = IF
       NO-PEEP DUP C@ OP, 1+ C@ OP,
     ELSE
-      C@ DUP PEEP-IMM IF DROP EXIT THEN
+      C@ DUP PEEP-VARX IF DROP EXIT THEN
+      DUP PEEP-IMM IF DROP EXIT THEN
       DUP PEEP-VAR IF DROP EXIT THEN
       NO-PEEP HERE LAST-OP ! OP,
     THEN
@@ -1474,7 +1496,7 @@ FOLD-TABLE
     \ and the return were four - 6.7% of the shell's loop was that, for
     \ its buffers (Iteration 260).
     DUP DOES-FETCH? IF
-      NO-PEEP 100 OP, 4 + ALIGNED SLOT, NO-PEEP EXIT
+      NO-PEEP HERE >R 100 OP, 4 + ALIGNED SLOT, NO-PEEP R> LAST-VAR ! EXIT
     THEN
     CALL,
   THEN ;

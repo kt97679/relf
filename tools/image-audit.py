@@ -51,6 +51,10 @@ _rows = _opcodes.load()
 NDIRECT = NSYN = sum(1 for k, n, nm, h in _rows if k == 'direct')
 EXITS = {_opcodes.number('EXIT'), _opcodes.number('LIT8;EXIT')} | {n for k, n, nm, h in _rows if k == 'fold'}
 B8, QB8 = _opcodes.number('BRANCH8'), _opcodes.number('?BRANCH8')
+# the opcodes with a variable-slot operand: the specialised six, and the
+# superinstructions built on VAR@ (kind `fuse`, Iteration 532)
+SLOTOPS = {n for k, n, nm, h in _rows
+           if nm in ('VAR@', 'VAR!', 'LSAVE', 'LRESTORE', 'L!', 'LZERO') or k == 'fuse'}
 CALLS=[]; SLOTS=[]; S = collections.Counter(); hist = collections.defaultdict(list)
 OPS = collections.Counter(); ESCS = collections.Counter()
 def s16(v): return v - 65536 if v >= 32768 else v
@@ -82,7 +86,7 @@ for name, cnt, xt, end in bodies:
         elif op == 0x7D: S['LIT64'] += 1; ip += 9; continue
         elif op in (0x79, 0x7A, 0x7B, 0x7C): ip += 2
         elif op == 0x7E: ip += 2; S['ESC'] += 1; continue
-        elif 0x64 <= op <= 0x69:
+        elif op in SLOTOPS:
             if img[ip+1] & 0x80:
                 v = ((img[ip+1] & 0x7F) << 16) | img[ip+2] << 8 | img[ip+3]
                 v = (v ^ 0x400000) - 0x400000              # 23 bits signed, from the operand

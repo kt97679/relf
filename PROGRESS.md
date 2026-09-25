@@ -527,6 +527,7 @@ do not trust the absence of a line below.
 - **529** — ?DUP an opcode: 2.63% fewer dispatches; the loop words' failure diagnosed
 - **530** — the loop words as opcodes: I, (LOOP), (?DO) - 13.9% fewer dispatches since 528
 - **531** — EXECUTE and @XT as opcodes: 14.95% fewer dispatches since 528
+- **532** — the first superinstructions: VAR@ fused with +, <, 1+, C@ - 4.62% fewer; 18.9% since 528
 
 ### Not tied to an iteration
 
@@ -25172,3 +25173,47 @@ VAR@` 3.3%, `VAR@ <` 2.0%, `0= ?BRANCH` 1.8%, `EQI ?BRANCH` 1.2%, `VAR@
 And `push0 OVER ! CELL+ BRANCH8` at 0.74% for each of its pairs - an
 ERASE written out as a Forth loop somewhere, better fixed where it is
 than by any opcode.
+
+## Iteration 532: the first superinstructions
+
+After the runtime words, the pairs (QUESTIONS.md A12): the most frequent
+begin with `VAR@`, and four of them can be fused in the simplest way
+there is - by rewriting the `VAR@` byte in place when the next operation
+is compiled. `VAR@ +`, `VAR@ <`, `VAR@ 1+` and `VAR@ C@` became `VAR@+`,
+`VAR@<`, `VAR@1+` and `VAR@C@`, at 0x48-0x4B.
+
+**The compiler** (kernel.4): `LAST-VAR` remembers where the last `VAR@`
+opcode was compiled - by `PEEP-VAR`, which makes `var @` into `VAR@`,
+and by the path that makes a `DOES> @ ;` word's use into one - and
+`NO-PEEP` forgets it, so nothing that is a branch target can come
+between the two halves. `PEEP-VARX`, first in `COMPILE,`'s opcode path,
+rewrites that byte when `+`, `<`, `1+` or `C@` follows, and compiles
+nothing: the slot operand stays where it was, and its offset, which is
+relative to itself, stays right. The four numbers are kernel constants
+`--check` holds to opcodes.tab; `LAST-VAR`, an absolute address, joined
+save-system.4's scrub list (243's lesson). The decoders - image-audit.py,
+superinst.py - take their slot opcodes from the table now: the six
+specialised ones and every opcode of the new kind `fuse`.
+
+**Tested**: the six cases - a sum, a signed `<` with a negative on the
+left, an increment, a byte through an address the variable holds, a
+false comparison - give the same on both engines and on the committed
+531 build, which has no fused forms. The differential suite passes
+through both engines' shells. **Measured: 19,094,474 dispatches became
+18,212,374 - 4.62% fewer**, the largest single step so far; 18.9% since
+528, in eleven opcodes of the 32 free.
+
+**A checker bug found on the way**: `--check` said `VAR@+OP` and
+`VAR@1+OP` were wrong. They were right - the check matched constant names
+with `grep -E`, where `+` is a quantifier, so a name with a `+` in it
+could never match itself. It compares fields exactly now; checked both
+ways, passing on the sources and failing on a deliberately wrong copy.
+
+Recorded changes, with their causes: both shell images smaller - 808
+bytes at 64-bit, 768 at 32 - a byte saved at every fused site, less the
+compiler's new words; the engines 448-608 bytes larger for four
+handlers; relfshasm64 400 bytes smaller over all. And `size:x86_64` 3,288
+bytes LARGER while the image shrank: the stripped 64-bit engine crossed
+a 4 KB page, the step tests/sizes' own comment warns of - 4,096 bytes
+of file layout, less the 808. The 32-bit total, which crossed none, fell
+by its image's 768. Every suite row as before.

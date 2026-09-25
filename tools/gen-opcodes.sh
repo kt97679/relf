@@ -150,7 +150,10 @@ while read -r file const name; do
     num=$(awk -v n="$name" '/^#/ { next } $3 == n && $1 != "escaped" { print $2; exit }' "$tab")
     [ -n "$num" ] || { bad "opcodes.tab has no opcode $name"; continue; }
     dec=$(printf '%d' "$num")
-    grep -Eq "^ *$dec CONSTANT $const([ \t]|$)" "$dir/$file" ||
+    # Fields compared exactly: a name like VAR@+OP is not a pattern (the
+    # first version used grep -E, where + is a quantifier, and a name with
+    # a + in it could never match itself - Iteration 532)
+    awk -v d="$dec" -v c="$const" '$1 == d && $2 == "CONSTANT" && $3 == c { f = 1 } END { exit !f }' "$dir/$file" ||
         bad "$file's $const is not $dec ($name in opcodes.tab)"
 done <<EOF
 cross.4 EXIT-OP EXIT
@@ -165,6 +168,10 @@ cross.4 EQI-OP EQI
 cross.4 LIT64-OP LIT64
 cross.4 ESC-OP ESC
 cross.4 LOOP-OP (LOOP)
+kernel.4 VAR@+OP VAR@+
+kernel.4 VAR@<OP VAR@<
+kernel.4 VAR@1+OP VAR@1+
+kernel.4 VAR@C@OP VAR@C@
 shadow.4 LSAVE-OP LSAVE
 shadow.4 LRESTORE-OP LRESTORE
 shadow.4 L!-OP L!

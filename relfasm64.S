@@ -940,6 +940,27 @@ L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
             NEXT
 2:          add r14, 2
 1:          NEXT
+/* the first superinstructions (532): VAR@ and the operation after it */
+L_vfplus:   SLOT                     /* VAR@ + */
+            add r12, [rdx]
+            NEXT
+L_vflt:     SLOT                     /* VAR@ < : tos < the variable, signed */
+            xor eax, eax
+            cmp r12, [rdx]
+            setl al
+            neg rax
+            mov r12, rax
+            NEXT
+L_vfonep:   SLOT                     /* VAR@ 1+ */
+            mov rax, [rdx]
+            inc rax
+            PUSHT rax
+            NEXT
+L_vfcfetch: SLOT                     /* VAR@ C@ */
+            mov rax, [rdx]
+            movzx eax, byte ptr [rax]
+            PUSHT rax
+            NEXT
 L_atxt:     mov r12, [r12]           /* @XT ( a-addr --- xt ), since 531 */
             add r12, rbx             /* the image base, which START holds */
             NEXT
