@@ -263,11 +263,10 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 : DOVAR-OP  ( --- n ) NSYN 1+ ;
 : DODOES-OP ( --- n ) NSYN 2 + ;
 : LIT8-OP   ( --- n ) NSYN 3 + ;
-: LIT8X-OP  ( --- n ) NSYN 4 + ;
-: FOLD-BASE ( --- n ) NSYN 5 + ;
-\ The one-byte-offset branches follow the folded band (Iteration 258).
-: BRANCH8-OP  ( --- n ) NSYN 5 + 23 + ;
-: 0BRANCH8-OP ( --- n ) NSYN 5 + 24 + ;
+\ The one-byte-offset branches (Iteration 258), where the folded band
+\ ended until 538 removed it: constants now, which --check holds.
+63 CONSTANT BRANCH8-OP
+64 CONSTANT 0BRANCH8-OP
 1 CONSTANT EXIT-OP
 2 CONSTANT LIT16-OP
 3 CONSTANT BRANCH-OP
@@ -276,37 +275,14 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
  97 CONSTANT LIT0-OP     \ 98 push 1, 99 push -1
 100 CONSTANT VAR@-OP
 101 CONSTANT VAR!-OP
-121 CONSTANT ADDI-OP     \ +1 is ADDI;EXIT
-123 CONSTANT EQI-OP      \ +1 is EQI;EXIT
+121 CONSTANT ADDI-OP
+123 CONSTANT EQI-OP
 125 CONSTANT LIT64-OP
 126 CONSTANT ESC-OP
  68 CONSTANT LOOP-OP     \ (LOOP), an opcode since Iteration 530
 : TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 \ Calls and slot operands name a byte offset: the call scale is 0,
 \ because bodies are not aligned (CV8.md 2.4).
-
-\ The primitives with a folded "then EXIT" form, in the order the
-\ engine's table has them. Names, because their opcodes are not known
-\ until kernel.4 declares them; PRIMITIVE fills in FOLD-IDX.
-19 CONSTANT #FOLD
-CREATE FOLD-IDX #FOLD CELLS ALLOT
-: NAMES, ( n "name"... --- )
-\ Lay down n counted strings. WORD parses to HERE, so ALLOT keeps it.
-  0 DO BL WORD C@ 1+ ALLOT LOOP ;
-: FOLD-SETUP ( --- )
-  #FOLD 0 DO -1 FOLD-IDX I CELLS + ! LOOP ;
-FOLD-SETUP
-CREATE FOLD-NAMES
-15 NAMES, + = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT U< OVER DROP
- 4 NAMES, SWAP >R R> NEGATE
-ALIGN
-
-: FOLD-POS ( c-addr u --- k | -1 )
-\ Position of a name in the fold list, or -1.
-  FOLD-NAMES #FOLD 0 DO           ( c-addr u p )
-    >R 2DUP R@ COUNT COMPARE 0= IF 2DROP R> DROP I UNLOOP EXIT THEN
-    R> COUNT +
-  LOOP DROP 2DROP -1 ;
 
 \ The four primitives the peepholes complete, by index, found the same
 \ way when PRIMITIVE declares them.
@@ -381,22 +357,9 @@ NO-PEEP-T
   DUP 2147483648 + 4294967296 U< IF LIT32-OP C,-T 32,-T EXIT THEN
   LIT64-OP C,-T DUP 32,-T 32 RSHIFT 32,-T ;
 
-: FOLD-OP-T ( op --- op2 -1 | op 0 )
-  DUP LIT8-OP = IF DROP LIT8X-OP -1 EXIT THEN
-  DUP ADDI-OP = OVER EQI-OP = OR IF 1+ -1 EXIT THEN
-  #FOLD 0 DO
-    DUP FOLD-IDX I CELLS + @ = IF DROP I FOLD-BASE + -1 UNLOOP EXIT THEN
-  LOOP 0 ;
-
 : EXIT,-T ( --- )
-\ The end of a body: EXIT, folded into the last operation if it can be.
-  LAST-LIT-T @ IF LAST-LITV-T @ 2 U< IF
-    LAST-LIT-T @ REWIND-T THERE LAST-OP-T ! LIT8-OP C,-T LAST-LITV-T @ C,-T
-  THEN THEN
-  LAST-OP-T @ ?DUP IF
-    DUP C@-T FOLD-OP-T IF SWAP C!-T ELSE 2DROP EXIT-OP C,-T THEN
-  ELSE EXIT-OP C,-T THEN
-  NO-PEEP-T ;
+\ The end of a body: EXIT. (Folded into the last operation until 538.)
+  EXIT-OP C,-T NO-PEEP-T ;
 
 : PEEP-IMM-T ( idx --- f )
   LAST-LIT-T @ 0= IF DROP 0 EXIT THEN
@@ -466,7 +429,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  8 IMAGE-HDR 6 + C!          \ format version (8 since Iteration 536)
+  9 IMAGE-HDR 6 + C!          \ format version (9 since Iteration 538)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -508,9 +471,6 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
   DUP DIRECT? IF DUP C,-T ELSE ESC-OP C,-T DUP #DIRECT @ - C,-T THEN
   EXIT-OP C,-T
   TLINK @ DUP C@-T 32 OR SWAP C!-T
-  TLINK @ 1+ IMAGE + TLINK @ C@-T 31 AND FOLD-POS DUP 0< 0= IF
-    OVER SWAP CELLS FOLD-IDX + !
-  ELSE DROP THEN
   S" +" TNAME= IF DUP PLUS-IDX ! THEN
   S" =" TNAME= IF DUP EQUALS-IDX ! THEN
   S" @" TNAME= IF DUP FETCH-IDX ! THEN
@@ -540,17 +500,9 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : LIT8-TOK   LIT8-OP LITERAL-T ;
 : BRANCH8-TOK BRANCH8-OP LITERAL-T ;
 : 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
-: LIT8X-TOK  LIT8X-OP LITERAL-T ;
-: FOLD-BASE-TOK FOLD-BASE LITERAL-T ;
-: #FOLD-TOK  #FOLD LITERAL-T ;
 : [OP] ( "name" --- )
 \ Compile the opcode of a direct primitive as a literal.
   ALSO TARGET ' >BODY CELL+ @ PREVIOUS LITERAL-T ;
-: FOLD-TABLE ( --- )
-\ Overwrite the cell a VARIABLE just reserved with the fold list as
-\ opcode bytes, for kernel.4's FOLD-OP.
-  -1 CELLS-T ALLOT-T
-  #FOLD 0 DO FOLD-IDX I CELLS + @ C,-T LOOP ALIGN-T ;
 FORTH DEFINITIONS
 
 \ PART 5: FORWARD REFERENCES
@@ -733,12 +685,13 @@ T' FORTH-WORDLIST >BODY-T PUBLISH-WORDLIST
 THERE   T' DP             >BODY-T !-T
 
 
-\ The folded band is numbered from the primitive count and grows up
-\ towards the fixed specialised band at 0x61 (97). Each primitive added
-\ moves it up one; past the headroom the two would share opcodes and the
-\ engine would decode one as the other, silently.
+\ The synthetic band - LIT32 DOVAR DODOES LIT8 - is numbered from the
+\ primitive count and grows up towards the short branches at 63 (until
+\ 538 the folded band followed it, and this guarded that). Each primitive
+\ added moves it up one; past the headroom the two would share opcodes
+\ and the engine would decode one as the other, silently.
 : MAP-FITS? ( --- )
-  FOLD-BASE #FOLD + 2 + 97 > ABORT" cross: folded band reaches the specialised opcodes" ;
+  NSYN 3 + BRANCH8-OP < 0= ABORT" cross: synthetic band reaches the short branches" ;
 MAP-FITS?
 
 SAVE-IMAGE built.img \ Save the newly constructed Forth system to disk.

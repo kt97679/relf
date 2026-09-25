@@ -12,8 +12,8 @@ crosspath:kernel64-shell.img reproduces
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
-image-sum:kernel32-shell.img 1076230218/110117
-image-sum:kernel64-shell.img 2496899900/118179
+image-sum:kernel32-shell.img 4137817544/110302
+image-sum:kernel64-shell.img 4016723256/118300
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -49,13 +49,13 @@ shell:assertions 874
 shell:dead-words 0
 shell:files 83
 shell:host-sh-tests 0
-size:asm-engine 15840
-size:asm-shell 134035
-size:engine-code-i386 21335
-size:engine-code-x86_64 26536
-size:i386 140441
-size:image-i386 110117
-size:image-x86_64 118179
-size:x86_64 157315
+size:asm-engine 15112
+size:asm-shell 133428
+size:engine-code-i386 20471
+size:engine-code-x86_64 25160
+size:i386 140626
+size:image-i386 110302
+size:image-x86_64 118300
+size:x86_64 157436
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

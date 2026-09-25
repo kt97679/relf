@@ -37,7 +37,7 @@
     .equ PAGE,         4096
     .equ CELL,         8
     .equ LSAVE_MAX,    4096
-    .equ CV8_VERSION,  8
+    .equ CV8_VERSION,  9
     .equ FEATURES,     15            /* varcall varslot spec lit64 */
 
     .equ SYS_read,     0
@@ -680,75 +680,6 @@ L_lit8:     movzx eax, byte ptr [r14]
             inc r14
             PUSHT rax
             NEXT
-L_lit8x:    movzx eax, byte ptr [r14]
-            PUSHT rax
-            EXITNEXT
-
-/* the folded band: a primitive, then EXIT */
-LX_plus:    add r12, [r13]
-            add r13, CELL
-            EXITNEXT
-LX_eq:      FLAG e
-            EXITNEXT
-LX_store:   mov rax, [r13]
-            mov [r12], rax
-            mov r12, [r13 + CELL]
-            add r13, 2*CELL
-            EXITNEXT
-LX_fetch:   mov r12, [r12]
-            EXITNEXT
-LX_lshift:  mov rcx, r12
-            mov r12, [r13]
-            shl r12, cl
-            add r13, CELL
-            EXITNEXT
-LX_rshift:  mov rcx, r12
-            mov r12, [r13]
-            shr r12, cl
-            add r13, CELL
-            EXITNEXT
-LX_cfetch:  movzx r12, byte ptr [r12]
-            EXITNEXT
-LX_cstore:  mov al, [r13]
-            mov [r12], al
-            mov r12, [r13 + CELL]
-            add r13, 2*CELL
-            EXITNEXT
-LX_and:     and r12, [r13]
-            add r13, CELL
-            EXITNEXT
-LX_or:      or r12, [r13]
-            add r13, CELL
-            EXITNEXT
-LX_xor:     xor r12, [r13]
-            add r13, CELL
-            EXITNEXT
-LX_lit:     movzx eax, word ptr [r14]
-            add r14, 2
-            PUSHT rax
-            EXITNEXT
-LX_ult:     FLAG b
-            EXITNEXT
-LX_over:    mov rax, [r13]
-            PUSHT rax
-            EXITNEXT
-LX_drop:    POPT
-            EXITNEXT
-LX_swap:    mov rax, [r13]
-            mov [r13], r12
-            mov r12, rax
-            EXITNEXT
-LX_tor:     RPUSH r12
-            POPT
-            EXITNEXT
-LX_fromr:   mov rax, [r15]
-            add r15, CELL
-            PUSHT rax
-            EXITNEXT
-LX_negate:  neg r12
-            EXITNEXT
-
-/* one-byte branches */
 L_branch8:  movsx rax, byte ptr [r14]
             add r14, rax
             NEXT
@@ -871,9 +802,6 @@ L_addi:     movsx rax, byte ptr [r14]
             inc r14
             add r12, rax
             NEXT
-L_addix:    movsx rax, byte ptr [r14]
-            add r12, rax
-            EXITNEXT
 L_eqi:      movsx rcx, byte ptr [r14]
             inc r14
             xor eax, eax
@@ -882,13 +810,6 @@ L_eqi:      movsx rcx, byte ptr [r14]
             neg rax
             mov r12, rax
             NEXT
-L_eqix:     movsx rcx, byte ptr [r14]
-            xor eax, eax
-            cmp r12, rcx
-            sete al
-            neg rax
-            mov r12, rax
-            EXITNEXT
 L_lit64:    mov rax, [r14]
             add r14, CELL
             PUSHT rax

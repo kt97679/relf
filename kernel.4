@@ -1390,31 +1390,11 @@ VARIABLE STATE ( --- a-addr)
 \ Add a literal to the current definition.
   LIT, ; IMMEDIATE
 
-VARIABLE FOLD-OPS ( --- a-addr )
-\ The primitives with a folded "then EXIT" opcode, as opcode bytes, in
-\ the order of the engine's table.
-FOLD-TABLE
-
-: FOLD-OP ( op --- op2 -1 | op 0 )
-\ The folded opcode for op, if it has one.
-  DUP LIT8-TOK = IF DROP LIT8X-TOK -1 EXIT THEN
-  DUP 121 = OVER 123 = OR IF 1+ -1 EXIT THEN   \ ADDI, EQI
-  #FOLD-TOK 0 DO
-    DUP FOLD-OPS I + C@ = IF DROP I FOLD-BASE-TOK + -1 UNLOOP EXIT THEN
-  LOOP 0 ;
-
 : EXIT, ( --- )
-\ Append a return, folded into the last operation where that has a
-\ folded form. Only ever at the END of a body, so nothing can branch to
-\ the EXIT that folding removes. A final 0 or 1 becomes LIT8 so that it
-\ folds too.
-  LAST-LIT @ IF LAST-LITV @ 2 U< IF
-    LAST-LIT @ REWIND HERE LAST-OP ! LIT8-TOK OP, LAST-LITV @ C,
-  THEN THEN
-  LAST-OP @ ?DUP IF
-    DUP C@ FOLD-OP IF SWAP C! ELSE 2DROP [OP] EXIT OP, THEN
-  ELSE [OP] EXIT OP, THEN
-  NO-PEEP ;
+\ Append a return. Until Iteration 538 it was folded into the last
+\ operation where that had a "then EXIT" form - 22 opcodes and their
+\ handlers, given up for simplicity (QUESTIONS.md A15).
+  [OP] EXIT OP, NO-PEEP ;
 
 : CALL, ( a-addr --- )
 \ A call to the body at a-addr: its offset from the image base, two
@@ -1448,12 +1428,12 @@ FOLD-TABLE
 \ Is xt a `CREATE ... DOES> @ ;` word - a buffer from pool.4's BUFFER:,
 \ say? Its body is DODOES and a far call to the tail, and DOES> starts
 \ every tail with R> (DODOES leaves the parameter field on the return
-\ stack), so this tail is R> and the folded @;EXIT.
+\ stack), so this tail is R> @ EXIT.
   DUP C@ DODOES-TOK = 0= IF DROP 0 EXIT THEN
   1+ DUP C@ 63 AND 16 LSHIFT OVER 1+ C@ 8 LSHIFT OR SWAP 2 + C@ OR
   START @ +
   DUP C@ [OP] R> = 0= IF DROP 0 EXIT THEN
-  1+ C@  [OP] @ FOLD-OP DROP = ;
+  1+ DUP C@ [OP] @ =  SWAP 1+ C@ [OP] EXIT =  AND ;
 
 : COMPILE, ( xt --- )
 \ Add the execution semantics of xt to the current definition. A word

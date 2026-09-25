@@ -219,6 +219,17 @@ performance improvements" - agreed; the one nuance kept is that a change
 making things both simpler and faster (the runtime words) is worth
 keeping.
 
+**A15. The opcode set: 64, the call encoding as it is (537 -> 538).**
+Asked whether simplification would bring the one-byte opcodes to 64 or
+fewer, where the two-bit tag of Q2/A6 becomes possible: not by itself -
+98 after 536 - but by choice: drop the folded returns and move the
+coldest primitives to the escape band. The user: "use the smaller opcode
+set, but don't implement the 1 GB call range yet". So: no folded return
+anywhere (538), the coldest primitives escaped until 64 remain (539),
+and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
+opcodes keep their numbers where they are; packing them into 0x00-0x3F
+is the tag's prerequisite, done if the tag ever is.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

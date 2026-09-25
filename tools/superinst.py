@@ -89,7 +89,7 @@ STRINGS = {xt_of[k] for k in ('(S")', '(.")', '(ABORT")') if k in xt_of}
 N = opcodes.number
 EXIT, BR, QBR, B8, QB8 = N('EXIT'), N('BRANCH'), N('?BRANCH'), N('BRANCH8'), N('?BRANCH8')
 rows = opcodes.load()
-FOLD = {n for k, n, nm, h in rows if k == 'fold'} | {N('LIT8;EXIT'), N('ADDI;EXIT'), N('EQI;EXIT')}
+FOLD = set()                            # no folded returns since Iteration 538
 opname, escname = opcodes.names()
 FMT = opcodes.formats()
 def s16(v): return v - 65536 if v >= 32768 else v

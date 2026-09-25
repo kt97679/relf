@@ -126,15 +126,6 @@ awk '/^#/ || NF == 0 { next } $1 != "escaped" && $5 !~ /^(-|u8|i8|u16|i32|u64|b8
     printf "gen-opcodes: %s has no known operand format (\"%s\")\n", $3, $5; bad = 1 }
 END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
-# the folded returns: opcodes.tab's fold rows, in order, are cross.4's
-# FOLD-NAMES, each with ;EXIT - two sources of one numbering, unchecked
-# until Iteration 536 removed four of them and renumbered the rest
-fn=$(awk '/^CREATE FOLD-NAMES/ { f = 1; next } f && /NAMES,/ { for (i = 3; i <= NF; i++) printf "%s ", $i; next } f { exit }' "$dir/cross.4")
-fr=$(awk '$1 == "fold" { n = $3; sub(/;EXIT$/, "", n); printf "%s ", n }' "$tab")
-[ "$fn" = "$fr" ] || bad "cross.4's FOLD-NAMES ($fn) are not opcodes.tab's fold rows ($fr)"
-nf=$(awk '$1 == "fold" { n++ } END { print n + 0 }' "$tab")
-grep -q "^$nf CONSTANT #FOLD" "$dir/cross.4" || bad "cross.4's #FOLD is not $nf, the fold rows in opcodes.tab"
-
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
 awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/kernel.4" > /tmp/gen-opcodes.k4.$$
@@ -183,6 +174,8 @@ cross.4 EQI-OP EQI
 cross.4 LIT64-OP LIT64
 cross.4 ESC-OP ESC
 cross.4 LOOP-OP (LOOP)
+cross.4 BRANCH8-OP BRANCH8
+cross.4 0BRANCH8-OP ?BRANCH8
 shadow.4 LSAVE-OP LSAVE
 shadow.4 LRESTORE-OP LRESTORE
 shadow.4 L!-OP L!

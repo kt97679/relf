@@ -533,6 +533,7 @@ do not trust the absence of a line below.
 - **535** — optimization stopped (A13); self-hosting proposed: SELF-HOSTING.md, Q17
 - **536** — simplified: nine superinstructions and four unused folds gone; 111 one-byte opcodes -> 98; format 8
 - **537** — self-hosting M0 groundwork: the reference corpus, 450 instruction shapes with GNU as's bytes
+- **538** — no folded returns: 22 opcodes and handlers gone, a body ends in EXIT; 98 one-byte opcodes -> 76; format 9
 
 ### Not tied to an iteration
 
@@ -25391,3 +25392,44 @@ than 7 bytes onto a line with no text, which the parser skipped - so
 every long instruction was cut short (`lea rdi,ds:0x402d26` in 7 bytes
 of its 8). `--insn-width=16` now; and every one of the 450 lines' bytes
 is found whole in the engine's code.
+
+## Iteration 538: no folded returns
+
+A15, the first half: the folded "then EXIT" forms gone - not only the
+nineteen of the fold band but `LIT8;EXIT`, `ADDI;EXIT` and `EQI;EXIT`
+too, so that no folded return exists anywhere: `;` compiles `EXIT`, and
+every tool's "what ends a body" is one opcode.
+
+**Removed**: from kernel.4, `FOLD-OPS`, the table cross.4 laid down for
+it, `FOLD-OP`, and `EXIT,`'s folding - which even rewrote a final 0 or 1
+into `LIT8` so that it could fold; `EXIT,` is `[OP] EXIT OP, NO-PEEP`.
+From cross.4, `#FOLD`, `FOLD-IDX`, `FOLD-NAMES`, `FOLD-POS`,
+`FOLD-OP-T`, the folding in `EXIT,-T`, `PRIMITIVE`'s hook that filled the
+table, the three tokens and `FOLD-TABLE`. From opcodes.tab, 22 rows;
+from each engine, 22 handlers; from `--check`, the fold-order rule 536
+added (nothing left to order).
+
+**Changed**: `DOES-FETCH?` recognised a `DOES> @ ;` word by its tail,
+`R>` then `@;EXIT`; now `R> @ EXIT` - checked, a use of such a word
+compiles to `VAR@` (first byte 100) on both engines, and reads the right
+value. The short branches were `NSYN 5 + 23 +` in cross.4 - a literal 23,
+which is why 536's smaller band left them in place, and a number nothing
+checked: `63 CONSTANT BRANCH8-OP`, `64 CONSTANT 0BRANCH8-OP` now, held
+to the table by `--check`. And `MAP-FITS?`, which kept the folded band
+off the specialised opcodes, keeps the synthetic band - numbered from
+the primitive count, like the fold band was - below the short branches:
+the same silent overlap, at its new boundary. (My first edit missed it;
+its own assertion - no `FOLD` left in cross.4 - stopped the edit before
+cross.4 was written.)
+
+**Format version 9**; the kernels cross-compiled by the version-8 engine
+and reproduced by the version-9 one. **76 one-byte opcodes** (from 98).
+**Cost**: the realistic workload's dispatches, 18,996,433 -> 20,018,261,
+5.4% more - a return folded into its last operation is two dispatches
+again. Against 527, 10.8% fewer still.
+
+Recorded changes, with their causes: the engines smaller - the
+assembly engine by 728 bytes, the C engine's code by 864 (i386) and
+1,376 (x86-64) - for 22 handlers gone; the images 121 and 185 bytes
+larger, every former fold site an operation and an EXIT again, less the
+folding machinery removed. Every suite row as before.

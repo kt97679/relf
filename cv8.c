@@ -286,7 +286,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 8 (Iteration 536): the folded returns renumbered, four that
+/*  Version 9 (Iteration 538): no folded returns - the nineteen "then
+ *  EXIT" forms and LIT8;EXIT, ADDI;EXIT, EQI;EXIT gone; a body ends in
+ *  EXIT, always (A15).
+ *  Version 8 (Iteration 536): the folded returns renumbered, four that
  *  nothing used gone (<;EXIT DUP;EXIT ROT;EXIT R@;EXIT), and the nine
  *  superinstructions of 532-533 gone - simplicity first (A14).
  *  Version 7 (Iteration 528): the band 0x41-0x60 holds opcodes - +!
@@ -305,7 +308,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 8
+#define CV8_VERSION 9
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -842,7 +845,6 @@ L_noop:    /* noop    */ NEXT();
 L_exit:    /* exit    */ ip = RS; rp += CELL_BYTES; NEXT();
 L_lit: PUSHT(OPND16(ip)); ip += 2; NEXT();
 L_lit8: PUSHT(BYTE(ip)); ip += 1; NEXT();
-L_lit8x: PUSHT(BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 L_lit32: SPILL();   /* lit32   */ { UNS64 v = LD32(ip);
                            if (v & 0x80000000u) v |= ~(UNS64)0xFFFFFFFFu;
                            PUSH(v); ip += 4; } FILLNEXT();
@@ -895,9 +897,7 @@ L_invert: tos = ~tos; NEXT();
 L_count: { UNS64 a_ = tos; tos = a_ + 1; PUSHT(BYTE(a_)); } NEXT();
 L_aligned: tos = (tos + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1); NEXT();
 L_addi: tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; NEXT();
-L_addix: tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip = RS; rp += CELL_BYTES; NEXT();
 L_eqi: tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
-L_eqix: tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip = RS; rp += CELL_BYTES; NEXT();
 L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);
@@ -1642,25 +1642,6 @@ L_resize: SPILL(); /* a-addr u --- a-addr' ior */
     FILLNEXT();
 }
 #define EXITNEXT() do { ip = RS; rp += CELL_BYTES; NEXT(); } while (0)
-LX_lit: PUSHT(OPND16(ip)); ip += 2; EXITNEXT();
-LX_drop: POPT(); EXITNEXT();
-LX_swap: t = NOS; NOS = tos; tos = t; EXITNEXT();
-LX_over: t = NOS; PUSHT(t); EXITNEXT();
-LX_cfetch: tos = BYTE(tos); EXITNEXT();
-LX_fetch: tos = CELL(tos); EXITNEXT();
-LX_cstore: BYTE(tos) = (UNS8)NOS; tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
-LX_store: CELL(tos) = NOS; tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
-LX_and: tos &= NOS; dsp += CELL_BYTES; EXITNEXT();
-LX_or: tos |= NOS; dsp += CELL_BYTES; EXITNEXT();
-LX_xor: tos ^= NOS; dsp += CELL_BYTES; EXITNEXT();
-LX_fromr: PUSHT(RS); rp += CELL_BYTES; EXITNEXT();
-LX_tor: RPUSH(tos); POPT(); EXITNEXT();
-LX_eq: tos = -(UNS64)(NOS == tos); dsp += CELL_BYTES; EXITNEXT();
-LX_ult: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; EXITNEXT();
-LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
-LX_negate: tos = -tos; EXITNEXT();
-LX_lshift: tos = NOS << tos; dsp += CELL_BYTES; EXITNEXT();
-LX_rshift: tos = NOS >> tos; dsp += CELL_BYTES; EXITNEXT();
 
 }
 

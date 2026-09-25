@@ -49,7 +49,7 @@ sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import opcodes as _opcodes
 _rows = _opcodes.load()
 NDIRECT = NSYN = sum(1 for k, n, nm, h in _rows if k == 'direct')
-EXITS = {_opcodes.number('EXIT'), _opcodes.number('LIT8;EXIT')} | {n for k, n, nm, h in _rows if k == 'fold'}
+EXITS = {_opcodes.number('EXIT')}     # the only return since Iteration 538
 B8, QB8 = _opcodes.number('BRANCH8'), _opcodes.number('?BRANCH8')
 FMT = _opcodes.formats()
 LITOP, NOOPOP, ESCOP = _opcodes.number('LIT'), _opcodes.number('NOOP'), _opcodes.number('ESC')
