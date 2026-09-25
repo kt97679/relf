@@ -503,6 +503,7 @@ do not trust the absence of a line below.
 - **505** — forth-shell-examples: new builtins, PROMPT_COMMAND, and servers, with TCP in the engine
 - **506** — relfsh is a binary: the engine with the shell image inside it
 - **507** — everything named by cell width: relf64/relf32, kernel64/kernel32, relfsh64/relfsh32
+- **508** — the ARMv7 board on 507: two things the rename left for a 32-bit host
 
 ### Not tied to an iteration
 
@@ -24243,3 +24244,30 @@ files - `crosspath:`, `image-sum:` and `rebuild:kernel64-shell.img` -
 their values identical (reproduces, reproduces, the same checksum); the
 engines' code 32 and 64 bytes larger, for the usage message that now
 names both engines.
+
+## Iteration 508: what the rename left for a 32-bit host
+
+The ARMv7 board ran `make verify` on 507. What it confirmed: the
+single-file shells work on ARM - every interactive, shell, differential
+and POSIX check passed through `relfsh`, a link to `relfsh32` there -
+`relf32` builds natively without `-m32`, and the 4-byte shell image the
+board builds is byte-identical to this machine's again. What it found,
+both of them mine:
+
+- **`portability:problems 1`**: the stale `kernel-shell.img` of a
+  pre-507 build, untracked and no longer ignored. I had said such
+  leftovers would be "harmless" - but the mechanical rename rewrote
+  `.gitignore` too, taking the old name off it, while I kept `relf`, the
+  old engine name, by hand. The old image name is ignored again, with a
+  note on why the old names stay.
+- **A 32-bit engine named `relf64`**, read off the log: the 8-byte
+  engine's code size was 19686 there, exactly the i386 engine's.
+  Verification's rebuild step asks `make` for `kernel64-shell.img`; its
+  rule needs `relf64`; and that rule was unconditional, so on a 32-bit
+  host make compiled the native, 32-bit engine under the 64-bit name
+  before the image build failed. The 8-byte targets - `relf64`,
+  `kernel64-shell.img`, `relfsh64` - now exist only on 64-bit hosts;
+  on a 32-bit one they are phony and say why they cannot be built.
+
+A board built from 507 still has the misnamed `relf64`: `make clean`
+removes it, and until then its size row is only a `machine` row.

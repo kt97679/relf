@@ -55,7 +55,10 @@ relfsh
 relfsh32
 
 # Named by cell width since Iteration 507: relf64 and relf32, relfsh64
-# and relfsh32, relfsh a link to the native one. (relf, above, is the
-# 8-byte engine's old name, still ignored in case a checkout has one.)
+# and relfsh32, relfsh a link to the native one. The OLD names stay
+# ignored too, since a checkout built before 507 still has the files:
+# relf above, and kernel-shell.img, which the rename took off this list
+# - the ARMv7 board's portability check found its stale copy (508).
 relf64
 relfsh64
+kernel-shell.img

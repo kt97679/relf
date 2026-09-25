@@ -115,8 +115,19 @@ HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
 .relf-arch: force-arch-check
 	@printf '%s\n' '$(HOSTARCH)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(HOSTARCH)' > $@
 
+# The 8-byte-cell targets exist only where they can run. On a 32-bit
+# host `relf64` used to be an ordinary rule - verification's rebuild step
+# asked for kernel64-shell.img, and make compiled a 32-bit engine under
+# the 64-bit name before the image build failed (seen on the ARMv7 board
+# at Iteration 508). Now it says why, and makes nothing.
+ifeq ($(HOSTBITS),32)
+.PHONY: relf64 kernel64-shell.img relfsh64
+relf64 kernel64-shell.img relfsh64:
+	@echo "$@: an 8-byte-cell build cannot run on this 32-bit host" >&2; exit 1
+else
 relf64: cv8.c .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
+endif
 
 ifeq ($(HOSTBITS),32)
 relf32: cv8.c .relf-arch
@@ -138,8 +149,10 @@ endif
 # native 4-byte pair, and the 8-byte image cannot be run at all.
 shell-images: $(NATIVE_SHELL_IMG) $(OTHER_SHELL_IMG)
 
+ifneq ($(HOSTBITS),32)
 kernel64-shell.img: relf64 kernel64.img $(SHELL_SOURCES) tools/build-shell-image.sh
 	@sh tools/build-shell-image.sh ./relf64 kernel64.img $@ $(SHELL_SOURCES)
+endif
 
 # LD_PRELOAD is cleared for the i386 build: a preload library for the
 # host architecture can never be loaded into a 32-bit process, and the
@@ -173,8 +186,10 @@ NATIVE_SHELL = relfsh64
 endif
 shells: $(SHELLS)
 
+ifneq ($(HOSTBITS),32)
 relfsh64: relf64 kernel64-shell.img tools/embed.sh
 	@sh tools/embed.sh ./relf64 kernel64-shell.img $@
+endif
 
 relfsh: $(NATIVE_SHELL)
 	@ln -sf $(NATIVE_SHELL) $@
