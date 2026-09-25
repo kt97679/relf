@@ -78,6 +78,7 @@ fold      0x3E    NEGATE;EXIT LX_negate
 branch8   0x3F    BRANCH8     L_branch8
 branch8   0x40    ?BRANCH8    L_0branch8
 tiny      0x41    +!          L_plusstore
+tiny      0x42    ?DUP        L_qdup
 spec      0x61    push0       L_lit0
 spec      0x62    push1       L_lit1
 spec      0x63    push-1      L_litm1

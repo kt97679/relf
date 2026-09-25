@@ -912,6 +912,11 @@ L_badop:    lea rsi, [rip + m_badop]  /* an opcode no table names */
             mov edx, m_badop_len
             mov edi, 2
             jmp die
+L_qdup:     test r12, r12            /* ?DUP ( n --- 0 | n n ), since 529 */
+            jz 1f
+            sub r13, CELL
+            mov [r13], r12
+1:          NEXT
 L_plusstore: mov rax, [r13]          /* +! ( w a-addr --- ), since 528 */
             add [r12], rax
             mov r12, [r13 + CELL]

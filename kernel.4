@@ -455,9 +455,8 @@ VARIABLE R0 ( --- a-addr)
 \ Store the double number d at a-addr.
    DUP >R ! R> CELL+ ! ;
 
-: ?DUP ( n --- 0 | n n)
-\ Duplicate the top cell on the stack, but only if it is nonzero.
-   DUP IF DUP THEN ;
+66 OPCODE ?DUP    ( n --- 0 | n n )     \ duplicate the top cell if nonzero
+\ An opcode since Iteration 529; the colon word was DUP IF DUP THEN.
 
 : MIN ( n1 n2 --- n3)
 \ n3 is the minimum of n1 and n2.

@@ -914,6 +914,9 @@ L_badesc:
 L_badop:   /* an opcode no table names: until 528 it did nothing */
     write_str(2, "relf: image uses an opcode this engine does not have\n");
     exit(2);
+L_qdup:   /* ?DUP ( n --- 0 | n n ): an opcode since 529 */
+    if (tos) PUSHT(tos);
+    NEXT();
 L_plusstore:   /* +! ( w a-addr --- ): an opcode since 528 */
     CELL(tos) += CELL(dsp);
     tos = CELL(dsp + CELL_BYTES);

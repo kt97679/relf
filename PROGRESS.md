@@ -524,6 +524,7 @@ do not trust the absence of a line below.
 - **526** — the dispatch loop measured: both engines on the indirect-jump floor; tuning left out
 - **527** — superinstruction candidates measured: 21% from 32 pairs, ~20% from eight runtime words
 - **528** — +! an opcode: 2.19% fewer dispatches; format 7; unassigned opcodes trap; the cold end tracked
+- **529** — ?DUP an opcode: 2.63% fewer dispatches; the loop words' failure diagnosed
 
 ### Not tied to an iteration
 
@@ -25022,4 +25023,53 @@ Recorded changes, with their causes: both shell images smaller - 240
 bytes at 64-bit, 236 at 32 - every `+!` one byte where a call was two or
 three, and its colon body gone; the engines 104-140 bytes larger for the
 handler and the trap; relfshasm64 136 bytes smaller over all. Every
+suite row as before.
+
+## Iteration 529: ?DUP, and the loop words that failed
+
+**`?DUP` at 0x42** - `66 OPCODE ?DUP`, one handler per engine. Measured
+exactly on the realistic workload: 21,960,924 dispatches became
+21,382,736, **2.63% fewer** - again exactly its body's share; with
+`+!`, 4.76% fewer than before 528. The workload itself varies by a few
+dozen dispatches run to run (29, measured with nothing changed).
+Rebuilt and quickly checked: both kernels reproduce, the opcode map
+agrees, and the differential suite passes 131 of 131 through both
+engines' shells. Fully verified in the next session before the commit.
+
+**The loop words - `I`, `(LOOP)`, `(?DO)` at 0x43-0x45 - failed, twice,
+and were taken back** (the attempt saved as /tmp/loopwords-attempt):
+- the assembly engine did not build: the loop opcodes compare the byte
+  after them with `OPC_BRANCH8`, which the generated file defines at
+  the END of the source - a forward reference, which GAS in Intel
+  syntax takes for memory, as at 520. The constant must be defined
+  before use (a generated include at the top, or the value by hand
+  with a --check rule);
+- the C engine, running the kernel built with them, reported "data
+  stack overflow", and `make images` failed building the 32-bit kernel
+  from it. Not yet diagnosed. Suspects, in order: how DO, ?DO and LOOP
+  compile their runtime words (a call the opcode's inlining changes
+  the shape of, or an `[OP]`-style literal that assumes a primitive);
+  a colon word that runs I or the loop words with its own return
+  address above the parameters; and my handlers, against the colon
+  words they replace.
+The design stands - the loop words were 7.4% of dispatches - and gets
+a careful second attempt, one word at a time: `I` first, alone.
+
+**The failure, diagnosed** (by reading, before any retry): cross.4
+compiles the kernel's own loops through FORWARD references - `FORWARD
+(LOOP)`, and `: LOOP [ TRANSIENT ] (LOOP) [ FORTH ] ...` - which PART 10
+resolves into CALLS to the target word. A forward reference cannot know
+the word will be an opcode word, and an opcode word's body is `[op,
+EXIT]`, so calling it still runs the opcode: harmless for `+!` and
+`?DUP`, fatal for `(LOOP)`, which then finds the call's return address
+where the loop counter belongs. Every loop inside the kernel ran off into
+garbage: the "data stack overflow". The fix: the cross-compiler's `LOOP`
+emits the opcode byte itself, as an OPCODE word's compile action does,
+through a constant `--check` holds to opcodes.tab. `(?DO)` and `I` are
+never referenced forward. And the assembly engine's `OPC_BRANCH8` goes
+in a generated file included at the TOP of the source.
+
+Recorded changes, with their causes: both shell images 170 bytes
+smaller, every `?DUP` one byte where a call was; the engines 24-56 bytes
+larger for the handler; relfshasm64 146 bytes smaller over all. Every
 suite row as before.
