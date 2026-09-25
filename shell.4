@@ -1288,6 +1288,20 @@ VARIABLE GLOB-META#   \ of those, the ones that make the word a pattern
 VARIABLE NO-GLOB?          \ the caller wants no pathname expansion
 DEFER GLOB-FIELDS-CALL
 
+: GLOB-MARK-AT ( off --- )   \ remember a live character's offset
+  \ The one copy of what four words each spelled out (Iteration 510).
+  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
+  GLOB-MARKS GLOB-MARKS# @ CELLS + !
+  1 GLOB-MARKS# +! ;
+
+: GLOB-MARK-DASH ( off --- )   \ an unquoted `-`: marked, but not a pattern
+  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
+  GLOB-MARK-AT ;
+
+: GLOB-MARK-OFF ( off --- )   \ an unquoted pattern character already written
+  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
+  GLOB-MARK-AT  1 GLOB-META# +! ;
+
 : GLOB-MARK ( c --- c )
   \ A `-` and a `]` are marked as well: a quoted `-` inside a bracket is
   \ a literal rather than a range, and a quoted `]` is a member rather
@@ -1300,34 +1314,15 @@ DEFER GLOB-FIELDS-CALL
   \ from a quoted one. They are not patterns on their own either
   \ (Iteration 463, busybox ash-quoting/quoted_punct).
   DUP 45 = OVER 93 = OR OVER 33 = OR OVER 94 = OR IF
-    TOKEN-IS-ASSIGN-PREFIX? 0= IF
-      GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
-      TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-      1 GLOB-MARKS# +!
-    THEN
+    TOK-OUT @ OUT-BASE - GLOB-MARK-DASH
   THEN
   DUP 42 = OVER 63 = OR OVER 91 = OR IF
     \ Recorded even when pathname expansion is off, because a `case`
     \ pattern is still a pattern and these marks are how an unquoted
-    \ metacharacter is told from a quoted one (Iteration 340).
-    TOKEN-IS-ASSIGN-PREFIX? 0= IF TOKEN-IS-ASSIGN-PREFIX? 0= IF
-      GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
-      TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-      1 GLOB-MARKS# +!  1 GLOB-META# +!
-    THEN THEN
+    \ metacharacter is told from a quoted one (Iteration 340). Until
+    \ 510 this branch tested TOKEN-IS-ASSIGN-PREFIX? twice, nested.
+    TOK-OUT @ OUT-BASE - GLOB-MARK-OFF
   THEN ;
-
-: GLOB-MARK-DASH ( off --- )   \ an unquoted `-`: marked, but not a pattern
-  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
-  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
-  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-  1 GLOB-MARKS# +! ;
-
-: GLOB-MARK-OFF ( off --- )   \ an unquoted pattern character already written
-  TOKEN-IS-ASSIGN-PREFIX? IF DROP EXIT THEN
-  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
-  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-  1 GLOB-MARKS# +!  1 GLOB-META# +! ;
 
 : GLOB-MARK-BACKSLASH ( c --- c )
   \ A backslash produced by an unquoted expansion is live in a pattern:
@@ -1338,9 +1333,7 @@ DEFER GLOB-FIELDS-CALL
   \ only special character is such a backslash is not a pattern
   \ (Iteration 428; busybox glob_bkslash_in_var, yash quote-p.tst:583).
   TOKEN-IS-ASSIGN-PREFIX? IF EXIT THEN
-  GLOB-MARKS# @ 1+ CELLS ENSURE-BUFFER GLOB-MARKS
-  TOK-OUT @ OUT-BASE -  GLOB-MARKS GLOB-MARKS# @ CELLS + !
-  1 GLOB-MARKS# +! ;
+  TOK-OUT @ OUT-BASE - GLOB-MARK-AT ;
 
 DEFER QUOTED-BETWEEN?   ( from to --- f )   \ tree.4: quoting in this span
 
@@ -4127,10 +4120,9 @@ DEFER TP-EXPR-CALL   ( --- f )
   TP-I @ TEST-NARGS < IF DROP 0 -1 TP-BAD? ! THEN
   TP-BAD? @ IF DROP 0 THEN ;
 
-: DO-TEST ( --- )  \ ARGV[0] is "test" - evaluates ARGV[1..ARGC).
-  1 TEST-START !
-  ARGC @ TEST-END !
-  0 TEST-NUM-BAD? !
+: RUN-TEST ( end --- )   \ ARGV[1..end) as a test expression, into $?
+  \ test and [ each spelled this out until Iteration 510.
+  1 TEST-START !  TEST-END !  0 TEST-NUM-BAD? !
   \ 2, not 1, for an expression that could not be evaluated - a
   \ missing operand, or an operand that is not a number. It was 1,
   \ which made `[ 1 -eq ]` indistinguishable from a comparison that
@@ -4138,28 +4130,20 @@ DEFER TP-EXPR-CALL   ( --- f )
   EVAL-TEST-ARGS  TP-BAD? @ TEST-NUM-BAD? @ OR IF DROP 2 ELSE IF 0 ELSE 1 THEN THEN
   LAST-STATUS ! ;
 
+: DO-TEST ( --- )  \ ARGV[0] is "test" - evaluates ARGV[1..ARGC).
+  ARGC @ RUN-TEST ;
+
 : DO-BRACKET-TEST ( --- )  \ ARGV[0] is "[" - like DO-TEST, but the
                              \ last argument must be a matching "]",
                              \ excluded from the range evaluated.
-  ARGC @ 2 < IF
-    ." [: missing matching ']'" CR
+  \ The error goes to stderr. It went to stdout with ." until
+  \ Iteration 510 - `x=$([ 1)` captured it - and was written twice.
+  ARGC @ 2 < IF -1 ELSE ARGC @ 1- ARGV@ S" ]" ROT STR0= 0= THEN IF
+    S" shell: [: missing matching ']'" ERR-TYPE ERR-NL
     2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
     EXIT
   THEN
-  ARGC @ 1- ARGV@ S" ]" ROT STR0= 0= IF
-    ." [: missing matching ']'" CR
-    2 LAST-STATUS !  -1 VALUE-FAILED? !      \ the status the caller reports
-    EXIT
-  THEN
-  1 TEST-START !
-  ARGC @ 1- TEST-END !
-  0 TEST-NUM-BAD? !
-  \ 2, not 1, for an expression that could not be evaluated - a
-  \ missing operand, or an operand that is not a number. It was 1,
-  \ which made `[ 1 -eq ]` indistinguishable from a comparison that
-  \ was merely false (Iteration 413).
-  EVAL-TEST-ARGS  TP-BAD? @ TEST-NUM-BAD? @ OR IF DROP 2 ELSE IF 0 ELSE 1 THEN THEN
-  LAST-STATUS ! ;
+  ARGC @ 1- RUN-TEST ;
 
 \ ==================================================================
 \ Assignment machinery, moved ahead of DISPATCH so `readonly NAME=value`

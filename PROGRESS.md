@@ -506,6 +506,7 @@ do not trust the absence of a line below.
 - **508** — the ARMv7 board on 507: two things the rename left for a 32-bit host
 - **509** — the space audit: 2 KB in full cells, and headers are a fifth of the image
 - **510** — the source audit, first pass: four duplicates merged, four untested paths tested
+- **511** — the audit's second pass: two helpers extracted, and `[`'s error found on stdout
 
 ### Not tied to an iteration
 
@@ -24345,3 +24346,35 @@ Recorded changes, with their causes: `shell:assertions` 867 -> 872 and
 `shell:files` 82 -> 83, run-untested-paths; both shell images smaller,
 by 224 bytes at 64-bit and 232 at 32 - the four merges - and their
 checksums and the size totals with them.
+
+## Iteration 511: the audit's second pass
+
+The duplication scan's next tier is runs shared INSIDE larger
+definitions, where merging means extracting a word - which costs a call
+each time, so only in cold paths, never the expander's inner loops.
+
+- **Glob marks**: four words spelled out the same append of a mark.
+  It is `GLOB-MARK-AT` now; `GLOB-MARK`, `-DASH`, `-OFF` and
+  `-BACKSLASH` call it. `GLOB-MARK` runs for every unquoted character,
+  but its common path - not a pattern character - is as it was; only a
+  marked character pays the call. And one of its branches tested
+  `TOKEN-IS-ASSIGN-PREFIX? 0= IF` twice, nested - harmless, and gone.
+  Checked against dash on six patterns: an escaped `*` beside a live
+  bracket, `-` and `!` in brackets, a quoted `*`, a `case` pattern.
+- **test and `[`**: the same tail - set the range, evaluate, map to a
+  status - is `RUN-TEST ( end --- )`, and `[`'s two identical error
+  blocks are one condition.
+
+**And a bug the merge brought to light**: `[`'s "missing matching ']'"
+went to STANDARD OUTPUT - `."`, where every other error uses
+`ERR-TYPE` - so `x=$([ 1)` captured the message into `x`. The status
+was right, and no test looked at where the message went. It goes to
+stderr now, prefixed `shell:` like the rest, and two assertions in
+run-untested-paths hold both halves: nothing in the substitution, and
+the message on stderr. Found by comparing with dash with stderr
+discarded, which is how dash's message vanished and this shell's did not.
+
+Recorded changes, with their causes: `shell:assertions` 872 -> 874, the
+two for `[`; both shell images smaller again, by 160 bytes at 64-bit and
+168 at 32 - the extractions - and their checksums and totals with them.
+Across 510 and 511 the audit has taken ~390 bytes from each image.

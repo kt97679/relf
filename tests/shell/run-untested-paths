@@ -26,5 +26,13 @@ assert_output_contains "... skipped, and the next line runs (DRAIN-LINE)" "after
 out=$("$THIS_SH" -c 'x=$(printf "%9000000s" ""); y="$x$x"; echo "len ${#y}"' 2>&1 | head -3)
 assert_output_contains "an expansion over 16 MiB is refused (EXPANSION-TOO-LARGE)" "shell: expansion too large" "$out"
 
+# Found by the same audit, merging test's and ['s shared tail (511): the
+# error for a missing `]` went to STANDARD OUTPUT, so a command
+# substitution captured it. Nothing checked where it went.
+out=$("$THIS_SH" -c 'x=$([ 1 2>/dev/null); echo "[$x] $?"' 2>/dev/null)
+assert_output_equals "[ without ] errs on stderr, not into \$(...)" "[] 2" "$out"
+out=$("$THIS_SH" -c '[ 1' 2>&1 >/dev/null)
+assert_output_contains "... where it says what is missing" "missing matching ']'" "$out"
+
 rm -rf "$d"
 report
