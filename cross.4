@@ -288,7 +288,7 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 \ The primitives with a folded "then EXIT" form, in the order the
 \ engine's table has them. Names, because their opcodes are not known
 \ until kernel.4 declares them; PRIMITIVE fills in FOLD-IDX.
-23 CONSTANT #FOLD
+19 CONSTANT #FOLD
 CREATE FOLD-IDX #FOLD CELLS ALLOT
 : NAMES, ( n "name"... --- )
 \ Lay down n counted strings. WORD parses to HERE, so ALLOT keeps it.
@@ -297,8 +297,8 @@ CREATE FOLD-IDX #FOLD CELLS ALLOT
   #FOLD 0 DO -1 FOLD-IDX I CELLS + ! LOOP ;
 FOLD-SETUP
 CREATE FOLD-NAMES
-16 NAMES, + = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT < U< OVER DROP
- 7 NAMES, DUP SWAP ROT >R R> R@ NEGATE
+15 NAMES, + = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT U< OVER DROP
+ 4 NAMES, SWAP >R R> NEGATE
 ALIGN
 
 : FOLD-POS ( c-addr u --- k | -1 )
@@ -466,7 +466,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  7 IMAGE-HDR 6 + C!          \ format version (7 since Iteration 528)
+  8 IMAGE-HDR 6 + C!          \ format version (8 since Iteration 536)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,

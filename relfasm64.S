@@ -37,7 +37,7 @@
     .equ PAGE,         4096
     .equ CELL,         8
     .equ LSAVE_MAX,    4096
-    .equ CV8_VERSION,  7
+    .equ CV8_VERSION,  8
     .equ FEATURES,     15            /* varcall varslot spec lit64 */
 
     .equ SYS_read,     0
@@ -727,8 +727,6 @@ LX_lit:     movzx eax, word ptr [r14]
             add r14, 2
             PUSHT rax
             EXITNEXT
-LX_lt:      FLAG l
-            EXITNEXT
 LX_ult:     FLAG b
             EXITNEXT
 LX_over:    mov rax, [r13]
@@ -736,15 +734,7 @@ LX_over:    mov rax, [r13]
             EXITNEXT
 LX_drop:    POPT
             EXITNEXT
-LX_dup:     PUSHT r12
-            EXITNEXT
 LX_swap:    mov rax, [r13]
-            mov [r13], r12
-            mov r12, rax
-            EXITNEXT
-LX_rot:     mov rax, [r13 + CELL]
-            mov rcx, [r13]
-            mov [r13 + CELL], rcx
             mov [r13], r12
             mov r12, rax
             EXITNEXT
@@ -753,9 +743,6 @@ LX_tor:     RPUSH r12
             EXITNEXT
 LX_fromr:   mov rax, [r15]
             add r15, CELL
-            PUSHT rax
-            EXITNEXT
-LX_rfetch:  mov rax, [r15]
             PUSHT rax
             EXITNEXT
 LX_negate:  neg r12
@@ -940,62 +927,6 @@ L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
             NEXT
 2:          add r14, 2
 1:          NEXT
-/* compare-and-branch (533): ?BRANCH branches when the flag is FALSE; the
- * comparison's flags survive the pops, which are mov and lea */
-L_zbr:      test r12, r12            /* 0= ?BRANCH: on while tos is 0 */
-            mov r12, [r13]
-            lea r13, [r13 + CELL]
-            jz 2f
-1:          movsx rax, word ptr [r14]
-            add r14, rax
-            NEXT
-2:          add r14, 2
-            NEXT
-L_andbr:    mov rax, [r13]           /* AND ?BRANCH */
-            test rax, r12
-            mov r12, [r13 + CELL]
-            lea r13, [r13 + 2*CELL]
-            jz 1b
-            add r14, 2
-            NEXT
-L_ltbr:     cmp [r13], r12           /* < ?BRANCH: on while NOS < tos */
-            mov r12, [r13 + CELL]
-            lea r13, [r13 + 2*CELL]
-            jl 2b
-            jmp 1b
-L_gtbr:     cmp [r13], r12           /* > ?BRANCH */
-            mov r12, [r13 + CELL]
-            lea r13, [r13 + 2*CELL]
-            jg 2b
-            jmp 1b
-L_eqibr:    movsx rax, byte ptr [r14] /* EQI ?BRANCH: the immediate, then */
-            inc r14                  /* the offset */
-            cmp r12, rax
-            mov r12, [r13]
-            lea r13, [r13 + CELL]
-            je 2b
-            jmp 1b
-/* the first superinstructions (532): VAR@ and the operation after it */
-L_vfplus:   SLOT                     /* VAR@ + */
-            add r12, [rdx]
-            NEXT
-L_vflt:     SLOT                     /* VAR@ < : tos < the variable, signed */
-            xor eax, eax
-            cmp r12, [rdx]
-            setl al
-            neg rax
-            mov r12, rax
-            NEXT
-L_vfonep:   SLOT                     /* VAR@ 1+ */
-            mov rax, [rdx]
-            inc rax
-            PUSHT rax
-            NEXT
-L_vfcfetch: SLOT                     /* VAR@ C@ */
-            mov rax, [rdx]
-            movzx eax, byte ptr [rax]
-            PUSHT rax
-            NEXT
 L_atxt:     mov r12, [r12]           /* @XT ( a-addr --- xt ), since 531 */
             add r12, rbx             /* the image base, which START holds */
             NEXT

@@ -20,8 +20,6 @@
 #   b16    a two-byte branch offset, from the operand
 #   slot   a variable's slot: two bytes, or three if the first has bit 7
 #   sel    ESC's selector     data    the body is data, not code
-#   i8b16  a signed byte, then a two-byte branch offset from ITS position
-#          (EQI?BRANCH, Iteration 533)
 #
 # kind     number  name        handler         operand
 direct    0x00    NOOP        L_noop          -
@@ -76,17 +74,13 @@ fold      0x30    AND;EXIT    LX_and          -
 fold      0x31    OR;EXIT     LX_or           -
 fold      0x32    XOR;EXIT    LX_xor          -
 fold      0x33    LIT;EXIT    LX_lit          u16
-fold      0x34    <;EXIT      LX_lt           -
-fold      0x35    U<;EXIT     LX_ult          -
-fold      0x36    OVER;EXIT   LX_over         -
-fold      0x37    DROP;EXIT   LX_drop         -
-fold      0x38    DUP;EXIT    LX_dup          -
-fold      0x39    SWAP;EXIT   LX_swap         -
-fold      0x3A    ROT;EXIT    LX_rot          -
-fold      0x3B    >R;EXIT     LX_tor          -
-fold      0x3C    R>;EXIT     LX_fromr        -
-fold      0x3D    R@;EXIT     LX_rfetch       -
-fold      0x3E    NEGATE;EXIT LX_negate       -
+fold      0x34    U<;EXIT     LX_ult          -
+fold      0x35    OVER;EXIT   LX_over         -
+fold      0x36    DROP;EXIT   LX_drop         -
+fold      0x37    SWAP;EXIT   LX_swap         -
+fold      0x38    >R;EXIT     LX_tor          -
+fold      0x39    R>;EXIT     LX_fromr        -
+fold      0x3A    NEGATE;EXIT LX_negate       -
 branch8   0x3F    BRANCH8     L_branch8       b8
 branch8   0x40    ?BRANCH8    L_0branch8      b8
 tiny      0x41    +!          L_plusstore     -
@@ -96,15 +90,6 @@ tiny      0x44    (LOOP)      L_loop          -
 tiny      0x45    (?DO)       L_qdo           -
 tiny      0x46    EXECUTE     L_execute       -
 tiny      0x47    @XT         L_atxt          -
-fuse      0x48    VAR@+       L_vfplus        slot
-fuse      0x49    VAR@<       L_vflt          slot
-fuse      0x4A    VAR@1+      L_vfonep        slot
-fuse      0x4B    VAR@C@      L_vfcfetch      slot
-fuse      0x4C    0=?BRANCH   L_zbr           b16
-fuse      0x4D    AND?BRANCH  L_andbr         b16
-fuse      0x4E    <?BRANCH    L_ltbr          b16
-fuse      0x4F    >?BRANCH    L_gtbr          b16
-fuse      0x50    EQI?BRANCH  L_eqibr         i8b16
 spec      0x61    push0       L_lit0          -
 spec      0x62    push1       L_lit1          -
 spec      0x63    push-1      L_litm1         -

@@ -1318,13 +1318,6 @@ VARIABLE LAST-CALL ( --- a-addr )
 \ Where the last call starts, or 0...
 VARIABLE LAST-CALLXT ( --- a-addr )
 \ ...and its target.
-VARIABLE LAST-VAR ( --- a-addr )
-\ Where the last VAR@ opcode is, or 0: the first superinstructions
-\ (Iteration 532) rewrite it in place when +, <, 1+ or C@ follows.
-72 CONSTANT VAR@+OP     \ VAR@ then +, as one opcode (opcodes.tab)
-73 CONSTANT VAR@<OP     \ VAR@ then <
-74 CONSTANT VAR@1+OP    \ VAR@ then 1+
-75 CONSTANT VAR@C@OP    \ VAR@ then C@
 
 \ The compiler rewrites four two-operation patterns into one opcode
 \ (CV8.md 6): `LIT n +` and `LIT n =` into ADDI/EQI, and
@@ -1335,7 +1328,7 @@ VARIABLE LAST-VAR ( --- a-addr )
 \ not one of the halves, calls NO-PEEP. `;` folds a final operation and
 \ its EXIT into one opcode under the same rule.
 : NO-PEEP ( --- )
-  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! 0 LAST-VAR ! ;
+  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! ;
 
 : REWIND ( a-addr --- )
 \ Discard everything compiled from a-addr to HERE.
@@ -1449,21 +1442,7 @@ FOLD-TABLE
   DUP [OP] @ = IF DROP 100 ELSE
   [OP] ! = IF 101 ELSE 0 EXIT THEN THEN
   LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
-  DUP 100 = IF HERE LAST-VAR ! THEN
   OP, R> 4 + ALIGNED SLOT, -1 ;   \ >BODY, which is defined later
-: PEEP-VARX ( op --- f )
-\ Fold the operation just compiled into the VAR@ right before it, where
-\ it is one of the four the engines have fused forms of: the VAR@ byte
-\ is rewritten, its slot operand stays where it is - so its offset,
-\ which is relative to itself, stays right - and nothing is emitted.
-\ NO-PEEP clears LAST-VAR, so nothing that is a branch target between
-\ the two can be folded away (Iteration 532).
-  LAST-VAR @ 0= IF DROP 0 EXIT THEN
-  DUP [OP] + = IF DROP VAR@+OP ELSE
-  DUP [OP] < = IF DROP VAR@<OP ELSE
-  DUP [OP] 1+ = IF DROP VAR@1+OP ELSE
-  [OP] C@ = IF VAR@C@OP ELSE 0 EXIT THEN THEN THEN THEN
-  LAST-VAR @ C!  NO-PEEP -1 ;
 
 : DOES-FETCH? ( xt --- f )
 \ Is xt a `CREATE ... DOES> @ ;` word - a buffer from pool.4's BUFFER:,
@@ -1485,8 +1464,7 @@ FOLD-TABLE
     DUP C@ 126 = IF
       NO-PEEP DUP C@ OP, 1+ C@ OP,
     ELSE
-      C@ DUP PEEP-VARX IF DROP EXIT THEN
-      DUP PEEP-IMM IF DROP EXIT THEN
+      C@ DUP PEEP-IMM IF DROP EXIT THEN
       DUP PEEP-VAR IF DROP EXIT THEN
       NO-PEEP HERE LAST-OP ! OP,
     THEN
@@ -1496,7 +1474,7 @@ FOLD-TABLE
     \ and the return were four - 6.7% of the shell's loop was that, for
     \ its buffers (Iteration 260).
     DUP DOES-FETCH? IF
-      NO-PEEP HERE >R 100 OP, 4 + ALIGNED SLOT, NO-PEEP R> LAST-VAR ! EXIT
+      NO-PEEP 100 OP, 4 + ALIGNED SLOT, NO-PEEP EXIT
     THEN
     CALL,
   THEN ;
@@ -1585,37 +1563,13 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ End a BEGIN AGAIN loop: branch back unconditionally.
   [OP] BRANCH BRANCH8-TOK BACK, ; IMMEDIATE
 
-76 CONSTANT 0=?BR-OP    \ 0= then ?BRANCH, as one opcode (opcodes.tab)
-77 CONSTANT AND?BR-OP   \ AND then ?BRANCH
-78 CONSTANT <?BR-OP     \ < then ?BRANCH
-79 CONSTANT >?BR-OP     \ > then ?BRANCH
-80 CONSTANT EQI?BR-OP   \ EQI then ?BRANCH: EQI's byte, then the offset
-123 CONSTANT EQI-OP     \ EQI, which PEEP-IMM compiles
-: FUSED-BRANCH ( op --- op2 | 0 )   \ the compare-and-branch form of op
-  DUP [OP] 0= = IF DROP 0=?BR-OP EXIT THEN
-  DUP [OP] AND = IF DROP AND?BR-OP EXIT THEN
-  DUP [OP] < = IF DROP <?BR-OP EXIT THEN
-  DUP [OP] > = IF DROP >?BR-OP EXIT THEN
-  EQI-OP = IF EQI?BR-OP EXIT THEN  0 ;
-: ?BRANCH, ( --- )
-\ A conditional branch - fused with the comparison just compiled, where
-\ the engines have a form for the pair (Iteration 533): that opcode's
-\ byte is rewritten, anything after it (EQI's immediate) stays, and the
-\ offset >MARK lays down next belongs to the fused opcode. LAST-OP is
-\ only ever the last thing compiled, and NO-PEEP - which every branch
-\ target calls - clears it, so nothing can land between the halves.
-  LAST-OP @ ?DUP IF
-    DUP C@ FUSED-BRANCH ?DUP IF SWAP C! NO-PEEP EXIT THEN DROP
-  THEN
-  NO-PEEP [OP] ?BRANCH OP, ;
-
 : IF    ( --- x)
 \ Start an IF THEN or IF ELSE THEN construction.
 \ Runtime: At IF a flag is taken from
 \ the stack and if it is true the part between IF and ELSE is executed,
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
-  ?BRANCH, >MARK ; IMMEDIATE
+  NO-PEEP [OP] ?BRANCH OP, >MARK ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.

@@ -53,10 +53,8 @@ EXITS = {_opcodes.number('EXIT'), _opcodes.number('LIT8;EXIT')} | {n for k, n, n
 B8, QB8 = _opcodes.number('BRANCH8'), _opcodes.number('?BRANCH8')
 FMT = _opcodes.formats()
 LITOP, NOOPOP, ESCOP = _opcodes.number('LIT'), _opcodes.number('NOOP'), _opcodes.number('ESC')
-# the opcodes with a variable-slot operand: the specialised six, and the
-# superinstructions built on VAR@ (kind `fuse`, Iteration 532)
-SLOTOPS = {n for k, n, nm, h in _rows
-           if nm in ('VAR@', 'VAR!', 'LSAVE', 'LRESTORE', 'L!', 'LZERO') or k == 'fuse'}
+# the opcodes with a variable-slot operand, from opcodes.tab
+SLOTOPS = {n for n, f in _opcodes.formats().items() if f == 'slot'}
 CALLS=[]; SLOTS=[]; S = collections.Counter(); hist = collections.defaultdict(list)
 OPS = collections.Counter(); ESCS = collections.Counter()
 def s16(v): return v - 65536 if v >= 32768 else v
@@ -80,13 +78,6 @@ for name, cnt, xt, end in bodies:
             hist['branch '+kind].append(abs(off))
             if off > 0: far_target = max(far_target, tgt)
             ip += 3; continue
-        if f == 'i8b16':                               # EQI?BRANCH: the byte, then the offset
-            off = s16(img[ip+2] | img[ip+3] << 8)
-            kind = ('back' if off < 0 else 'fwd')
-            S['branch '+kind] += 1
-            hist['branch '+kind].append(abs(off))
-            if off > 0: far_target = max(far_target, ip + 2 + off)
-            ip += 4; continue
         if f == 'b8':
             off = img[ip+1] - 256 if img[ip+1] >= 128 else img[ip+1]
             kind = 'branch8 back' if off < 0 else 'branch8 fwd'

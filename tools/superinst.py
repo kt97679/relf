@@ -117,10 +117,6 @@ for name, c_, xt, end in bodies:
             targets.add(ip + 1 + off)
             if off > 0: far = max(far, ip + 1 + off)
             ip += ln; kind = 'branch'
-        elif f == 'i8b16':
-            off = s16(img[ip + 2] | img[ip + 3] << 8); targets.add(ip + 2 + off)
-            if off > 0: far = max(far, ip + 2 + off)
-            ip += 4; kind = 'branch'
         elif f == 'u16': ip += 3
         elif f in ('u8', 'i8'): ip += 2
         elif f == 'i32': ip += 5
@@ -181,6 +177,25 @@ print('\nthe coldest one-byte opcodes - candidates to move out:')
 print('  %-12s %12s %8s  %s' % ('opcode', 'executed', '% disp', 'static uses'))
 for k in cold[:24]:
     print('  %-12s %12d %7.4f%%  %d' % (k, dyn[k], 100.0 * dyn[k] / total, stat[k]))
+
+# ---- 3c. where the dispatches go, by kind of opcode ------------------------
+# (Iteration 536: how much is CALL and EXIT - the threading overhead - and
+# how much the folded returns save, for the questions of threading
+# technique and of fitting the one-byte opcodes into 64)
+kind_of = {n: k for k, n, nm, h in rows if k != 'escaped'}
+EXITNUM = N('EXIT')
+bykind = collections.Counter()
+for name, ins, targets in code:
+    for a, key, ln, kind in ins:
+        op = img[a]
+        if op >= 0x80: k = 'call'
+        elif op == EXITNUM: k = 'EXIT'
+        elif op == N('ESC'): k = 'escaped'
+        else: k = kind_of.get(op, '?')
+        bykind[k] += cnt[a]
+print('\nwhere the dispatches go, by kind:')
+for k, n in bykind.most_common():
+    print('  %-10s %12d  %5.1f%%' % (k, n, 100.0 * n / total))
 
 # ---- 4. fuse the top K pairs, in a simulation ------------------------------
 chosen = {p for p, n in pairs.most_common(K)}

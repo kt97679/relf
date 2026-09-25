@@ -66,7 +66,7 @@ CREATE SS-MAGIC 8 ALLOT
   [CHAR] 0 SS-MAGIC 3 + C!      \ call scale 0
   1 CELLS  SS-MAGIC 4 + C!
   [CHAR] L SS-MAGIC 5 + C!
-  7        SS-MAGIC 6 + C!      \ format version (7 since Iteration 528)
+  8        SS-MAGIC 6 + C!      \ format version (8 since Iteration 536)
   15       SS-MAGIC 7 + C! ;
 
 : SS-CELL, ( x --- )
@@ -145,7 +145,6 @@ CREATE SS-MAGIC 8 ALLOT
   \ an ABSOLUTE address that NO-PEEP never clears, so without this the
   \ image differed on every run under ASLR (Iteration 243).
   LAST-OP SS-CELL   LAST-LIT SS-CELL   LAST-LITV SS-CELL
-  LAST-VAR SS-CELL                   \ an absolute address too (532)
   LAST-CALL SS-CELL LAST-CALLXT SS-CELL
   \ HEADER's scratch: HDR-HEAD is the absolute address of a thread head.
   HDR-HEAD SS-CELL  HDR-LEN SS-CELL

@@ -531,6 +531,7 @@ do not trust the absence of a line below.
 - **533** — decoders read operand formats from opcodes.tab; compare-and-branch fused: 3.40% fewer, 21.6% since 528
 - **534** — measured in time against 527, dash and bash; BUF-ZERO is 0 FILL
 - **535** — optimization stopped (A13); self-hosting proposed: SELF-HOSTING.md, Q17
+- **536** — simplified: nine superinstructions and four unused folds gone; 111 one-byte opcodes -> 98; format 8
 
 ### Not tied to an iteration
 
@@ -25325,3 +25326,48 @@ target and its test; the source's form; what to simplify before
 translating (four never-used folded opcodes, and - the user's call - the
 nine superinstructions of 532-533); and whether GOALS.md's JIT/AOT goal
 stays. No code until they are answered.
+
+## Iteration 536: simpler before translating
+
+QUESTIONS.md A14 (c): before the engine is translated for self-hosting,
+fewer opcodes to carry.
+
+**The nine superinstructions of 532-533 removed** - `VAR@+` and its
+three siblings, the five compare-and-branch opcodes - with everything
+that served only them: `LAST-VAR`, `PEEP-VARX`, `FUSED-BRANCH`,
+`?BRANCH,`, their constants and `--check` rules, the `i8b16` operand
+format, eighteen handlers. The check that the revert was exact:
+**kernel.4 is byte-identical to Iteration 531's**, and save-system.4
+differs from it by the version line alone. Kept from those iterations:
+the table-driven decoders, and the checker's exact field comparison.
+
+**The four folded returns nothing used removed** - `<;EXIT`,
+`DUP;EXIT`, `ROT;EXIT`, `R@;EXIT` - and the other nineteen renumbered
+0x28-0x3A, with eight handlers gone. Their numbering has two sources,
+cross.4's `FOLD-NAMES` and opcodes.tab's fold rows, and nothing checked
+them against each other: `--check` does now, order and count, and was
+tested both ways (two names swapped; `#FOLD` wrong). Renumbering changes
+what existing opcodes mean, so the format is **version 8**, and the
+kernels were cross-compiled by the version-7 engine before it was
+rebuilt, as at 517 and 528.
+
+**Opcodes**: 111 one-byte opcodes became **98**. **Cost**, measured: the
+realistic workload's dispatches went from 17,508,039 to 18,996,433,
+8.5% more - where 531 and BUF-ZERO left them; the unused folds cost
+nothing to remove. Against 527 the runtime words and BUF-ZERO keep 15.4%
+fewer. (On the whole workload mix the superinstructions had been worth
+more - 15.1% of its dispatches were fused, some 13% saved - said to the
+user before the removal.)
+
+**Where the dispatches go** (tools/superinst.py reports it by kind now,
+whole mix, before this removal): direct primitives 25.7%, specialised
+20.4%, superinstructions 15.1%, tiny words 11.4%, **calls 11.3%, EXIT
+5.5%, folded returns 3.2%** - call and return together about a fifth
+of all dispatches - synthetic 4.6%, escaped 1.4%, short branches 1.3%.
+
+Recorded changes, with their causes: the engines smaller - the
+assembly engine by 696 bytes, the C engine's code by 916 (i386) and
+1,304 (x86-64) - for thirteen handlers gone; the images about 1,700
+bytes larger, every formerly fused site two opcodes again, less the
+compiler code removed; `size:x86_64` 2,340 smaller, the stripped engine
+back below the 4 KB page it crossed at 532. Every suite row as before.

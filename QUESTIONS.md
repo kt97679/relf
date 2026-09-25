@@ -24,8 +24,7 @@ same iteration.
    speed). *(Q14 was answered at 523.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
 6. *(Q16, the speed gap, was answered at 535: accepted.)*
-7. **Before self-hosting starts (SELF-HOSTING.md)**: **Q17** - four
-   choices; the design waits on them.
+7. *(Q17, self-hosting's four choices, was answered at 536.)*
 
 ## Open
 
@@ -124,38 +123,6 @@ go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
 
-**Q17. Self-hosting: four choices before the first line (535).**
-SELF-HOSTING.md is the proposal.
-(a) **Target and test**: the x86-64 assembly engine, assembled by Forth
-byte-identical to today's GNU `as` build, then rebuilding itself
-identical. `cv8.c` stays the portable engine and the bootstrap's first
-step; the ARM board is not self-hosted by this (an ARM assembler and
-engine would be a second project). *Recommendation*: yes.
-(b) **The source's form**: a Forth-syntax assembler - GOALS.md's `CODE
-... END-CODE` tradition, macros as colon words - with the engine
-translated into it once and relfasm64.S retired when the two agree; or
-a GNU-syntax reader in Forth, keeping relfasm64.S as the source and GNU
-`as` as an independent check forever. *Recommendation*: the Forth
-syntax - no parser to write and keep, which is the simpler thing.
-(c) **Simplify before translating**: every opcode is a handler to carry
-into the new source. Four folded forms have no use anywhere in the image
-(`<;EXIT`, `DUP;EXIT`, `ROT;EXIT`, `R@;EXIT`) and could go now. And the
-nine superinstructions of 532-533 - `VAR@+` and its three siblings, and
-the five compare-and-branch opcodes - are the part of 528-533 that
-bought speed with machinery: a peephole that rewrites compiled code,
-two new operand formats, nine handlers per engine; they were about 8%
-of the dispatches, some 7% of the time. The seven runtime-word opcodes
-(`+!`, `?DUP`, `I`, `(LOOP)`, `(?DO)`, `EXECUTE`, `@XT`) are different:
-they made the Forth side simpler too (no more `(LOOP)` lifting its own
-return address). *Recommendation*: remove the four unused folds; keep
-the runtime words; the nine superinstructions are your call - my lean,
-given simplicity first, is to remove them.
-(d) **JIT/AOT (GOALS.md goal 2)**: "eventually, native code for speed,
-built on the self-hosted assembler". With optimization stopped (A13),
-keep it as a distant possibility, or drop it from the goals?
-*Recommendation*: drop it - it is the most complex thing the goals name,
-and simplicity is above speed.
-
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:
 `return` outside a function inside a loop reports and carries on, as
@@ -239,6 +206,18 @@ and forth shell to be as simple as possible, so let's stop optimizations
 hurt minimalism and simplicity." Scripts run ~30x slower than dash and
 start fastest; that stands. No more opcodes or fusions for speed. Next:
 self-hosting - relf compiling its own engine (SELF-HOSTING.md, Q17).
+
+**A14. Self-hosting's four choices (Q17; 535 -> 536).** (a) Yes: the
+x86-64 assembly engine, byte-identical to the GNU `as` build, then
+rebuilding itself; `cv8.c` stays the portable engine. (b) Yes: a
+Forth-syntax assembler, the engine translated once, relfasm64.S retired
+when they agree. (c) Yes: the four unused folded returns and the nine
+superinstructions removed, the runtime words kept - **done at 536**.
+(d) JIT/AOT: revisited once relf self-hosts its engine. And, in the
+user's words: "simplicity and minimalism should outweigh minor
+performance improvements" - agreed; the one nuance kept is that a change
+making things both simpler and faster (the runtime words) is worth
+keeping.
 
 ## Your notes, captured (514)
 

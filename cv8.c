@@ -286,7 +286,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 7 (Iteration 528): the band 0x41-0x60 holds opcodes - +!
+/*  Version 8 (Iteration 536): the folded returns renumbered, four that
+ *  nothing used gone (<;EXIT DUP;EXIT ROT;EXIT R@;EXIT), and the nine
+ *  superinstructions of 532-533 gone - simplicity first (A14).
+ *  Version 7 (Iteration 528): the band 0x41-0x60 holds opcodes - +!
  *  first - and an opcode no table names traps instead of doing nothing,
  *  so an image with an opcode an older engine lacks fails loudly there.
  *  Version 6 (Iteration 517): the locals save stack is the engine's, and
@@ -302,7 +305,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 7
+#define CV8_VERSION 8
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -936,25 +939,6 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
-/*  Compare-and-branch (533): the comparison, then ?BRANCH's test - which
- *  branches when the flag is FALSE - in one dispatch; the offset after it
- *  is ?BRANCH's, from its own position. */
-L_zbr:   t = tos; POPT(); if (!t) ip += 2; else ip += BROFF(ip); NEXT();
-L_andbr: t = NOS & tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
-L_ltbr:  t = (INT64)NOS < (INT64)tos; POPT(); POPT();
-         if (t) ip += 2; else ip += BROFF(ip); NEXT();
-L_gtbr:  t = (INT64)NOS > (INT64)tos; POPT(); POPT();
-         if (t) ip += 2; else ip += BROFF(ip); NEXT();
-L_eqibr: t = tos == (UNS64)(INT64)(signed char)BYTE(ip); ip += 1; POPT();
-         if (t) ip += 2; else ip += BROFF(ip); NEXT();
-/*  The first superinstructions (532): VAR@ and the operation after it,
- *  one dispatch. The compiler rewrites the VAR@ byte in place; the slot
- *  operand after it is the variable's, as for VAR@. */
-L_vfplus:   { UNS64 a = SLOT(); tos += CELL(a); } NEXT();          /* VAR@ + */
-L_vflt:     { UNS64 a = SLOT();                                     /* VAR@ < */
-              tos = (UNS64)-(INT64)((INT64)tos < (INT64)CELL(a)); } NEXT();
-L_vfonep:   { UNS64 a = SLOT(); PUSHT(CELL(a) + 1); } NEXT();      /* VAR@ 1+ */
-L_vfcfetch: { UNS64 a = SLOT(); PUSHT(BYTE(CELL(a))); } NEXT();    /* VAR@ C@ */
 L_atxt:   /* @XT ( a-addr --- xt ): the offset there, plus the image base (531) */
     tos = CELL(tos) + cbase;
     NEXT();
@@ -1660,9 +1644,7 @@ L_resize: SPILL(); /* a-addr u --- a-addr' ior */
 #define EXITNEXT() do { ip = RS; rp += CELL_BYTES; NEXT(); } while (0)
 LX_lit: PUSHT(OPND16(ip)); ip += 2; EXITNEXT();
 LX_drop: POPT(); EXITNEXT();
-LX_dup: PUSHT(tos); EXITNEXT();
 LX_swap: t = NOS; NOS = tos; tos = t; EXITNEXT();
-LX_rot: t = CELL(dsp + CELL_BYTES); CELL(dsp + CELL_BYTES) = NOS; NOS = tos; tos = t; EXITNEXT();
 LX_over: t = NOS; PUSHT(t); EXITNEXT();
 LX_cfetch: tos = BYTE(tos); EXITNEXT();
 LX_fetch: tos = CELL(tos); EXITNEXT();
@@ -1673,10 +1655,8 @@ LX_or: tos |= NOS; dsp += CELL_BYTES; EXITNEXT();
 LX_xor: tos ^= NOS; dsp += CELL_BYTES; EXITNEXT();
 LX_fromr: PUSHT(RS); rp += CELL_BYTES; EXITNEXT();
 LX_tor: RPUSH(tos); POPT(); EXITNEXT();
-LX_rfetch: PUSHT(RS); EXITNEXT();
 LX_eq: tos = -(UNS64)(NOS == tos); dsp += CELL_BYTES; EXITNEXT();
 LX_ult: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; EXITNEXT();
-LX_lt: tos = -(UNS64)((INT64)NOS < (INT64)tos); dsp += CELL_BYTES; EXITNEXT();
 LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
 LX_negate: tos = -tos; EXITNEXT();
 LX_lshift: tos = NOS << tos; dsp += CELL_BYTES; EXITNEXT();
