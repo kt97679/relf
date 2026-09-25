@@ -65,5 +65,6 @@ kernel-shell.img
 
 # The assembly engine and its generated tables (Iteration 519).
 relfasm64
+relfshasm64
 relfasm64.o
 relfasm-ops.S

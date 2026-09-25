@@ -518,6 +518,7 @@ do not trust the absence of a line below.
 - **520** — the board's gawk finding fixed; the assembly engine made minimal: 11 KB, one segment
 - **521** — the assembly engine's Milestone 2: kernels, CORE suite and shell image all identical
 - **522** — the shell runs on the assembly engine: 130 of 131 differential cases
+- **523** — the assembly engine complete: every primitive, every suite, W^X, one 135 KB file
 
 ### Not tied to an iteration
 
@@ -24819,3 +24820,45 @@ not read an embedded image yet - **130 of the 131 differential cases
 pass**. The one that does not is `tilde.sh`, `~user`: `GETPWHOME`, which
 QUESTIONS.md Q5 is about. 13,020 bytes; 17 stubs left - the terminal,
 time, limits, `SYSTEM` and the sockets - and the trailer lookup of 506.
+
+## Iteration 523: the assembly engine runs everything
+
+fury, an x86-64 Ubuntu machine of the user's, verified 522 first -
+every row, the 8-byte ones the ARM board cannot run included. The user
+agreed with Q5 and Q6, and asked of Q14 whether the engine's code would
+go in a code segment and the Forth image in a data segment: yes - A9 to
+A11 in QUESTIONS.md.
+
+**W^X, for 56 bytes**: two program headers now - the file, read-execute,
+never written; the zero-filled tail, read-write, never executed - and
+`/proc/PID/maps` shows `r-xp` and `rw-p` where 520 had two `rwxp`. The
+Forth image is data to the CPU: the engine interprets it, and never
+jumps into it. (The stack was already `rw-p` without a PT_GNU_STACK
+header: Linux 5.8 and later give 64-bit binaries that.)
+
+**The last seventeen primitives**: `GETPWHOME` from `/etc/passwd` (A9);
+`LOCAL-TIME` in UTC by Howard Hinnant's `civil_from_days` (A10) -
+Friday 2026-09-25 04:41:34 from both engines and `date -u`; `CPU-TIMES`,
+the resource limits and `ulimit -f`'s, `TCGETPGRP`, and `TCSETPGRP` with
+`SIGTTOU` blocked around it as cv8.c does; `POLL`; `RAW-MODE`,
+`TERM-RAW` and `TERM-RESTORE` through the kernel's own 36-byte termios,
+with `BYE` and `SYS-EXIT` restoring the terminal - only from the
+process that changed it; `SYSTEM`; and the three TCP primitives, with a
+dotted-quad parser as strict as glibc's `inet_pton`.
+
+**And the embedded image** (506's trailer): the engine looks in
+`/proc/self/exe` first, reads exactly the image's length when it finds
+one, starts the program's arguments at `argv[1]` and sets `RELF_ARGV0`.
+`make relfshasm64` - the assembly engine with the shell image appended:
+**134,773 bytes, one static file, no libc**.
+
+**Through it, every suite gives cv8.c's results**: all 83 shell test
+files and all 131 differential cases; the pty suite, 23 with 1
+known-divergent - the line editor, raw mode and job control; POSIX 46
+with 2 inconclusive; mrsh 21; the matrix 421 with 1 inconclusive and no
+regression. The three shell-suite failures on the way were all my test
+wrapper's, a two-line script without `RELF_ARGV0`; the single-file
+binary has none.
+
+The engine is 15,624 bytes. What is left is Milestone 5: measuring it,
+since 520 found it about 8-12% slower than cv8.c on a dispatch loop.

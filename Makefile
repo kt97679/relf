@@ -215,6 +215,10 @@ relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
 # Linked to raw bytes: the source carries its own ELF header and single
 # program header (Iteration 520, after kt97679/itsy-linux), so nothing
 # of the linker's layout - sections, their table, page padding - is kept.
+# The single-file shell on the assembly engine, as relfsh64 is on cv8.c.
+relfshasm64: relfasm64 kernel64-shell.img tools/embed.sh
+	@sh tools/embed.sh ./relfasm64 kernel64-shell.img $@
+
 relfasm64: relfasm64.S relfasm-ops.S
 	$(CC) -c -o relfasm64.o relfasm64.S
 	ld -Ttext=0x400000 --oformat binary -o $@ relfasm64.o

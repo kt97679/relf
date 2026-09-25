@@ -16,11 +16,14 @@
  *
  *  The binary is as small as it can be made without changing what runs
  *  (Iteration 520, after kt97679/itsy-linux): no linker output to trim,
- *  but a hand-written ELF header and ONE program header - a single
- *  loadable segment, readable, writable and executable, whose memory
- *  size runs past its file size. The zero-filled tail holds the engine's
- *  variables and the machine's 16 MB, so there is no mmap, no section
- *  table, and no padding between sections.
+ *  but a hand-written ELF header and two program headers - this file,
+ *  read-execute, and after it a zero-filled segment, read-write, that
+ *  holds the engine's variables and the machine's 16 MB. So there is no
+ *  mmap, no section table, no padding between sections - and W^X, since
+ *  523: the engine's code is never written and the Forth image, which
+ *  it interprets, is never executed. (520 had one read-write-execute
+ *  segment, as itsy-linux has.) A 64-bit binary's stack is not
+ *  executable without a PT_GNU_STACK header on Linux 5.8 and later.
  *
  *  Build (the Makefile does it):
  *      cc -c -o relfasm64.o relfasm64.S
@@ -61,6 +64,18 @@
     .equ SYS_setpgid,  109
     .equ SYS_getppid,  110
     .equ SYS_chdir,    80
+    .equ SYS_rt_sigprocmask, 14
+    .equ SYS_getrlimit, 97
+    .equ SYS_getrusage, 98
+    .equ SYS_setrlimit, 160
+    .equ SYS_time,     201
+    .equ SYS_poll,     7
+    .equ SYS_socket,   41
+    .equ SYS_connect,  42
+    .equ SYS_accept,   43
+    .equ SYS_bind,     49
+    .equ SYS_listen,   50
+    .equ SYS_setsockopt, 54
     .equ SYS_rt_sigaction, 13
     .equ SYS_rt_sigreturn, 15
     .equ NSIG_FLAGS,   65
@@ -153,6 +168,13 @@
     .equ HEAP_RESERVE, 0x40000000       /* 1 GB of address space, not memory */
     .equ scratch,      free_lists + 64*8   /* 256 bytes: a struct stat, a termios */
     .equ sig_flag,     scratch + 256       /* 65 bytes: which signals were caught */
+    .equ pw_buf,       sig_flag + 72       /* /etc/passwd as last read, or 0 */
+    .equ term_saved,   pw_buf + 8          /* TERM-RAW saved the terminal */
+    .equ t_raw_fd,     pw_buf + 16         /* RAW-MODE's descriptor, or -1 */
+    .equ t_raw_pid,    pw_buf + 24         /* ... and the process that set it */
+    .equ term_save,    pw_buf + 32         /* 40 bytes: a kernel termios */
+    .equ t_saved,      pw_buf + 72         /* 40 bytes: another */
+    .equ img_limit,    pw_buf + 112        /* the image's length, or -1: to EOF */
     .equ VM_OFF,       0x20000          /* 64 KB-aligned */
     .equ VM_BASE,      TEXTORG + VM_OFF
     .equ MEM_SIZE,     VM_OFF + MEMSIZE
@@ -171,18 +193,30 @@ ehdr:
     .long 0                          /* e_flags */
     .word 64                         /* e_ehsize */
     .word 56                         /* e_phentsize */
-    .word 1                          /* e_phnum */
+    .word 2                          /* e_phnum: code, then data */
     .word 64                         /* e_shentsize - 0 would do; `file` prefers it */
     .word 0                          /* e_shnum */
     .word 0                          /* e_shstrndx */
-phdr:
+phdr:                                /* the code: this file, read-execute */
     .long 1                          /* p_type: PT_LOAD */
-    .long 7                          /* p_flags: read, write, execute */
+    .long 5                          /* p_flags: read, execute - never written */
     .quad 0                          /* p_offset: the file maps onto itself */
     .quad TEXTORG                    /* p_vaddr */
     .quad TEXTORG                    /* p_paddr */
     .quad FILE_SIZE                  /* p_filesz */
-    .quad MEM_SIZE                   /* p_memsz: the tail is zero-filled */
+    .quad FILE_SIZE                  /* p_memsz */
+    .quad 0x1000                     /* p_align */
+                                     /* the data: the engine's variables and
+                                      * the machine's 16 MB, where the Forth
+                                      * image lives - read-write, never
+                                      * executed; W^X for 56 bytes (523) */
+    .long 1                          /* p_type: PT_LOAD */
+    .long 6                          /* p_flags: read, write */
+    .quad 0                          /* p_offset: nothing in the file */
+    .quad BSS_BASE                   /* p_vaddr */
+    .quad BSS_BASE                   /* p_paddr */
+    .quad 0                          /* p_filesz */
+    .quad MEM_SIZE - (BSS_BASE - TEXTORG)   /* p_memsz: all zero-filled */
     .quad 0x1000                     /* p_align */
 
 m_usage:     .ascii "Usage: relfasm64 IMAGE [ARGUMENT...]\n"
@@ -270,6 +304,62 @@ _start:
     lea rdx, [rcx + rax*8 + 8]
     mov [envp_v], rdx
     mov qword ptr [argbase], 2
+    mov qword ptr [t_raw_fd], -1
+    mov qword ptr [img_limit], -1
+    /* An image may be this file's own (cv8.c's embedded_image, Iteration
+     * 506): appended, then "RELFIMG1" and its length, 8 bytes each. If
+     * so, the program's arguments start at argv[1] and RELF_ARGV0 says
+     * how it was invoked - which tools/embed.sh makes relfsh from. */
+    lea rdi, [m_selfexe]
+    xor esi, esi
+    mov eax, SYS_open
+    syscall
+    test rax, rax
+    js 10f
+    mov rbp, rax
+    mov rdi, rbp
+    xor esi, esi
+    mov edx, 2                       /* SEEK_END */
+    mov eax, SYS_lseek
+    syscall
+    cmp rax, 16
+    jl 11f
+    mov r12, rax                     /* the file's length */
+    mov rdi, rbp
+    lea rsi, [rax - 16]
+    xor edx, edx
+    mov eax, SYS_lseek
+    syscall
+    mov rdi, rbp
+    lea rsi, [hdr]
+    mov edx, 16
+    call read_all
+    cmp rax, 16
+    jne 11f
+    mov rax, 0x31474D49464C4552      /* "RELFIMG1" */
+    cmp [hdr], rax
+    jne 11f
+    mov rcx, [hdr + 8]               /* the image's length */
+    test rcx, rcx
+    jz 11f
+    lea rax, [r12 - 16]
+    cmp rcx, rax
+    ja 11f
+    mov [img_limit], rcx
+    mov rdi, rbp
+    sub rax, rcx
+    mov rsi, rax
+    xor edx, edx
+    mov eax, SYS_lseek
+    syscall
+    mov qword ptr [argbase], 1
+    call set_argv0
+    jmp 2f
+11: mov rdi, rbp                     /* not ours: the file names the image */
+    mov eax, SYS_close
+    syscall
+10: mov rax, [argc_v]
+    mov rcx, [argv_v]
     cmp rax, 2
     jae 1f
     lea rsi, [rip + m_usage]
@@ -281,12 +371,13 @@ _start:
     mov eax, SYS_open
     syscall
     test rax, rax
-    jns 2f
+    jns 12f
     lea rsi, [rip + m_open]
     mov edx, m_open_len
     mov edi, 2
     jmp die
-2:  mov rbp, rax                     /* the image's descriptor, until loaded */
+12: mov rbp, rax
+2:                                   /* rbp: the image's descriptor, until loaded */
     mov rdi, rbp
     lea rsi, [hdr]
     mov edx, 8
@@ -311,6 +402,8 @@ _start:
     cmp rax, 8
     jne bad_hdr
     mov r12, [hdr]             /* thread heads to skip */
+    lea r15, [r12*8 + 24]            /* the header's bytes: the magic, both */
+                                     /* counts, the heads - the tails below */
 3:  test r12, r12
     jz 4f
     mov rdi, rbp
@@ -329,6 +422,7 @@ _start:
     jne bad_hdr
     mov r12, [hdr]
     add r12, r12                     /* two cells per tail */
+    lea r15, [r15 + r12*8]
 5:  test r12, r12
     jz 6f
     mov rdi, rbp
@@ -345,7 +439,12 @@ _start:
     mov rdi, rbp
     mov rsi, rbx
     mov edx, MEMSIZE
-    call read_all
+    mov rax, [img_limit]             /* an embedded image: exactly its body, */
+    test rax, rax                    /* not the trailer after it */
+    js 13f
+    sub rax, r15
+    mov rdx, rax
+13: call read_all
     mov rdi, rbp
     mov eax, SYS_close
     syscall
@@ -813,10 +912,12 @@ L_badesc:   lea rsi, [rip + m_badesc]
             jmp die
 
 /* ---- the escaped primitives, as far as Milestone 1 goes --------------- */
-L_bye:      xor edi, edi
+L_bye:      call term_restore        /* the terminal as it was, then out */
+            xor edi, edi
             mov eax, SYS_exit
             syscall
-L_sysexit:  mov rdi, r12
+L_sysexit:  call term_restore
+            mov rdi, r12
             mov eax, SYS_exit
             syscall
 L_read:     mov rdi, r12             /* ( c-addr u fd --- n ), n < 0 is -errno */
@@ -1660,11 +1761,680 @@ L_waitjob:  mov rdi, r12             /* ( pid --- pid' raw ): waits, a stop */
             PUSHT rax
             NEXT
 
+/* ~user (decided at 523: /etc/passwd, and only that - no NSS without
+ * libc). The file is read whole into a heap block that lives until the
+ * next call, as libc's result lives until the next getpwnam. */
+m_passwd:   .asciz "/etc/passwd"
+L_getpwhome: mov rdi, [pw_buf]       /* ( c-addr --- addr | 0 ) */
+            call free_block
+            mov qword ptr [pw_buf], 0
+            lea rdi, [m_passwd]
+            xor esi, esi
+            mov eax, SYS_open
+            syscall
+            test rax, rax
+            js 8f
+            push rax                 /* its size, then the whole of it */
+            mov rdi, rax
+            xor esi, esi
+            mov edx, 2
+            mov eax, SYS_lseek
+            syscall
+            pop rdi
+            push rdi
+            push rax
+            xor esi, esi
+            xor edx, edx
+            mov eax, SYS_lseek
+            syscall
+            pop rdi                  /* the size */
+            push rdi
+            inc rdi
+            call alloc_block
+            pop rdx
+            pop rdi
+            test rax, rax
+            jz 7f
+            mov [pw_buf], rax
+            mov byte ptr [rax + rdx], 0
+            mov rsi, rax
+            push rdi
+            call read_all
+            pop rdi
+            mov r8, [pw_buf]
+            mov byte ptr [r8 + rax], 0
+7:          mov eax, SYS_close
+            syscall
+            mov rsi, [pw_buf]
+            test rsi, rsi
+            jz 8f
+            /* each line: name:passwd:uid:gid:gecos:dir:shell */
+1:          cmp byte ptr [rsi], 0
+            je 8f
+            mov rdi, r12
+            mov rcx, rsi
+2:          mov al, [rdi]            /* the name, then a colon */
+            test al, al
+            jz 3f
+            cmp al, [rcx]
+            jne 5f
+            inc rdi
+            inc rcx
+            jmp 2b
+3:          cmp byte ptr [rcx], ':'
+            jne 5f
+            mov edx, 5               /* past five colons: the home directory */
+4:          mov al, [rcx]
+            test al, al
+            jz 8f
+            cmp al, 10
+            je 5f
+            inc rcx
+            cmp al, ':'
+            jne 4b
+            dec edx
+            jnz 4b
+            mov r12, rcx             /* found: end it at its colon */
+6:          mov al, [rcx]
+            test al, al
+            jz 9f
+            cmp al, ':'
+            je 10f
+            cmp al, 10
+            je 10f
+            inc rcx
+            jmp 6b
+10:         mov byte ptr [rcx], 0
+9:          NEXT
+5:          mov al, [rsi]            /* not this line: the next */
+            test al, al
+            jz 8f
+            inc rsi
+            cmp al, 10
+            jne 5b
+            jmp 1b
+8:          xor r12d, r12d
+            NEXT
+
+/* the clock (decided at 523: UTC first; the zone is its own later step).
+ * civil_from_days, Howard Hinnant's: integer only, right for any date. */
+L_localtime: mov eax, SYS_time      /* ( --- sec min hour mday mon year wday ) */
+            xor edi, edi
+            syscall
+            sub r13, 7*CELL
+            mov [r13 + 6*CELL], r12
+            xor edx, edx
+            mov ecx, 86400
+            div rcx                  /* rax days, rdx seconds of the day */
+            mov r8, rax
+            mov rax, rdx
+            xor edx, edx
+            mov ecx, 60
+            div rcx
+            mov [r13 + 5*CELL], rdx  /* sec */
+            xor edx, edx
+            div rcx
+            mov [r13 + 4*CELL], rdx  /* min */
+            mov [r13 + 3*CELL], rax  /* hour */
+            lea rax, [r8 + 4]        /* 1970-01-01 was a Thursday */
+            xor edx, edx
+            mov ecx, 7
+            div rcx
+            mov r12, rdx             /* wday */
+            lea r9, [r8 + 719468]    /* z */
+            mov rax, r9
+            xor edx, edx
+            mov ecx, 146097
+            div rcx                  /* rax era, rdx doe */
+            mov r10, rax
+            mov r11, rdx
+            mov rax, r11             /* yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365 */
+            xor edx, edx
+            mov ecx, 1460
+            div rcx
+            mov rsi, r11
+            sub rsi, rax
+            mov rax, r11
+            xor edx, edx
+            mov ecx, 36524
+            div rcx
+            add rsi, rax
+            mov rax, r11
+            xor edx, edx
+            mov ecx, 146096
+            div rcx
+            sub rsi, rax
+            mov rax, rsi
+            xor edx, edx
+            mov ecx, 365
+            div rcx
+            mov rdi, rax             /* yoe */
+            imul rax, r10, 400
+            add rax, rdi
+            mov r9, rax              /* y */
+            imul rax, rdi, 365       /* doy = doe - (365*yoe + yoe/4 - yoe/100) */
+            mov rsi, rdi
+            shr rsi, 2
+            add rax, rsi
+            mov rsi, rax
+            mov rax, rdi
+            xor edx, edx
+            mov ecx, 100
+            div rcx
+            sub rsi, rax
+            mov rax, r11
+            sub rax, rsi             /* doy */
+            mov r10, rax
+            imul rax, rax, 5         /* mp = (5*doy + 2) / 153 */
+            add rax, 2
+            xor edx, edx
+            mov ecx, 153
+            div rcx
+            mov rdi, rax             /* mp */
+            imul rax, rdi, 153       /* d = doy - (153*mp + 2)/5 + 1 */
+            add rax, 2
+            xor edx, edx
+            mov ecx, 5
+            div rcx
+            mov rdx, r10
+            sub rdx, rax
+            inc rdx
+            mov [r13 + 2*CELL], rdx  /* mday */
+            lea rax, [rdi + 3]       /* m = mp < 10 ? mp + 3 : mp - 9 */
+            cmp rdi, 10
+            jb 1f
+            lea rax, [rdi - 9]
+1:          cmp rax, 2
+            ja 2f
+            inc r9                   /* January and February: the next year */
+2:          dec rax
+            mov [r13 + CELL], rax    /* mon, 0..11 */
+            sub r9, 1900
+            mov [r13], r9            /* year - 1900 */
+            NEXT
+
+L_cputimes: mov r8, -1               /* ( --- user sys child-user child-sys ) ms */
+            sub r13, 4*CELL
+            mov [r13 + 3*CELL], r12
+            xor edi, edi             /* RUSAGE_SELF */
+            lea rsi, [scratch]
+            mov eax, SYS_getrusage
+            syscall
+            call ru_ms
+            mov [r13 + 2*CELL], rax
+            call ru_ms_sys
+            mov [r13 + CELL], rax
+            mov rdi, -1              /* RUSAGE_CHILDREN */
+            lea rsi, [scratch]
+            mov eax, SYS_getrusage
+            syscall
+            call ru_ms
+            mov [r13], rax
+            call ru_ms_sys
+            mov r12, rax
+            NEXT
+ru_ms:      mov rax, [scratch]       /* ru_utime: sec*1000 + usec/1000 */
+            imul rax, rax, 1000
+            mov rcx, rax
+            mov rax, [scratch + 8]
+            jmp 1f
+ru_ms_sys:  mov rax, [scratch + 16]  /* ru_stime */
+            imul rax, rax, 1000
+            mov rcx, rax
+            mov rax, [scratch + 24]
+1:          xor edx, edx
+            mov r9d, 1000
+            div r9
+            add rax, rcx
+            ret
+L_getrlimit: mov rdi, r12            /* ( resource --- soft hard ior ) */
+            lea rsi, [scratch]
+            mov eax, SYS_getrlimit
+            syscall
+            sub r13, 2*CELL
+            test rax, rax
+            js 1f
+            mov rcx, [scratch]       /* RLIM_INFINITY is all ones: -1 */
+            mov [r13 + CELL], rcx
+            mov rcx, [scratch + 8]
+            mov [r13], rcx
+            xor r12d, r12d
+            NEXT
+1:          mov qword ptr [r13 + CELL], 0
+            mov qword ptr [r13], 0
+            mov r12, rax
+            NEXT
+L_setrlimit: mov rax, [r13 + CELL]   /* ( soft hard resource --- ior ) */
+            mov [scratch], rax
+            mov rax, [r13]
+            mov [scratch + 8], rax
+            mov rdi, r12
+            lea rsi, [scratch]
+            mov eax, SYS_setrlimit
+            syscall
+            mov r12, rax
+            add r13, 2*CELL
+            NEXT
+L_getfsize: mov edi, 1               /* ( --- n ): ulimit -f, 512-byte blocks */
+            lea rsi, [scratch]
+            mov eax, SYS_getrlimit
+            syscall
+            mov rcx, -1
+            test rax, rax
+            js 1f
+            mov rax, [scratch]
+            cmp rax, -1
+            je 1f
+            shr rax, 9
+            mov rcx, rax
+1:          PUSHT rcx
+            NEXT
+L_setfsize: mov edi, 1               /* ( n --- ior ) */
+            lea rsi, [scratch]
+            mov eax, SYS_getrlimit
+            syscall
+            test rax, rax
+            js 8f
+            mov rax, -1
+            test r12, r12
+            js 1f
+            mov rax, r12
+            shl rax, 9
+1:          mov [scratch], rax
+            mov [scratch + 8], rax
+            mov edi, 1
+            lea rsi, [scratch]
+            mov eax, SYS_setrlimit
+            syscall
+            xor r12d, r12d
+            test rax, rax
+            jns 2f
+8:          mov r12d, 202
+2:          NEXT
+L_tcgetpgrp: mov rdi, r12            /* ( fd --- pgid | -1 ) */
+            mov esi, 0x540F          /* TIOCGPGRP */
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            mov r12, -1
+            test rax, rax
+            jnz 1f
+            movsxd r12, dword ptr [scratch]
+1:          NEXT
+L_tcsetpgrp: mov qword ptr [scratch + 64], 0x200000   /* ( fd pgid --- ior ): */
+            xor edi, edi             /* SIGTTOU blocked while the terminal */
+            lea rsi, [scratch + 64]  /* is handed over, as cv8.c does */
+            lea rdx, [scratch + 72]
+            mov r10d, 8
+            mov eax, SYS_rt_sigprocmask
+            syscall
+            mov [scratch], r12d
+            mov rdi, [r13]
+            mov esi, 0x5410          /* TIOCSPGRP */
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            push rax
+            mov edi, 2               /* SIG_SETMASK: as it was */
+            lea rsi, [scratch + 72]
+            xor edx, edx
+            mov r10d, 8
+            mov eax, SYS_rt_sigprocmask
+            syscall
+            pop r12
+            add r13, CELL
+            NEXT
+
+/* the terminal, through the kernel's 36-byte termios - the one the
+ * TCGETS/TCSETS ioctls take, not glibc's larger struct: c_iflag at 0,
+ * c_lflag at 12, c_cc from 17, so VTIME at 22 and VMIN at 23 */
+term_restore:                        /* on the way out: only the process */
+            mov rdi, [t_raw_fd]      /* that set raw mode puts it back */
+            test rdi, rdi
+            js 1f
+            mov eax, SYS_getpid
+            syscall
+            cmp rax, [t_raw_pid]
+            jne 1f
+            mov rdi, [t_raw_fd]
+            mov esi, 0x5402          /* TCSETS: now */
+            lea rdx, [t_saved]
+            mov eax, SYS_ioctl
+            syscall
+1:          ret
+copy40:                              /* rsi -> rdi, 40 bytes */
+            mov ecx, 5
+            rep movsq
+            ret
+L_rawmode:  mov rdi, [r13]           /* ( fd flag --- ior ) */
+            add r13, CELL
+            test r12, r12
+            jnz 2f
+            xor r12d, r12d           /* off: only the descriptor it was set on */
+            cmp rdi, [t_raw_fd]
+            jne 9f
+            mov esi, 0x5402
+            lea rdx, [t_saved]
+            mov eax, SYS_ioctl
+            syscall
+            mov r12, rax
+            test rax, rax
+            js 9f
+            mov qword ptr [t_raw_fd], -1
+9:          NEXT
+2:          push rdi                 /* on: saved the first time */
+            mov esi, 0x5401          /* TCGETS */
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            pop rdi
+            mov r12, rax
+            test rax, rax
+            jnz 9b
+            cmp qword ptr [t_raw_fd], 0
+            jge 3f
+            push rdi
+            lea rsi, [scratch]
+            lea rdi, [t_saved]
+            call copy40
+            pop rdi
+            mov [t_raw_fd], rdi
+            push rdi
+            mov eax, SYS_getpid
+            syscall
+            mov [t_raw_pid], rax
+            pop rdi
+3:          and dword ptr [scratch + 12], ~(2 | 8)     /* ICANON, ECHO */
+            mov byte ptr [scratch + 23], 1             /* VMIN */
+            mov byte ptr [scratch + 22], 0             /* VTIME */
+            mov esi, 0x5402
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            mov r12, rax
+            NEXT
+L_termraw:  mov rdi, r12             /* ( fd --- ior ): the line editor's */
+            mov esi, 0x5401
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+            test rax, rax
+            jnz 9f
+            cmp qword ptr [term_saved], 0
+            jne 1f
+            lea rsi, [scratch]
+            lea rdi, [term_save]
+            call copy40
+            mov qword ptr [term_saved], 1
+1:          and dword ptr [scratch + 12], ~(2 | 8 | 0x8000)   /* ICANON ECHO IEXTEN */
+            and dword ptr [scratch], ~(0x100 | 0x40)          /* ICRNL INLCR */
+            mov byte ptr [scratch + 23], 1
+            mov byte ptr [scratch + 22], 0
+            mov rdi, r12
+            mov esi, 0x5403          /* TCSETSW: when output has drained */
+            lea rdx, [scratch]
+            mov eax, SYS_ioctl
+            syscall
+9:          mov r12, rax
+            NEXT
+L_termrestore: xor eax, eax          /* ( fd --- ior ) */
+            cmp qword ptr [term_saved], 0
+            je 9f
+            mov rdi, r12
+            mov esi, 0x5403
+            lea rdx, [term_save]
+            mov eax, SYS_ioctl
+            syscall
+9:          mov r12, rax
+            NEXT
+L_poll:     mov rdi, [r13 + CELL]    /* ( a-addr n ms --- n' ): n' < 0 is -errno */
+            mov rsi, [r13]
+            mov edx, r12d
+            mov eax, SYS_poll
+            syscall
+            mov r12, rax
+            add r13, 2*CELL
+            NEXT
+
+/* SYSTEM: /bin/sh -c, waited for; its exit status, or 200 */
+m_binsh:    .asciz "/bin/sh"
+m_dashc:    .asciz "-c"
+L_system:   mov rdi, [r13]           /* ( c-addr u --- ior ) */
+            lea r8, [rdi + r12]
+            movzx r9d, byte ptr [r8]
+            mov byte ptr [r8], 0
+            push r8
+            push r9
+            call env_init
+            mov eax, SYS_fork
+            syscall
+            test rax, rax
+            js 3f
+            jz 4f
+            mov rdi, rax
+            lea rsi, [scratch]
+            mov dword ptr [rsi], 0
+            xor edx, edx
+            xor r10d, r10d
+            mov eax, SYS_wait4
+            syscall
+            mov eax, dword ptr [scratch]
+            shr eax, 8
+            and eax, 0xff
+            mov r12, rax
+            jmp 5f
+3:          mov r12d, 200
+5:          pop r9
+            pop r8
+            mov [r8], r9b
+            add r13, CELL
+            NEXT
+4:          lea rax, [m_binsh]       /* the child */
+            mov [scratch], rax
+            lea rax, [m_dashc]
+            mov [scratch + 8], rax
+            mov rax, [r13]
+            mov [scratch + 16], rax
+            mov qword ptr [scratch + 24], 0
+            lea rdi, [m_binsh]
+            lea rsi, [scratch]
+            mov rdx, [env_ptr]
+            mov eax, SYS_execve
+            syscall
+            mov edi, 127
+            mov eax, SYS_exit
+            syscall
+
+/* TCP (Iteration 505's primitives): sockaddr_in in scratch + 32 */
+sa_fill:                             /* eax port, edx address (memory order) */
+            mov word ptr [scratch + 32], 2     /* AF_INET */
+            xchg al, ah                        /* the port, big-endian */
+            mov word ptr [scratch + 34], ax
+            mov dword ptr [scratch + 36], edx
+            mov qword ptr [scratch + 40], 0
+            ret
+L_tcplisten: mov r10, [r13]          /* ( port loopback? --- fd ior ) */
+            push r10
+            mov edi, 2
+            mov esi, 1               /* SOCK_STREAM */
+            xor edx, edx
+            mov eax, SYS_socket
+            syscall
+            pop r10
+            test rax, rax
+            js 8f
+            mov rbp, rax
+            mov eax, r10d
+            xor edx, edx             /* INADDR_ANY */
+            test r12, r12
+            jz 1f
+            mov edx, 0x0100007F      /* 127.0.0.1 */
+1:          call sa_fill
+            mov dword ptr [scratch + 48], 1
+            mov rdi, rbp
+            mov esi, 1               /* SOL_SOCKET */
+            mov edx, 2               /* SO_REUSEADDR */
+            lea r10, [scratch + 48]
+            mov r8d, 4
+            mov eax, SYS_setsockopt
+            syscall
+            test rax, rax
+            js 7f
+            mov rdi, rbp
+            lea rsi, [scratch + 32]
+            mov edx, 16
+            mov eax, SYS_bind
+            syscall
+            test rax, rax
+            js 7f
+            mov rdi, rbp
+            mov esi, 16
+            mov eax, SYS_listen
+            syscall
+            test rax, rax
+            js 7f
+            mov [r13], rbp
+            xor r12d, r12d
+            NEXT
+7:          mov rdi, rbp
+            mov eax, SYS_close
+            syscall
+8:          mov qword ptr [r13], -1
+            mov r12d, 200
+            NEXT
+L_tcpaccept: mov rdi, r12            /* ( fd --- fd' ior ) */
+            xor esi, esi
+            xor edx, edx
+            mov eax, SYS_accept
+            syscall
+            sub r13, CELL
+            xor r12d, r12d
+            test rax, rax
+            jns 1f
+            mov rax, -1
+            mov r12d, 200
+1:          mov [r13], rax
+            NEXT
+L_tcpconnect: mov rdi, [r13]         /* ( c-addr port --- fd ior ) */
+            call parse_ipv4
+            test ecx, ecx
+            jz 8f
+            push rax
+            mov edi, 2
+            mov esi, 1
+            xor edx, edx
+            mov eax, SYS_socket
+            syscall
+            pop rdx
+            test rax, rax
+            js 8f
+            mov rbp, rax
+            mov eax, r12d
+            call sa_fill
+            mov rdi, rbp
+            lea rsi, [scratch + 32]
+            mov edx, 16
+            mov eax, SYS_connect
+            syscall
+            test rax, rax
+            js 7f
+            mov [r13], rbp
+            xor r12d, r12d
+            NEXT
+7:          mov rdi, rbp
+            mov eax, SYS_close
+            syscall
+8:          mov qword ptr [r13], -1
+            mov r12d, 200
+            NEXT
+parse_ipv4:                          /* rdi: "a.b.c.d" -> eax in memory order, */
+            xor r8d, r8d             /* ecx 1 if well-formed as inet_pton */
+            xor r11d, r11d           /* wants it, 0 if not */
+1:          movzx eax, byte ptr [rdi]
+            sub eax, '0'
+            cmp eax, 9
+            ja 9f
+            mov r9d, eax
+            inc rdi
+2:          movzx eax, byte ptr [rdi]
+            sub eax, '0'
+            cmp eax, 9
+            ja 3f
+            test r9d, r9d            /* a leading zero: refused */
+            jz 9f
+            imul r9d, r9d, 10
+            add r9d, eax
+            cmp r9d, 255
+            ja 9f
+            inc rdi
+            jmp 2b
+3:          mov ecx, r11d
+            shl ecx, 3
+            shl r9d, cl
+            or r8d, r9d
+            inc r11d
+            movzx eax, byte ptr [rdi]
+            cmp r11d, 4
+            je 4f
+            cmp al, '.'
+            jne 9f
+            inc rdi
+            jmp 1b
+4:          test al, al
+            jnz 9f
+            mov eax, r8d
+            mov ecx, 1
+            ret
+9:          xor ecx, ecx
+            ret
+
+m_selfexe:  .asciz "/proc/self/exe"
+m_argv0:    .ascii "RELF_ARGV0="
+    .equ m_argv0_len, . - m_argv0
+set_argv0:                           /* RELF_ARGV0=argv[0], unless already set */
+            call env_init
+            lea rdi, [scratch]       /* the name alone, NUL-terminated */
+            lea rsi, [m_argv0]
+            mov ecx, m_argv0_len - 1
+            rep movsb
+            mov byte ptr [rdi], 0
+            lea rdi, [scratch]
+            call env_find
+            test rax, rax
+            jns 9f
+            mov rdi, [argv_v]
+            mov rdi, [rdi]
+            call strlen_rdi
+            push rax
+            lea rdi, [rax + m_argv0_len + 1]
+            call alloc_block
+            pop rcx
+            test rax, rax
+            jz 9f
+            mov r9, rax
+            mov rdi, rax
+            lea rsi, [m_argv0]
+            push rcx
+            mov ecx, m_argv0_len
+            rep movsb
+            pop rcx
+            mov rsi, [argv_v]
+            mov rsi, [rsi]
+            inc rcx                  /* and its NUL */
+            rep movsb
+            mov rcx, [env_ptr]       /* env_init left room for more */
+            mov rax, [env_n]
+            mov [rcx + rax*8], r9
+            inc rax
+            mov [env_n], rax
+            mov qword ptr [rcx + rax*8], 0
+9:          ret
+
 #include "relfasm-ops.S"
 
 /* ---- the end of the file, and the zero-filled tail after it ----------- */
 file_end:
     .equ FILE_SIZE,  file_end - ehdr   /* under 64 KB: the Makefile checks */
-    .if 256 + LSAVE_MAX*CELL + 64*8 + 256 + 72 > VM_OFF - (BSS_BASE - TEXTORG)
+    .if 256 + LSAVE_MAX*CELL + 64*8 + 256 + 72 + 8 + 120 > VM_OFF - (BSS_BASE - TEXTORG)
     .error "the variables no longer fit below the machine's memory"
     .endif

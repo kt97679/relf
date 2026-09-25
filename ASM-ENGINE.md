@@ -119,7 +119,16 @@ are, rather than typed a fifth time.
    stubs left, the terminal, time, limits and sockets among them, and
    the embedded-image trailer is still to come.
 4. **The rest**: terminal, directories, time, limits, sockets. Every
-   suite, both through `relfsh`.
+   suite, both through `relfsh`. **Reached at 523**: no stubs left - every primitive
+   cv8.c has, the assembly engine has - and the embedded-image lookup of
+   506, so `make relfshasm64` makes a single-file shell of it: 134,773
+   bytes, static, no libc. Through it, every suite gives cv8.c's
+   results: all 83 shell test files, all 131 differential cases, the pty
+   suite (23, 1 known-divergent - the line editor, raw mode and job
+   control included), POSIX 46 with 2 inconclusive, mrsh 21, the matrix
+   421 with 1 inconclusive and no regression. `~user` reads
+   `/etc/passwd` (A9), `LOCAL-TIME` is UTC (A10), and the engine's code
+   and the Forth image are in separate segments, W^X (A11).
 5. **Measure**: the paired benchmark against cv8.c. The point of an
    assembly engine was never only libc - it is also where the dispatch
    loop can be exactly what it should be.

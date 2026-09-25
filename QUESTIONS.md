@@ -14,16 +14,14 @@ same iteration.
 
 1. *(Q2, Q3 and Q4, which blocked the assembly engine's Milestone 1,
    were answered at 516.)*
-2. **Before its Milestone 4**: **Q5** (`~user`) and **Q6** (the time
-   zone). Each has a default, recommended below, that the engine
-   would follow unless you choose otherwise.
+2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
 3. **Before any Rill implementation begins** - the design waits on
    these; no code does: **Q7** (text blocks), **Q8** (the other open
    points), **Q10** (structured values across processes), **Q11** (the
    default lifetime of a job).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
-   speed), Q14 (its memory, writable and executable at once).
+   speed). *(Q14 was answered at 523.)*
 
 ## Open
 
@@ -40,19 +38,6 @@ parameter field that four past defects came from (FORTH-STYLE.md 12);
 (d) none.
 *Recommendation*: (a) if size matters to you - it is the only lever
 at both widths; I would leave (b) and (c). *Blocks*: nothing.
-
-**Q5. `~user` without libc (513).**
-libc's `getpwnam` also asks NSS (LDAP, systemd-homed); an engine with no
-libc can read only `/etc/passwd`. Keep the primitive's contract - as you
-decided for the environment (A3) - with the assembly engine reading
-`/etc/passwd`?
-*Recommendation*: yes; the reduction is inherent to having no libc.
-
-**Q6. The time zone without libc (513).**
-`LOCAL-TIME` (prompt escapes `\t`, `\D{...}`) uses `localtime_r`, which
-reads `TZ` and `/etc/localtime` (TZif).
-*Recommendation*: keep the contract; the assembly engine gives UTC
-first, and the TZif reader is its own later step.
 
 **Q7. Rill's text blocks: indentation, or a delimiter? (503, 514)**
 You asked for pros and cons, especially with several levels of
@@ -135,16 +120,6 @@ go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
 
-**Q14. The assembly engine's one segment is writable AND executable
-(521).** As in itsy-linux: one program header, flags read-write-execute,
-so the machine's 16 MB could hold code that runs, and the engine's own
-code could be written. A second program header for the zero-filled tail
-alone makes the code read-execute and the data read-write - W^X, as
-cv8.c's memory is. Nothing in the file part is written at run time
-since 520 moved the variables into the tail, so it would simply work;
-it costs 56 bytes. *Recommendation*: take it - 0.5% of the binary for
-the property every other engine on the machine has.
-
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:
 `return` outside a function inside a loop reports and carries on, as
@@ -193,6 +168,25 @@ that owns the save stack must still raise exactly that. So: the engine
 owns the stack, and the five cells at image offset 8 become one - a
 word the engine calls to report the error in Forth. **Done at 517**,
 with the image format's version raised to 6.
+
+**A9. `~user` without libc (Q5; 513 -> 523).** Agreed: the assembly
+engine reads `/etc/passwd`, and only that - no NSS, which a libc-free
+engine cannot have.
+
+**A10. The time zone without libc (Q6; 513 -> 523).** Agreed:
+`LOCAL-TIME` gives UTC first; reading `TZ` and `/etc/localtime` is its
+own later step.
+
+**A11. The assembly engine's memory, W^X (Q14; 521 -> 523).** Asked back:
+"keep engine code in the code segment and the Forth image in the data
+segment?" - yes, exactly: the file part (headers, machine code, tables,
+messages) read-execute, never written; the zero-filled tail (the
+engine's variables and the machine's 16 MB, where the Forth image
+lives) read-write, never executed. The Forth image is data to the CPU:
+the engine interprets it and never jumps into it. Done at 523, for 56
+bytes. A later self-hosted assembler (GOALS.md item 6) would want an
+executable region for the code it generates - a mapping of its own,
+made when it exists.
 
 ## Your notes, captured (514)
 
