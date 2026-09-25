@@ -508,6 +508,7 @@ do not trust the absence of a line below.
 - **510** — the source audit, first pass: four duplicates merged, four untested paths tested
 - **511** — the audit's second pass: two helpers extracted, and `[`'s error found on stdout
 - **512** — the audit's third pass: one PATH search, one file reader - and a documented trap walked into
+- **513** — the assembly engine designed: 63 libc functions, and a Milestone 0 in C
 
 ### Not tied to an iteration
 
@@ -24413,3 +24414,35 @@ Checked against dash: `.` along PATH, a command found and one not
 Recorded changes, with their causes: both shell images smaller, by 120
 bytes at 64-bit and 104 at 32 - the two merges - with their checksums
 and totals. The audit's three passes have taken ~500 bytes from each.
+
+## Iteration 513: the assembly engine, designed
+
+GOALS.md item 5, x86-64 first as decided at 500. ASM-ENGINE.md, before
+any code - as EXPANSION-ORDER.md was for its work.
+
+The shaping constraint: **both engines run the same images**, so the
+assembly engine implements cv8.c's primitives exactly, and the checks
+already exist - the kernels' fixpoint and every suite, through a relfsh
+made with tools/embed.sh.
+
+What libc does today, from `nm -u relf64`: 63 functions behind 138
+handlers. 41 are one system call each; 9 are small routines (the memory
+and string functions, signal sets, the page size); 8 are services with
+state - the allocator, the environment, directory reading; 3 are
+policy - `getpwnam`, `localtime_r`, `inet_pton`.
+
+Hence **Milestone 0, in C, before any assembly**: make every primitive a
+thin wrapper, moving policy into Forth where the suites test it. The
+largest step is the environment: the shell mirrors its exports into
+libc's `environ` and `EXECVE` passes it implicitly; instead the shell
+would build `envp` from its own table. Then five milestones: the core,
+files (ending with `cross.4` rebuilding both kernels byte-identically on
+the new engine), processes, the rest, and the measurement.
+
+Three questions are left for the user: the environment in the shell or
+kept by the engine; `~user` without NSS and the time zone, accepted
+reductions or not; and the ARM side, which keeps cv8.c for now.
+
+The audit's leftovers are recorded in GOALS.md item 9 with why each
+stays - most are in the expander's inner loops, where a shared word
+would put calls on the hottest path.

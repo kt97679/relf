@@ -136,7 +136,10 @@ work begins.
    state, deferred since phase 5 traded it for portability. `cv8.c`
    uses libc for `malloc` (`ALLOCATE`), stdio-free I/O wrappers, `fork`,
    `execve`, signals, `fcntl`, `localtime_r` and the terminal. Open:
-   which architecture first.
+   which architecture first. **Designed at 513** (ASM-ENGINE.md): 63 libc
+   functions, 41 of them one system call each; Milestone 0 makes every
+   primitive thin in C first - the environment into the shell, `~user`
+   and the time zone into Forth - and three questions wait for the user.
 6. **The assembly engine, self-hosted**: a Forth-hosted assembler
    (`CODE ... END-CODE`) that emits the engine itself, as `cross.4`
    emits the kernel - the second end state. Implies writing an
@@ -157,7 +160,15 @@ work begins.
    login name, `PS1` and the 2 ms of every start all arrive intact.
 9. **A thorough audit of all the sources**: dead code (`tools/dead-words.py`
    says none, but it sees only unreachable words), duplicated logic
-   (FORTH-STYLE.md 11), and performance on the way.
+   (FORTH-STYLE.md 11), and performance on the way. **Three passes, 510-512**:
+   coverage (90% of instructions run; four untested paths now tested),
+   seven duplicates merged, `[`'s error found on stdout. Left, on
+   purpose: the runs `tools/dup-scan.py` still reports are either in the
+   expander's inner loops (`XE-LIT-RUN`/`XE-QUOTED-RUN`, `COPY-LITERAL`/
+   `EW-ENTRY`, `EMIT-*`, `ENC-*-ESCAPE`, `XE-MARK-*`), where a shared word
+   would add calls to the hottest path, or short argument prologues of
+   builtins (`DO-BG`/`DO-FG`, `DO-ALIAS`/`DO-UNALIAS`, `UL-APPLY`/
+   `UL-REPORT`) that read more clearly inline.
 10. **A smaller image**: no buffers in the image - 142 are already
     `BUFFER:`s, allocated on first use, and 7 fixed ones remain, some of
     them tables that need their contents; no full-cell offsets where a
