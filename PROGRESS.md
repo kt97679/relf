@@ -504,6 +504,7 @@ do not trust the absence of a line below.
 - **506** — relfsh is a binary: the engine with the shell image inside it
 - **507** — everything named by cell width: relf64/relf32, kernel64/kernel32, relfsh64/relfsh32
 - **508** — the ARMv7 board on 507: two things the rename left for a 32-bit host
+- **509** — the space audit: 2 KB in full cells, and headers are a fifth of the image
 
 ### Not tied to an iteration
 
@@ -24271,3 +24272,37 @@ both of them mine:
 
 A board built from 507 still has the misnamed `relf64`: `make clean`
 removes it, and until then its size row is only a `machine` row.
+
+## Iteration 509: the space audit
+
+GOALS.md item 10, as decided at 500: no two-pass compiler; find what
+still stores a full cell where a compact offset would do. The ARMv7
+board verified 508 first - 51 portability checks, none failing, and the
+8-byte rows `missing` as they should be there.
+
+`tools/image-budget.py` walks an image's dictionary and splits its
+bytes. For the 64-bit shell image, 119,357 bytes in 2,193 words:
+colon code 62.4%, **headers 21.6%**, DOVAR data 10.9% (699 words),
+DODOES data 4.9% (195), and within the data 3,129 bytes of alignment
+padding. On the 32-bit image headers are 23.1%.
+
+The full cells that hold offsets or sizes, on the 64-bit image: the
+`BUFFER:` descriptors' size and link (the heap pointer beside them must
+stay a cell), about 150 of them; the builtin entries' link, xt offset and
+name length, 40-60; the 57 DEFER cells, which hold xt offsets; the
+header's 32 thread heads; the five locals cells. As 4-byte fields,
+about 2 KB, under 2% - and nothing at all at 32-bit, where a cell is
+already 4 bytes. Each is a structure other code walks, so each would
+be its own change.
+
+Two findings larger than that, neither about cells. **Every DOVAR word
+carries three unused bytes**: a data body is the opcode, three bytes,
+padding, the parameter field, and the three bytes are DODOES's target -
+a VARIABLE keeps them so that `>BODY` is one rule, `align(xt + 4)`. About
+2 KB; but FORTH-STYLE.md 12 records four defects from computing that
+address two ways, which is the argument for leaving it. And
+**headers are a fifth of the image**: every internal word's name,
+kept so that `forth` can find it. An image that kept names only for a
+documented extension API - what forth-shell-examples/README.md already
+lists - could be about a sixth smaller. The largest lever by far, and a
+trade-off in what `forth` can see; the user's to choose.

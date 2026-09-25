@@ -220,7 +220,17 @@ work begins.
   "about half the source" is a guess to be measured by building it.
 - **Item 10 - no two-pass compiler**: the complexity is not worth the
   gain. The task is to find what else still stores a full cell where a
-  compact offset would do.
+  compact offset would do. **Audited at 509** (`tools/image-budget.py`):
+  on the 64-bit shell image, buffer descriptors' size and link (~150),
+  builtin entries' three fields (~50), DEFER cells (57), the header's
+  thread heads and the locals cells could be 4-byte fields - about 2 KB,
+  under 2% of the image, and nothing at 32-bit, where cells are 4 bytes
+  already. Larger, and not about cells: every DOVAR word carries three
+  unused bytes, kept so one rule finds a parameter field (~2 KB, but the
+  rule is FORTH-STYLE.md's "compute it one way everywhere"); and
+  **headers are 21.6% of the 64-bit image, 23.1% of the 32-bit** - an
+  image keeping names only for a documented extension API could be a
+  sixth smaller. Which of these to do is the user's to choose.
 - **Items 5 and 6 - x86-64 first.** The debugging loop has to run where
   the code is written; on x86-64 it runs here, without relaying every
   attempt through the user's machines.
