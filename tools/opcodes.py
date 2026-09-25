@@ -34,3 +34,16 @@ def number(name):
         if nm == name and k != 'escaped':
             return n
     raise KeyError(name)
+
+def formats(path=None):
+    """opcode number -> the operand after it: the table's fifth column
+    (Iteration 533) - '-', 'u8', 'i8', 'u16', 'i32', 'u64', 'b8', 'b16',
+    'slot', 'sel' or 'data'. Escape selectors are not opcodes, and have
+    no entry."""
+    out = {}
+    for line in open(path or os.path.join(ROOT, 'opcodes.tab')):
+        f = line.split()
+        if not f or f[0].startswith('#') or f[0] == 'escaped':
+            continue
+        out[int(f[1], 0)] = f[4] if len(f) > 4 else '-'
+    return out

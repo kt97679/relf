@@ -528,6 +528,7 @@ do not trust the absence of a line below.
 - **530** — the loop words as opcodes: I, (LOOP), (?DO) - 13.9% fewer dispatches since 528
 - **531** — EXECUTE and @XT as opcodes: 14.95% fewer dispatches since 528
 - **532** — the first superinstructions: VAR@ fused with +, <, 1+, C@ - 4.62% fewer; 18.9% since 528
+- **533** — decoders read operand formats from opcodes.tab; compare-and-branch fused: 3.40% fewer, 21.6% since 528
 
 ### Not tied to an iteration
 
@@ -25217,3 +25218,51 @@ bytes LARGER while the image shrank: the stripped 64-bit engine crossed
 a 4 KB page, the step tests/sizes' own comment warns of - 4,096 bytes
 of file layout, less the 808. The 32-bit total, which crossed none, fell
 by its image's 768. Every suite row as before.
+
+## Iteration 533: operand formats in the table, and compare-and-branch
+
+**The decoders take operand formats from opcodes.tab** - a fifth column,
+`-`, `u8`, `i8`, `u16`, `i32`, `u64`, `b8`, `b16`, `i8b16`, `slot`, `sel`
+or `data` - where image-audit.py and superinst.py listed opcode numbers
+(`0x02`, `0x03`, `0x23`, `0x26`, `0x79`-`0x7C`, ...). `--check` rejects
+a format it does not know, since a typo would misdecode every image
+quietly - tested with `slto`. The refactor was held to IDENTICAL output
+and met it but for one line, whose cause was found: "code bytes" 22
+larger at both widths, because the folded `LIT;EXIT` keeps `LIT`'s
+16-bit operand, which the old decoders skipped - 11 uses in the image,
+2 bytes each. (Seen, and left for its own step so that nothing else
+could hide in it: `ADDI;EXIT` and `EQI;EXIT` are not in image-audit's
+set of body-ending opcodes.)
+
+**Compare-and-branch**: `0=`, `AND`, `<`, `>` and `EQI` fused with the
+`?BRANCH` after them - `0=?BRANCH`, `AND?BRANCH`, `<?BRANCH`,
+`>?BRANCH`, `EQI?BRANCH` at 0x4C-0x50; the last keeps `EQI`'s byte and
+then the offset (`i8b16`). `IF` - and `WHILE`, which is `IF SWAP` -
+compiles its branch through a new `?BRANCH,`, which rewrites the
+comparison just compiled when there is one (`LAST-OP`, which `NO-PEEP`
+clears at every branch target) before `>MARK` lays down the offset. The
+five numbers, and `EQI`'s, are kernel constants `--check` holds to the
+table. `?BRANCH` branches on a FALSE flag, so `0=?BRANCH` branches on a
+nonzero top; the assembly handlers keep the comparison's flags across
+the pops, which are `mov` and `lea`.
+
+**Tested**: every comparison both ways - signed across negatives, `EQI`
+with -3, `AND` with and without common bits, a `WHILE` loop - thirteen
+results the same on both engines and on the committed 532 build, which
+has none of this. Both shells pass the differential suite; the shell
+suite passes. **Measured: 18,212,374 dispatches became 17,593,772, 3.40%
+fewer - 21.6% since 528, with sixteen of the 32 free opcodes.** And over
+the whole workload mix, 384.8 million dispatches against 516 million at
+527: 25.4% fewer.
+
+**A recording refused, and why**: the first `--update` recorded
+`asm:interactive:failed 1`. I had run superinst.py alongside it, and
+the pty suite has a timing race under load (GOALS.md item 8). Run
+alone, twice, the assembly shell passes the pty suite 23 of 23, as
+before - the load, not the opcodes. The baseline was restored and the
+recording redone with nothing beside it. **Nothing heavy runs next to a
+recording run.**
+
+**Next, found by the same analysis**: `BUF-ZERO` in pool.4 clears a
+buffer a cell at a time, `BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT` -
+five pairs of it at 0.83% each. It is `0 FILL`, one dispatch.

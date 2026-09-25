@@ -91,13 +91,13 @@ EXIT, BR, QBR, B8, QB8 = N('EXIT'), N('BRANCH'), N('?BRANCH'), N('BRANCH8'), N('
 rows = opcodes.load()
 FOLD = {n for k, n, nm, h in rows if k == 'fold'} | {N('LIT8;EXIT'), N('ADDI;EXIT'), N('EQI;EXIT')}
 opname, escname = opcodes.names()
-SLOT_OPS = {n for k, n, nm, h in rows if nm in ('VAR@', 'VAR!', 'LSAVE', 'LRESTORE', 'L!', 'LZERO') or k == 'fuse'}
+FMT = opcodes.formats()
 def s16(v): return v - 65536 if v >= 32768 else v
 code = []                                # per body: [(addr, key, length, kind)]
 for name, c_, xt, end in bodies:
     if c_ & 32 or xt >= end:
         continue
-    if img[xt] in (0x24, 0x25):
+    if FMT.get(img[xt]) == 'data':
         # a data word: its entry opcode runs whenever it is called, and
         # the cold-opcode report must see that (527 showed DOVAR and
         # DODOES as never executed, having skipped these bodies)
@@ -107,24 +107,29 @@ for name, c_, xt, end in bodies:
     ip = xt; far = xt
     while ip < end:
         op = img[ip]; a = ip; kind = 'op'; key = opname.get(op, '?%02X' % op)
-        if op in (BR, QBR):
-            off = s16(img[ip + 1] | img[ip + 2] << 8); targets.add(ip + 1 + off)
+        # operand lengths from opcodes.tab's fifth column (Iteration 533)
+        f = FMT.get(op, '-') if op < 0x80 else 'call'
+        if f in ('b16', 'b8'):
+            if f == 'b16':
+                off = s16(img[ip + 1] | img[ip + 2] << 8); ln = 3
+            else:
+                off = img[ip + 1] - 256 if img[ip + 1] >= 128 else img[ip + 1]; ln = 2
+            targets.add(ip + 1 + off)
             if off > 0: far = max(far, ip + 1 + off)
-            ip += 3; kind = 'branch'
-        elif op in (B8, QB8):
-            off = img[ip + 1] - 256 if img[ip + 1] >= 128 else img[ip + 1]; targets.add(ip + 1 + off)
-            if off > 0: far = max(far, ip + 1 + off)
-            ip += 2; kind = 'branch'
-        elif op == N('LIT'): ip += 3
-        elif op == N('LIT8') or op == N('LIT8;EXIT'): ip += 2
-        elif op == N('LIT32'): ip += 5
-        elif op == N('LIT64'): ip += 9
-        elif op in (N('ADDI'), N('ADDI;EXIT'), N('EQI'), N('EQI;EXIT')): ip += 2
-        elif op == N('ESC'):
+            ip += ln; kind = 'branch'
+        elif f == 'i8b16':
+            off = s16(img[ip + 2] | img[ip + 3] << 8); targets.add(ip + 2 + off)
+            if off > 0: far = max(far, ip + 2 + off)
+            ip += 4; kind = 'branch'
+        elif f == 'u16': ip += 3
+        elif f in ('u8', 'i8'): ip += 2
+        elif f == 'i32': ip += 5
+        elif f == 'u64': ip += 9
+        elif f == 'sel':
             key = 'ESC:' + escname.get(img[ip + 1], '?'); ip += 2
-        elif op in SLOT_OPS:
+        elif f == 'slot':
             ip += 4 if img[ip + 1] & 0x80 else 3
-        elif op >= 0x80:
+        elif f == 'call':
             ln = 2 if op < 0xC0 else 3
             t = ((op & 63) << 8) | img[ip + 1] if ln == 2 else ((op & 63) << 16) | img[ip + 1] << 8 | img[ip + 2]
             ip += ln; kind = 'call'; key = 'call'

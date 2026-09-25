@@ -39,15 +39,16 @@
     [0x41] = &&L_plusstore, [0x42] = &&L_qdup, [0x43] = &&L_i, \
     [0x44] = &&L_loop, [0x45] = &&L_qdo, [0x46] = &&L_execute, \
     [0x47] = &&L_atxt, [0x48] = &&L_vfplus, [0x49] = &&L_vflt, \
-    [0x4A] = &&L_vfonep, [0x4B] = &&L_vfcfetch, [0x61] = &&L_lit0, \
-    [0x62] = &&L_lit1, [0x63] = &&L_litm1, [0x64] = &&L_vf, \
-    [0x65] = &&L_vs, [0x66] = &&L_lsave, [0x67] = &&L_lrest, \
-    [0x68] = &&L_lstore, [0x69] = &&L_lzero, [0x6A] = &&L_zeq, \
-    [0x6B] = &&L_sub, [0x6C] = &&L_ne, [0x6D] = &&L_zlt, [0x6E] = &&L_sgt, \
-    [0x6F] = &&L_2dup, [0x70] = &&L_2drop, [0x71] = &&L_charp, \
-    [0x72] = &&L_onep, [0x73] = &&L_cellp, [0x74] = &&L_cells, \
-    [0x75] = &&L_onem, [0x76] = &&L_invert, [0x77] = &&L_count, \
-    [0x78] = &&L_aligned, [0x79] = &&L_addi, [0x7A] = &&L_addix, \
-    [0x7B] = &&L_eqi, [0x7C] = &&L_eqix, [0x7D] = &&L_lit64, \
-    [0x7E] = &&L_esc
+    [0x4A] = &&L_vfonep, [0x4B] = &&L_vfcfetch, [0x4C] = &&L_zbr, \
+    [0x4D] = &&L_andbr, [0x4E] = &&L_ltbr, [0x4F] = &&L_gtbr, \
+    [0x50] = &&L_eqibr, [0x61] = &&L_lit0, [0x62] = &&L_lit1, \
+    [0x63] = &&L_litm1, [0x64] = &&L_vf, [0x65] = &&L_vs, \
+    [0x66] = &&L_lsave, [0x67] = &&L_lrest, [0x68] = &&L_lstore, \
+    [0x69] = &&L_lzero, [0x6A] = &&L_zeq, [0x6B] = &&L_sub, \
+    [0x6C] = &&L_ne, [0x6D] = &&L_zlt, [0x6E] = &&L_sgt, [0x6F] = &&L_2dup, \
+    [0x70] = &&L_2drop, [0x71] = &&L_charp, [0x72] = &&L_onep, \
+    [0x73] = &&L_cellp, [0x74] = &&L_cells, [0x75] = &&L_onem, \
+    [0x76] = &&L_invert, [0x77] = &&L_count, [0x78] = &&L_aligned, \
+    [0x79] = &&L_addi, [0x7A] = &&L_addix, [0x7B] = &&L_eqi, \
+    [0x7C] = &&L_eqix, [0x7D] = &&L_lit64, [0x7E] = &&L_esc
 #define OPC_BRANCH8 0x3F   /* the loop opcodes step over it */

@@ -51,6 +51,8 @@ _rows = _opcodes.load()
 NDIRECT = NSYN = sum(1 for k, n, nm, h in _rows if k == 'direct')
 EXITS = {_opcodes.number('EXIT'), _opcodes.number('LIT8;EXIT')} | {n for k, n, nm, h in _rows if k == 'fold'}
 B8, QB8 = _opcodes.number('BRANCH8'), _opcodes.number('?BRANCH8')
+FMT = _opcodes.formats()
+LITOP, NOOPOP, ESCOP = _opcodes.number('LIT'), _opcodes.number('NOOP'), _opcodes.number('ESC')
 # the opcodes with a variable-slot operand: the specialised six, and the
 # superinstructions built on VAR@ (kind `fuse`, Iteration 532)
 SLOTOPS = {n for k, n, nm, h in _rows
@@ -60,13 +62,17 @@ OPS = collections.Counter(); ESCS = collections.Counter()
 def s16(v): return v - 65536 if v >= 32768 else v
 for name, cnt, xt, end in bodies:
     if cnt & 32 or xt >= end: continue                 # primitives, opcode words
-    if img[xt] in (0x24, 0x25): continue               # data bodies
+    if FMT.get(img[xt]) == 'data': continue           # data bodies
     ip = xt; far_target = xt
     while ip < end:
         op = img[ip]
         if op < 0x80: OPS[op] += 1
-        if op == 0x7E: ESCS[img[ip+1]] += 1
-        if op in (0x03, 0x04):                         # BRANCH ?BRANCH, s16 from operand
+        if op == ESCOP: ESCS[img[ip+1]] += 1
+        # Each opcode's operand from opcodes.tab's fifth column (Iteration
+        # 533); this loop listed opcode numbers until then. The statistics
+        # and the paths through the end-of-body check are as they were.
+        f = FMT.get(op, '-') if op < 0x80 else 'call'
+        if f == 'b16':                                 # BRANCH ?BRANCH, s16 from operand
             off = s16(img[ip+1] | img[ip+2] << 8)
             tgt = ip + 1 + off
             kind = ('back' if off < 0 else 'fwd')
@@ -74,19 +80,27 @@ for name, cnt, xt, end in bodies:
             hist['branch '+kind].append(abs(off))
             if off > 0: far_target = max(far_target, tgt)
             ip += 3; continue
-        if op in (B8, QB8):
+        if f == 'i8b16':                               # EQI?BRANCH: the byte, then the offset
+            off = s16(img[ip+2] | img[ip+3] << 8)
+            kind = ('back' if off < 0 else 'fwd')
+            S['branch '+kind] += 1
+            hist['branch '+kind].append(abs(off))
+            if off > 0: far_target = max(far_target, ip + 2 + off)
+            ip += 4; continue
+        if f == 'b8':
             off = img[ip+1] - 256 if img[ip+1] >= 128 else img[ip+1]
             kind = 'branch8 back' if off < 0 else 'branch8 fwd'
             S[kind] += 1; hist[kind].append(abs(off))
             if off > 0: far_target = max(far_target, ip + 1 + off)
             ip += 2; continue
-        if op == 0x02: S['LIT16'] += 1; ip += 3; continue
-        if op in (0x26, 0x27): S['LIT8'] += 1; ip += 2
-        elif op == 0x23: S['LIT32'] += 1; ip += 5; continue
-        elif op == 0x7D: S['LIT64'] += 1; ip += 9; continue
-        elif op in (0x79, 0x7A, 0x7B, 0x7C): ip += 2
-        elif op == 0x7E: ip += 2; S['ESC'] += 1; continue
-        elif op in SLOTOPS:
+        if f == 'u16' and op == LITOP: S['LIT16'] += 1; ip += 3; continue
+        if f == 'u16': ip += 3                         # LIT;EXIT: its operand, then the exit check
+        elif f == 'u8': S['LIT8'] += 1; ip += 2
+        elif f == 'i32': S['LIT32'] += 1; ip += 5; continue
+        elif f == 'u64': S['LIT64'] += 1; ip += 9; continue
+        elif f == 'i8': ip += 2
+        elif f == 'sel': ip += 2; S['ESC'] += 1; continue
+        elif f == 'slot':
             if img[ip+1] & 0x80:
                 v = ((img[ip+1] & 0x7F) << 16) | img[ip+2] << 8 | img[ip+3]
                 v = (v ^ 0x400000) - 0x400000              # 23 bits signed, from the operand
@@ -96,7 +110,7 @@ for name, cnt, xt, end in bodies:
                 v = (v ^ 0x4000) - 0x4000                  # 15 bits signed, from the operand
                 S['slot near'] += 1; SLOTS.append((ip, ip+3, ip + 1 + v)); ip += 3
             continue
-        elif op == 0x00: S['NOOP'] += 1; ip += 1; continue
+        elif op == NOOPOP: S['NOOP'] += 1; ip += 1; continue
         elif op >= 0x80:
             if op < 0xC0:
                 t = ((op & 63) << 8) | img[ip+1]; ln = 2

@@ -940,6 +940,41 @@ L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
             NEXT
 2:          add r14, 2
 1:          NEXT
+/* compare-and-branch (533): ?BRANCH branches when the flag is FALSE; the
+ * comparison's flags survive the pops, which are mov and lea */
+L_zbr:      test r12, r12            /* 0= ?BRANCH: on while tos is 0 */
+            mov r12, [r13]
+            lea r13, [r13 + CELL]
+            jz 2f
+1:          movsx rax, word ptr [r14]
+            add r14, rax
+            NEXT
+2:          add r14, 2
+            NEXT
+L_andbr:    mov rax, [r13]           /* AND ?BRANCH */
+            test rax, r12
+            mov r12, [r13 + CELL]
+            lea r13, [r13 + 2*CELL]
+            jz 1b
+            add r14, 2
+            NEXT
+L_ltbr:     cmp [r13], r12           /* < ?BRANCH: on while NOS < tos */
+            mov r12, [r13 + CELL]
+            lea r13, [r13 + 2*CELL]
+            jl 2b
+            jmp 1b
+L_gtbr:     cmp [r13], r12           /* > ?BRANCH */
+            mov r12, [r13 + CELL]
+            lea r13, [r13 + 2*CELL]
+            jg 2b
+            jmp 1b
+L_eqibr:    movsx rax, byte ptr [r14] /* EQI ?BRANCH: the immediate, then */
+            inc r14                  /* the offset */
+            cmp r12, rax
+            mov r12, [r13]
+            lea r13, [r13 + CELL]
+            je 2b
+            jmp 1b
 /* the first superinstructions (532): VAR@ and the operation after it */
 L_vfplus:   SLOT                     /* VAR@ + */
             add r12, [rdx]

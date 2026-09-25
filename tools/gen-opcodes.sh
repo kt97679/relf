@@ -120,6 +120,12 @@ $1 == "escaped" { if (num($2) != ne) { printf "selector %s is not %d\n", $3, ne;
 $1 == "synth" && $3 == "LIT32" { if (num($2) != nd) { printf "LIT32 is not at the direct count %d\n", nd; bad = 1 } }
 END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
+# every opcode's operand format is one the decoders know (Iteration 533):
+# a typo there would not fail, it would misdecode every image quietly
+awk '/^#/ || NF == 0 { next } $1 != "escaped" && $5 !~ /^(-|u8|i8|u16|i32|u64|b8|b16|i8b16|slot|sel|data)$/ {
+    printf "gen-opcodes: %s has no known operand format (\"%s\")\n", $3, $5; bad = 1 }
+END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
+
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
 awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/kernel.4" > /tmp/gen-opcodes.k4.$$
@@ -172,6 +178,12 @@ kernel.4 VAR@+OP VAR@+
 kernel.4 VAR@<OP VAR@<
 kernel.4 VAR@1+OP VAR@1+
 kernel.4 VAR@C@OP VAR@C@
+kernel.4 0=?BR-OP 0=?BRANCH
+kernel.4 AND?BR-OP AND?BRANCH
+kernel.4 <?BR-OP <?BRANCH
+kernel.4 >?BR-OP >?BRANCH
+kernel.4 EQI?BR-OP EQI?BRANCH
+kernel.4 EQI-OP EQI
 shadow.4 LSAVE-OP LSAVE
 shadow.4 LRESTORE-OP LRESTORE
 shadow.4 L!-OP L!

@@ -936,6 +936,17 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
+/*  Compare-and-branch (533): the comparison, then ?BRANCH's test - which
+ *  branches when the flag is FALSE - in one dispatch; the offset after it
+ *  is ?BRANCH's, from its own position. */
+L_zbr:   t = tos; POPT(); if (!t) ip += 2; else ip += BROFF(ip); NEXT();
+L_andbr: t = NOS & tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_ltbr:  t = (INT64)NOS < (INT64)tos; POPT(); POPT();
+         if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_gtbr:  t = (INT64)NOS > (INT64)tos; POPT(); POPT();
+         if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_eqibr: t = tos == (UNS64)(INT64)(signed char)BYTE(ip); ip += 1; POPT();
+         if (t) ip += 2; else ip += BROFF(ip); NEXT();
 /*  The first superinstructions (532): VAR@ and the operation after it,
  *  one dispatch. The compiler rewrites the VAR@ byte in place; the slot
  *  operand after it is the variable's, as for VAR@. */

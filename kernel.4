@@ -1585,13 +1585,37 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ End a BEGIN AGAIN loop: branch back unconditionally.
   [OP] BRANCH BRANCH8-TOK BACK, ; IMMEDIATE
 
+76 CONSTANT 0=?BR-OP    \ 0= then ?BRANCH, as one opcode (opcodes.tab)
+77 CONSTANT AND?BR-OP   \ AND then ?BRANCH
+78 CONSTANT <?BR-OP     \ < then ?BRANCH
+79 CONSTANT >?BR-OP     \ > then ?BRANCH
+80 CONSTANT EQI?BR-OP   \ EQI then ?BRANCH: EQI's byte, then the offset
+123 CONSTANT EQI-OP     \ EQI, which PEEP-IMM compiles
+: FUSED-BRANCH ( op --- op2 | 0 )   \ the compare-and-branch form of op
+  DUP [OP] 0= = IF DROP 0=?BR-OP EXIT THEN
+  DUP [OP] AND = IF DROP AND?BR-OP EXIT THEN
+  DUP [OP] < = IF DROP <?BR-OP EXIT THEN
+  DUP [OP] > = IF DROP >?BR-OP EXIT THEN
+  EQI-OP = IF EQI?BR-OP EXIT THEN  0 ;
+: ?BRANCH, ( --- )
+\ A conditional branch - fused with the comparison just compiled, where
+\ the engines have a form for the pair (Iteration 533): that opcode's
+\ byte is rewritten, anything after it (EQI's immediate) stays, and the
+\ offset >MARK lays down next belongs to the fused opcode. LAST-OP is
+\ only ever the last thing compiled, and NO-PEEP - which every branch
+\ target calls - clears it, so nothing can land between the halves.
+  LAST-OP @ ?DUP IF
+    DUP C@ FUSED-BRANCH ?DUP IF SWAP C! NO-PEEP EXIT THEN DROP
+  THEN
+  NO-PEEP [OP] ?BRANCH OP, ;
+
 : IF    ( --- x)
 \ Start an IF THEN or IF ELSE THEN construction.
 \ Runtime: At IF a flag is taken from
 \ the stack and if it is true the part between IF and ELSE is executed,
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
-  NO-PEEP [OP] ?BRANCH OP, >MARK ; IMMEDIATE
+  ?BRANCH, >MARK ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.
