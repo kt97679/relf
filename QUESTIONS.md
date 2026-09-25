@@ -10,6 +10,23 @@ as it takes, and the work that depends on it says so and waits.
 When a reply to the user asks something, the question goes here in the
 same iteration.
 
+## What blocks what - in the order the work needs them
+
+1. **Before the assembly engine's Milestone 1**, the next work: **Q2**
+   (the two-bit call tag - after Milestone 1 it would cost both
+   engines) and **Q3** (one generated source for the opcode numbering,
+   proposed as Milestone 1's first step). Q4 is best settled at the
+   same time, but blocks nothing.
+2. **Before its Milestone 4**: **Q5** (`~user`) and **Q6** (the time
+   zone). Each has a default, recommended below, that the engine
+   would follow unless you choose otherwise.
+3. **Before any Rill implementation begins** - the design waits on
+   these; no code does: **Q7** (text blocks), **Q8** (the other open
+   points), **Q10** (structured values across processes), **Q11** (the
+   default lifetime of a job).
+4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
+   on purpose).
+
 ## Open
 
 **Q1. The space audit: which, if any? (509)**
@@ -73,6 +90,31 @@ margin (design C there).
 (JSON on a marked port?); a softer failure rule at the prompt than in
 scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
 Rill", says why; it is easy to change.
+
+**Q10. Rill: how structured values cross a process boundary (515).**
+The environment is `NAME=VALUE` strings for every program, most not
+Rill. Options, argued in SHELL-LANGUAGE.md Part 4: (1) only text is
+exported, and a structure crosses by explicit encoding
+(`export CFG = json($cfg)`, `from-json($CFG)` on the other side);
+(2) automatic, with a marker variable recording each export's kind -
+seamless, but stale when anything in between changes the value, and
+it re-reads text unasked; (3) lists tied to a separator, as zsh's
+`PATH`. For Rill-to-Rill calls, a value port (descriptor 3, JSON) that
+carries a script's `return` value back to its caller.
+*Recommendation*: (1), JSON as the standard codec, plus value ports
+for Rill-to-Rill calls; never functions in the environment (bash's
+exported functions were Shellshock).
+
+**Q11. Rill: the default lifetime of a job (515).**
+`par` covers fork-join work; a server started for a test run, a
+coprocess, and a daemon need jobs as values (`spawn`, `kill`, `wait`,
+ports to talk through). What happens to a job its script never waited
+for: it runs on, orphaned (as in sh); it is stopped when the script
+ends; or it is stopped when the block that started it ends.
+*Recommendation*: stopped when the script ends, by default - no orphan
+is an accident; `with` binds a job to a block; `detach` lets one
+outlive the script; at the interactive prompt, jobs live as long as the
+shell, as in sh.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:

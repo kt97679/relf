@@ -510,6 +510,7 @@ do not trust the absence of a line below.
 - **512** — the audit's third pass: one PATH search, one file reader - and a documented trap walked into
 - **513** — the assembly engine designed: 63 libc functions, and a Milestone 0 in C
 - **514** — QUESTIONS.md; 256-column lines; Rill specified; the assembly engine's decisions
+- **515** — Rill discussed: structured values across processes, and jobs with lifetimes
 
 ### Not tied to an iteration
 
@@ -24495,3 +24496,37 @@ with alignment; their checksums and the size totals with them. Nothing
 else moved: the long-path check reproduces with its 327-character path.
 It left the path's first component in /tmp, being written for one; it
 removes both now (checked by hand, since verification was running).
+
+## Iteration 515: Rill, two boundaries discussed
+
+The user raised two design questions, argued in SHELL-LANGUAGE.md
+Part 4 before either is decided.
+
+**How structured values fit environment variables.** The environment
+is `NAME=VALUE` strings handed to every program, most of them not Rill,
+so a record there is text to anyone else whatever Rill does. Three
+ways were weighed: text only with explicit encoding; automatic export
+with a kind marker beside it (stale when anything in between changes
+the value, and a child rebuilding values it did not ask for is
+re-reading text - Rill's first refusal); lists tied to a separator, as
+zsh's `PATH`. Also why the environment is a poor channel for structure
+at all: size, privacy (`/proc/PID/environ`), and that it is copied
+once. For Rill calling Rill, a value port - descriptor 3, JSON - brings
+a script's `return` value back typed on both ends, which is also where
+Part 2's "records at the prompt" lands.
+
+**How a process is forked, talked to and killed, when `par` is
+structured.** `par` stays for fork-join work; the rest needs jobs as
+values - `spawn`, `kill`, `signal`, `wait`, and ports kept open for a
+coprocess, which POSIX sh can only build from FIFOs. The open part is
+the default lifetime of a job nobody waited for: orphaned as in sh,
+stopped with the script, or stopped with its block. Recommended:
+stopped with the script, with `with` for block-bound jobs and `detach`
+for daemons - so the user's case, a process killed when the main one
+ends, is the default.
+
+QUESTIONS.md gains Q10 and Q11, and - as asked - a section at its top
+ordering every open question by the work it blocks: Q2 and Q3 before
+the assembly engine's next milestone; Q5 and Q6 before its fourth,
+each with a default; Q7, Q8, Q10 and Q11 before any Rill code; Q1 and
+Q9 blocking nothing.
