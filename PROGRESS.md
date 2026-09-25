@@ -509,6 +509,7 @@ do not trust the absence of a line below.
 - **511** — the audit's second pass: two helpers extracted, and `[`'s error found on stdout
 - **512** — the audit's third pass: one PATH search, one file reader - and a documented trap walked into
 - **513** — the assembly engine designed: 63 libc functions, and a Milestone 0 in C
+- **514** — QUESTIONS.md; 256-column lines; Rill specified; the assembly engine's decisions
 
 ### Not tied to an iteration
 
@@ -24446,3 +24447,51 @@ reductions or not; and the ARM side, which keeps cv8.c for now.
 The audit's leftovers are recorded in GOALS.md item 9 with why each
 stays - most are in the expander's inner loops, where a shared word
 would put calls on the hottest path.
+
+## Iteration 514: the user's notes, captured and acted on
+
+**QUESTIONS.md**, at the user's request: every question raised with
+them, so none lives only in a reply - nine open (Q1-Q9: the space
+audit's options, the two-bit call tag, one source for the opcode
+numbering, `LSAVE`/`LRESTORE`, `~user` and the time zone without libc,
+Rill's text blocks and other open points, the divergences kept on
+purpose), five answered (A1-A5), each with context, options and a
+recommendation. GOALS.md "How this file is kept" now says a question
+asked in a reply is written there in the same iteration.
+
+**256-column input lines** (80 until now): `TIB` and `QUERY` in
+kernel.4, both kernels rebuilt deliberately (`IMAGES_FORCE=1`) and both
+reproduce themselves; the 64-bit kernel is 176 bytes larger, the
+buffer's growth. 501's 92-column definition, which the old limit cut
+silently, now compiles and runs at both widths, and a 200-column line
+works through `forth`. The long-path check in tests/verify existed to
+catch a build that writes absolute paths into input lines; at 80
+columns its path was long enough, at 256 it was not, so it is 327
+characters now, in two components (one may not exceed 255 bytes).
+
+**SHELL-LANGUAGE.md, Part 3**: why "Rill"; a lexical and syntactic
+grammar, the kinds and their conversions, and the kernel's rules where
+shells usually go wrong; POSIX constructs translated; what each
+language can do that the other cannot; and text blocks argued - four
+designs, each shown nested inside a `def` and a `for`, compared on
+nesting, a first line indented further, tabs, pasting, the prompt. The
+recommendation changes Part 2's choice, from indentation to a closing
+marker whose indentation is the margin; the decision is the user's
+(Q7). **Writing the grammar found two context dependencies in Part 2**,
+the thing the language exists to avoid: `#` was both comment and length
+operator, and `( )` meant output or status by where it stood. Now `#`
+only comments and length is `len()`; `(...)` is always a run and
+`$(...)` always its output. Part 2 is corrected to match.
+
+**ASM-ENGINE.md**: decided - x86-64 only for now, the 32-bit engine
+revisited after; every primitive keeps its contract, the environment
+included, kept by the engine as libc keeps it. So the first-proposed
+Milestone 0 is not done; what remains is optional groundwork, in
+QUESTIONS.md as Q2-Q4.
+
+Recorded changes, with their causes: both shell images larger - 192
+bytes at 64-bit, 180 at 32 - the kernel's input buffer, 176 bytes more,
+with alignment; their checksums and the size totals with them. Nothing
+else moved: the long-path check reproduces with its 327-character path.
+It left the path's first component in /tmp, being written for one; it
+removes both now (checked by hand, since verification was running).

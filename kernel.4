@@ -714,7 +714,7 @@ VARIABLE DPL ( --- a-addr)
 
 VARIABLE TIB ( --- addr)
 \ is the standard terminal input buffer.
-80 CHARS-T ALLOT-T
+256 CHARS-T ALLOT-T   \ 256 columns since Iteration 514; 80 until then
 
 VARIABLE #TIB ( --- addr)
 \ This variable holds the number of characters in the terminal input buffer.
@@ -943,7 +943,7 @@ VARIABLE RL-NEWLINE?   \ did the line just read end at a newline
 
 : QUERY ( --- )
 \ Read a line from the terminal into the terminal input buffer.
-  TIB 80 ACCEPT #TIB ! ;
+  TIB 256 ACCEPT #TIB ! ;
 
 : SOURCE ( --- addr len)
 \ Return the address and length of the current input source.

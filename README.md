@@ -97,6 +97,7 @@ Each covers one topic; where one needs another, it says which.
 | `EXPANSION-ORDER.md` | the order of a simple command's expansions: the design, and where it stopped |
 | `SHELL-LANGUAGE.md` | a shell language of our own: where the POSIX one's cost lives, and the design |
 | `ASM-ENGINE.md` | the x86-64 engine on raw syscalls: what libc does today, milestones, open questions |
+| `QUESTIONS.md` | every question waiting on the user, with options and a recommendation; answered ones kept |
 | `tests/from-others/CATALOGUE.md` | behaviours learned from other shells' test suites |
 
 ## Where it came from

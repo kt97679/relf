@@ -44,8 +44,8 @@ so start them with `&`.
 - **There is no isolation.** A Forth error inside a loaded word aborts
   the whole shell, and a word that unbalances the stack corrupts it.
   That is the nature of the facility (`DO-FORTH` in `shell.4` says so).
-- A Forth line is read 80 columns at a time: keep definitions to lines
-  shorter than that, or a long one is cut and what follows it
-  misread.
+- A Forth line is read 256 columns at a time (80 until Iteration 514):
+  keep definitions to lines shorter than that, or a long one is cut and
+  what follows it misread.
 - What is loaded lives in this shell process only - load it again in
   the next shell, or put the `forth` line in your `$ENV` file.

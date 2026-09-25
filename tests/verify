@@ -111,15 +111,19 @@ done
 #     builder's PID. So SS-SCRUB's whole reason for existing was
 #     untested until this check.
 #
-#     It also guards the 80-column input limit. QUERY reads with
-#     `TIB 80 ACCEPT`, so an over-long line loses its tail silently;
+#     It also guards the input line limit - 80 columns until Iteration
+#     514, 256 since. QUERY reads with `TIB 256 ACCEPT`, so an over-long
+#     line loses its tail silently;
 #     relfsh's bootstrap used to interpolate $DIR into every line and
 #     so stopped building past a ~36-character repository path, with
 #     the PID's digit count deciding the exact cliff. A deliberately
 #     long path here fails if that ever comes back.
 # ---------------------------------------------------------------
-CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-eighty-columns
-rm -rf "$CROSS"
+# Longer than a whole input line, so a build that interpolated the path
+# into one would fail here: over 256 characters since the limit was
+# raised (514), in two components, since one may not exceed 255 bytes.
+CROSS=/tmp/relf-verify-crosspath-deliberately-long-directory-name-to-exceed-a-whole-input-line-$(printf '%0110d' 0 | tr 0 x)/second-component-$(printf '%0110d' 0 | tr 0 y)
+rm -rf "${CROSS%/*}"          # both components: the path is two since 514
 if mkdir -p "$CROSS" 2>/dev/null; then
     # The shell's sources are the Makefile's SHELL_SOURCES, not a list of
     # this check's own. Its own copy lacked edit.4 from Iteration 303, so
@@ -141,7 +145,7 @@ if mkdir -p "$CROSS" 2>/dev/null; then
     else
         emit crosspath:kernel64-shell.img missing
     fi
-    rm -rf "$CROSS"
+    rm -rf "${CROSS%/*}"
 else
     emit crosspath:kernel64-shell.img skipped
 fi

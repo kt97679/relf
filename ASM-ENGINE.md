@@ -35,35 +35,25 @@ The first two rows are mechanical. The third is where the work is:
 grows through them), so the allocator must be decent - segregated free
 lists over `mmap`, with `realloc` in place when it can.
 
-## Milestone 0 — thin primitives, in C first
+## Decided (Iteration 514)
 
-Before any assembly, make every primitive a thin wrapper over the
-kernel, moving policy into Forth where the existing suites test it.
-Each step is an ordinary iteration: `cv8.c`, the kernels rebuilt, both
-widths verified, the ARMv7 board too.
+- **x86-64 only, for now.** The 32-bit side keeps cv8.c; an engine for
+  it is revisited when the 64-bit one is complete.
+- **Every primitive keeps its contract**, the environment included:
+  the assembly engine keeps an environment as libc does - the one it
+  was started with, changed by `SETENV` and `UNSETENV`, passed by
+  `EXECVE` - so the two engines stay interchangeable and the shell does
+  not change. About 150 lines of assembly; no concern with it.
 
-- **The environment moves into the shell.** It already keeps every
-  variable with an export flag; today it mirrors exports into libc's
-  `environ` through `SETENV`/`UNSETENV`, and `EXECVE` passes `environ`
-  implicitly. Instead: `EXECVE` takes an explicit `envp`, which the
-  shell builds from its table when it runs a program, and the engine
-  offers only the environment it was started with (`ENV-AT`). `GETENV`,
-  `SETENV` and `UNSETENV` go. The largest step, and a shell change, not
-  an engine one.
-- **`~user`** (`GETPWNAM-HOME`) reads `/etc/passwd` in Forth. A real
-  reduction - libc's `getpwnam` also asks NSS (LDAP, systemd-homed) -
-  and inherent to having no libc; dash with a static musl has the same
-  limit.
-- **`LOCAL-TIME`** (prompt escapes `\t`, `\D{...}`) needs the zone:
-  `TZ`, or `/etc/localtime` in TZif form. A TZif reader in Forth, the
-  engine giving only the clock - or UTC first, with the zone as its own
-  step.
-- **`TCP-CONNECT`** takes the address as a number; the dotted form is
-  parsed in Forth.
-
-After Milestone 0 the contract is: every primitive is at most a
-system call and the arithmetic around it, except the allocator,
-`getdents64`'s buffering, and the memory routines.
+So the Milestone 0 first proposed here - moving the environment into
+the shell, `~user` and the time zone into Forth - is **not** done.
+What remains of it is optional groundwork, each item a question in
+QUESTIONS.md: one generated source for the opcode numbering, so the
+assembly engine's table is not a fifth hand-kept copy (Q3); `LSAVE`
+and `LRESTORE` as real primitives (Q4); and, since the format would
+change under both engines, a decision on the two-bit call tag before
+Milestone 1 (Q2). `~user` reads `/etc/passwd` (Q5), and `LOCAL-TIME`
+gives UTC first (Q6), unless the user decides otherwise.
 
 ## The engine
 
@@ -104,11 +94,4 @@ system call and the arithmetic around it, except the allocator,
 
 ## Open, for the user
 
-- **Milestone 0's environment change is the one real design step**, and
-  it changes the shell. The alternative - an environment array kept by
-  the assembly engine, as libc keeps one - costs ~150 lines of
-  assembly and leaves the two engines' contract as it is.
-- **`~user` without NSS**, and **the time zone**: accepted reductions,
-  or reasons to keep a little policy in the engine?
-- **The 32-bit side**: the ARMv7 board keeps cv8.c. An ARM engine would
-  be its own project, after x86-64 has shown what one costs.
+In QUESTIONS.md, where every question to the user is kept: Q2 to Q6.

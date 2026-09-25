@@ -22,6 +22,11 @@ https://github.com/kt97679/relf) working toward:
 
 ## How this file is kept
 
+Questions to the user live in QUESTIONS.md, not here and not only in a
+reply: when a reply asks something, the question is written there in
+the same iteration, and an answer moves it to "Answered" with where
+the decision went (the user's request, Iteration 514).
+
 This file is the PRESENT: what the project is for, what is open now,
 what was decided and why, and what has been tried and rejected. How it
 is built is `README.md`; how it is checked, `CHECKING.md`. The past is
@@ -136,7 +141,9 @@ work begins.
    state, deferred since phase 5 traded it for portability. `cv8.c`
    uses libc for `malloc` (`ALLOCATE`), stdio-free I/O wrappers, `fork`,
    `execve`, signals, `fcntl`, `localtime_r` and the terminal. Open:
-   which architecture first. **Designed at 513** (ASM-ENGINE.md): 63 libc
+   which architecture first. **Decided at 514**: x86-64 only for now,
+   and every primitive keeps its contract, the environment included.
+   **Designed at 513** (ASM-ENGINE.md): 63 libc
    functions, 41 of them one system call each; Milestone 0 makes every
    primitive thin in C first - the environment into the shell, `~user`
    and the time zone into Forth - and three questions wait for the user.

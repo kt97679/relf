@@ -2,8 +2,9 @@
 # tools/build-shell-image.sh ENGINE KERNEL OUT SOURCE... - build a shell
 # image: KERNEL with each SOURCE loaded in order, MAIN made the boot word,
 # saved as OUT. Run it where the sources are, with relative names: the
-# kernel reads its input 80 columns at a time, and a long absolute path
-# once stopped the build (Iteration 150's long-path check guards that).
+# kernel reads its input 256 columns at a time (80 until Iteration 514),
+# and a long absolute path once stopped the build (Iteration 150's
+# long-path check guards that).
 #
 # An image is installed only if it starts the shell AND its build said
 # nothing that sounds like an error - either failure leaves OUT as it
