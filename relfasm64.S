@@ -36,7 +36,7 @@
     .equ PAGE,         4096
     .equ CELL,         8
     .equ LSAVE_MAX,    4096
-    .equ CV8_VERSION,  6
+    .equ CV8_VERSION,  7
     .equ FEATURES,     15            /* varcall varslot spec lit64 */
 
     .equ SYS_read,     0
@@ -235,6 +235,8 @@ m_badesc:    .ascii "relf: image uses an escaped primitive this engine does not 
     .equ m_badesc_len, . - m_badesc
 m_locals:    .ascii "relf: locals save stack overflow or underflow\n"
     .equ m_locals_len, . - m_locals
+m_badop:     .ascii "relf: image uses an opcode this engine does not have\n"
+    .equ m_badop_len, . - m_badop
 m_nl:        .ascii "\n"
 
 /* ---- helpers, outside the machine ------------------------------------ */
@@ -906,6 +908,15 @@ L_lit64:    mov rax, [r14]
 L_esc:      movzx eax, byte ptr [r14]
             inc r14
             jmp qword ptr [esc_tab + rax*8]
+L_badop:    lea rsi, [rip + m_badop]  /* an opcode no table names */
+            mov edx, m_badop_len
+            mov edi, 2
+            jmp die
+L_plusstore: mov rax, [r13]          /* +! ( w a-addr --- ), since 528 */
+            add [r12], rax
+            mov r12, [r13 + CELL]
+            add r13, 2*CELL
+            NEXT
 L_badesc:   lea rsi, [rip + m_badesc]
             mov edx, m_badesc_len
             mov edi, 2

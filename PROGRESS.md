@@ -523,6 +523,7 @@ do not trust the absence of a line below.
 - **525** — the assembly engine joins make verify on x86-64 hosts: eight rows
 - **526** — the dispatch loop measured: both engines on the indirect-jump floor; tuning left out
 - **527** — superinstruction candidates measured: 21% from 32 pairs, ~20% from eight runtime words
+- **528** — +! an opcode: 2.19% fewer dispatches; format 7; unassigned opcodes trap; the cold end tracked
 
 ### Not tied to an iteration
 
@@ -24981,3 +24982,44 @@ see; they take `-I` the repository now. And profile.py and coverage.py
 `__file__` - undefined in an exec; it is supplied. Nine iterations
 unnoticed, because nothing runs these tools on a schedule: the first
 use found them.
+
+## Iteration 528: +! an opcode, and both ends of the opcode space
+
+QUESTIONS.md A12: the small runtime words as opcodes first, one at a
+time, each measured - and, the user's correction, the RARELY executed
+opcodes tracked as well, as candidates to leave the one-byte space so
+its slots go where the dispatches are.
+
+**The cold end** (`tools/superinst.py` reports it now): of the one-byte
+opcodes, four folded forms have no use anywhere in the image -
+`<;EXIT`, `DUP;EXIT`, `ROT;EXIT`, `R@;EXIT` - and more have a use or two
+that never runs (`RSHIFT;EXIT`, `ADDI;EXIT`, `NEGATE;EXIT`); `SP!` and
+`RP!` (exception handling), `D+`, `LSHIFT`, `NEGATE`, `RP@`, `CHAR+`,
+`INVERT` and `UM/MOD` each run under 0.02% of the time. Some fifteen
+slots, on top of the 32 free ones. (The first report listed `DOVAR` and
+`DODOES` as never run: the decoder skipped data words' bodies, and so
+their entry opcodes. Fixed before anything was read into it.)
+
+**The format groundwork, version 7**: until now an opcode no table named
+dispatched to `NOOP` - so an image using an opcode an older engine
+lacked would have skipped it in silence. Unassigned opcodes trap now,
+in both engines ("relf: image uses an opcode this engine does not
+have"), and the version is 7, in cv8.c, relfasm64.S, cross.4 and
+save-system.4. From here, opcodes can be added one at a time and a
+mismatch fails loudly. The kernels were cross-compiled by the version-6
+engine, as at 517, and the version-7 engine reproduces both.
+
+**`+!` at 0x41**, the first of the free band: `65 OPCODE +!` in kernel.4,
+a four-instruction handler in each engine, one line in opcodes.tab. As
+a colon word it was `DUP @ ROT + SWAP ! ;` - six dispatches a use.
+**Measured exactly**, on the realistic workload: 22,451,671 dispatches
+became 21,960,895 - **2.19% fewer**, precisely the 490,776 the profiler
+had attributed to `+!`'s body. The paired timing that day was too noisy
+(intervals of +-4%) to see a 2% change, as expected; exact dispatch
+counts are how each step is measured, and timing the sum of them.
+
+Recorded changes, with their causes: both shell images smaller - 240
+bytes at 64-bit, 236 at 32 - every `+!` one byte where a call was two or
+three, and its colon body gone; the engines 104-140 bytes larger for the
+handler and the trap; relfshasm64 136 bytes smaller over all. Every
+suite row as before.

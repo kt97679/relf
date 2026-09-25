@@ -95,7 +95,13 @@ SLOT_OPS = {n for k, n, nm, h in rows if nm in ('VAR@', 'VAR!', 'LSAVE', 'LRESTO
 def s16(v): return v - 65536 if v >= 32768 else v
 code = []                                # per body: [(addr, key, length, kind)]
 for name, c_, xt, end in bodies:
-    if c_ & 32 or xt >= end or img[xt] in (0x24, 0x25):
+    if c_ & 32 or xt >= end:
+        continue
+    if img[xt] in (0x24, 0x25):
+        # a data word: its entry opcode runs whenever it is called, and
+        # the cold-opcode report must see that (527 showed DOVAR and
+        # DODOES as never executed, having skipped these bodies)
+        code.append((name, [(xt, 'DOVAR' if img[xt] == 0x24 else 'DODOES', 1, 'op')], set()))
         continue
     ins, targets = [], set()
     ip = xt; far = xt
@@ -153,6 +159,23 @@ for (k1, k2), n in pairs.most_common(30):
 print('\nthe most executed adjacent triples:')
 for (k1, k2, k3), n in triples.most_common(15):
     print('  %-36s %12d  %5.2f%%' % (' '.join((k1, k2, k3)), n, 100.0 * n / total))
+
+# ---- 3b. the other end: one-byte opcodes that are rarely executed ---------
+# (the user's correction at 528: the one-byte space is finite, and a cold
+# opcode's slot could hold a hot one - the cold one moving to the escape
+# band, one byte and one dispatch more a use, or out of the primitives)
+dyn = collections.Counter(); stat = collections.Counter()
+for name, ins, targets in code:
+    for a, key, ln, kind in ins:
+        if key == 'call' or key.startswith('ESC:'):
+            continue
+        dyn[key] += cnt[a]; stat[key] += 1
+one_byte = [nm for k, n, nm, h in rows if k != 'escaped' and nm != 'ESC']
+cold = sorted(one_byte, key=lambda k: (dyn[k], stat[k]))
+print('\nthe coldest one-byte opcodes - candidates to move out:')
+print('  %-12s %12s %8s  %s' % ('opcode', 'executed', '% disp', 'static uses'))
+for k in cold[:24]:
+    print('  %-12s %12d %7.4f%%  %d' % (k, dyn[k], 100.0 * dyn[k] / total, stat[k]))
 
 # ---- 4. fuse the top K pairs, in a simulation ------------------------------
 chosen = {p for p, n in pairs.most_common(K)}

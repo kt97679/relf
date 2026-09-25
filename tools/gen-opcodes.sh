@@ -70,7 +70,7 @@ generate_asm() {
         print " *  a single segment behind a hand-written ELF header.  */"
         print "    .balign 8"
         print "dispatch256:"
-        for (i = 0; i < 128; i++) printf "    .quad %s\n", (i in op) ? op[i] : "L_noop"
+        for (i = 0; i < 128; i++) printf "    .quad %s\n", (i in op) ? op[i] : "L_badop"
         print "    .rept 128\n    .quad do_call\n    .endr"
         print "esc_tab:"
         for (i = 0; i < nesc; i++) printf "    .quad %s\n", esc[i]

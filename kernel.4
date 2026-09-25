@@ -437,9 +437,11 @@ VARIABLE R0 ( --- a-addr)
   \ TARGET-CELL-BYTES (63 for 8-byte cells, 31 for 4-byte).
   DUP 1 SIGNSHIFT-TOK LSHIFT AND SWAP 1 RSHIFT OR ;
 
-: +! ( w a-addr ---)
-\ Add w to the contents of the cell at a-addr.
-   DUP @ ROT + SWAP ! ;
+65 OPCODE +!      ( w a-addr --- )      \ add w to the cell at a-addr
+\ An opcode since Iteration 528, the first in the band 0x41-0x60. As a
+\ colon word it was DUP @ ROT + SWAP ! - six dispatches a use, and the
+\ shell's workloads use it 4.3 million times in 516 million dispatches
+\ (tools/superinst.py, 527).
 
 \ Double numbers occupy two cells in memory and on the stack.
 \ The most significant half on the number is in the first memory

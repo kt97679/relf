@@ -286,7 +286,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 6 (Iteration 517): the locals save stack is the engine's, and
+/*  Version 7 (Iteration 528): the band 0x41-0x60 holds opcodes - +!
+ *  first - and an opcode no table names traps instead of doing nothing,
+ *  so an image with an opcode an older engine lacks fails loudly there.
+ *  Version 6 (Iteration 517): the locals save stack is the engine's, and
  *  the five cells at offset 8 are one - LOCALS-FAILED's offset, the word
  *  called on an overflow or underflow. A version-5 image's first cell
  *  there is the old stack pointer's offset, not a word to call.
@@ -299,7 +302,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 6
+#define CV8_VERSION 7
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -805,7 +808,7 @@ static void virtual_machine(void) {
     { int i_;
       for (i_ = 0; i_ < 128; i_++)
           cv8_tab[i_] = i_ < NDIRECT ? direct_prims[i_]
-                      : other_ops[i_] ? other_ops[i_] : &&L_noop;
+                      : other_ops[i_] ? other_ops[i_] : &&L_badop;
       for (i_ = 0; i_ < 256; i_++)
           esc_tab[i_] = i_ < NESC ? escaped_prims[i_] : &&L_badesc; }
 #define dispatch cv8_tab
@@ -908,6 +911,14 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
 L_badesc:
     write_str(2, "relf: image uses an escaped primitive this engine does not have\n");
     exit(2);
+L_badop:   /* an opcode no table names: until 528 it did nothing */
+    write_str(2, "relf: image uses an opcode this engine does not have\n");
+    exit(2);
+L_plusstore:   /* +! ( w a-addr --- ): an opcode since 528 */
+    CELL(tos) += CELL(dsp);
+    tos = CELL(dsp + CELL_BYTES);
+    dsp += 2 * CELL_BYTES;
+    NEXT();
 L_dovar: PUSHT((ip + 3 + CELL_BYTES - 1) & ~(UNS64)(CELL_BYTES - 1)); ip = RS; rp += CELL_BYTES; NEXT();
 L_dodoes:  /* [DODOES][tail][pad][PFA] -> the tail's R> finds the PFA */
     if (BYTE(ip) & 0x40) {
