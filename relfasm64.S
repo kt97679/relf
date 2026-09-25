@@ -14,7 +14,17 @@
  *      r12  tos      r15  return-stack pointer    rbx  the image base
  *  `syscall` clobbers only rax, rcx and r11, so none of them is saved.
  *
- *  Build:  cc -nostdlib -static -no-pie -o relfasm64 relfasm64.S
+ *  The binary is as small as it can be made without changing what runs
+ *  (Iteration 520, after kt97679/itsy-linux): no linker output to trim,
+ *  but a hand-written ELF header and ONE program header - a single
+ *  loadable segment, readable, writable and executable, whose memory
+ *  size runs past its file size. The zero-filled tail holds the engine's
+ *  variables and the machine's 16 MB, so there is no mmap, no section
+ *  table, and no padding between sections.
+ *
+ *  Build (the Makefile does it):
+ *      cc -c -o relfasm64.o relfasm64.S
+ *      ld -Ttext=0x400000 --oformat binary -o relfasm64 relfasm64.o
  */
     .intel_syntax noprefix
 
@@ -30,7 +40,6 @@
     .equ SYS_write,    1
     .equ SYS_open,     2
     .equ SYS_close,    3
-    .equ SYS_mmap,     9
     .equ SYS_exit,     231           /* exit_group */
 
 /* ---- the stack, as cv8.c's macros ------------------------------------ */
@@ -95,18 +104,53 @@
     add r13, CELL
     .endm
 
-    .bss
-    .balign 64
-argc_v:      .quad 0
-argv_v:      .quad 0
-envp_v:      .quad 0
-argbase:     .quad 0
-lsave_sp:    .quad 0
-hdr:         .skip 64
-    .balign 64
-lsave_stack: .skip LSAVE_MAX*CELL
+    .equ TEXTORG,      0x400000
+    /* The segment's layout, fixed, and defined before any use: GAS picks
+     * an instruction's form where it meets it, and in Intel syntax an
+     * unknown symbol is taken for memory - so a variable defined after
+     * the code that uses it assembled as a load from a wrong address.
+     * The file must end below BSS_BASE, which the Makefile checks once
+     * it is linked - a label difference is not final while assembling. */
+    .equ BSS_BASE,     TEXTORG + 0x10000
+    .equ argc_v,       BSS_BASE
+    .equ argv_v,       BSS_BASE + 8
+    .equ envp_v,       BSS_BASE + 16
+    .equ argbase,      BSS_BASE + 24
+    .equ lsave_sp,     BSS_BASE + 32
+    .equ hdr,          BSS_BASE + 64
+    .equ lsave_stack,  BSS_BASE + 128
+    .equ VM_OFF,       0x20000          /* 64 KB-aligned */
+    .equ VM_BASE,      TEXTORG + VM_OFF
+    .equ MEM_SIZE,     VM_OFF + MEMSIZE
 
-    .section .rodata
+    .text
+/* ---- the ELF header and the one program header ------------------------ */
+ehdr:
+    .byte 0x7F, 'E', 'L', 'F', 2, 1, 1, 0    /* 64-bit, little-endian, SysV */
+    .quad 0
+    .word 2                          /* e_type: an executable */
+    .word 62                         /* e_machine: x86-64 */
+    .long 1                          /* e_version */
+    .quad _start                     /* e_entry */
+    .quad phdr - ehdr                /* e_phoff */
+    .quad 0                          /* e_shoff: no section table */
+    .long 0                          /* e_flags */
+    .word 64                         /* e_ehsize */
+    .word 56                         /* e_phentsize */
+    .word 1                          /* e_phnum */
+    .word 64                         /* e_shentsize - 0 would do; `file` prefers it */
+    .word 0                          /* e_shnum */
+    .word 0                          /* e_shstrndx */
+phdr:
+    .long 1                          /* p_type: PT_LOAD */
+    .long 7                          /* p_flags: read, write, execute */
+    .quad 0                          /* p_offset: the file maps onto itself */
+    .quad TEXTORG                    /* p_vaddr */
+    .quad TEXTORG                    /* p_paddr */
+    .quad FILE_SIZE                  /* p_filesz */
+    .quad MEM_SIZE                   /* p_memsz: the tail is zero-filled */
+    .quad 0x1000                     /* p_align */
+
 m_usage:     .ascii "Usage: relfasm64 IMAGE [ARGUMENT...]\n"
     .equ m_usage_len, . - m_usage
 m_open:      .ascii "Cannot open image file.\n"
@@ -117,8 +161,6 @@ m_version:   .ascii "image is a different CV8 format version than this engine\n"
     .equ m_version_len, . - m_version
 m_hdr:       .ascii "Truncated image header.\n"
     .equ m_hdr_len, . - m_hdr
-m_mem:       .ascii "relfasm64: cannot map the machine's memory\n"
-    .equ m_mem_len, . - m_mem
 m_unimpl:    .ascii "relfasm64: not written yet: "
     .equ m_unimpl_len, . - m_unimpl
 m_badesc:    .ascii "relf: image uses an escaped primitive this engine does not have\n"
@@ -127,7 +169,6 @@ m_locals:    .ascii "relf: locals save stack overflow or underflow\n"
     .equ m_locals_len, . - m_locals
 m_nl:        .ascii "\n"
 
-    .text
 /* ---- helpers, outside the machine ------------------------------------ */
 /* die: write rsi/rdx to stderr, exit with edi */
 die:
@@ -189,12 +230,12 @@ unimpl:
     .globl _start
 _start:
     mov rax, [rsp]
-    mov [rip + argc_v], rax
+    mov [argc_v], rax
     lea rcx, [rsp + 8]
-    mov [rip + argv_v], rcx
+    mov [argv_v], rcx
     lea rdx, [rcx + rax*8 + 8]
-    mov [rip + envp_v], rdx
-    mov qword ptr [rip + argbase], 2
+    mov [envp_v], rdx
+    mov qword ptr [argbase], 2
     cmp rax, 2
     jae 1f
     lea rsi, [rip + m_usage]
@@ -213,33 +254,33 @@ _start:
     jmp die
 2:  mov rbp, rax                     /* the image's descriptor, until loaded */
     mov rdi, rbp
-    lea rsi, [rip + hdr]
+    lea rsi, [hdr]
     mov edx, 8
     call read_all
     cmp rax, 8
     jne bad_magic
     /* 'C' 'V' '8' '0' 8, then 'L', the version, the features */
-    cmp dword ptr [rip + hdr], 0x30385643
+    cmp dword ptr [hdr], 0x30385643
     jne bad_magic
-    cmp byte ptr [rip + hdr + 4], CELL
+    cmp byte ptr [hdr + 4], CELL
     jne bad_magic
-    cmp byte ptr [rip + hdr + 6], CV8_VERSION
+    cmp byte ptr [hdr + 6], CV8_VERSION
     jne bad_version
-    movzx eax, byte ptr [rip + hdr + 7]
+    movzx eax, byte ptr [hdr + 7]
     test eax, ~FEATURES
     jnz bad_magic
     /* the thread count and heads, then the DOES> tails: read and skipped */
     mov rdi, rbp
-    lea rsi, [rip + hdr]
+    lea rsi, [hdr]
     mov edx, 8
     call read_all
     cmp rax, 8
     jne bad_hdr
-    mov r12, [rip + hdr]             /* thread heads to skip */
+    mov r12, [hdr]             /* thread heads to skip */
 3:  test r12, r12
     jz 4f
     mov rdi, rbp
-    lea rsi, [rip + hdr]
+    lea rsi, [hdr]
     mov edx, 8
     call read_all
     cmp rax, 8
@@ -247,41 +288,26 @@ _start:
     dec r12
     jmp 3b
 4:  mov rdi, rbp
-    lea rsi, [rip + hdr]
+    lea rsi, [hdr]
     mov edx, 8
     call read_all
     cmp rax, 8
     jne bad_hdr
-    mov r12, [rip + hdr]
+    mov r12, [hdr]
     add r12, r12                     /* two cells per tail */
 5:  test r12, r12
     jz 6f
     mov rdi, rbp
-    lea rsi, [rip + hdr]
+    lea rsi, [hdr]
     mov edx, 8
     call read_all
     cmp rax, 8
     jne bad_hdr
     dec r12
     jmp 5b
-    /* the memory: 16 MB, 64 KB-aligned, zeroed by the kernel */
-6:  xor edi, edi
-    mov esi, MEMSIZE + 65536
-    mov edx, 3                       /* PROT_READ | PROT_WRITE */
-    mov r10d, 0x22                   /* MAP_PRIVATE | MAP_ANONYMOUS */
-    mov r8, -1
-    xor r9d, r9d
-    mov eax, SYS_mmap
-    syscall
-    cmp rax, -4096
-    jb 7f
-    lea rsi, [rip + m_mem]
-    mov edx, m_mem_len
-    mov edi, 2
-    jmp die
-7:  add rax, 65535
-    and rax, -65536
-    mov rbx, rax                     /* the image base, for good */
+    /* the memory: 16 MB, 64 KB-aligned, in the segment's zero-filled
+     * tail - the kernel provided it when it loaded this file */
+6:  mov ebx, VM_BASE                 /* the image base, for good */
     mov rdi, rbp
     mov rsi, rbx
     mov edx, MEMSIZE
@@ -632,25 +658,25 @@ L_vs:       SLOT
             POPT
             NEXT
 L_lsave:    SLOT
-            mov rcx, [rip + lsave_sp]
+            mov rcx, [lsave_sp]
             cmp rcx, LSAVE_MAX
             jae 1f
             mov rax, [rdx]
-            lea r8, [rip + lsave_stack]
+            lea r8, [lsave_stack]
             mov [r8 + rcx*8], rax
             inc rcx
-            mov [rip + lsave_sp], rcx
+            mov [lsave_sp], rcx
             NEXT
 1:          mov eax, 1
             PUSHT rax
             jmp locals_failed
 L_lrest:    SLOT
-            mov rcx, [rip + lsave_sp]
+            mov rcx, [lsave_sp]
             test rcx, rcx
             jle 1f
             dec rcx
-            mov [rip + lsave_sp], rcx
-            lea r8, [rip + lsave_stack]
+            mov [lsave_sp], rcx
+            lea r8, [lsave_stack]
             mov rax, [r8 + rcx*8]
             mov [rdx], rax
             NEXT
@@ -775,19 +801,19 @@ L_write:    mov rdi, r12
             mov r12, rax
             add r13, 2*CELL
             NEXT
-L_sysargc:  mov rax, [rip + argc_v]  /* ( --- n ): the program's arguments */
-            sub rax, [rip + argbase]
+L_sysargc:  mov rax, [argc_v]  /* ( --- n ): the program's arguments */
+            sub rax, [argbase]
             jge 1f
             xor eax, eax
 1:          PUSHT rax
             NEXT
 L_sysarg:   mov rax, r12             /* ( n --- c-addr ), 0 past the end */
-            add rax, [rip + argbase]
+            add rax, [argbase]
             test r12, r12
             js 1f
-            cmp rax, [rip + argc_v]
+            cmp rax, [argc_v]
             jae 1f
-            mov rcx, [rip + argv_v]
+            mov rcx, [argv_v]
             mov r12, [rcx + rax*8]
             NEXT
 1:          xor r12d, r12d
@@ -870,3 +896,10 @@ L_cstrlen:  mov rdi, r12             /* ( c-addr --- u ) */
             NEXT
 
 #include "relfasm-ops.S"
+
+/* ---- the end of the file, and the zero-filled tail after it ----------- */
+file_end:
+    .equ FILE_SIZE,  file_end - ehdr   /* under 64 KB: the Makefile checks */
+    .if 128 + LSAVE_MAX*CELL > VM_OFF - (BSS_BASE - TEXTORG)
+    .error "the variables no longer fit below the machine's memory"
+    .endif

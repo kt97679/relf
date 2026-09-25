@@ -22,7 +22,8 @@ same iteration.
    points), **Q10** (structured values across processes), **Q11** (the
    default lifetime of a job).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
-   on purpose), Q12 (binary plugins).
+   on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
+   speed).
 
 ## Open
 
@@ -111,6 +112,28 @@ extensions of tens of KB, for distributing one without its source, and
 as a first step towards GOALS.md item 6, where Forth writes machine
 code into images. *Recommendation*: design recorded, build when an
 extension is big enough to need it. CV8.md 13.
+
+**Q13. The assembly engine: the last kilobytes, or speed? (520)**
+You asked for the smallest binary with no external dependencies. The
+free part is done: a hand-written ELF header and one segment, as in
+itsy-linux, took the engine from 27,936 bytes to 11,053 with nothing
+running differently. Two levers remain, and both cost speed - measured
+on a 100-million-iteration loop, best of five (C engine: 306 ms):
+
+| build | bytes | time |
+|---|---|---|
+| as now: `NEXT` copied into every handler, 8-byte table entries | 11,053 | 331 ms |
+| 4-byte table entries (`mov ecx, [t]; jmp rcx`) | 9,229 | 438 ms (+32%) |
+| one shared `NEXT` (`jmp next`) | 10,069 | 652 ms (+90%) |
+| both | 8,029 | - |
+
+A shared `NEXT` is one indirect jump for every handler, which the
+branch predictor cannot tell apart - itsy's choice, and right for 1.8
+KB, but it halves the speed here. The numbers will shift as the
+engine grows (54 escaped primitives are still stubs, and their names
+go when they are written). *Recommendation*: keep speed as the
+default; a `make relfasm64-small` with both levers, if a size-critical
+build is ever wanted, is a two-line switch.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:

@@ -515,6 +515,7 @@ do not trust the absence of a line below.
 - **517** — the locals save stack moves into the engine: five cells become one; format 6
 - **518** — the opcode map has one source: opcodes.tab; tables generated, the Forth checked
 - **519** — the assembly engine's Milestone 1: the core, identical to cv8.c on the CORE suite
+- **520** — the board's gawk finding fixed; the assembly engine made minimal: 11 KB, one segment
 
 ### Not tied to an iteration
 
@@ -24704,3 +24705,47 @@ be* stored - cv8.c's `PUSH` computes `dsp + CELL` after its decrement.
 The second I got wrong first: `EMIT` (`SP@ 1 TYPE`) wrote NULs and `KEY`
 read into a cell nobody looked at, so the first run printed "Welcome
 to Forth" and two zero bytes, and saw no input.
+
+## Iteration 520: the board's gawk, and the smallest binary
+
+**The ARMv7 board's run of 519** had one CHANGED row: the opcode
+checker said "direct EXIT is not at 1" on every direct primitive.
+opcodes.tab writes numbers in hex, and the check converted them with
+`$2 + 0`: mawk and busybox awk hand the string to `strtod`, which reads
+hex, and gawk - Gentoo's awk - does not, so `"0x01" + 0` is 0 there.
+Reproduced here by installing gawk, fixed by parsing every number
+explicitly, and checked under all three awks: the check agrees, the
+deliberate breakages still fail under gawk, the generated assembly
+tables are identical, and the portability suite with gawk as `awk` has
+no problems. A difference only a second machine could show - which is
+what the board is for.
+
+**The user's requirement: the assembly engine as the smallest binary
+with no external dependencies**, after kt97679/itsy-linux, whose NASM
+source writes its own ELF header and one program header, the whole
+Forth memory being the segment's zero-filled tail. relfasm64.S does
+the same with GNU tools: the header pair is its first bytes, everything
+is one section, and `ld --oformat binary` writes raw bytes. The
+engine's variables and the machine's 16 MB are the tail, at fixed
+addresses, so `_start` lost its `mmap`. 27,936 bytes became 11,053 -
+18,360 stripped, most of the difference page padding between sections -
+and `file` calls it a static x86-64 executable with no section header.
+The CORE suite and every loader error path behave as before.
+
+**A bug the disassembly caught before any test ran**: the variables were
+first defined at the end of the file, after the code using them, and
+GAS picks an instruction's form where it meets it - an unknown symbol
+in Intel syntax is taken for memory. `mov ebx, VM_BASE` assembled as a
+LOAD. The layout is fixed and defined before use now; the Makefile
+checks the file stays under the 64 KB below the variables.
+
+**And what more size would cost, measured** (100 million loop
+iterations, best of five): copying `NEXT` into every handler and 8-byte
+table entries, as now, 331 ms at 11,053 bytes; 4-byte entries save
+1,824 bytes and cost 32%; one shared `NEXT`, itsy's choice, saves 984
+bytes and costs 90% - one indirect jump for every handler, which the
+predictor cannot tell apart. The first try at 4-byte entries crashed:
+the table load overwrote `eax`, which the call path still reads the
+opcode byte from. The choice is QUESTIONS.md Q13; the default stays
+fast. The same measurement shows the assembly engine about 8-12% slower
+than cv8.c on this loop - Milestone 5's business.

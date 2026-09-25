@@ -71,10 +71,17 @@ gives UTC first (Q6), unless the user decides otherwise.
 - **Memory**: the 16 MB block, 64 KB-aligned, guard pages by
   `mprotect`, a `SIGSEGV` handler that tells a guard hit from a crash -
   as cv8.c does, in fewer lines.
-- **Build**: GNU `as` through `cc -nostdlib -static` - no NASM, since
-  every machine that builds cv8.c has `as`. One `.S` file, `relfasm64`.
+- **Build**: GNU `as`, then `ld --oformat binary` - no NASM, since every
+  machine that builds cv8.c has binutils. **The smallest binary with no
+  external dependencies** (the user's requirement, 520, after
+  kt97679/itsy-linux): the source carries its own ELF header and ONE
+  program header - a single segment, readable, writable and executable,
+  whose zero-filled tail is the engine's variables and the machine's
+  16 MB - so no section table, no padding between sections, and no
+  `mmap`. 27,936 bytes became 11,053 with nothing running differently.
   The trailer lookup of Iteration 506 comes along, so `tools/embed.sh`
-  makes a shell of it unchanged.
+  makes a shell of it unchanged. What further size would cost in speed
+  is QUESTIONS.md Q13.
 
 ## Milestones after 0
 

@@ -212,8 +212,14 @@ relfsh32: relf32 kernel32-shell.img tools/embed.sh
 relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
 	@sh tools/gen-opcodes.sh --asm relfasm64.S > $@.tmp && mv -f $@.tmp $@
 
+# Linked to raw bytes: the source carries its own ELF header and single
+# program header (Iteration 520, after kt97679/itsy-linux), so nothing
+# of the linker's layout - sections, their table, page padding - is kept.
 relfasm64: relfasm64.S relfasm-ops.S
-	$(CC) -nostdlib -static -no-pie -o $@ relfasm64.S
+	$(CC) -c -o relfasm64.o relfasm64.S
+	ld -Ttext=0x400000 --oformat binary -o $@ relfasm64.o
+	@chmod +x $@ && rm -f relfasm64.o
+	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in relfasm64.S" >&2; rm -f $@; exit 1; }
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.

@@ -66,8 +66,8 @@ generate_asm() {
     END {
         print "/*  relfasm-ops.S - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
         print " *  --asm; do not edit. The dispatch tables, and stubs for the handlers"
-        print " *  relfasm64.S does not have yet.  */"
-        print "    .section .rodata"
+        print " *  relfasm64.S does not have yet. One section, as the engine is: it is"
+        print " *  a single segment behind a hand-written ELF header.  */"
         print "    .balign 8"
         print "dispatch256:"
         for (i = 0; i < 128; i++) printf "    .quad %s\n", (i in op) ? op[i] : "L_noop"
@@ -75,15 +75,12 @@ generate_asm() {
         print "esc_tab:"
         for (i = 0; i < nesc; i++) printf "    .quad %s\n", esc[i]
         printf "    .rept %d\n    .quad L_badesc\n    .endr\n", 256 - nesc
-        print "    .text"
         for (i = 0; i < nlab; i++) {
             l = order[i]; if (l in def) continue
             printf "%s:\n    lea rsi, [rip + %s_name]\n    jmp unimpl\n", l, l
             names = names sprintf("%s_name: .asciz \"%s (%s)\"\n", l, label_name[l], l)
         }
-        print "    .section .rodata"
         printf "%s", names
-        print "    .text"
     }' "$tab"
 }
 
@@ -96,14 +93,21 @@ esac
 problems=0
 bad() { echo "gen-opcodes: $*" >&2; problems=$((problems + 1)); }
 
-# the table's own consistency
+# the table's own consistency. Numbers are parsed here, never left to
+# awk: "0x01" + 0 is 1 in mawk and busybox awk, which pass the string to
+# strtod, and 0 in gawk - so the first version of this check passed on
+# Ubuntu and failed on the Gentoo board (Iteration 520).
 awk '
+function num(s,   v, i) {
+    if (s !~ /^0[xX]/) return s + 0
+    v = 0; s = tolower(substr(s, 3))
+    for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+    return v
+}
 /^#/ || NF == 0 { next }
-$1 == "direct"  { if ($2 + 0 != nd) { printf "direct %s is not at %d\n", $3, nd; bad = 1 } nd++ }
-$1 == "escaped" { if ($2 + 0 != ne) { printf "selector %s is not %d\n", $3, ne; bad = 1 } ne++ }
-$1 == "synth" && $3 == "LIT32" { if (strtonum_($2) != nd) { printf "LIT32 is not at the direct count %d\n", nd; bad = 1 } }
-function strtonum_(s,   v, i, c) { v = 0; s = tolower(s); sub(/^0x/, "", s)
-    for (i = 1; i <= length(s); i++) { c = index("0123456789abcdef", substr(s, i, 1)) - 1; v = v * 16 + c } return v }
+$1 == "direct"  { if (num($2) != nd) { printf "direct %s is not at %d\n", $3, nd; bad = 1 } nd++ }
+$1 == "escaped" { if (num($2) != ne) { printf "selector %s is not %d\n", $3, ne; bad = 1 } ne++ }
+$1 == "synth" && $3 == "LIT32" { if (num($2) != nd) { printf "LIT32 is not at the direct count %d\n", nd; bad = 1 } }
 END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
 # kernel.4's primitives, in order
