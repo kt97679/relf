@@ -41,6 +41,9 @@
     .equ SYS_open,     2
     .equ SYS_close,    3
     .equ SYS_exit,     231           /* exit_group */
+    .equ SYS_lseek,    8
+    .equ SYS_mmap,     9
+    .equ SYS_unlink,   87
 
 /* ---- the stack, as cv8.c's macros ------------------------------------ */
     .macro NEXT
@@ -117,8 +120,12 @@
     .equ envp_v,       BSS_BASE + 16
     .equ argbase,      BSS_BASE + 24
     .equ lsave_sp,     BSS_BASE + 32
+    .equ heap_top,     BSS_BASE + 40
+    .equ heap_end,     BSS_BASE + 48
     .equ hdr,          BSS_BASE + 64
     .equ lsave_stack,  BSS_BASE + 128
+    .equ free_lists,   lsave_stack + LSAVE_MAX*CELL    /* 64 lists, by class */
+    .equ HEAP_RESERVE, 0x40000000       /* 1 GB of address space, not memory */
     .equ VM_OFF,       0x20000          /* 64 KB-aligned */
     .equ VM_BASE,      TEXTORG + VM_OFF
     .equ MEM_SIZE,     VM_OFF + MEMSIZE
@@ -895,11 +902,236 @@ L_cstrlen:  mov rdi, r12             /* ( c-addr --- u ) */
             mov r12, rcx
             NEXT
 
+/* the file primitives (Milestone 2): cv8.c's stack effects and ior
+ * values exactly - 200 where cv8.c says 200, and where it passes on
+ * libc's -1, -1, which the raw system calls' -errno is mapped to */
+    .balign 4
+open_modes:                          /* cv8.c's open_flags[], by fam */
+    .long 577, 577                   /* w w/b   O_WRONLY|O_CREAT|O_TRUNC */
+    .long 0, 0                       /* r r/b   O_RDONLY */
+    .long 2, 2                       /* r+ r+b  O_RDWR */
+    .long 1089, 1089                 /* a a/b   O_WRONLY|O_CREAT|O_APPEND */
+    .long 578, 578                   /* w+ w+b  O_RDWR|O_CREAT|O_TRUNC */
+    .long 193                        /* x       O_WRONLY|O_CREAT|O_EXCL */
+    .equ NOPENMODES, 11
+L_openfile: mov rdi, [r13 + CELL]    /* ( c-addr u fam --- fid ior ) */
+            mov rcx, [r13]
+            lea r8, [rdi + rcx]      /* the byte after the name: NUL for */
+            movzx r9d, byte ptr [r8] /* the call, then put back */
+            mov byte ptr [r8], 0
+            mov rax, -1
+            cmp r12, NOPENMODES
+            jae 1f
+            mov esi, dword ptr [open_modes + r12*4]
+            mov edx, 420             /* 0644 */
+            mov eax, SYS_open
+            syscall
+1:          mov [r8], r9b
+            add r13, CELL
+            test rax, rax
+            js 2f
+            mov [r13], rax
+            xor r12d, r12d
+            NEXT
+2:          mov qword ptr [r13], -1
+            mov r12d, 200
+            NEXT
+L_closefile: mov rdi, r12            /* ( fid --- ior ): 0, or libc's -1 */
+            mov eax, SYS_close
+            syscall
+            mov r12, rax
+            sar r12, 63
+            NEXT
+L_delfile:  mov rdi, [r13]           /* ( c-addr u --- ior ): 0, or -1 */
+            lea r8, [rdi + r12]
+            movzx r9d, byte ptr [r8]
+            mov byte ptr [r8], 0
+            mov eax, SYS_unlink
+            syscall
+            mov [r8], r9b
+            mov r12, rax
+            sar r12, 63
+            add r13, CELL
+            NEXT
+L_reposfile: mov rdi, r12            /* ( ud fid --- ior ) */
+            mov rsi, [r13 + CELL]    /* the low cell; a 64-bit offset */
+            xor edx, edx             /* SEEK_SET */
+            mov eax, SYS_lseek
+            syscall
+            add r13, 2*CELL
+            xor r12d, r12d
+            test rax, rax
+            jns 1f
+            mov r12d, 200
+1:          NEXT
+L_filepos:  mov rdi, r12             /* ( fid --- ud ior ) */
+            xor esi, esi
+            mov edx, 1               /* SEEK_CUR */
+            mov eax, SYS_lseek
+            syscall
+            jmp ud_ior
+L_filesize: mov rdi, r12             /* ( fid --- ud ior ): the end, the */
+            push rdi                 /* position put back as it was */
+            xor esi, esi
+            mov edx, 1
+            mov eax, SYS_lseek
+            syscall
+            pop rdi
+            test rax, rax
+            js ud_ior
+            push rax                 /* where it was */
+            push rdi
+            xor esi, esi
+            mov edx, 2               /* SEEK_END */
+            mov eax, SYS_lseek
+            syscall
+            pop rdi
+            pop rsi
+            push rax                 /* the size */
+            xor edx, edx
+            mov eax, SYS_lseek
+            syscall
+            pop rax
+ud_ior:     sub r13, 2*CELL          /* rax: an offset, or -errno */
+            test rax, rax
+            js 1f
+            mov [r13 + CELL], rax    /* ud: low, then high - 0 at 64 bits */
+            mov qword ptr [r13], 0
+            xor r12d, r12d
+            NEXT
+1:          mov qword ptr [r13 + CELL], 0
+            mov qword ptr [r13], 0
+            mov r12d, 200
+            NEXT
+
+/* the allocator (cv8.c: malloc, free, realloc). Power-of-two classes
+ * from 32 bytes: a block is a 16-byte header - its class, and the free
+ * list's link - then what was asked for, 16-byte aligned as malloc's.
+ * Freed blocks go on their class's list and are the next of that class
+ * handed out; new ones come from one reservation of address space,
+ * MAP_NORESERVE, whose pages cost nothing until touched. RESIZE keeps a
+ * block while the new size still fits its class - the shell's buffers
+ * grow by doubling. One difference from glibc, on purpose: realloc(p, 0)
+ * frees p and returns NULL there, so cv8.c reports failure with the
+ * block gone; here the block is kept. */
+alloc_block:                         /* rdi bytes -> rax pointer, or 0 */
+            lea rcx, [rdi + 16]
+            mov eax, 5
+            cmp rcx, 32
+            jbe 1f
+            dec rcx
+            bsr rax, rcx
+            inc eax                  /* the smallest 2^k that holds it */
+1:          cmp eax, 30
+            ja 9f
+            lea r8, [free_lists + rax*8]
+            mov rdx, [r8]
+            test rdx, rdx
+            jz 2f
+            mov rcx, [rdx + 8]       /* one of this class, given back before */
+            mov [r8], rcx
+            jmp 3f
+2:          mov rdx, [heap_top]
+            test rdx, rdx
+            jnz 4f
+            push rax
+            call heap_init
+            pop rax
+            mov rdx, [heap_top]
+            test rdx, rdx
+            jz 9f
+4:          mov ecx, eax
+            mov r9d, 1
+            shl r9, cl
+            lea r10, [rdx + r9]
+            cmp r10, [heap_end]
+            ja 9f
+            mov [heap_top], r10
+3:          mov [rdx], rax           /* the class, in the header */
+            lea rax, [rdx + 16]
+            ret
+9:          xor eax, eax
+            ret
+heap_init:                           /* the reservation, at first use */
+            xor edi, edi
+            mov esi, HEAP_RESERVE
+            mov edx, 3               /* PROT_READ | PROT_WRITE */
+            mov r10d, 0x4022         /* MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE */
+            mov r8, -1
+            xor r9d, r9d
+            mov eax, SYS_mmap
+            syscall
+            cmp rax, -4096
+            jae 1f
+            mov [heap_top], rax
+            add rax, HEAP_RESERVE
+            mov [heap_end], rax
+1:          ret
+free_block:                          /* rdi: a pointer from alloc_block, or 0 */
+            test rdi, rdi
+            jz 1f
+            lea rdx, [rdi - 16]
+            mov rax, [rdx]
+            lea r8, [free_lists + rax*8]
+            mov rcx, [r8]
+            mov [rdx + 8], rcx
+            mov [r8], rdx
+1:          ret
+L_allocate: mov rdi, r12             /* ( u --- a-addr ior ) */
+            call alloc_block
+            sub r13, CELL
+            mov [r13], rax
+            xor r12d, r12d
+            test rax, rax
+            jnz 1f
+            mov r12d, 201
+1:          NEXT
+L_free:     mov rdi, r12             /* ( a-addr --- ior ): always 0 */
+            call free_block
+            xor r12d, r12d
+            NEXT
+L_resize:   mov rdi, [r13]           /* ( a-addr u --- a-addr' ior ) */
+            test rdi, rdi
+            jz 5f
+            mov rax, [rdi - 16]
+            mov ecx, eax
+            mov r9d, 1
+            shl r9, cl
+            sub r9, 16               /* what the block holds */
+            cmp r12, r9
+            jbe 4f                   /* still fits: the same block */
+            push r9
+            push rdi
+            mov rdi, r12
+            call alloc_block
+            pop rsi
+            pop rcx
+            test rax, rax
+            jz 6f
+            push rax
+            mov rdi, rax
+            push rsi
+            rep movsb                /* the old block's contents */
+            pop rdi
+            call free_block
+            pop rax
+            mov [r13], rax
+4:          xor r12d, r12d
+            NEXT
+5:          mov rdi, r12             /* realloc(NULL, u) is malloc(u) */
+            call alloc_block
+            mov [r13], rax
+            xor r12d, r12d
+            test rax, rax
+            jnz 7f
+6:          mov r12d, 202            /* failed: the old block stays, valid */
+7:          NEXT
+
 #include "relfasm-ops.S"
 
 /* ---- the end of the file, and the zero-filled tail after it ----------- */
 file_end:
     .equ FILE_SIZE,  file_end - ehdr   /* under 64 KB: the Makefile checks */
-    .if 128 + LSAVE_MAX*CELL > VM_OFF - (BSS_BASE - TEXTORG)
+    .if 128 + LSAVE_MAX*CELL + 64*8 > VM_OFF - (BSS_BASE - TEXTORG)
     .error "the variables no longer fit below the machine's memory"
     .endif

@@ -23,7 +23,7 @@ same iteration.
    default lifetime of a job).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
-   speed).
+   speed), Q14 (its memory, writable and executable at once).
 
 ## Open
 
@@ -134,6 +134,16 @@ engine grows (54 escaped primitives are still stubs, and their names
 go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
+
+**Q14. The assembly engine's one segment is writable AND executable
+(521).** As in itsy-linux: one program header, flags read-write-execute,
+so the machine's 16 MB could hold code that runs, and the engine's own
+code could be written. A second program header for the zero-filled tail
+alone makes the code read-execute and the data read-write - W^X, as
+cv8.c's memory is. Nothing in the file part is written at run time
+since 520 moved the variables into the tail, so it would simply work;
+it costs 56 bytes. *Recommendation*: take it - 0.5% of the binary for
+the property every other engine on the machine has.
 
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:

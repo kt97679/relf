@@ -516,6 +516,7 @@ do not trust the absence of a line below.
 - **518** — the opcode map has one source: opcodes.tab; tables generated, the Forth checked
 - **519** — the assembly engine's Milestone 1: the core, identical to cv8.c on the CORE suite
 - **520** — the board's gawk finding fixed; the assembly engine made minimal: 11 KB, one segment
+- **521** — the assembly engine's Milestone 2: kernels, CORE suite and shell image all identical
 
 ### Not tied to an iteration
 
@@ -24749,3 +24750,40 @@ the table load overwrote `eax`, which the call path still reads the
 opcode byte from. The choice is QUESTIONS.md Q13; the default stays
 fast. The same measurement shows the assembly engine about 8-12% slower
 than cv8.c on this loop - Milestone 5's business.
+
+## Iteration 521: the assembly engine reproduces everything it can build
+
+ASM-ENGINE.md, Milestone 2. The ARMv7 board verified 520 first: the
+gawk fix holds there, 55 portability checks, none failing.
+
+**The file primitives**: `OPEN-FILE` (its eleven modes, cv8.c's
+`open_flags[]`, the name NUL-terminated in place and restored),
+`CLOSE-FILE`, `DELETE-FILE`, `REPOSITION-FILE`, `FILE-POSITION` and
+`FILE-SIZE`, each with cv8.c's stack effect and exact `ior` - 200 where
+cv8.c says 200, and where it passes libc's -1 on, -1, mapped from the
+raw system call's `-errno`.
+
+**Then the strongest check there is, and it passed at the first try**:
+`cross.4` running on the assembly engine rebuilds both kernels, 64-bit
+and 32-bit, byte-identical to the committed ones - 16 ms each.
+
+**The allocator**, which `pool.4`'s buffers needed next: power-of-two
+classes from 32 bytes, a 16-byte header holding the class and the free
+list's link (malloc's alignment), a list per class, new blocks carved
+from one 1 GB `MAP_NORESERVE` reservation made at first use; `RESIZE`
+keeps a block while the new size still fits its class. One deliberate
+difference: glibc's `realloc(p, 0)` frees `p` and returns NULL, so
+cv8.c reports failure with the block gone; here the block is kept.
+
+**Where it stands**: the whole CORE suite - `tester.fr` and the three
+test files, `shadow.fth`'s locals and pool buffers included - produces
+output byte-identical to cv8.c's, all 2,136 OK markers. And the shell
+image, built on the assembly engine from its seven sources, is
+identical to cv8.c's, all 119,133 bytes - the build tool's probe
+refused it only because starting the shell needs Milestone 3; built by
+hand without the probe, `cmp` agrees. The next stub the shell meets is
+`GETENV`. The binary is 11,604 bytes, 48 stubs left.
+
+QUESTIONS.md Q14: the one segment is writable and executable at once,
+as itsy-linux's is; a second program header for the tail would give
+W^X for 56 bytes.

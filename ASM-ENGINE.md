@@ -101,7 +101,13 @@ are, rather than typed a fifth time.
    themselves and exit 99, and 54 of them are left.
 2. **Files**: the file primitives and `INCLUDED`. Then the strongest
    check there is: `cross.4` run on the assembly engine rebuilds both
-   kernels byte-identically.
+   kernels byte-identically. **Reached at 521**, first try: both kernels
+   come out identical, 16 ms each; the whole CORE suite matches cv8.c's
+   output byte for byte (2,136 OK markers); and the shell image, built on
+   the assembly engine from the seven sources, is identical to cv8.c's -
+   all 119,133 bytes. The file primitives and the allocator (power-of-two
+   classes over one `MAP_NORESERVE` reservation) are written; the next
+   stub the shell meets is `GETENV`.
 3. **Processes**: fork, exec, wait, pipes, descriptors, signals. The
    shell starts; the differential suite runs.
 4. **The rest**: terminal, directories, time, limits, sockets. Every
