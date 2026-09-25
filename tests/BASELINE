@@ -1,3 +1,9 @@
+asm:core identical
+asm:diff:failed 0
+asm:interactive:failed 0
+asm:kernels reproduces
+asm:shell 1
+asm:shell-image reproduces
 bundle:pullable 1
 core:4byte 1
 core:8byte 1
@@ -43,6 +49,8 @@ shell:assertions 874
 shell:dead-words 0
 shell:files 83
 shell:host-sh-tests 0
+size:asm-engine 15624
+size:asm-shell 134773
 size:engine-code-i386 21087
 size:engine-code-x86_64 26256
 size:i386 141427

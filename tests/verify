@@ -272,6 +272,59 @@ emit matrix:regressions  "$(echo "$MS" | cut -d' ' -f4)"
 emit matrix:known-failing "$(wc -l < tests/matrix/KNOWN-FAILING | tr -d ' ')"
 
 # ---------------------------------------------------------------
+# 3b. The assembly engine (Iteration 525; ASM-ENGINE.md). x86-64 only:
+#     elsewhere every row is `skipped`, which is a fact about the host
+#     and not compared. What made it "complete" at 523, checked on every
+#     run: the kernels and the shell image it builds are byte-identical
+#     to cv8.c's; its CORE-suite output is cv8.c's, byte for byte; and
+#     the shell on it - relfshasm64, one static file - passes the
+#     differential, shell and pty suites as relfsh64 does.
+# ---------------------------------------------------------------
+echo "== the assembly engine =="
+if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; then
+    kern=reproduces
+    for bytes in 8 4; do
+        case $bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac
+        wd=$(mktemp -d)
+        cp extend.4 cross.4 kernel.4 kernel64.img relfasm64 "$wd/"
+        [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
+        ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' |
+          timeout 120 ./relfasm64 kernel64.img > boot.log 2>&1 )
+        cmp -s "$wd/built.img" "$img" || kern=DIFFERS
+        rm -rf "$wd"
+    done
+    emit asm:kernels "$kern"
+    srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
+    rm -f /tmp/verify-asm-shell.img
+    sh tools/build-shell-image.sh ./relfasm64 kernel64.img /tmp/verify-asm-shell.img $srcs >/dev/null 2>&1
+    if cmp -s /tmp/verify-asm-shell.img kernel64-shell.img
+    then emit asm:shell-image reproduces
+    else emit asm:shell-image DIFFERS; fi
+    rm -f /tmp/verify-asm-shell.img
+    tf="tester.fr $(ls tests/*.fth | tr '\n' ' ')"
+    { cat $tf; echo BYE; } | timeout 60 ./relfasm64 kernel64.img > /tmp/verify-asm-core.out 2>&1
+    { cat $tf; echo BYE; } | timeout 60 ./relf64 kernel64.img > /tmp/verify-c-core.out 2>&1
+    if cmp -s /tmp/verify-asm-core.out /tmp/verify-c-core.out
+    then emit asm:core identical
+    else emit asm:core DIFFERS; fi
+    rm -f /tmp/verify-asm-core.out /tmp/verify-c-core.out
+    AD=$(THIS_SH="$PWD/relfshasm64" timeout 300 tests/diff/run-all 2>&1 | tail -1)
+    emit asm:diff:failed "$(echo "$AD" | sed -n 's/.*, \([0-9]*\) failed.*/\1/p')"
+    if ( cd tests/shell && THIS_SH="$PWD/../../relfshasm64" timeout 600 ./run-all ) >/dev/null 2>&1
+    then emit asm:shell 1
+    else emit asm:shell 0; fi
+    AP=$(THIS_SH="$PWD/relfshasm64" timeout 300 sh tests/interactive/run 2>&1 | tail -1)
+    emit asm:interactive:failed "$(echo "$AP" | sed -n 's/.*passed, \([0-9]*\) failed.*/\1/p')"
+    emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
+    emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
+else
+    for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
+             asm:interactive:failed size:asm-engine size:asm-shell; do
+        emit "$k" skipped
+    done
+fi
+
+# ---------------------------------------------------------------
 # 4. Sizes. Cheap, and the number the engine work is chasing.
 # ---------------------------------------------------------------
 echo "== sizes =="

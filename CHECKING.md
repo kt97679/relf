@@ -266,6 +266,8 @@ does it by itself.
     make profile          # dispatch counts per word, on a realistic script
     python3 tools/opcode-mix.py --tramp   # per-opcode counts, and the price
                                           # of a smaller opcode space (501)
+    make relfshasm64                      # the shell on the assembly engine: one
+                                          # static file, no libc (x86-64; 523)
     python3 tools/image-budget.py         # where an image's bytes go (509)
     python3 tools/dup-scan.py             # logic repeated across definitions (510)
     python3 tools/coverage.py             # which words the suites never enter

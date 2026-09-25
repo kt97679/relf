@@ -520,6 +520,7 @@ do not trust the absence of a line below.
 - **522** — the shell runs on the assembly engine: 130 of 131 differential cases
 - **523** — the assembly engine complete: every primitive, every suite, W^X, one 135 KB file
 - **524** — measured: the assembly shell is faster on shell work and starts 2.5x faster than dash
+- **525** — the assembly engine joins make verify on x86-64 hosts: eight rows
 
 ### Not tied to an iteration
 
@@ -24889,3 +24890,23 @@ than dash. There is no loader to run, no libc to initialise, and a
 The dispatch loop itself is still slower than gcc's on pure Forth, and
 tuning it is the rest of Milestone 5 - QUESTIONS.md Q13's measurements
 say which directions cost speed.
+
+## Iteration 525: the assembly engine in `make verify`
+
+tests/verify section 3b, on x86-64 hosts - every row `skipped`, and so
+a machine row, elsewhere, as the 8-byte rows are on the ARM board. What
+made the engine "complete" at 523 is checked on every run now:
+
+| row | what it says |
+|---|---|
+| `asm:kernels` | `cross.4` on the assembly engine rebuilds both kernels identically |
+| `asm:shell-image` | the shell image it builds, through tools/build-shell-image.sh, is cv8.c's |
+| `asm:core` | the CORE suite's output is cv8.c's, byte for byte |
+| `asm:diff:failed` | the differential suite, through relfshasm64 |
+| `asm:shell` | every shell test file passes through relfshasm64 |
+| `asm:interactive:failed` | the pty suite: line editor, raw mode, job control |
+| `size:asm-engine`, `size:asm-shell` | compared, like every size, only with the same toolchain |
+
+Recorded and checked here: reproduces, reproduces, identical, 0, 1, 0,
+15,624 and 134,773 bytes; nothing else in BASELINE moved. It lengthens
+a verification by a few minutes - the suites run twice, once per engine.
