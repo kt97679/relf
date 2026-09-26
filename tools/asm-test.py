@@ -11,6 +11,9 @@ import os, re, subprocess, sys, tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 ENGINE = next((a for a in sys.argv[1:] if not a.startswith('-')), './relf64')
+# the corpus from the engine as it is now: made at 542, it went stale at
+# 545 when a new handler moved every later symbol by 32 bytes
+subprocess.run([sys.executable, 'tools/asm-corpus.py'], check=True, stdout=subprocess.DEVNULL)
 work = tempfile.mkdtemp(prefix='relf-asmtest-')
 obj = os.path.join(work, 'r.o')
 subprocess.run(['cc', '-c', '-o', obj, 'relfasm64.S'], check=True)
@@ -104,3 +107,16 @@ print('%d of %d shapes assemble to GNU as\'s bytes' % (ok, len(cases)))
 if '-v' in sys.argv or len(bad) < 40:
     for t, h, f, g in bad[:60]:
         print('  %-34s want %-18s got %-18s  %s' % (t[:34], h, g, f))
+
+# ---- M1: one-pass labels (Iteration 545) --------------------------------
+# tests/asm-labels.S assembled by GNU as, tests/asm-labels.4 by asm64.4 -
+# every kind of jump, forward references resolved at their labels.
+lo = os.path.join(work, 'l.o'); lb = os.path.join(work, 'l.bin')
+subprocess.run(['as', '-o', lo, 'tests/asm-labels.S'], check=True)
+subprocess.run(['objcopy', '-O', 'binary', '-j', '.text', lo, lb], check=True)
+out = subprocess.run([ENGINE, 'kernel64.img'], stdin=open('tests/asm-labels.4'),
+                     capture_output=True, text=True, timeout=60).stdout
+want = open(lb, 'rb').read()
+toks = out.split('BYTES')[1].split() if 'BYTES' in out else []
+got = bytes(int(x) & 255 for x in toks if x.lstrip('-').isdigit())   # not relf's OK
+print('labels: %s (%d bytes)' % ('identical to GNU as' if got == want else 'DIFFER', len(want)))

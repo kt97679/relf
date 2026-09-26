@@ -127,6 +127,11 @@ The same way everything here is: **byte for byte**.
     code written by hand, on the same fixups; not needed by M2.
   - *Families by loops*: the sixteen conditional jumps, setcc, cmovcc
     defined by one counted loop each, as gforth does.
+  **Working** (544-545): a program with every kind of jump - back to a
+  local label, forward to one, forward to a named one, a NEAR one over
+  200 bytes - assembles in one pass to GNU as's 237 bytes exactly
+  (tests/asm-labels.4 and .S; tools/asm-test.py runs it after the
+  corpus, which it now regenerates first).
   Then the program: an ELF file that exits with status 42, written
   entirely from Forth. An ELF file that exits with status 42, written
   entirely from Forth.

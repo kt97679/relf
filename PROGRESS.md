@@ -25718,3 +25718,15 @@ stops. A single label works alone (it returns its tagged forward
 reference). The bisection by prefixes failed for its own reason: its
 marker, `.(`, printed for no prefix at all - the marker, not the code.
 Next session: a marker that works, then the line that stops it.
+
+**M1's labels work.** The failures were my test's, three times over: a
+`?DO ... LOOP` for the byte dump at the top level as well - compile-only
+words interpreted, which relf does not refuse; and the label named
+`far`, a keyword in Intel syntax, which GNU as did not take for a local
+label - it left a zero for the linker, and asm64.4's `e9 c8 00 00 00`
+was the correct jump. Renamed, the program - every kind of jump - is
+identical to GNU as's 237 bytes; asm64.4's label code, drafted at 544,
+unchanged. tests/asm-labels.4 and .S keep it; tools/asm-test.py runs it
+after the corpus, and regenerates the corpus first: made at 542, it had
+gone stale when DICT-LIMIT's handler moved every later symbol by 32
+bytes. 453 of 453 shapes, and the labels.
