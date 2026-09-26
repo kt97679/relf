@@ -229,3 +229,14 @@ whole span resident). What remains, idle: the memory region 132 kB (the
 118 KB image, copied in, and the stacks' pages), the heap ~40 kB, the
 engine 16, the stack 8. Next: the image, copied rather than mapped
 (OPTIMIZATIONS.md M2), and its names (Z1).
+
+### 8b. Mapping the image would not help - yet (551)
+
+A prototype C engine mapped the shell image copy-on-write instead of
+reading it in (the dictionary padded to a page-aligned offset in a copy
+of the image, since mmap wants address and file offset congruent). All
+116 kB of the mapping were resident AND Private_Dirty, idle and after
+the workload: every page of the image is written at startup - 136 buffer
+descriptors, which ALLOC-BUFFERS fills, and the shell's variables, lie
+among the code throughout the dictionary. Only an image whose writable
+data is kept apart from its code would gain; OPTIMIZATIONS.md M2.

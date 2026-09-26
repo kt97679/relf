@@ -25965,3 +25965,13 @@ Recorded changes, with their causes: the assembly engine 24 bytes larger
 (the reuse path's zeroing), the C engine's i386 code 8 (calloc); the
 images 148-160 bytes larger (the arena in pool.4). Every suite row as
 before.
+
+**Mapping the image, priced and declined** (same session): a prototype C
+engine mapped the shell image instead of copying it - a first try failed
+"cannot protect the stack guard pages": mapping the file whole put the
+dictionary at base + header, not page-aligned, and the guard addresses
+derive from base; a copy padded so the dictionary starts at file offset
+4096 mapped cleanly. Result: all 116 kB Private_Dirty even idle - the
+image is written on every page at startup (buffer descriptors, the
+shell's variables, among the code). No gain without separating data from
+code. FINDINGS.md 8b, OPTIMIZATIONS.md M2.

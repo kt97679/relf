@@ -92,7 +92,19 @@ assembly shell's 308 kB at idle. Skipping the fill for fresh memory
 would leave unused buffers untouched. Cost: the pool knowing which
 memory is fresh.
 
-**M2. Map the image, do not copy it** - open.
+**M2. Map the image, do not copy it** - declined, measured (551): a
+prototype C engine mapped the shell image from a page-aligned offset
+(copy-on-write, MAP_PRIVATE) instead of reading it in - and all 116 kB of
+it were Private_Dirty at idle: every page of the image is WRITTEN at
+startup. ALLOC-BUFFERS stores a pointer into each of 136 buffer
+descriptors, spread through the dictionary, and the shell's variables
+sit among its code, as a Forth dictionary interleaves them. Mapping pays
+only once writable data is gathered apart from code - a restructuring,
+not a loader change. What the prototype needed, for when it is: the
+dictionary at a page-aligned offset in the file (padding when the shell
+is embedded), since mmap wants address and offset congruent. (Kept
+below as first written.)
+**M2 as first proposed.**
 Each relf process copies its image into its own memory region - a
 private 118 KB, 132 kB resident with the stacks' pages. Mapped from the
 file copy-on-write, the pages no one writes would be shared between
