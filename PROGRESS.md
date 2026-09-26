@@ -538,6 +538,7 @@ do not trust the absence of a line below.
 - **540** — the reference corpus from GNU as's listing: 453 real instruction shapes, no data taken for code
 - **541** — M0 begun: asm64.4, the Forth assembler's first encoder, and tools/asm-test.py
 - **542** — M0's encoder complete: 452 of 452 shapes; gforth builds both kernels identical; relf against C, Go, Python, Ruby
+- **543** — findings captured (FINDINGS.md); seven benchmarks against gforth, pforth and five languages; one-pass assembler designed
 
 ### Not tied to an iteration
 
@@ -25598,3 +25599,39 @@ the assembler does not need.
 Recorded changes, with their causes: `ddc:gforth reproduces`, the new
 row; the assembly engine 8 bytes larger (15,080), the RIP-relative
 addresses absolute now. Every other row as before.
+
+## Iteration 543: findings captured, a wider benchmark, the assembler's design
+
+The user asked for all of 542's findings to be kept for later: they are
+in **FINDINGS.md** - speed (against other languages and Forths, dash and
+bash, the dispatch floor, where the dispatches go, the opcodes added and
+removed), size (word order, call encodings, names), why 64 opcodes, the
+double-compile with gforth, the assemblers examined, robustness found,
+local time. Each with its numbers and the tool that made them.
+
+**A wider benchmark** (bench/langs/: bench.4, the same text for every
+Forth, and C, Go, Python and Ruby versions; run.py times and cross-checks
+them): seven programs, each stressing one kind of work, against gforth,
+gforth-fast and pforth too. relf is in gforth's class - ahead on calls,
+level on the loop, 1.35-1.5x behind over all - and 2.2-2.6x ahead of
+pforth, Ruby and Python. The table is FINDINGS.md 1.1. On the way: my
+first Forth fannkuch never ended (its reversal compared the indices the
+wrong way round and lost one to the swap) - gforth hung on it, and
+Python's version, which finished, showed the bug was in the Forth;
+pforth's dictionary was too small for a 5 MB array, and relf's bare
+kernel has no `THROW` or `0>` - the arrays are ALLOCATEd now and the
+file uses the kernel's words. And a robustness bug confirmed: ALLOT past
+the dictionary's end is a segmentation fault, not an error.
+
+**The assembler's one pass** (the user's requirement): gforth's and
+lbForth's assemblers resolve forward jumps with STRUCTURED control flow
+- `IF` lays down a short jump with a placeholder, `THEN` patches it, and
+a distance that does not fit is an error - one pass, never a second.
+SELF-HOSTING.md M1 takes that: labels with fixups resolved when the
+label is defined, as cross.4 resolves FORWARD words; backward jumps sized
+by distance; forward jumps short unless the source says `NEAR`, too far
+an error; numeric local labels for the translated source; families by
+counted loops, as gforth defines its sixteen jumps in a line.
+
+**Local time**: the user's point - /etc/localtime is not on every
+platform - and QUESTIONS.md Q18 now recommends UTC everywhere.

@@ -1,0 +1,57 @@
+\ bench.4 - seven small programs, the same text for every Forth here
+\ (relf, gforth, pforth); bench/langs/run.py times them against C, Go,
+\ Python and Ruby versions of the same programs. Each leaves a checksum.
+: FIB ( n -- f ) DUP 2 < IF EXIT THEN DUP 1- RECURSE SWAP 2 - RECURSE + ;
+: LOOPSUM ( n -- s ) 0 SWAP 0 DO I + LOOP ;
+5000000 CONSTANT N
+N ALLOCATE DROP CONSTANT FLAGS      \ outside the dictionary: pforth's is small (and relf's bare kernel has no THROW)
+: SIEVE ( -- count )
+  FLAGS N 1 FILL  0  N 2 DO
+    FLAGS I + C@ IF 1+  I I * N < IF N I I * DO 0 FLAGS I + C! J +LOOP THEN THEN
+  LOOP ;
+3000 CONSTANT NB
+NB CELLS ALLOCATE DROP CONSTANT ARR
+VARIABLE SEED
+: RND ( -- n ) SEED @ 1103515245 * 12345 + 2147483647 AND DUP SEED ! ;
+: BUBBLE ( -- checksum )
+  74755 SEED !  NB 0 DO RND 1000000 MOD ARR I CELLS + ! LOOP
+  NB 1 DO  NB I - 0 DO
+    ARR I CELLS + DUP @ OVER CELL+ @ 2DUP > IF ROT DUP >R ! R> CELL+ ! ELSE 2DROP DROP THEN
+  LOOP LOOP
+  0 NB 0 DO ARR I CELLS + @ I 1+ * + LOOP ;
+150 CONSTANT NM
+NM NM * CELLS ALLOCATE DROP CONSTANT MA  NM NM * CELLS ALLOCATE DROP CONSTANT MB
+VARIABLE RI  VARIABLE RJ
+: M@ ( m r c -- a ) SWAP NM * + CELLS + ;
+: DOT ( -- n ) 0 NM 0 DO MA RI @ I M@ @  MB I RJ @ M@ @ * + LOOP ;
+: MATRIX ( -- checksum )
+  NM 0 DO NM 0 DO  J I + MA J I M@ !  I J - MB J I M@ !  LOOP LOOP
+  0  NM 0 DO I RI !  NM 0 DO I RJ !  DOT + LOOP LOOP ;
+9 CONSTANT NF
+CREATE P1 NF CELLS ALLOT  CREATE PP NF CELLS ALLOT  CREATE CNT NF CELLS ALLOT
+VARIABLE R  VARIABLE MAXF  VARIABLE CSUM  VARIABLE PCNT  VARIABLE FDONE  VARIABLE LO  VARIABLE HI
+: P1@ CELLS P1 + @ ;  : P1! CELLS P1 + ! ;  : PP@ CELLS PP + @ ;  : PP! CELLS PP + ! ;
+: REV ( k -- )   \ reverse PP[0..k]
+  0 LO ! HI !
+  BEGIN LO @ HI @ < WHILE
+    LO @ PP@  HI @ PP@  LO @ PP!  HI @ PP!  1 LO +!  -1 HI +!
+  REPEAT ;
+: FLIPS ( -- f )
+  NF 0 DO I P1@ I PP! LOOP
+  0 BEGIN 0 PP@ DUP WHILE REV 1+ REPEAT DROP ;
+: NEXTPERM ( -- )
+  BEGIN
+    R @ NF = IF -1 FDONE ! EXIT THEN
+    0 P1@  R @ 0 DO I 1+ P1@ I P1! LOOP  R @ P1!
+    R @ CELLS CNT + DUP @ 1- DUP ROT !  0 > IF EXIT THEN
+    1 R +!
+  AGAIN ;
+: FANNKUCH ( -- checksum )
+  NF 0 DO I I P1! LOOP  NF R !  0 MAXF ! 0 CSUM ! 0 PCNT ! 0 FDONE !
+  BEGIN
+    BEGIN R @ 1 <> WHILE R @ R @ 1- CELLS CNT + ! -1 R +! REPEAT
+    FLIPS DUP MAXF @ MAX MAXF !  PCNT @ 1 AND IF NEGATE THEN CSUM +!
+    NEXTPERM  1 PCNT +!
+  FDONE @ UNTIL  CSUM @ 1000 * MAXF @ + ;
+: CSTEPS ( n -- steps ) 0 SWAP BEGIN DUP 1 > WHILE DUP 1 AND IF 3 * 1+ ELSE 2/ THEN SWAP 1+ SWAP REPEAT DROP ;
+: COLLATZ ( -- total ) 0 100000 1 DO I CSTEPS + LOOP ;

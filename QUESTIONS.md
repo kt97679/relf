@@ -230,22 +230,27 @@ and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
 opcodes keep their numbers where they are; packing them into 0x00-0x3F
 is the tag's prerequisite, done if the tag ever is.
 
-**Q18. Local time: the assembly engine's prompt is wrong outside UTC
-(542).** Fury's run of 536: `asm:shell 0`. The cause, reproduced here
-with `TZ=America/Los_Angeles`: run-invocation's "`\d` and `\A` agree
-with date" - the assembly shell's prompt said 16:03, `date` 09:03. A10
-(523) made its LOCAL-TIME UTC "first"; every UTC machine, this one
-included, hides that. Options:
-(A) **Time zones in Forth**: both engines give UTC, and a small word in
-the kernel reads the zone - `$TZ`, else /etc/localtime, a TZif file -
-and applies the offset. The engines get simpler (the C engine stops
-depending on localtime()), and both behave identically everywhere.
-(B) A TZif reader in the assembly engine: correct, but engine code, in
-assembly, for what is policy rather than mechanism.
-(C) Accept it, and make the test compare the assembly shell with `date
--u`: the prompt keeps showing the wrong hour.
-*Recommendation*: (A). Until then fury's run shows `asm:shell 0`, now
-with the failing assertion printed beside it.
+**Q18. Local time: UTC everywhere? (542 -> 543)** Fury's run of 536
+failed `asm:shell`: the assembly engine's LOCAL-TIME is UTC (A10), and
+run-invocation checks the prompt's `\d` and `\A` against `date`, which
+is local - 16:03 against 09:03 in America/Los_Angeles; every UTC
+machine, this one included, hides it. 542 proposed reading the zone in
+Forth from /etc/localtime; the user's objection (543): **that file is
+not everywhere** - Windows has none, and not every Unix is sure to - so
+it would cost portability. Agreed. What UTC costs instead:
+- the prompt's time escapes (`\d \t \T \@ \A`) show UTC, not the
+  wall clock - the only place relf shows a time;
+- nothing else: file times (`test -nt`, `-ot`) compare absolute times,
+  and `times` reports CPU time - neither has a zone;
+- run-invocation's check must compare with `date -u`, not `date`.
+And it buys: no zone database, the same behaviour on every platform and
+from both engines; containers and small systems mostly run UTC anyway.
+(A POSIX `TZ` variable's fixed offset - `TZ=PST8` - could be honoured
+in Forth without any file, but not its daylight-saving rules; not
+proposed.)
+*Recommendation*: UTC everywhere - the C engine's LOCAL-TIME uses
+gmtime() like the assembly engine; the test compares with `date -u`;
+A10 closed as "UTC, on purpose".
 
 ## Your notes, captured (514)
 

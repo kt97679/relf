@@ -104,7 +104,31 @@ The same way everything here is: **byte for byte**.
   deferral, and the order its end (a label, END-CODE) must flush.
   asm64.4 stays postfix - each mnemonic finishes itself - as the simpler
   of the two.
-- **M1 - a program.** An ELF file that exits with status 42, written
+- **M1 - one pass, and a program.** The user's requirement (543): the
+  assembler works in ONE pass, forward references resolved as cross.4
+  resolves its FORWARD words. The design, from that and the assemblers
+  examined (FINDINGS.md 5):
+  - *Labels*: `L: name` defines one at the current address. A jump to a
+    label not yet defined lays down its displacement as a placeholder and
+    leaves a fixup - where, and how wide; defining the label patches
+    every fixup waiting for it. Numeric local labels for the translated
+    source's `1f`/`2b`: `1 L:` defines, `1 F` and `1 B` refer forward and
+    back, as GNU as's do. At the end, a label still waited for is an
+    error, as cross.4's RESOLVE makes one of an unresolved FORWARD.
+  - *Sizes, in one pass*: a jump BACK knows its distance and takes the
+    short form where it fits - which is GNU as's choice too. A jump
+    FORWARD cannot know it: short unless the source says `NEAR` before
+    it. A short forward jump its label turns out too far for is an
+    error at the label - never a wrong byte. The translation (M2) writes
+    `NEAR` wherever GNU as chose the long form, so the output stays
+    identical to its.
+  - *Structured control flow* (`IF, THEN, BEGIN, UNTIL, WHILE, REPEAT`
+    with condition codes, as gforth and lbForth have): optional sugar for
+    code written by hand, on the same fixups; not needed by M2.
+  - *Families by loops*: the sixteen conditional jumps, setcc, cmovcc
+    defined by one counted loop each, as gforth does.
+  Then the program: an ELF file that exits with status 42, written
+  entirely from Forth. An ELF file that exits with status 42, written
   entirely from Forth.
 - **M2 - the engine source in Forth syntax.** A one-time, mechanical
   translation of relfasm64.S (a converter script, kept only until done),
