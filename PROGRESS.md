@@ -539,6 +539,7 @@ do not trust the absence of a line below.
 - **541** — M0 begun: asm64.4, the Forth assembler's first encoder, and tools/asm-test.py
 - **542** — M0's encoder complete: 452 of 452 shapes; gforth builds both kernels identical; relf against C, Go, Python, Ruby
 - **543** — findings captured (FINDINGS.md); seven benchmarks against gforth, pforth and five languages; one-pass assembler designed
+- **544** — UTC everywhere (A16); verify runs in TZ=UTC-9; why gforth is faster; the region against the call reach (Q19)
 
 ### Not tied to an iteration
 
@@ -25635,3 +25636,39 @@ counted loops, as gforth defines its sixteen jumps in a line.
 
 **Local time**: the user's point - /etc/localtime is not on every
 platform - and QUESTIONS.md Q18 now recommends UTC everywhere.
+
+## Iteration 544: UTC everywhere
+
+A16 (Q18): the C engine's LOCAL-TIME uses gmtime_r - UTC, as the
+assembly engine's always was - and run-invocation compares the prompt's
+`\d \A` with `date -u`. Checked in three zones on both shells (UTC,
+America/Los_Angeles, Asia/Tokyo). And so that nothing can again assume
+the local zone is UTC and pass only because the machine's is - as the
+test did here while it failed on fury - `make verify` sets TZ=UTC-9
+(a POSIX zone string: date needs no zone file) for every row.
+
+**Why gforth is faster** (the user's question for later): not native
+code - gforth's dynamic superinstructions are worth ~3% here, and its
+plainest indirect-threaded engine still beats relf 3x on the sieve - but
+which words are primitives: `+LOOP`, `J`, `2/` are colon words in relf
+and single primitives in gforth, and they sit in the losing inner loops.
+Closing most of it would be one iteration's work (FINDINGS.md 1.1a); not
+done, optimization being stopped.
+
+**The memory region** (the user's question): 16 MB of BSS - address
+space, not memory (1.4 MB resident) - but past the 4 MB a call reaches,
+where `CALL,` mis-encodes silently, and `ALLOT` checks nothing. Q19.
+
+**M1 begun, not working yet**: asm64.4 has the label machinery drafted -
+LABEL/L: with fixups resolved at the label (cross.4's FORWARD/RESOLVE
+model), NEAR for long forward jumps, numeric locals with GNU as's `1f`/
+`1b` meaning (two slots per number: the last defined, the next pending),
+END-ASM for labels never defined. Three bugs found reading it back before
+it ran (W! used before its definition; PATCH consuming its displacement
+before the high half; one slot per local where GNU as's meaning needs
+two). The first test - a program with every kind of jump, against GNU
+as's 237 bytes - does not pass: it prints `3` and stops, as though
+END-ASM found three undefined labels where two are declared and both
+defined. Not yet understood; next session starts there. The encoder is
+untouched by it: 452 of 452 still. Recorded under TZ=UTC-9: only
+checksums and sizes moved - nothing else in relf assumed UTC.

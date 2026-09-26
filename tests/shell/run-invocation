@@ -81,9 +81,12 @@ assert_output_equals "\\$ follows the effective uid, not USER" "$want_dollar " \
 # The time and date escapes (Iteration 417), against date(1) read on
 # either side, so a minute ticking over between the readings cannot fail
 # it.
-before=$(LC_ALL=C date '+%a %b %d %H:%M')
+# UTC: relf keeps no time zone (QUESTIONS.md A16, Iteration 544), so the
+# prompt's time is compared with date -u; with date it failed on every
+# machine outside UTC, fury's first.
+before=$(LC_ALL=C date -u '+%a %b %d %H:%M')
 got=$(last_prompt 'PS1='"'"'\d \A'"'"'')
-after=$(LC_ALL=C date '+%a %b %d %H:%M')
+after=$(LC_ALL=C date -u '+%a %b %d %H:%M')
 if [ "$got" = "$before" ] || [ "$got" = "$after" ]; then ok_dt=yes; else ok_dt="[$got] vs [$before]"; fi
 assert_output_equals "\\d and \\A agree with date" yes "$ok_dt"
 case $(last_prompt 'PS1='"'"'\t|\T|\@'"'"'') in

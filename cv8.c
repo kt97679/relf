@@ -59,7 +59,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <dirent.h>
-#include <time.h>          /* LOCAL-TIME: time, localtime_r (Iteration 417) */
+#include <time.h>          /* LOCAL-TIME: time, gmtime_r - UTC since 544 (A16) */
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <poll.h>
@@ -1372,7 +1372,9 @@ L_localtime: SPILL(); { /* --- sec min hour mday mon year wday : the local
                           one (Iteration 417). */
     time_t now = time(NULL);
     struct tm tm;
-    localtime_r(&now, &tm);
+    gmtime_r(&now, &tm);    /* UTC, as the assembly engine: time zones are the
+                             * platform's business, and not every platform
+                             * has one to read (QUESTIONS.md A16, 544) */
     PUSH((UNS64)tm.tm_sec);
     PUSH((UNS64)tm.tm_min);
     PUSH((UNS64)tm.tm_hour);

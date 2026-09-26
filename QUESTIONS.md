@@ -23,7 +23,10 @@ same iteration.
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
    speed). *(Q14 was answered at 523.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
-6. *(Q16, the speed gap, was answered at 535: accepted.)*
+6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
+   at 544: UTC everywhere.)*
+8. **Before the dictionary grows**: **Q19** - the memory region against
+   the call reach.
 7. *(Q17, self-hosting's four choices, was answered at 536.)*
 
 ## Open
@@ -230,27 +233,32 @@ and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
 opcodes keep their numbers where they are; packing them into 0x00-0x3F
 is the tag's prerequisite, done if the tag ever is.
 
-**Q18. Local time: UTC everywhere? (542 -> 543)** Fury's run of 536
-failed `asm:shell`: the assembly engine's LOCAL-TIME is UTC (A10), and
-run-invocation checks the prompt's `\d` and `\A` against `date`, which
-is local - 16:03 against 09:03 in America/Los_Angeles; every UTC
-machine, this one included, hides it. 542 proposed reading the zone in
-Forth from /etc/localtime; the user's objection (543): **that file is
-not everywhere** - Windows has none, and not every Unix is sure to - so
-it would cost portability. Agreed. What UTC costs instead:
-- the prompt's time escapes (`\d \t \T \@ \A`) show UTC, not the
-  wall clock - the only place relf shows a time;
-- nothing else: file times (`test -nt`, `-ot`) compare absolute times,
-  and `times` reports CPU time - neither has a zone;
-- run-invocation's check must compare with `date -u`, not `date`.
-And it buys: no zone database, the same behaviour on every platform and
-from both engines; containers and small systems mostly run UTC anyway.
-(A POSIX `TZ` variable's fixed offset - `TZ=PST8` - could be honoured
-in Forth without any file, but not its daylight-saving rules; not
-proposed.)
-*Recommendation*: UTC everywhere - the C engine's LOCAL-TIME uses
-gmtime() like the assembly engine; the test compares with `date -u`;
-A10 closed as "UTC, on purpose".
+**Q19. The memory region: 4 MB, the call reach? (544)** The user: "you
+load the Forth image in a 16 MB chunk - a little too much, when CALL
+reaches 4 MB?" The 16 MB costs no RAM (BSS: 19 MB of address space, 1.4
+MB resident), but it breaks an invariant, silently: code defined past 4
+MB gets calls `CALL,` mis-encodes without a word, and `ALLOT` checks no
+limit - it runs into the stacks before it faults (FINDINGS.md 6).
+(A) **4 MB**: the region is the call reach, so everything in the
+dictionary can be called; a program wanting more data ALLOCATEs it (as
+bench.4 does). Plus a limit check - the standard `UNUSED`, from the
+engine, which knows where the stacks start; `ALLOT` and each new header
+check against it ("dictionary full"), `,` and `C,` covered by the
+header's margin - and cv8.c's comment corrected.
+(B) 16 MB, with `CALL,` refusing a target past 4 MB and the same limit
+check: big allotted data stays possible, code past 4 MB an error.
+*Recommendation*: (A) - one number, and the simplest invariant: every
+byte of the dictionary is reachable. 4 MB is 35 times the shell image.
+
+
+**A16. Local time: UTC everywhere (Q18; 543 -> 544).** The user's point:
+/etc/localtime is not on every platform (Windows has none), so reading a
+zone would cost portability; UTC's only cost is that the prompt's time
+escapes show UTC. **Done at 544**: the C engine's LOCAL-TIME uses
+gmtime_r, as the assembly engine always did; run-invocation compares the
+prompt with `date -u`; A10's "UTC first" becomes "UTC, on purpose". And
+`make verify` runs every row in TZ=UTC-9, so nothing can again assume
+the local zone is UTC and pass only because the machine's is.
 
 ## Your notes, captured (514)
 

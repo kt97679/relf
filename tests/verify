@@ -29,6 +29,12 @@
 # in a container, where stdin is /dev/null, it had never once hung
 # (Iteration 392). The interactive pty harness makes its own terminal
 # and is unaffected.
+# Every row in a zone that is not UTC (Iteration 544). relf keeps no
+# time zone (QUESTIONS.md A16); a check that assumed the local zone WAS
+# UTC passed on every UTC machine - this one included - and failed only
+# on the user's (fury). UTC-9 is a POSIX TZ string: date needs no zone
+# file for it, so it works everywhere.
+TZ=UTC-9; export TZ
 exec < /dev/null
 # Byte order and byte classes for every shell this suite runs: pathname
 # expansion sorts by LC_COLLATE, `[a-z]` is a collation range and
