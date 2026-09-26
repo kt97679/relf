@@ -138,6 +138,8 @@ PRIMITIVE UNSETENV  ( c-addr --- ior )
 \ adding here leaves every existing one untouched, while inserting
 \ anywhere earlier would silently renumber them.
 PRIMITIVE ALLOCATE  ( u --- a-addr ior )
+\ The memory is zero (Iteration 551), as calloc's: fresh from the system
+\ it is already, and stays untouched - resident only when used.
 PRIMITIVE FREE      ( a-addr --- ior )
 PRIMITIVE RESIZE    ( a-addr u --- a-addr2 ior )
 PRIMITIVE GETPWHOME ( c-addr --- addr | 0 )

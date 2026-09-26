@@ -82,7 +82,9 @@ of walking it. Perhaps 5-10x on loops and functions - relf's scripts are
 The user's goal (A18, 546): minimize relfsh's RAM - revisited once relf
 assembles its own engine (GOALS.md, "After self-hosting").
 
-**M1. Do not zero what the system already zeroed** - open.
+**M1. Do not zero what the system already zeroed** - **done (551)**: the
+allocator's memory is zero (calloc in C; a reused block zeroed in the
+assembly engine), the pool's fills gone - 40 kB.
 The shell allocates its ~140 buffers at startup, and pool.4 fills each
 with zeros - but the allocator's memory comes fresh from mmap, already
 zero, and the fill makes every page resident, used or not: 152 kB of the
@@ -98,7 +100,10 @@ relf processes, as a C program's code is. (Forked children share their
 parent's already.) Cost: the engines' loaders; the image's own writes
 still copy their pages.
 
-**M3. Allocate rarely used buffers on first use** - open.
+**M3. Allocate rarely used buffers on first use** - declined (551): it
+would cost every buffer reference its one-fetch VAR@ form. Done instead:
+**the buffers carved from one arena** - one header, not 136 - so a
+buffer's pages are touched when it is used: 64 kB.
 The line editor's buffers in a script, for instance. Overlaps M1.
 
 ## Size

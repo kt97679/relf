@@ -57,32 +57,32 @@
 BASE @  DECIMAL
 
 VARIABLE BUF-LIST   0 BUF-LIST !
+\ The ARENA the buffers are carved from at boot (Iteration 551): ONE
+\ allocation, so one header - allocated one by one, every buffer's
+\ header touched the page it began on, and 136 of them packed together
+\ made nearly every page of their span resident, used or not. Carved,
+\ a buffer's pages are touched when it is used: 64 kB of the shell's
+\ 268 resident, idle. Blocks carved from it are never FREEd one by one.
+VARIABLE ARENA   0 ARENA !   VARIABLE ARENA-END   0 ARENA-END !
+: IN-ARENA? ( addr --- f )   \ kernel words only: pool.4 loads on the bare
+  DUP ARENA @ U< 0= SWAP ARENA-END @ U< AND ;   \ kernel (tests/shadow.fth)
 VARIABLE BUF-BODY
 VARIABLE BUF-SIZE
 VARIABLE BUF-PTR
 
-: BUF-ZERO ( addr u --- )   \ clear u bytes
-\ FILL, one primitive, where this was a Forth loop storing a cell at a
-\ time - BEGIN 2DUP > WHILE 0 OVER ! CELL+ REPEAT - whose five pairs of
-\ opcodes were each 0.83% of the shell's dispatches (Iteration 534,
-\ tools/superinst.py).
-  0 FILL ;
 
 : BUF-ALLOC ( body --- )   \ give one descriptor its space
   DUP @ 0= IF
-    \ Round up to a whole cell - once so that BUF-ZERO, a cell-at-a-time
-    \ loop until 534, could not overrun; kept, since the buffers after it
-    \ stay cell-aligned. A few bytes of slack per buffer is nothing
+    \ Round up to a whole cell - once so that a zero fill a cell at a
+    \ time could not overrun (there is none since 551); kept, since the
+    \ buffers after it stay cell-aligned. A few bytes of slack per buffer is nothing
     \ against the heap and the sizes are not all cell multiples.
     DUP CELL+ @ CELL+ 1- [ 1 CELLS 1- ] LITERAL INVERT AND BUF-SIZE !
     BUF-SIZE @ ALLOCATE ABORT" BUFFER: out of memory"
     BUF-PTR !
-    \ CREATE ... ALLOT space starts zeroed, so this must too. Done a
-    \ cell at a time rather than with FILL, which is a per-BYTE
-    \ threaded loop (kernel.4) - at ~34KB of buffers per boot that was
-    \ measured as most of a 2.4x startup regression when the shell's
-    \ buffers moved out of the image in Iteration 136.
-    BUF-PTR @ BUF-SIZE @ BUF-ZERO
+    \ Zero, as CREATE ... ALLOT space starts: ALLOCATE's memory is,
+    \ since Iteration 551 - so no fill here, which touched every page of
+    \ every buffer at boot: 40 kB of the shell's 308 resident, idle.
     BUF-PTR @ SWAP !
   ELSE DROP THEN ;
 
@@ -139,10 +139,9 @@ VARIABLE BUF-RETIRED   0 BUF-RETIRED !    \ first node, or 0
   2DUP CELL+ @ > 0= IF 2DROP EXIT THEN        \ already big enough
   SWAP OVER CELL+ @ 2* MAX BUF-ROUND          ( body n )
   DUP ALLOCATE ABORT" BUFFER: out of memory"  ( body n a )
-  2DUP SWAP BUF-ZERO
   2 PICK @ ?DUP IF                            ( body n a old )
     DUP 2 PICK 5 PICK CELL+ @ MOVE
-    BUF-RETIRE
+    DUP IN-ARENA? IF DROP ELSE BUF-RETIRE THEN   \ carved: left, not freed
   THEN
   2 PICK !  SWAP CELL+ ! ;
 
@@ -169,11 +168,11 @@ VARIABLE BUF-RETIRED   0 BUF-RETIRED !    \ first node, or 0
   \ a heap address means nothing after a save and reload. A turnkey
   \ image must call this before touching any buffer; shell.4's MAIN
   \ does it first thing.
-  BUF-LIST @
-  BEGIN DUP WHILE
-    START @ + DUP BUF-ALLOC
-    2 CELLS + @
-  REPEAT DROP ;
+  0 BUF-LIST @ BEGIN DUP WHILE                 \ their total, rounded
+    START @ + DUP CELL+ @ BUF-ROUND ROT + SWAP  2 CELLS + @ REPEAT DROP
+  DUP ALLOCATE ABORT" BUFFER: out of memory"  DUP ARENA !  + ARENA-END !
+  ARENA @ BUF-LIST @ BEGIN DUP WHILE           \ each carved from the arena
+    START @ + 2DUP ! DUP CELL+ @ BUF-ROUND ROT + SWAP  2 CELLS + @ REPEAT 2DROP ;
 
 : RESET-BUFFERS ( --- )
   \ Release every allocated buffer and mark it unallocated again.
@@ -184,10 +183,11 @@ VARIABLE BUF-RETIRED   0 BUF-RETIRED !    \ first node, or 0
   BUF-LIST @
   BEGIN DUP WHILE
     START @ +                     ( body )
-    DUP @ ?DUP IF FREE DROP THEN
+    DUP @ ?DUP IF DUP IN-ARENA? IF DROP ELSE FREE DROP THEN THEN
     DUP 0 SWAP !
     2 CELLS + @                   ( link of the previous declaration )
-  REPEAT DROP ;
+  REPEAT DROP
+  ARENA @ ?DUP IF FREE DROP THEN  0 ARENA !  0 ARENA-END ! ;   \ once
 
 
 BASE !

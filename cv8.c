@@ -1639,7 +1639,9 @@ L_unsetenv: SPILL(); /* c-addr --- ior */
  */
 L_allocate: SPILL(); /* u --- a-addr ior */
 {
-    void *p = malloc((size_t)DS0);
+    /* zeroed (Iteration 551), as the assembly engine's: the shell's
+     * buffers need not be filled at boot, which made them all resident */
+    void *p = calloc(1, (size_t)DS0);
     DS0 = (UNS64)(uintptr_t)p;
     PUSH((UNS64)(p == NULL ? 201 : 0));
     FILLNEXT();

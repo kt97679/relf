@@ -82,18 +82,21 @@ script, identical output: dash 2.5 ms, bash 7.6 ms, relf 75.7 ms
 bash 1,108.** Scripts are relf's weak side (~30x dash): the shell's work
 is fine-grained Forth; accepted for simplicity (QUESTIONS.md A13).
 
-**Memory** (545; FINDINGS.md 8; `python3 tools/mem-profile.py`), kB,
+**Memory** (551; FINDINGS.md 8; `python3 tools/mem-profile.py`), kB,
 idle -> after a workload:
 
 | shell | resident | private |
 |---|---|---|
-| **relf, assembly engine** | **308 -> 356** | **308 -> 356** |
-| dash | 1,968 -> 1,984 | 100 -> 116 |
-| busybox ash | 1,604 -> 1,808 | 248 -> 388 |
-| bash | 3,612 -> 3,644 | 1,648 -> 1,692 |
+| **relf, assembly engine** | **196 -> 240** | **196 -> 240** |
+| dash | 1,968 -> 1,988 | 100 -> 120 |
+| busybox ash | 1,604 -> 1,812 | 248 -> 392 |
+| bash | 3,604 -> 3,736 | 1,548 -> 1,660 |
 
-Smallest resident footprint (no C library); in private memory ~3x dash,
-near ash, a fifth of bash. Minimizing it is planned (GOALS.md, A18).
+The smallest resident footprint (no C library); in private memory below
+busybox ash, about twice dash, an eighth of bash. A third less than at
+545 (308 -> 196 idle): the allocator's memory is zero, so the shell's
+buffers are not filled at boot, and they are carved from one arena, so
+none is touched until used (551).
 
 **Correctness, checked on every `make verify`** (BASELINE): the CORE
 test suite, 2,136 checks, output identical on both engines; a

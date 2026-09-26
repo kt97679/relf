@@ -1133,6 +1133,16 @@ rdx rdx test,
 2 F jz,
 rcx [ rdx 8 ] mov,                       \ one of this class, given back before
 [ r8 ] rcx mov,
+\ ALLOCATE's memory is zero since Iteration 551: fresh from the system it
+\ is already, and so stays untouched until used - the point: the shell's
+\ buffers were zero-filled at boot, and every page of them resident. A
+\ block given back before is zeroed here, on reuse only.
+rax push,
+ecx eax mov,  r9d 1 # mov,  r9 cl shl,   \ the block's size,
+r9 16 # sub,                             \ less its header
+rdi [ rdx 16 ] lea,  rcx r9 mov,  eax eax xor,
+rep, stosb,
+rax pop,
 3 F jmp,
 2 L:  rdx [ heap_top ] mov,
 rdx rdx test,

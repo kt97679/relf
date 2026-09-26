@@ -216,3 +216,16 @@ PRIVATE is what this process alone costs.
   (M2); dash's code is file pages it could share.
 - The first measurement's idle rows were `cat`'s memory, not the shell's:
   a shell may exec its last command. A trailing `:` keeps `cat` a child.
+
+### 8a. A third less (551)
+
+The assembly-engine shell, idle -> after the workload, resident kB:
+308 -> 356 at 545; 268 -> 308 with ALLOCATE's memory zero and the
+buffers not filled at boot (40 kB: the fill touched every page of the
+136 buffers' 81 KB); **196 -> 240** with the buffers carved from one
+arena (64 kB more: allocated one by one, each block's 16-byte header
+touched the page it began on, and packed together they made nearly the
+whole span resident). What remains, idle: the memory region 132 kB (the
+118 KB image, copied in, and the stacks' pages), the heap ~40 kB, the
+engine 16, the stack 8. Next: the image, copied rather than mapped
+(OPTIMIZATIONS.md M2), and its names (Z1).

@@ -546,6 +546,7 @@ do not trust the absence of a line below.
 - **548** — SELF-HOSTED: relf assembles its engine identical to GNU as's (M3), and that engine rebuilds itself (M4)
 - **549** — M5: the engine's only source is Forth (relfasm64.4); GNU as leaves the build; ANNOUNCEMENT.md
 - **550** — the user's runs of 549: two findings - untracked generated files; a suite that inherited the caller's PS1
+- **551** — relfsh's memory a third less: ALLOCATE's memory zero, the buffers carved from one arena (308 -> 196 kB idle)
 
 ### Not tied to an iteration
 
@@ -25918,3 +25919,49 @@ UTC, with a bare environment - and each of those has now hidden a
 failure that only a real user's machine showed. The fix each time was to
 make the checks independent of the host, not to make the host like this
 one.
+
+## Iteration 551: relfsh's memory, a third less
+
+A18, begun: the user's focus before the announcement. Measured first,
+each step priced by an experiment before it was built:
+
+- **136 buffers, 81,451 bytes**, declared with BUFFER: and allocated at
+  boot (ALLOC-BUFFERS), each zero-filled. Built without the fill - at
+  boot all memory is fresh from the system, already zero - the idle
+  shell went 308 -> 268 kB. Made real as a contract: **ALLOCATE's memory
+  is zero** - calloc in the C engine; in the assembly engine a block is
+  zeroed only when it is reused from a free list (fresh blocks are zero
+  and stay untouched). The pool's two fills and BUF-ZERO are gone.
+- The heap still held 112 kB with nothing filled: the allocator writes a
+  16-byte header at each block's start, and 136 small blocks packed
+  together touch nearly every page of their span. Lazy allocation would
+  have fixed it and cost every buffer reference its one-fetch VAR@ form -
+  declined. Instead **the buffers are carved from one arena**: one
+  allocation, one header; a carved block is never freed alone (BUF-ENSURE
+  leaves a grown-out one, RESET-BUFFERS frees the arena once). Priced:
+  268 -> 204 kB. Made real: 196 kB idle, 240 after the workload.
+- The experiment's first build failed with "Not found MAIN": the guard in
+  BUF-ENSURE used ARENA, defined further down pool.4 - one load error,
+  and every later source file failed after it.
+
+**Where it stands** (tools/mem-profile.py): resident and private 196 ->
+240 kB; busybox ash's private memory is 248 -> 392, dash's 100 -> 120,
+bash's ~1,550 -> 1,660. The C shell does not gain: glibc's calloc
+zeroes small blocks itself. What is left, idle: the memory region 132 kB
+(the image, copied in), the heap ~40, the engine 16, the stack 8.
+ANNOUNCEMENT.md's table is the new one.
+
+**Caught by verification, before the commit**: its first run printed
+"Segmentation fault" in the assembly engine's section. The CORE suite
+crashed - on BOTH engines, at the same check - in tests/shadow.fth, which
+loads pool.4 on the bare kernel: IN-ARENA? used WITHIN, which is
+extend.4's, so it did not compile, everything built on it failed after
+it, and the test went on to execute garbage. My own checks after the
+change - the differential and shell suites - load the whole shell with
+extend.4 first, and never saw it. IN-ARENA? is kernel words now (U<);
+CORE 2,136 of 2,136 on both engines, identical.
+
+Recorded changes, with their causes: the assembly engine 24 bytes larger
+(the reuse path's zeroing), the C engine's i386 code 8 (calloc); the
+images 148-160 bytes larger (the arena in pool.4). Every suite row as
+before.
