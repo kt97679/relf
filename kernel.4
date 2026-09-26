@@ -1498,9 +1498,17 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Check that stack pointer is equal to value contained in CSP.
    SP@ CSP @ - ABORT" Incomplete control structure" ;
 
+: ?COMP ( --- )
+\ Refuse a word that lays down code, outside a definition (Iteration 552).
+\ IF, DO and their kind compile branches at HERE: interpreted, they did
+\ so silently - a loop at the top level of a file ran nothing and left
+\ its operands behind, three times in one session of writing tests.
+  STATE @ 0= ABORT" compile only" ;
+
 : ; ( --- )
 \ Finish the current definition by adding a return to it, make it
 \ visible and leave compilation mode.
+  ?COMP
   EXIT, [ ?CSP REVEAL ; IMMEDIATE
 
 : CREATE ( "ccc" --- )
@@ -1556,16 +1564,19 @@ VARIABLE 'LEAVE ( --- a-addr)
 
 : BEGIN ( --- x )
 \ Start a BEGIN UNTIL or BEGIN WHILE REPEAT loop.
+  ?COMP
   NO-PEEP HERE ; IMMEDIATE
 
 : UNTIL ( x --- )
 \ Form a loop with matching BEGIN.
 \ Runtime: A flag is take from the stack
 \ each time UNTIL is encountered and the loop iterates until it is nonzero.
+  ?COMP
   [OP] ?BRANCH 0BRANCH8-TOK BACK, ; IMMEDIATE
 
 : AGAIN ( x --- )
 \ End a BEGIN AGAIN loop: branch back unconditionally.
+  ?COMP
   [OP] BRANCH BRANCH8-TOK BACK, ; IMMEDIATE
 
 : IF    ( --- x)
@@ -1574,14 +1585,17 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ the stack and if it is true the part between IF and ELSE is executed,
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
+  ?COMP
   NO-PEEP [OP] ?BRANCH OP, >MARK ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.
+  ?COMP
   >RESOLVE ; IMMEDIATE
 
 : ELSE ( x1 --- x2)
 \ part of IF ELSE THEN construction.
+  ?COMP
   NO-PEEP [OP] BRANCH OP, >MARK SWAP >RESOLVE ; IMMEDIATE
 
 : WHILE  ( x1 --- x2 x1 )
@@ -1589,10 +1603,12 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ Runtime: At WHILE a flag is taken from the stack. If it is false,
 \  the program jumps out of the loop, otherwise the part between WHILE
 \  and REPEAT is executed and the loop iterates to BEGIN.
+  ?COMP
   POSTPONE IF SWAP ; IMMEDIATE
 
 : REPEAT ( x1 x2 --- )
 \ part of BEGIN WHILE REPEAT construction.
+  ?COMP
   [OP] BRANCH BRANCH8-TOK BACK, >RESOLVE ; IMMEDIATE
 
 VARIABLE POCKET ( --- a-addr )
@@ -1619,6 +1635,7 @@ VARIABLE POCKET ( --- a-addr )
 \ Start a DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1.
+  ?COMP
   POSTPONE (DO) NO-PEEP 'LEAVE @ HERE 0 'LEAVE ! ; IMMEDIATE
 
 : LEAVE-LINK, ( --- )
@@ -1632,12 +1649,14 @@ VARIABLE POCKET ( --- a-addr )
 \ Start a ?DO LOOP.
 \ Runtime: ( n1 n2 --- ) start a loop with initial count n2 and
 \ limit n1. Exit immediately if n1 = n2.
+  ?COMP
   POSTPONE (?DO) [OP] BRANCH OP, 'LEAVE @ 0 'LEAVE ! LEAVE-LINK,
   NO-PEEP HERE ; IMMEDIATE
 
 : LEAVE ( --- )
 \ Runtime: leave the matching DO LOOP immediately - drop the loop and
 \ branch to its exit.
+  ?COMP
   POSTPONE UNLOOP [OP] BRANCH OP, LEAVE-LINK, NO-PEEP ; IMMEDIATE
 
 : RESOLVE-LEAVE ( --- )
@@ -1651,6 +1670,7 @@ VARIABLE POCKET ( --- a-addr )
 : LOOP  ( x --- )
 \ End a DO LOOP.
 \ Runtime: Add 1 to the count and if it is equal to the limit leave the loop.
+  ?COMP
   POSTPONE (LOOP) [OP] BRANCH BRANCH8-TOK BACK,
   RESOLVE-LEAVE 'LEAVE ! NO-PEEP ; IMMEDIATE
 
@@ -1658,11 +1678,13 @@ VARIABLE POCKET ( --- a-addr )
 \ End a DO +LOOP
 \ Runtime: ( n ---) Add n to the count and exit if this crosses the
 \ boundary between limit-1 and limit.
+  ?COMP
   POSTPONE (+LOOP) [OP] BRANCH BRANCH8-TOK BACK,
   RESOLVE-LEAVE 'LEAVE ! NO-PEEP ; IMMEDIATE
 
 : RECURSE ( --- )
 \ Compile a call to the current (not yet finished) definition.
+  ?COMP
   LAST @ NAME> CALL, ; IMMEDIATE
 
 : STRING, ( c-addr u --- )
@@ -1701,6 +1723,10 @@ VARIABLE POCKET ( --- a-addr )
 \ compilation mode.
   LAST @ DUP C@ 64 OR SWAP C! ;
 
+: .( ( "ccc<rparen>" --- )
+\ Print up to the next ), as the text is read (Forth 2012; Iteration 552).
+  41 PARSE TYPE ; IMMEDIATE
+
 : ( ( "ccc<rparen>" --- )
 \ Comment till next ).
   BEGIN
@@ -1738,6 +1764,7 @@ VARIABLE POCKET ( --- a-addr )
 \ word such that it pushes its parameter field address onto the stack
 \ and then executes whatever comes after DOES>. DODOES leaves the
 \ parameter field on the return stack for the tail's R>.
+  ?COMP
   POSTPONE (;CODE) NO-PEEP POSTPONE R> ; IMMEDIATE
 
 \ PART 10: TOP LEVEL OF INTERPRETER

@@ -260,6 +260,19 @@ binary; (c) gen-opcodes.sh writes the tables as a Forth include
 `make relfasm64` is relf's; identical to the last GNU as build.
 
 
+**A20. Names stay in the image (Q1; 509 -> 552).** The user: keep the
+names, so that the shell's Forth builtin has every word. Headers stay
+~21% of the image; OPTIMIZATIONS.md Z1 declined.
+
+**A21. Data and code stay interleaved (552).** The user: do not separate
+them. Mapping the image therefore gains nothing (FINDINGS.md 8b);
+OPTIMIZATIONS.md M2 declined for good.
+
+**A22. Polish before the announcement (552).** Agreed: compile-only
+words refuse to run outside a definition, `.(`, README refreshed, `make
+clean` complete; and a directory structure separating the engines, the
+Forth system and the shell; and new kinds of tests (TESTING-IDEAS.md).
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

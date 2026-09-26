@@ -547,6 +547,7 @@ do not trust the absence of a line below.
 - **549** — M5: the engine's only source is Forth (relfasm64.4); GNU as leaves the build; ANNOUNCEMENT.md
 - **550** — the user's runs of 549: two findings - untracked generated files; a suite that inherited the caller's PS1
 - **551** — relfsh's memory a third less: ALLOCATE's memory zero, the buffers carved from one arena (308 -> 196 kB idle)
+- **552** — polish: compile-only words refuse outside a definition; `.(`; make clean; TESTING-IDEAS.md
 
 ### Not tied to an iteration
 
@@ -25975,3 +25976,40 @@ derive from base; a copy padded so the dictionary starts at file offset
 image is written on every page at startup (buffer descriptors, the
 shell's variables, among the code). No gain without separating data from
 code. FINDINGS.md 8b, OPTIMIZATIONS.md M2.
+
+## Iteration 552: polish, and a plan for new kinds of tests
+
+The user's decisions: names stay (A20), data and code stay together
+(A21), the polish list agreed, a directory structure and new tests
+wanted (A22).
+
+**Compile-only words refuse to run outside a definition**: ?COMP -
+`STATE @ 0= ABORT" compile only"` - first in BEGIN UNTIL AGAIN IF THEN
+ELSE WHILE REPEAT DO ?DO LEAVE LOOP +LOOP RECURSE DOES> and `;`. relf's
+error report adds the word: "compile only IF". Before, a top-level
+`1 IF 2 THEN` laid a branch down at HERE - and the C engine, tried on
+the old kernel while this was being built, crashed on it; a top-level
+loop silently did nothing, which cost three separate debugging detours
+in the sessions before. My first placement defined ?COMP just before
+BEGIN - after `;`, which uses it, and the kernel's build said "Undefined
+word ?COMP". No suite row changed: nothing relied on interpreting them.
+
+**`.(`**, missing until now: `41 PARSE TYPE`, in the kernel.
+
+**`make clean`** removes what the assembly engine's build generates
+(relfasm-ops.4, relfasm-consts.4, relfasm64.forth, relfasm64.log) and
+the shell images, and the names of the GNU-as era; cv8-ops.h, which is
+committed, stays.
+
+**TESTING-IDEAS.md**: the user asked for imagination. Fourteen ideas,
+each aimed at a class of bug the present suites cannot see - several
+needing no expected answer at all: metamorphic testing (a script and a
+rewriting of it that means the same must agree), round trips through the
+function printer, the two engines as each other's oracle on random typed
+programs, a parliament of shells voting, image mutation testing (does
+any test notice an opcode changed?), relf running its own test harness,
+real configure scripts, chaos, strange environments, the Forth 2012
+suite's other word sets, spec archaeology.
+
+**The directory structure**, proposed - engine/, forth/, shell/, docs/,
+examples/ - is its own iteration, next: it touches every path.

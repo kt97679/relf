@@ -368,6 +368,12 @@ clean:
 # than tracked files: on a machine where the last build was for another
 # architecture, keeping them is the fault above (Iteration 402).
 	@rm -f relf relf64 relf32 relfsh relfsh64 relfsh32 .relf-arch .relf-native-img
+# The assembly engine and what is generated for it (Iteration 552): the
+# engine relf assembles, its tables from opcodes.tab, and the files an
+# assembly leaves; the names from before 549, when it was GNU as's.
+	@rm -f relfasm64 relfshasm64 relfasm-ops.4 relfasm-consts.4 relfasm64.forth relfasm64.log
+	@rm -f relfasm-ops.S relfasm-consts.S relfasm64.o
+	@rm -f kernel64-shell.img kernel32-shell.img cv8-ops.h.tmp
 
 distclean: clean
 	@rm -f kernel64-shell.img kernel32-shell.img

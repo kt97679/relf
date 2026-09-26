@@ -1,0 +1,104 @@
+# TESTING-IDEAS.md - new ways to find what relf gets wrong
+
+The user (Iteration 552): more tests - specs we missed, other POSIX
+implementations, fuzzing - "unleash your imagination, think outside the
+box, don't follow standard patterns". What we have: CORE (2,136 checks,
+both engines identical), a differential suite (131), a matrix against
+bash and dash (421), POSIX cases (48), mrsh (21), a pty suite (23), 83
+shell test files (874 assertions), a crash fuzzer (tools/crashfuzz.py),
+reproducible images, a double-compile with gforth. Every one of them
+compares relf with an answer somebody wrote down, or with one or two
+other shells. The ideas below mostly do not; each is aimed at a class
+of bug the present suites cannot see. Marked **first** are the ones to
+build first - cheap, and likely to find something.
+
+## Oracles that need no expected answer
+
+1. **Metamorphic testing** (**first**). A shell program and a rewriting of
+   it that means the same must print the same. Rewrite every test script
+   by transformations that preserve meaning, and compare relf with
+   ITSELF: the body wrapped in `{ ...; }`, in `( ... )`, in `eval '...'`,
+   in `if :; then ... fi`, in a function called once, fed through a here-
+   document, sourced with `.`; `$(...)` and backquotes exchanged; `[` and
+   `test` exchanged; a redirection moved from after a command to before
+   it; comments, blank lines, `:` and backslash-newlines added; variables
+   renamed consistently. No reference shell, no expected output: any
+   disagreement is a relf bug, in the parser or the executor.
+2. **Round trips** - POSIX says `set` prints variables, and functions
+   print, in a form the shell can read back. Print every function the
+   test scripts define, re-read the text, and require the same behaviour;
+   print again, and require the same text (a fixpoint, like the images).
+   A strong test of the parser and the printer together.
+3. **The engines as each other's oracle** (**first**): random, well-
+   typed Forth programs - a generator that knows each opcode's stack
+   effect, so every program is valid - run on the C engine and on the
+   assembly engine; any difference in the final stack or the output is
+   a bug in one of them. Stack effects become a column of opcodes.tab,
+   which documents them too. And the width-independent words the same
+   way across 64- and 32-bit cells.
+4. **The assembler against GNU as, at random**: the corpus tests the 456
+   instruction shapes the engine uses; generate random instructions -
+   every register, displacement size, immediate - in asm64.4's syntax
+   and GNU as's, and compare the bytes. Finds what the engine does not
+   use yet, before it does.
+
+## A parliament of shells
+
+5. **The consensus oracle** (**first**): install every POSIX-ish shell
+   the system offers - dash, bash --posix, busybox ash and hush, mksh,
+   yash (the strictest reading of POSIX), posh, ksh93, zsh in sh
+   emulation, oksh - and run every case through all of them. Where relf
+   differs from the MAJORITY, it is probably wrong; where the majority
+   itself splits, the spec is ambiguous there, and the case belongs in
+   DASH.md's list of choices, decided on purpose.
+6. **Grammar-based differential fuzzing**: generate random programs from
+   POSIX's shell grammar (a safe vocabulary: echo, printf, :, test,
+   arithmetic, case, bounded loops, functions, redirections to temporary
+   files), run them through the parliament, and shrink each disagreement
+   automatically (delta debugging) to its smallest form before a human
+   reads it.
+
+## Tests that measure the tests
+
+7. **Image mutation testing** (**first**): mutate the compiled shell
+   image, not the source - one opcode swapped for another with the same
+   stack effect, a literal nudged by one, a branch's sense flipped - and
+   run the suites. A mutant that survives marks behaviour no test
+   checks; the word it lives in is named. Mutation testing on threaded
+   code is cheap - no recompiling - and unusual.
+8. **relf tests itself**: the harness - tests/shell/run-all, lib.sh,
+   tests/verify, thousands of lines of real shell - run BY relf instead
+   of dash. Every result must be the same; a difference is a relf bug
+   found in real-world code nobody wrote as a test.
+
+## The world, not the spec
+
+9. **Real scripts**: autoconf `configure` scripts (zlib's, a GNU
+   project's) with relf as the shell, their results compared with dash's;
+   the Oils project's spec tests (a large, curated corpus that already
+   runs against many shells); Rosetta Code's POSIX sh solutions; shell
+   quines, which test quoting where it is subtlest.
+10. **Chaos**: signals at random instants in pipelines and loops (SIGINT,
+    SIGCHLD, SIGWINCH, SIGTSTP storms); input that arrives a byte at a
+    time; tight limits (`ulimit -n 8`, `-v`, `-s`), a full disk (a tiny
+    tmpfs), no memory - the shell must report and go on, never hang or
+    crash. A soak run of hours watching for leaks: memory, descriptors,
+    zombies.
+11. **Strange environments**: `env -i`; ten thousand environment
+    variables; a directory deeper than PATH_MAX; HOME unset; arguments
+    carrying every byte value; umask 777; each must give dash's answer.
+
+## Specs we have not held relf to
+
+12. **The Forth 2012 test suite** (**first**; Gerry Jackson's, the
+    standard's own): CORE is what we run; CORE EXT, DOUBLE, EXCEPTION,
+    FACILITY, FILE, LOCALS, MEMORY, SEARCH, STRING, TOOLS are not. Each
+    word set either passes, or its failures become a list of words relf
+    lacks or gets wrong - a decision each.
+13. **Spec archaeology**: every example in POSIX's Shell Command Language
+    and its rationale turned into a test with the behaviour the text
+    states; and the Austin Group's interpretations of it, where the
+    committee settled what the text left open.
+14. **The line editor against bash's**: the same keystroke streams
+    through a pty into both; the command lines they produce compared, for
+    the keys both claim.

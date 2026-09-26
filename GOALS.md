@@ -110,6 +110,13 @@ itself again - SELF-HOSTING.md M3 and M4, checked by `make verify`
 source is Forth** (M5, A19): relfasm64.4, assembled by relf; GNU as is no
 longer part of the build.
 
+## Before the announcement (recorded at Iteration 552)
+
+The user's order: relfsh's memory (551: a third less), then polish -
+compile-only words checked, `.(`, `make clean`, README; a directory
+structure that separates engines, Forth and shell; and new kinds of
+tests, TESTING-IDEAS.md. JIT/AOT and Rill after the announcement.
+
 ## After self-hosting: to revisit (recorded at Iteration 546)
 
 Decisions deferred on purpose until relf assembles its own engine

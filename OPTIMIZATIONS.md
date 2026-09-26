@@ -120,7 +120,8 @@ The line editor's buffers in a script, for instance. Overlaps M1.
 
 ## Size
 
-**Z1. Fewer names** - open (Q1, 509).
+**Z1. Fewer names** - declined (A20, 552): the Forth builtin keeps every
+word.
 Headers are 21-23% of the image; names pruned to an extension API would
 save about a sixth of it. The largest size lever there is.
 
