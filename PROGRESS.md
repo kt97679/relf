@@ -25774,3 +25774,12 @@ MEM, calls FIXUP, and a single-pass Forth cannot call forward. The label
 test gained the case and is linked now, as the engine is (an absolute
 address in an object file is a placeholder): 253 bytes, identical; 454
 of 454 shapes; the ELF program exits 42.
+
+**M2 begun**: tools/asm-translate.py, a first version. Its first run left
+46 of 2,631 lines untranslated - most of them the first lines of comments
+spanning several lines, and the macro definitions, which are to be
+written by hand as colon words; handled, 9 remain, all directives:
+`.balign` twice, the generated tables' two `.rept` blocks, and the
+`.if/.error` layout assertion. Next session: those, the hand-written
+macros, NEAR from the listing's jump lengths, the header and footer -
+and the first M3 comparison with the GNU as-built engine.

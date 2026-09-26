@@ -161,7 +161,18 @@ The same way everything here is: **byte for byte**.
   - *Data*: the ELF header, the tables, the OPEN-FILE modes, strings;
     `.balign`'s two bytes of padding, in GNU as's own fill.
   - *The generated includes* (relfasm-ops.S, relfasm-consts.S) are
-    translated with the rest at first; M5 has Forth read opcodes.tab. A one-time, mechanical
+    translated with the rest at first; M5 has Forth read opcodes.tab.
+  **Begun** (546): tools/asm-translate.py, first version - the source in
+  order, #includes expanded; `.equ` to CONSTANT with the expression in
+  postfix and the names kept; labels, instructions (symbols by name, a
+  forward jump GNU as made long to get NEAR - next), macro uses mapped,
+  data, strings; multi-line comments and the macro definitions (to be
+  written by hand) skipped. Of 2,631 lines, 9 are left, all directives:
+  two `.balign` (an ALIGN, with GNU as's own NOP fill is needed), two
+  `.rept` blocks in the generated tables (to unroll), one `.if/.error`
+  layout assertion (to become a check in a colon word). Then: the macros
+  by hand, the header and footer (LABEL declarations, END-ASM, the file
+  written and CHMODed) - and M3, the first comparison with the engine. A one-time, mechanical
   translation of relfasm64.S (a converter script, kept only until done),
   then read over by hand.
 - **M3 - identical.** The Forth build equals the GNU `as` build.
