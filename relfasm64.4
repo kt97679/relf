@@ -1,0 +1,2776 @@
+\ relfasm64.4 - relfasm64.S in asm64.4's syntax, made by tools/asm-translate.py
+\ (SELF-HOSTING.md M2). Assembled by relf, it writes the engine.
+S" extend.4" INCLUDED  S" asm64.4" INCLUDED
+ALSO ASSEMBLER
+LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL L_addi
+LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
+LABEL L_branch8 LABEL L_bye LABEL L_cellp LABEL L_cells LABEL L_cfetch LABEL L_chdir
+LABEL L_chmod LABEL L_closedir LABEL L_closefile LABEL L_compare LABEL L_count LABEL L_cputimes
+LABEL L_cstore LABEL L_cstrlen LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
+LABEL L_dplus LABEL L_drop LABEL L_dup LABEL L_dup2 LABEL L_dupfrom LABEL L_envat
+LABEL L_eq LABEL L_eqi LABEL L_esc LABEL L_execute LABEL L_execve LABEL L_exit
+LABEL L_fetch LABEL L_filekind LABEL L_filemode LABEL L_filepos LABEL L_filesize LABEL L_fill
+LABEL L_fork LABEL L_free LABEL L_fromr LABEL L_getcwd LABEL L_getenv LABEL L_getfsize
+LABEL L_getpid LABEL L_getppid LABEL L_getpwhome LABEL L_getrlimit LABEL L_i LABEL L_isatty
+LABEL L_kill LABEL L_lit LABEL L_lit0 LABEL L_lit1 LABEL L_lit32 LABEL L_lit64
+LABEL L_lit8 LABEL L_litm1 LABEL L_localtime LABEL L_loop LABEL L_lrest LABEL L_lsave
+LABEL L_lshift LABEL L_lstore LABEL L_lt LABEL L_lzero LABEL L_move LABEL L_ne
+LABEL L_negate LABEL L_noop LABEL L_onem LABEL L_onep LABEL L_opendir LABEL L_openfile
+LABEL L_or LABEL L_over LABEL L_pipe LABEL L_plus LABEL L_plusstore LABEL L_poll
+LABEL L_qdo LABEL L_qdup LABEL L_rawmode LABEL L_read LABEL L_readdir LABEL L_reposfile
+LABEL L_resize LABEL L_rfetch LABEL L_rot LABEL L_rpfetch LABEL L_rpstore LABEL L_rshift
+LABEL L_scan LABEL L_setenv LABEL L_setfsize LABEL L_setpgid LABEL L_setrlimit LABEL L_sgt
+LABEL L_sigaction LABEL L_sigpending LABEL L_spfetch LABEL L_spstore LABEL L_store LABEL L_sub
+LABEL L_swap LABEL L_sysarg LABEL L_sysargc LABEL L_sysexit LABEL L_system LABEL L_tcgetpgrp
+LABEL L_tcpaccept LABEL L_tcpconnect LABEL L_tcplisten LABEL L_tcsetpgrp LABEL L_termraw LABEL L_termrestore
+LABEL L_tor LABEL L_type LABEL L_ult LABEL L_umask LABEL L_umdiv LABEL L_ummult
+LABEL L_unsetenv LABEL L_vf LABEL L_vs LABEL L_waitjob LABEL L_waitnohang LABEL L_waitpid
+LABEL L_write LABEL L_xor LABEL L_zeq LABEL L_zlt LABEL _start LABEL alloc_block
+LABEL bad_hdr LABEL bad_magic LABEL bad_version LABEL copy40 LABEL die LABEL dispatch256
+LABEL do_call LABEL ehdr LABEL env_badname LABEL env_find LABEL env_init LABEL esc_tab
+LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv0 LABEL m_badesc
+LABEL m_badop LABEL m_binsh LABEL m_dashc LABEL m_hdr LABEL m_locals LABEL m_magic
+LABEL m_nl LABEL m_open LABEL m_passwd LABEL m_selfexe LABEL m_unimpl LABEL m_usage
+LABEL m_version LABEL open_modes LABEL parse_ipv4 LABEL phdr LABEL read_all LABEL ru_ms
+LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL sig_restorer LABEL strlen_rdi
+LABEL term_restore LABEL ud_ior LABEL unimpl
+4194304 65536 ASM-BUFFER                  \ 0x400000: where the Makefile links it
+63 CONSTANT OPC_BRANCH8
+4 1024 * 1024 * CONSTANT MEMSIZE
+262144 CONSTANT DSTACK_BYTES
+65536 CONSTANT RSTACK_BYTES
+4096 CONSTANT PAGE
+8 CONSTANT CELL
+4096 CONSTANT LSAVE_MAX
+10 CONSTANT CV8_VERSION
+15 CONSTANT FEATURES
+0 CONSTANT SYS_read
+1 CONSTANT SYS_write
+2 CONSTANT SYS_open
+3 CONSTANT SYS_close
+231 CONSTANT SYS_exit
+8 CONSTANT SYS_lseek
+9 CONSTANT SYS_mmap
+87 CONSTANT SYS_unlink
+90 CONSTANT SYS_chmod
+59 CONSTANT SYS_execve
+4 CONSTANT SYS_stat
+6 CONSTANT SYS_lstat
+16 CONSTANT SYS_ioctl
+21 CONSTANT SYS_access
+22 CONSTANT SYS_pipe
+33 CONSTANT SYS_dup2
+39 CONSTANT SYS_getpid
+57 CONSTANT SYS_fork
+61 CONSTANT SYS_wait4
+62 CONSTANT SYS_kill
+72 CONSTANT SYS_fcntl
+79 CONSTANT SYS_getcwd
+95 CONSTANT SYS_umask
+109 CONSTANT SYS_setpgid
+110 CONSTANT SYS_getppid
+80 CONSTANT SYS_chdir
+14 CONSTANT SYS_rt_sigprocmask
+97 CONSTANT SYS_getrlimit
+98 CONSTANT SYS_getrusage
+160 CONSTANT SYS_setrlimit
+201 CONSTANT SYS_time
+7 CONSTANT SYS_poll
+41 CONSTANT SYS_socket
+42 CONSTANT SYS_connect
+43 CONSTANT SYS_accept
+49 CONSTANT SYS_bind
+50 CONSTANT SYS_listen
+54 CONSTANT SYS_setsockopt
+13 CONSTANT SYS_rt_sigaction
+15 CONSTANT SYS_rt_sigreturn
+65 CONSTANT NSIG_FLAGS
+217 CONSTANT SYS_getdents64
+4096 CONSTANT DIRBUF
+S" engine-macros.4" INCLUDED      \ the eight macros, by hand
+4194304 CONSTANT TEXTORG
+TEXTORG 65536 + CONSTANT BSS_BASE
+BSS_BASE CONSTANT argc_v
+BSS_BASE 8 + CONSTANT argv_v
+BSS_BASE 16 + CONSTANT envp_v
+BSS_BASE 24 + CONSTANT argbase
+BSS_BASE 32 + CONSTANT lsave_sp
+BSS_BASE 40 + CONSTANT heap_top
+BSS_BASE 48 + CONSTANT heap_end
+BSS_BASE 56 + CONSTANT env_ptr
+BSS_BASE 64 + 64 + CONSTANT env_n
+BSS_BASE 64 + 72 + CONSTANT env_cap
+BSS_BASE 64 + CONSTANT hdr
+BSS_BASE 256 + CONSTANT lsave_stack
+lsave_stack LSAVE_MAX CELL * + CONSTANT free_lists
+1073741824 CONSTANT HEAP_RESERVE
+free_lists 64 8 * + CONSTANT scratch
+scratch 256 + CONSTANT sig_flag
+sig_flag 72 + CONSTANT pw_buf
+pw_buf 8 + CONSTANT term_saved
+pw_buf 16 + CONSTANT t_raw_fd
+pw_buf 24 + CONSTANT t_raw_pid
+pw_buf 32 + CONSTANT term_save
+pw_buf 72 + CONSTANT t_saved
+pw_buf 112 + CONSTANT img_limit
+131072 CONSTANT VM_OFF
+TEXTORG VM_OFF + CONSTANT VM_BASE
+VM_OFF MEMSIZE + CONSTANT MEM_SIZE
+ehdr L:
+127 C,A  69 C,A  76 C,A  70 C,A  2 C,A  1 C,A  1 C,A  0 C,A
+0 Q,A
+2 W,A
+62 W,A
+1 L,A
+_start 0 Q,+
+phdr ehdr NEGATE Q,+
+0 Q,A
+0 L,A
+64 W,A
+56 W,A
+2 W,A
+64 W,A
+0 W,A
+0 W,A
+phdr L:
+1 L,A
+5 L,A
+0 Q,A
+TEXTORG Q,A
+TEXTORG Q,A
+file_end ehdr NEGATE Q,+
+file_end ehdr NEGATE Q,+
+4096 Q,A
+1 L,A
+6 L,A
+0 Q,A
+BSS_BASE Q,A
+BSS_BASE Q,A
+0 Q,A
+MEM_SIZE BSS_BASE TEXTORG - - Q,A
+4096 Q,A
+m_usage L: 85 C,A 115 C,A 97 C,A 103 C,A 101 C,A 58 C,A 32 C,A 114 C,A 101 C,A 108 C,A 102 C,A 97 C,A 115 C,A 109 C,A 54 C,A 52 C,A 32 C,A 73 C,A 77 C,A 65 C,A 71 C,A 69 C,A 32 C,A 91 C,A 65 C,A 82
+C,A 71 C,A 85 C,A 77 C,A 69 C,A 78 C,A 84 C,A 46 C,A 46 C,A 46 C,A 93 C,A 10 C,A
+HERE-A m_usage - CONSTANT m_usage_len
+m_open L:  67 C,A 97 C,A 110 C,A 110 C,A 111 C,A 116 C,A 32 C,A 111 C,A 112 C,A 101 C,A 110 C,A 32 C,A 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 32 C,A 102 C,A 105 C,A 108 C,A 101 C,A 46 C,A 10 C,A
+HERE-A m_open - CONSTANT m_open_len
+m_magic L: 110 C,A 111 C,A 116 C,A 32 C,A 97 C,A 32 C,A 82 C,A 101 C,A 108 C,A 70 C,A 32 C,A 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 44 C,A 32 C,A 111 C,A 114 C,A 32 C,A 98 C,A 117 C,A 105 C,A 108 C,A
+116 C,A 32 C,A 102 C,A 111 C,A 114 C,A 32 C,A 97 C,A 32 C,A 100 C,A 105 C,A 102 C,A 102 C,A 101 C,A 114 C,A 101 C,A 110 C,A 116 C,A 32 C,A 101 C,A 110 C,A 99 C,A 111 C,A 100 C,A 105 C,A 110 C,A 103
+C,A 32 C,A 111 C,A 114 C,A 32 C,A 99 C,A 101 C,A 108 C,A 108 C,A 32 C,A 119 C,A 105 C,A 100 C,A 116 C,A 104 C,A 46 C,A 10 C,A
+HERE-A m_magic - CONSTANT m_magic_len
+m_version L: 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 32 C,A 105 C,A 115 C,A 32 C,A 97 C,A 32 C,A 100 C,A 105 C,A 102 C,A 102 C,A 101 C,A 114 C,A 101 C,A 110 C,A 116 C,A 32 C,A 67 C,A 86 C,A 56 C,A 32
+C,A 102 C,A 111 C,A 114 C,A 109 C,A 97 C,A 116 C,A 32 C,A 118 C,A 101 C,A 114 C,A 115 C,A 105 C,A 111 C,A 110 C,A 32 C,A 116 C,A 104 C,A 97 C,A 110 C,A 32 C,A 116 C,A 104 C,A 105 C,A 115 C,A 32 C,A
+101 C,A 110 C,A 103 C,A 105 C,A 110 C,A 101 C,A 10 C,A
+HERE-A m_version - CONSTANT m_version_len
+m_hdr L:  84 C,A 114 C,A 117 C,A 110 C,A 99 C,A 97 C,A 116 C,A 101 C,A 100 C,A 32 C,A 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 32 C,A 104 C,A 101 C,A 97 C,A 100 C,A 101 C,A 114 C,A 46 C,A 10 C,A
+HERE-A m_hdr - CONSTANT m_hdr_len
+m_unimpl L: 114 C,A 101 C,A 108 C,A 102 C,A 97 C,A 115 C,A 109 C,A 54 C,A 52 C,A 58 C,A 32 C,A 110 C,A 111 C,A 116 C,A 32 C,A 119 C,A 114 C,A 105 C,A 116 C,A 116 C,A 101 C,A 110 C,A 32 C,A 121 C,A 101
+C,A 116 C,A 58 C,A 32 C,A
+HERE-A m_unimpl - CONSTANT m_unimpl_len
+m_badesc L: 114 C,A 101 C,A 108 C,A 102 C,A 58 C,A 32 C,A 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 32 C,A 117 C,A 115 C,A 101 C,A 115 C,A 32 C,A 97 C,A 110 C,A 32 C,A 101 C,A 115 C,A 99 C,A 97 C,A 112
+C,A 101 C,A 100 C,A 32 C,A 112 C,A 114 C,A 105 C,A 109 C,A 105 C,A 116 C,A 105 C,A 118 C,A 101 C,A 32 C,A 116 C,A 104 C,A 105 C,A 115 C,A 32 C,A 101 C,A 110 C,A 103 C,A 105 C,A 110 C,A 101 C,A 32 C,A
+100 C,A 111 C,A 101 C,A 115 C,A 32 C,A 110 C,A 111 C,A 116 C,A 32 C,A 104 C,A 97 C,A 118 C,A 101 C,A 10 C,A
+HERE-A m_badesc - CONSTANT m_badesc_len
+m_locals L: 114 C,A 101 C,A 108 C,A 102 C,A 58 C,A 32 C,A 108 C,A 111 C,A 99 C,A 97 C,A 108 C,A 115 C,A 32 C,A 115 C,A 97 C,A 118 C,A 101 C,A 32 C,A 115 C,A 116 C,A 97 C,A 99 C,A 107 C,A 32 C,A 111
+C,A 118 C,A 101 C,A 114 C,A 102 C,A 108 C,A 111 C,A 119 C,A 32 C,A 111 C,A 114 C,A 32 C,A 117 C,A 110 C,A 100 C,A 101 C,A 114 C,A 102 C,A 108 C,A 111 C,A 119 C,A 10 C,A
+HERE-A m_locals - CONSTANT m_locals_len
+m_badop L: 114 C,A 101 C,A 108 C,A 102 C,A 58 C,A 32 C,A 105 C,A 109 C,A 97 C,A 103 C,A 101 C,A 32 C,A 117 C,A 115 C,A 101 C,A 115 C,A 32 C,A 97 C,A 110 C,A 32 C,A 111 C,A 112 C,A 99 C,A 111 C,A 100
+C,A 101 C,A 32 C,A 116 C,A 104 C,A 105 C,A 115 C,A 32 C,A 101 C,A 110 C,A 103 C,A 105 C,A 110 C,A 101 C,A 32 C,A 100 C,A 111 C,A 101 C,A 115 C,A 32 C,A 110 C,A 111 C,A 116 C,A 32 C,A 104 C,A 97 C,A
+118 C,A 101 C,A 10 C,A
+HERE-A m_badop - CONSTANT m_badop_len
+m_nl L:  10 C,A
+die L:
+rdi push,
+edi 2 # mov,
+eax SYS_write # mov,
+syscall,
+rdi pop,
+eax SYS_exit # mov,
+syscall,
+read_all L:
+rbx push,
+ebx ebx xor,
+1 L:  rbx rdx cmp,
+2 F jae,
+rdx push,
+rsi push,
+rdi push,
+rdx rbx sub,
+rsi rbx add,
+eax SYS_read # mov,
+syscall,
+rdi pop,
+rsi pop,
+rdx pop,
+rax rax test,
+2 F jle,
+rbx rax add,
+1 B jmp,
+2 L:  rax rbx mov,
+rbx pop,
+ret,
+unimpl L:
+r8 rsi mov,
+ecx ecx xor,
+1 L:  [ r8 rcx ] byte-ptr 0 # cmp,
+2 F je,
+rcx inc,
+1 B jmp,
+2 L:  rcx push,
+rsi [ m_unimpl ] lea,
+edx m_unimpl_len # mov,
+edi 2 # mov,
+eax SYS_write # mov,
+syscall,
+rdx pop,
+rsi r8 mov,
+edi 2 # mov,
+eax SYS_write # mov,
+syscall,
+rsi [ m_nl ] lea,
+edx 1 # mov,
+edi 99 # mov,
+die jmp,
+_start L:
+rax [ rsp ] mov,
+[ argc_v ] rax mov,
+rcx [ rsp 8 ] lea,
+[ argv_v ] rcx mov,
+rdx [ rcx rax *8 8 ] lea,
+[ envp_v ] rdx mov,
+[ argbase ] qword-ptr 2 # mov,
+[ t_raw_fd ] qword-ptr 1 NEGATE # mov,
+[ img_limit ] qword-ptr 1 NEGATE # mov,
+rdi [ m_selfexe ] lea,
+esi esi xor,
+eax SYS_open # mov,
+syscall,
+rax rax test,
+NEAR 10 F js,
+rbp rax mov,
+rdi rbp mov,
+esi esi xor,
+edx 2 # mov,
+eax SYS_lseek # mov,
+syscall,
+rax 16 # cmp,
+NEAR 11 F jl,
+r12 rax mov,
+rdi rbp mov,
+rsi [ rax 16 NEGATE ] lea,
+edx edx xor,
+eax SYS_lseek # mov,
+syscall,
+rdi rbp mov,
+rsi [ hdr ] lea,
+edx 16 # mov,
+read_all call,
+rax 16 # cmp,
+11 F jne,
+rax 3550891808312280402 # mov,
+[ hdr ] rax cmp,
+11 F jne,
+rcx [ hdr 8 + ] mov,
+rcx rcx test,
+11 F jz,
+rax [ r12 16 NEGATE ] lea,
+rcx rax cmp,
+11 F ja,
+[ img_limit ] rcx mov,
+rdi rbp mov,
+rax rcx sub,
+rsi rax mov,
+edx edx xor,
+eax SYS_lseek # mov,
+syscall,
+[ argbase ] qword-ptr 1 # mov,
+set_argv0 call,
+2 F jmp,
+11 L:  rdi rbp mov,
+eax SYS_close # mov,
+syscall,
+10 L:  rax [ argc_v ] mov,
+rcx [ argv_v ] mov,
+rax 2 # cmp,
+1 F jae,
+rsi [ m_usage ] lea,
+edx m_usage_len # mov,
+edi 1 # mov,
+die jmp,
+1 L:  rdi [ rcx 8 ] mov,
+esi esi xor,
+eax SYS_open # mov,
+syscall,
+rax rax test,
+12 F jns,
+rsi [ m_open ] lea,
+edx m_open_len # mov,
+edi 2 # mov,
+die jmp,
+12 L:  rbp rax mov,
+2 L:
+rdi rbp mov,
+rsi [ hdr ] lea,
+edx 8 # mov,
+read_all call,
+rax 8 # cmp,
+NEAR bad_magic jne,
+[ hdr ] dword-ptr 808998467 # cmp,
+NEAR bad_magic jne,
+[ hdr 4 + ] byte-ptr CELL # cmp,
+NEAR bad_magic jne,
+[ hdr 6 + ] byte-ptr CV8_VERSION # cmp,
+NEAR bad_version jne,
+eax [ hdr 7 + ] byte-ptr movzx,
+eax FEATURES INVERT # test,
+NEAR bad_magic jnz,
+rdi rbp mov,
+rsi [ hdr ] lea,
+edx 8 # mov,
+read_all call,
+rax 8 # cmp,
+NEAR bad_hdr jne,
+r12 [ hdr ] mov,
+r15 [ r12 *8 24 ] lea,
+3 L:  r12 r12 test,
+4 F jz,
+rdi rbp mov,
+rsi [ hdr ] lea,
+edx 8 # mov,
+read_all call,
+rax 8 # cmp,
+NEAR bad_hdr jne,
+r12 dec,
+3 B jmp,
+4 L:  rdi rbp mov,
+rsi [ hdr ] lea,
+edx 8 # mov,
+read_all call,
+rax 8 # cmp,
+NEAR bad_hdr jne,
+r12 [ hdr ] mov,
+r12 r12 add,
+r15 [ r15 r12 *8 ] lea,
+5 L:  r12 r12 test,
+6 F jz,
+rdi rbp mov,
+rsi [ hdr ] lea,
+edx 8 # mov,
+read_all call,
+rax 8 # cmp,
+NEAR bad_hdr jne,
+r12 dec,
+5 B jmp,
+6 L:  ebx VM_BASE # mov,
+rdi rbp mov,
+rsi rbx mov,
+edx MEMSIZE # mov,
+rax [ img_limit ] mov,
+rax rax test,
+13 F js,
+rax r15 sub,
+rdx rax mov,
+13 L:  read_all call,
+rdi rbp mov,
+eax SYS_close # mov,
+syscall,
+r14 rbx mov,
+r15 [ rbx MEMSIZE ] lea,
+r13 [ rbx MEMSIZE RSTACK_BYTES - PAGE - 2 CELL * - ] lea,
+[ r13 ] rbx mov,
+r12 [ r13 ] mov,
+r13 CELL # add,
+NEXT,
+bad_magic L:
+rsi [ m_magic ] lea,
+edx m_magic_len # mov,
+edi 2 # mov,
+die jmp,
+bad_version L:
+rsi [ m_version ] lea,
+edx m_version_len # mov,
+edi 2 # mov,
+die jmp,
+bad_hdr L:
+rsi [ m_hdr ] lea,
+edx m_hdr_len # mov,
+edi 2 # mov,
+die jmp,
+do_call L:
+al 64 # test,
+1 F jnz,
+eax 63 # and,
+eax 8 # shl,
+ecx [ r14 ] byte-ptr movzx,
+eax ecx or,
+r14 inc,
+2 F jmp,
+1 L:  eax 63 # and,
+eax 16 # shl,
+ecx [ r14 ] byte-ptr movzx,
+ecx 8 # shl,
+eax ecx or,
+ecx [ r14 1 ] byte-ptr movzx,
+eax ecx or,
+r14 2 # add,
+2 L:  r14 RPUSH,
+r14 [ rbx rax ] lea,
+NEXT,
+L_noop L:  NEXT,
+L_exit L:  EXITNEXT,
+L_lit L:  eax [ r14 ] word-ptr movzx,
+r14 2 # add,
+rax PUSHT,
+NEXT,
+L_branch L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_0branch L:  rax r12 mov,
+POPT,
+rax rax test,
+1 F jz,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_drop L:  POPT,
+NEXT,
+L_dup L:  r12 PUSHT,
+NEXT,
+L_swap L:  rax [ r13 ] mov,
+[ r13 ] r12 mov,
+r12 rax mov,
+NEXT,
+L_rot L:  rax [ r13 CELL ] mov,
+rcx [ r13 ] mov,
+[ r13 CELL ] rcx mov,
+[ r13 ] r12 mov,
+r12 rax mov,
+NEXT,
+L_over L:  rax [ r13 ] mov,
+rax PUSHT,
+NEXT,
+L_cfetch L:  r12 [ r12 ] byte-ptr movzx,
+NEXT,
+L_fetch L:  r12 [ r12 ] mov,
+NEXT,
+L_cstore L:  al [ r13 ] mov,
+[ r12 ] al mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_store L:  rax [ r13 ] mov,
+[ r12 ] rax mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_and L:  r12 [ r13 ] and,
+r13 CELL # add,
+NEXT,
+L_or L:  r12 [ r13 ] or,
+r13 CELL # add,
+NEXT,
+L_xor L:  r12 [ r13 ] xor,
+r13 CELL # add,
+NEXT,
+L_fromr L:  rax [ r15 ] mov,
+r15 CELL # add,
+rax PUSHT,
+NEXT,
+L_tor L:  r12 RPUSH,
+POPT,
+NEXT,
+L_rfetch L:  rax [ r15 ] mov,
+rax PUSHT,
+NEXT,
+L_eq L:  4 FLAG,
+NEXT,
+L_ult L:  2 FLAG,
+NEXT,
+L_lt L:  12 FLAG,
+NEXT,
+L_plus L:  r12 [ r13 ] add,
+r13 CELL # add,
+NEXT,
+L_negate L:  r12 neg,
+NEXT,
+L_lshift L:  rcx r12 mov,
+r12 [ r13 ] mov,
+r12 cl shl,
+r13 CELL # add,
+NEXT,
+L_rshift L:  rcx r12 mov,
+r12 [ r13 ] mov,
+r12 cl shr,
+r13 CELL # add,
+NEXT,
+L_ummult L:  rax [ r13 ] mov,
+r12 mul,
+[ r13 ] rax mov,
+r12 rdx mov,
+NEXT,
+L_umdiv L:  rdx [ r13 ] mov,
+rax [ r13 CELL ] mov,
+rdx r12 cmp,
+1 F jb,
+rax rdx mov,
+edx edx xor,
+r12 div,
+rax [ r13 CELL ] mov,
+1 L:  r12 div,
+[ r13 CELL ] rdx mov,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_dplus L:  rax [ r13 ] mov,
+[ r13 2 CELL * ] rax add,
+[ r13 CELL ] r12 adc,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_type L:  rsi [ r13 ] mov,
+rdx r12 mov,
+1 L:  rdx rdx test,
+2 F jz,
+edi 1 # mov,
+eax SYS_write # mov,
+rsi push,
+rdx push,
+syscall,
+rdx pop,
+rsi pop,
+rax rax test,
+2 F jle,
+rsi rax add,
+rdx rax sub,
+1 B jmp,
+2 L:  r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_spfetch L:  rax [ r13 CELL NEGATE ] lea,
+rax PUSHT,
+NEXT,
+L_spstore L:  r13 r12 mov,
+POPT,
+NEXT,
+L_rpfetch L:  r15 PUSHT,
+NEXT,
+L_rpstore L:  r15 r12 mov,
+POPT,
+NEXT,
+L_lit32 L:  rax [ r14 ] dword-ptr movsxd,
+r14 4 # add,
+rax PUSHT,
+NEXT,
+L_dovar L:  rax [ r14 3 CELL + 1 - ] lea,
+rax CELL NEGATE # and,
+rax PUSHT,
+EXITNEXT,
+L_dodoes L:  eax [ r14 ] byte-ptr movzx,
+al 64 # test,
+1 F jz,
+eax 63 # and,
+eax 16 # shl,
+ecx [ r14 1 ] byte-ptr movzx,
+ecx 8 # shl,
+eax ecx or,
+ecx [ r14 2 ] byte-ptr movzx,
+eax ecx or,
+rcx [ r14 3 CELL + 1 - ] lea,
+2 F jmp,
+1 L:  eax 63 # and,
+eax 8 # shl,
+ecx [ r14 1 ] byte-ptr movzx,
+eax ecx or,
+rcx [ r14 2 CELL + 1 - ] lea,
+2 L:  rcx CELL NEGATE # and,
+rcx RPUSH,
+r14 [ rbx rax ] lea,
+NEXT,
+L_lit8 L:  eax [ r14 ] byte-ptr movzx,
+r14 inc,
+rax PUSHT,
+NEXT,
+L_branch8 L:  rax [ r14 ] byte-ptr movsx,
+r14 rax add,
+NEXT,
+L_0branch8 L:  rax r12 mov,
+POPT,
+rax rax test,
+1 F jz,
+r14 inc,
+NEXT,
+1 L:  rax [ r14 ] byte-ptr movsx,
+r14 rax add,
+NEXT,
+L_lit0 L:  eax eax xor,
+rax PUSHT,
+NEXT,
+L_lit1 L:  eax 1 # mov,
+rax PUSHT,
+NEXT,
+L_litm1 L:  rax 1 NEGATE # mov,
+rax PUSHT,
+NEXT,
+L_vf L:  SLOT,
+rax [ rdx ] mov,
+rax PUSHT,
+NEXT,
+L_vs L:  SLOT,
+[ rdx ] r12 mov,
+POPT,
+NEXT,
+L_lsave L:  SLOT,
+rcx [ lsave_sp ] mov,
+rcx LSAVE_MAX # cmp,
+1 F jae,
+rax [ rdx ] mov,
+r8 [ lsave_stack ] lea,
+[ r8 rcx *8 ] rax mov,
+rcx inc,
+[ lsave_sp ] rcx mov,
+NEXT,
+1 L:  eax 1 # mov,
+rax PUSHT,
+NEAR locals_failed jmp,
+L_lrest L:  SLOT,
+rcx [ lsave_sp ] mov,
+rcx rcx test,
+1 F jle,
+rcx dec,
+[ lsave_sp ] rcx mov,
+r8 [ lsave_stack ] lea,
+rax [ r8 rcx *8 ] mov,
+[ rdx ] rax mov,
+NEXT,
+1 L:  eax 2 # mov,
+rax PUSHT,
+locals_failed jmp,
+locals_failed L:
+rax [ rbx 8 ] mov,
+rax rax test,
+1 F jnz,
+rsi [ m_locals ] lea,
+edx m_locals_len # mov,
+edi 70 # mov,
+die jmp,
+1 L:  r14 RPUSH,
+r14 [ rbx rax ] lea,
+NEXT,
+L_lstore L:  SLOT,
+[ rdx ] r12 mov,
+POPT,
+NEXT,
+L_lzero L:  SLOT,
+[ rdx ] qword-ptr 0 # mov,
+NEXT,
+L_zeq L:  eax eax xor,
+r12 r12 test,
+al sete,
+rax neg,
+r12 rax mov,
+NEXT,
+L_sub L:  rax [ r13 ] mov,
+rax r12 sub,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_ne L:  5 FLAG,
+NEXT,
+L_zlt L:  r12 63 # sar,
+NEXT,
+L_sgt L:  15 FLAG,
+NEXT,
+L_2dup L:  rax [ r13 ] mov,
+r13 2 CELL * # sub,
+[ r13 CELL ] r12 mov,
+[ r13 ] rax mov,
+NEXT,
+L_2drop L:  r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_onep L:  r12 inc,
+NEXT,
+L_cellp L:  r12 CELL # add,
+NEXT,
+L_cells L:  r12 3 # shl,
+NEXT,
+L_onem L:  r12 dec,
+NEXT,
+L_count L:  eax [ r12 ] byte-ptr movzx,
+r12 inc,
+rax PUSHT,
+NEXT,
+L_addi L:  rax [ r14 ] byte-ptr movsx,
+r14 inc,
+r12 rax add,
+NEXT,
+L_eqi L:  rcx [ r14 ] byte-ptr movsx,
+r14 inc,
+eax eax xor,
+r12 rcx cmp,
+al sete,
+rax neg,
+r12 rax mov,
+NEXT,
+L_lit64 L:  rax [ r14 ] mov,
+r14 CELL # add,
+rax PUSHT,
+NEXT,
+L_esc L:  eax [ r14 ] byte-ptr movzx,
+r14 inc,
+[ rax *8 esc_tab ] qword-ptr jmp,
+L_badop L:  rsi [ m_badop ] lea,
+edx m_badop_len # mov,
+edi 2 # mov,
+die jmp,
+L_loop L:  rax [ r15 ] mov,
+rax inc,
+rax [ r15 CELL ] cmp,
+1 F je,
+[ r15 ] rax mov,
+NEXT,
+1 L:  r15 2 CELL * # add,
+[ r14 ] byte-ptr OPC_BRANCH8 # cmp,
+2 F je,
+r14 3 # add,
+NEXT,
+2 L:  r14 2 # add,
+NEXT,
+L_qdo L:  rax [ r13 ] mov,
+rcx r12 mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rcx rax cmp,
+1 F je,
+rax RPUSH,
+rcx RPUSH,
+[ r14 ] byte-ptr OPC_BRANCH8 # cmp,
+2 F je,
+r14 3 # add,
+NEXT,
+2 L:  r14 2 # add,
+1 L:  NEXT,
+L_dictlimit L:  rax [ rbx MEMSIZE RSTACK_BYTES - DSTACK_BYTES - ] lea,
+rax PUSHT,
+NEXT,
+L_atxt L:  r12 [ r12 ] mov,
+r12 rbx add,
+NEXT,
+L_execute L:  rax r12 mov,
+POPT,
+r14 RPUSH,
+r14 rax mov,
+NEXT,
+L_i L:  rax [ r15 ] mov,
+rax PUSHT,
+NEXT,
+L_qdup L:  r12 r12 test,
+1 F jz,
+r13 CELL # sub,
+[ r13 ] r12 mov,
+1 L:  NEXT,
+L_plusstore L:  rax [ r13 ] mov,
+[ r12 ] rax add,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+NEXT,
+L_badesc L:  rsi [ m_badesc ] lea,
+edx m_badesc_len # mov,
+edi 2 # mov,
+die jmp,
+L_bye L:  term_restore call,
+edi edi xor,
+eax SYS_exit # mov,
+syscall,
+L_sysexit L:  term_restore call,
+rdi r12 mov,
+eax SYS_exit # mov,
+syscall,
+L_read L:  rdi r12 mov,
+rdx [ r13 ] mov,
+rsi [ r13 CELL ] mov,
+eax SYS_read # mov,
+syscall,
+r12 rax mov,
+r13 2 CELL * # add,
+NEXT,
+L_write L:  rdi r12 mov,
+rdx [ r13 ] mov,
+rsi [ r13 CELL ] mov,
+eax SYS_write # mov,
+syscall,
+r12 rax mov,
+r13 2 CELL * # add,
+NEXT,
+L_sysargc L:  rax [ argc_v ] mov,
+rax [ argbase ] sub,
+1 F jge,
+eax eax xor,
+1 L:  rax PUSHT,
+NEXT,
+L_sysarg L:  rax r12 mov,
+rax [ argbase ] add,
+r12 r12 test,
+1 F js,
+rax [ argc_v ] cmp,
+1 F jae,
+rcx [ argv_v ] mov,
+r12 [ rcx rax *8 ] mov,
+NEXT,
+1 L:  r12d r12d xor,
+NEXT,
+L_move L:  rcx r12 mov,
+rdi [ r13 ] mov,
+rsi [ r13 CELL ] mov,
+rcx rcx test,
+2 F jz,
+rdi rsi cmp,
+1 F jbe,
+rax [ rsi rcx ] lea,
+rdi rax cmp,
+1 F jae,
+rsi [ rsi rcx 1 NEGATE ] lea,
+rdi [ rdi rcx 1 NEGATE ] lea,
+std,
+rep, movsb,
+cld,
+2 F jmp,
+1 L:  rep, movsb,
+2 L:  r12 [ r13 2 CELL * ] mov,
+r13 3 CELL * # add,
+NEXT,
+L_fill L:  rax r12 mov,
+rcx [ r13 ] mov,
+rdi [ r13 CELL ] mov,
+rep, stosb,
+r12 [ r13 2 CELL * ] mov,
+r13 3 CELL * # add,
+NEXT,
+L_compare L:  rsi [ r13 2 CELL * ] mov,
+rdi [ r13 ] mov,
+rcx [ r13 CELL ] mov,
+rcx r12 cmp,
+rcx r12 cmova,
+rcx rcx test,
+3 F jz,
+repe, cmpsb,
+1 F ja,
+2 F jb,
+3 L:  rax [ r13 CELL ] mov,
+rax r12 cmp,
+1 F ja,
+2 F jb,
+r12d r12d xor,
+4 F jmp,
+1 L:  r12 1 # mov,
+4 F jmp,
+2 L:  r12 1 NEGATE # mov,
+4 L:  r13 3 CELL * # add,
+NEXT,
+L_scan L:  rdi [ r13 CELL ] mov,
+rcx [ r13 ] mov,
+rax r12 mov,
+r8 [ rdi rcx ] lea,
+rcx rcx test,
+1 F jz,
+repne, scasb,
+1 F jne,
+rdi dec,
+[ r13 CELL ] rdi mov,
+r12 r8 mov,
+r12 rdi sub,
+r13 CELL # add,
+NEXT,
+1 L:  [ r13 CELL ] r8 mov,
+r12d r12d xor,
+r13 CELL # add,
+NEXT,
+L_cstrlen L:  rdi r12 mov,
+eax eax xor,
+rcx 1 NEGATE # mov,
+repne, scasb,
+rcx not,
+rcx dec,
+r12 rcx mov,
+NEXT,
+4 ALIGN,
+open_modes L:
+577 L,A  577 L,A
+0 L,A  0 L,A
+2 L,A  2 L,A
+1089 L,A  1089 L,A
+578 L,A  578 L,A
+193 L,A
+11 CONSTANT NOPENMODES
+L_openfile L:  rdi [ r13 CELL ] mov,
+rcx [ r13 ] mov,
+r8 [ rdi rcx ] lea,
+r9d [ r8 ] byte-ptr movzx,
+[ r8 ] byte-ptr 0 # mov,
+rax 1 NEGATE # mov,
+r12 NOPENMODES # cmp,
+1 F jae,
+esi [ r12 *4 open_modes ] dword-ptr mov,
+edx 420 # mov,
+eax SYS_open # mov,
+syscall,
+1 L:  [ r8 ] r9b mov,
+r13 CELL # add,
+rax rax test,
+2 F js,
+[ r13 ] rax mov,
+r12d r12d xor,
+NEXT,
+2 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
+r12d 200 # mov,
+NEXT,
+L_closefile L:  rdi r12 mov,
+eax SYS_close # mov,
+syscall,
+r12 rax mov,
+r12 63 # sar,
+NEXT,
+L_delfile L:  rdi [ r13 ] mov,
+r8 [ rdi r12 ] lea,
+r9d [ r8 ] byte-ptr movzx,
+[ r8 ] byte-ptr 0 # mov,
+eax SYS_unlink # mov,
+syscall,
+[ r8 ] r9b mov,
+r12 rax mov,
+r12 63 # sar,
+r13 CELL # add,
+NEXT,
+L_chmod L:  rdi [ r13 CELL ] mov,
+rax [ r13 ] mov,
+r8 [ rdi rax ] lea,
+r9d [ r8 ] byte-ptr movzx,
+[ r8 ] byte-ptr 0 # mov,
+rsi r12 mov,
+eax SYS_chmod # mov,
+syscall,
+[ r8 ] r9b mov,
+r12 rax mov,
+r12 63 # sar,
+r13 2 CELL * # add,
+NEXT,
+L_reposfile L:  rdi r12 mov,
+rsi [ r13 CELL ] mov,
+edx edx xor,
+eax SYS_lseek # mov,
+syscall,
+r13 2 CELL * # add,
+r12d r12d xor,
+rax rax test,
+1 F jns,
+r12d 200 # mov,
+1 L:  NEXT,
+L_filepos L:  rdi r12 mov,
+esi esi xor,
+edx 1 # mov,
+eax SYS_lseek # mov,
+syscall,
+ud_ior jmp,
+L_filesize L:  rdi r12 mov,
+rdi push,
+esi esi xor,
+edx 1 # mov,
+eax SYS_lseek # mov,
+syscall,
+rdi pop,
+rax rax test,
+ud_ior js,
+rax push,
+rdi push,
+esi esi xor,
+edx 2 # mov,
+eax SYS_lseek # mov,
+syscall,
+rdi pop,
+rsi pop,
+rax push,
+edx edx xor,
+eax SYS_lseek # mov,
+syscall,
+rax pop,
+ud_ior L:  r13 2 CELL * # sub,
+rax rax test,
+1 F js,
+[ r13 CELL ] rax mov,
+[ r13 ] qword-ptr 0 # mov,
+r12d r12d xor,
+NEXT,
+1 L:  [ r13 CELL ] qword-ptr 0 # mov,
+[ r13 ] qword-ptr 0 # mov,
+r12d 200 # mov,
+NEXT,
+alloc_block L:
+rcx [ rdi 16 ] lea,
+eax 5 # mov,
+rcx 32 # cmp,
+1 F jbe,
+rcx dec,
+rax rcx bsr,
+eax inc,
+1 L:  eax 30 # cmp,
+9 F ja,
+r8 [ rax *8 free_lists ] lea,
+rdx [ r8 ] mov,
+rdx rdx test,
+2 F jz,
+rcx [ rdx 8 ] mov,
+[ r8 ] rcx mov,
+3 F jmp,
+2 L:  rdx [ heap_top ] mov,
+rdx rdx test,
+4 F jnz,
+rax push,
+heap_init call,
+rax pop,
+rdx [ heap_top ] mov,
+rdx rdx test,
+9 F jz,
+4 L:  ecx eax mov,
+r9d 1 # mov,
+r9 cl shl,
+r10 [ rdx r9 ] lea,
+r10 [ heap_end ] cmp,
+9 F ja,
+[ heap_top ] r10 mov,
+3 L:  [ rdx ] rax mov,
+rax [ rdx 16 ] lea,
+ret,
+9 L:  eax eax xor,
+ret,
+heap_init L:
+edi edi xor,
+esi HEAP_RESERVE # mov,
+edx 3 # mov,
+r10d 16418 # mov,
+r8 1 NEGATE # mov,
+r9d r9d xor,
+eax SYS_mmap # mov,
+syscall,
+rax 4096 NEGATE # cmp,
+1 F jae,
+[ heap_top ] rax mov,
+rax HEAP_RESERVE # add,
+[ heap_end ] rax mov,
+1 L:  ret,
+free_block L:
+rdi rdi test,
+1 F jz,
+rdx [ rdi 16 NEGATE ] lea,
+rax [ rdx ] mov,
+r8 [ rax *8 free_lists ] lea,
+rcx [ r8 ] mov,
+[ rdx 8 ] rcx mov,
+[ r8 ] rdx mov,
+1 L:  ret,
+L_allocate L:  rdi r12 mov,
+alloc_block call,
+r13 CELL # sub,
+[ r13 ] rax mov,
+r12d r12d xor,
+rax rax test,
+1 F jnz,
+r12d 201 # mov,
+1 L:  NEXT,
+L_free L:  rdi r12 mov,
+free_block call,
+r12d r12d xor,
+NEXT,
+L_resize L:  rdi [ r13 ] mov,
+rdi rdi test,
+5 F jz,
+rax [ rdi 16 NEGATE ] mov,
+ecx eax mov,
+r9d 1 # mov,
+r9 cl shl,
+r9 16 # sub,
+r12 r9 cmp,
+4 F jbe,
+r9 push,
+rdi push,
+rdi r12 mov,
+alloc_block call,
+rsi pop,
+rcx pop,
+rax rax test,
+6 F jz,
+rax push,
+rdi rax mov,
+rsi push,
+rep, movsb,
+rdi pop,
+free_block call,
+rax pop,
+[ r13 ] rax mov,
+4 L:  r12d r12d xor,
+NEXT,
+5 L:  rdi r12 mov,
+alloc_block call,
+[ r13 ] rax mov,
+r12d r12d xor,
+rax rax test,
+7 F jnz,
+6 L:  r12d 202 # mov,
+7 L:  NEXT,
+env_init L:
+[ env_ptr ] qword-ptr 0 # cmp,
+9 F jne,
+rsi [ envp_v ] mov,
+ecx ecx xor,
+1 L:  [ rsi rcx *8 ] qword-ptr 0 # cmp,
+2 F je,
+rcx inc,
+1 B jmp,
+2 L:  [ env_n ] rcx mov,
+rdi [ rcx 16 ] lea,
+[ env_cap ] rdi mov,
+rdi 3 # shl,
+rdi 8 # add,
+alloc_block call,
+[ env_ptr ] rax mov,
+rdi rax mov,
+rsi [ envp_v ] mov,
+rcx [ env_n ] mov,
+rcx inc,
+rep, movsq,
+9 L:  ret,
+env_find L:
+rbx push,
+r8 [ env_ptr ] mov,
+r9d r9d xor,
+1 L:  r9 [ env_n ] cmp,
+8 F jae,
+rsi [ r8 r9 *8 ] mov,
+ecx ecx xor,
+2 L:  al [ rdi rcx ] mov,
+al al test,
+3 F jz,
+al [ rsi rcx ] cmp,
+4 F jne,
+rcx inc,
+2 B jmp,
+3 L:  [ rsi rcx ] byte-ptr 61 # cmp,
+4 F jne,
+rdx [ rsi rcx 1 ] lea,
+rax r9 mov,
+rbx pop,
+ret,
+4 L:  r9 inc,
+1 B jmp,
+8 L:  rax 1 NEGATE # mov,
+edx edx xor,
+rbx pop,
+ret,
+env_badname L:
+[ rdi ] byte-ptr 0 # cmp,
+1 F je,
+rsi rdi mov,
+2 L:  al [ rsi ] mov,
+al al test,
+3 F jz,
+al 61 # cmp,
+1 F je,
+rsi inc,
+2 B jmp,
+3 L:  eax eax xor,
+ret,
+1 L:  eax 1 # or,
+ret,
+L_getenv L:  env_init call,
+rdi r12 mov,
+env_find call,
+r12 rdx mov,
+NEXT,
+L_envat L:  env_init call,
+eax eax xor,
+r12 [ env_n ] cmp,
+1 F jae,
+rcx [ env_ptr ] mov,
+rax [ rcx r12 *8 ] mov,
+1 L:  r12 rax mov,
+NEXT,
+L_unsetenv L:  env_init call,
+rdi r12 mov,
+env_badname call,
+8 F jnz,
+1 L:  rdi r12 mov,
+env_find call,
+rax rax test,
+7 F js,
+rcx [ env_ptr ] mov,
+rdx [ env_n ] mov,
+2 L:  r8 [ rcx rax *8 8 ] mov,
+[ rcx rax *8 ] r8 mov,
+rax inc,
+rax rdx cmp,
+2 B jb,
+[ env_n ] qword-ptr dec,
+1 B jmp,
+7 L:  r12d r12d xor,
+NEXT,
+8 L:  r12d 200 # mov,
+NEXT,
+L_setenv L:  env_init call,
+rdi r12 mov,
+env_badname call,
+NEAR 8 F jnz,
+rdi r12 mov,
+strlen_rdi call,
+r10 rax mov,
+rdi [ r13 ] mov,
+strlen_rdi call,
+rdi [ r10 rax 2 ] lea,
+rax push,
+r10 push,
+alloc_block call,
+r10 pop,
+r11 pop,
+rax rax test,
+NEAR 8 F jz,
+rdi rax mov,
+rsi r12 mov,
+rcx r10 mov,
+rep, movsb,
+[ rdi ] byte-ptr 61 # mov,
+rdi inc,
+rsi [ r13 ] mov,
+rcx [ r11 1 ] lea,
+rep, movsb,
+rax push,
+rdi r12 mov,
+env_find call,
+r9 pop,
+rax rax test,
+2 F js,
+rcx [ env_ptr ] mov,
+[ rcx rax *8 ] r9 mov,
+NEAR 7 F jmp,
+2 L:  rax [ env_n ] mov,
+rax inc,
+rax [ env_cap ] cmp,
+3 F jb,
+r9 push,
+rdi [ env_cap ] mov,
+rdi 4 # shl,
+rdi 8 # add,
+alloc_block call,
+r9 pop,
+rax rax test,
+8 F jz,
+rdi rax mov,
+rsi [ env_ptr ] mov,
+rcx [ env_n ] mov,
+rcx inc,
+rep, movsq,
+rdi [ env_ptr ] mov,
+[ env_ptr ] rax mov,
+r9 push,
+free_block call,
+r9 pop,
+[ env_cap ] qword-ptr 1 # shl,
+3 L:  rcx [ env_ptr ] mov,
+rax [ env_n ] mov,
+[ rcx rax *8 ] r9 mov,
+rax inc,
+[ env_n ] rax mov,
+[ rcx rax *8 ] qword-ptr 0 # mov,
+7 L:  r13 CELL # add,
+r12d r12d xor,
+NEXT,
+8 L:  r13 CELL # add,
+r12d 200 # mov,
+NEXT,
+strlen_rdi L:
+eax eax xor,
+1 L:  [ rdi rax ] byte-ptr 0 # cmp,
+2 F je,
+rax inc,
+1 B jmp,
+2 L:  ret,
+L_execve L:  env_init call,
+rdi r12 mov,
+rsi [ r13 ] mov,
+rdx [ env_ptr ] mov,
+eax SYS_execve # mov,
+syscall,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_getpid L:  eax SYS_getpid # mov,
+syscall,
+rax PUSHT,
+NEXT,
+L_getppid L:  eax SYS_getppid # mov,
+syscall,
+rax PUSHT,
+NEXT,
+L_isatty L:  rdi r12 mov,
+esi 21505 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+r12d r12d xor,
+rax rax test,
+1 F jnz,
+r12 not,
+1 L:  NEXT,
+L_getcwd L:  rdi [ r13 ] mov,
+rsi r12 mov,
+eax SYS_getcwd # mov,
+syscall,
+rax rax test,
+1 F jle,
+rax dec,
+[ r13 ] rax mov,
+r12d r12d xor,
+NEXT,
+1 L:  [ r13 ] qword-ptr 0 # mov,
+r12d 200 # mov,
+NEXT,
+L_umask L:  SYS_umask SYSCALL1,
+NEXT,
+L_access L:  rdi [ r13 ] mov,
+rsi r12 mov,
+eax SYS_access # mov,
+syscall,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_kill L:  rdi [ r13 ] mov,
+rsi r12 mov,
+eax SYS_kill # mov,
+syscall,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_setpgid L:  rdi [ r13 ] mov,
+rsi r12 mov,
+eax SYS_setpgid # mov,
+syscall,
+r12 rax mov,
+r13 CELL # add,
+NEXT,
+L_pipe L:  rdi [ scratch ] lea,
+eax SYS_pipe # mov,
+syscall,
+r13 3 CELL * # sub,
+[ r13 2 CELL * ] r12 mov,
+rax rax test,
+1 F js,
+rax [ scratch ] dword-ptr movsxd,
+[ r13 CELL ] rax mov,
+rax [ scratch 4 + ] dword-ptr movsxd,
+[ r13 ] rax mov,
+r12d r12d xor,
+NEXT,
+1 L:  [ r13 CELL ] qword-ptr 0 # mov,
+[ r13 ] qword-ptr 0 # mov,
+r12d 200 # mov,
+NEXT,
+L_dup2 L:  rdi [ r13 ] mov,
+rsi r12 mov,
+eax SYS_dup2 # mov,
+syscall,
+r13 CELL # add,
+r12d r12d xor,
+rax rax test,
+1 F jns,
+r12d 200 # mov,
+1 L:  NEXT,
+L_dupfrom L:  rdi [ r13 ] mov,
+edx r12d mov,
+esi 1030 # mov,
+eax SYS_fcntl # mov,
+syscall,
+r13 CELL # add,
+r12 rax mov,
+rax rax test,
+1 F jns,
+r12 1 NEGATE # mov,
+1 L:  NEXT,
+L_fork L:  eax SYS_fork # mov,
+syscall,
+rax rax test,
+1 F jns,
+rax 1 NEGATE # mov,
+1 L:  rax PUSHT,
+NEXT,
+L_waitpid L:  rdi r12 mov,
+rsi [ scratch ] lea,
+[ rsi ] dword-ptr 0 # mov,
+edx edx xor,
+r10d r10d xor,
+eax SYS_wait4 # mov,
+syscall,
+r13 CELL # sub,
+rax rax test,
+1 F js,
+rax [ scratch ] dword-ptr movsxd,
+[ r13 ] rax mov,
+r12d r12d xor,
+NEXT,
+1 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
+r12d 200 # mov,
+NEXT,
+L_waitnohang L:  rdi 1 NEGATE # mov,
+rsi [ scratch ] lea,
+[ rsi ] dword-ptr 0 # mov,
+edx 1 # mov,
+r10d r10d xor,
+eax SYS_wait4 # mov,
+syscall,
+r13 2 CELL * # sub,
+[ r13 CELL ] r12 mov,
+rax rax test,
+1 F jle,
+[ r13 ] rax mov,
+r12d [ scratch ] dword-ptr mov,
+NEXT,
+1 L:  [ r13 ] qword-ptr 0 # mov,
+r12d r12d xor,
+NEXT,
+L_filekind L:  rdi r12 mov,
+rsi [ scratch ] lea,
+eax SYS_stat # mov,
+syscall,
+r12d r12d xor,
+rax rax test,
+1 F jnz,
+eax [ scratch 24 + ] dword-ptr mov,
+eax 61440 # and,
+r12d 3 # mov,
+eax 32768 # cmp,
+2 F jne,
+r12d 1 # mov,
+2 L:  eax 16384 # cmp,
+1 F jne,
+r12d 2 # mov,
+1 L:  NEXT,
+L_filemode L:  rdi [ r13 ] mov,
+rsi [ scratch ] lea,
+eax SYS_lstat # mov,
+r12 r12 test,
+1 F jz,
+eax SYS_stat # mov,
+1 L:  syscall,
+r13 CELL # add,
+r12d r12d xor,
+rax rax test,
+2 F jnz,
+r12d [ scratch 24 + ] dword-ptr mov,
+2 L:  NEXT,
+sig_catch L:
+edi 0 # cmp,
+1 F jle,
+edi NSIG_FLAGS # cmp,
+1 F jge,
+[ rdi sig_flag ] byte-ptr 1 # mov,
+1 L:  ret,
+sig_restorer L:
+eax SYS_rt_sigreturn # mov,
+syscall,
+L_sigaction L:  rdi [ r13 ] mov,
+r13 CELL # add,
+rdi 0 # cmp,
+NEAR 8 F jle,
+rdi NSIG_FLAGS # cmp,
+NEAR 8 F jge,
+rdi 11 # cmp,
+NEAR 8 F je,
+rdi 7 # cmp,
+NEAR 8 F je,
+rdi 9 # cmp,
+8 F je,
+rdi 19 # cmp,
+8 F je,
+rsi [ scratch ] lea,
+eax eax xor,
+r12 1 # cmp,
+1 F jne,
+eax 1 # mov,
+1 L:  r12 2 # cmp,
+2 F jb,
+rax [ sig_catch ] lea,
+2 L:  [ rsi ] rax mov,
+eax 335544320 # mov,
+r12 3 # cmp,
+3 F jne,
+eax 67108864 # mov,
+3 L:  [ rsi 8 ] rax mov,
+rax [ sig_restorer ] lea,
+[ rsi 16 ] rax mov,
+[ rsi 24 ] qword-ptr 0 # mov,
+[ rdi sig_flag ] byte-ptr 0 # mov,
+edx edx xor,
+r10d 8 # mov,
+eax SYS_rt_sigaction # mov,
+syscall,
+r12 rax mov,
+NEXT,
+8 L:  r12 22 NEGATE # mov,
+NEXT,
+L_sigpending L:  eax eax xor,
+ecx 1 # mov,
+1 L:  ecx NSIG_FLAGS # cmp,
+2 F jge,
+[ rcx sig_flag ] byte-ptr 0 # cmp,
+3 F jne,
+ecx inc,
+1 B jmp,
+3 L:  [ rcx sig_flag ] byte-ptr 0 # mov,
+eax ecx mov,
+2 L:  rax PUSHT,
+NEXT,
+L_opendir L:  rdi r12 mov,
+esi 589824 # mov,
+eax SYS_open # mov,
+syscall,
+rax rax test,
+8 F js,
+rax push,
+edi 24 DIRBUF + # mov,
+alloc_block call,
+rdi pop,
+rax rax test,
+7 F jz,
+[ rax ] rdi mov,
+[ rax 8 ] qword-ptr 0 # mov,
+[ rax 16 ] qword-ptr 0 # mov,
+r12 rax mov,
+NEXT,
+7 L:  eax SYS_close # mov,
+syscall,
+8 L:  r12d r12d xor,
+NEXT,
+L_readdir L:  r8 r12 mov,
+rax [ r8 8 ] mov,
+rax [ r8 16 ] cmp,
+2 F jb,
+rdi [ r8 ] mov,
+rsi [ r8 24 ] lea,
+edx DIRBUF # mov,
+eax SYS_getdents64 # mov,
+syscall,
+rax rax test,
+8 F jle,
+[ r8 16 ] rax mov,
+eax eax xor,
+[ r8 8 ] rax mov,
+2 L:  rcx [ r8 rax 24 ] lea,
+edx [ rcx 16 ] word-ptr movzx,
+rax rdx add,
+[ r8 8 ] rax mov,
+r12 [ rcx 19 ] lea,
+NEXT,
+8 L:  r12d r12d xor,
+NEXT,
+L_closedir L:  rdi [ r12 ] mov,
+eax SYS_close # mov,
+syscall,
+rdi r12 mov,
+free_block call,
+POPT,
+NEXT,
+L_chdir L:  rdi r12 mov,
+eax SYS_chdir # mov,
+syscall,
+r12d r12d xor,
+rax rax test,
+1 F jns,
+r12d 200 # mov,
+1 L:  NEXT,
+L_waitjob L:  rdi r12 mov,
+rsi [ scratch ] lea,
+[ rsi ] dword-ptr 0 # mov,
+edx 2 # mov,
+r10d r10d xor,
+eax SYS_wait4 # mov,
+syscall,
+rax rax test,
+1 F jg,
+rax 1 NEGATE # mov,
+1 L:  r12 rax mov,
+eax [ scratch ] dword-ptr mov,
+rax PUSHT,
+NEXT,
+m_passwd L:  47 C,A 101 C,A 116 C,A 99 C,A 47 C,A 112 C,A 97 C,A 115 C,A 115 C,A 119 C,A 100 C,A 0 C,A
+L_getpwhome L:  rdi [ pw_buf ] mov,
+free_block call,
+[ pw_buf ] qword-ptr 0 # mov,
+rdi [ m_passwd ] lea,
+esi esi xor,
+eax SYS_open # mov,
+syscall,
+rax rax test,
+NEAR 8 F js,
+rax push,
+rdi rax mov,
+esi esi xor,
+edx 2 # mov,
+eax SYS_lseek # mov,
+syscall,
+rdi pop,
+rdi push,
+rax push,
+esi esi xor,
+edx edx xor,
+eax SYS_lseek # mov,
+syscall,
+rdi pop,
+rdi push,
+rdi inc,
+alloc_block call,
+rdx pop,
+rdi pop,
+rax rax test,
+7 F jz,
+[ pw_buf ] rax mov,
+[ rax rdx ] byte-ptr 0 # mov,
+rsi rax mov,
+rdi push,
+read_all call,
+rdi pop,
+r8 [ pw_buf ] mov,
+[ r8 rax ] byte-ptr 0 # mov,
+7 L:  eax SYS_close # mov,
+syscall,
+rsi [ pw_buf ] mov,
+rsi rsi test,
+8 F jz,
+1 L:  [ rsi ] byte-ptr 0 # cmp,
+8 F je,
+rdi r12 mov,
+rcx rsi mov,
+2 L:  al [ rdi ] mov,
+al al test,
+3 F jz,
+al [ rcx ] cmp,
+5 F jne,
+rdi inc,
+rcx inc,
+2 B jmp,
+3 L:  [ rcx ] byte-ptr 58 # cmp,
+5 F jne,
+edx 5 # mov,
+4 L:  al [ rcx ] mov,
+al al test,
+8 F jz,
+al 10 # cmp,
+5 F je,
+rcx inc,
+al 58 # cmp,
+4 B jne,
+edx dec,
+4 B jnz,
+r12 rcx mov,
+6 L:  al [ rcx ] mov,
+al al test,
+9 F jz,
+al 58 # cmp,
+10 F je,
+al 10 # cmp,
+10 F je,
+rcx inc,
+6 B jmp,
+10 L:  [ rcx ] byte-ptr 0 # mov,
+9 L:  NEXT,
+5 L:  al [ rsi ] mov,
+al al test,
+8 F jz,
+rsi inc,
+al 10 # cmp,
+5 B jne,
+1 B jmp,
+8 L:  r12d r12d xor,
+NEXT,
+L_localtime L:  eax SYS_time # mov,
+edi edi xor,
+syscall,
+r13 7 CELL * # sub,
+[ r13 6 CELL * ] r12 mov,
+edx edx xor,
+ecx 86400 # mov,
+rcx div,
+r8 rax mov,
+rax rdx mov,
+edx edx xor,
+ecx 60 # mov,
+rcx div,
+[ r13 5 CELL * ] rdx mov,
+edx edx xor,
+rcx div,
+[ r13 4 CELL * ] rdx mov,
+[ r13 3 CELL * ] rax mov,
+rax [ r8 4 ] lea,
+edx edx xor,
+ecx 7 # mov,
+rcx div,
+r12 rdx mov,
+r9 [ r8 719468 ] lea,
+rax r9 mov,
+edx edx xor,
+ecx 146097 # mov,
+rcx div,
+r10 rax mov,
+r11 rdx mov,
+rax r11 mov,
+edx edx xor,
+ecx 1460 # mov,
+rcx div,
+rsi r11 mov,
+rsi rax sub,
+rax r11 mov,
+edx edx xor,
+ecx 36524 # mov,
+rcx div,
+rsi rax add,
+rax r11 mov,
+edx edx xor,
+ecx 146096 # mov,
+rcx div,
+rsi rax sub,
+rax rsi mov,
+edx edx xor,
+ecx 365 # mov,
+rcx div,
+rdi rax mov,
+rax r10 400 # imul,
+rax rdi add,
+r9 rax mov,
+rax rdi 365 # imul,
+rsi rdi mov,
+rsi 2 # shr,
+rax rsi add,
+rsi rax mov,
+rax rdi mov,
+edx edx xor,
+ecx 100 # mov,
+rcx div,
+rsi rax sub,
+rax r11 mov,
+rax rsi sub,
+r10 rax mov,
+rax rax 5 # imul,
+rax 2 # add,
+edx edx xor,
+ecx 153 # mov,
+rcx div,
+rdi rax mov,
+rax rdi 153 # imul,
+rax 2 # add,
+edx edx xor,
+ecx 5 # mov,
+rcx div,
+rdx r10 mov,
+rdx rax sub,
+rdx inc,
+[ r13 2 CELL * ] rdx mov,
+rax [ rdi 3 ] lea,
+rdi 10 # cmp,
+1 F jb,
+rax [ rdi 9 NEGATE ] lea,
+1 L:  rax 2 # cmp,
+2 F ja,
+r9 inc,
+2 L:  rax dec,
+[ r13 CELL ] rax mov,
+r9 1900 # sub,
+[ r13 ] r9 mov,
+NEXT,
+L_cputimes L:  r8 1 NEGATE # mov,
+r13 4 CELL * # sub,
+[ r13 3 CELL * ] r12 mov,
+edi edi xor,
+rsi [ scratch ] lea,
+eax SYS_getrusage # mov,
+syscall,
+ru_ms call,
+[ r13 2 CELL * ] rax mov,
+ru_ms_sys call,
+[ r13 CELL ] rax mov,
+rdi 1 NEGATE # mov,
+rsi [ scratch ] lea,
+eax SYS_getrusage # mov,
+syscall,
+ru_ms call,
+[ r13 ] rax mov,
+ru_ms_sys call,
+r12 rax mov,
+NEXT,
+ru_ms L:  rax [ scratch ] mov,
+rax rax 1000 # imul,
+rcx rax mov,
+rax [ scratch 8 + ] mov,
+1 F jmp,
+ru_ms_sys L:  rax [ scratch 16 + ] mov,
+rax rax 1000 # imul,
+rcx rax mov,
+rax [ scratch 24 + ] mov,
+1 L:  edx edx xor,
+r9d 1000 # mov,
+r9 div,
+rax rcx add,
+ret,
+L_getrlimit L:  rdi r12 mov,
+rsi [ scratch ] lea,
+eax SYS_getrlimit # mov,
+syscall,
+r13 2 CELL * # sub,
+rax rax test,
+1 F js,
+rcx [ scratch ] mov,
+[ r13 CELL ] rcx mov,
+rcx [ scratch 8 + ] mov,
+[ r13 ] rcx mov,
+r12d r12d xor,
+NEXT,
+1 L:  [ r13 CELL ] qword-ptr 0 # mov,
+[ r13 ] qword-ptr 0 # mov,
+r12 rax mov,
+NEXT,
+L_setrlimit L:  rax [ r13 CELL ] mov,
+[ scratch ] rax mov,
+rax [ r13 ] mov,
+[ scratch 8 + ] rax mov,
+rdi r12 mov,
+rsi [ scratch ] lea,
+eax SYS_setrlimit # mov,
+syscall,
+r12 rax mov,
+r13 2 CELL * # add,
+NEXT,
+L_getfsize L:  edi 1 # mov,
+rsi [ scratch ] lea,
+eax SYS_getrlimit # mov,
+syscall,
+rcx 1 NEGATE # mov,
+rax rax test,
+1 F js,
+rax [ scratch ] mov,
+rax 1 NEGATE # cmp,
+1 F je,
+rax 9 # shr,
+rcx rax mov,
+1 L:  rcx PUSHT,
+NEXT,
+L_setfsize L:  edi 1 # mov,
+rsi [ scratch ] lea,
+eax SYS_getrlimit # mov,
+syscall,
+rax rax test,
+8 F js,
+rax 1 NEGATE # mov,
+r12 r12 test,
+1 F js,
+rax r12 mov,
+rax 9 # shl,
+1 L:  [ scratch ] rax mov,
+[ scratch 8 + ] rax mov,
+edi 1 # mov,
+rsi [ scratch ] lea,
+eax SYS_setrlimit # mov,
+syscall,
+r12d r12d xor,
+rax rax test,
+2 F jns,
+8 L:  r12d 202 # mov,
+2 L:  NEXT,
+L_tcgetpgrp L:  rdi r12 mov,
+esi 21519 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+r12 1 NEGATE # mov,
+rax rax test,
+1 F jnz,
+r12 [ scratch ] dword-ptr movsxd,
+1 L:  NEXT,
+L_tcsetpgrp L:  [ scratch 64 + ] qword-ptr 2097152 # mov,
+edi edi xor,
+rsi [ scratch 64 + ] lea,
+rdx [ scratch 72 + ] lea,
+r10d 8 # mov,
+eax SYS_rt_sigprocmask # mov,
+syscall,
+[ scratch ] r12d mov,
+rdi [ r13 ] mov,
+esi 21520 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+rax push,
+edi 2 # mov,
+rsi [ scratch 72 + ] lea,
+edx edx xor,
+r10d 8 # mov,
+eax SYS_rt_sigprocmask # mov,
+syscall,
+r12 pop,
+r13 CELL # add,
+NEXT,
+term_restore L:
+rdi [ t_raw_fd ] mov,
+rdi rdi test,
+1 F js,
+eax SYS_getpid # mov,
+syscall,
+rax [ t_raw_pid ] cmp,
+1 F jne,
+rdi [ t_raw_fd ] mov,
+esi 21506 # mov,
+rdx [ t_saved ] lea,
+eax SYS_ioctl # mov,
+syscall,
+1 L:  ret,
+copy40 L:
+ecx 5 # mov,
+rep, movsq,
+ret,
+L_rawmode L:  rdi [ r13 ] mov,
+r13 CELL # add,
+r12 r12 test,
+2 F jnz,
+r12d r12d xor,
+rdi [ t_raw_fd ] cmp,
+9 F jne,
+esi 21506 # mov,
+rdx [ t_saved ] lea,
+eax SYS_ioctl # mov,
+syscall,
+r12 rax mov,
+rax rax test,
+9 F js,
+[ t_raw_fd ] qword-ptr 1 NEGATE # mov,
+9 L:  NEXT,
+2 L:  rdi push,
+esi 21505 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+rdi pop,
+r12 rax mov,
+rax rax test,
+9 B jnz,
+[ t_raw_fd ] qword-ptr 0 # cmp,
+3 F jge,
+rdi push,
+rsi [ scratch ] lea,
+rdi [ t_saved ] lea,
+copy40 call,
+rdi pop,
+[ t_raw_fd ] rdi mov,
+rdi push,
+eax SYS_getpid # mov,
+syscall,
+[ t_raw_pid ] rax mov,
+rdi pop,
+3 L:  [ scratch 12 + ] dword-ptr 2 8 OR INVERT # and,
+[ scratch 23 + ] byte-ptr 1 # mov,
+[ scratch 22 + ] byte-ptr 0 # mov,
+esi 21506 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+r12 rax mov,
+NEXT,
+L_termraw L:  rdi r12 mov,
+esi 21505 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+rax rax test,
+9 F jnz,
+[ term_saved ] qword-ptr 0 # cmp,
+1 F jne,
+rsi [ scratch ] lea,
+rdi [ term_save ] lea,
+copy40 call,
+[ term_saved ] qword-ptr 1 # mov,
+1 L:  [ scratch 12 + ] dword-ptr 2 8 OR 32768 OR INVERT # and,
+[ scratch ] dword-ptr 256 64 OR INVERT # and,
+[ scratch 23 + ] byte-ptr 1 # mov,
+[ scratch 22 + ] byte-ptr 0 # mov,
+rdi r12 mov,
+esi 21507 # mov,
+rdx [ scratch ] lea,
+eax SYS_ioctl # mov,
+syscall,
+9 L:  r12 rax mov,
+NEXT,
+L_termrestore L:  eax eax xor,
+[ term_saved ] qword-ptr 0 # cmp,
+9 F je,
+rdi r12 mov,
+esi 21507 # mov,
+rdx [ term_save ] lea,
+eax SYS_ioctl # mov,
+syscall,
+9 L:  r12 rax mov,
+NEXT,
+L_poll L:  rdi [ r13 CELL ] mov,
+rsi [ r13 ] mov,
+edx r12d mov,
+eax SYS_poll # mov,
+syscall,
+r12 rax mov,
+r13 2 CELL * # add,
+NEXT,
+m_binsh L:  47 C,A 98 C,A 105 C,A 110 C,A 47 C,A 115 C,A 104 C,A 0 C,A
+m_dashc L:  45 C,A 99 C,A 0 C,A
+L_system L:  rdi [ r13 ] mov,
+r8 [ rdi r12 ] lea,
+r9d [ r8 ] byte-ptr movzx,
+[ r8 ] byte-ptr 0 # mov,
+r8 push,
+r9 push,
+env_init call,
+eax SYS_fork # mov,
+syscall,
+rax rax test,
+3 F js,
+4 F jz,
+rdi rax mov,
+rsi [ scratch ] lea,
+[ rsi ] dword-ptr 0 # mov,
+edx edx xor,
+r10d r10d xor,
+eax SYS_wait4 # mov,
+syscall,
+eax [ scratch ] dword-ptr mov,
+eax 8 # shr,
+eax 255 # and,
+r12 rax mov,
+5 F jmp,
+3 L:  r12d 200 # mov,
+5 L:  r9 pop,
+r8 pop,
+[ r8 ] r9b mov,
+r13 CELL # add,
+NEXT,
+4 L:  rax [ m_binsh ] lea,
+[ scratch ] rax mov,
+rax [ m_dashc ] lea,
+[ scratch 8 + ] rax mov,
+rax [ r13 ] mov,
+[ scratch 16 + ] rax mov,
+[ scratch 24 + ] qword-ptr 0 # mov,
+rdi [ m_binsh ] lea,
+rsi [ scratch ] lea,
+rdx [ env_ptr ] mov,
+eax SYS_execve # mov,
+syscall,
+edi 127 # mov,
+eax SYS_exit # mov,
+syscall,
+sa_fill L:
+[ scratch 32 + ] word-ptr 2 # mov,
+al ah xchg,
+[ scratch 34 + ] word-ptr ax mov,
+[ scratch 36 + ] dword-ptr edx mov,
+[ scratch 40 + ] qword-ptr 0 # mov,
+ret,
+L_tcplisten L:  r10 [ r13 ] mov,
+r10 push,
+edi 2 # mov,
+esi 1 # mov,
+edx edx xor,
+eax SYS_socket # mov,
+syscall,
+r10 pop,
+rax rax test,
+NEAR 8 F js,
+rbp rax mov,
+eax r10d mov,
+edx edx xor,
+r12 r12 test,
+1 F jz,
+edx 16777343 # mov,
+1 L:  sa_fill call,
+[ scratch 48 + ] dword-ptr 1 # mov,
+rdi rbp mov,
+esi 1 # mov,
+edx 2 # mov,
+r10 [ scratch 48 + ] lea,
+r8d 4 # mov,
+eax SYS_setsockopt # mov,
+syscall,
+rax rax test,
+7 F js,
+rdi rbp mov,
+rsi [ scratch 32 + ] lea,
+edx 16 # mov,
+eax SYS_bind # mov,
+syscall,
+rax rax test,
+7 F js,
+rdi rbp mov,
+esi 16 # mov,
+eax SYS_listen # mov,
+syscall,
+rax rax test,
+7 F js,
+[ r13 ] rbp mov,
+r12d r12d xor,
+NEXT,
+7 L:  rdi rbp mov,
+eax SYS_close # mov,
+syscall,
+8 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
+r12d 200 # mov,
+NEXT,
+L_tcpaccept L:  rdi r12 mov,
+esi esi xor,
+edx edx xor,
+eax SYS_accept # mov,
+syscall,
+r13 CELL # sub,
+r12d r12d xor,
+rax rax test,
+1 F jns,
+rax 1 NEGATE # mov,
+r12d 200 # mov,
+1 L:  [ r13 ] rax mov,
+NEXT,
+L_tcpconnect L:  rdi [ r13 ] mov,
+parse_ipv4 call,
+ecx ecx test,
+8 F jz,
+rax push,
+edi 2 # mov,
+esi 1 # mov,
+edx edx xor,
+eax SYS_socket # mov,
+syscall,
+rdx pop,
+rax rax test,
+8 F js,
+rbp rax mov,
+eax r12d mov,
+sa_fill call,
+rdi rbp mov,
+rsi [ scratch 32 + ] lea,
+edx 16 # mov,
+eax SYS_connect # mov,
+syscall,
+rax rax test,
+7 F js,
+[ r13 ] rbp mov,
+r12d r12d xor,
+NEXT,
+7 L:  rdi rbp mov,
+eax SYS_close # mov,
+syscall,
+8 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
+r12d 200 # mov,
+NEXT,
+parse_ipv4 L:
+r8d r8d xor,
+r11d r11d xor,
+1 L:  eax [ rdi ] byte-ptr movzx,
+eax 48 # sub,
+eax 9 # cmp,
+9 F ja,
+r9d eax mov,
+rdi inc,
+2 L:  eax [ rdi ] byte-ptr movzx,
+eax 48 # sub,
+eax 9 # cmp,
+3 F ja,
+r9d r9d test,
+9 F jz,
+r9d r9d 10 # imul,
+r9d eax add,
+r9d 255 # cmp,
+9 F ja,
+rdi inc,
+2 B jmp,
+3 L:  ecx r11d mov,
+ecx 3 # shl,
+r9d cl shl,
+r8d r9d or,
+r11d inc,
+eax [ rdi ] byte-ptr movzx,
+r11d 4 # cmp,
+4 F je,
+al 46 # cmp,
+9 F jne,
+rdi inc,
+1 B jmp,
+4 L:  al al test,
+9 F jnz,
+eax r8d mov,
+ecx 1 # mov,
+ret,
+9 L:  ecx ecx xor,
+ret,
+m_selfexe L:  47 C,A 112 C,A 114 C,A 111 C,A 99 C,A 47 C,A 115 C,A 101 C,A 108 C,A 102 C,A 47 C,A 101 C,A 120 C,A 101 C,A 0 C,A
+m_argv0 L:  82 C,A 69 C,A 76 C,A 70 C,A 95 C,A 65 C,A 82 C,A 71 C,A 86 C,A 48 C,A 61 C,A
+HERE-A m_argv0 - CONSTANT m_argv0_len
+set_argv0 L:
+env_init call,
+rdi [ scratch ] lea,
+rsi [ m_argv0 ] lea,
+ecx m_argv0_len 1 - # mov,
+rep, movsb,
+[ rdi ] byte-ptr 0 # mov,
+rdi [ scratch ] lea,
+env_find call,
+rax rax test,
+9 F jns,
+rdi [ argv_v ] mov,
+rdi [ rdi ] mov,
+strlen_rdi call,
+rax push,
+rdi [ rax m_argv0_len 1 + ] lea,
+alloc_block call,
+rcx pop,
+rax rax test,
+9 F jz,
+r9 rax mov,
+rdi rax mov,
+rsi [ m_argv0 ] lea,
+rcx push,
+ecx m_argv0_len # mov,
+rep, movsb,
+rcx pop,
+rsi [ argv_v ] mov,
+rsi [ rsi ] mov,
+rcx inc,
+rep, movsb,
+rcx [ env_ptr ] mov,
+rax [ env_n ] mov,
+[ rcx rax *8 ] r9 mov,
+rax inc,
+[ env_n ] rax mov,
+[ rcx rax *8 ] qword-ptr 0 # mov,
+9 L:  ret,
+8 ALIGN,
+dispatch256 L:
+L_noop 0 Q,+
+L_exit 0 Q,+
+L_lit 0 Q,+
+L_branch 0 Q,+
+L_0branch 0 Q,+
+L_drop 0 Q,+
+L_dup 0 Q,+
+L_swap 0 Q,+
+L_rot 0 Q,+
+L_over 0 Q,+
+L_cfetch 0 Q,+
+L_fetch 0 Q,+
+L_cstore 0 Q,+
+L_store 0 Q,+
+L_and 0 Q,+
+L_or 0 Q,+
+L_xor 0 Q,+
+L_fromr 0 Q,+
+L_tor 0 Q,+
+L_rfetch 0 Q,+
+L_eq 0 Q,+
+L_ult 0 Q,+
+L_lt 0 Q,+
+L_plus 0 Q,+
+L_ummult 0 Q,+
+L_spfetch 0 Q,+
+L_lit32 0 Q,+
+L_dovar 0 Q,+
+L_dodoes 0 Q,+
+L_lit8 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_branch8 0 Q,+
+L_0branch8 0 Q,+
+L_plusstore 0 Q,+
+L_qdup 0 Q,+
+L_i 0 Q,+
+L_loop 0 Q,+
+L_qdo 0 Q,+
+L_execute 0 Q,+
+L_atxt 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_badop 0 Q,+
+L_lit0 0 Q,+
+L_lit1 0 Q,+
+L_litm1 0 Q,+
+L_vf 0 Q,+
+L_vs 0 Q,+
+L_lsave 0 Q,+
+L_lrest 0 Q,+
+L_lstore 0 Q,+
+L_lzero 0 Q,+
+L_zeq 0 Q,+
+L_sub 0 Q,+
+L_ne 0 Q,+
+L_zlt 0 Q,+
+L_sgt 0 Q,+
+L_2dup 0 Q,+
+L_2drop 0 Q,+
+L_badop 0 Q,+
+L_onep 0 Q,+
+L_cellp 0 Q,+
+L_cells 0 Q,+
+L_onem 0 Q,+
+L_badop 0 Q,+
+L_count 0 Q,+
+L_badop 0 Q,+
+L_addi 0 Q,+
+L_badop 0 Q,+
+L_eqi 0 Q,+
+L_badop 0 Q,+
+L_lit64 0 Q,+
+L_esc 0 Q,+
+L_badop 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+do_call 0 Q,+
+esc_tab L:
+L_bye 0 Q,+
+L_openfile 0 Q,+
+L_closefile 0 Q,+
+L_system 0 Q,+
+L_reposfile 0 Q,+
+L_filepos 0 Q,+
+L_delfile 0 Q,+
+L_filesize 0 Q,+
+L_fork 0 Q,+
+L_execve 0 Q,+
+L_waitpid 0 Q,+
+L_pipe 0 Q,+
+L_dup2 0 Q,+
+L_getenv 0 Q,+
+L_setenv 0 Q,+
+L_sysexit 0 Q,+
+L_chdir 0 Q,+
+L_getcwd 0 Q,+
+L_sysargc 0 Q,+
+L_sysarg 0 Q,+
+L_getpid 0 Q,+
+L_unsetenv 0 Q,+
+L_allocate 0 Q,+
+L_free 0 Q,+
+L_resize 0 Q,+
+L_getpwhome 0 Q,+
+L_getfsize 0 Q,+
+L_setfsize 0 Q,+
+L_read 0 Q,+
+L_write 0 Q,+
+L_poll 0 Q,+
+L_rawmode 0 Q,+
+L_move 0 Q,+
+L_fill 0 Q,+
+L_compare 0 Q,+
+L_scan 0 Q,+
+L_cstrlen 0 Q,+
+L_isatty 0 Q,+
+L_opendir 0 Q,+
+L_readdir 0 Q,+
+L_closedir 0 Q,+
+L_access 0 Q,+
+L_kill 0 Q,+
+L_umask 0 Q,+
+L_cputimes 0 Q,+
+L_sigaction 0 Q,+
+L_sigpending 0 Q,+
+L_termraw 0 Q,+
+L_termrestore 0 Q,+
+L_filekind 0 Q,+
+L_getrlimit 0 Q,+
+L_setrlimit 0 Q,+
+L_waitnohang 0 Q,+
+L_getppid 0 Q,+
+L_envat 0 Q,+
+L_setpgid 0 Q,+
+L_tcsetpgrp 0 Q,+
+L_tcgetpgrp 0 Q,+
+L_waitjob 0 Q,+
+L_filemode 0 Q,+
+L_localtime 0 Q,+
+L_dupfrom 0 Q,+
+L_tcplisten 0 Q,+
+L_tcpaccept 0 Q,+
+L_tcpconnect 0 Q,+
+L_negate 0 Q,+
+L_lshift 0 Q,+
+L_rshift 0 Q,+
+L_umdiv 0 Q,+
+L_dplus 0 Q,+
+L_type 0 Q,+
+L_spstore 0 Q,+
+L_rpfetch 0 Q,+
+L_rpstore 0 Q,+
+L_dictlimit 0 Q,+
+L_chmod 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+L_badesc 0 Q,+
+file_end L:
+file_end ehdr - CONSTANT FILE_SIZE
+: CHECK-1 256 LSAVE_MAX CELL * + 64 8 * + 256 + 72 + 8 + 120 + VM_OFF BSS_BASE TEXTORG - - > IF CR ." the variables no longer fit below the machine's memory" ABORT THEN ; CHECK-1
+END-ASM
+: WRITE-ENGINE ( c-addr u --- )
+  2DUP W/O CREATE-FILE THROW >R  ABUF @ THERE @ OVER - R@ WRITE-FILE THROW
+  R> CLOSE-FILE THROW  493 CHMOD THROW ;
+S" relfasm64.forth" WRITE-ENGINE
+BYE

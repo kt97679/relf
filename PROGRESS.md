@@ -542,6 +542,8 @@ do not trust the absence of a line below.
 - **544** — UTC everywhere (A16); verify runs in TZ=UTC-9; why gforth is faster; the region against the call reach (Q19)
 - **545** — the region is 4 MB, the call reach (A17); UNUSED, ALLOT checked; memory measured against dash, ash, bash; OPTIMIZATIONS.md
 - **546** — M1 complete: an ELF executable written entirely from Forth exits 42; CHMOD; relfsh's memory captured for after self-hosting (A18)
+- **547** — M2 done: the whole engine translated (0 lines left); M3 begun - it assembles, 4 short jumps still too far
+- **548** — SELF-HOSTED: relf assembles its engine identical to GNU as's (M3), and that engine rebuilds itself (M4)
 
 ### Not tied to an iteration
 
@@ -25783,3 +25785,72 @@ written by hand as colon words; handled, 9 remain, all directives:
 `.if/.error` layout assertion. Next session: those, the hand-written
 macros, NEAR from the listing's jump lengths, the header and footer -
 and the first M3 comparison with the GNU as-built engine.
+
+## Iteration 547: the whole engine translated; M3 begun
+
+**M2 done**: tools/asm-translate.py leaves no line untranslated - the
+last nine: `.balign` (asm64.4's new ALIGN,, GNU as's own NOPs: `66 90`
+for 2 bytes, `66 0f 1f 44 00 00` for 6, both checked), the generated
+tables' `.rept` blocks (unrolled), the layout assertion (a check word).
+The eight macros are engine-macros.4, by hand. A forward jump GNU as made
+long gets NEAR - matched jump by jump against its listing, and the
+translator checks the texts agree: the first version counted an indirect
+`jmp qword ptr [esc_tab + ...]` among the label jumps, and every NEAR
+after it came from the wrong jump. FILE_SIZE, used in the ELF header and
+defined at the end, becomes `file_end ehdr NEGATE Q,+`. Output lines
+wrapped under relf's 256 columns (the first run's one line of 189 LABELs
+was cut there, and everything after failed).
+
+**M3 begun** - relf assembling the translated engine: 13 was the largest
+local label (asm64.4 allowed 0-9; now 0-99). Then: four short forward
+jumps too far - all in the startup code around 0x40034b; for GNU as they
+reach, so something between encodes longer in Forth. A LENIENT mode
+reports such a jump and goes on, to get a whole output to compare byte
+by byte - but the footer's file writing then said "No directory", not
+yet understood.
+
+On the way, a regression caught by the assembler's own test: ALIGN,'s
+NOP table was named NOPS, and the label test defines a NOPS of its own,
+which the ASSEMBLER vocabulary's shadowed - renamed NOP-TABLE. And the
+label test's first comment line had lost its backslash to sed at 545,
+harmless there only because it came before the assembler was loaded.
+(This entry was written a session late: the script that should have
+added it anchored on text that was not there, and stopped.)
+
+## Iteration 548: self-hosted - M3 and M4
+
+**The engine relf assembles is GNU as's, byte for byte**, and **that
+engine rebuilds itself, identical**. SELF-HOSTING.md M3 and M4; the
+second end state of GOALS.md.
+
+What stood between 547 and this, found in order - each by reading the
+output rather than guessing:
+- *"No directory"*: not a message anywhere in the repository - a
+  leftover of error cascades. The real first error: `movsq,` undefined.
+  The engine uses `rep movsq` and `rep stosb`, and asm64.4 had only the
+  byte forms. The corpus had not caught it: its shape key generalised
+  every name after the mnemonic, so `rep movsb` and `rep movsq` were one
+  shape, `rep N`, and only the first was tested. A prefix's instruction
+  is kept in the shape now: 456 shapes.
+- The ELF header's `.quad phdr - ehdr`: a label still ahead, minus
+  something - the translator made it a plain expression, arithmetic on a
+  forward reference's tag. Now a fixup with an addend, as FILE_SIZE is.
+- Then the file was 88 bytes short, and byte comparison misled: a
+  forward reference's displacement differs wherever anything between
+  differs. Label addresses do not mislead - the first 16 agreed, the
+  17th, bad_magic, was 44 bytes early - and there the lenient mode's
+  short-jump reports were: `jl 11f`, six bytes for GNU as
+  (`0f 8c 86 00 00 00`), had no NEAR. The listing shows four bytes a
+  line and continues on lines with no address; the translator read only
+  the first line, so the jump looked four bytes long. Read whole: 21
+  NEARs, and the output identical.
+
+**M4**: the engine relf built, run on relfasm64.4, writes relfasm64.forth
+again - identical to itself and to GNU as's build, and executable
+(CHMOD). relfasm64.4 is in the repository now (generated from
+relfasm64.S until M5), and `make verify` checks, on x86-64: the
+translation reproduces from relfasm64.S; relf assembles it identical;
+and the result rebuilds itself identical.
+
+**M5**, one source, has three choices first - comments, the bootstrap,
+the tables: QUESTIONS.md Q20.

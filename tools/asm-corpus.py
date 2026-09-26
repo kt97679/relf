@@ -58,6 +58,8 @@ JUMPS = re.compile(r'^(j[a-z]+|call|loop[a-z]*)$')
 
 def shape(text, n):
     mn, _, ops = text.partition(' ')
+    if mn in ('rep', 'repe', 'repne', 'repz', 'repnz'):
+        return text            # the "operand" is an instruction: keep it (548)
     if JUMPS.match(mn) and '[' not in ops and ops.split(',')[0].strip().lower() not in REGS:
         return '%s rel%d' % (mn, 8 if n == 2 else 32)
     def gen(tok):

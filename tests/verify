@@ -326,11 +326,36 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     rm -f /tmp/verify-asm-shell.log
     AP=$(THIS_SH="$PWD/relfshasm64" timeout 300 sh tests/interactive/run 2>&1 | tail -1)
     emit asm:interactive:failed "$(echo "$AP" | sed -n 's/.*passed, \([0-9]*\) failed.*/\1/p')"
+    # The engine assembled by relf itself (SELF-HOSTING.md M3, M4;
+    # Iteration 548): the committed translation is what relfasm64.S makes
+    # of it; relf on the C engine assembles it to GNU as's bytes; and that
+    # engine, run on the same program, writes itself again.
+    python3 tools/asm-translate.py /tmp/verify-relfasm64.4 >/dev/null 2>&1
+    if cmp -s /tmp/verify-relfasm64.4 relfasm64.4
+    then emit asm:translation reproduces
+    else emit asm:translation DIFFERS; fi
+    rm -f /tmp/verify-relfasm64.4 relfasm64.forth
+    timeout 120 ./relf64 kernel64.img < relfasm64.4 >/dev/null 2>&1
+    if cmp -s relfasm64.forth relfasm64
+    then emit asm:self-assembled identical
+    else emit asm:self-assembled DIFFERS; fi
+    if [ -x relfasm64.forth ]; then
+        mv relfasm64.forth /tmp/verify-gen1
+        timeout 120 /tmp/verify-gen1 kernel64.img < relfasm64.4 >/dev/null 2>&1
+        if cmp -s relfasm64.forth /tmp/verify-gen1
+        then emit asm:fixpoint reproduces
+        else emit asm:fixpoint DIFFERS; fi
+        rm -f /tmp/verify-gen1
+    else
+        emit asm:fixpoint DIFFERS
+    fi
+    rm -f relfasm64.forth
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
 else
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed size:asm-engine size:asm-shell; do
+             asm:interactive:failed asm:translation asm:self-assembled \
+             asm:fixpoint size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done
 fi

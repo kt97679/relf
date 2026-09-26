@@ -100,6 +100,15 @@ ordinary scripts hit, then edge cases and wording.
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
 
+## The second end state, reached (Iteration 548)
+
+GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
+x86-64 engine from its Forth source, byte for byte what GNU as and ld
+make of relfasm64.S, and that engine, run on the same program, writes
+itself again - SELF-HOSTING.md M3 and M4, checked by `make verify`
+(asm:self-assembled, asm:fixpoint). What remains is M5, one source
+(QUESTIONS.md Q20).
+
 ## After self-hosting: to revisit (recorded at Iteration 546)
 
 Decisions deferred on purpose until relf assembles its own engine

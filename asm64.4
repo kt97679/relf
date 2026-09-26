@@ -331,6 +331,8 @@ CREATE NOP-TABLE  144 C,  102 C, 144 C,  15 C, 31 C, 0 C,  15 C, 31 C, 64 C, 0 C
 \ ---- the string instructions, with their prefixes -----------------------------
 : rep, 243 C,A ;  : repe, 243 C,A ;  : repne, 242 C,A ;
 : movsb, 164 C,A ;  : stosb, 170 C,A ;  : cmpsb, 166 C,A ;  : scasb, 174 C,A ;
+: movsq, 72 C,A 165 C,A ;  : stosq, 72 C,A 171 C,A ;   \ REX.W; the corpus had
+\ lumped `rep movsq` in with `rep movsb` until 548, and never tested it
 
 \ ---- and last, the words that would shadow Forth's while this is written --
 : [ ( --- ) DEPTH M-DEPTH ! ;

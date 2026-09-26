@@ -176,8 +176,22 @@ The same way everything here is: **byte for byte**.
   translation of relfasm64.S (a converter script, kept only until done),
   then read over by hand.
 - **M3 - identical.** The Forth build equals the GNU `as` build.
+  **Done at 548**: relfasm64.4, translated from relfasm64.S, assembled by
+  relf on the C engine, is relfasm64 byte for byte - 15,176 bytes.
 - **M4 - the fixpoint.** The engine it built builds itself, identical.
-- **M5 - one source.** relfasm64.S retired; the Forth source is the
+  **Done at 548**: that engine, run on the same program, writes itself
+  again, identical, executable. The x86-64 engine rebuilds itself with
+  nothing but relf, its kernel and its Forth sources. `make verify` rows
+  asm:translation, asm:self-assembled, asm:fixpoint check it every run.
+- **M5 - one source.** What 548 found it needs before relfasm64.S can go:
+  the translation keeps no comments (relfasm64.S is heavily commented -
+  the translator must carry them over); the dispatch tables still come
+  from gen-opcodes.sh's GNU-syntax output (Forth should read opcodes.tab);
+  the translation takes NEAR from GNU as's listing (the Forth source then
+  keeps its NEARs, written in it); and the build must bootstrap without GNU
+  as - from the C engine (gcc), or from a committed engine binary, as the
+  kernels are seeds. QUESTIONS.md Q20.
+- **M5 (the plan as proposed).** relfasm64.S retired; the Forth source is the
   engine's only source; `make` builds the assembly engine with relf.
 
 ## 6. Risks

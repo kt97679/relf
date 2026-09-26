@@ -221,6 +221,7 @@
 00127d f3a4                       rep movsb
 00127f fc                         cld
 0012a1 498b7d08                   mov rdi, [r13 + CELL]
+0012a5 f3aa                       rep stosb
 0012c5 498b4d08                   mov rcx, [r13 + CELL]
 0012c9 4c39e1                     cmp rcx, r12
 0012cc 490f47cc                   cmova rcx, r12
@@ -293,6 +294,7 @@
 001744 48893c2588004100           mov [env_cap], rdi
 00174c 48c1e703                   shl rdi, 3
 001750 4883c708                   add rdi, 8
+001777 f348a5                     rep movsq
 00177c 4c8b042538004100           mov r8, [env_ptr]
 001787 4c3b0c2580004100           cmp r9, [env_n]
 001791 4b8b34c8                   mov rsi, [r8 + r9*8]

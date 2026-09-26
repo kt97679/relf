@@ -19,6 +19,7 @@ measure of what M2 has left. (Iteration 546, a first version.)
 """
 import ast, os, re, subprocess, sys, collections
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); os.chdir(ROOT)
+OUT = sys.argv[1] if len(sys.argv) > 1 else 'relfasm64.4'   # the engine, in Forth
 subprocess.run(['make', '-s', 'relfasm-ops.S', 'relfasm-consts.S'], check=True)
 
 def expand(path):                  # the #includes, textually
@@ -89,6 +90,13 @@ macros_loaded = [False]
 def data_item(v, d, w):
     if v in labels:                                  # an address - forward too
         return '%s 0 %s' % (v, 'Q,+' if d == 'quad' else 'L,+')
+    m = re.match(r'^([A-Za-z_]\w*)\s*([+-])\s*(.+)$', v)
+    if m and m.group(1) in labels and m.group(1) not in defined:
+        # a label still ahead, plus or minus: a fixup with an addend - as
+        # `phdr - ehdr` in the ELF header, which as a plain expression did
+        # arithmetic on a forward reference's tag (548)
+        return '%s %s%s %s' % (m.group(1), postfix(m.group(3)), ' NEGATE' if m.group(2) == '-' else '',
+                               'Q,+' if d == 'quad' else 'L,+')
     if v in equs and v not in defined_consts:        # a constant defined later
         m = re.match(r'^(\w+)\s*-\s*(\w+)$', equs[v])
         if m and m.group(1) in labels:               # FILE_SIZE = file_end - ehdr
@@ -108,17 +116,27 @@ def operand(t):
 # GNU as's jump lengths, in source order - its macro expansions (marked
 # '>') left out: the hand-written macros fix their own
 jl = []
+entries = []            # (bytes, text): the listing shows 4 bytes a line and
+                        # continues on lines with no address - the first
+                        # version read one line, and a 6-byte jl 11f looked
+                        # 4 bytes long: no NEAR (548)
 for raw in open(lst, encoding='latin1'):
-    m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+([0-9A-F]+)\s*\t(.*)$', raw.rstrip('\n'))
-    if not m or m.group(3).lstrip().startswith('>'): continue
-    txt = re.sub(r'^\s*(?:[A-Za-z_.][\w.]*:|\d+:)\s*', '', re.sub(r'/\*.*?\*/', '', m.group(3))).strip()
+    raw = raw.rstrip('\n')
+    m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+([0-9A-F]+)\s*\t(.*)$', raw)
+    if m: entries.append([len(m.group(2)) // 2, m.group(3)]); continue
+    c = re.match(r'^\s*\d+\s+([0-9A-F]+)\s*$', raw)
+    if c and entries: entries[-1][0] += len(c.group(1)) // 2
+for nbytes, text in entries:
+    if text.lstrip().startswith('>'): continue
+    m = [None, None, str(nbytes), text]
+    txt = re.sub(r'^\s*(?:[A-Za-z_.][\w.]*:|\d+:)\s*', '', re.sub(r'/\*.*?\*/', '', text)).strip()
     mn = txt.split(' ', 1)[0]
     ops = txt[len(mn):].strip()
     # the translator's rule: a jump to a label, not through memory or a
     # register - the first version counted `jmp qword ptr [esc_tab...]`
     # too, and every NEAR after it was taken from the wrong jump
     if re.match(r'^(j[a-z]+|call)$', mn) and '[' not in ops and ops not in REGS:
-        jl.append((txt, len(m.group(2)) // 2))
+        jl.append((txt, nbytes))
 jumps = iter(jl)
 defined = set()                                     # labels defined so far
 equs = {}                                           # .equ name -> expression
@@ -249,7 +267,7 @@ head[4:5] = [' '.join('LABEL %s' % l for l in sorted(labels)[i:i + 6]) for i in 
 final = [w for l in head + out + tail for w in wrap(l)]
 long = [l for l in final if len(l) > 250]
 if long: sys.exit('lines still too long for relf: %d, e.g. %s' % (len(long), long[0][:80]))
-open('/tmp/relfasm64.4', 'w').write('\n'.join(final) + '\n')
+open(OUT, 'w').write('\n'.join(final) + '\n')
 print('%d source lines -> %d Forth lines; %d not translated yet' % (len(src), len(out), len(todo)))
 for f, n, line, e in todo[:25]:
     print('  %s:%d  %-50s %s' % (f, n, line[:50], e[:40]))

@@ -71,3 +71,4 @@ relfasm-ops.S
 relfasm-consts.S
 bench/langs/bench-c
 bench/langs/bench-go
+relfasm64.forth
