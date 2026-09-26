@@ -1,0 +1,33 @@
+\ engine-macros.4 - relfasm64.S's eight macros as asm64.4 colon words.
+\ (SELF-HOSTING.md M2, Iteration 547.) Written by hand - they are eight -
+\ and loaded by the translated engine where relfasm64.S defines them.
+\ A parameter comes from the stack: `PUSHT rax` is `rax PUSHT,`, `FLAG l`
+\ is the condition's number, `12 FLAG,`. SLOT's local labels resolve as
+\ each use runs, as GNU as's `1f` and `2f` resolve per expansion.
+
+: NEXT, ( --- )          \ the next opcode, and a jump through the table
+  eax [ r14 ] byte-ptr movzx,  r14 inc,
+  [ rax *8 dispatch256 ] qword-ptr jmp, ;
+: PUSHT, ( reg --- )     \ tos to memory, reg the new tos
+  r13 CELL # sub,  [ r13 ] r12 mov,  r12 SWAP mov, ;
+: POPT, ( --- )
+  r12 [ r13 ] mov,  r13 CELL # add, ;
+: EXITNEXT, ( --- )      \ return, then next
+  r14 [ r15 ] mov,  r15 CELL # add,  NEXT, ;
+: RPUSH, ( reg --- )
+  r15 CELL # sub,  [ r15 ] SWAP mov, ;
+: SLOT, ( --- )          \ a variable's address from a 2- or 3-byte operand
+  eax [ r14 ] byte-ptr movzx,  al al test,  1 F js,
+  eax 8 # shl,  ecx [ r14 1 ] byte-ptr movzx,  eax ecx or,
+  eax 17 # shl,  eax 17 # sar,                 \ 15 bits, signed
+  rdx eax movsxd,  rdx r14 add,  r14 2 # add,  2 F jmp,
+  1 L:  eax 127 # and,  eax 16 # shl,  ecx [ r14 1 ] byte-ptr movzx,
+  ecx 8 # shl,  eax ecx or,  ecx [ r14 2 ] byte-ptr movzx,  eax ecx or,
+  eax 9 # shl,  eax 9 # sar,                   \ 23 bits, signed
+  rdx eax movsxd,  rdx r14 add,  r14 3 # add,
+  2 L: ;
+: FLAG, ( cc --- )       \ tos = -(NOS cc tos), pop one
+  eax eax xor,  [ r13 ] r12 cmp,  al SWAP SETCC  rax neg,
+  r12 rax mov,  r13 CELL # add, ;
+: SYSCALL1, ( nr --- )   \ one argument from tos, result to tos
+  rdi r12 mov,  eax SWAP # mov,  syscall,  r12 rax mov, ;

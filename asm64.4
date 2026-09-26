@@ -93,6 +93,8 @@ VARIABLE M-DEPTH   \ the stack depth at [
 70 56 LSHIFT CONSTANT T-FWD      \ F: a forward reference, a label's record
 VARIABLE LABELS    \ every named label's record, linked, for END-ASM
 VARIABLE NEAR?     \ set by NEAR for the next forward jump
+VARIABLE LENIENT   \ set, a short jump too far is reported, not fatal: to
+                   \ get a whole output to compare while debugging (M3)
 VARIABLE #LABELS   \ how many named labels are declared
 VARIABLE M-FWD     \ a forward label in the memory operand, or 0 (546)
 : W! ( w a --- ) OVER 8 RSHIFT OVER 1+ C! C! ;
@@ -118,7 +120,8 @@ VARIABLE M-FWD     \ a forward label in the memory operand, or 0 (546)
   DUP CELL+ @ SWAP 2 CELLS + @              ( buf width )
   OVER ABUF @ - ORG @ + OVER +              ( buf width next-ip )
   HERE-A SWAP -  SWAP 1 = IF                ( buf disp )
-    DUP DISP8? 0= ABORT" asm64: a short jump does not reach its label - say NEAR"
+    DUP DISP8? 0= IF LENIENT @ IF CR ." asm64: a short jump does not reach, at " OVER ABUF @ - ORG @ + .
+      ELSE TRUE ABORT" asm64: a short jump does not reach its label - say NEAR" THEN THEN
     SWAP C! EXIT THEN
   2DUP SWAP W!  16 RSHIFT SWAP 2 + W! ;
 : RESOLVE ( rec --- ) \ here, and every fixup waiting for it patched
@@ -129,15 +132,20 @@ VARIABLE M-FWD     \ a forward label in the memory operand, or 0 (546)
 \ fixup of width 8, which PATCH knows for absolute.
   OVER KIND T-FWD = IF SWAP T-MASK INVERT AND 8 ROT FIXUP 0 Q,A EXIT THEN
   + Q,A ;
+: L,+ ( target addend --- ) \ the same, 32 bits (a width-5 fixup)
+  OVER KIND T-FWD = IF SWAP T-MASK INVERT AND 5 ROT FIXUP 0 L,A EXIT THEN
+  + L,A ;
 \ Numeric local labels, as GNU as has them: n L: defines one; n F is the
 \ next n L: to come, n B the last one gone.
-CREATE LOCAL-LAST 10 CELLS ALLOT   CREATE LOCAL-NEXT 10 CELLS ALLOT
-LOCAL-NEXT 10 CELLS 0 FILL  LOCAL-LAST 10 CELLS 0 FILL
+100 CONSTANT #LOCALS   \ local labels 0-99 - GNU as allows more digits than
+                        \ one, and the engine uses 11: (the first 10 failed)
+CREATE LOCAL-LAST #LOCALS CELLS ALLOT   CREATE LOCAL-NEXT #LOCALS CELLS ALLOT
+LOCAL-NEXT #LOCALS CELLS 0 FILL  LOCAL-LAST #LOCALS CELLS 0 FILL
 : F ( n --- target )
   CELLS LOCAL-NEXT + DUP @ 0= IF RECORD, OVER ! THEN @ T-FWD OR ;
 : B ( n --- addr ) CELLS LOCAL-LAST + @ ;
 : L: ( label | n --- ) \ define it here
-  DUP 10 U< IF                                     \ a numeric local
+  DUP #LOCALS U< IF                                \ a numeric local
     CELLS DUP LOCAL-NEXT + @ ?DUP IF RESOLVE THEN
     0 OVER LOCAL-NEXT + !  HERE-A SWAP LOCAL-LAST + ! EXIT THEN
   DUP KIND T-FWD <> ABORT" asm64: a label defined twice"
@@ -306,6 +314,19 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
 : SETCC ( rm cc --- ) 1 OPSIZE! 0 SWAP 3984 + RM, ;
 : sete, 4 SETCC ;  : setne, 5 SETCC ;  : setb, 2 SETCC ;  : seta, 7 SETCC ;
 : setl, 12 SETCC ;  : setg, 15 SETCC ;  : setle, 14 SETCC ;  : setge, 13 SETCC ;
+
+\ ---- alignment, padded as GNU as pads code -------------------------------
+\ (Iteration 547.) The multi-byte NOPs GNU as fills code with, for 1 to 8
+\ bytes - the engine needs 2 and 6; more would need more of its table.
+CREATE NOP-TABLE  144 C,  102 C, 144 C,  15 C, 31 C, 0 C,  15 C, 31 C, 64 C, 0 C,
+  15 C, 31 C, 68 C, 0 C, 0 C,  102 C, 15 C, 31 C, 68 C, 0 C, 0 C,
+  15 C, 31 C, 128 C, 0 C, 0 C, 0 C, 0 C,  15 C, 31 C, 132 C, 0 C, 0 C, 0 C, 0 C, 0 C,
+: ALIGN, ( n --- ) \ pad with one NOP up to a multiple of n
+  HERE-A OVER MOD ?DUP IF -                    ( pad )
+    DUP 9 < 0= ABORT" asm64: padding longer than 8 bytes"
+    NOP-TABLE OVER 1 ?DO I + LOOP                    \ its NOP: after 1+2+..+(pad-1)
+    SWAP 0 ?DO DUP I + C@ C,A LOOP DROP
+  ELSE DROP THEN ;
 
 \ ---- the string instructions, with their prefixes -----------------------------
 : rep, 243 C,A ;  : repe, 243 C,A ;  : repne, 242 C,A ;
