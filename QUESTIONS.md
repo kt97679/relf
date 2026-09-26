@@ -25,8 +25,7 @@ same iteration.
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
 6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
    at 544: UTC everywhere.)*
-8. **Before the dictionary grows**: **Q19** - the memory region against
-   the call reach.
+8. *(Q19, the memory region, was answered at 545: 4 MB.)*
 7. *(Q17, self-hosting's four choices, was answered at 536.)*
 
 ## Open
@@ -233,32 +232,17 @@ and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
 opcodes keep their numbers where they are; packing them into 0x00-0x3F
 is the tag's prerequisite, done if the tag ever is.
 
-**Q19. The memory region: 4 MB, the call reach? (544)** The user: "you
-load the Forth image in a 16 MB chunk - a little too much, when CALL
-reaches 4 MB?" The 16 MB costs no RAM (BSS: 19 MB of address space, 1.4
-MB resident), but it breaks an invariant, silently: code defined past 4
-MB gets calls `CALL,` mis-encodes without a word, and `ALLOT` checks no
-limit - it runs into the stacks before it faults (FINDINGS.md 6).
-(A) **4 MB**: the region is the call reach, so everything in the
-dictionary can be called; a program wanting more data ALLOCATEs it (as
-bench.4 does). Plus a limit check - the standard `UNUSED`, from the
-engine, which knows where the stacks start; `ALLOT` and each new header
-check against it ("dictionary full"), `,` and `C,` covered by the
-header's margin - and cv8.c's comment corrected.
-(B) 16 MB, with `CALL,` refusing a target past 4 MB and the same limit
-check: big allotted data stays possible, code past 4 MB an error.
-*Recommendation*: (A) - one number, and the simplest invariant: every
-byte of the dictionary is reachable. 4 MB is 35 times the shell image.
-
-
-**A16. Local time: UTC everywhere (Q18; 543 -> 544).** The user's point:
-/etc/localtime is not on every platform (Windows has none), so reading a
-zone would cost portability; UTC's only cost is that the prompt's time
-escapes show UTC. **Done at 544**: the C engine's LOCAL-TIME uses
-gmtime_r, as the assembly engine always did; run-invocation compares the
-prompt with `date -u`; A10's "UTC first" becomes "UTC, on purpose". And
-`make verify` runs every row in TZ=UTC-9, so nothing can again assume
-the local zone is UTC and pass only because the machine's is.
+**A17. The memory region: 4 MB, the call reach (Q19; 544 -> 545).** The
+16 MB region cost no RAM, but a call reaches 4 MB and CALL, did not
+check, and ALLOT ran into the stacks. **Done at 545**: 4 MB in both
+engines, so every byte of the dictionary can be called; a new escaped
+primitive DICT-LIMIT - the data stack's floor, the same in both engines
+(base + 4 MB - 64 KB - 256 KB) - and on it the standard UNUSED; ALLOT
+refuses to pass it and HEADER refuses a new definition within 4 KB of it
+("dictionary full"), the margin covering the unchecked , and C, of a
+definition. 3.6 MB of dictionary; the shell uses ~130 KB of it. The
+user's intent, checked (FINDINGS.md 8): the shell's data is already in
+the allocator's heap, outside the dictionary.
 
 ## Your notes, captured (514)
 

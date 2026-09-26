@@ -232,6 +232,9 @@ PRIMITIVE RP@      ( --- a-addr)
 
 PRIMITIVE RP!      ( a-addr ---)
 \ Set the return stack pointer to a-addr.
+PRIMITIVE DICT-LIMIT  ( --- a-addr )
+\ Where the dictionary must end: the data stack's floor, at the top of
+\ the engine's 4 MB (Iteration 545). UNUSED and ALLOT are built on it.
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -1256,9 +1259,14 @@ VARIABLE CURRENT ( --- addr)
            ELSE R> COUNT + >R THEN ;
 
 
+: UNUSED ( --- u )
+\ The room left in the dictionary, up to the data stack (Forth 2012).
+  DICT-LIMIT HERE - ;
+
 : ALLOT ( n --- )
 \ Allot n extra bytes of memory, starting at HERE to the dictionary.
-  DP +! ;
+\ Checked since Iteration 545: past DICT-LIMIT it ran into the stacks.
+  DUP UNUSED > ABORT" dictionary full" DP +! ;
 
 : , ( x --- )
 \ Append cell x to the dictionary at HERE.
@@ -1287,13 +1295,16 @@ VARIABLE HDR-HEAD ( --- a-addr )
 VARIABLE HDR-LEN  ( --- a-addr )
 
 : HEADER ( --- )
-\ Create a header for a new definition without a code field. The name
+\ Create a header for a new definition without a code field. Refused
+\ within 4 KB of the dictionary's end (545): that margin is what covers
+\ the , and C, of the definition after it, which are not checked. The name
 \ is parsed first - WORD leaves it counted at HERE - because the link
 \ depends on the thread the name hashes to. The link's length depends
 \ on the distance, which depends on where the name lands, which
 \ depends on the link's length: bound it from above by sizing for a
 \ name at HERE+3, so the real distance always fits. Then the name is
 \ moved up and the link written into the gap.
+  UNUSED 4096 < ABORT" dictionary full"
   32 WORD DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP DROP
   HERE COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @ HDR-HEAD !
   HDR-HEAD @ IF HERE 3 + HDR-HEAD @ - LINK-LEN ELSE 1 THEN HDR-LEN !

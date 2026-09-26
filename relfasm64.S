@@ -32,7 +32,8 @@
     .intel_syntax noprefix
 #include "relfasm-consts.S"          /* from opcodes.tab: OPC_BRANCH8 */
 
-    .equ MEMSIZE,      16*1024*1024
+    .equ MEMSIZE,      4*1024*1024   /* the call reach (A17, 545) */
+    .equ DSTACK_BYTES, 262144        /* as cv8.c: DICT-LIMIT is the data stack's floor */
     .equ RSTACK_BYTES, 65536
     .equ PAGE,         4096
     .equ CELL,         8
@@ -842,6 +843,9 @@ L_qdo:      mov rax, [r13]           /* (?DO) ( limit start --- ), since 530 */
             NEXT
 2:          add r14, 2
 1:          NEXT
+L_dictlimit: lea rax, [rbx + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES]
+            PUSHT rax                /* DICT-LIMIT ( --- a-addr ), since 545 */
+            NEXT
 L_atxt:     mov r12, [r12]           /* @XT ( a-addr --- xt ), since 531 */
             add r12, rbx             /* the image base, which START holds */
             NEXT

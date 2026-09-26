@@ -140,12 +140,15 @@ typedef int32_t  INT64;
  *  empty name, nowhere near the actual cause. 1M is still small
  *  enough to be unremarkable and leaves real headroom for shell.4 to
  *  keep growing.  */
-/*  The whole VM: image, all dictionary growth, and the two stacks. This
- *  is the FIRST ceiling a growing system meets - far below the call
- *  reach - and it is a plain parameter: every reference in an image is
- *  relative, so raising it breaks nothing. Overridable at build time,
- *  and at run time with RELF_MEMSIZE (in MB).  */
-#define MEMSIZE (16 * 1024 * 1024)
+/*  The whole VM: image, all dictionary growth, and the two stacks at the
+ *  top. 4 MB since Iteration 545 (QUESTIONS.md A17): the reach of a
+ *  three-byte call, 22 bits - so every byte of the dictionary can be
+ *  called, which at 16 MB it could not (CALL, would have mis-encoded a
+ *  target past 4 MB, silently). The dictionary ends where the data stack
+ *  begins: DICT-LIMIT gives that address, and ALLOT and HEADER check it.
+ *  Data beyond that belongs in ALLOCATE's heap. It was said to be
+ *  overridable at run time with RELF_MEMSIZE; nothing ever read it.  */
+#define MEMSIZE (4 * 1024 * 1024)
 /*  Room reserved for the return stack. Raised from 2048 in Iteration
  *  90: 2048 bytes is 256 cells, and each level of shell function
  *  recursion nests roughly a dozen Forth calls, so the return stack
@@ -939,6 +942,10 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
+L_dictlimit:   /* DICT-LIMIT ( --- a-addr ): where the dictionary must end - the
+                  data stack's floor, the same address in both engines (545) */
+    PUSHT(cbase + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES);
+    NEXT();
 L_atxt:   /* @XT ( a-addr --- xt ): the offset there, plus the image base (531) */
     tos = CELL(tos) + cbase;
     NEXT();

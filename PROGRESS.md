@@ -540,6 +540,7 @@ do not trust the absence of a line below.
 - **542** — M0's encoder complete: 452 of 452 shapes; gforth builds both kernels identical; relf against C, Go, Python, Ruby
 - **543** — findings captured (FINDINGS.md); seven benchmarks against gforth, pforth and five languages; one-pass assembler designed
 - **544** — UTC everywhere (A16); verify runs in TZ=UTC-9; why gforth is faster; the region against the call reach (Q19)
+- **545** — the region is 4 MB, the call reach (A17); UNUSED, ALLOT checked; memory measured against dash, ash, bash; OPTIMIZATIONS.md
 
 ### Not tied to an iteration
 
@@ -25672,3 +25673,48 @@ END-ASM found three undefined labels where two are declared and both
 defined. Not yet understood; next session starts there. The encoder is
 untouched by it: 452 of 452 still. Recorded under TZ=UTC-9: only
 checksums and sizes moved - nothing else in relf assumed UTC.
+
+## Iteration 545: 4 MB, the dictionary checked, and where the memory goes
+
+**A17 (Q19)**: each engine's region is 4 MB - the reach of a three-byte
+call - where it was 16 MB, past which CALL, would have mis-encoded a
+target without a word. A new escaped primitive, DICT-LIMIT, gives the
+data stack's floor - the same address in both engines, base + 4 MB -
+64 KB - 256 KB (the assembly engine had no DSTACK_BYTES until now, nor
+guard pages) - and the kernel builds the standard UNUSED on it. ALLOT
+refuses to pass it, HEADER refuses a definition within 4 KB of it:
+"dictionary full", where 5 MB of ALLOT was a segmentation fault and less
+would have run into the stacks silently. Tested on all three engines:
+the limit identical, 5 MB refused, a definition with 3,000 bytes left
+refused, one with 5,000 allowed (my first try left 5,000 and seemed not
+to refuse - the check was right). cv8.c's comment corrected: it called
+16 MB "far below the call reach", overridable with RELF_MEMSIZE, which
+nothing read.
+
+**Where the memory goes** (the user's question; FINDINGS.md 8,
+tools/mem-profile.py): the 1.4 MB was the C engine's whole process, the
+C library 1.36 MB of it. The assembly-engine shell is 308 kB resident
+idle - its region 132 kB (the image, the stacks' touched pages), its
+heap 152 kB - and the region does not grow while the shell works: the
+shell's data is in the heap, outside the dictionary, as the user meant
+it to be. Against dash, busybox ash and bash, resident and private. The
+first run's idle rows measured `cat` - a shell may exec its last
+command; a trailing `:` fixed it.
+
+**OPTIMIZATIONS.md** (the user's request): a catalog of potential
+optimizations - speed, memory, size - each with its evidence, gain, cost
+and status, the removed ones included; 20 entries to start, the gforth
+finding first (S1).
+
+Recorded changes, with their causes: the assembly engine 32 bytes and
+the C engine's code 72 larger - DICT-LIMIT's handler; the image 72
+bytes larger - UNUSED and the two checks. Every suite row as before,
+under TZ=UTC-9 and with the 4 MB region.
+
+M1's labels, still failing: the test ran `200 0 DO nop, LOOP` at the
+top level - compile-only words interpreted, which relf does not refuse -
+and now defines it in a colon word; the program still prints `3` and
+stops. A single label works alone (it returns its tagged forward
+reference). The bisection by prefixes failed for its own reason: its
+marker, `.(`, printed for no prefix at all - the marker, not the code.
+Next session: a marker that works, then the line that stops it.

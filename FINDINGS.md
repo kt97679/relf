@@ -186,3 +186,33 @@ The assembly engine's LOCAL-TIME is UTC (A10); outside UTC the prompt's
 systems neither), so reading it in Forth is not portable. QUESTIONS.md
 Q18: UTC everywhere, both engines, is the simple and portable choice;
 its only cost is that the prompt shows UTC.
+
+## 8. Memory: where a shell's resident memory goes (545)
+
+tools/mem-profile.py: each shell dumps its own /proc/PID/smaps, idle and
+after the realistic workload in the same process; kB. RESIDENT counts a
+shared page in every process that maps it (the C library's, above all);
+PRIVATE is what this process alone costs.
+
+| shell | resident, idle -> worked | private, idle -> worked |
+|---|---|---|
+| relf, assembly engine | 308 -> 356 | 308 -> 356 |
+| relf, C engine | 1,940 -> 1,972 | 380 -> 412 |
+| dash | 1,968 -> 1,984 | 100 -> 116 |
+| busybox ash | 1,604 -> 1,808 | 248 -> 388 |
+| bash | 3,612 -> 3,644 | 1,648 -> 1,692 |
+
+- The 1.4 MB quoted at 544 was the bare C engine's whole process, and
+  1.36 MB of it the C library - shared pages every dynamically linked
+  program maps. The static assembly-engine shell has none: 308 kB.
+- relf's memory region - dictionary and stacks - is 132 kB resident,
+  idle and after the work alike: the shell image (118 KB) and the stack
+  pages touched. The dictionary does not grow while the shell works.
+- The shell's data is outside it, in the allocator's heap - 152 kB idle,
+  200 after the work - as intended: ~140 buffers allocated at startup,
+  and zero-filled, which makes them all resident (OPTIMIZATIONS.md M1).
+- Private memory: relf's is about three times dash's, near busybox
+  ash's, a fifth of bash's. relf copies its image into private memory
+  (M2); dash's code is file pages it could share.
+- The first measurement's idle rows were `cat`'s memory, not the shell's:
+  a shell may exec its last command. A trailing `:` keeps `cat` a child.

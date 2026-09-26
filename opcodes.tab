@@ -160,3 +160,4 @@ escaped   0x46    TYPE        L_type          -
 escaped   0x47    SP!         L_spstore       -
 escaped   0x48    RP@         L_rpfetch       -
 escaped   0x49    RP!         L_rpstore       -
+escaped   0x4A    DICT-LIMIT  L_dictlimit     -
