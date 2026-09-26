@@ -244,6 +244,12 @@ definition. 3.6 MB of dictionary; the shell uses ~130 KB of it. The
 user's intent, checked (FINDINGS.md 8): the shell's data is already in
 the allocator's heap, outside the dictionary.
 
+**A18. relfsh's memory: minimize it, after self-hosting (546).** The
+user: "ideally I would like to minimize relfsh RAM usage as well, please
+capture that and let's revisit after asm self hosting will be done."
+Captured in GOALS.md ("After self-hosting: to revisit"), with where it
+stands and the candidates, OPTIMIZATIONS.md M1-M3.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

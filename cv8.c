@@ -1123,6 +1123,17 @@ L_delfile: SPILL(); { /* c-addr u --- ior */
     dsp += CELL_BYTES;
     FILLNEXT();
 }
+L_chmod: SPILL(); { /* c-addr u mode --- ior: chmod(2), since 546 - so that
+                     relf can make the engine it writes executable */
+    long r;
+    t = BYTE(DS2 + DS1);             /* the byte past the name, borrowed for */
+    BYTE(DS2 + DS1) = 0;             /* a NUL - as L_delfile does */
+    r = chmod((char*)(uintptr_t)DS2, (mode_t)DS0);
+    BYTE(DS2 + DS1) = t;
+    DS2 = (UNS64)(INT64)r;
+    dsp += 2 * CELL_BYTES;
+    FILLNEXT();
+}
 L_filesize: SPILL(); { /* fid --- ud ior */
     /*  ANS: ( fileid -- ud ior ), a DOUBLE - see L_filepos. */
     int fd = (int)DS0;

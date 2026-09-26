@@ -5,8 +5,8 @@
 S" extend.4" INCLUDED  S" asm64.4" INCLUDED
 ALSO ASSEMBLER
 : nop, 144 C,A ;
-0 1024 ASM-BUFFER
-LABEL done  LABEL farther
+4194304 1024 ASM-BUFFER               \ 0x400000, where ld puts the reference
+LABEL done  LABEL farther  LABEL table
 eax eax xor,
 1 L:  eax inc,  eax 10 # cmp,  1 B jne,
 eax eax test,  2 F jz,
@@ -16,6 +16,8 @@ done L:  eax 60 # mov,
 : NOPS 0 DO nop, LOOP ;
 NEAR farther jmp,  200 NOPS
 farther L:  syscall,
+[ rax *8 table ] qword-ptr jmp,  nop,   \ a forward label in a memory operand
+table L:  0 Q,A
 END-ASM
 : DUMP CR ." BYTES " THERE @ ABUF @ ?DO I C@ . LOOP CR ;  DUMP
 BYE

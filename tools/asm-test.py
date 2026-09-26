@@ -113,10 +113,22 @@ if '-v' in sys.argv or len(bad) < 40:
 # every kind of jump, forward references resolved at their labels.
 lo = os.path.join(work, 'l.o'); lb = os.path.join(work, 'l.bin')
 subprocess.run(['as', '-o', lo, 'tests/asm-labels.S'], check=True)
-subprocess.run(['objcopy', '-O', 'binary', '-j', '.text', lo, lb], check=True)
+subprocess.run(['ld', '-Ttext=0x400000', '--oformat', 'binary', '-o', lb, lo], check=True)
+# (linked, as the engine is: an absolute address - the jump through a
+# table defined after it - is a placeholder in an object file)
 out = subprocess.run([ENGINE, 'kernel64.img'], stdin=open('tests/asm-labels.4'),
                      capture_output=True, text=True, timeout=60).stdout
 want = open(lb, 'rb').read()
 toks = out.split('BYTES')[1].split() if 'BYTES' in out else []
 got = bytes(int(x) & 255 for x in toks if x.lstrip('-').isdigit())   # not relf's OK
 print('labels: %s (%d bytes)' % ('identical to GNU as' if got == want else 'DIFFER', len(want)))
+
+# ---- M1: a whole program (Iteration 546) --------------------------------
+# tests/asm-exit42.4 writes an ELF executable entirely from Forth, makes it
+# executable with CHMOD, and it must exit with status 42.
+exe = '/tmp/relf-exit42'
+if os.path.exists(exe): os.unlink(exe)
+subprocess.run([ENGINE, 'kernel64.img'], stdin=open('tests/asm-exit42.4'), capture_output=True, timeout=60)
+st = subprocess.run([exe]).returncode if os.access(exe, os.X_OK) else None
+print('program: %s' % ('an ELF from Forth, %d bytes, exits 42' % os.path.getsize(exe) if st == 42
+                       else 'FAILED (exit status %r)' % st))

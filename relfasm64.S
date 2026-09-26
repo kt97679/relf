@@ -49,6 +49,7 @@
     .equ SYS_lseek,    8
     .equ SYS_mmap,     9
     .equ SYS_unlink,   87
+    .equ SYS_chmod,    90
     .equ SYS_execve,   59
     .equ SYS_stat,     4
     .equ SYS_lstat,    6
@@ -1041,6 +1042,19 @@ L_delfile:  mov rdi, [r13]           /* ( c-addr u --- ior ): 0, or -1 */
             mov r12, rax
             sar r12, 63
             add r13, CELL
+            NEXT
+L_chmod:    mov rdi, [r13 + CELL]    /* ( c-addr u mode --- ior ), since 546 */
+            mov rax, [r13]
+            lea r8, [rdi + rax]
+            movzx r9d, byte ptr [r8] /* the byte past the name: a NUL, */
+            mov byte ptr [r8], 0     /* put back after */
+            mov rsi, r12
+            mov eax, SYS_chmod
+            syscall
+            mov [r8], r9b
+            mov r12, rax
+            sar r12, 63
+            add r13, 2*CELL
             NEXT
 L_reposfile: mov rdi, r12            /* ( ud fid --- ior ) */
             mov rsi, [r13 + CELL]    /* the low cell; a 64-bit offset */

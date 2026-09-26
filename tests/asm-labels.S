@@ -19,3 +19,7 @@ done:
     .endr
 farther:
     syscall
+    jmp qword ptr [table + rax*8]   /* a forward label in a memory operand (546) */
+    nop
+table:
+    .quad 0

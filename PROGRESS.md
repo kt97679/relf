@@ -541,6 +541,7 @@ do not trust the absence of a line below.
 - **543** — findings captured (FINDINGS.md); seven benchmarks against gforth, pforth and five languages; one-pass assembler designed
 - **544** — UTC everywhere (A16); verify runs in TZ=UTC-9; why gforth is faster; the region against the call reach (Q19)
 - **545** — the region is 4 MB, the call reach (A17); UNUSED, ALLOT checked; memory measured against dash, ash, bash; OPTIMIZATIONS.md
+- **546** — M1 complete: an ELF executable written entirely from Forth exits 42; CHMOD; relfsh's memory captured for after self-hosting (A18)
 
 ### Not tied to an iteration
 
@@ -25730,3 +25731,46 @@ unchanged. tests/asm-labels.4 and .S keep it; tools/asm-test.py runs it
 after the corpus, and regenerates the corpus first: made at 542, it had
 gone stale when DICT-LIMIT's handler moved every later symbol by 32
 bytes. 453 of 453 shapes, and the labels.
+
+## Iteration 546: M1 complete - a whole program from Forth
+
+**A18**: the user wants relfsh's memory minimized too - captured in
+GOALS.md's new "After self-hosting: to revisit" section (with where it
+stands, 308 kB, and the candidates), OPTIMIZATIONS.md and QUESTIONS.md.
+
+**CHMOD**, a new escaped primitive in both engines: both create every
+file 0644, and relf writing its own engine needs to make it executable
+without `chmod(1)`. One system call, the name NUL-terminated the way
+DELETE-FILE's is (the byte past it borrowed and put back). I declared it
+before DICT-LIMIT in kernel.4 at first; a primitive's number is its
+place among the declarations, so the kernel's two selectors came out
+swapped - every new definition's UNUSED called CHMOD - and building the
+32-bit kernel crashed. The checker said so first ("kernel.4's PRIMITIVE
+lines differ from opcodes.tab's"); the 64-bit kernel had already been
+replaced by the broken one, so both were restored from the commit before
+the rebuild.
+
+**Absolute fixups** (`Q,+`): a 64-bit value, a label's address plus an
+addend, forward too - the ELF header's entry point and sizes.
+
+**M1's program**: tests/asm-exit42.4 lays down every byte of an ELF
+executable from Forth - header, program header, code - writes it, CHMODs
+it 0755; it runs and exits 42 (132 bytes). tools/asm-test.py runs it
+with the corpus (454 of 454; CHMOD's handler added a shape) and the
+labels. **M2** surveyed and planned (SELF-HOSTING.md): eight macros as
+colon words, local labels in macros, a forward label in a memory operand
+(an absolute 32-bit fixup), 89 `.equ`s, the data, the generated tables.
+
+Recorded changes, with their causes: the assembly engine 64 bytes larger
+and the image 16, CHMOD's handler and declaration. Every suite row as
+before.
+
+**The last fixup kind M2 needs**, done in the same session: a forward
+label inside a memory operand - NEXT's `[dispatch256 + rax*8]`, the
+tables after the code. `]` notes the label, MEM, gives it a 32-bit
+displacement and a fixup of width 5 (absolute, 32 bits), PATCH writes
+address + addend. The label machinery had to move ahead of the encoder:
+MEM, calls FIXUP, and a single-pass Forth cannot call forward. The label
+test gained the case and is linked now, as the engine is (an absolute
+address in an object file is a placeholder): 253 bytes, identical; 454
+of 454 shapes; the ELF program exits 42.

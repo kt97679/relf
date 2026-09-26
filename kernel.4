@@ -235,6 +235,11 @@ PRIMITIVE RP!      ( a-addr ---)
 PRIMITIVE DICT-LIMIT  ( --- a-addr )
 \ Where the dictionary must end: the data stack's floor, at the top of
 \ the engine's 4 MB (Iteration 545). UNUSED and ALLOT are built on it.
+PRIMITIVE CHMOD  ( c-addr u mode --- ior )
+\ Set a file's permission bits (Iteration 546): relf writes its own
+\ engine, which has to be executable (SELF-HOSTING.md M1, M4). After
+\ DICT-LIMIT: a primitive's number is its place here - declared first
+\ at first, the two swapped selectors, and the checker said so.
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

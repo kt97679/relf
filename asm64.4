@@ -81,6 +81,71 @@ VARIABLE M-DEPTH   \ the stack depth at [
 : dword-ptr ( m --- m ) 4 OR ;
 : qword-ptr ( m --- m ) 8 OR ;
 
+\ ---- labels: one pass, forward references resolved as cross.4 does ------
+\ (M1, Iteration 544.) LABEL name declares a label, as cross.4's FORWARD
+\ declares a word; name L: defines it here. Used before it is defined, a
+\ label is a forward reference: the jump lays down its displacement as a
+\ placeholder and threads a fixup onto the label's list, and L: patches
+\ them all. A forward jump is short unless NEAR is said before it - one
+\ pass cannot know the distance - and a short one its label turns out too
+\ far for is an error there, never a wrong byte. END-ASM names any label
+\ declared and never defined, as cross.4's RESOLVE does.
+70 56 LSHIFT CONSTANT T-FWD      \ F: a forward reference, a label's record
+VARIABLE LABELS    \ every named label's record, linked, for END-ASM
+VARIABLE NEAR?     \ set by NEAR for the next forward jump
+VARIABLE #LABELS   \ how many named labels are declared
+VARIABLE M-FWD     \ a forward label in the memory operand, or 0 (546)
+: W! ( w a --- ) OVER 8 RSHIFT OVER 1+ C! C! ;
+: DISP8? ( d --- f ) DUP -129 > SWAP 128 < AND ;
+: L! ( l a --- ) 2DUP W! SWAP 16 RSHIFT SWAP 2 + W! ;
+: NEAR ( --- ) -1 NEAR? ! ;
+\ A label's record: its address (-1 until defined), its fixups' list, the
+\ next named label. A fixup: the next one, where its displacement is in
+\ the buffer, and how wide it is (1 or 4).
+: RECORD, ( --- rec ) HERE -1 , 0 , 0 , ;
+: LABEL ( "name" --- )
+  CREATE RECORD, LABELS @ OVER 2 CELLS + !  LABELS !  1 #LABELS +!
+  DOES> DUP @ -1 = IF T-FWD OR ELSE @ THEN ;
+: FIXUP ( rec width addend --- ) \ next, where, width, addend
+  >R >R CELL+ HERE OVER @ , THERE @ , R> , R> , SWAP ! ;
+: PLACEHOLDER ( rec --- ) \ zeros of the width NEAR? says; a fixup for them
+  NEAR? @ IF 4 0 FIXUP 0 L,A ELSE 1 0 FIXUP 0 C,A THEN  0 NEAR? ! ;
+: PATCH ( fixup --- ) \ its displacement, now that the label is here
+  DUP 2 CELLS + @ 8 = IF                    \ absolute, 64 bits: address + addend
+    DUP 3 CELLS + @ HERE-A +  SWAP CELL+ @ ! EXIT THEN
+  DUP 2 CELLS + @ 5 = IF                    \ absolute, 32 bits: a displacement
+    DUP 3 CELLS + @ HERE-A +  SWAP CELL+ @ L! EXIT THEN
+  DUP CELL+ @ SWAP 2 CELLS + @              ( buf width )
+  OVER ABUF @ - ORG @ + OVER +              ( buf width next-ip )
+  HERE-A SWAP -  SWAP 1 = IF                ( buf disp )
+    DUP DISP8? 0= ABORT" asm64: a short jump does not reach its label - say NEAR"
+    SWAP C! EXIT THEN
+  2DUP SWAP W!  16 RSHIFT SWAP 2 + W! ;
+: RESOLVE ( rec --- ) \ here, and every fixup waiting for it patched
+  HERE-A OVER !  CELL+ @  BEGIN ?DUP WHILE DUP PATCH @ REPEAT ;
+: Q,+ ( target addend --- )
+\ A 64-bit absolute value, a label's address plus addend - the ELF
+\ header's entry point and sizes (Iteration 546). Forward too: then a
+\ fixup of width 8, which PATCH knows for absolute.
+  OVER KIND T-FWD = IF SWAP T-MASK INVERT AND 8 ROT FIXUP 0 Q,A EXIT THEN
+  + Q,A ;
+\ Numeric local labels, as GNU as has them: n L: defines one; n F is the
+\ next n L: to come, n B the last one gone.
+CREATE LOCAL-LAST 10 CELLS ALLOT   CREATE LOCAL-NEXT 10 CELLS ALLOT
+LOCAL-NEXT 10 CELLS 0 FILL  LOCAL-LAST 10 CELLS 0 FILL
+: F ( n --- target )
+  CELLS LOCAL-NEXT + DUP @ 0= IF RECORD, OVER ! THEN @ T-FWD OR ;
+: B ( n --- addr ) CELLS LOCAL-LAST + @ ;
+: L: ( label | n --- ) \ define it here
+  DUP 10 U< IF                                     \ a numeric local
+    CELLS DUP LOCAL-NEXT + @ ?DUP IF RESOLVE THEN
+    0 OVER LOCAL-NEXT + !  HERE-A SWAP LOCAL-LAST + ! EXIT THEN
+  DUP KIND T-FWD <> ABORT" asm64: a label defined twice"
+  T-MASK INVERT AND RESOLVE ;
+: END-ASM ( --- ) \ every label declared must have been defined
+  0 LABELS @ BEGIN ?DUP WHILE DUP @ -1 = IF SWAP 1+ SWAP THEN 2 CELLS + @ REPEAT
+  ?DUP IF CR . ." asm64: labels declared and never defined" ABORT THEN ;
+
 \ ---- the encoding ------------------------------------------------------
 VARIABLE REX       \ W R X B as 8 4 2 1; 64 when a REX is needed anyway
 VARIABLE OPSIZE    \ the operation's size in bytes
@@ -92,7 +157,6 @@ VARIABLE OPSIZE    \ the operation's size in bytes
 : REX, ( --- ) REX @ IF REX @ 15 AND 64 OR C,A THEN ;
 : OPC, ( op --- ) DUP 255 > IF DUP 8 RSHIFT C,A THEN 255 AND C,A ;
 : MODRM, ( mod reg rm --- ) 7 AND SWAP 7 AND 3 LSHIFT OR SWAP 6 LSHIFT OR C,A ;
-: DISP8? ( d --- f ) DUP -129 > SWAP 128 < AND ;
 : MEM-REX ( --- )
   M-BASE @ 0< 0= IF M-BASE @ REX-B THEN
   M-INDEX @ 0< 0= IF M-INDEX @ REX-X THEN ;
@@ -100,18 +164,21 @@ VARIABLE OPSIZE    \ the operation's size in bytes
   M-SCALE @ 6 LSHIFT
   M-INDEX @ 0< IF 4 ELSE M-INDEX @ 7 AND THEN 3 LSHIFT OR
   M-BASE @ 0< IF 5 ELSE M-BASE @ 7 AND THEN OR C,A ;
+: DISP32, ( --- ) \ the displacement; a fixup if a forward label is in it
+  M-FWD @ ?DUP IF 5 M-DISP @ FIXUP 0 L,A 0 M-FWD ! EXIT THEN  M-DISP @ L,A ;
 : MEM, ( reg --- )
 \ ModRM, SIB and displacement for the memory operand, reg in the reg field
 \ - as GNU as chooses them: an absolute address through a SIB with
 \ neither base nor index; the shortest displacement that fits; rbp and
 \ r13 as base always with one, rsp and r12 always through a SIB.
-  M-BASE @ 0< IF 0 SWAP 4 MODRM, SIB, M-DISP @ L,A EXIT THEN
+  M-BASE @ 0< IF 0 SWAP 4 MODRM, SIB, DISP32, EXIT THEN
+  M-FWD @ IF 2 ELSE                            \ a forward label: 32 bits
   M-DISP @ 0= M-BASE @ 7 AND 5 <> AND IF 0 ELSE
-    M-DISP @ DISP8? IF 1 ELSE 2 THEN THEN      ( reg mod )
+    M-DISP @ DISP8? IF 1 ELSE 2 THEN THEN THEN  ( reg mod )
   DUP >R SWAP
   M-INDEX @ 0< M-BASE @ 7 AND 4 <> AND IF M-BASE @ MODRM, ELSE 4 MODRM, SIB, THEN
   R> DUP 1 = IF DROP M-DISP @ C,A EXIT THEN
-  2 = IF M-DISP @ L,A THEN ;
+  2 = IF DISP32, THEN ;
 : SIZE-OF ( d --- s ) DUP REG? IF RSIZE ELSE MSIZE THEN ;
 : PREFIX, ( --- ) OPSIZE @ 2 = IF 102 C,A THEN ;
 : W? ( --- ) OPSIZE @ 8 = IF 8 REX OR! THEN ;
@@ -212,58 +279,6 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
   DROP DUP SIZE-OF OPSIZE!  R> BYTE? IF 210 ELSE 211 THEN RM, ;   \ by cl
 : rol, 0 SHIFT ;  : ror, 1 SHIFT ;  : shl, 4 SHIFT ;  : shr, 5 SHIFT ;  : sar, 7 SHIFT ;
 
-\ ---- labels: one pass, forward references resolved as cross.4 does ------
-\ (M1, Iteration 544.) LABEL name declares a label, as cross.4's FORWARD
-\ declares a word; name L: defines it here. Used before it is defined, a
-\ label is a forward reference: the jump lays down its displacement as a
-\ placeholder and threads a fixup onto the label's list, and L: patches
-\ them all. A forward jump is short unless NEAR is said before it - one
-\ pass cannot know the distance - and a short one its label turns out too
-\ far for is an error there, never a wrong byte. END-ASM names any label
-\ declared and never defined, as cross.4's RESOLVE does.
-70 56 LSHIFT CONSTANT T-FWD      \ F: a forward reference, a label's record
-VARIABLE LABELS    \ every named label's record, linked, for END-ASM
-VARIABLE NEAR?     \ set by NEAR for the next forward jump
-VARIABLE #LABELS   \ how many named labels are declared
-: NEAR ( --- ) -1 NEAR? ! ;
-\ A label's record: its address (-1 until defined), its fixups' list, the
-\ next named label. A fixup: the next one, where its displacement is in
-\ the buffer, and how wide it is (1 or 4).
-: RECORD, ( --- rec ) HERE -1 , 0 , 0 , ;
-: LABEL ( "name" --- )
-  CREATE RECORD, LABELS @ OVER 2 CELLS + !  LABELS !  1 #LABELS +!
-  DOES> DUP @ -1 = IF T-FWD OR ELSE @ THEN ;
-: FIXUP ( rec width --- )
-  >R CELL+ HERE OVER @ , THERE @ , R> , SWAP ! ;
-: PLACEHOLDER ( rec --- ) \ zeros of the width NEAR? says; a fixup for them
-  NEAR? @ IF 4 FIXUP 0 L,A ELSE 1 FIXUP 0 C,A THEN  0 NEAR? ! ;
-: W! ( w a --- ) OVER 8 RSHIFT OVER 1+ C! C! ;
-: PATCH ( fixup --- ) \ its displacement, now that the label is here
-  DUP CELL+ @ SWAP 2 CELLS + @              ( buf width )
-  OVER ABUF @ - ORG @ + OVER +              ( buf width next-ip )
-  HERE-A SWAP -  SWAP 1 = IF                ( buf disp )
-    DUP DISP8? 0= ABORT" asm64: a short jump does not reach its label - say NEAR"
-    SWAP C! EXIT THEN
-  2DUP SWAP W!  16 RSHIFT SWAP 2 + W! ;
-: RESOLVE ( rec --- ) \ here, and every fixup waiting for it patched
-  HERE-A OVER !  CELL+ @  BEGIN ?DUP WHILE DUP PATCH @ REPEAT ;
-\ Numeric local labels, as GNU as has them: n L: defines one; n F is the
-\ next n L: to come, n B the last one gone.
-CREATE LOCAL-LAST 10 CELLS ALLOT   CREATE LOCAL-NEXT 10 CELLS ALLOT
-LOCAL-NEXT 10 CELLS 0 FILL  LOCAL-LAST 10 CELLS 0 FILL
-: F ( n --- target )
-  CELLS LOCAL-NEXT + DUP @ 0= IF RECORD, OVER ! THEN @ T-FWD OR ;
-: B ( n --- addr ) CELLS LOCAL-LAST + @ ;
-: L: ( label | n --- ) \ define it here
-  DUP 10 U< IF                                     \ a numeric local
-    CELLS DUP LOCAL-NEXT + @ ?DUP IF RESOLVE THEN
-    0 OVER LOCAL-NEXT + !  HERE-A SWAP LOCAL-LAST + ! EXIT THEN
-  DUP KIND T-FWD <> ABORT" asm64: a label defined twice"
-  T-MASK INVERT AND RESOLVE ;
-: END-ASM ( --- ) \ every label declared must have been defined
-  0 LABELS @ BEGIN ?DUP WHILE DUP @ -1 = IF SWAP 1+ SWAP THEN 2 CELLS + @ REPEAT
-  ?DUP IF CR . ." asm64: labels declared and never defined" ABORT THEN ;
-
 \ ---- jumps and calls: to an address, short where the distance fits ---------
 : REL8? ( target len --- rel f ) HERE-A + - DUP DISP8? ;
 : FWD? ( t --- f ) KIND T-FWD = ;
@@ -299,12 +314,13 @@ LOCAL-NEXT 10 CELLS 0 FILL  LOCAL-LAST 10 CELLS 0 FILL
 \ ---- and last, the words that would shadow Forth's while this is written --
 : [ ( --- ) DEPTH M-DEPTH ! ;
 : ] ( ... --- m )
-  -1 M-BASE ! -1 M-INDEX ! 0 M-SCALE ! 0 M-DISP !
+  -1 M-BASE ! -1 M-INDEX ! 0 M-SCALE ! 0 M-DISP ! 0 M-FWD !
   BEGIN DEPTH M-DEPTH @ > WHILE
+    DUP KIND T-FWD = IF T-MASK INVERT AND M-FWD ! ELSE
     DUP KIND T-REG = IF R#                 \ popped last-written first:
       M-BASE @ 0< 0= IF M-BASE @ M-INDEX ! 0 M-SCALE ! THEN M-BASE ! ELSE
     DUP KIND T-IDX = IF DUP R# M-INDEX ! 12 RSHIFT 3 AND M-SCALE ! ELSE
-    M-DISP +! THEN THEN
+    M-DISP +! THEN THEN THEN
   REPEAT T-MEM ;
 : # ( n --- i ) IMM ! T-IMM ;
 

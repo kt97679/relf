@@ -100,6 +100,26 @@ ordinary scripts hit, then edge cases and wording.
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
 
+## After self-hosting: to revisit (recorded at Iteration 546)
+
+Decisions deferred on purpose until relf assembles its own engine
+(SELF-HOSTING.md M4-M5), so that nothing is tuned twice:
+
+- **Minimize relfsh's memory** - the user (546): "ideally I would like
+  to minimize relfsh RAM usage as well". Where it stands (FINDINGS.md 8):
+  the assembly-engine shell is 308 kB resident and private at idle, 356
+  after the realistic workload - its region 132 kB (the 118 KB image and
+  the stacks' touched pages), its heap 152-200 kB; dash is 100-116 kB
+  private, busybox ash 248-388, bash ~1,650. Where it could go: stop
+  zero-filling memory that is fresh from the system (the ~140 buffers
+  are all made resident by the fill), allocate rarely used buffers on
+  first use, share the image between processes by mapping it instead of
+  copying it - OPTIMIZATIONS.md M1-M3, and whatever measuring then
+  finds. tools/mem-profile.py measures it.
+- **JIT/AOT, native code** (A14 d) - built on the self-hosted assembler.
+- **Speed**: OPTIMIZATIONS.md, first S1 - `+LOOP`, `J`, `2/` as
+  primitives, the gforth finding.
+
 ## What comes next: the user's list (recorded at Iteration 499)
 
 The user's notes for the project's next phase, in their order, each

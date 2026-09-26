@@ -1,0 +1,32 @@
+\ tests/asm-exit42.4 - SELF-HOSTING.md M1: a whole program, from Forth.
+\ Every byte of an ELF executable - the header, the program header, the
+\ code - laid down by asm64.4, written to a file and made executable with
+\ CHMOD; the program exits with status 42. tools/asm-test.py runs it.
+\ The entry point and the file's size are forward references: absolute
+\ fixups, resolved at their labels (Iteration 546).
+S" extend.4" INCLUDED  S" asm64.4" INCLUDED
+ALSO ASSEMBLER
+4194304 CONSTANT ORIGIN               \ 0x400000, where the file is mapped
+ORIGIN 4096 ASM-BUFFER
+LABEL start  LABEL end
+\ the ELF header, 64 bytes
+127 C,A 69 C,A 76 C,A 70 C,A          \ 0x7F E L F
+2 C,A 1 C,A 1 C,A 0 C,A  0 Q,A        \ 64-bit, little-endian, version 1, System V
+2 W,A 62 W,A 1 L,A                    \ an executable, for x86-64, version 1
+start 0 Q,+                           \ the entry point
+64 Q,A 0 Q,A                          \ the program header next; no sections
+0 L,A 64 W,A 56 W,A 1 W,A 64 W,A 0 W,A 0 W,A
+\ the program header, 56 bytes: one segment, the whole file, read and execute
+1 L,A 5 L,A 0 Q,A ORIGIN Q,A ORIGIN Q,A
+end ORIGIN NEGATE Q,+                 \ its size in the file
+end ORIGIN NEGATE Q,+                 \ and in memory
+4096 Q,A
+start L:  edi 42 # mov,  eax 60 # mov,  syscall,
+end L:
+END-ASM
+: WRITE-ELF ( c-addr u --- )
+  2DUP W/O CREATE-FILE THROW >R
+  ABUF @ THERE @ OVER - R@ WRITE-FILE THROW  R> CLOSE-FILE THROW
+  493 CHMOD THROW ;                   \ 0755
+S" /tmp/relf-exit42" WRITE-ELF
+BYE

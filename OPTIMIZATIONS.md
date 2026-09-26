@@ -79,6 +79,9 @@ of walking it. Perhaps 5-10x on loops and functions - relf's scripts are
 
 ## Memory (FINDINGS.md 8, 545)
 
+The user's goal (A18, 546): minimize relfsh's RAM - revisited once relf
+assembles its own engine (GOALS.md, "After self-hosting").
+
 **M1. Do not zero what the system already zeroed** - open.
 The shell allocates its ~140 buffers at startup, and pool.4 fills each
 with zeros - but the allocator's memory comes fresh from mmap, already

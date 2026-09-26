@@ -135,7 +135,33 @@ The same way everything here is: **byte for byte**.
   Then the program: an ELF file that exits with status 42, written
   entirely from Forth. An ELF file that exits with status 42, written
   entirely from Forth.
-- **M2 - the engine source in Forth syntax.** A one-time, mechanical
+  **The program, done** (546): tests/asm-exit42.4 lays down every byte of
+  an ELF executable - header, program header, code - its entry point and
+  size forward references (absolute fixups, `Q,+`), writes it, and makes
+  it executable with CHMOD, a new primitive (both engines create files
+  0644); it runs and exits 42. tools/asm-test.py runs it with the corpus
+  and the labels.
+- **M2 - the engine source in Forth syntax.** What the survey of
+  relfasm64.S (546) says the translation has to carry, beyond the 454
+  instruction shapes:
+  - *Eight macros* become colon words that assemble, parameters from
+    the stack: `PUSHT rax` -> `rax PUSHT,`; `FLAG l` pastes a condition
+    into a mnemonic (`set\cc`) -> the condition's number, `12 FLAG,`;
+    `SYSCALL1 SYS_close` -> `SYS_close SYSCALL1,`. Written by hand - they
+    are eight - and the translator maps their uses.
+  - *Local labels in macros* (SLOT's `1f`): `1 F` and `1 L:` resolve as
+    each expansion runs, as GNU as resolves them per expansion.
+  - *A forward label inside a memory operand*: NEXT jumps through
+    `[dispatch256 + rax*8]`, and the tables come after the code - an
+    absolute 32-bit fixup, beside the relative ones and 546's absolute
+    64-bit one.
+  - *89 `.equ`s*, infix expressions (`MEMSIZE - RSTACK_BYTES - ...`),
+    some referring to labels (sizes): constants in postfix, or `Q,+`
+    fixups where a label is in them.
+  - *Data*: the ELF header, the tables, the OPEN-FILE modes, strings;
+    `.balign`'s two bytes of padding, in GNU as's own fill.
+  - *The generated includes* (relfasm-ops.S, relfasm-consts.S) are
+    translated with the rest at first; M5 has Forth read opcodes.tab. A one-time, mechanical
   translation of relfasm64.S (a converter script, kept only until done),
   then read over by hand.
 - **M3 - identical.** The Forth build equals the GNU `as` build.
