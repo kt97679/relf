@@ -1,5 +1,9 @@
 # ASM-ENGINE.md — an x86-64 engine on raw syscalls
 
+
+**Since Iteration 549 the engine's source is relfasm64.4, in Forth** (asm64.4's syntax),
+assembled by relf; relfasm64.S, below, is its history (SELF-HOSTING.md M5).
+
 GOALS.md "What comes next", item 5: an assembly engine with no libc,
 the project's first end state, deferred since phase 5 traded it for
 portability. Decided at 500: x86-64 first, because the debugging loop

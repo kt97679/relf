@@ -209,8 +209,9 @@ relfsh32: relf32 kernel32-shell.img tools/embed.sh
 # `all` until it runs everything cv8.c runs. Its dispatch tables come
 # from opcodes.tab, with a stub for each handler not written yet.
 # ------------------------------------------------------------------
-relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
-	@sh tools/gen-opcodes.sh --asm relfasm64.S > $@.tmp && mv -f $@.tmp $@
+# The engine's tables, from opcodes.tab, in Forth (Iteration 549).
+relfasm-ops.4: opcodes.tab tools/gen-opcodes.sh
+	@sh tools/gen-opcodes.sh --forth-ops > $@.tmp && mv -f $@.tmp $@
 
 # Linked to raw bytes: the source carries its own ELF header and single
 # program header (Iteration 520, after kt97679/itsy-linux), so nothing
@@ -219,14 +220,21 @@ relfasm-ops.S: opcodes.tab relfasm64.S tools/gen-opcodes.sh
 relfshasm64: relfasm64 kernel64-shell.img tools/embed.sh
 	@sh tools/embed.sh ./relfasm64 kernel64-shell.img $@
 
-relfasm-consts.S: opcodes.tab tools/gen-opcodes.sh
-	@sh tools/gen-opcodes.sh --asm-consts > $@.tmp && mv -f $@.tmp $@
+relfasm-consts.4: opcodes.tab tools/gen-opcodes.sh
+	@sh tools/gen-opcodes.sh --forth-consts > $@.tmp && mv -f $@.tmp $@
 
-relfasm64: relfasm64.S relfasm-ops.S relfasm-consts.S
-	$(CC) -c -o relfasm64.o relfasm64.S
-	ld -Ttext=0x400000 --oformat binary -o $@ relfasm64.o
-	@chmod +x $@ && rm -f relfasm64.o
-	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in relfasm64.S" >&2; rm -f $@; exit 1; }
+# The assembly engine, assembled by relf itself (SELF-HOSTING.md M5,
+# Iteration 549): its source is relfasm64.4, in Forth - asm64.4's syntax -
+# run on the C engine; no assembler or linker. The result rebuilds itself
+# identically (make verify's asm:fixpoint).
+ASM_SOURCES = relfasm64.4 asm64.4 engine-macros.4 extend.4 relfasm-ops.4 relfasm-consts.4
+relfasm64: $(ASM_SOURCES) kernel64.img relf64
+	@rm -f relfasm64.forth
+	@./relf64 kernel64.img < relfasm64.4 > relfasm64.log 2>&1 || true
+	@if grep -q 'Undefined word\|asm64:\|dictionary full' relfasm64.log || [ ! -x relfasm64.forth ]; then \
+	    echo "relfasm64: relf did not assemble it:" >&2; grep -v '^OK' relfasm64.log | head -5 >&2; rm -f relfasm64.forth; exit 1; fi
+	@mv -f relfasm64.forth $@ && rm -f relfasm64.log
+	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in relfasm64.4" >&2; rm -f $@; exit 1; }
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.

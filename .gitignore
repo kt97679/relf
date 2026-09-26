@@ -67,8 +67,9 @@ kernel-shell.img
 relfasm64
 relfshasm64
 relfasm64.o
-relfasm-ops.S
-relfasm-consts.S
+relfasm-ops.4
+relfasm-consts.4
+relfasm64.log
 bench/langs/bench-c
 bench/langs/bench-go
 relfasm64.forth

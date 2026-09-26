@@ -54,48 +54,51 @@ generate() {
 # for every handler SOURCE does not define yet, which names the opcode
 # and exits - so the engine can be written one handler at a time and
 # never jumps into garbage on the rest.
-generate_asm() {
-    awk -v src="$1" '
+# --forth-ops: the same tables, for relfasm64.4 - the engine's Forth source
+# (Iteration 549, SELF-HOSTING.md M5): opcodes.tab stays their one source.
+# The repeated entries are counted loops inside colon words - relf does not
+# run DO ... LOOP at the top level.
+generate_forth_ops() {
+    awk '
     function hex(s,   v, i) { v = 0; s = tolower(s); sub(/^0x/, "", s)
         for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
         return v }
-    BEGIN { while ((getline line < src) > 0)
-                if (line ~ /^L[A-Za-z0-9_]*:/) { sub(/:.*/, "", line); def[line] = 1 } }
     /^#/ || NF == 0 { next }
-    { kind = $1; name = $3; lab = $4
-      if (kind == "escaped") esc[nesc++] = lab; else op[hex($2)] = lab
-      if (!(lab in seen)) { seen[lab] = 1; order[nlab++] = lab; label_name[lab] = name } }
+    { if ($1 == "escaped") esc[nesc++] = $4; else op[hex($2)] = $4 }
     END {
-        print "/*  relfasm-ops.S - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
-        print " *  --asm; do not edit. The dispatch tables, and stubs for the handlers"
-        print " *  relfasm64.S does not have yet. One section, as the engine is: it is"
-        print " *  a single segment behind a hand-written ELF header.  */"
-        print "    .balign 8"
-        print "dispatch256:"
-        for (i = 0; i < 128; i++) printf "    .quad %s\n", (i in op) ? op[i] : "L_badop"
-        print "    .rept 128\n    .quad do_call\n    .endr"
-        print "esc_tab:"
-        for (i = 0; i < nesc; i++) printf "    .quad %s\n", esc[i]
-        printf "    .rept %d\n    .quad L_badesc\n    .endr\n", 256 - nesc
-        for (i = 0; i < nlab; i++) {
-            l = order[i]; if (l in def) continue
-            printf "%s:\n    lea rsi, [rip + %s_name]\n    jmp unimpl\n", l, l
-            names = names sprintf("%s_name: .asciz \"%s (%s)\"\n", l, label_name[l], l)
-        }
-        printf "%s", names
+        print "\\ relfasm-ops.4 - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
+        print "\\ --forth-ops; do not edit. The engine'"'"'s two dispatch tables."
+        print "8 ALIGN,"
+        print "dispatch256 L:"
+        line = ""
+        for (i = 0; i < 128; i++) {
+            line = line sprintf("%s 0 Q,+  ", (i in op) ? op[i] : "L_badop")
+            if (i % 4 == 3) { print line; line = "" } }
+        print ": CALL-ENTRIES ( --- ) 128 0 DO do_call 0 Q,+ LOOP ;  CALL-ENTRIES"
+        print "esc_tab L:"
+        line = ""
+        for (i = 0; i < nesc; i++) {
+            line = line sprintf("%s 0 Q,+  ", esc[i])
+            if (i % 4 == 3) { print line; line = "" } }
+        if (line != "") print line
+        printf ": BAD-ESCAPES ( --- ) %d 0 DO L_badesc 0 Q,+ LOOP ;  BAD-ESCAPES\n", 256 - nesc
     }' "$tab"
 }
-
-# --asm-consts: the constants the assembly source uses, for inclusion at
-# its TOP - GAS picks an instruction's form where it meets a symbol, and a
-# constant defined later is taken for memory (520, 529).
-generate_asm_consts() {
-    awk '/^#/ || NF == 0 { next } $3 == "BRANCH8" { printf "    .equ OPC_BRANCH8, %s\n", $2 }' "$tab"
+generate_forth_consts() {
+    awk '
+    function hex(s,   v, i) { v = 0; s = tolower(s); sub(/^0x/, "", s)
+        for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+        return v }
+    /^#/ || NF == 0 { next }
+    $3 == "BRANCH8" {
+        print "\\ relfasm-consts.4 - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
+        print "\\ --forth-consts; do not edit."
+        printf "%d CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it\n", hex($2) }' "$tab"
 }
 
 case "${1:-}" in
-    --asm)   generate_asm "$2"; exit 0 ;;
-    --asm-consts) generate_asm_consts; exit 0 ;;
+    --forth-ops) generate_forth_ops; exit 0 ;;
+    --forth-consts) generate_forth_consts; exit 0 ;;
     --check) ;;
     *)       generate; exit 0 ;;
 esac

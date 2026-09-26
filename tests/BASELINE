@@ -3,10 +3,8 @@ asm:diff:failed 0
 asm:fixpoint reproduces
 asm:interactive:failed 0
 asm:kernels reproduces
-asm:self-assembled identical
 asm:shell 1
 asm:shell-image reproduces
-asm:translation reproduces
 bundle:pullable 1
 core:4byte 1
 core:8byte 1

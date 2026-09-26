@@ -26,8 +26,7 @@ same iteration.
 6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
    at 544: UTC everywhere.)*
 8. *(Q19, the memory region, was answered at 545: 4 MB.)*
-9. **Self-hosting's last step**: **Q20** - M5, making relfasm64.4 the
-   engine's one source.
+9. *(Q20, self-hosting's last step, was answered at 549: done.)*
 7. *(Q17, self-hosting's four choices, was answered at 536.)*
 
 ## Open
@@ -252,23 +251,14 @@ capture that and let's revisit after asm self hosting will be done."
 Captured in GOALS.md ("After self-hosting: to revisit"), with where it
 stands and the candidates, OPTIMIZATIONS.md M1-M3.
 
-**Q20. M5: making relfasm64.4 the engine's one source (548).** Self-
-hosting works (M3, M4). A14(b) said relfasm64.S is retired when the two
-agree; they agree. Before retiring it, three choices:
-(a) **Comments**: the translation carries none; relfasm64.S's are the
-engine's documentation. *Recommendation*: the translator carries them
-over, as `\` comments, before the switch - once, since after it the
-Forth file is edited by hand.
-(b) **How the build bootstraps**: without relfasm64.S, `make` builds
-relfasm64 by running relf on relfasm64.4 - but relf needs an engine to
-run on: the C engine (built by gcc), or a committed relfasm64 binary, a
-seed as kernel64.img is. *Recommendation*: the C engine - gcc is needed
-for it anyway, and a committed binary is 15 KB of opaque bytes to trust.
-The ARM board keeps its C engine either way.
-(c) **The tables**: gen-opcodes.sh writes them in GNU syntax today; it
-could write them in Forth, or Forth could read opcodes.tab itself.
-*Recommendation*: gen-opcodes.sh writes a Forth include (one small
-change), keeping opcodes.tab the one source.
+**A19. M5: relfasm64.4 the engine's one source (Q20; 548 -> 549).** The
+user agreed to all three: (a) the translator carried the comments over,
+as `\` comments, before the switch; (b) the build bootstraps from the C
+engine - gcc builds relf64, relf64 assembles relfasm64 - no committed
+binary; (c) gen-opcodes.sh writes the tables as a Forth include
+(relfasm-ops.4, relfasm-consts.4). **Done at 549**: relfasm64.S retired;
+`make relfasm64` is relf's; identical to the last GNU as build.
+
 
 ## Your notes, captured (514)
 

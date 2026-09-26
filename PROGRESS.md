@@ -544,6 +544,7 @@ do not trust the absence of a line below.
 - **546** — M1 complete: an ELF executable written entirely from Forth exits 42; CHMOD; relfsh's memory captured for after self-hosting (A18)
 - **547** — M2 done: the whole engine translated (0 lines left); M3 begun - it assembles, 4 short jumps still too far
 - **548** — SELF-HOSTED: relf assembles its engine identical to GNU as's (M3), and that engine rebuilds itself (M4)
+- **549** — M5: the engine's only source is Forth (relfasm64.4); GNU as leaves the build; ANNOUNCEMENT.md
 
 ### Not tied to an iteration
 
@@ -25854,3 +25855,30 @@ and the result rebuilds itself identical.
 
 **M5**, one source, has three choices first - comments, the bootstrap,
 the tables: QUESTIONS.md Q20.
+
+## Iteration 549: one source - and facts for an announcement
+
+**The user's plan**: an announcement for ForthHub and Habr once the
+project settles. ANNOUNCEMENT.md keeps the facts it will need - sizes,
+source lines, speed against languages and Forths, the shell against dash
+and bash, memory, the tests, self-hosting - each with where it was
+measured, how to measure it again, and the caveats to state.
+
+**M5 (A19: all three choices as recommended)**:
+- *Comments*: the translator carried them over - 419 lines of Forth
+  carry relfasm64.S's comments, as `\` lines or at the ends of lines.
+- *The tables*: gen-opcodes.sh writes relfasm-ops.4 and relfasm-consts.4
+  from opcodes.tab (the repeated entries as counted loops in colon words);
+  relfasm64.4 includes them where relfasm64.S included its GNU versions.
+  Checked before the switch: still identical to GNU as, still a fixpoint.
+- *The build*: `make relfasm64` runs relf64 on relfasm64.4 and fails
+  loudly if relf reports an error; the result is the last GNU as build,
+  byte for byte. relfasm64.S, tools/asm-translate.py and asm-corpus.py
+  retired; gen-opcodes.sh's GNU modes removed; the corpus frozen with
+  its symbols (tests/asm-corpus-symbols.txt), so tools/asm-test.py still
+  holds the encoder to GNU as's bytes - 456 of 456. make verify keeps
+  asm:fixpoint; asm:translation and asm:self-assembled had nothing left
+  to compare.
+- On the way: `git rm` refused one file with uncommitted changes and so
+  removed none - the chain of commands after it stopped, and the
+  consistency check "printed nothing" because it never ran.

@@ -183,7 +183,14 @@ The same way everything here is: **byte for byte**.
   again, identical, executable. The x86-64 engine rebuilds itself with
   nothing but relf, its kernel and its Forth sources. `make verify` rows
   asm:translation, asm:self-assembled, asm:fixpoint check it every run.
-- **M5 - one source.** What 548 found it needs before relfasm64.S can go:
+- **M5 - one source. Done at 549** (A19): relfasm64.4 is the engine's only
+  source, its comments carried over from relfasm64.S (419 lines of them);
+  the tables are relfasm-ops.4, which gen-opcodes.sh writes from
+  opcodes.tab; `make relfasm64` runs relf on the C engine over it - no
+  assembler, no linker - and the result is the last GNU as build byte for
+  byte. relfasm64.S, the translator and the corpus generator are retired
+  (git keeps them); the corpus is frozen, with its symbols, so the encoder
+  stays held to GNU as's bytes. What 548 found M5 needed:
   the translation keeps no comments (relfasm64.S is heavily commented -
   the translator must carry them over); the dispatch tables still come
   from gen-opcodes.sh's GNU-syntax output (Forth should read opcodes.tab);

@@ -11,18 +11,15 @@ import os, re, subprocess, sys, tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 ENGINE = next((a for a in sys.argv[1:] if not a.startswith('-')), './relf64')
-# the corpus from the engine as it is now: made at 542, it went stale at
-# 545 when a new handler moved every later symbol by 32 bytes
-subprocess.run([sys.executable, 'tools/asm-corpus.py'], check=True, stdout=subprocess.DEVNULL)
+# The corpus is FROZEN since Iteration 549: made from GNU as's listing of
+# relfasm64.S, which retired when relfasm64.4 became the engine's source
+# (SELF-HOSTING.md M5); its symbols' values frozen beside it. The encoder
+# is still held to GNU as's bytes, shape by shape.
 work = tempfile.mkdtemp(prefix='relf-asmtest-')
-obj = os.path.join(work, 'r.o')
-subprocess.run(['cc', '-c', '-o', obj, 'relfasm64.S'], check=True)
 sym = {}
-for line in subprocess.run(['nm', obj], capture_output=True, text=True).stdout.split('\n'):
-    f = line.split()
-    if len(f) == 3:
-        v = int(f[0], 16)
-        sym[f[2]] = v if f[1] in 'aA' else v + 0x400000
+for line in open('tests/asm-corpus-symbols.txt'):
+    name, value = line.split()
+    sym[name] = int(value)
 REGS = set('''rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15
 eax ebx ecx edx esi edi ebp esp r8d r9d r10d r11d r12d r13d r14d r15d
 ax bx cx dx si di bp sp r8w r9w r10w r11w r12w r13w r14w r15w

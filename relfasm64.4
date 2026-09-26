@@ -1,5 +1,9 @@
-\ relfasm64.4 - relfasm64.S in asm64.4's syntax, made by tools/asm-translate.py
-\ (SELF-HOSTING.md M2). Assembled by relf, it writes the engine.
+\ relfasm64.4 - the x86-64 assembly engine, in Forth: asm64.4's syntax.
+\ Its only source since Iteration 549 (SELF-HOSTING.md M5): translated
+\ once from relfasm64.S, which GNU as assembled to these same bytes, and
+\ edited by hand since. `make relfasm64` assembles it with relf, on the C
+\ engine; the result rebuilds itself identically (make verify's
+\ asm:fixpoint). The tables are relfasm-ops.4, from opcodes.tab.
 S" extend.4" INCLUDED  S" asm64.4" INCLUDED
 ALSO ASSEMBLER
 LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL L_addi
@@ -35,20 +39,53 @@ LABEL m_version LABEL open_modes LABEL parse_ipv4 LABEL phdr LABEL read_all LABE
 LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL sig_restorer LABEL strlen_rdi
 LABEL term_restore LABEL ud_ior LABEL unimpl
 4194304 65536 ASM-BUFFER                  \ 0x400000: where the Makefile links it
-63 CONSTANT OPC_BRANCH8
-4 1024 * 1024 * CONSTANT MEMSIZE
-262144 CONSTANT DSTACK_BYTES
+\ relfasm64.S - the CV8 engine in x86-64 assembly, on raw Linux system
+\  calls, with no libc (ASM-ENGINE.md; GOALS.md "What comes next", item
+\  5). It runs the same images as cv8.c and must behave exactly as it
+\  does; cv8.c is the reference for every handler here.
+\
+\  Milestone 1 (Iteration 519): the core - loading, dispatch, calls and
+\  every opcode that is not an escaped primitive - and the few escaped
+\  ones the bare kernel needs to talk. The dispatch tables come from
+\  opcodes.tab (tools/gen-opcodes.sh --asm), with a stub for every
+\  handler not written yet, which names its opcode and exits 99.
+\
+\  Registers, for the life of the machine:
+\      r14  ip       r13  data-stack pointer (the second item)
+\      r12  tos      r15  return-stack pointer    rbx  the image base
+\  `syscall` clobbers only rax, rcx and r11, so none of them is saved.
+\
+\  The binary is as small as it can be made without changing what runs
+\  (Iteration 520, after kt97679/itsy-linux): no linker output to trim,
+\  but a hand-written ELF header and two program headers - this file,
+\  read-execute, and after it a zero-filled segment, read-write, that
+\  holds the engine's variables and the machine's 16 MB. So there is no
+\  mmap, no section table, no padding between sections - and W^X, since
+\  523: the engine's code is never written and the Forth image, which
+\  it interprets, is never executed. (520 had one read-write-execute
+\  segment, as itsy-linux has.) A 64-bit binary's stack is not
+\  executable without a PT_GNU_STACK header on Linux 5.8 and later.
+\
+\  Build (the Makefile does it):
+\      cc -c -o relfasm64.o relfasm64.S
+\      ld -Ttext=0x400000 --oformat binary -o relfasm64 relfasm64.o
+
+S" relfasm-consts.4" INCLUDED
+
+4 1024 * 1024 * CONSTANT MEMSIZE         \ the call reach (A17, 545)
+262144 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor
 65536 CONSTANT RSTACK_BYTES
 4096 CONSTANT PAGE
 8 CONSTANT CELL
 4096 CONSTANT LSAVE_MAX
 10 CONSTANT CV8_VERSION
-15 CONSTANT FEATURES
+15 CONSTANT FEATURES                     \ varcall varslot spec lit64
+
 0 CONSTANT SYS_read
 1 CONSTANT SYS_write
 2 CONSTANT SYS_open
 3 CONSTANT SYS_close
-231 CONSTANT SYS_exit
+231 CONSTANT SYS_exit                    \ exit_group
 8 CONSTANT SYS_lseek
 9 CONSTANT SYS_mmap
 87 CONSTANT SYS_unlink
@@ -87,8 +124,20 @@ LABEL term_restore LABEL ud_ior LABEL unimpl
 65 CONSTANT NSIG_FLAGS
 217 CONSTANT SYS_getdents64
 4096 CONSTANT DIRBUF
+
+\ ---- the stack, as cv8.c's macros ------------------------------------
 S" engine-macros.4" INCLUDED      \ the eight macros, by hand
+\ SLOT: a variable's address from a 2- or 3-byte self-relative
+\ operand at ip (cv8.c's SLOT()); result in rdx, ip past it.
+
 4194304 CONSTANT TEXTORG
+\ The segment's layout, fixed, and defined before any use: GAS picks
+\ an instruction's form where it meets it, and in Intel syntax an
+\ unknown symbol is taken for memory - so a variable defined after
+\ the code that uses it assembled as a load from a wrong address.
+\ The file must end below BSS_BASE, which the Makefile checks once
+\ it is linked - a label difference is not final while assembling.
+
 TEXTORG 65536 + CONSTANT BSS_BASE
 BSS_BASE CONSTANT argc_v
 BSS_BASE 8 + CONSTANT argv_v
@@ -97,58 +146,66 @@ BSS_BASE 24 + CONSTANT argbase
 BSS_BASE 32 + CONSTANT lsave_sp
 BSS_BASE 40 + CONSTANT heap_top
 BSS_BASE 48 + CONSTANT heap_end
-BSS_BASE 56 + CONSTANT env_ptr
-BSS_BASE 64 + 64 + CONSTANT env_n
-BSS_BASE 64 + 72 + CONSTANT env_cap
+BSS_BASE 56 + CONSTANT env_ptr           \ the environment: an array of
+BSS_BASE 64 + 64 + CONSTANT env_n        \ NAME=value pointers, its
+BSS_BASE 64 + 72 + CONSTANT env_cap      \ count and capacity
 BSS_BASE 64 + CONSTANT hdr
 BSS_BASE 256 + CONSTANT lsave_stack
-lsave_stack LSAVE_MAX CELL * + CONSTANT free_lists
-1073741824 CONSTANT HEAP_RESERVE
-free_lists 64 8 * + CONSTANT scratch
-scratch 256 + CONSTANT sig_flag
-sig_flag 72 + CONSTANT pw_buf
-pw_buf 8 + CONSTANT term_saved
-pw_buf 16 + CONSTANT t_raw_fd
-pw_buf 24 + CONSTANT t_raw_pid
-pw_buf 32 + CONSTANT term_save
-pw_buf 72 + CONSTANT t_saved
-pw_buf 112 + CONSTANT img_limit
-131072 CONSTANT VM_OFF
+lsave_stack LSAVE_MAX CELL * + CONSTANT free_lists \ 64 lists, by class
+1073741824 CONSTANT HEAP_RESERVE         \ 1 GB of address space, not memory
+free_lists 64 8 * + CONSTANT scratch     \ 256 bytes: a struct stat, a termios
+scratch 256 + CONSTANT sig_flag          \ 65 bytes: which signals were caught
+sig_flag 72 + CONSTANT pw_buf            \ /etc/passwd as last read, or 0
+pw_buf 8 + CONSTANT term_saved           \ TERM-RAW saved the terminal
+pw_buf 16 + CONSTANT t_raw_fd            \ RAW-MODE's descriptor, or -1
+pw_buf 24 + CONSTANT t_raw_pid           \ ... and the process that set it
+pw_buf 32 + CONSTANT term_save           \ 40 bytes: a kernel termios
+pw_buf 72 + CONSTANT t_saved             \ 40 bytes: another
+pw_buf 112 + CONSTANT img_limit          \ the image's length, or -1: to EOF
+131072 CONSTANT VM_OFF                   \ 64 KB-aligned
 TEXTORG VM_OFF + CONSTANT VM_BASE
 VM_OFF MEMSIZE + CONSTANT MEM_SIZE
+
+\ ---- the ELF header and the one program header ------------------------
 ehdr L:
-127 C,A  69 C,A  76 C,A  70 C,A  2 C,A  1 C,A  1 C,A  0 C,A
+127 C,A  69 C,A  76 C,A  70 C,A  2 C,A  1 C,A  1 C,A  0 C,A \ 64-bit, little-endian, SysV
 0 Q,A
-2 W,A
-62 W,A
-1 L,A
-_start 0 Q,+
-phdr ehdr NEGATE Q,+
-0 Q,A
-0 L,A
-64 W,A
-56 W,A
-2 W,A
-64 W,A
-0 W,A
-0 W,A
-phdr L:
-1 L,A
-5 L,A
-0 Q,A
-TEXTORG Q,A
-TEXTORG Q,A
-file_end ehdr NEGATE Q,+
-file_end ehdr NEGATE Q,+
-4096 Q,A
-1 L,A
-6 L,A
-0 Q,A
-BSS_BASE Q,A
-BSS_BASE Q,A
-0 Q,A
-MEM_SIZE BSS_BASE TEXTORG - - Q,A
-4096 Q,A
+2 W,A                                    \ e_type: an executable
+62 W,A                                   \ e_machine: x86-64
+1 L,A                                    \ e_version
+_start 0 Q,+                             \ e_entry
+phdr ehdr NEGATE Q,+                     \ e_phoff
+0 Q,A                                    \ e_shoff: no section table
+0 L,A                                    \ e_flags
+64 W,A                                   \ e_ehsize
+56 W,A                                   \ e_phentsize
+2 W,A                                    \ e_phnum: code, then data
+64 W,A                                   \ e_shentsize - 0 would do; `file` prefers it
+0 W,A                                    \ e_shnum
+0 W,A                                    \ e_shstrndx
+phdr L:                                  \ the code: this file, read-execute
+1 L,A                                    \ p_type: PT_LOAD
+5 L,A                                    \ p_flags: read, execute - never written
+0 Q,A                                    \ p_offset: the file maps onto itself
+TEXTORG Q,A                              \ p_vaddr
+TEXTORG Q,A                              \ p_paddr
+file_end ehdr NEGATE Q,+                 \ p_filesz
+file_end ehdr NEGATE Q,+                 \ p_memsz
+4096 Q,A                                 \ p_align
+\ the data: the engine's variables and
+\ the machine's 16 MB, where the Forth
+\ image lives - read-write, never
+\ executed; W^X for 56 bytes (523)
+
+1 L,A                                    \ p_type: PT_LOAD
+6 L,A                                    \ p_flags: read, write
+0 Q,A                                    \ p_offset: nothing in the file
+BSS_BASE Q,A                             \ p_vaddr
+BSS_BASE Q,A                             \ p_paddr
+0 Q,A                                    \ p_filesz
+MEM_SIZE BSS_BASE TEXTORG - - Q,A        \ p_memsz: all zero-filled
+4096 Q,A                                 \ p_align
+
 m_usage L: 85 C,A 115 C,A 97 C,A 103 C,A 101 C,A 58 C,A 32 C,A 114 C,A 101 C,A 108 C,A 102 C,A 97 C,A 115 C,A 109 C,A 54 C,A 52 C,A 32 C,A 73 C,A 77 C,A 65 C,A 71 C,A 69 C,A 32 C,A 91 C,A 65 C,A 82
 C,A 71 C,A 85 C,A 77 C,A 69 C,A 78 C,A 84 C,A 46 C,A 46 C,A 46 C,A 93 C,A 10 C,A
 HERE-A m_usage - CONSTANT m_usage_len
@@ -179,6 +236,9 @@ C,A 101 C,A 32 C,A 116 C,A 104 C,A 105 C,A 115 C,A 32 C,A 101 C,A 110 C,A 103 C,
 118 C,A 101 C,A 10 C,A
 HERE-A m_badop - CONSTANT m_badop_len
 m_nl L:  10 C,A
+
+\ ---- helpers, outside the machine ------------------------------------
+\ die: write rsi/rdx to stderr, exit with edi
 die L:
 rdi push,
 edi 2 # mov,
@@ -187,6 +247,7 @@ syscall,
 rdi pop,
 eax SYS_exit # mov,
 syscall,
+\ read_all: read rdx bytes from fd edi into rsi; rax = bytes read
 read_all L:
 rbx push,
 ebx ebx xor,
@@ -209,6 +270,7 @@ rbx rax add,
 2 L:  rax rbx mov,
 rbx pop,
 ret,
+\ unimpl: rsi -> the stub's NUL-terminated name
 unimpl L:
 r8 rsi mov,
 ecx ecx xor,
@@ -217,7 +279,7 @@ ecx ecx xor,
 rcx inc,
 1 B jmp,
 2 L:  rcx push,
-rsi [ m_unimpl ] lea,
+rsi [ m_unimpl ] lea,                    \ absolute, as every other address here (542)
 edx m_unimpl_len # mov,
 edi 2 # mov,
 eax SYS_write # mov,
@@ -231,6 +293,8 @@ rsi [ m_nl ] lea,
 edx 1 # mov,
 edi 99 # mov,
 die jmp,
+
+\ ---- start: arguments, the image, the memory -------------------------
 _start L:
 rax [ rsp ] mov,
 [ argc_v ] rax mov,
@@ -241,6 +305,11 @@ rdx [ rcx rax *8 8 ] lea,
 [ argbase ] qword-ptr 2 # mov,
 [ t_raw_fd ] qword-ptr 1 NEGATE # mov,
 [ img_limit ] qword-ptr 1 NEGATE # mov,
+\ An image may be this file's own (cv8.c's embedded_image, Iteration
+\ 506): appended, then "RELFIMG1" and its length, 8 bytes each. If
+\ so, the program's arguments start at argv[1] and RELF_ARGV0 says
+\ how it was invoked - which tools/embed.sh makes relfsh from.
+
 rdi [ m_selfexe ] lea,
 esi esi xor,
 eax SYS_open # mov,
@@ -250,12 +319,12 @@ NEAR 10 F js,
 rbp rax mov,
 rdi rbp mov,
 esi esi xor,
-edx 2 # mov,
+edx 2 # mov,                             \ SEEK_END
 eax SYS_lseek # mov,
 syscall,
 rax 16 # cmp,
 NEAR 11 F jl,
-r12 rax mov,
+r12 rax mov,                             \ the file's length
 rdi rbp mov,
 rsi [ rax 16 NEGATE ] lea,
 edx edx xor,
@@ -267,10 +336,10 @@ edx 16 # mov,
 read_all call,
 rax 16 # cmp,
 11 F jne,
-rax 3550891808312280402 # mov,
+rax 3550891808312280402 # mov,           \ "RELFIMG1"
 [ hdr ] rax cmp,
 11 F jne,
-rcx [ hdr 8 + ] mov,
+rcx [ hdr 8 + ] mov,                     \ the image's length
 rcx rcx test,
 11 F jz,
 rax [ r12 16 NEGATE ] lea,
@@ -286,7 +355,7 @@ syscall,
 [ argbase ] qword-ptr 1 # mov,
 set_argv0 call,
 2 F jmp,
-11 L:  rdi rbp mov,
+11 L:  rdi rbp mov,                      \ not ours: the file names the image
 eax SYS_close # mov,
 syscall,
 10 L:  rax [ argc_v ] mov,
@@ -297,8 +366,8 @@ rsi [ m_usage ] lea,
 edx m_usage_len # mov,
 edi 1 # mov,
 die jmp,
-1 L:  rdi [ rcx 8 ] mov,
-esi esi xor,
+1 L:  rdi [ rcx 8 ] mov,                 \ argv[1], the image
+esi esi xor,                             \ O_RDONLY
 eax SYS_open # mov,
 syscall,
 rax rax test,
@@ -308,13 +377,14 @@ edx m_open_len # mov,
 edi 2 # mov,
 die jmp,
 12 L:  rbp rax mov,
-2 L:
+2 L:                                     \ rbp: the image's descriptor, until loaded
 rdi rbp mov,
 rsi [ hdr ] lea,
 edx 8 # mov,
 read_all call,
 rax 8 # cmp,
 NEAR bad_magic jne,
+\ 'C' 'V' '8' '0' 8, then 'L', the version, the features
 [ hdr ] dword-ptr 808998467 # cmp,
 NEAR bad_magic jne,
 [ hdr 4 + ] byte-ptr CELL # cmp,
@@ -324,14 +394,16 @@ NEAR bad_version jne,
 eax [ hdr 7 + ] byte-ptr movzx,
 eax FEATURES INVERT # test,
 NEAR bad_magic jnz,
+\ the thread count and heads, then the DOES> tails: read and skipped
 rdi rbp mov,
 rsi [ hdr ] lea,
 edx 8 # mov,
 read_all call,
 rax 8 # cmp,
 NEAR bad_hdr jne,
-r12 [ hdr ] mov,
-r15 [ r12 *8 24 ] lea,
+r12 [ hdr ] mov,                         \ thread heads to skip
+r15 [ r12 *8 24 ] lea,                   \ the header's bytes: the magic, both
+\ counts, the heads - the tails below
 3 L:  r12 r12 test,
 4 F jz,
 rdi rbp mov,
@@ -349,7 +421,7 @@ read_all call,
 rax 8 # cmp,
 NEAR bad_hdr jne,
 r12 [ hdr ] mov,
-r12 r12 add,
+r12 r12 add,                             \ two cells per tail
 r15 [ r15 r12 *8 ] lea,
 5 L:  r12 r12 test,
 6 F jz,
@@ -361,12 +433,15 @@ rax 8 # cmp,
 NEAR bad_hdr jne,
 r12 dec,
 5 B jmp,
-6 L:  ebx VM_BASE # mov,
+\ the memory: 16 MB, 64 KB-aligned, in the segment's zero-filled
+\ tail - the kernel provided it when it loaded this file
+
+6 L:  ebx VM_BASE # mov,                 \ the image base, for good
 rdi rbp mov,
 rsi rbx mov,
 edx MEMSIZE # mov,
-rax [ img_limit ] mov,
-rax rax test,
+rax [ img_limit ] mov,                   \ an embedded image: exactly its body,
+rax rax test,                            \ not the trailer after it
 13 F js,
 rax r15 sub,
 rdx rax mov,
@@ -374,6 +449,9 @@ rdx rax mov,
 rdi rbp mov,
 eax SYS_close # mov,
 syscall,
+\ as cv8.c: ip at the base, the return stack at the top, the data
+\ stack below the return stack and a guard page, the base on it
+
 r14 rbx mov,
 r15 [ rbx MEMSIZE ] lea,
 r13 [ rbx MEMSIZE RSTACK_BYTES - PAGE - 2 CELL * - ] lea,
@@ -381,6 +459,7 @@ r13 [ rbx MEMSIZE RSTACK_BYTES - PAGE - 2 CELL * - ] lea,
 r12 [ r13 ] mov,
 r13 CELL # add,
 NEXT,
+
 bad_magic L:
 rsi [ m_magic ] lea,
 edx m_magic_len # mov,
@@ -396,16 +475,18 @@ rsi [ m_hdr ] lea,
 edx m_hdr_len # mov,
 edi 2 # mov,
 die jmp,
-do_call L:
+
+\ ---- the machine ------------------------------------------------------
+do_call L:                               \ eax: the first byte, 0x80-0xFF
 al 64 # test,
 1 F jnz,
-eax 63 # and,
+eax 63 # and,                            \ two bytes: 14 bits
 eax 8 # shl,
 ecx [ r14 ] byte-ptr movzx,
 eax ecx or,
 r14 inc,
 2 F jmp,
-1 L:  eax 63 # and,
+1 L:  eax 63 # and,                      \ three bytes: 22 bits
 eax 16 # shl,
 ecx [ r14 ] byte-ptr movzx,
 ecx 8 # shl,
@@ -416,6 +497,7 @@ r14 2 # add,
 2 L:  r14 RPUSH,
 r14 [ rbx rax ] lea,
 NEXT,
+
 L_noop L:  NEXT,
 L_exit L:  EXITNEXT,
 L_lit L:  eax [ r14 ] word-ptr movzx,
@@ -505,15 +587,19 @@ r12 [ r13 ] mov,
 r12 cl shr,
 r13 CELL # add,
 NEXT,
-L_ummult L:  rax [ r13 ] mov,
+L_ummult L:  rax [ r13 ] mov,            \ ( u1 u2 --- ud ): low under high
 r12 mul,
 [ r13 ] rax mov,
 r12 rdx mov,
 NEXT,
-L_umdiv L:  rdx [ r13 ] mov,
+L_umdiv L:  rdx [ r13 ] mov,             \ ( ud u --- rem quot )
 rax [ r13 CELL ] mov,
 rdx r12 cmp,
 1 F jb,
+\ A quotient wider than a cell: cv8.c divides 128 bits and
+\ truncates, where `div` would trap. Reducing the high half
+\ first gives the same truncated quotient and remainder.
+
 rax rdx mov,
 edx edx xor,
 r12 div,
@@ -523,13 +609,13 @@ rax [ r13 CELL ] mov,
 r12 rax mov,
 r13 CELL # add,
 NEXT,
-L_dplus L:  rax [ r13 ] mov,
+L_dplus L:  rax [ r13 ] mov,             \ ( d1 d2 --- d3 )
 [ r13 2 CELL * ] rax add,
 [ r13 CELL ] r12 adc,
 r12 [ r13 CELL ] mov,
 r13 2 CELL * # add,
 NEXT,
-L_type L:  rsi [ r13 ] mov,
+L_type L:  rsi [ r13 ] mov,              \ ( c-addr u --- ), unbuffered for now
 rdx r12 mov,
 1 L:  rdx rdx test,
 2 F jz,
@@ -548,9 +634,9 @@ rdx rax sub,
 2 L:  r12 [ r13 CELL ] mov,
 r13 2 CELL * # add,
 NEXT,
-L_spfetch L:  rax [ r13 CELL NEGATE ] lea,
-rax PUSHT,
-NEXT,
+L_spfetch L:  rax [ r13 CELL NEGATE ] lea, \ where the top item is about to be
+rax PUSHT,                               \ stored: cv8.c's PUSH computes
+NEXT,                                    \ dsp + CELL after the decrement
 L_spstore L:  r13 r12 mov,
 POPT,
 NEXT,
@@ -559,6 +645,8 @@ NEXT,
 L_rpstore L:  r15 r12 mov,
 POPT,
 NEXT,
+
+\ the synthetic band
 L_lit32 L:  rax [ r14 ] dword-ptr movsxd,
 r14 4 # add,
 rax PUSHT,
@@ -604,6 +692,8 @@ NEXT,
 1 L:  rax [ r14 ] byte-ptr movsx,
 r14 rax add,
 NEXT,
+
+\ the specialised band
 L_lit0 L:  eax eax xor,
 rax PUSHT,
 NEXT,
@@ -721,14 +811,14 @@ NEXT,
 L_esc L:  eax [ r14 ] byte-ptr movzx,
 r14 inc,
 [ rax *8 esc_tab ] qword-ptr jmp,
-L_badop L:  rsi [ m_badop ] lea,
+L_badop L:  rsi [ m_badop ] lea,         \ an opcode no table names
 edx m_badop_len # mov,
 edi 2 # mov,
 die jmp,
-L_loop L:  rax [ r15 ] mov,
-rax inc,
-rax [ r15 CELL ] cmp,
-1 F je,
+L_loop L:  rax [ r15 ] mov,              \ (LOOP), since 530: the counter at
+rax inc,                                 \ [r15], the limit at [r15 + 8]; at
+rax [ r15 CELL ] cmp,                    \ the limit, both dropped and the
+1 F je,                                  \ branch back stepped over
 [ r15 ] rax mov,
 NEXT,
 1 L:  r15 2 CELL * # add,
@@ -738,12 +828,12 @@ r14 3 # add,
 NEXT,
 2 L:  r14 2 # add,
 NEXT,
-L_qdo L:  rax [ r13 ] mov,
+L_qdo L:  rax [ r13 ] mov,               \ (?DO) ( limit start --- ), since 530
 rcx r12 mov,
 r12 [ r13 CELL ] mov,
 r13 2 CELL * # add,
 rcx rax cmp,
-1 F je,
+1 F je,                                  \ empty: into the branch to the exit
 rax RPUSH,
 rcx RPUSH,
 [ r14 ] byte-ptr OPC_BRANCH8 # cmp,
@@ -753,25 +843,25 @@ NEXT,
 2 L:  r14 2 # add,
 1 L:  NEXT,
 L_dictlimit L:  rax [ rbx MEMSIZE RSTACK_BYTES - DSTACK_BYTES - ] lea,
-rax PUSHT,
+rax PUSHT,                               \ DICT-LIMIT ( --- a-addr ), since 545
 NEXT,
-L_atxt L:  r12 [ r12 ] mov,
-r12 rbx add,
+L_atxt L:  r12 [ r12 ] mov,              \ @XT ( a-addr --- xt ), since 531
+r12 rbx add,                             \ the image base, which START holds
 NEXT,
-L_execute L:  rax r12 mov,
+L_execute L:  rax r12 mov,               \ EXECUTE ( xt --- ): a call, since 531
 POPT,
 r14 RPUSH,
 r14 rax mov,
 NEXT,
-L_i L:  rax [ r15 ] mov,
+L_i L:  rax [ r15 ] mov,                 \ I ( --- n ), since 530
 rax PUSHT,
 NEXT,
-L_qdup L:  r12 r12 test,
+L_qdup L:  r12 r12 test,                 \ ?DUP ( n --- 0 | n n ), since 529
 1 F jz,
 r13 CELL # sub,
 [ r13 ] r12 mov,
 1 L:  NEXT,
-L_plusstore L:  rax [ r13 ] mov,
+L_plusstore L:  rax [ r13 ] mov,         \ +! ( w a-addr --- ), since 528
 [ r12 ] rax add,
 r12 [ r13 CELL ] mov,
 r13 2 CELL * # add,
@@ -780,7 +870,9 @@ L_badesc L:  rsi [ m_badesc ] lea,
 edx m_badesc_len # mov,
 edi 2 # mov,
 die jmp,
-L_bye L:  term_restore call,
+
+\ ---- the escaped primitives, as far as Milestone 1 goes ---------------
+L_bye L:  term_restore call,             \ the terminal as it was, then out
 edi edi xor,
 eax SYS_exit # mov,
 syscall,
@@ -788,7 +880,7 @@ L_sysexit L:  term_restore call,
 rdi r12 mov,
 eax SYS_exit # mov,
 syscall,
-L_read L:  rdi r12 mov,
+L_read L:  rdi r12 mov,                  \ ( c-addr u fd --- n ), n < 0 is -errno
 rdx [ r13 ] mov,
 rsi [ r13 CELL ] mov,
 eax SYS_read # mov,
@@ -804,13 +896,13 @@ syscall,
 r12 rax mov,
 r13 2 CELL * # add,
 NEXT,
-L_sysargc L:  rax [ argc_v ] mov,
+L_sysargc L:  rax [ argc_v ] mov,        \ ( --- n ): the program's arguments
 rax [ argbase ] sub,
 1 F jge,
 eax eax xor,
 1 L:  rax PUSHT,
 NEXT,
-L_sysarg L:  rax r12 mov,
+L_sysarg L:  rax r12 mov,                \ ( n --- c-addr ), 0 past the end
 rax [ argbase ] add,
 r12 r12 test,
 1 F js,
@@ -821,17 +913,19 @@ r12 [ rcx rax *8 ] mov,
 NEXT,
 1 L:  r12d r12d xor,
 NEXT,
-L_move L:  rcx r12 mov,
+
+\ the memory primitives (cv8.c: memmove, memset, memcmp, memchr, strlen)
+L_move L:  rcx r12 mov,                  \ ( c-addr1 c-addr2 u --- ), overlap-safe
 rdi [ r13 ] mov,
 rsi [ r13 CELL ] mov,
 rcx rcx test,
 2 F jz,
 rdi rsi cmp,
-1 F jbe,
+1 F jbe,                                 \ destination below the source: forwards
 rax [ rsi rcx ] lea,
 rdi rax cmp,
-1 F jae,
-rsi [ rsi rcx 1 NEGATE ] lea,
+1 F jae,                                 \ no overlap: forwards
+rsi [ rsi rcx 1 NEGATE ] lea,            \ overlapping from above: backwards
 rdi [ rdi rcx 1 NEGATE ] lea,
 std,
 rep, movsb,
@@ -841,24 +935,24 @@ cld,
 2 L:  r12 [ r13 2 CELL * ] mov,
 r13 3 CELL * # add,
 NEXT,
-L_fill L:  rax r12 mov,
+L_fill L:  rax r12 mov,                  \ ( c-addr u c --- )
 rcx [ r13 ] mov,
 rdi [ r13 CELL ] mov,
 rep, stosb,
 r12 [ r13 2 CELL * ] mov,
 r13 3 CELL * # add,
 NEXT,
-L_compare L:  rsi [ r13 2 CELL * ] mov,
+L_compare L:  rsi [ r13 2 CELL * ] mov,  \ ( c-addr1 u1 c-addr2 u2 --- -1|0|1 )
 rdi [ r13 ] mov,
-rcx [ r13 CELL ] mov,
+rcx [ r13 CELL ] mov,                    \ u1
 rcx r12 cmp,
-rcx r12 cmova,
+rcx r12 cmova,                           \ min(u1, u2)
 rcx rcx test,
 3 F jz,
 repe, cmpsb,
-1 F ja,
+1 F ja,                                  \ the first difference decides
 2 F jb,
-3 L:  rax [ r13 CELL ] mov,
+3 L:  rax [ r13 CELL ] mov,              \ equal so far: the shorter is less
 rax r12 cmp,
 1 F ja,
 2 F jb,
@@ -869,25 +963,25 @@ r12d r12d xor,
 2 L:  r12 1 NEGATE # mov,
 4 L:  r13 3 CELL * # add,
 NEXT,
-L_scan L:  rdi [ r13 CELL ] mov,
+L_scan L:  rdi [ r13 CELL ] mov,         \ ( c-addr1 u1 c --- c-addr2 u2 )
 rcx [ r13 ] mov,
 rax r12 mov,
-r8 [ rdi rcx ] lea,
+r8 [ rdi rcx ] lea,                      \ the end
 rcx rcx test,
 1 F jz,
 repne, scasb,
 1 F jne,
-rdi dec,
+rdi dec,                                 \ found: from it to the end
 [ r13 CELL ] rdi mov,
 r12 r8 mov,
 r12 rdi sub,
 r13 CELL # add,
 NEXT,
-1 L:  [ r13 CELL ] r8 mov,
+1 L:  [ r13 CELL ] r8 mov,               \ not found: the end, and 0
 r12d r12d xor,
 r13 CELL # add,
 NEXT,
-L_cstrlen L:  rdi r12 mov,
+L_cstrlen L:  rdi r12 mov,               \ ( c-addr --- u )
 eax eax xor,
 rcx 1 NEGATE # mov,
 repne, scasb,
@@ -895,25 +989,30 @@ rcx not,
 rcx dec,
 r12 rcx mov,
 NEXT,
+
+\ the file primitives (Milestone 2): cv8.c's stack effects and ior
+\ values exactly - 200 where cv8.c says 200, and where it passes on
+\ libc's -1, -1, which the raw system calls' -errno is mapped to
+
 4 ALIGN,
-open_modes L:
-577 L,A  577 L,A
-0 L,A  0 L,A
-2 L,A  2 L,A
-1089 L,A  1089 L,A
-578 L,A  578 L,A
-193 L,A
+open_modes L:                            \ cv8.c's open_flags[], by fam
+577 L,A  577 L,A                         \ w w/b   O_WRONLY|O_CREAT|O_TRUNC
+0 L,A  0 L,A                             \ r r/b   O_RDONLY
+2 L,A  2 L,A                             \ r+ r+b  O_RDWR
+1089 L,A  1089 L,A                       \ a a/b   O_WRONLY|O_CREAT|O_APPEND
+578 L,A  578 L,A                         \ w+ w+b  O_RDWR|O_CREAT|O_TRUNC
+193 L,A                                  \ x       O_WRONLY|O_CREAT|O_EXCL
 11 CONSTANT NOPENMODES
-L_openfile L:  rdi [ r13 CELL ] mov,
+L_openfile L:  rdi [ r13 CELL ] mov,     \ ( c-addr u fam --- fid ior )
 rcx [ r13 ] mov,
-r8 [ rdi rcx ] lea,
-r9d [ r8 ] byte-ptr movzx,
+r8 [ rdi rcx ] lea,                      \ the byte after the name: NUL for
+r9d [ r8 ] byte-ptr movzx,               \ the call, then put back
 [ r8 ] byte-ptr 0 # mov,
 rax 1 NEGATE # mov,
 r12 NOPENMODES # cmp,
 1 F jae,
 esi [ r12 *4 open_modes ] dword-ptr mov,
-edx 420 # mov,
+edx 420 # mov,                           \ 0644
 eax SYS_open # mov,
 syscall,
 1 L:  [ r8 ] r9b mov,
@@ -926,13 +1025,13 @@ NEXT,
 2 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
 r12d 200 # mov,
 NEXT,
-L_closefile L:  rdi r12 mov,
+L_closefile L:  rdi r12 mov,             \ ( fid --- ior ): 0, or libc's -1
 eax SYS_close # mov,
 syscall,
 r12 rax mov,
 r12 63 # sar,
 NEXT,
-L_delfile L:  rdi [ r13 ] mov,
+L_delfile L:  rdi [ r13 ] mov,           \ ( c-addr u --- ior ): 0, or -1
 r8 [ rdi r12 ] lea,
 r9d [ r8 ] byte-ptr movzx,
 [ r8 ] byte-ptr 0 # mov,
@@ -943,11 +1042,11 @@ r12 rax mov,
 r12 63 # sar,
 r13 CELL # add,
 NEXT,
-L_chmod L:  rdi [ r13 CELL ] mov,
+L_chmod L:  rdi [ r13 CELL ] mov,        \ ( c-addr u mode --- ior ), since 546
 rax [ r13 ] mov,
 r8 [ rdi rax ] lea,
-r9d [ r8 ] byte-ptr movzx,
-[ r8 ] byte-ptr 0 # mov,
+r9d [ r8 ] byte-ptr movzx,               \ the byte past the name: a NUL,
+[ r8 ] byte-ptr 0 # mov,                 \ put back after
 rsi r12 mov,
 eax SYS_chmod # mov,
 syscall,
@@ -956,9 +1055,9 @@ r12 rax mov,
 r12 63 # sar,
 r13 2 CELL * # add,
 NEXT,
-L_reposfile L:  rdi r12 mov,
-rsi [ r13 CELL ] mov,
-edx edx xor,
+L_reposfile L:  rdi r12 mov,             \ ( ud fid --- ior )
+rsi [ r13 CELL ] mov,                    \ the low cell; a 64-bit offset
+edx edx xor,                             \ SEEK_SET
 eax SYS_lseek # mov,
 syscall,
 r13 2 CELL * # add,
@@ -967,14 +1066,14 @@ rax rax test,
 1 F jns,
 r12d 200 # mov,
 1 L:  NEXT,
-L_filepos L:  rdi r12 mov,
+L_filepos L:  rdi r12 mov,               \ ( fid --- ud ior )
 esi esi xor,
-edx 1 # mov,
+edx 1 # mov,                             \ SEEK_CUR
 eax SYS_lseek # mov,
 syscall,
 ud_ior jmp,
-L_filesize L:  rdi r12 mov,
-rdi push,
+L_filesize L:  rdi r12 mov,              \ ( fid --- ud ior ): the end, the
+rdi push,                                \ position put back as it was
 esi esi xor,
 edx 1 # mov,
 eax SYS_lseek # mov,
@@ -982,23 +1081,23 @@ syscall,
 rdi pop,
 rax rax test,
 ud_ior js,
-rax push,
+rax push,                                \ where it was
 rdi push,
 esi esi xor,
-edx 2 # mov,
+edx 2 # mov,                             \ SEEK_END
 eax SYS_lseek # mov,
 syscall,
 rdi pop,
 rsi pop,
-rax push,
+rax push,                                \ the size
 edx edx xor,
 eax SYS_lseek # mov,
 syscall,
 rax pop,
-ud_ior L:  r13 2 CELL * # sub,
+ud_ior L:  r13 2 CELL * # sub,           \ rax: an offset, or -errno
 rax rax test,
 1 F js,
-[ r13 CELL ] rax mov,
+[ r13 CELL ] rax mov,                    \ ud: low, then high - 0 at 64 bits
 [ r13 ] qword-ptr 0 # mov,
 r12d r12d xor,
 NEXT,
@@ -1006,21 +1105,33 @@ NEXT,
 [ r13 ] qword-ptr 0 # mov,
 r12d 200 # mov,
 NEXT,
-alloc_block L:
+
+\ the allocator (cv8.c: malloc, free, realloc). Power-of-two classes
+\ from 32 bytes: a block is a 16-byte header - its class, and the free
+\ list's link - then what was asked for, 16-byte aligned as malloc's.
+\ Freed blocks go on their class's list and are the next of that class
+\ handed out; new ones come from one reservation of address space,
+\ MAP_NORESERVE, whose pages cost nothing until touched. RESIZE keeps a
+\ block while the new size still fits its class - the shell's buffers
+\ grow by doubling. One difference from glibc, on purpose: realloc(p, 0)
+\ frees p and returns NULL there, so cv8.c reports failure with the
+\ block gone; here the block is kept.
+
+alloc_block L:                           \ rdi bytes -> rax pointer, or 0
 rcx [ rdi 16 ] lea,
 eax 5 # mov,
 rcx 32 # cmp,
 1 F jbe,
 rcx dec,
 rax rcx bsr,
-eax inc,
+eax inc,                                 \ the smallest 2^k that holds it
 1 L:  eax 30 # cmp,
 9 F ja,
 r8 [ rax *8 free_lists ] lea,
 rdx [ r8 ] mov,
 rdx rdx test,
 2 F jz,
-rcx [ rdx 8 ] mov,
+rcx [ rdx 8 ] mov,                       \ one of this class, given back before
 [ r8 ] rcx mov,
 3 F jmp,
 2 L:  rdx [ heap_top ] mov,
@@ -1039,16 +1150,16 @@ r10 [ rdx r9 ] lea,
 r10 [ heap_end ] cmp,
 9 F ja,
 [ heap_top ] r10 mov,
-3 L:  [ rdx ] rax mov,
+3 L:  [ rdx ] rax mov,                   \ the class, in the header
 rax [ rdx 16 ] lea,
 ret,
 9 L:  eax eax xor,
 ret,
-heap_init L:
+heap_init L:                             \ the reservation, at first use
 edi edi xor,
 esi HEAP_RESERVE # mov,
-edx 3 # mov,
-r10d 16418 # mov,
+edx 3 # mov,                             \ PROT_READ | PROT_WRITE
+r10d 16418 # mov,                        \ MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE
 r8 1 NEGATE # mov,
 r9d r9d xor,
 eax SYS_mmap # mov,
@@ -1059,7 +1170,7 @@ rax 4096 NEGATE # cmp,
 rax HEAP_RESERVE # add,
 [ heap_end ] rax mov,
 1 L:  ret,
-free_block L:
+free_block L:                            \ rdi: a pointer from alloc_block, or 0
 rdi rdi test,
 1 F jz,
 rdx [ rdi 16 NEGATE ] lea,
@@ -1069,7 +1180,7 @@ rcx [ r8 ] mov,
 [ rdx 8 ] rcx mov,
 [ r8 ] rdx mov,
 1 L:  ret,
-L_allocate L:  rdi r12 mov,
+L_allocate L:  rdi r12 mov,              \ ( u --- a-addr ior )
 alloc_block call,
 r13 CELL # sub,
 [ r13 ] rax mov,
@@ -1078,20 +1189,20 @@ rax rax test,
 1 F jnz,
 r12d 201 # mov,
 1 L:  NEXT,
-L_free L:  rdi r12 mov,
+L_free L:  rdi r12 mov,                  \ ( a-addr --- ior ): always 0
 free_block call,
 r12d r12d xor,
 NEXT,
-L_resize L:  rdi [ r13 ] mov,
+L_resize L:  rdi [ r13 ] mov,            \ ( a-addr u --- a-addr' ior )
 rdi rdi test,
 5 F jz,
 rax [ rdi 16 NEGATE ] mov,
 ecx eax mov,
 r9d 1 # mov,
 r9 cl shl,
-r9 16 # sub,
+r9 16 # sub,                             \ what the block holds
 r12 r9 cmp,
-4 F jbe,
+4 F jbe,                                 \ still fits: the same block
 r9 push,
 rdi push,
 rdi r12 mov,
@@ -1103,22 +1214,27 @@ rax rax test,
 rax push,
 rdi rax mov,
 rsi push,
-rep, movsb,
+rep, movsb,                              \ the old block's contents
 rdi pop,
 free_block call,
 rax pop,
 [ r13 ] rax mov,
 4 L:  r12d r12d xor,
 NEXT,
-5 L:  rdi r12 mov,
+5 L:  rdi r12 mov,                       \ realloc(NULL, u) is malloc(u)
 alloc_block call,
 [ r13 ] rax mov,
 r12d r12d xor,
 rax rax test,
 7 F jnz,
-6 L:  r12d 202 # mov,
+6 L:  r12d 202 # mov,                    \ failed: the old block stays, valid
 7 L:  NEXT,
-env_init L:
+
+\ the environment (decided at 514: kept by the engine, as libc keeps it,
+\ so the two engines stay interchangeable): an array of NAME=value
+\ pointers, made from envp at first use and passed by EXECVE
+
+env_init L:                              \ the array, if there is none yet
 [ env_ptr ] qword-ptr 0 # cmp,
 9 F jne,
 rsi [ envp_v ] mov,
@@ -1137,10 +1253,10 @@ alloc_block call,
 rdi rax mov,
 rsi [ envp_v ] mov,
 rcx [ env_n ] mov,
-rcx inc,
+rcx inc,                                 \ and its NULL
 rep, movsq,
 9 L:  ret,
-env_find L:
+env_find L:                              \ rdi: a name -> rax its index or -1, rdx its value
 rbx push,
 r8 [ env_ptr ] mov,
 r9d r9d xor,
@@ -1167,8 +1283,8 @@ ret,
 edx edx xor,
 rbx pop,
 ret,
-env_badname L:
-[ rdi ] byte-ptr 0 # cmp,
+env_badname L:                           \ rdi: a name -> ZF clear if it is not
+[ rdi ] byte-ptr 0 # cmp,                \ one setenv accepts: empty, or with =
 1 F je,
 rsi rdi mov,
 2 L:  al [ rsi ] mov,
@@ -1178,16 +1294,16 @@ al 61 # cmp,
 1 F je,
 rsi inc,
 2 B jmp,
-3 L:  eax eax xor,
+3 L:  eax eax xor,                       \ ZF set: a good name
 ret,
-1 L:  eax 1 # or,
+1 L:  eax 1 # or,                        \ ZF clear
 ret,
-L_getenv L:  env_init call,
+L_getenv L:  env_init call,              \ ( c-addr --- addr|0 )
 rdi r12 mov,
 env_find call,
 r12 rdx mov,
 NEXT,
-L_envat L:  env_init call,
+L_envat L:  env_init call,               \ ( i --- c-addr|0 )
 eax eax xor,
 r12 [ env_n ] cmp,
 1 F jae,
@@ -1195,15 +1311,15 @@ rcx [ env_ptr ] mov,
 rax [ rcx r12 *8 ] mov,
 1 L:  r12 rax mov,
 NEXT,
-L_unsetenv L:  env_init call,
+L_unsetenv L:  env_init call,            \ ( c-addr --- ior )
 rdi r12 mov,
 env_badname call,
 8 F jnz,
 1 L:  rdi r12 mov,
-env_find call,
+env_find call,                           \ every entry of that name
 rax rax test,
 7 F js,
-rcx [ env_ptr ] mov,
+rcx [ env_ptr ] mov,                     \ shift the rest down, the NULL too
 rdx [ env_n ] mov,
 2 L:  r8 [ rcx rax *8 8 ] mov,
 [ rcx rax *8 ] r8 mov,
@@ -1216,11 +1332,11 @@ rax rdx cmp,
 NEXT,
 8 L:  r12d 200 # mov,
 NEXT,
-L_setenv L:  env_init call,
+L_setenv L:  env_init call,              \ ( value-addr name-addr --- ior )
 rdi r12 mov,
 env_badname call,
 NEAR 8 F jnz,
-rdi r12 mov,
+rdi r12 mov,                             \ name=value, on the heap
 strlen_rdi call,
 r10 rax mov,
 rdi [ r13 ] mov,
@@ -1240,24 +1356,24 @@ rep, movsb,
 [ rdi ] byte-ptr 61 # mov,
 rdi inc,
 rsi [ r13 ] mov,
-rcx [ r11 1 ] lea,
+rcx [ r11 1 ] lea,                       \ the value and its NUL
 rep, movsb,
 rax push,
 rdi r12 mov,
 env_find call,
-r9 pop,
+r9 pop,                                  \ the new string
 rax rax test,
 2 F js,
-rcx [ env_ptr ] mov,
+rcx [ env_ptr ] mov,                     \ replace the old one
 [ rcx rax *8 ] r9 mov,
 NEAR 7 F jmp,
-2 L:  rax [ env_n ] mov,
+2 L:  rax [ env_n ] mov,                 \ append: grow first if full
 rax inc,
 rax [ env_cap ] cmp,
 3 F jb,
 r9 push,
 rdi [ env_cap ] mov,
-rdi 4 # shl,
+rdi 4 # shl,                             \ twice the capacity, in bytes
 rdi 8 # add,
 alloc_block call,
 r9 pop,
@@ -1286,14 +1402,14 @@ NEXT,
 8 L:  r13 CELL # add,
 r12d 200 # mov,
 NEXT,
-strlen_rdi L:
+strlen_rdi L:                            \ rdi: a NUL-terminated string -> rax
 eax eax xor,
 1 L:  [ rdi rax ] byte-ptr 0 # cmp,
 2 F je,
 rax inc,
 1 B jmp,
 2 L:  ret,
-L_execve L:  env_init call,
+L_execve L:  env_init call,              \ ( argv-addr path-addr --- ior ): -errno
 rdi r12 mov,
 rsi [ r13 ] mov,
 rdx [ env_ptr ] mov,
@@ -1302,6 +1418,10 @@ syscall,
 r12 rax mov,
 r13 CELL # add,
 NEXT,
+
+\ processes and descriptors (Milestone 3), each with cv8.c's result:
+\ -errno where cv8.c gives -errno, 200 or -1 where it gives those
+
 L_getpid L:  eax SYS_getpid # mov,
 syscall,
 rax PUSHT,
@@ -1310,8 +1430,8 @@ L_getppid L:  eax SYS_getppid # mov,
 syscall,
 rax PUSHT,
 NEXT,
-L_isatty L:  rdi r12 mov,
-esi 21505 # mov,
+L_isatty L:  rdi r12 mov,                \ ( fd --- flag ): what isatty(3) asks
+esi 21505 # mov,                         \ TCGETS
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
@@ -1320,43 +1440,43 @@ rax rax test,
 1 F jnz,
 r12 not,
 1 L:  NEXT,
-L_getcwd L:  rdi [ r13 ] mov,
+L_getcwd L:  rdi [ r13 ] mov,            \ ( addr max --- len ior )
 rsi r12 mov,
 eax SYS_getcwd # mov,
 syscall,
 rax rax test,
 1 F jle,
-rax dec,
+rax dec,                                 \ the kernel counts the NUL
 [ r13 ] rax mov,
 r12d r12d xor,
 NEXT,
 1 L:  [ r13 ] qword-ptr 0 # mov,
 r12d 200 # mov,
 NEXT,
-L_umask L:  SYS_umask SYSCALL1,
+L_umask L:  SYS_umask SYSCALL1,          \ ( mask --- old )
 NEXT,
-L_access L:  rdi [ r13 ] mov,
+L_access L:  rdi [ r13 ] mov,            \ ( c-addr mode --- ior ): 0 or -errno
 rsi r12 mov,
 eax SYS_access # mov,
 syscall,
 r12 rax mov,
 r13 CELL # add,
 NEXT,
-L_kill L:  rdi [ r13 ] mov,
+L_kill L:  rdi [ r13 ] mov,              \ ( pid sig --- ior ): 0 or -errno
 rsi r12 mov,
 eax SYS_kill # mov,
 syscall,
 r12 rax mov,
 r13 CELL # add,
 NEXT,
-L_setpgid L:  rdi [ r13 ] mov,
+L_setpgid L:  rdi [ r13 ] mov,           \ ( pid pgid --- ior ): 0 or -errno
 rsi r12 mov,
 eax SYS_setpgid # mov,
 syscall,
 r12 rax mov,
 r13 CELL # add,
 NEXT,
-L_pipe L:  rdi [ scratch ] lea,
+L_pipe L:  rdi [ scratch ] lea,          \ ( --- fd-read fd-write ior )
 eax SYS_pipe # mov,
 syscall,
 r13 3 CELL * # sub,
@@ -1373,7 +1493,7 @@ NEXT,
 [ r13 ] qword-ptr 0 # mov,
 r12d 200 # mov,
 NEXT,
-L_dup2 L:  rdi [ r13 ] mov,
+L_dup2 L:  rdi [ r13 ] mov,              \ ( oldfd newfd --- ior ): 0 or 200
 rsi r12 mov,
 eax SYS_dup2 # mov,
 syscall,
@@ -1383,9 +1503,9 @@ rax rax test,
 1 F jns,
 r12d 200 # mov,
 1 L:  NEXT,
-L_dupfrom L:  rdi [ r13 ] mov,
+L_dupfrom L:  rdi [ r13 ] mov,           \ ( fd floor --- fd' | -1 )
 edx r12d mov,
-esi 1030 # mov,
+esi 1030 # mov,                          \ F_DUPFD_CLOEXEC
 eax SYS_fcntl # mov,
 syscall,
 r13 CELL # add,
@@ -1394,14 +1514,14 @@ rax rax test,
 1 F jns,
 r12 1 NEGATE # mov,
 1 L:  NEXT,
-L_fork L:  eax SYS_fork # mov,
+L_fork L:  eax SYS_fork # mov,           \ ( --- pid ): -1 if it failed
 syscall,
 rax rax test,
 1 F jns,
 rax 1 NEGATE # mov,
 1 L:  rax PUSHT,
 NEXT,
-L_waitpid L:  rdi r12 mov,
+L_waitpid L:  rdi r12 mov,               \ ( pid --- status ior )
 rsi [ scratch ] lea,
 [ rsi ] dword-ptr 0 # mov,
 edx edx xor,
@@ -1418,10 +1538,10 @@ NEXT,
 1 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
 r12d 200 # mov,
 NEXT,
-L_waitnohang L:  rdi 1 NEGATE # mov,
+L_waitnohang L:  rdi 1 NEGATE # mov,     \ ( --- pid status ): 0 0 if none has ended
 rsi [ scratch ] lea,
 [ rsi ] dword-ptr 0 # mov,
-edx 1 # mov,
+edx 1 # mov,                             \ WNOHANG
 r10d r10d xor,
 eax SYS_wait4 # mov,
 syscall,
@@ -1435,14 +1555,14 @@ NEXT,
 1 L:  [ r13 ] qword-ptr 0 # mov,
 r12d r12d xor,
 NEXT,
-L_filekind L:  rdi r12 mov,
+L_filekind L:  rdi r12 mov,              \ ( c-addr --- 0 none, 1 file, 2 dir, 3 other )
 rsi [ scratch ] lea,
 eax SYS_stat # mov,
 syscall,
 r12d r12d xor,
 rax rax test,
 1 F jnz,
-eax [ scratch 24 + ] dword-ptr mov,
+eax [ scratch 24 + ] dword-ptr mov,      \ st_mode
 eax 61440 # and,
 r12d 3 # mov,
 eax 32768 # cmp,
@@ -1452,7 +1572,7 @@ r12d 1 # mov,
 1 F jne,
 r12d 2 # mov,
 1 L:  NEXT,
-L_filemode L:  rdi [ r13 ] mov,
+L_filemode L:  rdi [ r13 ] mov,          \ ( c-addr follow? --- st_mode | 0 )
 rsi [ scratch ] lea,
 eax SYS_lstat # mov,
 r12 r12 test,
@@ -1465,7 +1585,14 @@ rax rax test,
 2 F jnz,
 r12d [ scratch 24 + ] dword-ptr mov,
 2 L:  NEXT,
-sig_catch L:
+
+\ signals (cv8.c: sig_catch, SIGACTION, SIGNALS-PENDING). A caught
+\ signal only sets its flag; the shell asks between commands. With no
+\ libc the restorer is ours: x86-64 Linux requires SA_RESTORER, a stub
+\ the handler returns to that calls rt_sigreturn - which then restores
+\ every register the signal found, so the handler may use any.
+
+sig_catch L:                             \ edi: the signal
 edi 0 # cmp,
 1 F jle,
 edi NSIG_FLAGS # cmp,
@@ -1475,48 +1602,48 @@ edi NSIG_FLAGS # cmp,
 sig_restorer L:
 eax SYS_rt_sigreturn # mov,
 syscall,
-L_sigaction L:  rdi [ r13 ] mov,
-r13 CELL # add,
-rdi 0 # cmp,
+L_sigaction L:  rdi [ r13 ] mov,         \ ( signo action --- ior ): 0 default,
+r13 CELL # add,                          \ 1 ignore, 2 catch, 3 catch without
+rdi 0 # cmp,                             \ SA_RESTART; 0 or -errno
 NEAR 8 F jle,
 rdi NSIG_FLAGS # cmp,
 NEAR 8 F jge,
-rdi 11 # cmp,
+rdi 11 # cmp,                            \ SIGSEGV
 NEAR 8 F je,
-rdi 7 # cmp,
+rdi 7 # cmp,                             \ SIGBUS
 NEAR 8 F je,
-rdi 9 # cmp,
+rdi 9 # cmp,                             \ SIGKILL
 8 F je,
-rdi 19 # cmp,
+rdi 19 # cmp,                            \ SIGSTOP
 8 F je,
-rsi [ scratch ] lea,
-eax eax xor,
+rsi [ scratch ] lea,                     \ struct kernel_sigaction: handler,
+eax eax xor,                             \ flags, restorer, mask
 r12 1 # cmp,
 1 F jne,
-eax 1 # mov,
+eax 1 # mov,                             \ SIG_IGN
 1 L:  r12 2 # cmp,
 2 F jb,
 rax [ sig_catch ] lea,
 2 L:  [ rsi ] rax mov,
-eax 335544320 # mov,
+eax 335544320 # mov,                     \ SA_RESTART | SA_RESTORER
 r12 3 # cmp,
 3 F jne,
-eax 67108864 # mov,
+eax 67108864 # mov,                      \ SA_RESTORER only
 3 L:  [ rsi 8 ] rax mov,
 rax [ sig_restorer ] lea,
 [ rsi 16 ] rax mov,
 [ rsi 24 ] qword-ptr 0 # mov,
 [ rdi sig_flag ] byte-ptr 0 # mov,
 edx edx xor,
-r10d 8 # mov,
+r10d 8 # mov,                            \ sizeof the kernel's sigset
 eax SYS_rt_sigaction # mov,
 syscall,
 r12 rax mov,
 NEXT,
-8 L:  r12 22 NEGATE # mov,
+8 L:  r12 22 NEGATE # mov,               \ -EINVAL
 NEXT,
-L_sigpending L:  eax eax xor,
-ecx 1 # mov,
+L_sigpending L:  eax eax xor,            \ ( --- signo | 0 ): the lowest caught,
+ecx 1 # mov,                             \ now cleared
 1 L:  ecx NSIG_FLAGS # cmp,
 2 F jge,
 [ rcx sig_flag ] byte-ptr 0 # cmp,
@@ -1527,8 +1654,14 @@ ecx inc,
 eax ecx mov,
 2 L:  rax PUSHT,
 NEXT,
-L_opendir L:  rdi r12 mov,
-esi 589824 # mov,
+
+\ directories (cv8.c: opendir, readdir, closedir): a handle is a heap
+\ block - the descriptor, a read position, the end of what was read,
+\ then a buffer of getdents64 entries whose names are handed out in
+\ place, as readdir hands out d_name
+
+L_opendir L:  rdi r12 mov,               \ ( c-addr --- dirp | 0 )
+esi 589824 # mov,                        \ O_RDONLY | O_DIRECTORY | O_CLOEXEC
 eax SYS_open # mov,
 syscall,
 rax rax test,
@@ -1544,15 +1677,15 @@ rax rax test,
 [ rax 16 ] qword-ptr 0 # mov,
 r12 rax mov,
 NEXT,
-7 L:  eax SYS_close # mov,
+7 L:  eax SYS_close # mov,               \ no memory: give the descriptor back
 syscall,
 8 L:  r12d r12d xor,
 NEXT,
-L_readdir L:  r8 r12 mov,
+L_readdir L:  r8 r12 mov,                \ ( dirp --- c-addr | 0 )
 rax [ r8 8 ] mov,
 rax [ r8 16 ] cmp,
 2 F jb,
-rdi [ r8 ] mov,
+rdi [ r8 ] mov,                          \ the buffer is used up: read more
 rsi [ r8 24 ] lea,
 edx DIRBUF # mov,
 eax SYS_getdents64 # mov,
@@ -1562,22 +1695,23 @@ rax rax test,
 [ r8 16 ] rax mov,
 eax eax xor,
 [ r8 8 ] rax mov,
-2 L:  rcx [ r8 rax 24 ] lea,
-edx [ rcx 16 ] word-ptr movzx,
+2 L:  rcx [ r8 rax 24 ] lea,             \ struct linux_dirent64
+edx [ rcx 16 ] word-ptr movzx,           \ d_reclen
 rax rdx add,
 [ r8 8 ] rax mov,
-r12 [ rcx 19 ] lea,
+r12 [ rcx 19 ] lea,                      \ d_name
 NEXT,
 8 L:  r12d r12d xor,
 NEXT,
-L_closedir L:  rdi [ r12 ] mov,
+L_closedir L:  rdi [ r12 ] mov,          \ ( dirp --- )
 eax SYS_close # mov,
 syscall,
 rdi r12 mov,
 free_block call,
 POPT,
 NEXT,
-L_chdir L:  rdi r12 mov,
+
+L_chdir L:  rdi r12 mov,                 \ ( c-addr --- ior ): 0 or 200
 eax SYS_chdir # mov,
 syscall,
 r12d r12d xor,
@@ -1585,10 +1719,10 @@ rax rax test,
 1 F jns,
 r12d 200 # mov,
 1 L:  NEXT,
-L_waitjob L:  rdi r12 mov,
-rsi [ scratch ] lea,
-[ rsi ] dword-ptr 0 # mov,
-edx 2 # mov,
+L_waitjob L:  rdi r12 mov,               \ ( pid --- pid' raw ): waits, a stop
+rsi [ scratch ] lea,                     \ reported too (WUNTRACED); pid' is
+[ rsi ] dword-ptr 0 # mov,               \ -1 if the wait failed
+edx 2 # mov,                             \ WUNTRACED
 r10d r10d xor,
 eax SYS_wait4 # mov,
 syscall,
@@ -1599,8 +1733,13 @@ rax 1 NEGATE # mov,
 eax [ scratch ] dword-ptr mov,
 rax PUSHT,
 NEXT,
+
+\ ~user (decided at 523: /etc/passwd, and only that - no NSS without
+\ libc). The file is read whole into a heap block that lives until the
+\ next call, as libc's result lives until the next getpwnam.
+
 m_passwd L:  47 C,A 101 C,A 116 C,A 99 C,A 47 C,A 112 C,A 97 C,A 115 C,A 115 C,A 119 C,A 100 C,A 0 C,A
-L_getpwhome L:  rdi [ pw_buf ] mov,
+L_getpwhome L:  rdi [ pw_buf ] mov,      \ ( c-addr --- addr | 0 )
 free_block call,
 [ pw_buf ] qword-ptr 0 # mov,
 rdi [ m_passwd ] lea,
@@ -1609,7 +1748,7 @@ eax SYS_open # mov,
 syscall,
 rax rax test,
 NEAR 8 F js,
-rax push,
+rax push,                                \ its size, then the whole of it
 rdi rax mov,
 esi esi xor,
 edx 2 # mov,
@@ -1622,7 +1761,7 @@ esi esi xor,
 edx edx xor,
 eax SYS_lseek # mov,
 syscall,
-rdi pop,
+rdi pop,                                 \ the size
 rdi push,
 rdi inc,
 alloc_block call,
@@ -1643,11 +1782,12 @@ syscall,
 rsi [ pw_buf ] mov,
 rsi rsi test,
 8 F jz,
+\ each line: name:passwd:uid:gid:gecos:dir:shell
 1 L:  [ rsi ] byte-ptr 0 # cmp,
 8 F je,
 rdi r12 mov,
 rcx rsi mov,
-2 L:  al [ rdi ] mov,
+2 L:  al [ rdi ] mov,                    \ the name, then a colon
 al al test,
 3 F jz,
 al [ rcx ] cmp,
@@ -1657,7 +1797,7 @@ rcx inc,
 2 B jmp,
 3 L:  [ rcx ] byte-ptr 58 # cmp,
 5 F jne,
-edx 5 # mov,
+edx 5 # mov,                             \ past five colons: the home directory
 4 L:  al [ rcx ] mov,
 al al test,
 8 F jz,
@@ -1668,7 +1808,7 @@ al 58 # cmp,
 4 B jne,
 edx dec,
 4 B jnz,
-r12 rcx mov,
+r12 rcx mov,                             \ found: end it at its colon
 6 L:  al [ rcx ] mov,
 al al test,
 9 F jz,
@@ -1680,7 +1820,7 @@ rcx inc,
 6 B jmp,
 10 L:  [ rcx ] byte-ptr 0 # mov,
 9 L:  NEXT,
-5 L:  al [ rsi ] mov,
+5 L:  al [ rsi ] mov,                    \ not this line: the next
 al al test,
 8 F jz,
 rsi inc,
@@ -1689,37 +1829,41 @@ al 10 # cmp,
 1 B jmp,
 8 L:  r12d r12d xor,
 NEXT,
-L_localtime L:  eax SYS_time # mov,
+
+\ the clock (decided at 523: UTC first; the zone is its own later step).
+\ civil_from_days, Howard Hinnant's: integer only, right for any date.
+
+L_localtime L:  eax SYS_time # mov,      \ ( --- sec min hour mday mon year wday )
 edi edi xor,
 syscall,
 r13 7 CELL * # sub,
 [ r13 6 CELL * ] r12 mov,
 edx edx xor,
 ecx 86400 # mov,
-rcx div,
+rcx div,                                 \ rax days, rdx seconds of the day
 r8 rax mov,
 rax rdx mov,
 edx edx xor,
 ecx 60 # mov,
 rcx div,
-[ r13 5 CELL * ] rdx mov,
+[ r13 5 CELL * ] rdx mov,                \ sec
 edx edx xor,
 rcx div,
-[ r13 4 CELL * ] rdx mov,
-[ r13 3 CELL * ] rax mov,
-rax [ r8 4 ] lea,
+[ r13 4 CELL * ] rdx mov,                \ min
+[ r13 3 CELL * ] rax mov,                \ hour
+rax [ r8 4 ] lea,                        \ 1970-01-01 was a Thursday
 edx edx xor,
 ecx 7 # mov,
 rcx div,
-r12 rdx mov,
-r9 [ r8 719468 ] lea,
+r12 rdx mov,                             \ wday
+r9 [ r8 719468 ] lea,                    \ z
 rax r9 mov,
 edx edx xor,
 ecx 146097 # mov,
-rcx div,
+rcx div,                                 \ rax era, rdx doe
 r10 rax mov,
 r11 rdx mov,
-rax r11 mov,
+rax r11 mov,                             \ yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365
 edx edx xor,
 ecx 1460 # mov,
 rcx div,
@@ -1739,11 +1883,11 @@ rax rsi mov,
 edx edx xor,
 ecx 365 # mov,
 rcx div,
-rdi rax mov,
+rdi rax mov,                             \ yoe
 rax r10 400 # imul,
 rax rdi add,
-r9 rax mov,
-rax rdi 365 # imul,
+r9 rax mov,                              \ y
+rax rdi 365 # imul,                      \ doy = doe - (365*yoe + yoe/4 - yoe/100)
 rsi rdi mov,
 rsi 2 # shr,
 rax rsi add,
@@ -1754,15 +1898,15 @@ ecx 100 # mov,
 rcx div,
 rsi rax sub,
 rax r11 mov,
-rax rsi sub,
+rax rsi sub,                             \ doy
 r10 rax mov,
-rax rax 5 # imul,
+rax rax 5 # imul,                        \ mp = (5*doy + 2) / 153
 rax 2 # add,
 edx edx xor,
 ecx 153 # mov,
 rcx div,
-rdi rax mov,
-rax rdi 153 # imul,
+rdi rax mov,                             \ mp
+rax rdi 153 # imul,                      \ d = doy - (153*mp + 2)/5 + 1
 rax 2 # add,
 edx edx xor,
 ecx 5 # mov,
@@ -1770,23 +1914,24 @@ rcx div,
 rdx r10 mov,
 rdx rax sub,
 rdx inc,
-[ r13 2 CELL * ] rdx mov,
-rax [ rdi 3 ] lea,
+[ r13 2 CELL * ] rdx mov,                \ mday
+rax [ rdi 3 ] lea,                       \ m = mp < 10 ? mp + 3 : mp - 9
 rdi 10 # cmp,
 1 F jb,
 rax [ rdi 9 NEGATE ] lea,
 1 L:  rax 2 # cmp,
 2 F ja,
-r9 inc,
+r9 inc,                                  \ January and February: the next year
 2 L:  rax dec,
-[ r13 CELL ] rax mov,
+[ r13 CELL ] rax mov,                    \ mon, 0..11
 r9 1900 # sub,
-[ r13 ] r9 mov,
+[ r13 ] r9 mov,                          \ year - 1900
 NEXT,
-L_cputimes L:  r8 1 NEGATE # mov,
+
+L_cputimes L:  r8 1 NEGATE # mov,        \ ( --- user sys child-user child-sys ) ms
 r13 4 CELL * # sub,
 [ r13 3 CELL * ] r12 mov,
-edi edi xor,
+edi edi xor,                             \ RUSAGE_SELF
 rsi [ scratch ] lea,
 eax SYS_getrusage # mov,
 syscall,
@@ -1794,7 +1939,7 @@ ru_ms call,
 [ r13 2 CELL * ] rax mov,
 ru_ms_sys call,
 [ r13 CELL ] rax mov,
-rdi 1 NEGATE # mov,
+rdi 1 NEGATE # mov,                      \ RUSAGE_CHILDREN
 rsi [ scratch ] lea,
 eax SYS_getrusage # mov,
 syscall,
@@ -1803,12 +1948,12 @@ ru_ms call,
 ru_ms_sys call,
 r12 rax mov,
 NEXT,
-ru_ms L:  rax [ scratch ] mov,
+ru_ms L:  rax [ scratch ] mov,           \ ru_utime: sec*1000 + usec/1000
 rax rax 1000 # imul,
 rcx rax mov,
 rax [ scratch 8 + ] mov,
 1 F jmp,
-ru_ms_sys L:  rax [ scratch 16 + ] mov,
+ru_ms_sys L:  rax [ scratch 16 + ] mov,  \ ru_stime
 rax rax 1000 # imul,
 rcx rax mov,
 rax [ scratch 24 + ] mov,
@@ -1817,14 +1962,14 @@ r9d 1000 # mov,
 r9 div,
 rax rcx add,
 ret,
-L_getrlimit L:  rdi r12 mov,
+L_getrlimit L:  rdi r12 mov,             \ ( resource --- soft hard ior )
 rsi [ scratch ] lea,
 eax SYS_getrlimit # mov,
 syscall,
 r13 2 CELL * # sub,
 rax rax test,
 1 F js,
-rcx [ scratch ] mov,
+rcx [ scratch ] mov,                     \ RLIM_INFINITY is all ones: -1
 [ r13 CELL ] rcx mov,
 rcx [ scratch 8 + ] mov,
 [ r13 ] rcx mov,
@@ -1834,7 +1979,7 @@ NEXT,
 [ r13 ] qword-ptr 0 # mov,
 r12 rax mov,
 NEXT,
-L_setrlimit L:  rax [ r13 CELL ] mov,
+L_setrlimit L:  rax [ r13 CELL ] mov,    \ ( soft hard resource --- ior )
 [ scratch ] rax mov,
 rax [ r13 ] mov,
 [ scratch 8 + ] rax mov,
@@ -1845,7 +1990,7 @@ syscall,
 r12 rax mov,
 r13 2 CELL * # add,
 NEXT,
-L_getfsize L:  edi 1 # mov,
+L_getfsize L:  edi 1 # mov,              \ ( --- n ): ulimit -f, 512-byte blocks
 rsi [ scratch ] lea,
 eax SYS_getrlimit # mov,
 syscall,
@@ -1859,7 +2004,7 @@ rax 9 # shr,
 rcx rax mov,
 1 L:  rcx PUSHT,
 NEXT,
-L_setfsize L:  edi 1 # mov,
+L_setfsize L:  edi 1 # mov,              \ ( n --- ior )
 rsi [ scratch ] lea,
 eax SYS_getrlimit # mov,
 syscall,
@@ -1881,8 +2026,8 @@ rax rax test,
 2 F jns,
 8 L:  r12d 202 # mov,
 2 L:  NEXT,
-L_tcgetpgrp L:  rdi r12 mov,
-esi 21519 # mov,
+L_tcgetpgrp L:  rdi r12 mov,             \ ( fd --- pgid | -1 )
+esi 21519 # mov,                         \ TIOCGPGRP
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
@@ -1891,21 +2036,21 @@ rax rax test,
 1 F jnz,
 r12 [ scratch ] dword-ptr movsxd,
 1 L:  NEXT,
-L_tcsetpgrp L:  [ scratch 64 + ] qword-ptr 2097152 # mov,
-edi edi xor,
-rsi [ scratch 64 + ] lea,
+L_tcsetpgrp L:  [ scratch 64 + ] qword-ptr 2097152 # mov, \ ( fd pgid --- ior ):
+edi edi xor,                             \ SIGTTOU blocked while the terminal
+rsi [ scratch 64 + ] lea,                \ is handed over, as cv8.c does
 rdx [ scratch 72 + ] lea,
 r10d 8 # mov,
 eax SYS_rt_sigprocmask # mov,
 syscall,
 [ scratch ] r12d mov,
 rdi [ r13 ] mov,
-esi 21520 # mov,
+esi 21520 # mov,                         \ TIOCSPGRP
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
 rax push,
-edi 2 # mov,
+edi 2 # mov,                             \ SIG_SETMASK: as it was
 rsi [ scratch 72 + ] lea,
 edx edx xor,
 r10d 8 # mov,
@@ -1914,8 +2059,13 @@ syscall,
 r12 pop,
 r13 CELL # add,
 NEXT,
-term_restore L:
-rdi [ t_raw_fd ] mov,
+
+\ the terminal, through the kernel's 36-byte termios - the one the
+\ TCGETS/TCSETS ioctls take, not glibc's larger struct: c_iflag at 0,
+\ c_lflag at 12, c_cc from 17, so VTIME at 22 and VMIN at 23
+
+term_restore L:                          \ on the way out: only the process
+rdi [ t_raw_fd ] mov,                    \ that set raw mode puts it back
 rdi rdi test,
 1 F js,
 eax SYS_getpid # mov,
@@ -1923,20 +2073,20 @@ syscall,
 rax [ t_raw_pid ] cmp,
 1 F jne,
 rdi [ t_raw_fd ] mov,
-esi 21506 # mov,
+esi 21506 # mov,                         \ TCSETS: now
 rdx [ t_saved ] lea,
 eax SYS_ioctl # mov,
 syscall,
 1 L:  ret,
-copy40 L:
+copy40 L:                                \ rsi -> rdi, 40 bytes
 ecx 5 # mov,
 rep, movsq,
 ret,
-L_rawmode L:  rdi [ r13 ] mov,
+L_rawmode L:  rdi [ r13 ] mov,           \ ( fd flag --- ior )
 r13 CELL # add,
 r12 r12 test,
 2 F jnz,
-r12d r12d xor,
+r12d r12d xor,                           \ off: only the descriptor it was set on
 rdi [ t_raw_fd ] cmp,
 9 F jne,
 esi 21506 # mov,
@@ -1948,8 +2098,8 @@ rax rax test,
 9 F js,
 [ t_raw_fd ] qword-ptr 1 NEGATE # mov,
 9 L:  NEXT,
-2 L:  rdi push,
-esi 21505 # mov,
+2 L:  rdi push,                          \ on: saved the first time
+esi 21505 # mov,                         \ TCGETS
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
@@ -1970,16 +2120,16 @@ eax SYS_getpid # mov,
 syscall,
 [ t_raw_pid ] rax mov,
 rdi pop,
-3 L:  [ scratch 12 + ] dword-ptr 2 8 OR INVERT # and,
-[ scratch 23 + ] byte-ptr 1 # mov,
-[ scratch 22 + ] byte-ptr 0 # mov,
+3 L:  [ scratch 12 + ] dword-ptr 2 8 OR INVERT # and, \ ICANON, ECHO
+[ scratch 23 + ] byte-ptr 1 # mov,       \ VMIN
+[ scratch 22 + ] byte-ptr 0 # mov,       \ VTIME
 esi 21506 # mov,
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
 r12 rax mov,
 NEXT,
-L_termraw L:  rdi r12 mov,
+L_termraw L:  rdi r12 mov,               \ ( fd --- ior ): the line editor's
 esi 21505 # mov,
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
@@ -1992,18 +2142,18 @@ rsi [ scratch ] lea,
 rdi [ term_save ] lea,
 copy40 call,
 [ term_saved ] qword-ptr 1 # mov,
-1 L:  [ scratch 12 + ] dword-ptr 2 8 OR 32768 OR INVERT # and,
-[ scratch ] dword-ptr 256 64 OR INVERT # and,
+1 L:  [ scratch 12 + ] dword-ptr 2 8 OR 32768 OR INVERT # and, \ ICANON ECHO IEXTEN
+[ scratch ] dword-ptr 256 64 OR INVERT # and, \ ICRNL INLCR
 [ scratch 23 + ] byte-ptr 1 # mov,
 [ scratch 22 + ] byte-ptr 0 # mov,
 rdi r12 mov,
-esi 21507 # mov,
+esi 21507 # mov,                         \ TCSETSW: when output has drained
 rdx [ scratch ] lea,
 eax SYS_ioctl # mov,
 syscall,
 9 L:  r12 rax mov,
 NEXT,
-L_termrestore L:  eax eax xor,
+L_termrestore L:  eax eax xor,           \ ( fd --- ior )
 [ term_saved ] qword-ptr 0 # cmp,
 9 F je,
 rdi r12 mov,
@@ -2013,7 +2163,7 @@ eax SYS_ioctl # mov,
 syscall,
 9 L:  r12 rax mov,
 NEXT,
-L_poll L:  rdi [ r13 CELL ] mov,
+L_poll L:  rdi [ r13 CELL ] mov,         \ ( a-addr n ms --- n' ): n' < 0 is -errno
 rsi [ r13 ] mov,
 edx r12d mov,
 eax SYS_poll # mov,
@@ -2021,9 +2171,11 @@ syscall,
 r12 rax mov,
 r13 2 CELL * # add,
 NEXT,
+
+\ SYSTEM: /bin/sh -c, waited for; its exit status, or 200
 m_binsh L:  47 C,A 98 C,A 105 C,A 110 C,A 47 C,A 115 C,A 104 C,A 0 C,A
 m_dashc L:  45 C,A 99 C,A 0 C,A
-L_system L:  rdi [ r13 ] mov,
+L_system L:  rdi [ r13 ] mov,            \ ( c-addr u --- ior )
 r8 [ rdi r12 ] lea,
 r9d [ r8 ] byte-ptr movzx,
 [ r8 ] byte-ptr 0 # mov,
@@ -2053,7 +2205,7 @@ r8 pop,
 [ r8 ] r9b mov,
 r13 CELL # add,
 NEXT,
-4 L:  rax [ m_binsh ] lea,
+4 L:  rax [ m_binsh ] lea,               \ the child
 [ scratch ] rax mov,
 rax [ m_dashc ] lea,
 [ scratch 8 + ] rax mov,
@@ -2068,17 +2220,19 @@ syscall,
 edi 127 # mov,
 eax SYS_exit # mov,
 syscall,
-sa_fill L:
-[ scratch 32 + ] word-ptr 2 # mov,
-al ah xchg,
+
+\ TCP (Iteration 505's primitives): sockaddr_in in scratch + 32
+sa_fill L:                               \ eax port, edx address (memory order)
+[ scratch 32 + ] word-ptr 2 # mov,       \ AF_INET
+al ah xchg,                              \ the port, big-endian
 [ scratch 34 + ] word-ptr ax mov,
 [ scratch 36 + ] dword-ptr edx mov,
 [ scratch 40 + ] qword-ptr 0 # mov,
 ret,
-L_tcplisten L:  r10 [ r13 ] mov,
+L_tcplisten L:  r10 [ r13 ] mov,         \ ( port loopback? --- fd ior )
 r10 push,
 edi 2 # mov,
-esi 1 # mov,
+esi 1 # mov,                             \ SOCK_STREAM
 edx edx xor,
 eax SYS_socket # mov,
 syscall,
@@ -2087,15 +2241,15 @@ rax rax test,
 NEAR 8 F js,
 rbp rax mov,
 eax r10d mov,
-edx edx xor,
+edx edx xor,                             \ INADDR_ANY
 r12 r12 test,
 1 F jz,
-edx 16777343 # mov,
+edx 16777343 # mov,                      \ 127.0.0.1
 1 L:  sa_fill call,
 [ scratch 48 + ] dword-ptr 1 # mov,
 rdi rbp mov,
-esi 1 # mov,
-edx 2 # mov,
+esi 1 # mov,                             \ SOL_SOCKET
+edx 2 # mov,                             \ SO_REUSEADDR
 r10 [ scratch 48 + ] lea,
 r8d 4 # mov,
 eax SYS_setsockopt # mov,
@@ -2124,7 +2278,7 @@ syscall,
 8 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
 r12d 200 # mov,
 NEXT,
-L_tcpaccept L:  rdi r12 mov,
+L_tcpaccept L:  rdi r12 mov,             \ ( fd --- fd' ior )
 esi esi xor,
 edx edx xor,
 eax SYS_accept # mov,
@@ -2137,7 +2291,7 @@ rax 1 NEGATE # mov,
 r12d 200 # mov,
 1 L:  [ r13 ] rax mov,
 NEXT,
-L_tcpconnect L:  rdi [ r13 ] mov,
+L_tcpconnect L:  rdi [ r13 ] mov,        \ ( c-addr port --- fd ior )
 parse_ipv4 call,
 ecx ecx test,
 8 F jz,
@@ -2169,9 +2323,9 @@ syscall,
 8 L:  [ r13 ] qword-ptr 1 NEGATE # mov,
 r12d 200 # mov,
 NEXT,
-parse_ipv4 L:
-r8d r8d xor,
-r11d r11d xor,
+parse_ipv4 L:                            \ rdi: "a.b.c.d" -> eax in memory order,
+r8d r8d xor,                             \ ecx 1 if well-formed as inet_pton
+r11d r11d xor,                           \ wants it, 0 if not
 1 L:  eax [ rdi ] byte-ptr movzx,
 eax 48 # sub,
 eax 9 # cmp,
@@ -2182,7 +2336,7 @@ rdi inc,
 eax 48 # sub,
 eax 9 # cmp,
 3 F ja,
-r9d r9d test,
+r9d r9d test,                            \ a leading zero: refused
 9 F jz,
 r9d r9d 10 # imul,
 r9d eax add,
@@ -2209,12 +2363,13 @@ ecx 1 # mov,
 ret,
 9 L:  ecx ecx xor,
 ret,
+
 m_selfexe L:  47 C,A 112 C,A 114 C,A 111 C,A 99 C,A 47 C,A 115 C,A 101 C,A 108 C,A 102 C,A 47 C,A 101 C,A 120 C,A 101 C,A 0 C,A
 m_argv0 L:  82 C,A 69 C,A 76 C,A 70 C,A 95 C,A 65 C,A 82 C,A 71 C,A 86 C,A 48 C,A 61 C,A
 HERE-A m_argv0 - CONSTANT m_argv0_len
-set_argv0 L:
+set_argv0 L:                             \ RELF_ARGV0=argv[0], unless already set
 env_init call,
-rdi [ scratch ] lea,
+rdi [ scratch ] lea,                     \ the name alone, NUL-terminated
 rsi [ m_argv0 ] lea,
 ecx m_argv0_len 1 - # mov,
 rep, movsb,
@@ -2241,532 +2396,21 @@ rep, movsb,
 rcx pop,
 rsi [ argv_v ] mov,
 rsi [ rsi ] mov,
-rcx inc,
+rcx inc,                                 \ and its NUL
 rep, movsb,
-rcx [ env_ptr ] mov,
+rcx [ env_ptr ] mov,                     \ env_init left room for more
 rax [ env_n ] mov,
 [ rcx rax *8 ] r9 mov,
 rax inc,
 [ env_n ] rax mov,
 [ rcx rax *8 ] qword-ptr 0 # mov,
 9 L:  ret,
-8 ALIGN,
-dispatch256 L:
-L_noop 0 Q,+
-L_exit 0 Q,+
-L_lit 0 Q,+
-L_branch 0 Q,+
-L_0branch 0 Q,+
-L_drop 0 Q,+
-L_dup 0 Q,+
-L_swap 0 Q,+
-L_rot 0 Q,+
-L_over 0 Q,+
-L_cfetch 0 Q,+
-L_fetch 0 Q,+
-L_cstore 0 Q,+
-L_store 0 Q,+
-L_and 0 Q,+
-L_or 0 Q,+
-L_xor 0 Q,+
-L_fromr 0 Q,+
-L_tor 0 Q,+
-L_rfetch 0 Q,+
-L_eq 0 Q,+
-L_ult 0 Q,+
-L_lt 0 Q,+
-L_plus 0 Q,+
-L_ummult 0 Q,+
-L_spfetch 0 Q,+
-L_lit32 0 Q,+
-L_dovar 0 Q,+
-L_dodoes 0 Q,+
-L_lit8 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_branch8 0 Q,+
-L_0branch8 0 Q,+
-L_plusstore 0 Q,+
-L_qdup 0 Q,+
-L_i 0 Q,+
-L_loop 0 Q,+
-L_qdo 0 Q,+
-L_execute 0 Q,+
-L_atxt 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_badop 0 Q,+
-L_lit0 0 Q,+
-L_lit1 0 Q,+
-L_litm1 0 Q,+
-L_vf 0 Q,+
-L_vs 0 Q,+
-L_lsave 0 Q,+
-L_lrest 0 Q,+
-L_lstore 0 Q,+
-L_lzero 0 Q,+
-L_zeq 0 Q,+
-L_sub 0 Q,+
-L_ne 0 Q,+
-L_zlt 0 Q,+
-L_sgt 0 Q,+
-L_2dup 0 Q,+
-L_2drop 0 Q,+
-L_badop 0 Q,+
-L_onep 0 Q,+
-L_cellp 0 Q,+
-L_cells 0 Q,+
-L_onem 0 Q,+
-L_badop 0 Q,+
-L_count 0 Q,+
-L_badop 0 Q,+
-L_addi 0 Q,+
-L_badop 0 Q,+
-L_eqi 0 Q,+
-L_badop 0 Q,+
-L_lit64 0 Q,+
-L_esc 0 Q,+
-L_badop 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-do_call 0 Q,+
-esc_tab L:
-L_bye 0 Q,+
-L_openfile 0 Q,+
-L_closefile 0 Q,+
-L_system 0 Q,+
-L_reposfile 0 Q,+
-L_filepos 0 Q,+
-L_delfile 0 Q,+
-L_filesize 0 Q,+
-L_fork 0 Q,+
-L_execve 0 Q,+
-L_waitpid 0 Q,+
-L_pipe 0 Q,+
-L_dup2 0 Q,+
-L_getenv 0 Q,+
-L_setenv 0 Q,+
-L_sysexit 0 Q,+
-L_chdir 0 Q,+
-L_getcwd 0 Q,+
-L_sysargc 0 Q,+
-L_sysarg 0 Q,+
-L_getpid 0 Q,+
-L_unsetenv 0 Q,+
-L_allocate 0 Q,+
-L_free 0 Q,+
-L_resize 0 Q,+
-L_getpwhome 0 Q,+
-L_getfsize 0 Q,+
-L_setfsize 0 Q,+
-L_read 0 Q,+
-L_write 0 Q,+
-L_poll 0 Q,+
-L_rawmode 0 Q,+
-L_move 0 Q,+
-L_fill 0 Q,+
-L_compare 0 Q,+
-L_scan 0 Q,+
-L_cstrlen 0 Q,+
-L_isatty 0 Q,+
-L_opendir 0 Q,+
-L_readdir 0 Q,+
-L_closedir 0 Q,+
-L_access 0 Q,+
-L_kill 0 Q,+
-L_umask 0 Q,+
-L_cputimes 0 Q,+
-L_sigaction 0 Q,+
-L_sigpending 0 Q,+
-L_termraw 0 Q,+
-L_termrestore 0 Q,+
-L_filekind 0 Q,+
-L_getrlimit 0 Q,+
-L_setrlimit 0 Q,+
-L_waitnohang 0 Q,+
-L_getppid 0 Q,+
-L_envat 0 Q,+
-L_setpgid 0 Q,+
-L_tcsetpgrp 0 Q,+
-L_tcgetpgrp 0 Q,+
-L_waitjob 0 Q,+
-L_filemode 0 Q,+
-L_localtime 0 Q,+
-L_dupfrom 0 Q,+
-L_tcplisten 0 Q,+
-L_tcpaccept 0 Q,+
-L_tcpconnect 0 Q,+
-L_negate 0 Q,+
-L_lshift 0 Q,+
-L_rshift 0 Q,+
-L_umdiv 0 Q,+
-L_dplus 0 Q,+
-L_type 0 Q,+
-L_spstore 0 Q,+
-L_rpfetch 0 Q,+
-L_rpstore 0 Q,+
-L_dictlimit 0 Q,+
-L_chmod 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
-L_badesc 0 Q,+
+
+S" relfasm-ops.4" INCLUDED
+
+\ ---- the end of the file, and the zero-filled tail after it -----------
 file_end L:
-file_end ehdr - CONSTANT FILE_SIZE
+file_end ehdr - CONSTANT FILE_SIZE       \ under 64 KB: the Makefile checks
 : CHECK-1 256 LSAVE_MAX CELL * + 64 8 * + 256 + 72 + 8 + 120 + VM_OFF BSS_BASE TEXTORG - - > IF CR ." the variables no longer fit below the machine's memory" ABORT THEN ; CHECK-1
 END-ASM
 : WRITE-ENGINE ( c-addr u --- )

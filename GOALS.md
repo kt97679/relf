@@ -106,8 +106,9 @@ GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
 x86-64 engine from its Forth source, byte for byte what GNU as and ld
 make of relfasm64.S, and that engine, run on the same program, writes
 itself again - SELF-HOSTING.md M3 and M4, checked by `make verify`
-(asm:self-assembled, asm:fixpoint). What remains is M5, one source
-(QUESTIONS.md Q20).
+(asm:self-assembled, asm:fixpoint). **And since 549 the engine's only
+source is Forth** (M5, A19): relfasm64.4, assembled by relf; GNU as is no
+longer part of the build.
 
 ## After self-hosting: to revisit (recorded at Iteration 546)
 
@@ -497,6 +498,10 @@ here as the evidence for it.
   Prompts `04` and `05` apply to it. (The earlier article, about the
   VM's evolution, lives in its own repository; `ARTICLE.md`, its working
   notes, left this one at 489.)
+  **And an announcement** (the user, 549): for ForthHub and Habr, once
+  the project settles. Its facts - sizes, speed and memory against other
+  shells, languages and Forths, self-hosting, the tests - are kept in
+  ANNOUNCEMENT.md, current, with how to re-measure each.
 ## Why RelF specifically, not SOD32 or a hybrid design
 
 This was decided after directly benchmarking multiple VM designs (SOD32,
