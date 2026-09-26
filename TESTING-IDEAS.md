@@ -90,7 +90,23 @@ build first - cheap, and likely to find something.
 
 ## Specs we have not held relf to
 
-12. **The Forth 2012 test suite** (**first**; Gerry Jackson's, the
+12. **The Forth 2012 test suite** - **begun, 552**: fetched
+    (github.com/gerryjackson/forth2012-test-suite) and run on relf with
+    extend.4: the preliminary tests pass (57 of 57) and the CORE word set
+    runs to its end; the next file stopped at `:NONAME`, and an error
+    ends the whole include chain, so no later word set ran. A static
+    survey of what each set's tests use - noisy, it counts words from
+    comments too - shows about sixty standard words missing: CORE EXT
+    `:NONAME 2>R 2R> 2R@` and the number prefixes `$FF #12 %101 'c'`;
+    DOUBLE `2LITERAL 2ROT 2VALUE 2VARIABLE D- D.R D0< D0=` ... and
+    literals like `12.`; FACILITY's structures `BEGIN-STRUCTURE FIELD:
+    CFIELD: +FIELD END-STRUCTURE`; STRING and FILE `/STRING -TRAILING
+    FILE-STATUS FLUSH-FILE`; TOOLS `AHEAD CS-PICK CS-ROLL N>R NR>
+    NAME>STRING NAME>COMPILE NAME>INTERPRET`; SEARCH `GET-CURRENT
+    SET-CURRENT`; LOCALS `(LOCAL)` and `{: :}`; the whole BLOCK set.
+    Each is a decision, not a to-do - minimalism first. Next: run each
+    word set on its own, so each reports its real failures.
+    (First written:) **The Forth 2012 test suite** (**first**; Gerry Jackson's, the
     standard's own): CORE is what we run; CORE EXT, DOUBLE, EXCEPTION,
     FACILITY, FILE, LOCALS, MEMORY, SEARCH, STRING, TOOLS are not. Each
     word set either passes, or its failures become a list of words relf

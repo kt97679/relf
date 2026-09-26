@@ -26013,3 +26013,12 @@ suite's other word sets, spec archaeology.
 
 **The directory structure**, proposed - engine/, forth/, shell/, docs/,
 examples/ - is its own iteration, next: it touches every path.
+
+**The Forth 2012 suite, first run** (same session): the standard's own
+tests, run on relf with extend.4. Preliminary 57 of 57; CORE to its end;
+then `:NONAME`, missing, stopped the include chain. A static survey -
+noisy, counting words from comments - lists about sixty missing standard
+words across CORE EXT, DOUBLE, FACILITY, STRING, FILE, TOOLS, SEARCH,
+LOCALS and BLOCK (TESTING-IDEAS.md 12). My first survey said "0 missing"
+everywhere: relf's `[']` reports "Not found X", not "Undefined word X",
+and the check looked for the second only - the same trap as 543's.
