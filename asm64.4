@@ -61,6 +61,7 @@ VARIABLE ORG       \ the address the buffer's first byte runs at
  8 2 REG: r8w   9 2 REG: r9w  10 2 REG: r10w 11 2 REG: r11w
 12 2 REG: r12w 13 2 REG: r13w 14 2 REG: r14w 15 2 REG: r15w
  0 1 REG: al    1 1 REG: cl    2 1 REG: dl    3 1 REG: bl
+ 4 1 REG: ah    5 1 REG: ch    6 1 REG: dh    7 1 REG: bh    \ never with a REX
 260 1 REG: spl 261 1 REG: bpl 262 1 REG: sil 263 1 REG: dil
  8 1 REG: r8b   9 1 REG: r9b  10 1 REG: r10b 11 1 REG: r11b
 12 1 REG: r12b 13 1 REG: r13b 14 1 REG: r14b 15 1 REG: r15b
@@ -149,7 +150,7 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
     R> 129 RM, IMM, EXIT THEN
   DUP MEM? IF                                        \ reg, r/m
     OVER SIZE-OF OPSIZE!  SWAP R> 8 * 2 + BYTE? 0= - RMR, EXIT THEN
-  OVER SIZE-OF OPSIZE!  R> 8 * BYTE? 0= - RMR, ;     \ r/m, reg
+  DUP SIZE-OF OPSIZE!  R> 8 * BYTE? 0= - RMR, ;      \ r/m, reg: the reg's size
 : add, 0 ALU ;  : or, 1 ALU ;  : adc, 2 ALU ;  : sbb, 3 ALU ;
 : and, 4 ALU ;  : sub, 5 ALU ;  : xor, 6 ALU ;  : cmp, 7 ALU ;
 
@@ -161,10 +162,10 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
         0 199 RM, IMM @ L,A EXIT THEN                \ sign-extended imm32
         0 REX ! W? DUP R# REX-B REX, R# 184 + C,A IMM @ Q,A EXIT THEN
       0 REX ! W? DUP R# REX-B DUP REX-8 PREFIX, REX,
-      R# BYTE? IF 176 ELSE 184 THEN + C,A IMM, EXIT THEN
+      R# 7 AND BYTE? IF 176 ELSE 184 THEN + C,A IMM, EXIT THEN
     0 BYTE? IF 198 ELSE 199 THEN RM, IMM, EXIT THEN
   DUP MEM? IF OVER SIZE-OF OPSIZE!  SWAP BYTE? IF 138 ELSE 139 THEN RMR, EXIT THEN
-  OVER SIZE-OF OPSIZE!  BYTE? IF 136 ELSE 137 THEN RMR, ;
+  DUP SIZE-OF OPSIZE!  BYTE? IF 136 ELSE 137 THEN RMR, ;
 
 : lea, ( reg mem --- ) OVER RSIZE OPSIZE! SWAP 141 RMR, ;
 
@@ -174,7 +175,7 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
     DUP REG? IF DUP R# 0= IF DROP
       0 REX ! W? PREFIX, REX, BYTE? IF 168 ELSE 169 THEN C,A IMM, EXIT THEN THEN
     0 BYTE? IF 246 ELSE 247 THEN RM, IMM, EXIT THEN
-  OVER SIZE-OF OPSIZE!  BYTE? IF 132 ELSE 133 THEN RMR, ;
+  DUP SIZE-OF OPSIZE!  BYTE? IF 132 ELSE 133 THEN RMR, ;
 
 \ ---- one operand: inc dec not neg mul imul div idiv ---------------------
 : UNARY ( rm k op8 --- ) >R >R DUP SIZE-OF OPSIZE! R> R> BYTE? 0= - RM, ;
@@ -190,12 +191,61 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
 : syscall, 3845 OPC, ;   : ret, 195 C,A ;
 : std, 253 C,A ;   : cld, 252 C,A ;
 
+\ ---- movzx movsx movsxd: a register, from a narrower r/m -------------------
+: EXTEND ( reg rm op --- ) >R OVER RSIZE OPSIZE! SWAP R> RMR, ;
+: movzx, ( reg rm --- ) DUP SIZE-OF 1 = IF 4022 ELSE 4023 THEN EXTEND ;
+: movsx, ( reg rm --- ) DUP SIZE-OF 1 = IF 4030 ELSE 4031 THEN EXTEND ;
+: movsxd, ( reg rm --- ) 99 EXTEND ;
+: bsr, ( reg rm --- ) 4029 EXTEND ;
+: cmova, ( reg rm --- ) 3911 EXTEND ;
+: imul, ( reg rm --- | reg rm imm --- )
+  DUP IMM? IF DROP OVER RSIZE OPSIZE! SWAP                 \ three operands
+    IMM @ DISP8? IF 107 RMR, IMM @ C,A ELSE 105 RMR, IMM, THEN EXIT THEN
+  4015 EXTEND ;
+: xchg, ( rm reg --- ) DUP SIZE-OF OPSIZE! BYTE? IF 134 ELSE 135 THEN RMR, ;
+
+\ ---- shifts and rotates: by 1, by an immediate, by cl -----------------------
+: SHIFT ( rm cnt k --- )
+  >R DUP IMM? IF DROP DUP SIZE-OF OPSIZE!
+      IMM @ 1 = IF R> BYTE? IF 208 ELSE 209 THEN RM, EXIT THEN
+      R> BYTE? IF 192 ELSE 193 THEN RM, IMM @ C,A EXIT THEN
+  DROP DUP SIZE-OF OPSIZE!  R> BYTE? IF 210 ELSE 211 THEN RM, ;   \ by cl
+: rol, 0 SHIFT ;  : ror, 1 SHIFT ;  : shl, 4 SHIFT ;  : shr, 5 SHIFT ;  : sar, 7 SHIFT ;
+
+\ ---- jumps and calls: to an address, short where the distance fits ---------
+: REL8? ( target len --- rel f ) HERE-A + - DUP DISP8? ;
+: JCC ( target cc --- )
+  >R DUP 2 REL8? IF NIP R> 112 + C,A C,A EXIT THEN DROP
+  6 HERE-A + - 15 C,A R> 128 + C,A L,A ;
+: jo, 0 JCC ;  : jno, 1 JCC ;  : jb, 2 JCC ;  : jae, 3 JCC ;
+: je, 4 JCC ;  : jne, 5 JCC ;  : jbe, 6 JCC ;  : ja, 7 JCC ;
+: js, 8 JCC ;  : jns, 9 JCC ;  : jl, 12 JCC ;  : jge, 13 JCC ;
+: jle, 14 JCC ;  : jg, 15 JCC ;
+: jz, je, ;  : jnz, jne, ;  : jc, jb, ;  : jnc, jae, ;
+: jmp, ( target | rm --- )
+  DUP REG? OVER MEM? OR IF 4 OPSIZE! 4 255 RM, EXIT THEN   \ 64-bit by default: no REX.W
+  DUP 2 REL8? IF NIP 235 C,A C,A EXIT THEN DROP
+  5 HERE-A + - 233 C,A L,A ;
+: call, ( target | rm --- )
+  DUP REG? OVER MEM? OR IF 4 OPSIZE! 2 255 RM, EXIT THEN
+  5 HERE-A + - 232 C,A L,A ;
+
+\ ---- setcc: a byte register or r/m from a condition --------------------------
+: SETCC ( rm cc --- ) 1 OPSIZE! 0 SWAP 3984 + RM, ;
+: sete, 4 SETCC ;  : setne, 5 SETCC ;  : setb, 2 SETCC ;  : seta, 7 SETCC ;
+: setl, 12 SETCC ;  : setg, 15 SETCC ;  : setle, 14 SETCC ;  : setge, 13 SETCC ;
+
+\ ---- the string instructions, with their prefixes -----------------------------
+: rep, 243 C,A ;  : repe, 243 C,A ;  : repne, 242 C,A ;
+: movsb, 164 C,A ;  : stosb, 170 C,A ;  : cmpsb, 166 C,A ;  : scasb, 174 C,A ;
+
 \ ---- and last, the words that would shadow Forth's while this is written --
 : [ ( --- ) DEPTH M-DEPTH ! ;
 : ] ( ... --- m )
   -1 M-BASE ! -1 M-INDEX ! 0 M-SCALE ! 0 M-DISP !
   BEGIN DEPTH M-DEPTH @ > WHILE
-    DUP KIND T-REG = IF R# M-BASE ! ELSE
+    DUP KIND T-REG = IF R#                 \ popped last-written first:
+      M-BASE @ 0< 0= IF M-BASE @ M-INDEX ! 0 M-SCALE ! THEN M-BASE ! ELSE
     DUP KIND T-IDX = IF DUP R# M-INDEX ! 12 RSHIFT 3 AND M-SCALE ! ELSE
     M-DISP +! THEN THEN
   REPEAT T-MEM ;

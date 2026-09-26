@@ -310,9 +310,14 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     rm -f /tmp/verify-asm-core.out /tmp/verify-c-core.out
     AD=$(THIS_SH="$PWD/relfshasm64" timeout 300 tests/diff/run-all 2>&1 | tail -1)
     emit asm:diff:failed "$(echo "$AD" | sed -n 's/.*, \([0-9]*\) failed.*/\1/p')"
-    if ( cd tests/shell && THIS_SH="$PWD/../../relfshasm64" timeout 600 ./run-all ) >/dev/null 2>&1
+    if ( cd tests/shell && THIS_SH="$PWD/../../relfshasm64" timeout 600 ./run-all ) >/tmp/verify-asm-shell.log 2>&1
     then emit asm:shell 1
-    else emit asm:shell 0; fi
+    else emit asm:shell 0
+        # which file and which assertion - fury's first report said only
+        # "0" (Iteration 542), and the cause had to be found by guessing
+        grep -E '^FAIL:|[1-9][0-9]* failed \(' /tmp/verify-asm-shell.log | head -6 | sed 's/^/  asm shell: /'
+    fi
+    rm -f /tmp/verify-asm-shell.log
     AP=$(THIS_SH="$PWD/relfshasm64" timeout 300 sh tests/interactive/run 2>&1 | tail -1)
     emit asm:interactive:failed "$(echo "$AP" | sed -n 's/.*passed, \([0-9]*\) failed.*/\1/p')"
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
@@ -322,6 +327,29 @@ else
              asm:interactive:failed size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done
+fi
+
+# ---------------------------------------------------------------
+# 3c. Another Forth builds the kernels (Iteration 542). gforth, running
+#     cross.4 unmodified, lays down both kernel images byte for byte: a
+#     diverse double-compile - the seeds owe nothing to relf's own
+#     compiler. Where gforth is not installed the row is `skipped`.
+# ---------------------------------------------------------------
+echo "== another Forth =="
+if command -v gforth >/dev/null 2>&1; then
+    ddc=reproduces
+    for bytes in 8 4; do
+        case $bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac
+        wd=$(mktemp -d)
+        cp cross.4 kernel.4 "$wd/"
+        [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
+        ( cd "$wd" && timeout 120 gforth cross.4 -e bye >/dev/null 2>&1 )
+        cmp -s "$wd/built.img" "$img" || ddc=DIFFERS
+        rm -rf "$wd"
+    done
+    emit ddc:gforth "$ddc"
+else
+    emit ddc:gforth skipped
 fi
 
 # ---------------------------------------------------------------

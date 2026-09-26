@@ -536,7 +536,8 @@ do not trust the absence of a line below.
 - **538** — no folded returns: 22 opcodes and handlers gone, a body ends in EXIT; 98 one-byte opcodes -> 76; format 9
 - **539** — 64 one-byte opcodes: nine cold primitives escaped, CHAR+ INVERT ALIGNED colon words; format 10
 - **540** — the reference corpus from GNU as's listing: 453 real instruction shapes, no data taken for code
-- **541** — M0 begun: asm64.4, the Forth assembler's first encoder, and tools/asm-test.py - 8 of 453 shapes match
+- **541** — M0 begun: asm64.4, the Forth assembler's first encoder, and tools/asm-test.py
+- **542** — M0's encoder complete: 452 of 452 shapes; gforth builds both kernels identical; relf against C, Go, Python, Ruby
 
 ### Not tied to an iteration
 
@@ -25541,3 +25542,59 @@ address, which relative jumps need. Next: the families not yet written -
 shifts, `movzx`/`movsx`/`movsxd`, `imul`, `xchg`, `setcc`, `cmova`,
 `bsr`, the string instructions, jumps and calls - then every remaining
 mismatch, one by one.
+
+## Iteration 542: fury's report, and the encoder complete
+
+**The user's runs of 536**: the ARM board verified; fury had one
+difference, `asm:shell 0`. Reproduced by setting a time zone: the
+assembly engine's LOCAL-TIME is UTC (A10), and run-invocation checks the
+prompt's `\d` and `\A` against `date` - 16:03 against 09:03 in
+`America/Los_Angeles`. A real bug every UTC machine hides; QUESTIONS.md
+Q18. And fury's row said only "0": `make verify` now prints the failing
+file and assertion beside `asm:shell`.
+
+**Another Forth builds the kernels**: gforth 0.7.3, running cross.4
+UNMODIFIED, lays down kernel64.img and kernel32.img byte for byte - a
+diverse double-compile; the seeds owe nothing to relf's own compiler.
+A new row, `ddc:gforth`, checks it where gforth is installed.
+
+**relf against C, Go, Python and Ruby** (best of three, ms, process start
+included; the same three programs in each, all five agreeing):
+
+| | fib(30) | loop 30M | sieve 5M |
+|---|---|---|---|
+| C (gcc -O2) | 3 | 12 | 25 |
+| Go 1.22 | 7 | 13 | 28 |
+| relf, assembly engine | 25 | 110 | 475 |
+| relf, C engine | 26 | 100 | 493 |
+| Ruby 3.2 | 119 | 697 | 487 |
+| Python 3.12 | 101 | 2,003 | 947 |
+
+relf is 4-18x faster than Python and Ruby on calls and loops, 8-9x
+slower than C; the sieve is its weak case, level with Ruby - its inner
+loop is `+LOOP` and `J`, colon words still, ~15 dispatches an iteration.
+
+**Could reordering words shrink the image?** A call is 2 bytes to a
+target in the first 16 KB, 3 beyond; the kernel fills 9 KB of it. With
+the most-called words per byte moved into the other 7 KB (a greedy
+knapsack over the 5,976 call sites, 3,533 of them 3-byte): 2,127 more
+near - **2.1 KB, 1.8% of the image** - at the price of hoisting those
+words and all they depend on into an early source file. Not worth it
+now; the names (Q1, 21% of the image) are the larger lever.
+
+**M0**: the harness's 8 of 453 was an artifact - relf's error recovery
+resets the search order, so after the first unwritten mnemonic every
+line lost the assembler's words; each line sets it now. Then 307 of 453
+- and three encoder bugs among the written families: a memory
+destination's size taken from the memory operand (unsized) instead of
+the register; two plain registers in `[ ]` where the second overwrote
+the base; hex and character literals misread by the translator. Written
+since: movzx/movsx/movsxd, shifts and rotates, jumps and calls (short
+where the distance fits), setcc, cmova, bsr, xchg, imul's three forms,
+the string instructions. **452 of 452.** The engine's ten RIP-relative
+addresses became absolute, like all its others: nine bytes, and one form
+the assembler does not need.
+
+Recorded changes, with their causes: `ddc:gforth reproduces`, the new
+row; the assembly engine 8 bytes larger (15,080), the RIP-relative
+addresses absolute now. Every other row as before.

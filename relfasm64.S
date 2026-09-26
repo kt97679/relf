@@ -282,7 +282,7 @@ unimpl:
     inc rcx
     jmp 1b
 2:  push rcx
-    lea rsi, [rip + m_unimpl]
+    lea rsi, [m_unimpl]              /* absolute, as every other address here (542) */
     mov edx, m_unimpl_len
     mov edi, 2
     mov eax, SYS_write
@@ -292,7 +292,7 @@ unimpl:
     mov edi, 2
     mov eax, SYS_write
     syscall
-    lea rsi, [rip + m_nl]
+    lea rsi, [m_nl]
     mov edx, 1
     mov edi, 99
     jmp die
@@ -365,7 +365,7 @@ _start:
     mov rcx, [argv_v]
     cmp rax, 2
     jae 1f
-    lea rsi, [rip + m_usage]
+    lea rsi, [m_usage]
     mov edx, m_usage_len
     mov edi, 1
     jmp die
@@ -375,7 +375,7 @@ _start:
     syscall
     test rax, rax
     jns 12f
-    lea rsi, [rip + m_open]
+    lea rsi, [m_open]
     mov edx, m_open_len
     mov edi, 2
     jmp die
@@ -462,17 +462,17 @@ _start:
     NEXT
 
 bad_magic:
-    lea rsi, [rip + m_magic]
+    lea rsi, [m_magic]
     mov edx, m_magic_len
     mov edi, 2
     jmp die
 bad_version:
-    lea rsi, [rip + m_version]
+    lea rsi, [m_version]
     mov edx, m_version_len
     mov edi, 2
     jmp die
 bad_hdr:
-    lea rsi, [rip + m_hdr]
+    lea rsi, [m_hdr]
     mov edx, m_hdr_len
     mov edi, 2
     jmp die
@@ -741,7 +741,7 @@ locals_failed:
             mov rax, [rbx + 8]
             test rax, rax
             jnz 1f
-            lea rsi, [rip + m_locals]
+            lea rsi, [m_locals]
             mov edx, m_locals_len
             mov edi, 70
             jmp die
@@ -811,7 +811,7 @@ L_lit64:    mov rax, [r14]
 L_esc:      movzx eax, byte ptr [r14]
             inc r14
             jmp qword ptr [esc_tab + rax*8]
-L_badop:    lea rsi, [rip + m_badop]  /* an opcode no table names */
+L_badop:    lea rsi, [m_badop]  /* an opcode no table names */
             mov edx, m_badop_len
             mov edi, 2
             jmp die
@@ -863,7 +863,7 @@ L_plusstore: mov rax, [r13]          /* +! ( w a-addr --- ), since 528 */
             mov r12, [r13 + CELL]
             add r13, 2*CELL
             NEXT
-L_badesc:   lea rsi, [rip + m_badesc]
+L_badesc:   lea rsi, [m_badesc]
             mov edx, m_badesc_len
             mov edi, 2
             jmp die

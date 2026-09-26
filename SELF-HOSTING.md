@@ -89,6 +89,21 @@ The same way everything here is: **byte for byte**.
   instead, and took the data inside the code for instructions.) One choice already
   visible: an absolute address is encoded with a SIB byte and no base
   (`48 89 04 25 disp32`), not RIP-relative.
+  **The encoder** (541-542): `asm64.4`, 255 lines - **all 452 shapes
+  assemble to GNU `as`'s bytes**, tested by `tools/asm-test.py`, which
+  translates each corpus line into asm64.4's syntax and assembles it on
+  relf at its own address. On the way the engine lost its ten RIP-
+  relative addresses (every other address in it is absolute; nine more
+  bytes, one less form for the assembler to know).
+  *SP-Forth's assembler* (the user's pointer; github.com/rufig/spf,
+  lib/asm/486asm.f, from Win32Forth): a PREFIX assembler - `MOV [EBP],
+  EAX`, `LEA EBP, -4 [EBP]` - that reads like GNU source, made to work
+  in Forth by assembling each instruction when the next one begins. For
+  x86 only, 32-bit (no RAX anywhere), so not reusable here. Its look
+  would make M2's translation nearly one-to-one; the price is that
+  deferral, and the order its end (a label, END-CODE) must flush.
+  asm64.4 stays postfix - each mnemonic finishes itself - as the simpler
+  of the two.
 - **M1 - a program.** An ELF file that exits with status 42, written
   entirely from Forth.
 - **M2 - the engine source in Forth syntax.** A one-time, mechanical

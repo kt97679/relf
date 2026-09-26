@@ -230,6 +230,23 @@ and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
 opcodes keep their numbers where they are; packing them into 0x00-0x3F
 is the tag's prerequisite, done if the tag ever is.
 
+**Q18. Local time: the assembly engine's prompt is wrong outside UTC
+(542).** Fury's run of 536: `asm:shell 0`. The cause, reproduced here
+with `TZ=America/Los_Angeles`: run-invocation's "`\d` and `\A` agree
+with date" - the assembly shell's prompt said 16:03, `date` 09:03. A10
+(523) made its LOCAL-TIME UTC "first"; every UTC machine, this one
+included, hides that. Options:
+(A) **Time zones in Forth**: both engines give UTC, and a small word in
+the kernel reads the zone - `$TZ`, else /etc/localtime, a TZif file -
+and applies the offset. The engines get simpler (the C engine stops
+depending on localtime()), and both behave identically everywhere.
+(B) A TZif reader in the assembly engine: correct, but engine code, in
+assembly, for what is policy rather than mechanism.
+(C) Accept it, and make the test compare the assembly shell with `date
+-u`: the prompt keeps showing the wrong hour.
+*Recommendation*: (A). Until then fury's run shows `asm:shell 0`, now
+with the failing assertion printed beside it.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

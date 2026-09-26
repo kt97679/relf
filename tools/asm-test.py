@@ -23,10 +23,12 @@ for line in subprocess.run(['nm', obj], capture_output=True, text=True).stdout.s
 REGS = set('''rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15
 eax ebx ecx edx esi edi ebp esp r8d r9d r10d r11d r12d r13d r14d r15d
 ax bx cx dx si di bp sp r8w r9w r10w r11w r12w r13w r14w r15w
-al bl cl dl sil dil bpl spl r8b r9b r10b r11b r12b r13b r14b r15b'''.split())
+al bl cl dl sil dil bpl spl ah bh ch dh r8b r9b r10b r11b r12b r13b r14b r15b'''.split())
 
 def value(expr):
-    e = re.sub(r'[A-Za-z_][\w]*', lambda m: str(sym[m.group(0)]), expr)
+    e = re.sub(r"'(.)'", lambda m: str(ord(m.group(1))), expr)                # 'c'
+    e = re.sub(r'0x[0-9a-fA-F]+', lambda m: str(int(m.group(0), 16)), e)      # hex first
+    e = re.sub(r'(?<![0-9])[A-Za-z_][\w]*', lambda m: str(sym[m.group(0)]), e)
     return int(eval(e.replace('/', '//')))
 
 def memop(text):
@@ -55,6 +57,8 @@ def operand(t):
 
 def forth(addr, hexbytes, text):
     mn, _, ops = text.partition(' ')
+    if mn in ('rep', 'repe', 'repne'):                 # a prefix, then its instruction
+        return '%s, %s,' % (mn, ops.strip())
     if re.match(r'^(j[a-z]+|call)$', mn) and '[' not in ops and ops.strip() not in REGS:
         n = len(hexbytes) // 2
         rel = int.from_bytes(bytes.fromhex(hexbytes)[-4 if n > 2 else -1:], 'little', signed=True)
@@ -74,7 +78,10 @@ for i, l in enumerate(lines):
         cases.append((t, h, None, 'untranslated: %s' % e)); continue
     cases.append((t, h, f, None))
     src.append('CLEAR %d 0 ASM-BUFFER %s %d SHOW' % (0x400000 + int(a, 16), f, len(cases) - 1)
-               if False else 'CLEAR %d 64 ASM-BUFFER %s %d SHOW' % (0x400000 + int(a, 16), f, len(cases) - 1))
+               if False else 'ONLY FORTH ALSO ASSEMBLER CLEAR %d 64 ASM-BUFFER %s %d SHOW' % (0x400000 + int(a, 16), f, len(cases) - 1))
+    # (each line sets the search order itself: relf's error recovery resets
+    # it, so after the first unwritten mnemonic every later line lost the
+    # assembler's words - the first run's 8 of 453, Iteration 541)
 src.append('CR BYE')
 tf = os.path.join(work, 't.4')
 open(tf, 'w').write('\n'.join(src) + '\n')
