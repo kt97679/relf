@@ -73,3 +73,7 @@ relfasm64.log
 bench/langs/bench-c
 bench/langs/bench-go
 relfasm64.forth
+# generated before Iteration 549, when the engine's source was assembly;
+# a checkout built then still has them (the user's machines did: 550)
+relfasm-ops.S
+relfasm-consts.S

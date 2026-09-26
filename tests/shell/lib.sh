@@ -38,6 +38,17 @@
 # words the same messages differently. dash is not everywhere - a Gentoo
 # ARM board has bash and no dash - so those comparisons are skipped
 # rather than failed (Iteration 399).
+# Nothing from the caller's environment that changes how a shell behaves
+# (Iteration 550). An interactive shell's first prompt is PS1 if the
+# environment has one, and ENV names a file it reads: the user's own,
+# exported by their login shell, reached the assembly shell's run of this
+# suite on fury - started from tests/verify under dash, which passes PS1
+# on, where the C shell's run went through bash, which clears it - and
+# every prompt assertion failed there alone. LC_ALL and LD_PRELOAD as in
+# tests/run_tests.sh, so that the suite is the same whoever starts it.
+unset PS1 PS2 PS4 ENV CDPATH IFS LD_PRELOAD
+LC_ALL=C; export LC_ALL
+
 if command -v dash >/dev/null 2>&1; then HAVE_DASH=1; else HAVE_DASH=0; fi
 
 for _u in /usr/bin/true /usr/bin/false /usr/bin/test /usr/bin/env /bin/sh; do

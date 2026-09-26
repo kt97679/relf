@@ -35,6 +35,10 @@
 # on the user's (fury). UTC-9 is a POSIX TZ string: date needs no zone
 # file for it, so it works everywhere.
 TZ=UTC-9; export TZ
+# Nor anything else of the caller's that changes how a shell behaves
+# (Iteration 550): the user's exported PS1 reached one suite on fury and
+# failed every prompt assertion in it (tests/shell/lib.sh says more).
+unset PS1 PS2 PS4 ENV CDPATH
 exec < /dev/null
 # Byte order and byte classes for every shell this suite runs: pathname
 # expansion sorts by LC_COLLATE, `[a-z]` is a collation range and

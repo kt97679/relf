@@ -545,6 +545,7 @@ do not trust the absence of a line below.
 - **547** — M2 done: the whole engine translated (0 lines left); M3 begun - it assembles, 4 short jumps still too far
 - **548** — SELF-HOSTED: relf assembles its engine identical to GNU as's (M3), and that engine rebuilds itself (M4)
 - **549** — M5: the engine's only source is Forth (relfasm64.4); GNU as leaves the build; ANNOUNCEMENT.md
+- **550** — the user's runs of 549: two findings - untracked generated files; a suite that inherited the caller's PS1
 
 ### Not tied to an iteration
 
@@ -25882,3 +25883,38 @@ measured, how to measure it again, and the caveats to state.
 - On the way: `git rm` refused one file with uncommitted changes and so
   removed none - the chain of commands after it stopped, and the
   consistency check "printed nothing" because it never ran.
+
+## Iteration 550: what the user's machines found in 549
+
+Both machines: `portability:problems 1` - relfasm-ops.S and
+relfasm-consts.S untracked and not ignored. 549 replaced their names in
+.gitignore with the .4 files that succeed them, and deleted the old ones
+in this checkout; the user's checkouts, built before, still had them. The
+old names are ignored again, with the reason.
+
+Fury: `asm:shell 0` - every prompt assertion failed on the assembly
+shell alone: "the prompt is shown", "PS1 expands a command
+substitution", "PS1 decodes \u and \W", ... Not the engine. The shell
+suite's helper strips the shell's first prompt, `$ `, and compares the
+rest; an interactive shell's first prompt is PS1 when the environment
+has one. The main harness runs the C shell's suite under `bash
+tests/run_tests.sh`, and a non-interactive bash clears PS1 (the suite's
+own comments noted it at Iteration 400); tests/verify, run by `sh` - on
+Ubuntu, dash - passes an exported PS1 on, and 525 made it run the
+assembly shell's suite directly. So a user's exported PS1 reached one
+suite and not the other. Ruled out first, by running them: the effective
+uid (both shells, root and a new ordinary user, the same `$ `); the
+user (the two files pass as that user). Reproduced then: `PS1='me@fury:~$
+' dash ./run-invocation` fails the same three assertions.
+
+The fix is the suite's, not the runner's alone: tests/shell/lib.sh unsets
+what changes a shell's behaviour - PS1 PS2 PS4 ENV CDPATH IFS - and sets
+LC_ALL and unsets LD_PRELOAD as run_tests.sh does, so the suite is the
+same whoever starts it; tests/verify unsets the shell variables too. With
+PS1 and ENV exported, both files now pass under dash.
+
+The pattern is 544's again: this container runs detached, as root, in
+UTC, with a bare environment - and each of those has now hidden a
+failure that only a real user's machine showed. The fix each time was to
+make the checks independent of the host, not to make the host like this
+one.
