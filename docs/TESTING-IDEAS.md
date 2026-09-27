@@ -114,9 +114,9 @@ build first - cheap, and likely to find something.
 ## The world, not the spec
 
 9. **Begun, 563.** zlib's configure: identical to dash, both engines.
-   ncurses's (32,301 lines, Autoconf 2.52): FAILS - a here-document with
-   a backquoted substitution holding \` loses the rest of its body
-   (PROGRESS 563 has the six-line reproducer). First written:
+   ncurses's (32,301 lines, Autoconf 2.52): failed at 563 - a here-
+   document holding \` in backquotes lost its body - fixed at 565; now
+   1,040 of 1,041 generated files identical to dash's. First written:
    **Real scripts**: autoconf `configure` scripts (zlib's, a GNU
    project's) with relf as the shell, their results compared with dash's;
    the Oils project's spec tests (a large, curated corpus that already

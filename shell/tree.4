@@ -2717,8 +2717,20 @@ VARIABLE HDX-DEPTH
   REPEAT ;
 
 : HDX-TICK-VERBATIM ( --- )   \ at a backquote: copy through its partner
+  \ A backslash and what follows it are copied as a PAIR, so an escaped
+  \ backquote inside is the command's, not the end (POSIX 2.6.3; the
+  \ lexer's SCAN-BACKQUOTE does so). Copying to the first backquote,
+  \ ncurses's configure lost the rest of a here-document at a sed script
+  \ holding one, and wrote a broken config.status (Iteration 565). The
+  \ copy is lexed inside the double quotes the body is wrapped in, where a
+  \ backslash-quote in backquotes becomes a quote - as dash has it in a
+  \ here-document too, whose body expands as if in double quotes (I first
+  \ kept it, and printed "x" where dash printed x).
   96 HDX-C,  1 HDX-P +!
   BEGIN HDX-P @ HDX-END @ < IF HDX-P @ C@ 96 <> ELSE 0 THEN WHILE
+    HDX-P @ C@ 92 = HDX-P @ 1+ HDX-END @ < AND IF
+      92 HDX-C,  1 HDX-P +!
+    THEN
     HDX-P @ C@ HDX-C,  1 HDX-P +!
   REPEAT
   HDX-P @ HDX-END @ < IF 96 HDX-C,  1 HDX-P +! THEN ;

@@ -560,6 +560,7 @@ do not trust the absence of a line below.
 - **562** — set lists inherited variables (sorted, as dash); A29: no empty PATH entry searches the current directory
 - **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured; round trips of set, export -p, trap, alias
 - **564** — the user's fury and rage runs: a job-notice race I had recorded as fact (fixed); completion checks on rage wait for their result
+- **565** — a here-document bug found by ncurses's configure: fixed; that 32,301-line script now runs as under dash
 
 ### Not tied to an iteration
 
@@ -26515,4 +26516,34 @@ rage has no dash (its matrix:refs is `bash`), and three files skip
 without it - run-export 4, run-getopts-msg 6, run-untested-paths 7:
 17 of rage's 19. Rage's other 2 and fury's 1 are unexplained yet; a row
 counting the SKIP lines would make such a total explain itself.
+
+## Iteration 565: the here-document bug ncurses found
+
+fury and rage both verified 564 - rage's completion checks pass now, as
+the fix I could not reproduce here predicted.
+
+**The bug** (563's six-line reproducer): an unquoted here-document's
+body is wrapped in double quotes, its own quotes escaped, and expanded
+as a double-quoted word; command substitutions are copied through
+verbatim so their quotes are not. HDX-TICK-VERBATIM copied a backquoted
+one up to the FIRST backquote - so the \` of `sed 's/[\\""\`\$]/.../'`
+ended it, the real closing backquote began a substitution that never
+ended, and the rest of the body went. It copies a backslash and what
+follows as a pair now (POSIX 2.6.3), as the lexer's own SCAN-BACKQUOTE
+does. Then ncurses's configure (32,301 lines, Autoconf 2.52) runs to
+exit 0 as under dash: of 1,041 files it generates, 1,040 are identical
+once the directory and conftest names are normalised; config.status
+differs in ECHO_C/ECHO_N alone - autoconf's probe of how `echo` omits a
+newline (\c for dash's, -n for relf's; POSIX leaves both open). And the
+output differs in the date it prints.
+
+A misreading of mine on the way: I also made `\"` inside a here-
+document's backquotes stay `\"`, as bash has it - dash makes it `"`,
+since the body expands as if in double quotes, and my test showed relf
+printing "x" where dash printed x. Removed; relf follows dash, bash and
+dash split there (DASH.md). The differential case leaves that line out,
+since bash is its oracle: tests/diff/cases/heredoc-backquote-565.sh,
+agreed by bash, dash and relf on all three engines. Also: a test hung
+the tool - an inner command reading stdin, no </dev/null (554's lesson,
+again) - and my comparison used bash's <( ) in sh.
 

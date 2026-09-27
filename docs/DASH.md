@@ -236,3 +236,9 @@ current directory shadowing a system one, through a stray colon, is the
 danger the user named (A29). A deliberate difference, tested in
 tests/shell/run-default-path.
 
+## `\"` inside backquotes in a here-document (Iteration 565)
+
+`` `echo \"x\"` `` in an unquoted here-document: dash prints x - the body
+expands as if in double quotes, where a backslash-quote in backquotes
+becomes a quote - and bash prints "x". relf follows dash.
+
