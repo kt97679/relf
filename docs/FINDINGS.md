@@ -253,3 +253,13 @@ x86 masks the count, ARM does not (a shift by 64 gives 0 there), so the
 C engine on ARM may answer differently - allowed by the standard, and
 worth knowing before a test depends on it.
 
+## The address-space floor (Iteration 563)
+
+Under `ulimit -v`, the assembly engine's shell runs down to 5,400 KB of
+address space - its VM region alone is 4 MB, mapped at exec with the
+BSS - and the heap takes what is granted, halving from 1 GB to 1 MB
+(560). At 5,300 KB the 1 MB heap leaves the native stack no room to
+grow, and the kernel kills the process: no handler can run where no
+signal frame fits. The C engine's shell stops at 6,000 KB, where libc
+cannot be mapped. Every realistic limit works.
+

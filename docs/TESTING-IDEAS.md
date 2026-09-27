@@ -115,7 +115,11 @@ build first - cheap, and likely to find something.
    the Oils project's spec tests (a large, curated corpus that already
    runs against many shells); Rosetta Code's POSIX sh solutions; shell
    quines, which test quoting where it is subtlest.
-10. **Chaos**: signals at random instants in pipelines and loops (SIGINT,
+10. **Built, 563: tools/chaos.py and run-signal-storm.** Signal storms
+    (USR1 CHLD WINCH ALRM INT, one every 2 ms) over pipes and command
+    substitutions: every trap run, every sum exact, both engines. The
+    limits half was done by strange-env.py (560). First written:
+    **Chaos**: signals at random instants in pipelines and loops (SIGINT,
     SIGCHLD, SIGWINCH, SIGTSTP storms); input that arrives a byte at a
     time; tight limits (`ulimit -n 8`, `-v`, `-s`), a full disk (a tiny
     tmpfs), no memory - the shell must report and go on, never hang or

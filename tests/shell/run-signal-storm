@@ -1,0 +1,26 @@
+#!/bin/sh
+# tests/shell/run-signal-storm - work under a storm of signals (Iteration
+# 563; tools/chaos.py has the full set). Command substitutions through
+# pipes, whose sum must come out exact, while SIGUSR1 arrives every 2 ms
+# and a trap counts it: every pipe read and wait may be interrupted, and
+# one not retried loses output. The shell writes `ready` once its trap is
+# set - a signal before that would take USR1's default action, and kill
+# it for a reason that is not the test's.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d)
+"$THIS_SH" -c 'n=0; trap '\''n=$((n + 1))'\'' USR1; : > "$1/ready"
+i=0; sum=0
+while [ $i -lt 300 ]; do x=$(printf "%s\n" "$i" | cat); sum=$((sum + x)); i=$((i + 1)); done
+echo "sum=$sum"; [ "$n" -gt 0 ] && echo trapped' sh "$t" > "$t/out" 2>&1 &
+pid=$!
+while [ ! -e "$t/ready" ]; do sleep 0.01; done
+( while kill -USR1 $pid 2>/dev/null; do sleep 0.002; done ) &
+storm=$!
+wait $pid; st=$?
+kill $storm 2>/dev/null; wait $storm 2>/dev/null
+out=$(cat "$t/out")
+assert_output_contains "the sum is exact under the storm" "sum=44850" "$out"
+assert_output_contains "the trap ran" "trapped" "$out"
+assert_output_equals "and the shell ended well" "0" "$st"
+rm -rf "$t"
+report

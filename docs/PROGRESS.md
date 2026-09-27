@@ -558,6 +558,7 @@ do not trust the absence of a line below.
 - **560** — the pty suite 219 s -> 48 s; strange environments: the assembly engine crashed under any ulimit -v below 1 GB - fixed
 - **561** — PATH unset: dash's default (A28); the command search reads the PATH variable, exported or not
 - **562** — set lists inherited variables (sorted, as dash); A29: no empty PATH entry searches the current directory
+- **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured
 
 ### Not tied to an iteration
 
@@ -26425,4 +26426,28 @@ The differential count was empty because run_tests.sh stops after the
 before it could verify against that recording. Now a reference is a
 small integer - k, or SHVAR-COUNT + m with the address in LV-ENVS - and
 all three shells pass; verified.
+
+## Iteration 563: signal storms; the address-space floor
+
+**The unchecked allocation of 560, found not to be one.** L_allocate
+returns ior 201 when the heap is refused, and ALLOC-BUFFERS checks it
+("BUFFER: out of memory"). The silent SIGSEGV at small limits is the
+KERNEL's: the ELF maps a 4 MB VM region and its BSS at exec; at 5,300 KB
+of address space the halving heap still wins its 1 MB and leaves the
+native stack no room to grow - no handler can run where no signal frame
+fits. 5,400 KB runs. The C engine stops sooner: under 6,000 KB libc
+cannot be mapped. A floor, measured and recorded (FINDINGS.md), not a
+bug to engineer around: a process whose VM region is 4 MB does not fit
+in 5.
+
+**tools/chaos.py** (TESTING-IDEAS.md 10): command substitutions through
+pipes, whose sum must be exactly 44850, while a signal arrives every
+2 ms and a trap counts it - USR1, CHLD, WINCH, ALRM, INT; both engines
+and dash: 15 storms, 0 failed. Checked that the storm covered the work,
+not just its start: relf ran its trap for EVERY signal sent - 189 of
+189 on the C engine, 166 of 166 on the assembly engine - with every sum
+exact: each interrupted pipe read and wait was retried. Kept in the
+suite as run-signal-storm (both engines and 32-bit, in verify): the
+shell writes `ready` once its trap is set, since a signal before that
+takes USR1's default action and kills it for a reason not the test's.
 
