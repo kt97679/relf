@@ -51,8 +51,8 @@ shell:assertions 941
 shell:dead-words 0
 shell:files 85
 shell:host-sh-tests 0
-size:asm-engine 15440
-size:asm-shell 134948
+size:asm-engine 15456
+size:asm-shell 134964
 size:engine-code-i386 21169
 size:engine-code-x86_64 25910
 size:i386 141816

@@ -1187,8 +1187,13 @@ ret,
 9 L:  eax eax xor,
 ret,
 heap_init L:                             \ the reservation, at first use
-edi edi xor,
+\ 1 GB of address space - or, where a limit (ulimit -v) refuses that,
+\ the most of it granted, halving down to 1 MB (Iteration 560: under
+\ any address-space limit below 1 GB the reservation failed, and the
+\ shell died at startup with SIGSEGV; the bare kernel, which allocates
+\ nothing, ran). rsi, the size, survives the syscall.
 esi HEAP_RESERVE # mov,
+5 L:  edi edi xor,
 edx 3 # mov,                             \ PROT_READ | PROT_WRITE
 r10d 16418 # mov,                        \ MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE
 r8 1 NEGATE # mov,
@@ -1196,9 +1201,13 @@ r9d r9d xor,
 eax SYS_mmap # mov,
 syscall,
 rax 4096 NEGATE # cmp,
-1 F jae,
-[ heap_top ] rax mov,
-rax HEAP_RESERVE # add,
+6 F jb,                                  \ granted
+rsi 1 # shr,                             \ refused: half as much
+rsi 1048576 # cmp,
+5 B jae,
+1 F jmp,                                 \ not even 16 MB: heap_top stays 0
+6 L:  [ heap_top ] rax mov,
+rax rsi add,
 [ heap_end ] rax mov,
 1 L:  ret,
 free_block L:                            \ rdi: a pointer from alloc_block, or 0

@@ -555,6 +555,7 @@ do not trust the absence of a line below.
 - **557** — coverage 9 words never run (93%); editor keys tested through a pty; tools/metamorph.py: 1,170 rewritings, 0 findings
 - **558** — relf runs its own harness (940 assertions, both engines); a parliament of seven shells: relf never against a strong majority
 - **559** — tools/shfuzz.py: 1,000 random programs, 0 findings (yash in relf's seat: 9); mutation survivors read - bg on a second job was untested, now a pty case
+- **560** — the pty suite 219 s -> 48 s; strange environments: the assembly engine crashed under any ulimit -v below 1 GB - fixed
 
 ### Not tied to an iteration
 
@@ -26334,4 +26335,35 @@ where dash and bash disagree.
   - a candidate for simplifying, not confirmed.
 Of 30 mutants: 20 killed by tests (19, and DO-BG's now), 10 equivalent
 or without a visible effect found.
+
+## Iteration 560: a slow suite, and strange environments
+
+**The pty suite took 219 s against verify's 300** - on both engines;
+one check failed a case on the assembly engine and could not say which
+(verify kept only the summary line; it keeps the whole output now and
+names a failing case). Timed case by case: every step that types a
+partial line waited out the 10 s prompt timeout, since a partial line
+brings no prompt - my three editor cases of 557 alone had added 90 s.
+The harness now sends a partial line without waiting (and pauses 50 ms,
+so keys stay in order): 48 s on either engine, every recorded
+transcript unchanged, stable over four runs.
+
+**tools/strange-env.py** (TESTING-IDEAS.md 11): ten probes against
+dash. Same as dash: a directory deeper than PATH_MAX (built a level at
+a time - Python's own makedirs cannot name it), umask 777, an argument
+holding every byte 1-255, twelve descriptors, recursion 300 deep, a
+pipeline of 60. Different, by choice: `cd` with HOME unset fails, as
+bash's does (POSIX: implementation-defined). Open questions:
+- An empty environment: with PATH unset relf finds no command; dash and
+  bash search a default path (POSIX: implementation-defined).
+- `set` did not list ten thousand imported variables (0 lines against
+  dash's 10,000) while `$V09999` expanded - to be looked at.
+**A crash, fixed**: under ANY address-space limit below 1 GB the
+assembly engine's shell died at startup with SIGSEGV - its heap is a
+1 GB reservation (MAP_NORESERVE still counts against RLIMIT_AS), and a
+refused reservation left a null that something downstream uses. The
+bare kernel, which allocates nothing, ran; the C engine, which callocs
+what it needs, ran. Now the reservation halves until granted, down to
+1 MB: the shell runs under 256, 64, 32, 20, 12 and 8 MB. What uses the
+null when not even 1 MB is granted is still to be found.
 

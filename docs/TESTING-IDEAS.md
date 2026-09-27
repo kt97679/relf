@@ -121,7 +121,11 @@ build first - cheap, and likely to find something.
     tmpfs), no memory - the shell must report and go on, never hang or
     crash. A soak run of hours watching for leaks: memory, descriptors,
     zombies.
-11. **Strange environments**: `env -i`; ten thousand environment
+11. **Built, 560: tools/strange-env.py.** Ten probes against dash: 0
+    crashes now - the first run found the assembly engine's shell dying
+    under any `ulimit -v` below 1 GB (fixed); open: PATH unset, and
+    `set` with ten thousand imported variables. First written:
+    **Strange environments**: `env -i`; ten thousand environment
     variables; a directory deeper than PATH_MAX; HOME unset; arguments
     carrying every byte value; umask 777; each must give dash's answer.
 
