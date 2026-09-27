@@ -235,3 +235,10 @@ was spent on this sandbox's shared address. How #92 and ChatFORTH
 built with an AI doing much of the work, which the article should state
 plainly rather than leave to be discovered. Worth reading, logged in,
 before drafting.
+
+**Figures (A25, 554)**: ASCII art, not images - the author's choice,
+and ForthHub's email digests keep text and drop pictures. Diagrams at
+most 60-64 columns wide, for phones. The picture test of prompt 14 then
+reads: whatever is a structure described in prose becomes an ASCII
+diagram - the bootstrap chain, the image layout, the dispatch loop.
+

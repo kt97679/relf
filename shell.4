@@ -4871,10 +4871,11 @@ VARIABLE FTH-I
   \ The arguments arrive already tokenized and expanded, so $VAR works
   \ and quoting is the shell's, not Forth's; they are rejoined with
   \ single spaces, which is fine for Forth's own whitespace-delimited
-  \ syntax. Caveats, deliberately not papered over: a Forth error
-  \ ABORTs the whole shell, and a word that unbalances the stack
-  \ corrupts this shell rather than a child process, because there is
-  \ no isolation. That is the nature of the facility.
+  \ syntax. A Forth error fails this command only - $? is 1 and the
+  \ next command runs (A24; RUN-CAUGHT, Iteration 554). The caveat that
+  \ remains, deliberately not papered over: a word that unbalances the
+  \ stack corrupts this shell rather than a child process, because there
+  \ is no isolation. That is the nature of the facility.
   SHADOW{ | FTH-I }
   0 FTH-LEN !
   1 FTH-I !
@@ -6105,6 +6106,34 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   2DUP S" unset"    STR= IF 2DROP -1 EXIT THEN
   2DROP 0 ;
 
+: BUILTIN-FAILED ( n --- )
+  \ A Forth error inside a builtin - the code `forth` was given, or a
+  \ builtin that Forth registered - fails that command only (A24,
+  \ Iteration 554): $? is 1 and the next command runs, as after any
+  \ builtin's failure; `set -e`, `if` and `||` see it like any other.
+  \ ABORT" (-2) has printed its message, ABORT (-1) prints none, and any
+  \ other code is reported here. An error inside a : leaves compiling;
+  \ the half-built word stays unfindable, since : links it only at ;.
+  0 STATE !
+  DUP -1 <> OVER -2 <> AND IF
+    S" forth: uncaught exception " ERR-TYPE
+    DUP ABS 0 <# #S ROT SIGN #> ERR-TYPE ERR-NL
+  ELSE DROP THEN
+  1 LAST-STATUS ! ;
+
+: RUN-CAUGHT ( xt --- )
+  \ Run a builtin under CATCH (A24). Before, the kernel's errors went to
+  \ WARM, which cleared both stacks - the executor's own state with them
+  \ - and restarted Forth's read loop on the shell's input: a script's
+  \ remaining lines were read as Forth, an interactive user landed at a
+  \ bare Forth prompt, and a redirection the builtin had was never
+  \ undone. EVALUATE keeps the input source it replaces on the return
+  \ stack, which a THROW discards, so it is kept here too and restored.
+  SID @ >R  SRC @ >R  #SRC @ >R  >IN @ >R
+  CATCH
+  R> >IN !  R> #SRC !  R> SRC !  R> SID !
+  ?DUP IF BUILTIN-FAILED THEN ;
+
 : RUN-A-BUILTIN ( xt --- )
   0 EXEC-LAST? !
   >R BEGIN-REDIRECT R>
@@ -6120,7 +6149,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
     ELSE
       1 LAST-STATUS !
     THEN
-  ELSE EXECUTE THEN
+  ELSE RUN-CAUGHT THEN
   END-REDIRECT ;
 
 : RUN-A-FUNCTION ( i --- )

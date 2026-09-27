@@ -63,13 +63,18 @@ commands = sys.argv[1:] or [
     # kernel's words are measured too. shadow.fth is left out: it loads
     # pool.4 and shadow.4 at other addresses than the shell image's.
     'cat tester.fr tests/core-extra.fth tests/coreplus-loop.fth | {engine} kernel64.img > /dev/null',
+    # A shell image built by the instrumented engine (Iteration 554):
+    # save-system.4, the locals compiler, the buffer definers and every
+    # immediate word run only while an image is built. A build is
+    # deterministic, so the code it runs sits where the image has it.
+    'sh tools/build-shell-image.sh {engine} kernel64.img {work}/built.img extend.4 pool.4 shadow.4 save-system.4 shell.4 edit.4 tree.4 && cmp {work}/built.img kernel64-shell.img && echo built: identical',
 ]
 # The instrumented engine as a shell of its own (tools/embed.sh): since
 # Iteration 506 relfsh is a binary, so the suites are pointed at this
 # one through THIS_SH and RELFSH, and a command's ./relfsh is replaced.
 shell = os.path.join(work, 'relfsh')
 subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
-commands = [c.replace('./relfsh', shell).replace('{engine}', engine) for c in commands]
+commands = [c.replace('./relfsh', shell).replace('{engine}', engine).replace('{work}', work) for c in commands]
 env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 for c in commands:
     r = subprocess.run(c, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

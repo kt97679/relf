@@ -1,0 +1,57 @@
+#!/bin/sh
+# tests/shell/run-forth-errors - a Forth error fails its command only
+# (A24, Iteration 554). Before, the kernel's errors went to WARM: both
+# stacks cleared, and Forth's own read loop restarted on the shell's
+# input - a script's remaining lines were read as Forth, an interactive
+# user was left at a bare Forth prompt, a redirection stayed in force,
+# and the message went to standard output. Now every builtin runs under
+# CATCH: $? is 1, the message is on standard error, the next command runs.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d)
+run() { "$THIS_SH" -c "$1" 2>&1 < /dev/null; }
+
+out=$("$THIS_SH" -c "forth 'XYZ'; echo s=\$?" 2>/dev/null < /dev/null)
+assert_output_equals "an undefined word: status 1, the next command runs" "s=1" "$out"
+out=$("$THIS_SH" -c "forth 'XYZ'" 2>&1 >/dev/null < /dev/null)
+assert_output_contains "the message is on standard error" "Undefined word XYZ" "$out"
+out=$("$THIS_SH" -c "x=\$(forth 'XYZ'); echo \"[\$x]\"" 2>/dev/null < /dev/null)
+assert_output_equals "a command substitution captures no error text" "[]" "$out"
+
+out=$(run "forth ': T 1 ABORT\" boom\" ;  T'; echo s=\$?")
+assert_output_contains "ABORT\" prints its message" "boom" "$out"
+assert_output_contains "ABORT\" fails the command" "s=1" "$out"
+out=$(run "forth 'ABORT'; echo s=\$?")
+assert_output_equals "ABORT fails silently" "s=1" "$out"
+out=$(run "forth '5 THROW'; echo s=\$?")
+assert_output_contains "an uncaught THROW is reported with its code" "uncaught exception 5" "$out"
+assert_output_contains "an uncaught THROW fails the command" "s=1" "$out"
+out=$(run "forth \": T 7 THROW ;  ' T CONSTANT XT-T  : U XT-T CATCH . ;  U\"; echo s=\$?")
+assert_output_contains "a THROW caught in Forth is Forth's business" "7 s=0" "$(echo $out)"
+
+out=$(run "forth ': BAD XYZ ;'; forth ': GOOD 7 . ;  GOOD'; forth 'BAD'")
+assert_output_contains "after an error inside :, compiling has stopped" "7" "$out"
+assert_output_contains "the half-built word cannot be found" "Undefined word BAD" "$out"
+out=$(run "forth '1 2 3 XYZ'; for i in a b; do echo \$i; done; f() { echo in-f; }; f")
+assert_output_contains "the stacks are as they were: loops still run" "a b" "$(echo $out)"
+assert_output_contains "and functions" "in-f" "$out"
+out=$(run "forth 'XYZ' > $t/o; echo visible")
+assert_output_contains "the builtin's redirection is undone" "visible" "$out"
+out=$(run "forth \": MYB 1 ABORT\\\" mine\\\" ;  ' MYB S\\\" myb\\\" BUILTIN\"; myb; echo s=\$?")
+assert_output_contains "a builtin Forth registered fails the same way" "s=1" "$out"
+
+out=$(run "set -e; forth 'XYZ'; echo not-reached")
+case $out in *not-reached*) r=ran ;; *) r=stopped ;; esac
+assert_output_equals "set -e stops at a failing forth" "stopped" "$r"
+out=$(run "if forth 'XYZ'; then echo yes; else echo no; fi")
+assert_output_contains "if sees the failure" "no" "$out"
+out=$(run "forth 'XYZ' || echo failed")
+assert_output_contains "|| sees the failure" "failed" "$out"
+out=$(run "forth '1 DROP' && echo fine")
+assert_output_contains "success is still 0" "fine" "$out"
+
+out=$(printf "forth 'XYZ'\necho next\n" | PS1='$ ' "$THIS_SH" -i 2>&1)
+assert_output_contains "interactive: the next line runs" "next" "$out"
+case $out in *OK*) r="Forth's prompt" ;; *) r="the shell's" ;; esac
+assert_output_equals "interactive: the prompt stays the shell's" "the shell's" "$r"
+rm -rf "$t"
+report

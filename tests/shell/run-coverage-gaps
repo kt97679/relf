@@ -16,7 +16,7 @@ out=$(f 'VOCABULARY V2  ALSO V2 DEFINITIONS  : HO 7 ;  ONLY FORTH  HO')
 assert_output_contains "ONLY FORTH leaves the vocabulary out of the search" "HO" "$out"
 out=$(f ': N GET-ORDER DUP >R 0 ?DO DROP LOOP R> ;  N  ALSO FORTH N  SWAP - .')
 assert_output_contains "ALSO adds one word list to the order" "1 " "$out"
-out=$(f 'WORDLIST DUP >R  GET-ORDER R> SWAP 1+ SET-ORDER  DEFINITIONS : W3 3 . ;  PREVIOUS DEFINITIONS  W3')
+out=$(f 'VARIABLE WL  WORDLIST WL !  GET-ORDER WL @ SWAP 1+ SET-ORDER  DEFINITIONS : W3 3 . ;  PREVIOUS DEFINITIONS  W3')
 assert_output_contains "a word in a WORDLIST is hidden once it leaves the order" "W3" "$out"
 out=$(f 'ROOT-WORDLIST 0= .')
 assert_output_contains "ROOT-WORDLIST gives a word list" "0 " "$out"
@@ -42,23 +42,23 @@ out=$(f '100 CELL- CELL+ .')
 assert_output_contains "CELL- undoes CELL+" "100 " "$out"
 out=$(f ': T 0 0 S" 123x" DROP 1- CONVERT C@ EMIT SPACE D. ;  T')
 assert_output_contains "CONVERT reads digits and stops at the first other" "x 123" "$out"
-# A Forth error ends the line it is on - the rest of a -c string too
-# (found here: `forth 'X'; echo y` never echoes) - but not the script:
-# the next line runs. stdin closed, since the recovery reads input.
 t=$(mktemp -d)
-printf '%s\n' "forth ': T 1 ABORT\" boom\" ;  T'" 'echo after' "forth ': T2 ABORT ;  T2'" 'echo still' > "$t/ab.sh"
-out=$("$THIS_SH" "$t/ab.sh" 2>&1 < /dev/null)
+# ABORT" and ABORT inside `forth`: the command fails, the shell goes on
+# (A24, run-forth-errors has the rest)
+out=$("$THIS_SH" -c "forth ': T 1 ABORT\" boom\" ;  T'; echo after; forth ': T2 ABORT ;  T2'; echo still" 2>&1 < /dev/null)
 assert_output_contains "ABORT\" reports its message" "boom" "$out"
-assert_output_contains "the script goes on after ABORT\"" "after" "$out"
-assert_output_contains "the script goes on after ABORT" "still" "$out"
-out=$(f "S\" $t/w\" W/O BIN CREATE-FILE DROP >R  S\" first\" R@ WRITE-LINE DROP  S\" second\" R@ WRITE-LINE DROP  R> CLOSE-FILE DROP")
+assert_output_contains "the shell goes on after ABORT\"" "after" "$out"
+assert_output_contains "the shell goes on after ABORT" "still" "$out"
+# WRITE-LINE, in a definition: >R and R@ interpreted would use the
+# interpreter's own return stack (my first version did, and crashed)
+out=$(f ": T S\" $t/w\" W/O BIN CREATE-FILE DROP >R  S\" first\" R@ WRITE-LINE DROP  S\" second\" R@ WRITE-LINE DROP  R> CLOSE-FILE DROP ;  T")
 assert_output_contains "WRITE-LINE writes each line and its end" "first second" "$(cat "$t/w" | tr '\n' ' ')"
 
 # prompt escapes, which -i prints even without a terminal
 h=$(hostname); hs=${h%%.*}
 out=$(echo exit | PS1='[\h|\H|\101|\\]' "$THIS_SH" -i 2>&1)
 assert_output_contains "prompt: \\h, \\H, octal and backslash" "[$hs|$h|A|\\]" "$out"
-out=$(echo exit | HOME=/tmp PS1='[\w]' sh -c 'cd /tmp && exec "$0" -i' "$THIS_SH" 2>&1)
+out=$(cd /tmp && echo exit | HOME=/tmp PS1='[\w]' "$THIS_SH" -i 2>&1)
 assert_output_contains "prompt: \\w shows HOME as ~" "[~]" "$out"
 out=$(echo exit | PS1='[\t|\T|\@|\A|\d]' "$THIS_SH" -i 2>&1 | head -1)
 case $out in
@@ -67,10 +67,22 @@ case $out in
 esac
 assert_output_contains "prompt: \\t \\T \\@ \\A \\d have their forms" "ok" "$r"
 
+# \D{format}: strftime's conversions, in UTC like everything here (A16)
+out=$(echo exit | PS1='[\D{%Y|%e|%A|%B|%F}]' "$THIS_SH" -i 2>&1 | head -1)
+assert_output_contains "prompt: \\D{} gives date -u's fields" "$(date -u +'[%Y|%e|%A|%B|%F]')" "$out"
+
+# a backslash that comes from an expansion, in a glob and in case
+# (GLOB-MARK-BACKSLASH): the answers are dash's and bash's, compared
+# when this was written
+t2=$(mktemp -d) && cd "$t2" && : > 'a*b' && : > axb
+out=$("$THIS_SH" -c 'p="a\*b"; echo $p; case "a*b" in $p) echo m1;; *) echo n1;; esac' 2>&1 < /dev/null)
+assert_output_equals "an expanded backslash in a glob and a case pattern" "a\*b m1" "$(echo $out)"
+cd / && rm -rf "$t2"
+
 # a glob with a backslash matches its character literally
 cd "$t" && : > 'a*b' && : > axb
 out=$("$THIS_SH" -c 'echo a\*b; echo a*b' 2>&1)
 assert_output_contains "a backslashed * in a glob is literal" "a*b" "$(echo "$out" | head -1)"
 assert_output_contains "an unescaped * still matches" "a*b axb" "$(echo "$out" | tail -1)"
 cd / && rm -rf "$t"
-finish
+report

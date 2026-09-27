@@ -283,6 +283,19 @@ standard suite cannot be a regression test beyond CORE, since it stops
 at the first word missing. CORE stays the conformance claim, and the
 announcement says exactly that.
 
+**A24. A Forth error fails its command only (554).** The user: `forth`
+with an error sets $? non-zero and the next command runs, like any
+builtin - consistent with POSIX, where only special builtins may end a
+shell. Done for every builtin: RUN-A-BUILTIN runs each under CATCH;
+CATCH and THROW moved into the kernel so its errors reach them; error
+messages go to standard error. Status 1.
+
+**A25. ASCII art rather than images in the articles (554).** The user:
+no images an article does not need; ASCII art often does better, and
+some punishment for it is acceptable. Agreed: ForthHub is read in email
+digests, where text survives; the Habr complaint was an article that
+promised graphics. Kept to 60-64 columns for readers on phones.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

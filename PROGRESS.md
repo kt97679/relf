@@ -548,6 +548,8 @@ do not trust the absence of a line below.
 - **550** — the user's runs of 549: two findings - untracked generated files; a suite that inherited the caller's PS1
 - **551** — relfsh's memory a third less: ALLOCATE's memory zero, the buffers carved from one arena (308 -> 196 kB idle)
 - **552** — polish: compile-only words refuse outside a definition; `.(`; make clean; TESTING-IDEAS.md
+- **553** — coverage of every source; prompt 14; ForthHub audience research; A23
+- **554** — a Forth error fails its command only (A24): CATCH/THROW in the kernel, errors to stderr; CONVERT fixed; coverage 67 → 13 words never run
 
 ### Not tied to an iteration
 
@@ -26057,3 +26059,64 @@ punishes console-only articles and "yet another Forth". ForthHub's
 comments could not be read (logged-out pages show none; the API's limit
 was spent on a shared address).
 
+## Iteration 554: a Forth error fails its command only (A24)
+
+The user: `forth` with an error should fail that command - $? non-zero,
+the next command runs - like any builtin (A24); and ASCII art rather
+than images in the articles (A25).
+
+**Before**, every kernel error went through (ABORT") to WARM, which
+cleared both stacks and restarted Forth's own read loop on the shell's
+input. The effects were worse than DO-FORTH's comment admitted ("ABORTs
+the whole shell"): a script's remaining lines were read as Forth, an
+interactive user was left at a bare Forth prompt with OK after each
+line, a redirection the builtin had stayed in force, and the message
+went to standard output, where `x=$(forth 'bad')` captured it.
+
+**Now**: HANDLER, CATCH and THROW are the kernel's (from extend.4) and
+(ABORT") prints its message to standard error, then -2 THROWs - to a
+CATCH if one is active, else WARM as before, which also resets HANDLER.
+ABORT is `-1 THROW`, silent, as the standard has it (it printed a space
+and the last word). The shell runs every builtin under CATCH
+(RUN-CAUGHT): on an error it restores the Forth input source (EVALUATE's
+copy is on the return stack THROW discards), leaves compile state, and
+sets $? to 1; codes other than ABORT's and ABORT"'s are reported. It is
+every builtin, not only `forth`: one that Forth registered fails the
+same way, and an internal error in any builtin no longer escapes to
+Forth's loop. Tested (run-forth-errors, 21): status, standard error,
+command substitution, each kind of error, compile state, a half-built
+word unfindable, loops and functions still running, the redirection
+undone, set -e, if, ||, and the interactive prompt staying the shell's.
+
+**Coverage, and what it found.** tools/coverage.py now also measures a
+shell-image build (the build is deterministic: the instrumented one
+produced the image byte for byte, which confirms the address argument).
+With run-coverage-gaps (25 checks: the search order, CASE, ERASE,
+[COMPILE], ENVIRONMENT?, ROLL, AGAIN, CELL-, WRITE-LINE, CONVERT, prompt
+escapes including \D{}, backslashes from expansions in globs): words
+never entered 67 -> 13, instructions run 90% -> 92%; save-system.4 13%
+-> 100%, extend.4 34% -> 99%, pool.4 69% -> 96%, shadow.4 31% -> 82%,
+kernel.4 88% -> 94%. **CONVERT was broken**: `-1 +` where its comment
+and the standard say c-addr1 + 1, so it began two bytes early and
+converted nothing - never run by any test, and wrong since it was
+written. Fixed (`1+`).
+
+**My own mistakes, twice**: >R and R@ in interpreted text - once in the
+WRITE-LINE check (a crash, which I first took for WRITE-LINE's), once in
+the WORDLIST check (the engine's unassigned-opcode trap caught the jump
+into garbage). Forth 2012 leaves their interpretation undefined; relf
+crashes. Never run at the last measurement (13): two editing keys and
+a completion case (a pty's), LOCALS-FAILED, L!, DRAIN-LINE, FD-WAIT,
+and six that the \D{} and expanded-backslash checks - added after that
+measurement - were written to reach (five PD-* conversions and
+GLOB-MARK-BACKSLASH); the next measurement says whether they do.
+
+
+**A tooling mistake, twice**: to restart verification I ran `pkill -f`
+with a pattern that also occurred in the very command running it, which
+killed my own shell before the fix or the restart ran - and a bracket
+trick in the pattern did not help, because the same command contained
+the plain text further on. Killing by process number, in a command with
+nothing else in it, works. The host-sh row had caught my `sh -c 'cd
+/tmp && exec ...'` in a test (0 is the only right answer, since 477): a
+subshell does the cd instead.

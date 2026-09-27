@@ -16,23 +16,8 @@
 \
 \ A word THROWn through must not hold shadow.4 locals: SHADOW{ restores
 \ them on its own exits only, and THROW takes none of those.
-VARIABLE HANDLER   0 HANDLER !
-
-: CATCH ( i*x xt --- j*x 0 | i*x n )
-  SP@ >R  HANDLER @ >R
-  RP@ HANDLER !
-  EXECUTE
-  R> HANDLER !
-  R> DROP  0 ;
-
-: THROW ( k*x n --- k*x | i*x n )
-  ?DUP IF
-    HANDLER @ 0= IF ABORT" Throw Exception" THEN
-    HANDLER @ RP!
-    R> HANDLER !
-    R> SWAP >R
-    SP! DROP R>
-  THEN ;
+\ CATCH, THROW and HANDLER moved to the kernel in Iteration 554, so that
+\ the kernel's own errors reach them.
 
 \ ---- ANS CORE EXT ---------------------------------------------------
 \ This file is loaded twice: by the cross-compile host, before cross.4,

@@ -1233,8 +1233,10 @@ VARIABLE CURRENT ( --- addr)
 
 : CONVERT ( ud1 c-addr1 --- ud2 c-addr2)
 \ Convert the string starting at c-addr1 + 1 to binary. c-addr2 is the
-\ address of the first non-digit. Digits are added into ud1 as in >NUMBER
-  -1 + -1 >NUMBER DROP ;
+\ address of the first non-digit. Digits are added into ud1 as in >NUMBER.
+\ It began at c-addr1 - 1, not + 1 (`-1 +` for `1+`), and so converted
+\ nothing: no test ever ran it, until coverage showed that (Iteration 554).
+  1+ -1 >NUMBER DROP ;
 
 : NUMBER? ( c-addr ---- d f)
 \ Convert the counted string at c-addr to a double binary number.
@@ -1260,9 +1262,41 @@ VARIABLE CURRENT ( --- addr)
 
 \ PART 9: THE COMPILER
 
+VARIABLE HANDLER ( --- a-addr )
+\ The innermost CATCH's frame on the return stack, or 0. CATCH and THROW
+\ were extend.4's until Iteration 554, where the kernel's own errors -
+\ every ABORT", "Undefined word" among them - could not reach them: they
+\ went straight to WARM. The shell's builtins now run under CATCH, so a
+\ Forth error fails that one command (A24) instead of dropping the shell
+\ into Forth's own read loop. WARM sets this back to 0.
+
+: CATCH ( i*x xt --- j*x 0 | i*x n )
+\ Run xt; if it THROWs n, come back here with the stacks as they were.
+  SP@ >R  HANDLER @ >R  RP@ HANDLER !
+  EXECUTE
+  R> HANDLER !  R> DROP  0 ;
+
+: (THROW) ( k*x n --- i*x n )
+\ n nonzero: back to the innermost CATCH - or, with none, WARM.
+  HANDLER @ 0= IF DROP WARM THEN
+  HANDLER @ RP!  R> HANDLER !  R> SWAP >R  SP! DROP R> ;
+
+: THROW ( k*x n --- k*x | i*x n )
+  ?DUP IF (THROW) THEN ;
+
+VARIABLE ECHAR-BUF ( --- a-addr )
+
+: ETYPE ( c-addr u --- )
+\ Type to standard error (Iteration 554): an error message on standard
+\ output ended up in `x=$(forth 'bad')`, as if it were the result.
+  2 WRITE-FILE DROP ;
+
+: ECHAR ( c --- )  ECHAR-BUF C!  ECHAR-BUF 1 ETYPE ;
+
 : (ABORT") ( f --- )
-\ Runtime part of ABORT"
-           IF R> COUNT TYPE SPACE HERE COUNT TYPE CR WARM
+\ Runtime part of ABORT": the message and the word being read, to
+\ standard error; then -2 THROW - to a CATCH if there is one.
+           IF R> COUNT ETYPE 32 ECHAR HERE COUNT ETYPE 10 ECHAR -2 (THROW)
            ELSE R> COUNT + >R THEN ;
 
 
@@ -1710,8 +1744,9 @@ VARIABLE POCKET ( --- a-addr )
   POSTPONE (ABORT") 34 PARSE STRING, ; IMMEDIATE
 
 : ABORT ( --- )
-\ Abort unconditionally without a message.
-1 ABORT" " ;
+\ Abort unconditionally without a message: -1 THROW, as Forth 2012 has
+\ it. It was `1 ABORT" "`, which printed a space and the last word read.
+  -1 (THROW) ;
 
 : POSTPONE ( "ccc" --- )
   POSTPONE (POSTPONE) ' START @ -
@@ -1840,8 +1875,10 @@ VARIABLE INCLUDE-POINTER ( --- a-addr)
 
 : WARM ( ---)
 \ This word is called when an error occurs. Clears the stacks, sets
-\ BASE to decimal, closes the files and resets the search order.
-  R0 @ RP! S0 @ SP! DECIMAL
+\ BASE to decimal, closes the files and resets the search order - and,
+\ since Iteration 554, forgets every CATCH frame, which the reset of the
+\ return stack has just destroyed.
+  0 HANDLER !  R0 @ RP! S0 @ SP! DECIMAL
   2 #ORDER !
   FORTH-WORDLIST CONTEXT !
   FORTH-WORDLIST CONTEXT CELL+ !
