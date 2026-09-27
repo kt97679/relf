@@ -26462,3 +26462,27 @@ and "differed" in dash too: its lines are operands of alias, not
 commands, and read back as `alias <line>` they are the same.
 run-round-trips, 4 checks.
 
+**Real scripts** (same iteration; TESTING-IDEAS.md 9). zlib's configure
+(1,080 lines, hand-written): relf ran it exactly as dash - output,
+Makefile and zconf.h byte-identical, configure.log identical once the
+date and the PID-named ztestN.c files are normalised - on both engines.
+ncurses's configure (32,301 lines, Autoconf 2.52): every one of the
+hundreds of checks agreed for 393 lines of output; then relf exited 1,
+because the config.status it had WRITTEN was broken - nine lines lost
+after `with options \"\` - and dash, running it, said "Unterminated
+quoted string". The cause, reduced to six lines:
+
+    args=
+    cat <<EOF
+    A \\"`echo "$args" | sed 's/[\\""\`\$]/\\\\&/g'`\\"
+    B line
+    C line"
+    EOF
+
+dash prints `A \"\"`, `B line`, `C line"`; relf prints `A \"\` and then
+nothing - the rest of the here-document is lost. The same substitution
+on a command line is fine: the bug is in the here-document's handling
+of a backquoted substitution holding an escaped backquote (POSIX 2.6.3:
+within backquotes, \` is a literal backquote, not the end). First thing
+next: fix it, then keep the reproducer and the ncurses run as tests.
+
