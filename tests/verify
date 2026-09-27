@@ -349,6 +349,14 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         then emit asm:fixpoint reproduces
         else emit asm:fixpoint DIFFERS; fi
         rm -f /tmp/verify-gen1
+        # The assembler against GNU as on random instructions (Iteration
+        # 566, tools/asm-fuzz.py): the corpus holds it to the shapes the
+        # engine uses; this to every width and addressing mode, where it
+        # had assembled memory push, pop and xchg - silently - as register
+        # ones. 0 is the only right answer; refusals are not counted.
+        if command -v as >/dev/null 2>&1; then
+            emit asm:fuzz-mismatches "$(timeout 280 python3 tools/asm-fuzz.py 300 566 2>/dev/null | sed -n 's/.*, \([0-9]*\) MISMATCH.*/\1/p')"
+        fi
     else
         emit asm:fixpoint DIFFERS
     fi

@@ -259,8 +259,22 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
 : mul, 4 246 UNARY ;  : div, 6 246 UNARY ;  : idiv, 7 246 UNARY ;
 
 \ ---- push pop --------------------------------------------------------------
-: push, ( reg --- ) 0 REX ! DUP R# REX-B REX, R# 7 AND 80 + C,A ;
-: pop,  ( reg --- ) 0 REX ! DUP R# REX-B REX, R# 7 AND 88 + C,A ;
+\ A register, or since Iteration 566 memory (push FF /6, pop 8F /0) and
+\ for push an immediate (6A ib, 68 id). They took a register only and did
+\ not look: given memory, R# read the descriptor as register 8, and `pop
+\ qword ptr [rbx+rsi]` came out `pop r8` - silently (tools/asm-fuzz.py).
+\ Memory at operand size 4: 64 bits is these instructions' default, and
+\ GNU as writes no REX.W for it either.
+: PUSHPOP-MEM ( rm k op --- ) >R >R 4 OPSIZE! R> R> RM, ;
+: push, ( rm --- )
+  DUP MEM? IF 6 255 PUSHPOP-MEM EXIT THEN
+  DUP IMM? IF DROP 4 OPSIZE!
+    IMM @ DISP8? IF 106 C,A IMM @ C,A ELSE 104 C,A IMM, THEN EXIT THEN
+  0 REX ! DUP R# REX-B REX, R# 7 AND 80 + C,A ;
+: pop,  ( rm --- )
+  DUP MEM? IF 0 143 PUSHPOP-MEM EXIT THEN
+  DUP IMM? ABORT" pop: a register or memory"
+  0 REX ! DUP R# REX-B REX, R# 7 AND 88 + C,A ;
 
 \ ---- no operands --------------------------------------------------------
 : syscall, 3845 OPC, ;   : ret, 195 C,A ;
@@ -277,7 +291,12 @@ VARIABLE X-RM   VARIABLE X-REG   VARIABLE X-R8
   DUP IMM? IF DROP OVER RSIZE OPSIZE! SWAP                 \ three operands
     IMM @ DISP8? IF 107 RMR, IMM @ C,A ELSE 105 RMR, IMM, THEN EXIT THEN
   4015 EXTEND ;
-: xchg, ( rm reg --- ) DUP SIZE-OF OPSIZE! BYTE? IF 134 ELSE 135 THEN RMR, ;
+: xchg, ( rm reg --- )
+  \ Either operand may be the memory one - an exchange is symmetric - and
+  \ GNU's order put it where the register goes: `xchg r14, [rax-129]` came
+  \ out a register exchange, the memory dropped (Iteration 566).
+  DUP MEM? IF SWAP THEN
+  DUP SIZE-OF OPSIZE! BYTE? IF 134 ELSE 135 THEN RMR, ;
 
 \ ---- shifts and rotates: by 1, by an immediate, by cl -----------------------
 : SHIFT ( rm cnt k --- )

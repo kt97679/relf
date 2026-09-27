@@ -50,7 +50,10 @@ build first - cheap, and likely to find something.
    a bug in one of them. Stack effects become a column of opcodes.tab,
    which documents them too. And the width-independent words the same
    way across 64- and 32-bit cells.
-4. **The assembler against GNU as, at random**: the corpus tests the 456
+4. **Built, 566: tools/asm-fuzz.py** (and the verify row asm:fuzz-mismatches).
+   First run: memory push/pop/xchg silently mis-assembled - fixed; now 0
+   mismatches, the rest exact or refused loudly. First written:
+   **The assembler against GNU as, at random**: the corpus tests the 456
    instruction shapes the engine uses; generate random instructions -
    every register, displacement size, immediate - in asm64.4's syntax
    and GNU as's, and compare the bytes. Finds what the engine does not

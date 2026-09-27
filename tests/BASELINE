@@ -1,6 +1,7 @@
 asm:core identical
 asm:diff:failed 0
 asm:fixpoint reproduces
+asm:fuzz-mismatches 0
 asm:interactive:failed 0
 asm:kernels reproduces
 asm:shell 1

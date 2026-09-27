@@ -561,6 +561,7 @@ do not trust the absence of a line below.
 - **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured; round trips of set, export -p, trap, alias
 - **564** — the user's fury and rage runs: a job-notice race I had recorded as fact (fixed); completion checks on rage wait for their result
 - **565** — a here-document bug found by ncurses's configure: fixed; that 32,301-line script now runs as under dash
+- **566** — the assembler against GNU as at random: memory push, pop and xchg were assembled as register ones, silently - fixed; asm:fuzz-mismatches
 
 ### Not tied to an iteration
 
@@ -26546,4 +26547,31 @@ since bash is its oracle: tests/diff/cases/heredoc-backquote-565.sh,
 agreed by bash, dash and relf on all three engines. Also: a test hung
 the tool - an inner command reading stdin, no </dev/null (554's lesson,
 again) - and my comparison used bash's <( ) in sh.
+
+## Iteration 566: the assembler against GNU as, at random
+
+tools/asm-fuzz.py (TESTING-IDEAS.md 4): random instructions in every
+family asm64.4 has - every register width, r8-r15, spl/bpl/sil/dil,
+rsp and r12 bases (SIB), rbp and r13 (a displacement), no base, every
+scale, 8- and 32-bit displacements and immediates - through GNU as
+alone, and through asm64.4 by asm-test.py's translator. First run, 600:
+13 MISMATCHES - bytes relf wrote without complaint that meant something
+else. push, and pop, took a register and did not look: given memory, R#
+read the descriptor as register 8 - `pop qword ptr [rbx+rsi]` came out
+`pop r8`, and an immediate would have been read the same way (push 3,
+push rbx). xchg, took GNU's order with the memory where the register
+goes, and made a register exchange of it. The engine uses none of these
+forms, so neither the corpus nor anything else could see it; a user of
+the `forth` builtin could. Now memory push/pop (FF /6, 8F /0, at the
+default operand size, as GNU writes it), push of an immediate (6A/68),
+pop of one refused, xchg taking either order. Two remaining "mismatches"
+were xchg with ax: GNU's 90+r, relf's 87 /r - the same instruction, so
+the tool now asks objdump before calling bytes wrong. 600: 159 exact, 2
+equivalent, 0 mismatched, 439 refused - which I checked, one by one:
+"Undefined word cmovl," and the like, forms the encoder never had, and
+sp/bp, no names for them - loud, never wrong bytes. (My first two checks
+of that were broken: a stdin script without __file__, and ?DO at the top
+level, which relf refuses since 552.) The corpus still 456 of 456, the
+engine byte-identical. A verify row keeps it: asm:fuzz-mismatches, 300
+at a fixed seed, where GNU as is.
 
