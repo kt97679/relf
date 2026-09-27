@@ -166,7 +166,10 @@ build first - cheap, and likely to find something.
     FACILITY, FILE, LOCALS, MEMORY, SEARCH, STRING, TOOLS are not. Each
     word set either passes, or its failures become a list of words relf
     lacks or gets wrong - a decision each.
-13. **Spec archaeology**: every example in POSIX's Shell Command Language
+13. **Begun, 567: tests/shell/run-posix-examples.** Chapter 2 up to
+    2.13: 33 checks from the standard's text, all passing, dash too.
+    Next: the special built-ins' examples (2.14). First written:
+    **Spec archaeology**: every example in POSIX's Shell Command Language
     and its rationale turned into a test with the behaviour the text
     states; and the Austin Group's interpretations of it, where the
     committee settled what the text left open.

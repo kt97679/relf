@@ -562,7 +562,7 @@ do not trust the absence of a line below.
 - **564** — the user's fury and rage runs: a job-notice race I had recorded as fact (fixed); completion checks on rage wait for their result
 - **565** — a here-document bug found by ncurses's configure: fixed; that 32,301-line script now runs as under dash
 - **566** — the assembler against GNU as at random: memory push, pop and xchg were assembled as register ones, silently - fixed; asm:fuzz-mismatches
-- **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30)
+- **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30); POSIX's own examples, 33 checks
 
 ### Not tied to an iteration
 
@@ -26600,4 +26600,16 @@ does not have: C-w, M-b, M-f, M-d, M-BS, C-t, C-y - a question, Q30.
 A slip of mine: a stray `git stash` at the end of a command set aside
 the fix and the new case; `git stash pop` restored them at once - the
 untracked files a stash leaves alone, and the builds were made before.
+
+**POSIX's own examples** (same iteration; TESTING-IDEAS.md 13):
+tests/shell/run-posix-examples, 33 checks, their expected values the
+standard's text (XCU chapter 2, POSIX.1-2017, fetched), not any shell's
+output: parameter expansion's worked examples - `${a}b-$ab-${1}0-${10}-
+$10` is `1b--20--20`, the brace-matching `${foo-bar}xyz}` set, null and
+unset - and its table, 8 forms by set/null/unset; `echo \2>a` and
+`echo 2\>a`; two here-documents on one line; the and-or lists of 2.9.3;
+field splitting's example; `a[b/c]d` matching only itself; $$ and PPID
+in a subshell. relf passes all 33 on its three builds, and so does dash
+- which is what shows the test itself right. The special built-ins'
+examples (2.14) lie past where the fetch stopped: next.
 

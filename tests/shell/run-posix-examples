@@ -1,0 +1,75 @@
+#!/bin/sh
+# tests/shell/run-posix-examples - the examples POSIX gives, with the
+# results it states (Iteration 567; TESTING-IDEAS.md 13). From the Shell
+# Command Language, XCU chapter 2 (POSIX.1-2017): parameter expansion's
+# examples and its table of set/null/unset, the redirections of 2.7, the
+# two here-documents of 2.7.4, the and-or lists of 2.9.3, field
+# splitting's example in 2.6.5, the bracket pattern of 2.13.3, and $$
+# and PPID in a subshell. The expected values are the standard's text,
+# not any shell's output.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d)
+r() { "$THIS_SH" -c "$1" 2>&1; }
+
+# 2.6.2 Parameter Expansion - the examples
+assert_output_equals '${a}b-$ab-${1}0-${10}-$10' "1b--20--20" "$(r 'a=1; set 2; echo ${a}b-$ab-${1}0-${10}-$10')"
+assert_output_equals '${foo-bar}xyz}, foo=asdf' "asdfxyz}" "$(r 'foo=asdf; echo ${foo-bar}xyz}')"
+assert_output_equals '${foo-bar}xyz}, foo empty' "xyz}" "$(r 'foo=; echo ${foo-bar}xyz}')"
+assert_output_equals '${foo-bar}xyz}, foo unset' "barxyz}" "$(r 'unset foo; echo ${foo-bar}xyz}')"
+assert_output_equals '${x:-$(cmd)} runs cmd only if x is null or unset' "set|ran" \
+    "$(r 'n=; f() { n=ran; }; x=v; : "${x:-$(f)}"; echo "${n:-set}|$(x=; : ${x:-$(echo ran)} ; echo ran)"')"
+assert_output_equals '${X:=abc}' "abc" "$(r 'unset X; echo ${X:=abc}')"
+out=$(r 'unset posix; echo ${posix:?}; echo not-reached'); st=$?
+case $out in *posix*) r1=named ;; *) r1="unnamed: $out" ;; esac
+assert_output_equals '${posix:?} writes a message naming it' "named" "$r1"
+assert_output_equals '... and the shell exits non-zero' "1" "$([ $st -ne 0 ] && ! printf '%s' "$out" | grep -q not-reached && echo 1)"
+assert_output_equals '${3:+posix}' "posix" "$(r 'set a b c; echo ${3:+posix}')"
+assert_output_equals '${#HOME}' "10" "$(r 'HOME=/usr/posix; echo ${#HOME}')"
+assert_output_equals '${x%.c}.o' "file.o" "$(r 'x=file.c; echo ${x%.c}.o')"
+assert_output_equals '${x%%/*}' "posix" "$(r 'x=posix/src/std; echo ${x%%/*}')"
+assert_output_equals '${x#$HOME}' "/src/cmd" "$(r 'HOME=/h; x=$HOME/src/cmd; echo ${x#$HOME}')"
+assert_output_equals '${x##*/}' "three" "$(r 'x=/one/two/three; echo ${x##*/}')"
+assert_output_equals '"${x#*}": the asterisk a pattern' "*abc" "$(r 'x="*abc"; echo "${x#*}"')"
+assert_output_equals '${x#"*"}: the asterisk literal' "abc" "$(r 'x="*abc"; echo ${x#"*"}')"
+
+# 2.6.2 - the table: each form, with the parameter set, null and unset
+row() {   # $1 the form (with P and W), $2 set, $3 null, $4 unset
+    got=$(r "P=v; echo \"[$1]\"; P=; echo \"[$1]\"; unset P; echo \"[$1]\"" | paste -sd' ' -)
+    assert_output_equals "table: $1" "[$2] [$3] [$4]" "$got"
+}
+row '${P:-W}' v W W
+row '${P-W}'  v '' W
+row '${P:=W}' v W W
+row '${P=W}'  v '' W
+row '${P:+W}' W '' ''
+row '${P+W}'  W W ''
+out=$(r 'P=v; echo "[${P:?W}]"; P=; echo "[${P?W}]"; unset P; echo "[${P?W}]"; echo no')
+assert_output_contains "table: \${P:?W} and \${P?W} substitute, then error on unset" "[v] []" "$(echo "$out" | paste -sd' ' -)"
+case $out in *no*) r2=went-on ;; *W*) r2=stopped ;; *) r2="? $out" ;; esac
+assert_output_equals "table: \${P?W} on unset writes W and exits" "stopped" "$r2"
+
+# 2.7 Redirection
+(cd "$t" && "$THIS_SH" -c 'echo \2>a') 
+assert_output_equals 'echo \2>a writes 2 into a' "2" "$(cat "$t/a")"
+assert_output_equals 'echo 2\>a writes 2>a out' "2>a" "$(cd "$t" && r 'echo 2\>a')"
+# 2.7.4 Here-Document
+assert_output_equals 'two here-documents on one line' "Hi, Helene." \
+    "$(r 'cat <<eof1; cat <<eof2
+Hi,
+eof1
+Helene.
+eof2' | paste -sd' ' -)"
+# 2.9.3 Lists
+assert_output_equals 'false && echo foo || echo bar' "bar" "$(r 'false && echo foo || echo bar')"
+assert_output_equals 'true || echo foo && echo bar' "bar" "$(r 'true || echo foo && echo bar')"
+# 2.6.5 Field Splitting: <newline><space><tab>foo<tab><tab>bar<space>
+assert_output_equals 'field splitting: two fields' "2 foo bar" \
+    "$(r 'x=$(printf "\n \tfoo\t\tbar "); set -- $x; echo $# $1 $2')"
+# 2.13.3: a[b/c]d matches neither abd nor a/d, only a path literally a[b/c]d
+mkdir -p "$t/p/a" "$t/p/a[b" && : > "$t/p/abd" && : > "$t/p/a/d" && : > "$t/p/a[b/c]d"
+assert_output_equals 'a[b/c]d matches only itself' "a[b/c]d" "$(cd "$t/p" && r 'echo a[b/c]d')"
+# 2.5.2 and 2.5.3: $$ and PPID in a subshell
+assert_output_equals '$$ in a subshell is the shell'"'"'s' "same" "$(r '[ "$$" = "$(echo $$)" ] && [ "$$" = "$( (echo $$) )" ] && echo same')"
+assert_output_equals 'PPID in a subshell is the shell'"'"'s' "same" "$(r '[ "$PPID" = "$( (echo $PPID) )" ] && echo same')"
+rm -rf "$t"
+report
