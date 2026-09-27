@@ -1,9 +1,10 @@
-# relf: a POSIX shell written in Forth, on a Forth that assembles its own engine
+# relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-*Draft for ForthHub (Iteration 570). The bracketed notes are for the
-author to settle; everything else is measured, and says where.*
+*Draft for ForthHub. The bracketed notes are for the author to settle;
+everything else is measured, and says where. The working copy is a
+Claude Doc, edited by the author; this file mirrors it.*
 
-relf is a POSIX shell written in Forth: one static file of 136,524
+relfsh is a POSIX shell written in Forth: one static file of 136,524
 bytes that runs in 196 kB of memory, and that you can extend from the
 inside, in Forth, while it runs. Underneath is a small Forth that
 compiles itself, and whose x86-64 engine is assembled from Forth
@@ -35,6 +36,30 @@ That is where the two ideas met. A shell written in Forth could be
 small and frugal, because Forth is; and it could be extended from
 inside, in Forth itself, given the right builtin.
 
+## The shell
+
+A POSIX sh: pipelines, lists, compound commands, functions, here-
+documents, every expansion, job control, a line editor with history,
+search and completion, `$'...'` and `set -o pipefail` from POSIX.1-2024.
+And the `forth` builtin, which reaches the whole Forth system the shell
+is written in:
+
+    $ forth '2 3 + .'
+    5
+    $ forth 'S" examples/seq.4" INCLUDED'
+    $ seq 1 3 | while read n; do echo "line $n"; done
+    line 1
+    line 2
+    line 3
+
+`seq` there is a new builtin, defined in a dozen lines of Forth. The
+examples directory also has a prompt hook, a TCP echo server and an
+HTTP server, all in Forth, inside the shell. A Forth error in such
+code fails that one command, as any builtin's failure does: `$?` is
+1, the message goes to standard error, the shell goes on - and so does
+a division by zero or a bad address, which the engine turns from the
+CPU's trap into a Forth THROW.
+
 ## What it is
 
     ./relfsh - one static file, 136,524 bytes
@@ -57,7 +82,7 @@ runs on both, and their outputs must agree.
 ## The Forth underneath
 
 - **Token-threaded.** 64 one-byte opcodes, and further primitives as
-  two-byte tokens (relf calls these "escaped primitives"). Colon
+  two-byte tokens (RelF calls these "escaped primitives"). Colon
   definitions call each other by *relative* offset - the "Relative" in
   RelF - so an image is position-independent, and its 4 MB region is
   exactly the reach of a call.
@@ -99,49 +124,25 @@ every verification. The nearest prior art I know is Lars Brinkhoff's
 lbForth, a self-hosting metacompiled Forth bootstrapped from a few
 lines of C. [author: other prior art to name?]
 
-## The shell
-
-A POSIX sh: pipelines, lists, compound commands, functions, here-
-documents, every expansion, job control, a line editor with history,
-search and completion, `$'...'` and `set -o pipefail` from POSIX.1-2024.
-And the `forth` builtin, which reaches the whole Forth system the shell
-is written in:
-
-    $ forth '2 3 + .'
-    5
-    $ forth 'S" examples/seq.4" INCLUDED'
-    $ seq 1 3 | while read n; do echo "line $n"; done
-    line 1
-    line 2
-    line 3
-
-`seq` there is a new builtin, defined in a dozen lines of Forth. The
-examples directory also has a prompt hook, a TCP echo server and an
-HTTP server, all in Forth, inside the shell. A Forth error in such
-code fails that one command, as any builtin's failure does: `$?` is
-1, the message goes to standard error, the shell goes on - and so does
-a division by zero or a bad address, which the engine turns from the
-CPU's trap into a Forth THROW.
-
 ## Numbers
 
 Memory, measured with tools/mem-profile.py (kB):
 
-                     resident    private
-    relf, asm engine      196        196
-    relf, C engine      1,940        384
-    dash                1,968        100
-    busybox ash         1,608        252
-    bash                3,704      1,740
+                       resident    private
+    relfsh, asm engine      196        196
+    relfsh, C engine      1,940        384
+    dash                  1,968        100
+    busybox ash           1,608        252
+    bash                  3,704      1,740
 
-Resident, relf on its own engine is the smallest by far - it maps no C
-library. Counting only private memory, dash uses half of relf's.
+Resident, relfsh on its own engine is the smallest by far - it maps no C
+library. Counting only private memory, dash uses half of relfsh's.
 
-Speed, honestly: relf starts faster than dash (287 microseconds against
+Speed, honestly: relfsh starts faster than dash (287 microseconds against
 748), but runs script-heavy work roughly 30 times slower - it is a
 bytecode interpreter, and dash is C. As a Forth, on seven benchmarks
-against C, Go, Python, Ruby, gforth and pforth, it is in gforth's
-class, 2.2 to 2.6 times faster than pforth, Ruby and Python, and about
+against C, Go, Python, Ruby, gforth and pforth, RelF is in
+gforth's class, 2.2 to 2.6 times faster than pforth, Ruby and Python, and about
 12 times slower than C and Go (bench/langs; the shell figures from
 Iteration 534, the Forth ones from 543).
 
@@ -154,11 +155,11 @@ Iteration 534, the Forth ones from 543).
   suite; 32 sessions through a pseudo-terminal, for the line editor
   and job control; the POSIX standard's own examples, 64 of them, with
   the results its text states.
-- Beyond the suites: seven shells voting on 131 scripts - relf is with
+- Beyond the suites: seven shells voting on 131 scripts - relfsh is with
   every strong majority; 1,000 random programs against dash and bash,
   without a difference; each test script rewritten nine ways that must
   not change what it prints; mutation testing on the compiled image;
-  the test harness run by relf itself; signal storms, where every trap
+  the test harness run by relfsh itself; signal storms, where every trap
   ran and every sum came out exact; and real scripts - zlib's configure,
   and ncurses's, 32,301 lines of Autoconf, whose 1,041 generated files
   match dash's run except where autoconf recorded how each shell's

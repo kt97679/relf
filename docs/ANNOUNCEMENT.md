@@ -317,3 +317,11 @@ paragraph, other prior art, the words on how it was built (an AI wrote
 most of it - to be said plainly, as the research concluded), the
 repository's URL.
 
+The working copy of the article is now a Claude Doc the author edits;
+docs/ARTICLE-forthhub.md mirrors it. The author's changes so far: the
+#92 paragraph cut (not related to this project); relfsh, not relf, in
+the title and the lede; The shell moved up, right after Why - show it
+working first, explain after. And one naming rule, applied through
+the text: relfsh is the shell, RelF the Forth; file and program names
+(relf64, relfasm64, the relf directory) stay as they are.
+
