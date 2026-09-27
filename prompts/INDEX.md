@@ -32,6 +32,7 @@ fetched lazily when their trigger conditions are met.
 | `11-report-from-elsewhere` | write output someone on another machine will paste back, or read one | the reader has the machine |
 | `12-progress-log` | try an approach, or finish an attempt that worked, failed or was reverted | nothing is being tried |
 | `13-severity-first` | work through a list of failures, or decide whether a pass count is the goal | one failure, already understood |
+| `14-audience-research` | draft a write-up for a specific venue, or choose where to publish it (upstream `07-audience-research`; renumbered here, where 07 was already `07-git-handoff`) | the artefact is internal, with one known reader |
 
 ## The one that is hardest to self-apply
 

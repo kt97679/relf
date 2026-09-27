@@ -57,13 +57,19 @@ commands = sys.argv[1:] or [
     # never entered were prompt escapes and job-control reports, which
     # only an interactive shell reaches - tested, just not counted.
     'sh tests/interactive/run',
+    # The Forth suite, since Iteration 553: CORE and the extra files run
+    # on kernel64.img - whose code sits at the same addresses in the
+    # shell image, which is that image with the rest appended - so the
+    # kernel's words are measured too. shadow.fth is left out: it loads
+    # pool.4 and shadow.4 at other addresses than the shell image's.
+    'cat tester.fr tests/core-extra.fth tests/coreplus-loop.fth | {engine} kernel64.img > /dev/null',
 ]
 # The instrumented engine as a shell of its own (tools/embed.sh): since
 # Iteration 506 relfsh is a binary, so the suites are pointed at this
 # one through THIS_SH and RELFSH, and a command's ./relfsh is replaced.
 shell = os.path.join(work, 'relfsh')
 subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
-commands = [c.replace('./relfsh', shell) for c in commands]
+commands = [c.replace('./relfsh', shell).replace('{engine}', engine) for c in commands]
 env = dict(os.environ, THIS_SH=shell, RELFSH=shell)
 for c in commands:
     r = subprocess.run(c, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -81,21 +87,30 @@ sys.argv = ['image-audit', 'kernel64-shell.img', '8']
 with contextlib.redirect_stdout(io.StringIO()):
     exec(audit, g)
 cov = open(bitmap, 'rb').read()
-first = g['xt_of']['LINE-MAX']                     # shell.4's first word
+# Every source, in the order the shell image loads them (Iteration 553:
+# before, shell.4 and tree.4 only): a word defined twice is credited to
+# the later file, whose definition the image's name finds.
+SOURCES = ('kernel.4', 'extend.4', 'pool.4', 'shadow.4', 'save-system.4', 'shell.4', 'edit.4', 'tree.4')
 defline = {}
-for src in ('shell.4', 'tree.4'):
+for src in SOURCES:
     for i, l in enumerate(open(src).read().split('\n')):
         m = re.match(r'^: (\S+)', l)
         if m:
             defline[m.group(1)] = '%s:%d' % (src, i + 1)
 rows = []
 for n, starts in g['STARTS'].items():
-    if n in defline and g['xt_of'][n] >= first and starts:
+    if n in defline and starts:
         rows.append((defline[n], n, sum(1 for s in starts if cov[s]), len(starts)))
 hit = sum(r[2] for r in rows); tot = sum(r[3] for r in rows)
 never = sorted((l, n) for l, n, h, t in rows if cov[g['xt_of'][n]] == 0)
-print(f'\nshell.4 and tree.4: {len(rows)} colon words, {len(never)} never entered; '
+print(f'\nall sources: {len(rows)} colon words, {len(never)} never entered; '
       f'instructions run {hit}/{tot} = {hit * 100 // tot}%')
+for src in SOURCES:
+    rs = [r for r in rows if r[0].startswith(src + ':')]
+    if rs:
+        h = sum(r[2] for r in rs); t = sum(r[3] for r in rs)
+        nv = sum(1 for l, n, _, _ in rs if cov[g['xt_of'][n]] == 0)
+        print(f'  {src:14} {len(rs):4} words, {nv:3} never entered, instructions {h}/{t} = {h * 100 // t}%')
 for l, n in never:
     print(f'  never entered: {l:14}  {n}')
 print('most instructions never run:')

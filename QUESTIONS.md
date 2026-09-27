@@ -273,6 +273,16 @@ words refuse to run outside a definition, `.(`, README refreshed, `make
 clean` complete; and a directory structure separating the engines, the
 Forth system and the shell; and new kinds of tests (TESTING-IDEAS.md).
 
+**A23. No more standard words (553).** The user: the Forth 2012 words
+relf lacks (TESTING-IDEAS.md 12) are not added - whoever needs them can
+define them with the `forth` builtin. Two things that answer does not
+cover, raised and accepted as they are: number syntax (`$FF #12 %101
+'c'`, double literals `12.`) is the text interpreter's, not a word, so
+a user cannot add it without a hook into number conversion; and the
+standard suite cannot be a regression test beyond CORE, since it stops
+at the first word missing. CORE stays the conformance claim, and the
+announcement says exactly that.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

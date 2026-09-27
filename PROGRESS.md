@@ -26022,3 +26022,38 @@ words across CORE EXT, DOUBLE, FACILITY, STRING, FILE, TOOLS, SEARCH,
 LOCALS and BLOCK (TESTING-IDEAS.md 12). My first survey said "0 missing"
 everywhere: relf's `[']` reports "Not found X", not "Undefined word X",
 and the check looked for the second only - the same trap as 543's.
+
+## Iteration 553: coverage of the whole system, audience research, prompt 14
+
+The user: no more standard words (A23); coverage of what exists, for
+Forth and shell alike; prompt 07-audience-research added (as 14 here,
+07 being taken); ForthHub researched for the announcement.
+
+**Coverage, all sources**: tools/coverage.py now reports every file in
+load order and runs the Forth suite too (on kernel64.img, whose code
+sits at the same addresses in the shell image). 1,065 colon words, 67
+never entered, 90% of instructions run: tree.4 95%, shell.4 90%,
+kernel.4 88%, edit.4 88%, pool.4 69%, extend.4 34%, shadow.4 31%,
+save-system.4 13%. The 67: build-time code (save-system, the locals
+compiler, buffer definers - run by every make, not by the measured
+runs; the next step measures a build too); words only the forth builtin
+reaches, tested by nothing (the search order, CASE, ERASE, [COMPILE],
+ENVIRONMENT?, ROLL, AGAIN, ABORT", CELL-, WRITE-LINE, CONVERT); nine
+prompt escapes, a glob backslash, two editing keys.
+
+**Found by the new tests**: a Forth error inside the `forth` builtin -
+undefined word, ABORT, ABORT" - ends the line it is on, the rest of a -c
+string included (`forth 'X'; echo y` never echoes); with stdin open the
+recovery then reads input, which hung the first run of the tests. The
+tests are pending (tests/shell/pending-coverage-gaps, not run by
+run-all): `finish` is not lib.sh's name, and WRITE-LINE's check found an
+empty file, unexplained yet. First thing next.
+
+**Audience research** (ANNOUNCEMENT.md): the author's own ForthHub #92
+(2020: SOD32 cut to 7 primitives, 708x slower) is the story's start;
+ForthHub's readers include a standard-writer and lbForth's author (a
+self-hosting Forth from a little C - the prior art to name); Habr
+punishes console-only articles and "yet another Forth". ForthHub's
+comments could not be read (logged-out pages show none; the API's limit
+was spent on a shared address).
+

@@ -154,3 +154,84 @@ Needs: gcc, Go, Python 3, Ruby, gforth, pforth, dash, bash, busybox.
   private column is the fair one per process.
 - The self-hosting claim is for the x86-64 assembly engine; the C engine
   (for other platforms, and the bootstrap) is built by a C compiler.
+
+## Audience research (prompt 14, Iteration 553)
+
+Done by prompt 14's method before any draft: real threads, not a guess
+at what readers are "probably" like. Gaps are stated at the end.
+
+**1. Who is actually there.** ForthHub (github.com/ForthHub/discussion,
+~130 stars, issues and Discussions): Ruvim Pinka (`ruv`), who writes
+exact analyses of the standard's semantics (#103, POSTPONE in edge
+cases) - every conformance claim will be read by someone who helps
+write the standard; Mitch Bradley (Open Firmware, #132); Anthony Howe
+(post4, #132); Lars Brinkhoff, whose lbForth the ForthHub wiki lists as
+a self-hosting metacompiled Forth bootstrapping from a few lines of C -
+the nearest prior art to relf's bootstrap, which the article must name
+and compare with, not discover in the comments. And the author: #92
+(Dec 2020, kt97679), SOD32 reduced from 32 primitives to 7, measured
+708 times slower, with the question whether @ ! and lit could go too.
+Habr: a large Russian Forth community (SP-Forth, forth.org.ru), and a
+translated series on bootstrapping a Forth from a 512-byte seed
+(Miniforth) - self-hosting is a theme this audience already reads.
+
+**2. Their vocabulary.** Threaded code (direct/indirect/token), primi-
+tives, inner and outer interpreter, metacompilation (for what relf's
+cross.4 does), target image, word sets, "the pearl of Forth" -
+CREATE DOES> (#2's list of what makes a Forth recognizable: RPN, one
+cell size, visible stacks, CREATE DOES>). relf's own names - "escaped
+primitive", "the map", "folded return" - must be introduced as local
+names for known things: an escaped primitive is a two-byte token.
+
+**3. What the venues punish.** On Habr: an article with only a console
+in it - a 2017 Forth article's comments complained they saw no graphics
+at all, just a dull black text console (the picture test); a vague
+"which implementation?" - readers asked the author exactly that; and
+the "yet another Forth" reflex - a Habr Forth article says only the
+lazy have not written their own Forth. The answer to "why this one?"
+has to be in the first three sentences. On ForthHub: a conformance
+claim broader than what is tested - say "passes the CORE tests (Hayes/
+Gerry Jackson's core.fr, both engines)", never "standard Forth"; relf
+lacks CORE EXT and other word sets by choice (A23), and says so.
+Machine translation: a Russian text made from a finished English one
+reads as translated (prompt 14, item 7) - the author writes or reads it
+natively.
+
+**4. The metric.** Replies from implementers - the people above - not
+views. That argues for a precise, checkable article that invites
+measurement ("here is how to reproduce every number"), ending with the
+open questions relf has (Q15's opcode choices, the 30x-dash gap),
+since #92 got its answer by asking one.
+
+**5. Mechanics.** ForthHub: a GitHub issue or Discussion ("Show and
+tell"), GitHub markdown, images by upload, no length limit but threads
+are read in email digests - the first paragraph is the whole article
+for most. Habr: hubs (Forth has none of its own - "Программирование",
+"Ненормальное программирование", "Assembler", "Системное
+программирование"), a cut after the introduction, images expected,
+tags.
+
+**6. The route.** ForthHub first (the implementers, English), then
+comp.lang.forth (where #81's author cross-posted), then Habr (Russian,
+written natively), then r/Forth. One submission each; ForthHub threads
+stay open for years (#92 is still open).
+
+**7. Translation.** Two texts, not one translated: the Habr audience
+wants the story (from 7 primitives to a self-hosted shell), ForthHub
+the facts and the method.
+
+**Hooks the research found.** The arc from #92 - 7 primitives and 708x
+slower, to 64 opcodes chosen by measured dispatch counts, in gforth's
+class - is the story, and it is the author's own. #14 asks what Forth
+is for beyond Forth systems and embedded work: a POSIX shell that is
+smaller in memory than busybox ash is one answer. Extensibility, not
+the stack, is what Habr's commenters said Forth is: the shell's `forth`
+builtin, the assembler written in Forth, the engine assembled by it.
+
+**Gaps.** ForthHub's comment threads could not be read: GitHub shows
+no comments to a logged-out fetch, and its API's unauthenticated limit
+was spent on this sandbox's shared address. How #92 and ChatFORTH
+(#147, an AI-related Forth) were received is unknown - and relf was
+built with an AI doing much of the work, which the article should state
+plainly rather than leave to be discovered. Worth reading, logged in,
+before drafting.
