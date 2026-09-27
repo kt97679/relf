@@ -558,7 +558,7 @@ do not trust the absence of a line below.
 - **560** — the pty suite 219 s -> 48 s; strange environments: the assembly engine crashed under any ulimit -v below 1 GB - fixed
 - **561** — PATH unset: dash's default (A28); the command search reads the PATH variable, exported or not
 - **562** — set lists inherited variables (sorted, as dash); A29: no empty PATH entry searches the current directory
-- **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured
+- **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured; round trips of set, export -p, trap, alias
 
 ### Not tied to an iteration
 
@@ -26450,4 +26450,15 @@ exact: each interrupted pipe read and wait was retried. Kept in the
 suite as run-signal-storm (both engines and 32-bit, in verify): the
 shell writes `ready` once its trap is set, since a signal before that
 takes USR1's default action and kills it for a reason not the test's.
+
+**Round trips** (same iteration; TESTING-IDEAS.md 2): POSIX calls the
+listings of set, export -p, trap and alias suitable for re-input. A
+shell lists; a fresh one reads the list in and lists again; the text
+must be the same - with values holding a quote, double quotes, a
+backslash, $, backquotes, a newline, nothing, spaces, * and ~. All four
+round-trip on both engines and 32-bit, as in dash - set's included,
+rewritten this very iteration. My first alias check `eval`ed the listing
+and "differed" in dash too: its lines are operands of alias, not
+commands, and read back as `alias <line>` they are the same.
+run-round-trips, 4 checks.
 

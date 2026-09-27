@@ -28,7 +28,10 @@ build first - cheap, and likely to find something.
    it; comments, blank lines, `:` and backslash-newlines added; variables
    renamed consistently. No reference shell, no expected output: any
    disagreement is a relf bug, in the parser or the executor.
-2. **Round trips** - POSIX says `set` prints variables, and functions
+2. **Built, 563: tests/shell/run-round-trips.** set, export -p, trap and
+   alias listings, read back in by a fresh shell, list the same, with
+   every awkward value; both engines and 32-bit. First written:
+   **Round trips** - POSIX says `set` prints variables, and functions
    print, in a form the shell can read back. Print every function the
    test scripts define, re-read the text, and require the same behaviour;
    print again, and require the same text (a fixpoint, like the images).

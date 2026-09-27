@@ -47,9 +47,9 @@ rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 964
+shell:assertions 968
 shell:dead-words 0
-shell:files 88
+shell:files 89
 shell:host-sh-tests 0
 size:asm-engine 15456
 size:asm-shell 135668
