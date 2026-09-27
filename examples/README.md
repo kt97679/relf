@@ -1,4 +1,4 @@
-# forth-shell-examples — extending the shell from inside
+# examples — extending the shell from inside
 
 This shell is written in Forth, and the `forth` builtin hands the rest
 of its line to the Forth system the shell is running on. Anything
@@ -6,7 +6,7 @@ loaded that way becomes part of this shell - new builtins, hooks into
 its loop - with no rebuild. Each file here is one example; load it at
 the prompt, or in a script, or in the file `$ENV` names:
 
-    forth 'S" forth-shell-examples/seq.4" INCLUDED'
+    forth 'S" examples/seq.4" INCLUDED'
 
 The single quotes matter: they keep the shell from taking Forth's `"`
 for its own. A path is relative to the current directory.

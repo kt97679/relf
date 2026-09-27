@@ -297,3 +297,23 @@ announcement from here, or from the baseline then current): the
 assembly engine 15,440 bytes; the whole shell on it, one static file,
 134,948 bytes; the C engine's shell 158,628 bytes (x86-64).
 
+## The article, drafted (Iteration 570)
+
+docs/ARTICLE-forthhub.md - for ForthHub, in English; the Habr version
+is the author's to write in Russian, not a translation (prompt 14, 7).
+Built from this file's facts, re-measured where they could have moved:
+sizes and test counts from tests/BASELINE, memory from
+tools/mem-profile.py (196 kB resident on the assembly engine, 244 after
+work; dash 1,968 resident but 100 private), every shell example run on
+both engines first. Its figures are ASCII, under 64 columns (A25).
+Prompt 14's tests: the first three sentences say what it is and what
+the reader gets; the section heads read as the story; each structure
+is a figure - the layers, the bootstrap chain, the memory table.
+Exactness, for a standard-writer's reading: "passes the CORE tests"
+with what they are, never "standard Forth"; the slow case stated plain;
+where each number comes from. Named: lbForth, as the prior art.
+For the author to settle, marked [author: ...] in the draft: the #92
+paragraph, other prior art, the words on how it was built (an AI wrote
+most of it - to be said plainly, as the research concluded), the
+repository's URL.
+

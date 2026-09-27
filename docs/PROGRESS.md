@@ -565,6 +565,7 @@ do not trust the absence of a line below.
 - **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30); POSIX's own examples, 33 checks
 - **568** — the word keys (A30): C-w, M-b, M-f, M-d, M-Backspace, C-y with a kill buffer; 81 of 88 keystroke tests as bash, the 7 left deliberate
 - **569** — the special built-ins' POSIX examples, 31 checks: readonly lost its flag on inherited variables, and readonly -p did not quote - both fixed
+- **570** — the announcement article, drafted for ForthHub (docs/ARTICLE-forthhub.md)
 
 ### Not tied to an iteration
 
@@ -26674,4 +26675,20 @@ shell:8byte went 1 -> 0 and every suite after it in run_tests.sh read
 recording, restored the baseline, made run-builtins2 expect dash's
 quoted form, ran the whole suite on both engines, and recorded again:
 91 files, 1,033 assertions.
+
+## Iteration 570: the article
+
+fury and rage verified 569. The user: on to the announcement.
+
+docs/ARTICLE-forthhub.md, 1,533 words, from ANNOUNCEMENT.md's facts and
+research - re-measured, not remembered: sizes and counts from the
+baseline, memory measured again (the shell had grown since 551), every
+example run on both engines. The review before committing corrected
+three claims I had written loosely: 2,136 CORE checks include tests
+adapted from the Forth 2012 suite, not Hayes' file alone; ncurses's
+config.status differs from dash's in two lines, not one; and I do not
+know that fury is a laptop. Running the examples found the examples
+directory's own usage comments still naming forth-shell-examples/,
+gone since 555 - the restructure's script had not reached comments in
+examples/; fixed, and in GOALS.md.
 

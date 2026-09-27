@@ -234,7 +234,7 @@ work begins.
     engine does not have (`socket`, `bind`, `listen`, `accept`) -
     escaped, so they move nothing (CV8.md 2.2); a prompt hook needs a
     point in the prompt loop that calls a Forth word. **Done at 505**:
-    `forth-shell-examples/` - `seq`, `PROMPT_COMMAND` through a new
+    `examples/` - `seq`, `PROMPT_COMMAND` through a new
     `PROMPT-HOOK`, a TCP echo server and an HTTP server - with
     `TCP-LISTEN`, `TCP-ACCEPT` and `TCP-CONNECT` in the engine.
 
@@ -291,7 +291,7 @@ work begins.
   attempt through the user's machines.
 - **Item 12 - yes**: add whatever primitives the examples need, sockets
   included (escaped, so nothing moves), and put the examples in
-  `forth-shell-examples/`.
+  `examples/`.
 
 ## Known shortcuts to revisit
 

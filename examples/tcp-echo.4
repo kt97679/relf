@@ -2,7 +2,7 @@
 \ Every byte a client sends comes back. It listens on 127.0.0.1 only,
 \ serves one connection at a time, and runs until it is interrupted -
 \ so start it in the background:
-\     forth 'S" forth-shell-examples/tcp-echo.4" INCLUDED'
+\     forth 'S" examples/tcp-echo.4" INCLUDED'
 \     tcp-echo 9000 &
 \ TCP-LISTEN, TCP-ACCEPT and TCP-CONNECT are engine primitives (CV8.md
 \ 2.2, Iteration 505); a socket is read and written with READ and WRITE,
