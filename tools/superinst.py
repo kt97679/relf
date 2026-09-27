@@ -46,7 +46,7 @@ src = patch(src, '    NEXT();\ndo_call:',
             '      prof_map = mmap(0, %d * sizeof(unsigned int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);\n'
             '      close(fd); }\n    NEXT();\ndo_call:' % (counts, SLOTS))
 open(engine + '.c', 'w').write(src)
-subprocess.run(['cc', '-O2', '-I', ROOT, '-o', engine, engine + '.c'], check=True)
+subprocess.run(['cc', '-O2', '-I', os.path.join(ROOT, 'engine'), '-o', engine, engine + '.c'], check=True)
 subprocess.run(['sh', 'tools/embed.sh', engine, 'kernel64-shell.img', shell], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 env = dict(os.environ, THIS_SH=shell, RELFSH=shell)

@@ -47,7 +47,7 @@ src = patch(src, '    NEXT();\ndo_call:', '''    prof_base = cbase;
     NEXT();
 do_call:''' % (counts, SLOTS))
 open(os.path.join(work, 'prof.c'), 'w').write(src)
-subprocess.run(['cc', '-O2', '-I', ROOT, '-o', engine, os.path.join(work, 'prof.c')], check=True)
+subprocess.run(['cc', '-O2', '-I', os.path.join(ROOT, 'engine'), '-o', engine, os.path.join(work, 'prof.c')], check=True)
 open(counts, 'wb').write(bytes(SLOTS * 4))
 
 # The counting engine, made a shell of its own with the shell image in

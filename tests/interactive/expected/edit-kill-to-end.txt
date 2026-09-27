@@ -1,0 +1,3 @@
+<PS1>echo keep
+keep
+<PS1>exit

@@ -14,7 +14,11 @@ build first - cheap, and likely to find something.
 
 ## Oracles that need no expected answer
 
-1. **Metamorphic testing** (**first**). A shell program and a rewriting of
+1. **Built, 557: tools/metamorph.py.** The differential suite's 131
+   scripts, nine rewritings each, relf against itself, dash as the judge
+   of neutrality: 1,170 rewritings, 0 findings on both engines. Scripts
+   reading $LINENO are set aside - every rewriting moves it. First written:
+   **Metamorphic testing** (**first**). A shell program and a rewriting of
    it that means the same must print the same. Rewrite every test script
    by transformations that preserve meaning, and compare relf with
    ITSELF: the body wrapped in `{ ...; }`, in `( ... )`, in `eval '...'`,

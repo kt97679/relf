@@ -1,0 +1,3 @@
+<PS1>echo XY
+XY
+<PS1>exit

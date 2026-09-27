@@ -552,6 +552,7 @@ do not trust the absence of a line below.
 - **554** — a Forth error fails its command only (A24): CATCH/THROW in the kernel, errors to stderr; CONVERT fixed; coverage 67 → 13 words never run
 - **555** — the tree restructured: engine/, forth/, shell/, docs/, examples/; README rewritten
 - **556** — traps THROW (A26: a zero divisor fails its command); compile-only words by a list of xts (A27); names over 31 refused
+- **557** — coverage 9 words never run (93%); editor keys tested through a pty; tools/metamorph.py: 1,170 rewritings, 0 findings
 
 ### Not tied to an iteration
 
@@ -26217,4 +26218,43 @@ letters, and ran its own name as code. HEADER refuses them now.
 
 Tests: run-forth-errors, 36 checks, both engines. The assembly engine is
 15,440 bytes (+240).
+
+## Iteration 557: the last reachable gaps, and metamorphic testing
+
+**Coverage, measured again** - and the tool had to be repaired first:
+since the restructure (555) four tools that compile the engine -
+coverage.py, profile.py, superinst.py, opcode-mix.py - passed `-I` the
+root, where cv8-ops.h no longer is. Verification runs none of them, so
+555's check could not see it; the first coverage run died in `cc`. Now
+`-I engine/`. The result: 1,074 words, 9 never entered, 93% of
+instructions (554: 13, 92%). It also corrects 554's record: of the six
+words its \D{} and backslash checks were written to reach, four were
+reached; PD-HMS was not (no %T in the check) and GLOB-MARK-BACKSLASH was
+not (the backslash came from a variable - another path).
+
+**Closed now**: Delete, ^D on a non-empty line and ^K, through the pty
+(three cases, recorded from this shell and read before keeping: each
+transcript shows the edited line's result); \D{%T}; a backslash in
+${x:+...}'s alternate value, with dash's and bash's answers; and a line
+over 1 MB through `read` - refused with status 1, and the rest of it
+drained, so the next read gets the next line (scripts and `.` read
+another way, and took a 2 MB line whole). My own slips on the way: a
+relative shell path for the pty recorder, which runs the shell in /tmp;
+and `$(echo $out)` in the glob check, which made the harness glob the
+output against the very files the test had created.
+
+**Left never run, and why**: FD-WAIT (the bare Forth's terminal path),
+L! and LOCALS-FAILED (the locals compiler's store and the engine's
+failure path), CMP-ESCAPED? (completion of a name that needs escaping).
+
+**Metamorphic testing** (tools/metamorph.py; TESTING-IDEAS.md 1): the
+131 differential scripts, each rewritten nine ways that should not
+change its output - braces, subshell, eval, if :, a function, a case
+arm, a loop run once, `.`, | cat - and relf compared with itself; a
+difference counts only when dash shows none for the same pair. The
+first run's seven "findings" were all one script reading $LINENO, which
+every rewriting moves - rightly; dash, which counts it from a function's
+start, could not vouch for it. Such scripts are set aside now. Result,
+both engines: 1,170 rewritings, 0 findings. The parser and the executor
+behave the same in nine contexts across the whole corpus.
 

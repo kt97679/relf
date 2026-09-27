@@ -43,7 +43,7 @@ src = patch(src, '    NEXT();\ndo_call:', '''    cov_base = cbase;
     NEXT();
 do_call:''' % bitmap)
 open(os.path.join(work, 'cov.c'), 'w').write(src)
-subprocess.run(['cc', '-O2', '-I', ROOT, '-o', engine, os.path.join(work, 'cov.c')], check=True)
+subprocess.run(['cc', '-O2', '-I', os.path.join(ROOT, 'engine'), '-o', engine, os.path.join(work, 'cov.c')], check=True)
 open(bitmap, 'wb').write(bytes(1 << 18))
 
 commands = sys.argv[1:] or [

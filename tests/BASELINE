@@ -22,7 +22,7 @@ image:narrow-host reproduces
 image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
-interactive:passed 23
+interactive:passed 26
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -47,7 +47,7 @@ rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 935
+shell:assertions 940
 shell:dead-words 0
 shell:files 85
 shell:host-sh-tests 0

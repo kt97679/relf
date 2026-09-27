@@ -89,7 +89,7 @@ def cc(src, out):
     open(path, 'w').write(src)
     # -I ROOT: cv8.c includes cv8-ops.h, generated beside it since
     # Iteration 518 - which broke this tool, and three others, until 527
-    r = subprocess.run(['cc', '-O2', '-Wall', '-I', ROOT, '-o', out, path], capture_output=True, text=True)
+    r = subprocess.run(['cc', '-O2', '-Wall', '-I', os.path.join(ROOT, 'engine'), '-o', out, path], capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit('opcode-mix: %s did not compile:\n%s' % (out, r.stderr[-2000:]))
 

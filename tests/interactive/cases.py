@@ -32,6 +32,13 @@ CASES = [
     ("edit-backspace", {}, ["echo abc\x7f\x7fZ\n", ("exit\n", 'nowait')]),
     ("edit-home-end", {}, ["echo mid", "\x01", "\x05", "!\n", ("exit\n", 'nowait')]),
     ("edit-kill-line", {}, ["echo rubbish\x15echo kept\n", ("exit\n", 'nowait')]),
+    # Delete, ^D on a non-empty line, and ^K (Iteration 557): three keys
+    # coverage found no test pressing - ED-DELETE and ED-KILL-TO-END had
+    # never run. Recorded from this shell, and read before keeping: each
+    # transcript must show the edited line's result, XY, XY and keep.
+    ("edit-delete", {}, ["echo XaY", "\x1b[D\x1b[D", "\x1b[3~", "\n", ("exit\n", 'nowait')]),
+    ("edit-ctrl-d-deletes", {}, ["echo XbY", "\x1b[D\x1b[D", "\x04", "\n", ("exit\n", 'nowait')]),
+    ("edit-kill-to-end", {}, ["echo keep rubbish", "\x1b[D" * 8, "\x0b", "\n", ("exit\n", 'nowait')]),
     ("history-recall", {}, ["echo first\n", "echo second\n", "\x1b[A\x1b[A", "\n", ("exit\n", 'nowait')]),
     ("history-down", {}, ["echo one\n", "echo two\n", "\x1b[A\x1b[A", "\x1b[B", "\n", ("exit\n", 'nowait')]),
     # job control (Iterations 320-322): ^Z stops the command, jobs shows

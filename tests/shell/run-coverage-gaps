@@ -79,6 +79,26 @@ out=$("$THIS_SH" -c 'p="a\*b"; echo $p; case "a*b" in $p) echo m1;; *) echo n1;;
 assert_output_equals "an expanded backslash in a glob and a case pattern" "a\*b m1" "$(echo $out)"
 cd / && rm -rf "$t2"
 
+# Iteration 557: three paths the 554 checks were meant to reach and did
+# not - coverage said so. \D{%T} is PD-HMS; a backslash in ${x:+...}'s
+# alternate value, emitted a character at a time, is GLOB-MARK-BACKSLASH
+# (the 554 check's backslash came from a variable, another path); a line
+# over 1 MB reaches DRAIN-LINE through `read`, not through a script.
+out=$(echo exit | PS1='[\D{%T}]' "$THIS_SH" -i 2>&1 | head -1)
+case $out in \[[0-2][0-9]:[0-5][0-9]:[0-5][0-9]\]*) r=ok ;; *) r="unexpected: $out" ;; esac
+assert_output_contains "prompt: \\D{%T} is HH:MM:SS" "ok" "$r"
+t3=$(mktemp -d) && cd "$t3" && : > 'a*b' && : > axb
+out=$("$THIS_SH" -c 'x=1; echo ${x:+a\*b}; echo "${x:+a\*b}"; echo ${x:+a*b}' 2>&1 < /dev/null)
+# (joined with paste, not `echo $out`: unquoted, the harness's own shell
+# globbed a*b against these very files - my first version of this check)
+assert_output_equals "a backslash in \${x:+...} escapes in the glob (dash's answers)" "a*b a\*b a*b axb" "$(echo "$out" | paste -sd' ' -)"
+printf 'x%02097200d\nsecond\n' 0 > long.txt
+out=$("$THIS_SH" -c '{ read -r a; echo r1=$?; read -r b; echo r2=$? $b; } < long.txt' 2>&1 < /dev/null)
+assert_output_contains "read: a line over 1 MB is refused" "line too long" "$out"
+assert_output_contains "with status 1" "r1=1" "$out"
+assert_output_contains "and the rest of it drained: the next read gets the next line" "r2=0 second" "$out"
+cd / && rm -rf "$t3"
+
 # a glob with a backslash matches its character literally
 cd "$t" && : > 'a*b' && : > axb
 out=$("$THIS_SH" -c 'echo a\*b; echo a*b' 2>&1)
