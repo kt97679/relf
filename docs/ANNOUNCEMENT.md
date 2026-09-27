@@ -242,3 +242,51 @@ most 60-64 columns wide, for phones. The picture test of prompt 14 then
 reads: whatever is a structure described in prose becomes an ASCII
 diagram - the bootstrap chain, the image layout, the dispatch loop.
 
+
+## Motivation - a draft from the author's story (Iteration 556)
+
+The author's own account, reworded; the facts are his. Written in
+English for ForthHub; the Habr version should be written in Russian,
+not translated from this (prompt 14, item 7).
+
+**A suggested opening** (prompt 14's first-three-sentences test - who
+it is for, and what they get, before the story):
+
+> This is a POSIX shell written in Forth: one static file of 134 KB,
+> about 200 kB of memory at idle, and extensible from inside, in Forth.
+> Underneath it is a Forth that compiles itself and assembles its own
+> x86-64 engine. Here is why it exists.
+
+**The story:**
+
+> I have long been a fan of Forth. What fascinates me most is that one
+> person can bring up a working Forth on a new platform in a few days -
+> the whole system, compiler included, small enough for one mind to
+> hold.
+>
+> In the 1990s I came across SOD32, Lennart Benschop's Forth: a small
+> virtual machine running a machine-independent image. I found it
+> beautiful. It had two weaknesses - the limits built into its design,
+> and its speed - and RelF, Relative Forth, began as my attempt to fix
+> them. It worked, but the gain in speed was modest, and after a while
+> I put it aside.
+>
+> Meanwhile another thought kept coming back: the shell is an
+> underrated tool. Most of the glue in our systems - the code that
+> connects programs, files and processes - is exactly what the shell is
+> good at. Written in Python instead, glue grows longer, and every extra
+> line is another place for a mistake, because Python lacks the shell's
+> expressiveness for that job. But the shell has two weaknesses of its
+> own: it can be extended only with external programs, and it offers
+> almost nothing in the way of data structures.
+>
+> That is where the two ideas met. A shell written in Forth could be
+> small and frugal, because Forth is; and it could be extended from
+> inside, in Forth itself, given the right builtin. That is how this
+> project started.
+
+**Optional bridge** (from the audience research; the author decides):
+between RelF and the shell sits ForthHub #92 (December 2020) - SOD32
+reduced from 32 primitives to 7, measured 708 times slower. It shows
+the same instinct as the rest of the story, and some of ForthHub's
+readers will remember the thread.

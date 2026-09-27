@@ -67,7 +67,7 @@ commands = sys.argv[1:] or [
     # save-system.4, the locals compiler, the buffer definers and every
     # immediate word run only while an image is built. A build is
     # deterministic, so the code it runs sits where the image has it.
-    'sh tools/build-shell-image.sh {engine} forth/kernel64.img {work}/built.img forth/extend.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4 && cmp {work}/built.img kernel64-shell.img && echo built: identical',
+    'sh tools/build-shell-image.sh {engine} forth/kernel64.img {work}/built.img forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4 && cmp {work}/built.img kernel64-shell.img && echo built: identical',
 ]
 # The instrumented engine as a shell of its own (tools/embed.sh): since
 # Iteration 506 relfsh is a binary, so the suites are pointed at this
@@ -95,7 +95,7 @@ cov = open(bitmap, 'rb').read()
 # Every source, in the order the shell image loads them (Iteration 553:
 # before, shell.4 and tree.4 only): a word defined twice is credited to
 # the later file, whose definition the image's name finds.
-SOURCES = ('forth/kernel.4', 'forth/extend.4', 'forth/pool.4', 'forth/shadow.4', 'forth/save-system.4', 'shell/shell.4', 'shell/edit.4', 'shell/tree.4')
+SOURCES = ('forth/kernel.4', 'forth/extend.4', 'forth/safety.4', 'forth/pool.4', 'forth/shadow.4', 'forth/save-system.4', 'shell/shell.4', 'shell/edit.4', 'shell/tree.4')
 defline = {}
 for src in SOURCES:
     for i, l in enumerate(open(src).read().split('\n')):

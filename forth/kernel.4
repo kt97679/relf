@@ -242,6 +242,10 @@ PRIMITIVE CHMOD  ( c-addr u mode --- ior )
 \ engine, which has to be executable (SELF-HOSTING.md M1, M4). After
 \ DICT-LIMIT: a primitive's number is its place here - declared first
 \ at first, the two swapped selectors, and the checker said so.
+PRIMITIVE TRAP-XT!  ( xt --- )
+\ The word the engine runs on a trap - a zero divisor, a bad address -
+\ on fresh stacks with the code on top (Iteration 556, Q21): extend.4's
+\ TRAPPED, registered by COLD from TRAP-ENTRY.
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -1284,6 +1288,12 @@ VARIABLE HANDLER ( --- a-addr )
 : THROW ( k*x n --- k*x | i*x n )
   ?DUP IF (THROW) THEN ;
 
+VARIABLE TRAP-ENTRY ( --- a-addr )
+\ The trap word, as an offset from START, or 0 (Iteration 556, Q21):
+\ extend.4 sets it to TRAPPED, and COLD hands it to the engine with
+\ TRAP-XT! in every process an image saved since then starts. Without
+\ it, a trap ends the process as it did - with status 70 now.
+
 VARIABLE ECHAR-BUF ( --- a-addr )
 
 : ETYPE ( c-addr u --- )
@@ -1346,7 +1356,8 @@ VARIABLE HDR-LEN  ( --- a-addr )
 \ name at HERE+3, so the real distance always fits. Then the name is
 \ moved up and the link written into the gap.
   UNUSED 4096 < ABORT" dictionary full"
-  32 WORD DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP DROP
+  32 WORD DUP C@ 31 > ABORT" name too long"   \ the count byte's low five bits
+  DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP DROP
   HERE COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @ HDR-HEAD !
   HDR-HEAD @ IF HERE 3 + HDR-HEAD @ - LINK-LEN ELSE 1 THEN HDR-LEN !
   HERE DUP HDR-LEN @ + HERE C@ 1+ CMOVE>
@@ -1808,6 +1819,32 @@ VARIABLE POCKET ( --- a-addr )
 \ Check for stack over/underflow and abort with an error if needed.
   DEPTH DUP 0< SWAP 10000 > OR ABORT" Stack error" ;
 
+VARIABLE CO-LIST ( --- a-addr )
+\ Compile-only words, by identity (Iteration 556, Q20): >R and its kind,
+\ interpreted, reach the interpreter's own return stack, and relf
+\ crashed. A header has no spare bit for this - the count byte's low five
+\ bits are the length, the top three are taken - so a list instead, of
+\ execution tokens: no names stored, a node per word - [next][xt], both
+\ offsets from START, so a saved image needs no relocating - in the
+\ dictionary, growing at run time. extend.4 marks >R R> R@ I EXIT.
+
+: COMPILE-ONLY-XT ( xt --- )
+\ Refuse xt when interpreted, from now on.
+  HERE CO-LIST @ , SWAP START @ - ,  START @ - CO-LIST ! ;
+
+: COMPILE-ONLY ( --- )
+\ Make the last definition compile-only, as IMMEDIATE makes it immediate.
+  LAST @ NAME> COMPILE-ONLY-XT ;
+
+: CO? ( xt --- f )
+\ Is xt compile-only? The list is short, and walked only when a word is
+\ interpreted - compiled code never asks.
+  START @ -  CO-LIST @
+  BEGIN DUP WHILE
+    START @ +  2DUP CELL+ @ = IF 2DROP -1 EXIT THEN
+    @
+  REPEAT SWAP DROP ;
+
 : INTERPRET ( ---)
 \ Interpret words from the current source until the input source is exhausted.
   BEGIN
@@ -1819,6 +1856,7 @@ VARIABLE POCKET ( --- a-addr )
     IF
      COMPILE,
     ELSE
+     STATE @ 0= IF DUP CO? ABORT" compile only" THEN
      EXECUTE
     THEN
    ELSE DROP
@@ -1908,6 +1946,7 @@ VARIABLE INCLUDE-POINTER ( --- a-addr)
   REPEAT
   SP@ S0 !
   RP@ CELL+ R0 ! \ Initialize variables SO and RO
+  TRAP-ENTRY @ ?DUP IF START @ + TRAP-XT! THEN   \ 556: traps THROW
   BOOT @ ?DUP IF START @ + EXECUTE THEN
   \ A turnkey image's own boot word normally never returns (shell.4's
   \ MAIN either exits or runs its own read-eval loop). If one does

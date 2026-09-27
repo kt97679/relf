@@ -1,0 +1,28 @@
+\ safety.4 - traps as THROWs, and compile-only words (Iteration 556).
+\ Loaded after extend.4 when the shell image is built, and never by the
+\ kernel's build: that runs on the seed kernel, which lacks TRAP-ENTRY
+\ and COMPILE-ONLY-XT - so this could not live in extend.4, which the
+\ seed loads to cross-compile its successor.
+
+\ ---- Traps, and compile-only words (Iteration 556) -------------------
+\ Q21: a zero divisor or a bad address - the CPU's trap, which no CATCH
+\ sees - comes here from the engine, on fresh stacks with the code on
+\ top: -10 or -9, Forth 2012's. The message, then to the innermost
+\ CATCH, as THROW - so `forth '1 0 /'` fails that command and the shell
+\ goes on (A24). With no CATCH, or a HANDLER that cannot be a frame on
+\ the return stack, exit 70, as the stack guards do: WARM would restart
+\ Forth's read loop on a shell's input, and a corrupt handler would trap
+\ again in THROW itself. Here, not in the kernel, for the S" strings.
+: TRAPPED ( n --- )
+  DUP -10 = IF S" relf: division by zero" ELSE
+    S" relf: invalid memory address (segmentation fault)" THEN  ETYPE 10 ECHAR
+  HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 70 SYS-EXIT THEN
+  (THROW) ;
+\ COLD registers it in every process an image saved from here starts;
+\ this process, now.
+' TRAPPED START @ - TRAP-ENTRY !   ' TRAPPED TRAP-XT!
+\ Q20: the words whose interpretation reaches the interpreter's own
+\ return stack. COMPILE-ONLY adds more.
+' >R COMPILE-ONLY-XT   ' R> COMPILE-ONLY-XT   ' R@ COMPILE-ONLY-XT
+' I COMPILE-ONLY-XT    ' EXIT COMPILE-ONLY-XT
+

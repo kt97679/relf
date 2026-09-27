@@ -36,7 +36,7 @@ LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv
 LABEL m_badop LABEL m_binsh LABEL m_dashc LABEL m_hdr LABEL m_locals LABEL m_magic
 LABEL m_nl LABEL m_open LABEL m_passwd LABEL m_selfexe LABEL m_unimpl LABEL m_usage
 LABEL m_version LABEL open_modes LABEL parse_ipv4 LABEL phdr LABEL read_all LABEL ru_ms
-LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL sig_restorer LABEL strlen_rdi
+LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL sig_restorer LABEL strlen_rdi LABEL trap_handler LABEL L_trapxt
 LABEL term_restore LABEL ud_ior LABEL unimpl
 4194304 65536 ASM-BUFFER                  \ 0x400000: where the Makefile links it
 \ relfasm64.S - the CV8 engine in x86-64 assembly, on raw Linux system
@@ -162,6 +162,7 @@ pw_buf 24 + CONSTANT t_raw_pid           \ ... and the process that set it
 pw_buf 32 + CONSTANT term_save           \ 40 bytes: a kernel termios
 pw_buf 72 + CONSTANT t_saved             \ 40 bytes: another
 pw_buf 112 + CONSTANT img_limit          \ the image's length, or -1: to EOF
+pw_buf 120 + CONSTANT trap_xt_v          \ TRAP-XT!'s word, or 0 (556)
 131072 CONSTANT VM_OFF                   \ 64 KB-aligned
 TEXTORG VM_OFF + CONSTANT VM_BASE
 VM_OFF MEMSIZE + CONSTANT MEM_SIZE
@@ -449,6 +450,26 @@ rdx rax mov,
 rdi rbp mov,
 eax SYS_close # mov,
 syscall,
+\ the trap handler (556, Q21), for SIGFPE, SIGSEGV and SIGBUS
+rsi [ scratch ] lea,
+rax [ trap_handler ] lea,
+[ rsi ] rax mov,
+[ rsi 8 ] qword-ptr 67108868 # mov,      \ SA_SIGINFO | SA_RESTORER
+rax [ sig_restorer ] lea,
+[ rsi 16 ] rax mov,
+[ rsi 24 ] qword-ptr 0 # mov,
+edx edx xor,
+r10d 8 # mov,
+edi 8 # mov,
+eax SYS_rt_sigaction # mov,
+syscall,
+edi 11 # mov,
+eax SYS_rt_sigaction # mov,
+syscall,
+edi 7 # mov,
+eax SYS_rt_sigaction # mov,
+syscall,
+
 \ as cv8.c: ip at the base, the return stack at the top, the data
 \ stack below the return stack and a guard page, the base on it
 
@@ -1612,6 +1633,40 @@ edi NSIG_FLAGS # cmp,
 sig_restorer L:
 eax SYS_rt_sigreturn # mov,
 syscall,
+\ Traps (Iteration 556, Q21): SIGFPE - a zero divisor - and SIGSEGV or
+\ SIGBUS - a bad address; this engine has no guard pages. The saved
+\ registers are rewritten and the handler returns, so rt_sigreturn
+\ resumes at L_noop - a dispatch - in the trap word, on fresh stacks with
+\ the code on top, as cv8.c restarts its VM. Nothing registered: at
+\ L_sysexit with 70, the engine's own exit. The message is TRAPPED's.
+\ The saved registers are the kernel's sigcontext, at ucontext + 40.
+trap_handler L:                          \ edi: the signal; rdx: the ucontext
+r8 [ rdx 128 ] mov,                      \ rbx as the trap found it: the base
+r9 -9 # mov,
+edi 8 # cmp,                             \ SIGFPE
+1 F jne,
+r9 -10 # mov,
+1 L:  rax [ trap_xt_v ] mov,
+rax rax test,
+2 F je,
+[ rdx 72 ] r9 mov,                       \ r12, the top of stack: the code
+rcx [ r8 MEMSIZE RSTACK_BYTES - DSTACK_BYTES - PAGE + 1024 + ] lea,
+[ rdx 80 ] rcx mov,                      \ r13: 1 KB above the data stack's floor
+[ rdx 88 ] rax mov,                      \ r14, ip: the trap word
+rcx [ r8 MEMSIZE RSTACK_BYTES - 1024 + ] lea,
+[ rdx 96 ] rcx mov,                      \ r15: 1 KB above the return stack's
+\ floor - not the tops, where the outermost frames live (cv8.c's main)
+rax [ L_noop ] lea,
+[ rdx 168 ] rax mov,                     \ rip
+ret,
+2 L:  [ rdx 72 ] qword-ptr 70 # mov,     \ nothing registered: exit 70
+rax [ L_sysexit ] lea,
+[ rdx 168 ] rax mov,
+ret,
+L_trapxt L:  [ trap_xt_v ] r12 mov,      \ ( xt --- ), since 556: the trap word
+r12 [ r13 ] mov,
+r13 CELL # add,
+NEXT,
 L_sigaction L:  rdi [ r13 ] mov,         \ ( signo action --- ior ): 0 default,
 r13 CELL # add,                          \ 1 ignore, 2 catch, 3 catch without
 rdi 0 # cmp,                             \ SA_RESTART; 0 or -errno
@@ -1621,6 +1676,8 @@ NEAR 8 F jge,
 rdi 11 # cmp,                            \ SIGSEGV
 NEAR 8 F je,
 rdi 7 # cmp,                             \ SIGBUS
+NEAR 8 F je,
+rdi 8 # cmp,                             \ SIGFPE: the trap handler's (556)
 NEAR 8 F je,
 rdi 9 # cmp,                             \ SIGKILL
 8 F je,

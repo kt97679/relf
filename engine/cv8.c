@@ -384,9 +384,43 @@ static void stack_fault(int which) {
 }
 #endif
 
+/*  Traps (Iteration 556, Q21): a zero divisor - SIGFPE - or a bad
+ *  address - SIGSEGV off the stack guards - is the CPU's, and killed the
+ *  process, the shell with it, though a Forth error fails its command
+ *  only (A24). The kernel registers a word with TRAP-XT! (extend.4's
+ *  TRAPPED); a trap longjmps to main, which restarts the VM there on
+ *  fresh stacks with the code on top - -10 or -9, Forth 2012's - and
+ *  TRAPPED prints the message and THROWs to the innermost CATCH. With
+ *  nothing registered, the message here and exit 70, as before.  */
+#include <setjmp.h>
+#include <signal.h>
+static UNS64 g_trap_xt;
+static volatile INT64 g_trap_code;
+static sigjmp_buf g_trap_env;
+static void term_restore(void);   /* the terminal, on the way out */
+static void trap_restart(INT64 code) {
+    g_trap_code = code;
+    siglongjmp(g_trap_env, 1);
+}
+static void fpe_trap(int sig) {
+    (void)sig;
+    if (g_trap_xt) trap_restart(-10);
+    write_str(2, "relf: division by zero\n");
+    term_restore();
+    _exit(70);
+}
+#if !GUARD
+static void segv_trap(int sig) {
+    (void)sig;
+    if (g_trap_xt) trap_restart(-9);
+    write_str(2, "relf: segmentation fault\n");
+    term_restore();
+    _exit(70);
+}
+#endif
+
 #if GUARD
 #include <sys/mman.h>
-#include <signal.h>
 /*  The regions, top down:
  *      [rfloor, MEMSIZE)          return stack
  *      [rfloor - page, rfloor)    GUARD: return stack overflow
@@ -406,8 +440,10 @@ static void guard_trap(int sig, siginfo_t *si, void *uc) {
         write_str(2, "relf: data stack overflow\n");
     else if (a >= g_rguard && a < g_rguard + g_page)
         write_str(2, "relf: return stack overflow\n");
-    else
+    else {
+        if (g_trap_xt) trap_restart(-9);     /* 556: a THROW, if it can */
         write_str(2, "relf: segmentation fault (not a stack guard)\n");
+    }
     term_restore();
     _exit(70);
 }
@@ -942,6 +978,12 @@ L_qdo: {   /* (?DO) ( limit start --- ), since 530 */
     }
     NEXT();
 }
+L_trapxt:   /* TRAP-XT! ( xt --- ): the word a trap runs, on fresh stacks with
+               the code on top (556, Q21) */
+    g_trap_xt = tos;
+    tos = CELL(dsp);
+    dsp += CELL_BYTES;
+    NEXT();
 L_dictlimit:   /* DICT-LIMIT ( --- a-addr ): where the dictionary must end - the
                   data stack's floor, the same address in both engines (545) */
     PUSHT(cbase + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES);
@@ -1256,7 +1298,7 @@ L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore,
                           notice ^C at its prompt (Iteration 302) */
     int sig = (int)DS1, act = (int)DS0;
     if (sig <= 0 || sig >= NSIG_FLAGS || sig == SIGSEGV || sig == SIGBUS
-        || sig == SIGKILL || sig == SIGSTOP) {
+        || sig == SIGFPE || sig == SIGKILL || sig == SIGSTOP) {
         DS1 = (UNS64)(INT64)-EINVAL;
     } else {
         struct sigaction sa;
@@ -1707,6 +1749,35 @@ int main(int argc, char **argv) {
     g_rp_limit  = g_ip + MEMSIZE - RSTACK_BYTES;
     g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
     CELL(g_dsp) = g_ip;
+    {   struct sigaction sa;
+        memset(&sa, 0, sizeof sa);
+        sigemptyset(&sa.sa_mask);
+        sa.sa_handler = fpe_trap;
+        sigaction(SIGFPE, &sa, (struct sigaction *)0);
+#if !GUARD
+        sa.sa_handler = segv_trap;
+        sigaction(SIGSEGV, &sa, (struct sigaction *)0);
+        sigaction(SIGBUS, &sa, (struct sigaction *)0);
+#endif
+    }
+    /*  A trap comes back here (556): the VM again, at the trap word, with
+     *  the code on top - and both stack pointers 1 KB above their floors,
+     *  not at their tops as at the start. The stacks grow down from the
+     *  tops, so the outermost frames - COLD's, the shell's loop - live
+     *  there: restarted at the tops, TRAPPED's own calls overwrote them,
+     *  and after the THROW the shell returned into garbage (found at once:
+     *  "return stack overflow"). Near the floors is what only the deepest
+     *  recursion reaches, and a trap there is what the THROW discards.  */
+    if (sigsetjmp(g_trap_env, 1)) {
+        g_ip = g_trap_xt;
+        g_rp = g_rp_limit + 1024;
+#if GUARD
+        g_dsp = g_dsp_limit + g_page + 1024;
+#else
+        g_dsp = g_dsp_limit + 1024;
+#endif
+        CELL(g_dsp) = (UNS64)g_trap_code;
+    }
     virtual_machine();
     return 0; /* unreachable: virtual_machine() only leaves via BYE/EOF */
 }

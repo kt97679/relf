@@ -551,6 +551,7 @@ do not trust the absence of a line below.
 - **553** — coverage of every source; prompt 14; ForthHub audience research; A23
 - **554** — a Forth error fails its command only (A24): CATCH/THROW in the kernel, errors to stderr; CONVERT fixed; coverage 67 → 13 words never run
 - **555** — the tree restructured: engine/, forth/, shell/, docs/, examples/; README rewritten
+- **556** — traps THROW (A26: a zero divisor fails its command); compile-only words by a list of xts (A27); names over 31 refused
 
 ### Not tied to an iteration
 
@@ -26172,4 +26173,48 @@ count that agrees is not a comparison; now a batch is compared whatever
 its length. The probes found a zero divisor ends the process (Q21), and
 - first run again - were parsed in HEX by my mistake, so the shift
 results were for 99 and 100, not 63 and 64.
+
+## Iteration 556: traps become THROWs, compile-only words, long names
+
+The user: Q21 yes (A26); Q20 yes, as a list - store no names, and let
+it grow at run time (A27); and the motivation story, reworked into
+docs/ANNOUNCEMENT.md.
+
+**Traps.** A zero divisor or a bad address is the CPU's trap: before,
+it killed the process - inside the shell, `forth '1 0 /'` ended the
+shell. Now each engine runs a word the kernel registers - TRAP-XT!, a
+new escaped primitive (0x4C) - with the code, -10 or -9, on top; COLD
+registers TRAP-ENTRY's word at every start; forth/safety.4's TRAPPED
+prints the message and THROWs to the innermost CATCH, or, with none or
+a HANDLER that cannot be a frame, exits 70. The C engine longjmps to
+main and re-enters the VM; the assembly engine's handler rewrites the
+saved registers and returns into L_noop, a dispatch. The engines only
+deliver the code; the message is Forth's, in one place.
+
+Three mistakes, each caught: TRAPPED lived first in extend.4 - which
+the SEED kernel loads to cross-compile its successor, and the seed has
+no TRAP-ENTRY: the kernel build failed, and the trap and compile-only
+code moved to forth/safety.4, loaded only for the shell image. `NIP` in
+the kernel - it is extend.4's. And the restart: both engines began the
+trap word with the stacks at their TOPS, as at start - where the
+outermost frames live, COLD's and the shell's loop: TRAPPED's own calls
+overwrote them, the THROW worked, and the shell later returned into
+garbage ("return stack overflow" on the C engine; silence on the
+other). Now 1 KB above the floors, which only the deepest recursion
+reaches - and a trap there is what the THROW discards anyway.
+
+**Compile-only words.** The header has no spare bit (A27), so a list of
+execution tokens in the dictionary - [next][xt] as offsets from START -
+grown by COMPILE-ONLY and COMPILE-ONLY-XT; INTERPRET asks only when
+interpreting. `1 >R` at the top level says "compile only >R" and fails
+the command; `: RDROP R> DROP ; COMPILE-ONLY` extends it. My first test
+of the latter used RDROP in a definition - where R> takes RDROP's own
+return address - and Q21 turned the crash into a failed command.
+
+**Names over 31 characters** were stored with their length mod 32: a
+36-character name could not be found, answered to its first four
+letters, and ran its own name as code. HEADER refuses them now.
+
+Tests: run-forth-errors, 36 checks, both engines. The assembly engine is
+15,440 bytes (+240).
 

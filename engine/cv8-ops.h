@@ -3,7 +3,7 @@
  *  dispatch tables - the direct primitives in order, the escaped
  *  ones in order, every other opcode at its number (CV8.md 2.2).  */
 #define NDIRECT 26
-#define NESC    76
+#define NESC    77
 #define CV8_OPS_DIRECT \
     &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop, \
     &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch, \
@@ -24,7 +24,7 @@
     &&L_tcgetpgrp, &&L_waitjob, &&L_filemode, &&L_localtime, &&L_dupfrom, \
     &&L_tcplisten, &&L_tcpaccept, &&L_tcpconnect, &&L_negate, &&L_lshift, \
     &&L_rshift, &&L_umdiv, &&L_dplus, &&L_type, &&L_spstore, &&L_rpfetch, \
-    &&L_rpstore, &&L_dictlimit, &&L_chmod
+    &&L_rpstore, &&L_dictlimit, &&L_chmod, &&L_trapxt
 #define CV8_OPS_OTHER \
     [0x1A] = &&L_lit32, [0x1B] = &&L_dovar, [0x1C] = &&L_dodoes, \
     [0x1D] = &&L_lit8, [0x3F] = &&L_branch8, [0x40] = &&L_0branch8, \

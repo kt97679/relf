@@ -53,5 +53,41 @@ out=$(printf "forth 'XYZ'\necho next\n" | PS1='$ ' "$THIS_SH" -i 2>&1)
 assert_output_contains "interactive: the next line runs" "next" "$out"
 case $out in *OK*) r="Forth's prompt" ;; *) r="the shell's" ;; esac
 assert_output_equals "interactive: the prompt stays the shell's" "the shell's" "$r"
+# Traps (Iteration 556, Q21): the CPU's, which no CATCH saw - a zero
+# divisor or a bad address killed the shell. Now a THROW, -10 or -9.
+out=$(run "forth '1 0 /'; echo s=\$?")
+assert_output_contains "a zero divisor: the message" "relf: division by zero" "$out"
+assert_output_contains "a zero divisor fails the command only" "s=1" "$out"
+out=$(run "forth '5 0 0 UM/MOD'; echo s=\$?")
+assert_output_contains "UM/MOD by zero too" "s=1" "$out"
+out=$(run "forth '0 @ DROP'; echo s=\$?; for i in a b; do echo \$i; done")
+assert_output_contains "a bad address: the message" "invalid memory address" "$out"
+assert_output_contains "a bad address fails the command only" "s=1" "$out"
+assert_output_contains "and the shell's state survives it" "a b" "$(echo $out)"
+out=$(run "forth \": T 1 0 / ;  ' T CONSTANT XT-T  : U XT-T CATCH . ;  U\"; echo s=\$?")
+assert_output_contains "a trap inside Forth's own CATCH is caught there, as -10" "-10 s=0" "$(echo $out)"
+
+# Compile-only words (Q20): interpreted, >R and its kind reached the
+# interpreter's own return stack. A list of execution tokens, no names.
+out=$(run "forth '1 >R'; echo s=\$?")
+assert_output_contains ">R interpreted is refused" "compile only >R" "$out"
+assert_output_contains "and fails the command" "s=1" "$out"
+out=$(run "forth ': T 5 >R R> . ;  T'")
+assert_output_contains ">R in a definition is as before" "5" "$out"
+out=$(run "forth ': RDROP R> DROP ; COMPILE-ONLY  RDROP'; echo s=\$?")
+assert_output_contains "COMPILE-ONLY extends the list at run time" "compile only RDROP" "$out"
+# (A colon RDROP cannot serve here: inside it, R> takes its own return
+# address - my first version of this check did that, and Q21 turned the
+# crash into a failed command.)
+out=$(run "forth ': TWICE DUP + ; COMPILE-ONLY  : T 3 TWICE . ;  T'")
+assert_output_contains "a word marked so still compiles" "6" "$out"
+
+# A name longer than 31 characters: the count byte keeps five bits of
+# length, and such a name was stored mod 32 - found by its first letters.
+out=$(run "forth ': ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ;'; echo s=\$?")
+assert_output_contains "a name of 36 characters is refused" "name too long" "$out"
+assert_output_contains "and the command fails" "s=1" "$out"
+out=$(run "forth ': ABCDEFGHIJKLMNOPQRSTUVWXYZ01234 3 . ;  ABCDEFGHIJKLMNOPQRSTUVWXYZ01234'")
+assert_output_contains "a name of 31 characters is fine" "3" "$out"
 rm -rf "$t"
 report

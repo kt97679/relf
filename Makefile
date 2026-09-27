@@ -50,7 +50,7 @@ endif
 CFLAGS32 ?= -m32 -O2 -Wall -fno-pie -no-pie
 PYTHON  ?= python3
 
-SHELL_SOURCES = forth/extend.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4
+SHELL_SOURCES = forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4
 KERNEL_SOURCES = forth/kernel.4 forth/cross.4 forth/extend.4
 
 .PHONY: all help engines shell-images shells images check-images \

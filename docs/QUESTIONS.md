@@ -321,6 +321,22 @@ their divisor and THROW -10 - cheaper to write, a compare in every
 division, and it covers division only; (c) leave it. Recommended: (a),
 for it covers every trap and costs nothing until one happens.
 
+**A26. Traps become THROWs (Q21; 556).** The user: yes, option (a).
+Each engine turns SIGFPE, and a SIGSEGV off the stack guards, into -10
+or -9 at the word the kernel registered (TRAP-XT!, from TRAP-ENTRY in
+COLD): forth/safety.4's TRAPPED prints the message and THROWs to the
+innermost CATCH; with none, exit 70, as before but with a message.
+
+**A27. Compile-only words by a list, not a header bit (Q20; 556).** The
+user asked whether a header bit meant shorter names: it would - the
+count byte's low five bits are the length (31, the longest name in the
+shell) and its top three are taken, so a fourth flag halves the limit
+to 15. So a list of execution tokens - no names stored, one node per
+word, in the dictionary, extended at run time by COMPILE-ONLY (the last
+definition) and COMPILE-ONLY-XT; checked by INTERPRET only when
+interpreting. forth/safety.4 marks >R R> R@ I EXIT. And names over 31
+characters are refused now: they were stored mod 32.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

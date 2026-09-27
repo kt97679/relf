@@ -6115,7 +6115,8 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   \ other code is reported here. An error inside a : leaves compiling;
   \ the half-built word stays unfindable, since : links it only at ;.
   0 STATE !
-  DUP -1 <> OVER -2 <> AND IF
+  \ -9 and -10, a trap's, were reported by TRAPPED (556).
+  DUP -1 = OVER -2 = OR OVER -9 = OR OVER -10 = OR 0= IF
     S" forth: uncaught exception " ERR-TYPE
     DUP ABS 0 <# #S ROT SIGN #> ERR-TYPE ERR-NL
   ELSE DROP THEN
