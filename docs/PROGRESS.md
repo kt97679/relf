@@ -556,6 +556,7 @@ do not trust the absence of a line below.
 - **558** — relf runs its own harness (940 assertions, both engines); a parliament of seven shells: relf never against a strong majority
 - **559** — tools/shfuzz.py: 1,000 random programs, 0 findings (yash in relf's seat: 9); mutation survivors read - bg on a second job was untested, now a pty case
 - **560** — the pty suite 219 s -> 48 s; strange environments: the assembly engine crashed under any ulimit -v below 1 GB - fixed
+- **561** — PATH unset: dash's default (A28); the command search reads the PATH variable, exported or not
 
 ### Not tied to an iteration
 
@@ -26366,4 +26367,28 @@ bare kernel, which allocates nothing, ran; the C engine, which callocs
 what it needs, ran. Now the reservation halves until granted, down to
 1 MB: the shell runs under 256, 64, 32, 20, 12 and 8 MB. What uses the
 null when not even 1 MB is granted is still to be found.
+
+## Iteration 561: dash's default PATH, and a search that read the wrong PATH
+
+The user (A28): with PATH unset, dash's default. dash's behaviour, taken
+exactly: absent from the environment at startup, PATH is SET to
+/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin and not
+exported; an `unset PATH` later leaves it unset and nothing is found;
+PATH empty means the current directory (not covered by A28 - asked).
+
+Setting it in MAIN, as PPID, IFS and OPTIND are set, showed $PATH right
+and still found no `ls`: the command search - CC-CURRENT-PATH, feeding
+the cache and the exec search, and PATH-LOOKUP?, behind `command -v` -
+read PATH with GETENV, the environment only. So an unexported PATH was
+invisible to it: a `PATH=/bin:/usr/bin` in a shell started without one
+found nothing, and `command -p` - which sets PATH as a shell variable
+and searches - found nothing there either. Unnoticed, because PATH
+nearly always arrives exported. Both read LOOKUP-VAR now - the shell's
+storage, then the environment. run-default-path, 8 checks, both
+engines.
+
+Also seen: `set` lists only the shell's own storage, and a variable
+inherited but never assigned lives in the environment only - so `set`
+leaves it out, where POSIX counts it a shell variable (the 10,000
+variables probe of 560). Next.
 

@@ -3721,6 +3721,8 @@ CREATE IFS-DEFAULT  32 C, 9 C, 10 C, 0 C,   \ space, tab, newline
 CREATE OPTIND-NM    CSTR," OPTIND"
 CREATE OPTIND-ONE   CSTR," 1"
 
+CREATE DASH-PATH  CSTR," /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
   DEFAULT-SHELL-NAME SHELL-NAME !            \ $0 until a script names itself
@@ -3745,6 +3747,11 @@ CREATE OPTIND-ONE   CSTR," 1"
   \ the environment is replaced, as dash and bash replace it.
   IFS-NM IFS-DEFAULT SET-SHVAR
   OPTIND-NM OPTIND-ONE SET-SHVAR
+  \ PATH, where the environment gave none (Iteration 561, A28): dash's
+  \ default, set and not exported, as dash sets it. With `env -i` this
+  \ shell found no command at all; POSIX leaves an unset PATH to the
+  \ implementation. An `unset PATH` later leaves it unset, as in dash.
+  PATH-NM LOOKUP-VAR 0= IF PATH-NM DASH-PATH SET-SHVAR THEN
   0 BODY-ARENA-BASE !  0 BODY-ARENA-SIZE !  0 BODY-ARENA-TOP !
   2 #ORDER !
   FORTH-WORDLIST CONTEXT !

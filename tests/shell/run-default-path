@@ -1,0 +1,26 @@
+#!/bin/sh
+# tests/shell/run-default-path - PATH unset, and PATH not exported
+# (Iteration 561). With PATH absent from the environment the shell sets
+# dash's default, as dash does - set, not exported (A28). And the command
+# search now reads the PATH variable, exported or not: it read the
+# environment only, so `PATH=/bin` in a shell started without one, and
+# `command -p` there, found nothing (found by tools/strange-env.py).
+. "$(dirname "$0")/lib.sh"
+out=$(env -i "$THIS_SH" -c 'echo "$PATH"' 2>&1)
+assert_output_equals "env -i: PATH is dash's default" "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" "$out"
+out=$(env -i "$THIS_SH" -c 'ls /dev/null' 2>&1)
+assert_output_equals "env -i: a command is found along it" "/dev/null" "$out"
+out=$(env -i "$THIS_SH" -c 'env | grep -c "^PATH="' 2>&1)
+assert_output_equals "env -i: the default is not exported" "0" "$out"
+out=$("$THIS_SH" -c 'unset PATH; ls /dev/null; echo "s=$?"' 2>/dev/null)
+assert_output_equals "unset PATH: nothing is found, as in dash" "s=127" "$out"
+out=$(env -i "$THIS_SH" -c 'unset PATH; PATH=/bin:/usr/bin; ls /dev/null' 2>&1)
+assert_output_equals "an unexported PATH is searched" "/dev/null" "$out"
+out=$(env -i "$THIS_SH" -c 'unset PATH; command -p ls /dev/null' 2>&1)
+assert_output_equals "command -p with PATH unset" "/dev/null" "$out"
+out=$(env -i "$THIS_SH" -c 'command -v ls' 2>&1)
+case $out in */ls) r=ok ;; *) r="unexpected: $out" ;; esac
+assert_output_equals "command -v along the default" "ok" "$r"
+out=$(env PATH=/bin:/usr/bin "$THIS_SH" -c 'echo "$PATH"' 2>&1)
+assert_output_equals "a PATH from the environment is kept" "/bin:/usr/bin" "$out"
+report

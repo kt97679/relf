@@ -337,6 +337,15 @@ definition) and COMPILE-ONLY-XT; checked by INTERPRET only when
 interpreting. forth/safety.4 marks >R R> R@ I EXIT. And names over 31
 characters are refused now: they were stored mod 32.
 
+**A28. PATH unset: dash's default (561).** The user: with PATH absent,
+use dash's default, /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:
+/sbin:/bin. Done as dash does it: set at startup when the environment
+has none, not exported; an `unset PATH` later leaves it unset. Doing it
+found that the command search read the environment only - so an
+unexported PATH, and `command -p`, found nothing - fixed. Open, not
+covered by A28: PATH set to the empty string - dash searches the current
+directory there, relf nothing (POSIX: implementation-defined).
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.
