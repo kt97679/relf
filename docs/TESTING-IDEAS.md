@@ -170,6 +170,9 @@ build first - cheap, and likely to find something.
     and its rationale turned into a test with the behaviour the text
     states; and the Austin Group's interpretations of it, where the
     committee settled what the text left open.
-14. **The line editor against bash's**: the same keystroke streams
+14. **Built, 567: tools/editor-vs-bash.py.** 80 keystroke tests: a real
+    bug (a blank line made the next prompt PS2, fixed); the rest the C-u
+    convention and the word keys relf lacks (Q30). First written:
+    **The line editor against bash's**: the same keystroke streams
     through a pty into both; the command lines they produce compared, for
     the keys both claim.

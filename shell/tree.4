@@ -136,7 +136,10 @@ VARIABLE VERBOSE-FROM   \ where the line just read begins in STDIN-TEXT
   0= IF 2DROP -1 SRC-EOF? ! 0 EXIT THEN      ( c-addr u )
   DUP SRC-LEN @ + 2 + ENSURE-BUFFER STDIN-TEXT
   DUP >R  STDIN-TEXT SRC-LEN @ +  SWAP MOVE  \ the length stays on R
-  R@ 0= CMD-START? @ AND 0= IF 0 CMD-START? ! THEN
+  \ Blank, not empty (Iteration 567): a line of spaces made the next
+  \ prompt PS2 - found against bash's editor by tools/editor-vs-bash.py.
+  \ The reader without the editor had it right, with BLANK-RUN?, already.
+  STDIN-TEXT SRC-LEN @ + R@ BLANK-RUN?  CMD-START? @ AND 0= IF 0 CMD-START? ! THEN
   SRC-LEN @ R> +
   10 OVER STDIN-TEXT + C!  1+ SRC-LEN !
   STDIN-TEXT SRC-ADDR !  VERBOSE-ECHO  -1 ;

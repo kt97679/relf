@@ -562,6 +562,7 @@ do not trust the absence of a line below.
 - **564** — the user's fury and rage runs: a job-notice race I had recorded as fact (fixed); completion checks on rage wait for their result
 - **565** — a here-document bug found by ncurses's configure: fixed; that 32,301-line script now runs as under dash
 - **566** — the assembler against GNU as at random: memory push, pop and xchg were assembled as register ones, silently - fixed; asm:fuzz-mismatches
+- **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30)
 
 ### Not tied to an iteration
 
@@ -26574,4 +26575,29 @@ of that were broken: a stdin script without __file__, and ?DO at the top
 level, which relf refuses since 552.) The corpus still 456 of 456, the
 engine byte-identical. A verify row keeps it: asm:fuzz-mismatches, 300
 at a fixed seed, where GNU as is.
+
+## Iteration 567: the line editor against bash's
+
+tools/editor-vs-bash.py (TESTING-IDEAS.md 14): the same keystrokes
+through a pty into relf and into bash (no startup files, INPUTRC=
+/dev/null, readline's default keys); every line an `echo`, so the result
+after Enter is what each editor made. Each key alone, at the end and in
+the middle, then 40 random combinations: 80 tests, 57 the same.
+
+**A bug**: a line of blanks typed at a command's start made the NEXT
+prompt PS2 - EDIT-LINE cleared the command-start flag for any non-empty
+line, and a blank one completes no command to set it again. The reader
+without the editor had it right already, with BLANK-RUN? - "as both
+references do", its comment says - so only a terminal could show it.
+Now EDIT-LINE asks BLANK-RUN? too. Inside an unfinished command a blank
+line still prompts PS2. A pty case, recorded from dash: blank-line-ps1.
+
+**The 23 differences left, every one explained**: C-u kills the whole
+line, where readline kills back to the cursor - ksh's and zsh's emacs
+modes do as relf; POSIX has no emacs mode to say. And keys relf's editor
+does not have: C-w, M-b, M-f, M-d, M-BS, C-t, C-y - a question, Q30.
+
+A slip of mine: a stray `git stash` at the end of a command set aside
+the fix and the new case; `git stash pop` restored them at once - the
+untracked files a stash leaves alone, and the builds were made before.
 

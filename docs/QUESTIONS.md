@@ -354,6 +354,16 @@ legacy feature for the current directory. relf searches it for neither,
 only for an explicit `.`: a deliberate difference from POSIX for empty
 entries, read as covered by the user's reason (DASH.md).
 
+**Q30. Word keys in the line editor? (567, open)** tools/editor-vs-bash.py
+found relf's editor without readline's C-w (kill the word behind), M-b
+and M-f (a word back and forward), M-d and M-BS (kill a word ahead,
+behind), C-t (transpose) and C-y (yank what a kill took). Options: (a)
+add them - C-w above all, which an emacs-mode user types without
+thinking; (b) some; (c) none, the editor kept minimal. Recommended: (a)
+C-w, M-b, M-f, M-d, M-BS and C-y with a one-entry kill buffer that C-k,
+C-u and C-w fill - a few dozen lines of edit.4, each key testable
+against bash with the tool as it is; C-t is rarely missed.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

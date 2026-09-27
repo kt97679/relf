@@ -61,6 +61,10 @@ CASES = [
     # the sleep, and its notice comes before the next prompt, always.
     ("job-control-bg-second", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", ("sleep 6\n", 'nowait'), 0.5, "SUSP",
                                    "bg %2\n", "jobs\n", "kill %1 %2; sleep 0.3\n", ("exit\n", 'nowait')]),
+    # A line of blanks at a command's start is no continuation: PS1 again,
+    # as dash - the editor's reader made the next prompt PS2 (Iteration
+    # 567, found against bash's editor by tools/editor-vs-bash.py).
+    ("blank-line-ps1", {}, ["   \n", "echo x\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
     # \j and \D{format} (Iteration 476). Only the escapes whose output does
