@@ -1,0 +1,13 @@
+<PS1>sleep 5
+^Z[1] + Stopped                    sleep 5
+<PS1>sleep 6
+^Z[2] + Stopped                    sleep 6
+<PS1>bg %2
+[2] sleep 6
+<PS1>jobs
+[2] + Running                    sleep 6
+[1] - Stopped                    sleep 5
+<PS1>kill %1 %2
+[2] + Terminated                 sleep 6
+<PS1>sleep 0.3
+<PS1>exit

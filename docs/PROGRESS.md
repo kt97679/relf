@@ -554,6 +554,7 @@ do not trust the absence of a line below.
 - **556** — traps THROW (A26: a zero divisor fails its command); compile-only words by a list of xts (A27); names over 31 refused
 - **557** — coverage 9 words never run (93%); editor keys tested through a pty; tools/metamorph.py: 1,170 rewritings, 0 findings
 - **558** — relf runs its own harness (940 assertions, both engines); a parliament of seven shells: relf never against a strong majority
+- **559** — tools/shfuzz.py: 1,000 random programs, 0 findings (yash in relf's seat: 9); mutation survivors read - bg on a second job was untested, now a pty case
 
 ### Not tied to an iteration
 
@@ -26299,4 +26300,38 @@ to the line first, so the check's "no" cannot be reached from a script.
 Equivalent, and my claim was wrong until the mutant said so; the check
 stays, for the 2 MB word. Left to read: DO-BG, SPLIT-ASSIGN-AT and
 COPY-LITERAL, each + for -.
+
+## Iteration 559: grammar fuzzing, and the mutation survivors read
+
+**tools/shfuzz.py** (TESTING-IDEAS.md 6): random, valid programs -
+quoting, parameter expansion, arithmetic, command substitution, here-
+documents, redirections, pipelines, and-or lists, if, bounded while,
+for, case, functions, positional parameters, break, continue, return -
+with awkward values; relf against dash and bash --posix, a finding only
+where the two agree and relf does not, shrunk statement by statement.
+Calibrated first, since a zero means nothing from a tool that cannot
+find: yash in relf's seat gave 9 findings in 150 programs, each shrunk
+to one line (yash rejects `$((-2 << n))` with n unset; its echo prints
+-n). relf: 1,000 programs over two seeds, 0 findings; 173 set aside
+where dash and bash disagree.
+
+**The mutation survivors, read** (558 left three unread):
+- DO-BG, + for - in `0 JOB-STATES JOB-SEL @ CELLS + !` - bg marking the
+  job running. The same slot for job 1, the wrong one for any other;
+  the only bg test had one job. A REAL GAP: a pty case now stops two
+  jobs and puts the second in the background; `jobs` must show it
+  Running. Recorded from this shell and read, stable three times, and
+  it kills the mutant. Seen on the way: `kill %1` on a STOPPED job
+  leaves it stopped - SIGTERM waits for a SIGCONT - as in dash (bash
+  sends SIGCONT too); POSIX asks neither.
+- SPLIT-ASSIGN-AT, - for + in the value's length (total - eqpos - 1):
+  a longer length copies past the value's NUL, and the shell's strings
+  end there - invisible; an over-read of a few bytes, not a gap.
+- COPY-LITERAL, - for + in `TOK-OUT @ I + OUT-BASE - GLOB-MARK-DASH` -
+  the mark on a range dash in a literal word, put far away. The mutant
+  matches relf and dash on [a-c], a dash against it, a glob, and [!a-c]:
+  no visible effect found. The mark may be redundant for literal words
+  - a candidate for simplifying, not confirmed.
+Of 30 mutants: 20 killed by tests (19, and DO-BG's now), 10 equivalent
+or without a visible effect found.
 

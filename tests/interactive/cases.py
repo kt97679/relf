@@ -49,6 +49,14 @@ CASES = [
     ("job-control", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", "jobs\n", "bg\n",
                          "kill %1\n", "sleep 0.3\n", "echo alive\n",
                          ("exit\n", 'nowait')]),
+    # bg on the SECOND of two stopped jobs (Iteration 559): mutation
+    # testing found `0 JOB-STATES JOB-SEL @ CELLS + !` could say - for +
+    # unnoticed - the same slot for job 1, the wrong one for any other,
+    # and the only bg test had one job. Recorded from this shell (dash's
+    # job notices are worded otherwise - see KNOWN-DIVERGENT), and read:
+    # jobs must list job 2 as running after bg %2.
+    ("job-control-bg-second", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", ("sleep 6\n", 'nowait'), 0.5, "SUSP",
+                                   "bg %2\n", "jobs\n", "kill %1 %2\n", "sleep 0.3\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
     # \j and \D{format} (Iteration 476). Only the escapes whose output does

@@ -70,7 +70,10 @@ build first - cheap, and likely to find something.
    differs from the MAJORITY, it is probably wrong; where the majority
    itself splits, the spec is ambiguous there, and the case belongs in
    DASH.md's list of choices, decided on purpose.
-6. **Grammar-based differential fuzzing**: generate random programs from
+6. **Built, 559: tools/shfuzz.py.** 1,000 programs over two seeds, 0
+   findings; calibrated with yash in relf's seat (9 findings in 150,
+   each shrunk to one line). First written:
+   **Grammar-based differential fuzzing**: generate random programs from
    POSIX's shell grammar (a safe vocabulary: echo, printf, :, test,
    arithmetic, case, bounded loops, functions, redirections to temporary
    files), run them through the parliament, and shrink each disagreement
@@ -90,7 +93,8 @@ build first - cheap, and likely to find something.
    LITERAL-FITS? looked like a gap and a test written for it did not
    kill it - the token buffer is sized to the line, so its "no" is
    unreachable (equivalent too). Unread yet: DO-BG, SPLIT-ASSIGN-AT,
-   COPY-LITERAL (each + and -). First written:
+   COPY-LITERAL (each + and -) - read at 559: DO-BG a real gap, closed
+   by a pty case that kills it; the other two without visible effect. First written:
    **Image mutation testing** (**first**): mutate the compiled shell
    image, not the source - one opcode swapped for another with the same
    stack effect, a literal nudged by one, a branch's sense flipped - and

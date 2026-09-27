@@ -330,8 +330,13 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         grep -E '^FAIL:|[1-9][0-9]* failed \(' /tmp/verify-asm-shell.log | head -6 | sed 's/^/  asm shell: /'
     fi
     rm -f /tmp/verify-asm-shell.log
-    AP=$(THIS_SH="$PWD/relfshasm64" timeout 300 sh tests/interactive/run 2>&1 | tail -1)
+    # the whole output kept, not only its summary: a failure names its case
+    # (Iteration 560 - a verify run said "1" and nothing else, as 542's did)
+    THIS_SH="$PWD/relfshasm64" timeout 300 sh tests/interactive/run > /tmp/verify-asm-int.log 2>&1
+    AP=$(tail -1 /tmp/verify-asm-int.log)
     emit asm:interactive:failed "$(echo "$AP" | sed -n 's/.*passed, \([0-9]*\) failed.*/\1/p')"
+    grep -E '^ *FAIL' /tmp/verify-asm-int.log | head -4 | sed 's/^/  asm interactive: /'
+    rm -f /tmp/verify-asm-int.log
     # The engine rebuilds itself (SELF-HOSTING.md M4, M5): make built
     # relfasm64 with relf from relfasm64.4; run on the same program, that
     # engine must write itself again, identical.

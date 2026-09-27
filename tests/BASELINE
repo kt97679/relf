@@ -22,7 +22,7 @@ image:narrow-host reproduces
 image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
-interactive:passed 26
+interactive:passed 27
 io:4byte 1
 io:8byte 1
 matrix:failed 0
