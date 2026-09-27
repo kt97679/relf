@@ -365,7 +365,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
 else
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint size:asm-engine size:asm-shell; do
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done
 fi
