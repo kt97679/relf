@@ -559,6 +559,7 @@ do not trust the absence of a line below.
 - **561** — PATH unset: dash's default (A28); the command search reads the PATH variable, exported or not
 - **562** — set lists inherited variables (sorted, as dash); A29: no empty PATH entry searches the current directory
 - **563** — signal storms (tools/chaos.py; run-signal-storm): every trap run, every sum exact; the address-space floor measured; round trips of set, export -p, trap, alias
+- **564** — the user's fury and rage runs: a job-notice race I had recorded as fact (fixed); completion checks on rage wait for their result
 
 ### Not tied to an iteration
 
@@ -26485,4 +26486,33 @@ on a command line is fine: the bug is in the here-document's handling
 of a backquoted substitution holding an escaped backquote (POSIX 2.6.3:
 within backquotes, \` is a literal backquote, not the end). First thing
 next: fix it, then keep the reproducer and the ncurses run as tests.
+
+## Iteration 564: what fury and rage found
+
+**job-control-bg-second failed on both** - and it was mine. After
+`kill %1 %2` the Terminated notice comes when the shell next looks, and
+whether the killed job had died by the next prompt is a race: here it
+had, and the transcript recorded it so; on fury and rage it had not, and
+the notice came one prompt later. The original job-control case avoided
+exactly this, and I did not copy its care. Now `kill %1 %2; sleep 0.3`
+on one line: the job dies during the sleep and its notice comes before
+the next prompt, always - eight runs of eight on both engines, four of
+them under heavy CPU load.
+
+**rage alone: three completion checks** - the first completions in
+command position (zq-a TAB, the zq- listing, ech TAB), while `ls; zq-a`
+later passed. Not reproduced here: not by the 32-bit shell, not by
+40,000 executables on PATH, not by three busy loops on this one CPU.
+What rage has and this machine lacks is cold, slow storage under a large
+/usr/bin: the first scan of PATH outlasting the probe's 0.3 s quiet
+window - Iteration 416's ARMv7 failure, for the empty-line listing,
+whose cure was to wait for the expected text. These three now do the
+same (keys_until). Unconfirmed until rage runs it.
+
+**Machine rows**: rage counted 949 shell assertions, fury 967, the
+baseline 968. The 32-bit shell counts 968 here, so not the cell width:
+rage has no dash (its matrix:refs is `bash`), and three files skip
+without it - run-export 4, run-getopts-msg 6, run-untested-paths 7:
+17 of rage's 19. Rage's other 2 and fury's 1 are unexplained yet; a row
+counting the SKIP lines would make such a total explain itself.
 

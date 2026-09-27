@@ -54,9 +54,13 @@ CASES = [
     # unnoticed - the same slot for job 1, the wrong one for any other,
     # and the only bg test had one job. Recorded from this shell (dash's
     # job notices are worded otherwise - see KNOWN-DIVERGENT), and read:
-    # jobs must list job 2 as running after bg %2.
+    # jobs must list job 2 as running after bg %2. `kill` and `sleep 0.3` on
+    # ONE line (Iteration 564): on two, whether the Terminated notice came
+    # before the next prompt or after it was a race - recorded one way here,
+    # it went the other on fury and rage. On one line the job dies during
+    # the sleep, and its notice comes before the next prompt, always.
     ("job-control-bg-second", {}, [("sleep 5\n", 'nowait'), 0.5, "SUSP", ("sleep 6\n", 'nowait'), 0.5, "SUSP",
-                                   "bg %2\n", "jobs\n", "kill %1 %2\n", "sleep 0.3\n", ("exit\n", 'nowait')]),
+                                   "bg %2\n", "jobs\n", "kill %1 %2; sleep 0.3\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
     # \j and \D{format} (Iteration 476). Only the escapes whose output does

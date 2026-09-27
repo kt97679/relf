@@ -95,12 +95,17 @@ keys('\x15cat "my dir/in\t');  check("... and completes inside it", line() == '$
 keys("\x15cat 'my n\t");       check("inside single quotes", line() == "$ cat 'my notes' ")
 
 # command position (Iteration 414)
-keys("\x15zq-a\t");        check("a first word completes from PATH", line() == "$ zq-alpha ")
+# The first completions in command position read every directory on PATH:
+# on rage (ARMv7, Gentoo's large /usr/bin, a cold cache) that outlasted
+# the quiet window keys() waits for, and these three failed while the
+# later `ls; zq-a` passed on a warm cache (Iteration 564). So they wait
+# for what they should produce, as the empty-line listing has since 416.
+keys_until("\x15zq-a\t", "zq-alpha ");  check("a first word completes from PATH", line() == "$ zq-alpha ")
 keys("\x15zq-\t")
-scr = keys("\t")
+scr = keys_until("\t", "zq-gamma")
 check("the listing is sorted, and executables only",
       "zq-alpha  zq-beta  zq-gamma" in " ".join(scr[-3:]) and "zq-plain" not in " ".join(scr[-3:]))
-keys("\x15ech\t");         check("a builtin completes too", line() == "$ echo ")
+keys_until("\x15ech\t", "echo ");  check("a builtin completes too", line() == "$ echo ")
 keys("\x15ls; zq-a\t");    check("after ; is command position", line() == "$ ls; zq-alpha ")
 keys("\x15ls;zq-a\t");     check("... with no blank after the ;", line() == "$ ls;zq-alpha ")
 keys("\x15if zq-a\t");     check("after a keyword is command position", line() == "$ if zq-alpha ")
