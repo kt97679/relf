@@ -55,7 +55,15 @@ build first - cheap, and likely to find something.
 
 ## A parliament of shells
 
-5. **The consensus oracle** (**first**): install every POSIX-ish shell
+5. **Built, 558: tools/parliament.py.** The 131 differential scripts to
+   seven shells - dash, bash --posix, yash, posh, mksh, ksh93, busybox
+   ash (all installed here already; the POSIX suite uses them too, but
+   only where they are unanimous). 112 scripts have a majority of 5 or
+   more, and relf is with it in all 112; bash, the differential suite's
+   oracle, is never outvoted. 19 split - $'...', job status, arithmetic
+   extensions, builtins-269 with seven answers from seven shells - where
+   the suite's choice of bash decides relf's answer. First written:
+   **The consensus oracle** (**first**): install every POSIX-ish shell
    the system offers - dash, bash --posix, busybox ash and hush, mksh,
    yash (the strictest reading of POSIX), posh, ksh93, zsh in sh
    emulation, oksh - and run every case through all of them. Where relf
@@ -77,7 +85,9 @@ build first - cheap, and likely to find something.
    run the suites. A mutant that survives marks behaviour no test
    checks; the word it lives in is named. Mutation testing on threaded
    code is cheap - no recompiling - and unusual.
-8. **relf tests itself**: the harness - tests/shell/run-all, lib.sh,
+8. **Built, 558: tools/self-harness.sh.** relf interpreting every
+   tests/shell file itself: 84 files, 940 assertions, 0 failed - both
+   engines. First written: **relf tests itself**: the harness - tests/shell/run-all, lib.sh,
    tests/verify, thousands of lines of real shell - run BY relf instead
    of dash. Every result must be the same; a difference is a relf bug
    found in real-world code nobody wrote as a test.

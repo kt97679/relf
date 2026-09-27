@@ -553,6 +553,7 @@ do not trust the absence of a line below.
 - **555** — the tree restructured: engine/, forth/, shell/, docs/, examples/; README rewritten
 - **556** — traps THROW (A26: a zero divisor fails its command); compile-only words by a list of xts (A27); names over 31 refused
 - **557** — coverage 9 words never run (93%); editor keys tested through a pty; tools/metamorph.py: 1,170 rewritings, 0 findings
+- **558** — relf runs its own harness (940 assertions, both engines); a parliament of seven shells: relf never against a strong majority
 
 ### Not tied to an iteration
 
@@ -26257,4 +26258,27 @@ every rewriting moves - rightly; dash, which counts it from a function's
 start, could not vouch for it. Such scripts are set aside now. Result,
 both engines: 1,170 rewritings, 0 findings. The parser and the executor
 behave the same in nine contexts across the whole corpus.
+
+## Iteration 558: relf runs its own harness; a parliament of shells
+
+**tools/self-harness.sh**: every tests/shell file interpreted by relf
+instead of dash - lib.sh's functions, the assertions, the quoting and
+temporary files, thousands of lines nobody wrote as a test of the
+language - while testing relf through THIS_SH as always. 84 files, 940
+assertions, 0 failed, on both engines. (My summary of the assembly
+engine's run first said "1 not passing": awk compared the DONE marker's
+empty status field with 0, string against number. The tool counts
+properly now.)
+
+**tools/parliament.py**: the 131 differential scripts put to seven
+shells - dash, bash --posix, yash, posh, mksh, ksh93, busybox ash, all
+installed here already. By stdout and status: 112 have a majority of 5
+or more, and relf is with it in every one; bash, the only oracle of the
+differential suite, is never outvoted; 19 split, the largest bloc under
+five - $'...', job status, arithmetic extensions, builtins-269 with seven
+answers from seven shells. There the suite's choice of bash is what
+relf follows: choices, not bugs, and listed now where DASH.md can cite
+them. The shells were NOT installed into the system paths for this:
+the POSIX suite uses whatever reference shells it finds, and a new one
+would have changed what verification measures.
 
