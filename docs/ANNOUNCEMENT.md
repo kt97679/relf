@@ -252,7 +252,7 @@ not translated from this (prompt 14, item 7).
 **A suggested opening** (prompt 14's first-three-sentences test - who
 it is for, and what they get, before the story):
 
-> This is a POSIX shell written in Forth: one static file of 134 KB,
+> This is a POSIX shell written in Forth: one static file of 135 KB,
 > about 200 kB of memory at idle, and extensible from inside, in Forth.
 > Underneath it is a Forth that compiles itself and assembles its own
 > x86-64 engine. Here is why it exists.
@@ -290,3 +290,10 @@ between RelF and the shell sits ForthHub #92 (December 2020) - SOD32
 reduced from 32 primitives to 7, measured 708 times slower. It shows
 the same instinct as the rest of the story, and some of ForthHub's
 readers will remember the thread.
+
+**Sizes as of Iteration 556** (tests/BASELINE; they grew with the trap
+handler and the compile-only list - take any figure above for the
+announcement from here, or from the baseline then current): the
+assembly engine 15,440 bytes; the whole shell on it, one static file,
+134,948 bytes; the C engine's shell 158,628 bytes (x86-64).
+
