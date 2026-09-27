@@ -65,6 +65,14 @@ CASES = [
     # as dash - the editor's reader made the next prompt PS2 (Iteration
     # 567, found against bash's editor by tools/editor-vs-bash.py).
     ("blank-line-ps1", {}, ["   \n", "echo x\n", ("exit\n", 'nowait')]),
+    # The word keys and the kill buffer (Iteration 568, A30): recorded
+    # from this shell, each result what bash's readline gives for the
+    # same keys (tools/editor-vs-bash.py) - alpha Xbeta gamma, alpha
+    # beta, alpha beta gamma (two kills in a row, one yank), beta gamma.
+    ("edit-word-motion", {}, ["echo alpha beta gamma", "\x1bb", "\x1bb", "X", "\n", ("exit\n", 'nowait')]),
+    ("edit-kill-word-back", {}, ["echo alpha beta gamma", "\x17", "\n", ("exit\n", 'nowait')]),
+    ("edit-kills-then-yank", {}, ["echo alpha beta gamma", "\x17", "\x17", "\x19", "\n", ("exit\n", 'nowait')]),
+    ("edit-kill-word-fwd", {}, ["echo alpha beta gamma", "\x01", "\x1bf", "\x1bd", "\n", ("exit\n", 'nowait')]),
     ("ps1-literal", {"PS1": "XX> "}, ["echo hi\n", ("exit\n", 'nowait')], 'raw'),
     ("ps2-literal", {"PS1": "XX> ", "PS2": "YY> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')], 'raw'),
     # \j and \D{format} (Iteration 476). Only the escapes whose output does

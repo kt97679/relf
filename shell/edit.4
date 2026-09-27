@@ -104,9 +104,72 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
   ED-LEN @ ED-POS @ - 1- MOVE
   -1 ED-LEN +! ;
 
-: ED-KILL-TO-END ( --- )   ED-POS @ ED-LEN ! ;
+\ The kill buffer and the word keys (Iteration 568, A30). What C-k, C-u,
+\ C-w, M-d and M-Backspace cut is kept, for C-y to put back - one entry,
+\ each kill replacing it; readline keeps a ring, but one is what is
+\ missed without it. An empty kill leaves it alone, so C-y still has
+\ something. Words as readline has them: letters and digits for the M-
+\ keys, anything between blanks for C-w. tools/editor-vs-bash.py found
+\ these keys missing (567) and holds them to bash's answers.
+LINE-MAX BUFFER: ED-KILLED       \ grows: see ED-BUF
+VARIABLE ED-KILLED#
+VARIABLE ED-K0
+VARIABLE ED-K1
+VARIABLE ED-KILLING      \ this key killed: the next kill adds to it
+VARIABLE ED-WAS-KILLING  \ the key before killed
 
-: ED-KILL-LINE ( --- )   0 ED-LEN !  0 ED-POS ! ;
+: ED-KILL ( from to --- )   \ cut [from,to) into the kill buffer
+  \ Kills in a row are one entry, as readline has it: C-w C-w and then
+  \ C-y puts both words back. A kill that starts before the cursor goes
+  \ in front of what is there, one at the cursor after it.
+  ED-K1 !  ED-K0 !
+  ED-K1 @ ED-K0 @ - DUP 0> 0= IF DROP EXIT THEN   ( n )
+  ED-WAS-KILLING @ 0= IF 0 ED-KILLED# ! THEN
+  ED-KILLED# @ OVER + 1+ ENSURE-BUFFER ED-KILLED
+  ED-K0 @ ED-POS @ < IF
+    ED-KILLED  OVER ED-KILLED +  ED-KILLED# @ MOVE     \ make room in front
+    ED-BUF ED-K0 @ +  ED-KILLED  2 PICK MOVE
+  ELSE
+    ED-BUF ED-K0 @ +  ED-KILLED ED-KILLED# @ +  2 PICK MOVE
+  THEN
+  ED-KILLED# +!  -1 ED-KILLING !
+  ED-BUF ED-K1 @ +  ED-BUF ED-K0 @ +  ED-LEN @ ED-K1 @ -  MOVE
+  ED-K0 @ ED-K1 @ - ED-LEN +!
+  ED-K0 @ ED-POS ! ;
+
+: ED-KILL-TO-END ( --- )   ED-POS @ ED-LEN @ ED-KILL ;
+
+: ED-KILL-LINE ( --- )   0 ED-LEN @ ED-KILL  0 ED-POS ! ;
+
+: ED-AT ( i --- c )   ED-BUF + C@ ;
+: ED-WORD-CHAR? ( c --- f )   \ letters and digits
+  DUP 48 58 WITHIN  OVER 65 91 WITHIN OR  SWAP 97 123 WITHIN OR ;
+: ED-BLANK? ( c --- f )   DUP 32 = SWAP 9 = OR ;
+
+: ED-FWD-WORD ( --- i )   \ to the end of the next word
+  ED-POS @
+  BEGIN DUP ED-LEN @ < IF DUP ED-AT ED-WORD-CHAR? 0= ELSE 0 THEN WHILE 1+ REPEAT
+  BEGIN DUP ED-LEN @ < IF DUP ED-AT ED-WORD-CHAR? ELSE 0 THEN WHILE 1+ REPEAT ;
+
+: ED-BACK-WORD ( --- i )   \ to the start of this word, or the last
+  ED-POS @
+  BEGIN DUP 0> IF DUP 1- ED-AT ED-WORD-CHAR? 0= ELSE 0 THEN WHILE 1- REPEAT
+  BEGIN DUP 0> IF DUP 1- ED-AT ED-WORD-CHAR? ELSE 0 THEN WHILE 1- REPEAT ;
+
+: ED-BACK-BLANKWORD ( --- i )   \ C-w's: back over blanks, then non-blanks
+  ED-POS @
+  BEGIN DUP 0> IF DUP 1- ED-AT ED-BLANK? ELSE 0 THEN WHILE 1- REPEAT
+  BEGIN DUP 0> IF DUP 1- ED-AT ED-BLANK? 0= ELSE 0 THEN WHILE 1- REPEAT ;
+
+: ED-YANK ( --- )   \ C-y: put back what the last kill took
+  ED-KILLED# @ 0 ?DO ED-KILLED I + C@ ED-INSERT LOOP ;
+
+: ED-META ( c --- )   \ ESC and a letter: M-b M-f M-d M-Backspace
+  DUP 98 = OVER 66 = OR IF DROP ED-BACK-WORD ED-POS ! EXIT THEN
+  DUP 102 = OVER 70 = OR IF DROP ED-FWD-WORD ED-POS ! EXIT THEN
+  DUP 100 = OVER 68 = OR IF DROP ED-POS @ ED-FWD-WORD ED-KILL EXIT THEN
+  DUP 127 = OVER 8 = OR IF DROP ED-BACK-WORD ED-POS @ ED-KILL EXIT THEN
+  DROP ;
 
 : ED-SET-LINE ( c-addr u --- )   \ replace what is being edited
   DUP 2 + ENSURE-BUFFER ED-BUF
@@ -164,7 +227,7 @@ VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
   \ sequence with a parameter, like ^-right's `ESC [ 1 ; 5 C`, left its
   \ tail to be typed into the line as text. Reported by a user whose
   \ Home and End did nothing (Iteration 412).
-  ED-GET-BYTE DUP 91 = SWAP 79 = OR 0= IF EXIT THEN
+  ED-GET-BYTE DUP 91 = OVER 79 = OR IF DROP ELSE ED-META EXIT THEN
   0 ED-CSI-P !
   BEGIN ED-GET-BYTE DUP 48 58 WITHIN WHILE          \ the first parameter
     48 -  ED-CSI-P @ 10 * +  ED-CSI-P !
@@ -655,6 +718,8 @@ VARIABLE ED-PAT-U
   DUP 12 = IF DROP EXIT THEN                      \ ^L: redraw, which happens anyway
   DUP 18 = IF DROP ED-SEARCH-BEGIN EXIT THEN      \ ^R: search the history
   DUP 9 = IF DROP ED-COMPLETE EXIT THEN           \ TAB: complete the word
+  DUP 23 = IF DROP ED-BACK-BLANKWORD ED-POS @ ED-KILL EXIT THEN   \ ^W
+  DUP 25 = IF DROP ED-YANK EXIT THEN              \ ^Y
   DUP 32 < IF DROP EXIT THEN                      \ other control characters
   ED-INSERT ;
 
@@ -695,6 +760,7 @@ VARIABLE ED-PAT-U
         3 ED-DONE !                             \ the terminal closed
       THEN
     ELSE
+      ED-KILLING @ ED-WAS-KILLING !  0 ED-KILLING !   \ kills in a row
       ED-SEARCHING @ IF ED-SEARCH-KEY ELSE ED-KEY-ACT THEN
       ED-SEARCHING @ IF ED-SEARCH-REDRAW ELSE ED-REDRAW THEN
     THEN

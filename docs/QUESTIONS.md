@@ -354,7 +354,7 @@ legacy feature for the current directory. relf searches it for neither,
 only for an explicit `.`: a deliberate difference from POSIX for empty
 entries, read as covered by the user's reason (DASH.md).
 
-**Q30. Word keys in the line editor? (567, open)** tools/editor-vs-bash.py
+**Q30. Word keys in the line editor? (567; answered A30)** tools/editor-vs-bash.py
 found relf's editor without readline's C-w (kill the word behind), M-b
 and M-f (a word back and forward), M-d and M-BS (kill a word ahead,
 behind), C-t (transpose) and C-y (yank what a kill took). Options: (a)
@@ -363,6 +363,11 @@ thinking; (b) some; (c) none, the editor kept minimal. Recommended: (a)
 C-w, M-b, M-f, M-d, M-BS and C-y with a one-entry kill buffer that C-k,
 C-u and C-w fill - a few dozen lines of edit.4, each key testable
 against bash with the tool as it is; C-t is rarely missed.
+
+**A30. The word keys (568).** The user: as recommended - C-w, M-b,
+M-f, M-d, M-Backspace, and C-y with a kill buffer that C-k, C-u, C-w,
+M-d and M-Backspace fill; not C-t. One entry, but kills in a row join
+into it, as readline's do - C-w C-w C-y puts both words back.
 
 ## Your notes, captured (514)
 

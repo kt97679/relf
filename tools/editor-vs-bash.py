@@ -47,6 +47,16 @@ base = 'echo alpha beta gamma'
 for name, code in KEYS.items():
     tests.append(('%s at the end' % name, [base, code]))
     tests.append(('%s in the middle' % name, [base, '\x1b[D' * 7, code, 'X']))
+# C-y after each kind of kill, and after moving elsewhere (Iteration 568)
+for label, seq in [('C-k then C-y', ['\x1b[D' * 5, '\x0b', '\x19']),
+                   ('C-w then C-y', ['\x17', '\x19']),
+                   ('M-d then C-y', ['\x01', '\x1bf', '\x1bd', '\x19']),
+                   ('M-BS then C-y', ['\x1b\x7f', '\x19']),
+                   ('C-u then C-y', ['\x15', '\x19']),
+                   ('C-k, move, C-y', ['\x1b[D' * 6, '\x0b', '\x01', '\x1bf', '\x19']),
+                   ('C-w C-w C-y (a ring would append)', ['\x17', '\x17', '\x19']),
+                   ('C-y with nothing killed', ['\x19'])]:
+    tests.append((label, [base] + seq))
 rng = random.Random(567)
 for _ in range(40):
     keys = [base]

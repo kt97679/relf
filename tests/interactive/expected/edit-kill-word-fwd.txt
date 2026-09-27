@@ -1,0 +1,3 @@
+<PS1>echo beta gamma
+beta gamma
+<PS1>exit

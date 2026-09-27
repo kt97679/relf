@@ -563,6 +563,7 @@ do not trust the absence of a line below.
 - **565** — a here-document bug found by ncurses's configure: fixed; that 32,301-line script now runs as under dash
 - **566** — the assembler against GNU as at random: memory push, pop and xchg were assembled as register ones, silently - fixed; asm:fuzz-mismatches
 - **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30); POSIX's own examples, 33 checks
+- **568** — the word keys (A30): C-w, M-b, M-f, M-d, M-Backspace, C-y with a kill buffer; 81 of 88 keystroke tests as bash, the 7 left deliberate
 
 ### Not tied to an iteration
 
@@ -26612,4 +26613,28 @@ field splitting's example; `a[b/c]d` matching only itself; $$ and PPID
 in a subshell. relf passes all 33 on its three builds, and so does dash
 - which is what shows the test itself right. The special built-ins'
 examples (2.14) lie past where the fetch stopped: next.
+
+## Iteration 568: the word keys (A30)
+
+fury and rage verified 567. The user: add the keys as recommended.
+
+ED-ESCAPE read the byte after ESC and, unless it was `[` or `O`,
+returned - so `ESC b`, M-b, was swallowed whole. It hands such a byte
+to ED-META now: b f d and their capitals, and Backspace. C-w and C-y
+join ED-KEY-ACT. Every cut goes through one word, ED-KILL ( from to ),
+into ED-KILLED - C-k and C-u too, which only truncated before and kept
+nothing. Words as readline has them: letters and digits for the M-
+keys (ED-FWD-WORD, ED-BACK-WORD), anything between blanks for C-w
+(ED-BACK-BLANKWORD).
+
+Held to bash by tools/editor-vs-bash.py, with eight yank cases added:
+the first build matched bash on everything but one - C-w C-w C-y gave
+back only the last word, where readline joins kills in a row. So kills
+in a row join here too: the dispatch keeps whether the key before
+killed, and a kill that starts before the cursor goes in front of what
+the buffer holds, one at it after. (And the line now shrinks by the
+span killed, not by the buffer's length - which would have been wrong
+once the buffer grew.) 88 tests: 81 as bash on both engines; the 7 left
+are C-u's whole line (ksh, zsh) and C-t, kept out. Four pty cases,
+recorded from this shell and read against bash's answers.
 
