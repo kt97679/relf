@@ -4390,8 +4390,25 @@ MAX-ALIASES ALIAS-CAP !
 VARIABLE DO-I
 
 : MARK-READONLY ( name-addr --- )
+  \ A variable inherited and never assigned lives in the environment
+  \ only, where there is no flag to set: `readonly HOME` recorded
+  \ nothing and HOME=/x went through - POSIX's own readonly example,
+  \ found by run-posix-builtin-examples (Iteration 569), the same root as
+  \ 562's `set`. Such a one is taken into the shell's storage first,
+  \ with its value; its environment entry stays, so it stays exported.
+  DUP FIND-SHVAR -1 = IF
+    DUP LOOKUP-VAR ?DUP IF OVER SWAP SET-SHVAR THEN
+  THEN
   FIND-SHVAR DUP -1 = IF DROP EXIT THEN
   SHVAR-RO + -1 SWAP C! ;
+
+: SQUOTED. ( c-addr --- )   \ as a single-quoted shell word
+  39 EMIT
+  BEGIN DUP C@ WHILE
+    DUP C@ 39 = IF S" '" TYPE 34 EMIT 39 EMIT 34 EMIT 39 EMIT ELSE DUP C@ EMIT THEN   \ '"'"' as dash writes it
+    1+
+  REPEAT DROP
+  39 EMIT ;
 
 : PRINT-READONLY ( --- )
   \ "readonly -p", and "readonly" with no operands: list the read-only
@@ -4402,7 +4419,9 @@ VARIABLE DO-I
       ." readonly "
       DO-I @ SHVAR-NAME-SLOT DUP CSTRLEN TYPE
       [CHAR] = EMIT
-      DO-I @ SHVAR-VALUE-SLOT DUP CSTRLEN TYPE
+      \ quoted, as `set` and `export -p` do: unquoted, a value with a
+      \ blank did not read back in (Iteration 569)
+      DO-I @ SHVAR-VALUE-SLOT SQUOTED.
       CR
     THEN
     DO-I @ 1+ DO-I !
@@ -5738,13 +5757,6 @@ CREATE SIG-NAMES-TEXT
   LOOP
   2DROP -1 ;
 
-: SQUOTED. ( c-addr --- )   \ as a single-quoted shell word
-  39 EMIT
-  BEGIN DUP C@ WHILE
-    DUP C@ 39 = IF S" '" TYPE 34 EMIT 39 EMIT 34 EMIT 39 EMIT ELSE DUP C@ EMIT THEN   \ '"'"' as dash writes it
-    1+
-  REPEAT DROP
-  39 EMIT ;
 
 : LIST-TRAPS ( --- )
   TRAP-SLOTS 0 DO

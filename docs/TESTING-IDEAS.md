@@ -168,7 +168,8 @@ build first - cheap, and likely to find something.
     lacks or gets wrong - a decision each.
 13. **Begun, 567: tests/shell/run-posix-examples.** Chapter 2 up to
     2.13: 33 checks from the standard's text, all passing, dash too.
-    Next: the special built-ins' examples (2.14). First written:
+    569: the special built-ins' examples (2.14), 31 more - found readonly
+    losing its flag on inherited variables. First written:
     **Spec archaeology**: every example in POSIX's Shell Command Language
     and its rationale turned into a test with the behaviour the text
     states; and the Austin Group's interpretations of it, where the

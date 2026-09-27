@@ -20,5 +20,8 @@ rt "set" "$setup" 'set | grep -v "^PPID="' "eval \"\$(cat $t/1)\""
 rt "export -p" "$setup; export q d b m k n e s g h" 'export -p' "eval \"\$(cat $t/1)\""
 rt "trap" "trap 'echo \"it'\\''s\"; x=1' INT; trap '' USR1; trap 'a\\b \$y' HUP" 'trap' "eval \"\$(cat $t/1)\""
 rt "alias" "alias a='echo \"it'\\''s\"'; alias b='ls -l | cat'; alias c='x=\$y'" 'alias' "eval \"\$(sed 's/^/alias /' $t/1)\""
+# readonly -p (Iteration 569): it printed values unquoted, so a blank in
+# one broke the re-input the others' listings pass
+rt "readonly -p" "$setup; readonly q d b m s" 'readonly -p' "eval \"\$(cat $t/1)\""
 rm -rf "$t"
 report

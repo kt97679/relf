@@ -564,6 +564,7 @@ do not trust the absence of a line below.
 - **566** — the assembler against GNU as at random: memory push, pop and xchg were assembled as register ones, silently - fixed; asm:fuzz-mismatches
 - **567** — the line editor against bash's readline: a blank line made the next prompt PS2 (fixed); word keys missing (Q30); POSIX's own examples, 33 checks
 - **568** — the word keys (A30): C-w, M-b, M-f, M-d, M-Backspace, C-y with a kill buffer; 81 of 88 keystroke tests as bash, the 7 left deliberate
+- **569** — the special built-ins' POSIX examples, 31 checks: readonly lost its flag on inherited variables, and readonly -p did not quote - both fixed
 
 ### Not tied to an iteration
 
@@ -26637,4 +26638,40 @@ span killed, not by the buffer's length - which would have been wrong
 once the buffer grew.) 88 tests: 81 as bash on both engines; the 7 left
 are C-u's whole line (ksh, zsh) and C-t, kept out. Four pty cases,
 recorded from this shell and read against bash's answers.
+
+## Iteration 569: the special built-ins' own examples
+
+TESTING-IDEAS.md 13, finished: XCU 2.14's EXAMPLES, taken from the POSIX
+manual pages (manpages-posix, 2017, downloaded and read - the chapter's
+page had stopped at 2.13 in 567's fetch). tests/shell/run-posix-builtin-
+examples, 31 checks, the expected values the text's: break and continue
+over `for i in *`, `: ${X=abc}`, `x=y : > z`, `. ./foobar`, eval's $foo
+then 10, exec's descriptors and `exec cat`, exit's subshell idiom,
+export and its save-and-restore through `export -p`, readonly, set c a
+b, set --, set -- "$x", set -xv, shift 2, times' two lines, trap on EXIT
+and 0 and reset, unset -v and -f. dash passes all 31.
+
+relf failed one, on every build: `readonly HOME PWD; HOME=/x` went
+through. MARK-READONLY looked the name up in the shell's own storage and
+returned when it was not there - and an inherited, never-assigned
+variable is only in the environment: 562's `set` bug, again. Now it
+takes such a variable into the storage first, with its value; its
+environment entry stays, so it stays exported. Checking that showed
+`readonly -p` printing values unquoted - `readonly IMP=inherited`,
+where dash writes 'inherited' - so a blank in a value did not read
+back: 563's round trips had missed this listing. Now quoted with
+SQUOTED. (moved ahead of PRINT-READONLY: single-pass Forth), and
+run-round-trips has it. unset of an inherited variable was right.
+
+Open: `readonly Y` when Y is unset - dash then refuses `Y=1`, relf
+assigns: the storage has no way to hold "unset but read-only".
+
+The first recording of this caught what my own run had not: I ran the
+two files I had touched, not the suite, and run-builtins2 expected the
+OLD listing - `readonly p=b`, unquoted - so it held the bug in place;
+shell:8byte went 1 -> 0 and every suite after it in run_tests.sh read
+0 or empty. I stopped the check run before it could verify against that
+recording, restored the baseline, made run-builtins2 expect dash's
+quoted form, ran the whole suite on both engines, and recorded again:
+91 files, 1,033 assertions.
 

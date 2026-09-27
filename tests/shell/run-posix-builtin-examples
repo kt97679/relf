@@ -1,0 +1,75 @@
+#!/bin/sh
+# tests/shell/run-posix-builtin-examples - the special built-ins' own
+# EXAMPLES, with the results POSIX states (Iteration 569; TESTING-IDEAS.md
+# 13): XCU 2.14, as the POSIX manual pages carry it (manpages-posix,
+# 2017). break, colon, continue, dot, eval, exec, exit, export, readonly,
+# set, shift, times, trap, unset - return has none, and the second break
+# example is unspecified by its own words. Expected values from the text.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d)
+r() { (cd "$t" && "$THIS_SH" -c "$1" 2>&1); }
+mkdir "$t/d" && : > "$t/a" && : > "$t/b"          # for i in *: a b d
+
+# break, continue
+assert_output_equals 'break at the first directory' "d" "$(r 'for i in *; do if test -d "$i"; then break; fi; done; echo "$i"')"
+assert_output_equals 'continue past directories' '"a" is not a directory. "b" is not a directory.' \
+    "$(r 'for i in *; do if test -d "$i"; then continue; fi; printf "\"%s\" is not a directory.\n" "$i"; done' | paste -sd' ' -)"
+# colon
+assert_output_equals ': ${X=abc}' "abc" "$(r ': ${X=abc}; if false; then :; else echo $X; fi')"
+echo old > "$t/z"
+assert_output_equals 'x=y : > z keeps x, truncates z' "y 0" "$(r 'x=y : > z; echo "$x $(wc -c < z | tr -d " ")"')"
+# dot
+echo 'foo=hello bar=world' > "$t/foobar"
+assert_output_equals '. ./foobar' "hello world" "$(r '. ./foobar; echo $foo $bar')"
+# eval
+assert_output_equals 'eval: before and after' '$foo 10' "$(r 'foo=10 x=foo; y='"'"'$'"'"'$x; echo $y; eval y='"'"'$'"'"'$x; echo $y' | paste -sd' ' -)"
+# exec
+echo line1 > "$t/readfile"; echo maggie-text > "$t/maggie"
+assert_output_equals 'exec 3< readfile' "line1" "$(r 'exec 3< readfile; read -r l <&3; echo "$l"')"
+assert_output_equals 'exec 4> writefile' "hi" "$(r 'exec 4> writefile; echo hi >&4; exec 4>&-; cat writefile')"
+assert_output_equals 'exec 5<&0' "piped" "$(echo piped | (cd "$t" && "$THIS_SH" -c 'exec 5<&0; read -r v <&5; echo "$v"'))"
+out=$(r 'exec 3< readfile; exec 3<&-; read -r l <&3 2>/dev/null; echo "st=$?"')
+assert_output_contains 'exec 3<&- closes it' "st=" "$out"
+[ "$out" != "st=0" ] && closed=yes || closed="no: $out"
+assert_output_equals '... a read from it fails' "yes" "$closed"
+assert_output_equals 'exec cat maggie replaces the shell' "maggie-text" "$(r 'exec cat maggie; echo not-reached')"
+# exit
+r 'exit 0' >/dev/null; st0=$?; r 'exit 1' >/dev/null; st1=$?
+assert_output_equals 'exit 0 and exit 1' "0 1" "$st0 $st1"
+out=$(r '( true || exit 1; true || exit 1; exec echo three ) > outputfile || exit 1; echo "outputfile created successfully"; cat outputfile')
+assert_output_equals 'a subshell that succeeds' "outputfile created successfully three" "$(echo "$out" | paste -sd' ' -)"
+out=$(r '( true || exit 1; false || exit 1; exec echo three ) > outputfile || exit 1; echo created'); st=$?
+assert_output_equals 'a subshell that fails ends the script' "1 ''" "$st '$out'"
+# export
+assert_output_equals 'export PWD HOME' "2" "$(r 'export PWD HOME; env | grep -c "^PWD=\|^HOME="')"
+assert_output_equals 'export PATH=/local/bin:$PATH' "/local/bin" "$(r 'export PATH=/local/bin:$PATH; env | sed -n "s/^PATH=\([^:]*\):.*/\1/p"')"
+assert_output_equals 'export -p saves, . restores' "1|x y|1|x y" \
+    "$(r 'export A=1 B="x y"; export -p > temp-file; unset A B; . ./temp-file; echo "$A|$B|$(env | sed -n "s/^A=//p")|$(env | sed -n "s/^B=//p")"')"
+# readonly
+out=$(r 'readonly HOME PWD; HOME=/x; echo not-reached'); st=$?
+case $out in *not-reached*) ro=assigned ;; *) ro=refused ;; esac
+assert_output_equals 'readonly HOME PWD: an assignment is an error' "refused" "$ro"
+assert_output_equals '... and the script ends' "nonzero" "$([ $st -ne 0 ] && echo nonzero)"
+# set
+assert_output_equals 'set c a b' "3 c a b" "$(r 'set c a b; echo $# $1 $2 $3')"
+assert_output_equals 'set --' "0" "$(r 'set a b; set --; echo $#')"
+assert_output_equals 'set -- "$x" when x begins with -' "-e 1" "$(r 'x=-e; set -- "$x"; echo "$1 $#"')"
+out=$(cd "$t" && "$THIS_SH" -c 'set -xv; echo traced' 2>&1 >/dev/null)
+case $out in *'+ echo traced'*) xv=traced ;; *) xv="not: $out" ;; esac
+assert_output_equals 'set -xv traces' "traced" "$xv"
+# shift
+assert_output_equals 'shift 2' "c d e" "$(r 'set a b c d e; shift 2; echo $*')"
+# times: two lines, the shell's and its children's, NmN.NNs NmN.NNs
+out=$(r 'times')
+n=$(echo "$out" | grep -c '^[0-9][0-9]*m[0-9][0-9]*\.[0-9][0-9]*s [0-9][0-9]*m[0-9][0-9]*\.[0-9][0-9]*s$')
+assert_output_equals 'times: two lines in the stated form' "2" "$n"
+# trap
+assert_output_equals "trap '...' EXIT" "body bye" "$(r 'trap "echo bye" EXIT; echo body' | paste -sd' ' -)"
+assert_output_equals "trap '...' 0" "body bye" "$(r 'trap "echo bye" 0; echo body' | paste -sd' ' -)"
+assert_output_equals 'trap - INT QUIT TERM EXIT' "body" "$(r 'trap "echo bye" EXIT; trap - INT QUIT TERM EXIT; echo body')"
+# unset
+assert_output_equals 'unset -v VISUAL' "unset" "$(r 'VISUAL=vi; unset -v VISUAL; echo "${VISUAL-unset}"')"
+out=$(r 'foo() { echo f; }; bar() { echo b; }; unset -f foo bar; foo; echo "st=$?"')
+assert_output_contains 'unset -f foo bar' "st=127" "$out"
+rm -rf "$t"
+report
