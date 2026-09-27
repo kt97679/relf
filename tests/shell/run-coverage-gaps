@@ -99,6 +99,18 @@ assert_output_contains "with status 1" "r1=1" "$out"
 assert_output_contains "and the rest of it drained: the next read gets the next line" "r2=0 second" "$out"
 cd / && rm -rf "$t3"
 
+# A 2 MB literal word arrives whole (Iteration 558). Written to kill a
+# mutant tools/mutate.py found surviving - + for - in LITERAL-FITS?, so
+# that every literal "fits" - and it did not kill it: the token buffer is
+# sized to the whole line first, so a literal from the line always fits,
+# the check's "no" is unreachable from a script, and that mutant is
+# equivalent. Kept for what it does check: a word this long, exactly.
+t4=$(mktemp -d)
+printf 'echo %02097200d | wc -c\n' 0 > "$t4/big.sh"
+out=$("$THIS_SH" "$t4/big.sh" 2>&1 < /dev/null)
+assert_output_contains "a 2 MB literal word arrives whole" "2097201" "$out"
+rm -rf "$t4"
+
 # a glob with a backslash matches its character literally
 cd "$t" && : > 'a*b' && : > axb
 out=$("$THIS_SH" -c 'echo a\*b; echo a*b' 2>&1)

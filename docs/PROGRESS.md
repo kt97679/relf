@@ -26282,3 +26282,21 @@ them. The shells were NOT installed into the system paths for this:
 the POSIX suite uses whatever reference shells it finds, and a new one
 would have changed what verification measures.
 
+
+
+**tools/mutate.py** (same iteration): mutation testing on the compiled
+image - one opcode in shell.4 or tree.4 swapped for one of the same size
+and stack effect (+/-, AND/OR/XOR, </>/U<, 0=/0<, 1+/1-, C@/@, C!/!;
+3,699 sites), the mutant embedded as a shell, the 131 differential
+scripts run through it. 30 mutants: 15 killed by the scripts; the 15
+survivors through the whole shell suite: 4 more killed (one left the
+suite without a summary - counted killed), 11 survived both. Reading
+them: the byte-for-cell swaps on values under 256 and OR/XOR on
+disjoint bits are equivalent by construction. + for - in LITERAL-FITS?
+I called a gap - a test with a 2 MB literal would overflow the token
+buffer - and the test I wrote passed on the mutant: the buffer is sized
+to the line first, so the check's "no" cannot be reached from a script.
+Equivalent, and my claim was wrong until the mutant said so; the check
+stays, for the 2 MB word. Left to read: DO-BG, SPLIT-ASSIGN-AT and
+COPY-LITERAL, each + for -.
+

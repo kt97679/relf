@@ -47,7 +47,7 @@ rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 940
+shell:assertions 941
 shell:dead-words 0
 shell:files 85
 shell:host-sh-tests 0

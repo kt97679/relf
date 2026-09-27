@@ -79,7 +79,19 @@ build first - cheap, and likely to find something.
 
 ## Tests that measure the tests
 
-7. **Image mutation testing** (**first**): mutate the compiled shell
+7. **Built, 558: tools/mutate.py.** One opcode in shell.4 or tree.4
+   swapped for one of the same size and stack effect (3,699 sites);
+   each mutant a shell of its own, run through the 131 differential
+   scripts, its survivors then through the whole shell suite
+   (MUTANTS_KEEP). 30 mutants: 15 killed by the scripts, 4 more by the
+   suite, 11 survived both. Survivors need reading, not counting: the
+   @/C@ and !/C! swaps on values under 256, and OR/XOR on bits that do
+   not overlap, cannot change anything (equivalent); + for - in
+   LITERAL-FITS? looked like a gap and a test written for it did not
+   kill it - the token buffer is sized to the line, so its "no" is
+   unreachable (equivalent too). Unread yet: DO-BG, SPLIT-ASSIGN-AT,
+   COPY-LITERAL (each + and -). First written:
+   **Image mutation testing** (**first**): mutate the compiled shell
    image, not the source - one opcode swapped for another with the same
    stack effect, a literal nudged by one, a branch's sense flipped - and
    run the suites. A mutant that survives marks behaviour no test
