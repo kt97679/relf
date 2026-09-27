@@ -240,3 +240,16 @@ the workload: every page of the image is written at startup - 136 buffer
 descriptors, which ALLOC-BUFFERS fills, and the shell's variables, lie
 among the code throughout the dictionary. Only an image whose writable
 data is kept apart from its code would gain; OPTIMIZATIONS.md M2.
+
+## Undefined arithmetic, each engine (tools/twin-fuzz.py, Iteration 555)
+
+On x86-64 both engines agree on everything Forth leaves undefined that
+was tried: `MIN -1 /` gives MIN and `MIN -1 MOD` 0, without a trap;
+`1 64 LSHIFT` gives 1 and `-1 64 RSHIFT` gives -1 - the count taken mod
+64, which is x86's rule; `1 1 1 UM/MOD`, whose quotient overflows,
+gives 1 0. A zero divisor ends the process with SIGFPE (Q21). The C
+engine's shifts are C's `<<` and `>>`, undefined in C at 64 and more:
+x86 masks the count, ARM does not (a shift by 64 gives 0 there), so the
+C engine on ARM may answer differently - allowed by the standard, and
+worth knowing before a test depends on it.
+

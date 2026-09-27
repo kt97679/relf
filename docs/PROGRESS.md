@@ -26162,3 +26162,14 @@ it), the layout as a tree, the documents in docs/ (five were missing),
 the conformance claim worded exactly (CORE, core.fr, both engines and
 widths), measured sizes (the C engine 38 KB stripped).
 
+**The engines as each other's oracle** (same iteration): tools/twin-
+fuzz.py, 3,000 random programs, C engine against assembly engine - 0
+differences. Its first run was worthless and looked fine: generated
+definitions longer than the input buffer were cut mid-word (THEN came
+in as THE), whole batches failed identically on both engines, and the
+tool set them aside and still reported 0 differences over the rest. A
+count that agrees is not a comparison; now a batch is compared whatever
+its length. The probes found a zero divisor ends the process (Q21), and
+- first run again - were parsed in HEX by my mistake, so the shift
+results were for 99 and 100, not 63 and 64.
+

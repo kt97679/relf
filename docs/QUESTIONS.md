@@ -307,6 +307,20 @@ warns this way. Options: (a) refuse them so; (b) leave it, as most
 Forths do. Recommended: (a) - one flag bit and one test in INTERPRET,
 and a crash becomes a message.
 
+**Q21. A zero divisor kills the shell (555, open).** tools/twin-fuzz.py's
+probes: `7 0 /` and `5 0 0 UM/MOD` end the process with SIGFPE on both
+engines, and inside the shell `forth '1 0 /'; echo after` never echoes
+- the shell is gone. A24 says a Forth error fails its command only, but
+this one is the CPU's trap, which no CATCH sees; so is a bad address
+(`0 @`). Forth 2012 has codes for them: -10 division by zero, -9
+invalid memory address. Options: (a) each engine's signal handler turns
+SIGFPE (and SIGSEGV off the stack guards) into a THROW with that code,
+which the builtin's CATCH then handles like any other error - both
+engines change, the C one and relfasm64.4; (b) the division words test
+their divisor and THROW -10 - cheaper to write, a compare in every
+division, and it covers division only; (c) leave it. Recommended: (a),
+for it covers every trap and costs nothing until one happens.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

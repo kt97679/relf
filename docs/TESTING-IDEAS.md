@@ -29,7 +29,14 @@ build first - cheap, and likely to find something.
    test scripts define, re-read the text, and require the same behaviour;
    print again, and require the same text (a fixpoint, like the images).
    A strong test of the parser and the printer together.
-3. **The engines as each other's oracle** (**first**): random, well-
+3. **Built, 555: tools/twin-fuzz.py.** 3,000 random programs - 50 words
+   and guarded phrases, values leaning to the edges - on the C engine and
+   the assembly engine: 0 differences. Its probes of what Forth leaves
+   undefined agree too (MIN -1 / gives MIN without a trap; shifts of 64
+   or more take the count mod 64, as x86 does), and found that a zero
+   divisor kills the process with SIGFPE on both - inside the shell,
+   `forth '1 0 /'` ends the shell (QUESTIONS.md Q21). First written:
+   **The engines as each other's oracle** (**first**): random, well-
    typed Forth programs - a generator that knows each opcode's stack
    effect, so every program is valid - run on the C engine and on the
    assembly engine; any difference in the final stack or the output is
