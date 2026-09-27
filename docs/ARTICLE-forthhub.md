@@ -73,12 +73,6 @@ runs on both, and their outputs must agree.
   has what the shell needed; it does not claim the other word sets,
   and the missing words can be defined with the `forth` builtin.
 
-In December 2020 I asked here (ForthHub #92) how few primitives a
-Forth needs: SOD32 cut from 32 to 7 ran 708 times slower. relf went the
-other way, by measurement: each of its 64 one-byte opcodes was chosen
-by counting dispatches on real workloads, and the rest were escaped.
-[author: keep this paragraph?]
-
 ## Assembling its own engine
 
     engine/cv8.c --cc--> relf64 (the C engine, once)
