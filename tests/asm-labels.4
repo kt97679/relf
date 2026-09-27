@@ -2,7 +2,7 @@
 \ tests/asm-labels.S, which tools/asm-test.py assembles with GNU as and
 \ compares, byte for byte. Every kind of jump: back to a local label,
 \ forward to one, forward to a named one, and a NEAR forward one.
-S" extend.4" INCLUDED  S" asm64.4" INCLUDED
+S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED
 ALSO ASSEMBLER
 : nop, 144 C,A ;
 4194304 1024 ASM-BUFFER               \ 0x400000, where ld puts the reference

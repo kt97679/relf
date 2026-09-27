@@ -58,7 +58,7 @@ check "FD-POLL returns 0 when it times out" "P:0" "$out"
 # anything that blocks on the pipe instead of timing out takes that long.
 check "FD-POLL waited for its timeout, not for the pipe (${el} ms)" "yes" \
       "$([ "$el" -ge 190 ] && [ "$el" -lt 900 ] && echo yes)"
-out=$(printf 'S" kernel.4" R/O OPEN-FILE DROP 1 0 FD-POLL S" R:" TYPE . CR BYE\n' | timeout 10 "$E" "$I" 2>&1)
+out=$(printf 'S" forth/kernel.4" R/O OPEN-FILE DROP 1 0 FD-POLL S" R:" TYPE . CR BYE\n' | timeout 10 "$E" "$I" 2>&1)
 check "FD-POLL reports POLLIN on a regular file" "R:1" "$out"
 
 # 5. MS

@@ -95,7 +95,7 @@ are, rather than typed a fifth time.
 
 1. **The core**: dispatch, calls, branches, the arithmetic, memory and
    stack primitives, `read`/`write`/`exit`. Runs the bare kernel:
-   `echo '2 3 + . BYE' | ./relfasm64 kernel64.img`. **Reached at 519**:
+   `echo '2 3 + . BYE' | ./relfasm64 forth/kernel64.img`. **Reached at 519**:
    `relfasm64.S`, 28 KB static with no libc, runs the bare kernel and
    the CORE word suite (`tester.fr`, `core-extra.fth`,
    `coreplus-loop.fth`) with output byte-identical to cv8.c's for 2,040

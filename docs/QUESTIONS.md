@@ -296,6 +296,17 @@ some punishment for it is acceptable. Agreed: ForthHub is read in email
 digests, where text survives; the Habr complaint was an article that
 promised graphics. Kept to 60-64 columns for readers on phones.
 
+**Q20. Refuse >R R> R@ outside a definition? (554, open)** Forth 2012
+leaves their interpretation undefined, and in relf interpreting them
+crashes - the interpreter's own return address is what they reach; my
+own tests did it twice in 554. IF and its kind refuse now (552: ?COMP),
+but >R R> R@ are primitives, not colon words, so a check inside them
+would cost every use. The cheap way: a compile-only bit in the header,
+which the text interpreter checks before it executes a word - gforth
+warns this way. Options: (a) refuse them so; (b) leave it, as most
+Forths do. Recommended: (a) - one flag bit and one test in INTERPRET,
+and a crash becomes a message.
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

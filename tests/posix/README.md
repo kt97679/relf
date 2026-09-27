@@ -6,7 +6,7 @@ and which is scored against **the consensus of every reference shell
 present** rather than against one.
 
 `tests/mrsh-suite/` was the external yardstick until Iteration 125,
-when it was fully passed. It is 21 files. Passing it says `shell.4`
+when it was fully passed. It is 21 files. Passing it says `shell/shell.4`
 handles what mrsh's acceptance tests exercise; it says nothing about
 the rest of the specification. This directory is the successor, and
 it is meant to grow to cover the spec section by section.

@@ -143,11 +143,13 @@ if mkdir -p "$CROSS" 2>/dev/null; then
     # said. Since 506 the build is tools/build-shell-image.sh's, run here
     # as the Makefile runs it, with relative names.
     srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
-    for f in relf64 kernel64.img tools/build-shell-image.sh $srcs; do
-        [ -e "$f" ] && cp "$f" "$CROSS/"
+    # The layout recreated, not flattened, since the sources moved into
+    # forth/ and shell/ (Iteration 555): relative names, as in the tree.
+    for f in relf64 forth/kernel64.img tools/build-shell-image.sh $srcs; do
+        [ -e "$f" ] && mkdir -p "$CROSS/$(dirname "$f")" && cp "$f" "$CROSS/$f"
     done
     ( cd "$CROSS" && rm -f kernel64-shell.img &&
-      sh ./build-shell-image.sh ./relf64 kernel64.img kernel64-shell.img $srcs ) >/dev/null 2>&1
+      sh tools/build-shell-image.sh ./relf64 forth/kernel64.img kernel64-shell.img $srcs ) >/dev/null 2>&1
     if [ -s "$CROSS/kernel64-shell.img" ] && [ -e kernel64-shell.img ]; then
         if cmp -s "$CROSS/kernel64-shell.img" kernel64-shell.img
         then emit crosspath:kernel64-shell.img reproduces
@@ -259,7 +261,7 @@ emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f5)"
 # Unreachable definitions in the shell's sources (tools/dead-words.py):
 # Iteration 265 removed 343 of them with the line-based shell; none should
 # come back unnoticed.
-emit shell:dead-words "$(python3 tools/dead-words.py shell.4 tree.4 2>/dev/null | grep -c .)"
+emit shell:dead-words "$(python3 tools/dead-words.py shell/shell.4 shell/tree.4 2>/dev/null | grep -c .)"
 # Tests that run the host's `sh` where they mean the shell under test
 # (tools/lint-tests.py, Iteration 477): 465's assertion passed here and
 # failed on a machine whose sh is bash. 0 is the only right answer.
@@ -294,9 +296,9 @@ echo "== the assembly engine =="
 if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; then
     kern=reproduces
     for bytes in 8 4; do
-        case $bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac
+        case $bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac
         wd=$(mktemp -d)
-        cp extend.4 cross.4 kernel.4 kernel64.img relfasm64 "$wd/"
+        cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel64.img relfasm64 "$wd/"
         [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
         ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' |
           timeout 120 ./relfasm64 kernel64.img > boot.log 2>&1 )
@@ -306,14 +308,14 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     emit asm:kernels "$kern"
     srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
     rm -f /tmp/verify-asm-shell.img
-    sh tools/build-shell-image.sh ./relfasm64 kernel64.img /tmp/verify-asm-shell.img $srcs >/dev/null 2>&1
+    sh tools/build-shell-image.sh ./relfasm64 forth/kernel64.img /tmp/verify-asm-shell.img $srcs >/dev/null 2>&1
     if cmp -s /tmp/verify-asm-shell.img kernel64-shell.img
     then emit asm:shell-image reproduces
     else emit asm:shell-image DIFFERS; fi
     rm -f /tmp/verify-asm-shell.img
-    tf="tester.fr $(ls tests/*.fth | tr '\n' ' ')"
-    { cat $tf; echo BYE; } | timeout 60 ./relfasm64 kernel64.img > /tmp/verify-asm-core.out 2>&1
-    { cat $tf; echo BYE; } | timeout 60 ./relf64 kernel64.img > /tmp/verify-c-core.out 2>&1
+    tf="tests/tester.fr $(ls tests/*.fth | tr '\n' ' ')"
+    { cat $tf; echo BYE; } | timeout 60 ./relfasm64 forth/kernel64.img > /tmp/verify-asm-core.out 2>&1
+    { cat $tf; echo BYE; } | timeout 60 ./relf64 forth/kernel64.img > /tmp/verify-c-core.out 2>&1
     if cmp -s /tmp/verify-asm-core.out /tmp/verify-c-core.out
     then emit asm:core identical
     else emit asm:core DIFFERS; fi
@@ -337,7 +339,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     cp relfasm64 relfasm64.forth
     if [ -x relfasm64.forth ]; then
         mv relfasm64.forth /tmp/verify-gen1
-        timeout 120 /tmp/verify-gen1 kernel64.img < relfasm64.4 >/dev/null 2>&1
+        timeout 120 /tmp/verify-gen1 forth/kernel64.img < engine/relfasm64.4 >/dev/null 2>&1
         if cmp -s relfasm64.forth /tmp/verify-gen1
         then emit asm:fixpoint reproduces
         else emit asm:fixpoint DIFFERS; fi
@@ -365,9 +367,9 @@ echo "== another Forth =="
 if command -v gforth >/dev/null 2>&1; then
     ddc=reproduces
     for bytes in 8 4; do
-        case $bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac
+        case $bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac
         wd=$(mktemp -d)
-        cp cross.4 kernel.4 "$wd/"
+        cp forth/cross.4 forth/kernel.4 "$wd/"
         [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
         ( cd "$wd" && timeout 120 gforth cross.4 -e bye >/dev/null 2>&1 )
         cmp -s "$wd/built.img" "$img" || ddc=DIFFERS

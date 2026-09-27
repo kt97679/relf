@@ -16,7 +16,7 @@
 \ file carries nine lines of checker and depends on nothing but the
 \ kernel.
 \
-\ Run as:  S" extend.4" INCLUDED  S" tests/ext/coreext.fth" INCLUDED
+\ Run as:  S" forth/extend.4" INCLUDED  S" tests/ext/coreext.fth" INCLUDED
 \
 \ It lives in tests/ext/ rather than tests/ because tests/*.fth is
 \ globbed into the ANS CORE suite, which runs on a PLAIN kernel with no

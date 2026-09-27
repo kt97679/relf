@@ -16,7 +16,7 @@ adopted; it has been passed in full since Iteration 125. (This README
 is this project's, not mrsh's.)
 
 Do not hand-edit these files to make them pass - if a test needs to
-change to fit `shell.4`'s scope, that's a sign the vendored copy has
-drifted from upstream, not a fix. Where `shell.4` is missing a feature
+change to fit `shell/shell.4`'s scope, that's a sign the vendored copy has
+drifted from upstream, not a fix. Where `shell/shell.4` is missing a feature
 a test depends on, that's tracked as a real, honest failure until the
 feature exists.

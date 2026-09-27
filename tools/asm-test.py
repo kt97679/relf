@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""tools/asm-test.py - M0's test: asm64.4 against tests/asm-corpus.txt
+"""tools/asm-test.py - M0's test: forth/asm64.4 against tests/asm-corpus.txt
 
 Each corpus line - an instruction as relfasm64.S writes it, its address,
-the bytes GNU as made - is translated into asm64.4's syntax, with the
+the bytes GNU as made - is translated into forth/asm64.4's syntax, with the
 symbols' values from nm and a jump's target from its reference bytes,
 and assembled by relf at the same address; the bytes are compared.
 (Iteration 541.)
@@ -67,7 +67,7 @@ def forth(addr, hexbytes, text):
     return ' '.join(operand(o) for o in ops) + (' ' if ops else '') + mn + ','
 
 lines = [l.rstrip('\n') for l in open('tests/asm-corpus.txt') if not l.startswith('#')]
-cases, src = [], ['S" extend.4" INCLUDED', 'S" asm64.4" INCLUDED', 'ALSO ASSEMBLER',
+cases, src = [], ['S" forth/extend.4" INCLUDED', 'S" forth/asm64.4" INCLUDED', 'ALSO ASSEMBLER',
                   ': CLEAR BEGIN DEPTH WHILE DROP REPEAT ;',
                   ': SHOW ( n --- ) CR ." L" . THERE @ ABUF @ ?DO I C@ . LOOP ;']
 for i, l in enumerate(lines):
@@ -85,7 +85,7 @@ for i, l in enumerate(lines):
 src.append('CR BYE')
 tf = os.path.join(work, 't.4')
 open(tf, 'w').write('\n'.join(src) + '\n')
-out = subprocess.run([ENGINE, 'kernel64.img'], stdin=open(tf), capture_output=True, text=True, timeout=120).stdout
+out = subprocess.run([ENGINE, 'forth/kernel64.img'], stdin=open(tf), capture_output=True, text=True, timeout=120).stdout
 got = {}
 for l in out.split('\n'):
     m = re.match(r'^L(\d+)\s+(.*?)\s*$', l.strip())
@@ -113,7 +113,7 @@ subprocess.run(['as', '-o', lo, 'tests/asm-labels.S'], check=True)
 subprocess.run(['ld', '-Ttext=0x400000', '--oformat', 'binary', '-o', lb, lo], check=True)
 # (linked, as the engine is: an absolute address - the jump through a
 # table defined after it - is a placeholder in an object file)
-out = subprocess.run([ENGINE, 'kernel64.img'], stdin=open('tests/asm-labels.4'),
+out = subprocess.run([ENGINE, 'forth/kernel64.img'], stdin=open('tests/asm-labels.4'),
                      capture_output=True, text=True, timeout=60).stdout
 want = open(lb, 'rb').read()
 toks = out.split('BYTES')[1].split() if 'BYTES' in out else []
@@ -125,7 +125,7 @@ print('labels: %s (%d bytes)' % ('identical to GNU as' if got == want else 'DIFF
 # executable with CHMOD, and it must exit with status 42.
 exe = '/tmp/relf-exit42'
 if os.path.exists(exe): os.unlink(exe)
-subprocess.run([ENGINE, 'kernel64.img'], stdin=open('tests/asm-exit42.4'), capture_output=True, timeout=60)
+subprocess.run([ENGINE, 'forth/kernel64.img'], stdin=open('tests/asm-exit42.4'), capture_output=True, timeout=60)
 st = subprocess.run([exe]).returncode if os.access(exe, os.X_OK) else None
 print('program: %s' % ('an ELF from Forth, %d bytes, exits 42' % os.path.getsize(exe) if st == 42
                        else 'FAILED (exit status %r)' % st))

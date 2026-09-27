@@ -44,7 +44,7 @@ ROOT=$PWD
 O=${1:-/tmp/find-depth}
 rm -rf "$O"; mkdir -p "$O"
 
-for f in "$ROOT"/*.4 "$ROOT"/kernel64.img "$ROOT"/relf64; do cp -L "$f" "$O/"; done
+for f in "$ROOT"/forth/*.4 "$ROOT"/forth/kernel64.img "$ROOT"/relf64; do cp -L "$f" "$O/"; done
 
 # The workload: interpreted arithmetic, half of whose tokens are
 # NUMBERS. A number is the worst case for a dictionary search because it
@@ -67,7 +67,7 @@ a = "VARIABLE NAMEBUF ( --- a-addr)"
 b = "    DUP C@ 31 AND NAMEBUF C@ = IF"
 for t in (a, b):
     if s.count(t) != 1:
-        sys.exit("find-depth: %r appears %d times in kernel.4; the "
+        sys.exit("find-depth: %r appears %d times in forth/kernel.4; the "
                  "instrumentation point has moved" % (t, s.count(t)))
 s = s.replace(a, "VARIABLE FINDITER ( --- a-addr)\n" + a, 1)
 s = s.replace(b, "   1 FINDITER +!\n" + b, 1)

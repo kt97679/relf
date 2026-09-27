@@ -4,7 +4,7 @@
 # the background and talk to it with python3, and are skipped without it.
 cd "$(dirname "$0")" || exit 1
 . ./lib.sh
-EX=$(cd ../../forth-shell-examples && pwd)
+EX=$(cd ../../examples && pwd)
 
 out=$("$THIS_SH" -c "forth 'S\" $EX/seq.4\" INCLUDED' ; seq 3 6 | tr '\\n' ' '" 2>&1)
 assert_output_equals "seq.4: a builtin written in Forth" "3 4 5 6 " "$out"

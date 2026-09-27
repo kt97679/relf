@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """tools/profile.py [COMMAND] - which words a workload spends its dispatches in.
 
-Builds a counting engine from cv8.c: every dispatch increments a 32-bit
+Builds a counting engine from engine/cv8.c: every dispatch increments a 32-bit
 counter for its instruction, in a file mapped MAP_SHARED so forked
 children count too. Runs COMMAND (default: the realistic script
 PERFORMANCE.md uses) with RELF_BIN pointing at that engine, then decodes
 the shell image with tools/image-audit.py and attributes the counts to
-shell.4's and tree.4's colon definitions.
+shell/shell.4's and shell/tree.4's colon definitions.
 
 Same shape as tools/coverage.py, which marks instructions instead of
 counting them (Iteration 365).
@@ -18,7 +18,7 @@ os.chdir(ROOT)
 def patch(text, old, new):
     """Replace old, which must occur exactly once. str.replace does nothing
     when its text is missing, and a miss here once built an engine that
-    did not compile: Iteration 490 removed an unused macro from cv8.c
+    did not compile: Iteration 490 removed an unused macro from engine/cv8.c
     that this tool's pattern still named (found at 495)."""
     n = text.count(old)
     if n != 1:
@@ -30,7 +30,7 @@ work = tempfile.mkdtemp(prefix='relf-prof-')
 engine, counts = os.path.join(work, 'relf-prof'), os.path.join(work, 'counts.bin')
 
 SLOTS = 1 << 18
-src = open('cv8.c').read()
+src = open('engine/cv8.c').read()
 src = patch(src, '''#define PROF(k)
 #define PROFIP(a)
 #define PROFDUMP''', '''#include <sys/mman.h>
@@ -77,7 +77,7 @@ with contextlib.redirect_stdout(io.StringIO()):
 import array
 c = array.array('I'); c.frombytes(open(counts, 'rb').read())
 defline = {}
-for f in ('shell.4', 'tree.4', 'edit.4'):
+for f in ('shell/shell.4', 'shell/tree.4', 'shell/edit.4'):
     for i, l in enumerate(open(f).read().split('\n')):
         m = re.match(r'^: (\S+)', l)
         if m and m.group(1) not in defline:

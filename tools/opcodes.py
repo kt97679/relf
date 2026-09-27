@@ -1,8 +1,8 @@
-"""tools/opcodes.py - the opcode map, read from opcodes.tab (Iteration 518).
+"""tools/opcodes.py - the opcode map, read from engine/opcodes.tab (Iteration 518).
 
 The tools used to keep their own copies of the numbering - opcode-mix.py
 the fold and specialised names, image-audit.py the band positions - and
-opcodes.tab is the one source now (CV8.md 2.2). Import it:
+engine/opcodes.tab is the one source now (CV8.md 2.2). Import it:
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import opcodes
@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def load(path=None):
     rows = []
-    for line in open(path or os.path.join(ROOT, 'opcodes.tab')):
+    for line in open(path or os.path.join(ROOT, 'engine/opcodes.tab')):
         f = line.split()
         if not f or f[0].startswith('#'):
             continue
@@ -41,7 +41,7 @@ def formats(path=None):
     'slot', 'sel' or 'data'. Escape selectors are not opcodes, and have
     no entry."""
     out = {}
-    for line in open(path or os.path.join(ROOT, 'opcodes.tab')):
+    for line in open(path or os.path.join(ROOT, 'engine/opcodes.tab')):
         f = line.split()
         if not f or f[0].startswith('#') or f[0] == 'escaped':
             continue

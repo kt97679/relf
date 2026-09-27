@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""tools/coverage.py [COMMAND...] - which parts of shell.4 and tree.4 the tests run.
+"""tools/coverage.py [COMMAND...] - which parts of shell/shell.4 and shell/tree.4 the tests run.
 
-Builds a coverage engine from cv8.c: every dispatch marks its instruction
+Builds a coverage engine from engine/cv8.c: every dispatch marks its instruction
 in a byte map, a file mapped MAP_SHARED so forked children mark it too.
 Runs each COMMAND (default: the shell, differential, POSIX, matrix and
 mrsh suites) with RELF_BIN pointing at that engine, then decodes the
-shell image with tools/image-audit.py and reports, for shell.4's colon
+shell image with tools/image-audit.py and reports, for shell/shell.4's colon
 definitions, which were never entered and how many instructions ran.
 Written in Iteration 262; the numbers it gave then are in PROGRESS.md.
 """
@@ -16,7 +16,7 @@ os.chdir(ROOT)
 def patch(text, old, new):
     """Replace old, which must occur exactly once. str.replace does nothing
     when its text is missing, and a miss here once built an engine that
-    did not compile: Iteration 490 removed an unused macro from cv8.c
+    did not compile: Iteration 490 removed an unused macro from engine/cv8.c
     that this tool's pattern still named (found at 495)."""
     n = text.count(old)
     if n != 1:
@@ -27,7 +27,7 @@ def patch(text, old, new):
 work = tempfile.mkdtemp(prefix='relf-cov-')
 engine, bitmap = os.path.join(work, 'relf-cov'), os.path.join(work, 'cov.bin')
 
-src = open('cv8.c').read()
+src = open('engine/cv8.c').read()
 src = patch(src, '''#define PROF(k)
 #define PROFIP(a)
 #define PROFDUMP''', '''#include <sys/mman.h>
@@ -62,12 +62,12 @@ commands = sys.argv[1:] or [
     # shell image, which is that image with the rest appended - so the
     # kernel's words are measured too. shadow.fth is left out: it loads
     # pool.4 and shadow.4 at other addresses than the shell image's.
-    'cat tester.fr tests/core-extra.fth tests/coreplus-loop.fth | {engine} kernel64.img > /dev/null',
+    'cat tests/tester.fr tests/core-extra.fth tests/coreplus-loop.fth | {engine} forth/kernel64.img > /dev/null',
     # A shell image built by the instrumented engine (Iteration 554):
     # save-system.4, the locals compiler, the buffer definers and every
     # immediate word run only while an image is built. A build is
     # deterministic, so the code it runs sits where the image has it.
-    'sh tools/build-shell-image.sh {engine} kernel64.img {work}/built.img extend.4 pool.4 shadow.4 save-system.4 shell.4 edit.4 tree.4 && cmp {work}/built.img kernel64-shell.img && echo built: identical',
+    'sh tools/build-shell-image.sh {engine} forth/kernel64.img {work}/built.img forth/extend.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4 && cmp {work}/built.img kernel64-shell.img && echo built: identical',
 ]
 # The instrumented engine as a shell of its own (tools/embed.sh): since
 # Iteration 506 relfsh is a binary, so the suites are pointed at this
@@ -95,7 +95,7 @@ cov = open(bitmap, 'rb').read()
 # Every source, in the order the shell image loads them (Iteration 553:
 # before, shell.4 and tree.4 only): a word defined twice is credited to
 # the later file, whose definition the image's name finds.
-SOURCES = ('kernel.4', 'extend.4', 'pool.4', 'shadow.4', 'save-system.4', 'shell.4', 'edit.4', 'tree.4')
+SOURCES = ('forth/kernel.4', 'forth/extend.4', 'forth/pool.4', 'forth/shadow.4', 'forth/save-system.4', 'shell/shell.4', 'shell/edit.4', 'shell/tree.4')
 defline = {}
 for src in SOURCES:
     for i, l in enumerate(open(src).read().split('\n')):

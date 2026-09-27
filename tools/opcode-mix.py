@@ -96,7 +96,7 @@ def cc(src, out):
 # ---- run ----------------------------------------------------------------
 def main():
     os.makedirs(WORK, exist_ok=True)
-    src = open(os.path.join(ROOT, 'cv8.c')).read()
+    src = open(os.path.join(ROOT, 'engine/cv8.c')).read()
     counter = os.path.join(WORK, 'relf-count')
     cc(build_counting(src), counter)
     mix = os.path.join(WORK, 'opmix.bin')

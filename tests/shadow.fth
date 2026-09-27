@@ -15,8 +15,8 @@
 \ alone segfaults rather than reporting an undefined word - the failed
 \ declaration leaves the name undefined and every later use compiles a
 \ garbage reference.
-S" pool.4" INCLUDED
-S" shadow.4" INCLUDED
+S" forth/pool.4" INCLUDED
+S" forth/shadow.4" INCLUDED
 
 \ tester.fr leaves BASE at 16, and core-extra.fth happens not to notice
 \ because every value it uses reads the same in hex as in decimal. The

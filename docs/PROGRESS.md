@@ -550,6 +550,7 @@ do not trust the absence of a line below.
 - **552** — polish: compile-only words refuse outside a definition; `.(`; make clean; TESTING-IDEAS.md
 - **553** — coverage of every source; prompt 14; ForthHub audience research; A23
 - **554** — a Forth error fails its command only (A24): CATCH/THROW in the kernel, errors to stderr; CONVERT fixed; coverage 67 → 13 words never run
+- **555** — the tree restructured: engine/, forth/, shell/, docs/, examples/; README rewritten
 
 ### Not tied to an iteration
 
@@ -26120,3 +26121,44 @@ the plain text further on. Killing by process number, in a command with
 nothing else in it, works. The host-sh row had caught my `sh -c 'cd
 /tmp && exec ...'` in a test (0 is the only right answer, since 477): a
 subshell does the cd instead.
+
+## Iteration 555: the directory structure
+
+The user (552): separate the Forth part from the shell part. Now:
+
+    engine/    cv8.c cv8-ops.h opcodes.tab relfasm64.4 engine-macros.4
+    forth/     kernel.4 cross.4 extend.4 save-system.4 pool.4 shadow.4
+               asm64.4 kernel64.img kernel32.img
+    shell/     shell.4 tree.4 edit.4
+    tests/     + tester.fr
+    docs/      every document but README.md
+    examples/  what forth-shell-examples/ held, and fib.4
+
+Build products stay at the top, where they are typed. Done on a branch,
+merged once verified. The references were updated by a script with
+explicit rules - a map of names, only non-comment lines of scripts,
+only S" strings in Forth test files, nothing after a `/` - which held
+back 23 lines for review: the scratch-directory recipes, where the
+copies are flat and the names inside must stay bare. Six engine
+invocations inside scratch directories named `forth/kernel64.img`,
+which the flat copy does not have; two scratch builds (verify's cross
+build, portability's broken-on-purpose edit.4) recreate the layout now
+instead of flattening it.
+
+**What the recording caught.** A restructure should change no measured
+value, so the baseline recorded before it is the check: three rows
+moved. gforth's double-compile ran `gforth cross.4` inside its scratch
+directory - a bare invocation, with no INCLUDED and no `$VAR/`, so the
+review list did not hold it back, and the script made it
+`forth/cross.4`, which the flat copy lacks. And the two size rows came
+out empty: tests/sizes prints a row labelled `shell.4`, which verify's
+awk finds with `/^shell.4 /` - the script changed the label into a
+"path", and inside the awk pattern the new `/` ended the regex. A label
+is not a path; the script could not tell them apart, and the baseline
+could. Then verified against the pre-restructure baseline, unchanged.
+
+**README** rewritten: both engines (the self-assembled one was not in
+it), the layout as a tree, the documents in docs/ (five were missing),
+the conformance claim worded exactly (CORE, core.fr, both engines and
+widths), measured sizes (the C engine 38 KB stripped).
+

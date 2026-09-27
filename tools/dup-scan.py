@@ -14,7 +14,7 @@ import re, sys, collections
 
 args = sys.argv[1:]
 MIN = int(args.pop(0)) if args and args[0].isdigit() else 12
-FILES = args or ['shell.4', 'tree.4', 'edit.4', 'extend.4', 'pool.4', 'shadow.4']
+FILES = args or ['shell/shell.4', 'shell/tree.4', 'shell/edit.4', 'forth/extend.4', 'forth/pool.4', 'forth/shadow.4']
 
 def definitions(path):
     text = open(path).read()

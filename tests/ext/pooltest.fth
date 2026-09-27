@@ -8,7 +8,7 @@
 \ Needs tester.fr and extend.4 loaded first, in that order.
 
 DECIMAL
-S" pool.4" INCLUDED
+S" forth/pool.4" INCLUDED
 
 100 BUFFER: GT-BUF
 VARIABLE GT-OLD

@@ -6,7 +6,7 @@ a shell language of our own, find where the POSIX one's cost lives. Two
 measures per feature:
 
   code      lines of code (not comments, not blank) in the colon
-            definitions of shell.4, tree.4 and edit.4 that implement it;
+            definitions of shell/shell.4, shell/tree.4 and shell/edit.4 that implement it;
   trouble   how many PROGRESS.md iterations name it in their title - a
             proxy for how hard it was to get right, not just to have.
 
@@ -53,7 +53,7 @@ RULES = [
 ]
 
 # Words in these files belong to a feature whatever their names.
-BY_FILE = {'edit.4': 'line editor, history, completion'}
+BY_FILE = {'shell/edit.4': 'line editor, history, completion'}
 
 # Title keywords for the trouble count, per feature.
 TROUBLE = {
@@ -86,7 +86,7 @@ TROUBLE = {
 
 def words():
     out = []
-    for f in ('shell.4', 'tree.4', 'edit.4'):
+    for f in ('shell/shell.4', 'shell/tree.4', 'shell/edit.4'):
         L = open(os.path.join(ROOT, f)).read().split('\n')
         starts = [i for i, l in enumerate(L) if re.match(r'^: \S', l)]
         for k, i in enumerate(starts):
@@ -113,7 +113,7 @@ def main():
     titles = re.findall(r'^## Iteration \d+\S*: (.*)$', open(os.path.join(ROOT, 'PROGRESS.md')).read(), flags=re.M)
     trouble = {feat: sum(1 for t in titles if re.search(rx, t, flags=re.I)) for feat, rx in TROUBLE.items()}
     total = sum(code.values())
-    print('%d lines of code in %d definitions (shell.4, tree.4, edit.4); %d iteration titles\n'
+    print('%d lines of code in %d definitions (shell/shell.4, shell/tree.4, shell/edit.4); %d iteration titles\n'
           % (total, sum(nwords.values()), len(titles)))
     print('%-34s %5s %6s %6s %6s  %s' % ('feature', 'words', 'lines', '%', 'cum %', 'trouble'))
     cum = 0

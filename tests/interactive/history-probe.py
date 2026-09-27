@@ -3,7 +3,7 @@
 
 Not part of run_cases.py: forty commands through a pseudo-terminal take
 twenty seconds, too slow for a suite that runs on every verify. Run it
-by hand after touching edit.4's history or its line buffer:
+by hand after touching shell/edit.4's history or its line buffer:
 
     python3 tests/interactive/history-probe.py
 

@@ -23,7 +23,7 @@
 # through run-all with nothing set.
 D=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd) || exit 1
 BIN=${RELF_BIN:-"$D/relf64"}
-IMG=${RELF_IMG:-"$D/kernel64.img"}
+IMG=${RELF_IMG:-"$D/forth/kernel64.img"}
 
 # 70 is EX_SOFTWARE, chosen so a harness can tell an engine fault from
 # a Forth-level ABORT. 139 is the old behaviour (128 + SIGSEGV) and is
@@ -49,9 +49,9 @@ DEEP
 # The check must not fire on ordinary deep-but-bounded work, or it
 # would be trading a rare crash for a common false positive. fib.4
 # recurses to depth 34 and pushes hard throughout.
-out=$(timeout 60 "$BIN" "$IMG" < "$D/fib.4" 2>&1)
+out=$(timeout 60 "$BIN" "$IMG" < "$D/examples/fib.4" 2>&1)
 st=$?
-assert_status "fib.4 still completes" "0" "$st"
-assert_output_contains "fib.4 result unaffected by the bounds check" "9227465" "$out"
+assert_status "examples/fib.4 still completes" "0" "$st"
+assert_output_contains "examples/fib.4 result unaffected by the bounds check" "9227465" "$out"
 
 report

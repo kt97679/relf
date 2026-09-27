@@ -19,7 +19,7 @@
 # tests/portability runs it. POSIX sh and awk only: no Python to build.
 set -e
 dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-tab=$dir/opcodes.tab
+tab=$dir/engine/opcodes.tab
 
 generate() {
     awk '
@@ -38,8 +38,8 @@ generate() {
         return out line
     }
     END {
-        print "/*  cv8-ops.h - GENERATED from opcodes.tab by tools/gen-opcodes.sh."
-        print " *  Do not edit: change opcodes.tab and run make. The engine'\''s"
+        print "/*  engine/cv8-ops.h - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh."
+        print " *  Do not edit: change engine/opcodes.tab and run make. The engine'\''s"
         print " *  dispatch tables - the direct primitives in order, the escaped"
         print " *  ones in order, every other opcode at its number (CV8.md 2.2).  */"
         printf "#define NDIRECT %d\n#define NESC    %d\n", nd, ne
@@ -66,7 +66,7 @@ generate_forth_ops() {
     /^#/ || NF == 0 { next }
     { if ($1 == "escaped") esc[nesc++] = $4; else op[hex($2)] = $4 }
     END {
-        print "\\ relfasm-ops.4 - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
+        print "\\ engine/relfasm-ops.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh"
         print "\\ --forth-ops; do not edit. The engine'"'"'s two dispatch tables."
         print "8 ALIGN,"
         print "dispatch256 L:"
@@ -91,7 +91,7 @@ generate_forth_consts() {
         return v }
     /^#/ || NF == 0 { next }
     $3 == "BRANCH8" {
-        print "\\ relfasm-consts.4 - GENERATED from opcodes.tab by tools/gen-opcodes.sh"
+        print "\\ engine/relfasm-consts.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh"
         print "\\ --forth-consts; do not edit."
         printf "%d CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it\n", hex($2) }' "$tab"
 }
@@ -131,14 +131,14 @@ END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
-awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/kernel.4" > /tmp/gen-opcodes.k4.$$
+awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/forth/kernel.4" > /tmp/gen-opcodes.k4.$$
 if ! cmp -s /tmp/gen-opcodes.tab.$$ /tmp/gen-opcodes.k4.$$; then
-    bad "kernel.4's PRIMITIVE lines differ from opcodes.tab's direct and escaped rows:"
+    bad "forth/kernel.4's PRIMITIVE lines differ from engine/opcodes.tab's direct and escaped rows:"
     diff /tmp/gen-opcodes.tab.$$ /tmp/gen-opcodes.k4.$$ | sed 's/^/    /' >&2 || true
 fi
 ndirect=$(awk '/^#/ || NF == 0 { next } $1 == "direct" { n++ } END { print n + 0 }' "$tab")
-kdirect=$(awk '/^ESCAPED/ { exit } /^PRIMITIVE[ \t]/ { n++ } END { print n + 0 }' "$dir/kernel.4")
-[ "$ndirect" = "$kdirect" ] || bad "kernel.4 has $kdirect primitives before ESCAPED, opcodes.tab $ndirect direct ones"
+kdirect=$(awk '/^ESCAPED/ { exit } /^PRIMITIVE[ \t]/ { n++ } END { print n + 0 }' "$dir/forth/kernel.4")
+[ "$ndirect" = "$kdirect" ] || bad "forth/kernel.4 has $kdirect primitives before ESCAPED, engine/opcodes.tab $ndirect direct ones"
 rm -f /tmp/gen-opcodes.tab.$$ /tmp/gen-opcodes.k4.$$
 
 # kernel.4's tiny words: `N OPCODE name`. Read from a file, not a pipe:
@@ -149,49 +149,49 @@ rm -f /tmp/gen-opcodes.tab.$$ /tmp/gen-opcodes.k4.$$
 awk '/^#/ || NF == 0 { next } $1 == "tiny" { print $2, $3 }' "$tab" > /tmp/gen-opcodes.tiny.$$
 while read -r num name; do
     dec=$(printf '%d' "$num")
-    grep -q "^$dec OPCODE $name[ \t]" "$dir/kernel.4" ||
-        bad "kernel.4 does not declare \`$dec OPCODE $name\`, as opcodes.tab has it"
+    grep -q "^$dec OPCODE $name[ \t]" "$dir/forth/kernel.4" ||
+        bad "forth/kernel.4 does not declare \`$dec OPCODE $name\`, as engine/opcodes.tab has it"
 done < /tmp/gen-opcodes.tiny.$$
 rm -f /tmp/gen-opcodes.tiny.$$
 
 # cross.4's and shadow.4's constants: FILE NAME-OF-CONSTANT TABLE-NAME
 while read -r file const name; do
     num=$(awk -v n="$name" '/^#/ { next } $3 == n && $1 != "escaped" { print $2; exit }' "$tab")
-    [ -n "$num" ] || { bad "opcodes.tab has no opcode $name"; continue; }
+    [ -n "$num" ] || { bad "engine/opcodes.tab has no opcode $name"; continue; }
     dec=$(printf '%d' "$num")
     # Fields compared exactly: a name like VAR@+OP is not a pattern (the
     # first version used grep -E, where + is a quantifier, and a name with
     # a + in it could never match itself - Iteration 532)
     awk -v d="$dec" -v c="$const" '$1 == d && $2 == "CONSTANT" && $3 == c { f = 1 } END { exit !f }' "$dir/$file" ||
-        bad "$file's $const is not $dec ($name in opcodes.tab)"
+        bad "$file's $const is not $dec ($name in engine/opcodes.tab)"
 done <<EOF
-cross.4 EXIT-OP EXIT
-cross.4 LIT16-OP LIT
-cross.4 BRANCH-OP BRANCH
-cross.4 0BRANCH-OP ?BRANCH
-cross.4 LIT0-OP push0
-cross.4 VAR@-OP VAR@
-cross.4 VAR!-OP VAR!
-cross.4 ADDI-OP ADDI
-cross.4 EQI-OP EQI
-cross.4 LIT64-OP LIT64
-cross.4 ESC-OP ESC
-cross.4 LOOP-OP (LOOP)
-cross.4 BRANCH8-OP BRANCH8
-cross.4 0BRANCH8-OP ?BRANCH8
-shadow.4 LSAVE-OP LSAVE
-shadow.4 LRESTORE-OP LRESTORE
-shadow.4 L!-OP L!
-shadow.4 LZERO-OP LZERO
+forth/cross.4 EXIT-OP EXIT
+forth/cross.4 LIT16-OP LIT
+forth/cross.4 BRANCH-OP BRANCH
+forth/cross.4 0BRANCH-OP ?BRANCH
+forth/cross.4 LIT0-OP push0
+forth/cross.4 VAR@-OP VAR@
+forth/cross.4 VAR!-OP VAR!
+forth/cross.4 ADDI-OP ADDI
+forth/cross.4 EQI-OP EQI
+forth/cross.4 LIT64-OP LIT64
+forth/cross.4 ESC-OP ESC
+forth/cross.4 LOOP-OP (LOOP)
+forth/cross.4 BRANCH8-OP BRANCH8
+forth/cross.4 0BRANCH8-OP ?BRANCH8
+forth/shadow.4 LSAVE-OP LSAVE
+forth/shadow.4 LRESTORE-OP LRESTORE
+forth/shadow.4 L!-OP L!
+forth/shadow.4 LZERO-OP LZERO
 EOF
 
 # the committed header is the one this table makes
-if ! generate | cmp -s - "$dir/cv8-ops.h"; then
-    bad "cv8-ops.h is not what opcodes.tab makes: run make"
+if ! generate | cmp -s - "$dir/engine/cv8-ops.h"; then
+    bad "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make"
 fi
 
 if [ "$problems" -gt 0 ]; then
     echo "gen-opcodes: $problems problem(s)" >&2
     exit 1
 fi
-echo "gen-opcodes: opcodes.tab, kernel.4, cross.4, shadow.4 and cv8-ops.h agree"
+echo "gen-opcodes: engine/opcodes.tab, forth/kernel.4, forth/cross.4, forth/shadow.4 and engine/cv8-ops.h agree"

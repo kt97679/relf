@@ -242,8 +242,8 @@ fi
 # of the tree, so an interrupted run cannot leave these sources broken.
 # ------------------------------------------------------------------
 case $(getconf LONG_BIT 2>/dev/null) in
-    32) e=relf32 k=kernel32.img o=kernel32-shell.img ;;
-    *)  e=relf64 k=kernel64.img o=kernel64-shell.img ;;
+    32) e=relf32 k=forth/kernel32.img o=kernel32-shell.img ;;
+    *)  e=relf64 k=forth/kernel64.img o=kernel64-shell.img ;;
 esac
 if [ -x "./$e" ] && [ -f "$k" ]; then
     scratch=$(mktemp -d)
@@ -254,12 +254,16 @@ if [ -x "./$e" ] && [ -f "$k" ]; then
     # broken source. It was width-blind, on an ARMv7 board, the week
     # after nine faults of exactly that shape (Iteration 412).
     srcs=$(sed -n 's/^SHELL_SOURCES *= *//p' Makefile)
-    cp "$e" "$k" tools/build-shell-image.sh $srcs "$scratch/" 2>/dev/null
-    printf ': BROKEN-ON-PURPOSE ( --- ) 2>R ;\n' | cat - "$scratch/edit.4" > "$scratch/e" &&
-        mv "$scratch/e" "$scratch/edit.4"
+    # The layout recreated, since the sources moved into forth/ and
+    # shell/ (Iteration 555): flattened, their paths named nothing.
+    for f in "$e" "$k" tools/build-shell-image.sh $srcs; do
+        mkdir -p "$scratch/$(dirname "$f")" && cp "$f" "$scratch/$f" 2>/dev/null
+    done
+    printf ': BROKEN-ON-PURPOSE ( --- ) 2>R ;\n' | cat - "$scratch/shell/edit.4" > "$scratch/e" &&
+        mv "$scratch/e" "$scratch/shell/edit.4"
     # The native pair, as the Makefile builds it (Iteration 506: the build
     # moved from the relfsh script into tools/build-shell-image.sh).
-    msg=$(cd "$scratch" && sh ./build-shell-image.sh "./$e" $k $o $srcs </dev/null 2>&1 >/dev/null)
+    msg=$(cd "$scratch" && sh tools/build-shell-image.sh "./$e" $k $o $srcs </dev/null 2>&1 >/dev/null)
     rc=$?
     if [ "$rc" != 0 ] && echo "$msg" | grep -q 'Undefined word' &&
        [ ! -f "$scratch/kernel64-shell.img" ] && [ ! -f "$scratch/kernel32-shell.img" ]; then
@@ -291,7 +295,7 @@ fi
 #     OPCODE lines and cross.4's and shadow.4's constants must agree.
 # ------------------------------------------------------------------
 if msg=$(sh tools/gen-opcodes.sh --check 2>&1); then
-    ok "the opcode map agrees with opcodes.tab everywhere"
+    ok "the opcode map agrees with engine/opcodes.tab everywhere"
 else
     bad "opcode map" "$(echo "$msg" | head -3 | tr '\n' ' ')"
 fi

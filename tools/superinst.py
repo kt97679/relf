@@ -37,7 +37,7 @@ def patch(text, old, new):
 work = tempfile.mkdtemp(prefix='relf-super-')
 engine, counts, shell = (os.path.join(work, n) for n in ('relf-count', 'counts.bin', 'relfsh'))
 SLOTS = 1 << 18
-src = open('cv8.c').read()
+src = open('engine/cv8.c').read()
 src = patch(src, '#define PROF(k)\n#define PROFIP(a)\n#define PROFDUMP',
             '#include <sys/mman.h>\nstatic unsigned int *prof_map;\nstatic UNS64 prof_base;\n'
             '#define PROF(k)\n#define PROFIP(a) (prof_map[((a) - prof_base) & 0x3FFFF]++)\n#define PROFDUMP')

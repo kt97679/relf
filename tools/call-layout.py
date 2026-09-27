@@ -22,7 +22,7 @@ for h in heads:
     while n:
         c = img[n]; p, ll = prev(n); words[n] = (img[n+1:n+1+(c & 31)].decode('latin1'), ll, n + 1 + (c & 31)); n = p
 nfas = sorted(words)
-kern = len(open('kernel64.img', 'rb').read()) - (8 + C + cell(8) * C + C)   # the kernel's dictionary, first in the image
+kern = len(open('forth/kernel64.img', 'rb').read()) - (8 + C + cell(8) * C + C)   # the kernel's dictionary, first in the image
 span = []                                      # (start, end, xt, name) for every word
 for i, n in enumerate(nfas):
     name, ll, xt = words[n]

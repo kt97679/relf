@@ -4,7 +4,7 @@
 \ edited by hand since. `make relfasm64` assembles it with relf, on the C
 \ engine; the result rebuilds itself identically (make verify's
 \ asm:fixpoint). The tables are relfasm-ops.4, from opcodes.tab.
-S" extend.4" INCLUDED  S" asm64.4" INCLUDED
+S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED
 ALSO ASSEMBLER
 LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL L_addi
 LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
@@ -70,7 +70,7 @@ LABEL term_restore LABEL ud_ior LABEL unimpl
 \      cc -c -o relfasm64.o relfasm64.S
 \      ld -Ttext=0x400000 --oformat binary -o relfasm64 relfasm64.o
 
-S" relfasm-consts.4" INCLUDED
+S" engine/relfasm-consts.4" INCLUDED
 
 4 1024 * 1024 * CONSTANT MEMSIZE         \ the call reach (A17, 545)
 262144 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor
@@ -126,7 +126,7 @@ S" relfasm-consts.4" INCLUDED
 4096 CONSTANT DIRBUF
 
 \ ---- the stack, as cv8.c's macros ------------------------------------
-S" engine-macros.4" INCLUDED      \ the eight macros, by hand
+S" engine/engine-macros.4" INCLUDED      \ the eight macros, by hand
 \ SLOT: a variable's address from a 2- or 3-byte self-relative
 \ operand at ip (cv8.c's SLOT()); result in rdx, ip past it.
 
@@ -2416,7 +2416,7 @@ rax inc,
 [ rcx rax *8 ] qword-ptr 0 # mov,
 9 L:  ret,
 
-S" relfasm-ops.4" INCLUDED
+S" engine/relfasm-ops.4" INCLUDED
 
 \ ---- the end of the file, and the zero-filled tail after it -----------
 file_end L:

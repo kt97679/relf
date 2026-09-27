@@ -1,5 +1,5 @@
-/*  cv8-ops.h - GENERATED from opcodes.tab by tools/gen-opcodes.sh.
- *  Do not edit: change opcodes.tab and run make. The engine's
+/*  engine/cv8-ops.h - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh.
+ *  Do not edit: change engine/opcodes.tab and run make. The engine's
  *  dispatch tables - the direct primitives in order, the escaped
  *  ones in order, every other opcode at its number (CV8.md 2.2).  */
 #define NDIRECT 26

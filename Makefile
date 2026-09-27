@@ -36,12 +36,12 @@ CFLAGS  ?= -O2 -Wall
 HOSTBITS ?= $(shell getconf LONG_BIT 2>/dev/null || echo 64)
 ifeq ($(HOSTBITS),32)
 NATIVE_ENGINE    = relf32
-NATIVE_IMG       = kernel32.img
+NATIVE_IMG       = forth/kernel32.img
 NATIVE_SHELL_IMG = kernel32-shell.img
 OTHER_SHELL_IMG  =
 else
 NATIVE_ENGINE    = relf64
-NATIVE_IMG       = kernel64.img
+NATIVE_IMG       = forth/kernel64.img
 NATIVE_SHELL_IMG = kernel64-shell.img
 OTHER_SHELL_IMG  = kernel32-shell.img
 endif
@@ -50,8 +50,8 @@ endif
 CFLAGS32 ?= -m32 -O2 -Wall -fno-pie -no-pie
 PYTHON  ?= python3
 
-SHELL_SOURCES = extend.4 pool.4 shadow.4 save-system.4 shell.4 edit.4 tree.4
-KERNEL_SOURCES = kernel.4 cross.4 extend.4
+SHELL_SOURCES = forth/extend.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4
+KERNEL_SOURCES = forth/kernel.4 forth/cross.4 forth/extend.4
 
 .PHONY: all help engines shell-images shells images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
@@ -63,7 +63,7 @@ all: engines shell-images shells
 help:
 	@echo 'Targets:'
 	@echo '  all            engines and shell images (the default)'
-	@echo '  engines        relf64 and relf32 from cv8.c'
+	@echo '  engines        relf64 and relf32 from engine/cv8.c'
 	@echo '  shell-images   kernel64-shell.img and kernel32-shell.img'
 	@echo '  shells         relfsh64, relfsh32 (engine and image, one file), relfsh'
 	@echo '  images         re-cross-compile the base images (see the header)'
@@ -119,7 +119,7 @@ HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
 # map's one source (Iteration 518). Committed, so `cc cv8.c` needs
 # nothing else; regenerated here whenever the table changes, and held to
 # it by tools/gen-opcodes.sh --check in tests/portability.
-cv8-ops.h: opcodes.tab tools/gen-opcodes.sh
+engine/cv8-ops.h: engine/opcodes.tab tools/gen-opcodes.sh
 	@sh tools/gen-opcodes.sh > $@.tmp && mv -f $@.tmp $@
 
 # The 8-byte-cell targets exist only where they can run. On a 32-bit
@@ -132,15 +132,15 @@ ifeq ($(HOSTBITS),32)
 relf64 kernel64-shell.img relfsh64:
 	@echo "$@: an 8-byte-cell build cannot run on this 32-bit host" >&2; exit 1
 else
-relf64: cv8.c cv8-ops.h .relf-arch
+relf64: engine/cv8.c engine/cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 endif
 
 ifeq ($(HOSTBITS),32)
-relf32: cv8.c cv8-ops.h .relf-arch
+relf32: engine/cv8.c engine/cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS) -o $@ $<
 else
-relf32: cv8.c cv8-ops.h .relf-arch
+relf32: engine/cv8.c engine/cv8-ops.h .relf-arch
 	$(CC) $(CFLAGS32) -o $@ $<
 endif
 
@@ -157,8 +157,8 @@ endif
 shell-images: $(NATIVE_SHELL_IMG) $(OTHER_SHELL_IMG)
 
 ifneq ($(HOSTBITS),32)
-kernel64-shell.img: relf64 kernel64.img $(SHELL_SOURCES) tools/build-shell-image.sh
-	@sh tools/build-shell-image.sh ./relf64 kernel64.img $@ $(SHELL_SOURCES)
+kernel64-shell.img: relf64 forth/kernel64.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@sh tools/build-shell-image.sh ./relf64 forth/kernel64.img $@ $(SHELL_SOURCES)
 endif
 
 # LD_PRELOAD is cleared for the i386 build: a preload library for the
@@ -169,11 +169,11 @@ endif
 ifeq ($(HOSTBITS),32)
 # The native engine IS the 4-byte one here: there is no -m32 build, and
 # relf32 is built natively.
-kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
-	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 kernel32.img $@ $(SHELL_SOURCES)
+kernel32-shell.img: relf32 forth/kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 forth/kernel32.img $@ $(SHELL_SOURCES)
 else
-kernel32-shell.img: relf32 kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
-	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 kernel32.img $@ $(SHELL_SOURCES)
+kernel32-shell.img: relf32 forth/kernel32.img $(SHELL_SOURCES) tools/build-shell-image.sh
+	@LD_PRELOAD= sh tools/build-shell-image.sh ./relf32 forth/kernel32.img $@ $(SHELL_SOURCES)
 endif
 
 # ------------------------------------------------------------------
@@ -210,7 +210,7 @@ relfsh32: relf32 kernel32-shell.img tools/embed.sh
 # from opcodes.tab, with a stub for each handler not written yet.
 # ------------------------------------------------------------------
 # The engine's tables, from opcodes.tab, in Forth (Iteration 549).
-relfasm-ops.4: opcodes.tab tools/gen-opcodes.sh
+engine/relfasm-ops.4: engine/opcodes.tab tools/gen-opcodes.sh
 	@sh tools/gen-opcodes.sh --forth-ops > $@.tmp && mv -f $@.tmp $@
 
 # Linked to raw bytes: the source carries its own ELF header and single
@@ -220,21 +220,21 @@ relfasm-ops.4: opcodes.tab tools/gen-opcodes.sh
 relfshasm64: relfasm64 kernel64-shell.img tools/embed.sh
 	@sh tools/embed.sh ./relfasm64 kernel64-shell.img $@
 
-relfasm-consts.4: opcodes.tab tools/gen-opcodes.sh
+engine/relfasm-consts.4: engine/opcodes.tab tools/gen-opcodes.sh
 	@sh tools/gen-opcodes.sh --forth-consts > $@.tmp && mv -f $@.tmp $@
 
 # The assembly engine, assembled by relf itself (SELF-HOSTING.md M5,
 # Iteration 549): its source is relfasm64.4, in Forth - asm64.4's syntax -
 # run on the C engine; no assembler or linker. The result rebuilds itself
 # identically (make verify's asm:fixpoint).
-ASM_SOURCES = relfasm64.4 asm64.4 engine-macros.4 extend.4 relfasm-ops.4 relfasm-consts.4
-relfasm64: $(ASM_SOURCES) kernel64.img relf64
+ASM_SOURCES = engine/relfasm64.4 forth/asm64.4 engine/engine-macros.4 forth/extend.4 engine/relfasm-ops.4 engine/relfasm-consts.4
+relfasm64: $(ASM_SOURCES) forth/kernel64.img relf64
 	@rm -f relfasm64.forth
-	@./relf64 kernel64.img < relfasm64.4 > relfasm64.log 2>&1 || true
+	@./relf64 forth/kernel64.img < engine/relfasm64.4 > relfasm64.log 2>&1 || true
 	@if grep -q 'Undefined word\|asm64:\|dictionary full' relfasm64.log || [ ! -x relfasm64.forth ]; then \
 	    echo "relfasm64: relf did not assemble it:" >&2; grep -v '^OK' relfasm64.log | head -5 >&2; rm -f relfasm64.forth; exit 1; fi
 	@mv -f relfasm64.forth $@ && rm -f relfasm64.log
-	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in relfasm64.4" >&2; rm -f $@; exit 1; }
+	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in engine/relfasm64.4" >&2; rm -f $@; exit 1; }
 
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.
@@ -245,14 +245,14 @@ check-images:
 images: $(NATIVE_ENGINE) $(KERNEL_SOURCES)
 	@set -e; \
 	for bytes in 8 4; do \
-	    case $$bytes in 8) img=kernel64.img ;; 4) img=kernel32.img ;; esac; \
+	    case $$bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac; \
 	    wd=$$(mktemp -d); \
-	    cp extend.4 cross.4 kernel.4 $(NATIVE_IMG) $(NATIVE_ENGINE) "$$wd/"; \
+	    cp forth/extend.4 forth/cross.4 forth/kernel.4 $(NATIVE_IMG) $(NATIVE_ENGINE) "$$wd/"; \
 	    if [ $$bytes != 8 ]; then \
 	        sed -i "s/^8 TARGET-CELL-BYTES !\$$/$$bytes TARGET-CELL-BYTES !/" "$$wd/cross.4"; \
 	    fi; \
 	    ( cd "$$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-	        | ./$(NATIVE_ENGINE) $(NATIVE_IMG) >boot.log 2>&1 ); \
+	        | ./$(NATIVE_ENGINE) $(notdir $(NATIVE_IMG)) >boot.log 2>&1 ); \
 	    if grep -qiE 'undefined word|segmentation fault' "$$wd/boot.log"; then \
 	        echo "$$img: cross-compile failed"; cat "$$wd/boot.log"; rm -rf "$$wd"; exit 1; \
 	    fi; \
@@ -265,7 +265,7 @@ images: $(NATIVE_ENGINE) $(KERNEL_SOURCES)
 	    else \
 	        echo "$$img: DIFFERS. The sources produce a different image than the"; \
 	        echo "         one committed. If that is intended - an engine change,"; \
-	        echo "         a kernel.4 change - re-run with IMAGES_FORCE=1 and read"; \
+	        echo "         a forth/kernel.4 change - re-run with IMAGES_FORCE=1 and read"; \
 	        echo "         tests/verify's image:*-fixpoint lines afterwards."; \
 	        rm -rf "$$wd"; exit 1; \
 	    fi; \
@@ -335,11 +335,11 @@ portability: all
 	@sh tests/portability
 
 lint:
-	@$(PYTHON) tools/lint-comments.py *.4
+	@$(PYTHON) tools/lint-comments.py forth/*.4 shell/*.4 engine/*.4
 	@$(PYTHON) tools/lint-tests.py
 
 dead-words: all
-	@$(PYTHON) tools/dead-words.py shell.4 edit.4 tree.4
+	@$(PYTHON) tools/dead-words.py shell/shell.4 shell/edit.4 shell/tree.4
 
 sizes: all
 	@sh tests/sizes
@@ -371,9 +371,9 @@ clean:
 # The assembly engine and what is generated for it (Iteration 552): the
 # engine relf assembles, its tables from opcodes.tab, and the files an
 # assembly leaves; the names from before 549, when it was GNU as's.
-	@rm -f relfasm64 relfshasm64 relfasm-ops.4 relfasm-consts.4 relfasm64.forth relfasm64.log
+	@rm -f relfasm64 relfshasm64 engine/relfasm-ops.4 engine/relfasm-consts.4 relfasm64.forth relfasm64.log
 	@rm -f relfasm-ops.S relfasm-consts.S relfasm64.o
-	@rm -f kernel64-shell.img kernel32-shell.img cv8-ops.h.tmp
+	@rm -f kernel64-shell.img kernel32-shell.img engine/cv8-ops.h.tmp
 
 distclean: clean
 	@rm -f kernel64-shell.img kernel32-shell.img

@@ -344,7 +344,7 @@ every push (`GUARD`, on by default). A `SIGSEGV` handler reports which
 guard was hit and exits with status 70:
 
 ```
-$ echo ': R RECURSE ; R' | ./relf64 kernel64.img
+$ echo ': R RECURSE ; R' | ./relf64 forth/kernel64.img
 relf: return stack overflow                        (exit status 70)
 ```
 

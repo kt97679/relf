@@ -67,14 +67,14 @@ unset LD_PRELOAD
 # "Cross-compiling an 8-byte-cell target image" (Iteration 398).
 HOSTBITS=${HOSTBITS:-$(getconf LONG_BIT 2>/dev/null || echo 64)}
 if [ "$HOSTBITS" = 32 ]; then
-    NATIVE_BYTES=4; NATIVE_IMG=kernel32.img; NATIVE_ENGINE=relf32
-    OTHER_BYTES=8;  OTHER_IMG=kernel64.img
+    NATIVE_BYTES=4; NATIVE_IMG=forth/kernel32.img; NATIVE_ENGINE=relf32
+    OTHER_BYTES=8;  OTHER_IMG=forth/kernel64.img
 else
-    NATIVE_BYTES=8; NATIVE_IMG=kernel64.img; NATIVE_ENGINE=relf64
-    OTHER_BYTES=4;  OTHER_IMG=kernel32.img
+    NATIVE_BYTES=8; NATIVE_IMG=forth/kernel64.img; NATIVE_ENGINE=relf64
+    OTHER_BYTES=4;  OTHER_IMG=forth/kernel32.img
 fi
 
-TESTFILES=(tester.fr)
+TESTFILES=(tests/tester.fr)
 for f in tests/*.fth; do
     TESTFILES+=("$f")
 done
@@ -136,7 +136,7 @@ run_shell_test_suite() {
     # out entirely.
     local status=0
     local shell_bin=relfsh
-    case "$image" in kernel32.img) [ -x ./relfsh32 ] && shell_bin=relfsh32 ;; esac
+    case "$image" in forth/kernel32.img) [ -x ./relfsh32 ] && shell_bin=relfsh32 ;; esac
     output=$(RELF_BIN="$PWD/$engine" RELF_IMG="$PWD/$image" THIS_SH="$PWD/$shell_bin" \
         timeout 180 tests/shell/run-all 2>&1) || status=$?
     echo "$output"
@@ -160,7 +160,7 @@ run_ext_suites() {
     local engine="$1" image="$2" label="$3" t ext out n=0
     for t in tests/ext/*.fth; do
         ext=$(mktemp)
-        printf 'S" tester.fr" INCLUDED\nS" extend.4" INCLUDED\nS" %s" INCLUDED\n' "$t" > "$ext"
+        printf 'S" tests/tester.fr" INCLUDED\nS" forth/extend.4" INCLUDED\nS" %s" INCLUDED\n' "$t" > "$ext"
         out=$( printf 'S" %s" INCLUDED\nBYE\n' "$ext" | timeout 60 "$engine" "$image" 2>&1 ) || true
         rm -f "$ext"
         if echo "$out" | grep -qiE "incorrect result|wrong number of results|undefined word|segmentation fault"; then
@@ -207,14 +207,14 @@ cross_compile_image() {
     wd=$(mktemp -d)
     # The HOST's image, whatever width that is: cross.4 targets either
     # width, but it has to RUN somewhere first (Iteration 398).
-    cp extend.4 cross.4 kernel.4 "$NATIVE_IMG" "$NATIVE_ENGINE" "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/kernel.4 "$NATIVE_IMG" "$NATIVE_ENGINE" "$wd/"
     if [ "$bytes" != 8 ]; then
         sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
     fi
     (
         cd "$wd"
         printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
-            | timeout 60 "./$NATIVE_ENGINE" "$NATIVE_IMG" > boot.log 2>&1
+            | timeout 60 "./$NATIVE_ENGINE" "$(basename "$NATIVE_IMG")" > boot.log 2>&1
         if grep -qiE "undefined word|segmentation fault" boot.log; then
             echo "FAIL: $label cross-compile failed (see boot.log below)"
             cat boot.log
@@ -246,10 +246,10 @@ echo "== Building $NATIVE_ENGINE (native, $NATIVE_BYTES-byte cells) =="
 # ${CC} rather than a bare `cc`, so a 64-bit machine can be told to
 # build and test as a 32-bit one: CC='cc -m32 -fno-pie -no-pie'
 # HOSTBITS=32 tests/run_tests.sh (Iteration 398).
-${CC:-cc} -O2 -Wall -o "$NATIVE_ENGINE" cv8.c
+${CC:-cc} -O2 -Wall -o "$NATIVE_ENGINE" engine/cv8.c
 # The compare-on-every-push build, for a target without an MMU, is not
 # what runs here - so check at least that it still compiles cleanly.
-${CC:-cc} -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard cv8.c
+${CC:-cc} -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard engine/cv8.c
 rm -f /tmp/relf-noguard
 
 # The native half: cross-compile the host's own image, check it is the
@@ -283,7 +283,7 @@ if [ "$HOSTBITS" = 32 ]; then
 else
 
 echo "== Building relf32 (i386, 4-byte cells) =="
-if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c 2>/tmp/relf32_build.log; then
+if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 engine/cv8.c 2>/tmp/relf32_build.log; then
     echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
     echo "      install gcc-multilib (Debian/Ubuntu) to run the i386 half"
 else
@@ -292,14 +292,14 @@ else
     # binary: a host can have the compiler and not the loader. Checked
     # here, so a missing loader is a SKIP with a reason rather than a
     # cascade of failures (Iteration 394).
-    if ! ./relf32 kernel32.img -c ':' >/dev/null 2>&1 &&
-       ! echo BYE | ./relf32 kernel32.img >/dev/null 2>&1; then
+    if ! ./relf32 forth/kernel32.img -c ':' >/dev/null 2>&1 &&
+       ! echo BYE | ./relf32 forth/kernel32.img >/dev/null 2>&1; then
         echo "SKIP: the i386 engine cannot run here (no 32-bit loader?)"
         echo "      install libc6-i386 (Debian/Ubuntu) to run the i386 half"
     else
     cross_compile_image 4 /tmp/relf-regen-kernel32.img "4-byte cells, i386"
-    check_image_reproduces /tmp/relf-regen-kernel32.img kernel32.img "4-byte cells, i386"
-    cp /tmp/relf-regen-kernel32.img kernel32.img
+    check_image_reproduces /tmp/relf-regen-kernel32.img forth/kernel32.img "4-byte cells, i386"
+    cp /tmp/relf-regen-kernel32.img forth/kernel32.img
 
     # The widening direction, from a narrow host: the 32-bit engine
     # cross-compiling the 8-byte image. It differed until Iteration 415 -
@@ -309,10 +309,10 @@ else
     # except an ARMv7 board. Checked here now, on every run that has an
     # i386 engine.
     wd=$(mktemp -d)
-    cp extend.4 cross.4 kernel.4 kernel32.img relf32 "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
-    check_image_reproduces "$wd/built.img" kernel64.img "8-byte cells, from a 4-byte host"
+    check_image_reproduces "$wd/built.img" forth/kernel64.img "8-byte cells, from a 4-byte host"
     rm -rf "$wd"
 
     # ... and the fourth combination, the 4-byte engine building its own
@@ -320,18 +320,18 @@ else
     # the one combination nothing ran, which FORTH-STYLE.md 15 claimed
     # was covered until the claim was checked (Iteration 417).
     wd=$(mktemp -d)
-    cp extend.4 cross.4 kernel.4 kernel32.img relf32 "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
     sed -i "s/^8 TARGET-CELL-BYTES !\$/4 TARGET-CELL-BYTES !/" "$wd/cross.4"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
-    check_image_reproduces "$wd/built.img" kernel32.img "4-byte cells, from a 4-byte host"
+    check_image_reproduces "$wd/built.img" forth/kernel32.img "4-byte cells, from a 4-byte host"
     rm -rf "$wd"
 
     echo "== Running test suite (4-byte cells, i386) =="
-    run_suite ./relf32 kernel32.img "4-byte cells, i386"
-    run_ext_suites ./relf32 kernel32.img "4-byte cells, i386"
-    run_io_suite ./relf32 kernel32.img "4-byte cells, i386"
-    run_shell_test_suite relf32 kernel32.img "4-byte cells, i386"
+    run_suite ./relf32 forth/kernel32.img "4-byte cells, i386"
+    run_ext_suites ./relf32 forth/kernel32.img "4-byte cells, i386"
+    run_io_suite ./relf32 forth/kernel32.img "4-byte cells, i386"
+    run_shell_test_suite relf32 forth/kernel32.img "4-byte cells, i386"
     fi
 fi
 fi   # HOSTBITS

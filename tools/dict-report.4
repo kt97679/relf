@@ -19,8 +19,8 @@
 \ against the wrong neighbour.
 \
 \ Usage (i386 build shown; the same works for 8-byte cells):
-\   printf 'S" pool.4" INCLUDED\nS" shadow.4" INCLUDED\n\
-\           S" shell.4" INCLUDED\nS" tools/dict-report.4" INCLUDED\n' \
+\   printf 'S" forth/pool.4" INCLUDED\nS" forth/shadow.4" INCLUDED\n\
+\           S" shell/shell.4" INCLUDED\nS" tools/dict-report.4" INCLUDED\n' \
 \     | ./relf32 kernel32.img
 \
 \ A body's bytes include the padding a data body carries before its
