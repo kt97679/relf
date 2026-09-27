@@ -225,3 +225,14 @@ C - larger than it looks.
 Not worth taking: dash's block reads of standard input, which are wrong
 for `read` (§2); its uncached arithmetic; and its stack allocator, whose
 job this shell's per-command arena and retired buffers already do.
+
+## PATH: no empty entry means the current directory (A29, Iteration 562)
+
+dash, following POSIX, searches the current directory for an empty PATH
+and for every empty entry in one - leading, trailing or doubled colons
+(POSIX calls these a legacy feature and asks portable scripts to write
+`.`). relf does not: only an explicit `.` searches it. A command in the
+current directory shadowing a system one, through a stray colon, is the
+danger the user named (A29). A deliberate difference, tested in
+tests/shell/run-default-path.
+

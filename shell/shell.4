@@ -5979,24 +5979,89 @@ VARIABLE LOCALS#
 
 \ set with no arguments: the variables, sorted, quoted for reuse
 256 BUFFER: SV-ORDER
-: SVO-NAME ( k --- c-addr )   CELLS SV-ORDER + @ SHVAR-NAME-SLOT ;
-: SV-LESS? ( j k --- f )
-  SVO-NAME DUP CSTRLEN ROT SVO-NAME DUP CSTRLEN 2SWAP COMPARE 0< ;
+\ `set` lists every shell variable, sorted (Iteration 562): its own
+\ storage AND what it inherited from the environment and never assigned,
+\ which lived in the environment only - so `set` left it out, where POSIX
+\ counts it a shell variable (tools/strange-env.py: ten thousand inherited
+\ variables, none listed; dash lists them). A reference is k for the
+\ shell's variable k, or SHVAR-COUNT + m for the m-th environ entry kept,
+\ whose address LV-ENVS holds - fetched once: the C engine's ENV-AT walks
+\ environ to i on every call, and a sort calling it per comparison took
+\ 1.05 s for ten thousand. (A first version told the kinds apart by the
+\ sign of an address: on the 32-bit engine environ sits high, an address
+\ looked negative, and `set` faulted.) An entry counts only with a
+\ `=`, a valid name - POSIX makes shell variables of no other - and no
+\ variable of the shell's own by that name. Shell sort: the insertion
+\ sort's n*n was right for the shell's few dozen, not for ten thousand.
+VARIABLE LV-N
+VARIABLE LV-GAP
+VARIABLE LV-J
+VARIABLE LV-V
+64 BUFFER: LV-NAME                        \ an environ name, NUL-terminated
+256 BUFFER: LV-ENVS                       \ the environ entries kept, by address
+VARIABLE LV-E                             \ how many
+
+: LV-ENV-LEN ( c-addr --- u )             \ an environ entry's name: to its =
+  0 BEGIN 2DUP + C@ DUP 61 <> SWAP 0<> AND WHILE 1+ REPEAT NIP ;
+
+: LV-ENV ( ref --- c-addr )   SHVAR-COUNT @ - CELLS LV-ENVS + @ ;
+: LV-KEY ( ref --- c-addr u )
+  DUP SHVAR-COUNT @ < IF SHVAR-NAME-SLOT DUP CSTRLEN ELSE LV-ENV DUP LV-ENV-LEN THEN ;
+
+: LV-LESS? ( ref1 ref2 --- f )   >R LV-KEY R> LV-KEY COMPARE 0< ;
+: LV@ ( i --- ref )   CELLS SV-ORDER + @ ;
+: LV! ( ref i --- )   CELLS SV-ORDER + ! ;
+
+: LV-SHADOWED? ( c-addr u --- f )         \ has the shell its own of this name?
+  DUP 63 > IF 2DROP 0 EXIT THEN
+  DUP >R LV-NAME SWAP MOVE  0 LV-NAME R> + C!
+  LV-NAME FIND-SHVAR 0< 0= ;
+
+: LV-COLLECT ( --- )
+  0 BEGIN DUP ENV-AT WHILE 1+ REPEAT      ( entries in environ )
+  DUP 1+ CELLS ENSURE-BUFFER LV-ENVS
+  SHVAR-COUNT @ + 1+ CELLS ENSURE-BUFFER SV-ORDER
+  0 LV-N !  0 LV-E !
+  SHVAR-COUNT @ 0 ?DO I LV-N @ LV!  1 LV-N +! LOOP
+  0 BEGIN DUP ENV-AT ?DUP WHILE           ( j c-addr )
+    DUP DUP LV-ENV-LEN  2DUP + C@ 61 = >R  2DUP VALID-NAME? R> AND IF
+      LV-SHADOWED? 0= IF
+        LV-E @ CELLS LV-ENVS + !
+        SHVAR-COUNT @ LV-E @ + LV-N @ LV!  1 LV-N +!  1 LV-E +!
+      ELSE DROP THEN
+    ELSE 2DROP DROP THEN
+    1+
+  REPEAT DROP ;
+
+: LV-SORT ( --- )                         \ Shell sort, gaps n/2, n/4 ... 1
+  LV-N @ 2/ LV-GAP !
+  BEGIN LV-GAP @ WHILE
+    LV-N @ LV-GAP @ ?DO
+      I LV@ LV-V !  I LV-J !
+      BEGIN
+        LV-J @ LV-GAP @ < 0= IF LV-V @ LV-J @ LV-GAP @ - LV@ LV-LESS? ELSE 0 THEN
+      WHILE
+        LV-J @ LV-GAP @ - LV@  LV-J @ LV!
+        LV-GAP @ NEGATE LV-J +!
+      REPEAT
+      LV-V @ LV-J @ LV!
+    LOOP
+    LV-GAP @ 2/ LV-GAP !
+  REPEAT ;
+
+: LV-PRINT ( ref --- )
+  DUP SHVAR-COUNT @ < IF
+    SHVAR-NAME-SLOT DUP DUP CSTRLEN TYPE 61 EMIT
+    LOOKUP-VAR ?DUP IF SQUOTED. ELSE S" ''" TYPE THEN
+  ELSE
+    LV-ENV DUP LV-ENV-LEN 2DUP TYPE 61 EMIT + 1+ SQUOTED.
+  THEN CR ;
+
 : LIST-VARIABLES ( --- )
-  SHVAR-COUNT @ CELLS 1 MAX ENSURE-BUFFER SV-ORDER
-  SHVAR-COUNT @ 0 ?DO I SV-ORDER I CELLS + ! LOOP
-  \ `n 1 ?DO` with n = 0 would run through every number: guarded
-  SHVAR-COUNT @ 1 > IF SHVAR-COUNT @ 1 DO
-    I BEGIN
-      DUP 0> IF DUP DUP 1- SV-LESS? ELSE 0 THEN
-    WHILE
-      DUP CELLS SV-ORDER + DUP 1 CELLS - 2DUP @ SWAP @ ROT ! SWAP !
-      1-
-    REPEAT DROP
-  LOOP THEN
-  SHVAR-COUNT @ 0 ?DO
-    I SVO-NAME DUP CSTRLEN TYPE 61 EMIT
-    I SVO-NAME LOOKUP-VAR ?DUP IF SQUOTED. ELSE S" ''" TYPE THEN CR
+  LV-COLLECT LV-SORT
+  LV-N @ 0 ?DO                            \ a name twice in environ: once
+    I 0> IF I 1- LV@ LV-KEY I LV@ LV-KEY COMPARE 0= ELSE 0 THEN
+    0= IF I LV@ LV-PRINT THEN
   LOOP ;
 
 ' DO-TRAP         S" trap"     BUILTIN

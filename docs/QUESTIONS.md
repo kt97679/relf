@@ -346,6 +346,14 @@ unexported PATH, and `command -p`, found nothing - fixed. Open, not
 covered by A28: PATH set to the empty string - dash searches the current
 directory there, relf nothing (POSIX: implementation-defined).
 
+**A29. An empty PATH searches nothing (562).** The user: keep relf's
+behaviour - the current directory in PATH is dangerous. dash searches it
+for an empty PATH (implementation-defined in POSIX) and for an empty
+entry in one - `/bin:`, `:/bin`, `/a::/b` - which POSIX specifies as a
+legacy feature for the current directory. relf searches it for neither,
+only for an explicit `.`: a deliberate difference from POSIX for empty
+entries, read as covered by the user's reason (DASH.md).
+
 ## Your notes, captured (514)
 
 - **The input line limit, 80 to 256 columns** - done at 514.

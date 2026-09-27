@@ -1,0 +1,22 @@
+#!/bin/sh
+# tests/shell/run-set-listing - `set` lists every shell variable, sorted
+# (Iteration 562): variables inherited from the environment and never
+# assigned were left out - POSIX counts them shell variables, and dash
+# lists them - found by tools/strange-env.py with ten thousand of them.
+. "$(dirname "$0")/lib.sh"
+out=$(env -i FOO=bar "$THIS_SH" -c 'set' | grep '^FOO=')
+assert_output_equals "an inherited variable is listed" "FOO='bar'" "$out"
+out=$(env -i FOO=bar "$THIS_SH" -c 'FOO=mine; set' | grep '^FOO=')
+assert_output_equals "one the script reassigned: once, with its value" "FOO='mine'" "$out"
+out=$(env -i 'A-B=x' "$THIS_SH" -c 'set' | grep -c '^A-B')
+assert_output_equals "an entry with no valid name is no variable" "0" "$out"
+out=$(env -i ZZ=1 AA=2 "$THIS_SH" -c 'MM=3; set' | grep '^[A-Z][A-Z]=' | paste -sd' ' -)
+assert_output_equals "one sorted list, from both sources" "AA='2' MM='3' ZZ='1'" "$out"
+out=$(env -i "Q=it's" "$THIS_SH" -c 'set' | grep '^Q=')
+assert_output_equals "a quote in a value, as dash writes it" "Q='it'\"'\"'s'" "$out"
+vars=$(i=1000; while [ $i -gt 0 ]; do printf 'W%04d=v ' $i; i=$((i - 1)); done)
+out=$(env -i $vars "$THIS_SH" -c 'set' | grep '^W' | sort -c && echo sorted)
+assert_output_equals "a thousand, given in reverse, come out sorted" "sorted" "$out"
+out=$(env -i $vars "$THIS_SH" -c 'set' | grep -c '^W')
+assert_output_equals "all of them" "1000" "$out"
+report

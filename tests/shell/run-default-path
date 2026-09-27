@@ -23,4 +23,16 @@ case $out in */ls) r=ok ;; *) r="unexpected: $out" ;; esac
 assert_output_equals "command -v along the default" "ok" "$r"
 out=$(env PATH=/bin:/usr/bin "$THIS_SH" -c 'echo "$PATH"' 2>&1)
 assert_output_equals "a PATH from the environment is kept" "/bin:/usr/bin" "$out"
+# A29: neither an empty PATH nor an empty entry in one searches the
+# current directory - POSIX has an empty entry mean it, as a legacy
+# feature, and dash follows; the user judged it too dangerous. Only an
+# explicit `.` does.
+t=$(mktemp -d); printf '#!/bin/sh\necho ran-from-cwd\n' > "$t/mycmd"; chmod +x "$t/mycmd"
+for p in '' '/nonexistent:' ':/nonexistent' '/nonexistent::/nonexistent2'; do
+    out=$(cd "$t" && env -i PATH="$p" "$THIS_SH" -c 'mycmd' 2>/dev/null)
+    assert_output_equals "PATH='$p' does not search the current directory" "" "$out"
+done
+out=$(cd "$t" && env -i PATH=. "$THIS_SH" -c 'mycmd' 2>&1)
+assert_output_equals "PATH=. does" "ran-from-cwd" "$out"
+rm -rf "$t"
 report

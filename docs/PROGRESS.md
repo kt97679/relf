@@ -557,6 +557,7 @@ do not trust the absence of a line below.
 - **559** — tools/shfuzz.py: 1,000 random programs, 0 findings (yash in relf's seat: 9); mutation survivors read - bg on a second job was untested, now a pty case
 - **560** — the pty suite 219 s -> 48 s; strange environments: the assembly engine crashed under any ulimit -v below 1 GB - fixed
 - **561** — PATH unset: dash's default (A28); the command search reads the PATH variable, exported or not
+- **562** — set lists inherited variables (sorted, as dash); A29: no empty PATH entry searches the current directory
 
 ### Not tied to an iteration
 
@@ -26391,4 +26392,37 @@ Also seen: `set` lists only the shell's own storage, and a variable
 inherited but never assigned lives in the environment only - so `set`
 leaves it out, where POSIX counts it a shell variable (the 10,000
 variables probe of 560). Next.
+
+## Iteration 562: `set` lists what it inherited; A29
+
+**A29** (the user): an empty PATH searches nothing - the current
+directory in PATH is dangerous. relf already did so, and did so for
+empty ENTRIES too, where POSIX specifies the current directory and dash
+searches it: now recorded as deliberate (DASH.md) and tested.
+
+**`set`** listed only the shell's own storage, and a variable inherited
+and never assigned lives in the environment only. Now LIST-VARIABLES
+takes both: an environ entry counts with a `=`, a valid name (POSIX
+makes shell variables of no other) and no variable of the shell's own
+by its name; one list, Shell-sorted - the insertion sort's n*n was fine
+for dozens, not for 10,000 - duplicates once. The first version kept
+environ INDEXES and fetched with ENV-AT per comparison: 1.05 s for
+10,000 on the C engine, 0.10 on the assembly one - the C engine's
+ENV-AT walks environ to i on every call. Addresses are fetched once now:
+0.12 and 0.11 s, identical to dash line for line - measured with the
+environment given in REVERSE: my first timing's input was already
+sorted, and could not have shown a sort that did nothing.
+run-set-listing: 7 checks; run-default-path: 13 now.
+
+**The recording caught a crash on the 32-bit engine** (same iteration):
+`shell:4byte` 1 -> 0, and `diff:failed` empty. My second version kept
+environ addresses and told them from the shell's variables by sign -
+-(k+1) for a variable - and on the 32-bit engine environ sits high in
+the address space, an address looked negative, and `set` faulted ("relf:
+invalid memory address" - 556's traps reported it instead of dying).
+The differential count was empty because run_tests.sh stops after the
+4-byte shell suite fails, before reaching it. I stopped the check run
+before it could verify against that recording. Now a reference is a
+small integer - k, or SHVAR-COUNT + m with the address in LV-ENVS - and
+all three shells pass; verified.
 
