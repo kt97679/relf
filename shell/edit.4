@@ -73,7 +73,24 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
 VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
 
 : ED-BACK ( n --- )   ?DUP IF ED-CSI ED-NUM 68 ED-CH THEN ;   \ n columns left
-: ED-OUT+ ( c-addr u --- )   DUP ED-COL +!  ED-OUT ;          \ ... and counted
+\ UTF-8 (Iteration 575): the buffer stays bytes, but a character is its
+\ lead byte and the 10xxxxxx bytes after it - the cursor moves over, and
+\ Backspace and Delete take, whole characters, and a character is one
+\ column. It moved and deleted single bytes: after `echo привет` the
+\ cursor stood at column 19, not 13, and one Backspace took half of т,
+\ which then went into the command. Wide East Asian characters (two
+\ columns) and combining marks (none) are not told apart - that wants a
+\ width table this editor does not have.
+: ED-CONT? ( c --- f )   192 AND 128 = ;          \ a continuation byte
+: ED-COLS ( c-addr u --- n )   \ its columns: one per character
+  0 ROT ROT OVER + SWAP ?DO I C@ ED-CONT? 0= IF 1+ THEN LOOP ;
+: ED-PREV ( i --- i' )   \ the start of the character before byte i
+  BEGIN DUP 0> WHILE 1- DUP ED-BUF + C@ ED-CONT? 0= IF EXIT THEN REPEAT ;
+: ED-NEXT ( i --- i' )   \ past the character at byte i
+  DUP ED-LEN @ < IF
+    1+ BEGIN DUP ED-LEN @ < IF DUP ED-BUF + C@ ED-CONT? ELSE 0 THEN WHILE 1+ REPEAT
+  THEN ;
+: ED-OUT+ ( c-addr u --- )   2DUP ED-COLS ED-COL +!  ED-OUT ;   \ ... and counted
 
 : ED-REDRAW ( --- )
   \ From the prompt's start, not column 0 (Iteration 574): the prompt is
@@ -85,8 +102,8 @@ VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
   CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
   ED-BUF ED-LEN @ ED-OUT
   ED-CSI 75 ED-CH                            \ erase to end of line
-  ED-LEN @ ED-POS @ - ED-BACK                \ back to the cursor's place
-  ED-PROMPT-LEN @ ED-POS @ + ED-COL ! ;
+  ED-BUF ED-POS @ + ED-LEN @ ED-POS @ - ED-COLS ED-BACK   \ back to the cursor: columns (575)
+  ED-PROMPT-LEN @ ED-BUF ED-POS @ ED-COLS + ED-COL ! ;
 
 \ ---- editing ----
 
@@ -102,17 +119,19 @@ VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
   ED-BUF ED-POS @ + C!
   1 ED-LEN +!  1 ED-POS +! ;
 
-: ED-BACKSPACE ( --- )
+: ED-BACKSPACE ( --- )   \ the whole character before the cursor (575)
   ED-POS @ 0= IF EXIT THEN
-  ED-BUF ED-POS @ + DUP 1-                   ( src dst )
+  ED-POS @ DUP ED-PREV TUCK - >R             ( start )  ( R: its bytes )
+  ED-BUF ED-POS @ +  OVER ED-BUF +           ( start src dst )
   ED-LEN @ ED-POS @ - MOVE
-  -1 ED-LEN +!  -1 ED-POS +! ;
+  ED-POS !  R> NEGATE ED-LEN +! ;
 
-: ED-DELETE ( --- )   \ the character under the cursor
+: ED-DELETE ( --- )   \ the character under the cursor - all its bytes (575)
   ED-POS @ ED-LEN @ < 0= IF EXIT THEN
-  ED-BUF ED-POS @ + 1+ DUP 1-
-  ED-LEN @ ED-POS @ - 1- MOVE
-  -1 ED-LEN +! ;
+  ED-POS @ ED-NEXT ED-POS @ - >R             ( )  ( R: its bytes )
+  ED-BUF ED-POS @ + R@ +  ED-BUF ED-POS @ +  ( src dst )
+  ED-LEN @ ED-POS @ - R@ - MOVE
+  R> NEGATE ED-LEN +! ;
 
 \ The kill buffer and the word keys (Iteration 568, A30). What C-k, C-u,
 \ C-w, M-d and M-Backspace cut is kept, for C-y to put back - one entry,
@@ -152,7 +171,9 @@ VARIABLE ED-WAS-KILLING  \ the key before killed
 : ED-KILL-LINE ( --- )   0 ED-LEN @ ED-KILL  0 ED-POS ! ;
 
 : ED-AT ( i --- c )   ED-BUF + C@ ;
-: ED-WORD-CHAR? ( c --- f )   \ letters and digits
+: ED-WORD-CHAR? ( c --- f )   \ letters and digits - and every byte of a
+  \ UTF-8 character, so a Cyrillic word is a word to M-b and M-f (575)
+  DUP 128 < 0= IF DROP -1 EXIT THEN
   DUP 48 58 WITHIN  OVER 65 91 WITHIN OR  SWAP 97 123 WITHIN OR ;
 : ED-BLANK? ( c --- f )   DUP 32 = SWAP 9 = OR ;
 
@@ -254,9 +275,9 @@ VARIABLE ED-CSI-P                \ the first numeric parameter of a sequence
   DUP 65 = IF DROP ED-HIST-UP        EXIT THEN      \ up
   DUP 66 = IF DROP ED-HIST-DOWN      EXIT THEN      \ down
   DUP 67 = IF DROP
-    ED-POS @ ED-LEN @ < IF 1 ED-POS +! THEN EXIT THEN   \ right
+    ED-POS @ ED-NEXT ED-POS ! EXIT THEN                 \ right: a character (575)
   DUP 68 = IF DROP
-    ED-POS @ 0 > IF -1 ED-POS +! THEN EXIT THEN         \ left
+    ED-POS @ ED-PREV ED-POS ! EXIT THEN                 \ left: a character (575)
   DUP 72 = IF DROP ED-HOME EXIT THEN                \ home, xterm
   70 = IF ED-END THEN ;                             \ end, xterm
 
@@ -718,8 +739,8 @@ VARIABLE ED-PAT-U
   DUP 127 = OVER 8 = OR IF DROP ED-BACKSPACE EXIT THEN
   DUP 1 = IF DROP 0 ED-POS ! EXIT THEN            \ ^A
   DUP 5 = IF DROP ED-LEN @ ED-POS ! EXIT THEN     \ ^E
-  DUP 2 = IF DROP ED-POS @ 0 > IF -1 ED-POS +! THEN EXIT THEN   \ ^B
-  DUP 6 = IF DROP ED-POS @ ED-LEN @ < IF 1 ED-POS +! THEN EXIT THEN \ ^F
+  DUP 2 = IF DROP ED-POS @ ED-PREV ED-POS ! EXIT THEN   \ ^B
+  DUP 6 = IF DROP ED-POS @ ED-NEXT ED-POS ! EXIT THEN \ ^F
   DUP 11 = IF DROP ED-KILL-TO-END EXIT THEN       \ ^K
   DUP 21 = IF DROP ED-KILL-LINE EXIT THEN         \ ^U
   DUP 4 = IF DROP                                 \ ^D: end of input if empty

@@ -570,6 +570,7 @@ do not trust the absence of a line below.
 - **572** — fury and rage: intr-subshell's fresh line was a race; a child dead of ^C now gives it; a child that survives the ^C lets the line go on, as dash (a case)
 - **573** — PWD at startup, as XCU 2.5.3 (A32): set and exported under env -i, a stale or dotted one replaced; FILE-MODE gives inode and device
 - **574** — output that ends without a newline stays: the editor redraws from the prompt's start, not column 0 (2 pty cases)
+- **575** — the line editor works in characters: UTF-8 text moves, deletes and counts columns as characters, Cyrillic words are words (4 pty cases)
 
 ### Not tied to an iteration
 
@@ -26835,3 +26836,26 @@ before that, 6 of 6 alone on each engine and 12 of 12 under two CPU
 hogs; and the next full check passed. Still unexplained - something the
 earlier suites leave behind is the suspect left - and the next failure,
 here or on fury or rage, will show what the shell printed.
+
+## Iteration 575: UTF-8 in the line editor
+
+The second review's second bug, and the first thing a Russian reader
+types: after `echo привет` the editor's cursor stood at column 19, not
+13, and one Backspace took half of т - the stray byte went into the
+command. The editor kept, moved over and counted bytes.
+
+The buffer stays bytes. A character is its lead byte and the 10xxxxxx
+bytes after it: ED-CONT?, ED-COLS (columns, one per character), ED-PREV
+and ED-NEXT (a character's start before a byte, the end of the one at
+it). Left, Right, ^B and ^F move a character; Backspace and Delete take
+one, all its bytes; the redraw counts columns, and so does the Ctrl-R
+line; every byte from 128 up is a word character, so M-b and M-f take a
+Cyrillic word as a word. The prompt's width already skipped continuation
+bytes. Not told apart: wide East Asian characters (two columns) and
+combining marks (none) - that wants a width table.
+
+Four pty cases (44), recorded from this shell and read: Backspace after
+`echo привет` - приве; two Lefts and X - привXет; two Lefts and Delete -
+привт; M-b twice in `echo слово два` and X - Xслово два. editor-vs-
+bash: 81 of 88, as before.
+

@@ -95,6 +95,14 @@ CASES = [
     # example, `forth '2 3 + .'`, showed no 5. Recorded from dash; the
     # forth one from this shell, and read: `5 ` and the prompt after it.
     ("partial-line-kept", {}, ["printf part\n", "echo next\n", ("exit\n", 'nowait')]),
+    # UTF-8 (Iteration 575): whole characters, not bytes. A review typed
+    # `echo привет`: the cursor stood at column 19, and one Backspace took
+    # half of т, which went into the command. Recorded from this shell and
+    # read - приве; привXет; привт (Delete under е); Xслово два (M-b twice).
+    ("edit-utf8-backspace", {}, ["echo привет", "\x7f", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-left", {}, ["echo привет", "\x1b[D\x1b[D", "X", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-delete", {}, ["echo привет", "\x1b[D\x1b[D", "\x04", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-word", {}, ["echo слово два", "\x1bb", "\x1bb", "X", "\n", ("exit\n", 'nowait')]),
     ("partial-line-forth", {}, ["forth '2 3 + .'\n", "echo next\n", ("exit\n", 'nowait')]),
     # The word keys and the kill buffer (Iteration 568, A30): recorded
     # from this shell, each result what bash's readline gives for the
