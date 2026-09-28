@@ -571,6 +571,7 @@ do not trust the absence of a line below.
 - **573** — PWD at startup, as XCU 2.5.3 (A32): set and exported under env -i, a stale or dotted one replaced; FILE-MODE gives inode and device
 - **574** — output that ends without a newline stays: the editor redraws from the prompt's start, not column 0 (2 pty cases)
 - **575** — the line editor works in characters: UTF-8 text moves, deletes and counts columns as characters, Cyrillic words are words (4 pty cases)
+- **576** — measured again, as the reviews asked: a static musl dash is as small as relfsh and starts faster; at a size where startup does not dominate, scripts run 41-59x slower than dash, not 20-28x
 
 ### Not tied to an iteration
 
@@ -26858,4 +26859,33 @@ Four pty cases (44), recorded from this shell and read: Backspace after
 `echo привет` - приве; two Lefts and X - привXет; two Lefts and Delete -
 привт; M-b twice in `echo слово два` and X - Xслово два. editor-vs-
 bash: 81 of 88, as before.
+
+## Iteration 576: the numbers, measured again
+
+Two reviews questioned the article's numbers; both were right.
+
+A static dash. dash 0.5.12, Ubuntu's source, built with musl-gcc -Os
+-static and stripped: 169,720 bytes - the review's own figure. relfsh
+on its engine: 137,612. tools/mem-profile.py takes it now as
+STATIC_DASH=path. Resident, kB, idle and after work: relfsh (asm) 200,
+248; dash static 192, 208; relfsh (C) 1932, 1968; dash 1960, 1976;
+busybox ash 1392, 1656; bash 3592, 3620. Private: 200, 248; 192, 208;
+380, 416; 100, 116; 196, 324; 1680, 1704. "Smallest by far" held only
+against a dynamically linked dash: a static one is as small - relfsh
+the same, carrying a Forth compiler and a line editor, in a file 19%
+smaller.
+
+The speed. The workloads were small enough that dash spent 2 to 4 ms on
+each, much of it its own start, which relf beats: the ratios understated
+the cost per operation. tools/bench-vm.py takes SCALE=k now - every
+loop bound times k, in copies. At 25 (dash 24 to 54 ms), 7 rounds, CPU
+time as a ratio to dash: relfsh asm 41, 52, 44, 59, 50 (loop, fn, str,
+arith, realistic), C engine 42, 52, 44, 59, 51; dash static 1.6 to 2.0
+- musl's dash is slower at scripts than glibc's; busybox ash 1.3 to 1.9;
+bash 2.5 to 4.1. Start (sh -c true): dash 1.16 ms; dash static 0.45 of
+it, relfsh asm 0.53, busybox 0.93, relfsh C 1.1, bash 1.2. So: scripts
+41 to 59 times slower than dash, not 20 to 28; and a static dash starts
+faster than relfsh - "starts faster than dash" held only against a
+dynamically linked one. All in the development container: a VM, one
+virtual CPU ("Intel Xeon @ 2.10GHz", as its string is masked).
 

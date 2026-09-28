@@ -19,6 +19,19 @@ for l in open(sys.argv[2]):
         n, cwd, cmd = l.split('|'); cfg.append((n, cwd, cmd))
 WL = os.environ.get('WL', 'loop fn str arith start').split()
 W = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tests', 'bench-vm') + '/'
+# SCALE=k (Iteration 576): every workload's loop bound times k, in copies
+# made here. At 1 dash spends 2 to 4 ms on one, much of it its own start,
+# which relf beats - so the ratios understated the cost per operation, a
+# review found (41-59x at x10). Size them so dash takes 100 ms or more.
+SCALE = int(os.environ.get('SCALE', '1'))
+if SCALE != 1:
+    import tempfile, re
+    _d = tempfile.mkdtemp(prefix='bench-vm-x%d-' % SCALE)
+    for _f in os.listdir(W):
+        if _f.endswith('.sh'):
+            _t = re.sub(r'-lt (\d+)', lambda m: '-lt %d' % (int(m.group(1)) * SCALE), open(W + _f).read())
+            open(os.path.join(_d, _f), 'w').write(_t)
+    W = _d + '/'
 
 def run(cwd, cmd, reps=1):
     tot = 0.0

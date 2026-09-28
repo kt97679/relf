@@ -11,6 +11,12 @@ import os, re, subprocess, sys, collections
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); os.chdir(ROOT)
 SHELLS = [('relf, assembly engine', './relfshasm64'), ('relf, C engine', './relfsh64'),
           ('dash', '/usr/bin/dash'), ('busybox ash', '/usr/bin/busybox ash'), ('bash', '/usr/bin/bash')]
+# A STATIC dash beside them (Iteration 576): the comparison that is fair
+# to relfsh on its own engine, which maps no C library either - a review
+# built one with musl and found it about as small. STATIC_DASH=path adds it.
+import os as _os
+if _os.environ.get('STATIC_DASH'):
+    SHELLS.insert(3, ('dash, static (musl)', _os.environ['STATIC_DASH']))
 def smaps(cmd, work):
     out = '/tmp/memprof.smaps'
     pre = '. tests/bench-vm/realistic.sh >/dev/null 2>&1; ' if work else ''

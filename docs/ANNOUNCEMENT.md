@@ -404,3 +404,11 @@ indirect-jump floor; its point is no libc); Claude earlier than the end;
 long lists and the wide table in spoilers (Habr's rule for mobile);
 versions of dash, bash, busybox; the UTC wording.
 
+Measured again (Iteration 576, the container - a VM, one vCPU). Memory:
+relfsh asm 200 kB resident idle, a static musl dash 192 - as small, not
+"smallest by far"; the file 137,612 bytes against 169,720. Speed at
+SCALE=25, where startup no longer dominates: 41-59x dash on scripts;
+start 0.53 of dash's, where a static dash takes 0.45. The article's
+tables and sentences need these numbers - and a named CPU (fury) would
+be better than the container's masked one.
+
