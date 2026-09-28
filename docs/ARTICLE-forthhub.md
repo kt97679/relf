@@ -26,6 +26,10 @@ A POSIX sh: pipelines, lists, compound commands, functions, here- documents, eve
 
 `seq` there is a new builtin, defined in a dozen lines of Forth. The [examples directory](https://github.com/kt97679/relf/tree/master/examples) also has a prompt hook, a TCP echo server and an HTTP server, all in Forth, inside the shell. A Forth error in such code fails that one command, as any builtin's failure does: `$?` is 1, the message goes to standard error, the shell goes on—and so does a division by zero or a bad address, which the engine turns from the CPU's trap into a Forth THROW.
 
+## Who it is for
+
+Beyond people who like Forth, I see three uses. Minimal environments: a static shell without libc that takes 196 kB at rest suits an initramfs, or a container with no base image, on x86-64. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
+
 ## What it is
 
     ./relfshasm64 - one static file, 136,524 bytes
@@ -110,8 +114,22 @@ RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7 times s
 ## How it is tested
 
 - CORE: 2,136 checks, the same output from both engines.
-- The shell: 1,033 assertions in 91 files; 132 cases compared with bash; 421 constructs in every context, against bash and dash; 48 POSIX cases, scored only where every reference shell agrees; the test suite of [mrsh](https://github.com/emersion/mrsh), another small POSIX shell; 32 sessions through a pseudo-terminal, for the line editor and job control; the POSIX standard's own examples, 64 of them, with the results its text states.
-- Beyond the suites: seven shells voting on 131 scripts—relfsh is with every strong majority; 1,000 random programs against dash and bash, without a difference; the 131 comparison scripts, each rewritten in up to nine ways that must not change its output (1,170 variants); mutation testing on the compiled image; the test harness run by relfsh itself; signal storms, where each trap ran once for every signal sent; and real scripts—zlib's configure, and ncurses's, 32,301 lines of Autoconf, whose 1,041 generated files match dash's run except where autoconf recorded how each shell's `echo` omits a newline.
+- The shell:
+  - 1,033 assertions in 91 files;
+  - 132 cases compared with bash;
+  - 421 constructs in every context, against bash and dash;
+  - 48 POSIX cases, scored only where every reference shell agrees;
+  - the test suite of [mrsh](https://github.com/emersion/mrsh), another small POSIX shell;
+  - 32 sessions through a pseudo-terminal, for the line editor and job control;
+  - the POSIX standard's own examples, 64 of them, with the results its text states.
+- Beyond the suites:
+  - seven shells voting on 131 scripts—relfsh is with every strong majority;
+  - 1,000 random programs against dash and bash, without a difference;
+  - the 131 comparison scripts, each rewritten in up to nine ways that must not change its output (1,170 variants);
+  - mutation testing on the compiled image;
+  - the test harness run by relfsh itself;
+  - signal storms, where each trap ran once for every signal sent;
+  - real scripts: zlib's configure runs as it does under dash, and ncurses's—32,301 lines of Autoconf—writes 1,041 files, 1,040 of them identical to dash's; in the last one, config.status, only the two lines differ where Autoconf recorded how each shell's `echo` omits a newline.
 - Every change is verified on three machines—two x86-64 and an ARMv7 board—before it goes in.
 
 ## What it is not
@@ -132,6 +150,6 @@ Since the end of August 2026, most of the code, tests and documents have been wr
     make relfshasm64 && ./relfshasm64   # x86-64 Linux, static
     make relfsh && ./relfsh             # other CPUs: the C engine
 
-`make test` runs every suite. Like a plain `make`, it also builds the 4-byte-cell engine, which on 64-bit Debian or Ubuntu needs gcc-multilib.
+`make test` runs every suite. Like a plain `make`, it also builds the 4-byte-cell engine, which on 64-bit Debian or Ubuntu needs gcc-multilib. The [README](https://github.com/kt97679/relf/blob/master/README.md) has the full build details.
 
 GPL version 2. Questions I would like answered by people who know Forth better than I do: is choosing opcodes by how often they execute on real workloads—which is how RelF's 64 one-byte opcodes were picked—a known practice, and what did it miss? And what would you build with a shell you can extend in Forth?
