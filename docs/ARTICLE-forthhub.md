@@ -211,13 +211,12 @@ September 27, 2026, on one core of an Intel Xeon at 2.1 GHz.
 
 ## How it was built
 
-[author: your words here. A draft, to replace or keep: "Most of the
-code, tests and documents of the last [period] were written by Claude,
-an AI model, in several hundred numbered iterations under my direction.
-I set the goals, made the decisions - thirty of them recorded in
-docs/QUESTIONS.md - and ran every change on my own machines before it
-went in. The log of every iteration, mistakes included, is
-docs/PROGRESS.md."]
+Since the end of August 2026, most of the code, tests and documents have
+been written by Claude, an AI model, in several hundred numbered
+iterations under my direction. I set the goals, made the decisions -
+thirty of them recorded in docs/QUESTIONS.md - and ran every change on
+my own machines before it went in. The log of every iteration, mistakes
+included, is docs/PROGRESS.md.
 
 ## Try it
 
