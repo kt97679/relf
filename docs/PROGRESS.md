@@ -568,6 +568,7 @@ do not trust the absence of a line below.
 - **570** — the announcement article, drafted for ForthHub (docs/ARTICLE-forthhub.md)
 - **571** — Ctrl-C stops the command line (A31): loops, lists, subshells, command substitution, `wait`, and a runaway Forth word; 5 pty cases
 - **572** — fury and rage: intr-subshell's fresh line was a race; a child dead of ^C now gives it; a child that survives the ^C lets the line go on, as dash (a case)
+- **573** — PWD at startup, as XCU 2.5.3 (A32): set and exported under env -i, a stale or dotted one replaced; FILE-MODE gives inode and device
 
 ### Not tied to an iteration
 
@@ -26754,4 +26755,30 @@ passes. 38 pty cases.
 
 One failure in fourteen whole-suite runs of the assembly engine, not
 reproduced in thirteen more and not identified: noted, not explained.
+
+## Iteration 573: PWD at startup
+
+The second review's third bug: under `env -i` relf's $PWD was empty, and
+`cd /tmp; cd -` failed with "OLDPWD not set" - the first cd had saved
+that empty PWD. A cron job or a container's entry point starts just so,
+and a FROM-scratch container is one of the article's own uses.
+
+XCU 2.5.3: the environment's PWD is kept when it is absolute, has no .
+or .. component, and names the current directory; otherwise the shell
+sets what pwd -P prints. "Names the current directory" is device and
+inode, which nothing here could read: FILE-MODE ( c-addr follow? ---
+mode ) took only 0 (lstat) and -1 (stat), so follow? 1 and 2 now return
+st_ino and st_dev, in cv8.c and in relfasm64.4 (where the flag waits in
+r9 - syscall takes rcx and r11). The primitive table and the kernel
+image are unchanged. INIT-PWD runs at startup after $PPID: FILE-ID,
+SAME-FILE?, DOT-COMPONENT?. The result is exported, as dash and bash do.
+
+tests/shell/run-pwd-startup, 9 checks: env -i, cd - after it, the
+export, a PWD through a symbolic link (kept), a stale one, a . and a ..
+component, a relative one (replaced), a valid one (kept). relf passes
+all 9 on its three builds; dash and bash fail two - they keep a PWD with
+a . or .. component that names the directory, where the standard says
+to replace it. The standard was followed (A32; DASH.md), and the test's
+header, which first claimed its expectations were dash's, says so.
+The assembly engine: 15,592 bytes.
 

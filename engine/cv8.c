@@ -1427,6 +1427,7 @@ L_filekind: SPILL(); { /* c-addr --- kind : 0 none, 1 regular, 2 directory,
     FILLNEXT();
 }
 L_filemode: SPILL(); { /* c-addr follow? --- mode : the file's st_mode, or
+                          (follow? 1, 2) its inode or device (573), or
                           0 if it cannot be read. follow? false uses
                           lstat, so `test -h` can see a symbolic link.
                           The shell decodes the bits, which is why this
@@ -1435,7 +1436,10 @@ L_filemode: SPILL(); { /* c-addr follow? --- mode : the file's st_mode, or
     struct stat st;
     const char *path = (const char *)(uintptr_t)DS1;
     int r = DS0 ? stat(path, &st) : lstat(path, &st);
-    DS1 = r ? 0 : (UNS64)st.st_mode;
+    /* follow? 1 and 2 (Iteration 573): the inode and the device, for
+     * "the same file" - PWD at startup names the current directory */
+    DS1 = r ? 0 : DS0 == 1 ? (UNS64)st.st_ino
+                : DS0 == 2 ? (UNS64)st.st_dev : (UNS64)st.st_mode;
     dsp += CELL_BYTES;
     FILLNEXT();
 }

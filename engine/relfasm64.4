@@ -1618,12 +1618,19 @@ eax SYS_lstat # mov,
 r12 r12 test,
 1 F jz,
 eax SYS_stat # mov,
-1 L:  syscall,
+1 L:  r9 r12 mov,                        \ follow? 1: st_ino, 2: st_dev (573);
+syscall,                                 \ r9, since syscall takes rcx and r11
 r13 CELL # add,
 r12d r12d xor,
 rax rax test,
 2 F jnz,
 r12d [ scratch 24 + ] dword-ptr mov,
+r9 1 # cmp,
+3 F jne,
+r12 [ scratch 8 + ] mov,                 \ st_ino
+3 L:  r9 2 # cmp,
+2 F jne,
+r12 [ scratch ] mov,                     \ st_dev
 2 L:  NEXT,
 
 \ signals (cv8.c: sig_catch, SIGACTION, SIGNALS-PENDING). A caught

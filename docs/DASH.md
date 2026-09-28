@@ -242,3 +242,14 @@ tests/shell/run-default-path.
 expands as if in double quotes, where a backslash-quote in backquotes
 becomes a quote - and bash prints "x". relf follows dash.
 
+## PWD with a . or .. component, from the environment (Iteration 573, A32)
+
+`cd /d; env PWD=/d/. sh -c 'echo $PWD'`: dash and bash print `/d/.`,
+this shell `/d`. XCU 2.5.3 keeps the environment's PWD only when it is
+absolute, names the current directory, and has no component that is dot
+or dot-dot - "Otherwise, the sh utility sets PWD to the pathname that
+would be output by pwd -P". Both references check only that it names the
+directory. This shell follows the standard's text; such a PWD is rare,
+and the choice is one condition in INIT-PWD. tests/shell/run-pwd-startup
+holds both checks.
+

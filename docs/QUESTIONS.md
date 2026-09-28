@@ -410,3 +410,13 @@ interrupt, thrown to DO-FORTH's own CATCH - except inside the allocator
 alloc_block to L_allocate), where only the flag is raised. Ordinary
 execution pays nothing: no check on any branch.
 
+**A32. PWD at startup follows XCU 2.5.3 (Iteration 573).** A review found
+PWD left empty under `env -i`, so `cd -` failed after the first cd. Now
+the environment's PWD is kept when it is absolute, has no . or ..
+component, and names the current directory (the same device and inode:
+FILE-MODE's follow? 1 and 2, new in both engines); otherwise the shell
+sets, and exports, what pwd -P prints. dash and bash keep a PWD with a .
+or .. component that names the directory; POSIX says to replace it - the
+standard's text was taken, the user continuing on that recommendation.
+Recorded in DASH.md.
+

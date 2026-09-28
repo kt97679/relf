@@ -3759,6 +3759,7 @@ CREATE DASH-PATH  CSTR," /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
   \ $PPID, which POSIX sets at startup and this shell never did
   GETPPID 0 <# #S #> PPID-BUF SWAP DUP >R MOVE  0 PPID-BUF R> + C!
   PPID-NM PPID-BUF SET-SHVAR
+  INIT-PWD                                   \ XCU 2.5.3 (Iteration 573)
   \ IFS and OPTIND, which POSIX also sets at startup and this shell left
   \ unset (Iteration 422, from yash's fsplit-p.tst and getopts-p.tst).
   \ An unset IFS still splits on blanks, so nothing looked wrong - until

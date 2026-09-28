@@ -1,0 +1,25 @@
+#!/bin/sh
+# tests/shell/run-pwd-startup - PWD at startup (XCU 2.5.3, Iteration 573).
+# The environment's PWD is kept only when it is absolute, has no . or ..
+# component, and names the current directory; otherwise the shell sets
+# what pwd -P prints, and exports it. relf left PWD as it found it: empty
+# under env -i, so `cd -` then failed (a review, run by hand, found it).
+# The expectations are the standard's. dash and bash meet all but two:
+# a PWD with a . or .. component they KEEP when it names the current
+# directory, where XCU 2.5.3 says the shell sets what pwd -P prints -
+# which this shell does (A32; DASH.md).
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); t=$(cd "$t" && pwd -P)
+mkdir "$t/d" && ln -s "$t/d" "$t/l"
+S=$(command -v "$THIS_SH" || echo "$THIS_SH"); case $S in /*) ;; *) S=$PWD/$S ;; esac
+assert_output_equals 'env -i: PWD is set' "$t/d" "$(cd "$t/d" && env -i "$S" -c 'echo "$PWD"')"
+assert_output_equals '... and cd - works' "$t/d" "$(cd "$t/d" && env -i "$S" -c 'cd /; cd - >/dev/null; echo "$PWD"')"
+assert_output_equals '... and it is exported' "PWD=$t/d" "$(cd "$t/d" && env -i "$S" -c 'env' | grep '^PWD=')"
+assert_output_equals 'a PWD through a symbolic link is kept' "$t/l" "$(cd "$t/d" && env PWD="$t/l" "$S" -c 'echo "$PWD"')"
+assert_output_equals 'a stale PWD is replaced' "$t/d" "$(cd "$t/d" && env PWD=/ "$S" -c 'echo "$PWD"')"
+assert_output_equals 'a PWD with a . component is replaced' "$t/d" "$(cd "$t/d" && env PWD="$t/d/." "$S" -c 'echo "$PWD"')"
+assert_output_equals 'a PWD with a .. component is replaced' "$t/d" "$(cd "$t/d" && env PWD="$t/d/../d" "$S" -c 'echo "$PWD"')"
+assert_output_equals 'a relative PWD is replaced' "$t/d" "$(cd "$t/d" && env PWD=d "$S" -c 'echo "$PWD"')"
+assert_output_equals 'a valid PWD is kept as it is' "$t/d" "$(cd "$t/d" && env PWD="$t/d" "$S" -c 'echo "$PWD"')"
+rm -rf "$t"
+report

@@ -197,6 +197,7 @@ PRIMITIVE TCSETPGRP     ( fd pgid --- ior )
 PRIMITIVE TCGETPGRP     ( fd --- pgid | -1 )
 PRIMITIVE WAIT-JOB      ( pid --- pid' status )  \ reports a stop as well
 PRIMITIVE FILE-MODE     ( c-addr follow? --- mode )  \ Iteration 378: st_mode, 0 if none
+\ follow? 0 lstat's mode, -1 stat's; 1 and 2 the inode and device (573)
 PRIMITIVE LOCAL-TIME    ( --- sec min hour mday mon year wday )  \ Iteration 417
 PRIMITIVE DUP-FROM      ( fd floor --- fd' | -1 )  \ Iteration 486: F_DUPFD_CLOEXEC
 PRIMITIVE TCP-LISTEN    ( port loopback? --- fd ior )  \ Iteration 505: forth-shell-examples
