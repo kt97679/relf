@@ -146,4 +146,19 @@ def model(name, refs, near_bits, near_len, far_len):
     cost = lambda near: near * near_len + (n - near) * far_len
     print(f"  {name}: n={n}  base-rel near={base_near} ({cost(base_near)} B)  pc-rel near={pc_near} ({cost(pc_near)} B)  either, one bit less={hyb} ({cost(hyb)} B)")
 model("calls", CALLS, 14, 2, 3)
+# Calls BACKWARD, unsigned (the user, Iteration 579): a Forth word calls
+# words defined before it - itself by RECURSE, and forward only through
+# DEFER, which is no direct call - so the distance from the call's end back
+# to its target never needs a sign: 14 bits reach 16 KB behind, where the
+# signed model above reached 8 KB either way. A forward call, if any,
+# would need the other form.
+def model_back(refs, near_bits, near_len, far_len):
+    n = len(refs)
+    fwd = sum(1 for s, e, t in refs if t >= e)
+    back_near = sum(1 for s, e, t in refs if 0 < e - t <= (1 << near_bits))
+    hb = near_bits - 1
+    hyb = sum(1 for s, e, t in refs if t < (1 << hb) or 0 < e - t <= (1 << hb))
+    cost = lambda near: near * near_len + (n - near) * far_len
+    print(f"  calls, backward unsigned: near={back_near} ({cost(back_near)} B), forward calls={fwd};  either (base-rel or backward), one bit less: near={hyb} ({cost(hyb)} B)")
+model_back(CALLS, 14, 2, 3)
 model("slots", SLOTS, 15, 3, 4)

@@ -130,8 +130,17 @@ A call is 2 bytes to the first 16 KB, 3 beyond: the most-called words
 moved there would save 2.1 KB, 1.8%, at the price of hoisting them and
 all they depend on into an early source file. tools/call-layout.py.
 
-**Z3. Calls relative to the call site** - declined.
-~0.7 KB (image-audit.py's model); a format change.
+**Z3. Calls relative to the call site** - declined; open again (579).
+~0.7 KB (image-audit.py's model) was a SIGNED distance, 8 KB either way.
+But a Forth word calls only words defined before it - forward only
+through DEFER - so the distance back needs no sign: 16 KB behind in a
+2-byte call (the user, 579). On the 122,004-byte shell image, 6,166
+calls: today 2,498 near, 16,000 B; backward unsigned 3,863 near, 14,635
+B - 1,365 B, 1.1%; either form by a bit, 13-bit offsets, 4,283 near,
+14,215 B - 1.8 KB. Two calls point forward, both in the kernel: they
+would be reordered or take a far form. No speed in it - one addition
+either way - and still a format change: both engines, CALL, and
+CALL,-T, what reads calls, every image and the double compile.
 
 **Z4. Offsets in full cells** - open (509).
 ~2 KB at 64-bit, where a cell holds an offset a smaller field could.

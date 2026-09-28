@@ -106,8 +106,10 @@ realistic script, ~13% on the whole mix; 22 folded returns - removed at
   make 2,127 more of the 5,976 calls near: **2.1 KB, 1.8% of the image**
   - at the price of hoisting those words (ARGV@, STR0=, ERR-TYPE, XF@,
   NIP...) and all they depend on into an early source file. Not done.
-- **Calls relative to the call site** (image-audit.py's model): ~0.7 KB,
-  a format change. Not done.
+- **Calls relative to the call site** (image-audit.py's model): ~0.7 KB
+  with a signed distance; backward and unsigned - Forth calls only what
+  is defined before - 1,365 B, 1.1% (579; OPTIMIZATIONS.md Z3). A format
+  change. Not done.
 - **Names** are 21-23% of the image (509, Q1) - the larger lever.
 
 ## 3. Why 64 one-byte opcodes (537-539)
