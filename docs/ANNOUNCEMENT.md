@@ -336,3 +336,29 @@ times slower than C and Go. bench/langs/run.py had looked for
 kernel64.img at the top level since 555's restructure moved it to
 forth/ - RelF printed nothing, the run said so; fixed.
 
+## The Habr article, in the author's own style (Iteration 570)
+
+docs/ARTICLE-habr.md, mirrored from its Claude Doc. The author asked for
+the English article rewritten in Russian in the style of his Habr
+articles - read for it: his 14 articles' openings, and three in full
+(535186 on Forth primitives, 546998 announcing ossh, 882860 on
+encryption). What they share, and what the Russian text follows:
+no section headings, even at six minutes - flowing first-person
+prose; an opening that is a concrete trigger or a personal story; a
+terminal session or code early, each introduced by one plain sentence
+and explained after; questions anticipated ("Кто-то спросит...",
+"Предвижу вопрос..."); honest caveats ("Хочу сразу отметить...");
+measurements in tables, with the exact commands; bullets only for
+parallel cases; an ending that asks readers to point out mistakes.
+His spelling: форт and форт система in lower case; tools and languages
+in Latin, lower case (sod32, ruby, go, python); people's names in Latin;
+numbers without separators; «guillemets». His hubs so far: Ненормальное
+программирование (the Forth article), *nix, Настройка Linux,
+Системное администрирование.
+Choices: the title "relfsh: POSIX shell, написанный на форте", shaped
+like ossh's; decimal commas, versions keep their points; the closing
+question made self-contained - how the 64 opcodes were chosen is said
+in it, since the English text lost that explanation with the #92
+paragraph. 1,819 words; diagrams re-padded for Cyrillic and checked by
+script (joints aligned, widest line 63 columns).
+
