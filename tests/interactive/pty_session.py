@@ -54,6 +54,10 @@ def render(stream):
             lines.append(''.join(cur)); cur, col = [], 0
         elif c == '\b':
             col = max(0, col - 1)
+        elif c == '\x07':
+            pass    # the bell: a terminal rings it and prints nothing. Put as a
+                    # character it took a column, which the editor's \r redraws
+                    # hid - until they went back by columns (Iteration 574)
         else:
             put(c)
         i += 1

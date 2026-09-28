@@ -70,13 +70,23 @@ LINE-MAX BUFFER: HIST-SAVED      \ grown with the line it saves
 : ED-NUM ( n --- )   \ a small decimal, for a control sequence
   0 <# #S #> ED-OUT ;
 
+VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
+
+: ED-BACK ( n --- )   ?DUP IF ED-CSI ED-NUM 68 ED-CH THEN ;   \ n columns left
+: ED-OUT+ ( c-addr u --- )   DUP ED-COL +!  ED-OUT ;          \ ... and counted
+
 : ED-REDRAW ( --- )
-  13 ED-CH                                   \ column 0
+  \ From the prompt's start, not column 0 (Iteration 574): the prompt is
+  \ drawn where the cursor stood, and each redraw goes back to it by the
+  \ columns the cursor has moved since. A \r here wiped out output that
+  \ ended without a newline - `forth '2 3 + .'` showed no 5, `printf x`
+  \ no x; dash and bash leave it, the prompt after it, and so does this.
+  ED-COL @ ED-BACK
   CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
   ED-BUF ED-LEN @ ED-OUT
   ED-CSI 75 ED-CH                            \ erase to end of line
-  13 ED-CH
-  ED-PROMPT-LEN @ ED-POS @ + ?DUP IF ED-CSI ED-NUM 67 ED-CH THEN ;
+  ED-LEN @ ED-POS @ - ED-BACK                \ back to the cursor's place
+  ED-PROMPT-LEN @ ED-POS @ + ED-COL ! ;
 
 \ ---- editing ----
 
@@ -609,11 +619,11 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
   10 ED-CH
   CMP-EXTRA @ IF
     S" about " ED-OUT  CMP-N @ CMP-EXTRA @ + N>STR DUP CSTRLEN ED-OUT
-    S"  candidates - type more to narrow them" ED-OUT 10 ED-CH EXIT
+    S"  candidates - type more to narrow them" ED-OUT 10 ED-CH  0 ED-COL ! EXIT
   THEN
   CMP-SORT
   CMP-N @ 0 ?DO CMP-IDX I CELLS + @ DUP CSTRLEN ED-OUT S"   " ED-OUT LOOP
-  10 ED-CH ;
+  10 ED-CH  0 ED-COL ! ;                     \ the next prompt starts a line (574)
 
 : ED-COMPLETE ( --- )
   CMP-SPLIT CMP-COLLECT
@@ -693,13 +703,13 @@ VARIABLE ED-PAT-U
   ED-SEARCH-ORIG ED-SEARCH-ORIG-LEN @ ED-SET-LINE
   0 ED-SEARCHING ! ;
 
-: ED-SEARCH-REDRAW ( --- )
-  13 ED-CH
+: ED-SEARCH-REDRAW ( --- )   \ from the prompt's start, as ED-REDRAW (574)
+  ED-COL @ ED-BACK  0 ED-COL !
   ED-SEARCH-FAIL @ IF S" (failed reverse-i-search)'" ELSE S" (reverse-i-search)'" THEN
-  ED-OUT
-  ED-SEARCH-PAT ED-SEARCH-LEN @ ED-OUT
-  S" ': " ED-OUT
-  ED-SEARCH-HIT @ 0< 0= IF ED-SEARCH-HIT @ HIST-SLOT DUP CSTRLEN ED-OUT THEN
+  ED-OUT+
+  ED-SEARCH-PAT ED-SEARCH-LEN @ ED-OUT+
+  S" ': " ED-OUT+
+  ED-SEARCH-HIT @ 0< 0= IF ED-SEARCH-HIT @ HIST-SLOT DUP CSTRLEN ED-OUT+ THEN
   ED-CSI 75 ED-CH ;                          \ erase to end of line
 
 : ED-KEY-ACT ( c --- )
@@ -745,6 +755,7 @@ VARIABLE ED-PAT-U
   \ bytes and no columns, and the cursor arithmetic is in columns
   \ (Iteration 412).
   PROMPT-STRING 2DROP PROMPT-WIDTH @ ED-PROMPT-LEN !
+  0 ED-COL !                                 \ the prompt starts where we are (574)
   ED-REDRAW
   BEGIN ED-DONE @ 0= WHILE
     ED-GET-BYTE DUP -1 = IF

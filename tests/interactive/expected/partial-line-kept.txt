@@ -1,0 +1,4 @@
+<PS1>printf part
+part<PS1>echo next
+next
+<PS1>exit

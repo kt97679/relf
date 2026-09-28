@@ -1,0 +1,4 @@
+<PS1>forth '2 3 + .'
+5 <PS1>echo next
+next
+<PS1>exit

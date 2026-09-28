@@ -243,7 +243,7 @@ I=$(echo "$IOUT" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed, \([0-9]*\) k
 # from a machine I cannot look at (Iteration 400).
 # Six lines, not two: a pty transcript's `want` and `got` are several
 # lines each, and two of them showed neither (Iteration 406).
-echo "$IOUT" | grep -A6 '^FAIL' | sed 's/^/  interactive: /' >&2 || true
+echo "$IOUT" | grep -A14 '^FAIL' | sed 's/^/  interactive: /' >&2 || true
 emit interactive:passed    "$(echo "$I" | cut -d' ' -f1)"
 emit interactive:failed    "$(echo "$I" | cut -d' ' -f2)"
 emit interactive:divergent "$(echo "$I" | cut -d' ' -f3)"

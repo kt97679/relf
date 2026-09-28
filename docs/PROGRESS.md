@@ -569,6 +569,7 @@ do not trust the absence of a line below.
 - **571** — Ctrl-C stops the command line (A31): loops, lists, subshells, command substitution, `wait`, and a runaway Forth word; 5 pty cases
 - **572** — fury and rage: intr-subshell's fresh line was a race; a child dead of ^C now gives it; a child that survives the ^C lets the line go on, as dash (a case)
 - **573** — PWD at startup, as XCU 2.5.3 (A32): set and exported under env -i, a stale or dotted one replaced; FILE-MODE gives inode and device
+- **574** — output that ends without a newline stays: the editor redraws from the prompt's start, not column 0 (2 pty cases)
 
 ### Not tied to an iteration
 
@@ -26782,3 +26783,55 @@ to replace it. The standard was followed (A32; DASH.md), and the test's
 header, which first claimed its expectations were dash's, says so.
 The assembly engine: 15,592 bytes.
 
+## Iteration 574: the prompt no longer wipes an unfinished line
+
+The first review's first finding: the article's own first example,
+`forth '2 3 + .'`, showed no 5 in a real terminal. It prints `5 ` and
+no newline, and the line editor drew its prompt from column 0 -
+`\r`, the prompt, erase to end of line - over it; `printf x` and
+`echo -n x` lost their output the same way, where dash and bash leave
+it with the prompt after it.
+
+Two fixes were weighed and set aside. zsh's PROMPT_SP (spaces as wide
+as the terminal, then \r) needs the width, and nothing here can read
+it - no window-size primitive, and the test renderer has no width
+either; tracking the shell's last byte to the terminal needs the
+engine, whose own buffer takes TYPE's and EMIT's output, and would miss
+an external command's. The fix taken needs neither: the prompt is drawn
+where the cursor stands, and every redraw goes BACK to it (CSI n D) by
+the columns the cursor has moved - ED-COL - instead of to column 0. On
+a line that does not wrap it is exactly as sound as the \r was, and on
+one that wraps both fail alike. The Ctrl-R line redraws the same way;
+a completion listing and a new line start ED-COL at 0.
+
+Two pty cases (40): `printf part`, recorded from dash - `part$ echo
+next`; the article's forth line, recorded from this shell and read -
+`5 $ ...`. tools/editor-vs-bash.py: 81 of 88 as bash, as before. The
+article's transcript still shows `5` on a line of its own, which no
+terminal does: it should say `forth '2 3 + . CR'` - for the corrections.
+
+The first full verification of this showed 6 failures the cases had not:
+complete-probe.py's, from the no-candidate check on. With nothing to
+offer the editor rings the bell (BEL, 7), and the harness's renderer put
+it on the line as a character: it took a column a terminal does not
+give it - hidden while every redraw began with \r, and shifting every
+later line once redraws went back by columns. The renderer now passes
+the bell by. The recording, meanwhile, had written those 6 failures
+into the baseline, and a check run followed it: the baseline was
+restored and that run's VERIFIED set aside.
+
+Pty flakes, noted: the next full run failed intr-at-prompt once, on the
+C engine, the harness seeing no prompt - it passed 6 of 6 on each
+engine at once, and the run after that was clean. With 572's one
+unidentified failure in fourteen suite runs, that is two in two days:
+the harness's timing under a full verification's load is worth a look. The check run after
+that failed intr-at-prompt again, so it was looked into. Its report had
+no `got`: tests/verify kept six lines after a FAIL, and this case's
+`want` is six lines by itself - the `got` was always cut off. It keeps
+fourteen now. Outside a full verification the failure did not come: the
+interactive runner, run as verify runs it, 10 of 10; under verify's own
+environment (TZ=UTC-9, LC_ALL=C, prompts and ENV unset), 10 of 10;
+before that, 6 of 6 alone on each engine and 12 of 12 under two CPU
+hogs; and the next full check passed. Still unexplained - something the
+earlier suites leave behind is the suspect left - and the next failure,
+here or on fury or rage, will show what the shell printed.

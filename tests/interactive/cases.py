@@ -89,6 +89,13 @@ CASES = [
     # as dash - the editor's reader made the next prompt PS2 (Iteration
     # 567, found against bash's editor by tools/editor-vs-bash.py).
     ("blank-line-ps1", {}, ["   \n", "echo x\n", ("exit\n", 'nowait')]),
+    # Output that ends without a newline stays, the prompt after it
+    # (Iteration 574): the editor drew the prompt from column 0 and each
+    # redraw went back there, wiping `part` - and the article's own first
+    # example, `forth '2 3 + .'`, showed no 5. Recorded from dash; the
+    # forth one from this shell, and read: `5 ` and the prompt after it.
+    ("partial-line-kept", {}, ["printf part\n", "echo next\n", ("exit\n", 'nowait')]),
+    ("partial-line-forth", {}, ["forth '2 3 + .'\n", "echo next\n", ("exit\n", 'nowait')]),
     # The word keys and the kill buffer (Iteration 568, A30): recorded
     # from this shell, each result what bash's readline gives for the
     # same keys (tools/editor-vs-bash.py) - alpha Xbeta gamma, alpha
