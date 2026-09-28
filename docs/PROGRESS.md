@@ -572,6 +572,7 @@ do not trust the absence of a line below.
 - **574** — output that ends without a newline stays: the editor redraws from the prompt's start, not column 0 (2 pty cases)
 - **575** — the line editor works in characters: UTF-8 text moves, deletes and counts columns as characters, Cyrillic words are words (4 pty cases)
 - **576** — measured again, as the reviews asked: a static musl dash is as small as relfsh and starts faster; at a size where startup does not dominate, scripts run 41-59x slower than dash, not 20-28x
+- **577** — tools/bench-report.sh: the article's numbers on any machine, into one report; the benchmarks skip what is not installed
 
 ### Not tied to an iteration
 
@@ -26888,4 +26889,27 @@ it, relfsh asm 0.53, busybox 0.93, relfsh C 1.1, bash 1.2. So: scripts
 faster than relfsh - "starts faster than dash" held only against a
 dynamically linked one. All in the development container: a VM, one
 virtual CPU ("Intel Xeon @ 2.10GHz", as its string is masked).
+
+## Iteration 577: a report the user can run
+
+fury and rage verified 576. The article should name a real CPU, not the
+container's masked one: the user will run the benchmarks himself.
+tools/bench-report.sh, from the repository's top, writes one file,
+bench-report-HOST-TIME.txt (ignored by git): the machine - CPU, cores,
+governor, memory, every tool's version - the build, a static musl dash
+when musl-gcc is there, tools/mem-profile.py, tools/bench-vm.py at
+SCALE=25 over the shells that are installed, and bench/langs/run.py.
+SCALE and ROUNDS lower it for a slow machine.
+
+Both benchmarks had been written for this container. bench/langs/run.py
+built Go unconditionally, took gforth, pforth, Ruby and Python as given,
+printed versions written into its labels, used the 64-bit engines, and
+stopped the whole table at the first wrong result; tools/mem-profile.py
+ran the assembly engine's shell wherever it was. Now what is missing is
+skipped and said, each version is read from the program, the native
+engine is used, a failing row is reported and the rest run, and the
+ratio column is to the assembly engine where there is one. Reading the
+versions found one written wrong: pforth calls itself V2.0.0, where the
+label - and the article after it - said 2.0.1. A trial run here, small,
+went through every section.
 

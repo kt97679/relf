@@ -77,3 +77,4 @@ relfasm64.forth
 # a checkout built then still has them (the user's machines did: 550)
 relfasm-ops.S
 relfasm-consts.S
+bench-report-*.txt

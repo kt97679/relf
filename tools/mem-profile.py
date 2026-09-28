@@ -42,7 +42,11 @@ def smaps(cmd, work):
         else: k = 'the executable'
         cats[k] += rss
     return cats, priv
+import shutil as _sh
 for label, cmd in SHELLS:
+    _exe = cmd.split()[0]   # not built or not installed here: said, and skipped (577)
+    if not (_sh.which(_exe) or _os.path.exists(_exe)):
+        print('%-22s skipped: %s is not here' % (label, _exe)); continue
     for work in (False, True):
         c, priv = smaps(cmd, work)
         print('%-22s %-6s resident %5d kB, private %5d kB: %s' % (label, 'worked' if work else 'idle', sum(c.values()), priv,
