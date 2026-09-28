@@ -16,6 +16,7 @@ That is where the two ideas met. A shell written in Forth could be small and fru
 
 A POSIX sh: pipelines, lists, compound commands, functions, here- documents, every expansion, job control, a line editor with history, search and completion, `$'...'` and `set -o pipefail` from POSIX.1-2024. And the `forth` builtin, which reaches the whole Forth system the shell is written in:
 
+    $ ./relfshasm64
     $ forth '2 3 + .'
     5
     $ forth 'S" examples/seq.4" INCLUDED'
@@ -141,7 +142,7 @@ RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7 times s
 
 ## How it was built
 
-Since the end of August 2026, most of the code, tests and documents have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/master/docs/QUESTIONS.md)—and ran every change on my own machines before it went in. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/master/docs/PROGRESS.md).
+Since the end of August 2026, most of the code, tests and documents have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/master/docs/QUESTIONS.md)—and ran every change on my own machines before it went in. A model makes mistakes like anyone else, which is why the project leans so hard on tests: they are what caught the `push`, `pop` and `xchg` bug in the assembler described above. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/master/docs/PROGRESS.md).
 
 ## Try it
 
