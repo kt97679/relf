@@ -388,3 +388,25 @@ into it, as readline's do - C-w C-w C-y puts both words back.
   (the arguments, and every inherited descriptor):
   SHELL-LANGUAGE.md Part 4, "What a process can exchange".
 - **Forth plugins in image form** - Q12, with what it would take.
+
+**A31. Ctrl-C at an interactive shell (Iteration 571).** The user: proceed
+with the bugs the last reviews found, Ctrl-C first - `while :; do :; done`
+could not be stopped; the signal was consumed between commands and
+nothing more. ^C now stops the command line: a pending flag,
+INTERRUPT-PENDING?, which every list and loop checks through STOP? and
+LOOP-AFTER-BODY - the way break and return already unwind, so
+redirections are undone on the way out, not jumped over - and which the
+prompt clears, making $? 130, as dash and bash. It is raised where the
+shell takes SIGINT itself (CHECK-TRAPS; WAIT-SIGNAL-CASE, for `wait`) and
+where a foreground child dies of it (FOREGROUND-CHILD, REPORT-SIGNAL-DEATH,
+JOB-WAIT-FG) - only with no user trap on INT (INT-STOPS?): with one, the
+trap runs and the line goes on, as in both references. A subshell puts
+INT, QUIT and TERM back to their default, and raises again a ^C taken
+before that reset, as dash's handler does in a child. Forth run by the
+forth builtin: SIGNAL-ACTION's new action 4 sends SIGINT down the traps'
+route (A26) - the VM restarts in TRAPPED with -28, Forth 2012's user
+interrupt, thrown to DO-FORTH's own CATCH - except inside the allocator
+(cv8.c: a flag around calloc, free and realloc; relfasm64: the range from
+alloc_block to L_allocate), where only the flag is raised. Ordinary
+execution pays nothing: no check on any branch.
+

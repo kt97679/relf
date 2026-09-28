@@ -14,8 +14,12 @@
 \ Forth's read loop on a shell's input, and a corrupt handler would trap
 \ again in THROW itself. Here, not in the kernel, for the S" strings.
 : TRAPPED ( n --- )
-  DUP -10 = IF S" relf: division by zero" ELSE
-    S" relf: invalid memory address (segmentation fault)" THEN  ETYPE 10 ECHAR
+  \ -28 is ^C (Iteration 571, A31): no message - the terminal echoed it,
+  \ and the shell starts its next prompt on a fresh line
+  DUP -28 = 0= IF
+    DUP -10 = IF S" relf: division by zero" ELSE
+      S" relf: invalid memory address (segmentation fault)" THEN  ETYPE 10 ECHAR
+  THEN
   HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 70 SYS-EXIT THEN
   (THROW) ;
 \ COLD registers it in every process an image saved from here starts;

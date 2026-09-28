@@ -1,0 +1,5 @@
+<PS1>sleep 5; echo after
+^C
+<PS1>echo $?
+130
+<PS1>exit

@@ -36,7 +36,7 @@ LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv
 LABEL m_badop LABEL m_binsh LABEL m_dashc LABEL m_hdr LABEL m_locals LABEL m_magic
 LABEL m_nl LABEL m_open LABEL m_passwd LABEL m_selfexe LABEL m_unimpl LABEL m_usage
 LABEL m_version LABEL open_modes LABEL parse_ipv4 LABEL phdr LABEL read_all LABEL ru_ms
-LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL sig_restorer LABEL strlen_rdi LABEL trap_handler LABEL L_trapxt
+LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL int_throw LABEL trap_code LABEL sig_restorer LABEL strlen_rdi LABEL trap_handler LABEL L_trapxt
 LABEL term_restore LABEL ud_ior LABEL unimpl
 4194304 65536 ASM-BUFFER                  \ 0x400000: where the Makefile links it
 \ relfasm64.S - the CV8 engine in x86-64 assembly, on raw Linux system
@@ -1655,7 +1655,8 @@ r9 -9 # mov,
 edi 8 # cmp,                             \ SIGFPE
 1 F jne,
 r9 -10 # mov,
-1 L:  rax [ trap_xt_v ] mov,
+1 L:  trap_code L:                     \ r8 the base, r9 the code (571: int_throw's too)
+rax [ trap_xt_v ] mov,
 rax rax test,
 2 F je,
 [ rdx 72 ] r9 mov,                       \ r12, the top of stack: the code
@@ -1671,6 +1672,28 @@ ret,
 2 L:  [ rdx 72 ] qword-ptr 70 # mov,     \ nothing registered: exit 70
 rax [ L_sysexit ] lea,
 [ rdx 168 ] rax mov,
+ret,
+\ ^C into Forth (Iteration 571, A31): SIGACTION's action 4, cv8.c's
+\ sig_int_throw. A runaway word in the forth builtin never gets back to
+\ the shell's check between commands; this takes the traps' route with
+\ -28, Forth 2012's user interrupt. Not inside the allocator - from
+\ alloc_block up to L_allocate, where the heap's lists are rewritten:
+\ there, and with no trap word, it only raises the flag, as sig_catch.
+int_throw L:                             \ edi: the signal; rdx: the ucontext
+rax [ trap_xt_v ] mov,
+rax rax test,
+1 F je,
+rax [ rdx 168 ] mov,                     \ rip, where the signal landed
+rcx [ alloc_block ] lea,
+rax rcx cmp,
+2 F jb,
+rcx [ L_allocate ] lea,
+rax rcx cmp,
+1 F jb,                                  \ inside the allocator
+2 L:  r8 [ rdx 128 ] mov,                \ rbx as found: the base
+r9 -28 # mov,
+trap_code jmp,
+1 L:  [ sig_flag 2 + ] byte-ptr 1 # mov,  \ SIGINT's flag, as sig_catch would
 ret,
 L_trapxt L:  [ trap_xt_v ] r12 mov,      \ ( xt --- ), since 556: the trap word
 r12 [ r13 ] mov,
@@ -1689,9 +1712,9 @@ NEAR 8 F je,
 rdi 8 # cmp,                             \ SIGFPE: the trap handler's (556)
 NEAR 8 F je,
 rdi 9 # cmp,                             \ SIGKILL
-8 F je,
+NEAR 8 F je,                             \ NEAR since 571: action 4 is between
 rdi 19 # cmp,                            \ SIGSTOP
-8 F je,
+NEAR 8 F je,
 rsi [ scratch ] lea,                     \ struct kernel_sigaction: handler,
 eax eax xor,                             \ flags, restorer, mask
 r12 1 # cmp,
@@ -1700,12 +1723,18 @@ eax 1 # mov,                             \ SIG_IGN
 1 L:  r12 2 # cmp,
 2 F jb,
 rax [ sig_catch ] lea,
+r12 4 # cmp,
+2 F jne,
+rax [ int_throw ] lea,                   \ 4: catch and THROW -28 (571)
 2 L:  [ rsi ] rax mov,
 eax 335544320 # mov,                     \ SA_RESTART | SA_RESTORER
 r12 3 # cmp,
 3 F jne,
 eax 67108864 # mov,                      \ SA_RESTORER only
-3 L:  [ rsi 8 ] rax mov,
+3 L:  r12 4 # cmp,
+4 F jne,
+eax 67108868 # mov,                      \ SA_SIGINFO | SA_RESTORER: int_throw
+4 L:  [ rsi 8 ] rax mov,
 rax [ sig_restorer ] lea,
 [ rsi 16 ] rax mov,
 [ rsi 24 ] qword-ptr 0 # mov,

@@ -718,6 +718,19 @@ static void load_image_fd(int fd, long limit) {
 #define NSIG_FLAGS 65
 static volatile sig_atomic_t sig_flag[NSIG_FLAGS];
 static void sig_catch(int sig) { if (sig > 0 && sig < NSIG_FLAGS) sig_flag[sig] = 1; }
+/*  ^C into Forth (Iteration 571, A31): SIGACTION's action 4. A runaway
+ *  word in the forth builtin never returns to the shell, which looks at
+ *  the flags only between commands - `forth ': S BEGIN 0 UNTIL ; S'`
+ *  could not be stopped. With action 4 a SIGINT takes the traps' route
+ *  instead: the VM restarts in the trap word with -28, Forth 2012's user
+ *  interrupt, which THROWs to the builtin's CATCH. Not while calloc, free
+ *  or realloc is running - jumping out of one leaves the heap broken -
+ *  so there it only raises the flag; the next ^C lands elsewhere.  */
+static volatile sig_atomic_t g_in_alloc;
+static void sig_int_throw(int sig) {
+    if (g_trap_xt && !g_in_alloc) trap_restart(-28);
+    if (sig > 0 && sig < NSIG_FLAGS) sig_flag[sig] = 1;
+}
 
 #define PROF(k)
 #define PROFIP(a)
@@ -1292,7 +1305,8 @@ L_cputimes: SPILL(); { /* --- user sys child-user child-sys : milliseconds */
     FILLNEXT();
 }
 L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore,
-                          2 catch, 3 catch WITHOUT SA_RESTART, so a read
+                          2 catch, 4 catch and THROW -28 (571),
+                          3 catch WITHOUT SA_RESTART, so a read
                           in progress fails with EINTR instead of being
                           resumed - what an interactive shell needs to
                           notice ^C at its prompt (Iteration 302) */
@@ -1304,9 +1318,10 @@ L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore,
         struct sigaction sa;
         memset(&sa, 0, sizeof sa);
         sigemptyset(&sa.sa_mask);
-        sa.sa_flags = act == 3 ? 0 : SA_RESTART;
+        sa.sa_flags = (act == 3 || act == 4) ? 0 : SA_RESTART;
         sa.sa_handler = act == 1 ? SIG_IGN
-                      : (act == 2 || act == 3) ? sig_catch : SIG_DFL;
+                      : (act == 2 || act == 3) ? sig_catch
+                      : act == 4 ? sig_int_throw : SIG_DFL;   /* 571 */
         sig_flag[sig] = 0;
         DS1 = sigaction(sig, &sa, (struct sigaction *)0) ? (UNS64)(INT64)-errno : 0;
     }
@@ -1683,18 +1698,26 @@ L_allocate: SPILL(); /* u --- a-addr ior */
 {
     /* zeroed (Iteration 551), as the assembly engine's: the shell's
      * buffers need not be filled at boot, which made them all resident */
-    void *p = calloc(1, (size_t)DS0);
+    void *p;
+    g_in_alloc = 1;              /* 571: see sig_int_throw */
+    p = calloc(1, (size_t)DS0);
+    g_in_alloc = 0;
     DS0 = (UNS64)(uintptr_t)p;
     PUSH((UNS64)(p == NULL ? 201 : 0));
     FILLNEXT();
 }
 L_free: SPILL(); /* a-addr --- ior */
+    g_in_alloc = 1;
     free((void*)(uintptr_t)DS0);
+    g_in_alloc = 0;
     DS0 = 0;
     FILLNEXT();
 L_resize: SPILL(); /* a-addr u --- a-addr' ior */
 {
-    void *p = realloc((void*)(uintptr_t)DS1, (size_t)DS0);
+    void *p;
+    g_in_alloc = 1;
+    p = realloc((void*)(uintptr_t)DS1, (size_t)DS0);
+    g_in_alloc = 0;
     if (p == NULL) {
         /*  Forth-2012: on failure a-addr is unchanged and still valid,
          *  so the caller can carry on with the original block.  */

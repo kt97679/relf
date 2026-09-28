@@ -186,6 +186,10 @@ VARIABLE FUNC-DEPTH        \ how many RUN-FUNC-BODY calls are
                            \ diagnosed rather than silently ignored or
                            \ left to corrupt later execution.
 
+VARIABLE INTERRUPT-PENDING?  \ ^C at an interactive shell (Iteration 571,
+                             \ A31): a return that no function stops -
+                             \ every list and loop ends at its next STOP?,
+                             \ and the prompt clears it and sets $? to 130
 VARIABLE LOOP-CONTROL-PENDING?  \ true from the moment "break" or
                            \ "continue" runs (see DISPATCH) until the
                            \ current loop iteration's own
@@ -236,6 +240,7 @@ VARIABLE LOOP-DEPTH        \ how many while/for loops are currently
                            \ never be simultaneously in progress.
 
 0 RETURN-PENDING? !
+0 INTERRUPT-PENDING? !
 0 FUNC-DEPTH !
 0 LOOP-CONTROL-PENDING? !
 0 LOOP-BREAK? !
@@ -1590,6 +1595,18 @@ VARIABLE TRAP-SIG-NOW   -1 TRAP-SIG-NOW !   \ whose trap is running; -1 for none
 
 VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
 
+: INTERRUPTED ( --- )
+  \ ^C stops an interactive shell's command line (Iteration 571, A31),
+  \ as dash's and bash's: `while :; do :; done` ran on through any ^C,
+  \ the signal consumed between commands and nothing more. Only the
+  \ flag: a caller whose ^C left no fresh line sets INT-SEEN? too.
+  -1 INTERRUPT-PENDING? ! ;
+
+: INT-STOPS? ( --- f )   \ does a ^C stop the command line?
+  \ At an interactive shell, when the user has no trap on INT: with one,
+  \ the trap runs and the line goes on, as in dash and bash (571)
+  INTERACTIVE? @  2 TRAP@ 0=  AND ;
+
 DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
 : CHECK-TRAPS ( --- )
@@ -1603,7 +1620,10 @@ DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
   \ Only paid when there are jobs: a syscall per command otherwise.
   JOB# @ 0 > IF REAP-CALL THEN
   BEGIN SIGNALS-PENDING ?DUP WHILE
-    DUP 2 = IF -1 INT-SEEN? ! THEN             \ ^C during a command
+    DUP 2 = IF
+      -1 INT-SEEN? !                           \ ^C during a command
+      INTERACTIVE? @ IF DUP TRAP@ 0= IF INTERRUPTED THEN THEN
+    THEN
     RUN-TRAP
   REPEAT ;
 
@@ -1623,6 +1643,22 @@ DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
   \ SIG_IGN survives exec - so every command it ran inherited a shell
   \ that cannot be stopped, and ^Z did nothing. A child puts them back
   \ to their default (Iteration 322).
+  \ ... and it CATCHES INT, QUIT and TERM, which a subshell kept: `(
+  \ while :; do :; done )` took no ^C (Iteration 571). Default again,
+  \ as dash does, unless the user trapped one - CHILD-RESET-TRAPS's.
+  \ A ^C may already have come: the parent can hand the terminal to the
+  \ child's group while the child still has the shell's catch, and then
+  \ the signal only set a flag - which the reset below clears, so `while
+  \ :; do /bin/true; done` sometimes ran on through a ^C. As dash's
+  \ handler re-raises in a child: one taken is raised again once INT is
+  \ back to its default, and the child dies of it as it should have.
+  INTERACTIVE? @ IF
+    0 BEGIN SIGNALS-PENDING ?DUP WHILE 2 = OR REPEAT >R
+    2 TRAP@ 0= IF 2 0 SIGNAL-ACTION DROP THEN
+    3 TRAP@ 0= IF 3 0 SIGNAL-ACTION DROP THEN
+    15 TRAP@ 0= IF 15 0 SIGNAL-ACTION DROP THEN
+    R> 2 TRAP@ 0= AND IF GETPID 2 KILL DROP THEN
+  THEN
   JOB-CONTROL? @ 0= IF EXIT THEN
   20 0 SIGNAL-ACTION DROP  21 0 SIGNAL-ACTION DROP  22 0 SIGNAL-ACTION DROP ;
 
@@ -2354,7 +2390,7 @@ VARIABLE RSD-SIG
   DUP 127 AND RSD-SIG !
   RSD-SIG @ 0= IF EXIT THEN
   RSD-SIG @ 127 = IF EXIT THEN                \ stopped, not killed
-  RSD-SIG @ 2 = IF EXIT THEN
+  RSD-SIG @ 2 = IF INT-STOPS? IF INTERRUPTED THEN EXIT THEN   \ 571
   RSD-SIG @ 13 = IF EXIT THEN
   RSD-SIG @ SIGNAL-TEXT ?DUP IF
     ERR-TYPE
@@ -4884,6 +4920,13 @@ VARIABLE FTH-I
     FTH-LEN @ 1+ FTH-LEN !
   THEN ;
 
+: INT-THROWS? ( --- f )   INT-STOPS? ;   \ may ^C be thrown into the Forth? (571)
+\ EVALUATE for DO-FORTH's CATCH, kept as an offset (!XT): ['] compiles an
+\ absolute address, wrong once the saved image loads elsewhere - every
+\ forth command faulted with it (Iteration 571)
+VARIABLE FTH-EVAL-XT
+' EVALUATE FTH-EVAL-XT !XT
+
 : DO-FORTH ( --- )
   \ forth WORDS... - hand the rest of the line to the Forth
   \ interpreter. This is the extension mechanism discussed back in
@@ -4907,8 +4950,18 @@ VARIABLE FTH-I
     FTH-I @ ARGV@ DUP CSTRLEN FORTH-APPEND
     FTH-I @ 1+ FTH-I !
   REPEAT
-  FORTH-BUF FTH-LEN @ EVALUATE
-  0 LAST-STATUS ! ;
+  \ ^C (Iteration 571, A31): a runaway word never came back to the
+  \ shell's check between commands - `forth ': S BEGIN 0 UNTIL ; S'`
+  \ held the terminal. While it runs, SIGINT takes the traps' route
+  \ (SIGNAL-ACTION 4): -28 is thrown at once and caught here, the
+  \ command line stops, $? is 130. SIGINT is put back either way.
+  INT-THROWS? IF 2 4 SIGNAL-ACTION DROP THEN
+  FORTH-BUF FTH-LEN @ FTH-EVAL-XT @XT CATCH
+  INT-THROWS? IF 2 3 SIGNAL-ACTION DROP THEN
+  ?DUP IF
+    DUP -28 = IF DROP 2DROP  -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !
+    ELSE THROW THEN
+  ELSE 0 LAST-STATUS ! THEN ;
 
 LINE-MAX        BUFFER: READ-BUF     \ grows: see LINE-BUF
 SHVAR-VALUE-MAX BUFFER: READ-FIELD
@@ -5234,6 +5287,11 @@ DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
   \ The engine reports a failed waitpid with one code, not -errno, so
   \ what happened is read from the pending signals instead.
   SIGNALS-PENDING ?DUP 0= IF 0 EXIT THEN       ( sig )
+  \ ^C with no trap ends the wait and the command line (Iteration 571):
+  \ it was taken for a signal to wait through, so `wait` never ended
+  DUP 2 = INTERACTIVE? @ AND IF DUP TRAP@ 0= IF
+    DROP -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !  -1 EXIT
+  THEN THEN
   DUP TRAP@ TRAP-ACTION? 0= IF RUN-TRAP 1 EXIT THEN
   DUP RUN-TRAP
   128 + LAST-STATUS !
@@ -6292,6 +6350,8 @@ VARIABLE FG-PID
     \ next prompt on a fresh line. The shell no longer sees the signal
     \ itself now that the job has its own process group (Iteration 322).
     DUP 127 AND DUP 2 = SWAP 3 = OR IF ERR-NL THEN
+    \ ... and a ^C stops the rest of the command line (Iteration 571)
+    DUP 127 AND 2 = INT-STOPS? AND IF INTERRUPTED THEN
     NIP WAIT->STATUS LAST-STATUS !  DROP
   THEN ;
 
@@ -8199,6 +8259,7 @@ VARIABLE FG-T
     2DROP 1 SWAP JOB-STATES SWAP CELLS + !
     ERR-NL  0 LAST-STATUS !
   ELSE
+    DUP 127 AND 2 = INT-STOPS? AND IF INTERRUPTED THEN   \ 571
     NIP WAIT->STATUS LAST-STATUS !
     JOB-FORGET
   THEN ;

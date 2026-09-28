@@ -566,6 +566,7 @@ do not trust the absence of a line below.
 - **568** — the word keys (A30): C-w, M-b, M-f, M-d, M-Backspace, C-y with a kill buffer; 81 of 88 keystroke tests as bash, the 7 left deliberate
 - **569** — the special built-ins' POSIX examples, 31 checks: readonly lost its flag on inherited variables, and readonly -p did not quote - both fixed
 - **570** — the announcement article, drafted for ForthHub (docs/ARTICLE-forthhub.md)
+- **571** — Ctrl-C stops the command line (A31): loops, lists, subshells, command substitution, `wait`, and a runaway Forth word; 5 pty cases
 
 ### Not tied to an iteration
 
@@ -26691,4 +26692,36 @@ know that fury is a laptop. Running the examples found the examples
 directory's own usage comments still naming forth-shell-examples/,
 gone since 555 - the restructure's script had not reached comments in
 examples/; fixed, and in GOALS.md.
+
+## Iteration 571: Ctrl-C
+
+Two reviews by other Claude instances, which built relf and used it as
+a reader would, found four bugs a reader meets in minutes; the user:
+fix them, Ctrl-C first. `while :; do :; done` ran through any ^C - the
+signal was consumed between commands and nothing more - and so did a
+loop round an external command, and a runaway `forth` word held the
+terminal. The design is A31. Measured in a pseudo-terminal, against
+dash: the builtin loop, the external loop, `sleep 5; echo after`, `||`,
+a subshell loop, a command-substitution loop and `wait` all stop, `after`
+never printed, $? 130; with a trap on INT the line goes on, as in dash.
+A runaway Forth word stops with 130, silently. Five pty cases (37 now):
+four recorded from dash, the Forth one from this shell and read.
+
+Not a case: a loop round a short external command. A ^C can fall between
+the child's exit and the shell taking the terminal back, when the
+foreground group has no member - dash lost it in 3 of 12 runs, bash in
+1, this shell in 1 of 12 on each engine. One window of our own is shut:
+a child the terminal was handed to before it reset its handler caught
+the ^C as a flag, which the reset cleared; now it raises it again.
+
+Mistakes on the way. The first DO-FORTH used ['] EVALUATE: ['] compiles
+an absolute address, wrong once the saved image loads elsewhere, and
+every forth command faulted - the shell's own comments warn of it three
+times; the token is kept as an offset now (!XT, @XT). It was found only
+by testing the pieces: the first Ctrl-C run looked half right, and was
+in fact that fault. The assembler refused two short jumps that action
+4's lines had pushed out of reach - as it should, rather than write
+wrong bytes. And run_cases.py --record takes the shell's path as given
+while --shell makes it absolute: a relative path recorded nothing.
+Sizes: the assembly engine 15,560 bytes (+104), its shell 137,028.
 

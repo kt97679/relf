@@ -362,3 +362,45 @@ in it, since the English text lost that explanation with the #92
 paragraph. 1,819 words; diagrams re-padded for Cyrillic and checked by
 script (joints aligned, widest line 63 columns).
 
+## After the fifth and sixth reviews (Iteration 571)
+
+Two reviews by other Claude instances built relf, ran it and checked the
+articles against the repository. Their findings, each checked here:
+
+The user's decision on Habr: keep improving BOTH texts. When the article
+is finished he will contact Habr, explain how it was written, show the
+project and the text; if they confirm it cannot be published as it is
+(rule 4: texts written or edited with neural networks), he keeps a
+corrected reference text to write his own from.
+
+Bugs a reader meets in minutes: Ctrl-C in loops - fixed, 571; the line
+editor counts bytes, so Backspace in Cyrillic leaves half a character;
+PWD not set at startup when the environment lacks it (POSIX requires
+it); the demo's first line shows nothing - the prompt's redraw (\r and
+erase to end of line) wipes an unterminated `5 `. printf '%.2f': for
+"what it is not".
+
+Article claims to correct: calls are relative to the IMAGE BASE, not to
+the call site (kernel.4's CALL,; two bytes reach the first 16 KB of the
+image) - 570's wording was wrong; "smallest by far" and "starts faster
+than dash" hold against a dynamically linked dash only - a static musl
+dash is about as small (to be measured here); the speed ratios include
+dash's own startup, the workloads being tiny - size them so dash takes
+100 ms or more; say the benchmarks ran on a VM, or run them on fury;
+"only that command fails" holds for errors the system detects - a stray
+store kills the shell; the fuzzing sentence: 173 of the 1,000 programs
+were set aside where dash and bash disagree, and yash's 9 were
+legitimate differences, not bugs; the closing question is answered in
+CV8.md (Gforth; Proebsting's superoperators) - name them, ask sharper;
+the sod32 and Benschop links are dead (XS4ALL); the README's sizes are
+old; 90 test files, not 91 (run-all is the driver); the random
+instruction check accepts equivalent encodings; authorship - 646 of the
+650 commits are Claude's: "almost all", and the author's part named;
+bash (enable -f), ksh93 and zsh load compiled builtins - the story's
+"only external programs" is POSIX sh's; initramfs needs more than a
+shell (busybox). Content: show DO-SEQ, the builtin API in five lines;
+why the assembly engine is not faster (ASM-ENGINE.md: both at the
+indirect-jump floor; its point is no libc); Claude earlier than the end;
+long lists and the wide table in spoilers (Habr's rule for mobile);
+versions of dash, bash, busybox; the UTC wording.
+

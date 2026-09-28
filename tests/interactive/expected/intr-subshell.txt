@@ -1,0 +1,5 @@
+<PS1>( while :; do :; done ); echo after
+^C
+<PS1>echo $?
+130
+<PS1>exit

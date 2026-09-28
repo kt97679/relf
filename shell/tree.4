@@ -157,6 +157,9 @@ VARIABLE VERBOSE-FROM   \ where the line just read begins in STDIN-TEXT
   \ ^C while a command ran: the terminal echoed it, and dash starts the
   \ next prompt on a fresh line (Iteration 315).
   INT-SEEN? @ INTERACTIVE? @ AND IF ERR-NL 0 INT-SEEN? ! THEN
+  \ a ^C stopped the last command line (Iteration 571): its status is
+  \ 130, as dash's and bash's, and the next line starts clean
+  INTERRUPT-PENDING? @ IF 0 INTERRUPT-PENDING? ! 130 LAST-STATUS ! THEN
   INTERACTIVE? @ CMD-START? @ AND IF JOB-NOTICES JOB-NOTICES-DONE THEN
   INTERACTIVE? @ 0 ISATTY AND IF EDIT-LINE EXIT THEN
   \ not a terminal, so nothing to edit - but `-i` still prompts
@@ -1873,7 +1876,8 @@ VARIABLE EXEC-BASE
 DEFER EXEC   ( node --- )
 DEFER EXEC-FINAL-CALL   ( node --- )
 
-: STOP? ( --- f )   RETURN-PENDING? @ LOOP-CONTROL-PENDING? @ OR ;
+: STOP? ( --- f )   \ a return, break, continue - or a ^C (571)
+  RETURN-PENDING? @ LOOP-CONTROL-PENDING? @ OR INTERRUPT-PENDING? @ OR ;
 
 \ set -e (Iteration 270). A failing pipeline ends the shell, except
 \ while ERR-IGNORE is up: in an if, while or until condition, in any
@@ -3137,6 +3141,7 @@ VARIABLE PS-WR
 \ After a loop body: consume a break or continue aimed at this loop.
 \ Leaves true when the loop must stop.
 : LOOP-AFTER-BODY ( --- stop? )
+  INTERRUPT-PENDING? @ IF -1 EXIT THEN          \ ^C: no loop survives it (571)
   RETURN-PENDING? @ IF -1 EXIT THEN
   LOOP-CONTROL-PENDING? @ IF
     \ `break n` and `continue n` pass through n-1 loops on their way out

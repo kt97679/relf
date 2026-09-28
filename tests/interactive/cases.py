@@ -16,6 +16,21 @@ CASES = [
     ("status-visible", {}, ["false\n", "echo $?\n", "true\n", "echo $?\n", ("exit\n", 'nowait')]),
     ("intr-at-prompt", {}, ["echo before\n", "INTR", "echo after\n", ("exit\n", 'nowait')]),
     ("intr-during-command", {}, [("sleep 5\n", 'nowait'), 0.5, "INTR", "echo survived\n", ("exit\n", 'nowait')]),
+    # ^C stops the command line (Iteration 571, A31): each of these ran on
+    # through it - the signal was consumed between commands and nothing
+    # more. Recorded from dash: the loop, the list, the subshell and the
+    # command substitution all stop, `after` is never printed, $? is 130.
+    # Not here: a loop around a short external command. There a ^C can
+    # fall between the child's exit and the shell taking the terminal back,
+    # and go to nobody - dash lost it in 3 of 12 runs, bash in 1, this
+    # shell in 1 on each engine - so no single-^C case can pass reliably.
+    ("intr-loop-builtin", {}, [("while :; do :; done; echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
+    ("intr-list", {}, [("sleep 5; echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
+    ("intr-subshell", {}, [("( while :; do :; done ); echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
+    ("intr-cmdsub", {}, [("x=$(while :; do :; done); echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
+    # A runaway word in the forth builtin (571): recorded from this shell,
+    # dash having none - and read: no message, `after` not printed, 130.
+    ("intr-forth-spin", {}, [("forth ': SPIN BEGIN 0 UNTIL ; SPIN'; echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
     ("eof-exits", {}, ["echo one\n", ("EOF", 'nowait')]),
     ("ps1-from-env", {"PS1": "P1> ", "PS2": "P2> "}, ["echo hi\n", ("exit\n", 'nowait')]),
     ("ps2-continuation", {"PS1": "P1> ", "PS2": "P2> "}, ["for i in 1\n", "do echo $i\n", "done\n", ("exit\n", 'nowait')]),
