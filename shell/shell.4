@@ -1609,6 +1609,18 @@ VARIABLE INT-SEEN?   \ an INT arrived: an interactive prompt starts a new line
 
 DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
 
+: TAKE-SIGNAL ( sig --- )   \ one caught signal, between commands
+  \ One taken while no child ran: a ^C stops the line (A31). One a wait
+  \ set aside (DEFERRED-SIG) goes to RUN-TRAP alone, as in dash and
+  \ bash: a child that SURVIVED the ^C handled it, and the line goes
+  \ on (intr-subshell-trap); one that died of it is REPORT-SIGNAL-
+  \ DEATH's to report (Iteration 572).
+  DUP 2 = IF
+    -1 INT-SEEN? !                             \ ^C during a command
+    INTERACTIVE? @ IF DUP TRAP@ 0= IF INTERRUPTED THEN THEN
+  THEN
+  RUN-TRAP ;
+
 : CHECK-TRAPS ( --- )
   \ A signal that arrived while the shell waited for a foreground child
   \ was set aside there, to be run here - between commands, where a trap
@@ -1619,13 +1631,7 @@ DEFER REAP-CALL   ( --- )   \ the job table's silent reap, defined below
   \ spinning on `kill -0 $!` never saw its child finish (Iteration 336).
   \ Only paid when there are jobs: a syscall per command otherwise.
   JOB# @ 0 > IF REAP-CALL THEN
-  BEGIN SIGNALS-PENDING ?DUP WHILE
-    DUP 2 = IF
-      -1 INT-SEEN? !                           \ ^C during a command
-      INTERACTIVE? @ IF DUP TRAP@ 0= IF INTERRUPTED THEN THEN
-    THEN
-    RUN-TRAP
-  REPEAT ;
+  BEGIN SIGNALS-PENDING ?DUP WHILE TAKE-SIGNAL REPEAT ;
 
 : SHELL-EXIT ( status --- )   \ the shell ends: its EXIT trap runs first, once
   TRAP-SAVED-STATUS !
@@ -2390,7 +2396,11 @@ VARIABLE RSD-SIG
   DUP 127 AND RSD-SIG !
   RSD-SIG @ 0= IF EXIT THEN
   RSD-SIG @ 127 = IF EXIT THEN                \ stopped, not killed
-  RSD-SIG @ 2 = IF INT-STOPS? IF INTERRUPTED THEN EXIT THEN   \ 571
+  \ A child dead of ^C stops the line (571) and gives the prompt its
+  \ fresh line, as dash's - which came only from the shell's own SIGINT
+  \ before, when a wait had not set it aside: a race, lost on fury and
+  \ rage with a subshell, which shares the shell's group (572)
+  RSD-SIG @ 2 = IF INT-STOPS? IF INTERRUPTED -1 INT-SEEN? ! THEN EXIT THEN
   RSD-SIG @ 13 = IF EXIT THEN
   RSD-SIG @ SIGNAL-TEXT ?DUP IF
     ERR-TYPE

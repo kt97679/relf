@@ -567,6 +567,7 @@ do not trust the absence of a line below.
 - **569** — the special built-ins' POSIX examples, 31 checks: readonly lost its flag on inherited variables, and readonly -p did not quote - both fixed
 - **570** — the announcement article, drafted for ForthHub (docs/ARTICLE-forthhub.md)
 - **571** — Ctrl-C stops the command line (A31): loops, lists, subshells, command substitution, `wait`, and a runaway Forth word; 5 pty cases
+- **572** — fury and rage: intr-subshell's fresh line was a race; a child dead of ^C now gives it; a child that survives the ^C lets the line go on, as dash (a case)
 
 ### Not tied to an iteration
 
@@ -26724,4 +26725,33 @@ in fact that fault. The assembler refused two short jumps that action
 wrong bytes. And run_cases.py --record takes the shell's path as given
 while --shell makes it absolute: a relative path recorded nothing.
 Sizes: the assembly engine 15,560 bytes (+104), its shell 137,028.
+
+## Iteration 572: a race in 571's fresh line
+
+fury and rage verified 571 except one new case, intr-subshell, on both
+of fury's engines and on rage: the behaviour was right - `after` not
+printed, $? 130 - but the `^C` line was missing. The harness renders the
+screen, and the prompt, drawn with \r and erase-to-end-of-line on the
+same line as the echoed ^C, had overwritten it: no fresh line came.
+
+A subshell is waited for without handing it the terminal, so it shares
+the shell's process group and a ^C reaches both. The fresh line came
+only from the shell's own SIGINT, through CHECK-TRAPS - unless the wait
+had been cut short by it first, in which case WAITPID-UNINTERRUPTED set
+it aside and it went to RUN-TRAP alone. Which came first was a race:
+here the child's death, 8 runs in 8; on fury and rage the other way.
+
+My first fix was wrong. I routed the set-aside SIGINT through the same
+path as a pending one, stopping the line - and wrote a case for it,
+recorded from dash: `( trap 'sleep 0.3; exit 3' INT; while :; do :;
+done ); echo after`, where the subshell SURVIVES the ^C. dash printed
+`^Cafter` and $? 0: a child that handled the ^C lets the line go on,
+with no fresh line - bash's cooperative exit too - and 571 already did
+exactly that. The fix is narrower: a child dead of ^C gives the prompt
+its fresh line (REPORT-SIGNAL-DEATH sets INT-SEEN?), whichever way the
+race went; a set-aside SIGINT stays RUN-TRAP's. The case stays, and
+passes. 38 pty cases.
+
+One failure in fourteen whole-suite runs of the assembly engine, not
+reproduced in thirteen more and not identified: noted, not explained.
 

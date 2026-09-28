@@ -1,0 +1,5 @@
+<PS1>( trap 'sleep 0.3; exit 3' INT; while :; do :; done ); echo after
+^Cafter
+<PS1>echo $?
+0
+<PS1>exit

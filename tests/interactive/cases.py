@@ -28,6 +28,15 @@ CASES = [
     ("intr-list", {}, [("sleep 5; echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
     ("intr-subshell", {}, [("( while :; do :; done ); echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
     ("intr-cmdsub", {}, [("x=$(while :; do :; done); echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),
+    # A subshell shares the shell's process group, so a ^C reaches both,
+    # and a wait may set the shell's own SIGINT aside (Iteration 572).
+    # intr-subshell's fresh line came from that SIGINT alone, and where the
+    # wait took it - fury, rage - the prompt was drawn over the ^C: now a
+    # child dead of ^C gives it. And a child that SURVIVES the ^C handled
+    # it: dash and bash go on with the line, no fresh line - `^Cafter`,
+    # $? 0. This one takes 0.3 s to exit, so the shell is always waiting
+    # when its SIGINT lands. Recorded from dash.
+    ("intr-subshell-trap", {}, [("( trap 'sleep 0.3; exit 3' INT; while :; do :; done ); echo after\n", 'nowait'), 0.5, "INTR", 1.0, "echo $?\n", ("exit\n", 'nowait')]),
     # A runaway word in the forth builtin (571): recorded from this shell,
     # dash having none - and read: no message, `after` not printed, 130.
     ("intr-forth-spin", {}, [("forth ': SPIN BEGIN 0 UNTIL ; SPIN'; echo after\n", 'nowait'), 0.5, "INTR", "echo $?\n", ("exit\n", 'nowait')]),

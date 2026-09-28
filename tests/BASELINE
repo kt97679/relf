@@ -15,15 +15,15 @@ ddc:gforth reproduces
 diff:failed 0
 ext:4byte 1
 ext:8byte 1
-image-sum:kernel32-shell.img 666589111/113332
-image-sum:kernel64-shell.img 3184229501/121452
+image-sum:kernel32-shell.img 3464086207/113356
+image-sum:kernel64-shell.img 1417603080/121484
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
 image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
-interactive:passed 37
+interactive:passed 38
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -53,12 +53,12 @@ shell:dead-words 0
 shell:files 91
 shell:host-sh-tests 0
 size:asm-engine 15560
-size:asm-shell 137028
+size:asm-shell 137060
 size:engine-code-i386 21361
 size:engine-code-x86_64 26022
-size:i386 143668
-size:image-i386 113332
-size:image-x86_64 121452
-size:x86_64 160588
+size:i386 143692
+size:image-i386 113356
+size:image-x86_64 121484
+size:x86_64 160620
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
