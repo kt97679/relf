@@ -29,7 +29,7 @@ A POSIX sh: pipelines, lists, compound commands, functions, here- documents, eve
 
 ## Who it is for
 
-Beyond people who like Forth, I see three uses. Minimal environments: a static shell without libc that takes 196 kB at rest suits an initramfs, or a container with no base image, on x86-64. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
+Beyond people who like Forth, I see three uses. Minimal environments: a static shell without libc that takes 196 kB at rest could suit an initramfs, or a container with no base image, on x86-64. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
 
 ## What it is
 
@@ -49,9 +49,9 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
 
 ## The Forth underneath
 
-- **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector (RelF calls these "escaped primitives"). Colon definitions call each other by *relative* offset—the "Relative" in RelF—so an image is position-independent, and its 4 MB region is exactly the reach of a call.
-- **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every machine of its width.
-- **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. gforth 0.7.3, running the same cross-compiler, produces the same bytes too. That is diverse double-compiling, David A. Wheeler's check against the attack Ken Thompson described in "Reflections on Trusting Trust".
+- **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector (RelF calls these "escaped primitives"). Colon definitions call each other by *relative* offset—the "Relative" in RelF—so an image is position-independent. A call takes two bytes if its target is within 16 KB and three bytes up to 4 MB, and that is why an image lives in a 4 MB region: it is exactly as far as a call reaches.
+- **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every supported machine of its width.
+- **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. gforth 0.7.3, running the same cross-compiler, produces the same bytes too. That is a check in the spirit of [diverse double-compiling](https://arxiv.org/abs/1004.5534), David A. Wheeler's defence against the attack Ken Thompson described in "Reflections on Trusting Trust".
 - **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/master/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed; it does not claim the other word sets, and the missing words can be defined with the `forth` builtin.
 
 ## Assembling its own engine
@@ -84,17 +84,17 @@ Memory at rest, measured with [tools/mem-profile.py](https://github.com/kt97679/
     busybox ash           1,608        252
     bash                  3,704      1,740
 
-Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, private the sum of Private_Clean and Private_Dirty. By resident memory, relfsh on its own engine is the smallest by far—it maps no C library. Counting only private memory, dash uses half of relfsh's.
+Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private_Clean and Private_Dirty. By resident memory, relfsh on its own engine is the smallest by far—it maps no C library. Counting only private memory, dash uses half of relfsh's.
 
 Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the median of the ratios over ten rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/master/tools/bench-vm.py)). The first row is dash's own time.
 
 | CPU time relative to dash | loop | fn | str | arith | realistic | start |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | dash, in ms | 4.1 | 2.6 | 2.8 | 3.0 | 3.4 | 1.4 |
-| busybox ash | 1.1 | 1.2 | 1.1 | 1.3 | 1.3 | 0.93 |
-| bash | 2.1 | 2.4 | 2.2 | 2.4 | 2.8 | 1.3 |
-| relfsh, asm engine | 25 | 22 | 20 | 27 | 27 | 0.56 |
-| relfsh, C engine | 26 | 23 | 21 | 28 | 28 | 1.1 |
+| busybox ash | 1.1× | 1.2× | 1.1× | 1.3× | 1.3× | 0.93× |
+| bash | 2.1× | 2.4× | 2.2× | 2.4× | 2.8× | 1.3× |
+| relfsh, asm engine | 25× | 22× | 20× | 27× | 27× | 0.56× |
+| relfsh, C engine | 26× | 23× | 21× | 28× | 28× | 1.1× |
 
 The workloads: loop is 2,000 rounds of test and increment; fn, 600 function calls; str, 400 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 700 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 300 rounds; start, one `sh -c true`. relfsh starts in just over half of dash's time, but runs scripts 20 to 28 times slower—it is a bytecode interpreter, and dash is C.
 
@@ -112,7 +112,7 @@ Then RelF as a Forth: seven small programs, the same Forth text for all three Fo
 | Python 3.12 | 244 | 967 | 558 | 307 | 187 | 506 | 586 | 2.20 |
 | Ruby 3.2 | 228 | 736 | 533 | 423 | 198 | 976 | 500 | 2.36 |
 
-RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7 times slower than gforth, and 11 to 14 times slower than C and Go; its weakest case is byte memory, the sieve. Both tables were measured on September 27, 2026, on one core of an Intel Xeon at 2.1 GHz.
+RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7 times slower than gforth, and 11 to 14 times slower than C and Go; its weakest case is byte memory, the sieve. Seven small programs are not a ranking of languages: they show what this VM costs, and where. Both tables were measured on September 27, 2026, on one core of an Intel Xeon at 2.1 GHz.
 
 ## How it is tested
 
@@ -137,6 +137,7 @@ RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7 times s
 
 ## What it is not
 
+- A certified POSIX shell: its conformance is what the tests above show, no more.
 - A complete Forth 2012 system: it is CORE, and what the shell needs.
 - Fast at scripts: see above.
 - Everywhere native: the assembly engine is x86-64 only. The C engine runs on x86-64, i386 and ARMv7, and under qemu on AArch64 and RISC-V.
