@@ -20,8 +20,8 @@ def forth_stdin(w): return 'S" bench.4" INCLUDED %s . BYE\n' % FWORD.get(w, w.up
 IMPL = [  # name, argv for test w, stdin for test w
     ('C (gcc -O2)', lambda w: ['./bench-c', w], None),
     ('Go', lambda w: ['./bench-go', w], None),
-    ('relf, assembly engine', lambda w: [ROOT + '/relfasm64', ROOT + '/kernel64.img'], forth_stdin),
-    ('relf, C engine', lambda w: [ROOT + '/relf64', ROOT + '/kernel64.img'], forth_stdin),
+    ('relf, assembly engine', lambda w: [ROOT + '/relfasm64', ROOT + '/forth/kernel64.img'], forth_stdin),
+    ('relf, C engine', lambda w: [ROOT + '/relf64', ROOT + '/forth/kernel64.img'], forth_stdin),
     ('gforth-fast 0.7.3', lambda w: ['gforth-fast', 'bench.4', '-e', FWORD.get(w, w.upper()) + ' . bye'], None),
     ('gforth 0.7.3', lambda w: ['gforth', 'bench.4', '-e', FWORD.get(w, w.upper()) + ' . bye'], None),
     ('pforth 2.0.1', lambda w: ['pforth', '-q'], forth_stdin),

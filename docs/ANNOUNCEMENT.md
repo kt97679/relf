@@ -325,3 +325,14 @@ working first, explain after. And one naming rule, applied through
 the text: relfsh is the shell, RelF the Forth; file and program names
 (relf64, relfasm64, the relf directory) stay as they are.
 
+Speed, measured again for the article's tables (September 27, 2026,
+one core of an Intel Xeon at 2.1 GHz). The shell, tools/bench-vm.py,
+CPU time against dash, ten rounds: relfsh 20 to 28 times slower on the
+five workloads (asm engine 20-27, C engine 21-28), starting in 0.56 of
+dash's time. The Forth, bench/langs/run.py: RelF 2.0-2.4 times faster
+than pforth, Python and Ruby; 1.5-1.7 times SLOWER than gforth - the
+earlier summary "in gforth's class" was too kind, and is gone; 11-14
+times slower than C and Go. bench/langs/run.py had looked for
+kernel64.img at the top level since 555's restructure moved it to
+forth/ - RelF printed nothing, the run said so; fixed.
+

@@ -138,13 +138,47 @@ Memory, measured with tools/mem-profile.py (kB):
 Resident, relfsh on its own engine is the smallest by far - it maps no C
 library. Counting only private memory, dash uses half of relfsh's.
 
-Speed, honestly: relfsh starts faster than dash (287 microseconds against
-748), but runs script-heavy work roughly 30 times slower - it is a
-bytecode interpreter, and dash is C. As a Forth, on seven benchmarks
-against C, Go, Python, Ruby, gforth and pforth, RelF is in
-gforth's class, 2.2 to 2.6 times faster than pforth, Ruby and Python, and about
-12 times slower than C and Go (bench/langs; the shell figures from
-Iteration 534, the Forth ones from 543).
+Speed, honestly. The shell first: CPU time as a ratio to dash, the
+median of ten rounds in which every shell ran every workload
+(tools/bench-vm.py). The first row is dash's own time.
+
+| CPU time, times dash | loop | fn | str | arith | realistic | start |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| dash, in ms | 4.1 | 2.6 | 2.8 | 3.0 | 3.4 | 1.4 |
+| busybox ash | 1.1 | 1.2 | 1.1 | 1.3 | 1.3 | 0.93 |
+| bash | 2.1 | 2.4 | 2.2 | 2.4 | 2.8 | 1.3 |
+| relfsh, asm engine | 25 | 22 | 20 | 27 | 27 | 0.56 |
+| relfsh, C engine | 26 | 23 | 21 | 28 | 28 | 1.1 |
+
+The workloads: loop is 2,000 rounds of test and increment; fn, 600
+function calls; str, 400 rounds of `${s##*/}`, `${s%/*}` and `case`;
+arith, 700 steps of a modular Fibonacci; realistic, option parsing,
+trims, `case`, arithmetic and `set --`, 300 rounds; start, one `sh -c
+true`. relfsh starts in just over half of dash's time, but runs scripts
+20 to 28 times slower - it is a bytecode interpreter, and dash is C.
+
+Then RelF as a Forth: seven small programs, the same Forth text for all
+three Forths, the same algorithms in C, Go, Python and Ruby
+(bench/langs/run.py). Milliseconds, best of three, the process's start
+included; every result checked against C's. The last column is the
+geometric mean of the ratios to RelF.
+
+| ms | fib | loop | sieve | bubble | matrix | fannkuch | collatz | vs RelF |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C (gcc -O2) | 5 | 12 | 27 | 21 | 3 | 35 | 21 | 0.07 |
+| Go | 16 | 24 | 30 | 8 | 6 | 25 | 30 | 0.09 |
+| gforth-fast 0.7.3 | 67 | 102 | 117 | 81 | 91 | 262 | 168 | 0.60 |
+| gforth 0.7.3 | 71 | 90 | 148 | 109 | 93 | 372 | 175 | 0.68 |
+| RelF, asm engine | 67 | 123 | 519 | 106 | 165 | 470 | 253 | 1.00 |
+| RelF, C engine | 69 | 110 | 620 | 134 | 201 | 420 | 282 | 1.08 |
+| pforth 2.0.1 | 174 | 204 | 463 | 326 | 410 | 1,299 | 467 | 2.04 |
+| Python 3.12 | 244 | 967 | 558 | 307 | 187 | 506 | 586 | 2.20 |
+| Ruby 3.2 | 228 | 736 | 533 | 423 | 198 | 976 | 500 | 2.36 |
+
+RelF is 2.0 to 2.4 times faster than pforth, Python and Ruby, 1.5 to 1.7
+times slower than gforth, and 11 to 14 times slower than C and Go; its
+weakest case is byte memory, the sieve. Both tables were measured on
+September 27, 2026, on one core of an Intel Xeon at 2.1 GHz.
 
 ## How it is tested
 
