@@ -122,7 +122,7 @@ to have assembled `push`, `pop` and `xchg` with a memory operand as
 register instructions, silently. Fixed; the random check now runs with
 every verification. The nearest prior art I know is Lars Brinkhoff's
 lbForth, a self-hosting metacompiled Forth bootstrapped from a few
-lines of C. [author: other prior art to name?]
+lines of C.
 
 ## Numbers
 
@@ -220,7 +220,7 @@ included, is docs/PROGRESS.md.
 
 ## Try it
 
-    git clone [author: the repository's URL]
+    git clone https://github.com/kt97679/relf
     cd relf && make
     ./relfsh
     make verify            # every suite; takes a few minutes
