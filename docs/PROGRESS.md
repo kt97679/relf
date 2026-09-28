@@ -573,6 +573,7 @@ do not trust the absence of a line below.
 - **575** — the line editor works in characters: UTF-8 text moves, deletes and counts columns as characters, Cyrillic words are words (4 pty cases)
 - **576** — measured again, as the reviews asked: a static musl dash is as small as relfsh and starts faster; at a size where startup does not dominate, scripts run 41-59x slower than dash, not 20-28x
 - **577** — tools/bench-report.sh: the article's numbers on any machine, into one report; the benchmarks skip what is not installed
+- **578** — the articles corrected, both: calls base-relative, what a trap does and does not catch, the fuzzer's 173 set aside, the opcode question's prior art, authorship, the static dash, sizes; the README's sizes
 
 ### Not tied to an iteration
 
@@ -26912,4 +26913,33 @@ ratio column is to the assembly engine where there is one. Reading the
 versions found one written wrong: pforth calls itself V2.0.0, where the
 label - and the article after it - said 2.0.1. A trial run here, small,
 went through every section.
+
+## Iteration 578: the articles corrected
+
+fury and rage verified 577; fury's report came (an AMD Ryzen 7 PRO
+8840HS - but no gforth, pforth, Ruby or musl-gcc: the user will install
+them and run it again, so the tables wait for one machine's numbers).
+
+Everything that does not depend on those tables went into both articles,
+in the Docs and their copies here: calls are relative to the image's
+start, not to the call site - the kernel's first 9,824 bytes make every
+call to it two bytes (570's wording was wrong); a trap stops what the
+system detects, and a store into the shell's own memory can still bring
+it down, as a faulty loadable builtin brings down bash; the fuzzer's
+1,000 programs: 827 where dash and bash agree, 173 set aside, and yash's
+9 differences were legitimate; the closing question names Gforth and
+Proebsting's superoperators, and asks what criterion suits a shell;
+almost all of the code - some 650 commits - is Claude's, the decisions
+thirty-two; POSIX sh's extension is external programs, where bash, ksh93
+and zsh load builtins in C; initramfs beside what busybox brings, and a
+static shell as small as a static dash; random instructions agree with
+GNU as byte for byte or by an equivalent encoding; floating point in
+"what it is not"; UTC wherever it runs; DO-SEQ shown - the whole builtin
+interface - and the $ENV file named; the demo's `forth '2 3 + . CR'`;
+44 pty sessions, 1,042 assertions in 91 files; 137,612 and 15,592
+bytes. The Russian sod32 link is dead and no living copy was found: the
+name stays unlinked, and Lennart Benschop's links to his GitHub. The
+README's sizes were old (15,440 and 134,948). One slip on the way: the
+Doc carried the italic of *relative* over the text replacing it; the
+bullet was replaced whole in both.
 
