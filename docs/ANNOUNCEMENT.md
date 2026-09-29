@@ -644,3 +644,56 @@ the author's request.
     proposed text (Russian for the Habr article, English for ForthHub), and
     a severity (error / should fix / suggestion). Write the findings
     themselves in English.
+
+## After the ninth review (Iterations 589-590)
+
+The review ran the prompt above in a separate chat; it built the branch,
+ran `make verify` on a fresh clone and tried what the text claims. Its
+findings, by its numbers, and what became of them:
+
+- #1, error: one forth command with 19 DROPs, or 20 dots, still ended
+  the shell with 70; `forth 'DEPTH .'` printed 21. 586 had tested a big
+  underflow only inside a colon definition. The review found the cause
+  and a fix, taken in 589 (the old S0 kept on the return stack): S0 is
+  the command's own stack while it runs, so ?STACK stops the first cell
+  too many and DEPTH starts at 0. The articles' caveat - a word that
+  takes more than 16 cells and then pushes - is now exact as written.
+- #2, error, mine from 588: "those scripts, each rewritten" followed the
+  random programs; the item now follows the vote and names the 131.
+- #3: the English busybox clause, left behind in 588, now matches.
+- #4: "25 times their original size" - "sized so that".
+- #5: why slower - an interpreter that itself runs on a bytecode VM,
+  against an interpreter in C.
+- #6: "0.8 ns, where it was measured" - dropped: PROGRESS derives it
+  from 400 million dispatches in 0.32 s but does not name the machine.
+- #7: the Russian error paragraph rewritten (no «приводит к неудаче»).
+- #8: the vote - bash, yash and mksh in POSIX mode (tools/parliament.py),
+  not dash, which has none; the 19 splits are extensions, POSIX.1-2024
+  additions such as $'...', and what the standard leaves open (558).
+- #9, #10: the fuzzing item simplified; the signal storms as tested - a
+  signal every 2 ms, the trap ran for each, every sum exact (563).
+- #11, in part: «Чего здесь нет:», «Защита — ...», the sentence that
+  repeated the Forth table's last column. The story's "two weaknesses"
+  arc stays: the author's.
+- #12: "escaped primitives", a term used nowhere else, dropped; the CORE
+  claim no longer repeats "not a complete Forth 2012".
+- #13: fury's busybox is the static build - its mem-profile row, which
+  the user pasted at 585, has no C library and no loader. So 7-13 times
+  less than the dynamically linked dash and bash, almost 4 times less
+  than the static busybox; busybox labelled static in both tables and
+  the list of versions; and private memory said honestly: relfsh on its
+  own engine has almost twice dash's.
+- #14: gcc-multilib on x86-64 only; the $ENV line needs seq.4's full
+  path; the closing question says the one-byte opcodes are single
+  primitives and that superinstructions were tried and removed (536).
+- The addendum: "on x86-64" for "one static file"; the bench-report
+  sentence. "Each change on three machines": the user - make verify on
+  a ThinkPad P14s Gen 5 (AMD Ryzen 7 PRO 8840HS) and an ARMv7 Tegra
+  board, per iteration; the third x86-64 is Claude's own environment,
+  where tests/verify runs before each commit. Said so, both, without
+  host names.
+- Kept: the kernel's ?STACK reports -2 through ABORT", not -4.
+
+The numbers 589 changed, in both: the shell 138,068 bytes, 1,067
+assertions (fury counts one fewer, run-ulimit's skip). The engine is
+unchanged, 15,696.
