@@ -1,12 +1,12 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: one static file of 137,844 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth. This is why it exists, how it is built, and how we know it works.
+relfsh is a POSIX shell written in Forth: one static file of 138,052 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth. This is why it exists, how it is built, and how we know it works.
 
 ## Why
 
 I have long been a fan of Forth. What fascinates me most is that one person can bring up a working Forth on a new platform in a few days—the whole system, compiler included, small enough for one mind to hold.
 
-In the 1990s I came across SOD32, [Lennart Benschop](https://github.com/lennart-benschop)'s Forth: a small virtual machine running a machine-independent image. I found it beautiful. It had two weaknesses—the limits built into its design, and its speed—and RelF, Relative Forth, began as my attempt to fix them. It worked, but the gain in speed was modest, and after a while I put it aside.
+In the 1990s I came across [SOD32](https://github.com/lennart-benschop/sod32), [Lennart Benschop](https://github.com/lennart-benschop)'s Forth: a small virtual machine running a machine-independent image. I found it beautiful. It had two weaknesses—the limits built into its design, and its speed—and RelF, Relative Forth, began as my attempt to fix them. It worked, but the gain in speed was modest, and after a while I put it aside.
 
 Meanwhile another thought kept coming back: the shell is an underrated tool. Most of the glue in our systems—the code that connects programs, files and processes—is exactly what the shell is good at. Written in Python instead, glue grows longer, and every extra line is another place for a mistake. But the POSIX shell has two weaknesses of its own: it can be extended only with external programs—bash, ksh93 and zsh can load builtins, but written in C against their own headers—and it offers almost nothing in the way of data structures.
 
@@ -21,6 +21,8 @@ $ ./relfshasm64
 $ forth '2 3 + . CR'
 5
 $ forth 'S" examples/seq.4" INCLUDED'
+$ type seq
+seq is a shell builtin
 $ seq 1 3 | while read n; do echo "line $n"; done
 line 1
 line 2
@@ -40,7 +42,7 @@ Here is `seq` itself, less the two lines of `SEQ-NUM` that read a decimal number
 ' DO-SEQ S" seq" BUILTIN
 ```
 
-A Forth error in such code fails that one command, as any builtin's failure does: `$?` is 1, the message goes to standard error, the shell goes on—and so do a word that leaves the stack deeper or shallower than it found it, which the shell puts back, and a division by zero or an address outside the shell's memory, which the engine turns from the CPU's trap into a Forth THROW. But there is no isolation: a store into the shell's own memory, or a word that takes more than 16 cells from the stack, can bring it down, as a faulty loadable builtin can bring down bash.
+A Forth error in such code fails that one command, as a regular builtin's failure does: `$?` is 1, the message goes to standard error, and the shell goes on. The same holds for a word that leaves the stack deeper or shallower than it found it, which the shell puts back; for a stack overflow, a runaway recursion say; and for a division by zero or an address outside the shell's memory, which the engine turns from the CPU's trap into a Forth THROW. But there is no isolation: a store into the shell's own memory—a word that takes more than 16 cells from the stack and then pushes again is one—can bring it down, as a faulty loadable builtin can bring down bash.
 
 ## Who it is for
 
@@ -49,7 +51,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 ## What it is
 
 ```
-./relfshasm64 - one static file, 137,844 bytes
+./relfshasm64 - one static file, 138,052 bytes
 +------------------------------------------------+
 | the shell: parser, executor, line editor       |
 |   shell.4  tree.4  edit.4          (Forth)     |
@@ -57,7 +59,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 | the Forth: kernel, compiler, extensions        |
 |   kernel.4  extend.4  ...          (Forth)     |
 +------------------------------------------------+
-| the engine: 15,592 bytes of x86-64, no libc    |
+| the engine: 15,696 bytes of x86-64, no libc    |
 |   or a C engine, anywhere a C compiler is      |
 +------------------------------------------------+
 ```
@@ -66,7 +68,7 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
 
 ## The Forth underneath
 
-- **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector (RelF calls these "escaped primitives"). Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,824 bytes, so every call into it is two bytes.
+- **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector (RelF calls these "escaped primitives"). Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,544 bytes, so every call into it is two bytes.
 - **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every supported machine of its width.
 - **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. gforth 0.7.3, running the same cross-compiler, produces the same bytes too. That is a check in the spirit of [diverse double-compiling](https://arxiv.org/abs/1004.5534), which David A. Wheeler formalised (the idea goes back to Henry Spencer) as a defence against the attack Ken Thompson described in "Reflections on Trusting Trust". It covers the kernel: the rest of the image and the assembly engine are built by RelF itself, the C engine by a C compiler.
 - **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/article-2026/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed; it does not claim the other word sets, and the missing words can be defined with the `forth` builtin.
@@ -78,7 +80,7 @@ engine/cv8.c --cc--> relf64 (the C engine, once)
                         |
 kernel.4 + cross.4 -----+--> kernel64.img  (reproduces)
                         |
-relfasm64.4 + asm64.4 --+--> relfasm64     (15,592 bytes)
+relfasm64.4 + asm64.4 --+--> relfasm64     (15,696 bytes)
                             |
 relfasm64.4, again ---------+--> relfasm64 (the same bytes)
 ```
@@ -90,11 +92,11 @@ rax [ rbx 8 ] mov,       \ mov rax, [rbx+8]
 r12 [ r13 ] mov,         \ mov r12, [r13]
 ```
 
-The C engine, built once, runs the assembler; the engine that comes out assembles itself again, to the same 15,592 bytes. The assembler is held to GNU as's bytes on the 456 instruction shapes the engine uses, and, on random instructions of every form it offers, to the same bytes or an equivalent encoding. The assembler is small and knows only what the engine needs; anything else it refuses rather than misassembles.
+The C engine, built once, runs the assembler; the engine that comes out assembles itself again, to the same 15,696 bytes. The assembler is held to GNU as's bytes on the 456 instruction shapes the engine uses, and, on random instructions of every form it offers, to the same bytes or an equivalent encoding. The assembler is small and knows only what the engine needs; anything else it refuses rather than misassembles.
 
 The random check found a bug on its first run: `push`, `pop` and `xchg` with a memory operand had been assembled as their register forms—silently. Fixed; the random check now runs with every verification.
 
-The nearest prior art I know is Lars Brinkhoff's [lbForth](https://github.com/larsbrinkhoff/lbForth), a self-hosting metacompiled Forth bootstrapped from a few lines of C.
+The nearest prior art I know is Lars Brinkhoff's [lbForth](https://github.com/larsbrinkhoff/lbForth), a self-hosting metacompiled Forth bootstrapped from a few lines of C. SP-Forth also builds itself from its own sources, with an assembler written in Forth, but it compiles to x86 machine code, where RelF compiles to a portable bytecode with a separate engine.
 
 ## Numbers
 
@@ -112,9 +114,9 @@ relfsh, C engine           1564        400
 bash                       2808        292
 ```
 
-Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 4 to 13 times less resident memory than the dynamically linked shells, close to a static dash, which is smaller still. Private memory is what each copy adds, and there dash is the smallest. relfsh's file is 137,844 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
+Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 4 to 13 times less resident memory than the dynamically linked shells, close to a static dash, which is smaller still. Private memory is what each copy adds, and there dash is the smallest. relfsh's file is 138,052 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
 
-Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are 25 times their original size, so that dash's own start (1.7 ms) is at most a tenth of its time: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
+Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are 25 times their original size, so that dash's own start (1.7 ms) is at most a tenth of dash's time on each: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
 
 | CPU time relative to dash | loop | fn | str | arith | realistic | start |
 | --- | --: | --: | --: | --: | --: | --: |
@@ -125,7 +127,7 @@ Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the me
 | relfsh, asm engine | 31× | 37× | 29× | 41× | 40× | 0.98× |
 | relfsh, C engine | 32× | 39× | 30× | 41× | 42× | 1.2× |
 
-relfsh runs scripts 29 to 42 times slower than dash—it is a bytecode interpreter, and dash is C—and starts in about the same time. A static dash starts faster still, but runs scripts slower than the usual one: it is built with -Os and musl, and it is here for memory and start. The assembly engine is barely faster at scripts than the C one, by 0 to 5%: both are held to the rate at which the CPU takes one indirect jump after another, about 0.8 ns a dispatch where it was measured, and the point of the assembly engine is having no C library. On the Forth programs below the difference is larger, about 15%, though matrix and fannkuch run faster on C.
+relfsh runs scripts 29 to 42 times slower than dash—it is a bytecode interpreter, and dash is C—and starts in about the same time. A static dash starts faster still, but runs scripts slower than the usual one: it is built with -Os and musl, and it is here for memory and start. The assembly engine is barely faster at scripts than the C one, by 0 to 5%: both are held to the rate at which the CPU takes one indirect jump after another, about 0.8 ns a dispatch where it was measured, and the point of the assembly engine is having no C library. On the Forth programs below the difference is larger, about 15%, though matrix and fannkuch run faster on the C engine.
 
 Then RelF as a Forth: seven small programs, the same Forth text for all three Forths, the same algorithms in C, Go, Python and Ruby ([bench/langs/run.py](https://github.com/kt97679/relf/blob/article-2026/bench/langs/run.py)). Milliseconds, best of three, the process's start included; every result checked against C's. The last column is the geometric mean of the ratios to RelF, from the unrounded times.
 
@@ -147,12 +149,12 @@ RelF is 1.75 times faster than pforth, 2.3 times than Ruby and 3 times than Pyth
 
 - CORE: 2,136 checks, the same output from both engines.
 - The shell:
-  - 1,056 assertions in 91 files;
+  - 1,063 assertions in 91 files;
   - 132 cases compared with bash;
-  - 421 cases of small constructs, each run in every context—after `;` and `&&`, inside a function, a loop, an `if`, a subshell or a command substitution, piped, redirected, in the background—and compared with bash and dash;
+  - 422 cases of small constructs, each run in every context—after `;` and `&&`, inside a function, a loop, an `if`, a subshell or a command substitution, piped, redirected, in the background—and compared with bash and dash (one, where the two disagree, is not scored);
   - 48 POSIX cases, scored only where every reference shell agrees;
   - the test suite of [mrsh](https://github.com/emersion/mrsh), another small POSIX shell;
-  - 44 sessions through a pseudo-terminal, for the line editor and job control;
+  - 45 sessions through a pseudo-terminal, for the line editor and job control (one a known difference from dash: when a finished job is reported);
   - the POSIX standard's own examples, 64 of them, with the results its text states.
 - Beyond the suites:
   - 131 comparison scripts (the 132nd came later) put to seven other shells—dash, bash and yash in POSIX mode, posh, mksh, ksh93 and busybox ash: where at least five of them agree, relfsh agrees too, on all 112 such scripts, and the 19 where they split mark room the standard leaves;

@@ -27126,3 +27126,18 @@ thirty-two decisions - written up. ASM-ENGINE.md and CV8.md still said
 16 MB (A17 made it 4) and promised relfasm64 guard pages it did not
 have; corrected. A26 extended. examples/README.md and the comments in
 DO-FORTH and RUN-CAUGHT list what fails its command now.
+
+## Iteration 587: the eighth review in both articles
+
+The text half of 586: stack overflow among what fails its command, the
+caveat narrowed to stores; the numbers 586 changed (138,052 bytes, the
+engine 15,696, 1,063 assertions); the kernel's 9,544 bytes - 9,824 was
+the file with its header; totals, not passes (422, 45, 48); `type seq`
+in the demo; SP-Forth and SOD32's repository; the Russian fixes the
+review listed. The Habr Doc at rev 159, the ForthHub one at 167; the
+copies are their exports again, less the byline. ANNOUNCEMENT.md has
+each finding and what became of it. The README's two sizes too.
+
+Checked: every changed line of the Russian copy read through; the
+diagram's box still closes (the engine line is eight characters
+shorter, padded).
