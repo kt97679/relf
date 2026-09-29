@@ -14,6 +14,7 @@ for its own. A path is relative to the current directory.
 | file | what it adds |
 |---|---|
 | `seq.4` | `seq FIRST LAST`, a builtin: the smallest complete example of one |
+| `map.4` | `map set KEY VALUE`, `map get KEY`, `map keys`: an associative array - the data structure a POSIX shell has none of |
 | `prompt-command.4` | bash's `PROMPT_COMMAND`: a hook run before every prompt |
 | `tcp-echo.4` | `tcp-echo PORT`, a TCP echo server |
 | `http-hello.4` | `http-hello PORT`, an HTTP server answering with a counter |

@@ -1,0 +1,48 @@
+\ map.4 - an associative array as a builtin, in Forth (Iteration 580):
+\ the data structure a POSIX shell has none of. Load it, then use it:
+\     forth 'S" examples/map.4" INCLUDED'
+\     map set colour red; map set shape square
+\     map get colour            # red; status 1 for a key never set
+\     map keys                  # colour, shape - in the order first set
+\ Entries are heap cells, [next][key][value]; each string a heap copy.
+
+VARIABLE MAP-HEAD
+
+: MAP-STR ( c-addr --- a )   \ a heap copy of a NUL-terminated string
+  DUP CSTRLEN 1+ DUP ALLOCATE DROP DUP >R SWAP MOVE R> ;
+
+: MAP-FIND ( key --- entry | 0 )
+  >R MAP-HEAD @
+  BEGIN DUP WHILE
+    DUP CELL+ @ DUP CSTRLEN R@ STR0= IF R> DROP EXIT THEN
+    @
+  REPEAT R> DROP ;
+
+: MAP-LAST ( --- a-addr )   \ the link a new entry goes into
+  MAP-HEAD BEGIN DUP @ WHILE @ REPEAT ;
+
+: MAP-SET ( key value --- )
+  OVER MAP-FIND ?DUP IF                 ( key value entry )
+    DUP 2 CELLS + @ FREE DROP           \ the old value goes
+    SWAP MAP-STR SWAP 2 CELLS + !  DROP EXIT
+  THEN
+  3 CELLS ALLOCATE DROP >R
+  MAP-STR R@ 2 CELLS + !  MAP-STR R@ CELL+ !  0 R@ !
+  R> MAP-LAST ! ;
+
+: MAP-USAGE ( --- )
+  S" usage: map set KEY VALUE | map get KEY | map keys" ERR-TYPE ERR-NL
+  2 LAST-STATUS ! ;
+
+: DO-MAP ( --- )
+  ARGC @ 4 = IF S" set" 1 ARGV@ STR0= IF
+    2 ARGV@ 3 ARGV@ MAP-SET  0 LAST-STATUS ! EXIT THEN THEN
+  ARGC @ 3 = IF S" get" 1 ARGV@ STR0= IF
+    2 ARGV@ MAP-FIND ?DUP IF 2 CELLS + @ DUP CSTRLEN TYPE CR 0 ELSE 1 THEN
+    LAST-STATUS ! EXIT THEN THEN
+  ARGC @ 2 = IF S" keys" 1 ARGV@ STR0= IF
+    MAP-HEAD @ BEGIN ?DUP WHILE DUP CELL+ @ DUP CSTRLEN TYPE CR @ REPEAT
+    0 LAST-STATUS ! EXIT THEN THEN
+  MAP-USAGE ;
+
+' DO-MAP S" map" BUILTIN

@@ -575,6 +575,7 @@ do not trust the absence of a line below.
 - **577** — tools/bench-report.sh: the article's numbers on any machine, into one report; the benchmarks skip what is not installed
 - **578** — the articles corrected, both: calls base-relative, what a trap does and does not catch, the fuzzer's 173 set aside, the opcode question's prior art, authorship, the static dash, sizes; the README's sizes
 - **579** — the numbers section, both articles, from fury's full report: a named CPU, the static dash, workloads 25 times larger, every Forth and language; Z3 re-modelled with unsigned backward calls
+- **580** — examples/map.4, an associative array as a builtin; the testing list explained (the matrix's contexts, the parliament's seven shells and majority, mutation testing's 20 of 30); about 210 kB
 
 ### Not tied to an iteration
 
@@ -26969,4 +26970,27 @@ the user saw that a Forth word calls only what is defined before it, so
 the distance back needs no sign either: 1,365 B saved, not 0.7 KB. The
 same speed either way (one lea, one sub); a hybrid would take a bit from
 the offset - there is no spare one - for 420 B more. Recorded, not done.
+
+## Iteration 580: a data structure, and the testing list explained
+
+What the reviews asked that was left. "Who it is for" said builtins in
+Forth could supply the data structures a shell lacks, and showed none -
+seq is not one. examples/map.4 is: `map set KEY VALUE`, `map get KEY`,
+`map keys`, an associative array in 33 lines of Forth (48 with its
+comments) - entries on the heap, [next][key][value], each string a heap
+copy; set again replaces the value; keys in the order first set; a key
+never set is status 1, a wrong use prints the usage with 2. Four checks
+in tests/shell/run-examples, on all three builds; examples/README.md
+lists it; both articles point at it.
+
+The testing list named what it did not explain. The matrix: small
+constructs, each wrapped in every context - after `;` and `&&`, in a
+function, a loop, an if, a subshell or a command substitution, piped,
+redirected, in the background - 421 cases, compared with bash and dash.
+The parliament: seven other shells (dash, bash and yash in POSIX mode,
+posh, mksh, ksh93, busybox ash); a strong majority is five; relfsh is
+with it on all 112 scripts that have one, and the 19 splits mark room
+the standard leaves. Mutation testing: of 30 changes planted in the
+compiled image the tests catch 20; the other 10 change nothing visible.
+And the opening says about 210 kB, fury's 212. 1,046 assertions.
 

@@ -37,4 +37,15 @@ print(r.status, r.read().decode().strip())
     assert_output_contains "tcp-echo.4: the bytes come back" "ping" "$out"
     assert_output_contains "http-hello.4: an HTTP answer, counted" "200 Hello from a shell written in Forth. This is request 1." "$out"
 fi
+# map.4 (Iteration 580): an associative array as a builtin - the data
+# structure the articles say a builtin can supply.
+M="forth 'S\" $EX/map.4\" INCLUDED'"
+out=$("$THIS_SH" -c "$M ; map set colour red; map set colour blue; map get colour" 2>&1)
+assert_output_equals "map.4: set, set again, get" "blue" "$out"
+out=$("$THIS_SH" -c "$M ; map set colour red; map set shape square; map set colour blue; map keys | tr '\\n' ' '" 2>&1)
+assert_output_equals "... keys, in the order first set" "colour shape " "$out"
+out=$("$THIS_SH" -c "$M ; map get size; echo \"st=\$?\"" 2>&1)
+assert_output_equals "... a key never set: status 1" "st=1" "$out"
+out=$("$THIS_SH" -c "$M ; map set 'two words' 'a b  c'; map get 'two words'" 2>&1)
+assert_output_equals "... keys and values keep their blanks" "a b  c" "$out"
 report

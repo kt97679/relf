@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: one static file of 137,612 bytes that takes about 200 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth. This is why it exists, how it is built, and how we know it works.
+relfsh is a POSIX shell written in Forth: one static file of 137,612 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth. This is why it exists, how it is built, and how we know it works.
 
 ## Why
 
@@ -40,7 +40,7 @@ Here is `seq` itself, less the two lines of `SEQ-NUM` that read a decimal number
 
 ## Who it is for
 
-Beyond people who like Forth, I see three uses. Minimal environments: on x86-64, a static shell without libc, near a static dash in memory but extensible in place, could serve in an initramfs—beside the tools busybox would otherwise bring—or in a container with no base image. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
+Beyond people who like Forth, I see three uses. Minimal environments: on x86-64, a static shell without libc, near a static dash in memory but extensible in place, could serve in an initramfs—beside the tools busybox would otherwise bring—or in a container with no base image. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process—[examples/map.4](https://github.com/kt97679/relf/blob/master/examples/map.4) is an associative array, `map set KEY VALUE`, `map get KEY` and `map keys`, in 33 lines of Forth. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
 
 ## What it is
 
@@ -133,18 +133,18 @@ RelF is 1.75 times faster than pforth, 2.3 times than Ruby and 3 times than Pyth
 
 - CORE: 2,136 checks, the same output from both engines.
 - The shell:
-  - 1,042 assertions in 91 files;
+  - 1,046 assertions in 91 files;
   - 132 cases compared with bash;
-  - 421 constructs in every context, against bash and dash;
+  - 421 cases of small constructs, each run in every context—after `;` and `&&`, inside a function, a loop, an `if`, a subshell or a command substitution, piped, redirected, in the background—and compared with bash and dash;
   - 48 POSIX cases, scored only where every reference shell agrees;
   - the test suite of [mrsh](https://github.com/emersion/mrsh), another small POSIX shell;
   - 44 sessions through a pseudo-terminal, for the line editor and job control;
   - the POSIX standard's own examples, 64 of them, with the results its text states.
 - Beyond the suites:
-  - seven shells voting on 131 scripts—relfsh is with every strong majority;
+  - 131 scripts put to seven other shells—dash, bash and yash in POSIX mode, posh, mksh, ksh93 and busybox ash: where at least five of them agree, relfsh agrees too, on all 112 such scripts, and the 19 where they split mark room the standard leaves;
   - 1,000 random programs from a grammar-based generator, [tools/shfuzz.py](https://github.com/kt97679/relf/blob/master/tools/shfuzz.py): where dash and bash agree—827 of them; the other 173 are set aside—relfsh agrees with them too, and with yash in relfsh's place the same generator finds 9 differences in 150 programs, legitimate ones (yash's `echo` and arithmetic), so it can find them;
   - the 131 comparison scripts, each rewritten in up to nine ways that must not change its output (1,170 variants);
-  - mutation testing on the compiled image;
+  - mutation testing on the compiled image: of 30 changes planted in it, the tests catch 20, and the other 10 change nothing visible;
   - the test harness run by relfsh itself;
   - signal storms, where each trap ran once for every signal sent;
   - real scripts: zlib's configure runs as it does under dash, and ncurses's—32,301 lines of Autoconf—writes 1,041 files, 1,040 of them identical to dash's; in the last one, config.status, only the two lines differ where Autoconf recorded how each shell's `echo` omits a newline.
