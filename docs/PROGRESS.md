@@ -27047,3 +27047,36 @@ rows and posh's inconclusive case as the project's.
 
 A fix the articles need updating for: 137,612 bytes and 1,046
 assertions become 137,844 and 1,056 - Iteration 583.
+
+## Iteration 583: the seventh review, in both articles
+
+The review's findings (ANNOUNCEMENT.md lists each and what became of it)
+in both Docs - the Habr one at rev 134, the ForthHub one at 150 - and
+here. The numbers 582 changed: 137,844 bytes (the articles three times
+each, and the README), 1,056 assertions. What the text said that was
+not so: `make test` runs every suite (it runs the main ones; `make
+verify` runs every suite); every suite runs on both engines (named now:
+CORE, the shell suite, the comparison with bash, the pty sessions); the
+assembly engine no faster (0-5% on scripts, 15% on the Forth programs);
+seq a dozen lines (eight); $ENV at every start (interactive shells
+only); "on any machine with one command"; DDC as Wheeler's proposal (his
+dissertation credits Henry Spencer, 1998) and without its scope (the
+kernel). What it left unsaid: the static dash's -Os, dash's start still
+a tenth, the ratios from unrounded times, the assembler's deliberate
+limits, gforth's age - 2014, which ANNOUNCEMENT.md had as 2008. A Forth
+primer, two sentences, in the Habr text only. The Russian's clear
+errors; its matters of taste left to the author.
+
+The sizes I compared after Iteration 581 were a coincidence, not a
+check: the Russian copy and its Doc were 28,511 and 28,512 bytes, but
+differed by a byline, three fences and the tables' alignment, which
+happened to cancel; the English copy had a broken fence - the rest of a
+section rendered as code on GitHub - and I called it in sync. The
+contents did agree, the diff shows. Now the copies are the exports: the
+Docs connector saves a tab's markdown as a file of the Doc, the
+Artifact tool reads that file into the container, and the copy is it
+less the byline. Exact, and the same every time.
+
+Checked by rereading each changed passage in both copies. The branch
+article-2026 moves to this commit with master: master has taken
+nothing the articles do not describe since 581.

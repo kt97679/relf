@@ -147,7 +147,8 @@ Needs: gcc, Go, Python 3, Ruby, gforth, pforth, dash, bash, busybox.
 ## Caveats to state in the article
 
 - One machine for speed and memory; say which, and re-measure there.
-- gforth 0.7.3 is from 2008; newer gforth is faster - compare with it.
+- gforth 0.7.3 is from 2014 (14 June; 0.7.0 was 2008 - this line said
+  2008 until the seventh review, Iteration 583); newer gforth is faster.
 - "relf beats Python and Ruby" is on these seven small programs; the
   shell's scripts, by contrast, are ~30x slower than dash.
 - Resident memory counts shared C-library pages in every process; the
@@ -412,3 +413,70 @@ start 0.53 of dash's, where a static dash takes 0.45. The article's
 tables and sentences need these numbers - and a named CPU (fury) would
 be better than the container's masked one.
 
+## After the seventh review (Iterations 582-583)
+
+The Habr article, reviewed in a separate chat - blind first, then
+against this file and QUESTIONS.md; it built the branch, ran the demo,
+`make test` and `make verify`, and tested in a pseudo-terminal. Its
+findings, by the review's numbers, and what became of them:
+
+- #1, an unbalanced stack killed the shell (`forth '1 2 3'`, `forth
+  'DROP'` - silently on relfasm64), where the article said a Forth error
+  fails its command only. The user: fix it. Iteration 582, RUN-CAUGHT:
+  the stack put back, "stack changed by N cells", status 1, 16 padding
+  cells; both articles now name the check and what is still unsafe (a
+  store into the shell's memory, more than 16 cells taken).
+- #2, `make test` does not run every suite: it runs CORE and the shell
+  suite at both widths and the comparison with bash; `make verify` runs
+  every suite. Said so, both. And `make verify` failed on a clone made
+  as Try it says - no local master: fixed in 582.
+- #3, "every suite runs on both engines": what both engines share, named.
+- #4, DDC's scope: the kernel only - the rest RelF builds, the C engine
+  a C compiler. Added, both; and who proposed DDC - Henry Spencer, 1998,
+  as Wheeler's dissertation says; Wheeler formalised it. Rewritten, both.
+- #5, examples/README.md still said "no isolation, an error aborts the
+  shell", from before A24. Rewritten in 582.
+- #6, the static dash is built with -Os: said, both, and why it is slower
+  at scripts - it is in the table for memory and start.
+- #7, "on any machine, one command": what bench-report.sh needs is at its
+  top, and what is missing is skipped. Both.
+- #8, the assembly engine "no faster" beside a Forth table where it is
+  15% faster: 0-5% on scripts, about 15% on the Forth programs, matrix
+  and fannkuch faster on C. Both.
+- #9, seq is eight lines of code, not a dozen; map's 33 are without
+  comments. Both.
+- #10, 131 and 132: the parliament and the rewrites ran over 131 scripts,
+  the 132nd came later. Both.
+- #11, Backspace and Cyrillic: withdrawn by the reviewer - it works.
+- #12, $ENV is read by interactive shells only (POSIX): both.
+- #13, a Forth primer for readers who do not know Forth: two sentences,
+  Habr only - ForthHub's readers know it.
+- #14, "the whole stack" reads as the data stack: "chain", both.
+- #15, «15592 байта». #16, the English copy's broken fence and "here-
+  documents": the copies are the Docs' exports now (below).
+- #17, «далеко впереди»: 4 to 13 times less resident memory. Both.
+- #18, dash's start still weighs (1.7 ms, 5-9%): "at most a tenth". Both.
+- #19, the ratios from the rounded table differ by 0.01: "from the
+  unrounded times"; C and Go 16 to 17 times. Both.
+- #20, mutation testing: random opcode swaps out of 3,699 sites, one of
+  the 20 caught only after a test was added. Both.
+- #21, the assembler knows only what the engine needs and refuses the
+  rest. Both. #22, gforth 0.7.3 is Ubuntu's, from 2014. Both.
+- #23, language: the clear errors applied (hyphens, calques, «Чисел с
+  плавающей точкой», «равнозначных кодировок», «регистровым операндом»,
+  the UTC sentence, «раскрытий», Proebsting's genitive, the self-harness
+  sentence); the matters of taste left to the author.
+- #24 (the 2013-2016 gap), #25 (SOD32's case), Claude in the lede: the
+  author's; open. #26, the two 1,564 kB rows: to check against fury's
+  report. The Benschop link, which only the Habr text had: in both now.
+
+Unchanged: the numbers from fury (the memory at rest measured here with
+the new shell as before, 196-200 kB); the byline dates, set at
+publication.
+
+The copies. docs/ARTICLE-*.md were written by hand from the Docs, and
+an earlier check compared sizes - equal by coincidence, not proof; the
+English copy had a broken fence the Doc does not. Now each copy is the
+Doc's own markdown export, saved as a file of the Doc (Claude Docs
+create blob) and read into the container by the Artifact tool, less
+the byline line. The export's conventions replace the hand-made ones.
