@@ -96,9 +96,31 @@ out=$(run "forth '1 2 3'; echo s=\$?; forth '2 3 + .'")
 assert_output_contains "cells left over: the message" "stack changed by +3 cells" "$out"
 assert_output_contains "cells left over: status 1, the shell goes on" "s=1" "$out"
 assert_output_contains "and the next forth command works" "5" "$out"
+# Cells taken at the prompt of forth are ?STACK's since Iteration 589:
+# S0 is the command's own stack, so the first cell too many is "Stack
+# error". Before, ?STACK counted from the stack's true base, below the
+# executor's cells and the padding - 19 DROPs ended the shell with 70,
+# as the interpreter's next push wrote over the executor's cells.
 out=$(run "forth 'DROP DROP DROP'; echo s=\$?; for i in a b; do printf \$i; done")
-assert_output_contains "cells taken: the message" "stack changed by -3 cells" "$out"
-assert_output_equals "cells taken: the executor's state survives" "forth: stack changed by -3 cells; restored
+assert_output_equals "cells taken at the prompt: Stack error, the state survives" "Stack error DROP
+s=1
+ab" "$out"
+out=$(run "forth '$(printf 'DROP %.0s' $(seq 1 19))'; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "nineteen DROPs fail the command only" "s=1
+ab" "$out"
+out=$(run "forth '$(printf 'DROP %.0s' $(seq 1 1000))'; echo s=\$?")
+assert_output_contains "a thousand DROPs too" "s=1" "$out"
+out=$(run "forth '$(printf '. %.0s' $(seq 1 20))'; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "twenty dots too" "s=1
+ab" "$out"
+out=$(run "forth 'DEPTH . CR' '1 2 DEPTH . CR 2DROP'")
+assert_output_equals "DEPTH counts this command's cells only" "0 
+2 " "$out"
+# ... while a builtin loaded from Forth runs with no interpreter between
+# its words, and RUN-CAUGHT's check reports what it took (582)
+printf '%s\n' ": TAKE3 DROP DROP DROP ;  ' TAKE3 S\" take3\" BUILTIN" > "$t/take3.4"
+out=$(run "forth 'S\" $t/take3.4\" INCLUDED'; take3; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_equals "cells taken by a loaded builtin: reported, the state survives" "forth: stack changed by -3 cells; restored
 s=1
 ab" "$out"
 out=$(run "forth ': D16 16 0 DO DROP LOOP ;' D16; echo s=\$?")

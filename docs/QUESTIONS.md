@@ -341,7 +341,12 @@ Since 586 the stack guards too (the eighth review): a runaway recursion
 or push loop ended the shell - 70 on cv8.c, and relfasm64 had no guard
 pages at all, so its data stack ran into the dictionary. Both engines
 now protect the two pages and THROW -3 at the data stack's, -5 at the
-return stack's (which also stops a data stack underflow past its top).
+return stack's. That page also stops a data stack underflow past its
+top, but only once the executor's cells are gone: at forth's prompt a
+second push then overwrote them, and 19 DROPs still ended the shell (the
+ninth review). Since 589 S0 is the command's own stack while it runs,
+so INTERPRET's ?STACK stops the first cell too many - "Stack error",
+status 1 - and the guard is left for a single word that underflows.
 
 **A27. Compile-only words by a list, not a header bit (Q20; 556).** The
 user asked whether a header bit meant shorter names: it would - the
