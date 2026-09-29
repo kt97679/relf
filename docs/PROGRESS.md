@@ -576,6 +576,7 @@ do not trust the absence of a line below.
 - **578** — the articles corrected, both: calls base-relative, what a trap does and does not catch, the fuzzer's 173 set aside, the opcode question's prior art, authorship, the static dash, sizes; the README's sizes
 - **579** — the numbers section, both articles, from fury's full report: a named CPU, the static dash, workloads 25 times larger, every Forth and language; Z3 re-modelled with unsigned backward calls
 - **580** — examples/map.4, an associative array as a builtin; the testing list explained (the matrix's contexts, the parliament's seven shells and majority, mutation testing's 20 of 30); about 210 kB
+- **581** — the articles' links point at the branch article-2026, the version they describe; Try it clones it
 
 ### Not tied to an iteration
 
@@ -26993,4 +26994,17 @@ with it on all 112 scripts that have one, and the 19 splits mark room
 the standard leaves. Mutation testing: of 30 changes planted in the
 compiled image the tests catch 20; the other 10 change nothing visible.
 And the opening says about 210 kB, fury's 212. 1,046 assertions.
+
+## Iteration 581: the articles' version, a branch
+
+The articles linked files on master, which changes daily - a review
+found the README contradicting the article. A tag cannot take a fix
+without being moved; the user chose a branch, article-2026, at 580's
+3bf23bc, which takes only fixes the articles stay true for, with a tag
+of the published state to come. Checked from here: GitHub has
+article-2026 and master both at 3bf23bc; all twelve linked paths
+resolve on the branch (the examples directory through its page - the
+API refuses unauthenticated reads). Both articles, in the Docs and
+here, link article-2026, clone it (`git clone -b article-2026`), and
+say what it is: the version described, fixes only, master goes on.
 

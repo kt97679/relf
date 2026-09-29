@@ -25,7 +25,7 @@ A POSIX sh: pipelines, lists, compound commands, functions, here- documents, eve
     line 2
     line 3
 
-`seq` there is a new builtin: a dozen lines of Forth in `examples/seq.4`, not part of the binary, loaded while the shell runs. The [examples directory](https://github.com/kt97679/relf/tree/master/examples) also has a prompt hook, a TCP echo server and an HTTP server, all in Forth, inside the shell. Put the `forth` line in the file `$ENV` names, and the builtin is there at every start.
+`seq` there is a new builtin: a dozen lines of Forth in `examples/seq.4`, not part of the binary, loaded while the shell runs. The [examples directory](https://github.com/kt97679/relf/tree/article-2026/examples) also has a prompt hook, a TCP echo server and an HTTP server, all in Forth, inside the shell. Put the `forth` line in the file `$ENV` names, and the builtin is there at every start.
 
 Here is `seq` itself, less the two lines of `SEQ-NUM` that read a decimal number: the whole interface a builtin has—its arguments through `ARGC` and `ARGV@`, its status through `LAST-STATUS`, and `BUILTIN` to give it a name.
 
@@ -40,7 +40,7 @@ Here is `seq` itself, less the two lines of `SEQ-NUM` that read a decimal number
 
 ## Who it is for
 
-Beyond people who like Forth, I see three uses. Minimal environments: on x86-64, a static shell without libc, near a static dash in memory but extensible in place, could serve in an initramfs—beside the tools busybox would otherwise bring—or in a container with no base image. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process—[examples/map.4](https://github.com/kt97679/relf/blob/master/examples/map.4) is an associative array, `map set KEY VALUE`, `map get KEY` and `map keys`, in 33 lines of Forth. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
+Beyond people who like Forth, I see three uses. Minimal environments: on x86-64, a static shell without libc, near a static dash in memory but extensible in place, could serve in an initramfs—beside the tools busybox would otherwise bring—or in a container with no base image. Scripts that lack data structures: what is missing can be written in Forth as builtins and called without starting a process—[examples/map.4](https://github.com/kt97679/relf/blob/article-2026/examples/map.4) is an associative array, `map set KEY VALUE`, `map get KEY` and `map keys`, in 33 lines of Forth. And teaching: on x86-64 the whole stack, from the assembler to the shell, is written in Forth and reproduces itself.
 
 ## What it is
 
@@ -63,7 +63,7 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
 - **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector (RelF calls these "escaped primitives"). Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,824 bytes, so every call into it is two bytes.
 - **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every supported machine of its width.
 - **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. gforth 0.7.3, running the same cross-compiler, produces the same bytes too. That is a check in the spirit of [diverse double-compiling](https://arxiv.org/abs/1004.5534), David A. Wheeler's defence against the attack Ken Thompson described in "Reflections on Trusting Trust".
-- **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/master/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed; it does not claim the other word sets, and the missing words can be defined with the `forth` builtin.
+- **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/article-2026/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed; it does not claim the other word sets, and the missing words can be defined with the `forth` builtin.
 
 ## Assembling its own engine
 
@@ -75,7 +75,7 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
                                 |
     relfasm64.4, again ---------+--> relfasm64 (the same bytes)
 
-The x86-64 engine is written in Forth, [`engine/relfasm64.4`](https://github.com/kt97679/relf/blob/master/engine/relfasm64.4), with an x86-64 assembler written in Forth, [`forth/asm64.4`](https://github.com/kt97679/relf/blob/master/forth/asm64.4), in postfix syntax:
+The x86-64 engine is written in Forth, [`engine/relfasm64.4`](https://github.com/kt97679/relf/blob/article-2026/engine/relfasm64.4), with an x86-64 assembler written in Forth, [`forth/asm64.4`](https://github.com/kt97679/relf/blob/article-2026/forth/asm64.4), in postfix syntax:
 
     rax [ rbx 8 ] mov,       \ mov rax, [rbx+8]
     r12 [ r13 ] mov,         \ mov r12, [r13]
@@ -88,7 +88,7 @@ The random check found a bug on its first run: `push`, `pop` and `xchg` with a m
 
 All measured on September 28, 2026, on an AMD Ryzen 7 PRO 8840HS (Ubuntu 24.04, the powersave governor), with dash 0.5.12, bash 5.2.21 and BusyBox 1.36.1 as Ubuntu ships them, and for comparison dash 0.5.12 built statically against musl. `sh tools/bench-report.sh` repeats all of it on any machine.
 
-Memory at rest, in kB, measured with [tools/mem-profile.py](https://github.com/kt97679/relf/blob/master/tools/mem-profile.py):
+Memory at rest, in kB, measured with [tools/mem-profile.py](https://github.com/kt97679/relf/blob/article-2026/tools/mem-profile.py):
 
                            resident    private
     relfsh, asm engine          212        212
@@ -100,7 +100,7 @@ Memory at rest, in kB, measured with [tools/mem-profile.py](https://github.com/k
 
 Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private_Clean and Private_Dirty. A static binary maps no C library, so relfsh on its own engine is far below the dynamically linked shells by resident memory—beside a static dash, which is smaller still. Private memory is what each copy adds, and there dash is the smallest. relfsh's file is 137,612 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
 
-Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/master/tools/bench-vm.py)). The workloads are 25 times their original size, so that dash's own start no longer weighs: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
+Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are 25 times their original size, so that dash's own start no longer weighs: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
 
 | CPU time relative to dash | loop | fn | str | arith | realistic | start |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -113,7 +113,7 @@ Speed, honestly. The shell first: CPU time (user+sys) as a ratio to dash, the me
 
 relfsh runs scripts 29 to 42 times slower than dash—it is a bytecode interpreter, and dash is C—and starts in about the same time; a static dash starts faster still. The assembly engine is no faster at scripts than the C one: both are held to the rate at which the CPU takes one indirect jump after another, about 0.8 ns a dispatch where it was measured, and the point of the assembly engine is having no C library.
 
-Then RelF as a Forth: seven small programs, the same Forth text for all three Forths, the same algorithms in C, Go, Python and Ruby ([bench/langs/run.py](https://github.com/kt97679/relf/blob/master/bench/langs/run.py)). Milliseconds, best of three, the process's start included; every result checked against C's. The last column is the geometric mean of the ratios to RelF.
+Then RelF as a Forth: seven small programs, the same Forth text for all three Forths, the same algorithms in C, Go, Python and Ruby ([bench/langs/run.py](https://github.com/kt97679/relf/blob/article-2026/bench/langs/run.py)). Milliseconds, best of three, the process's start included; every result checked against C's. The last column is the geometric mean of the ratios to RelF.
 
 | ms | fib | loop | sieve | bubble | matrix | fannkuch | collatz | vs RelF |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -142,7 +142,7 @@ RelF is 1.75 times faster than pforth, 2.3 times than Ruby and 3 times than Pyth
   - the POSIX standard's own examples, 64 of them, with the results its text states.
 - Beyond the suites:
   - 131 scripts put to seven other shells—dash, bash and yash in POSIX mode, posh, mksh, ksh93 and busybox ash: where at least five of them agree, relfsh agrees too, on all 112 such scripts, and the 19 where they split mark room the standard leaves;
-  - 1,000 random programs from a grammar-based generator, [tools/shfuzz.py](https://github.com/kt97679/relf/blob/master/tools/shfuzz.py): where dash and bash agree—827 of them; the other 173 are set aside—relfsh agrees with them too, and with yash in relfsh's place the same generator finds 9 differences in 150 programs, legitimate ones (yash's `echo` and arithmetic), so it can find them;
+  - 1,000 random programs from a grammar-based generator, [tools/shfuzz.py](https://github.com/kt97679/relf/blob/article-2026/tools/shfuzz.py): where dash and bash agree—827 of them; the other 173 are set aside—relfsh agrees with them too, and with yash in relfsh's place the same generator finds 9 differences in 150 programs, legitimate ones (yash's `echo` and arithmetic), so it can find them;
   - the 131 comparison scripts, each rewritten in up to nine ways that must not change its output (1,170 variants);
   - mutation testing on the compiled image: of 30 changes planted in it, the tests catch 20, and the other 10 change nothing visible;
   - the test harness run by relfsh itself;
@@ -161,15 +161,15 @@ RelF is 1.75 times faster than pforth, 2.3 times than Ruby and 3 times than Pyth
 
 ## How it was built
 
-Since the end of August 2026, almost all of the code, tests and documents—some 650 commits—have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty-two of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/master/docs/QUESTIONS.md)—and ran every change on my own machines before it went in. A model makes mistakes like anyone else, which is why the project leans so hard on tests: they are what caught the `push`, `pop` and `xchg` bug in the assembler described above. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/master/docs/PROGRESS.md).
+Since the end of August 2026, almost all of the code, tests and documents—some 650 commits—have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty-two of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/article-2026/docs/QUESTIONS.md)—and ran every change on my own machines before it went in. A model makes mistakes like anyone else, which is why the project leans so hard on tests: they are what caught the `push`, `pop` and `xchg` bug in the assembler described above. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/article-2026/docs/PROGRESS.md).
 
 ## Try it
 
-    git clone https://github.com/kt97679/relf
+    git clone -b article-2026 https://github.com/kt97679/relf
     cd relf
     make relfshasm64 && ./relfshasm64   # x86-64 Linux, static
     make relfsh && ./relfsh             # other CPUs: the C engine
 
-`make test` runs every suite. Like a plain `make`, it also builds the 4-byte-cell engine, which on 64-bit Debian or Ubuntu needs gcc-multilib. The [README](https://github.com/kt97679/relf/blob/master/README.md) has the full build details.
+The `article-2026` branch is the version this article describes, and it receives only fixes; `master` goes on. `make test` runs every suite. Like a plain `make`, it also builds the 4-byte-cell engine, which on 64-bit Debian or Ubuntu needs gcc-multilib. The [README](https://github.com/kt97679/relf/blob/article-2026/README.md) has the full build details.
 
 GPL version 2. Questions I would like answered by people who know Forth better than I do: RelF's 64 one-byte opcodes were chosen by how often they execute on real workloads—the practice of Gforth, and of Proebsting's superoperators—so is there a better criterion for a shell, whose time goes to processes and system calls as much as to Forth? And what would you build with a shell you can extend in Forth?
