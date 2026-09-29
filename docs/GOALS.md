@@ -744,10 +744,17 @@ where the value fits, and says so.
 - **Git bundle handed off at the end of each iteration.** Always bundle
   with both `HEAD` and `master` (`git bundle create f.bundle HEAD
   master`) so a plain `git pull f.bundle` works on the receiving end
-  without needing the branch name specified.
+  without needing the branch name specified - and `article-2026` too,
+  the version the articles describe, while it exists (Iteration 581).
 - **Bundle filename convention**: `relf-claude-iterN-YYYYMMDD-HHMMSS.bundle`
   (UTC). `N` is the iteration number (increments each handoff, not each
-  commit). Example: `relf-claude-iter1-20260831-085821.bundle`.
+  commit; a handoff of several iterations takes the last). Example:
+  `relf-claude-iter1-20260831-085821.bundle`.
+- **Make it with `sh tools/make-bundle.sh DIR`** (Iteration 584): it
+  names the bundle so, puts those refs in it, clones it and checks the
+  clone's HEAD, and prints its path. Iterations 582-583 went out as
+  `relf-583.bundle` - the handoff prompt's generic example followed,
+  this convention unread; the script is what makes it hard to miss.
 - **Target: push back to upstream** `https://github.com/kt97679/relf`
   eventually.
 - **License: GPLv2**, matching both upstream `relf.c` and SOD32 (which

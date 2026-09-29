@@ -71,6 +71,18 @@ the one kind of binary the project cannot rebuild without.
    that check in the acceptance suite: a deliverable nobody tests is a
    deliverable nobody has tried.
 
+   `out.bundle` is this prompt's placeholder, not a name. **If the
+   project names its bundles, or has a script that makes them, use that
+   — look in its goals or conventions file before the first handoff.**
+   Otherwise name each so a folder of them sorts and says what it is:
+   project, author, iteration, UTC time —
+   `project-claude-iterN-YYYYMMDD-HHMMSS.bundle`. Best of all is a
+   script in the repository that names the bundle, lists its refs and
+   runs the clone check, so no session has to remember any of it: one
+   session followed this placeholder and handed over a wrongly named
+   bundle, with the project's convention written down in a file it had
+   not read.
+
 6. **Build products are not repository contents.** A compiled binary in
    a checkout is a trap the moment the checkout reaches another
    architecture: it is newer than its source, so the build system skips

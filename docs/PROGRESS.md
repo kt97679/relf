@@ -27080,3 +27080,24 @@ less the byline. Exact, and the same every time.
 Checked by rereading each changed passage in both copies. The branch
 article-2026 moves to this commit with master: master has taken
 nothing the articles do not describe since 581.
+
+## Iteration 584: the bundle's name, made by a script
+
+582-583 went out as relf-583.bundle. The convention is GOALS.md's -
+relf-claude-iterN-YYYYMMDD-HHMMSS.bundle, UTC - and the user believed
+it was in prompts/; it was not. prompts/07-git-handoff.md, which I
+followed, shows `out.bundle`, and I did not read GOALS.md's line.
+
+tools/make-bundle.sh makes the handoff: the name from HEAD's subject
+("Iteration N:") and the UTC time, the refs HEAD, master and
+article-2026 while it exists, the clone checked against HEAD; it prints
+the path. GOALS.md points at it, and says a handoff of several
+iterations takes the last one's number and that article-2026 goes in
+too. prompts/07 gains a paragraph, generic as A5 keeps the library:
+out.bundle is a placeholder; use the project's convention or script;
+otherwise project-claude-iterN-YYYYMMDD-HHMMSS; best, a script.
+
+From the user's runs of 583: both VERIFIED. fury counts 1,055 shell
+assertions, rage 1,037, this container 1,056 (the articles' number, as
+1,046 was before 582) - some assertions depend on the machine; which
+one fury lacks is to find from its per-file counts.
