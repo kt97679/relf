@@ -485,3 +485,46 @@ English copy had a broken fence the Doc does not. Now each copy is the
 Doc's own markdown export, saved as a file of the Doc (Claude Docs
 create blob) and read into the container by the Artifact tool, less
 the byline line. The export's conventions replace the hand-made ones.
+
+## After the eighth review (Iterations 586-587)
+
+Both articles, reviewed in a separate chat - the changes first, then
+the two against each other, then the Habr text as a new reader; it
+built the branch and ran `make verify` on a Try-it clone. Its findings,
+by its final list's numbers, and what became of them:
+
+- #1, `make verify` still failed on a `git clone -b article-2026`:
+  tests/portability kept its own `HEAD master` bundle, which 582 missed.
+  Fixed in 586; `make verify` on such a clone: VERIFIED.
+- #3, stack overflow ended the shell - a runaway recursion or push loop;
+  relfasm64 had no guard pages at all. The user: fix it. 586: both
+  engines THROW -3 or -5 at a guard page, relfasm64 has the pages; both
+  articles now list stack overflow among what fails its command only,
+  and narrow the caveat to stores - taking more than 16 cells and then
+  pushing again is one.
+- #4, "as any builtin's failure does": a special builtin's error ends a
+  script - "a regular builtin"; the English sentence untangled.
+- #7, "thirty-two decisions" against 31 entries: A16 was never written
+  up. Written up in 586; the text stands.
+- #23, the kernel is 9,544 bytes of the loaded image; 9,824 counted the
+  file's 280-byte header. Both.
+- #14, totals, not passes: 422 matrix cases, one not scored; 45 pty
+  sessions, one a known difference from dash; 48 POSIX. Both.
+- #15, `type seq` in the demo, which /usr/bin/seq could not fake. Both.
+- #11, SP-Forth as prior art - it builds itself from its own sources with
+  an assembler in Forth, to x86 code (checked: github.com/rufig/spf,
+  src/compile). Both, not Habr only. #12, SOD32's repository,
+  github.com/lennart-benschop/sod32 (checked: live). Both.
+- The Russian: «138052 байта», «сам RelF», «саму себя», «лишь на 0-5%
+  быстрее», «на движке C», «значениям», «времени dash на каждой из них»,
+  «тесты движка», «тильды», «память и время запуска», the primer's
+  comma splice, the DDC sentence restructured, «15696 байт для x86-64»
+  in the diagram. English: "on the C engine", "dash's time on each".
+- Not taken: «форт-система» (#10) - the unhyphenated form is the
+  author's (570); English parity for the Habr closing line (#24) - the
+  author's. The engine docs' 16 MB and missing guard pages (#25):
+  corrected in 586. "Revisit A26 for relfasm64": done, by 586.
+
+The numbers 586 changed, in both: the shell 138,052 bytes, the engine
+15,696, 1,063 assertions. Memory at rest not re-measured: two pages made
+unreadable add nothing resident.
