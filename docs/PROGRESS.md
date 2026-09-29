@@ -27245,3 +27245,25 @@ A26's parenthetical said the return stack's guard stops an underflow
 past the stack's top: it does, but only once the executor's cells are
 already gone - rewritten. The comments in DO-FORTH and RUN-CAUGHT, and
 examples/README.md, say which check stops what.
+
+## Iteration 590: the ninth review in both articles
+
+The text half of 589 and the review's other findings, in both Docs - the
+Habr one at rev 190, the ForthHub one at 192 - and here: the numbers 589
+changed (138,068 bytes, 1,067 assertions); the rewritten-scripts item,
+which my 588 left after the random programs, moved to follow the vote;
+the vote's shells as tools/parliament.py runs them, and its 19 splits as
+558 found them; busybox is the static build - fury's own mem-profile row
+says so, no C library - so 7-13 times less than dash and bash, not 4-13,
+and relfsh's private memory, almost twice dash's, said; the machines:
+Claude's environment before each commit, then the author's ThinkPad
+P14s Gen 5 and ARMv7 Tegra board per iteration, no host names; and the
+review's wording - the slowness's two layers, "sized so that", the 0.8
+ns clause gone, the Russian error paragraph, «Чего здесь нет:», the
+term used once, the duplicated CORE claim, gcc-multilib on x86-64, the
+$ENV line's full path, superinstructions tried and removed.
+
+Checked: both copies are the Docs' exports, less the byline; none of the
+old numbers or removed phrases is left in either, and the testing list
+runs vote, rewrites, random programs in both. ANNOUNCEMENT.md has each
+finding and what became of it.
