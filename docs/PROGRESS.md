@@ -27101,3 +27101,22 @@ From the user's runs of 583: both VERIFIED. fury counts 1,055 shell
 assertions, rage 1,037, this container 1,056 (the articles' number, as
 1,046 was before 582) - some assertions depend on the machine; which
 one fury lacks is to find from its per-file counts.
+
+## Iteration 585: fury's numbers after 582
+
+What the user ran on fury, and what it settles:
+
+The review's #26 - dash and relfsh on the C engine both at 1,564 kB
+resident, a copying error? No: fury's report 20260928T2234Z, the one the
+articles use, has both at 1,564, private 120 and 400. relfsh-C's
+resident is the noisy one - 1,624 at 2221Z, 1,528 on 09-29 - moving
+with the shared C library pages its Rss counts, 928 to 1,024 kB; dash
+read 1,564 every time. Memory at rest after 582, the assembly engine:
+208 kB, against 204 and 212 before it - "about 210 kB" holds.
+
+The shell assertions: 1,055 on fury, 1,056 here. Per file, the one
+difference is run-ulimit, 15 against 16: it compares each of nine
+limits with dash's and skips one above 2 GB, which a 4-byte cell cannot
+hold in bytes (Iterations 397, 399) - fury has such a limit, this
+container none. So 1,056 is the suite's count, and a machine with a
+large limit runs one fewer; the articles keep 1,056.

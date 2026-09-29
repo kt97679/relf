@@ -467,8 +467,13 @@ findings, by the review's numbers, and what became of them:
   the UTC sentence, «раскрытий», Proebsting's genitive, the self-harness
   sentence); the matters of taste left to the author.
 - #24 (the 2013-2016 gap), #25 (SOD32's case), Claude in the lede: the
-  author's; open. #26, the two 1,564 kB rows: to check against fury's
-  report. The Benschop link, which only the Habr text had: in both now.
+  author's; open. #26, the two 1,564 kB rows: right (Iteration 585) - in
+  fury's report 20260928T2234Z, which the articles use, dash and relfsh
+  on the C engine both read 1,564 kB resident, private 120 and 400.
+  relfsh-C's resident moves between runs (1,624 at 2221Z, 1,528 on
+  09-29) with the shared C library pages its Rss counts (928-1,024 kB);
+  dash's stays 1,564. The Benschop link, which only the Habr text had:
+  in both now.
 
 Unchanged: the numbers from fury (the memory at rest measured here with
 the new shell as before, 196-200 kB); the byline dates, set at
