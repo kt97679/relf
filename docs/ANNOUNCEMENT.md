@@ -702,3 +702,29 @@ findings, by its numbers, and what became of them:
 The numbers 589 changed, in both: the shell 138,068 bytes, 1,067
 assertions (fury counts one fewer, run-ulimit's skip). The engine is
 unchanged, 15,696.
+
+## After the tenth review (Iterations 591-592)
+
+A narrow round on 589-590 only, asked to break the forth builtin. Its
+findings, and what became of them:
+
+- #1, error: an included file that fails - since 589 a Stack error
+  thrown from inside INCLUDE-FILE, before it any error - left
+  INCLUDE-POINTER advanced and the file open; about twenty failures ran
+  the file's lines into the image and the shell died. 591: INCLUDE-FILE
+  and INCLUDED again in forth/safety.4, under CATCH - the source and the
+  pointer put back and the file closed on any THROW, which is thrown on.
+- #2, error: "the trap ran for each one" - run-signal-storm and chaos.py
+  check that the trap ran, not that it ran for every signal. Both: "the
+  traps ran".
+- #3: "How it was built" mixed past and present; all past now. Both.
+- #4: the English Thompson sentence had two colons; restructured.
+- #5, #6, #7: the Russian CORE bullet's word order, the $ENV sentence,
+  «по неверному адресу», «То, что генератор...».
+- #8: a word may take 17 cells and push them back harmlessly; at 18 it
+  ends the shell. The text says more than 16 "can" bring it down - true;
+  what 589's entry above called "exact as written" is off by one.
+
+The numbers 591 changed, in both: the shell 138,300 bytes, 1,069
+assertions (fury 1,068, the run-ulimit skip). No further round: this
+one's error was in code, fixed, tested, and caught by a regression test.
