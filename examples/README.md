@@ -43,14 +43,16 @@ so start them with `&`.
 ## What to know first
 
 - **A Forth error fails that one command.** An undefined word, a THROW,
-  a division by zero, an address outside the shell's memory, or a word
-  that leaves the stack deeper or shallower than it found it: `$?` is 1,
-  the message goes to standard error, and the shell goes on (A24, A26;
-  the stack check since Iteration 582).
+  a division by zero, an address outside the shell's memory, a word that
+  leaves the stack deeper or shallower than it found it, or a runaway
+  recursion or push loop that overflows a stack: `$?` is 1, the message
+  goes to standard error, and the shell goes on (A24, A26; the stack
+  check since Iteration 582, stack overflow since 586).
 - **But there is no isolation.** A word that stores into the shell's own
-  memory, or takes more than 16 cells from the stack, can still bring
-  the shell down - that is the nature of the facility (`DO-FORTH` and
-  `RUN-CAUGHT` in `shell.4` say so).
+  memory - or takes more than 16 cells from the stack and then pushes,
+  writing over the shell's own cells - can still bring the shell down.
+  That is the nature of the facility (`DO-FORTH` and `RUN-CAUGHT` in
+  `shell.4` say so).
 - A Forth line is read 256 columns at a time (80 until Iteration 514):
   keep definitions to lines shorter than that, or a long one is cut and
   what follows it misread.

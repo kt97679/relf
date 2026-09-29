@@ -279,7 +279,12 @@ fi
 # ------------------------------------------------------------------
 if command -v git >/dev/null 2>&1 && [ -d .git ]; then
     w=$(mktemp -d)
-    if git bundle create "$w/t.bundle" HEAD master >/dev/null 2>&1 &&
+    # the branch checked out, not master (Iteration 586): a clone made
+    # as the articles' Try it has it - git clone -b article-2026 - has no
+    # local master, and this failed there. 582 fixed tests/verify's copy
+    # of this check and missed this one; the eighth review found it.
+    b=$(git symbolic-ref -q --short HEAD)
+    if git bundle create "$w/t.bundle" HEAD $b >/dev/null 2>&1 &&
        git clone -q "$w/t.bundle" "$w/clone" >/dev/null 2>&1 &&
        [ "$(git rev-parse HEAD)" = "$(git -C "$w/clone" rev-parse HEAD)" ]; then
         ok "a bundle of HEAD can be cloned"

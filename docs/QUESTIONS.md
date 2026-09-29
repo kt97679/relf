@@ -233,6 +233,15 @@ and today's calls - two bytes to 16 KB, three to 4 MB - unchanged. The
 opcodes keep their numbers where they are; packing them into 0x00-0x3F
 is the tag's prerequisite, done if the tag ever is.
 
+**A16. UTC everywhere (Q18; 543 -> 544).** The user: /etc/localtime is
+not on every platform, so a shell that reads it behaves differently from
+machine to machine. The shell keeps its time in UTC wherever it runs:
+the C engine's LOCAL-TIME uses gmtime_r, as the assembly engine's always
+did, and the prompt's `\d` and `\A` are UTC. `make verify` sets
+TZ=UTC-9, so no test can pass only because the machine's zone is UTC.
+(Written up at 586: the entry was missing though the README cites it,
+and the articles' "thirty-two decisions" counted it - the eighth review.)
+
 **A17. The memory region: 4 MB, the call reach (Q19; 544 -> 545).** The
 16 MB region cost no RAM, but a call reaches 4 MB and CALL, did not
 check, and ALLOT ran into the stacks. **Done at 545**: 4 MB in both
@@ -328,6 +337,11 @@ Each engine turns SIGFPE, and a SIGSEGV off the stack guards, into -10
 or -9 at the word the kernel registered (TRAP-XT!, from TRAP-ENTRY in
 COLD): forth/safety.4's TRAPPED prints the message and THROWs to the
 innermost CATCH; with none, exit 70, as before but with a message.
+Since 586 the stack guards too (the eighth review): a runaway recursion
+or push loop ended the shell - 70 on cv8.c, and relfasm64 had no guard
+pages at all, so its data stack ran into the dictionary. Both engines
+now protect the two pages and THROW -3 at the data stack's, -5 at the
+return stack's (which also stops a data stack underflow past its top).
 
 **A27. Compile-only words by a list, not a header bit (Q20; 556).** The
 user asked whether a header bit meant shorter names: it would - the

@@ -4990,11 +4990,12 @@ VARIABLE FTH-EVAL-XT
   \ single spaces, which is fine for Forth's own whitespace-delimited
   \ syntax. A Forth error fails this command only - $? is 1 and the
   \ next command runs (A24; RUN-CAUGHT, Iteration 554); so does a word
-  \ that leaves the stack deeper or shallower (582). The caveat that
-  \ remains, deliberately not papered over: a word that writes into the
-  \ shell's own memory, or takes more than RUN-CAUGHT's padding from the
-  \ stack, corrupts this shell rather than a child process, because
-  \ there is no isolation. That is the nature of the facility.
+  \ that leaves the stack deeper or shallower (582), and one that runs
+  \ either stack into its guard page (586). The caveat that remains,
+  \ deliberately not papered over: a word that writes into the shell's
+  \ own memory, or takes more than RUN-CAUGHT's padding from the stack
+  \ and writes there, corrupts this shell rather than a child process,
+  \ because there is no isolation. That is the nature of the facility.
   SHADOW{ | FTH-I }
   0 FTH-LEN !
   1 FTH-I !
@@ -6307,8 +6308,11 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   \ other code is reported here. An error inside a : leaves compiling;
   \ the half-built word stays unfindable, since : links it only at ;.
   0 STATE !
-  \ -9 and -10, a trap's, were reported by TRAPPED (556).
-  DUP -1 = OVER -2 = OR OVER -9 = OR OVER -10 = OR 0= IF
+  \ -9 and -10, a trap's, were reported by TRAPPED (556); so were -3 and
+  \ -5, a stack's guard page (586) - a word that THROWs them itself goes
+  \ unreported, as Forth 2012 reserves them for the system.
+  DUP -1 = OVER -2 = OR OVER -9 = OR OVER -10 = OR
+  OVER -3 = OR OVER -5 = OR 0= IF
     S" forth: uncaught exception " ERR-TYPE
     DUP ABS 0 <# #S ROT SIGN #> ERR-TYPE ERR-NL
   ELSE DROP THEN
@@ -6344,8 +6348,10 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ balanced builtin gives the same SP@. Putting the pointer back is not
   \ enough for cells taken: the next push - CATCH's own 0 - writes over
   \ them. So STACK-PADS cells lie between the executor's cells and the
-  \ builtin, and what it takes is padding. A word that takes more than
-  \ that, or writes where it should not, can still harm the shell.
+  \ builtin, and what it takes is padding. A word that takes more and
+  \ pushes again writes over the executor's own cells, which no check
+  \ sees; one that only takes, past the executor's cells, reaches the
+  \ return stack's guard page, and fails (586).
   SP@ >R                            \ the base, xt on top
   >R STACK-PADS 0 DO 0 LOOP R>
   SP@ >R                            \ the mark, above the padding

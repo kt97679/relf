@@ -433,14 +433,25 @@ static void segv_trap(int sig) {
  *  handler, and the output buffer may be half-written.  */
 static void term_restore(void);   /* the terminal, on the way out */
 static UNS64 g_dguard, g_rguard, g_page;
+/*  A guard hit is a THROW too, where a trap word is registered
+ *  (Iteration 586, the eighth review): -3 at the data stack's guard,
+ *  -5 at the return stack's, Forth 2012's codes. `forth ': X RECURSE ;
+ *  X'` ended the shell with 70 though a Forth error fails its command
+ *  only (A24). main restarts the VM 1 KB above the floors, inside the
+ *  runaway region that the THROW discards - as for any trap (556). The
+ *  data stack's top lies just under the return stack's guard, so that
+ *  page also catches a data stack UNDERFLOW past its top: the VM keeps
+ *  its pointers in locals, so this cannot tell which, and says both.  */
 static void guard_trap(int sig, siginfo_t *si, void *uc) {
     UNS64 a = (UNS64)(uintptr_t)si->si_addr;
     (void)sig; (void)uc;
-    if (a >= g_dguard && a < g_dguard + g_page)
+    if (a >= g_dguard && a < g_dguard + g_page) {
+        if (g_trap_xt) trap_restart(-3);
         write_str(2, "relf: data stack overflow\n");
-    else if (a >= g_rguard && a < g_rguard + g_page)
-        write_str(2, "relf: return stack overflow\n");
-    else {
+    } else if (a >= g_rguard && a < g_rguard + g_page) {
+        if (g_trap_xt) trap_restart(-5);
+        write_str(2, "relf: return stack overflow or data stack underflow\n");
+    } else {
         if (g_trap_xt) trap_restart(-9);     /* 556: a THROW, if it can */
         write_str(2, "relf: segmentation fault (not a stack guard)\n");
     }

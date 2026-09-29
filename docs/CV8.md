@@ -186,7 +186,7 @@ The compiler picks the two- or three-byte form by distance, as it picks
 
 | limit | value | kind |
 |---|---|---|
-| VM memory (`MEMSIZE`) | 16 MB | engine parameter, not format |
+| VM memory (`MEMSIZE`) | 4 MB (16 MB until Iteration 545, A17) | engine parameter, not format |
 | call reach, two-byte form | 16 KB | format |
 | call reach, three-byte form | **4 MB** | format |
 | slot reach, two-byte form | ±16 KB of the operand | format |
@@ -195,11 +195,12 @@ The compiler picks the two- or three-byte form by distance, as it picks
 | literal width | a full cell | format |
 | opcodes | 128, with 256 escaped selectors | format |
 
-**The three-byte call's reach, 4 MB, is below `MEMSIZE`**, so a
-dictionary grown past 4 MB could not reach its oldest words from its
-newest. It is the first ceiling a growing system would meet; today's
-shell image is about 120 KB, 35 times short of it. The remedy would be
-a fourth call width, not aligned bodies again.
+**The three-byte call's reach, 4 MB, is `MEMSIZE` itself** since
+Iteration 545 (A17): the region was cut from 16 MB to the reach, so a
+dictionary can no longer grow past what its newest words can call. It is
+the first ceiling a growing system would meet; today's shell image is
+about 120 KB, 35 times short of it. The remedy would be a fourth call
+width, not aligned bodies again.
 
 ## 3. Worked examples
 
@@ -336,12 +337,16 @@ LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
 
 ### 5.3 Memory and stacks
 
-One static block of `MEMSIZE` (16 MB): the image at the bottom, the
+One static block of `MEMSIZE` (4 MB since Iteration 545; 16 MB before): the image at the bottom, the
 dictionary growing up from it, and the stacks at the top - 256 KB of
 data stack below 64 KB of return stack. Since Iteration 253 **each
 stack has an unreadable guard page below it** instead of a compare on
 every push (`GUARD`, on by default). A `SIGSEGV` handler reports which
-guard was hit and exits with status 70:
+guard was hit. Where the image registers a trap word - the shell does
+(forth/safety.4's TRAPPED, 556) - a guard hit is a THROW since Iteration
+586, -3 or -5, and in the shell it fails its command only; relfasm64 has
+the same guards since 586. A bare kernel registers none, and exits with
+status 70:
 
 ```
 $ echo ': R RECURSE ; R' | ./relf64 forth/kernel64.img

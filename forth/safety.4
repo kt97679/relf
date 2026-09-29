@@ -16,9 +16,15 @@
 : TRAPPED ( n --- )
   \ -28 is ^C (Iteration 571, A31): no message - the terminal echoed it,
   \ and the shell starts its next prompt on a fresh line
+  \ -3 and -5: a stack's guard page (Iteration 586) - the return stack's
+  \ guard also stops a data stack underflow past its top, and the engine
+  \ cannot tell which, so -5's message names both
   DUP -28 = 0= IF
     DUP -10 = IF S" relf: division by zero" ELSE
-      S" relf: invalid memory address (segmentation fault)" THEN  ETYPE 10 ECHAR
+    DUP -3 = IF S" relf: data stack overflow" ELSE
+    DUP -5 = IF S" relf: return stack overflow or data stack underflow" ELSE
+      S" relf: invalid memory address (segmentation fault)" THEN THEN THEN
+    ETYPE 10 ECHAR
   THEN
   HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 70 SYS-EXIT THEN
   (THROW) ;
