@@ -47,7 +47,9 @@ so start them with `&`.
   leaves the stack deeper or shallower than it found it, or a runaway
   recursion or push loop that overflows a stack: `$?` is 1, the message
   goes to standard error, and the shell goes on (A24, A26; the stack
-  check since Iteration 582, stack overflow since 586).
+  check since Iteration 582, stack overflow since 586). At the `forth`
+  prompt `DEPTH` starts at 0, and taking a cell too many is "Stack
+  error" (589).
 - **But there is no isolation.** A word that stores into the shell's own
   memory - or takes more than 16 cells from the stack and then pushes,
   writing over the shell's own cells - can still bring the shell down.

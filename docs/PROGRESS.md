@@ -27169,3 +27169,39 @@ unless gforth carries the same backdoor.
 
 The Habr Doc at rev 173, the ForthHub one at 175; the copies are their
 exports, less the byline, checked for every removed phrase.
+
+## Iteration 589: the forth prompt's own stack
+
+The ninth review found what 586 left: one `forth` command with 19 DROPs
+(18 on the C engine), or 20 dots, still ended the shell with 70, and
+`forth 'DEPTH .'` printed 21. I had tested a large underflow only
+inside a colon definition, where no push comes between the underflow
+and the guard page. At the prompt one does: INTERPRET's ?STACK measures
+DEPTH from S0, the stack's true base, below the executor's cells and
+RUN-CAUGHT's 16 cells of padding - so DEPTH stayed positive while a
+command took them all, and the interpreter's next push (WORD's) wrote
+over the executor's cells.
+
+The review's fix, taken: S0 is the command's own stack for the length
+of DO-FORTH's CATCH. The old S0 is kept on the return stack, not in a
+variable, so a nested forth command restores its own; a THROW unwinds
+only to CATCH's frame, below it. Now the first cell too many is "Stack
+error DROP" - ?STACK's ABORT", -2; Forth 2012 would say -4, and the
+kernel keeps its own - status 1, the shell goes on; and DEPTH starts at
+0, as a Forth reader expects.
+
+Checked on the assembly engine and the C engine at both widths: 1, 3,
+17, 19, 30 and 1000 DROPs, 20 dots: status 1, the loop after runs;
+DEPTH 0, and 2 after `1 2`; recursion, a push loop, the traps and a
+loaded builtin that leaks cells as before. `: U2 BEGIN . AGAIN ; U2` -
+one word that underflows and pushes, with no ?STACK inside it - still
+ends the shell: the articles' caveat, now exact. run-forth-errors: the
+two assertions that expected "stack changed by -3 cells" for DROPs at
+the prompt now expect "Stack error"; that message is tested through a
+loaded builtin instead, which runs with no interpreter between its
+words; five more: 19 and 1000 DROPs, 20 dots, DEPTH. 57 in the file.
+
+A26's parenthetical said the return stack's guard stops an underflow
+past the stack's top: it does, but only once the executor's cells are
+already gone - rewritten. The comments in DO-FORTH and RUN-CAUGHT, and
+examples/README.md, say which check stops what.

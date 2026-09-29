@@ -4991,7 +4991,8 @@ VARIABLE FTH-EVAL-XT
   \ syntax. A Forth error fails this command only - $? is 1 and the
   \ next command runs (A24; RUN-CAUGHT, Iteration 554); so does a word
   \ that leaves the stack deeper or shallower (582), and one that runs
-  \ either stack into its guard page (586). The caveat that remains,
+  \ either stack into its guard page (586); at this prompt, taking a cell
+  \ too many is ?STACK's "Stack error" (589, S0 below). The caveat that remains,
   \ deliberately not papered over: a word that writes into the shell's
   \ own memory, or takes more than RUN-CAUGHT's padding from the stack
   \ and writes there, corrupts this shell rather than a child process,
@@ -5009,7 +5010,19 @@ VARIABLE FTH-EVAL-XT
   \ (SIGNAL-ACTION 4): -28 is thrown at once and caught here, the
   \ command line stops, $? is 130. SIGINT is put back either way.
   INT-THROWS? IF 2 4 SIGNAL-ACTION DROP THEN
+  \ S0 is this command's own stack while it runs (Iteration 589, the
+  \ ninth review): INTERPRET's ?STACK measures DEPTH from S0, which lay
+  \ below the executor's cells and RUN-CAUGHT's padding, so `forth
+  \ 'DROP ...'` could take them all before DEPTH went negative - and
+  \ the interpreter's next push wrote over the executor's cells: 19
+  \ DROPs ended the shell with 70, and `forth 'DEPTH .'` printed 21. Now
+  \ the first cell too many is "Stack error", the command fails, and
+  \ DEPTH starts at 0. Kept on the return stack, not in a variable, so
+  \ a nested forth command restores its own; a THROW leaves it there,
+  \ as it unwinds only to CATCH's frame, below it.
+  S0 @ >R  SP@ S0 !
   FORTH-BUF FTH-LEN @ FTH-EVAL-XT @XT CATCH
+  R> S0 !
   INT-THROWS? IF 2 3 SIGNAL-ACTION DROP THEN
   ?DUP IF
     DUP -28 = IF DROP 2DROP  -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !
@@ -6351,7 +6364,9 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ builtin, and what it takes is padding. A word that takes more and
   \ pushes again writes over the executor's own cells, which no check
   \ sees; one that only takes, past the executor's cells, reaches the
-  \ return stack's guard page, and fails (586).
+  \ return stack's guard page, and fails (586). At forth's prompt none
+  \ of this is reached since 589: DO-FORTH makes S0 the command's own
+  \ stack, and ?STACK stops the first cell too many between words.
   SP@ >R                            \ the base, xt on top
   >R STACK-PADS 0 DO 0 LOOP R>
   SP@ >R                            \ the mark, above the padding
