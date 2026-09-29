@@ -153,5 +153,16 @@ assert_output_contains "forty cells taken: the message" "data stack underflow" "
 assert_output_contains "forty cells taken fail the command only" "s=1
 ab" "$out"
 
+# Failing INCLUDEDs (Iteration 591, the tenth review): a THROW out of an
+# included file left INCLUDE-POINTER advanced and the file open, and
+# about twenty such failures ran the file's lines past INCLUDE-BUFFER
+# into the image - the shell died. Now each one is restored and closed.
+printf '%s\n' ': Y DROP DROP DROP ;' 'Y' > "$t/bad.4"
+printf '%s\n' "S\" $t/bad.4\" INCLUDED" > "$t/nest.4"
+out=$(run "i=0; while [ \$i -lt 40 ]; do forth 'S\" $t/bad.4\" INCLUDED' 'S\" $t/nest.4\" INCLUDED' >/dev/null 2>&1; forth 'S\" $t/none.4\" INCLUDED' 2>/dev/null; i=\$((i+1)); done; forth 'S\" $t/none.4\" INCLUDED' 2>/dev/null; echo s=\$?; forth 'S\" $t/take3.4\" INCLUDED' 'DEPTH . CR'; echo alive")
+assert_output_contains "120 failing INCLUDEDs: a missing file still fails" "s=1" "$out"
+assert_output_contains "and a good INCLUDED works after them, the shell alive" "0 
+alive" "$out"
+
 rm -rf "$t"
 report

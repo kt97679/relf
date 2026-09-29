@@ -36,3 +36,34 @@
 ' >R COMPILE-ONLY-XT   ' R> COMPILE-ONLY-XT   ' R@ COMPILE-ONLY-XT
 ' I COMPILE-ONLY-XT    ' EXIT COMPILE-ONLY-XT
 
+
+\ Including under CATCH (Iteration 591, the tenth review). The kernel's
+\ INCLUDE-FILE keeps the input source and INCLUDE-POINTER on the return
+\ stack and puts them back only when the file ends; INCLUDED closes its
+\ file only then too. A bare Forth recovers anyway - an error goes to
+\ QUIT, which resets INCLUDE-POINTER - but under CATCH, as in the shell,
+\ a THROW out of an included file left INCLUDE-POINTER advanced by the
+\ current line's length and the file open. About twenty failing
+\ INCLUDEDs ran the lines past the 512-byte INCLUDE-BUFFER into the
+\ image, and the shell died ("image uses an opcode this engine does not
+\ have"). These are the kernel's, with a CATCH: whatever is thrown, the
+\ source and the pointer are restored and the file closed, then it is
+\ thrown on. The kernel keeps its own - its cross-compiler has no ['] -
+\ and every later lookup finds these. The xts CATCH runs are kept as
+\ offsets (!XT, @XT): ['] compiles an absolute address, wrong once the
+\ saved image loads elsewhere - as DO-FORTH found at 571, and this at
+\ its first try, when every include ended in a segmentation fault.
+: INCLUDE-LINES ( --- )   BEGIN REFILL WHILE INTERPRET REPEAT ;
+VARIABLE INCLUDE-LINES-XT   ' INCLUDE-LINES INCLUDE-LINES-XT !XT
+: INCLUDE-FILE ( fid --- )
+  INCLUDE-POINTER @ >R SID @ >R SRC @ >R #SRC @ >R >IN @ >R
+  #SRC @ INCLUDE-POINTER +! INCLUDE-POINTER @ SRC !
+  SID !
+  INCLUDE-LINES-XT @XT CATCH
+  R> >IN ! R> #SRC ! R> SRC ! R> SID ! R> INCLUDE-POINTER !
+  THROW ;
+VARIABLE INCLUDE-FILE-XT   ' INCLUDE-FILE INCLUDE-FILE-XT !XT
+: INCLUDED ( c-addr u --- )
+  R/O OPEN-FILE ABORT" Can't open include file"
+  DUP >R  INCLUDE-FILE-XT @XT CATCH  DUP IF NIP THEN   \ a THROW left the fid
+  R> CLOSE-FILE DROP  THROW ;
