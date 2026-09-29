@@ -574,6 +574,7 @@ do not trust the absence of a line below.
 - **576** — measured again, as the reviews asked: a static musl dash is as small as relfsh and starts faster; at a size where startup does not dominate, scripts run 41-59x slower than dash, not 20-28x
 - **577** — tools/bench-report.sh: the article's numbers on any machine, into one report; the benchmarks skip what is not installed
 - **578** — the articles corrected, both: calls base-relative, what a trap does and does not catch, the fuzzer's 173 set aside, the opcode question's prior art, authorship, the static dash, sizes; the README's sizes
+- **579** — the numbers section, both articles, from fury's full report: a named CPU, the static dash, workloads 25 times larger, every Forth and language; Z3 re-modelled with unsigned backward calls
 
 ### Not tied to an iteration
 
@@ -26942,4 +26943,30 @@ name stays unlinked, and Lennart Benschop's links to his GitHub. The
 README's sizes were old (15,440 and 134,948). One slip on the way: the
 Doc carried the italic of *relative* over the text replacing it; the
 bullet was replaced whole in both.
+
+## Iteration 579: the numbers, from one named machine
+
+fury's full report - gforth, pforth, Ruby and musl-gcc installed - gave
+every number from one machine: an AMD Ryzen 7 PRO 8840HS, Ubuntu 24.04,
+the powersave governor; dash 0.5.12, bash 5.2.21, BusyBox 1.36.1, and
+dash 0.5.12 built statically with musl. Both articles' numbers sections
+are rewritten from it, in the Docs and here, with the command that
+repeats them (tools/bench-report.sh). Memory at rest: relfsh on its
+engine 212 kB, a static dash 176 - smaller still - and dash 1,564
+resident but 120 private; relfsh's file 137,612 bytes to the static
+dash's 169,720. Scripts, at 25 times the old size: 29 to 42 times
+slower than dash; the start the same as dash's (0.98), a static dash's
+faster (0.80). The assembly engine no faster than the C one - both at
+the indirect-jump floor. As a Forth: 1.75 times faster than pforth
+(V2.0.0, not the 2.0.1 once written), 2.3 than Ruby, 3 than Python;
+gforth 1.2 times faster, gforth-fast 1.75, C and Go about 16. "Near a
+static dash in memory" where "as small as" was.
+
+And a question of the user's: are call offsets signed? No - base plus
+an unsigned 14 bits, the first 16 KB. The signed distance was only in
+image-audit.py's model of calls relative to the call site (Z3), where
+the user saw that a Forth word calls only what is defined before it, so
+the distance back needs no sign either: 1,365 B saved, not 0.7 KB. The
+same speed either way (one lea, one sub); a hybrid would take a bit from
+the offset - there is no spare one - for 420 B more. Recorded, not done.
 
