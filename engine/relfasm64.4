@@ -76,6 +76,12 @@ S" engine/relfasm-consts.4" INCLUDED
 262144 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor
 65536 CONSTANT RSTACK_BYTES
 4096 CONSTANT PAGE
+\ the stack guards (Iteration 586), where cv8.c puts its own: offsets in
+\ the region of the page below the data stack - its floor, DICT-LIMIT -
+\ and of the page below the return stack, which the data stack's top
+\ lies under
+MEMSIZE RSTACK_BYTES - DSTACK_BYTES - CONSTANT DGUARD
+MEMSIZE RSTACK_BYTES - PAGE - CONSTANT RGUARD
 8 CONSTANT CELL
 4096 CONSTANT LSAVE_MAX
 10 CONSTANT CV8_VERSION
@@ -108,6 +114,7 @@ S" engine/relfasm-consts.4" INCLUDED
 110 CONSTANT SYS_getppid
 80 CONSTANT SYS_chdir
 14 CONSTANT SYS_rt_sigprocmask
+10 CONSTANT SYS_mprotect
 97 CONSTANT SYS_getrlimit
 98 CONSTANT SYS_getrusage
 160 CONSTANT SYS_setrlimit
@@ -449,6 +456,22 @@ rdx rax mov,
 13 L:  read_all call,
 rdi rbp mov,
 eax SYS_close # mov,
+syscall,
+\ the stack guards (Iteration 586): unreadable, so a runaway push or
+\ call traps at once - before, with no guard pages, the data stack ran
+\ down into the dictionary and the shell died on the garbage it left
+\ ("image uses an opcode this engine does not have"). After the image is
+\ read: the read may fill the region. A failure leaves the pages as they
+\ were, which is how this engine ran until now.
+rdi [ rbx DGUARD ] lea,
+esi PAGE # mov,
+edx edx xor,                             \ PROT_NONE
+eax SYS_mprotect # mov,
+syscall,
+rdi [ rbx RGUARD ] lea,
+esi PAGE # mov,
+edx edx xor,
+eax SYS_mprotect # mov,
 syscall,
 \ the trap handler (556, Q21), for SIGFPE, SIGSEGV and SIGBUS
 rsi [ scratch ] lea,
@@ -1650,18 +1673,34 @@ sig_restorer L:
 eax SYS_rt_sigreturn # mov,
 syscall,
 \ Traps (Iteration 556, Q21): SIGFPE - a zero divisor - and SIGSEGV or
-\ SIGBUS - a bad address; this engine has no guard pages. The saved
+\ SIGBUS - a bad address, or since 586 a stack's guard page: -3 at the
+\ data stack's, -5 at the return stack's, told apart by the fault's
+\ address (siginfo's si_addr, at rsi + 16) as cv8.c does. The saved
 \ registers are rewritten and the handler returns, so rt_sigreturn
 \ resumes at L_noop - a dispatch - in the trap word, on fresh stacks with
 \ the code on top, as cv8.c restarts its VM. Nothing registered: at
 \ L_sysexit with 70, the engine's own exit. The message is TRAPPED's.
 \ The saved registers are the kernel's sigcontext, at ucontext + 40.
-trap_handler L:                          \ edi: the signal; rdx: the ucontext
+trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
 r8 [ rdx 128 ] mov,                      \ rbx as the trap found it: the base
 r9 -9 # mov,
 edi 8 # cmp,                             \ SIGFPE
-1 F jne,
+3 F jne,
 r9 -10 # mov,
+1 F jmp,
+3 L:  rax [ rsi 16 ] mov,                \ the address that faulted
+rcx [ r8 DGUARD ] lea,
+rax rcx sub,
+rax PAGE # cmp,
+4 F jae,                                 \ not the data stack's guard
+r9 -3 # mov,
+1 F jmp,
+4 L:  rax [ rsi 16 ] mov,
+rcx [ r8 RGUARD ] lea,
+rax rcx sub,
+rax PAGE # cmp,
+1 F jae,                                 \ nor the return stack's: -9
+r9 -5 # mov,
 1 L:  trap_code L:                     \ r8 the base, r9 the code (571: int_throw's too)
 rax [ trap_xt_v ] mov,
 rax rax test,

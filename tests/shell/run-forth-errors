@@ -112,5 +112,24 @@ assert_output_contains "one cell left over is imbalance too" "stack changed by +
 out=$(run "forth '1 2 + DROP'; echo s=\$?")
 assert_output_equals "a balanced command is untouched" "s=0" "$out"
 
+# Stack overflow (Iteration 586, the eighth review): a runaway recursion
+# or push loop ended the shell - 70 on the C engine, and on relfasm64,
+# which had no guard pages, a crash on the dictionary it overwrote. Now
+# a guard page's trap is a THROW: -5 or -3, the command fails, the shell
+# and its state go on. A data stack underflow past the executor's cells
+# reaches the return stack's guard and fails the same way.
+out=$(run "forth ': X RECURSE ; X'; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "a runaway recursion: the message" "return stack overflow" "$out"
+assert_output_contains "a runaway recursion fails its command only" "s=1
+ab" "$out"
+out=$(run "forth ': P BEGIN 0 AGAIN ; P'; echo s=\$?; forth '2 3 + .'")
+assert_output_contains "a runaway push: the message" "data stack overflow" "$out"
+assert_output_contains "a runaway push fails its command only" "s=1" "$out"
+assert_output_contains "and the next forth command works" "5" "$out"
+out=$(run "forth ': D40 40 0 DO DROP LOOP ;' D40; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "forty cells taken: the message" "data stack underflow" "$out"
+assert_output_contains "forty cells taken fail the command only" "s=1
+ab" "$out"
+
 rm -rf "$t"
 report

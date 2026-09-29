@@ -72,16 +72,20 @@ gives UTC first (Q6), unless the user decides otherwise.
   `jmp [dispatch + rax*8]` - the 256-entry table cv8.c builds, with
   0x80-0xFF going to the call handler. The folded `;EXIT` forms and the
   specialised band are one handler each, as in C.
-- **Memory**: the 16 MB block, 64 KB-aligned, guard pages by
-  `mprotect`, a `SIGSEGV` handler that tells a guard hit from a crash -
-  as cv8.c does, in fewer lines.
+- **Memory**: the 4 MB block since Iteration 545 (A17; 16 MB when this
+  was planned), 64 KB-aligned. The guard pages by `mprotect` and a
+  `SIGSEGV` handler that tells a guard hit from a crash, as cv8.c does,
+  were planned here and came only at Iteration 586 - until then the
+  engine had none, and a runaway push ran silently into the dictionary.
+  Since 586 a guard hit is a THROW in both engines, -3 or -5, where a
+  trap word is registered, as in the shell.
 - **Build**: GNU `as`, then `ld --oformat binary` - no NASM, since every
   machine that builds cv8.c has binutils. **The smallest binary with no
   external dependencies** (the user's requirement, 520, after
   kt97679/itsy-linux): the source carries its own ELF header and ONE
   program header - a single segment, readable, writable and executable,
   whose zero-filled tail is the engine's variables and the machine's
-  16 MB - so no section table, no padding between sections, and no
+  memory (16 MB then, 4 MB since 545) - so no section table, no padding between sections, and no
   `mmap`. 27,936 bytes became 11,053 with nothing running differently.
   The trailer lookup of Iteration 506 comes along, so `tools/embed.sh`
   makes a shell of it unchanged. What further size would cost in speed

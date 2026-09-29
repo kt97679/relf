@@ -27080,3 +27080,49 @@ less the byline. Exact, and the same every time.
 Checked by rereading each changed passage in both copies. The branch
 article-2026 moves to this commit with master: master has taken
 nothing the articles do not describe since 581.
+
+## Iteration 586: stack overflow fails its command; the eighth review's code
+
+The eighth review, in a separate chat, again built the branch and ran
+what the articles claim. Its errors, and what I checked of them:
+
+A stack overflow ended the shell: `forth ': X RECURSE ; X'` with 70 on
+both engines; `forth ': P BEGIN 0 AGAIN ; P'` with 70 on cv8.c, and on
+relfasm64 with 2 and "image uses an opcode this engine does not have" -
+relfasm64 had no guard pages, whatever ASM-ENGINE.md said, and its data
+stack ran down into the dictionary and the shell died on the garbage.
+The user: fix it, not only state it.
+
+cv8.c had the guards (253) and a trap route (556) that restarts the VM
+1 KB above the floors - inside the runaway region, which the THROW
+discards - but a guard hit took the exit, not the route. Now it takes
+the route with Forth 2012's -3 at the data stack's guard, -5 at the
+return stack's. relfasm64 protects the same two pages after reading the
+image (the read may fill the region), and its handler tells them apart
+by si_addr, as cv8.c does - from instruction shapes already in the
+frozen corpus. TRAPPED names them; BUILTIN-FAILED leaves them to it.
+The data stack's top lies under the return stack's guard, so that page
+also stops an underflow past it - a word taking 40 cells failed only
+its command, on both engines - and the message says both, as neither
+engine can tell which pointer hit it. The bare kernel, with no trap
+word, exits 70 as before; relfasm64's with no message, as for its other
+traps, where before 586 a runaway there exited 0.
+
+Checked: recursion, a push loop and 40 cells taken fail with status 1
+on the asm engine, the C engine and the 4-byte C engine, and the shell's
+state is intact after (a loop, then `forth '7 .'`); seven assertions in
+run-forth-errors. The engine: 15,696 bytes, 104 more; the shell file
+138,052. run-engine-stacks, the bare kernel's 70, passes unchanged.
+
+And the review's other code error, mine: `make verify` still failed on
+a `git clone -b article-2026` - tests/portability keeps its own copy of
+the bundle check, `HEAD master`, which 582 did not touch; my test then
+ran tests/verify's section alone, not the whole of `make verify`. It
+bundles the branch checked out now; checked on such a clone.
+
+Also from the review, the records the articles lead to: QUESTIONS.md
+had no A16 (UTC, 544) though the README cites it and the articles count
+thirty-two decisions - written up. ASM-ENGINE.md and CV8.md still said
+16 MB (A17 made it 4) and promised relfasm64 guard pages it did not
+have; corrected. A26 extended. examples/README.md and the comments in
+DO-FORTH and RUN-CAUGHT list what fails its command now.
