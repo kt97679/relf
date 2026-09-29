@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: on x86-64, one static file of 138,068 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
+relfsh is a POSIX shell written in Forth: on x86-64, one static file of 138,300 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
 
 ## Why
 
@@ -51,7 +51,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 ## What it is
 
 ```
-./relfshasm64 - one static file, 138,068 bytes
+./relfshasm64 - one static file, 138,300 bytes
 +------------------------------------------------+
 | the shell: parser, executor, line editor       |
 |   shell.4  tree.4  edit.4          (Forth)     |
@@ -70,7 +70,7 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
 
 - **Token-threaded.** 64 one-byte opcodes, and further primitives as two-byte tokens, an escape byte followed by a selector. Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,544 bytes, so every call into it is two bytes.
 - **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every supported machine of its width.
-- **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. Self-compilation alone guarantees little, though. In "Reflections on Trusting Trust", Ken Thompson showed that a compiler can be taught to plant a backdoor in the programs it compiles, new versions of itself included; the backdoor then survives any reading of the source—the source is clean, the binary is not. The defence: compile the same source with a different, independent compiler and compare the results: [diverse double-compiling](https://arxiv.org/abs/1004.5534), which David A. Wheeler formalised; the idea goes back to Henry Spencer. Here gforth 0.7.3 plays the independent compiler: running the same cross-compiler, it produces the same bytes. So the kernel holds nothing beyond what its source says, unless gforth itself carries the same backdoor. The rest of the image and the assembly engine are built by RelF itself, and the C engine by a C compiler, so the check covers the kernel only.
+- **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. Self-compilation alone guarantees little, though. In "Reflections on Trusting Trust", Ken Thompson showed that a compiler can be taught to plant a backdoor in the programs it compiles, new versions of itself included; the backdoor then survives any reading of the source—the source is clean, the binary is not. The defence is [diverse double-compiling](https://arxiv.org/abs/1004.5534): compile the same source with a different, independent compiler and compare the results. David A. Wheeler formalised it; the idea goes back to Henry Spencer. Here gforth 0.7.3 plays the independent compiler: running the same cross-compiler, it produces the same bytes. So the kernel holds nothing beyond what its source says, unless gforth itself carries the same backdoor. The rest of the image and the assembly engine are built by RelF itself, and the C engine by a C compiler, so the check covers the kernel only.
 - **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/article-2026/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed, and the missing words can be defined with the `forth` builtin.
 
 ## Assembling its own engine
@@ -112,7 +112,7 @@ relfsh, C engine           1564        400
 bash                       2808        292
 ```
 
-Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 138,068 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
+Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 138,300 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
 
 First the shell's speed: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are sized so that dash's own start (1.7 ms) is at most a tenth of dash's time on each: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
 
@@ -147,7 +147,7 @@ gforth here is 0.7.3, as Ubuntu ships it, released in 2014. RelF's weakest case 
 
 - CORE: 2,136 checks, the same output from both engines.
 - The shell:
-  - 1,067 assertions in 91 files;
+  - 1,069 assertions in 91 files;
   - 132 cases compared with bash;
   - 422 cases of small constructs, each run in every context—after `;` and `&&`, inside a function, a loop, an `if`, a subshell or a command substitution, piped, redirected, in the background—and compared with bash and dash;
   - 48 POSIX cases, scored only where every reference shell agrees;
@@ -160,7 +160,7 @@ gforth here is 0.7.3, as Ubuntu ships it, released in 2014. RelF's weakest case 
   - 1,000 random programs from a grammar-based generator, [tools/shfuzz.py](https://github.com/kt97679/relf/blob/article-2026/tools/shfuzz.py): on 827 of them dash and bash agree, and so does relfsh; the other 173 are set aside. That the generator can find differences shows with yash: on 150 programs it finds nine, all legitimate (yash's `echo` and arithmetic);
   - mutation testing on the compiled image: of 30 random opcode swaps, out of 3,699 sites, the tests catch 20, and the other 10 change nothing visible;
   - the project's own test scripts, every tests/shell/run-\*, run by relfsh instead of /bin/sh;
-  - signal storms, a signal every 2 ms through pipelines and command substitutions: the trap ran for each one, and every result came out exact;
+  - signal storms, a signal every 2 ms through pipelines and command substitutions: the traps ran, and every result came out exact;
   - real scripts: zlib's configure runs as it does under dash, and ncurses's—32,301 lines of Autoconf—writes 1,041 files, 1,040 of them identical to dash's; in the last one, config.status, only the two lines differ where Autoconf recorded how each shell's `echo` omits a newline.
 
 ## What it is not
@@ -174,7 +174,7 @@ gforth here is 0.7.3, as Ubuntu ships it, released in 2014. RelF's weakest case 
 
 ## How it was built
 
-Since the end of August 2026, almost all of the code, tests and documents—some 650 commits—have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty-two of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/article-2026/docs/QUESTIONS.md)—and checked every iteration: before each commit Claude runs the full check in its own x86-64 Linux environment, and then I verify it on a ThinkPad P14s Gen 5 (AMD Ryzen 7 PRO 8840HS) and on an ARMv7 board with an NVIDIA Tegra. A model makes mistakes like anyone else, which is why the project leans so hard on tests. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/article-2026/docs/PROGRESS.md).
+Since the end of August 2026, almost all of the code, tests and documents—some 650 commits—have been written by Claude, an AI model, in several hundred numbered iterations under my direction. I set the goals, made the decisions—thirty-two of them recorded in [docs/QUESTIONS.md](https://github.com/kt97679/relf/blob/article-2026/docs/QUESTIONS.md)—and checked every iteration: before each commit Claude ran the full check in its own x86-64 Linux environment, and then I ran it on a ThinkPad P14s Gen 5 (AMD Ryzen 7 PRO 8840HS) and on an ARMv7 board with an NVIDIA Tegra. A model makes mistakes like anyone else, which is why the project leans so hard on tests. The log of every iteration, mistakes included, is [docs/PROGRESS.md](https://github.com/kt97679/relf/blob/article-2026/docs/PROGRESS.md).
 
 ## Try it
 

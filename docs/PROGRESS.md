@@ -27260,3 +27260,16 @@ descriptors are open; a stack overflow inside an included file fails its
 command. run-forth-errors: 120 failing INCLUDEDs, then a good one - two
 assertions, 59 in the file, and they fail without the fix. The shell
 file: 138,300 bytes, 232 more.
+
+## Iteration 592: the tenth review in both articles
+
+The numbers 591 changed - 138,300 bytes, three places in each article,
+and 1,069 assertions - and the review's text findings: the signal
+storms say what run-signal-storm checks, that the traps ran, not that
+each signal got one; "How it was built" in the past throughout; the
+English Thompson sentence without its second colon; in the Russian the
+CORE bullet's word order, the $ENV sentence, «по неверному адресу»,
+«То, что генератор». Every Russian edit matched plain words, so no code
+mark or link was retyped. The Habr Doc at rev 202, the ForthHub one at
+200; the copies are their exports, less the byline, checked for the old
+numbers and phrases. ANNOUNCEMENT.md has the round.
