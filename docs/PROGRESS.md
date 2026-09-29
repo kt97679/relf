@@ -27141,3 +27141,31 @@ each finding and what became of it. The README's two sizes too.
 Checked: every changed line of the Russian copy read through; the
 diagram's box still closes (the engine line is eight characters
 shorter, padded).
+
+## Iteration 588: the machine-written passages, and Thompson explained
+
+A friend of the author read the Habr text and named two things: the
+paragraph on the random check finding the push/pop/xchg bug on its
+first run - "why is this here at all?" - and "Reflections on Trusting
+Trust", cited without a word on what it is. The author asked for both,
+and for everything of the same kind, in both articles.
+
+Several of those passages were mine, from fixing the last two reviews:
+"one caught only after a test was added on its trail", "the 132nd came
+later", the footnotes on the 422 cases and the 45 sessions. Each made a
+number exact and the text more like a report. The counts are totals now,
+so the footnotes go; the vote is a past experiment, so its 131 needs no
+excuse. The rest: the anecdote and its back-reference in "How it was
+built"; the formulas ("Speed, honestly", «Предвижу вопрос», «Кто-то
+спросит... Мне видятся три случая», the English lede's roadmap); a "not
+X but Y" that answered nobody; the three test machines, said twice; and
+the Russian calques the seventh review had listed and I had left to
+taste. ANNOUNCEMENT.md lists every change, and keeps the next review's
+prompt, with a new item: find what reads as machine-written.
+
+The Thompson bullet now says what the attack is and why gforth running
+the same cross-compiler answers it - with DDC's own assumption stated:
+unless gforth carries the same backdoor.
+
+The Habr Doc at rev 173, the ForthHub one at 175; the copies are their
+exports, less the byline, checked for every removed phrase.

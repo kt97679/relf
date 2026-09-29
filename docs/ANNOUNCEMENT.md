@@ -523,3 +523,124 @@ by its final list's numbers, and what became of them:
 The numbers 586 changed, in both: the shell 138,052 bytes, the engine
 15,696, 1,063 assertions. Memory at rest not re-measured: two pages made
 unreadable add nothing resident.
+
+## A friend's reading, and the machine-written passages (Iteration 588)
+
+A friend of the author read the Habr text: "Reflections on Trusting
+Trust" deserved an explanation, and some AI-ish things should go - the
+paragraph on the random check finding the push/pop/xchg bug on its
+first run: why is it there at all? Agreed, both, in both articles. The
+author then asked for everything of the same kind to be fixed. What
+changed:
+
+- The random-check paragraph removed; with it the back-reference in
+  "How it was built" ("the bug... described above") - that paragraph
+  keeps the point, a model errs so the project leans on tests, and the
+  link to the log of mistakes.
+- The self-compilation bullet now explains the attack - a compiler that
+  plants a backdoor in what it compiles, itself included, so a clean
+  source proves nothing - and why a second, independent compiler (gforth
+  running the same cross-compiler) answers it, with DDC's assumption:
+  unless gforth carries the same backdoor.
+- Development-story details that the seventh and eighth reviews' fixes
+  had added: "one caught only after a test was added on its trail", "the
+  132nd came later" (the vote is now told as a past experiment), the
+  footnotes on the 422 cases and 45 sessions (all three counts are
+  totals, so they need none).
+- Formulas: "Speed, honestly" / «Со скоростью нужно быть честным»;
+  «Предвижу вопрос...»; «Кто-то спросит... Мне видятся три случая»; the
+  English lede's closing roadmap, "This is why it exists, how it is
+  built, and how we know it works"; "refuses rather than misassembles" -
+  a contrast answering a doubt nobody raised.
+- The three test machines, said twice: once now, in "How it was built".
+- The Russian calques the seventh review listed and left to taste:
+  «являюсь поклонником», the double «который» in the lede, «ровно то, в
+  чем shell хорош», the nested dashes on the shell's weaknesses,
+  «работает ... работы», the seq-interface sentence, «(не
+  специальной)», «рядом с утилитами, которые иначе принес бы busybox»,
+  «self-hosting форт», «Другие наборы слов я не заявляю», «хочу сразу
+  оговорить», «Скрипты он исполняет медленно, цифры выше».
+
+Kept: the author's voice where it is only style (the lede's order, «Мне
+она показалась очень красивой», the closing questions), «форт система»
+without a hyphen, the Habr closing line.
+
+## The review prompt (ninth round)
+
+For a separate chat, after Iteration 588 is on GitHub - kept here so the
+next round does not depend on the chat that wrote it. Item 2 is new, at
+the author's request.
+
+    Please review, critically, two articles I'm about to publish. This is
+    the ninth review round, the first after the eighth round's fixes and a
+    friend's remarks on the text.
+
+    The Russian article for Habr:
+    https://github.com/kt97679/relf/blob/article-2026/docs/ARTICLE-habr.md
+    Its English sibling for ForthHub:
+    https://github.com/kt97679/relf/blob/article-2026/docs/ARTICLE-forthhub.md
+    Both files are exact exports of the texts I will publish, less the
+    byline.
+
+    What it's about. relf is a POSIX shell (relfsh) written in Forth, on a
+    small self-compiling Forth (RelF) whose x86-64 engine is assembled from
+    Forth source by an assembler written in Forth. Repo:
+    github.com/kt97679/relf. The branch article-2026 is the exact version
+    the articles describe and link to; it takes only fixes, master goes on.
+
+    What changed since the last round: docs/ANNOUNCEMENT.md, from the
+    section "After the eighth review (Iterations 586-587)" on, lists every
+    finding and what was done about it; docs/PROGRESS.md has the details.
+    In short: a stack overflow in a builtin now fails that command instead
+    of killing the shell, on both engines; and the text lost several
+    passages that read as machine-written.
+
+    What I want, in this order:
+    1. The changes. Check each new or rewritten passage: is it true of the
+       code on article-2026, and is its language natural (idiomatic
+       technical Russian in the Habr text)? Build the branch and try what
+       the text claims - for example forth ': X RECURSE ; X', forth ': P
+       BEGIN 0 AGAIN ; P', forth 'DROP DROP DROP', type seq after loading
+       examples/seq.4, and make verify on a fresh git clone -b article-2026.
+    2. Machine-written text. Much of both articles was drafted with an AI
+       (Claude), and readers notice. Find the passages that read that way,
+       for example:
+       - development anecdotes that tell the reader nothing about the
+         result ("the check found a bug on its first run... that is fixed,
+         and the check now runs every time");
+       - reassurances and self-descriptions: "to be honest", "rather than
+         silently...", "not X but Y" contrasts that answer a doubt nobody
+         raised;
+       - parentheticals and qualifications that read like a report's
+         footnotes;
+       - formulaic structure: a rhetorical question answered at once, lists
+         of three by habit, a closing sentence that restates the paragraph;
+       - in the Russian, calques from English and bureaucratic phrasing.
+       For each: quote it, say what makes it read as machine-written, and
+       propose a replacement - or say it should simply go. Do not flag a
+       passage only because it is precise or technical.
+    3. The two articles against each other: the same facts and numbers,
+       nothing in one missing from the other - except the short Forth
+       primer, which is in the Habr text only, on purpose.
+    4. Then the whole Habr text, as a reader who never saw the earlier
+       version: anything wrong, unclear, overclaimed, or likely to draw
+       justified criticism in the comments.
+
+    Not to report: what ANNOUNCEMENT.md marks as the author's call (the
+    2013-2016 gap in the story, SOD32's capitalisation, how early Claude is
+    mentioned, «форт система» without a hyphen, the Habr text's closing
+    line), and what is deliberately unfinished (Habr's spoilers, the
+    heading line, the cut, the hubs, the byline dates, the dated tag).
+    Settled decisions are in docs/QUESTIONS.md (A1-A32); if you think one
+    should be revisited, say why, in a separate short list.
+
+    How to work: read the texts and try the code first; then read
+    ANNOUNCEMENT.md and QUESTIONS.md, and mark each finding as new, already
+    decided (cite where), or worth revisiting. Report only what is worth
+    changing - "no findings" in a category is a good answer, not a failure.
+
+    Don't edit anything. Give me one list, most important first. For each
+    finding: where it is (the section and a short quote), the problem, the
+    proposed text (Russian for the Habr article, English for ForthHub), and
+    a severity (error / should fix / suggestion). Write the findings
+    themselves in English.
