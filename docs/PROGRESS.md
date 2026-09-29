@@ -27227,3 +27227,36 @@ Checked: both copies are the Docs' exports, less the byline; none of the
 old numbers or removed phrases is left in either, and the testing list
 runs vote, rewrites, random programs in both. ANNOUNCEMENT.md has each
 finding and what became of it.
+
+## Iteration 591: including under CATCH
+
+The tenth review, a narrow one on 589-590, tried to break the forth
+builtin and did: an included file that fails - `: Y DROP DROP DROP ;`
+then `Y`, since 589 a Stack error thrown from inside INCLUDE-FILE -
+killed the shell after about twenty tries ("image uses an opcode this
+engine does not have", exit 2). The kernel's INCLUDE-FILE keeps the
+input source and INCLUDE-POINTER on the return stack and restores them
+only when the file ends, and INCLUDED closes its file only then. A bare
+Forth recovers because an error goes to QUIT, which resets the pointer;
+the shell catches every error and never passes QUIT. So each failure
+left the pointer advanced by the command line's length and the file
+open, until the file's lines ran past the 512-byte INCLUDE-BUFFER into
+the image. The leak is older than 589 (a definition then an undefined
+word did the same on 9102ff3); 589 made one more way in.
+
+forth/safety.4 now defines INCLUDE-FILE and INCLUDED again, as the
+kernel's with a CATCH: whatever is thrown, the source and the pointer
+are put back and the file closed, then it is thrown on. Not in the
+kernel: its cross-compiler has no ['], and every later lookup finds the
+new ones. My first version faulted on every include, good ones too -
+['] in code built into the saved image compiles an absolute address,
+wrong once the image loads elsewhere, as DO-FORTH found at 571. The xts
+are kept as offsets, !XT and @XT.
+
+Checked on the assembly engine and the C engine at both widths: 100
+rounds of a failing file, a file that includes it, and a missing file,
+then map.4 loads and works, DEPTH is 0, and only the three standard file
+descriptors are open; a stack overflow inside an included file fails its
+command. run-forth-errors: 120 failing INCLUDEDs, then a good one - two
+assertions, 59 in the file, and they fail without the fix. The shell
+file: 138,300 bytes, 232 more.
