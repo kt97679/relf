@@ -89,5 +89,28 @@ assert_output_contains "a name of 36 characters is refused" "name too long" "$ou
 assert_output_contains "and the command fails" "s=1" "$out"
 out=$(run "forth ': ABCDEFGHIJKLMNOPQRSTUVWXYZ01234 3 . ;  ABCDEFGHIJKLMNOPQRSTUVWXYZ01234'")
 assert_output_contains "a name of 31 characters is fine" "3" "$out"
+# An unbalanced stack (Iteration 582, the Habr review): a word that
+# returned with cells left over or taken ended the shell - silently on
+# relfasm64. Now it is put back and the command fails; the shell goes on.
+out=$(run "forth '1 2 3'; echo s=\$?; forth '2 3 + .'")
+assert_output_contains "cells left over: the message" "stack changed by +3 cells" "$out"
+assert_output_contains "cells left over: status 1, the shell goes on" "s=1" "$out"
+assert_output_contains "and the next forth command works" "5" "$out"
+out=$(run "forth 'DROP DROP DROP'; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "cells taken: the message" "stack changed by -3 cells" "$out"
+assert_output_equals "cells taken: the executor's state survives" "forth: stack changed by -3 cells; restored
+s=1
+ab" "$out"
+out=$(run "forth ': D16 16 0 DO DROP LOOP ;' D16; echo s=\$?")
+assert_output_contains "sixteen cells taken - the padding - are harmless" "s=1" "$out"
+printf '%s\n' ": BAD 1 2 ;  ' BAD S\" bad\" BUILTIN" > "$t/bad.4"
+out=$(run "forth 'S\" $t/bad.4\" INCLUDED'; bad; echo s=\$?")
+assert_output_contains "a builtin loaded from Forth is checked too" "stack changed by +2 cells" "$out"
+assert_output_contains "and fails its command only" "s=1" "$out"
+out=$(run "forth '1 2 +'; echo s=\$?")
+assert_output_contains "one cell left over is imbalance too" "stack changed by +1 cells" "$out"
+out=$(run "forth '1 2 + DROP'; echo s=\$?")
+assert_output_equals "a balanced command is untouched" "s=0" "$out"
+
 rm -rf "$t"
 report

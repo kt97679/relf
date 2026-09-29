@@ -4989,10 +4989,12 @@ VARIABLE FTH-EVAL-XT
   \ and quoting is the shell's, not Forth's; they are rejoined with
   \ single spaces, which is fine for Forth's own whitespace-delimited
   \ syntax. A Forth error fails this command only - $? is 1 and the
-  \ next command runs (A24; RUN-CAUGHT, Iteration 554). The caveat that
-  \ remains, deliberately not papered over: a word that unbalances the
-  \ stack corrupts this shell rather than a child process, because there
-  \ is no isolation. That is the nature of the facility.
+  \ next command runs (A24; RUN-CAUGHT, Iteration 554); so does a word
+  \ that leaves the stack deeper or shallower (582). The caveat that
+  \ remains, deliberately not papered over: a word that writes into the
+  \ shell's own memory, or takes more than RUN-CAUGHT's padding from the
+  \ stack, corrupts this shell rather than a child process, because
+  \ there is no isolation. That is the nature of the facility.
   SHADOW{ | FTH-I }
   0 FTH-LEN !
   1 FTH-I !
@@ -6312,6 +6314,19 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   ELSE DROP THEN
   1 LAST-STATUS ! ;
 
+VARIABLE STACK-SHIFT   \ RUN-CAUGHT's imbalance in bytes, kept across its SP!
+VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
+16 CONSTANT STACK-PADS \ cells a builtin may take without harm
+
+: STACK-CHANGED ( --- )
+  \ A builtin left the data stack deeper or shallower than it found it
+  \ (Iteration 582). Reported like any Forth error: status 1.
+  S" forth: stack changed by " ERR-TYPE
+  STACK-SHIFT @ 1 CELLS / NEGATE DUP 0 > IF S" +" ERR-TYPE THEN
+  DUP ABS 0 <# #S ROT SIGN #> ERR-TYPE
+  S"  cells; restored" ERR-TYPE ERR-NL
+  0 STATE !  1 LAST-STATUS ! ;
+
 : RUN-CAUGHT ( xt --- )
   \ Run a builtin under CATCH (A24). Before, the kernel's errors went to
   \ WARM, which cleared both stacks - the executor's own state with them
@@ -6320,10 +6335,27 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   \ bare Forth prompt, and a redirection the builtin had was never
   \ undone. EVALUATE keeps the input source it replaces on the return
   \ stack, which a THROW discards, so it is kept here too and restored.
+  \
+  \ The data stack is checked too (Iteration 582, from the Habr review).
+  \ A THROW puts it back, but a word that simply returned with cells
+  \ left over, or with cells taken - `forth '1 2 3'`, `forth 'DROP'` -
+  \ ended the shell, silently on relfasm64. CATCH's idiom measures it:
+  \ SP@ with xt on top; after CATCH its code sits in xt's cell, so a
+  \ balanced builtin gives the same SP@. Putting the pointer back is not
+  \ enough for cells taken: the next push - CATCH's own 0 - writes over
+  \ them. So STACK-PADS cells lie between the executor's cells and the
+  \ builtin, and what it takes is padding. A word that takes more than
+  \ that, or writes where it should not, can still harm the shell.
+  SP@ >R                            \ the base, xt on top
+  >R STACK-PADS 0 DO 0 LOOP R>
+  SP@ >R                            \ the mark, above the padding
   SID @ >R  SRC @ >R  #SRC @ >R  >IN @ >R
   CATCH
   R> >IN !  R> #SRC !  R> SRC !  R> SID !
-  ?DUP IF BUILTIN-FAILED THEN ;
+  SP@ R> - STACK-SHIFT !  CAUGHT-CODE !
+  R> SP! DROP                       \ back to the base, xt gone
+  STACK-SHIFT @ IF STACK-CHANGED EXIT THEN
+  CAUGHT-CODE @ ?DUP IF BUILTIN-FAILED THEN ;
 
 : RUN-A-BUILTIN ( xt --- )
   0 EXEC-LAST? !

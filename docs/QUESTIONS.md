@@ -288,7 +288,9 @@ with an error sets $? non-zero and the next command runs, like any
 builtin - consistent with POSIX, where only special builtins may end a
 shell. Done for every builtin: RUN-A-BUILTIN runs each under CATCH;
 CATCH and THROW moved into the kernel so its errors reach them; error
-messages go to standard error. Status 1.
+messages go to standard error. Status 1. Since 582 an unbalanced
+stack too: RUN-CAUGHT puts it back and fails the command (the Habr
+review; the user: fix it rather than state it).
 
 **A25. ASCII art rather than images in the articles (554).** The user:
 no images an article does not need; ASCII art often does better, and

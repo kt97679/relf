@@ -42,9 +42,15 @@ so start them with `&`.
 
 ## What to know first
 
-- **There is no isolation.** A Forth error inside a loaded word aborts
-  the whole shell, and a word that unbalances the stack corrupts it.
-  That is the nature of the facility (`DO-FORTH` in `shell.4` says so).
+- **A Forth error fails that one command.** An undefined word, a THROW,
+  a division by zero, an address outside the shell's memory, or a word
+  that leaves the stack deeper or shallower than it found it: `$?` is 1,
+  the message goes to standard error, and the shell goes on (A24, A26;
+  the stack check since Iteration 582).
+- **But there is no isolation.** A word that stores into the shell's own
+  memory, or takes more than 16 cells from the stack, can still bring
+  the shell down - that is the nature of the facility (`DO-FORTH` and
+  `RUN-CAUGHT` in `shell.4` say so).
 - A Forth line is read 256 columns at a time (80 until Iteration 514):
   keep definitions to lines shorter than that, or a long one is cut and
   what follows it misread.

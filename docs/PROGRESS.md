@@ -27008,3 +27008,42 @@ API refuses unauthenticated reads). Both articles, in the Docs and
 here, link article-2026, clone it (`git clone -b article-2026`), and
 say what it is: the version described, fixes only, master goes on.
 
+
+## Iteration 582: an unbalanced stack fails its command
+
+The second Habr review, in a separate chat, found what A24 left out:
+the most common Forth mistake. `forth '1 2 3'` or `forth 'DROP'` ended
+the shell - silently on relfasm64, with "return stack overflow" on the
+C engine - while the article said a Forth error fails its command only.
+The user chose to fix it rather than state it.
+
+RUN-CAUGHT measures the stack as CATCH does: SP@ with xt on top; after
+CATCH its code sits in xt's cell, so a balanced builtin gives the same
+SP@. My first version only put the pointer back with SP!, and `DROP
+DROP DROP` still killed the shell: cells taken are not just moved past,
+the next push - CATCH's own 0 - writes over them, and they were the
+executor's. So 16 padding cells now lie between the executor's cells and
+the builtin; what it takes is padding. The message: "forth: stack
+changed by +3 cells; restored", status 1, for `forth` and for builtins
+loaded from Forth alike. Taking more than 16 cells, or storing into the
+shell's memory, can still bring it down: DO-FORTH says so, and
+examples/README.md, which still said "there is no isolation, a Forth
+error aborts the whole shell" from before 554, now says both.
+
+The cost: 16 pushes and 16 pops a builtin call - a 50,000-round `[`
+loop took the same time within the noise (2.57-2.71 s, both). The file:
+137,844 bytes, 232 more; memory at rest here 196-200 kB, as before. Ten
+assertions in tests/shell/run-forth-errors: 1,056.
+
+And tests/verify's bundle check, which the review found failing on a
+clone made as Try it says: `git clone -b article-2026` has no local
+master, so `git bundle create ... HEAD master` failed and `make verify`
+reported DIFFERENCES on that line alone. It bundles the branch checked
+out now. Checked on such a clone: pullable.
+
+This container needed gcc-multilib, gforth, posh, mksh, yash and ksh
+installed before --update, or the baseline would have recorded skipped
+rows and posh's inconclusive case as the project's.
+
+A fix the articles need updating for: 137,612 bytes and 1,046
+assertions become 137,844 and 1,056 - Iteration 583.
