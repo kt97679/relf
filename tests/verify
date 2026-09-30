@@ -375,8 +375,11 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
 else
+    # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
+    # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches size:asm-engine size:asm-shell; do
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures \
+             size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done
 fi

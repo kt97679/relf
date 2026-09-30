@@ -27380,3 +27380,17 @@ the number ending in 4), 1,076 assertions. The Habr Doc at rev 212, the
 ForthHub one at 210; the copies take the same replacements - plain text
 all, around the paragraph's `$?`, so they are the export - each checked
 to occur once, and no old number or "16 cells" left.
+
+## Iteration 597: the new row where the engine does not run
+
+The user's ARMv7 verify of 596: MISSING asm:forthfuzz:failures. 595 put
+the row only in the branch that runs the assembly engine; where it does
+not run, every other asm row is emitted as skipped from one list, and
+this one was not in it. Added. The same run showed the good half:
+forthfuzz:failures 0 on the 4-byte C engine on ARMv7, the fuzzer's first
+run there.
+
+Checked by a verify with uname -m shimmed to armv7l: the row is skipped,
+not compared. Two size rows differed in that run and not on the real
+board - they are classed by the host's word size, which the shim does
+not change - so they are the shim's, not a finding.
