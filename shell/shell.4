@@ -5915,10 +5915,25 @@ CREATE SIG-NAMES-TEXT
   LOOP ;
 
 VARIABLE TR-ACTION
+: SHELL-OWN-ACTION ( sig --- action )
+  \ What the shell itself does with sig when nothing is trapped - what
+  \ `trap -` goes back to (Iteration 598, tools/intrfuzz.py). It was
+  \ always 0, the system default: after `trap 'x' INT; trap - INT` the
+  \ next ^C killed an interactive shell. The top level of one catches
+  \ INT and QUIT and TERM, and with job control ignores the stop signals
+  \ (INTERACTIVE-SETUP); a subshell of it has the defaults (CHILD-RESET).
+  INTERACTIVE? @ GETPID SHELL-PID @ = AND 0= IF DROP 0 EXIT THEN
+  DUP 2 = IF DROP 3 EXIT THEN
+  DUP 3 = OVER 15 = OR IF DROP 2 EXIT THEN
+  JOB-CONTROL? @ IF
+    DUP 20 = OVER 21 = OR SWAP 22 = OR IF 1 ELSE 0 THEN EXIT
+  THEN
+  DROP 0 ;
+
 : TRAP-SET ( sig --- )   \ TR-ACTION: "-" default, "" ignore, else a command
   DUP TRAP-FREE
   TR-ACTION @ S" -" ROT STR0= IF
-    DUP IF 0 SIGNAL-ACTION DROP ELSE DROP THEN EXIT
+    DUP IF DUP SHELL-OWN-ACTION SIGNAL-ACTION DROP ELSE DROP THEN EXIT
   THEN
   TR-ACTION @ C@ 0= IF
     -1 OVER TRAP!
@@ -6389,6 +6404,12 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ return stack's guard page, and fails (586). At forth's prompt none
   \ of this is reached since 589: DO-FORTH makes S0 the command's own
   \ stack, and ?STACK stops the first cell too many between words.
+  \ A builtin loaded from Forth takes ^C as the forth builtin does - it
+  \ is thrown in, -28, and the command stops with 130 (Iteration 598,
+  \ tools/intrfuzz.py: `: SPINB BEGIN AGAIN ;` loaded as a builtin could
+  \ not be interrupted at all). Kept on the return stack, deepest.
+  DUP USER-XT-FLOOR @ U< 0= INT-THROWS? AND
+  DUP IF 2 4 SIGNAL-ACTION DROP THEN >R
   SP@ >R                            \ the base, xt on top
   \ A builtin loaded from Forth gets a gap instead (Iteration 595): the
   \ pushes after CATCH, below, landed on the executor's cells once it
@@ -6406,7 +6427,9 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   R> >IN !  R> #SRC !  R> SRC !  R> SID !
   SP@ R> - STACK-SHIFT !  CAUGHT-CODE !
   R> SP! DROP                       \ back to the base, xt gone
+  R> IF 2 3 SIGNAL-ACTION DROP THEN
   STACK-SHIFT @ IF STACK-CHANGED EXIT THEN
+  CAUGHT-CODE @ -28 = IF -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS ! EXIT THEN
   CAUGHT-CODE @ ?DUP IF BUILTIN-FAILED THEN ;
 
 : RUN-A-BUILTIN ( xt --- )

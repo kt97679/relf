@@ -4,6 +4,7 @@ asm:fixpoint reproduces
 asm:forthfuzz:failures 0
 asm:fuzz-mismatches 0
 asm:interactive:failed 0
+asm:intrfuzz:failures 0
 asm:kernels reproduces
 asm:shell 1
 asm:shell-image reproduces
@@ -17,8 +18,8 @@ diff:failed 0
 ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
-image-sum:kernel32-shell.img 706346444/114708
-image-sum:kernel64-shell.img 247553773/122892
+image-sum:kernel32-shell.img 43581761/114860
+image-sum:kernel64-shell.img 3488801636/123044
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -26,6 +27,7 @@ image:widening reproduces
 interactive:divergent 1
 interactive:failed 0
 interactive:passed 44
+intrfuzz:failures 0
 io:4byte 1
 io:8byte 1
 matrix:failed 0
@@ -55,12 +57,12 @@ shell:dead-words 0
 shell:files 92
 shell:host-sh-tests 0
 size:asm-engine 15696
-size:asm-shell 138604
+size:asm-shell 138756
 size:engine-code-i386 21473
 size:engine-code-x86_64 26182
-size:i386 145044
-size:image-i386 114708
-size:image-x86_64 122892
-size:x86_64 162028
+size:i386 145196
+size:image-i386 114860
+size:image-x86_64 123044
+size:x86_64 162180
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
