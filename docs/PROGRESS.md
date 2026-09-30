@@ -27350,3 +27350,12 @@ run-forth-errors: five assertions, 64 in the file; all five fail
 without the change - the long-command one only once it ran a second
 command, where the old build dies, and at 300 characters, not 600.
 The shell file: 138,428 bytes.
+
+## Iteration 594: the numbers 593 changed
+
+138,428 bytes, three places in each article, and 1,074 assertions: the
+Habr Doc at rev 206, the ForthHub one at 204. The copies take the same
+four replacements - the only edits since their last export at 592, so
+they are the export - each checked to occur exactly once, and none of
+the old numbers left. ANNOUNCEMENT.md closes the rounds: the eleventh
+was agreed to be the last.

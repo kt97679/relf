@@ -728,3 +728,23 @@ findings, and what became of them:
 The numbers 591 changed, in both: the shell 138,300 bytes, 1,069
 assertions (fury 1,068, the run-ulimit skip). No further round: this
 one's error was in code, fixed, tested, and caught by a regression test.
+
+## After the eleventh review (Iterations 593-594)
+
+A code-only round on 591's INCLUDED, agreed in advance: a code error
+gets a fix and a regression test, and then the articles are published
+without another round. It found one: 591's INCLUDE-FILE kept the
+kernel's unbounded `#SRC @ INCLUDE-POINTER +!`, so a file including
+itself, an include from a forth command of 250-400 characters, or ten
+levels of ordinary nesting still ran past INCLUDE-BUFFER, and a file
+included from an EVALUATE wrote over the including file's line. 593:
+the review's fix - the pointer moves on by the innermost file's line
+length, and too deep is "includes nested too deep", status 1 - with the
+variable reset at startup and zeroed in the saved image; five
+regression assertions, all failing without it. Everything else the
+round tried held: Ctrl-C in included loops on a pty, errors on the
+first and last lines, nested failures, a THROW code through two levels,
+files that cannot be opened, the shell's state and fds after each.
+
+The numbers 593 changed, in both: the shell 138,428 bytes, 1,074
+assertions (fury 1,073). This was the last round.
