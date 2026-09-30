@@ -27458,3 +27458,26 @@ Amended; the check now also asks that nothing be left unstaged.
 the number ending in 6): the Habr Doc at rev 215, the ForthHub one at
 213. The copies take the same three replacements, the only edits since
 their last export, each checked to occur once.
+
+## Iteration 600: a key typed after ^C belongs to the next line
+
+The intermittent intr-at-prompt failure, on the user's list since the
+articles were drafted, and seen again in 598's verify: the transcript
+had `e^C` and then `cho after` - the harness typed the next line after
+the ^C, and the shell put its first key into the line the ^C abandoned.
+ED-GET-BYTE polls: a pending signal, then a key, then 5 ms of sleep. A
+shell descheduled between the first two - under load, as in a verify -
+wakes to find both the ^C and the key typed after it, and read the key
+first. The kernel runs the handler before a read returns, so a signal
+pending right after the read came before the key: now the key is kept
+(ED-AHEAD) for the next line and the ^C is acted on first. Nothing
+typed is lost.
+
+No test can hit that window on demand. Under six busy loops the case
+ran 30 times with the old shell and 30 with the new, and failed in
+neither. A counter of the key before the ^C, over 1500 sends of both in
+one write, said "45%" for both - the editor's redraws had fooled it; the
+raw output showed the right order every time. So the fix rests on the
+argument above and on the transcript of the failure, and the pty suite,
+44 cases, passes on both engines. The shell: 138,812 bytes, in both
+articles (Habr rev 218, ForthHub 216) and the README-free copies.

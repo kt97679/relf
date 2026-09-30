@@ -21,6 +21,7 @@ VARIABLE ED-LEN
 VARIABLE ED-POS                  \ the cursor, 0 .. ED-LEN
 VARIABLE ED-PROMPT-LEN
 VARIABLE ED-SIGNAL               \ a signal seen while waiting for a key
+VARIABLE ED-AHEAD                \ a key read after a signal, + 1; 0: none (600)
 VARIABLE ED-DONE                 \ 0 editing, 1 accepted, 2 cancelled, 3 end of input
 2 BUFFER: ED-KEY
 
@@ -235,10 +236,24 @@ VARIABLE ED-WAS-KILLING  \ the key before killed
   \ work (Iteration 313 measured it: the signal arrives and the handler
   \ runs, but the read carries on), and a shell that ignores ^C at its
   \ prompt is worse than one that answers it 10 ms later.
+  \
+  \ And a key read after a ^C is the next line's (Iteration 600, the
+  \ intermittent intr-at-prompt). The poll looks for a signal, then for
+  \ a key: a shell descheduled between the two - under load - found both
+  \ a ^C and the key typed after it, and read the key first, into the
+  \ line the ^C abandoned: `e^C`, then `cho after`. The kernel runs the
+  \ handler before the read returns, so a signal still pending right
+  \ after it came first: the key is kept (ED-AHEAD, the byte + 1) for
+  \ the next line, and the ^C is acted on.
+  ED-AHEAD @ ?DUP IF 0 ED-AHEAD ! 1- EXIT THEN
   BEGIN
     SIGNALS-PENDING ?DUP IF ED-SIGNAL ! -1 EXIT THEN
     KEY? IF
-      ED-KEY 1 0 READ-SOME DUP 1 = IF DROP ED-KEY C@ EXIT THEN
+      ED-KEY 1 0 READ-SOME DUP 1 = IF
+        DROP
+        SIGNALS-PENDING ?DUP IF ED-SIGNAL !  ED-KEY C@ 1+ ED-AHEAD !  -1 EXIT THEN
+        ED-KEY C@ EXIT
+      THEN
       DROP -1 EXIT                             \ end of input
     THEN
     5 MS
