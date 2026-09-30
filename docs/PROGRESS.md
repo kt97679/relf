@@ -27491,3 +27491,10 @@ comparison run with and without the change used `git stash push` and
 index; the commit took the index. The cherry-pick's check compared the
 two branches' committed trees, which lacked it alike, and said "same".
 Amended; the check now also asks that nothing be left unstaged.
+
+## Iteration 599: the size 598 changed
+
+138,756 bytes, three places in each article (in Russian «байт» again,
+the number ending in 6): the Habr Doc at rev 215, the ForthHub one at
+213. The copies take the same three replacements, the only edits since
+their last export, each checked to occur once.
