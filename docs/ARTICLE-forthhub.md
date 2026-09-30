@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: on x86-64, one static file of 138,428 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
+relfsh is a POSIX shell written in Forth: on x86-64, one static file of 138,604 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
 
 ## Why
 
@@ -42,7 +42,7 @@ Here is `seq` itself, less the two lines of `SEQ-NUM` that read a decimal number
 ' DO-SEQ S" seq" BUILTIN
 ```
 
-A Forth error in such code fails that one command, as a regular builtin's failure does: `$?` is 1, the message goes to standard error, and the shell goes on. The same holds for a word that leaves the stack deeper or shallower than it found it, which the shell puts back; for a stack overflow, a runaway recursion say; and for a division by zero or an address outside the shell's memory, which the engine turns from the CPU's trap into a Forth THROW. But there is no isolation: a store into the shell's own memory—a word that takes more than 16 cells from the stack and then pushes again is one—can bring it down, as a faulty loadable builtin can bring down bash.
+Errors the Forth system itself detects fail only that command, as a regular builtin's failure does: `$?` is 1, the message goes to standard error, and the shell goes on. They are an undefined word or a THROW; cells left over or missing on the stack, which the shell puts back; a stack overflow, a runaway recursion say; a division by zero or an address outside the shell's memory, which the engine turns from the CPU's trap into a Forth THROW; and a file that fails to include. But there is no isolation: anything else a Forth word does happens inside the shell, and a store in the wrong place in its memory can bring it down, as a faulty loadable builtin can bring down bash.
 
 ## Who it is for
 
@@ -51,7 +51,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 ## What it is
 
 ```
-./relfshasm64 - one static file, 138,428 bytes
+./relfshasm64 - one static file, 138,604 bytes
 +------------------------------------------------+
 | the shell: parser, executor, line editor       |
 |   shell.4  tree.4  edit.4          (Forth)     |
@@ -112,7 +112,7 @@ relfsh, C engine           1564        400
 bash                       2808        292
 ```
 
-Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 138,428 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
+Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 138,604 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
 
 First the shell's speed: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are sized so that dash's own start (1.7 ms) is at most a tenth of dash's time on each: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
 
@@ -147,7 +147,7 @@ gforth here is 0.7.3, as Ubuntu ships it, released in 2014. RelF's weakest case 
 
 - CORE: 2,136 checks, the same output from both engines.
 - The shell:
-  - 1,074 assertions in 91 files;
+  - 1,076 assertions in 91 files;
   - 132 cases compared with bash;
   - 422 cases of small constructs, each run in every context—after `;` and `&&`, inside a function, a loop, an `if`, a subshell or a command substitution, piped, redirected, in the background—and compared with bash and dash;
   - 48 POSIX cases, scored only where every reference shell agrees;
