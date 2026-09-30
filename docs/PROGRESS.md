@@ -27359,3 +27359,51 @@ four replacements - the only edits since their last export at 592, so
 they are the export - each checked to occur exactly once, and none of
 the old numbers left. ANNOUNCEMENT.md closes the rounds: the eleventh
 was agreed to be the last.
+
+## Iteration 595: a fuzzer for the forth builtin, and the gap
+
+Four review rounds in a row found, by hand, a way to crash the shell
+with Forth errors the articles say fail one command only. The user
+asked for both remedies I proposed: the articles' claim scoped to what
+the system detects (the next iteration), and a fuzzer doing what the
+reviewers did. tools/forthfuzz.py makes random cases of those errors -
+stack underflow and excess, stack overflow, undefined words, THROW and
+ABORT", division by zero, addresses outside the shell's memory,
+compile-only words, EVALUATE, includes that fail, loop or nest - at the
+forth prompt and in loaded builtins, in pipelines, $(...), subshells,
+functions, loops and || lists; then checks the shell is alive, DEPTH 0,
+a variable intact, a good include working, a loop running, and its
+file descriptors as they were. Failures are shrunk and printed. It
+never generates what the articles disclaim: stores into the shell's
+memory, redefinitions.
+
+Its first run failed half its cases, and most were my checks: `.` ends
+no line, so a marker after it went unseen; and a descriptor count
+through $(...) counted the substitution's own pipe, sometimes. With
+markers on lines of their own and the descriptors listed to files, 7
+failures a hundred remained, on both engines, all one bug - and it
+contradicted the articles' caveat. A word that takes more than 16 cells
+ended the shell even if it never pushed: ?STACK stops it only once it
+has returned, and the interpreter pushes first, onto the executor's
+cells. `: T 18 0 DO DROP LOOP ; T` was enough.
+
+The fix: a gap. DO-FORTH moves the stack pointer 16 KB down before the
+command runs - nothing written, so it costs nothing - and sets S0
+there; what a word takes and what is pushed after is the gap, not the
+executor's cells. Afterwards it puts the executor's stack back as it
+was and pushes whatever the command left back as zeros, for RUN-CAUGHT
+to report as since 582. Builtins loaded from Forth - xts above the
+image's end, which tree.4 now records at startup - get the same gap in
+RUN-CAUGHT, where its own pushes after CATCH had the same effect; the
+shell's own builtins keep the 16 cells of padding, as eval nests and a
+gap per level would use the stack up.
+
+Checked on the three builds: 18 and 1000 cells taken fail with "Stack
+error"; `1 2 3` is still "+3 cells"; DEPTH 0; a loaded builtin taking 40
+cells is reported and survives. The fuzzer: 200 cases on each engine
+at seed 595, 80 each at seeds 1-3 - no failures. tests/verify runs it,
+100 cases at seed 595 on each engine: forthfuzz:failures and
+asm:forthfuzz:failures, skipped without python3. And run-forth-errors'
+586 test for 40 cells taken, which expected the guard page's message:
+those 40 cells now land in the gap and are "Stack error D40"; 5000
+cells still reach the guard, and a new case says so - 66 in the file.

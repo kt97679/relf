@@ -4977,6 +4977,12 @@ VARIABLE FTH-I
 VARIABLE FTH-EVAL-XT
 ' EVALUATE FTH-EVAL-XT !XT
 
+16384 CONSTANT STACK-GAP   \ 595: between the executor's cells and Forth's
+VARIABLE FTH-LEFT          \ the cells a forth command left, across the SP!
+VARIABLE FTH-CODE          \ and its CATCH code
+VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
+                           \ loaded: builtins loaded from Forth (tree.4)
+
 : DO-FORTH ( --- )
   \ forth WORDS... - hand the rest of the line to the Forth
   \ interpreter. This is the extension mechanism discussed back in
@@ -5020,14 +5026,30 @@ VARIABLE FTH-EVAL-XT
   \ DEPTH starts at 0. Kept on the return stack, not in a variable, so
   \ a nested forth command restores its own; a THROW leaves it there,
   \ as it unwinds only to CATCH's frame, below it.
-  S0 @ >R  SP@ S0 !
+  \
+  \ And a gap (Iteration 595, tools/forthfuzz.py): STACK-GAP bytes of the
+  \ data stack between the executor's cells and this command's stack.
+  \ ?STACK stops a word that took too much only once it has returned,
+  \ and the interpreter pushes first - so `: T 18 0 DO DROP LOOP ; T`,
+  \ which never pushes itself, still ended the shell: the interpreter's
+  \ pushes landed on the executor's cells. Now what a word takes, and
+  \ what is pushed after, is the gap. Moving the pointer costs nothing:
+  \ nothing is written. Afterwards the executor's stack is put back as
+  \ it was, and whatever the command left is pushed back as zeros for
+  \ RUN-CAUGHT to report, as it did (582).
+  SP@ >R  S0 @ >R
+  SP@ STACK-GAP - SP!  SP@ S0 !
   FORTH-BUF FTH-LEN @ FTH-EVAL-XT @XT CATCH
-  R> S0 !
+  DUP IF 0 ELSE DEPTH 1- 0 MAX THEN FTH-LEFT !  FTH-CODE !
+  R> S0 !  R> SP!
   INT-THROWS? IF 2 3 SIGNAL-ACTION DROP THEN
-  ?DUP IF
-    DUP -28 = IF DROP 2DROP  -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !
+  FTH-CODE @ ?DUP IF
+    DUP -28 = IF DROP  -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !
     ELSE THROW THEN
-  ELSE 0 LAST-STATUS ! THEN ;
+  ELSE
+    FTH-LEFT @ 0 ?DO 0 LOOP
+    0 LAST-STATUS !
+  THEN ;
 
 LINE-MAX        BUFFER: READ-BUF     \ grows: see LINE-BUF
 SHVAR-VALUE-MAX BUFFER: READ-FIELD
@@ -6368,7 +6390,16 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ of this is reached since 589: DO-FORTH makes S0 the command's own
   \ stack, and ?STACK stops the first cell too many between words.
   SP@ >R                            \ the base, xt on top
-  >R STACK-PADS 0 DO 0 LOOP R>
+  \ A builtin loaded from Forth gets a gap instead (Iteration 595): the
+  \ pushes after CATCH, below, landed on the executor's cells once it
+  \ had taken more than the padding - 18 cells ended the shell though
+  \ it pushed nothing itself. The shell's own builtins keep the padding:
+  \ eval nests, and a gap for every level would use up the stack.
+  DUP USER-XT-FLOOR @ U< IF
+    >R STACK-PADS 0 DO 0 LOOP R>
+  ELSE
+    >R SP@ STACK-GAP - SP! R>
+  THEN
   SP@ >R                            \ the mark, above the padding
   SID @ >R  SRC @ >R  #SRC @ >R  >IN @ >R
   CATCH
