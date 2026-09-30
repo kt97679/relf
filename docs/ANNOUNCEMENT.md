@@ -743,3 +743,26 @@ files that cannot be opened, the shell's state and fds after each.
 
 The numbers 593 changed, in both: the shell 138,428 bytes, 1,074
 assertions (fury 1,073). This was the last round.
+
+## A fuzzer instead of a twelfth round (Iterations 595-596)
+
+The user asked whether another round was worth it, as each had found a
+bug. The bugs of rounds 8-11 were all in one place, the forth builtin's
+handling of broken Forth - where each round was pointed - and there a
+determined reviewer always finds one more: the builtin runs arbitrary
+Forth inside the shell. Two remedies instead, both done: a fuzzer that
+does what the reviewers did, at every check, and a claim scoped so a
+crash found later is a bug report, not a false sentence.
+
+- 595: tools/forthfuzz.py, in tests/verify on both engines. Its first
+  real finding contradicted the caveat as written: a word that takes
+  more than 16 cells ended the shell even without pushing, because the
+  interpreter pushes after it. Fixed with a 16 KB gap below the
+  executor's cells, at no cost; 0 failures since, over five seeds.
+- 596: both articles. "A Forth error fails that command" became "errors
+  the Forth system itself detects" - listed: an undefined word, THROW,
+  cells left or missing, stack overflow, division by zero, an address
+  outside the shell's memory, a file that fails to include. The caveat
+  no longer names 16 cells: anything else a Forth word does happens
+  inside the shell, and a wrong store can bring it down. And the numbers
+  595 changed: 138,604 bytes, 1,076 assertions.

@@ -27367,3 +27367,16 @@ asm:forthfuzz:failures, skipped without python3. And run-forth-errors'
 586 test for 40 cells taken, which expected the guard page's message:
 those 40 cells now land in the gap and are "Stack error D40"; 5000
 cells still reach the guard, and a new case says so - 66 in the file.
+
+## Iteration 596: the claim scoped to what the system detects
+
+Both articles. The error paragraph now says which errors fail only
+their command - those the Forth system itself detects, listed - rather
+than "a Forth error in such code", which any crash found later would
+contradict; and the caveat drops "more than 16 cells and then pushes",
+untrue since 595's gap: anything else a Forth word does runs inside the
+shell. The numbers 595 changed: 138,604 bytes (in Russian «байта» now,
+the number ending in 4), 1,076 assertions. The Habr Doc at rev 212, the
+ForthHub one at 210; the copies take the same replacements - plain text
+all, around the paragraph's `$?`, so they are the export - each checked
+to occur once, and no old number or "16 cells" left.
