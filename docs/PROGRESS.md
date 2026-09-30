@@ -27434,3 +27434,60 @@ Checked by a verify with uname -m shimmed to armv7l: the row is skipped,
 not compared. Two size rows differed in that run and not on the real
 board - they are classed by the host's word size, which the shim does
 not change - so they are the shim's, not a finding.
+
+## Iteration 598: ^C at random moments
+
+The first of the three areas proposed after 597, taken first because
+the ^C path has had bugs before. tools/intrfuzz.py runs an interactive
+shell on a pseudo-terminal and gives it commands that run a while -
+Forth loops and includes that spin or nest, a builtin loaded from Forth
+that spins, shell loops, sleep, pipelines, $(...), subshells, cat and
+read on the terminal, a trap, a function, a loop that runs forth - and
+sends ^C at a random moment: before the command starts, midway, twice,
+mid-line, at the prompt. Then the shell must answer, and be whole: a
+variable intact, DEPTH 0, a good include working, a loop running, and
+the terminal's modes and its file descriptors as they were. It syncs on
+the output of `echo @@S$((n+1))`, which the terminal's echo of the
+typed line cannot fake, and types it again every two seconds, as a ^C
+discards what was typed ahead.
+
+Two bugs, on both engines, in 25 cases:
+- `trap - INT` put INT back to the system default, and in an
+  interactive shell the next ^C killed the shell; dash survives it.
+  SHELL-OWN-ACTION: what `trap -` restores is the shell's own action -
+  at the interactive top level INT caught (3), QUIT and TERM (2), the
+  stop signals ignored under job control, as INTERACTIVE-SETUP sets
+  them; anywhere else, a subshell included, the default as before.
+- A builtin loaded from Forth could not be interrupted: `: SPINB BEGIN
+  AGAIN ;` as a builtin took no ^C at all. RUN-CAUGHT now gives such a
+  builtin the forth builtin's route - ^C thrown in as -28 while it runs,
+  the command stops with 130 - when run in the shell itself; in a
+  pipeline or $(...) it is a child, which ^C already kills.
+
+Checked on a pseudo-terminal on the three builds: ^C at the prompt after
+`trap 'echo T' INT; trap - INT` leaves the shell alive, and in a
+subshell still ends it; spinb stops, DEPTH 0 after. The fuzzer, 20
+cases at seeds 598 and 7 on each engine: no failures. tests/verify runs
+20 cases at seed 598 on each engine - intrfuzz:failures and
+asm:intrfuzz:failures, skipped without python3 or the engine.
+
+A verify run for this iteration recorded interactive:failed 1 - the
+pty suite's intr-at-prompt, the intermittent failure on the user's list
+- and the check run after it passed all 44. Run alone 20 times, it
+failed once with this change and not at all in 20 without: at that rate
+no evidence either way, and its mechanism is not on this change's path.
+The transcript shows it: `e^C` then `cho after` - the harness typed the
+next line before the shell had acted on the ^C. The editor draws the
+prompt, then blocks in read; a ^C that lands while the prompt is still
+being drawn only sets a flag, and the next key is read first. Left for
+its own iteration - act on a pending ^C before each read - with the
+baseline recorded as the suite's true state, 44 passed.
+
+
+And a slip caught before it left the container: the first commit of
+this iteration had the new baseline but not shell/shell.4 - the
+comparison run with and without the change used `git stash push` and
+`git stash pop`, and pop returns a change to the working tree, not the
+index; the commit took the index. The cherry-pick's check compared the
+two branches' committed trees, which lacked it alike, and said "same".
+Amended; the check now also asks that nothing be left unstaged.
