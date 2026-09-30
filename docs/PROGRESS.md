@@ -27313,3 +27313,40 @@ CORE bullet's word order, the $ENV sentence, «по неверному адре�
 mark or link was retyped. The Habr Doc at rev 202, the ForthHub one at
 200; the copies are their exports, less the byline, checked for the old
 numbers and phrases. ANNOUNCEMENT.md has the round.
+
+## Iteration 593: the include buffer's bound
+
+The eleventh review - code only, on 591, as agreed: if it found a code
+error, fix it with a regression test and publish without another round.
+It found one. 591's INCLUDE-FILE kept the kernel's `#SRC @
+INCLUDE-POINTER +!`: a nested file's lines go after the including line,
+by that line's length, with no bound, and REFILL reads up to 256 bytes
+wherever the pointer is. A file that includes itself, directly or
+through another, ran past INCLUDE-BUFFER and the shell died as before
+591. So did one successful include from a forth command of 250 to 400
+characters - #SRC is then the command's length, not a line in this
+buffer - and it is the NEXT forth command that dies, on the code the
+overflow wrote over; at 600 characters the overflow happened to land
+where nothing ran. And a file included from an EVALUATE inside another
+file wrote over that file's live line, since #SRC was the string's
+length. My 591 tests had covered failures, not the buffer's size.
+
+The review's fix, taken: INCLUDE-LINE#, the innermost file's current
+line length (0 outside any file), is what the pointer moves on by, and
+a file that would not have 256 bytes left fails with "includes nested
+too deep" - the fid still on the stack, so INCLUDED closes it. The
+enclosing lines may add up to 260 bytes (256 on a 4-byte build). Mine
+on top: the shell's startup resets INCLUDE-LINE# with the pointer
+(tree.4), and save-system zeroes it in the saved image, or the image
+would record the length of the line being included at the save, which
+differs by how the build was started.
+
+Checked on the assembly engine and the C engine at both widths: a file
+that includes itself, a two-file cycle and a file that runs
+INCLUDE-FILE on itself fail with the message and status 1, and a good
+include works after; a 270-character command includes a 256-character
+line; `GOODWORD .` after an INCLUDED from an EVALUATE prints 11.
+run-forth-errors: five assertions, 64 in the file; all five fail
+without the change - the long-command one only once it ran a second
+command, where the old build dies, and at 300 characters, not 600.
+The shell file: 138,428 bytes.
