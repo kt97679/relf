@@ -149,8 +149,14 @@ assert_output_contains "a runaway push: the message" "data stack overflow" "$out
 assert_output_contains "a runaway push fails its command only" "s=1" "$out"
 assert_output_contains "and the next forth command works" "5" "$out"
 out=$(run "forth ': D40 40 0 DO DROP LOOP ;' D40; echo s=\$?; for i in a b; do printf \$i; done")
-assert_output_contains "forty cells taken: the message" "data stack underflow" "$out"
+assert_output_contains "forty cells taken: Stack error, in the gap since 595" "Stack error D40" "$out"
 assert_output_contains "forty cells taken fail the command only" "s=1
+ab" "$out"
+# ... and a runaway underflow past the whole gap still reaches the
+# return stack's guard page, and fails the same way
+out=$(run "forth ': D5K 5000 0 DO DROP LOOP ;' D5K; echo s=\$?; for i in a b; do printf \$i; done")
+assert_output_contains "five thousand cells taken: the guard's message" "data stack underflow" "$out"
+assert_output_contains "five thousand cells taken fail the command only" "s=1
 ab" "$out"
 
 # Failing INCLUDEDs (Iteration 591, the tenth review): a THROW out of an

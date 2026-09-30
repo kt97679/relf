@@ -222,6 +222,14 @@ emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' 
 # script's own output, which the caller keeps.
 grep '^FAIL: ' /tmp/verify-run.log | sed 's/^/  diff: /' | head -20
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+# The forth builtin's errors, at random (Iteration 595): each case makes
+# errors the Forth system detects - stack under- and overflow, THROW,
+# division by zero, bad addresses, includes that fail or nest - and then
+# checks the shell is alive and whole. 100 cases, a fixed seed; the
+# review rounds 586-593 each found such a crash by hand.
+if command -v python3 >/dev/null 2>&1; then
+    emit forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfsh 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+else emit forthfuzz:failures skipped; fi
 emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"
 
 # ---------------------------------------------------------------
@@ -312,6 +320,9 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     if cmp -s /tmp/verify-asm-shell.img kernel64-shell.img
     then emit asm:shell-image reproduces
     else emit asm:shell-image DIFFERS; fi
+    if command -v python3 >/dev/null 2>&1; then
+        emit asm:forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfshasm64 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+    else emit asm:forthfuzz:failures skipped; fi
     rm -f /tmp/verify-asm-shell.img
     tf="tests/tester.fr $(ls tests/*.fth | tr '\n' ' ')"
     { cat $tf; echo BYE; } | timeout 60 ./relfasm64 forth/kernel64.img > /tmp/verify-asm-core.out 2>&1
