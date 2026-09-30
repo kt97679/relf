@@ -164,5 +164,25 @@ assert_output_contains "120 failing INCLUDEDs: a missing file still fails" "s=1"
 assert_output_contains "and a good INCLUDED works after them, the shell alive" "0 
 alive" "$out"
 
+# The include buffer's bound (Iteration 593, the eleventh review): a
+# file that includes itself, or one INCLUDED from a forth command longer
+# than 260 characters, still ran the lines past INCLUDE-BUFFER and the
+# shell died; a file included from an EVALUATE wrote over the including
+# file's live line. Now too deep is an error of its command only.
+printf '%s\n' ': GOODWORD 11 ;' > "$t/good.4"
+printf '%s\n' "S\" $t/self.4\" INCLUDED" > "$t/self.4"
+out=$(run "forth 'S\" $t/self.4\" INCLUDED'; echo s=\$?; forth 'S\" $t/good.4\" INCLUDED' 'GOODWORD . DEPTH . CR'; echo alive")
+assert_output_contains "a file that includes itself: the message" "includes nested too deep" "$out"
+assert_output_contains "a file that includes itself fails its command only" "s=1" "$out"
+assert_output_contains "and a good INCLUDED works after it" "11 0 
+alive" "$out"
+printf '\\ %s\n' "$(printf '%254s' '' | tr ' ' x)" > "$t/long.4"
+out=$(run "forth '$(printf '%300s' '') S\" $t/long.4\" INCLUDED'; echo s=\$?; forth 'S\" $t/good.4\" INCLUDED GOODWORD .'")
+assert_output_equals "a long forth command, an INCLUDED of a long line, and the next command" "s=0
+11 " "$out"
+printf '%s\n' ": INC S\" $t/good.4\" INCLUDED ;" 'S" INC" EVALUATE GOODWORD .' > "$t/ev.4"
+out=$(run "forth 'S\" $t/ev.4\" INCLUDED'; echo s=\$?")
+assert_output_contains "an INCLUDED from an EVALUATE leaves the including line whole" "11 s=0" "$out"
+
 rm -rf "$t"
 report

@@ -129,6 +129,7 @@ CREATE SS-MAGIC 8 ALLOT
   INCLUDE-BUFFER  1 CELLS 508 + SS-BLANK   \ lines of the included file
   CONTEXT         1 CELLS 28 +  SS-BLANK   \ search order (WARM resets)
   INCLUDE-POINTER SS-CELL
+  INCLUDE-LINE# SS-CELL   \ 593: or the image records the line being included
   SRC   SS-CELL   #SRC SS-CELL   >IN SS-CELL   SID SS-CELL
   \ #TIB is the LENGTH that goes with TIB, blanked above. Blanking the
   \ buffer but leaving its length meant the image still recorded how

@@ -53,14 +53,35 @@
 \ offsets (!XT, @XT): ['] compiles an absolute address, wrong once the
 \ saved image loads elsewhere - as DO-FORTH found at 571, and this at
 \ its first try, when every include ended in a segmentation fault.
-: INCLUDE-LINES ( --- )   BEGIN REFILL WHILE INTERPRET REPEAT ;
+\
+\ And the buffer's bound (Iteration 593, the eleventh review). The
+\ kernel moves INCLUDE-POINTER on by #SRC - the current source's length
+\ - so that a nested file's lines go after the line that included it,
+\ with no bound: REFILL reads up to 256 bytes wherever the pointer is.
+\ A file that includes itself, ten ordinary levels, or one include
+\ from a forth command longer than 260 characters - #SRC is then the
+\ command's length, not a line in this buffer - ran past INCLUDE-BUFFER
+\ as before. And after an EVALUATE inside a file, #SRC is the string's
+\ length, so a file included from it wrote over the including file's
+\ live line. INCLUDE-LINE# is the innermost file's current line length,
+\ 0 outside any file: the pointer moves on by that, and a file that
+\ would not have 256 bytes left fails with "includes nested too deep".
+\ The fid is still on the stack there, so INCLUDED closes it. The
+\ review found the cause and wrote the fix; its limit: the enclosing
+\ lines' lengths may add up to 260 bytes (256 on a 4-byte build).
+VARIABLE INCLUDE-LINE#
+: INCLUDE-LINES ( --- )
+  BEGIN REFILL WHILE #SRC @ INCLUDE-LINE# ! INTERPRET REPEAT ;
 VARIABLE INCLUDE-LINES-XT   ' INCLUDE-LINES INCLUDE-LINES-XT !XT
 : INCLUDE-FILE ( fid --- )
-  INCLUDE-POINTER @ >R SID @ >R SRC @ >R #SRC @ >R >IN @ >R
-  #SRC @ INCLUDE-POINTER +! INCLUDE-POINTER @ SRC !
-  SID !
+  INCLUDE-POINTER @ INCLUDE-LINE# @ + 256 +
+  INCLUDE-BUFFER 1 CELLS 508 + + U> ABORT" includes nested too deep"
+  INCLUDE-POINTER @ >R INCLUDE-LINE# @ >R
+  SID @ >R SRC @ >R #SRC @ >R >IN @ >R
+  INCLUDE-LINE# @ INCLUDE-POINTER +! INCLUDE-POINTER @ SRC !
+  0 INCLUDE-LINE# !  SID !
   INCLUDE-LINES-XT @XT CATCH
-  R> >IN ! R> #SRC ! R> SRC ! R> SID ! R> INCLUDE-POINTER !
+  R> >IN ! R> #SRC ! R> SRC ! R> SID ! R> INCLUDE-LINE# ! R> INCLUDE-POINTER !
   THROW ;
 VARIABLE INCLUDE-FILE-XT   ' INCLUDE-FILE INCLUDE-FILE-XT !XT
 : INCLUDED ( c-addr u --- )
