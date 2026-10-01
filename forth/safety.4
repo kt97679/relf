@@ -23,7 +23,8 @@
     DUP -10 = IF S" relf: division by zero" ELSE
     DUP -3 = IF S" relf: data stack overflow" ELSE
     DUP -5 = IF S" relf: return stack overflow or data stack underflow" ELSE
-      S" relf: invalid memory address (segmentation fault)" THEN THEN THEN
+    DUP -256 = IF S" relf: invalid instruction - a jump into what is not code" ELSE
+      S" relf: invalid memory address (segmentation fault)" THEN THEN THEN THEN
     ETYPE 10 ECHAR
   THEN
   HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 70 SYS-EXIT THEN

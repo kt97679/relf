@@ -27521,3 +27521,35 @@ raw output showed the right order every time. So the fix rests on the
 argument above and on the transcript of the failure, and the pty suite,
 44 cases, passes on both engines. The shell: 138,812 bytes, in both
 articles (Habr rev 218, ForthHub 216) and the README-free copies.
+
+## Iteration 601: the return stack, and a jump into what is not code
+
+The second area proposed after 597. First, what misuse of the return
+stack does: a return to 0, 1, -1 or 100000, an EXIT inside DO without
+UNLOOP, `R> R> 2DROP` - each faults, the fault is a THROW (A26), the
+command fails, the shell goes on. Skipping more frames - `R> R> R> R>
+DROP DROP DROP DROP` - lands in data, and an opcode no table names
+ended the process with 2: "image uses an opcode this engine does not
+have", a check made for images built for another engine. At run time it
+is a wild jump, the same kind of error as a fault. With a trap word
+registered, as in the shell, both engines now THROW -256 there - cv8.c
+by trap_restart, relfasm64 by setting the registers trap_code sets in a
+signal's context - and TRAPPED says "invalid instruction - a jump into
+what is not code". A bare kernel still exits with 2.
+
+tools/forthfuzz.py gains correct Forth on the return stack - pairs of
+>R and R>, UNLOOP EXIT, nested DO, THROWs and traps inside loops and
+with cells on the return stack, recursion to overflow - which must
+always come through, in tests/verify; and, with FORTHFUZZ_MISUSE=1,
+misuse - wild returns, skipped frames, EXIT inside DO - never in
+verify, as a wild jump may run anything before it faults. Neither mode
+failed: 100 legal cases at seed 601, 250 misuse cases at seeds 601 and
+9, on each engine. The articles' claim does not grow: misuse is still
+"no isolation".
+
+The engine: 15,760 bytes, 64 more; the shell 138,956. Both in both
+articles (Habr rev 224, ForthHub 222) and the README - which said
+138,052 from 587 on: 589-600 changed the size and the articles each
+time, and not the README. tests/verify now checks the sizes the README
+and both copies quote against the files: docs:sizes, skipped where the
+assembly engine is not built.

@@ -31,6 +31,7 @@ N = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 SEED = int(sys.argv[2]) if len(sys.argv) > 2 else 595
 SHELL = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.path.join(ROOT, 'relfsh')
 TIMEOUT = 30
+MISUSE = os.environ.get('FORTHFUZZ_MISUSE') == '1'
 
 
 class Case:
@@ -50,7 +51,9 @@ class Case:
         kinds = ['underflow', 'dots', 'excess', 'undefined', 'throw', 'abort', 'div0',
                  'badaddr', 'overflow', 'rec', 'takes', 'fine', 'evaluate']
         if not in_word:
-            kinds += ['compileonly', 'include', 'include', 'include']
+            kinds += ['compileonly', 'include', 'include', 'include', 'rlegal', 'rlegal']
+            if MISUSE:
+                kinds += ['rmisuse', 'rmisuse']
         kind = r.choice(kinds)
         if kind == 'underflow':
             return 'DROP ' * (1 if in_word else k)
@@ -83,6 +86,24 @@ class Case:
         if kind == 'evaluate':
             inner = r.choice(['DROP DROP', '1 0 /', 'NOSUCH1', '42 THROW', '1 2', '0 @'])
             return 'S" %s" EVALUATE' % inner
+        if kind == 'rlegal':
+            # correct Forth on the return stack, with errors thrown from
+            # inside it (Iteration 601): it must always come through
+            w = self.name('FZL')
+            body = r.choice(['1 2 >R >R R> R> 2DROP', '5 0 DO I >R R> DROP LOOP',
+                             '10 0 DO I 3 = IF UNLOOP EXIT THEN LOOP', '3 0 DO 4 0 DO J I + DROP LOOP LOOP',
+                             '1 >R 42 THROW', '7 >R 0 @', '9 >R 1 0 /', '2 >R RECURSE',
+                             '5 0 DO 1 0 / LOOP', '3 0 DO 42 THROW LOOP', '4 0 DO I >R 0 0 ! LOOP'])
+            return ': %s %s ; %s' % (w, body, w)
+        if kind == 'rmisuse':
+            # the return stack misused: a wild return. No guarantee - the
+            # jump may run anything - so only with FORTHFUZZ_MISUSE=1, to
+            # measure, never in tests/verify
+            w = self.name('FZM')
+            k = r.randint(1, 10)
+            body = r.choice(['%d >R' % r.choice([0, 1, 7, -1, 100000]), 'R> ' * k + 'DROP ' * k,
+                             '10 0 DO I 5 = IF EXIT THEN LOOP', '1 0 DO 2 0 DO EXIT LOOP LOOP'])
+            return ': %s %s ; %s' % (w, body, w)
         if kind == 'compileonly':
             return r.choice(['>R', 'R>', 'R@', 'I', 'EXIT'])
         return self.include()

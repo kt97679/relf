@@ -7,7 +7,7 @@
 S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED
 ALSO ASSEMBLER
 LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL L_addi
-LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
+LABEL wild_jump LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
 LABEL L_branch8 LABEL L_bye LABEL L_cellp LABEL L_cells LABEL L_cfetch LABEL L_chdir
 LABEL L_chmod LABEL L_closedir LABEL L_closefile LABEL L_compare LABEL L_count LABEL L_cputimes
 LABEL L_cstore LABEL L_cstrlen LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
@@ -855,10 +855,21 @@ NEXT,
 L_esc L:  eax [ r14 ] byte-ptr movzx,
 r14 inc,
 [ rax *8 esc_tab ] qword-ptr jmp,
-L_badop L:  rsi [ m_badop ] lea,         \ an opcode no table names
+L_badop L:  rax [ trap_xt_v ] mov,     \ an opcode no table names: with a
+rax rax test,                            \ trap word a THROW (Iteration 601,
+wild_jump jne,                           \ cv8.c's L_badop), else the end
+rsi [ m_badop ] lea,
 edx m_badop_len # mov,
 edi 2 # mov,
 die jmp,
+\ A jump into what is not code - a misused return stack - as trap_code
+\ does it from a signal's context, here from the registers themselves:
+\ -256 on top, both stacks 1 KB above their floors, ip at the trap word.
+wild_jump L:  r12 -256 # mov,
+r13 [ rbx MEMSIZE RSTACK_BYTES - DSTACK_BYTES - PAGE + 1024 + ] lea,
+r14 rax mov,
+r15 [ rbx MEMSIZE RSTACK_BYTES - 1024 + ] lea,
+NEXT,
 L_loop L:  rax [ r15 ] mov,              \ (LOOP), since 530: the counter at
 rax inc,                                 \ [r15], the limit at [r15 + 8]; at
 rax [ r15 CELL ] cmp,                    \ the limit, both dropped and the
@@ -910,7 +921,10 @@ L_plusstore L:  rax [ r13 ] mov,         \ +! ( w a-addr --- ), since 528
 r12 [ r13 CELL ] mov,
 r13 2 CELL * # add,
 NEXT,
-L_badesc L:  rsi [ m_badesc ] lea,
+L_badesc L:  rax [ trap_xt_v ] mov,
+rax rax test,
+wild_jump jne,
+rsi [ m_badesc ] lea,
 edx m_badesc_len # mov,
 edi 2 # mov,
 die jmp,
