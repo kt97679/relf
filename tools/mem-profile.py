@@ -9,7 +9,10 @@ memory region - dictionary and stacks - and its allocator's heap).
 """
 import os, re, subprocess, sys, collections
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); os.chdir(ROOT)
-SHELLS = [('relf, assembly engine', './relfshasm64'), ('relf, C engine', './relfsh64'),
+# ./relfsh, not ./relfsh64 (Iteration 605): the C engine's native build,
+# relfsh32 on a 32-bit host - where ./relfsh64 is not built, and the row
+# that host is measured for was skipped without a word
+SHELLS = [('relf, assembly engine', './relfshasm64'), ('relf, C engine', './relfsh'),
           ('dash', '/usr/bin/dash'), ('busybox ash', '/usr/bin/busybox ash'), ('bash', '/usr/bin/bash')]
 # A STATIC dash beside them (Iteration 576): the comparison that is fair
 # to relfsh on its own engine, which maps no C library either - a review

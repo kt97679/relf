@@ -27626,3 +27626,25 @@ The tables cost 1,744 bytes: the shell is 141,212, in both articles
 (Habr rev 238, ForthHub 236), the copies and the README. Memory at rest
 here, the assembly engine, three runs: 204, 204, 200 kB, against 196-200
 before 582 - the articles' "about 210" (fury's 212) holds.
+
+## Iteration 605: the benchmark report on a 32-bit host
+
+Before the user runs tools/bench-report.sh on the ARMv7 board, for the
+numbers the articles have only from x86-64: what it assumes. The script
+builds the assembly engine only on x86-64 and skips what is not
+installed; bench/langs/run.py takes relf32 on a 32-bit host. But
+tools/mem-profile.py named ./relfsh64, which a 32-bit host does not
+build, and skips a missing binary without a word - the memory section
+would have come back without the C engine, the row the board is there
+for. It takes ./relfsh now, the native build on either: on x86-64 still
+relfsh64, the same numbers; with ./relfsh pointed at relfsh32 here, the
+row is there - 1,604 kB resident at rest, the 4-byte build.
+
+And a rare failure, seen once: this iteration's verify --update recorded
+intrfuzz:failures 1, the C engine - a change to a benchmark tool cannot
+have caused it, and the check run after it had 0, as have the dozens of
+verify runs since 598. Three runs of the same 20 cases here: no failure.
+Shell race or harness timeout, nothing said which: tests/verify kept
+the fuzzers' count and dropped their output. Now each fuzzer row prints
+its failures' shrunk case and transcript into verify's log, as the pty
+suite's rows do - the next time, wherever it happens, says what it was.
