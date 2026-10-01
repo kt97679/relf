@@ -49,4 +49,29 @@ printf 'readonly r=1\nreadonly\n' > "$t/h.sh"
 out=$("$THIS_SH" "$t/h.sh" 2>/dev/null)
 assert_output_contains "bare 'readonly' lists them too" "readonly r='1'" "$out"
 
+# readonly on an unset name (Iteration 603): the name is read-only and
+# the variable stays unset, as POSIX has it and dash does. Before, the
+# mark was lost and Y=1 went through.
+ro_run() { printf '%s\n' "$1" > "$t/ro.sh"; "$THIS_SH" "$t/ro.sh" 2>&1; }
+out=$(ro_run 'readonly Y; echo "unset:${Y+set}"; Y=1; echo after')
+assert_output_contains "readonly Y: still unset" "unset:" "$out"
+assert_output_contains "readonly Y: Y=1 refused" "is read only" "$out"
+case $out in *after*) assert_output_equals "readonly Y: Y=1 ends the script, as dash" "ended" "$out" ;;
+             *) assert_output_equals "readonly Y: Y=1 ends the script, as dash" "ended" "ended" ;; esac
+out=$(ro_run 'readonly Y; readonly -p')
+assert_output_contains "readonly -p lists it, with no value" "readonly Y" "$out"
+out=$(ro_run 'readonly Y; unset Y; echo after')
+assert_output_contains "readonly Y: unset refused" "is read only" "$out"
+# read and getopts are regular builtins: a read-only name is status 2,
+# and the script goes on - for a set read-only variable too, which ended
+# the script before
+printf 'readonly Y\nread Y <<EOF\nv\nEOF\necho "read: $?"\n' > "$t/ro1.sh"
+out=$("$THIS_SH" "$t/ro1.sh" 2>&1)
+assert_output_contains "read on a read-only name: status 2, and on" "read: 2" "$out"
+printf 'Y=1; readonly Y\nread Y <<EOF\nv\nEOF\necho "read: $? $Y"\n' > "$t/ro2.sh"
+out=$("$THIS_SH" "$t/ro2.sh" 2>&1)
+assert_output_contains "read on a set read-only name: status 2, unchanged" "read: 2 1" "$out"
+out=$(ro_run 'readonly o; getopts a o -a; echo "getopts: $?"')
+assert_output_contains "getopts on a read-only name: status 2" "getopts: 2" "$out"
+
 report

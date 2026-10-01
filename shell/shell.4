@@ -681,6 +681,31 @@ VARIABLE XPR-N
   MOVE
   XPR-N @ NEGATE XP# +! ;
 
+\ Names made read-only while unset (Iteration 603): `readonly Y` with Y
+\ unset marks the name, POSIX says, and Y=1 must then fail - dash and
+\ bash refuse it. The table keeps the flag per slot and a slot exists
+\ only for a set variable, so the mark was lost and Y=1 went through.
+\ Kept here, as XP-BUF keeps names exported while unset - and never
+\ removed, as such a name can be neither assigned nor unset. NUL after
+\ each name.
+256 BUFFER: RU-BUF
+VARIABLE RU#
+
+: RU-FIND ( name --- offset | -1 )
+  0
+  BEGIN DUP RU# @ < WHILE
+    2DUP RU-BUF + CSTR= IF NIP EXIT THEN
+    RU-BUF OVER + CSTRLEN 1+ +
+  REPEAT 2DROP -1 ;
+
+: RU-ADD ( name --- )
+  DUP RU-FIND 0< 0= IF DROP EXIT THEN
+  DUP CSTRLEN 1+
+  RU# @ OVER + ENSURE-BUFFER RU-BUF
+  RU-BUF RU# @ +  SWAP
+  DUP RU# +!
+  MOVE ;
+
 : SET-SHVAR ( name-addr value-addr --- )  \ both NUL-terminated C
                                             \ strings. Updates an
                                             \ existing slot if the
@@ -721,6 +746,13 @@ VARIABLE XPR-N
     S" shell: variable name too long" ERR-TYPE ERR-NL  2 LAST-STATUS !
     -1 VALUE-FAILED? !
     EXIT
+  THEN
+  \ A name made read-only while unset refuses before a slot is made for
+  \ it - a slot would itself set it, to the empty string (603)
+  SV-NAME @ RU-FIND 0< 0= IF
+    S" shell: " ERR-TYPE SV-NAME @ ERR-CSTR
+    S" : is read only" ERR-TYPE ERR-NL
+    -1 VALUE-FAILED? !  2 SPECIAL-ERROR  EXIT
   THEN
   SV-NAME @ FIND-SHVAR
   DUP -1 = IF
@@ -3912,8 +3944,14 @@ DEFER FT-SHIFT-CALL      ( i --- i )   \ tree.4 moves its own row
           UN-I @ ARGV@ XP-REMOVE              \ unset drops the attribute
         THEN
       ELSE
-        DROP UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
-        UN-I @ ARGV@ XP-REMOVE
+        DROP
+        UN-I @ ARGV@ RU-FIND 0< 0= IF          \ read-only while unset (603)
+          S" shell: unset: " ERR-TYPE UN-I @ ARGV@ ERR-CSTR
+          S" : is read only" ERR-TYPE ERR-NL  1 SPECIAL-ERROR
+        ELSE
+          UN-I @ ARGV@ DUP REMOVE-SHVAR UNSETENV DROP
+          UN-I @ ARGV@ XP-REMOVE
+        THEN
       THEN
     THEN
     UN-I @ 1+ UN-I !
@@ -4485,8 +4523,8 @@ VARIABLE DO-I
   DUP FIND-SHVAR -1 = IF
     DUP LOOKUP-VAR ?DUP IF OVER SWAP SET-SHVAR THEN
   THEN
-  FIND-SHVAR DUP -1 = IF DROP EXIT THEN
-  SHVAR-RO + -1 SWAP C! ;
+  DUP FIND-SHVAR DUP -1 = IF DROP RU-ADD EXIT THEN   \ unset: the name (603)
+  NIP SHVAR-RO + -1 SWAP C! ;
 
 : SQUOTED. ( c-addr --- )   \ as a single-quoted shell word
   39 EMIT
@@ -4511,6 +4549,13 @@ VARIABLE DO-I
       CR
     THEN
     DO-I @ 1+ DO-I !
+  REPEAT
+  \ and the names made read-only while unset, with no value, as dash
+  \ lists them (603)
+  0 DO-I !
+  BEGIN DO-I @ RU# @ < WHILE
+    ." readonly "  RU-BUF DO-I @ + DUP CSTRLEN TYPE CR
+    RU-BUF DO-I @ + CSTRLEN 1+ DO-I +!
   REPEAT ;
 
 : DO-READONLY ( --- )
@@ -5173,6 +5218,11 @@ VARIABLE RD-LAST-ESC   \ where the last escaped character landed, or -1
 CREATE EMPTY-STRING CSTR," "   \ for `read` at end of input
 
 : DO-READ ( --- )
+  \ A regular builtin: a variable it cannot assign - read-only - is
+  \ status 2, as in dash, not the end of a script, as for a special
+  \ builtin (Iteration 603). VIA-COMMAND? says so to SPECIAL-ERROR;
+  \ RUN-A-BUILTIN puts it back.
+  -1 VIA-COMMAND? !
   \ XCU's read: fields split by IFS (not just blanks, as this did), a
   \ backslash quoting the next character and joining lines unless -r, and
   \ status 1 when the line ended at end of file (Iteration 288).
@@ -5303,7 +5353,7 @@ CREATE GO-CHARBUF 2 ALLOT
 : GO-OPTARG-CHAR! ( c --- )   \ OPTARG = that one character
   GO-CHAR-BUF GO-OPTARG! ;
 
-: DO-GETOPTS ( --- )
+: (DO-GETOPTS) ( --- )
   \ getopts OPTSTRING NAME - parse the positional parameters one
   \ option at a time, per POSIX. OPTIND is a shell variable so a
   \ script can reset it; GO-CPOS tracks the position *within* a
@@ -5383,6 +5433,13 @@ DEFER JOB-FORGET-PID-CALL ( pid --- )
 VARIABLE DW-PID
 DEFER JOB-MARK-DONE-CALL   ( pid raw --- )   \ the job table is below
 
+
+: DO-GETOPTS ( --- )
+  \ A regular builtin's assignments, as DO-READ's (Iteration 603): a
+  \ read-only name is status 2, as in dash, and the script goes on.
+  -1 VIA-COMMAND? !  0 VALUE-FAILED? !
+  (DO-GETOPTS)
+  VALUE-FAILED? @ IF 2 LAST-STATUS ! THEN ;
 : WAIT-SIGNAL-CASE ( --- n )   \ why the wait ended: 0 an error, 1 retry, -1 a trap ran
   \ The engine reports a failed waitpid with one code, not -errno, so
   \ what happened is read from the pending signals instead.
@@ -6445,6 +6502,9 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   CAUGHT-CODE @ ?DUP IF BUILTIN-FAILED THEN ;
 
 : RUN-A-BUILTIN ( xt --- )
+  \ VIA-COMMAND? is put back however the builtin ends (Iteration 603):
+  \ read and getopts set it for their own assignments, below.
+  VIA-COMMAND? @ >R
   0 EXEC-LAST? !
   >R BEGIN-REDIRECT R>
   \ A redirection that fails on a SPECIAL builtin ends a non-interactive
@@ -6460,7 +6520,8 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
       1 LAST-STATUS !
     THEN
   ELSE RUN-CAUGHT THEN
-  END-REDIRECT ;
+  END-REDIRECT
+  R> VIA-COMMAND? ! ;
 
 : RUN-A-FUNCTION ( i --- )
   0 EXEC-LAST? !

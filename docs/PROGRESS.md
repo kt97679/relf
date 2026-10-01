@@ -27587,3 +27587,43 @@ The three new assertions made 1,079 - also in both articles (Habr rev
 228, ForthHub 226), changed while the check ran: article text only,
 which no verify row reads. docs:sizes checks the byte sizes, not this.
 
+
+## Iteration 603: readonly on an unset name; and the campaign before it
+
+First, the fuzzing campaign the user asked to proceed with after 602,
+on this one-CPU container: tools/forthfuzz.py at six seeds, 200 cases
+each - four on the assembly engine, two on the C engine - 0 failures;
+misuse mode at two seeds, 2 failures in 400, both words popping several
+return-stack frames to return past their forth command, into an include
+or a function's machinery - the "no isolation" the articles keep; and
+tools/intrfuzz.py at two seeds, 30 cases each, 0 failures. Nothing in
+what the articles promise failed. A return-stack gap, the data gap's
+counterpart, could narrow misuse further; not done - zeroing it costs
+and putting the pointer back exactly is delicate, for misuse only.
+
+Then the user's open item, readonly on an unset variable. `readonly Y`
+with Y unset marks the name - POSIX - and dash and bash then refuse Y=1
+and unset Y, and list `readonly Y` with no value. relfsh dropped the
+mark, as 569's note said: the table keeps the flag per slot, and a slot
+exists only for a set variable. Now RU-BUF keeps such names, as XP-BUF
+keeps names exported while unset: MARK-READONLY adds a name with no
+value anywhere; SET-VAR refuses it before making a slot (a slot would
+itself set it, to the empty string); unset refuses it; readonly -p lists
+it. Never removed: such a name can be neither assigned nor unset.
+
+And one older bug found beside it: `read Y` on a read-only Y ended a
+script, set or unset - the assignment's error took the special builtin
+route, XCU 2.8.1, for a regular builtin. dash goes on with status 2,
+bash with 1. read and getopts now set VIA-COMMAND? for their own
+assignments, as `command` does for a special builtin's, and
+RUN-A-BUILTIN puts the flag back however a builtin ends - also covering
+`command`, whose own restore a THROW would skip. getopts reported 0 there
+even then: a wrapper turns VALUE-FAILED? into 2.
+
+Checked against dash: assignment, a prefix assignment, unset, read from
+a here-document and in a pipeline, a for variable, getopts, readonly
+-p, ${Y+set} still empty, `command eval` going on, a later eval error
+still ending the script. run-builtins2: eight assertions, 21 in the
+file; the old shell fails seven, dash none. The shell: 139,468 bytes;
+1,087 assertions - both articles (Habr rev 232, ForthHub 230), the copies
+and the README.
