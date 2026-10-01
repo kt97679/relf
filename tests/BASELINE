@@ -19,8 +19,8 @@ docs:sizes current
 ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
-image-sum:kernel32-shell.img 812004275/115476
-image-sum:kernel64-shell.img 1359521048/123692
+image-sum:kernel32-shell.img 1106531036/116480
+image-sum:kernel64-shell.img 1390791300/125436
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -58,12 +58,12 @@ shell:dead-words 0
 shell:files 92
 shell:host-sh-tests 0
 size:asm-engine 15760
-size:asm-shell 139468
+size:asm-shell 141212
 size:engine-code-i386 21505
 size:engine-code-x86_64 26214
-size:i386 145812
-size:image-i386 115476
-size:image-x86_64 123692
-size:x86_64 162828
+size:i386 146816
+size:image-i386 116480
+size:image-x86_64 125436
+size:x86_64 164572
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

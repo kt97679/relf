@@ -6870,6 +6870,65 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
   REPEAT
   PD-BUF PD-N @ ;
 
+\ Characters' widths on screen (Iteration 604). A UTF-8 character took
+\ one column here and in the editor (575): right for Cyrillic, wrong for
+\ CJK and emoji, which take two - every redraw then put the cursor a
+\ column off per such character, and what was typed showed in the wrong
+\ place - and for combining marks, which take none. A character's code
+\ point is looked up in two tables of ranges, decimal: of no width -
+\ combining marks, zero-width spaces and joiners, bidirectional controls,
+\ variation selectors - and of two, East Asian wide and fullwidth, the
+\ emoji blocks, and the symbols emoji presentation makes wide, as glibc's
+\ wcwidth has them. Not every script's marks are here: what is not, is one.
+CREATE ZERO-WIDTH
+  768 , 879 , 1155 , 1161 , 1425 , 1469 , 1471 , 1471 , 1473 , 1474 ,
+  1476 , 1477 , 1479 , 1479 , 1552 , 1562 , 1611 , 1631 , 1648 , 1648 ,
+  1750 , 1756 , 1759 , 1764 , 1767 , 1768 , 1770 , 1773 , 3633 , 3633 ,
+  3636 , 3642 , 3655 , 3662 , 6832 , 6911 , 7616 , 7679 , 8203 , 8207 ,
+  8234 , 8238 , 8288 , 8292 , 8400 , 8447 , 65024 , 65039 , 65056 ,
+  65071 , 65279 , 65279 ,
+HERE ZERO-WIDTH - 2 CELLS / CONSTANT #ZERO-WIDTH
+CREATE WIDE-CHARS
+  4352 , 4447 , 8986 , 8987 , 9001 , 9002 , 9193 , 9196 , 9200 , 9200 ,
+  9203 , 9203 , 9725 , 9726 , 9748 , 9749 , 9800 , 9811 , 9855 , 9855 ,
+  9875 , 9875 , 9889 , 9889 , 9898 , 9899 , 9917 , 9918 , 9924 , 9925 ,
+  9934 , 9934 , 9940 , 9940 , 9962 , 9962 , 9970 , 9971 , 9973 , 9973 ,
+  9978 , 9978 , 9981 , 9981 , 9989 , 9989 , 9994 , 9995 , 10024 , 10024 ,
+  10060 , 10060 , 10062 , 10062 , 10067 , 10069 , 10071 , 10071 , 10133 ,
+  10135 , 10160 , 10160 , 10175 , 10175 , 11035 , 11036 , 11088 , 11088 ,
+  11093 , 11093 , 11904 , 12350 , 12353 , 13311 , 13312 , 19903 , 19968 ,
+  40959 , 40960 , 42191 , 43360 , 43391 , 44032 , 55203 , 63744 , 64255 ,
+  65040 , 65049 , 65072 , 65135 , 65280 , 65376 , 65504 , 65510 , 94176 ,
+  94180 , 94208 , 101631 , 110592 , 111359 , 126980 , 126980 , 127183 ,
+  127183 , 127374 , 127374 , 127377 , 127386 , 127488 , 127490 , 127504 ,
+  127547 , 127552 , 127560 , 127568 , 127569 , 127584 , 127589 , 127744 ,
+  128591 , 128640 , 128767 , 129280 , 129535 , 129648 , 129791 , 131072 ,
+  196605 , 196608 , 262141 ,
+HERE WIDE-CHARS - 2 CELLS / CONSTANT #WIDE-CHARS
+
+: CP-IN? ( cp table n --- f )   \ cp in one of the table's n ranges
+  0 ?DO
+    2DUP @ U< 0=  OVER CELL+ @ 3 PICK U< 0=  AND IF 2DROP -1 UNLOOP EXIT THEN
+    2 CELLS +
+  LOOP 2DROP 0 ;
+
+: UTF8-CP ( c-addr --- cp )
+  \ The code point of the character that starts there; a sequence cut
+  \ short is U+FFFD. Stops at the first byte that does not continue it,
+  \ so a NUL or the next character ends it, never the buffer's end.
+  DUP C@ DUP 128 < IF NIP EXIT THEN
+  DUP 224 < IF 31 AND 1 ELSE DUP 240 < IF 15 AND 2 ELSE 7 AND 3 THEN THEN
+  0 ?DO
+    OVER I 1+ + C@ DUP 192 AND 128 <> IF DROP 2DROP 65533 UNLOOP EXIT THEN
+    63 AND SWAP 6 LSHIFT OR
+  LOOP NIP ;
+
+: CHAR-COLS ( c-addr --- n )   \ the columns of the character there
+  UTF8-CP
+  DUP ZERO-WIDTH #ZERO-WIDTH CP-IN? IF DROP 0 EXIT THEN
+  WIDE-CHARS #WIDE-CHARS CP-IN? IF 2 ELSE 1 THEN ;
+
+
 : PROMPT-VISIBLE ( c-addr u --- c-addr u' )   \ markers out, width measured
   \ In place: the text only ever shrinks. A UTF-8 continuation byte
   \ takes no column of its own, and a newline starts the count again,
@@ -6880,7 +6939,7 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
     DUP 1 = IF DROP -1 PD-INV ! ELSE
     DUP 2 = IF DROP 0 PD-INV ! ELSE
       DUP 10 = IF 0 PROMPT-WIDTH ! ELSE
-        PD-INV @ 0= IF DUP 192 AND 128 <> IF 1 PROMPT-WIDTH +! THEN THEN
+        PD-INV @ 0= IF DUP 192 AND 128 <> IF OVER I + CHAR-COLS PROMPT-WIDTH +! THEN THEN
       THEN
       OVER PD-J @ + C!  1 PD-J +!
     THEN THEN
