@@ -190,5 +190,19 @@ printf '%s\n' ": INC S\" $t/good.4\" INCLUDED ;" 'S" INC" EVALUATE GOODWORD .' >
 out=$(run "forth 'S\" $t/ev.4\" INCLUDED'; echo s=\$?")
 assert_output_contains "an INCLUDED from an EVALUATE leaves the including line whole" "11 s=0" "$out"
 
+# A recursion through the shell (Iteration 602): Forth runs shell text
+# that runs forth again, without end. Each forth command's 16 KB gap was
+# taken in one jump, which cleared the data stack's 4 KB guard page after
+# a dozen levels - pushes then wrote into the dictionary, and a stray
+# segmentation fault followed. Now the gap checks for room first.
+out=$(run "forth ': RCB S\" forth RCB\" TREE-RUN-TEXT ; RCB' 2>&1; forth 'DEPTH . CR'; for i in a b; do printf \$i; done; echo")
+assert_output_contains "a recursion through the shell: data stack overflow" "data stack overflow" "$out"
+assert_output_contains "and the shell whole after it" "0 
+ab" "$out"
+case $out in
+    *segmentation*) assert_output_equals "and no stray fault after it" "no fault" "$out" ;;
+    *) assert_output_equals "and no stray fault after it" "no fault" "no fault" ;;
+esac
+
 rm -rf "$t"
 report
