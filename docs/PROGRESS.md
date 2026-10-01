@@ -27648,3 +27648,40 @@ Shell race or harness timeout, nothing said which: tests/verify kept
 the fuzzers' count and dropped their output. Now each fuzzer row prints
 its failures' shrunk case and transcript into verify's log, as the pty
 suite's rows do - the next time, wherever it happens, says what it was.
+
+## Iteration 606: a ^C that came before the forth builtin was ready
+
+The rare intrfuzz failure of 605, run down. Eight runs of verify's 20
+cases gave one failure, now with its transcript: a forth command that
+includes a file looping forever, a ^C sent with it, and the shell never
+came back. The forth builtin gives ^C the throw route only when it
+begins; a ^C that came before was caught the ordinary way and left for
+the next break between commands, which an endless Forth loop never
+gives. Loaded builtins, given the throw route at 598, had the window
+too.
+
+A first fix, staged and verified by hand, was not enough: the fuzzer's
+own case failed once more inside verify. FTH-RUN - the text runs under
+it, inside DO-FORTH's CATCH - set the throw route, then took whatever ^C
+came before it and threw -28 for it: one still caught, one a wait had
+set aside (DEFERRED-SIG), one taken already with the line only marked
+stopped. The fuzzer's case 4 replayed - a push loop's overflow, then an
+include with ^C after 10 ms, then one with ^C at once - still hung 2
+times in 40. Not the signal mask: the trap's sigsetjmp saves it at the
+start. It was SIGNAL-ACTION itself, in both engines: changing an action
+cleared the signal's caught flag - so the switch to the throw route
+erased the very ^C that had just come, and there was nothing left to
+take. Now a caught flag is cleared only for default or ignore, where it
+means nothing; while a signal stays caught it is kept for its taking.
+
+Checked: case 4 replayed, 0 hangs in 40 on the C engine, 0 in 25 on the
+assembly engine; the line and a ^C written together, each in a fresh
+shell, 0 in 120 across both engines, against 3 in 120 for the old shell;
+verify's intrfuzz cases, both engines, no failures. No test hits so
+narrow a window on demand: verify's intrfuzz rows are the guard, and
+since 605 they print what they find. (A first try at a deterministic
+case, a command substitution in the arguments sending the shell SIGINT,
+was never this window: the shell does not take SIGINT for itself while
+it waits for a child.)
+The engine: 15,768 bytes; the shell 141,372 - both articles (Habr rev
+247, ForthHub 245), the copies and the README.

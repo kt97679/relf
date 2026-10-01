@@ -5020,7 +5020,32 @@ VARIABLE FTH-I
 \ absolute address, wrong once the saved image loads elsewhere - every
 \ forth command faulted with it (Iteration 571)
 VARIABLE FTH-EVAL-XT
-' EVALUATE FTH-EVAL-XT !XT
+\ The text runs under FTH-RUN, which first sends ^C the throw route, then
+\ takes the signals caught before it did (Iteration 606, tools/intrfuzz.py):
+\ a ^C that came between the line being read and this - with the command
+\ line, or during its arguments' expansion - waited, caught, for the next
+\ break between commands, and an endless Forth loop never gave it one:
+\ the shell hung until a second ^C. A ^C caught then is thrown now; any
+\ other signal is taken as between commands. Inside DO-FORTH's CATCH, so
+\ the route is put back however it ends.
+: INT-PENDING-TAKE ( --- f )   \ a ^C waiting: caught, or taken already
+  \ Taken already: between commands, or during a wait - a command
+  \ substitution in this command's arguments - TAKE-SIGNAL only marked
+  \ the line stopped (INTERRUPTED), and the builtin still ran.
+  \ Or set aside by that wait, for the next break (DEFERRED-SIG). Or
+  \ still caught, not yet taken. All three are a ^C to throw now.
+  INTERRUPT-PENDING? @ 0<>
+  DEFERRED-SIG @ 2 = IF 0 DEFERRED-SIG !  DROP -1 THEN
+  BEGIN SIGNALS-PENDING ?DUP WHILE DUP 2 = IF 2DROP -1 ELSE TAKE-SIGNAL THEN REPEAT ;
+: FTH-RUN ( c-addr u --- )
+  INT-THROWS? IF
+    2 4 SIGNAL-ACTION DROP
+    INT-PENDING-TAKE IF -28 THROW THEN
+  THEN
+  EVALUATE ;
+' FTH-RUN FTH-EVAL-XT !XT
+: INT-NOW ( --- )   -28 THROW ;   \ for a loaded builtin with a ^C waiting (606)
+VARIABLE INT-NOW-XT   ' INT-NOW INT-NOW-XT !XT
 
 16384 CONSTANT STACK-GAP   \ 595: between the executor's cells and Forth's
 VARIABLE FTH-LEFT          \ the cells a forth command left, across the SP!
@@ -5071,7 +5096,7 @@ VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
   \ held the terminal. While it runs, SIGINT takes the traps' route
   \ (SIGNAL-ACTION 4): -28 is thrown at once and caught here, the
   \ command line stops, $? is 130. SIGINT is put back either way.
-  INT-THROWS? IF 2 4 SIGNAL-ACTION DROP THEN
+  \ (^C's throw route is FTH-RUN's to set, inside the CATCH, since 606)
   \ S0 is this command's own stack while it runs (Iteration 589, the
   \ ninth review): INTERPRET's ?STACK measures DEPTH from S0, which lay
   \ below the executor's cells and RUN-CAUGHT's padding, so `forth
@@ -6479,6 +6504,9 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ not be interrupted at all). Kept on the return stack, deepest.
   DUP USER-XT-FLOOR @ U< 0= INT-THROWS? AND
   DUP IF 2 4 SIGNAL-ACTION DROP THEN >R
+  \ and a ^C caught before the route was set is thrown at once, as in
+  \ FTH-RUN (606): the builtin is not run, INT-NOW is
+  R@ IF INT-PENDING-TAKE IF DROP INT-NOW-XT @XT THEN THEN
   SP@ >R                            \ the base, xt on top
   \ A builtin loaded from Forth gets a gap instead (Iteration 595): the
   \ pushes after CATCH, below, landed on the executor's cells once it

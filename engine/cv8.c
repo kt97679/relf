@@ -1340,7 +1340,12 @@ L_sigaction: SPILL(); { /* signo action --- ior : 0 default, 1 ignore,
         sa.sa_handler = act == 1 ? SIG_IGN
                       : (act == 2 || act == 3) ? sig_catch
                       : act == 4 ? sig_int_throw : SIG_DFL;   /* 571 */
-        sig_flag[sig] = 0;
+        /*  A caught signal not yet taken is kept when the signal stays
+         *  caught (Iteration 606): the forth builtin's switch to the
+         *  throw route erased a ^C that came just before it, and an
+         *  endless Forth loop then ran on (tools/intrfuzz.py). To default
+         *  or ignore, it means nothing any more.  */
+        if (act < 2) sig_flag[sig] = 0;
         DS1 = sigaction(sig, &sa, (struct sigaction *)0) ? (UNS64)(INT64)-errno : 0;
     }
     dsp += CELL_BYTES;
