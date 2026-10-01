@@ -27587,3 +27587,42 @@ still ending the script. run-builtins2: eight assertions, 21 in the
 file; the old shell fails seven, dash none. The shell: 139,468 bytes;
 1,087 assertions - both articles (Habr rev 232, ForthHub 230), the copies
 and the README.
+
+## Iteration 604: characters of two columns, and of none
+
+The user's item, raised again: wide characters in the editor. 575 made
+the editor move over and delete whole UTF-8 characters, one column
+each - right for Cyrillic, which the reviews tried; wrong for CJK and
+emoji, two columns on a terminal, and for combining marks, none. Each
+redraw goes back to the prompt's start and then to the cursor by
+columns, so every wide character put the cursor one column off, and
+what was typed next showed in the wrong place; a prompt with one was
+measured short too.
+
+shell.4 now has the widths, ahead of PROMPT-VISIBLE so both it and the
+editor use them: UTF8-CP decodes a character (a broken one is U+FFFD,
+one column; it stops at the first byte that does not continue it, so
+never past a string), and two tables of code point ranges give 0 -
+combining marks, zero-width spaces and joiners, bidi controls,
+variation selectors, the BOM - or 2 - East Asian wide and fullwidth,
+the emoji blocks, and the symbols emoji presentation makes wide, as
+glibc's wcwidth has them; everything else 1. Not every script's marks
+are listed - Devanagari's, say, are one column here. TEXT-COLS sums
+them in ED-COLS, so the redraw and the Ctrl-R line count right, and
+PROMPT-VISIBLE measures each character by CHAR-COLS. (A TEXT-COLS in
+shell.4 for both was unreachable to tools/dead-words.py, which reads
+shell.4 and tree.4 only: the sum lives in edit.4, where it is used.)
+
+pty_session's render counts a column a character, so the pty cases
+could not see this. tests/interactive/width-probe.py follows the
+editor's own cursor movements with unicodedata's widths, as a terminal
+would, and checks where the cursor ends: CJK typed, Left over it, two
+Lefts and an insert, Backspace, an emoji, a combining mark, Cyrillic,
+and a wide character in the prompt. 8 checks, all pass on the three
+builds; the old shell fails 6. tests/interactive/run runs it with the
+other probes, so its failures count in interactive:failed.
+
+The tables cost 1,744 bytes: the shell is 141,212, in both articles
+(Habr rev 238, ForthHub 236), the copies and the README. Memory at rest
+here, the assembly engine, three runs: 204, 204, 200 kB, against 196-200
+before 582 - the articles' "about 210" (fury's 212) holds.
