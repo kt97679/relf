@@ -228,13 +228,21 @@ emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END
 # checks the shell is alive and whole. 100 cases, a fixed seed; the
 # review rounds 586-593 each found such a crash by hand.
 if command -v python3 >/dev/null 2>&1; then
-    emit forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfsh 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+    # the failures' details into the log, as the pty suite's (Iteration 605):
+    # a rare one, seen once, kept only its count
+    fz=$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfsh 2>&1)
+    printf '%s\n' "$fz" | grep -A14 '^FAIL' | sed 's/^/  forthfuzz: /' >&2
+    emit forthfuzz:failures "$(printf '%s\n' "$fz" | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
 else emit forthfuzz:failures skipped; fi
 # ^C at random moments, on a pseudo-terminal (Iteration 598): Forth
 # loops and includes, a loaded builtin, shell loops, pipelines, $(...),
 # cat and read, a trap; then the shell must be back and whole.
 if command -v python3 >/dev/null 2>&1; then
-    emit intrfuzz:failures "$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfsh 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+    # the failures' details into the log, as the pty suite's (Iteration 605):
+    # a rare one, seen once, kept only its count
+    fz=$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfsh 2>&1)
+    printf '%s\n' "$fz" | grep -A14 '^FAIL' | sed 's/^/  intrfuzz: /' >&2
+    emit intrfuzz:failures "$(printf '%s\n' "$fz" | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
 else emit intrfuzz:failures skipped; fi
 emit shell:files "$(ls tests/shell/run-* 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -327,10 +335,18 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     then emit asm:shell-image reproduces
     else emit asm:shell-image DIFFERS; fi
     if command -v python3 >/dev/null 2>&1; then
-        emit asm:forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfshasm64 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+        # the failures' details into the log, as the pty suite's (Iteration 605):
+        # a rare one, seen once, kept only its count
+        fz=$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfshasm64 2>&1)
+        printf '%s\n' "$fz" | grep -A14 '^FAIL' | sed 's/^/  asm:forthfuzz: /' >&2
+        emit asm:forthfuzz:failures "$(printf '%s\n' "$fz" | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
     else emit asm:forthfuzz:failures skipped; fi
     if command -v python3 >/dev/null 2>&1; then
-        emit asm:intrfuzz:failures "$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfshasm64 2>/dev/null | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+        # the failures' details into the log, as the pty suite's (Iteration 605):
+        # a rare one, seen once, kept only its count
+        fz=$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfshasm64 2>&1)
+        printf '%s\n' "$fz" | grep -A14 '^FAIL' | sed 's/^/  asm:intrfuzz: /' >&2
+        emit asm:intrfuzz:failures "$(printf '%s\n' "$fz" | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
     else emit asm:intrfuzz:failures skipped; fi
     rm -f /tmp/verify-asm-shell.img
     tf="tests/tester.fr $(ls tests/*.fth | tr '\n' ' ')"
