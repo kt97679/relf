@@ -383,11 +383,23 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     rm -f relfasm64.forth
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
+    # The sizes the README and both articles quote, against the files
+    # (Iteration 601): the README said 138,052 from 587 to 600 while the
+    # shell grew, and nothing noticed. Commas for the English, none for
+    # the Russian.
+    ds=$(wc -c < relfshasm64 | tr -d ' '); de=$(wc -c < relfasm64 | tr -d ' ')
+    commas() { echo "$1" | awk '{n=$0; s=""; while (length(n) > 3) { s="," substr(n, length(n)-2) s; n=substr(n, 1, length(n)-3) } print n s}'; }
+    dsc=$(commas "$ds"); dec=$(commas "$de")
+    if grep -q "one static file of $dsc bytes" README.md && grep -q "$dec bytes of x86-64" README.md &&
+       grep -q "one static file of $dsc bytes" docs/ARTICLE-forthhub.md && grep -q "$dec bytes of x86-64" docs/ARTICLE-forthhub.md &&
+       grep -q "размером $ds байт" docs/ARTICLE-habr.md && grep -q "движок: $de байт" docs/ARTICLE-habr.md; then
+        emit docs:sizes current
+    else emit docs:sizes stale; fi
 else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

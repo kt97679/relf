@@ -6,7 +6,7 @@ self-hosting (docs/GOALS.md). What it is today:
 
 - **Two engines** that run the same byte-coded Forth image: `cv8.c`, a
   small virtual machine in portable C (38 KB stripped on x86-64), and
-  `relfasm64`, 15,696 bytes of x86-64 on raw system calls, no libc -
+  `relfasm64`, 15,760 bytes of x86-64 on raw system calls, no libc -
   **assembled by relf itself**, from `engine/relfasm64.4`, with an
   assembler written in Forth (`forth/asm64.4`). It reproduces itself.
 - **A Forth system that compiles itself**: `cross.4`, running on
@@ -16,7 +16,7 @@ self-hosting (docs/GOALS.md). What it is today:
   `edit.4` - with job control, a line editor with history, and `$'...'`
   and `set -o pipefail` from POSIX.1-2024. On yash's and busybox's test
   suites it passes more cases than dash does (docs/DASH.md). The whole
-  shell is one static file of 138,052 bytes on the assembly engine, and
+  shell is one static file of 138,956 bytes on the assembly engine, and
   `forth` drops from it into the live system it is written in: every
   word, compiler included, is there to extend it.
 

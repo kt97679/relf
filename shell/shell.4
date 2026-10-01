@@ -6362,7 +6362,7 @@ VARIABLE EXEC-LAST?   \ see RUN-EXTERNAL
   \ -5, a stack's guard page (586) - a word that THROWs them itself goes
   \ unreported, as Forth 2012 reserves them for the system.
   DUP -1 = OVER -2 = OR OVER -9 = OR OVER -10 = OR
-  OVER -3 = OR OVER -5 = OR 0= IF
+  OVER -3 = OR OVER -5 = OR OVER -256 = OR 0= IF
     S" forth: uncaught exception " ERR-TYPE
     DUP ABS 0 <# #S ROT SIGN #> ERR-TYPE ERR-NL
   ELSE DROP THEN

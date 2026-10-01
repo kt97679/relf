@@ -975,9 +975,16 @@ L_esc:     /*  The escaped band: one more byte selects an OS/libc
             *  (tools/opcode-mix.py, Iteration 501).  */
     t = BYTE(ip); ip += 1; PROF(t); goto *esc_tab[t];
 L_badesc:
+    /*  With a trap word, as in the shell, a THROW (Iteration 601): at run
+     *  time an opcode no table names is a jump into what is not code - a
+     *  return stack misused, `: W R> R> R> R> DROP DROP DROP DROP ; W`,
+     *  ended the shell with 2 - and that is a trap's kind of error (A26).
+     *  -256, the first code Forth 2012 leaves to the system.  */
+    if (g_trap_xt) trap_restart(-256);
     write_str(2, "relf: image uses an escaped primitive this engine does not have\n");
     exit(2);
 L_badop:   /* an opcode no table names: until 528 it did nothing */
+    if (g_trap_xt) trap_restart(-256);            /* a THROW, as above (601) */
     write_str(2, "relf: image uses an opcode this engine does not have\n");
     exit(2);
 L_loop: {   /* (LOOP), since 530: counter at rp[0], limit at rp[1]; at the
