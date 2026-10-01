@@ -27725,3 +27725,15 @@ was never this window: the shell does not take SIGINT for itself while
 it waits for a child.)
 The engine: 15,768 bytes; the shell 141,372 - both articles (Habr rev
 247, ForthHub 245), the copies and the README.
+
+## Iteration 607: the ForthHub announcement, recorded
+
+The author published the announcement on ForthHub on 1 October 2026:
+Discussion #207, "relfsh: POSIX shell written in forth", in Show and
+tell. Drafted here in his voice, from his #92 thread and replies; the
+draft's opening on #92 he asked to drop, the sentence about Claude he
+kept. It links the article and the code on article-2026, then at
+074d978, and its numbers are 606's, verified on fury and rage.
+ANNOUNCEMENT.md records what it says, how it was written, and what
+comes next on the route; the dated tag is the author's to make. Docs
+only: nothing the articles quote changes.

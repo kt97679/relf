@@ -771,3 +771,42 @@ crash found later is a bug report, not a false sentence.
   no longer names 16 cells: anything else a Forth word does happens
   inside the shell, and a wrong store can bring it down. And the numbers
   595 changed: 138,604 bytes, 1,076 assertions.
+
+## Published: ForthHub, 1 October 2026
+
+The first step of the route (section 6 of the research above: ForthHub
+first, then comp.lang.forth, Habr, r/Forth): a Discussion, not the
+article itself - "relfsh: POSIX shell written in forth",
+https://github.com/ForthHub/discussion/discussions/207, in Show and
+tell, by kt97679, 1 October 2026.
+
+What it says, briefly: relfsh, a POSIX shell written in forth, on RelF,
+which began as an attempt to fix sod32's limits; one static file of
+141,372 bytes on x86-64, without libc, about 210 KB at rest; the 15,768
+byte engine assembled by an assembler written in forth; the forth
+compiling itself, gforth running the same cross compiler producing the
+same bytes; the C engine, on an ARMv7 board too; the CORE tests, 2136
+checks, both engines, both cell widths; 64 one-byte opcodes chosen by
+how often they execute; the forth builtin, with seq loaded at run time;
+scripts 30-40 times slower than dash, "so it is not about speed"; that
+Claude wrote most of the code under the author's direction; and a
+question - a better way to pick the one-byte opcodes than counting how
+often they run? superinstructions were tried and removed. It links the
+article (docs/ARTICLE-forthhub.md) and the code on the branch
+article-2026, then at 074d978 (Iteration 606); every number in it was
+the baseline's that day, verified on the author's two machines.
+
+How it was written: drafted in the author's ForthHub voice, read from
+his own thread there, #92 (December 2020) and his replies in it - "Hi
+folks," and "Thanks, Kirill.", plain first person, the details linked
+rather than retold, forth and sod32 in lower case, a question to the
+readers at the end. The draft opened from #92's 7 primitives; the
+author: not #92 - not appropriate for this announcement. So it opens
+with the project itself. The Claude sentence, one of his open calls,
+he kept.
+
+Not yet done, at this record: the dated tag on article-2026 - the post
+links the branch, which takes fixes; a tag keeps the state it described.
+Next on the route: comp.lang.forth, Habr (its byline date, the spoilers,
+the cut, the hubs), r/Forth. The measure, section 4: replies from
+implementers, not views.
