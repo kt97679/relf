@@ -1798,8 +1798,10 @@ eax 67108868 # mov,                      \ SA_SIGINFO | SA_RESTORER: int_throw
 rax [ sig_restorer ] lea,
 [ rsi 16 ] rax mov,
 [ rsi 24 ] qword-ptr 0 # mov,
-[ rdi sig_flag ] byte-ptr 0 # mov,
-edx edx xor,
+r12 2 # cmp,                             \ a caught signal not yet taken is
+5 F jae,                                 \ kept while it stays caught (606,
+[ rdi sig_flag ] byte-ptr 0 # mov,       \ cv8.c's SIGNAL-ACTION)
+5 L:  edx edx xor,
 r10d 8 # mov,                            \ sizeof the kernel's sigset
 eax SYS_rt_sigaction # mov,
 syscall,
