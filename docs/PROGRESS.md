@@ -27553,3 +27553,37 @@ articles (Habr rev 224, ForthHub 222) and the README - which said
 time, and not the README. tests/verify now checks the sizes the README
 and both copies quote against the files: docs:sizes, skipped where the
 assembly engine is not built.
+
+## Iteration 602: Forth calling back into the shell
+
+The last of the three areas. Forth runs shell text with TREE-RUN-TEXT
+(prompt-command.4 does, with TREE-RUN-CSTR), and the text may run forth
+again. Shell text with errors in it, forth with cells left or taken, a
+syntax error, an unknown command - each came through. A recursion did
+not quite: `: RCB S" forth RCB" TREE-RUN-TEXT ; RCB` stopped at the
+return stack's guard, and then a stray segmentation fault followed.
+
+My first guess was the trap word's start, 1 KB above the return
+stack's floor, writing over a CATCH frame there: moving TRAPPED to the
+innermost frame first changed nothing on 64 bits and broke the 4-byte
+build, whose return stack is not 64 KB - reverted. The cause was 595's
+gap. Each forth command moves the stack pointer 16 KB in one step,
+touching nothing, and the guard page below the data stack is 4 KB:
+nested a dozen deep through the shell, the jump cleared the guard, and
+the pushes wrote into the dictionary instead of faulting. STACK-GAP-ROOM
+now checks for room above the guard before the gap is taken - in
+DO-FORTH and for loaded builtins in RUN-CAUGHT - and if there is none,
+reports a data stack overflow as the guard would and throws -3.
+
+tools/forthfuzz.py gains callbacks: at the forth prompt, shell text that
+runs forth with errors at any level, loops, subshells, $(...), a
+function, and the endless recursion; and loaded builtins that call back.
+150 cases at seed 602 on each engine: no failures. run-forth-errors: the
+recursion - one "data stack overflow", the shell whole after it, no
+fault - three assertions, 69 in the file; two fail without the fix. The
+shell: 139,036 bytes, in both articles (Habr rev 227, ForthHub 225) and
+the README; tests/verify's docs:sizes checks them.
+The three new assertions made 1,079 - also in both articles (Habr rev
+228, ForthHub 226), changed while the check ran: article text only,
+which no verify row reads. docs:sizes checks the byte sizes, not this.
+

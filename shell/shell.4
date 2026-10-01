@@ -4983,6 +4983,17 @@ VARIABLE FTH-CODE          \ and its CATCH code
 VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
                            \ loaded: builtins loaded from Forth (tree.4)
 
+: STACK-GAP-ROOM ( --- )
+  \ Room for the gap, or a data stack overflow (Iteration 602): the gap
+  \ moves the stack pointer 16 KB in one step, touching nothing, and the
+  \ guard page below the data stack is 4 KB - so forth commands nested
+  \ deep enough, through the shell (TREE-RUN-TEXT), jumped over it into
+  \ the dictionary, and their pushes wrote there instead of faulting.
+  \ Reported as the guard would, and thrown as -3.
+  SP@ STACK-GAP - DICT-LIMIT 8192 + U< IF
+    S" relf: data stack overflow" ETYPE 10 ECHAR  -3 THROW
+  THEN ;
+
 : DO-FORTH ( --- )
   \ forth WORDS... - hand the rest of the line to the Forth
   \ interpreter. This is the extension mechanism discussed back in
@@ -5037,6 +5048,7 @@ VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
   \ nothing is written. Afterwards the executor's stack is put back as
   \ it was, and whatever the command left is pushed back as zeros for
   \ RUN-CAUGHT to report, as it did (582).
+  STACK-GAP-ROOM
   SP@ >R  S0 @ >R
   SP@ STACK-GAP - SP!  SP@ S0 !
   FORTH-BUF FTH-LEN @ FTH-EVAL-XT @XT CATCH
@@ -6419,7 +6431,7 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   DUP USER-XT-FLOOR @ U< IF
     >R STACK-PADS 0 DO 0 LOOP R>
   ELSE
-    >R SP@ STACK-GAP - SP! R>
+    STACK-GAP-ROOM  >R SP@ STACK-GAP - SP! R>
   THEN
   SP@ >R                            \ the mark, above the padding
   SID @ >R  SRC @ >R  #SRC @ >R  >IN @ >R

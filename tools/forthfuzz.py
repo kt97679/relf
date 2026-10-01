@@ -51,7 +51,8 @@ class Case:
         kinds = ['underflow', 'dots', 'excess', 'undefined', 'throw', 'abort', 'div0',
                  'badaddr', 'overflow', 'rec', 'takes', 'fine', 'evaluate']
         if not in_word:
-            kinds += ['compileonly', 'include', 'include', 'include', 'rlegal', 'rlegal']
+            kinds += ['compileonly', 'include', 'include', 'include', 'rlegal', 'rlegal',
+                      'callback', 'callback', 'callback']
             if MISUSE:
                 kinds += ['rmisuse', 'rmisuse']
         kind = r.choice(kinds)
@@ -95,6 +96,15 @@ class Case:
                              '1 >R 42 THROW', '7 >R 0 @', '9 >R 1 0 /', '2 >R RECURSE',
                              '5 0 DO 1 0 / LOOP', '3 0 DO 42 THROW LOOP', '4 0 DO I >R 0 0 ! LOOP'])
             return ': %s %s ; %s' % (w, body, w)
+        if kind == 'callback':
+            # Forth calling back into the shell (Iteration 602), which may
+            # run forth again: a forth command nested in the shell nested in
+            # Forth, an error at any level, a recursion through the shell
+            cmd = r.choice(CALLBACKS)
+            if cmd == 'RECURSE':
+                w = self.name('FZC')
+                return ': %s S" forth %s" TREE-RUN-TEXT ; %s' % (w, w, w)
+            return 'S" %s" TREE-RUN-TEXT' % cmd
         if kind == 'rmisuse':
             # the return stack misused: a wild return. No guarantee - the
             # jump may run anything - so only with FORTHFUZZ_MISUSE=1, to
@@ -157,6 +167,9 @@ class Case:
     def builtin(self):
         w = self.name('FZB')
         body = self.atom(in_word=True)
+        if self.rng.random() < 0.3:      # a loaded builtin that calls back (602)
+            cmd = self.rng.choice(CALLBACKS[:-1])
+            body = 'S" %s" TREE-RUN-TEXT' % cmd
         path = os.path.join(self.d, self.name('b') + '.4')
         self.files[path] = ": %s %s ;\n' %s S\" %s\" BUILTIN\n" % (w, body, w, w.lower())
         return ["forth 'S\" %s\" INCLUDED'" % path, w.lower()]
@@ -193,6 +206,11 @@ class Case:
 # The file descriptors are listed into files: a count through $(...)
 # also counts that substitution's own pipe, some of the time. Each
 # marker starts a line of its own - `.` prints no newline.
+CALLBACKS = ['echo cb', 'false', 'true', 'x=1', 'forth DEPTH .', 'forth 1 2 3', 'forth 1 0 /',
+             'forth DROP', 'forth NOSUCH', 'nosuchcmd', 'for i in 1 2; do forth DROP; done',
+             '( forth 1 0 / )', 'echo $(forth 7 .)', 'f() { forth 0 @; }; f', 'forth -3 THROW',
+             'forth 42 THROW', 'RECURSE']
+
 PRELUDE = r'''keep=sentinel
 ls /proc/$$/fd > fd0.txt 2>/dev/null
 '''
