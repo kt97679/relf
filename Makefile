@@ -246,7 +246,7 @@ native-n1a: forth/native-n1a.4 forth/native.4 forth/asm64.4 forth/extend.4 forth
 
 # N1b (Iteration 611): tests/native/prims.4 compiled natively; it must print
 # what CV8 prints for it (tests/native/cv8-prims.4) - tests/verify compares.
-native-n1b: forth/native-n1b.4 forth/native.4 tests/native/prims.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64
+native-n1b: forth/native-n1b.4 forth/native.4 forth/native-rt.4 tests/native/prims.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64
 	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-n1b.4 > native-n1b.log 2>&1 || true
 	@if [ ! -x $@ ] || grep -q 'Undefined word\|native:\|asm64:' native-n1b.log; then \
 	    echo "native-n1b: not built:" >&2; tr -d '\r' < native-n1b.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi

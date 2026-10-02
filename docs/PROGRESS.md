@@ -27839,3 +27839,33 @@ it only on positive numbers, and kernel.4's own /MOD, over UM/MOD, is
 what N1c will compile.
 
 make native-n1b; tests/verify's native:prims row - same, on x86-64.
+
+## Iteration 612: N1b-2 - the rest of what kernel.4 calls
+
+Which of CV8's escaped primitives does the kernel need? Most of the 70
+appear once in kernel.4 - their PRIMITIVE line. Its code calls READ
+WRITE POLL TYPE, OPEN-FILE CLOSE-FILE REPOSITION-FILE FILE-POSITION, BYE,
+SP! RP@ RP!, DICT-LIMIT and TRAP-XT!; CV8's locals neither it nor the
+shell uses. So N1b-2 is that set, and the operating system's others -
+processes, signals, the terminal, directories, the environment, the heap
+- come with the shell, N1d. DICT-LIMIT and TRAP-XT! belong to the
+runtime's layout and traps: N1c.
+
+engine/cv8.c says what each must give, and native.4 gives it: SP@ the
+old top's cell, SP! the top made the cell there, RP@ and RP! the machine
+stack's pointer (the return stack is it), @XT an offset plus the image's
+base (N-START). forth/native-rt.4 is the runtime's routines, NCODE words:
+the string primitives, moved there from native-n1b.4, and the system
+calls, raw, with CV8's results - ior 200 and a fid of -1 on a failure,
+CLOSE-FILE's -1 as libc's, READ WRITE POLL's -errno; OPEN-FILE ends the
+name with a NUL for the call and puts the byte back; its modes are
+cv8.c's open_flags, the eleven of them.
+
+tests/native/prims.4 grew to 45 lines: an SP@ ... SP! round trip and
+SP@ distances; RP@ distances, and RP! undoing a word's two pushes;
+!XT/@XT through EXECUTE; WRITE; the repository's Makefile opened, read,
+its position read, sought back to 0 and read again, closed; POLL with
+nothing. The two print the same. One crash on the way: OPEN-FILE loaded
+the mode table's address as an immediate while the table was still a
+forward label, and asm64 resolves forward labels for jumps and Q,+ - not
+for an immediate; the table is laid down before the routine now.

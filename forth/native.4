@@ -28,6 +28,8 @@ BASE @ DECIMAL
 WORDLIST CONSTANT NPRIMS
 WORDLIST CONSTANT NTARGET
 VARIABLE N-SELF              \ the target word being compiled: RECURSE
+VARIABLE N-START             \ the image's base: @XT and !XT count from it
+4194304 N-START !            \ 0x400000, until a build says otherwise
 
 \ ---- the stack, and the jumps the control words patch -----------------------
 : N-PUSH ( --- )  rbp 8 # sub,  [ rbp ] rbx mov, ;     \ the top into memory
@@ -135,6 +137,11 @@ CURRENT @  NPRIMS CURRENT !
         r8 rdx mov,  r8 rax add,  r8 rdx xor,  rdx rax xor,  r8 rdx and,
         15 137 N-BACK                                    \ jns back: not crossed
         rsp 16 # add,  N-LOOP-END ;
+: SP@   N-PUSH  rbx rbp mov, ;                           \ the old top's cell, as CV8's
+: SP!   rbp rbx mov,  N-POP ;                            \ the top: the cell there
+: RP@   N-PUSH  rbx rsp mov, ;                           \ the return stack: the machine's
+: RP!   rsp rbx mov,  N-POP ;
+: @XT   rbx [ rbx ] mov,  rbx N-START @ # add, ;         \ an offset, plus the image base
 : I     N-PUSH  rbx [ rsp ] mov, ;
 : J     N-PUSH  rbx [ rsp 16 ] mov, ;
 : UNLOOP  rsp 16 # add, ;

@@ -200,8 +200,17 @@ Each is an iteration or several, with what must be true at its end.
   COMPARE SCAN CSTRLEN TYPE) as NCODE routines, called. tests/native/
   prims.4, written once in a T: dialect, is compiled by CV8 and by
   native.4; the two print the same, byte for byte - tests/verify's
-  native:prims row. Next, N1b-2: SP@ SP! RP@ RP!, @XT, the locals, and the
-  operating system's primitives.
+  native:prims row.
+- **N1b-2, what the kernel calls** (612, done): SP@ SP! RP@ RP! and @XT,
+  inlined; forth/native-rt.4, the runtime's routines - the string
+  primitives, and READ WRITE POLL OPEN-FILE CLOSE-FILE REPOSITION-FILE
+  FILE-POSITION SYS-EXIT BYE as raw system calls, with CV8's results
+  (ior 200, fid -1). prims.4 grew to 45 lines - an SP@/SP! round trip,
+  RP! unwinding a word's pushes, !XT/@XT through EXECUTE, the Makefile
+  read back with a seek - and prints the same in both. CV8's locals
+  are used by neither the kernel nor the shell; the operating system's
+  other primitives - processes, signals, the terminal, directories,
+  the environment, the heap - are the shell's, and come with N1d.
 - **N1, plain native code.** Primitives inlined as fixed instruction
   sequences, words as native functions, the top of the stack in `rbx`,
   no optimizer. Exit: the CORE tests pass, both cell widths' kernels

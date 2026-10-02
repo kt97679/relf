@@ -43,6 +43,22 @@ T: T-STR  BUF 32 65 FILL  BUF 4 TYPE NL
   DIGITS  BUF 10 53 SCAN SWAP BUF - P P  BUF 10 65 SCAN SWAP BUF - P P
   BUF 0 48 SCAN SWAP BUF - P P NL
   0 BUF 7 + C!  BUF CSTRLEN P NL T;
+\ N1b-2 (Iteration 612): the pointer words, @XT, and the operating
+\ system's primitives kernel.4 calls - the repository's Makefile read back
+T: T-SP  1 2 3 SP@ 10 20 30 2DROP DROP SP! P P P NL
+  SP@ 1 2 SP@ >R 2DROP R> - P NL T;
+T: T-RP  RP@ 5 >R RP@ - R> P P NL T;
+T: T-RPSTORE  RP@ 1 >R 2 >R RP! T;               \ the pushes undone: back as ever
+T: T-XT  7 ['] SQ BUF 200 + !XT  BUF 200 + @XT EXECUTE P NL T;
+T: MAKEFILE  77 BUF 64 + C!  97 BUF 65 + C!  107 BUF 66 + C!  101 BUF 67 + C!
+  102 BUF 68 + C!  105 BUF 69 + C!  108 BUF 70 + C!  101 BUF 71 + C!  BUF 64 + 8 T;
+T: T-IO  BUF 4 1 WRITE P NL
+  MAKEFILE 2 OPEN-FILE P >R
+  BUF 128 + 16 R@ READ P  BUF 128 + 16 TYPE NL
+  R@ FILE-POSITION P P P NL
+  0 0 R@ REPOSITION-FILE P  BUF 128 + 8 R@ READ P  BUF 128 + 8 TYPE NL
+  R> CLOSE-FILE P  BUF 0 0 POLL P NL T;
 T: MAIN  60 EMIT 60 EMIT 60 EMIT NL
   T-STACK T-ARITH T-CMP T-SHIFT T-MUL T-MEM T-RSTACK T-LOOPS T-UNLOOP NL T-EXEC T-STR
+  T-SP T-RP T-RPSTORE 119 P NL T-XT T-IO
   62 EMIT 62 EMIT 62 EMIT NL  0 T;
