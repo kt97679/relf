@@ -27805,3 +27805,37 @@ an add.
 
 `make native-n1a`; tests/verify's native:n1a row, on x86-64, skipped
 where the assembly engine is.
+
+## Iteration 611: N1b-1 - CV8's computational primitives, native
+
+forth/native.4 now has the primitives that compute, under CV8's names
+from engine/opcodes.tab so kernel.4 can be compiled against them in N1c:
+stack words, arithmetic and logic, the comparisons (-1 or 0, flags kept
+across a `mov`), shifts by cl, UM* and UM/MOD by mul and div, D+ by adc,
+memory, >R R> R@ on the machine stack, EXECUTE, and the loops - counter
+at the top of the return stack and limit under it, as CV8 keeps them, so
+I and J read [rsp] and [rsp+16]; +LOOP ends by kernel.4's own test, the
+sign change of index - limit against the step's. The string primitives
+are NCODE words - a target word written in assembly, called: MOVE
+(backward where it must be, as memmove), FILL, COMPARE (repe cmpsb, then
+the lengths), SCAN (repne scasb), CSTRLEN, TYPE. N-COMPILE skips \ and ( )
+comments and takes T: ... T;, the dialect a differential test is in.
+
+tests/native/prims.4 is that test, written once: CV8 compiles it with
+T: as : (tests/native/cv8-prims.4), native.4 into native-n1b
+(forth/native-n1b.4). Values print as 16 hex digits, addresses only as
+distances from BUF. The two print the same, 35 lines, byte for byte, on
+the first run that built - the edges included: MAX-INT + 1, NEGATE of 0,
+U< both ways, a shift by 64, UM/MOD of a two-cell dividend, D+'s carry,
++LOOP down from 10 by 3, LEAVE, UNLOOP EXIT, overlapping MOVEs both ways.
+
+Three slips before that, all mine and all in the generator: a helper
+defined inside the NPRIMS section, where nothing finds it; a helper used
+there before it was defined; and LEAVE's chain threaded through the
+4-byte jump displacements with 8-byte stores, which wrote over the code
+after them and crashed the CV8 host - the chain lives in the host's
+memory now. /MOD in NPRIMS divides symmetrically, by idiv; the test uses
+it only on positive numbers, and kernel.4's own /MOD, over UM/MOD, is
+what N1c will compile.
+
+make native-n1b; tests/verify's native:prims row - same, on x86-64.

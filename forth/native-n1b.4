@@ -1,0 +1,102 @@
+\ native-n1b.4 - N1b's differential test, native (docs/NATIVE.md,
+\ Iteration 611): tests/native/prims.4 compiled by forth/native.4 into an
+\ ELF file of its own, native-n1b, which must print what CV8 prints for
+\ it (tests/native/cv8-prims.4). The string primitives are NCODE words,
+\ called: too big to inline at every use.
+\
+\ One segment, read-write-execute, for now - the code and, after it, the
+\ data stack. W^X, and the guard pages, come with N1's runtime.
+
+S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED  S" forth/native.4" INCLUDED
+ALSO ASSEMBLER
+DECIMAL
+
+LABEL ehdr  LABEL phdr  LABEL _start  LABEL file_end
+4194304 65536 ASM-BUFFER               \ 0x400000, as relfasm64
+4194304 CONSTANT TEXTORG
+131072 CONSTANT MEM_SIZE               \ the code, then the data stack
+TEXTORG MEM_SIZE + 64 - CONSTANT DSTACK_TOP
+
+ehdr L:
+127 C,A  69 C,A  76 C,A  70 C,A  2 C,A  1 C,A  1 C,A  0 C,A \ 64-bit, little-endian, SysV
+0 Q,A
+2 W,A                                  \ e_type: an executable
+62 W,A                                 \ e_machine: x86-64
+1 L,A                                  \ e_version
+_start 0 Q,+                           \ e_entry
+phdr ehdr NEGATE Q,+                   \ e_phoff
+0 Q,A  0 L,A                           \ e_shoff, e_flags
+64 W,A  56 W,A  1 W,A                  \ e_ehsize, e_phentsize, e_phnum
+64 W,A  0 W,A  0 W,A                   \ e_shentsize, e_shnum, e_shstrndx
+phdr L:
+1 L,A                                  \ p_type: PT_LOAD
+7 L,A                                  \ p_flags: read, write, execute
+0 Q,A                                  \ p_offset
+TEXTORG Q,A  TEXTORG Q,A               \ p_vaddr, p_paddr
+file_end ehdr NEGATE Q,+               \ p_filesz
+MEM_SIZE Q,A                           \ p_memsz: the rest zero-filled
+4096 Q,A                               \ p_align
+
+TEXTORG 98304 + CONSTANT BUF_ADDR       \ 256 bytes, below the data stack
+
+\ ---- the string primitives, in assembly --------------------------------------
+NCODE MOVE  ( src dst u --- )   \ memmove: backward when dst overlaps above src
+  rcx rbx mov,  rdi [ rbp ] mov,  rsi [ rbp 8 ] mov,
+  rdi rsi cmp,  1 F jbe,
+  rax rsi mov,  rax rcx add,  rdi rax cmp,  1 F jae,
+  rsi rcx add,  rsi 1 # sub,  rdi rcx add,  rdi 1 # sub,
+  std,  rep, movsb,  cld,  2 F jmp,
+  1 L:  rep, movsb,
+  2 L:  rbx [ rbp 16 ] mov,  rbp 24 # add,
+NEND
+NCODE FILL  ( c-addr u c --- )
+  rax rbx mov,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,  rep, stosb,
+  rbx [ rbp 16 ] mov,  rbp 24 # add,
+NEND
+NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the lengths
+  rsi [ rbp 16 ] mov,  rdi [ rbp ] mov,  rdx [ rbp 8 ] mov,
+  rcx rdx mov,  rcx rbx cmp,  1 F jbe,  rcx rbx mov,  1 L:
+  rcx rcx test,  2 F jz,
+  243 C,A 166 C,A                        \ repe cmpsb
+  3 F jne,
+  2 L:  rdx rbx cmp,  4 F jb,  5 F ja,  ebx ebx xor,  6 F jmp,
+  3 L:  4 F jb,  5 F jmp,
+  4 L:  rbx -1 # mov,  6 F jmp,
+  5 L:  rbx 1 # mov,
+  6 L:  rbp 24 # add,
+NEND
+NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and 0
+  rax rbx mov,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,
+  rcx rcx test,  1 F jz,
+  242 C,A 174 C,A                        \ repne scasb
+  2 F je,
+  1 L:  [ rbp 8 ] rdi mov,  ebx ebx xor,  3 F jmp,
+  2 L:  rdi 1 # sub,  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbx 1 # add,
+  3 L:  rbp 8 # add,
+NEND
+NCODE CSTRLEN  ( c-addr --- u )
+  rdi rbx mov,  eax eax xor,  rcx -1 # mov,  242 C,A 174 C,A  rcx not,  rcx 1 # sub,  rbx rcx mov,
+NEND
+NCODE TYPE  ( c-addr u --- )            \ write(1, ...)
+  rdx rbx mov,  rsi [ rbp ] mov,  eax 1 # mov,  edi 1 # mov,  syscall,
+  rbx [ rbp 8 ] mov,  rbp 16 # add,
+NEND
+NCODE BUF  ( --- a-addr )   N-PUSH  rbx BUF_ADDR # mov,  NEND
+
+S" tests/native/prims.4" INCLUDED
+
+_start L:
+rbp DSTACK_TOP # mov,
+ebx ebx xor,
+N' MAIN call,
+edi ebx mov,
+eax 60 # mov,
+syscall,
+file_end L:
+END-ASM
+
+: WRITE-NATIVE ( c-addr u --- )
+  2DUP W/O CREATE-FILE THROW >R  ABUF @ THERE @ OVER - R@ WRITE-FILE THROW
+  R> CLOSE-FILE THROW  493 CHMOD THROW ;
+S" native-n1b" WRITE-NATIVE
+BYE

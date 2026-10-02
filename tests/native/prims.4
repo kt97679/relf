@@ -1,0 +1,48 @@
+\ tests/native/prims.4 - the native back end's differential test (docs/
+\ NATIVE.md, N1b, Iteration 611). Written once, in the T: dialect: CV8
+\ compiles it with T: as : (tests/native/cv8-prims.4), forth/native.4 as
+\ native code (forth/native-n1b.4); the two must print the same, byte for
+\ byte. Values print as 16 hex digits - every bit compared; addresses
+\ only as distances from BUF, as the two systems' differ.
+T: HEXD  15 AND DUP 9 > IF 39 + THEN 48 + EMIT T;
+T: P  60 BEGIN DUP 0< 0= WHILE 2DUP RSHIFT HEXD 4 - REPEAT 2DROP 32 EMIT T;
+T: NL  10 EMIT T;
+T: T-STACK  1 2 3 ROT P P P NL  1 2 SWAP P P NL  1 2 OVER P P P NL
+  5 ?DUP P P NL  0 ?DUP P NL  7 8 2DUP P P P P NL  9 10 11 2DROP P NL T;
+T: T-ARITH  3 4 + P  3 4 - P  -5 7 - P  $7FFFFFFFFFFFFFFF 1 + P  -1 NEGATE P
+  0 NEGATE P  5 1+ P  5 1- P  5 CELL+ P  3 CELLS P  6 7 * P  -6 7 * P NL
+  $F0F0 $FF00 AND P  $F0F0 $FF00 OR P  $F0F0 $FF00 XOR P NL
+  100 7 /MOD P P  NL T;
+T: T-CMP  3 3 = P  3 4 = P  3 4 <> P  3 3 <> P  -1 0 < P  0 -1 < P  -1 0 > P
+  5 3 > P  -1 0 U< P  0 -1 U< P NL
+  0 0= P  5 0= P  -5 0< P  5 0< P  0 0< P  $8000000000000000 0< P NL T;
+T: T-SHIFT  1 0 LSHIFT P  1 1 LSHIFT P  1 63 LSHIFT P  -1 4 RSHIFT P
+  $8000000000000000 63 RSHIFT P  12345 64 LSHIFT P NL T;
+T: T-MUL  3 4 UM* P P  -1 -1 UM* P P  $123456789 $987654321 UM* P P NL
+  100 0 7 UM/MOD P P  -1 1 3 UM/MOD P P NL
+  1 0 1 0 D+ P P  -1 0 1 0 D+ P P  -1 -1 1 0 D+ P P NL T;
+T: T-MEM  12345 BUF !  BUF @ P  7 BUF +!  BUF @ P  200 BUF C!  BUF C@ P  BUF @ P NL
+  65 BUF C!  BUF COUNT SWAP BUF - P P NL T;
+T: T-RSTACK  1 >R 2 >R R@ P R> P R> P NL T;
+T: T-LOOPS  5 0 DO I P LOOP NL  3 3 ?DO I P LOOP 99 P NL
+  10 0 DO I P 3 +LOOP NL  0 10 DO I P -3 +LOOP NL
+  3 0 DO 2 0 DO I J + P LOOP LOOP NL
+  10 0 DO I 4 = IF LEAVE THEN I P LOOP NL T;
+T: T-UNLOOP  10 0 DO I 3 = IF UNLOOP EXIT THEN I P LOOP T;
+T: SQ  DUP * T;
+T: T-EXEC  7 ['] SQ EXECUTE P NL T;
+T: DIGITS  10 0 DO I 48 + BUF I + C! LOOP T;    \ BUF: 0123456789
+T: T-STR  BUF 32 65 FILL  BUF 4 TYPE NL
+  DIGITS  BUF BUF 2 + 5 MOVE  BUF 10 TYPE NL     \ overlapping, backward
+  DIGITS  BUF 2 + BUF 5 MOVE  BUF 10 TYPE NL     \ overlapping, forward
+  65 BUF 16 + C!  66 BUF 17 + C!  67 BUF 18 + C!
+  65 BUF 24 + C!  66 BUF 25 + C!  68 BUF 26 + C!
+  BUF 16 + 3 BUF 24 + 3 COMPARE P  BUF 24 + 3 BUF 16 + 3 COMPARE P
+  BUF 16 + 2 BUF 24 + 3 COMPARE P  BUF 16 + 3 BUF 24 + 0 COMPARE P
+  BUF 16 + 0 BUF 24 + 0 COMPARE P  BUF 16 + 3 BUF 16 + 3 COMPARE P NL
+  DIGITS  BUF 10 53 SCAN SWAP BUF - P P  BUF 10 65 SCAN SWAP BUF - P P
+  BUF 0 48 SCAN SWAP BUF - P P NL
+  0 BUF 7 + C!  BUF CSTRLEN P NL T;
+T: MAIN  60 EMIT 60 EMIT 60 EMIT NL
+  T-STACK T-ARITH T-CMP T-SHIFT T-MUL T-MEM T-RSTACK T-LOOPS T-UNLOOP NL T-EXEC T-STR
+  62 EMIT 62 EMIT 62 EMIT NL  0 T;

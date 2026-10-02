@@ -43,19 +43,64 @@ VARIABLE N-SELF              \ the target word being compiled: RECURSE
   SWAP ?DUP IF C,A THEN C,A  HERE-A 4 + - L,A ;
 
 \ ---- the primitives -------------------------------------------------------------
+\ CV8's names (engine/opcodes.tab), so kernel.4 can be compiled against
+\ them in N1c. N1b (Iteration 611): the computational core, each a fixed
+\ sequence; a comparison leaves -1 or 0, as CV8's do.
+: N-WORD ( --- c-addr )   \ the next name, across lines
+  BEGIN BL WORD DUP C@ 0= WHILE DROP REFILL 0= ABORT" native: input ended inside N:" REPEAT ;
+VARIABLE N-LEAVES            \ the innermost loop's LEAVE jumps, chained
+: N-0CC ( --- )  ebx 0 # mov, ;                          \ flags kept: mov
+: N-CMP ( --- )  rax [ rbp ] mov,  rbp 8 # add,  rax rbx cmp,  N-0CC ;
+: N-TRUE ( --- ) rbx neg, ;                              \ 1 -> -1
+: N-LEAVE-ADD ( fix --- )   \ a jump to the loop's exit: a node, fix and next,
+  HERE SWAP , N-LEAVES @ , N-LEAVES ! ;   \ in the host's memory, not the code's
+: N-LOOP-END ( outer --- )   \ every exit jump resolved; the outer loop's chain back
+  N-LEAVES @ BEGIN ?DUP WHILE DUP @ N-RESOLVE CELL+ @ REPEAT  N-LEAVES ! ;
 CURRENT @  NPRIMS CURRENT !
 : DUP   N-PUSH ;
 : DROP  N-POP ;
 : SWAP  rax [ rbp ] mov,  [ rbp ] rbx mov,  rbx rax mov, ;
 : OVER  N-PUSH  rbx [ rbp 8 ] mov, ;
+: ROT   rax [ rbp 8 ] mov,  rcx [ rbp ] mov,  [ rbp 8 ] rcx mov,  [ rbp ] rbx mov,  rbx rax mov, ;
 : ?DUP  rbx rbx test,  1 F jz,  N-PUSH  1 L: ;
+: 2DUP  rax [ rbp ] mov,  rbp 16 # sub,  [ rbp 8 ] rbx mov,  [ rbp ] rax mov, ;
+: 2DROP rbx [ rbp 8 ] mov,  rbp 16 # add, ;
 : +     rbx [ rbp ] add,  rbp 8 # add, ;
 : -     rax [ rbp ] mov,  rax rbx sub,  rbx rax mov,  rbp 8 # add, ;
+: AND   rbx [ rbp ] and,  rbp 8 # add, ;
+: OR    rbx [ rbp ] or,   rbp 8 # add, ;
+: XOR   rbx [ rbp ] xor,  rbp 8 # add, ;
+: NEGATE  rbx neg, ;
+: 1+    rbx 1 # add, ;
+: 1-    rbx 1 # sub, ;
+: CELL+ rbx 8 # add, ;
+: CELLS rbx 3 # shl, ;
+: LSHIFT  rcx rbx mov,  N-POP  rbx cl shl, ;
+: RSHIFT  rcx rbx mov,  N-POP  rbx cl shr, ;
 : *     rbx [ rbp ] imul,  rbp 8 # add, ;
 : /MOD  rax [ rbp ] mov,  72 C,A 153 C,A  rbx idiv,      \ cqo: rdx:rax
         [ rbp ] rdx mov,  rbx rax mov, ;                 \ ( rem quot )
+: UM*   rax [ rbp ] mov,  rbx mul,  [ rbp ] rax mov,  rbx rdx mov, ;
+: UM/MOD  rdx [ rbp ] mov,  rax [ rbp 8 ] mov,  rbx div,
+        rbp 8 # add,  [ rbp ] rdx mov,  rbx rax mov, ;   \ ( rem quot )
+: D+    rax [ rbp ] mov,  [ rbp 16 ] rax add,  rbx [ rbp 8 ] adc,  rbp 16 # add, ;
+: =     N-CMP  bl sete,  N-TRUE ;
+: <>    N-CMP  bl setne, N-TRUE ;
+: <     N-CMP  bl setl,  N-TRUE ;
+: >     N-CMP  bl setg,  N-TRUE ;
+: U<    N-CMP  bl setb,  N-TRUE ;
+: 0=    rbx rbx test,  N-0CC  bl sete,  N-TRUE ;
+: 0<    rbx 63 # sar, ;
 : @     rbx [ rbx ] mov, ;
 : !     rax [ rbp ] mov,  [ rbx ] rax mov,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: C@    ebx [ rbx ] byte-ptr movzx, ;
+: C!    rax [ rbp ] mov,  [ rbx ] al mov,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: +!    rax [ rbp ] mov,  [ rbx ] rax add,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: COUNT rax rbx mov,  rbx 1 # add,  N-PUSH  ebx [ rax ] byte-ptr movzx, ;
+: >R    rbx push,  N-POP ;
+: R>    N-PUSH  rbx pop, ;
+: R@    N-PUSH  rbx [ rsp ] mov, ;
+: EXECUTE  rax rbx mov,  N-POP  rax call, ;
 : EMIT  [ rbp -8 ] rbx mov,                              \ write(1, the byte, 1)
         eax 1 # mov,  edi 1 # mov,  rsi [ rbp -8 ] lea,  edx 1 # mov,  syscall,
         N-POP ;
@@ -66,27 +111,63 @@ CURRENT @  NPRIMS CURRENT !
 : BEGIN HERE-A ;
 : UNTIL N-FLAG  15 132 N-BACK ;
 : AGAIN 0 233 N-BACK ;
+: WHILE N-FLAG  15 132 N-FWD  SWAP ;                     \ ( dest --- orig dest )
+: REPEAT  0 233 N-BACK  N-RESOLVE ;
 : RECURSE  N-SELF @ call, ;
 : EXIT  195 C,A ;                                        \ ret
+\ DO LOOP: the counter at the top of the return stack - the machine
+\ stack - and the limit under it, as CV8 keeps them (kernel.4's (DO));
+\ LEAVE's jumps chained in N-LEAVES and resolved at the loop's end
+: DO    rax [ rbp ] mov,  rax push,  rbx push,  rbx [ rbp 8 ] mov,  rbp 16 # add,
+        N-LEAVES @  0 N-LEAVES !  HERE-A ;               \ ( leaves dest )
+: ?DO   rax [ rbp ] mov,  rcx rbx mov,  rbx [ rbp 8 ] mov,  rbp 16 # add,
+        rax rcx cmp,  15 132 N-FWD                       \ start = limit: skip
+        N-LEAVES @ SWAP  0 N-LEAVES !  N-LEAVE-ADD       \ ( outer )
+        rax push,  rcx push,  HERE-A ;
+: LOOP  ( leaves dest --- )
+        rax [ rsp ] mov,  rax 1 # add,  [ rsp ] rax mov,  rax [ rsp 8 ] cmp,
+        15 133 N-BACK                                    \ jne back
+        rsp 16 # add,  N-LOOP-END ;
+: +LOOP ( leaves dest --- )   \ kernel.4's (+LOOP): out when x = index - limit
+        rax rbx mov,  N-POP                              \ changes sign, against n
+        rcx [ rsp ] mov,  rdx rcx mov,  rdx [ rsp 8 ] sub,   \ rdx: x
+        rcx rax add,  [ rsp ] rcx mov,                   \ the new index
+        r8 rdx mov,  r8 rax add,  r8 rdx xor,  rdx rax xor,  r8 rdx and,
+        15 137 N-BACK                                    \ jns back: not crossed
+        rsp 16 # add,  N-LOOP-END ;
+: I     N-PUSH  rbx [ rsp ] mov, ;
+: J     N-PUSH  rbx [ rsp 16 ] mov, ;
+: UNLOOP  rsp 16 # add, ;
+: LEAVE rsp 16 # add,  0 233 N-FWD  N-LEAVE-ADD ;
+: [']   N-WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: ['] of no target word"
+        EXECUTE N-LIT ;
 CURRENT !
 
+\ A target word written in assembly: NCODE name ... NEND. Called, never
+\ inlined: the string primitives, too big to repeat at every use.
+: NCODE ( "name" --- )
+  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !  HERE-A ,  DOES> @ ;
+: NEND ( --- )  195 C,A ;
+
 \ ---- compiling a target word ------------------------------------------------------
-: N-WORD ( --- c-addr )   \ the next name, across lines
-  BEGIN BL WORD DUP C@ 0= WHILE DROP REFILL 0= ABORT" native: input ended inside N:" REPEAT ;
 : N-COMPILE ( --- )
   BEGIN
     N-WORD
-    DUP COUNT S" N;" COMPARE 0= IF DROP 195 C,A EXIT THEN    \ ret
+    DUP COUNT S" N;" COMPARE 0= OVER COUNT S" T;" COMPARE 0= OR
+      IF DROP 195 C,A EXIT THEN                              \ ret
+    DUP COUNT S" \" COMPARE 0= IF DROP SOURCE NIP >IN ! ELSE    \ a comment to the line's end
+    DUP COUNT S" (" COMPARE 0= IF DROP 41 WORD DROP ELSE         \ ( a comment )
     DUP COUNT NPRIMS SEARCH-WORDLIST IF NIP EXECUTE ELSE
     DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE call, ELSE
     DUP NUMBER? IF DROP NIP N-LIT ELSE
       2DROP CR ." native: unknown word " COUNT TYPE ABORT
-    THEN THEN THEN
+    THEN THEN THEN THEN THEN
   AGAIN ;
 : N: ( "name" --- )
   CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !
   HERE-A DUP ,  N-SELF !  N-COMPILE
   DOES> @ ;
+: T: ( "name" --- ) N: ;     \ the dialect a differential test is written in
 : N' ( "name" --- addr )   \ a target word's address
   BL WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: no such target word" EXECUTE ;
 

@@ -1,0 +1,6 @@
+\ tests/native/cv8-prims.4 - tests/native/prims.4 compiled by CV8 itself,
+\ T: as : - what forth/native-n1b.4's native code must print (Iteration 611).
+: T: : ;  : T; POSTPONE ; ; IMMEDIATE
+CREATE BUF 256 ALLOT
+S" tests/native/prims.4" INCLUDED
+MAIN BYE

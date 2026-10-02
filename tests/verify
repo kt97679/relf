@@ -401,6 +401,12 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     # forth/native.4 compiles a small program to x86-64 code; it prints 169
     if make -s native-n1a >/dev/null 2>&1; then emit native:n1a "$(./native-n1a 2>&1)"
     else emit native:n1a "not built"; fi
+    # N1b (Iteration 611): the primitives, native against CV8 on the same test
+    if make -s native-n1b >/dev/null 2>&1; then
+        cv=$(./relf64 forth/kernel64.img < tests/native/cv8-prims.4 2>&1 | tr -d '\r' | sed -n '/^<<</,/^>>>/p')
+        na=$(./native-n1b 2>&1)
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:prims same; else emit native:prims differ; fi
+    else emit native:prims "not built"; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -419,7 +425,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

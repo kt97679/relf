@@ -193,6 +193,15 @@ Each is an iteration or several, with what must be true at its end.
   native:n1a row. The listing is what N1 is - each primitive its fixed
   sequence, `6 7 +` two pushes and an add - and what N2 is for: that is
   one `mov rbx, 13`.
+- **N1b-1, the computational core** (611, done): CV8's primitives that
+  compute - stack, arithmetic, comparisons, shifts, UM* UM/MOD D+,
+  memory, the return stack, DO ?DO LOOP +LOOP I J LEAVE UNLOOP, EXECUTE -
+  as fixed native sequences, and the string primitives (MOVE FILL
+  COMPARE SCAN CSTRLEN TYPE) as NCODE routines, called. tests/native/
+  prims.4, written once in a T: dialect, is compiled by CV8 and by
+  native.4; the two print the same, byte for byte - tests/verify's
+  native:prims row. Next, N1b-2: SP@ SP! RP@ RP!, @XT, the locals, and the
+  operating system's primitives.
 - **N1, plain native code.** Primitives inlined as fixed instruction
   sequences, words as native functions, the top of the stack in `rbx`,
   no optimizer. Exit: the CORE tests pass, both cell widths' kernels
