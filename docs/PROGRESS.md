@@ -27737,3 +27737,32 @@ kept. It links the article and the code on article-2026, then at
 ANNOUNCEMENT.md records what it says, how it was written, and what
 comes next on the route; the dated tag is the author's to make. Docs
 only: nothing the articles quote changes.
+
+## Iteration 608: N0 - a native-code back end, designed
+
+After the ForthHub announcement the user asked whether a Forth could
+compile into machine code close to gcc's for dash - small words inlined,
+bigger ones as native functions, "most likely different from cv8"; the
+headers stay ("we are not removing them"), and Habr's hold blocks
+nothing. First the numbers: dash 0.5.12 built here with -Os and
+symbols - 268 functions, 56,261 bytes of machine code, 91,686 of text
+with its tables; relfsh's image - 75,324 bytes of code, about 28 KB of
+headers, 21 KB of data; shell.4 69 KB, tree.4 35, edit.4 7. And what not
+to do: translating dash's machine code into Forth would come out larger
+and slower - register code becomes stack traffic, gcc's inlining comes
+baked in - and S7's own evidence is that native code alone is worth ~3%
+in gforth: the gain is in compiling well.
+
+docs/NATIVE.md is the design: words as native functions, the machine
+stack as the return stack, the top of the stack in a register and a
+compile-time model of the rest, inlining tiny words, folding constants,
+literal operands, compare fused with the branch; position-independent
+code (rel32 calls, rip-relative data) so the image stays relative;
+resident, compiling at run time for the forth builtin; every error and
+^C guarantee of 582-606 carried over and fuzzed; written in Forth,
+emitting through forth/asm64.4, first hosted on CV8, then building
+itself byte for byte. Milestones N1-N4 with exit criteria; dash measured
+whole and function against function. QUESTIONS.md Q33 holds the
+decisions: beside CV8 or instead, x86-64 only, the size, the targets,
+the shell source kept common. Nothing is built before it is answered.
+Master only: article-2026 is not touched.

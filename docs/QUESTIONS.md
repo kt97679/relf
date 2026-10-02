@@ -28,6 +28,9 @@ same iteration.
 8. *(Q19, the memory region, was answered at 545: 4 MB.)*
 9. *(Q20, self-hosting's last step, was answered at 549: done.)*
 7. *(Q17, self-hosting's four choices, was answered at 536.)*
+10. **Before any native back-end code** - **Q33** (the native compiler's
+   decisions, docs/NATIVE.md); N0, the design, is done (608), and N1
+   waits on it.
 
 ## Open
 
@@ -133,6 +136,30 @@ bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
 `a`, as bash does (424); the expansion order for special builtins,
 functions and external commands is bash's (484); `echo` processes no
 escapes, as bash's does. *Recommendation*: keep them all.
+
+**Q33. A native-code back end: the decisions before N1 (608, open)**
+The user, after the ForthHub announcement: a Forth that compiles into
+machine code close to gcc's for dash - small words inlined, bigger ones
+native functions; "most likely different from CV8". The design is
+docs/NATIVE.md; OPTIMIZATIONS.md S7 points to it. To decide:
+(a) *Beside CV8 or instead of it?* Beside: CV8 and the C engine stay,
+as A13 keeps them, for every machine; the native back end compiles the
+same Forth for x86-64. Instead: one engine fewer, and every non-x86-64
+machine lost.
+(b) *x86-64 only?* An ARM back end needs an ARMv7 assembler in Forth
+first; decide after N3.
+(c) *Size*: the code may grow from 75 KB toward 150 KB (5-byte calls,
+inlined code); headers and data unchanged. Accept, inlining only tiny
+words?
+(d) *What counts as success*: as exit targets, Forth benchmarks within 3
+times of C (now 16-17) at N2, and scripts within 5 times of dash (now
+29-42) at N3 - measured and recorded either way.
+(e) *The shell's source*: on master it stays the same for both back
+ends, and what in it depends on CV8 - `!XT` offsets, for one - goes
+behind a word each back end defines. Small changes to shell.4 for that.
+*Recommendation*: (a) beside; (b) x86-64 only, ARM decided after N3;
+(c) accept; (d) these targets; (e) yes. All on master; article-2026 is
+not touched.
 
 ## Answered
 

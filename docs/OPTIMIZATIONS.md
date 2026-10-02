@@ -59,7 +59,9 @@ JIT/AOT** - open; GOALS.md goal 2, to revisit once relf builds its own
 engine (A14 d). The large gains (2-5x over threaded code, typically),
 built on the self-hosted assembler. Evidence against starting there: in
 gforth 0.7.3 on these benchmarks, copying native code was worth ~3%; the
-primitive set (S1) matters more.
+primitive set (S1) matters more. Iteration 608: the user's idea - an
+optimizing native compiler, beside CV8 - designed in docs/NATIVE.md
+(N0), waiting on QUESTIONS.md Q33.
 
 **S8. The dispatch loop itself** - declined (526).
 Both engines dispatch at the CPU's indirect-jump rate, 0.8 ns; better

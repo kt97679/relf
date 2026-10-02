@@ -1,0 +1,209 @@
+# NATIVE.md — a Forth that compiles to native code
+
+Iteration 608 (N0). The user's idea, after the ForthHub announcement:
+a Forth design, most likely different from CV8, that compiles into
+machine code close to what gcc makes of dash - small words inlined,
+bigger words as native functions. dash is the yardstick, not the
+target: the question is how close a Forth compiler can come to an
+optimizing C compiler's code for the same work.
+
+This document is the design to decide on. Nothing here is built yet,
+and nothing is built before the decisions in QUESTIONS.md **Q33** are
+made. OPTIMIZATIONS.md S7 ("Native code") points here.
+
+## 1. Where things stand
+
+CV8 is a bytecode: one-byte opcodes for 64 primitives, calls by offset
+in two or three bytes, interpreted by an engine - relfasm64 (15,768
+bytes, assembled by relf itself) or the portable C engine. Both
+dispatch at the CPU's rate for one indirect jump after another, about
+0.8 ns a dispatch (OPTIMIZATIONS S8): better handler code cannot help.
+
+What that costs, measured (fury; the articles' numbers):
+
+- Forth benchmarks (bench/langs): RelF on its own engine is about 16-17
+  times slower than C and Go, 1.2 times slower than gforth 0.7.3, 1.75
+  times slower than gforth-fast.
+- Shell scripts (tools/bench-vm.py): relfsh is 29-42 times slower than
+  dash.
+
+A13 accepted that gap for CV8: no more opcodes or fusions, CV8 stays as
+simple as it is. This design does not change CV8. It adds a second way
+to compile the same Forth.
+
+What S7 already knew: copying primitives' native code end to end, with
+no optimization, was worth about 3% in gforth on these benchmarks. The
+gain is not in being native; it is in compiling well - the stack in
+registers, inlining, constants folded. So this is an optimizing
+compiler, or it is not worth building.
+
+## 2. The yardstick: dash's machine code
+
+dash 0.5.12 built with -Os and symbols (Iteration 608, this container):
+268 functions, 56,261 bytes of machine code; its text segment, with
+tables and strings, 91,686 bytes; libc on top. By module, code and
+data: parser 9.4 KB, jobs 8.2, expand 7.8, eval 6.4, exec 4.6, var 3.7,
+options 3.5, miscbltin 3.0, output 2.3, arith 2.1, redir 2.1, trap 2.0,
+input 2.0, main 1.6.
+
+relfsh's shell image, for comparison: 125,308 bytes - code 75,324,
+headers about 28 KB (kept: the user's decision, 608), data about 21 KB.
+By source file: shell.4 69 KB, tree.4 35 KB, edit.4 7 KB, the Forth
+extensions about 4 KB, the kernel about 9.5 KB.
+
+The yardstick is used two ways (section 6): whole workloads against
+dash, and function against function - a hot dash function and the
+relfsh word that does the same job, compiled by this compiler, side by
+side: instructions, bytes, time on the same input.
+
+## 3. The design
+
+### 3.1 Words are native functions
+
+A colon definition compiles to a native function. The Forth return
+stack is the machine stack: a call is `call rel32`, `EXIT` is `ret`.
+x86-64's calls are encoded relative to the call site, and data is
+reached rip-relative, so the code is position-independent - "Relative
+Forth" keeps its meaning, and the image needs no relocation.
+
+Registers (a first assignment, to be confirmed in N1):
+
+| register | holds |
+|---|---|
+| `rsp` | the return stack (the machine stack) |
+| `rbp` | the data stack pointer |
+| `rbx` | the top of the data stack, cached |
+| `r14`, `r15` | the innermost DO loop's index and limit |
+| the rest | the compiler's to allocate, within a word |
+
+There is no C ABI to honour: the engine's system calls are its own, as
+relfasm64's are.
+
+### 3.2 The stack in registers
+
+The compiler keeps a model of the data stack while it compiles a run
+of code with no branch into it: which items are in registers, which are
+constants, which are still in memory. `DUP @ 1+ SWAP !` becomes register
+moves and two memory operations, with no stack traffic at all. At a
+call, a branch or a label the model is written back to a fixed state -
+the top in `rbx`, the rest in memory - so code on both sides agrees.
+This is where most of the speed is, as in VFX Forth and iForth.
+
+### 3.3 Inlining, folding, fusing
+
+- A word whose code is small - a threshold in bytes, about 16 to start
+  - with no control flow of its own is inlined at each use; `INLINE`
+  and `NOINLINE` override. Recursion and DEFER are never inlined.
+- Constants fold: `3 CELLS +` is one `add`.
+- A literal becomes an instruction's operand: `5 +` is `add rbx, 5`.
+- A comparison followed by `IF`, `WHILE` or `UNTIL` is one compare and a
+  conditional jump.
+
+Bigger words stay calls, which keeps the code small: inlining only
+tiny words is the lever on size (section 4).
+
+### 3.4 Control flow and the rest of Forth
+
+`IF ELSE THEN`, `BEGIN UNTIL WHILE REPEAT AGAIN`: native jumps. `DO
+LOOP`: index and limit in `r14`/`r15`, saved on the machine stack around
+a nested loop or a call that needs them. `CATCH`/`THROW`: a frame on the
+machine stack with `rsp`, `rbp` and the previous handler, as the kernel's
+CATCH keeps them now. `CREATE`, `VARIABLE`, `HERE`, `ALLOT`: data in the
+dictionary as now, reached rip-relative.
+
+### 3.5 Compiling at run time
+
+The `forth` builtin defines words while the shell runs, so the compiler
+is resident, as now, and writes native code into the dictionary. The
+dictionary is mapped readable, writable and executable to start; a W^X
+discipline - writing and executing separated - can follow if it is
+wanted.
+
+### 3.6 Errors and safety carry over
+
+Everything 582-606 established for CV8 must hold for native code, and
+tools/forthfuzz.py and tools/intrfuzz.py check it:
+
+- guard pages below the data stack and the machine stack, and traps -
+  a bad address, a zero divisor, a guard - become THROWs (A26), the
+  signal handler resuming at the innermost CATCH;
+- a forth command's own stack base and the gap below the executor's
+  cells (589, 595, 602);
+- ^C thrown into Forth from the start, nothing lost in the switch (606).
+
+### 3.7 The image and the engine
+
+The image holds native code; its header names the back end, so a CV8
+engine refuses a native image and the other way round. The "engine"
+becomes a loader, the system-call layer and the trap handler - most of
+relfasm64 without its interpreter. The shell's source stays the same
+for both back ends: anything in it that depends on CV8 - the `!XT`
+offsets, for one - goes behind a word both back ends define.
+
+### 3.8 Built by relf, then by itself
+
+The native compiler is written in Forth (new files, forth/native*.4),
+emitting through forth/asm64.4 - the assembler that already builds
+relfasm64, held to GNU as on 456 instruction shapes and random
+instructions. It first runs on the CV8 system and compiles a native
+image; then the native image compiles itself, and the two builds must be
+byte for byte the same - the discipline the kernel's builds already
+keep.
+
+## 4. What to expect
+
+From compilers built this way: VFX Forth and iForth come within about
+one to two times of C on benchmarks; simpler native compilers that
+inline - SwiftForth, SP-Forth - within about two to four. For relf's
+Forth benchmarks, a reasonable aim is within 2-3 times of C, against
+16-17 now. For scripts, the shell's own algorithms then matter as much
+as the code: name hashing, variable lookup, string comparison
+(OPTIMIZATIONS S9, S10) - perhaps within a few times of dash, against
+29-42 now.
+
+Size: x86-64's calls are 5 bytes against CV8's 2-3, and inlined code is
+bigger than one-byte opcodes. The 75 KB of code may grow toward 150 KB;
+headers and data do not change. The C engine and CV8 stay for every
+other machine.
+
+## 5. Milestones
+
+Each is an iteration or several, with what must be true at its end.
+
+- **N0** (608): this document; the decisions as Q33.
+- **N1, plain native code.** Primitives inlined as fixed instruction
+  sequences, words as native functions, the top of the stack in `rbx`,
+  no optimizer. Exit: the CORE tests pass, both cell widths' kernels
+  still build on CV8, bench/langs measured - what native calls alone
+  buy.
+- **N2, the optimizer.** The stack model, inlining, folding, fused
+  compare-and-branch. Exit: bench/langs against C, gforth-fast and N1;
+  the code of a few chosen words read against dash's.
+- **N3, the shell, native.** Exit: the shell suite, the pty suite, both
+  fuzzers, the comparison with bash - all as on CV8; scripts against
+  dash in tools/bench-vm.py; the function-against-function table.
+- **N4, built by itself.** Exit: the native image built by the
+  CV8-hosted compiler and by itself, byte for byte the same; in
+  tests/verify.
+
+## 6. How it is measured
+
+- bench/langs (Forth: fib, sieve and the rest) - against C, Go, gforth,
+  gforth-fast, and CV8.
+- tools/bench-vm.py (scripts) - against dash, bash, busybox ash.
+- Function against function: dash's lexer (readtoken1 and its syntax
+  tables), variable lookup (lookupvar), its allocator (stalloc) and the
+  relfsh words that do those jobs - instructions and bytes from the two
+  listings, time on the same input.
+- tools/image-audit.py, extended for native code: bytes per word, how
+  much was inlined.
+
+## 7. Costs and risks
+
+- A third engine to keep green on every change, and a compiler far more
+  complex than cross.4 - the opposite of A13's minimalism, by design and
+  beside it, not instead of it.
+- Debugging generated machine code: SEE has to become a disassembler,
+  or the compiler has to explain itself.
+- x86-64 only: ARM, for rage, needs an ARMv7 assembler in Forth first.
+- The time: N1 alone is several iterations; N2 is the hard part.
