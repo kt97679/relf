@@ -28,9 +28,9 @@ same iteration.
 8. *(Q19, the memory region, was answered at 545: 4 MB.)*
 9. *(Q20, self-hosting's last step, was answered at 549: done.)*
 7. *(Q17, self-hosting's four choices, was answered at 536.)*
-10. **Before any native back-end code** - **Q33** (the native compiler's
-   decisions, docs/NATIVE.md); N0, the design, is done (608), and N1
-   waits on it.
+10. *(Q33, the native back end's decisions, was answered at 609: beside
+   CV8, x86-64 only, size weighed against speed, the targets, one shell
+   source for both. N1 may begin.)*
 
 ## Open
 
@@ -137,7 +137,10 @@ bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
 functions and external commands is bash's (484); `echo` processes no
 escapes, as bash's does. *Recommendation*: keep them all.
 
-**Q33. A native-code back end: the decisions before N1 (608, open)**
+
+## Answered
+
+**Q33. A native-code back end: the decisions before N1 (608; answered A33)**
 The user, after the ForthHub announcement: a Forth that compiles into
 machine code close to gcc's for dash - small words inlined, bigger ones
 native functions; "most likely different from CV8". The design is
@@ -160,8 +163,6 @@ behind a word each back end defines. Small changes to shell.4 for that.
 *Recommendation*: (a) beside; (b) x86-64 only, ARM decided after N3;
 (c) accept; (d) these targets; (e) yes. All on master; article-2026 is
 not touched.
-
-## Answered
 
 **A1. The five questions of Iteration 499** - answered at 500 and
 recorded in GOALS.md "What comes next": measure the two-bit call tag
@@ -467,4 +468,14 @@ sets, and exports, what pwd -P prints. dash and bash keep a PWD with a .
 or .. component that names the directory; POSIX says to replace it - the
 standard's text was taken, the user continuing on that recommendation.
 Recorded in DASH.md.
+
+**A33. A native-code back end (Q33; 608 -> 609).** The user, point by
+point: (a) beside CV8 - "cv8 stays as is. We may improve it but we are
+definitely not replacing it." (b) x86-64 only: "this is experiment". (c)
+Performance is the primary goal; the code may grow, but every growth is
+watched, weighed against the speed it buys, and discussed - "+50% in
+code size and +5% performance probably not worth it." (d) The exit
+targets stand: Forth benchmarks within 3 times of C at N2, scripts within
+5 times of dash at N3. (e) Both back ends run the same shell sources and
+all the tests. Recorded in docs/NATIVE.md; N1 may begin.
 

@@ -27766,3 +27766,14 @@ whole and function against function. QUESTIONS.md Q33 holds the
 decisions: beside CV8 or instead, x86-64 only, the size, the targets,
 the shell source kept common. Nothing is built before it is answered.
 Master only: article-2026 is not touched.
+
+## Iteration 609: A33 - the native back end's decisions
+
+The user answered Q33 point by point: CV8 stays as it is - improved,
+perhaps, never replaced; x86-64 only, an experiment; speed is the
+primary goal, but every growth in code is measured, weighed against the
+speed it buys and discussed ("+50% in code size and +5% performance
+probably not worth it"); the exit targets stand; and both back ends run
+the same shell sources and all the tests. QUESTIONS.md: Q33 moved to
+Answered, A33 written; NATIVE.md opens with the decisions, and each
+milestone will report size beside speed. Master only.

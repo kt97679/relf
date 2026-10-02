@@ -7,9 +7,23 @@ bigger words as native functions. dash is the yardstick, not the
 target: the question is how close a Forth compiler can come to an
 optimizing C compiler's code for the same work.
 
-This document is the design to decide on. Nothing here is built yet,
-and nothing is built before the decisions in QUESTIONS.md **Q33** are
-made. OPTIMIZATIONS.md S7 ("Native code") points here.
+This document is the design. OPTIMIZATIONS.md S7 ("Native code") points
+here.
+
+**Decided (A33, Iteration 609):**
+
+- **Beside CV8, never instead of it.** "cv8 stays as is. We may improve
+  it but we are definitely not replacing it." CV8 and the C engine stay
+  for every machine.
+- **x86-64 only** - an experiment.
+- **Speed first, size watched.** The code may grow, but every growth is
+  measured, weighed against the speed it buys, and discussed before it
+  stays: "+50% in code size and +5% performance probably not worth it."
+  Each milestone reports both.
+- **The exit targets** (section 5): Forth benchmarks within 3 times of C
+  at N2, scripts within 5 times of dash at N3.
+- **One source.** Both back ends run the same shell sources and all the
+  tests.
 
 ## 1. Where things stand
 
@@ -170,7 +184,8 @@ other machine.
 
 Each is an iteration or several, with what must be true at its end.
 
-- **N0** (608): this document; the decisions as Q33.
+- **N0** (608): this document; the decisions as Q33, answered at 609
+  (A33).
 - **N1, plain native code.** Primitives inlined as fixed instruction
   sequences, words as native functions, the top of the stack in `rbx`,
   no optimizer. Exit: the CORE tests pass, both cell widths' kernels
