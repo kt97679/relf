@@ -247,3 +247,45 @@ Each is an iteration or several, with what must be true at its end.
   or the compiler has to explain itself.
 - x86-64 only: ARM, for rage, needs an ARMv7 assembler in Forth first.
 - The time: N1 alone is several iterations; N2 is the hard part.
+
+## 8. N1c: the kernel, mapped (Iteration 613)
+
+What in forth/kernel.4 depends on CV8's encoding - so what the native
+kernel needs written again, and what it takes as it is. A script split
+kernel.4 into its definitions and flagged each whose body uses CV8's
+encoding words (OP, and the opcodes, the literal and branch forms, the
+peephole, DOVAR and DODOES, @XT and START, the call's encoding).
+
+**180 colon definitions; 40 flagged; 140 untouched.** Beside them, 123
+primitive declarations: 103 PRIMITIVE lines and 20 OPCODE lines. The 40
+fall into five groups:
+
+| group | words | for the native kernel |
+|---|---|---|
+| A. the cell's width as a token | CELL- J FIND ALIGN | `CELLBYTES-TOK` is cross.4's way of building both widths from one source; natively it is 8 - the source unchanged |
+| B. xts as offsets from START | !XT DOES-FETCH? (POSTPONE) POSTPONE (;CODE) COMPILE-ONLY-XT CO? RELOCATE-WORDLIST | the native image keeps START and the offsets (N1b's @XT already does): unchanged, or close |
+| C. the compiler proper | NO-PEEP LIT, EXIT, CALL, PEEP-IMM PEEP-VAR COMPILE, CREATE >MARK >RESOLVE BACK, BEGIN UNTIL AGAIN IF THEN ELSE REPEAT DO LEAVE-LINK, ?DO LEAVE RESOLVE-LEAVE LOOP +LOOP RECURSE DOES> | written again: they lay down native code, at run time too - the forth builtin compiles |
+| D. the primitives (123) | the PRIMITIVE and OPCODE lines | native.4's sequences and native-rt.4's routines, as dictionary words: an inline word's code copied by COMPILE, up to its `ret`; a routine called |
+| E. the start | COLD (with RELOCATE-WORDLIST) | the native runtime's: stacks, guard pages, the trap handler, then the kernel |
+
+So the native kernel is kernel.4's 140 untouched definitions, group B
+nearly so, and about 30 words of group C written for native code - not a
+second kernel. CREATE and DOES> take the classic native form: a created
+word's code is a short fixed stub - push the address of the data that
+follows it - so >BODY is the xt plus the stub's length, and DOES>
+rewrites the stub's tail into a jump to the DOES> code.
+
+**How N1c goes, then:**
+
+- **N1c-1, the split.** Group C and the start into a file of their own,
+  forth/kernel-cv8.4, included by kernel.4 where they stand - and CV8's
+  images unchanged to the byte: tests/verify's image sums, rebuilds and
+  fixpoints say so. A pure move, proven by the bytes.
+- **N1c-2, the native kernel.** forth/kernel-native.4, group C for native
+  code; forth/native-cross.4, a cross compiler on cross.4's pattern -
+  TARGET's shadow words compile calls, TRANSIENT's compile-time words
+  are native.4's - building kernel.4 with kernel-native.4 into an ELF
+  file; the start: the stacks, then COLD.
+- **N1c-3, the CORE tests,** on the native kernel at its prompt, as on
+  CV8: the same 2136 checks, and the differential test grown to the
+  kernel's words.

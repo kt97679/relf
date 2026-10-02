@@ -27869,3 +27869,22 @@ nothing. The two print the same. One crash on the way: OPEN-FILE loaded
 the mode table's address as an immediate while the table was still a
 forward label, and asm64 resolves forward labels for jumps and Q,+ - not
 for an immediate; the table is laid down before the routine now.
+
+## Iteration 613: N1c-0 - kernel.4, mapped for the native kernel
+
+Before any of kernel.4 moves: what in it depends on CV8's encoding. A
+script split the file into definitions and flagged each whose body uses
+CV8's encoding words. 180 colon definitions, 40 flagged, 140 untouched;
+beside them 123 primitive declarations, 103 PRIMITIVE and 20 OPCODE
+lines. The 40 are five groups - the cell's width as a token (4 words),
+xts as offsets from START (8), the compiler proper (about 28: LIT,
+COMPILE, CREATE, the branches, the control structures, the loops,
+DOES>), and COLD - and the primitives are a group of their own. So the
+native kernel is kernel.4 with about 30 words written again, not a
+second kernel; and cross.4 - TARGET's shadows compiling calls,
+TRANSIENT's compile-time words - is the pattern for a native cross
+compiler, native.4 already in TRANSIENT's role. NATIVE.md section 8 has
+the map and N1c's plan: N1c-1 moves the compiler words into
+forth/kernel-cv8.4 with CV8's images unchanged to the byte; N1c-2 writes
+them for native code and builds the native kernel; N1c-3 runs the CORE
+tests on it. Documents only.
