@@ -39,6 +39,7 @@ matrix:refs bash dash
 matrix:regressions 0
 mrsh:failed 0
 mrsh:passed 21
+native:n1a 169
 parse:encoded 4
 parse:failed 0
 parse:passed 26

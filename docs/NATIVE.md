@@ -186,6 +186,13 @@ Each is an iteration or several, with what must be true at its end.
 
 - **N0** (608): this document; the decisions as Q33, answered at 609
   (A33).
+- **N1a, the pipeline** (610, done): forth/native.4, the code
+  generator, and forth/native-n1a.4, an ELF file of its own with a small
+  program - `N: SQUARE DUP * N;`, a recursive `U.` with `/MOD` and `IF`,
+  a `MAIN` - that prints 169. `make native-n1a`; tests/verify's
+  native:n1a row. The listing is what N1 is - each primitive its fixed
+  sequence, `6 7 +` two pushes and an add - and what N2 is for: that is
+  one `mov rbx, 13`.
 - **N1, plain native code.** Primitives inlined as fixed instruction
   sequences, words as native functions, the top of the stack in `rbx`,
   no optimizer. Exit: the CORE tests pass, both cell widths' kernels

@@ -1,0 +1,93 @@
+\ native.4 - a Forth compiler that lays down x86-64 machine code
+\ (docs/NATIVE.md; N1a, Iteration 610).
+\
+\ It runs on the CV8 system, after forth/asm64.4, and lays its code into
+\ asm64's buffer - as engine/relfasm64.4 lays the assembly engine. N1 is
+\ plain native code: each primitive a fixed instruction sequence, each
+\ colon definition a native function, no optimizer yet (that is N2).
+\
+\ The registers (NATIVE.md 3.1):
+\   rsp   the return stack - the machine stack: a word is `call`ed and
+\         left with `ret`
+\   rbp   the data stack, in memory, below the top; it grows down
+\   rbx   the top of the data stack
+\
+\ Words in two word lists, apart from the host's:
+\   NPRIMS   the primitives - host words that, run while a target word is
+\            compiled, lay down that primitive's code; the control words
+\            (IF THEN ... RECURSE EXIT) are here too
+\   NTARGET  the words compiled for the target - host words that answer
+\            the target address of their code
+\
+\ N: name ... N;  compiles a target word: a primitive's name runs it, a
+\ target word's name lays down a call to it, a number a literal.
+
+ALSO ASSEMBLER
+BASE @ DECIMAL
+
+WORDLIST CONSTANT NPRIMS
+WORDLIST CONSTANT NTARGET
+VARIABLE N-SELF              \ the target word being compiled: RECURSE
+
+\ ---- the stack, and the jumps the control words patch -----------------------
+: N-PUSH ( --- )  rbp 8 # sub,  [ rbp ] rbx mov, ;     \ the top into memory
+: N-POP ( --- )   rbx [ rbp ] mov,  rbp 8 # add, ;     \ the next becomes the top
+: N-LIT ( n --- ) >R N-PUSH  rbx R> # mov, ;
+: N-FLAG ( --- )  rax rbx mov,  N-POP  rax rax test, ; \ the flag, taken off
+: N-ADDR ( buf --- addr ) ABUF @ - ORG @ + ;           \ a buffer place's address
+: N-FWD ( op1 op2 --- fix )   \ a jump with its 32-bit displacement to come;
+  SWAP ?DUP IF C,A THEN C,A  THERE @  0 L,A ;          \ op1 0: a one-byte opcode
+: N-RESOLVE ( fix --- )       \ ... jumps here
+  HERE-A OVER N-ADDR 4 + -  SWAP L! ;
+: N-BACK ( target op1 op2 --- )   \ a jump back to target
+  SWAP ?DUP IF C,A THEN C,A  HERE-A 4 + - L,A ;
+
+\ ---- the primitives -------------------------------------------------------------
+CURRENT @  NPRIMS CURRENT !
+: DUP   N-PUSH ;
+: DROP  N-POP ;
+: SWAP  rax [ rbp ] mov,  [ rbp ] rbx mov,  rbx rax mov, ;
+: OVER  N-PUSH  rbx [ rbp 8 ] mov, ;
+: ?DUP  rbx rbx test,  1 F jz,  N-PUSH  1 L: ;
+: +     rbx [ rbp ] add,  rbp 8 # add, ;
+: -     rax [ rbp ] mov,  rax rbx sub,  rbx rax mov,  rbp 8 # add, ;
+: *     rbx [ rbp ] imul,  rbp 8 # add, ;
+: /MOD  rax [ rbp ] mov,  72 C,A 153 C,A  rbx idiv,      \ cqo: rdx:rax
+        [ rbp ] rdx mov,  rbx rax mov, ;                 \ ( rem quot )
+: @     rbx [ rbx ] mov, ;
+: !     rax [ rbp ] mov,  [ rbx ] rax mov,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: EMIT  [ rbp -8 ] rbx mov,                              \ write(1, the byte, 1)
+        eax 1 # mov,  edi 1 # mov,  rsi [ rbp -8 ] lea,  edx 1 # mov,  syscall,
+        N-POP ;
+\ control: laid down as jumps, patched when the structure closes
+: IF    N-FLAG  15 132 N-FWD ;                           \ jz near
+: ELSE  0 233 N-FWD  SWAP N-RESOLVE ;                    \ jmp near
+: THEN  N-RESOLVE ;
+: BEGIN HERE-A ;
+: UNTIL N-FLAG  15 132 N-BACK ;
+: AGAIN 0 233 N-BACK ;
+: RECURSE  N-SELF @ call, ;
+: EXIT  195 C,A ;                                        \ ret
+CURRENT !
+
+\ ---- compiling a target word ------------------------------------------------------
+: N-WORD ( --- c-addr )   \ the next name, across lines
+  BEGIN BL WORD DUP C@ 0= WHILE DROP REFILL 0= ABORT" native: input ended inside N:" REPEAT ;
+: N-COMPILE ( --- )
+  BEGIN
+    N-WORD
+    DUP COUNT S" N;" COMPARE 0= IF DROP 195 C,A EXIT THEN    \ ret
+    DUP COUNT NPRIMS SEARCH-WORDLIST IF NIP EXECUTE ELSE
+    DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE call, ELSE
+    DUP NUMBER? IF DROP NIP N-LIT ELSE
+      2DROP CR ." native: unknown word " COUNT TYPE ABORT
+    THEN THEN THEN
+  AGAIN ;
+: N: ( "name" --- )
+  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !
+  HERE-A DUP ,  N-SELF !  N-COMPILE
+  DOES> @ ;
+: N' ( "name" --- addr )   \ a target word's address
+  BL WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: no such target word" EXECUTE ;
+
+BASE !

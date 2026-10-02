@@ -236,6 +236,14 @@ relfasm64: $(ASM_SOURCES) forth/kernel64.img relf64
 	@mv -f relfasm64.forth $@ && rm -f relfasm64.log
 	@[ $$(wc -c < $@) -lt 65536 ] || { echo "relfasm64 outgrew 64 KB: move BSS_BASE and VM_OFF up in engine/relfasm64.4" >&2; rm -f $@; exit 1; }
 
+# The native back end's first proof (docs/NATIVE.md, N1a, Iteration 610):
+# a small program compiled by forth/native.4 into x86-64 code; it prints 169.
+native-n1a: forth/native-n1a.4 forth/native.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64
+	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-n1a.4 > native-n1a.log 2>&1 || true
+	@if [ ! -x $@ ] || grep -q 'Undefined word\|native:\|asm64:' native-n1a.log; then \
+	    echo "native-n1a: not built:" >&2; tr -d '\r' < native-n1a.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
+	@rm -f native-n1a.log
+
 # ------------------------------------------------------------------
 # The base images: a fixpoint, not a compile. Read the header.
 # ------------------------------------------------------------------

@@ -27777,3 +27777,31 @@ probably not worth it"); the exit targets stand; and both back ends run
 the same shell sources and all the tests. QUESTIONS.md: Q33 moved to
 Answered, A33 written; NATIVE.md opens with the decisions, and each
 milestone will report size beside speed. Master only.
+
+## Iteration 610: N1a - the first native program
+
+forth/native.4, the native back end's code generator: it runs on the CV8
+system after forth/asm64.4, and lays its code into asm64's buffer, as
+engine/relfasm64.4 lays the assembly engine. The registers are NATIVE.md's:
+rsp the return stack, rbp the data stack in memory, rbx its top. Two word
+lists beside the host's: NPRIMS, the primitives - host words that lay
+down a primitive's fixed x86-64 sequence, and the control words, which
+lay down jumps and patch them as IF ELSE THEN, BEGIN UNTIL AGAIN close;
+and NTARGET, the words compiled for the target, which answer their
+address. `N: name ... N;` compiles one: a primitive runs, a target word
+gets a `call rel32`, a number a literal push, N; a `ret`.
+
+forth/native-n1a.4 builds an ELF file around it - one segment at
+0x400000, read-write-execute for now, the data stack after the code - with
+SQUARE, a U. written in Forth (`10 /MOD ?DUP IF RECURSE THEN 48 + EMIT`)
+and a MAIN; it prints 169 and exits 0. Two slips on the way: GET-CURRENT
+and SET-CURRENT are not in this kernel - CURRENT @ and CURRENT ! are; and
+the jump helpers laid their two opcode bytes in the wrong order, ?DUP
+testing the second, so `jz` came out 84 0F - a segmentation fault, found
+by reading the code back. objdump's listing of the 399-byte file is the
+design as it should be: imul and ret, cqo and idiv, a native je, a
+recursive call - and N2's work in plain sight, `6 7 +` as two pushes and
+an add.
+
+`make native-n1a`; tests/verify's native:n1a row, on x86-64, skipped
+where the assembly engine is.

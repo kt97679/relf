@@ -1,0 +1,60 @@
+\ native-n1a.4 - N1a's proof of the pipeline (docs/NATIVE.md, Iteration
+\ 610): a small program compiled by forth/native.4 into x86-64 code, laid
+\ into an ELF file of its own, and run. Built as relfasm64 is:
+\     ./relf64 forth/kernel64.img < forth/native-n1a.4
+\ writes native-n1a, which prints 169 and exits with status 0.
+\
+\ One segment, read-write-execute, for now - the code and, after it, the
+\ data stack. W^X, and the guard pages, come with N1's runtime.
+
+S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED  S" forth/native.4" INCLUDED
+ALSO ASSEMBLER
+DECIMAL
+
+LABEL ehdr  LABEL phdr  LABEL _start  LABEL file_end
+4194304 65536 ASM-BUFFER               \ 0x400000, as relfasm64
+4194304 CONSTANT TEXTORG
+131072 CONSTANT MEM_SIZE               \ the code, then the data stack
+TEXTORG MEM_SIZE + 64 - CONSTANT DSTACK_TOP
+
+ehdr L:
+127 C,A  69 C,A  76 C,A  70 C,A  2 C,A  1 C,A  1 C,A  0 C,A \ 64-bit, little-endian, SysV
+0 Q,A
+2 W,A                                  \ e_type: an executable
+62 W,A                                 \ e_machine: x86-64
+1 L,A                                  \ e_version
+_start 0 Q,+                           \ e_entry
+phdr ehdr NEGATE Q,+                   \ e_phoff
+0 Q,A  0 L,A                           \ e_shoff, e_flags
+64 W,A  56 W,A  1 W,A                  \ e_ehsize, e_phentsize, e_phnum
+64 W,A  0 W,A  0 W,A                   \ e_shentsize, e_shnum, e_shstrndx
+phdr L:
+1 L,A                                  \ p_type: PT_LOAD
+7 L,A                                  \ p_flags: read, write, execute
+0 Q,A                                  \ p_offset
+TEXTORG Q,A  TEXTORG Q,A               \ p_vaddr, p_paddr
+file_end ehdr NEGATE Q,+               \ p_filesz
+MEM_SIZE Q,A                           \ p_memsz: the rest zero-filled
+4096 Q,A                               \ p_align
+
+\ ---- the program ----------------------------------------------------------
+N: SQUARE  DUP *  N;
+N: U.  10 /MOD ?DUP IF RECURSE THEN  48 + EMIT  N;   \ digits, the first first
+N: MAIN  6 7 + SQUARE U.  10 EMIT  0  N;             \ 169, a newline; status 0
+
+\ ---- the start: the stacks, MAIN, and exit with what it left ----------------
+_start L:
+rbp DSTACK_TOP # mov,
+ebx ebx xor,
+N' MAIN call,
+edi ebx mov,
+eax 60 # mov,
+syscall,
+file_end L:
+END-ASM
+
+: WRITE-NATIVE ( c-addr u --- )
+  2DUP W/O CREATE-FILE THROW >R  ABUF @ THERE @ OVER - R@ WRITE-FILE THROW
+  R> CLOSE-FILE THROW  493 CHMOD THROW ;
+S" native-n1a" WRITE-NATIVE
+BYE
