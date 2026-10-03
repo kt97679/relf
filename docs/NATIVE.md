@@ -300,6 +300,14 @@ kernel.4 is not split:
   tests/verify's rebuilds and fixpoints. The target space is a buffer
   of offsets from the image's start - what position-independent native
   code wants too.
+- **N1c-1b, headers over native code** (616, done): forth/native-cross.4
+  - cross-core.4, asm64 pointed at its image (ORG 0, so the code is
+  offsets and rel32), `NH: name ... N;` for a native definition with a
+  target header, and the ELF writer: a header page, then the image at
+  N-BASE, its START. forth/native-n1c.4 defines words so, publishes
+  the thread table into the image, and runs a walker - itself such words
+  - that decodes the backward links: it prints exactly the six names
+  defined. tests/verify's native:headers row.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

@@ -27947,3 +27947,44 @@ the whole tree for copies of cross.4 finds no other. The proof is the bytes: bot
 widths, built by relf and by gforth from the split cross.4, are
 identical to forth/kernel64.img and forth/kernel32.img - and
 tests/verify's rebuilds, cross-path builds and fixpoints agree.
+
+## Iteration 616: N1c-1b - target headers over native code
+
+forth/native-cross.4 begins the native cross compiler: cross-core.4 (615)
+for the vocabularies, the target space and the headers; asm64 and
+native.4 for the code, asm64 pointed at cross-core's IMAGE with ORG 0 -
+so the code is laid as offsets, a call's rel32 between offsets, and the
+image does not care where it is loaded. Two positions, cross-core's
+DP-T for headers and data and asm64's THERE for code, handed over by
+N>A and A>N. `NH: name ... N;` is a native colon definition with a real
+target header - cross-core's "HEADER, the link backward, the count byte,
+the name, threaded by the target's own hash - and native.4's body. The
+file: an ELF header page, then the image, mapped at N-BASE (0x401000),
+which is START at run time.
+
+forth/native-n1c.4 is the first milestone: native-rt.4's routines at the
+image's start, a thread table allotted, words defined with NH:, the
+table published into the image (cross-core's PUBLISH-WORDLIST), and a
+walker written as such words: for each thread, from its head, print the
+name and step back by the link read backward from it, until a distance
+of 0. It prints `.NAME SQUARE PREV WALK CUBE MAIN` - every name defined,
+once. tests/verify's native:headers row holds them, sorted.
+
+Two slips. The first build crashed: after the thread table's ALLOT-T,
+the next NCODE words were laid at asm64's old position - inside the
+table, which PUBLISH-WORDLIST then wrote over; an N>A between them
+cured it, which is what N>A is for. And native-rt.4's OPEN-FILE took
+its mode table's address as an immediate, right only where asm64's ORG
+is the load address - N1b's build, not the image's; asm64 has no
+rip-relative form, so it is now the label less ORG plus N-START, the
+same address in both. native-n1b still reads the Makefile through it.
+
+And a bug found by the check's own run, not 616's: asm:intrfuzz case 4 -
+the include that spins, ^C sent with the line - left file descriptor 3
+open. Since 606 a ^C throws from the forth command's start, as it
+should, so it can land anywhere in INCLUDED, between OPEN-FILE's return
+and the CATCH that owns the file among them; a throw there unwinds past
+that CATCH and the file stays open. Before 606 such a ^C waited. Not
+616's - its files are the native cross compiler's, the shell's image is
+the same - and recorded here for 617: ^C held from the open until the
+CATCH stands, then taken.

@@ -70,7 +70,10 @@ NCODE OPEN-FILE  ( c-addr u fam --- fid ior )   \ the name NUL-ended for the cal
   rdi [ rbp 8 ] mov,  r8 rdi mov,  r8 [ rbp ] add,     \ r8: the byte after the name
   ecx [ r8 ] byte-ptr movzx,  [ r8 ] byte-ptr 0 # mov,
   rax -1 # mov,  rbx 11 # cmp,  1 F jae,               \ no such mode: -1
-  rax open_modes # mov,  rsi [ rax rbx *8 ] mov,
+  rax open_modes ORG @ - N-START @ + # mov,  rsi [ rax rbx *8 ] mov,   \ the table's
+  \ address at run time: its offset in the buffer plus where the buffer
+  \ runs - the label itself where asm64's ORG is the load address (N1b),
+  \ an offset where it is 0 (the native image, 616)
   edx 420 # mov,  eax 2 # mov,  syscall,               \ open(name, flags, 0644)
   1 L:  [ r8 ] cl mov,                                 \ the byte back
   rbp 8 # add,  rax rax test,  2 F js,

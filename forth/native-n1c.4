@@ -1,0 +1,48 @@
+\ native-n1c.4 - the native cross compiler's first milestone (docs/
+\ NATIVE.md, N1c-1b, Iteration 616): words with real target headers -
+\ CV8's format, threaded as the target's FIND will search them - and
+\ native bodies, in one image; the thread table published into it; and a
+\ walker, itself such words, that decodes the backward links and prints
+\ every name of every thread. It must find exactly the names defined.
+\     ./relf64 forth/kernel64.img < forth/native-n1c.4   writes native-n1c
+
+S" forth/extend.4" INCLUDED
+S" forth/native-cross.4" INCLUDED
+DECIMAL
+
+\ ---- the runtime's routines, at the image's start ------------------------------
+N>A
+S" forth/native-rt.4" INCLUDED
+A>N
+DP-T @ CONSTANT WL-T  33 CELLS-T ALLOT-T     \ the thread table: count, 32 heads
+N>A                                          \ the code after it, not over it
+NCODE WL  ( --- a-addr )   N-PUSH  rbx WL-T N-ABS # mov,  NEND
+NCODE >ABS  ( t-addr --- a-addr )   rbx N-BASE # add,  NEND
+A>N
+
+\ ---- words with headers ---------------------------------------------------------
+NH: SQUARE  DUP * N;
+NH: CUBE  DUP SQUARE * N;
+NH: PREV  ( name --- name' | 0 )   \ the link, read backward from the name
+  DUP 1- C@
+  DUP 128 AND 0= IF ELSE                                  \ one byte: the distance
+  DUP 64 AND 0= IF 63 AND 8 LSHIFT OVER 2 - C@ OR ELSE    \ two
+  63 AND 16 LSHIFT OVER 2 - C@ 8 LSHIFT OR OVER 3 - C@ OR THEN THEN   \ three
+  DUP IF - ELSE 2DROP 0 THEN N;
+NH: .NAME  ( name --- )   COUNT 31 AND TYPE 32 EMIT N;
+NH: WALK  32 0 DO  WL I 1+ CELLS + @  ?DUP IF >ABS BEGIN DUP .NAME PREV ?DUP 0= UNTIL THEN  LOOP N;
+NH: MAIN  3 CUBE 27 = IF WALK THEN 10 EMIT 0 N;
+
+WL-T PUBLISH-WORDLIST
+
+\ ---- the start ------------------------------------------------------------------
+N>A  HERE-A CONSTANT ENTRY-T
+rbp N-BASE N-MEMSZ @ + 64 - # mov,           \ the data stack, at the end
+ebx ebx xor,
+N' MAIN call,
+edi ebx mov,  eax 60 # mov,  syscall,
+A>N
+END-ASM
+ENTRY-T N-ELF
+S" native-n1c" WRITE-ELF
+BYE

@@ -1,0 +1,64 @@
+\ native-cross.4 - the native back end's cross compiler (docs/NATIVE.md,
+\ N1c-1; Iteration 616 begins it). It builds on forth/cross-core.4, as
+\ cross.4 does - the vocabularies, the target dictionary space, the
+\ headers - and lays native code into the same image through
+\ forth/asm64.4 and forth/native.4. Run from the repository's top:
+\     ./relf64 forth/kernel64.img < forth/native-n1c.4
+\
+\ The image: cross-core's IMAGE, a buffer of offsets from the image's
+\ start, as CV8's images are. asm64 is pointed at it with ORG 0, so a
+\ call's rel32 is between offsets, and the code does not care where the
+\ image is loaded. Two positions, kept in step whenever one hands over to
+\ the other: cross-core's DP-T, where headers and data go, and asm64's
+\ THERE, where code goes - N>A and A>N.
+\
+\ The file: an ELF executable - a page holding the ELF header, then the
+\ image, mapped at N-BASE: so N-BASE is START, the image's base at run
+\ time, and the target's absolute addresses are N-BASE plus an offset.
+
+VARIABLE TARGET-CELL-BYTES  8 TARGET-CELL-BYTES !   \ x86-64: 8, always
+S" forth/cross-core.4" INCLUDED
+S" forth/asm64.4" INCLUDED
+S" forth/native.4" INCLUDED
+ALSO ASSEMBLER
+DECIMAL
+
+4198400 CONSTANT N-BASE            \ 0x401000: the image, after the header page
+N-BASE N-START !                   \ @XT and !XT count from it
+IMAGE ABUF !  0 ORG !  IMAGE THERE !
+
+: N>A ( --- )  IMAGE DP-T @ + THERE ! ;      \ code goes where the target is
+: A>N ( --- )  THERE @ IMAGE - DP-T ! ;      \ and the target goes on after it
+: N-ABS ( t-addr --- addr )  N-BASE + ;     \ a target offset's address at run time
+
+\ NH: name ... N;  - a native colon definition with a target header: the
+\ header (cross-core's "HEADER, threaded as the target's FIND will look),
+\ then the body, native code, compiled by native.4's N-COMPILE. Its shadow
+\ is in NTARGET and answers the body's offset, so later words call it.
+: NH: ( "name" --- )
+  CURRENT @ >R  NTARGET CURRENT !  "HEADER  R> CURRENT !
+  DP-T @ ,
+  N>A  HERE-A N-SELF !  N-COMPILE  A>N
+  DOES> @ ;
+
+\ ---- the ELF file ------------------------------------------------------------
+CREATE N-EHDR 4096 ALLOT                     \ the header page
+: E! ( x offset bytes --- )   \ little-endian, into the header page
+  0 DO  2DUP N-EHDR + I + SWAP 255 AND SWAP C!  SWAP 8 RSHIFT SWAP  LOOP 2DROP ;
+VARIABLE N-MEMSZ   1048576 N-MEMSZ !         \ the image and what follows it: stacks
+: N-ELF ( entry-t-addr --- )   \ the header page, for an image of DP-T bytes
+  N-EHDR 4096 0 FILL
+  127 0 1 E!  69 1 1 E!  76 2 1 E!  70 3 1 E!  2 4 1 E!  1 5 1 E!  1 6 1 E!
+  2 16 2 E!  62 18 2 E!  1 20 4 E!                  \ executable, x86-64, version 1
+  N-ABS 24 8 E!                                     \ e_entry
+  64 32 8 E!  0 40 8 E!  0 48 4 E!                  \ e_phoff, e_shoff, e_flags
+  64 52 2 E!  56 54 2 E!  1 56 2 E!  64 58 2 E!  0 60 2 E!  0 62 2 E!
+  1 64 4 E!  7 68 4 E!                              \ PT_LOAD, read-write-execute
+  0 72 8 E!  N-BASE 4096 - DUP 80 8 E!  88 8 E!     \ from the file's start
+  DP-T @ 4096 + 96 8 E!                             \ p_filesz
+  N-MEMSZ @ 4096 + 104 8 E!  4096 112 8 E! ;        \ p_memsz, p_align
+: WRITE-ELF ( c-addr u --- )   \ the header page, then the image
+  2DUP W/O CREATE-FILE THROW >R
+  N-EHDR 4096 R@ WRITE-FILE THROW
+  IMAGE DP-T @ R@ WRITE-FILE THROW
+  R> CLOSE-FILE THROW  493 CHMOD THROW ;

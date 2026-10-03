@@ -244,6 +244,14 @@ native-n1a: forth/native-n1a.4 forth/native.4 forth/asm64.4 forth/extend.4 forth
 	    echo "native-n1a: not built:" >&2; tr -d '\r' < native-n1a.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
 	@rm -f native-n1a.log
 
+# N1c-1b (Iteration 616): forth/native-cross.4's first milestone - words with
+# CV8-format headers and native bodies; a native walker lists every name.
+native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/native.4 forth/native-rt.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64
+	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-n1c.4 > native-n1c.log 2>&1 || true
+	@if [ ! -x $@ ] || grep -q 'Undefined word\|native:\|asm64:' native-n1c.log; then \
+	    echo "native-n1c: not built:" >&2; tr -d '\r' < native-n1c.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
+	@rm -f native-n1c.log
+
 # N1b (Iteration 611): tests/native/prims.4 compiled natively; it must print
 # what CV8 prints for it (tests/native/cv8-prims.4) - tests/verify compares.
 native-n1b: forth/native-n1b.4 forth/native.4 forth/native-rt.4 tests/native/prims.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64

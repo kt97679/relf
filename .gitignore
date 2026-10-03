@@ -80,3 +80,4 @@ relfasm-consts.S
 bench-report-*.txt
 native-n1a
 native-n1b
+native-n1c
