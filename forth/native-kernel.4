@@ -1,0 +1,28 @@
+\ native-kernel.4 - the native kernel (docs/NATIVE.md, N1c-3, Iteration
+\ 624): kernel.4 entire - through part 9 with its back end skipped, then
+\ forth/kernel-native.4's, then part 10 - and finished as cross.4 finishes
+\ CV8's: the word list published into FORTH-WORDLIST, DP at the image's
+\ end, both as offsets that COLD makes addresses by adding START, as it
+\ does CV8's. The start: the data stack set, START its only cell, COLD.
+\ native-kcut9.4 and native-kcut10.4 are kernel.4 cut at its PART 10
+\ (`make native-kernel` cuts them).
+S" forth/extend.4" INCLUDED
+S" forth/native-cross.4" INCLUDED
+DECIMAL
+N>A  S" forth/native-rt.4" INCLUDED  A>N
+S" native-kcut9.4" INCLUDED
+0 N-SKIPPING !  S" forth/kernel-native.4" INCLUDED  -1 N-SKIPPING !
+S" native-kcut10.4" INCLUDED
+CR .( native-kernel: forward calls waiting: ) N-UNRESOLVED CR
+N' FORTH-WORDLIST 24 + PUBLISH-WORDLIST
+N>A  HERE-A CONSTANT ENTRY-T
+rbp N-BASE N-MEMSZ @ + 64 - # mov,            \ the data stack, at the top
+rbx N-BASE # mov,                             \ START, the stack's one cell
+N' COLD call,                                 \ never returns
+edi ebx mov,  eax 60 # mov,  syscall,
+A>N
+DP-T @  N' DP 24 + !-T                        \ HERE, past the start too
+END-ASM
+ENTRY-T N-ELF
+S" native-kernel" WRITE-ELF
+BYE

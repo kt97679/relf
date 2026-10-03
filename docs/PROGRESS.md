@@ -28178,3 +28178,33 @@ COMPILE, EXIT, and IF ELSE THEN BEGIN UNTIL DO ?DO LOOP +LOOP LEAVE
 through POSTPONE - and EXECUTEs them; on CV8's kernel its words lay
 CV8's code. Both print the same nine lines: 11, a 64-bit literal, both
 branches, a countdown, four loops. native:compiler, same; make native-k9.
+
+## Iteration 624: N1c-3 - the native kernel boots, and passes CORE
+
+Part 10 - ?STACK, the compile-only list, INTERPRET, EVALUATE, the
+include words, QUIT, WARM, RELOCATE-WORDLIST, COLD - holds nothing of
+CV8's: COLD takes START from the stack, adds it to DP and to every
+thread head, sets S0 and R0, and goes to WARM. CV8's images keep those
+as offsets; so does the native one. So part 10 compiles as it is, a
+second cut after kernel-native.4, and the build finishes as cross.4's
+PART 10 does: the word list published into FORTH-WORDLIST's body - 24
+past its xt natively - and DP the image's end. The start: rbp at the
+data stack's top, rbx = START, the stack's one cell, and a call to COLD,
+which never returns.
+
+forth/native-kernel.4, `make native-kernel`: 39,087 bytes, all of
+kernel.4, no forward call left. Run, it says "Welcome to Forth"; `2 3
++ .` prints 5 and OK; and its own compiler, kernel-native.4, works at
+its own prompt - : SQ, a recursive FACT through IF and RECURSE, DO LOOP,
+LEAVE, VARIABLE, a CONSTANT made with CREATE DOES>, .". Then Hayes' CORE
+suite, as tests/run_tests.sh feeds it - tester.fr and BYE: no incorrect
+result, no wrong number of results, no undefined word, status 0; and
+the output is CV8's bare kernel's on the same input, 2,073 lines, byte
+for byte (1,843 OK markers each; the baseline's 2,136 counts another
+run). tests/verify: native:core same, native:kernel-bytes 39087.
+
+So N1c's end: kernel.4, unchanged, one source for both back ends,
+compiled to x86-64 and passing CORE as CV8 does. Not yet: the shell -
+its own Forth (shell.4 and the rest) and the operating system's
+primitives, which are stubs in the native kernel; and speed, which
+nothing has measured. Those are N2.

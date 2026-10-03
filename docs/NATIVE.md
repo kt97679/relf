@@ -352,6 +352,17 @@ kernel.4 is not split:
   call. tests/native/kernel-rc.4 lays code fragments at HERE with these
   words at run time and EXECUTEs them; the same on CV8's kernel -
   native:compiler, same.
+- **N1c-3, the native kernel boots** (624, done - N1c's end): kernel.4's
+  part 10 compiles as it is, COLD included - it relocates the thread heads
+  and DP by START, offsets in the native image as in CV8's - and the
+  build finishes as cross.4's does: the word list published into
+  FORTH-WORDLIST, DP at the image's end. The start sets the data stack,
+  START as its one cell, and calls COLD. forth/native-kernel.4, `make
+  native-kernel`: 39,087 bytes, kernel.4 entire and no forward call
+  waiting; it says "Welcome to Forth", interprets, compiles - : ; IF
+  RECURSE DO LOOP LEAVE VARIABLE CREATE DOES> ." - at its own prompt.
+  Hayes' CORE suite (tests/tester.fr) on it and on CV8's bare kernel:
+  the same output, 2,073 lines, byte for byte. native:core, same.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the
