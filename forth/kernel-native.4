@@ -32,9 +32,36 @@ CROSS-COMPILE
 VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line (626)
 : EXIT, ( --- )   195 C, ;                    \ ret
 : CALL, ( xt --- )   232 C, REL, ;            \ call rel32
+VARIABLE LIT-AT       \ where the last short literal's push began (628)
+VARIABLE LIT-VAL      \ and its value
+VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewound
 : LIT, ( x --- )   \ push it: mov rbx,imm32 when it fits, else movabs
-  PUSH,  DUP 2147483647 > OVER -2147483648 < OR
-  IF  72 C, 187 C, ,  ELSE  72 C, 199 C, 195 C, ,4  THEN ;
+  DUP 2147483647 > OVER -2147483648 < OR
+  IF  PUSH,  72 C, 187 C, ,  0 LIT-AT !
+  ELSE  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  72 C, 199 C, 195 C, ,4  THEN ;
+: MARK-TARGET ( --- )   HERE FOLD-BARRIER ! ;   \ a jump lands here
+: FRESH-LIT? ( --- f )   \ the last thing laid is a short literal, no jump into it
+  LIT-AT @ ?DUP IF  DUP 15 + HERE =  SWAP FOLD-BARRIER @ < 0= AND  ELSE 0 THEN ;
+: OP-IMM, ( modrm --- )   \ the literal unlaid; op rbx,imm32 in its place
+  LIT-AT @ HERE - ALLOT  0 LIT-AT !  72 C, 129 C, C,  LIT-VAL @ ,4 ;
+: CMP-IMM, ( setcc --- )   \ cmp rbx,imm32; setcc al; movzx rbx,al; neg rbx
+  251 OP-IMM,  15 C, C, 192 C,  72 C, 15 C, 182 C, 216 C,  72 C, 247 C, 219 C, ;
+: LOAD-ABS, ( --- )   \ the literal an address: unlaid; push, then load from it
+  LIT-AT @ HERE - ALLOT  0 LIT-AT !  PUSH, ;
+: FOLD ( xt --- xt 0 | -1 )   \ (628) a literal then +, -, AND, OR, XOR, =, <, >,
+  \ @ or C@: one instruction with the literal as its operand
+  FRESH-LIT? 0= IF 0 EXIT THEN
+  DUP ['] + = IF DROP 195 OP-IMM, -1 EXIT THEN
+  DUP ['] - = IF DROP 235 OP-IMM, -1 EXIT THEN
+  DUP ['] AND = IF DROP 227 OP-IMM, -1 EXIT THEN
+  DUP ['] OR = IF DROP 203 OP-IMM, -1 EXIT THEN
+  DUP ['] XOR = IF DROP 243 OP-IMM, -1 EXIT THEN
+  DUP ['] = = IF DROP 148 CMP-IMM, -1 EXIT THEN
+  DUP ['] < = IF DROP 156 CMP-IMM, -1 EXIT THEN
+  DUP ['] > = IF DROP 159 CMP-IMM, -1 EXIT THEN
+  DUP ['] @ = IF DROP LOAD-ABS,  72 C, 139 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
+  DUP ['] C@ = IF DROP LOAD-ABS,  72 C, 15 C, 182 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
+  0 ;
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
@@ -45,7 +72,9 @@ VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line 
   DUP 9 + C@ 187 = OVER 18 + C@ 195 = AND IF  10 + @  TRUE EXIT THEN
   0 ;
 : COMPILE, ( xt --- )   \ an inline primitive's code, copied; a pushing word's
-  \ push, inline (627); anything else, called
+  \ push, inline (627); a literal folded into the operation after it (628);
+  \ anything else, called
+  FOLD IF EXIT THEN
   DUP C@ 235 = OVER 1+ C@ 1 = AND
   IF  DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  EXIT  THEN
   LIT-WORD? IF LIT, EXIT THEN
@@ -53,13 +82,13 @@ VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line 
 
 \ forward and backward jumps: a 4-byte field, patched when its target comes
 : >MARK ( --- a-addr )   HERE 0 ,4 ;
-: >RESOLVE ( a-addr --- )   HERE OVER 4 + - SWAP !4 ;
+: >RESOLVE ( a-addr --- )   MARK-TARGET  HERE OVER 4 + - SWAP !4 ;
 : BACK, ( addr --- )   REL, ;
 
 : IF      ?COMP  POPF,  15 C, 132 C, >MARK ; IMMEDIATE         \ jz
 : THEN    ?COMP  >RESOLVE ; IMMEDIATE
 : ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE ; IMMEDIATE      \ jmp
-: BEGIN   ?COMP  HERE ; IMMEDIATE
+: BEGIN   ?COMP  MARK-TARGET HERE ; IMMEDIATE
 : UNTIL   ?COMP  POPF,  15 C, 132 C, BACK, ; IMMEDIATE
 : AGAIN   ?COMP  233 C, BACK, ; IMMEDIATE
 : WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
@@ -77,12 +106,12 @@ VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line 
   REPEAT  'LEAVE ! ;
 : DO   ?COMP   \ mov rax,[rbp]  push rax  push rbx  mov rbx,[rbp+8]  add rbp,16
   72 C, 139 C, 69 C, 0 C,  80 C,  83 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
-  'LEAVE @  0 'LEAVE !  HERE ; IMMEDIATE
+  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
 : ?DO  ?COMP   \ mov rax,[rbp]  mov rcx,rbx  mov rbx,[rbp+8]  add rbp,16  cmp rax,rcx
   72 C, 139 C, 69 C, 0 C,  72 C, 137 C, 217 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
   72 C, 57 C, 200 C,
   'LEAVE @  0 'LEAVE !  15 C, 132 C, LEAVE-LINK,       \ je past the loop: a LEAVE
-  80 C, 81 C,  HERE ; IMMEDIATE                      \ push rax  push rcx
+  80 C, 81 C,  MARK-TARGET HERE ; IMMEDIATE          \ push rax  push rcx
 : LOOP  ?COMP   \ mov rax,[rsp]  add rax,1  mov [rsp],rax  cmp rax,[rsp+8]  jne back
   72 C, 139 C, 4 C, 36 C,  72 C, 131 C, 192 C, 1 C,  72 C, 137 C, 4 C, 36 C,
   72 C, 59 C, 68 C, 36 C, 8 C,  15 C, 133 C, BACK,  RDROP16,  RESOLVE-LEAVE ; IMMEDIATE

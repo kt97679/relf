@@ -444,3 +444,15 @@ fib and loop within A33's 3 times C; sieve not yet - what is left is the
 stack in memory, every DUP OVER + through [rbp]. Folding a literal into
 the operation after it (`SIZE <` a compare with an immediate, `FLAGS +`
 an add) is next.
+
+Literal folding (628), in kernel-native.4's compiler: LIT, remembers
+where a short literal's push began and its value; COMPILE, of + - AND OR
+XOR = < > right after it unlays the push and lays one instruction with
+the literal as its operand (add rbx,imm32; cmp and setcc for the
+comparisons), and of @ or C@ a load from the literal address. Only a
+literal that is the last thing laid, and only where no jump lands inside
+it: BEGIN, THEN (through >RESOLVE), DO and ?DO mark the places jumps
+land, and nothing before the last mark is unlaid. The pushes 627 inlines
+are literals too, so `SIZE <` and `FLAGS +` fold. Medians of 3: fib 2.17,
+loop 2.10, sieve 3.81 times C (from 4.46); CORE and the compiler test
+the same as CV8's.

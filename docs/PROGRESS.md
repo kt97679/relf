@@ -28269,3 +28269,22 @@ where it was defined.
 The native tests as before, CORE the same. 45,595 bytes. sieve 0.276 ->
 0.175 s, 4.46 times C; interp 2.79 times CV8; fib 2.51 and loop 2.06
 times C. NATIVE.md section 9.
+
+## Iteration 628: literals folded into the next operation
+
+The sieve's turn is still pushes and pops through memory. The cheapest
+cut: a literal followed by an operation. LIT, records where a short
+literal's push begins (LIT-AT) and its value; COMPILE, asks FOLD first -
+for + - AND OR XOR, `op rbx,imm32` in the push's place; for = < >, `cmp
+rbx,imm32` and setcc, movzx, neg for Forth's -1; for @ and C@ with an
+address literal, the push and a load from the address. Safe only when
+the literal is the last thing laid (HERE is its push's end) and no jump
+lands inside it: >RESOLVE (THEN, ELSE, REPEAT), BEGIN, DO and ?DO mark
+the place jumps land - FOLD-BARRIER - and a literal that begins before
+the mark is left alone; one that begins at it is fine, the folded
+instruction begins there too. 627's inlined pushes are literals, so
+SIZE < and FLAGS + fold.
+
+Checked each fold's answer, a fold in BEGIN UNTIL and in a DO's IF;
+CORE and the compiler test the same as CV8's. sieve 0.175 -> 0.143 s,
+3.81 times C; fib 2.17, loop 2.10.
