@@ -81,7 +81,14 @@ WORDLIST CONSTANT NTRANS
 \ NPRIMS xt) or 0, and the target header's name field - its flags, for
 \ POSTPONE (622). Found while compiling, it lays itself: the template
 \ inline, or a call.
-: N-SHADOW ( pfa --- )   DUP CELL+ @ ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
+: N>BODY ( t-xt --- t-addr )   \ a created word's data: the address in its mov
+  11 + DUP C@-T  OVER 1+ C@-T 8 LSHIFT OR  OVER 2 + C@-T 16 LSHIFT OR
+  SWAP 3 + C@-T 24 LSHIFT OR  N-BASE - ;
+: N-SHADOW ( pfa --- )   \ the second cell: -1 a VARIABLE, its address pushed
+  \ inline; -2 a CONSTANT, the value in the fourth cell (627); else a template
+  DUP CELL+ @  DUP -1 = IF DROP @ N>BODY N-ABS N-LIT EXIT THEN
+  DUP -2 = IF DROP 3 CELLS + @ N-LIT EXIT THEN
+  ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
 CREATE N-NAME 32 ALLOT                       \ the name being defined
 VARIABLE N-DATA-OPEN   \ data was laid last: the next definition on a fresh line (626)
 : N-PEEK-NAME ( --- )   \ the next name, into N-NAME, the input left before it
@@ -162,9 +169,6 @@ CURRENT !
   72 C,A 199 C,A 195 C,A  R@ N-ABS L,A  195 C,A  8 0 DO 144 C,A LOOP
   BEGIN HERE-A R@ < WHILE 204 C,A REPEAT  R> DROP
   -1 N-DATA-OPEN ! ;
-: N>BODY ( t-xt --- t-addr )   \ a created word's data: the address in its mov
-  11 + DUP C@-T  OVER 1+ C@-T 8 LSHIFT OR  OVER 2 + C@-T 16 LSHIFT OR
-  SWAP 3 + C@-T 24 LSHIFT OR  N-BASE - ;
 CURRENT @  NTRANS CURRENT !
 : \  SOURCE NIP >IN ! ;
 : (  41 WORD DROP ;
@@ -205,11 +209,11 @@ CURRENT @  NTRANS CURRENT !
   N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
   DOES> N-SHADOW ;
 : VARIABLE ( "name" --- )   \ the 24-byte stub, then the cell
-  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
+  N-HEAD  DP-T @ ,  -1 ,  TLINK @ ,
   N>A  N-STUB24  A>N  0 ,-T
   DOES> N-SHADOW ;
 : CONSTANT ( n "name" --- )
-  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
+  N-HEAD  DP-T @ ,  -2 ,  TLINK @ ,  DUP ,
   N>A  N-PUSH  rbx SWAP # mov,  195 C,A  A>N
   DOES> N-SHADOW ;
 CURRENT !

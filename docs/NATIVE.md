@@ -421,3 +421,26 @@ time, leaving `repe cmpsb` the last few. The kernel grew 39,087 ->
 100 million stores to a variable: 24.86 s -> 0.15. interp 19 times
 faster, mem 20; the native kernel is faster than CV8 on all five. The C
 engine's libc memmove and memcmp still win mem (0.03).
+
+Against C (627). tests/native/bench/c/ has fib, loop and sieve in C, the
+harness builds them with cc -O2 - the loop's sum kept a real loop with an
+empty asm, which gcc would otherwise turn into the closed form - and
+prints native's time over C's. First: fib 2.48, loop 1.96, sieve 7.07.
+The sieve's inner loop calls SIZE, a CONSTANT, and FLAGS, a CREATEd
+buffer, every turn. Now a word whose code only pushes a constant and
+returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has patched, `: FIVE
+5 ;` - has its push laid inline: by kernel-native.4's COMPILE, at run
+time, which knows the bytes, and by the cross compiler for the kernel's
+own, marked in the shadow. The kernel: 45,595 bytes. Medians of 5:
+
+    workload     cv8-c   cv8-asm    native         c   native: vs cv8-asm   / c
+    fib         0.060s    0.056s    0.013s    0.005s     4.17x faster   2.51x
+    interp      0.681s    0.701s    0.252s         -     2.79x faster
+    loop        0.614s    0.635s    0.131s    0.064s     4.83x faster   2.06x
+    mem         0.037s    0.243s    0.072s         -     3.39x faster
+    sieve       0.920s    0.879s    0.175s    0.039s     5.02x faster   4.46x
+
+fib and loop within A33's 3 times C; sieve not yet - what is left is the
+stack in memory, every DUP OVER + through [rbp]. Folding a literal into
+the operation after it (`SIZE <` a compare with an immediate, `FLAGS +`
+an add) is next.

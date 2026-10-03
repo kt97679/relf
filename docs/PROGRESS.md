@@ -28248,3 +28248,24 @@ same as CV8's. The kernel is 42,959 bytes, 3,872 of them padding. The
 store test: 24.86 s -> 0.15, now 1.8 times CV8's speed. The benchmark,
 against CV8's assembly engine: fib 4.12x, interp 2.56x (was 0.14),
 loop 4.77x, mem 3.59x (was 0.17), sieve 3.28x - faster on all five.
+
+## Iteration 627: against C, and pushes inline
+
+A33's exit target for N2 is three times C. fib, loop and sieve have C
+twins in tests/native/bench/c/, built by the harness with cc -O2 (an
+empty asm keeps loop.c's sum a loop - gcc would sum it in closed form),
+and the harness prints native's time over C's: fib 2.48, loop 1.96, sieve
+7.07. The sieve's inner loop calls SIZE and FLAGS each turn. So a word
+whose code only pushes a constant and returns is pushed inline instead:
+LIT-WORD? in kernel-native.4's COMPILE, knows the bytes - push rbx, mov
+rbx imm32 (sign-extended) or movabs imm64, ret; a CREATE that DOES> has
+patched has a jump where the ret was and is called still - and the cross
+compiler marks its VARIABLEs (-1) and CONSTANTs (-2, the value in a
+fourth cell) for N-SHADOW. Checked: : FIVE 5 ;, a VARIABLE, a CONSTANT,
+a DOES> word (still called: 42), a 64-bit constant, a negative one.
+Two slips: FALSE, which kernel.4 does not define; N>BODY used above
+where it was defined.
+
+The native tests as before, CORE the same. 45,595 bytes. sieve 0.276 ->
+0.175 s, 4.46 times C; interp 2.79 times CV8; fib 2.51 and loop 2.06
+times C. NATIVE.md section 9.

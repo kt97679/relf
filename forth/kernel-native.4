@@ -35,9 +35,21 @@ VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line 
 : LIT, ( x --- )   \ push it: mov rbx,imm32 when it fits, else movabs
   PUSH,  DUP 2147483647 > OVER -2147483648 < OR
   IF  72 C, 187 C, ,  ELSE  72 C, 199 C, 195 C, ,4  THEN ;
-: COMPILE, ( xt --- )   \ an inline primitive's code, copied; anything else, called
+: LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
+  \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
+  \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
+  DUP @ 26328115314525000 = 0= IF 0 EXIT THEN
+  DUP 8 + C@ 72 = 0= IF 0 EXIT THEN
+  DUP 9 + C@ 199 = OVER 10 + C@ 195 = AND OVER 15 + C@ 195 = AND IF
+    11 + @4  DUP 2147483647 > IF 4294967296 - THEN  TRUE EXIT THEN   \ sign-extended
+  DUP 9 + C@ 187 = OVER 18 + C@ 195 = AND IF  10 + @  TRUE EXIT THEN
+  0 ;
+: COMPILE, ( xt --- )   \ an inline primitive's code, copied; a pushing word's
+  \ push, inline (627); anything else, called
   DUP C@ 235 = OVER 1+ C@ 1 = AND
-  IF  DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  ELSE  CALL,  THEN ;
+  IF  DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  EXIT  THEN
+  LIT-WORD? IF LIT, EXIT THEN
+  CALL, ;
 
 \ forward and backward jumps: a 4-byte field, patched when its target comes
 : >MARK ( --- a-addr )   HERE 0 ,4 ;
