@@ -28145,3 +28145,36 @@ Then kernel.4 through part 9 compiles natively, and six forward calls are
 left waiting: COMPILE, three times, CREATE, LIT,, and WARM, which part
 10 defines. The native tests pass as before: 169, prims and kernel-cut
 the same as CV8, the walked names.
+
+## Iteration 623: N1c-2c - the native kernel's own compiler
+
+forth/kernel-native.4: the back end for the native kernel's compiler,
+the words CV8's part 9 defines for its own code, for x86-64. The target
+has no assembler, so they lay the bytes with C, - the instruction
+sequences native.4's templates lay at cross time, written out: LIT,
+(mov rbx,imm32 when it fits, movabs else), CALL, EXIT, COMPILE, - an
+inline primitive's body now begins EB 01 len, a jump over the length of
+its code, which COMPILE, copies; anything else it calls. IF ELSE THEN
+BEGIN UNTIL AGAIN WHILE REPEAT; DO ?DO LOOP +LOOP LEAVE, LEAVE's chain
+threaded through the jumps' own four bytes as distances back. : ; and
+RECURSE as CV8's - common words - over native EXIT, and CALL,. CREATE
+lays a 24-byte body - push the data's address, a ret at 15, nops - so
+DOES> puts a jump where the ret is, the address pushed already, and
+>BODY is 24 +; the cross compiler's VARIABLE lays the same bytes, and
+native-k3's start writes S0 and DP at 24 now. (;CODE), DOES>, POSTPONE.
+
+The cross compiler for it: skipping is off while kernel-native.4 is
+compiled - it defines the very names; PRIMITIVE lays EB 01 len; EXIT
+and I have inline templates, stubs before; ['] at cross time adds the
+image's base; and DICT-LIMIT, which ALLOT asks and which had only a
+stub, is a routine native-cross.4 lays after the prologue: the mapped
+memory's top less the data stack's 64 KB. A third time a definition went
+into a word list being filled (NTRANS), where nothing found it.
+
+forth/native-k9.4 compiles kernel.4 through part 9 and kernel-native.4:
+one forward call waits, WARM, part 10's. tests/native/kernel-rc.4 lays
+code fragments at HERE with the back end's words at run time - LIT,
+COMPILE, EXIT, and IF ELSE THEN BEGIN UNTIL DO ?DO LOOP +LOOP LEAVE
+through POSTPONE - and EXECUTEs them; on CV8's kernel its words lay
+CV8's code. Both print the same nine lines: 11, a 64-bit literal, both
+branches, a countdown, four loops. native:compiler, same; make native-k9.

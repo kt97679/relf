@@ -123,6 +123,9 @@ CURRENT @  NCTRL CURRENT !
 : ABORT"  N-ABORTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
 : S"      N-SQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;     \ (619)
 : [CHAR]  N-WORD 1+ C@ N-LIT ;                                  \ (620)
+: [']   N-WORD COUNT NTARGET SEARCH-WORDLIST 0= IF                \ (623): native.4's, plus
+    CR ." native-cross: ['] of no target word: " N-LASTWORD COUNT TYPE CR BYE THEN
+  >BODY @ N-ABS N-LIT ;                                           \ the image's base
 : POSTPONE   \ (622) common words of part 9 - [CHAR] ['] - POSTPONE LITERAL
   N-WORD COUNT NTARGET SEARCH-WORDLIST 0= IF
     CR ." native-cross: POSTPONE of a word not yet defined: " N-LASTWORD COUNT TYPE CR BYE THEN
@@ -145,6 +148,12 @@ CURRENT !
   AGAIN ;
 : CROSS-COMPILE ( --- )  N-CROSS ;
 
+: N-STUB24 ( --- )   \ a created word's body, as kernel-native.4's CREATE lays it
+  \ (623): sub rbp,8  mov [rbp],rbx  mov rbx,data  ret  - the ret at 15, where
+  \ DOES> puts its jump - then nops to 24, where the data begins
+  HERE-A 24 + N-ABS >R
+  72 C,A 131 C,A 237 C,A 8 C,A  72 C,A 137 C,A 93 C,A 0 C,A
+  72 C,A 199 C,A 195 C,A  R> L,A  195 C,A  8 0 DO 144 C,A LOOP ;
 CURRENT @  NTRANS CURRENT !
 : \  SOURCE NIP >IN ! ;
 : (  41 WORD DROP ;
@@ -166,7 +175,10 @@ CURRENT @  NTRANS CURRENT !
   TLINK @ ,                                    \ the third: its name field (622)
   N>A
   OVER IF                                     \ a template: its code, ret, inline
-    DROP  EXECUTE  195 C,A
+    \ EB 01 len: a jump over the length of the template (623) - the
+    \ target's COMPILE, sees it and copies that many bytes, inline
+    DROP  235 C,A 1 C,A  THERE @ >R  0 C,A
+    EXECUTE  THERE @ R@ 1+ -  R> C!  195 C,A
     TLINK @ DUP C@-T 32 OR SWAP C!-T
   ELSE ?DUP IF                                \ a routine: jump to it; calls go there
     jmp,
@@ -181,10 +193,9 @@ CURRENT @  NTRANS CURRENT !
   N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
   N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
   DOES> N-SHADOW ;
-: VARIABLE ( "name" --- )   \ a 16-byte stub - push the cell after it - then the cell
+: VARIABLE ( "name" --- )   \ the 24-byte stub, then the cell
   N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
-  N>A  HERE-A >R  N-PUSH  rbx R@ 16 + N-ABS # mov,
-  R@ 15 + N-PAD-TO  195 C,A  R> DROP  A>N  0 ,-T
+  N>A  N-STUB24  A>N  0 ,-T
   DOES> N-SHADOW ;
 : CONSTANT ( n "name" --- )
   N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
@@ -212,6 +223,7 @@ N-SUBST, RESOLVE-LEAVE LOOP +LOOP RECURSE POSTPONE >BODY (;CODE) DOES>
   REPEAT DROP 2DROP FALSE ;
 VARIABLE N-SKIPPED                      \ the last definition was skipped
 VARIABLE N-TRACE                        \ set: each definition's name is said
+VARIABLE N-SKIPPING  -1 N-SKIPPING !     \ off while kernel-native.4 is compiled (623)
 VARIABLE N-FWD-NAMES                    \ how many forward calls to the back end
 : N-LATER? ( c-addr u --- f )   \ part 10's words part 9 calls: cross.4's FORWARDs
   2DUP S" WARM" COMPARE 0= >R  S" COLD" COMPARE 0=  R> OR ;
@@ -245,10 +257,18 @@ CURRENT @  NTRANS CURRENT !
 : IMMEDIATE  N-SKIPPED @ IF 0 N-SKIPPED ! ELSE TLINK @ DUP C@-T 64 OR SWAP C!-T THEN ;
 : : ( "name" --- )
   N-PEEK-NAME  N-TRACE @ IF N-NAME COUNT TYPE SPACE THEN
-  N-NAME COUNT N-SUBST? IF N-SKIP-DEF  -1 N-SKIPPED ! EXIT THEN
+  N-SKIPPING @ IF N-NAME COUNT N-SUBST? IF N-SKIP-DEF  -1 N-SKIPPED ! EXIT THEN THEN
   0 N-SKIPPED !
   N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
   N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
   DOES> N-SHADOW ;
 CURRENT !
 
+
+\ ==== routines that know the image's layout (Iteration 623) ===================
+\ Laid at load time, after the prologue, before a build lays anything: a
+\ kernel's PRIMITIVE finds them in NTARGET, as native-rt.4's.
+N>A
+NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the data stack's 64 KB
+  N-PUSH  rbx N-BASE N-MEMSZ @ + 65536 - # mov,  NEND
+A>N

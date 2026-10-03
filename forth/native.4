@@ -161,6 +161,10 @@ CURRENT @  NPRIMS CURRENT !
 : RP!   rsp rbx mov,  N-POP ;
 : @XT   rbx [ rbx ] mov,  rbx N-START @ # add, ;         \ an offset, plus the image base
 : NOOP  ;
+\ inline templates for kernel.4's PRIMITIVE EXIT and I (623): without one
+\ they were stubs, and the target's compiler copies what PRIMITIVE laid
+: EXIT  195 C,A ;
+: I     N-PUSH  rbx [ rsp ] mov, ;
 CURRENT !
 
 \ A target word written in assembly: NCODE name ... NEND. Called, never

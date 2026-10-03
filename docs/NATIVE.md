@@ -341,6 +341,17 @@ kernel.4 is not split:
   shadow cell, the header's name field. kernel.4 through part 9 compiles;
   six forward calls wait: COMPILE, (three), CREATE, LIT, and WARM -
   part 10's. kernel-native.4 is to define the back end and resolve them.
+- **N1c-2c, the native back end** (623, done): forth/kernel-native.4,
+  the target's own compiler for x86-64, in Forth that lays the bytes
+  with C, - LIT, CALL, EXIT, COMPILE, (an inline primitive's body begins
+  EB 01 len, a jump over its length, and is copied), the control and
+  loop words with LEAVE's chain threaded through the jumps' own fields,
+  : ; RECURSE, CREATE with a 24-byte body (the ret at 15, where DOES>
+  puts a jump; >BODY is 24 +), CONSTANT, (;CODE) DOES> POSTPONE.
+  kernel.4 through part 9 with it: only WARM, part 10's, still a forward
+  call. tests/native/kernel-rc.4 lays code fragments at HERE with these
+  words at run time and EXECUTEs them; the same on CV8's kernel -
+  native:compiler, same.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

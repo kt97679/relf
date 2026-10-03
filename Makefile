@@ -252,6 +252,16 @@ native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/nat
 	    echo "native-n1c: not built:" >&2; tr -d '\r' < native-n1c.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
 	@rm -f native-n1c.log
 
+# N1c-2 (Iteration 623): kernel.4 through part 9, natively, with kernel-native.4's
+# back end; the native kernel's own compiler, at run time, against CV8's.
+native-k9: forth/native-k9.4 forth/kernel-native.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/kernel.4 tests/native/kernel-rc.4 relf64
+	@sed '/^\\ PART 10: TOP LEVEL/,$$d' forth/kernel.4 > native-kcut9.4 && echo END-CROSS >> native-kcut9.4
+	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-k9.4 > native-k9.log 2>&1 || true
+	@if [ ! -x $@ ] || grep -q 'Undefined word\|native\(-cross\)*: \|asm64:' native-k9.log \
+	    || ! tr -d '\r' < native-k9.log | grep -q 'forward calls waiting: WARM *$$'; then \
+	    echo "native-k9: not built:" >&2; tr -d '\r' < native-k9.log | grep -v '^OK$$' | tail -3 >&2; rm -f $@; exit 1; fi
+	@rm -f native-k9.log native-kcut9.4
+
 # N1c-1c (Iteration 618): kernel.4's parts 0-3 compiled natively, with
 # tests/native/kernel-cut.4; it must print what CV8's kernel prints for it.
 native-k3: forth/native-k3.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/kernel.4 tests/native/kernel-cut.4 relf64

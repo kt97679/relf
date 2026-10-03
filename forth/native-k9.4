@@ -1,0 +1,24 @@
+\ native-k9.4 - kernel.4 through part 9, natively, with kernel-native.4's
+\ back end in place of CV8's (docs/NATIVE.md, N1c-2, Iteration 623), and
+\ tests/native/kernel-rc.4 after it. native-kcut9.4 is kernel.4 up to its
+\ PART 10 and an END-CROSS (`make native-k9` cuts it).
+S" forth/extend.4" INCLUDED
+S" forth/native-cross.4" INCLUDED
+DECIMAL
+N>A  S" forth/native-rt.4" INCLUDED  A>N
+S" native-kcut9.4" INCLUDED
+0 N-SKIPPING !  S" forth/kernel-native.4" INCLUDED  -1 N-SKIPPING !
+S" tests/native/kernel-rc.4" INCLUDED
+CR .( native-k9: forward calls waiting: ) N-UNRESOLVED CR
+N>A  HERE-A CONSTANT ENTRY-T
+rbp N-BASE N-MEMSZ @ + 64 - # mov,
+ebx ebx xor,
+rax N' S0 24 + N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
+rax N' DP 24 + N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,
+N' MAIN call,
+edi ebx mov,  eax 60 # mov,  syscall,
+A>N
+END-ASM
+ENTRY-T N-ELF
+S" native-k9" WRITE-ELF
+BYE

@@ -1,0 +1,97 @@
+\ kernel-native.4 - the native kernel's back end (docs/NATIVE.md, N1c-2;
+\ Iteration 623 begins it): the words of kernel.4's part 9 that lay CV8's
+\ code, for x86-64 - what the native kernel's own compiler uses when it
+\ compiles at run time. forth/native-cross.4 skips kernel.4's definitions
+\ of these names and compiles this file after part 9; a common word's
+\ call to one before it is a forward call, resolved here.
+\
+\ The target has no assembler: these lay the machine code's bytes with
+\ C, - the same instruction sequences native.4's templates lay at cross
+\ time. The data stack: its top in rbx, the rest under rbp. A created
+\ word's body is 24 bytes - push the data's address, a ret at 15, nops -
+\ the data after it; DOES> puts a jump where the ret is. An inline
+\ primitive's body begins EB 01 len: COMPILE, copies its len bytes.
+CROSS-COMPILE
+
+\ ---- laying bytes --------------------------------------------------------------
+: ,4 ( n --- )   DUP C, 8 RSHIFT DUP C, 8 RSHIFT DUP C, 8 RSHIFT C, ;
+: !4 ( n a-addr --- )
+  >R  DUP R@ C!  8 RSHIFT DUP R@ 1+ C!  8 RSHIFT DUP R@ 2 + C!  8 RSHIFT R> 3 + C! ;
+: @4 ( a-addr --- n )   \ unsigned
+  DUP C@  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
+: PUSH, ( --- )   72 C, 131 C, 237 C, 8 C,  72 C, 137 C, 93 C, 0 C, ;  \ sub rbp,8  mov [rbp],rbx
+: POPF, ( --- )   \ the top into rax, the stack popped, rax tested
+  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,  72 C, 133 C, 192 C, ;
+: REL, ( addr --- )   HERE 4 + - ,4 ;       \ rel32 to addr, from the end of the field
+: RDROP16, ( --- )   72 C, 131 C, 196 C, 16 C, ;                         \ add rsp,16
+
+\ ---- the back end proper ---------------------------------------------------------
+: NO-PEEP ;                                   \ no peephole optimiser natively, yet
+: EXIT, ( --- )   195 C, ;                    \ ret
+: CALL, ( xt --- )   232 C, REL, ;            \ call rel32
+: LIT, ( x --- )   \ push it: mov rbx,imm32 when it fits, else movabs
+  PUSH,  DUP 2147483647 > OVER -2147483648 < OR
+  IF  72 C, 187 C, ,  ELSE  72 C, 199 C, 195 C, ,4  THEN ;
+: COMPILE, ( xt --- )   \ an inline primitive's code, copied; anything else, called
+  DUP C@ 235 = OVER 1+ C@ 1 = AND
+  IF  DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  ELSE  CALL,  THEN ;
+
+\ forward and backward jumps: a 4-byte field, patched when its target comes
+: >MARK ( --- a-addr )   HERE 0 ,4 ;
+: >RESOLVE ( a-addr --- )   HERE OVER 4 + - SWAP !4 ;
+: BACK, ( addr --- )   REL, ;
+
+: IF      ?COMP  POPF,  15 C, 132 C, >MARK ; IMMEDIATE         \ jz
+: THEN    ?COMP  >RESOLVE ; IMMEDIATE
+: ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE ; IMMEDIATE      \ jmp
+: BEGIN   ?COMP  HERE ; IMMEDIATE
+: UNTIL   ?COMP  POPF,  15 C, 132 C, BACK, ; IMMEDIATE
+: AGAIN   ?COMP  233 C, BACK, ; IMMEDIATE
+: WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
+: REPEAT  ?COMP  POSTPONE AGAIN  POSTPONE THEN ; IMMEDIATE
+
+\ counted loops: the counter on the return stack's top, the limit under
+\ it. A LEAVE is a jump to the loop's end; 'LEAVE holds the newest one's
+\ field, and each field, until patched, the distance back to the one
+\ before it, 0 for none.
+: LEAVE-LINK, ( --- )
+  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4 ;
+: RESOLVE-LEAVE ( outer --- )   \ every LEAVE of this loop: here; 'LEAVE as it was
+  'LEAVE @ BEGIN ?DUP WHILE
+    DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
+  REPEAT  'LEAVE ! ;
+: DO   ?COMP   \ mov rax,[rbp]  push rax  push rbx  mov rbx,[rbp+8]  add rbp,16
+  72 C, 139 C, 69 C, 0 C,  80 C,  83 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
+  'LEAVE @  0 'LEAVE !  HERE ; IMMEDIATE
+: ?DO  ?COMP   \ mov rax,[rbp]  mov rcx,rbx  mov rbx,[rbp+8]  add rbp,16  cmp rax,rcx
+  72 C, 139 C, 69 C, 0 C,  72 C, 137 C, 217 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
+  72 C, 57 C, 200 C,
+  'LEAVE @  0 'LEAVE !  15 C, 132 C, LEAVE-LINK,       \ je past the loop: a LEAVE
+  80 C, 81 C,  HERE ; IMMEDIATE                      \ push rax  push rcx
+: LOOP  ?COMP   \ mov rax,[rsp]  add rax,1  mov [rsp],rax  cmp rax,[rsp+8]  jne back
+  72 C, 139 C, 4 C, 36 C,  72 C, 131 C, 192 C, 1 C,  72 C, 137 C, 4 C, 36 C,
+  72 C, 59 C, 68 C, 36 C, 8 C,  15 C, 133 C, BACK,  RDROP16,  RESOLVE-LEAVE ; IMMEDIATE
+: +LOOP  ?COMP   \ native.4's +LOOP: the crossing of limit-1 and limit, by signs
+  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,
+  72 C, 139 C, 12 C, 36 C,  72 C, 137 C, 202 C,  72 C, 43 C, 84 C, 36 C, 8 C,
+  72 C, 1 C, 193 C,  72 C, 137 C, 12 C, 36 C,  73 C, 137 C, 208 C,  73 C, 1 C, 192 C,
+  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,  73 C, 33 C, 208 C,
+  15 C, 137 C, BACK,  RDROP16,  RESOLVE-LEAVE ; IMMEDIATE
+: LEAVE  ?COMP  RDROP16,  233 C, LEAVE-LINK, ; IMMEDIATE
+
+\ ---- definitions ----------------------------------------------------------------
+: :  ( "name" --- )   !CSP HEADER ] ;
+: ;  ( --- )   ?COMP  EXIT, [ ?CSP REVEAL ; IMMEDIATE
+: RECURSE ( --- )   ?COMP  LAST @ NAME> CALL, ; IMMEDIATE
+: CREATE ( "name" --- )   \ the 24-byte stub; the data after it
+  HEADER REVEAL  PUSH,  72 C, 199 C, 195 C,  HERE 13 + ,4  195 C,  8 0 DO 144 C, LOOP ;
+: >BODY ( xt --- a-addr )   24 + ;
+: CONSTANT ( x "name" --- )   HEADER REVEAL  LIT, EXIT, ;
+: (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
+  \ the data's address pushed already; R> ends the defining word
+  R> LAST @ NAME> 15 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
+: DOES> ( --- )   ?COMP  POSTPONE (;CODE) ; IMMEDIATE
+: POSTPONE ( "name" --- )
+  ?COMP  BL WORD FIND  ?DUP 0= ABORT" not found"
+  0< IF  LIT,  ['] COMPILE, CALL,  ELSE  COMPILE,  THEN ; IMMEDIATE
+END-CROSS

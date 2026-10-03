@@ -39,6 +39,7 @@ matrix:refs bash dash
 matrix:regressions 0
 mrsh:failed 0
 mrsh:passed 21
+native:compiler same
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
 native:kernel-cut same
 native:n1a 169
