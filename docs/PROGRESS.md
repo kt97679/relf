@@ -28100,3 +28100,13 @@ three things did not.
   laid at image offset 0, and PRIMITIVE takes 0 for "no routine". The
   image begins with a 16-byte prologue of int3 now, DP-T past it - the
   loop inside a definition, as a loop is compile-only at the top level.
+
+## Iteration 621: parts 4-8's words, tested against CV8
+
+With 620's faults out of the way, tests/native/kernel-cut.4 grows by
+what parts 4-8 define: T-NUM - . and U. and D., HEX, <# # #> TYPE,
+SPACES; T-MOVE - ROLL 2OVER 2SWAP, CMOVE> and CMOVE over themselves;
+T-CONV - NUMBER? of 1234, -42 and 12x. MAIN calls DECIMAL first: the
+native start sets S0 and DP as CV8's build and COLD do, not BASE. The
+native kernel's cut and CV8's kernel print the same, 14 lines, byte for
+byte - native:kernel-cut, as before, now over parts 0-8.

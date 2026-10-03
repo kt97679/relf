@@ -327,8 +327,11 @@ kernel.4 is not split:
   to the byte, by relf and gforth); and PRIMITIVE storing a shadow's
   second cell after laying ?DUP's template, whose forward local label
   allots a record in the host's dictionary - the cell landed after the
-  record, and N-SHADOW executed what it read. Open: a test of parts
-  4-8's words crashed the host at build time - next.
+  record, and N-SHADOW executed what it read. The test of parts 4-8's
+  words (620-621): three more faults found by it and fixed - see
+  PROGRESS - and then 14 lines the same as CV8's kernel: number output
+  signed, unsigned, HEX and double, pictured output, SPACES, ROLL 2OVER
+  2SWAP, overlapping CMOVE and CMOVE>, NUMBER? good and bad.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

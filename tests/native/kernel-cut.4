@@ -1,8 +1,8 @@
-\ tests/native/kernel-cut.4 - the native kernel's first cut, tested
-\ (docs/NATIVE.md, N1c-1c, Iteration 618): words from kernel.4's parts
-\ 0-3, compiled natively by forth/native-cross.4, and the same file run on
-\ CV8's kernel (tests/native/cv8-kernel-cut.4); the two must print the
-\ same. In the kernel's own dialect, between CROSS-COMPILE and END-CROSS.
+\ tests/native/kernel-cut.4 - the native kernel's cut, tested (docs/
+\ NATIVE.md, N1c; parts 0-3 at Iteration 618, 4-8 at 621): words of
+\ kernel.4 compiled natively by forth/native-cross.4, and the same file
+\ run on CV8's kernel (tests/native/cv8-kernel-cut.4); the two must print
+\ the same. In the kernel's own dialect, between CROSS-COMPILE and END-CROSS.
 CROSS-COMPILE
 : HEXD  15 AND DUP 9 > IF 39 + THEN 48 + EMIT ;
 : P  60 BEGIN DUP 0< 0= WHILE 2DUP RSHIFT HEXD 4 - REPEAT 2DROP 32 EMIT ;
@@ -13,7 +13,15 @@ CROSS-COMPILE
 : T-MISC  DEPTH P  1 2 DEPTH P 2DROP  TRUE P  BL P  16 CELL- P  3 CHARS P
   1 2 3 4 3 PICK P 2DROP 2DROP  CR ;
 : T-STRING  ." hello, native" CR ;
-: MAIN  60 EMIT 60 EMIT 60 EMIT CR
-  T-DIV T-MINMAX T-ARITH T-DOUBLE T-MISC T-STRING
+\ parts 4-8: number output, pictured output, moves, the stack, conversion
+: T-NUM  -123 . 123 . 0 . -1 U. CR  HEX 255 . -1 . DECIMAL  -5 S>D D.  CR
+  123 0 <# # # # #> TYPE  [CHAR] | EMIT  3 SPACES [CHAR] | EMIT  CR ;
+: T-MOVE  1 2 3 4 3 ROLL P P P P  1 2 3 4 2OVER P P P P P P  1 2 3 4 2SWAP P P P P  CR
+  S" abcdef" PAD SWAP CMOVE  PAD PAD 2 + 3 CMOVE> PAD 6 TYPE  [CHAR] | EMIT
+  S" abcdef" PAD SWAP CMOVE  PAD 2 + PAD 3 CMOVE PAD 6 TYPE  CR ;
+: T-CONV  S" 1234" PAD PLACE PAD NUMBER? P P P  S" -42" PAD PLACE PAD NUMBER? P P P
+  S" 12x" PAD PLACE PAD NUMBER? P DROP DROP  CR ;
+: MAIN  DECIMAL  60 EMIT 60 EMIT 60 EMIT CR
+  T-DIV T-MINMAX T-ARITH T-DOUBLE T-MISC T-STRING T-NUM T-MOVE T-CONV
   62 EMIT 62 EMIT 62 EMIT CR  0 ;
 END-CROSS
