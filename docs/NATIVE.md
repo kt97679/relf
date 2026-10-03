@@ -292,6 +292,14 @@ kernel.4 is not split:
   definition is a forward reference, resolved when it comes - as cross.4
   resolves COLD and WARM. CV8's images are untouched by construction:
   "cv8 stays as is" (A33 a).
+- **N1c-1a, the shared core** (615, done): cross.4's parts 1-3 - the
+  vocabularies, the target dictionary space, creating definitions and
+  their headers - moved, as they stood, into forth/cross-core.4, which
+  cross.4 includes where they were. The kernels cross.4 builds are the
+  same to the byte: both cell widths, built by relf and by gforth, and
+  tests/verify's rebuilds and fixpoints. The target space is a buffer
+  of offsets from the image's start - what position-independent native
+  code wants too.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

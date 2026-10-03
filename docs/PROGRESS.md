@@ -27920,3 +27920,30 @@ cannot have caused it, and the summary said no more - not which case,
 so not whether it was the locale or chance. tests/portability now prints
 the failing cases of both runs when the summaries differ, as 605 made
 verify print the fuzzers' failures: the next time names itself.
+
+## Iteration 615: N1c-1a - cross.4's shared core
+
+cross.4 is in parts: 1 the vocabularies, 2 the target dictionary space,
+3 creating definitions (headers), 4 CV8's code generation, 5 forward
+references, 6 and 7 the defining and compiling words, 8 the cross
+compiler's loop, 9 compiling the kernel, 10 saving it. Parts 1-3 are no
+back end's: the target space is a host buffer of offsets from the image's
+start - CV8's relocatable images, and what position-independent native
+code wants too - and the headers are the same for both. Part 8 would be
+shared but calls part 4's LITERAL-T, so it stays.
+
+forth/cross-core.4 is parts 1-3, moved as they stood; cross.4 includes
+it where they were, after its preamble - which keeps the cell width, the
+line the 4-byte builds edit with sed (Makefile, tests/verify twice), so
+those edits stand. The three places that copy cross.4 into a temporary
+directory copy cross-core.4 too (tools/find-depth.sh copies forth/*.4
+already); KERNEL_SOURCES has it. Not three places: six. The first verify
+run found the other three - tests/run_tests.sh copies cross.4 for the
+images it rebuilds and the 4-byte host's, and without cross-core.4 every
+row it feeds came back empty or 0, CORE included; my search had covered
+the Makefile, tests/verify and tools/, not tests/run_tests.sh. The
+baseline it wrote was put back, the three copies fixed, and a search of
+the whole tree for copies of cross.4 finds no other. The proof is the bytes: both cell
+widths, built by relf and by gforth from the split cross.4, are
+identical to forth/kernel64.img and forth/kernel32.img - and
+tests/verify's rebuilds, cross-path builds and fixpoints agree.

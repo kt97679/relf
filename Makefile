@@ -51,7 +51,7 @@ CFLAGS32 ?= -m32 -O2 -Wall -fno-pie -no-pie
 PYTHON  ?= python3
 
 SHELL_SOURCES = forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4
-KERNEL_SOURCES = forth/kernel.4 forth/cross.4 forth/extend.4
+KERNEL_SOURCES = forth/kernel.4 forth/cross.4 forth/cross-core.4 forth/extend.4
 
 .PHONY: all help engines shell-images shells images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
@@ -263,7 +263,7 @@ images: $(NATIVE_ENGINE) $(KERNEL_SOURCES)
 	for bytes in 8 4; do \
 	    case $$bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac; \
 	    wd=$$(mktemp -d); \
-	    cp forth/extend.4 forth/cross.4 forth/kernel.4 $(NATIVE_IMG) $(NATIVE_ENGINE) "$$wd/"; \
+	    cp forth/extend.4 forth/cross.4 forth/cross-core.4 forth/kernel.4 $(NATIVE_IMG) $(NATIVE_ENGINE) "$$wd/"; \
 	    if [ $$bytes != 8 ]; then \
 	        sed -i "s/^8 TARGET-CELL-BYTES !\$$/$$bytes TARGET-CELL-BYTES !/" "$$wd/cross.4"; \
 	    fi; \

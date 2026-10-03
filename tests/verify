@@ -320,7 +320,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     for bytes in 8 4; do
         case $bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac
         wd=$(mktemp -d)
-        cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel64.img relfasm64 "$wd/"
+        cp forth/extend.4 forth/cross.4 forth/cross-core.4 forth/kernel.4 forth/kernel64.img relfasm64 "$wd/"
         [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
         ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' |
           timeout 120 ./relfasm64 kernel64.img > boot.log 2>&1 )
@@ -443,7 +443,7 @@ if command -v gforth >/dev/null 2>&1; then
     for bytes in 8 4; do
         case $bytes in 8) img=forth/kernel64.img ;; 4) img=forth/kernel32.img ;; esac
         wd=$(mktemp -d)
-        cp forth/cross.4 forth/kernel.4 "$wd/"
+        cp forth/cross.4 forth/cross-core.4 forth/kernel.4 "$wd/"
         [ $bytes != 8 ] && sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
         ( cd "$wd" && timeout 120 gforth cross.4 -e bye >/dev/null 2>&1 )
         cmp -s "$wd/built.img" "$img" || ddc=DIFFERS

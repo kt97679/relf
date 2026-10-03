@@ -207,7 +207,7 @@ cross_compile_image() {
     wd=$(mktemp -d)
     # The HOST's image, whatever width that is: cross.4 targets either
     # width, but it has to RUN somewhere first (Iteration 398).
-    cp forth/extend.4 forth/cross.4 forth/kernel.4 "$NATIVE_IMG" "$NATIVE_ENGINE" "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/cross-core.4 forth/kernel.4 "$NATIVE_IMG" "$NATIVE_ENGINE" "$wd/"
     if [ "$bytes" != 8 ]; then
         sed -i "s/^8 TARGET-CELL-BYTES !\$/$bytes TARGET-CELL-BYTES !/" "$wd/cross.4"
     fi
@@ -309,7 +309,7 @@ else
     # except an ARMv7 board. Checked here now, on every run that has an
     # i386 engine.
     wd=$(mktemp -d)
-    cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/cross-core.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
     check_image_reproduces "$wd/built.img" forth/kernel64.img "8-byte cells, from a 4-byte host"
@@ -320,7 +320,7 @@ else
     # the one combination nothing ran, which FORTH-STYLE.md 15 claimed
     # was covered until the claim was checked (Iteration 417).
     wd=$(mktemp -d)
-    cp forth/extend.4 forth/cross.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
+    cp forth/extend.4 forth/cross.4 forth/cross-core.4 forth/kernel.4 forth/kernel32.img relf32 "$wd/"
     sed -i "s/^8 TARGET-CELL-BYTES !\$/4 TARGET-CELL-BYTES !/" "$wd/cross.4"
     ( cd "$wd" && printf 'S" extend.4" INCLUDED\nS" cross.4" INCLUDED\nBYE\n' \
         | timeout 120 ./relf32 kernel32.img > boot.log 2>&1 ) || true
