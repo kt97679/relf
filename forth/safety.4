@@ -70,11 +70,21 @@
 \ The fid is still on the stack there, so INCLUDED closes it. The
 \ review found the cause and wrote the fix; its limit: the enclosing
 \ lines' lengths may add up to 260 bytes (256 on a 4-byte build).
+\ ^C held between the open and the CATCH (Iteration 617). Since 606 a ^C
+\ throws from a forth command's start - so it could land between OPEN-FILE's
+\ return and INCLUDED's CATCH, which owns the file, and unwind past it:
+\ the file stayed open (tools/intrfuzz.py, case 4, file descriptor 3). The
+\ shell, which knows ^C's route, fills these two hooks: hold before the
+\ open, take - the route back, a held ^C thrown - first thing inside the
+\ CATCH. Offsets, as @XT reads them; 0 is no hook (the build, a bare Forth).
+VARIABLE INC-HOLD-XT   VARIABLE INC-TAKE-XT
+: INC-HOOK ( a-addr --- )  DUP @ IF @XT EXECUTE ELSE DROP THEN ;
 VARIABLE INCLUDE-LINE#
 : INCLUDE-LINES ( --- )
   BEGIN REFILL WHILE #SRC @ INCLUDE-LINE# ! INTERPRET REPEAT ;
 VARIABLE INCLUDE-LINES-XT   ' INCLUDE-LINES INCLUDE-LINES-XT !XT
 : INCLUDE-FILE ( fid --- )
+  INC-TAKE-XT INC-HOOK            \ first: nothing may throw while ^C is held
   INCLUDE-POINTER @ INCLUDE-LINE# @ + 256 +
   INCLUDE-BUFFER 1 CELLS 508 + + U> ABORT" includes nested too deep"
   INCLUDE-POINTER @ >R INCLUDE-LINE# @ >R
@@ -86,6 +96,7 @@ VARIABLE INCLUDE-LINES-XT   ' INCLUDE-LINES INCLUDE-LINES-XT !XT
   THROW ;
 VARIABLE INCLUDE-FILE-XT   ' INCLUDE-FILE INCLUDE-FILE-XT !XT
 : INCLUDED ( c-addr u --- )
-  R/O OPEN-FILE ABORT" Can't open include file"
+  INC-HOLD-XT INC-HOOK
+  R/O OPEN-FILE ?DUP IF INC-TAKE-XT INC-HOOK ABORT" Can't open include file" THEN
   DUP >R  INCLUDE-FILE-XT @XT CATCH  DUP IF NIP THEN   \ a THROW left the fid
   R> CLOSE-FILE DROP  THROW ;

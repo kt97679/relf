@@ -27988,3 +27988,37 @@ that CATCH and the file stays open. Before 606 such a ^C waited. Not
 616's - its files are the native cross compiler's, the shell's image is
 the same - and recorded here for 617: ^C held from the open until the
 CATCH stands, then taken.
+
+## Iteration 617: ^C held while INCLUDED takes its file
+
+616's verify run found it: tools/intrfuzz.py case 4 - an include whose
+file loops forever, ^C sent with the line - left file descriptor 3 open.
+Since 606 a ^C throws from a forth command's start, so it can land
+between OPEN-FILE's return and INCLUDED's CATCH, which owns the file, and
+unwind past it. The fix holds ^C over that span. safety.4 is compiled
+before the shell and knows nothing of ^C's routes, so it has two hooks,
+offsets as @XT reads them, 0 for none: INCLUDED runs the hold before the
+open, and the take if the open fails; INCLUDE-FILE - what INCLUDED's
+CATCH runs - runs the take first of all, before even its depth check, so
+nothing throws while ^C is held. The shell fills them: INC-HOLD puts the
+route to "caught" where it was the throw route, INC-TAKE puts it back
+and throws a ^C held meanwhile (606's INT-PENDING-TAKE).
+
+For that the shell must know which route is in force, and it did not:
+FTH-RUN set the throw route and DO-FORTH and RUN-CAUGHT set "caught"
+after, unconditionally. INT-THROWING? and INT-ROUTE! now record it, and
+each of them puts back what was there. I first wrote that this also cured
+a forth command nested in another through the shell leaving the outer
+one deaf to ^C; tried on the shell before 617, it does not happen - the
+claim is gone from the comments, and that case stays in the probe only
+as a guard on the save and restore.
+
+tests/interactive/include-probe.py, run with the pty suite: a ^C put in
+INCLUDED's way by other means - the route made "caught", the shell
+sending itself SIGINT through TREE-RUN-TEXT, the route put back, then an
+include of a file that loops - must be thrown inside the CATCH: status
+130, the file closed, the descriptors as they were. Three checks, all
+pass on the three builds; without 617 the first fails.
+The shell: 141,636 bytes - both articles (Habr rev 250, ForthHub 248),
+the copies and the README; for article-2026 too, whose shell had the
+same window.
