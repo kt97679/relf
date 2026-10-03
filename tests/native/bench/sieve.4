@@ -1,0 +1,14 @@
+\ sieve.4 - the classic byte sieve, 8190 flags, many times (tools/native-bench.py)
+8190 CONSTANT SIZE
+CREATE FLAGS SIZE ALLOT
+: SIEVE ( --- count )
+  FLAGS SIZE 1 FILL  0
+  SIZE 0 DO
+    FLAGS I + C@ IF
+      I 2* 3 +  DUP I +
+      BEGIN DUP SIZE < WHILE  0 OVER FLAGS + C!  OVER +  REPEAT
+      2DROP 1+
+    THEN
+  LOOP ;
+: BENCH  0  3000 0 DO DROP SIEVE LOOP ;
+BENCH . CR BYE

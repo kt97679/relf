@@ -1,0 +1,4 @@
+\ mem.4 - the runtime's MOVE and COMPARE, 4 KB at a time (tools/native-bench.py)
+CREATE A 4096 ALLOT  CREATE B 4096 ALLOT
+: MEMB ( --- n )  0  300000 0 DO  A B 4096 MOVE  A 4096 B 4096 COMPARE +  LOOP ;
+MEMB . CR BYE

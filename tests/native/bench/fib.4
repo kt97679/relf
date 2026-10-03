@@ -1,0 +1,3 @@
+\ fib.4 - calls and returns: recursive Fibonacci (tools/native-bench.py)
+: FIB ( n --- f )  DUP 2 < IF EXIT THEN  DUP 1- RECURSE  SWAP 2 - RECURSE + ;
+32 FIB . CR BYE

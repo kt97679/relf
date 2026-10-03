@@ -1,0 +1,3 @@
+\ loop.4 - the tightest loop: DO LOOP summing its index (tools/native-bench.py)
+: LOOPS ( --- n )  0  200000000 0 DO I + LOOP ;
+LOOPS . CR BYE

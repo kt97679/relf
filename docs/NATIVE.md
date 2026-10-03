@@ -370,3 +370,35 @@ kernel.4 is not split:
 - **N1c-2, the native back end** (forth/kernel-native.4): the ~30 words
   of group C for native code, CREATE and DOES> as above.
 - **N1c-3, the CORE tests,** at the native kernel's prompt, as on CV8.
+
+## 9. N2's first measurement, and a layout rule (Iterations 625-626)
+
+tests/native/bench/*.4 - five workloads on bare kernels, so the native
+kernel and CV8's run the same source - and tools/native-bench.py, which
+times them (the child's CPU, median of rounds) and checks that every
+engine prints the same answer. The first measurement, medians of 3:
+
+    workload     cv8-c   cv8-asm    native   native vs cv8-asm
+    fib          0.06s     0.06s     0.01s    3.97x
+    interp       0.70s     0.69s     4.95s    0.14x
+    loop         0.59s     0.64s     0.13s    4.78x
+    mem          0.04s     0.24s     1.41s    0.17x
+    sieve        0.91s     0.87s     0.28s    3.17x
+
+Compiled code is 3-5 times CV8's speed. interp - EVALUATE, the kernel's
+own interpreter - is 7 times slower, and an empty EVALUATE alone costs
+1.3 us against CV8's 0.1. The cause, measured: 100 million stores to a
+VARIABLE take 24.9 s natively, 0.29 on CV8; 100 million to a cell 500
+bytes into a buffer, 0.19; fetches, 0.07. A variable's cell is in the
+same 64-byte cache line as its code stub, and a store there is, to the
+processor, self-modifying code: a machine clear, some 750 cycles, each
+time. EVALUATE stores five variables per call. CV8 cannot have this -
+its code is the engine's data.
+
+So a rule for the native image: **data that is written never shares a
+cache line with code.** A created word's data begins at the next 64-byte
+boundary after its stub, whose mov holds the address - so >BODY reads it
+there, not xt + 24 - and the definition after data begins on a line of
+its own. The cross compiler's VARIABLE and kernel-native.4's CREATE and
+: keep it (626). mem is the other slow one: COMPARE is `repe cmpsb`,
+microcoded, a byte a cycle - eight bytes at a time is the cure.

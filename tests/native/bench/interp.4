@@ -1,0 +1,5 @@
+\ interp.4 - the kernel's own interpreter: EVALUATE, FIND, NUMBER?, the
+\ compiler (tools/native-bench.py)
+VARIABLE ACC
+: EV  200000 0 DO  S" 12 30 + ACC +!" EVALUATE  LOOP ;
+EV  ACC @ . CR BYE

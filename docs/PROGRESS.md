@@ -28208,3 +28208,25 @@ compiled to x86-64 and passing CORE as CV8 does. Not yet: the shell -
 its own Forth (shell.4 and the rest) and the operating system's
 primitives, which are stubs in the native kernel; and speed, which
 nothing has measured. Those are N2.
+
+## Iteration 625: N2 begins - the first measurement
+
+N2's first job is to measure: speed is what the native back end is for
+(A33), and nothing had timed it. The VM benchmarks are shell scripts, and
+the native kernel has no shell yet, so tests/native/bench/ has five
+workloads in Forth that any bare kernel runs: fib (calls), loop (DO
+LOOP), sieve (bytes, nested loops, FILL), mem (MOVE and COMPARE of 4 KB)
+and interp (EVALUATE). tools/native-bench.py times each on CV8's C and
+assembly engines and the native kernel - the child's CPU through wait4,
+median of the rounds - and checks that all print the same answer.
+
+Compiled code: 3-5 times CV8's speed - fib 3.97x, loop 4.78x, sieve
+3.17x against the assembly engine. But interp 0.14x and mem 0.17x.
+mem is COMPARE's `repe cmpsb`, microcoded. interp took finding: an empty
+EVALUATE cost 1.3 us against 0.1; no system call in it; then 100 million
+stores to a VARIABLE, 24.9 s natively against 0.29 on CV8, and the same
+stores to a cell far from any code 0.19 s, fetches 0.07. The variable's
+cell shares a 64-byte cache line with its stub's code, and every store
+there is self-modifying code to the processor - a machine clear. The
+rule that follows, for 626: written data never on a code cache line.
+NATIVE.md section 9.
