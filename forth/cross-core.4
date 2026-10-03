@@ -33,9 +33,13 @@ VOCABULARY TRANSIENT
 
 \ Next we need to define the target space and the words to access it.
 
-40000 CONSTANT IMAGE_SIZE
-
-CREATE IMAGE IMAGE_SIZE CHARS ALLOT \ This space contains the target image.
+\ The target image, on the heap (Iteration 619): 40000 bytes held CV8's
+\ kernel; native code is larger - parts 0-8 of kernel.4 ran past that and
+\ the host fell over - and a buffer this size need not fit a host's
+\ dictionary (gforth's). SAVE-IMAGE writes only THERE's bytes, so CV8's
+\ images are the same for any size here.
+524288 CONSTANT IMAGE_SIZE
+IMAGE_SIZE ALLOCATE THROW CONSTANT IMAGE   \ This space contains the target image.
        IMAGE IMAGE_SIZE 0 FILL      \ Initialize it to zero.
 
 \ Fetch and store characters in the target space.

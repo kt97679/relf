@@ -28057,3 +28057,28 @@ gives on an empty stack, until the native COLD (N1c-2). Then the same:
 floored and symmetric division, */MOD, M*, FM/MOD, SM/REM, DNEGATE,
 PICK, DEPTH, and ." through a forward call. tests/verify's
 native:kernel-cut row; make native-k3.
+
+## Iteration 619: N1c-2a - kernel.4 through part 8, native
+
+The cut moved from part 4 to part 9: the host crashed, with nothing said.
+Two causes, one under the other. cross-core.4's image buffer was 40,000
+bytes, enough for CV8's kernel, not for native code; it is 512 KB now,
+ALLOCATEd - a buffer that size need not fit a host's dictionary, and
+gforth's builds the kernel too - and SAVE-IMAGE writes only THERE's
+bytes, so CV8's kernels are the same to the byte: both widths, by relf
+and by gforth, compared. Still the crash: cutting at each part, then at
+each definition of part 7, found WRITE-LINE, then ?DUP alone. asm64's
+`n F` allots a record in the host's dictionary for its forward local
+label; PRIMITIVE stored a shadow's first cell, laid the template - ?DUP's
+is the one with a local label - and stored the second cell after the
+record, where N-SHADOW does not look: it executed what it found there.
+PRIMITIVE now stores both cells before laying any code, as `:` VARIABLE
+and CONSTANT already did.
+
+Parts 0-8, 1,267 lines of kernel.4, compile: 27,345 bytes. The cut's
+test prints as CV8's kernel does. S" joins ." and ABORT" (a call to (S"),
+the string inline); the start sets DP, as CV8's build does, so HERE and
+PAD are in the free memory after the image. Open: the test extended to
+parts 4-8 - number output, CMOVE CMOVE> ROLL 2OVER 2SWAP, NUMBER? -
+crashed the host at build time, before any message; the test is back to
+618's, and that is the next thing to find.

@@ -1,7 +1,7 @@
-\ native-k3.4 - kernel.4's parts 0-3, compiled natively (docs/NATIVE.md,
-\ N1c-1c, Iteration 618), with tests/native/kernel-cut.4 after them.
-\ native-kcut.4 is kernel.4 up to its PART 4 and an END-CROSS (`make
-\ native-k3` cuts it).
+\ native-k3.4 - kernel.4 up to its compiler, compiled natively (docs/
+\ NATIVE.md, N1c; parts 0-3 at Iteration 618, 0-8 at 619), with
+\ tests/native/kernel-cut.4 after them. native-kcut.4 is kernel.4 up to
+\ its PART 9 and an END-CROSS (`make native-k3` cuts it).
 S" forth/extend.4" INCLUDED
 S" forth/native-cross.4" INCLUDED
 DECIMAL
@@ -14,6 +14,9 @@ ebx ebx xor,
 \ S0, as COLD sets it on CV8 - here until the native COLD (N1c-2): what SP@
 \ gives on an empty stack, the base less a cell, so DEPTH is 0 there
 rax N' S0 16 + N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
+\ and DP, as CV8's build sets it: HERE - and PAD, and pictured output's
+\ buffer below it - in the free memory after the image (619)
+rax N' DP 16 + N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,
 N' MAIN call,
 edi ebx mov,  eax 60 # mov,  syscall,
 A>N

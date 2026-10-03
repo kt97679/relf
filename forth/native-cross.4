@@ -102,6 +102,7 @@ VARIABLE N-FWDS
 : N-STR, ( c-addr u --- )  DUP C,A  0 ?DO DUP I + C@ C,A LOOP DROP ;
 CREATE N-DOTQ  4 C, 40 C, 46 C, 34 C, 41 C,            \ (.")
 CREATE N-ABORTQ  8 C, 40 C, 65 C, 66 C, 79 C, 82 C, 84 C, 34 C, 41 C,   \ (ABORT")
+CREATE N-SQ  4 C, 40 C, 83 C, 34 C, 41 C,              \ (S")
 
 \ inside definitions: kernel.4's cross-time words
 CURRENT @  NCTRL CURRENT !
@@ -113,6 +114,7 @@ CURRENT @  NCTRL CURRENT !
 : [OP]  CR ." native-cross: [OP] - a CV8 back-end word reached the native compiler" ABORT ;
 : ."      N-DOTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
 : ABORT"  N-ABORTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
+: S"      N-SQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;     \ (619)
 CURRENT !
 
 \ the top level
@@ -139,17 +141,23 @@ CURRENT @  NTRANS CURRENT !
   N-PEEK-NAME
   N-NAME COUNT NPRIMS SEARCH-WORDLIST IF ELSE 0 THEN            ( template|0 )
   N-NAME COUNT NTARGET SEARCH-WORDLIST IF >BODY @ ELSE 0 THEN   ( template routine|0 )
-  N-HEAD  DP-T @ ,  N>A
+  N-HEAD
+  \ The shadow's two cells first, before any code: a template's forward
+  \ local label (asm64's `1 F`) allots a record in the host's dictionary,
+  \ and a cell stored after it lands after the record - ?DUP's did, and
+  \ N-SHADOW executed what it read there (Iteration 619).
+  OVER IF  DP-T @ ,  OVER ,  ELSE  DUP IF DUP , ELSE DP-T @ , THEN  0 ,  THEN
+  N>A
   OVER IF                                     \ a template: its code, ret, inline
-    DROP  DUP EXECUTE  195 C,A
+    DROP  EXECUTE  195 C,A
     TLINK @ DUP C@-T 32 OR SWAP C!-T
   ELSE ?DUP IF                                \ a routine: jump to it; calls go there
-    DUP jmp,  HERE CELL- !
+    jmp,
   ELSE                                        \ neither: name itself on stderr, exit 99
     rsi TLINK @ 1+ N-ABS # mov,  edx TLINK @ C@-T 31 AND # mov,  edi 2 # mov,
     eax 1 # mov,  syscall,  edi 99 # mov,  eax 60 # mov,  syscall,
-  THEN THEN
-  ,  A>N                                      \ the second cell: the template, or 0
+  THEN DROP THEN
+  A>N
   DOES> N-SHADOW ;
 : OPCODE ( n "name" --- )  DROP  S" PRIMITIVE" NTRANS SEARCH-WORDLIST DROP EXECUTE ;
 : : ( "name" --- )

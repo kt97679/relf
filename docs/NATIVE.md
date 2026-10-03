@@ -320,6 +320,15 @@ kernel.4 is not split:
   tests/native/kernel-cut.4 prints the same natively as on CV8's kernel -
   floored and symmetric division, */MOD, M*, FM/MOD, SM/REM, ." through a
   forward call. tests/verify's native:kernel-cut row.
+- **N1c-2a, parts 0-8** (619, done): kernel.4 through part 8 - number
+  output, memory, files, source input, the interpreter's helpers - 1,267
+  lines, compile natively. Two things stood in the way: cross-core.4's
+  40,000-byte image buffer, now 512 KB on the heap (CV8's kernels the same
+  to the byte, by relf and gforth); and PRIMITIVE storing a shadow's
+  second cell after laying ?DUP's template, whose forward local label
+  allots a record in the host's dictionary - the cell landed after the
+  record, and N-SHADOW executed what it read. Open: a test of parts
+  4-8's words crashed the host at build time - next.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the
