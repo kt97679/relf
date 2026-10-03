@@ -29,6 +29,7 @@ WORDLIST CONSTANT NPRIMS
 WORDLIST CONSTANT NTARGET
 WORDLIST CONSTANT NCTRL      \ compile-time words - IF DO ." - searched first (617+)
 VARIABLE N-SELF              \ the target word being compiled: RECURSE
+CREATE N-LASTWORD 34 ALLOT   \ the word being looked up, for a message
 VARIABLE N-START             \ the image's base: @XT and !XT count from it
 4194304 N-START !            \ 0x400000, until a build says otherwise
 
@@ -178,8 +179,11 @@ CURRENT !
     DUP COUNT NCTRL SEARCH-WORDLIST IF NIP EXECUTE ELSE       \ IF DO ." ...
     DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE ELSE     \ the target's: it lays itself
     DUP COUNT NPRIMS SEARCH-WORDLIST IF NIP EXECUTE ELSE
+    DUP N-LASTWORD OVER C@ 1+ MOVE              \ NUMBER? may use WORD's buffer
     DUP NUMBER? IF DROP NIP N-LIT ELSE
-      2DROP CR ." native: unknown word " COUNT TYPE ABORT
+      \ The build ends here, with the name said: ABORT's restart in the bare
+      \ host, with a definition half made, did not come back (Iteration 620)
+      2DROP DROP CR ." native: unknown word " N-LASTWORD COUNT TYPE CR BYE
     THEN THEN THEN THEN THEN THEN
   AGAIN ;
 : N: ( "name" --- )

@@ -26,6 +26,11 @@ DECIMAL
 4198400 CONSTANT N-BASE            \ 0x401000: the image, after the header page
 N-BASE N-START !                   \ @XT and !XT count from it
 IMAGE ABUF !  0 ORG !  IMAGE THERE !
+\ A prologue: nothing real at offset 0, which means "none" to PRIMITIVE and
+\ cross-core's links alike - MOVE, native-rt.4's first routine, was laid
+\ there and taken for "no routine", and got a stub (Iteration 620).
+: N-PROLOGUE ( --- )  16 0 DO 204 C,A LOOP  16 DP-T ! ;   \ int3: a jump there traps
+N-PROLOGUE                                   \ (a loop is compile-only at the top level)
 
 : N>A ( --- )  IMAGE DP-T @ + THERE ! ;      \ code goes where the target is
 : A>N ( --- )  THERE @ IMAGE - DP-T ! ;      \ and the target goes on after it
@@ -111,10 +116,11 @@ CURRENT @  NCTRL CURRENT !
 \ native kernel replaces; a word compiled with them here is never run
 : LIT32-TOK 0 N-LIT ;  : DOVAR-TOK 0 N-LIT ;  : DODOES-TOK 0 N-LIT ;  : LIT8-TOK 0 N-LIT ;
 : BRANCH8-TOK 0 N-LIT ;  : 0BRANCH8-TOK 0 N-LIT ;
-: [OP]  CR ." native-cross: [OP] - a CV8 back-end word reached the native compiler" ABORT ;
+: [OP]  CR ." native-cross: [OP] - a CV8 back-end word reached the native compiler" CR BYE ;
 : ."      N-DOTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
 : ABORT"  N-ABORTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
 : S"      N-SQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;     \ (619)
+: [CHAR]  N-WORD 1+ C@ N-LIT ;                                  \ (620)
 CURRENT !
 
 \ the top level
@@ -124,7 +130,7 @@ CURRENT !
     DUP COUNT S" END-CROSS" COMPARE 0= IF DROP EXIT THEN
     DUP COUNT NTRANS SEARCH-WORDLIST IF NIP EXECUTE ELSE
     DUP NUMBER? IF DROP NIP ELSE
-      2DROP CR ." native-cross: unknown at the top level: " COUNT TYPE ABORT
+      2DROP CR ." native-cross: unknown at the top level: " COUNT TYPE CR BYE
     THEN THEN
   AGAIN ;
 : CROSS-COMPILE ( --- )  N-CROSS ;

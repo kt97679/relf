@@ -28082,3 +28082,21 @@ PAD are in the free memory after the image. Open: the test extended to
 parts 4-8 - number output, CMOVE CMOVE> ROLL 2OVER 2SWAP, NUMBER? -
 crashed the host at build time, before any message; the test is back to
 618's, and that is the next thing to find.
+
+## Iteration 620: three faults in the native cross compiler
+
+The test of parts 4-8's words that crashed at 619, bisected word by word
+(after regenerating the cut, which `make native-k3` deletes): number
+output, pictured output, SPACES, S", NUMBER? all compiled and ran;
+three things did not.
+- `[CHAR]`, unknown to the native compiler - and the unknown-word path
+  itself crashed the host: its ABORT, in the bare host with a definition
+  half made, did not come back; on the C engine the segfault ate the
+  buffered message, on the assembly engine the message came out with
+  the name empty, as NUMBER? reuses WORD's buffer. Now the name is kept
+  aside before NUMBER?, said, and the build ends with BYE - it fails,
+  cleanly, with nothing written. [CHAR] is in NCTRL.
+- ROLL ran into a stub named MOVE. MOVE is native-rt.4's first routine,
+  laid at image offset 0, and PRIMITIVE takes 0 for "no routine". The
+  image begins with a 16-byte prologue of int3 now, DP-T past it - the
+  loop inside a definition, as a loop is compile-only at the top level.
