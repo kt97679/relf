@@ -9,7 +9,9 @@
 \ C, - the same instruction sequences native.4's templates lay at cross
 \ time. The data stack: its top in rbx, the rest under rbp. A created
 \ word's body is 24 bytes - push the data's address, a ret at 15, nops -
-\ the data after it; DOES> puts a jump where the ret is. An inline
+\ the data at the next 64-byte boundary, a line of its own - data written
+\ beside code is self-modifying code to the processor (NATIVE.md 9); DOES>
+\ puts a jump where the ret is, and >BODY reads the address in the mov. An inline
 \ primitive's body begins EB 01 len: COMPILE, copies its len bytes.
 CROSS-COMPILE
 
@@ -27,6 +29,7 @@ CROSS-COMPILE
 
 \ ---- the back end proper ---------------------------------------------------------
 : NO-PEEP ;                                   \ no peephole optimiser natively, yet
+VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line (626)
 : EXIT, ( --- )   195 C, ;                    \ ret
 : CALL, ( xt --- )   232 C, REL, ;            \ call rel32
 : LIT, ( x --- )   \ push it: mov rbx,imm32 when it fits, else movabs
@@ -80,13 +83,17 @@ CROSS-COMPILE
 : LEAVE  ?COMP  RDROP16,  233 C, LEAVE-LINK, ; IMMEDIATE
 
 \ ---- definitions ----------------------------------------------------------------
-: :  ( "name" --- )   !CSP HEADER ] ;
+: DATA-ALIGN ( --- )   \ after data, a fresh cache line: code never shares one with it
+  DATA-OPEN @ IF  HERE 63 + -64 AND HERE - ALLOT  0 DATA-OPEN !  THEN ;
+: :  ( "name" --- )   DATA-ALIGN !CSP HEADER ] ;
 : ;  ( --- )   ?COMP  EXIT, [ ?CSP REVEAL ; IMMEDIATE
 : RECURSE ( --- )   ?COMP  LAST @ NAME> CALL, ; IMMEDIATE
-: CREATE ( "name" --- )   \ the 24-byte stub; the data after it
-  HEADER REVEAL  PUSH,  72 C, 199 C, 195 C,  HERE 13 + ,4  195 C,  8 0 DO 144 C, LOOP ;
-: >BODY ( xt --- a-addr )   24 + ;
-: CONSTANT ( x "name" --- )   HEADER REVEAL  LIT, EXIT, ;
+: CREATE ( "name" --- )   \ the 24-byte stub; the data at the next 64-byte line
+  DATA-ALIGN  HEADER REVEAL  HERE 24 + 63 + -64 AND >R
+  PUSH,  72 C, 199 C, 195 C,  R@ ,4  195 C,  8 0 DO 144 C, LOOP
+  BEGIN HERE R@ < WHILE 204 C, REPEAT  R> DROP  -1 DATA-OPEN ! ;
+: >BODY ( xt --- a-addr )   11 + @4 ;          \ the address in the stub's mov
+: CONSTANT ( x "name" --- )   DATA-ALIGN HEADER REVEAL  LIT, EXIT, ;
 : (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
   \ the data's address pushed already; R> ends the defining word
   R> LAST @ NAME> 15 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;

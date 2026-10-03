@@ -28230,3 +28230,21 @@ cell shares a 64-byte cache line with its stub's code, and every store
 there is self-modifying code to the processor - a machine clear. The
 rule that follows, for 626: written data never on a code cache line.
 NATIVE.md section 9.
+
+## Iteration 626: data off code's cache lines
+
+625's rule, kept in both compilers. The cross compiler's VARIABLE stub
+holds, in its mov, the address of the next 64-byte boundary, the gap
+int3, and N-HEAD aligns the first definition after data to a fresh line;
+N>BODY reads a variable's address back from the stub, for the builds
+that wrote xt + 24 (DP, S0, FORTH-WORDLIST). kernel-native.4 the same at
+run time: CREATE aligns its data and marks it open, DATA-ALIGN starts :
+CREATE CONSTANT on a fresh line after it, >BODY is `11 + @4`. COMPARE:
+eight bytes at a time with `cmp rax,[rdi]`, repe cmpsb only for the
+last few or the eight that differ.
+
+All the native tests as before - prims, the cut, the compiler, CORE the
+same as CV8's. The kernel is 42,959 bytes, 3,872 of them padding. The
+store test: 24.86 s -> 0.15, now 1.8 times CV8's speed. The benchmark,
+against CV8's assembly engine: fib 4.12x, interp 2.56x (was 0.14),
+loop 4.77x, mem 3.59x (was 0.17), sieve 3.28x - faster on all five.

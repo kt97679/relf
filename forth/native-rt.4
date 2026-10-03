@@ -24,7 +24,11 @@ NEND
 NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the lengths
   rsi [ rbp 16 ] mov,  rdi [ rbp ] mov,  rdx [ rbp 8 ] mov,
   rcx rdx mov,  rcx rbx cmp,  1 F jbe,  rcx rbx mov,  1 L:
-  rcx rcx test,  2 F jz,
+  \ eight bytes at a time while they agree (626): repe cmpsb is microcoded,
+  \ a byte a cycle; it is left only the last few, or the eight that differ
+  7 L:  rcx 8 # cmp,  8 F jb,  rax [ rsi ] mov,  rax [ rdi ] cmp,  8 F jne,
+        rsi 8 # add,  rdi 8 # add,  rcx 8 # sub,  7 B jmp,
+  8 L:  rcx rcx test,  2 F jz,
   243 C,A 166 C,A                        \ repe cmpsb
   3 F jne,
   2 L:  rdx rbx cmp,  4 F jb,  5 F ja,  ebx ebx xor,  6 F jmp,

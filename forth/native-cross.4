@@ -83,9 +83,11 @@ WORDLIST CONSTANT NTRANS
 \ inline, or a call.
 : N-SHADOW ( pfa --- )   DUP CELL+ @ ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
 CREATE N-NAME 32 ALLOT                       \ the name being defined
+VARIABLE N-DATA-OPEN   \ data was laid last: the next definition on a fresh line (626)
 : N-PEEK-NAME ( --- )   \ the next name, into N-NAME, the input left before it
   >IN @  BL WORD COUNT 31 MIN DUP N-NAME C!  N-NAME 1+ SWAP MOVE  >IN ! ;
 : N-HEAD ( --- )   \ the header, and its shadow in NTARGET: CREATEd, cells to follow
+  N-DATA-OPEN @ IF  DP-T @ 63 + -64 AND DP-T !  0 N-DATA-OPEN !  THEN   \ (626)
   N-PEEK-NAME  CURRENT @ >R  NTARGET CURRENT !  "HEADER  R> CURRENT ! ;
 
 \ Calls to a word not defined yet - (.") and (ABORT") are used before
@@ -150,10 +152,19 @@ CURRENT !
 
 : N-STUB24 ( --- )   \ a created word's body, as kernel-native.4's CREATE lays it
   \ (623): sub rbp,8  mov [rbp],rbx  mov rbx,data  ret  - the ret at 15, where
-  \ DOES> puts its jump - then nops to 24, where the data begins
-  HERE-A 24 + N-ABS >R
+  \ DOES> puts its jump - then nops to 24. The data begins at the next
+  \ 64-byte boundary, int3 between (626): data written never shares a cache
+  \ line with code - a store there is self-modifying code to the processor,
+  \ a machine clear each time (NATIVE.md 9). The mov holds the address;
+  \ >BODY reads it there.
+  HERE-A 24 + 63 + -64 AND >R
   72 C,A 131 C,A 237 C,A 8 C,A  72 C,A 137 C,A 93 C,A 0 C,A
-  72 C,A 199 C,A 195 C,A  R> L,A  195 C,A  8 0 DO 144 C,A LOOP ;
+  72 C,A 199 C,A 195 C,A  R@ N-ABS L,A  195 C,A  8 0 DO 144 C,A LOOP
+  BEGIN HERE-A R@ < WHILE 204 C,A REPEAT  R> DROP
+  -1 N-DATA-OPEN ! ;
+: N>BODY ( t-xt --- t-addr )   \ a created word's data: the address in its mov
+  11 + DUP C@-T  OVER 1+ C@-T 8 LSHIFT OR  OVER 2 + C@-T 16 LSHIFT OR
+  SWAP 3 + C@-T 24 LSHIFT OR  N-BASE - ;
 CURRENT @  NTRANS CURRENT !
 : \  SOURCE NIP >IN ! ;
 : (  41 WORD DROP ;

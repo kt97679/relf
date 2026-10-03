@@ -14,14 +14,14 @@ S" native-kcut9.4" INCLUDED
 0 N-SKIPPING !  S" forth/kernel-native.4" INCLUDED  -1 N-SKIPPING !
 S" native-kcut10.4" INCLUDED
 CR .( native-kernel: forward calls waiting: ) N-UNRESOLVED CR
-N' FORTH-WORDLIST 24 + PUBLISH-WORDLIST
+N' FORTH-WORDLIST N>BODY PUBLISH-WORDLIST
 N>A  HERE-A CONSTANT ENTRY-T
 rbp N-BASE N-MEMSZ @ + 64 - # mov,            \ the data stack, at the top
 rbx N-BASE # mov,                             \ START, the stack's one cell
 N' COLD call,                                 \ never returns
 edi ebx mov,  eax 60 # mov,  syscall,
 A>N
-DP-T @  N' DP 24 + !-T                        \ HERE, past the start too
+DP-T @  N' DP N>BODY !-T                        \ HERE, past the start too
 END-ASM
 ENTRY-T N-ELF
 S" native-kernel" WRITE-ELF

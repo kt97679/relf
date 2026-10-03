@@ -402,3 +402,22 @@ there, not xt + 24 - and the definition after data begins on a line of
 its own. The cross compiler's VARIABLE and kernel-native.4's CREATE and
 : keep it (626). mem is the other slow one: COMPARE is `repe cmpsb`,
 microcoded, a byte a cycle - eight bytes at a time is the cure.
+
+The rule, kept (626): the cross compiler's VARIABLE and kernel-native.4's
+CREATE put the data at the next 64-byte boundary, int3 between, the mov
+holding its address and >BODY reading it there; the first definition
+after data - the cross compiler's N-HEAD, kernel-native.4's : CREATE
+CONSTANT - starts on a fresh line. And COMPARE compares eight bytes at a
+time, leaving `repe cmpsb` the last few. The kernel grew 39,087 ->
+42,959 bytes, the padding. Medians of 3:
+
+    workload     cv8-c   cv8-asm    native   native vs cv8-asm
+    fib          0.06s     0.06s     0.01s    4.12x
+    interp       0.68s     0.67s     0.26s    2.56x
+    loop         0.57s     0.63s     0.13s    4.77x
+    mem          0.03s     0.25s     0.07s    3.59x
+    sieve        0.88s     0.88s     0.27s    3.28x
+
+100 million stores to a variable: 24.86 s -> 0.15. interp 19 times
+faster, mem 20; the native kernel is faster than CV8 on all five. The C
+engine's libc memmove and memcmp still win mem (0.03).

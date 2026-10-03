@@ -13,8 +13,8 @@ CR .( native-k9: forward calls waiting: ) N-UNRESOLVED CR
 N>A  HERE-A CONSTANT ENTRY-T
 rbp N-BASE N-MEMSZ @ + 64 - # mov,
 ebx ebx xor,
-rax N' S0 24 + N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
-rax N' DP 24 + N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,
+rax N' S0 N>BODY N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
+rax N' DP N>BODY N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,
 N' MAIN call,
 edi ebx mov,  eax 60 # mov,  syscall,
 A>N
