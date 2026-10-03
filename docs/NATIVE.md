@@ -275,17 +275,27 @@ word's code is a short fixed stub - push the address of the data that
 follows it - so >BODY is the xt plus the stub's length, and DOES>
 rewrites the stub's tail into a jump to the DOES> code.
 
-**How N1c goes, then:**
+**How N1c goes, then - revised at Iteration 614.** The plan above had
+N1c-1 move the compiler words into a file of their own, CV8's images
+unchanged to the byte. A look at the range said no: between NO-PEEP and
+INTERPRET the back-end words are interleaved with common ones - STATE
+[ ], CSP ?CSP ?COMP, ' ['] CHAR [CHAR], S" ." ABORT ABORT", IMMEDIATE,
+.( ( \, >BODY, ?STACK. Moving the range would make the native side carry
+copies of all of them; moving only the back-end words reorders kernel.4,
+and CV8's images change - the bytes could no longer prove the move. So
+kernel.4 is not split:
 
-- **N1c-1, the split.** Group C and the start into a file of their own,
-  forth/kernel-cv8.4, included by kernel.4 where they stand - and CV8's
-  images unchanged to the byte: tests/verify's image sums, rebuilds and
-  fixpoints say so. A pure move, proven by the bytes.
-- **N1c-2, the native kernel.** forth/kernel-native.4, group C for native
-  code; forth/native-cross.4, a cross compiler on cross.4's pattern -
-  TARGET's shadow words compile calls, TRANSIENT's compile-time words
-  are native.4's - building kernel.4 with kernel-native.4 into an ELF
-  file; the start: the stacks, then COLD.
-- **N1c-3, the CORE tests,** on the native kernel at its prompt, as on
-  CV8: the same 2136 checks, and the differential test grown to the
-  kernel's words.
+- **The native cross compiler compiles kernel.4 itself**, the one source
+  (A33 e). When it meets a definition of one of the back-end words, it
+  skips CV8's and compiles the native one from forth/kernel-native.4 in
+  its place; a call that reaches a back-end word before its native
+  definition is a forward reference, resolved when it comes - as cross.4
+  resolves COLD and WARM. CV8's images are untouched by construction:
+  "cv8 stays as is" (A33 a).
+- **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
+  pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
+  words are native.4's - with the header and dictionary format CV8's, the
+  bodies native; the skip-and-substitute; the start.
+- **N1c-2, the native back end** (forth/kernel-native.4): the ~30 words
+  of group C for native code, CREATE and DOES> as above.
+- **N1c-3, the CORE tests,** at the native kernel's prompt, as on CV8.

@@ -220,12 +220,17 @@ alt=""
   alt=$(locale -a 2>/dev/null | grep -iE 'utf-?8' | grep -viE '^(C|POSIX)' | head -1)
 [ -z "$alt" ] && alt=$(locale -a 2>/dev/null | grep -i 'utf' | head -1)
 if [ -n "$alt" ] && [ -x ./relfsh ]; then
-    a=$(LC_ALL=C tests/diff/run-all 2>&1 | tail -1)
-    b=$(LC_ALL=$alt tests/diff/run-all 2>&1 | tail -1)
+    # The runs' failures are printed when they differ (Iteration 614): a
+    # case failed once in C.utf8 and not in C, and the summaries said no
+    # more than that - not which case, so not whether locale or chance.
+    ao=$(LC_ALL=C tests/diff/run-all 2>&1); a=$(printf '%s\n' "$ao" | tail -1)
+    bo=$(LC_ALL=$alt tests/diff/run-all 2>&1); b=$(printf '%s\n' "$bo" | tail -1)
     if [ "$a" = "$b" ]; then
         ok "the differential suite reads the same in $alt"
     else
         bad "locale independence" "C says '$a', $alt says '$b'"
+        printf '%s\n' "$ao" | grep -A8 '^FAIL' | sed 's/^/    C: /' | head -20
+        printf '%s\n' "$bo" | grep -A8 '^FAIL' | sed "s/^/    $alt: /" | head -20
     fi
 else
     say "locale independence" "skipped: no second locale installed"

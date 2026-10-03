@@ -27888,3 +27888,35 @@ the map and N1c's plan: N1c-1 moves the compiler words into
 forth/kernel-cv8.4 with CV8's images unchanged to the byte; N1c-2 writes
 them for native code and builds the native kernel; N1c-3 runs the CORE
 tests on it. Documents only.
+
+## Iteration 614: no split of kernel.4 - the native side substitutes
+
+613's plan had N1c-1 move kernel.4's compiler words into a file of their
+own, CV8's images unchanged to the byte as the proof. Before moving: what
+the range between NO-PEEP and INTERPRET holds. Not only the back end:
+common words are interleaved with it - STATE [ ], CSP ?CSP ?COMP, '
+['] CHAR [CHAR], S" ." ABORT ABORT", IMMEDIATE, .( ( \, >BODY, ?STACK.
+Moving the range would make the native back end carry copies of them;
+moving only the back-end words reorders kernel.4, and every CV8 image
+changes - the bytes would prove nothing. And a nested INCLUDED inside
+kernel.4 would not have worked as written either: CROSS-COMPILE's loop
+finds S" in TRANSIENT, which compiles the string into the target.
+
+So kernel.4 stays as it is, and the native cross compiler compiles it,
+the one source: at a definition of a back-end word it skips CV8's and
+compiles forth/kernel-native.4's in its place; calls that come before
+the native definition are forward references, resolved as cross.4
+resolves COLD and WARM. CV8's images are untouched by construction - the
+user's "cv8 stays as is" - and the 140 common definitions are shared.
+NATIVE.md section 8: the revised plan, N1c-1 the native cross compiler,
+N1c-2 the native back end, N1c-3 the CORE tests. Documents only.
+
+And a flaky case, seen once: this iteration's verify check had
+portability:problems 1 - the locale check, which runs the differential
+suite under C and under C.utf8 and compares the summaries: under C.utf8,
+1 of 132 failed. Run again alone, the check passed; six runs of the
+suite under C.utf8, 792 cases, failed none. A documents-only change
+cannot have caused it, and the summary said no more - not which case,
+so not whether it was the locale or chance. tests/portability now prints
+the failing cases of both runs when the summaries differ, as 605 made
+verify print the fuzzers' failures: the next time names itself.
