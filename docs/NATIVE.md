@@ -476,3 +476,28 @@ session, 628's kernel then 629's: loop 0.60 and 0.59 s, sieve 0.33 and
 0.24; C's loop 0.07, sieve 0.079 - sieve 2.81 times C now. The cure for
 loop is a counter that is not in memory: DO's index and limit in
 registers, the outer loop's saved on the return stack (630).
+
+Register loops (630). In the code the native kernel compiles, a DO loop
+keeps its index in r14 and its limit in r15; DO saves the enclosing
+loop's pair on the return stack and the loop's end - where LEAVE and an
+empty ?DO jump - puts it back. LOOP is `inc r14; cmp r14,r15; jne`, I
+`mov rbx,r14`, J the pair saved last ([rsp]), UNLOOP the pair popped;
+I J UNLOOP are compiling words now. A word called in a loop keeps the
+caller's loop by the same save; a THROW out of a loop would not, so
+CATCH is the kernel's bracketed by two routines that keep r14 and r15
+on the return stack. The kernel's own loops, compiled by the cross
+compiler, keep their counters on the return stack - the two kinds never
+share a register. Checked against CV8: J, UNLOOP EXIT, +LOOP by -3, an
+empty ?DO, a looping word called in a loop, a THROW out of an inner loop
+caught in an outer one, LEAVE in nested loops; CORE and the compiler
+test the same. Medians of 5:
+
+    workload     cv8-c   cv8-asm    native         c   native: vs cv8-asm   / c
+    fib         0.059s    0.055s    0.011s    0.005s     5.14x faster   2.04x
+    interp      0.680s    0.685s    0.208s         -     3.30x faster
+    loop        0.574s    0.636s    0.075s    0.064s     8.51x faster   1.17x
+    mem         0.037s    0.237s    0.073s         -     3.23x faster
+    sieve       0.908s    0.886s    0.102s    0.034s     8.69x faster   2.97x
+
+fib, loop and sieve - the three with a C twin - are within A33's three
+times C.

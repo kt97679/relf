@@ -286,4 +286,10 @@ CURRENT !
 N>A
 NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the data stack's 64 KB
   N-PUSH  rbx N-BASE N-MEMSZ @ + 65536 - # mov,  NEND
+\ A register loop's r14 and r15 kept on the return stack, under the
+\ caller's return address (630): kernel-native.4's CATCH brackets the
+\ kernel's with these, so a THROW out of a loop leaves the catcher's own
+\ loop as it was.
+NCODE (SAVE-LOOP)     rax pop,  r15 push,  r14 push,  rax push,  NEND
+NCODE (RESTORE-LOOP)  rax pop,  r14 pop,   r15 pop,   rax push,  NEND
 A>N

@@ -131,34 +131,43 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 : WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
 : REPEAT  ?COMP  POSTPONE AGAIN  POSTPONE THEN ; IMMEDIATE
 
-\ counted loops: the counter on the return stack's top, the limit under
-\ it. A LEAVE is a jump to the loop's end; 'LEAVE holds the newest one's
-\ field, and each field, until patched, the distance back to the one
-\ before it, 0 for none.
+\ counted loops, in registers (630): r14 the index, r15 the limit; DO
+\ saves the enclosing loop's pair on the return stack and the loop's end
+\ puts it back - so a loop is `inc r14; cmp r14,r15; jne`, nothing in
+\ memory, and a word called in a loop keeps the caller's loop as it was.
+\ J is the pair saved last: [rsp]. A LEAVE is a jump to the loop's end,
+\ where the pair is restored; 'LEAVE holds the newest one's field, and
+\ each field, until patched, the distance back to the one before it.
 : LEAVE-LINK, ( --- )
   'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4 ;
 : RESOLVE-LEAVE ( outer --- )   \ every LEAVE of this loop: here; 'LEAVE as it was
   'LEAVE @ BEGIN ?DUP WHILE
     DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
   REPEAT  'LEAVE ! ;
-: DO   ?COMP   \ mov rax,[rbp]  push rax  push rbx  mov rbx,[rbp+8]  add rbp,16
-  72 C, 139 C, 69 C, 0 C,  80 C,  83 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
-  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
-: ?DO  ?COMP   \ mov rax,[rbp]  mov rcx,rbx  mov rbx,[rbp+8]  add rbp,16  cmp rax,rcx
-  72 C, 139 C, 69 C, 0 C,  72 C, 137 C, 217 C,  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C,
-  72 C, 57 C, 200 C,
-  'LEAVE @  0 'LEAVE !  15 C, 132 C, LEAVE-LINK,       \ je past the loop: a LEAVE
-  80 C, 81 C,  MARK-TARGET HERE ; IMMEDIATE          \ push rax  push rcx
-: LOOP  ?COMP   \ mov rax,[rsp]  add rax,1  mov [rsp],rax  cmp rax,[rsp+8]  jne back
-  72 C, 139 C, 4 C, 36 C,  72 C, 131 C, 192 C, 1 C,  72 C, 137 C, 4 C, 36 C,
-  72 C, 59 C, 68 C, 36 C, 8 C,  15 C, 133 C, BACK,  RDROP16,  RESOLVE-LEAVE ; IMMEDIATE
-: +LOOP  ?COMP   \ native.4's +LOOP: the crossing of limit-1 and limit, by signs
-  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,
-  72 C, 139 C, 12 C, 36 C,  72 C, 137 C, 202 C,  72 C, 43 C, 84 C, 36 C, 8 C,
-  72 C, 1 C, 193 C,  72 C, 137 C, 12 C, 36 C,  73 C, 137 C, 208 C,  73 C, 1 C, 192 C,
-  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,  73 C, 33 C, 208 C,
-  15 C, 137 C, BACK,  RDROP16,  RESOLVE-LEAVE ; IMMEDIATE
-: LEAVE  ?COMP  RDROP16,  233 C, LEAVE-LINK, ; IMMEDIATE
+: LOOP-ENTER, ( --- )   \ push r15  push r14  mov r15,[rbp]  mov r14,rbx  mov rbx,[rbp+8]  add rbp,16
+  65 C, 87 C,  65 C, 86 C,  76 C, 139 C, 125 C, 0 C,  73 C, 137 C, 222 C,
+  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C, ;
+: LOOP-EXIT, ( outer --- )   \ the LEAVEs here; pop r14  pop r15
+  RESOLVE-LEAVE  65 C, 94 C, 65 C, 95 C, ;
+: DO   ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
+: ?DO  ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !
+  77 C, 57 C, 254 C,  15 C, 132 C, LEAVE-LINK,          \ cmp r14,r15  je the end: a LEAVE
+  MARK-TARGET HERE ; IMMEDIATE
+: LOOP  ?COMP   \ inc r14  cmp r14,r15  jne back
+  73 C, 255 C, 198 C,  77 C, 57 C, 254 C,  15 C, 133 C, BACK,  LOOP-EXIT, ; IMMEDIATE
+: +LOOP  ?COMP   \ native.4's crossing test, by signs, on r14 and r15
+  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,   \ n into rax, popped
+  76 C, 137 C, 242 C,  76 C, 41 C, 250 C,  73 C, 1 C, 198 C,             \ rdx=i-lim  i+=n
+  73 C, 137 C, 208 C,  73 C, 1 C, 192 C,  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,
+  73 C, 33 C, 208 C,  15 C, 137 C, BACK,  LOOP-EXIT, ; IMMEDIATE
+: LEAVE   ?COMP  233 C, LEAVE-LINK, ; IMMEDIATE
+: I       ?COMP  PUSH,  76 C, 137 C, 243 C, ; IMMEDIATE        \ mov rbx,r14
+: J       ?COMP  PUSH,  72 C, 139 C, 28 C, 36 C, ; IMMEDIATE   \ mov rbx,[rsp]
+: UNLOOP  ?COMP  65 C, 94 C, 65 C, 95 C, ; IMMEDIATE           \ pop r14  pop r15
+
+\ CATCH, keeping a register loop's pair across it: kernel.4's, bracketed
+: CATCH0 ( i*x xt --- j*x 0 | i*x n )   CATCH ;
+: CATCH ( i*x xt --- j*x 0 | i*x n )   (SAVE-LOOP) CATCH0 (RESTORE-LOOP) ;
 
 \ ---- definitions ----------------------------------------------------------------
 : DATA-ALIGN ( --- )   \ after data, a fresh cache line: code never shares one with it

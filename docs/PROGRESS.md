@@ -28313,3 +28313,27 @@ nothing). loop.4's counter is stored and reloaded through the return
 stack each turn, and what that costs depends on the processor; C keeps
 its counter in a register. Same session, 628 -> 629: sieve 0.33 -> 0.24
 s, 2.81 times C (0.079). Next: DO's index and limit in registers.
+
+## Iteration 630: DO loops in registers
+
+629 found loop.4's counter stored and reloaded through the return stack
+each turn, its cost the processor's. kernel-native.4's loops now keep
+the index in r14 and the limit in r15. DO (and ?DO) push the enclosing
+loop's r15 and r14 and load the new pair; LOOP is inc, cmp, jne; +LOOP
+native.4's crossing test on the registers; the loop's end pops the pair
+back, and LEAVE and an empty ?DO jump there. I is mov rbx,r14; J the
+pair saved last, [rsp]; UNLOOP the pair popped - compiling words, laying
+their code. A called word that loops saves and restores the caller's
+pair; a THROW out of a loop does not get that far, so CATCH is the
+kernel's, called through CATCH0 between (SAVE-LOOP) and (RESTORE-LOOP),
+routines native-cross.4 lays that keep the pair under the caller's
+return address - a THROW returns through CATCH0, and the pair comes back.
+The cross-compiled kernel's loops keep their counters in memory, and
+never touch r14 or r15.
+
+Checked against CV8 line for line: nested loops and J, UNLOOP EXIT, a
++LOOP by -3, an empty ?DO, a looping word inside a loop, a THROW out of
+an inner loop caught in an outer one that goes on, LEAVE in nested
+loops; CORE and the compiler test the same. loop 1.17 times C (0.075 s),
+sieve 2.97, fib 2.04: the three workloads with a C twin within A33's
+three times C. The machine was back at its first speed this session.
