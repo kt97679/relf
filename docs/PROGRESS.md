@@ -28110,3 +28110,38 @@ T-CONV - NUMBER? of 1234, -42 and 12x. MAIN calls DECIMAL first: the
 native start sets S0 and DP as CV8's build and COLD do, not BASE. The
 native kernel's cut and CV8's kernel print the same, 14 lines, byte for
 byte - native:kernel-cut, as before, now over parts 0-8.
+
+## Iteration 622: N1c-2b - part 9, its back end skipped
+
+Part 9 is the compiler, and most of it is common: CATCH and THROW, the
+headers, ALLOT , C,, STATE, ' CHAR ." S" ABORT", IMMEDIATE, the comment
+words. The back end is forty names, in a list in native-cross.4: where
+kernel.4 defines one, the definition is skipped - name, and body to its
+; past comments, strings, and the name after POSTPONE ['] ' CHAR [CHAR],
+which may be a ; - and an IMMEDIATE after it, which would otherwise mark
+the word before. A common word that calls one gets a forward call, by
+native.4's new N-UNKNOWN hook, as do WARM and COLD, part 10's; any other
+unknown word still ends the build. POSTPONE at cross time: an immediate
+word is called, any other's xt is compiled with a call to the target's
+COMPILE, - immediate is the header's flag, so a shadow keeps a third
+cell, the header's name field.
+
+Four faults on the way, three of them mine and found with N-TRACE, which
+names each definition as N-CROSS reaches it (off by default).
+- The common words [CHAR] and ['] are `POSTPONE LITERAL`; with POSTPONE
+  only a skipped name, ; ended them early and the rest ran at the top
+  level.
+- A name string defined inside the NCTRL section, where nothing finds
+  it - the slip of 611 again.
+- CREATE N-SUBST-LIST before the definition of N-SUBST,, the word that
+  fills it: the word's code went where the list's data should be, and
+  no name was ever found in the list.
+- And the host's NUMBER?, which on a non-digit leaves five cells, not
+  its ( d f ): N-COMPILE's failure path dropped three, and inside an IF
+  the extra cells took the IF's patch address with them. The stack is
+  saved before NUMBER? and put back on a failure now.
+
+Then kernel.4 through part 9 compiles natively, and six forward calls are
+left waiting: COMPILE, three times, CREATE, LIT,, and WARM, which part
+10 defines. The native tests pass as before: 169, prims and kernel-cut
+the same as CV8, the walked names.

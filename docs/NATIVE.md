@@ -332,6 +332,15 @@ kernel.4 is not split:
   PROGRESS - and then 14 lines the same as CV8's kernel: number output
   signed, unsigned, HEX and double, pictured output, SPACES, ROLL 2OVER
   2SWAP, overlapping CMOVE and CMOVE>, NUMBER? good and bad.
+- **N1c-2b, part 9 with the back end skipped** (622, done): forty
+  back-end names - CV8's helpers, the compiling words, the defining
+  words, every control and loop word - are skipped where kernel.4 defines
+  them, an IMMEDIATE after one with them; a common word's call to one is
+  a forward call; POSTPONE works at cross time - a call for an immediate
+  word, else the xt and a call to the target's COMPILE, - by a third
+  shadow cell, the header's name field. kernel.4 through part 9 compiles;
+  six forward calls wait: COMPILE, (three), CREATE, LIT, and WARM -
+  part 10's. kernel-native.4 is to define the back end and resolve them.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

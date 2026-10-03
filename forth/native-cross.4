@@ -77,9 +77,10 @@ VARIABLE N-MEMSZ   1048576 N-MEMSZ !         \ the image and what follows it: st
 
 WORDLIST CONSTANT NTRANS
 
-\ A shadow's two cells: the address to call, and a primitive's template
-\ (an NPRIMS xt) or 0. Found while compiling, it lays itself: the
-\ template inline, or a call.
+\ A shadow's cells: the address to call, a primitive's template (an
+\ NPRIMS xt) or 0, and the target header's name field - its flags, for
+\ POSTPONE (622). Found while compiling, it lays itself: the template
+\ inline, or a call.
 : N-SHADOW ( pfa --- )   DUP CELL+ @ ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
 CREATE N-NAME 32 ALLOT                       \ the name being defined
 : N-PEEK-NAME ( --- )   \ the next name, into N-NAME, the input left before it
@@ -108,6 +109,7 @@ VARIABLE N-FWDS
 CREATE N-DOTQ  4 C, 40 C, 46 C, 34 C, 41 C,            \ (.")
 CREATE N-ABORTQ  8 C, 40 C, 65 C, 66 C, 79 C, 82 C, 84 C, 34 C, 41 C,   \ (ABORT")
 CREATE N-SQ  4 C, 40 C, 83 C, 34 C, 41 C,              \ (S")
+CREATE N-COMPILEC  8 C, 67 C, 79 C, 77 C, 80 C, 73 C, 76 C, 69 C, 44 C,   \ COMPILE,
 
 \ inside definitions: kernel.4's cross-time words
 CURRENT @  NCTRL CURRENT !
@@ -121,6 +123,14 @@ CURRENT @  NCTRL CURRENT !
 : ABORT"  N-ABORTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
 : S"      N-SQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;     \ (619)
 : [CHAR]  N-WORD 1+ C@ N-LIT ;                                  \ (620)
+: POSTPONE   \ (622) common words of part 9 - [CHAR] ['] - POSTPONE LITERAL
+  N-WORD COUNT NTARGET SEARCH-WORDLIST 0= IF
+    CR ." native-cross: POSTPONE of a word not yet defined: " N-LASTWORD COUNT TYPE CR BYE THEN
+  >BODY  DUP 2 CELLS + @ C@-T 64 AND IF       \ immediate: its run time, now
+    N-SHADOW
+  ELSE                                        \ else: its xt, and the target's COMPILE,
+    @ N-ABS N-LIT  N-COMPILEC COUNT N-CALL-NAMED
+  THEN ;
 CURRENT !
 
 \ the top level
@@ -153,6 +163,7 @@ CURRENT @  NTRANS CURRENT !
   \ and a cell stored after it lands after the record - ?DUP's did, and
   \ N-SHADOW executed what it read there (Iteration 619).
   OVER IF  DP-T @ ,  OVER ,  ELSE  DUP IF DUP , ELSE DP-T @ , THEN  0 ,  THEN
+  TLINK @ ,                                    \ the third: its name field (622)
   N>A
   OVER IF                                     \ a template: its code, ret, inline
     DROP  EXECUTE  195 C,A
@@ -167,16 +178,77 @@ CURRENT @  NTRANS CURRENT !
   DOES> N-SHADOW ;
 : OPCODE ( n "name" --- )  DROP  S" PRIMITIVE" NTRANS SEARCH-WORDLIST DROP EXECUTE ;
 : : ( "name" --- )
-  N-HEAD  DP-T @ ,  0 ,
+  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
   N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
   DOES> N-SHADOW ;
 : VARIABLE ( "name" --- )   \ a 16-byte stub - push the cell after it - then the cell
-  N-HEAD  DP-T @ ,  0 ,
+  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
   N>A  HERE-A >R  N-PUSH  rbx R@ 16 + N-ABS # mov,
   R@ 15 + N-PAD-TO  195 C,A  R> DROP  A>N  0 ,-T
   DOES> N-SHADOW ;
 : CONSTANT ( n "name" --- )
-  N-HEAD  DP-T @ ,  0 ,
+  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
   N>A  N-PUSH  rbx SWAP # mov,  195 C,A  A>N
   DOES> N-SHADOW ;
 CURRENT !
+
+\ ==== kernel.4's back end: skipped here, compiled from kernel-native.4 (622)
+\ The words of part 9 that lay CV8's code: their CV8 definitions are
+\ skipped, name and body, and an IMMEDIATE after one with them; a call to
+\ one from a common word before kernel-native.4 defines it is a forward
+\ call, resolved when it does. Other unknown words still end the build.
+: N-SUBST, ( "names" --- )  \ the rest of the line's names, into the list
+  BEGIN BL WORD DUP C@ WHILE  COUNT DUP C,  0 ?DO DUP I + C@ C, LOOP DROP  REPEAT DROP ;
+CREATE N-SUBST-LIST         \ after N-SUBST, - its data must follow its header
+N-SUBST, OP, REWIND W, SLOT, NO-PEEP LIT, EXIT, CALL, PEEP-IMM PEEP-VAR DOES-FETCH?
+N-SUBST, COMPILE, ; CREATE CONSTANT OPERAND3@ (POSTPONE) : >MARK >RESOLVE BACK,
+N-SUBST, BEGIN UNTIL AGAIN IF THEN ELSE WHILE REPEAT DO LEAVE-LINK, ?DO LEAVE
+N-SUBST, RESOLVE-LEAVE LOOP +LOOP RECURSE POSTPONE >BODY (;CODE) DOES>
+0 C,  ALIGN
+: N-SUBST? ( c-addr u --- f )
+  N-SUBST-LIST BEGIN DUP C@ WHILE
+    >R  2DUP R@ COUNT COMPARE 0= IF 2DROP R> DROP TRUE EXIT THEN
+    R> COUNT +
+  REPEAT DROP 2DROP FALSE ;
+VARIABLE N-SKIPPED                      \ the last definition was skipped
+VARIABLE N-TRACE                        \ set: each definition's name is said
+VARIABLE N-FWD-NAMES                    \ how many forward calls to the back end
+: N-LATER? ( c-addr u --- f )   \ part 10's words part 9 calls: cross.4's FORWARDs
+  2DUP S" WARM" COMPARE 0= >R  S" COLD" COMPARE 0=  R> OR ;
+: N-SUBST-FWD ( c-addr --- f )          \ native.4's N-UNKNOWN: a forward call
+  DUP COUNT N-SUBST? OVER COUNT N-LATER? OR
+  IF COUNT N-FWD-CALL  1 N-FWD-NAMES +!  TRUE ELSE DROP FALSE THEN ;
+: N-UNRESOLVED ( --- )   \ the forward calls still waiting, by name
+  N-FWDS @ BEGIN ?DUP WHILE
+    DUP CELL+ @ IF DUP 2 CELLS + COUNT TYPE SPACE THEN  @
+  REPEAT ;
+' N-SUBST-FWD N-UNKNOWN !
+CREATE N-DQ  2 C, 46 C, 34 C,                          \ ."
+CREATE N-SDQ  2 C, 83 C, 34 C,                         \ S"
+CREATE N-ADQ  6 C, 65 C, 66 C, 79 C, 82 C, 84 C, 34 C,  \ ABORT"
+: N-SKIP-NAME ( --- )  N-WORD DROP ;
+: N-SKIP-DEF ( --- )   \ past the name, and the body to its ;
+  N-SKIP-NAME
+  BEGIN N-WORD
+    DUP COUNT S" ;" COMPARE 0= IF DROP EXIT THEN
+    DUP COUNT S" \" COMPARE 0= IF SOURCE NIP >IN ! THEN
+    DUP COUNT S" (" COMPARE 0= IF 41 WORD DROP THEN
+    DUP COUNT S" .(" COMPARE 0= IF 41 WORD DROP THEN
+    DUP COUNT 2DUP N-DQ COUNT COMPARE 0= >R 2DUP N-SDQ COUNT COMPARE 0= >R
+      N-ADQ COUNT COMPARE 0= R> OR R> OR IF 34 WORD DROP THEN     \ ." S" ABORT"
+    DUP COUNT 2DUP S" POSTPONE" COMPARE 0= >R 2DUP S" [']" COMPARE 0= >R
+      2DUP S" '" COMPARE 0= >R 2DUP S" CHAR" COMPARE 0= >R S" [CHAR]" COMPARE 0=
+      R> OR R> OR R> OR R> OR IF N-SKIP-NAME THEN
+    DROP
+  AGAIN ;
+CURRENT @  NTRANS CURRENT !
+: IMMEDIATE  N-SKIPPED @ IF 0 N-SKIPPED ! ELSE TLINK @ DUP C@-T 64 OR SWAP C!-T THEN ;
+: : ( "name" --- )
+  N-PEEK-NAME  N-TRACE @ IF N-NAME COUNT TYPE SPACE THEN
+  N-NAME COUNT N-SUBST? IF N-SKIP-DEF  -1 N-SKIPPED ! EXIT THEN
+  0 N-SKIPPED !
+  N-HEAD  DP-T @ ,  0 ,  TLINK @ ,
+  N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
+  DOES> N-SHADOW ;
+CURRENT !
+

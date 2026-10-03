@@ -30,6 +30,8 @@ WORDLIST CONSTANT NTARGET
 WORDLIST CONSTANT NCTRL      \ compile-time words - IF DO ." - searched first (617+)
 VARIABLE N-SELF              \ the target word being compiled: RECURSE
 CREATE N-LASTWORD 34 ALLOT   \ the word being looked up, for a message
+VARIABLE N-UNKNOWN           \ a host xt ( c-addr --- f ) asked first about an
+                             \ unknown word: the cross compiler's forwards (622)
 VARIABLE N-START             \ the image's base: @XT and !XT count from it
 4194304 N-START !            \ 0x400000, until a build says otherwise
 
@@ -180,10 +182,16 @@ CURRENT !
     DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE ELSE     \ the target's: it lays itself
     DUP COUNT NPRIMS SEARCH-WORDLIST IF NIP EXECUTE ELSE
     DUP N-LASTWORD OVER C@ 1+ MOVE              \ NUMBER? may use WORD's buffer
-    DUP NUMBER? IF DROP NIP N-LIT ELSE
+    \ NUMBER? that fails leaves five cells, not ( d f ) - the rest of the
+    \ string too: the stack as it was is put back (Iteration 622; an IF's
+    \ patch under it went with the extra cells, and the host fell over)
+    SP@ >R
+    DUP NUMBER? IF DROP NIP N-LIT R> DROP ELSE
       \ The build ends here, with the name said: ABORT's restart in the bare
       \ host, with a definition half made, did not come back (Iteration 620)
-      2DROP DROP CR ." native: unknown word " N-LASTWORD COUNT TYPE CR BYE
+      R> SP! DROP
+      N-UNKNOWN @ IF N-LASTWORD N-UNKNOWN @ EXECUTE ELSE 0 THEN
+      0= IF CR ." native: unknown word " N-LASTWORD COUNT TYPE CR BYE THEN
     THEN THEN THEN THEN THEN THEN
   AGAIN ;
 : N: ( "name" --- )
