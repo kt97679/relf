@@ -28022,3 +28022,38 @@ pass on the three builds; without 617 the first fails.
 The shell: 141,636 bytes - both articles (Habr rev 250, ForthHub 248),
 the copies and the README; for article-2026 too, whose shell had the
 same window.
+
+## Iteration 618: N1c-1c - kernel.4's first quarter, native
+
+What kernel.4 needs from a cross compiler, read off cross.4's TRANSIENT
+words: at the top level PRIMITIVE OPCODE ESCAPED, : ; IMMEDIATE,
+VARIABLE CONSTANT, ALLOT-T and its kin, the boot vectors; inside
+definitions the control words, ." ABORT" POSTPONE, CV8's opcode tokens
+with [OP], and the cell's width as tokens. No CREATE, DOES>, ?DO, LEAVE,
+S" or ['] at cross time; the opcode tokens and [OP] only in the back-end
+words N1c-2 replaces. And (."), ."'s run time, finds its string through
+R> - its return address, which natively is just after the call, where
+the string is: the same source works.
+
+native.4 first: its compile-time words move into NCTRL, searched before
+the target's, and a target shadow now lays itself - a call, or a
+primitive's template inline - so kernel.4's own /MOD and *, defined
+after native.4's templates, win, as the newest definition does. n1a,
+n1b and n1c pass as before. Then native-cross.4's kernel layer:
+CROSS-COMPILE runs N-CROSS, which takes NTRANS's words at the top level;
+PRIMITIVE gives a header whose body is the template and ret, flagged
+inline, or a jump to the runtime's routine, or a stub that writes its
+name and exits 99; VARIABLE a 16-byte stub - push the cell after it -
+padded with nops to its length, then the cell; `:` patches the calls laid
+before it, by name, to (.") and (ABORT"). The cell-width tokens are 8, 3
+and 63; CV8's opcode tokens 0, and [OP] stops the build.
+
+forth/native-k3.4 compiles kernel.4 up to its PART 4 - 569 lines,
+unchanged - then tests/native/kernel-cut.4, in the kernel's own dialect:
+the first build compiled it all. Run against CV8's kernel on the same
+file it differed in one place: DEPTH, which measures from S0, which
+CV8's COLD sets and nothing here did; the start now sets it, what SP@
+gives on an empty stack, until the native COLD (N1c-2). Then the same:
+floored and symmetric division, */MOD, M*, FM/MOD, SM/REM, DNEGATE,
+PICK, DEPTH, and ." through a forward call. tests/verify's
+native:kernel-cut row; make native-k3.

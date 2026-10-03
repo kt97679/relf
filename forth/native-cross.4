@@ -39,7 +39,7 @@ IMAGE ABUF !  0 ORG !  IMAGE THERE !
   CURRENT @ >R  NTARGET CURRENT !  "HEADER  R> CURRENT !
   DP-T @ ,
   N>A  HERE-A N-SELF !  N-COMPILE  A>N
-  DOES> @ ;
+  DOES> @ call, ;
 
 \ ---- the ELF file ------------------------------------------------------------
 CREATE N-EHDR 4096 ALLOT                     \ the header page
@@ -62,3 +62,107 @@ VARIABLE N-MEMSZ   1048576 N-MEMSZ !         \ the image and what follows it: st
   N-EHDR 4096 R@ WRITE-FILE THROW
   IMAGE DP-T @ R@ WRITE-FILE THROW
   R> CLOSE-FILE THROW  493 CHMOD THROW ;
+
+\ ==== compiling kernel.4 (Iteration 618, N1c-1c) ==============================
+\ kernel.4 begins with CROSS-COMPILE and ends with END-CROSS, as cross.4
+\ reads it; here CROSS-COMPILE runs N-CROSS: at the top level the words
+\ of NTRANS - the directives kernel.4 uses: PRIMITIVE OPCODE ESCAPED : ;
+\ VARIABLE CONSTANT IMMEDIATE ALLOT-T and the like - and numbers on the
+\ host's stack; inside a definition, native.4's N-COMPILE.
+
+WORDLIST CONSTANT NTRANS
+
+\ A shadow's two cells: the address to call, and a primitive's template
+\ (an NPRIMS xt) or 0. Found while compiling, it lays itself: the
+\ template inline, or a call.
+: N-SHADOW ( pfa --- )   DUP CELL+ @ ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
+CREATE N-NAME 32 ALLOT                       \ the name being defined
+: N-PEEK-NAME ( --- )   \ the next name, into N-NAME, the input left before it
+  >IN @  BL WORD COUNT 31 MIN DUP N-NAME C!  N-NAME 1+ SWAP MOVE  >IN ! ;
+: N-HEAD ( --- )   \ the header, and its shadow in NTARGET: CREATEd, cells to follow
+  N-PEEK-NAME  CURRENT @ >R  NTARGET CURRENT !  "HEADER  R> CURRENT ! ;
+
+\ Calls to a word not defined yet - (.") and (ABORT") are used before
+\ kernel.4 defines them: a call with no target, a node [next][fix][name]
+\ remembering it, and the target patched when a word of that name comes.
+VARIABLE N-FWDS
+: N-FWD-CALL ( c-addr u --- )
+  232 C,A  THERE @  0 L,A                    ( c-addr u fix )
+  HERE >R  N-FWDS @ ,  ,  R> N-FWDS !
+  DUP C,  0 ?DO DUP I + C@ C, LOOP DROP  ALIGN ;
+: N-FWD-RESOLVE ( --- )   \ calls laid before N-NAME's definition: to here
+  N-FWDS @ BEGIN ?DUP WHILE
+    DUP CELL+ @ IF  DUP 2 CELLS + COUNT N-NAME COUNT COMPARE 0= IF
+      DUP CELL+ @ N-RESOLVE  0 OVER CELL+ !  THEN  THEN
+    @
+  REPEAT ;
+: N-CALL-NAMED ( c-addr u --- )   \ a call by name, now or when it comes
+  2DUP NTARGET SEARCH-WORDLIST IF NIP NIP EXECUTE ELSE N-FWD-CALL THEN ;
+: N-PAD-TO ( addr --- )  BEGIN HERE-A OVER < WHILE 144 C,A REPEAT DROP ;   \ nops
+: N-STR, ( c-addr u --- )  DUP C,A  0 ?DO DUP I + C@ C,A LOOP DROP ;
+CREATE N-DOTQ  4 C, 40 C, 46 C, 34 C, 41 C,            \ (.")
+CREATE N-ABORTQ  8 C, 40 C, 65 C, 66 C, 79 C, 82 C, 84 C, 34 C, 41 C,   \ (ABORT")
+
+\ inside definitions: kernel.4's cross-time words
+CURRENT @  NCTRL CURRENT !
+: CELLBYTES-TOK  8 N-LIT ;   : CELLSHIFT-TOK  3 N-LIT ;   : SIGNSHIFT-TOK  63 N-LIT ;
+\ CV8's opcodes, as numbers: only CV8's back-end words use them, which the
+\ native kernel replaces; a word compiled with them here is never run
+: LIT32-TOK 0 N-LIT ;  : DOVAR-TOK 0 N-LIT ;  : DODOES-TOK 0 N-LIT ;  : LIT8-TOK 0 N-LIT ;
+: BRANCH8-TOK 0 N-LIT ;  : 0BRANCH8-TOK 0 N-LIT ;
+: [OP]  CR ." native-cross: [OP] - a CV8 back-end word reached the native compiler" ABORT ;
+: ."      N-DOTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
+: ABORT"  N-ABORTQ COUNT N-CALL-NAMED  34 WORD COUNT N-STR, ;
+CURRENT !
+
+\ the top level
+: N-CROSS ( --- )
+  BEGIN
+    N-WORD
+    DUP COUNT S" END-CROSS" COMPARE 0= IF DROP EXIT THEN
+    DUP COUNT NTRANS SEARCH-WORDLIST IF NIP EXECUTE ELSE
+    DUP NUMBER? IF DROP NIP ELSE
+      2DROP CR ." native-cross: unknown at the top level: " COUNT TYPE ABORT
+    THEN THEN
+  AGAIN ;
+: CROSS-COMPILE ( --- )  N-CROSS ;
+
+CURRENT @  NTRANS CURRENT !
+: \  SOURCE NIP >IN ! ;
+: (  41 WORD DROP ;
+: COLD ;  : WARM ;  : LOCALS-CELLS ;  : ESCAPED ;     \ CV8's boot vectors and band
+: CHARS-T CHARS-T ;  : CELLS-T CELLS-T ;  : ALLOT-T ALLOT-T ;
+: IMMEDIATE  TLINK @ DUP C@-T 64 OR SWAP C!-T ;
+: PRIMITIVE ( "name" --- )
+  \ the header; its body the template and ret, flagged inline, or a jump to
+  \ the runtime's routine, or a stub that names itself and exits (99)
+  N-PEEK-NAME
+  N-NAME COUNT NPRIMS SEARCH-WORDLIST IF ELSE 0 THEN            ( template|0 )
+  N-NAME COUNT NTARGET SEARCH-WORDLIST IF >BODY @ ELSE 0 THEN   ( template routine|0 )
+  N-HEAD  DP-T @ ,  N>A
+  OVER IF                                     \ a template: its code, ret, inline
+    DROP  DUP EXECUTE  195 C,A
+    TLINK @ DUP C@-T 32 OR SWAP C!-T
+  ELSE ?DUP IF                                \ a routine: jump to it; calls go there
+    DUP jmp,  HERE CELL- !
+  ELSE                                        \ neither: name itself on stderr, exit 99
+    rsi TLINK @ 1+ N-ABS # mov,  edx TLINK @ C@-T 31 AND # mov,  edi 2 # mov,
+    eax 1 # mov,  syscall,  edi 99 # mov,  eax 60 # mov,  syscall,
+  THEN THEN
+  ,  A>N                                      \ the second cell: the template, or 0
+  DOES> N-SHADOW ;
+: OPCODE ( n "name" --- )  DROP  S" PRIMITIVE" NTRANS SEARCH-WORDLIST DROP EXECUTE ;
+: : ( "name" --- )
+  N-HEAD  DP-T @ ,  0 ,
+  N>A  N-FWD-RESOLVE  HERE-A N-SELF !  N-COMPILE  A>N
+  DOES> N-SHADOW ;
+: VARIABLE ( "name" --- )   \ a 16-byte stub - push the cell after it - then the cell
+  N-HEAD  DP-T @ ,  0 ,
+  N>A  HERE-A >R  N-PUSH  rbx R@ 16 + N-ABS # mov,
+  R@ 15 + N-PAD-TO  195 C,A  R> DROP  A>N  0 ,-T
+  DOES> N-SHADOW ;
+: CONSTANT ( n "name" --- )
+  N-HEAD  DP-T @ ,  0 ,
+  N>A  N-PUSH  rbx SWAP # mov,  195 C,A  A>N
+  DOES> N-SHADOW ;
+CURRENT !

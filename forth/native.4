@@ -27,6 +27,7 @@ BASE @ DECIMAL
 
 WORDLIST CONSTANT NPRIMS
 WORDLIST CONSTANT NTARGET
+WORDLIST CONSTANT NCTRL      \ compile-time words - IF DO ." - searched first (617+)
 VARIABLE N-SELF              \ the target word being compiled: RECURSE
 VARIABLE N-START             \ the image's base: @XT and !XT count from it
 4194304 N-START !            \ 0x400000, until a build says otherwise
@@ -106,6 +107,11 @@ CURRENT @  NPRIMS CURRENT !
 : EMIT  [ rbp -8 ] rbx mov,                              \ write(1, the byte, 1)
         eax 1 # mov,  edi 1 # mov,  rsi [ rbp -8 ] lea,  edx 1 # mov,  syscall,
         N-POP ;
+CURRENT !
+\ The compile-time words, in NCTRL, searched before the target's words:
+\ kernel.4 defines target words named IF and DO, for its own compiler,
+\ and a definition after them must still get these (Iteration 618).
+CURRENT @  NCTRL CURRENT !
 \ control: laid down as jumps, patched when the structure closes
 : IF    N-FLAG  15 132 N-FWD ;                           \ jz near
 : ELSE  0 233 N-FWD  SWAP N-RESOLVE ;                    \ jmp near
@@ -137,23 +143,27 @@ CURRENT @  NPRIMS CURRENT !
         r8 rdx mov,  r8 rax add,  r8 rdx xor,  rdx rax xor,  r8 rdx and,
         15 137 N-BACK                                    \ jns back: not crossed
         rsp 16 # add,  N-LOOP-END ;
-: SP@   N-PUSH  rbx rbp mov, ;                           \ the old top's cell, as CV8's
-: SP!   rbp rbx mov,  N-POP ;                            \ the top: the cell there
-: RP@   N-PUSH  rbx rsp mov, ;                           \ the return stack: the machine's
-: RP!   rsp rbx mov,  N-POP ;
-: @XT   rbx [ rbx ] mov,  rbx N-START @ # add, ;         \ an offset, plus the image base
 : I     N-PUSH  rbx [ rsp ] mov, ;
 : J     N-PUSH  rbx [ rsp 16 ] mov, ;
 : UNLOOP  rsp 16 # add, ;
 : LEAVE rsp 16 # add,  0 233 N-FWD  N-LEAVE-ADD ;
 : [']   N-WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: ['] of no target word"
-        EXECUTE N-LIT ;
+        >BODY @ N-LIT ;
+CURRENT !
+\ back to NPRIMS: the pointer words and @XT, data primitives
+CURRENT @  NPRIMS CURRENT !
+: SP@   N-PUSH  rbx rbp mov, ;                           \ the old top's cell, as CV8's
+: SP!   rbp rbx mov,  N-POP ;                            \ the top: the cell there
+: RP@   N-PUSH  rbx rsp mov, ;                           \ the return stack: the machine's
+: RP!   rsp rbx mov,  N-POP ;
+: @XT   rbx [ rbx ] mov,  rbx N-START @ # add, ;         \ an offset, plus the image base
+: NOOP  ;
 CURRENT !
 
 \ A target word written in assembly: NCODE name ... NEND. Called, never
 \ inlined: the string primitives, too big to repeat at every use.
-: NCODE ( "name" --- )
-  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !  HERE-A ,  DOES> @ ;
+: NCODE ( "name" --- )   \ its shadow, found while compiling, lays a call to it
+  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !  HERE-A ,  DOES> @ call, ;
 : NEND ( --- )  195 C,A ;
 
 \ ---- compiling a target word ------------------------------------------------------
@@ -161,21 +171,23 @@ CURRENT !
   BEGIN
     N-WORD
     DUP COUNT S" N;" COMPARE 0= OVER COUNT S" T;" COMPARE 0= OR
+    OVER COUNT S" ;" COMPARE 0= OR
       IF DROP 195 C,A EXIT THEN                              \ ret
     DUP COUNT S" \" COMPARE 0= IF DROP SOURCE NIP >IN ! ELSE    \ a comment to the line's end
     DUP COUNT S" (" COMPARE 0= IF DROP 41 WORD DROP ELSE         \ ( a comment )
+    DUP COUNT NCTRL SEARCH-WORDLIST IF NIP EXECUTE ELSE       \ IF DO ." ...
+    DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE ELSE     \ the target's: it lays itself
     DUP COUNT NPRIMS SEARCH-WORDLIST IF NIP EXECUTE ELSE
-    DUP COUNT NTARGET SEARCH-WORDLIST IF NIP EXECUTE call, ELSE
     DUP NUMBER? IF DROP NIP N-LIT ELSE
       2DROP CR ." native: unknown word " COUNT TYPE ABORT
-    THEN THEN THEN THEN THEN
+    THEN THEN THEN THEN THEN THEN
   AGAIN ;
 : N: ( "name" --- )
   CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !
   HERE-A DUP ,  N-SELF !  N-COMPILE
-  DOES> @ ;
+  DOES> @ call, ;
 : T: ( "name" --- ) N: ;     \ the dialect a differential test is written in
-: N' ( "name" --- addr )   \ a target word's address
-  BL WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: no such target word" EXECUTE ;
+: N' ( "name" --- addr )   \ a target word's address: its shadow's first cell
+  BL WORD COUNT NTARGET SEARCH-WORDLIST 0= ABORT" native: no such target word" >BODY @ ;
 
 BASE !

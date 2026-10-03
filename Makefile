@@ -252,6 +252,15 @@ native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/nat
 	    echo "native-n1c: not built:" >&2; tr -d '\r' < native-n1c.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
 	@rm -f native-n1c.log
 
+# N1c-1c (Iteration 618): kernel.4's parts 0-3 compiled natively, with
+# tests/native/kernel-cut.4; it must print what CV8's kernel prints for it.
+native-k3: forth/native-k3.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/kernel.4 tests/native/kernel-cut.4 relf64
+	@sed '/^\\ PART 4: NUMERIC OUTPUT/,$$d' forth/kernel.4 > native-kcut.4 && echo END-CROSS >> native-kcut.4
+	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-k3.4 > native-k3.log 2>&1 || true
+	@if [ ! -x $@ ] || grep -q 'Undefined word\|native\|asm64:' native-k3.log; then \
+	    echo "native-k3: not built:" >&2; tr -d '\r' < native-k3.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
+	@rm -f native-k3.log native-kcut.4
+
 # N1b (Iteration 611): tests/native/prims.4 compiled natively; it must print
 # what CV8 prints for it (tests/native/cv8-prims.4) - tests/verify compares.
 native-n1b: forth/native-n1b.4 forth/native.4 forth/native-rt.4 tests/native/prims.4 forth/asm64.4 forth/extend.4 forth/kernel64.img relf64

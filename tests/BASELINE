@@ -40,6 +40,7 @@ matrix:regressions 0
 mrsh:failed 0
 mrsh:passed 21
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
+native:kernel-cut same
 native:n1a 169
 native:prims same
 parse:encoded 4

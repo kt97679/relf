@@ -412,6 +412,12 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     if make -s native-n1c >/dev/null 2>&1; then
         emit native:headers "$(./native-n1c 2>&1 | tr ' ' '\n' | grep . | sort | tr '\n' ' ' | sed 's/ $//')"
     else emit native:headers "not built"; fi
+    # N1c-1c (Iteration 618): kernel.4's parts 0-3, native, against CV8's kernel
+    if make -s native-k3 >/dev/null 2>&1; then
+        cv=$(./relf64 forth/kernel64.img < tests/native/cv8-kernel-cut.4 2>&1 | tr -d '\r' | sed -n '/^<<</,/^>>>/p')
+        na=$(./native-k3 2>&1 | tr -d '\r')
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:kernel-cut same; else emit native:kernel-cut differ; fi
+    else emit native:kernel-cut "not built"; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -430,7 +436,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

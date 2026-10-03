@@ -1,0 +1,19 @@
+\ tests/native/kernel-cut.4 - the native kernel's first cut, tested
+\ (docs/NATIVE.md, N1c-1c, Iteration 618): words from kernel.4's parts
+\ 0-3, compiled natively by forth/native-cross.4, and the same file run on
+\ CV8's kernel (tests/native/cv8-kernel-cut.4); the two must print the
+\ same. In the kernel's own dialect, between CROSS-COMPILE and END-CROSS.
+CROSS-COMPILE
+: HEXD  15 AND DUP 9 > IF 39 + THEN 48 + EMIT ;
+: P  60 BEGIN DUP 0< 0= WHILE 2DUP RSHIFT HEXD 4 - REPEAT 2DROP 32 EMIT ;
+: T-DIV  7 3 /MOD P P  -7 3 /MOD P P  7 -3 /MOD P P  -7 3 MOD P  -7 3 / P  CR ;
+: T-MINMAX  5 3 MIN P  5 3 MAX P  -5 3 MIN P  -5 ABS P  5 ABS P  CR ;
+: T-ARITH  6 2* P  -6 2/ P  3 4 * P  10 3 7 */ P  10 3 7 */MOD P P  -10 S>D P P  CR ;
+: T-DOUBLE  5 7 M* P P  -7 S>D 2 FM/MOD P P  -7 S>D 2 SM/REM P P  1 2 DNEGATE P P  CR ;
+: T-MISC  DEPTH P  1 2 DEPTH P 2DROP  TRUE P  BL P  16 CELL- P  3 CHARS P
+  1 2 3 4 3 PICK P 2DROP 2DROP  CR ;
+: T-STRING  ." hello, native" CR ;
+: MAIN  60 EMIT 60 EMIT 60 EMIT CR
+  T-DIV T-MINMAX T-ARITH T-DOUBLE T-MISC T-STRING
+  62 EMIT 62 EMIT 62 EMIT CR  0 ;
+END-CROSS

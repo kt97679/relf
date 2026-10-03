@@ -308,6 +308,18 @@ kernel.4 is not split:
   the thread table into the image, and runs a walker - itself such words
   - that decodes the backward links: it prints exactly the six names
   defined. tests/verify's native:headers row.
+- **N1c-1c, kernel.4's parts 0-3, native** (618, done): native.4's
+  compile-time words moved to NCTRL, searched first, and target shadows
+  that lay themselves - so kernel.4's own /MOD and * win over native.4's
+  templates, as the newest definition does in Forth. native-cross.4
+  reads kernel.4 itself: CROSS-COMPILE runs N-CROSS; PRIMITIVE gives a
+  header whose body is the template (flagged inline), a jump to the
+  runtime's routine, or a stub that names itself; VARIABLE a 16-byte
+  stub and its cell; `:` resolves the calls laid before it to (.") and
+  (ABORT"). The first 569 lines of kernel.4, unchanged, compile;
+  tests/native/kernel-cut.4 prints the same natively as on CV8's kernel -
+  floored and symmetric division, */MOD, M*, FM/MOD, SM/REM, ." through a
+  forward call. tests/verify's native:kernel-cut row.
 - **N1c-1, the native cross compiler** (forth/native-cross.4): cross.4's
   pattern - TARGET's shadow words compile calls, TRANSIENT's compile-time
   words are native.4's - with the header and dictionary format CV8's, the

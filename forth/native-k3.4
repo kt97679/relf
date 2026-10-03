@@ -1,0 +1,23 @@
+\ native-k3.4 - kernel.4's parts 0-3, compiled natively (docs/NATIVE.md,
+\ N1c-1c, Iteration 618), with tests/native/kernel-cut.4 after them.
+\ native-kcut.4 is kernel.4 up to its PART 4 and an END-CROSS (`make
+\ native-k3` cuts it).
+S" forth/extend.4" INCLUDED
+S" forth/native-cross.4" INCLUDED
+DECIMAL
+N>A  S" forth/native-rt.4" INCLUDED  A>N
+S" native-kcut.4" INCLUDED
+S" tests/native/kernel-cut.4" INCLUDED
+N>A  HERE-A CONSTANT ENTRY-T
+rbp N-BASE N-MEMSZ @ + 64 - # mov,
+ebx ebx xor,
+\ S0, as COLD sets it on CV8 - here until the native COLD (N1c-2): what SP@
+\ gives on an empty stack, the base less a cell, so DEPTH is 0 there
+rax N' S0 16 + N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
+N' MAIN call,
+edi ebx mov,  eax 60 # mov,  syscall,
+A>N
+END-ASM
+ENTRY-T N-ELF
+S" native-k3" WRITE-ELF
+BYE
