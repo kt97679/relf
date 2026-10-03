@@ -27697,3 +27697,29 @@ kept. It links the article and the code on article-2026, then at
 ANNOUNCEMENT.md records what it says, how it was written, and what
 comes next on the route; the dated tag is the author's to make. Docs
 only: nothing the articles quote changes.
+
+## Iteration 617: ^C held while INCLUDED takes its file
+
+On master the native back end's work - Iterations 608-616 - goes on;
+this branch takes only fixes the articles stay true for, and this is
+one. master's verify found it (616): tools/intrfuzz.py case 4 - an
+include whose file loops forever, ^C sent with the line - left file
+descriptor 3 open. Since 606 a ^C throws from a forth command's start,
+so it can land between OPEN-FILE's return and INCLUDED's CATCH, which
+owns the file, and unwind past it.
+
+safety.4 has two hooks the shell fills, offsets as @XT reads them, 0 for
+none: INCLUDED runs the hold before the open, and the take if the open
+fails; INCLUDE-FILE, what the CATCH runs, runs the take first of all.
+INC-HOLD puts ^C's route to "caught" where it was the throw route;
+INC-TAKE puts it back and throws a ^C held meanwhile. For that the
+shell records which route is in force (INT-THROWING?, INT-ROUTE!), and
+FTH-RUN, DO-FORTH and RUN-CAUGHT each put back what was there.
+tests/interactive/include-probe.py, run with the pty suite, puts a ^C
+in INCLUDED's way by other means and checks status 130 and the
+descriptors; three checks, all pass, the first fails without the fix.
+
+Applied here by hand - master's 608-616 make a cherry-pick conflict in
+this file - from master's 617, whose shell.4, safety.4, probe, the pty
+suite's run, the article copies and the README this branch had, before
+617, exactly as master. The shell: 141,636 bytes, in both articles.

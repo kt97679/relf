@@ -5037,12 +5037,24 @@ VARIABLE FTH-EVAL-XT
   INTERRUPT-PENDING? @ 0<>
   DEFERRED-SIG @ 2 = IF 0 DEFERRED-SIG !  DROP -1 THEN
   BEGIN SIGNALS-PENDING ?DUP WHILE DUP 2 = IF 2DROP -1 ELSE TAKE-SIGNAL THEN REPEAT ;
+\ ^C's route, and which is in force (Iteration 617): the forth builtin,
+\ a loaded builtin and an include each change it, and each puts back
+\ what was there - INCLUDED's hold must know whether to hold at all.
+VARIABLE INT-THROWING?
+: INT-ROUTE! ( flag --- )   DUP INT-THROWING? !  IF 2 4 ELSE 2 3 THEN SIGNAL-ACTION DROP ;
 : FTH-RUN ( c-addr u --- )
   INT-THROWS? IF
-    2 4 SIGNAL-ACTION DROP
+    -1 INT-ROUTE!
     INT-PENDING-TAKE IF -28 THROW THEN
   THEN
   EVALUATE ;
+\ INCLUDED's hooks (safety.4): the route held from the open to the CATCH,
+\ where it was the throw route; then back, and a ^C held meanwhile thrown
+VARIABLE INC-HELD?
+: INC-HOLD ( --- )  INT-THROWING? @ DUP INC-HELD? !  IF 0 INT-ROUTE! THEN ;
+: INC-TAKE ( --- )
+  INC-HELD? @ IF  0 INC-HELD? !  -1 INT-ROUTE!  INT-PENDING-TAKE IF -28 THROW THEN  THEN ;
+' INC-HOLD INC-HOLD-XT !XT   ' INC-TAKE INC-TAKE-XT !XT
 ' FTH-RUN FTH-EVAL-XT !XT
 : INT-NOW ( --- )   -28 THROW ;   \ for a loaded builtin with a ^C waiting (606)
 VARIABLE INT-NOW-XT   ' INT-NOW INT-NOW-XT !XT
@@ -5119,12 +5131,13 @@ VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
   \ it was, and whatever the command left is pushed back as zeros for
   \ RUN-CAUGHT to report, as it did (582).
   STACK-GAP-ROOM
+  INT-THROWING? @ >R              \ ^C's route, put back after (617)
   SP@ >R  S0 @ >R
   SP@ STACK-GAP - SP!  SP@ S0 !
   FORTH-BUF FTH-LEN @ FTH-EVAL-XT @XT CATCH
   DUP IF 0 ELSE DEPTH 1- 0 MAX THEN FTH-LEFT !  FTH-CODE !
   R> S0 !  R> SP!
-  INT-THROWS? IF 2 3 SIGNAL-ACTION DROP THEN
+  R> INT-THROWS? IF INT-ROUTE! ELSE DROP THEN
   FTH-CODE @ ?DUP IF
     DUP -28 = IF DROP  -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS !
     ELSE THROW THEN
@@ -6503,7 +6516,7 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   \ tools/intrfuzz.py: `: SPINB BEGIN AGAIN ;` loaded as a builtin could
   \ not be interrupted at all). Kept on the return stack, deepest.
   DUP USER-XT-FLOOR @ U< 0= INT-THROWS? AND
-  DUP IF 2 4 SIGNAL-ACTION DROP THEN >R
+  INT-THROWING? @ >R  DUP IF -1 INT-ROUTE! THEN >R      \ the route before, kept (617)
   \ and a ^C caught before the route was set is thrown at once, as in
   \ FTH-RUN (606): the builtin is not run, INT-NOW is
   R@ IF INT-PENDING-TAKE IF DROP INT-NOW-XT @XT THEN THEN
@@ -6524,7 +6537,7 @@ VARIABLE CAUGHT-CODE   \ and CATCH's code, likewise
   R> >IN !  R> #SRC !  R> SRC !  R> SID !
   SP@ R> - STACK-SHIFT !  CAUGHT-CODE !
   R> SP! DROP                       \ back to the base, xt gone
-  R> IF 2 3 SIGNAL-ACTION DROP THEN
+  R> R> SWAP IF INT-ROUTE! ELSE DROP THEN
   STACK-SHIFT @ IF STACK-CHANGED EXIT THEN
   CAUGHT-CODE @ -28 = IF -1 INT-SEEN? !  INTERRUPTED  130 LAST-STATUS ! EXIT THEN
   CAUGHT-CODE @ ?DUP IF BUILTIN-FAILED THEN ;
