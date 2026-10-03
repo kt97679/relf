@@ -44,10 +44,31 @@ VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewoun
   LIT-AT @ ?DUP IF  DUP 15 + HERE =  SWAP FOLD-BARRIER @ < 0= AND  ELSE 0 THEN ;
 : OP-IMM, ( modrm --- )   \ the literal unlaid; op rbx,imm32 in its place
   LIT-AT @ HERE - ALLOT  0 LIT-AT !  72 C, 129 C, C,  LIT-VAL @ ,4 ;
+VARIABLE DUP-LAID   \ where COMPILE, last laid an inline DUP (629)
+VARIABLE OVER-LAID  \ and an inline OVER
+VARIABLE CMP-AT     \ a folded compare's cmp: where it began, 0 none
+VARIABLE CMP-CC     \ its setcc's condition
+VARIABLE CMP-END    \ where its flag's sequence ended
+VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 : CMP-IMM, ( setcc --- )   \ cmp rbx,imm32; setcc al; movzx rbx,al; neg rbx
-  251 OP-IMM,  15 C, C, 192 C,  72 C, 15 C, 182 C, 216 C,  72 C, 247 C, 219 C, ;
+  DUP CMP-CC !
+  DUP-LAID @ 8 + LIT-AT @ =  DUP-LAID @ FOLD-BARRIER @ < 0= AND
+  IF DUP-LAID @ ELSE 0 THEN DUP-AT !
+  LIT-AT @ CMP-AT !
+  251 OP-IMM,  15 C, C, 192 C,  72 C, 15 C, 182 C, 216 C,  72 C, 247 C, 219 C,
+  HERE CMP-END ! ;
 : LOAD-ABS, ( --- )   \ the literal an address: unlaid; push, then load from it
   LIT-AT @ HERE - ALLOT  0 LIT-AT !  PUSH, ;
+: OVER-OP, ( opcode --- )   \ the OVER unlaid; op rbx,[rbp] in its place (629)
+  OVER-LAID @ HERE - ALLOT  0 OVER-LAID !  72 C, C, 93 C, 0 C, ;
+: OVER-OP? ( xt --- xt 0 | -1 )   \ OVER then + - AND OR XOR: one instruction
+  OVER-LAID @ 12 + HERE =  OVER-LAID @ FOLD-BARRIER @ < 0= AND  0= IF 0 EXIT THEN
+  DUP ['] + = IF DROP 3 OVER-OP, -1 EXIT THEN
+  DUP ['] - = IF DROP 43 OVER-OP, -1 EXIT THEN
+  DUP ['] AND = IF DROP 35 OVER-OP, -1 EXIT THEN
+  DUP ['] OR = IF DROP 11 OVER-OP, -1 EXIT THEN
+  DUP ['] XOR = IF DROP 51 OVER-OP, -1 EXIT THEN
+  0 ;
 : FOLD ( xt --- xt 0 | -1 )   \ (628) a literal then +, -, AND, OR, XOR, =, <, >,
   \ @ or C@: one instruction with the literal as its operand
   FRESH-LIT? 0= IF 0 EXIT THEN
@@ -75,8 +96,10 @@ VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewoun
   \ push, inline (627); a literal folded into the operation after it (628);
   \ anything else, called
   FOLD IF EXIT THEN
-  DUP C@ 235 = OVER 1+ C@ 1 = AND
-  IF  DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  EXIT  THEN
+  OVER-OP? IF EXIT THEN
+  DUP C@ 235 = OVER 1+ C@ 1 = AND IF
+    DUP ['] DUP = IF HERE DUP-LAID ! THEN  DUP ['] OVER = IF HERE OVER-LAID ! THEN
+    DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  EXIT  THEN
   LIT-WORD? IF LIT, EXIT THEN
   CALL, ;
 
@@ -85,11 +108,25 @@ VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewoun
 : >RESOLVE ( a-addr --- )   MARK-TARGET  HERE OVER 4 + - SWAP !4 ;
 : BACK, ( addr --- )   REL, ;
 
-: IF      ?COMP  POPF,  15 C, 132 C, >MARK ; IMMEDIATE         \ jz
+: JCC-NOT ( setcc --- jcc )   \ the jump taken when the comparison is false
+  DUP 148 = IF DROP 133 EXIT THEN          \ sete -> jne
+  DUP 156 = IF DROP 141 EXIT THEN          \ setl -> jge
+  DROP 142 ;                               \ setg -> jle
+: FRESH-CMP? ( --- f )   CMP-AT @ DUP IF  CMP-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
+: ?BRANCH, ( --- )   \ the flag popped and tested, the jump taken if false; after a
+  \ compare just laid, the compare's own flags (629): DUP lit < IF is cmp, jge
+  FRESH-CMP? IF
+    DUP-AT @ ?DUP IF  HERE - ALLOT  72 C, 129 C, 251 C, LIT-VAL @ ,4       \ no copy made
+    ELSE  CMP-AT @ 7 + HERE - ALLOT                                         \ keep the cmp;
+      72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  THEN               \ pop by mov, lea
+    15 C, CMP-CC @ JCC-NOT C,
+  ELSE  POPF,  15 C, 132 C,  THEN
+  0 CMP-AT ! ;
+: IF      ?COMP  ?BRANCH, >MARK ; IMMEDIATE
 : THEN    ?COMP  >RESOLVE ; IMMEDIATE
 : ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE ; IMMEDIATE      \ jmp
 : BEGIN   ?COMP  MARK-TARGET HERE ; IMMEDIATE
-: UNTIL   ?COMP  POPF,  15 C, 132 C, BACK, ; IMMEDIATE
+: UNTIL   ?COMP  ?BRANCH, BACK, ; IMMEDIATE
 : AGAIN   ?COMP  233 C, BACK, ; IMMEDIATE
 : WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
 : REPEAT  ?COMP  POSTPONE AGAIN  POSTPONE THEN ; IMMEDIATE

@@ -456,3 +456,23 @@ land, and nothing before the last mark is unlaid. The pushes 627 inlines
 are literals too, so `SIZE <` and `FLAGS +` fold. Medians of 3: fib 2.17,
 loop 2.10, sieve 3.81 times C (from 4.46); CORE and the compiler test
 the same as CV8's.
+
+Fusions (629). A compare followed by IF, WHILE or UNTIL is a cmp and a
+conditional jump, no flag made and tested; with a DUP laid right before
+the literal, `DUP SIZE < WHILE` is `cmp rbx,imm32; jge` and nothing more
+- the copy and the flag never exist. Without one, the pop after the cmp
+is mov and lea, which leave the flags alone. And OVER followed by + -
+AND OR XOR is one instruction with memory, `add rbx,[rbp]`. COMPILE,
+records where it last laid an inline DUP and OVER - positions, not a
+search for their bytes - and the jump-target barrier holds as for folds.
+
+The machine changed under this measurement: everything not held in
+registers ran some 1.4 times slower in this session, and loop 4.5 times
+- on 628's kernel as much as on 629's, so not the change. loop.4's
+counter lives on the return stack, a load, an add and a store each turn,
+and the next turn's load waits on that store - cheap on processors that
+forward it at once, some five cycles on others. Measured here in one
+session, 628's kernel then 629's: loop 0.60 and 0.59 s, sieve 0.33 and
+0.24; C's loop 0.07, sieve 0.079 - sieve 2.81 times C now. The cure for
+loop is a counter that is not in memory: DO's index and limit in
+registers, the outer loop's saved on the return stack (630).

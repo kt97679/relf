@@ -28288,3 +28288,28 @@ SIZE < and FLAGS + fold.
 Checked each fold's answer, a fold in BEGIN UNTIL and in a DO's IF;
 CORE and the compiler test the same as CV8's. sieve 0.175 -> 0.143 s,
 3.81 times C; fib 2.17, loop 2.10.
+
+## Iteration 629: a compare fused with its branch; OVER fused with its operation
+
+kernel-native.4: a folded compare records where its cmp is, its
+condition, and whether an inline DUP was laid right before its literal;
+IF and UNTIL (and WHILE through IF) go by ?BRANCH,, which after such a
+compare lays the conditional jump on the compare's own flags - the
+setcc, movzx and neg unlaid, and with the DUP, the DUP's push as well:
+`DUP SIZE < WHILE` is cmp rbx,imm32 and jge. Without the DUP the flag's
+pop must not touch the flags, so it is mov rbx,[rbp] and lea rbp,[rbp+8].
+OVER then + - AND OR XOR: `op rbx,[rbp]`, the OVER unlaid. COMPILE,
+records where it laid its last inline DUP and OVER, so the fusions go by
+positions, not by finding the bytes. Checked: each fused form's answer,
+both ways, BEGIN WHILE REPEAT, a DO's IF; CORE and the compiler test the
+same as CV8's.
+
+The benchmark then said loop had gone from 0.13 s to 0.59 - but it does
+on 628's kernel too, built and timed in the same session: the machine
+changed, everything not in registers some 1.4 times slower, loop 4.5.
+Not 4K aliasing between the stacks (moving the data stack changed
+nothing), not the jump erratum (moving the loop by 23-byte steps changed
+nothing). loop.4's counter is stored and reloaded through the return
+stack each turn, and what that costs depends on the processor; C keeps
+its counter in a register. Same session, 628 -> 629: sieve 0.33 -> 0.24
+s, 2.81 times C (0.079). Next: DO's index and limit in registers.
