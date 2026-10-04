@@ -69,6 +69,8 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP ['] OR = IF DROP 11 OVER-OP, -1 EXIT THEN
   DUP ['] XOR = IF DROP 51 OVER-OP, -1 EXIT THEN
   0 ;
+: UNLIT, ( --- )   LIT-AT @ HERE - ALLOT  0 LIT-AT ! ;          \ the literal unlaid (645)
+: POP, ( --- )   72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, ;   \ mov rbx,[rbp]  add rbp,8
 : FOLD ( xt --- xt 0 | -1 )   \ (628) a literal then +, -, AND, OR, XOR, =, <, >,
   \ @ or C@: one instruction with the literal as its operand
   FRESH-LIT? 0= IF 0 EXIT THEN
@@ -82,6 +84,12 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP ['] > = IF DROP 159 CMP-IMM, -1 EXIT THEN
   DUP ['] @ = IF DROP LOAD-ABS,  72 C, 139 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
   DUP ['] C@ = IF DROP LOAD-ABS,  72 C, 15 C, 182 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
+  \ and a literal address then ! C! +! (645): the store to it, the value
+  \ already the top once the literal is unlaid - a VARIABLE's update in one
+  \ instruction and a pop, where it was a push, a load and a store
+  DUP ['] ! = IF DROP UNLIT,  72 C, 137 C, 28 C, 37 C,  LIT-VAL @ ,4  POP, -1 EXIT THEN
+  DUP ['] C! = IF DROP UNLIT,  136 C, 28 C, 37 C,  LIT-VAL @ ,4  POP, -1 EXIT THEN
+  DUP ['] +! = IF DROP UNLIT,  72 C, 1 C, 28 C, 37 C,  LIT-VAL @ ,4  POP, -1 EXIT THEN
   0 ;
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has

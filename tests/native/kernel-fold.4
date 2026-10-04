@@ -1,0 +1,11 @@
+\ tests/native/kernel-fold.4 - stores folded into the address before them
+\ (Iteration 645): a VARIABLE then ! C! +!, in loops and out, negative too -
+\ native and CV8 must print the same.
+VARIABLE V  CREATE CB 8 ALLOT
+: T1  5 V ! V @ .  3 V +! V @ .  65 CB C! CB C@ .  -1 V +! V @ .  300 CB 1+ C! CB 1+ C@ . ;
+T1 CR
+: T2  0 V !  10 0 DO I V +! LOOP V @ .  10 0 DO I DUP * V ! LOOP V @ . ;
+T2 CR
+: T3  7 V !  V @ 2 * V !  V @ .  -100 V +!  V @ . ;
+T3 CR
+BYE
