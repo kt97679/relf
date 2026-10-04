@@ -33,7 +33,7 @@ TABLE = 'engine/relfasm-ops.4'
 # the stubs the shell names (Iteration 633's inventory) - the ones worth porting
 WANTED = """FILE-SIZE FORK EXECVE WAITPID PIPE DUP2 GETENV SETENV CHDIR GETCWD SYS-ARGC
 SYS-ARG GETPID UNSETENV ALLOCATE FREE RESIZE GETPWHOME ISATTY OPEN-DIR READ-DIR
-CLOSE-DIR ACCESS KILL UMASK CPU-TIMES SIGNAL-ACTION SIGNALS-PENDING TERM-RAW
+CLOSE-DIR ACCESS KILL UMASK CPU-TIMES SIGNAL-ACTION TERM-RAW
 TERM-RESTORE FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
 TCSETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TRAP-XT!
 OPEN-FILE CLOSE-FILE REPOSITION-FILE FILE-POSITION READ WRITE POLL TYPE
@@ -43,6 +43,8 @@ TCGETPGRP CHMOD""".split()
 # The third row (640): the rest the engine implements - the examples' TCP
 # servers among them (tests/shell/run-examples) - so no primitive the asm
 # engine has is a stub natively.
+# SIGNALS-PENDING is forth/native-fast.4's since 648: the engine's
+# semantics, eight flags at a time first.
 FORCED = ['set_argv0']   # the start's, not a handler's: RELF_ARGV0, $0 (640)
 # The second row (638): what forth/native-rt.4 hand-wrote in N1b, before
 # this existed - its OPEN-FILE's mode table did not create a file for <>,
@@ -73,6 +75,15 @@ def strip_comments(s):
 def rename(l):            # all at once: r13 becomes rbp, and rbp r12, in one pass
     return re.sub(r'\b(r12d|r12|r13|rbp|ebp)\b', lambda m: REGMAP[m.group(1)], l)
 
+def unresolved(lines):
+    """the numeric local labels a run of lines jumps forward to and does not define"""
+    pend = set()
+    for l in lines:
+        for m in re.finditer(r'\b(\d+) (F|L:)', strip_comments(l)):
+            if m.group(2) == 'F': pend.add(m.group(1))
+            else: pend.discard(m.group(1))
+    return pend
+
 def read_engine():
     text = open(ENGINE, encoding='utf-8', errors='replace').read()
     consts = []                         # (name, expression), in file order
@@ -99,7 +110,23 @@ def read_engine():
         # to a shared tail (FILE-SIZE to ud_ior), a tail in NEXT, (635)
         ends = [i for i, l in enumerate(ls) if re.search(r'(NEXT,|ret,|jmp,)', strip_comments(l))]
         if ends:
-            labels[k] = ls[:ends[-1] + 1]
+            # to the last NEXT, ret or jump (634) - not to the next label: host
+            # code follows some routines (set_argv0, then the dispatch table's
+            # building, dispatch256, with no label of its own). But a forward
+            # local label whose n L: lies past that cut is code of the routine
+            # too - L_system's forked child, 4 L:, which ends in exit: the cut
+            # reaches on through it, to its own last flow-ending line (648)
+            cut = ends[-1] + 1
+            while True:
+                pend = unresolved(ls[:cut])
+                later = [i for i in range(cut, len(ls))
+                         for m in re.finditer(r'\b(\d+) L:', strip_comments(ls[i])) if m.group(1) in pend]
+                if not later:
+                    break
+                flow = [i for i in range(max(later), len(ls))
+                        if re.search(r'(NEXT,|ret,|jmp,|syscall,)', strip_comments(ls[i]))]
+                cut = (flow[-1] if flow else len(ls) - 1) + 1
+            labels[k] = ls[:cut]
         elif all(re.fullmatch(r'-?\d+|[CWLQ]?,A|S,', t) for t in
                  ' '.join(strip_comments(l) for l in ls if 'CONSTANT' not in l).split()) \
                 and ' '.join(ls).strip():
@@ -113,7 +140,7 @@ def read_engine():
             labels[k] = ls + ['%s jmp,' % nxt[k]]
         else:
             labels[k] = []
-    return consts, labels, data
+    return consts, labels, data, order
 
 def portable_macros():
     out, cur = [], None
@@ -143,7 +170,7 @@ def addresses(line, labels):
 
 def main():
     out_path = sys.argv[1]
-    consts, labels, data = read_engine()
+    consts, labels, data, order = read_engine()
     cdef = dict(consts)
     table = set(re.findall(r'(L_\w+) 0 Q,\+', open(TABLE).read()))
     norm = {}
@@ -223,6 +250,17 @@ def main():
     # not wanted is laid as a subroutine
     handler_of = {label: name for name, label in ported}
     subs = [l for l in labels if l in all_code and l not in handler_of]
+    # Every forward local label must land in its own routine, or in the
+    # subroutine that follows it in the engine's order, laid next here too
+    # (ru_ms into ru_ms_sys): else the next n L: anywhere resolves it - 648
+    # found SYSTEM's 4 F so. Checked, not trusted (prompts/15).
+    for i, l in enumerate(subs + [lab for _, lab in ported]):
+        left = unresolved(labels[l])
+        if left:
+            nxt = subs[i + 1] if l in subs and i + 1 < len(subs) else None
+            follows = order.index(nxt) == order.index(l) + 1 if nxt and nxt in order and l in order else False
+            assert follows and not (left - {m.group(1) for ln in labels[nxt] for m in re.finditer(r'\b(\d+) L:', ln)}), \
+                '%s: forward local label %s lands outside it' % (l, sorted(left))
     with open(out_path, 'w') as f:
         f.write('\\ native-os.4 - GENERATED by tools/gen-native-os.py from engine/relfasm64.4;\n')
         f.write('\\ do not edit. The asm engine\'s handlers as native routines (NATIVE.md 10):\n')

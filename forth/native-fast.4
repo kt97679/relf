@@ -1,0 +1,23 @@
+\ native-fast.4 - native versions of routines the generator would take from
+\ the asm engine, made fast where the profile says so (docs/NATIVE.md 11).
+\ Included by native-kernel.4 after native-os.4, whose constants they use;
+\ tools/gen-native-os.py leaves these out. The engine's semantics exactly.
+\
+\ SIGNALS-PENDING ( --- signo | 0 ): the lowest caught signal, its flag
+\ cleared (Iteration 648). The engine's steps through signals 1 to 64 a
+\ flag at a time on every call - 4 % of arith, where nothing is ever
+\ pending. Eight bytes at a time first, and byte 64: all clear, 0 at once;
+\ else the engine's loop. Byte 0, signal 0's, is never set.
+NCODE SIGNALS-PENDING
+  rax [ sig_flag ] mov,       rax [ sig_flag 8 + ] or,   rax [ sig_flag 16 + ] or,
+  rax [ sig_flag 24 + ] or,   rax [ sig_flag 32 + ] or,  rax [ sig_flag 40 + ] or,
+  rax [ sig_flag 48 + ] or,   rax [ sig_flag 56 + ] or,
+  ecx [ sig_flag 64 + ] byte-ptr movzx,  rax rcx or,  1 F jnz,
+  N-PUSH  ebx ebx xor,  ret,
+  1 L:  eax eax xor,  ecx 1 # mov,
+  2 L:  ecx NSIG_FLAGS # cmp,  4 F jge,
+        [ rcx sig_flag ] byte-ptr 0 # cmp,  3 F jne,
+        ecx inc,  2 B jmp,
+  3 L:  [ rcx sig_flag ] byte-ptr 0 # mov,  eax ecx mov,
+  4 L:  N-PUSH  rbx rax mov,
+NEND
