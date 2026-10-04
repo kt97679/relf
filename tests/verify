@@ -460,10 +460,22 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
                 grep -E '^FAIL:|[1-9][0-9]* failed \(' /tmp/verify-native-shell.log | head -6 | sed 's/^/  native shell: /'
             fi
             rm -f /tmp/verify-native-shell.log
-        else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"; fi
+            # (Iteration 641) every other suite CV8's shells pass: the
+            # pseudo-terminal suite, mrsh, posix, and both fuzzers
+            NI=$(THIS_SH="$PWD/relfsh-native" timeout 300 sh tests/interactive/run 2>&1 | tail -1)
+            emit native:interactive:failed "$(echo "$NI" | sed -n 's/.* \([0-9]*\) failed.*/\1/p')"
+            NM=$(RELFSH="$PWD/relfsh-native" timeout 300 bash tests/mrsh-suite/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')
+            emit native:mrsh:failed "$NM"
+            NP=$(RELFSH="$PWD/relfsh-native" timeout 300 sh tests/posix/run.sh 2>&1 | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')
+            emit native:posix:failed "$NP"
+            emit native:forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfsh-native 2>&1 | tail -1 | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+            emit native:intrfuzz:failures "$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfsh-native 2>&1 | tail -1 | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
+        else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
+            for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
          emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:shell-run "not built"
-         emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"; fi
+         emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
+            for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -482,7 +494,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals native:shell-run native:shell-diff:failed native:shell-forth-errors:failed native:shell-bytes native:shell \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals native:shell-run native:shell-diff:failed native:shell-forth-errors:failed native:shell-bytes native:shell native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done
