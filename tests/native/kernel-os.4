@@ -1,0 +1,26 @@
+\ tests/native/kernel-os.4 - the operating system's primitives the
+\ native kernel takes from relfasm64.4's handlers (tools/gen-native-os.py,
+\ Iteration 634), at the kernels' own prompts: native, and CV8 on both
+\ engines - all three must print the same. Only what cannot differ from
+\ run to run is printed: flags, counts, error codes. Lines short: TIB.
+CREATE ZB 256 ALLOT
+: Z ( c-addr u --- z )  DUP >R ZB SWAP CMOVE 0 ZB R> + C! ZB ;
+GETPID 0 > . GETPPID 0 > . CR
+0 ISATTY . CR
+PIPE . 2 > . 2 > . CR
+18 UMASK DROP 18 UMASK . CR
+GETPID 0 KILL . CR
+S" /tmp" Z 0 ACCESS . CR
+S" /no/such" Z 0 ACCESS 0< . CR
+S" /tmp" Z FILE-KIND . S" /no/such" Z FILE-KIND . CR
+S" /tmp" Z -1 FILE-MODE 61440 AND . CR
+S" /tmp" Z CHDIR . CR
+PAD 200 GETCWD . PAD SWAP TYPE CR
+7 GETRLIMIT . . . CR
+1 9 DUP2 . CR
+1 10 DUP-FROM 9 > . CR
+WAIT-NOHANG . . CR
+: LT  DEPTH >R LOCAL-TIME DEPTH R> - .  2DROP 2DROP 2DROP DROP ;
+LT CR
+0 GETPID TCSETPGRP 0< . CR
+BYE

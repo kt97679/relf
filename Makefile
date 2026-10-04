@@ -254,14 +254,15 @@ native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/nat
 
 # N1c-3 (Iteration 624): the native kernel - kernel.4 entire, kernel-native.4's
 # back end in part 9's place - booting to its own prompt; CORE against CV8's.
-native-kernel: forth/native-kernel.4 forth/kernel-native.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/kernel.4 relf64
+native-kernel: forth/native-kernel.4 forth/kernel-native.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/kernel.4 engine/relfasm64.4 engine/relfasm-ops.4 tools/gen-native-os.py relf64
+	@python3 tools/gen-native-os.py native-os.4
 	@sed '/^\\ PART 10: TOP LEVEL/,$$d' forth/kernel.4 > native-kcut9.4 && echo END-CROSS >> native-kcut9.4
 	@{ echo CROSS-COMPILE; sed -n '/^\\ PART 10: TOP LEVEL/,$$p' forth/kernel.4; } > native-kcut10.4
 	@rm -f $@ && ./relf64 forth/kernel64.img < forth/native-kernel.4 > native-kernel.log 2>&1 || true
 	@if [ ! -x $@ ] || grep -q 'Undefined word\|native\(-cross\)*: \|asm64:' native-kernel.log \
 	    || ! tr -d '\r' < native-kernel.log | grep -q 'forward calls waiting: *$$'; then \
 	    echo "native-kernel: not built:" >&2; tr -d '\r' < native-kernel.log | grep -v '^OK$$' | tail -3 >&2; rm -f $@; exit 1; fi
-	@rm -f native-kernel.log native-kcut9.4 native-kcut10.4
+	@rm -f native-kernel.log native-kcut9.4 native-kcut10.4 native-os.4
 
 # N1c-2 (Iteration 623): kernel.4 through part 9, natively, with kernel-native.4's
 # back end; the native kernel's own compiler, at run time, against CV8's.

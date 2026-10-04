@@ -431,7 +431,15 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         na=$({ cat tests/tester.fr; echo BYE; } | timeout 60 ./native-kernel 2>&1 | tr -d '\r')
         if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:core same; else emit native:core differ; fi
         emit native:kernel-bytes "$(wc -c < native-kernel | tr -d ' ')"
-    else emit native:core "not built"; emit native:kernel-bytes "not built"; fi
+        # N2 (Iteration 634): the system-call primitives native-os.4 takes from
+        # relfasm64.4's handlers, at the kernels' prompts - native and CV8's asm
+        # engine, the handlers' other user, must print the same
+        cv=$(./relfasm64 forth/kernel64.img < tests/native/kernel-os.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        na=$(./native-kernel < tests/native/kernel-os.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:os same; else emit native:os differ; fi
+        emit native:os-ported "$(python3 tools/gen-native-os.py /dev/null --report | head -1 | awk '{print $2}' | tr -d ':')"
+    else emit native:core "not built"; emit native:kernel-bytes "not built"
+         emit native:os "not built"; emit native:os-ported "not built"; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -450,7 +458,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

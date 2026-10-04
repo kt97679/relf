@@ -658,6 +658,7 @@ do not trust the absence of a line below.
 - 631 — housekeeping: the log in volumes; three new prompts, four amended
 - 632 — a lint for the native compiler's sources, and its self-test
 - 633 — N2: the native shell's primitives inventoried; one source for them, relfasm64.4
+- 634 — 22 primitives generated from the asm engine's handlers; 21 to go, and why
 
 ### Not tied to an iteration
 

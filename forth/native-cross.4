@@ -284,8 +284,12 @@ CURRENT !
 \ Laid at load time, after the prologue, before a build lays anything: a
 \ kernel's PRIMITIVE finds them in NTARGET, as native-rt.4's.
 N>A
-NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the data stack's 64 KB
-  N-PUSH  rbx N-BASE N-MEMSZ @ + 65536 - # mov,  NEND
+\ A page for the runtime's own data, below the data stack's 64 KB (634):
+\ the scratch buffer the system-call routines use (tools/gen-native-os.py)
+\ and what else the runtime keeps. Free memory, off code's cache lines.
+N-BASE N-MEMSZ @ + 65536 - 4096 - CONSTANT N-RTDATA
+NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the runtime's page
+  N-PUSH  rbx N-RTDATA # mov,  NEND
 \ A register loop's r14 and r15 kept on the return stack, under the
 \ caller's return address (630): kernel-native.4's CATCH brackets the
 \ kernel's with these, so a THROW out of a loop leaves the catcher's own
