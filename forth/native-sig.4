@@ -14,10 +14,12 @@
 \ The ucontext's saved registers, as the engine reads them: rax at 144,
 \ rip at 168.
 LABEL trap_entry  LABEL int_throw  LABEL trap_handler  LABEL n_trap_code
+N-MARK trap_entry
 trap_entry L:                            \ rax: the code
   rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
   rax [ trap_xt_v ] mov,
   rax push,  ret,                        \ to the trap word
+N-MARK int_throw
 int_throw L:                             \ edi: the signal; rdx: the ucontext
   rax [ trap_xt_v ] mov,
   rax rax test,  1 F je,
@@ -33,6 +35,7 @@ int_throw L:                             \ edi: the signal; rdx: the ucontext
 \ outermost frames live, which THROW goes back to); no trap word, exit 70.
 \ It runs on the signal stack (SA_ONSTACK): the return stack may be spent.
 \ The ucontext's saved registers: rbp 120, rax 144, rsp 160, rip 168.
+N-MARK trap_handler
 trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
   r9 -9 # mov,
   edi 8 # cmp,  3 F jne,  r9 -10 # mov,  1 F jmp,
@@ -41,6 +44,7 @@ trap_handler L:                          \ edi: the signal; rsi: the siginfo; rd
   4 L:  rax [ rsi 16 ] mov,  rcx N-RGUARD # mov,  rax rcx sub,  rax N-PAGE # cmp,  1 F jae,
   r9 -5 # mov,
   1 L:  n_trap_code jmp,
+N-MARK n_trap_code
 n_trap_code L:                           \ r9: the code; rdx: the ucontext
   rax [ trap_xt_v ] mov,  rax rax test,  2 F je,
   [ rdx 144 ] r9 mov,

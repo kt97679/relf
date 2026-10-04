@@ -10,6 +10,7 @@
 \ findable through the cell at image offset 8, as the engine's locals_failed.
 \ Included by native-kernel.4 after native-os.4, whose constants it uses.
 LABEL n_locals_failed
+N-MARK n_locals_failed
 n_locals_failed L:                        \ eax: 1 or 2, pushed for LOCALS-FAILED
   rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
   rax [ N-BASE 8 + ] mov,  rcx N-BASE # mov,  rax rcx add,

@@ -667,6 +667,7 @@ do not trust the absence of a line below.
 - 640 — the main shell suite passes natively; every primitive the engine has, ported
 - 641 — every suite natively: pty, mrsh, posix, both fuzzers - N2's shell complete
 - 642 — the native shell's speed: 8.5-8.8 times CV8's, 4.5-6.3 times dash's time
+- 643 — tools/native-prof.py and the routines' map: the string primitives are hot
 
 ### Not tied to an iteration
 

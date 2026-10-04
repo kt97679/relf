@@ -49,4 +49,5 @@ DP-T @  N' DP N>BODY !-T                        \ HERE, past the start too
 END-ASM
 ENTRY-T N-ELF
 S" native-kernel" WRITE-ELF
+S" native-kernel.map" N-BASE N-WRITE-MAP      \ the routines' map, for tools/native-prof.py (643)
 BYE

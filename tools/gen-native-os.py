@@ -236,7 +236,7 @@ def main():
         if 'free_block' in subs:
             f.write('LABEL alloc_end\n')
         for s in subs:                   # the subroutines: labelled code; a shared
-            f.write('%s L:\n' % s)      # tail's NEXT, returns from the routine
+            f.write('N-MARK %s\n%s L:\n' % (s, s))   # its NEXT, returns; N-MARK: the map (643)
             for l in labels[s]:
                 l = addresses(rename(strip_comments(l)).replace('NEXT,', '195 C,A'), labels).strip()
                 if l:

@@ -169,8 +169,34 @@ CURRENT !
 
 \ A target word written in assembly: NCODE name ... NEND. Called, never
 \ inlined: the string primitives, too big to repeat at every use.
+\ The routines' map (643): every NCODE and N-MARK records its name and
+\ address - the code before the dictionary has no headers - for
+\ tools/native-prof.py; a build writes the map with N-WRITE-MAP. Recorded
+\ BEFORE CREATE: a shadow's cells must follow its header (619).
+VARIABLE N-MAP                \ nodes: [next][address][counted name]
+CREATE N-MARKNAME 34 ALLOT
+: N-MARK ( "name" --- )   \ record the next name at HERE-A, the input left before it
+  \ WORD's buffer is at HERE here: the name copied aside before a cell is
+  \ laid, or the node's link lands on it (643 - the map's first names were
+  \ node cells); native-cross.4's N-PEEK-NAME does the same
+  >IN @  BL WORD COUNT 31 MIN DUP N-MARKNAME C!  N-MARKNAME 1+ SWAP MOVE  >IN !
+  HERE N-MAP @ , HERE-A , N-MAP !
+  N-MARKNAME DUP C@ 1+ 0 DO DUP I + C@ C, LOOP DROP ALIGN ;
+CREATE N-LINE 96 ALLOT   VARIABLE N-LEN   VARIABLE N-FID
+: N-PUT ( c-addr u --- )  DUP >R  N-LINE N-LEN @ + SWAP MOVE  R> N-LEN +! ;
+: N-WRITE-MAP ( c-addr u base --- )   \ a line per routine: its address in hex, its name
+  >R  W/O CREATE-FILE THROW N-FID !
+  BASE @ HEX
+  N-MAP @ BEGIN ?DUP WHILE
+    0 N-LEN !
+    DUP CELL+ @ ORG @ - R@ +  0 <# #S #> N-PUT  S"  " N-PUT
+    DUP 2 CELLS + COUNT N-PUT
+    N-LINE N-LEN @ N-FID @ WRITE-LINE THROW
+    @
+  REPEAT
+  BASE !  R> DROP  N-FID @ CLOSE-FILE THROW ;
 : NCODE ( "name" --- )   \ its shadow, found while compiling, lays a call to it
-  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !  HERE-A ,  DOES> @ call, ;
+  N-MARK  CURRENT @ >R  NTARGET CURRENT !  CREATE  R> CURRENT !  HERE-A ,  DOES> @ call, ;
 : NEND ( --- )  195 C,A ;
 
 \ ---- compiling a target word ------------------------------------------------------
