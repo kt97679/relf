@@ -6,7 +6,9 @@ fetched lazily when their trigger conditions are met.
 
 ## Instructions to the assistant
 
-1. Read this table at the start of the session.
+1. Read this table at the start of the session - this table, not the
+   library: the prompts are fetched when they fire. A session that picks
+   up someone else's work starts with `18`.
 2. Before each listed moment, check whether any trigger applies to what you are
    about to do.
 3. If one does, fetch and follow that file *at that moment* — not at the start.
@@ -33,9 +35,10 @@ fetched lazily when their trigger conditions are met.
 | `12-progress-log` | try an approach, or finish an attempt that worked, failed or was reverted | nothing is being tried |
 | `13-severity-first` | work through a list of failures, or decide whether a pass count is the goal | one failure, already understood |
 | `14-audience-research` | draft a write-up for a specific venue, or choose where to publish it (upstream `07-audience-research`; renumbered here, where 07 was already `07-git-handoff`) | the artefact is internal, with one known reader |
-| `15-repeat-slip` | fix a mistake you have made before | the mistake is new - then log it well |
-| `16-fail-before-fix` | claim a fix, or add a regression test | the change claims to change nothing |
+| `15-repeat-slip` | fix a mistake you have made before, or write that one happened again | the mistake is new - then log it well |
+| `16-fail-before-fix` | claim a fix, add a regression test, or add tests to a change that claims to change nothing | nothing is claimed and no test is added |
 | `17-checks-outlive-a-turn` | start a check that may run longer than one call or turn | it finishes well inside one call |
+| `18-session-start` | start a session on work another session, person or machine left - before reading anything else | the work starts from nothing |
 
 ## The one that is hardest to self-apply
 
@@ -59,7 +62,8 @@ hundred sessions: `07`-`11` when it was handed to someone with two
 ordinary machines, `12` and `13` later, from keeping its log honest and
 from working its failures in the right order, and `15`-`17` later still,
 from building a native compiler for it: repeated slips, a claimed fix
-that had never failed, and checks longer than a turn. They are about work that
+that had never failed, and checks longer than a turn; and `18` from the first turn of a session
+that spent it all on reading. They are about work that
 OUTLIVES a session and software that runs somewhere other than where it
 was written. That family's failures are cheaper to hit and easier to
 miss: nine of the eleven faults the handover found were in the test

@@ -1,7 +1,8 @@
 # 15 — the second time is a tool
 
 **Fires when** you fix a mistake and recognise it - or a search of the
-log shows it - as one you have made before.
+log shows it - as one you have made before: including one caught before
+it was committed, and one a reminder warned you of.
 
 **Skip when** the mistake is new. Then record it well (`12`), so the
 second time is recognised.
@@ -24,6 +25,16 @@ A twenty-line check - which definitions sit between "make this word
 list current" and "put the old one back", and which of them are called
 from outside - would have caught all three at once.
 
+And recognising it is not the artifact. The same project's native tests
+compare one implementation's output with another's. A test whose own
+code fails - a word that kernel lacks, a print word mistyped, a line
+longer than the kernel reads - fails alike on every engine, and the
+comparison passes with the cases unrun. It happened four times in ten
+iterations. The third time the log said so - "this lesson a third time"
+- and no check was written; the fourth came a day later. Meanwhile the
+rule travelled in the message that started each session, carried by the
+user: a check done by hand.
+
 ## Do this
 
 1. **Search the log for the class, not the instance.** Not "N-STUB24
@@ -43,6 +54,11 @@ from outside - would have caught all three at once.
 4. **Record the class in the register** of known hazards, with the
    iterations where it struck, so the third session meeting it starts
    from the list.
+
+5. **"Again" is the trigger, not the record.** The moment you write in
+   a log that a slip has happened before, the check is due, in the same
+   change. A slip caught before it was committed counts: it was the same
+   slip, and luck caught it.
 
 ## Artifact required
 

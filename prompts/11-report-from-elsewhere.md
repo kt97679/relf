@@ -58,6 +58,12 @@ When reading one:
    changed shebang, a forced environment variable, an artificial load.
    If the reproduction gives the reporter's exact numbers, the fix can
    be verified without them.
+9. **Keep it.** A report whose figures you will cite goes into the
+   repository as it came, named by machine and time: a figure copied
+   from a report nobody kept cannot be checked or re-read. In a shell
+   project every speed claim for its native compiler came from reports
+   on a second machine, and none was committed - the next session was
+   given the previous report's figures in a message.
 
 ## Artifact required
 
@@ -65,4 +71,5 @@ For a failure you are reporting: the name, the expected value, the
 actual value, and the surrounding context — in the output itself. For a
 failure you are diagnosing: a local reproduction that produces the same
 symptom, or one line saying why it cannot be reproduced and what you
-asked for instead.
+asked for instead. For a report whose figures you cite: its path in the
+repository.

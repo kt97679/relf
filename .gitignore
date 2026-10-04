@@ -77,7 +77,10 @@ relfasm64.forth
 # a checkout built then still has them (the user's machines did: 550)
 relfasm-ops.S
 relfasm-consts.S
-bench-report-*.txt
+# tools/bench-report.sh's reports, written into the checkout's root -
+# anchored there (656): unanchored, the rule also hid bench/reports/,
+# where a report whose figures are cited is committed as it came
+/bench-report-*.txt
 native-n1a
 native-n1b
 native-n1c

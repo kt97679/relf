@@ -471,6 +471,12 @@ here as the evidence for it.
   did not exist (122).
 - One feature per test case. Here: a case exercising two attributes
   the fault to whichever one you were thinking about (147).
+- A session that picks up the work starts with
+  `prompts/18-session-start.md`: the baseline verify first, the
+  environment's gaps found by looking, the start message reconciled with
+  the repository, and what only the message held committed (656). A
+  start message points at `prompts/INDEX.md`, not the directory: the
+  library is fetched when a prompt fires.
 - A fix and `tests/verify --update` go in the same commit, and a changed
   line is explained before it is recorded -
   `prompts/09-baseline-discipline.md`.

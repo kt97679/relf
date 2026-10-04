@@ -4,7 +4,8 @@
 restructuring something that currently works.
 
 **Skip when** the change is required for correctness, or the
-restructuring is small enough that measuring costs more than doing it.
+restructuring is small enough that measuring costs more than doing it -
+counting the whole cycle the change carries (step 7).
 
 ## Why this exists
 
@@ -24,6 +25,17 @@ Earlier in the same project a cache was built, measured, and reverted:
 4.9% fewer dispatches, 0.75% less time. It removed cheap operations and
 added an expensive one. The count had been treated as a proxy for time
 without checking what kind of work it counted.
+
+And a profile's share is not a prize. In a shell project's native
+compiler a string routine took 2-4 % of the profile. A faster version
+of its loop was built, tested and measured - and saved nothing, its own
+share unchanged. The share had been the routine's whole time, the call
+included, and the loop the change shortened was mostly no longer than
+the new code's setup. The skip clause had let it through: the change
+was small, and copied one that had worked. The next candidate was priced
+first, by adding work - an extra empty call at every site, and every
+operation laid twice - which showed that the calls were most of its
+cost. The change built on that price came in at what it predicted.
 
 ## Do this
 
@@ -46,6 +58,16 @@ without checking what kind of work it counted.
 5. **Report the negative result as a result.** "Built, measured,
    reverted, here is the number" is worth more than silence: it stops
    the next person re-deriving the same disappointment.
+
+6. **A profile's share is a ceiling, not a price.** It is the whole time
+   of the thing profiled, its call included. What a change can take is
+   the part it removes: price that part - by doing it twice, or by
+   adding its overhead once more.
+
+7. **Price even the small change, when every change carries a full
+   cycle.** Doing includes the suite, the log and the handover;
+   measuring is one paired run of two builds. "Small enough to just do"
+   is for a change you would not test either.
 
 ## Artifact required
 

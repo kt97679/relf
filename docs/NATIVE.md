@@ -531,11 +531,18 @@ environment search once (650); CSTRLEN's short strings in one load
 (652); the locals' saves and restores inline, a run as one group (655).
 Built and reverted: SCAN's one-load path (654).
 
+The profile at 655 (tools/native-prof.py, this VM, the workloads x100) -
+shares are ceilings, not prizes (prompts/10): MOVE 3.2-5.3 %, CSTRLEN
+3.4-5.1, FIND-SHVAR-SCAN 3.0-5.3, (S") 2.9-3.8 (fn's 3.8), AE-SKIP-WS
+5.0 of arith, SCAN 2.6-3.2; (L-SAVE) and (L-RESTORE) are gone.
+
 ### 11.1 Measured on fury
 
 tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor
 powersave), SCALE=25, 7 rounds - CPU time as a ratio to dash's, the
-median; 652's arith with its 95% interval:
+median; 652's arith with its 95% interval. The reports are in
+bench/reports/ from 652's on (656); 648's and 649's were never
+committed, and their rows are the figures as they were passed on:
 
 | | loop | fn | str | arith | realistic | start |
 |---|---:|---:|---:|---:|---:|---:|

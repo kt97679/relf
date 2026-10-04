@@ -148,6 +148,15 @@ the one kind of binary the project cannot rebuild without.
    the main line had fifty entries the branch did not - and every code
    file passed the identity check.
 
+9. **Write the next session's start message, then find each line of it
+   in the repository.** Where things stand, the newest figures, what to
+   try next, the hazards to remember: whatever the next session will be
+   told must be readable from the repository, and a line found only in
+   the message is knowledge that dies with the message. In the shell
+   project one start message carried five such lines - the last remote
+   report's figures among them, from a report nobody had committed.
+   `18` is the receiving side.
+
 ## Artifact required
 
 Before ending the session, produce:
@@ -158,5 +167,7 @@ Before ending the session, produce:
 - the output of `git status --porcelain` after the build and test run:
   empty, or each line explained;
 - one line naming what a future session should pick up first;
+- the next session's start message, each line with where the
+  repository holds it;
 - for a fix applied to a diverged branch (step 8): the identity check
   per file, and the branch's own acceptance result.

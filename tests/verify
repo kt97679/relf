@@ -332,6 +332,23 @@ native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
 size:asm-shell native:str native:locals native:fold native:inline
 verify:skip-rows"
 SKIP_FROM=$(wc -l < "$OUT")
+# The native kernel's comparison rows (Iteration 656, prompts/15): a
+# test's own code failing - a word the bare kernel lacks (647: NIP; 651:
+# 0>), a print word mistyped (654), a line longer than the 256 bytes the
+# kernel reads (655) - fails alike on every engine, and a comparison of
+# the two outputs passed with the cases unrun, four times. A row is
+# `broken` now when either output holds one of the kernel's compile-time
+# errors, or does not end with the test's own last line, `end`.
+native_cmp() {   # row file
+    cv=$(timeout 20 ./relfasm64 forth/kernel64.img < "$2" 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+    na=$(timeout 20 ./native-kernel < "$2" 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+    bad=$(printf '%s\n%s\n' "$cv" "$na" | grep -e 'Undefined word' -e 'compile only' -e 'Incomplete control structure' -e 'Not found' | head -3)
+    if [ -n "$bad" ] || [ "$(printf '%s\n' "$cv" | tail -1)" != end ] || [ "$(printf '%s\n' "$na" | tail -1)" != end ]; then
+        emit "$1" broken
+        { [ -z "$bad" ] || printf '%s\n' "$bad"; echo "last lines: asm [$(printf '%s\n' "$cv" | tail -1)] native [$(printf '%s\n' "$na" | tail -1)]"; } | sed "s|^|  $1: |" >&2
+    elif [ "$cv" = "$na" ]; then emit "$1" same
+    else emit "$1" differ; fi
+}
 if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; then
     kern=reproduces
     for bytes in 8 4; do
@@ -451,31 +468,19 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         # N2 (Iteration 634): the system-call primitives native-os.4 takes from
         # relfasm64.4's handlers, at the kernels' prompts - native and CV8's asm
         # engine, the handlers' other user, must print the same
-        cv=$(./relfasm64 forth/kernel64.img < tests/native/kernel-os.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(./native-kernel < tests/native/kernel-os.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:os same; else emit native:os differ; fi
+        native_cmp native:os tests/native/kernel-os.4
         emit native:os-ported "$(python3 tools/gen-native-os.py /dev/null --report | head -1 | awk '{print $2}' | tr -d ':')"
         # (Iteration 636) SIGNAL-ACTION: the throw route, caught signals, a refusal
-        cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-sig.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(timeout 10 ./native-kernel < tests/native/kernel-sig.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:signals same; else emit native:signals differ; fi
+        native_cmp native:signals tests/native/kernel-sig.4
         # (Iteration 644) the string primitives native-rt.4 makes fast, against CV8
-        cv=$(timeout 20 ./relfasm64 forth/kernel64.img < tests/native/kernel-str.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(timeout 20 ./native-kernel < tests/native/kernel-str.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:str same; else emit native:str differ; fi
+        native_cmp native:str tests/native/kernel-str.4
         # (Iteration 655) shadow.4's locals, which SLOT, lays natively as groups
-        cv=$(timeout 20 ./relfasm64 forth/kernel64.img < tests/native/kernel-locals.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(timeout 20 ./native-kernel < tests/native/kernel-locals.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:locals same; else emit native:locals differ; fi
+        native_cmp native:locals tests/native/kernel-locals.4
         # (Iteration 645) stores folded into the address before them
-        cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(timeout 10 ./native-kernel < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:fold same; else emit native:fold differ; fi
+        native_cmp native:fold tests/native/kernel-fold.4
         # (Iteration 646) small colon words inlined: results through words that
         # inline, nest, and do not
-        cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-inline.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        na=$(timeout 10 ./native-kernel < tests/native/kernel-inline.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
-        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:inline same; else emit native:inline differ; fi
+        native_cmp native:inline tests/native/kernel-inline.4
         # (Iteration 637) the shell's own sources loaded into the native kernel and
         # run through TREE-RUN-TEXT - expansions, functions, loops, a pipeline
         cv=$(./relfasm64 forth/kernel64.img < tests/native/shell-run.4 2>&1 | tr -d '\r' | grep -v '^OK$\|^$\|Welcome\|Redefining')

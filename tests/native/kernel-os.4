@@ -44,4 +44,5 @@ S" root" Z GETPWHOME ZT CR
 0 TERM-RAW 0= . SIGNALS-PENDING . CR
 \ 648: SYSTEM - its forked child's path was cut off natively (634's rule)
 S" exit 3" SYSTEM .  S" true" SYSTEM . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
 BYE

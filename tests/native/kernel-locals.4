@@ -73,5 +73,5 @@ VARIABLE LAST-N
   L1 @ LAST-N !  L1 @ IF L1 @ 1- RECURSE THEN ;
 300 OV
 LAST-N @ . CR
-.( end) CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
 BYE

@@ -37,7 +37,11 @@ failures printed" as success.
    nohup` or not, the turn's end ended it. There, a check is started
    early in a turn and finished within it - nineteen minutes is four or
    five polls - and the waiting is spent on work that reads and does not
-   build. Test it once in a new environment rather than assume either.
+   build. Test it once in a new environment rather than assume either,
+   and record what you find with where and when you saw it: in a later
+   session of the same project, a reminder that a detached run dies at
+   turn end was given as fact, and there the run started in one turn
+   finished, with its marker, in the next (`18`).
 
 4. **A run interrupted between turns is rerun**, not resumed and not
    trusted for its first half. Restore anything a partial update may

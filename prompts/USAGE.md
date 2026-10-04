@@ -55,6 +55,11 @@ artifact, not for a claim:
 | `11` | the name, expected and actual values in the output itself; or a local reproduction |
 | `12` | the search for a prior attempt, and the log entry saying how this one ended |
 | `13` | every failure classed, the order they will be worked in, and each crash's reproducer |
+| `14` | the venue's readers and their known failure modes, found before the draft, and the draft checked against them |
+| `15` | the search for earlier occurrences of the class, and the check, with its failing run on the broken version |
+| `16` | per claimed fix, the test's failing run without the fix and passing run with it; for a change that promises nothing, the broken versions tried |
+| `17` | the detached command, the log's path, and the marker line read back before the commit |
+| `18` | the baseline check's marker before the first change; the environment's gaps; what only the message knew, and where it went |
 
 If a response says the prompt was considered but shows none of these, the
 prompt was not applied.

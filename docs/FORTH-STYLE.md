@@ -380,6 +380,21 @@ Audit periodically, not only when touching a feature.
   it made collecting a few thousand names cubic, and TAB on an empty
   line never finished (Iteration 414). Walk once, carrying a pointer.
 
+- **A test the bare kernel cannot read fails alike on every engine.**
+  The native tests (`tests/native/`) run on the bare kernel - kernel.4
+  without extend.4 - and compare its output with CV8's. It has no `NIP`,
+  `0>` or `WITHIN` (extend.4's: Iterations 647, 651); it reads 256 bytes
+  of a line and drops the rest (655: a definition cut before its `;`
+  swallowed the lines after it); and a defining word at a line's end
+  takes its name from nowhere (655: `VARIABLE`, its name wrapped to the
+  next line). Each failed the same way on both engines, so the
+  comparison passed with the cases unrun - twice more after the rule had
+  been put in the message that starts each session (654, 655). Since 656
+  verify's `native_cmp` fails such a row as `broken`: the kernel's
+  compile-time errors in either output, or an output that does not end
+  with the test's own last line, `end`. End a new native test with
+  `.( end) CR` before `BYE`, and route its row through `native_cmp`.
+
 ## 13. Testing
 
 **Three kinds of test, all in use here** (CHECKING.md lists the suites):

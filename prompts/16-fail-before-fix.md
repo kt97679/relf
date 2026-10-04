@@ -4,7 +4,8 @@
 regression test for one.
 
 **Skip when** there is no claim: a refactor that promises to change
-nothing is shown by everything still passing.
+nothing is shown by everything still passing - but a test it adds is
+not: see step 5.
 
 ## Why this exists
 
@@ -21,6 +22,14 @@ seen failing. The same check - the old shell, the same probe - showed
 the old shell handling it fine: the flaw had never existed, and the
 claim came out of the commit message, the comments and the log before
 anyone else read it. A fix you never saw fail is a guess.
+
+A change that promises to change nothing - an optimisation - adds tests
+of its own, and they can pass for nothing. In the same project two of
+an optimisation's new tests were run on deliberately broken versions of
+the change. One could not see a bound checked one group too late, until
+it recorded how far its run had got; the other could not see a
+page-boundary check removed at all, because the page after its buffer
+is always mapped. Both passed, broken or not, until run that way.
 
 ## Do this
 
@@ -40,8 +49,16 @@ anyone else read it. A fix you never saw fail is a guess.
 4. **When the old build passes too, say so** - in the log, as a
    correction - and keep the test only as a guard, labelled as one.
 
+5. **For a change that promises to change nothing, break it on
+   purpose.** Build two or three wrong versions of the change - an
+   off-by-one, a check removed, a bound moved - and run its new tests on
+   each. Each should fail. A version that passes is a blind spot: fix the
+   test, or write the blind spot down beside it.
+
 ## Artifact required
 
 For each claimed fix: the test, its failing run without the fix, its
 passing run with it. For each claim that could not be shown failing:
-its withdrawal, in the same places it was made.
+its withdrawal, in the same places it was made. For a change that
+promises to change nothing: the broken versions tried and which tests
+failed on each; one that passed, with the blind spot it shows.
