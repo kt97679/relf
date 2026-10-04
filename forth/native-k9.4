@@ -6,6 +6,10 @@ S" forth/extend.4" INCLUDED
 S" forth/native-cross.4" INCLUDED
 DECIMAL
 N>A  S" forth/native-rt.4" INCLUDED  A>N
+\ kernel-native.4's SLOT, names native-locals.4's routines (637), which use
+\ native-os.4's constants: as native-kernel.4 does
+N>A  S" native-os.4" INCLUDED  A>N
+N>A  S" forth/native-locals.4" INCLUDED  A>N
 S" native-kcut9.4" INCLUDED
 0 N-SKIPPING !  S" forth/kernel-native.4" INCLUDED  -1 N-SKIPPING !
 S" tests/native/kernel-rc.4" INCLUDED

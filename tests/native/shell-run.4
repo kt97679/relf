@@ -1,0 +1,17 @@
+\ tests/native/shell-run.4 - the shell's own sources loaded into a kernel and run
+\ through TREE-RUN-TEXT (Iteration 637): native and CV8 must print the same.
+S" forth/extend.4" INCLUDED
+S" forth/safety.4" INCLUDED
+S" forth/pool.4" INCLUDED
+S" forth/shadow.4" INCLUDED
+S" forth/save-system.4" INCLUDED
+S" shell/shell.4" INCLUDED
+S" shell/edit.4" INCLUDED
+S" shell/tree.4" INCLUDED
+S" echo relf-native-shell-ok" TREE-RUN-TEXT
+S" x=4; echo $((x*x)) ${x}y ${#x} ${x:-d}" TREE-RUN-TEXT
+S" f() { echo in-f $1; }; f arg; for i in 1 2 3; do printf %s $i; done; echo" TREE-RUN-TEXT
+S" echo piped | /bin/cat; echo status=$?" TREE-RUN-TEXT
+S" case abc in a*) echo case-ok;; esac; i=0; while [ $i -lt 3 ]; do i=$((i+1)); done; echo $i" TREE-RUN-TEXT
+S" v=$(echo sub); echo got-$v; set -- p q; echo $# $2" TREE-RUN-TEXT
+BYE

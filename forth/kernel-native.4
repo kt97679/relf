@@ -165,6 +165,22 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 : J       ?COMP  PUSH,  72 C, 139 C, 28 C, 36 C, ; IMMEDIATE   \ mov rbx,[rsp]
 : UNLOOP  ?COMP  65 C, 94 C, 65 C, 95 C, ; IMMEDIATE           \ pop r14  pop r15
 
+\ shadow.4's locals (637): shadow.4 lays them with OP, and SLOT, - CV8's
+\ locals opcodes on a variable - so natively OP, records the operation and
+\ SLOT, lays its code: LSAVE and LRESTORE as calls to native-locals.4's
+\ routines, the variable in rdx; L! and LZERO inline. Only these four:
+\ nothing else lays CV8 opcodes with them.
+VARIABLE PENDING-OP
+: OP, ( op --- )   PENDING-OP ! ;
+: SLOT, ( a-addr --- )
+  PENDING-OP @  0 PENDING-OP !
+  DUP 102 = IF DROP 186 C, ,4  ['] (L-SAVE) CALL, EXIT THEN        \ mov edx,a  call
+  DUP 103 = IF DROP 186 C, ,4  ['] (L-RESTORE) CALL, EXIT THEN
+  DUP 104 = IF DROP 72 C, 137 C, 28 C, 37 C, ,4                   \ mov [a],rbx
+    72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, EXIT THEN    \ the top popped
+  DUP 105 = IF DROP 72 C, 199 C, 4 C, 37 C, ,4  0 ,4 EXIT THEN     \ mov qword [a],0
+  TRUE ABORT" native: OP, and SLOT, lay only shadow.4's locals" ;
+
 \ CATCH, keeping a register loop's pair across it: kernel.4's, bracketed
 : CATCH0 ( i*x xt --- j*x 0 | i*x n )   CATCH ;
 : CATCH ( i*x xt --- j*x 0 | i*x n )   (SAVE-LOOP) CATCH0 (RESTORE-LOOP) ;

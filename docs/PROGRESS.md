@@ -661,6 +661,7 @@ do not trust the absence of a line below.
 - 634 — 22 primitives generated from the asm engine's handlers; 21 to go, and why
 - 635 — 42 of 43: closures, the data chain re-rooted, the start's capture
 - 636 — SIGNAL-ACTION natively: the last of the 43
+- 637 — the shell's own Forth runs natively: shadow.4's locals through a native OP, and SLOT,
 
 ### Not tied to an iteration
 
