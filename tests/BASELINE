@@ -19,8 +19,8 @@ docs:sizes current
 ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
-image-sum:kernel32-shell.img 3722828948/116868
-image-sum:kernel64-shell.img 783562304/125852
+image-sum:kernel32-shell.img 2920453204/117032
+image-sum:kernel64-shell.img 1682405102/126028
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -58,7 +58,7 @@ native:os-ported 62
 native:posix:failed 0
 native:prims same
 native:shell 1
-native:shell-bytes 539212
+native:shell-bytes 539788
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same
@@ -84,17 +84,17 @@ rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 1087
+shell:assertions 1094
 shell:dead-words 0
-shell:files 92
+shell:files 93
 shell:host-sh-tests 0
 size:asm-engine 15768
-size:asm-shell 141636
+size:asm-shell 141812
 size:engine-code-i386 21537
 size:engine-code-x86_64 26246
-size:i386 147204
-size:image-i386 116868
-size:image-x86_64 125852
-size:x86_64 164988
+size:i386 147368
+size:image-i386 117032
+size:image-x86_64 126028
+size:x86_64 165164
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>

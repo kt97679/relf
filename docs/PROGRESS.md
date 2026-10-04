@@ -674,6 +674,7 @@ do not trust the absence of a line below.
 - 647 — COMPARE's tail and short MOVEs as byte loops: 8-13 % faster, A/B against 646
 - 648 — SIGNALS-PENDING fast; SYSTEM's child path restored; the generator checks forward labels
 - 649 — native relf in mem-profile and the language benchmarks; fury: arith 5.72, realistic 5.38 times dash
+- 650 — an assignment searches the environment once: 6 % with a desktop's environment, both engines
 
 ### Not tied to an iteration
 

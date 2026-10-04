@@ -1,0 +1,24 @@
+#!/bin/sh
+# tests/shell/run-env-sync - an assignment keeps the environment's copy
+# current (Iteration 650): the shell remembers which variables are not in
+# its environment, and forgets it all whenever it changes the environment
+# itself. Each case is a way that memory could go stale; `env`, an
+# external command, reads what a child really receives.
+. "$(dirname "$0")/lib.sh"
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+
+assert_output_equals "an assignment after export reaches the environment" "x=2" \
+  "$($SH -c 'x=1; export x; x=2; env | grep "^x="' 2>&1)"
+assert_output_equals "assigned before export, then after: the new value" "y=3" \
+  "$($SH -c 'y=1; y=2; export y; y=3; env | grep "^y="' 2>&1)"
+assert_output_equals "unset, then assigned: no longer exported" "none" \
+  "$($SH -c 'z=1; export z; unset z; z=2; env | grep "^z=" || echo none' 2>&1)"
+assert_output_equals "an inherited variable reassigned" "W=b" \
+  "$(W=a $SH -c 'W=b; env | grep "^W="' 2>&1)"
+assert_output_equals "assigned in a loop, exported, assigned again" "i=9" \
+  "$($SH -c 'i=0; while [ $i -lt 5 ]; do i=$((i+1)); done; export i; i=9; env | grep "^i="' 2>&1)"
+assert_output_equals "cd changes the environment; a later export still holds" "v=2" \
+  "$($SH -c 'v=1; cd /; v=2; export v; v=2; env | grep "^v="' 2>&1)"
+assert_output_equals "never exported: not in the environment" "none" \
+  "$($SH -c 'u=1; u=2; env | grep "^u=" || echo none' 2>&1)"
+report

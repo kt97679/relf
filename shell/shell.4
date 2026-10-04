@@ -513,6 +513,17 @@ MAX-SHVARS CELLS BUFFER: SHVAR-VALS    \ each value's block; 0 before it is set
 MAX-SHVARS CELLS BUFFER: SHVAR-VCAPS   \ that block's size
 MAX-SHVARS BUFFER: SHVAR-RO   \ readonly flag per slot
 MAX-SHVARS CELLS BUFFER: SHVAR-HASHES   \ each name's hash (Iteration 272)
+\ Known not to be in the environment (Iteration 650): an assignment looked
+\ for its name there every time - GETENV, a search of the whole
+\ environment - to keep an inherited or exported variable's copy current;
+\ a loop's variables are almost never there. Set when that search finds
+\ nothing; forgotten for every variable when the shell changes its
+\ environment, which it does only through these two words - each
+\ redefined here, before any use.
+MAX-SHVARS BUFFER: SHVAR-NOENV
+: ENV-CHANGED ( --- )   SHVAR-NOENV SHVAR-CAP @ 0 FILL ;
+: SETENV ( value-addr name-addr --- ior )   SETENV ENV-CHANGED ;
+: UNSETENV ( c-addr --- ior )   UNSETENV ENV-CHANGED ;
 VARIABLE SHVAR-COUNT
 0 SHVAR-COUNT !
 CREATE EMPTY-CSTR CSTR," "
@@ -566,6 +577,7 @@ VARIABLE SHVAR-INDEX-OK?    0 SHVAR-INDEX-OK? !
   DUP CELLS ENSURE-BUFFER SHVAR-VALS
   DUP CELLS ENSURE-BUFFER SHVAR-VCAPS
   DUP ENSURE-BUFFER SHVAR-RO
+  DUP ENSURE-BUFFER SHVAR-NOENV
   DUP CELLS ENSURE-BUFFER SHVAR-HASHES
   SHVAR-CAP !  0 SHVAR-INDEX-OK? !  -1 ;
 
@@ -770,6 +782,7 @@ VARIABLE RU#
     SV-NAME @ NAME-HASH OVER CELLS SHVAR-HASHES + !
     SHVAR-INDEX-OK? @ IF DUP INDEX-INSERT THEN
     DUP SHVAR-RO + 0 SWAP C!        \ new slots start writable
+    DUP SHVAR-NOENV + 0 SWAP C!     \ and not known absent from the environment
   THEN
   SV-IDX !
   \ A readonly variable refuses assignment, per POSIX. Checked here
@@ -793,7 +806,11 @@ VARIABLE RU#
   \ with its new value (XCU 2.5.3, 2.9.1): `PATH=/x` changed only the
   \ shell's copy, so commands kept being found along the old PATH
   \ (Iteration 269).
-  SV-NAME @ GETENV IF SV-VALUE @ SV-NAME @ SETENV DROP EXIT THEN
+  \ Searched once while the environment stays as it is (Iteration 650).
+  SV-IDX @ SHVAR-NOENV + C@ 0= IF
+    SV-NAME @ GETENV IF SV-VALUE @ SV-NAME @ SETENV DROP EXIT THEN
+    -1 SV-IDX @ SHVAR-NOENV + C!
+  THEN
   \ ... or exported earlier while it had no value
   XP# @ IF
     SV-NAME @ XP-FIND 0< 0= IF
@@ -817,13 +834,14 @@ VARIABLE RU#
     DUP CELLS SHVAR-VALS + @   2 PICK CELLS SHVAR-VALS + !
     DUP CELLS SHVAR-VCAPS + @  2 PICK CELLS SHVAR-VCAPS + !
     DUP SHVAR-RO + C@          2 PICK SHVAR-RO + C!
+    DUP SHVAR-NOENV + C@       2 PICK SHVAR-NOENV + C!
     DUP CELLS SHVAR-HASHES + @ 2 PICK CELLS SHVAR-HASHES + !
   THEN
   0 SHVAR-INDEX-OK? !
   \ The last slot is free now: no block, so the next variable to take
   \ it allocates its own instead of freeing one it does not own.
   0 OVER CELLS SHVAR-VALS + !  0 OVER CELLS SHVAR-VCAPS + !
-  0 OVER SHVAR-RO + C!
+  0 OVER SHVAR-RO + C!  0 OVER SHVAR-NOENV + C!
   SHVAR-COUNT !  DROP ;
 
 DEFER POS-DIGIT-CALL   \ patched once POS-PARAM-SLOT exists, below

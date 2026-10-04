@@ -3745,6 +3745,7 @@ CREATE DASH-PATH  CSTR," /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
 
 : MAIN ( --- )   \ the shell image's boot word
   ALLOC-BUFFERS
+  ENV-CHANGED     \ an image knows nothing of the environment it runs in (650)
   DEFAULT-SHELL-NAME SHELL-NAME !            \ $0 until a script names itself
   \ ... or the name the shell was invoked by, which only the wrapper
   \ knows: relfsh passes its own $0 as RELF_ARGV0, and it is taken out of
@@ -4018,3 +4019,9 @@ CREATE ENV-NM           CSTR," ENV"
 
 ' READ-PROFILES IS READ-PROFILES-CALL
 ' READ-ENV-FILE IS READ-ENV-FILE-CALL
+
+\ What the build learned of its own environment - an assignment run while
+\ loading notes a name as not there (SHVAR-NOENV, Iteration 650) - is
+\ forgotten before the image is saved: else the image's bytes follow the
+\ build's environment (verify: rebuild:kernel32-shell.img DIFFERS).
+ENV-CHANGED
