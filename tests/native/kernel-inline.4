@@ -16,4 +16,14 @@ USE3 CR
 : INC  BASEV @ 1+ BASEV ! ;
 : USE4  ['] INC TWICE  BASEV @ . ;
 USE4 CR
+\ (651) bodies with internal jumps, inlined since 651
+: CNTUP ( n --- m )  0 BEGIN 1+ 2DUP = UNTIL SWAP DROP ;
+: SUMTO ( n --- s )  0 SWAP 0 ?DO I + LOOP ;
+: FIRST>3 ( n --- i )  -1 SWAP 0 ?DO I 3 > IF DROP I LEAVE THEN LOOP ;
+: SGN ( n --- s )  DUP 0< IF DROP -1 ELSE 0 > IF 1 ELSE 0 THEN THEN ;   \ no 0> in the bare kernel
+: USE5  5 CNTUP .  10 SUMTO .  0 SUMTO .  9 FIRST>3 .  2 FIRST>3 .
+  -7 SGN .  0 SGN .  7 SGN .  -3 SGN 0< IF 11 ELSE 22 THEN . ;
+USE5 CR
+: USE6  3 0 DO I SGN 2 SUMTO + . LOOP ;
+USE6 CR
 BYE

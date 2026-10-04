@@ -34,8 +34,12 @@ VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line 
 \ Inlining (646): a colon definition whose body is copyable - no call, no
 \ jump, no ret before its end, nothing of the return stack - is laid by `;`
 \ with the primitives' marker, EB 01 len, so COMPILE, copies it inline.
-\ Copyable because position-independent: without relative jumps the body
-\ can be moved, and the shift of three bytes for the marker is safe.
+\ Copyable because position-independent: a jump inside a definition is
+\ relative and stays inside it - both ends move together, when `;`
+\ shifts the body three bytes for the marker and when COMPILE, copies it
+\ (651; 646 refused any jump). A call is relative to code outside, a ret
+\ before the end would return from the caller, the return stack's words
+\ may reach the caller's return address: those still make it uncopyable.
 VARIABLE INL-OK      \ the definition being compiled can still be copied
 VARIABLE BODY-AT     \ where its body begins
 : CALL, ( xt --- )   0 INL-OK !  232 C, REL, ;     \ call rel32
@@ -121,9 +125,9 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   CALL, ;
 
 \ forward and backward jumps: a 4-byte field, patched when its target comes
-: >MARK ( --- a-addr )   0 INL-OK !  HERE 0 ,4 ;
+: >MARK ( --- a-addr )   HERE 0 ,4 ;
 : >RESOLVE ( a-addr --- )   MARK-TARGET  HERE OVER 4 + - SWAP !4 ;
-: BACK, ( addr --- )   0 INL-OK !  REL, ;
+: BACK, ( addr --- )   REL, ;
 
 : JCC-NOT ( setcc --- jcc )   \ the jump taken when the comparison is false
   DUP 148 = IF DROP 133 EXIT THEN          \ sete -> jne
@@ -156,7 +160,7 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 \ where the pair is restored; 'LEAVE holds the newest one's field, and
 \ each field, until patched, the distance back to the one before it.
 : LEAVE-LINK, ( --- )
-  0 INL-OK !  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4 ;
+  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4 ;
 : RESOLVE-LEAVE ( outer --- )   \ every LEAVE of this loop: here; 'LEAVE as it was
   'LEAVE @ BEGIN ?DUP WHILE
     DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
