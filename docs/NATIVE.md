@@ -460,3 +460,17 @@ Those tied to the asm engine's own machinery need native designs:
 Then the shell's Forth compiled by the native cross compiler, as kernel.4
 was - it names nothing of CV8's encoding - and the shell's suites run on
 the native shell, as on both CV8 engines.
+
+**Where it stands (635).** tools/gen-native-os.py ports 42 of the 43:
+each handler with its closure - the engine's subroutines it calls,
+thirteen of them (the heap allocator and its lazy reservation, the
+environment's, the passwd reader, CPU time, a terminal copy), as
+labelled code, and the constants it names, its data chain re-rooted
+(BSS_BASE is N-RTDATA, 64 KB below the data stack). The native start
+captures what the engine's start does - argc, argv, envp, argbase 1 (no
+image file), no raw terminal. A label the code uses as an address - in
+[ ], or an immediate - becomes `label ORG @ - N-START @ +`, as 616's
+OPEN-FILE. Left: SIGNAL-ACTION, whose trap handler is the asm engine's
+VM's - the one native design to make. tests/native/kernel-os.4: native,
+CV8's asm engine and CV8's C engine print the same.
+

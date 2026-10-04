@@ -20,6 +20,11 @@ CR .( native-kernel: forward calls waiting: ) N-UNRESOLVED CR
 N' FORTH-WORDLIST N>BODY PUBLISH-WORDLIST
 N>A  HERE-A CONSTANT ENTRY-T
 rbp N-BASE N-MEMSZ @ + 64 - # mov,            \ the data stack, at the top
+\ what the asm engine's start keeps (635): the arguments and environment,
+\ argbase 1 - no image file among them - and no raw terminal, no limit
+rax [ rsp ] mov,  [ argc_v ] rax mov,  rcx [ rsp 8 ] lea,  [ argv_v ] rcx mov,
+rdx [ rcx rax *8 8 ] lea,  [ envp_v ] rdx mov,  [ argbase ] qword-ptr 1 # mov,
+[ t_raw_fd ] qword-ptr 1 NEGATE # mov,  [ img_limit ] qword-ptr 1 NEGATE # mov,
 rbx N-BASE # mov,                             \ START, the stack's one cell
 N' COLD call,                                 \ never returns
 edi ebx mov,  eax 60 # mov,  syscall,

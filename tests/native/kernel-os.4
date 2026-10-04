@@ -1,6 +1,6 @@
 \ tests/native/kernel-os.4 - the operating system's primitives the
 \ native kernel takes from relfasm64.4's handlers (tools/gen-native-os.py,
-\ Iteration 634), at the kernels' own prompts: native, and CV8 on both
+\ Iterations 634-635), at the kernels' own prompts: native, and CV8 on both
 \ engines - all three must print the same. Only what cannot differ from
 \ run to run is printed: flags, counts, error codes. Lines short: TIB.
 CREATE ZB 256 ALLOT
@@ -23,4 +23,23 @@ WAIT-NOHANG . . CR
 : LT  DEPTH >R LOCAL-TIME DEPTH R> - .  2DROP 2DROP 2DROP DROP ;
 LT CR
 0 GETPID TCSETPGRP 0< . CR
+\ 635: the heap, the environment, arguments, files, directories, the rest -
+\ absolute paths: the CHDIR above moved this process to /tmp
+: ZT ( z --- )  BEGIN DUP C@ ?DUP WHILE EMIT 1+ REPEAT DROP ;
+CREATE ZV 64 ALLOT
+: V! ( c-addr u --- z )  DUP >R ZV SWAP CMOVE 0 ZV R> + C! ZV ;
+: AL  100 ALLOCATE . DUP 77 SWAP ! 300 RESIZE . DUP @ . FREE . ;
+AL CR
+S" abc" V! S" RELF_T" Z SETENV . CR
+S" RELF_T" Z GETENV ZT CR
+S" RELF_T" Z UNSETENV . S" RELF_T" Z GETENV . CR
+0 ENV-AT 0= 0= . SYS-ARGC . CR
+S" /etc/passwd" R/O OPEN-FILE . FILE-SIZE . . . CR
+: DN ( z --- n )  OPEN-DIR 0 BEGIN OVER READ-DIR WHILE 1+ REPEAT
+  SWAP CLOSE-DIR ;
+S" /" Z DN . CR
+: CT  DEPTH >R CPU-TIMES DEPTH R> - . 2DROP 2DROP ;
+CT CR
+S" root" Z GETPWHOME ZT CR
+0 TERM-RAW 0= . SIGNALS-PENDING . CR
 BYE

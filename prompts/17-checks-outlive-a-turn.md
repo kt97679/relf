@@ -33,9 +33,19 @@ failures printed" as success.
 
 4. **A run interrupted between turns is rerun**, not resumed and not
    trusted for its first half. Restore anything a partial update may
-   have written (a baseline file) before rerunning.
+   have written (a baseline file) before rerunning. But first look for
+   its process: a log without its marker may belong to a run that is
+   still going, and is waited for - a second run beside it races it for
+   the same build products. (In the shell project a check was "rerun"
+   while the first still ran, its log file deleted under it.)
 
-5. **Say in the reply what is still running** and what will be checked
+5. **Never stop processes by a pattern your own command line contains.**
+   `pgrep -f suite` matches the shell that runs it; the kill loop then
+   ends the call that issued it, and nothing after it runs. Find the
+   process by `ps ... | grep '[s]uite'` - the bracket keeps the grep
+   from matching itself - and stop it by its process ID.
+
+6. **Say in the reply what is still running** and what will be checked
    next turn, so a cut-off turn is not mistaken for a finished one.
 
 ## Artifact required

@@ -284,10 +284,12 @@ CURRENT !
 \ Laid at load time, after the prologue, before a build lays anything: a
 \ kernel's PRIMITIVE finds them in NTARGET, as native-rt.4's.
 N>A
-\ A page for the runtime's own data, below the data stack's 64 KB (634):
-\ the scratch buffer the system-call routines use (tools/gen-native-os.py)
-\ and what else the runtime keeps. Free memory, off code's cache lines.
-N-BASE N-MEMSZ @ + 65536 - 4096 - CONSTANT N-RTDATA
+\ The runtime's own data, below the data stack's 64 KB: 64 KB where the
+\ asm engine's data chain is rooted (tools/gen-native-os.py: BSS_BASE is
+\ N-RTDATA) - arguments, environment, heap pointers, free lists, scratch
+\ (634; 64 KB since 635, the chain's save stack alone 32 KB). Free memory,
+\ zero as the process starts, off code's cache lines.
+N-BASE N-MEMSZ @ + 65536 - 65536 - CONSTANT N-RTDATA
 NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the runtime's page
   N-PUSH  rbx N-RTDATA # mov,  NEND
 \ A register loop's r14 and r15 kept on the return stack, under the
