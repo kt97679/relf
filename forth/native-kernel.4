@@ -20,12 +20,26 @@ S" native-kcut10.4" INCLUDED
 CR .( native-kernel: forward calls waiting: ) N-UNRESOLVED CR
 N' FORTH-WORDLIST N>BODY PUBLISH-WORDLIST
 N>A  HERE-A CONSTANT ENTRY-T
-rbp N-BASE N-MEMSZ @ + 64 - # mov,            \ the data stack, at the top
+\ (the data stack: set below, with the return stack, after the arguments)
 \ what the asm engine's start keeps (635): the arguments and environment,
 \ argbase 1 - no image file among them - and no raw terminal, no limit
 rax [ rsp ] mov,  [ argc_v ] rax mov,  rcx [ rsp 8 ] lea,  [ argv_v ] rcx mov,
 rdx [ rcx rax *8 8 ] lea,  [ envp_v ] rdx mov,  [ argbase ] qword-ptr 1 # mov,
 [ t_raw_fd ] qword-ptr 1 NEGATE # mov,  [ img_limit ] qword-ptr 1 NEGATE # mov,
+\ the stacks (639): the image's own, the asm engine's layout - guard pages
+\ below each, the signal stack, and the traps armed on it
+edi N-DGUARD # mov,  esi N-PAGE # mov,  edx edx xor,  eax 10 # mov,  syscall,
+edi N-RGUARD # mov,  esi N-PAGE # mov,  edx edx xor,  eax 10 # mov,  syscall,
+rax N-SIGSTK # mov,  [ scratch ] rax mov,  [ scratch 8 ] qword-ptr 0 # mov,
+[ scratch 16 ] qword-ptr 32768 # mov,  rdi [ scratch ] lea,  esi esi xor,  eax 131 # mov,  syscall,
+rax trap_handler ORG @ - N-START @ + # mov,  [ scratch ] rax mov,
+[ scratch 8 ] qword-ptr 201326596 # mov,   \ SA_SIGINFO | SA_ONSTACK | SA_RESTORER
+rax sig_restorer ORG @ - N-START @ + # mov,  [ scratch 16 ] rax mov,
+[ scratch 24 ] qword-ptr 0 # mov,
+edi 11 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
+edi 7 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
+edi 8 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
+rsp N-RTOP # mov,  rbp N-DTOP 64 - # mov,
 rbx N-BASE # mov,                             \ START, the stack's one cell
 N' COLD call,                                 \ never returns
 edi ebx mov,  eax 60 # mov,  syscall,

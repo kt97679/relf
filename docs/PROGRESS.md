@@ -663,6 +663,7 @@ do not trust the absence of a line below.
 - 636 — SIGNAL-ACTION natively: the last of the 43
 - 637 — the shell's own Forth runs natively: shadow.4's locals through a native OP, and SLOT,
 - 638 — the native shell saved (relfsh-native); the differential suite 132 of 132
+- 639 — the traps natively, the engine's stack layout and guard pages: run-forth-errors 69 of 69
 
 ### Not tied to an iteration
 

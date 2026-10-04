@@ -13,7 +13,7 @@
 \   engine resumes its VM in the trap word; native code simply goes there.
 \ The ucontext's saved registers, as the engine reads them: rax at 144,
 \ rip at 168.
-LABEL trap_entry  LABEL int_throw
+LABEL trap_entry  LABEL int_throw  LABEL trap_handler  LABEL n_trap_code
 trap_entry L:                            \ rax: the code
   rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
   rax [ trap_xt_v ] mov,
@@ -24,7 +24,28 @@ int_throw L:                             \ edi: the signal; rdx: the ucontext
   rax [ rdx 168 ] mov,                   \ rip, where the signal landed
   rcx alloc_block ORG @ - N-START @ + # mov,  rax rcx cmp,  2 F jb,
   rcx alloc_end ORG @ - N-START @ + # mov,  rax rcx cmp,  1 F jb,
-  2 L:  rcx trap_entry ORG @ - N-START @ + # mov,  [ rdx 168 ] rcx mov,
-  [ rdx 144 ] qword-ptr -28 # mov,
-  ret,
+  2 L:  r9 -28 # mov,  n_trap_code jmp,   \ the traps' route, as the engine's (571)
   1 L:  [ sig_flag 2 + ] byte-ptr 1 # mov,  ret,
+\ The traps (639): the asm engine's trap_handler - SIGFPE -10; SIGSEGV or
+\ SIGBUS -3 at the data stack's floor guard, -5 at the guard between the
+\ stacks, else -9 - and its trap_code: the trap word resumed on fresh
+\ stacks, 1 KB above each floor, the code on top (not the tops, where the
+\ outermost frames live, which THROW goes back to); no trap word, exit 70.
+\ It runs on the signal stack (SA_ONSTACK): the return stack may be spent.
+\ The ucontext's saved registers: rbp 120, rax 144, rsp 160, rip 168.
+trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
+  r9 -9 # mov,
+  edi 8 # cmp,  3 F jne,  r9 -10 # mov,  1 F jmp,
+  3 L:  rax [ rsi 16 ] mov,  rcx N-DGUARD # mov,  rax rcx sub,  rax N-PAGE # cmp,  4 F jae,
+  r9 -3 # mov,  1 F jmp,
+  4 L:  rax [ rsi 16 ] mov,  rcx N-RGUARD # mov,  rax rcx sub,  rax N-PAGE # cmp,  1 F jae,
+  r9 -5 # mov,
+  1 L:  n_trap_code jmp,
+n_trap_code L:                           \ r9: the code; rdx: the ucontext
+  rax [ trap_xt_v ] mov,  rax rax test,  2 F je,
+  [ rdx 144 ] r9 mov,
+  rcx N-DFLOOR 1024 + # mov,  [ rdx 120 ] rcx mov,
+  rcx N-RFLOOR 1024 + # mov,  [ rdx 160 ] rcx mov,
+  rcx trap_entry ORG @ - N-START @ + # mov,  [ rdx 168 ] rcx mov,
+  ret,
+  2 L:  edi 70 # mov,  eax 60 # mov,  syscall,

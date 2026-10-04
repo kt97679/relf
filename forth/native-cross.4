@@ -50,7 +50,22 @@ N-PROLOGUE                                   \ (a loop is compile-only at the to
 CREATE N-EHDR 4096 ALLOT                     \ the header page
 : E! ( x offset bytes --- )   \ little-endian, into the header page
   0 DO  2DUP N-EHDR + I + SWAP 255 AND SWAP C!  SWAP 8 RSHIFT SWAP  LOOP 2DROP ;
-VARIABLE N-MEMSZ   1048576 N-MEMSZ !         \ the image and what follows it: stacks
+VARIABLE N-MEMSZ   4194304 N-MEMSZ !         \ the image and what follows it: stacks
+\ - 4 MB, the asm engine's MEMSIZE, its layout at the top (639): the return
+\ stack, the image's own (64 KB), the guard page between the stacks
+\ (RGUARD), the data stack (256 KB) over its floor's guard (DGUARD); a
+\ return stack overflow or a data stack underflow traps at RGUARD (-5), a
+\ data stack overflow at DGUARD (-3). Below them the signal stack - the
+\ trap handler runs there, as it must when the return stack is spent -
+\ and below that the runtime's data, where the dictionary ends.
+65536 CONSTANT N-RSTACK-BYTES   262144 CONSTANT N-DSTACK-BYTES   4096 CONSTANT N-PAGE
+N-BASE N-MEMSZ @ + CONSTANT N-RTOP
+N-RTOP N-RSTACK-BYTES - CONSTANT N-RFLOOR
+N-RFLOOR N-PAGE - CONSTANT N-RGUARD          \ the engine's MEMSIZE - RS - PAGE
+N-RGUARD CONSTANT N-DTOP
+N-RFLOOR N-DSTACK-BYTES - CONSTANT N-DGUARD  \ the engine's MEMSIZE - RS - DS
+N-DGUARD N-PAGE + CONSTANT N-DFLOOR
+N-DGUARD 32768 - CONSTANT N-SIGSTK           \ 32 KB for the signal handlers
 : N-ELF ( entry-t-addr --- )   \ the header page, for an image of DP-T bytes
   N-EHDR 4096 0 FILL
   127 0 1 E!  69 1 1 E!  76 2 1 E!  70 3 1 E!  2 4 1 E!  1 5 1 E!  1 6 1 E!
@@ -289,7 +304,7 @@ N>A
 \ N-RTDATA) - arguments, environment, heap pointers, free lists, scratch
 \ (634; 64 KB since 635, the chain's save stack alone 32 KB). Free memory,
 \ zero as the process starts, off code's cache lines.
-N-BASE N-MEMSZ @ + 65536 - 65536 - CONSTANT N-RTDATA
+N-SIGSTK 65536 - CONSTANT N-RTDATA          \ below the signal stack (639)
 NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the runtime's page
   N-PUSH  rbx N-RTDATA # mov,  NEND
 \ A register loop's r14 and r15 kept on the return stack, under the
