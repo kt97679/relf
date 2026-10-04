@@ -105,9 +105,13 @@ ordinary scripts hit, then edge cases and wording.
    answered, but `forth 'DEPTH . CR'` printed nothing - as if a ^C held
    from before threw at its start (606's route; 617's hold). Not
    reproduced on the one-CPU VM: five runs of the 20 cases, 0 failures;
-   fury's sixteen cores let the shell and the fuzzer overlap. Next, its
-   rate there: `python3 tools/intrfuzz.py 20 598 ./relfsh` in a loop,
-   and on relfshasm64 and relfsh-native.
+   fury's sixteen cores let the shell and the fuzzer overlap. Its rate
+   (659): on fury, ten runs alone, 0 failures - the one was inside a
+   full verify; here five more under two CPU hogs, 0. Rare, and so far
+   only inside verify. The report could not say whether the line was
+   stopped or ran silent: intrfuzz now asks the shell for the failed
+   line's status (130, a ^C stopped it; 0, it ran and printed nothing),
+   so the next occurrence names which.
 
 ## The second end state, reached (Iteration 548)
 

@@ -176,10 +176,16 @@ def run_case(d, steps):
         ]
         for line, marker, want, why in checks:
             got = p.ask(line, marker)
-            if got is None:
-                return 'no answer: ' + why, p.out
-            if got.strip() != want.strip():
-                return '%s (%r)' % (why, got), p.out
+            if got is None or got.strip() != want.strip():
+                # (659) the failed line's status, from the shell itself: 130
+                # says a ^C stopped it - one pending from before, if no ^C
+                # was sent with it - and 0 says it ran and printed nothing.
+                # Fury's verify at 657 failed here once, silent, and the
+                # report could not say which (GOALS.md Open now, 8c).
+                st = p.ask('printf \'@@R\\n%s\\n\' "$?"\n', '@@R')
+                return '%s%s (the line\'s status: %s)' % (
+                    'no answer: ' if got is None else '', why if got is None else '%s (%r)' % (why, got),
+                    'no answer' if st is None else st.strip()), p.out
         return None, p.out
     except Dead:
         return 'the shell died', p.out
