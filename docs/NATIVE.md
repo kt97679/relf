@@ -521,3 +521,32 @@ the native compiler compiles at the native kernel's prompt. Its levers,
 each to be measured alone against this table: inlining small colon
 words; keeping the stack's second cell in a register; and what a
 profile of fn and arith shows - nothing is to be guessed (section 9).
+
+### 11.1 Measured on fury after 648
+
+tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor
+powersave), commit 70c2d65, SCALE=25, 7 rounds - CPU time as a ratio to
+dash's:
+
+| | loop | fn | str | arith | realistic | start |
+|---|---:|---:|---:|---:|---:|---:|
+| relfsh, native | 4.08 | 4.57 | 3.82 | 5.72 | 5.38 | 0.94 |
+| relfsh, asm engine | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
+
+Inside N3's 5x dash: loop, fn, str. Outside: arith (5.72) and realistic
+(5.38). The estimate after 648 - each step's A/B ratio on the Intel VM,
+compounded onto 642's figures, arith about 4.9 - was too hopeful: fury is
+the reference, and A/B ratios are for choosing a change, not for adding
+up into a claim. About 7 to 8 times faster than the asm engine throughout.
+
+Memory (tools/mem-profile.py, native row since 649): the native shell
+idle is 592 kB resident, all private - 528 of it the executable; the asm
+engine's shell is 204 kB. COLD relocates the whole image at start, as
+CV8 does, which writes every page: each becomes resident and private. An
+image laid for the address the ELF loads it at would need no relocation,
+and pages never touched would stay clean - with code size (539 KB, 3.8
+times CV8's shell), on N3's list.
+
+The language benchmarks (bench/langs/run.py) have a native row since 649:
+the native kernel runs bench.4 with the same input; all seven answers are
+CV8's.

@@ -42,6 +42,11 @@ if os.path.exists(ROOT + '/relfasm64'):
     IMPL.append(('relf, assembly engine', lambda w: [ROOT + '/relfasm64', ROOT + '/forth/kernel64.img'], forth_stdin))
 if os.path.exists(ENG_C):
     IMPL.append(('relf, C engine', lambda w: [ENG_C, IMG], forth_stdin))
+# the native kernel (Iteration 649): the same bench.4, the same stdin - it is
+# a standalone kernel, kernel.4 compiled to x86-64 (docs/NATIVE.md); built by
+# `make native-kernel`, x86-64 only
+if os.path.exists(ROOT + '/native-kernel'):
+    IMPL.append(('relf, native', lambda w: [ROOT + '/native-kernel'], forth_stdin))
 if have('gforth-fast'): IMPL.append(('gforth-fast ' + gv, lambda w: ['gforth-fast', 'bench.4', '-e', FWORD.get(w, w.upper()) + ' . bye'], None))
 if have('gforth'): IMPL.append(('gforth ' + gv, lambda w: ['gforth', 'bench.4', '-e', FWORD.get(w, w.upper()) + ' . bye'], None))
 if have('pforth'): IMPL.append(('pforth ' + version(['pforth'], r'V([0-9.]+)'), lambda w: ['pforth', '-q'], forth_stdin))

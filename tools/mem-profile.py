@@ -20,6 +20,11 @@ SHELLS = [('relf, assembly engine', './relfshasm64'), ('relf, C engine', './relf
 import os as _os
 if _os.environ.get('STATIC_DASH'):
     SHELLS.insert(3, ('dash, static (musl)', _os.environ['STATIC_DASH']))
+# the native shell (Iteration 649), where it is built (x86-64, `make
+# relfsh-native`): its executable and the 4 MB it maps for its stacks and
+# runtime are its own, as the asm engine's are
+if _os.path.exists('./relfsh-native'):
+    SHELLS.insert(2, ('relf, native', './relfsh-native'))
 def smaps(cmd, work):
     out = '/tmp/memprof.smaps'
     pre = '. tests/bench-vm/realistic.sh >/dev/null 2>&1; ' if work else ''
