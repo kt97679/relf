@@ -534,23 +534,28 @@ Built and reverted: SCAN's one-load path (654).
 The profile at 655 (tools/native-prof.py, this VM, the workloads x100) -
 shares are ceilings, not prizes (prompts/10): MOVE 3.2-5.3 %, CSTRLEN
 3.4-5.1, FIND-SHVAR-SCAN 3.0-5.3, (S") 2.9-3.8 (fn's 3.8), AE-SKIP-WS
-5.0 of arith, SCAN 2.6-3.2; (L-SAVE) and (L-RESTORE) are gone.
+5.0 of arith, SCAN 2.6-3.2; (L-SAVE) and (L-RESTORE) are gone. On fury,
+the reference (658, the pack's profile at 657, 279-476 samples a
+workload): FIND-SHVAR-SCAN 9.0-9.6 % of str and arith - twice its share
+here - then EXPAND-WORDS, DEFER, MOVE, CSTRLEN and SCAN, 2.5-4.9 %.
 
 ### 11.1 Measured on fury
 
 tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor
 powersave), SCALE=25, 7 rounds - CPU time as a ratio to dash's, the
-median; 652's arith with its 95% interval. The reports are in
-bench/reports/ from 652's on (656); 648's and 649's were never
-committed, and their rows are the figures as they were passed on:
+median; arith's 95% interval beside it. The reports are in
+bench/reports/ - 648's and 649's too since 658, from fury's first pack,
+and their rows, passed on in a message before, match them:
 
 | | loop | fn | str | arith | realistic | start |
 |---|---:|---:|---:|---:|---:|---:|
 | relfsh, native, 648 (70c2d65) | 4.08 | 4.57 | 3.82 | 5.72 | 5.38 | 0.94 |
-| relfsh, native, 649 (the same binary) | 4.17 | 4.59 | 3.88 | 5.79 | 5.18 | |
+| relfsh, native, 649 (the same binary) | 4.17 | 4.59 | 3.88 | 5.79 | 5.18 | 1.00 |
 | relfsh, native, 652 (87a5157) | 3.80 | 4.56 | 3.49 | 4.93 [4.81-5.14] | 4.76 | 0.94 |
+| relfsh, native, 657 (8ad19f8) | 3.58 | 4.21 | 3.18 | 4.87 [4.59-5.08] | 4.36 | 0.98 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
+| relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
 
 **After 652, N3's five times dash holds on every workload by the
 median** - arith only just: its interval reaches 5.14. The rows for 648
@@ -561,6 +566,15 @@ compounded, say arith 0.87-0.91 and realistic 0.85-0.91 (the range is
 650's, with 19 or 80 environment variables) - a step's A/B chooses the
 change, and the report is the claim (649). About 8 times faster than
 the asm engine throughout.
+
+**After 655's locals (657's run, 658).** Against 652: loop 0.94, fn
+0.92, str 0.91, arith 0.99, realistic 0.92 - five times dash still on
+every workload, arith's interval now reaching 5.08. Decomposed: dash's
+own medians moved between the two runs, realistic's by 9 % (26.7 to
+29.1 ms, the range of its four runs since 648), and the native's times -
+ratio times dash's - by 0 to -6 %: fn -6, loop -4, str -3, arith -3,
+realistic 0. The paired ratio is the method; but realistic's 0.92 is
+mostly dash's run, and fn's gain is the one both measures show.
 
 **Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
 resident, 412 of it the executable; here, the same binary (539,724
@@ -577,7 +591,10 @@ cell written at start dirties its page. tools/native-written.py
 shell has started, holding 210 words' data - 23 of those pages for one
 word alone (R0 S0 START on one, DP HLD SRC on another, ARGC ARGV on a
 third). Fury maps fewer of the unread pages (412 against 528): the read
-part is the machine's, the written part is the code's.
+part is the machine's, the written part is the code's. Measured on fury
+at last (658, the pack's native-written.log): of 536 kB mapped, 456
+resident - 328 written (Anonymous) and 128 the file's, where here it is
+328 and 208. The written part is the code's.
 
 So the lever on N3's list is not relocation at start-up: it is where the
 data lives. Cells gathered in a region of their own, away from the code,

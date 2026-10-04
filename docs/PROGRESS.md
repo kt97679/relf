@@ -682,6 +682,7 @@ do not trust the absence of a line below.
 - 655 — the locals' saves and restores inline, a run as one group: 4-5.5 % faster; verify's skipped rows named once, and checked
 - 656 — what this session's start showed the prompts lacked: 18 new, 07 10 11 15 16 17 amended; verify fails a broken native test
 - 657 — one file to send back: tools/pack-results.sh cleans, measures, profiles, verifies and packs
+- 658 — fury's first pack: after 655, five times dash still; memory and profile measured there; intrfuzz case 4 failed once
 
 ### Not tied to an iteration
 

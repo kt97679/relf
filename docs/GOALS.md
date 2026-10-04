@@ -99,6 +99,15 @@ ordinary scripts hit, then edge cases and wording.
    the varying shell was BASH, which drops a finished job and answers
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
+8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (658,
+   its first pack's verify, on relfsh - the C engine). After ^Cs into an
+   include whose file loops, the prompt came back each time and `echo`
+   answered, but `forth 'DEPTH . CR'` printed nothing - as if a ^C held
+   from before threw at its start (606's route; 617's hold). Not
+   reproduced on the one-CPU VM: five runs of the 20 cases, 0 failures;
+   fury's sixteen cores let the shell and the fuzzer overlap. Next, its
+   rate there: `python3 tools/intrfuzz.py 20 598 ./relfsh` in a loop,
+   and on relfshasm64 and relfsh-native.
 
 ## The second end state, reached (Iteration 548)
 
