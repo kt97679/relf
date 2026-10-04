@@ -10,7 +10,14 @@
 \ ---- the string primitives, in assembly --------------------------------------
 NCODE MOVE  ( src dst u --- )   \ memmove: backward when dst overlaps above src
   rcx rbx mov,  rdi [ rbp ] mov,  rsi [ rbp 8 ] mov,
-  rdi rsi cmp,  1 F jbe,
+  \ under 16 bytes a byte loop (647): rep movsb is slow to start - forward,
+  \ or from the end when dst is above src
+  rcx 16 # cmp,  3 F jae,  rcx rcx test,  2 F jz,  rdi rsi cmp,  4 F ja,
+  5 L:  eax [ rsi ] byte-ptr movzx,  [ rdi ] al mov,  rsi inc,  rdi inc,  rcx dec,  5 B jne,
+  2 F jmp,
+  4 L:  rcx dec,  eax [ rsi rcx *1 ] byte-ptr movzx,  [ rdi rcx *1 ] al mov,  rcx rcx test,  4 B jne,
+  2 F jmp,
+  3 L:  rdi rsi cmp,  1 F jbe,
   rax rsi mov,  rax rcx add,  rdi rax cmp,  1 F jae,
   rsi rcx add,  rsi 1 # sub,  rdi rcx add,  rdi 1 # sub,
   std,  rep, movsb,  cld,  2 F jmp,
@@ -29,8 +36,11 @@ NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the l
   7 L:  rcx 8 # cmp,  8 F jb,  rax [ rsi ] mov,  rax [ rdi ] cmp,  8 F jne,
         rsi 8 # add,  rdi 8 # add,  rcx 8 # sub,  7 B jmp,
   8 L:  rcx rcx test,  2 F jz,
-  243 C,A 166 C,A                        \ repe cmpsb
-  3 F jne,
+  \ the last few, or the eight that differ: a byte loop (647) - repe cmpsb
+  \ is slow to start, and a shell's names are mostly under eight bytes;
+  \ unsigned, as memcmp: below at the first difference is -1
+  9 L:  eax [ rsi ] byte-ptr movzx,  r8d [ rdi ] byte-ptr movzx,  eax r8d cmp,  3 F jne,
+        rsi inc,  rdi inc,  rcx dec,  9 B jne,
   2 L:  rdx rbx cmp,  4 F jb,  5 F ja,  ebx ebx xor,  6 F jmp,
   3 L:  4 F jb,  5 F jmp,
   4 L:  rbx -1 # mov,  6 F jmp,

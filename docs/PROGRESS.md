@@ -671,6 +671,7 @@ do not trust the absence of a line below.
 - 644 — CSTRLEN and SCAN made fast; a bug in asm64's imm64 encoding
 - 645 — stores folded into the address before them: fn 5.0 times dash
 - 646 — small colon words inlined: 4.6-8.4 % faster, A/B against 645
+- 647 — COMPARE's tail and short MOVEs as byte loops: 8-13 % faster, A/B against 646
 
 ### Not tied to an iteration
 

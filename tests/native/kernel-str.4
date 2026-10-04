@@ -17,4 +17,21 @@ T-SCAN
 T-NONE
 SB 0 98 SCAN . SB - . CR
 S" hello=world" 61 SCAN . DROP CR
+\ (647) COMPARE at every length to 12, a difference at every position,
+\ either sign, prefixes; MOVE at every size to 20, overlapping both ways
+CREATE CA 32 ALLOT  CREATE CB2 32 ALLOT
+VARIABLE SUM
+: T-CMP  0 SUM !  13 0 DO  CA 32 97 FILL  CB2 32 97 FILL
+    CA I CB2 I COMPARE SUM +!  I 0 ?DO
+      CA I + 98 SWAP C!  CA J CB2 J COMPARE 3 * SUM +!
+      CB2 I + 99 SWAP C!  CA J CB2 J COMPARE 5 * SUM +!  CA I + 97 SWAP C!  CB2 I + 97 SWAP C!
+    LOOP  CA I CB2 I 1+ COMPARE 7 * SUM +!  CA I 1+ CB2 I COMPARE 11 * SUM +!
+  LOOP  SUM @ . ." compare" CR ;
+T-CMP
+: FILLSEQ ( a n --- )  0 ?DO I 1+ OVER I + C! LOOP DROP ;
+: CK ( a n --- s )  0 SWAP 0 ?DO OVER I + C@ I 1+ * + LOOP SWAP DROP ;   \ no NIP in the bare kernel
+: T-MOVE  0 SUM !  21 0 DO  CA 32 FILLSEQ  CA CA 3 + I MOVE  CA 32 CK SUM +!
+    CA 32 FILLSEQ  CA 3 + CA I MOVE  CA 32 CK SUM +!
+    CA 32 FILLSEQ  CA CB2 I MOVE  CB2 I CK SUM +!  LOOP  SUM @ . ." move" CR ;
+T-MOVE
 BYE
