@@ -33,6 +33,9 @@ fetched lazily when their trigger conditions are met.
 | `12-progress-log` | try an approach, or finish an attempt that worked, failed or was reverted | nothing is being tried |
 | `13-severity-first` | work through a list of failures, or decide whether a pass count is the goal | one failure, already understood |
 | `14-audience-research` | draft a write-up for a specific venue, or choose where to publish it (upstream `07-audience-research`; renumbered here, where 07 was already `07-git-handoff`) | the artefact is internal, with one known reader |
+| `15-repeat-slip` | fix a mistake you have made before | the mistake is new - then log it well |
+| `16-fail-before-fix` | claim a fix, or add a regression test | the change claims to change nothing |
+| `17-checks-outlive-a-turn` | start a check that may run longer than one call or turn | it finishes well inside one call |
 
 ## The one that is hardest to self-apply
 
@@ -54,7 +57,9 @@ choosing what to measure, searching rather than recalling, and
 publishing. `07`-`13` came from a self-hosting shell written over four
 hundred sessions: `07`-`11` when it was handed to someone with two
 ordinary machines, `12` and `13` later, from keeping its log honest and
-from working its failures in the right order. They are about work that
+from working its failures in the right order, and `15`-`17` later still,
+from building a native compiler for it: repeated slips, a claimed fix
+that had never failed, and checks longer than a turn. They are about work that
 OUTLIVES a session and software that runs somewhere other than where it
 was written. That family's failures are cheaper to hit and easier to
 miss: nine of the eleven faults the handover found were in the test

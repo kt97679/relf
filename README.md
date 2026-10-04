@@ -118,7 +118,7 @@ this README are in `docs/`.
 | file | topic |
 |---|---|
 | `GOALS.md` | the direction: what is open, what was decided and why, what was tried and rejected, the conventions |
-| `PROGRESS.md` | the log, one entry per iteration, oldest first - read it through its Index |
+| `PROGRESS.md` | the log's entry point: how it is kept, its Index, and its volumes - `docs/progress/`, a hundred iterations each, oldest first; read an entry through the Index |
 | `QUESTIONS.md` | every question waiting on the user, with options and a recommendation; answered ones kept |
 | `CHECKING.md` | what to run after pulling, what each suite is for, and what its failures mean |
 | `CV8.md` | the engine and its image format: the reference, and the reasons |

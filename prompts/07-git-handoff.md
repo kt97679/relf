@@ -134,6 +134,20 @@ the one kind of binary the project cannot rebuild without.
    generates that nobody decided about: an untracked (`??`) file there
    is either a missing ignore rule or a missing `git add`.
 
+8. **A fix for a branch that has diverged is applied, not merged by
+   hand.** When a fix must also go to a branch that left the main line
+   long ago - a published release, say - and the cherry-pick conflicts,
+   do not resolve the conflict by editing. Check, file by file, that
+   every file the fix touched was identical on that branch to the fix's
+   parent commit (`git diff --quiet FIX~1 BRANCH -- FILE`). Where all
+   were, take the fixed files whole (`git checkout FIX -- FILES`): that
+   is exactly the fix. Give the branch its own log entry, saying it was
+   applied this way and from which commit; regenerate recorded results on
+   the branch rather than copying them; run the branch's own acceptance
+   suite. In the shell project the conflict was in the log file alone -
+   the main line had fifty entries the branch did not - and every code
+   file passed the identity check.
+
 ## Artifact required
 
 Before ending the session, produce:
@@ -143,4 +157,6 @@ Before ending the session, produce:
 - the bundle command you ran **and** the output of the clone check;
 - the output of `git status --porcelain` after the build and test run:
   empty, or each line explained;
-- one line naming what a future session should pick up first.
+- one line naming what a future session should pick up first;
+- for a fix applied to a diverged branch (step 8): the identity check
+  per file, and the branch's own acceptance result.

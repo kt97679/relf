@@ -504,6 +504,15 @@ emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-sh
 # ---------------------------------------------------------------
 # Shebangs against interpreters, the locale pins, and the bundle. Two
 # reports from a real checkout found faults here that no suite watched.
+# The log's closed volumes (Iteration 631): docs/progress/, a hundred
+# iterations each; every volume but the newest is closed and never
+# changes - a wrong entry is corrected forward, in the current volume. A
+# new row when a volume closes is the one expected change.
+newest=$(ls docs/progress/*.md 2>/dev/null | sort | tail -1)
+for v in $(ls docs/progress/*.md 2>/dev/null | sort); do
+    [ "$v" = "$newest" ] && continue
+    emit "progress:$(basename "$v" .md)" "$(cksum < "$v" | awk '{print $1, $2}')"
+done
 echo "== the scaffolding ==" >&2
 PORTABILITY_QUICK=1 sh tests/portability > /tmp/verify-portability.log 2>&1 || true
 emit portability:problems "$(awk '/^portability:/ {print $4+0}' /tmp/verify-portability.log)"

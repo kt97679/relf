@@ -29,6 +29,14 @@ entries that said "no":
   the grammar came in - long `-a`/`-o` chains - the fix kept both
   instead of undoing 317.
 
+And a log that works grows. That one reached 1.46 MB and 577 entries
+in a single file, which a new session can only search, never read -
+and its index, the thing that made it usable, had silently stopped
+being updated fifty entries earlier. It was cut into volumes of a
+hundred iterations, unchanged (the volumes concatenate to the old file,
+byte for byte), with the index and the rules in a small entry point,
+and the acceptance suite checksumming every closed volume.
+
 And the log can mislead as easily as help. One entry recorded that a
 build difference was "sixteen extra zero bytes after TIB"; it was a
 false match, and the next session would have chased it for an
@@ -70,9 +78,26 @@ up with the truth.
    the log or an archive, not in the file people read to decide what
    to do next.
 
+7. **Keep the log readable as it grows: an entry point and volumes.**
+   One small file holds the rules, the index and the list of volumes;
+   the entries live in volumes of a fixed span (a hundred iterations),
+   oldest first. A new entry goes at the bottom of the current volume -
+   the newest - and its index line goes in the entry point in the same
+   commit: an entry without its index line is half written. At each new
+   span a new volume starts and the one before it closes. A closed
+   volume never changes; let the acceptance suite record its checksum,
+   so an edit shows up as a failure and a newly closed volume as the
+   one expected new line. Corrections go forward, into the current
+   volume. Number entries globally, so a reference to one stays good
+   whichever volume holds it. The current volume should be small enough
+   to read whole at the start of a session; the closed ones are for
+   searching.
+
 ## Artifact required
 
-Before starting: the search you ran and what it found (or "no prior
-attempt"). After finishing: the log entry, with any failed or reverted
-attempt stated as such and its deciding number; and, if the approach
-was rejected, its one-line entry in the register.
+Before starting: the search you ran - across every volume - and what
+it found (or "no prior attempt"). After finishing: the log entry at the
+bottom of the current volume, with any failed or reverted attempt
+stated as such and its deciding number; its line in the index, in the
+same commit; and, if the approach was rejected, its one-line entry in
+the register.

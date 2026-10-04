@@ -71,6 +71,14 @@ Before reporting these numbers, run this audit and show the results.
    difference to specific components before explaining it. A difference
    blamed on the wrong component produces a confident, wrong story — and a
    story is much harder to retract than a number.
+
+8. ABSENCE OF OUTPUT IS A MEASUREMENT TOO. Before concluding from what
+   did NOT appear - no error message, no trace line, nothing printed
+   before a crash - show that the path from the program to your eyes
+   could have carried it. Output buffered in a process that then
+   crashes is lost; a filter you wrote to hide noise hides whatever
+   shares a line with the noise; a build step that deletes its own
+   inputs makes a manual rerun fail for a different reason.
 ```
 
 ---
@@ -80,7 +88,15 @@ Before reporting these numbers, run this audit and show the results.
 **Step 5 caught the worst bug in this project.** Nothing else would have; the
 numbers were individually plausible and all the tests passed.
 
-**Step 7 is the newest entry.** I diagnosed a 463-gate difference as expensive
+**Step 8 came from a shell project's native compiler**, three times in a
+week: a crash whose message was in a C engine's output buffer when it died
+(the same run on an unbuffered engine printed it); a trace whose lines a
+`grep -v` meant for warnings removed, because the trace printed on the
+warnings' lines; and a reproduction that failed because the make target
+that made its input file deleted it when done. Each time the first reading
+was "it dies before it gets that far".
+
+**Step 7 is the newest of the original entries.** I diagnosed a 463-gate difference as expensive
 marginal storage, wrote it up, and only later decomposed it properly to find it
 was two wasted words of a different kind of storage. The wrong diagnosis had
 already been published in three documents.

@@ -48,6 +48,16 @@ The check had been converted into a record of whatever happened last.
    check and see it pass, then commit both together. A baseline updated
    from a run you did not read is a diff you approved without reading.
 
+6. **A timing has no baseline across sessions.** Before a slowdown is
+   blamed on a change, build the version before the change and time both
+   in the same session, interleaved. In the shell project a loop
+   benchmark went from 0.13 s to 0.59 s right after a compiler change;
+   the previous build, timed beside it, took 0.60 - the machine had
+   changed, not the code. The real lesson was in the remainder: what
+   kept the slowdown was a design that depended on how this processor
+   handled one memory pattern, and a fix there made the loop fast on
+   both.
+
 ## Artifact required
 
 For each changed line: the value, the previous value, one sentence of

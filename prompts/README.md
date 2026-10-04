@@ -33,6 +33,9 @@ describe are ones any measurement or write-up project can reproduce.
 | [12-progress-log](12-progress-log.md) | before trying an approach, and when any attempt ends | re-deriving and re-paying for an idea that was already tried and rejected |
 | [13-severity-first](13-severity-first.md) | when working a list of failures | a segfault weighed the same as a reworded message; crashes found only by accident |
 | [14-audience-research](14-audience-research.md) | before drafting for a venue, and before choosing where to publish | writing for an imagined reader; a venue's known failure modes met only after publishing (added at Iteration 553 from kt97679/minimal-cpu-design, where it is 07) |
+| [15-repeat-slip](15-repeat-slip.md) | when fixing a mistake made before | the same slip, fixed by care each time and recurring anyway - three times in a week (added at Iteration 631) |
+| [16-fail-before-fix](16-fail-before-fix.md) | before claiming a fix or adding a regression test | a test that passes proves nothing unless it failed before; a claimed fix for a flaw that never existed (Iteration 631) |
+| [17-checks-outlive-a-turn](17-checks-outlive-a-turn.md) | when starting a check longer than one call or turn | a cut-off log read as a pass; a commit one step from being made on it (Iteration 631) |
 
 ## The two that mattered most
 

@@ -65,6 +65,12 @@ Before measuring anything, answer these in writing.
 
 **Step 3 is the one people skip.** It feels like a formality until the
 degenerate answer actually wins, which in this project it did, comprehensively.
+The degenerate answer can also come from a tool rather than a design: in a
+later project, a C baseline for "sum the index over 200 million loop turns"
+was compiled with `-O2`, and the compiler replaced the loop by the closed-form
+sum - the stupidest thing that optimises the metric, done for you, and a
+comparison against nothing. An empty `asm` statement that the accumulator
+passes through keeps it a loop; the program says why it is there.
 
 **Step 4 changes what you work on, not just how you report it.** Once memory
 turned out to be 97% of the machine, the interesting question stopped being

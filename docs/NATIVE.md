@@ -371,126 +371,40 @@ kernel.4 is not split:
   of group C for native code, CREATE and DOES> as above.
 - **N1c-3, the CORE tests,** at the native kernel's prompt, as on CV8.
 
-## 9. N2's first measurement, and a layout rule (Iterations 625-626)
+## 9. N2: the code generator's rules (Iterations 625-630)
 
-tests/native/bench/*.4 - five workloads on bare kernels, so the native
-kernel and CV8's run the same source - and tools/native-bench.py, which
-times them (the child's CPU, median of rounds) and checks that every
-engine prints the same answer. The first measurement, medians of 3:
+The decisions, each with why; the measurements behind them, and the
+dead ends, are the log's entries 625-630 (docs/PROGRESS.md). Workloads:
+tests/native/bench/*.4 on bare kernels, C twins in tests/native/bench/c/;
+tools/native-bench.py times them (the child's CPU, medians) and checks
+that every engine prints the same answer.
 
-    workload     cv8-c   cv8-asm    native   native vs cv8-asm
-    fib          0.06s     0.06s     0.01s    3.97x
-    interp       0.70s     0.69s     4.95s    0.14x
-    loop         0.59s     0.64s     0.13s    4.78x
-    mem          0.04s     0.24s     1.41s    0.17x
-    sieve        0.91s     0.87s     0.28s    3.17x
+- **Data written never shares a 64-byte cache line with code** (626).
+  A store beside code is self-modifying code to the processor - a
+  machine clear, some 750 cycles: 100 million stores to a VARIABLE took
+  24.9 s, 0.15 s after. A created word's data begins at the next 64-byte
+  boundary after its 24-byte stub, whose mov holds the address (so
+  >BODY reads it there); the first definition after data starts on a
+  fresh line. Both compilers keep it; it costs some 4 KB of padding.
+- **A word that only pushes a constant is pushed inline** (627): a
+  CONSTANT, a VARIABLE, a CREATE no DOES> has patched, `: FIVE 5 ;` - by
+  its bytes at run time (LIT-WORD?), by a mark in the shadow at cross
+  time. A DOES> word has a jump where the ret was and is called.
+- **A literal folds into the operation after it** (628): + - AND OR XOR
+  as `op rbx,imm32`, = < > as cmp and setcc, @ and C@ as a load from
+  the address. Only a literal that is the last thing laid, and only
+  where no jump lands inside it (FOLD-BARRIER, set where jumps land).
+- **A compare fuses with IF, WHILE, UNTIL; OVER with + - AND OR XOR**
+  (629): `DUP SIZE < WHILE` is cmp and jge, no copy and no flag made;
+  `OVER +` is `add rbx,[rbp]`. By recorded positions, not by bytes.
+- **DO loops in registers** (630): r14 the index, r15 the limit, the
+  enclosing pair saved on the return stack; LOOP is inc, cmp, jne. CATCH
+  is the kernel's bracketed by routines that keep the pair, so a THROW
+  out of a loop leaves the catcher's loop whole. The cross-compiled
+  kernel's own loops keep their counters in memory; the two never share
+  a register.
 
-Compiled code is 3-5 times CV8's speed. interp - EVALUATE, the kernel's
-own interpreter - is 7 times slower, and an empty EVALUATE alone costs
-1.3 us against CV8's 0.1. The cause, measured: 100 million stores to a
-VARIABLE take 24.9 s natively, 0.29 on CV8; 100 million to a cell 500
-bytes into a buffer, 0.19; fetches, 0.07. A variable's cell is in the
-same 64-byte cache line as its code stub, and a store there is, to the
-processor, self-modifying code: a machine clear, some 750 cycles, each
-time. EVALUATE stores five variables per call. CV8 cannot have this -
-its code is the engine's data.
-
-So a rule for the native image: **data that is written never shares a
-cache line with code.** A created word's data begins at the next 64-byte
-boundary after its stub, whose mov holds the address - so >BODY reads it
-there, not xt + 24 - and the definition after data begins on a line of
-its own. The cross compiler's VARIABLE and kernel-native.4's CREATE and
-: keep it (626). mem is the other slow one: COMPARE is `repe cmpsb`,
-microcoded, a byte a cycle - eight bytes at a time is the cure.
-
-The rule, kept (626): the cross compiler's VARIABLE and kernel-native.4's
-CREATE put the data at the next 64-byte boundary, int3 between, the mov
-holding its address and >BODY reading it there; the first definition
-after data - the cross compiler's N-HEAD, kernel-native.4's : CREATE
-CONSTANT - starts on a fresh line. And COMPARE compares eight bytes at a
-time, leaving `repe cmpsb` the last few. The kernel grew 39,087 ->
-42,959 bytes, the padding. Medians of 3:
-
-    workload     cv8-c   cv8-asm    native   native vs cv8-asm
-    fib          0.06s     0.06s     0.01s    4.12x
-    interp       0.68s     0.67s     0.26s    2.56x
-    loop         0.57s     0.63s     0.13s    4.77x
-    mem          0.03s     0.25s     0.07s    3.59x
-    sieve        0.88s     0.88s     0.27s    3.28x
-
-100 million stores to a variable: 24.86 s -> 0.15. interp 19 times
-faster, mem 20; the native kernel is faster than CV8 on all five. The C
-engine's libc memmove and memcmp still win mem (0.03).
-
-Against C (627). tests/native/bench/c/ has fib, loop and sieve in C, the
-harness builds them with cc -O2 - the loop's sum kept a real loop with an
-empty asm, which gcc would otherwise turn into the closed form - and
-prints native's time over C's. First: fib 2.48, loop 1.96, sieve 7.07.
-The sieve's inner loop calls SIZE, a CONSTANT, and FLAGS, a CREATEd
-buffer, every turn. Now a word whose code only pushes a constant and
-returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has patched, `: FIVE
-5 ;` - has its push laid inline: by kernel-native.4's COMPILE, at run
-time, which knows the bytes, and by the cross compiler for the kernel's
-own, marked in the shadow. The kernel: 45,595 bytes. Medians of 5:
-
-    workload     cv8-c   cv8-asm    native         c   native: vs cv8-asm   / c
-    fib         0.060s    0.056s    0.013s    0.005s     4.17x faster   2.51x
-    interp      0.681s    0.701s    0.252s         -     2.79x faster
-    loop        0.614s    0.635s    0.131s    0.064s     4.83x faster   2.06x
-    mem         0.037s    0.243s    0.072s         -     3.39x faster
-    sieve       0.920s    0.879s    0.175s    0.039s     5.02x faster   4.46x
-
-fib and loop within A33's 3 times C; sieve not yet - what is left is the
-stack in memory, every DUP OVER + through [rbp]. Folding a literal into
-the operation after it (`SIZE <` a compare with an immediate, `FLAGS +`
-an add) is next.
-
-Literal folding (628), in kernel-native.4's compiler: LIT, remembers
-where a short literal's push began and its value; COMPILE, of + - AND OR
-XOR = < > right after it unlays the push and lays one instruction with
-the literal as its operand (add rbx,imm32; cmp and setcc for the
-comparisons), and of @ or C@ a load from the literal address. Only a
-literal that is the last thing laid, and only where no jump lands inside
-it: BEGIN, THEN (through >RESOLVE), DO and ?DO mark the places jumps
-land, and nothing before the last mark is unlaid. The pushes 627 inlines
-are literals too, so `SIZE <` and `FLAGS +` fold. Medians of 3: fib 2.17,
-loop 2.10, sieve 3.81 times C (from 4.46); CORE and the compiler test
-the same as CV8's.
-
-Fusions (629). A compare followed by IF, WHILE or UNTIL is a cmp and a
-conditional jump, no flag made and tested; with a DUP laid right before
-the literal, `DUP SIZE < WHILE` is `cmp rbx,imm32; jge` and nothing more
-- the copy and the flag never exist. Without one, the pop after the cmp
-is mov and lea, which leave the flags alone. And OVER followed by + -
-AND OR XOR is one instruction with memory, `add rbx,[rbp]`. COMPILE,
-records where it last laid an inline DUP and OVER - positions, not a
-search for their bytes - and the jump-target barrier holds as for folds.
-
-The machine changed under this measurement: everything not held in
-registers ran some 1.4 times slower in this session, and loop 4.5 times
-- on 628's kernel as much as on 629's, so not the change. loop.4's
-counter lives on the return stack, a load, an add and a store each turn,
-and the next turn's load waits on that store - cheap on processors that
-forward it at once, some five cycles on others. Measured here in one
-session, 628's kernel then 629's: loop 0.60 and 0.59 s, sieve 0.33 and
-0.24; C's loop 0.07, sieve 0.079 - sieve 2.81 times C now. The cure for
-loop is a counter that is not in memory: DO's index and limit in
-registers, the outer loop's saved on the return stack (630).
-
-Register loops (630). In the code the native kernel compiles, a DO loop
-keeps its index in r14 and its limit in r15; DO saves the enclosing
-loop's pair on the return stack and the loop's end - where LEAVE and an
-empty ?DO jump - puts it back. LOOP is `inc r14; cmp r14,r15; jne`, I
-`mov rbx,r14`, J the pair saved last ([rsp]), UNLOOP the pair popped;
-I J UNLOOP are compiling words now. A word called in a loop keeps the
-caller's loop by the same save; a THROW out of a loop would not, so
-CATCH is the kernel's bracketed by two routines that keep r14 and r15
-on the return stack. The kernel's own loops, compiled by the cross
-compiler, keep their counters on the return stack - the two kinds never
-share a register. Checked against CV8: J, UNLOOP EXIT, +LOOP by -3, an
-empty ?DO, a looping word called in a loop, a THROW out of an inner loop
-caught in an outer one, LEAVE in nested loops; CORE and the compiler
-test the same. Medians of 5:
+Where it stands at 630, medians of 5 (this VM; fury's numbers to come):
 
     workload     cv8-c   cv8-asm    native         c   native: vs cv8-asm   / c
     fib         0.059s    0.055s    0.011s    0.005s     5.14x faster   2.04x
@@ -499,5 +413,6 @@ test the same. Medians of 5:
     mem         0.037s    0.237s    0.073s         -     3.23x faster
     sieve       0.908s    0.886s    0.102s    0.034s     8.69x faster   2.97x
 
-fib, loop and sieve - the three with a C twin - are within A33's three
-times C.
+The three workloads with a C twin are within A33's three times C. The
+native kernel: 51,226 bytes - a 4,096-byte ELF header page and a 47,130
+byte image.
