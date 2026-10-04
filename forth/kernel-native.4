@@ -102,6 +102,23 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP ['] C! = IF DROP UNLIT,  136 C, 28 C, 37 C,  LIT-VAL @ ,4  POP, -1 EXIT THEN
   DUP ['] +! = IF DROP UNLIT,  72 C, 1 C, 28 C, 37 C,  LIT-VAL @ ,4  POP, -1 EXIT THEN
   0 ;
+\ A compare of two cells, or of one with 0, followed by IF WHILE or UNTIL
+\ (661): its flag was made - setcc, neg - popped and tested, 629 fused
+\ only a compare with a literal. ?BRANCH, now unlays the copied compare
+\ and lays the cmp or test, the pops by mov and lea, which keep the
+\ flags, and the jump taken when it is false. The jcc is read from the
+\ primitive's own setcc - not when its code is not the shape expected.
+VARIABLE CMP2-AT     \ a compare just copied: where it began, 0 none
+VARIABLE CMP2-END    \ where it ended
+VARIABLE CMP2-JCC    \ 0F's second byte for the jump taken when it is false
+VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
+: SETCC-AT ( xt offset --- jcc true | false )   \ 0F 9x C3 there: jcc-not 8x^1
+  SWAP 3 + +  DUP C@ 15 = OVER 2 + C@ 195 = AND IF 1+ C@ 1 XOR 16 - TRUE ELSE DROP 0 THEN ;
+: CMP2? ( xt --- jcc cells true | false )
+  DUP ['] 0< = IF DROP 137 1 TRUE EXIT THEN                      \ sar rbx,63: jns
+  DUP ['] 0= = IF 8 SETCC-AT IF 1 TRUE ELSE 0 THEN EXIT THEN  \ test, sete: jne
+  DUP ['] = = OVER ['] < = OR OVER ['] > = OR OVER ['] U< = OR OVER ['] <> = OR
+  IF 16 SETCC-AT IF 2 TRUE ELSE 0 THEN EXIT THEN  DROP 0 ;
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
@@ -120,7 +137,8 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
     DUP ['] DUP = IF HERE DUP-LAID ! THEN  DUP ['] OVER = IF HERE OVER-LAID ! THEN
     DUP ['] EXIT = OVER ['] >R = OR OVER ['] R> = OR OVER ['] R@ = OR
     OVER ['] RP@ = OR OVER ['] RP! = OR IF 0 INL-OK ! THEN      \ not copyable (646)
-    DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  EXIT  THEN
+    DUP CMP2? IF CMP2-CELLS ! CMP2-JCC ! HERE CMP2-AT ! ELSE 0 CMP2-AT ! THEN
+    DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  HERE CMP2-END !  EXIT  THEN
   LIT-WORD? IF LIT, EXIT THEN
   CALL, ;
 
@@ -134,6 +152,16 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP 156 = IF DROP 141 EXIT THEN          \ setl -> jge
   DROP 142 ;                               \ setg -> jle
 : FRESH-CMP? ( --- f )   CMP-AT @ DUP IF  CMP-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
+: FRESH-CMP2? ( --- f )   CMP2-AT @ DUP IF  CMP2-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
+: CMP2-BRANCH, ( --- )   \ (661) the compare unlaid: cmp or test, the pops, jcc
+  CMP2-AT @ HERE - ALLOT
+  CMP2-CELLS @ 2 = IF
+    72 C, 139 C, 69 C, 0 C,  72 C, 57 C, 216 C,              \ mov rax,[rbp]  cmp rax,rbx
+    72 C, 139 C, 93 C, 8 C,  72 C, 141 C, 109 C, 16 C,       \ mov rbx,[rbp+8]  lea rbp,[rbp+16]
+  ELSE
+    72 C, 133 C, 219 C,                                      \ test rbx,rbx
+    72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,        \ mov rbx,[rbp]  lea rbp,[rbp+8]
+  THEN  15 C, CMP2-JCC @ C,  0 CMP2-AT ! ;
 : ?BRANCH, ( --- )   \ the flag popped and tested, the jump taken if false; after a
   \ compare just laid, the compare's own flags (629): DUP lit < IF is cmp, jge
   FRESH-CMP? IF
@@ -141,7 +169,7 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
     ELSE  CMP-AT @ 7 + HERE - ALLOT                                         \ keep the cmp;
       72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  THEN               \ pop by mov, lea
     15 C, CMP-CC @ JCC-NOT C,
-  ELSE  POPF,  15 C, 132 C,  THEN
+  ELSE  FRESH-CMP2? IF CMP2-BRANCH, ELSE POPF,  15 C, 132 C,  THEN  THEN
   0 CMP-AT ! ;
 : IF      ?COMP  ?BRANCH, >MARK ; IMMEDIATE
 : THEN    ?COMP  >RESOLVE ; IMMEDIATE

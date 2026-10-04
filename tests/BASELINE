@@ -39,6 +39,7 @@ matrix:refs bash dash
 matrix:regressions 0
 mrsh:failed 0
 mrsh:passed 21
+native:cmpbr same
 native:compiler same
 native:core same
 native:fold same
@@ -47,7 +48,7 @@ native:headers .NAME CUBE MAIN PREV SQUARE WALK
 native:inline same
 native:interactive:failed 0
 native:intrfuzz:failures 0
-native:kernel-bytes 61400
+native:kernel-bytes 64024
 native:kernel-cut same
 native:lint 0
 native:lint-self-test 4/4
@@ -59,7 +60,7 @@ native:os-ported 62
 native:posix:failed 0
 native:prims same
 native:shell 1
-native:shell-bytes 546956
+native:shell-bytes 536392
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same

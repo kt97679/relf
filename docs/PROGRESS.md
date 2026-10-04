@@ -685,6 +685,7 @@ do not trust the absence of a line below.
 - 658 — fury's first pack: after 655, five times dash still; memory and profile measured there; intrfuzz case 4 failed once
 - 659 — intrfuzz case 4: 0 in ten runs on fury alone; a failed check now reports its line's status
 - 660 — the variable scan priced (5-14 % natively) and looked inside; a walked scan built, measured, reverted
+- 661 — a compare of two cells fused with its branch: str, arith, realistic 4-5 % faster, the shell 2 % smaller
 
 ### Not tied to an iteration
 

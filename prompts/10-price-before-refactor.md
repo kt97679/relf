@@ -62,7 +62,11 @@ cost. The change built on that price came in at what it predicted.
 6. **A profile's share is a ceiling, not a price.** It is the whole time
    of the thing profiled, its call included. What a change can take is
    the part it removes: price that part - by doing it twice, or by
-   adding its overhead once more.
+   adding its overhead once more - the same KIND of work the change
+   removes. In the shell project's compiler two extra dependent register
+   operations before each compare's branch priced a flag's latency at
+   nothing: a predicted branch never waits for it. The change removed
+   six instructions a site and 2 % of the code, and was worth 4-5 %.
 
 7. **Price even the small change, when every change carries a full
    cycle.** Doing includes the suite, the log and the handover;

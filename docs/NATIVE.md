@@ -528,7 +528,8 @@ before it (PROGRESS.md has each): CSTRLEN and SCAN without repne scasb
 internal jumps too (651); COMPARE's tail and short MOVEs as byte loops
 (647); SIGNALS-PENDING eight flags at a time (648); an assignment's
 environment search once (650); CSTRLEN's short strings in one load
-(652); the locals' saves and restores inline, a run as one group (655).
+(652); the locals' saves and restores inline, a run as one group (655); a
+compare of two cells, or of one with 0, fused with its branch (661).
 Built and reverted: SCAN's one-load path (654).
 
 The profile at 655 (tools/native-prof.py, this VM, the workloads x100) -
@@ -548,6 +549,12 @@ compares of two stack cells that make a flag with setcc and neg and then
 test it (629 fused only a compare with a literal). The compiler's, then,
 everywhere: the next levers are such a compare fused with its branch,
 and the stack's second cell in a register.
+
+The first is done (661): = < > U< <> 0= 0< before IF, WHILE or UNTIL
+lay cmp or test, two pops by mov and lea, and the jump - 5 instructions
+where there were 11. A/B against 660 here: str 0.955, arith 0.953,
+realistic 0.960, loop 0.990, fn 0.995; the shell 2 % smaller (536,392
+bytes). The second is next.
 
 ### 11.1 Measured on fury
 
