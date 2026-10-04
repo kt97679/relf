@@ -447,8 +447,16 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         cv=$(./relfasm64 forth/kernel64.img < tests/native/shell-run.4 2>&1 | tr -d '\r' | grep -v '^OK$\|^$\|Welcome\|Redefining')
         na=$(timeout 60 ./native-kernel < tests/native/shell-run.4 2>&1 | tr -d '\r' | grep -v '^OK$\|^$\|Welcome\|Redefining')
         if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:shell-run same; else emit native:shell-run differ; fi
+        # (Iteration 638) the native shell, saved: the differential suite's failures,
+        # and run-forth-errors' (14 known at 638 - the fault traps, not native yet)
+        if make -s relfsh-native >/dev/null 2>&1; then
+            emit native:shell-diff:failed "$(THIS_SH=$PWD/relfsh-native timeout 300 tests/diff/run-all 2>&1 | tail -1 | awk '{print $4}')"
+            emit native:shell-forth-errors:failed "$(THIS_SH=$PWD/relfsh-native timeout 60 sh tests/shell/run-forth-errors 2>&1 | tail -1 | awk '{print $3}')"
+            emit native:shell-bytes "$(wc -c < relfsh-native | tr -d ' ')"
+        else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:shell-run "not built"; fi
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:shell-run "not built"
+         emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -467,7 +475,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals native:shell-run \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals native:shell-run native:shell-diff:failed native:shell-forth-errors:failed native:shell-bytes \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

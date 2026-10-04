@@ -252,6 +252,11 @@ native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/nat
 	    echo "native-n1c: not built:" >&2; tr -d '\r' < native-n1c.log | grep -v '^OK$$' | head -5 >&2; rm -f $@; exit 1; fi
 	@rm -f native-n1c.log
 
+# N2 (Iteration 638): the native shell - the shell's sources loaded into the native
+# kernel, saved by forth/save-system-native.4 as an ELF executable.
+relfsh-native: native-kernel forth/save-system-native.4 $(SHELL_SOURCES) tools/build-native-shell.sh
+	@sh tools/build-native-shell.sh $@
+
 # N1c-3 (Iteration 624): the native kernel - kernel.4 entire, kernel-native.4's
 # back end in part 9's place - booting to its own prompt; CORE against CV8's.
 native-kernel: forth/native-kernel.4 forth/kernel-native.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/native-locals.4 forth/native-sig.4 forth/kernel.4 engine/relfasm64.4 engine/relfasm-ops.4 tools/gen-native-os.py relf64

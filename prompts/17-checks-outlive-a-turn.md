@@ -31,6 +31,14 @@ failures printed" as success.
    running that the check builds or reads - a parallel build can change
    its inputs under it.
 
+   **And know whether a detached run outlives the turn.** In the shell
+   project's environment it did not: three times a run started near a
+   turn's end was found, next turn, dead without its marker - `setsid
+   nohup` or not, the turn's end ended it. There, a check is started
+   early in a turn and finished within it - nineteen minutes is four or
+   five polls - and the waiting is spent on work that reads and does not
+   build. Test it once in a new environment rather than assume either.
+
 4. **A run interrupted between turns is rerun**, not resumed and not
    trusted for its first half. Restore anything a partial update may
    have written (a baseline file) before rerunning. But first look for

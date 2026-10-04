@@ -42,14 +42,17 @@ mrsh:passed 21
 native:compiler same
 native:core same
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
-native:kernel-bytes 55013
+native:kernel-bytes 55525
 native:kernel-cut same
 native:lint 0
 native:lint-self-test 4/4
 native:n1a 169
 native:os same
-native:os-ported 43
+native:os-ported 55
 native:prims same
+native:shell-bytes 546650
+native:shell-diff:failed 0
+native:shell-forth-errors:failed 14
 native:shell-run same
 native:signals same
 parse:encoded 4

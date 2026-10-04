@@ -662,6 +662,7 @@ do not trust the absence of a line below.
 - 635 — 42 of 43: closures, the data chain re-rooted, the start's capture
 - 636 — SIGNAL-ACTION natively: the last of the 43
 - 637 — the shell's own Forth runs natively: shadow.4's locals through a native OP, and SLOT,
+- 638 — the native shell saved (relfsh-native); the differential suite 132 of 132
 
 ### Not tied to an iteration
 

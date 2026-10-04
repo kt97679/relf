@@ -1,0 +1,37 @@
+\ save-system-native.4 - SAVE-SYSTEM for the native kernel (docs/NATIVE.md
+\ section 10, Iteration 638). Loaded after save-system.4 when the native
+\ shell is built (tools/build-native-shell.sh); save-system.4 itself is
+\ shared with CV8 and stays as it is - its helpers are used here.
+\ The same steps as save-system.4's: the pool's buffers released, START
+\ to HERE copied, DP and every word list's thread heads made offsets again
+\ in the copy - COLD adds START to them at each boot - and the scratch
+\ cells blanked, so two saves of one system are the same. Then, where
+\ save-system.4 writes CV8's header, the native image's own: the ELF
+\ header page, mapped just below START (native-cross.4's segment begins
+\ there), with the file's size made this image's; the entry and the
+\ memory's size stay - the start is the kernel's, inside the image.
+CREATE SSN-HDR 4096 ALLOT
+: SSN-UNRELOCATE-ALL ( --- )
+  DP SS-UNRELOCATE
+  FORTH-WORDLIST SS-UNRELOCATE-WORDLIST
+  WORDLISTS @
+  BEGIN ?DUP WHILE
+    START @ + DUP SS-UNRELOCATE-WORDLIST
+    1 CELLS - @
+  REPEAT ;
+: SSN-HEADER ( --- )   \ the running image's header page, its p_filesz this image's
+  START @ 4096 - SSN-HDR 4096 MOVE
+  SS-LEN @ 4096 +  SSN-HDR 96 + ! ;
+: SAVE-SYSTEM ( c-addr u --- )
+  RESET-BUFFERS
+  HERE START @ - SS-LEN !
+  SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
+  START @ SS-BUF @ SS-LEN @ MOVE
+  SSN-UNRELOCATE-ALL
+  SS-SCRUB
+  SSN-HEADER
+  W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
+  SSN-HDR 4096 SS-FID @ WRITE-FILE DROP
+  SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SS-FID @ CLOSE-FILE DROP
+  SS-BUF @ FREE DROP ;
