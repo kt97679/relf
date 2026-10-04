@@ -486,3 +486,38 @@ The engine resumes its VM in the trap word; native code goes there.
 tests/native/kernel-sig.4 - the throw route through a CATCH, a caught
 signal taken once, SIGSEGV refused: the three engines the same.
 
+
+## 11. N2's result, and N3 (Iterations 641-642)
+
+**N2's shell is complete (641).** relfsh-native passes every suite CV8's
+shells pass - the main shell suite, the differential suite, run-forth-
+errors, the pseudo-terminal suite, mrsh, posix, forthfuzz, intrfuzz -
+from the one source: kernel.4 and the shell's Forth unchanged, the back
+end kernel-native.4's, the operating system's primitives the asm
+engine's handlers (tools/gen-native-os.py), and four short files written
+natively: native-sig.4, native-locals.4, save-system-native.4, the start
+in native-kernel.4. tests/verify runs every suite on it.
+
+**What it was for (642).** tools/bench-vm.py, SCALE=10, 3 rounds, this
+VM - time relative to dash, the median and its 95% interval:
+
+    config         loop                 fn                   str                  arith                start
+    dash           26.0ms               12.1ms               13.5ms               14.7ms               31.5ms
+    cv8-asm        38.830 [38.70-39.88] 45.616 [40.66-48.02] 38.277 [36.67-39.81] 55.610 [47.00-56.02] 0.670 [0.665-0.670]
+    cv8-c          41.751 [39.81-42.14] 46.435 [41.43-52.24] 40.114 [38.49-41.77] 55.689 [50.67-56.09] 1.152 [1.075-1.167]
+    native          4.499 [4.49-4.54]    5.182 [4.82-5.59]    4.488 [4.48-4.58]    6.318 [5.97-6.43]   0.744 [0.675-0.764]
+
+The native shell is 8.5 to 8.8 times CV8's on every shell workload, the
+same shell's source; to dash, 4.5 to 6.3 times its time, where CV8 is 38
+to 56. A33's exit target for N3, five times dash: loop and str are in
+it, fn just over (5.2), arith over (6.3). It starts faster than dash
+(0.74), a little slower than CV8's asm engine - its file is 3.9 times
+larger. To be confirmed on fury (tools/bench-report.sh has the native
+shell since 642), with more rounds; this VM drifted within sessions.
+
+**N3: from here.** fn and arith are the shell's interpreter: variable
+lookup, function calls, arithmetic expansion - the shell's Forth, which
+the native compiler compiles at the native kernel's prompt. Its levers,
+each to be measured alone against this table: inlining small colon
+words; keeping the stack's second cell in a register; and what a
+profile of fn and arith shows - nothing is to be guessed (section 9).

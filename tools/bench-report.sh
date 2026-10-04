@@ -50,7 +50,9 @@ done
 section build
 run sh -c 'make 2>&1 | tail -2'
 [ "$(uname -m)" = x86_64 ] && run sh -c 'make relfshasm64 2>&1 | tail -2'
-run sh -c 'ls -l relfsh relfsh64 relfsh32 relfshasm64 2>/dev/null'
+# the native shell (Iteration 642): x86-64 only, as the native back end is
+[ "$(uname -m)" = x86_64 ] && run sh -c 'make relfsh-native 2>&1 | tail -2'
+run sh -c 'ls -l relfsh relfsh64 relfsh32 relfshasm64 relfsh-native 2>/dev/null'
 
 section "a static dash"
 sdash=
@@ -78,6 +80,7 @@ p=$(command -v busybox) && echo "busybox ash|/tmp|$p ash {w}" >> "$cfg"
 p=$(command -v bash) && echo "bash|/tmp|$p {w}" >> "$cfg"
 [ -x ./relfshasm64 ] && echo "relfsh, asm engine|/tmp|$PWD/relfshasm64 {w}" >> "$cfg"
 p=$(readlink -f ./relfsh) && echo "relfsh, C engine|/tmp|$p {w}" >> "$cfg"
+[ -x ./relfsh-native ] && echo "relfsh, native|/tmp|$PWD/relfsh-native {w}" >> "$cfg"
 run cat "$cfg"
 run env SCALE="$SCALE" WL="loop fn str arith realistic start" python3 tools/bench-vm.py "$ROUNDS" "$cfg"
 
