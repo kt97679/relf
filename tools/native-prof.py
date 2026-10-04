@@ -13,6 +13,9 @@ native kernel - is a static ELF at a fixed address, so:
   every millisecond (SIGSTOP), its rip read (PTRACE_GETREGS), and resumed.
 Children it forks run untraced. Prints the words by share of the samples.
 usage: tools/native-prof.py BINARY [ARGS...]      e.g. ./relfsh-native tests/bench-vm/fn.sh
+NATIVE_PROF_WORD=NAME adds NAME's own listing (Iteration 660): its
+instructions, from objdump, each with the samples that stopped on it - for
+where inside a hot word the time goes, which its share cannot say.
 """
 import ctypes, os, signal, struct, sys, time, collections
 
@@ -81,6 +84,8 @@ def main():
     os.waitpid(pid, 0)                # stopped at the exec
     regs = (ctypes.c_ulonglong * 27)()
     counts = collections.Counter()
+    focus = os.environ.get('NATIVE_PROF_WORD')
+    rips = collections.Counter()
     libc.ptrace(CONT, pid, None, None)
     while True:
         time.sleep(0.001)
@@ -94,13 +99,32 @@ def main():
         if os.WIFSTOPPED(status):
             sig = os.WSTOPSIG(status)
             if libc.ptrace(GETREGS, pid, None, ctypes.byref(regs)) == 0:
-                counts[word_at(syms, addrs, regs[16])] += 1    # rip: the 17th register
+                w = word_at(syms, addrs, regs[16])               # rip: the 17th register
+                counts[w] += 1
+                if w == focus:
+                    rips[regs[16]] += 1
             pass_sig = 0 if sig == signal.SIGSTOP else sig
             libc.ptrace(CONT, pid, None, ctypes.c_void_p(pass_sig))
     total = sum(counts.values()) or 1
     print('native-prof: %d samples, %d words in the map' % (total, len(syms)))
     for w, c in counts.most_common(25):
         print('%6.1f%%  %s' % (100.0 * c / total, w))
+    if focus:
+        import subprocess
+        k = [n for _, n in syms].index(focus)
+        lo, hi = syms[k][0], syms[k + 1][0]
+        out = subprocess.run(['objdump', '-D', '-b', 'binary', '-mi386:x86-64',
+                              '--start-address=%d' % (lo - N_BASE + 4096), '--stop-address=%d' % (hi - N_BASE + 4096),
+                              prog[0]], capture_output=True, text=True).stdout
+        own = sum(rips.values()) or 1
+        print('%s, %d samples, by instruction (a sample names the instruction about to run):' % (focus, sum(rips.values())))
+        for line in out.splitlines()[7:]:
+            f = line.split('\t')
+            if len(f) < 3 or not f[0].strip().endswith(':'):
+                continue
+            a = int(f[0].strip()[:-1], 16) + N_BASE - 4096
+            n = rips.get(a, 0)
+            print('  %5.1f%%  %x  %s' % (100.0 * n / own, a, f[2].strip()) if n else '          %x  %s' % (a, f[2].strip()))
 
 if __name__ == '__main__':
     main()

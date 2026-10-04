@@ -458,6 +458,12 @@ it before starting anything it could cover.
   0.98-1.03 on every workload, SCAN's profile share unchanged; reverted
   (654). Its page-end cases stay in tests/native/kernel-str.4.
 
+- **Walking the variable scan's entries** (FIND-SHVAR-SCAN without
+  SHVAR-NAME-SLOT's three calls an entry, natively) - the scan's own
+  samples 57 -> 54, A/B mixed; reverted (660). Its time is the
+  compiler's: VARIABLEs reloaded right after their store, and stack-to-
+  stack compares that make a flag, then test it.
+
 ## Method, and the evidence for it
 
 **Prompt overrides** (as `prompts/USAGE.md` asks a project to record

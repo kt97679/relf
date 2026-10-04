@@ -684,6 +684,7 @@ do not trust the absence of a line below.
 - 657 — one file to send back: tools/pack-results.sh cleans, measures, profiles, verifies and packs
 - 658 — fury's first pack: after 655, five times dash still; memory and profile measured there; intrfuzz case 4 failed once
 - 659 — intrfuzz case 4: 0 in ten runs on fury alone; a failed check now reports its line's status
+- 660 — the variable scan priced (5-14 % natively) and looked inside; a walked scan built, measured, reverted
 
 ### Not tied to an iteration
 

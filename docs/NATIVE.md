@@ -539,6 +539,16 @@ the reference (658, the pack's profile at 657, 279-476 samples a
 workload): FIND-SHVAR-SCAN 9.0-9.6 % of str and arith - twice its share
 here - then EXPAND-WORDS, DEFER, MOVE, CSTRLEN and SCAN, 2.5-4.9 %.
 
+The scan priced (660, done twice, A/B here): native loop 5.5 %, fn 4.7
+%, arith 14.5 %; asm 3-6 %. Walking its entries - no slot computed, no
+call - left its time where it was. tools/native-prof.py's
+NATIVE_PROF_WORD lists a word's instructions with the samples on each:
+the time is in reloading VARIABLEs stored the iteration before, and in
+compares of two stack cells that make a flag with setcc and neg and then
+test it (629 fused only a compare with a literal). The compiler's, then,
+everywhere: the next levers are such a compare fused with its branch,
+and the stack's second cell in a register.
+
 ### 11.1 Measured on fury
 
 tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor
