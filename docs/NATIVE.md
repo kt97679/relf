@@ -416,3 +416,47 @@ Where it stands at 630, medians of 5 (this VM; fury's numbers to come):
 The three workloads with a C twin are within A33's three times C. The
 native kernel: 51,226 bytes - a 4,096-byte ELF header page and a 47,130
 byte image.
+
+## 10. N2: the native shell - the operating system's primitives (Iteration 633)
+
+kernel.4 declares 122 primitives; the native kernel has code for 64 -
+native.4's templates and native-rt.4's routines - and stubs for 58. The
+shell's sources (safety.4, pool.4, shadow.4, save-system.4, shell.4,
+edit.4, tree.4) name 43 of the stubs: processes (FORK EXECVE WAITPID
+WAIT-NOHANG WAIT-JOB GETPID GETPPID SETPGID TCSETPGRP KILL), descriptors
+and files (PIPE DUP2 DUP-FROM FILE-SIZE FILE-KIND FILE-MODE ACCESS UMASK
+OPEN-DIR READ-DIR CLOSE-DIR CHDIR GETCWD ISATTY), the environment
+(GETENV SETENV UNSETENV ENV-AT SYS-ARGC SYS-ARG GETPWHOME), memory
+(ALLOCATE FREE RESIZE), signals (SIGNAL-ACTION SIGNALS-PENDING TRAP-XT!),
+the terminal (TERM-RAW TERM-RESTORE), time and limits (LOCAL-TIME
+CPU-TIMES GETRLIMIT SETRLIMIT). The other 15 are CV8's own mechanisms
+(LIT, BRANCH, (DO)...) or primitives the shell does not name.
+
+**One source for them, as for the kernel.** engine/relfasm64.4, the
+assembly engine, implements every one as raw system calls in asm64 - the
+assembler the native back end uses - and its conventions are the native
+ones renamed: its top of stack in r12 where native has rbx, its data
+stack pointer r13 (at the second item) where native has rbp, `NEXT,`
+where a native routine returns. So the native routines are not written
+again: a generator takes each handler's text from relfasm64.4 and emits
+an NCODE routine, the registers renamed, PUSHT a native push, NEXT, a
+ret - and a fix to a handler reaches both engines (A33 e's principle,
+for the primitives). The handlers that keep to their arguments, the
+system call and the result go across this way: most of the list.
+
+Those tied to the asm engine's own machinery need native designs:
+- **signals and traps** (SIGNAL-ACTION SIGNALS-PENDING TRAP-XT!) - the
+  asm engine's handlers set flags and throw into the VM's state, its ip
+  (r14) and return stack (r15); native code's return stack is rsp, and
+  r14 r15 are its loop registers;
+- **the environment** (GETENV SETENV UNSETENV ENV-AT, SYS-ARGC SYS-ARG) -
+  from the process's start, which the native start must capture as the
+  asm engine's does;
+- **memory** (ALLOCATE FREE RESIZE) and the data areas handlers use
+  (scratch, the terminal's saved state) - in the native image's free
+  memory, off code's cache lines (section 9);
+- **EXECVE** and the rest that build argument vectors from the stack.
+
+Then the shell's Forth compiled by the native cross compiler, as kernel.4
+was - it names nothing of CV8's encoding - and the shell's suites run on
+the native shell, as on both CV8 engines.
