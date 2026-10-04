@@ -441,6 +441,10 @@ it before starting anything it could cover.
   the two changes it needed - see PROGRESS.md - so this line records why
   the first attempt alone was not enough.
 
+- **SCAN's one-load path**, on CSTRLEN's pattern (652) - A/B against 652
+  0.98-1.03 on every workload, SCAN's profile share unchanged; reverted
+  (654). Its page-end cases stay in tests/native/kernel-str.4.
+
 ## Method, and the evidence for it
 
 **Prompt overrides** (as `prompts/USAGE.md` asks a project to record

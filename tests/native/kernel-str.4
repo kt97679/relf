@@ -45,4 +45,19 @@ CREATE PG 8200 ALLOT
     DUP CSTRLEN SWAP SLOW-LEN = IF 1 SUM +! THEN
   LOOP LOOP  SUM @ . ." page" CR ;
 T-PAGE
+\ (654) SCAN where a string's first eight bytes reach a page's end, from 8
+\ bytes before it to 1 - every length to 10, a c at every place to 10, past
+\ the string's end too, where it must not be found, or none - against a
+\ byte loop in Forth, 1056 cases; and an empty string at address 0, which
+\ must not be read. Written for a one-load path, built and reverted at 654:
+\ guards, which the byte loop passes too
+VARIABLE OFF
+: SLOW-SCAN ( a u --- a' u' )   \ the first 98, or the end and 0
+  BEGIN DUP WHILE OVER C@ 98 = IF EXIT THEN SWAP 1+ SWAP 1- REPEAT ;
+: T-SPAGE  0 SUM !  9 1 DO  I OFF !  11 0 DO  12 0 DO
+    PAGE-END OFF @ - DUP 24 97 FILL  I 11 < IF DUP I + 98 SWAP C! THEN
+    DUP J 98 SCAN  ROT J SLOW-SCAN  ROT = >R = R> AND IF 1 SUM +! THEN
+  LOOP LOOP LOOP  SUM @ . ." spage" CR ;
+T-SPAGE
+0 0 98 SCAN . . CR
 BYE

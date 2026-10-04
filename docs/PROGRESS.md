@@ -678,6 +678,7 @@ do not trust the absence of a line below.
 - 651 — bodies with internal jumps inlined too: arith 3.7 % faster
 - 652 — CSTRLEN's short strings in one load: realistic 8.8 %, arith 3.8 % faster
 - 653 — fury after 652: five times dash on every workload; the memory is the data's, spread through the code
+- 654 — SCAN's one-load path: built, measured, reverted
 
 ### Not tied to an iteration
 
