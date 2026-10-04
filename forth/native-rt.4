@@ -62,6 +62,16 @@ NCODE CSTRLEN  ( c-addr --- u )
   \ (x - 0x0101..) & ~x & 0x8080.., then the zero found in its word. repne
   \ scasb was 10-14 % of fn and arith (tools/native-prof.py).
   rdi rbx mov,
+  \ (652) the first eight bytes in one load, where they lie in one page -
+  \ an unaligned read inside a page cannot fault: a short string, most of
+  \ a shell's, is then the load, the test and a bsf. Else, or no zero in
+  \ them, the careful way from the start.
+  eax edi mov,  eax 4095 # and,  eax 4088 # cmp,  1 F ja,
+  r8 72340172838076673 # mov,  r9 -9187201950435737472 # mov,
+  rax [ rdi ] mov,  rdx rax mov,  rax r8 sub,  rdx not,  rax rdx and,  rax r9 and,
+  1 F jz,
+  72 C,A 15 C,A 188 C,A 192 C,A          \ bsf rax, rax: the first zero's top bit
+  eax 3 # shr,  rbx rax mov,  ret,
   1 L:  rax rdi mov,  eax 7 # and,  2 F jz,
         [ rdi ] byte-ptr 0 # cmp,  4 F je,
         rdi inc,  1 B jmp,

@@ -34,4 +34,15 @@ T-CMP
     CA 32 FILLSEQ  CA 3 + CA I MOVE  CA 32 CK SUM +!
     CA 32 FILLSEQ  CA CB2 I MOVE  CB2 I CK SUM +!  LOOP  SUM @ . ." move" CR ;
 T-MOVE
+\ (652) CSTRLEN where a string's first eight bytes reach a page's end:
+\ at -8 the one-load path exactly at its limit, at -7 to -1 the careful
+\ way, every length to 10, against a count in Forth
+CREATE PG 8200 ALLOT
+: PAGE-END ( --- a )  PG 4096 + -4096 AND ;
+: SLOW-LEN ( a --- u )  0 BEGIN 2DUP + C@ WHILE 1+ REPEAT SWAP DROP ;
+: T-PAGE  0 SUM !  9 1 DO  11 0 DO
+    PAGE-END J - DUP 24 65 FILL  DUP I + 0 SWAP C!
+    DUP CSTRLEN SWAP SLOW-LEN = IF 1 SUM +! THEN
+  LOOP LOOP  SUM @ . ." page" CR ;
+T-PAGE
 BYE

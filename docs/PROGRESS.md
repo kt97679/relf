@@ -676,6 +676,7 @@ do not trust the absence of a line below.
 - 649 — native relf in mem-profile and the language benchmarks; fury: arith 5.72, realistic 5.38 times dash
 - 650 — an assignment searches the environment once: 6 % with a desktop's environment, both engines
 - 651 — bodies with internal jumps inlined too: arith 3.7 % faster
+- 652 — CSTRLEN's short strings in one load: realistic 8.8 %, arith 3.8 % faster
 
 ### Not tied to an iteration
 
