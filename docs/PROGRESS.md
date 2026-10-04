@@ -664,6 +664,7 @@ do not trust the absence of a line below.
 - 637 — the shell's own Forth runs natively: shadow.4's locals through a native OP, and SLOT,
 - 638 — the native shell saved (relfsh-native); the differential suite 132 of 132
 - 639 — the traps natively, the engine's stack layout and guard pages: run-forth-errors 69 of 69
+- 640 — the main shell suite passes natively; every primitive the engine has, ported
 
 ### Not tied to an iteration
 

@@ -37,15 +37,26 @@ CLOSE-DIR ACCESS KILL UMASK CPU-TIMES SIGNAL-ACTION SIGNALS-PENDING TERM-RAW
 TERM-RESTORE FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
 TCSETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TRAP-XT!
 OPEN-FILE CLOSE-FILE REPOSITION-FILE FILE-POSITION READ WRITE POLL TYPE CSTRLEN
-SCAN SYS-EXIT BYE""".split()
+SCAN SYS-EXIT BYE
+TCP-LISTEN TCP-ACCEPT TCP-CONNECT SYSTEM DELETE-FILE GETFSIZE SETFSIZE RAW-MODE
+TCGETPGRP CHMOD""".split()
+# The third row (640): the rest the engine implements - the examples' TCP
+# servers among them (tests/shell/run-examples) - so no primitive the asm
+# engine has is a stub natively.
+FORCED = ['set_argv0']   # the start's, not a handler's: RELF_ARGV0, $0 (640)
 # The second row (638): what forth/native-rt.4 hand-wrote in N1b, before
 # this existed - its OPEN-FILE's mode table did not create a file for <>,
 # and $0 read past its NUL. The engine's are the shell's tested semantics;
 # these, laid after native-rt.4's, shadow them in the kernel's build.
 # MOVE FILL COMPARE stay native-rt.4's: pure, CORE-checked, COMPARE faster.
-FORBIDDEN = re.compile(r'\b(r14\w*|r15\w*|rbx|ebx|rbp|ebp|bx|bl|EXITNEXT,|RPUSH,|SLOT,|dispatch\w*)\b')
+FORBIDDEN = re.compile(r'\b(r14\w*|r15\w*|rbx|ebx|bx|bl|EXITNEXT,|RPUSH,|SLOT,|dispatch\w*)\b')
+# rbp is the engine's scratch - its VM is r12-r15 and rbx - and natively
+# the data stack: it becomes r12, free natively (r12 and r13 are what the
+# renaming moves into rbx and rbp). TCP-LISTEN keeps a socket in it (640).
+REGMAP = {'r12': 'rbx', 'r12d': 'ebx', 'r13': 'rbp', 'rbp': 'r12', 'ebp': 'r12d'}
 ALIASES = {'SIGNAL-ACTION': 'L_sigaction', 'SIGNALS-PENDING': 'L_sigpending',   # named
-           'REPOSITION-FILE': 'L_reposfile', 'FILE-POSITION': 'L_filepos'}       # otherwise
+           'REPOSITION-FILE': 'L_reposfile', 'FILE-POSITION': 'L_filepos',       # otherwise
+           'DELETE-FILE': 'L_delfile'}
 NATIVE = {'int_throw'}                  # supplied by forth/native-sig.4 (636)
 NORETURN = {'sig_restorer'}             # rt_sigreturn: no fall into the next label
 SIGFILE = 'forth/native-sig.4'
@@ -57,15 +68,16 @@ def strip_comments(s):
     s = re.sub(r'(^|\s)\(\s[^)]*\)', ' ', s)
     return s
 
-def rename(l):
-    l = re.sub(r'\br12d\b', 'ebx', l); l = re.sub(r'\br12\b', 'rbx', l)
-    return re.sub(r'\br13\b', 'rbp', l)
+def rename(l):            # all at once: r13 becomes rbp, and rbp r12, in one pass
+    return re.sub(r'\b(r12d|r12|r13|rbp|ebp)\b', lambda m: REGMAP[m.group(1)], l)
 
 def read_engine():
     text = open(ENGINE, encoding='utf-8', errors='replace').read()
     consts = []                         # (name, expression), in file order
     for line in text.split('\n'):
         m = re.match(r'^(.*\S)\s+CONSTANT\s+(\S+)', strip_comments(line))
+        if m and 'HERE-A' in m.group(1):
+            continue                     # measured where it stands: kept in its label's body
         if m and not m.group(1).strip().startswith(':'):
             consts.append((m.group(2), m.group(1).strip()))
     labels = {}                         # top-level label -> its lines, to the next one
@@ -75,7 +87,8 @@ def read_engine():
         m = re.match(r'^([A-Za-z_][\w-]*) L:(.*)$', line)
         if m:
             cur = m.group(1); labels[cur] = [m.group(2)]; order.append(cur); continue
-        if cur is not None and not re.match(r'^\s*\S.*\s+CONSTANT\s+\S+', strip_comments(line)):
+        c = strip_comments(line)
+        if cur is not None and (not re.match(r'^\s*\S.*\s+CONSTANT\s+\S+', c) or 'HERE-A' in c):
             labels[cur].append(line)     # a CONSTANT line is the constants' (open_modes's
     nxt = {a: b for a, b in zip(order, order[1:])}   # NOPENMODES made it look like code, 638)
     data = set()
@@ -85,7 +98,8 @@ def read_engine():
         ends = [i for i, l in enumerate(ls) if re.search(r'(NEXT,|ret,|jmp,)', strip_comments(l))]
         if ends:
             labels[k] = ls[:ends[-1] + 1]
-        elif all(re.fullmatch(r'-?\d+|[CWLQ]?,A|S,', t) for t in ' '.join(strip_comments(l) for l in ls).split()) \
+        elif all(re.fullmatch(r'-?\d+|[CWLQ]?,A|S,', t) for t in
+                 ' '.join(strip_comments(l) for l in ls if 'CONSTANT' not in l).split()) \
                 and ' '.join(ls).strip():
             labels[k] = [l for l in ls if strip_comments(l).strip()]     # data: m_passwd's bytes
             data.add(k)
@@ -192,6 +206,11 @@ def main():
     for name, label in (('GETPID', 'L_getpid'), ('FORK', 'L_fork'), ('DUP2', 'L_dup2')):
         assert (name, label) in ported, 'binding by name failed at %s' % name
 
+    for f in FORCED:                     # the start's subroutines, with their closures
+        cs = set()
+        why = closure(f, cs, all_consts)
+        assert not why, 'the start needs %s: %s' % (f, why)
+        all_code |= cs
     # the chain's cells the native start fills, as the asm engine's start does
     # (native-kernel.4): emitted whether a routine names them or not (635)
     const_closure(['argc_v', 'argv_v', 'envp_v', 'argbase', 't_raw_fd', 'img_limit'], all_consts)
