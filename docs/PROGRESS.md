@@ -677,6 +677,7 @@ do not trust the absence of a line below.
 - 650 — an assignment searches the environment once: 6 % with a desktop's environment, both engines
 - 651 — bodies with internal jumps inlined too: arith 3.7 % faster
 - 652 — CSTRLEN's short strings in one load: realistic 8.8 %, arith 3.8 % faster
+- 653 — fury after 652: five times dash on every workload; the memory is the data's, spread through the code
 
 ### Not tied to an iteration
 

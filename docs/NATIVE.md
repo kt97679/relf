@@ -522,30 +522,52 @@ each to be measured alone against this table: inlining small colon
 words; keeping the stack's second cell in a register; and what a
 profile of fn and arith shows - nothing is to be guessed (section 9).
 
-### 11.1 Measured on fury after 648
+### 11.1 Measured on fury
 
 tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor
-powersave), commit 70c2d65, SCALE=25, 7 rounds - CPU time as a ratio to
-dash's:
+powersave), SCALE=25, 7 rounds - CPU time as a ratio to dash's, the
+median; 652's arith with its 95% interval:
 
 | | loop | fn | str | arith | realistic | start |
 |---|---:|---:|---:|---:|---:|---:|
-| relfsh, native | 4.08 | 4.57 | 3.82 | 5.72 | 5.38 | 0.94 |
-| relfsh, asm engine | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
+| relfsh, native, 648 (70c2d65) | 4.08 | 4.57 | 3.82 | 5.72 | 5.38 | 0.94 |
+| relfsh, native, 649 (the same binary) | 4.17 | 4.59 | 3.88 | 5.79 | 5.18 | |
+| relfsh, native, 652 (87a5157) | 3.80 | 4.56 | 3.49 | 4.93 [4.81-5.14] | 4.76 | 0.94 |
+| relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
+| relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 
-Inside N3's 5x dash: loop, fn, str. Outside: arith (5.72) and realistic
-(5.38). The estimate after 648 - each step's A/B ratio on the Intel VM,
-compounded onto 642's figures, arith about 4.9 - was too hopeful: fury is
-the reference, and A/B ratios are for choosing a change, not for adding
-up into a claim. About 7 to 8 times faster than the asm engine throughout.
+**After 652, N3's five times dash holds on every workload by the
+median** - arith only just: its interval reaches 5.14. The rows for 648
+and 649 are one binary measured twice: 2 to 4 % is fury's own noise
+between runs. From 649 to 652 fury gave loop 0.91, fn 0.99, str 0.90,
+arith 0.85, realistic 0.92; 650-652's A/B ratios on the Intel VM,
+compounded, say arith 0.87-0.91 and realistic 0.85-0.91 (the range is
+650's, with 19 or 80 environment variables) - a step's A/B chooses the
+change, and the report is the claim (649). About 8 times faster than
+the asm engine throughout.
 
-Memory (tools/mem-profile.py, native row since 649): the native shell
-idle is 592 kB resident, all private - 528 of it the executable; the asm
-engine's shell is 204 kB. COLD relocates the whole image at start, as
-CV8 does, which writes every page: each becomes resident and private. An
-image laid for the address the ELF loads it at would need no relocation,
-and pages never touched would stay clean - with code size (539 KB, 3.8
-times CV8's shell), on N3's list.
+**Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
+resident, 412 of it the executable; here, the same binary (539,724
+bytes), 592 and 528 - all of the image mapped. This section said after
+649 that COLD writes every page; it does not. kernel.4's COLD relocates
+only DP and the word lists' thread heads. smaps splits the executable's
+528 kB here into 324 kB written (Private_Dirty) and 204 kB only read
+(Private_Clean) - private in smaps only because no other process maps
+the file: page cache, shared by a second shell. What writes the 324 kB
+is the data: a VARIABLE's or CREATE's cell sits on the code's next
+64-byte line (626), so the data is spread through the code, and each
+cell written at start dirties its page. tools/native-written.py
+(Iteration 653): 74 of the image's 132 pages differ from the file once a
+shell has started, holding 210 words' data - 23 of those pages for one
+word alone (R0 S0 START on one, DP HLD SRC on another, ARGC ARGV on a
+third). Fury maps fewer of the unread pages (412 against 528): the read
+part is the machine's, the written part is the code's.
+
+So the lever on N3's list is not relocation at start-up: it is where the
+data lives. Cells gathered in a region of their own, away from the code,
+would leave the code's pages clean, and shared between shells; the cost
+is an absolute address per data word, where the stub's mov has one
+already. With code size (539 KB, 3.8 times CV8's shell), on N3's list.
 
 The language benchmarks (bench/langs/run.py) have a native row since 649:
 the native kernel runs bench.4 with the same input; all seven answers are
