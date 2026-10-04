@@ -522,6 +522,15 @@ each to be measured alone against this table: inlining small colon
 words; keeping the stack's second cell in a register; and what a
 profile of fn and arith shows - nothing is to be guessed (section 9).
 
+Done since, each chosen by the profile and an A/B against the build
+before it (PROGRESS.md has each): CSTRLEN and SCAN without repne scasb
+(644); a VARIABLE's stores folded (645); small words inlined (646), with
+internal jumps too (651); COMPARE's tail and short MOVEs as byte loops
+(647); SIGNALS-PENDING eight flags at a time (648); an assignment's
+environment search once (650); CSTRLEN's short strings in one load
+(652); the locals' saves and restores inline, a run as one group (655).
+Built and reverted: SCAN's one-load path (654).
+
 ### 11.1 Measured on fury
 
 tools/bench-report.sh on fury (AMD Ryzen 7 PRO 8840HS, governor

@@ -188,15 +188,46 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 
 \ shadow.4's locals (637): shadow.4 lays them with OP, and SLOT, - CV8's
 \ locals opcodes on a variable - so natively OP, records the operation and
-\ SLOT, lays its code: LSAVE and LRESTORE as calls to native-locals.4's
-\ routines, the variable in rdx; L! and LZERO inline. Only these four:
-\ nothing else lays CV8 opcodes with them.
+\ SLOT, lays its code: LSAVE and LRESTORE inline, L! and LZERO inline. Only
+\ these four: nothing else lays CV8 opcodes with them.
+\ (655) LSAVE and LRESTORE come in runs - a definition's saves at its
+\ entry, its restores at each exit - and a run is laid as one group: the
+\ save stack's count read once into rcx, one bounds check for the run, two
+\ instructions a slot through rax, the count updated once. They were a
+\ call each, the count loaded, checked and stored again for every slot.
+\ A group grows as SLOT, lays the next of its run: the count's update,
+\ laid last, is unlaid, the slot laid, the update laid again, the check's
+\ immediate patched - never across a jump's target, which would move.
+\ Its checks jump to (L-OVER) and (L-UNDER), outside the body: a body
+\ with locals is not copyable, as with the calls.
 VARIABLE PENDING-OP
+VARIABLE GRP-AT     \ where the group being laid began
+VARIABLE GRP-OP     \ its op: 102, saves, or 103, restores
+VARIABLE GRP-N      \ its slots so far
+VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : OP, ( op --- )   PENDING-OP ! ;
+: GRP-START, ( op --- )   \ mov rcx,[count]  cmp rcx,imm32  ja (L-OVER) | jb (L-UNDER)
+  HERE GRP-AT !  DUP GRP-OP !  0 GRP-N !
+  72 C, 139 C, 12 C, 37 C,  LSAVE-SP ,4   72 C, 129 C, 249 C, 0 ,4
+  15 C,  102 = IF 135 C, ['] (L-OVER) ELSE 130 C, ['] (L-UNDER) THEN  REL, ;
+: GRP-SLOT, ( a-addr --- )   \ a save: mov rax,[a]  mov [rcx*8+stack+8n],rax;
+  \ a restore, the newest first: mov rax,[rcx*8+stack-8(n+1)]  mov [a],rax
+  GRP-OP @ 102 = IF
+    72 C, 139 C, 4 C, 37 C, ,4   72 C, 137 C, 4 C, 205 C,  LSAVE-STK GRP-N @ CELLS + ,4
+  ELSE
+    72 C, 139 C, 4 C, 205 C,  LSAVE-STK GRP-N @ 1+ CELLS - ,4   72 C, 137 C, 4 C, 37 C, ,4
+  THEN  1 GRP-N +! ;
+: GRP-END, ( --- )   \ add | sub qword [count],n - and the check's immediate:
+  \ a save overflows past LSAVE_MAX - n, a restore underflows below n
+  72 C, 131 C,  GRP-OP @ 102 = IF 4 ELSE 44 THEN C,  37 C,  LSAVE-SP ,4  GRP-N @ C,
+  GRP-OP @ 102 = IF LSAVE-LIM GRP-N @ - ELSE GRP-N @ THEN  GRP-AT @ 11 + !4
+  HERE GRP-END !  0 INL-OK ! ;
+: LGROUP, ( a-addr op --- )
+  DUP GRP-OP @ =  GRP-END @ HERE = AND  FOLD-BARRIER @ GRP-AT @ > 0= AND
+  IF  DROP  -9 ALLOT  ELSE  GRP-START,  THEN  GRP-SLOT,  GRP-END, ;
 : SLOT, ( a-addr --- )
   PENDING-OP @  0 PENDING-OP !
-  DUP 102 = IF DROP 186 C, ,4  ['] (L-SAVE) CALL, EXIT THEN        \ mov edx,a  call
-  DUP 103 = IF DROP 186 C, ,4  ['] (L-RESTORE) CALL, EXIT THEN
+  DUP 102 = OVER 103 = OR IF LGROUP, EXIT THEN
   DUP 104 = IF DROP 72 C, 137 C, 28 C, 37 C, ,4                   \ mov [a],rbx
     72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, EXIT THEN    \ the top popped
   DUP 105 = IF DROP 72 C, 199 C, 4 C, 37 C, ,4  0 ,4 EXIT THEN     \ mov qword [a],0

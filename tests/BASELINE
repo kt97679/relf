@@ -47,10 +47,11 @@ native:headers .NAME CUBE MAIN PREV SQUARE WALK
 native:inline same
 native:interactive:failed 0
 native:intrfuzz:failures 0
-native:kernel-bytes 59224
+native:kernel-bytes 61400
 native:kernel-cut same
 native:lint 0
 native:lint-self-test 4/4
+native:locals same
 native:mrsh:failed 0
 native:n1a 169
 native:os same
@@ -58,7 +59,7 @@ native:os-ported 62
 native:posix:failed 0
 native:prims same
 native:shell 1
-native:shell-bytes 539724
+native:shell-bytes 546956
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same
@@ -98,3 +99,4 @@ size:image-x86_64 126028
 size:x86_64 165164
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
+verify:skip-rows complete

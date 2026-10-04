@@ -679,6 +679,7 @@ do not trust the absence of a line below.
 - 652 — CSTRLEN's short strings in one load: realistic 8.8 %, arith 3.8 % faster
 - 653 — fury after 652: five times dash on every workload; the memory is the data's, spread through the code
 - 654 — SCAN's one-load path: built, measured, reverted
+- 655 — the locals' saves and restores inline, a run as one group: 4-5.5 % faster; verify's skipped rows named once, and checked
 
 ### Not tied to an iteration
 

@@ -1,9 +1,8 @@
-\ native-locals.4 - the save stack's two operations, for shadow.4's locals
-\ (docs/NATIVE.md section 10, Iteration 637). shadow.4 lays its locals with
-\ OP, and SLOT, - CV8's opcodes LSAVE LRESTORE L! LZERO on a variable -
-\ and the native kernel's OP, and SLOT, (kernel-native.4) lay native code
-\ for the same four: L! and LZERO inline, LSAVE and LRESTORE as calls to
-\ these, the variable's address in rdx. The asm engine's L_lsave and
+\ native-locals.4 - the save stack, for shadow.4's locals (docs/NATIVE.md
+\ section 10, Iteration 637). shadow.4 lays its locals with OP, and SLOT, -
+\ CV8's opcodes LSAVE LRESTORE L! LZERO on a variable - and the native
+\ kernel's OP, and SLOT, (kernel-native.4) lay native code for the same
+\ four, inline since 655, with what is here. The asm engine's L_lsave and
 \ L_lrest, natively: its save stack - lsave_sp a count of cells,
 \ lsave_stack, LSAVE_MAX - in the data chain native-os.4 roots at N-RTDATA,
 \ and on overflow (1) or underflow (2) LOCALS-FAILED, which shadow.4 makes
@@ -15,13 +14,13 @@ n_locals_failed L:                        \ eax: 1 or 2, pushed for LOCALS-FAILE
   rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
   rax [ N-BASE 8 + ] mov,  rcx N-BASE # mov,  rax rcx add,
   rax push,  ret,
-NCODE (L-SAVE)                            \ rdx: a variable; its value on the stack
-  rcx [ lsave_sp ] mov,  rcx LSAVE_MAX # cmp,  1 F jae,
-  rax [ rdx ] mov,  r8 [ lsave_stack ] lea,  [ r8 rcx *8 ] rax mov,
-  rcx inc,  [ lsave_sp ] rcx mov,  ret,
-  1 L:  eax 1 # mov,  n_locals_failed jmp,
-NCODE (L-RESTORE)                         \ rdx: a variable; the stack's top into it
-  rcx [ lsave_sp ] mov,  rcx rcx test,  1 F jz,
-  rcx dec,  r8 [ lsave_stack ] lea,  rax [ r8 rcx *8 ] mov,  [ rdx ] rax mov,
-  [ lsave_sp ] rcx mov,  ret,
-  1 L:  eax 2 # mov,  n_locals_failed jmp,
+\ (655) kernel-native.4's SLOT, lays LSAVE and LRESTORE inline, a run of
+\ them as one group (the asm engine's L_lsave and L_lrest, a slot at a
+\ time, were these routines until then): what it needs at run time - the
+\ count's address, the cells', the limit - and where a group's check jumps,
+\ with the engine's 1 for an overflow and 2 for an underflow.
+NCODE LSAVE-SP  ( --- a-addr )   N-PUSH  rbx lsave_sp # mov,  NEND
+NCODE LSAVE-STK ( --- a-addr )   N-PUSH  rbx lsave_stack # mov,  NEND
+NCODE LSAVE-LIM ( --- n )        N-PUSH  rbx LSAVE_MAX # mov,  NEND
+NCODE (L-OVER)    eax 1 # mov,  n_locals_failed jmp,  NEND
+NCODE (L-UNDER)   eax 2 # mov,  n_locals_failed jmp,  NEND

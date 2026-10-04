@@ -315,6 +315,23 @@ emit matrix:known-failing "$(wc -l < tests/matrix/KNOWN-FAILING | tr -d ' ')"
 #     differential, shell and pty suites as relfsh64 does.
 # ---------------------------------------------------------------
 echo "== the assembly engine =="
+# Every row this section emits on x86-64, emitted as skipped elsewhere. A
+# row missing here is MISSING on any other machine: asm:forthfuzz (597),
+# then native:str, native:fold and native:inline (644-646, found at 655).
+# The second time is a check (prompts/15): verify:skip-rows below names
+# any row the section emitted that this list lacks.
+SKIP_ROWS="asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell
+asm:interactive:failed asm:fixpoint asm:fuzz-mismatches
+asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a
+native:prims native:headers native:kernel-cut native:compiler
+native:core native:kernel-bytes native:os native:os-ported
+native:signals native:shell-run native:shell-diff:failed
+native:shell-forth-errors:failed native:shell-bytes native:shell
+native:interactive:failed native:mrsh:failed native:posix:failed
+native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
+size:asm-shell native:str native:locals native:fold native:inline
+verify:skip-rows"
+SKIP_FROM=$(wc -l < "$OUT")
 if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; then
     kern=reproduces
     for bytes in 8 4; do
@@ -446,6 +463,10 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         cv=$(timeout 20 ./relfasm64 forth/kernel64.img < tests/native/kernel-str.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         na=$(timeout 20 ./native-kernel < tests/native/kernel-str.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:str same; else emit native:str differ; fi
+        # (Iteration 655) shadow.4's locals, which SLOT, lays natively as groups
+        cv=$(timeout 20 ./relfasm64 forth/kernel64.img < tests/native/kernel-locals.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        na=$(timeout 20 ./native-kernel < tests/native/kernel-locals.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:locals same; else emit native:locals differ; fi
         # (Iteration 645) stores folded into the address before them
         cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         na=$(timeout 10 ./native-kernel < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
@@ -486,7 +507,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
          emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
@@ -503,12 +524,13 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
        grep -q "размером $ds байт" docs/ARTICLE-habr.md && grep -q "движок: $de байт" docs/ARTICLE-habr.md; then
         emit docs:sizes current
     else emit docs:sizes stale; fi
+    missing=$(tail -n +$((SKIP_FROM + 1)) "$OUT" | awk '{print $1}' | while read -r k; do
+        case " $(echo $SKIP_ROWS) " in *" $k "*) ;; *) printf '%s,' "$k" ;; esac; done)
+    emit verify:skip-rows "${missing:-complete}"
 else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
-    for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals native:shell-run native:shell-diff:failed native:shell-forth-errors:failed native:shell-bytes native:shell native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures \
-             size:asm-engine size:asm-shell; do
+    for k in $SKIP_ROWS; do
         emit "$k" skipped
     done
 fi

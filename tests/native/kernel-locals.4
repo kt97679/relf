@@ -1,0 +1,77 @@
+\ tests/native/kernel-locals.4 - shadow.4's locals, which the native
+\ kernel's SLOT, lays as groups since Iteration 655: a definition's run of
+\ saves as one, each exit's run of restores as one. Runs of every length
+\ to 9 and of 16, as arguments; values, zeroed; two exits; a word with
+\ locals inside another's and in a loop; recursion; every variable as it
+\ was after all of them; and the save stack's overflow, last - it leaves
+\ the stack full. Native, CV8-asm and CV8-C print the same. Lines short:
+\ the kernel reads a long one cut.
+S" forth/pool.4" INCLUDED
+S" forth/shadow.4" INCLUDED
+VARIABLE L1 VARIABLE L2 VARIABLE L3 VARIABLE L4 VARIABLE L5 VARIABLE L6 VARIABLE L7 VARIABLE L8
+VARIABLE L9 VARIABLE L10 VARIABLE L11 VARIABLE L12 VARIABLE L13 VARIABLE L14 VARIABLE L15 VARIABLE L16
+: SET-ALL ( --- )  1001 L1 ! 1002 L2 ! 1003 L3 ! 1004 L4 ! 1005 L5 !
+  1006 L6 ! 1007 L7 ! 1008 L8 ! 1009 L9 ! 1010 L10 ! 1011 L11 ! 1012 L12
+  ! 1013 L13 ! 1014 L14 ! 1015 L15 ! 1016 L16 ! ;
+: SUM-ALL ( --- n )  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @
+  5 * + L6 @ 6 * + L7 @ 7 * + L8 @ 8 * + L9 @ 9 * + L10 @ 10 * + L11 @
+  11 * + L12 @ 12 * + L13 @ 13 * + L14 @ 14 * + L15 @ 15 * + L16 @ 16 *
+  + ;
+: W1  SHADOW{ L1 }
+  0 L1 @ 1 * + ;
+: W2  SHADOW{ L1 L2 }
+  0 L1 @ 1 * + L2 @ 2 * + ;
+: W3  SHADOW{ L1 L2 L3 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + ;
+: W4  SHADOW{ L1 L2 L3 L4 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + ;
+: W5  SHADOW{ L1 L2 L3 L4 L5 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + ;
+: W6  SHADOW{ L1 L2 L3 L4 L5 L6 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + L6 @ 6 * + ;
+: W7  SHADOW{ L1 L2 L3 L4 L5 L6 L7 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + L6 @ 6 * + L7
+  @ 7 * + ;
+: W8  SHADOW{ L1 L2 L3 L4 L5 L6 L7 L8 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + L6 @ 6 * + L7
+  @ 7 * + L8 @ 8 * + ;
+: W9  SHADOW{ L1 L2 L3 L4 L5 L6 L7 L8 L9 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + L6 @ 6 * + L7
+  @ 7 * + L8 @ 8 * + L9 @ 9 * + ;
+: W16  SHADOW{ L1 L2 L3 L4 L5 L6 L7 L8 L9 L10 L11 L12 L13 L14 L15 L16 }
+  0 L1 @ 1 * + L2 @ 2 * + L3 @ 3 * + L4 @ 4 * + L5 @ 5 * + L6 @ 6 * + L7
+  @ 7 * + L8 @ 8 * + L9 @ 9 * + L10 @ 10 * + L11 @ 11 * + L12 @ 12 * +
+  L13 @ 13 * + L14 @ 14 * + L15 @ 15 * + L16 @ 16 * + ;
+SET-ALL
+11 W1 . CR
+11 21 W2 . CR
+11 21 31 W3 . CR
+11 21 31 41 W4 . CR
+11 21 31 41 51 W5 . CR
+11 21 31 41 51 61 W6 . CR
+11 21 31 41 51 61 71 W7 . CR
+11 21 31 41 51 61 71 81 W8 . CR
+11 21 31 41 51 61 71 81 91 W9 . CR
+11 21 31 41 51 61 71 81 91 101 111 121 131 141 151 161 W16 . CR
+SUM-ALL . CR
+: AV ( a b --- n )  SHADOW{ L1 L2 | L3 L4 L5 }
+  L3 @ L4 @ + L5 @ +  L1 @ L2 @ - +  7 L3 ! ;
+: EE ( x y --- z )  SHADOW{ L1 L2 | L3 }
+  L1 @ 0 = IF L2 @ EXIT THEN  L1 @ L2 @ * ;
+: INNER ( x --- y )  SHADOW{ L1 | L2 }  L1 @ 3 * L2 !  L2 @ 1+ ;
+: OUTER ( x --- y )  SHADOW{ L1 | L2 }  L1 @ INNER L2 !  L2 @ L1 @ + ;
+: LOOPY ( --- n )  0  1000 0 DO  I 7 W2 +  LOOP ;
+: RSUM ( n --- s )  SHADOW{ L1 | L2 }
+  L1 @ 0 = IF 0 EXIT THEN  L1 @ 1- RECURSE L2 !  L2 @ L1 @ + ;
+9 4 AV .  0 5 EE .  6 5 EE .  5 OUTER .  LOOPY .  200 RSUM . CR
+SUM-ALL . CR
+\ sixteen cells a frame, 4096 in the stack: 256 frames fit, so the last
+\ to run is 300's 256th, n 45 - a check one group too late says 44
+VARIABLE LAST-N
+: OV ( n --- )
+  SHADOW{ L1 | L2 L3 L4 L5 L6 L7 L8 L9 L10 L11 L12 L13 L14 L15 L16 }
+  L1 @ LAST-N !  L1 @ IF L1 @ 1- RECURSE THEN ;
+300 OV
+LAST-N @ . CR
+.( end) CR
+BYE
