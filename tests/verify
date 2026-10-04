@@ -438,8 +438,12 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         na=$(./native-kernel < tests/native/kernel-os.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:os same; else emit native:os differ; fi
         emit native:os-ported "$(python3 tools/gen-native-os.py /dev/null --report | head -1 | awk '{print $2}' | tr -d ':')"
+        # (Iteration 636) SIGNAL-ACTION: the throw route, caught signals, a refusal
+        cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-sig.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        na=$(timeout 10 ./native-kernel < tests/native/kernel-sig.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:signals same; else emit native:signals differ; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; fi
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
     emit size:asm-shell "$(wc -c < relfshasm64 | tr -d ' ')"
     # The sizes the README and both articles quote, against the files
@@ -458,7 +462,7 @@ else
     # asm:forthfuzz:failures too (Iteration 597): 595 added the row only
     # where the engine runs, and an ARMv7 verify reported it MISSING
     for k in asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell \
-             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported \
+             asm:interactive:failed asm:fixpoint asm:fuzz-mismatches asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a native:prims native:headers native:kernel-cut native:compiler native:core native:kernel-bytes native:os native:os-ported native:signals \
              size:asm-engine size:asm-shell; do
         emit "$k" skipped
     done

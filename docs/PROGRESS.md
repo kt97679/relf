@@ -660,6 +660,7 @@ do not trust the absence of a line below.
 - 633 — N2: the native shell's primitives inventoried; one source for them, relfasm64.4
 - 634 — 22 primitives generated from the asm engine's handlers; 21 to go, and why
 - 635 — 42 of 43: closures, the data chain re-rooted, the start's capture
+- 636 — SIGNAL-ACTION natively: the last of the 43
 
 ### Not tied to an iteration
 

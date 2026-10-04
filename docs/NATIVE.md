@@ -474,3 +474,15 @@ OPEN-FILE. Left: SIGNAL-ACTION, whose trap handler is the asm engine's
 VM's - the one native design to make. tests/native/kernel-os.4: native,
 CV8's asm engine and CV8's C engine print the same.
 
+**All 43 (636).** SIGNAL-ACTION came last: the asm engine's handler,
+generated, with its sig_catch and sig_restorer, and one piece written
+natively - forth/native-sig.4, which the generator inlines after the
+allocator's code: int_throw, action 4's handler (^C into Forth), as the
+engine's - no trap word registered, or the signal inside the allocator
+(alloc_block to alloc_end): SIGINT's flag only, so a throw never leaves
+the heap half updated; else the saved rip becomes trap_entry and the
+saved rax -28, and trap_entry pushes the code and goes to the trap word.
+The engine resumes its VM in the trap word; native code goes there.
+tests/native/kernel-sig.4 - the throw route through a CATCH, a caught
+signal taken once, SIGSEGV refused: the three engines the same.
+

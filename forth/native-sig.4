@@ -1,0 +1,30 @@
+\ native-sig.4 - SIGNAL-ACTION's throw, natively (docs/NATIVE.md section 10,
+\ Iteration 636). tools/gen-native-os.py inlines this into native-os.4 right
+\ after the allocator's subroutines, before the handlers - L_sigaction, the
+\ asm engine's own, generated, takes int_throw's address, which asm64 knows
+\ only once it is laid. The asm engine's int_throw, with its trap_code made
+\ native: action 4 - ^C into Forth (Iteration 571) - lands here.
+\ - no trap word registered (TRAP-XT!): SIGINT's flag, as a caught signal;
+\ - the signal landed inside the allocator (alloc_block to alloc_end - the
+\   engine's region from alloc_block to L_allocate): the flag too, so a
+\   throw never leaves the heap half updated;
+\ - else the saved rip becomes trap_entry and the saved rax -28: on return
+\   from the handler, the code is pushed and the trap word runs. The asm
+\   engine resumes its VM in the trap word; native code simply goes there.
+\ The ucontext's saved registers, as the engine reads them: rax at 144,
+\ rip at 168.
+LABEL trap_entry  LABEL int_throw
+trap_entry L:                            \ rax: the code
+  rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
+  rax [ trap_xt_v ] mov,
+  rax push,  ret,                        \ to the trap word
+int_throw L:                             \ edi: the signal; rdx: the ucontext
+  rax [ trap_xt_v ] mov,
+  rax rax test,  1 F je,
+  rax [ rdx 168 ] mov,                   \ rip, where the signal landed
+  rcx alloc_block ORG @ - N-START @ + # mov,  rax rcx cmp,  2 F jb,
+  rcx alloc_end ORG @ - N-START @ + # mov,  rax rcx cmp,  1 F jb,
+  2 L:  rcx trap_entry ORG @ - N-START @ + # mov,  [ rdx 168 ] rcx mov,
+  [ rdx 144 ] qword-ptr -28 # mov,
+  ret,
+  1 L:  [ sig_flag 2 + ] byte-ptr 1 # mov,  ret,

@@ -1,0 +1,13 @@
+\ tests/native/kernel-sig.4 - SIGNAL-ACTION natively (Iteration 636): its
+\ throw route (action 4), caught signals (3), a refusal - at the kernels'
+\ own prompts; native and CV8 on both engines must print the same.
+: TRAPW ( code --- )  THROW ;
+' TRAPW TRAP-XT!
+2 4 SIGNAL-ACTION . CR
+: SPIN  GETPID 2 KILL DROP  BEGIN AGAIN ;
+: T  ['] SPIN CATCH . ;
+T CR
+2 3 SIGNAL-ACTION . CR
+GETPID 2 KILL . SIGNALS-PENDING . SIGNALS-PENDING . CR
+2 0 SIGNAL-ACTION . 11 4 SIGNAL-ACTION . CR
+BYE

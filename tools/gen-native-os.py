@@ -38,6 +38,9 @@ TERM-RESTORE FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
 TCSETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TRAP-XT!""".split()
 FORBIDDEN = re.compile(r'\b(r14\w*|r15\w*|rbx|ebx|rbp|ebp|bx|bl|EXITNEXT,|RPUSH,|SLOT,|dispatch\w*)\b')
 ALIASES = {'SIGNAL-ACTION': 'L_sigaction', 'SIGNALS-PENDING': 'L_sigpending'}   # named otherwise
+NATIVE = {'int_throw'}                  # supplied by forth/native-sig.4 (636)
+NORETURN = {'sig_restorer'}             # rt_sigreturn: no fall into the next label
+SIGFILE = 'forth/native-sig.4'
 ROOT = 'BSS_BASE'                       # the data chain's root: re-rooted
 LAYOUT = {'TEXTORG', 'VM_OFF', 'VM_BASE', 'MEM_SIZE', 'MEMSIZE'}   # the engine's own memory
 
@@ -78,6 +81,8 @@ def read_engine():
                 and ' '.join(ls).strip():
             labels[k] = [l for l in ls if strip_comments(l).strip()]     # data: m_passwd's bytes
             data.add(k)
+        elif k in NORETURN:
+            labels[k] = [l for l in ls if strip_comments(l).strip()]
         elif ' '.join(strip_comments(l) for l in ls).strip() and k in nxt:
             # it falls into the label after it (FILE-SIZE into ud_ior): the
             # fall made a jump, as code can be laid anywhere here (635)
@@ -139,7 +144,7 @@ def main():
 
     def closure(label, code_seen, const_seen):
         """why it is refused, or None; fills code_seen and const_seen"""
-        if label in code_seen:
+        if label in code_seen or label in NATIVE:
             return None
         body = labels.get(label)
         if not body:
@@ -195,12 +200,17 @@ def main():
             f.write(m + '\n')
         for s in subs:
             f.write('LABEL %s\n' % s)
+        if 'free_block' in subs:
+            f.write('LABEL alloc_end\n')
         for s in subs:                   # the subroutines: labelled code; a shared
             f.write('%s L:\n' % s)      # tail's NEXT, returns from the routine
             for l in labels[s]:
                 l = addresses(rename(strip_comments(l)).replace('NEXT,', '195 C,A'), labels).strip()
                 if l:
                     f.write('  ' + l + '\n')
+            if s == 'free_block':        # the allocator's end, and the native signal code
+                f.write('alloc_end L:\n')
+                f.write(open(SIGFILE).read())
         for name, label in ported:
             f.write('NCODE %s   \\ %s\n' % (name, label))
             for l in labels[label]:
