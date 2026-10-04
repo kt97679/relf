@@ -450,6 +450,11 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         na=$(timeout 10 ./native-kernel < tests/native/kernel-fold.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
         if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:fold same; else emit native:fold differ; fi
+        # (Iteration 646) small colon words inlined: results through words that
+        # inline, nest, and do not
+        cv=$(timeout 10 ./relfasm64 forth/kernel64.img < tests/native/kernel-inline.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        na=$(timeout 10 ./native-kernel < tests/native/kernel-inline.4 2>&1 | tr -d '\r' | grep -v 'Welcome\|^OK')
+        if [ -n "$cv" ] && [ "$cv" = "$na" ]; then emit native:inline same; else emit native:inline differ; fi
         # (Iteration 637) the shell's own sources loaded into the native kernel and
         # run through TREE-RUN-TEXT - expansions, functions, loops, a pipeline
         cv=$(./relfasm64 forth/kernel64.img < tests/native/shell-run.4 2>&1 | tr -d '\r' | grep -v '^OK$\|^$\|Welcome\|Redefining')
@@ -481,7 +486,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:fold "not built"; emit native:shell-run "not built"
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
          emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"

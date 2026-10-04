@@ -670,6 +670,7 @@ do not trust the absence of a line below.
 - 643 — tools/native-prof.py and the routines' map: the string primitives are hot
 - 644 — CSTRLEN and SCAN made fast; a bug in asm64's imm64 encoding
 - 645 — stores folded into the address before them: fn 5.0 times dash
+- 646 — small colon words inlined: 4.6-8.4 % faster, A/B against 645
 
 ### Not tied to an iteration
 

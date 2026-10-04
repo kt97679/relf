@@ -44,9 +44,10 @@ native:core same
 native:fold same
 native:forthfuzz:failures 0
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
+native:inline same
 native:interactive:failed 0
 native:intrfuzz:failures 0
-native:kernel-bytes 57689
+native:kernel-bytes 59032
 native:kernel-cut same
 native:lint 0
 native:lint-self-test 4/4
@@ -57,7 +58,7 @@ native:os-ported 63
 native:posix:failed 0
 native:prims same
 native:shell 1
-native:shell-bytes 525132
+native:shell-bytes 538956
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same

@@ -1,0 +1,19 @@
+\ tests/native/kernel-inline.4 - small colon words inlined (Iteration 646):
+\ results through words that inline, nest, and do not - native and CV8 must
+\ print the same; and natively the marker on what can be copied.
+VARIABLE BASEV  100 BASEV !
+: X@ ( off --- x )  BASEV @ + ;
+: XF@ ( a b --- x )  1+ CELLS + X@ ;
+: USE  5 X@ .  2 3 XF@ .  7 X@ X@ . ;
+USE CR
+: HASIF ( n --- m )  DUP 0< IF NEGATE THEN 1+ ;
+: USE2  -4 HASIF .  4 HASIF . ;
+USE2 CR
+: RS ( n --- n )  >R R> 2 * ;
+: USE3  21 RS . ;
+USE3 CR
+: TWICE ( xt --- )  DUP EXECUTE EXECUTE ;
+: INC  BASEV @ 1+ BASEV ! ;
+: USE4  ['] INC TWICE  BASEV @ . ;
+USE4 CR
+BYE
