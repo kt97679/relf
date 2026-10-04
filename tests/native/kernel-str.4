@@ -1,0 +1,20 @@
+\ tests/native/kernel-str.4 - the string primitives native-rt.4 makes fast
+\ (Iteration 644): CSTRLEN at every length to 20 and every alignment to 7,
+\ SCAN found, not found, empty, at every length and position - against CV8:
+\ native, CV8-asm and CV8-C print the same. Only failures and "ok" print.
+CREATE SB 96 ALLOT
+: MK ( n off --- z )  SB 8 + + >R  R@ OVER 97 FILL  0 R@ ROT + C!  R> ;
+: T-CSTR  21 0 DO 8 0 DO  J I MK CSTRLEN J = 0= IF ." cstrlen-bad " J . I . THEN
+  LOOP LOOP ." cstrlen-ok" CR ;
+T-CSTR
+VARIABLE END   \ not >R: in a loop, I and J would not be the loop's then
+: T-SCAN  21 0 DO  I 0 ?DO  J 3 MK J 2DUP + END !  OVER I + 98 SWAP C!  98 SCAN
+    J I - = 0= IF ." scan-u-bad " J . I . THEN  END @ J - I + = 0= IF ." scan-a-bad " J . I . THEN
+  LOOP LOOP ." scan-ok" CR ;
+T-SCAN
+: T-NONE  21 0 DO  I 5 MK I 2DUP + END ! 98 SCAN 0= 0= IF ." none-u-bad " I . THEN
+  END @ = 0= IF ." none-a-bad " I . THEN  LOOP ." none-ok" CR ;
+T-NONE
+SB 0 98 SCAN . SB - . CR
+S" hello=world" 61 SCAN . DROP CR
+BYE

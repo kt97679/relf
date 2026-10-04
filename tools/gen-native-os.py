@@ -36,8 +36,8 @@ SYS-ARG GETPID UNSETENV ALLOCATE FREE RESIZE GETPWHOME ISATTY OPEN-DIR READ-DIR
 CLOSE-DIR ACCESS KILL UMASK CPU-TIMES SIGNAL-ACTION SIGNALS-PENDING TERM-RAW
 TERM-RESTORE FILE-KIND GETRLIMIT SETRLIMIT WAIT-NOHANG GETPPID ENV-AT SETPGID
 TCSETPGRP WAIT-JOB FILE-MODE LOCAL-TIME DUP-FROM TRAP-XT!
-OPEN-FILE CLOSE-FILE REPOSITION-FILE FILE-POSITION READ WRITE POLL TYPE CSTRLEN
-SCAN SYS-EXIT BYE
+OPEN-FILE CLOSE-FILE REPOSITION-FILE FILE-POSITION READ WRITE POLL TYPE
+SYS-EXIT BYE
 TCP-LISTEN TCP-ACCEPT TCP-CONNECT SYSTEM DELETE-FILE GETFSIZE SETFSIZE RAW-MODE
 TCGETPGRP CHMOD""".split()
 # The third row (640): the rest the engine implements - the examples' TCP
@@ -48,7 +48,9 @@ FORCED = ['set_argv0']   # the start's, not a handler's: RELF_ARGV0, $0 (640)
 # this existed - its OPEN-FILE's mode table did not create a file for <>,
 # and $0 read past its NUL. The engine's are the shell's tested semantics;
 # these, laid after native-rt.4's, shadow them in the kernel's build.
-# MOVE FILL COMPARE stay native-rt.4's: pure, CORE-checked, COMPARE faster.
+# MOVE FILL COMPARE stay native-rt.4's: pure, CORE-checked, COMPARE faster;
+# and since 644 CSTRLEN and SCAN, made faster there, with tests/native/
+# kernel-str.4 against CV8 (the profile put them at 6-14 % of the shell).
 FORBIDDEN = re.compile(r'\b(r14\w*|r15\w*|rbx|ebx|bx|bl|EXITNEXT,|RPUSH,|SLOT,|dispatch\w*)\b')
 # rbp is the engine's scratch - its VM is r12-r15 and rbx - and natively
 # the data stack: it becomes r12, free natively (r12 and r13 are what the

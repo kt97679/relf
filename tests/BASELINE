@@ -52,7 +52,7 @@ native:lint-self-test 4/4
 native:mrsh:failed 0
 native:n1a 169
 native:os same
-native:os-ported 65
+native:os-ported 63
 native:posix:failed 0
 native:prims same
 native:shell 1
@@ -61,6 +61,7 @@ native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same
 native:signals same
+native:str same
 parse:encoded 4
 parse:failed 0
 parse:passed 26

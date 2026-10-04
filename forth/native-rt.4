@@ -38,16 +38,28 @@ NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the l
   6 L:  rbp 24 # add,
 NEND
 NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and 0
-  rax rbx mov,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,
-  rcx rcx test,  1 F jz,
-  242 C,A 174 C,A                        \ repne scasb
-  2 F je,
-  1 L:  [ rbp 8 ] rdi mov,  ebx ebx xor,  3 F jmp,
-  2 L:  rdi 1 # sub,  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbx 1 # add,
-  3 L:  rbp 8 # add,
+  \ a byte loop (644): a shell scans short strings, and repne scasb is
+  \ microcoded and slow to start - 6 % of fn and arith (tools/native-prof.py)
+  rax rbx mov,  eax 255 # and,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,
+  1 L:  rcx rcx test,  2 F jz,
+        edx [ rdi ] byte-ptr movzx,  edx eax cmp,  2 F je,
+        rdi inc,  rcx dec,  1 B jmp,
+  2 L:  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbp 8 # add,
 NEND
 NCODE CSTRLEN  ( c-addr --- u )
-  rdi rbx mov,  eax eax xor,  rcx -1 # mov,  242 C,A 174 C,A  rcx not,  rcx 1 # sub,  rbx rcx mov,
+  \ eight bytes at a time (644): to an alignment by bytes - an aligned read
+  \ never crosses into a page that is not there - then the zero-byte test,
+  \ (x - 0x0101..) & ~x & 0x8080.., then the zero found in its word. repne
+  \ scasb was 10-14 % of fn and arith (tools/native-prof.py).
+  rdi rbx mov,
+  1 L:  rax rdi mov,  eax 7 # and,  2 F jz,
+        [ rdi ] byte-ptr 0 # cmp,  4 F je,
+        rdi inc,  1 B jmp,
+  2 L:  r8 72340172838076673 # mov,  r9 -9187201950435737472 # mov,
+  3 L:  rax [ rdi ] mov,  rdx rax mov,  rax r8 sub,  rdx not,  rax rdx and,  rax r9 and,
+        5 F jnz,  rdi 8 # add,  3 B jmp,
+  5 L:  [ rdi ] byte-ptr 0 # cmp,  4 F je,  rdi inc,  5 B jmp,
+  4 L:  rdi rbx sub,  rbx rdi mov,
 NEND
 NCODE TYPE  ( c-addr u --- )            \ write(1, ...)
   rdx rbx mov,  rsi [ rbp ] mov,  eax 1 # mov,  edi 1 # mov,  syscall,

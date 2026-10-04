@@ -668,6 +668,7 @@ do not trust the absence of a line below.
 - 641 — every suite natively: pty, mrsh, posix, both fuzzers - N2's shell complete
 - 642 — the native shell's speed: 8.5-8.8 times CV8's, 4.5-6.3 times dash's time
 - 643 — tools/native-prof.py and the routines' map: the string primitives are hot
+- 644 — CSTRLEN and SCAN made fast; a bug in asm64's imm64 encoding
 
 ### Not tied to an iteration
 
