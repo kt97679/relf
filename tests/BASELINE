@@ -44,6 +44,8 @@ native:core same
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
 native:kernel-bytes 51226
 native:kernel-cut same
+native:lint 0
+native:lint-self-test 4/4
 native:n1a 169
 native:prims same
 parse:encoded 4

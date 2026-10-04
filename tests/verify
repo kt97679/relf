@@ -504,6 +504,12 @@ emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-sh
 # ---------------------------------------------------------------
 # Shebangs against interpreters, the locale pins, and the bundle. Two
 # reports from a real checkout found faults here that no suite watched.
+# The native sources' lint (Iteration 632): words defined inside a word
+# list section and named in source, and words used above their
+# definition - each slip made more than once (prompts/15-repeat-slip) -
+# and its negative controls, the four slips rebuilt, each to be caught.
+emit native:lint "$(python3 tools/native-lint.py 2>/dev/null | tail -1 | awk '{print $2}')"
+emit native:lint-self-test "$(python3 tools/native-lint.py --self-test 2>/dev/null | tail -1 | awk '{print $3"/"$5}')"
 # The log's closed volumes (Iteration 631): docs/progress/, a hundred
 # iterations each; every volume but the newest is closed and never
 # changes - a wrong entry is corrected forward, in the current volume. A

@@ -656,6 +656,7 @@ do not trust the absence of a line below.
 - 629 — a compare fused with its branch; OVER fused with its operation
 - 630 — DO loops in registers
 - 631 — housekeeping: the log in volumes; three new prompts, four amended
+- 632 — a lint for the native compiler's sources, and its self-test
 
 ### Not tied to an iteration
 
