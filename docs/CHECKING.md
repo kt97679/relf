@@ -261,6 +261,10 @@ does it by itself.
 
 ## Measuring
 
+    sh tools/pack-results.sh  # on another machine: clean, build, measure,
+                              # verify, and pack it all in one file to send
+                              # back (657); --help lists what is in it
+
     make bench            # speed against the reference shells
     make sizes            # size against every shell installed
     make profile          # dispatch counts per word, on a realistic script

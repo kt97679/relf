@@ -10,8 +10,12 @@ last command), reads the image from /proc/PID/mem while the shell waits,
 and compares it with the file: a page that differs was written. The words
 whose bytes differ are named from the binary's own dictionary and
 native-kernel.map, as tools/native-prof.py names them. And smaps' own
-split of the executable's mapping: Private_Dirty, written; Private_Clean,
-only read.
+count of the mapping's written pages: Anonymous - a page this process
+wrote was copied, and is its own - with Private_Dirty and Private_Clean
+beside it. Those said 536 and 0 kB in both of a pack's runs on this VM
+(657), each right after the build had written a new file - where the
+bytes said 72 pages written and Anonymous 328 kB; on an older file they
+say about 328 and 208. So Anonymous is the count, the bytes the check.
 usage: tools/native-written.py [BINARY]          default ./relfsh-native
 """
 import bisect, collections, importlib.util, os, subprocess, sys, time
@@ -32,7 +36,7 @@ def who(a):
 f = open(binp, 'rb').read()
 p = subprocess.Popen([binp, '-c', 'sleep 2; :'])
 time.sleep(0.7)
-size = 0; dirty = clean = 0
+size = 0; dirty = clean = anon = rss = 0
 with open('/proc/%d/smaps' % p.pid) as sm:
     mine = False
     for line in sm:
@@ -43,6 +47,8 @@ with open('/proc/%d/smaps' % p.pid) as sm:
             if mine: size = hi - lo
         elif mine and fs[0] == 'Private_Dirty:': dirty = int(fs[1])
         elif mine and fs[0] == 'Private_Clean:': clean = int(fs[1])
+        elif mine and fs[0] == 'Anonymous:': anon = int(fs[1])
+        elif mine and fs[0] == 'Rss:': rss = int(fs[1])
 with open('/proc/%d/mem' % p.pid, 'rb') as m:
     m.seek(BASE)
     mem = m.read(size)
@@ -51,8 +57,9 @@ pages = collections.OrderedDict()
 for off in range(len(mem)):
     if mem[off] != (f[off] if off < len(f) else 0):
         pages.setdefault(off // 4096, set()).add(who(BASE + off))
-print('%s: the image mapped %d kB; smaps: written (Private_Dirty) %d kB, only read (Private_Clean) %d kB'
-      % (binp, size // 1024, dirty, clean))
+print('%s: the image mapped %d kB, resident %d kB; written, so copied (Anonymous) %d kB, the file\'s pages %d kB'
+      % (binp, size // 1024, rss, anon, rss - anon))
+print('  (smaps\' Private_Dirty %d kB, Private_Clean %d kB - 536 and 0 on a file just written: 657)' % (dirty, clean))
 print('pages whose bytes differ from the file: %d of %d (%d kB)' % (len(pages), size // 4096, len(pages) * 4))
 words = collections.Counter(w for v in pages.values() for w in v)
 print('words with bytes written: %d; words per written page: %s'

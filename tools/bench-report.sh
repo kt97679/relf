@@ -11,7 +11,8 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 SCALE=${SCALE:-25}; ROUNDS=${ROUNDS:-7}
-report="$PWD/bench-report-$(uname -n)-$(date -u +%Y%m%dT%H%MZ).txt"
+# REPORT names the file instead (657: tools/pack-results.sh, which packs it)
+report=${REPORT:-"$PWD/bench-report-$(uname -n)-$(date -u +%Y%m%dT%H%MZ).txt"}
 work=$(mktemp -d)
 : > "$report"
 say() { printf '%s\n' "$*" | tee -a "$report"; }

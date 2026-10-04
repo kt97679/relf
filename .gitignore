@@ -81,6 +81,11 @@ relfasm-consts.S
 # anchored there (656): unanchored, the rule also hid bench/reports/,
 # where a report whose figures are cited is committed as it came
 /bench-report-*.txt
+# tools/pack-results.sh's packs, written there too, to be sent back (657)
+/relf-results-*.tar.gz
+# and a bundle lying there is a handoff, never content: tests/verify's
+# portability check named one as untracked (657)
+/*.bundle
 native-n1a
 native-n1b
 native-n1c

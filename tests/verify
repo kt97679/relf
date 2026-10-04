@@ -469,7 +469,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         # relfasm64.4's handlers, at the kernels' prompts - native and CV8's asm
         # engine, the handlers' other user, must print the same
         native_cmp native:os tests/native/kernel-os.4
-        emit native:os-ported "$(python3 tools/gen-native-os.py /dev/null --report | head -1 | awk '{print $2}' | tr -d ':')"
+        emit native:os-ported "$(python3 tools/gen-native-os.py /dev/null --report | sed -n 1p | awk '{print $2}' | tr -d ':')"
         # (Iteration 636) SIGNAL-ACTION: the throw route, caught signals, a refusal
         native_cmp native:signals tests/native/kernel-sig.4
         # (Iteration 644) the string primitives native-rt.4 makes fast, against CV8
