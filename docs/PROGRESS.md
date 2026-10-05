@@ -718,6 +718,7 @@ do not trust the absence of a line below.
 - 691 — the layout A/B's floor is 2.3 % here; forward branches priced: 11.0 KB, 3.9 KB of it with nothing to fix
 - 692 — the user's ruling (inside the floor = not slower): 0 by xor kept, -3.5 KB; short branches built, net -180 bytes, set aside
 - 693 — forward branches laid short with a table of relative fields and REL-FIX in assembly: 2,636 shrunk, code -5.4 KB net; not slower
+- 694 — the kernel's own literals at their shortest, by the cross compiler: code -2.8 KB at no cost in the image
 
 ### Not tied to an iteration
 

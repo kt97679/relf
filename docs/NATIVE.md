@@ -995,3 +995,14 @@ loop 1.002, fn 0.989, str 0.954, arith 0.982, realistic 0.969 - not
 slower; denser code may be the faster for it. Next for the bytes: the
 kernel's own branches through the cross compiler, whose code is not in
 the image, and the shrinker itself in assembly.
+
+**694: the kernel's own literals at their shortest.** The kernel's code
+is laid by the cross compiler, and native.4's N-LIT laid every literal
+as mov rbx,imm32: the budget of native-kernel showed 1,308 seven-byte
+loads, 3.5 KB to save at no cost in the image - the cross compiler's own
+code is not in it. N-LIT now lays them as LIT, does at run time: 0 by
+xor ebx,ebx, 1 to 2^31-1 by mov ebx,imm32; LIT-WORD? already knows both.
+The kernel's code -2,767 bytes, the shell's -2,760 (the file 440,696 ->
+436,600). Over layouts against 693: 13 rounds 0.963-1.065 (str 1.065 on
+a noisy run, the spreads 0.87-1.15); str, realistic and loop again at 21
+rounds, 0.961, 1.018, 0.999 - not slower.

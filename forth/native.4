@@ -38,7 +38,14 @@ VARIABLE N-START             \ the image's base: @XT and !XT count from it
 \ ---- the stack, and the jumps the control words patch -----------------------
 : N-PUSH ( --- )  rbp 8 # sub,  [ rbp ] rbx mov, ;     \ the top into memory
 : N-POP ( --- )   rbx [ rbp ] mov,  rbp 8 # add, ;     \ the next becomes the top
-: N-LIT ( n --- ) >R N-PUSH  rbx R> # mov, ;
+: N-LIT ( n --- )   \ (694) the shortest load that holds it, as LIT, at run time (687, 692):
+  \ 0 by xor ebx,ebx (2 bytes), 1 to 2^31-1 by mov ebx,imm32 (5, zero-extended),
+  \ the rest as before - mov rbx,imm32 (7) or movabs. The kernel's own code
+  \ is laid here, by the cross compiler, whose code is not in the image.
+  >R N-PUSH
+  R@ 0= IF  R> DROP  ebx ebx xor,  EXIT  THEN
+  R@ 0> R@ 2147483648 < AND IF  ebx R> # mov,  EXIT  THEN
+  rbx R> # mov, ;
 : N-FLAG ( --- )  rax rbx mov,  N-POP  rax rax test, ; \ the flag, taken off
 : N-ADDR ( buf --- addr ) ABUF @ - ORG @ + ;           \ a buffer place's address
 : N-FWD ( op1 op2 --- fix )   \ a jump with its 32-bit displacement to come;
