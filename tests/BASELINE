@@ -61,6 +61,7 @@ native:os-ported 62
 native:peep same
 native:posix:failed 0
 native:prims same
+native:self-built same
 native:shell 1
 native:shell-bytes 530088
 native:shell-diff:failed 0

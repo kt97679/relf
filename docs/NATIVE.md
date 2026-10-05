@@ -224,7 +224,13 @@ Each is an iteration or several, with what must be true at its end.
   dash in tools/bench-vm.py; the function-against-function table.
 - **N4, built by itself.** Exit: the native image built by the
   CV8-hosted compiler and by itself, byte for byte the same; in
-  tests/verify.
+  tests/verify. **Reached at 670:** forth/native-kernel.4 run by the
+  native kernel instead of CV8 writes the same native-kernel, byte for
+  byte, and the same map - in 0.12 s, where CV8 takes 0.68.
+  tools/native-self-build.sh does it; verify's native:self-built row
+  says same. The host's own words share names with the target's - 598
+  "Redefining" lines that CV8, which has none of kernel-native.4, never
+  prints - and change nothing in the output.
 
 ## 6. How it is measured
 
