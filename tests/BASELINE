@@ -52,7 +52,7 @@ native:inl same
 native:inline same
 native:interactive:failed 0
 native:intrfuzz:failures 0
-native:kernel-bytes 59280
+native:kernel-bytes 55184
 native:kernel-cut same
 native:lint 0
 native:lint-self-test 4/4

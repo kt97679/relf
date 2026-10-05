@@ -1149,3 +1149,14 @@ the image, so the folding costs it nothing. The kernel's code 59,667 ->
 -> 407,912. Both hosts fold alike: the self-build the same. Over layouts
 against 704: 0.998-1.013. The native shell since 686: 452,912 -> 407,912
 bytes, -45 KB, -9.9 %.
+
+**706: the kernel's comparisons fused with their branches.** The cross
+compiler's IF, WHILE and UNTIL took a comparison's flag as any other:
+setcc, neg, then mov, pop, test and jz. Now a comparison records where
+its flag's making began and its condition (N-SET); IF, WHILE and UNTIL
+straight after one, no landing between, undo the setcc and neg, pop by
+mov and lea - which keep the flags - and jump on the compare's own
+condition, inverted (N-FUSE?): the run-time compiler's 629, for the
+kernel's code. Its code 54,540 -> 52,856 (-1,684); the shell's 388,787
+-> 387,099. The self-build the same; over layouts against 705: 0.989,
+0.991, 0.998, 0.998, 1.006.

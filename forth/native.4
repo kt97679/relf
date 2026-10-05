@@ -74,10 +74,24 @@ VARIABLE N-LIT-AT    VARIABLE N-LIT-END    VARIABLE N-LIT-VAL    VARIABLE N-BARR
   BEGIN BL WORD DUP C@ 0= WHILE DROP REFILL 0= ABORT" native: input ended inside N:" REPEAT ;
 VARIABLE N-LEAVES            \ the innermost loop's LEAVE jumps, chained
 : N-0CC ( --- )  ebx 0 # mov, ;                          \ flags kept: mov
-: N-CMP ( --- )  rax [ r15 ] mov,  r15 8 # add,  rax rbx cmp,  N-0CC ;
+\ (706) A comparison's flag, and a branch on it, fused as the run-time
+\ compiler has since 629: a comparison records where its flag's making
+\ began and its condition; IF, WHILE and UNTIL straight after it undo the
+\ setcc and neg, pop without touching the flags, and jump on the cmp's
+\ own condition, inverted.
+VARIABLE N-FLAG-AT   VARIABLE N-FLAG-END   VARIABLE N-FLAG-CC
+: N-CMP ( --- )  rax [ r15 ] mov,  r15 8 # add,  rax rbx cmp,  THERE @ N-FLAG-AT !  N-0CC ;
 : N-TRUE ( --- ) rbx neg, ;                              \ 1 -> -1
 : N-CMP? ( --- )   \ a comparison's cmp: with the literal folded (705), or of the two cells
-  N-FOLD? IF  rbx N-LIT-VAL @ # cmp,  N-0CC  ELSE  N-CMP  THEN ;
+  N-FOLD? IF  rbx N-LIT-VAL @ # cmp,  THERE @ N-FLAG-AT !  N-0CC  ELSE  N-CMP  THEN ;
+: N-SET ( cc --- )   \ setcc bl, neg rbx: the flag, its making recorded (706)
+  DUP N-FLAG-CC !  15 C,A  144 + C,A  195 C,A  N-TRUE  THERE @ N-FLAG-END ! ;
+: N-FUSE? ( --- jcc true | false )   \ a comparison laid last, no landing since: undone,
+  \ the top popped by mov and lea - which keep the flags - and the jump if false
+  N-FLAG-END @ THERE @ =  N-FLAG-AT @ N-BARRIER @ < 0= AND  0= IF 0 EXIT THEN
+  N-FLAG-AT @ THERE !  0 N-FLAG-END !
+  rbx [ r15 ] mov,  r15 [ r15 8 ] lea,
+  N-FLAG-CC @ 1 XOR 128 +  -1 ;
 : N-LEAVE-ADD ( fix --- )   \ a jump to the loop's exit: a node, fix and next,
   HERE SWAP , N-LEAVES @ , N-LEAVES ! ;   \ in the host's memory, not the code's
 : N-LOOP-END ( outer --- )   \ every exit jump resolved; the outer loop's chain back
@@ -110,12 +124,12 @@ CURRENT @  NPRIMS CURRENT !
 : UM/MOD  rdx [ r15 ] mov,  rax [ r15 8 ] mov,  rbx div,
         r15 8 # add,  [ r15 ] rdx mov,  rbx rax mov, ;   \ ( rem quot )
 : D+    rax [ r15 ] mov,  [ r15 16 ] rax add,  rbx [ r15 8 ] adc,  r15 16 # add, ;
-: =     N-CMP?  bl sete,  N-TRUE ;
-: <>    N-CMP?  bl setne, N-TRUE ;
-: <     N-CMP?  bl setl,  N-TRUE ;
-: >     N-CMP?  bl setg,  N-TRUE ;
-: U<    N-CMP?  bl setb,  N-TRUE ;
-: 0=    rbx rbx test,  N-0CC  bl sete,  N-TRUE ;
+: =     N-CMP?  4 N-SET ;                                 \ sete
+: <>    N-CMP?  5 N-SET ;                                 \ setne
+: <     N-CMP?  12 N-SET ;                                \ setl
+: >     N-CMP?  15 N-SET ;                                \ setg
+: U<    N-CMP?  2 N-SET ;                                 \ setb
+: 0=    rbx rbx test,  THERE @ N-FLAG-AT !  N-0CC  4 N-SET ;
 : 0<    rbx 63 # sar, ;
 : @     rbx [ rbx ] mov, ;
 : !     N-FOLD? IF  [ N-LIT-VAL @ ] rbx mov,  N-POP  EXIT THEN      \ (705) to a literal address
@@ -139,13 +153,13 @@ CURRENT !
 \ and a definition after them must still get these (Iteration 618).
 CURRENT @  NCTRL CURRENT !
 \ control: laid down as jumps, patched when the structure closes
-: IF    N-FLAG  15 132 N-FWD ;                           \ jz near
+: IF    N-FUSE? IF 15 SWAP N-FWD EXIT THEN  N-FLAG  15 132 N-FWD ;   \ jz near, or the compare's own
 : ELSE  0 233 N-FWD  SWAP N-RESOLVE ;                    \ jmp near
 : THEN  N-RESOLVE ;
 : BEGIN THERE @ N-BARRIER !  HERE-A ;
-: UNTIL N-FLAG  15 132 N-BACK ;
+: UNTIL N-FUSE? IF 15 SWAP N-BACK EXIT THEN  N-FLAG  15 132 N-BACK ;
 : AGAIN 0 233 N-BACK ;
-: WHILE N-FLAG  15 132 N-FWD  SWAP ;                     \ ( dest --- orig dest )
+: WHILE N-FUSE? IF 15 SWAP N-FWD SWAP EXIT THEN  N-FLAG  15 132 N-FWD  SWAP ;   \ ( dest --- orig dest )
 : REPEAT  0 233 N-BACK  N-RESOLVE ;
 : RECURSE  N-SELF @ call, ;
 : EXIT  195 C,A ;                                        \ ret
