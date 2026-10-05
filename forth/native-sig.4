@@ -16,7 +16,7 @@
 LABEL trap_entry  LABEL int_throw  LABEL trap_handler  LABEL n_trap_code
 N-MARK trap_entry
 trap_entry L:                            \ rax: the code
-  rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
+  r15 8 # sub,  [ r15 ] rbx mov,  rbx rax mov,
   rax [ trap_xt_v ] mov,
   rax push,  ret,                        \ to the trap word
 N-MARK int_throw
@@ -34,7 +34,7 @@ int_throw L:                             \ edi: the signal; rdx: the ucontext
 \ stacks, 1 KB above each floor, the code on top (not the tops, where the
 \ outermost frames live, which THROW goes back to); no trap word, exit 70.
 \ It runs on the signal stack (SA_ONSTACK): the return stack may be spent.
-\ The ucontext's saved registers: rbp 120, rax 144, rsp 160, rip 168.
+\ The ucontext's saved registers: r15 96 (rbp 120 until 697), rax 144, rsp 160, rip 168.
 N-MARK trap_handler
 trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
   r9 -9 # mov,
@@ -48,7 +48,7 @@ N-MARK n_trap_code
 n_trap_code L:                           \ r9: the code; rdx: the ucontext
   rax [ trap_xt_v ] mov,  rax rax test,  2 F je,
   [ rdx 144 ] r9 mov,
-  rcx N-DFLOOR 1024 + # mov,  [ rdx 120 ] rcx mov,
+  rcx N-DFLOOR 1024 + # mov,  [ rdx 96 ] rcx mov,
   rcx N-RFLOOR 1024 + # mov,  [ rdx 160 ] rcx mov,
   rcx trap_entry ORG @ - N-START @ + # mov,  [ rdx 168 ] rcx mov,
   ret,

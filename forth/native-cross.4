@@ -118,7 +118,7 @@ WORDLIST CONSTANT NTRANS
 \ POSTPONE (622). Found while compiling, it lays itself: the template
 \ inline, or a call.
 : N>BODY ( t-xt --- t-addr )   \ a created word's data: the address in its mov
-  11 + DUP C@-T  OVER 1+ C@-T 8 LSHIFT OR  OVER 2 + C@-T 16 LSHIFT OR
+  10 + DUP C@-T  OVER 1+ C@-T 8 LSHIFT OR  OVER 2 + C@-T 16 LSHIFT OR
   SWAP 3 + C@-T 24 LSHIFT OR  N-BASE - ;
 : N-SHADOW ( pfa --- )   \ the second cell: -1 a VARIABLE, its address pushed
   \ inline; -2 a CONSTANT, the value in the fourth cell (627); else a template
@@ -193,7 +193,7 @@ CURRENT !
 : CROSS-COMPILE ( --- )  N-CROSS ;
 
 : N-STUB24 ( --- )   \ a created word's body, as kernel-native.4's CREATE lays it
-  \ (623): sub rbp,8  mov [rbp],rbx  mov rbx,data  ret  - the ret at 15, where
+  \ (623): sub r15,8  mov [r15],rbx  mov rbx,data  ret  - the ret at 14 (15 until 697), where
   \ DOES> puts its jump - then nops to 24. The data begins at the next
   \ 64-byte boundary, int3 between (626): data written never shares a cache
   \ line with code - a store there is self-modifying code to the processor,
@@ -201,7 +201,7 @@ CURRENT !
   \ >BODY reads it there.
   \ (674) The data in data's region now, as 672 put the shell's: no line.
   N-DDP-T @ 7 + -8 AND DUP N-DDP-T !  >R
-  72 C,A 131 C,A 237 C,A 8 C,A  72 C,A 137 C,A 93 C,A 0 C,A
+  73 C,A 131 C,A 239 C,A 8 C,A  73 C,A 137 C,A 31 C,A
   72 C,A 199 C,A 195 C,A  R> N-ABS L,A  195 C,A  8 0 DO 144 C,A LOOP ;
 CURRENT @  NTRANS CURRENT !
 : \  SOURCE NIP >IN ! ;

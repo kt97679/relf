@@ -40,7 +40,7 @@ rax sig_restorer ORG @ - N-START @ + # mov,  [ scratch 16 ] rax mov,
 edi 11 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
 edi 7 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
 edi 8 # mov,  rsi [ scratch ] lea,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,
-rsp N-RTOP # mov,  rbp N-DTOP 64 - # mov,
+rsp N-RTOP # mov,  r15 N-DTOP 64 - # mov,
 set_argv0 call,                \ RELF_ARGV0=argv[0] unless set, as the engine's start: $0 (640)
 rbx N-BASE # mov,                             \ START, the stack's one cell
 N' COLD call,                                 \ never returns

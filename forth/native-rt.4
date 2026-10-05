@@ -9,7 +9,7 @@
 
 \ ---- the string primitives, in assembly --------------------------------------
 NCODE MOVE  ( src dst u --- )   \ memmove: backward when dst overlaps above src
-  rcx rbx mov,  rdi [ rbp ] mov,  rsi [ rbp 8 ] mov,
+  rcx rbx mov,  rdi [ r15 ] mov,  rsi [ r15 8 ] mov,
   \ under 16 bytes a byte loop (647): rep movsb is slow to start - forward,
   \ or from the end when dst is above src
   rcx 16 # cmp,  3 F jae,  rcx rcx test,  2 F jz,  rdi rsi cmp,  4 F ja,
@@ -22,14 +22,14 @@ NCODE MOVE  ( src dst u --- )   \ memmove: backward when dst overlaps above src
   rsi rcx add,  rsi 1 # sub,  rdi rcx add,  rdi 1 # sub,
   std,  rep, movsb,  cld,  2 F jmp,
   1 L:  rep, movsb,
-  2 L:  rbx [ rbp 16 ] mov,  rbp 24 # add,
+  2 L:  rbx [ r15 16 ] mov,  r15 24 # add,
 NEND
 NCODE FILL  ( c-addr u c --- )
-  rax rbx mov,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,  rep, stosb,
-  rbx [ rbp 16 ] mov,  rbp 24 # add,
+  rax rbx mov,  rcx [ r15 ] mov,  rdi [ r15 8 ] mov,  rep, stosb,
+  rbx [ r15 16 ] mov,  r15 24 # add,
 NEND
 NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the lengths
-  rsi [ rbp 16 ] mov,  rdi [ rbp ] mov,  rdx [ rbp 8 ] mov,
+  rsi [ r15 16 ] mov,  rdi [ r15 ] mov,  rdx [ r15 8 ] mov,
   rcx rdx mov,  rcx rbx cmp,  1 F jbe,  rcx rbx mov,  1 L:
   \ eight bytes at a time while they agree (626): repe cmpsb is microcoded,
   \ a byte a cycle; it is left only the last few, or the eight that differ
@@ -45,20 +45,20 @@ NCODE COMPARE  ( c-addr1 u1 c-addr2 u2 --- n )   \ -1 0 1, as memcmp, then the l
   3 L:  4 F jb,  5 F jmp,
   4 L:  rbx -1 # mov,  6 F jmp,
   5 L:  rbx 1 # mov,
-  6 L:  rbp 24 # add,
+  6 L:  r15 24 # add,
 NEND
 NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and 0
   \ a byte loop (644): a shell scans short strings, and repne scasb is
   \ microcoded and slow to start - 6 % of fn and arith (tools/native-prof.py)
-  rax rbx mov,  eax 255 # and,  rcx [ rbp ] mov,  rdi [ rbp 8 ] mov,
+  rax rbx mov,  eax 255 # and,  rcx [ r15 ] mov,  rdi [ r15 8 ] mov,
   1 L:  rcx rcx test,  2 F jz,
         edx [ rdi ] byte-ptr movzx,  edx eax cmp,  2 F je,
         rdi inc,  rcx dec,  1 B jmp,
-  2 L:  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbp 8 # add,
+  2 L:  [ r15 8 ] rdi mov,  rbx rcx mov,  r15 8 # add,
 NEND
 NCODE SHORT-FITS?  ( F H --- f )   \ (695) a jmp E9 or jcc 0F 8x before the rel32 at F,
   \ reaching H from F+4 in a signed byte
-  r8 [ rbp ] mov,  rbp 8 # add,
+  r8 [ r15 ] mov,  r15 8 # add,
   rbx r8 sub,  rbx 4 # sub,  rbx 128 # cmp,  1 F jae,
   [ r8 -1 ] byte-ptr 233 # cmp,  2 F je,
   [ r8 -2 ] byte-ptr 15 # cmp,  1 F jne,
@@ -68,11 +68,11 @@ NCODE SHORT-FITS?  ( F H --- f )   \ (695) a jmp E9 or jcc 0F 8x before the rel3
   3 L:
 NEND
 NCODE RT-PUT  ( f t w tbl n --- )   \ (695) entry n of the relative fields' table at tbl
-  rax rbx 24 # imul,  rax [ rbp ] add,
-  rcx [ rbp 8 ] mov,  [ rax 16 ] rcx mov,
-  rcx [ rbp 16 ] mov,  [ rax 8 ] rcx mov,
-  rcx [ rbp 24 ] mov,  [ rax ] rcx mov,
-  rbx [ rbp 32 ] mov,  rbp 40 # add,
+  rax rbx 24 # imul,  rax [ r15 ] add,
+  rcx [ r15 8 ] mov,  [ rax 16 ] rcx mov,
+  rcx [ r15 16 ] mov,  [ rax 8 ] rcx mov,
+  rcx [ r15 24 ] mov,  [ rax ] rcx mov,
+  rbx [ r15 32 ] mov,  r15 40 # add,
 NEND
 NCODE SHORT-MOVE  ( tbl n F H --- H' f8 d )   \ (693, 695) the branch before the rel32 at F
   \ laid short: E9 -> EB (d 3) or 0F 8x -> 7x (d 4); every relative field
@@ -81,7 +81,7 @@ NCODE SHORT-MOVE  ( tbl n F H --- H' f8 d )   \ (693, 695) the branch before the
   \ it gains d, every one before it that aims into it loses d, and the
   \ entries follow the code; the code moved back d; the rel8 written.
   \ H' the new here, f8 the rel8's address. Was Forth until 695: 1.1 KB.
-  r10 rbx mov,  r8 [ rbp ] mov,  rcx [ rbp 8 ] mov,  rdi [ rbp 16 ] mov,
+  r10 rbx mov,  r8 [ r15 ] mov,  rcx [ r15 8 ] mov,  rdi [ r15 16 ] mov,
   ebx 3 # mov,
   [ r8 -1 ] byte-ptr 233 # cmp,  1 F jne,
   [ r8 -1 ] byte-ptr 235 # mov,  2 F jmp,
@@ -104,10 +104,10 @@ NCODE SHORT-MOVE  ( tbl n F H --- H' f8 d )   \ (693, 695) the branch before the
   9 L:  r8 rsi mov,                                         \ B, kept: rep movsb moves rsi
   rdi rsi mov,  rdi rbx sub,  rcx r10 mov,  rcx rsi sub,  rep, movsb,      \ moved back
   rax r10 mov,  rax r8 sub,  r9 r8 mov,  r9 rbx sub,  r9 dec,  [ r9 ] al mov,   \ rel8: H - B
-  r10 rbx sub,  [ rbp 16 ] r10 mov,  [ rbp 8 ] r9 mov,  rbp 8 # add,
+  r10 rbx sub,  [ r15 16 ] r10 mov,  [ r15 8 ] r9 mov,  r15 8 # add,
 NEND
 NCODE CTABLE-FIND  ( c-addr table count width --- i | -1 )   \ the engines' (676)
-  rsi [ rbp 16 ] mov,  rdi [ rbp 8 ] mov,  rcx [ rbp ] mov,  edx edx xor,
+  rsi [ r15 16 ] mov,  rdi [ r15 8 ] mov,  rcx [ r15 ] mov,  edx edx xor,
   1 L:  rdx rcx cmp,  4 F jae,
         r8 rdi mov,  r9 rsi mov,
   2 L:  eax [ r8 ] byte-ptr movzx,  r10d [ r9 ] byte-ptr movzx,
@@ -117,7 +117,7 @@ NCODE CTABLE-FIND  ( c-addr table count width --- i | -1 )   \ the engines' (676
   3 L:  rdi rbx add,  rdx inc,  1 B jmp,      \ the next entry, width bytes on
   4 L:  rbx 1 NEGATE # mov,  6 F jmp,
   5 L:  rbx rdx mov,
-  6 L:  rbp 24 # add,
+  6 L:  r15 24 # add,
 NEND
 NCODE CSTRLEN  ( c-addr --- u )
   \ eight bytes at a time (644): to an alignment by bytes - an aligned read
@@ -145,8 +145,8 @@ NCODE CSTRLEN  ( c-addr --- u )
   4 L:  rdi rbx sub,  rbx rdi mov,
 NEND
 NCODE TYPE  ( c-addr u --- )            \ write(1, ...)
-  rdx rbx mov,  rsi [ rbp ] mov,  eax 1 # mov,  edi 1 # mov,  syscall,
-  rbx [ rbp 8 ] mov,  rbp 16 # add,
+  rdx rbx mov,  rsi [ r15 ] mov,  eax 1 # mov,  edi 1 # mov,  syscall,
+  rbx [ r15 8 ] mov,  r15 16 # add,
 NEND
 \ ---- the operating system: what kernel.4 itself calls (Iteration 612) --------
 LABEL open_modes
@@ -154,19 +154,19 @@ open_modes L:            \ engine/cv8.c's open_flags, in order - laid down befor
 577 Q,A  577 Q,A  0 Q,A  0 Q,A  2 Q,A  2 Q,A  1089 Q,A  1089 Q,A  578 Q,A  578 Q,A  193 Q,A
 \ OPEN-FILE uses it: a forward label as an immediate is not resolved (asm64)
 NCODE READ  ( c-addr u fd --- n )
-  edi ebx mov,  rdx [ rbp ] mov,  rsi [ rbp 8 ] mov,  eax eax xor,  syscall,
-  rbp 16 # add,  rbx rax mov,
+  edi ebx mov,  rdx [ r15 ] mov,  rsi [ r15 8 ] mov,  eax eax xor,  syscall,
+  r15 16 # add,  rbx rax mov,
 NEND
 NCODE WRITE  ( c-addr u fd --- n )
-  edi ebx mov,  rdx [ rbp ] mov,  rsi [ rbp 8 ] mov,  eax 1 # mov,  syscall,
-  rbp 16 # add,  rbx rax mov,
+  edi ebx mov,  rdx [ r15 ] mov,  rsi [ r15 8 ] mov,  eax 1 # mov,  syscall,
+  r15 16 # add,  rbx rax mov,
 NEND
 NCODE POLL  ( a-addr n ms --- n' )
-  rdx rbx mov,  rsi [ rbp ] mov,  rdi [ rbp 8 ] mov,  eax 7 # mov,  syscall,
-  rbp 16 # add,  rbx rax mov,
+  rdx rbx mov,  rsi [ r15 ] mov,  rdi [ r15 8 ] mov,  eax 7 # mov,  syscall,
+  r15 16 # add,  rbx rax mov,
 NEND
 NCODE OPEN-FILE  ( c-addr u fam --- fid ior )   \ the name NUL-ended for the call
-  rdi [ rbp 8 ] mov,  r8 rdi mov,  r8 [ rbp ] add,     \ r8: the byte after the name
+  rdi [ r15 8 ] mov,  r8 rdi mov,  r8 [ r15 ] add,     \ r8: the byte after the name
   ecx [ r8 ] byte-ptr movzx,  [ r8 ] byte-ptr 0 # mov,
   rax -1 # mov,  rbx 11 # cmp,  1 F jae,               \ no such mode: -1
   rax open_modes ORG @ - N-START @ + # mov,  rsi [ rax rbx *8 ] mov,   \ the table's
@@ -175,23 +175,23 @@ NCODE OPEN-FILE  ( c-addr u fam --- fid ior )   \ the name NUL-ended for the cal
   \ an offset where it is 0 (the native image, 616)
   edx 420 # mov,  eax 2 # mov,  syscall,               \ open(name, flags, 0644)
   1 L:  [ r8 ] cl mov,                                 \ the byte back
-  rbp 8 # add,  rax rax test,  2 F js,
-  [ rbp ] rax mov,  ebx ebx xor,  3 F jmp,
-  2 L:  rax -1 # mov,  [ rbp ] rax mov,  ebx 200 # mov,
+  r15 8 # add,  rax rax test,  2 F js,
+  [ r15 ] rax mov,  ebx ebx xor,  3 F jmp,
+  2 L:  rax -1 # mov,  [ r15 ] rax mov,  ebx 200 # mov,
   3 L:
 NEND
 NCODE CLOSE-FILE  ( fid --- ior )   \ close's 0 or -1, as libc's
   edi ebx mov,  eax 3 # mov,  syscall,  rax rax test,  1 F jns,  rax -1 # mov,  1 L:  rbx rax mov,
 NEND
 NCODE REPOSITION-FILE  ( ud fid --- ior )
-  edi ebx mov,  rsi [ rbp 8 ] mov,  edx edx xor,  eax 8 # mov,  syscall,   \ lseek SEEK_SET
-  rbp 16 # add,  rax rax test,  ebx 0 # mov,  1 F jns,  ebx 200 # mov,  1 L:
+  edi ebx mov,  rsi [ r15 8 ] mov,  edx edx xor,  eax 8 # mov,  syscall,   \ lseek SEEK_SET
+  r15 16 # add,  rax rax test,  ebx 0 # mov,  1 F jns,  ebx 200 # mov,  1 L:
 NEND
 NCODE FILE-POSITION  ( fid --- ud ior )
   edi ebx mov,  esi esi xor,  edx 1 # mov,  eax 8 # mov,  syscall,          \ lseek SEEK_CUR
-  rbp 16 # sub,  ecx ecx xor,  [ rbp ] rcx mov,  rax rax test,  1 F js,
-  [ rbp 8 ] rax mov,  ebx ebx xor,  2 F jmp,
-  1 L:  [ rbp 8 ] rcx mov,  ebx 200 # mov,
+  r15 16 # sub,  ecx ecx xor,  [ r15 ] rcx mov,  rax rax test,  1 F js,
+  [ r15 8 ] rax mov,  ebx ebx xor,  2 F jmp,
+  1 L:  [ r15 8 ] rcx mov,  ebx 200 # mov,
   2 L:
 NEND
 NCODE SYS-EXIT  ( n --- )   edi ebx mov,  eax 60 # mov,  syscall,  NEND

@@ -1019,3 +1019,25 @@ hit an illegal instruction. kernel-short.4 caught both. The kernel's
 code 64,491 -> 63,533 (-958), the shell's 415,056 -> 414,096. The
 shell's compiled code is what it was, moved by the kernel's shrinking:
 over layouts 0.955-1.026, the floor.
+
+**697: the data stack in r15.** rbp as a base always takes a
+displacement byte - [rbp+0] is four bytes - where r15 takes none: mov
+[r15],rbx is 49 89 1F. 696 moved the counted loop's limit off r15 to
+r13 (r12 is gen-native-os.py's scratch); now the data stack is r15:
+the assembler sources renamed (native-rt.4, native-locals.4,
+native-sig.4, native.4, native-kernel.4), gen-native-os.py's map (the
+asm engine's r13 to r15), and kernel-native.4's raw sequences re-encoded
+- a push is 7 bytes now, so LIT-WORD? reads a 56-bit pattern and its
+offsets move by one, the inline DUP and OVER are 7 and 11, ?DUP IF's
+jnz is +12, a CREATE stub's address is at +10 (>BODY, N>BODY,
+native-prof.py, native-budget.py) and its ret at +14 ((;CODE)); the
+signal path resets the interrupted r15 at the ucontext's offset 96,
+where rbp's was 120. Every native test, the self-build, the suites: as
+before.
+
+The shell 436,584 -> 424,296 bytes (code 414,096 -> 403,193, -10.9 KB),
+the kernel 67,472 -> 63,376. Over layouts against 696, 13 rounds: loop
+1.053 - one layout at 1.165 - fn 1.002, str 1.010, arith 1.024,
+realistic 1.015; loop, arith, realistic again at 21: 1.008, 1.010,
+1.017. Inside the floor. The native shell since 686: 452,912 ->
+424,296 bytes, -28.6 KB, -6.3 %.

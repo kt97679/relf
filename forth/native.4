@@ -9,7 +9,7 @@
 \ The registers (NATIVE.md 3.1):
 \   rsp   the return stack - the machine stack: a word is `call`ed and
 \         left with `ret`
-\   rbp   the data stack, in memory, below the top; it grows down
+\   r15   the data stack, in memory, below the top; it grows down
 \   rbx   the top of the data stack
 \
 \ Words in two word lists, apart from the host's:
@@ -36,8 +36,8 @@ VARIABLE N-START             \ the image's base: @XT and !XT count from it
 4194304 N-START !            \ 0x400000, until a build says otherwise
 
 \ ---- the stack, and the jumps the control words patch -----------------------
-: N-PUSH ( --- )  rbp 8 # sub,  [ rbp ] rbx mov, ;     \ the top into memory
-: N-POP ( --- )   rbx [ rbp ] mov,  rbp 8 # add, ;     \ the next becomes the top
+: N-PUSH ( --- )  r15 8 # sub,  [ r15 ] rbx mov, ;     \ the top into memory
+: N-POP ( --- )   rbx [ r15 ] mov,  r15 8 # add, ;     \ the next becomes the top
 : N-LIT ( n --- )   \ (694) the shortest load that holds it, as LIT, at run time (687, 692):
   \ 0 by xor ebx,ebx (2 bytes), 1 to 2^31-1 by mov ebx,imm32 (5, zero-extended),
   \ the rest as before - mov rbx,imm32 (7) or movabs. The kernel's own code
@@ -63,7 +63,7 @@ VARIABLE N-START             \ the image's base: @XT and !XT count from it
   BEGIN BL WORD DUP C@ 0= WHILE DROP REFILL 0= ABORT" native: input ended inside N:" REPEAT ;
 VARIABLE N-LEAVES            \ the innermost loop's LEAVE jumps, chained
 : N-0CC ( --- )  ebx 0 # mov, ;                          \ flags kept: mov
-: N-CMP ( --- )  rax [ rbp ] mov,  rbp 8 # add,  rax rbx cmp,  N-0CC ;
+: N-CMP ( --- )  rax [ r15 ] mov,  r15 8 # add,  rax rbx cmp,  N-0CC ;
 : N-TRUE ( --- ) rbx neg, ;                              \ 1 -> -1
 : N-LEAVE-ADD ( fix --- )   \ a jump to the loop's exit: a node, fix and next,
   HERE SWAP , N-LEAVES @ , N-LEAVES ! ;   \ in the host's memory, not the code's
@@ -72,17 +72,17 @@ VARIABLE N-LEAVES            \ the innermost loop's LEAVE jumps, chained
 CURRENT @  NPRIMS CURRENT !
 : DUP   N-PUSH ;
 : DROP  N-POP ;
-: SWAP  rax [ rbp ] mov,  [ rbp ] rbx mov,  rbx rax mov, ;
-: OVER  N-PUSH  rbx [ rbp 8 ] mov, ;
-: ROT   rax [ rbp 8 ] mov,  rcx [ rbp ] mov,  [ rbp 8 ] rcx mov,  [ rbp ] rbx mov,  rbx rax mov, ;
+: SWAP  rax [ r15 ] mov,  [ r15 ] rbx mov,  rbx rax mov, ;
+: OVER  N-PUSH  rbx [ r15 8 ] mov, ;
+: ROT   rax [ r15 8 ] mov,  rcx [ r15 ] mov,  [ r15 8 ] rcx mov,  [ r15 ] rbx mov,  rbx rax mov, ;
 : ?DUP  rbx rbx test,  1 F jz,  N-PUSH  1 L: ;
-: 2DUP  rax [ rbp ] mov,  rbp 16 # sub,  [ rbp 8 ] rbx mov,  [ rbp ] rax mov, ;
-: 2DROP rbx [ rbp 8 ] mov,  rbp 16 # add, ;
-: +     rbx [ rbp ] add,  rbp 8 # add, ;
-: -     rax [ rbp ] mov,  rax rbx sub,  rbx rax mov,  rbp 8 # add, ;
-: AND   rbx [ rbp ] and,  rbp 8 # add, ;
-: OR    rbx [ rbp ] or,   rbp 8 # add, ;
-: XOR   rbx [ rbp ] xor,  rbp 8 # add, ;
+: 2DUP  rax [ r15 ] mov,  r15 16 # sub,  [ r15 8 ] rbx mov,  [ r15 ] rax mov, ;
+: 2DROP rbx [ r15 8 ] mov,  r15 16 # add, ;
+: +     rbx [ r15 ] add,  r15 8 # add, ;
+: -     rax [ r15 ] mov,  rax rbx sub,  rbx rax mov,  r15 8 # add, ;
+: AND   rbx [ r15 ] and,  r15 8 # add, ;
+: OR    rbx [ r15 ] or,   r15 8 # add, ;
+: XOR   rbx [ r15 ] xor,  r15 8 # add, ;
 : NEGATE  rbx neg, ;
 : 1+    rbx 1 # add, ;
 : 1-    rbx 1 # sub, ;
@@ -90,13 +90,13 @@ CURRENT @  NPRIMS CURRENT !
 : CELLS rbx 3 # shl, ;
 : LSHIFT  rcx rbx mov,  N-POP  rbx cl shl, ;
 : RSHIFT  rcx rbx mov,  N-POP  rbx cl shr, ;
-: *     rbx [ rbp ] imul,  rbp 8 # add, ;
-: /MOD  rax [ rbp ] mov,  72 C,A 153 C,A  rbx idiv,      \ cqo: rdx:rax
-        [ rbp ] rdx mov,  rbx rax mov, ;                 \ ( rem quot )
-: UM*   rax [ rbp ] mov,  rbx mul,  [ rbp ] rax mov,  rbx rdx mov, ;
-: UM/MOD  rdx [ rbp ] mov,  rax [ rbp 8 ] mov,  rbx div,
-        rbp 8 # add,  [ rbp ] rdx mov,  rbx rax mov, ;   \ ( rem quot )
-: D+    rax [ rbp ] mov,  [ rbp 16 ] rax add,  rbx [ rbp 8 ] adc,  rbp 16 # add, ;
+: *     rbx [ r15 ] imul,  r15 8 # add, ;
+: /MOD  rax [ r15 ] mov,  72 C,A 153 C,A  rbx idiv,      \ cqo: rdx:rax
+        [ r15 ] rdx mov,  rbx rax mov, ;                 \ ( rem quot )
+: UM*   rax [ r15 ] mov,  rbx mul,  [ r15 ] rax mov,  rbx rdx mov, ;
+: UM/MOD  rdx [ r15 ] mov,  rax [ r15 8 ] mov,  rbx div,
+        r15 8 # add,  [ r15 ] rdx mov,  rbx rax mov, ;   \ ( rem quot )
+: D+    rax [ r15 ] mov,  [ r15 16 ] rax add,  rbx [ r15 8 ] adc,  r15 16 # add, ;
 : =     N-CMP  bl sete,  N-TRUE ;
 : <>    N-CMP  bl setne, N-TRUE ;
 : <     N-CMP  bl setl,  N-TRUE ;
@@ -105,17 +105,17 @@ CURRENT @  NPRIMS CURRENT !
 : 0=    rbx rbx test,  N-0CC  bl sete,  N-TRUE ;
 : 0<    rbx 63 # sar, ;
 : @     rbx [ rbx ] mov, ;
-: !     rax [ rbp ] mov,  [ rbx ] rax mov,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: !     rax [ r15 ] mov,  [ rbx ] rax mov,  rbx [ r15 8 ] mov,  r15 16 # add, ;
 : C@    ebx [ rbx ] byte-ptr movzx, ;
-: C!    rax [ rbp ] mov,  [ rbx ] al mov,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
-: +!    rax [ rbp ] mov,  [ rbx ] rax add,  rbx [ rbp 8 ] mov,  rbp 16 # add, ;
+: C!    rax [ r15 ] mov,  [ rbx ] al mov,  rbx [ r15 8 ] mov,  r15 16 # add, ;
+: +!    rax [ r15 ] mov,  [ rbx ] rax add,  rbx [ r15 8 ] mov,  r15 16 # add, ;
 : COUNT rax rbx mov,  rbx 1 # add,  N-PUSH  ebx [ rax ] byte-ptr movzx, ;
 : >R    rbx push,  N-POP ;
 : R>    N-PUSH  rbx pop, ;
 : R@    N-PUSH  rbx [ rsp ] mov, ;
 : EXECUTE  rax rbx mov,  N-POP  rax call, ;
-: EMIT  [ rbp -8 ] rbx mov,                              \ write(1, the byte, 1)
-        eax 1 # mov,  edi 1 # mov,  rsi [ rbp -8 ] lea,  edx 1 # mov,  syscall,
+: EMIT  [ r15 -8 ] rbx mov,                              \ write(1, the byte, 1)
+        eax 1 # mov,  edi 1 # mov,  rsi [ r15 -8 ] lea,  edx 1 # mov,  syscall,
         N-POP ;
 CURRENT !
 \ The compile-time words, in NCTRL, searched before the target's words:
@@ -136,9 +136,9 @@ CURRENT @  NCTRL CURRENT !
 \ DO LOOP: the counter at the top of the return stack - the machine
 \ stack - and the limit under it, as CV8 keeps them (kernel.4's (DO));
 \ LEAVE's jumps chained in N-LEAVES and resolved at the loop's end
-: DO    rax [ rbp ] mov,  rax push,  rbx push,  rbx [ rbp 8 ] mov,  rbp 16 # add,
+: DO    rax [ r15 ] mov,  rax push,  rbx push,  rbx [ r15 8 ] mov,  r15 16 # add,
         N-LEAVES @  0 N-LEAVES !  HERE-A ;               \ ( leaves dest )
-: ?DO   rax [ rbp ] mov,  rcx rbx mov,  rbx [ rbp 8 ] mov,  rbp 16 # add,
+: ?DO   rax [ r15 ] mov,  rcx rbx mov,  rbx [ r15 8 ] mov,  r15 16 # add,
         rax rcx cmp,  15 132 N-FWD                       \ start = limit: skip
         N-LEAVES @ SWAP  0 N-LEAVES !  N-LEAVE-ADD       \ ( outer )
         rax push,  rcx push,  HERE-A ;
@@ -162,8 +162,8 @@ CURRENT @  NCTRL CURRENT !
 CURRENT !
 \ back to NPRIMS: the pointer words and @XT, data primitives
 CURRENT @  NPRIMS CURRENT !
-: SP@   N-PUSH  rbx rbp mov, ;                           \ the old top's cell, as CV8's
-: SP!   rbp rbx mov,  N-POP ;                            \ the top: the cell there
+: SP@   N-PUSH  rbx r15 mov, ;                           \ the old top's cell, as CV8's
+: SP!   r15 rbx mov,  N-POP ;                            \ the top: the cell there
 : RP@   N-PUSH  rbx rsp mov, ;                           \ the return stack: the machine's
 : RP!   rsp rbx mov,  N-POP ;
 : @XT   rbx [ rbx ] mov,  rbx N-START @ # add, ;         \ an offset, plus the image base

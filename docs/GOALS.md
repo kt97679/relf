@@ -145,7 +145,10 @@ the account of what each gained and cost.
    shrinker in Forth is 2.2 KB of the kernel (NATIVE.md 14). **693:** the
    whole of them: a table of every relative field, REL-FIX in assembly -
    2,636 branches shrunk, the shell's code -5.4 KB net of the shrinker's
-   3.4 KB; over layouts 0.954-1.002.
+   3.4 KB; over layouts 0.954-1.002. **694-697:** the kernel's own
+   literals by the cross compiler (-2.8 KB), the shrinker in assembly
+   (-1 KB), and the data stack in r15, which needs no displacement byte
+   (-10.9 KB). The native shell 452,912 -> 424,296 bytes since 686.
 10. **Genetic programming or randomized search over the compilers'
    choices** - for CV8, faster without a larger image; for the native
    shell, smaller without being slower. The compilers' choices made

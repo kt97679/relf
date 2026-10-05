@@ -9,11 +9,11 @@ N>A  S" forth/native-rt.4" INCLUDED  A>N
 S" native-kcut.4" INCLUDED
 S" tests/native/kernel-cut.4" INCLUDED
 N>A  HERE-A CONSTANT ENTRY-T
-rbp N-BASE N-MEMSZ @ + 64 - # mov,
+r15 N-BASE N-MEMSZ @ + 64 - # mov,
 ebx ebx xor,
 \ S0, as COLD sets it on CV8 - here until the native COLD (N1c-2): what SP@
 \ gives on an empty stack, the base less a cell, so DEPTH is 0 there
-rax N' S0 N>BODY N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
+rax N' S0 N>BODY N-ABS # mov,  rcx r15 mov,  rcx 8 # sub,  [ rax ] rcx mov,
 \ and DP, as CV8's build sets it: HERE - and PAD, and pictured output's
 \ buffer below it - in the free memory after the image (619)
 rax N' DP N>BODY N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,

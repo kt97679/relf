@@ -21,9 +21,9 @@ CROSS-COMPILE
   >R  DUP R@ C!  8 RSHIFT DUP R@ 1+ C!  8 RSHIFT DUP R@ 2 + C!  8 RSHIFT R> 3 + C! ;
 : @4 ( a-addr --- n )   \ unsigned
   DUP C@  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
-: PUSH, ( --- )   72 C, 131 C, 237 C, 8 C,  72 C, 137 C, 93 C, 0 C, ;  \ sub rbp,8  mov [rbp],rbx
+: PUSH, ( --- )   73 C, 131 C, 239 C, 8 C,  73 C, 137 C, 31 C, ;  \ sub r15,8  mov [r15],rbx
 : POPF, ( --- )   \ the top into rax, the stack popped, rax tested
-  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,  72 C, 133 C, 192 C, ;
+  72 C, 137 C, 216 C,  73 C, 139 C, 31 C,  73 C, 131 C, 199 C, 8 C,  72 C, 133 C, 192 C, ;
 \ (693) Every relative field a definition lays - a call, a branch - goes
 \ in a table (RT+), allocated for the definition and freed at its end, so
 \ that a forward branch can be laid short when it is resolved: the code
@@ -101,7 +101,7 @@ VARIABLE CMP-END    \ where its flag's sequence ended
 VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 : CMP-IMM, ( setcc --- )   \ cmp rbx,imm32; setcc al; movzx rbx,al; neg rbx
   DUP CMP-CC !
-  DUP-LAID @ 8 + LIT-AT @ =  DUP-LAID @ FOLD-BARRIER @ < 0= AND
+  DUP-LAID @ 7 + LIT-AT @ =  DUP-LAID @ FOLD-BARRIER @ < 0= AND
   IF DUP-LAID @ ELSE 0 THEN DUP-AT !
   LIT-AT @ CMP-AT !
   251 OP-IMM,  15 C, C, 192 C,  72 C, 15 C, 182 C, 216 C,  72 C, 247 C, 219 C,
@@ -109,9 +109,9 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
 : LOAD-ABS, ( --- )   \ the literal an address: unlaid; push, then load from it
   LIT-AT @ HERE - ALLOT  0 LIT-AT !  PUSH, ;
 : OVER-OP, ( opcode --- )   \ the OVER unlaid; op rbx,[rbp] in its place (629)
-  OVER-LAID @ HERE - ALLOT  0 OVER-LAID !  72 C, C, 93 C, 0 C, ;
+  OVER-LAID @ HERE - ALLOT  0 OVER-LAID !  73 C, C, 31 C, ;
 : OVER-OP? ( xt --- xt 0 | -1 )   \ OVER then + - AND OR XOR: one instruction
-  OVER-LAID @ 12 + HERE =  OVER-LAID @ FOLD-BARRIER @ < 0= AND  0= IF 0 EXIT THEN
+  OVER-LAID @ 11 + HERE =  OVER-LAID @ FOLD-BARRIER @ < 0= AND  0= IF 0 EXIT THEN
   DUP ['] + = IF DROP 3 OVER-OP, -1 EXIT THEN
   DUP ['] - = IF DROP 43 OVER-OP, -1 EXIT THEN
   DUP ['] AND = IF DROP 35 OVER-OP, -1 EXIT THEN
@@ -122,7 +122,7 @@ VARIABLE LOAD-AT      \ a VARIABLE's fetch just laid - push, mov rbx,[a] - where
 VARIABLE LOAD-END     \ where it ended
 VARIABLE LOAD-ADDR    \ the address it loads
 : UNLIT, ( --- )   LIT-AT @ HERE - ALLOT  0 LIT-AT ! ;          \ the literal unlaid (645)
-: POP, ( --- )   72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, ;   \ mov rbx,[rbp]  add rbp,8
+: POP, ( --- )   73 C, 139 C, 31 C,  73 C, 131 C, 199 C, 8 C, ;   \ mov rbx,[r15]  add r15,8
 : FOLD ( xt --- xt 0 | -1 )   \ (628) a literal then +, -, AND, OR, XOR, =, <, >,
   \ @ or C@: one instruction with the literal as its operand
   FRESH-LIT? 0= IF 0 EXIT THEN
@@ -199,13 +199,15 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
-  DUP @ 26328115314525000 = 0= IF 0 EXIT THEN
-  DUP 8 + C@ 187 = OVER 13 + C@ 195 = AND IF  9 + @4  TRUE EXIT THEN    \ mov ebx,imm32 (687)
-  DUP 8 + C@ 49 = OVER 9 + C@ 219 = AND OVER 10 + C@ 195 = AND IF  DROP 0 TRUE EXIT THEN   \ xor ebx,ebx (692)
-  DUP 8 + C@ 72 = 0= IF 0 EXIT THEN
-  DUP 9 + C@ 199 = OVER 10 + C@ 195 = AND OVER 15 + C@ 195 = AND IF
-    11 + @4  DUP 2147483647 > IF 4294967296 - THEN  TRUE EXIT THEN   \ sign-extended
-  DUP 9 + C@ 187 = OVER 18 + C@ 195 = AND IF  10 + @  TRUE EXIT THEN
+  \ (697) the push is 7 bytes since the data stack is r15: sub r15,8;
+  \ mov [r15],rbx - 49 83 EF 08 49 89 1F, read as 56 bits
+  DUP @ 72057594037927935 AND 8876671053562697 = 0= IF 0 EXIT THEN
+  DUP 7 + C@ 187 = OVER 12 + C@ 195 = AND IF  8 + @4  TRUE EXIT THEN    \ mov ebx,imm32 (687)
+  DUP 7 + C@ 49 = OVER 8 + C@ 219 = AND OVER 9 + C@ 195 = AND IF  DROP 0 TRUE EXIT THEN   \ xor ebx,ebx (692)
+  DUP 7 + C@ 72 = 0= IF 0 EXIT THEN
+  DUP 8 + C@ 199 = OVER 9 + C@ 195 = AND OVER 14 + C@ 195 = AND IF
+    10 + @4  DUP 2147483647 > IF 4294967296 - THEN  TRUE EXIT THEN   \ sign-extended
+  DUP 8 + C@ 187 = OVER 17 + C@ 195 = AND IF  9 + @  TRUE EXIT THEN
   0 ;
 : COMPILE, ( xt --- )   \ an inline primitive's code, copied; a pushing word's
   \ push, inline (627); a literal folded into the operation after it (628);
@@ -245,27 +247,27 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
 : FRESH-CMP? ( --- f )   CMP-AT @ DUP IF  CMP-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
 : FRESH-CMP2? ( --- f )   CMP2-AT @ DUP IF  CMP2-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
 : CMP2-BRANCH, ( --- )   \ (661) the compare unlaid: cmp or test, the pops, jcc
-  CMP2-CELLS @ 1 =  DUP-LAID @ 8 + CMP2-AT @ = AND  DUP-LAID @ FOLD-BARRIER @ < 0= AND IF
+  CMP2-CELLS @ 1 =  DUP-LAID @ 7 + CMP2-AT @ = AND  DUP-LAID @ FOLD-BARRIER @ < 0= AND IF
     DUP-LAID @ HERE - ALLOT  0 DUP-LAID !                 \ (669) DUP 0= IF: test, the jump
     72 C, 133 C, 219 C,  15 C, CMP2-JCC @ C,  0 CMP2-AT !  EXIT THEN
   CMP2-AT @ HERE - ALLOT
   CMP2-CELLS @ 2 = IF
-    72 C, 139 C, 69 C, 0 C,  72 C, 57 C, 216 C,              \ mov rax,[rbp]  cmp rax,rbx
-    72 C, 139 C, 93 C, 8 C,  72 C, 141 C, 109 C, 16 C,       \ mov rbx,[rbp+8]  lea rbp,[rbp+16]
+    73 C, 139 C, 7 C,  72 C, 57 C, 216 C,              \ mov rax,[rbp]  cmp rax,rbx
+    73 C, 139 C, 95 C, 8 C,  77 C, 141 C, 127 C, 16 C,       \ mov rbx,[rbp+8]  lea rbp,[rbp+16]
   ELSE
     CMP2-CELLS @ IF  72 C, 133 C, 219 C,  THEN               \ test rbx,rbx; kind 0 (662): cmp laid
-    72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,        \ mov rbx,[rbp]  lea rbp,[rbp+8]
+    73 C, 139 C, 31 C,  77 C, 141 C, 127 C, 8 C,        \ mov rbx,[rbp]  lea rbp,[rbp+8]
   THEN  15 C, CMP2-JCC @ C,  0 CMP2-AT ! ;
 : ?BRANCH, ( --- )   \ the flag popped and tested, the jump taken if false; after a
   \ compare just laid, the compare's own flags (629): DUP lit < IF is cmp, jge
   FRESH-CMP? IF
     DUP-AT @ ?DUP IF  HERE - ALLOT  72 C, 129 C, 251 C, LIT-VAL @ ,4       \ no copy made
     ELSE  CMP-AT @ 7 + HERE - ALLOT                                         \ keep the cmp;
-      72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  THEN               \ pop by mov, lea
+      73 C, 139 C, 31 C,  77 C, 141 C, 127 C, 8 C,  THEN               \ pop by mov, lea
     15 C, CMP-CC @ JCC-NOT C,
   ELSE  FRESH-CMP2? IF CMP2-BRANCH, ELSE
     ['] ?DUP FRESH-LAST? IF  UNLAST,                    \ (669) test, jnz past the drop
-      72 C, 133 C, 219 C,  117 C, HERE DUP 14 + 1 RT+ 13 C,  72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  233 C,   \ (693) the jnz recorded
+      72 C, 133 C, 219 C,  117 C, HERE DUP 13 + 1 RT+ 12 C,  73 C, 139 C, 31 C,  77 C, 141 C, 127 C, 8 C,  233 C,   \ (693) the jnz recorded
     ELSE ['] DUP FRESH-LAST? IF  UNLAST,  72 C, 133 C, 219 C,  15 C, 132 C,    \ test, jz
     ELSE POPF,  15 C, 132 C,  THEN THEN  THEN  THEN
   0 CMP-AT ! ;
@@ -296,8 +298,8 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
     DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
   REPEAT  'LEAVE ! ;
 : LOOP-ENTER, ( --- )   \ push r13  push r14  mov r13,[rbp]  mov r14,rbx  mov rbx,[rbp+8]  add rbp,16
-  65 C, 85 C,  65 C, 86 C,  76 C, 139 C, 109 C, 0 C,  73 C, 137 C, 222 C,
-  72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C, ;
+  65 C, 85 C,  65 C, 86 C,  77 C, 139 C, 47 C,  73 C, 137 C, 222 C,
+  73 C, 139 C, 95 C, 8 C,  73 C, 131 C, 199 C, 16 C, ;
 : LOOP-EXIT, ( outer --- )   \ the LEAVEs here; pop r14  pop r13
   RESOLVE-LEAVE  65 C, 94 C, 65 C, 93 C, ;
 : DO   ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
@@ -307,7 +309,7 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
 : LOOP  ?COMP   \ inc r14  cmp r14,r13  jne back
   73 C, 255 C, 198 C,  77 C, 57 C, 238 C,  15 C, 133 C, BACK,  LOOP-EXIT, ; IMMEDIATE
 : +LOOP  ?COMP   \ native.4's crossing test, by signs, on r14 and r13
-  72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,   \ n into rax, popped
+  72 C, 137 C, 216 C,  73 C, 139 C, 31 C,  73 C, 131 C, 199 C, 8 C,   \ n into rax, popped
   76 C, 137 C, 242 C,  76 C, 41 C, 234 C,  73 C, 1 C, 198 C,             \ rdx=i-lim  i+=n
   73 C, 137 C, 208 C,  73 C, 1 C, 192 C,  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,
   73 C, 33 C, 208 C,  15 C, 137 C, BACK,  LOOP-EXIT, ; IMMEDIATE
@@ -360,7 +362,7 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
   PENDING-OP @  0 PENDING-OP !
   DUP 102 = OVER 103 = OR IF LGROUP, EXIT THEN
   DUP 104 = IF DROP 72 C, 137 C, 28 C, 37 C, ,4                   \ mov [a],rbx
-    72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, EXIT THEN    \ the top popped
+    73 C, 139 C, 31 C,  73 C, 131 C, 199 C, 8 C, EXIT THEN    \ the top popped
   DUP 105 = IF DROP 72 C, 199 C, 4 C, 37 C, ,4  0 ,4 EXIT THEN     \ mov qword [a],0
   TRUE ABORT" native: OP, and SLOT, lay only shadow.4's locals" ;
 
@@ -390,11 +392,11 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : CREATE ( "name" --- )   \ the 24-byte stub; the data in data's region (672)
   DATA-OFF  HEADER REVEAL  DDP @ 7 + -8 AND DUP DDP !
   PUSH,  72 C, 199 C, 195 C,  ,4  195 C,  8 0 DO 144 C, LOOP  DATA-ON ;
-: >BODY ( xt --- a-addr )   11 + @4 ;          \ the address in the stub's mov
+: >BODY ( xt --- a-addr )   10 + @4 ;          \ the address in the stub's mov
 : CONSTANT ( x "name" --- )   DATA-ALIGN HEADER REVEAL  LIT, EXIT, ;
 : (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
   \ the data's address pushed already; R> ends the defining word
-  R> LAST @ NAME> 15 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
+  R> LAST @ NAME> 14 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
 \ S" in a definition (666): the string's bytes jumped over, and its address
 \ by a rip-relative lea, then its length - where (S") was a call whose ret
 \ went to the byte after the string, so the return predictor missed every
@@ -406,9 +408,9 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
   \ - never jmp +1, EB 01: at a body's start that reads as the inline
   \ marker, and COMPILE, copied a body beginning `S" !"` for code (666)
   HERE >R  2DUP HERE SWAP MOVE  DUP ALLOT  SWAP DROP  MARK-TARGET   \ the bytes; the jmp lands here
-  72 C, 131 C, 237 C, 16 C,  72 C, 137 C, 93 C, 8 C,      \ sub rbp,16  mov [rbp+8],rbx
+  73 C, 131 C, 239 C, 16 C,  73 C, 137 C, 95 C, 8 C,      \ sub rbp,16  mov [rbp+8],rbx
   72 C, 141 C, 5 C,  R> HERE 4 + - ,4                     \ lea rax,[rip - back to the bytes]
-  72 C, 137 C, 69 C, 0 C,                                 \ mov [rbp],rax
+  73 C, 137 C, 7 C,                                 \ mov [rbp],rax
   187 C, ,4 ;                                             \ mov ebx,u
 : S"  ( "ccc<quote>" --- )
   STATE @ IF 34 PARSE SLIT,

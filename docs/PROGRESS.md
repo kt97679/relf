@@ -721,6 +721,7 @@ do not trust the absence of a line below.
 - 694 — the kernel's own literals at their shortest, by the cross compiler: code -2.8 KB at no cost in the image
 - 695 — the branch shrinker in assembly (SHORT-MOVE): the kernel's code -958 bytes
 - 696 — the counted loop's limit from r15 to r13: r15 freed for the data stack
+- 697 — the native data stack in r15, a base with no displacement byte: the shell's code -10.9 KB; 424,296 bytes
 
 ### Not tied to an iteration
 

@@ -11,7 +11,7 @@
 LABEL n_locals_failed
 N-MARK n_locals_failed
 n_locals_failed L:                        \ eax: 1 or 2, pushed for LOCALS-FAILED
-  rbp 8 # sub,  [ rbp ] rbx mov,  rbx rax mov,
+  r15 8 # sub,  [ r15 ] rbx mov,  rbx rax mov,
   rax [ N-BASE 8 + ] mov,  rcx N-BASE # mov,  rax rcx add,
   rax push,  ret,
 \ (655) kernel-native.4's SLOT, lays LSAVE and LRESTORE inline, a run of

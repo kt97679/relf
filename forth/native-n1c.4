@@ -37,7 +37,7 @@ WL-T PUBLISH-WORDLIST
 
 \ ---- the start ------------------------------------------------------------------
 N>A  HERE-A CONSTANT ENTRY-T
-rbp N-BASE N-MEMSZ @ + 64 - # mov,           \ the data stack, at the end
+r15 N-BASE N-MEMSZ @ + 64 - # mov,           \ the data stack, at the end
 ebx ebx xor,
 N' MAIN call,
 edi ebx mov,  eax 60 # mov,  syscall,

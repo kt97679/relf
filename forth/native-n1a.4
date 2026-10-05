@@ -44,7 +44,7 @@ N: MAIN  6 7 + SQUARE U.  10 EMIT  0  N;             \ 169, a newline; status 0
 
 \ ---- the start: the stacks, MAIN, and exit with what it left ----------------
 _start L:
-rbp DSTACK_TOP # mov,
+r15 DSTACK_TOP # mov,
 ebx ebx xor,
 N' MAIN call,
 edi ebx mov,

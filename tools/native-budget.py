@@ -45,7 +45,7 @@ i = img.find(bytes([0x80 | len(name)]) + name)
 if i < 0:
     sys.exit('native-budget: no FORTH-WORDLIST header in %s' % path)
 xt0 = i + 1 + len(name)
-heads = struct.unpack_from('<33q', img, struct.unpack_from('<I', img, xt0 + 11)[0] - N_BASE)[1:]
+heads = struct.unpack_from('<33q', img, struct.unpack_from('<I', img, xt0 + 10)[0] - N_BASE)[1:]
 def link(nfa):                         # (the previous name, the link's bytes)
     tag = img[nfa - 1]
     if tag & 0x80 == 0:
@@ -133,7 +133,7 @@ def klass(t):
     if op.startswith('call'): return 'call'
     if op == 'ret' or op.startswith('ret'): return 'return'
     if op.startswith('j'): return 'branch'
-    if '%rbp' in t or '%ebp' in t: return 'stack'
+    if '%r15' in t: return 'stack'           # the data stack's register since 697 (rbp before)
     if re.match(r'^(mov|movabs)\s+\$[^,]+,%(rbx|ebx)$', t): return 'literal'
     return 'other'
 
