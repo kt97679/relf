@@ -762,3 +762,16 @@ CREATE ALLOT , and HERE work at the other - in kernel-native.4, in the
 cross compiler for the kernel's own data, and in the native image's
 save; N4's byte-for-byte check keeps it honest.
 
+**Done for the shell's data (672).** DP and a second pointer, DDP, trade
+places: CREATE lays its stub in the code and points it at DDP's region,
+512 KB below the runtime's data, then HERE ALLOT , and C, lay data until
+the next definition - :, CONSTANT, another CREATE - swaps them back.
+DICT-LIMIT reads a cell the swaps set, so each region has its own limit.
+The image is two PT_LOAD segments, the code's and the data's; the native
+SAVE-SYSTEM writes the code, a page's padding, and the data. The shell:
+530,088 -> 459,232 bytes (-13 %: 440 KB of code, 16.9 KB of data); a
+started shell's written pages 77 -> 10, its copied memory 344 -> 64 kB;
+A/B, 1.5-3.5 % faster too. The kernel's own variables - DP, R0, POCKET
+and the rest, cross-compiled - are still in the code, on the 10 pages
+left: the cross compiler's half, next.
+

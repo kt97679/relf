@@ -66,17 +66,27 @@ N-RGUARD CONSTANT N-DTOP
 N-RFLOOR N-DSTACK-BYTES - CONSTANT N-DGUARD  \ the engine's MEMSIZE - RS - DS
 N-DGUARD N-PAGE + CONSTANT N-DFLOOR
 N-DGUARD 32768 - CONSTANT N-SIGSTK           \ 32 KB for the signal handlers
+\ (672) The data's own region: 512 KB below the runtime's 64 KB, where
+\ CREATE puts the data and the code never goes - so the code's pages stay
+\ as the file has them. The code grows from the image's start up to it.
+N-SIGSTK 65536 - 524288 - CONSTANT N-DSTART
+N-SIGSTK 8 - CONSTANT N-DLIMIT               \ the runtime data's last cell: data's limit, or 0
 : N-ELF ( entry-t-addr --- )   \ the header page, for an image of DP-T bytes
   N-EHDR 4096 0 FILL
   127 0 1 E!  69 1 1 E!  76 2 1 E!  70 3 1 E!  2 4 1 E!  1 5 1 E!  1 6 1 E!
   2 16 2 E!  62 18 2 E!  1 20 4 E!                  \ executable, x86-64, version 1
   N-ABS 24 8 E!                                     \ e_entry
   64 32 8 E!  0 40 8 E!  0 48 4 E!                  \ e_phoff, e_shoff, e_flags
-  64 52 2 E!  56 54 2 E!  1 56 2 E!  64 58 2 E!  0 60 2 E!  0 62 2 E!
-  1 64 4 E!  7 68 4 E!                              \ PT_LOAD, read-write-execute
+  64 52 2 E!  56 54 2 E!  2 56 2 E!  64 58 2 E!  0 60 2 E!  0 62 2 E!
+  1 64 4 E!  7 68 4 E!                              \ the code: PT_LOAD, rwx
   0 72 8 E!  N-BASE 4096 - DUP 80 8 E!  88 8 E!     \ from the file's start
   DP-T @ 4096 + 96 8 E!                             \ p_filesz
-  N-MEMSZ @ 4096 + 104 8 E!  4096 112 8 E! ;        \ p_memsz, p_align
+  N-DSTART N-BASE 4096 - - 104 8 E!  4096 112 8 E!  \ p_memsz, up to data's region
+  1 120 4 E!  7 124 4 E!                            \ (672) the data: PT_LOAD, rwx
+  DP-T @ 4096 + 4095 + -4096 AND 128 8 E!           \ the page after the code's
+  N-DSTART DUP 136 8 E!  144 8 E!                   \ p_vaddr, p_paddr
+  0 152 8 E!                                        \ p_filesz: none in the kernel yet
+  N-BASE N-MEMSZ @ + N-DSTART - 160 8 E!  4096 168 8 E! ;   \ the rest, the stacks
 : WRITE-ELF ( c-addr u --- )   \ the header page, then the image
   2DUP W/O CREATE-FILE THROW >R
   N-EHDR 4096 R@ WRITE-FILE THROW
@@ -305,8 +315,11 @@ N>A
 \ (634; 64 KB since 635, the chain's save stack alone 32 KB). Free memory,
 \ zero as the process starts, off code's cache lines.
 N-SIGSTK 65536 - CONSTANT N-RTDATA          \ below the signal stack (639)
-NCODE DICT-LIMIT ( --- addr )   \ the dictionary grows up to the runtime's page
-  N-PUSH  rbx N-RTDATA # mov,  NEND
+NCODE DICT-LIMIT ( --- addr )   \ (672) code grows up to data's region, data to the runtime's
+  N-PUSH  rbx [ N-DLIMIT ] mov,  rbx rbx test,  1 F jnz,  rbx N-DSTART # mov,  1 L:  NEND
+NCODE DATA-START ( --- addr )   N-PUSH  rbx N-DSTART # mov,  NEND
+NCODE DATA-TOP ( --- addr )     N-PUSH  rbx N-RTDATA # mov,  NEND
+NCODE DLIMIT-CELL ( --- a-addr )   N-PUSH  rbx N-DLIMIT # mov,  NEND
 \ A register loop's r14 and r15 kept on the return stack, under the
 \ caller's return address (630): kernel-native.4's CATCH brackets the
 \ kernel's with these, so a THROW out of a loop leaves the catcher's own

@@ -1,0 +1,26 @@
+\ tests/native/kernel-data.4 - CREATE's data in a region of its own on the
+\ native kernel (Iteration 672): HERE ALLOT , and C, lay data after a
+\ CREATE, and code again once a definition begins - :, CONSTANT, another
+\ CREATE. Bodies and HERE, ALLOT and ALIGN, defining words with
+\ DOES>, a definition made right after data, and words made by a word.
+\ Native, CV8-asm and CV8-C print the same.
+CREATE A  1 , 2 , 3 ,
+A @ .  A CELL+ @ .  A 2 CELLS + @ .  CR
+CREATE B  HERE ' B >BODY = .  CR
+CREATE C  10 ALLOT  HERE C - .  CR
+CREATE F  1 C,  ALIGN  HERE 7 AND .  F C@ .  CR
+VARIABLE V  7 V !  V @ .  CR
+: CONST ( x "name" --- )  CREATE , DOES> @ ;
+42 CONST X   -5 CONST Y   X . Y . X Y + .  CR
+CREATE D  5 ,
+: USE-D ( --- n )  D @ 1+ ;
+USE-D .  CR
+CREATE E  9 ,  3 CONSTANT K  E @ K + .  CR
+: MAKE ( "name" --- )  CREATE 0 , ;
+MAKE M1  MAKE M2  M1 M2 = .  11 M1 !  22 M2 !  M1 @ M2 @ + .  CR
+: COUNTER ( "name" --- )  CREATE 0 , DOES> 1 OVER +! @ ;
+COUNTER CT  CT . CT . CT .  CR
+UNUSED 0 > .  CREATE H 8 ALLOT  UNUSED 0 > .  CR
+DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

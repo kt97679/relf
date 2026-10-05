@@ -34,35 +34,48 @@ def who(a):
     return syms[i][1] if i >= 0 else '(before the first word)'
 
 f = open(binp, 'rb').read()
+# the file's PT_LOAD segments (672: the code's, and the data's region)
+import struct
+phoff, = struct.unpack_from('<Q', f, 32); phnum, = struct.unpack_from('<H', f, 56)
+segs = []
+for i in range(phnum):
+    ptype, flags, off, vaddr, paddr, filesz, memsz, align = struct.unpack_from('<IIQQQQQQ', f, phoff + 56 * i)
+    if ptype == 1:
+        segs.append((vaddr, off, filesz, memsz))
 p = subprocess.Popen([binp, '-c', 'sleep 2; :'])
 time.sleep(0.7)
-size = 0; dirty = clean = anon = rss = 0
+maps = []     # (lo, hi, rss, anon, dirty, clean) of each mapping inside a segment
 with open('/proc/%d/smaps' % p.pid) as sm:
-    mine = False
+    cur = None
     for line in sm:
         fs = line.split()
-        if '-' in fs[0] and len(fs) >= 5:                  # a mapping's first line
+        if '-' in fs[0] and len(fs) >= 5:
             lo, hi = (int(x, 16) for x in fs[0].split('-'))
-            mine = lo == BASE
-            if mine: size = hi - lo
-        elif mine and fs[0] == 'Private_Dirty:': dirty = int(fs[1])
-        elif mine and fs[0] == 'Private_Clean:': clean = int(fs[1])
-        elif mine and fs[0] == 'Anonymous:': anon = int(fs[1])
-        elif mine and fs[0] == 'Rss:': rss = int(fs[1])
-with open('/proc/%d/mem' % p.pid, 'rb') as m:
-    m.seek(BASE)
-    mem = m.read(size)
-p.wait()
+            cur = [lo, hi, 0, 0, 0, 0] if any(v <= lo < v + m for v, _, _, m in segs) else None
+            if cur: maps.append(cur)
+        elif cur is not None:
+            k = {'Rss:': 2, 'Anonymous:': 3, 'Private_Dirty:': 4, 'Private_Clean:': 5}.get(fs[0])
+            if k: cur[k] = int(fs[1])
 pages = collections.OrderedDict()
-for off in range(len(mem)):
-    if mem[off] != (f[off] if off < len(f) else 0):
-        pages.setdefault(off // 4096, set()).add(who(BASE + off))
+with open('/proc/%d/mem' % p.pid, 'rb') as m:
+    for vaddr, off, filesz, memsz in segs:
+        if not filesz:
+            continue
+        m.seek(vaddr)
+        mem = m.read(filesz)
+        for i in range(len(mem)):
+            if mem[i] != f[off + i]:
+                pages.setdefault((vaddr + i) // 4096, set()).add(who(vaddr + i))
+p.wait()
+rss = sum(x[2] for x in maps); anon = sum(x[3] for x in maps)
+size = sum(m for _, _, _, m in segs)
 print('%s: the image mapped %d kB, resident %d kB; written, so copied (Anonymous) %d kB, the file\'s pages %d kB'
-      % (binp, size // 1024, rss, anon, rss - anon))
-print('  (smaps\' Private_Dirty %d kB, Private_Clean %d kB - 536 and 0 on a file just written: 657)' % (dirty, clean))
-print('pages whose bytes differ from the file: %d of %d (%d kB)' % (len(pages), size // 4096, len(pages) * 4))
+      % (binp, sum(x[1] - x[0] for x in maps) // 1024, rss, anon, rss - anon))
+print('  segments: %s' % ', '.join('%x file %d kB' % (v, fz // 1024) for v, _, fz, _ in segs))
+nfile = sum((fz + 4095) // 4096 for _, _, fz, _ in segs)
+print('pages whose bytes differ from the file: %d of %d (%d kB)' % (len(pages), nfile, len(pages) * 4))
 words = collections.Counter(w for v in pages.values() for w in v)
 print('words with bytes written: %d; words per written page: %s'
       % (len(words), ' '.join('%d:%d' % kv for kv in sorted(collections.Counter(len(v) for v in pages.values()).items()))))
 for pg, v in pages.items():
-    print('  %x  %s' % (BASE + pg * 4096, ' '.join(sorted(v))))
+    print('  %x  %s' % (pg * 4096, ' '.join(sorted(v))))

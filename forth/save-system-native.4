@@ -19,11 +19,13 @@ CREATE SSN-HDR 4096 ALLOT
     START @ + DUP SS-UNRELOCATE-WORDLIST
     1 CELLS - @
   REPEAT ;
+: SSN-DATA-AT ( --- u )   SS-LEN @ 4096 + 4095 + -4096 AND ;   \ the data's place in the file
 : SSN-HEADER ( --- )   \ the running image's header page, its p_filesz this image's
   START @ 4096 - SSN-HDR 4096 MOVE
-  SS-LEN @ 4096 +  SSN-HDR 96 + ! ;
+  SS-LEN @ 4096 +  SSN-HDR 96 + !
+  SSN-DATA-AT SSN-HDR 128 + !  DDP @ DATA-BASE -  SSN-HDR 152 + ! ;   \ (672) the data's
 : SAVE-SYSTEM ( c-addr u --- )
-  RESET-BUFFERS
+  RESET-BUFFERS  DATA-OFF
   HERE START @ - SS-LEN !
   SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
   START @ SS-BUF @ SS-LEN @ MOVE
@@ -33,5 +35,7 @@ CREATE SSN-HDR 4096 ALLOT
   W/O BIN CREATE-FILE ABORT" SAVE-SYSTEM: cannot create file" SS-FID !
   SSN-HDR 4096 SS-FID @ WRITE-FILE DROP
   SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SSN-HDR 4096 0 FILL  SSN-HDR  SSN-DATA-AT SS-LEN @ 4096 + -  SS-FID @ WRITE-FILE DROP
+  DATA-BASE  DDP @ DATA-BASE -  SS-FID @ WRITE-FILE DROP      \ (672) the data's region
   SS-FID @ CLOSE-FILE DROP
   SS-BUF @ FREE DROP ;

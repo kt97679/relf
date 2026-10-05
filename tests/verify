@@ -329,7 +329,7 @@ native:signals native:shell-run native:shell-diff:failed
 native:shell-forth-errors:failed native:shell-bytes native:shell
 native:interactive:failed native:mrsh:failed native:posix:failed
 native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
-size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:self-built native:fold native:inline
+size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:data native:data-bytes native:self-built native:fold native:inline
 verify:skip-rows"
 SKIP_FROM=$(wc -l < "$OUT")
 # The native kernel's comparison rows (Iteration 656, prompts/15): a
@@ -487,6 +487,8 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         native_cmp native:slit tests/native/kernel-slit.4
         # (Iteration 669) pushes the next word takes straight back, folded
         native_cmp native:peep tests/native/kernel-peep.4
+        # (Iteration 672) CREATE's data in its own region; HERE back to code at a definition
+        native_cmp native:data tests/native/kernel-data.4
         # (Iteration 645) stores folded into the address before them
         native_cmp native:fold tests/native/kernel-fold.4
         # (Iteration 646) small colon words inlined: results through words that
@@ -503,6 +505,8 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
             emit native:shell-diff:failed "$(THIS_SH=$PWD/relfsh-native timeout 300 tests/diff/run-all 2>&1 | tail -1 | awk '{print $4}')"
             emit native:shell-forth-errors:failed "$(THIS_SH=$PWD/relfsh-native timeout 60 sh tests/shell/run-forth-errors 2>&1 | tail -1 | awk '{print $3}')"
             emit native:shell-bytes "$(wc -c < relfsh-native | tr -d ' ')"
+            # (Iteration 672) the data segment: CREATE's data, out of the code
+            emit native:data-bytes "$(od -An -t u8 -j 152 -N 8 relfsh-native | tr -d ' ')"
             # (Iteration 640) the main shell suite, as asm:shell runs it
             if ( cd tests/shell && THIS_SH="$PWD/../../relfsh-native" timeout 600 ./run-all ) >/tmp/verify-native-shell.log 2>&1
             then emit native:shell 1
@@ -520,10 +524,10 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
             emit native:posix:failed "$NP"
             emit native:forthfuzz:failures "$(timeout 280 python3 tools/forthfuzz.py 100 595 ./relfsh-native 2>&1 | tail -1 | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
             emit native:intrfuzz:failures "$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfsh-native 2>&1 | tail -1 | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
-        else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
+        else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:data-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:cmpbr "not built"; emit native:memop "not built"; emit native:slit "not built"; emit native:peep "not built"; emit native:self-built "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:cmpbr "not built"; emit native:memop "not built"; emit native:slit "not built"; emit native:peep "not built"; emit native:data "not built"; emit native:self-built "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
          emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"

@@ -29,7 +29,8 @@ CROSS-COMPILE
 
 \ ---- the back end proper ---------------------------------------------------------
 : NO-PEEP ;                                   \ no peephole optimiser natively, yet
-VARIABLE DATA-OPEN    \ data was laid last: the next definition on a fresh line (626)
+VARIABLE DDP         \ (672) the other pointer: data's while code is laid, code's while data is
+VARIABLE IN-DATA     \ HERE is data's: from CREATE to the next definition
 : EXIT, ( --- )   195 C, ;                    \ ret
 \ Inlining (646): a colon definition whose body is copyable - no call, no
 \ jump, no ret before its end, nothing of the return stack - is laid by `;`
@@ -322,8 +323,16 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : CATCH ( i*x xt --- j*x 0 | i*x n )   (SAVE-LOOP) CATCH0 (RESTORE-LOOP) ;
 
 \ ---- definitions ----------------------------------------------------------------
-: DATA-ALIGN ( --- )   \ after data, a fresh cache line: code never shares one with it
-  DATA-OPEN @ IF  HERE 63 + -64 AND HERE - ALLOT  0 DATA-OPEN !  THEN ;
+\ (672) CREATE's data in a region of its own (NATIVE.md 13): DP and DDP
+\ trade places, so HERE ALLOT , and C, lay data after a CREATE and code
+\ once a definition begins - and DICT-LIMIT, through the runtime's cell,
+\ is data's limit or code's. 626 had the data on the code's next line:
+\ every page of the code with a variable on it written, and padding.
+: DATA-SWAP ( --- )   DP @  DDP @ DP !  DDP ! ;
+: DATA-ON ( --- )   IN-DATA @ 0= IF  DATA-SWAP  -1 IN-DATA !  DATA-TOP DLIMIT-CELL !  THEN ;
+: DATA-OFF ( --- )   IN-DATA @ IF  DATA-SWAP  0 IN-DATA !  0 DLIMIT-CELL !  THEN ;
+: DATA-ALIGN ( --- )   DATA-OFF ;
+: DATA-BASE ( --- addr )   DATA-START ;     \ where data's region begins, for SAVE-SYSTEM
 : :  ( "name" --- )   DATA-ALIGN !CSP HEADER ]  HERE BODY-AT !  -1 INL-OK ! ;
 : INLINE-MARK ( --- )   \ a copyable body of 1 to 64 bytes: moved up three, marked
   HERE BODY-AT @ - DUP 0 > OVER 65 < AND INL-OK @ AND IF
@@ -332,10 +341,9 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
   ELSE DROP THEN ;
 : ;  ( --- )   ?COMP  INLINE-MARK  EXIT, [ ?CSP REVEAL ; IMMEDIATE
 : RECURSE ( --- )   ?COMP  LAST @ NAME> CALL, ; IMMEDIATE
-: CREATE ( "name" --- )   \ the 24-byte stub; the data at the next 64-byte line
-  DATA-ALIGN  HEADER REVEAL  HERE 24 + 63 + -64 AND >R
-  PUSH,  72 C, 199 C, 195 C,  R@ ,4  195 C,  8 0 DO 144 C, LOOP
-  BEGIN HERE R@ < WHILE 204 C, REPEAT  R> DROP  -1 DATA-OPEN ! ;
+: CREATE ( "name" --- )   \ the 24-byte stub; the data in data's region (672)
+  DATA-OFF  HEADER REVEAL  DDP @ 7 + -8 AND DUP DDP !
+  PUSH,  72 C, 199 C, 195 C,  ,4  195 C,  8 0 DO 144 C, LOOP  DATA-ON ;
 : >BODY ( xt --- a-addr )   11 + @4 ;          \ the address in the stub's mov
 : CONSTANT ( x "name" --- )   DATA-ALIGN HEADER REVEAL  LIT, EXIT, ;
 : (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
