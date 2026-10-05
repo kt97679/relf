@@ -242,3 +242,24 @@ engines unchanged. All of it from item 4: constants as literals (681),
 small bodies copied in place of calls (683), the limits tuned (684).
 Items 1-3 were built and reverted, or priced and not built - their cost
 nothing. Fury's confirmation of 683-684 is the next pack's.
+
+### 701, GOALS.md 10 on CV8: the inliner's limits swept
+
+The user's idea 10 for CV8: faster without a larger image. Its knobs
+here are 683's two limits, INL-MAXI and INL-MAXB (684 left them at 4
+instructions and 6 bytes). Each pair against 700's tree by the ledger, 7
+rounds:
+
+| limits (instructions, bytes) | shells' bytes | asm shell: loop fn str arith realistic | C shell |
+|---|---:|---|---|
+| 4, 5 | -1,520 | 0.992 1.048 1.005 1.015 0.998 | 0.994 1.010 1.013 1.037 1.008 |
+| **3, 6** | **-1,648** | 1.001 1.000 1.012 0.969 1.012; 11 rounds 0.973 0.996 0.990 1.016 1.006 | 0.980 1.050 1.002 1.026 1.020; 0.982-1.037 |
+| 3, 5 | -1,728 | 1.007 1.047 1.012 1.036 1.015 | 0.999 1.014 1.003 1.043 1.025 |
+| 5, 8 | +1,960 | 0.990 1.008 1.006 0.987 0.954 | 0.991 1.000 0.966 1.008 0.994 |
+
+Nothing came out faster at the same size or less: 5 and 8 may be a
+little faster on realistic, but it is 1,960 bytes larger, which the
+condition rules out. 3 and 6 is smaller by 1,648 bytes with every
+workload inside the ledger's noise in two runs: **kept.** A fourth
+instruction bought bytes, not time. The shells: asm 144,748 -> 143,100,
+C x86-64 168,012 -> 166,364, i386 150,196 -> 148,584.

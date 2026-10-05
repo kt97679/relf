@@ -162,7 +162,9 @@ the account of what each gained and cost.
    one knob at a time - a search over many could not tell its candidates
    apart at a 2.3 % floor. The native inliner's limit swept 8-128:
    32 kept (-3.3 KB, inside the floor), 128 larger and slower, 8-24
-   slower. NATIVE.md 15.
+   slower. NATIVE.md 15. **701:** CV8's inliner limits swept the same
+   way (CV8-LEDGER.md): nothing faster at equal size; 3 instructions and
+   6 bytes kept, the CV8 shells 1,648 bytes smaller at the same speed.
 11. **The Forth sources reviewed for words that can be simpler or
    shorter** - kernel.4, extend.4, the shell's sources - with speed not
    lower and the image not larger. Tools that exist: dead-words.py

@@ -1565,7 +1565,11 @@ VARIABLE STATE ( --- a-addr)
 \ 16 - calls a further 27 % fewer, the shells 3,544 bytes larger, the
 \ time the same - and against four and 6 bytes: the time the same, the
 \ shells 424 bytes smaller. X@, the most called, is 5 bytes.
-4 CONSTANT INL-MAXI    \ at most this many instructions before the EXIT
+\ (701) Swept again, against 4 and 6, by the ledger (GOALS.md 10): 4 and
+\ 5 bytes -1,520 bytes of shell, 3 and 5 -1,728 but fn and arith up 4 %,
+\ 5 and 8 +1,960, 3 and 6 -1,648 with every workload inside the noise
+\ in two runs: kept. A fourth instruction paid for itself only in bytes.
+3 CONSTANT INL-MAXI    \ at most this many instructions before the EXIT
 6 CONSTANT INL-MAXB    \ and at most this many bytes
 
 : INLINE-LEN ( xt --- u )   \ a small straight body's bytes before its EXIT, or 0

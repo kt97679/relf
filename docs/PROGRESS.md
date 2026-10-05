@@ -725,6 +725,7 @@ do not trust the absence of a line below.
 - 698 — a CREATE stub in 17 bytes: 967 stubs, the shell's code -5.8 KB; 420,200 bytes
 - 699 — backward branches short: built, cost more than they saved (+232 bytes) - set aside; idea 9's account: -32.7 KB
 - 700 — ideas 10 and 11 begun: the native inliner's limit swept 8-128; 32 kept, -3.3 KB
+- 701 — CV8's inliner limits swept: nothing faster at equal size; 3 instructions and 6 bytes kept, the CV8 shells -1.6 KB
 
 ### Not tied to an iteration
 
