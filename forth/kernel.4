@@ -1510,6 +1510,16 @@ VARIABLE STATE ( --- a-addr)
   DUP C@ [OP] R> = 0= IF DROP 0 EXIT THEN
   1+ DUP C@ [OP] @ =  SWAP 1+ C@ [OP] EXIT =  AND ;
 
+: LIT-LEN ( op --- n )   \ a literal's length, its opcode included, or 0 (681)
+  DUP 97 = OVER 98 = OR OVER 99 = OR IF DROP 1 EXIT THEN
+  DUP LIT8-TOK = IF DROP 2 EXIT THEN
+  DUP [OP] LIT = IF DROP 3 EXIT THEN
+  DUP LIT32-TOK = IF DROP 5 EXIT THEN
+  125 = IF 9 EXIT THEN  0 ;
+
+: CONST-WORD? ( xt --- f )   \ its body one literal, then EXIT: a constant's (681)
+  DUP C@ LIT-LEN ?DUP IF + C@ [OP] EXIT = ELSE DROP 0 THEN ;
+
 : COMPILE, ( xt --- )
 \ Add the execution semantics of xt to the current definition. A word
 \ with the MACRO bit is a primitive or an opcode word: its body starts
@@ -1524,6 +1534,10 @@ VARIABLE STATE ( --- a-addr)
       NO-PEEP HERE LAST-OP ! OP,
     THEN
   ELSE
+    \ (681) A constant - a body of one literal and EXIT - compiles to its
+    \ value, laid as a literal: one dispatch where the call, the literal
+    \ and the return were three. Its word stays, for ' and EXECUTE.
+    DUP CONST-WORD? IF EXECUTE LIT, EXIT THEN
     \ A word whose DOES> part is `@ ;` compiles to VAR@ on its data
     \ field: one dispatch where the call, the DOES> prologue, the fetch
     \ and the return were four - 6.7% of the shell's loop was that, for

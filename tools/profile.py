@@ -10,6 +10,11 @@ shell/shell.4's and shell/tree.4's colon definitions.
 
 Same shape as tools/coverage.py, which marks instructions instead of
 counting them (Iteration 365).
+
+PROFILE_CALLS=1 adds the calls (Iteration 681): every call site's
+dispatches, summed by the word it calls, and the share of all calls that
+go to words of at most k instructions, EXIT included - what inlining the
+small words could take away.
 """
 import contextlib, io, os, re, subprocess, sys, tempfile
 
@@ -92,3 +97,20 @@ print(f'{grand:,} dispatches attributed, {len(rows)} words entered\n')
 print(f'{"dispatches":>12}  {"share":>6}  word')
 for total, n, where in sorted(rows, reverse=True)[:30]:
     print(f'{total:12,}  {total * 100 / grand:5.1f}%  {n:24} {where}')
+if os.environ.get('PROFILE_CALLS'):
+    import collections
+    xt2name = {s[0]: n for n, s in g['STARTS'].items() if s}
+    size = {n: len(s) for n, s in g['STARTS'].items()}
+    calls = collections.Counter()
+    for ip, nxt, tgt in g['CALLS']:
+        if tgt in xt2name:
+            calls[xt2name[tgt]] += c[ip]
+    tot = sum(calls.values())
+    print(f'\n{tot:,} calls executed - each a call and an EXIT, {2 * tot * 100 / grand:.1f} % of the dispatches above')
+    print('calls to words of at most k instructions, EXIT included:')
+    for k in (2, 3, 4, 5, 6, 8, 12, 16):
+        n = sum(v for w, v in calls.items() if size.get(w, 999) <= k)
+        print(f'  k={k:<3} {n:12,}  {n * 100 / tot:5.1f} %')
+    print('the most called:')
+    for w, v in calls.most_common(20):
+        print(f'  {v:12,}  {v * 100 / tot:5.1f} %  {size.get(w, 0):3} instructions  {w}')

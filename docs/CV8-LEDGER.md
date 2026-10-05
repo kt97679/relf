@@ -108,3 +108,38 @@ kernel.4, which the cross compiler refuses; the images were not rebuilt,
 and its A/B compared two copies of one shell - noise, caught by their
 equal sizes and the failed build's status. Rebuilt with POSTPONE, guarded
 against its own recursion.)
+
+### 681, item 4 stage a: a constant's use compiled as its literal
+
+First, how many calls are there to inline? tools/profile.py's
+PROFILE_CALLS=1, new: every call site's dispatches summed by the word it
+calls, on the realistic script. 1,849,354 calls, a call and an EXIT each:
+18.2 % of 20.3 million dispatches. Calls to words of at most 2
+instructions, EXIT included: 16.7 %; 3: 39.3 %; 4: 52.4 %; 6: 69.1 %.
+The most called: X@ 9.2 % (4 instructions), * 5.1 (3), NIP 4.8 (3), XF@
+4.6 (5); and among the 2-instruction words, constants - SHVAR-NAME-MAX,
+ENC-CTL, WF-QUOTED, T-SIMPLE: CV8's CONSTANT is HEADER REVEAL LIT, EXIT,
+a call each time it is used.
+
+Built: kernel.4's COMPILE, compiles a word whose body is one literal and
+EXIT - LIT-LEN knows the five literal forms - as that literal: the word
+EXECUTEd at compile time, its value LIT,'d. The word stays for ' and
+EXECUTE; nothing patches a constant's body later (checked). The native
+cross compiler skips the two new helpers, as the other CV8 back-end
+words: the native kernel is byte for byte the same, and builds itself.
+
+Calls on the realistic script 1,849,354 -> 1,545,820 (-16.4 %), calls to
+2-instruction words 308,387 -> 4,850, dispatches 20.3 -> 19.6 million.
+
+| 7 rounds, against 680 | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine's shell | 0.998 | 0.949 | 0.957 | 1.005 | 0.936 |
+| C engine's shell | 0.957 | 0.943 | 0.970 | 0.968 | 0.951 |
+| asm shell, times native | 12.3 | 12.2 | 12.1 | 11.7 | 12.0 |
+
+bench.4: the asm engine's geomean 0.936 (matrix 0.791, bubble 0.864,
+sieve 0.919), the C engine's 0.958 - its kernels' constants are laid as
+literals now too. **Cost:** the kernel image +104 bytes (the two
+helpers); the shells -272 bytes - a literal is shorter than a call.
+**Got:** 3-6 % on the shells (at the noise floor's edge, both engines
+agreeing), 4-6 % on bench.4.
