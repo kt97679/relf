@@ -690,7 +690,8 @@ do not trust the absence of a line below.
 - 663 — fury's pack at 662: 661 and 662 claimed, 7-11 % faster there; every workload inside 4.3 times dash
 - 664 — the round trip as a protocol: prompts/19 and its template; the pack script applies bundles itself, and runs again when they change it
 - 665 — fury's noise between two runs measured, -4 to +4 %; the pack measures in three minutes, verify there only on request
-- 666 — S" laid inline, its return no longer missing the predictor: 3-12 % faster, A/B
+- 666 — S" laid inline, its return no longer missing the predictor: 4-10 % faster, A/B
+- 667 — fury's pack at 666: fn 9 % faster there, the rest at the noise's edge
 
 ### Not tied to an iteration
 
