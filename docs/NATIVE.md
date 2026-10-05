@@ -595,10 +595,13 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 664 (the same code) | 3.22 | 3.91 | 2.98 | 4.48 [4.23-4.54] | 4.01 | 0.92 |
 | relfsh, native, 666 (7350a38) | 3.05 | 3.55 | 3.00 | 4.25 [4.14-4.38] | 3.98 | 0.95 |
 | relfsh, native, 672 (bacbf45) | 3.01 | 3.51 | 2.82 | 4.15 [4.09-4.23] | 3.91 | 0.80 |
+| relfsh, native, 676 (7e8c745) | 2.88 | 3.50 | 2.89 | 3.67 [3.39-3.93] | 3.83 | 0.83 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
 | relfsh, asm engine, 662 | 30.1 | 35.5 | 30.1 | 39.7 | 41.5 | 0.96 |
+| relfsh, asm engine, 672 | 29.3 | 36.6 | 30.2 | 38.7 | 41.9 | 0.86 |
+| relfsh, asm engine, 676 | 27.8 | 34.6 | 30.0 | 35.1 | 41.6 | 1.01 |
 
 **After 652, N3's five times dash holds on every workload by the
 median** - arith only just: its interval reaches 5.14. The rows for 648
@@ -639,6 +642,11 @@ fury's noise, where the VM's A/B said 3-5 % together; no claim. Start-up
 resident (488 at 666), 64 kB written (344). The language benchmarks:
 native 0.14 of the asm engine's time (0.17), the loop 48 -> 8 ms - 669's
 I + fold.
+676's CTABLE-FIND (677): native arith 0.88 against 672's run, its implied
+time 0.87 - past the noise; loop 0.96 and 0.93; fn, str and realistic
+inside it. And the asm engine's shell, CV8's own, which no native change
+had moved: loop 0.95, fn 0.94, arith 0.91 - implied 0.92, 0.88, 0.89 - the
+first fury figures in a while to speed up the shell people run.
 
 **Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
 resident, 412 of it the executable; here, the same binary (539,724
