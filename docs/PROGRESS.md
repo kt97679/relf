@@ -723,6 +723,7 @@ do not trust the absence of a line below.
 - 696 — the counted loop's limit from r15 to r13: r15 freed for the data stack
 - 697 — the native data stack in r15, a base with no displacement byte: the shell's code -10.9 KB; 424,296 bytes
 - 698 — a CREATE stub in 17 bytes: 967 stubs, the shell's code -5.8 KB; 420,200 bytes
+- 699 — backward branches short: built, cost more than they saved (+232 bytes) - set aside; idea 9's account: -32.7 KB
 
 ### Not tied to an iteration
 

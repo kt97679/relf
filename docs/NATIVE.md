@@ -1053,3 +1053,23 @@ a VARIABLE's push is still inlined. CREATE, N-STUB24 (the cross
 compiler's), N>BODY, native-prof.py and native-budget.py moved together.
 The shell's code 403,193 -> 397,347 (-5,846), the file 424,296 ->
 420,200. Over layouts against 697: 0.972-1.006.
+
+**699: backward branches short - built, set aside.** BACK, knows its
+distance as it lays the branch, so UNTIL, AGAIN, LOOP and +LOOP could
+take rel8 at once (not after ?DUP's fused test, whose jnz lands past the
+field - the table's last entry shows it). It worked - loops, the
+short-branch test, every native test - and shortened all but 37 bytes'
+worth; but those branches were only 611 bytes, and the new BACK,, Forth
+through the native compiler, cost more: the shell's code came out 232
+bytes larger. The same lesson as 692's first shrinker, at a smaller
+scale: a saving smaller than the code that makes it is not one.
+
+**Idea 9's account (686-698).** The native shell 452,912 -> 420,200
+bytes (-32.7 KB, -7.2 %), its code 432,728 -> 397,347 (-35.4 KB, -8.2 %):
+literals at their shortest (689, 692, 694), forward branches short
+(693, 695), the data stack in r15 (696, 697), CREATE stubs in 17 bytes
+(698). Every step kept under the user's ruling - the layout A/B inside
+its floor, which several of them beat. Left: what is not cheap - the
+stack traffic itself (41 % of the code; a deferred push would cut it and
+might be faster, a compiler change), and the headers (28 KB, which the
+forth builtin needs).
