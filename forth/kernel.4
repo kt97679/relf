@@ -1520,6 +1520,68 @@ VARIABLE STATE ( --- a-addr)
 : CONST-WORD? ( xt --- f )   \ its body one literal, then EXIT: a constant's (681)
   DUP C@ LIT-LEN ?DUP IF + C@ [OP] EXIT = ELSE DROP 0 THEN ;
 
+\ (683) Inlining, item 4 stage b (CV8-LEDGER.md): a call to a small
+\ straight-line word - at most four instructions before its EXIT, at
+\ most 12 bytes - is replaced by a copy of its body. Calls and returns
+\ were 18 % of the realistic script's dispatches (681), half of them to
+\ words that small. A body is copied as it is, so it may hold only what
+\ means the same anywhere: no branch (offsets would point elsewhere - not
+\ yet), no return-stack word (it would find the caller's frame), no
+\ locals (they are frames too), no data word; a call is copied, unless
+\ its word begins R> or R@ - (S") and (POSTPONE) take their return
+\ address, and data follows the call.
+: INL-PLAIN? ( op --- f )   \ an operand-free opcode that means the same anywhere
+  DUP 5 - 12 U<  OVER 20 - 6 U< OR  OVER 65 - 2 U< OR  OVER 70 - 2 U< OR
+  OVER 97 - 3 U< OR  OVER 106 - 7 U< OR  OVER 114 - 4 U< OR  SWAP 119 = OR ;
+
+: INL-OP ( a --- a' )   \ past one instruction a copied body may hold, or 0
+  DUP C@  DUP 128 AND IF                             \ a call: two bytes, or three
+    DUP 64 AND IF  63 AND 16 LSHIFT  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ OR  3
+    ELSE  63 AND 8 LSHIFT  OVER 1+ C@ OR  2  THEN
+    SWAP START @ + C@  DUP 17 = SWAP 19 = OR IF 2DROP 0 EXIT THEN  + EXIT
+  THEN
+  DUP 2 = IF DROP 3 + EXIT THEN                      \ LIT, two bytes
+  DUP 26 = IF DROP 5 + EXIT THEN                     \ LIT32
+  DUP 125 = IF DROP 9 + EXIT THEN                    \ LIT64
+  DUP 29 = OVER 121 = OR OVER 123 = OR IF DROP 2 + EXIT THEN   \ LIT8 ADDI EQI
+  DUP 100 = OVER 101 = OR IF                         \ VAR@ VAR!: a slot of two bytes, or three
+    DROP DUP 1+ C@ 128 AND IF 4 ELSE 3 THEN + EXIT THEN
+  DUP 126 = IF                                       \ ESC: any selector but RP@ and RP!
+    DROP DUP 1+ C@ DUP 72 = SWAP 73 = OR IF DROP 0 ELSE 2 + THEN EXIT THEN
+  INL-PLAIN? IF 1+ ELSE DROP 0 THEN ;
+
+: SLOT@ ( a --- a-addr )   \ the address the slot operand at a names (683)
+  \ SLOT,'s two forms read back: big-endian, from the operand itself -
+  \ fifteen signed bits, or twenty-three with the first byte's top bit set
+  DUP C@ 128 AND IF
+    DUP C@ 127 AND 16 LSHIFT  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ OR
+    DUP 4194304 AND IF 8388608 - THEN
+  ELSE
+    DUP C@ 8 LSHIFT  OVER 1+ C@ OR
+    DUP 16384 AND IF 32768 - THEN
+  THEN + ;
+
+: INLINE-LEN ( xt --- u )   \ a small straight body's bytes before its EXIT, or 0
+  DUP 5
+  BEGIN DUP WHILE
+    OVER C@ 1 = IF  DROP SWAP -  DUP 13 U< 0= IF DROP 0 THEN  EXIT  THEN
+    1- SWAP INL-OP  DUP 0= IF DROP 2DROP 0 EXIT THEN  SWAP
+  REPEAT DROP 2DROP 0 ;
+
+: INLINE-COPY ( xt u --- )   \ the body's instructions laid here (683)
+  \ as they are, but a slot: its offset is from the operand itself, so a
+  \ VAR@ or VAR! is laid again, its slot aimed from where it is now
+  OVER + SWAP
+  BEGIN 2DUP SWAP U< WHILE
+    DUP INL-OP
+    OVER C@ DUP 100 = SWAP 101 = OR IF
+      OVER C@ C,  OVER 1+ SLOT@ SLOT,
+    ELSE
+      2DUP SWAP - >R  OVER HERE R@ MOVE  R> ALLOT
+    THEN
+    SWAP DROP
+  REPEAT 2DROP ;
+
 : COMPILE, ( xt --- )
 \ Add the execution semantics of xt to the current definition. A word
 \ with the MACRO bit is a primitive or an opcode word: its body starts
@@ -1545,6 +1607,8 @@ VARIABLE STATE ( --- a-addr)
     DUP DOES-FETCH? IF
       NO-PEEP 100 OP, 4 + ALIGNED SLOT, NO-PEEP EXIT
     THEN
+    \ (683) a small straight word: its body, copied, in place of the call
+    DUP INLINE-LEN ?DUP IF  NO-PEEP INLINE-COPY NO-PEEP EXIT  THEN
     CALL,
   THEN ;
 

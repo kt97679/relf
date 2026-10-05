@@ -1,0 +1,23 @@
+\ tests/native/kernel-inl.4 - CV8's inlining (Iteration 683): a call to a
+\ small straight word is replaced by a copy of its body. The native kernel
+\ does not inline this way, so it is the oracle: CV8's engines must print
+\ what it prints. Slots re-aimed from their new place, near and far (the
+\ three-byte form, past 16 KB); calls copied as they are; what must not
+\ be copied left a call - a word that takes its return address, the
+\ return stack, a branch; constants, ESC primitives, EXECUTE, nesting.
+VARIABLE NEAR  : GETN NEAR @ ;  : SETN NEAR ! ;
+: USEN 5 SETN GETN 1+ ;  USEN .
+VARIABLE FAR  20000 ALLOT  : GETF FAR @ ;  : SETF FAR ! ;
+: USEF 7 SETF GETF 2* GETF + ;  USEF .
+: DBL DUP + ;  : QUAD DBL DBL ;  : OCT QUAD DBL ;  3 OCT .
+: SQ DUP * ;  : SUMSQ SQ SWAP SQ + ;  3 4 SUMSQ .
+: HELLO S" hi" ;  : SAY HELLO TYPE ;  SAY SPACE
+: TOPR R@ DROP 9 ;  : USER TOPR 1+ ;  USER .
+: ABS1 DUP 0< IF NEGATE THEN ;  : USEA -6 ABS1 ;  USEA .
+1000000000000 CONSTANT BIG  : BIG+ BIG + ;  : USEB 1 BIG+ ;  USEB .
+: LEN CSTRLEN ;  CREATE CS 65 C, 66 C, 0 C,  : USEL CS LEN ;  USEL .
+: RUN EXECUTE ;  : USEX ['] DBL 21 SWAP RUN ;  USEX .
+: SWP SWAP ;  : USES 1 2 SWP - ;  USES .
+DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

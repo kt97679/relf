@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: on x86-64, one static file of 141,572 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
+relfsh is a POSIX shell written in Forth: on x86-64, one static file of 145,172 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
 
 ## Why
 
@@ -51,7 +51,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 ## What it is
 
 ```
-./relfshasm64 - one static file, 141,572 bytes
+./relfshasm64 - one static file, 145,172 bytes
 +------------------------------------------------+
 | the shell: parser, executor, line editor       |
 |   shell.4  tree.4  edit.4          (Forth)     |
@@ -112,7 +112,7 @@ relfsh, C engine           1564        400
 bash                       2808        292
 ```
 
-Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 141,572 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
+Each shell reads its own /proc/PID/smaps: resident is the sum of Rss, which also counts pages shared with other processes, chiefly the C library; private is the sum of Private\_Clean and Private\_Dirty. A static binary maps no C library, so relfsh on its own engine takes 7 to 13 times less resident memory than the dynamically linked dash and bash, almost 4 times less than the static busybox, and is close to a static dash, which is smaller still. Private memory is what each copy adds: there dash is the smallest, and relfsh on its own engine has almost twice as much. relfsh's file is 145,172 bytes against the static dash's 169,720, with a Forth compiler and a line editor in it.
 
 First the shell's speed: CPU time (user+sys) as a ratio to dash, the median of the ratios over seven rounds in which every shell ran every workload ([tools/bench-vm.py](https://github.com/kt97679/relf/blob/article-2026/tools/bench-vm.py)). The workloads are sized so that dash's own start (1.7 ms) is at most a tenth of dash's time on each: loop is 50,000 rounds of test and increment; fn, 15,000 function calls; str, 10,000 rounds of `${s##*/}`, `${s%/*}` and `case`; arith, 17,500 steps of a modular Fibonacci; realistic, option parsing, trims, `case`, arithmetic and `set --`, 7,500 rounds; start, one `sh -c true`. The first row is dash's own time.
 

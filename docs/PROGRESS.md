@@ -707,6 +707,7 @@ do not trust the absence of a line below.
 - 680 — CV8's items 2-4 priced: string literals and locals inside the noise, not built; an extra call per call site +32-41 % - inlining is the lever
 - 681 — item 4 stage a: a constant's use compiled as its literal - CV8 calls -16 %, shells 3-6 % faster, bench.4 4-6 %
 - 682 — fury's pack at 681 (the C engine's gain claimed there); the user's three ideas recorded in GOALS.md, items 9-11
+- 683 — item 4 stage b: small straight words inlined on CV8 - calls -44 %, asm shell 5-10 % faster, C 5-7 %; +3.6 KB
 
 ### Not tied to an iteration
 

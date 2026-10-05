@@ -150,3 +150,41 @@ engine's shell loop 27.2 (28.7), fn 34.1 (35.4), str 28.2 (30.5), arith
 the asm engine's 27.6, 34.8, 28.4, 35.1, 39.3 - ratios 0.95-1.01, inside
 fury's noise. The C engine's gain is claimed there; the asm engine's is
 not, yet.
+
+### 683, item 4 stage b: small straight words inlined
+
+Built: kernel.4's COMPILE, decodes the word it is asked to call
+(INLINE-LEN): at most four instructions before its EXIT and at most 12
+bytes, each one that means the same anywhere - operand-free stack,
+arithmetic and memory opcodes, literals, ADDI and EQI, VAR@ and VAR!,
+ESC primitives but RP@ and RP!, and calls, unless the called word begins
+R> or R@ ((S") and (POSTPONE) take their return address and data follows
+the call). No branch, no return-stack word, no locals, no data word. Such
+a body is laid in place of the call (INLINE-COPY), each instruction as it
+is - calls are offsets from START, the same anywhere - but VAR@ and VAR!,
+whose slots are offsets from the operand itself: SLOT@ reads one back,
+SLOT, lays it again from its new place. The first build copied slots as
+they were: the 4-byte image's cross-compile, run by the new 8-byte image,
+crashed, and `VARIABLE V : T5 V @ ; : T6 T5 1+ ;` printed garbage. Then
+U> - extend.4's, not the kernel's - stopped the cross compiler.
+
+tests/native/kernel-inl.4 (verify's native:inl): near and far slots (the
+three-byte form, past 16 KB), nesting, words that must stay calls - S"
+inside, R@, a branch - constants, ESC, EXECUTE; the native kernel, which
+does not inline this way, is the oracle, and CV8's engines print what it
+prints.
+
+Calls on the realistic script 1,545,820 -> 863,539 (-44 %); dispatches
+19.6 -> 18.3 million; calls to words of at most five instructions 4,823.
+
+| 7 rounds, against 682 | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine's shell | 0.896 | 0.929 | 0.948 | 0.940 | 0.901 |
+| C engine's shell | 0.939 | 0.926 | 0.938 | 0.953 | 0.953 |
+| asm shell, times native | 12.3 | 11.5 | 11.6 | 11.2 | 10.4 |
+
+bench.4: asm 0.939 (matrix 0.810, fannkuch 0.807), C 0.944. **Cost:** the
+shells +3,600 bytes (+2.5 %), the kernel image +504 (the inliner).
+**Got:** 5-10 % on the asm shell, 5-7 % on the C shell, 6 % on bench.4.
+A size-neutral variant - only bodies no longer than the call - is a
+candidate for GOALS.md 10's search.

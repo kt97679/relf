@@ -329,7 +329,7 @@ native:signals native:shell-run native:shell-diff:failed
 native:shell-forth-errors:failed native:shell-bytes native:shell
 native:interactive:failed native:mrsh:failed native:posix:failed
 native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
-size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:data native:ctab native:data-bytes native:self-built native:fold native:inline
+size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:data native:ctab native:inl native:data-bytes native:self-built native:fold native:inline
 verify:skip-rows"
 SKIP_FROM=$(wc -l < "$OUT")
 # The native kernel's comparison rows (Iteration 656, prompts/15): a
@@ -491,6 +491,8 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         native_cmp native:data tests/native/kernel-data.4
         # (Iteration 676) CTABLE-FIND, the variable scan's primitive, against the engines'
         native_cmp native:ctab tests/native/kernel-ctab.4
+        # (Iteration 683) CV8's inlining, the native kernel its oracle
+        native_cmp native:inl tests/native/kernel-inl.4
         # (Iteration 645) stores folded into the address before them
         native_cmp native:fold tests/native/kernel-fold.4
         # (Iteration 646) small colon words inlined: results through words that
@@ -529,7 +531,7 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:data-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
-         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:cmpbr "not built"; emit native:memop "not built"; emit native:slit "not built"; emit native:peep "not built"; emit native:data "not built"; emit native:ctab "not built"; emit native:self-built "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
+         emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:cmpbr "not built"; emit native:memop "not built"; emit native:slit "not built"; emit native:peep "not built"; emit native:data "not built"; emit native:ctab "not built"; emit native:inl "not built"; emit native:self-built "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
          emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
     emit size:asm-engine "$(wc -c < relfasm64 | tr -d ' ')"
