@@ -209,3 +209,36 @@ bought nothing measurable for 3,544 bytes: rejected. Four and 6 bytes
 kept 683's time (calls 872,256, 1 % more than 683's) and gave back 424
 of its 3,600 bytes: **kept.** The most called word, X@, is 5 bytes; the
 gain is in the very smallest words. bench.4: 0.997 both ways.
+
+## Items 1-4 together (685)
+
+The tree at 684 against 678's, the ledger's whole run, 9 rounds - what
+the four items got CV8, and what they cost:
+
+Measured on vm, a4a92c1 against 07d457c, 9 rounds:
+
+| shell, SCALE=5 | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine, against base | 0.907 | 0.896 | 0.923 | 0.915 | 0.874 |
+| C engine, against base | 0.922 | 0.908 | 0.905 | 0.899 | 0.880 |
+| asm engine, times native | 11.784 | 11.051 | 11.555 | 11.222 | 10.828 |
+
+| engine, bench.4 | fib | loop | sieve | bubble | matrix | fannkuch | collatz | geomean |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| asm engine, against base | 0.993 | 1.003 | 0.901 | 0.863 | 0.642 | 0.820 | 0.985 | 0.878 |
+| C engine, against base | 1.002 | 1.010 | 0.897 | 0.967 | 0.686 | 0.809 | 0.975 | 0.899 |
+
+| bytes | relfasm64 | relf64 | relfshasm64 | relfsh64 | forth/kernel64.img | kernel64-shell.img |
+|---|---:|---:|---:|---:|---:|---:|
+| base | 15856 | 45360 | 141844 | 171348 | 9840 | 125972 |
+| now | 15856 | 45360 | 144748 | 174252 | 10480 | 128876 |
+| change | +0 | +0 | +2904 | +2904 | +640 | +2904 |
+
+**Got:** the asm engine's shell 8-13 % faster on every workload, the C
+engine's 8-12 %; bench.4 12 % and 10 % (matrix 36 %). The asm shell
+from 11.8-13.7 times the native shell's time (679) to 10.8-11.8.
+**Cost:** the shells +2,904 bytes (2.0 %), the kernel image +640; the
+engines unchanged. All of it from item 4: constants as literals (681),
+small bodies copied in place of calls (683), the limits tuned (684).
+Items 1-3 were built and reverted, or priced and not built - their cost
+nothing. Fury's confirmation of 683-684 is the next pack's.

@@ -709,6 +709,7 @@ do not trust the absence of a line below.
 - 682 — fury's pack at 681 (the C engine's gain claimed there); the user's three ideas recorded in GOALS.md, items 9-11
 - 683 — item 4 stage b: small straight words inlined on CV8 - calls -44 %, asm shell 5-10 % faster, C 5-7 %; +3.6 KB
 - 684 — the inliner's limits: six instructions bought nothing for 3.5 KB; 6 bytes kept 683's speed and gave back 424 bytes
+- 685 — CV8's items 1-4 together: both shells 8-13 % faster, bench.4 10-12 %, for 2.9 KB of shell
 
 ### Not tied to an iteration
 
