@@ -686,6 +686,7 @@ do not trust the absence of a line below.
 - 659 — intrfuzz case 4: 0 in ten runs on fury alone; a failed check now reports its line's status
 - 660 — the variable scan priced (5-14 % natively) and looked inside; a walked scan built, measured, reverted
 - 661 — a compare of two cells fused with its branch: str, arith, realistic 4-5 % faster, the shell 2 % smaller
+- 662 — the stack's traffic priced at 11-15 %; a VARIABLE's fetch folded into the operation after it: 2-3.5 % faster, 2.6 % smaller
 
 ### Not tied to an iteration
 

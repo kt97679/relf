@@ -1,0 +1,37 @@
+\ tests/native/kernel-memop.4 - a VARIABLE's fetch folded into the
+\ operation after it (Iteration 662): + - AND OR XOR with [X] as operand,
+\ = < > U< <> comparing with it - as a flag, and fused with IF WHILE UNTIL
+\ - and >R pushing it from memory; a jump's target between the fetch and
+\ the operation, where nothing may fold; the depth after each line.
+\ Native, CV8-asm and CV8-C print the same.
+VARIABLE X   VARIABLE Y
+1 63 LSHIFT CONSTANT MIN-N   MIN-N 1- CONSTANT MAX-N
+CREATE VALS  MIN-N , -2 , -1 , 0 , 1 , 2 , MAX-N ,
+: V ( i --- x )  CELLS VALS + @ ;
+: A+ X @ + ;   : A- X @ - ;   : AAND X @ AND ;   : AOR X @ OR ;   : AXOR X @ XOR ;
+: F= X @ = ;   : F< X @ < ;   : F> X @ > ;   : FU< X @ U< ;   : F<> X @ <> ;
+: B< ( a --- )  X @ < IF ." T" ELSE ." F" THEN ;
+: BU< ( a --- )  X @ U< IF ." T" ELSE ." F" THEN ;
+: B= ( a --- )  X @ = IF ." T" ELSE ." F" THEN ;
+: ARITH ( --- )  7 0 DO I V X !  7 0 DO
+    I V A+ .  I V A- .  I V AAND .  I V AOR .  I V AXOR .  LOOP CR LOOP ;
+ARITH DEPTH . CR
+: FLAGS ( --- )  7 0 DO I V X !  7 0 DO
+    I V F= .  I V F< .  I V F> .  I V FU< .  I V F<> .  LOOP CR LOOP ;
+FLAGS DEPTH . CR
+: BRS ( --- )  7 0 DO I V X !  7 0 DO  I V B<  I V BU<  I V B=  LOOP CR LOOP ;
+BRS DEPTH . CR
+: CNT ( n --- c )  X !  0 BEGIN DUP X @ < WHILE 1+ REPEAT ;
+: CNTU ( n --- c )  X !  0 BEGIN 1+ DUP X @ = UNTIL ;
+5 CNT .  0 CNT .  -3 CNT .  6 CNTU .  DEPTH . CR
+: RT ( a --- a+x*2 )  X @ >R  R@ +  R> + ;
+7 X !  1 RT .  -100 RT .  DEPTH . CR
+: G3 ( a b f --- n )  IF DROP X @ THEN + ;
+10 X !  1 2 -1 G3 .  1 2 0 G3 .  DEPTH . CR
+: TWO ( --- n )  X @ Y @ +  X @ Y @ -  * ;
+3 X !  5 Y !  TWO .  -4 X !  9 Y !  TWO .  DEPTH . CR
+: MAXX ( a --- m )  DUP X @ < IF DROP X @ THEN ;
+: USE ( --- )  4 X !  1 MAXX .  9 MAXX .  ['] MAXX 2 SWAP EXECUTE . ;
+USE  DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

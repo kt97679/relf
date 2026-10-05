@@ -529,7 +529,8 @@ internal jumps too (651); COMPARE's tail and short MOVEs as byte loops
 (647); SIGNALS-PENDING eight flags at a time (648); an assignment's
 environment search once (650); CSTRLEN's short strings in one load
 (652); the locals' saves and restores inline, a run as one group (655); a
-compare of two cells, or of one with 0, fused with its branch (661).
+compare of two cells, or of one with 0, fused with its branch (661); a
+VARIABLE's fetch folded into the operation after it (662).
 Built and reverted: SCAN's one-load path (654).
 
 The profile at 655 (tools/native-prof.py, this VM, the workloads x100) -
@@ -555,6 +556,15 @@ lay cmp or test, two pops by mov and lea, and the jump - 5 instructions
 where there were 11. A/B against 660 here: str 0.955, arith 0.953,
 realistic 0.960, loop 0.990, fn 0.995; the shell 2 % smaller (536,392
 bytes). The second is next.
+
+Priced at 662 with the work it would remove: one more push-and-pop round
+trip at every pushing primitive copied - 2,570 sites - cost 11-15 % on
+every workload. What pushes most, counted in one instrumented build: a
+VARIABLE's fetch, 3,185 of 10,951 compiled pushes, its pushed cell read
+back at once by + < - OR = AND > or >R at 831 places. Those now take
+[X] as their operand (662): A/B against 661, loop 0.966, fn 0.970,
+realistic 0.977, str and arith within 2 %; the shell 522,504 bytes. The
+rest of the traffic is the stack model's (3.2), not yet built.
 
 ### 11.1 Measured on fury
 

@@ -80,6 +80,9 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP ['] OR = IF DROP 11 OVER-OP, -1 EXIT THEN
   DUP ['] XOR = IF DROP 51 OVER-OP, -1 EXIT THEN
   0 ;
+VARIABLE LOAD-AT      \ a VARIABLE's fetch just laid - push, mov rbx,[a] - where it began (662)
+VARIABLE LOAD-END     \ where it ended
+VARIABLE LOAD-ADDR    \ the address it loads
 : UNLIT, ( --- )   LIT-AT @ HERE - ALLOT  0 LIT-AT ! ;          \ the literal unlaid (645)
 : POP, ( --- )   72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C, ;   \ mov rbx,[rbp]  add rbp,8
 : FOLD ( xt --- xt 0 | -1 )   \ (628) a literal then +, -, AND, OR, XOR, =, <, >,
@@ -93,7 +96,8 @@ VARIABLE DUP-AT     \ a DUP laid right before its literal: where, else 0
   DUP ['] = = IF DROP 148 CMP-IMM, -1 EXIT THEN
   DUP ['] < = IF DROP 156 CMP-IMM, -1 EXIT THEN
   DUP ['] > = IF DROP 159 CMP-IMM, -1 EXIT THEN
-  DUP ['] @ = IF DROP LOAD-ABS,  72 C, 139 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
+  DUP ['] @ = IF DROP LIT-AT @ >R  LOAD-ABS,  72 C, 139 C, 28 C, 37 C,  LIT-VAL @ ,4
+    R> LOAD-AT !  LIT-VAL @ LOAD-ADDR !  HERE LOAD-END !  -1 EXIT THEN
   DUP ['] C@ = IF DROP LOAD-ABS,  72 C, 15 C, 182 C, 28 C, 37 C,  LIT-VAL @ ,4 -1 EXIT THEN
   \ and a literal address then ! C! +! (645): the store to it, the value
   \ already the top once the literal is unlaid - a VARIABLE's update in one
@@ -119,6 +123,30 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   DUP ['] 0= = IF 8 SETCC-AT IF 1 TRUE ELSE 0 THEN EXIT THEN  \ test, sete: jne
   DUP ['] = = OVER ['] < = OR OVER ['] > = OR OVER ['] U< = OR OVER ['] <> = OR
   IF 16 SETCC-AT IF 2 TRUE ELSE 0 THEN EXIT THEN  DROP 0 ;
+\ A VARIABLE's fetch folded into the operation after it (662): `X @ +` laid
+\ push, mov rbx,[X], then the add's load and pop of the cell just pushed - a
+\ round trip through memory, which priced at 11-15 % of every workload
+\ (one more at every push, A/B). Now + - AND OR XOR take [X] as their
+\ operand, = < > U< <> compare with it - the flag made as before, or the
+\ branch after it fused (kind 0: the cmp laid, one cell to pop) - and >R
+\ pushes it straight from memory. Never across a jump's target.
+: FRESH-LOAD? ( --- f )   LOAD-AT @ DUP IF  LOAD-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
+: MEM-OP, ( op --- )   \ the fetch unlaid; op rbx,[X] in its place
+  LOAD-AT @ HERE - ALLOT  0 LOAD-AT !  72 C, C, 28 C, 37 C,  LOAD-ADDR @ ,4 ;
+: MFOLD ( xt --- xt 0 | -1 )
+  FRESH-LOAD? 0= IF 0 EXIT THEN
+  DUP ['] + = IF DROP 3 MEM-OP, -1 EXIT THEN
+  DUP ['] - = IF DROP 43 MEM-OP, -1 EXIT THEN
+  DUP ['] AND = IF DROP 35 MEM-OP, -1 EXIT THEN
+  DUP ['] OR = IF DROP 11 MEM-OP, -1 EXIT THEN
+  DUP ['] XOR = IF DROP 51 MEM-OP, -1 EXIT THEN
+  DUP ['] >R = IF DROP  LOAD-AT @ HERE - ALLOT  0 LOAD-AT !         \ push qword [X]
+    255 C, 52 C, 37 C,  LOAD-ADDR @ ,4  0 INL-OK !  -1 EXIT THEN
+  DUP CMP2? IF  2 = IF  CMP2-JCC !  DROP  59 MEM-OP,                \ cmp rbx,[X]
+      HERE CMP2-AT !  0 CMP2-CELLS !                                 \ mov ebx,0  setcc bl  neg rbx
+      187 C, 0 ,4  15 C, CMP2-JCC @ 1 XOR 16 + C, 195 C,  72 C, 247 C, 219 C,
+      HERE CMP2-END !  -1 EXIT  THEN  DROP  THEN
+  0 ;
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
@@ -132,6 +160,7 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   \ push, inline (627); a literal folded into the operation after it (628);
   \ anything else, called
   FOLD IF EXIT THEN
+  MFOLD IF EXIT THEN
   OVER-OP? IF EXIT THEN
   DUP C@ 235 = OVER 1+ C@ 1 = AND IF
     DUP ['] DUP = IF HERE DUP-LAID ! THEN  DUP ['] OVER = IF HERE OVER-LAID ! THEN
@@ -159,7 +188,7 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
     72 C, 139 C, 69 C, 0 C,  72 C, 57 C, 216 C,              \ mov rax,[rbp]  cmp rax,rbx
     72 C, 139 C, 93 C, 8 C,  72 C, 141 C, 109 C, 16 C,       \ mov rbx,[rbp+8]  lea rbp,[rbp+16]
   ELSE
-    72 C, 133 C, 219 C,                                      \ test rbx,rbx
+    CMP2-CELLS @ IF  72 C, 133 C, 219 C,  THEN               \ test rbx,rbx; kind 0 (662): cmp laid
     72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,        \ mov rbx,[rbp]  lea rbp,[rbp+8]
   THEN  15 C, CMP2-JCC @ C,  0 CMP2-AT ! ;
 : ?BRANCH, ( --- )   \ the flag popped and tested, the jump taken if false; after a
