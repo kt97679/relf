@@ -56,27 +56,55 @@ NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and
         rdi inc,  rcx dec,  1 B jmp,
   2 L:  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbp 8 # add,
 NEND
-NCODE REL-FIX  ( tbl n B H d --- )   \ (693) a forward branch shortened by d bytes, the
-  \ code from B to H about to move back by d: every relative field the
-  \ compiler recorded (kernel-native.4's RT+: field, target, width - three
-  \ cells) that lies in that code and aims out of it gains d; every one
-  \ before it that aims into it loses d; and the table follows the code.
-  r10 [ rbp ] mov,  rsi [ rbp 8 ] mov,  rcx [ rbp 16 ] mov,  rdi [ rbp 24 ] mov,
-  1 L:  rcx rcx test,  9 F jz,
+NCODE SHORT-FITS?  ( F H --- f )   \ (695) a jmp E9 or jcc 0F 8x before the rel32 at F,
+  \ reaching H from F+4 in a signed byte
+  r8 [ rbp ] mov,  rbp 8 # add,
+  rbx r8 sub,  rbx 4 # sub,  rbx 128 # cmp,  1 F jae,
+  [ r8 -1 ] byte-ptr 233 # cmp,  2 F je,
+  [ r8 -2 ] byte-ptr 15 # cmp,  1 F jne,
+  eax [ r8 -1 ] byte-ptr movzx,  eax 240 # and,  eax 128 # cmp,  1 F jne,
+  2 L:  rbx -1 # mov,  3 F jmp,
+  1 L:  ebx ebx xor,
+  3 L:
+NEND
+NCODE RT-PUT  ( f t w tbl n --- )   \ (695) entry n of the relative fields' table at tbl
+  rax rbx 24 # imul,  rax [ rbp ] add,
+  rcx [ rbp 8 ] mov,  [ rax 16 ] rcx mov,
+  rcx [ rbp 16 ] mov,  [ rax 8 ] rcx mov,
+  rcx [ rbp 24 ] mov,  [ rax ] rcx mov,
+  rbx [ rbp 32 ] mov,  rbp 40 # add,
+NEND
+NCODE SHORT-MOVE  ( tbl n F H --- H' f8 d )   \ (693, 695) the branch before the rel32 at F
+  \ laid short: E9 -> EB (d 3) or 0F 8x -> 7x (d 4); every relative field
+  \ the compiler recorded (kernel-native.4's RT+: field, target, width -
+  \ three cells) that lies in the code from B = F+4 to H and aims out of
+  \ it gains d, every one before it that aims into it loses d, and the
+  \ entries follow the code; the code moved back d; the rel8 written.
+  \ H' the new here, f8 the rel8's address. Was Forth until 695: 1.1 KB.
+  r10 rbx mov,  r8 [ rbp ] mov,  rcx [ rbp 8 ] mov,  rdi [ rbp 16 ] mov,
+  ebx 3 # mov,
+  [ r8 -1 ] byte-ptr 233 # cmp,  1 F jne,
+  [ r8 -1 ] byte-ptr 235 # mov,  2 F jmp,
+  1 L:  eax [ r8 -1 ] byte-ptr movzx,  eax 16 # sub,  [ r8 -2 ] al mov,  ebx 4 # mov,
+  2 L:  rsi [ r8 4 ] lea,
+  3 L:  rcx rcx test,  9 F jz,
     r8 [ rdi ] mov,  r9 [ rdi 8 ] mov,
-    edx edx xor,  r9 rsi cmp,  2 F jb,  r9 r10 cmp,  2 F ja,  edx 1 # mov,  2 L:      \ in_t: B <= t <= H
-    eax eax xor,  r8 rsi cmp,  3 F jb,  r8 r10 cmp,  3 F jae,  eax 1 # mov,  3 L:     \ in_f: B <= f < H
+    edx edx xor,  r9 rsi cmp,  4 F jb,  r9 r10 cmp,  4 F ja,  edx 1 # mov,  4 L:      \ in_t: B <= t <= H
+    eax eax xor,  r8 rsi cmp,  5 F jb,  r8 r10 cmp,  5 F jae,  eax 1 # mov,  5 L:     \ in_f: B <= f < H
     r11 r11 xor,
-    eax eax test,  4 F jz,
-      edx edx test,  5 F jnz,  r11 rbx mov,  5 F jmp,          \ in it, aimed out: +d
-    4 L:  edx edx test,  5 F jz,  r8 rsi cmp,  5 F jae,  r11 rbx mov,  r11 neg,   \ before it, aimed in: -d
-    5 L:  eax eax test,  6 F jz,  [ rdi ] rbx sub,  6 L:      \ the entry follows the code
-          edx edx test,  7 F jz,  [ rdi 8 ] rbx sub,  7 L:
+    eax eax test,  6 F jz,
+      edx edx test,  7 F jnz,  r11 rbx mov,  7 F jmp,          \ in it, aimed out: +d
+    6 L:  edx edx test,  7 F jz,  r8 rsi cmp,  7 F jae,  r11 rbx mov,  r11 neg,   \ before it, aimed in: -d
+    7 L:  eax eax test,  1 F jz,  [ rdi ] rbx sub,  1 L:      \ the entry follows the code
+          edx edx test,  2 F jz,  [ rdi 8 ] rbx sub,  2 L:
     r11 r11 test,  8 F jz,  rax r11 mov,
-    [ rdi 16 ] byte-ptr 1 # cmp,  2 F jne,  [ r8 ] al add,  8 F jmp,
-    2 L:  [ r8 ] eax add,
-    8 L:  rdi 24 # add,  rcx dec,  1 B jmp,
-  9 L:  rbx [ rbp 32 ] mov,  rbp 40 # add,
+    [ rdi 16 ] byte-ptr 1 # cmp,  4 F jne,  [ r8 ] al add,  8 F jmp,
+    4 L:  [ r8 ] eax add,
+    8 L:  rdi 24 # add,  rcx dec,  3 B jmp,
+  9 L:  r8 rsi mov,                                         \ B, kept: rep movsb moves rsi
+  rdi rsi mov,  rdi rbx sub,  rcx r10 mov,  rcx rsi sub,  rep, movsb,      \ moved back
+  rax r10 mov,  rax r8 sub,  r9 r8 mov,  r9 rbx sub,  r9 dec,  [ r9 ] al mov,   \ rel8: H - B
+  r10 rbx sub,  [ rbp 16 ] r10 mov,  [ rbp 8 ] r9 mov,  rbp 8 # add,
 NEND
 NCODE CTABLE-FIND  ( c-addr table count width --- i | -1 )   \ the engines' (676)
   rsi [ rbp 16 ] mov,  rdi [ rbp 8 ] mov,  rcx [ rbp ] mov,  edx edx xor,

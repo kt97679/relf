@@ -39,7 +39,7 @@ VARIABLE SHORT-OFF  \ set: forward branches stay long (starts at 0: the cross co
 : RT+ ( f t w --- )   \ a relative field laid at f, aimed at t, w bytes wide
   RT-AT @ 0= IF  12288 ALLOCATE IF  DROP -1 RT-FULL !  ELSE  RT-AT !  THEN  THEN
   RT-N @ 511 > RT-AT @ 0= OR IF  DROP 2DROP  -1 RT-FULL !  EXIT  THEN
-  RT-N @ 24 * RT-AT @ +  >R  R@ 16 + !  R@ 8 + !  R> !  1 RT-N +! ;
+  RT-AT @ RT-N @ RT-PUT  1 RT-N +! ;
 : RT-DONE ( --- )   RT-AT @ ?DUP IF FREE DROP THEN  0 RT-AT !  0 RT-N !  0 RT-FULL !  0 LAST-LEAVE ! ;
 : REL, ( addr --- )   HERE OVER 4 RT+  HERE 4 + - ,4 ;       \ rel32 to addr, from the end of the field
 : RDROP16, ( --- )   72 C, 131 C, 196 C, 16 C, ;                         \ add rsp,16
@@ -227,20 +227,10 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 \ forward and backward jumps: a 4-byte field, patched when its target comes
 : >MARK ( --- a-addr )   HERE 0 ,4 ;
 : SHORT-OK? ( a-addr --- f )   \ the branch whose rel32 field is at a-addr, laid short?
-  DUP 1- C@ 233 =  OVER 2 - C@ 15 =  2 PICK 1- C@ 240 AND 128 = AND  OR    \ jmp E9, or jcc 0F 8x
-  OVER 4 + LAST-LEAVE @ > AND                 \ no LEAVE pending in what it skips
-  HERE 2 PICK 4 + - 128 < AND                 \ it reaches here in a signed byte
-  RT-FULL @ SHORT-OFF @ OR 0= AND  SWAP DROP ;
-VARIABLE SH-B   VARIABLE SH-D
+  DUP HERE SHORT-FITS?  SWAP 4 + LAST-LEAVE @ > AND  RT-FULL @ SHORT-OFF @ OR 0= AND ;
 VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
-: SHORTEN ( a-addr --- )
-  DUP 4 + SH-B !
-  DUP 1- C@ 233 = IF  235 OVER 1- C!  3  ELSE  DUP 1- C@ 16 -  OVER 2 - C!  4  THEN  SH-D !  DROP  \ E9 -> EB, 0F 8x -> 7x
-  RT-AT @ RT-N @ SH-B @ HERE SH-D @ REL-FIX              \ the fields the move breaks, re-aimed
-  SH-B @  DUP SH-D @ -  HERE SH-B @ -  MOVE               \ the code, moved back
-  SH-D @ NEGATE ALLOT  SH-B @ SH-D @ - SH-B !             \ SH-B: where the short branch ends
-  HERE SH-B @ -  SH-B @ 1- C!                             \ rel8 to here
-  SH-B @ 1- HERE 1 RT+  SH-D @ SH-MOVED !
+: SHORTEN ( a-addr --- )   \ (695) SHORT-MOVE does the work, in assembly
+  >R RT-AT @ RT-N @ R> HERE SHORT-MOVE  SH-MOVED !  SWAP HERE - ALLOT  HERE 1 RT+
   MARK-TARGET  0 LIT-AT !  0 CMP-AT !  0 CMP2-AT !  0 DUP-AT !
   0 LAST-XT !  0 LAST-END !  0 DUP-LAID !  0 OVER-LAID !  0 LOAD-AT !  0 LOAD-END ! ;
 : >RESOLVE ( a-addr --- )

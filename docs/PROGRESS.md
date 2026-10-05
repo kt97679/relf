@@ -719,6 +719,7 @@ do not trust the absence of a line below.
 - 692 — the user's ruling (inside the floor = not slower): 0 by xor kept, -3.5 KB; short branches built, net -180 bytes, set aside
 - 693 — forward branches laid short with a table of relative fields and REL-FIX in assembly: 2,636 shrunk, code -5.4 KB net; not slower
 - 694 — the kernel's own literals at their shortest, by the cross compiler: code -2.8 KB at no cost in the image
+- 695 — the branch shrinker in assembly (SHORT-MOVE): the kernel's code -958 bytes
 
 ### Not tied to an iteration
 

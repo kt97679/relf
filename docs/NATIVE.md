@@ -1006,3 +1006,16 @@ The kernel's code -2,767 bytes, the shell's -2,760 (the file 440,696 ->
 436,600). Over layouts against 693: 13 rounds 0.963-1.065 (str 1.065 on
 a noisy run, the spreads 0.87-1.15); str, realistic and loop again at 21
 rounds, 0.961, 1.018, 0.999 - not slower.
+
+**695: the shrinker in assembly.** SHORTEN's work - the opcode rewritten,
+the table's fields fixed, the code moved, the rel8 written - is
+SHORT-MOVE now, one routine in native-rt.4 (REL-FIX folded into it), and
+SHORT-OK?'s tests SHORT-FITS?, RT+'s store RT-PUT; the Forth words that
+remain are wrappers. Two faults on the way: rep movsb advances rsi, which
+still held B for the rel8 after it - every IF crashed the kernel - and
+imul's third operand wants `#` (24 # imul,), without which it laid a
+two-operand imul and RT-PUT stored nowhere sane: IF ELSE THEN's else path
+hit an illegal instruction. kernel-short.4 caught both. The kernel's
+code 64,491 -> 63,533 (-958), the shell's 415,056 -> 414,096. The
+shell's compiled code is what it was, moved by the kernel's shrinking:
+over layouts 0.955-1.026, the floor.
