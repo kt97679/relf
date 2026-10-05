@@ -56,6 +56,28 @@ NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and
         rdi inc,  rcx dec,  1 B jmp,
   2 L:  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbp 8 # add,
 NEND
+NCODE REL-FIX  ( tbl n B H d --- )   \ (693) a forward branch shortened by d bytes, the
+  \ code from B to H about to move back by d: every relative field the
+  \ compiler recorded (kernel-native.4's RT+: field, target, width - three
+  \ cells) that lies in that code and aims out of it gains d; every one
+  \ before it that aims into it loses d; and the table follows the code.
+  r10 [ rbp ] mov,  rsi [ rbp 8 ] mov,  rcx [ rbp 16 ] mov,  rdi [ rbp 24 ] mov,
+  1 L:  rcx rcx test,  9 F jz,
+    r8 [ rdi ] mov,  r9 [ rdi 8 ] mov,
+    edx edx xor,  r9 rsi cmp,  2 F jb,  r9 r10 cmp,  2 F ja,  edx 1 # mov,  2 L:      \ in_t: B <= t <= H
+    eax eax xor,  r8 rsi cmp,  3 F jb,  r8 r10 cmp,  3 F jae,  eax 1 # mov,  3 L:     \ in_f: B <= f < H
+    r11 r11 xor,
+    eax eax test,  4 F jz,
+      edx edx test,  5 F jnz,  r11 rbx mov,  5 F jmp,          \ in it, aimed out: +d
+    4 L:  edx edx test,  5 F jz,  r8 rsi cmp,  5 F jae,  r11 rbx mov,  r11 neg,   \ before it, aimed in: -d
+    5 L:  eax eax test,  6 F jz,  [ rdi ] rbx sub,  6 L:      \ the entry follows the code
+          edx edx test,  7 F jz,  [ rdi 8 ] rbx sub,  7 L:
+    r11 r11 test,  8 F jz,  rax r11 mov,
+    [ rdi 16 ] byte-ptr 1 # cmp,  2 F jne,  [ r8 ] al add,  8 F jmp,
+    2 L:  [ r8 ] eax add,
+    8 L:  rdi 24 # add,  rcx dec,  1 B jmp,
+  9 L:  rbx [ rbp 32 ] mov,  rbp 40 # add,
+NEND
 NCODE CTABLE-FIND  ( c-addr table count width --- i | -1 )   \ the engines' (676)
   rsi [ rbp 16 ] mov,  rdi [ rbp 8 ] mov,  rcx [ rbp ] mov,  edx edx xor,
   1 L:  rdx rcx cmp,  4 F jae,

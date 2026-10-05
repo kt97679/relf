@@ -24,7 +24,24 @@ CROSS-COMPILE
 : PUSH, ( --- )   72 C, 131 C, 237 C, 8 C,  72 C, 137 C, 93 C, 0 C, ;  \ sub rbp,8  mov [rbp],rbx
 : POPF, ( --- )   \ the top into rax, the stack popped, rax tested
   72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,  72 C, 133 C, 192 C, ;
-: REL, ( addr --- )   HERE 4 + - ,4 ;       \ rel32 to addr, from the end of the field
+\ (693) Every relative field a definition lays - a call, a branch - goes
+\ in a table (RT+), allocated for the definition and freed at its end, so
+\ that a forward branch can be laid short when it is resolved: the code
+\ it skips moved back the 3 or 4 bytes saved, and every recorded field
+\ that move breaks re-aimed (REL-FIX, native-rt.4). 692's first try had
+\ no table, so it shortened only branches that skipped nothing relative:
+\ 605 of 2,933, and the shrinker cost what it saved.
+VARIABLE RT-AT      \ the table: field, target, width - three cells an entry
+VARIABLE RT-N       \ entries in it
+VARIABLE RT-FULL    \ set: no room left, this definition's branches stay long
+VARIABLE LAST-LEAVE \ where the last LEAVE's link was laid - pending, so a move must not pass it
+VARIABLE SHORT-OFF  \ set: forward branches stay long (starts at 0: the cross compiler lays it)
+: RT+ ( f t w --- )   \ a relative field laid at f, aimed at t, w bytes wide
+  RT-AT @ 0= IF  12288 ALLOCATE IF  DROP -1 RT-FULL !  ELSE  RT-AT !  THEN  THEN
+  RT-N @ 511 > RT-AT @ 0= OR IF  DROP 2DROP  -1 RT-FULL !  EXIT  THEN
+  RT-N @ 24 * RT-AT @ +  >R  R@ 16 + !  R@ 8 + !  R> !  1 RT-N +! ;
+: RT-DONE ( --- )   RT-AT @ ?DUP IF FREE DROP THEN  0 RT-AT !  0 RT-N !  0 RT-FULL !  0 LAST-LEAVE ! ;
+: REL, ( addr --- )   HERE OVER 4 RT+  HERE 4 + - ,4 ;       \ rel32 to addr, from the end of the field
 : RDROP16, ( --- )   72 C, 131 C, 196 C, 16 C, ;                         \ add rsp,16
 
 \ ---- the back end proper ---------------------------------------------------------
@@ -209,7 +226,26 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 
 \ forward and backward jumps: a 4-byte field, patched when its target comes
 : >MARK ( --- a-addr )   HERE 0 ,4 ;
-: >RESOLVE ( a-addr --- )   MARK-TARGET  HERE OVER 4 + - SWAP !4 ;
+: SHORT-OK? ( a-addr --- f )   \ the branch whose rel32 field is at a-addr, laid short?
+  DUP 1- C@ 233 =  OVER 2 - C@ 15 =  2 PICK 1- C@ 240 AND 128 = AND  OR    \ jmp E9, or jcc 0F 8x
+  OVER 4 + LAST-LEAVE @ > AND                 \ no LEAVE pending in what it skips
+  HERE 2 PICK 4 + - 128 < AND                 \ it reaches here in a signed byte
+  RT-FULL @ SHORT-OFF @ OR 0= AND  SWAP DROP ;
+VARIABLE SH-B   VARIABLE SH-D
+VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
+: SHORTEN ( a-addr --- )
+  DUP 4 + SH-B !
+  DUP 1- C@ 233 = IF  235 OVER 1- C!  3  ELSE  DUP 1- C@ 16 -  OVER 2 - C!  4  THEN  SH-D !  DROP  \ E9 -> EB, 0F 8x -> 7x
+  RT-AT @ RT-N @ SH-B @ HERE SH-D @ REL-FIX              \ the fields the move breaks, re-aimed
+  SH-B @  DUP SH-D @ -  HERE SH-B @ -  MOVE               \ the code, moved back
+  SH-D @ NEGATE ALLOT  SH-B @ SH-D @ - SH-B !             \ SH-B: where the short branch ends
+  HERE SH-B @ -  SH-B @ 1- C!                             \ rel8 to here
+  SH-B @ 1- HERE 1 RT+  SH-D @ SH-MOVED !
+  MARK-TARGET  0 LIT-AT !  0 CMP-AT !  0 CMP2-AT !  0 DUP-AT !
+  0 LAST-XT !  0 LAST-END !  0 DUP-LAID !  0 OVER-LAID !  0 LOAD-AT !  0 LOAD-END ! ;
+: >RESOLVE ( a-addr --- )
+  0 SH-MOVED !  DUP SHORT-OK? IF SHORTEN EXIT THEN
+  MARK-TARGET  DUP HERE 4 RT+  HERE OVER 4 + - SWAP !4 ;
 : BACK, ( addr --- )   REL, ;
 
 : JCC-NOT ( setcc --- jcc )   \ the jump taken when the comparison is false
@@ -239,13 +275,15 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
     15 C, CMP-CC @ JCC-NOT C,
   ELSE  FRESH-CMP2? IF CMP2-BRANCH, ELSE
     ['] ?DUP FRESH-LAST? IF  UNLAST,                    \ (669) test, jnz past the drop
-      72 C, 133 C, 219 C,  117 C, 13 C,  72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  233 C,
+      72 C, 133 C, 219 C,  117 C, HERE DUP 14 + 1 RT+ 13 C,  72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  233 C,   \ (693) the jnz recorded
     ELSE ['] DUP FRESH-LAST? IF  UNLAST,  72 C, 133 C, 219 C,  15 C, 132 C,    \ test, jz
     ELSE POPF,  15 C, 132 C,  THEN THEN  THEN  THEN
   0 CMP-AT ! ;
 : IF      ?COMP  ?BRANCH, >MARK ; IMMEDIATE
 : THEN    ?COMP  >RESOLVE ; IMMEDIATE
-: ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE ; IMMEDIATE      \ jmp
+: ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE  SH-MOVED @ - ; IMMEDIATE      \ jmp
+\ (693) the IF is resolved after ELSE's jmp is laid, so a shortened IF
+\ moves that jmp's pending field back with the code: its address follows
 : BEGIN   ?COMP  MARK-TARGET HERE ; IMMEDIATE
 : UNTIL   ?COMP  ?BRANCH, BACK, ; IMMEDIATE
 : AGAIN   ?COMP  233 C, BACK, ; IMMEDIATE
@@ -260,7 +298,7 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 \ where the pair is restored; 'LEAVE holds the newest one's field, and
 \ each field, until patched, the distance back to the one before it.
 : LEAVE-LINK, ( --- )
-  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4 ;
+  'LEAVE @ ?DUP IF HERE SWAP - ELSE 0 THEN  HERE 'LEAVE !  ,4  HERE LAST-LEAVE ! ;   \ (693)
 : RESOLVE-LEAVE ( outer --- )   \ every LEAVE of this loop: here; 'LEAVE as it was
   'LEAVE @ BEGIN ?DUP WHILE
     DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
@@ -349,13 +387,13 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : DATA-OFF ( --- )   IN-DATA @ IF  DATA-SWAP  0 IN-DATA !  0 DLIMIT-CELL !  THEN ;
 : DATA-ALIGN ( --- )   DATA-OFF ;
 : DATA-BASE ( --- addr )   DATA-START ;     \ where data's region begins, for SAVE-SYSTEM
-: :  ( "name" --- )   DATA-ALIGN !CSP HEADER ]  HERE BODY-AT !  -1 INL-OK ! ;
+: :  ( "name" --- )   DATA-ALIGN !CSP HEADER ]  HERE BODY-AT !  -1 INL-OK !  RT-DONE ;
 : INLINE-MARK ( --- )   \ a copyable body of 1 to 64 bytes: moved up three, marked
   HERE BODY-AT @ - DUP 0 > OVER 65 < AND INL-OK @ AND IF
     >R  BODY-AT @ DUP 3 + R@ MOVE  3 ALLOT
     235 BODY-AT @ C!  1 BODY-AT @ 1+ C!  R> BODY-AT @ 2 + C!
   ELSE DROP THEN ;
-: ;  ( --- )   ?COMP  INLINE-MARK  EXIT, [ ?CSP REVEAL ; IMMEDIATE
+: ;  ( --- )   ?COMP  INLINE-MARK  EXIT, [ ?CSP REVEAL  RT-DONE ; IMMEDIATE
 : RECURSE ( --- )   ?COMP  LAST @ NAME> CALL, ; IMMEDIATE
 : CREATE ( "name" --- )   \ the 24-byte stub; the data in data's region (672)
   DATA-OFF  HEADER REVEAL  DDP @ 7 + -8 AND DUP DDP !

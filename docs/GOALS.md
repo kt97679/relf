@@ -142,7 +142,10 @@ the account of what each gained and cost.
    the user's ruling - inside the A/B's floor (about 2.3 % here) counts
    as not slower. 0 by xor kept under it (-3.5 KB of code); the safe
    forward branches built and set aside - 605 shrunk, 2.4 KB, but the
-   shrinker in Forth is 2.2 KB of the kernel (NATIVE.md 14).
+   shrinker in Forth is 2.2 KB of the kernel (NATIVE.md 14). **693:** the
+   whole of them: a table of every relative field, REL-FIX in assembly -
+   2,636 branches shrunk, the shell's code -5.4 KB net of the shrinker's
+   3.4 KB; over layouts 0.954-1.002.
 10. **Genetic programming or randomized search over the compilers'
    choices** - for CV8, faster without a larger image; for the native
    shell, smaller without being slower. The compilers' choices made

@@ -717,6 +717,7 @@ do not trust the absence of a line below.
 - 690 — 0 by xor, -1 by or: or adds a wait (fn +2.8 %); zero alone realistic +1-3 % in every run - held back
 - 691 — the layout A/B's floor is 2.3 % here; forward branches priced: 11.0 KB, 3.9 KB of it with nothing to fix
 - 692 — the user's ruling (inside the floor = not slower): 0 by xor kept, -3.5 KB; short branches built, net -180 bytes, set aside
+- 693 — forward branches laid short with a table of relative fields and REL-FIX in assembly: 2,636 shrunk, code -5.4 KB net; not slower
 
 ### Not tied to an iteration
 

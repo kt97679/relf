@@ -1,0 +1,43 @@
+\ tests/native/kernel-short.4 - forward branches laid short (Iteration 693):
+\ a branch that reaches its target in a signed byte is shortened when it
+\ is resolved, the code it skips moved back, and every call and branch
+\ that move breaks re-aimed. Each case below puts relative code where a
+\ move would break it: calls inside the skipped code, the IF of an
+\ IF ELSE THEN landing in moved code, ?DUP IF's own jnz, loops and their
+\ LEAVEs, S" and EXIT and RECURSE inside, a body too long for a byte.
+\ Native, CV8-asm and CV8-C print the same.
+: SQ  DUP * ;   : INC  1+ ;   : TWICE  2 * ;
+: A1 ( n --- n' )  DUP 0< IF NEGATE SQ THEN INC ;
+-3 A1 .  4 A1 .
+: A2 ( n --- n' )  DUP 10 < IF SQ INC ELSE TWICE INC THEN TWICE ;
+3 A2 .  20 A2 .
+: A3 ( a b --- n )  OVER IF DUP IF SQ ELSE INC THEN ELSE TWICE THEN SWAP DROP ;
+1 5 A3 .  1 0 A3 .  0 7 A3 .
+: A4 ( n --- n' )  ?DUP IF SQ INC EXIT THEN 99 ;
+0 A4 .  6 A4 .
+: A5 ( n --- sum )  0 SWAP 0 ?DO I SQ + LOOP ;
+5 A5 .  0 A5 .
+: A6 ( n --- i )  0 SWAP 0 DO I 3 > IF DROP I LEAVE THEN I INC DROP LOOP ;
+10 A6 .  2 A6 .
+: A7 ( n --- n' )  BEGIN DUP 100 < WHILE TWICE INC REPEAT ;
+1 A7 .
+: A8 ( n --- n' )  BEGIN INC DUP SQ 50 > UNTIL ;
+1 A8 .
+: A9 ( f --- )  IF S" yes" ELSE S" no" THEN TYPE SPACE ;
+1 A9  0 A9
+: A10 ( n --- n! )  DUP 1 > IF DUP 1- RECURSE * THEN ;
+6 A10 .
+: A11 ( n --- n' )  DUP 0= IF EXIT THEN DUP 1 = IF DROP 11 EXIT THEN SQ ;
+0 A11 .  1 A11 .  5 A11 .
+: A12 ( n --- n' )  DUP 0< IF SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ
+  SQ SQ SQ SQ SQ SQ SQ SQ SQ SQ THEN INC ;
+2 A12 .  -1 A12 .
+: A13 ( n --- n' )  DUP 2 < IF INC ELSE DUP 4 < IF TWICE ELSE DUP 6 < IF SQ ELSE 0 THEN THEN THEN ;
+1 A13 .  3 A13 .  5 A13 .  9 A13 .
+: A14 ( n --- n' )  DUP IF DUP 1 = IF INC ELSE TWICE THEN ELSE 50 THEN INC ;
+0 A14 .  1 A14 .  7 A14 .
+: A15 ( a b --- n )  2DUP < IF SWAP THEN - ;
+3 9 A15 .  9 3 A15 .
+CR DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

@@ -969,3 +969,29 @@ What would pay: the ELSE case (the IF's branch into the moved code
 fixed too), calls inside the skipped code (their rel32s +3 or +4), the
 kernel's own branches through the cross compiler - and the shrinker
 small, in assembly, not Forth.
+
+**693: forward branches laid short - kept.** Every relative field a
+definition lays (calls and backward branches through REL,, resolved
+forward branches, ?DUP IF's jnz) goes in a table - field, target, width
+- allocated for the definition and freed at `;`. >RESOLVE shortens a
+branch whose target is within a signed byte: E9 to EB, 0F 8x to 7x, the
+skipped code moved back 3 or 4 bytes, and REL-FIX (native-rt.4, in
+assembly) walks the table: a field in the moved code aimed out of it
+gains the shrink, one before it aimed into it - the IF of IF ELSE THEN,
+?DUP IF's jnz - loses it, and the entries follow the code. Not when a
+LEAVE's link is pending in the skipped code (LAST-LEAVE), nor once the
+table is full. ELSE lays its jmp before resolving the IF, so a shortened
+IF carries ELSE's pending field back with it: ELSE takes SH-MOVED off its
+address - found by the new test, whose IF ELSE THEN gave 22 for 20 and
+then ran wild. tests/native/kernel-short.4 (native:short): calls in
+skipped code, IF ELSE THEN, nesting, ?DUP IF, ?DO and LEAVE, WHILE,
+UNTIL, S", EXIT, RECURSE, a body too long for a byte - CV8 the oracle.
+
+Shrunk: 1,951 jcc and 685 jmp, about 9.9 KB; 1,238 bytes of fitting
+branches left (LEAVE's, a full table). The shrinker in the kernel
++3.4 KB, so the shell's code 423,236 -> 417,816 (-5,420), the file
+444,728 -> 440,696. Over layouts against 692, 13 rounds, pads to 3 KB:
+loop 1.002, fn 0.989, str 0.954, arith 0.982, realistic 0.969 - not
+slower; denser code may be the faster for it. Next for the bytes: the
+kernel's own branches through the cross compiler, whose code is not in
+the image, and the shrinker itself in assembly.
