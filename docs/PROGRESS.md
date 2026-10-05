@@ -729,6 +729,7 @@ do not trust the absence of a line below.
 - 702 — idea 11 begun: fg/bg and ulimit's shared stretches factored (CV8 -32 bytes, native -160); a fourth grew CV8, taken out
 - 703 — fury's pack at 702: both CV8 shells 4-9 % faster there (683-701 claimed); the native size work as fast
 - 704 — the deferred push: built, fired 4 times in the shell (the folds had the rest), its code 4.9 KB - set aside
+- 705 — the kernel's own code folded by the cross compiler: its code -8.6 %, the native shell 407,912 bytes
 
 ### Not tied to an iteration
 

@@ -1135,3 +1135,17 @@ compiler lays literals and their operations unfolded - 209 literal and
 operation pairs, the kernel's PICK, J, # and the file words among them -
 and folding them there costs the image nothing, the cross compiler's
 code not being in it.
+
+**705: the kernel's own code folded.** 704's pricing pointed here: the
+cross compiler laid every literal and its operation as they came - push,
+load, operate on the memory cell, pop - where the run-time compiler has
+folded them since 628. native.4 now does what the run-time compiler
+does: N-LIT records where it laid a literal; +, -, AND, OR, XOR take it
+as an immediate, the comparisons as cmp rbx,imm, and !, C! and +! to a
+literal address as one store - unless a jump has landed since (N-RESOLVE,
+BEGIN, DO and ?DO set N-BARRIER). The cross compiler's code is not in
+the image, so the folding costs it nothing. The kernel's code 59,667 ->
+54,540 (-5,127, 8.6 %); the shell's 394,075 -> 388,787, the file 416,104
+-> 407,912. Both hosts fold alike: the self-build the same. Over layouts
+against 704: 0.998-1.013. The native shell since 686: 452,912 -> 407,912
+bytes, -45 KB, -9.9 %.
