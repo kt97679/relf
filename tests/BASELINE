@@ -67,7 +67,7 @@ native:posix:failed 0
 native:prims same
 native:self-built same
 native:shell 1
-native:shell-bytes 424296
+native:shell-bytes 420200
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same

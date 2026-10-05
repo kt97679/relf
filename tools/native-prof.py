@@ -42,7 +42,7 @@ def symbols(path):
     if i < 0:
         sys.exit('native-prof: no FORTH-WORDLIST header in %s' % path)
     xt = i + 1 + len(name)
-    data = struct.unpack_from('<I', img, xt + 10)[0] - N_BASE      # its stub's mov (+11 until 697)
+    data = struct.unpack_from('<I', img, xt + 8)[0] - N_BASE      # its stub's mov (+11 until 697, +10 until 698)
     heads = struct.unpack_from('<33q', img, data)[1:]
     def prev(nfa):                    # the link, read backward from the name
         tag = img[nfa - 1]

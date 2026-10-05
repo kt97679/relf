@@ -1041,3 +1041,15 @@ the kernel 67,472 -> 63,376. Over layouts against 696, 13 rounds: loop
 realistic 1.015; loop, arith, realistic again at 21: 1.008, 1.010,
 1.017. Inside the floor. The native shell since 686: 452,912 ->
 424,296 bytes, -28.6 KB, -6.3 %.
+
+**698: a CREATE stub in 17 bytes.** 697's budget left 1,547 seven-byte
+loads, most of them the stubs of created words - 967 in the shell (769
+plain, 198 patched by DOES>), 23 bytes each: push, mov rbx,imm32, ret,
+eight nops. Data's region is below 2^31, so the address fits mov
+ebx,imm32 (5 bytes); DOES> needs only five bytes from the ret for its
+jmp, so four nops. Now push, mov ebx,data, ret, four nops: >BODY reads
++8, (;CODE) patches +12, and LIT-WORD? already took the mov ebx form, so
+a VARIABLE's push is still inlined. CREATE, N-STUB24 (the cross
+compiler's), N>BODY, native-prof.py and native-budget.py moved together.
+The shell's code 403,193 -> 397,347 (-5,846), the file 424,296 ->
+420,200. Over layouts against 697: 0.972-1.006.

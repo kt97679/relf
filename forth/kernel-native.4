@@ -389,14 +389,17 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
   ELSE DROP THEN ;
 : ;  ( --- )   ?COMP  INLINE-MARK  EXIT, [ ?CSP REVEAL  RT-DONE ; IMMEDIATE
 : RECURSE ( --- )   ?COMP  LAST @ NAME> CALL, ; IMMEDIATE
-: CREATE ( "name" --- )   \ the 24-byte stub; the data in data's region (672)
+: CREATE ( "name" --- )   \ the 17-byte stub (698); the data in data's region (672)
+  \ push, mov ebx,data (5 bytes, zero-extended: data's region is below
+  \ 2^31), ret - where DOES> lays its jmp - and four nops for the jmp's
+  \ rest. Was 24 bytes, then 23 with 697's push: 967 stubs in the shell.
   DATA-OFF  HEADER REVEAL  DDP @ 7 + -8 AND DUP DDP !
-  PUSH,  72 C, 199 C, 195 C,  ,4  195 C,  8 0 DO 144 C, LOOP  DATA-ON ;
-: >BODY ( xt --- a-addr )   10 + @4 ;          \ the address in the stub's mov
+  PUSH,  187 C,  ,4  195 C,  4 0 DO 144 C, LOOP  DATA-ON ;
+: >BODY ( xt --- a-addr )   8 + @4 ;           \ the address in the stub's mov (698)
 : CONSTANT ( x "name" --- )   DATA-ALIGN HEADER REVEAL  LIT, EXIT, ;
 : (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
   \ the data's address pushed already; R> ends the defining word
-  R> LAST @ NAME> 14 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
+  R> LAST @ NAME> 12 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
 \ S" in a definition (666): the string's bytes jumped over, and its address
 \ by a rip-relative lea, then its length - where (S") was a call whose ret
 \ went to the byte after the string, so the return predictor missed every
