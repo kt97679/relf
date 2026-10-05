@@ -13,9 +13,13 @@ native kernel - is a static ELF at a fixed address, so:
   every millisecond (SIGSTOP), its rip read (PTRACE_GETREGS), and resumed.
 Children it forks run untraced. Prints the words by share of the samples.
 usage: tools/native-prof.py BINARY [ARGS...]      e.g. ./relfsh-native tests/bench-vm/fn.sh
-NATIVE_PROF_WORD=NAME adds NAME's own listing (Iteration 660): its
+NATIVE_PROF_NM=1 takes the symbols from nm instead, for a binary not
+relf's, linked where it runs (668). NATIVE_PROF_WORD=NAME adds NAME's own listing (Iteration 660): its
 instructions, from objdump, each with the samples that stopped on it - for
-where inside a hot word the time goes, which its share cannot say.
+where inside a hot word the time goes, which its share cannot say. And
+(668) who called it: the word holding the cell on top of the return stack
+at each of its samples - the caller, for a routine that pushes nothing
+there, as the runtime's string routines do.
 """
 import ctypes, os, signal, struct, sys, time, collections
 
@@ -71,7 +75,17 @@ def word_at(syms, addrs, rip):
 
 def main():
     prog = sys.argv[1:]
-    syms = sorted(dict(symbols(prog[0]) + routines(prog[0])).items())
+    if os.environ.get('NATIVE_PROF_NM'):
+        # (668) any binary with a symbol table, linked where it runs (not
+        # PIE): its text symbols from nm - dash, built so, for the
+        # function-against-function table (docs/NATIVE.md 11.3)
+        import subprocess
+        syms = sorted((int(a, 16), n) for a, k, n in
+                      (l.split() for l in subprocess.run(['nm', '-n', '--defined-only', prog[0]],
+                                                         capture_output=True, text=True).stdout.splitlines()
+                       if len(l.split()) == 3) if k in 'tTwW')
+    else:
+        syms = sorted(dict(symbols(prog[0]) + routines(prog[0])).items())
     addrs = [a for a, _ in syms]
     libc = ctypes.CDLL(None, use_errno=True)
     libc.ptrace.restype = ctypes.c_long
@@ -86,6 +100,7 @@ def main():
     counts = collections.Counter()
     focus = os.environ.get('NATIVE_PROF_WORD')
     rips = collections.Counter()
+    callers = collections.Counter()
     libc.ptrace(CONT, pid, None, None)
     while True:
         time.sleep(0.001)
@@ -103,6 +118,8 @@ def main():
                 counts[w] += 1
                 if w == focus:
                     rips[regs[16]] += 1
+                    ret = libc.ptrace(2, pid, ctypes.c_void_p(regs[19]), None)   # PEEKDATA at rsp
+                    callers[word_at(syms, addrs, ret & 0xffffffffffffffff)] += 1
             pass_sig = 0 if sig == signal.SIGSTOP else sig
             libc.ptrace(CONT, pid, None, ctypes.c_void_p(pass_sig))
     total = sum(counts.values()) or 1
@@ -125,6 +142,9 @@ def main():
             a = int(f[0].strip()[:-1], 16) + N_BASE - 4096
             n = rips.get(a, 0)
             print('  %5.1f%%  %x  %s' % (100.0 * n / own, a, f[2].strip()) if n else '          %x  %s' % (a, f[2].strip()))
+        print('%s, its callers (the word at the top of the return stack, %d samples):' % (focus, sum(callers.values())))
+        for w, c in callers.most_common(12):
+            print('  %5.1f%%  %s' % (100.0 * c / own, w))
 
 if __name__ == '__main__':
     main()

@@ -656,3 +656,38 @@ already. With code size (539 KB, 3.8 times CV8's shell), on N3's list.
 The language benchmarks (bench/langs/run.py) have a native row since 649:
 the native kernel runs bench.4 with the same input; all seven answers are
 CV8's.
+
+### 11.3 dash's functions against relfsh's (Iteration 668)
+
+N3's last exit item. dash 0.5.12 built here with symbols - -O2, not PIE,
+from the Ubuntu pool's source, as tools/bench-report.sh fetches it -
+and both shells sampled by tools/native-prof.py (NATIVE_PROF_NM=1 for
+dash) on the bench-vm workloads x100, on the VM; a sample is about a
+millisecond of CPU. Each job's time sums the words that do it, from the
+top 25 of each profile, so every sum is a floor:
+
+| arith x100 | dash | relfsh-native | times dash |
+|---|---:|---:|---:|
+| variables: findvar lookupvar - FIND-SHVAR(-SCAN) NAME-HASH SET-SHVAR CSTR= | 2.9 ms | 36.8 ms | 12.5 |
+| expansion: argstr expandarg evalvar ... - EXPAND-WORDS EW-ENTRY XE-* ARGV-ADD ... | 23.9 | 77.0 | 3.2 |
+| execution: evaltree evalcommand ... - EXEC-* SPECIAL-BUILTIN? TP-* DEFER | 20.1 | 65.2 | 3.2 |
+| the whole run | 128 | 694 | 5.4 |
+
+On realistic: variables 8.0 against 43.4 ms (5.4 times), expansion 32.1
+against 93.5 (2.9), execution 10.0 against 62.1 (6.2), the whole run 167
+against 668 (4.0). dash spends 38-48 % of its samples in libc - strlen,
+memcpy and the like - which its rows leave out; relfsh has no libc, and
+its MOVE, CSTRLEN and COMPARE are its own.
+
+The listings, the lookup: dash's lookupvar is 73 instructions in 239
+bytes, findvar 46 in 128 - a hash of the name, then a bucket's list;
+relfsh's FIND-SHVAR 117, FIND-SHVAR-SCAN 76, NAME-HASH 69, CSTR= 16
+(each to the next word, its header and data lines included). Setting:
+dash's setvar 71 and setvareq 143, relfsh's SET-SHVAR 557.
+
+So variables are relfsh's furthest-behind job - 12.5 times dash on
+arith, where the whole run is 5.4. The index for every lookup, tried
+natively (668): arith 0.964, the rest 0.99-1.00, and the asm shell 2-5 %
+slower - not taken. The scan's time is the compiler's code (660), which
+is the stack model's to fix (3.2).
+

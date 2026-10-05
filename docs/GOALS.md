@@ -465,6 +465,11 @@ it before starting anything it could cover.
   compiler's: VARIABLEs reloaded right after their store, and stack-to-
   stack compares that make a flag, then test it.
 
+- **The variable index for every lookup, natively** (the scan's threshold 8
+  -> 0, 668) - native arith 0.964, the rest 0.99-1.00; the asm shell
+  1.02-1.05 slower, as in the 290s. A per-engine threshold would buy
+  3.6 % of one workload; not taken.
+
 ## Method, and the evidence for it
 
 **Prompt overrides** (as `prompts/USAGE.md` asks a project to record

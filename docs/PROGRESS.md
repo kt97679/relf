@@ -692,6 +692,7 @@ do not trust the absence of a line below.
 - 665 — fury's noise between two runs measured, -4 to +4 %; the pack measures in three minutes, verify there only on request
 - 666 — S" laid inline, its return no longer missing the predictor: 4-10 % faster, A/B
 - 667 — fury's pack at 666: fn 9 % faster there, the rest at the noise's edge
+- 668 — dash's functions against relfsh's: variables 12.5 times dash on arith, the furthest behind; always hashing tried natively, not taken
 
 ### Not tied to an iteration
 
