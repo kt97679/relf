@@ -702,6 +702,7 @@ do not trust the absence of a line below.
 - 675 — arguments in registers, looked at again: +22 % instructions for at most 2-5 % of latency - not begun
 - 676 — CTABLE-FIND: the variable scan a primitive in both engines - native arith 15 % faster, CV8 4-7 % on loop, fn, arith
 - 677 — fury's pack at 676: native arith 12 % faster there; the asm-engine shell 5-11 % on loop, fn, arith
+- 678 — FNV-HASH, the name hashes a primitive: built in all three engines, measured, nothing - reverted
 
 ### Not tied to an iteration
 

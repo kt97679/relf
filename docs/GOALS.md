@@ -470,6 +470,13 @@ it before starting anything it could cover.
   1.02-1.05 slower, as in the 290s. A per-engine threshold would buy
   3.6 % of one workload; not taken.
 
+- **FNV-HASH as an engine primitive** - NAME-HASH's and BI-NAME-HASH's
+  loop, 4 % of CV8's dispatches on the realistic script, second only to
+  ARGV-ADD. Built in all three engines, the same hashes as the Forth's;
+  A/B against 677: 0.97-1.04 on every engine and workload, nothing -
+  as the price, by hashing twice, had nearly said. Reverted (678): a
+  dispatch share counts a cheap XOR like a costly call.
+
 ## Method, and the evidence for it
 
 **Prompt overrides** (as `prompts/USAGE.md` asks a project to record
