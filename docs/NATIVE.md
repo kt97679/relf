@@ -914,3 +914,17 @@ kernel's words had landed, 8 bytes further on. The shell 452,912 ->
 448,824 bytes (code 432,728 -> 426,706); the kernel +8 bytes (LIT,'s own
 growth); the shell's data +8 (LIT-END). Left for later: zeros by xor
 ebx,ebx (2,005 loads, 3 bytes each, if the flags allow), -1 by or (566).
+
+**690: 0 by xor and -1 by or, built and held back.** LIT, laid 0 as
+xor ebx,ebx (2 bytes; it sets flags, which no fold reads across a
+literal - FRESH-CMP? and its kin want the compare laid last) and -1 as
+or rbx,-1 (4); LIT-WORD? learned both. Every native test the same, the
+self-build the same, the suites passed. Over layouts against 689, 13
+rounds, both: fn 1.028, the rest 0.994-1.018 - or reads rbx, so a TRUE
+waits on the cell under it, where mov did not: -1 left out. Zero alone,
+-3,470 bytes of code: realistic 1.015 and 1.031 (17 rounds), arith
+1.009 and 1.008, the rest 0.995-1.029. Realistic slower in every run, by
+1-3 %, at the edge of what the method resolves - and the pads move code
+by at most 48 bytes, so a change of a page's worth (this one shrinks the
+code by most of a page) can still move things the pads do not. Under
+"not slower": held back. Those bytes stay.
