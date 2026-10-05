@@ -60,6 +60,7 @@ artifact, not for a claim:
 | `16` | per claimed fix, the test's failing run without the fix and passing run with it; for a change that promises nothing, the broken versions tried |
 | `17` | the detached command, the log's path, and the marker line read back before the commit |
 | `18` | the baseline check's marker before the first change; the environment's gaps; what only the message knew, and where it went |
+| `19` | the script's path and `--help`, its scratch runs for each planted state, and each pack's commit, step statuses and where its reports went |
 
 If a response says the prompt was considered but shows none of these, the
 prompt was not applied.

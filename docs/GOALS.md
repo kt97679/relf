@@ -497,6 +497,12 @@ here as the evidence for it.
   the repository, and what only the message held committed (656). A
   start message points at `prompts/INDEX.md`, not the directory: the
   library is fetched when a prompt fires.
+- What only the user's machine can give comes back through one script,
+  `tools/pack-results.sh` (`prompts/19-round-trip.md`; its template,
+  `prompts/19-round-trip.sh`, for other projects): it applies the newest
+  bundle from ~/Downloads by fast-forward, runs itself again if that
+  changed it, cleans into a trash kept one run, measures, verifies, and
+  packs one file. A question for that machine becomes a step in it (664).
 - A fix and `tests/verify --update` go in the same commit, and a changed
   line is explained before it is recorded -
   `prompts/09-baseline-discipline.md`.

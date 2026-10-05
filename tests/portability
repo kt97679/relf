@@ -37,7 +37,7 @@ ok()  { checked=$((checked + 1)); [ -n "${VERBOSE:-}" ] && say "$1" ok; return 0
 for f in tests/run_tests.sh tests/verify tests/sizes tests/bench \
          tests/diff/run-all tests/matrix/run tests/shell/run-all \
          tests/posix/run.sh tests/mrsh-suite/run.sh tests/portability \
-         tools/*.sh; do             # relfsh is a binary since Iteration 506
+         tools/*.sh prompts/*.sh; do  # relfsh is a binary since 506; 19's template since 664
     [ -f "$f" ] || continue
     case $(head -1 "$f") in
         '#!/bin/bash'|'#!'*bash) interp=bash ;;

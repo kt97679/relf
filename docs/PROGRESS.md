@@ -688,6 +688,7 @@ do not trust the absence of a line below.
 - 661 — a compare of two cells fused with its branch: str, arith, realistic 4-5 % faster, the shell 2 % smaller
 - 662 — the stack's traffic priced at 11-15 %; a VARIABLE's fetch folded into the operation after it: 2-3.5 % faster, 2.6 % smaller
 - 663 — fury's pack at 662: 661 and 662 claimed, 7-11 % faster there; every workload inside 4.3 times dash
+- 664 — the round trip as a protocol: prompts/19 and its template; the pack script applies bundles itself, and runs again when they change it
 
 ### Not tied to an iteration
 

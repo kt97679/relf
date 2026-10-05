@@ -37,6 +37,7 @@ describe are ones any measurement or write-up project can reproduce.
 | [16-fail-before-fix](16-fail-before-fix.md) | before claiming a fix or adding a regression test | a test that passes proves nothing unless it failed before; a claimed fix for a flaw that never existed (Iteration 631) |
 | [17-checks-outlive-a-turn](17-checks-outlive-a-turn.md) | when starting a check longer than one call or turn | a cut-off log read as a pass; a commit one step from being made on it (Iteration 631) |
 | [18-session-start](18-session-start.md) | at the start of a session that picks up someone else's work | a first turn spent reading; an environment's gaps found by failing; what only the start message knew (Iteration 656) |
+| [19-round-trip](19-round-trip.md), with [its template script](19-round-trip.sh) | when the work needs, more than once, what only the user's machine can give | reports never kept, figures carried in messages, a loop pasted by hand, a script updating the checkout it ran from (Iteration 664) |
 
 ## The two that mattered most
 

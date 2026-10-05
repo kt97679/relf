@@ -39,6 +39,7 @@ fetched lazily when their trigger conditions are met.
 | `16-fail-before-fix` | claim a fix, add a regression test, or add tests to a change that claims to change nothing | nothing is claimed and no test is added |
 | `17-checks-outlive-a-turn` | start a check that may run longer than one call or turn | it finishes well inside one call |
 | `18-session-start` | start a session on work another session, person or machine left - before reading anything else | the work starts from nothing |
+| `19-round-trip` | the work needs, more than once, what only the user's machine can give | once, and one pasteable command gives it |
 
 ## The one that is hardest to self-apply
 
@@ -63,7 +64,8 @@ ordinary machines, `12` and `13` later, from keeping its log honest and
 from working its failures in the right order, and `15`-`17` later still,
 from building a native compiler for it: repeated slips, a claimed fix
 that had never failed, and checks longer than a turn; and `18` from the first turn of a session
-that spent it all on reading. They are about work that
+that spent it all on reading; `19`, with a template script beside it,
+from the round trips through the user's laptop. They are about work that
 OUTLIVES a session and software that runs somewhere other than where it
 was written. That family's failures are cheaper to hit and easier to
 miss: nine of the eleven faults the handover found were in the test

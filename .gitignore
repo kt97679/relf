@@ -86,6 +86,9 @@ relfasm-consts.S
 # and a bundle lying there is a handoff, never content: tests/verify's
 # portability check named one as untracked (657)
 /*.bundle
+# tools/pack-results.sh's clean moves untracked paths here, one run's worth (664)
+/.clean-trash/
+/.clean-trash.old/
 native-n1a
 native-n1b
 native-n1c
