@@ -734,3 +734,31 @@ Most pushes feed a call. The stages, then:
    biggest prize left in the stack, and a back end rewritten; to be
    decided before it is begun.
 
+## 13. What is left, priced (Iteration 671)
+
+Neither has a milestone; each was priced before either is begun.
+
+**Arguments in registers across calls** (12's stage 3). Priced with the
+work it removes: one more push-and-pop round trip before every call the
+compiler lays - 5,433 in the shell - cost, A/B on the VM, loop 7.6 %, fn
+9.7 %, str 7.0 %, arith 3.0 %, realistic 8.6 %. A convention keeping the
+second cell in a register as well would take back part of that - not
+all: what a call's arguments no longer store, the deeper cells spill -
+so 3-6 % is the honest guess. Its cost: every primitive, every runtime
+routine, the routines generated from the asm engine, the compiler's
+every laid sequence, and SP@ SP! DEPTH PICK CATCH THROW, rewritten.
+
+**Data in a region of its own.** 762 CREATE words keep their data in the
+image, each on the code's next 64-byte line (626), and 119 more are
+BUFFER:s, outside it. From each stub to the next word they take 106,672
+bytes: 18,288 of stubs, 22,713 of padding before the data, and 65,671
+of data, its padding after, and the next header - 651 of them a cell or
+two. Gathered in one region, the image would lose most of the padding,
+about 45 kB, 9 %; and a started shell's written pages - 77 of 130 here,
+308 kB, every one of them for some word's data (653) - would fall to the
+handful the data fills: about 270 kB less private memory a shell. Its
+cost: two pointers where there is one - the compiler lays code at one,
+CREATE ALLOT , and HERE work at the other - in kernel-native.4, in the
+cross compiler for the kernel's own data, and in the native image's
+save; N4's byte-for-byte check keeps it honest.
+

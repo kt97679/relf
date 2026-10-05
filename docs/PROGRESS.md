@@ -695,6 +695,7 @@ do not trust the absence of a line below.
 - 668 — dash's functions against relfsh's: variables 12.5 times dash on arith, the furthest behind; always hashing tried natively, not taken
 - 669 — the stack model measured: most pushes feed calls; its cheap part done, the last pairs folded: 1-2 % faster
 - 670 — N4: the native kernel builds itself, byte for byte the same as CV8 builds it; verify's native:self-built
+- 671 — what is left, priced: arguments in registers 3-6 % (a round trip per call costs 3-10 %); data in its own region -45 kB, about -270 kB private memory per shell
 
 ### Not tied to an iteration
 
