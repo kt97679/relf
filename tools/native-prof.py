@@ -27,7 +27,15 @@ N_BASE = 0x401000                     # native-cross.4's N-BASE: the image's STA
 
 def symbols(path):
     d = open(path, 'rb').read()
-    img = d[4096:]                    # the header page, then the image at N_BASE
+    # (674) the image as it runs, from its segments: the code at N_BASE, the
+    # data where its own PT_LOAD puts it - the word lists' heads among it
+    phoff, = struct.unpack_from('<Q', d, 32); phnum, = struct.unpack_from('<H', d, 56)
+    segs = [struct.unpack_from('<IIQQQQQQ', d, phoff + 56 * k) for k in range(phnum)]
+    segs = [(s[3], s[2], s[5]) for s in segs if s[0] == 1 and s[5]]    # vaddr, offset, filesz
+    img = bytearray(max(v + fz for v, _, fz in segs) - N_BASE)
+    for v, off, fz in segs:
+        lo = max(v, N_BASE)
+        img[lo - N_BASE: v + fz - N_BASE] = d[off + lo - v: off + fz]
     name = b'FORTH-WORDLIST'
     syms = {}
     i = img.find(bytes([0x80 | len(name)]) + name)

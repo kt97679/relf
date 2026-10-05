@@ -783,3 +783,14 @@ A/B, 1.5-3.5 % faster too. The kernel's own variables - DP, R0, POCKET
 and the rest, cross-compiled - are still in the code, on the 10 pages
 left: the cross compiler's half, next.
 
+**And the kernel's (674).** The cross compiler's DP-T and N-DDP-T trade
+places the same way: a VARIABLE's stub in the code, its cell - and the
+ALLOT-T after it, TIB POCKET CONTEXT and the rest - in data's region;
+N>A and N-HEAD swap back. N-ELF's data segment holds the kernel's 1,880
+bytes, WRITE-ELF writes them after the code, the run-time DDP starts past
+them, and the native SAVE-SYSTEM copies from START to data's end, so the
+scrub and the unrelocation (save-system.4's, START-relative) find the
+kernel's variables where they live now. The shell: 452,920 bytes, 18.7
+KB of it data; a started shell writes 6 pages, 44 kB - from 77 and 344
+at 671. The native kernel still builds itself, byte for byte.
+

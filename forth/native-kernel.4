@@ -46,7 +46,7 @@ rbx N-BASE # mov,                             \ START, the stack's one cell
 N' COLD call,                                 \ never returns
 edi ebx mov,  eax 60 # mov,  syscall,
 A>N
-DP-T @  N' DP N>BODY !-T  N-DSTART N' DDP N>BODY !-T   \ (672) data's region                        \ HERE, past the start too
+DP-T @  N' DP N>BODY !-T  N-DATA-OFF  N-DDP-T @ N-ABS N' DDP N>BODY !-T   \ (672, 674) data's next byte, past the kernel's own                        \ HERE, past the start too
 END-ASM
 ENTRY-T N-ELF
 S" native-kernel" WRITE-ELF

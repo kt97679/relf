@@ -698,6 +698,7 @@ do not trust the absence of a line below.
 - 671 — what is left, priced: arguments in registers 3-6 % (a round trip per call costs 3-10 %); data in its own region -45 kB, about -270 kB private memory per shell
 - 672 — CREATE's data in its own region: the shell 13 % smaller, its written memory 344 -> 64 kB, 1.5-3.5 % faster
 - 673 — fury's pack at 672: memory 488 -> 352 kB resident, 64 kB written; speed inside the noise; start-up 0.80 of dash's
+- 674 — the kernel's own data in data's region too: a started shell writes 44 kB (344 at 671); the kernel still builds itself
 
 ### Not tied to an iteration
 

@@ -27,8 +27,11 @@ CREATE SSN-HDR 4096 ALLOT
 : SAVE-SYSTEM ( c-addr u --- )
   RESET-BUFFERS  DATA-OFF
   HERE START @ - SS-LEN !
-  SS-LEN @ ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
-  START @ SS-BUF @ SS-LEN @ MOVE
+  \ (674) the copy runs from START to data's end - the code, the room
+  \ between, the data - so SS>COPY, START-relative, finds the kernel's
+  \ own variables in it where they live now, in data's region
+  DDP @ START @ - ALLOCATE ABORT" SAVE-SYSTEM: out of memory" SS-BUF !
+  START @ SS-BUF @ DDP @ START @ - MOVE
   SSN-UNRELOCATE-ALL
   SS-SCRUB
   SSN-HEADER
@@ -36,6 +39,6 @@ CREATE SSN-HDR 4096 ALLOT
   SSN-HDR 4096 SS-FID @ WRITE-FILE DROP
   SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
   SSN-HDR 4096 0 FILL  SSN-HDR  SSN-DATA-AT SS-LEN @ 4096 + -  SS-FID @ WRITE-FILE DROP
-  DATA-BASE  DDP @ DATA-BASE -  SS-FID @ WRITE-FILE DROP      \ (672) the data's region
+  SS-BUF @ DATA-BASE START @ - +  DDP @ DATA-BASE -  SS-FID @ WRITE-FILE DROP   \ (672, 674) data's
   SS-FID @ CLOSE-FILE DROP
   SS-BUF @ FREE DROP ;

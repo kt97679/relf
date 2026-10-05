@@ -145,7 +145,9 @@ def self_test():
         L = src.split('\n')
         a = next(i for i, l in enumerate(L) if re.match(start, l))
         b = a
-        while not re.search(end, L[b]): b += 1
+        while b < len(L) and not re.search(end, L[b]): b += 1
+        if b == len(L):                 # (674) the end not found: say so, as the start
+            raise StopIteration
         blk = L[a:b + 1]; del L[a:b + 1]
         t = next(i for i, l in enumerate(L) if re.match(after, l))
         L[t + 1:t + 1] = blk
@@ -156,7 +158,7 @@ def self_test():
         ('622 N-COMPILEC in NCTRL', 'native-cross.4', 'N-COMPILEC',
          lambda: move(cross, r'^CREATE N-COMPILEC', r'^CURRENT @  NCTRL CURRENT !', r'COMPILE,')),
         ('623 N-STUB24 in NTRANS', 'native-cross.4', 'N-STUB24',
-         lambda: move(cross, r'^: N-STUB24', r'^CURRENT @  NTRANS CURRENT !', r'-1 N-DATA-OPEN ! ;')),
+         lambda: move(cross, r'^: N-STUB24', r'^CURRENT @  NTRANS CURRENT !', r'144 C,A LOOP ;')),   # its last line since 674
         ('627 N>BODY below its use', 'native-cross.4', 'N>BODY',
          lambda: move(cross, r'^: N>BODY', r'^  \?DUP IF NIP EXECUTE ELSE @ call, THEN ;', r'N-BASE - ;')),
     ]

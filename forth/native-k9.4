@@ -19,7 +19,7 @@ rbp N-BASE N-MEMSZ @ + 64 - # mov,
 ebx ebx xor,
 rax N' S0 N>BODY N-ABS # mov,  rcx rbp mov,  rcx 8 # sub,  [ rax ] rcx mov,
 rax N' DP N>BODY N-ABS # mov,  rcx DP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,
-rax N' DDP N>BODY N-ABS # mov,  rcx N-DSTART # mov,  [ rax ] rcx mov,   \ (672) data's region
+rax N' DDP N>BODY N-ABS # mov,  rcx N-DDP-T @ 256 + N-ABS # mov,  [ rax ] rcx mov,   \ (672, 674) past its own data
 N' MAIN call,
 edi ebx mov,  eax 60 # mov,  syscall,
 A>N

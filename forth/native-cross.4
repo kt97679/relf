@@ -32,7 +32,15 @@ IMAGE ABUF !  0 ORG !  IMAGE THERE !
 : N-PROLOGUE ( --- )  16 0 DO 204 C,A LOOP  16 DP-T ! ;   \ int3: a jump there traps
 N-PROLOGUE                                   \ (a loop is compile-only at the top level)
 
-: N>A ( --- )  IMAGE DP-T @ + THERE ! ;      \ code goes where the target is
+\ (674) The kernel's own data in data's region, as kernel-native.4's CREATE
+\ puts the shell's (672): DP-T and N-DDP-T trade places, so ,-T C,-T and
+\ ALLOT-T lay data after a VARIABLE, until N-HEAD or N>A swaps them back.
+VARIABLE N-DDP-T      \ the other target pointer: set where N-DSTART is
+VARIABLE N-IN-DATA
+: N-DATA-SWAP ( --- )   DP-T @  N-DDP-T @ DP-T !  N-DDP-T ! ;
+: N-DATA-ON ( --- )   N-IN-DATA @ 0= IF  N-DATA-SWAP  -1 N-IN-DATA !  THEN ;
+: N-DATA-OFF ( --- )   N-IN-DATA @ IF  N-DATA-SWAP  0 N-IN-DATA !  THEN ;
+: N>A ( --- )  N-DATA-OFF  IMAGE DP-T @ + THERE ! ;      \ code goes where the target is
 : A>N ( --- )  THERE @ IMAGE - DP-T ! ;      \ and the target goes on after it
 : N-ABS ( t-addr --- addr )  N-BASE + ;     \ a target offset's address at run time
 
@@ -71,6 +79,7 @@ N-DGUARD 32768 - CONSTANT N-SIGSTK           \ 32 KB for the signal handlers
 \ as the file has them. The code grows from the image's start up to it.
 N-SIGSTK 65536 - 524288 - CONSTANT N-DSTART
 N-SIGSTK 8 - CONSTANT N-DLIMIT               \ the runtime data's last cell: data's limit, or 0
+N-DSTART N-BASE - N-DDP-T !                  \ (674) the kernel's own data begins there
 : N-ELF ( entry-t-addr --- )   \ the header page, for an image of DP-T bytes
   N-EHDR 4096 0 FILL
   127 0 1 E!  69 1 1 E!  76 2 1 E!  70 3 1 E!  2 4 1 E!  1 5 1 E!  1 6 1 E!
@@ -85,12 +94,14 @@ N-SIGSTK 8 - CONSTANT N-DLIMIT               \ the runtime data's last cell: dat
   1 120 4 E!  7 124 4 E!                            \ (672) the data: PT_LOAD, rwx
   DP-T @ 4096 + 4095 + -4096 AND 128 8 E!           \ the page after the code's
   N-DSTART DUP 136 8 E!  144 8 E!                   \ p_vaddr, p_paddr
-  0 152 8 E!                                        \ p_filesz: none in the kernel yet
+  N-DDP-T @ N-DSTART N-BASE - - 152 8 E!           \ p_filesz: the kernel's own data (674)
   N-BASE N-MEMSZ @ + N-DSTART - 160 8 E!  4096 168 8 E! ;   \ the rest, the stacks
-: WRITE-ELF ( c-addr u --- )   \ the header page, then the image
-  2DUP W/O CREATE-FILE THROW >R
+: WRITE-ELF ( c-addr u --- )   \ the header page, then the image - its code, its data
+  N-DATA-OFF  2DUP W/O CREATE-FILE THROW >R
   N-EHDR 4096 R@ WRITE-FILE THROW
   IMAGE DP-T @ R@ WRITE-FILE THROW
+  N-EHDR 4096 0 FILL  N-EHDR  DP-T @ 4096 + 4095 + -4096 AND  DP-T @ 4096 + -  R@ WRITE-FILE THROW
+  IMAGE N-DSTART N-BASE - +  N-DDP-T @ N-DSTART N-BASE - -  R@ WRITE-FILE THROW   \ (674)
   R> CLOSE-FILE THROW  493 CHMOD THROW ;
 
 \ ==== compiling kernel.4 (Iteration 618, N1c-1c) ==============================
@@ -115,11 +126,10 @@ WORDLIST CONSTANT NTRANS
   DUP -2 = IF DROP 3 CELLS + @ N-LIT EXIT THEN
   ?DUP IF NIP EXECUTE ELSE @ call, THEN ;
 CREATE N-NAME 32 ALLOT                       \ the name being defined
-VARIABLE N-DATA-OPEN   \ data was laid last: the next definition on a fresh line (626)
 : N-PEEK-NAME ( --- )   \ the next name, into N-NAME, the input left before it
   >IN @  BL WORD COUNT 31 MIN DUP N-NAME C!  N-NAME 1+ SWAP MOVE  >IN ! ;
 : N-HEAD ( --- )   \ the header, and its shadow in NTARGET: CREATEd, cells to follow
-  N-DATA-OPEN @ IF  DP-T @ 63 + -64 AND DP-T !  0 N-DATA-OPEN !  THEN   \ (626)
+  N-DATA-OFF                                                \ (674)
   N-PEEK-NAME  CURRENT @ >R  NTARGET CURRENT !  "HEADER  R> CURRENT ! ;
 
 \ Calls to a word not defined yet - (.") and (ABORT") are used before
@@ -189,11 +199,10 @@ CURRENT !
   \ line with code - a store there is self-modifying code to the processor,
   \ a machine clear each time (NATIVE.md 9). The mov holds the address;
   \ >BODY reads it there.
-  HERE-A 24 + 63 + -64 AND >R
+  \ (674) The data in data's region now, as 672 put the shell's: no line.
+  N-DDP-T @ 7 + -8 AND DUP N-DDP-T !  >R
   72 C,A 131 C,A 237 C,A 8 C,A  72 C,A 137 C,A 93 C,A 0 C,A
-  72 C,A 199 C,A 195 C,A  R@ N-ABS L,A  195 C,A  8 0 DO 144 C,A LOOP
-  BEGIN HERE-A R@ < WHILE 204 C,A REPEAT  R> DROP
-  -1 N-DATA-OPEN ! ;
+  72 C,A 199 C,A 195 C,A  R> N-ABS L,A  195 C,A  8 0 DO 144 C,A LOOP ;
 CURRENT @  NTRANS CURRENT !
 : \  SOURCE NIP >IN ! ;
 : (  41 WORD DROP ;
@@ -235,7 +244,7 @@ CURRENT @  NTRANS CURRENT !
   DOES> N-SHADOW ;
 : VARIABLE ( "name" --- )   \ the 24-byte stub, then the cell
   N-HEAD  DP-T @ ,  -1 ,  TLINK @ ,
-  N>A  N-STUB24  A>N  0 ,-T
+  N>A  N-STUB24  A>N  N-DATA-ON  0 ,-T
   DOES> N-SHADOW ;
 : CONSTANT ( n "name" --- )
   N-HEAD  DP-T @ ,  -2 ,  TLINK @ ,  DUP ,

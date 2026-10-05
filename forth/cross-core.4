@@ -38,7 +38,7 @@ VOCABULARY TRANSIENT
 \ the host fell over - and a buffer this size need not fit a host's
 \ dictionary (gforth's). SAVE-IMAGE writes only THERE's bytes, so CV8's
 \ images are the same for any size here.
-524288 CONSTANT IMAGE_SIZE
+4194304 CONSTANT IMAGE_SIZE   \ 4 MB since 674: the native kernel's data at 3 MB
 IMAGE_SIZE ALLOCATE THROW CONSTANT IMAGE   \ This space contains the target image.
        IMAGE IMAGE_SIZE 0 FILL      \ Initialize it to zero.
 
