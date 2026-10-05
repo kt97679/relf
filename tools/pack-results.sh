@@ -2,13 +2,15 @@
 # tools/pack-results.sh - one command on the user's machine, one file back
 # (Iterations 657, 664; prompts/19-round-trip.md, whose template,
 # prompts/19-round-trip.sh, this follows). From the repository's top:
-#     sh tools/pack-results.sh               apply, clean, measure, verify, pack
+#     sh tools/pack-results.sh               apply, clean, measure, pack
 #     sh tools/pack-results.sh --no-apply    leave the checkout's commit as it is
 #     sh tools/pack-results.sh --no-clean    keep every untracked file
 #     sh tools/pack-results.sh --no-bench    skip tools/bench-report.sh
 #     sh tools/pack-results.sh --no-profile  skip the native profile
-#     sh tools/pack-results.sh --no-verify   skip the acceptance suite
-# About twenty minutes on a fast x86-64, the machine otherwise idle.
+#     sh tools/pack-results.sh --verify      tests/verify too, eight minutes more
+# About three minutes on a fast x86-64, the machine otherwise idle. The
+# acceptance suite runs here, on every commit; on the user's machine only
+# when a reply asks for it (665: the user's time is the round trip's cost).
 #
 # 1. The newest bundle - relf-claude-iterN-*.bundle in $BUNDLE_DIR,
 #    ~/Downloads unless set - is applied to master if it is new, and only
@@ -22,7 +24,7 @@
 #    bench/reports/, a pack, a bundle.
 # 3. tools/bench-report.sh (SCALE and ROUNDS pass through to it),
 #    tools/native-written.py, tools/native-prof.py on the bench-vm
-#    workloads x100, then tests/verify - each step's output kept.
+#    workloads x100, and with --verify tests/verify - each output kept.
 # 4. One file, printed last: relf-results-HOST-COMMIT-UTC.tar.gz in the
 #    checkout's top. Send that back. In it: SUMMARY.txt - the bundle
 #    applied, each step's exit status and time, the checkout before and
@@ -42,14 +44,15 @@ LC_ALL=C; export LC_ALL
 exec < /dev/null
 self=tools/pack-results.sh
 
-clean=1 verify=1 profile=1 bench=1 apply=1
+clean=1 verify=0 profile=1 bench=1 apply=1
 for a in "$@"; do
     case $a in
         --no-apply) apply=0 ;;
         --no-clean) clean=0 ;;
         --no-bench) bench=0 ;;
         --no-profile) profile=0 ;;
-        --no-verify) verify=0 ;;
+        --verify) verify=1 ;;
+        --no-verify) verify=0 ;;     # the default since 665
         -h|--help) sed -n '2,/^main() {/s/^# \{0,1\}//p' "$self"; exit 0 ;;
         *) echo "pack-results: unknown argument: $a (--help lists them)" >&2; exit 2 ;;
     esac

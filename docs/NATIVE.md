@@ -581,6 +581,7 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 652 (87a5157) | 3.80 | 4.56 | 3.49 | 4.93 [4.81-5.14] | 4.76 | 0.94 |
 | relfsh, native, 657 (8ad19f8) | 3.58 | 4.21 | 3.18 | 4.87 [4.59-5.08] | 4.36 | 0.98 |
 | relfsh, native, 662 (0ee4740) | 3.34 | 3.74 | 2.99 | 4.30 [4.23-4.45] | 4.20 | 0.90 |
+| relfsh, native, 664 (the same code) | 3.22 | 3.91 | 2.98 | 4.48 [4.23-4.54] | 4.01 | 0.92 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
@@ -611,6 +612,9 @@ native's own times, ratio times dash's, moved by 0.92, 0.93, 0.91, 0.90,
 0.89, dash's medians by -8 to +4 %. Fury gained 7-11 % where the VM's A/B
 of the two, multiplied, said 4-6.5 %. Every workload now inside 4.3 times
 dash, arith's interval to 4.45: N3's five times holds with a margin.
+664's run is 662's code again (665): -4 to +4 % on each workload - fury's
+noise between two runs, as 648 and 649 showed. A difference smaller than
+that, between two of its reports, is not a claim.
 
 **Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
 resident, 412 of it the executable; here, the same binary (539,724

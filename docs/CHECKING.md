@@ -262,9 +262,9 @@ does it by itself.
 ## Measuring
 
     sh tools/pack-results.sh  # on another machine: the newest bundle in
-                              # ~/Downloads applied, a clean, build, measure,
-                              # verify - one file to send back (657, 664);
-                              # --help says the rest
+                              # ~/Downloads applied, a clean, build, measure
+                              # - one file to send back (657, 664); --verify
+                              # adds the suite (665); --help says the rest
 
     make bench            # speed against the reference shells
     make sizes            # size against every shell installed
