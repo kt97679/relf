@@ -874,3 +874,23 @@ with the same instructions executed, each priced in bytes by the tool:
 Not shrinkable without slowing: calls (7.9 %, rel32), the strings' own
 bytes (1.1 %), the headers (28 KB, which the forth builtin's interpreter
 needs).
+
+**687: literals at their shortest, built and held back.** LIT, laid
+mov ebx,imm32 (5 bytes, zero-extended) for 0 to 2^32-1 and kept the
+7-byte form for negatives; FRESH-LIT? learned the literal's end
+(LIT-END) instead of assuming 15 bytes; LIT-WORD? learned the 5-byte
+form, so constants stay inlined. Every native test the same, the
+self-build the same. The code segment 432,728 -> 426,706 bytes (the file
+-4,088, by whole pages); 2,005 zeros at 5 bytes and 566 negatives at 7
+remain, and 1,711 CREATE stubs keep their 7-byte form by design.
+Speed, four A/Bs against 686: realistic 1.082, 1.004, 1.034, 0.994;
+arith 1.012, 1.036, 1.030, 1.028; fn 1.021, 1.007, 1.015. The
+diagnostic: the 5-byte load padded back to 7 with a 2-byte NOP - the old
+layout, one more instruction - was 1.058-1.096 slower: so the load itself
+is not slow, an executed NOP per literal is, and what moves the others
+by a few percent is where the code lands. Arith's +1-4 % in all four
+runs fails the user's condition - not slower - so it is not committed.
+What it shows for every size change after it: shrinking the code moves
+the hot loops, and the VM's A/B cannot tell a 3 % layout effect from a 3
+% cost. The next step is a measurement that can - the same change built
+over several paddings of the code's start, so layout averages out.
