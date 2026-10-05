@@ -530,7 +530,12 @@ internal jumps too (651); COMPARE's tail and short MOVEs as byte loops
 environment search once (650); CSTRLEN's short strings in one load
 (652); the locals' saves and restores inline, a run as one group (655); a
 compare of two cells, or of one with 0, fused with its branch (661); a
-VARIABLE's fetch folded into the operation after it (662).
+VARIABLE's fetch folded into the operation after it (662); S" laid
+inline, its string jumped over and its address by a rip-relative lea -
+(S")'s return, to the byte after the string, missed the predictor every
+time (666: 4-10 % faster here, the shell 2 % bigger). COMPILE, knows
+an inlinable body by its first bytes, EB 01 and a length - so no other
+code may begin a body with jmp +1 (666 did, for a one-byte string).
 Built and reverted: SCAN's one-load path (654).
 
 The profile at 655 (tools/native-prof.py, this VM, the workloads x100) -

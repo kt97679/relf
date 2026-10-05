@@ -1,0 +1,32 @@
+\ tests/native/kernel-slit.4 - S" in a definition, laid inline by the
+\ native compiler (Iteration 666): the bytes jumped over - by two bytes
+\ of jmp up to 127, by five from 128 - and the address by a rip-relative
+\ lea. Lengths 0 1 127 128 200; two in one word; in IF and ELSE; a word
+\ small enough to be inlined, copied into others, and EXECUTEd; the
+\ address's own bytes checked; the depth after. Native, CV8-asm and CV8-C
+\ print the same.
+: L0 S" " ;   : L1 S" x" ;
+: L127 S" abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvw" ;
+: L128 S" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX" ;
+: L200 S" 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" ;
+: SUM ( c-addr u --- n )  0 SWAP 0 ?DO OVER I + C@ + LOOP SWAP DROP ;
+: SHOW ( c-addr u --- )  DUP . 2DUP SUM . 8 MIN TYPE CR ;
+L0 SHOW  L1 SHOW  L127 SHOW  L128 SHOW  L200 SHOW  DEPTH . CR
+: TWO ( --- )  S" first" TYPE SPACE S" second" TYPE CR ;
+TWO DEPTH . CR
+: PICKS ( f --- )  IF S" yes" ELSE S" no" THEN TYPE CR ;
+-1 PICKS  0 PICKS  DEPTH . CR
+: HI S" hi" ;
+: USE ( --- )  HI TYPE  1 HI ROT . TYPE  HI SWAP DROP . CR ;
+USE  ' HI EXECUTE TYPE CR  DEPTH . CR
+: MID ( --- n )  3 S" abcdef" DROP 2 + C@ + ;
+MID . CR
+\ A word whose body begins with a one-byte literal, and is not inlined
+\ (it calls TYPE): its first bytes must not read as the inline marker,
+\ jmp +1 and a length - they did, at first, and its callers copied 33
+\ bytes of it for code (666)
+: BANG ( --- )  S" !" TYPE ;
+: USE-BANG ( --- )  BANG BANG CR ;
+USE-BANG  DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

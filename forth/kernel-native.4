@@ -314,6 +314,24 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : (;CODE) ( --- )   \ the last created word jumps to what follows the call to this,
   \ the data's address pushed already; R> ends the defining word
   R> LAST @ NAME> 15 +  233 OVER C!  1+ SWAP OVER 4 + - SWAP !4 ;
+\ S" in a definition (666): the string's bytes jumped over, and its address
+\ by a rip-relative lea, then its length - where (S") was a call whose ret
+\ went to the byte after the string, so the return predictor missed every
+\ one. Position-independent: a body with a string literal can be moved and
+\ inlined. 2 or 5 bytes of jmp, the bytes, 27 of pushes; (S") was 6 and
+\ the bytes. ." and ABORT" keep their runtimes: they print, or abort.
+: SLIT, ( c-addr u --- )
+  DUP 128 < OVER 1 <> AND IF 235 C, DUP C, ELSE 233 C, DUP ,4 THEN   \ jmp over the bytes
+  \ - never jmp +1, EB 01: at a body's start that reads as the inline
+  \ marker, and COMPILE, copied a body beginning `S" !"` for code (666)
+  HERE >R  2DUP HERE SWAP MOVE  DUP ALLOT  SWAP DROP  MARK-TARGET   \ the bytes; the jmp lands here
+  72 C, 131 C, 237 C, 16 C,  72 C, 137 C, 93 C, 8 C,      \ sub rbp,16  mov [rbp+8],rbx
+  72 C, 141 C, 5 C,  R> HERE 4 + - ,4                     \ lea rax,[rip - back to the bytes]
+  72 C, 137 C, 69 C, 0 C,                                 \ mov [rbp],rax
+  187 C, ,4 ;                                             \ mov ebx,u
+: S"  ( "ccc<quote>" --- )
+  STATE @ IF 34 PARSE SLIT,
+          ELSE 34 PARSE POCKET PLACE POCKET COUNT THEN ; IMMEDIATE
 : DOES> ( --- )   ?COMP  POSTPONE (;CODE) ; IMMEDIATE
 : POSTPONE ( "name" --- )
   ?COMP  BL WORD FIND  ?DUP 0= ABORT" not found"
