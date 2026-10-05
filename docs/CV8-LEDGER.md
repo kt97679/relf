@@ -79,3 +79,32 @@ dispatches surround each call, and the microcoded instructions' slow
 start is lost among them. The lesson for the items after it: the native
 back end's profile prices native code, not CV8 - each item is priced on
 CV8 itself, by doing its work twice, before it is built.
+
+### 680, items 2-4 priced on CV8 - by doing each one's work twice
+
+Each priced before building, on CV8 itself (679's lesson), the work done
+twice with behaviour unchanged, A/B against 679's shells, 9 rounds:
+
+| shell, SCALE=5 | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| 2: every string literal twice - asm | 1.038 | 1.026 | 0.981 | 1.031 | 1.019 |
+| 2: the same - C | 0.969 | 1.005 | 0.979 | 0.955 | 0.968 |
+| 3: every local saved and restored twice - asm | 0.990 | 0.997 | 1.025 | 1.032 | 1.037 |
+| 3: the same - C | 0.997 | 1.003 | 0.992 | 1.015 | 1.044 |
+| 4: an extra call and return at every call - asm | 1.337 | 1.391 | 1.317 | 1.373 | 1.368 |
+| 4: the same - C | 1.375 | 1.332 | 1.413 | 1.390 | 1.334 |
+
+**Item 2, `(S")` as an instruction: not built.** All of a string
+literal's runtime, done twice, is inside the noise: an instruction that
+saved part of it could not be seen.
+**Item 3, grouped locals: not built,** for the same reason.
+**Item 4, inlining small colon words: next.** One more call and return
+at every call site costs a third of CV8's time on every workload, on both
+engines: calls and returns are where CV8 spends, and inlining the small
+words removes some of them outright. How many depends on how many of the
+calls executed go to words small enough to copy - the first thing to
+count before it is built. (Item 4's first pricing build used ['] in
+kernel.4, which the cross compiler refuses; the images were not rebuilt,
+and its A/B compared two copies of one shell - noise, caught by their
+equal sizes and the failed build's status. Rebuilt with POSTPONE, guarded
+against its own recursion.)

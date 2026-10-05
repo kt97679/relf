@@ -704,6 +704,7 @@ do not trust the absence of a line below.
 - 677 — fury's pack at 676: native arith 12 % faster there; the asm-engine shell 5-11 % on loop, fn, arith
 - 678 — FNV-HASH, the name hashes a primitive: built in all three engines, measured, nothing - reverted
 - 679 — CV8's ledger and tools/cv8-ledger.py; item 1, the asm engine's string primitives: built, measured, nothing - reverted
+- 680 — CV8's items 2-4 priced: string literals and locals inside the noise, not built; an extra call per call site +32-41 % - inlining is the lever
 
 ### Not tied to an iteration
 
