@@ -727,6 +727,7 @@ do not trust the absence of a line below.
 - 700 — ideas 10 and 11 begun: the native inliner's limit swept 8-128; 32 kept, -3.3 KB
 - 701 — CV8's inliner limits swept: nothing faster at equal size; 3 instructions and 6 bytes kept, the CV8 shells -1.6 KB
 - 702 — idea 11 begun: fg/bg and ulimit's shared stretches factored (CV8 -32 bytes, native -160); a fourth grew CV8, taken out
+- 703 — fury's pack at 702: both CV8 shells 4-9 % faster there (683-701 claimed); the native size work as fast
 
 ### Not tied to an iteration
 

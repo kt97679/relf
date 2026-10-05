@@ -596,6 +596,8 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 666 (7350a38) | 3.05 | 3.55 | 3.00 | 4.25 [4.14-4.38] | 3.98 | 0.95 |
 | relfsh, native, 672 (bacbf45) | 3.01 | 3.51 | 2.82 | 4.15 [4.09-4.23] | 3.91 | 0.80 |
 | relfsh, native, 676 (7e8c745) | 2.88 | 3.50 | 2.89 | 3.67 [3.39-3.93] | 3.83 | 0.83 |
+| relfsh, native, 691 (c6aaf26) | 2.84 | 3.41 | 2.79 | 3.67 | 3.79 | 0.80 |
+| relfsh, native, 702 (1bb2428) | 2.95 | 3.25 | 2.88 | 3.83 [3.66-3.90] | 3.96 | 0.85 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
@@ -1102,3 +1104,11 @@ than the calls they save. 8 is clearly slower, 16 and 24 too by the
 longer runs. 32 saves 3,272 bytes and its two runs average 0.980-1.021 -
 inside the floor: kept. The control's own 0.975-1.033 is the floor at 9
 rounds.
+
+**703: fury on the size work (686-702).** Native against dash at 702:
+loop 2.95, fn 3.25, str 2.88, arith 3.83, realistic 3.96; against 681's
+run 1.02, 0.95, 1.01, 1.06, 1.06 by the ratios, and by the implied times
+1.023, 0.952, 0.970, 1.021, 1.007 - inside fury's noise: the native shell
+32.7 KB smaller and as fast. Idle 328 kB resident (340 at 681), the
+executable 260 of it, 44 kB written as before; its file's code segment
+384 kB.

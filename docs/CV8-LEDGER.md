@@ -263,3 +263,23 @@ condition rules out. 3 and 6 is smaller by 1,648 bytes with every
 workload inside the ledger's noise in two runs: **kept.** A fourth
 instruction bought bytes, not time. The shells: asm 144,748 -> 143,100,
 C x86-64 168,012 -> 166,364, i386 150,196 -> 148,584.
+
+**Fury at 702** (its pack, 703; times dash, against 681's run). Item 4's
+inlining (683, 684) and 701's limit, with 702's factoring:
+
+| shell | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine, 681 | 27.6 | 34.8 | 28.4 | 35.1 | 39.3 |
+| asm engine, 702 | 25.6 | 31.8 | 28.2 | 34.8 | 38.4 |
+| asm, implied time | 0.930 | 0.914 | 0.957 | 0.959 | 0.931 |
+| C engine, 681 | 27.2 | 34.1 | 28.2 | 34.4 | 37.4 |
+| C engine, 702 | 25.4 | 31.4 | 27.6 | 33.0 | 37.8 |
+| C, implied time | 0.937 | 0.919 | 0.943 | 0.928 | 0.962 |
+
+Both CV8 shells 4-9 % faster on fury, as the VM's ledger said of 683
+(5-10 %) - claimed. With 676 and 681 before them, the asm engine's shell
+since 672: loop 29.3 -> 25.6, fn 36.6 -> 31.8, arith 38.7 -> 34.8,
+realistic 41.9 -> 38.4 times dash. A run at 691 in the same pack (c6aaf26)
+agrees: asm 25.0, 31.9, 26.6, 34.2, 37.8. bench.4's single runs on fury
+moved both ways (the asm engine's sieve 315 -> 429 ms, its fib 74 -> 51)
+- too few runs to read; the shell's interleaved runs are the claim.
