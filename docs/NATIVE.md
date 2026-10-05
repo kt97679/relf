@@ -894,3 +894,23 @@ What it shows for every size change after it: shrinking the code moves
 the hot loops, and the VM's A/B cannot tell a 3 % layout effect from a 3
 % cost. The next step is a measurement that can - the same change built
 over several paddings of the code's start, so layout averages out.
+
+**688: an A/B over layouts.** tools/native-ab-layouts.py BASE builds each
+side four times - the native kernel with 0, 16, 32 or 48 bytes of target
+space before its runtime, so the routines and every word after them
+move, and the shell with as many before its first source
+(tools/build-native-shell.sh's NATIVE_LAYOUT_PAD) - and times all eight
+together. Per workload: the spread of each side's layouts, and the ratio
+of their geometric means. Against itself, 9 rounds: layouts alone moved
+a workload up to 4.9 %, and the averaged ratios came out 0.989-1.016 -
+the method resolves about 2 %. A first version padded only the shell's
+words: the null came out 0.987-1.020, but the change it was for moves the
+kernel's words, which that padding left in place - and it was those.
+
+**689: literals at their shortest, kept.** 687's change through 688's
+A/B, 13 rounds: loop 0.994, fn 0.998, str 0.985, arith 1.012, realistic
+0.998 - inside the method's 2 %; arith's 1-4 % of 687 was where the
+kernel's words had landed, 8 bytes further on. The shell 452,912 ->
+448,824 bytes (code 432,728 -> 426,706); the kernel +8 bytes (LIT,'s own
+growth); the shell's data +8 (LIT-END). Left for later: zeros by xor
+ebx,ebx (2,005 loads, 3 bytes each, if the flags allow), -1 by or (566).

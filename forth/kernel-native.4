@@ -46,14 +46,21 @@ VARIABLE BODY-AT     \ where its body begins
 : CALL, ( xt --- )   0 INL-OK !  232 C, REL, ;     \ call rel32
 VARIABLE LIT-AT       \ where the last short literal's push began (628)
 VARIABLE LIT-VAL      \ and its value
+VARIABLE LIT-END      \ and where it ended: 13 bytes on, or 15 (687)
 VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewound
-: LIT, ( x --- )   \ push it: mov rbx,imm32 when it fits, else movabs
-  DUP 2147483647 > OVER -2147483648 < OR
-  IF  PUSH,  72 C, 187 C, ,  0 LIT-AT !
-  ELSE  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  72 C, 199 C, 195 C, ,4  THEN ;
+: LIT, ( x --- )   \ push it, in the shortest load that holds it (687)
+  \ mov ebx,imm32 (5 bytes, zero-extended) for 0 to 2^32-1; mov rbx,imm32
+  \ (7, sign-extended) for a negative that fits; movabs (10) else. The
+  \ folds take a short literal's value as a sign-extended imm32, so those
+  \ from 2^31 on are laid unfoldable. The 7-byte form was all of them
+  \ until 687: 5,691 loads, 16.6 KB of the shell (NATIVE.md 14).
+  DUP 0< 0= OVER 2147483648 < AND IF  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  187 C, ,4  HERE LIT-END !  EXIT  THEN
+  DUP 0< 0= OVER 4294967296 < AND IF  PUSH,  187 C, ,4  0 LIT-AT !  EXIT  THEN
+  DUP -2147483648 < 0= OVER 0< AND IF  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  72 C, 199 C, 195 C, ,4  HERE LIT-END !  EXIT  THEN
+  PUSH,  72 C, 187 C, ,  0 LIT-AT ! ;
 : MARK-TARGET ( --- )   HERE FOLD-BARRIER ! ;   \ a jump lands here
 : FRESH-LIT? ( --- f )   \ the last thing laid is a short literal, no jump into it
-  LIT-AT @ ?DUP IF  DUP 15 + HERE =  SWAP FOLD-BARRIER @ < 0= AND  ELSE 0 THEN ;
+  LIT-AT @ ?DUP IF  LIT-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  ELSE 0 THEN ;
 : OP-IMM, ( modrm --- )   \ the literal unlaid; op rbx,imm32 in its place
   LIT-AT @ HERE - ALLOT  0 LIT-AT !  72 C, 129 C, C,  LIT-VAL @ ,4 ;
 VARIABLE LAST-XT    \ the primitive COMPILE, last copied (669), or -2 for I
@@ -169,6 +176,7 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
   DUP @ 26328115314525000 = 0= IF 0 EXIT THEN
+  DUP 8 + C@ 187 = OVER 13 + C@ 195 = AND IF  9 + @4  TRUE EXIT THEN    \ mov ebx,imm32 (687)
   DUP 8 + C@ 72 = 0= IF 0 EXIT THEN
   DUP 9 + C@ 199 = OVER 10 + C@ 195 = AND OVER 15 + C@ 195 = AND IF
     11 + @4  DUP 2147483647 > IF 4294967296 - THEN  TRUE EXIT THEN   \ sign-extended

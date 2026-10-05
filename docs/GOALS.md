@@ -135,7 +135,10 @@ the account of what each gained and cost.
    exists (tools/native-budget.py, NATIVE.md 14) - the stack traffic is
    42 % of the code; literals at their shortest would save 16.6 KB,
    forward branches in rel8 10.7 KB, a stack register needing no
-   displacement 20.1 KB. Literals first: one word.
+   displacement 20.1 KB. Literals first: one word. **689:** literals
+   at their shortest kept - judged by tools/native-ab-layouts.py (688),
+   which builds each side over four layouts, since a smaller image moves
+   the hot code and a one-layout A/B cannot tell that from a cost.
 10. **Genetic programming or randomized search over the compilers'
    choices** - for CV8, faster without a larger image; for the native
    shell, smaller without being slower. The compilers' choices made

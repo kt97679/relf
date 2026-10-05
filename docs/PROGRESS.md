@@ -712,6 +712,8 @@ do not trust the absence of a line below.
 - 685 — CV8's items 1-4 together: both shells 8-13 % faster, bench.4 10-12 %, for 2.9 KB of shell
 - 686 — the native image's budget (tools/native-budget.py): stack traffic 42 % of the code; 16.6 KB in literals, 10.7 KB in branches to try
 - 687 — native literals at their shortest: 6 KB of code, but arith 1-4 % slower in every A/B - held back; layout moves the A/B
+- 688 — tools/native-ab-layouts.py: an A/B over four layouts of kernel and shell; it resolves about 2 %
+- 689 — native literals at their shortest, re-judged over layouts: inside 2 %, kept - the shell 4 KB smaller
 
 ### Not tied to an iteration
 
