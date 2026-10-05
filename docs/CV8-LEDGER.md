@@ -143,3 +143,10 @@ literals now too. **Cost:** the kernel image +104 bytes (the two
 helpers); the shells -272 bytes - a literal is shorter than a call.
 **Got:** 3-6 % on the shells (at the noise floor's edge, both engines
 agreeing), 4-6 % on bench.4.
+
+**Fury at 681** (its pack, 682; times dash, against 676's run): the C
+engine's shell loop 27.2 (28.7), fn 34.1 (35.4), str 28.2 (30.5), arith
+34.4 (37.3), realistic 37.4 (41.9) - ratios 0.89-0.96, implied 0.92-0.99;
+the asm engine's 27.6, 34.8, 28.4, 35.1, 39.3 - ratios 0.95-1.01, inside
+fury's noise. The C engine's gain is claimed there; the asm engine's is
+not, yet.

@@ -114,6 +114,41 @@ ordinary scripts hit, then edge cases and wording.
    so the next occurrence names which. Fury's next pack (663, at 662)
    passed it: 1 failure in 12 runs there.
 
+**The user's ideas, to try (recorded at 682, in the user's order).** Each
+is measured as CV8's items are: tools/cv8-ledger.py for CV8's speed and
+bytes against a base, the native A/B (tools/bench-vm.py) and
+tools/native-written.py for the native shell, and docs/CV8-LEDGER.md for
+the account of what each gained and cost.
+
+9. **Why the native shell is as big as it is, and what can shrink it
+   without costing speed.** The native shell is 452,912 bytes - 432 KB of
+   code and 18.7 KB of data - where CV8's asm shell is 141,572 with its
+   engine. Known contributors, none yet measured on their own: x86 code is
+   wider than CV8's one-byte tokens (a push is 8 bytes, a call 5, a
+   literal 5-10); inlining (646, 651) copies bodies into callers; S"
+   inline (666) lays the string at each use; a CREATE's 24-byte stub;
+   locals' save and restore sequences. First, a native image-budget -
+   tools/image-budget.py's split for the native image: per word, and by
+   kind (inlined copies, calls, literals, stubs, headers) - then each
+   shrinking priced with the A/B: shorter encodings, outlining cold
+   paths, an inlining threshold that weighs size.
+10. **Genetic programming or randomized search over the compilers'
+   choices** - for CV8, faster without a larger image; for the native
+   shell, smaller without being slower. The compilers' choices made
+   knobs first (inlining thresholds, which peepholes fire, encodings,
+   the order of words), then a search over them with the hard limits as
+   constraints. The cost to plan for: each candidate is a build and a
+   benchmark (a ledger run is 2-3 minutes here), and the VM's noise is
+   about 5 % at 5-7 rounds - so the search needs few, well-chosen knobs
+   and its winners confirmed by an A/B with more rounds, then by fury.
+11. **The Forth sources reviewed for words that can be simpler or
+   shorter** - kernel.4, extend.4, the shell's sources - with speed not
+   lower and the image not larger. Tools that exist: dead-words.py
+   (unused words), dup-scan.py (logic repeated across definitions,
+   509's audit), image-budget.py (where CV8's bytes go), PROFILE_CALLS
+   (681: which words are called most - simplifying a hot word pays twice).
+   Each change through the ledger, its bytes and its A/B.
+
 ## The second end state, reached (Iteration 548)
 
 GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
