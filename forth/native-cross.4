@@ -330,10 +330,10 @@ NCODE DICT-LIMIT ( --- addr )   \ (672) code grows up to data's region, data to 
 NCODE DATA-START ( --- addr )   N-PUSH  rbx N-DSTART # mov,  NEND
 NCODE DATA-TOP ( --- addr )     N-PUSH  rbx N-RTDATA # mov,  NEND
 NCODE DLIMIT-CELL ( --- a-addr )   N-PUSH  rbx N-DLIMIT # mov,  NEND
-\ A register loop's r14 and r15 kept on the return stack, under the
+\ A register loop's r14 and r13 kept on the return stack, under the
 \ caller's return address (630): kernel-native.4's CATCH brackets the
 \ kernel's with these, so a THROW out of a loop leaves the catcher's own
 \ loop as it was.
-NCODE (SAVE-LOOP)     rax pop,  r15 push,  r14 push,  rax push,  NEND
-NCODE (RESTORE-LOOP)  rax pop,  r14 pop,   r15 pop,   rax push,  NEND
+NCODE (SAVE-LOOP)     rax pop,  r13 push,  r14 push,  rax push,  NEND     \ r13 the limit since 696
+NCODE (RESTORE-LOOP)  rax pop,  r14 pop,   r13 pop,   rax push,  NEND
 A>N

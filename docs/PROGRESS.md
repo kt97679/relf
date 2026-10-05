@@ -720,6 +720,7 @@ do not trust the absence of a line below.
 - 693 — forward branches laid short with a table of relative fields and REL-FIX in assembly: 2,636 shrunk, code -5.4 KB net; not slower
 - 694 — the kernel's own literals at their shortest, by the cross compiler: code -2.8 KB at no cost in the image
 - 695 — the branch shrinker in assembly (SHORT-MOVE): the kernel's code -958 bytes
+- 696 — the counted loop's limit from r15 to r13: r15 freed for the data stack
 
 ### Not tied to an iteration
 

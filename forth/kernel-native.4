@@ -280,9 +280,11 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
 : WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
 : REPEAT  ?COMP  POSTPONE AGAIN  POSTPONE THEN ; IMMEDIATE
 
-\ counted loops, in registers (630): r14 the index, r15 the limit; DO
+\ counted loops, in registers (630): r14 the index, r13 the limit (r15
+\ until 696, which frees r15 for the data stack: a base needing no
+\ displacement byte - NATIVE.md 14); DO
 \ saves the enclosing loop's pair on the return stack and the loop's end
-\ puts it back - so a loop is `inc r14; cmp r14,r15; jne`, nothing in
+\ puts it back - so a loop is `inc r14; cmp r14,r13; jne`, nothing in
 \ memory, and a word called in a loop keeps the caller's loop as it was.
 \ J is the pair saved last: [rsp]. A LEAVE is a jump to the loop's end,
 \ where the pair is restored; 'LEAVE holds the newest one's field, and
@@ -293,27 +295,27 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
   'LEAVE @ BEGIN ?DUP WHILE
     DUP @4 >R  DUP >RESOLVE  R> ?DUP IF - ELSE DROP 0 THEN
   REPEAT  'LEAVE ! ;
-: LOOP-ENTER, ( --- )   \ push r15  push r14  mov r15,[rbp]  mov r14,rbx  mov rbx,[rbp+8]  add rbp,16
-  65 C, 87 C,  65 C, 86 C,  76 C, 139 C, 125 C, 0 C,  73 C, 137 C, 222 C,
+: LOOP-ENTER, ( --- )   \ push r13  push r14  mov r13,[rbp]  mov r14,rbx  mov rbx,[rbp+8]  add rbp,16
+  65 C, 85 C,  65 C, 86 C,  76 C, 139 C, 109 C, 0 C,  73 C, 137 C, 222 C,
   72 C, 139 C, 93 C, 8 C,  72 C, 131 C, 197 C, 16 C, ;
-: LOOP-EXIT, ( outer --- )   \ the LEAVEs here; pop r14  pop r15
-  RESOLVE-LEAVE  65 C, 94 C, 65 C, 95 C, ;
+: LOOP-EXIT, ( outer --- )   \ the LEAVEs here; pop r14  pop r13
+  RESOLVE-LEAVE  65 C, 94 C, 65 C, 93 C, ;
 : DO   ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
 : ?DO  ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !
-  77 C, 57 C, 254 C,  15 C, 132 C, LEAVE-LINK,          \ cmp r14,r15  je the end: a LEAVE
+  77 C, 57 C, 238 C,  15 C, 132 C, LEAVE-LINK,          \ cmp r14,r13  je the end: a LEAVE
   MARK-TARGET HERE ; IMMEDIATE
-: LOOP  ?COMP   \ inc r14  cmp r14,r15  jne back
-  73 C, 255 C, 198 C,  77 C, 57 C, 254 C,  15 C, 133 C, BACK,  LOOP-EXIT, ; IMMEDIATE
-: +LOOP  ?COMP   \ native.4's crossing test, by signs, on r14 and r15
+: LOOP  ?COMP   \ inc r14  cmp r14,r13  jne back
+  73 C, 255 C, 198 C,  77 C, 57 C, 238 C,  15 C, 133 C, BACK,  LOOP-EXIT, ; IMMEDIATE
+: +LOOP  ?COMP   \ native.4's crossing test, by signs, on r14 and r13
   72 C, 137 C, 216 C,  72 C, 139 C, 93 C, 0 C,  72 C, 131 C, 197 C, 8 C,   \ n into rax, popped
-  76 C, 137 C, 242 C,  76 C, 41 C, 250 C,  73 C, 1 C, 198 C,             \ rdx=i-lim  i+=n
+  76 C, 137 C, 242 C,  76 C, 41 C, 234 C,  73 C, 1 C, 198 C,             \ rdx=i-lim  i+=n
   73 C, 137 C, 208 C,  73 C, 1 C, 192 C,  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,
   73 C, 33 C, 208 C,  15 C, 137 C, BACK,  LOOP-EXIT, ; IMMEDIATE
 : LEAVE   ?COMP  233 C, LEAVE-LINK, ; IMMEDIATE
 : I       ?COMP  HERE LAST-AT !  PUSH,  76 C, 137 C, 243 C,         \ mov rbx,r14
   HERE LAST-END !  -2 LAST-XT ! ; IMMEDIATE
 : J       ?COMP  PUSH,  72 C, 139 C, 28 C, 36 C, ; IMMEDIATE   \ mov rbx,[rsp]
-: UNLOOP  ?COMP  65 C, 94 C, 65 C, 95 C, ; IMMEDIATE           \ pop r14  pop r15
+: UNLOOP  ?COMP  65 C, 94 C, 65 C, 93 C, ; IMMEDIATE           \ pop r14  pop r13
 
 \ shadow.4's locals (637): shadow.4 lays them with OP, and SLOT, - CV8's
 \ locals opcodes on a variable - so natively OP, records the operation and
