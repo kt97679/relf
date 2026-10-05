@@ -928,3 +928,23 @@ waits on the cell under it, where mov did not: -1 left out. Zero alone,
 by at most 48 bytes, so a change of a page's worth (this one shrinks the
 code by most of a page) can still move things the pads do not. Under
 "not slower": held back. Those bytes stay.
+
+**691: the method's floor, and the branches priced.** The layout A/B's
+null run again, with pads that also move the code by up to 3 KB
+(0, 1040, 2080, 3120 - the four 16-byte phases, a page's worth of
+shifts): the two sides byte for byte the same, layout by layout (cmp),
+and yet 0.979, 1.021, 1.023, 1.019, 1.011 - layouts alone 0.98-1.08.
+At 13 rounds over four layouts the VM resolves about 2.3 %, so 690's
+zero (realistic 1.015 and 1.031) cannot be called slower or not; the
+nulls' realistic came out 1.003, 1.009, 1.011.
+
+Forward branches priced from the disassembly: 2,933 rel32 branches
+would fit in rel8 once shrunk - 10,993 bytes. Shrinking one moves the
+code it skips back by 3 or 4 bytes, so whatever in that code points out
+of it, or is pointed at from outside, must be fixed: of the 2,933, 1,409
+skip a call (its rel32 then off by the shrink), 429 a branch that leaves
+(the same), 39 something rip-relative. 1,056 skip nothing to fix - 3,851
+bytes. The whole needs the compiler to keep, per definition, every
+rel32 field and every code address it holds (LIT-AT, CMP-AT, LAST-AT,
+the control-flow stack's origins) and move them all; the safe part needs
+only to know that the skipped code holds none of them.

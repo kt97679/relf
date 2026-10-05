@@ -715,6 +715,7 @@ do not trust the absence of a line below.
 - 688 — tools/native-ab-layouts.py: an A/B over four layouts of kernel and shell; it resolves about 2 %
 - 689 — native literals at their shortest, re-judged over layouts: inside 2 %, kept - the shell 4 KB smaller
 - 690 — 0 by xor, -1 by or: or adds a wait (fn +2.8 %); zero alone realistic +1-3 % in every run - held back
+- 691 — the layout A/B's floor is 2.3 % here; forward branches priced: 11.0 KB, 3.9 KB of it with nothing to fix
 
 ### Not tied to an iteration
 
