@@ -111,7 +111,8 @@ ordinary scripts hit, then edge cases and wording.
    only inside verify. The report could not say whether the line was
    stopped or ran silent: intrfuzz now asks the shell for the failed
    line's status (130, a ^C stopped it; 0, it ran and printed nothing),
-   so the next occurrence names which.
+   so the next occurrence names which. Fury's next pack (663, at 662)
+   passed it: 1 failure in 12 runs there.
 
 ## The second end state, reached (Iteration 548)
 

@@ -580,9 +580,11 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 649 (the same binary) | 4.17 | 4.59 | 3.88 | 5.79 | 5.18 | 1.00 |
 | relfsh, native, 652 (87a5157) | 3.80 | 4.56 | 3.49 | 4.93 [4.81-5.14] | 4.76 | 0.94 |
 | relfsh, native, 657 (8ad19f8) | 3.58 | 4.21 | 3.18 | 4.87 [4.59-5.08] | 4.36 | 0.98 |
+| relfsh, native, 662 (0ee4740) | 3.34 | 3.74 | 2.99 | 4.30 [4.23-4.45] | 4.20 | 0.90 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
+| relfsh, asm engine, 662 | 30.1 | 35.5 | 30.1 | 39.7 | 41.5 | 0.96 |
 
 **After 652, N3's five times dash holds on every workload by the
 median** - arith only just: its interval reaches 5.14. The rows for 648
@@ -603,6 +605,13 @@ ratio times dash's - by 0 to -6 %: fn -6, loop -4, str -3, arith -3,
 realistic 0. The paired ratio is the method; but realistic's 0.92 is
 mostly dash's run, and fn's gain is the one both measures show.
 
+**After 661 and 662 (662's run, 663).** Against 657: loop 0.94, fn 0.89,
+str 0.94, arith 0.88, realistic 0.97 - and here both measures agree: the
+native's own times, ratio times dash's, moved by 0.92, 0.93, 0.91, 0.90,
+0.89, dash's medians by -8 to +4 %. Fury gained 7-11 % where the VM's A/B
+of the two, multiplied, said 4-6.5 %. Every workload now inside 4.3 times
+dash, arith's interval to 4.45: N3's five times holds with a margin.
+
 **Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
 resident, 412 of it the executable; here, the same binary (539,724
 bytes), 592 and 528 - all of the image mapped. This section said after
@@ -621,7 +630,8 @@ third). Fury maps fewer of the unread pages (412 against 528): the read
 part is the machine's, the written part is the code's. Measured on fury
 at last (658, the pack's native-written.log): of 536 kB mapped, 456
 resident - 328 written (Anonymous) and 128 the file's, where here it is
-328 and 208. The written part is the code's.
+328 and 208. The written part is the code's. At 662, smaller code: 512
+kB mapped, 432 resident, 308 written, 124 the file's (663).
 
 So the lever on N3's list is not relocation at start-up: it is where the
 data lives. Cells gathered in a region of their own, away from the code,
