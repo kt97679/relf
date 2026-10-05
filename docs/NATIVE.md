@@ -594,6 +594,7 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 662 (0ee4740) | 3.34 | 3.74 | 2.99 | 4.30 [4.23-4.45] | 4.20 | 0.90 |
 | relfsh, native, 664 (the same code) | 3.22 | 3.91 | 2.98 | 4.48 [4.23-4.54] | 4.01 | 0.92 |
 | relfsh, native, 666 (7350a38) | 3.05 | 3.55 | 3.00 | 4.25 [4.14-4.38] | 3.98 | 0.95 |
+| relfsh, native, 672 (bacbf45) | 3.01 | 3.51 | 2.82 | 4.15 [4.09-4.23] | 3.91 | 0.80 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
@@ -631,6 +632,13 @@ that, between two of its reports, is not a claim.
 0.95, realistic 0.99; the native's own implied times 0.95, 0.91, 0.96,
 0.97, 0.95. fn's 9 % is past the noise; the rest are at its edge, where
 the VM's A/B said 4-10 %.
+672's run (673), with 669's folds and 672's data region since 666: the
+ratios 0.99, 0.99, 0.94, 0.98, 0.98, the implied times 0.99-1.06 - inside
+fury's noise, where the VM's A/B said 3-5 % together; no claim. Start-up
+0.95 -> 0.80: the smaller image starts faster. Memory there: idle 352 kB
+resident (488 at 666), 64 kB written (344). The language benchmarks:
+native 0.14 of the asm engine's time (0.17), the loop 48 -> 8 ms - 669's
+I + fold.
 
 **Memory.** tools/mem-profile.py, idle: on fury after 652, 484 kB
 resident, 412 of it the executable; here, the same binary (539,724

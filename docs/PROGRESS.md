@@ -697,6 +697,7 @@ do not trust the absence of a line below.
 - 670 — N4: the native kernel builds itself, byte for byte the same as CV8 builds it; verify's native:self-built
 - 671 — what is left, priced: arguments in registers 3-6 % (a round trip per call costs 3-10 %); data in its own region -45 kB, about -270 kB private memory per shell
 - 672 — CREATE's data in its own region: the shell 13 % smaller, its written memory 344 -> 64 kB, 1.5-3.5 % faster
+- 673 — fury's pack at 672: memory 488 -> 352 kB resident, 64 kB written; speed inside the noise; start-up 0.80 of dash's
 
 ### Not tied to an iteration
 
