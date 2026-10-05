@@ -726,6 +726,7 @@ do not trust the absence of a line below.
 - 699 — backward branches short: built, cost more than they saved (+232 bytes) - set aside; idea 9's account: -32.7 KB
 - 700 — ideas 10 and 11 begun: the native inliner's limit swept 8-128; 32 kept, -3.3 KB
 - 701 — CV8's inliner limits swept: nothing faster at equal size; 3 instructions and 6 bytes kept, the CV8 shells -1.6 KB
+- 702 — idea 11 begun: fg/bg and ulimit's shared stretches factored (CV8 -32 bytes, native -160); a fourth grew CV8, taken out
 
 ### Not tied to an iteration
 

@@ -5604,9 +5604,11 @@ VARIABLE UL-HARD-CUR
   DUP -1 = IF DROP S" unlimited" TYPE EXIT THEN
   UL-SCALE @ / 0 <# #S #> TYPE ;
 
-: UL-REPORT ( --- )
+: UL-GET ( --- soft hard -1 | 0 )   \ the resource's limits, or the error and 0 (702)
   UL-RES @ GETRLIMIT                         ( soft hard ior )
-  IF 2DROP S" ulimit: cannot read limit" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN
+  IF 2DROP S" ulimit: cannot read limit" ERR-TYPE ERR-NL 1 LAST-STATUS ! 0 EXIT THEN -1 ;
+: UL-REPORT ( --- )
+  UL-GET 0= IF EXIT THEN
   UL-HARD? @ IF NIP ELSE DROP THEN           ( value )
   .UL-VALUE CR ;
 
@@ -5614,8 +5616,7 @@ VARIABLE UL-HARD-CUR
   \ POSIX: -H sets the hard limit, -S the soft one, neither sets both.
   \ Written with variables after a stack-juggled version crashed.
   UL-NEW !
-  UL-RES @ GETRLIMIT                         ( soft hard ior )
-  IF 2DROP S" ulimit: cannot read limit" ERR-TYPE ERR-NL 1 LAST-STATUS ! EXIT THEN
+  UL-GET 0= IF EXIT THEN
   UL-HARD-CUR !  UL-SOFT-CUR !
   UL-HARD? @ UL-SOFT? @ OR 0= IF
     UL-NEW @ UL-NEW @                        ( soft hard )
@@ -8607,28 +8608,28 @@ VARIABLE FG-T
     JOB-FORGET
   THEN ;
 
-: DO-FG ( --- )
+: JOB-SELECT ( --- f )   \ fg's and bg's start: the job named, or its error and 0 (702)
   JOB-PRUNE
-  JOB# @ 0= IF JOB-NO-SUCH EXIT THEN
-  JOB-BY-SPEC DUP 0< IF DROP JOB-NO-SUCH EXIT THEN
-  JOB-SEL !
+  JOB# @ 0= IF JOB-NO-SUCH 0 EXIT THEN
+  JOB-BY-SPEC DUP 0< IF DROP JOB-NO-SUCH 0 EXIT THEN
+  JOB-SEL !  -1 ;
+: JOB-CONT ( --- )   \ SIGCONT to the selected job's group, and it runs (702)
+  JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP
+  0 JOB-STATES JOB-SEL @ CELLS + ! ;
+: DO-FG ( --- )
+  JOB-SELECT 0= IF EXIT THEN
   JOB-SEL @ .JOB-TEXT CR                         \ as both references do
   FLUSH-OUTPUT
   JOB-CONTROL? @ IF
     0 JOB-PIDS JOB-SEL @ CELLS + @ TCSETPGRP DROP
   THEN
-  JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP   \ SIGCONT to the group
-  0 JOB-STATES JOB-SEL @ CELLS + !
+  JOB-CONT                                       \ SIGCONT to the group
   JOB-SEL @ JOB-WAIT-FG
   JOB-CONTROL? @ IF 0 SHELL-PGID @ TCSETPGRP DROP THEN ;
 
 : DO-BG ( --- )
-  JOB-PRUNE
-  JOB# @ 0= IF JOB-NO-SUCH EXIT THEN
-  JOB-BY-SPEC DUP 0< IF DROP JOB-NO-SUCH EXIT THEN
-  JOB-SEL !
-  JOB-PIDS JOB-SEL @ CELLS + @ NEGATE 18 KILL DROP
-  0 JOB-STATES JOB-SEL @ CELLS + !
+  JOB-SELECT 0= IF EXIT THEN
+  JOB-CONT
   91 EMIT JOB-NUMS JOB-SEL @ CELLS + @ 0 <# #S #> TYPE 93 EMIT 32 EMIT
   JOB-SEL @ .JOB-TEXT CR                       \ dash prints no trailing &
   0 LAST-STATUS ! ;

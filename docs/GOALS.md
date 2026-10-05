@@ -164,14 +164,25 @@ the account of what each gained and cost.
    32 kept (-3.3 KB, inside the floor), 128 larger and slower, 8-24
    slower. NATIVE.md 15. **701:** CV8's inliner limits swept the same
    way (CV8-LEDGER.md): nothing faster at equal size; 3 instructions and
-   6 bytes kept, the CV8 shells 1,648 bytes smaller at the same speed.
+   6 bytes kept, the CV8 shells 1,648 bytes smaller at the same speed. What
+   is left to sweep is mostly on/off switches for folds already measured
+   to pay; each would cost a run to learn what is known.
 11. **The Forth sources reviewed for words that can be simpler or
    shorter** - kernel.4, extend.4, the shell's sources - with speed not
    lower and the image not larger. Tools that exist: dead-words.py
    (unused words), dup-scan.py (logic repeated across definitions,
    509's audit), image-budget.py (where CV8's bytes go), PROFILE_CALLS
    (681: which words are called most - simplifying a hot word pays twice).
-   Each change through the ledger, its bytes and its A/B.
+   Each change through the ledger, its bytes and its A/B. **700-702,
+   where it stands:** dead-words.py finds nothing truly dead; dup-scan.py's
+   73 shared runs are pairs, and factoring one pays natively (a dozen
+   words are 150-300 bytes of machine code) but barely or not at all in
+   CV8, whose bytecode is so dense that a header and two calls outweigh a
+   short run - 702 factored three on cold paths (CV8 -32 bytes, native
+   -160) and took out a fourth that grew CV8. The hottest words by CV8's
+   profile - NAME-HASH, ARGV-ADD (eight parallel arrays filled per
+   argument), EXPAND-WORDS, EW-ENTRY, FIND-SHVAR - cost what their data
+   structures ask: shortening them is a redesign, not a simplification.
 
 ## The second end state, reached (Iteration 548)
 
