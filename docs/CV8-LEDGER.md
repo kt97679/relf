@@ -188,3 +188,24 @@ shells +3,600 bytes (+2.5 %), the kernel image +504 (the inliner).
 **Got:** 5-10 % on the asm shell, 5-7 % on the C shell, 6 % on bench.4.
 A size-neutral variant - only bodies no longer than the call - is a
 candidate for GOALS.md 10's search.
+
+### 684, item 4: the inliner's limits, two ways from 683's
+
+After 683 the most called words were XF@ and XV@ (9.8 and 5.1 % of the
+calls left), seven instructions now - X@ inlined into them made them too
+big to inline in turn - then PICK, (S"), SHVAR-NAME-SLOT, STOP?, six
+each. The limits became two constants, INL-MAXI and INL-MAXB, and each
+was moved and measured against 683 (four instructions, 12 bytes):
+
+| 7 rounds, against 683 | loop | fn | str | arith | realistic | shells' bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| 6 and 16, asm | 0.977 | 0.999 | 1.014 | 1.021 | 0.979 | +3,544 |
+| 6 and 16, C | 1.004 | 0.981 | 0.982 | 0.994 | 0.982 | |
+| 4 and 6, asm | 1.007 | 0.967 | 1.018 | 0.991 | 0.990 | -424 |
+| 4 and 6, C | 1.004 | 0.971 | 1.002 | 0.999 | 0.993 | |
+
+Six and 16 took 27 % more of the calls away - 863,533 -> 626,110 - and
+bought nothing measurable for 3,544 bytes: rejected. Four and 6 bytes
+kept 683's time (calls 872,256, 1 % more than 683's) and gave back 424
+of its 3,600 bytes: **kept.** The most called word, X@, is 5 bytes; the
+gain is in the very smallest words. bench.4: 0.997 both ways.

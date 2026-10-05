@@ -1522,7 +1522,7 @@ VARIABLE STATE ( --- a-addr)
 
 \ (683) Inlining, item 4 stage b (CV8-LEDGER.md): a call to a small
 \ straight-line word - at most four instructions before its EXIT, at
-\ most 12 bytes - is replaced by a copy of its body. Calls and returns
+\ most 6 bytes since 684 - is replaced by a copy of its body. Calls and returns
 \ were 18 % of the realistic script's dispatches (681), half of them to
 \ words that small. A body is copied as it is, so it may hold only what
 \ means the same anywhere: no branch (offsets would point elsewhere - not
@@ -1561,10 +1561,17 @@ VARIABLE STATE ( --- a-addr)
     DUP 16384 AND IF 32768 - THEN
   THEN + ;
 
+\ (684) The limits, measured: 683's four and 12 bytes against six and
+\ 16 - calls a further 27 % fewer, the shells 3,544 bytes larger, the
+\ time the same - and against four and 6 bytes: the time the same, the
+\ shells 424 bytes smaller. X@, the most called, is 5 bytes.
+4 CONSTANT INL-MAXI    \ at most this many instructions before the EXIT
+6 CONSTANT INL-MAXB    \ and at most this many bytes
+
 : INLINE-LEN ( xt --- u )   \ a small straight body's bytes before its EXIT, or 0
-  DUP 5
+  DUP INL-MAXI 1+
   BEGIN DUP WHILE
-    OVER C@ 1 = IF  DROP SWAP -  DUP 13 U< 0= IF DROP 0 THEN  EXIT  THEN
+    OVER C@ 1 = IF  DROP SWAP -  DUP INL-MAXB 1+ U< 0= IF DROP 0 THEN  EXIT  THEN
     1- SWAP INL-OP  DUP 0= IF DROP 2DROP 0 EXIT THEN  SWAP
   REPEAT DROP 2DROP 0 ;
 
