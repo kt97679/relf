@@ -158,7 +158,11 @@ the account of what each gained and cost.
    constraints. The cost to plan for: each candidate is a build and a
    benchmark (a ledger run is 2-3 minutes here), and the VM's noise is
    about 5 % at 5-7 rounds - so the search needs few, well-chosen knobs
-   and its winners confirmed by an A/B with more rounds, then by fury.
+   and its winners confirmed by an A/B with more rounds, then by fury. **700:**
+   one knob at a time - a search over many could not tell its candidates
+   apart at a 2.3 % floor. The native inliner's limit swept 8-128:
+   32 kept (-3.3 KB, inside the floor), 128 larger and slower, 8-24
+   slower. NATIVE.md 15.
 11. **The Forth sources reviewed for words that can be simpler or
    shorter** - kernel.4, extend.4, the shell's sources - with speed not
    lower and the image not larger. Tools that exist: dead-words.py

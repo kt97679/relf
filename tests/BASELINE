@@ -67,7 +67,7 @@ native:posix:failed 0
 native:prims same
 native:self-built same
 native:shell 1
-native:shell-bytes 420200
+native:shell-bytes 416104
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same
@@ -91,6 +91,7 @@ progress:0200-0299 2190625803 182887
 progress:0300-0399 1978581492 146246
 progress:0400-0499 4095444074 179213
 progress:0500-0599 3386922752 197811
+progress:0600-0699 1657887899 171074
 rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1

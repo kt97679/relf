@@ -1073,3 +1073,32 @@ its floor, which several of them beat. Left: what is not cheap - the
 stack traffic itself (41 % of the code; a deferred push would cut it and
 might be faster, a compiler change), and the headers (28 KB, which the
 forth builtin needs).
+
+## 15. Searching the compilers' choices (GOALS.md 10, from 700)
+
+The user's idea 10: a genetic or randomized search over the compilers'
+choices - CV8 faster without a larger image, the native shell smaller
+without being slower. What bounds it here is the measurement: each
+candidate is a build and an A/B over layouts, 1-2.5 minutes, resolving
+about 2.3 %; a search over many knobs at once could not tell its
+candidates apart. So one knob at a time, swept, the winners re-measured.
+
+**700: the native inliner's limit.** INLINE-MARK copied bodies of 1 to
+64 bytes into their callers (646, 651); the limit is INL-LIMIT now. Each
+value against HEAD (64) over four layouts, 9 rounds, the candidates again
+at 21 (the second figure):
+
+| limit | code bytes | loop | fn | str | arith | realistic |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 386,403 | 1.092 | 1.061 | 1.073 | 1.064 | 1.080 |
+| 16 | 387,923 | 1.034, 1.051 | 0.978, 1.067 | 1.007, 1.010 | 1.037, 0.994 | 0.976, 1.052 |
+| 24 | 389,859 | 1.036 | 1.011 | 0.994 | 1.096 | 1.033 |
+| **32** | **394,075** | 1.025, 0.988 | 1.010, 1.033 | 0.938, 1.023 | 0.986, 1.040 | 0.957, 1.010 |
+| 64, the control | 397,379 | 0.975 | 0.980 | 1.033 | 0.998 | 0.995 |
+| 128 | 403,243 | 1.093 | 0.968 | 1.074 | 0.995 | 1.014 |
+
+128 is larger and slower: copies past 64 bytes cost more in the cache
+than the calls they save. 8 is clearly slower, 16 and 24 too by the
+longer runs. 32 saves 3,272 bytes and its two runs average 0.980-1.021 -
+inside the floor: kept. The control's own 0.975-1.033 is the floor at 9
+rounds.

@@ -382,8 +382,9 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : DATA-ALIGN ( --- )   DATA-OFF ;
 : DATA-BASE ( --- addr )   DATA-START ;     \ where data's region begins, for SAVE-SYSTEM
 : :  ( "name" --- )   DATA-ALIGN !CSP HEADER ]  HERE BODY-AT !  -1 INL-OK !  RT-DONE ;
-: INLINE-MARK ( --- )   \ a copyable body of 1 to 64 bytes: moved up three, marked
-  HERE BODY-AT @ - DUP 0 > OVER 65 < AND INL-OK @ AND IF
+32 CONSTANT INL-LIMIT   \ (700) the longest body copied in place of a call - GOALS.md 10's first knob
+: INLINE-MARK ( --- )   \ a copyable body of 1 to INL-LIMIT bytes: moved up three, marked
+  HERE BODY-AT @ - DUP 0 > OVER INL-LIMIT 1+ < AND INL-OK @ AND IF
     >R  BODY-AT @ DUP 3 + R@ MOVE  3 ALLOT
     235 BODY-AT @ C!  1 BODY-AT @ 1+ C!  R> BODY-AT @ 2 + C!
   ELSE DROP THEN ;

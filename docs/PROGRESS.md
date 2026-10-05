@@ -724,6 +724,7 @@ do not trust the absence of a line below.
 - 697 — the native data stack in r15, a base with no displacement byte: the shell's code -10.9 KB; 424,296 bytes
 - 698 — a CREATE stub in 17 bytes: 967 stubs, the shell's code -5.8 KB; 420,200 bytes
 - 699 — backward branches short: built, cost more than they saved (+232 bytes) - set aside; idea 9's account: -32.7 KB
+- 700 — ideas 10 and 11 begun: the native inliner's limit swept 8-128; 32 kept, -3.3 KB
 
 ### Not tied to an iteration
 
@@ -742,4 +743,5 @@ do not trust the absence of a line below.
 | `docs/progress/0300-0399.md` | 300-399 | closed |
 | `docs/progress/0400-0499.md` | 400-499 | closed |
 | `docs/progress/0500-0599.md` | 500-599 | closed |
-| `docs/progress/0600-0699.md` | 600- | **current** |
+| `docs/progress/0600-0699.md` | 600-699 | closed |
+| `docs/progress/0700-0799.md` | 700- | **current** |
