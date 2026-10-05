@@ -131,7 +131,11 @@ the account of what each gained and cost.
    tools/image-budget.py's split for the native image: per word, and by
    kind (inlined copies, calls, literals, stubs, headers) - then each
    shrinking priced with the A/B: shorter encodings, outlining cold
-   paths, an inlining threshold that weighs size.
+   paths, an inlining threshold that weighs size. **686:** the budget
+   exists (tools/native-budget.py, NATIVE.md 14) - the stack traffic is
+   42 % of the code; literals at their shortest would save 16.6 KB,
+   forward branches in rel8 10.7 KB, a stack register needing no
+   displacement 20.1 KB. Literals first: one word.
 10. **Genetic programming or randomized search over the compilers'
    choices** - for CV8, faster without a larger image; for the native
    shell, smaller without being slower. The compilers' choices made

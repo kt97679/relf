@@ -815,3 +815,62 @@ kernel's variables where they live now. The shell: 452,920 bytes, 18.7
 KB of it data; a started shell writes 6 pages, 44 kB - from 77 and 344
 at 671. The native kernel still builds itself, byte for byte.
 
+
+## 14. Where the native shell's bytes go (686)
+
+GOALS.md 9, the user's: why the native shell is as big as it is, and
+what can shrink it at no cost in speed. tools/native-budget.py splits the
+image - the dictionary walked for each header's start, the code
+disassembled by objdump and each instruction classed, S" strings laid
+inline found by their bytes (SLIT,'s jmp, then sub rbp,16, mov
+[rbp+8],rbx and a lea back to them) and masked before objdump sees them:
+
+```
+relfsh-native: 452912 bytes - the code segment 432728 (from N_BASE: the runtime 7077, headers 28203 in 2381 words, code 393352), the data segment 18736
+
+the words' code by class (391524 bytes classed of 393352):
+  stack      164911   42.1 %
+  other      116241   29.7 %
+  literal     45557   11.6 %
+  call        30741    7.9 %
+  branch      26346    6.7 %
+  data         4428    1.1 %
+  return       3300    0.8 %
+
+encodings:
+  jcc 2 bytes               599
+  jcc 6 bytes              2913
+  jmp 2 bytes               462
+  jmp 5 bytes              1422
+  literal 5 bytes          1155
+  literal 7 bytes          5691
+saved if:
+  [rbp+0] as a register needing none   20117 bytes
+  literals at their shortest           16609 bytes
+  forward branches that fit rel8, as rel8   10725 bytes
+  backward branches that fit rel8, as rel8     594 bytes
+```
+
+The data stack in memory is 42 % of the words' code: every push and pop
+a cell in rbx costs, 8 bytes a pair. Four ways the bytes could shrink
+with the same instructions executed, each priced in bytes by the tool:
+
+1. **Literals at their shortest - 16.6 KB.** 5,691 loads use mov rbx,
+   imm32 (7 bytes) where most values are positive and under 2^32 - mov
+   ebx, imm32 is 5 and zero-extends - and 0 could be 2 (xor, which sets
+   flags: to be checked against the compare-branch fusion). The cheapest:
+   one word, LIT,.
+2. **Forward branches that fit in rel8 - 10.7 KB.** 2,913 jcc and 1,422
+   jmp use rel32; most land within 127 bytes. A forward branch's distance
+   is known only at THEN, after the code between is laid: shrinking it
+   moves that code, and the relative calls and pending branches in it.
+   Medium-hard.
+3. **The data stack's register - 20.1 KB.** 20,117 instructions address
+   [rbp+0]: rbp as a base always needs a displacement byte; r15, or rsi,
+   would need none. Every runtime routine, the compiler and the generated
+   OS routines name rbp: a large change for 4.6 %.
+4. Backward branches that fit in rel8 - 0.6 KB: most already do.
+
+Not shrinkable without slowing: calls (7.9 %, rel32), the strings' own
+bytes (1.1 %), the headers (28 KB, which the forth builtin's interpreter
+needs).
