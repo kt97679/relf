@@ -948,3 +948,24 @@ bytes. The whole needs the compiler to keep, per definition, every
 rel32 field and every code address it holds (LIT-AT, CMP-AT, LAST-AT,
 the control-flow stack's origins) and move them all; the safe part needs
 only to know that the skipped code holds none of them.
+
+**692: the user's ruling, and what it kept.** Inside the layout A/B's
+floor counts as not slower (the user, 692). Kept under it: 0 by xor
+ebx,ebx (690's half) - the shell 448,824 -> 444,728 bytes, code -3,470.
+Then the safe forward branches, built: >RESOLVE laid a branch short when
+nothing since its own field needed fixing - REL,, >MARK, LEAVE's link
+and S"'s lea recording where the last relative field ended (LAST-REL),
+MARK-TARGET where the last jump landed (LAST-LAND) - moved the skipped
+code back and rewrote E9 as EB, 0F 8x as 7x. The first shell built
+crashed at start: ?DUP IF (669) lays test and a jnz +13 over a drop and
+its jmp, landing where the moved code begins, and nothing recorded that
+landing; bisected to LOOKUP-VAR by definition, fixed by shrinking the
+jnz with the jmp (QDUP-JMP). Then every test passed - and the shell's
+code was 180 bytes smaller: 605 branches shrunk, about 2.4 KB, and
+SHORTEN and SHORT-OK?, written in Forth and compiled by the native
+compiler, 1,780 bytes of the kernel with their variables and headers,
+2.2 KB in all. Set aside: the code that saves the bytes costs them.
+What would pay: the ELSE case (the IF's branch into the moved code
+fixed too), calls inside the skipped code (their rel32s +3 or +4), the
+kernel's own branches through the cross compiler - and the shrinker
+small, in assembly, not Forth.

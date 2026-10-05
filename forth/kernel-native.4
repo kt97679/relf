@@ -54,6 +54,13 @@ VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewoun
   \ folds take a short literal's value as a sign-extended imm32, so those
   \ from 2^31 on are laid unfoldable. The 7-byte form was all of them
   \ until 687: 5,691 loads, 16.6 KB of the shell (NATIVE.md 14).
+  \ (692) 0 by xor ebx,ebx (2 bytes): it sets the flags, which no fold
+  \ reads across a literal - FRESH-CMP? and its kin want the compare to be
+  \ the last thing laid - and the processor takes it as a zeroing, with no
+  \ wait on rbx. Judged at 690 inside the A/B's floor, which the user
+  \ rules "not slower" (692). -1 by or rbx,-1 was left out: or reads rbx,
+  \ so a TRUE would wait on the cell under it (fn 1.028).
+  DUP 0= IF  DROP  HERE LIT-AT !  0 LIT-VAL !  PUSH,  49 C, 219 C,  HERE LIT-END !  EXIT  THEN
   DUP 0< 0= OVER 2147483648 < AND IF  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  187 C, ,4  HERE LIT-END !  EXIT  THEN
   DUP 0< 0= OVER 4294967296 < AND IF  PUSH,  187 C, ,4  0 LIT-AT !  EXIT  THEN
   DUP -2147483648 < 0= OVER 0< AND IF  HERE LIT-AT !  DUP LIT-VAL !  PUSH,  72 C, 199 C, 195 C, ,4  HERE LIT-END !  EXIT  THEN
@@ -177,6 +184,7 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
   DUP @ 26328115314525000 = 0= IF 0 EXIT THEN
   DUP 8 + C@ 187 = OVER 13 + C@ 195 = AND IF  9 + @4  TRUE EXIT THEN    \ mov ebx,imm32 (687)
+  DUP 8 + C@ 49 = OVER 9 + C@ 219 = AND OVER 10 + C@ 195 = AND IF  DROP 0 TRUE EXIT THEN   \ xor ebx,ebx (692)
   DUP 8 + C@ 72 = 0= IF 0 EXIT THEN
   DUP 9 + C@ 199 = OVER 10 + C@ 195 = AND OVER 15 + C@ 195 = AND IF
     11 + @4  DUP 2147483647 > IF 4294967296 - THEN  TRUE EXIT THEN   \ sign-extended

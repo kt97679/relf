@@ -138,7 +138,11 @@ the account of what each gained and cost.
    displacement 20.1 KB. Literals first: one word. **689:** literals
    at their shortest kept - judged by tools/native-ab-layouts.py (688),
    which builds each side over four layouts, since a smaller image moves
-   the hot code and a one-layout A/B cannot tell that from a cost.
+   the hot code and a one-layout A/B cannot tell that from a cost. **692:**
+   the user's ruling - inside the A/B's floor (about 2.3 % here) counts
+   as not slower. 0 by xor kept under it (-3.5 KB of code); the safe
+   forward branches built and set aside - 605 shrunk, 2.4 KB, but the
+   shrinker in Forth is 2.2 KB of the kernel (NATIVE.md 14).
 10. **Genetic programming or randomized search over the compilers'
    choices** - for CV8, faster without a larger image; for the native
    shell, smaller without being slower. The compilers' choices made
