@@ -756,6 +756,19 @@ so 3-6 % is the honest guess. Its cost: every primitive, every runtime
 routine, the routines generated from the asm engine, the compiler's
 every laid sequence, and SP@ SP! DEPTH PICK CATCH THROW, rewritten.
 
+**Looked at again before beginning (675), and not begun.** A second cell
+held in a register does not take a round trip away - it moves one: every
+push spills the register to memory and every pop refills it from there,
+one instruction more each time. Counted over 669's instrumented build of
+the shell, primitive by primitive: instructions +22 %, memory operations
+-4 % (SWAP and OVER's). What it would remove is the second cell's
+store-to-load latency where a callee reads it soon - priced by storing
+the second cell again before every call (behaviour unchanged): loop 2.3
+%, fn 2.5, str 4.0, arith 5.0, realistic 5.3. So the prize is at most
+that, before the extra instructions take their share - against the whole
+back end rewritten. 671's 3-6 % priced a round trip of the top cell,
+which this convention leaves where it is: the wrong work. Not begun.
+
 **Data in a region of its own.** 762 CREATE words keep their data in the
 image, each on the code's next 64-byte line (626), and 119 more are
 BUFFER:s, outside it. From each stub to the next word they take 106,672

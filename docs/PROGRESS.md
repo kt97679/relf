@@ -699,6 +699,7 @@ do not trust the absence of a line below.
 - 672 — CREATE's data in its own region: the shell 13 % smaller, its written memory 344 -> 64 kB, 1.5-3.5 % faster
 - 673 — fury's pack at 672: memory 488 -> 352 kB resident, 64 kB written; speed inside the noise; start-up 0.80 of dash's
 - 674 — the kernel's own data in data's region too: a started shell writes 44 kB (344 at 671); the kernel still builds itself
+- 675 — arguments in registers, looked at again: +22 % instructions for at most 2-5 % of latency - not begun
 
 ### Not tied to an iteration
 
