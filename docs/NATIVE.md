@@ -1112,3 +1112,26 @@ run 1.02, 0.95, 1.01, 1.06, 1.06 by the ratios, and by the implied times
 32.7 KB smaller and as fast. Idle 328 kB resident (340 at 681), the
 executable 260 of it, 44 kB written as before; its file's code segment
 384 kB.
+
+**704: the deferred push, priced, built, measured - and set aside.** The
+user chose it. Priced from the shell as compiled: of 10,611 pushes, 803
+have their cell read straight back with only register code between
+(3,089 by a looser count, which ran through objdump's continuation
+lines); 366 of the 803 are in the kernel's own words - laid by the cross
+compiler, which folds nothing, so `push; mov ebx,3; add rbx,[r15]` where
+the run-time compiler lays `add rbx,3` - and 437 in the shell's words.
+Built for the run-time compiler: at +, -, AND, OR and XOR, if the last
+push (PUSH, or an inline DUP) is followed only by code on rbx alone -
+checked byte by byte by SAFE-LEN, so no emitter need know - the push
+becomes mov rcx,rbx and the operation takes rcx. Right on every test
+tried. But it fired 4 times in the whole shell: the run-time compiler's
+folds (628-669) already take the literal, variable, OVER and pair cases,
+and what is left mostly ends in a compare, a store or a branch. And
+SAFE-LEN, DEFER-OP?, DEFER-OK? and DEFER-CODE, Forth through the native
+compiler, were 4.9 KB of kernel. Set aside; the shells are 703's.
+
+What the pricing points at instead: the kernel's own code. The cross
+compiler lays literals and their operations unfolded - 209 literal and
+operation pairs, the kernel's PICK, J, # and the file words among them -
+and folding them there costs the image nothing, the cross compiler's
+code not being in it.
