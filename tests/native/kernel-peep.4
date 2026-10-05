@@ -1,0 +1,33 @@
+\ tests/native/kernel-peep.4 - pushes the next word takes straight back,
+\ folded by the native compiler (Iteration 669): ?DUP DUP and DUP 0= or
+\ DUP 0< before IF WHILE UNTIL, R> DROP, DUP >R, R@ +, I + - on values
+\ either side of each edge, a jump's landing between the pair where
+\ nothing may fold, a folded word inlined into another and EXECUTEd, and
+\ the depth after each line. Native, CV8-asm and CV8-C print the same.
+1 63 LSHIFT CONSTANT MIN-N   MIN-N 1- CONSTANT MAX-N
+CREATE VALS  MIN-N , -1 , 0 , 1 , MAX-N ,
+: V ( i --- x )  CELLS VALS + @ ;
+: QI ( n --- )  ?DUP IF ." T" . ELSE ." F" THEN ;
+: DI ( n --- )  DUP IF ." T" ELSE ." F" THEN DROP ;
+: DZ ( n --- )  DUP 0= IF ." Z" ELSE ." N" THEN DROP ;
+: DN ( n --- )  DUP 0< IF ." M" ELSE ." P" THEN DROP ;
+: EACH ( xt --- )  5 0 DO I V OVER EXECUTE LOOP DROP CR ;
+' QI EACH  ' DI EACH  ' DZ EACH  ' DN EACH  DEPTH . CR
+: QW ( n --- c )  0 SWAP BEGIN ?DUP WHILE 1- SWAP 1+ SWAP REPEAT ;
+: QU ( n --- c )  0 SWAP BEGIN SWAP 1+ SWAP 1- ?DUP 0= UNTIL ;
+: DW ( n --- c )  0 SWAP BEGIN DUP WHILE 1- SWAP 1+ SWAP REPEAT DROP ;
+5 QW .  0 QW .  4 QU .  3 DW .  0 DW .  DEPTH . CR
+: RD ( a b --- a )  >R 7 R> DROP + ;
+: DR ( n --- n+1 n )  DUP >R 1+ R> ;
+: RP ( n --- n+r )  100 >R R@ + R> DROP ;
+1 2 RD .  5 DR . .  7 RP .  DEPTH . CR
+: ISUM ( --- n )  0 5 0 DO I + LOOP ;
+: IADD ( a --- )  3 0 DO DUP I + . LOOP DROP ;
+ISUM .  10 IADD  DEPTH . CR
+: G ( a n f --- )  IF DROP DUP THEN IF ." T" ELSE ." F" THEN DROP ;
+7 0 -1 G  7 0 0 G  0 9 0 G  DEPTH . CR
+: ABS2 ( n --- u )  DUP 0< IF NEGATE THEN ;
+: USE ( --- )  -5 ABS2 .  6 ABS2 .  MIN-N 1+ ABS2 . ;
+USE  -3 ' ABS2 EXECUTE .  DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

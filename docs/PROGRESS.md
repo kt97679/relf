@@ -693,6 +693,7 @@ do not trust the absence of a line below.
 - 666 — S" laid inline, its return no longer missing the predictor: 4-10 % faster, A/B
 - 667 — fury's pack at 666: fn 9 % faster there, the rest at the noise's edge
 - 668 — dash's functions against relfsh's: variables 12.5 times dash on arith, the furthest behind; always hashing tried natively, not taken
+- 669 — the stack model measured: most pushes feed calls; its cheap part done, the last pairs folded: 1-2 % faster
 
 ### Not tied to an iteration
 

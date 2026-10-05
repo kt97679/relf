@@ -691,3 +691,40 @@ natively (668): arith 0.964, the rest 0.99-1.00, and the asm shell 2-5 %
 slower - not taken. The scan's time is the compiler's code (660), which
 is the stack model's to fix (3.2).
 
+## 12. The stack model, measured (Iteration 669)
+
+Section 3.2's model - the top items in registers through a run of code,
+written back at calls, branches and labels - was priced at 662: one more
+push-and-pop at every push costs 11-15 %. But a push is the compiler's
+to remove only where an inline word takes the cell straight back; where
+a call takes it, it is the calling convention's. So, before building:
+what follows each push? One build with the compiler instrumented (not
+kept), every pair it compiled, the shell's sources (40,185 pairs):
+
+- DUP 1,556: a literal 564 (DUP lit = is folded, 629), a call 464,
+  CSTRLEN 164 (a call), C@ 82, 0= 41, 0< 40, 1+ 38, a branch 36, >R 29;
+- OVER 380: a literal 162, a call 50, + 38 and - 13 (folded, 629), = 31;
+- R> 227: a call 87, DROP 46, + 11; R@ 75: a call 42, + 9;
+- a literal not folded, 3,154: a call 2,021, EXIT 332, another literal 249;
+- and in the source, which the count did not see: I + 47, ?DUP IF 103,
+  DUP IF 22, DUP WHILE 12, DUP 0= IF 35, DUP 0< IF 24.
+
+Most pushes feed a call. The stages, then:
+
+1. **Peepholes for the frequent pairs** - done: a literal and its
+   operation (628, 645), OVER and its operation (629), a compare and its
+   branch (629, 661), a VARIABLE's fetch and its operation (662), and at
+   669 R> DROP (add rsp,8), DUP >R (push rbx), R@ + (add rbx,[rsp]), I +
+   (add rbx,r14), and ?DUP, DUP, DUP 0= and DUP 0< before IF, WHILE or
+   UNTIL (test rbx,rbx and the jump). 669's A/B: loop 0.982, fn 0.988,
+   str 0.986, arith 0.979, realistic 1.005.
+2. **A deferred push** - the second cell in a spare register through a
+   run, the general form of stage 1, catching chains as well as pairs.
+   What it adds after stage 1 is the pairs the count shows left - small -
+   and it would have to be woven through every fold above. Not now.
+3. **Arguments in registers across calls** - where most pushes go. A
+   change of the native calling convention: every primitive, every
+   runtime routine, the routines generated from the asm engine. The
+   biggest prize left in the stack, and a back end rewritten; to be
+   decided before it is begun.
+

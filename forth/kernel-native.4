@@ -55,6 +55,12 @@ VARIABLE FOLD-BARRIER \ the last place a jump lands: nothing before it is rewoun
   LIT-AT @ ?DUP IF  DUP 15 + HERE =  SWAP FOLD-BARRIER @ < 0= AND  ELSE 0 THEN ;
 : OP-IMM, ( modrm --- )   \ the literal unlaid; op rbx,imm32 in its place
   LIT-AT @ HERE - ALLOT  0 LIT-AT !  72 C, 129 C, C,  LIT-VAL @ ,4 ;
+VARIABLE LAST-XT    \ the primitive COMPILE, last copied (669), or -2 for I
+VARIABLE LAST-AT    \ where its code began
+VARIABLE LAST-END   \ and ended: fresh while that is still HERE
+: FRESH-LAST? ( xt --- f )   \ was xt the last thing laid, no jump landing since?
+  LAST-XT @ =  LAST-END @ HERE = AND  LAST-AT @ FOLD-BARRIER @ < 0= AND ;
+: UNLAST, ( --- )   LAST-AT @ HERE - ALLOT  0 LAST-XT ! ;
 VARIABLE DUP-LAID   \ where COMPILE, last laid an inline DUP (629)
 VARIABLE OVER-LAID  \ and an inline OVER
 VARIABLE CMP-AT     \ a folded compare's cmp: where it began, 0 none
@@ -147,6 +153,17 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
       187 C, 0 ,4  15 C, CMP2-JCC @ 1 XOR 16 + C, 195 C,  72 C, 247 C, 219 C,
       HERE CMP2-END !  -1 EXIT  THEN  DROP  THEN
   0 ;
+\ Pushes their next word takes straight back (669), from one build's
+\ count of what follows each push (NATIVE.md 12): R> DROP is add rsp,8;
+\ DUP >R is push rbx; R@ + is add rbx,[rsp]; I + is add rbx,r14 - no
+\ cell to the data stack and back. In ?BRANCH,, ?DUP DUP and DUP 0= or
+\ DUP 0< before IF WHILE UNTIL: test rbx,rbx and the jump.
+: PAIR, ( xt --- xt 0 | -1 )
+  DUP ['] DROP = IF  ['] R> FRESH-LAST? IF DROP UNLAST,  72 C, 131 C, 196 C, 8 C,  -1 EXIT THEN THEN
+  DUP ['] >R = IF  ['] DUP FRESH-LAST? IF DROP UNLAST,  83 C,  0 INL-OK !  -1 EXIT THEN THEN
+  DUP ['] + = IF  ['] R@ FRESH-LAST? IF DROP UNLAST,  72 C, 3 C, 28 C, 36 C,  -1 EXIT THEN
+                  -2 FRESH-LAST? IF DROP UNLAST,  76 C, 1 C, 243 C,  -1 EXIT THEN THEN
+  0 ;
 : LIT-WORD? ( xt --- x true | xt false )   \ (627) code that only pushes a
   \ constant and returns - a CONSTANT, a VARIABLE, a CREATE no DOES> has
   \ patched, `: FIVE 5 ;` - push rbx, mov rbx imm32 or movabs imm64, ret
@@ -161,13 +178,15 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   \ anything else, called
   FOLD IF EXIT THEN
   MFOLD IF EXIT THEN
+  PAIR, IF EXIT THEN
   OVER-OP? IF EXIT THEN
   DUP C@ 235 = OVER 1+ C@ 1 = AND IF
     DUP ['] DUP = IF HERE DUP-LAID ! THEN  DUP ['] OVER = IF HERE OVER-LAID ! THEN
     DUP ['] EXIT = OVER ['] >R = OR OVER ['] R> = OR OVER ['] R@ = OR
     OVER ['] RP@ = OR OVER ['] RP! = OR IF 0 INL-OK ! THEN      \ not copyable (646)
     DUP CMP2? IF CMP2-CELLS ! CMP2-JCC ! HERE CMP2-AT ! ELSE 0 CMP2-AT ! THEN
-    DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  HERE CMP2-END !  EXIT  THEN
+    DUP LAST-XT !  HERE LAST-AT !
+    DUP 2 + C@ >R  3 + HERE R@ CMOVE  R> ALLOT  HERE CMP2-END !  HERE LAST-END !  EXIT  THEN
   LIT-WORD? IF LIT, EXIT THEN
   CALL, ;
 
@@ -183,6 +202,9 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 : FRESH-CMP? ( --- f )   CMP-AT @ DUP IF  CMP-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
 : FRESH-CMP2? ( --- f )   CMP2-AT @ DUP IF  CMP2-END @ HERE =  SWAP FOLD-BARRIER @ < 0= AND  THEN ;
 : CMP2-BRANCH, ( --- )   \ (661) the compare unlaid: cmp or test, the pops, jcc
+  CMP2-CELLS @ 1 =  DUP-LAID @ 8 + CMP2-AT @ = AND  DUP-LAID @ FOLD-BARRIER @ < 0= AND IF
+    DUP-LAID @ HERE - ALLOT  0 DUP-LAID !                 \ (669) DUP 0= IF: test, the jump
+    72 C, 133 C, 219 C,  15 C, CMP2-JCC @ C,  0 CMP2-AT !  EXIT THEN
   CMP2-AT @ HERE - ALLOT
   CMP2-CELLS @ 2 = IF
     72 C, 139 C, 69 C, 0 C,  72 C, 57 C, 216 C,              \ mov rax,[rbp]  cmp rax,rbx
@@ -198,7 +220,11 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
     ELSE  CMP-AT @ 7 + HERE - ALLOT                                         \ keep the cmp;
       72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  THEN               \ pop by mov, lea
     15 C, CMP-CC @ JCC-NOT C,
-  ELSE  FRESH-CMP2? IF CMP2-BRANCH, ELSE POPF,  15 C, 132 C,  THEN  THEN
+  ELSE  FRESH-CMP2? IF CMP2-BRANCH, ELSE
+    ['] ?DUP FRESH-LAST? IF  UNLAST,                    \ (669) test, jnz past the drop
+      72 C, 133 C, 219 C,  117 C, 13 C,  72 C, 139 C, 93 C, 0 C,  72 C, 141 C, 109 C, 8 C,  233 C,
+    ELSE ['] DUP FRESH-LAST? IF  UNLAST,  72 C, 133 C, 219 C,  15 C, 132 C,    \ test, jz
+    ELSE POPF,  15 C, 132 C,  THEN THEN  THEN  THEN
   0 CMP-AT ! ;
 : IF      ?COMP  ?BRANCH, >MARK ; IMMEDIATE
 : THEN    ?COMP  >RESOLVE ; IMMEDIATE
@@ -239,7 +265,8 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
   73 C, 137 C, 208 C,  73 C, 1 C, 192 C,  73 C, 49 C, 208 C,  72 C, 49 C, 194 C,
   73 C, 33 C, 208 C,  15 C, 137 C, BACK,  LOOP-EXIT, ; IMMEDIATE
 : LEAVE   ?COMP  233 C, LEAVE-LINK, ; IMMEDIATE
-: I       ?COMP  PUSH,  76 C, 137 C, 243 C, ; IMMEDIATE        \ mov rbx,r14
+: I       ?COMP  HERE LAST-AT !  PUSH,  76 C, 137 C, 243 C,         \ mov rbx,r14
+  HERE LAST-END !  -2 LAST-XT ! ; IMMEDIATE
 : J       ?COMP  PUSH,  72 C, 139 C, 28 C, 36 C, ; IMMEDIATE   \ mov rbx,[rsp]
 : UNLOOP  ?COMP  65 C, 94 C, 65 C, 95 C, ; IMMEDIATE           \ pop r14  pop r15
 
