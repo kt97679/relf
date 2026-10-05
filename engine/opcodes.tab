@@ -163,3 +163,4 @@ escaped   0x49    RP!         L_rpstore       -
 escaped   0x4A    DICT-LIMIT  L_dictlimit     -
 escaped   0x4B    CHMOD       L_chmod         -
 escaped   0x4C    TRAP-XT!    L_trapxt        -
+escaped   0x4D    CTABLE-FIND L_ctablefind    -

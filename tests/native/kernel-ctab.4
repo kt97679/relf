@@ -1,0 +1,19 @@
+\ tests/native/kernel-ctab.4 - CTABLE-FIND, the engines' primitive for the
+\ shell's variable scan (Iteration 676): the first of count NUL-terminated
+\ names width bytes apart that is the given one, or -1. Found first,
+\ middle, last; a duplicate (the first wins); a prefix either way, which
+\ is not a match; the empty name; count 0; another width. Native, CV8-asm
+\ and CV8-C print the same.
+VARIABLE W   8 W !
+CREATE TB 64 ALLOT   TB 64 0 FILL
+: PUT ( c-addr u i --- )  W @ * TB + SWAP MOVE ;
+S" i" 0 PUT  S" ab" 1 PUT  S" abc" 2 PUT  S" IFS" 3 PUT  S" ab" 4 PUT  S" " 5 PUT
+CREATE NM 16 ALLOT
+: FIND? ( c-addr u count --- i )  >R NM 16 0 FILL NM SWAP MOVE  NM TB R> W @ CTABLE-FIND ;
+S" i" 6 FIND? .  S" ab" 6 FIND? .  S" abc" 6 FIND? .  S" IFS" 6 FIND? .
+S" a" 6 FIND? .  S" abcd" 6 FIND? .  S" " 6 FIND? .  S" IFS" 3 FIND? .
+S" i" 0 FIND? .  S" ifs" 6 FIND? .  CR
+16 W !  TB 64 0 FILL  S" PATH" 0 PUT  S" PWD" 1 PUT  S" PS1" 2 PUT
+S" PS1" 3 FIND? .  S" PWD" 3 FIND? .  S" P" 3 FIND? .  DEPTH . CR
+.( end) CR   \ the last line: verify's native_cmp wants it (656)
+BYE

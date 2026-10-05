@@ -10,7 +10,7 @@ LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL
 LABEL wild_jump LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
 LABEL L_branch8 LABEL L_bye LABEL L_cellp LABEL L_cells LABEL L_cfetch LABEL L_chdir
 LABEL L_chmod LABEL L_closedir LABEL L_closefile LABEL L_compare LABEL L_count LABEL L_cputimes
-LABEL L_cstore LABEL L_cstrlen LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
+LABEL L_cstore LABEL L_cstrlen LABEL L_ctablefind LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
 LABEL L_dplus LABEL L_drop LABEL L_dup LABEL L_dup2 LABEL L_dupfrom LABEL L_envat
 LABEL L_eq LABEL L_eqi LABEL L_esc LABEL L_execute LABEL L_execve LABEL L_exit
 LABEL L_fetch LABEL L_filekind LABEL L_filemode LABEL L_filepos LABEL L_filesize LABEL L_fill
@@ -1046,6 +1046,22 @@ repne, scasb,
 rcx not,
 rcx dec,
 r12 rcx mov,
+NEXT,
+L_ctablefind L:                          \ ( c-addr table count width --- i | -1 ) (676)
+rsi [ r13 2 CELL * ] mov,                \ the name
+rdi [ r13 CELL ] mov,                    \ the table's first entry
+rcx [ r13 ] mov,                         \ how many
+edx edx xor,
+1 L:  rdx rcx cmp,  4 F jae,
+r8 rdi mov,  r9 rsi mov,
+2 L:  eax [ r8 ] byte-ptr movzx,  r10d [ r9 ] byte-ptr movzx,
+eax r10d cmp,  3 F jne,
+eax eax test,  5 F jz,                   \ both ended together: this one
+r8 inc,  r9 inc,  2 B jmp,
+3 L:  rdi r12 add,  rdx inc,  1 B jmp,   \ the next entry, width bytes on
+4 L:  r12 1 NEGATE # mov,  6 F jmp,
+5 L:  r12 rdx mov,
+6 L:  r13 3 CELL * # add,
 NEXT,
 
 \ the file primitives (Milestone 2): cv8.c's stack effects and ior

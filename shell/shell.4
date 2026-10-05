@@ -603,17 +603,12 @@ VARIABLE SVV-NEW
   THEN ;
 
 
-VARIABLE FSS-I
 : FIND-SHVAR-SCAN ( name-addr --- i | -1 )   \ a small table: every entry
-  \ A variable, not DO and I - I is a colon word, and this is hot.
-  0 FSS-I !
-  BEGIN FSS-I @ SHVAR-COUNT @ < WHILE
-    FSS-I @ SHVAR-NAME-SLOT                  ( name slot )
-    OVER C@ OVER C@ = IF
-      OVER CSTR= IF FSS-I @ NIP EXIT THEN
-    ELSE DROP THEN
-    FSS-I @ 1+ FSS-I !
-  REPEAT DROP -1 ;
+  \ (676) The engines' primitive since 676 - a Forth loop until then, a
+  \ variable for its index ("not DO and I - I is a colon word"): 5-14 %
+  \ of the native shell's time, 3-6 % of CV8's, priced at 660 by doing
+  \ it twice. The first name equal to name-addr's, as the loop's was.
+  SHVAR-NAMES SHVAR-COUNT @ SHVAR-NAME-MAX CTABLE-FIND ;
 
 : FIND-SHVAR ( name-addr --- i | -1 )   \ through the index
   \ Up to eight variables a scan is cheaper than hashing the name - the

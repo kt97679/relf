@@ -56,6 +56,19 @@ NCODE SCAN  ( c-addr1 u1 c --- c-addr2 u2 )   \ from the first c, or the end and
         rdi inc,  rcx dec,  1 B jmp,
   2 L:  [ rbp 8 ] rdi mov,  rbx rcx mov,  rbp 8 # add,
 NEND
+NCODE CTABLE-FIND  ( c-addr table count width --- i | -1 )   \ the engines' (676)
+  rsi [ rbp 16 ] mov,  rdi [ rbp 8 ] mov,  rcx [ rbp ] mov,  edx edx xor,
+  1 L:  rdx rcx cmp,  4 F jae,
+        r8 rdi mov,  r9 rsi mov,
+  2 L:  eax [ r8 ] byte-ptr movzx,  r10d [ r9 ] byte-ptr movzx,
+        eax r10d cmp,  3 F jne,
+        eax eax test,  5 F jz,                \ both ended together: this one
+        r8 inc,  r9 inc,  2 B jmp,
+  3 L:  rdi rbx add,  rdx inc,  1 B jmp,      \ the next entry, width bytes on
+  4 L:  rbx 1 NEGATE # mov,  6 F jmp,
+  5 L:  rbx rdx mov,
+  6 L:  rbp 24 # add,
+NEND
 NCODE CSTRLEN  ( c-addr --- u )
   \ eight bytes at a time (644): to an alignment by bytes - an aligned read
   \ never crosses into a page that is not there - then the zero-byte test,

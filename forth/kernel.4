@@ -247,6 +247,10 @@ PRIMITIVE TRAP-XT!  ( xt --- )
 \ The word the engine runs on a trap - a zero divisor, a bad address -
 \ on fresh stacks with the code on top (Iteration 556, Q21): extend.4's
 \ TRAPPED, registered by COLD from TRAP-ENTRY.
+PRIMITIVE CTABLE-FIND  ( c-addr table count width --- i | -1 )
+\ The first of count NUL-terminated names width bytes apart that is
+\ c-addr's, or -1: the shell's variable scan, a Forth loop until 676 -
+\ 5-14 % of the native shell's time, 3-6 % of CV8's (660's price).
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

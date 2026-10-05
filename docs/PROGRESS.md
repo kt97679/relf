@@ -700,6 +700,7 @@ do not trust the absence of a line below.
 - 673 — fury's pack at 672: memory 488 -> 352 kB resident, 64 kB written; speed inside the noise; start-up 0.80 of dash's
 - 674 — the kernel's own data in data's region too: a started shell writes 44 kB (344 at 671); the kernel still builds itself
 - 675 — arguments in registers, looked at again: +22 % instructions for at most 2-5 % of latency - not begun
+- 676 — CTABLE-FIND: the variable scan a primitive in both engines - native arith 15 % faster, CV8 4-7 % on loop, fn, arith
 
 ### Not tied to an iteration
 

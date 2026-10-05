@@ -1286,6 +1286,17 @@ L_scan: SPILL(); { /* c-addr1 u1 c --- c-addr2 u2 : from the first c, or the end
 L_cstrlen: SPILL(); /* c-addr --- u : a NUL-terminated string's length */
     DS0 = (UNS64)strlen((const char *)(uintptr_t)DS0);
     FILLNEXT();
+L_ctablefind: SPILL(); { /* c-addr table count width --- i | -1 (Iteration 676): the first */
+    /* of count NUL-terminated names, width bytes apart, that is c-addr's */
+    /* not t: NEXT's own opcode variable is t */
+    const char *name = (const char *)(uintptr_t)DS3, *e = (const char *)(uintptr_t)DS2;
+    INT64 n = (INT64)DS1, w = (INT64)DS0, i, r = -1;
+    for (i = 0; i < n; i++, e += w)
+        if (e[0] == name[0] && strcmp(e, name) == 0) { r = i; break; }
+    DS3 = (UNS64)r;
+    dsp += 3 * CELL_BYTES;
+    FILLNEXT();
+}
 /*  Directories, for pathname expansion (Iteration 267): libc's
  *  opendir/readdir/closedir. READ-DIR's name is valid until the next
  *  READ-DIR on that directory.  */
