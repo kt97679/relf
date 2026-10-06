@@ -1,0 +1,85 @@
+Iteration 717: the native shell against dash and busybox ash, raw figures
+
+== the native shell's words' code by source (tools/size-research/native-by-source.py) ==
+total code 357341 bytes in 2367 words
+  shell/shell.4                 180913   50.6 %  1124 words   stack 38.8 %  call  8.2 %
+  shell/tree.4                  100753   28.2 %   573 words   stack 42.2 %  call  9.2 %
+  kernel                         37959   10.6 %   430 words   stack 45.6 %  call 11.0 %
+  shell/edit.4                   19539    5.5 %   140 words   stack 42.3 %  call  9.6 %
+  runtime                         7293    2.0 %     1 words   stack 10.9 %  call  2.9 %
+  forth/shadow.4                  2365    0.7 %    24 words   stack 35.0 %  call  7.7 %
+  forth/pool.4                    1996    0.6 %    20 words   stack 45.6 %  call 11.3 %
+  forth/safety.4                  1927    0.5 %    10 words   stack 33.9 %  call  6.3 %
+  forth/save-system.4             1646    0.5 %    14 words   stack 43.2 %  call 11.5 %
+  forth/save-system-native.4      1540    0.4 %     5 words   stack 37.1 %  call 14.3 %
+  forth/extend.4                  1410    0.4 %    26 words   stack 37.2 %  call  8.9 %
+
+shell sections, largest first:
+    43126  194  tree.4         Expanding a word from its encoding (the expansion plan's Sta
+    32131  158  shell.4        The body arena
+    29768  186  shell.4        The builtin table
+    24688  170  tree.4         Tokens
+    24162  127  shell.4        PATH search + exec
+    21678  108  shell.4        true, false, echo, printf (Iteration 269)
+    19926  101  shell.4        
+    19539  140  edit.4         (start)
+    15916  170  shell.4        Forth-string equality (used for matching builtin names)
+    12721   63  tree.4         The parser: XCU 2.10's grammar, by recursive descent
+    11734   79  shell.4        Main loop
+    11129   66  shell.4        Pathname expansion (XCU 2.6.6; Iteration 267)
+     7704   15  tree.4         Printing a tree
+     5661   29  tree.4         `.` and `type` (Iteration 270)
+     4392   17  shell.4        Redirections on builtins and functions (Iteration 255)
+     3969   23  shell.4        Assignment words (Iteration 256)
+     3268   31  shell.4        Traps (Iteration 271)
+     2507   32  tree.4         Stage B: executing the tree (Iteration 264)
+     2290   22  tree.4         The input
+     1776   22  shell.4        Reading a line of any length
+     1161   43  tree.4         The tree arena
+      727    3  tree.4         Entry: parse a text, printing each complete command's tree
+      540   26  shell.4        Newline
+      499    8  shell.4        The word arrays grow (Iteration 250)
+      168    2  tree.4         Errors
+       25    2  shell.4        (start)
+
+== instruction counts (tools/size-research/instruction-counts.py) ==
+native code segment: 379818 bytes disassembled into 105766 instructions, 3.59 bytes each (headers included as junk)
+  most common: mov 36550, sub 12575, add 10468, call 6318, ret 3385, nop 3220, test 2617, cmp 2458, push 2273, jmp 1937, je 1804, xor 1739
+dash .text: 74710 bytes in 19083 instructions, 3.92 bytes each
+  most common: mov 5279, call 1488, test 1001, je 990, lea 939, jmp 841, jne 831, pop 818, cmp 712, push 671, nopl 661, xor 601
+
+== dash 0.5.12, gcc -O2 as Ubuntu: size -A src/dash ==
+/tmp/sz/dash-0.5.12/src/dash  :
+section                size     addr
+.dynsym                2184      992
+.dynstr                 912     3176
+.rela.dyn              6912     4432
+.rela.plt              1968    11344
+.plt                   1328    16416
+.plt.sec               1312    17760
+.text                 76277    19072
+.rodata                8193    98304
+.eh_frame_hdr          2020   106500
+.eh_frame             12484   108520
+.data.rel.ro           3016   126816
+.dynamic                496   129832
+.got                    728   130328
+.data                   608   131072
+.bss                  11568   131680
+Total                130657
+
+== busybox 1.36.1, ash only (job control, aliases, echo/printf/test, 64-bit math, line editing with history, completion, reverse search), -Os ==
+/tmp/sz/busybox-1.36.1/busybox_unstripped  :
+section               size     addr
+.dynsym               3312     1016
+.dynstr               1337     4328
+.rela.dyn             3936     6088
+.rela.plt             2976    10024
+.plt                  2000    16416
+.plt.sec              1984    18448
+.text                71480    20432
+.rodata               5999    94208
+.data.rel.ro          1352   103584
+.got                  1064   105432
+.bss                   592   106560
+Total                97511

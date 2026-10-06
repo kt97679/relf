@@ -1209,3 +1209,69 @@ fury's noise (dash itself ran 3-8 % slower in this run, so ratios, not
 implied times). Idle 344 kB resident, the executable's pages 272 kB.
 The trade is kept: 5 KB for loops that no longer run at half speed by
 where the code before them ends.
+
+## 16. Why the native shell is four times dash (Iteration 717)
+
+The user's question: dash and busybox's ash do roughly what relfsh does,
+in a fraction of the bytes. Measured on the VM at 716 (raw figures in
+bench/reports/native-size-research-717.txt; the scripts in
+tools/size-research/):
+
+| | file | machine code | instructions |
+|---|---:|---:|---:|
+| dash 0.5.12 (gcc -O2, as Ubuntu builds it; no line editor) | 129,784 | 76,277 | 19,083 |
+| busybox 1.36.1, ash only, with line editing (-Os) | 108,656 | 71,480 | - |
+| relfsh-native at 716 | 412,096 | 357,341 in words, 7,293 runtime | about 98,000 |
+| relfsh's CV8 image, the same words as bytecode | 127,172 | 99,560 of colon code | - |
+
+**Where the native bytes are.** The shell's own sources are 281.7 KB of
+the 357 KB: shell.4 180.9 KB (1,124 words), tree.4 100.8 KB (573). The
+rest is what dash does not carry: the Forth system - the kernel's 430
+words 38.0 KB, the runtime 7.3 KB, the libraries 10.9 KB - and the line
+editor, edit.4, 19.5 KB (ash's lineedit.o is 8.0 KB). Beside the code,
+28.5 KB of headers name 2,414 words for the interpreter and the forth
+builtin - dash keeps no names at run time - and 18.9 KB of data, about
+dash's (its .data and .bss, 17 KB).
+
+**The main cause: five times the instructions, not longer ones.** The
+native shell's instructions average 3.59 bytes, dash's 3.92 - the size is
+in their number: about 98,000 against 19,083. Of the native ones, 23,000
+are sub and add moving the data stack's pointer and most of 36,550 movs
+are the stack's loads and stores; dash's code keeps its values in
+registers and touches the stack only at a call's edges. The budget's
+classes say the same (NATIVE.md 14): 40.7 % of the words' bytes are
+data-stack traffic, 8.0 % literal pushes, 8.9 % calls. Like for like,
+NAME-HASH - FNV-1a and a final mix, four lines of Forth - is 211 native
+bytes, 131 of them stack traffic; the same function in C is 81 bytes at
+-O2 and 59 at -Os. The compiler gives a stack machine's code a fixed
+pattern for each word, and a stack machine needs more words than a
+register machine needs instructions: `ROT XOR 16777619 * SWAP 1+` is six
+words, three pushes and pops among them, where gcc's loop is xor, imul,
+inc on registers.
+
+**Not more logic.** shell.4 and tree.4 are 8,158 lines that are not
+comment or blank, 41,661 words; dash's .c files 13,329 such lines. As
+bytecode the whole system - shell, kernel, editor - is 99.6 KB of code,
+near dash's 76 KB of machine code: in CV8's one-byte tokens the logic is
+dash's size, and the native back end turns each token into 3.6 bytes.
+
+**Feature by feature,** native bytes against dash's .text for the same
+job: variable lookup (NAME-HASH, FIND-SHVAR 625 / lookupvar, findvar
+351) 1.8x; printf and echo (5,550 / 2,950) 1.9x; getopts (2,010 / 926)
+2.2x; test (8,155 / 3,310) 2.5x; the parser and tokenizer (37.4 KB /
+parser.o 10.5 KB) 3.6x; printing a tree (6,074 / cmdtxt and cmdputs
+1,649) 3.7x; arithmetic (13.0 KB / 2.4 KB) 5.4x; a word's expansion
+(tree.4's 43.1 KB / argstr, evalvar, subevalvar 5.4 KB, expand.o 9.8 KB
+whole) 4.4x or more. The low ratios are code that calls; the high ones
+are stack arithmetic and the code-driven expansion and tokenizer, where
+dash uses tables (mksyntax's character classes, the node size tables)
+and big switch statements.
+
+**What would change it.** In order of bytes: a register allocator for
+the native compiler - values kept in registers across words, the stack
+pointer moved once per basic block - goes at the 40 % and most of the
+sub and add (the deferred push, 704, was its smallest step, and fired 4
+times); the shell's names dropped from a build without the forth
+builtin (28.5 KB); the Forth system's 56 KB is the price of the forth
+builtin itself. None of it is small work; each would go through the
+layout A/B and fury like 686-714.

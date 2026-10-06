@@ -193,6 +193,19 @@ the account of what each gained and cost.
    profile - NAME-HASH, ARGV-ADD (eight parallel arrays filled per
    argument), EXPAND-WORDS, EW-ENTRY, FIND-SHVAR - cost what their data
    structures ask: shortening them is a redesign, not a simplification.
+12. **The native back end's improvements CV8 does not have yet** (716,
+   captured; CV8-LEDGER.md 716 has the whole list, with each one's share
+   of the realistic script's 18.4 million dispatches). New instructions,
+   waiting for forth-vm-evolution's results, since they are the
+   instruction set it searches: XF@ and XV@ (4.9 %, priced at 710), DEFER
+   (2.5 %), (+LOOP) (1.7 %), PICK (1.5 %), fused pairs - a compare with
+   its branch, OVER with an op, DUP 0= IF, more ops taking a literal
+   (about 8 %, given up at 536, QUESTIONS.md A15). Outside the instruction
+   set, free to go when chosen, each priced first by doing its work
+   twice: 681's constants and 683's inlining in the cross compiler, for
+   the kernel's own words; a CREATE'd word's address as a literal; `LIT n
+   -` as ADD-IMM8 with -n; the asm engine's handlers aligned (714's
+   analogue); a separate data region for CV8 (memory, not speed).
 
 ## The second end state, reached (Iteration 548)
 
