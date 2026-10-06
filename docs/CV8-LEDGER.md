@@ -323,3 +323,60 @@ use. As engine primitives - a node's field and a vector's item fetched
 in one dispatch, as CTABLE-FIND (676) made the variable scan - they
 could give back most of both: 676's kind of gain, at the edge of what
 the ledger resolves. Not begun; the user's to choose.
+
+### 716, the native back end's improvements against CV8 - the whole list
+
+The user asked whether everything applicable from the native back end
+is in CV8. Each native rule or change (NATIVE.md 9, 11-15; the log
+600-715), and where CV8 stands. Shares are from CV8's profile of the
+realistic script at 715 (bench/reports/cv8-profile-realistic-716.txt):
+18.4 million dispatches, 934,905 calls - a call and its EXIT, 10.2 % of
+them.
+
+**In CV8 already.** A constant's use as its literal (native 627; CV8
+681). Small words copied in place of their calls (native 646, 651;
+CV8 683-684, its limits swept at 701 as native's were at 700). A
+variable's fetch or store in one dispatch (native 707's fetch-then-op;
+CV8's VAR@ and VAR! long before, and BUFFER:'s since 260). A literal
+folded into + and = (native 628; CV8's ADD-IMM8 and EQ-IMM8, 8-bit). The
+variable scan as a primitive (676, all three engines). The top of the
+stack in a register (the asm engine's r12). Written data apart from code
+(native 626: the asm engine's BSS is 64 KB past its code, a segment never
+written; the C engine's by its toolchain). Short encodings (native
+687-699): CV8's own design - two- and three-byte calls, BRANCH8 and
+0BRANCH8, LIT0 and its kin, LIT16.
+
+**Tried in CV8, worth nothing there.** The string primitives without
+rep and repne (native 644-652; CV8 679: inside the noise, reverted). The
+hash as a primitive (678, all engines: reverted). A string literal's
+runtime and grouped locals (680: their work done twice was inside the
+noise).
+
+**Applicable, not done - by what they would take away:**
+
+| native | CV8 now | share of the realistic script's dispatches |
+|---|---|---:|
+| direct reads of a tree's fields (628's @ from an address) | XF@, XV@ colon words of 7 | 4.9 % (710 priced) |
+| DEFER's call inline (a jump in the stub) | DEFER, a colon word | 2.5 % |
+| +LOOP inline code (630) | (+LOOP), a colon word of 29 | 1.7 % |
+| PICK inline | PICK, a colon word of 6 | 1.5 % |
+| compares fused with IF/WHILE/UNTIL, OVER with an op, DUP 0= IF, more ops taking a literal (628, 629, 661-669, 705-707) | one dispatch each: fused pairs given up at 536 (QUESTIONS.md A15) | about 8 % of dispatches were pairs when they went |
+| the kernel's own code folded and inlined by its cross compiler (627, 705-707) | cross.4 has PEEP-IMM and PEEP-VAR, not 681's constants or 683's inlining | not priced |
+| a CREATE'd word's address pushed inline (627) | a call when not followed by @ or ! | not among the most called: small |
+| DO loops in registers (630) | (LOOP) keeps its counter at [r15] | small: the dispatch dominates |
+| loop starts aligned (714) | bytecode is data; the asm engine's handlers are not aligned | not measured |
+| `LIT n -` - native folds it | not folded: ADD-IMM8 with -n would do it, no new opcode | small |
+| a separate data region (672, 674) | data among the bytecode | memory, not speed |
+
+The first five rows are instructions or fused instructions: the engines'
+instruction set, which forth-vm-evolution is searching (paused for it
+since 711). The cross compiler's constants and inlining, the address
+push, `LIT n -`, the handlers' alignment and the data region are not -
+they could go now, the first three priced first, by doing their work
+twice.
+
+**Not applicable:** what native does to machine code itself - literals
+and branches at their shortest (687-699: CV8 was born short), 0 by xor
+(690), the data stack's register (697), the CREATE stub's bytes (698),
+the deferred push (704) and arguments in registers (675) - a stack
+machine's bytecode has no registers to allocate.

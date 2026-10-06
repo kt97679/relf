@@ -1,0 +1,67 @@
+ran: /tmp/relf-prof-6psr06ix/relfsh tests/bench-vm/realistic.sh  (status 0)
+18,401,777 dispatches attributed, 305 words entered
+
+  dispatches   share  word
+     889,358    4.8%  NAME-HASH                shell/shell.4:550
+     888,156    4.8%  ARGV-ADD                 shell/tree.4:1945
+     774,134    4.2%  EXPAND-WORDS             shell/shell.4:3007
+     726,886    4.0%  EW-ENTRY                 shell/shell.4:2887
+     659,042    3.6%  FIND-SHVAR               shell/shell.4:613
+     590,926    3.2%  XF@                      shell/tree.4:1871
+     469,990    2.6%  VALID-NAME?              shell/shell.4:4326
+     459,344    2.5%  DEFER                    -
+     392,584    2.1%  XE-LIT-RUN               shell/tree.4:1986
+     363,602    2.0%  SET-SHVAR                shell/shell.4:716
+     348,715    1.9%  XE-ITEM                  shell/tree.4:2479
+     340,025    1.8%  EXEC-IMPL                shell/tree.4:3380
+     331,045    1.8%  GLOB-MATCH               shell/shell.4:7928
+     325,610    1.8%  COPY-LITERAL             shell/shell.4:2747
+     324,080    1.8%  SAFE-COPY-NUL            shell/shell.4:445
+     313,479    1.7%  (+LOOP)                  -
+     309,680    1.7%  XV@                      shell/tree.4:1873
+     300,664    1.6%  XE-TRY                   shell/tree.4:2606
+     291,058    1.6%  ADD-WORD                 shell/tree.4:2629
+     275,112    1.5%  EXEC-SIMPLE              shell/tree.4:2963
+     271,668    1.5%  PICK                     -
+     249,900    1.4%  GLOB-CHAR-MATCHES?       shell/shell.4:7890
+     247,255    1.3%  IFS-CHAR?                shell/shell.4:1243
+     230,865    1.3%  XE-PARAM                 shell/tree.4:2326
+     224,896    1.2%  SET-SHVAR-VALUE          shell/shell.4:589
+     220,605    1.2%  XE-MARK-DASH             shell/tree.4:2071
+     202,590    1.1%  SPLIT-ASSIGN-AT          shell/shell.4:4356
+     192,478    1.0%  ASSIGNMENT-EQPOS         shell/shell.4:4335
+     186,080    1.0%  EMIT-RUN                 shell/shell.4:2714
+     175,398    1.0%  EXPAND-AND-RUN           shell/tree.4:2869
+
+934,905 calls executed - each a call and an EXIT, 10.2 % of the dispatches above
+calls to words of at most k instructions, EXIT included:
+  k=2              0    0.0 %
+  k=3              0    0.0 %
+  k=4         11,081    1.2 %
+  k=5         79,799    8.5 %
+  k=6        234,604   25.1 %
+  k=8        382,228   40.9 %
+  k=12       482,005   51.6 %
+  k=16       542,927   58.1 %
+the most called:
+        84,418    9.0 %    7 instructions  XF@
+        45,278    4.8 %    6 instructions  PICK
+        44,240    4.7 %    7 instructions  XV@
+        27,644    3.0 %    6 instructions  (S")
+        22,600    2.4 %    5 instructions  STR0=
+        22,216    2.4 %    5 instructions  ARGV@
+        21,570    2.3 %    6 instructions  SHVAR-NAME-SLOT
+        20,221    2.2 %    5 instructions  XV#
+        20,125    2.2 %    6 instructions  STOP?
+        19,700    2.1 %   45 instructions  BUF-ENSURE
+        18,903    2.0 %   35 instructions  GROW-ARGS
+        18,903    2.0 %   11 instructions  ROOM-FOR-ARG?
+        16,204    1.7 %   24 instructions  SAFE-COPY-NUL
+        15,270    1.6 %    6 instructions  CSTR=
+        15,011    1.6 %   57 instructions  FIND-SHVAR
+        15,000    1.6 %  120 instructions  XE-ITEM
+        14,990    1.6 %   27 instructions  NAME-HASH
+        14,114    1.5 %   11 instructions  FIND-EQ-OR-END
+        12,346    1.3 %   29 instructions  (+LOOP)
+        12,108    1.3 %   17 instructions  EMIT-TOK-CHAR
+status=0

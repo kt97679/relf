@@ -740,6 +740,7 @@ do not trust the absence of a line below.
 - 713 — $- shows s, m and i as dash's (6b); tools/intrfuzz-stress.sh for 8c on fury's cores
 - 714 — native loop starts padded to 16 bytes: +5.1 KB code, inside the floor on the VM; bench.4's loop for fury
 - 715 — fury on 714: bench.4's loop 15 -> 8 ms, shell inside noise; 8c closed after 4,800 stress cases, 0 failures
+- 716 — native's improvements against CV8, the whole list: what is in, what was worth nothing, what is left (CV8-LEDGER.md)
 
 ### Not tied to an iteration
 
