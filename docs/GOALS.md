@@ -99,7 +99,10 @@ ordinary scripts hit, then edge cases and wording.
    the varying shell was BASH, which drops a finished job and answers
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
-8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (658,
+8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (711: the
+   window found by reading - a ^C caught between a command's end and the
+   editor survives the prompt, and FTH-RUN throws it at the next forth
+   command's start; the fix is next) (658,
    its first pack's verify, on relfsh - the C engine). After ^Cs into an
    include whose file loops, the prompt came back each time and `echo`
    answered, but `forth 'DEPTH . CR'` printed nothing - as if a ^C held
