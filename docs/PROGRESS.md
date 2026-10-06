@@ -733,6 +733,7 @@ do not trust the absence of a line below.
 - 706 — the kernel's comparisons fused with IF, WHILE and UNTIL by the cross compiler: its code -1.7 KB more
 - 707 — the kernel's DUP-before-branch and variable fetches folded: its code -1 KB; over layouts inside the floor, leaning 1 % slow
 - 708 — fury's pack at 707: native 0-4 % faster there; bench.4's loop 7 -> 15 ms is the loop crossing a 16-byte line
+- 709 — ARGV-ADD priced on CV8: all its stores worth 1-3.5 %; a redesign could not show - not built
 
 ### Not tied to an iteration
 

@@ -283,3 +283,25 @@ realistic 41.9 -> 38.4 times dash. A run at 691 in the same pack (c6aaf26)
 agrees: asm 25.0, 31.9, 26.6, 34.2, 37.8. bench.4's single runs on fury
 moved both ways (the asm engine's sieve 315 -> 429 ms, its fib 74 -> 51)
 - too few runs to read; the shell's interleaved runs are the claim.
+
+### 709, ARGV-ADD's eight arrays priced - not redesigned
+
+The user chose the redesign of CV8's hottest data structures, and
+ARGV-ADD first: 4.8 % of the realistic script's dispatches, filling
+eight parallel arrays - ARGV, ARGV-NODES, and six byte flags - for each
+argument, 57 references to them across the shell. Priced before
+building, on CV8 itself, by doing its stores' work again with behaviour
+unchanged - each of the eight read back and written - against 708's
+tree, 9 rounds:
+
+| shell | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine, all of ARGV-ADD's stores twice | 1.014 | 1.019 | 1.021 | 1.009 | 1.020 |
+| C engine, the same | 1.033 | 1.036 | 1.017 | 1.022 | 1.024 |
+
+The whole of that work is 1-3.5 % of CV8's time; a redesign that halved
+it would gain 1-2 %, under what the ledger resolves, for a change to 57
+places. Not built. CV8's profile is flat now - NAME-HASH 4.8 %, ARGV-ADD
+4.8, EXPAND-WORDS 4.2, EW-ENTRY 4.0, FIND-SHVAR 3.6, XF@ 3.2, VALID-NAME?
+2.6, DEFER 2.5 - and its dispatches are cheap ones: no one structure
+holds a share a redesign could show.
