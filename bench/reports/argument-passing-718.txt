@@ -1,0 +1,38 @@
+Iteration 718: argument passing - the raw figures
+
+== tools/size-research/stack-effects.py ==
+1182 colon words, 1109 with a stack comment read
+inputs:  {0: 448, 1: 460, 2: 156, 3: 32, 4: 9, 5: 2, 7: 2}
+outputs: {0: 643, 1: 406, 2: 48, 3: 10, 5: 1, 7: 1}
+call sites to colon words in the source: 14014, effect known for 13442
+  by the callee's inputs: {0: 5224, 1: 6697, 2: 1188, 3: 256, 4: 68, 5: 7, 7: 2}
+  most common (in, out): (1, 0) 4655, (0, 1) 3336, (0, 0) 1853, (1, 1) 1714, (2, 0) 641, (2, 1) 487, (1, 2) 326, (3, 1) 171, (3, 0) 50, (4, 1) 47
+
+== tools/size-research/live-across-calls.py ==
+1156 words with effects; 687 simulated to their end, 469 stopped (an unknown word, EXECUTE, a depth below zero)
+1343 call sites in them; cells live below the callee's arguments (kept across the call):
+    0:   478   35.6 %  (cumulative  35.6 %)
+    1:   383   28.5 %  (cumulative  64.1 %)
+    2:   198   14.7 %  (cumulative  78.9 %)
+    3:    97    7.2 %  (cumulative  86.1 %)
+    4:    49    3.6 %  (cumulative  89.7 %)
+    5:    43    3.2 %  (cumulative  92.9 %)
+  >=6:    95    7.1 %  (cumulative 100.0 %)
+the callee's inputs at those sites: {0: 417, 1: 593, 2: 215, 3: 104, 4: 14}
+
+== tools/size-research/stack-traffic-by-place.py ==
+instructions naming r15, the data stack: 40924, 143343 bytes
+  in straight code                          13872 instr   48373 bytes  33.7 %
+  beside a branch                            9671 instr   34483 bytes  24.1 %
+  just before a call (3 instructions)        8538 instr   29724 bytes  20.7 %
+  just after a call                          5563 instr   19342 bytes  13.5 %
+  beside a return                            3280 instr   11421 bytes   8.0 %
+the three instructions before a call, most common:
+   1293  sub    $N,%r15 ; mov    %rbx,(%r15) ; mov    $N,%ebx
+    517  sub    $N,%r15 ; mov    %rbx,(%r15) ; mov    N,%rbx
+    304  sub    $N,%r15 ; mov    %rbx,(%r15) ; xor    %ebx,%ebx
+    249  lea    -N(%rip),%rax        # N ; mov    %rax,(%r15) ; mov    $N,%ebx
+    215  mov    %rbx,(%r15) ; mov    $N,%ebx ; call   N
+    205  add    $N,%r15 ; test   %rax,%rax ; je     N
+    204  mov    %rbx,N ; mov    (%r15),%rbx ; add    $N,%r15
+    116  sub    $N,%r15 ; mov    %rbx,(%r15) ; call   N

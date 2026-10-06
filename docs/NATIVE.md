@@ -1275,3 +1275,124 @@ times); the shell's names dropped from a build without the forth
 builtin (28.5 KB); the Forth system's 56 KB is the price of the forth
 builtin itself. None of it is small work; each would go through the
 layout A/B and fury like 686-714.
+
+## 17. Argument passing with Forth kept: what the code says (Iteration 718)
+
+The user's question: keep Forth, but pass arguments better - more than
+the top of the stack in registers, perhaps - and would that map onto
+32-bit code, with fewer registers. Measured on the shell's sources and
+the native shell at 717 (raw figures: bench/reports/argument-passing-718.txt;
+the scripts in tools/size-research/).
+
+### 17.1 The convention now
+
+Every native word is entered and left the same way: the top cell in
+rbx, the rest in memory under r15, the return stack on rsp, a DO loop's
+index and limit in r14 and r13. A call is `call rel32` and nothing else -
+no prologue, no saved registers. Inside a word the peepholes (628-669,
+705-707) fold the frequent pairs. This is the convention of the native
+Forths in use - SwiftForth and VFX Forth also keep the top in ebx and the
+rest in memory between words, and do their work inside a definition.
+
+### 17.2 What the calls ask for
+
+- **Most calls pass one argument or none.** 1,109 of the 1,182 colon
+  words have a stack comment that reads as `( ins --- outs )`. Of the
+  13,442 call sites in the sources whose callee has one, the callee takes
+  0 cells at 5,224 (38.9 %), 1 at 6,697 (49.8 %), 2 at 1,188 (8.8 %), 3
+  or more at 333 (2.5 %). A one-argument call already passes it in rbx:
+  passing more in registers would change 11 % of the call sites.
+- **Few cells live across a call.** Simulating each body's depth (687
+  words simulated to their end; 1,343 call sites): the cells under the
+  callee's arguments, which must survive the call, number 0 at 35.6 %, 1
+  at 28.5 %, 2 at 14.7 %, 3 at 7.2 %, 4 or more at 13.9 %. They live in
+  memory now, which is what the data stack is: the save area, written
+  once and read once.
+- **Where the stack traffic sits.** 40,924 instructions naming r15,
+  143,343 bytes (the budget's 40.7 %): 33.7 % in straight code, 24.1 %
+  beside a branch, 20.7 % in the three instructions before a call, 13.5 %
+  in the three after, 8.0 % beside a return. Before a call the commonest
+  shape by far - 2,363 times in its variants - is `sub r15,8; mov
+  [r15],rbx; mov ebx,imm`: the old top saved, a literal made the top.
+
+### 17.3 The options
+
+**A. More cells in the fixed convention** (top two in rbx and rcx at
+every call and return). Worse, not better: with the second cell also
+fixed, every push must also spill the second and move the first into
+it - `x lit call` becomes a store, a move and a load where it is a store
+and a load now - and every word that takes one cell must refill the
+second. Fixed caching of more than one cell pays only for words that take
+two; 11 % of the calls. Ertl's work on stack caching (PLDI 1995, for
+interpreters) found the same shape: one cached cell takes most of the
+memory traffic, and a second pays only with several cache states, not
+one fixed one.
+
+**B. More cells in registers inside a definition, the convention kept.**
+The compiler keeps a model of the top few cells in registers through a
+run of code - a basic block - and writes them back to the convention
+(rbx and memory, r15 exact) only at a call, a branch, a label or a
+return. This is what VFX Forth's analytic compiler does, and 669's stage
+2, which the deferred push (704) only began. It goes at the 33.7 % in
+straight code and part of the 24.1 % beside branches; it cannot touch
+the calls' share, which the convention fixes. A word between calls is
+short - a call every 57 bytes of code on average - so the runs are
+short, which is why 704's narrow form fired four times. Its price is to
+be measured before it is built.
+
+**C. Fast entries by arity, the convention kept for everything else.**
+A word whose stack effect is known and takes two or three cells gets a
+second entry that takes them in registers (rbx, rcx, rdx) and leaves its
+results there; its usual entry loads the second and third from memory
+and falls into the fast one. EXECUTE, DEFER, ' and anything compiled
+before the callee's effect is known keep using the usual entry, so
+nothing else changes. A caller that has the arguments in registers -
+with B, often - calls the fast entry, and `sub r15,8; mov [r15],rbx`
+becomes `mov rcx,rbx`. It needs every such word's effect proved, not
+read from a comment. Its reach is the 11 % of calls with two or more
+arguments.
+
+**D. Arguments and results in registers everywhere, cells kept across
+calls in callee-saved registers** - a C compiler's convention, the
+interprocedural register allocation Ertl's RAFTS compiler explored for
+Forth. The largest prize and a back end rewritten (675): every
+primitive, the runtime, CATCH and THROW, the return stack's words, the
+locals. It also moves cost rather than removing it - a callee then saves
+the registers it uses, where today the caller's cells are already in
+memory.
+
+### 17.4 On 32-bit code
+
+There is no 32-bit native back end; the 32-bit shells are CV8's
+(relf32, the C engine on i386). If there were one, i386 has eight
+registers: esp the return stack, one the data stack (ebp or esi), ebx
+the top, and eax, ecx, edx taken by multiply, divide and the string
+instructions - one free, maybe two, and the loop index back in memory.
+Of the options, B and C are written over a register list, so a target
+with fewer registers gets a shorter list and less gain but the same
+compiler; A and D are not - they fix registers in the convention, and a
+convention that needs four registers does not port to a machine that has
+one to spare. The same holds for CV8's engines: caching a second cell
+in the 64-bit asm engine has registers to use (r12 holds the top now),
+while the 32-bit C engine already keeps the instruction pointer, both
+stack pointers, the top and the dispatch base in its seven - a second
+cached cell there would be spilled by the compiler, so an engine per
+target, the instruction set the same.
+
+### 17.5 What to do first, if anything
+
+1. **A stack-effect checker** - effects inferred through each body,
+   compared with its comment. C and D need proved effects; on its own it
+   finds wrong comments. The simulation above stopped in 469 of 1,156
+   words (EXECUTE, words without a usable comment, branches), which is
+   the checker's real work.
+2. **Price B before building it** - the compiler instrumented, not
+   changed: for each run between calls, branches and labels, the stack
+   instructions laid against what a model of the top cells would need.
+   The project's method: the bytes and the A/B's floor decide.
+3. **C after B**, priced the same way, where B leaves the arguments in
+   registers.
+
+A and D are not recommended: A costs more than it saves, and D is a
+rewrite whose gain the calls' own shape - one argument or none at 89 %
+of them - does not promise.
