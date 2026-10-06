@@ -732,6 +732,7 @@ do not trust the absence of a line below.
 - 705 — the kernel's own code folded by the cross compiler: its code -8.6 %, the native shell 407,912 bytes
 - 706 — the kernel's comparisons fused with IF, WHILE and UNTIL by the cross compiler: its code -1.7 KB more
 - 707 — the kernel's DUP-before-branch and variable fetches folded: its code -1 KB; over layouts inside the floor, leaning 1 % slow
+- 708 — fury's pack at 707: native 0-4 % faster there; bench.4's loop 7 -> 15 ms is the loop crossing a 16-byte line
 
 ### Not tied to an iteration
 

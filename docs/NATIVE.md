@@ -598,6 +598,7 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 676 (7e8c745) | 2.88 | 3.50 | 2.89 | 3.67 [3.39-3.93] | 3.83 | 0.83 |
 | relfsh, native, 691 (c6aaf26) | 2.84 | 3.41 | 2.79 | 3.67 | 3.79 | 0.80 |
 | relfsh, native, 702 (1bb2428) | 2.95 | 3.25 | 2.88 | 3.83 [3.66-3.90] | 3.96 | 0.85 |
+| relfsh, native, 707 (6e0a543) | 2.84 | 3.27 | 2.83 | 3.69 [3.59-3.75] | 3.89 | 0.82 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
@@ -1176,3 +1177,17 @@ unchanged. Over layouts against 706, 13 and 21 rounds: 1.008-1.020 and
 both runs, so perhaps a percent: kept under the ruling, noted here.
 The kernel's branches, 862 bytes, would need 693's fix-ups in the cross
 compiler, and its forward calls patched by address: left.
+
+**708: fury on the kernel's folds (705-707).** Native against dash at
+707: 2.84, 3.27, 2.83, 3.69, 3.89; against 702's run by implied times
+0.960, 0.969, 1.011, 0.958, 0.978 - a little faster if anything, inside
+fury's noise; the VM's one-percent lean at 707 is not there. Idle 332 kB
+resident, 48 kB written. bench.4's loop went 7 -> 15 ms on fury, the rest
+of its row unchanged - and on the VM the same benchmark is 14 or 21 ms by
+where LOOPSUM lands: with the 707 kernel 21 ms at 0 or 8 bytes of padding
+before bench.4 and 14 at 16 to 48; with 706's, 14 at 0, 20 at 16, 14 at
+32. A loop of three instructions that crosses a 16-byte line runs half
+as fast, and the kernel's shrinking moved bench.4's code by a few bytes:
+alignment, not the folds. Aligning a loop's start - BEGIN, DO - to 16
+bytes would steady such loops, at a few bytes each: a size-for-speed
+trade, not taken here.

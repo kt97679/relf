@@ -1,0 +1,81 @@
+relf benchmark report, Tue Oct  6 00:22:23 UTC 2026
+commit: 6e0a543d2 Iteration 707: the kernel's DUP before IF/WHILE/UNTIL and its 
+SCALE=25 ROUNDS=7
+
+== machine ==
+Linux fury 6.17.0-1032-oem #32-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 24 05:46:26 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+cpu: AMD Ryzen 7 PRO 8840HS w/ Radeon 780M Graphics
+cores: 16
+governor: powersave
+memory: 28368668 kB
+cc: cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 (/usr/bin/cc)
+go: go version go1.22.1 linux/amd64 (/home/kvt/bin/go)
+python3: Python 3.12.7 (/home/kvt/.pyenv/shims/python3)
+ruby: ruby 3.2.3 (2024-01-18 revision 52bb2ac0a6) [x86_64-linux-gnu] (/usr/bin/ruby)
+gforth: gforth 0.7.3 (/usr/bin/gforth)
+pforth: V2.0.0 (/usr/bin/pforth)
+bash: GNU bash, version 5.2.21(1)-release (x86_64-pc-linux-gnu) (/usr/bin/bash)
+dash: 0.5.12-6ubuntu5 (/usr/bin/dash)
+busybox: BusyBox v1.36.1 (Ubuntu 1:1.36.1-6ubuntu3.1) multi-call binary. (/usr/bin/busybox)
+musl-gcc: present (/usr/bin/musl-gcc)
+
+== build ==
+cc -O2 -Wall -o relf64 engine/cv8.c
+cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 engine/cv8.c
+lrwxrwxrwx 1 kvt kvt      8 Oct  5 17:22 relfsh -> relfsh64
+-rwxr-xr-x 1 kvt kvt 407912 Oct  5 17:22 relfsh-native
+-rwxrwxr-x 1 kvt kvt 153356 Oct  5 17:22 relfsh32
+-rwxrwxr-x 1 kvt kvt 172572 Oct  5 17:22 relfsh64
+-rwxrwxr-x 1 kvt kvt 143068 Oct  5 17:22 relfshasm64
+
+== a static dash ==
+dash 0.5.12, musl-gcc -Os -static, stripped: 169720 bytes
+
+== memory (tools/mem-profile.py) ==
+relf, assembly engine  idle   resident   220 kB, private   220 kB: anonymous, large (3 MB reserved) 136, anonymous, large (1024 MB reserved) 44, the executable 16, [stack] 16, anonymous, small 8
+relf, assembly engine  worked resident   256 kB, private   256 kB: anonymous, large (3 MB reserved) 136, anonymous, large (1024 MB reserved) 84, the executable 16, [stack] 12, anonymous, small 8
+relf, C engine         idle   resident  1560 kB, private   408 kB: C library 952, loader 212, anonymous, large (3 MB reserved) 140, [heap] 88, anonymous, small 48, [stack] 44, the executable 40, other libraries 32, [vdso] 4
+relf, C engine         worked resident  1600 kB, private   444 kB: C library 956, loader 212, anonymous, large (3 MB reserved) 144, [heap] 120, anonymous, small 48, [stack] 44, the executable 40, other libraries 32, [vdso] 4
+relf, native           idle   resident   332 kB, private   332 kB: the executable 260, anonymous, large (1024 MB reserved) 44, anonymous, small 16, [stack] 12
+relf, native           worked resident   428 kB, private   428 kB: the executable 316, anonymous, large (1024 MB reserved) 84, anonymous, small 16, [stack] 12
+dash                   idle   resident  1452 kB, private   120 kB: C library 1020, loader 212, the executable 124, anonymous, small 36, other libraries 32, [stack] 16, [heap] 8, [vdso] 4
+dash                   worked resident  1428 kB, private   140 kB: C library 976, loader 212, the executable 124, anonymous, small 36, other libraries 32, [heap] 24, [stack] 20, [vdso] 4
+dash, static (musl)    idle   resident   176 kB, private   176 kB: the executable 144, anonymous, small 16, [stack] 12, [heap] 4
+dash, static (musl)    worked resident   192 kB, private   192 kB: the executable 144, anonymous, small 32, [stack] 12, [heap] 4
+busybox ash            idle   resident   784 kB, private   152 kB: the executable 728, [stack] 20, anonymous, small 16, [heap] 16, [vdso] 4
+busybox ash            worked resident   836 kB, private   192 kB: the executable 772, [heap] 24, [stack] 20, anonymous, small 16, [vdso] 4
+bash                   idle   resident  2748 kB, private   284 kB: C library 1176, the executable 1040, loader 212, other libraries 148, [heap] 92, anonymous, small 52, [stack] 20, [vdso] 8
+bash                   worked resident  2784 kB, private   308 kB: C library 1188, the executable 1040, loader 212, other libraries 148, [heap] 112, anonymous, small 56, [stack] 20, [vdso] 8
+
+== shell speed (tools/bench-vm.py: CPU time as a ratio to the first shell, SCALE=25, 7 rounds) ==
+dash|/tmp|/usr/bin/dash {w}
+dash, static (musl)|/tmp|/tmp/tmp.GxALmMKFOy/dash-0.5.12/src/dash {w}
+busybox ash|/tmp|/usr/bin/busybox ash {w}
+bash|/tmp|/usr/bin/bash {w}
+relfsh, asm engine|/tmp|/home/kvt/git/my/relf/relfshasm64 {w}
+relfsh, C engine|/tmp|/home/kvt/git/my/relf/relfsh64 {w}
+relfsh, native|/tmp|/home/kvt/git/my/relf/relfsh-native {w}
+config                            loop                    fn                   str                 arith             realistic                 start
+dash                      38.1ms                 18.2ms                 22.1ms                 22.5ms                 27.0ms                 35.6ms       
+dash, static (musl)  1.667 [1.569-1.698]  1.793 [1.649-1.841]  1.181 [1.148-1.259]  1.397 [1.386-1.470]  1.589 [1.539-1.606]  0.782 [0.746-0.860]
+busybox ash       1.173 [1.133-1.211]  1.284 [1.245-1.331]  1.147 [1.143-1.157]  1.530 [1.438-1.570]  1.260 [1.184-1.282]  0.935 [0.911-0.971]
+bash              2.338 [2.281-2.410]  3.221 [2.942-3.380]  2.560 [2.469-2.655]  3.035 [2.904-3.064]  3.329 [3.312-3.442]  1.171 [1.049-1.238]
+relfsh, asm engine  25.466 [24.139-26.018]  31.070 [29.225-33.660]  27.634 [26.712-28.404]  34.468 [33.225-35.080]  39.180 [37.946-39.968]  1.017 [0.916-1.062]
+relfsh, C engine  24.537 [23.958-25.984]  31.502 [30.043-33.722]  26.397 [25.470-26.822]  33.079 [32.175-33.725]  37.646 [36.670-38.436]  1.140 [1.084-1.268]
+relfsh, native    2.842 [2.699-2.925]  3.268 [3.029-3.361]  2.832 [2.745-2.931]  3.686 [3.589-3.748]  3.889 [3.768-3.916]  0.816 [0.765-0.889]
+
+== languages (bench/langs/run.py: ms, best of 3) ==
+| ms, best of 3 | fib | loop | sieve | bubble | matrix | fannkuch | collatz | vs relf |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| C (gcc -O2) | 4 | 8 | 11 | 16 | 2 | 15 | 10 | 0.06x |
+| Go 1.22.1 | 9 | 8 | 11 | 5 | 3 | 13 | 13 | 0.06x |
+| relf, assembly engine | 35 | 109 | 317 | 77 | 100 | 322 | 176 | 1.00x |
+| relf, C engine | 54 | 74 | 388 | 64 | 133 | 344 | 268 | 1.13x |
+| relf, native | 9 | 15 | 22 | 14 | 21 | 35 | 38 | 0.15x |
+| gforth-fast 0.7.3 | 37 | 116 | 80 | 80 | 102 | 247 | 115 | 0.77x |
+| gforth 0.7.3 | 79 | 110 | 81 | 87 | 90 | 430 | 161 | 0.96x |
+| pforth 2.0.0 | 100 | 148 | 276 | 194 | 219 | 768 | 272 | 1.83x |
+| Ruby 3.2.3 | 190 | 352 | 326 | 275 | 137 | 622 | 383 | 2.33x |
+| Python 3.12.7 | 195 | 974 | 445 | 307 | 186 | 463 | 491 | 2.99x |
+
+report: /home/kvt/git/my/relf/bench-report-fury-20261006T0022Z.txt
