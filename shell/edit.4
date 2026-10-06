@@ -100,7 +100,7 @@ VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
   \ ended without a newline - `forth '2 3 + .'` showed no 5, `printf x`
   \ no x; dash and bash leave it, the prompt after it, and so does this.
   ED-COL @ ED-BACK
-  CMD-START? @ IF SH-PROMPT ELSE SH-PROMPT2 THEN
+  CMD-START? @ IF SH-PROMPT1 ELSE SH-PROMPT2 THEN     \ as expanded once for this line (712)
   ED-BUF ED-LEN @ ED-OUT
   ED-CSI 75 ED-CH                            \ erase to end of line
   ED-BUF ED-POS @ + ED-LEN @ ED-POS @ - ED-COLS ED-BACK   \ back to the cursor: columns (575)
@@ -786,11 +786,11 @@ VARIABLE ED-PAT-U
 : ED-LINE ( --- c-addr u flag )   \ flag: -1 a line, 0 end of input
   0 ED-LEN !  0 ED-POS !  0 ED-DONE !  0 ED-SEARCHING !
   HIST# @ HIST-VIEW !  0 HIST-SAVED-LEN !
-  CMD-START? @ IF PS1-NM PS1-DEFAULT ELSE PS2-NM PS2-DEFAULT THEN
   \ The prompt's WIDTH, not its length: an escape sequence in it takes
   \ bytes and no columns, and the cursor arithmetic is in columns
-  \ (Iteration 412).
-  PROMPT-STRING 2DROP PROMPT-WIDTH @ ED-PROMPT-LEN !
+  \ (Iteration 412). Expanded here once for the line and its redraws
+  \ (712); a continuation line's PS2 was expanded at its command's start.
+  CMD-START? @ IF SH-PROMPT-PREPARE PS1-WIDTH @ ELSE PS2-WIDTH @ THEN ED-PROMPT-LEN !
   0 ED-COL !                                 \ the prompt starts where we are (574)
   ED-REDRAW
   BEGIN ED-DONE @ 0= WHILE

@@ -7019,21 +7019,35 @@ DEFER PROMPT-HOOK ( --- )
 \ extension loaded with `forth`, such as forth-shell-examples/
 \ prompt-command.4, which makes it bash's PROMPT_COMMAND (Iteration 505).
 
-: SH-PROMPT ( --- )
-  \ $PS1, or "$ ". To fd 2, not stdout: every reference shell writes its
-  \ prompt to stderr, and `... | relfsh` otherwise had the prompt
-  \ interleaved into the shell's own output. PS1 was ignored entirely
-  \ until Iteration 302 - the prompt was always "$ ".
+1024 BUFFER: PS1-TEXT     \ PS1, expanded once for the prompt and its redraws (712)
+VARIABLE PS1-TEXT#
+VARIABLE PS1-WIDTH   VARIABLE PS2-WIDTH
+: SH-PROMPT-PREPARE ( --- )
+  \ PS1 and PS2 expanded once per prompt, and PROMPT-HOOK run once (712):
+  \ the line editor redraws its line, prompt and all, at every key, and
+  \ each redraw expanded PS1 again - a $(...) in it ran 29 times while one
+  \ 19-key line was typed, and a PROMPT_COMMAND (505) on every key. bash
+  \ expands its prompt once.
   PROMPT-HOOK
-  PS1-NM PS1-DEFAULT PROMPT-STRING ERR-TYPE
+  PS1-NM PS1-DEFAULT PROMPT-STRING              ( a u )
+  PROMPT-WIDTH @ PS1-WIDTH !
+  DUP 1023 MIN DUP PS1-TEXT# !  >R DROP PS1-TEXT R@ MOVE R> DROP
   \ PS2 is expanded HERE, at the start of a command, and kept: a
   \ continuation prompt is written in the middle of a parse, and the
   \ expander builds a word in the tree the parser is still filling.
   \ Expanding it a moment early costs a `$(date)` in a PS2 its freshness
   \ and costs the parse nothing (Iteration 389).
   PS2-NM PS2-DEFAULT PROMPT-STRING              ( a u )
+  PROMPT-WIDTH @ PS2-WIDTH !
   DUP 255 MIN DUP PS2-TEXT# !                   ( a u n )
   >R DROP PS2-TEXT R@ MOVE R> DROP ;
+: SH-PROMPT1 ( --- )   PS1-TEXT PS1-TEXT# @ ERR-TYPE ;   \ as expanded for this prompt
+: SH-PROMPT ( --- )
+  \ $PS1, or "$ ". To fd 2, not stdout: every reference shell writes its
+  \ prompt to stderr, and `... | relfsh` otherwise had the prompt
+  \ interleaved into the shell's own output. PS1 was ignored entirely
+  \ until Iteration 302 - the prompt was always "$ ".
+  SH-PROMPT-PREPARE  SH-PROMPT1 ;
 
 : SH-PROMPT2 ( --- )   \ $PS2, or "> ", for a line that continues one
   PS2-TEXT PS2-TEXT# @ ERR-TYPE ;

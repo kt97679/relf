@@ -19,8 +19,8 @@ docs:sizes current
 ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
-image-sum:kernel32-shell.img 1580882884/118212
-image-sum:kernel64-shell.img 1624366263/127196
+image-sum:kernel32-shell.img 3212757740/118372
+image-sum:kernel64-shell.img 1490750450/127380
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -44,7 +44,7 @@ native:compiler same
 native:core same
 native:ctab same
 native:data same
-native:data-bytes 18792
+native:data-bytes 18840
 native:fold same
 native:forthfuzz:failures 0
 native:headers .NAME CUBE MAIN PREV SQUARE WALK
@@ -67,7 +67,7 @@ native:posix:failed 0
 native:prims same
 native:self-built same
 native:shell 1
-native:shell-bytes 407912
+native:shell-bytes 407960
 native:shell-diff:failed 0
 native:shell-forth-errors:failed 0
 native:shell-run same
@@ -101,13 +101,13 @@ shell:dead-words 0
 shell:files 93
 shell:host-sh-tests 0
 size:asm-engine 15856
-size:asm-shell 143068
+size:asm-shell 143252
 size:engine-code-i386 21766
 size:engine-code-x86_64 26519
-size:i386 148552
-size:image-i386 118212
-size:image-x86_64 127196
-size:x86_64 166332
+size:i386 148712
+size:image-i386 118372
+size:image-x86_64 127380
+size:x86_64 166516
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
 verify:skip-rows complete

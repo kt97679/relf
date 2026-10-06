@@ -17,7 +17,9 @@ if [ $# -eq 0 ]; then
     probe3=$(python3 "$here/width-probe.py" 2>&1); prc3=$?
     # ^C around INCLUDED (Iteration 617)
     probe4=$(python3 "$here/include-probe.py" 2>&1); prc4=$?
-    probe=$(printf '%s\n%s\n%s\n%s\n' "$probe" "$probe2" "$probe3" "$probe4"); prc=$((prc + prc2 + prc3 + prc4))
+    # the prompt expanded once, and ^C's races at it (Iteration 712)
+    probe5=$(python3 "$here/prompt-probe.py" 2>&1); prc5=$?
+    probe=$(printf '%s\n%s\n%s\n%s\n%s\n' "$probe" "$probe2" "$probe3" "$probe4" "$probe5"); prc=$((prc + prc2 + prc3 + prc4 + prc5))
     printf '%s\n' "$probe" | grep '^FAIL' || true
     if [ "$prc" -ne 0 ]; then
         out=$(printf '%s\n' "$out" | awk -v n="$prc" '

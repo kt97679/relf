@@ -736,6 +736,7 @@ do not trust the absence of a line below.
 - 709 — ARGV-ADD priced on CV8: all its stores worth 1-3.5 %; a redesign could not show - not built
 - 710 — the tree readers XF@ and XV@ priced: 1-4.5 %, the next CV8 candidate as engine primitives
 - 711 — the races: item 8 0/30 under load; relf runs type-ahead after ^C where dash and bash lose it; 8c's window found
+- 712 — PS1 expanded once per prompt (it ran at every key); prompt-probe.py guards it and two ^C races
 
 ### Not tied to an iteration
 

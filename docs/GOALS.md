@@ -99,10 +99,12 @@ ordinary scripts hit, then edge cases and wording.
    the varying shell was BASH, which drops a finished job and answers
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
-8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (711: the
-   window found by reading - a ^C caught between a command's end and the
-   editor survives the prompt, and FTH-RUN throws it at the next forth
-   command's start; the fix is next) (658,
+8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (711-712:
+   a ^C waiting at the prompt is the editor's first look, and probes that
+   send one there - from another process, and during the prompt's own
+   $(...) - find it taken; the survival 711 described would need a wait in
+   the prompt path setting it aside, not found; prompt-probe.py now guards
+   both routes) (658,
    its first pack's verify, on relfsh - the C engine). After ^Cs into an
    include whose file loops, the prompt came back each time and `echo`
    answered, but `forth 'DEPTH . CR'` printed nothing - as if a ^C held
