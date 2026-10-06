@@ -731,6 +731,7 @@ do not trust the absence of a line below.
 - 704 — the deferred push: built, fired 4 times in the shell (the folds had the rest), its code 4.9 KB - set aside
 - 705 — the kernel's own code folded by the cross compiler: its code -8.6 %, the native shell 407,912 bytes
 - 706 — the kernel's comparisons fused with IF, WHILE and UNTIL by the cross compiler: its code -1.7 KB more
+- 707 — the kernel's DUP-before-branch and variable fetches folded: its code -1 KB; over layouts inside the floor, leaning 1 % slow
 
 ### Not tied to an iteration
 

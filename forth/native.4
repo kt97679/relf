@@ -57,6 +57,18 @@ VARIABLE N-LIT-AT    VARIABLE N-LIT-END    VARIABLE N-LIT-VAL    VARIABLE N-BARR
   N-LIT-END @ THERE @ =  N-LIT-AT @ N-BARRIER @ < 0= AND
   N-LIT-VAL @ -2147483648 2147483648 WITHIN AND
   DUP IF  N-LIT-AT @ THERE !  0 N-LIT-END !  THEN ;
+\ (707) Two more of the run-time compiler's folds for the kernel's code:
+\ a DUP straight before IF, WHILE or UNTIL is undone and the top tested
+\ where it stands (669); a literal address and its @ are one load from
+\ it, and that load and the operation after it one operation on memory
+\ (662). DUP and @ record where they laid themselves.
+VARIABLE N-DUP-AT   VARIABLE N-DUP-END   VARIABLE N-LOAD-AT   VARIABLE N-LOAD-END   VARIABLE N-LOAD-ADDR
+: N-DUP? ( --- f )   \ a DUP laid last, no landing since: undone
+  N-DUP-END @ THERE @ =  N-DUP-AT @ N-BARRIER @ < 0= AND
+  DUP IF  N-DUP-AT @ THERE !  0 N-DUP-END !  THEN ;
+: N-LOAD? ( --- f )   \ a literal address's load laid last, no landing since: undone, push and all
+  N-LOAD-END @ THERE @ =  N-LOAD-AT @ N-BARRIER @ < 0= AND
+  DUP IF  N-LOAD-AT @ THERE !  0 N-LOAD-END !  THEN ;
 : N-FLAG ( --- )  rax rbx mov,  N-POP  rax rax test, ; \ the flag, taken off
 : N-ADDR ( buf --- addr ) ABUF @ - ORG @ + ;           \ a buffer place's address
 : N-FWD ( op1 op2 --- fix )   \ a jump with its 32-bit displacement to come;
@@ -82,8 +94,10 @@ VARIABLE N-LEAVES            \ the innermost loop's LEAVE jumps, chained
 VARIABLE N-FLAG-AT   VARIABLE N-FLAG-END   VARIABLE N-FLAG-CC
 : N-CMP ( --- )  rax [ r15 ] mov,  r15 8 # add,  rax rbx cmp,  THERE @ N-FLAG-AT !  N-0CC ;
 : N-TRUE ( --- ) rbx neg, ;                              \ 1 -> -1
-: N-CMP? ( --- )   \ a comparison's cmp: with the literal folded (705), or of the two cells
-  N-FOLD? IF  rbx N-LIT-VAL @ # cmp,  THERE @ N-FLAG-AT !  N-0CC  ELSE  N-CMP  THEN ;
+: N-CMP? ( --- )   \ a comparison's cmp: with the literal folded (705), the load (707), or of the two cells
+  N-FOLD? IF  rbx N-LIT-VAL @ # cmp,  THERE @ N-FLAG-AT !  N-0CC  EXIT THEN
+  N-LOAD? IF  rbx [ N-LOAD-ADDR @ ] cmp,  THERE @ N-FLAG-AT !  N-0CC  EXIT THEN
+  N-CMP ;
 : N-SET ( cc --- )   \ setcc bl, neg rbx: the flag, its making recorded (706)
   DUP N-FLAG-CC !  15 C,A  144 + C,A  195 C,A  N-TRUE  THERE @ N-FLAG-END ! ;
 : N-FUSE? ( --- jcc true | false )   \ a comparison laid last, no landing since: undone,
@@ -97,7 +111,7 @@ VARIABLE N-FLAG-AT   VARIABLE N-FLAG-END   VARIABLE N-FLAG-CC
 : N-LOOP-END ( outer --- )   \ every exit jump resolved; the outer loop's chain back
   N-LEAVES @ BEGIN ?DUP WHILE DUP @ N-RESOLVE CELL+ @ REPEAT  N-LEAVES ! ;
 CURRENT @  NPRIMS CURRENT !
-: DUP   N-PUSH ;
+: DUP   THERE @ N-DUP-AT !  N-PUSH  THERE @ N-DUP-END ! ;
 : DROP  N-POP ;
 : SWAP  rax [ r15 ] mov,  [ r15 ] rbx mov,  rbx rax mov, ;
 : OVER  N-PUSH  rbx [ r15 8 ] mov, ;
@@ -105,11 +119,16 @@ CURRENT @  NPRIMS CURRENT !
 : ?DUP  rbx rbx test,  1 F jz,  N-PUSH  1 L: ;
 : 2DUP  rax [ r15 ] mov,  r15 16 # sub,  [ r15 8 ] rbx mov,  [ r15 ] rax mov, ;
 : 2DROP rbx [ r15 8 ] mov,  r15 16 # add, ;
-: +     N-FOLD? IF rbx N-LIT-VAL @ # add, EXIT THEN  rbx [ r15 ] add,  r15 8 # add, ;
-: -     N-FOLD? IF rbx N-LIT-VAL @ # sub, EXIT THEN  rax [ r15 ] mov,  rax rbx sub,  rbx rax mov,  r15 8 # add, ;
-: AND   N-FOLD? IF rbx N-LIT-VAL @ # and, EXIT THEN  rbx [ r15 ] and,  r15 8 # add, ;
-: OR    N-FOLD? IF rbx N-LIT-VAL @ # or,  EXIT THEN  rbx [ r15 ] or,   r15 8 # add, ;
-: XOR   N-FOLD? IF rbx N-LIT-VAL @ # xor, EXIT THEN  rbx [ r15 ] xor,  r15 8 # add, ;
+: +     N-FOLD? IF rbx N-LIT-VAL @ # add, EXIT THEN  N-LOAD? IF rbx [ N-LOAD-ADDR @ ] add, EXIT THEN
+        rbx [ r15 ] add,  r15 8 # add, ;
+: -     N-FOLD? IF rbx N-LIT-VAL @ # sub, EXIT THEN  N-LOAD? IF rbx [ N-LOAD-ADDR @ ] sub, EXIT THEN
+        rax [ r15 ] mov,  rax rbx sub,  rbx rax mov,  r15 8 # add, ;
+: AND   N-FOLD? IF rbx N-LIT-VAL @ # and, EXIT THEN  N-LOAD? IF rbx [ N-LOAD-ADDR @ ] and, EXIT THEN
+        rbx [ r15 ] and,  r15 8 # add, ;
+: OR    N-FOLD? IF rbx N-LIT-VAL @ # or,  EXIT THEN  N-LOAD? IF rbx [ N-LOAD-ADDR @ ] or,  EXIT THEN
+        rbx [ r15 ] or,   r15 8 # add, ;
+: XOR   N-FOLD? IF rbx N-LIT-VAL @ # xor, EXIT THEN  N-LOAD? IF rbx [ N-LOAD-ADDR @ ] xor, EXIT THEN
+        rbx [ r15 ] xor,  r15 8 # add, ;
 : NEGATE  rbx neg, ;
 : 1+    rbx 1 # add, ;
 : 1-    rbx 1 # sub, ;
@@ -131,7 +150,10 @@ CURRENT @  NPRIMS CURRENT !
 : U<    N-CMP?  2 N-SET ;                                 \ setb
 : 0=    rbx rbx test,  THERE @ N-FLAG-AT !  N-0CC  4 N-SET ;
 : 0<    rbx 63 # sar, ;
-: @     rbx [ rbx ] mov, ;
+: @     N-FOLD? IF                                        \ a literal address: one load (707)
+          N-LIT-VAL @ N-LOAD-ADDR !  THERE @ N-LOAD-AT !  N-PUSH  rbx [ N-LOAD-ADDR @ ] mov,
+          THERE @ N-LOAD-END !  EXIT THEN
+        rbx [ rbx ] mov, ;
 : !     N-FOLD? IF  [ N-LIT-VAL @ ] rbx mov,  N-POP  EXIT THEN      \ (705) to a literal address
         rax [ r15 ] mov,  [ rbx ] rax mov,  rbx [ r15 8 ] mov,  r15 16 # add, ;
 : C@    ebx [ rbx ] byte-ptr movzx, ;
@@ -153,13 +175,16 @@ CURRENT !
 \ and a definition after them must still get these (Iteration 618).
 CURRENT @  NCTRL CURRENT !
 \ control: laid down as jumps, patched when the structure closes
-: IF    N-FUSE? IF 15 SWAP N-FWD EXIT THEN  N-FLAG  15 132 N-FWD ;   \ jz near, or the compare's own
+: IF    N-FUSE? IF 15 SWAP N-FWD EXIT THEN  N-DUP? IF rbx rbx test, 15 132 N-FWD EXIT THEN
+        N-FLAG  15 132 N-FWD ;   \ jz near, or the compare's own, or DUP's top tested
 : ELSE  0 233 N-FWD  SWAP N-RESOLVE ;                    \ jmp near
 : THEN  N-RESOLVE ;
 : BEGIN THERE @ N-BARRIER !  HERE-A ;
-: UNTIL N-FUSE? IF 15 SWAP N-BACK EXIT THEN  N-FLAG  15 132 N-BACK ;
+: UNTIL N-FUSE? IF 15 SWAP N-BACK EXIT THEN  N-DUP? IF rbx rbx test, 15 132 N-BACK EXIT THEN
+        N-FLAG  15 132 N-BACK ;
 : AGAIN 0 233 N-BACK ;
-: WHILE N-FUSE? IF 15 SWAP N-FWD SWAP EXIT THEN  N-FLAG  15 132 N-FWD  SWAP ;   \ ( dest --- orig dest )
+: WHILE N-FUSE? IF 15 SWAP N-FWD SWAP EXIT THEN  N-DUP? IF rbx rbx test, 15 132 N-FWD SWAP EXIT THEN
+        N-FLAG  15 132 N-FWD  SWAP ;   \ ( dest --- orig dest )
 : REPEAT  0 233 N-BACK  N-RESOLVE ;
 : RECURSE  N-SELF @ call, ;
 : EXIT  195 C,A ;                                        \ ret

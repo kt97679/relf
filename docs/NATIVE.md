@@ -1160,3 +1160,19 @@ condition, inverted (N-FUSE?): the run-time compiler's 629, for the
 kernel's code. Its code 54,540 -> 52,856 (-1,684); the shell's 388,787
 -> 387,099. The self-build the same; over layouts against 705: 0.989,
 0.991, 0.998, 0.998, 1.006.
+
+**707: DUP before a branch, and a variable's fetch, for the kernel.** A
+census of what was left in the kernel's code after 706: 30 DUPs straight
+before IF, WHILE or UNTIL, 29 fetches from a literal address followed by
+an operation on the pair, 128 such fetches alone, 6 OVERs before an
+operation, and 862 bytes of branches that would fit rel8. The first two,
+as the run-time compiler has them (669, 662): N-DUP? undoes a DUP laid
+last, and the branch tests the top where it stands; @ of a literal
+address is one load from it, recorded, and +, -, AND, OR, XOR and the
+comparisons straight after take the address as their operand (N-LOAD?).
+The kernel's code 52,856 -> 51,840 (-1,016); the files whole pages,
+unchanged. Over layouts against 706, 13 and 21 rounds: 1.008-1.020 and
+1.006-1.017 - inside the floor, every figure on the slow side of 1 in
+both runs, so perhaps a percent: kept under the ruling, noted here.
+The kernel's branches, 862 bytes, would need 693's fix-ups in the cross
+compiler, and its forward calls patched by address: left.
