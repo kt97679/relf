@@ -98,7 +98,12 @@ ordinary scripts hit, then edge cases and wording.
    the varying shell was BASH, which drops a finished job and answers
    127 when it reaps before `wait %%` runs. The case's named jobs sleep
    a moment now; the finished-job reading is asserted on its own.)
-8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** (711-712:
+8c. **intrfuzz case 4 (seed 598) gave no answer once, on fury** - closed
+   in 715: tools/intrfuzz-stress.sh on fury at 714, sixteen fuzzers at
+   once on sixteen cores, 4,800 cases across the three shells (case 4's
+   seed 15 times): 0 failures (bench/reports/intrfuzz-stress-fury-
+   20261006T1228Z.txt). Not reproduced; the fuzzer reports the failed
+   line's status if it ever comes back. (711-712:
    a ^C waiting at the prompt is the editor's first look, and probes that
    send one there - from another process, and during the prompt's own
    $(...) - find it taken; the survival 711 described would need a wait in

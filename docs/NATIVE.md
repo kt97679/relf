@@ -599,6 +599,7 @@ and their rows, passed on in a message before, match them:
 | relfsh, native, 691 (c6aaf26) | 2.84 | 3.41 | 2.79 | 3.67 | 3.79 | 0.80 |
 | relfsh, native, 702 (1bb2428) | 2.95 | 3.25 | 2.88 | 3.83 [3.66-3.90] | 3.96 | 0.85 |
 | relfsh, native, 707 (6e0a543) | 2.84 | 3.27 | 2.83 | 3.69 [3.59-3.75] | 3.89 | 0.82 |
+| relfsh, native, 714 (73969a7) | 2.82 | 3.19 | 2.74 | 3.75 | 3.76 | 0.83 |
 | relfsh, asm engine, 648 | 31.7 | 34.0 | 29.2 | 40.3 | 41.0 | 0.91 |
 | relfsh, asm engine, 652 | 29.3 | 37.9 | 29.9 | 42.1 | 42.1 | 1.01 |
 | relfsh, asm engine, 657 | 29.4 | 36.6 | 28.6 | 40.3 | 40.2 | 1.10 |
@@ -1191,3 +1192,20 @@ as fast, and the kernel's shrinking moved bench.4's code by a few bytes:
 alignment, not the folds. Aligning a loop's start - BEGIN, DO - to 16
 bytes would steady such loops, at a few bytes each: a size-for-speed
 trade, not taken here.
+
+**714: loop starts padded to 16 bytes.** BEGIN, DO and ?DO lay nops to
+the next 16-byte line (ALIGN-LOOP, up to LOOP-ALIGN-MAX = 15 bytes); the
+pad is a width-0 entry in the relative-field table, a forward branch
+laid before a padded start stays long, and a body inlined without its
+pads loses them (STRIP-PADS). Shell code +5,129 bytes (1.5 %), the file
+and the kernel one page each. On the VM, over layouts: inside the floor.
+
+**715: fury on 714.** bench.4's loop 15 -> 8 ms - back where it was
+before 707, and level with gcc -O2's 8 and Go's 7 in the languages
+table; fannkuch 35 -> 32, sieve 22 -> 21, matrix 21 -> 20, fib, bubble
+and collatz unchanged. The shell's workloads against dash 2.82, 3.19,
+2.74, 3.75, 3.76: against 707's ratios -0.8, -2.3, -3.2, +1.7, -3.3 %,
+fury's noise (dash itself ran 3-8 % slower in this run, so ratios, not
+implied times). Idle 344 kB resident, the executable's pages 272 kB.
+The trade is kept: 5 KB for loops that no longer run at half speed by
+where the code before them ends.

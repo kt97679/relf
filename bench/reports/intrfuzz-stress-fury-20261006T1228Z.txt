@@ -1,0 +1,5 @@
+intrfuzz stress, 2026-10-06 12:28 UTC, 73969a7f6 Iteration 714: native loop starts padded to 16 bytes - BEGIN, 
+cpu: 16 cores; ROUNDS=5 JOBS=16; 20 cases a run
+relfsh: 80 runs (1600 cases), 0 with failures
+relfshasm64: 80 runs (1600 cases), 0 with failures
+relfsh-native: 80 runs (1600 cases), 0 with failures
