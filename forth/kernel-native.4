@@ -36,11 +36,14 @@ VARIABLE RT-N       \ entries in it
 VARIABLE RT-FULL    \ set: no room left, this definition's branches stay long
 VARIABLE LAST-LEAVE \ where the last LEAVE's link was laid - pending, so a move must not pass it
 VARIABLE SHORT-OFF  \ set: forward branches stay long (starts at 0: the cross compiler lays it)
+VARIABLE LAST-ALIGN \ (714) the last loop start padded to 16: a move must not pass it
+VARIABLE PADS       \ (714) bytes of padding laid in this definition
 : RT+ ( f t w --- )   \ a relative field laid at f, aimed at t, w bytes wide
   RT-AT @ 0= IF  12288 ALLOCATE IF  DROP -1 RT-FULL !  ELSE  RT-AT !  THEN  THEN
   RT-N @ 511 > RT-AT @ 0= OR IF  DROP 2DROP  -1 RT-FULL !  EXIT  THEN
   RT-AT @ RT-N @ RT-PUT  1 RT-N +! ;
-: RT-DONE ( --- )   RT-AT @ ?DUP IF FREE DROP THEN  0 RT-AT !  0 RT-N !  0 RT-FULL !  0 LAST-LEAVE ! ;
+: RT-DONE ( --- )   RT-AT @ ?DUP IF FREE DROP THEN  0 RT-AT !  0 RT-N !  0 RT-FULL !  0 LAST-LEAVE !
+  0 LAST-ALIGN !  0 PADS ! ;
 : REL, ( addr --- )   HERE OVER 4 RT+  HERE 4 + - ,4 ;       \ rel32 to addr, from the end of the field
 : RDROP16, ( --- )   72 C, 131 C, 196 C, 16 C, ;                         \ add rsp,16
 
@@ -229,7 +232,9 @@ VARIABLE CMP2-CELLS  \ how many cells it compares: 2, or 1 with 0
 \ forward and backward jumps: a 4-byte field, patched when its target comes
 : >MARK ( --- a-addr )   HERE 0 ,4 ;
 : SHORT-OK? ( a-addr --- f )   \ the branch whose rel32 field is at a-addr, laid short?
-  DUP HERE SHORT-FITS?  SWAP 4 + LAST-LEAVE @ > AND  RT-FULL @ SHORT-OFF @ OR 0= AND ;
+  \ Not over a padded loop start (714): the move would undo its alignment.
+  DUP HERE SHORT-FITS?  OVER 4 + LAST-LEAVE @ > AND  SWAP 4 + LAST-ALIGN @ > AND
+  RT-FULL @ SHORT-OFF @ OR 0= AND ;
 VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
 : SHORTEN ( a-addr --- )   \ (695) SHORT-MOVE does the work, in assembly
   >R RT-AT @ RT-N @ R> HERE SHORT-MOVE  SH-MOVED !  SWAP HERE - ALLOT  HERE 1 RT+
@@ -276,7 +281,50 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
 : ELSE    ?COMP  233 C, >MARK  SWAP >RESOLVE  SH-MOVED @ - ; IMMEDIATE      \ jmp
 \ (693) the IF is resolved after ELSE's jmp is laid, so a shortened IF
 \ moves that jmp's pending field back with the code: its address follows
-: BEGIN   ?COMP  MARK-TARGET HERE ; IMMEDIATE
+\ (714) A loop's start padded to 16 bytes with nops, as compilers align
+\ loops: 708 saw bench.4's loop go from 7 ms to 15 on fury when the
+\ kernel's shrinking moved it across a 16-byte line - the speed of a hot
+\ loop was left to where the code before it happened to end. The pad is
+\ laid where the loop is entered by falling in, run once per entry. It is
+\ recorded in the relative-field table as width 0 (inert to SHORT-MOVE),
+\ a forward branch laid before it stays long (SHORT-OK?), and a body that
+\ would be copied in place of its calls without its pads loses them
+\ (STRIP-PADS): an inlined copy lands anywhere, and the pads would only
+\ have made it too long to copy.
+15 CONSTANT LOOP-ALIGN-MAX   \ the most padding a loop start takes; 0 for none
+: NOP, ( n --- )   \ one nop instruction of n bytes, 1 to 8
+  DUP 2 = OVER 6 = OR IF 102 C, 1- THEN           \ 66: 2 is 66 90, 6 is 66 and the 5
+  DUP 1 = IF DROP 144 C, EXIT THEN                 \ 90
+  15 C, 31 C,                                      \ 0F 1F
+  DUP 3 = IF DROP 0 C, EXIT THEN                   \ 0F 1F 00
+  DUP 4 = IF DROP 64 C, 0 C, EXIT THEN             \ 0F 1F 40 00
+  DUP 5 = IF DROP 68 C, 0 C, 0 C, EXIT THEN        \ 0F 1F 44 00 00
+  7 = IF 128 C, 0 ,4 ELSE 132 C, 0 C, 0 ,4 THEN ;  \ 0F 1F 80 d32, 0F 1F 84 00 d32
+: ALIGN-LOOP ( --- )   \ the loop start that comes next, to 16 bytes
+  HERE NEGATE 15 AND  DUP 0=  OVER LOOP-ALIGN-MAX > OR  RT-FULL @ OR IF DROP EXIT THEN
+  DUP PADS +!  HERE OVER 0 RT+                     \ the pad: at, length, width 0
+  DUP 8 > IF 8 NOP, 8 - THEN NOP,  HERE LAST-ALIGN ! ;
+: RT-ENTRY ( i --- a-addr )   24 * RT-AT @ + ;
+VARIABLE GAP-P   VARIABLE GAP-K
+: FOLLOW ( a --- a' )   DUP GAP-P @ GAP-K @ + < 0= IF GAP-K @ - THEN ;   \ where it went
+: GAP-OUT ( p k --- )   \ k bytes at p taken out: the code after moved back, re-aimed
+  GAP-K !  GAP-P !
+  GAP-P @ GAP-K @ +  GAP-P @  HERE GAP-P @ - GAP-K @ -  CMOVE  GAP-K @ NEGATE ALLOT
+  RT-N @ 0 ?DO
+    I RT-ENTRY  DUP @ FOLLOW OVER !
+    DUP 16 + @ IF                                  \ a field: its target followed, rewritten
+      DUP 8 + @ FOLLOW OVER 8 + !
+      DUP 8 + @  OVER @ -  OVER 16 + @ -           ( e disp )
+      OVER 16 + @ 1 = IF OVER @ C! ELSE OVER @ !4 THEN
+    THEN DROP
+  LOOP ;
+: STRIP-PADS ( --- )   \ every pad taken out, the last first
+  RT-N @ BEGIN DUP WHILE 1-
+    DUP RT-ENTRY  DUP 16 + @ 0= IF
+      DUP 8 + @ ?DUP IF  OVER @ SWAP GAP-OUT  0 SWAP 8 + !  ELSE DROP THEN
+    ELSE DROP THEN
+  REPEAT DROP  0 PADS ! ;
+: BEGIN   ?COMP  ALIGN-LOOP MARK-TARGET HERE ; IMMEDIATE
 : UNTIL   ?COMP  ?BRANCH, BACK, ; IMMEDIATE
 : AGAIN   ?COMP  233 C, BACK, ; IMMEDIATE
 : WHILE   ?COMP  POSTPONE IF  SWAP ; IMMEDIATE
@@ -302,10 +350,10 @@ VARIABLE SH-MOVED   \ what the last >RESOLVE moved the code back by: 0, 3 or 4
   73 C, 139 C, 95 C, 8 C,  73 C, 131 C, 199 C, 16 C, ;
 : LOOP-EXIT, ( outer --- )   \ the LEAVEs here; pop r14  pop r13
   RESOLVE-LEAVE  65 C, 94 C, 65 C, 93 C, ;
-: DO   ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !  MARK-TARGET HERE ; IMMEDIATE
+: DO   ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !  ALIGN-LOOP MARK-TARGET HERE ; IMMEDIATE
 : ?DO  ?COMP  LOOP-ENTER,  'LEAVE @  0 'LEAVE !
   77 C, 57 C, 238 C,  15 C, 132 C, LEAVE-LINK,          \ cmp r14,r13  je the end: a LEAVE
-  MARK-TARGET HERE ; IMMEDIATE
+  ALIGN-LOOP MARK-TARGET HERE ; IMMEDIATE
 : LOOP  ?COMP   \ inc r14  cmp r14,r13  jne back
   73 C, 255 C, 198 C,  77 C, 57 C, 238 C,  15 C, 133 C, BACK,  LOOP-EXIT, ; IMMEDIATE
 : +LOOP  ?COMP   \ native.4's crossing test, by signs, on r14 and r13
@@ -384,6 +432,7 @@ VARIABLE GRP-END    \ HERE when it was laid: the next slot extends it only there
 : :  ( "name" --- )   DATA-ALIGN !CSP HEADER ]  HERE BODY-AT !  -1 INL-OK !  RT-DONE ;
 32 CONSTANT INL-LIMIT   \ (700) the longest body copied in place of a call - GOALS.md 10's first knob
 : INLINE-MARK ( --- )   \ a copyable body of 1 to INL-LIMIT bytes: moved up three, marked
+  PADS @ IF  INL-OK @  HERE BODY-AT @ - PADS @ - INL-LIMIT 1+ < AND  IF STRIP-PADS THEN  THEN
   HERE BODY-AT @ - DUP 0 > OVER INL-LIMIT 1+ < AND INL-OK @ AND IF
     >R  BODY-AT @ DUP 3 + R@ MOVE  3 ALLOT
     235 BODY-AT @ C!  1 BODY-AT @ 1+ C!  R> BODY-AT @ 2 + C!

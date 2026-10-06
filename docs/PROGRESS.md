@@ -738,6 +738,7 @@ do not trust the absence of a line below.
 - 711 — the races: item 8 0/30 under load; relf runs type-ahead after ^C where dash and bash lose it; 8c's window found
 - 712 — PS1 expanded once per prompt (it ran at every key); prompt-probe.py guards it and two ^C races
 - 713 — $- shows s, m and i as dash's (6b); tools/intrfuzz-stress.sh for 8c on fury's cores
+- 714 — native loop starts padded to 16 bytes: +5.1 KB code, inside the floor on the VM; bench.4's loop for fury
 
 ### Not tied to an iteration
 
