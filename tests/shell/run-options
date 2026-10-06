@@ -187,4 +187,16 @@ out=$("$THIS_SH" "$t/al462.sh" 2>&1)
 assert_output_equals "an alias in the name position of a for loop" "x=[1] w=[] in=[]
 x=[2] w=[] in=[]
 kept" "$out"
+# $- shows s when the commands come from standard input, m with job
+# control or set -m, i when interactive (Iteration 713, GOALS.md 6b) -
+# dash's `si` for `echo 'echo $-' | dash -i`
+out=$(echo 'echo "[$-]"' | "$THIS_SH" 2>&1)
+assert_output_equals "\$- has s for a script on standard input" "[s]" "$out"
+out=$(echo 'echo "[$-]"' | "$THIS_SH" -i 2>/dev/null | tail -1)
+assert_output_equals "\$- has s and i for -i with a pipe" "[si]" "$out"
+out=$(echo 'echo "[$-] $#"' | "$THIS_SH" -s a b 2>&1)
+assert_output_equals "\$- has s for -s" "[s] 2" "$out"
+out=$("$THIS_SH" -c 'echo "[$-]"; set -m; echo "[$-]"' 2>&1)
+assert_output_equals "\$- has no s or i for -c, and m after set -m" "[]
+[m]" "$out"
 report

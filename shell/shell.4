@@ -1318,6 +1318,7 @@ VARIABLE OPT-ALLEXPORT \ set -a: every assignment is exported too
   OPT-ALLEXPORT @ IF SWAP SETENV DROP ELSE 2DROP THEN ;
 VARIABLE OPT-VERBOSE   \ set -v: each line of input is echoed as it is read
 VARIABLE OPT-MONITOR   \ set -m: accepted and reported; jobs run as before
+VARIABLE OPT-STDIN     \ commands read from standard input: `s` in $- (713)
 VARIABLE OPT-NOTIFY    \ set -b: the same - a finished job is reported at the
                        \ next prompt either way (Iteration 386)
 VARIABLE OPT-ERREXIT
@@ -2650,7 +2651,13 @@ VARIABLE REDIR-TARGET-WORD?   \ expanding a redirection's target
   OPT-ALLEXPORT @ IF 97 EMIT-TOK-CHAR THEN
   OPT-NOCLOBBER @ IF 67 EMIT-TOK-CHAR THEN
   OPT-VERBOSE @ IF 118 EMIT-TOK-CHAR THEN
-  OPT-XTRACE @ IF 120 EMIT-TOK-CHAR THEN ;
+  OPT-XTRACE @ IF 120 EMIT-TOK-CHAR THEN
+  \ s and i (Iteration 713, GOALS.md 6b): dash shows `si` for
+  \ `echo 'echo $-' | dash -i`, and a script testing `case $- in *i*)` to
+  \ learn whether it is interactive found no i here
+  OPT-STDIN @ IF 115 EMIT-TOK-CHAR THEN
+  OPT-MONITOR @ IF 109 EMIT-TOK-CHAR THEN       \ -m, set by set -m and job control
+  INTERACTIVE? @ IF 105 EMIT-TOK-CHAR THEN ;
 
 : NOUNSET-CHECK ( c-addr u --- )   \ an unset parameter was expanded
   OPT-NOUNSET @ 0= IF 2DROP EXIT THEN

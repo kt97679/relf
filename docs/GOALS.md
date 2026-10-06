@@ -70,10 +70,9 @@ ordinary scripts hit, then edge cases and wording.
 6. **Prompt escapes**: `\D{format}` and `\j` came in 476. `\v` and
    `\V` stay as written on purpose - they are bash's version - and so
    does `\l`, which would need a readlink primitive in the engine.
-6b. **`$-` shows no `i` in an interactive shell**, nor `s` when the
-   script is standard input; dash shows `si` for `echo 'echo $-' | dash
-   -i` (found at 493). `-i` itself works. Small; a script testing
-   `case $- in *i*)` to detect interactivity is what it would break.
+6b. **`$-` shows no `i` in an interactive shell** - done in 713: s, m
+   and i as dash shows them ([si] for -i on a pipe, [smi] at a terminal),
+   tested in run-options and the interactive suite.
 7. **Speed on busybox's many_ifs**: 12 s against dash's 7.5 (423),
    profiled in 451 and FLAT - `(LOOP)` 5.6%, EXPAND-WORDS 4.8%, nothing
    else above 2.6%. No cheap win; it is the interpreter, which is
@@ -104,7 +103,8 @@ ordinary scripts hit, then edge cases and wording.
    send one there - from another process, and during the prompt's own
    $(...) - find it taken; the survival 711 described would need a wait in
    the prompt path setting it aside, not found; prompt-probe.py now guards
-   both routes) (658,
+   both routes; tools/intrfuzz-stress.sh, 713, is the run to make on
+   fury's cores) (658,
    its first pack's verify, on relfsh - the C engine). After ^Cs into an
    include whose file loops, the prompt came back each time and `echo`
    answered, but `forth 'DEPTH . CR'` printed nothing - as if a ^C held

@@ -737,6 +737,7 @@ do not trust the absence of a line below.
 - 710 — the tree readers XF@ and XV@ priced: 1-4.5 %, the next CV8 candidate as engine primitives
 - 711 — the races: item 8 0/30 under load; relf runs type-ahead after ^C where dash and bash lose it; 8c's window found
 - 712 — PS1 expanded once per prompt (it ran at every key); prompt-probe.py guards it and two ^C races
+- 713 — $- shows s, m and i as dash's (6b); tools/intrfuzz-stress.sh for 8c on fury's cores
 
 ### Not tied to an iteration
 

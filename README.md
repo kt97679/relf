@@ -16,7 +16,7 @@ self-hosting (docs/GOALS.md). What it is today:
   `edit.4` - with job control, a line editor with history, and `$'...'`
   and `set -o pipefail` from POSIX.1-2024. On yash's and busybox's test
   suites it passes more cases than dash does (docs/DASH.md). The whole
-  shell is one static file of 143,252 bytes on the assembly engine, and
+  shell is one static file of 143,324 bytes on the assembly engine, and
   `forth` drops from it into the live system it is written in: every
   word, compiler included, is there to extend it.
 

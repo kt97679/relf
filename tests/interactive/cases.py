@@ -14,6 +14,9 @@ CASES = [
     ("function-over-lines", {}, ["f() {\n", "echo in-f\n", "}\n", "f\n", ("exit\n", 'nowait')]),
     ("bad-command", {}, ["nosuchcmd\n", "echo $?\n", ("exit\n", 'nowait')]),
     ("status-visible", {}, ["false\n", "echo $?\n", "true\n", "echo $?\n", ("exit\n", 'nowait')]),
+    # $- at a terminal: s, m and i, as dash's (Iteration 713, GOALS.md 6b).
+    # Recorded from dash.
+    ("dollar-minus", {}, ["echo \"[$-]\"\n", ("exit\n", 'nowait')]),
     ("intr-at-prompt", {}, ["echo before\n", "INTR", "echo after\n", ("exit\n", 'nowait')]),
     ("intr-during-command", {}, [("sleep 5\n", 'nowait'), 0.5, "INTR", "echo survived\n", ("exit\n", 'nowait')]),
     # ^C stops the command line (Iteration 571, A31): each of these ran on

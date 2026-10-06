@@ -3698,12 +3698,13 @@ VARIABLE SA-DONE?    \ `--` seen: the rest are operands
   THEN ;
 
 : RUN-STDIN ( --- )   \ commands from standard input
+  -1 OPT-STDIN !                               \ $- shows s (713)
   INTERACTIVE? @ IF INTERACTIVE-SETUP READ-ENV-FILE-CALL THEN
   0 0 PARSE-INIT  -1 SRC-STDIN? !  STDIN-TEXT SRC-ADDR !
   TREE-RUN LAST-STATUS @ SHELL-EXIT ;
 
 : RUN-SOURCES ( --- )   \ -c, a script, or standard input
-  0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !  0 EXIT-AFTER? !  0 SRC-DEPTH !
+  0 OPT-STDIN !  0 NESTED? !  0 INTERACTIVE? !  0 SRC-EOF? !  0 EXIT-AFTER? !  0 SRC-DEPTH !
   0 LOGIN? !
   SHELL-PARSE-ARGS
   LOGIN? @  SHELL-NAME @ C@ 45 =  OR IF READ-PROFILES-CALL THEN
