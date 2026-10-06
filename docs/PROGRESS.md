@@ -734,6 +734,7 @@ do not trust the absence of a line below.
 - 707 — the kernel's DUP-before-branch and variable fetches folded: its code -1 KB; over layouts inside the floor, leaning 1 % slow
 - 708 — fury's pack at 707: native 0-4 % faster there; bench.4's loop 7 -> 15 ms is the loop crossing a 16-byte line
 - 709 — ARGV-ADD priced on CV8: all its stores worth 1-3.5 %; a redesign could not show - not built
+- 710 — the tree readers XF@ and XV@ priced: 1-4.5 %, the next CV8 candidate as engine primitives
 
 ### Not tied to an iteration
 

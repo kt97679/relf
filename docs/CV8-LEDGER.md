@@ -305,3 +305,21 @@ places. Not built. CV8's profile is flat now - NAME-HASH 4.8 %, ARGV-ADD
 4.8, EXPAND-WORDS 4.2, EW-ENTRY 4.0, FIND-SHVAR 3.6, XF@ 3.2, VALID-NAME?
 2.6, DEFER 2.5 - and its dispatches are cheap ones: no one structure
 holds a share a redesign could show.
+
+### 710, the tree readers priced - the next candidate
+
+XF@ and XV@ - 3.2 % and 1.7 % of the realistic script's dispatches, each
+a call to `1+ CELLS + X@` or `2 + CELLS + X@` (too long for 701's
+inliner) - priced the same way: each read done twice, behaviour
+unchanged, against 709's tree, 9 rounds:
+
+| shell | loop | fn | str | arith | realistic |
+|---|---:|---:|---:|---:|---:|
+| asm engine, XF@ and XV@ twice | 1.030 | 1.044 | 1.027 | 1.027 | 1.013 |
+| C engine, the same | 1.010 | 1.022 | 1.023 | 1.035 | 1.034 |
+
+Their bodies' work is 1-4.5 %, and a call and an EXIT besides at every
+use. As engine primitives - a node's field and a vector's item fetched
+in one dispatch, as CTABLE-FIND (676) made the variable scan - they
+could give back most of both: 676's kind of gain, at the edge of what
+the ledger resolves. Not begun; the user's to choose.
