@@ -180,3 +180,50 @@ build first - cheap, and likely to find something.
     **The line editor against bash's**: the same keystroke streams
     through a pty into both; the command lines they produce compared, for
     the keys both claim.
+
+## From the paleocomputing article (Iteration 719)
+
+Timur Tukaev's "Палеокомпьютинг, часть 1" (habr.com/ru/articles/1087928,
+2026-09-29): Wirth's RISC5 run from its Verilog, the price of bounds
+checks measured, the machine taken through QEMU, libvirt, KubeVirt and
+Cozystack - written by agents, with other agents as reviewers and
+auditors. Most of its method relf has already: mutation testing (7),
+negative controls, two builds doing the same work, the layout A/B for
+noise bigger than the effect (NATIVE.md 13), a self-build compared byte
+for byte. What it adds:
+
+15. **Mutate the compiler, not only the program.** The article planted 30
+   plausible bugs in the processor - `>=` for `>` and the like - and its
+   tests caught 10; "every check must be able to fail, and show it".
+   tools/mutate.py (7) mutates the shell's bytecode; nothing mutates what
+   made the most change since 686: the native compilers (kernel-native.4,
+   native.4's folds, native-rt.4's SHORT-MOVE) and the engines (cv8.c,
+   relfasm64.4). A wrong condition code in a fused compare, SHORT-FITS?
+   off by one, a nop one byte long - would the native tests, the
+   self-build and the suites on the native shell see it? A mutant that
+   fails to build is a failure of the run, not a catch (the article's
+   audit counted a crashed mutation script as catching everything).
+16. **Make verify go red on purpose.** The article's checks passed with
+   nothing run - zero tests read as green, success taken from a smiley in
+   the last line. One run per component broken on purpose - a shell that
+   fails every case, an engine that miscomputes one primitive, a tool
+   that crashes - and verify must fail on the rows that cover it. A row
+   that stays the same with its subject broken checks nothing. Its three
+   `|| true` are the first places to look.
+17. **The two CV8 engines in lockstep.** The article compared its machine
+   with a trusted emulator instruction by instruction, every register
+   after every instruction, and found a flag rule the processor's
+   description never mentions. The C and asm engines run the same image;
+   the suites compare their output only. A trace - instruction pointer,
+   depth, top of stack after each dispatch - from each, compared over the
+   corpus, finds the divergence that has not yet reached an output.
+18. **Price the checks relf pays for safety, as the article did** - two
+   builds doing the same work, one without the checks - wherever an
+   engine or the shell checks on every operation rather than by a guard
+   page or the CPU's trap (safety.4 turns the traps into THROWs, which
+   costs nothing until one comes).
+19. **The ceiling before the build.** Before its fast multiplier the
+   article bounded it: a multiply made free could not beat 1.64x, and the
+   build gave 1.6. A feature's dispatch share, priced as free, before it
+   is priced by doing its work twice (CV8-LEDGER's method) - the cheap
+   bound first.
