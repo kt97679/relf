@@ -36,7 +36,11 @@ is always mapped. Both passed, broken or not, until run that way.
 1. **Reproduce the failure before fixing it**, with the test you will
    keep. If it cannot be made to fail on demand (a race, a timing
    window), build the case that forces the same state by other means -
-   and say that the test forces it, not that it catches it.
+   and say that the test forces it, not that it catches it. A mechanism
+   read from the code is not a reproduction: in the shell project a ^C
+   window found by reading was probed two ways, on purpose, and the
+   shell already handled both - the fix written for it would have fixed
+   nothing (`21`).
 
 2. **After the fix, run the test both ways:** on the build without the
    fix (stash it, rebuild) it must fail; with the fix it must pass.

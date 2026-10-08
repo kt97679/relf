@@ -80,6 +80,15 @@ budget was decomposed.
 
 ---
 
+- **"Why is X bigger, or slower, than Y" is framed like for like before
+  a cause is named.** In a shell project, "412 KB against dash's 130 KB"
+  held at least four separate causes: files with and without unwind
+  tables and kept names; machine code alone (365 KB against 76 KB);
+  instruction count apart from instruction length (five times the
+  instructions at about the same length - the real cause); and the
+  same function written in both (211 bytes against 81). A file-size
+  ratio would have been blamed on whichever cause came to mind first.
+
 ## Deliverable
 
 A written question, cost model, degeneracy check, budget decomposition and falsification criterion.

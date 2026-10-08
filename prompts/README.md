@@ -38,6 +38,9 @@ describe are ones any measurement or write-up project can reproduce.
 | [17-checks-outlive-a-turn](17-checks-outlive-a-turn.md) | when starting a check longer than one call or turn | a cut-off log read as a pass; a commit one step from being made on it (Iteration 631) |
 | [18-session-start](18-session-start.md) | at the start of a session that picks up someone else's work | a first turn spent reading; an environment's gaps found by failing; what only the start message knew (Iteration 656) |
 | [19-round-trip](19-round-trip.md), with [its template script](19-round-trip.sh) | when the work needs, more than once, what only the user's machine can give | reports never kept, figures carried in messages, a loop pasted by hand, a script updating the checkout it ran from (Iteration 664) |
+| [20-noise-floor-first](20-noise-floor-first.md) | before judging an A/B of two builds | a verdict that is layout luck: the same program moving as much as the change (Iteration 720) |
+| [21-race-needs-its-conditions](21-race-needs-its-conditions.md) | when an intermittent failure is to be explained or closed | absence claimed from a machine that cannot produce the failure; a mechanism read from code and fixed unprobed (Iteration 720) |
+| [22-restated-claim](22-restated-claim.md) | when someone restates your conclusion and asks you to confirm it | confirming your own overclaim because it came back in someone else's words (Iteration 720) |
 
 ## The two that mattered most
 

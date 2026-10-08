@@ -66,7 +66,11 @@ cost. The change built on that price came in at what it predicted.
    removes. In the shell project's compiler two extra dependent register
    operations before each compare's branch priced a flag's latency at
    nothing: a predicted branch never waits for it. The change removed
-   six instructions a site and 2 % of the code, and was worth 4-5 %.
+   six instructions a site and 2 % of the code, and was worth 4-5 %. Work it out first, before
+   any build: a hardware project bounded a faster multiplier this way - a
+   multiply made free could not beat 1.64x - and the one it built gave
+   1.6x. A ceiling under the A/B's floor (`20`) ends the question before
+   any work.
 
 7. **Price even the small change, when every change carries a full
    cycle.** Doing includes the suite, the log and the handover;

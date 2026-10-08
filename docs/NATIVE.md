@@ -1267,14 +1267,16 @@ are stack arithmetic and the code-driven expansion and tokenizer, where
 dash uses tables (mksyntax's character classes, the node size tables)
 and big switch statements.
 
-**What would change it.** In order of bytes: a register allocator for
-the native compiler - values kept in registers across words, the stack
-pointer moved once per basic block - goes at the 40 % and most of the
-sub and add (the deferred push, 704, was its smallest step, and fired 4
-times); the shell's names dropped from a build without the forth
-builtin (28.5 KB); the Forth system's 56 KB is the price of the forth
-builtin itself. None of it is small work; each would go through the
-layout A/B and fury like 686-714.
+**What would change it.** Corrected at 718 (NATIVE.md 17): 717 said here
+that a register allocator for the native compiler goes at the 40 %. Most
+of that traffic sits at calls - 669 found most pushes feeding one - and
+inside a word the peepholes have taken the common pairs; registers
+through a run inside a word (17.3 B) go at the straight code's third and
+part of the branches' quarter, and the calls' share needs a new calling
+convention (17.3 C, D), a rewrite. The shell's names dropped from a build
+without the forth builtin (28.5 KB); the Forth system's 56 KB is the
+price of the forth builtin itself. Each would go through the layout A/B
+and fury like 686-714.
 
 ## 17. Argument passing with Forth kept: what the code says (Iteration 718)
 

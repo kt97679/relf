@@ -55,9 +55,19 @@ failures printed" as success.
    `pgrep -f suite` matches the shell that runs it; the kill loop then
    ends the call that issued it, and nothing after it runs. Find the
    process by `ps ... | grep '[s]uite'` - the bracket keeps the grep
-   from matching itself - and stop it by its process ID.
+   from matching itself - and stop it by its process ID. (This slip came
+   back in a later session, step written and all: a cleanup line's
+   `pkill -f` ended its own call. Per `15`, a mechanical guard: stop only
+   process IDs recorded when the processes were started.)
 
-6. **Say in the reply what is still running** and what will be checked
+6. **Give every unattended command no input and a limit.** A command
+   that takes its file from a variable reads standard input when the
+   variable is empty: `wc -l $f` with no `$f` waits for a terminal that
+   never answers until the call's limit ends it - five minutes lost so,
+   in the shell project. `< /dev/null` and `timeout` on anything that
+   might read.
+
+7. **Say in the reply what is still running** and what will be checked
    next turn, so a cut-off turn is not mistaken for a finished one.
 
 ## Artifact required

@@ -744,6 +744,7 @@ do not trust the absence of a line below.
 - 717 — why the native shell is 4x dash: 5x the instructions (stack traffic), not more logic; NATIVE.md 16; GOALS.md 12 captured
 - 718 — argument passing with Forth kept: 89 % of calls pass 0-1 cells; options A-D, 32-bit; NATIVE.md 17
 - 719 — the paleocomputing article: relf has most of its method; five new testing ideas (TESTING-IDEAS.md)
+- 720 — prompts 20-22 (noise floor, a race's conditions, a restated claim); 01, 10, 16, 17 extended; NATIVE.md 16 corrected
 
 ### Not tied to an iteration
 

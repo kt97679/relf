@@ -40,6 +40,9 @@ fetched lazily when their trigger conditions are met.
 | `17-checks-outlive-a-turn` | start a check that may run longer than one call or turn | it finishes well inside one call |
 | `18-session-start` | start a session on work another session, person or machine left - before reading anything else | the work starts from nothing |
 | `19-round-trip` | the work needs, more than once, what only the user's machine can give | once, and one pasteable command gives it |
+| `20-noise-floor-first` | call one build faster or slower than another | the difference is many times any spread seen between builds of one program |
+| `21-race-needs-its-conditions` | explain, clear or close an intermittent failure, above all one seen on another machine | it reproduces on demand where you are |
+| `22-restated-claim` | confirm, or build on, a conclusion of yours that someone has restated | it was measured here and the restatement says no more |
 
 ## The one that is hardest to self-apply
 
@@ -65,7 +68,10 @@ from working its failures in the right order, and `15`-`17` later still,
 from building a native compiler for it: repeated slips, a claimed fix
 that had never failed, and checks longer than a turn; and `18` from the first turn of a session
 that spent it all on reading; `19`, with a template script beside it,
-from the round trips through the user's laptop. They are about work that
+from the round trips through the user's laptop; `20`-`22` from that
+compiler's size work and its A/Bs, a race chased on a machine that could
+not produce it, and a remedy confirmed because the user restated it.
+They are about work that
 OUTLIVES a session and software that runs somewhere other than where it
 was written. That family's failures are cheaper to hit and easier to
 miss: nine of the eleven faults the handover found were in the test
