@@ -207,6 +207,22 @@ the account of what each gained and cost.
    -` as ADD-IMM8 with -n; the asm engine's handlers aligned (714's
    analogue); a separate data region for CV8 (memory, not speed).
 
+13. **Deep nesting and recursion stop early** (721, measured, not begun).
+   tests/shell/run-nesting goes 8 deep (256 iterations) and 60 wide; no
+   test goes deeper. Probed: `for` loops nested N deep, one iteration
+   each - relf runs 452-453 levels (asm, C, native alike), then stops
+   cleanly with "relf: return stack overflow or data stack underflow"
+   (exit 70; parsing alone, -n, gets through 1,000); dash ran 20,000;
+   bash 1,000, and at 5,000 its parser gave a syntax error. A recursive
+   function: relf stops at 32 levels ("shell: function recursion too
+   deep" - MAX-POS-PARAM-DEPTH's guard, which Iteration 90 made fire
+   before the return stack overflowed); dash allows 1,000 (its own
+   limit), bash 5,000 and segfaults by 20,000. The function limit is the
+   one a real script meets - a recursive walk or a recursive algorithm
+   past 32 levels. Raising it needs the positional-parameter frames
+   deeper and the return stack larger (about a dozen Forth calls a
+   level, cv8.c's comment); loop nesting is the return stack alone.
+
 ## The second end state, reached (Iteration 548)
 
 GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
