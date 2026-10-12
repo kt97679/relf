@@ -1,4 +1,9 @@
-# tools/utf8 - Iteration 722's UTF-8 probes (not yet in the suites)
+# tools/utf8 - Iteration 722's UTF-8 probes
+
+In the suites since 723: tests/shell/run-utf8 (the 23 byte cases, dash's
+bytes recorded, and the function-name case by status; also on relfsh32
+in verify), and the interactive suite's edit-utf8-* and edit-transpose-*
+cases. These are the probes as first run.
 
 - cases.txt and run-cases.sh: 24 one-line cases - UTF-8 and stray high
   bytes through echo, printf, ${#v}, ${v#h?}, case and bracket patterns,

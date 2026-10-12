@@ -106,6 +106,24 @@ CASES = [
     ("edit-utf8-left", {}, ["echo привет", "\x1b[D\x1b[D", "X", "\n", ("exit\n", 'nowait')]),
     ("edit-utf8-delete", {}, ["echo привет", "\x1b[D\x1b[D", "\x04", "\n", ("exit\n", 'nowait')]),
     ("edit-utf8-word", {}, ["echo слово два", "\x1bb", "\x1bb", "X", "\n", ("exit\n", 'nowait')]),
+    # More UTF-8 on the terminal, and ^T, ^P and ^N (Iteration 723, after
+    # 722's probes): recorded from this shell and read - x (an emoji's four
+    # bytes under one Backspace); привет мир! (^W, then ^Y); гXде (six
+    # rights from the start: past "echo " and г); ba and acb (^T at the end
+    # and in the middle - bash's readline gives the same); ба and гед (the
+    # same by characters, not bytes); ёлка run twice (Up); two (^P ^P ^N);
+    # aé completed from a (TAB on a UTF-8 file name).
+    ("edit-utf8-emoji-backspace", {}, ["echo x\U0001F600", "\x7f", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-kill-yank", {}, ["echo привет мир", "\x17", "\x19", "!", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-right", {}, ["echo где", "\x01", "\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C", "X", "\n", ("exit\n", 'nowait')]),
+    ("edit-transpose-end", {}, ["echo ab", "\x14", "\n", ("exit\n", 'nowait')]),
+    ("edit-transpose-mid", {}, ["echo abc", "\x02", "\x14", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-transpose-end", {}, ["echo аб", "\x14", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-transpose-mid", {}, ["echo где", "\x02", "\x14", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-history", {}, ["echo ёлка\n", "\x1b[A", "\n", ("exit\n", 'nowait')]),
+    ("edit-history-ctrl-p-n", {}, ["echo one\n", "echo two\n", "\x10", "\x10", "\x0e", "\n", ("exit\n", 'nowait')]),
+    ("edit-utf8-complete", {}, ["mkdir -p /tmp/relf-u8c && cd /tmp/relf-u8c && touch aé\n", "echo a", "\t", "\n",
+                                "cd / && rm -rf /tmp/relf-u8c\n", ("exit\n", 'nowait')]),
     ("partial-line-forth", {}, ["forth '2 3 + .'\n", "echo next\n", ("exit\n", 'nowait')]),
     # The word keys and the kill buffer (Iteration 568, A30): recorded
     # from this shell, each result what bash's readline gives for the

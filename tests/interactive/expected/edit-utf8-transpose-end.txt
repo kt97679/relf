@@ -1,0 +1,3 @@
+<PS1>echo ба
+ба
+<PS1>exit

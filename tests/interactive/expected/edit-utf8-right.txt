@@ -1,0 +1,3 @@
+<PS1>echo гXде
+гXде
+<PS1>exit

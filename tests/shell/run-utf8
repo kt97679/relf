@@ -1,0 +1,29 @@
+#!/bin/sh
+# tests/shell/run-utf8 - UTF-8 and stray high bytes through the shell
+# (Iteration 723; probed first at 722, tools/utf8/). This shell compares
+# bytes - the C locale's behaviour, as dash's: ${#v} counts bytes, ? is a
+# byte, [é] two of them - so each case's stdout must be dash's, byte for
+# byte: utf8-cases.txt holds one case a line (HEREDOC stands for a
+# here-document with a command substitution in it), utf8.expected dash's
+# stdout for each in hex, recorded with LC_ALL=C. A function named é is
+# refused by both, in different words: asserted by its status alone.
+. "$(dirname "$0")/lib.sh"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+here=$(cd "$(dirname "$0")" && pwd)
+case "$THIS_SH" in /*) SH=$THIS_SH ;; *) SH=$(pwd)/$THIS_SH ;; esac
+cd "$t" || exit 1
+mkdir g && : > g/é && : > g/ü && : > g/aé
+n=0
+exec 3< "$here/utf8.expected"
+while IFS= read -r line; do
+    n=$((n + 1))
+    IFS= read -r want <&3
+    if [ "$line" = HEREDOC ]; then printf 'cat << EOF\né ü 日本 $(echo ä)\nEOF\n' > case.sh
+    else printf '%s\n' "$line" > case.sh; fi
+    got=$(LC_ALL=C "$SH" case.sh 2>/dev/null < /dev/null | od -An -v -tx1 | tr -d ' \n')
+    assert_output_equals "utf8 case $n: $line" "$want" "$got"
+done < "$here/utf8-cases.txt"
+exec 3<&-
+st=$(LC_ALL=C "$SH" -c 'é() { echo f; }' 2>/dev/null; echo $?)
+assert_output_equals "utf8: a function named é is a syntax error, status 2" "2" "$st"
+report

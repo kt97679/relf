@@ -747,6 +747,7 @@ do not trust the absence of a line below.
 - 720 — prompts 20-22 (noise floor, a race's conditions, a restated claim); 01, 10, 16, 17 extended; NATIVE.md 16 corrected
 - 721 — nesting limits measured: loops 452 deep, functions 32 (dash 20,000+ and 1,000); GOALS.md 13
 - 722 — UTF-8: thin coverage outside the terminal; 24+8 probes clean on every engine; tools/utf8/
+- 723 — run-utf8 (dash's bytes, five shells and i386 in verify); ^T by characters, ^P, ^N; ten editor cases
 
 ### Not tied to an iteration
 

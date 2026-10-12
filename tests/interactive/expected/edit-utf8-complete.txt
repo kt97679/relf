@@ -1,0 +1,5 @@
+<PS1>mkdir -p /tmp/relf-u8c && cd /tmp/relf-u8c && touch aé
+<PS1>echo aé 
+aé
+<PS1>cd / && rm -rf /tmp/relf-u8c
+<PS1>exit

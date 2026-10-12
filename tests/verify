@@ -222,6 +222,11 @@ emit diff:failed "$(sed -n 's/.*differential case(s), \([0-9]*\) failed.*/\1/p' 
 # script's own output, which the caller keeps.
 grep '^FAIL: ' /tmp/verify-run.log | sed 's/^/  diff: /' | head -20
 emit shell:assertions "$(bash tests/shell/run-all 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+# UTF-8 through the 32-bit C engine too, where a signed char would show
+# first (Iteration 723); the 64-bit shells run run-utf8 in their suites
+if [ -x ./relfsh32 ]; then
+    emit i386:utf8:failed "$(THIS_SH=$PWD/relfsh32 timeout 120 sh tests/shell/run-utf8 2>&1 | tail -1 | awk '{print $3}')"
+fi
 # The forth builtin's errors, at random (Iteration 595): each case makes
 # errors the Forth system detects - stack under- and overflow, THROW,
 # division by zero, bad addresses, includes that fail or nest - and then

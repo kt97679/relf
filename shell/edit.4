@@ -748,6 +748,30 @@ VARIABLE ED-PAT-U
   ED-SEARCH-HIT @ 0< 0= IF ED-SEARCH-HIT @ HIST-SLOT DUP CSTRLEN ED-OUT+ THEN
   ED-CSI 75 ED-CH ;                          \ erase to end of line
 
+: ED-REVERSE ( c-addr u --- )   \ the bytes reversed in place (723)
+  BEGIN DUP 1 > WHILE
+    OVER DUP C@ >R                 ( a u a )      ( R: the first byte )
+    OVER + 1- DUP C@               ( a u a+u-1 the-last )
+    3 PICK C!                      ( a u a+u-1 )  \ the last to the front
+    R> SWAP C!                     ( a u )        \ the first to the back
+    2 - SWAP 1+ SWAP
+  REPEAT 2DROP ;
+
+: ED-TRANSPOSE ( --- )
+  \ ^T (723), readline's transpose-chars by characters, not bytes: the
+  \ character before the cursor and the one under it change places and
+  \ the cursor goes past both; at the line's end, the last two. Nothing
+  \ at the line's start or with one character. Two reversals and one of
+  \ the whole turn X Y into Y X whatever their lengths in bytes.
+  ED-POS @ DUP ED-LEN @ = IF ED-PREV THEN       ( b )  \ at the end: the last two
+  DUP 0= IF DROP EXIT THEN
+  DUP ED-PREV SWAP DUP ED-NEXT                  ( a b c )
+  >R
+  OVER ED-BUF +  OVER 3 PICK -  ED-REVERSE      \ X reversed
+  DUP ED-BUF +  R@ 2 PICK -  ED-REVERSE         \ Y reversed
+  DROP DUP ED-BUF +  R@ ROT -  ED-REVERSE       \ the two together: Y X
+  R> ED-POS ! ;
+
 : ED-KEY-ACT ( c --- )
   DUP 10 = OVER 13 = OR IF DROP 1 ED-DONE ! EXIT THEN
   DUP 27 = IF DROP ED-ESCAPE EXIT THEN
@@ -766,6 +790,9 @@ VARIABLE ED-PAT-U
   DUP 9 = IF DROP ED-COMPLETE EXIT THEN           \ TAB: complete the word
   DUP 23 = IF DROP ED-BACK-BLANKWORD ED-POS @ ED-KILL EXIT THEN   \ ^W
   DUP 25 = IF DROP ED-YANK EXIT THEN              \ ^Y
+  DUP 20 = IF DROP ED-TRANSPOSE EXIT THEN         \ ^T (723)
+  DUP 16 = IF DROP ED-HIST-UP EXIT THEN           \ ^P: the arrows' up (723)
+  DUP 14 = IF DROP ED-HIST-DOWN EXIT THEN         \ ^N: and down
   DUP 32 < IF DROP EXIT THEN                      \ other control characters
   ED-INSERT ;
 
