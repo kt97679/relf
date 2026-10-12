@@ -1,0 +1,3 @@
+$<PS1>echo [x]
+[x]
+<PS1>exit

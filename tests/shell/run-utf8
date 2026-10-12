@@ -1,6 +1,9 @@
 #!/bin/sh
 # tests/shell/run-utf8 - UTF-8 and stray high bytes through the shell
-# (Iteration 723; probed first at 722, tools/utf8/). This shell compares
+# (Iteration 723; probed first at 722, tools/utf8/; at 725 a 4-byte emoji
+# in lengths, patterns and IFS, a decomposed é against a composed one,
+# Hebrew, Arabic and Thai through read, and a script that starts with a
+# byte-order mark). This shell compares
 # bytes - the C locale's behaviour, as dash's: ${#v} counts bytes, ? is a
 # byte, [é] two of them - so each case's stdout must be dash's, byte for
 # byte: utf8-cases.txt holds one case a line (HEREDOC stands for a

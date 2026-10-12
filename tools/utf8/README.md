@@ -17,3 +17,10 @@ cases. These are the probes as first run.
   a stray 0xFF typed and passed, TAB completing a UTF-8 file name, cursor
   right. Its history check looks for the two lines adjacent, which the
   redraw between them defeats: read the transcript (722 did).
+
+- gen-zero-width.py: shell.4's ZERO-WIDTH table from Python's Unicode
+  database, glibc's wcwidth rule (Mn, Me, Cf but the soft hyphen,
+  Hangul's medial and final jamo). Rerun it on a newer Python for a newer
+  Unicode and paste its output over the table (725).
+- scripts-probe.py: nine scripts' editing against bash's readline (724-725).
+- more-cases.txt: 724's extra byte-class cases, in run-utf8 since 725.

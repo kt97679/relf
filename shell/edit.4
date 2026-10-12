@@ -85,12 +85,24 @@ VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
 : ED-CONT? ( c --- f )   192 AND 128 = ;          \ a continuation byte
 : ED-COLS ( c-addr u --- n )   \ its columns: each character's width (604)
   0 ROT ROT OVER + SWAP ?DO I C@ ED-CONT? 0= IF I CHAR-COLS + THEN LOOP ;
-: ED-PREV ( i --- i' )   \ the start of the character before byte i
+: ED-PREV1 ( i --- i' )   \ the start of the code point before byte i
   BEGIN DUP 0> WHILE 1- DUP ED-BUF + C@ ED-CONT? 0= IF EXIT THEN REPEAT ;
-: ED-NEXT ( i --- i' )   \ past the character at byte i
+: ED-NEXT1 ( i --- i' )   \ past the code point at byte i
   DUP ED-LEN @ < IF
     1+ BEGIN DUP ED-LEN @ < IF DUP ED-BUF + C@ ED-CONT? ELSE 0 THEN WHILE 1+ REPEAT
   THEN ;
+: ED-ZW? ( i --- f )   \ a code point of no columns starts at byte i: a combining mark, ZWJ
+  DUP ED-LEN @ < IF ED-BUF + CHAR-COLS 0= ELSE DROP 0 THEN ;
+\ A character is a base and the zero-width code points after it (725):
+\ readline's steps. By code points, Backspace took a decomposed é's
+\ accent alone and the arrows stopped between e and accent - a key typed
+\ there took the accent; Thai ที่ lost one mark of two, Devanagari its
+\ vowel sign (GOALS.md 14). Backspace, Delete, the arrows, the word keys
+\ and ^T all step with these two.
+: ED-PREV ( i --- i' )   \ the start of the character before byte i
+  ED-PREV1  BEGIN DUP 0> OVER ED-ZW? AND WHILE ED-PREV1 REPEAT ;
+: ED-NEXT ( i --- i' )   \ past the character at byte i, its marks with it
+  ED-NEXT1  BEGIN DUP ED-ZW? WHILE ED-NEXT1 REPEAT ;
 : ED-OUT+ ( c-addr u --- )   2DUP ED-COLS ED-COL +!  ED-OUT ;   \ ... and counted
 
 : ED-REDRAW ( --- )

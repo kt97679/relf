@@ -1,0 +1,3 @@
+$$$$$$$<PS1>echo [Zéx]
+[Zéx]
+<PS1>exit

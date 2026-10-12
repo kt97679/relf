@@ -99,7 +99,10 @@ mode: it could be typed and backspaced over, and nothing else. An arrow
 key arrived as three bytes and went into the command, so correcting
 `echo hi` ran `echo h^[[Di`. There was no history.
 
-`edit.4` reads one byte at a time and does the editing itself:
+`edit.4` reads one byte at a time and does the editing itself. A
+character, to every key below, is a code point and the zero-width ones
+after it - an accent, a vowel sign, a joiner - as readline counts them
+(Iteration 725):
 
 | key | effect |
 |---|---|

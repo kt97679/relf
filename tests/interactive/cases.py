@@ -122,6 +122,15 @@ CASES = [
     ("edit-utf8-transpose-mid", {}, ["echo где", "\x02", "\x14", "\n", ("exit\n", 'nowait')]),
     ("edit-utf8-history", {}, ["echo ёлка\n", "\x1b[A", "\n", ("exit\n", 'nowait')]),
     ("edit-history-ctrl-p-n", {}, ["echo one\n", "echo two\n", "\x10", "\x10", "\x0e", "\n", ("exit\n", 'nowait')]),
+    # A base and its zero-width marks are one character (Iteration 725,
+    # GOALS.md 14): recorded from this shell and read, each what bash's
+    # readline gives - x (Backspace takes e and its accent); Zéx (the
+    # arrows step over e and accent together); [] (Thai's base and both
+    # marks); नमस् (Devanagari's त with its vowel sign).
+    ("edit-combining-backspace", {}, ["echo [xe\u0301", "\x7f", "]", "\n", ("exit\n", 'nowait')]),
+    ("edit-combining-left", {}, ["echo [e\u0301x]", "\x1b[D\x1b[D\x1b[D", "Z", "\n", ("exit\n", 'nowait')]),
+    ("edit-thai-backspace", {}, ["echo [ที่", "\x7f", "]", "\n", ("exit\n", 'nowait')]),
+    ("edit-devanagari-backspace", {}, ["echo [नमस्ते", "\x7f", "]", "\n", ("exit\n", 'nowait')]),
     ("edit-utf8-complete", {}, ["mkdir -p /tmp/relf-u8c && cd /tmp/relf-u8c && touch aé\n", "echo a", "\t", "\n",
                                 "cd / && rm -rf /tmp/relf-u8c\n", ("exit\n", 'nowait')]),
     ("partial-line-forth", {}, ["forth '2 3 + .'\n", "echo next\n", ("exit\n", 'nowait')]),

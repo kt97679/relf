@@ -21,3 +21,9 @@ alias ü=echo 2>/dev/null; echo "alias $?"
 getopts é o -é 2>/dev/null; echo "getopts $? $o"
 echo $((1+1)) é; x=é; echo "${x}x${x}"
 printf 'a\303\251b\n' | od -An -tx1; printf '%b\n' 'a\0303\0251b' | od -An -tx1
+v=x😀y; echo ${#v}; printf "%s\n" "${v#x?}" | od -An -tx1
+case 😀 in ????) echo four;; ?) echo one;; *) echo other;; esac
+IFS=😀; v="a😀b"; set -- $v; echo $#
+printf '%s\n' 'e\314\201' | { read w; [ "$w" = "é" ] && echo same || echo differ; }
+printf "שלום عربي ไทย\n" | { read a b c; echo "$c|$b|$a"; }
+﻿echo bom
