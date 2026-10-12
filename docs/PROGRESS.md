@@ -748,6 +748,7 @@ do not trust the absence of a line below.
 - 721 — nesting limits measured: loops 452 deep, functions 32 (dash 20,000+ and 1,000); GOALS.md 13
 - 722 — UTF-8: thin coverage outside the terminal; 24+8 probes clean on every engine; tools/utf8/
 - 723 — run-utf8 (dash's bytes, five shells and i386 in verify); ^T by characters, ^P, ^N; ten editor cases
+- 724 — other scripts: byte classes all match dash; the editor splits combining marks from their base (GOALS.md 14)
 
 ### Not tied to an iteration
 

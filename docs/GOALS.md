@@ -223,6 +223,18 @@ the account of what each gained and cost.
    deeper and the return stack larger (about a dozen Forth calls a
    level, cv8.c's comment); loop nesting is the return stack alone.
 
+14. **The editor splits a character from its combining marks** (724,
+   found, not begun). Backspace over a decomposed é (e and U+0301)
+   removes the accent alone, and the arrows stop between the e and its
+   accent, so a key typed there takes the accent - `eŹx` where
+   bash's readline gives `Zéx`. Thai ที่ loses its tone mark alone
+   where bash erases the cluster; Devanagari likewise. ED-PREV and
+   ED-NEXT step by code points; readline steps a base and the zero-width
+   marks after it as one. Hebrew, Arabic, Hangul, a ZWJ emoji and a flag
+   behave as bash's. The remedy: ED-PREV and ED-NEXT go on past
+   zero-width code points (width-probe.py's own measure, 604), which
+   Backspace, Delete, the arrows, the word keys and ^T all use.
+
 ## The second end state, reached (Iteration 548)
 
 GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
