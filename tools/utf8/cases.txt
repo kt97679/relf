@@ -1,0 +1,24 @@
+echo é; printf '%s\n' "日本語"
+v=héllo; echo ${#v}
+v=héllo; printf '%s\n' "${v#h?}" | od -An -tx1
+v=héllo; echo "${v%llo}|${v#hé}|${v%%é*}"
+case é in é) echo match;; esac; case é in ?) echo one;; ??) echo two;; esac
+case é in [é]) echo bracket-one;; [é][é]) echo bracket-two;; *) echo none;; esac
+v="a é b"; set -- $v; echo $#; IFS=é; v="aéb"; set -- $v; echo $#
+printf 'é ü\n' | { read a b; echo "$a|$b"; }
+HEREDOC
+x=$(printf 'é'); echo ${#x}
+printf '\377\200a\n' | { read l; printf %s "$l" | od -An -tx1; }
+é=1 2>/dev/null; echo "status $?"
+é() { echo f; } 2>/dev/null; echo "funcdef $?"
+echo g/??; echo g/?; echo g/a*
+printf '[%5s][%.1s]\n' é é | od -An -c
+v=é; echo "${v:-x}" "${u:-ü}" "${#u}"
+[ é = é ] && echo eq; [ -n é ] && echo nonempty; test "é" != "e" && echo ne
+set -- é ü; echo "$*" "$@" $#; IFS=ü; echo "$*"
+echo 日本 | while read w; do echo "[$w]"; done
+v=$(printf '日本語%.0s' 1 2 3 4 5 6 7 8 9 10); echo ${#v}
+alias ü=echo 2>/dev/null; echo "alias $?"
+getopts é o -é 2>/dev/null; echo "getopts $? $o"
+echo $((1+1)) é; x=é; echo "${x}x${x}"
+printf 'a\303\251b\n' | od -An -tx1; printf '%b\n' 'a\0303\0251b' | od -An -tx1

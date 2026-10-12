@@ -746,6 +746,7 @@ do not trust the absence of a line below.
 - 719 — the paleocomputing article: relf has most of its method; five new testing ideas (TESTING-IDEAS.md)
 - 720 — prompts 20-22 (noise floor, a race's conditions, a restated claim); 01, 10, 16, 17 extended; NATIVE.md 16 corrected
 - 721 — nesting limits measured: loops 452 deep, functions 32 (dash 20,000+ and 1,000); GOALS.md 13
+- 722 — UTF-8: thin coverage outside the terminal; 24+8 probes clean on every engine; tools/utf8/
 
 ### Not tied to an iteration
 
