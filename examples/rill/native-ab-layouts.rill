@@ -1,0 +1,70 @@
+# examples/rill/native-ab-layouts.rill - tools/native-ab-layouts.py in Rill (Iteration 726)
+root = $(git rev-parse --show-toplevel)
+cd $root
+base = default(arg(1), "HEAD")
+rounds = default(arg(2), "9")
+padtext = default(arg(3), "0,16,32,48")
+wl = default(env("WL"), "loop fn str arith realistic")
+scale = default(env("SCALE"), "25")
+out = $(mktemp -d)
+mark = 'N>A  S" forth/native-rt.4" INCLUDED  A>N'
+
+def kernel tree p {
+    src = read("{tree}/forth/native-kernel.4")
+    if (not contains(src, mark)) { fail "native-ab-layouts: {tree}: native-kernel.4 has no runtime line to pad before" }
+    write("{tree}/native-kernel-padded.4", replace(src, mark, "{p} DP-T +!   \\ layout pad (688)\n{mark}"))
+    cd $tree {
+        python3 tools/gen-native-os.py native-os.4
+        sed '/^\\ PART 10: TOP LEVEL/,$d' forth/kernel.4 > native-kcut9.4
+        echo END-CROSS >> native-kcut9.4
+        echo CROSS-COMPILE > native-kcut10.4
+        sed -n '/^\\ PART 10: TOP LEVEL/,$p' forth/kernel.4 >> native-kcut10.4
+        rm -f native-kernel
+        ./relf64 forth/kernel64.img < native-kernel-padded.4 > native-kernel.log err>out ?? true
+        rm native-kernel-padded.4
+        test -x native-kernel ?? fail "native-ab-layouts: {tree}: kernel pad {p} not built"
+    }
+}
+
+def shells tree tag -> list {
+    made = []
+    for p in split(padtext, ",") {
+        kernel $tree $p
+        file = "{out}/{tag}-p{p}"
+        cd $tree { env NATIVE_LAYOUT_PAD=$p sh "{root}/tools/build-native-shell.sh" $file }
+        made = [@made {name: "{tag}-p{p}", path: file}]
+    }
+    return made
+}
+
+def gm xs -> number {
+    s = 0
+    for x in xs { s = s + log(x) }
+    return exp(s / len(xs))
+}
+
+wt = $(mktemp -d)
+git worktree add -q --detach $wt $base
+on EXIT {
+    rm -f native-kernel; make -s native-kernel     # the checkout's own kernel back, unpadded
+    git worktree remove --force $wt; git worktree prune
+}
+cd $wt { make -s native-kernel }
+b = shells(wt, "base")
+n = shells(root, "now")
+for s in [@b @n] { echo "{s.name}|/tmp|{s.path} \{w}" >> "{out}/cfg" }
+res = $(env SCALE=$scale WL=$wl python3 tools/bench-vm.py $rounds "{out}/cfg")
+ratio = {}
+ratio[b[0].name] = [1 for w in words(wl)]
+for line in lines(res) {
+    rs = all(line, '(\d+\.\d+)\s*\[')
+    if (len(rs) == len(words(wl))) { ratio[first(words(line))] = [number(r) for r in rs] }
+}
+for s in [@b @n] { if (not (s.name in ratio)) { fail "native-ab-layouts: no result for {s.name}\n{res}" } }
+echo "native A/B over layouts: the checkout against {base}, pads {padtext}, {rounds} rounds (SCALE={scale})"
+printf '%-11s %-22s %-22s %s\n' workload "base's layouts" "checkout's layouts" 'checkout / base'
+for k, w in words(wl) {
+    bs = [ratio[s.name][k] for s in b]
+    ns = [ratio[s.name][k] for s in n]
+    printf '%-11s %.3f-%.3f            %.3f-%.3f            %.3f\n' $w {min(bs)} {max(bs)} {min(ns)} {max(ns)} {gm(ns) / gm(bs)}
+}

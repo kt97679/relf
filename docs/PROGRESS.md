@@ -750,6 +750,7 @@ do not trust the absence of a line below.
 - 723 — run-utf8 (dash's bytes, five shells and i386 in verify); ^T by characters, ^P, ^N; ten editor cases
 - 724 — other scripts: byte classes all match dash; the editor splits combining marks from their base (GOALS.md 14)
 - 725 — a base and its marks are one character; the zero-width table generated from Unicode (323 ranges, halved); 13 more tests
+- 726 — Rill's scope settled (shell + scripting); RILL-LEDGER.md; 3 rewrites, all shorter; 16 candidate features weighed
 
 ### Not tied to an iteration
 

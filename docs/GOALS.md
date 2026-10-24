@@ -403,6 +403,9 @@ work begins.
   until used, the world as an interface a test can replace, failure that
   stops, and a grammar context-free at the token level. A design; its
   "about half the source" is a guess to be measured by building it.
+  **Scope settled at 726**: a shell and a scripting language, designed
+  together - expressive, not cryptic, and never longer than the script it
+  replaces; every feature weighed in RILL-LEDGER.md, the default no.
 - **Item 10 - no two-pass compiler**: the complexity is not worth the
   gain. The task is to find what else still stores a full cell where a
   compact offset would do. **Audited at 509** (`tools/image-budget.py`):
