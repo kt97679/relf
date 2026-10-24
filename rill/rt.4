@@ -1,0 +1,54 @@
+\ rill/rt.4 - Rill's runtime, stage 1a (Iteration 736): text values in an
+\ arena, joining them, and the boot word of Rill's image. Loaded after
+\ the Forth libraries the shell's image also loads (SHELL-LANGUAGE.md
+\ Part 5); none of relfsh's own sources.
+\
+\ A text value is one cell: the address of a cell holding its length,
+\ its bytes after it. Numbers are cells. The arena is one block, bumped
+\ and never freed piecemeal: a script's values live until it ends.
+
+VARIABLE R-TOP   VARIABLE R-END
+: R-ARENA-INIT ( --- )   16777216 DUP ALLOCATE THROW DUP R-TOP ! + R-END ! ;
+: R-ALLOT ( n --- addr )
+  ALIGNED R-TOP @ SWAP OVER + DUP R-END @ U> ABORT" rill: the arena is full" R-TOP ! ;
+: R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
+: R-T@ ( t --- c-addr u )   DUP CELL+ SWAP @ ;
+: R-NUM ( n --- t )   DUP ABS 0 <# #S ROT SIGN #> R-TEXT ;
+VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
+: R-CONCAT ( t1 .. tn n --- t )   \ n texts joined, the deepest first
+  RC-N !  0  RC-N @ 0 ?DO  I 1+ PICK @ +  LOOP
+  DUP CELL+ R-ALLOT TUCK ! RC-T !
+  RC-T @ DUP @ + CELL+ RC-P !
+  RC-N @ 0 ?DO  R-T@ DUP NEGATE RC-P +!  RC-P @ SWAP MOVE  LOOP
+  RC-T @ ;
+: R-T= ( t1 t2 --- f )   >R R-T@ R> R-T@ COMPARE 0= ;
+: R-TYPE ( t --- )   R-T@ TYPE ;
+: R-NL ( --- )   10 EMIT ;
+
+\ The image boots into R-BOOT: its first argument is the Forth that
+\ tools/rillc.py made of a Rill script, evaluated; the image leaves with
+\ status 0.
+: R-SLURP ( c-addr u --- addr len )   \ a whole file, into the heap
+  R/O OPEN-FILE ABORT" rill: cannot open the program" >R
+  R@ FILE-SIZE THROW DROP  DUP ALLOCATE THROW      ( len buf )
+  DUP ROT R@ READ-FILE THROW                        ( buf len' )
+  R> CLOSE-FILE DROP ;
+: R-BLANKS ( addr len --- addr len )   \ every control character a blank
+  2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
+: R-RUN ( --- )
+  \ Not INCLUDED: the boot word runs before the interpreter has a file
+  \ to read from, and INCLUDED says "Error reading file" there; the
+  \ program is read whole, its line ends made blanks, and EVALUATEd.
+  SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
+  0 SYS-ARG DUP CSTRLEN R-SLURP R-BLANKS EVALUATE ;
+: R-INIT ( --- )
+  \ What WARM and QUIT set before the interpreter reads - a boot word runs
+  \ ahead of both, with the search order the build left (its wordlists'
+  \ addresses from before the save), so EVALUATE there faulted.
+  0 HANDLER !  DECIMAL  2 #ORDER !
+  FORTH-WORDLIST CONTEXT !  FORTH-WORDLIST CONTEXT CELL+ !  FORTH-WORDLIST CURRENT !
+  0 STATE !  TIB SRC !  0 SID !  INCLUDE-BUFFER INCLUDE-POINTER ! ;
+\ Without a CATCH: around R-RUN at boot it faulted (-9) where the same
+\ words without it run - open, to find; an error now goes to WARM's
+\ interpreter, so tests give the image no input (< /dev/null).
+: R-BOOT ( --- )   R-INIT  R-ARENA-INIT  R-RUN  0 SYS-EXIT ;

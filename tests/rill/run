@@ -1,0 +1,15 @@
+#!/bin/sh
+# tests/rill/run - each tests/rill/*.rill compiled by tools/rillc.py, run on
+# Rill's image, its output compared with *.expected (Iteration 736).
+cd "$(dirname "$0")/../.." || exit 2
+[ -f kernel64-rill.img ] || sh tools/build-rill-image.sh > /dev/null || exit 2
+pass=0 fail=0
+for t in tests/rill/*.rill; do
+    f=${t%.rill}
+    python3 tools/rillc.py "$t" > "$f.4.tmp" 2> "$f.err" &&
+        timeout 30 ./relf64 kernel64-rill.img "$f.4.tmp" < /dev/null > "$f.out" 2>&1
+    if cmp -s "$f.out" "$f.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; diff "$f.expected" "$f.out" | head -5; fi
+    rm -f "$f.4.tmp" "$f.err" "$f.out"
+done
+echo "$pass passed, $fail failed (tests/rill)"
+[ "$fail" = 0 ]

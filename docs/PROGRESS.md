@@ -760,6 +760,7 @@ do not trust the absence of a line below.
 - 733 — decimals (fixed point) and a regex matcher decided; gen-opcodes.sh in Rill, -21 %; scoping question opened
 - 734 — a function never changes the script's variables: checked by rill-audit (0 violations, negative control caught)
 - 735 — pack-results.sh -2.6 %, native-by-source.py +2.7 %; eight rewrites: shorter than sh always, vs Python -35 % to +8.4 %
+- 736 — stage 1 begun: Rill's image (15 KB), rill/rt.4, prototype compiler tools/rillc.py; defs with locals still fault at boot
 
 ### Not tied to an iteration
 
