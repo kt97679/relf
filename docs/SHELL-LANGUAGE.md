@@ -849,10 +849,27 @@ c4's `expr` - emitting Forth as they read, with the kernel's own
 COMPILE, LITERAL and control-flow words, as Forth compiles itself. No
 syntax tree and no interpreter loop. Each `def` becomes a colon
 definition; any Forth word can be called as a function, so the Forth is
-Rill's extension language and its library's floor. Written in Forth
-(`shell/rill.4`), loaded into the shell image beside shell.4 and
-tree.4, so the CV8 and the native shells both have it; Fern's estimate
-for the same scope, about 1,000-1,500 lines.
+Rill's extension language and its library's floor. Fern's estimate for
+the same scope, about 1,000-1,500 lines.
+
+### An image of its own (Iteration 730)
+
+Not in the shell's image - the user's call at 730. Rill is built as its
+own image from the kernel and the Forth libraries the shell's image also
+loads - extend.4, safety.4, pool.4, shadow.4 (the locals),
+save-system.4 - and Rill's sources in `rill/`; none of shell.4, tree.4
+or edit.4. So:
+
+- **relfsh is untouched**: its image, its tests and its baselines do not
+  move while Rill is built, and a fault in Rill cannot reach it.
+- **The comparison is direct**: two images on one kernel and the same
+  libraries - the POSIX language's part against Rill's, in bytes, in
+  lines and in speed; Part 2's "about half the source" becomes a
+  measurement, not a guess.
+- **The same builds**: `kernel64-rill.img` (and its 32-bit twin), a
+  `rill` binary carrying it as `relfsh` carries the shell's, and a
+  native `rill-native` through the native compiler with Rill's source
+  list instead of the shell's.
 
 ### Values and kinds, with no tags on the hot paths
 
@@ -900,17 +917,19 @@ A collector waits for an example that needs one.
   guard - or ends the script with the status and the line. `on EXIT`
   registers a word with the shell's exit traps.
 
-### Commands: the shell's executor, below its expander
+### Commands: an executor of its own, on the kernel's primitives
 
 A command statement compiles to code that builds its argument list in
 the arena - words as written, `$name` as one argument, `@name` spread,
-patterns globbed once - and hands it, with its ports, to the shell's
-executor. The executor is shell.4's and tree.4's, job table, traps and
-editor included (Part 2's "reused as they are"); the entry Rill needs
-is the one after the POSIX expander has run - an argument vector and
-redirections to execute, factored out of EXEC-SIMPLE and EXEC-PIPE if
-it is not yet a word of its own. Rill never re-reads text, so nothing
-it hands over may be expanded again.
+patterns globbed once - and runs it with its ports. With its own image,
+Rill does not call the shell's executor: it has a small one on the
+kernel's process words - FORK, EXECVE, PIPE, DUP2, WAITPID, KILL,
+SIGNAL-ACTION, OPEN-FILE - argument vectors, ports and pipelines; far
+less than tree.4's, since nothing it is handed is ever expanded again.
+Part 2 meant to reuse the shell's job table, traps and editor; that
+waits for stage 4, Rill at the prompt, and is decided there: those
+parts factored out of the shell into a library both images load - a
+refactor of relfsh its suites would check - or Rill's own.
 
 ### Seeing the cost
 
@@ -922,13 +941,14 @@ and every rewrite against its original, by tools/rill-measure.py.
 
 ### The order of building
 
-1. **The core**: integers, text, `def` with locals, `if`, `while`,
-   `for`, assignment, interpolation, commands through the executor,
-   failure that stops; measured against hand-written Forth on bench.4's
-   workloads, and `--list` from the first day.
+1. **The core**, in its own image: integers, text, `def` with locals,
+   `if`, `while`, `for`, assignment, interpolation, commands through
+   Rill's executor, failure that stops; measured against hand-written
+   Forth on bench.4's workloads, and `--list` from the first day.
 2. Lists, records and the small library the ledger admits.
 3. Runs as values, ports, `par`, `try`, `on`.
-4. Modules, and Rill at the prompt.
+4. Modules, and Rill at the prompt - where the shell's job control and
+   editor are either shared through a common library or Rill's own.
 
 Each stage after the rewrites have settled what it needs: the ledger
 decides the features, this part how they compile.

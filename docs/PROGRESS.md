@@ -754,6 +754,7 @@ do not trust the absence of a line below.
 - 727 — one rule for names: $name reads a variable everywhere, a bare word is text; the rewrites still shorter
 - 728 — Fern and c4 notes: Rill takes Fern's compiler and runtime design; native and C-engine ideas to GOALS.md 12
 - 729 — one language: Rill supersedes Fern; SHELL-LANGUAGE.md Part 5, how Rill compiles into Forth
+- 730 — Rill in its own image (kernel + shared Forth libraries + rill/), relfsh untouched; its own small executor
 
 ### Not tied to an iteration
 

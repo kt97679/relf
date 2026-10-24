@@ -59,6 +59,14 @@ generated Forth - and keeps its own syntax where the two differed
 (blocks in `{ }`, `$name`, `return` with output apart, `"$name"` and
 `"{expr}"`). How it compiles: SHELL-LANGUAGE.md Part 5.
 
+**730 - its own image.** Rill is not loaded into the shell's image: it
+is built as its own, from the kernel, the Forth libraries the shell's
+image also loads, and Rill's sources - so relfsh stays untouched and
+the two compare directly, image to image, on one kernel. Rill has its
+own small executor on the kernel's process words; whether the shell's
+job control and editor become a library both share is decided when Rill
+reaches the prompt. SHELL-LANGUAGE.md Part 5.
+
 ## From forth-vm-evolution: Fern and the c4 family (728)
 
 Two notes the user pointed to (results/drafts/fern-design-457.md and
