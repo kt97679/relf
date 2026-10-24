@@ -56,6 +56,26 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+**735 - what eight rewrites show about length.** Against sh, Rill is
+shorter every time: make-bundle -3.6 %, intrfuzz-stress -6.8 %, run-utf8
+-14.6 %, pack-results -2.6 %, gen-opcodes -20 %, the one-liners -7 %.
+Against Python it depends on what the script does: native-ab-layouts,
+which mostly runs programs, -35 %; native-by-source, which mostly
+counts, +2.7 %; dead-words, which is all data structures, +8.4 %. The
+longer two are long by the one rule for names (727) - a `$` on each of
+hundreds of variable reads - and by braces and parentheses where Python
+has indentation and a colon. Every line count is lower than the
+original's. The audit carries both LONGER lines; the user's rule 4 says
+to add what is needed, and nothing more is needed by them - what would
+shorten them further is the 727 rule itself.
+
+New in the register from pack-results and native-by-source: a `case`
+statement with sh's glob patterns (option parsing; `if`/`else if` chains
+were longer), a run in command position runs it (a step function given
+a command), `setenv`, `now()`, `upper`, `lower`, `trim-end`, `sum`,
+`sort-by`, `for k, v in record`, and defs before their use - a one-pass
+compiler, as Forth's.
+
 **734 - a function never changes the script's variables.** The user
 asked whether to forbid it outright - a function returns what it
 changes - rather than add `global`. Yes: it can be checked at compile
@@ -194,6 +214,8 @@ as of the iteration that last changed it.
 | tests/shell/run-utf8 | 20 | 774 | 16 | 661 | shorter |
 | tools/dead-words.py | 148 | 3,299 | 108 | 3,576 | **longer, by 8.4 %** (7.5 % at 731, 6.2 % at 732, the 734 rule) |
 | tools/gen-opcodes.sh | 142 | 6,162 | 94 | 4,909 | shorter, by 20 % |
+| tools/pack-results.sh | 176 | 6,578 | 142 | 6,409 | shorter, by 2.6 % |
+| tools/size-research/native-by-source.py | 43 | 1,951 | 32 | 2,003 | **longer, by 2.7 %** |
 
 The rewrites are in examples/rill/. What they show:
 
@@ -292,7 +314,6 @@ yet; the uses are the evidence so far:
 
 ## Next conversions
 
-tools/gen-opcodes.sh (text to code), tools/pack-results.sh (a 244-line
-program), tools/size-research/native-by-source.py (records as maps), and
-a small JSON API client - each measured, each adding to the table
+a small JSON API client, and Rill versions of bench.4's workloads for the
+cost against hand-written Forth - each measured, each adding to the table
 above or to a candidate's evidence.

@@ -5,3 +5,5 @@ tools/intrfuzz-stress.sh	examples/rill/intrfuzz-stress.rill	shell
 tests/shell/run-utf8	examples/rill/run-utf8.rill	shell
 tools/dead-words.py	examples/rill/dead-words.rill	python
 tools/gen-opcodes.sh	examples/rill/gen-opcodes.rill	shell
+tools/pack-results.sh	examples/rill/pack-results.rill	shell
+tools/size-research/native-by-source.py	examples/rill/native-by-source.rill	python

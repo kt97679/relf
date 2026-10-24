@@ -49,3 +49,11 @@ bare names in expressions	rejected	727	-
 at(x, i, default)	adopted	733	\bat\(
 list and record equality ==, !=	adopted	733	\$\w+\s*[!=]=\s*\$\w+\b
 a def never changes a script variable (checked)	adopted	734	-
+case VALUE { PATTERN... { block } }	adopted	735	(^|[{;])\s*case\s+\$
+a run in command position runs it	adopted	735	\(\(\$\w+\s
+setenv(name, value)	adopted	735	\bsetenv\(
+now(): the clock, in seconds	adopted	735	\bnow\(
+upper lower trim-end	adopted	735	\b(upper|lower|trim-end)\(
+sum sort-by	adopted	735	\b(sum|sort-by)\(
+for k, v in record	adopted	735	\bfor\s+\w+\s*,\s*\w+\s+in\s+(\$by|sort-by)
+defs before their use (one pass)	adopted	735	-
