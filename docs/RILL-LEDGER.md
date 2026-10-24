@@ -56,6 +56,14 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+**737 - two lexical decisions from the first running programs.** As
+Part 3 has it, `+ - * / %` are word characters: `test -d /tmp` keeps
+`-d` one word, and in an expression an operator is a word standing alone
+- `$n - 1`, not `$n-1`. And a keyword is a plain word where it is a
+command's or echo's argument - `echo not reached` - where Part 3 had
+keywords reserved everywhere; they stay reserved where a statement or an
+expression begins.
+
 **735 - what eight rewrites show about length.** Against sh, Rill is
 shorter every time: make-bundle -3.6 %, intrfuzz-stress -6.8 %, run-utf8
 -14.6 %, pack-results -2.6 %, gen-opcodes -20 %, the one-liners -7 %.

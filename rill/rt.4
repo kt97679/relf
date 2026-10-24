@@ -25,6 +25,25 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : R-TYPE ( t --- )   R-T@ TYPE ;
 : R-NL ( --- )   10 EMIT ;
 
+\ Commands (stage 1a): the words become a NUL-terminated argument
+\ vector in the arena, behind "env", which finds the program on PATH -
+\ one more exec, until the search is written in Forth. FORK, EXECVE,
+\ WAITPID are the kernel's own; nothing of the shell's executor is used.
+: R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
+VARIABLE RX-N   VARIABLE RX-V
+: R-EXEC ( t1 .. tn n --- status )   \ run it, wait, its exit status
+  DUP RX-N !  2 + CELLS R-ALLOT RX-V !
+  0  RX-V @ RX-N @ 1+ CELLS + !                        \ the vector's end
+  RX-N @ 0 ?DO  R-CSTR  RX-V @ RX-N @ I - CELLS + !  LOOP
+  S" env" R-TEXT R-CSTR RX-V @ !
+  FORK DUP 0= IF
+    DROP  RX-V @  S" /usr/bin/env" R-TEXT R-CSTR  EXECVE DROP  127 SYS-EXIT
+  THEN
+  WAITPID DROP  DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
+VARIABLE R-STATUS
+: R-CHECK ( status --- )   \ failure stops the script, with the status
+  ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
+
 \ The image boots into R-BOOT: its first argument is the Forth that
 \ tools/rillc.py made of a Rill script, evaluated; the image leaves with
 \ status 0.
@@ -48,7 +67,19 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
   0 HANDLER !  DECIMAL  2 #ORDER !
   FORTH-WORDLIST CONTEXT !  FORTH-WORDLIST CONTEXT CELL+ !  FORTH-WORDLIST CURRENT !
   0 STATE !  TIB SRC !  0 SID !  INCLUDE-BUFFER INCLUDE-POINTER ! ;
-\ Without a CATCH: around R-RUN at boot it faulted (-9) where the same
-\ words without it run - open, to find; an error now goes to WARM's
-\ interpreter, so tests give the image no input (< /dev/null).
-: R-BOOT ( --- )   R-INIT  R-ARENA-INIT  R-RUN  0 SYS-EXIT ;
+\ ALLOC-BUFFERS first, as the shell's MAIN does: every BUFFER: (pool.4)
+\ points into the heap of the session that built the image, gone at
+\ the next run - shadow.4's LDECL-ADDRS among them, which is why a def
+\ with locals, compiled after the load, wrote through a stale pointer
+\ and faulted (Iteration 737). An error leaves with status 2.
+\ R-RUN's xt kept as an offset (!XT): ['] in a definition compiles the
+\ absolute address, which the save and reload leave pointing at nothing -
+\ the CATCH that faulted at boot (Iteration 737), and why shell.4's
+\ DO-FORTH keeps its EVALUATE the same way.
+VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
+: R-BOOT ( --- )
+  ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
+  R-RUN-XT @XT CATCH ?DUP IF
+    DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed: its status
+    ." rill: error " . R-NL  2 SYS-EXIT
+  THEN  0 SYS-EXIT ;

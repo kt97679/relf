@@ -19,10 +19,10 @@ class Error(Exception): pass
 
 TOKEN = re.compile(r'''
    (?P<nl>\n) | (?P<ws>[ \t]+) | (?P<comment>\#[^\n]*)
- | (?P<num>\d+)
+
  | (?P<str>"(?:[^"\\]|\\.)*") | (?P<raw>'[^']*')
  | (?P<var>\$[A-Za-z_][A-Za-z0-9_]*)
- | (?P<op>==|!=|<=|>=|\+=|-=|->|[-+*/%<>=(){},;])
+ | (?P<op>==|!=|<=|>=|\+=|-=|->|\?\?|[<>=(){},;])
  | (?P<word>[^\s"'$(){},;<>=]+)
 ''', re.X)
 KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in'}
@@ -69,7 +69,7 @@ class Compiler:
         code, kind = self.unary()
         while True:
             op = self.peek()[1]
-            if op not in self.PREC or self.peek()[0] not in ('op', 'kw') or self.PREC[op] < minp: return code, kind
+            if op not in self.PREC or self.peek()[0] not in ('op', 'kw', 'word') or self.PREC[op] < minp: return code, kind
             self.i += 1
             rcode, rkind = self.expr(self.PREC[op] + 1)
             code, kind = self.binop(op, code, kind, rcode, rkind)
@@ -81,17 +81,20 @@ class Compiler:
             return '%s %s R-T=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if ak != 'number' or bk != 'number':
             raise Error('line %d: %s needs numbers, has %s and %s' % (line, op, ak, bk))
+        kind = 'number' if op in '+-*/%' else 'bool'
+        short = {('+', '1'): '1+', ('-', '1'): '1-', ('>', '0'): '0>', ('<', '0'): '0<', ('==', '0'): '0=', ('!=', '0'): '0<>'}
+        if (op, b) in short: return '%s %s' % (a, short[(op, b)]), kind      # one word, not a literal and an operator
         forth = {'+': '+', '-': '-', '*': '*', '/': '/', '%': 'MOD', '==': '=', '!=': '<>', '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
-        return '%s %s %s' % (a, b, forth), ('number' if op in '+-*/%' else 'bool')
+        return '%s %s %s' % (a, b, forth), kind
     def unary(self):
         tok = self.peek()
         if tok[1] == 'not': self.i += 1; c, k = self.unary(); return c + ' 0=', 'bool'
-        if tok[1] == '-' and tok[0] == 'op': self.i += 1; c, k = self.unary(); return c + ' NEGATE', 'number'
+        if tok[1] == '-' and tok[0] == 'word': self.i += 1; c, k = self.unary(); return c + ' NEGATE', 'number'
         return self.term()
     def term(self):
         tok = self.take()
         k, v, line = tok
-        if k == 'num': return v, 'number'
+        if k == 'word' and re.fullmatch(r'-?\d+', v): return v, 'number'
         if k == 'var': return 'R.%s @' % v[1:], self.kind_of(v[1:], line)
         if k == 'str': return self.string(v[1:-1], line), 'text'
         if k == 'raw': return self.lit(v[1:-1]), 'text'
@@ -111,7 +114,8 @@ class Compiler:
         if name not in self.funcs: raise Error('line %d: %s() is not defined (a def comes before its use)' % (line, name))
         params, kind = self.funcs[name]
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
-        return ' '.join(a[0] for a in args) + ' R:%s' % name, kind
+        word = 'RECURSE' if name == getattr(self, 'current', None) else 'R:%s' % name   # Forth hides a word until its ;
+        return ' '.join(a[0] for a in args) + ' ' + word, kind
     def lit(self, s):
         return 'S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s)
     def bytes_lit(self, s):
@@ -156,7 +160,7 @@ class Compiler:
         start = self.i
         if v == 'if': out = self.if_()
         elif v == 'while':
-            self.i += 1; self.take('op', '('); c, kd = self.expr(); self.take('op', ')')
+            self.i += 1; c = self.cond()
             out = 'BEGIN %s WHILE %s REPEAT' % (c, self.block())
         elif v == 'return':
             self.i += 1; c, kd = self.expr(); out = '%s EXIT' % c
@@ -167,7 +171,7 @@ class Compiler:
             sc = self.scope()
             if op != '=':
                 if self.kind_of(name, line) != 'number' or kd != 'number': raise Error('line %d: %s needs numbers' % (line, op))
-                c = 'R.%s @ %s %s' % (name, c, '+' if op == '+=' else '-')
+                c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, 'number', c, kd)
             elif name in sc and sc[name] != kd:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)
@@ -177,16 +181,44 @@ class Compiler:
             while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}'):
                 if self.peek()[1] == '{':
                     self.i += 1; c, kd = self.expr(); self.take('op', '}')
+                elif self.peek()[0] == 'kw':
+                    c, kd = self.lit(self.take()[1]), 'text'
                 else:
                     c, kd = self.term()
                 parts.append(self.to_text(c, kd) + ' R-TYPE')
             out = ' SPACE '.join(parts) + (' R-NL' if parts else 'R-NL')
         elif k == 'word' and self.peek(1)[1] == '(':
             self.i += 1; c, kd = self.call(v, line); out = c + ('' if kd is None else ' DROP')
+        elif k in ('word', 'str', 'raw', 'var'):
+            run = self.command()
+            if self.peek()[1] == '??':
+                self.i += 1; other = self.statement()
+                out = '%s IF %s THEN' % (run, other)            # the guard runs when the command fails
+            else:
+                out = run + ' R-CHECK'                           # failure stops the script
         else: raise Error('line %d: cannot read %r here' % (line, v))
         return out
+    def command(self):
+        """Words to the end of the statement, each as text; compiles to its status."""
+        parts = []
+        while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}', ')', '??'):
+            if self.peek()[1] == '{':
+                self.i += 1; c, kd = self.expr(); self.take('op', '}')
+            elif self.peek()[0] == 'kw':
+                c, kd = self.lit(self.take()[1]), 'text'          # a keyword is a plain word as an argument
+            else:
+                c, kd = self.term()
+            parts.append(self.to_text(c, kd))
+        return '%s %d R-EXEC' % (' '.join(parts), len(parts))
+    def cond(self):
+        self.take('op', '(')
+        if self.peek()[0] == 'word' and self.peek(1)[1] != '(':
+            c = self.command() + ' 0='                           # a run: its success
+        else:
+            c, kd = self.expr()
+        self.take('op', ')'); return c
     def if_(self):
-        self.take('kw', 'if'); self.take('op', '('); c, kd = self.expr(); self.take('op', ')')
+        self.take('kw', 'if'); c = self.cond()
         then = self.block(); save = self.i; self.skip_nl()
         if self.peek()[1] == 'else':
             self.i += 1
@@ -199,7 +231,7 @@ class Compiler:
         while self.peek()[0] == 'word': params.append(self.take()[1])
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
-        self.funcs[name] = (params, kind)
+        self.funcs[name] = (params, kind); self.current = name
         outer = self.locals; self.locals = {p: 'number' for p in params}
         self.names.update(params)
         body = self.block()
@@ -207,7 +239,7 @@ class Compiler:
         self.names.update(scratch)
         self.defs.append(': R:%s SHADOW{ %s | %s } %s ;' % (name, ' '.join('R.' + p for p in reversed(params)),
                                                          ' '.join('R.' + s for s in scratch), body))
-        self.locals = outer
+        self.locals = outer; self.current = None
     def program(self):
         main = []; self.skip_nl()
         while self.peek()[0] != 'eof':
