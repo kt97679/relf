@@ -175,6 +175,11 @@ host = {name: "db1", port: 5432}
 ssh -p $host.port $host.name
 ```
 
+(Iteration 727: these examples predate one rule for names - `$name`
+reads a variable everywhere, in strings and expressions too, a bare word
+is always text - so `"hello {name}"` is `"hello $name"` and `len(@files)`
+is `len($files)`. RILL-LEDGER.md's Decisions override this document.)
+
 What is gone: `IFS`, `set -e` and its exceptions, `$@` versus `$*`,
 quoting to *prevent* splitting, `eval` to re-read text, `&` and `$!` in
 scripts, `2>&1` numerals, `<<EOF` bodies, aliases (functions do what

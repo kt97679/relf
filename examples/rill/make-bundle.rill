@@ -1,16 +1,16 @@
 # examples/rill/make-bundle.rill - tools/make-bundle.sh in Rill (Iteration 726)
 subject = $(git log -1 --format=%s)
 n = $(echo $subject | sed -n 's/^Iteration \([0-9][0-9]*\):.*/\1/p')
-if (n == "") { fail "make-bundle: HEAD's subject does not start with 'Iteration N:': {subject}" }
+if ($n == "") { fail "make-bundle: HEAD's subject does not start with 'Iteration N:': $subject" }
 dir = default(arg(1), ".")
-file = "{dir}/relf-claude-iter{n}-{$(date -u +%Y%m%d-%H%M%S)}.bundle"
+file = "$dir/relf-claude-iter$n-{$(date -u +%Y%m%d-%H%M%S)}.bundle"
 refs = [HEAD master]
 if (git rev-parse -q --verify refs/heads/article-2026 > /dev/null) { refs = [@refs article-2026] }
 git bundle create $file @refs err> /dev/null
 check = $(mktemp -d)
 on EXIT { rm -rf $check }
-git clone -q $file "{check}/clone"
-if ($(git rev-parse HEAD) != $(git -C "{check}/clone" rev-parse HEAD)) {
+git clone -q $file "$check/clone"
+if ($(git rev-parse HEAD) != $(git -C "$check/clone" rev-parse HEAD)) {
     rm -f $file
     fail "make-bundle: the clone's HEAD is not this HEAD - not pullable"
 }

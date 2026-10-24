@@ -1,10 +1,10 @@
 # sh, then Rill, one pair a line, separated by " ||| " (Iteration 726)
 find . -name '*.log' -mtime +7 -delete ||| find . -name '*.log' -mtime +7 -delete
 grep -h ERROR *.log | sort | uniq -c | sort -rn | head ||| grep -h ERROR *.log | sort | uniq -c | sort -rn | head
-for f in *.jpg; do convert "$f" "${f%.jpg}.png"; done ||| for f in *.jpg { convert $f "{stem(f)}.png" }
+for f in *.jpg; do convert "$f" "${f%.jpg}.png"; done ||| for f in *.jpg { convert $f "{stem($f)}.png" }
 for f in *; do [ -f "$f" ] && wc -l "$f"; done ||| for f in * { if (test -f $f) { wc -l $f } }
 [ -d "$dir" ] || mkdir -p "$dir" ||| test -d $dir ?? mkdir -p $dir
-x=$((x + 1)) ||| x = x + 1
+x=$((x + 1)) ||| x = $x + 1
 cmd >/dev/null 2>&1 || echo failed ||| cmd all>/dev/null ?? echo failed
 tar czf backup-$(date +%F).tgz ~/docs ||| tar czf backup-$(date +%F).tgz ~/docs
 ssh host 'cd /srv && git pull' && systemctl restart app ||| ssh host 'cd /srv && git pull'; systemctl restart app

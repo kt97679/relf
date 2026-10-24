@@ -751,6 +751,7 @@ do not trust the absence of a line below.
 - 724 — other scripts: byte classes all match dash; the editor splits combining marks from their base (GOALS.md 14)
 - 725 — a base and its marks are one character; the zero-width table generated from Unicode (323 ranges, halved); 13 more tests
 - 726 — Rill's scope settled (shell + scripting); RILL-LEDGER.md; 3 rewrites, all shorter; 16 candidate features weighed
+- 727 — one rule for names: $name reads a variable everywhere, a bare word is text; the rewrites still shorter
 
 ### Not tied to an iteration
 

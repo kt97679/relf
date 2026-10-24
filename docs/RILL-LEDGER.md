@@ -22,13 +22,40 @@ every feature beyond that design has to earn its place.
    function before syntax: a function adds a name, syntax changes the
    grammar.
 
+## Decisions
+
+These override SHELL-LANGUAGE.md where the two differ.
+
+**727 - one rule for names, everywhere.** `$name` reads a variable - in
+a command, in an expression, in a string. A bare word is text - in a
+command, in an expression, in a list. `name(...)` calls a function. A
+name is written bare only where it is being bound: left of `=`, after
+`for`, as a `def` parameter, as the target of `x[k] =`. In strings,
+`"$name"` reads a variable and `"{expr}"` any expression. `@name`
+spreads a list's items into arguments or a list; the list itself, as a
+value, is `$name` (`len($files)`, where the design's examples wrote
+`len(@files)`). Variable names are letters, digits and `_` - the dash
+stays in the names of functions and commands - so `"$tag-p$p"` reads
+`$tag`, then `-p`, then `$p`.
+
+The user's vote, for consistency, over 726's leaning - `$` in commands
+and bare names in expressions, which gave one token two meanings by
+context: `echo hello` printed text where `x = hello` would have read a
+variable. With one rule, `x = hello` is text there too, as in sh. The
+design's grammar already said so (`term = var`); its examples, which
+wrote `{name}`, did not. Measured on the rewrites, the rule costs almost
+nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
+`"{dir}/..."`), native-ab-layouts 2,489 -> 2,505, the one-liners 442 ->
+444 - none longer than its original. It is also the rule of the
+scripting languages that grew out of shells: Perl, PHP and PowerShell.
+
 ## Conversions
 
 | original | code lines | chars | Rill lines | chars | |
 |---|---:|---:|---:|---:|---|
-| tools/make-bundle.sh | 24 | 773 | 17 | 749 | shorter |
-| tools/native-ab-layouts.py | 87 | 3,863 | 65 | 2,489 | shorter |
-| 12 prompt one-liners | - | 476 | - | 442 | none longer |
+| tools/make-bundle.sh | 24 | 773 | 17 | 745 | shorter |
+| tools/native-ab-layouts.py | 87 | 3,863 | 65 | 2,505 | shorter |
+| 12 prompt one-liners | - | 476 | - | 444 | none longer |
 
 The rewrites are in examples/rill/. What they show:
 
@@ -67,7 +94,7 @@ yet; the uses are the evidence so far:
 | `fail "message"` | make-bundle 2, native-ab 3 | `echo ... >&2; exit 1` | `echo "..." out>err; exit 1`, 16 characters more each | yes: a builtin |
 | `arg(n)` | make-bundle 1, native-ab 3 | `${1:-.}`, `sys.argv[1] if ...` | an `args` list and indexing | open: `arg(n)` or `args[n]` |
 | `env(name)` | native-ab 2 | `os.environ.get` | - (the environment must be reachable) | yes: a function |
-| bare names in expressions | every rewrite | - | `$n == ""` | yes: `$` in commands, bare names in expressions - the design's own examples do this and its grammar does not; to settle |
+| ~~bare names in expressions~~ | every rewrite | - | - | **no** - decided at 727: `$name` everywhere (Decisions, above) |
 | `cd DIR { block }` | native-ab 3 | `cwd=`, `(cd x; cmd)` | a run cannot hold a list of statements | yes |
 | `read`, `write`, `contains`, `replace`, `split`, `words`, `lines`, `first`, `len` | native-ab | Python's str and file methods | `cat`, `grep -F`, `sed` with every special character escaped | yes, as the small library |
 | `all(text, regex)` | native-ab 1 | `re.findall` | `awk` (cryptic), or `words()` and a loop (+3 lines) | open: dead-words.py decides |
