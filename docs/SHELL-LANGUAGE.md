@@ -830,3 +830,105 @@ reaches its parent's environment - the copy is one-way, at `execve`.
 So the value port of Part 4 does not extend the contract: it uses a
 descriptor the contract already provides, and a program that is not
 Rill simply never writes to it.
+
+## Part 5 — compiling Rill into Forth (Iteration 729)
+
+One language. The user's decision at 729: Rill is relf's shell language
+and its scripting language, and it supersedes Fern - the design for a
+small Ruby- or Python-like language compiled into Forth words, made in
+another of the user's projects (kt97679/forth-vm-evolution,
+results/drafts/fern-design-457.md). What Fern designed for the compiler
+and the runtime, Rill takes; its syntax stays Rill's, because Rill must
+also be a shell (RILL-LEDGER.md, 727-729). Fern is not to be built.
+
+### The compiler: compiled as it is parsed
+
+A tokenizer for Part 3's lexical structure, a recursive-descent parser
+for statements, and precedence climbing for expressions - one function,
+c4's `expr` - emitting Forth as they read, with the kernel's own
+COMPILE, LITERAL and control-flow words, as Forth compiles itself. No
+syntax tree and no interpreter loop. Each `def` becomes a colon
+definition; any Forth word can be called as a function, so the Forth is
+Rill's extension language and its library's floor. Written in Forth
+(`shell/rill.4`), loaded into the shell image beside shell.4 and
+tree.4, so the CV8 and the native shells both have it; Fern's estimate
+for the same scope, about 1,000-1,500 lines.
+
+### Values and kinds, with no tags on the hot paths
+
+Fern's largest saving: no run-time type check on every operation - the
+compiler picks the operation from what it knows. In Rill:
+
+- **A variable has one kind for its life**, fixed where it is first
+  bound: by its value (a number literal, `$(...)` - text, a list, a
+  record, a run) or by a `def`'s parameter and `-> kind`. Arithmetic on
+  numbers compiles to the Forth words themselves; text operations to the
+  library's.
+- **`+ - * / %` are integer arithmetic only.** Text is joined by
+  interpolation (`"$a$b"`), never by `+` - so `+` never needs a kind.
+- **Items in lists and fields in records carry a kind byte**: the one
+  place values of different kinds meet. Reading one where the kind is
+  not known compiles a check; `number($x)` and `text($x)` convert, and
+  nothing converts implicitly (Part 3's table).
+- **Representation, one cell each**: a number is the cell; text a
+  pointer to a length-prefixed string; a list a pointer to a header
+  (count, capacity, items); a record the same with names; a run a
+  pointer to its pipeline's description; a status an integer; a bool
+  Forth's 0 or -1.
+- **Integers only**: relf's Forth has no floating point, and neither has
+  Rill (Fern left it out for the same reason; the ledger's leaning).
+
+### Memory: an arena per script
+
+Fern's choice and the ledger's simplest model: every value of a script
+lives in one arena, a bump allocator that grows as the shell's body
+arena does (shell.4) and is freed whole when the script ends - at the
+prompt, when the command line ends. Text is never changed in place;
+lists and records may be, in place, since nothing outlives the arena.
+A collector waits for an example that needs one.
+
+### Functions, locals, failure
+
+- **Locals**: relf's shallow-bound locals (shadow.4, the engine's
+  opcodes since 517 - CV8.md 6.3), one dispatch an access - where Fern
+  planned frames on the return stack. Parameters and assigned names in
+  a `def` are its locals.
+- **A value and output are apart**: `return` leaves the value on the
+  data stack; what a function prints goes to its output port.
+- **Failure stops**: a command whose status is not success THROWs, and
+  the THROW unwinds to the nearest `try` (a CATCH), condition or `??`
+  guard - or ends the script with the status and the line. `on EXIT`
+  registers a word with the shell's exit traps.
+
+### Commands: the shell's executor, below its expander
+
+A command statement compiles to code that builds its argument list in
+the arena - words as written, `$name` as one argument, `@name` spread,
+patterns globbed once - and hands it, with its ports, to the shell's
+executor. The executor is shell.4's and tree.4's, job table, traps and
+editor included (Part 2's "reused as they are"); the entry Rill needs
+is the one after the POSIX expander has run - an argument vector and
+redirections to execute, factored out of EXEC-SIMPLE and EXEC-PIPE if
+it is not yet a word of its own. Rill never re-reads text, so nothing
+it hands over may be expanded again.
+
+### Seeing the cost
+
+`rill --list FILE` prints each source line with the Forth generated for
+it - c4's `-s`, which Fern proposed - so a line's overhead is in plain
+sight. The cost is measured as Fern meant to: Rill versions of bench.4's
+workloads against hand-written Forth, the target Fern set, within 0-20 %;
+and every rewrite against its original, by tools/rill-measure.py.
+
+### The order of building
+
+1. **The core**: integers, text, `def` with locals, `if`, `while`,
+   `for`, assignment, interpolation, commands through the executor,
+   failure that stops; measured against hand-written Forth on bench.4's
+   workloads, and `--list` from the first day.
+2. Lists, records and the small library the ledger admits.
+3. Runs as values, ports, `par`, `try`, `on`.
+4. Modules, and Rill at the prompt.
+
+Each stage after the rewrites have settled what it needs: the ledger
+decides the features, this part how they compile.

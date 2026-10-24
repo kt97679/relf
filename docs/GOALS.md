@@ -418,6 +418,9 @@ work begins.
   **Scope settled at 726**: a shell and a scripting language, designed
   together - expressive, not cryptic, and never longer than the script it
   replaces; every feature weighed in RILL-LEDGER.md, the default no.
+  **One language, at 729**: Rill supersedes Fern (forth-vm-evolution's
+  design for a scripting language on Forth), taking its compiler and
+  runtime; SHELL-LANGUAGE.md Part 5 is how Rill compiles into Forth.
 - **Item 10 - no two-pass compiler**: the complexity is not worth the
   gain. The task is to find what else still stores a full cell where a
   compact offset would do. **Audited at 509** (`tools/image-budget.py`):

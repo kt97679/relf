@@ -49,6 +49,16 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+**729 - one language: Rill supersedes Fern.** The user's decision:
+Rill is both relf's shell language and its scripting language; Fern,
+designed in forth-vm-evolution for the scripting half, is obsolete and
+not to be built. Rill takes Fern's compiler and runtime - compiled as
+parsed into Forth words, kinds fixed at compile time, integer `+`, an
+arena per script, no fractions, CATCH and THROW, a `--list` of the
+generated Forth - and keeps its own syntax where the two differed
+(blocks in `{ }`, `$name`, `return` with output apart, `"$name"` and
+`"{expr}"`). How it compiles: SHELL-LANGUAGE.md Part 5.
+
 ## From forth-vm-evolution: Fern and the c4 family (728)
 
 Two notes the user pointed to (results/drafts/fern-design-457.md and
@@ -89,8 +99,8 @@ blocks (`def ... end`, Fern's, for an easy Forth parse; `{ }`, Rill's);
 variables (bare, Fern's; `$name`, Rill's 727 rule, which a shell needs);
 a function's value (its last expression, Fern's; `return`, with output
 apart, Rill's - a shell function prints); interpolation (`#{...}` and
-`{...}`/`$name`). The user's call: one language with Fern's compiler
-under Rill's syntax, or Fern kept apart as forth-vm-evolution's own.
+`{...}`/`$name`). Decided at 729: one language, Rill's syntax, Fern's
+compiler.
 
 ## Conversions
 
