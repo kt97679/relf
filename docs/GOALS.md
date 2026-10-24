@@ -206,6 +206,18 @@ the account of what each gained and cost.
    the kernel's own words; a CREATE'd word's address as a literal; `LIT n
    -` as ADD-IMM8 with -n; the asm engine's handlers aligned (714's
    analogue); a separate data region for CV8 (memory, not speed).
+   From forth-vm-evolution's c4-family note (728): Ertl and Paysan
+   (EuroForth 2025) measured VFX Forth - register allocation within basic
+   blocks and aggressive inlining - about twice as fast as Gforth's code
+   copying, which runs at SwiftForth's speed: outside evidence for
+   NATIVE.md 17's option B. Cheap to try: a count of what the native
+   code leaves redundant - register-to-register moves, a store reloaded
+   at once, a jump to the next instruction - before any peephole pass
+   (above ~10 % would pay); `-fno-tree-vectorize` for cv8.c (Ertl: it
+   removed GCC's register shuffling at Gforth's dispatch), an A/B on the
+   C engine; Gforth's application benchmarks (benchgc, brainless,
+   cd16sim, lexex, fcp, siev, bubble, matrix, fib) as Forth workloads
+   beside bench.4.
 
 13. **Deep nesting and recursion stop early** (721, measured, not begun).
    tests/shell/run-nesting goes 8 deep (256 iterations) and 60 wide; no

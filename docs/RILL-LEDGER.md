@@ -49,6 +49,49 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+## From forth-vm-evolution: Fern and the c4 family (728)
+
+Two notes the user pointed to (results/drafts/fern-design-457.md and
+c4-family-459.md in kt97679/forth-vm-evolution). Fern is a design for
+the same thing Rill's scripting half is: a small Ruby- or Python-like
+language compiled into Forth words, close to hand-written Forth in cost
+- and it names RelF's shell as a place it could serve.
+
+**What Rill takes from Fern - its compiler and runtime, not its syntax:**
+- **Compiled as it is parsed**: a tokenizer and a recursive-descent
+  parser emitting with COMPILE, and LITERAL as they read, as Forth
+  compiles itself - no syntax tree, no interpreter loop; every function
+  a Forth word, every Forth word callable. Fern's expected cost: within
+  0-20 % of hand-written Forth, a call about two dispatches.
+- **Kinds chosen at compile time**: Fern leaves out run-time type tags -
+  a tag check on every `+` would be the largest cost - and has the
+  compiler pick an operation from what it knows, or the program name
+  it. For Rill's kinds: known statically wherever they can be (literals,
+  `$(...)` is text, a `def`'s `-> kind`), a check only where they cannot.
+- **Memory: an arena per script, freed at its end** - Fern's choice,
+  "right for shell-style scripts". The simplest memory model, as the
+  ledger asks; per command at the prompt. A collector waits for an
+  example that needs one.
+- **No fractional numbers**: the Forth is integer-only (relf's kernel
+  too). Supports the leaning against them.
+- **Errors through CATCH and THROW**, as Rill's failure model already
+  maps.
+- **A listing of the generated Forth** beside each source line, after
+  c4's `-s`: the overhead in plain sight - for Rill, from the start.
+- **Expressions by precedence climbing** (c4's `expr`): one function.
+- Locals: Fern plans frames on the return stack; relf has shallow-bound
+  locals already (shadow.4, engine opcodes since 517 - CV8.md 6.3, the
+  largest single speed-up CV8 has), one dispatch an access. Rill uses
+  those.
+
+**Where Fern and Rill differ - one language would have to choose:**
+blocks (`def ... end`, Fern's, for an easy Forth parse; `{ }`, Rill's);
+variables (bare, Fern's; `$name`, Rill's 727 rule, which a shell needs);
+a function's value (its last expression, Fern's; `return`, with output
+apart, Rill's - a shell function prints); interpolation (`#{...}` and
+`{...}`/`$name`). The user's call: one language with Fern's compiler
+under Rill's syntax, or Fern kept apart as forth-vm-evolution's own.
+
 ## Conversions
 
 | original | code lines | chars | Rill lines | chars | |

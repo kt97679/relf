@@ -752,6 +752,7 @@ do not trust the absence of a line below.
 - 725 — a base and its marks are one character; the zero-width table generated from Unicode (323 ranges, halved); 13 more tests
 - 726 — Rill's scope settled (shell + scripting); RILL-LEDGER.md; 3 rewrites, all shorter; 16 candidate features weighed
 - 727 — one rule for names: $name reads a variable everywhere, a bare word is text; the rewrites still shorter
+- 728 — Fern and c4 notes: Rill takes Fern's compiler and runtime design; native and C-engine ideas to GOALS.md 12
 
 ### Not tied to an iteration
 
