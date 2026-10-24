@@ -895,6 +895,31 @@ compiler picks the operation from what it knows. In Rill:
 - **Integers only**: relf's Forth has no floating point, and neither has
   Rill (Fern left it out for the same reason; the ledger's leaning).
 
+### Decimals, not floating point (Iteration 733)
+
+A number with a fraction is a **decimal**: a kind of its own, fixed
+point with six places, 64 bits on every build - one cell on the 64-bit
+engines, a double cell on the 32-bit ones, so a script computes the same
+everywhere (range about ±9.2 × 10^12). A literal with a point is one
+(`1.5`); `decimal($t)` reads one from text; nothing converts between
+numbers and decimals implicitly. `+` and `-` are the integer words
+themselves, `*` and `/` the scaled `*/`; the library adds `log`, `exp`,
+`min`, `max` and `round`, and what the 32-bit kernel lacks of the
+double-cell words (`D+`, `D-`, `M*/`). No engine changes: real floating
+point waits for a rewrite that needs it - a decimal is exact for the
+percentages, averages and money scripts deal in.
+
+### Regular expressions: a small matcher in Forth (Iteration 733)
+
+Three library functions - `match(text, re)` (the match and its groups,
+or an empty list), `all(text, re)` (every match - its first group if it
+has one, as Python's `findall`), `sub(text, re, with)` (`\1` for a
+group) - over a backtracking matcher in the spirit of Pike's: literal
+characters, `.`, classes `[a-z]` and `[^...]`, `\d \w \s`, `* + ?`,
+`^ $`, groups and `|` within them. Python's syntax where Rill has any,
+some 300-400 lines of Forth. Backtracking can be slow on a pattern
+written to be; a script's patterns are not.
+
 ### Memory: an arena per script
 
 Fern's choice and the ledger's simplest model: every value of a script

@@ -41,8 +41,11 @@ starts ends trim join sort values	adopted	732	\b(starts|ends|trim|join|sort|valu
 push extend shift slice	adopted	732	\b(push|extend|shift|slice)\(
 path functions stem ext dir base abs	adopted	732	\b(stem|ext|dir|base|abs)\(
 adjacent items join into one argument	adopted	732	[A-Za-z0-9_./-]\$\(
-fractional numbers, log, exp, min, max	open	726	\b(log|exp|min|max)\(
-regular expressions: all()	open	726	\ball\(
+decimals: fixed point, 6 places; log exp min max round	adopted	733	\b(decimal|log|exp|min|max|round)\(|\b\d+\.\d+\b
+regular expressions: match all sub	adopted	733	\b(match|all|sub)\(
 slicing syntax x[a:b]	open	731	\$\w+\[[^\]\n]*:
 conditions without parentheses	rejected	732	(^|[{;]\s*|\belse\s+)(if|while)\s+[^(\s]
 bare names in expressions	rejected	727	-
+at(x, i, default)	adopted	733	\bat\(
+list and record equality ==, !=	adopted	733	\$\w+\s*[!=]=\s*\$\w+\b
+a def changing a script variable through a record	open	733	\bcount\[

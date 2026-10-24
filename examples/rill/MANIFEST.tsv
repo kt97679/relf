@@ -4,3 +4,4 @@ tools/native-ab-layouts.py	examples/rill/native-ab-layouts.rill	python
 tools/intrfuzz-stress.sh	examples/rill/intrfuzz-stress.rill	shell
 tests/shell/run-utf8	examples/rill/run-utf8.rill	shell
 tools/dead-words.py	examples/rill/dead-words.rill	python
+tools/gen-opcodes.sh	examples/rill/gen-opcodes.rill	shell

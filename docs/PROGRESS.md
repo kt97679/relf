@@ -757,6 +757,7 @@ do not trust the absence of a line below.
 - 730 — Rill in its own image (kernel + shared Forth libraries + rill/), relfsh untouched; its own small executor
 - 731 — rewrites: intrfuzz-stress and run-utf8 shorter, dead-words.py 7.5 % longer (the $ rule); rill-guard.sh; verify unmoved
 - 732 — needed features adopted (27); FEATURES.tsv register, MANIFEST.tsv, rill-audit.py; flags: floats, regex, dead-words +6.2 %
+- 733 — decimals (fixed point) and a regex matcher decided; gen-opcodes.sh in Rill, -21 %; scoping question opened
 
 ### Not tied to an iteration
 

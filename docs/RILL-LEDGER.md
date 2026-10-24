@@ -56,6 +56,23 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+**Open at 733 - a function changing a script's variable.** Part 5 makes
+a `def`'s assigned names its locals; gen-opcodes counts its problems in
+a `def bad`, and had to do it through a record (`count[bad] += 1`). The
+register flags it, open and used. Three ways: an explicit `global name`
+in the `def`, as Python; script-wide names unless a `def` says `local`,
+as sh, whose users expect it; or assignment updating a script variable
+of that name when there is one, as Lua - the least to write, the easiest
+to get wrong. The user's call.
+
+**733 - decimals and a small regular-expression matcher.** The user
+agreed both leanings. Fractions are a decimal kind - fixed point, six
+places, 64 bits on every build, library words over the kernel's `*/` and
+double cells - with no engine change; real floating point waits for a
+rewrite that needs it. Regular expressions are three library functions,
+`match`, `all`, `sub`, over a small backtracking matcher in Forth.
+SHELL-LANGUAGE.md Part 5 has both.
+
 **732 - the needed features adopted, and an audit to watch them.** The
 user's rule: if a feature is needed, add it; monitor, track and audit.
 Adopted, each from the rewrites' evidence in the tables below: `$(...)`
@@ -158,6 +175,7 @@ as of the iteration that last changed it.
 | tools/intrfuzz-stress.sh | 38 | 1,199 | 32 | 1,118 | shorter |
 | tests/shell/run-utf8 | 20 | 774 | 16 | 661 | shorter |
 | tools/dead-words.py | 148 | 3,299 | 112 | 3,502 | **longer, by 6.2 %** (7.5 % before 732) |
+| tools/gen-opcodes.sh | 142 | 6,162 | 94 | 4,854 | shorter, by 21 % |
 
 The rewrites are in examples/rill/. What they show:
 
