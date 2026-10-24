@@ -762,6 +762,7 @@ do not trust the absence of a line below.
 - 735 — pack-results.sh -2.6 %, native-by-source.py +2.7 %; eight rewrites: shorter than sh always, vs Python -35 % to +8.4 %
 - 736 — stage 1 begun: Rill's image (15 KB), rill/rt.4, prototype compiler tools/rillc.py; defs with locals still fault at boot
 - 737 — Rill runs: defs (ALLOC-BUFFERS, xt by offset), commands via FORK/EXECVE; fib 1.33x, loop 1.22x of hand-written Forth
+- 738 — Rill: pipelines, $(...), redirections and ports; pure defs keep parameters on the stack - fib level with hand-written Forth
 
 ### Not tied to an iteration
 

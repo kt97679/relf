@@ -22,7 +22,7 @@ TOKEN = re.compile(r'''
 
  | (?P<str>"(?:[^"\\]|\\.)*") | (?P<raw>'[^']*')
  | (?P<var>\$[A-Za-z_][A-Za-z0-9_]*)
- | (?P<op>==|!=|<=|>=|\+=|-=|->|\?\?|[<>=(){},;])
+ | (?P<op>\$\(|==|!=|<=|>=|>>|\+=|-=|->|\?\?|[<>=(){},;|])
  | (?P<word>[^\s"'$(){},;<>=]+)
 ''', re.X)
 KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in'}
@@ -31,11 +31,11 @@ def tokenize(src):
     toks, line = [], 1
     for m in TOKEN.finditer(src):
         k = m.lastgroup; v = m.group()
-        if k == 'nl': toks.append(('nl', v, line)); line += 1
+        if k == 'nl': toks.append(('nl', v, line, m.start(), m.end())); line += 1
         elif k in ('ws', 'comment'): continue
-        elif k == 'word' and v in KEYWORDS: toks.append(('kw', v, line))
-        else: toks.append((k, v, line))
-    toks.append(('eof', '', line))
+        elif k == 'word' and v in KEYWORDS: toks.append(('kw', v, line, m.start(), m.end()))
+        else: toks.append((k, v, line, m.start(), m.end()))
+    toks.append(('eof', '', line, len(src), len(src)))
     return toks
 
 class Compiler:
@@ -50,7 +50,7 @@ class Compiler:
 
     def peek(self, k=0): return self.t[self.i + k]
     def take(self, kind=None, val=None):
-        tok = self.t[self.i]
+        tok = self.t[self.i][:3] if False else self.t[self.i]
         if (kind and tok[0] != kind) or (val and tok[1] != val):
             raise Error('line %d: expected %s, found %r' % (tok[2], val or kind, tok[1]))
         self.i += 1; return tok
@@ -81,6 +81,7 @@ class Compiler:
             return '%s %s R-T=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if ak != 'number' or bk != 'number':
             raise Error('line %d: %s needs numbers, has %s and %s' % (line, op, ak, bk))
+        if getattr(self, 'stack', None): self.depth -= 1
         kind = 'number' if op in '+-*/%' else 'bool'
         short = {('+', '1'): '1+', ('-', '1'): '1-', ('>', '0'): '0>', ('<', '0'): '0<', ('==', '0'): '0=', ('!=', '0'): '0<>'}
         if (op, b) in short: return '%s %s' % (a, short[(op, b)]), kind      # one word, not a literal and an operator
@@ -93,9 +94,18 @@ class Compiler:
         return self.term()
     def term(self):
         tok = self.take()
-        k, v, line = tok
-        if k == 'word' and re.fullmatch(r'-?\d+', v): return v, 'number'
+        k, v, line = tok[:3]
+        if k == 'word' and re.fullmatch(r'-?\d+', v):
+            if getattr(self, 'stack', None): self.depth += 1
+            return v, 'number'
+        if k == 'var' and getattr(self, 'stack', None) and v[1:] in self.stack:
+            at = self.depth + len(self.stack) - 1 - self.stack.index(v[1:])
+            self.depth += 1
+            return {0: 'DUP', 1: 'OVER'}.get(at, '%d PICK' % at), 'number'
         if k == 'var': return 'R.%s @' % v[1:], self.kind_of(v[1:], line)
+        if v == '$(':
+            c = self.command(capture=True); self.take('op', ')')
+            return c + ' R-CHECK', 'text'
         if k == 'str': return self.string(v[1:-1], line), 'text'
         if k == 'raw': return self.lit(v[1:-1]), 'text'
         if v == '(' : c, kd = self.expr(); self.take('op', ')'); return c, kd
@@ -115,6 +125,7 @@ class Compiler:
         params, kind = self.funcs[name]
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
         word = 'RECURSE' if name == getattr(self, 'current', None) else 'R:%s' % name   # Forth hides a word until its ;
+        if getattr(self, 'stack', None): self.depth += (1 if kind else 0) - len(args)
         return ' '.join(a[0] for a in args) + ' ' + word, kind
     def lit(self, s):
         return 'S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s)
@@ -126,6 +137,13 @@ class Compiler:
             c = body[i]
             if c == '\\' and i + 1 < len(body):
                 lit += {'n': '\n', 't': '\t'}.get(body[i + 1], body[i + 1]); i += 2; continue
+            if body.startswith('$(', i):
+                if lit: parts.append(self.lit_text(lit)); lit = ''
+                depth, j = 1, i + 2
+                while depth: depth += {'(': 1, ')': -1}.get(body[j], 0); j += 1
+                sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
+                sub.t = tokenize(body[i + 2:j - 1]); sub.i = 0
+                parts.append(sub.command(capture=True) + ' R-CHECK'); i = j; continue
             m = re.match(r'\$([A-Za-z_][A-Za-z0-9_]*)', body[i:])
             if m or c == '{':
                 if lit: parts.append(self.lit_text(lit)); lit = ''
@@ -156,14 +174,17 @@ class Compiler:
             out.append(self.statement()); self.skip_nl()
         self.take('op', '}'); return ' '.join(o for o in out if o)
     def statement(self):
-        k, v, line = self.peek()
+        k, v, line = self.peek()[:3]
         start = self.i
         if v == 'if': out = self.if_()
         elif v == 'while':
             self.i += 1; c = self.cond()
             out = 'BEGIN %s WHILE %s REPEAT' % (c, self.block())
         elif v == 'return':
-            self.i += 1; c, kd = self.expr(); out = '%s EXIT' % c
+            self.i += 1; c, kd = self.expr()
+            if getattr(self, 'stack', None):
+                c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
+            out = '%s EXIT' % c
         elif v == 'def': out = self.def_(); return ''
         elif k == 'word' and self.peek(1)[1] in ('=', '+=', '-='):
             name = v; self.i += 1; op = self.take()[1]
@@ -176,7 +197,7 @@ class Compiler:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)
             out = '%s R.%s !' % (c, name)
-        elif k == 'word' and v == 'echo':
+        elif k == 'word' and v == 'echo' and not self.plumbed():
             self.i += 1; parts = []
             while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}'):
                 if self.peek()[1] == '{':
@@ -198,18 +219,50 @@ class Compiler:
                 out = run + ' R-CHECK'                           # failure stops the script
         else: raise Error('line %d: cannot read %r here' % (line, v))
         return out
-    def command(self):
-        """Words to the end of the statement, each as text; compiles to its status."""
-        parts = []
-        while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}', ')', '??'):
-            if self.peek()[1] == '{':
+    def plumbed(self):
+        """Does the statement from here redirect or pipe? Then echo runs as a
+        program, with its ports where the statement puts them."""
+        j = self.i
+        while self.t[j][0] not in ('nl', 'eof') and self.t[j][1] not in (';', '}', '??'):
+            if self.t[j][1] in ('>', '>>', '<', '|'): return True
+            j += 1
+        return False
+    PORTS = {'in': 0, 'out': 1, 'err': 2, 'all': 1}
+    MODES = {'>': 'W/O', '>>': 'A/O', '<': 'R/O'}
+    def command(self, capture=False):
+        """A pipeline to the end of the statement; compiles to its status - or,
+        captured, to its output and then its status."""
+        stages = [self.stage()]
+        while self.peek()[1] == '|':
+            self.i += 1; self.skip_nl(); stages.append(self.stage())
+        body = ' '.join('%s %s PL-STAGE' % (s, '-1' if k == len(stages) - 1 else '0') for k, s in enumerate(stages))
+        return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
+    def stage(self):
+        parts, redirs = [], []
+        stop = (';', '}', ')', '??', '|')
+        while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in stop:
+            tok, nxt = self.peek(), self.peek(1)
+            if tok[0] == 'word' and tok[1] in self.PORTS and nxt[1] in ('>', '>>') and nxt[3] == tok[4]:
+                self.i += 1; redirs.append(self.redirect(tok[1])); continue
+            if tok[1] in ('>', '>>', '<'):
+                redirs.append(self.redirect('in' if tok[1] == '<' else 'out')); continue
+            if tok[1] == '{':
                 self.i += 1; c, kd = self.expr(); self.take('op', '}')
-            elif self.peek()[0] == 'kw':
+            elif tok[0] == 'kw':
                 c, kd = self.lit(self.take()[1]), 'text'          # a keyword is a plain word as an argument
             else:
                 c, kd = self.term()
             parts.append(self.to_text(c, kd))
-        return '%s %d R-EXEC' % (' '.join(parts), len(parts))
+        return ' '.join(redirs + parts) + ' %d' % len(parts)
+    def redirect(self, port):
+        op = self.take()[1]
+        tok = self.peek()
+        if op != '<' and tok[0] == 'word' and tok[1] in ('out', 'err') and tok[3] == self.t[self.i - 1][4]:
+            self.i += 1                                           # a port joined to another: err>out
+            return '%d %d R-RD-DUP' % (self.PORTS[tok[1]], self.PORTS[port])
+        c, kd = self.term()
+        code = '%s %s %d R-RD-FILE' % (self.to_text(c, kd), self.MODES[op], self.PORTS[port])
+        return code + (' 1 2 R-RD-DUP' if port == 'all' else '')
     def cond(self):
         self.take('op', '(')
         if self.peek()[0] == 'word' and self.peek(1)[1] != '(':
@@ -219,6 +272,7 @@ class Compiler:
         self.take('op', ')'); return c
     def if_(self):
         self.take('kw', 'if'); c = self.cond()
+        if getattr(self, 'stack', None): self.depth -= 1               # IF takes the flag
         then = self.block(); save = self.i; self.skip_nl()
         if self.peek()[1] == 'else':
             self.i += 1
@@ -226,12 +280,39 @@ class Compiler:
             return '%s IF %s ELSE %s THEN' % (c, then, other)
         self.i = save
         return '%s IF %s THEN' % (c, then)
+    def pure(self, params):
+        """Does the body ahead only compute - no assignment, string, command,
+        echo or loop? Then its parameters stay on the data stack (Iteration
+        738): read with DUP, OVER or PICK, dropped under the result by NIP."""
+        j, depth = self.i, 0
+        while True:
+            k, v = self.t[j][0], self.t[j][1]
+            if v == '{': depth += 1
+            elif v == '}':
+                depth -= 1
+                if depth == 0: return True
+            elif k in ('str', 'raw') or v in ('=', '+=', '-=', '$(', 'while', 'for', '|', '>>', '??') and k != 'word':
+                # < and > are comparisons here: with no command in the body, nothing is redirected
+                return False
+            elif k == 'var' and v[1:] not in params: return False
+            elif k == 'word' and not re.fullmatch(r'-?\d+', v) and v not in self.PREC and v != '-' and self.t[j + 1][1] != '(':
+                return False                                     # a command, echo, a bare word
+            elif v in ('=', '+=', '-='): return False
+            j += 1
     def def_(self):
         self.take('kw', 'def'); name = self.take('word')[1]; params = []
         while self.peek()[0] == 'word': params.append(self.take()[1])
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
         self.funcs[name] = (params, kind); self.current = name
+        if self.pure(params):
+            self.stack, self.depth = params, 0
+            body = self.block()
+            self.stack = None
+            tail = '' if kind else ' DROP' * len(params)
+            body = re.sub(r' DUP NIP\b', '', ' ' + body + tail).strip()
+            self.defs.append(': R:%s %s ;' % (name, body)); self.current = None
+            return
         outer = self.locals; self.locals = {p: 'number' for p in params}
         self.names.update(params)
         body = self.block()

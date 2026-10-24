@@ -25,21 +25,82 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : R-TYPE ( t --- )   R-T@ TYPE ;
 : R-NL ( --- )   10 EMIT ;
 
-\ Commands (stage 1a): the words become a NUL-terminated argument
-\ vector in the arena, behind "env", which finds the program on PATH -
-\ one more exec, until the search is written in Forth. FORK, EXECVE,
-\ WAITPID are the kernel's own; nothing of the shell's executor is used.
+\ Commands, pipelines, output captured, ports redirected (stage 1b,
+\ Iteration 738). Rill's own executor on the kernel's FORK, EXECVE,
+\ WAITPID, PIPE and DUP2 - nothing of the shell's. A program is found on
+\ PATH by env, one exec more, until the search is written in Forth.
 : R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
 VARIABLE RX-N   VARIABLE RX-V
-: R-EXEC ( t1 .. tn n --- status )   \ run it, wait, its exit status
+: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena, "env" first
   DUP RX-N !  2 + CELLS R-ALLOT RX-V !
-  0  RX-V @ RX-N @ 1+ CELLS + !                        \ the vector's end
+  0  RX-V @ RX-N @ 1+ CELLS + !
   RX-N @ 0 ?DO  R-CSTR  RX-V @ RX-N @ I - CELLS + !  LOOP
-  S" env" R-TEXT R-CSTR RX-V @ !
-  FORK DUP 0= IF
-    DROP  RX-V @  S" /usr/bin/env" R-TEXT R-CSTR  EXECVE DROP  127 SYS-EXIT
+  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
+: R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
+: R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
+
+\ Redirections of the stage about to start: a file onto a descriptor
+\ (text, mode, fd), or one descriptor onto another (-1, from, fd); the
+\ child applies them in the order they were written.
+8 CONSTANT RR-MAX
+CREATE RR-T RR-MAX CELLS ALLOT   CREATE RR-M RR-MAX CELLS ALLOT   CREATE RR-F RR-MAX CELLS ALLOT
+VARIABLE RR-N
+: R-RD-RESET ( --- )   0 RR-N ! ;
+: R-RD-FILE ( t mode fd --- )
+  RR-F RR-N @ CELLS + !  RR-M RR-N @ CELLS + !  RR-T RR-N @ CELLS + !  1 RR-N +! ;
+: R-RD-DUP ( from fd --- )   >R -1 SWAP R> R-RD-FILE ;
+: R-RD-APPLY ( --- )
+  RR-N @ 0 ?DO
+    RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
+    ELSE
+      RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
+        DROP ." rill: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
+      THEN
+      DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP
+    THEN
+  LOOP ;
+
+\ A pipeline: PL-BEGIN, a PL-STAGE a command (the last with a true
+\ flag), PL-END. Every pipe end is listed, and each child closes them
+\ all once its own are on 0 and 1 - or a reader would never see the end.
+16 CONSTANT PL-MAX
+CREATE PL-PIDS PL-MAX CELLS ALLOT   VARIABLE PL-NP
+CREATE PL-FDS PL-MAX 2* 2 + CELLS ALLOT   VARIABLE PL-NF
+VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
+VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
+: PL-FD+ ( fd --- )   PL-FDS PL-NF @ CELLS + !  1 PL-NF +! ;
+: PL-BEGIN ( capture? --- )
+  0 PL-NP !  0 PL-NF !  -1 PL-PREV !  -1 PL-CAPW !  -1 PL-CAPR !  R-RD-RESET
+  IF  PIPE THROW  DUP PL-CAPW ! PL-FD+  DUP PL-CAPR ! PL-FD+  THEN ;
+: PL-CHILD ( in out --- )
+  DUP -1 <> IF 1 DUP2 DROP ELSE DROP THEN
+  DUP -1 <> IF 0 DUP2 DROP ELSE DROP THEN
+  PL-NF @ 0 ?DO  PL-FDS I CELLS + @ CLOSE-FILE DROP  LOOP
+  R-RD-APPLY ;
+: PL-STAGE ( t1 .. tn n last? --- )
+  >R R-ARGV  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
+  R> IF  PL-CAPW @ PL-OUT !
+  ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
+  FORK DUP 0= IF  DROP  PL-IN @ PL-OUT @ PL-CHILD  R-EXECV  THEN
+  PL-PIDS PL-NP @ CELLS + !  1 PL-NP +!  DROP
+  PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
+  PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
+  PL-NEXT @ PL-PREV !  R-RD-RESET ;
+: R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
+  >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
+  BEGIN
+    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
+    DUP 65536 R@ READ-SOME DUP 0>
+  WHILE + REPEAT  DROP R> DROP                                ( t end )
+  OVER CELL+ -                                                ( t len )
+  DUP IF  OVER CELL+ OVER + 1- C@ 10 = IF 1- THEN  THEN
+  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
+: PL-END ( --- [t] status )   \ t when captured; the status is the last stage's
+  PL-CAPR @ -1 <> IF
+    PL-CAPW @ CLOSE-FILE DROP  PL-CAPR @ R-READ-ALL  PL-CAPR @ CLOSE-FILE DROP
   THEN
-  WAITPID DROP  DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
+  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ WAITPID DROP R-DECODE  LOOP ;
+: R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
 VARIABLE R-STATUS
 : R-CHECK ( status --- )   \ failure stops the script, with the status
   ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
