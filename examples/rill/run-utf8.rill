@@ -1,0 +1,17 @@
+# examples/rill/run-utf8.rill - tests/shell/run-utf8 in Rill (Iteration 731)
+load "$(dir($script))/lib.rill"
+here = dir(abs($script))
+sh = abs(env(THIS_SH))
+t = $(mktemp -d)
+on EXIT { rm -rf $t }
+cd $t
+mkdir g; touch g/é g/ü g/aé
+want = lines(read("$here/utf8.expected"))
+for n, line in lines(read("$here/utf8-cases.txt")) {
+    if ($line == HEREDOC) { printf 'cat << EOF\né ü 日本 $(echo ä)\nEOF\n' > case.sh } else { write(case.sh, "$line\n") }
+    got = $(env LC_ALL=C $sh case.sh err> /dev/null < /dev/null | od -An -v -tx1 | tr -d ' \n')
+    assert_output_equals "utf8 case {$n + 1}: $line" $want[$n] $got
+}
+st = code((env LC_ALL=C $sh -c 'é() { echo f; }' err> /dev/null))
+assert_output_equals "utf8: a function named é is a syntax error, status 2" 2 $st
+report

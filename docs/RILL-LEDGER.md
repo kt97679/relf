@@ -49,6 +49,13 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
+**731 - relfsh is not to break.** The user's rule. A Rill iteration
+changes only Rill's files (rill/, examples/rill/, tests/rill/, its
+tools) and the docs; `tools/rill-guard.sh` fails if anything else
+changed since the last commit that changed relfsh, and verify must pass
+with every row of tests/BASELINE unmoved - relfsh's image sums among
+them. At 731, in a workspace rebuilt from the bundle: VERIFIED.
+
 **729 - one language: Rill supersedes Fern.** The user's decision:
 Rill is both relf's shell language and its scripting language; Fern,
 designed in forth-vm-evolution for the scripting half, is obsolete and
@@ -117,6 +124,9 @@ compiler.
 | tools/make-bundle.sh | 24 | 773 | 17 | 745 | shorter |
 | tools/native-ab-layouts.py | 87 | 3,863 | 65 | 2,505 | shorter |
 | 12 prompt one-liners | - | 476 | - | 444 | none longer |
+| tools/intrfuzz-stress.sh | 38 | 1,199 | 33 | 1,129 | shorter |
+| tests/shell/run-utf8 | 20 | 774 | 16 | 661 | shorter |
+| tools/dead-words.py | 148 | 3,299 | 112 | 3,547 | **longer, by 7.5 %** |
 
 The rewrites are in examples/rill/. What they show:
 
@@ -138,6 +148,35 @@ The rewrites are in examples/rill/. What they show:
 - **The one-liners hold only with three small additions** - `stem()`,
   the `all>` port and adjacency - without which three of the twelve
   would be longer than sh's.
+
+### dead-words.py: the first rewrite that is longer (731)
+
+dead-words is Python's home ground: no commands at all, a tokenizer, a
+graph of definitions, sets and maps, a breadth-first search, a file
+rewritten. Rill takes a quarter fewer lines and 248 more characters. Where
+they come from, counted:
+
+| source | characters |
+|---|---:|
+| `$` on 225 reads of a variable (727's rule) | +225 |
+| parentheses around 29 `if` and `while` conditions | +58 |
+| 23 lines that only close a block (`}`), where Python dedents | +23 |
+| `x = $x + 1`, 7 times, where Python writes `x += 1` | +28 |
+| `not ($a in $b)`, 7 times, where Python writes `a not in b` | +28 |
+
+So the one rule for names is what costs most, as expected where nearly
+every word is a variable: about one character in fifteen. What could pay
+it back, each a candidate below: `x += 1` (-28), `a not in b` (-28),
+conditions without parentheses (-58, but in conflict with `{expr}` as a
+command's argument: in `if test -f $x {`, is `{` the block?), slicing
+`$t[2:]` (-12), `break` and `continue` (a flag and a level of nesting
+less). All of them together leave it about 2-3 % longer. The user's two
+rules meet here: consistency, and never longer than the original - for
+a program that is all variables, they cannot both hold without some of
+these, and maybe not with all of them.
+
+The shell scripts are not affected: intrfuzz-stress and run-utf8 came
+out shorter under the same rule, and make-bundle shorter than before it.
 
 ## Features the rewrites used
 
@@ -168,12 +207,25 @@ yet; the uses are the evidence so far:
 | the `all>` port: out and err together | one-liner | `>/dev/null 2>&1` | `> /dev/null err>out`, longer than sh | yes: a port name, no syntax |
 | adjacent items join: `backup-$(date +%F).tgz` | one-liner | sh's word joining | `"backup-{$(date +%F)}.tgz"`, longer | yes: as sh; the design does not say |
 | `;` as "and then" | one-liner | `&&` | - | none needed: failure stops |
+| `par for x in list { }` - iterations at once, waits for all | intrfuzz 1 | `( ... ) &`, `pids`, `wait $pids` | a list of runs started and waited, longer | yes: one keyword before `for` |
+| `range(a, b)`, both ends included | intrfuzz 3, dead-words 1 | `while [ $r -le ... ]` counters | a counter and `while`, three lines more | yes: a function |
+| `$(...)` in strings, as sh | intrfuzz 3 | `"...$(cmd)..."` | `"...{$(cmd)}..."`, two more each | yes: the `$` rule reads an output too |
+| `$script`, the script's own path | run-utf8 2 | `$(dirname "$0")` | - | yes |
+| `abs(path)`, `dir(path)` | run-utf8 3 | `cd ... && pwd`, `dirname` | joins `stem()`'s path functions | yes |
+| `code(run)`: a run's exit status, failure not stopping | run-utf8 1 | `cmd; echo $?` | `try` and a variable, longer | open |
+| `$args`, the arguments as a list | dead-words 4 | `sys.argv` | `arg(n)` alone cannot loop | yes - and `arg(n)` perhaps only sugar for it |
+| `push`, `extend`, `shift`, `slice` (lists in place) | dead-words 14 | `append`, `+=`, `pop(0)`, `t[2:]` | `[@l x]`, which copies | yes as functions; slicing syntax open |
+| `starts`, `ends`, `trim`, `join`, `sort`, `values` | dead-words 10 | str methods, `sorted`, `.values()` | - | yes, to the small library |
+| map keys of any scalar, quoted keys in literals | dead-words 4 | Python dicts | `"{$n}"` keys - clumsy | yes |
+| a filter in a comprehension, `[x for x in l if c]` | dead-words 3 | Python's | a loop | with the comprehension |
+| `x += 1` | dead-words 7, intrfuzz 3 | `x += 1` | `x = $x + 1`, four more each | open - weighs against 727's cost |
+| `a not in b` | dead-words 7 | `not in` | `not ($a in $b)`, four more | open |
+| conditions without parentheses | everywhere | Python's `if x:` | two more each | open - conflicts with `{expr}` arguments |
+| `break`, `continue` | dead-words 3, intrfuzz 1 (avoided) | Python's, sh's | a flag, or `else` and a level deeper | open |
 
 ## Next conversions
 
-tools/intrfuzz-stress.sh (parallel jobs), tests/shell/run-utf8 (two
-files read in step), tools/gen-opcodes.sh (text to code),
-tools/pack-results.sh (a 244-line program), tools/dead-words.py (regular
-expressions), tools/size-research/native-by-source.py (records as maps),
-and a small JSON API client - each measured, each adding to the table
+tools/gen-opcodes.sh (text to code), tools/pack-results.sh (a 244-line
+program), tools/size-research/native-by-source.py (records as maps), and
+a small JSON API client - each measured, each adding to the table
 above or to a candidate's evidence.

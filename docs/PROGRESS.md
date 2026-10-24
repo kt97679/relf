@@ -755,6 +755,7 @@ do not trust the absence of a line below.
 - 728 — Fern and c4 notes: Rill takes Fern's compiler and runtime design; native and C-engine ideas to GOALS.md 12
 - 729 — one language: Rill supersedes Fern; SHELL-LANGUAGE.md Part 5, how Rill compiles into Forth
 - 730 — Rill in its own image (kernel + shared Forth libraries + rill/), relfsh untouched; its own small executor
+- 731 — rewrites: intrfuzz-stress and run-utf8 shorter, dead-words.py 7.5 % longer (the $ rule); rill-guard.sh; verify unmoved
 
 ### Not tied to an iteration
 
