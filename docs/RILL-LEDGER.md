@@ -15,12 +15,19 @@ every feature beyond that design has to earn its place.
    `tools/rill-measure.py`: code lines and characters, comments, blank
    lines, indentation, the `#!` line and a Python module's docstring not
    counted.
-4. **Every feature weighed; the default is no.** A feature enters when
-   several examples need it, when the alternatives are clearly worse - an
-   external program (`awk`, `sed`, `jq`), a Forth word exposed as a
-   function, or doing without - and when it costs the core little. A
-   function before syntax: a function adds a name, syntax changes the
-   grammar.
+4. **What a real script needs is added; everything is tracked and
+   audited** (revised at 732 - the user: a feature set cut until the tool
+   is unusable helps nobody). A feature enters when a rewrite of a real
+   script needs it - the alternatives (an external program, a Forth word
+   exposed as a function, doing without) clearly worse. A function before
+   syntax. Every feature is in the register, examples/rill/FEATURES.tsv,
+   with its status (spec, adopted, open, rejected), the iteration it
+   entered and a pattern that finds its uses; `tools/rill-audit.py`
+   counts them across every rewrite and flags an adopted feature nothing
+   uses any more and an open or rejected one something uses all the
+   same, and measures every rewrite in examples/rill/MANIFEST.tsv against
+   its original. It runs at the end of every Rill iteration, and its
+   flags go into the log.
 
 ## Decisions
 
@@ -48,6 +55,27 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 `"{dir}/..."`), native-ab-layouts 2,489 -> 2,505, the one-liners 442 ->
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
+
+**732 - the needed features adopted, and an audit to watch them.** The
+user's rule: if a feature is needed, add it; monitor, track and audit.
+Adopted, each from the rewrites' evidence in the tables below: `$(...)`
+in strings, the `all>` port, `par for`, quoted keys in record literals,
+indexing and index assignment, map keys of any scalar, `k in x` and
+`a not in b`, `x += n` and `x -= n`, comprehensions with a filter,
+`for i, x in list`, `break` and `continue`, `{expr}` as a command's
+argument, `cd DIR { }`, `fail`, `arg(n)`, `$args`, `$script`, `env()`,
+`number()`, `code(run)`, `range(a, b)`, the text, file, list and path
+functions, adjacent items joining. Rejected: conditions without
+parentheses - they cannot stand with `{expr}` arguments, and they are
+brevity, not need. Open, and used, so flagged until decided: fractional
+numbers (native-ab's geometric mean; relf's Forth has no floating point,
+so this is engine work) and regular expressions (one use; a matcher in
+Forth, or grep and sed). The register is examples/rill/FEATURES.tsv; the
+tables below keep the evidence each decision rests on.
+
+With them, dead-words.py is 3,502 characters against Python's 3,299:
++6.2 %, from +7.5 %. The audit keeps it on its LONGER line until
+something shortens it or the rule is restated.
 
 **731 - relfsh is not to break.** The user's rule. A Rill iteration
 changes only Rill's files (rill/, examples/rill/, tests/rill/, its
@@ -119,14 +147,17 @@ compiler.
 
 ## Conversions
 
+`python3 tools/rill-audit.py` prints the current figures; the table is
+as of the iteration that last changed it.
+
 | original | code lines | chars | Rill lines | chars | |
 |---|---:|---:|---:|---:|---|
 | tools/make-bundle.sh | 24 | 773 | 17 | 745 | shorter |
-| tools/native-ab-layouts.py | 87 | 3,863 | 65 | 2,505 | shorter |
+| tools/native-ab-layouts.py | 87 | 3,863 | 65 | 2,501 | shorter |
 | 12 prompt one-liners | - | 476 | - | 444 | none longer |
-| tools/intrfuzz-stress.sh | 38 | 1,199 | 33 | 1,129 | shorter |
+| tools/intrfuzz-stress.sh | 38 | 1,199 | 32 | 1,118 | shorter |
 | tests/shell/run-utf8 | 20 | 774 | 16 | 661 | shorter |
-| tools/dead-words.py | 148 | 3,299 | 112 | 3,547 | **longer, by 7.5 %** |
+| tools/dead-words.py | 148 | 3,299 | 112 | 3,502 | **longer, by 6.2 %** (7.5 % before 732) |
 
 The rewrites are in examples/rill/. What they show:
 

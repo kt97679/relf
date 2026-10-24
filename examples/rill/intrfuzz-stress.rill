@@ -14,22 +14,21 @@ def stress {
     echo "intrfuzz stress, $(date -u '+%Y-%m-%d %H:%M UTC'), $(git log --oneline -1 | cut -c1-72)"
     echo "cpu: $(nproc) cores; ROUNDS=$rounds JOBS=$jobs; 20 cases a run"
     for sh in [relfsh relfshasm64 relfsh-native] {
-        if (not (test -x ./$sh)) { echo "$sh: not built, skipped" } else {
-            runs = 0; bad = 0
+        if (not (test -x ./$sh)) { echo "$sh: not built, skipped"; continue }
+        runs = 0; bad = 0
             for r in range(1, $rounds) {
                 par for j in range(1, $jobs) { timeout 600 python3 tools/intrfuzz.py 20 {seed($r, $j)} ./$sh all> "$tmp/out.$j" ?? true }
                 for j in range(1, $jobs) {
-                    runs = $runs + 1
+                    runs += 1
                     f = $(sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p' "$tmp/out.$j")
                     if ($f != "0") {
-                        bad = $bad + 1
+                        bad += 1
                         echo "--- $sh, round $r, seed {seed($r, $j)}: {default($f, 'no summary (timed out?)')} failures"
                         grep -A14 '^FAIL' "$tmp/out.$j" | head -45
                     }
                 }
             }
-            echo "$sh: $runs runs ({$runs * 20} cases), $bad with failures"
-        }
+        echo "$sh: $runs runs ({$runs * 20} cases), $bad with failures"
     }
 }
 

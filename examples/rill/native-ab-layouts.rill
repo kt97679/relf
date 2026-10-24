@@ -39,7 +39,7 @@ def shells tree tag -> list {
 
 def gm xs -> number {
     s = 0
-    for x in $xs { s = $s + log($x) }
+    for x in $xs { s += log($x) }
     return exp($s / len($xs))
 }
 

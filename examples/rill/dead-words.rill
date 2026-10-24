@@ -8,15 +8,15 @@ def tokens line -> list {
         t = $toks[$i]
         if ($t == '\') { return $out }
         if ($t == '(') {
-            while ($i < len($toks) and not ends($toks[$i], ')')) { i = $i + 1 }
+            while ($i < len($toks) and not ends($toks[$i], ')')) { i += 1 }
         } else {
             push($out, $t)
             if ($t in $closers) {
-                i = $i + 1
-                while ($i < len($toks) and not ends($toks[$i], $closers[$t])) { i = $i + 1 }
+                i += 1
+                while ($i < len($toks) and not ends($toks[$i], $closers[$t])) { i += 1 }
             }
         }
-        i = $i + 1
+        i += 1
     }
     return $out
 }
@@ -44,22 +44,22 @@ for f in $files {
         t = tokens($l[$i])
         if (len($t) > 1 and $t[0] == ":") {
             start = $i; body = slice($t, 2)
-            while (not (";" in $body) and $i + 1 < len($l)) { i = $i + 1; extend($body, tokens($l[$i])) }
+            while (not (";" in $body) and $i + 1 < len($l)) { i += 1; extend($body, tokens($l[$i])) }
             node $t[1] $f $start $i $body
         } else if (len($t) >= 4 and $t[0] == "'" and $t[2] == IS) {
             if ($t[1] in $current and $t[3] in $current) { push($islines, {file: $f, line: $i, x: $current[$t[1]], y: $current[$t[3]]}) }
         } else {
             named = false
             for k, w in $t {
-                if (not $named and ($w in $definers or ends($w, BUFFER:)) and $k + 1 < len($t)) {
+                if (($w in $definers or ends($w, BUFFER:)) and $k + 1 < len($t)) {
                     extend($roots, resolve(slice($t, $k + 2)))
                     node $t[$k + 1] $f $i $i {slice($t, 0, $k + 1)}
-                    named = true
+                    named = true; break
                 }
             }
             if (not $named) { extend($roots, resolve($t)) }
         }
-        i = $i + 1
+        i += 1
     }
 }
 if (MAIN in $current) { push($roots, $current[MAIN]) }
@@ -71,9 +71,9 @@ reach = {}; parent = {}; todo = $roots
 for r in $todo { parent[$r] = -1 }
 while (len($todo) > 0) {
     n = shift($todo)
-    if (not ($n in $reach)) {
+    if ($n not in $reach) {
         reach[$n] = true
-        for r in $nrefs[$n] { if (not ($r in $reach or $r in $parent)) { parent[$r] = $n; push($todo, $r) } }
+        for r in $nrefs[$n] { if ($r not in $reach and $r not in $parent) { parent[$r] = $n; push($todo, $r) } }
     }
 }
 
@@ -84,15 +84,15 @@ if ($why != "") {
             while ($n != -1 and $n in $parent and len($chain) < 40) {
                 push($chain, "{$nodes[$n].name}@{$nodes[$n].file}:{$nodes[$n].first + 1}"); n = $parent[$n]
             }
-            mark = ""; if (not ($k in $parent)) { mark = "  (unreachable)" }
+            mark = ""; if ($k not in $parent) { mark = "  (unreachable)" }
             echo "{join($chain, ' <- ')}$mark"
         }
     }
     exit 0
 }
-dead = sort([[$nd.file, $nd.first, $nd.name] for k, nd in $nodes if not ($k in $reach)])
+dead = sort([[$nd.file, $nd.first, $nd.name] for k, nd in $nodes if $k not in $reach])
 for d in $dead { echo "{$d[0]}:{$d[1] + 1}: {$d[2]}" }
-deadis = [e for e in $islines if not ($e.y in $reach) or $lastis[$e.y].line != $e.line or $lastis[$e.y].file != $e.file]
+deadis = [e for e in $islines if $e.y not in $reach or $lastis[$e.y].line != $e.line or $lastis[$e.y].file != $e.file]
 for e in $deadis { echo "$e.file:{$e.line + 1}: IS line  {$nodes[$e.x].name} -> {$nodes[$e.y].name}" }
 echo "{len($dead)} unreachable definitions, {len($deadis)} dead IS lines, {len($reach)} reachable" out>err
 
@@ -100,9 +100,9 @@ if ($delete) {
     kill = {}
     for f in $files { kill[$f] = {} }
     for k, nd in $nodes {
-        if (not ($k in $reach)) {
+        if ($k not in $reach) {
             a = $nd.first
-            while ($a > 0 and starts(trim($lines[$nd.file][$a - 1]), '\')) { a = $a - 1 }
+            while ($a > 0 and starts(trim($lines[$nd.file][$a - 1]), '\')) { a -= 1 }
             for ln in range($a, $nd.last) { kill[$nd.file][$ln] = true }
         }
     }
@@ -110,7 +110,7 @@ if ($delete) {
     for f in $files {
         out = []; blank = false
         for k, l in $lines[$f] {
-            if (not ($k in $kill[$f])) {
+            if ($k not in $kill[$f]) {
                 if (trim($l) == "") { if (not $blank) { push($out, $l) }; blank = true }
                 else { blank = false; push($out, $l) }
             }

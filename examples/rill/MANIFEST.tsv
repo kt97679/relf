@@ -1,0 +1,6 @@
+# examples/rill/MANIFEST.tsv - each rewrite and its original, for tools/rill-audit.py (Iteration 732)
+tools/make-bundle.sh	examples/rill/make-bundle.rill	shell
+tools/native-ab-layouts.py	examples/rill/native-ab-layouts.rill	python
+tools/intrfuzz-stress.sh	examples/rill/intrfuzz-stress.rill	shell
+tests/shell/run-utf8	examples/rill/run-utf8.rill	shell
+tools/dead-words.py	examples/rill/dead-words.rill	python

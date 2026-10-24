@@ -1,0 +1,48 @@
+# examples/rill/FEATURES.tsv - every Rill feature beyond plain commands, its status and how tools/rill-audit.py finds its uses (Iteration 732)
+# name	status	since	pattern (Python regex, on code with comments cut)
+$name reads a variable everywhere	adopted	727	\$[A-Za-z_]
+@name spreads a list	spec	503	@[A-Za-z_]
+"$name" and "{expr}" in strings	spec	503	"[^"\n]*(\$[A-Za-z_]|\{)
+$(...) output	spec	503	\$\(
+$(...) inside a string	adopted	732	"[^"\n]*\$\(
+runs (...) as values	spec	503	\bcode\(\(|\(test\b
+named ports err> out>err	spec	503	\b(err|out)>
+the all> port	adopted	732	\ball>
+?? guard	spec	503	\?\?
+try / else	spec	503	\btry\b
+on EXIT	spec	503	\bon\s+EXIT\b
+par { } block	spec	503	\bpar\s*\{
+par for	adopted	732	\bpar\s+for\b
+load a file	spec	514	\bload\b
+def with -> kind	spec	503	\bdef\b[^{\n]*->
+lists [..] and records {k: v}	spec	503	\[@|\{\s*\w+:
+quoted keys in record literals	adopted	732	\{\s*'[^']*'\s*:
+indexing x[i], x[k] = v	adopted	732	\$\w+(\.\w+)*\[|^\s*\w+\[
+map keys of any scalar	adopted	732	\w\[\$\w+(\.\w+)*\]\s*=
+k in x	adopted	732	\bin\s+\$
+a not in b	adopted	732	\bnot\s+in\b
+x += n, x -= n	adopted	732	\w\s*[-+]=
+comprehension [e for x in l]	adopted	732	\[[^\]\n]*\bfor\b[^\]\n]*\bin\b
+comprehension filter [.. if c]	adopted	732	\bfor\b[^\]\n]*\bin\b[^\]\n]*\bif\b[^\]\n]*\]
+for i, x in list	adopted	732	\bfor\s+\w+\s*,\s*\w+\s+in\b
+break and continue	adopted	732	\b(break|continue)\b
+{expr} as a command argument	adopted	732	\s\{(\$|[a-z]+\()
+cd DIR { block }	adopted	732	\bcd\s+\S+\s*\{
+fail "message"	adopted	732	\bfail\b
+arg(n)	adopted	732	\barg\(
+$args	adopted	732	\$args\b
+$script	adopted	732	\$script\b
+env(name)	adopted	732	\benv\(
+default(x, y)	spec	502	\bdefault\(
+number(), code(run)	adopted	732	\b(number|code)\(
+range(a, b)	adopted	732	\brange\(
+text and file functions	adopted	732	\b(read|write|contains|replace|split|words|lines|first|len)\(
+starts ends trim join sort values	adopted	732	\b(starts|ends|trim|join|sort|values)\(
+push extend shift slice	adopted	732	\b(push|extend|shift|slice)\(
+path functions stem ext dir base abs	adopted	732	\b(stem|ext|dir|base|abs)\(
+adjacent items join into one argument	adopted	732	[A-Za-z0-9_./-]\$\(
+fractional numbers, log, exp, min, max	open	726	\b(log|exp|min|max)\(
+regular expressions: all()	open	726	\ball\(
+slicing syntax x[a:b]	open	731	\$\w+\[[^\]\n]*:
+conditions without parentheses	rejected	732	(^|[{;]\s*|\belse\s+)(if|while)\s+[^(\s]
+bare names in expressions	rejected	727	-
