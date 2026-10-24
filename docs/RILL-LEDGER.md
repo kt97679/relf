@@ -56,7 +56,25 @@ nothing: make-bundle 749 -> 745 characters (`"$dir/..."` is shorter than
 444 - none longer than its original. It is also the rule of the
 scripting languages that grew out of shells: Perl, PHP and PowerShell.
 
-**Open at 733 - a function changing a script's variable.** Part 5 makes
+**734 - a function never changes the script's variables.** The user
+asked whether to forbid it outright - a function returns what it
+changes - rather than add `global`. Yes: it can be checked at compile
+time (the compiler knows a name's scope), it makes `par for` safe by
+construction (its iterations run apart, so a change to a script variable
+could only vanish), and it leaves a function's whole effect in its
+return value and its world. Reading the script's variables stays
+allowed; a container passed as a parameter may be changed, and the
+audit counts such changes. Measured: two of the rewrites' twelve
+functions broke the rule; under it gen-opcodes collects its problems at
+the script's level (4,854 -> 4,909 characters, still 20 % shorter than
+the original), and dead-words' `node` returns its record, its references
+inside it - one list of records where there were two parallel lists
+(3,502 -> 3,576, +8.4 % against Python). `tools/rill-audit.py` checks the
+rule: 0 violations in the rewrites; on 733's gen-opcodes it reports
+`def bad changes the script variable count`, the negative control.
+
+**Open at 733 - a function changing a script's variable** (settled at
+734, above). Part 5 makes
 a `def`'s assigned names its locals; gen-opcodes counts its problems in
 a `def bad`, and had to do it through a record (`count[bad] += 1`). The
 register flags it, open and used. Three ways: an explicit `global name`
@@ -174,8 +192,8 @@ as of the iteration that last changed it.
 | 12 prompt one-liners | - | 476 | - | 444 | none longer |
 | tools/intrfuzz-stress.sh | 38 | 1,199 | 32 | 1,118 | shorter |
 | tests/shell/run-utf8 | 20 | 774 | 16 | 661 | shorter |
-| tools/dead-words.py | 148 | 3,299 | 112 | 3,502 | **longer, by 6.2 %** (7.5 % before 732) |
-| tools/gen-opcodes.sh | 142 | 6,162 | 94 | 4,854 | shorter, by 21 % |
+| tools/dead-words.py | 148 | 3,299 | 108 | 3,576 | **longer, by 8.4 %** (7.5 % at 731, 6.2 % at 732, the 734 rule) |
+| tools/gen-opcodes.sh | 142 | 6,162 | 94 | 4,909 | shorter, by 20 % |
 
 The rewrites are in examples/rill/. What they show:
 

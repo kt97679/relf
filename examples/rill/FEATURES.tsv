@@ -48,4 +48,4 @@ conditions without parentheses	rejected	732	(^|[{;]\s*|\belse\s+)(if|while)\s+[^
 bare names in expressions	rejected	727	-
 at(x, i, default)	adopted	733	\bat\(
 list and record equality ==, !=	adopted	733	\$\w+\s*[!=]=\s*\$\w+\b
-a def changing a script variable through a record	open	733	\bcount\[
+a def never changes a script variable (checked)	adopted	734	-

@@ -64,28 +64,27 @@ if (arg(1) == --forth-ops) { forth-ops; exit 0 }
 if (arg(1) == --forth-consts) { forth-consts; exit 0 }
 if (arg(1) != --check) { generate; exit 0 }
 
-count = {bad: 0}
-def bad msg { echo "gen-opcodes: $msg" out>err; count[bad] += 1 }
+bad = []
 nd = 0; ne = 0
 for x in $ops {
-    if ($x.kind == direct) { if ($x.num != $nd) { bad "direct $x.name is not at $nd" }; nd += 1 }
-    if ($x.kind == escaped) { if ($x.num != $ne) { bad "selector $x.name is not $ne" }; ne += 1 }
-    if ($x.kind == synth and $x.name == LIT32 and $x.num != $nd) { bad "LIT32 is not at the direct count $nd" }
-    if ($x.kind != escaped and $x.fmt not in [- u8 i8 u16 i32 u64 b8 b16 slot sel data]) { bad "$x.name has no known operand format (\"$x.fmt\")" }
+    if ($x.kind == direct) { if ($x.num != $nd) { push($bad, "direct $x.name is not at $nd") }; nd += 1 }
+    if ($x.kind == escaped) { if ($x.num != $ne) { push($bad, "selector $x.name is not $ne") }; ne += 1 }
+    if ($x.kind == synth and $x.name == LIT32 and $x.num != $nd) { push($bad, "LIT32 is not at the direct count $nd") }
+    if ($x.kind != escaped and $x.fmt not in [- u8 i8 u16 i32 u64 b8 b16 slot sel data]) { push($bad, "$x.name has no known operand format (\"$x.fmt\")") }
 }
 k4 = lines(read("$dir/forth/kernel.4"))
 tabnames = [$x.name for x in $ops if $x.kind in [direct escaped]]
 knames = [words($l)[1] for l in $k4 if match($l, '^PRIMITIVE[ \t]')]
 if ($tabnames != $knames) {
-    bad "forth/kernel.4's PRIMITIVE lines differ from engine/opcodes.tab's direct and escaped rows:"
+    push($bad, "forth/kernel.4's PRIMITIVE lines differ from engine/opcodes.tab's direct and escaped rows:")
     diff (printf '%s\n' @tabnames) (printf '%s\n' @knames) | sed 's/^/    /' out>err ?? true
 }
 kdirect = 0
 for l in $k4 { if (starts($l, ESCAPED)) { break }; if (match($l, '^PRIMITIVE[ \t]')) { kdirect += 1 } }
-if ($kdirect != $nd) { bad "forth/kernel.4 has $kdirect primitives before ESCAPED, engine/opcodes.tab $nd direct ones" }
+if ($kdirect != $nd) { push($bad, "forth/kernel.4 has $kdirect primitives before ESCAPED, engine/opcodes.tab $nd direct ones") }
 for x in $ops {
     if ($x.kind == tiny and not (grep -q "^$x.num OPCODE $x.name[ \t]" "$dir/forth/kernel.4")) {
-        bad "forth/kernel.4 does not declare `$x.num OPCODE $x.name`, as engine/opcodes.tab has it"
+        push($bad, "forth/kernel.4 does not declare `$x.num OPCODE $x.name`, as engine/opcodes.tab has it")
     }
 }
 for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANCH] [cross.4 0BRANCH-OP ?BRANCH]
@@ -94,9 +93,10 @@ for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANC
           [cross.4 0BRANCH8-OP ?BRANCH8] [shadow.4 LSAVE-OP LSAVE] [shadow.4 LRESTORE-OP LRESTORE] [shadow.4 L!-OP L!]
           [shadow.4 LZERO-OP LZERO]] {
     x = byname($c[2])
-    if ($x == "") { bad "engine/opcodes.tab has no opcode {$c[2]}"; continue }
-    if (not (grep -qE "^$x.num CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { bad "forth/{$c[0]}'s {$c[1]} is not $x.num ({$c[2]} in engine/opcodes.tab)" }
+    if ($x == "") { push($bad, "engine/opcodes.tab has no opcode {$c[2]}"); continue }
+    if (not (grep -qE "^$x.num CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { push($bad, "forth/{$c[0]}'s {$c[1]} is not $x.num ({$c[2]} in engine/opcodes.tab)") }
 }
-if (not (generate | cmp -s - "$dir/engine/cv8-ops.h")) { bad "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make" }
-if ($count.bad > 0) { fail "gen-opcodes: $count.bad problem(s)" }
+if (not (generate | cmp -s - "$dir/engine/cv8-ops.h")) { push($bad, "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make") }
+for m in $bad { echo "gen-opcodes: $m" out>err }
+if (len($bad) > 0) { fail "gen-opcodes: {len($bad)} problem(s)" }
 echo "gen-opcodes: engine/opcodes.tab, forth/kernel.4, forth/cross.4, forth/shadow.4 and engine/cv8-ops.h agree"

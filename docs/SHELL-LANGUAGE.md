@@ -937,6 +937,15 @@ A collector waits for an example that needs one.
   a `def` are its locals.
 - **A value and output are apart**: `return` leaves the value on the
   data stack; what a function prints goes to its output port.
+- **A function never changes the script's variables** (Iteration 734).
+  It reads them; it does not assign one, change one in place - an index
+  assignment, `+=`, `push`, `extend`, `shift` - or reassign one from
+  itself; what it changes, it returns. Names it assigns are its own
+  locals. A list or record passed to it as a parameter it may change -
+  the call shows it. A `par for` body is held to the same rule, since its
+  iterations run apart and a change could not come back. The compiler
+  rejects a violation; until it exists, `tools/rill-audit.py` checks the
+  rewrites for one.
 - **Failure stops**: a command whose status is not success THROWs, and
   the THROW unwinds to the nearest `try` (a CATCH), condition or `??`
   guard - or ends the script with the status and the line. `on EXIT`
