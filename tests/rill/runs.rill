@@ -1,0 +1,3 @@
+if (not (test -x /bin/sh)) { echo no } else { echo yes }
+ok = (test -d /tmp) and (test -d /nonexistent)
+echo $ok

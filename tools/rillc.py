@@ -183,7 +183,10 @@ class Compiler:
             return c + ' R-CHECK', 'text'
         if k == 'str': return self.string(v[1:-1], line), 'text'
         if k == 'raw': return self.lit(v[1:-1]), 'text'
-        if v == '(' : c, kd = self.expr(); self.take('op', ')'); return c, kd
+        if v == '(':
+            if self.run_ahead():
+                c = self.command() + ' 0='; self.take('op', ')'); return c, 'bool'   # a run is a term (745)
+            c, kd = self.expr(); self.take('op', ')'); return c, kd
         if k == 'word' and self.peek()[1] == '(':
             return self.call(v, line)
         if k == 'word': return self.lit(v), 'text'
@@ -300,13 +303,21 @@ class Compiler:
             self.i += 1; c = self.cond()
             out = 'BEGIN %s WHILE %s REPEAT' % (c, self.block())
         elif v == 'return':
+            if getattr(self, 'hoists', None) and True in self.hoists:
+                raise Error('line %d: return inside a loop that has a continue - not yet' % line)
             self.i += 1; c, kd = self.expr()
             if getattr(self, 'stack', None):
                 c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
             out = '%s EXIT' % c
         elif v == 'def': out = self.def_(); return ''
         elif v == 'for': out = self.for_()
-        elif v == 'break': self.i += 1; out = 'LEAVE'
+        elif v == 'break':
+            self.i += 1; out = '-1 R-BRK ! EXIT' if getattr(self, 'hoists', None) and self.hoists[-1] else 'LEAVE'
+        elif k == 'word' and v == 'continue':
+            if not (getattr(self, 'hoists', None) and self.hoists[-1]): raise Error('line %d: continue outside a for loop' % line)
+            self.i += 1; out = 'EXIT'
+        elif k == 'word' and v == 'par' and self.peek(1)[1] == 'for':
+            self.i += 1; out = self.for_(par=True)
         elif k == 'word' and v == 'fail' and self.peek(1)[1] != '(':
             self.i += 1; c, kd = self.expr(); out = '%s R-FAIL' % self.to_text(c, kd)       # 744
         elif k == 'word' and v == 'exit' and self.peek(1)[1] != '(':
@@ -366,7 +377,8 @@ class Compiler:
         stages = [self.stage()]
         while self.peek()[1] == '|':
             self.i += 1; self.skip_nl(); stages.append(self.stage())
-        body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', 'PL-STAGE-L' if s[1] else 'PL-STAGE')
+        word = {False: 'PL-STAGE', True: 'PL-STAGE-L', 'X': 'PL-STAGE-X'}
+        body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', word[s[1]])
                         for k, s in enumerate(stages))
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
     def arg_item(self):
@@ -407,6 +419,11 @@ class Compiler:
             if self.t[j][0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', self.t[j][1]): break
             j += 1
         spread = self.t[j][0] == 'word' and self.t[j][1].startswith('@')
+        tok = self.peek()
+        if tok[0] == 'word' and tok[1] in self.funcs and self.peek(1)[1] != '(':      # a def as a stage (745)
+            self.i += 1; parts, redirs = self.args(stop, False)
+            if parts: raise Error('line %d: a def in a pipeline takes no arguments yet' % tok[2])
+            return ' '.join(redirs + ["['] R:%s" % tok[1]]), 'X'
         parts, redirs = self.args(stop, spread)
         if spread: return ' '.join(redirs + ['R-NEW-LIST'] + parts), True
         return ' '.join(redirs + parts) + ' %d' % len(parts), False
@@ -419,16 +436,39 @@ class Compiler:
         c, kd = self.term()
         code = '%s %s %d R-RD-FILE' % (self.to_text(c, kd), self.MODES[op], self.PORTS[port])
         return code + (' 1 2 R-RD-DUP' if port == 'all' else '')
-    def cond(self):
-        self.take('op', '(')
+    def run_ahead(self):
+        """After a (: a run, unless its second token makes it an expression."""
         second = self.peek(1)
-        if self.peek()[0] == 'word' and second[1] != '(' and not (second[0] in ('kw', 'op') and second[1] in
-                ('in', 'not', 'and', 'or', '==', '!=', '<', '>', '<=', '>=')) and second[1] not in self.PREC:
-            c = self.command() + ' 0='                           # a run: its success
-        else:
-            c, kd = self.expr()
-        self.take('op', ')'); return c
-    def for_(self):
+        return self.peek()[0] == 'word' and second[1] != '(' and not (second[0] in ('kw', 'op') and second[1] in
+                ('in', 'not', 'and', 'or', '==', '!=', '<', '>', '<=', '>=')) and second[1] not in self.PREC
+    def cond(self):
+        if self.peek()[1] != '(': raise Error('line %d: a condition is in ( )' % self.peek()[2])
+        c, kd = self.expr(); return c
+    def has_continue(self):
+        """Does the block ahead hold a continue at its own level (not in a loop inside it)?"""
+        j, stack, pending = self.i, [], False
+        while True:
+            k, v = self.t[j][0], self.t[j][1]
+            if v == '{': stack.append('loop' if pending else 'block'); pending = False
+            elif v == '}':
+                stack.pop()
+                if not stack: return False
+            elif v in ('for', 'while') and k == 'kw': pending = True
+            elif k == 'word' and v == 'continue' and 'loop' not in stack[1:]: return True
+            j += 1
+    def loop_body(self):
+        hoists = getattr(self, 'hoists', [])
+        if not self.has_continue():
+            hoists.append(False); self.hoists = hoists
+            code = self.block(); hoists.pop(); return code
+        self.body_n = getattr(self, 'body_n', 0) + 1; n = self.body_n
+        hoists.append(True); self.hoists = hoists
+        code = self.block(); hoists.pop()
+        self.defs.append(': R-BODY-%d %s ;' % (n, code))
+        return 'R-BODY-%d R-BRK @ IF 0 R-BRK ! LEAVE THEN' % n
+    def par_wrap(self, body, par):
+        return 'R-PAR-FORK IF %s R-PAR-DONE THEN' % body if par else body
+    def for_(self, par=False):
         self.take('kw', 'for'); a = self.take('word')[1]; b = None
         if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
         self.take('kw', 'in'); line = self.peek()[2]
@@ -436,7 +476,9 @@ class Compiler:
             self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
             self.scope()[a] = 'number'; self.names.add(a)
-            return '%s 1+ %s ?DO I R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), a, self.block())
+            out = '%s 1+ %s ?DO I R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), a,
+                                                    self.par_wrap(self.loop_body(), par))
+            return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
         if sk == 'record':                                               # for k, v in a record
@@ -444,16 +486,18 @@ class Compiler:
             self.scope()[key] = 'text'
             if val: self.scope()[val] = 'any'; self.names.add(val)
             setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
-            return ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! %s%s LOOP'
-                    % (sc, tmp, tmp, tmp, key, setv, self.block()))
+            out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! %s%s LOOP'
+                   % (sc, tmp, tmp, tmp, key, setv, self.par_wrap(self.loop_body(), par)))
+            return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
         idx, item = (a, b) if b else (None, a)
         self.scope()[item] = 'any'; self.names.add(item)
         seti = ''
         if idx: self.scope()[idx] = 'number'; self.names.add(idx); seti = 'I R.%s ! ' % idx
-        return ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
-                % (sc, tmp, tmp, seti, tmp, item, self.block()))
+        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
+               % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(self.loop_body(), par)))
+        return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
     def if_(self):
         self.take('kw', 'if'); c = self.cond()
         if getattr(self, 'stack', None): self.depth -= 1               # IF takes the flag

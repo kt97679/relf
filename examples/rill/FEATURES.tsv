@@ -59,3 +59,4 @@ for k, v in record	adopted	735	\bfor\s+\w+\s*,\s*\w+\s+in\s+(\$by|sort-by)
 defs before their use (one pass)	adopted	735	-
 keywords are plain words as arguments	adopted	737	-
 implemented in both compilers (744): fail exit on-EXIT arg $args $script env default @spread	built	744	-
+implemented in both compilers (745): runs as terms, continue, par for, a def as a pipeline stage	built	745	-

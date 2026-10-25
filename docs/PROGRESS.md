@@ -769,6 +769,7 @@ do not trust the absence of a line below.
 - 742 — rill-forth-lint.py for the recurring slips; commands in the Forth compiler: 3 of 4 test programs the same and run in the image
 - 743 — lists and records in the Forth compiler: all four programs the same as rillc.py and run in the image; rillc.py now only the oracle
 - 744 — both compilers kept in step: fail, exit, on EXIT, arg/$args/$script, env, default, @spreads; make-bundle.rill runs for real
+- 745 — runs as terms, continue (hoisted bodies), par for, defs as pipeline stages; intrfuzz-stress.rill runs for real, its report the sh one's
 
 ### Not tied to an iteration
 

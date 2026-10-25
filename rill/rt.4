@@ -210,6 +210,31 @@ VARIABLE R-ON-EXIT-XT
 : R-CHECK ( status --- )   \ failure stops the script, with the status
   ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
 
+VARIABLE PX-XT
+: PX-RUN ( --- )   \ in the child: the def, its failure its status (745)
+  0 R-ON-EXIT-XT !  PX-XT @ CATCH ?DUP IF -4000 = IF R-STATUS @ ELSE 2 THEN SYS-EXIT THEN  0 SYS-EXIT ;
+: PL-STAGE-X ( xt last? --- )   \ a def as a stage: run in a child, as a program would be
+  >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
+  R> IF  PL-CAPW @ PL-OUT !
+  ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
+  FORK DUP 0= IF  DROP  PX-XT !  PL-IN @ PL-OUT @ PL-CHILD  PX-RUN  THEN
+  PL-PIDS PL-NP @ CELLS + !  1 PL-NP +!  DROP
+  PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
+  PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
+  PL-NEXT @ PL-PREV !  R-RD-RESET ;
+\ par for: each body in a child of its own, all waited for at the end (745)
+VARIABLE R-BRK   \ break, from a loop body made a def of its own by a continue
+64 CONSTANT PAR-MAX   PAR-MAX CELLS BUFFER: PAR-PIDS   VARIABLE PAR-N
+: R-PAR-BEGIN ( --- )   0 PAR-N ! ;
+: R-PAR-FORK ( --- child? )
+  FORK DUP 0= IF DROP 0 R-ON-EXIT-XT ! -1 EXIT THEN             \ the child: not the script's on EXIT
+  PAR-N @ PAR-MAX = ABORT" rill: par for has more than 64 bodies running"
+  PAR-PIDS PAR-N @ CELLS + !  1 PAR-N +!  0 ;
+: R-PAR-DONE ( --- )   0 SYS-EXIT ;
+: R-PAR-END ( --- )   \ every body waited for; the first failure's status, if one failed
+  0  PAR-N @ 0 ?DO  PAR-PIDS I CELLS + @ WAITPID DROP R-DECODE  OVER 0= IF NIP ELSE DROP THEN  LOOP
+  R-CHECK ;
+
 \ The image boots into R-BOOT: its first argument is the Forth that
 \ tools/rillc.py made of a Rill script, evaluated; the image leaves with
 \ status 0.
