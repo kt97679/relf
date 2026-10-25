@@ -49,6 +49,7 @@ class Compiler:
         self.locals = None      # kinds of the def being compiled
         self.infer = None       # gene infer (764), the first pass: (def or None, name) -> the kinds it is bound to
         self.fixed = None       # ... the second: (def or None, name) -> the one kind it has, their join
+        self.dal = {}; self.da_depth = 0; self.da_next = []   # certainly set (772): the block depth each name was set at
         self.defs = []          # Forth of each def
         self.names = set()      # every VARIABLE needed
         self.lines = []         # (rill line, forth) for --list
@@ -64,6 +65,18 @@ class Compiler:
 
     def scope(self): return self.locals if self.locals is not None else self.vars
     def skey(self): return self.current if self.locals is not None else None
+    # certainly set (772): a name set in a block is certainly set in it, and in the blocks within, from
+    # there on; leaving the block forgets it, unless it was set before the block. A read of a text, a
+    # list, a record or an item that is not certainly set checks the variable is - 0 is never one of them.
+    def da_key(self, name): return (self.current if self.locals is not None and name in self.locals else None, name)
+    def da_mark(self, name):
+        if self.dal.get(self.da_key(name), -1) < 0: self.dal[self.da_key(name)] = self.da_depth
+    def da_enter(self, names):
+        self.da_depth += 1
+        for n in names: self.da_mark(n)
+    def da_leave(self):
+        for k in [k for k, d in self.dal.items() if d == self.da_depth]: self.dal[k] = -1
+        self.da_depth -= 1
     def num_into(self, k):                # a loop's count or index stored in a variable of kind k (771)
         return '' if k == 'number' else ' 1000000 *' if k == 'decimal' else ' K-NUM R-BOX'
     def bind(self, name, kind):
@@ -178,9 +191,11 @@ class Compiler:
         nk = self.bind(name, 'any' if not second else 'number' if sk == 'list' else 'text')
         if second: self.bind(second, 'any')
         cond = None
+        self.da_enter([name] + ([second] if second else []))
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, ek = self.expr(); self.i = after
+        self.da_leave()
         item = '%s OVER R-PUSH' % self.box(ec, ek)
         body = '%s IF %s THEN' % (cond, item) if cond else item
         if second and sk == 'record':                                   # the key a text, or its box where $name is an item (764)
@@ -225,7 +240,11 @@ class Compiler:
         if k == 'var' and v[1:] in ('args', 'script') and v[1:] not in self.vars and \
                 (self.locals is None or v[1:] not in self.locals):
             return ('R-ARGS', 'list') if v[1:] == 'args' else ('R-SCRIPT', 'text')       # 744
-        if k == 'var': return 'R.%s @' % v[1:], self.kind_of(v[1:], line)
+        if k == 'var':
+            kv = self.kind_of(v[1:], line)
+            if kv in ('text', 'list', 'record', 'any') and self.dal.get(self.da_key(v[1:]), -1) < 0:
+                return 'R.%s @ DUP 0= IF S" %s" R-UNSET THEN' % (v[1:], v[1:]), kv     # maybe not set here (772)
+            return 'R.%s @' % v[1:], kv
         if v == '$(':
             c = self.command(capture=True); self.take('op', ')')
             return c + ' R-CHECK', 'text'
@@ -398,10 +417,11 @@ class Compiler:
     # statements
     def block(self):
         self.take('op', '{'); out = []
+        self.da_enter(self.da_next); self.da_next = []
         self.skip_nl()
         while self.peek()[1] != '}':
             out.append(self.statement()); self.skip_nl()
-        self.take('op', '}'); return ' '.join(o for o in out if o)
+        self.take('op', '}'); self.da_leave(); return ' '.join(o for o in out if o)
     def statement(self):
         k, v, line = self.peek()[:3]
         start = self.i
@@ -468,6 +488,7 @@ class Compiler:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             if self.infer is not None: self.bind(name, kd)
             else: sc[name] = kd; self.names.add(name)
+            if op == '=': self.da_mark(name)                                 # certainly set from here (772)
             out = '%s R.%s !' % (c, name)
         elif GENES['warn'] and k == 'word' and v == 'warn' and self.peek(1)[1] != '(':   # warn ...: the err port (747; a gene 751)
             self.i += 1
@@ -666,6 +687,7 @@ class Compiler:
             self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
             box = self.num_into(self.bind(a, 'number'))                 # an item or a decimal, where $a is bound to others too
+            self.da_next = [a]
             if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
                 body = self.loop_body(); self.loopvar = outer
@@ -678,7 +700,7 @@ class Compiler:
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
         if sk == 'record':                                               # for k, v in a record
             key, val = (a, b) if b else (a, None)
-            kk = self.bind(key, 'text')
+            kk = self.bind(key, 'text'); self.da_next = [key] + ([val] if val else [])
             if val: self.bind(val, 'any')
             setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
             out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! %s%s LOOP'
@@ -687,6 +709,7 @@ class Compiler:
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
         idx, item = (a, b) if b else (None, a)
+        self.da_next = [item] + ([idx] if idx else [])
         self.bind(item, 'any')
         seti = ''
         if idx: seti = 'I%s R.%s ! ' % (self.num_into(self.bind(idx, 'number')), idx)
@@ -743,6 +766,7 @@ class Compiler:
             for p in params: self.bind(p, 'any')
         if self.fixed is not None:
             self.locals.update({n: k for (d, n), k in self.fixed.items() if d == name})
+        self.da_next = list(params)
         body = self.block()
         scratch = [n for n in self.locals if n not in params]
         self.names.update(scratch)

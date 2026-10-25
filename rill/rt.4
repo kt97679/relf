@@ -483,3 +483,5 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 : R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
   R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
   K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-NL 1 R-STATUS ! -4000 THROW ;
+: R-UNSET ( c-addr u --- )   \ a variable read where it may not be set, and it is not (772) - Python's NameError
+  ." rill: $" TYPE ."  is not set" R-NL  1 R-STATUS !  -4000 THROW ;

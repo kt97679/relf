@@ -420,3 +420,18 @@ are. That case had also shown the two compilers apart - the Forth one did
 not record what `+=` binds in its first pass, so it kept `x` a number and
 cut 0.5 to 0 - which the oracle had never met; both now record it alike.
 `x[i] += v` is not in the language yet.
+
+## 772: a variable that may not be set is checked where it is read
+
+Python stops with NameError where a name is read before it is set; Rill read
+the variable's 0 as an address and crashed (docs/RILL-SECOND-OPINIONS.md).
+Both compilers now know, block by block, where a variable is certainly set:
+set in a block, it is certainly set from there on in that block and the
+blocks within; leaving the block forgets it, unless it was set before. A
+read of a text, a list, a record or an item anywhere else checks the
+variable (`DUP 0= IF S" x" R-UNSET THEN`: 0 is never one of them) and stops
+with "rill: $x is not set" and status 1 - only when it is, in fact, not
+set; a program that sets it on the path it takes runs as before. Numbers,
+bools and decimals read 0 where unset, as before: their 0 is a value.
+Nothing is rejected at compile time. On the corpus no read needed the check:
+the generated code did not change.

@@ -1,0 +1,11 @@
+# tests/rill/unset.rill - a read where a variable may not be set checks it is (772): Python's NameError,
+# not a crash; set on this run's path, it reads as ever
+c = 1
+if ($c > 0) { found = yes }
+echo found $found
+for w in [a b] { last = $w }
+echo last $last
+l = []
+for x in $l { seen = $x }
+echo seen $seen
+echo never here
