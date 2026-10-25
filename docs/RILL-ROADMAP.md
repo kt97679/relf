@@ -101,3 +101,20 @@ corpus. Now:
   returns R-RETV.
 tests/rill/flow.rill against tests/rill/flow.py (Python): 13 lines, every
 combination. Every example compiles to the same Forth as before.
+
+## Phase 3 progress (Iteration 780): a[i][j] = v; items to library calls; defs as commands
+
+- `a[i][j] = v`, `+=`, `-=`, to any depth: the container read down the chain
+  (the first index by the variable's kind, each later one R-INDEX-ANY), the
+  last index assigned through R-ASSIGN-ANY. The Forth compiler reads each
+  index's tokens again where its code goes. tests/rill/chain.rill as Python.
+- Found on the way, a crash: join, slice, sum, at and sort-by passed an item
+  (a list read out of a list or record) on still boxed. Unboxed now, as
+  keys, max, min and the rest have been since 758.
+- A def called like a command with arguments: both compilers name it and
+  show the call - `greet is a def: call it as greet(...)`
+  (tests/rill/errors/def-args.rill).
+
+Still open in phase 3: a built-in format; run-time errors naming the Rill
+line. Phase 5's three waiting rewrites (gen-opcodes, pack-results,
+run-utf8) need abs() and more of the library first.

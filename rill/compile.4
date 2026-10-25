@@ -368,7 +368,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
   2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
-  2DUP S" join" S= IF 2DROP ARG DROP ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" join" S= IF 2DROP ARG CONT ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" range" S= IF 2DROP OUT-POS LB-POS !  ARG TO-NUM                     \ range(b), (a, b), (a, b, step): Python's (770)
     S" )" CUR-IS? IF S" 0" LB-POS @ OUT-INSERT S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
     ARG TO-NUM  S" )" CUR-IS? IF S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
@@ -394,7 +394,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" sub" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-SUB" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" env" S= IF 2DROP ARG TO-TEXT S" R-ENV" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" default" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-DEFAULT" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" slice" S= IF 2DROP ARG >R ARG TO-NUM                      \ a list's; a text's, a record's (754)
+  2DUP S" slice" S= IF 2DROP ARG DUP CONT >R ARG TO-NUM                      \ a list's; a text's, a record's (754)
      S" )" CUR-IS? IF R@ K-TEXT = IF S" OVER @" ELSE R@ K-REC = IF S" OVER R-KEYS R-LEN" ELSE S" OVER R-LEN" THEN THEN OUT+
      ELSE ARG TO-NUM THEN
      R@ K-TEXT = IF S" R-TSLICE" ELSE R@ K-REC = IF S" R-RSLICE" ELSE S" R-SLICE" THEN THEN OUT+
@@ -407,9 +407,9 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" write" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-WRITE" OUT+ 0 -1 EXIT THEN
   2DUP S" starts" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-STARTS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" ends" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ENDS" OUT+ K-BOOL -1 EXIT THEN
-  2DUP S" sum" S= IF 2DROP ARG DROP S" R-SUM" OUT+ K-NUM -1 EXIT THEN
-  2DUP S" at" S= IF 2DROP ARG DROP ARG TO-TEXT ARG BOX S" R-AT-OR" OUT+ K-ANY -1 EXIT THEN
-  2DUP S" sort-by" S= IF 2DROP ARG DROP ARG TO-TEXT ARG TO-TEXT S" R-SORT-BY" OUT+ K-REC -1 EXIT THEN
+  2DUP S" sum" S= IF 2DROP ARG CONT S" R-SUM" OUT+ K-NUM -1 EXIT THEN
+  2DUP S" at" S= IF 2DROP ARG CONT ARG TO-TEXT ARG BOX S" R-AT-OR" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" sort-by" S= IF 2DROP ARG CONT ARG TO-TEXT ARG TO-TEXT S" R-SORT-BY" OUT+ K-REC -1 EXIT THEN
   2DUP S" log" S= IF 2DROP ARG TO-DEC S" R-LOG" OUT+ K-DEC -1 EXIT THEN          \ 760
   2DUP S" exp" S= IF 2DROP ARG TO-DEC S" R-EXP" OUT+ K-DEC -1 EXIT THEN
   2DUP S" decimal" S= IF 2DROP ARG TO-TEXT S" R-TEXT>DEC" OUT+ K-DEC -1 EXIT THEN
@@ -933,7 +933,7 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
   TK K@ T-WORD = TK T@ DF-FIND 0< 0= AND TK 1+ S" (" TK-IS? 0= AND IF
     TK T@ NEXT-TK  0 SP-FORM ! 0 SP-PEND !  0
     BEGIN STAGE-END? 0= WHILE STAGE-ITEM REPEAT
-    IF S" a def in a pipeline takes no arguments yet" ERR THEN
+    IF ." rillc: line " TK L@ . ." : " 2DUP TYPE ."  is a def: call it as " TYPE ." (...) - as a command it takes no arguments" R-NL -4100 THROW THEN   \ 779
     [CHAR] [ OUT-C [CHAR] ' OUT-C [CHAR] ] OUT-C BL OUT-C  S" R:" OUT-RAW OUT+  0 1 EXIT
   THEN
   SPREAD-AHEAD? SP-FORM !  0 SP-PEND !
@@ -1081,11 +1081,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
 VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIABLE IA-OP  VARIABLE IA-CP
 : IA-INDEX ( --- )   \ the index's code again, its tokens read a second time (774)
   TK-I @ >R  IA-T @ TK-I !  1 EXPR  IA-K @ K-LIST = IF TO-NUM ELSE IA-K @ K-ANY = IF BOX ELSE TO-TEXT THEN THEN  R> TK-I ! ;
-: IA-CHANGE ( --- kind )   \ x[i] += v, -= v: the item there, changed - rillc.py's binop(op, item, any, v) (774)
-  IA-K @ K-LIST = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-INDEX S" R-AT" OUT+ ELSE
-  IA-K @ K-REC = IF IA-INDEX IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-GET" OUT+ ELSE
-  IA-K @ K-ANY = IF IA-INDEX IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-INDEX-ANY" OUT+ ELSE
-  S" += and -= need a list or a record" ERR THEN THEN THEN
+: IA-ARITH ( --- kind )   \ the item there, as read, changed by the value ahead (774; its own word 779)
   OUT-POS IA-CP !                                                    \ where the item's conversion goes
 \ [gene short]
   TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
@@ -1094,11 +1090,40 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIA
   1 EXPR
   DUP K-DEC = IF DROP S" R-ANY>DEC" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-DEC EXIT THEN
   TO-NUM  S" R-ANY>NUM" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-NUM ;
+: IA-CHANGE ( --- kind )   \ x[i] += v, -= v: the item there, changed - rillc.py's binop(op, item, any, v) (774)
+  IA-K @ K-LIST = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-INDEX S" R-AT" OUT+ ELSE
+  IA-K @ K-REC = IF IA-INDEX IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-GET" OUT+ ELSE
+  IA-K @ K-ANY = IF IA-INDEX IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-INDEX-ANY" OUT+ ELSE
+  S" += and -= need a list or a record" ERR THEN THEN THEN
+  IA-ARITH ;
+CREATE CH-T 8 CELLS ALLOT  VARIABLE CH-N   \ a[i][j]: where each index's tokens start (779)
+: CH-READ ( j conv --- )   \ index j's code again: conv 0 boxed, 1 a number, 2 a text
+  TK-I @ >R  SWAP CELLS CH-T + @ TK-I !  1 EXPR  SWAP
+  DUP 1 = IF DROP TO-NUM ELSE 2 = IF TO-TEXT ELSE BOX THEN THEN  R> TK-I ! ;
+: CH-CONT ( --- )   \ the container, an item: the first index by the variable's kind, each later one R-INDEX-ANY - rillc.py's cc
+  CH-N @ 2 - 0 ?DO  CH-N @ 2 - I -  0 CH-READ  LOOP                 \ the later indexes, last first
+  IA-K @ K-LIST = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ 0 1 CH-READ S" R-AT" OUT+ ELSE
+  IA-K @ K-REC = IF 0 2 CH-READ IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-GET" OUT+ ELSE
+  IA-K @ K-ANY = IF 0 0 CH-READ IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-INDEX-ANY" OUT+ ELSE
+  S" is not a list or a record" ERR THEN THEN THEN
+  CH-N @ 2 - 0 ?DO S" R-INDEX-ANY" OUT+ LOOP ;
+: CHAIN-ASSIGN ( --- )   \ a[i][j] = v, += v, -= v: rillc.py's chain - each index's code read again where it goes
+  IA-P @ CUR#A @ !                                                   \ the first index's code, not here
+  IA-T @ CH-T !  1 CH-N !
+  BEGIN TK S" [" TK-IS? TK TOK-AT TK 1- TOK-END = AND WHILE
+    CH-N @ 8 = IF S" more indexes than eight" ERR THEN
+    NEXT-TK  TK-I @ CH-N @ CELLS CH-T + !  1 CH-N +!
+    OUT-POS >R 1 EXPR DROP R> CUR#A @ !  S" ]" EXPECT                 \ passed over: read again below
+  REPEAT
+  S" =" CUR-IS? IF 0 ELSE S" +=" CUR-IS? IF 1 ELSE S" -=" CUR-IS? IF 2 ELSE S" =" EXPECT 0 THEN THEN THEN IA-OP !  NEXT-TK
+  IA-OP @ IF CH-N @ 1- 0 CH-READ CH-CONT S" R-INDEX-ANY" OUT+ IA-ARITH ELSE 1 EXPR THEN  BOX
+  CH-N @ 1- 0 CH-READ  CH-CONT  S" R-ASSIGN-ANY" OUT+ ;
 : INDEX-ASSIGN ( --- )
   TK T@ IA-L ! IA-A !  NEXT-TK NEXT-TK
   IA-A @ IA-L @ NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @  DUP IA-K !     ( ck )
   TK-I @ IA-T !                                                      \ where the index starts, to read it again
   OUT-POS IA-P !  1 EXPR  OVER K-LIST = IF TO-NUM ELSE OVER K-ANY = IF BOX ELSE TO-TEXT THEN THEN  S" ]" EXPECT
+  TK S" [" TK-IS? TK TOK-AT TK 1- TOK-END = AND IF DROP CHAIN-ASSIGN EXIT THEN   \ a[i][j] (779)
   S" =" CUR-IS? IF 0 ELSE S" +=" CUR-IS? IF 1 ELSE S" -=" CUR-IS? IF 2 ELSE S" =" EXPECT 0 THEN THEN THEN IA-OP !  NEXT-TK
   OUT-POS  IA-OP @ IF IA-CHANGE ELSE 1 EXPR THEN  BOX  IA-P @ SEG>POS          \ the value before the index
   DUP K-LIST = IF DROP OUT-POS IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-P @ SG-LEN @ + SEG>POS S" R-SET" OUT+ EXIT THEN

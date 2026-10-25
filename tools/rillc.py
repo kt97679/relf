@@ -279,6 +279,7 @@ class Compiler:
         if getattr(self, 'stack', None): self.depth += (1 if kind else 0) - len(args)
         return ' '.join(a[0] for a in args) + ' ' + word, kind
     def library(self, name, args, line):
+        cont = lambda x: x[0] + ' R-UNBOX DROP' if x[1] == 'any' else x[0]        # an item holding a list or record (758)
         a = args
         def need(n, *kinds):
             if len(a) != n: raise Error('line %d: %s() takes %d arguments' % (line, name, n))
@@ -288,7 +289,7 @@ class Compiler:
             if k == 'record': return '%s R-KEYS @' % c, 'number'
             return '%s @' % c, 'number'                            # a text's or a list's count
         if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
-        if name == 'join': need(2); return '%s %s R-JOIN' % (a[0][0], self.to_text(*a[1])), 'text'
+        if name == 'join': need(2); return '%s %s R-JOIN' % (cont(a[0]), self.to_text(*a[1])), 'text'   # an item unboxed (779)
         if name == 'range':                                            # Python's: up to, not with, its end (770)
             if len(a) not in (1, 2, 3): raise Error('line %d: range() takes 1 to 3 arguments' % line)
             n = [self.to_num(c, k, line) for c, k in a]
@@ -297,7 +298,6 @@ class Compiler:
             return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
-        cont = lambda x: x[0] + ' R-UNBOX DROP' if x[1] == 'any' else x[0]        # an item holding a list or record (758)
         if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
         if name == 'extend': need(2); return '%s %s R-EXTEND' % (cont(a[0]), cont(a[1])), None
         if name == 'shift': need(1); return '%s R-SHIFT' % cont(a[0]), 'any'
@@ -309,8 +309,8 @@ class Compiler:
             word, kd = {'text': ('R-TSLICE', 'text'), 'record': ('R-RSLICE', 'record')}.get(a[0][1], ('R-SLICE', 'list'))
             if len(a) == 2:
                 rest = {'R-SLICE': 'OVER R-LEN', 'R-TSLICE': 'OVER @', 'R-RSLICE': 'OVER R-KEYS R-LEN'}[word]
-                return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), rest, word), kd
-            need(3); return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
+                return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), rest, word), kd
+            need(3); return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
         if name == 'keys': need(1); return '%s R-KEYS' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0]), 'list'
         if name in ('read', 'upper', 'lower', 'trim', 'base'):              # 754: texts and files
             need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'upper': 'R-UPPER', 'lower': 'R-LOWER',
@@ -318,7 +318,7 @@ class Compiler:
         if name == 'write': need(2); return '%s %s R-WRITE' % (self.to_text(*a[0]), self.to_text(*a[1])), None
         if name in ('starts', 'ends'):
             need(2); return '%s %s %s' % (self.to_text(*a[0]), self.to_text(*a[1]), 'R-STARTS' if name == 'starts' else 'R-ENDS'), 'bool'
-        if name == 'sum': need(1); return '%s R-SUM' % a[0][0], 'number'
+        if name == 'sum': need(1); return '%s R-SUM' % cont(a[0]), 'number'
         dec = lambda c, k: c if k == 'decimal' else c + ' 1000000 *' if k == 'number' else c + ' R-ANY>DEC'   # 760
         if name in ('max', 'min') and len(a) == 1:                     # max(list), min(list): an item (760)
             return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
@@ -331,8 +331,8 @@ class Compiler:
             need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
             conv = (lambda c, k: c + ' 1000000 *' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
             return '%s %s %s' % (conv(*a[0]), conv(*a[1]), name.upper()), kd
-        if name == 'at': need(3); return '%s %s %s R-AT-OR' % (a[0][0], self.to_text(*a[1]), self.box(*a[2])), 'any'
-        if name == 'sort-by': need(3); return '%s %s %s R-SORT-BY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'record'
+        if name == 'at': need(3); return '%s %s %s R-AT-OR' % (cont(a[0]), self.to_text(*a[1]), self.box(*a[2])), 'any'
+        if name == 'sort-by': need(3); return '%s %s %s R-SORT-BY' % (cont(a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'record'
         if name == 'arg':                                              # 744; arg(n, default) 747
             if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
             need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'
@@ -482,16 +482,30 @@ class Compiler:
         elif k == 'word' and self.peek(1)[1] == '[' and self.peek(1)[3] == self.peek()[4]:
             name = v; self.i += 2
             ic, ik = self.expr(); self.take('op', ']')
+            chain = []                                            # a[i][j] = v: the indexes before the last (779)
+            while self.peek()[1] == '[' and self.peek()[3] == self.t[self.i - 1][4]:
+                self.i += 1; chain.append((ic, ik)); ic, ik = self.expr(); self.take('op', ']')
             op = self.take()[1]
             if op not in ('=', '+=', '-='): raise Error('line %d: expected =, += or -=, found %s' % (line, op))
             c, kd = self.expr(); ck = self.kind_of(name, line)
-            if op != '=':                                         # x[i] += v: the item read, changed, put back (774)
+            if chain:                                             # the container read down the chain, an item
+                jc, jk = chain[0]
+                if ck == 'list': cc = 'R.%s @ %s R-AT' % (name, self.to_num(jc, jk, line))
+                elif ck == 'record': cc = '%s R.%s @ R-GET' % (self.to_text(jc, jk), name)
+                elif ck == 'any': cc = '%s R.%s @ R-INDEX-ANY' % (self.box(jc, jk), name)
+                else: raise Error('line %d: $%s is not a list or a record' % (line, name))
+                for jc, jk in chain[1:]: cc = '%s %s R-INDEX-ANY' % (self.box(jc, jk), cc)
+                if op != '=':
+                    c, kd = self.binop('+' if op == '+=' else '-', '%s %s R-INDEX-ANY' % (self.box(ic, ik), cc), 'any', c, kd)
+                out = '%s %s %s R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), cc)
+            elif op != '=':                                         # x[i] += v: the item read, changed, put back (774)
                 if ck == 'list': cur = 'R.%s @ %s R-AT' % (name, self.to_num(ic, ik, line))
                 elif ck == 'record': cur = '%s R.%s @ R-GET' % (self.to_text(ic, ik), name)
                 elif ck == 'any': cur = '%s R.%s @ R-INDEX-ANY' % (self.box(ic, ik), name)
                 else: raise Error('line %d: += and -= need a list or a record' % line)
                 c, kd = self.binop('+' if op == '+=' else '-', cur, 'any', c, kd)
-            if ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
+            if chain: pass
+            elif ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
             elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
             elif ck == 'any': out = '%s %s R.%s @ R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), name)   # 758
             else: raise Error('line %d: $%s is not a list or a record' % (line, name))
@@ -625,7 +639,7 @@ class Compiler:
         tok = self.peek()
         if tok[0] == 'word' and tok[1] in self.funcs and self.peek(1)[1] != '(':      # a def as a stage (745)
             self.i += 1; parts, redirs = self.args(stop, False)
-            if parts: raise Error('line %d: a def in a pipeline takes no arguments yet' % tok[2])
+            if parts: raise Error('line %d: %s is a def: call it as %s(...) - as a command it takes no arguments' % (tok[2], tok[1], tok[1]))   # 779
             return ' '.join(redirs + ["['] R:%s" % tok[1]]), 'X'
         parts, redirs = self.args(stop, spread)
         if spread: return ' '.join(redirs + ['R-NEW-LIST'] + parts), True
