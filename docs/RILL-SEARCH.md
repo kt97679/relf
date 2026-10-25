@@ -301,3 +301,36 @@ there will be: with these eight rewrites, argdefault breaks even, truth
 would at about 3.6 times the corpus, warn at about 6.4. The weight
 between the two criteria is the user's to set; the full front (43
 designs) is in docs/rill-search-report-751.md.
+
+## Scripts counted ten times over; truth adopted; boxsmall and rxanchor out (Iteration 752)
+
+The user's decision, from 751's question: weigh the scripts by the Rill
+still to come - ten times the corpus, my suggestion. Normalizing each
+criterion by the default's own value would cancel any such multiplier,
+so the two sizes are weighed **by volume**: together they count as two
+criteria, split by their share of all the characters - the score's size
+part is 2 (source + 10 scripts) / (the default's), and a feature that
+costs c characters of source and saves s of the corpus moves it by
+2 (c - 10 s) / (S0 + 10 C0): characters against characters
+(RILL_SCRIPTS_SCALE sets the 10). boxsmall and rxanchor came out, as
+the lab's rule says of what buys nothing: twelve genes.
+
+The search, pairs and a climb, said: **truth on** - its 268 characters
+of source against 10 x 74 of scripts - and warn and argdefault kept, the
+performance genes as they were. **truth is the default now**
+(tests/rill/truth: texts, lists, records and items in conditions and
+under not). Around the new default, 156 designs: the best, listcap=16,
+scores 3.9996 against 4.000 - its speed the same to the third decimal,
+its arena 9 % larger, which no criterion counts; no single change from
+it does better. **Under the four criteria, with the scripts counted ten
+times over, the default is at the optimum within 0.01 %.**
+
+Two faults of measurement on the way, both in the search, not in Rill:
+a test that needs a feature (tests/rill/truth, `# needs: truth`) must be
+skipped by designs without it - or every truth=0 design dies on it; and
+it must not count in the generated Forth either - or every design that
+runs it pays for its words, and the climb walked back to truth=0 on
+that artefact alone. Generated Forth is now counted over the same
+programs for every design. And with truth off, a text in a condition was
+always true - its address is never zero - and neither compiler said so:
+the feature mends a silent fault as well as shortening scripts.

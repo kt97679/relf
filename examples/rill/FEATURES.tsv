@@ -62,7 +62,7 @@ implemented in both compilers (744): fail exit on-EXIT arg $args $script env def
 implemented in both compilers (745): runs as terms, continue, par for, a def as a pipeline stage	built	745	-
 arg(n, default)	adopted	747	arg\(\d+, 
 warn ... (a line to the err port)	adopted	747	^\s*warn 
-an empty text or list is false in a condition	open	747	-
+an empty text or list is false in a condition	adopted	752	-
 options(...) for an argument loop	open	747	-
 def f x -> kind = expr	open	747	-
 m[k] ?= v	open	747	-

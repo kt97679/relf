@@ -1,0 +1,7 @@
+empty text is false
+rill is true
+empty list is false
+took one
+empty record is false
+a record with a field is true
+an item that is a text with something in it is true

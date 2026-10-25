@@ -126,6 +126,8 @@ SEL = [w for w in WORK if w.startswith('w-')]; HELD = [w for w in WORK if w.star
 def evaluate(g, img, reference, engine, counts):
     rec = {'id': gid(g), 'genome': g}
     for t in TESTS:                                   # the gate: tests, as rillc.py compiles them
+        needs = re.findall(r'(?m)^# needs: (\w+)', open('tests/rill/' + t).read())
+        if any(not g.get(f, 1) for f in needs): continue  # a test of a feature the design has not got (752)
         st, forth = rillc('tests/rill/' + t, g)
         if st: return dict(rec, alive=False, cause='rillc.py refused %s' % t)
         prog = os.path.join(OUT, 'prog.4'); open(prog, 'w').write(forth)
@@ -150,7 +152,9 @@ def evaluate(g, img, reference, engine, counts):
         c = array.array('I'); c.frombytes(open(counts, 'rb').read())
         rec['counts'][w], rec['arena'][w] = sum(c), int(m.group(1))
         rec.setdefault('outputs', {})[w] = body
-    for t in TESTS: gen += len(norm(rillc('tests/rill/' + t, g)[1]))
+    for t in TESTS:   # the same programs for every design: a test that needs a feature checks, but is not counted
+        if re.findall(r'(?m)^# needs: (\w+)', open('tests/rill/' + t).read()): continue
+        gen += len(norm(rillc('tests/rill/' + t, g)[1]))
     st, src = run(['python3', 'tools/rill-genes.py', '--size'], env=dict(os.environ, RILL_GENES=genes_env(g)))
     rec.update(alive=True, image=os.path.getsize(img), generated=gen, source=int(src),
                scripts=sum(corpus_chars(f, g) for f in CORPUS))
@@ -215,10 +219,17 @@ def search(limit):
         print('%3d/%d %s %s %s' % (k + 1, len(designs), rec['id'], 'alive' if rec['alive'] else 'DEAD ' + rec['cause'], genes_env(g)), flush=True)
 
 def gmean(xs): return math.exp(sum(math.log(x) for x in xs) / len(xs))
+# The two size criteria weighed by volume (752, the user's): Rill's source is written once, its scripts
+# keep coming - SCALE times the corpus, the user's estimate (10). Together they weigh 2, as two criteria,
+# split by their share of all the characters: so a feature costing c characters of source and saving s
+# of the corpus moves the score by 2 (c - SCALE s) / (S0 + SCALE C0) - characters against characters.
+SCALE = float(os.environ.get('RILL_SCRIPTS_SCALE', '10'))
+def size_term(r, base):
+    return 2.0 * (r['source'] + SCALE * r['scripts']) / (base['source'] + SCALE * base['scripts'])
 def score_of(db, r):
     base = db[gid(DEFAULT)]
     speed = gmean([r['counts'][w] / base['counts'][w] for w in SEL])
-    return r['source'] / base['source'] + r['scripts'] / base['scripts'] + speed + r['generated'] / base['generated']
+    return size_term(r, base) + speed + r['generated'] / base['generated']
 def climb(limit=12):
     """From the best design known, every design one gene away; to the best of them while it improves (751)."""
     engine, counts = counting_engine()
@@ -247,7 +258,7 @@ def report():
         r['held'] = gmean([r['counts'][w] / base['counts'][w] for w in HELD])
         r['mem'] = sum(r['arena'].values())
     for r in alive:
-        r['score'] = (r['source'] / base['source'] + r['scripts'] / base['scripts'] + r['speed'] + r['generated'] / base['generated'])
+        r['score'] = size_term(r, base) + r['speed'] + r['generated'] / base['generated']
     keys = ('source', 'scripts', 'speed', 'generated')   # the user's four (751): Rill's source, its scripts, speed, the Forth made
     def dominates(a, b): return all(a[k] <= b[k] for k in keys) and any(a[k] < b[k] for k in keys)
     front = sorted([r for r in alive if not any(dominates(o, r) for o in alive)], key=lambda r: r['score'])
@@ -255,8 +266,9 @@ def report():
              (len(db), len(alive), len(db) - len(alive), len(front)), '',
              'source: Rill\'s Forth source as the genome has it, code characters; scripts: the corpus written',
              'as its features allow, code characters; speed and held: dispatches against the default (geometric',
-             'means); generated: words of Forth over the tests and workloads; score: the four against the',
-             'default\'s, summed - one way to weigh them, equal weights', '',
+             'means); generated: words of Forth over the tests and workloads; score: speed and generated',
+             'against the default\'s, plus the two sizes as 2 (source + %g scripts) / the default\'s - the scripts' % SCALE,
+             'counted as %g times the corpus, the user\'s estimate of the Rill to come (752)' % SCALE, '',
              '| design | score | source | scripts | speed | generated | held | image | arena | genome |',
              '|---|---:|---:|---:|---:|---:|---:|---:|---:|---|']
     def row(r, tag=''):

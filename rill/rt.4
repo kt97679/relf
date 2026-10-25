@@ -38,18 +38,7 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : /STRING ( c-addr u n --- c-addr' u' )   TUCK - >R + R> ;   \ not in the kernel
 1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC
 VARIABLE RL   VARIABLE RJ-SEP
-: R-BOX-NEW ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;
-\ [gene boxsmall]
-256 2* CELLS BUFFER: R-SMALL   VARIABLE R-SMALL-MADE   \ boxes for 0-255, made the first time one is asked for
-: R-BOX ( v kind --- box )
-  DUP K-NUM = 2 PICK 256 U< AND IF
-    R-SMALL-MADE @ 0= IF 256 0 DO K-NUM I 2* CELLS R-SMALL + !  I I 2* 1+ CELLS R-SMALL + ! LOOP -1 R-SMALL-MADE ! THEN
-    DROP 2* CELLS R-SMALL + EXIT THEN
-  R-BOX-NEW ;
-\ [/gene]
-\ [gene !boxsmall]
-: R-BOX ( v kind --- box )   R-BOX-NEW ;
-\ [/gene]
+: R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;   \ boxsmall tried and taken out (752)
 : R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
 : R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;

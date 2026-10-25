@@ -75,6 +75,12 @@ command's or echo's argument - `echo not reached` - where Part 3 had
 keywords reserved everywhere; they stay reserved where a statement or an
 expression begins.
 
+**752 - truth adopted by the search.** An empty text, list or record
+is false in a condition and under `not` - chosen by tools/rill-search.py
+under the user's four criteria with the scripts counted ten times over
+(docs/RILL-SEARCH.md 752); without it a text in a condition was always
+true, unremarked.
+
 **747 - rule 5's first weighing: syntax buys little here.** Nine
 candidates measured on the corpus (21,923 code characters):
 

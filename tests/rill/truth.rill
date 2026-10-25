@@ -1,0 +1,16 @@
+# truth (752, the search's pick): an empty text, list or record is false in a condition and under not
+# needs: truth
+name = ""
+if ($name) { echo wrong } else { echo empty text is false }
+name = rill
+if ($name) { echo "$name is true" }
+items = []
+if (not $items) { echo empty list is false }
+push($items, one)
+while ($items) { echo took {shift($items)} }
+host = {}
+if (not $host) { echo empty record is false }
+host[port] = 80
+if ($host) { echo a record with a field is true }
+words = words("a  b")
+if ($words[1]) { echo an item that is a text with something in it is true }
