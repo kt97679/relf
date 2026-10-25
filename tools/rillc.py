@@ -330,6 +330,7 @@ class Compiler:
             return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
+        if name == 'now': need(0); return 'R-NOW', 'number'                    # seconds, the local clock (783)
         if name == 'setenv': need(2); return '%s %s R-SETENV' % (self.to_text(*a[0]), self.to_text(*a[1])), None   # 783
         if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
         if name == 'extend': need(2); return '%s %s R-EXTEND' % (cont(a[0]), cont(a[1])), None

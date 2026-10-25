@@ -16,6 +16,8 @@ for a in $args {
     }
 }
 
+stage = $(mktemp -d)                 # before the defs that write into it (783: a def reads only what is set above it)
+on EXIT { rm -rf $stage }
 def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
     warn "== $name =="
@@ -68,8 +70,6 @@ else {
 }
 host = $(uname -n); utc = $(date -u +%Y%m%dT%H%MZ); commit = $(git rev-parse --short HEAD)
 pack = "$(pwd)/relf-results-$host-$commit-$utc.tar.gz"
-stage = $(mktemp -d)
-on EXIT { rm -rf $stage }
 on INT { exit 130 }
 on TERM { exit 130 }
 sum = "$stage/SUMMARY.txt"

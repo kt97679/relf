@@ -808,6 +808,7 @@ do not trust the absence of a line below.
 - 781 — format() as Python's % formatting; run-time errors name the line, at no run-time cost (gene lines)
 - 782 — gen-opcodes in Rill says what the shell script says; abs, dir, == on lists and records, at() on lists, comprehension filters fixed, [ ] across lines, 0x numbers
 - 783 — setenv() for env() and every command after it; a case statement with the shell's patterns
+- 784 — now(); pack-results compiles to line 25, its remaining needs listed
 
 ### Not tied to an iteration
 

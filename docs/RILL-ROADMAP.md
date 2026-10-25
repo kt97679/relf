@@ -174,3 +174,21 @@ a case statement), run-utf8 (load).
   against the same cases in sh.
 pack-results now stops at line 19: a def reads $stage, set further down -
 which Python allows and Rill (772) does not.
+
+## Phase 5 (Iteration 784): now(); what pack-results needs still
+
+- `now()`: seconds since 1970 by the local clock (the kernel has
+  LOCAL-TIME, no epoch clock; days from the date as days_from_civil) - a
+  clock for durations. Agrees with Python's local clock to the second.
+- examples/rill/pack-results.rill: the stage directory made before the
+  defs that write into it (a def reads only what is set above it).
+
+pack-results now stops at line 25. What it needs, each a piece of language:
+1. a command's status as a number: `code((cmd ...))` (lines 25, 68);
+2. a command held in a variable, run: `$cmd all> file` (line 25);
+3. defs called as commands with arguments: `note "..."` (a dozen lines) -
+   today an error that shows the call form (780);
+4. a glob as a for loop's source: `for f in $dir/relf-claude-iter*.bundle`;
+5. `cmd ?? fallback` after a command that fails (lines 42-60), to check.
+Worth weighing too: a def reading a global set further down, as Python
+allows (Rill's rule since 772: only what is set above it).

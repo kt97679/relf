@@ -634,6 +634,17 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
   BEGIN GL-J @ GL-M @ < IF GL-J @ GL-PC [CHAR] * = ELSE 0 THEN WHILE 1 GL-J +! REPEAT
   GL-J @ GL-M @ = ;
 
+\ ---- now (Iteration 783) --------------------------------------------------
+: R-NOW ( --- n )   \ now(): seconds since 1970 by the local clock - a clock for durations; days from the date, as days_from_civil
+  LOCAL-TIME DROP 1900 + SWAP 1+ SWAP                       ( sec min hour mday mon year )
+  OVER 3 < IF 1- THEN
+  DUP 400 / DUP >R 400 * -                                  ( sec min hour mday mon yoe )
+  SWAP DUP 2 > IF 3 - ELSE 9 + THEN 153 * 2 + 5 /
+  ROT 1- +                                                  ( sec min hour yoe doy )
+  OVER 365 * + OVER 4 / + SWAP 100 / -                      ( sec min hour doe )
+  R> 146097 * + 719468 -                                    ( sec min hour days )
+  86400 * SWAP 3600 * + SWAP 60 * + + ;
+
 \ ---- format (Iteration 781) -----------------------------------------------
 \ format(f, a, b, ...): Python's % formatting - the conversions s d i f x X
 \ and %%, the flags - 0 + and space, a width and a precision. The text is
