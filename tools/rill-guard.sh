@@ -11,7 +11,8 @@ cd "$(dirname "$0")/.." || exit 2
 base=${1:-270c9e8}
 out=$(git diff --name-only "$base" HEAD -- . \
     ':!rill/' ':!examples/rill/' ':!tests/rill/' ':!docs/' \
-    ':!tools/rill*' ':!tools/build-rill-image.sh' ':!tools/size-research/' ':!tools/utf8/' ':!bench/reports/')
+    ':!tools/rill*' ':!tools/build-rill-image.sh' ':!tools/size-research/' ':!tools/utf8/' ':!bench/reports/' \
+    ':!tools/relfsh-memcheck.py')   # 777: it runs relfsh and measures; it changes nothing of it
 if [ -n "$out" ]; then
     echo "rill-guard: changed since $base outside Rill's files:" >&2
     printf '  %s\n' $out >&2
