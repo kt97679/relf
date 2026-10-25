@@ -13,7 +13,7 @@
 16384 CONSTANT TK-MAX
 VARIABLE TK-KIND  VARIABLE TK-AT  VARIABLE TK-LEN  VARIABLE TK-LINE   \ arrays, ALLOCATEd
 VARIABLE TK-N   VARIABLE TK-I
-VARIABLE SRC   VARIABLE SRC#   VARIABLE CUR-LINE
+VARIABLE RS-SRC   VARIABLE SRC#   VARIABLE CUR-LINE
 : TK-ALLOC ( --- )
   TK-MAX CELLS ALLOCATE THROW TK-KIND !  TK-MAX CELLS ALLOCATE THROW TK-AT !
   TK-MAX CELLS ALLOCATE THROW TK-LEN !   TK-MAX CELLS ALLOCATE THROW TK-LINE ! ;
@@ -22,12 +22,12 @@ VARIABLE SRC   VARIABLE SRC#   VARIABLE CUR-LINE
   TK-N @ CELLS TK-LEN @ + !  TK-N @ CELLS TK-AT @ + !  TK-N @ CELLS TK-KIND @ + !
   CUR-LINE @ TK-N @ CELLS TK-LINE @ + !  1 TK-N +! ;
 : K@ ( i --- kind )   CELLS TK-KIND @ + @ ;
-: T@ ( i --- c-addr u )   DUP CELLS TK-AT @ + @ SRC @ +  SWAP CELLS TK-LEN @ + @ ;
+: T@ ( i --- c-addr u )   DUP CELLS TK-AT @ + @ RS-SRC @ +  SWAP CELLS TK-LEN @ + @ ;
 : L@ ( i --- line )   CELLS TK-LINE @ + @ ;
 : TOK-AT ( i --- offset )   CELLS TK-AT @ + @ ;
 : TOK-END ( i --- offset )   DUP TOK-AT SWAP CELLS TK-LEN @ + @ + ;
 
-: SRC-C@ ( pos --- c )   SRC @ + C@ ;
+: SRC-C@ ( pos --- c )   RS-SRC @ + C@ ;
 : WORD-CHAR? ( c --- f )   \ not blank, not one of  " ' $ ( ) { } , ; < > = [ ]
   DUP 33 < IF DROP 0 EXIT THEN
   DUP [CHAR] " = OVER [CHAR] ' = OR OVER [CHAR] $ = OR OVER [CHAR] ( = OR OVER [CHAR] ) = OR
@@ -66,7 +66,7 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
 : SCAN-VAR ( --- )   POS @ 1+ NAME-XT @XT SCAN-WHILE  T-VAR POS @ ROT DUP >R OVER - TK+  R> POS ! ;
 : SCAN-WORD ( --- )
   POS @ WORD-XT @XT SCAN-WHILE  DUP POS @ - >R                 ( end )  ( R: len )
-  POS @ SRC @ + R@ KEYWORD? IF T-KW ELSE T-WORD THEN  POS @ R> TK+  POS ! ;
+  POS @ RS-SRC @ + R@ KEYWORD? IF T-KW ELSE T-WORD THEN  POS @ R> TK+  POS ! ;
 : SKIP-COMMENT ( --- )   BEGIN POS @ AT-END? IF 0 ELSE POS @ SRC-C@ 10 <> THEN WHILE 1 POS +! REPEAT ;
 : TOKEN-1 ( --- )
   POS @ SRC-C@
@@ -81,7 +81,7 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
   DUP WORD-CHAR? IF DROP SCAN-WORD EXIT THEN
   DROP 1 POS +! ;
 : TOKENIZE ( c-addr u --- )
-  SRC# ! SRC !  0 TK-N !  1 CUR-LINE !  0 POS !
+  SRC# ! RS-SRC !  0 TK-N !  1 CUR-LINE !  0 POS !
   BEGIN POS @ AT-END? 0= WHILE TOKEN-1 REPEAT
   T-EOF SRC# @ 0 TK+ ;
 : .TOKENS ( --- )   \ for tests/rill/oracle: one token a line, kind and text
@@ -146,7 +146,7 @@ NM-MAX CELLS BUFFER: DC-A  NM-MAX CELLS BUFFER: DC-L  VARIABLE DC-N
 : ERR ( c-addr u --- )   ." rillc: line " TK L@ . ." : " TYPE R-NL -4100 THROW ;
 
 \ ---- Part 3: expressions (Iteration 740) --------------------------------
-VARIABLE STACKMODE   VARIABLE DEPTH
+VARIABLE STACKMODE   VARIABLE SM-DEPTH
 16 CELLS BUFFER: PRM-A  16 CELLS BUFFER: PRM-L  VARIABLE PRM-N   \ a pure def's parameters
 : S= ( c-addr1 u1 c-addr2 u2 --- f )   COMPARE 0= ;
 : OUT-INSERT ( c-addr u pos --- )   \ text and a blank put in at pos
@@ -161,7 +161,7 @@ VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
   CUR-B @ @ SG-FROM @ +  HDR  SG-LEN @ MOVE
   CUR-B @ @ SG-POS @ +  DUP SG-LEN @ +  SG-FROM @ SG-POS @ -  MOVE
   HDR  CUR-B @ @ SG-POS @ +  SG-LEN @ MOVE ;
-: DEPTH+ ( n --- )   STACKMODE @ IF DEPTH +! ELSE DROP THEN ;
+: DEPTH+ ( n --- )   STACKMODE @ IF SM-DEPTH +! ELSE DROP THEN ;
 : NUMBER-TEXT? ( c-addr u --- f )   \ -?\d+
   DUP 0= IF 2DROP 0 EXIT THEN
   OVER C@ [CHAR] - = IF 1 /STRING DUP 0= IF 2DROP 0 EXIT THEN THEN
@@ -205,11 +205,11 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 \ [/gene]
 \ [gene littext]
 : LIT-TEXT ( c-addr u --- )   0 SHARED-LIT ;    \ rillc.py's lit_text
-: LIT ( c-addr u --- )   -1 SHARED-LIT ;
+: TEXT-LIT ( c-addr u --- )   -1 SHARED-LIT ;
 \ [/gene]
 \ [gene !littext]
 : LIT-TEXT ( c-addr u --- )   0 LIT-CODE ;      \ rillc.py's lit_text
-: LIT ( c-addr u --- )   -1 LIT-CODE ;
+: TEXT-LIT ( c-addr u --- )   -1 LIT-CODE ;
 \ [/gene]
 : TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
@@ -264,7 +264,7 @@ VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753)
 \ [/gene]
 \ [gene purestack]
   2DUP PARAM-AT DUP 0< 0= IF
-    NIP NIP  DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
+    NIP NIP  SM-DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
     DUP 0= IF DROP S" DUP" OUT+ ELSE DUP 1 = IF DROP S" OVER" OUT+ ELSE OUT-NUM S" PICK" OUT+ THEN THEN
     K-NUM EXIT THEN  DROP
 \ [/gene]
@@ -274,8 +274,8 @@ VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753)
   2DUP NM-FIND DUP 0< IF DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
   >R  [CHAR] R OUT-C [CHAR] . OUT-C  OUT-RAW BL OUT-C  S" @" OUT+  NM-K R> CELLS + @ ;
 
-: SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ SRC @ SRC# @ CUR-LINE @ ;
-: RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
+: SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ RS-SRC @ SRC# @ CUR-LINE @ ;
+: RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! RS-SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
 VARIABLE SUB-A  VARIABLE SUB-L
 \ [gene echolit]
 VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside its {...} an ordinary one (rillc.py's sub-compiler)
@@ -445,20 +445,26 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP   ( a u frac )   \ OVER: fu, 2 PICK: fa (the PICK slip again)
   >R  0 -ROT 0 ?DO DUP I + C@ [CHAR] . = IF LEAVE THEN DUP I + C@ [CHAR] 0 - ROT 10 * + SWAP LOOP DROP
   1000000 * R> +  R> IF NEGATE THEN -1 ;
+VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its text (762)
+: BARE-ERR ( --- )   \ a bare word that names a variable: a slip of the $ rule, most likely
+  ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable - $" TK T@ TYPE ." , or " 34 EMIT TK T@ TYPE 34 EMIT ."  for the text"
+  R-NL -4100 THROW ;
 : TERM0 ( --- kind )
+  IN-ARG @ IA-NOW !  0 IN-ARG !
   TK K@ T-WORD = IF S" true" CUR-IS? IF NEXT-TK S" -1" OUT+ K-BOOL EXIT THEN                   \ 759: booleans
     S" false" CUR-IS? IF NEXT-TK S" 0" OUT+ K-BOOL EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ DEC-LIT? IF OUT-NUM NEXT-TK 1 DEPTH+ K-DEC EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
-  TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK LIT K-TEXT EXIT THEN
+  TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK TEXT-LIT K-TEXT EXIT THEN
   S" (" CUR-IS? IF NEXT-TK  RUN-COND? IF 0 COMMAND-HOOK S" 0=" OUT+ S" )" EXPECT K-BOOL EXIT THEN   \ a run is a term (745)
     1 EXPR S" )" EXPECT EXIT THEN
   S" $(" CUR-IS? IF NEXT-TK -1 COMMAND-HOOK S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
   S" [" CUR-IS? IF NEXT-TK LIST-LIT EXIT THEN
   S" {" CUR-IS? IF NEXT-TK SKIP-NL-HOOK RECORD-LIT EXIT THEN
-  TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN  TK T@ NEXT-TK LIT K-TEXT EXIT THEN
+  TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN
+    IA-NOW @ 0= IF TK T@ NM-FIND 0< 0= IF BARE-ERR THEN THEN  TK T@ NEXT-TK TEXT-LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
 : SPLIT-DOT ( c-addr u --- rest-a rest-u field-a field-u )   \ a.b.c: a, and b.c
   2DUP [CHAR] . SCAN  2SWAP DROP 2 PICK OVER -  2SWAP DUP IF 1 /STRING THEN 2SWAP ;
@@ -700,7 +706,7 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
     DUP 0= 2 PICK AND IF S" R-TYPE" OUT+ S" SPACE" OUT+ THEN
     >R
     S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
-    ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT
+    ARG-TEXT? IF TK T@ NEXT-TK TEXT-LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT
     R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
   REPEAT
   IF S" R-TYPE" OUT+ THEN S" R-NL" OUT+ ;
@@ -758,7 +764,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 \ [gene !purestack]
   0
 \ [/gene]
-  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
+  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 SM-DEPTH !
   TO-DEFS  OUT-POS DEF-START !
 \ [gene purestack]
   STACKMODE @ IF
@@ -800,7 +806,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   R> RD-POS @ SEG>POS  SG-LEN @ RD-POS +! ;
 : ARG-ITEM ( --- )   \ one item of an argument list, as text
   S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
-  ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT ;
+  ARG-TEXT? IF TK T@ NEXT-TK TEXT-LIT K-TEXT ELSE -1 IN-ARG ! TERM THEN THEN  TO-TEXT ;
 \ [gene warn]
 : WARN-STMT ( --- )   \ warn ...: the items with a blank between, one line to the err port (747)
   NEXT-TK 0
@@ -1008,7 +1014,7 @@ NM-MAX CELLS BUFFER: ORDER
 \ [gene littext]
   0 LT-N !
 \ [/gene]
-   0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
+   0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
   TK-ALLOC BUF-ALLOC ;
 : RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN

@@ -196,6 +196,7 @@ class Compiler:
             self.skip_nl()
         self.take('op', '}'); return ' '.join(code), 'record'
     def term0(self):
+        in_arg, self.in_arg = getattr(self, 'in_arg', False), False      # a command's argument: a bare word is its text (762)
         tok = self.take()
         k, v, line = tok[:3]
         if v == '[': return self.literal_list()
@@ -227,6 +228,8 @@ class Compiler:
             c, kd = self.expr(); self.take('op', ')'); return c, kd
         if k == 'word' and self.peek()[1] == '(':
             return self.call(v, line)
+        if k == 'word' and not in_arg and (v in self.vars or (self.locals is not None and v in self.locals)):
+            raise Error('line %d: %s is a variable - $%s, or "%s" for the text' % (line, v, v, v))   # a slip of the $ rule (762)
         if k == 'word': return self.lit(v), 'text'
         raise Error('line %d: unexpected %r' % (line, v))
     def call(self, name, line):
@@ -522,7 +525,7 @@ class Compiler:
         elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->') or (tok[0] == 'word' and tok[1] in ('true', 'false')):
             c, kd = self.lit(self.take()[1]), 'text'              # a keyword, an operator, true or false: plain text in an argument
         else:
-            c, kd = self.term()
+            self.in_arg = True; c, kd = self.term()
         return self.to_text(c, kd)
     def args(self, stop, spread=False):
         """The arguments to the end of the statement; items touching each

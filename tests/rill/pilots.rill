@@ -1,0 +1,41 @@
+# tests/rill/pilots.rill - each defect the three pilots found in Rill, kept fixed (762)
+# native-by-source: and/or read no further than they must; a header test past a list's end
+l = [a b]
+if (len($l) > 2 and $l[2] == x) { echo wrong } else { echo short-circuit }
+# dead-words: true and false are booleans, not texts
+named = false
+for w in [x y] { if ($w == y) { named = true; break } }
+echo named $named {not $named}
+# split keeps empty pieces and the last one, as Python's; lines() drops a last empty line
+echo {len(split("a\n\nb\n", "\n"))} {len(lines("a\n\nb\n"))}
+# a comprehension over a def's parameter, an item
+def doubled xs -> list { return [$x * 2 for x in $xs] }
+echo {join(doubled([1 2 3]), ",")}
+# -= and += on a variable holding an item that is a number
+r = {first: 5}
+num = $r.first
+num -= 2
+echo num $num
+# values, sort of lists in Python's tuple order, items as containers
+rs = {p: [b 2], q: [a 9], s: [b 1]}
+for e in sort(values($rs)) { echo {$e[0]}:{$e[1]} }
+nodes = [{refs: []}]
+push($nodes[0].refs, 7)
+echo refs {len($nodes[0].refs)} {7 in $nodes[0].refs}
+kill = {f: {}}
+kl = $kill[f]
+kl[3] = true
+echo kill {3 in $kill[f]} {4 in $kill[f]}
+echo same {$nodes[0].refs[0] == $nodes[0].refs[0]}
+# native-ab-layouts: a sum of logarithms is a decimal; min and max of a list; cd and back
+def gm xs -> decimal {
+    s = 0.0
+    for x in $xs { s += log($x) }
+    return exp($s / len($xs))
+}
+ds = [decimal("1.021") decimal("0.95") decimal("1.1")]
+echo min {min($ds)} max {max($ds)} gm {gm([2.0 8.0])}
+here = $(pwd)
+cd / { echo in $(pwd) }
+echo back {$(pwd) == $here}
+echo {contains("a mark here", mark)} {replace("x-y-z", "-", "+")}

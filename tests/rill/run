@@ -12,5 +12,12 @@ for t in tests/rill/*.rill; do
     if cmp -s "$f.out" "$f.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; diff "$f.expected" "$f.out" | head -5; fi
     rm -f "$f.4.tmp" "$f.err" "$f.out"
 done
+# programs both compilers must reject, each with the message in its .expected (762)
+for e in tests/rill/errors/*.rill; do
+    want=$(cat "${e%.rill}.expected")
+    py=$(python3 tools/rillc.py "$e" 2>&1 >/dev/null); im=$(./relf64 kernel64-rill.img "$e" < /dev/null 2>&1)
+    case "$py" in *"$want"*) ;; *) fail=$((fail + 1)); echo "FAIL $e: rillc.py said: $py"; continue ;; esac
+    case "$im" in *"$want"*) pass=$((pass + 1)) ;; *) fail=$((fail + 1)); echo "FAIL $e: the image said: $im" ;; esac
+done
 echo "$pass passed, $fail failed (tests/rill)"
 [ "$fail" = 0 ]

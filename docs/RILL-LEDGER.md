@@ -369,3 +369,14 @@ yet; the uses are the evidence so far:
 a small JSON API client, and Rill versions of bench.4's workloads for the
 cost against hand-written Forth - each measured, each adding to the table
 above or to a candidate's evidence.
+
+## 762: a bare word that names a variable is an error
+
+In an expression, a bare word that names a variable in scope - the
+script's, or the def's own - no longer stands for its text: the compilers
+stop with "x is a variable - $x, or "x" for the text". The pilots' slips
+of the `$` rule were all of this shape (`return made`, `[e for e ...]`),
+and the text is never what was meant where a variable has the name. In a
+command's arguments a bare word is still its text: `echo made` prints
+made. One test had used a field's name that a variable also had
+(`sort-by(..., v, ...)`); it says `"v"` now.

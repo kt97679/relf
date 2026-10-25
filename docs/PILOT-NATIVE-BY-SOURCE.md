@@ -282,3 +282,16 @@ Python's time, Rill about 1.4 times the hand-written Forth.
 Here Rill is shorter than Python by a third: the script is commands -
 git, make, sed, a build script, the bench - which Python writes as
 subprocess calls and strings and Rill writes as commands.
+
+## After the pilots (Iteration 762)
+
+The roadmap's first phase (docs/RILL-ROADMAP.md) turned two of the defect
+classes into checks. A bare word naming a variable is now a compile error
+in both compilers; run over the corpus, it found one more defect no output
+check had seen: dead-words.rill's `deadis = [e for e in $islines ...]`, a
+list of the text "e" - hidden because no case had a dead IS line. With
+`$e` the three versions agree on tests/rill/pilots/is-lines.4, a superseded
+IS line and one whose word is unreachable (report and --delete). Rill's
+count for dead-words becomes 6, the pilots' 14. The Forth lint now reports
+names the kernel (or, in a program, the runtime) already has: the pilots'
+four clashes, and three in the compiler itself.

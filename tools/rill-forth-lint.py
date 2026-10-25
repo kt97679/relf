@@ -7,6 +7,9 @@ mechanical guard. Checked in every colon definition of rill/*.4:
 - R@ (or R>) inside a DO loop, reading what was put on the return stack
   before the loop - inside DO, the return stack's top is the loop's own
   (739: R-JOIN, R-SLICE, R-RANGE; 741: NM-FIND, HAS-SPECIAL?);
+- a name defined again that the kernel has - or, in a program (.fth), that
+  the runtime has: "Redefining" in the output, and the old word hidden
+  (762: CURRENT, KILL, BASE and PARSE in the pilots' Forth versions)
 - ['] inside a definition: it compiles an absolute address, stale once
   the image is saved and reloaded (737's CATCH at boot) - keep the xt
   with !XT and fetch it with @XT;
@@ -30,8 +33,21 @@ def words(text):
         line = re.sub(r'(\S*")\s[^"]*"', r'\1', line)                   # S" text", ." text", ABORT" text"
         out += line.split()
     return out
+DEFINER = r'(?:^|\s)(?::|CODE|PRIMITIVE|VARIABLE|2VARIABLE|CONSTANT|CREATE|VALUE|DEFER|BUFFER:)\s+(\S+)'
+def names(text):
+    lines = [re.sub(r'(\S*")\s[^"]*"', r'\1', re.sub(r'(^|\s)\\(\s.*)?$', ' ', l)) for l in text.split('\n')]   # comments, string literals out
+    lines = [re.sub(r"(?<!\S)(\[CHAR\]|CHAR|'|\[']|POSTPONE)\s+\S+", ' ', l) for l in lines]      # [CHAR] : names no word
+    return [m.upper() for m in re.findall(DEFINER, '\n'.join(lines))]
+kernel = set(names(open('forth/kernel.4').read()))           # the image's own words (762)
+runtime = set()
+for g in sorted(glob.glob('rill/*.4')):
+    runtime |= set(names(open(g).read()))
 found = 0
 for f, s in srcs.items():
+    program = f.endswith('.fth')                             # a program loaded when it runs, not built into the image
+    for n in names(s):
+        if n in kernel or (program and n in runtime):
+            print('%s: %s is defined again - the %s has it ("Redefining" in the output)' % (f, n, 'kernel' if n in kernel else 'runtime')); found += 1
     for m in re.finditer(r'(?ms)(?:^|\s):\s+(\S+)(.*?)(?:\s;(?:\s|$))', s):
         name, body = m.group(1), words(m.group(2))
         loops = []                                                       # per DO loop: >R pushed inside it, net
@@ -44,7 +60,7 @@ for f, s in srcs.items():
                 if loops[-1] <= 0:
                     print('%s: %s: %s inside a DO loop reads the loop\'s own return stack' % (f, name, u)); found += 1
                 elif u == 'R>': loops[-1] -= 1
-            elif u == "[']":
+            elif u == "[']" and not program:
                 print("%s: %s: ['] in a definition - an absolute address, stale after the image is saved" % (f, name)); found += 1
             elif u in MISSING and u not in defined:
                 print('%s: %s: %s is not in the kernel' % (f, name, u)); found += 1
