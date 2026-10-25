@@ -340,7 +340,8 @@ VARIABLE FLD-POS
       TO-TEXT  PIECE-END  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
       PIECE-START  1 /STRING  OVER >R  1 >R
-      BEGIN R@ WHILE OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
+      BEGIN R@ WHILE DUP 0= IF R> DROP S" a { in a string is not closed - a double quote inside {...} ends the string: use single quotes there" ERR THEN   \ 773: not a crash
+        OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
       R> 2 PICK OVER - 1- SUB-EXPR TO-TEXT  PIECE-END
     ELSE LIT-C 1 /STRING THEN THEN THEN
   REPEAT 2DROP

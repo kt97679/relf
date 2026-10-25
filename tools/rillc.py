@@ -378,7 +378,9 @@ class Compiler:
                     parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
                 else:
                     depth, j = 1, i + 1
-                    while depth: depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
+                    while depth:
+                        if j >= len(body): raise Error('line %d: a { in a string is not closed - a double quote inside {...} ends the string: use single quotes there' % line)   # 773: not a crash
+                        depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
                     sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                     sub.t = tokenize(body[i + 1:j - 1]); sub.i = 0
                     c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j

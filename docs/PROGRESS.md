@@ -797,6 +797,7 @@ do not trust the absence of a line below.
 - 770 — range as Python's (up to, not with, the end; 1-3 arguments); reversed counted ranges and loopvar+break fixed
 - 771 — x = 1, x += 0.5 is 1.5 (the Forth compiler's first pass now records +=); negative indexes and slice bounds, as Python's
 - 772 — reads that may be unset are checked ("rill: $x is not set"), not crashes; the corpus needed no checks
+- 773 — a double quote inside a string's {...}: one clear message in both compilers, not a crash
 
 ### Not tied to an iteration
 
