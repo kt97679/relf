@@ -221,12 +221,63 @@ word left outside a stack comment; S= given an address without its length
 division. With those fixed, the first run printed the original's table,
 through both compilers.
 
+### The Forth version (Iteration 761)
+
+examples/rill/native-ab-layouts.fth, written after the Rill version: the
+commands through Rill's pipeline words, the original's `finally` as
+CATCH around the builds with the cleanup after, the table formatted in
+Forth (no printf). Its defects, from the first run to the match:
+
+| # | defect | class | found by |
+|---|---|---|---|
+| 1 | a variable named `BASE` - the kernel's number base already has the name | Forth's one namespace | "Redefining" in the output |
+| 2 | a word named `PARSE` - the kernel's own | Forth's one namespace | the same |
+| 3 | a pad's text read with R-ANY>NUM, which takes numbers and bools only - R-NUMBER reads a text | a library word's contract | the runtime's kind check |
+
+rill-forth-lint's one finding, `[']` in a definition, does not apply
+here: the program is loaded when it runs, and no image is saved after.
+
 | native-ab-layouts | Python | Rill | Forth |
 |---|---:|---:|---:|
-| code lines | 87 | 65 | next |
-| code characters | 3,863 | 2,481 (-35.8 %) | next |
-| defects | (the reference) | 3, before the first run | next |
-| time in the stand-in tree, best of three | 231 ms | 300 ms | next |
+| code lines | 87 | 65 | 112 |
+| code characters | 3,863 | 2,481 (-35.8 %) | 5,844 (+51.3 %) |
+| defects | (the reference) | 3, found before the first run | 3 |
+| order written | - | first | second |
+| time in the stand-in tree, best of three | 232 ms | 285 ms | 270 ms |
+
+## All three pilots
+
+| characters against Python | Rill | Forth |
+|---|---:|---:|
+| native-by-source (text and tables) | +5.2 % | +108.6 % |
+| dead-words (a reference graph) | +8.9 % | +117 % |
+| native-ab-layouts (commands) | -35.8 % | +51.3 % |
+
+| defects, first run to the match | Rill | Forth |
+|---|---:|---:|
+| native-by-source | 5 (written before the Forth) | 0 (written last) |
+| dead-words | 5 (after the Forth) | 1 (first) |
+| native-ab-layouts | 3 (first; all found reading, before the run) | 3 (second) |
+| all three | 13 | 4 |
+
+**Size**: on scripts that are mostly data - parsing, records, sorting,
+formatting - Rill is within ten per cent of Python and Forth twice it; on a
+script that is mostly commands, Rill is a third shorter than Python and
+Forth half again as long. Across the three, Rill's 8,125 characters
+against Python's 9,113 (-11 %), Forth's 17,070 (+87 %).
+
+**Defects**: Rill 13, Forth 4, in all three orders of writing. Rill's are
+mostly its youth: of the thirteen, the `$` rule three, kinds where values
+come out of lists and records or meet decimals four, missing features two
+(short-circuit, `true`/`false`), syntax two (defs as commands, two indexes
+in one assignment), port logic two; nine changed Rill or its library
+rather than the script. Forth's four were all of one kind - names: three
+the kernel already had, one a library word's contract. Forth's cost is
+its length, and the stack reasoning behind every line.
+
+**Time**: commands dominate the third, so all three are within a quarter
+of each other there; on the data scripts Rill and Forth run several times
+Python's time, Rill about 1.4 times the hand-written Forth.
 
 Here Rill is shorter than Python by a third: the script is commands -
 git, make, sed, a build script, the bench - which Python writes as

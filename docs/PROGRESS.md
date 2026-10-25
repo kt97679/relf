@@ -785,6 +785,7 @@ do not trust the absence of a line below.
 - 758 — values, sort, split and items as containers in both compilers; dead-words.rill runs but is wrong (57 roots vs 77), 5 defects logged
 - 759 — true/false literals; dead-words.rill matches all three cases; both pilots: Rill +5-9 % over Python, Forth ~2x; defects Rill 5+5, Forth 0+1
 - 760 — third pilot, Rill first: native-ab-layouts.rill matches in a stand-in tree; -35.8 % against Python; cd, log/exp, contains, replace
+- 761 — the third pilot's Forth version matches (3 defects: BASE, PARSE, a library contract); all three pilots: Rill -11 %, Forth +87 % against Python
 
 ### Not tied to an iteration
 
