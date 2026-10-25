@@ -83,3 +83,39 @@ hand-written Forth, the cost of its boxed items and generic words. In
 defects nothing can be concluded from one pair written in this order;
 what the Rill log does show is where Rill's own design invites slips -
 two of its five were the `$` rule.
+
+## The second pilot: tools/dead-words.py - Forth written first (Iteration 757)
+
+To balance the first pilot's order (Forth written last, knowing every
+pitfall), the second's Forth version was written **first**:
+examples/rill/dead-words.fth, over the same runtime words. The check, three
+cases, each against the Python original byte for byte: the shell's three
+sources (no dead word, the summary on the err port); the libraries with
+them (21 unreachable definitions, sorted as Python sorts the tuples); and
+`--delete` run on two copies of those seven files - every rewritten file,
+and the output, the same. (`--why` is left out of the check: the chain it
+prints depends on the order Python iterates a set of ints.)
+
+Its defects, from the first run to all three matching:
+
+| # | defect | class | found by |
+|---|---|---|---|
+| 1 | `CURRENT` and `KILL` defined again - names the kernel already has, so "Redefining: ..." in the output | Forth's single namespace | the output check |
+
+(One more stop was the harness's, not the program's: the INCLUDED driver
+named the file by a relative path, which the `--delete` case, run in
+another directory, could not open.)
+
+| dead-words | Python | Rill | Forth |
+|---|---:|---:|---:|
+| code lines | 148 | 108 (the paper rewrite) | 172 |
+| code characters | 3,299 | 3,576 (+8.4 %, the paper rewrite) | 7,156 (+117 %) |
+| defects, first run to the match | (the reference) | next | 1 (written first) |
+| time, the 21-definition case | 39 ms | next | 95 ms |
+
+The Rill version is next. To run it needs, in both compilers and the
+runtime: `values()`, `sort()` of a list of lists (Python's tuple order),
+`split(text, sep)` (Python's: a last empty piece kept - what `--delete`'s
+join needs to give back a file's final line end), `push` and `in` and
+assignment through an index on a variable that holds an item (a list or
+record reached through another).
