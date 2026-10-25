@@ -276,3 +276,16 @@ What it needed:
   shell's help text in its header; its own path made absolute before the
   cd, the top three directories up; lines-text() for files of lines.
 Still waiting: run-utf8.
+
+## Iteration 788: run-utf8 in Rill - phase 5's three waiting rewrites all run
+
+examples/rill/run-utf8.rill says what tests/shell/run-utf8 says against both
+relfsh builds (30 assertions, 0 failed) and against bash (the same one
+failure, word for word, status 1); tests/rill/run checks it against ./relfsh.
+~200 ms against the shell's ~100. It carries tests/shell/lib.sh's two helpers
+itself rather than loading them: no load - one file, read whole. A def cannot
+add to a global (an assignment makes a local, as Python's), so its check
+returns 1 for a failure and the top level counts.
+
+With gen-opcodes (782) and pack-results (787), all three rewrites phase 5
+waited on now run and say what the scripts they rewrite say.

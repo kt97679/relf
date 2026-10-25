@@ -36,6 +36,12 @@ sleep 0.4; kill -INT $rp; wait $rp; rs=$?
 if [ "$rs" = 130 ] && [ "$(cat /tmp/rill-int.$$)" = "cleanup ran" ]; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL tests/rill/signals/spin.rill: status $rs"; cat /tmp/rill-int.$$; fi
 rm -f /tmp/rill-int.$$
+# Rill at work (788): examples/rill/run-utf8.rill says what tests/shell/run-utf8 says, against ./relfsh
+(cd tests/shell && THIS_SH=../../relfsh sh ./run-utf8) > /tmp/rill-u8-sh.$$ 2>&1; us=$?
+THIS_SH=./relfsh timeout 60 ./relf64 kernel64-rill.img examples/rill/run-utf8.rill < /dev/null > /tmp/rill-u8-rl.$$ 2>&1; ur=$?
+if [ "$us" = "$ur" ] && cmp -s /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL examples/rill/run-utf8.rill: status $ur, the shell's $us"; diff /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$ | head -5; fi
+rm -f /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi
