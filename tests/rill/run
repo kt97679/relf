@@ -19,5 +19,8 @@ for e in tests/rill/errors/*.rill; do
     case "$py" in *"$want"*) ;; *) fail=$((fail + 1)); echo "FAIL $e: rillc.py said: $py"; continue ;; esac
     case "$im" in *"$want"*) pass=$((pass + 1)) ;; *) fail=$((fail + 1)); echo "FAIL $e: the image said: $im" ;; esac
 done
+# memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
+if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi
 echo "$pass passed, $fail failed (tests/rill)"
 [ "$fail" = 0 ]

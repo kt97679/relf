@@ -444,3 +444,11 @@ the compilers register with their kinds (docs/RILL-MEMORY.md); the old arena
 is freed. And literal texts are made once, outside the arena (gene littext,
 on): 5 % fewer dispatches, and no copy of a literal made at each use - worth
 its 6.8 % more generated Forth, which the score from 752 had weighed alone.
+
+## 778: relfsh changed, at the user's request; the guard's base moves
+
+The first change to relfsh since 725: old function bodies freed at each loop
+round while no function runs (docs/RELFSH-MEMORY.md). rill-guard's base
+moves to this iteration's commit, so later Rill work is held to the relfsh
+that has the change. And memory checks now run routinely: make memcheck for
+relfsh, tests/rill/run for Rill.

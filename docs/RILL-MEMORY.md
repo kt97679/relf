@@ -52,3 +52,15 @@ and a >R inside a DO loop, under which I read the wrong index.
   arena until it returns.
 - The arena is 128 MB of address space; a script that keeps more than that
   live still stops, with the message.
+
+## Leaks outside the arena, and the check (Iteration 778)
+
+tools/rill-memcheck.py runs each runtime feature in a top-level loop at N
+and 10 N rounds, under RILL_GC_STRESS so the arena stays small - growth is
+then memory kept for good. It found one: a regex pattern made at run time,
+past the 32 the cache holds, compiled into a 24 KB program never freed - 22
+KB a round. Now a program the cache cannot keep frees the one before it like
+it (RX-LOOSE), and every program is cut to its own size before its jumps
+become addresses (its start filter's address in a header slot before it).
+The check runs in tests/rill/run (24 passed); against iteration 777's image
+it fails on that feature, as it should.

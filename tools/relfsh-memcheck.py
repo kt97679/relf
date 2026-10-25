@@ -13,7 +13,10 @@ import os, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
-shells = sys.argv[1:] or ['./relfsh', './relfsh-native']
+check = '--check' in sys.argv
+shells = [a for a in sys.argv[1:] if a != '--check'] or ['./relfsh', './relfsh-native']
+LIMIT, NOISE = 48, 400 * 1024   # bytes a round; what two peaks differ by with nothing kept (see rill-memcheck.py)
+bad = 0
 
 LOOP = '%si=0\nwhile [ $i -lt $1 ]; do\n%s\ni=$((i+1))\ndone\necho done $i\n'
 PRE = {'func-call': 'f() { z="$1"; }\n', 'local': 'h() { local z="$1 more"; }\n', 'func-bigger': 'k() { a=1; b=2; c=3; d=4; }\n'}
@@ -58,12 +61,17 @@ for name, body, n, forks in W:
     script = os.path.join(work, name + '.sh')
     open(script, 'w').write(LOOP % (PRE.get(name, ''), body))
     cells = []
+    if check: n = max(n // 2, 100)
     for sh in shells:
         a, sa, oa = peak_kb(sh, script, n)
         b, sb, ob = peak_kb(sh, script, 10 * n)
         if sa or sb or 'done' not in ob:
-            cells.append('fails: %s' % (ob if sb else oa)[:22])
+            cells.append('fails: %s' % (ob if sb else oa)[:22]); bad += 1
             continue
         per = (b - a) * 1024.0 / (9 * n)
-        cells.append('%5d->%5d KB %6.0f B/round' % (a, b, per))
+        kept = per > max(LIMIT, NOISE / (9.0 * n)); bad += kept
+        cells.append('%5d->%5d KB %6.0f B/round%s' % (a, b, per, ' KEPT' if kept else ''))
     print('%-12s' % name + ''.join('%28s' % c for c in cells))
+if check:
+    print('relfsh-memcheck: %d feature runs keep memory' % bad)
+    sys.exit(1 if bad else 0)

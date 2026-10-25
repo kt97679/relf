@@ -158,7 +158,7 @@ CREATE RX-OPS 10 CELLS ALLOT          \ the words by op; kept as offsets (!XT): 
 ' H-CHAR RX-OPS X-CHAR CELLS + !XT   ' H-ANY RX-OPS X-ANY CELLS + !XT   ' H-CLASS RX-OPS X-CLASS CELLS + !XT
 ' H-SPLIT RX-OPS X-SPLIT CELLS + !XT   ' H-JMP RX-OPS X-JMP CELLS + !XT   ' H-SAVE RX-OPS X-SAVE CELLS + !XT
 ' H-MATCH RX-OPS X-MATCH CELLS + !XT   ' H-BOL RX-OPS X-BOL CELLS + !XT   ' H-EOL RX-OPS X-EOL CELLS + !XT
-: RX-INFO ( --- a )   RX-MAX 1- RX-AT CELL+ ;   \ where a program keeps its start filter's address (769)
+: RX-INFO ( --- a )   RX-PROG @ 3 CELLS - ;   \ where a program keeps its start filter's address: just before it (778)
 \ The start filter (769): the characters a match can take first, a 256-byte table, from a walk of the
 \ program through SPLIT, JMP, SAVE and EOL; a path through BOL stops (it can only start at 0, which is
 \ always tried); a path to MATCH taking nothing makes the pattern able to match empty - no filter then.
@@ -218,6 +218,10 @@ G-RXCACHE CONSTANT RXC-MAX   \ a gene (749): 0 makes every pattern again
 \ [gene rxcache]
 RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS BUFFER: RXC-NG   VARIABLE RXC-N
 \ [/gene]
+: RX-FREE ( block --- )   DUP @ ?DUP IF FREE DROP THEN  FREE DROP ;   \ a program's block and its start filter
+VARIABLE RX-LOOSE   \ the last program made that the cache could not keep (778)
+: RX-LOOSE! ( --- )   \ this program is not kept: the one before it like it is done with - freed, and this one noted
+  RX-LOOSE @ ?DUP IF RX-FREE THEN  RX-INFO RX-LOOSE ! ;
 : RX-COMPILE ( pat --- )   \ RX-PROG and RX-NG for the pattern, made or found
 \ [gene rxcache]
   RXC-N @ 0 ?DO
@@ -225,17 +229,19 @@ RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS B
       DROP I CELLS RXC-PROG + @ RX-PROG !  I CELLS RXC-NG + @ RX-NG !  UNLOOP EXIT THEN
   LOOP
 \ [/gene]
-  RX-MAX 3 * CELLS ALLOCATE THROW RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !
+  RX-MAX 3 * 3 + CELLS ALLOCATE THROW 3 CELLS + RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !   \ a header slot first (778)
   DUP R-T@ RX-PN ! RX-P !
   RX-ALT  RX-END? 0= IF S" a ) with no (" RX-ERR THEN
-  X-MATCH 0 0 RX-EMIT DROP  RX-FILTER RX-LINK
+  X-MATCH 0 0 RX-EMIT DROP
+  RX-INFO RX-N @ 3 * 3 + CELLS RESIZE THROW 3 CELLS + RX-PROG !     \ cut to the program's own size, before its jumps are addresses (778)
+  RX-FILTER RX-LINK
 \ [gene rxcache]
   RXC-N @ RXC-MAX < IF
     R-FIX RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!   \ the pattern kept out of the arena (776)
-  ELSE DROP THEN ;
+  ELSE DROP RX-LOOSE! THEN ;
 \ [/gene]
 \ [gene !rxcache]
-  DROP ;
+  DROP RX-LOOSE! ;
 \ [/gene]
 : RX-TEXT! ( t --- )   R-T@ RX-TN ! RX-T ! ;
 : RX-SLICE ( from to --- t )   OVER - SWAP RX-T @ + SWAP R-TEXT ;

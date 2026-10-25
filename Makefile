@@ -82,6 +82,7 @@ help:
 	@echo '  portability    the scaffolding: shebangs, locale pins, the bundle'
 	@echo '  lint           comment lint over the Forth sources; host-sh lint over tests'
 	@echo '  dead-words     unreachable definitions'
+	@echo '  memcheck       memory each shell feature keeps: none, at N and 10 N rounds (778)'
 	@echo '  sizes          this shell against every other one installed'
 	@echo '  profile        dispatch counts per word, on a realistic script'
 	@echo '  bench          speed against the reference shells'
@@ -363,6 +364,9 @@ interactive: all
 
 verify: all
 	@sh tests/verify
+
+memcheck: all
+	@$(PYTHON) tools/relfsh-memcheck.py --check
 
 verify-update: all
 	@sh tests/verify --update

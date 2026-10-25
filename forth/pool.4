@@ -126,7 +126,28 @@ VARIABLE BUF-RETIRED   0 BUF-RETIRED !    \ first node, or 0
   BUF-RETIRED @ OVER !
   BUF-RETIRED ! ;
 
+\ A second list (Iteration 778), for what only a running shell function can
+\ still point into: a function's old body, retired when the function is
+\ redefined. It is freed with the first, and also at each round of a
+\ loop while no function runs (FUNC-DEPTH 0, shell.4) - then nothing can
+\ be replaying it - so a loop that redefines a function again and again
+\ holds one round's old bodies, not every round's until the command ends.
+VARIABLE FN-RETIRED   0 FN-RETIRED !
+: FN-RETIRE ( addr --- )
+  2 CELLS ALLOCATE ABORT" BUFFER: out of memory"   ( addr node )
+  SWAP OVER CELL+ !
+  FN-RETIRED @ OVER !
+  FN-RETIRED ! ;
+: FN-FREE-RETIRED ( --- )
+  FN-RETIRED @
+  BEGIN ?DUP WHILE
+    DUP CELL+ @ FREE DROP
+    DUP @ SWAP FREE DROP
+  REPEAT
+  0 FN-RETIRED ! ;
+
 : BUF-FREE-RETIRED ( --- )
+  FN-FREE-RETIRED
   BUF-RETIRED @
   BEGIN ?DUP WHILE
     DUP CELL+ @ FREE DROP

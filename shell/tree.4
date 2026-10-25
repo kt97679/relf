@@ -3171,6 +3171,7 @@ VARIABLE LP-STOP?   \ a break (or a return) in the loop's condition
     \ done` never saw a signal and no trap ever ran (Iteration 446,
     \ busybox ash-signals/continue_and_trap1).
     CHECK-TRAPS
+    FUNC-DEPTH @ 0= IF FN-FREE-RETIRED THEN   \ old function bodies: no function runs, none in use (778)
     0 LP-STOP? !
     BEGIN
       OVER 1 XF@ EXEC-IGNORING
@@ -3216,6 +3217,7 @@ VARIABLE LP-STOP?   \ a break (or a return) in the loop's condition
   LOOP-DEPTH @ 1+ LOOP-DEPTH !
   0 LAST-STATUS !
   OVER SWAP 0 ?DO                           ( node block p )
+    FUNC-DEPTH @ 0= IF FN-FREE-RETIRED THEN       \ as each round of a while loop (778)
     2 PICK 1 XF@ 0 XF@ XSTR OVER SET-SHVAR-A     \ exported under set -a (432)
     2 PICK 3 XF@ EXEC
     DUP CSTRLEN 1+ +
@@ -3337,7 +3339,7 @@ CREATE NO-TEXT CSTR," "
   OVER 4 XF@ 2 PICK 3 XF@ -                 ( node i len )
   DUP 1 MAX ALLOCATE DROP                   ( node i len block )
   3 PICK 3 XF@ XSTR OVER 3 PICK MOVE NIP    ( node i block )
-  OVER CELLS FT-BLOCK + DUP @ ?DUP IF BUF-RETIRE THEN
+  OVER CELLS FT-BLOCK + DUP @ ?DUP IF FN-RETIRE THEN       \ its own list: freed sooner (778)
   OVER SWAP !                               ( node i block )
   2 PICK 3 XF@ -  OVER CELLS FT-BASE + !    ( node i )
   CELLS FT-NODE + SWAP 2 XF@ SWAP !
