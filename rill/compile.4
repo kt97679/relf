@@ -88,6 +88,9 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
   TK-N @ 0 ?DO  I K@ .  I L@ .  I T@ TYPE  R-NL  LOOP ;
 
 \ ---- Part 2: output, tables, expressions (Iteration 740) ----------------
+\ The tables are BUFFER:s (pool.4) - on the heap, ALLOCATEd at boot by
+\ ALLOC-BUFFERS - not laid in the image: the user's call at 741, and the
+\ image went from 44,431 bytes back toward its runtime's size.
 \ Code is written as text into one of two buffers - the defs and R-MAIN -
 \ each piece followed by a blank; names to declare are gathered and
 \ sorted at the end, as rillc.py's program() does.
@@ -104,13 +107,14 @@ VARIABLE MAIN-B  VARIABLE MAIN#  VARIABLE DEFS-B  VARIABLE DEFS#  VARIABLE CUR-B
 \ def's local; kinds K-NUM K-TEXT K-BOOL, and 9 for a box (any)
 9 CONSTANT K-ANY
 256 CONSTANT NM-MAX
-CREATE NM-A NM-MAX CELLS ALLOT  CREATE NM-L NM-MAX CELLS ALLOT  CREATE NM-K NM-MAX CELLS ALLOT  CREATE NM-LOC NM-MAX CELLS ALLOT
+NM-MAX CELLS BUFFER: NM-A  NM-MAX CELLS BUFFER: NM-L  NM-MAX CELLS BUFFER: NM-K  NM-MAX CELLS BUFFER: NM-LOC
 VARIABLE NM-N   VARIABLE IN-DEF
+VARIABLE NF-R   \ not the return stack: inside DO, R@ is the loop's index (739's lesson, again)
 : NM-FIND ( c-addr u --- i | -1 )   \ the def's local first, then the script's
-  -1 >R  NM-N @ 0 ?DO
+  -1 NF-R !  NM-N @ 0 ?DO
     2DUP NM-A I CELLS + @ NM-L I CELLS + @ COMPARE 0= IF
-      NM-LOC I CELLS + @ IF R> DROP I >R ELSE R@ 0< IF R> DROP I >R THEN THEN
-    THEN LOOP 2DROP R> ;
+      NM-LOC I CELLS + @ IF I NF-R ! ELSE NF-R @ 0< IF I NF-R ! THEN THEN
+    THEN LOOP 2DROP NF-R @ ;
 : NM-ADD ( c-addr u kind local? --- )
   NM-N @ NM-MAX = ABORT" rill: too many names"
   NM-LOC NM-N @ CELLS + !  NM-K NM-N @ CELLS + !  NM-L NM-N @ CELLS + !  NM-A NM-N @ CELLS + !  1 NM-N +! ;
@@ -119,7 +123,7 @@ VARIABLE NM-N   VARIABLE IN-DEF
     NM-A I CELLS + @ NM-A 2 PICK CELLS + !  NM-L I CELLS + @ NM-L 2 PICK CELLS + !
     NM-K I CELLS + @ NM-K 2 PICK CELLS + !  0 NM-LOC 2 PICK CELLS + !  1+ THEN  LOOP NM-N ! ;
 \ every name declared as a VARIABLE, once
-CREATE DC-A NM-MAX CELLS ALLOT  CREATE DC-L NM-MAX CELLS ALLOT  VARIABLE DC-N
+NM-MAX CELLS BUFFER: DC-A  NM-MAX CELLS BUFFER: DC-L  VARIABLE DC-N
 : DECLARE ( c-addr u --- )
   DC-N @ 0 ?DO  2DUP DC-A I CELLS + @ DC-L I CELLS + @ COMPARE 0= IF 2DROP UNLOOP EXIT THEN  LOOP
   DC-L DC-N @ CELLS + !  DC-A DC-N @ CELLS + !  1 DC-N +! ;
@@ -136,7 +140,7 @@ CREATE DC-A NM-MAX CELLS ALLOT  CREATE DC-L NM-MAX CELLS ALLOT  VARIABLE DC-N
 
 \ ---- Part 3: expressions (Iteration 740) --------------------------------
 VARIABLE STACKMODE   VARIABLE DEPTH
-CREATE PRM-A 16 CELLS ALLOT  CREATE PRM-L 16 CELLS ALLOT  VARIABLE PRM-N   \ a pure def's parameters
+16 CELLS BUFFER: PRM-A  16 CELLS BUFFER: PRM-L  VARIABLE PRM-N   \ a pure def's parameters
 : S= ( c-addr1 u1 c-addr2 u2 --- f )   COMPARE 0= ;
 : OUT-INSERT ( c-addr u pos --- )   \ text and a blank put in at pos
   >R  CUR-B @ @ R@ +  DUP 2 PICK 1+ +  OUT-POS R@ - MOVE
@@ -159,8 +163,9 @@ CREATE PRM-A 16 CELLS ALLOT  CREATE PRM-L 16 CELLS ALLOT  VARIABLE PRM-N   \ a p
 : OUT-RAW ( c-addr u --- )   CUR-B @ @ OUT-POS + SWAP DUP >R MOVE  R> CUR#A @ +! ;
 : OUT-S" ( c-addr u --- )   \ S" text" R-TEXT
   [CHAR] S OUT-C  34 OUT-C  BL OUT-C  OUT-RAW  34 OUT-C  BL OUT-C  S" R-TEXT" OUT+ ;
+VARIABLE HS-Q
 : HAS-SPECIAL? ( c-addr u quote-only? --- f )   \ a quote - or a line end or a tab, unless quote-only
-  >R 0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR R@ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP R> DROP ;
+  HS-Q !  0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR HS-Q @ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP ;
 : OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
 : LIT-TEXT ( c-addr u --- )   2DUP 0 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;   \ rillc.py's lit_text
 : LIT ( c-addr u --- )   2DUP -1 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;      \ rillc.py's lit
@@ -173,11 +178,12 @@ CREATE PRM-A 16 CELLS ALLOT  CREATE PRM-L 16 CELLS ALLOT  VARIABLE PRM-N   \ a p
 : BOX ( kind --- )   DUP K-ANY = IF DROP EXIT THEN  K-CODE OUT+ S" R-BOX" OUT+ ;
 
 \ defs: name, parameter count, return kind (0 none), pure
-CREATE DF-A 64 CELLS ALLOT  CREATE DF-L 64 CELLS ALLOT  CREATE DF-P 64 CELLS ALLOT
-CREATE DF-K 64 CELLS ALLOT  CREATE DF-PURE 64 CELLS ALLOT  VARIABLE DF-N  VARIABLE DF-CUR
+64 CELLS BUFFER: DF-A  64 CELLS BUFFER: DF-L  64 CELLS BUFFER: DF-P
+64 CELLS BUFFER: DF-K  64 CELLS BUFFER: DF-PURE  VARIABLE DF-N  VARIABLE DF-CUR
 : DF-FIND ( c-addr u --- i | -1 )
   -1 -ROT DF-N @ 0 ?DO 2DUP DF-A I CELLS + @ DF-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
 
+: NOT-YET ( --- )   S" not in the Forth compiler yet (rillc.py has it)" ERR ;
 DEFER EXPR ( minp --- kind )
 : PARAM-AT ( c-addr u --- i | -1 )   \ a pure def's parameter
   STACKMODE @ 0= IF 2DROP -1 EXIT THEN
@@ -195,7 +201,7 @@ DEFER EXPR ( minp --- kind )
 VARIABLE SUB-A  VARIABLE SUB-L
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
   SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  1 EXPR >R  RESTORE-TK  R> ;
-CREATE LITBUF 4096 ALLOT  VARIABLE LIT#  VARIABLE NPARTS
+4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
 : LIT-FLUSH ( force? --- )   \ the literal gathered so far, as one part
   LIT# @ 0<> OR IF  LITBUF LIT# @ LIT-TEXT  1 NPARTS +!  THEN  0 LIT# ! ;
 : LIT-C ( c --- )   LITBUF LIT# @ + C!  1 LIT# +! ;
@@ -239,6 +245,7 @@ CREATE LITBUF 4096 ALLOT  VARIABLE LIT#  VARIABLE NPARTS
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK LIT K-TEXT EXIT THEN
   S" (" CUR-IS? IF NEXT-TK 1 EXPR S" )" EXPECT EXIT THEN
+  S" [" CUR-IS? S" {" CUR-IS? OR S" $(" CUR-IS? OR IF NOT-YET THEN       \ lists, records, captures: rillc.py only, for now
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN  TK T@ NEXT-TK LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
 : UNARY ( --- kind )
@@ -270,3 +277,148 @@ CREATE LITBUF 4096 ALLOT  VARIABLE LIT#  VARIABLE NPARTS
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
   REPEAT R> DROP ;
 ' EXPR-IMPL IS EXPR
+
+\ ---- Part 4: statements, defs, the program (Iteration 741) --------------
+DEFER STATEMENT
+: SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
+: BLOCK ( --- )   S" {" EXPECT SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK ;
+: COND ( --- )   S" (" EXPECT 1 EXPR DROP S" )" EXPECT ;
+: IF-STMT ( --- )
+  NEXT-TK COND -1 DEPTH+ S" IF" OUT+ BLOCK
+  TK-I @ >R SKIP-NL
+  S" else" CUR-IS? IF R> DROP NEXT-TK S" ELSE" OUT+ S" if" CUR-IS? IF RECURSE ELSE BLOCK THEN S" THEN" OUT+ EXIT THEN
+  R> TK-I ! S" THEN" OUT+ ;
+: WHILE-STMT ( --- )   NEXT-TK S" BEGIN" OUT+ COND S" WHILE" OUT+ BLOCK S" REPEAT" OUT+ ;
+: RETURN-STMT ( --- )
+  NEXT-TK 1 EXPR DROP  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN  S" EXIT" OUT+ ;
+: VAR-REF ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
+: BIND ( c-addr u kind --- )   \ a name in the current scope takes a kind, or keeps the one it has
+  >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
+      CELLS NM-K + @ R> <> IF S" a variable cannot change its kind" ERR THEN 2DROP EXIT THEN THEN
+  DROP 2DUP DECLARE R> IN-DEF @ NM-ADD ;
+VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
+: ASSIGN ( --- )
+  TK T@ NEXT-TK  TK T@ NEXT-TK                                   ( name op )
+  2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
+  S" +=" S= >R
+  2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ K-NUM <> IF S" += and -= need a number to change" ERR THEN
+  2DUP VAR-REF S" @" OUT+
+  TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
+    NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
+  ELSE 1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
+  VAR-REF S" !" OUT+ ;
+: ARG-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
+  TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
+  TK T@ 2DUP S" ," S= >R 2DUP S" =" S= R> OR >R 2DUP S" ==" S= R> OR >R 2DUP S" !=" S= R> OR >R
+  2DUP S" <=" S= R> OR >R 2DUP S" >=" S= R> OR >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R S" ->" S= R> OR ;
+: STATEMENT-END? ( --- f )   TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR ;
+: PLUMBED? ( --- f )   \ a redirection or a pipe ahead in the statement
+  TK-I @  BEGIN STATEMENT-END? S" ??" CUR-IS? OR 0= WHILE
+    S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR S" |" CUR-IS? OR IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT
+  TK-I ! 0 ;
+: ECHO-STMT ( --- )
+  NEXT-TK 0
+  BEGIN STATEMENT-END? 0= WHILE
+    DUP IF TK TOK-AT TK 1- TOK-END = ELSE 0 THEN                ( count touching )
+    DUP 0= 2 PICK AND IF S" R-TYPE" OUT+ S" SPACE" OUT+ THEN
+    >R
+    S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
+    ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT
+    R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
+  REPEAT
+  IF S" R-TYPE" OUT+ THEN S" R-NL" OUT+ ;
+: BAD-OP? ( j --- f )
+  T@ 2DUP S" =" S= >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R 2DUP S" $(" S= R> OR >R
+  2DUP S" while" S= R> OR >R 2DUP S" for" S= R> OR >R 2DUP S" |" S= R> OR >R 2DUP S" >>" S= R> OR >R S" ??" S= R> OR ;
+: WORD-OK? ( j --- f )   DUP T@ NUMBER-TEXT? OVER PREC-OF 0<> OR OVER T@ S" -" S= OR SWAP 1+ S" (" TK-IS? OR ;
+: PURE? ( --- f )   \ rillc.py's pure(): the body ahead only computes
+  TK-I @ 0
+  BEGIN
+    OVER T@ S" {" S= IF 1+ ELSE
+    OVER T@ S" }" S= IF 1- DUP 0= IF 2DROP -1 EXIT THEN ELSE
+    OVER K@ DUP T-STR = SWAP T-RAW = OR IF 2DROP 0 EXIT THEN
+    OVER K@ T-WORD <> IF OVER BAD-OP? IF 2DROP 0 EXIT THEN THEN
+    OVER K@ T-VAR = IF OVER T@ 1 /STRING PARAM-AT 0< IF 2DROP 0 EXIT THEN THEN
+    OVER K@ T-WORD = IF OVER WORD-OK? 0= IF 2DROP 0 EXIT THEN THEN
+    THEN THEN
+    SWAP 1+ SWAP
+  AGAIN ;
+\ the header of a def with locals, made after its body
+4096 BUFFER: HDR  VARIABLE HDR#
+: HDR+ ( c-addr u --- )   HDR HDR# @ + SWAP DUP >R MOVE  R> HDR# +!  BL HDR HDR# @ + C!  1 HDR# +! ;
+: HDR-VAR ( c-addr u --- )   S" R." HDR HDR# @ + SWAP MOVE 2 HDR# +!  -1 HDR# +! 1 HDR# +!  HDR+ ;
+VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
+: DEF-HEAD ( --- c-addr u )   \ : R:name SHADOW{ params reversed | scratch }
+  0 HDR# !  S" :" HDR+  S" R:" HDR HDR# @ + SWAP MOVE 2 HDR# +!  DEF-NAME-A @ DEF-NAME-L @ HDR+
+  S" SHADOW{" HDR+
+  PRM-N @ 0 ?DO PRM-N @ 1- I - DUP CELLS PRM-A + @ SWAP CELLS PRM-L + @ HDR-VAR LOOP
+  S" |" HDR+
+  NM-N @ DEF-NM0 @ PRM-N @ + ?DO I CELLS NM-LOC + @ IF I CELLS NM-A + @ I CELLS NM-L + @ HDR-VAR THEN LOOP
+  S" }" HDR+  HDR HDR# @ 1- ;
+: DROP-DUP-NIP ( from --- )   \ rillc.py's re.sub(' DUP NIP', ''), over the def just made
+  CUR-B @ @ SWAP                                        ( buf from )
+  BEGIN DUP 8 + OUT-POS U> 0= WHILE
+    2DUP + 8 S" DUP NIP " S= IF  2DUP + 1- C@ BL =  ELSE 0 THEN     \ a blank before it: a whole word
+    IF  2DUP + DUP 8 + SWAP OUT-POS 3 PICK - 8 - MOVE  -8 CUR#A @ +!
+    ELSE 1+ THEN
+  REPEAT 2DROP ;
+: DEF-STMT ( --- )
+  NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !  NEXT-TK  0 PRM-N !
+  BEGIN TK K@ T-WORD = WHILE TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK REPEAT
+  0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
+  DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !
+  PRM-N @ DF-N @ CELLS DF-P + !  DUP DF-N @ CELLS DF-K + !
+  -1 STACKMODE !  PURE?  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
+  TO-DEFS  OUT-POS DEF-START !
+  STACKMODE @ IF
+    S" :" OUT+ S" R:" OUT-RAW DEF-NAME-A @ DEF-NAME-L @ OUT+
+    BLOCK  0= IF PRM-N @ 0 ?DO S" DROP" OUT+ LOOP THEN
+    DEF-START @ DROP-DUP-NIP  0 STACKMODE !
+  ELSE
+    DROP -1 IN-DEF !  NM-N @ DEF-NM0 !
+    PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ 2DUP DECLARE K-ANY -1 NM-ADD LOOP
+    BLOCK  DEF-HEAD DEF-START @ OUT-INSERT
+    NM-DROP-LOCALS 0 IN-DEF !
+  THEN
+  S" ;" OUT+ 10 OUT-C  TO-MAIN  -1 DF-CUR ! ;
+: CALL-STMT ( --- )   CALL IF S" DROP" OUT+ THEN ;
+: STATEMENT-IMPL ( --- )
+  S" if" CUR-IS? IF IF-STMT EXIT THEN
+  S" while" CUR-IS? IF WHILE-STMT EXIT THEN
+  S" return" CUR-IS? IF RETURN-STMT EXIT THEN
+  S" def" CUR-IS? IF DEF-STMT EXIT THEN
+  S" for" CUR-IS? IF NOT-YET THEN
+  S" break" CUR-IS? IF NEXT-TK S" LEAVE" OUT+ EXIT THEN
+  TK K@ T-WORD = IF
+    TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
+    S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
+    TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
+  THEN
+  NOT-YET ;
+' STATEMENT-IMPL IS STATEMENT
+\ the program: names declared in order, the defs, R-MAIN
+1048576 BUFFER: FINAL  VARIABLE FINAL#
+NM-MAX CELLS BUFFER: ORDER
+: FIN+ ( c-addr u --- )   FINAL FINAL# @ + SWAP DUP >R MOVE  R> FINAL# +! ;
+: DC-NAME ( i --- c-addr u )   DUP CELLS DC-A + @ SWAP CELLS DC-L + @ ;
+: SORT-NAMES ( --- )   \ insertion sort of the declared names, as Python's sorted()
+  DC-N @ 0 ?DO I I CELLS ORDER + ! LOOP
+  DC-N @ 1 ?DO
+    I BEGIN DUP 0> IF DUP CELLS ORDER + @ DC-NAME 2 PICK 1- CELLS ORDER + @ DC-NAME COMPARE 0< ELSE 0 THEN
+    WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
+  LOOP ;
+: RILL-INIT ( --- )
+  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
+  TK-ALLOC BUF-ALLOC ;
+: RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
+  RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
+  SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
+  SORT-NAMES
+  DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
+  DEFS-B @ DEFS# @ FIN+
+  S" : R-MAIN " FIN+ MAIN-B @ MAIN# @ FIN+ S" ;" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! S" R-MAIN" FIN+
+  10 FINAL FINAL# @ + C! 1 FINAL# +!
+  FINAL FINAL# @ ;
+: .RILL ( c-addr u --- )   \ a script file's Forth, printed: tests/rill/oracle
+  R-SLURP RILL>FORTH TYPE ;
+' RILL>FORTH IS R-COMPILE   \ the image compiles a .rill itself (Iteration 741)

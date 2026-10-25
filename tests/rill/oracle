@@ -1,0 +1,34 @@
+#!/bin/sh
+# tests/rill/oracle - the Forth compiler against its oracle (Iteration 741).
+#
+# Every tests/rill/*.rill and examples/rill/oracle/*.rill compiled by
+# tools/rillc.py and by rill/compile.4 in Rill's image; the two Forths
+# compared word for word, blanks and line ends aside. A program the
+# Forth compiler cannot yet read ("not in the Forth compiler yet") is
+# counted apart - the port's progress, not a failure.
+cd "$(dirname "$0")/../.." || exit 2
+[ -f kernel64-rill.img ] || sh tools/build-rill-image.sh > /dev/null || exit 2
+same=0 differ=0 notyet=0
+for t in tests/rill/*.rill examples/rill/oracle/*.rill; do
+    [ -f "$t" ] || continue
+    python3 tools/rillc.py "$t" 2>/dev/null | tr -s ' \n' '\n\n' | sed '/^$/d' > /tmp/oracle.py.$$
+    printf 'S" %s" .RILL\n' "$(pwd)/$t" > /tmp/oracle.drv.$$.4
+    timeout 30 ./relf64 kernel64-rill.img /tmp/oracle.drv.$$.4 < /dev/null > /tmp/oracle.fs.raw.$$ 2>&1
+    if grep -q 'not in the Forth compiler yet' /tmp/oracle.fs.raw.$$; then
+        notyet=$((notyet + 1)); echo "not yet: $t ($(grep -o 'line [0-9]*' /tmp/oracle.fs.raw.$$ | head -1))"
+    else
+        tr -s ' \n' '\n\n' < /tmp/oracle.fs.raw.$$ | sed '/^$/d' > /tmp/oracle.fs.$$
+        if cmp -s /tmp/oracle.py.$$ /tmp/oracle.fs.$$; then same=$((same + 1))
+            # and run as the image compiles it itself, against the expected output
+            exp=${t%.rill}.expected
+            if [ -f "$exp" ]; then
+                timeout 30 ./relf64 kernel64-rill.img "$t" < /dev/null > /tmp/oracle.run.$$ 2>&1
+                if cmp -s "$exp" /tmp/oracle.run.$$; then echo "same, and runs compiled in the image: $t"
+                else differ=$((differ + 1)); echo "SAME FORTH, BUT THE IN-IMAGE RUN DIFFERS: $t"; fi
+            else echo "same: $t"; fi
+        else differ=$((differ + 1)); echo "DIFFER: $t"; diff /tmp/oracle.py.$$ /tmp/oracle.fs.$$ | head -8; fi
+    fi
+done
+rm -f /tmp/oracle.*.$$ /tmp/oracle.*.$$.4 /tmp/oracle.fs.raw.$$ /tmp/oracle.run.$$
+echo "$same the same, $differ different, $notyet not yet (tests/rill/oracle)"
+[ "$differ" = 0 ]

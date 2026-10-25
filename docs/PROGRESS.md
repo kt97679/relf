@@ -765,6 +765,7 @@ do not trust the absence of a line below.
 - 738 — Rill: pipelines, $(...), redirections and ports; pure defs keep parameters on the stack - fib level with hand-written Forth
 - 739 — Rill stage 2: lists and records (boxed items), comprehensions, for over lists/records/ranges, the list and text library
 - 740 — the compiler's Forth port begun: tokenizer identical to rillc.py's on every test; expressions built; statements drafted
+- 741 — tables on the heap; the Forth compiler matches rillc.py on hello.rill and the image runs it with no Python; tests/rill/oracle
 
 ### Not tied to an iteration
 

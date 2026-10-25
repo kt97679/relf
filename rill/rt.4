@@ -47,7 +47,7 @@ VARIABLE RX-N   VARIABLE RX-V
 \ (text, mode, fd), or one descriptor onto another (-1, from, fd); the
 \ child applies them in the order they were written.
 8 CONSTANT RR-MAX
-CREATE RR-T RR-MAX CELLS ALLOT   CREATE RR-M RR-MAX CELLS ALLOT   CREATE RR-F RR-MAX CELLS ALLOT
+RR-MAX CELLS BUFFER: RR-T   RR-MAX CELLS BUFFER: RR-M   RR-MAX CELLS BUFFER: RR-F
 VARIABLE RR-N
 : R-RD-RESET ( --- )   0 RR-N ! ;
 : R-RD-FILE ( t mode fd --- )
@@ -68,8 +68,8 @@ VARIABLE RR-N
 \ flag), PL-END. Every pipe end is listed, and each child closes them
 \ all once its own are on 0 and 1 - or a reader would never see the end.
 16 CONSTANT PL-MAX
-CREATE PL-PIDS PL-MAX CELLS ALLOT   VARIABLE PL-NP
-CREATE PL-FDS PL-MAX 2* 2 + CELLS ALLOT   VARIABLE PL-NF
+PL-MAX CELLS BUFFER: PL-PIDS   VARIABLE PL-NP
+PL-MAX 2* 2 + CELLS BUFFER: PL-FDS   VARIABLE PL-NF
 VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
 VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
 : PL-FD+ ( fd --- )   PL-FDS PL-NF @ CELLS + !  1 PL-NF +! ;
@@ -119,12 +119,14 @@ VARIABLE R-STATUS
   R> CLOSE-FILE DROP ;
 : R-BLANKS ( addr len --- addr len )   \ every control character a blank
   2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
+DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
+: R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
 : R-RUN ( --- )
   \ Not INCLUDED: the boot word runs before the interpreter has a file
   \ to read from, and INCLUDED says "Error reading file" there; the
   \ program is read whole, its line ends made blanks, and EVALUATEd.
   SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
-  0 SYS-ARG DUP CSTRLEN R-SLURP R-BLANKS EVALUATE ;
+  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP R> IF R-COMPILE THEN R-BLANKS EVALUATE ;
 : R-INIT ( --- )
   \ What WARM and QUIT set before the interpreter reads - a boot word runs
   \ ahead of both, with the search order the build left (its wordlists'
