@@ -3,6 +3,7 @@
 # Rill's image, its output compared with *.expected (Iteration 736).
 cd "$(dirname "$0")/../.." || exit 2
 [ -f kernel64-rill.img ] || sh tools/build-rill-image.sh > /dev/null || exit 2
+python3 tools/rill-forth-lint.py > /dev/null || { python3 tools/rill-forth-lint.py; echo 'FAIL rill-forth-lint'; exit 1; }   # 742
 pass=0 fail=0
 for t in tests/rill/*.rill; do
     f=${t%.rill}

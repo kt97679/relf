@@ -766,6 +766,7 @@ do not trust the absence of a line below.
 - 739 — Rill stage 2: lists and records (boxed items), comprehensions, for over lists/records/ranges, the list and text library
 - 740 — the compiler's Forth port begun: tokenizer identical to rillc.py's on every test; expressions built; statements drafted
 - 741 — tables on the heap; the Forth compiler matches rillc.py on hello.rill and the image runs it with no Python; tests/rill/oracle
+- 742 — rill-forth-lint.py for the recurring slips; commands in the Forth compiler: 3 of 4 test programs the same and run in the image
 
 ### Not tied to an iteration
 

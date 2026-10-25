@@ -185,6 +185,7 @@ VARIABLE HS-Q
 
 : NOT-YET ( --- )   S" not in the Forth compiler yet (rillc.py has it)" ERR ;
 DEFER EXPR ( minp --- kind )
+DEFER COMMAND-HOOK ( capture? --- )   \ commands come in part 5; terms and strings need them first
 : PARAM-AT ( c-addr u --- i | -1 )   \ a pure def's parameter
   STACKMODE @ 0= IF 2DROP -1 EXIT THEN
   -1 -ROT PRM-N @ 0 ?DO 2DUP PRM-A I CELLS + @ PRM-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
@@ -199,20 +200,28 @@ DEFER EXPR ( minp --- kind )
 : SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ SRC @ SRC# @ CUR-LINE @ ;
 : RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
 VARIABLE SUB-A  VARIABLE SUB-L
+: SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
+  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  -1 COMMAND-HOOK S" R-CHECK" OUT+  RESTORE-TK ;
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
   SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  1 EXPR >R  RESTORE-TK  R> ;
 4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
 : LIT-FLUSH ( force? --- )   \ the literal gathered so far, as one part
   LIT# @ 0<> OR IF  LITBUF LIT# @ LIT-TEXT  1 NPARTS +!  THEN  0 LIT# ! ;
 : LIT-C ( c --- )   LITBUF LIT# @ + C!  1 LIT# +! ;
-: STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}
+: STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}, $( ... )
+  \ In the loop the stack is ( c-addr u c ): the next character is 2 PICK 1+ C@,
+  \ the length OVER - 742 found OVER 1+ C@ there, reading at an address made of the length.
   0 LIT# !  0 NPARTS !
   BEGIN DUP WHILE
-    OVER C@  DUP [CHAR] \ = 2 PICK 1 > AND IF DROP
+    OVER C@  DUP [CHAR] \ = OVER 1 > AND IF DROP
       1 /STRING OVER C@ DUP [CHAR] n = IF DROP 10 ELSE DUP [CHAR] t = IF DROP 9 THEN THEN LIT-C 1 /STRING
-    ELSE DUP [CHAR] $ = 2 PICK 1 > AND IF  OVER 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
+    ELSE DUP [CHAR] $ = OVER 1 > AND IF  2 PICK 1+ C@ [CHAR] ( = IF DROP          \ $( ... ): a capture
+      0 LIT-FLUSH  2 /STRING  OVER >R  1 >R
+      BEGIN R@ WHILE OVER C@ DUP [CHAR] ( = IF R> 1+ >R THEN [CHAR] ) = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
+      R> 2 PICK OVER - 1- SUB-COMMAND  1 NPARTS +!
+    ELSE 2 PICK 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
       0 LIT-FLUSH  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
-      R> 2 PICK OVER - READ-VAR TO-TEXT  1 NPARTS +!  THEN
+      R> 2 PICK OVER - READ-VAR TO-TEXT  1 NPARTS +!  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
       0 LIT-FLUSH  1 /STRING  OVER >R  1 >R
       BEGIN R@ WHILE OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
@@ -245,7 +254,8 @@ VARIABLE SUB-A  VARIABLE SUB-L
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK LIT K-TEXT EXIT THEN
   S" (" CUR-IS? IF NEXT-TK 1 EXPR S" )" EXPECT EXIT THEN
-  S" [" CUR-IS? S" {" CUR-IS? OR S" $(" CUR-IS? OR IF NOT-YET THEN       \ lists, records, captures: rillc.py only, for now
+  S" $(" CUR-IS? IF NEXT-TK -1 COMMAND-HOOK S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
+  S" [" CUR-IS? S" {" CUR-IS? OR IF NOT-YET THEN       \ lists and records: rillc.py only, for now
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN  TK T@ NEXT-TK LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
 : UNARY ( --- kind )
@@ -282,7 +292,14 @@ VARIABLE SUB-A  VARIABLE SUB-L
 DEFER STATEMENT
 : SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
 : BLOCK ( --- )   S" {" EXPECT SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK ;
-: COND ( --- )   S" (" EXPECT 1 EXPR DROP S" )" EXPECT ;
+: RUN-COND? ( --- f )   \ rillc.py's cond(): ( word ... ) a run, unless its second token makes it an expression
+  TK K@ T-WORD = 0= IF 0 EXIT THEN  TK 1+ S" (" TK-IS? IF 0 EXIT THEN
+  TK 1+ K@ DUP T-KW = SWAP T-OP = OR IF
+    TK 1+ T@ 2DUP S" in" S= >R 2DUP S" not" S= R> OR >R 2DUP S" and" S= R> OR >R 2DUP S" or" S= R> OR
+    IF 2DROP 0 EXIT THEN 2DROP THEN
+  TK 1+ PREC-OF IF 0 EXIT THEN  -1 ;
+: COND ( --- )
+  S" (" EXPECT  RUN-COND? IF 0 COMMAND-HOOK S" 0=" OUT+ ELSE 1 EXPR DROP THEN  S" )" EXPECT ;
 : IF-STMT ( --- )
   NEXT-TK COND -1 DEPTH+ S" IF" OUT+ BLOCK
   TK-I @ >R SKIP-NL
@@ -381,6 +398,58 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
     NM-DROP-LOCALS 0 IN-DEF !
   THEN
   S" ;" OUT+ 10 OUT-C  TO-MAIN  -1 DF-CUR ! ;
+\ commands: pipelines, ports, captures (Iteration 742), as rillc.py's
+\ command(), stage(), args() and redirect()
+: PORT-OF ( i --- port | -1 )   \ in 0, out 1, err 2, all 3
+  T@ 2DUP S" in" S= IF 2DROP 0 EXIT THEN  2DUP S" out" S= IF 2DROP 1 EXIT THEN
+  2DUP S" err" S= IF 2DROP 2 EXIT THEN  S" all" S= IF 3 EXIT THEN  -1 ;
+: PORT-FD ( port --- fd )   DUP 3 = IF DROP 1 THEN ;
+VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
+: SEG>POS ( from pos --- )   \ the code from `from` to the end, moved in at pos
+  SG-POS ! SG-FROM !  OUT-POS SG-FROM @ - SG-LEN !
+  CUR-B @ @ SG-FROM @ +  HDR  SG-LEN @ MOVE
+  CUR-B @ @ SG-POS @ +  DUP SG-LEN @ +  SG-FROM @ SG-POS @ -  MOVE
+  HDR  CUR-B @ @ SG-POS @ +  SG-LEN @ MOVE ;
+: REDIRECT ( port --- )   \ the operator the current token; the code goes in front of the stage's words
+  OUT-POS >R
+  TK T@ NEXT-TK
+  2DUP S" <" S= 0=  TK K@ T-WORD = AND  TK TOK-AT TK 1- TOK-END = AND
+  TK T@ 2DUP S" out" S= -ROT S" err" S= OR AND IF
+    2DROP  TK PORT-OF PORT-FD OUT-NUM  NEXT-TK  PORT-FD OUT-NUM  S" R-RD-DUP" OUT+
+  ELSE
+    TERM TO-TEXT
+    2DUP S" >" S= IF 2DROP S" W/O" ELSE S" >>" S= IF S" A/O" ELSE S" R/O" THEN THEN OUT+
+    DUP PORT-FD OUT-NUM  S" R-RD-FILE" OUT+
+    3 = IF S" 1" OUT+ S" 2" OUT+ S" R-RD-DUP" OUT+ THEN
+  THEN
+  R> RD-POS @ SEG>POS  SG-LEN @ RD-POS +! ;
+: ARG-ITEM ( --- )   \ one item of an argument list, as text
+  S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
+  ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT ;
+: STAGE-END? ( --- f )   STATEMENT-END? S" )" CUR-IS? OR S" ??" CUR-IS? OR S" |" CUR-IS? OR ;
+: STAGE ( --- n )   \ one command of a pipeline: its redirections first, then its words
+  OUT-POS RD-POS !  0
+  BEGIN STAGE-END? 0= WHILE
+    TK K@ T-WORD = TK PORT-OF 0< 0= AND  TK 1+ S" >" TK-IS? TK 1+ S" >>" TK-IS? OR AND
+    TK 1+ TOK-AT TK TOK-END = AND IF
+      TK PORT-OF NEXT-TK REDIRECT
+    ELSE S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR IF
+      S" <" CUR-IS? IF 0 ELSE 1 THEN REDIRECT
+    ELSE
+      DUP IF TK TOK-AT TK 1- TOK-END = ELSE 0 THEN >R
+      ARG-ITEM
+      R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
+    THEN THEN
+  REPEAT ;
+: COMMAND ( capture? --- )   \ a pipeline; its status - or, captured, its output and then its status
+  IF S" -1" ELSE S" 0" THEN OUT+ S" PL-BEGIN" OUT+
+  BEGIN STAGE OUT-NUM  S" |" CUR-IS? IF S" 0" ELSE S" -1" THEN OUT+ S" PL-STAGE" OUT+
+    S" |" CUR-IS? WHILE NEXT-TK SKIP-NL REPEAT
+  S" PL-END" OUT+ ;
+' COMMAND IS COMMAND-HOOK
+: COMMAND-STMT ( --- )
+  0 COMMAND
+  S" ??" CUR-IS? IF NEXT-TK S" IF" OUT+ STATEMENT S" THEN" OUT+ ELSE S" R-CHECK" OUT+ THEN ;
 : CALL-STMT ( --- )   CALL IF S" DROP" OUT+ THEN ;
 : STATEMENT-IMPL ( --- )
   S" if" CUR-IS? IF IF-STMT EXIT THEN
@@ -394,6 +463,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
     S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
     TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
   THEN
+  TK K@ DUP T-WORD = OVER T-STR = OR OVER T-RAW = OR SWAP T-VAR = OR IF COMMAND-STMT EXIT THEN
   NOT-YET ;
 ' STATEMENT-IMPL IS STATEMENT
 \ the program: names declared in order, the defs, R-MAIN
@@ -403,6 +473,7 @@ NM-MAX CELLS BUFFER: ORDER
 : DC-NAME ( i --- c-addr u )   DUP CELLS DC-A + @ SWAP CELLS DC-L + @ ;
 : SORT-NAMES ( --- )   \ insertion sort of the declared names, as Python's sorted()
   DC-N @ 0 ?DO I I CELLS ORDER + ! LOOP
+  DC-N @ 2 < IF EXIT THEN          \ 0 1 ?DO would run the whole unsigned range: no names, nothing to sort
   DC-N @ 1 ?DO
     I BEGIN DUP 0> IF DUP CELLS ORDER + @ DC-NAME 2 PICK 1- CELLS ORDER + @ DC-NAME COMPARE 0< ELSE 0 THEN
     WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
