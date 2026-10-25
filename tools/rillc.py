@@ -100,7 +100,7 @@ class Compiler:
         return '%s %s %s' % (a, b, forth), kind
     def unary(self):
         tok = self.peek()
-        if tok[1] == 'not': self.i += 1; c, k = self.unary(); return c + ' 0=', 'bool'
+        if tok[1] == 'not': self.i += 1; c, k = self.unary(); return self.truth(c, k) + ' 0=', 'bool'
         if tok[1] == '-' and tok[0] == 'word': self.i += 1; c, k = self.unary(); return c + ' NEGATE', 'number'
         return self.term()
     def term(self):
@@ -235,7 +235,7 @@ class Compiler:
             need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
         if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
         if name == 'arg':                                              # 744; arg(n, default) 747
-            if len(a) == 2: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
+            if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
             need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'
         if name == 'match': need(2); return '%s %s R-MATCH' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'   # 746
         if name == 'all': need(2); return '%s %s R-ALL' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
@@ -371,7 +371,7 @@ class Compiler:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)
             out = '%s R.%s !' % (c, name)
-        elif k == 'word' and v == 'warn' and self.peek(1)[1] != '(':        # warn ...: a line to the err port (747)
+        elif GENES['warn'] and k == 'word' and v == 'warn' and self.peek(1)[1] != '(':   # warn ...: the err port (747; a gene 751)
             self.i += 1
             parts, _ = self.args((';', '}'))
             if not parts: out = '0 0 R-TEXT R-ERR-TYPE'
@@ -471,9 +471,16 @@ class Compiler:
         second = self.peek(1)
         return self.peek()[0] == 'word' and second[1] != '(' and not (second[0] in ('kw', 'op') and second[1] in
                 ('in', 'not', 'and', 'or', '==', '!=', '<', '>', '<=', '>=')) and second[1] not in self.PREC
+    def truth(self, code, kind):
+        """Gene truth (751): an empty text, list or record is false."""
+        if not GENES['truth']: return code
+        if kind in ('text', 'list'): return code + ' @ 0<>'
+        if kind == 'record': return code + ' @ @ 0<>'
+        if kind == 'any': return code + ' R-ANY>BOOL'
+        return code
     def cond(self):
         if self.peek()[1] != '(': raise Error('line %d: a condition is in ( )' % self.peek()[2])
-        c, kd = self.expr(); return c
+        c, kd = self.expr(); return self.truth(c, kd)
     def has_continue(self):
         """Does the block ahead hold a continue at its own level (not in a loop inside it)?"""
         j, stack, pending = self.i, [], False

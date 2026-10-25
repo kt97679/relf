@@ -13,3 +13,7 @@ rxcache	32	0,8,32	runtime	compiled regular expressions kept, by their text (746)
 rechash	16	0,16,64	runtime	a record past this many keys finds them through a hash table (0: always by going through its keys) (750)
 littext	0	0,1	compilers	a literal text made once, when the program is read, not each time its code runs (750)
 rxanchor	0	0,1	runtime	a pattern that starts with ^ tried at the start only, not at every place (750)
+boxsmall	0	0,1	runtime	numbers 0-255 put in boxes made once, not each time (751)
+warn	1	0,1	features	warn ..., a line to the err port (747): off, scripts write echo ... out>err (751)
+argdefault	1	0,1	features	arg(n, default) (747): off, scripts write default(arg(n), default) (751)
+truth	0	0,1	features	an empty text, list or record is false in a condition and under not (751): off, scripts write len(x) > 0, x != ""

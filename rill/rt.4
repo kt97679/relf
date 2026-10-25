@@ -38,10 +38,25 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : /STRING ( c-addr u n --- c-addr' u' )   TUCK - >R + R> ;   \ not in the kernel
 1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC
 VARIABLE RL   VARIABLE RJ-SEP
-: R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;
+: R-BOX-NEW ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;
+\ [gene boxsmall]
+256 2* CELLS BUFFER: R-SMALL   VARIABLE R-SMALL-MADE   \ boxes for 0-255, made the first time one is asked for
+: R-BOX ( v kind --- box )
+  DUP K-NUM = 2 PICK 256 U< AND IF
+    R-SMALL-MADE @ 0= IF 256 0 DO K-NUM I 2* CELLS R-SMALL + !  I I 2* 1+ CELLS R-SMALL + ! LOOP -1 R-SMALL-MADE ! THEN
+    DROP 2* CELLS R-SMALL + EXIT THEN
+  R-BOX-NEW ;
+\ [/gene]
+\ [gene !boxsmall]
+: R-BOX ( v kind --- box )   R-BOX-NEW ;
+\ [/gene]
 : R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
 : R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
+\ [gene truth]
+: R-ANY>BOOL ( box --- f )   \ an item as a condition (751): an empty text, list or record false
+  R-UNBOX  DUP K-TEXT = OVER K-LIST = OR IF DROP @ 0<> EXIT THEN  K-REC = IF @ @ 0<> EXIT THEN  0<> ;
+\ [/gene]
 : R-ANY>TEXT ( box --- t )
   R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
   DUP K-NUM = IF DROP R-NUM EXIT THEN
@@ -80,6 +95,7 @@ VARIABLE RK
   4 CELLS R-ALLOT  R-NEW-LIST OVER !  R-NEW-LIST OVER CELL+ !  0 OVER 2 CELLS + !  0 OVER 3 CELLS + ! ;
 : R-KEYS ( r --- l )   @ ;
 : R-VALS ( r --- l )   CELL+ @ ;
+\ [gene rechash]
 : R-HASH ( t --- h )   R-T@ 2166136261 SWAP 0 ?DO OVER I + C@ XOR 16777619 * 4294967295 AND LOOP NIP ;   \ FNV-1a
 : RH-TABLE ( r --- a )   2 CELLS + @ ;
 : RH-CAP ( r --- n )   3 CELLS + @ ;
@@ -102,12 +118,27 @@ VARIABLE RH-R  VARIABLE RH-K
   OVER RH-TABLE 0= IF  DUP G-RECHASH > IF 4 * RH-POW2 RH-BUILD ELSE 2DROP THEN EXIT  THEN
   DUP 2* 2 PICK RH-CAP > IF 4 * RH-POW2 RH-BUILD EXIT THEN
   1- >R  DUP @ R@ R-AT R-UNBOX DROP OVER RH-PROBE  R> 1+ SWAP !  DROP ;
+\ [/gene]
+\ [gene rechash]
 : R-FIND-LINEAR ( key r --- i | -1 )   \ key a text
+\ [/gene]
+\ [gene !rechash]
+: R-FIND ( key r --- i | -1 )   \ key a text
+\ [/gene]
   RK !  -1  RK @ R-KEYS DUP @ 0 ?DO  DUP I R-AT R-UNBOX DROP 3 PICK R-T= IF NIP I SWAP LEAVE THEN  LOOP DROP NIP ;
+\ [gene rechash]
 : R-FIND ( key r --- i | -1 )   \ through the table when the record has one
   DUP RH-TABLE IF RH-PROBE @ 1- EXIT THEN  R-FIND-LINEAR ;
+\ [/gene]
 : R-PUT ( box key r --- )
-  2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R@ R-VALS R-PUSH  R> RH-MAINTAIN  EXIT  THEN
+  2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R@ R-VALS R-PUSH  R>
+\ [gene rechash]
+    RH-MAINTAIN
+\ [/gene]
+\ [gene !rechash]
+    DROP
+\ [/gene]
+    EXIT  THEN
   ROT DROP SWAP R-VALS SWAP R-SET ;
 : R-GET ( key r --- box )
   2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;

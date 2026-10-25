@@ -160,7 +160,9 @@ DEFER RX-RUN ( pc sp --- f )
   0 OVER RX-RUN IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
 : RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
   0 RX-NOEMPTY !
-  G-RXANCHOR IF 0 RX-AT @ X-BOL = IF  DUP 0= IF RX-AT-POS ELSE DROP 0 THEN  EXIT THEN THEN   \ ^...: one place to try (750)
+\ [gene rxanchor]
+  0 RX-AT @ X-BOL = IF  DUP 0= IF RX-AT-POS ELSE DROP 0 THEN  EXIT THEN   \ ^...: one place to try (750)
+\ [/gene]
   BEGIN DUP RX-TN @ > 0= WHILE  DUP RX-AT-POS IF DROP -1 EXIT THEN  1+  REPEAT DROP 0 ;
 : RX-SEARCH-AFTER ( start empty? --- f )   \ the next match, as sre goes on: after an empty match at
   \ start, a match there must take something - then the search goes on from start + 1
@@ -168,19 +170,28 @@ DEFER RX-RUN ( pc sp --- f )
 
 \ patterns made, kept by their text
 G-RXCACHE CONSTANT RXC-MAX   \ a gene (749): 0 makes every pattern again
+\ [gene rxcache]
 RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS BUFFER: RXC-NG   VARIABLE RXC-N
+\ [/gene]
 : RX-COMPILE ( pat --- )   \ RX-PROG and RX-NG for the pattern, made or found
+\ [gene rxcache]
   RXC-N @ 0 ?DO
     DUP R-T@ I CELLS RXC-PAT + @ R-T@ COMPARE 0= IF
       DROP I CELLS RXC-PROG + @ RX-PROG !  I CELLS RXC-NG + @ RX-NG !  UNLOOP EXIT THEN
   LOOP
+\ [/gene]
   RX-MAX 3 * CELLS ALLOCATE THROW RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !
   DUP R-T@ RX-PN ! RX-P !
   RX-ALT  RX-END? 0= IF S" a ) with no (" RX-ERR THEN
   X-MATCH 0 0 RX-EMIT DROP
+\ [gene rxcache]
   RXC-N @ RXC-MAX < IF
     RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!
   ELSE DROP THEN ;
+\ [/gene]
+\ [gene !rxcache]
+  DROP ;
+\ [/gene]
 : RX-TEXT! ( t --- )   R-T@ RX-TN ! RX-T ! ;
 : RX-SLICE ( from to --- t )   OVER - SWAP RX-T @ + SWAP R-TEXT ;
 : RX-GROUP ( k --- t )   \ a group's text, empty when it did not take part

@@ -236,3 +236,68 @@ Forth compiler shared it, fixed to share; and the search's compilation
 cache was keyed on a fixed list of compiler genes that missed littext -
 15 designs died as the two compilers differing - now keyed on the
 table's own `where` column.
+
+## The user's four criteria, and four more genes (Iteration 751)
+
+The user set the criteria: **the smallest Rill source, the smallest
+Rill scripts, the highest performance, the least generated code** - and
+asked for more genes. Each criterion is now measured per design:
+
+- **source**: rill/rt.4, regex.4 and compile.4 as the genome has them -
+  every gene's code sits in `\ [gene NAME]` ... `\ [/gene]` blocks
+  (`\ [gene !NAME]` for the form without it), which the build keeps or
+  cuts (tools/rill-genes.py --source), so a gene that is off costs
+  nothing; counted in code characters as rule 3 counts a script;
+- **scripts**: the corpus (examples/rill, the eight rewrites) written as
+  the genome's features allow, in rule 3's characters;
+- **speed**: CV8's dispatches, as before;
+- **generated**: words of Forth over the tests and workloads.
+
+New genes: **boxsmall** (numbers 0-255 in boxes made once), and three
+**feature genes**, which change what scripts may say - **warn** and
+**argdefault** (747's, now removable) and **truth** (new: an empty text,
+list or record is false in a condition and under `not`). Under a
+feature that is off, the tests, workloads and corpus are rewritten into
+the long form - the same rewrites tools/rill-candidates.py measures -
+so the gate checks both forms. Fourteen genes; `--pairs` gave 182
+designs, all alive; `--climb` (from the best score, every single change,
+to the best while it improves) stopped at once.
+
+Each gene alone, with the four (source and scripts in code characters,
+speed against the default, generated in words):
+
+| change | source | scripts | speed | generated |
+|---|---:|---:|---:|---:|
+| the default | 51,831 | 21,797 | 1.000 | 3,272 |
+| warn=0 | -360 | +56 | 1.000 | +13 |
+| argdefault=0 | -55 | +54 | 1.000 | 0 |
+| truth=1 | +268 | -74 | 1.000 | -3 |
+| short=0 | -616 | 0 | 1.006 | +30 |
+| dupnip=0 | -234 | 0 | 1.010 | +6 |
+| rangeloop=0 | -360 | 0 | 1.426 | +69 |
+| purestack=0 | -1,485 | 0 | 1.276 | +92 |
+| rechash=0 | -970 | 0 | 1.998 | 0 |
+| rxcache=0 | -394 | 0 | 1.058 | 0 |
+| littext=1 | +839 | 0 | 0.993 | +548 |
+| boxsmall=1 | +228 | 0 | 1.016 | 0 |
+| rxanchor=1 | +69 | 0 | 1.000 | 0 |
+
+**What it says.** Weighed equally - each criterion against the
+default's, summed - the best design known (warn=0, listcap=16) scores
+3.999 against the default's 4.000, and no single change from it does
+better: under these criteria **the current default is at the
+optimum, within 0.03 %**. The performance genes all earn their source:
+rechash's 970 characters halve the dispatches, purestack's 1,485 save
+a quarter and 92 words of Forth. boxsmall loses (slower: the check on
+every box costs more than the boxes it saves) and rxanchor buys
+nothing - both candidates to take out, by the lab's rule.
+
+**The two size criteria pull against each other**, through every
+feature: warn costs 360 characters of Rill's source and saves 56 of the
+corpus's; truth costs 268 and saves 74; argdefault costs 55 and saves
+54. A feature's cost is paid once and its saving grows with every
+script written, so where the balance lies depends on how much Rill
+there will be: with these eight rewrites, argdefault breaks even, truth
+would at about 3.6 times the corpus, warn at about 6.4. The weight
+between the two criteria is the user's to set; the full front (43
+designs) is in docs/rill-search-report-751.md.

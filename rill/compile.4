@@ -95,9 +95,14 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
 \ each piece followed by a blank; names to declare are gathered and
 \ sorted at the end, as rillc.py's program() does.
 VARIABLE MAIN-B  VARIABLE MAIN#  VARIABLE DEFS-B  VARIABLE DEFS#  VARIABLE CUR-B  VARIABLE CUR#A
+\ [gene littext]
 VARIABLE LITS-B  VARIABLE LITS#      \ literal texts made once (gene littext, 750)
+\ [/gene]
 : BUF-ALLOC ( --- )   1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B !  0 MAIN# !  0 DEFS# !
-  262144 ALLOCATE THROW LITS-B !  0 LITS# ! ;
+\ [gene littext]
+  262144 ALLOCATE THROW LITS-B !  0 LITS# !
+\ [/gene]
+  ;
 : TO-MAIN ( --- )   MAIN-B CUR-B !  MAIN# CUR#A ! ;
 : TO-DEFS ( --- )   DEFS-B CUR-B !  DEFS# CUR#A ! ;
 : OUT+ ( c-addr u --- )   \ a piece of code and a blank
@@ -179,6 +184,7 @@ VARIABLE HS-Q
   HS-Q !  0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR HS-Q @ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP ;
 : OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
 : LIT-CODE ( c-addr u quote-only? --- )   >R 2DUP R> HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;
+\ [gene littext]
 1024 CONSTANT LT-MAX   LT-MAX CELLS BUFFER: LT-OFF   LT-MAX CELLS BUFFER: LT-LEN   VARIABLE LT-N
 VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 : SHARED-LIT ( c-addr u quote-only? --- )   \ gene littext: its code once in LITS, R-LIT-n here (rillc.py's shared)
@@ -196,8 +202,15 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
   THEN                                                       ( n )
   LT-SAVEB @ CUR-B !  LT-SAVEN @ CUR#A !
   S" R-LIT-" OUT-RAW OUT-NUM ;
-: LIT-TEXT ( c-addr u --- )   0 G-LITTEXT IF SHARED-LIT ELSE LIT-CODE THEN ;    \ rillc.py's lit_text
-: LIT ( c-addr u --- )   -1 G-LITTEXT IF SHARED-LIT ELSE LIT-CODE THEN ;      \ rillc.py's lit
+\ [/gene]
+\ [gene littext]
+: LIT-TEXT ( c-addr u --- )   0 SHARED-LIT ;    \ rillc.py's lit_text
+: LIT ( c-addr u --- )   -1 SHARED-LIT ;
+\ [/gene]
+\ [gene !littext]
+: LIT-TEXT ( c-addr u --- )   0 LIT-CODE ;      \ rillc.py's lit_text
+: LIT ( c-addr u --- )   -1 LIT-CODE ;
+\ [/gene]
 : TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
   K-LIST = IF S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
@@ -218,14 +231,18 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 DEFER EXPR ( minp --- kind )
 DEFER COMMAND-HOOK ( capture? --- )   \ commands come in part 5; terms and strings need them first
 DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK ( --- )
+\ [gene purestack]
 : PARAM-AT ( c-addr u --- i | -1 )   \ a pure def's parameter
   STACKMODE @ 0= IF 2DROP -1 EXIT THEN
   -1 -ROT PRM-N @ 0 ?DO 2DUP PRM-A I CELLS + @ PRM-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
+\ [/gene]
 : READ-VAR ( c-addr u --- kind )   \ $name, without its $
+\ [gene purestack]
   2DUP PARAM-AT DUP 0< 0= IF
     NIP NIP  DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
     DUP 0= IF DROP S" DUP" OUT+ ELSE DUP 1 = IF DROP S" OVER" OUT+ ELSE OUT-NUM S" PICK" OUT+ THEN THEN
     K-NUM EXIT THEN  DROP
+\ [/gene]
   2DUP NM-FIND 0< IF                                  \ $args and $script, unless the script set them (744)
     2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ K-LIST EXIT THEN
     2DUP S" script" S= IF 2DROP S" R-SCRIPT" OUT+ K-TEXT EXIT THEN THEN
@@ -297,7 +314,10 @@ VARIABLE LB-POS
   2DUP S" first" S= IF 2DROP ARG DROP S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" keys" S= IF 2DROP ARG DROP S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" arg" S= IF 2DROP ARG TO-NUM S" R-ARG" OUT+                             \ 744; arg(n, default) 747
-     S" )" CUR-IS? 0= IF ARG TO-TEXT S" R-DEFAULT" OUT+ THEN  K-TEXT -1 EXIT THEN
+\ [gene argdefault]
+     S" )" CUR-IS? 0= IF ARG TO-TEXT S" R-DEFAULT" OUT+ THEN
+\ [/gene]
+     K-TEXT -1 EXIT THEN
   2DUP S" match" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-MATCH" OUT+ K-LIST -1 EXIT THEN   \ 746
   2DUP S" all" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ALL" OUT+ K-LIST -1 EXIT THEN
   2DUP S" sub" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-SUB" OUT+ K-TEXT -1 EXIT THEN
@@ -419,10 +439,18 @@ VARIABLE CM-COND
     S" ," CUR-IS? IF NEXT-TK THEN  SKIP-NL-HOOK
   REPEAT NEXT-TK K-REC ;
 ' RECORD-LIT-IMPL IS RECORD-LIT
+: TRUTH ( kind --- )   \ gene truth (751): an empty text, list or record false - rillc.py's truth()
+\ [gene truth]
+  DUP K-TEXT = OVER K-LIST = OR IF DROP S" @ 0<>" OUT+ EXIT THEN
+  DUP K-REC = IF DROP S" @ @ 0<>" OUT+ EXIT THEN
+  DUP K-ANY = IF DROP S" R-ANY>BOOL" OUT+ EXIT THEN
+\ [/gene]
+  DROP ;
 : UNARY ( --- kind )
-  S" not" CUR-IS? IF NEXT-TK RECURSE DROP S" 0=" OUT+ K-BOOL EXIT THEN
+  S" not" CUR-IS? IF NEXT-TK RECURSE TRUTH S" 0=" OUT+ K-BOOL EXIT THEN
   TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE DROP S" NEGATE" OUT+ K-NUM EXIT THEN
   TERM ;
+\ [gene short]
 : SHORT-FORM ( opi --- c-addr u | 0 0 )   \ the right side a lone 1 or 0, and a one-word form for it
   TK K@ T-WORD = 0= IF DROP 0 0 EXIT THEN
   TK 1+ PREC-OF OVER PREC-OF > IF DROP 0 0 EXIT THEN
@@ -430,6 +458,7 @@ VARIABLE CM-COND
   TK T@ S" 0" S= IF T@ 2DUP S" >" S= IF 2DROP S" 0>" EXIT THEN 2DUP S" <" S= IF 2DROP S" 0<" EXIT THEN
     2DUP S" ==" S= IF 2DROP S" 0=" EXIT THEN S" !=" S= IF S" 0<>" EXIT THEN 0 0 EXIT THEN
   DROP 0 0 ;
+\ [/gene]
 VARIABLE BL-POS   VARIABLE BL-K
 : LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
 : LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
@@ -453,8 +482,13 @@ VARIABLE BL-POS   VARIABLE BL-K
   >R UNARY
   BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
     TK >R NEXT-TK  R@ T@ S" not" S= IF NEXT-TK THEN              \ not in: two tokens
-    R@ G-SHORT IF SHORT-FORM ELSE DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
+\ [gene short]
+    R@ SHORT-FORM  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
+\ [/gene]
+\ [gene !short]
+    OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP
+\ [/gene]
   REPEAT R> DROP ;
 ' EXPR-IMPL IS EXPR
 
@@ -464,7 +498,7 @@ VARIABLE HOIST  VARIABLE HOISTS  VARIABLE BODY-N   \ loop bodies made defs by a 
 VARIABLE PAR-FLAG   \ the for being read is a par for
 : SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
 : BLOCK ( --- )   S" {" EXPECT SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK ;
-: COND ( --- )   S" (" CUR-IS? 0= IF S" a condition is in ( )" ERR THEN  1 EXPR DROP ;
+: COND ( --- )   S" (" CUR-IS? 0= IF S" a condition is in ( )" ERR THEN  1 EXPR TRUTH ;
 : IF-STMT ( --- )
   NEXT-TK COND -1 DEPTH+ S" IF" OUT+ BLOCK
   TK-I @ >R SKIP-NL
@@ -478,7 +512,11 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
   DROP K-ANY = IF S" R-UNBOX DROP" OUT+ EXIT THEN  S" this returns another kind" ERR ;
 : RETURN-STMT ( --- )
   HOISTS @ IF S" return inside a loop that has a continue - not yet" ERR THEN
-  NEXT-TK 1 EXPR  DF-CUR @ 0< IF 0 ELSE DF-CUR @ CELLS DF-K + @ THEN CONVERT-TO  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN  S" EXIT" OUT+ ;
+  NEXT-TK 1 EXPR  DF-CUR @ 0< IF 0 ELSE DF-CUR @ CELLS DF-K + @ THEN CONVERT-TO
+\ [gene purestack]
+  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN
+\ [/gene]
+  S" EXIT" OUT+ ;
 : VAR-REF ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : BIND ( c-addr u kind --- )   \ a name in the current scope takes a kind, or keeps the one it has
   >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
@@ -491,9 +529,14 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ K-NUM <> IF S" += and -= need a number to change" ERR THEN
   2DUP VAR-REF S" @" OUT+
-  G-SHORT TK K@ T-WORD = AND TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
+\ [gene short]
+  TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
     NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
   ELSE 1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
+\ [/gene]
+\ [gene !short]
+  1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+
+\ [/gene]
   VAR-REF S" !" OUT+ ;
 : ARG-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
   TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
@@ -515,10 +558,13 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
     R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
   REPEAT
   IF S" R-TYPE" OUT+ THEN S" R-NL" OUT+ ;
+\ [gene purestack]
 : BAD-OP? ( j --- f )
   T@ 2DUP S" =" S= >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R 2DUP S" $(" S= R> OR >R
   2DUP S" while" S= R> OR >R 2DUP S" for" S= R> OR >R 2DUP S" |" S= R> OR >R 2DUP S" >>" S= R> OR >R S" ??" S= R> OR ;
 : WORD-OK? ( j --- f )   DUP T@ NUMBER-TEXT? OVER PREC-OF 0<> OR OVER T@ S" -" S= OR SWAP 1+ S" (" TK-IS? OR ;
+\ [/gene]
+\ [gene purestack]
 : PURE? ( --- f )   \ rillc.py's pure(): the body ahead only computes
   TK-I @ 0
   BEGIN
@@ -531,6 +577,7 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
     THEN THEN
     SWAP 1+ SWAP
   AGAIN ;
+\ [/gene]
 \ the header of a def with locals, made after its body
 : HDR+ ( c-addr u --- )   HDR HDR# @ + SWAP DUP >R MOVE  R> HDR# +!  BL HDR HDR# @ + C!  1 HDR# +! ;
 : HDR-VAR ( c-addr u --- )   S" R." HDR HDR# @ + SWAP MOVE 2 HDR# +!  -1 HDR# +! 1 HDR# +!  HDR+ ;
@@ -542,6 +589,8 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   S" |" HDR+
   NM-N @ DEF-NM0 @ PRM-N @ + ?DO I CELLS NM-LOC + @ IF I CELLS NM-A + @ I CELLS NM-L + @ HDR-VAR THEN LOOP
   S" }" HDR+  HDR HDR# @ 1- ;
+\ [gene purestack]
+\ [gene dupnip]
 : DROP-DUP-NIP ( from --- )   \ rillc.py's re.sub(' DUP NIP', ''), over the def just made
   CUR-B @ @ SWAP                                        ( buf from )
   BEGIN DUP 8 + OUT-POS U> 0= WHILE
@@ -549,19 +598,35 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
     IF  2DUP + DUP 8 + SWAP OUT-POS 3 PICK - 8 - MOVE  -8 CUR#A @ +!
     ELSE 1+ THEN
   REPEAT 2DROP ;
+\ [/gene]
+\ [/gene]
 : DEF-STMT ( --- )
   NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !  NEXT-TK  0 PRM-N !
   BEGIN TK K@ T-WORD = WHILE TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK REPEAT
   0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
   DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !
   PRM-N @ DF-N @ CELLS DF-P + !  DUP DF-N @ CELLS DF-K + !
-  -1 STACKMODE !  PURE? G-PURESTACK 0<> AND  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
+\ [gene purestack]
+  -1 STACKMODE !  PURE?
+\ [/gene]
+\ [gene !purestack]
+  0
+\ [/gene]
+  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
   TO-DEFS  OUT-POS DEF-START !
+\ [gene purestack]
   STACKMODE @ IF
     S" :" OUT+ S" R:" OUT-RAW DEF-NAME-A @ DEF-NAME-L @ OUT+
     BLOCK  0= IF PRM-N @ 0 ?DO S" DROP" OUT+ LOOP THEN
-    G-DUPNIP IF DEF-START @ DROP-DUP-NIP THEN  0 STACKMODE !
+\ [gene dupnip]
+    DEF-START @ DROP-DUP-NIP
+\ [/gene]
+    0 STACKMODE !
   ELSE
+\ [/gene]
+\ [gene !purestack]
+  0 IF ELSE
+\ [/gene]
     DROP -1 IN-DEF !  NM-N @ DEF-NM0 !
     PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ 2DUP DECLARE K-ANY -1 NM-ADD LOOP
     BLOCK  DEF-HEAD DEF-START @ OUT-INSERT
@@ -590,6 +655,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 : ARG-ITEM ( --- )   \ one item of an argument list, as text
   S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
   ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT ;
+\ [gene warn]
 : WARN-STMT ( --- )   \ warn ...: the items with a blank between, one line to the err port (747)
   NEXT-TK 0
   BEGIN STATEMENT-END? 0= WHILE
@@ -599,6 +665,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   REPEAT
   DUP 0= IF DROP S" 0 0 R-TEXT R-ERR-TYPE" OUT+ EXIT THEN
   2* 1- OUT-NUM S" R-CONCAT R-ERR-TYPE" OUT+ ;
+\ [/gene]
 : STAGE-END? ( --- f )   STATEMENT-END? S" )" CUR-IS? OR S" ??" CUR-IS? OR S" |" CUR-IS? OR ;
 VARIABLE SP-FORM  VARIABLE SP-PEND
 : SPREAD-AHEAD? ( --- f )   TK-I @ BEGIN STAGE-END? 0= WHILE TK SPREAD-WORD? IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT TK-I ! 0 ;
@@ -682,7 +749,8 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   S" ," CUR-IS? IF NEXT-TK TK T@ FOR-BL ! FOR-B ! NEXT-TK THEN
   S" in" EXPECT  PAR-FLAG @ 0 PAR-FLAG ! >R                     \ ( R: par? )
   R@ IF S" R-PAR-BEGIN" OUT+ THEN
-  G-RANGELOOP 0<> S" range" CUR-IS? AND TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
+\ [gene rangeloop]
+  S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
     NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
     OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
     S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT
@@ -690,6 +758,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     S" ?DO" OUT+ S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
     R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
+\ [/gene]
   1 EXPR                                                       ( sk )
   FOR-A @ FOR-AL @ TK-I @ TMP-NAME 2DUP DECLARE                ( sk tmp )
   2 PICK K-REC = IF ROT DROP
@@ -734,7 +803,9 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
   TK K@ T-WORD = IF
     TK 1+ S" [" TK-IS? TK 1+ TOK-AT TK TOK-END = AND IF INDEX-ASSIGN EXIT THEN
     TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
+\ [gene warn]
     S" warn" CUR-IS? TK 1+ S" (" TK-IS? 0= AND IF WARN-STMT EXIT THEN
+\ [/gene]
     S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
     TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
   THEN
@@ -755,14 +826,21 @@ NM-MAX CELLS BUFFER: ORDER
     WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
   LOOP ;
 : RILL-INIT ( --- )
-  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !  0 LT-N !  0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
+  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !
+\ [gene littext]
+  0 LT-N !
+\ [/gene]
+   0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
   TK-ALLOC BUF-ALLOC ;
 : RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
   SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
   SORT-NAMES
   DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
-  LITS-B @ LITS# @ FIN+  DEFS-B @ DEFS# @ FIN+
+\ [gene littext]
+  LITS-B @ LITS# @ FIN+
+\ [/gene]
+  DEFS-B @ DEFS# @ FIN+
   S" : R-MAIN " FIN+ MAIN-B @ MAIN# @ FIN+ S" ;" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! S" R-MAIN" FIN+
   10 FINAL FINAL# @ + C! 1 FINAL# +!
   FINAL FINAL# @ ;
