@@ -289,3 +289,22 @@ returns 1 for a failure and the top level counts.
 
 With gen-opcodes (782) and pack-results (787), all three rewrites phase 5
 waited on now run and say what the scripts they rewrite say.
+
+## Iteration 789: double quotes inside a string's {...} and $(...)
+
+`"{join($l, ", ")}"` and `"$(echo "x")"`: inside {...} and $(...) a double
+quote starts a string of its own (which may hold {...} again) and a '...'
+is passed over whole - both tokenizers (scan_str / SN-STR) and both
+interpolation scanners (scan_nested / SN-NEST). 773's error, which said to
+use single quotes, is now only for a { or a $( never closed. On the way:
+- the image's compiler's string reader was not re-entrant - its part count
+  and literal length and the echo mode were single variables, which a string
+  inside a string's {...} reset (a crash); they are kept on the stack across
+  each sub-compile now. rillc.py's sub-compilers are objects of their own.
+- the image's $( ... ) scanner inside strings counted parentheses past the
+  end of an unclosed one; SN-NEST stops there.
+- a string or raw string over several lines: the tokens after it were given
+  lines too early, in both compilers; its lines are counted now.
+A literal { in a double-quoted string is still an interpolation: '...' it.
+tests/rill/nested.rill; errors/quote-in-braces (an unclosed { now),
+errors/line-after-string.

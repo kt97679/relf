@@ -54,13 +54,40 @@ VARIABLE OPF   VARIABLE POS
   2DUP S" or" COMPARE 0= R> OR >R  2DUP S" not" COMPARE 0= R> OR >R  2DUP S" for" COMPARE 0= R> OR >R
   2DUP S" in" COMPARE 0= R> OR >R  S" break" COMPARE 0= R> OR ;
 : AT-END? ( pos --- f )   SRC# @ < 0= ;
-: SCAN-STR ( --- )   \ "..." with \ escapes, to its closing quote
-  POS @ 1+  BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ [CHAR] " <> THEN
-  WHILE DUP SRC-C@ [CHAR] \ = IF 1+ THEN 1+ REPEAT
-  DUP AT-END? 0= IF 1+ THEN  T-STR POS @ ROT DUP >R OVER - TK+  R> POS ! ;
+: SN-RAW ( a u --- a' u' )   \ past a '...' whose ' is at a
+  1 /STRING BEGIN DUP IF OVER C@ [CHAR] ' <> ELSE 0 THEN WHILE 1 /STRING REPEAT DUP IF 1 /STRING THEN ;
+DEFER SN-STR-D
+: SN-NEST ( a u closer --- a' u' f )   \ from just inside an opener to just past its closer, strings in it skipped whole (789)
+  >R
+  BEGIN DUP WHILE
+    OVER C@ CASE
+      [CHAR] \ OF DUP 2 MIN /STRING ENDOF
+      [CHAR] " OF SN-STR-D ENDOF
+      [CHAR] ' OF SN-RAW ENDOF
+      [CHAR] { OF 1 /STRING [CHAR] } RECURSE 0= IF R> DROP 0 EXIT THEN ENDOF
+      [CHAR] ( OF 1 /STRING [CHAR] ) RECURSE 0= IF R> DROP 0 EXIT THEN ENDOF
+      DUP R@ = IF DROP 1 /STRING R> DROP -1 EXIT THEN  >R 1 /STRING R>
+    ENDCASE
+  REPEAT R> DROP 0 ;
+: SN-STR ( a u --- a' u' )   \ past a "..." whose " is at a: its {...} and $(...) may hold strings of their own (789)
+  1 /STRING
+  BEGIN DUP WHILE
+    OVER C@ CASE
+      [CHAR] \ OF DUP 2 MIN /STRING ENDOF
+      [CHAR] " OF 1 /STRING EXIT ENDOF
+      [CHAR] { OF 1 /STRING [CHAR] } SN-NEST DROP ENDOF
+      [CHAR] $ OF DUP 1 > IF OVER 1+ C@ [CHAR] ( = ELSE 0 THEN IF 2 /STRING [CHAR] ) SN-NEST DROP ELSE 1 /STRING THEN ENDOF
+      >R 1 /STRING R>
+    ENDCASE
+  REPEAT ;
+' SN-STR IS SN-STR-D
+: NL-COUNT ( from to --- n )   SWAP 0 ROT ROT ?DO I SRC-C@ 10 = IF 1+ THEN LOOP ;
+: SCAN-STR ( --- )   \ "...", as SN-STR finds its end (789); the token on the line it starts, the lines after it counted
+  POS @ RS-SRC @ +  SRC# @ POS @ -  SN-STR DROP  RS-SRC @ -
+  T-STR POS @ ROT DUP >R OVER - TK+  POS @ R@ NL-COUNT CUR-LINE +!  R> POS ! ;
 : SCAN-RAW ( --- )   \ '...', nothing escaped
   POS @ 1+  BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ [CHAR] ' <> THEN WHILE 1+ REPEAT
-  DUP AT-END? 0= IF 1+ THEN  T-RAW POS @ ROT DUP >R OVER - TK+  R> POS ! ;
+  DUP AT-END? 0= IF 1+ THEN  T-RAW POS @ ROT DUP >R OVER - TK+  POS @ R@ NL-COUNT CUR-LINE +!  R> POS ! ;   \ its lines counted (789)
 : SCAN-WHILE ( pos xt --- end )   >R BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ R@ EXECUTE THEN WHILE 1+ REPEAT R> DROP ;
 VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WORD-XT !XT
 : SCAN-VAR ( --- )   POS @ 1+ NAME-XT @XT SCAN-WHILE  T-VAR POS @ ROT DUP >R OVER - TK+  R> POS ! ;
@@ -302,26 +329,27 @@ NI-MAX CELLS BUFFER: NI-A  NI-MAX CELLS BUFFER: NI-L  VARIABLE NI-N
 VARIABLE SUB-A  VARIABLE SUB-L
 \ [gene echolit]
 VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside its {...} an ordinary one (rillc.py's sub-compiler)
-: SUB-ECHO-OFF ( --- )   ECHO-MODE @ ECHO-SAVED !  0 ECHO-MODE ! ;
-: SUB-ECHO-ON ( --- )   ECHO-SAVED @ ECHO-MODE ! ;
+: SUB-ECHO-OFF ( --- old )   ECHO-MODE @  0 ECHO-MODE ! ;   \ the old mode on the stack: a string's {...} may hold strings (789)
+: SUB-ECHO-ON ( old --- )   ECHO-MODE ! ;
 \ [/gene]
 \ [gene !echolit]
-: SUB-ECHO-OFF ( --- ) ;   : SUB-ECHO-ON ( --- ) ;
+: SUB-ECHO-OFF ( --- 0 )   0 ;   : SUB-ECHO-ON ( x --- )   DROP ;
 \ [/gene]
 VARIABLE FLD-POS
 : CAPTURE ( --- )   \ $( cmd [?? cmd] ... ): its output, then its status - ?? runs the next if one fails, as the shell's || (787)
   -1 COMMAND-HOOK
   BEGIN S" ??" CUR-IS? WHILE NEXT-TK S" DUP IF DROP" OUT+ -1 COMMAND-HOOK S" >R R-CAP-JOIN R> THEN" OUT+ REPEAT ;
+4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
 : SUB-ENTER ( --- old )   \ the sub-text's first line: its own text's, and the newlines before it there (786)
   TK-LINE0 @ DUP
   SUB-A @ RS-SRC @ U< 0= SUB-A @ RS-SRC @ SRC# @ + U< AND IF SUB-A @ RS-SRC @ ?DO I C@ 10 = IF 1+ THEN LOOP THEN
   TK-LINE0 ! ;
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
-  SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
-  CAPTURE S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  R> TK-LINE0 ! ;
+  SUB-L ! SUB-A !  SUB-ENTER >R  NPARTS @ LIT# @  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
+  CAPTURE S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  LIT# ! NPARTS !  R> TK-LINE0 ! ;   \ the string's own count kept (789)
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
-  SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  R> R> TK-LINE0 ! ;
-4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
+  SUB-L ! SUB-A !  SUB-ENTER >R  NPARTS @ LIT# @  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
+  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  LIT# ! NPARTS !  R> R> TK-LINE0 ! ;   \ the string's own count kept (789)
 \ [gene echolit]
 4096 BUFFER: EL-BUF  VARIABLE EL#      \ echo's literal run (753)
 : EL+ ( c-addr u --- )   EL-BUF EL# @ + SWAP DUP EL# +! MOVE ;
@@ -350,8 +378,7 @@ VARIABLE FLD-POS
     OVER C@  DUP [CHAR] \ = OVER 1 > AND IF DROP
       1 /STRING OVER C@ DUP [CHAR] n = IF DROP 10 ELSE DUP [CHAR] t = IF DROP 9 THEN THEN LIT-C 1 /STRING
     ELSE DUP [CHAR] $ = OVER 1 > AND IF  2 PICK 1+ C@ [CHAR] ( = IF DROP          \ $( ... ): a capture
-      PIECE-START  2 /STRING  OVER >R  1 >R
-      BEGIN R@ WHILE OVER C@ DUP [CHAR] ( = IF R> 1+ >R THEN [CHAR] ) = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
+      PIECE-START  2 /STRING  OVER >R  [CHAR] ) SN-NEST 0= IF R> DROP S" a $( in a string is not closed" ERR THEN   \ 789
       R> 2 PICK OVER - 1- SUB-COMMAND  PIECE-END
     ELSE 2 PICK 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
       PIECE-START  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
@@ -365,9 +392,7 @@ VARIABLE FLD-POS
       REPEAT R> DROP
       TO-TEXT  PIECE-END  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
-      PIECE-START  1 /STRING  OVER >R  1 >R
-      BEGIN R@ WHILE DUP 0= IF R> DROP S" a { in a string is not closed - a double quote inside {...} ends the string: use single quotes there" ERR THEN   \ 773: not a crash
-        OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
+      PIECE-START  1 /STRING  OVER >R  [CHAR] } SN-NEST 0= IF R> DROP S" a { in a string is not closed" ERR THEN   \ 789
       R> 2 PICK OVER - 1- SUB-EXPR TO-TEXT  PIECE-END
     ELSE LIT-C 1 /STRING THEN THEN THEN
   REPEAT 2DROP

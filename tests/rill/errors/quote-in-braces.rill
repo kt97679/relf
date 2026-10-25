@@ -1,2 +1,2 @@
-l = [a b]
-echo "{join($l, " ")}"
+# a { in a string never closed (773, 789)
+echo "x {y"

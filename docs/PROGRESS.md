@@ -813,6 +813,7 @@ do not trust the absence of a line below.
 - 786 — code((cmd)); on EXIT runs on INT and TERM; glob(); texts and items in order; @args; named undefined functions
 - 787 — pack-results in Rill says what the shell script says; $(a ?? b); "$x.f" safe on items; sub() group references
 - 788 — run-utf8 in Rill says what tests/shell/run-utf8 says; phase 5's three rewrites all run
+- 789 — double quotes inside a string's {...} and $(...); the image's string reader re-entrant
 
 ### Not tied to an iteration
 

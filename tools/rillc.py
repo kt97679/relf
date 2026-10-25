@@ -30,16 +30,49 @@ TOKEN = re.compile(r'''
 ''', re.X)
 KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in', 'break'}
 
+def scan_nested(s, i, closer):          # from just inside an opener to just past its closer, strings in it skipped whole (789)
+    stack = [closer]
+    while i < len(s) and stack:
+        c = s[i]
+        if c == '\\': i += 2; continue
+        if c == '"': i = scan_str(s, i); continue
+        if c == "'":
+            k = s.find("'", i + 1); i = k + 1 if k >= 0 else len(s); continue
+        if c == '{': stack.append('}')
+        elif c == '(': stack.append(')')
+        elif c == stack[-1]: stack.pop()
+        i += 1
+    return None if stack else i                # None: never closed
+
+def scan_str(s, i):                         # just past the "..." at i: its {...} and $(...) may hold strings of their own (789)
+    i += 1
+    while i < len(s):
+        c = s[i]
+        if c == '\\': i += 2; continue
+        if c == '"': return i + 1
+        if c == '{' or (c == '$' and s[i + 1:i + 2] == '('):
+            j = scan_nested(s, i + (1 if c == '{' else 2), '}' if c == '{' else ')')
+            i = j if j is not None else len(s); continue
+        i += 1
+    return len(s)
+
 def tokenize(src):
-    toks, line, sq = [], 1, 0
-    for m in TOKEN.finditer(src):
-        k = m.lastgroup; v = m.group()
+    toks, line, sq, pos = [], 1, 0, 0
+    while pos < len(src):
+        if src[pos] == '"':                                       # a string, as scan_str finds its end (789)
+            end = scan_str(src, pos); v = src[pos:end]
+            toks.append(('str', v, line, pos, end)); line += v.count('\n'); pos = end; continue
+        m = TOKEN.match(src, pos)
+        if not m: pos += 1; continue                              # a character no token takes, passed over as finditer did
+        k = m.lastgroup; v = m.group(); pos = m.end()
         if k == 'op' and v in ('[', ']'): sq = sq + 1 if v == '[' else max(sq - 1, 0)
         if k == 'nl' and sq: line += 1; continue                 # inside [ ]: the line goes on, as Python's (782)
         if k == 'nl': toks.append(('nl', v, line, m.start(), m.end())); line += 1
         elif k in ('ws', 'comment'): continue
         elif k == 'word' and v in KEYWORDS: toks.append(('kw', v, line, m.start(), m.end()))
-        else: toks.append((k, v, line, m.start(), m.end()))
+        else:
+            toks.append((k, v, line, m.start(), m.end()))
+            if k == 'raw': line += v.count('\n')                 # a raw string over lines: the next token on its last (789)
     toks.append(('eof', '', line, len(src), len(src)))
     return toks
 
@@ -422,8 +455,8 @@ class Compiler:
                 lit += {'n': '\n', 't': '\t'}.get(body[i + 1], body[i + 1]); i += 2; continue
             if body.startswith('$(', i):
                 if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
-                depth, j = 1, i + 2
-                while depth: depth += {'(': 1, ')': -1}.get(body[j], 0); j += 1
+                j = scan_nested(body, i + 2, ')')                       # strings in it skipped whole (789)
+                if j is None: raise Error('line %d: a $( in a string is not closed' % line)
                 sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                 sub.t = self.sub_tokens(body[i + 2:j - 1], line + body[:i + 2].count('\n')); sub.i = 0
                 parts.append(sub.capture() + ' R-CHECK'); pieces.append(('code', parts[-1])); i = j; continue
@@ -441,10 +474,8 @@ class Compiler:
                         kind = 'any'; i += f.end()
                     parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
                 else:
-                    depth, j = 1, i + 1
-                    while depth:
-                        if j >= len(body): raise Error('line %d: a { in a string is not closed - a double quote inside {...} ends the string: use single quotes there' % line)   # 773: not a crash
-                        depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
+                    j = scan_nested(body, i + 1, '}')                       # strings in it skipped whole (789)
+                    if j is None: raise Error('line %d: a { in a string is not closed' % line)
                     sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                     sub.t = self.sub_tokens(body[i + 1:j - 1], line + body[:i + 1].count('\n')); sub.i = 0
                     c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j
