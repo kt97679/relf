@@ -444,16 +444,21 @@ class Compiler:
             out = 'R-CWD-PUSH %s R-CD %s R-CWD-POP' % (c, self.block()) if self.peek()[1] == '{' else '%s R-CD' % c
         elif v == 'while':
             self.i += 1; c = self.cond()
-            out = 'BEGIN %s WHILE %s REPEAT' % (c, self.block())
+            body = self.loop_body('begin', whileloop=True)
+            if isinstance(body, tuple):                                       # its body a word: break, continue (779)
+                call, ret = body
+                stop = 'R-BRK @ R-RET @ OR' if ret else 'R-BRK @'
+                out = 'BEGIN %s 0= IF %s ELSE 0 THEN WHILE %s REPEAT 0 R-BRK !' % (stop, c, call)
+                if ret: out += self.after_body()
+            else: out = 'BEGIN %s WHILE %s REPEAT' % (c, body)
         elif v == 'return':
-            if getattr(self, 'hoists', None) and True in self.hoists:
-                raise Error('line %d: return inside a loop that has a continue - not yet' % line)
             self.i += 1; c, kd = self.expr()
             want = self.funcs[self.current][1] if getattr(self, 'current', None) else None
             c = self.convert(c, kd, want, line)                   # to the def's -> kind (749: a boxed parameter returned)
             if getattr(self, 'stack', None):
                 c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
-            out = '%s EXIT' % c
+            c += self.unwind(True)                                    # out of the loops it is in (779)
+            out = '%s R-RETV ! -1 R-RET ! EXIT' % c if self.in_body() else '%s EXIT' % c
         elif v == 'def': out = self.def_(); return ''
         elif v == 'for': out = self.for_()
         elif v == 'break':
@@ -663,8 +668,33 @@ class Compiler:
                 return False
             elif k == 'word' and v == name and self.t[j + 1][1] in ('=', '+=', '-=', '['): return False
             j += 1
-    def has_continue(self):
-        """Does the block ahead hold a continue at its own level (not in a loop inside it)?"""
+    # loops and their way out (779): each word compiled keeps the loops it is inside (self.loops) - a DO
+    # loop's frame on the return stack, a counted loop's two cells on the data stack; a return leaves them.
+    # In a loop body made a word of its own (break or continue in it), a return sets R-RET and leaves the
+    # word; each loop around passes it on, and the def it is in returns R-RETV.
+    def unwind(self, value):
+        out = ''
+        for k in reversed(getattr(self, 'loops', [])):
+            if k == 'do2': out += ' NIP NIP UNLOOP' if value else ' 2DROP UNLOOP'
+            elif k == 'do': out += ' UNLOOP'
+        return out
+    def in_body(self): return bool(getattr(self, 'hoists', None)) and True in self.hoists
+    def has_return(self):
+        """Does the block ahead (its { the current token) hold a return, at any depth?"""
+        j, depth = self.i, 0
+        while True:
+            k, v = self.t[j][0], self.t[j][1]
+            if v == '{': depth += 1
+            elif v == '}':
+                depth -= 1
+                if depth == 0: return False
+            elif k == 'kw' and v == 'return': return True
+            j += 1
+    def after_body(self):                 # after a loop whose body word may return: pass it on, or return it
+        if self.in_body(): return ' R-RET @ IF%s EXIT THEN' % self.unwind(False)
+        return ' R-RET @ IF 0 R-RET !%s R-RETV @ EXIT THEN' % self.unwind(False)
+    def has_continue(self, breaks=False):
+        """Does the block ahead hold a continue at its own level (not in a loop inside it) - or a break, asked?"""
         j, stack, pending = self.i, [], False
         while True:
             k, v = self.t[j][0], self.t[j][1]
@@ -674,17 +704,26 @@ class Compiler:
                 if not stack: return False
             elif v in ('for', 'while') and k == 'kw': pending = True
             elif k == 'word' and v == 'continue' and 'loop' not in stack[1:]: return True
+            elif breaks and k == 'kw' and v == 'break' and 'loop' not in stack[1:]: return True   # a while's break (779)
             j += 1
-    def loop_body(self):
+    def loop_body(self, kind='do', whileloop=False):
         hoists = getattr(self, 'hoists', [])
-        if not self.has_continue():
-            hoists.append(False); self.hoists = hoists
-            code = self.block(); hoists.pop(); return code
+        loops = getattr(self, 'loops', [])
+        if not (self.has_continue(breaks=whileloop)):
+            hoists.append(False); self.hoists = hoists; loops.append(kind); self.loops = loops
+            code = self.block(); hoists.pop(); loops.pop(); return code
         self.body_n = getattr(self, 'body_n', 0) + 1; n = self.body_n
-        hoists.append(True); self.hoists = hoists
-        code = self.block(); hoists.pop()
+        ret = self.has_return()
+        hoists.append(True); self.hoists = hoists; self.loops = []        # a word of its own: no loops around in it
+        code = self.block(); hoists.pop(); self.loops = loops
         self.defs.append(': R-BODY-%d %s ;' % (n, code))
-        return 'R-BODY-%d R-BRK @ IF 0 R-BRK ! LEAVE THEN' % n
+        if whileloop: return 'R-BODY-%d' % n, ret
+        if ret: return 'R-BODY-%d R-BRK @ R-RET @ OR IF 0 R-BRK ! LEAVE THEN' % n, ret
+        return 'R-BODY-%d R-BRK @ IF 0 R-BRK ! LEAVE THEN' % n, ret
+    def for_body(self, kind):             # a for loop's body, and what follows the loop if its body word may return (779)
+        b = self.loop_body(kind)
+        if isinstance(b, tuple): return b[0], (self.after_body() if b[1] else '')
+        return b, ''
     def par_wrap(self, body, par):
         return 'R-PAR-FORK IF %s R-PAR-DONE THEN' % body if par else body
     def range_commas(self):               # the commas at range( ... )'s own level: two mean a step
@@ -712,11 +751,12 @@ class Compiler:
             self.da_next = [a]
             if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
-                body = self.loop_body(); self.loopvar = outer
-                return '%s %s TUCK MAX SWAP 2DUP ?DO %s LOOP OVER < IF 1-%s R.%s ! ELSE DROP THEN' % (
-                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a)     # the last value kept, as Python
-            out = '%s %s TUCK MAX SWAP ?DO I%s R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
-                                                                 self.par_wrap(self.loop_body(), par))
+                body, after = self.for_body('do2'); self.loopvar = outer
+                return '%s %s TUCK MAX SWAP 2DUP ?DO %s LOOP OVER < IF 1-%s R.%s ! ELSE DROP THEN%s' % (
+                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a, after)     # the last value kept, as Python
+            body, after = self.for_body('do')
+            out = '%s %s TUCK MAX SWAP ?DO I%s R.%s ! %s LOOP%s' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
+                                                                 self.par_wrap(body, par), after)
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
@@ -726,8 +766,9 @@ class Compiler:
             kk = self.bind(key, 'text'); self.da_next = [key] + ([val] if val else [])
             if val: self.bind(val, 'any')
             setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
-            out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! %s%s LOOP'
-                   % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if kk == 'text' else '', key, setv, self.par_wrap(self.loop_body(), par)))
+            body, after = self.for_body('do')
+            out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! %s%s LOOP%s'
+                   % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if kk == 'text' else '', key, setv, self.par_wrap(body, par), after))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
@@ -736,8 +777,9 @@ class Compiler:
         self.bind(item, 'any')
         seti = ''
         if idx: seti = 'I%s R.%s ! ' % (self.num_into(self.bind(idx, 'number')), idx)
-        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
-               % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(self.loop_body(), par)))
+        body, after = self.for_body('do')
+        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP%s'
+               % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(body, par), after))
         return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
     def if_(self):
         self.take('kw', 'if'); c = self.cond()

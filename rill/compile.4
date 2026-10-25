@@ -694,6 +694,16 @@ VARIABLE BL-POS   VARIABLE BL-K
 \ ---- Part 4: statements, defs, the program (Iteration 741) --------------
 DEFER STATEMENT
 VARIABLE HOIST  VARIABLE HOISTS  VARIABLE BODY-N   \ loop bodies made defs by a continue (745)
+\ loops and their way out (779), as rillc.py's unwind(): the loops the word being made is inside -
+\ 0 a BEGIN loop, 1 a DO loop (its frame on the return stack), 2 a counted DO loop with its two cells
+\ on the data stack too. A return leaves them; a body made a word of its own starts with none.
+CREATE LK 64 CELLS ALLOT  VARIABLE LK-N  VARIABLE LK-BASE
+: LK-PUSH ( k --- )   LK-N @ CELLS LK + !  1 LK-N +! ;
+: UNWIND ( value? --- )   \ innermost first; a value on top or not
+  LK-N @ BEGIN DUP LK-BASE @ > WHILE 1-
+    DUP CELLS LK + @ DUP 2 = IF DROP OVER IF S" NIP NIP UNLOOP" ELSE S" 2DROP UNLOOP" THEN OUT+
+    ELSE 1 = IF S" UNLOOP" OUT+ THEN THEN
+  REPEAT 2DROP ;
 VARIABLE PAR-FLAG   \ the for being read is a par for
 : SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
 : BLOCK ( --- )   S" {" EXPECT DA-ENTER SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK DA-LEAVE ;
@@ -703,19 +713,18 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
   TK-I @ >R SKIP-NL
   S" else" CUR-IS? IF R> DROP NEXT-TK S" ELSE" OUT+ S" if" CUR-IS? IF RECURSE ELSE BLOCK THEN S" THEN" OUT+ EXIT THEN
   R> TK-I ! S" THEN" OUT+ ;
-: WHILE-STMT ( --- )   NEXT-TK S" BEGIN" OUT+ COND S" WHILE" OUT+ BLOCK S" REPEAT" OUT+ ;
 : CONVERT-TO ( kind want --- )   \ the value made the kind a def's -> names (749, rillc.py's convert)
   DUP 0= OVER K-ANY = OR IF 2DROP EXIT THEN  2DUP = IF 2DROP EXIT THEN
   DUP K-NUM = OVER K-BOOL = OR IF DROP TO-NUM EXIT THEN
   DUP K-TEXT = IF DROP TO-TEXT EXIT THEN
   DROP K-ANY = IF S" R-UNBOX DROP" OUT+ EXIT THEN  S" this returns another kind" ERR ;
 : RETURN-STMT ( --- )
-  HOISTS @ IF S" return inside a loop that has a continue - not yet" ERR THEN
   NEXT-TK 1 EXPR  DF-CUR @ 0< IF 0 ELSE DF-CUR @ CELLS DF-K + @ THEN CONVERT-TO
 \ [gene purestack]
   STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN
 \ [/gene]
-  S" EXIT" OUT+ ;
+  -1 UNWIND                                     \ out of the loops it is in (779)
+  HOISTS @ IF S" R-RETV ! -1 R-RET ! EXIT" ELSE S" EXIT" THEN OUT+ ;
 : VAR-REF ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : BIND ( c-addr u kind --- )   \ a name in the current scope takes a kind, or keeps the one it has
   >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
@@ -951,7 +960,7 @@ VARIABLE ON-N
 \ of its own, R-BODY-n - continue is its EXIT, break sets R-BRK - put in
 \ front of the def being made (or after the defs, from R-MAIN), as
 \ rillc.py's loop_body() appends it before the def that holds it (745)
-VARIABLE HC-KINDS  VARIABLE HC-LOOPS  VARIABLE HC-DEPTH  VARIABLE HC-PEND
+VARIABLE HC-KINDS  VARIABLE HC-LOOPS  VARIABLE HC-DEPTH  VARIABLE HC-PEND  VARIABLE HC-BREAKS
 : HAS-CONTINUE? ( --- f )   \ the block ahead, its { the current token
   0 HC-KINDS ! 0 HC-LOOPS ! 0 HC-DEPTH ! 0 HC-PEND !  TK-I @
   BEGIN
@@ -962,21 +971,55 @@ VARIABLE HC-KINDS  VARIABLE HC-LOOPS  VARIABLE HC-DEPTH  VARIABLE HC-PEND
       HC-DEPTH @ 0= IF DROP 0 EXIT THEN
     ELSE DUP K@ T-KW = OVER T@ S" for" S= 2 PICK T@ S" while" S= OR AND IF -1 HC-PEND !
     ELSE DUP K@ T-WORD = OVER T@ S" continue" S= AND HC-LOOPS @ 0= AND IF DROP -1 EXIT THEN
+      HC-BREAKS @ IF DUP K@ T-KW = OVER T@ S" break" S= AND HC-LOOPS @ 0= AND IF DROP -1 EXIT THEN THEN   \ a while's break (779)
     THEN THEN THEN
     1+
   AGAIN ;
-: LOOP-BODY ( --- )
-  HOIST @
-  HAS-CONTINUE? 0= IF 0 HOIST ! BLOCK HOIST ! EXIT THEN
+: HAS-RETURN? ( --- f )   \ the block ahead, its { the current token: a return at any depth (779)
+  0 TK-I @
+  BEGIN
+    DUP T@ S" {" S= OVER K@ T-OP = AND IF SWAP 1+ SWAP
+    ELSE DUP T@ S" }" S= OVER K@ T-OP = AND IF SWAP 1- DUP 0= IF 2DROP 0 EXIT THEN SWAP
+    ELSE DUP K@ T-KW = OVER T@ S" return" S= AND IF 2DROP -1 EXIT THEN
+    THEN THEN
+    1+
+  AGAIN ;
+VARIABLE LB-WHILE   \ set by WHILE-STMT for the LOOP-BODY it calls: break, as continue, makes the body a word (779)
+: LOOP-BODY ( kind --- ret )   \ ret: the body a word that may return
+  LB-WHILE @  0 LB-WHILE !  DUP HC-BREAKS !                      ( kind w )
+  HOIST @                                                          ( kind w old )
+  HAS-CONTINUE? 0 HC-BREAKS ! 0= IF
+    NIP 0 HOIST !  SWAP LK-PUSH  BLOCK  -1 LK-N +!  HOIST !  0 EXIT THEN
+  ROT DROP  SWAP >R  HAS-RETURN? >R  LK-BASE @ >R  LK-N @ LK-BASE !   ( old  R: w ret base )
   -1 HOIST !  1 HOISTS +!  1 BODY-N +!  BODY-N @                 ( old n )
   CUR-B @ DEFS-B = DUP 0= IF TO-DEFS THEN                          ( old n in-def )
   DEF-START @  OUT-POS DUP DEF-START !                             ( old n in-def d0 s1 )
   S" :" OUT+ S" R-BODY-" OUT-RAW 3 PICK OUT-NUM  BLOCK  S" ;" OUT+ 10 OUT-C
   SWAP DEF-START !                                                 ( old n in-def s1 )
   OVER IF  DEF-START @ SEG>POS  SG-LEN @ DEF-START +!  ELSE DROP TO-MAIN THEN
-  DROP  S" R-BODY-" OUT-RAW OUT-NUM  S" R-BRK @ IF 0 R-BRK ! LEAVE THEN" OUT+
-  -1 HOISTS +!  HOIST ! ;
-: PAR-BODY ( par? --- )   DUP IF S" R-PAR-FORK IF" OUT+ THEN  LOOP-BODY  IF S" R-PAR-DONE THEN" OUT+ THEN ;
+  DROP  S" R-BODY-" OUT-RAW OUT-NUM
+  R> LK-BASE !  R> R>                                              ( old ret w )
+  0= IF DUP IF S" R-BRK @ R-RET @ OR IF 0 R-BRK ! LEAVE THEN" ELSE S" R-BRK @ IF 0 R-BRK ! LEAVE THEN" THEN OUT+ THEN
+  -1 HOISTS +!  SWAP HOIST ! ;
+: PAR-BODY ( par? kind --- ret )   SWAP DUP IF S" R-PAR-FORK IF" OUT+ THEN >R  LOOP-BODY  R> IF S" R-PAR-DONE THEN" OUT+ THEN ;
+: AFTER-BODY ( ret --- )   \ after a loop whose body word may return: pass it on, or return it (779)
+  0= IF EXIT THEN
+  HOISTS @ IF S" R-RET @ IF" OUT+ 0 UNWIND S" EXIT THEN" OUT+ EXIT THEN
+  S" R-RET @ IF 0 R-RET !" OUT+ 0 UNWIND S" R-RETV @ EXIT THEN" OUT+ ;
+: BODY-BRACE ( --- i )   \ the { that opens the body ahead, past a condition's ( ... )
+  0 TK-I @
+  BEGIN
+    DUP T@ S" (" S= OVER K@ T-OP = AND IF SWAP 1+ SWAP ELSE
+    DUP T@ S" )" S= OVER K@ T-OP = AND IF SWAP 1- SWAP ELSE
+    DUP T@ S" {" S= OVER K@ T-OP = AND 2 PICK 0= AND IF NIP EXIT THEN THEN THEN
+    1+
+  AGAIN ;
+: WHILE-STMT ( --- )   \ a body with break or continue made a word: the stop checked before the condition (779)
+  NEXT-TK
+  TK-I @  BODY-BRACE TK-I !  -1 HC-BREAKS ! HAS-CONTINUE? 0 HC-BREAKS !  DUP IF HAS-RETURN? ELSE 0 THEN  ROT TK-I !   ( hoist? ret )
+  OVER 0= IF 2DROP S" BEGIN" OUT+ COND S" WHILE" OUT+ -1 LB-WHILE ! 0 LOOP-BODY DROP S" REPEAT" OUT+ EXIT THEN
+  NIP  S" BEGIN" OUT+  DUP IF S" R-BRK @ R-RET @ OR" ELSE S" R-BRK @" THEN OUT+
+  S" 0= IF" OUT+ COND S" ELSE 0 THEN WHILE" OUT+  -1 LB-WHILE ! 0 LOOP-BODY DROP  S" REPEAT 0 R-BRK !" OUT+  AFTER-BODY ;
 \ for, as rillc.py's for_(): a counted loop over range(a, b); a list's items; a record's keys and values
 VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
 : RANGE-COMMAS ( --- n )   \ the commas at range( ... )'s own level, from the token after its ( : two mean a step (770)
@@ -1005,12 +1048,12 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
     R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
       S" 2DUP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
-      0 PAR-BODY  0 LV-L !
-      S" LOOP OVER < IF 1-" OUT+  FOR-K @ NUM-INTO  VAR-OUT S" ! ELSE DROP THEN" OUT+  R> DROP EXIT
+      0 2 PAR-BODY -ROT  0 LV-L !
+      S" LOOP OVER < IF 1-" OUT+  FOR-K @ NUM-INTO  VAR-OUT S" ! ELSE DROP THEN" OUT+  AFTER-BODY  R> DROP EXIT
     THEN THEN
 \ [/gene]
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
-    S" ?DO" OUT+ S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
+    S" ?DO" OUT+ S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY
     R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
 \ [/gene]
@@ -1024,7 +1067,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-KEYS R-LEN 0 ?DO" OUT+
     2DUP VAR-OUT S" @ R-KEYS I R-AT" OUT+ FOR-K @ K-TEXT = IF S" R-ANY>TEXT" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+
     FOR-BL @ IF 2DUP VAR-OUT S" @ R-VALS I R-AT" OUT+ FOR-B @ FOR-BL @ VAR-OUT S" !" OUT+ THEN
-    2DROP R@ PAR-BODY S" LOOP" OUT+  R> IF S" R-PAR-END" OUT+ THEN EXIT
+    2DROP R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY  R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
   ROT DUP K-ANY = IF DROP S" R-UNBOX DROP" OUT+ ELSE K-LIST <> IF S" for needs a list or a record" ERR THEN THEN
   FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN 2DUP DECLARE K-ANY BIND-K DROP      \ the item, then the index: rillc.py's order
@@ -1033,7 +1076,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-LEN 0 ?DO" OUT+
   FOR-BL @ IF S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
   VAR-OUT S" @ I R-AT" OUT+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN VAR-OUT S" !" OUT+
-  R@ PAR-BODY S" LOOP" OUT+  R> IF S" R-PAR-END" OUT+ THEN ;
+  R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY  R> IF S" R-PAR-END" OUT+ THEN ;
 \ x[i] = v: rillc.py puts the value first, then the container, then the index
 VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIABLE IA-OP  VARIABLE IA-CP
 : IA-INDEX ( --- )   \ the index's code again, its tokens read a second time (774)

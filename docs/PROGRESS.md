@@ -803,6 +803,7 @@ do not trust the absence of a line below.
 - 776 — a copying collector at top-level safe points; literal texts made once (littext on); 2M short-lived values: 17 MB, not 129 MB and a stop
 - 777 — relfsh's memory checked (tools/relfsh-memcheck.py): flat everywhere but function redefinition in one long command, freed when it ends
 - 778 — relfsh frees old function bodies each loop round (its first change since 725); make memcheck and rill-memcheck guard against leaks; a regex program leak fixed
+- 779 — break, continue and return in and out of loops: two crashes fixed, two gaps closed, as Python
 
 ### Not tied to an iteration
 

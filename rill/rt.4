@@ -301,6 +301,7 @@ VARIABLE PX-XT
   PL-NEXT @ PL-PREV !  R-RD-RESET ;
 \ par for: each body in a child of its own, all waited for at the end (745)
 VARIABLE R-BRK   \ break, from a loop body made a def of its own by a continue
+VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV the value; each loop passes it on (779)
 64 CONSTANT PAR-MAX   PAR-MAX CELLS BUFFER: PAR-PIDS   VARIABLE PAR-N
 : R-PAR-BEGIN ( --- )   0 PAR-N ! ;
 : R-PAR-FORK ( --- child? )

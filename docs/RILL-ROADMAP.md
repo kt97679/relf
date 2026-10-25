@@ -83,3 +83,21 @@ Forth compiler grows.
 
 One Rill reference - syntax, the kind rules, the library - from
 docs/SHELL-LANGUAGE.md's parts; each settled decision in RILL-LEDGER.md.
+
+## Phase 3 progress (Iteration 779): break, continue and return in loops
+
+Two crashes found on the way and fixed: `break` in a while loop compiled to
+LEAVE, which only leaves DO loops - ignored on its own, a crash nested in a
+for loop; `return` from inside a for loop left the loop's frame on the
+return stack - the def returned to a garbage address. Neither was in the
+corpus. Now:
+- return unwinds the loops of the word it is in: UNLOOP for each DO loop, and
+  a counted loop's two cells dropped under the value;
+- a while loop whose body holds break or continue (at its own level) makes
+  the body a word, as a for loop with continue does (745); its stop flag is
+  checked before the condition, so the condition is not evaluated again;
+- return inside such a body word sets R-RET with the value in R-RETV and
+  leaves the word; each loop around stops and passes it on, and the def
+  returns R-RETV.
+tests/rill/flow.rill against tests/rill/flow.py (Python): 13 lines, every
+combination. Every example compiles to the same Forth as before.
