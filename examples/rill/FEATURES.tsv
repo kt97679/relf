@@ -69,3 +69,4 @@ m[k] ?= v	open	747	-
 $x[i].f in a string without { }	open	747	-
 x = if (c) a else b	open	747	-
 {k: v for x in src}	open	747	-
+the library for Python-born scripts (754): read write starts ends upper lower trim base, slice of texts and records, at(r, k, default), sum max min, sort-by (stable), decimals (fixed point, six places), [e for k, v in src], an item variable takes any value boxed	built	754	-

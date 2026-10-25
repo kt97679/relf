@@ -1,0 +1,14 @@
+# the library for the Python-born scripts (754): texts, files, records sorted and sliced, decimals
+s = trim("   Hello, World  ")
+echo [$s] {upper($s)} {lower($s)} {slice($s, 0, 5)} {starts($s, Hell)} {ends($s, World)}
+echo {base("forth/extend.4")} {len(lines(read("tests/rill/hello.expected")))}
+sizes = {a: {bytes: 5, n: 1}, b: {bytes: 20, n: 2}, c: {bytes: 5, n: 3}, d: {bytes: 12, n: 4}}
+for k, v in sort-by($sizes, bytes, desc) { echo $k $v.bytes }
+for k, v in slice(sort-by($sizes, bytes, asc), 0, 2) { echo first $k }
+echo total {sum([$v.bytes for k, v in $sizes])} max {max(3, 7)} min {min(3, 7)}
+rec = at($sizes, e, {bytes: 0, n: 0})
+echo missing {$rec.bytes} present {at($sizes, b, {bytes: 0}).bytes}
+pct = 100.0 * 181637 / 358902
+echo pct $pct {100.0 * 3 / max(0, 1)} {2.5 + 1} {max(1.5, 2)}
+idx = [$i for i, x in [p q r] if $i > 0]
+echo $idx

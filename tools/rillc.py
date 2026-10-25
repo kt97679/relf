@@ -90,6 +90,13 @@ class Compiler:
             return '%s %s R-T=%s' % (self.to_text(a, ak), self.to_text(b, bk), '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk == ak and ak != 'any':
             raise Error('line %d: comparing lists or records is not in stage 2' % line)
+        if 'decimal' in (ak, bk) and ak in ('number', 'decimal', 'any') and bk in ('number', 'decimal', 'any'):
+            dec = lambda c, k: c + ' 1000000 *' if k == 'number' else (c + ' R-ANY>NUM 1000000 *' if k == 'any' else c)
+            a, b = dec(a, ak), dec(b, bk)
+            if getattr(self, 'stack', None): self.depth -= 1
+            f = {'+': '+', '-': '-', '*': '1000000 */', '/': '>R 1000000 R> */', '%': 'MOD', '==': '=', '!=': '<>',
+                 '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
+            return '%s %s %s' % (a, b, f), ('decimal' if op in '+-*/%' else 'bool')
         a, b = self.to_num(a, ak, line), self.to_num(b, bk, line)
         ak = bk = 'number'
         if getattr(self, 'stack', None): self.depth -= 1
@@ -140,17 +147,30 @@ class Compiler:
         self.take('op', ']'); return ' '.join(code), 'list'
     def comprehension(self, j):
         start = self.i; self.i = j + 1                            # for x in src [if cond]
-        name = self.take('word')[1]; self.take('kw', 'in')
+        name = self.take('word')[1]; second = None
+        if self.peek()[1] == ',': self.i += 1; second = self.take('word')[1]     # [e for k, v in src] (754)
+        self.take('kw', 'in')
         sc, sk = self.expr()
-        if sk != 'list': raise Error('line %d: for needs a list' % self.peek()[2])
+        if sk not in ('list', 'record') or (sk == 'record' and not second):
+            raise Error('line %d: for needs a list' % self.peek()[2])
         tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
         self.scope()[name] = 'any'
+        if second:
+            self.names.add(second); self.scope()[second] = 'any'
+            if sk == 'list': self.scope()[name] = 'number'
+            else: self.scope()[name] = 'text'
         cond = None
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, ek = self.expr(); self.i = after
         item = '%s OVER R-PUSH' % self.box(ec, ek)
         body = '%s IF %s THEN' % (cond, item) if cond else item
+        if second and sk == 'record':
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! '
+                    'R.%s @ R-VALS I R-AT R.%s ! %s LOOP' % (sc, tmp, tmp, tmp, name, tmp, second, body)), 'list'
+        if second:
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I R.%s ! R.%s @ I R-AT R.%s ! %s LOOP' %
+                    (sc, tmp, tmp, name, tmp, second, body)), 'list'
         return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT R.%s ! %s LOOP' %
                 (sc, tmp, tmp, tmp, name, body)), 'list'
     def literal_record(self):
@@ -170,6 +190,9 @@ class Compiler:
         k, v, line = tok[:3]
         if v == '[': return self.literal_list()
         if v == '{': self.skip_nl(); return self.literal_record()
+        if k == 'word' and re.fullmatch(r'-?\d+\.\d+', v):               # a decimal (754): fixed point, six places
+            whole, frac = v.lstrip('-').split('.'); n = int(whole) * 1000000 + int((frac + '000000')[:6])
+            return str(-n if v.startswith('-') else n), 'decimal'
         if k == 'word' and re.fullmatch(r'-?\d+', v):
             if getattr(self, 'stack', None): self.depth += 1
             return v, 'number'
@@ -231,10 +254,26 @@ class Compiler:
         if name == 'extend': need(2); return '%s %s R-EXTEND' % (a[0][0], a[1][0]), None
         if name == 'shift': need(1); return '%s R-SHIFT' % a[0][0], 'any'
         if name == 'first': need(1); return '%s 0 R-AT' % a[0][0], 'any'
-        if name == 'slice':
-            if len(a) == 2: return '%s %s OVER R-LEN R-SLICE' % (a[0][0], self.to_num(*a[1], line)), 'list'
-            need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
+        if name == 'slice':                                            # a list's; a text's and a record's (754)
+            word, kd = {'text': ('R-TSLICE', 'text'), 'record': ('R-RSLICE', 'record')}.get(a[0][1], ('R-SLICE', 'list'))
+            if len(a) == 2:
+                rest = {'R-SLICE': 'OVER R-LEN', 'R-TSLICE': 'OVER @', 'R-RSLICE': 'OVER R-KEYS R-LEN'}[word]
+                return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), rest, word), kd
+            need(3); return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
         if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
+        if name in ('read', 'upper', 'lower', 'trim', 'base'):              # 754: texts and files
+            need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'upper': 'R-UPPER', 'lower': 'R-LOWER',
+                                                                'trim': 'R-TRIM', 'base': 'R-BASE'}[name]), 'text'
+        if name == 'write': need(2); return '%s %s R-WRITE' % (self.to_text(*a[0]), self.to_text(*a[1])), None
+        if name in ('starts', 'ends'):
+            need(2); return '%s %s %s' % (self.to_text(*a[0]), self.to_text(*a[1]), 'R-STARTS' if name == 'starts' else 'R-ENDS'), 'bool'
+        if name == 'sum': need(1); return '%s R-SUM' % a[0][0], 'number'
+        if name in ('max', 'min'):
+            need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
+            conv = (lambda c, k: c + ' 1000000 *' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
+            return '%s %s %s' % (conv(*a[0]), conv(*a[1]), name.upper()), kd
+        if name == 'at': need(3); return '%s %s %s R-AT-OR' % (a[0][0], self.to_text(*a[1]), self.box(*a[2])), 'any'
+        if name == 'sort-by': need(3); return '%s %s %s R-SORT-BY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'record'
         if name == 'arg':                                              # 744; arg(n, default) 747
             if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
             need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'
@@ -292,14 +331,16 @@ class Compiler:
     def lit_text(self, s):
         if '"' in s or '\n' in s or '\t' in s: return self.shared(self.bytes_lit(s))
         return self.shared('S" %s" R-TEXT' % s)
-    KCODE = {'number': 'K-NUM', 'text': 'K-TEXT', 'bool': 'K-BOOL', 'list': 'K-LIST', 'record': 'K-REC'}
+    KCODE = {'number': 'K-NUM', 'text': 'K-TEXT', 'bool': 'K-BOOL', 'list': 'K-LIST', 'record': 'K-REC', 'decimal': 'K-DEC'}
     def to_text(self, code, kind):
         if kind == 'text': return code
         if kind == 'any': return code + ' R-ANY>TEXT'
         if kind == 'list': return code + ' S"  " R-TEXT R-JOIN'          # a list as text: its items, a blank between
+        if kind == 'decimal': return code + ' R-DEC>TEXT'                 # 754
         return code + ' R-NUM'
     def to_num(self, code, kind, line):
         if kind in ('number', 'bool'): return code
+        if kind == 'decimal': return code + ' 1000000 /'                   # 754: its whole part
         if kind == 'any': return code + ' R-ANY>NUM'
         raise Error('line %d: a number is needed here, not a %s' % (line, kind))
     def convert(self, code, kind, want, line):
@@ -369,6 +410,8 @@ class Compiler:
             if op != '=':
                 if self.kind_of(name, line) != 'number': raise Error('line %d: %s needs a number to change' % (line, op))
                 c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, 'number', c, kd)
+            elif name in sc and sc[name] == 'any' and kd != 'any':
+                c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)

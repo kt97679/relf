@@ -16,7 +16,7 @@ for f in $files {
         for d in all($code, '(?:^|\s)(?::|CODE|NCODE|VARIABLE|2VARIABLE|CONSTANT|VALUE|CREATE|DEFER|BUFFER:)\s+(\S+)') { where[upper($d)] = {file: $f, section: $section} }
     }
 }
-def add-to acc v -> record { return {bytes: $acc.bytes + $v.bytes, n: $acc.n + 1, cls: [$acc.cls[k] + $v.cls[k] for k in range(0, 5)]} }
+def add-to acc v -> record { return {bytes: $acc.bytes + $v.bytes, n: $acc.n + 1, cls: [$acc.cls[$k] + $v.cls[$k] for k in range(0, 5)]} }
 byfile = {}; bysec = {}
 for w, v in $words {
     at = at($where, $w, {file: kernel, section: ""})

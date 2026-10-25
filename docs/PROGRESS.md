@@ -778,6 +778,7 @@ do not trust the absence of a line below.
 - 751 — the user's four criteria; gene blocks in the sources; boxsmall, warn, argdefault, truth; 196 designs: the default at the optimum within 0.03 %
 - 752 — scripts weighed x10 by volume; truth adopted, boxsmall and rxanchor removed; the default at the optimum within 0.01 %
 - 753 — loopvar and echolit adopted (score 3.956, w-range 0.72 in real time); inline tried and taken out
+- 754 — the library for Python-born scripts (texts, files, sort-by, decimals, ...) in both compilers; the pilot compiles, a run-time fault open
 
 ### Not tied to an iteration
 

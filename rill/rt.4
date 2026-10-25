@@ -36,7 +36,8 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 \ record the same with a key array beside it, each key a text. Both grow
 \ by a new array twice the size, the old one left in the arena.
 : /STRING ( c-addr u n --- c-addr' u' )   TUCK - >R + R> ;   \ not in the kernel
-1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC
+1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC   6 CONSTANT K-DEC
+DEFER R-DEC>TEXT-HOOK   \ R-ANY>TEXT needs it before the library defines it
 VARIABLE RL   VARIABLE RJ-SEP
 : R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;   \ boxsmall tried and taken out (752)
 : R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
@@ -48,6 +49,7 @@ VARIABLE RL   VARIABLE RJ-SEP
 \ [/gene]
 : R-ANY>TEXT ( box --- t )
   R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
+  DUP K-DEC = IF DROP R-DEC>TEXT-HOOK EXIT THEN                \ 754: decimals, defined later
   DUP K-NUM = IF DROP R-NUM EXIT THEN
   K-BOOL = IF IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
   S" (list or record)" R-TEXT ;
@@ -222,6 +224,12 @@ VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
   PL-NEXT @ PL-PREV !  R-RD-RESET ;
 : PL-STAGE ( t1 .. tn n last? --- )   >R R-ARGV R> PL-STAGE-V ;
 : PL-STAGE-L ( argl last? --- )   >R R-ARGV-L R> PL-STAGE-V ;
+: R-READ-KEEP ( fd --- t )   \ to its end, one text, as it is (read(), 754)
+  >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
+  BEGIN
+    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
+    DUP 65536 R@ READ-SOME DUP 0>
+  WHILE + REPEAT  DROP R> DROP  OVER CELL+ -  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
 : R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
   >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
   BEGIN
@@ -323,3 +331,62 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
     ." rill: error " . R-NL  2 SYS-EXIT
   THEN  R-RUN-EXIT  0 SYS-EXIT ;
+
+\ ---- The library for the Python-born scripts (Iteration 754) ----------------
+\ Texts, files, records sorted and sliced, and decimals: fixed point, six
+\ places (733's decision), a number scaled by a million - a library over */,
+\ the engine unchanged.
+: R-READ ( path --- t )   \ read(path): the file's whole text
+  DUP R-T@ R/O OPEN-FILE IF DROP ." rill: cannot read " R-TYPE R-NL -4006 THROW THEN
+  NIP DUP >R R-READ-KEEP R> CLOSE-FILE DROP ;
+: R-WRITE ( path t --- )   \ write(path, text): the file made, or made again, holding the text
+  SWAP DUP R-T@ W/O OPEN-FILE IF DROP ." rill: cannot write " R-TYPE R-NL -4006 THROW THEN
+  NIP SWAP R-T@ 2 PICK WRITE-FILE DROP CLOSE-FILE DROP ;
+: R-STARTS ( t prefix --- f )   R-T@ ROT R-T@ ( pa pu ta tu ) 2 PICK < IF 2DROP 2DROP 0 EXIT THEN  OVER COMPARE 0= ;
+: R-ENDS ( t suffix --- f )
+  R-T@ ROT R-T@ 2 PICK OVER > IF 2DROP 2DROP 0 EXIT THEN    ( sa su ta tu )
+  2 PICK - + OVER COMPARE 0= ;
+VARIABLE RC-LO  VARIABLE RC-HI  VARIABLE RC-D
+: R-CASE ( t lo hi delta --- t2 )   \ a copy, each byte from lo to hi moved by delta
+  RC-D ! RC-HI ! RC-LO !  R-T@ R-TEXT
+  DUP R-T@ 0 ?DO  DUP I + C@ DUP RC-LO @ RC-HI @ 1+ WITHIN IF RC-D @ + OVER I + C! ELSE DROP THEN  LOOP DROP ;
+: R-UPPER ( t --- t2 )   [CHAR] a [CHAR] z -32 R-CASE ;
+: R-LOWER ( t --- t2 )   [CHAR] A [CHAR] Z 32 R-CASE ;
+: R-TRIM ( t --- t2 )   \ blanks, tabs and line ends off both ends
+  R-T@  BEGIN DUP IF OVER C@ 33 < ELSE 0 THEN WHILE 1 /STRING REPEAT
+  BEGIN DUP IF 2DUP + 1- C@ 33 < ELSE 0 THEN WHILE 1- REPEAT  R-TEXT ;
+: R-CLAMP ( n len --- n' )   OVER 0< IF + 0 MAX ELSE MIN THEN ;     \ negative from the end, as Python's
+: R-TSLICE ( t a b --- t2 )   \ slice(text, a, b): characters a up to (not with) b
+  >R >R R-T@ R> R>  2 PICK R-CLAMP  SWAP 2 PICK R-CLAMP SWAP  2DUP > IF DROP DUP THEN
+  >R >R DROP R> R>  OVER - >R + R>  R-TEXT ;
+VARIABLE RS-NEW
+: R-RSLICE ( r a b --- r2 )   \ slice(record, a, b): its entries a up to (not with) b
+  2 PICK R-KEYS R-LEN MIN  R-NEW-RECORD RS-NEW !
+  SWAP ?DO  DUP R-VALS I R-AT  OVER R-KEYS I R-AT R-ANY>TEXT  RS-NEW @ R-PUT  LOOP DROP  RS-NEW @ ;
+: R-AT-OR ( r key default --- box )   \ at(record, key, default): the field, or the default
+  >R SWAP 2DUP R-HAS IF R> DROP R-GET ELSE 2DROP R> THEN ;
+: R-SUM ( l --- n )   0 SWAP DUP R-LEN 0 ?DO DUP I R-AT R-ANY>NUM ROT + SWAP LOOP DROP ;
+VARIABLE SB-R  VARIABLE SB-F  VARIABLE SB-DESC  VARIABLE SB-IX  VARIABLE SB-N
+: SB-KEY ( i --- n )   SB-R @ R-VALS SWAP R-AT R-UNBOX DROP  SB-F @ SWAP R-GET R-ANY>NUM ;
+: SB-BEFORE? ( i j --- f )   SWAP SB-KEY SWAP SB-KEY  SB-DESC @ IF > ELSE < THEN ;
+: SB@ ( k --- i )   CELLS SB-IX @ + @ ;
+: SB! ( i k --- )   CELLS SB-IX @ + ! ;
+: R-SORT-BY ( r field order --- r2 )   \ sort-by(record, field, asc|desc): its entries by their values' field, stable
+  S" desc" R-TEXT R-T= SB-DESC !  SB-F !  DUP SB-R !  R-KEYS R-LEN SB-N !
+  SB-N @ CELLS R-ALLOT SB-IX !  SB-N @ 0 ?DO I I SB! LOOP
+  SB-N @ 1 MAX 1 ?DO                                        \ 1 MAX: 0 1 ?DO would run the unsigned range
+    I SB@  I
+    BEGIN DUP 0> IF OVER OVER 1- SB@ SB-BEFORE? ELSE 0 THEN WHILE  DUP 1- SB@ OVER SB!  1- REPEAT
+    SB!
+  LOOP
+  R-NEW-RECORD  SB-N @ 0 ?DO  SB-R @ R-VALS I SB@ R-AT  SB-R @ R-KEYS I SB@ R-AT R-ANY>TEXT  2 PICK R-PUT  LOOP ;
+: R-BASE ( t --- t2 )   \ base(path): what follows its last /
+  R-T@ DUP  BEGIN DUP IF 2 PICK OVER + 1- C@ [CHAR] / <> ELSE 0 THEN WHILE 1- REPEAT  /STRING R-TEXT ;
+40 BUFFER: DT-BUF   VARIABLE DT#
+: DT+ ( c-addr u --- )   DT-BUF DT# @ + SWAP DUP DT# +! MOVE ;
+: R-DEC>TEXT ( d --- t )   \ a decimal as text: its digits, trailing zeros after the point dropped, one kept
+  0 DT# !  DUP 0< IF S" -" DT+ THEN  ABS 1000000 /MOD
+  0 <# #S #> DT+  S" ." DT+
+  0 <# # # # # # # #>  BEGIN DUP 1 > IF 2DUP + 1- C@ [CHAR] 0 = ELSE 0 THEN WHILE 1- REPEAT  DT+
+  DT-BUF DT# @ R-TEXT ;
+' R-DEC>TEXT IS R-DEC>TEXT-HOOK

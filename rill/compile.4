@@ -213,12 +213,15 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 \ [/gene]
 : TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
-  K-LIST = IF S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
+  DUP K-LIST = IF DROP S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN
+  K-DEC = IF S" R-DEC>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;          \ a decimal (754)
 : TO-NUM ( kind --- )   DUP K-NUM = OVER K-BOOL = OR IF DROP EXIT THEN
+  DUP K-DEC = IF DROP S" 1000000 /" OUT+ EXIT THEN                  \ a decimal's whole part (754)
   K-ANY = IF S" R-ANY>NUM" OUT+ EXIT THEN  S" a number is needed here" ERR ;
 : K-CODE ( kind --- c-addr u )
   DUP K-NUM = IF DROP S" K-NUM" EXIT THEN DUP K-TEXT = IF DROP S" K-TEXT" EXIT THEN
-  DUP K-LIST = IF DROP S" K-LIST" EXIT THEN  DUP K-REC = IF DROP S" K-REC" EXIT THEN  DROP S" K-BOOL" ;
+  DUP K-LIST = IF DROP S" K-LIST" EXIT THEN  DUP K-REC = IF DROP S" K-REC" EXIT THEN
+  DUP K-DEC = IF DROP S" K-DEC" EXIT THEN  DROP S" K-BOOL" ;
 : BOX ( kind --- )   DUP K-ANY = IF DROP EXIT THEN  K-CODE OUT+ S" R-BOX" OUT+ ;
 
 \ defs: name, parameter count, return kind (0 none), pure
@@ -344,11 +347,11 @@ VARIABLE FLD-POS
 : KIND-WORD ( c-addr u --- kind )   \ the kind a def's -> names
   2DUP S" number" S= IF 2DROP K-NUM EXIT THEN  2DUP S" text" S= IF 2DROP K-TEXT EXIT THEN
   2DUP S" bool" S= IF 2DROP K-BOOL EXIT THEN  2DUP S" list" S= IF 2DROP K-LIST EXIT THEN
-  2DUP S" record" S= IF 2DROP K-REC EXIT THEN  2DROP K-ANY ;
+  2DUP S" record" S= IF 2DROP K-REC EXIT THEN  2DUP S" decimal" S= IF 2DROP K-DEC EXIT THEN  2DROP K-ANY ;
 \ the library, as rillc.py's library(): each argument converted as its
 \ function needs, the code in rillc.py's order
 : ARG ( --- kind )   1 EXPR  S" ," CUR-IS? IF NEXT-TK THEN ;
-VARIABLE LB-POS
+VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
 : LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
   2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
@@ -374,8 +377,32 @@ VARIABLE LB-POS
   2DUP S" sub" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-SUB" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" env" S= IF 2DROP ARG TO-TEXT S" R-ENV" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" default" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-DEFAULT" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" slice" S= IF 2DROP ARG DROP ARG TO-NUM
-     S" )" CUR-IS? IF S" OVER R-LEN R-SLICE" OUT+ ELSE ARG TO-NUM S" R-SLICE" OUT+ THEN K-LIST -1 EXIT THEN
+  2DUP S" slice" S= IF 2DROP ARG >R ARG TO-NUM                      \ a list's; a text's, a record's (754)
+     S" )" CUR-IS? IF R@ K-TEXT = IF S" OVER @" ELSE R@ K-REC = IF S" OVER R-KEYS R-LEN" ELSE S" OVER R-LEN" THEN THEN OUT+
+     ELSE ARG TO-NUM THEN
+     R@ K-TEXT = IF S" R-TSLICE" ELSE R@ K-REC = IF S" R-RSLICE" ELSE S" R-SLICE" THEN THEN OUT+
+     R> DUP K-TEXT <> OVER K-REC <> AND IF DROP K-LIST THEN -1 EXIT THEN
+  2DUP S" read" S= IF 2DROP ARG TO-TEXT S" R-READ" OUT+ K-TEXT -1 EXIT THEN       \ texts and files (754)
+  2DUP S" upper" S= IF 2DROP ARG TO-TEXT S" R-UPPER" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" lower" S= IF 2DROP ARG TO-TEXT S" R-LOWER" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" trim" S= IF 2DROP ARG TO-TEXT S" R-TRIM" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" base" S= IF 2DROP ARG TO-TEXT S" R-BASE" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" write" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-WRITE" OUT+ 0 -1 EXIT THEN
+  2DUP S" starts" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-STARTS" OUT+ K-BOOL -1 EXIT THEN
+  2DUP S" ends" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ENDS" OUT+ K-BOOL -1 EXIT THEN
+  2DUP S" sum" S= IF 2DROP ARG DROP S" R-SUM" OUT+ K-NUM -1 EXIT THEN
+  2DUP S" at" S= IF 2DROP ARG DROP ARG TO-TEXT ARG BOX S" R-AT-OR" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" sort-by" S= IF 2DROP ARG DROP ARG TO-TEXT ARG TO-TEXT S" R-SORT-BY" OUT+ K-REC -1 EXIT THEN
+  2DUP S" max" S= >R 2DUP S" min" S= R> OR IF                       \ numbers, or decimals if either is one
+     S" max" S= IF S" MAX" ELSE S" MIN" THEN LB-W2 ! LB-W1 !
+     ARG OUT-POS LB-POS ! ARG                                       ( k1 k2 )
+     2DUP K-DEC = SWAP K-DEC = OR IF
+       OVER K-NUM = IF S" 1000000 *" LB-POS @ OUT-INSERT THEN        \ the first made a decimal where it stands
+       DUP K-NUM = IF S" 1000000 *" OUT+ THEN  2DROP  LB-W1 @ LB-W2 @ OUT+ K-DEC -1 EXIT
+     THEN
+     OVER K-ANY = IF S" R-ANY>NUM" LB-POS @ OUT-INSERT THEN
+     OVER DUP K-NUM = OVER K-BOOL = OR SWAP K-ANY = OR 0= IF S" a number is needed here" ERR THEN
+     NIP TO-NUM  LB-W1 @ LB-W2 @ OUT+ K-NUM -1 EXIT THEN
   2DROP 0 ;
 : CALL ( --- kind )   \ name( args ), the name the current token
   TK T@ NEXT-TK  S" (" EXPECT
@@ -396,7 +423,16 @@ VARIABLE LB-POS
     TK 1+ T@ 2DUP S" in" S= >R 2DUP S" not" S= R> OR >R 2DUP S" and" S= R> OR >R 2DUP S" or" S= R> OR
     IF 2DROP 0 EXIT THEN 2DROP THEN
   TK 1+ PREC-OF IF 0 EXIT THEN  -1 ;
+: DEC-LIT? ( c-addr u --- n -1 | 0 )   \ -?\d+\.\d+ as a decimal: the number times a million (754)
+  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN                         \ ( R: negative? )
+  2DUP [CHAR] . SCAN DUP 0= IF 2DROP 2DROP R> DROP 0 EXIT THEN       ( a u a2 u2 )
+  >R >R  OVER R@ OVER - NUMBER-TEXT? 0= IF R> R> 2DROP 2DROP R> DROP 0 EXIT THEN
+  R> R> 1 /STRING  2DUP NUMBER-TEXT? 0= IF 2DROP 2DROP R> DROP 0 EXIT THEN   ( a u fa fu )
+  0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP   ( a u frac )   \ OVER: fu, 2 PICK: fa (the PICK slip again)
+  >R  0 -ROT 0 ?DO DUP I + C@ [CHAR] . = IF LEAVE THEN DUP I + C@ [CHAR] 0 - ROT 10 * + SWAP LOOP DROP
+  1000000 * R> +  R> IF NEGATE THEN -1 ;
 : TERM0 ( --- kind )
+  TK K@ T-WORD = IF TK T@ DEC-LIT? IF OUT-NUM NEXT-TK 1 DEPTH+ K-DEC EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
@@ -457,14 +493,27 @@ VARIABLE LB-POS
     ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
-: COMPREHENSION ( j --- kind )   \ [expr for x in src if cond]: the for part first, then the expr
+VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK
+: COMPREHENSION ( j --- kind )   \ [expr for x in src if cond] - or for k, v in a record, for i, x in a list (754)
   TK-I @ >R  DUP 1+ TK-I !                                 ( j )  ( R: the expr's start )
-  TK T@ NEXT-TK  S" in" EXPECT                             ( j name )
-  S" R-NEW-LIST" OUT+  1 EXPR K-LIST <> IF S" for needs a list" ERR THEN
+  TK T@ NEXT-TK                                            ( j name )
+  0 CM-2L !  S" ," CUR-IS? IF NEXT-TK TK T@ CM-2L ! CM-2A ! NEXT-TK THEN
+  S" in" EXPECT
+  S" R-NEW-LIST" OUT+  1 EXPR CM-SK !
+  CM-SK @ K-LIST <> CM-SK @ K-REC <> AND  CM-SK @ K-REC = CM-2L @ 0= AND OR IF S" for needs a list" ERR THEN
   2DUP 4 PICK TMP-NAME 2DUP DECLARE                        ( j name tmp )
   2OVER DECLARE  2OVER K-ANY SET-KIND
-  2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @" OUT+ S" R-LEN" OUT+ S" 0" OUT+ S" ?DO" OUT+
-  VAR-OUT S" @" OUT+ S" I" OUT+ S" R-AT" OUT+ VAR-OUT S" !" OUT+  DROP
+  CM-2L @ IF CM-2A @ CM-2L @ 2DUP DECLARE K-ANY SET-KIND
+    2OVER CM-SK @ K-LIST = IF K-NUM ELSE K-TEXT THEN SET-KIND THEN
+  2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @" OUT+
+  CM-SK @ K-REC = IF S" R-KEYS" OUT+ THEN  S" R-LEN" OUT+ S" 0" OUT+ S" ?DO" OUT+
+  CM-2L @ 0= IF  VAR-OUT S" @" OUT+ S" I" OUT+ S" R-AT" OUT+ VAR-OUT S" !" OUT+
+  ELSE CM-SK @ K-REC = IF
+    2DUP VAR-OUT S" @" OUT+ S" R-KEYS I R-AT R-ANY>TEXT" OUT+ 2OVER VAR-OUT S" !" OUT+
+    VAR-OUT S" @" OUT+ S" R-VALS I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
+  ELSE
+    S" I" OUT+ 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
+  THEN THEN  DROP
   0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR DROP S" IF" OUT+ -1 CM-COND ! THEN
   CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
   R> R> TK-I ! >R                                          ( after )  ( R: cond )
@@ -514,6 +563,7 @@ VARIABLE BL-POS   VARIABLE BL-K
 : LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
 : LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
 : LEFT-BOX ( --- )    OUT-POS BL-K @ BOX      BL-POS @ SEG>POS ;
+: NUMISH? ( kind --- f )   DUP K-NUM = OVER K-DEC = OR SWAP K-ANY = OR ;
 : BINOP ( lk lpos rk opi --- kind )
   >R  SWAP BL-POS !  SWAP BL-K !                                ( rk )  ( R: opi )
   R@ T@ S" and" S= R@ T@ S" or" S= OR IF DROP R> T@ S" and" S= IF S" AND" ELSE S" OR" THEN OUT+ K-BOOL EXIT THEN
@@ -524,6 +574,16 @@ VARIABLE BL-POS   VARIABLE BL-K
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND   \ 2 PICK: the right side's kind (749)
   BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
     LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
+  BL-K @ K-DEC = OVER K-DEC = OR  BL-K @ NUMISH? AND  OVER NUMISH? AND IF        \ decimals (754): fixed point, six places
+    BL-K @ K-NUM = IF OUT-POS S" 1000000 *" OUT+ BL-POS @ SEG>POS THEN
+    BL-K @ K-ANY = IF OUT-POS S" R-ANY>NUM 1000000 *" OUT+ BL-POS @ SEG>POS THEN
+    DUP K-NUM = IF S" 1000000 *" OUT+ THEN  K-ANY = IF S" R-ANY>NUM 1000000 *" OUT+ THEN  -1 DEPTH+
+    R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" 1000000 */" ELSE
+    R@ T@ S" /" S= IF S" >R 1000000 R> */" ELSE R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE
+    R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE R@ T@ S" >" S= IF S" >" ELSE
+    R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+    OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-DEC THEN EXIT
+  THEN
   LEFT-NUM TO-NUM  -1 DEPTH+
   R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" *" ELSE R@ T@ S" /" S= IF S" /" ELSE
   R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
@@ -534,7 +594,7 @@ VARIABLE BL-POS   VARIABLE BL-K
   BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
     TK >R NEXT-TK  R@ T@ S" not" S= IF NEXT-TK THEN              \ not in: two tokens
 \ [gene short]
-    R@ SHORT-FORM  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
+    R@ SHORT-FORM  2 PICK K-DEC = IF 2DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
 \ [/gene]
 \ [gene !short]
@@ -576,7 +636,10 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
 VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
 : ASSIGN ( --- )
   TK T@ NEXT-TK  TK T@ NEXT-TK                                   ( name op )
-  2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
+  2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR
+    AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ K-ANY = IF   \ an item takes any value, boxed (754)
+      DUP K-ANY <> IF BOX K-ANY THEN ELSE THEN ELSE DROP THEN ELSE DROP THEN
+    >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ K-NUM <> IF S" += and -= need a number to change" ERR THEN
   2DUP VAR-REF S" @" OUT+
