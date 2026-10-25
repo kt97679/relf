@@ -1,0 +1,5 @@
+# on EXIT runs when TERM or INT stops the script, which exits 128 + the signal (786) - tests/rill/run sends TERM
+on EXIT { echo cleanup ran }
+echo started
+for i in range(200) { sleep 0.05 }
+echo finished

@@ -1,0 +1,6 @@
+# code((cmd args)): a command's status, a number (786) - tests/rill/code.sh
+echo {code((true))} {code((false))} {code((sh -c 'exit 7'))}
+st = code((grep -q nothing-of-this /dev/null))
+echo grep said $st
+echo {code((sh -c 'echo to the log' out> /dev/null))} {code((sh -c 'exit 3' | cat))}
+if (code((false)) == 1) { echo false is 1 }

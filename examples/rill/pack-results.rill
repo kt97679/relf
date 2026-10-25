@@ -20,8 +20,8 @@ def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
     warn "== $name =="
     t0 = now()
-    st = code(($cmd all> "$stage/$name.log"))
-    note "step $name: status $st, {now() - $t0} s"
+    st = code((sh -c $cmd all> "$stage/$name.log"))   # the command a text, run as the shell script ran it (786)
+    note("step $name: status $st, {now() - $t0} s")
     return $st
 }
 def new-report path -> bool {
@@ -31,7 +31,7 @@ def new-report path -> bool {
 def apply-bundle -> record {
     dir = default(env(BUNDLE_DIR), "{env(HOME)}/Downloads")
     best = ""; bestn = -1
-    for f in $dir/relf-claude-iter*.bundle {
+    for f in glob("$dir/relf-claude-iter*.bundle") {
         n = number(default(first(all(base($f), '^relf-claude-iter([0-9]+)-')), "-1"))
         if ($n > $bestn or ($n == $bestn and base($f) > base($best))) { best = $f; bestn = $n }
     }
@@ -68,22 +68,20 @@ else {
 }
 host = $(uname -n); utc = $(date -u +%Y%m%dT%H%MZ); commit = $(git rev-parse --short HEAD)
 pack = "$(pwd)/relf-results-$host-$commit-$utc.tar.gz"
-on INT { exit 130 }
-on TERM { exit 130 }
 stage = $(mktemp -d)                 # the defs above read it when they run, as Python's (785)
 on EXIT { rm -rf $stage }
 sum = "$stage/SUMMARY.txt"
-note "relf results, $(date -u)"
-note "host: $host ($(uname -srm))"
-note "commit: $(git log -1 --format='%H %s' | cut -c1-120)"
-note "bundle: $applied"
-note "arguments: {default(join($args, ' '), 'none')}; SCALE={default(env(SCALE), '25')} ROUNDS={default(env(ROUNDS), '7')}"
-note "checkout before - tracked files changed (results then are not the commit's):"
+note("relf results, $(date -u)")
+note("host: $host ($(uname -srm))")
+note("commit: $(git log -1 --format='%H %s' | cut -c1-120)")
+note("bundle: $applied")
+note("arguments: {default(join($args, ' '), 'none')}; SCALE={default(env(SCALE), '25')} ROUNDS={default(env(ROUNDS), '7')}")
+note("checkout before - tracked files changed (results then are not the commit's):")
 git status --porcelain --untracked-files=no | sed 's/^/    /' >> $sum
 mkdir -p "$stage/reports"
-for r in bench-report-*.txt {
-    if (new-report($r)) { cp $r "$stage/reports/"; note "report not in bench/reports/ yet, packed: $r" }
-    else { note "report already in bench/reports/: $r" }
+for r in glob("bench-report-*.txt") {
+    if (new-report($r)) { cp $r "$stage/reports/"; note("report not in bench/reports/ yet, packed: $r") }
+    else { note("report already in bench/reports/: $r") }
 }
 if ($opts.clean) {
     warn "== clean =="
@@ -96,48 +94,48 @@ if ($opts.clean) {
     for p in $untracked {
         case $p {
             .clean-trash/ .clean-trash.old/ { continue }
-            bench-report-*.txt { if (new-report($p)) { note "clean kept: $p"; continue } }
-            bench/reports/* relf-results-*.tar.gz *.bundle { note "clean kept: $p"; continue }
+            bench-report-*.txt { if (new-report($p)) { note("clean kept: $p"); continue } }
+            bench/reports/* relf-results-*.tar.gz *.bundle { note("clean kept: $p"); continue }
         }
         mkdir -p ".clean-trash/{dir($p)}"
-        mv ./$p ".clean-trash/{trim-end($p, '/')}"; push($cleaned, $p)
+        mv ./$p ".clean-trash/{sub($p, '/+$', '')}"; push($cleaned, $p)
     }
     write("$stage/cleaned.txt", join($cleaned, "\n"))
     rm -rf .clean-trash.old
-    note "clean: {len($untracked)} untracked paths, {len($cleaned)} moved to .clean-trash/ (cleaned.txt)"
+    note("clean: {len($untracked)} untracked paths, {len($cleaned)} moved to .clean-trash/ (cleaned.txt)")
 } else {
     untracked = lines($(git status --porcelain --ignored | sed -n -e 's/^?? //p' -e 's/^!! //p'))
     write("$stage/untracked.txt", join($untracked, "\n"))
-    note "clean: skipped (--no-clean); untracked paths: {len($untracked)} (untracked.txt)"
+    note("clean: skipped (--no-clean); untracked paths: {len($untracked)} (untracked.txt)")
 }
 if ($opts.bench) {
     report = "$(pwd)/bench-report-$host-$utc.txt"
     warn "   (tools/bench-report.sh: about ten minutes)"
-    step bench (env REPORT=$report sh tools/bench-report.sh)
-    if (test -f $report) { cp $report "$stage/reports/"; note "this run's report: reports/{base($report)}" }
+    step("bench", "env REPORT=$report sh tools/bench-report.sh")
+    if (test -f $report) { cp $report "$stage/reports/"; note("this run's report: reports/{base($report)}") }
 } else {
-    note "bench: skipped (--no-bench)"
-    step build (make all relfsh-native)
+    note("bench: skipped (--no-bench)")
+    step("build", "make all relfsh-native")
 }
 if (test -x ./relfsh-native) {
-    step native-written (python3 tools/native-written.py ./relfsh-native)
+    step("native-written", "python3 tools/native-written.py ./relfsh-native")
     if ($opts.profile) {
         wl = $(mktemp -d)
-        for f in tests/bench-vm/*.sh { write("$wl/{base($f)}", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
-        for w in [fn arith str realistic] { step profile-$w (python3 tools/native-prof.py ./relfsh-native "$wl/$w.sh") }
+        for f in glob("tests/bench-vm/*.sh") { write("$wl/{base($f)}", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
+        for w in [fn arith str realistic] { step("profile-$w", "python3 tools/native-prof.py ./relfsh-native '$wl/$w.sh'") }
         rm -rf $wl
     }
-} else { note "no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile" }
+} else { note("no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile") }
 if ($opts.verify) {
     warn "   (tests/verify: some minutes)"
-    step verify (sh tests/verify)
-    note "verify's lines other than ok, and its last line:"
+    step("verify", "sh tests/verify")
+    note("verify's lines other than ok, and its last line:")
     grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum
 }
-note "checkout after - each line should be explained (prompts/07):"
+note("checkout after - each line should be explained (prompts/07):")
 git status --porcelain | sed 's/^/    /' >> $sum
 failed = all(read($sum), 'step (\S+): status [1-9]')
-if (len($failed) > 0) { note "steps that failed: {join($failed, ' ')}" }
+if (len($failed) > 0) { note("steps that failed: {join($failed, ' ')}") }
 tar czf $pack -C $stage . ?? fail "pack-results: tar failed; the results were in $stage"
 cat $sum
 echo

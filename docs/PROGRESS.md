@@ -810,6 +810,7 @@ do not trust the absence of a line below.
 - 783 — setenv() for env() and every command after it; a case statement with the shell's patterns
 - 784 — now(); pack-results compiles to line 25, its remaining needs listed
 - 785 — defs read the script's variables as Python's, set above or below; numbers read before they are set are errors, not 0
+- 786 — code((cmd)); on EXIT runs on INT and TERM; glob(); texts and items in order; @args; named undefined functions
 
 ### Not tied to an iteration
 

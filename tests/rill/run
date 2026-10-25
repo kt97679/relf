@@ -25,6 +25,17 @@ timeout 60 ./relf64 kernel64-rill.img examples/rill/gen-opcodes.rill --check < /
 if cmp -s /tmp/rill-go-sh.$$ /tmp/rill-go-rl.$$; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL examples/rill/gen-opcodes.rill --check"; diff /tmp/rill-go-sh.$$ /tmp/rill-go-rl.$$ | head -5; fi
 rm -f /tmp/rill-go-sh.$$ /tmp/rill-go-rl.$$
+# on EXIT when TERM stops the script, and its status 143 (786)
+timeout 20 ./relf64 kernel64-rill.img tests/rill/signals/interrupt.rill < /dev/null > /tmp/rill-int.$$ 2>&1 & rp=$!
+sleep 0.6; kill -TERM $rp; wait $rp; rs=$?
+if [ "$rs" = 143 ] && [ "$(cat /tmp/rill-int.$$)" = "$(printf 'started\ncleanup ran')" ]; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL tests/rill/signals/interrupt.rill: status $rs"; cat /tmp/rill-int.$$; fi
+rm -f /tmp/rill-int.$$
+timeout 20 ./relf64 kernel64-rill.img tests/rill/signals/spin.rill < /dev/null > /tmp/rill-int.$$ 2>&1 & rp=$!
+sleep 0.4; kill -INT $rp; wait $rp; rs=$?
+if [ "$rs" = 130 ] && [ "$(cat /tmp/rill-int.$$)" = "cleanup ran" ]; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL tests/rill/signals/spin.rill: status $rs"; cat /tmp/rill-int.$$; fi
+rm -f /tmp/rill-int.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

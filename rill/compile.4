@@ -68,6 +68,7 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
   POS @ WORD-XT @XT SCAN-WHILE  DUP POS @ - >R                 ( end )  ( R: len )
   POS @ RS-SRC @ + R@ KEYWORD? IF T-KW ELSE T-WORD THEN  POS @ R> TK+  POS ! ;
 : SKIP-COMMENT ( --- )   BEGIN POS @ AT-END? IF 0 ELSE POS @ SRC-C@ 10 <> THEN WHILE 1 POS +! REPEAT ;
+VARIABLE TK-LINE0   1 TK-LINE0 !   \ the line the text being tokenized starts on: 1, or a string's {...} on the script's lines (786)
 VARIABLE SQ-DEPTH   \ the [ open: a newline inside them is no token, as Python's (782)
 : TOKEN-1 ( --- )
   POS @ SRC-C@
@@ -84,7 +85,7 @@ VARIABLE SQ-DEPTH   \ the [ open: a newline inside them is no token, as Python's
   DUP WORD-CHAR? IF DROP SCAN-WORD EXIT THEN
   DROP 1 POS +! ;
 : TOKENIZE ( c-addr u --- )
-  SRC# ! RS-SRC !  0 TK-N !  1 CUR-LINE !  0 POS !  0 SQ-DEPTH !
+  SRC# ! RS-SRC !  0 TK-N !  TK-LINE0 @ CUR-LINE !  0 POS !  0 SQ-DEPTH !
   BEGIN POS @ AT-END? 0= WHILE TOKEN-1 REPEAT
   T-EOF SRC# @ 0 TK+ ;
 : .TOKENS ( --- )   \ for tests/rill/oracle: one token a line, kind and text
@@ -238,6 +239,7 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 
 : NOT-YET ( --- )   S" not in the Forth compiler yet (rillc.py has it)" ERR ;
 DEFER EXPR ( minp --- kind )
+DEFER RUN-COND?-D   \ RUN-COND?, for code() in the library (786)
 DEFER COMMAND-HOOK ( capture? --- )   \ commands come in part 5; terms and strings need them first
 DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK ( --- )
 \ [gene purestack]
@@ -266,6 +268,7 @@ VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753)
 \ [gene infer]
 VARIABLE INFER  VARIABLE FIXED   \ gene infer's first pass, its second (764) - READ-VAR asks (785)
 \ [/gene]
+VARIABLE HAS-ON-EXIT   \ the script has an on EXIT block: its safe points poll for INT and TERM (786)
 256 CONSTANT NI-MAX   \ the script's numbers read where they may not be set: R-NONE until they are (785)
 NI-MAX CELLS BUFFER: NI-A  NI-MAX CELLS BUFFER: NI-L  VARIABLE NI-N
 : NI-HAS? ( c-addr u --- f )   NI-N @ 0 ?DO 2DUP I CELLS NI-A + @ I CELLS NI-L + @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN LOOP 2DROP 0 ;
@@ -306,11 +309,15 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
 : SUB-ECHO-OFF ( --- ) ;   : SUB-ECHO-ON ( --- ) ;
 \ [/gene]
 VARIABLE FLD-POS
+: SUB-ENTER ( --- old )   \ the sub-text's first line: its own text's, and the newlines before it there (786)
+  TK-LINE0 @ DUP
+  SUB-A @ RS-SRC @ U< 0= SUB-A @ RS-SRC @ SRC# @ + U< AND IF SUB-A @ RS-SRC @ ?DO I C@ 10 = IF 1+ THEN LOOP THEN
+  TK-LINE0 ! ;
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
-  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
-  -1 COMMAND-HOOK S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK ;
+  SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
+  -1 COMMAND-HOOK S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  R> TK-LINE0 ! ;
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
-  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  R> ;
+  SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  R> R> TK-LINE0 ! ;
 4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
 \ [gene echolit]
 4096 BUFFER: EL-BUF  VARIABLE EL#      \ echo's literal run (753)
@@ -397,7 +404,12 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
      S" R-PUSH" OUT+ 0 -1 EXIT THEN
   2DUP S" extend" S= IF 2DROP ARG CONT ARG CONT S" R-EXTEND" OUT+ 0 -1 EXIT THEN
+  2DUP S" glob" S= IF 2DROP ARG TO-TEXT S" R-GLOB" OUT+ K-LIST -1 EXIT THEN   \ 786
   2DUP S" now" S= IF 2DROP S" R-NOW" OUT+ K-NUM -1 EXIT THEN   \ 783
+  2DUP S" code" S= IF 2DROP                                      \ code((cmd args)): its status, a number (786)
+    S" (" CUR-IS? IF NEXT-TK TK T@ 2DUP S" true" S= >R S" false" S= R> OR IF -1 ELSE RUN-COND?-D THEN ELSE 0 THEN   \ code((true)): the program
+    0= IF S" code() takes a command in ( ): code((cmd args))" ERR THEN
+    0 COMMAND-HOOK S" )" EXPECT K-NUM -1 EXIT THEN
   2DUP S" setenv" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SETENV" OUT+ 0 -1 EXIT THEN   \ 783
   2DUP S" shift" S= IF 2DROP ARG CONT S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" first" S= IF 2DROP ARG CONT S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
@@ -451,10 +463,14 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      OVER DUP K-NUM = OVER K-BOOL = OR SWAP K-ANY = OR 0= IF S" a number is needed here" ERR THEN
      NIP TO-NUM  LB-W1 @ LB-W2 @ OUT+ K-NUM -1 EXIT THEN
   2DROP 0 ;
+: DEF-LATER? ( c-addr u --- f )   \ a def of that name further down the script (786)
+  TK-N @ 1- 0 ?DO  I K@ T-KW = I T@ S" def" S= AND IF 2DUP I 1+ T@ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN THEN  LOOP 2DROP 0 ;
 : CALL ( --- kind )   \ name( args ), the name the current token
   TK T@ NEXT-TK  S" (" EXPECT
   2DUP LIBRARY IF >R 2DROP R> S" )" EXPECT EXIT THEN          \ the kind, not the name, left
-  2DUP DF-FIND DUP 0< IF DROP 2DROP S" a function is not defined (a def comes before its use)" ERR THEN
+  2DUP DF-FIND DUP 0< IF DROP                                    \ named, and whether it is further down (786)
+    ." rillc: line " TK L@ . ." : " 2DUP TYPE ." () is "
+    DEF-LATER? IF ." defined further down: a def comes before its use" ELSE ." not defined" THEN R-NL -4100 THROW THEN
   >R 2DROP 0
   BEGIN S" )" CUR-IS? 0= WHILE
     1 EXPR  DF-PURE R@ CELLS + @ IF TO-NUM ELSE BOX THEN  1+          \ a pure def's arguments numbers (749)
@@ -465,11 +481,13 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
     [CHAR] R OUT-C [CHAR] : OUT-C  DF-A R@ CELLS + @ DF-L R@ CELLS + @ OUT-RAW BL OUT-C THEN
   DF-K R@ CELLS + @ DUP 0<> 1 AND ROT - DEPTH+  R> DROP ;
 : RUN-COND? ( --- f )   \ rillc.py's cond(): ( word ... ) a run, unless its second token makes it an expression
+  TK T@ 2DUP S" true" S= >R S" false" S= R> OR  TK 1+ S" )" TK-IS? AND IF 0 EXIT THEN   \ (true): the literal, not the program (786)
   TK K@ T-WORD = 0= IF 0 EXIT THEN  TK 1+ S" (" TK-IS? IF 0 EXIT THEN
   TK 1+ K@ DUP T-KW = SWAP T-OP = OR IF
     TK 1+ T@ 2DUP S" in" S= >R 2DUP S" not" S= R> OR >R 2DUP S" and" S= R> OR >R 2DUP S" or" S= R> OR
     IF 2DROP 0 EXIT THEN 2DROP THEN
   TK 1+ PREC-OF IF 0 EXIT THEN  -1 ;
+' RUN-COND? IS RUN-COND?-D
 : DEC-LIT? ( c-addr u --- n -1 | 0 )   \ -?\d+\.\d+ as a decimal: the number times a million (754)
   OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN                         \ ( R: negative? )
   2DUP [CHAR] . SCAN DUP 0= IF 2DROP 2DROP R> DROP 0 EXIT THEN       ( a u a2 u2 )
@@ -584,14 +602,17 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : NUM-INTO ( k --- )   \ a count or an index stored in a variable of kind k (771)
   DUP K-NUM = IF DROP EXIT THEN  K-DEC = IF S" 1000000 *" ELSE S" K-NUM R-BOX" THEN OUT+ ;
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
+: SPREAD-OUT ( c-addr u --- )   \ @name's items: rillc.py's spread_code - the script's arguments for @args, unless it set its own (786)
+  2DUP NM-FIND 0< IF 2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ EXIT THEN THEN
+  2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
+  CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
+  VAR-OUT S" @" OUT+ ;
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
   BEGIN S" ]" CUR-IS? 0= WHILE
     S" ," CUR-IS? IF NEXT-TK ELSE                                 \ [a, b, c] as well as [a b c] (758)
     TK SPREAD-WORD? IF                                          \ [@refs more]: a spread (744)
-      TK T@ 1 /STRING NEXT-TK 2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
-      CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
-      VAR-OUT S" @ OVER SWAP R-EXTEND" OUT+
+      TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" OVER SWAP R-EXTEND" OUT+
     ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN THEN
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
@@ -669,6 +690,10 @@ VARIABLE BL-POS   VARIABLE BL-K
 : LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
 : LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
 : LEFT-BOX ( --- )    OUT-POS BL-K @ BOX      BL-POS @ SEG>POS ;
+: ORDER-OP ( c-addr u --- n )   \ < <= > >=: 1 2 3 4; anything else 0 (786)
+  2DUP S" <" S= IF 2DROP 1 EXIT THEN  2DUP S" <=" S= IF 2DROP 2 EXIT THEN
+  2DUP S" >" S= IF 2DROP 3 EXIT THEN  S" >=" S= IF 4 EXIT THEN  0 ;
+: ORDER-OUT ( n --- )   DUP 1 = IF DROP S" 0<" ELSE DUP 2 = IF DROP S" 0> 0=" ELSE 3 = IF S" 0>" ELSE S" 0< 0=" THEN THEN THEN OUT+ ;
 : CONTAINER? ( kind --- f )   DUP K-LIST = OVER K-REC = OR SWAP K-ANY = OR ;
 : NUMISH? ( kind --- f )   DUP K-NUM = OVER K-DEC = OR SWAP K-ANY = OR ;
 : BINOP ( lk lpos rk opi --- kind )
@@ -684,6 +709,11 @@ VARIABLE BL-POS   VARIABLE BL-K
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND   \ 2 PICK: the right side's kind (749)
   BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
     LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
+  R@ T@ ORDER-OP  BL-K @ K-ANY = AND  OVER K-ANY = AND ?DUP IF                    \ two items: their kinds decide, as Python's (786)
+    >R S" R-ANY-CMP" OUT+ R> ORDER-OUT R> DROP DROP K-BOOL EXIT THEN
+  R@ T@ ORDER-OP  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND                        \ texts in order, as Python's (786)
+  BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND ?DUP IF
+    >R LEFT-TEXT TO-TEXT S" R-TCMP" OUT+ R> ORDER-OUT R> DROP K-BOOL EXIT THEN
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ CONTAINER? AND  OVER CONTAINER? AND IF        \ lists, records: by what they hold (782)
     LEFT-BOX BOX S" R-BOX=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
   BL-K @ K-DEC = OVER K-DEC = OR  BL-K @ NUMISH? AND  OVER NUMISH? AND IF        \ decimals (754): fixed point, six places
@@ -955,9 +985,7 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
   SP-FORM @ SP-PEND @ AND IF S" K-TEXT R-BOX OVER R-PUSH" OUT+ THEN  0 SP-PEND ! ;   \ list form only
 : STAGE-ITEM ( n --- n' )   \ one word, a redirection, or (in a list-form stage) a spread
   SP-FORM @ TK SPREAD-WORD? AND IF                               \ @name: its items, each an argument
-    SP-FINISH  TK T@ 1 /STRING NEXT-TK 2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
-    CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
-    VAR-OUT S" @ OVER SWAP R-EXTEND" OUT+ 1+ EXIT THEN
+    SP-FINISH  TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" OVER SWAP R-EXTEND" OUT+ 1+ EXIT THEN
   TK K@ T-WORD = TK PORT-OF 0< 0= AND  TK 1+ S" >" TK-IS? TK 1+ S" >>" TK-IS? OR AND
   TK 1+ TOK-AT TK TOK-END = AND IF  TK PORT-OF NEXT-TK REDIRECT EXIT THEN
   S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR IF  S" <" CUR-IS? IF 0 ELSE 1 THEN REDIRECT EXIT THEN
@@ -1193,7 +1221,7 @@ VARIABLE CD-P
 : STATEMENT-IMPL ( --- )
 \ [gene gc]
   IN-DEF @ 0= STACKMODE @ 0= AND IN-EXIT @ 0= AND IF                 \ a safe point before each top-level statement
-    S" def" CUR-IS? S" on" CUR-IS? OR 0= IF S" R-GC?" OUT+ THEN THEN
+    S" def" CUR-IS? S" on" CUR-IS? OR 0= IF HAS-ON-EXIT @ IF S" R-GC?S" ELSE S" R-GC?" THEN OUT+ THEN THEN   \ 786
 \ [/gene]
 \ [gene lines]
   S" def" CUR-IS? 0= IF S" [" OUT+ TK L@ OUT-NUM S" R-MARK ]" OUT+ THEN   \ where its code starts, and its line (781)
@@ -1258,10 +1286,11 @@ VARIABLE RT-K
   0 LT-N !
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
-   0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !
+   0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
   TK-ALLOC BUF-ALLOC ;
+: ON-EXIT-AHEAD? ( --- f )   TK-N @ 1- 0 ?DO I T@ S" on" S= I 1+ T@ S" EXIT" S= AND IF -1 UNLOOP EXIT THEN LOOP 0 ;
 : RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
-  RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
+  RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN  ON-EXIT-AHEAD? HAS-ON-EXIT !
 \ [gene infer]
   FIXED @ IF IK-PRELOAD THEN
 \ [/gene]

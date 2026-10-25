@@ -46,6 +46,7 @@ def tokenize(src):
 class Compiler:
     def __init__(self, src):
         self.t = tokenize(src); self.i = 0; self.src = src
+        self.has_on_exit = any(self.t[j][1] == 'on' and self.t[j + 1][1] == 'EXIT' for j in range(len(self.t) - 1))   # 786
         self.none_init = set()  # the script's numbers read where they may not be set: R-NONE until they are (785) - one set, shared with sub-compilers
         self.vars = {}          # script variable -> kind
         self.funcs = {}         # name -> (params, kind)
@@ -110,6 +111,10 @@ class Compiler:
         if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
         elif self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
         sc[name] = kind; return kind
+    def spread_code(self, name, line):    # @name: its items - the script's arguments for @args, unless it set its own (786)
+        if name == 'args' and name not in self.vars and (self.locals is None or name not in self.locals): return 'R-ARGS'
+        if self.kind_of(name, line) != 'list': raise Error('line %d: @%s is not a list' % (line, name))
+        return 'R.%s @' % name
     def read_var(self, name, line):       # $name, in an expression or a string - the image's READ-VAR (785)
         if name in ('args', 'script') and name not in self.vars and (self.locals is None or name not in self.locals):
             return ('R-ARGS', 'list') if name == 'args' else ('R-SCRIPT', 'text')       # 744
@@ -157,6 +162,11 @@ class Compiler:
             return '%s %s R-BOX=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
             return '%s %s R-T=%s' % (self.to_text(a, ak), self.to_text(b, bk), '' if op == '==' else ' 0='), 'bool'
+        if op in ('<', '<=', '>', '>=') and ak == 'any' and bk == 'any':           # two items: their kinds decide, as Python's (786)
+            return '%s %s R-ANY-CMP %s' % (a, b, {'<': '0<', '<=': '0> 0=', '>': '0>', '>=': '0< 0='}[op]), 'bool'
+        if op in ('<', '<=', '>', '>=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):   # 786
+            return '%s %s R-TCMP %s' % (self.to_text(a, ak), self.to_text(b, bk),
+                                        {'<': '0<', '<=': '0> 0=', '>': '0>', '>=': '0< 0='}[op]), 'bool'   # texts in order, as Python's
         if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk in ('list', 'record', 'any'):   # by what they hold (782)
             return '%s %s R-BOX=%s' % (self.box(a, ak), self.box(b, bk), '' if op == '==' else ' 0='), 'bool'
         if 'decimal' in (ak, bk) and ak in ('number', 'decimal', 'any') and bk in ('number', 'decimal', 'any'):
@@ -210,8 +220,7 @@ class Compiler:
             tok = self.peek()
             if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
                 self.i += 1
-                if self.kind_of(tok[1][1:], tok[2]) != 'list': raise Error('line %d: %s is not a list' % (tok[2], tok[1]))
-                code.append('R.%s @ OVER SWAP R-EXTEND' % tok[1][1:]); continue
+                code.append('%s OVER SWAP R-EXTEND' % self.spread_code(tok[1][1:], tok[2])); continue
             c, kd = self.term()
             code.append('%s OVER R-PUSH' % self.box(c, kd))
         self.take('op', ']'); return ' '.join(code), 'list'
@@ -292,13 +301,20 @@ class Compiler:
         raise Error('line %d: unexpected %r' % (line, v))
     def call(self, name, line):
         self.take('op', '('); args = []
+        if name == 'code':                                             # code((cmd args)): its status, a number (786)
+            if self.peek()[1] == '(': self.i += 1
+            if self.t[self.i - 1][1] != '(' or self.t[self.i - 2][1] != '(' or not (self.peek()[1] in ('true', 'false') or self.run_ahead()):
+                raise Error('line %d: code() takes a command in ( ): code((cmd args))' % line)
+            c = self.command(); self.take('op', ')'); self.take('op', ')'); return c, 'number'
         while self.peek()[1] != ')':
             args.append(self.expr())
             if self.peek()[1] == ',': self.i += 1
         self.take('op', ')')
         lib = self.library(name, args, line)
         if lib: return lib
-        if name not in self.funcs: raise Error('line %d: %s() is not defined (a def comes before its use)' % (line, name))
+        if name not in self.funcs:                       # named, and whether it is further down (786)
+            later = any(self.t[j][0] == 'kw' and self.t[j][1] == 'def' and self.t[j + 1][1] == name for j in range(len(self.t) - 1))
+            raise Error('line %d: %s() is %s' % (line, name, 'defined further down: a def comes before its use' if later else 'not defined'))
         params, kind = self.funcs[name]
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
         if name not in getattr(self, 'pure_defs', set()):
@@ -336,6 +352,7 @@ class Compiler:
             return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
+        if name == 'glob': need(1); return '%s R-GLOB' % self.to_text(*a[0]), 'list'          # the paths it matches, sorted (786)
         if name == 'now': need(0); return 'R-NOW', 'number'                    # seconds, the local clock (783)
         if name == 'setenv': need(2); return '%s %s R-SETENV' % (self.to_text(*a[0]), self.to_text(*a[1])), None   # 783
         if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
@@ -395,6 +412,8 @@ class Compiler:
         return self.shared('S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s))
     def bytes_lit(self, s):
         return ' '.join('%d' % b for b in s.encode()) + ' %d R-BYTES' % len(s.encode())
+    def sub_tokens(self, text, first):    # a string's {...} or $(...), its tokens on the script's lines (786)
+        return [(k, v, ln + first - 1, s, e) for (k, v, ln, s, e) in tokenize(text)]
     def string(self, body, line, typed=False):
         parts, pieces, i, lit = [], [], 0, ''   # pieces: ('lit', text) or ('code', code) - for echolit (753)
         while i < len(body):
@@ -406,7 +425,7 @@ class Compiler:
                 depth, j = 1, i + 2
                 while depth: depth += {'(': 1, ')': -1}.get(body[j], 0); j += 1
                 sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
-                sub.t = tokenize(body[i + 2:j - 1]); sub.i = 0
+                sub.t = self.sub_tokens(body[i + 2:j - 1], line + body[:i + 2].count('\n')); sub.i = 0
                 parts.append(sub.command(capture=True) + ' R-CHECK'); pieces.append(('code', parts[-1])); i = j; continue
             m = re.match(r'\$([A-Za-z_][A-Za-z0-9_]*)', body[i:])
             if m or c == '{':
@@ -426,7 +445,7 @@ class Compiler:
                         if j >= len(body): raise Error('line %d: a { in a string is not closed - a double quote inside {...} ends the string: use single quotes there' % line)   # 773: not a crash
                         depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
                     sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
-                    sub.t = tokenize(body[i + 1:j - 1]); sub.i = 0
+                    sub.t = self.sub_tokens(body[i + 1:j - 1], line + body[:i + 1].count('\n')); sub.i = 0
                     c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j
                 continue
             lit += c; i += 1
@@ -475,7 +494,8 @@ class Compiler:
               and not getattr(self, 'in_exit', False) and v not in ('def', 'on'))
         out = self.statement_inner()
         if GENES['lines'] and v != 'def': out = ('[ %d R-MARK ] %s' % (line, out)).strip()   # gene lines (781)
-        return 'R-GC? ' + out if gc and out else ('R-GC?' if gc else out)
+        sp = 'R-GC?S' if self.has_on_exit else 'R-GC?'           # a script with on EXIT polls for INT and TERM too (786)
+        return sp + ' ' + out if gc and out else (sp if gc else out)
     def root_kind(self, n):              # what a variable registers as, for the collector: None if nothing
         if n in getattr(self, 'roots', {}): return self.roots[n]
         k = self.vars.get(n)
@@ -666,8 +686,7 @@ class Compiler:
                 redirs.append(self.redirect('in' if tok[1] == '<' else 'out')); continue
             if spread and tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):
                 self.i += 1; name = tok[1][1:]
-                if self.kind_of(name, tok[2]) != 'list': raise Error('line %d: @%s is not a list' % (tok[2], name))
-                parts.append('R.%s @ OVER SWAP R-EXTEND' % name); kinds_spread = True
+                parts.append('%s OVER SWAP R-EXTEND' % self.spread_code(name, tok[2])); kinds_spread = True
                 continue
             touching = parts and tok[3] == self.t[self.i - 1][4] and not parts[-1].endswith('R-EXTEND')
             c = self.arg_item()
@@ -703,6 +722,7 @@ class Compiler:
     def run_ahead(self):
         """After a (: a run, unless its second token makes it an expression."""
         second = self.peek(1)
+        if self.peek()[1] in ('true', 'false') and second[1] == ')': return False   # (true): the literal, not the program (786)
         return self.peek()[0] == 'word' and second[1] != '(' and not (second[0] in ('kw', 'op') and second[1] in
                 ('in', 'not', 'and', 'or', '==', '!=', '<', '>', '<=', '>=')) and second[1] not in self.PREC
     def truth(self, code, kind):

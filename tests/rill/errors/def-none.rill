@@ -1,0 +1,2 @@
+# a call of no def at all (786)
+echo {nonesuch(1)}

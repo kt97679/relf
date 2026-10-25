@@ -28,6 +28,7 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
   RC-N @ 0 ?DO  R-T@ DUP NEGATE RC-P +!  RC-P @ SWAP MOVE  LOOP
   RC-T @ ;
 : R-T= ( t1 t2 --- f )   >R R-T@ R> R-T@ COMPARE 0= ;
+: R-TCMP ( t1 t2 --- n )   >R R-T@ R> R-T@ COMPARE ;   \ texts in order, by their bytes: Python's order for UTF-8 (786)
 : R-TYPE ( t --- )   R-T@ TYPE ;
 : R-NL ( --- )   10 EMIT ;
 
@@ -244,6 +245,13 @@ VARIABLE RV-N   VARIABLE RV-V
   SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
   S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
 : R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
+VARIABLE SIG-SEEN   VARIABLE SIG-CNT   \ a signal taken while waiting; safe points till the next look (786)
+: R-SIGNAL ( --- signo | 0 )   SIG-SEEN @ ?DUP IF 0 SIG-SEEN ! ELSE SIGNALS-PENDING THEN ;
+: R-WAIT ( pid --- raw )   \ WAITPID - again when a caught signal cut it short, the signal kept for the next safe point (786)
+  BEGIN DUP WAITPID IF
+      SIGNALS-PENDING ?DUP IF SIG-SEEN ! DROP ELSE NIP EXIT THEN
+    ELSE NIP  0 SIG-CNT !  EXIT THEN                \ a command done: the next safe point looks
+  AGAIN ;
 : R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
 
 \ Redirections of the stage about to start: a file onto a descriptor
@@ -319,7 +327,7 @@ VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
   PL-CAPR @ -1 <> IF
     PL-CAPW @ CLOSE-FILE DROP  PL-CAPR @ R-READ-ALL  PL-CAPR @ CLOSE-FILE DROP
   THEN
-  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ WAITPID DROP R-DECODE  LOOP ;
+  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ R-WAIT R-DECODE  LOOP ;
 : R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
 VARIABLE R-STATUS
 \ Ending, and what the script is given (Iteration 744)
@@ -328,7 +336,10 @@ CREATE R-NLB 10 C,
 : R-FAIL ( t --- )   R-ERR-TYPE  1 R-STATUS !  -4000 THROW ;        \ fail "message": status 1
 : R-EXIT ( n --- )   R-STATUS !  -4000 THROW ;                        \ exit n
 VARIABLE R-ON-EXIT-XT
-: R-ON-EXIT ( xt --- )   R-ON-EXIT-XT ! ;                             \ on EXIT { }: run when the script ends
+\ A script with on EXIT runs it when INT or TERM stops it too, and exits 128 + the signal, as the shell's
+\ trap would (786): from the block's registration INT and TERM are caught, and its safe points poll.
+: R-SIG-CATCH ( --- )   2 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP ;
+: R-ON-EXIT ( xt --- )   R-ON-EXIT-XT !  R-SIG-CATCH ;                \ on EXIT { }: run when the script ends
 : R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
@@ -364,7 +375,7 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
   PAR-PIDS PAR-N @ CELLS + !  1 PAR-N +!  0 ;
 : R-PAR-DONE ( --- )   0 SYS-EXIT ;
 : R-PAR-END ( --- )   \ every body waited for; the first failure's status, if one failed
-  0  PAR-N @ 0 ?DO  PAR-PIDS I CELLS + @ WAITPID DROP R-DECODE  OVER 0= IF NIP ELSE DROP THEN  LOOP
+  0  PAR-N @ 0 ?DO  PAR-PIDS I CELLS + @ R-WAIT R-DECODE  OVER 0= IF NIP ELSE DROP THEN  LOOP
   R-CHECK ;
 
 \ The image boots into R-BOOT: its first argument is the Forth that
@@ -411,7 +422,7 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
     DUP -4100 -4000 WITHIN IF  DROP 2 SYS-EXIT  THEN    \ Rill's own errors: their message said already, with the line (781)
     ." rill: error " . R-NL  2 SYS-EXIT
-  THEN  R-RUN-EXIT  0 SYS-EXIT ;
+  THEN  R-RUN-EXIT  R-ON-EXIT-XT @ IF R-SIGNAL ?DUP IF 128 + SYS-EXIT THEN THEN  0 SYS-EXIT ;   \ a signal at the very end: 128 + it (786)
 
 \ ---- The library for the Python-born scripts (Iteration 754) ----------------
 \ Texts, files, records sorted and sliced, and decimals: fixed point, six
@@ -635,6 +646,39 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
   BEGIN GL-J @ GL-M @ < IF GL-J @ GL-PC [CHAR] * = ELSE 0 THEN WHILE 1 GL-J +! REPEAT
   GL-J @ GL-M @ = ;
 
+: R-ANY-CMP ( box1 box2 --- n )   \ two items in order: texts by their bytes, numbers and decimals by value; a text and a number cannot be (786)
+  OVER R-UNBOX NIP K-TEXT =  OVER R-UNBOX NIP K-TEXT =  2DUP AND IF 2DROP R-ANY>TEXT >R R-ANY>TEXT R> R-TCMP EXIT THEN
+  OR IF ." rill: a text and a number cannot be put in order" R-ERR-NL -4001 THROW THEN
+  R-ANY>DEC >R R-ANY>DEC R>  2DUP < IF 2DROP -1 ELSE > IF 1 ELSE 0 THEN THEN ;
+
+\ ---- glob (Iteration 786) -------------------------------------------------
+\ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before
+\ it as written; a name starting with . only for a pattern that does; . and .. never. No wildcard:
+\ the path itself, if it is there. None: an empty list, as Python's.
+: GB-WILD? ( a u --- f )   0 ?DO DUP I + C@ DUP [CHAR] * = OVER [CHAR] ? = OR SWAP [CHAR] [ = OR IF DROP -1 UNLOOP EXIT THEN LOOP DROP 0 ;
+: GB-SPLIT ( t --- dir comp )   \ the pattern's directory ("" for none, "/" for the root) and its last part
+  R-T@ DUP BEGIN DUP WHILE 1- 2 PICK OVER + C@ [CHAR] / = IF
+      >R  OVER R@ DUP 0= IF 1+ THEN R-TEXT  ROT ROT R@ 1+ /STRING R-TEXT  R> DROP EXIT THEN
+    REPEAT DROP  S" " R-TEXT ROT ROT R-TEXT ;
+: GB-JOIN ( dir name --- t )   \ dir/name; the name alone for the dir ""
+  OVER R-T@ NIP 0= IF NIP EXIT THEN
+  OVER R-T@ + 1- C@ [CHAR] / = IF 2 R-CONCAT ELSE S" /" R-TEXT SWAP 3 R-CONCAT THEN ;
+VARIABLE GB-DIR  VARIABLE GB-COMP  VARIABLE GB-OUT  VARIABLE GB-P
+: GB-LIST ( dir comp out --- )   \ the entries of dir that comp matches, pushed onto out as dir/name
+  GB-OUT ! GB-COMP ! GB-DIR !
+  GB-DIR @ R-T@ NIP IF GB-DIR @ ELSE S" ." R-TEXT THEN R-CSTR OPEN-DIR ?DUP 0= IF EXIT THEN GB-P !
+  BEGIN GB-P @ READ-DIR ?DUP WHILE
+    DUP CSTRLEN R-TEXT
+    DUP R-T@ S" ." COMPARE 0= OVER R-T@ S" .." COMPARE 0= OR
+    OVER R-T@ DROP C@ [CHAR] . =  GB-COMP @ R-T@ DROP C@ [CHAR] . <> AND OR
+    IF DROP ELSE DUP GB-COMP @ R-GLOB? IF GB-DIR @ SWAP GB-JOIN K-TEXT R-BOX GB-OUT @ R-PUSH ELSE DROP THEN THEN
+  REPEAT GB-P @ CLOSE-DIR ;
+: R-GLOB ( pattern --- list )
+  R-NEW-LIST SWAP
+  DUP R-T@ NIP 0= IF DROP EXIT THEN
+  DUP R-T@ GB-WILD? 0= IF DUP R-CSTR FILE-KIND IF K-TEXT R-BOX OVER R-PUSH ELSE DROP THEN EXIT THEN
+  GB-SPLIT 2 PICK GB-LIST  R-SORT ;
+
 \ ---- now (Iteration 783) --------------------------------------------------
 : R-NOW ( --- n )   \ now(): seconds since 1970 by the local clock - a clock for durations; days from the date, as days_from_civil
   LOCAL-TIME DROP 1900 + SWAP 1+ SWAP                       ( sec min hour mday mon year )
@@ -778,3 +822,6 @@ DEFER G-COPY ( a kind --- a' )
   R-TOP @ R-ARENA0 @ - 2* 16777216 MAX R-TOP @ + R-END @ MIN R-GC-AT !
   G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
 : R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN ;   \ a safe point: the compilers put one before each top-level statement
+\ SIGNALS-PENDING scans every flag (~27 ns): looked at every 1024th safe point, and at the first after each command
+: R-GC?S ( --- )   \ a script with on EXIT: a signal caught, then exit 128 + it (786)
+  R-GC?  -1 SIG-CNT +!  SIG-CNT @ 0< IF 1023 SIG-CNT !  R-SIGNAL ?DUP IF 128 + R-EXIT THEN THEN ;

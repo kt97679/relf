@@ -1,0 +1,12 @@
+*.txt: a.txt b.txt
+*: a.txt b.txt c.md docs sub
+docs/*.md: docs/one.md docs/two.md
+docs/t*: docs/three.txt docs/two.md
+sub/x?: sub/x1
+[ab]*: a.txt b.txt
+.*: .hidden.txt
+nomatch*: 
+a.txt: a.txt
+missing.txt: 
+docs/*.none: 
+2 under an absolute path

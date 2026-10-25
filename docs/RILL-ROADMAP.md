@@ -222,3 +222,36 @@ still makes a local, as Python's without `global`.
   script's top level, so it may be reported after an error further down.
 tests/rill/globals.rill. pack-results next stops at line 66: @args as a
 spread (the built-in $args is not a spreadable name yet).
+
+## Iteration 786: commands' status, on EXIT on a signal, glob, texts in order
+
+- An unknown function's error names it and says whether it is defined further
+  down: `is-odd() is defined further down: a def comes before its use`; a
+  typo: `nonesuch() is not defined`. Defs stay defined before their use (the
+  user and I agreed: simpler, and no script needed mutual recursion).
+- `@args` spreads the script's arguments, in a command and in a list.
+- `code((cmd args))`: a command's status, a number (tests/rill/code.rill: as
+  the shell's $?). `(true)` and `(false)` alone in a condition are the
+  literals now, not the programs: `while (true)` forked `true` each round.
+- `on EXIT` runs when INT or TERM stops the script, which exits 128 + the
+  signal, as the shell's trap would. Only a script with on EXIT catches them;
+  its safe points (R-GC?S) look at the signals every 1024th time and at the
+  first after each command - SIGNALS-PENDING scans every flag (~27 ns), so a
+  look at every safe point tripled a tight loop. A wait a signal cut short is
+  waited again (it read as the command failing - TERM ended a while loop with
+  status 0). A signal at the very end still gives 128 + it. Tested: TERM on a
+  script in a command, INT on one in a loop that runs none.
+- `glob(pattern)`: the paths it matches, sorted - wildcards in the last part,
+  a leading . only for a pattern that has one; [] when none, as Python's
+  (tests/rill/glob.rill against Python's glob). Not implicit in for loops:
+  one way, said once.
+- `<`, `<=`, `>`, `>=` on texts, in Python's order (bytes, as UTF-8 keeps it);
+  two items by their kinds at run time (R-ANY-CMP) - which also fixes items
+  holding decimals, compared truncated before (1.5 < 1.7 was false); a text
+  and a number cannot be ordered: an error naming the line.
+- Errors inside a string's {...} and $(...) name the script's line (both
+  compilers said line 1), exactly, a string over several lines too.
+- The lint caught the glob words named as the collector's (G-LIST): renamed.
+- pack-results: note(...) calls, step(name, command text) run with sh -c,
+  glob() for its three loops, sub() for trim-end, no on INT / on TERM. It
+  next stops at line 44: `??` inside $(...).
