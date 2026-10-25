@@ -29,7 +29,7 @@ for i, a in $args {
 }
 nodes = []; current = {}; roots = []; islines = []
 lines = {}
-for f in $files { lines[$f] = lines(read($f)) }
+for f in $files { lines[$f] = split(read($f), "\n") }
 
 def resolve toks -> list { return [$current[$t] for t in $toks if $t in $current] }
 def node name f a b body -> record { return {name: $name, file: $f, first: $a, last: $b, refs: resolve($body)} }
@@ -99,10 +99,11 @@ if ($delete) {
         if ($k not in $reach) {
             a = $nd.first
             while ($a > 0 and starts(trim($lines[$nd.file][$a - 1]), '\')) { a -= 1 }
-            for ln in range($a, $nd.last) { kill[$nd.file][$ln] = true }
+            kl = $kill[$nd.file]
+            for ln in range($a, $nd.last) { kl[$ln] = true }
         }
     }
-    for e in $deadis { kill[$e.file][$e.line] = true }
+    for e in $deadis { kl = $kill[$e.file]; kl[$e.line] = true }
     for f in $files {
         out = []; blank = false
         for k, l in $lines[$f] {

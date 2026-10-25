@@ -782,6 +782,7 @@ do not trust the absence of a line below.
 - 755 — the pilot's Rill version matches Python's 40 lines (+5.2 % length, 8x the time); and/or short-circuit; R-STARTS fixed
 - 756 — the pilot's Forth version matches on its first run: Python 1,951 chars, Rill 2,052 (+5 %), Forth 4,070 (+109 %)
 - 757 — second pilot, Forth first: dead-words.fth matches all three cases (1 defect: kernel name clash); 7,156 chars vs Python's 3,299
+- 758 — values, sort, split and items as containers in both compilers; dead-words.rill runs but is wrong (57 roots vs 77), 5 defects logged
 
 ### Not tied to an iteration
 

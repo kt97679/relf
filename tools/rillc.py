@@ -90,7 +90,10 @@ class Compiler:
             neg = ' 0=' if op == 'not in' else ''
             if bk == 'record': return '%s %s R-HAS%s' % (self.to_text(a, ak), b, neg), 'bool'
             if bk == 'list': return '%s %s R-IN%s' % (self.box(a, ak), b, neg), 'bool'
+            if bk == 'any': return '%s %s R-IN-ANY%s' % (self.box(a, ak), b, neg), 'bool'      # 758
             raise Error('line %d: in needs a list or a record' % line)
+        if op in ('==', '!=') and ak == 'any' and bk == 'any':                        # two items (758)
+            return '%s %s R-BOX=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
             return '%s %s R-T=%s' % (self.to_text(a, ak), self.to_text(b, bk), '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk == ak and ak != 'any':
@@ -142,6 +145,7 @@ class Compiler:
             j += 1
         code = ['R-NEW-LIST']
         while self.peek()[1] != ']':
+            if self.peek()[1] == ',': self.i += 1; continue                # [a, b, c] as well as [a b c] (758)
             tok = self.peek()
             if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
                 self.i += 1
@@ -156,6 +160,7 @@ class Compiler:
         if self.peek()[1] == ',': self.i += 1; second = self.take('word')[1]     # [e for k, v in src] (754)
         self.take('kw', 'in')
         sc, sk = self.expr()
+        if sk == 'any': sc, sk = sc + ' R-UNBOX DROP', 'list'          # an item holding a list - a def's parameter (758)
         if sk not in ('list', 'record') or (sk == 'record' and not second):
             raise Error('line %d: for needs a list' % self.peek()[2])
         tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
@@ -255,17 +260,21 @@ class Compiler:
         if name == 'range': need(2); return '%s %s R-RANGE' % (self.to_num(*a[0], line), self.to_num(*a[1], line)), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
-        if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), a[0][0]), None
-        if name == 'extend': need(2); return '%s %s R-EXTEND' % (a[0][0], a[1][0]), None
-        if name == 'shift': need(1); return '%s R-SHIFT' % a[0][0], 'any'
-        if name == 'first': need(1); return '%s 0 R-AT' % a[0][0], 'any'
+        cont = lambda x: x[0] + ' R-UNBOX DROP' if x[1] == 'any' else x[0]        # an item holding a list or record (758)
+        if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
+        if name == 'extend': need(2); return '%s %s R-EXTEND' % (cont(a[0]), cont(a[1])), None
+        if name == 'shift': need(1); return '%s R-SHIFT' % cont(a[0]), 'any'
+        if name == 'first': need(1); return '%s 0 R-AT' % cont(a[0]), 'any'
+        if name == 'values': need(1); return '%s R-VALS' % cont(a[0]), 'list'                     # 758
+        if name == 'sort': need(1); return '%s R-SORT' % cont(a[0]), 'list'
+        if name == 'split': need(2); return '%s %s R-SPLIT' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
         if name == 'slice':                                            # a list's; a text's and a record's (754)
             word, kd = {'text': ('R-TSLICE', 'text'), 'record': ('R-RSLICE', 'record')}.get(a[0][1], ('R-SLICE', 'list'))
             if len(a) == 2:
                 rest = {'R-SLICE': 'OVER R-LEN', 'R-TSLICE': 'OVER @', 'R-RSLICE': 'OVER R-KEYS R-LEN'}[word]
                 return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), rest, word), kd
             need(3); return '%s %s %s %s' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
-        if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
+        if name == 'keys': need(1); return '%s R-KEYS' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0]), 'list'
         if name in ('read', 'upper', 'lower', 'trim', 'base'):              # 754: texts and files
             need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'upper': 'R-UPPER', 'lower': 'R-LOWER',
                                                                 'trim': 'R-TRIM', 'base': 'R-BASE'}[name]), 'text'
@@ -407,14 +416,19 @@ class Compiler:
             c, kd = self.expr(); ck = self.kind_of(name, line)
             if ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
             elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
+            elif ck == 'any': out = '%s %s R.%s @ R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), name)   # 758
             else: raise Error('line %d: $%s is not a list or a record' % (line, name))
         elif k == 'word' and self.peek(1)[1] in ('=', '+=', '-='):
             name = v; self.i += 1; op = self.take()[1]
             c, kd = self.expr()
             sc = self.scope()
             if op != '=':
-                if self.kind_of(name, line) != 'number': raise Error('line %d: %s needs a number to change' % (line, op))
-                c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, 'number', c, kd)
+                vk = self.kind_of(name, line)
+                if vk not in ('number', 'any'): raise Error('line %d: %s needs a number to change' % (line, op))
+                c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, vk, c, kd)
+                if vk == 'any': c, kd = self.box(c, kd), 'any'          # an item holding a number stays an item (758)
+            elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
+                c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
             elif name in sc and sc[name] == 'any' and kd != 'any':
                 c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:

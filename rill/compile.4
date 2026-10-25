@@ -352,6 +352,7 @@ VARIABLE FLD-POS
 \ function needs, the code in rillc.py's order
 : ARG ( --- kind )   1 EXPR  S" ," CUR-IS? IF NEXT-TK THEN ;
 VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
+: CONT ( kind --- )   K-ANY = IF S" R-UNBOX DROP" OUT+ THEN ;   \ an item holding a list or record, unboxed (758)
 : LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
   2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
@@ -361,12 +362,15 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" range" S= IF 2DROP ARG TO-NUM ARG TO-NUM S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
   2DUP S" number" S= IF 2DROP ARG TO-TEXT S" R-NUMBER" OUT+ K-NUM -1 EXIT THEN
   2DUP S" text" S= IF 2DROP ARG TO-TEXT K-TEXT -1 EXIT THEN
-  2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG DROP  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
+  2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
      S" R-PUSH" OUT+ 0 -1 EXIT THEN
-  2DUP S" extend" S= IF 2DROP ARG DROP ARG DROP S" R-EXTEND" OUT+ 0 -1 EXIT THEN
-  2DUP S" shift" S= IF 2DROP ARG DROP S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
-  2DUP S" first" S= IF 2DROP ARG DROP S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
-  2DUP S" keys" S= IF 2DROP ARG DROP S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" extend" S= IF 2DROP ARG CONT ARG CONT S" R-EXTEND" OUT+ 0 -1 EXIT THEN
+  2DUP S" shift" S= IF 2DROP ARG CONT S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" first" S= IF 2DROP ARG CONT S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" keys" S= IF 2DROP ARG CONT S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" values" S= IF 2DROP ARG CONT S" R-VALS" OUT+ K-LIST -1 EXIT THEN      \ 758
+  2DUP S" sort" S= IF 2DROP ARG CONT S" R-SORT" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" split" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SPLIT" OUT+ K-LIST -1 EXIT THEN
   2DUP S" arg" S= IF 2DROP ARG TO-NUM S" R-ARG" OUT+                             \ 744; arg(n, default) 747
 \ [gene argdefault]
      S" )" CUR-IS? 0= IF ARG TO-TEXT S" R-DEFAULT" OUT+ THEN
@@ -486,11 +490,12 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
   BEGIN S" ]" CUR-IS? 0= WHILE
+    S" ," CUR-IS? IF NEXT-TK ELSE                                 \ [a, b, c] as well as [a b c] (758)
     TK SPREAD-WORD? IF                                          \ [@refs more]: a spread (744)
       TK T@ 1 /STRING NEXT-TK 2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
       CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
       VAR-OUT S" @ OVER SWAP R-EXTEND" OUT+
-    ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN
+    ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN THEN
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
 VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK
@@ -500,6 +505,7 @@ VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK
   0 CM-2L !  S" ," CUR-IS? IF NEXT-TK TK T@ CM-2L ! CM-2A ! NEXT-TK THEN
   S" in" EXPECT
   S" R-NEW-LIST" OUT+  1 EXPR CM-SK !
+  CM-SK @ K-ANY = IF S" R-UNBOX DROP" OUT+ K-LIST CM-SK ! THEN     \ an item holding a list - a def's parameter (758)
   CM-SK @ K-LIST <> CM-SK @ K-REC <> AND  CM-SK @ K-REC = CM-2L @ 0= AND OR IF S" for needs a list" ERR THEN
   2DUP 4 PICK TMP-NAME 2DUP DECLARE                        ( j name tmp )
   2OVER DECLARE  2OVER K-ANY SET-KIND
@@ -569,8 +575,11 @@ VARIABLE BL-POS   VARIABLE BL-K
   R@ T@ S" and" S= R@ T@ S" or" S= OR IF DROP R> T@ S" and" S= IF S" AND" ELSE S" OR" THEN OUT+ K-BOOL EXIT THEN
   R@ T@ S" in" S= R@ T@ S" not" S= OR IF
     DUP K-REC = IF DROP LEFT-TEXT S" R-HAS" OUT+ ELSE
-    K-LIST = IF LEFT-BOX S" R-IN" OUT+ ELSE S" in needs a list or a record" ERR THEN THEN
+    DUP K-LIST = IF DROP LEFT-BOX S" R-IN" OUT+ ELSE
+    K-ANY = IF LEFT-BOX S" R-IN-ANY" OUT+ ELSE S" in needs a list or a record" ERR THEN THEN THEN
     R> T@ S" not" S= IF S" 0=" OUT+ THEN  K-BOOL EXIT THEN
+  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-ANY = AND  OVER K-ANY = AND IF          \ two items (758)
+    DROP S" R-BOX=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND   \ 2 PICK: the right side's kind (749)
   BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
     LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
@@ -638,16 +647,19 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
   >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
       CELLS NM-K + @ R> <> IF S" a variable cannot change its kind" ERR THEN 2DROP EXIT THEN THEN
   DROP 2DUP DECLARE R> IN-DEF @ NM-ADD ;
-VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
+VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
 : ASSIGN ( --- )
   TK T@ NEXT-TK  TK T@ NEXT-TK                                   ( name op )
   2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR
-    AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ K-ANY = IF   \ an item takes any value, boxed (754)
-      DUP K-ANY <> IF BOX K-ANY THEN ELSE THEN ELSE DROP THEN ELSE DROP THEN
+    AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ ELSE DROP 0 THEN ELSE DROP 0 THEN
+    DUP K-ANY = 2 PICK K-ANY <> AND IF DROP BOX K-ANY ELSE                 \ an item takes any value, boxed (754)
+    DUP K-TEXT = 2 PICK K-ANY = AND IF DROP TO-TEXT K-TEXT ELSE            \ a text or a number variable given an item (758)
+    DUP K-NUM = 2 PICK K-ANY = AND IF DROP TO-NUM K-NUM ELSE DROP THEN THEN THEN
     >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
   S" +=" S= >R
-  2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ K-NUM <> IF S" += and -= need a number to change" ERR THEN
-  2DUP VAR-REF S" @" OUT+
+  2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ AS-VK !
+  AS-VK @ K-NUM <> AS-VK @ K-ANY <> AND IF S" += and -= need a number to change" ERR THEN
+  2DUP VAR-REF S" @" OUT+  AS-VK @ K-ANY = IF S" R-ANY>NUM" OUT+ THEN   \ an item holding a number (758)
 \ [gene short]
   TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
     NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
@@ -656,7 +668,7 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
 \ [gene !short]
   1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+
 \ [/gene]
-  VAR-REF S" !" OUT+ ;
+  AS-VK @ K-ANY = IF S" K-NUM R-BOX" OUT+ THEN  VAR-REF S" !" OUT+ ;
 : ARG-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
   TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
   TK T@ 2DUP S" ," S= >R 2DUP S" =" S= R> OR >R 2DUP S" ==" S= R> OR >R 2DUP S" !=" S= R> OR >R
@@ -921,10 +933,11 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
 : INDEX-ASSIGN ( --- )
   TK T@ IA-L ! IA-A !  NEXT-TK NEXT-TK
   IA-A @ IA-L @ NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @     ( ck )
-  OUT-POS IA-P !  1 EXPR  OVER K-LIST = IF TO-NUM ELSE TO-TEXT THEN  S" ]" EXPECT S" =" EXPECT
+  OUT-POS IA-P !  1 EXPR  OVER K-LIST = IF TO-NUM ELSE OVER K-ANY = IF BOX ELSE TO-TEXT THEN THEN  S" ]" EXPECT S" =" EXPECT
   OUT-POS 1 EXPR BOX  IA-P @ SEG>POS                               \ the value before the index
   DUP K-LIST = IF DROP OUT-POS IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-P @ SG-LEN @ + SEG>POS S" R-SET" OUT+ EXIT THEN
-  K-REC = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-PUT" OUT+ EXIT THEN
+  DUP K-REC = IF DROP IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-PUT" OUT+ EXIT THEN
+  K-ANY = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-ASSIGN-ANY" OUT+ EXIT THEN      \ 758
   S" is not a list or a record" ERR ;
 : STATEMENT-IMPL ( --- )
   S" if" CUR-IS? IF IF-STMT EXIT THEN

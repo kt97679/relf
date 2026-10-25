@@ -392,3 +392,35 @@ VARIABLE SB-R  VARIABLE SB-F  VARIABLE SB-DESC  VARIABLE SB-IX  VARIABLE SB-N
   0 <# # # # # # # #>  BEGIN DUP 1 > IF 2DUP + 1- C@ [CHAR] 0 = ELSE 0 THEN WHILE 1- REPEAT  DT+
   DT-BUF DT# @ R-TEXT ;
 ' R-DEC>TEXT IS R-DEC>TEXT-HOOK
+
+\ ---- What the second pilot needs (Iteration 758) ---------------------------
+: R-CMP ( b1 b2 --- n )   \ Python's order: numbers by value, texts by bytes, lists item by item, then length
+  OVER @ OVER @ 2DUP <> IF > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN DROP
+  DUP K-TEXT = IF DROP CELL+ @ R-T@ ROT CELL+ @ R-T@ 2SWAP COMPARE EXIT THEN
+  K-LIST = IF  CELL+ @ SWAP CELL+ @ SWAP
+    OVER R-LEN OVER R-LEN MIN 0 ?DO
+      OVER I R-AT OVER I R-AT RECURSE ?DUP IF NIP NIP UNLOOP EXIT THEN
+    LOOP
+    R-LEN SWAP R-LEN SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN EXIT THEN
+  CELL+ @ SWAP CELL+ @ SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN ;
+VARIABLE SRT
+: R-SORT ( l --- l2 )   \ sort(list): a copy, in Python's order, stable
+  R-NEW-LIST SRT !  DUP R-LEN 0 ?DO DUP I R-AT SRT @ R-PUSH LOOP DROP
+  SRT @ R-LEN 1 MAX 1 ?DO
+    SRT @ I R-AT  I
+    BEGIN DUP 0> IF OVER SRT @ 2 PICK 1- R-AT R-CMP 0< ELSE 0 THEN WHILE
+      SRT @ OVER 1- R-AT SRT @ 2 PICK R-SET 1-
+    REPEAT  SRT @ SWAP R-SET
+  LOOP SRT @ ;
+VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
+: SP-FIND ( a u --- i | -1 )   \ where the separator first stands
+  SP-U @ - 1+ 0 MAX 0 ?DO DUP I + SP-U @ SP-A @ SP-U @ COMPARE 0= IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
+: R-SPLIT ( t sep --- l )   \ split(text, sep): the pieces between seps, empty ones kept - Python's
+  R-T@ DUP 0= ABORT" rill: split by an empty text" SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
+  BEGIN 2DUP SP-FIND DUP 0< 0= WHILE
+    >R OVER R@ R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  R> SP-U @ + /STRING
+  REPEAT DROP  R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  SP-L @ ;
+: R-IN-ANY ( box cbox --- f )   \ in, the container an item: a record's keys or a list's items
+  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-HAS ELSE R-IN THEN ;
+: R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
+  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-PUT ELSE SWAP R-ANY>NUM R-SET THEN ;

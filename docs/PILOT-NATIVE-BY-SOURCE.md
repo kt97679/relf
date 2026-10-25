@@ -119,3 +119,30 @@ runtime: `values()`, `sort()` of a list of lists (Python's tuple order),
 join needs to give back a file's final line end), `push` and `in` and
 assignment through an index on a variable that holds an item (a list or
 record reached through another).
+
+### dead-words: the Rill version, under way (Iteration 758)
+
+Added for it, in the runtime and both compilers (tests/rill: 13, the
+oracle the same): `values`, `sort` (a stable sort in Python's order - texts
+by bytes, numbers by value, lists item by item), `split` (Python's: empty
+pieces kept, the last one too), commas between a list literal's items, and
+items as containers - `push`, `extend`, `shift`, `first`, `keys`, `values`,
+`sort` on an item holding a list or record, `in` with an item on the right
+(R-IN-ANY), `x[k] = v` with `x` an item (R-ASSIGN-ANY), `==` and `!=`
+between two items (R-BOX=), a comprehension over an item, `+=` on an item
+holding a number, and a text or number variable given an item converted.
+
+Its defects so far, from the first run:
+
+| # | defect | class | found by |
+|---|---|---|---|
+| 1 | lines read with `lines()`, which drops a last empty line - `--delete`'s join would lose a file's final line end | port logic (Python's split) | reading the original |
+| 2 | `kill[$f][$ln] = true` - two indexes in one assignment, which Rill has not | Rill's syntax | the compiler |
+| 3 | a comprehension over a def's parameter, an item | Rill's kinds | the compiler |
+| 4 | `a -= 1` on a variable holding an item | Rill's kinds | the compiler |
+| 5 | 57 roots where the original finds 77, so 372 words wrongly dead | open | the output check |
+
+1 and 2 changed the script; 3 and 4 changed Rill. 5 is open; the first
+suspect is the rewrite's record of string words, whose keys were written
+as raw texts with a backslash before the quote (`'.\"'`) - in a raw text
+the backslash is itself, so `."` is not among them.
