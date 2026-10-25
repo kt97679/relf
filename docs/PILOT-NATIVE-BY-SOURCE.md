@@ -185,3 +185,49 @@ real programs - each now fixed in both compilers, with a test. The Forth
 versions' cost does not show as defects but as their size, and as the
 stack reasoning each line took, which no count here holds. **Time**: both
 run several times Python's, Rill 1.4 times the hand-written Forth.
+
+## The third pilot: tools/native-ab-layouts.py - Rill written first (Iteration 760)
+
+The order alternated again: the Rill version first, then the Forth. The
+tool builds eight native kernels and shells and times them - minutes, and
+a table that differs run to run - so all three versions are held to one
+another in a stand-in tree (tools/rill-pilot3-tree.sh): a git repository
+where each build is a stub that touches its output, and a stub
+tools/bench-vm.py prints ratios made from each configuration's name.
+Everything between the commands is done for real: the pads written into
+a copy of native-kernel.4, the worktree made and removed, the
+configuration file, the bench's lines read by a regular expression, the
+geometric means, the table.
+
+What the Rill version needed, in the runtime and both compilers: `cd DIR`
+and `cd DIR { ... }` (back where it was after the block), `contains`,
+`replace`, `decimal(text)`, `log` and `exp` (fixed point, worked at 10^9
+and rounded to the six places - within one unit of Python's in the sixth
+place), `min` and `max` of a list, `+=` on a decimal.
+
+Its defects, all three in the paper rewrite, found reading it against what
+it needed before its first run:
+
+| # | defect | class |
+|---|---|---|
+| 1 | `kernel $tree $p` - a def called as a command, which passes no arguments | Rill's syntax |
+| 2 | `return made` - a bare word where `$made` was meant | the `$` rule |
+| 3 | `s = 0` summing logarithms, and `-> number` - decimals needed | Rill's kinds |
+
+And four faults in the implementation, found building and running it: the
+runtime used -ROT, which only the compiler (loaded after it) defines; a
+word left outside a stack comment; S= given an address without its length
+(the stack-slot slip again); a negative logarithm rounded by floored
+division. With those fixed, the first run printed the original's table,
+through both compilers.
+
+| native-ab-layouts | Python | Rill | Forth |
+|---|---:|---:|---:|
+| code lines | 87 | 65 | next |
+| code characters | 3,863 | 2,481 (-35.8 %) | next |
+| defects | (the reference) | 3, before the first run | next |
+| time in the stand-in tree, best of three | 231 ms | 300 ms | next |
+
+Here Rill is shorter than Python by a third: the script is commands -
+git, make, sed, a build script, the bench - which Python writes as
+subprocess calls and strings and Rill writes as commands.

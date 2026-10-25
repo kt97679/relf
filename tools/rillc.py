@@ -283,6 +283,14 @@ class Compiler:
         if name in ('starts', 'ends'):
             need(2); return '%s %s %s' % (self.to_text(*a[0]), self.to_text(*a[1]), 'R-STARTS' if name == 'starts' else 'R-ENDS'), 'bool'
         if name == 'sum': need(1); return '%s R-SUM' % a[0][0], 'number'
+        dec = lambda c, k: c if k == 'decimal' else c + ' 1000000 *' if k == 'number' else c + ' R-ANY>DEC'   # 760
+        if name in ('max', 'min') and len(a) == 1:                     # max(list), min(list): an item (760)
+            return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
+        if name == 'log': need(1); return '%s R-LOG' % dec(*a[0]), 'decimal'
+        if name == 'exp': need(1); return '%s R-EXP' % dec(*a[0]), 'decimal'
+        if name == 'decimal': need(1); return '%s R-TEXT>DEC' % self.to_text(*a[0]), 'decimal'
+        if name == 'contains': need(2); return '%s %s R-CONTAINS' % (self.to_text(*a[0]), self.to_text(*a[1])), 'bool'
+        if name == 'replace': need(3); return '%s %s %s R-REPLACE' % tuple(self.to_text(*x) for x in a), 'text'
         if name in ('max', 'min'):
             need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
             conv = (lambda c, k: c + ' 1000000 *' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
@@ -381,6 +389,9 @@ class Compiler:
         k, v, line = self.peek()[:3]
         start = self.i
         if v == 'if': out = self.if_()
+        elif k == 'word' and v == 'cd' and self.peek(1)[1] not in ('=', '(', '['):     # cd DIR, cd DIR { ... } (760)
+            self.i += 1; r = self.arg_item(); c = self.to_text(*r) if isinstance(r, tuple) else r
+            out = 'R-CWD-PUSH %s R-CD %s R-CWD-POP' % (c, self.block()) if self.peek()[1] == '{' else '%s R-CD' % c
         elif v == 'while':
             self.i += 1; c = self.cond()
             out = 'BEGIN %s WHILE %s REPEAT' % (c, self.block())
@@ -426,7 +437,7 @@ class Compiler:
             sc = self.scope()
             if op != '=':
                 vk = self.kind_of(name, line)
-                if vk not in ('number', 'any'): raise Error('line %d: %s needs a number to change' % (line, op))
+                if vk not in ('number', 'any', 'decimal'): raise Error('line %d: %s needs a number to change' % (line, op))
                 c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, vk, c, kd)
                 if vk == 'any': c, kd = self.box(c, kd), 'any'          # an item holding a number stays an item (758)
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':

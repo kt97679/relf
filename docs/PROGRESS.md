@@ -784,6 +784,7 @@ do not trust the absence of a line below.
 - 757 — second pilot, Forth first: dead-words.fth matches all three cases (1 defect: kernel name clash); 7,156 chars vs Python's 3,299
 - 758 — values, sort, split and items as containers in both compilers; dead-words.rill runs but is wrong (57 roots vs 77), 5 defects logged
 - 759 — true/false literals; dead-words.rill matches all three cases; both pilots: Rill +5-9 % over Python, Forth ~2x; defects Rill 5+5, Forth 0+1
+- 760 — third pilot, Rill first: native-ab-layouts.rill matches in a stand-in tree; -35.8 % against Python; cd, log/exp, contains, replace
 
 ### Not tied to an iteration
 

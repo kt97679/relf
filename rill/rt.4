@@ -425,3 +425,52 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
 : R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-PUT ELSE SWAP R-ANY>NUM R-SET THEN ;
 : R-BOOL>TEXT ( f --- t )   IF S" true" ELSE S" false" THEN R-TEXT ;   \ a bool as text (759)
+
+\ ---- What the third pilot needs (Iteration 760) ----------------------------
+: R-CONTAINS ( t s --- f )   \ contains(text, part)
+  R-T@ SP-U ! SP-A !  R-T@ SP-FIND 0< 0= ;
+VARIABLE RP-NEW
+: R-REPLACE ( t old new --- t2 )   \ replace(text, old, new): every old made new
+  RP-NEW !  R-SPLIT  RP-NEW @ R-JOIN ;
+: R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000
+  R-T@ OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
+  2DUP [CHAR] . SCAN                                          ( a u a2 u2 )
+  2SWAP DROP 2 PICK OVER -                                    ( a2 u2 a ulen )
+  0 0 2SWAP >NUMBER 2DROP DROP 1000000 *                      ( a2 u2 whole )
+  ROT ROT DUP IF 1 /STRING THEN                                  ( whole fa fu )
+  0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP
+  +  R> IF NEGATE THEN ;
+693147181 CONSTANT R-LN2   \ at 10^9, the scale log and exp work in before rounding to 10^6
+: R-LOG ( d --- d2 )   \ log(x), natural, fixed point: x = m 2^k, ln m = 2 atanh((m-1)/(m+1))
+  DUP 0> 0= ABORT" rill: log of a number not above 0"
+  0 SWAP  BEGIN DUP 2000000 < 0= WHILE 2/ SWAP 1+ SWAP REPEAT
+  BEGIN DUP 1000000 < WHILE 2* SWAP 1- SWAP REPEAT             ( k m )
+  1000 *  DUP 1000000000 - 1000000000 ROT 1000000000 + */     ( k y, at 10^9 )
+  DUP DUP 1000000000 */                                       ( k y y2 )
+  SWAP 0 SWAP 1                                               ( k y2 sum term n )
+  BEGIN OVER WHILE  2DUP / >R ROT R> + ROT ROT  SWAP 3 PICK 1000000000 */ SWAP 2 +  REPEAT
+  2DROP NIP 2*  SWAP R-LN2 * +  DUP 0< IF NEGATE 500 + 1000 / NEGATE ELSE 500 + 1000 / THEN ;
+: R-EXP ( d --- d2 )   \ exp(x), fixed point: x = k ln2 + r, e^r by its series
+  1000 *  DUP R-LN2 2/ + R-LN2 /  OVER R-LN2 2/ NEGATE < IF 1- THEN   ( x k )
+  DUP R-LN2 * ROT SWAP -                                      ( k r, at 10^9 )
+  1000000000 1000000000 1                                     ( k r sum term n )
+  BEGIN OVER WHILE  >R  2 PICK 1000000000 */ R@ /  SWAP OVER + SWAP  R> 1+ REPEAT
+  2DROP NIP                                                   ( k sum )
+  SWAP DUP 0< IF NEGATE 0 ?DO 2/ LOOP ELSE 0 ?DO 2* LOOP THEN  500 + 1000 / ;
+VARIABLE LM-K
+: R-LMIN ( l --- box )   \ min(list): its least item, as Python's min
+  DUP R-LEN 0= ABORT" rill: min of an empty list"
+  DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER SWAP R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
+: R-LMAX ( l --- box )   \ max(list): its greatest item
+  DUP R-LEN 0= ABORT" rill: max of an empty list"
+  DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
+: R-CD ( t --- )   \ cd DIR
+  DUP R-CSTR CHDIR IF ." rill: cd: cannot change to " R-TYPE R-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
+VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
+: R-CWD-PUSH ( --- )
+  CWD-STACK @ 0= IF R-NEW-LIST CWD-STACK ! THEN
+  4096 R-ALLOT DUP 4096 GETCWD DROP R-TEXT K-TEXT R-BOX CWD-STACK @ R-PUSH ;
+: R-CWD-POP ( --- )   CWD-STACK @ DUP R-LEN 1- R-AT R-ANY>TEXT R-CD  -1 CWD-STACK @ +! ;
+: R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
+  R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
+  K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-NL 1 R-STATUS ! -4000 THROW ;

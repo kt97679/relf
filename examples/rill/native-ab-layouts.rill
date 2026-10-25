@@ -29,16 +29,16 @@ def kernel tree p {
 def shells tree tag -> list {
     made = []
     for p in split($padtext, ",") {
-        kernel $tree $p
+        kernel($tree, $p)
         file = "$out/$tag-p$p"
         cd $tree { env NATIVE_LAYOUT_PAD=$p sh "$root/tools/build-native-shell.sh" $file }
         made = [@made {name: "$tag-p$p", path: $file}]
     }
-    return made
+    return $made
 }
 
-def gm xs -> number {
-    s = 0
+def gm xs -> decimal {
+    s = 0.0
     for x in $xs { s += log($x) }
     return exp($s / len($xs))
 }

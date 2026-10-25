@@ -354,6 +354,9 @@ VARIABLE FLD-POS
 : ARG ( --- kind )   1 EXPR  S" ," CUR-IS? IF NEXT-TK THEN ;
 VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
 : CONT ( kind --- )   K-ANY = IF S" R-UNBOX DROP" OUT+ THEN ;   \ an item holding a list or record, unboxed (758)
+: TO-DEC ( kind --- )   \ a value made a decimal (760)
+  DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP S" 1000000 *" OUT+ EXIT THEN
+  K-ANY = IF S" R-ANY>DEC" OUT+ EXIT THEN  S" needs a number or a decimal" ERR ;
 : LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
   2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
@@ -398,9 +401,15 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" sum" S= IF 2DROP ARG DROP S" R-SUM" OUT+ K-NUM -1 EXIT THEN
   2DUP S" at" S= IF 2DROP ARG DROP ARG TO-TEXT ARG BOX S" R-AT-OR" OUT+ K-ANY -1 EXIT THEN
   2DUP S" sort-by" S= IF 2DROP ARG DROP ARG TO-TEXT ARG TO-TEXT S" R-SORT-BY" OUT+ K-REC -1 EXIT THEN
+  2DUP S" log" S= IF 2DROP ARG TO-DEC S" R-LOG" OUT+ K-DEC -1 EXIT THEN          \ 760
+  2DUP S" exp" S= IF 2DROP ARG TO-DEC S" R-EXP" OUT+ K-DEC -1 EXIT THEN
+  2DUP S" decimal" S= IF 2DROP ARG TO-TEXT S" R-TEXT>DEC" OUT+ K-DEC -1 EXIT THEN
+  2DUP S" contains" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-CONTAINS" OUT+ K-BOOL -1 EXIT THEN
+  2DUP S" replace" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-REPLACE" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" max" S= >R 2DUP S" min" S= R> OR IF                       \ numbers, or decimals if either is one
      S" max" S= IF S" MAX" ELSE S" MIN" THEN LB-W2 ! LB-W1 !
-     ARG OUT-POS LB-POS ! ARG                                       ( k1 k2 )
+     ARG  S" )" CUR-IS? IF CONT LB-W1 @ LB-W2 @ S" MAX" S= IF S" R-LMAX" ELSE S" R-LMIN" THEN OUT+ K-ANY -1 EXIT THEN   \ of a list (760)
+     OUT-POS LB-POS ! ARG                                           ( k1 k2 )
      2DUP K-DEC = SWAP K-DEC = OR IF
        OVER K-NUM = IF S" 1000000 *" LB-POS @ OUT-INSERT THEN        \ the first made a decimal where it stands
        DUP K-NUM = IF S" 1000000 *" OUT+ THEN  2DROP  LB-W1 @ LB-W2 @ OUT+ K-DEC -1 EXIT
@@ -661,6 +670,7 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
     >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ AS-VK !
+  AS-VK @ K-DEC = IF 2DUP VAR-REF S" @" OUT+ 1 EXPR TO-DEC R> IF S" +" ELSE S" -" THEN OUT+ VAR-REF S" !" OUT+ EXIT THEN   \ 760
   AS-VK @ K-NUM <> AS-VK @ K-ANY <> AND IF S" += and -= need a number to change" ERR THEN
   2DUP VAR-REF S" @" OUT+  AS-VK @ K-ANY = IF S" R-ANY>NUM" OUT+ THEN   \ an item holding a number (758)
 \ [gene short]
@@ -944,8 +954,13 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
   DUP K-REC = IF DROP IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-PUT" OUT+ EXIT THEN
   K-ANY = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-ASSIGN-ANY" OUT+ EXIT THEN      \ 758
   S" is not a list or a record" ERR ;
+VARIABLE CD-P
+: CD-STMT ( --- )   \ cd DIR; cd DIR { ... }: back where it was after the block (760)
+  NEXT-TK OUT-POS CD-P !  ARG-ITEM S" R-CD" OUT+
+  S" {" CUR-IS? IF S" R-CWD-PUSH" CD-P @ OUT-INSERT  BLOCK  S" R-CWD-POP" OUT+ THEN ;
 : STATEMENT-IMPL ( --- )
   S" if" CUR-IS? IF IF-STMT EXIT THEN
+  S" cd" CUR-IS? IF TK 1+ T@ 2DUP S" =" S= >R 2DUP S" (" S= >R S" [" S= R> OR R> OR 0= IF CD-STMT EXIT THEN THEN
   S" while" CUR-IS? IF WHILE-STMT EXIT THEN
   S" return" CUR-IS? IF RETURN-STMT EXIT THEN
   S" def" CUR-IS? IF DEF-STMT EXIT THEN
