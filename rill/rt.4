@@ -8,7 +8,7 @@
 \ and never freed piecemeal: a script's values live until it ends.
 
 VARIABLE R-TOP   VARIABLE R-END
-: R-ARENA-INIT ( --- )   16777216 DUP ALLOCATE THROW DUP R-TOP ! + R-END ! ;
+: R-ARENA-INIT ( --- )   134217728 DUP ALLOCATE THROW DUP R-TOP ! + R-END ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
 : R-ALLOT ( n --- addr )
   ALIGNED R-TOP @ SWAP OVER + DUP R-END @ U> ABORT" rill: the arena is full" R-TOP ! ;
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
@@ -342,7 +342,9 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
 : R-WRITE ( path t --- )   \ write(path, text): the file made, or made again, holding the text
   SWAP DUP R-T@ W/O OPEN-FILE IF DROP ." rill: cannot write " R-TYPE R-NL -4006 THROW THEN
   NIP SWAP R-T@ 2 PICK WRITE-FILE DROP CLOSE-FILE DROP ;
-: R-STARTS ( t prefix --- f )   R-T@ ROT R-T@ ( pa pu ta tu ) 2 PICK < IF 2DROP 2DROP 0 EXIT THEN  OVER COMPARE 0= ;
+: R-STARTS ( t prefix --- f )   \ < takes tu: three cells left, not four - a text shorter than the prefix
+  \ dropped a cell too many, and the pilot's 2,402 lines ran the stack under (755)
+  R-T@ ROT R-T@ ( pa pu ta tu ) 2 PICK < IF 2DROP DROP 0 EXIT THEN  OVER COMPARE 0= ;
 : R-ENDS ( t suffix --- f )
   R-T@ ROT R-T@ 2 PICK OVER > IF 2DROP 2DROP 0 EXIT THEN    ( sa su ta tu )
   2 PICK - + OVER COMPARE 0= ;

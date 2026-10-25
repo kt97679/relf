@@ -75,6 +75,11 @@ class Compiler:
             if op == 'not' and self.peek(1)[1] == 'in': op = 'not in'
             if op not in self.PREC or self.peek()[0] not in ('op', 'kw', 'word') or self.PREC[op] < minp: return code, kind
             self.i += 2 if op == 'not in' else 1
+            if op in ('and', 'or'):                 # short-circuit (755): the right side only when it decides
+                if getattr(self, 'stack', None): self.depth -= 1        # the left one dropped before the right is made
+                rcode, rkind = self.expr(self.PREC[op] + 1)
+                code, kind = '%s DUP %sIF DROP %s THEN' % (code, '' if op == 'and' else '0= ', rcode), 'bool'
+                continue
             rcode, rkind = self.expr(self.PREC[op] + 1)
             code, kind = self.binop(op, code, kind, rcode, rkind)
     def binop(self, op, a, ak, b, bk):

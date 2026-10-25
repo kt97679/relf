@@ -779,6 +779,7 @@ do not trust the absence of a line below.
 - 752 — scripts weighed x10 by volume; truth adopted, boxsmall and rxanchor removed; the default at the optimum within 0.01 %
 - 753 — loopvar and echolit adopted (score 3.956, w-range 0.72 in real time); inline tried and taken out
 - 754 — the library for Python-born scripts (texts, files, sort-by, decimals, ...) in both compilers; the pilot compiles, a run-time fault open
+- 755 — the pilot's Rill version matches Python's 40 lines (+5.2 % length, 8x the time); and/or short-circuit; R-STARTS fixed
 
 ### Not tied to an iteration
 

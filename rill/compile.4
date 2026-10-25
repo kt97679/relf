@@ -593,6 +593,10 @@ VARIABLE BL-POS   VARIABLE BL-K
   >R UNARY
   BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
     TK >R NEXT-TK  R@ T@ S" not" S= IF NEXT-TK THEN              \ not in: two tokens
+    R@ T@ S" and" S= R@ T@ S" or" S= OR IF                        \ short-circuit (755): rillc.py's expr()
+      DROP  S" DUP" OUT+  R@ T@ S" or" S= IF S" 0=" OUT+ THEN  S" IF DROP" OUT+  -1 DEPTH+
+      R> PREC-OF 1+ EXPR DROP  S" THEN" OUT+  K-BOOL
+    ELSE
 \ [gene short]
     R@ SHORT-FORM  2 PICK K-DEC = IF 2DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
@@ -600,6 +604,7 @@ VARIABLE BL-POS   VARIABLE BL-K
 \ [gene !short]
     OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP
 \ [/gene]
+    THEN
   REPEAT R> DROP ;
 ' EXPR-IMPL IS EXPR
 

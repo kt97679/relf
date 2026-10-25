@@ -114,7 +114,7 @@ def driver(path, measure):
     d = os.path.join(OUT, 'drv-%s.4' % hashlib.sha1((path + str(measure)).encode()).hexdigest()[:8])
     if measure:
         text = ('S" %s" R-SLURP R-COMPILE R-BLANKS EVALUATE\n'     # ." prints only compiled: a word for it
-                ': ARENA.  ." ARENA " 16777216 R-END @ R-TOP @ - - . R-NL ;  ARENA.\n' % path)
+                ': ARENA.  ." ARENA " 134217728 R-END @ R-TOP @ - - . R-NL ;  ARENA.\n' % path)
     else:
         text = 'S" %s" .RILL\n' % path
     open(d, 'w').write(text); return d

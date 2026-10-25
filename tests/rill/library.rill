@@ -12,3 +12,13 @@ pct = 100.0 * 181637 / 358902
 echo pct $pct {100.0 * 3 / max(0, 1)} {2.5 + 1} {max(1.5, 2)}
 idx = [$i for i, x in [p q r] if $i > 0]
 echo $idx
+# every library word called many times over: one left on the stack a call shows as an overflow (755)
+n = 0; i = 0
+while ($i < 3000) {
+    if (starts("abc", ab) and ends("abc", bc) and not starts("a", abc) and not ends("a", abc)) { n += 1 }
+    st = trim(upper(lower(slice(" x y ", 0, 4)))); sb = base("a/b/c")
+    sr = sort-by({p: {v: 2}, q: {v: 1}}, v, asc); ss = slice($sr, 0, 1); sa = at($sr, z, {v: 0})
+    sd = max(1.5, $i) + min(2, 3) + sum([1 2])
+    i += 1
+}
+echo balanced $n
