@@ -651,6 +651,14 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
   OR IF ." rill: a text and a number cannot be put in order" R-ERR-NL -4001 THROW THEN
   R-ANY>DEC >R R-ANY>DEC R>  2DUP < IF 2DROP -1 ELSE > IF 1 ELSE 0 THEN THEN ;
 
+: R-CAP-JOIN ( t1 t2 --- t )   \ $(a ?? b): the two captures as one - a line break between when both said something, as the shell keeps it (787)
+  OVER R-T@ NIP 0= IF NIP EXIT THEN  DUP R-T@ NIP 0= IF DROP EXIT THEN
+  S"  " R-TEXT DUP R-T@ DROP 10 SWAP C!  SWAP 3 R-CONCAT ;
+
+: R-DOT ( box name --- box )   \ "$x.f" with x an item: a record's field; anything else, its text then .f - as the shell reads "$x.f" (787)
+  OVER R-UNBOX NIP K-REC = IF SWAP R-UNBOX DROP R-GET EXIT THEN
+  >R R-ANY>TEXT S" ." R-TEXT R> 3 R-CONCAT K-TEXT R-BOX ;
+
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before
 \ it as written; a name starting with . only for a pattern that does; . and .. never. No wildcard:

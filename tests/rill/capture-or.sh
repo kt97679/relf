@@ -1,0 +1,5 @@
+x=$(sh -c 'echo one; exit 3' || echo two); echo "[$x]"
+y=$(echo fine || echo never); echo "[$y]"
+z=$(false || true); echo "[$z]"
+w=$(sh -c 'exit 1' || sh -c 'exit 2' || echo third); echo "[$w]"
+echo "in a string: $(false || echo fallback)"

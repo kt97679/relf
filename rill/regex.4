@@ -258,10 +258,20 @@ VARIABLE RX-WASEMPTY
 : R-ALL ( t pat --- l )   \ all(text, pattern): every match, as re.findall
   RX-COMPILE RX-TEXT!  R-NEW-LIST  0 RX-POS !  0 RX-WASEMPTY !
   BEGIN RX-NEXT-MATCH WHILE  RX-ITEM K-TEXT R-BOX OVER R-PUSH  RX-ADVANCE  REPEAT ;
+: RX-EXPAND ( repl --- t )   \ this match's replacement: \1 .. \9 its groups, \\ a backslash, as sed's (787)
+  DUP R-T@ [CHAR] \ SCAN NIP 0= IF EXIT THEN
+  R-T@ 0 FM-N !
+  BEGIN DUP WHILE
+    OVER C@ [CHAR] \ = OVER 1 > AND IF
+      OVER 1+ C@ DUP [CHAR] 1 [CHAR] 9 1+ WITHIN IF
+        [CHAR] 0 - DUP RX-NG @ > IF DROP ELSE RX-GROUP R-T@ FM-ADD THEN 2 /STRING
+      ELSE DUP [CHAR] \ = IF FM-CH 2 /STRING ELSE DROP OVER 1 FM-ADD 1 /STRING THEN THEN
+    ELSE OVER 1 FM-ADD 1 /STRING THEN
+  REPEAT 2DROP  FM-B @ FM-N @ R-TEXT ;
 : R-SUB ( t pat repl --- t2 )   \ sub(text, pattern, replacement): every match replaced, as re.sub
   >R RX-COMPILE RX-TEXT!  0 RX-POS !  0 RX-WASEMPTY !  0           ( n )  ( R: repl )
   BEGIN RX-NEXT-MATCH WHILE
-    RX-POS @ RX-SAVED @ RX-SLICE SWAP 1+  R@ SWAP 1+               \ the text before, the replacement
+    RX-POS @ RX-SAVED @ RX-SLICE SWAP 1+  R@ RX-EXPAND SWAP 1+     \ the text before, the replacement (its groups, 787)
     RX-ADVANCE
   REPEAT
   RX-POS @ RX-TN @ < IF RX-POS @ RX-TN @ RX-SLICE SWAP 1+ THEN

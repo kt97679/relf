@@ -1,0 +1,8 @@
+# "$x.f": a record's field, or - x not a record - x's text and then .f, as the shell reads it (787)
+def log-name name -> text { return "$name.log" }
+echo {log-name("build")}
+ops = [{name: "DUP", lab: "L_dup"} {name: "SWAP", lab: "L_swap"}]
+for x in $ops { echo "&&$x.lab for $x.name" }
+r = {a: {b: "deep"}}
+echo "$r.a.b"
+for f in ["one.txt" "two"] { echo "$f.bak" }

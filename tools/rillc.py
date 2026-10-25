@@ -285,7 +285,7 @@ class Compiler:
         if k == 'var' and v[1:] == getattr(self, 'loopvar', None): return 'I', 'number'      # gene loopvar (753)
         if k == 'var': return self.read_var(v[1:], line)
         if v == '$(':
-            c = self.command(capture=True); self.take('op', ')')
+            c = self.capture(); self.take('op', ')')
             return c + ' R-CHECK', 'text'
         if k == 'str': return self.string(v[1:-1], line), 'text'
         if k == 'raw': return self.lit(v[1:-1]), 'text'
@@ -426,7 +426,7 @@ class Compiler:
                 while depth: depth += {'(': 1, ')': -1}.get(body[j], 0); j += 1
                 sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                 sub.t = self.sub_tokens(body[i + 2:j - 1], line + body[:i + 2].count('\n')); sub.i = 0
-                parts.append(sub.command(capture=True) + ' R-CHECK'); pieces.append(('code', parts[-1])); i = j; continue
+                parts.append(sub.capture() + ' R-CHECK'); pieces.append(('code', parts[-1])); i = j; continue
             m = re.match(r'\$([A-Za-z_][A-Za-z0-9_]*)', body[i:])
             if m or c == '{':
                 if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
@@ -436,8 +436,9 @@ class Compiler:
                     while kind in ('record', 'any'):                  # "$host.name": a field, in a string too
                         f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
                         if not f: break
-                        code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
-                        code, kind = '%s %s R-GET' % (self.lit_text(f.group(1)), code), 'any'; i += f.end()
+                        if kind == 'any': code = '%s %s R-DOT' % (code, self.lit_text(f.group(1)))    # an item: R-DOT decides (787)
+                        else: code = '%s %s R-GET' % (self.lit_text(f.group(1)), code)
+                        kind = 'any'; i += f.end()
                     parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
                 else:
                     depth, j = 1, i + 1
@@ -719,6 +720,11 @@ class Compiler:
         c, kd = self.term()
         code = '%s %s %d R-RD-FILE' % (self.to_text(c, kd), self.MODES[op], self.PORTS[port])
         return code + (' 1 2 R-RD-DUP' if port == 'all' else '')
+    def capture(self):                    # $( cmd [?? cmd] ... ): its output, then its status - ?? runs the next if one fails (787)
+        c = self.command(capture=True)
+        while self.peek()[1] == '??':
+            self.i += 1; c = '%s DUP IF DROP %s >R R-CAP-JOIN R> THEN' % (c, self.command(capture=True))
+        return c
     def run_ahead(self):
         """After a (: a run, unless its second token makes it an expression."""
         second = self.peek(1)

@@ -255,3 +255,24 @@ spread (the built-in $args is not a spreadable name yet).
 - pack-results: note(...) calls, step(name, command text) run with sh -c,
   glob() for its three loops, sub() for trim-end, no on INT / on TERM. It
   next stops at line 44: `??` inside $(...).
+
+## Iteration 787: pack-results in Rill, as the shell script
+
+examples/rill/pack-results.rill runs and says what tools/pack-results.sh says
+with the optional work off - the same files in the pack, each the same once
+the steps' seconds and the dates are masked, the same printed summary, stderr
+and status; --help and an unknown argument as the shell's too. To compare
+again: run both with `--no-apply --no-clean --no-bench --no-profile
+--no-verify`, unpack each pack, mask `status N, S s` and the dates, diff.
+(Not in tests/rill/run: it runs make and writes packs into the checkout.)
+What it needed:
+- `$(a ?? b)`: a's output, or - a failing - b's after it, as the shell's
+  $(a || b), a line break kept between (tests/rill/capture-or.rill as sh).
+- `"$x.f"` with x an item: a record's field, else x's text and .f, decided
+  at run time (R-DOT) - a parameter holding a text, "$name.log", crashed.
+- sub()'s replacement: \1 .. \9 the groups, \\ a backslash, as sed's
+  (tests/rill/subst.rill as sed). It was taken as written.
+- The draft: `try { } else { }` written as a condition with and; the
+  shell's help text in its header; its own path made absolute before the
+  cd, the top three directories up; lines-text() for files of lines.
+Still waiting: run-utf8.

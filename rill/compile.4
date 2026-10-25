@@ -309,13 +309,16 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
 : SUB-ECHO-OFF ( --- ) ;   : SUB-ECHO-ON ( --- ) ;
 \ [/gene]
 VARIABLE FLD-POS
+: CAPTURE ( --- )   \ $( cmd [?? cmd] ... ): its output, then its status - ?? runs the next if one fails, as the shell's || (787)
+  -1 COMMAND-HOOK
+  BEGIN S" ??" CUR-IS? WHILE NEXT-TK S" DUP IF DROP" OUT+ -1 COMMAND-HOOK S" >R R-CAP-JOIN R> THEN" OUT+ REPEAT ;
 : SUB-ENTER ( --- old )   \ the sub-text's first line: its own text's, and the newlines before it there (786)
   TK-LINE0 @ DUP
   SUB-A @ RS-SRC @ U< 0= SUB-A @ RS-SRC @ SRC# @ + U< AND IF SUB-A @ RS-SRC @ ?DO I C@ 10 = IF 1+ THEN LOOP THEN
   TK-LINE0 ! ;
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
   SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
-  -1 COMMAND-HOOK S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  R> TK-LINE0 ! ;
+  CAPTURE S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  R> TK-LINE0 ! ;
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
   SUB-L ! SUB-A !  SUB-ENTER >R  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  R> R> TK-LINE0 ! ;
 4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
@@ -354,10 +357,11 @@ VARIABLE FLD-POS
       PIECE-START  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
       R> 2 PICK OVER - OUT-POS >R READ-VAR                     ( c-addr u kind )  ( R: the var's code )
       BEGIN DUP DUP K-REC = SWAP K-ANY = OR 3 PICK 1 > AND IF 2 PICK C@ [CHAR] . = 3 PICK 1+ C@ NAME-START? AND ELSE 0 THEN
-      WHILE                                                    \ "$host.name": a field
-        K-ANY = IF S" R-UNBOX DROP" OUT+ THEN  1 /STRING  OVER >R
+      WHILE                                                    \ "$host.name": a field - of an item, as R-DOT reads it (787)
+        >R  1 /STRING  OVER >R
         BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
-        R> 2 PICK OVER -  OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+  K-ANY
+        R> 2 PICK OVER -
+        R> K-ANY = IF LIT-TEXT S" R-DOT" OUT+ ELSE OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+ THEN  K-ANY
       REPEAT R> DROP
       TO-TEXT  PIECE-END  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
@@ -511,7 +515,7 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK TEXT-LIT K-TEXT EXIT THEN
   S" (" CUR-IS? IF NEXT-TK  RUN-COND? IF 0 COMMAND-HOOK S" 0=" OUT+ S" )" EXPECT K-BOOL EXIT THEN   \ a run is a term (745)
     1 EXPR S" )" EXPECT EXIT THEN
-  S" $(" CUR-IS? IF NEXT-TK -1 COMMAND-HOOK S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
+  S" $(" CUR-IS? IF NEXT-TK CAPTURE S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
   S" [" CUR-IS? IF NEXT-TK LIST-LIT EXIT THEN
   S" {" CUR-IS? IF NEXT-TK SKIP-NL-HOOK RECORD-LIT EXIT THEN
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN

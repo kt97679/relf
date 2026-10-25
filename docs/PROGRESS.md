@@ -811,6 +811,7 @@ do not trust the absence of a line below.
 - 784 — now(); pack-results compiles to line 25, its remaining needs listed
 - 785 — defs read the script's variables as Python's, set above or below; numbers read before they are set are errors, not 0
 - 786 — code((cmd)); on EXIT runs on INT and TERM; glob(); texts and items in order; @args; named undefined functions
+- 787 — pack-results in Rill says what the shell script says; $(a ?? b); "$x.f" safe on items; sub() group references
 
 ### Not tied to an iteration
 

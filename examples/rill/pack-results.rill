@@ -1,7 +1,45 @@
-# examples/rill/pack-results.rill - tools/pack-results.sh in Rill (Iteration 735)
-cd {dir(dir(abs($script)))}
+# tools/pack-results.sh in Rill (Iteration 735)
+# examples/rill/pack-results.rill - one command on the user's machine, one file back
+# (Iterations 657, 664; prompts/19-round-trip.md, whose template,
+# prompts/19-round-trip.sh, this follows). From the repository's top:
+#     sh tools/pack-results.sh               apply, clean, measure, pack
+#     sh tools/pack-results.sh --no-apply    leave the checkout's commit as it is
+#     sh tools/pack-results.sh --no-clean    keep every untracked file
+#     sh tools/pack-results.sh --no-bench    skip tools/bench-report.sh
+#     sh tools/pack-results.sh --no-profile  skip the native profile
+#     sh tools/pack-results.sh --verify      tests/verify too, eight minutes more
+# About three minutes on a fast x86-64, the machine otherwise idle. The
+# acceptance suite runs here, on every commit; on the user's machine only
+# when a reply asks for it (665: the user's time is the round trip's cost).
+#
+# 1. The newest bundle - relf-claude-iterN-*.bundle in $BUNDLE_DIR,
+#    ~/Downloads unless set - is applied to master if it is new, and only
+#    by fast-forward: not over changed tracked files, not when master has
+#    commits the bundle lacks, not off master. If applying it changed this
+#    script, the new one runs, from the start, with the same arguments.
+# 2. The clean: every untracked path, ignored or not - build products,
+#    caches, files of older layouts - moved to .clean-trash/, which keeps
+#    one run's worth. Kept where they are: what came from elsewhere - a
+#    report bench/reports/ does not hold byte for byte, a file in
+#    bench/reports/, a pack, a bundle.
+# 3. tools/bench-report.sh (SCALE and ROUNDS pass through to it),
+#    tools/native-written.py, tools/native-prof.py on the bench-vm
+#    workloads x100, and with --verify tests/verify - each output kept.
+# 4. One file, printed last: relf-results-HOST-COMMIT-UTC.tar.gz in the
+#    checkout's top. Send that back. In it: SUMMARY.txt - the bundle
+#    applied, each step's exit status and time, the checkout before and
+#    after, what the clean moved; reports/ - this run's report, and every
+#    bench-report-*.txt in the top that bench/reports/ lacks, as they
+#    came; each step's .log; untracked.txt and cleaned.txt.
+#
+# Receiving one: tar xzf PACK -C DIR; read SUMMARY.txt first; put
+# reports/* into bench/reports/ as they came, and commit them (prompts/11).
+#
+# The body is one function, called on the last line: the shell has read
+# all of it before a bundle can change this file under it.
+self = abs($script)                  # before the cd: $script may be relative (787)
+cd {dir(dir(dir($self)))}               # examples/rill/ is two below the top
 setenv(LC_ALL, C)
-self = $script
 opts = {clean: true, verify: false, profile: true, bench: true, apply: true}
 for a in $args {
     case $a {
@@ -16,6 +54,11 @@ for a in $args {
     }
 }
 
+def lines-text l -> text {           # each item a line, as a command's output: each line ended (787)
+    if (len($l) == 0) { return "" }
+    t = join($l, "\n")
+    return "$t\n"
+}
 def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
     warn "== $name =="
@@ -47,8 +90,9 @@ def apply-bundle -> record {
         fail "pack-results: tracked files are changed - $b not applied; commit or stash them, or --no-apply"
     }
     old = $(git rev-parse HEAD); before = $(git hash-object $self)
-    try { git fetch -q $best master err> /dev/null; git merge -q --ff-only FETCH_HEAD all> /dev/null }
-    else { fail "pack-results: $b does not fast-forward master (master has commits it lacks?) - not applied" }
+    if (not ((git fetch -q $best master err> /dev/null) and (git merge -q --ff-only FETCH_HEAD all> /dev/null))) {   # 787: no try
+        fail "pack-results: $b does not fast-forward master (master has commits it lacks?) - not applied"
+    }
     git fetch -q $best article-2026:article-2026 err> /dev/null ?? true
     applied = "$b applied: $(git rev-parse --short $old) -> $(git rev-parse --short HEAD)"
     warn "== $applied =="
@@ -86,7 +130,7 @@ for r in glob("bench-report-*.txt") {
 if ($opts.clean) {
     warn "== clean =="
     untracked = lines($(git clean -ndx | sed -n 's/^Would remove //p'))
-    write("$stage/untracked.txt", join($untracked, "\n"))
+    write("$stage/untracked.txt", lines-text($untracked))
     rm -rf .clean-trash.old
     if (test -d .clean-trash) { mv .clean-trash .clean-trash.old }
     mkdir -p .clean-trash
@@ -105,7 +149,7 @@ if ($opts.clean) {
     note("clean: {len($untracked)} untracked paths, {len($cleaned)} moved to .clean-trash/ (cleaned.txt)")
 } else {
     untracked = lines($(git status --porcelain --ignored | sed -n -e 's/^?? //p' -e 's/^!! //p'))
-    write("$stage/untracked.txt", join($untracked, "\n"))
+    write("$stage/untracked.txt", lines-text($untracked))
     note("clean: skipped (--no-clean); untracked paths: {len($untracked)} (untracked.txt)")
 }
 if ($opts.bench) {
