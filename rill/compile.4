@@ -1,0 +1,272 @@
+\ rill/compile.4 - Rill's compiler, in Forth (Iteration 740 on).
+\
+\ The port of tools/rillc.py, its oracle: for every program both can
+\ compile, the two must make the same Forth - word for word, blanks
+\ aside (tests/rill/oracle). Written for the image (SHELL-LANGUAGE.md
+\ Part 5): it reads a Rill script, makes Forth text, EVALUATEs it.
+\ Part 1: the tokenizer, the output text, the tables.
+
+: -ROT ( a b c --- c a b )   ROT ROT ;   \ not in the kernel
+\ ---- tokens -------------------------------------------------------------
+0 CONSTANT T-EOF   1 CONSTANT T-NL   2 CONSTANT T-STR   3 CONSTANT T-RAW
+4 CONSTANT T-VAR   5 CONSTANT T-OP   6 CONSTANT T-WORD  7 CONSTANT T-KW
+16384 CONSTANT TK-MAX
+VARIABLE TK-KIND  VARIABLE TK-AT  VARIABLE TK-LEN  VARIABLE TK-LINE   \ arrays, ALLOCATEd
+VARIABLE TK-N   VARIABLE TK-I
+VARIABLE SRC   VARIABLE SRC#   VARIABLE CUR-LINE
+: TK-ALLOC ( --- )
+  TK-MAX CELLS ALLOCATE THROW TK-KIND !  TK-MAX CELLS ALLOCATE THROW TK-AT !
+  TK-MAX CELLS ALLOCATE THROW TK-LEN !   TK-MAX CELLS ALLOCATE THROW TK-LINE ! ;
+: TK+ ( kind at len --- )
+  TK-N @ TK-MAX = ABORT" rill: the script has too many tokens"
+  TK-N @ CELLS TK-LEN @ + !  TK-N @ CELLS TK-AT @ + !  TK-N @ CELLS TK-KIND @ + !
+  CUR-LINE @ TK-N @ CELLS TK-LINE @ + !  1 TK-N +! ;
+: K@ ( i --- kind )   CELLS TK-KIND @ + @ ;
+: T@ ( i --- c-addr u )   DUP CELLS TK-AT @ + @ SRC @ +  SWAP CELLS TK-LEN @ + @ ;
+: L@ ( i --- line )   CELLS TK-LINE @ + @ ;
+: TOK-AT ( i --- offset )   CELLS TK-AT @ + @ ;
+: TOK-END ( i --- offset )   DUP TOK-AT SWAP CELLS TK-LEN @ + @ + ;
+
+: SRC-C@ ( pos --- c )   SRC @ + C@ ;
+: WORD-CHAR? ( c --- f )   \ not blank, not one of  " ' $ ( ) { } , ; < > = [ ]
+  DUP 33 < IF DROP 0 EXIT THEN
+  DUP [CHAR] " = OVER [CHAR] ' = OR OVER [CHAR] $ = OR OVER [CHAR] ( = OR OVER [CHAR] ) = OR
+  OVER [CHAR] { = OR OVER [CHAR] } = OR OVER [CHAR] , = OR OVER [CHAR] ; = OR OVER [CHAR] < = OR
+  OVER [CHAR] > = OR OVER [CHAR] = = OR OVER [CHAR] [ = OR SWAP [CHAR] ] = OR 0= ;
+: NAME-CHAR? ( c --- f )
+  DUP [CHAR] a [CHAR] z 1+ WITHIN OVER [CHAR] A [CHAR] Z 1+ WITHIN OR
+  OVER [CHAR] 0 [CHAR] 9 1+ WITHIN OR SWAP [CHAR] _ = OR ;
+: NAME-START? ( c --- f )   DUP [CHAR] 0 [CHAR] 9 1+ WITHIN 0= SWAP NAME-CHAR? AND ;
+: OPS2 ( --- c-addr u )   S" $(==!=<=>=>>+=-=->??" ;   \ the two-character operators, in pairs
+VARIABLE OPF   VARIABLE POS
+: OP2? ( pos --- f )   \ a two-character operator starts here
+  0 OPF !
+  DUP 1+ SRC# @ < 0= IF DROP 0 EXIT THEN
+  DUP SRC-C@ 8 LSHIFT SWAP 1+ SRC-C@ OR
+  OPS2 DROP 20 0 DO  DUP I + C@ 8 LSHIFT OVER I + 1+ C@ OR  2 PICK = IF -1 OPF ! THEN  2 +LOOP  2DROP OPF @ ;
+: OP1? ( c --- f )   \ one of  < > = ( ) { } , ; | [ ]
+  DUP [CHAR] < = OVER [CHAR] > = OR OVER [CHAR] = = OR OVER [CHAR] ( = OR OVER [CHAR] ) = OR
+  OVER [CHAR] { = OR OVER [CHAR] } = OR OVER [CHAR] , = OR OVER [CHAR] ; = OR OVER [CHAR] | = OR
+  OVER [CHAR] [ = OR SWAP [CHAR] ] = OR ;
+: KEYWORD? ( c-addr u --- f )
+  2DUP S" if" COMPARE 0= >R  2DUP S" else" COMPARE 0= R> OR >R  2DUP S" while" COMPARE 0= R> OR >R
+  2DUP S" def" COMPARE 0= R> OR >R  2DUP S" return" COMPARE 0= R> OR >R  2DUP S" and" COMPARE 0= R> OR >R
+  2DUP S" or" COMPARE 0= R> OR >R  2DUP S" not" COMPARE 0= R> OR >R  2DUP S" for" COMPARE 0= R> OR >R
+  2DUP S" in" COMPARE 0= R> OR >R  S" break" COMPARE 0= R> OR ;
+: AT-END? ( pos --- f )   SRC# @ < 0= ;
+: SCAN-STR ( --- )   \ "..." with \ escapes, to its closing quote
+  POS @ 1+  BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ [CHAR] " <> THEN
+  WHILE DUP SRC-C@ [CHAR] \ = IF 1+ THEN 1+ REPEAT
+  DUP AT-END? 0= IF 1+ THEN  T-STR POS @ ROT DUP >R OVER - TK+  R> POS ! ;
+: SCAN-RAW ( --- )   \ '...', nothing escaped
+  POS @ 1+  BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ [CHAR] ' <> THEN WHILE 1+ REPEAT
+  DUP AT-END? 0= IF 1+ THEN  T-RAW POS @ ROT DUP >R OVER - TK+  R> POS ! ;
+: SCAN-WHILE ( pos xt --- end )   >R BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ R@ EXECUTE THEN WHILE 1+ REPEAT R> DROP ;
+VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WORD-XT !XT
+: SCAN-VAR ( --- )   POS @ 1+ NAME-XT @XT SCAN-WHILE  T-VAR POS @ ROT DUP >R OVER - TK+  R> POS ! ;
+: SCAN-WORD ( --- )
+  POS @ WORD-XT @XT SCAN-WHILE  DUP POS @ - >R                 ( end )  ( R: len )
+  POS @ SRC @ + R@ KEYWORD? IF T-KW ELSE T-WORD THEN  POS @ R> TK+  POS ! ;
+: SKIP-COMMENT ( --- )   BEGIN POS @ AT-END? IF 0 ELSE POS @ SRC-C@ 10 <> THEN WHILE 1 POS +! REPEAT ;
+: TOKEN-1 ( --- )
+  POS @ SRC-C@
+  DUP 10 = IF DROP T-NL POS @ 1 TK+  1 CUR-LINE +!  1 POS +! EXIT THEN
+  DUP 33 < IF DROP 1 POS +! EXIT THEN
+  DUP [CHAR] # = IF DROP SKIP-COMMENT EXIT THEN
+  DUP [CHAR] " = IF DROP SCAN-STR EXIT THEN
+  DUP [CHAR] ' = IF DROP SCAN-RAW EXIT THEN
+  DUP [CHAR] $ = IF  POS @ 1+ AT-END? 0= IF POS @ 1+ SRC-C@ NAME-START? IF DROP SCAN-VAR EXIT THEN THEN  THEN
+  POS @ OP2? IF DROP T-OP POS @ 2 TK+  2 POS +! EXIT THEN
+  DUP OP1? IF DROP T-OP POS @ 1 TK+  1 POS +! EXIT THEN
+  DUP WORD-CHAR? IF DROP SCAN-WORD EXIT THEN
+  DROP 1 POS +! ;
+: TOKENIZE ( c-addr u --- )
+  SRC# ! SRC !  0 TK-N !  1 CUR-LINE !  0 POS !
+  BEGIN POS @ AT-END? 0= WHILE TOKEN-1 REPEAT
+  T-EOF SRC# @ 0 TK+ ;
+: .TOKENS ( --- )   \ for tests/rill/oracle: one token a line, kind and text
+  TK-N @ 0 ?DO  I K@ .  I L@ .  I T@ TYPE  R-NL  LOOP ;
+
+\ ---- Part 2: output, tables, expressions (Iteration 740) ----------------
+\ Code is written as text into one of two buffers - the defs and R-MAIN -
+\ each piece followed by a blank; names to declare are gathered and
+\ sorted at the end, as rillc.py's program() does.
+VARIABLE MAIN-B  VARIABLE MAIN#  VARIABLE DEFS-B  VARIABLE DEFS#  VARIABLE CUR-B  VARIABLE CUR#A
+: BUF-ALLOC ( --- )   1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B !  0 MAIN# !  0 DEFS# ! ;
+: TO-MAIN ( --- )   MAIN-B CUR-B !  MAIN# CUR#A ! ;
+: TO-DEFS ( --- )   DEFS-B CUR-B !  DEFS# CUR#A ! ;
+: OUT+ ( c-addr u --- )   \ a piece of code and a blank
+  CUR-B @ @ CUR#A @ @ + SWAP DUP >R MOVE  R> CUR#A @ +!  BL CUR-B @ @ CUR#A @ @ + C!  1 CUR#A @ +! ;
+: OUT-NUM ( n --- )   DUP ABS 0 <# #S ROT SIGN #> OUT+ ;
+: OUT-POS ( --- n )   CUR#A @ @ ;
+
+\ names: a table of name (address, length), kind, and whether it is a
+\ def's local; kinds K-NUM K-TEXT K-BOOL, and 9 for a box (any)
+9 CONSTANT K-ANY
+256 CONSTANT NM-MAX
+CREATE NM-A NM-MAX CELLS ALLOT  CREATE NM-L NM-MAX CELLS ALLOT  CREATE NM-K NM-MAX CELLS ALLOT  CREATE NM-LOC NM-MAX CELLS ALLOT
+VARIABLE NM-N   VARIABLE IN-DEF
+: NM-FIND ( c-addr u --- i | -1 )   \ the def's local first, then the script's
+  -1 >R  NM-N @ 0 ?DO
+    2DUP NM-A I CELLS + @ NM-L I CELLS + @ COMPARE 0= IF
+      NM-LOC I CELLS + @ IF R> DROP I >R ELSE R@ 0< IF R> DROP I >R THEN THEN
+    THEN LOOP 2DROP R> ;
+: NM-ADD ( c-addr u kind local? --- )
+  NM-N @ NM-MAX = ABORT" rill: too many names"
+  NM-LOC NM-N @ CELLS + !  NM-K NM-N @ CELLS + !  NM-L NM-N @ CELLS + !  NM-A NM-N @ CELLS + !  1 NM-N +! ;
+: NM-DROP-LOCALS ( --- )   \ a def's names leave with it
+  0 NM-N @ 0 ?DO  NM-LOC I CELLS + @ 0= IF
+    NM-A I CELLS + @ NM-A 2 PICK CELLS + !  NM-L I CELLS + @ NM-L 2 PICK CELLS + !
+    NM-K I CELLS + @ NM-K 2 PICK CELLS + !  0 NM-LOC 2 PICK CELLS + !  1+ THEN  LOOP NM-N ! ;
+\ every name declared as a VARIABLE, once
+CREATE DC-A NM-MAX CELLS ALLOT  CREATE DC-L NM-MAX CELLS ALLOT  VARIABLE DC-N
+: DECLARE ( c-addr u --- )
+  DC-N @ 0 ?DO  2DUP DC-A I CELLS + @ DC-L I CELLS + @ COMPARE 0= IF 2DROP UNLOOP EXIT THEN  LOOP
+  DC-L DC-N @ CELLS + !  DC-A DC-N @ CELLS + !  1 DC-N +! ;
+
+\ the token cursor
+: TK ( --- i )   TK-I @ ;
+: NEXT-TK ( --- )   1 TK-I +! ;
+: TK-IS? ( i c-addr u --- f )   ROT DUP K@ T-STR = OVER K@ T-RAW = OR IF DROP 2DROP 0 EXIT THEN T@ COMPARE 0= ;
+: CUR-IS? ( c-addr u --- f )   TK -ROT TK-IS? ;
+: EXPECT ( c-addr u --- )
+  2DUP CUR-IS? IF 2DROP NEXT-TK EXIT THEN
+  ." rillc: line " TK L@ . ." : expected " TYPE ." , found " TK T@ TYPE R-NL -4100 THROW ;
+: ERR ( c-addr u --- )   ." rillc: line " TK L@ . ." : " TYPE R-NL -4100 THROW ;
+
+\ ---- Part 3: expressions (Iteration 740) --------------------------------
+VARIABLE STACKMODE   VARIABLE DEPTH
+CREATE PRM-A 16 CELLS ALLOT  CREATE PRM-L 16 CELLS ALLOT  VARIABLE PRM-N   \ a pure def's parameters
+: S= ( c-addr1 u1 c-addr2 u2 --- f )   COMPARE 0= ;
+: OUT-INSERT ( c-addr u pos --- )   \ text and a blank put in at pos
+  >R  CUR-B @ @ R@ +  DUP 2 PICK 1+ +  OUT-POS R@ - MOVE
+  DUP 1+ CUR#A @ +!
+  CUR-B @ @ R@ + SWAP DUP >R MOVE
+  BL CUR-B @ @ R> R> + + C! ;
+: DEPTH+ ( n --- )   STACKMODE @ IF DEPTH +! ELSE DROP THEN ;
+: NUMBER-TEXT? ( c-addr u --- f )   \ -?\d+
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ [CHAR] - = IF 1 /STRING DUP 0= IF 2DROP 0 EXIT THEN THEN
+  -1 -ROT 0 ?DO DUP I + C@ [CHAR] 0 [CHAR] 9 1+ WITHIN 0= IF NIP 0 SWAP LEAVE THEN LOOP DROP ;
+: PREC-OF ( i --- p )   \ an operator's precedence, 0 if it is none
+  DUP K@ DUP T-OP = OVER T-KW = OR SWAP T-WORD = OR 0= IF DROP 0 EXIT THEN
+  T@ 2DUP S" or" S= IF 2DROP 1 EXIT THEN  2DUP S" and" S= IF 2DROP 2 EXIT THEN
+  2DUP S" ==" S= >R 2DUP S" !=" S= R> OR >R 2DUP S" <" S= R> OR >R 2DUP S" <=" S= R> OR >R
+  2DUP S" >" S= R> OR >R 2DUP S" >=" S= R> OR IF 2DROP 3 EXIT THEN
+  2DUP S" +" S= >R 2DUP S" -" S= R> OR IF 2DROP 4 EXIT THEN
+  2DUP S" *" S= >R 2DUP S" /" S= R> OR >R S" %" S= R> OR IF 5 EXIT THEN  0 ;
+: OUT-C ( c --- )   CUR-B @ @ OUT-POS + C!  1 CUR#A @ +! ;
+: OUT-RAW ( c-addr u --- )   CUR-B @ @ OUT-POS + SWAP DUP >R MOVE  R> CUR#A @ +! ;
+: OUT-S" ( c-addr u --- )   \ S" text" R-TEXT
+  [CHAR] S OUT-C  34 OUT-C  BL OUT-C  OUT-RAW  34 OUT-C  BL OUT-C  S" R-TEXT" OUT+ ;
+: HAS-SPECIAL? ( c-addr u quote-only? --- f )   \ a quote - or a line end or a tab, unless quote-only
+  >R 0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR R@ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP R> DROP ;
+: OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
+: LIT-TEXT ( c-addr u --- )   2DUP 0 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;   \ rillc.py's lit_text
+: LIT ( c-addr u --- )   2DUP -1 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;      \ rillc.py's lit
+: TO-TEXT ( kind --- )   \ the value just made, as text
+  DUP K-TEXT = IF DROP EXIT THEN  K-ANY = IF S" R-ANY>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
+: TO-NUM ( kind --- )   DUP K-NUM = OVER K-BOOL = OR IF DROP EXIT THEN
+  K-ANY = IF S" R-ANY>NUM" OUT+ EXIT THEN  S" a number is needed here" ERR ;
+: K-CODE ( kind --- c-addr u )
+  DUP K-NUM = IF DROP S" K-NUM" EXIT THEN DUP K-TEXT = IF DROP S" K-TEXT" EXIT THEN  DROP S" K-BOOL" ;
+: BOX ( kind --- )   DUP K-ANY = IF DROP EXIT THEN  K-CODE OUT+ S" R-BOX" OUT+ ;
+
+\ defs: name, parameter count, return kind (0 none), pure
+CREATE DF-A 64 CELLS ALLOT  CREATE DF-L 64 CELLS ALLOT  CREATE DF-P 64 CELLS ALLOT
+CREATE DF-K 64 CELLS ALLOT  CREATE DF-PURE 64 CELLS ALLOT  VARIABLE DF-N  VARIABLE DF-CUR
+: DF-FIND ( c-addr u --- i | -1 )
+  -1 -ROT DF-N @ 0 ?DO 2DUP DF-A I CELLS + @ DF-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
+
+DEFER EXPR ( minp --- kind )
+: PARAM-AT ( c-addr u --- i | -1 )   \ a pure def's parameter
+  STACKMODE @ 0= IF 2DROP -1 EXIT THEN
+  -1 -ROT PRM-N @ 0 ?DO 2DUP PRM-A I CELLS + @ PRM-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
+: READ-VAR ( c-addr u --- kind )   \ $name, without its $
+  2DUP PARAM-AT DUP 0< 0= IF
+    NIP NIP  DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
+    DUP 0= IF DROP S" DUP" OUT+ ELSE DUP 1 = IF DROP S" OVER" OUT+ ELSE OUT-NUM S" PICK" OUT+ THEN THEN
+    K-NUM EXIT THEN  DROP
+  2DUP NM-FIND DUP 0< IF DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
+  >R  [CHAR] R OUT-C [CHAR] . OUT-C  OUT-RAW BL OUT-C  S" @" OUT+  NM-K R> CELLS + @ ;
+
+: SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ SRC @ SRC# @ CUR-LINE @ ;
+: RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
+VARIABLE SUB-A  VARIABLE SUB-L
+: SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
+  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  1 EXPR >R  RESTORE-TK  R> ;
+CREATE LITBUF 4096 ALLOT  VARIABLE LIT#  VARIABLE NPARTS
+: LIT-FLUSH ( force? --- )   \ the literal gathered so far, as one part
+  LIT# @ 0<> OR IF  LITBUF LIT# @ LIT-TEXT  1 NPARTS +!  THEN  0 LIT# ! ;
+: LIT-C ( c --- )   LITBUF LIT# @ + C!  1 LIT# +! ;
+: STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}
+  0 LIT# !  0 NPARTS !
+  BEGIN DUP WHILE
+    OVER C@  DUP [CHAR] \ = 2 PICK 1 > AND IF DROP
+      1 /STRING OVER C@ DUP [CHAR] n = IF DROP 10 ELSE DUP [CHAR] t = IF DROP 9 THEN THEN LIT-C 1 /STRING
+    ELSE DUP [CHAR] $ = 2 PICK 1 > AND IF  OVER 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
+      0 LIT-FLUSH  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
+      R> 2 PICK OVER - READ-VAR TO-TEXT  1 NPARTS +!  THEN
+    ELSE DUP [CHAR] { = IF DROP
+      0 LIT-FLUSH  1 /STRING  OVER >R  1 >R
+      BEGIN R@ WHILE OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
+      R> 2 PICK OVER - 1- SUB-EXPR TO-TEXT  1 NPARTS +!
+    ELSE LIT-C 1 /STRING THEN THEN THEN
+  REPEAT 2DROP
+  NPARTS @ 0= LIT-FLUSH
+  NPARTS @ 1 > IF NPARTS @ OUT-NUM S" R-CONCAT" OUT+ THEN  K-TEXT ;
+
+: KIND-WORD ( c-addr u --- kind )   \ the kind a def's -> names
+  2DUP S" number" S= IF 2DROP K-NUM EXIT THEN  2DUP S" text" S= IF 2DROP K-TEXT EXIT THEN
+  2DUP S" bool" S= IF 2DROP K-BOOL EXIT THEN  2DROP K-ANY ;
+: CALL ( --- kind )   \ name( args ), the name the current token
+  TK T@ NEXT-TK  S" (" EXPECT
+  2DUP S" len" S= IF 2DROP 1 EXPR DROP S" @" OUT+ S" )" EXPECT K-NUM EXIT THEN
+  2DUP S" number" S= IF 2DROP 1 EXPR TO-TEXT S" R-NUMBER" OUT+ S" )" EXPECT K-NUM EXIT THEN
+  2DUP DF-FIND DUP 0< IF DROP 2DROP S" a function is not defined (a def comes before its use)" ERR THEN
+  >R 2DROP 0
+  BEGIN S" )" CUR-IS? 0= WHILE
+    1 EXPR  DF-PURE R@ CELLS + @ IF DROP ELSE BOX THEN  1+
+    S" ," CUR-IS? IF NEXT-TK THEN
+  REPEAT NEXT-TK
+  DUP DF-P R@ CELLS + @ <> IF S" a function given the wrong number of arguments" ERR THEN
+  R@ DF-CUR @ = IF S" RECURSE" OUT+ ELSE
+    [CHAR] R OUT-C [CHAR] : OUT-C  DF-A R@ CELLS + @ DF-L R@ CELLS + @ OUT-RAW BL OUT-C THEN
+  DF-K R@ CELLS + @ DUP 0<> 1 AND ROT - DEPTH+  R> DROP ;
+: TERM ( --- kind )
+  TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
+  TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
+  TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
+  TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK LIT K-TEXT EXIT THEN
+  S" (" CUR-IS? IF NEXT-TK 1 EXPR S" )" EXPECT EXIT THEN
+  TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN  TK T@ NEXT-TK LIT K-TEXT EXIT THEN
+  S" unexpected token" ERR ;
+: UNARY ( --- kind )
+  S" not" CUR-IS? IF NEXT-TK RECURSE DROP S" 0=" OUT+ K-BOOL EXIT THEN
+  TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE DROP S" NEGATE" OUT+ K-NUM EXIT THEN
+  TERM ;
+: SHORT-FORM ( opi --- c-addr u | 0 0 )   \ the right side a lone 1 or 0, and a one-word form for it
+  TK K@ T-WORD = 0= IF DROP 0 0 EXIT THEN
+  TK 1+ PREC-OF OVER PREC-OF > IF DROP 0 0 EXIT THEN
+  TK T@ S" 1" S= IF T@ 2DUP S" +" S= IF 2DROP S" 1+" EXIT THEN S" -" S= IF S" 1-" EXIT THEN 0 0 EXIT THEN
+  TK T@ S" 0" S= IF T@ 2DUP S" >" S= IF 2DROP S" 0>" EXIT THEN 2DUP S" <" S= IF 2DROP S" 0<" EXIT THEN
+    2DUP S" ==" S= IF 2DROP S" 0=" EXIT THEN S" !=" S= IF S" 0<>" EXIT THEN 0 0 EXIT THEN
+  DROP 0 0 ;
+: BINOP ( lk lpos rk opi --- kind )
+  >R NIP
+  R@ T@ S" and" S= R@ T@ S" or" S= OR IF 2DROP R> T@ S" and" S= IF S" AND" ELSE S" OR" THEN OUT+ K-BOOL EXIT THEN
+  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  2 PICK K-TEXT = AND  OVER K-TEXT = AND IF
+    2DROP S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
+  TO-NUM TO-NUM  -1 DEPTH+
+  R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" *" ELSE R@ T@ S" /" S= IF S" /" ELSE
+  R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
+  R@ T@ S" >" S= IF S" >" ELSE R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN ;
+: EXPR-IMPL ( minp --- kind )
+  >R UNARY
+  BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
+    TK >R NEXT-TK
+    R@ SHORT-FORM DUP IF  NEXT-TK OUT+  DROP  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN
+    ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
+  REPEAT R> DROP ;
+' EXPR-IMPL IS EXPR

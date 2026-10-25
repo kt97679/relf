@@ -1,0 +1,74 @@
+\ rill/compile-part4.draft - part 4 of rill/compile.4, unfinished (Iteration 740): not loaded.
+\ The non-pure def header, the program assembly and the driver are still to write.
+
+\ ---- Part 4: statements, defs, the program (Iteration 740) --------------
+DEFER STATEMENT
+: SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
+: BLOCK ( --- )   S" {" EXPECT SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK ;
+: COND ( --- )   S" (" EXPECT 1 EXPR DROP S" )" EXPECT ;
+: IF-STMT ( --- )
+  S" if" EXPECT COND -1 DEPTH+ S" IF" OUT+ BLOCK
+  TK-I @ >R SKIP-NL
+  S" else" CUR-IS? IF R> DROP NEXT-TK S" ELSE" OUT+ S" if" CUR-IS? IF RECURSE ELSE BLOCK THEN S" THEN" OUT+ EXIT THEN
+  R> TK-I ! S" THEN" OUT+ ;
+: WHILE-STMT ( --- )   NEXT-TK S" BEGIN" OUT+ COND S" WHILE" OUT+ BLOCK S" REPEAT" OUT+ ;
+: RETURN-STMT ( --- )
+  NEXT-TK 1 EXPR DROP  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN  S" EXIT" OUT+ ;
+: VAR-REF ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
+: BIND ( c-addr u kind --- )   \ name gets a kind: a new name, or the same kind again
+  >R 2DUP NM-FIND DUP 0< 0= IF  DUP NM-LOC SWAP CELLS + @ IN-DEF @ = IF
+      NM-K SWAP CELLS + @ R> <> IF S" a variable cannot change its kind" ERR THEN 2DROP EXIT THEN THEN
+  DROP 2DUP DECLARE R> IN-DEF @ NM-ADD ;
+: ASSIGN ( --- )
+  TK T@ NEXT-TK  TK T@ NEXT-TK
+  2DUP S" =" S= IF 2DROP 1 EXPR >R 2DUP R> BIND S" !" OUT+ VAR-REF EXIT THEN
+  S" +=" S= >R  2DUP VAR-REF S" @" OUT+
+  R@ IF 3 ELSE 4 THEN DROP
+  TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 4 > 0= AND IF
+    NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
+  ELSE 1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
+  S" !" OUT+ VAR-REF ;
+: ECHO-STMT ( --- )
+  NEXT-TK 0                                                      ( parts )
+  BEGIN TK K@ T-NL <> TK K@ T-EOF <> AND S" ;" CUR-IS? 0= AND S" }" CUR-IS? 0= AND WHILE
+    DUP IF TK TOK-AT TK 1- TOK-END = ELSE 0 THEN >R            \ touching the last item: joined to it
+    R@ 0= OVER AND IF S" R-TYPE" OUT+ S" SPACE" OUT+ THEN
+    S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
+    TK K@ T-KW = TK K@ T-OP = OR IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT
+    R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
+  REPEAT
+  IF S" R-TYPE" OUT+ THEN S" R-NL" OUT+ ;
+: PURE? ( --- f )   \ rillc.py's pure(): the body ahead only computes
+  TK-I @ 0                                                      ( i depth )
+  BEGIN
+    OVER K@ T-OP = OVER 0= 0= AND DROP
+    OVER T@ S" {" S= IF 1+ ELSE OVER T@ S" }" S= IF 1- DUP 0= IF 2DROP -1 EXIT THEN ELSE
+    OVER K@ DUP T-STR = SWAP T-RAW = OR IF 2DROP 0 EXIT THEN
+    OVER K@ T-WORD <> IF OVER T@ 2DUP S" =" S= >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R 2DUP S" $(" S= R> OR >R
+      2DUP S" while" S= R> OR >R 2DUP S" for" S= R> OR >R 2DUP S" |" S= R> OR >R 2DUP S" >>" S= R> OR >R S" ??" S= R> OR
+      IF 2DROP 0 EXIT THEN THEN
+    OVER K@ T-VAR = IF OVER T@ 1 /STRING PARAM-AT 0< IF 2DROP 0 EXIT THEN THEN
+    OVER K@ T-WORD = IF OVER T@ NUMBER-TEXT? 0= OVER PREC-OF 0= AND OVER T@ S" -" S= 0= AND OVER 1+ S" (" TK-IS? 0= AND
+      IF 2DROP 0 EXIT THEN THEN
+    THEN THEN  SWAP 1+ SWAP
+  AGAIN ;
+VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L
+: DEF-STMT ( --- )
+  NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !  NEXT-TK  0 PRM-N !
+  BEGIN TK K@ T-WORD = WHILE TK T@ PRM-L PRM-N @ CELLS + ! PRM-A PRM-N @ CELLS + ! 1 PRM-N +! NEXT-TK REPEAT
+  0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
+  DF-N @ DF-CUR !  DEF-NAME-A @ DF-A DF-N @ CELLS + !  DEF-NAME-L @ DF-L DF-N @ CELLS + !
+  PRM-N @ DF-P DF-N @ CELLS + !  DUP DF-K DF-N @ CELLS + !
+  -1 STACKMODE !  PURE? DUP DF-PURE DF-N @ CELLS + !  STACKMODE !  1 DF-N +!  0 DEPTH !
+  TO-DEFS  OUT-POS DEF-START !
+  STACKMODE @ IF
+    BLOCK  0= IF PRM-N @ 0 ?DO S" DROP" OUT+ LOOP THEN  0 STACKMODE !
+  ELSE
+    DROP -1 IN-DEF !
+    PRM-N @ 0 ?DO PRM-A I CELLS + @ PRM-L I CELLS + @ 2DUP DECLARE K-ANY -1 NM-ADD LOOP
+    BLOCK
+    \ the header, now that the scratch locals are known: params reversed, then the rest
+    S" SHADOW{" DEF-START @ OUT-INSERT
+    ... 
+  THEN
+  S" ;" OUT+ TO-MAIN  -1 DF-CUR ! ;
