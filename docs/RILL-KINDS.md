@@ -143,3 +143,42 @@ on the corpus's largest script is lost in the noise of starting Python.
 The search counts both; no score can buy back an unsound kind.
 
 Next, step 3: element kinds for lists, joined the same way.
+
+## Step 3 - element kinds for lists, the Python compiler (Iteration 766)
+
+Gene `elemkinds` (off by default; it needs `infer`). A list variable's
+element kind is the join of everything put in it over its scope's life:
+the items of a new list it is given - a literal's, a comprehension's
+expression's, `words`, `lines`, `split`, `all`, `match`, `keys` (texts),
+`range` (numbers), `sort` and `slice` (their list's) - every `push`,
+`l[i] = v`, and `extend`. A list that goes out of sight takes `any`:
+given to a def, stored in a record or another list, returned, or bound
+to a second name (`x = $y`) - two names for one list, either could fill
+it. Since a loop's item variable takes its list's element kind, and what
+is pushed may be such a variable, the kinds depend on each other: the
+compiler runs rounds - each with the last round's kinds, each joining
+afresh - until two agree, and the code of that round is the program
+(two or three rounds on the corpus; eight without agreeing is an error).
+
+Reads use it: `$l[i]`, `first`, `shift`, `min`, `max`, a for loop's and a
+comprehension's item - a text out of a list of texts, checked as every
+item is (R-ANY>TEXT), so a kind wrong at run time still stops cleanly.
+
+Measured:
+
+- the gene off, the 23 scripts compile exactly as before;
+- on, all compile; 24 of the corpus's 40 list variables get a known
+  element kind; tests/rill all pass, and all three pilots print what
+  their Python originals print, dead-words' IS lines too;
+- speed: no change past the noise. native-by-source, nine runs each,
+  interleaved: off best 448 ms, median 489; on best 460, median 489.
+  dead-words 155 ms and 153. The generated Forth 0.5 % shorter. Its
+  conversions counted: R-ANY>TEXT 26 and 26, R-BOX 47 and 48.
+
+That is what the design predicted, now measured: over boxed storage a
+known element kind moves a conversion from each use to the loop's head -
+and back to a box when the item is pushed or passed on - but removes
+none. The boxes are the cost. So the gene stays off, and its Forth half
+waits for the step that needs it: lists of a known element kind storing
+their items as they are, unboxed - phase 4's storage, brought forward,
+measured through the search like the rest.

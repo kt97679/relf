@@ -41,6 +41,11 @@ there, fewer boxes and kind checks at run time. The largest piece of work
 here; through the search, so its cost in source and generated Forth is
 measured.
 
+Step 3 (766): element kinds for lists, in the Python compiler behind gene
+elemkinds - correct on the corpus, 24 of 40 lists typed, and no faster:
+over boxed storage they move conversions, not remove them. Next: lists of
+a known element kind stored unboxed, with elemkinds' Forth half.
+
 ## Phase 3: the gaps still open
 
 `continue` in while loops; `return` inside a loop that has a `continue`;

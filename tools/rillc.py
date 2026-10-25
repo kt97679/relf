@@ -49,6 +49,9 @@ class Compiler:
         self.locals = None      # kinds of the def being compiled
         self.infer = None       # gene infer (764), the first pass: (def or None, name) -> the kinds it is bound to
         self.fixed = None       # ... the second: (def or None, name) -> the one kind it has, their join
+        self.ekin = None        # gene elemkinds (766): a list variable's element kind, last round's join
+        self.ekout = None       # ... this round's: what is put in each list variable
+        self.ek = None; self.fresh = False      # the last list expression's element kind; a new list or not
         self.defs = []          # Forth of each def
         self.names = set()      # every VARIABLE needed
         self.lines = []         # (rill line, forth) for --list
@@ -65,11 +68,27 @@ class Compiler:
     def scope(self): return self.locals if self.locals is not None else self.vars
     def skey(self): return self.current if self.locals is not None else None
     def bind(self, name, kind):
-        """A binding of name to a value of kind: the kind the variable has from here (gene infer, 764)."""
+        """A binding of name to a value of kind: the kind the variable has from here (gene infer, 764);
+        kind None (elemkinds: an item of a list whose kind is not known yet) records nothing."""
         sc = self.scope(); self.names.add(name)
-        if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
-        elif self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
-        sc[name] = kind; return kind
+        if self.infer is not None and kind is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
+        if self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
+        sc[name] = kind or 'any'; return kind or 'any'
+    EKS = ('text', 'number', 'bool', 'decimal', 'list', 'record')
+    def skey_of(self, name): return self.current if self.locals is not None and name in self.locals else None
+    def ek_known(self, name): return None if self.ekin is None else self.ekin.get((self.skey_of(name), name))
+    def ek_add(self, name, k):             # something of kind k put in list variable name (766)
+        if self.ekout is not None and name is not None and k is not None:
+            self.ekout.setdefault((self.skey_of(name), name), set()).add(k if k in self.EKS else 'any')
+    def plainvar(self, code, kind):        # the list variable code reads, if it reads just one
+        m = re.fullmatch(r'R\.(\S+) @', code) if kind == 'list' else None
+        return m.group(1) if m else None
+    def from_any(self, code, k):           # an item as the kind its list holds - checked, as every item is
+        return code + {'text': ' R-ANY>TEXT', 'number': ' R-ANY>NUM', 'bool': ' R-ANY>NUM', 'decimal': ' R-ANY>DEC',
+                       'list': ' R-UNBOX DROP', 'record': ' R-UNBOX DROP'}.get(k, '')
+    def item_ek(self, sk, ek):             # what a loop over a source of kind sk gives its item, for bind
+        if not GENES['elemkinds']: return 'any'
+        return ek if sk == 'list' else 'any'
     def kind_of(self, name, line):
         if self.locals is not None and name in self.locals: return self.locals[name]
         if name in self.vars: return self.vars[name]
@@ -129,11 +148,15 @@ class Compiler:
         return self.term()
     def term(self):
         code, kind = self.term0()
+        ek, fresh = (self.ek if kind == 'list' else None), self.fresh
         while True:                                   # $x[i] and $x.f, touching what they follow
             nxt, prev = self.peek(), self.t[self.i - 1]
             if nxt[1] == '[' and nxt[3] == prev[4]:
                 self.i += 1; ic, ik = self.expr(); self.take('op', ']')
-                if kind == 'list': code, kind = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
+                fresh = False
+                if kind == 'list':
+                    code = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2]))
+                    kind = ek if GENES['elemkinds'] and ek in self.EKS else 'any'; code = self.from_any(code, kind); ek = None   # 766
                 elif kind == 'record': code, kind = '%s %s R-GET' % (self.to_text(ic, ik), code), 'any'
                 elif kind == 'any': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
                 else: raise Error('line %d: only a list or a record is indexed' % nxt[2])
@@ -142,7 +165,9 @@ class Compiler:
                 for f in nxt[1][1:].split('.'):
                     code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
                     code, kind = '%s %s R-GET' % (self.lit_text(f), code), 'any'      # a field's name a literal, shared too (750)
+                fresh = False
             else:
+                self.ek, self.fresh = (ek if kind == 'list' else None), (fresh and kind == 'list')
                 return code, kind
     def literal_list(self):
         """[ items ] or [expr for x in src if cond]; the [ taken."""
@@ -152,44 +177,51 @@ class Compiler:
             elif self.t[j][1] in (']', ')', '}'): depth -= 1
             elif depth == 0 and self.t[j][1] == 'for': return self.comprehension(j)
             j += 1
-        code = ['R-NEW-LIST']
+        code = ['R-NEW-LIST']; kinds = set(); unknown = False
         while self.peek()[1] != ']':
             if self.peek()[1] == ',': self.i += 1; continue                # [a, b, c] as well as [a b c] (758)
             tok = self.peek()
             if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
                 self.i += 1
                 if self.kind_of(tok[1][1:], tok[2]) != 'list': raise Error('line %d: %s is not a list' % (tok[2], tok[1]))
-                code.append('R.%s @ OVER SWAP R-EXTEND' % tok[1][1:]); continue
+                code.append('R.%s @ OVER SWAP R-EXTEND' % tok[1][1:])
+                sek = self.ek_known(tok[1][1:]); unknown = unknown or sek is None; kinds.add(sek); continue
             c, kd = self.term()
-            code.append('%s OVER R-PUSH' % self.box(c, kd))
-        self.take('op', ']'); return ' '.join(code), 'list'
+            code.append('%s OVER R-PUSH' % self.box(c, kd)); kinds.add(kd)
+        self.take('op', ']')
+        kinds.discard(None)                                              # the items' join: a new list (766)
+        self.ek = None if unknown or not kinds else kinds.pop() if len(kinds) == 1 else 'any'; self.fresh = True
+        return ' '.join(code), 'list'
     def comprehension(self, j):
         start = self.i; self.i = j + 1                            # for x in src [if cond]
         name = self.take('word')[1]; second = None
         if self.peek()[1] == ',': self.i += 1; second = self.take('word')[1]     # [e for k, v in src] (754)
         self.take('kw', 'in')
-        sc, sk = self.expr()
+        sc, sk = self.expr(); ike = self.item_ek(sk, self.ek if sk == 'list' else None)   # 766
         if sk == 'any': sc, sk = sc + ' R-UNBOX DROP', 'list'          # an item holding a list - a def's parameter (758)
         if sk not in ('list', 'record') or (sk == 'record' and not second):
             raise Error('line %d: for needs a list' % self.peek()[2])
         tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
-        nk = self.bind(name, 'any' if not second else 'number' if sk == 'list' else 'text')
-        if second: self.bind(second, 'any')
+        nk = self.bind(name, ike if not second else 'number' if sk == 'list' else 'text')
+        sk2 = self.bind(second, ike if sk == 'list' else 'any') if second else None
+        itk = from_ = self.from_any('', sk2 if second else nk) if sk == 'list' else ''
         cond = None
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
         end = self.i; self.take('op', ']'); after = self.i
-        self.i = start; ec, ek = self.expr(); self.i = after
-        item = '%s OVER R-PUSH' % self.box(ec, ek)
+        self.i = start; ec, elk = self.expr(); self.i = after
+        item = '%s OVER R-PUSH' % self.box(ec, elk)
         body = '%s IF %s THEN' % (cond, item) if cond else item
+        self.ek, self.fresh = (elk if elk in self.EKS else 'any'), True
         if second and sk == 'record':                                   # the key a text, or its box where $name is an item (764)
             return ('R-NEW-LIST %s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! '
                     'R.%s @ R-VALS I R-AT R.%s ! %s LOOP' % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if nk == 'text' else '',
                                                            name, tmp, second, body)), 'list'
+        self.ek, self.fresh = (elk if elk in self.EKS else 'any'), True       # a new list of its expression's kind (766)
         if second:
-            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I R-AT R.%s ! %s LOOP' %
-                    (sc, tmp, tmp, '' if nk == 'number' else ' K-NUM R-BOX', name, tmp, second, body)), 'list'
-        return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT R.%s ! %s LOOP' %
-                (sc, tmp, tmp, tmp, name, body)), 'list'
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I R-AT%s R.%s ! %s LOOP' %
+                    (sc, tmp, tmp, '' if nk == 'number' else ' K-NUM R-BOX', name, tmp, itk, second, body)), 'list'
+        return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT%s R.%s ! %s LOOP' %
+                (sc, tmp, tmp, tmp, itk, name, body)), 'list'
     def literal_record(self):
         code = ['R-NEW-RECORD']
         while self.peek()[1] != '}':
@@ -204,6 +236,7 @@ class Compiler:
         self.take('op', '}'); return ' '.join(code), 'record'
     def term0(self):
         in_arg, self.in_arg = getattr(self, 'in_arg', False), False      # a command's argument: a bare word is its text (762)
+        self.ek, self.fresh = None, False
         tok = self.take()
         k, v, line = tok[:3]
         if v == '[': return self.literal_list()
@@ -223,7 +256,10 @@ class Compiler:
         if k == 'var' and v[1:] in ('args', 'script') and v[1:] not in self.vars and \
                 (self.locals is None or v[1:] not in self.locals):
             return ('R-ARGS', 'list') if v[1:] == 'args' else ('R-SCRIPT', 'text')       # 744
-        if k == 'var': return 'R.%s @' % v[1:], self.kind_of(v[1:], line)
+        if k == 'var':
+            kv = self.kind_of(v[1:], line)
+            if kv == 'list': self.ek = self.ek_known(v[1:])
+            return 'R.%s @' % v[1:], kv
         if v == '$(':
             c = self.command(capture=True); self.take('op', ')')
             return c + ' R-CHECK', 'text'
@@ -240,13 +276,26 @@ class Compiler:
         if k == 'word': return self.lit(v), 'text'
         raise Error('line %d: unexpected %r' % (line, v))
     def call(self, name, line):
-        self.take('op', '('); args = []
+        self.take('op', '('); args = []; eks = []
         while self.peek()[1] != ')':
-            args.append(self.expr())
+            args.append(self.expr()); eks.append(self.ek if args[-1][1] == 'list' else None)
             if self.peek()[1] == ',': self.i += 1
         self.take('op', ')')
+        if name == 'push' and len(args) == 2: self.ek_add(self.plainvar(*args[0]), args[1][1])        # 766
+        if name == 'extend' and len(args) == 2: self.ek_add(self.plainvar(*args[0]), eks[1] if args[1][1] == 'list' else 'any')
         lib = self.library(name, args, line)
-        if lib: return lib
+        if lib:
+            code, kind = lib
+            if (GENES['elemkinds'] and kind == 'any' and eks and eks[0] in self.EKS
+                    and (name in ('first', 'shift') or (name in ('min', 'max') and len(args) == 1))):
+                code, kind = self.from_any(code, eks[0]), eks[0]           # an item of a typed list (766)
+            self.ek, self.fresh = None, False
+            if kind == 'list':
+                self.ek = {'words': 'text', 'lines': 'text', 'split': 'text', 'match': 'text', 'all': 'text',
+                           'keys': 'text', 'range': 'number'}.get(name, eks[0] if name in ('sort', 'slice') and eks else 'any')
+                self.fresh = True
+            return code, kind
+        self.ek, self.fresh = 'any', False
         if name not in self.funcs: raise Error('line %d: %s() is not defined (a def comes before its use)' % (line, name))
         params, kind = self.funcs[name]
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
@@ -386,6 +435,7 @@ class Compiler:
         if kind == 'any': return code + ' R-UNBOX DROP'
         raise Error('line %d: this returns a %s, not a %s' % (line, kind, want))
     def box(self, code, kind):
+        if kind == 'list': self.ek_add(self.plainvar(code, kind), 'any')     # a list boxed is out of sight (766)
         return code if kind == 'any' else '%s %s R-BOX' % (code, self.KCODE[kind])
 
     # statements
@@ -408,7 +458,7 @@ class Compiler:
         elif v == 'return':
             if getattr(self, 'hoists', None) and True in self.hoists:
                 raise Error('line %d: return inside a loop that has a continue - not yet' % line)
-            self.i += 1; c, kd = self.expr()
+            self.i += 1; c, kd = self.expr(); self.ek_add(self.plainvar(c, kd), 'any')    # a list returned (766)
             want = self.funcs[self.current][1] if getattr(self, 'current', None) else None
             c = self.convert(c, kd, want, line)                   # to the def's -> kind (749: a boxed parameter returned)
             if getattr(self, 'stack', None):
@@ -437,28 +487,34 @@ class Compiler:
             name = v; self.i += 2
             ic, ik = self.expr(); self.take('op', ']'); self.take('op', '=')
             c, kd = self.expr(); ck = self.kind_of(name, line)
-            if ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
+            if ck == 'list': self.ek_add(name, kd); out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
             elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
             elif ck == 'any': out = '%s %s R.%s @ R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), name)   # 758
             else: raise Error('line %d: $%s is not a list or a record' % (line, name))
         elif k == 'word' and self.peek(1)[1] in ('=', '+=', '-='):
             name = v; self.i += 1; op = self.take()[1]
-            c, kd = self.expr()
+            c, kd = self.expr(); nat, c0, ek_e, fresh_e = kd, c, self.ek, self.fresh
             sc = self.scope()
             if op != '=':
                 vk = self.kind_of(name, line)
                 if vk not in ('number', 'any', 'decimal'): raise Error('line %d: %s needs a number to change' % (line, op))
                 c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, vk, c, kd)
                 if vk == 'any': c, kd = self.box(c, kd), 'any'          # an item holding a number stays an item (758)
-            elif self.infer is not None: pass                                # the first pass: every binding as it comes (764)
+            elif self.infer is not None and self.fixed is None: pass         # the first pass: every binding as it comes (764)
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
                 c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
             elif name in sc and sc[name] == 'any' and kd != 'any':
                 c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
-            if self.infer is not None: self.bind(name, kd)
-            else: sc[name] = kd; self.names.add(name)
+            if self.infer is not None and self.fixed is None: self.bind(name, kd)
+            else:
+                if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(nat if op == '=' else kd)
+                sc[name] = kd; self.names.add(name)
+            if op == '=' and nat == 'list':                                  # what a list variable is given (766)
+                pv = self.plainvar(c0, nat)
+                if pv: self.ek_add(name, 'any'); self.ek_add(pv, 'any')     # two names for one list: out of sight
+                else: self.ek_add(name, ek_e if fresh_e else 'any')
             out = '%s R.%s !' % (c, name)
         elif GENES['warn'] and k == 'word' and v == 'warn' and self.peek(1)[1] != '(':   # warn ...: the err port (747; a gene 751)
             self.i += 1
@@ -651,7 +707,7 @@ class Compiler:
             out = '%s 1+ %s ?DO I%s R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
                                                       self.par_wrap(self.loop_body(), par))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
-        sc, sk = self.expr()
+        sc, sk = self.expr(); ike = self.item_ek(sk, self.ek if sk == 'list' else None)   # 766
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
         if sk == 'record':                                               # for k, v in a record
             key, val = (a, b) if b else (a, None)
@@ -664,11 +720,11 @@ class Compiler:
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
         idx, item = (a, b) if b else (None, a)
-        self.bind(item, 'any')
+        ik = self.bind(item, ike)
         seti = ''
         if idx: seti = 'I%s R.%s ! ' % ('' if self.bind(idx, 'number') == 'number' else ' K-NUM R-BOX', idx)
-        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
-               % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(self.loop_body(), par)))
+        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT%s R.%s ! %s LOOP'
+               % (sc, tmp, tmp, seti, tmp, self.from_any('', ik), item, self.par_wrap(self.loop_body(), par)))
         return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
     def if_(self):
         self.take('kw', 'if'); c = self.cond()
@@ -743,11 +799,21 @@ if __name__ == '__main__':
     src = open(sys.argv[1], encoding='utf-8').read()
     c = Compiler(src)
     try:
+        join = lambda d: {key: (ks.pop() if len(ks) == 1 else 'any') for key, ks in d.items()}
         if GENES['infer']:                                    # gene infer (764): a first pass for the kinds, the second for the code
-            c.infer = {}; c.program()
-            fixed = {key: (ks.pop() if len(ks) == 1 else 'any') for key, ks in c.infer.items()}
-            c = Compiler(src); c.fixed = fixed
-        forth = c.program()
+            ek = GENES['elemkinds']                           # gene elemkinds (766): rounds until the kinds settle
+            c.infer = {}; c.ekout = {} if ek else None; c.program()
+            fixed, ekin = join(c.infer), (join(c.ekout) if ek else None)
+            for rounds in range(8):
+                c = Compiler(src); c.fixed = fixed
+                if ek: c.infer, c.ekin, c.ekout = {}, ekin, {}
+                forth = c.program()
+                if not ek: break
+                nf, ne = join(c.infer), join(c.ekout)
+                if (nf, ne) == (fixed, ekin): break
+                fixed, ekin = nf, ne
+            else: raise Error('the kinds did not settle in 8 rounds')
+        else: forth = c.program()
     except Error as e: sys.exit('rillc: %s: %s' % (sys.argv[1], e))
     if '--list' in sys.argv:
         print(forth)

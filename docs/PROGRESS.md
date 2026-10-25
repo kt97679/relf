@@ -790,6 +790,7 @@ do not trust the absence of a line below.
 - 763 — phase 2's first attempt (kinds binding by binding) broke on reused names and back edges; RILL-KINDS.md: whole-scope inference, two passes
 - 764 — gene infer, the Python half: two passes, one kind per variable; corpus 20/22 identical, back-edge hole closed; Forth half next
 - 765 — gene infer in the Forth compiler too; both agree on the whole corpus, pilots unchanged; on by default, backedge.rill a test
+- 766 — gene elemkinds (Python, off): 24/40 lists typed, outputs unchanged, speed unchanged - boxes are the cost; unboxed storage next
 
 ### Not tied to an iteration
 
