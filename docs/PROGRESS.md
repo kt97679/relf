@@ -806,6 +806,7 @@ do not trust the absence of a line below.
 - 779 — break, continue and return in and out of loops: two crashes fixed, two gaps closed, as Python
 - 780 — a[i][j] = v to any depth; items unboxed for join, slice, sum, at, sort-by (a crash); a def called as a command: the call shown
 - 781 — format() as Python's % formatting; run-time errors name the line, at no run-time cost (gene lines)
+- 782 — gen-opcodes in Rill says what the shell script says; abs, dir, == on lists and records, at() on lists, comprehension filters fixed, [ ] across lines, 0x numbers
 
 ### Not tied to an iteration
 

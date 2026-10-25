@@ -68,8 +68,10 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
   POS @ WORD-XT @XT SCAN-WHILE  DUP POS @ - >R                 ( end )  ( R: len )
   POS @ RS-SRC @ + R@ KEYWORD? IF T-KW ELSE T-WORD THEN  POS @ R> TK+  POS ! ;
 : SKIP-COMMENT ( --- )   BEGIN POS @ AT-END? IF 0 ELSE POS @ SRC-C@ 10 <> THEN WHILE 1 POS +! REPEAT ;
+VARIABLE SQ-DEPTH   \ the [ open: a newline inside them is no token, as Python's (782)
 : TOKEN-1 ( --- )
   POS @ SRC-C@
+  DUP 10 = SQ-DEPTH @ AND IF DROP 1 CUR-LINE +!  1 POS +! EXIT THEN
   DUP 10 = IF DROP T-NL POS @ 1 TK+  1 CUR-LINE +!  1 POS +! EXIT THEN
   DUP 33 < IF DROP 1 POS +! EXIT THEN
   DUP [CHAR] # = IF DROP SKIP-COMMENT EXIT THEN
@@ -77,11 +79,12 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
   DUP [CHAR] ' = IF DROP SCAN-RAW EXIT THEN
   DUP [CHAR] $ = IF  POS @ 1+ AT-END? 0= IF POS @ 1+ SRC-C@ NAME-START? IF DROP SCAN-VAR EXIT THEN THEN  THEN
   POS @ OP2? IF DROP T-OP POS @ 2 TK+  2 POS +! EXIT THEN
+  DUP [CHAR] [ = IF 1 SQ-DEPTH +! THEN  DUP [CHAR] ] = IF SQ-DEPTH @ IF -1 SQ-DEPTH +! THEN THEN
   DUP OP1? IF DROP T-OP POS @ 1 TK+  1 POS +! EXIT THEN
   DUP WORD-CHAR? IF DROP SCAN-WORD EXIT THEN
   DROP 1 POS +! ;
 : TOKENIZE ( c-addr u --- )
-  SRC# ! RS-SRC !  0 TK-N !  1 CUR-LINE !  0 POS !
+  SRC# ! RS-SRC !  0 TK-N !  1 CUR-LINE !  0 POS !  0 SQ-DEPTH !
   BEGIN POS @ AT-END? 0= WHILE TOKEN-1 REPEAT
   T-EOF SRC# @ 0 TK+ ;
 : .TOKENS ( --- )   \ for tests/rill/oracle: one token a line, kind and text
@@ -368,6 +371,8 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
   2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" abs" S= IF 2DROP ARG DUP K-NUM = OVER K-DEC = OR IF S" ABS" OUT+ -1 EXIT THEN  TO-TEXT S" R-ABS" OUT+ K-TEXT -1 EXIT THEN   \ 782
+  2DUP S" dir" S= IF 2DROP ARG TO-TEXT S" R-DIR" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" format" S= IF 2DROP ARG TO-TEXT S" R-NEW-LIST" OUT+                \ format(f, a, ...): % formatting (781)
      BEGIN S" )" CUR-IS? 0= WHILE ARG BOX S" OVER R-PUSH" OUT+ REPEAT  S" R-FORMAT" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" join" S= IF 2DROP ARG CONT ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
@@ -410,7 +415,10 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" starts" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-STARTS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" ends" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ENDS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" sum" S= IF 2DROP ARG CONT S" R-SUM" OUT+ K-NUM -1 EXIT THEN
-  2DUP S" at" S= IF 2DROP ARG CONT ARG TO-TEXT ARG BOX S" R-AT-OR" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" at" S= IF 2DROP ARG                                    \ a record's field; a list's item (782); or the default
+     DUP K-LIST = IF DROP ARG TO-NUM ARG BOX S" R-AT-OR-L" ELSE
+     DUP K-ANY = IF DROP ARG BOX ARG BOX S" R-AT-OR-ANY" ELSE
+     DROP ARG TO-TEXT ARG BOX S" R-AT-OR" THEN THEN OUT+ K-ANY -1 EXIT THEN
   2DUP S" sort-by" S= IF 2DROP ARG CONT ARG TO-TEXT ARG TO-TEXT S" R-SORT-BY" OUT+ K-REC -1 EXIT THEN
   2DUP S" log" S= IF 2DROP ARG TO-DEC S" R-LOG" OUT+ K-DEC -1 EXIT THEN          \ 760
   2DUP S" exp" S= IF 2DROP ARG TO-DEC S" R-EXP" OUT+ K-DEC -1 EXIT THEN
@@ -574,6 +582,7 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
 VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
+DEFER TRUTH-D   \ TRUTH, defined below (782)
 : COMPREHENSION ( j --- kind )   \ [expr for x in src if cond] - or for k, v in a record, for i, x in a list (754)
   TK-I @ >R  DUP 1+ TK-I !                                 ( j )  ( R: the expr's start )
   TK T@ NEXT-TK                                            ( j name )
@@ -596,7 +605,7 @@ VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
     S" I" OUT+ FOR-K @ NUM-INTO 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
   THEN THEN  DROP
   CM-NA @ CM-NL @ DA-NEXT  CM-2L @ IF CM-2A @ CM-2L @ DA-NEXT THEN  DA-ENTER      \ its names certainly set inside (772)
-  0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR DROP S" IF" OUT+ -1 CM-COND ! THEN
+  0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR TRUTH-D S" IF" OUT+ -1 CM-COND ! THEN   \ as an if's (782)
   CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
   R> R> TK-I ! >R                                          ( after )  ( R: cond )
   1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+  DA-LEAVE
@@ -628,6 +637,7 @@ VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
   DUP K-ANY = IF DROP S" R-ANY>BOOL" OUT+ EXIT THEN
 \ [/gene]
   DROP ;
+' TRUTH IS TRUTH-D
 : UNARY ( --- kind )
   S" not" CUR-IS? IF NEXT-TK RECURSE TRUTH S" 0=" OUT+ K-BOOL EXIT THEN
   TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE DROP S" NEGATE" OUT+ K-NUM EXIT THEN
@@ -645,6 +655,7 @@ VARIABLE BL-POS   VARIABLE BL-K
 : LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
 : LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
 : LEFT-BOX ( --- )    OUT-POS BL-K @ BOX      BL-POS @ SEG>POS ;
+: CONTAINER? ( kind --- f )   DUP K-LIST = OVER K-REC = OR SWAP K-ANY = OR ;
 : NUMISH? ( kind --- f )   DUP K-NUM = OVER K-DEC = OR SWAP K-ANY = OR ;
 : BINOP ( lk lpos rk opi --- kind )
   >R  SWAP BL-POS !  SWAP BL-K !                                ( rk )  ( R: opi )
@@ -659,6 +670,8 @@ VARIABLE BL-POS   VARIABLE BL-K
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND   \ 2 PICK: the right side's kind (749)
   BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
     LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
+  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ CONTAINER? AND  OVER CONTAINER? AND IF        \ lists, records: by what they hold (782)
+    LEFT-BOX BOX S" R-BOX=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
   BL-K @ K-DEC = OVER K-DEC = OR  BL-K @ NUMISH? AND  OVER NUMISH? AND IF        \ decimals (754): fixed point, six places
     BL-K @ K-NUM = IF OUT-POS S" 1000000 *" OUT+ BL-POS @ SEG>POS THEN
     BL-K @ K-ANY = IF OUT-POS S" R-ANY>DEC" OUT+ BL-POS @ SEG>POS THEN     \ an item holding a decimal too (774)

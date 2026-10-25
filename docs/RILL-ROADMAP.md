@@ -136,3 +136,26 @@ run-utf8) need abs() and more of the library first.
   `rill: error -40xx` after a message Rill has printed itself; the kernel's
   own errors (a crash, a division by zero) still print only their number -
   the return stack is unwound by the time they are caught.
+
+## Phase 5 (Iteration 782): gen-opcodes in Rill, as the shell script
+
+examples/rill/gen-opcodes.rill now runs, and in all four of its modes
+(generate, --forth-ops, --forth-consts, --check) says what
+tools/gen-opcodes.sh says, byte for byte, with the same status; tests/rill/run
+checks --check. Rill took ~29 ms where the shell took 5-7 (most of it
+compiling the script); --check 141 ms against 113. What it needed:
+- abs(): a number's or decimal's absolute value; a path's absolute form, as
+  Python's abspath. dir(): as dirname.
+- == and != compare lists and records by what they hold, as Python (records
+  in any order; 1 == 1.0, inside lists too).
+- at() on a list (the item, negative from the end, or the default) and on an
+  item, besides a record. It crashed on a list.
+- a comprehension's `if` takes a value's truth, as an if does: a match() or
+  a text filtered nothing before - every item passed.
+- a newline inside [ ] does not end the statement, as Python's.
+- number() reads 0x hex, as the shell's $((...)), in either case.
+The draft itself: bare names in comprehensions, its own def called as a
+command, byname by a loop that returns, the top three directories up, a
+diff on two process substitutions made a loop, a blank-tolerant pattern.
+tests/rill/library2.rill as Python. Still waiting: pack-results (setenv,
+a case statement), run-utf8 (load).

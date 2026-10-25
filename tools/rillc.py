@@ -31,9 +31,11 @@ TOKEN = re.compile(r'''
 KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in', 'break'}
 
 def tokenize(src):
-    toks, line = [], 1
+    toks, line, sq = [], 1, 0
     for m in TOKEN.finditer(src):
         k = m.lastgroup; v = m.group()
+        if k == 'op' and v in ('[', ']'): sq = sq + 1 if v == '[' else max(sq - 1, 0)
+        if k == 'nl' and sq: line += 1; continue                 # inside [ ]: the line goes on, as Python's (782)
         if k == 'nl': toks.append(('nl', v, line, m.start(), m.end())); line += 1
         elif k in ('ws', 'comment'): continue
         elif k == 'word' and v in KEYWORDS: toks.append(('kw', v, line, m.start(), m.end()))
@@ -120,8 +122,8 @@ class Compiler:
             return '%s %s R-BOX=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
             return '%s %s R-T=%s' % (self.to_text(a, ak), self.to_text(b, bk), '' if op == '==' else ' 0='), 'bool'
-        if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk == ak and ak != 'any':
-            raise Error('line %d: comparing lists or records is not in stage 2' % line)
+        if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk in ('list', 'record', 'any'):   # by what they hold (782)
+            return '%s %s R-BOX=%s' % (self.box(a, ak), self.box(b, bk), '' if op == '==' else ' 0='), 'bool'
         if 'decimal' in (ak, bk) and ak in ('number', 'decimal', 'any') and bk in ('number', 'decimal', 'any'):
             dec = lambda c, k: c + ' 1000000 *' if k == 'number' else (c + ' R-ANY>DEC' if k == 'any' else c)   # an item holding a decimal too (774)
             a, b = dec(a, ak), dec(b, bk)
@@ -192,7 +194,7 @@ class Compiler:
         if second: self.bind(second, 'any')
         cond = None
         self.da_enter([name] + ([second] if second else []))
-        if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
+        if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr(); cond = self.truth(cond, ck)   # as an if's (782)
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, ek = self.expr(); self.i = after
         self.da_leave()
@@ -289,6 +291,11 @@ class Compiler:
             if k == 'record': return '%s R-KEYS @' % c, 'number'
             return '%s @' % c, 'number'                            # a text's or a list's count
         if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
+        if name == 'abs':                                               # a number's; a path's, absolute (782)
+            need(1)
+            if a[0][1] in ('number', 'decimal'): return '%s ABS' % a[0][0], a[0][1]
+            return '%s R-ABS' % self.to_text(*a[0]), 'text'
+        if name == 'dir': need(1); return '%s R-DIR' % self.to_text(*a[0]), 'text'
         if name == 'format':                                            # format(f, a, ...): % formatting (781)
             if not a: need(1)
             return '%s R-NEW-LIST %s R-FORMAT' % (self.to_text(*a[0]), ' '.join('%s OVER R-PUSH' % self.box(*x) for x in a[1:])), 'text'
@@ -334,7 +341,11 @@ class Compiler:
             need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
             conv = (lambda c, k: c + ' 1000000 *' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
             return '%s %s %s' % (conv(*a[0]), conv(*a[1]), name.upper()), kd
-        if name == 'at': need(3); return '%s %s %s R-AT-OR' % (cont(a[0]), self.to_text(*a[1]), self.box(*a[2])), 'any'
+        if name == 'at':                                                # a record's field; a list's item (782); or the default
+            need(3)
+            if a[0][1] == 'list': return '%s %s %s R-AT-OR-L' % (a[0][0], self.to_num(*a[1], line), self.box(*a[2])), 'any'
+            if a[0][1] == 'any': return '%s %s %s R-AT-OR-ANY' % (a[0][0], self.box(*a[1]), self.box(*a[2])), 'any'
+            return '%s %s %s R-AT-OR' % (a[0][0], self.to_text(*a[1]), self.box(*a[2])), 'any'
         if name == 'sort-by': need(3); return '%s %s %s R-SORT-BY' % (cont(a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'record'
         if name == 'arg':                                              # 744; arg(n, default) 747
             if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'

@@ -99,9 +99,16 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
   \ is the loop's index - R-JOIN, R-SLICE and R-RANGE faulted on it.
   R-NEW-LIST RL !  2 PICK @ R-BOUND >R  OVER @ R-BOUND R>
   2DUP < IF SWAP ?DO  DUP I R-AT RL @ R-PUSH  LOOP ELSE 2DROP THEN  DROP  RL @ ;
-: R-BOX= ( box1 box2 --- f )
-  R-UNBOX ROT R-UNBOX ROT OVER <> IF 2DROP DROP 0 EXIT THEN    ( v2 v1 kind )
-  K-TEXT = IF R-T= ELSE = THEN ;
+DEFER R-LIST=-D  DEFER R-REC=-D   \ defined below, with the words they need (782)
+: R-BOX= ( box1 box2 --- f )   \ Python's ==: texts by their bytes, lists and records by what they hold, 1 == 1.0 (782)
+  R-UNBOX ROT R-UNBOX                                             ( v2 k2 v1 k1 )
+  DUP K-NUM = 3 PICK K-DEC = AND IF DROP 1000000 * K-DEC THEN
+  DUP K-DEC = 3 PICK K-NUM = AND IF 2SWAP DROP 1000000 * K-DEC 2SWAP THEN
+  ROT OVER <> IF 2DROP DROP 0 EXIT THEN                           ( v2 v1 kind )
+  DUP K-TEXT = IF DROP R-T= EXIT THEN
+  DUP K-LIST = IF DROP R-LIST=-D EXIT THEN
+  DUP K-REC = IF DROP R-REC=-D EXIT THEN
+  DROP = ;
 VARIABLE RK-A  VARIABLE RK-U   \ a key's bytes, while it is looked for (775)
 : R-IN ( box l --- f )   \ x in a list - a text compared in place with the items that are texts (775)
   OVER @ K-TEXT = IF
@@ -196,7 +203,14 @@ VARIABLE RG-S  VARIABLE RG-B
   RG-S ! RG-B !  R-NEW-LIST RL !
   BEGIN DUP RG-S @ 0> IF RG-B @ < ELSE RG-B @ > THEN WHILE  DUP K-NUM R-BOX RL @ R-PUSH  RG-S @ +  REPEAT
   DROP RL @ ;
-: R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-ERR-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
+CREATE RN-T 40 ALLOT
+: RN-UPPER ( a u --- a' u )   \ hex digits in capitals: the kernel's >NUMBER knows no others (782)
+  40 MIN >R RN-T R@ MOVE  RN-T R@ 0 ?DO DUP I + C@ DUP [CHAR] a [CHAR] z 1+ WITHIN IF 32 - THEN OVER I + C! LOOP R> ;
+: R-NUMBER ( t --- n )   \ decimal; hex after 0x, as the shell's $((...)) (782)
+  R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
+  DUP 2 > IF OVER C@ [CHAR] 0 = 2 PICK 1+ C@ 32 OR [CHAR] x = AND ELSE 0 THEN
+  BASE @ >R  IF 2 /STRING RN-UPPER HEX ELSE DECIMAL THEN  >NUMBER  R> BASE !
+  NIP IF ." rill: not a number" R-ERR-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
 
 
 \ Commands, pipelines, output captured, ports redirected (stage 1b,
@@ -413,6 +427,12 @@ VARIABLE RS-NEW
   2DUP < IF SWAP ?DO  DUP R-VALS I R-AT  OVER R-KEYS I R-AT R-ANY>TEXT  RS-NEW @ R-PUT  LOOP ELSE 2DROP THEN  DROP  RS-NEW @ ;
 : R-AT-OR ( r key default --- box )   \ at(record, key, default): the field, or the default
   >R SWAP 2DUP R-HAS IF R> DROP R-GET ELSE 2DROP R> THEN ;
+: R-AT-OR-L ( l i default --- box )   \ at(list, i, default): the item, or the default - i negative from the end (782)
+  >R  DUP 0< IF OVER R-LEN + THEN
+  DUP 0< OVER 3 PICK R-LEN < 0= OR IF 2DROP R> EXIT THEN
+  R-AT R> DROP ;
+: R-AT-OR-ANY ( cbox kbox default --- box )   \ at() on an item: a list's item or a record's field (782)
+  ROT R-UNBOX K-REC = IF ROT R-ANY>TEXT ROT R-AT-OR ELSE ROT R-ANY>NUM ROT R-AT-OR-L THEN ;
 : R-SUM ( l --- n )   0 SWAP DUP R-LEN 0 ?DO DUP I R-AT R-ANY>NUM ROT + SWAP LOOP DROP ;
 VARIABLE SB-R  VARIABLE SB-F  VARIABLE SB-DESC  VARIABLE SB-IX  VARIABLE SB-N
 : SB-KEY ( i --- n )   SB-R @ R-VALS SWAP R-AT R-UNBOX DROP  SB-F @ SWAP R-GET R-ANY>NUM ;
@@ -527,6 +547,36 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
   ." rill: $" TYPE ."  is not set" R-ERR-NL  1 R-STATUS !  -4000 THROW ;
 : R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
+
+\ ---- Paths (Iteration 782) ------------------------------------------------
+: R-CWD ( --- t )   4096 R-ALLOT DUP 4096 GETCWD DROP R-TEXT ;
+: R-DIR ( t --- t )   \ dir(p), as dirname: "." with no slash, "/" for /x
+  R-T@ BEGIN DUP 1 > IF 2DUP + 1- C@ [CHAR] / = ELSE 0 THEN WHILE 1- REPEAT      \ its trailing slashes off
+  BEGIN DUP IF 2DUP + 1- C@ [CHAR] / <> ELSE 0 THEN WHILE 1- REPEAT               \ its last part off
+  DUP 0= IF 2DROP S" ." R-TEXT EXIT THEN
+  BEGIN DUP 1 > IF 2DUP + 1- C@ [CHAR] / = ELSE 0 THEN WHILE 1- REPEAT             \ the slashes before it, not the root
+  R-TEXT ;
+: R-ABS ( t --- t )   \ abs(p) of a text: absolute, . and .. resolved in the text - Python's abspath
+  DUP R-T@ IF C@ [CHAR] / = ELSE DROP 0 THEN 0= IF R-CWD S" /" R-TEXT ROT 3 R-CONCAT THEN
+  S" /" R-TEXT R-SPLIT  R-NEW-LIST SWAP                          ( out parts )
+  DUP R-LEN 0 ?DO
+    DUP I R-AT R-ANY>TEXT R-T@                                    ( out parts a u )
+    2DUP S" .." COMPARE 0= IF 2DROP OVER R-LEN IF -1 2 PICK +! THEN ELSE
+    DUP 0= >R 2DUP S" ." COMPARE 0= R> OR IF 2DROP ELSE
+    R-TEXT K-TEXT R-BOX 2 PICK R-PUSH THEN THEN
+  LOOP DROP
+  S" /" R-TEXT R-JOIN  S" /" R-TEXT SWAP 2 R-CONCAT ;
+
+: R-LIST= ( l l --- f )   \ as long as each other, each item = (782)
+  OVER @ OVER @ <> IF 2DROP 0 EXIT THEN
+  DUP @ 0 ?DO  OVER I R-AT OVER I R-AT R-BOX= 0= IF 2DROP 0 UNLOOP EXIT THEN  LOOP 2DROP -1 ;
+: R-REC= ( r r --- f )   \ the same keys, in any order, each value = (782)
+  OVER R-KEYS @ OVER R-KEYS @ <> IF 2DROP 0 EXIT THEN
+  OVER R-KEYS DUP @ 0 ?DO                                         ( r1 r2 keys )
+    DUP I R-AT R-ANY>TEXT  2 PICK R-FIND DUP 0< IF DROP 2DROP DROP 0 UNLOOP EXIT THEN
+    2 PICK R-VALS SWAP R-AT  3 PICK R-VALS I R-AT R-BOX= 0= IF 2DROP DROP 0 UNLOOP EXIT THEN
+  LOOP DROP 2DROP -1 ;
+' R-LIST= IS R-LIST=-D  ' R-REC= IS R-REC=-D
 
 \ ---- format (Iteration 781) -----------------------------------------------
 \ format(f, a, b, ...): Python's % formatting - the conversions s d i f x X
