@@ -1,0 +1,14 @@
+# a run-time error names the line of the statement running (781)
+def get xs i -> any {
+    echo getting
+    return $xs[$i]
+}
+echo start
+v = get([1 2 3], 1)
+echo got $v
+for i in range(3) {
+    if ($i == 2) {
+        w = get([1 2 3], 5)
+    }
+}
+echo never

@@ -289,6 +289,9 @@ class Compiler:
             if k == 'record': return '%s R-KEYS @' % c, 'number'
             return '%s @' % c, 'number'                            # a text's or a list's count
         if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
+        if name == 'format':                                            # format(f, a, ...): % formatting (781)
+            if not a: need(1)
+            return '%s R-NEW-LIST %s R-FORMAT' % (self.to_text(*a[0]), ' '.join('%s OVER R-PUSH' % self.box(*x) for x in a[1:])), 'text'
         if name == 'join': need(2); return '%s %s R-JOIN' % (cont(a[0]), self.to_text(*a[1])), 'text'   # an item unboxed (779)
         if name == 'range':                                            # Python's: up to, not with, its end (770)
             if len(a) not in (1, 2, 3): raise Error('line %d: range() takes 1 to 3 arguments' % line)
@@ -426,10 +429,11 @@ class Compiler:
         self.take('op', '}'); self.da_leave(); return ' '.join(o for o in out if o)
     RKC = {'text': 'K-TEXT', 'list': 'K-LIST', 'record': 'K-REC', 'any': 'K-ANY'}
     def statement(self):                 # gene gc (776): a safe point before each statement of the top level
-        v = self.peek()[1]
+        v = self.peek()[1]; line = self.peek()[2]
         gc = (GENES['gc'] and self.locals is None and not getattr(self, 'stack', None)
               and not getattr(self, 'in_exit', False) and v not in ('def', 'on'))
         out = self.statement_inner()
+        if GENES['lines'] and v != 'def': out = ('[ %d R-MARK ] %s' % (line, out)).strip()   # gene lines (781)
         return 'R-GC? ' + out if gc and out else ('R-GC?' if gc else out)
     def root_kind(self, n):              # what a variable registers as, for the collector: None if nothing
         if n in getattr(self, 'roots', {}): return self.roots[n]

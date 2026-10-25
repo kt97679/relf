@@ -805,6 +805,7 @@ do not trust the absence of a line below.
 - 778 — relfsh frees old function bodies each loop round (its first change since 725); make memcheck and rill-memcheck guard against leaks; a regex program leak fixed
 - 779 — break, continue and return in and out of loops: two crashes fixed, two gaps closed, as Python
 - 780 — a[i][j] = v to any depth; items unboxed for join, slice, sum, at, sort-by (a crash); a def called as a command: the call shown
+- 781 — format() as Python's % formatting; run-time errors name the line, at no run-time cost (gene lines)
 
 ### Not tied to an iteration
 

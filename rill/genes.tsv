@@ -19,3 +19,4 @@ echolit	1	0,1	compilers	echo's literal runs typed from the definition, items typ
 loopvar	1	0,1	compilers	a counted loop's variable read as I in a body nothing else could see it from, stored once after the loop (753)
 infer	1	0,1	compilers	one kind per variable over its whole scope - the join of its bindings, from a first pass (764-765; docs/RILL-KINDS.md)
 gc	1	0,1	compilers	a collection may run before each top-level statement: the variables registered with their kinds, the arena copied and the old one freed (776)
+lines	1	0,1	compilers	each statement marks where its code starts and its line, as it is compiled - nothing at run time; a run-time error names the line (781)

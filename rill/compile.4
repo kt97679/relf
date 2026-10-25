@@ -368,6 +368,8 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
   2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" format" S= IF 2DROP ARG TO-TEXT S" R-NEW-LIST" OUT+                \ format(f, a, ...): % formatting (781)
+     BEGIN S" )" CUR-IS? 0= WHILE ARG BOX S" OVER R-PUSH" OUT+ REPEAT  S" R-FORMAT" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" join" S= IF 2DROP ARG CONT ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" range" S= IF 2DROP OUT-POS LB-POS !  ARG TO-NUM                     \ range(b), (a, b), (a, b, step): Python's (770)
     S" )" CUR-IS? IF S" 0" LB-POS @ OUT-INSERT S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
@@ -1138,6 +1140,9 @@ VARIABLE CD-P
 \ [gene gc]
   IN-DEF @ 0= STACKMODE @ 0= AND IN-EXIT @ 0= AND IF                 \ a safe point before each top-level statement
     S" def" CUR-IS? S" on" CUR-IS? OR 0= IF S" R-GC?" OUT+ THEN THEN
+\ [/gene]
+\ [gene lines]
+  S" def" CUR-IS? 0= IF S" [" OUT+ TK L@ OUT-NUM S" R-MARK ]" OUT+ THEN   \ where its code starts, and its line (781)
 \ [/gene]
   S" if" CUR-IS? IF IF-STMT EXIT THEN
   S" cd" CUR-IS? IF TK 1+ T@ 2DUP S" =" S= >R 2DUP S" (" S= >R S" [" S= R> OR R> OR 0= IF CD-STMT EXIT THEN THEN

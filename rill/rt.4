@@ -43,7 +43,26 @@ DEFER R-DEC>TEXT-HOOK   \ R-ANY>TEXT needs it before the library defines it
 VARIABLE RL   VARIABLE RJ-SEP
 : R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;   \ boxsmall tried and taken out (752)
 : R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
-: R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-NL  -4001 THROW ;
+\ ---- Where a run-time error happened (Iteration 781) -----------------------
+\ Each statement of the script marks, as its code is compiled ([ n R-MARK ]
+\ - nothing at run time), where its code starts and its line. An error looks
+\ down the return stack for the innermost address in the script's own code:
+\ above the first mark, below HERE. The table lives in the C heap. Gene lines.
+VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
+: R-MARK ( n --- )   \ between [ and ], as a statement is compiled
+  MK-N @ MK-CAP @ = IF
+    MK-CAP @ 2* 256 MAX DUP MK-CAP !  2* CELLS  MK-A @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW MK-A ! THEN
+  HERE  MK-A @ MK-N @ 2* CELLS + 2!  1 MK-N +! ;
+: MK-LINE ( a --- n )   \ the line whose code holds a; 0: not the script's code
+  MK-N @ 0= IF DROP 0 EXIT THEN
+  DUP MK-A @ @ U< IF DROP 0 EXIT THEN
+  DUP HERE U< 0= IF DROP 0 EXIT THEN
+  0 SWAP  MK-N @ 0 ?DO  DUP MK-A @ I 2* CELLS + @ U< IF LEAVE THEN  NIP MK-A @ I 2* CELLS + CELL+ @ SWAP  LOOP DROP ;
+: R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
+  R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
+: R-ERR-NL ( --- )   R-WHERE R-NL ;
+
+: R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-ERR-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
 \ [gene truth]
 : R-ANY>BOOL ( box --- f )   \ an item as a condition (751): an empty text, list or record false
@@ -67,11 +86,11 @@ VARIABLE RL   VARIABLE RJ-SEP
 : R-INDEX ( l i --- l i' )   \ an index the unsigned test refused: from the end when negative and in the list,
   \ as Python's $l[-1] (771); past either end an error. Reached only where the plain read would fail.
   DUP 0< IF OVER @ OVER + DUP 0< 0= IF NIP EXIT THEN DROP THEN
-  ." rill: index " . ." past a list of " @ . R-NL -4002 THROW ;
+  ." rill: index " . ." past a list of " @ . R-ERR-NL -4002 THROW ;
 : R-AT ( l i --- box )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP 2 CELLS + @ + @ ;
 : R-SET ( box l i --- )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP R-ITEMS + ! ;
 : R-SHIFT ( l --- box )   \ the first item, out
-  DUP @ 0= IF ." rill: shift of an empty list" R-NL -4002 THROW THEN
+  DUP @ 0= IF ." rill: shift of an empty list" R-ERR-NL -4002 THROW THEN
   DUP R-ITEMS @ >R  DUP R-ITEMS DUP CELL+ SWAP 2 PICK @ 1- CELLS MOVE  -1 SWAP +!  R> ;
 : R-EXTEND ( l m --- )   DUP @ 0 ?DO  DUP I R-AT 2 PICK R-PUSH  LOOP 2DROP ;
 : R-BOUND ( n len --- n' )   OVER 0< IF + 0 MAX ELSE MIN THEN ;   \ a slice's bound: negative from the end, within the list
@@ -145,7 +164,7 @@ VARIABLE RH-R  VARIABLE RH-K
     EXIT  THEN
   ROT DROP SWAP R-VALS SWAP R-SET ;
 : R-GET ( key r --- box )
-  2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
+  2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-ERR-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
 : R-HAS ( key r --- f )   R-FIND 0< 0= ;
 \ texts and lists
 VARIABLE SW-END
@@ -177,7 +196,7 @@ VARIABLE RG-S  VARIABLE RG-B
   RG-S ! RG-B !  R-NEW-LIST RL !
   BEGIN DUP RG-S @ 0> IF RG-B @ < ELSE RG-B @ > THEN WHILE  DUP K-NUM R-BOX RL @ R-PUSH  RG-S @ +  REPEAT
   DROP RL @ ;
-: R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
+: R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-ERR-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
 
 
 \ Commands, pipelines, output captured, ports redirected (stage 1b,
@@ -355,6 +374,7 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
   R-RUN-XT @XT CATCH ?DUP IF
     R-RUN-EXIT                                        \ on EXIT runs however the script ends
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
+    DUP -4100 -4000 WITHIN IF  DROP 2 SYS-EXIT  THEN    \ Rill's own errors: their message said already, with the line (781)
     ." rill: error " . R-NL  2 SYS-EXIT
   THEN  R-RUN-EXIT  0 SYS-EXIT ;
 
@@ -363,10 +383,10 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
 \ places (733's decision), a number scaled by a million - a library over */,
 \ the engine unchanged.
 : R-READ ( path --- t )   \ read(path): the file's whole text
-  DUP R-T@ R/O OPEN-FILE IF DROP ." rill: cannot read " R-TYPE R-NL -4006 THROW THEN
+  DUP R-T@ R/O OPEN-FILE IF DROP ." rill: cannot read " R-TYPE R-ERR-NL -4006 THROW THEN
   NIP DUP >R R-READ-KEEP R> CLOSE-FILE DROP ;
 : R-WRITE ( path t --- )   \ write(path, text): the file made, or made again, holding the text
-  SWAP DUP R-T@ W/O OPEN-FILE IF DROP ." rill: cannot write " R-TYPE R-NL -4006 THROW THEN
+  SWAP DUP R-T@ W/O OPEN-FILE IF DROP ." rill: cannot write " R-TYPE R-ERR-NL -4006 THROW THEN
   NIP SWAP R-T@ 2 PICK WRITE-FILE DROP CLOSE-FILE DROP ;
 : R-STARTS ( t prefix --- f )   \ < takes tu: three cells left, not four - a text shorter than the prefix
   \ dropped a cell too many, and the pilot's 2,402 lines ran the stack under (755)
@@ -494,7 +514,7 @@ VARIABLE LM-K
   DUP R-LEN 0= ABORT" rill: max of an empty list"
   DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
 : R-CD ( t --- )   \ cd DIR
-  DUP R-CSTR CHDIR IF ." rill: cd: cannot change to " R-TYPE R-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
+  DUP R-CSTR CHDIR IF ." rill: cd: cannot change to " R-TYPE R-ERR-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
 VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 : R-CWD-PUSH ( --- )
   CWD-STACK @ 0= IF R-NEW-LIST CWD-STACK ! THEN
@@ -502,11 +522,87 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 : R-CWD-POP ( --- )   CWD-STACK @ DUP R-LEN 1- R-AT R-ANY>TEXT R-CD  -1 CWD-STACK @ +! ;
 : R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
   R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
-  K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-NL 1 R-STATUS ! -4000 THROW ;
+  K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-ERR-NL 1 R-STATUS ! -4000 THROW ;
 : R-UNSET ( c-addr u --- )   \ a variable read where it may not be set, and it is not (772) - Python's NameError
-  ." rill: $" TYPE ."  is not set" R-NL  1 R-STATUS !  -4000 THROW ;
+  ." rill: $" TYPE ."  is not set" R-ERR-NL  1 R-STATUS !  -4000 THROW ;
 : R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
+
+\ ---- format (Iteration 781) -----------------------------------------------
+\ format(f, a, b, ...): Python's % formatting - the conversions s d i f x X
+\ and %%, the flags - 0 + and space, a width and a precision. The text is
+\ built in a block of the C heap kept from call to call, then made a text.
+\ f rounds half away from zero on Rill's exact decimals (Python rounds the
+\ binary float's value: the two differ only on an exact tie).
+VARIABLE FM-B  VARIABLE FM-N  VARIABLE FM-CAP  VARIABLE FM-C
+: FM-ROOM ( u --- )   \ room for u more bytes
+  FM-N @ + DUP FM-CAP @ > 0= IF DROP EXIT THEN
+  2* 256 MAX DUP FM-CAP !
+  FM-B @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW FM-B ! ;
+: FM-ADD ( a u --- )   DUP FM-ROOM  TUCK FM-B @ FM-N @ + SWAP MOVE  FM-N +! ;
+: FM-CH ( c --- )   FM-C C!  FM-C 1 FM-ADD ;
+: FM-PAD ( n c --- )   SWAP 0 ?DO DUP FM-CH LOOP DROP ;
+VARIABLE FM-L  VARIABLE FM-I  VARIABLE FM-FA  VARIABLE FM-FU
+VARIABLE FM-LEFT  VARIABLE FM-ZERO  VARIABLE FM-SIGN  VARIABLE FM-W  VARIABLE FM-PREC
+: FM-ERR ( c-addr u --- )   ." rill: format: " TYPE R-ERR-NL -4005 THROW ;
+: FM-NEXT ( --- box )   FM-I @ FM-L @ R-LEN < 0= IF S" not enough values" FM-ERR THEN  FM-L @ FM-I @ R-AT  1 FM-I +! ;
+: FM-GETC ( --- c )   FM-FU @ 0= IF S" a % with nothing after it" FM-ERR THEN  FM-FA @ C@  1 FM-FA +!  -1 FM-FU +! ;
+: FM-PEEK ( --- c )   FM-FU @ IF FM-FA @ C@ ELSE 0 THEN ;
+: FM-DIGITS ( --- n )   0 BEGIN FM-PEEK DUP [CHAR] 0 [CHAR] 9 1+ WITHIN WHILE [CHAR] 0 - SWAP 10 * + FM-GETC DROP REPEAT DROP ;
+: FM-SPEC ( --- c )   \ the flags, the width, the precision; then the conversion
+  0 FM-LEFT ! 0 FM-ZERO ! 0 FM-SIGN ! -1 FM-PREC !
+  BEGIN FM-PEEK DUP [CHAR] - = OVER [CHAR] 0 = OR OVER [CHAR] + = OR SWAP BL = OR WHILE
+    FM-GETC DUP [CHAR] - = IF -1 FM-LEFT ! THEN  DUP [CHAR] 0 = IF -1 FM-ZERO ! THEN
+    DUP [CHAR] + = IF [CHAR] + FM-SIGN ! THEN  BL = IF FM-SIGN @ 0= IF BL FM-SIGN ! THEN THEN
+  REPEAT
+  FM-DIGITS FM-W !
+  FM-PEEK [CHAR] . = IF FM-GETC DROP FM-DIGITS FM-PREC ! THEN
+  FM-GETC ;
+: FM-PUT-NUM ( a u neg --- )   \ a number's digits: its sign, then zeros or spaces to the width
+  IF [CHAR] - ELSE FM-SIGN @ THEN >R
+  DUP R@ 0<> 1 AND + FM-W @ SWAP - 0 MAX                  ( a u pad )
+  FM-LEFT @ IF R> ?DUP IF FM-CH THEN ROT ROT FM-ADD BL FM-PAD
+  ELSE FM-ZERO @ IF R> ?DUP IF FM-CH THEN [CHAR] 0 FM-PAD FM-ADD
+  ELSE BL FM-PAD R> ?DUP IF FM-CH THEN FM-ADD THEN THEN ;
+CREATE FM-T 80 ALLOT
+: FM-UDIGITS ( u base --- a u )   \ u's digits, at least FM-PREC of them
+  BASE @ >R BASE ! 0 <# #S #> R> BASE !
+  FM-PREC @ OVER - 0 MAX ?DUP 0= IF EXIT THEN
+  DUP >R FM-T SWAP [CHAR] 0 FILL  FM-T R@ + SWAP DUP >R MOVE  FM-T R> R> + ;
+: FM-LOWER ( a u --- a u )   2DUP OVER + SWAP ?DO I C@ [CHAR] A [CHAR] F 1+ WITHIN IF I C@ 32 + I C! THEN LOOP ;
+: FM-INT ( box base upper? --- )   \ d i x X
+  >R >R R-ANY>NUM DUP 0< SWAP ABS R> FM-UDIGITS R> 0= IF FM-LOWER THEN ROT FM-PUT-NUM ;
+CREATE FM-T2 100 ALLOT  VARIABLE FM-T2N
+: T2-ADD ( a u --- )   TUCK FM-T2 FM-T2N @ + SWAP MOVE FM-T2N +! ;
+: FM-F ( box --- )   \ f: the decimal rounded to the precision, 6 if none
+  R-ANY>DEC DUP 0< SWAP ABS                                        ( neg v )
+  FM-PREC @ 0< IF 6 FM-PREC ! THEN  FM-PREC @ 18 MIN FM-PREC !
+  FM-PREC @ 6 < IF 1 6 FM-PREC @ - 0 ?DO 10 * LOOP DUP 2/ ROT + SWAP /
+  ELSE FM-PREC @ 6 - 0 ?DO 10 * LOOP THEN                           ( neg q )
+  1 FM-PREC @ 0 ?DO 10 * LOOP /MOD                                 ( neg frac int )
+  0 FM-T2N !  FM-PREC @ >R  0 FM-PREC !  10 FM-UDIGITS T2-ADD
+  R@ IF S" ." T2-ADD  R@ FM-PREC ! 10 FM-UDIGITS T2-ADD ELSE DROP THEN  R> FM-PREC !
+  FM-T2 FM-T2N @ ROT FM-PUT-NUM ;
+: FM-S ( box --- )
+  R-ANY>TEXT R-T@  FM-PREC @ 0< 0= IF FM-PREC @ MIN THEN
+  FM-W @ OVER - 0 MAX  FM-LEFT @ IF ROT ROT FM-ADD BL FM-PAD ELSE BL FM-PAD FM-ADD THEN ;
+: R-FORMAT ( fmt list --- t )
+  FM-L !  R-T@ FM-FU ! FM-FA !  0 FM-I !  0 FM-N !
+  BEGIN FM-FU @ WHILE
+    FM-GETC DUP [CHAR] % <> IF FM-CH ELSE DROP
+      FM-SPEC
+      DUP [CHAR] % = IF FM-CH ELSE
+      DUP [CHAR] s = IF DROP FM-NEXT FM-S ELSE
+      DUP [CHAR] d = OVER [CHAR] i = OR IF DROP FM-NEXT 10 -1 FM-INT ELSE
+      DUP [CHAR] f = IF DROP FM-NEXT FM-F ELSE
+      DUP [CHAR] x = IF DROP FM-NEXT 16 0 FM-INT ELSE
+      DUP [CHAR] X = IF DROP FM-NEXT 16 -1 FM-INT ELSE
+      DROP S" a conversion it does not know (s d i f x X %)" FM-ERR
+      THEN THEN THEN THEN THEN THEN
+    THEN
+  REPEAT
+  FM-I @ FM-L @ R-LEN < IF S" more values than the text takes" FM-ERR THEN
+  FM-B @ FM-N @ R-TEXT ;
 
 \ ---- The collector (Iteration 776) ---------------------------------------
 \ Rill's values live in the arena, which only grew. At a safe point - between two statements of

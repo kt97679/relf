@@ -118,3 +118,21 @@ combination. Every example compiles to the same Forth as before.
 Still open in phase 3: a built-in format; run-time errors naming the Rill
 line. Phase 5's three waiting rewrites (gen-opcodes, pack-results,
 run-utf8) need abs() and more of the library first.
+
+## Phase 3 done (Iteration 781): format, and errors that name the line
+
+- `format(f, a, ...)`: Python's % formatting - s d i f x X %%, the flags
+  - 0 + and space, width and precision; too few or too many values are
+  errors, as in Python. One difference, on purpose: f rounds Rill's exact
+  decimals half away from zero, where Python rounds the binary float - they
+  differ only on an exact tie (1.005, 2.25). tests/rill/format.rill as
+  Python.
+- A run-time error names the line of the statement running, innermost first:
+  `rill: index 5 past a list of 3 (line 4)`. Nothing is paid at run time:
+  each statement marks, as it is compiled (`[ n R-MARK ]`), where its code
+  starts; an error looks down the return stack for the innermost address in
+  the script's own code. Gene lines (on). Every example compiles to the same
+  code as before once the marks are taken out. The driver no longer adds
+  `rill: error -40xx` after a message Rill has printed itself; the kernel's
+  own errors (a crash, a division by zero) still print only their number -
+  the return stack is unwound by the time they are caught.
