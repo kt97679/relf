@@ -147,6 +147,13 @@ VARIABLE STACKMODE   VARIABLE DEPTH
   DUP 1+ CUR#A @ +!
   CUR-B @ @ R@ + SWAP DUP >R MOVE
   BL CUR-B @ @ R> R> + + C! ;
+4096 BUFFER: HDR  VARIABLE HDR#
+VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
+: SEG>POS ( from pos --- )   \ the code from `from` to the end, moved in at pos
+  SG-POS ! SG-FROM !  OUT-POS SG-FROM @ - SG-LEN !
+  CUR-B @ @ SG-FROM @ +  HDR  SG-LEN @ MOVE
+  CUR-B @ @ SG-POS @ +  DUP SG-LEN @ +  SG-FROM @ SG-POS @ -  MOVE
+  HDR  CUR-B @ @ SG-POS @ +  SG-LEN @ MOVE ;
 : DEPTH+ ( n --- )   STACKMODE @ IF DEPTH +! ELSE DROP THEN ;
 : NUMBER-TEXT? ( c-addr u --- f )   \ -?\d+
   DUP 0= IF 2DROP 0 EXIT THEN
@@ -154,7 +161,9 @@ VARIABLE STACKMODE   VARIABLE DEPTH
   -1 -ROT 0 ?DO DUP I + C@ [CHAR] 0 [CHAR] 9 1+ WITHIN 0= IF NIP 0 SWAP LEAVE THEN LOOP DROP ;
 : PREC-OF ( i --- p )   \ an operator's precedence, 0 if it is none
   DUP K@ DUP T-OP = OVER T-KW = OR SWAP T-WORD = OR 0= IF DROP 0 EXIT THEN
+  DUP T@ S" not" S= IF 1+ S" in" TK-IS? IF 3 ELSE 0 THEN EXIT THEN          \ not in
   T@ 2DUP S" or" S= IF 2DROP 1 EXIT THEN  2DUP S" and" S= IF 2DROP 2 EXIT THEN
+  2DUP S" in" S= IF 2DROP 3 EXIT THEN
   2DUP S" ==" S= >R 2DUP S" !=" S= R> OR >R 2DUP S" <" S= R> OR >R 2DUP S" <=" S= R> OR >R
   2DUP S" >" S= R> OR >R 2DUP S" >=" S= R> OR IF 2DROP 3 EXIT THEN
   2DUP S" +" S= >R 2DUP S" -" S= R> OR IF 2DROP 4 EXIT THEN
@@ -169,12 +178,14 @@ VARIABLE HS-Q
 : OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
 : LIT-TEXT ( c-addr u --- )   2DUP 0 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;   \ rillc.py's lit_text
 : LIT ( c-addr u --- )   2DUP -1 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;      \ rillc.py's lit
-: TO-TEXT ( kind --- )   \ the value just made, as text
-  DUP K-TEXT = IF DROP EXIT THEN  K-ANY = IF S" R-ANY>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
+: TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
+  DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
+  K-LIST = IF S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
 : TO-NUM ( kind --- )   DUP K-NUM = OVER K-BOOL = OR IF DROP EXIT THEN
   K-ANY = IF S" R-ANY>NUM" OUT+ EXIT THEN  S" a number is needed here" ERR ;
 : K-CODE ( kind --- c-addr u )
-  DUP K-NUM = IF DROP S" K-NUM" EXIT THEN DUP K-TEXT = IF DROP S" K-TEXT" EXIT THEN  DROP S" K-BOOL" ;
+  DUP K-NUM = IF DROP S" K-NUM" EXIT THEN DUP K-TEXT = IF DROP S" K-TEXT" EXIT THEN
+  DUP K-LIST = IF DROP S" K-LIST" EXIT THEN  DUP K-REC = IF DROP S" K-REC" EXIT THEN  DROP S" K-BOOL" ;
 : BOX ( kind --- )   DUP K-ANY = IF DROP EXIT THEN  K-CODE OUT+ S" R-BOX" OUT+ ;
 
 \ defs: name, parameter count, return kind (0 none), pure
@@ -186,6 +197,7 @@ VARIABLE HS-Q
 : NOT-YET ( --- )   S" not in the Forth compiler yet (rillc.py has it)" ERR ;
 DEFER EXPR ( minp --- kind )
 DEFER COMMAND-HOOK ( capture? --- )   \ commands come in part 5; terms and strings need them first
+DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK ( --- )
 : PARAM-AT ( c-addr u --- i | -1 )   \ a pure def's parameter
   STACKMODE @ 0= IF 2DROP -1 EXIT THEN
   -1 -ROT PRM-N @ 0 ?DO 2DUP PRM-A I CELLS + @ PRM-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
@@ -199,7 +211,7 @@ DEFER COMMAND-HOOK ( capture? --- )   \ commands come in part 5; terms and strin
 
 : SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ SRC @ SRC# @ CUR-LINE @ ;
 : RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
-VARIABLE SUB-A  VARIABLE SUB-L
+VARIABLE SUB-A  VARIABLE SUB-L  VARIABLE FLD-POS
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
   SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  -1 COMMAND-HOOK S" R-CHECK" OUT+  RESTORE-TK ;
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
@@ -221,7 +233,14 @@ VARIABLE SUB-A  VARIABLE SUB-L
       R> 2 PICK OVER - 1- SUB-COMMAND  1 NPARTS +!
     ELSE 2 PICK 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
       0 LIT-FLUSH  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
-      R> 2 PICK OVER - READ-VAR TO-TEXT  1 NPARTS +!  THEN THEN
+      R> 2 PICK OVER - OUT-POS >R READ-VAR                     ( c-addr u kind )  ( R: the var's code )
+      BEGIN DUP DUP K-REC = SWAP K-ANY = OR 3 PICK 1 > AND IF 2 PICK C@ [CHAR] . = 3 PICK 1+ C@ NAME-START? AND ELSE 0 THEN
+      WHILE                                                    \ "$host.name": a field
+        K-ANY = IF S" R-UNBOX DROP" OUT+ THEN  1 /STRING  OVER >R
+        BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
+        R> 2 PICK OVER -  OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+  K-ANY
+      REPEAT R> DROP
+      TO-TEXT  1 NPARTS +!  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
       0 LIT-FLUSH  1 /STRING  OVER >R  1 >R
       BEGIN R@ WHILE OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
@@ -233,11 +252,33 @@ VARIABLE SUB-A  VARIABLE SUB-L
 
 : KIND-WORD ( c-addr u --- kind )   \ the kind a def's -> names
   2DUP S" number" S= IF 2DROP K-NUM EXIT THEN  2DUP S" text" S= IF 2DROP K-TEXT EXIT THEN
-  2DUP S" bool" S= IF 2DROP K-BOOL EXIT THEN  2DROP K-ANY ;
+  2DUP S" bool" S= IF 2DROP K-BOOL EXIT THEN  2DUP S" list" S= IF 2DROP K-LIST EXIT THEN
+  2DUP S" record" S= IF 2DROP K-REC EXIT THEN  2DROP K-ANY ;
+\ the library, as rillc.py's library(): each argument converted as its
+\ function needs, the code in rillc.py's order
+: ARG ( --- kind )   1 EXPR  S" ," CUR-IS? IF NEXT-TK THEN ;
+VARIABLE LB-POS
+: LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
+  2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
+     K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
+  2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" join" S= IF 2DROP ARG DROP ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" range" S= IF 2DROP ARG TO-NUM ARG TO-NUM S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" number" S= IF 2DROP ARG TO-TEXT S" R-NUMBER" OUT+ K-NUM -1 EXIT THEN
+  2DUP S" text" S= IF 2DROP ARG TO-TEXT K-TEXT -1 EXIT THEN
+  2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG DROP  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
+     S" R-PUSH" OUT+ 0 -1 EXIT THEN
+  2DUP S" extend" S= IF 2DROP ARG DROP ARG DROP S" R-EXTEND" OUT+ 0 -1 EXIT THEN
+  2DUP S" shift" S= IF 2DROP ARG DROP S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" first" S= IF 2DROP ARG DROP S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
+  2DUP S" keys" S= IF 2DROP ARG DROP S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" slice" S= IF 2DROP ARG DROP ARG TO-NUM
+     S" )" CUR-IS? IF S" OVER R-LEN R-SLICE" OUT+ ELSE ARG TO-NUM S" R-SLICE" OUT+ THEN K-LIST -1 EXIT THEN
+  2DROP 0 ;
 : CALL ( --- kind )   \ name( args ), the name the current token
   TK T@ NEXT-TK  S" (" EXPECT
-  2DUP S" len" S= IF 2DROP 1 EXPR DROP S" @" OUT+ S" )" EXPECT K-NUM EXIT THEN
-  2DUP S" number" S= IF 2DROP 1 EXPR TO-TEXT S" R-NUMBER" OUT+ S" )" EXPECT K-NUM EXIT THEN
+  2DUP LIBRARY IF >R 2DROP R> S" )" EXPECT EXIT THEN          \ the kind, not the name, left
   2DUP DF-FIND DUP 0< IF DROP 2DROP S" a function is not defined (a def comes before its use)" ERR THEN
   >R 2DROP 0
   BEGIN S" )" CUR-IS? 0= WHILE
@@ -248,16 +289,89 @@ VARIABLE SUB-A  VARIABLE SUB-L
   R@ DF-CUR @ = IF S" RECURSE" OUT+ ELSE
     [CHAR] R OUT-C [CHAR] : OUT-C  DF-A R@ CELLS + @ DF-L R@ CELLS + @ OUT-RAW BL OUT-C THEN
   DF-K R@ CELLS + @ DUP 0<> 1 AND ROT - DEPTH+  R> DROP ;
-: TERM ( --- kind )
+: TERM0 ( --- kind )
   TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK LIT K-TEXT EXIT THEN
   S" (" CUR-IS? IF NEXT-TK 1 EXPR S" )" EXPECT EXIT THEN
   S" $(" CUR-IS? IF NEXT-TK -1 COMMAND-HOOK S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
-  S" [" CUR-IS? S" {" CUR-IS? OR IF NOT-YET THEN       \ lists and records: rillc.py only, for now
+  S" [" CUR-IS? IF NEXT-TK LIST-LIT EXIT THEN
+  S" {" CUR-IS? IF NEXT-TK SKIP-NL-HOOK RECORD-LIT EXIT THEN
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN  TK T@ NEXT-TK LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
+: SPLIT-DOT ( c-addr u --- rest-a rest-u field-a field-u )   \ a.b.c: a, and b.c
+  2DUP [CHAR] . SCAN  2SWAP DROP 2 PICK OVER -  2SWAP DUP IF 1 /STRING THEN 2SWAP ;
+: TERM ( --- kind )   \ TERM0, then $x[i] and $r.f touching it
+  OUT-POS >R  TERM0
+  BEGIN
+    S" [" CUR-IS? TK TOK-AT TK 1- TOK-END = AND IF
+      NEXT-TK
+      DUP K-LIST = IF DROP 1 EXPR TO-NUM S" R-AT" OUT+ ELSE
+      DUP K-ANY = IF DROP S" R-UNBOX DROP" OUT+ 1 EXPR TO-NUM S" R-AT" OUT+ ELSE
+      K-REC = IF OUT-POS 1 EXPR TO-TEXT R@ SEG>POS S" R-GET" OUT+ ELSE
+      S" only a list or a record is indexed" ERR THEN THEN THEN
+      S" ]" EXPECT K-ANY 0
+    ELSE TK K@ T-WORD = TK T@ DROP C@ [CHAR] . = AND TK TOK-AT TK 1- TOK-END = AND
+      OVER DUP K-REC = SWAP K-ANY = OR AND IF
+      TK T@ 1 /STRING NEXT-TK                               ( kind fields )
+      BEGIN DUP WHILE
+        SPLIT-DOT                                           ( kind rest field )
+        4 PICK K-ANY = IF S" R-UNBOX DROP" OUT+ THEN
+        OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+   \ the key in front of the term
+        ROT DROP K-ANY -ROT
+      REPEAT 2DROP 0
+    ELSE -1 THEN THEN
+  UNTIL R> DROP ;
+\ the name of a loop's list: name.srcN, N a token's index, as rillc.py makes it
+64 BUFFER: TMPN  VARIABLE TMPN#
+: TMP-NAME ( c-addr u n --- c-addr2 u2 )
+  >R  DUP TMPN# !  TMPN SWAP MOVE  S" .src" TMPN TMPN# @ + SWAP MOVE  4 TMPN# +!
+  R> 0 <# #S #> TMPN TMPN# @ + SWAP DUP >R MOVE R> TMPN# +!
+  \ a copy of its own: the tables keep the address, and TMPN is made again for the next
+  TMPN# @ ALLOCATE THROW  TMPN OVER TMPN# @ MOVE  TMPN# @ ;
+: SET-KIND ( c-addr u kind --- )   \ rillc.py's scope()[name] = kind: set, or add, in the current scope
+  >R 2DUP NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF
+     R> SWAP CELLS NM-K + ! 2DROP EXIT THEN THEN
+  DROP R> IN-DEF @ NM-ADD ;
+: VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
+: LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
+  S" R-NEW-LIST" OUT+
+  BEGIN S" ]" CUR-IS? 0= WHILE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ REPEAT NEXT-TK K-LIST ;
+VARIABLE CM-COND
+: COMPREHENSION ( j --- kind )   \ [expr for x in src if cond]: the for part first, then the expr
+  TK-I @ >R  DUP 1+ TK-I !                                 ( j )  ( R: the expr's start )
+  TK T@ NEXT-TK  S" in" EXPECT                             ( j name )
+  S" R-NEW-LIST" OUT+  1 EXPR K-LIST <> IF S" for needs a list" ERR THEN
+  2DUP 4 PICK TMP-NAME 2DUP DECLARE                        ( j name tmp )
+  2OVER DECLARE  2OVER K-ANY SET-KIND
+  2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @" OUT+ S" R-LEN" OUT+ S" 0" OUT+ S" ?DO" OUT+
+  VAR-OUT S" @" OUT+ S" I" OUT+ S" R-AT" OUT+ VAR-OUT S" !" OUT+  DROP
+  0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR DROP S" IF" OUT+ -1 CM-COND ! THEN
+  CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
+  R> R> TK-I ! >R                                          ( after )  ( R: cond )
+  1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+
+  R> IF S" THEN" OUT+ THEN  S" LOOP" OUT+  TK-I !  K-LIST ;
+: LIST-LIT-IMPL ( --- kind )   \ the [ taken: a comprehension if a for stands at this level
+  TK-I @ 0                                                 ( j depth )
+  BEGIN OVER T@ S" ]" S= OVER 0= AND 0= WHILE
+    OVER K@ T-STR <> OVER K@ T-RAW <> AND IF
+      OVER T@ 2DUP S" [" S= >R 2DUP S" (" S= R> OR >R S" {" S= R> OR IF 1+ ELSE
+      OVER T@ 2DUP S" ]" S= >R 2DUP S" )" S= R> OR >R S" }" S= R> OR IF 1- ELSE
+      DUP 0= 2 PICK T@ S" for" S= AND 2 PICK K@ T-KW = AND IF DROP COMPREHENSION EXIT THEN THEN THEN
+    THEN SWAP 1+ SWAP
+  REPEAT 2DROP LIST-ITEMS ;
+' LIST-LIT-IMPL IS LIST-LIT
+: RECORD-LIT-IMPL ( --- kind )   \ { name: value, 'key': value }, the { taken
+  S" R-NEW-RECORD" OUT+
+  BEGIN S" }" CUR-IS? 0= WHILE
+    TK K@ T-WORD = TK T@ + 1- C@ [CHAR] : = AND IF TK T@ 1- NEXT-TK
+    ELSE TK K@ DUP T-RAW = SWAP T-STR = OR TK 1+ S" :" TK-IS? AND IF TK T@ 1 /STRING 1- NEXT-TK NEXT-TK
+    ELSE S" a record field is name: value" ERR THEN THEN       ( key )
+    1 EXPR BOX  LIT-TEXT  S" 2" OUT+ S" PICK" OUT+ S" R-PUT" OUT+
+    S" ," CUR-IS? IF NEXT-TK THEN  SKIP-NL-HOOK
+  REPEAT NEXT-TK K-REC ;
+' RECORD-LIT-IMPL IS RECORD-LIT
 : UNARY ( --- kind )
   S" not" CUR-IS? IF NEXT-TK RECURSE DROP S" 0=" OUT+ K-BOOL EXIT THEN
   TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE DROP S" NEGATE" OUT+ K-NUM EXIT THEN
@@ -269,12 +383,21 @@ VARIABLE SUB-A  VARIABLE SUB-L
   TK T@ S" 0" S= IF T@ 2DUP S" >" S= IF 2DROP S" 0>" EXIT THEN 2DUP S" <" S= IF 2DROP S" 0<" EXIT THEN
     2DUP S" ==" S= IF 2DROP S" 0=" EXIT THEN S" !=" S= IF S" 0<>" EXIT THEN 0 0 EXIT THEN
   DROP 0 0 ;
+VARIABLE BL-POS   VARIABLE BL-K
+: LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
+: LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
+: LEFT-BOX ( --- )    OUT-POS BL-K @ BOX      BL-POS @ SEG>POS ;
 : BINOP ( lk lpos rk opi --- kind )
-  >R NIP
-  R@ T@ S" and" S= R@ T@ S" or" S= OR IF 2DROP R> T@ S" and" S= IF S" AND" ELSE S" OR" THEN OUT+ K-BOOL EXIT THEN
-  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  2 PICK K-TEXT = AND  OVER K-TEXT = AND IF
-    2DROP S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
-  TO-NUM TO-NUM  -1 DEPTH+
+  >R  SWAP BL-POS !  SWAP BL-K !                                ( rk )  ( R: opi )
+  R@ T@ S" and" S= R@ T@ S" or" S= OR IF DROP R> T@ S" and" S= IF S" AND" ELSE S" OR" THEN OUT+ K-BOOL EXIT THEN
+  R@ T@ S" in" S= R@ T@ S" not" S= OR IF
+    DUP K-REC = IF DROP LEFT-TEXT S" R-HAS" OUT+ ELSE
+    K-LIST = IF LEFT-BOX S" R-IN" OUT+ ELSE S" in needs a list or a record" ERR THEN THEN
+    R> T@ S" not" S= IF S" 0=" OUT+ THEN  K-BOOL EXIT THEN
+  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = OVER K-TEXT = OR AND
+  BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
+    LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
+  LEFT-NUM TO-NUM  -1 DEPTH+
   R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" *" ELSE R@ T@ S" /" S= IF S" /" ELSE
   R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
   R@ T@ S" >" S= IF S" >" ELSE R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
@@ -282,7 +405,7 @@ VARIABLE SUB-A  VARIABLE SUB-L
 : EXPR-IMPL ( minp --- kind )
   >R UNARY
   BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
-    TK >R NEXT-TK
+    TK >R NEXT-TK  R@ T@ S" not" S= IF NEXT-TK THEN              \ not in: two tokens
     R@ SHORT-FORM DUP IF  NEXT-TK OUT+  DROP  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
   REPEAT R> DROP ;
@@ -361,7 +484,6 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
     SWAP 1+ SWAP
   AGAIN ;
 \ the header of a def with locals, made after its body
-4096 BUFFER: HDR  VARIABLE HDR#
 : HDR+ ( c-addr u --- )   HDR HDR# @ + SWAP DUP >R MOVE  R> HDR# +!  BL HDR HDR# @ + C!  1 HDR# +! ;
 : HDR-VAR ( c-addr u --- )   S" R." HDR HDR# @ + SWAP MOVE 2 HDR# +!  -1 HDR# +! 1 HDR# +!  HDR+ ;
 VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
@@ -404,12 +526,6 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   T@ 2DUP S" in" S= IF 2DROP 0 EXIT THEN  2DUP S" out" S= IF 2DROP 1 EXIT THEN
   2DUP S" err" S= IF 2DROP 2 EXIT THEN  S" all" S= IF 3 EXIT THEN  -1 ;
 : PORT-FD ( port --- fd )   DUP 3 = IF DROP 1 THEN ;
-VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
-: SEG>POS ( from pos --- )   \ the code from `from` to the end, moved in at pos
-  SG-POS ! SG-FROM !  OUT-POS SG-FROM @ - SG-LEN !
-  CUR-B @ @ SG-FROM @ +  HDR  SG-LEN @ MOVE
-  CUR-B @ @ SG-POS @ +  DUP SG-LEN @ +  SG-FROM @ SG-POS @ -  MOVE
-  HDR  CUR-B @ @ SG-POS @ +  SG-LEN @ MOVE ;
 : REDIRECT ( port --- )   \ the operator the current token; the code goes in front of the stage's words
   OUT-POS >R
   TK T@ NEXT-TK
@@ -451,14 +567,55 @@ VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
   0 COMMAND
   S" ??" CUR-IS? IF NEXT-TK S" IF" OUT+ STATEMENT S" THEN" OUT+ ELSE S" R-CHECK" OUT+ THEN ;
 : CALL-STMT ( --- )   CALL IF S" DROP" OUT+ THEN ;
+\ for, as rillc.py's for_(): a counted loop over range(a, b); a list's items; a record's keys and values
+VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
+: FOR-STMT ( --- )
+  NEXT-TK  TK T@ FOR-AL ! FOR-A !  NEXT-TK  0 FOR-BL !
+  S" ," CUR-IS? IF NEXT-TK TK T@ FOR-BL ! FOR-B ! NEXT-TK THEN
+  S" in" EXPECT
+  S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
+    NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
+    OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
+    S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND
+    S" ?DO" OUT+ S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ BLOCK S" LOOP" OUT+ EXIT
+  THEN
+  1 EXPR                                                       ( sk )
+  FOR-A @ FOR-AL @ TK-I @ TMP-NAME 2DUP DECLARE                ( sk tmp )
+  2 PICK K-REC = IF ROT DROP
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-TEXT SET-KIND
+    FOR-BL @ IF FOR-B @ FOR-BL @ 2DUP DECLARE K-ANY SET-KIND THEN
+    2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-KEYS R-LEN 0 ?DO" OUT+
+    2DUP VAR-OUT S" @ R-KEYS I R-AT R-ANY>TEXT" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+
+    FOR-BL @ IF 2DUP VAR-OUT S" @ R-VALS I R-AT" OUT+ FOR-B @ FOR-BL @ VAR-OUT S" !" OUT+ THEN
+    2DROP BLOCK S" LOOP" OUT+ EXIT
+  THEN
+  ROT DUP K-ANY = IF DROP S" R-UNBOX DROP" OUT+ ELSE K-LIST <> IF S" for needs a list or a record" ERR THEN THEN
+  FOR-BL @ IF FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND  FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN
+  2DUP DECLARE K-ANY SET-KIND
+  2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-LEN 0 ?DO" OUT+
+  FOR-BL @ IF S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
+  VAR-OUT S" @ I R-AT" OUT+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN VAR-OUT S" !" OUT+
+  BLOCK S" LOOP" OUT+ ;
+\ x[i] = v: rillc.py puts the value first, then the container, then the index
+VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
+: INDEX-ASSIGN ( --- )
+  TK T@ IA-L ! IA-A !  NEXT-TK NEXT-TK
+  IA-A @ IA-L @ NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @     ( ck )
+  OUT-POS IA-P !  1 EXPR  OVER K-LIST = IF TO-NUM ELSE TO-TEXT THEN  S" ]" EXPECT S" =" EXPECT
+  OUT-POS 1 EXPR BOX  IA-P @ SEG>POS                               \ the value before the index
+  DUP K-LIST = IF DROP OUT-POS IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-P @ SG-LEN @ + SEG>POS S" R-SET" OUT+ EXIT THEN
+  K-REC = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-PUT" OUT+ EXIT THEN
+  S" is not a list or a record" ERR ;
 : STATEMENT-IMPL ( --- )
   S" if" CUR-IS? IF IF-STMT EXIT THEN
   S" while" CUR-IS? IF WHILE-STMT EXIT THEN
   S" return" CUR-IS? IF RETURN-STMT EXIT THEN
   S" def" CUR-IS? IF DEF-STMT EXIT THEN
-  S" for" CUR-IS? IF NOT-YET THEN
+  S" for" CUR-IS? IF FOR-STMT EXIT THEN
   S" break" CUR-IS? IF NEXT-TK S" LEAVE" OUT+ EXIT THEN
   TK K@ T-WORD = IF
+    TK 1+ S" [" TK-IS? TK 1+ TOK-AT TK TOK-END = AND IF INDEX-ASSIGN EXIT THEN
     TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
     S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
     TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
@@ -466,6 +623,7 @@ VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
   TK K@ DUP T-WORD = OVER T-STR = OR OVER T-RAW = OR SWAP T-VAR = OR IF COMMAND-STMT EXIT THEN
   NOT-YET ;
 ' STATEMENT-IMPL IS STATEMENT
+' SKIP-NL IS SKIP-NL-HOOK
 \ the program: names declared in order, the defs, R-MAIN
 1048576 BUFFER: FINAL  VARIABLE FINAL#
 NM-MAX CELLS BUFFER: ORDER

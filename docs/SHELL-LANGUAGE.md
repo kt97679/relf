@@ -973,6 +973,16 @@ sight. The cost is measured as Fern meant to: Rill versions of bench.4's
 workloads against hand-written Forth, the target Fern set, within 0-20 %;
 and every rewrite against its original, by tools/rill-measure.py.
 
+### Where it stands (Iteration 743)
+
+rill/compile.4, the compiler in Forth, makes the same Forth as the
+prototype (tools/rillc.py) on every test program, word for word
+(tests/rill/oracle), and the image compiles and runs a `.rill` itself:
+`relf64 kernel64-rill.img script.rill`. The prototype stays as the
+oracle. Stages 1 and 2 are in: integers, text, defs (a pure one's
+parameters on the stack), commands, pipelines, ports and captures,
+lists, records, comprehensions and for loops.
+
 ### The order of building
 
 1. **The core**, in its own image: integers, text, `def` with locals,
