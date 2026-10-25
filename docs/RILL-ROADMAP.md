@@ -25,7 +25,12 @@ and defect logs on real scripts.
   tests/rill/pilots/is-lines.4 the IS-line case dead-words' three versions
   now agree on.
 
-## Phase 2: kinds for lists and records
+## Phase 2: kinds for lists and records - designed in 763 (docs/RILL-KINDS.md)
+
+The first attempt, kinds decided binding by binding, broke on reused names
+and showed the order of binding was never sound for loops; the design is now
+one kind per variable over its whole scope, inferred by a first pass.
+
 
 Every value taken out of a list or record is a boxed item: four of Rill's
 thirteen pilot defects were that, and so is much of its time against the
