@@ -218,11 +218,30 @@ CREATE RN-T 40 ALLOT
 \ WAITPID, PIPE and DUP2 - nothing of the shell's. A program is found on
 \ PATH by env, one exec more, until the search is written in Forth.
 : R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
+\ setenv(name, value) (783): for env(name), and for every command Rill runs from then on - each
+\ gets NAME=value from env, which starts them all. The NAME=value strings live in the C heap.
+32 CONSTANT SE-MAX   CREATE SE-A SE-MAX CELLS ALLOT   VARIABLE SE-N   VARIABLE SE-B   VARIABLE SE-U
+: SE-MATCH? ( a u e --- f )   \ the C string e is NAME=... for the name a u
+  >R  R@ CSTRLEN OVER > 0= IF 2DROP R> DROP 0 EXIT THEN
+  DUP R@ + C@ [CHAR] = <> IF 2DROP R> DROP 0 EXIT THEN
+  R> OVER COMPARE 0= ;
+: SE-FIND ( a u --- i )   SE-N @ 0 ?DO 2DUP I CELLS SE-A + @ SE-MATCH? IF 2DROP I UNLOOP EXIT THEN LOOP 2DROP -1 ;
+: R-SETENV ( name value --- )
+  SWAP R-T@ ROT R-T@                                       ( na nu va vu )
+  2 PICK OVER + 2 + ALLOCATE THROW SE-B !
+  2SWAP DUP SE-U !  SE-B @ SWAP MOVE                      ( va vu )
+  [CHAR] = SE-B @ SE-U @ + C!
+  DUP >R SE-B @ SE-U @ 1+ + SWAP MOVE  0 SE-B @ SE-U @ 1+ R> + + C!
+  SE-B @ SE-U @ SE-FIND DUP 0< IF
+    DROP SE-N @ SE-MAX = IF ." rill: setenv: more than 32 names" R-ERR-NL -4007 THROW THEN  SE-N @ 1 SE-N +!
+  ELSE DUP CELLS SE-A + @ FREE DROP THEN
+  CELLS SE-A + SE-B @ SWAP ! ;
 VARIABLE RV-N   VARIABLE RV-V
-: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena, "env" first
-  DUP RV-N !  2 + CELLS R-ALLOT RV-V !
-  0  RV-V @ RV-N @ 1+ CELLS + !
-  RV-N @ 0 ?DO  R-CSTR  RV-V @ RV-N @ I - CELLS + !  LOOP
+: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena: "env", what setenv set, the words
+  DUP RV-N !  2 + SE-N @ + CELLS R-ALLOT RV-V !
+  0  RV-V @ RV-N @ SE-N @ + 1+ CELLS + !
+  RV-N @ 0 ?DO  R-CSTR  RV-V @ RV-N @ SE-N @ + I - CELLS + !  LOOP
+  SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
   S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
 : R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
 : R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
@@ -315,7 +334,9 @@ VARIABLE R-ON-EXIT-XT
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
 : R-SCRIPT ( --- t )   0 R-ARG ;
 : R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
-: R-ENV ( t --- t )   R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN ;
+: R-ENV ( t --- t )   \ env(name): what setenv gave it (783), or the process's
+  DUP R-T@ SE-FIND DUP 0< IF DROP R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN EXIT THEN
+  CELLS SE-A + @  SWAP R-T@ NIP 1+ +  DUP CSTRLEN R-TEXT ;
 : R-DEFAULT ( t1 t2 --- t )   OVER @ IF DROP ELSE NIP THEN ;     \ the first unless it is empty
 : R-CHECK ( status --- )   \ failure stops the script, with the status
   ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
@@ -577,6 +598,41 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
     2 PICK R-VALS SWAP R-AT  3 PICK R-VALS I R-AT R-BOX= 0= IF 2DROP DROP 0 UNLOOP EXIT THEN
   LOOP DROP 2DROP -1 ;
 ' R-LIST= IS R-LIST=-D  ' R-REC= IS R-REC=-D
+
+\ ---- Glob patterns (Iteration 783): case's arms, as the shell's: * ? [...] and \ ----------
+VARIABLE GL-T  VARIABLE GL-N  VARIABLE GL-P  VARIABLE GL-M  VARIABLE GL-I  VARIABLE GL-J  VARIABLE GL-ST  VARIABLE GL-MK
+VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
+: GL-PC ( j --- c )   GL-P @ + C@ ;
+: GL-CLASS ( c j --- j' f )   \ the class whose [ is at j, against c: j' past its ], and whether c is in it - j' 0 if it never closes
+  SWAP GC-C !  1+  0 GC-NEG ! 0 GC-HIT !
+  DUP GL-M @ < IF DUP GL-PC DUP [CHAR] ! = SWAP [CHAR] ^ = OR IF -1 GC-NEG ! 1+ THEN THEN
+  DUP GC-K0 !
+  BEGIN DUP GL-M @ < WHILE
+    DUP GL-PC [CHAR] ] = OVER GC-K0 @ <> AND IF 1+ GC-HIT @ GC-NEG @ XOR EXIT THEN
+    DUP 2 + GL-M @ < IF DUP 1+ GL-PC [CHAR] - = OVER 2 + GL-PC [CHAR] ] <> AND ELSE 0 THEN IF
+      DUP GL-PC GC-C @ > 0= OVER 2 + GL-PC GC-C @ < 0= AND IF -1 GC-HIT ! THEN 3 +
+    ELSE DUP GL-PC GC-C @ = IF -1 GC-HIT ! THEN 1+ THEN
+  REPEAT DROP 0 0 ;
+: GL-STEP? ( --- f )   \ the pattern at J takes the text's character at I: both moved past
+  GL-J @ GL-M @ < 0= IF 0 EXIT THEN
+  GL-I @ GL-T @ + C@  GL-J @ GL-PC
+  DUP [CHAR] ? = IF 2DROP 1 GL-I +! 1 GL-J +! -1 EXIT THEN
+  DUP [CHAR] [ = IF DROP GL-J @ GL-CLASS OVER IF IF GL-J ! 1 GL-I +! -1 ELSE DROP 0 THEN EXIT THEN
+    2DROP GL-I @ GL-T @ + C@ [CHAR] [ THEN
+  DUP [CHAR] \ = GL-J @ 1+ GL-M @ < AND IF DROP 1 GL-J +! GL-J @ GL-PC THEN
+  = IF 1 GL-I +! 1 GL-J +! -1 ELSE 0 THEN ;
+: R-GLOB? ( t pat --- f )   \ the whole text matches the pattern
+  R-T@ GL-M ! GL-P !  R-T@ GL-N ! GL-T !  0 GL-I ! 0 GL-J ! -1 GL-ST ! 0 GL-MK !
+  BEGIN GL-I @ GL-N @ < WHILE
+    GL-J @ GL-M @ < IF GL-J @ GL-PC [CHAR] * = ELSE 0 THEN IF
+      GL-J @ GL-ST !  GL-I @ GL-MK !  1 GL-J +!
+    ELSE GL-STEP? 0= IF
+      GL-ST @ 0< IF 0 EXIT THEN
+      GL-ST @ 1+ GL-J !  1 GL-MK +!  GL-MK @ GL-I !
+    THEN THEN
+  REPEAT
+  BEGIN GL-J @ GL-M @ < IF GL-J @ GL-PC [CHAR] * = ELSE 0 THEN WHILE 1 GL-J +! REPEAT
+  GL-J @ GL-M @ = ;
 
 \ ---- format (Iteration 781) -----------------------------------------------
 \ format(f, a, b, ...): Python's % formatting - the conversions s d i f x X

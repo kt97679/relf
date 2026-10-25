@@ -159,3 +159,18 @@ command, byname by a loop that returns, the top three directories up, a
 diff on two process substitutions made a loop, a blank-tolerant pattern.
 tests/rill/library2.rill as Python. Still waiting: pack-results (setenv,
 a case statement), run-utf8 (load).
+
+## Phase 5 (Iteration 783): setenv, and a case statement
+
+- `setenv(name, value)`: env(name) sees it, and so does every command run
+  after it - Rill starts commands through env, so NAME=value goes right after
+  env in the vector; the strings live in the C heap. tests/rill/setenv.rill.
+- `case subject { pat pat { block } ... }`, as the shell's case: patterns
+  with * ? [...] (! or ^ to negate, ranges) and \, several to an arm, the
+  first arm that matches runs. A quoted pattern is the text itself, as in
+  the shell; $x and unquoted patterns are globs. The subject is held on the
+  stack only while the patterns are tried and dropped before a block runs,
+  so return, loops and the collector never see it. tests/rill/case.rill
+  against the same cases in sh.
+pack-results now stops at line 19: a def reads $stage, set further down -
+which Python allows and Rill (772) does not.

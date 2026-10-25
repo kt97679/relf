@@ -807,6 +807,7 @@ do not trust the absence of a line below.
 - 780 — a[i][j] = v to any depth; items unboxed for join, slice, sum, at, sort-by (a crash); a def called as a command: the call shown
 - 781 — format() as Python's % formatting; run-time errors name the line, at no run-time cost (gene lines)
 - 782 — gen-opcodes in Rill says what the shell script says; abs, dir, == on lists and records, at() on lists, comprehension filters fixed, [ ] across lines, 0x numbers
+- 783 — setenv() for env() and every command after it; a case statement with the shell's patterns
 
 ### Not tied to an iteration
 

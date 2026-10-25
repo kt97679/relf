@@ -45,7 +45,7 @@ def tokenize(src):
 
 class Compiler:
     def __init__(self, src):
-        self.t = tokenize(src); self.i = 0
+        self.t = tokenize(src); self.i = 0; self.src = src
         self.vars = {}          # script variable -> kind
         self.funcs = {}         # name -> (params, kind)
         self.locals = None      # kinds of the def being compiled
@@ -62,6 +62,28 @@ class Compiler:
         if (kind and tok[0] != kind) or (val and tok[1] != val):
             raise Error('line %d: expected %s, found %r' % (tok[2], val or kind, tok[1]))
         self.i += 1; return tok
+    def case_pattern(self):              # a case arm's pattern (783): a string or $x, a term; else touching tokens, as written
+        if self.peek()[0] in ('str', 'raw', 'var'):                    # quoted: the text itself, as the shell's
+            q = self.peek()[0] != 'var'; c, kd = self.term(); return self.to_text(c, kd), 'R-T=' if q else 'R-GLOB?'
+        j = self.i; start = self.t[j][3]
+        while True:
+            j += 1
+            if self.t[j][0] in ('nl', 'eof') or self.t[j][3] != self.t[j - 1][4] or self.t[j][1] == '{': break
+        text = self.src[start:self.t[j - 1][4]]; self.i = j
+        return self.lit_text(text), 'R-GLOB?'
+    def case_(self):                     # case subject { pat pat { block } ... }: the first arm with a pattern that matches
+        self.i += 1; sc, sk = self.expr(); code = [self.to_text(sc, sk)]; self.take('op', '{'); arms = 0
+        while True:
+            self.skip_nl()
+            if self.peek()[1] == '}': self.i += 1; break
+            pats = []
+            while self.peek()[1] != '{':
+                if self.peek()[0] in ('nl', 'eof'): raise Error('line %d: a case arm is patterns, then a block' % self.peek()[2])
+                pats.append(self.case_pattern())
+            if not pats: raise Error('line %d: a case arm is patterns, then a block' % self.peek()[2])
+            test = ' '.join(('DUP %s %s' if n == 0 else 'OVER %s %s OR') % p for n, p in enumerate(pats))
+            code.append('%s IF DROP %s ELSE' % (test, self.block())); arms += 1
+        return ' '.join(code) + ' DROP' + ' THEN' * arms
     def skip_nl(self):
         while self.peek()[0] in ('nl',) or self.peek()[1] == ';': self.i += 1
 
@@ -308,6 +330,7 @@ class Compiler:
             return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
+        if name == 'setenv': need(2); return '%s %s R-SETENV' % (self.to_text(*a[0]), self.to_text(*a[1])), None   # 783
         if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
         if name == 'extend': need(2); return '%s %s R-EXTEND' % (cont(a[0]), cont(a[1])), None
         if name == 'shift': need(1); return '%s R-SHIFT' % cont(a[0]), 'any'
@@ -483,6 +506,8 @@ class Compiler:
             self.i += 1; out = 'EXIT'
         elif k == 'word' and v == 'par' and self.peek(1)[1] == 'for':
             self.i += 1; out = self.for_(par=True)
+        elif k == 'word' and v == 'case' and self.peek(1)[1] not in ('(', '=', '+=', '-=', '['):
+            out = self.case_()                                                          # 783
         elif k == 'word' and v == 'fail' and self.peek(1)[1] != '(':
             self.i += 1; c, kd = self.expr(); out = '%s R-FAIL' % self.to_text(c, kd)       # 744
         elif k == 'word' and v == 'exit' and self.peek(1)[1] != '(':

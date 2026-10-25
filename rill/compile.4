@@ -385,6 +385,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
      S" R-PUSH" OUT+ 0 -1 EXIT THEN
   2DUP S" extend" S= IF 2DROP ARG CONT ARG CONT S" R-EXTEND" OUT+ 0 -1 EXIT THEN
+  2DUP S" setenv" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SETENV" OUT+ 0 -1 EXIT THEN   \ 783
   2DUP S" shift" S= IF 2DROP ARG CONT S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" first" S= IF 2DROP ARG CONT S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" keys" S= IF 2DROP ARG CONT S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
@@ -1149,6 +1150,24 @@ VARIABLE CD-P
 : CD-STMT ( --- )   \ cd DIR; cd DIR { ... }: back where it was after the block (760)
   NEXT-TK OUT-POS CD-P !  ARG-ITEM S" R-CD" OUT+
   S" {" CUR-IS? IF S" R-CWD-PUSH" CD-P @ OUT-INSERT  BLOCK  S" R-CWD-POP" OUT+ THEN ;
+: CASE-PAT ( --- quoted? )   \ a case arm's pattern (783): a string or $x, a term; else touching tokens, as written - rillc.py's
+  TK K@ DUP T-STR = SWAP T-RAW = OR IF TERM TO-TEXT -1 EXIT THEN               \ quoted: the text itself, as the shell's
+  TK K@ T-VAR = IF TERM TO-TEXT 0 EXIT THEN
+  TK TOK-AT  TK-I @
+  BEGIN 1+ DUP K@ DUP T-NL = SWAP T-EOF = OR  OVER TOK-AT 2 PICK 1- TOK-END <> OR  OVER T@ S" {" S= OR UNTIL
+  DUP TK-I !  1- TOK-END OVER -  SWAP RS-SRC @ + SWAP LIT-TEXT  0 ;
+: CASE-STMT ( --- )   \ case subject { pat pat { block } ... }: the first arm with a pattern that matches
+  NEXT-TK  1 EXPR TO-TEXT  S" {" EXPECT  0
+  BEGIN SKIP-NL S" }" CUR-IS? 0= WHILE
+    0
+    BEGIN S" {" CUR-IS? 0= WHILE
+      TK K@ DUP T-NL = SWAP T-EOF = OR IF S" a case arm is patterns, then a block" ERR THEN
+      DUP IF S" OVER" ELSE S" DUP" THEN OUT+  CASE-PAT IF S" R-T=" ELSE S" R-GLOB?" THEN OUT+  DUP IF S" OR" OUT+ THEN  1+
+    REPEAT
+    0= IF S" a case arm is patterns, then a block" ERR THEN
+    S" IF DROP" OUT+ BLOCK S" ELSE" OUT+  1+
+  REPEAT  NEXT-TK
+  S" DROP" OUT+  0 ?DO S" THEN" OUT+ LOOP ;
 : STATEMENT-IMPL ( --- )
 \ [gene gc]
   IN-DEF @ 0= STACKMODE @ 0= AND IN-EXIT @ 0= AND IF                 \ a safe point before each top-level statement
@@ -1158,6 +1177,8 @@ VARIABLE CD-P
   S" def" CUR-IS? 0= IF S" [" OUT+ TK L@ OUT-NUM S" R-MARK ]" OUT+ THEN   \ where its code starts, and its line (781)
 \ [/gene]
   S" if" CUR-IS? IF IF-STMT EXIT THEN
+  S" case" CUR-IS? IF TK 1+ T@ 2DUP S" (" S= >R 2DUP S" =" S= >R 2DUP S" +=" S= >R 2DUP S" -=" S= >R S" [" S= R> OR R> OR R> OR R> OR
+    0= IF CASE-STMT EXIT THEN THEN                                                   \ 783
   S" cd" CUR-IS? IF TK 1+ T@ 2DUP S" =" S= >R 2DUP S" (" S= >R S" [" S= R> OR R> OR 0= IF CD-STMT EXIT THEN THEN
   S" while" CUR-IS? IF WHILE-STMT EXIT THEN
   S" return" CUR-IS? IF RETURN-STMT EXIT THEN
