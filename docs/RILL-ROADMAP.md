@@ -56,7 +56,13 @@ begins with a profile of where the dispatches go, not with a guess.
 built-in `format`, so scripts stop calling printf; runtime errors that name
 the Rill line - behind a debug switch if they cost speed.
 
-## Phase 4: speed
+## Phase 4: speed - begun from a profile in 768 (docs/RILL-PROFILE.md)
+
+tools/rill-profile.py: the matcher was three quarters of native-by-source;
+rebuilt one word per instruction, the program linked - 51 % fewer
+dispatches there, 37 % less time; dead-words 5.7 % fewer from the arena and
+list fixes.
+
 
 Typed lists (phase 2); regular expressions compiled to Forth rather than
 interpreted by backtracking (the first pilot's time); temporaries released

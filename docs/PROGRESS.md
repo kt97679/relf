@@ -792,6 +792,7 @@ do not trust the absence of a line below.
 - 765 — gene infer in the Forth compiler too; both agree on the whole corpus, pilots unchanged; on by default, backedge.rill a test
 - 766 — gene elemkinds (Python, off): 24/40 lists typed, outputs unchanged, speed unchanged - boxes are the cost; unboxed storage next
 - 767 — gene unbox: correct and slower (median +13 % dead-words); elemkinds and unbox taken out, code in history; next: a profile
+- 768 — tools/rill-profile.py; the regex matcher rebuilt (one word per instruction, linked): native-by-source -51 % dispatches, -37 % time
 
 ### Not tied to an iteration
 

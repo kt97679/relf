@@ -10,7 +10,7 @@
 VARIABLE R-TOP   VARIABLE R-END
 : R-ARENA-INIT ( --- )   134217728 DUP ALLOCATE THROW DUP R-TOP ! + R-END ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
 : R-ALLOT ( n --- addr )
-  ALIGNED R-TOP @ SWAP OVER + DUP R-END @ U> ABORT" rill: the arena is full" R-TOP ! ;
+  7 + -8 AND  R-TOP @ SWAP OVER + DUP R-END @ U> IF TRUE ABORT" rill: the arena is full" THEN  R-TOP ! ;   \ the test a branch, its message only when full (768)
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
 : R-T@ ( t --- c-addr u )   DUP CELL+ SWAP @ ;
 VARIABLE RB-T
@@ -61,10 +61,10 @@ VARIABLE RL   VARIABLE RJ-SEP
   DUP CELL+ @ DUP G-GROWTH * 2/ SWAP 1+ MAX DUP CELLS R-ALLOT     ( l cap2 a2 )   \ capacity * growth / 2, at least one more
   >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
   OVER CELL+ !  R> SWAP 2 CELLS + ! ;
-: R-PUSH ( box l --- )   DUP R-GROW  DUP >R  R-ITEMS R@ @ CELLS + !  1 R> +! ;
+: R-PUSH ( box l --- )   DUP R-GROW  DUP >R  2 CELLS + @ R@ @ CELLS + !  1 R> +! ;   \ R-ITEMS written out (768)
 : R-AT ( l i --- box )
   OVER @ OVER U> 0= IF ." rill: index " . ." past a list of " @ . R-NL -4002 THROW THEN
-  CELLS SWAP R-ITEMS + @ ;
+  CELLS SWAP 2 CELLS + @ + @ ;
 : R-SET ( box l i --- )
   OVER @ OVER U> 0= IF ." rill: index " . ." past a list" R-NL -4002 THROW THEN
   CELLS SWAP R-ITEMS + ! ;

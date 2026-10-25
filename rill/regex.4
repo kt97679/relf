@@ -132,32 +132,44 @@ VARIABLE RX-T  VARIABLE RX-TN  VARIABLE RX-ENDAT  VARIABLE RX-START  VARIABLE RX
 20 CONSTANT RX-SLOTS   RX-SLOTS CELLS BUFFER: RX-SAVED              \ each group's start and end
 DEFER RX-RUN ( pc sp --- f )
 : RX-NEXT ( pc sp --- pc+1 sp+1 0 )   1+ SWAP 1+ SWAP 0 ;
-: RX-FAIL ( pc sp --- 0 -1 )   2DROP 0 -1 ;
-: RX-STEP ( pc sp --- pc' sp' 0 | f -1 )   \ one instruction: on, or the answer
-  OVER RX-AT @
-  DUP X-CHAR = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
-    DUP RX-T @ + C@  2 PICK RX-AT CELL+ @ = IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
-  DUP X-ANY = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
-    DUP RX-T @ + C@ 10 <> IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
-  DUP X-CLASS = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
-    DUP RX-T @ + C@  2 PICK RX-AT CELL+ @ BIT? IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
-  DUP X-MATCH = IF DROP  RX-NOEMPTY @ IF DUP RX-START @ = IF RX-FAIL EXIT THEN THEN   \ an empty match refused here
-    RX-ENDAT ! DROP -1 -1 EXIT THEN
-  DUP X-JMP = IF DROP SWAP RX-AT CELL+ @ SWAP 0 EXIT THEN
-  DUP X-SPLIT = IF DROP  OVER RX-AT CELL+ @ OVER RX-RUN IF 2DROP -1 -1 EXIT THEN
-    SWAP RX-AT 2 CELLS + @ SWAP 0 EXIT THEN
-  DUP X-SAVE = IF DROP
-    OVER RX-AT CELL+ @ CELLS RX-SAVED +  DUP @ >R  2DUP !  >R  SWAP 1+ SWAP RX-RUN
-    R> R> SWAP ROT IF 2DROP -1 -1 EXIT THEN  !  0 -1 EXIT THEN
-  DUP X-BOL = IF DROP DUP 0= IF SWAP 1+ SWAP 0 ELSE RX-FAIL THEN EXIT THEN
-  X-EOL = IF  DUP RX-TN @ =  OVER 1+ RX-TN @ =  2 PICK RX-T @ + C@ 10 = AND OR
-    IF SWAP 1+ SWAP 0 ELSE RX-FAIL THEN EXIT THEN
-  RX-FAIL ;
-: RX-RUN-IMPL ( pc sp --- f )   BEGIN RX-STEP UNTIL ;
+\ Each instruction a word of its own (768): a program once made holds in its op cells the words'
+\ xts and in its jumps addresses (RX-LINK), so a step is OVER @ EXECUTE - no chain of tests on the
+\ op, no index made an address. Each takes ( a sp ) and leaves ( a' sp' 0 ) to go on, ( f -1 ) to stop.
+: H-CHAR ( a sp --- a' sp' 0 | 0 -1 )
+  DUP RX-TN @ < IF OVER CELL+ @ OVER RX-T @ + C@ = IF SWAP 3 CELLS + SWAP 1+ 0 EXIT THEN THEN  2DROP 0 -1 ;
+: H-ANY ( a sp --- a' sp' 0 | 0 -1 )
+  DUP RX-TN @ < IF DUP RX-T @ + C@ 10 <> IF SWAP 3 CELLS + SWAP 1+ 0 EXIT THEN THEN  2DROP 0 -1 ;
+: H-CLASS ( a sp --- a' sp' 0 | 0 -1 )
+  DUP RX-TN @ < IF OVER CELL+ @ OVER RX-T @ + C@ SWAP BIT? IF SWAP 3 CELLS + SWAP 1+ 0 EXIT THEN THEN  2DROP 0 -1 ;
+: H-MATCH ( a sp --- f -1 )
+  RX-NOEMPTY @ IF DUP RX-START @ = IF 2DROP 0 -1 EXIT THEN THEN      \ an empty match refused here
+  RX-ENDAT ! DROP -1 -1 ;
+: H-JMP ( a sp --- a' sp 0 )   SWAP CELL+ @ SWAP 0 ;
+: H-SPLIT ( a sp --- a' sp 0 | -1 -1 )   \ the first way; the second if it fails
+  OVER CELL+ @ OVER BEGIN OVER @ EXECUTE UNTIL IF 2DROP -1 -1 EXIT THEN  SWAP 2 CELLS + @ SWAP 0 ;   \ the run written out: no DEFER
+: H-SAVE ( a sp --- 0 -1 | -1 -1 )   \ a group's bound kept, the rest run, the old bound back if it fails
+  OVER CELL+ @ CELLS RX-SAVED +  DUP @ >R  2DUP !  >R  SWAP 3 CELLS + SWAP BEGIN OVER @ EXECUTE UNTIL
+  R> R> SWAP ROT IF 2DROP -1 -1 EXIT THEN  !  0 -1 ;
+: H-BOL ( a sp --- a' sp 0 | 0 -1 )   DUP 0= IF SWAP 3 CELLS + SWAP 0 EXIT THEN  2DROP 0 -1 ;
+: H-EOL ( a sp --- a' sp 0 | 0 -1 )   \ the end, or a last newline just before it - Python's $
+  DUP RX-TN @ = IF SWAP 3 CELLS + SWAP 0 EXIT THEN
+  DUP 1+ RX-TN @ = IF DUP RX-T @ + C@ 10 = IF SWAP 3 CELLS + SWAP 0 EXIT THEN THEN  2DROP 0 -1 ;
+CREATE RX-OPS 10 CELLS ALLOT          \ the words by op; kept as offsets (!XT): the image is saved
+' H-CHAR RX-OPS X-CHAR CELLS + !XT   ' H-ANY RX-OPS X-ANY CELLS + !XT   ' H-CLASS RX-OPS X-CLASS CELLS + !XT
+' H-SPLIT RX-OPS X-SPLIT CELLS + !XT   ' H-JMP RX-OPS X-JMP CELLS + !XT   ' H-SAVE RX-OPS X-SAVE CELLS + !XT
+' H-MATCH RX-OPS X-MATCH CELLS + !XT   ' H-BOL RX-OPS X-BOL CELLS + !XT   ' H-EOL RX-OPS X-EOL CELLS + !XT
+: RX-LINK ( --- )   \ the program made: each op its word, each jump an address
+  RX-N @ 0 ?DO
+    I RX-AT DUP @
+    DUP X-JMP = OVER X-SPLIT = OR IF OVER CELL+ DUP @ RX-AT SWAP ! THEN
+    DUP X-SPLIT = IF OVER 2 CELLS + DUP @ RX-AT SWAP ! THEN
+    CELLS RX-OPS + @XT SWAP !
+  LOOP ;
+: RX-RUN-IMPL ( a sp --- f )   BEGIN OVER @ EXECUTE UNTIL ;
 ' RX-RUN-IMPL IS RX-RUN
 : RX-AT-POS ( start --- f )   \ a match starting just here
-  DUP RX-START !  RX-SAVED RX-SLOTS CELLS 255 FILL                  \ every group unmatched (-1)
-  0 OVER RX-RUN IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
+  DUP RX-START !  RX-SAVED RX-NG @ 1+ 2* CELLS 255 FILL              \ the pattern's groups unmatched (-1), only those
+  RX-PROG @ OVER BEGIN OVER @ EXECUTE UNTIL IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
 : RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
   0 RX-NOEMPTY !
   BEGIN DUP RX-TN @ > 0= WHILE  DUP RX-AT-POS IF DROP -1 EXIT THEN  1+  REPEAT DROP 0 ;
@@ -180,7 +192,7 @@ RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS B
   RX-MAX 3 * CELLS ALLOCATE THROW RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !
   DUP R-T@ RX-PN ! RX-P !
   RX-ALT  RX-END? 0= IF S" a ) with no (" RX-ERR THEN
-  X-MATCH 0 0 RX-EMIT DROP
+  X-MATCH 0 0 RX-EMIT DROP  RX-LINK
 \ [gene rxcache]
   RXC-N @ RXC-MAX < IF
     RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!
