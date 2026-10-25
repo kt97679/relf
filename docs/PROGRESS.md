@@ -788,6 +788,7 @@ do not trust the absence of a line below.
 - 761 — the third pilot's Forth version matches (3 defects: BASE, PARSE, a library contract); all three pilots: Rill -11 %, Forth +87 % against Python
 - 762 — RILL-ROADMAP.md; phase 1: bare words naming variables are errors (found a latent dead-words bug); lint catches kernel name clashes
 - 763 — phase 2's first attempt (kinds binding by binding) broke on reused names and back edges; RILL-KINDS.md: whole-scope inference, two passes
+- 764 — gene infer, the Python half: two passes, one kind per variable; corpus 20/22 identical, back-edge hole closed; Forth half next
 
 ### Not tied to an iteration
 

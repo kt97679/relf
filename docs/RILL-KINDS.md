@@ -80,3 +80,39 @@ corpus, and the search's four criteria - generated Forth and dispatches.
 2. The Forth compiler the same, the oracle word for word.
 3. Element kinds for lists, then field kinds for records, on top.
 4. Measure; then phase 4's unboxed storage, as a gene.
+
+## Step 1 - the Python compiler (Iteration 764)
+
+Gene `infer` (rill/genes.tsv), off by default until the Forth compiler has
+it too. With it on, tools/rillc.py compiles a script twice. The first
+pass binds as it goes - an assignment of another kind rebinds, no
+conversion, no error - and records every binding's kind per variable: the
+script's, or a def's own (its parameters bound as items). Their join is
+each variable's one kind. The second pass starts the script, and each
+def, with those kinds, so every binding finds its variable's kind
+already there: the same kind is stored as it is, an item takes the value
+boxed, a text or number variable given an item converts it - the rules
+the compiler had, now applied to the variable's kind for its whole scope.
+Where a loop's index, count or key lands in a variable that is an item,
+it is boxed (`I K-NUM R-BOX`), or the key's box kept.
+
+Every binding goes through one word now, `bind`, at the sites the Forth
+compiler has as BIND and SET-KIND: assignments; range loops (both forms);
+a record's key and value; a list's index and item; a comprehension's
+names; a def's parameters.
+
+Measured on the corpus (tests/rill and examples/rill, 22 scripts):
+
+- the gene off, all 22 compile to exactly what the compiler made before;
+- the gene on, 20 compile to the same code, word for word: their
+  variables had one kind already. The other two differ where a variable
+  was bound to two kinds - dead-words.rill's `$why`, a text and then an
+  argument (7 words), native-by-source.rill's likewise (3) - and both
+  still print what the Python originals print; dead-words' IS-line case
+  too;
+- tests/rill all pass compiled this way; and the program that showed the
+  hole, now tests/rill/infer/backedge.rill, prints `x is hello`, `x is 2`
+  - as Python does - where without the gene it prints a box as a text.
+
+Step 2, the Forth compiler's half, is next: the same two passes, then the
+gene on by default and tests/rill/infer/ among the tests.

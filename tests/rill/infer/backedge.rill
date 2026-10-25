@@ -1,0 +1,9 @@
+# tests/rill/infer/backedge.rill - a variable rebound by a for loop, read again round an enclosing loop (764):
+# without gene infer the second read takes the loop's box for a text; with it $x is an item throughout
+x = hello
+n = 0
+while ($n < 2) {
+    echo x is $x
+    for x in [1 2] { }
+    n += 1
+}

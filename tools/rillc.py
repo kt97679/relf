@@ -47,6 +47,8 @@ class Compiler:
         self.vars = {}          # script variable -> kind
         self.funcs = {}         # name -> (params, kind)
         self.locals = None      # kinds of the def being compiled
+        self.infer = None       # gene infer (764), the first pass: (def or None, name) -> the kinds it is bound to
+        self.fixed = None       # ... the second: (def or None, name) -> the one kind it has, their join
         self.defs = []          # Forth of each def
         self.names = set()      # every VARIABLE needed
         self.lines = []         # (rill line, forth) for --list
@@ -61,6 +63,13 @@ class Compiler:
         while self.peek()[0] in ('nl',) or self.peek()[1] == ';': self.i += 1
 
     def scope(self): return self.locals if self.locals is not None else self.vars
+    def skey(self): return self.current if self.locals is not None else None
+    def bind(self, name, kind):
+        """A binding of name to a value of kind: the kind the variable has from here (gene infer, 764)."""
+        sc = self.scope(); self.names.add(name)
+        if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
+        elif self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
+        sc[name] = kind; return kind
     def kind_of(self, name, line):
         if self.locals is not None and name in self.locals: return self.locals[name]
         if name in self.vars: return self.vars[name]
@@ -164,23 +173,21 @@ class Compiler:
         if sk not in ('list', 'record') or (sk == 'record' and not second):
             raise Error('line %d: for needs a list' % self.peek()[2])
         tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
-        self.scope()[name] = 'any'
-        if second:
-            self.names.add(second); self.scope()[second] = 'any'
-            if sk == 'list': self.scope()[name] = 'number'
-            else: self.scope()[name] = 'text'
+        nk = self.bind(name, 'any' if not second else 'number' if sk == 'list' else 'text')
+        if second: self.bind(second, 'any')
         cond = None
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, ek = self.expr(); self.i = after
         item = '%s OVER R-PUSH' % self.box(ec, ek)
         body = '%s IF %s THEN' % (cond, item) if cond else item
-        if second and sk == 'record':
-            return ('R-NEW-LIST %s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! '
-                    'R.%s @ R-VALS I R-AT R.%s ! %s LOOP' % (sc, tmp, tmp, tmp, name, tmp, second, body)), 'list'
+        if second and sk == 'record':                                   # the key a text, or its box where $name is an item (764)
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! '
+                    'R.%s @ R-VALS I R-AT R.%s ! %s LOOP' % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if nk == 'text' else '',
+                                                           name, tmp, second, body)), 'list'
         if second:
-            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I R.%s ! R.%s @ I R-AT R.%s ! %s LOOP' %
-                    (sc, tmp, tmp, name, tmp, second, body)), 'list'
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I R-AT R.%s ! %s LOOP' %
+                    (sc, tmp, tmp, '' if nk == 'number' else ' K-NUM R-BOX', name, tmp, second, body)), 'list'
         return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT R.%s ! %s LOOP' %
                 (sc, tmp, tmp, tmp, name, body)), 'list'
     def literal_record(self):
@@ -443,13 +450,15 @@ class Compiler:
                 if vk not in ('number', 'any', 'decimal'): raise Error('line %d: %s needs a number to change' % (line, op))
                 c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, vk, c, kd)
                 if vk == 'any': c, kd = self.box(c, kd), 'any'          # an item holding a number stays an item (758)
+            elif self.infer is not None: pass                                # the first pass: every binding as it comes (764)
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
                 c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
             elif name in sc and sc[name] == 'any' and kd != 'any':
                 c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
-            sc[name] = kd; self.names.add(name)
+            if self.infer is not None: self.bind(name, kd)
+            else: sc[name] = kd; self.names.add(name)
             out = '%s R.%s !' % (c, name)
         elif GENES['warn'] and k == 'word' and v == 'warn' and self.peek(1)[1] != '(':   # warn ...: the err port (747; a gene 751)
             self.i += 1
@@ -633,31 +642,31 @@ class Compiler:
         if GENES['rangeloop'] and self.peek()[1] == 'range' and self.peek(1)[1] == '(':   # a counted loop (gene rangeloop)
             self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
-            self.scope()[a] = 'number'; self.names.add(a)
+            box = '' if self.bind(a, 'number') == 'number' else ' K-NUM R-BOX'   # an item, where $a is bound to others too (764)
             if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
                 body = self.loop_body(); self.loopvar = outer
-                return '%s %s 2DUP SWAP 1+ SWAP ?DO %s LOOP OVER > IF DROP ELSE R.%s ! THEN' % (
-                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, a)
-            out = '%s 1+ %s ?DO I R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), a,
-                                                    self.par_wrap(self.loop_body(), par))
+                return '%s %s 2DUP SWAP 1+ SWAP ?DO %s LOOP OVER > IF DROP ELSE%s R.%s ! THEN' % (
+                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a)
+            out = '%s 1+ %s ?DO I%s R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
+                                                      self.par_wrap(self.loop_body(), par))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
         if sk == 'record':                                               # for k, v in a record
             key, val = (a, b) if b else (a, None)
-            self.scope()[key] = 'text'
-            if val: self.scope()[val] = 'any'; self.names.add(val)
+            kk = self.bind(key, 'text')
+            if val: self.bind(val, 'any')
             setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
-            out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! %s%s LOOP'
-                   % (sc, tmp, tmp, tmp, key, setv, self.par_wrap(self.loop_body(), par)))
+            out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! %s%s LOOP'
+                   % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if kk == 'text' else '', key, setv, self.par_wrap(self.loop_body(), par)))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
         idx, item = (a, b) if b else (None, a)
-        self.scope()[item] = 'any'; self.names.add(item)
+        self.bind(item, 'any')
         seti = ''
-        if idx: self.scope()[idx] = 'number'; self.names.add(idx); seti = 'I R.%s ! ' % idx
+        if idx: seti = 'I%s R.%s ! ' % ('' if self.bind(idx, 'number') == 'number' else ' K-NUM R-BOX', idx)
         out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
                % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(self.loop_body(), par)))
         return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
@@ -707,6 +716,10 @@ class Compiler:
             return
         outer = self.locals; self.locals = {p: 'any' for p in params}
         self.names.update(params)
+        if self.infer is not None:
+            for p in params: self.bind(p, 'any')
+        if self.fixed is not None:
+            self.locals.update({n: k for (d, n), k in self.fixed.items() if d == name})
         body = self.block()
         scratch = [n for n in self.locals if n not in params]
         self.names.update(scratch)
@@ -715,6 +728,7 @@ class Compiler:
         self.locals = outer; self.current = None
     def program(self):
         main = []; self.skip_nl(); self.lits = {}
+        if self.fixed is not None: self.vars.update({n: k for (d, n), k in self.fixed.items() if d is None})
         while self.peek()[0] != 'eof':
             line = self.peek()[2]; start = self.i
             out = self.statement()
@@ -728,7 +742,12 @@ class Compiler:
 if __name__ == '__main__':
     src = open(sys.argv[1], encoding='utf-8').read()
     c = Compiler(src)
-    try: forth = c.program()
+    try:
+        if GENES['infer']:                                    # gene infer (764): a first pass for the kinds, the second for the code
+            c.infer = {}; c.program()
+            fixed = {key: (ks.pop() if len(ks) == 1 else 'any') for key, ks in c.infer.items()}
+            c = Compiler(src); c.fixed = fixed
+        forth = c.program()
     except Error as e: sys.exit('rillc: %s: %s' % (sys.argv[1], e))
     if '--list' in sys.argv:
         print(forth)
