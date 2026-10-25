@@ -18,7 +18,7 @@ echo "$host.name:$host.port"
 host[port] = 9090
 echo port now {$host[port]} and {$host['S"']}
 for k, v in $host { echo field $k = $v }
-for n in range(1, 4) { echo n $n }
+for n in range(1, 5) { echo n $n }
 first3 = slice($nums, 0, 3)
 echo first three: $first3, shifted {shift($first3)}, left $first3
 lines = lines("a

@@ -152,7 +152,14 @@ VARIABLE RH-R  VARIABLE RH-K
   RJ-SEP !  0 SWAP  DUP @ 0 ?DO
     I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT R-ANY>TEXT  ROT 1+ ROT
   LOOP DROP R-CONCAT ;
-: R-RANGE ( a b --- l )   R-NEW-LIST RL !  1+ SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
+: R-RANGE ( a b --- l )   \ range(a, b): a up to, not with, b - Python's (770); empty when b <= a
+  R-NEW-LIST RL !  OVER MAX SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
+VARIABLE RG-S  VARIABLE RG-B
+: R-RANGE-STEP ( a b step --- l )   \ range(a, b, step), as Python's: up while below b, or down while above it
+  DUP 0= ABORT" rill: range's step is 0"
+  RG-S ! RG-B !  R-NEW-LIST RL !
+  BEGIN DUP RG-S @ 0> IF RG-B @ < ELSE RG-B @ > THEN WHILE  DUP K-NUM R-BOX RL @ R-PUSH  RG-S @ +  REPEAT
+  DROP RL @ ;
 : R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
 
 

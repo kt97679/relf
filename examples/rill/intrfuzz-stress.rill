@@ -16,9 +16,9 @@ def stress {
     for sh in [relfsh relfshasm64 relfsh-native] {
         if (not (test -x ./$sh)) { echo "$sh: not built, skipped"; continue }
         runs = 0; bad = 0
-            for r in range(1, $rounds) {
-                par for j in range(1, $jobs) { timeout 600 python3 tools/intrfuzz.py 20 {seed($r, $j)} ./$sh all> "$tmp/out.$j" ?? true }
-                for j in range(1, $jobs) {
+            for r in range(1, $rounds + 1) {
+                par for j in range(1, $jobs + 1) { timeout 600 python3 tools/intrfuzz.py 20 {seed($r, $j)} ./$sh all> "$tmp/out.$j" ?? true }
+                for j in range(1, $jobs + 1) {
                     runs += 1
                     f = $(sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p' "$tmp/out.$j")
                     if ($f != "0") {

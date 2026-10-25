@@ -243,7 +243,7 @@ DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK
 \ [gene loopvar]
 VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753), its name; 0 0 none
 : LV-BAD? ( j --- f )   \ a token that keeps the index from I alone - rillc.py's loopvar_ok, token by token
-  DUP K@ T-KW = IF T@ 2DUP S" for" COMPARE 0= >R S" def" COMPARE 0= R> OR EXIT THEN
+  DUP K@ T-KW = IF T@ 2DUP S" for" COMPARE 0= >R 2DUP S" def" COMPARE 0= >R S" break" COMPARE 0= R> OR R> OR EXIT THEN   \ break a keyword (770)
   DUP K@ T-WORD <> IF DROP 0 EXIT THEN
   DUP T@ 2DUP S" break" COMPARE 0= >R 2DUP S" continue" COMPARE 0= >R 2DUP S" par" COMPARE 0= >R
   S" EXIT" COMPARE 0= R> OR R> OR R> OR IF DROP -1 EXIT THEN
@@ -363,7 +363,10 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
   2DUP S" join" S= IF 2DROP ARG DROP ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" range" S= IF 2DROP ARG TO-NUM ARG TO-NUM S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" range" S= IF 2DROP OUT-POS LB-POS !  ARG TO-NUM                     \ range(b), (a, b), (a, b, step): Python's (770)
+    S" )" CUR-IS? IF S" 0" LB-POS @ OUT-INSERT S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
+    ARG TO-NUM  S" )" CUR-IS? IF S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
+    ARG TO-NUM  S" R-RANGE-STEP" OUT+ K-LIST -1 EXIT THEN
   2DUP S" number" S= IF 2DROP ARG TO-TEXT S" R-NUMBER" OUT+ K-NUM -1 EXIT THEN
   2DUP S" text" S= IF 2DROP ARG TO-TEXT K-TEXT -1 EXIT THEN
   2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
@@ -946,24 +949,35 @@ VARIABLE HC-KINDS  VARIABLE HC-LOOPS  VARIABLE HC-DEPTH  VARIABLE HC-PEND
 : PAR-BODY ( par? --- )   DUP IF S" R-PAR-FORK IF" OUT+ THEN  LOOP-BODY  IF S" R-PAR-DONE THEN" OUT+ THEN ;
 \ for, as rillc.py's for_(): a counted loop over range(a, b); a list's items; a record's keys and values
 VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
+: RANGE-COMMAS ( --- n )   \ the commas at range( ... )'s own level, from the token after its ( : two mean a step (770)
+  0 0 TK 2 +                                                    ( commas depth i )
+  BEGIN
+    DUP K@ T-EOF = IF 2DROP EXIT THEN
+    DUP S" (" TK-IS? OVER S" [" TK-IS? OR OVER S" {" TK-IS? OR IF SWAP 1+ SWAP ELSE
+    DUP S" )" TK-IS? OVER S" ]" TK-IS? OR OVER S" }" TK-IS? OR IF
+      OVER 0= IF 2DROP EXIT THEN  SWAP 1- SWAP ELSE
+    DUP S" ," TK-IS? IF OVER 0= IF ROT 1+ ROT ROT THEN THEN THEN THEN
+    1+
+  AGAIN ;
 : FOR-STMT ( --- )
   NEXT-TK  TK T@ FOR-AL ! FOR-A !  NEXT-TK  0 FOR-BL !
   S" ," CUR-IS? IF NEXT-TK TK T@ FOR-BL ! FOR-B ! NEXT-TK THEN
   S" in" EXPECT  PAR-FLAG @ 0 PAR-FLAG ! >R                     \ ( R: par? )
   R@ IF S" R-PAR-BEGIN" OUT+ THEN
 \ [gene rangeloop]
-  S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
-    NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
-    OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
+  S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF RANGE-COMMAS 2 < ELSE 0 THEN IF   \ hi lo TUCK MAX SWAP ?DO, no list made
+    NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM
+    S" ," CUR-IS? IF NEXT-TK  OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS     \ hi moved before lo
+    ELSE S" )" EXPECT  S" 0" OUT+ THEN                            \ range(b): from 0
+    S" TUCK MAX SWAP" OUT+                                        \ an end not past the start: no rounds
 \ [gene loopvar]
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
     R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
-      S" 2DUP SWAP 1+ SWAP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
+      S" 2DUP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
       0 PAR-BODY  0 LV-L !
-      S" LOOP OVER > IF DROP ELSE" OUT+  FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN  VAR-OUT S" ! THEN" OUT+  R> DROP EXIT
+      S" LOOP OVER < IF 1-" OUT+  FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN  VAR-OUT S" ! ELSE DROP THEN" OUT+  R> DROP EXIT
     THEN THEN
 \ [/gene]
-    S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
     S" ?DO" OUT+ S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
     R> IF S" R-PAR-END" OUT+ THEN EXIT

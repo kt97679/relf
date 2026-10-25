@@ -268,7 +268,12 @@ class Compiler:
             return '%s @' % c, 'number'                            # a text's or a list's count
         if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
         if name == 'join': need(2); return '%s %s R-JOIN' % (a[0][0], self.to_text(*a[1])), 'text'
-        if name == 'range': need(2); return '%s %s R-RANGE' % (self.to_num(*a[0], line), self.to_num(*a[1], line)), 'list'
+        if name == 'range':                                            # Python's: up to, not with, its end (770)
+            if len(a) not in (1, 2, 3): raise Error('line %d: range() takes 1 to 3 arguments' % line)
+            n = [self.to_num(c, k, line) for c, k in a]
+            if len(a) == 1: return '0 %s R-RANGE' % n[0], 'list'
+            if len(a) == 2: return '%s %s R-RANGE' % tuple(n), 'list'
+            return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
         if name == 'text': need(1); return self.to_text(*a[0]), 'text'
         cont = lambda x: x[0] + ' R-UNBOX DROP' if x[1] == 'any' else x[0]        # an item holding a list or record (758)
@@ -607,7 +612,7 @@ class Compiler:
             elif v == '}':
                 depth -= 1
                 if depth == 0: return True
-            elif (k == 'kw' and v in ('for', 'def')) or (k == 'word' and v in ('break', 'continue', 'par', 'EXIT')):
+            elif (k == 'kw' and v in ('for', 'def', 'break')) or (k == 'word' and v in ('continue', 'par', 'EXIT')):   # break a keyword (770)
                 return False
             elif k == 'word' and v == name and self.t[j + 1][1] in ('=', '+=', '-=', '['): return False
             j += 1
@@ -635,21 +640,35 @@ class Compiler:
         return 'R-BODY-%d R-BRK @ IF 0 R-BRK ! LEAVE THEN' % n
     def par_wrap(self, body, par):
         return 'R-PAR-FORK IF %s R-PAR-DONE THEN' % body if par else body
+    def range_commas(self):               # the commas at range( ... )'s own level: two mean a step
+        depth, n, j = 0, 0, self.i + 2
+        while self.t[j][0] != 'eof':
+            v = self.t[j][1]
+            if v in ('(', '[', '{'): depth += 1
+            elif v in (')', ']', '}'):
+                if depth == 0: return n
+                depth -= 1
+            elif v == ',' and depth == 0: n += 1
+            j += 1
+        return n
     def for_(self, par=False):
         self.take('kw', 'for'); a = self.take('word')[1]; b = None
         if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
         self.take('kw', 'in'); line = self.peek()[2]
-        if GENES['rangeloop'] and self.peek()[1] == 'range' and self.peek(1)[1] == '(':   # a counted loop (gene rangeloop)
-            self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
+        if GENES['rangeloop'] and self.peek()[1] == 'range' and self.peek(1)[1] == '(' and self.range_commas() < 2:   # a counted loop
+            self.i += 2; lo, lk = self.expr()                          # range(b) or range(a, b): a step goes the list's way (770)
+            if self.peek()[1] == ',': self.i += 1; hi, hk = self.expr()
+            else: lo, lk, hi, hk = '0', 'number', lo, lk
+            self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
             box = '' if self.bind(a, 'number') == 'number' else ' K-NUM R-BOX'   # an item, where $a is bound to others too (764)
             if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
                 body = self.loop_body(); self.loopvar = outer
-                return '%s %s 2DUP SWAP 1+ SWAP ?DO %s LOOP OVER > IF DROP ELSE%s R.%s ! THEN' % (
-                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a)
-            out = '%s 1+ %s ?DO I%s R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
-                                                      self.par_wrap(self.loop_body(), par))
+                return '%s %s TUCK MAX SWAP 2DUP ?DO %s LOOP OVER < IF 1-%s R.%s ! ELSE DROP THEN' % (
+                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a)     # the last value kept, as Python
+            out = '%s %s TUCK MAX SWAP ?DO I%s R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
+                                                                 self.par_wrap(self.loop_body(), par))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])

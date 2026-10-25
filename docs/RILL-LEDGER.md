@@ -391,3 +391,19 @@ source's order, and a loop's next round could read a value with the kind
 of a binding it had not met yet (tests/rill/backedge.rill: a box read as
 a text). Reused names - `a` an argument here, a field there - are items
 now, as Python treats every name.
+
+## 770: range is Python's - up to, not with, its end
+
+The user asked for the least surprise and the most convenience, with
+indexing from 0. Rill's lists are indexed from 0 and its slices stop before
+their end; range alone included its end. Now range(b), range(a, b) and
+range(a, b, step) are Python's: `for i in range(len($l))` covers the indices
+exactly, and a Python tool's ranges carry over as they are. Every script's
+ranges were rewritten (eight places: `range(1, 4)` that meant 1 to 4 is now
+`range(1, 5)`; native-by-source's `range(0, 5)` is the original's `range(6)`;
+dead-words' `range($a, $nd.last + 1)` the original's `range(a, b + 1)`).
+Found on the way, both fixed: a counted loop over a range whose end was below
+its start ran around the whole cell range (now it runs no times), and the
+loop-variable optimization (gene loopvar) missed `break` - a keyword token,
+checked for as a word - so after a break the variable held the range's last
+value instead of the one it broke at.

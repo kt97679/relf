@@ -996,3 +996,13 @@ lists, records, comprehensions and for loops.
 
 Each stage after the rewrites have settled what it needs: the ledger
 decides the features, this part how they compile.
+
+## range, as Python's (Iteration 770)
+
+`range(b)` counts 0 up to, not with, b; `range(a, b)` from a up to, not with,
+b; `range(a, b, step)` by step, up while below b or down while above it (a
+step of 0 is an error). An end not past its start gives nothing - `for i in
+range(7, 3)` runs no times. After a for loop over a range, its variable holds
+the last value it took, as Python's does. With lists indexed from 0 and slices
+already up to, not with, their end, `for i in range(len($l))` visits every
+index, once. Before 770, `range(a, b)` included b.

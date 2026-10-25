@@ -9,6 +9,6 @@ def numbers {
 }
 numbers | sort
 t = $(mktemp -d)
-par for j in range(1, 3) { echo $j > "$t/out.$j" }
-for j in range(1, 3) { cat "$t/out.$j" }
+par for j in range(1, 4) { echo $j > "$t/out.$j" }
+for j in range(1, 4) { cat "$t/out.$j" }
 rm -rf $t

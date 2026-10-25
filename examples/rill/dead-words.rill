@@ -100,7 +100,7 @@ if ($delete) {
             a = $nd.first
             while ($a > 0 and starts(trim($lines[$nd.file][$a - 1]), '\')) { a -= 1 }
             kl = $kill[$nd.file]
-            for ln in range($a, $nd.last) { kl[$ln] = true }
+            for ln in range($a, $nd.last + 1) { kl[$ln] = true }
         }
     }
     for e in $deadis { kl = $kill[$e.file]; kl[$e.line] = true }

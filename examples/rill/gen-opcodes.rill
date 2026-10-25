@@ -47,7 +47,7 @@ def forth-ops {
     echo '\ engine/relfasm-ops.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh'
     echo "\\ --forth-ops; do not edit. The engine's two dispatch tables."
     echo "8 ALIGN,"; echo "dispatch256 L:"
-    rows {[at($op, i, L_badop) for i in range(0, 127)]}
+    rows {[at($op, i, L_badop) for i in range(128)]}
     echo ": CALL-ENTRIES ( --- ) 128 0 DO do_call 0 Q,+ LOOP ;  CALL-ENTRIES"
     echo "esc_tab L:"
     rows $esc
