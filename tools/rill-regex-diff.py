@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/regex-diff.py [N] [SEED] - rill/regex.4 against Python's re (Iteration 746).
+"""tools/rill-regex-diff.py [N] [SEED] - rill/regex.4 against Python's re (Iteration 746).
 
 Random patterns from the subset rill/regex.4 takes (literals, . \\s \\S \\d
 \\w, classes with ranges and ^, groups, (?: ), |, * + ? and lazy forms,
@@ -62,5 +62,5 @@ for k, (p, t) in enumerate(cases):
     if w != g:
         bad += 1
         if bad <= 6: print('DIFFER pattern %r text %r\n  want %s\n  got  %s' % (p, t, w, g))
-print('regex-diff: %d cases, %d different' % (len(cases), bad))
+print('rill-regex-diff: %d cases, %d different' % (len(cases), bad))
 sys.exit(1 if bad else 0)

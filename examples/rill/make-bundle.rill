@@ -2,7 +2,7 @@
 subject = $(git log -1 --format=%s)
 n = $(echo $subject | sed -n 's/^Iteration \([0-9][0-9]*\):.*/\1/p')
 if ($n == "") { fail "make-bundle: HEAD's subject does not start with 'Iteration N:': $subject" }
-dir = default(arg(1), ".")
+dir = arg(1, ".")
 file = "$dir/relf-claude-iter$n-{$(date -u +%Y%m%d-%H%M%S)}.bundle"
 refs = [HEAD master]
 if (git rev-parse -q --verify refs/heads/article-2026 > /dev/null) { refs = [@refs article-2026] }

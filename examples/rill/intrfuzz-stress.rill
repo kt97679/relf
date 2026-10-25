@@ -1,6 +1,6 @@
 # examples/rill/intrfuzz-stress.rill - tools/intrfuzz-stress.sh in Rill (Iteration 731)
-rounds = number(default(arg(1), "5"))
-jobs = number(default(arg(2), $(nproc)))
+rounds = number(arg(1, "5"))
+jobs = number(arg(2, $(nproc)))
 out = "bench/reports/intrfuzz-stress-$(hostname)-$(date -u +%Y%m%dT%H%MZ).txt"
 tmp = $(mktemp -d)
 on EXIT { rm -rf $tmp }

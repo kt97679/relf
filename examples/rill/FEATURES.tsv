@@ -60,3 +60,12 @@ defs before their use (one pass)	adopted	735	-
 keywords are plain words as arguments	adopted	737	-
 implemented in both compilers (744): fail exit on-EXIT arg $args $script env default @spread	built	744	-
 implemented in both compilers (745): runs as terms, continue, par for, a def as a pipeline stage	built	745	-
+arg(n, default)	adopted	747	arg\(\d+, 
+warn ... (a line to the err port)	adopted	747	^\s*warn 
+an empty text or list is false in a condition	open	747	-
+options(...) for an argument loop	open	747	-
+def f x -> kind = expr	open	747	-
+m[k] ?= v	open	747	-
+$x[i].f in a string without { }	open	747	-
+x = if (c) a else b	open	747	-
+{k: v for x in src}	open	747	-

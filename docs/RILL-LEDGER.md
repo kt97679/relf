@@ -29,6 +29,17 @@ every feature beyond that design has to earn its place.
    its original. It runs at the end of every Rill iteration, and its
    flags go into the log.
 
+5. **Expressive: a little more Rill, much less script** (the user, 747).
+   A feature that adds little to Rill's own source and takes much out of
+   its scripts is worth considering. Weighed by
+   `tools/rill-candidates.py`: each candidate as a rewrite of the corpus
+   (examples/rill/*.rill) into the shorter form, the characters it saves
+   counted as rule 3 counts them, against an estimate of the lines it
+   adds to tools/rillc.py, rill/compile.4 and rill/rt.4 together - both
+   compilers are kept (744), so a feature costs twice. The corpus was
+   written before the candidates existed, so it undercounts what a script
+   written with them would save.
+
 ## Decisions
 
 These override SHELL-LANGUAGE.md where the two differ.
@@ -63,6 +74,33 @@ Part 3 has it, `+ - * / %` are word characters: `test -d /tmp` keeps
 command's or echo's argument - `echo not reached` - where Part 3 had
 keywords reserved everywhere; they stay reserved where a statement or an
 expression begins.
+
+**747 - rule 5's first weighing: syntax buys little here.** Nine
+candidates measured on the corpus (21,923 code characters):
+
+| candidate | uses | saved | cost (lines) | per line |
+|---|---:|---:|---:|---:|
+| `arg(n, default)` | 6 | 54 | 4 | 13.5 |
+| `warn ...` for `echo ... out>err` | 9 | 72 | 6 | 12.0 |
+| an empty text or list is false in a condition | 12 | 74 | 12 | 6.2 |
+| `options(...)` for an argument loop | 1 | 116 | 30 | 3.9 |
+| `def f x -> kind = expr` | 4 | 36 | 10 | 3.6 |
+| `m[k] ?= v` | 2 | 17 | 14 | 1.2 |
+| `$x[i].f` in a string without `{ }` | 12 | 24 | 24 | 1.0 |
+| `x = if (c) a else b` | 2 | 13 | 20 | 0.7 |
+| `{k: v for x in src}` | 1 | 12 | 24 | 0.5 |
+
+All nine together: about 420 characters, 1.9 % of the corpus, for about
+144 lines. Where the corpus's characters go, no piece of syntax is large:
+blanks 14.9 %, `$` 3.1 % (727's price, kept), quotes 2.6 %, `=` 2.6 %,
+`in` 1.8 %, `if (` 1.5 %; the rest is the scripts' own names, commands
+and text. Adopted: the two best per line, `arg(n, default)` and `warn` -
+10 lines, 126 characters out of six rewrites (15 uses). Asked of the
+user: an empty text or list as false. The gaps that remain against
+Python - dead-words +8.2 %, native-by-source +2.7 % - lie in what Python's
+library does in one call (sorting by a key, formatting with widths,
+counting into a default); those are weighed the same way as the
+pilot's library is built.
 
 **735 - what eight rewrites show about length.** Against sh, Rill is
 shorter every time: make-bundle -3.6 %, intrfuzz-stress -6.8 %, run-utf8

@@ -12,13 +12,13 @@ for a in $args {
         --verify { opts[verify] = true }
         --no-verify { opts[verify] = false }
         -h --help { sed -n '2,/^opts = /s/^# \{0,1\}//p' $self; exit 0 }
-        * { echo "pack-results: unknown argument: $a (--help lists them)" out>err; exit 2 }
+        * { warn "pack-results: unknown argument: $a (--help lists them)"; exit 2 }
     }
 }
 
 def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
-    echo "== $name ==" out>err
+    warn "== $name =="
     t0 = now()
     st = code(($cmd all> "$stage/$name.log"))
     note "step $name: status $st, {now() - $t0} s"
@@ -51,7 +51,7 @@ def apply-bundle -> record {
     else { fail "pack-results: $b does not fast-forward master (master has commits it lacks?) - not applied" }
     git fetch -q $best article-2026:article-2026 err> /dev/null ?? true
     applied = "$b applied: $(git rev-parse --short $old) -> $(git rev-parse --short HEAD)"
-    echo "== $applied ==" out>err
+    warn "== $applied =="
     return {applied: $applied, changed: $(git hash-object $self) != $before}
 }
 
@@ -62,7 +62,7 @@ else {
     r = apply-bundle()
     applied = $r.applied
     if ($r.changed) {
-        echo "== $self changed with the bundle: running the new one ==" out>err
+        warn "== $self changed with the bundle: running the new one =="
         exit code((env PACK_REEXEC=1 PACK_APPLIED=$applied rill $self @args))
     }
 }
@@ -86,7 +86,7 @@ for r in bench-report-*.txt {
     else { note "report already in bench/reports/: $r" }
 }
 if ($opts.clean) {
-    echo "== clean ==" out>err
+    warn "== clean =="
     untracked = lines($(git clean -ndx | sed -n 's/^Would remove //p'))
     write("$stage/untracked.txt", join($untracked, "\n"))
     rm -rf .clean-trash.old
@@ -112,7 +112,7 @@ if ($opts.clean) {
 }
 if ($opts.bench) {
     report = "$(pwd)/bench-report-$host-$utc.txt"
-    echo "   (tools/bench-report.sh: about ten minutes)" out>err
+    warn "   (tools/bench-report.sh: about ten minutes)"
     step bench (env REPORT=$report sh tools/bench-report.sh)
     if (test -f $report) { cp $report "$stage/reports/"; note "this run's report: reports/{base($report)}" }
 } else {
@@ -129,7 +129,7 @@ if (test -x ./relfsh-native) {
     }
 } else { note "no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile" }
 if ($opts.verify) {
-    echo "   (tests/verify: some minutes)" out>err
+    warn "   (tests/verify: some minutes)"
     step verify (sh tests/verify)
     note "verify's lines other than ok, and its last line:"
     grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum

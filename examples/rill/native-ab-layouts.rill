@@ -1,9 +1,9 @@
 # examples/rill/native-ab-layouts.rill - tools/native-ab-layouts.py in Rill (Iteration 726)
 root = $(git rev-parse --show-toplevel)
 cd $root
-base = default(arg(1), "HEAD")
-rounds = default(arg(2), "9")
-padtext = default(arg(3), "0,16,32,48")
+base = arg(1, "HEAD")
+rounds = arg(2, "9")
+padtext = arg(3, "0,16,32,48")
 wl = default(env("WL"), "loop fn str arith realistic")
 scale = default(env("SCALE"), "25")
 out = $(mktemp -d)

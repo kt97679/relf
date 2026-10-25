@@ -229,7 +229,9 @@ class Compiler:
             if len(a) == 2: return '%s %s OVER R-LEN R-SLICE' % (a[0][0], self.to_num(*a[1], line)), 'list'
             need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
         if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
-        if name == 'arg': need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'            # 744
+        if name == 'arg':                                              # 744; arg(n, default) 747
+            if len(a) == 2: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
+            need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'
         if name == 'match': need(2); return '%s %s R-MATCH' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'   # 746
         if name == 'all': need(2); return '%s %s R-ALL' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
         if name == 'sub': need(3); return '%s %s %s R-SUB' % (self.to_text(*a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'text'
@@ -349,6 +351,11 @@ class Compiler:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)
             out = '%s R.%s !' % (c, name)
+        elif k == 'word' and v == 'warn' and self.peek(1)[1] != '(':        # warn ...: a line to the err port (747)
+            self.i += 1
+            parts, _ = self.args((';', '}'))
+            if not parts: out = '0 0 R-TEXT R-ERR-TYPE'
+            else: out = ' S"  " R-TEXT '.join(parts) + ' %d R-CONCAT R-ERR-TYPE' % (2 * len(parts) - 1)
         elif k == 'word' and v == 'echo' and not self.plumbed():
             self.i += 1
             parts, _ = self.args((';', '}'))

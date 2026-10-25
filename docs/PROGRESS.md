@@ -771,6 +771,7 @@ do not trust the absence of a line below.
 - 744 — both compilers kept in step: fail, exit, on EXIT, arg/$args/$script, env, default, @spreads; make-bundle.rill runs for real
 - 745 — runs as terms, continue (hoisted bodies), par for, defs as pipeline stages; intrfuzz-stress.rill runs for real, its report the sh one's
 - 746 — three-way comparison protocol; rill/regex.4 (match, all, sub), 1,200 random cases the same as Python's re
+- 747 — rule 5 (expressive) and tools/rill-candidates.py: nine candidates weighed, arg(n, default) and warn adopted
 
 ### Not tied to an iteration
 

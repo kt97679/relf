@@ -90,7 +90,7 @@ dead = sort([[$nd.file, $nd.first, $nd.name] for k, nd in $nodes if $k not in $r
 for d in $dead { echo "{$d[0]}:{$d[1] + 1}: {$d[2]}" }
 deadis = [e for e in $islines if $e.y not in $reach or $lastis[$e.y].line != $e.line or $lastis[$e.y].file != $e.file]
 for e in $deadis { echo "$e.file:{$e.line + 1}: IS line  {$nodes[$e.x].name} -> {$nodes[$e.y].name}" }
-echo "{len($dead)} unreachable definitions, {len($deadis)} dead IS lines, {len($reach)} reachable" out>err
+warn "{len($dead)} unreachable definitions, {len($deadis)} dead IS lines, {len($reach)} reachable"
 
 if ($delete) {
     kill = {}

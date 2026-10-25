@@ -97,6 +97,6 @@ for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANC
     if (not (grep -qE "^$x.num CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { push($bad, "forth/{$c[0]}'s {$c[1]} is not $x.num ({$c[2]} in engine/opcodes.tab)") }
 }
 if (not (generate | cmp -s - "$dir/engine/cv8-ops.h")) { push($bad, "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make") }
-for m in $bad { echo "gen-opcodes: $m" out>err }
+for m in $bad { warn "gen-opcodes: $m" }
 if (len($bad) > 0) { fail "gen-opcodes: {len($bad)} problem(s)" }
 echo "gen-opcodes: engine/opcodes.tab, forth/kernel.4, forth/cross.4, forth/shadow.4 and engine/cv8-ops.h agree"

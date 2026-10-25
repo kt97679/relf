@@ -1,0 +1,4 @@
+name = arg(1, nobody)
+echo hello $name
+warn "careful:" $name now
+warn
