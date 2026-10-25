@@ -61,7 +61,7 @@ VARIABLE RL   VARIABLE RJ-SEP
   DUP CELL+ @ DUP G-GROWTH * 2/ SWAP 1+ MAX DUP CELLS R-ALLOT     ( l cap2 a2 )   \ capacity * growth / 2, at least one more
   >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
   OVER CELL+ !  R> SWAP 2 CELLS + ! ;
-: R-PUSH ( box l --- )   DUP R-GROW  DUP >R  2 CELLS + @ R@ @ CELLS + !  1 R> +! ;   \ R-ITEMS written out (768)
+: R-PUSH ( box l --- )   DUP @ OVER CELL+ @ < 0= IF DUP R-GROW THEN  DUP >R  2 CELLS + @ R@ @ CELLS + !  1 R> +! ;   \ R-GROW only when full (775)
 : R-INDEX ( l i --- l i' )   \ an index the unsigned test refused: from the end when negative and in the list,
   \ as Python's $l[-1] (771); past either end an error. Reached only where the plain read would fail.
   DUP 0< IF OVER @ OVER + DUP 0< 0= IF NIP EXIT THEN DROP THEN
@@ -81,7 +81,13 @@ VARIABLE RL   VARIABLE RJ-SEP
 : R-BOX= ( box1 box2 --- f )
   R-UNBOX ROT R-UNBOX ROT OVER <> IF 2DROP DROP 0 EXIT THEN    ( v2 v1 kind )
   K-TEXT = IF R-T= ELSE = THEN ;
-: R-IN ( box l --- f )   0 SWAP DUP @ 0 ?DO  DUP I R-AT 3 PICK R-BOX= IF NIP -1 SWAP LEAVE THEN  LOOP DROP NIP ;
+VARIABLE RK-A  VARIABLE RK-U   \ a key's bytes, while it is looked for (775)
+: R-IN ( box l --- f )   \ x in a list - a text compared in place with the items that are texts (775)
+  OVER @ K-TEXT = IF
+    SWAP CELL+ @ DUP CELL+ RK-A ! @ RK-U !  DUP @ SWAP 2 CELLS + @ SWAP
+    0 ?DO  DUP I CELLS + @ DUP @ K-TEXT = IF CELL+ @ DUP @ RK-U @ = IF CELL+ RK-U @ RK-A @ RK-U @ COMPARE 0= IF
+      DROP -1 UNLOOP EXIT THEN ELSE DROP THEN ELSE DROP THEN  LOOP  DROP 0 EXIT THEN
+  0 SWAP DUP @ 0 ?DO  DUP I R-AT 3 PICK R-BOX= IF NIP -1 SWAP LEAVE THEN  LOOP DROP NIP ;
 \ records
 VARIABLE RK
 : R-NEW-RECORD ( --- r )   \ keys, values, and a hash table and its size (0 0: none yet; gene rechash, 750)
@@ -89,16 +95,17 @@ VARIABLE RK
 : R-KEYS ( r --- l )   @ ;
 : R-VALS ( r --- l )   CELL+ @ ;
 \ [gene rechash]
-: R-HASH ( t --- h )   R-T@ 2166136261 SWAP 0 ?DO OVER I + C@ XOR 16777619 * 4294967295 AND LOOP NIP ;   \ FNV-1a
+: R-HASH ( t --- h )   R-T@ OVER + SWAP 2166136261 ROT ROT ?DO I C@ XOR 16777619 * LOOP ;   \ FNV-1a: its low 32 bits the same, no mask per byte (775)
 : RH-TABLE ( r --- a )   2 CELLS + @ ;
 : RH-CAP ( r --- n )   3 CELLS + @ ;
 VARIABLE RH-R  VARIABLE RH-K
 : RH-PROBE ( key r --- slot )   \ the slot holding the key's index + 1, or the empty one it would take
-  RH-R ! RH-K !  RH-K @ R-HASH RH-R @ RH-CAP 1- AND
+  RH-R ! RH-K !  RH-K @ DUP CELL+ RK-A ! @ RK-U !  RH-K @ R-HASH RH-R @ RH-CAP 1- AND
   BEGIN
     DUP CELLS RH-R @ RH-TABLE + DUP @
     DUP 0= IF DROP NIP EXIT THEN
-    1- RH-R @ @ SWAP R-AT R-UNBOX DROP RH-K @ R-T= IF NIP EXIT THEN
+    1- CELLS RH-R @ @ 2 CELLS + @ + @ CELL+ @                     \ the key at that index, its text (775: in place)
+    DUP @ RK-U @ = IF CELL+ RK-U @ RK-A @ RK-U @ COMPARE 0= IF NIP EXIT THEN ELSE DROP THEN
     DROP 1+ RH-R @ RH-CAP 1- AND
   AGAIN ;
 : RH-POW2 ( n --- p )   1 BEGIN 2DUP > WHILE 2* REPEAT NIP ;
@@ -118,7 +125,9 @@ VARIABLE RH-R  VARIABLE RH-K
 \ [gene !rechash]
 : R-FIND ( key r --- i | -1 )   \ key a text
 \ [/gene]
-  RK !  -1  RK @ R-KEYS DUP @ 0 ?DO  DUP I R-AT R-UNBOX DROP 3 PICK R-T= IF NIP I SWAP LEAVE THEN  LOOP DROP NIP ;
+  SWAP DUP CELL+ RK-A ! @ RK-U !  R-KEYS DUP @ SWAP 2 CELLS + @ SWAP      \ 775: each key's bytes compared in place
+  0 ?DO  DUP I CELLS + @ CELL+ @  DUP @ RK-U @ = IF CELL+ RK-U @ RK-A @ RK-U @ COMPARE 0= IF DROP I UNLOOP EXIT THEN ELSE DROP THEN  LOOP
+  DROP -1 ;
 \ [gene rechash]
 : R-FIND ( key r --- i | -1 )   \ through the table when the record has one
   DUP RH-TABLE IF RH-PROBE @ 1- EXIT THEN  R-FIND-LINEAR ;
@@ -137,12 +146,16 @@ VARIABLE RH-R  VARIABLE RH-K
   2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
 : R-HAS ( key r --- f )   R-FIND 0< 0= ;
 \ texts and lists
-: R-SPLIT-WS ( t --- l )   \ the words of a text
-  R-NEW-LIST >R  R-T@
-  BEGIN  BEGIN DUP WHILE OVER C@ 33 < WHILE 1 /STRING REPEAT THEN  DUP WHILE
-    OVER >R  BEGIN DUP WHILE OVER C@ 32 > WHILE 1 /STRING REPEAT THEN
-    R> 2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
-  REPEAT 2DROP R> ;
+VARIABLE SW-END
+: R-SPLIT-WS ( t --- l )   \ the words of a text: runs of bytes above 32 (775: an address walked to an end, no /STRING a byte)
+  R-NEW-LIST >R  R-T@ OVER + SW-END !
+  BEGIN
+    BEGIN DUP SW-END @ < IF DUP C@ 33 < ELSE 0 THEN WHILE 1+ REPEAT
+    DUP SW-END @ <
+  WHILE
+    DUP BEGIN DUP SW-END @ < IF DUP C@ 32 > ELSE 0 THEN WHILE 1+ REPEAT
+    TUCK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
+  REPEAT DROP R> ;
 : R-LINES ( t --- l )   \ its lines; a last empty one not counted
   R-NEW-LIST >R  R-T@
   BEGIN DUP WHILE
@@ -422,8 +435,11 @@ VARIABLE SRT
     REPEAT  SRT @ SWAP R-SET
   LOOP SRT @ ;
 VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
-: SP-FIND ( a u --- i | -1 )   \ where the separator first stands
-  SP-U @ - 1+ 0 MAX 0 ?DO DUP I + SP-U @ SP-A @ SP-U @ COMPARE 0= IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
+: SP-FIND ( a u --- i | -1 )   \ where the separator first stands: SCAN to its first byte, COMPARE there (775)
+  OVER >R
+  BEGIN  SP-A @ C@ SCAN  DUP SP-U @ < 0= WHILE
+    OVER SP-U @ SP-A @ SP-U @ COMPARE 0= IF DROP R> - EXIT THEN  1 /STRING
+  REPEAT 2DROP R> DROP -1 ;
 : R-SPLIT ( t sep --- l )   \ split(text, sep): the pieces between seps, empty ones kept - Python's
   R-T@ DUP 0= ABORT" rill: split by an empty text" SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
   BEGIN 2DUP SP-FIND DUP 0< 0= WHILE

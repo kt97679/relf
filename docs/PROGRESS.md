@@ -799,6 +799,7 @@ do not trust the absence of a line below.
 - 772 — reads that may be unset are checked ("rill: $x is not set"), not crashes; the corpus needed no checks
 - 773 — a double quote inside a string's {...}: one clear message in both compilers, not a crash
 - 774 — x[i] += v and -= v in both compilers; items holding decimals in decimal arithmetic (R-ANY>DEC)
+- 775 — runtime hot paths (SCAN split, in-place key compares, lighter hash): dead-words -35 % dispatches; littext measured, left off
 
 ### Not tied to an iteration
 

@@ -57,3 +57,29 @@ H-SPLIT, the run loops, the search's start positions. What is left to
 look at, by the counts: a first-character test before each start
 position (most positions cannot begin a match), dead-words' list and text
 words (R-AT, R-T@, R-UNBOX, R-SPLIT-WS), and records' hashing.
+
+## Iteration 775: the runtime's hot paths, as the second opinions ranked them
+
+- split(text, sep): SCAN to the separator's first byte, COMPARE there - one
+  dispatch a piece for "\n", where every position was tried with COMPARE.
+- Record lookups and list membership compare a key's bytes in place: the
+  linear key search, the hash probe and R-IN (for a text) read the item array
+  and each key's length and bytes directly, the lengths first - no R-AT,
+  R-UNBOX, PICK or R-T= per key.
+- R-HASH walks addresses and drops FNV-1a's per-byte 32-bit mask: the low 32
+  bits are the same, and only low bits index the table.
+- R-SPLIT-WS walks an address to a stored end, no /STRING a byte; R-PUSH calls
+  R-GROW only when the list is full.
+
+| dispatches | before 768 | after 774 | after 775 |
+|---|---:|---:|---:|
+| dead-words, 21 dead | 141,717,728 | 133,703,891 | 87,172,395 |
+| native-by-source | 427,913,143 | 157,836,459 | 147,738,906 |
+
+Time, interleaved, seven runs against 767's image: dead-words 111 ms against
+181 (-39 %), native-by-source 243 against 363 (-33 %).
+
+Measured and left off: literal texts made once (gene littext) - 5 % fewer
+dispatches on both pilots, 6.8 % more generated Forth over the corpus; on the
+score the four criteria set (752) about even, so it stays as it was: a choice
+for the user if speed should count for more.
