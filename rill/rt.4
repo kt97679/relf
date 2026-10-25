@@ -76,13 +76,38 @@ VARIABLE RL   VARIABLE RJ-SEP
 : R-IN ( box l --- f )   0 SWAP DUP @ 0 ?DO  DUP I R-AT 3 PICK R-BOX= IF NIP -1 SWAP LEAVE THEN  LOOP DROP NIP ;
 \ records
 VARIABLE RK
-: R-NEW-RECORD ( --- r )   4 CELLS R-ALLOT  R-NEW-LIST OVER !  R-NEW-LIST OVER CELL+ ! ;
+: R-NEW-RECORD ( --- r )   \ keys, values, and a hash table and its size (0 0: none yet; gene rechash, 750)
+  4 CELLS R-ALLOT  R-NEW-LIST OVER !  R-NEW-LIST OVER CELL+ !  0 OVER 2 CELLS + !  0 OVER 3 CELLS + ! ;
 : R-KEYS ( r --- l )   @ ;
 : R-VALS ( r --- l )   CELL+ @ ;
-: R-FIND ( key r --- i | -1 )   \ key a text
+: R-HASH ( t --- h )   R-T@ 2166136261 SWAP 0 ?DO OVER I + C@ XOR 16777619 * 4294967295 AND LOOP NIP ;   \ FNV-1a
+: RH-TABLE ( r --- a )   2 CELLS + @ ;
+: RH-CAP ( r --- n )   3 CELLS + @ ;
+VARIABLE RH-R  VARIABLE RH-K
+: RH-PROBE ( key r --- slot )   \ the slot holding the key's index + 1, or the empty one it would take
+  RH-R ! RH-K !  RH-K @ R-HASH RH-R @ RH-CAP 1- AND
+  BEGIN
+    DUP CELLS RH-R @ RH-TABLE + DUP @
+    DUP 0= IF DROP NIP EXIT THEN
+    1- RH-R @ @ SWAP R-AT R-UNBOX DROP RH-K @ R-T= IF NIP EXIT THEN
+    DROP 1+ RH-R @ RH-CAP 1- AND
+  AGAIN ;
+: RH-POW2 ( n --- p )   1 BEGIN 2DUP > WHILE 2* REPEAT NIP ;
+: RH-BUILD ( r cap --- )   \ a table of cap slots for every key r has
+  OVER 3 CELLS + !  DUP RH-CAP CELLS R-ALLOT DUP 2 PICK RH-CAP CELLS ERASE OVER 2 CELLS + !
+  DUP @ R-LEN 0 ?DO  DUP @ I R-AT R-UNBOX DROP OVER RH-PROBE  I 1+ SWAP !  LOOP DROP ;
+: RH-MAINTAIN ( r --- )   \ a key was added: past G-RECHASH keys a table, kept at most half full
+  G-RECHASH 0= IF DROP EXIT THEN
+  DUP @ R-LEN                                                  ( r n )
+  OVER RH-TABLE 0= IF  DUP G-RECHASH > IF 4 * RH-POW2 RH-BUILD ELSE 2DROP THEN EXIT  THEN
+  DUP 2* 2 PICK RH-CAP > IF 4 * RH-POW2 RH-BUILD EXIT THEN
+  1- >R  DUP @ R@ R-AT R-UNBOX DROP OVER RH-PROBE  R> 1+ SWAP !  DROP ;
+: R-FIND-LINEAR ( key r --- i | -1 )   \ key a text
   RK !  -1  RK @ R-KEYS DUP @ 0 ?DO  DUP I R-AT R-UNBOX DROP 3 PICK R-T= IF NIP I SWAP LEAVE THEN  LOOP DROP NIP ;
+: R-FIND ( key r --- i | -1 )   \ through the table when the record has one
+  DUP RH-TABLE IF RH-PROBE @ 1- EXIT THEN  R-FIND-LINEAR ;
 : R-PUT ( box key r --- )
-  2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R> R-VALS R-PUSH  EXIT  THEN
+  2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R@ R-VALS R-PUSH  R> RH-MAINTAIN  EXIT  THEN
   ROT DROP SWAP R-VALS SWAP R-SET ;
 : R-GET ( key r --- box )
   2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;

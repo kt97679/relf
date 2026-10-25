@@ -36,12 +36,15 @@ def genes_table():
     rows = []
     for line in open('rill/genes.tsv'):
         if line.startswith('#') or not line.strip(): continue
-        name, default, values = line.split('\t')[:3]
-        rows.append((name, int(default), [int(v) for v in values.split(',')]))
+        name, default, values, where = line.split('\t')[:4]
+        rows.append((name, int(default), [int(v) for v in values.split(',')], where))
     return rows
-GENES = genes_table()
+GENES_ROWS = genes_table()
+GENES = [(n, d, v) for n, d, v, w in GENES_ROWS]
 DEFAULT = {n: d for n, d, v in GENES}
-CODEGEN = ('short', 'purestack', 'dupnip', 'rangeloop')
+# the genes rillc.py reads, from the table's own column - a fixed list here missed littext (750),
+# and a cached compilation made under the other littext killed 15 designs as the two compilers differing
+CODEGEN = tuple(n for n, d, v, w in GENES_ROWS if w == 'compilers')
 
 def expressed(g):
     g = dict(g)
@@ -157,6 +160,8 @@ def load_db():
         for line in open(DB): r = json.loads(line); db[r['id']] = r
     return db
 
+def near(g, k):   # within k genes of the default
+    return sum(1 for n in DEFAULT if g[n] != DEFAULT[n]) <= k
 def search(limit):
     engine, counts = counting_engine()
     controls(engine, counts)
@@ -164,6 +169,7 @@ def search(limit):
     designs, seen = [], set()
     for values in itertools.product(*[v for n, d, v in GENES]):
         g = expressed(dict(zip([n for n, d, v in GENES], values)))
+        if PAIRS and not near(g, 2): continue            # --pairs (750): each gene alone and every pair, not the product
         if gid(g) not in seen: seen.add(gid(g)); designs.append(g)
     designs.sort(key=lambda g: g != DEFAULT)                    # the default first: its outputs are the reference
     reference = None
@@ -208,6 +214,7 @@ def report():
     if dead: lines += ['', '## Deaths', ''] + ['- %s %s: %s' % (r['id'], genes_env(r['genome']), r['cause']) for r in dead]
     open(os.path.join(OUT, 'report.md'), 'w').write('\n'.join(lines) + '\n'); print('\n'.join(lines))
 
+PAIRS = '--pairs' in sys.argv
 if __name__ == '__main__':
     if '--report' in sys.argv: report()
     else: search(int(sys.argv[sys.argv.index('--limit') + 1]) if '--limit' in sys.argv else 10 ** 9)

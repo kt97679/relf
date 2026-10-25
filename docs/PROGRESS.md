@@ -774,6 +774,7 @@ do not trust the absence of a line below.
 - 747 — rule 5 (expressive) and tools/rill-candidates.py: nine candidates weighed, arg(n, default) and warn adopted
 - 748 — forth-vm-evolution's evolution lab read; docs/RILL-SEARCH.md: what carries over to Rill, and the first search planned
 - 749 — the first search: 7 genes, 360 designs gated and counted, every default choice holds; 4 faults found (one corrects 745)
+- 750 — rechash, littext, rxanchor; --pairs search of 112 designs; rechash=16 halves dispatches, now the default; 745's rerun agrees
 
 ### Not tied to an iteration
 

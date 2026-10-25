@@ -160,6 +160,7 @@ DEFER RX-RUN ( pc sp --- f )
   0 OVER RX-RUN IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
 : RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
   0 RX-NOEMPTY !
+  G-RXANCHOR IF 0 RX-AT @ X-BOL = IF  DUP 0= IF RX-AT-POS ELSE DROP 0 THEN  EXIT THEN THEN   \ ^...: one place to try (750)
   BEGIN DUP RX-TN @ > 0= WHILE  DUP RX-AT-POS IF DROP -1 EXIT THEN  1+  REPEAT DROP 0 ;
 : RX-SEARCH-AFTER ( start empty? --- f )   \ the next match, as sre goes on: after an empty match at
   \ start, a match there must take something - then the search goes on from start + 1

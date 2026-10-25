@@ -193,3 +193,46 @@ tests/rill/params):
    only because neither run failed. The comparison is to be run again.
 4. Both compilers passed an item to a pure def without making it a
    number - with rangeloop=0, collatz($k, 0) got $k's box.
+
+## Three more genes, and a search of pairs (Iteration 750)
+
+The user: add more choices. Three, each a second form written in both
+compilers or the runtime, off by default so the default stayed what it
+was: **rechash** (0, 16, 64) - a record past that many keys finds them
+through a hash table (FNV-1a, linear probing, kept at most half full)
+instead of going through its keys; **littext** (0, 1) - each literal
+text made once, as the program is read (`S" ..." R-TEXT CONSTANT
+R-LIT-n`), not each time its code runs; **rxanchor** (0, 1) - a pattern
+that starts with `^` tried at the start only. A seventh selection
+workload, w-index (a 1,200-key record). Ten genes make 4,320 designs;
+`--pairs` takes the default, each gene alone and every pair - 112
+designs, each main effect and each two-gene interaction - in about two
+minutes.
+
+| gene changed | selection | held out | arena | generated |
+|---|---:|---:|---:|---:|
+| rechash=16 | **0.500** | **0.201** | +2.5 % | same |
+| rechash=64 | 0.598 | 0.205 | +2.5 % | same |
+| littext=1 | 0.999 | 0.995 | **-9.5 %** | +17 % |
+| rxanchor=1 | 1.000 | 1.000 | same | same |
+| (the earlier genes alone) | as at 749 | | | |
+
+rechash=16, workload by workload: w-index 0.026 of the default's
+dispatches, w-records 0.296, the held-out h-mix 0.040. Confirmed in real
+time, paired with the default and alternated over seven rounds: w-index
+0.049 of the default's time, w-records 0.332, h-mix 0.057, w-loop 1.000
+- **rechash=16 is the default now**. littext trades a tenth of the arena
+for a sixth more generated Forth at the same speed - a point of the
+front, left off until one of the two is wanted more. rxanchor buys
+nothing here (w-regex 1.003: the check costs what it saves, the
+matcher already failing fast at `^` past the start) - the lab's rule
+would take it out (its `rtlit`), and it is a candidate to.
+
+Faults on the way: the Forth compiler's literal table compared a
+candidate's bytes with an address for a length (OVER where 2 PICK was
+written, the class once more), found by the two compilers disagreeing
+under littext; rillc.py made a field's name with its own S" while the
+Forth compiler shared it, fixed to share; and the search's compilation
+cache was keyed on a fixed list of compiler genes that missed littext -
+15 designs died as the two compilers differing - now keyed on the
+table's own `where` column.

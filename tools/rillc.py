@@ -117,7 +117,7 @@ class Compiler:
                 self.i += 1
                 for f in nxt[1][1:].split('.'):
                     code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
-                    code, kind = 'S" %s" R-TEXT %s R-GET' % (f, code), 'any'
+                    code, kind = '%s %s R-GET' % (self.lit_text(f), code), 'any'      # a field's name a literal, shared too (750)
             else:
                 return code, kind
     def literal_list(self):
@@ -243,8 +243,13 @@ class Compiler:
         if name == 'env': need(1); return '%s R-ENV' % self.to_text(*a[0]), 'text'
         if name == 'default': need(2); return '%s %s R-DEFAULT' % (self.to_text(*a[0]), self.to_text(*a[1])), 'text'
         return None
+    def shared(self, code):
+        """Gene littext (750): a literal text made once, as the program is read - R-LIT-n."""
+        if not GENES['littext']: return code
+        if code not in self.lits: self.lits[code] = len(self.lits) + 1
+        return 'R-LIT-%d' % self.lits[code]
     def lit(self, s):
-        return 'S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s)
+        return self.shared('S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s))
     def bytes_lit(self, s):
         return ' '.join('%d' % b for b in s.encode()) + ' %d R-BYTES' % len(s.encode())
     def string(self, body, line):
@@ -270,7 +275,7 @@ class Compiler:
                         f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
                         if not f: break
                         code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
-                        code, kind = 'S" %s" R-TEXT %s R-GET' % (f.group(1), code), 'any'; i += f.end()
+                        code, kind = '%s %s R-GET' % (self.lit_text(f.group(1)), code), 'any'; i += f.end()
                     parts.append(self.to_text(code, kind))
                 else:
                     depth, j = 1, i + 1
@@ -283,8 +288,8 @@ class Compiler:
         if lit or not parts: parts.append(self.lit_text(lit))
         return parts[0] if len(parts) == 1 else '%s %d R-CONCAT' % (' '.join(parts), len(parts))
     def lit_text(self, s):
-        if '"' in s or '\n' in s or '\t' in s: return self.bytes_lit(s)
-        return 'S" %s" R-TEXT' % s
+        if '"' in s or '\n' in s or '\t' in s: return self.shared(self.bytes_lit(s))
+        return self.shared('S" %s" R-TEXT' % s)
     KCODE = {'number': 'K-NUM', 'text': 'K-TEXT', 'bool': 'K-BOOL', 'list': 'K-LIST', 'record': 'K-REC'}
     def to_text(self, code, kind):
         if kind == 'text': return code
@@ -576,7 +581,7 @@ class Compiler:
                                                          ' '.join('R.' + s for s in scratch), body))
         self.locals = outer; self.current = None
     def program(self):
-        main = []; self.skip_nl()
+        main = []; self.skip_nl(); self.lits = {}
         while self.peek()[0] != 'eof':
             line = self.peek()[2]; start = self.i
             out = self.statement()
@@ -584,6 +589,7 @@ class Compiler:
             self.lines.append((line, out))
             self.skip_nl()
         return ('\n'.join('VARIABLE R.%s' % n for n in sorted(self.names)) + '\n' +
+                ''.join('%s CONSTANT R-LIT-%d\n' % (c, n) for c, n in self.lits.items()) +
                 '\n'.join(self.defs) + '\n: R-MAIN %s ;\nR-MAIN\n' % ' '.join(main))
 
 if __name__ == '__main__':

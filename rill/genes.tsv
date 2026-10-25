@@ -10,3 +10,6 @@ rangeloop	1	0,1	compilers	for x in range(a, b) a counted loop, no list made (739
 listcap	4	1,2,4,8,16	runtime	a new list's first capacity, in items
 growth	4	3,4	runtime	a full list grows to capacity * growth / 2 items (4: twice; 3: half again)
 rxcache	32	0,8,32	runtime	compiled regular expressions kept, by their text (746)
+rechash	16	0,16,64	runtime	a record past this many keys finds them through a hash table (0: always by going through its keys) (750)
+littext	0	0,1	compilers	a literal text made once, when the program is read, not each time its code runs (750)
+rxanchor	0	0,1	runtime	a pattern that starts with ^ tried at the start only, not at every place (750)

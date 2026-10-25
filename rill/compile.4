@@ -95,7 +95,9 @@ VARIABLE NAME-XT   ' NAME-CHAR? NAME-XT !XT   VARIABLE WORD-XT   ' WORD-CHAR? WO
 \ each piece followed by a blank; names to declare are gathered and
 \ sorted at the end, as rillc.py's program() does.
 VARIABLE MAIN-B  VARIABLE MAIN#  VARIABLE DEFS-B  VARIABLE DEFS#  VARIABLE CUR-B  VARIABLE CUR#A
-: BUF-ALLOC ( --- )   1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B !  0 MAIN# !  0 DEFS# ! ;
+VARIABLE LITS-B  VARIABLE LITS#      \ literal texts made once (gene littext, 750)
+: BUF-ALLOC ( --- )   1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B !  0 MAIN# !  0 DEFS# !
+  262144 ALLOCATE THROW LITS-B !  0 LITS# ! ;
 : TO-MAIN ( --- )   MAIN-B CUR-B !  MAIN# CUR#A ! ;
 : TO-DEFS ( --- )   DEFS-B CUR-B !  DEFS# CUR#A ! ;
 : OUT+ ( c-addr u --- )   \ a piece of code and a blank
@@ -176,8 +178,26 @@ VARIABLE HS-Q
 : HAS-SPECIAL? ( c-addr u quote-only? --- f )   \ a quote - or a line end or a tab, unless quote-only
   HS-Q !  0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR HS-Q @ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP ;
 : OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
-: LIT-TEXT ( c-addr u --- )   2DUP 0 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;   \ rillc.py's lit_text
-: LIT ( c-addr u --- )   2DUP -1 HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;      \ rillc.py's lit
+: LIT-CODE ( c-addr u quote-only? --- )   >R 2DUP R> HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;
+1024 CONSTANT LT-MAX   LT-MAX CELLS BUFFER: LT-OFF   LT-MAX CELLS BUFFER: LT-LEN   VARIABLE LT-N
+VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
+: SHARED-LIT ( c-addr u quote-only? --- )   \ gene littext: its code once in LITS, R-LIT-n here (rillc.py's shared)
+  CUR-B @ LT-SAVEB !  CUR#A @ LT-SAVEN !  LITS-B CUR-B !  LITS# CUR#A !  LITS# @ LT-START !
+  LIT-CODE                                                   \ the candidate, at LITS's end
+  LITS# @ LT-START @ -                                       ( len )
+  0 LT-N @ 0 ?DO                                             ( len found )
+    OVER I CELLS LT-LEN + @ = IF
+      LITS-B @ LT-START @ +  2 PICK  LITS-B @ I CELLS LT-OFF + @ +  OVER  COMPARE 0= IF DROP I 1+ LEAVE THEN
+    THEN LOOP                                                ( len found )
+  ?DUP IF  NIP LT-START @ LITS# !                            \ known: the candidate given back
+  ELSE  LT-N @ LT-MAX = IF S" too many literal texts" ERR THEN
+    LT-START @ LT-N @ CELLS LT-OFF + !  LT-N @ CELLS LT-LEN + !  1 LT-N +!
+    S" CONSTANT" OUT+  S" R-LIT-" OUT-RAW LT-N @ OUT-NUM  10 OUT-C  LT-N @
+  THEN                                                       ( n )
+  LT-SAVEB @ CUR-B !  LT-SAVEN @ CUR#A !
+  S" R-LIT-" OUT-RAW OUT-NUM ;
+: LIT-TEXT ( c-addr u --- )   0 G-LITTEXT IF SHARED-LIT ELSE LIT-CODE THEN ;    \ rillc.py's lit_text
+: LIT ( c-addr u --- )   -1 G-LITTEXT IF SHARED-LIT ELSE LIT-CODE THEN ;      \ rillc.py's lit
 : TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
   K-LIST = IF S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN  S" R-NUM" OUT+ ;
@@ -735,14 +755,14 @@ NM-MAX CELLS BUFFER: ORDER
     WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
   LOOP ;
 : RILL-INIT ( --- )
-  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !  0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
+  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !  0 LT-N !  0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
   TK-ALLOC BUF-ALLOC ;
 : RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
   SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
   SORT-NAMES
   DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
-  DEFS-B @ DEFS# @ FIN+
+  LITS-B @ LITS# @ FIN+  DEFS-B @ DEFS# @ FIN+
   S" : R-MAIN " FIN+ MAIN-B @ MAIN# @ FIN+ S" ;" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! S" R-MAIN" FIN+
   10 FINAL FINAL# @ + C! 1 FINAL# +!
   FINAL FINAL# @ ;
