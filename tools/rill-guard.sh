@@ -8,7 +8,7 @@
 # fails if anything did. verify's image sums are the second guard: a
 # Rill iteration must leave every row of tests/BASELINE where it was.
 cd "$(dirname "$0")/.." || exit 2
-base=${1:-270c9e8}
+base=${1:-9b6819f}   # 778: the relfsh change the user asked for
 out=$(git diff --name-only "$base" HEAD -- . \
     ':!rill/' ':!examples/rill/' ':!tests/rill/' ':!docs/' \
     ':!tools/rill*' ':!tools/build-rill-image.sh' ':!tools/size-research/' ':!tools/utf8/' ':!bench/reports/' \
