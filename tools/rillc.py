@@ -200,6 +200,7 @@ class Compiler:
         k, v, line = tok[:3]
         if v == '[': return self.literal_list()
         if v == '{': self.skip_nl(); return self.literal_record()
+        if k == 'word' and v in ('true', 'false'): return ('-1' if v == 'true' else '0'), 'bool'   # 759: booleans
         if k == 'word' and re.fullmatch(r'-?\d+\.\d+', v):               # a decimal (754): fixed point, six places
             whole, frac = v.lstrip('-').split('.'); n = int(whole) * 1000000 + int((frac + '000000')[:6])
             return str(-n if v.startswith('-') else n), 'decimal'
@@ -351,6 +352,7 @@ class Compiler:
         if kind == 'any': return code + ' R-ANY>TEXT'
         if kind == 'list': return code + ' S"  " R-TEXT R-JOIN'          # a list as text: its items, a blank between
         if kind == 'decimal': return code + ' R-DEC>TEXT'                 # 754
+        if kind == 'bool': return code + ' R-BOOL>TEXT'                   # 759: true or false
         return code + ' R-NUM'
     def to_num(self, code, kind, line):
         if kind in ('number', 'bool'): return code
@@ -506,8 +508,8 @@ class Compiler:
         tok = self.peek()
         if tok[1] == '{':
             self.i += 1; c, kd = self.expr(); self.take('op', '}')
-        elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->'):
-            c, kd = self.lit(self.take()[1]), 'text'              # a keyword, an operator: plain text in an argument
+        elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->') or (tok[0] == 'word' and tok[1] in ('true', 'false')):
+            c, kd = self.lit(self.take()[1]), 'text'              # a keyword, an operator, true or false: plain text in an argument
         else:
             c, kd = self.term()
         return self.to_text(c, kd)

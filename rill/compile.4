@@ -214,7 +214,8 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 : TO-TEXT ( kind --- )   \ the value just made, as text - a list as its items with a blank between
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
   DUP K-LIST = IF DROP S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN
-  K-DEC = IF S" R-DEC>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;          \ a decimal (754)
+  DUP K-DEC = IF DROP S" R-DEC>TEXT" OUT+ EXIT THEN                   \ a decimal (754)
+  K-BOOL = IF S" R-BOOL>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;          \ true or false (759)
 : TO-NUM ( kind --- )   DUP K-NUM = OVER K-BOOL = OR IF DROP EXIT THEN
   DUP K-DEC = IF DROP S" 1000000 /" OUT+ EXIT THEN                  \ a decimal's whole part (754)
   K-ANY = IF S" R-ANY>NUM" OUT+ EXIT THEN  S" a number is needed here" ERR ;
@@ -436,6 +437,8 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   >R  0 -ROT 0 ?DO DUP I + C@ [CHAR] . = IF LEAVE THEN DUP I + C@ [CHAR] 0 - ROT 10 * + SWAP LOOP DROP
   1000000 * R> +  R> IF NEGATE THEN -1 ;
 : TERM0 ( --- kind )
+  TK K@ T-WORD = IF S" true" CUR-IS? IF NEXT-TK S" -1" OUT+ K-BOOL EXIT THEN                   \ 759: booleans
+    S" false" CUR-IS? IF NEXT-TK S" 0" OUT+ K-BOOL EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ DEC-LIT? IF OUT-NUM NEXT-TK 1 DEPTH+ K-DEC EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
@@ -673,6 +676,8 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
   TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
   TK T@ 2DUP S" ," S= >R 2DUP S" =" S= R> OR >R 2DUP S" ==" S= R> OR >R 2DUP S" !=" S= R> OR >R
   2DUP S" <=" S= R> OR >R 2DUP S" >=" S= R> OR >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R S" ->" S= R> OR ;
+: ARG-TEXT? ( --- f )   \ ... and true or false: text in an argument (759)
+  ARG-TEXT? IF -1 EXIT THEN  TK K@ T-WORD = IF S" true" CUR-IS? S" false" CUR-IS? OR ELSE 0 THEN ;
 : STATEMENT-END? ( --- f )   TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR ;
 : PLUMBED? ( --- f )   \ a redirection or a pipe ahead in the statement
   TK-I @  BEGIN STATEMENT-END? S" ??" CUR-IS? OR 0= WHILE

@@ -424,3 +424,4 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-HAS ELSE R-IN THEN ;
 : R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-PUT ELSE SWAP R-ANY>NUM R-SET THEN ;
+: R-BOOL>TEXT ( f --- t )   IF S" true" ELSE S" false" THEN R-TEXT ;   \ a bool as text (759)

@@ -140,9 +140,48 @@ Its defects so far, from the first run:
 | 2 | `kill[$f][$ln] = true` - two indexes in one assignment, which Rill has not | Rill's syntax | the compiler |
 | 3 | a comprehension over a def's parameter, an item | Rill's kinds | the compiler |
 | 4 | `a -= 1` on a variable holding an item | Rill's kinds | the compiler |
-| 5 | 57 roots where the original finds 77, so 372 words wrongly dead | open | the output check |
+| 5 | `named = false` - Rill had no `true` or `false`: both were texts, every flag true under `truth`, so no top-level line ever gave its roots (57 roots where the original finds 77, 372 words wrongly dead) | Rill's language (a gap) | the output check |
 
-1 and 2 changed the script; 3 and 4 changed Rill. 5 is open; the first
-suspect is the rewrite's record of string words, whose keys were written
-as raw texts with a backslash before the quote (`'.\"'`) - in a raw text
-the backslash is itself, so `."` is not among them.
+1 and 2 changed the script; 3, 4 and 5 changed Rill - 5 the most: `true`
+and `false` are literals now in both compilers (text again where a
+command takes them as arguments), and a bool prints as `true` or
+`false` (tests/rill/library and runs' expected outputs changed with it,
+from -1 and 0). My first suspect for 5, the string words' keys, was a
+misreading of escaped output: the keys were right.
+
+All three cases now the same as the Python original's, byte for byte -
+both compilers making the same Forth for the script.
+
+## The second three, side by side (Iteration 759)
+
+| dead-words | Python | Rill | Forth |
+|---|---:|---:|---:|
+| code lines | 148 | 109 | 172 |
+| code characters | 3,299 | 3,592 (+8.9 %) | 7,156 (+117 %) |
+| defects, first run to the match | (the reference) | 5 (3 changed Rill) | 1 |
+| order written | - | after the Forth | first |
+| time, the 21-definition case, best of three | 50 ms | 185 ms | 130 ms |
+
+## Both pilots
+
+| | native-by-source | | dead-words | |
+|---|---:|---:|---:|---:|
+| | Rill | Forth | Rill | Forth |
+| characters against Python | +5.2 % | +108.6 % | +8.9 % | +117 % |
+| defects | 5 | 0 | 5 | 1 |
+| written | before the Forth | last | after the Forth | first |
+| time against Python | 8.6x | 6.1x | 3.7x | 2.6x |
+
+**Size** is settled across two scripts of different kinds: Rill writes
+these Python tools in five to nine per cent more characters than Python,
+Forth in about twice - over the same library, so the difference is the
+languages. **Defects** went the same way in both orders - Rill 5 and 5,
+Forth 0 and 1 - so the order of writing does not explain the gap. Of
+Rill's ten, six are its language's own: two of the `$` rule, two of its
+kinds where a value comes out of a list or a record, two gaps
+(short-circuit `and`, no `true`/`false`); and five of the ten changed Rill
+rather than the script. They are the defects of a young language meeting
+real programs - each now fixed in both compilers, with a test. The Forth
+versions' cost does not show as defects but as their size, and as the
+stack reasoning each line took, which no count here holds. **Time**: both
+run several times Python's, Rill 1.4 times the hand-written Forth.
