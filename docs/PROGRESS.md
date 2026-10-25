@@ -777,6 +777,7 @@ do not trust the absence of a line below.
 - 750 — rechash, littext, rxanchor; --pairs search of 112 designs; rechash=16 halves dispatches, now the default; 745's rerun agrees
 - 751 — the user's four criteria; gene blocks in the sources; boxsmall, warn, argdefault, truth; 196 designs: the default at the optimum within 0.03 %
 - 752 — scripts weighed x10 by volume; truth adopted, boxsmall and rxanchor removed; the default at the optimum within 0.01 %
+- 753 — loopvar and echolit adopted (score 3.956, w-range 0.72 in real time); inline tried and taken out
 
 ### Not tied to an iteration
 

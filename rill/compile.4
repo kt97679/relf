@@ -105,7 +105,7 @@ VARIABLE LITS-B  VARIABLE LITS#      \ literal texts made once (gene littext, 75
   ;
 : TO-MAIN ( --- )   MAIN-B CUR-B !  MAIN# CUR#A ! ;
 : TO-DEFS ( --- )   DEFS-B CUR-B !  DEFS# CUR#A ! ;
-: OUT+ ( c-addr u --- )   \ a piece of code and a blank
+: OUT+ ( c-addr u --- )   \ a piece of code and a blank (gene inline tried at 753 and taken out)
   CUR-B @ @ CUR#A @ @ + SWAP DUP >R MOVE  R> CUR#A @ +!  BL CUR-B @ @ CUR#A @ @ + C!  1 CUR#A @ +! ;
 : OUT-NUM ( n --- )   DUP ABS 0 <# #S ROT SIGN #> OUT+ ;
 : OUT-POS ( --- n )   CUR#A @ @ ;
@@ -236,7 +236,28 @@ DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK
   STACKMODE @ 0= IF 2DROP -1 EXIT THEN
   -1 -ROT PRM-N @ 0 ?DO 2DUP PRM-A I CELLS + @ PRM-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
 \ [/gene]
+\ [gene loopvar]
+VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753), its name; 0 0 none
+: LV-BAD? ( j --- f )   \ a token that keeps the index from I alone - rillc.py's loopvar_ok, token by token
+  DUP K@ T-KW = IF T@ 2DUP S" for" COMPARE 0= >R S" def" COMPARE 0= R> OR EXIT THEN
+  DUP K@ T-WORD <> IF DROP 0 EXIT THEN
+  DUP T@ 2DUP S" break" COMPARE 0= >R 2DUP S" continue" COMPARE 0= >R 2DUP S" par" COMPARE 0= >R
+  S" EXIT" COMPARE 0= R> OR R> OR R> OR IF DROP -1 EXIT THEN
+  DUP T@ LV-A @ LV-L @ COMPARE IF DROP 0 EXIT THEN                 \ not the loop's own variable
+  1+ T@ 2DUP S" =" COMPARE 0= >R 2DUP S" +=" COMPARE 0= >R 2DUP S" -=" COMPARE 0= >R S" [" COMPARE 0= R> OR R> OR R> OR ;
+: LOOPVAR-OK? ( c-addr u --- f )   \ the body ahead (its { the current token) leaves the index to I alone
+  LV-L ! LV-A !  TK-I @ 0                                    \ LV-A/LV-L hold the name for the scan only
+  BEGIN
+    OVER T@ S" {" COMPARE 0= IF 1+ ELSE
+    OVER T@ S" }" COMPARE 0= IF 1- DUP 0= IF 2DROP 0 LV-L ! -1 EXIT THEN ELSE
+    OVER LV-BAD? IF 2DROP 0 LV-L ! 0 EXIT THEN
+    THEN THEN  SWAP 1+ SWAP
+  AGAIN ;
+\ [/gene]
 : READ-VAR ( c-addr u --- kind )   \ $name, without its $
+\ [gene loopvar]
+  LV-L @ IF 2DUP LV-A @ LV-L @ COMPARE 0= IF 2DROP S" I" OUT+ K-NUM EXIT THEN THEN
+\ [/gene]
 \ [gene purestack]
   2DUP PARAM-AT DUP 0< 0= IF
     NIP NIP  DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
@@ -251,14 +272,41 @@ DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK
 
 : SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ SRC @ SRC# @ CUR-LINE @ ;
 : RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
-VARIABLE SUB-A  VARIABLE SUB-L  VARIABLE FLD-POS
+VARIABLE SUB-A  VARIABLE SUB-L
+\ [gene echolit]
+VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside its {...} an ordinary one (rillc.py's sub-compiler)
+: SUB-ECHO-OFF ( --- )   ECHO-MODE @ ECHO-SAVED !  0 ECHO-MODE ! ;
+: SUB-ECHO-ON ( --- )   ECHO-SAVED @ ECHO-MODE ! ;
+\ [/gene]
+\ [gene !echolit]
+: SUB-ECHO-OFF ( --- ) ;   : SUB-ECHO-ON ( --- ) ;
+\ [/gene]
+VARIABLE FLD-POS
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
-  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  -1 COMMAND-HOOK S" R-CHECK" OUT+  RESTORE-TK ;
+  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
+  -1 COMMAND-HOOK S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK ;
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
-  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  1 EXPR >R  RESTORE-TK  R> ;
+  SUB-L ! SUB-A !  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  R> ;
 4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
+\ [gene echolit]
+4096 BUFFER: EL-BUF  VARIABLE EL#      \ echo's literal run (753)
+: EL+ ( c-addr u --- )   EL-BUF EL# @ + SWAP DUP EL# +! MOVE ;
+: OUT-STYPE ( c-addr u --- )   [CHAR] S OUT-C 34 OUT-C BL OUT-C OUT-RAW 34 OUT-C BL OUT-C S" TYPE" OUT+ ;
+: EL-FLUSH ( --- )   \ the run typed: S" ..." TYPE - or its bytes and R-TYPE, as rillc.py's typed_lit
+  EL# @ 0= IF EXIT THEN
+  EL-BUF EL# @ 2DUP 0 HAS-SPECIAL? IF OUT-BYTES S" R-TYPE" OUT+ ELSE OUT-STYPE THEN  0 EL# ! ;
+: LIT-FLUSH ( force? --- )   \ the literal gathered so far, as one part - or, for echo, onto its run
+  ECHO-MODE @ IF DROP LIT# @ IF LITBUF LIT# @ EL+ THEN 0 LIT# ! EXIT THEN
+  LIT# @ 0<> OR IF  LITBUF LIT# @ LIT-TEXT  1 NPARTS +!  THEN  0 LIT# ! ;
+: PIECE-START ( --- )   0 LIT-FLUSH  ECHO-MODE @ IF EL-FLUSH THEN ;
+: PIECE-END ( --- )   ECHO-MODE @ IF S" R-TYPE" OUT+ ELSE 1 NPARTS +! THEN ;
+\ [/gene]
+\ [gene !echolit]
 : LIT-FLUSH ( force? --- )   \ the literal gathered so far, as one part
   LIT# @ 0<> OR IF  LITBUF LIT# @ LIT-TEXT  1 NPARTS +!  THEN  0 LIT# ! ;
+: PIECE-START ( --- )   0 LIT-FLUSH ;
+: PIECE-END ( --- )   1 NPARTS +! ;
+\ [/gene]
 : LIT-C ( c --- )   LITBUF LIT# @ + C!  1 LIT# +! ;
 : STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}, $( ... )
   \ In the loop the stack is ( c-addr u c ): the next character is 2 PICK 1+ C@,
@@ -268,11 +316,11 @@ VARIABLE SUB-A  VARIABLE SUB-L  VARIABLE FLD-POS
     OVER C@  DUP [CHAR] \ = OVER 1 > AND IF DROP
       1 /STRING OVER C@ DUP [CHAR] n = IF DROP 10 ELSE DUP [CHAR] t = IF DROP 9 THEN THEN LIT-C 1 /STRING
     ELSE DUP [CHAR] $ = OVER 1 > AND IF  2 PICK 1+ C@ [CHAR] ( = IF DROP          \ $( ... ): a capture
-      0 LIT-FLUSH  2 /STRING  OVER >R  1 >R
+      PIECE-START  2 /STRING  OVER >R  1 >R
       BEGIN R@ WHILE OVER C@ DUP [CHAR] ( = IF R> 1+ >R THEN [CHAR] ) = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
-      R> 2 PICK OVER - 1- SUB-COMMAND  1 NPARTS +!
+      R> 2 PICK OVER - 1- SUB-COMMAND  PIECE-END
     ELSE 2 PICK 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
-      0 LIT-FLUSH  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
+      PIECE-START  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
       R> 2 PICK OVER - OUT-POS >R READ-VAR                     ( c-addr u kind )  ( R: the var's code )
       BEGIN DUP DUP K-REC = SWAP K-ANY = OR 3 PICK 1 > AND IF 2 PICK C@ [CHAR] . = 3 PICK 1+ C@ NAME-START? AND ELSE 0 THEN
       WHILE                                                    \ "$host.name": a field
@@ -280,13 +328,16 @@ VARIABLE SUB-A  VARIABLE SUB-L  VARIABLE FLD-POS
         BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
         R> 2 PICK OVER -  OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+  K-ANY
       REPEAT R> DROP
-      TO-TEXT  1 NPARTS +!  THEN THEN
+      TO-TEXT  PIECE-END  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
-      0 LIT-FLUSH  1 /STRING  OVER >R  1 >R
+      PIECE-START  1 /STRING  OVER >R  1 >R
       BEGIN R@ WHILE OVER C@ DUP [CHAR] { = IF R> 1+ >R THEN [CHAR] } = IF R> 1- >R THEN 1 /STRING REPEAT  R> DROP
-      R> 2 PICK OVER - 1- SUB-EXPR TO-TEXT  1 NPARTS +!
+      R> 2 PICK OVER - 1- SUB-EXPR TO-TEXT  PIECE-END
     ELSE LIT-C 1 /STRING THEN THEN THEN
   REPEAT 2DROP
+\ [gene echolit]
+  ECHO-MODE @ IF 0 LIT-FLUSH K-TEXT EXIT THEN                       \ for echo: the last run onto echo's
+\ [/gene]
   NPARTS @ 0= LIT-FLUSH
   NPARTS @ 1 > IF NPARTS @ OUT-NUM S" R-CONCAT" OUT+ THEN  K-TEXT ;
 
@@ -666,6 +717,19 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   DUP 0= IF DROP S" 0 0 R-TEXT R-ERR-TYPE" OUT+ EXIT THEN
   2* 1- OUT-NUM S" R-CONCAT R-ERR-TYPE" OUT+ ;
 \ [/gene]
+\ [gene echolit]
+: ECHO-TYPED ( --- )   \ gene echolit (753): rillc.py's echo_typed
+  NEXT-TK  0 EL# !  -1
+  BEGIN STATEMENT-END? 0= WHILE
+    0= IF TK TOK-AT TK 1- TOK-END <> IF S"  " EL+ THEN THEN       \ a blank between items that do not touch
+    TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK  -1 ECHO-MODE !  STRING-LIT DROP  0 ECHO-MODE ! ELSE
+    TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK EL+ ELSE
+    ARG-TEXT? IF TK T@ NEXT-TK EL+ ELSE
+    TK K@ T-WORD = TK 1+ S" (" TK-IS? 0= AND TK T@ NUMBER-TEXT? 0= AND IF TK T@ NEXT-TK EL+ ELSE
+    EL-FLUSH ARG-ITEM S" R-TYPE" OUT+
+    THEN THEN THEN THEN  0
+  REPEAT DROP  EL-FLUSH S" R-NL" OUT+ ;
+\ [/gene]
 : STAGE-END? ( --- f )   STATEMENT-END? S" )" CUR-IS? OR S" ??" CUR-IS? OR S" |" CUR-IS? OR ;
 VARIABLE SP-FORM  VARIABLE SP-PEND
 : SPREAD-AHEAD? ( --- f )   TK-I @ BEGIN STAGE-END? 0= WHILE TK SPREAD-WORD? IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT TK-I ! 0 ;
@@ -753,6 +817,14 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
     NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
     OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
+\ [gene loopvar]
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND
+    R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
+      S" 2DUP SWAP 1+ SWAP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
+      0 PAR-BODY  0 LV-L !
+      S" LOOP OVER > IF DROP ELSE" OUT+  VAR-OUT S" ! THEN" OUT+  R> DROP EXIT
+    THEN THEN
+\ [/gene]
     S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND
     S" ?DO" OUT+ S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
@@ -806,7 +878,12 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
 \ [gene warn]
     S" warn" CUR-IS? TK 1+ S" (" TK-IS? 0= AND IF WARN-STMT EXIT THEN
 \ [/gene]
+\ [gene echolit]
+    S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-TYPED EXIT THEN THEN
+\ [/gene]
+\ [gene !echolit]
     S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
+\ [/gene]
     TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
   THEN
   TK K@ DUP T-WORD = OVER T-STR = OR OVER T-RAW = OR SWAP T-VAR = OR IF COMMAND-STMT EXIT THEN

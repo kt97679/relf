@@ -15,3 +15,5 @@ littext	0	0,1	compilers	a literal text made once, when the program is read, not 
 warn	1	0,1	features	warn ..., a line to the err port (747): off, scripts write echo ... out>err (751)
 argdefault	1	0,1	features	arg(n, default) (747): off, scripts write default(arg(n), default) (751)
 truth	1	0,1	features	an empty text, list or record is false in a condition and under not (751): off, scripts write len(x) > 0, x != ""
+echolit	1	0,1	compilers	echo's literal runs typed from the definition, items typed as they come - no texts made, no concatenation (753)
+loopvar	1	0,1	compilers	a counted loop's variable read as I in a body nothing else could see it from, stored once after the loop (753)

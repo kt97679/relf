@@ -177,6 +177,7 @@ class Compiler:
             at = self.depth + len(self.stack) - 1 - self.stack.index(v[1:])
             self.depth += 1
             return {0: 'DUP', 1: 'OVER'}.get(at, '%d PICK' % at), 'number'
+        if k == 'var' and v[1:] == getattr(self, 'loopvar', None): return 'I', 'number'      # gene loopvar (753)
         if k == 'var' and v[1:] in ('args', 'script') and v[1:] not in self.vars and \
                 (self.locals is None or v[1:] not in self.locals):
             return ('R-ARGS', 'list') if v[1:] == 'args' else ('R-SCRIPT', 'text')       # 744
@@ -252,39 +253,40 @@ class Compiler:
         return self.shared('S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s))
     def bytes_lit(self, s):
         return ' '.join('%d' % b for b in s.encode()) + ' %d R-BYTES' % len(s.encode())
-    def string(self, body, line):
-        parts, i, lit = [], 0, ''
+    def string(self, body, line, typed=False):
+        parts, pieces, i, lit = [], [], 0, ''   # pieces: ('lit', text) or ('code', code) - for echolit (753)
         while i < len(body):
             c = body[i]
             if c == '\\' and i + 1 < len(body):
                 lit += {'n': '\n', 't': '\t'}.get(body[i + 1], body[i + 1]); i += 2; continue
             if body.startswith('$(', i):
-                if lit: parts.append(self.lit_text(lit)); lit = ''
+                if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
                 depth, j = 1, i + 2
                 while depth: depth += {'(': 1, ')': -1}.get(body[j], 0); j += 1
                 sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                 sub.t = tokenize(body[i + 2:j - 1]); sub.i = 0
-                parts.append(sub.command(capture=True) + ' R-CHECK'); i = j; continue
+                parts.append(sub.command(capture=True) + ' R-CHECK'); pieces.append(('code', parts[-1])); i = j; continue
             m = re.match(r'\$([A-Za-z_][A-Za-z0-9_]*)', body[i:])
             if m or c == '{':
-                if lit: parts.append(self.lit_text(lit)); lit = ''
+                if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
                 if m:
                     name = m.group(1); i += m.end()
-                    code, kind = 'R.%s @' % name, self.kind_of(name, line)
+                    code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) else ('R.%s @' % name, self.kind_of(name, line))
                     while kind in ('record', 'any'):                  # "$host.name": a field, in a string too
                         f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
                         if not f: break
                         code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
                         code, kind = '%s %s R-GET' % (self.lit_text(f.group(1)), code), 'any'; i += f.end()
-                    parts.append(self.to_text(code, kind))
+                    parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
                 else:
                     depth, j = 1, i + 1
                     while depth: depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
                     sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                     sub.t = tokenize(body[i + 1:j - 1]); sub.i = 0
-                    c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); i = j
+                    c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j
                 continue
             lit += c; i += 1
+        if typed: return pieces + [('lit', lit)]
         if lit or not parts: parts.append(self.lit_text(lit))
         return parts[0] if len(parts) == 1 else '%s %d R-CONCAT' % (' '.join(parts), len(parts))
     def lit_text(self, s):
@@ -378,8 +380,10 @@ class Compiler:
             else: out = ' S"  " R-TEXT '.join(parts) + ' %d R-CONCAT R-ERR-TYPE' % (2 * len(parts) - 1)
         elif k == 'word' and v == 'echo' and not self.plumbed():
             self.i += 1
-            parts, _ = self.args((';', '}'))
-            out = ' SPACE '.join(p + ' R-TYPE' for p in parts) + (' R-NL' if parts else 'R-NL')
+            if GENES['echolit']: out = self.echo_typed()
+            else:
+                parts, _ = self.args((';', '}'))
+                out = ' SPACE '.join(p + ' R-TYPE' for p in parts) + (' R-NL' if parts else 'R-NL')
         elif k == 'word' and self.peek(1)[1] == '(':
             self.i += 1; c, kd = self.call(v, line); out = c + ('' if kd is None else ' DROP')
         elif k in ('word', 'str', 'raw', 'var'):
@@ -411,6 +415,31 @@ class Compiler:
         body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', word[s[1]])
                         for k, s in enumerate(stages))
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
+    def echo_typed(self):
+        """Gene echolit (753): echo's items typed as they come - a literal run (words, raw texts, the
+        literal parts of strings, the blanks between items) one S" ... " TYPE, no text made for it."""
+        pieces, first = [], True
+        while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}'):
+            tok = self.peek()
+            if not first and tok[3] != self.t[self.i - 1][4]: pieces.append(('lit', ' '))
+            first = False
+            if tok[0] == 'str': self.i += 1; pieces += self.string(tok[1][1:-1], tok[2], typed=True)
+            elif tok[0] == 'raw': self.i += 1; pieces.append(('lit', tok[1][1:-1]))
+            elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->'):
+                self.i += 1; pieces.append(('lit', tok[1]))
+            elif tok[0] == 'word' and self.peek(1)[1] != '(' and not re.fullmatch(r'-?\d+', tok[1]):
+                self.i += 1; pieces.append(('lit', tok[1]))
+            else: pieces.append(('code', self.arg_item()))
+        out, lit = [], ''
+        for kind, x in pieces:
+            if kind == 'lit': lit += x; continue
+            if lit: out.append(self.typed_lit(lit)); lit = ''
+            out.append(x + ' R-TYPE')
+        if lit: out.append(self.typed_lit(lit))
+        return ' '.join(out + ['R-NL'])
+    def typed_lit(self, s):
+        if '"' in s or '\n' in s or '\t' in s: return self.bytes_lit(s) + ' R-TYPE'
+        return 'S" %s" TYPE' % s
     def arg_item(self):
         tok = self.peek()
         if tok[1] == '{':
@@ -481,6 +510,20 @@ class Compiler:
     def cond(self):
         if self.peek()[1] != '(': raise Error('line %d: a condition is in ( )' % self.peek()[2])
         c, kd = self.expr(); return self.truth(c, kd)
+    def loopvar_ok(self, name):
+        """The body ahead (its { the current token) leaves the index to I alone: no loop inside it, no
+        break or continue, no par, no def, no on EXIT, and nothing assigned to the variable."""
+        j, depth = self.i, 0
+        while True:
+            k, v = self.t[j][0], self.t[j][1]
+            if v == '{': depth += 1
+            elif v == '}':
+                depth -= 1
+                if depth == 0: return True
+            elif (k == 'kw' and v in ('for', 'def')) or (k == 'word' and v in ('break', 'continue', 'par', 'EXIT')):
+                return False
+            elif k == 'word' and v == name and self.t[j + 1][1] in ('=', '+=', '-=', '['): return False
+            j += 1
     def has_continue(self):
         """Does the block ahead hold a continue at its own level (not in a loop inside it)?"""
         j, stack, pending = self.i, [], False
@@ -513,6 +556,11 @@ class Compiler:
             self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
             self.scope()[a] = 'number'; self.names.add(a)
+            if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
+                outer = getattr(self, 'loopvar', None); self.loopvar = a
+                body = self.loop_body(); self.loopvar = outer
+                return '%s %s 2DUP SWAP 1+ SWAP ?DO %s LOOP OVER > IF DROP ELSE R.%s ! THEN' % (
+                    self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, a)
             out = '%s 1+ %s ?DO I R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), a,
                                                     self.par_wrap(self.loop_body(), par))
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out

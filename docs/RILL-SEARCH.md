@@ -334,3 +334,46 @@ that artefact alone. Generated Forth is now counted over the same
 programs for every design. And with truth off, a text in a condition was
 always true - its address is never zero - and neither compiler said so:
 the feature mends a silent fault as well as shortening scripts.
+
+## Three new mechanisms: echolit and loopvar adopted, inline taken out (Iteration 753)
+
+The user: add the three candidates 752 named. Each a gene in both
+compilers, in gene blocks, off at first:
+
+- **loopvar** - a counted loop's variable read as `I` in a body nothing
+  else could see it from (no loop, break, continue, par, def or on EXIT
+  in it, nothing assigning the variable): `hi lo 2DUP SWAP 1+ SWAP ?DO
+  ... I ... LOOP OVER > IF DROP ELSE R.i ! THEN` - no store at every
+  turn, and the variable still holds the last value after the loop, as
+  before.
+- **echolit** - echo's items typed as they come: a run of literal text
+  (words, raw texts, the literal parts of strings, the blanks between
+  items) one `S" ..." TYPE` from the definition - no text made in the
+  arena for it, no concatenation for an interpolated string.
+- **inline** - the smallest runtime words (R-TYPE, R-NL, R-LEN, R-UNBOX,
+  R-KEYS, R-VALS) written out where they are called.
+
+Fifteen genes; pairs and a climb, 234 designs, all alive. Alone, against
+the default:
+
+| change | source | speed | generated | score |
+|---|---:|---:|---:|---:|
+| echolit=1 | +1,145 | 0.999 | -4.1 % | 3.966 |
+| loopvar=1 | +1,107 | 0.974 | +0.9 % | 3.991 |
+| inline=1 | +688 | 1.005 | +18.7 % | 4.197 |
+
+The climb's best: echolit and loopvar together (listcap=16 beside them
+changes nothing the criteria count) - **3.956**: dispatches 0.973,
+generated Forth 3.3 % less, the source 4.2 % more. In real time, paired
+and alternated over nine rounds against the old default: w-range 0.724
+(loopvar's loop), w-lists 0.996, w-loop 1.026 (no counted loop there:
+noise). **echolit and loopvar are the defaults now.** inline bought
+nothing - CV8 runs the call no slower than the words written out - and
+cost a fifth more generated Forth: **taken out**, by the lab's rule.
+
+Two faults on the way, both in the Forth compiler's first try at the
+mechanisms: the loopvar scan's stack juggling let a body with a `for`
+through (the outer of two nested loops made loopvar too; the oracle's
+word-for-word comparison under the gene found it); and a marker line
+that also held `VARIABLE FLD-POS` was dropped whole by the filter - now
+a check that a marker line holds nothing else.
