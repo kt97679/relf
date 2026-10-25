@@ -123,7 +123,7 @@ class Compiler:
         if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk == ak and ak != 'any':
             raise Error('line %d: comparing lists or records is not in stage 2' % line)
         if 'decimal' in (ak, bk) and ak in ('number', 'decimal', 'any') and bk in ('number', 'decimal', 'any'):
-            dec = lambda c, k: c + ' 1000000 *' if k == 'number' else (c + ' R-ANY>NUM 1000000 *' if k == 'any' else c)
+            dec = lambda c, k: c + ' 1000000 *' if k == 'number' else (c + ' R-ANY>DEC' if k == 'any' else c)   # an item holding a decimal too (774)
             a, b = dec(a, ak), dec(b, bk)
             if getattr(self, 'stack', None): self.depth -= 1
             f = {'+': '+', '-': '-', '*': '1000000 */', '/': '>R 1000000 R> */', '%': 'MOD', '==': '=', '!=': '<>',
@@ -464,8 +464,16 @@ class Compiler:
             out = "['] R-EXIT-%d R-ON-EXIT" % self.on_n
         elif k == 'word' and self.peek(1)[1] == '[' and self.peek(1)[3] == self.peek()[4]:
             name = v; self.i += 2
-            ic, ik = self.expr(); self.take('op', ']'); self.take('op', '=')
+            ic, ik = self.expr(); self.take('op', ']')
+            op = self.take()[1]
+            if op not in ('=', '+=', '-='): raise Error('line %d: expected =, += or -=, found %s' % (line, op))
             c, kd = self.expr(); ck = self.kind_of(name, line)
+            if op != '=':                                         # x[i] += v: the item read, changed, put back (774)
+                if ck == 'list': cur = 'R.%s @ %s R-AT' % (name, self.to_num(ic, ik, line))
+                elif ck == 'record': cur = '%s R.%s @ R-GET' % (self.to_text(ic, ik), name)
+                elif ck == 'any': cur = '%s R.%s @ R-INDEX-ANY' % (self.box(ic, ik), name)
+                else: raise Error('line %d: += and -= need a list or a record' % line)
+                c, kd = self.binop('+' if op == '+=' else '-', cur, 'any', c, kd)
             if ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
             elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
             elif ck == 'any': out = '%s %s R.%s @ R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), name)   # 758

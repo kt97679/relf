@@ -1014,3 +1014,10 @@ Python; `slice($l, -3, -1)` and `slice($t, 1, -1)` count their negative bounds
 from the end, and bounds past either end are cut to it. An index past either
 end is still an error. A variable given both numbers and decimals is a
 decimal: `x = 1` then `x += 0.5` gives 1.5.
+
+## x[i] += v (Iteration 774)
+
+`counts[$w] += 1`, `l[-1] -= 10`, `totals[a] += 0.5`: an item of a list or a
+field of a record changed in place, as Python's `+=` and `-=`. The item is read,
+changed - a number, or a decimal when either side is one - and put back; the
+index is worked out twice, so an index with a side effect has it twice.

@@ -485,3 +485,5 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
   K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-NL 1 R-STATUS ! -4000 THROW ;
 : R-UNSET ( c-addr u --- )   \ a variable read where it may not be set, and it is not (772) - Python's NameError
   ." rill: $" TYPE ."  is not set" R-NL  1 R-STATUS !  -4000 THROW ;
+: R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
+  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
