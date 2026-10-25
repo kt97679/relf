@@ -43,4 +43,43 @@ the prefix - a data stack underflow after hundreds of lines (755,
 tests/rill/library's loop of every library word 3,000 times); the arena's
 16 MB filled (755: 128 MB of address space, used as touched).
 
-## The Forth version - next
+## The Forth version - matches (Iteration 756)
+
+examples/rill/native-by-source.fth: relf's Forth and Rill's runtime words
+(texts, lists, records, regular expressions, R-READ, R-SORT-BY's kind of
+sort written out for list entries), loaded with INCLUDED in Rill's image -
+R-RUN joins a program's lines into one, which a `\` comment would end.
+The same 40 lines as the Python original **on its first run**: no defect
+between the first run and the match. rill-forth-lint run on it alone
+reported four findings (-ROT and /STRING "not in the kernel") - false:
+rill/rt.4 and compile.4 define them; with them loaded beside it, none.
+
+That zero has to be read with the bias the protocol named: the Forth
+version was written last, by the author of the runtime words it calls,
+knowing every pitfall the Rill run had turned up - the original's skip of
+three lines after a header, the short-texts case, the stack effect of
+every word. The stack reasoning it took is not in any count here.
+
+## The three, side by side
+
+| | Python | Rill | Forth |
+|---|---:|---:|---:|
+| code lines | 43 | 37 | 89 |
+| code characters | 1,951 | 2,052 | 4,070 |
+| against Python | - | +5.2 % | +108.6 % |
+| defects, first run to the match | (the reference) | 5 (2 written before Rill ran) | 0 (written last) |
+| time, best of three | 48 ms | 415 ms | 292 ms |
+
+Measured alike: code only, comments and blank lines out (a Python
+docstring, a Rill `#` line, a Forth `\` line or `( stack comment )`).
+
+**What it says.** In size Rill sits with Python - five per cent over it,
+on a script Python is at its best on (re, collections.Counter, %-format)
+- and Forth at twice either, with the same library under it: the
+difference is the language, not the library. In speed both Rill and
+Forth run six to nine times Python's time here - regular expressions and
+records in Forth, an arena with no collector - and Rill 1.4 times the
+hand-written Forth, the cost of its boxed items and generic words. In
+defects nothing can be concluded from one pair written in this order;
+what the Rill log does show is where Rill's own design invites slips -
+two of its five were the `$` rule.

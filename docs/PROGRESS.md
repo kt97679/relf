@@ -780,6 +780,7 @@ do not trust the absence of a line below.
 - 753 — loopvar and echolit adopted (score 3.956, w-range 0.72 in real time); inline tried and taken out
 - 754 — the library for Python-born scripts (texts, files, sort-by, decimals, ...) in both compilers; the pilot compiles, a run-time fault open
 - 755 — the pilot's Rill version matches Python's 40 lines (+5.2 % length, 8x the time); and/or short-circuit; R-STARTS fixed
+- 756 — the pilot's Forth version matches on its first run: Python 1,951 chars, Rill 2,052 (+5 %), Forth 4,070 (+109 %)
 
 ### Not tied to an iteration
 
