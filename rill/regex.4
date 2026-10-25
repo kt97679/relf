@@ -195,7 +195,7 @@ RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS B
   2* CELLS RX-SAVED + DUP @ DUP 0< IF 2DROP 0 0 R-TEXT EXIT THEN  SWAP CELL+ @ RX-SLICE ;
 : R-MATCH ( t pat --- l )   \ match(text, pattern): [whole, group 1, ...], or [] - found anywhere, as re.search
   RX-COMPILE RX-TEXT!  R-NEW-LIST
-  0 RX-SEARCH IF  RX-NG @ 1+ 0 DO I RX-GROUP OVER R-PUSH-TEXT LOOP  THEN ;
+  0 RX-SEARCH IF  RX-NG @ 1+ 0 DO I RX-GROUP K-TEXT R-BOX OVER R-PUSH LOOP  THEN ;
 : RX-ITEM ( --- t )   RX-NG @ IF 1 ELSE 0 THEN RX-GROUP ;             \ all(): group 1, or the whole match
 VARIABLE RX-POS
 VARIABLE RX-WASEMPTY
@@ -203,7 +203,7 @@ VARIABLE RX-WASEMPTY
 : RX-ADVANCE ( --- )   RX-SAVED CELL+ @ DUP RX-POS !  RX-SAVED @ = RX-WASEMPTY ! ;
 : R-ALL ( t pat --- l )   \ all(text, pattern): every match, as re.findall
   RX-COMPILE RX-TEXT!  R-NEW-LIST  0 RX-POS !  0 RX-WASEMPTY !
-  BEGIN RX-NEXT-MATCH WHILE  RX-ITEM OVER R-PUSH-TEXT  RX-ADVANCE  REPEAT ;
+  BEGIN RX-NEXT-MATCH WHILE  RX-ITEM K-TEXT R-BOX OVER R-PUSH  RX-ADVANCE  REPEAT ;
 : R-SUB ( t pat repl --- t2 )   \ sub(text, pattern, replacement): every match replaced, as re.sub
   >R RX-COMPILE RX-TEXT!  0 RX-POS !  0 RX-WASEMPTY !  0           ( n )  ( R: repl )
   BEGIN RX-NEXT-MATCH WHILE

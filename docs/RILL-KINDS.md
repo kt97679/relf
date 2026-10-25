@@ -215,7 +215,7 @@ looked.
 
 By the search's rule - a gene that buys nothing goes (752: boxsmall,
 rxanchor) - elemkinds and unbox are both taken out. Their code is in the
-history: commit "Iteration 767: ... measured" holds both. `infer` stays:
+history: commit 1551bf3 ("Iteration 767: gene unbox measured") holds both. `infer` stays:
 it buys soundness, which is not on the scale.
 
 What phase 4 should start from instead: a profile - which runtime words

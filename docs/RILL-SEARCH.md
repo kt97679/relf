@@ -377,3 +377,11 @@ through (the outer of two nested loops made loopvar too; the oracle's
 word-for-word comparison under the gene found it); and a marker line
 that also held `VARIABLE FLD-POS` was dropped whole by the filter - now
 a check that a marker line holds nothing else.
+
+## 766-767: elemkinds and unbox, measured and taken out
+
+Two genes from phase 2 of docs/RILL-ROADMAP.md, measured three ways on
+dead-words, native-by-source and tests/rill/library (medians, ms): all off
+165, 508, 20; elemkinds 170, 480, 20; elemkinds with unbox 186, 521, 22.
+Neither buys anything; both are taken out, as boxsmall and rxanchor were
+(752). The code is in the history (docs/RILL-KINDS.md names the commit).

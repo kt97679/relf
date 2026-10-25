@@ -53,15 +53,7 @@ VARIABLE RL   VARIABLE RJ-SEP
   DUP K-NUM = IF DROP R-NUM EXIT THEN
   K-BOOL = IF IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
   S" (list or record)" R-TEXT ;
-\ [gene !unbox]
 : R-NEW-LIST ( --- l )   3 CELLS R-ALLOT  0 OVER !  G-LISTCAP OVER CELL+ !  G-LISTCAP CELLS R-ALLOT OVER 2 CELLS + ! ;   \ genes 749
-\ [/gene]
-\ [gene unbox]
-\ gene unbox (767): a fourth cell, the list's tag - 0, its items boxes; a kind, every item a value of
-\ that kind kept as it is. A list takes a tag at its first R-PUSH-K; any other kind put in boxes all.
-: R-NEW-LIST ( --- l )   4 CELLS R-ALLOT  0 OVER !  G-LISTCAP OVER CELL+ !  G-LISTCAP CELLS R-ALLOT OVER 2 CELLS + !  0 OVER 3 CELLS + ! ;
-: R-TAG ( l --- k )   3 CELLS + @ ;
-\ [/gene]
 : R-LEN ( l --- n )   @ ;
 : R-ITEMS ( l --- a )   2 CELLS + @ ;
 : R-GROW ( l --- )   \ room for one more item
@@ -69,40 +61,16 @@ VARIABLE RL   VARIABLE RJ-SEP
   DUP CELL+ @ DUP G-GROWTH * 2/ SWAP 1+ MAX DUP CELLS R-ALLOT     ( l cap2 a2 )   \ capacity * growth / 2, at least one more
   >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
   OVER CELL+ !  R> SWAP 2 CELLS + ! ;
-: R-PUSH-RAW ( x l --- )   DUP R-GROW  DUP >R  R-ITEMS R@ @ CELLS + !  1 R> +! ;   \ a cell in, as it is
-: R-AT-RAW ( l i --- x )
+: R-PUSH ( box l --- )   DUP R-GROW  DUP >R  R-ITEMS R@ @ CELLS + !  1 R> +! ;
+: R-AT ( l i --- box )
   OVER @ OVER U> 0= IF ." rill: index " . ." past a list of " @ . R-NL -4002 THROW THEN
   CELLS SWAP R-ITEMS + @ ;
-: R-SET-RAW ( x l i --- )
+: R-SET ( box l i --- )
   OVER @ OVER U> 0= IF ." rill: index " . ." past a list" R-NL -4002 THROW THEN
   CELLS SWAP R-ITEMS + ! ;
-: R-SHIFT-RAW ( l --- x )   \ the first item, out
+: R-SHIFT ( l --- box )   \ the first item, out
   DUP @ 0= IF ." rill: shift of an empty list" R-NL -4002 THROW THEN
   DUP R-ITEMS @ >R  DUP R-ITEMS DUP CELL+ SWAP 2 PICK @ 1- CELLS MOVE  -1 SWAP +!  R> ;
-\ [gene !unbox]
-: R-PUSH ( box l --- )   R-PUSH-RAW ;
-: R-AT ( l i --- box )   R-AT-RAW ;
-: R-SET ( box l i --- )   R-SET-RAW ;
-: R-SHIFT ( l --- box )   R-SHIFT-RAW ;
-: R-PUSH-TEXT ( t l --- )   SWAP K-TEXT R-BOX SWAP R-PUSH-RAW ;
-\ [/gene]
-\ [gene unbox]
-: R-DEMOTE ( l --- )   \ a tagged list's items boxed, its tag 0: something of another kind is going in
-  DUP R-TAG ?DUP 0= IF DROP EXIT THEN  OVER @ 0 ?DO  OVER R-ITEMS I CELLS + DUP @ 2 PICK R-BOX SWAP !  LOOP
-  DROP 0 SWAP 3 CELLS + ! ;
-: R-PUSH ( box l --- )   \ a box in: its value as it is, into a list of its kind
-  DUP R-TAG ?DUP IF 2 PICK @ = IF SWAP CELL+ @ SWAP R-PUSH-RAW EXIT THEN DUP R-DEMOTE THEN  R-PUSH-RAW ;
-: R-AT ( l i --- box )   OVER R-TAG >R R-AT-RAW R> ?DUP IF R-BOX THEN ;    \ a tagged list's item boxed on the way out
-: R-SET ( box l i --- )
-  OVER R-TAG ?DUP IF 3 PICK @ = IF ROT CELL+ @ ROT ROT R-SET-RAW EXIT THEN OVER R-DEMOTE THEN  R-SET-RAW ;
-: R-SHIFT ( l --- box )   DUP R-TAG >R R-SHIFT-RAW R> ?DUP IF R-BOX THEN ;
-VARIABLE PK-K
-: R-PUSH-K ( x l k --- )   \ a value of kind k in: as it is into a list of kind k, or an empty one, which takes k
-  PK-K !  DUP R-TAG PK-K @ = IF R-PUSH-RAW EXIT THEN
-  DUP @ 0= OVER R-TAG 0= AND IF PK-K @ OVER 3 CELLS + ! R-PUSH-RAW EXIT THEN
-  SWAP PK-K @ R-BOX SWAP R-PUSH ;
-: R-PUSH-TEXT ( t l --- )   K-TEXT R-PUSH-K ;
-\ [/gene]
 : R-EXTEND ( l m --- )   DUP @ 0 ?DO  DUP I R-AT 2 PICK R-PUSH  LOOP 2DROP ;
 : R-SLICE ( l a b --- l2 )   \ items a up to (not with) b
   \ The new list in a variable, not on the return stack: inside DO, R@
@@ -171,13 +139,13 @@ VARIABLE RH-R  VARIABLE RH-K
   R-NEW-LIST >R  R-T@
   BEGIN  BEGIN DUP WHILE OVER C@ 33 < WHILE 1 /STRING REPEAT THEN  DUP WHILE
     OVER >R  BEGIN DUP WHILE OVER C@ 32 > WHILE 1 /STRING REPEAT THEN
-    R> 2 PICK OVER - R-TEXT R@ R-PUSH-TEXT
+    R> 2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
   REPEAT 2DROP R> ;
 : R-LINES ( t --- l )   \ its lines; a last empty one not counted
   R-NEW-LIST >R  R-T@
   BEGIN DUP WHILE
     2DUP 10 SCAN  2SWAP DROP                       ( a2 u2 a )   \ a2: at the LF, or the end
-    2 PICK OVER - R-TEXT R@ R-PUSH-TEXT
+    2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
     DUP IF 1 /STRING THEN
   REPEAT 2DROP R> ;
 : R-JOIN ( l sep --- t )   \ the items as texts, sep between
@@ -289,7 +257,7 @@ VARIABLE R-ON-EXIT-XT
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
 : R-SCRIPT ( --- t )   0 R-ARG ;
-: R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG OVER R-PUSH-TEXT  LOOP ;
+: R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
 : R-ENV ( t --- t )   R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN ;
 : R-DEFAULT ( t1 t2 --- t )   OVER @ IF DROP ELSE NIP THEN ;     \ the first unless it is empty
 : R-CHECK ( status --- )   \ failure stops the script, with the status
@@ -450,8 +418,8 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
 : R-SPLIT ( t sep --- l )   \ split(text, sep): the pieces between seps, empty ones kept - Python's
   R-T@ DUP 0= ABORT" rill: split by an empty text" SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
   BEGIN 2DUP SP-FIND DUP 0< 0= WHILE
-    >R OVER R@ R-TEXT SP-L @ R-PUSH-TEXT  R> SP-U @ + /STRING
-  REPEAT DROP  R-TEXT SP-L @ R-PUSH-TEXT  SP-L @ ;
+    >R OVER R@ R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  R> SP-U @ + /STRING
+  REPEAT DROP  R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  SP-L @ ;
 : R-IN-ANY ( box cbox --- f )   \ in, the container an item: a record's keys or a list's items
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-HAS ELSE R-IN THEN ;
 : R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
@@ -506,10 +474,3 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 : R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
   R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
   K-TEXT = IF R-TEXT>DEC EXIT THEN  ." rill: not a decimal" R-NL 1 R-STATUS ! -4000 THROW ;
-
-\ [gene unbox]
-: R-CONV ( box k --- x )   \ an item as kind k, checked: the generic way out of a list
-  DUP K-TEXT = IF DROP R-ANY>TEXT EXIT THEN  K-DEC = IF R-ANY>DEC EXIT THEN  R-ANY>NUM ;
-: R-AT-K ( l i k --- x )   \ an item of a list of kind k: as it is when the list is tagged k, else converted
-  >R OVER R-TAG R@ = IF R> DROP R-AT-RAW EXIT THEN  R-AT R> R-CONV ;
-\ [/gene]

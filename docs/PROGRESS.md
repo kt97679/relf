@@ -791,6 +791,7 @@ do not trust the absence of a line below.
 - 764 — gene infer, the Python half: two passes, one kind per variable; corpus 20/22 identical, back-edge hole closed; Forth half next
 - 765 — gene infer in the Forth compiler too; both agree on the whole corpus, pilots unchanged; on by default, backedge.rill a test
 - 766 — gene elemkinds (Python, off): 24/40 lists typed, outputs unchanged, speed unchanged - boxes are the cost; unboxed storage next
+- 767 — gene unbox: correct and slower (median +13 % dead-words); elemkinds and unbox taken out, code in history; next: a profile
 
 ### Not tied to an iteration
 
