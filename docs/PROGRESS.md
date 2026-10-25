@@ -793,6 +793,7 @@ do not trust the absence of a line below.
 - 766 — gene elemkinds (Python, off): 24/40 lists typed, outputs unchanged, speed unchanged - boxes are the cost; unboxed storage next
 - 767 — gene unbox: correct and slower (median +13 % dead-words); elemkinds and unbox taken out, code in history; next: a profile
 - 768 — tools/rill-profile.py; the regex matcher rebuilt (one word per instruction, linked): native-by-source -51 % dispatches, -37 % time
+- 769 — second opinions: regex start filter (-24 % more, -63 % since 767); counterexamples: unset reads crash, 1 += 0.5 gives 1
 
 ### Not tied to an iteration
 

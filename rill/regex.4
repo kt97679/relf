@@ -17,7 +17,7 @@ VARIABLE RX-P  VARIABLE RX-PN  VARIABLE RX-I             \ the pattern, its leng
 : RX-ERR ( c-addr u --- )   ." rill: in a pattern: " TYPE R-NL  -4005 THROW ;
 : RX-AT ( index --- addr )   3 * CELLS RX-PROG @ + ;
 : RX-EMIT ( op x y --- index )
-  RX-N @ RX-MAX = IF S" too long" RX-ERR THEN
+  RX-N @ RX-MAX 1- = IF S" too long" RX-ERR THEN          \ the last slot holds the start filter (769)
   RX-N @ RX-AT  DUP >R 2 CELLS + !  R@ CELL+ !  R> !  RX-N @  1 RX-N +! ;
 : RX-X! ( value index --- )   RX-AT CELL+ ! ;
 : RX-Y! ( value index --- )   RX-AT 2 CELLS + ! ;
@@ -158,6 +158,29 @@ CREATE RX-OPS 10 CELLS ALLOT          \ the words by op; kept as offsets (!XT): 
 ' H-CHAR RX-OPS X-CHAR CELLS + !XT   ' H-ANY RX-OPS X-ANY CELLS + !XT   ' H-CLASS RX-OPS X-CLASS CELLS + !XT
 ' H-SPLIT RX-OPS X-SPLIT CELLS + !XT   ' H-JMP RX-OPS X-JMP CELLS + !XT   ' H-SAVE RX-OPS X-SAVE CELLS + !XT
 ' H-MATCH RX-OPS X-MATCH CELLS + !XT   ' H-BOL RX-OPS X-BOL CELLS + !XT   ' H-EOL RX-OPS X-EOL CELLS + !XT
+: RX-INFO ( --- a )   RX-MAX 1- RX-AT CELL+ ;   \ where a program keeps its start filter's address (769)
+\ The start filter (769): the characters a match can take first, a 256-byte table, from a walk of the
+\ program through SPLIT, JMP, SAVE and EOL; a path through BOL stops (it can only start at 0, which is
+\ always tried); a path to MATCH taking nothing makes the pattern able to match empty - no filter then.
+\ Its block: the table, then whether it can match empty, then its one character or -1, then how many.
+1024 BUFFER: RF-SEEN   VARIABLE RF-T
+: RF-WALK ( i --- )
+  DUP RF-SEEN + C@ IF DROP EXIT THEN  1 OVER RF-SEEN + C!
+  DUP RX-AT @
+  DUP X-CHAR = IF DROP RX-AT CELL+ @ RF-T @ + 1 SWAP C! EXIT THEN
+  DUP X-ANY = IF 2DROP RF-T @ 256 1 FILL  0 RF-T @ 10 + C! EXIT THEN
+  DUP X-CLASS = IF DROP RX-AT CELL+ @ 256 0 DO I OVER BIT? IF 1 RF-T @ I + C! THEN LOOP DROP EXIT THEN
+  DUP X-SPLIT = IF DROP DUP RX-AT CELL+ @ RECURSE RX-AT 2 CELLS + @ RECURSE EXIT THEN
+  DUP X-JMP = IF DROP RX-AT CELL+ @ RECURSE EXIT THEN
+  DUP X-SAVE = OVER X-EOL = OR IF DROP 1+ RECURSE EXIT THEN
+  X-MATCH = IF DROP -1 RF-T @ 256 + ! EXIT THEN
+  DROP ;
+: RX-FILTER ( --- )   \ the program made, its start filter made
+  256 3 CELLS + ALLOCATE THROW DUP RF-T !  DUP 256 ERASE  0 OVER 256 + !  RX-INFO !
+  RF-SEEN 1024 ERASE  0 RF-WALK
+  0 -1  256 0 DO RF-T @ I + C@ IF SWAP 1+ SWAP DROP I THEN LOOP       ( n c )
+  OVER 1 <> IF DROP -1 THEN                                          \ the character only when it is the one
+  RF-T @ 256 + CELL+ !  RF-T @ 256 + 2 CELLS + ! ;
 : RX-LINK ( --- )   \ the program made: each op its word, each jump an address
   RX-N @ 0 ?DO
     I RX-AT DUP @
@@ -170,9 +193,22 @@ CREATE RX-OPS 10 CELLS ALLOT          \ the words by op; kept as offsets (!XT): 
 : RX-AT-POS ( start --- f )   \ a match starting just here
   DUP RX-START !  RX-SAVED RX-NG @ 1+ 2* CELLS 255 FILL              \ the pattern's groups unmatched (-1), only those
   RX-PROG @ OVER BEGIN OVER @ EXECUTE UNTIL IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
-: RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
-  0 RX-NOEMPTY !
+: RX-SEARCH-ALL ( start --- f )   \ every position tried: a pattern that can match empty
   BEGIN DUP RX-TN @ > 0= WHILE  DUP RX-AT-POS IF DROP -1 EXIT THEN  1+  REPEAT DROP 0 ;
+VARIABLE RS-F
+: RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
+  0 RX-NOEMPTY !  RX-INFO @ RS-F !
+  RS-F @ 256 + @ IF RX-SEARCH-ALL EXIT THEN                         \ can match empty: no filter
+  DUP 0= IF DUP RX-AT-POS IF DROP -1 EXIT THEN 1+ THEN               \ 0 always: ^ can only start there
+  RS-F @ 256 + CELL+ @ DUP 0< 0= IF                                  \ one first character: SCAN to it
+    >R BEGIN DUP RX-TN @ < WHILE
+      RX-T @ OVER + RX-TN @ 2 PICK - R@ SCAN NIP                       ( p left )
+      DUP 0= IF 2DROP R> DROP 0 EXIT THEN  RX-TN @ SWAP - NIP          ( p' )
+      DUP RX-AT-POS IF R> DROP DROP -1 EXIT THEN  1+
+    REPEAT R> DROP DROP 0 EXIT THEN  DROP
+  BEGIN DUP RX-TN @ < WHILE
+    DUP RX-T @ + C@ RS-F @ + C@ IF DUP RX-AT-POS IF DROP -1 EXIT THEN THEN  1+
+  REPEAT DROP 0 ;
 : RX-SEARCH-AFTER ( start empty? --- f )   \ the next match, as sre goes on: after an empty match at
   \ start, a match there must take something - then the search goes on from start + 1
   IF -1 RX-NOEMPTY !  DUP RX-AT-POS 0 RX-NOEMPTY ! IF DROP -1 EXIT THEN 1+ THEN  RX-SEARCH ;
@@ -192,7 +228,7 @@ RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS B
   RX-MAX 3 * CELLS ALLOCATE THROW RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !
   DUP R-T@ RX-PN ! RX-P !
   RX-ALT  RX-END? 0= IF S" a ) with no (" RX-ERR THEN
-  X-MATCH 0 0 RX-EMIT DROP  RX-LINK
+  X-MATCH 0 0 RX-EMIT DROP  RX-FILTER RX-LINK
 \ [gene rxcache]
   RXC-N @ RXC-MAX < IF
     RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!
