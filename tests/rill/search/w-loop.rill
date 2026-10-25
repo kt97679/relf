@@ -1,0 +1,8 @@
+# selection workload (749): plain loops over the script's variables - short
+n = 600000; total = 0; evens = 0
+while ($n > 0) {
+    total += $n
+    if ($n % 2 == 0) { evens += 1 }
+    n -= 1
+}
+echo loop $total $evens

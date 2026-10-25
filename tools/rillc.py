@@ -13,7 +13,10 @@ comparisons, and or not, strings with $name and {expr}, echo, if / else
 if / else, while, x += n, def with parameters (numbers) and -> kind,
 return, calls. Not yet: commands, lists, records, the rest.
 """
-import re, sys
+import importlib.util, os, re, sys
+_spec = importlib.util.spec_from_file_location('rill_genes', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rill-genes.py'))
+_genes = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_genes)
+GENES = _genes.read_genes()            # rill/genes.tsv and RILL_GENES: the genome both compilers read (749)
 
 class Error(Exception): pass
 
@@ -92,7 +95,7 @@ class Compiler:
         if getattr(self, 'stack', None): self.depth -= 1
         kind = 'number' if op in '+-*/%' else 'bool'
         short = {('+', '1'): '1+', ('-', '1'): '1-', ('>', '0'): '0>', ('<', '0'): '0<', ('==', '0'): '0=', ('!=', '0'): '0<>'}
-        if (op, b) in short: return '%s %s' % (a, short[(op, b)]), kind      # one word, not a literal and an operator
+        if GENES['short'] and (op, b) in short: return '%s %s' % (a, short[(op, b)]), kind      # one word (gene short, 749)
         forth = {'+': '+', '-': '-', '*': '*', '/': '/', '%': 'MOD', '==': '=', '!=': '<>', '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
         return '%s %s %s' % (a, b, forth), kind
     def unary(self):
@@ -204,6 +207,8 @@ class Compiler:
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
         if name not in getattr(self, 'pure_defs', set()):
             args = [(self.box(c, k), 'any') for c, k in args]          # a def's parameters are boxes
+        else:
+            args = [(self.to_num(c, k, line), 'number') for c, k in args]   # a pure def's are numbers (749)
         word = 'RECURSE' if name == getattr(self, 'current', None) else 'R:%s' % name   # Forth hides a word until its ;
         if getattr(self, 'stack', None): self.depth += (1 if kind else 0) - len(args)
         return ' '.join(a[0] for a in args) + ' ' + word, kind
@@ -290,6 +295,14 @@ class Compiler:
         if kind in ('number', 'bool'): return code
         if kind == 'any': return code + ' R-ANY>NUM'
         raise Error('line %d: a number is needed here, not a %s' % (line, kind))
+    def convert(self, code, kind, want, line):
+        """A value made the kind a def's -> names: found by the search (749) - with purestack off, a
+        parameter is a box, and fib returned the box's address as its number."""
+        if want in (None, kind) or want == 'any': return code
+        if want in ('number', 'bool'): return self.to_num(code, kind, line)
+        if want == 'text': return self.to_text(code, kind)
+        if kind == 'any': return code + ' R-UNBOX DROP'
+        raise Error('line %d: this returns a %s, not a %s' % (line, kind, want))
     def box(self, code, kind):
         return code if kind == 'any' else '%s %s R-BOX' % (code, self.KCODE[kind])
 
@@ -311,6 +324,8 @@ class Compiler:
             if getattr(self, 'hoists', None) and True in self.hoists:
                 raise Error('line %d: return inside a loop that has a continue - not yet' % line)
             self.i += 1; c, kd = self.expr()
+            want = self.funcs[self.current][1] if getattr(self, 'current', None) else None
+            c = self.convert(c, kd, want, line)                   # to the def's -> kind (749: a boxed parameter returned)
             if getattr(self, 'stack', None):
                 c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
             out = '%s EXIT' % c
@@ -482,7 +497,7 @@ class Compiler:
         self.take('kw', 'for'); a = self.take('word')[1]; b = None
         if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
         self.take('kw', 'in'); line = self.peek()[2]
-        if self.peek()[1] == 'range' and self.peek(1)[1] == '(':        # a counted loop, no list made
+        if GENES['rangeloop'] and self.peek()[1] == 'range' and self.peek(1)[1] == '(':   # a counted loop (gene rangeloop)
             self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
             self.scope()[a] = 'number'; self.names.add(a)
@@ -543,13 +558,13 @@ class Compiler:
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
         self.funcs[name] = (params, kind); self.current = name
-        if self.pure(params):
+        if GENES['purestack'] and self.pure(params):                    # gene purestack (749)
             self.pure_defs = getattr(self, 'pure_defs', set()) | {name}
             self.stack, self.depth = params, 0
             body = self.block()
             self.stack = None
             tail = '' if kind else ' DROP' * len(params)
-            body = re.sub(r' DUP NIP\b', '', ' ' + body + tail).strip()
+            body = (re.sub(r' DUP NIP\b', '', ' ' + body + tail) if GENES['dupnip'] else ' ' + body + tail).strip()
             self.defs.append(': R:%s %s ;' % (name, body)); self.current = None
             return
         outer = self.locals; self.locals = {p: 'any' for p in params}
@@ -557,7 +572,7 @@ class Compiler:
         body = self.block()
         scratch = [n for n in self.locals if n not in params]
         self.names.update(scratch)
-        self.defs.append(': R:%s SHADOW{ %s | %s } %s ;' % (name, ' '.join('R.' + p for p in reversed(params)),
+        self.defs.append(': R:%s SHADOW{ %s | %s } %s ;' % (name, ' '.join('R.' + p for p in params),
                                                          ' '.join('R.' + s for s in scratch), body))
         self.locals = outer; self.current = None
     def program(self):

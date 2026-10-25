@@ -1,0 +1,4 @@
+# selection workload (749): counted loops - rangeloop
+total = 0
+for i in range(1, 1500) { for j in range(1, 200) { total += $i * $j } }
+echo range $total

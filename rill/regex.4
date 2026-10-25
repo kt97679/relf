@@ -166,7 +166,7 @@ DEFER RX-RUN ( pc sp --- f )
   IF -1 RX-NOEMPTY !  DUP RX-AT-POS 0 RX-NOEMPTY ! IF DROP -1 EXIT THEN 1+ THEN  RX-SEARCH ;
 
 \ patterns made, kept by their text
-32 CONSTANT RXC-MAX
+G-RXCACHE CONSTANT RXC-MAX   \ a gene (749): 0 makes every pattern again
 RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS BUFFER: RXC-NG   VARIABLE RXC-N
 : RX-COMPILE ( pat --- )   \ RX-PROG and RX-NG for the pattern, made or found
   RXC-N @ 0 ?DO

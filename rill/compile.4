@@ -292,7 +292,7 @@ VARIABLE LB-POS
   2DUP DF-FIND DUP 0< IF DROP 2DROP S" a function is not defined (a def comes before its use)" ERR THEN
   >R 2DROP 0
   BEGIN S" )" CUR-IS? 0= WHILE
-    1 EXPR  DF-PURE R@ CELLS + @ IF DROP ELSE BOX THEN  1+
+    1 EXPR  DF-PURE R@ CELLS + @ IF TO-NUM ELSE BOX THEN  1+          \ a pure def's arguments numbers (749)
     S" ," CUR-IS? IF NEXT-TK THEN
   REPEAT NEXT-TK
   DUP DF-P R@ CELLS + @ <> IF S" a function given the wrong number of arguments" ERR THEN
@@ -421,7 +421,7 @@ VARIABLE BL-POS   VARIABLE BL-K
     DUP K-REC = IF DROP LEFT-TEXT S" R-HAS" OUT+ ELSE
     K-LIST = IF LEFT-BOX S" R-IN" OUT+ ELSE S" in needs a list or a record" ERR THEN THEN
     R> T@ S" not" S= IF S" 0=" OUT+ THEN  K-BOOL EXIT THEN
-  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = OVER K-TEXT = OR AND
+  R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ K-TEXT = 2 PICK K-TEXT = OR AND   \ 2 PICK: the right side's kind (749)
   BL-K @ DUP K-TEXT = SWAP K-ANY = OR AND  OVER DUP K-TEXT = SWAP K-ANY = OR AND IF
     LEFT-TEXT TO-TEXT S" R-T=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
   LEFT-NUM TO-NUM  -1 DEPTH+
@@ -433,7 +433,7 @@ VARIABLE BL-POS   VARIABLE BL-K
   >R UNARY
   BEGIN TK PREC-OF DUP R@ < 0= SWAP 0<> AND WHILE
     TK >R NEXT-TK  R@ T@ S" not" S= IF NEXT-TK THEN              \ not in: two tokens
-    R@ SHORT-FORM DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
+    R@ G-SHORT IF SHORT-FORM ELSE DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
   REPEAT R> DROP ;
 ' EXPR-IMPL IS EXPR
@@ -451,9 +451,14 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
   S" else" CUR-IS? IF R> DROP NEXT-TK S" ELSE" OUT+ S" if" CUR-IS? IF RECURSE ELSE BLOCK THEN S" THEN" OUT+ EXIT THEN
   R> TK-I ! S" THEN" OUT+ ;
 : WHILE-STMT ( --- )   NEXT-TK S" BEGIN" OUT+ COND S" WHILE" OUT+ BLOCK S" REPEAT" OUT+ ;
+: CONVERT-TO ( kind want --- )   \ the value made the kind a def's -> names (749, rillc.py's convert)
+  DUP 0= OVER K-ANY = OR IF 2DROP EXIT THEN  2DUP = IF 2DROP EXIT THEN
+  DUP K-NUM = OVER K-BOOL = OR IF DROP TO-NUM EXIT THEN
+  DUP K-TEXT = IF DROP TO-TEXT EXIT THEN
+  DROP K-ANY = IF S" R-UNBOX DROP" OUT+ EXIT THEN  S" this returns another kind" ERR ;
 : RETURN-STMT ( --- )
   HOISTS @ IF S" return inside a loop that has a continue - not yet" ERR THEN
-  NEXT-TK 1 EXPR DROP  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN  S" EXIT" OUT+ ;
+  NEXT-TK 1 EXPR  DF-CUR @ 0< IF 0 ELSE DF-CUR @ CELLS DF-K + @ THEN CONVERT-TO  STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN  S" EXIT" OUT+ ;
 : VAR-REF ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : BIND ( c-addr u kind --- )   \ a name in the current scope takes a kind, or keeps the one it has
   >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
@@ -466,7 +471,7 @@ VARIABLE AS-A  VARIABLE AS-L   \ the name being assigned (the kernel has no 2>R)
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ K-NUM <> IF S" += and -= need a number to change" ERR THEN
   2DUP VAR-REF S" @" OUT+
-  TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
+  G-SHORT TK K@ T-WORD = AND TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
     NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
   ELSE 1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
   VAR-REF S" !" OUT+ ;
@@ -513,7 +518,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 : DEF-HEAD ( --- c-addr u )   \ : R:name SHADOW{ params reversed | scratch }
   0 HDR# !  S" :" HDR+  S" R:" HDR HDR# @ + SWAP MOVE 2 HDR# +!  DEF-NAME-A @ DEF-NAME-L @ HDR+
   S" SHADOW{" HDR+
-  PRM-N @ 0 ?DO PRM-N @ 1- I - DUP CELLS PRM-A + @ SWAP CELLS PRM-L + @ HDR-VAR LOOP
+  PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ HDR-VAR LOOP   \ in order: SHADOW{ a b } gives a the deeper value (749)
   S" |" HDR+
   NM-N @ DEF-NM0 @ PRM-N @ + ?DO I CELLS NM-LOC + @ IF I CELLS NM-A + @ I CELLS NM-L + @ HDR-VAR THEN LOOP
   S" }" HDR+  HDR HDR# @ 1- ;
@@ -530,12 +535,12 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
   DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !
   PRM-N @ DF-N @ CELLS DF-P + !  DUP DF-N @ CELLS DF-K + !
-  -1 STACKMODE !  PURE?  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
+  -1 STACKMODE !  PURE? G-PURESTACK 0<> AND  DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 DEPTH !
   TO-DEFS  OUT-POS DEF-START !
   STACKMODE @ IF
     S" :" OUT+ S" R:" OUT-RAW DEF-NAME-A @ DEF-NAME-L @ OUT+
     BLOCK  0= IF PRM-N @ 0 ?DO S" DROP" OUT+ LOOP THEN
-    DEF-START @ DROP-DUP-NIP  0 STACKMODE !
+    G-DUPNIP IF DEF-START @ DROP-DUP-NIP THEN  0 STACKMODE !
   ELSE
     DROP -1 IN-DEF !  NM-N @ DEF-NM0 !
     PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ 2DUP DECLARE K-ANY -1 NM-ADD LOOP
@@ -657,7 +662,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   S" ," CUR-IS? IF NEXT-TK TK T@ FOR-BL ! FOR-B ! NEXT-TK THEN
   S" in" EXPECT  PAR-FLAG @ 0 PAR-FLAG ! >R                     \ ( R: par? )
   R@ IF S" R-PAR-BEGIN" OUT+ THEN
-  S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
+  G-RANGELOOP 0<> S" range" CUR-IS? AND TK 1+ S" (" TK-IS? AND IF                  \ hi 1+ lo ?DO, no list made
     NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
     OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
     S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT

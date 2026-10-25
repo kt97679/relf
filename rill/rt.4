@@ -47,12 +47,12 @@ VARIABLE RL   VARIABLE RJ-SEP
   DUP K-NUM = IF DROP R-NUM EXIT THEN
   K-BOOL = IF IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
   S" (list or record)" R-TEXT ;
-: R-NEW-LIST ( --- l )   3 CELLS R-ALLOT  0 OVER !  4 OVER CELL+ !  4 CELLS R-ALLOT OVER 2 CELLS + ! ;
+: R-NEW-LIST ( --- l )   3 CELLS R-ALLOT  0 OVER !  G-LISTCAP OVER CELL+ !  G-LISTCAP CELLS R-ALLOT OVER 2 CELLS + ! ;   \ genes 749
 : R-LEN ( l --- n )   @ ;
 : R-ITEMS ( l --- a )   2 CELLS + @ ;
 : R-GROW ( l --- )   \ room for one more item
   DUP @ OVER CELL+ @ < IF DROP EXIT THEN
-  DUP CELL+ @ 2* DUP CELLS R-ALLOT              ( l cap2 a2 )
+  DUP CELL+ @ DUP G-GROWTH * 2/ SWAP 1+ MAX DUP CELLS R-ALLOT     ( l cap2 a2 )   \ capacity * growth / 2, at least one more
   >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
   OVER CELL+ !  R> SWAP 2 CELLS + ! ;
 : R-PUSH ( box l --- )   DUP R-GROW  DUP >R  R-ITEMS R@ @ CELLS + !  1 R> +! ;

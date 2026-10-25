@@ -132,3 +132,64 @@ choices is wrong on its own workloads, and what each buys. The bigger
 target named at 747 - superoptimizing the runtime's hot words, where a
 genome of instruction sequences would need the genetic search - waits
 until rill/rt.4 stops changing.
+
+## The first search's results (Iteration 749)
+
+Seven genes (rill/genes.tsv): `short`, `purestack`, `dupnip`, `rangeloop`
+(the compilers'), `listcap` 1-16, `growth` 1.5 or 2, `rxcache` 0, 8 or 32
+(the runtime's). 360 expressed designs, every one built, gated and
+counted by tools/rill-search.py in about five minutes on one core. Six
+CPU-bound selection workloads and two held out, in tests/rill/search.
+`--validate`'s part: the default genome made every snapshot program's
+Forth byte for byte as before the genes. Both negative controls died -
+an image whose compiler is out of step with rillc.py (commands.rill: the
+two compilers differ) and one whose R-PUSH drops its item (ending.rill:
+not the expected output).
+
+**Each gene alone**, the default with one gene changed (dispatches
+against the default, selection and held out; arena summed):
+
+| gene changed | selection | held out | arena |
+|---|---:|---:|---:|
+| rangeloop=0 | 1.513 | 1.006 | 17.9 MB |
+| purestack=0 | 1.329 | 1.446 | 18.1 MB |
+| rxcache=0 | 1.069 | 1.002 | 6.8 MB |
+| dupnip=0 | 1.012 | 1.000 | 6.8 MB |
+| listcap=1 | 1.011 | 1.001 | 6.9 MB |
+| short=0 | 1.007 | 1.000 | 6.8 MB |
+| listcap=2 | 1.005 | 1.000 | 6.9 MB |
+| growth=3 | 1.000 | 1.000 | 7.1 MB |
+| rxcache=8, listcap=8, listcap=16 | 1.000 | 1.000 | 6.8-7.4 MB |
+| the default | 1.000 | 1.000 | 6.8 MB |
+
+No design beats the default by more than 0.3 % on any one workload, and
+none uses less arena: **every choice Rill has made holds on its own
+workloads**, and now each has a price - a counted loop without a list,
+half again in dispatches and 2.6 times the arena; a pure def's
+parameters on the stack, a third in dispatches; the regex cache, 7 %;
+the one-word forms and the DUP NIP removal about 1 % each; a list's
+first capacity of 4 the knee; doubling better than half again (less
+left behind in the arena). rxcache could be 8 for these workloads, as
+they hold few patterns - kept at 32, the workloads being small.
+
+**What the gate found** matters more than the front: four faults, in
+paths no test had taken - each now in a test (tests/rill/items,
+tests/rill/params):
+
+1. The Forth compiler compared an item with a text as numbers - BINOP
+   read the right side's kind from the wrong stack place (OVER for
+   2 PICK, the class 742 and 746 also met); rillc.py was right, and no
+   test had put an item on the left of `==` against a text. Found by the
+   workloads in the default design.
+2. Both compilers returned a def's value without making it the kind its
+   `->` names: with purestack=0, fib's parameter is a box, and fib
+   returned the box's address as its number.
+3. Both compilers gave a def with locals its parameters the wrong way
+   round - SHADOW{ a b } gives a the deeper value, and the header listed
+   them reversed (738). Nothing tested it: the two-parameter def tested
+   then was symmetric. **It touched 745's claim**: intrfuzz-stress.rill's
+   seed(r, j) took r and j crossed, so both jobs of its one round ran
+   seed 598 where the sh tool ran 598 and 599; the two reports agreed
+   only because neither run failed. The comparison is to be run again.
+4. Both compilers passed an item to a pure def without making it a
+   number - with rangeloop=0, collatz($k, 0) got $k's box.

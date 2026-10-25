@@ -773,6 +773,7 @@ do not trust the absence of a line below.
 - 746 — three-way comparison protocol; rill/regex.4 (match, all, sub), 1,200 random cases the same as Python's re
 - 747 — rule 5 (expressive) and tools/rill-candidates.py: nine candidates weighed, arg(n, default) and warn adopted
 - 748 — forth-vm-evolution's evolution lab read; docs/RILL-SEARCH.md: what carries over to Rill, and the first search planned
+- 749 — the first search: 7 genes, 360 designs gated and counted, every default choice holds; 4 faults found (one corrects 745)
 
 ### Not tied to an iteration
 

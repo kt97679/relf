@@ -1,0 +1,12 @@
+# rill/genes.tsv - the choices Rill's implementation makes, each a gene (Iteration 749, docs/RILL-SEARCH.md)
+# Read by tools/rillc.py, by rill/compile.4 and rill/rt.4 through the constants
+# tools/rill-genes.py makes for the image, and by tools/rill-search.py. RILL_GENES
+# (name=value,...) overrides a default, the same way for all three.
+# name	default	values	where	what
+short	1	0,1	compilers	a literal 1 or 0 on the right of + - > < == != as one word: 1+ 1- 0> 0< 0= 0<> (737)
+purestack	1	0,1	compilers	a def that only computes keeps its parameters on the data stack (738)
+dupnip	1	0,1	compilers	the DUP NIP pairs such a def makes taken out (741); nothing to take without purestack
+rangeloop	1	0,1	compilers	for x in range(a, b) a counted loop, no list made (739)
+listcap	4	1,2,4,8,16	runtime	a new list's first capacity, in items
+growth	4	3,4	runtime	a full list grows to capacity * growth / 2 items (4: twice; 3: half again)
+rxcache	32	0,8,32	runtime	compiled regular expressions kept, by their text (746)
