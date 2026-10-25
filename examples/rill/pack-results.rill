@@ -16,8 +16,6 @@ for a in $args {
     }
 }
 
-stage = $(mktemp -d)                 # before the defs that write into it (783: a def reads only what is set above it)
-on EXIT { rm -rf $stage }
 def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
     warn "== $name =="
@@ -72,6 +70,8 @@ host = $(uname -n); utc = $(date -u +%Y%m%dT%H%MZ); commit = $(git rev-parse --s
 pack = "$(pwd)/relf-results-$host-$commit-$utc.tar.gz"
 on INT { exit 130 }
 on TERM { exit 130 }
+stage = $(mktemp -d)                 # the defs above read it when they run, as Python's (785)
+on EXIT { rm -rf $stage }
 sum = "$stage/SUMMARY.txt"
 note "relf results, $(date -u)"
 note "host: $host ($(uname -srm))"

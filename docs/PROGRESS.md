@@ -809,6 +809,7 @@ do not trust the absence of a line below.
 - 782 — gen-opcodes in Rill says what the shell script says; abs, dir, == on lists and records, at() on lists, comprehension filters fixed, [ ] across lines, 0x numbers
 - 783 — setenv() for env() and every command after it; a case statement with the shell's patterns
 - 784 — now(); pack-results compiles to line 25, its remaining needs listed
+- 785 — defs read the script's variables as Python's, set above or below; numbers read before they are set are errors, not 0
 
 ### Not tied to an iteration
 

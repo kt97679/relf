@@ -263,6 +263,15 @@ VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753)
     THEN THEN  SWAP 1+ SWAP
   AGAIN ;
 \ [/gene]
+\ [gene infer]
+VARIABLE INFER  VARIABLE FIXED   \ gene infer's first pass, its second (764) - READ-VAR asks (785)
+\ [/gene]
+256 CONSTANT NI-MAX   \ the script's numbers read where they may not be set: R-NONE until they are (785)
+NI-MAX CELLS BUFFER: NI-A  NI-MAX CELLS BUFFER: NI-L  VARIABLE NI-N
+: NI-HAS? ( c-addr u --- f )   NI-N @ 0 ?DO 2DUP I CELLS NI-A + @ I CELLS NI-L + @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN LOOP 2DROP 0 ;
+: NI-ADD ( c-addr u --- )
+  2DUP NI-HAS? IF 2DROP EXIT THEN  NI-N @ NI-MAX < 0= IF S" too many numbers read before they are set" ERR THEN
+  NI-N @ CELLS NI-L + !  NI-N @ CELLS NI-A + !  1 NI-N +! ;
 : READ-VAR ( c-addr u --- kind )   \ $name, without its $
 \ [gene loopvar]
   LV-L @ IF 2DUP LV-A @ LV-L @ COMPARE 0= IF 2DROP S" I" OUT+ K-NUM EXIT THEN THEN
@@ -276,11 +285,14 @@ VARIABLE LV-A  VARIABLE LV-L   \ the counted loop whose index is read as I (753)
   2DUP NM-FIND 0< IF                                  \ $args and $script, unless the script set them (744)
     2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ K-LIST EXIT THEN
     2DUP S" script" S= IF 2DROP S" R-SCRIPT" OUT+ K-TEXT EXIT THEN THEN
-  2DUP NM-FIND DUP 0< IF DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
+  2DUP NM-FIND DUP 0< IF
+    DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
   >R  2DUP [CHAR] R OUT-C [CHAR] . OUT-C  OUT-RAW BL OUT-C  S" @" OUT+                     ( a u )  ( R: i )
   NM-K R@ CELLS + @ DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR SWAP K-ANY = OR  NM-DAL R@ CELLS + @ 0< AND IF
     S" DUP 0= IF" OUT+  [CHAR] S OUT-C 34 OUT-C BL OUT-C OUT-RAW 34 OUT-C BL OUT-C  S" R-UNSET THEN" OUT+   \ maybe not set (772)
-  ELSE 2DROP THEN  NM-K R> CELLS + @ ;
+  ELSE NM-DAL R@ CELLS + @ 0< NM-LOC R@ CELLS + @ 0= AND IF                          \ a number of the script's (785): R-NONE until set
+    2DUP NI-ADD  S" DUP R-NONE = IF" OUT+  [CHAR] S OUT-C 34 OUT-C BL OUT-C OUT-RAW 34 OUT-C BL OUT-C  S" R-UNSET THEN" OUT+
+  ELSE 2DROP THEN THEN  NM-K R> CELLS + @ ;
 
 : SAVE-TK ( --- x1 .. x9 )   TK-KIND @ TK-AT @ TK-LEN @ TK-LINE @ TK-N @ TK-I @ RS-SRC @ SRC# @ CUR-LINE @ ;
 : RESTORE-TK ( x1 .. x9 --- )   CUR-LINE ! SRC# ! RS-SRC ! TK-I ! TK-N ! TK-LINE ! TK-LEN ! TK-AT ! TK-KIND ! ;
@@ -542,7 +554,7 @@ VARIABLE IN-EXIT   \ compiling on EXIT's block: no safe point there (776)
 \ (the script's, or a def's own), two kinds joining to an item; the second starts each scope with them
 1024 CONSTANT IK-MAX
 IK-MAX CELLS BUFFER: IK-SA  IK-MAX CELLS BUFFER: IK-SL  IK-MAX CELLS BUFFER: IK-NA  IK-MAX CELLS BUFFER: IK-NL
-IK-MAX CELLS BUFFER: IK-K   VARIABLE IK-N  VARIABLE INFER  VARIABLE FIXED
+IK-MAX CELLS BUFFER: IK-K   VARIABLE IK-N   \ INFER and FIXED: above READ-VAR (785)
 VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being compiled; a scope's key
 : SCOPE-KEY ( --- c-addr u )   IN-DEF @ IF SK-A @ SK-L @ ELSE 0 0 THEN ;
 : IK-SCOPE? ( i --- f )   DUP CELLS IK-SA + @ SWAP CELLS IK-SL + @ IKS-A @ IKS-L @ COMPARE 0= ;
@@ -842,7 +854,11 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   REPEAT 2DROP ;
 \ [/gene]
 \ [/gene]
+64 CONSTANT PD-MAX  PD-MAX CELLS BUFFER: PD-T  VARIABLE PD-N  VARIABLE PD-NOW  VARIABLE PD-START
+: SKIP-BLOCK ( --- )   \ past the block ahead, its { the current token
+  0 BEGIN S" {" CUR-IS? IF 1+ THEN  S" }" CUR-IS? IF 1- DUP 0= IF DROP NEXT-TK EXIT THEN THEN  NEXT-TK AGAIN ;
 : DEF-STMT ( --- )
+  TK-I @ PD-START !
   NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !  NEXT-TK  0 PRM-N !
   BEGIN TK K@ T-WORD = WHILE TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK REPEAT
   0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
@@ -855,6 +871,11 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   0
 \ [/gene]
   DUP DF-N @ CELLS DF-PURE + !  STACKMODE !  1 DF-N +!  0 SM-DEPTH !
+\ [gene infer]
+  INFER @ PD-NOW @ 0= AND STACKMODE @ 0= AND IF                 \ the first pass: the body once the script's top level is through (785)
+    PD-N @ PD-MAX < 0= IF S" too many defs" ERR THEN
+    PD-START @ PD-N @ CELLS PD-T + !  1 PD-N +!  SKIP-BLOCK DROP EXIT THEN       \ the def's kind, kept on the stack below, dropped
+\ [/gene]
   TO-DEFS  OUT-POS DEF-START !
 \ [gene purestack]
   STACKMODE @ IF
@@ -1237,7 +1258,7 @@ VARIABLE RT-K
   0 LT-N !
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
-   0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !
+   0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !
   TK-ALLOC BUF-ALLOC ;
 : RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
@@ -1245,12 +1266,17 @@ VARIABLE RT-K
   FIXED @ IF IK-PRELOAD THEN
 \ [/gene]
   SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
+\ [gene infer]
+  INFER @ IF -1 PD-NOW !  PD-N @ 0 ?DO I CELLS PD-T + @ TK-I ! STATEMENT LOOP  0 PD-NOW ! THEN   \ the defs' bodies, the first pass's last (785)
+\ [/gene]
   SORT-NAMES
   DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
 \ [gene gc]
   DC-N @ 0 ?DO I CELLS ORDER + @ DC-NAME ROOT-KIND ?DUP IF                \ the collector's roots, in the same order
     RT-K ! S" R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ S"  " FIN+ RT-K @ KIND-NAME FIN+ S"  R-ROOT" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP   \ not >R: I reads that stack
 \ [/gene]
+  DC-N @ 0 ?DO I CELLS ORDER + @ DC-NAME NI-HAS? IF                      \ R-NONE until set (785), in the same order
+    S" R-NONE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ S"  !" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP
 \ [gene littext]
   LITS-B @ LITS# @ FIN+
 \ [/gene]

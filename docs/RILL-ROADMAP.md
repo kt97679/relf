@@ -192,3 +192,33 @@ pack-results now stops at line 25. What it needs, each a piece of language:
 5. `cmd ?? fallback` after a command that fails (lines 42-60), to check.
 Worth weighing too: a def reading a global set further down, as Python
 allows (Rill's rule since 772: only what is set above it).
+
+## Iteration 785: the script's variables, as Python's
+
+A def reads the script's variables when it runs, set above it or below it,
+as a Python function reads its module's globals. Assigning inside a def
+still makes a local, as Python's without `global`.
+- The first pass (gene infer) registers each def where it stands and
+  compiles its body once the script's top level is through, so the body
+  sees every variable the script sets, with the kind it ends up with. The
+  second pass compiles in source order and takes those kinds from the
+  first. (A pure stack def reads only its parameters: compiled in place.)
+- Calling the def before the variable is set is a run-time error naming the
+  line - Rill's NameError: `rill: $limit is not set (line 12)`.
+- Numbers too, now: a number that may be read before it is set (in a def or
+  at the top level, a loop variable after a loop that never ran) holds
+  R-NONE, the most negative 64-bit value, until it is set; a read that may
+  find it unset checks. Before, it read 0. Only such reads pay (a compare);
+  every example compiles to the same code as before. The one cost of the
+  sentinel: a script whose number really is -9223372036854775808 would be
+  told it is not set.
+- A name the script never sets is still a compile error.
+- Only $name reads look forward: index assignment, += and @spreads of a
+  variable set only further down stay compile errors.
+- Found and fixed on the way: the Python compiler's $name inside a string
+  had no unset check (the image's has had one since 772 - the oracle had no
+  test with such a read), nor $args or $script; one read_var now serves both.
+- One effect to know: an error inside a def's body is found after the
+  script's top level, so it may be reported after an error further down.
+tests/rill/globals.rill. pack-results next stops at line 66: @args as a
+spread (the built-in $args is not a spreadable name yet).

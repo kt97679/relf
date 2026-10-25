@@ -46,6 +46,7 @@ def tokenize(src):
 class Compiler:
     def __init__(self, src):
         self.t = tokenize(src); self.i = 0; self.src = src
+        self.none_init = set()  # the script's numbers read where they may not be set: R-NONE until they are (785) - one set, shared with sub-compilers
         self.vars = {}          # script variable -> kind
         self.funcs = {}         # name -> (params, kind)
         self.locals = None      # kinds of the def being compiled
@@ -109,9 +110,21 @@ class Compiler:
         if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
         elif self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
         sc[name] = kind; return kind
-    def kind_of(self, name, line):
+    def read_var(self, name, line):       # $name, in an expression or a string - the image's READ-VAR (785)
+        if name in ('args', 'script') and name not in self.vars and (self.locals is None or name not in self.locals):
+            return ('R-ARGS', 'list') if name == 'args' else ('R-SCRIPT', 'text')       # 744
+        kv = self.kind_of(name, line, forward=True)
+        if kv in ('text', 'list', 'record', 'any') and self.dal.get(self.da_key(name), -1) < 0:
+            return 'R.%s @ DUP 0= IF S" %s" R-UNSET THEN' % (name, name), kv     # maybe not set here (772)
+        if self.dal.get(self.da_key(name), -1) < 0 and self.da_key(name)[0] is None:   # a number of the script's (785):
+            self.none_init.add(name)                                                   # R-NONE until it is set
+            return 'R.%s @ DUP R-NONE = IF S" %s" R-UNSET THEN' % (name, name), kv
+        return 'R.%s @' % name, kv
+    def kind_of(self, name, line, forward=False):
         if self.locals is not None and name in self.locals: return self.locals[name]
         if name in self.vars: return self.vars[name]
+        if forward and self.locals is not None and self.fixed is not None and (None, name) in self.fixed:
+            return self.fixed[(None, name)]              # a def reads a global set further down, as Python's (785)
         raise Error('line %d: $%s is not set' % (line, name))
 
     # expressions, by precedence climbing: each returns (forth, kind)
@@ -261,14 +274,7 @@ class Compiler:
             self.depth += 1
             return {0: 'DUP', 1: 'OVER'}.get(at, '%d PICK' % at), 'number'
         if k == 'var' and v[1:] == getattr(self, 'loopvar', None): return 'I', 'number'      # gene loopvar (753)
-        if k == 'var' and v[1:] in ('args', 'script') and v[1:] not in self.vars and \
-                (self.locals is None or v[1:] not in self.locals):
-            return ('R-ARGS', 'list') if v[1:] == 'args' else ('R-SCRIPT', 'text')       # 744
-        if k == 'var':
-            kv = self.kind_of(v[1:], line)
-            if kv in ('text', 'list', 'record', 'any') and self.dal.get(self.da_key(v[1:]), -1) < 0:
-                return 'R.%s @ DUP 0= IF S" %s" R-UNSET THEN' % (v[1:], v[1:]), kv     # maybe not set here (772)
-            return 'R.%s @' % v[1:], kv
+        if k == 'var': return self.read_var(v[1:], line)
         if v == '$(':
             c = self.command(capture=True); self.take('op', ')')
             return c + ' R-CHECK', 'text'
@@ -407,7 +413,7 @@ class Compiler:
                 if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
                 if m:
                     name = m.group(1); i += m.end()
-                    code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) else ('R.%s @' % name, self.kind_of(name, line))
+                    code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) else self.read_var(name, line)
                     while kind in ('record', 'any'):                  # "$host.name": a field, in a string too
                         f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
                         if not f: break
@@ -865,7 +871,16 @@ class Compiler:
                 return False                                     # a command, echo, a bare word
             elif v in ('=', '+=', '-='): return False
             j += 1
+    def skip_block(self):                 # past the block ahead, its { the current token
+        depth = 0
+        while True:
+            v = self.peek()[1]; self.i += 1
+            if v == '{': depth += 1
+            elif v == '}':
+                depth -= 1
+                if depth == 0: return
     def def_(self):
+        start = self.i
         self.take('kw', 'def'); name = self.take('word')[1]; params = []
         while self.peek()[0] == 'word': params.append(self.take()[1])
         kind = None
@@ -880,6 +895,9 @@ class Compiler:
             body = (re.sub(r' DUP NIP\b', '', ' ' + body + tail) if GENES['dupnip'] else ' ' + body + tail).strip()
             self.defs.append(': R:%s %s ;' % (name, body)); self.current = None
             return
+        if self.infer is not None and not getattr(self, 'pd_now', False):   # the first pass: the body once the script's top
+            self.__dict__.setdefault('postponed', []).append(start)          # level is through - every global it sets known (785)
+            self.skip_block(); self.current = None; return
         outer = self.locals; self.locals = {p: 'any' for p in params}
         self.names.update(params)
         if self.infer is not None:
@@ -902,9 +920,14 @@ class Compiler:
             if out: main.append(out)
             self.lines.append((line, out))
             self.skip_nl()
+        if self.infer is not None:                                    # the defs' bodies, the first pass's last (785)
+            self.pd_now = True
+            for s in getattr(self, 'postponed', []): self.i = s; self.statement()
+            self.pd_now = False
         return ('\n'.join('VARIABLE R.%s' % n for n in sorted(self.names)) + '\n' +
                 (''.join('R.%s %s R-ROOT\n' % (n, self.RKC[self.root_kind(n)]) for n in sorted(self.names) if self.root_kind(n))
                  if GENES['gc'] else '') +
+                ''.join('R-NONE R.%s !\n' % n for n in sorted(self.names) if n in self.none_init) +
                 ''.join('%s R-FIX CONSTANT R-LIT-%d\n' % (c, n) for c, n in self.lits.items()) +
                 '\n'.join(self.defs) + '\n: R-MAIN %s ;\nR-MAIN\n' % ' '.join(main))
 
