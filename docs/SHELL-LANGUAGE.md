@@ -1006,3 +1006,11 @@ range(7, 3)` runs no times. After a for loop over a range, its variable holds
 the last value it took, as Python's does. With lists indexed from 0 and slices
 already up to, not with, their end, `for i in range(len($l))` visits every
 index, once. Before 770, `range(a, b)` included b.
+
+## Negative indexes; numbers and decimals together (Iteration 771)
+
+`$l[-1]` is a list's last item and `$l[-2] = x` sets the one before it, as in
+Python; `slice($l, -3, -1)` and `slice($t, 1, -1)` count their negative bounds
+from the end, and bounds past either end are cut to it. An index past either
+end is still an error. A variable given both numbers and decimals is a
+decimal: `x = 1` then `x += 0.5` gives 1.5.

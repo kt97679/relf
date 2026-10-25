@@ -521,7 +521,9 @@ VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being c
   IK-N @ 0 ?DO  I IK-SCOPE? IF 2DUP I CELLS IK-NA + @ I CELLS IK-NL + @ COMPARE 0= IF 2DROP I UNLOOP EXIT THEN THEN  LOOP
   2DROP -1 ;
 : IK-RECORD ( c-addr u kind --- )   \ a binding's kind joined into its variable's entry
-  >R 2DUP IK-FIND DUP 0< 0= IF NIP NIP CELLS IK-K + DUP @ R> <> IF K-ANY SWAP ! ELSE DROP THEN EXIT THEN
+  >R 2DUP IK-FIND DUP 0< 0= IF NIP NIP CELLS IK-K + DUP @ R@ = IF R> 2DROP EXIT THEN
+    DUP @ R>  2DUP K-DEC = SWAP K-NUM = AND >R  K-NUM = SWAP K-DEC = AND R> OR       \ number and decimal: decimal (771)
+    IF K-DEC ELSE K-ANY THEN SWAP ! EXIT THEN
   DROP IK-N @ IK-MAX < 0= IF S" too many variables to infer" ERR THEN
   IK-N @ CELLS IK-NL + !  IK-N @ CELLS IK-NA + !  SCOPE-KEY IK-N @ CELLS IK-SL + !  IK-N @ CELLS IK-SA + !
   R> IK-N @ CELLS IK-K + !  1 IK-N +! ;
@@ -537,6 +539,8 @@ VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being c
 : BIND-K ( c-addr u kind --- kind' )   DUP >R SET-KIND R> ;
 \ [/gene]
 VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
+: NUM-INTO ( k --- )   \ a count or an index stored in a variable of kind k (771)
+  DUP K-NUM = IF DROP EXIT THEN  K-DEC = IF S" 1000000 *" ELSE S" K-NUM R-BOX" THEN OUT+ ;
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
@@ -568,7 +572,7 @@ VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK
     2DUP VAR-OUT S" @" OUT+ S" R-KEYS I R-AT" OUT+ FOR-K @ K-TEXT = IF S" R-ANY>TEXT" OUT+ THEN 2OVER VAR-OUT S" !" OUT+
     VAR-OUT S" @" OUT+ S" R-VALS I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
   ELSE
-    S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
+    S" I" OUT+ FOR-K @ NUM-INTO 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
   THEN THEN  DROP
   0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR DROP S" IF" OUT+ -1 CM-COND ! THEN
   CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
@@ -705,14 +709,19 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
     INFER @ IF AS-A @ AS-L @ 2DUP DECLARE ROT BIND-K DROP  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
 \ [/gene]
     AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ ELSE DROP 0 THEN ELSE DROP 0 THEN
+    DUP K-DEC = 2 PICK K-NUM = AND IF 2DROP S" 1000000 *" OUT+ K-DEC ELSE   \ a number into a decimal variable (771)
     DUP K-ANY = 2 PICK K-ANY <> AND IF DROP BOX K-ANY ELSE                 \ an item takes any value, boxed (754)
     DUP K-TEXT = 2 PICK K-ANY = AND IF DROP TO-TEXT K-TEXT ELSE            \ a text or a number variable given an item (758)
-    DUP K-NUM = 2 PICK K-ANY = AND IF DROP TO-NUM K-NUM ELSE DROP THEN THEN THEN
+    DUP K-NUM = 2 PICK K-ANY = AND IF DROP TO-NUM K-NUM ELSE DROP THEN THEN THEN THEN
     >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ AS-VK !
   AS-VK @ K-DEC = IF 2DUP VAR-REF S" @" OUT+ 1 EXPR TO-DEC R> IF S" +" ELSE S" -" THEN OUT+ VAR-REF S" !" OUT+ EXIT THEN   \ 760
   AS-VK @ K-NUM <> AS-VK @ K-ANY <> AND IF S" += and -= need a number to change" ERR THEN
+\ [gene infer]
+  INFER @ IF  1 EXPR  AS-VK @ K-NUM = SWAP K-DEC = AND IF K-DEC ELSE AS-VK @ THEN   \ the first pass: += records its result (771)
+    BIND-K DROP  R> DROP EXIT THEN
+\ [/gene]
   2DUP VAR-REF S" @" OUT+  AS-VK @ K-ANY = IF S" R-ANY>NUM" OUT+ THEN   \ an item holding a number (758)
 \ [gene short]
   TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
@@ -975,11 +984,11 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
       S" 2DUP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
       0 PAR-BODY  0 LV-L !
-      S" LOOP OVER < IF 1-" OUT+  FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN  VAR-OUT S" ! ELSE DROP THEN" OUT+  R> DROP EXIT
+      S" LOOP OVER < IF 1-" OUT+  FOR-K @ NUM-INTO  VAR-OUT S" ! ELSE DROP THEN" OUT+  R> DROP EXIT
     THEN THEN
 \ [/gene]
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
-    S" ?DO" OUT+ S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
+    S" ?DO" OUT+ S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
     R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
 \ [/gene]
@@ -997,7 +1006,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN 2DUP DECLARE K-ANY BIND-K DROP      \ the item, then the index: rillc.py's order
   FOR-BL @ IF FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K ! THEN
   2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-LEN 0 ?DO" OUT+
-  FOR-BL @ IF S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
+  FOR-BL @ IF S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
   VAR-OUT S" @ I R-AT" OUT+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN VAR-OUT S" !" OUT+
   R@ PAR-BODY S" LOOP" OUT+  R> IF S" R-PAR-END" OUT+ THEN ;
 \ x[i] = v: rillc.py puts the value first, then the container, then the index

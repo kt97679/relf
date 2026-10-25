@@ -62,20 +62,22 @@ VARIABLE RL   VARIABLE RJ-SEP
   >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
   OVER CELL+ !  R> SWAP 2 CELLS + ! ;
 : R-PUSH ( box l --- )   DUP R-GROW  DUP >R  2 CELLS + @ R@ @ CELLS + !  1 R> +! ;   \ R-ITEMS written out (768)
-: R-AT ( l i --- box )
-  OVER @ OVER U> 0= IF ." rill: index " . ." past a list of " @ . R-NL -4002 THROW THEN
-  CELLS SWAP 2 CELLS + @ + @ ;
-: R-SET ( box l i --- )
-  OVER @ OVER U> 0= IF ." rill: index " . ." past a list" R-NL -4002 THROW THEN
-  CELLS SWAP R-ITEMS + ! ;
+: R-INDEX ( l i --- l i' )   \ an index the unsigned test refused: from the end when negative and in the list,
+  \ as Python's $l[-1] (771); past either end an error. Reached only where the plain read would fail.
+  DUP 0< IF OVER @ OVER + DUP 0< 0= IF NIP EXIT THEN DROP THEN
+  ." rill: index " . ." past a list of " @ . R-NL -4002 THROW ;
+: R-AT ( l i --- box )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP 2 CELLS + @ + @ ;
+: R-SET ( box l i --- )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP R-ITEMS + ! ;
 : R-SHIFT ( l --- box )   \ the first item, out
   DUP @ 0= IF ." rill: shift of an empty list" R-NL -4002 THROW THEN
   DUP R-ITEMS @ >R  DUP R-ITEMS DUP CELL+ SWAP 2 PICK @ 1- CELLS MOVE  -1 SWAP +!  R> ;
 : R-EXTEND ( l m --- )   DUP @ 0 ?DO  DUP I R-AT 2 PICK R-PUSH  LOOP 2DROP ;
-: R-SLICE ( l a b --- l2 )   \ items a up to (not with) b
+: R-BOUND ( n len --- n' )   OVER 0< IF + 0 MAX ELSE MIN THEN ;   \ a slice's bound: negative from the end, within the list
+: R-SLICE ( l a b --- l2 )   \ items a up to (not with) b - negative bounds from the end, as Python's (771)
   \ The new list in a variable, not on the return stack: inside DO, R@
   \ is the loop's index - R-JOIN, R-SLICE and R-RANGE faulted on it.
-  R-NEW-LIST RL !  2 PICK @ MIN  SWAP  ?DO  DUP I R-AT RL @ R-PUSH  LOOP DROP  RL @ ;
+  R-NEW-LIST RL !  2 PICK @ R-BOUND >R  OVER @ R-BOUND R>
+  2DUP < IF SWAP ?DO  DUP I R-AT RL @ R-PUSH  LOOP ELSE 2DROP THEN  DROP  RL @ ;
 : R-BOX= ( box1 box2 --- f )
   R-UNBOX ROT R-UNBOX ROT OVER <> IF 2DROP DROP 0 EXIT THEN    ( v2 v1 kind )
   K-TEXT = IF R-T= ELSE = THEN ;
@@ -370,8 +372,8 @@ VARIABLE RC-LO  VARIABLE RC-HI  VARIABLE RC-D
   >R >R DROP R> R>  OVER - >R + R>  R-TEXT ;
 VARIABLE RS-NEW
 : R-RSLICE ( r a b --- r2 )   \ slice(record, a, b): its entries a up to (not with) b
-  2 PICK R-KEYS R-LEN MIN  R-NEW-RECORD RS-NEW !
-  SWAP ?DO  DUP R-VALS I R-AT  OVER R-KEYS I R-AT R-ANY>TEXT  RS-NEW @ R-PUT  LOOP DROP  RS-NEW @ ;
+  R-NEW-RECORD RS-NEW !  2 PICK R-KEYS R-LEN R-CLAMP >R  OVER R-KEYS R-LEN R-CLAMP R>
+  2DUP < IF SWAP ?DO  DUP R-VALS I R-AT  OVER R-KEYS I R-AT R-ANY>TEXT  RS-NEW @ R-PUT  LOOP ELSE 2DROP THEN  DROP  RS-NEW @ ;
 : R-AT-OR ( r key default --- box )   \ at(record, key, default): the field, or the default
   >R SWAP 2DUP R-HAS IF R> DROP R-GET ELSE 2DROP R> THEN ;
 : R-SUM ( l --- n )   0 SWAP DUP R-LEN 0 ?DO DUP I R-AT R-ANY>NUM ROT + SWAP LOOP DROP ;

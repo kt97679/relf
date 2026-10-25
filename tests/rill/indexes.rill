@@ -1,0 +1,16 @@
+# tests/rill/indexes.rill - negative indexes and slice bounds from the end, as Python's (771)
+l = [a b c d]
+echo $l[-1] $l[-4] $l[0]
+l[-2] = x
+echo {join($l, ' ')}
+echo {join(slice($l, -3, -1), ' ')}
+echo {join(slice($l, 1, 100), ' ')}
+echo {join(slice($l, -100, 2), ' ')}
+echo "[{join(slice($l, 3, 1), ' ')}]"
+echo {join(slice($l, -2), ' ')}
+t = hello
+echo {slice($t, -3, 5)} {slice($t, 1, -1)}
+n = [10 20 30]
+i = -1
+n[$i] = $n[$i] + 5
+echo {join([$n[-1] $n[-2]], ' ')}

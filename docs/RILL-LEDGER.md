@@ -407,3 +407,16 @@ its start ran around the whole cell range (now it runs no times), and the
 loop-variable optimization (gene loopvar) missed `break` - a keyword token,
 checked for as a word - so after a break the variable held the range's last
 value instead of the one it broke at.
+
+## 771: negative indexes; a number and a decimal join to a decimal
+
+Least surprise for Python's users: `$l[-1]` is the last item, and slices
+count negative bounds from the end. The plain read is unchanged - the test
+for a negative index sits where an index past the end already failed - so
+it costs nothing: both pilots' dispatch counts moved by less than 0.1 %.
+And the join of a variable's bindings now takes a number and a decimal to a
+decimal, not an item: `x = 1`, `x += 0.5` is 1.5, as Python's int and float
+are. That case had also shown the two compilers apart - the Forth one did
+not record what `+=` binds in its first pass, so it kept `x` a number and
+cut 0.5 to 0 - which the oracle had never met; both now record it alike.
+`x[i] += v` is not in the language yet.

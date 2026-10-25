@@ -64,6 +64,8 @@ class Compiler:
 
     def scope(self): return self.locals if self.locals is not None else self.vars
     def skey(self): return self.current if self.locals is not None else None
+    def num_into(self, k):                # a loop's count or index stored in a variable of kind k (771)
+        return '' if k == 'number' else ' 1000000 *' if k == 'decimal' else ' K-NUM R-BOX'
     def bind(self, name, kind):
         """A binding of name to a value of kind: the kind the variable has from here (gene infer, 764)."""
         sc = self.scope(); self.names.add(name)
@@ -187,7 +189,7 @@ class Compiler:
                                                            name, tmp, second, body)), 'list'
         if second:
             return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I R-AT R.%s ! %s LOOP' %
-                    (sc, tmp, tmp, '' if nk == 'number' else ' K-NUM R-BOX', name, tmp, second, body)), 'list'
+                    (sc, tmp, tmp, self.num_into(nk), name, tmp, second, body)), 'list'
         return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT R.%s ! %s LOOP' %
                 (sc, tmp, tmp, tmp, name, body)), 'list'
     def literal_record(self):
@@ -458,6 +460,8 @@ class Compiler:
             elif self.infer is not None: pass                                # the first pass: every binding as it comes (764)
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
                 c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
+            elif name in sc and sc[name] == 'decimal' and kd == 'number':
+                c, kd = c + ' 1000000 *', 'decimal'                  # a number into a decimal variable (771)
             elif name in sc and sc[name] == 'any' and kd != 'any':
                 c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:
@@ -661,7 +665,7 @@ class Compiler:
             else: lo, lk, hi, hk = '0', 'number', lo, lk
             self.take('op', ')')
             if b: raise Error('line %d: for i, x needs a list' % line)
-            box = '' if self.bind(a, 'number') == 'number' else ' K-NUM R-BOX'   # an item, where $a is bound to others too (764)
+            box = self.num_into(self.bind(a, 'number'))                 # an item or a decimal, where $a is bound to others too
             if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
                 body = self.loop_body(); self.loopvar = outer
@@ -685,7 +689,7 @@ class Compiler:
         idx, item = (a, b) if b else (None, a)
         self.bind(item, 'any')
         seti = ''
-        if idx: seti = 'I%s R.%s ! ' % ('' if self.bind(idx, 'number') == 'number' else ' K-NUM R-BOX', idx)
+        if idx: seti = 'I%s R.%s ! ' % (self.num_into(self.bind(idx, 'number')), idx)
         out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
                % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(self.loop_body(), par)))
         return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
@@ -764,7 +768,8 @@ if __name__ == '__main__':
     try:
         if GENES['infer']:                                    # gene infer (764): a first pass for the kinds, the second for the code
             c.infer = {}; c.program()
-            fixed = {key: (ks.pop() if len(ks) == 1 else 'any') for key, ks in c.infer.items()}
+            fixed = {key: (ks.pop() if len(ks) == 1 else 'decimal' if ks == {'number', 'decimal'} else 'any')
+                     for key, ks in c.infer.items()}                 # a number and a decimal join to a decimal (771)
             c = Compiler(src); c.fixed = fixed
         forth = c.program()
     except Error as e: sys.exit('rillc: %s: %s' % (sys.argv[1], e))
