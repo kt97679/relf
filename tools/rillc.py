@@ -127,7 +127,11 @@ class Compiler:
             j += 1
         code = ['R-NEW-LIST']
         while self.peek()[1] != ']':
-            if self.peek()[0] == 'var' and False: pass
+            tok = self.peek()
+            if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
+                self.i += 1
+                if self.kind_of(tok[1][1:], tok[2]) != 'list': raise Error('line %d: %s is not a list' % (tok[2], tok[1]))
+                code.append('R.%s @ OVER SWAP R-EXTEND' % tok[1][1:]); continue
             c, kd = self.term()
             code.append('%s OVER R-PUSH' % self.box(c, kd))
         self.take('op', ']'); return ' '.join(code), 'list'
@@ -170,6 +174,9 @@ class Compiler:
             at = self.depth + len(self.stack) - 1 - self.stack.index(v[1:])
             self.depth += 1
             return {0: 'DUP', 1: 'OVER'}.get(at, '%d PICK' % at), 'number'
+        if k == 'var' and v[1:] in ('args', 'script') and v[1:] not in self.vars and \
+                (self.locals is None or v[1:] not in self.locals):
+            return ('R-ARGS', 'list') if v[1:] == 'args' else ('R-SCRIPT', 'text')       # 744
         if k == 'var': return 'R.%s @' % v[1:], self.kind_of(v[1:], line)
         if v == '$(':
             c = self.command(capture=True); self.take('op', ')')
@@ -219,6 +226,9 @@ class Compiler:
             if len(a) == 2: return '%s %s OVER R-LEN R-SLICE' % (a[0][0], self.to_num(*a[1], line)), 'list'
             need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
         if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
+        if name == 'arg': need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'            # 744
+        if name == 'env': need(1); return '%s R-ENV' % self.to_text(*a[0]), 'text'
+        if name == 'default': need(2); return '%s %s R-DEFAULT' % (self.to_text(*a[0]), self.to_text(*a[1])), 'text'
         return None
     def lit(self, s):
         return 'S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s)
@@ -297,6 +307,16 @@ class Compiler:
         elif v == 'def': out = self.def_(); return ''
         elif v == 'for': out = self.for_()
         elif v == 'break': self.i += 1; out = 'LEAVE'
+        elif k == 'word' and v == 'fail' and self.peek(1)[1] != '(':
+            self.i += 1; c, kd = self.expr(); out = '%s R-FAIL' % self.to_text(c, kd)       # 744
+        elif k == 'word' and v == 'exit' and self.peek(1)[1] != '(':
+            self.i += 1
+            if self.peek()[0] in ('nl', 'eof') or self.peek()[1] in (';', '}'): out = '0 R-EXIT'
+            else: c, kd = self.expr(); out = '%s R-EXIT' % self.to_num(c, kd, line)
+        elif k == 'word' and v == 'on' and self.peek(1)[1] == 'EXIT':
+            self.i += 2; self.on_n = getattr(self, 'on_n', 0) + 1
+            self.defs.append(': R-EXIT-%d %s ;' % (self.on_n, self.block()))
+            out = "['] R-EXIT-%d R-ON-EXIT" % self.on_n
         elif k == 'word' and self.peek(1)[1] == '[' and self.peek(1)[3] == self.peek()[4]:
             name = v; self.i += 2
             ic, ik = self.expr(); self.take('op', ']'); self.take('op', '=')
@@ -346,7 +366,8 @@ class Compiler:
         stages = [self.stage()]
         while self.peek()[1] == '|':
             self.i += 1; self.skip_nl(); stages.append(self.stage())
-        body = ' '.join('%s %s PL-STAGE' % (s, '-1' if k == len(stages) - 1 else '0') for k, s in enumerate(stages))
+        body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', 'PL-STAGE-L' if s[1] else 'PL-STAGE')
+                        for k, s in enumerate(stages))
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
     def arg_item(self):
         tok = self.peek()
@@ -357,7 +378,7 @@ class Compiler:
         else:
             c, kd = self.term()
         return self.to_text(c, kd)
-    def args(self, stop):
+    def args(self, stop, spread=False):
         """The arguments to the end of the statement; items touching each
         other join into one, as sh's words do (RILL-LEDGER.md 732)."""
         parts, redirs = [], []
@@ -367,14 +388,28 @@ class Compiler:
                 self.i += 1; redirs.append(self.redirect(tok[1])); continue
             if stop and tok[1] in ('>', '>>', '<') and '|' in stop:
                 redirs.append(self.redirect('in' if tok[1] == '<' else 'out')); continue
-            touching = parts and tok[3] == self.t[self.i - 1][4]
+            if spread and tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):
+                self.i += 1; name = tok[1][1:]
+                if self.kind_of(name, tok[2]) != 'list': raise Error('line %d: @%s is not a list' % (tok[2], name))
+                parts.append('R.%s @ OVER SWAP R-EXTEND' % name); kinds_spread = True
+                continue
+            touching = parts and tok[3] == self.t[self.i - 1][4] and not parts[-1].endswith('R-EXTEND')
             c = self.arg_item()
             if touching: parts[-1] = '%s %s 2 R-CONCAT' % (parts[-1], c)
             else: parts.append(c)
+        if spread:
+            parts = [p if p.endswith('R-EXTEND') else p + ' K-TEXT R-BOX OVER R-PUSH' for p in parts]
         return parts, redirs
     def stage(self):
-        parts, redirs = self.args((';', '}', ')', '??', '|'))
-        return ' '.join(redirs + parts) + ' %d' % len(parts)
+        stop = (';', '}', ')', '??', '|')
+        j = self.i                                                   # a spread ahead in the stage? (744)
+        while self.t[j][0] not in ('nl', 'eof') and self.t[j][1] not in stop:
+            if self.t[j][0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', self.t[j][1]): break
+            j += 1
+        spread = self.t[j][0] == 'word' and self.t[j][1].startswith('@')
+        parts, redirs = self.args(stop, spread)
+        if spread: return ' '.join(redirs + ['R-NEW-LIST'] + parts), True
+        return ' '.join(redirs + parts) + ' %d' % len(parts), False
     def redirect(self, port):
         op = self.take()[1]
         tok = self.peek()

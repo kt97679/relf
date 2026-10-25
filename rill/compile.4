@@ -206,6 +206,9 @@ DEFER LIST-LIT ( --- kind )   DEFER RECORD-LIT ( --- kind )   DEFER SKIP-NL-HOOK
     NIP NIP  DEPTH @ PRM-N @ 1- ROT - +  1 DEPTH+
     DUP 0= IF DROP S" DUP" OUT+ ELSE DUP 1 = IF DROP S" OVER" OUT+ ELSE OUT-NUM S" PICK" OUT+ THEN THEN
     K-NUM EXIT THEN  DROP
+  2DUP NM-FIND 0< IF                                  \ $args and $script, unless the script set them (744)
+    2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ K-LIST EXIT THEN
+    2DUP S" script" S= IF 2DROP S" R-SCRIPT" OUT+ K-TEXT EXIT THEN THEN
   2DUP NM-FIND DUP 0< IF DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
   >R  [CHAR] R OUT-C [CHAR] . OUT-C  OUT-RAW BL OUT-C  S" @" OUT+  NM-K R> CELLS + @ ;
 
@@ -273,6 +276,9 @@ VARIABLE LB-POS
   2DUP S" shift" S= IF 2DROP ARG DROP S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" first" S= IF 2DROP ARG DROP S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" keys" S= IF 2DROP ARG DROP S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" arg" S= IF 2DROP ARG TO-NUM S" R-ARG" OUT+ K-TEXT -1 EXIT THEN          \ 744
+  2DUP S" env" S= IF 2DROP ARG TO-TEXT S" R-ENV" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" default" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-DEFAULT" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" slice" S= IF 2DROP ARG DROP ARG TO-NUM
      S" )" CUR-IS? IF S" OVER R-LEN R-SLICE" OUT+ ELSE ARG TO-NUM S" R-SLICE" OUT+ THEN K-LIST -1 EXIT THEN
   2DROP 0 ;
@@ -323,6 +329,10 @@ VARIABLE LB-POS
       REPEAT 2DROP 0
     ELSE -1 THEN THEN
   UNTIL R> DROP ;
+: SPREAD-WORD? ( i --- f )   \ @name
+  DUP K@ T-WORD <> IF DROP 0 EXIT THEN  T@ DUP 2 < IF 2DROP 0 EXIT THEN
+  OVER C@ [CHAR] @ <> IF 2DROP 0 EXIT THEN  1 /STRING OVER C@ NAME-START? >R
+  -1 -ROT 0 ?DO DUP I + C@ NAME-CHAR? 0= IF NIP 0 SWAP THEN LOOP DROP R> AND ;
 \ the name of a loop's list: name.srcN, N a token's index, as rillc.py makes it
 64 BUFFER: TMPN  VARIABLE TMPN#
 : TMP-NAME ( c-addr u n --- c-addr2 u2 )
@@ -337,7 +347,13 @@ VARIABLE LB-POS
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
-  BEGIN S" ]" CUR-IS? 0= WHILE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ REPEAT NEXT-TK K-LIST ;
+  BEGIN S" ]" CUR-IS? 0= WHILE
+    TK SPREAD-WORD? IF                                          \ [@refs more]: a spread (744)
+      TK T@ 1 /STRING NEXT-TK 2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
+      CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
+      VAR-OUT S" @ OVER SWAP R-EXTEND" OUT+
+    ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN
+  REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
 : COMPREHENSION ( j --- kind )   \ [expr for x in src if cond]: the for part first, then the expr
   TK-I @ >R  DUP 1+ TK-I !                                 ( j )  ( R: the expr's start )
@@ -543,23 +559,31 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
   ARG-TEXT? IF TK T@ NEXT-TK LIT K-TEXT ELSE TERM THEN THEN  TO-TEXT ;
 : STAGE-END? ( --- f )   STATEMENT-END? S" )" CUR-IS? OR S" ??" CUR-IS? OR S" |" CUR-IS? OR ;
-: STAGE ( --- n )   \ one command of a pipeline: its redirections first, then its words
-  OUT-POS RD-POS !  0
-  BEGIN STAGE-END? 0= WHILE
-    TK K@ T-WORD = TK PORT-OF 0< 0= AND  TK 1+ S" >" TK-IS? TK 1+ S" >>" TK-IS? OR AND
-    TK 1+ TOK-AT TK TOK-END = AND IF
-      TK PORT-OF NEXT-TK REDIRECT
-    ELSE S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR IF
-      S" <" CUR-IS? IF 0 ELSE 1 THEN REDIRECT
-    ELSE
-      DUP IF TK TOK-AT TK 1- TOK-END = ELSE 0 THEN >R
-      ARG-ITEM
-      R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
-    THEN THEN
-  REPEAT ;
+VARIABLE SP-FORM  VARIABLE SP-PEND
+: SPREAD-AHEAD? ( --- f )   TK-I @ BEGIN STAGE-END? 0= WHILE TK SPREAD-WORD? IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT TK-I ! 0 ;
+: SP-FINISH ( --- )   \ a list-form stage's pending word, boxed and pushed
+  SP-FORM @ SP-PEND @ AND IF S" K-TEXT R-BOX OVER R-PUSH" OUT+ THEN  0 SP-PEND ! ;   \ list form only
+: STAGE-ITEM ( n --- n' )   \ one word, a redirection, or (in a list-form stage) a spread
+  SP-FORM @ TK SPREAD-WORD? AND IF                               \ @name: its items, each an argument
+    SP-FINISH  TK T@ 1 /STRING NEXT-TK 2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
+    CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
+    VAR-OUT S" @ OVER SWAP R-EXTEND" OUT+ 1+ EXIT THEN
+  TK K@ T-WORD = TK PORT-OF 0< 0= AND  TK 1+ S" >" TK-IS? TK 1+ S" >>" TK-IS? OR AND
+  TK 1+ TOK-AT TK TOK-END = AND IF  TK PORT-OF NEXT-TK REDIRECT EXIT THEN
+  S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR IF  S" <" CUR-IS? IF 0 ELSE 1 THEN REDIRECT EXIT THEN
+  DUP IF TK TOK-AT TK 1- TOK-END = SP-FORM @ IF SP-PEND @ AND THEN ELSE 0 THEN >R
+  R@ 0= IF SP-FINISH THEN
+  ARG-ITEM  -1 SP-PEND !
+  R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN ;
+: STAGE ( --- n list? )   \ one command of a pipeline: its redirections first, then its words
+  OUT-POS RD-POS !  SPREAD-AHEAD? SP-FORM !  0 SP-PEND !
+  SP-FORM @ IF S" R-NEW-LIST" OUT+ THEN  0
+  BEGIN STAGE-END? 0= WHILE STAGE-ITEM REPEAT
+  SP-FINISH  SP-FORM @ ;
 : COMMAND ( capture? --- )   \ a pipeline; its status - or, captured, its output and then its status
   IF S" -1" ELSE S" 0" THEN OUT+ S" PL-BEGIN" OUT+
-  BEGIN STAGE OUT-NUM  S" |" CUR-IS? IF S" 0" ELSE S" -1" THEN OUT+ S" PL-STAGE" OUT+
+  BEGIN STAGE SWAP OVER IF DROP ELSE OUT-NUM THEN
+    S" |" CUR-IS? IF S" 0" ELSE S" -1" THEN OUT+  IF S" PL-STAGE-L" ELSE S" PL-STAGE" THEN OUT+
     S" |" CUR-IS? WHILE NEXT-TK SKIP-NL REPEAT
   S" PL-END" OUT+ ;
 ' COMMAND IS COMMAND-HOOK
@@ -567,6 +591,10 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   0 COMMAND
   S" ??" CUR-IS? IF NEXT-TK S" IF" OUT+ STATEMENT S" THEN" OUT+ ELSE S" R-CHECK" OUT+ THEN ;
 : CALL-STMT ( --- )   CALL IF S" DROP" OUT+ THEN ;
+VARIABLE ON-N
+: ON-EXIT ( --- )   \ on EXIT { block }: the block a def of its own, R-EXIT-n, named to R-ON-EXIT
+  1 ON-N +!  TO-DEFS  S" :" OUT+  S" R-EXIT-" OUT-RAW ON-N @ OUT-NUM  BLOCK  S" ;" OUT+ 10 OUT-C  TO-MAIN
+  [CHAR] [ OUT-C [CHAR] ' OUT-C [CHAR] ] OUT-C BL OUT-C  S" R-EXIT-" OUT-RAW ON-N @ OUT-NUM  S" R-ON-EXIT" OUT+ ;
 \ for, as rillc.py's for_(): a counted loop over range(a, b); a list's items; a record's keys and values
 VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
 : FOR-STMT ( --- )
@@ -614,6 +642,10 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P
   S" def" CUR-IS? IF DEF-STMT EXIT THEN
   S" for" CUR-IS? IF FOR-STMT EXIT THEN
   S" break" CUR-IS? IF NEXT-TK S" LEAVE" OUT+ EXIT THEN
+  S" fail" CUR-IS? TK K@ T-WORD = AND TK 1+ S" (" TK-IS? 0= AND IF NEXT-TK 1 EXPR TO-TEXT S" R-FAIL" OUT+ EXIT THEN
+  S" exit" CUR-IS? TK K@ T-WORD = AND TK 1+ S" (" TK-IS? 0= AND IF NEXT-TK
+    STATEMENT-END? IF S" 0 R-EXIT" OUT+ ELSE 1 EXPR TO-NUM S" R-EXIT" OUT+ THEN EXIT THEN
+  S" on" CUR-IS? TK 1+ S" EXIT" TK-IS? AND IF NEXT-TK NEXT-TK ON-EXIT EXIT THEN
   TK K@ T-WORD = IF
     TK 1+ S" [" TK-IS? TK 1+ TOK-AT TK TOK-END = AND IF INDEX-ASSIGN EXIT THEN
     TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
@@ -637,7 +669,7 @@ NM-MAX CELLS BUFFER: ORDER
     WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
   LOOP ;
 : RILL-INIT ( --- )
-  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
+  0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 DEPTH !  0 FINAL# !
   TK-ALLOC BUF-ALLOC ;
 : RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN

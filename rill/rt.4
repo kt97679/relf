@@ -29,128 +29,6 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : R-TYPE ( t --- )   R-T@ TYPE ;
 : R-NL ( --- )   10 EMIT ;
 
-\ Commands, pipelines, output captured, ports redirected (stage 1b,
-\ Iteration 738). Rill's own executor on the kernel's FORK, EXECVE,
-\ WAITPID, PIPE and DUP2 - nothing of the shell's. A program is found on
-\ PATH by env, one exec more, until the search is written in Forth.
-: R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
-VARIABLE RX-N   VARIABLE RX-V
-: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena, "env" first
-  DUP RX-N !  2 + CELLS R-ALLOT RX-V !
-  0  RX-V @ RX-N @ 1+ CELLS + !
-  RX-N @ 0 ?DO  R-CSTR  RX-V @ RX-N @ I - CELLS + !  LOOP
-  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
-: R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
-: R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
-
-\ Redirections of the stage about to start: a file onto a descriptor
-\ (text, mode, fd), or one descriptor onto another (-1, from, fd); the
-\ child applies them in the order they were written.
-8 CONSTANT RR-MAX
-RR-MAX CELLS BUFFER: RR-T   RR-MAX CELLS BUFFER: RR-M   RR-MAX CELLS BUFFER: RR-F
-VARIABLE RR-N
-: R-RD-RESET ( --- )   0 RR-N ! ;
-: R-RD-FILE ( t mode fd --- )
-  RR-F RR-N @ CELLS + !  RR-M RR-N @ CELLS + !  RR-T RR-N @ CELLS + !  1 RR-N +! ;
-: R-RD-DUP ( from fd --- )   >R -1 SWAP R> R-RD-FILE ;
-: R-RD-APPLY ( --- )
-  RR-N @ 0 ?DO
-    RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
-    ELSE
-      RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
-        DROP ." rill: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
-      THEN
-      DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP
-    THEN
-  LOOP ;
-
-\ A pipeline: PL-BEGIN, a PL-STAGE a command (the last with a true
-\ flag), PL-END. Every pipe end is listed, and each child closes them
-\ all once its own are on 0 and 1 - or a reader would never see the end.
-16 CONSTANT PL-MAX
-PL-MAX CELLS BUFFER: PL-PIDS   VARIABLE PL-NP
-PL-MAX 2* 2 + CELLS BUFFER: PL-FDS   VARIABLE PL-NF
-VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
-VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
-: PL-FD+ ( fd --- )   PL-FDS PL-NF @ CELLS + !  1 PL-NF +! ;
-: PL-BEGIN ( capture? --- )
-  0 PL-NP !  0 PL-NF !  -1 PL-PREV !  -1 PL-CAPW !  -1 PL-CAPR !  R-RD-RESET
-  IF  PIPE THROW  DUP PL-CAPW ! PL-FD+  DUP PL-CAPR ! PL-FD+  THEN ;
-: PL-CHILD ( in out --- )
-  DUP -1 <> IF 1 DUP2 DROP ELSE DROP THEN
-  DUP -1 <> IF 0 DUP2 DROP ELSE DROP THEN
-  PL-NF @ 0 ?DO  PL-FDS I CELLS + @ CLOSE-FILE DROP  LOOP
-  R-RD-APPLY ;
-: PL-STAGE ( t1 .. tn n last? --- )
-  >R R-ARGV  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
-  R> IF  PL-CAPW @ PL-OUT !
-  ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
-  FORK DUP 0= IF  DROP  PL-IN @ PL-OUT @ PL-CHILD  R-EXECV  THEN
-  PL-PIDS PL-NP @ CELLS + !  1 PL-NP +!  DROP
-  PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
-  PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
-  PL-NEXT @ PL-PREV !  R-RD-RESET ;
-: R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
-  >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
-  BEGIN
-    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
-    DUP 65536 R@ READ-SOME DUP 0>
-  WHILE + REPEAT  DROP R> DROP                                ( t end )
-  OVER CELL+ -                                                ( t len )
-  DUP IF  OVER CELL+ OVER + 1- C@ 10 = IF 1- THEN  THEN
-  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
-: PL-END ( --- [t] status )   \ t when captured; the status is the last stage's
-  PL-CAPR @ -1 <> IF
-    PL-CAPW @ CLOSE-FILE DROP  PL-CAPR @ R-READ-ALL  PL-CAPR @ CLOSE-FILE DROP
-  THEN
-  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ WAITPID DROP R-DECODE  LOOP ;
-: R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
-VARIABLE R-STATUS
-: R-CHECK ( status --- )   \ failure stops the script, with the status
-  ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
-
-\ The image boots into R-BOOT: its first argument is the Forth that
-\ tools/rillc.py made of a Rill script, evaluated; the image leaves with
-\ status 0.
-: R-SLURP ( c-addr u --- addr len )   \ a whole file, into the heap
-  R/O OPEN-FILE ABORT" rill: cannot open the program" >R
-  R@ FILE-SIZE THROW DROP  DUP ALLOCATE THROW      ( len buf )
-  DUP ROT R@ READ-FILE THROW                        ( buf len' )
-  R> CLOSE-FILE DROP ;
-: R-BLANKS ( addr len --- addr len )   \ every control character a blank
-  2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
-DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
-: R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
-: R-RUN ( --- )
-  \ Not INCLUDED: the boot word runs before the interpreter has a file
-  \ to read from, and INCLUDED says "Error reading file" there; the
-  \ program is read whole, its line ends made blanks, and EVALUATEd.
-  SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
-  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP R> IF R-COMPILE THEN R-BLANKS EVALUATE ;
-: R-INIT ( --- )
-  \ What WARM and QUIT set before the interpreter reads - a boot word runs
-  \ ahead of both, with the search order the build left (its wordlists'
-  \ addresses from before the save), so EVALUATE there faulted.
-  0 HANDLER !  DECIMAL  2 #ORDER !
-  FORTH-WORDLIST CONTEXT !  FORTH-WORDLIST CONTEXT CELL+ !  FORTH-WORDLIST CURRENT !
-  0 STATE !  TIB SRC !  0 SID !  INCLUDE-BUFFER INCLUDE-POINTER ! ;
-\ ALLOC-BUFFERS first, as the shell's MAIN does: every BUFFER: (pool.4)
-\ points into the heap of the session that built the image, gone at
-\ the next run - shadow.4's LDECL-ADDRS among them, which is why a def
-\ with locals, compiled after the load, wrote through a stale pointer
-\ and faulted (Iteration 737). An error leaves with status 2.
-\ R-RUN's xt kept as an offset (!XT): ['] in a definition compiles the
-\ absolute address, which the save and reload leave pointing at nothing -
-\ the CATCH that faulted at boot (Iteration 737), and why shell.4's
-\ DO-FORTH keeps its EVALUATE the same way.
-VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
-: R-BOOT ( --- )
-  ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
-  R-RUN-XT @XT CATCH ?DUP IF
-    DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed: its status
-    ." rill: error " . R-NL  2 SYS-EXIT
-  THEN  0 SYS-EXIT ;
-
 \ ---- Lists and records (stage 2, Iteration 739) -------------------------
 \ An item of a list or a field of a record is a box: two cells, its kind
 \ and its value - the one place values of different kinds meet (Part 5).
@@ -229,3 +107,149 @@ VARIABLE RK
   LOOP DROP R-CONCAT ;
 : R-RANGE ( a b --- l )   R-NEW-LIST RL !  1+ SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
 : R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
+
+
+\ Commands, pipelines, output captured, ports redirected (stage 1b,
+\ Iteration 738). Rill's own executor on the kernel's FORK, EXECVE,
+\ WAITPID, PIPE and DUP2 - nothing of the shell's. A program is found on
+\ PATH by env, one exec more, until the search is written in Forth.
+: R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
+VARIABLE RX-N   VARIABLE RX-V
+: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena, "env" first
+  DUP RX-N !  2 + CELLS R-ALLOT RX-V !
+  0  RX-V @ RX-N @ 1+ CELLS + !
+  RX-N @ 0 ?DO  R-CSTR  RX-V @ RX-N @ I - CELLS + !  LOOP
+  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
+: R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
+: R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
+
+\ Redirections of the stage about to start: a file onto a descriptor
+\ (text, mode, fd), or one descriptor onto another (-1, from, fd); the
+\ child applies them in the order they were written.
+8 CONSTANT RR-MAX
+RR-MAX CELLS BUFFER: RR-T   RR-MAX CELLS BUFFER: RR-M   RR-MAX CELLS BUFFER: RR-F
+VARIABLE RR-N
+: R-RD-RESET ( --- )   0 RR-N ! ;
+: R-RD-FILE ( t mode fd --- )
+  RR-F RR-N @ CELLS + !  RR-M RR-N @ CELLS + !  RR-T RR-N @ CELLS + !  1 RR-N +! ;
+: R-RD-DUP ( from fd --- )   >R -1 SWAP R> R-RD-FILE ;
+: R-RD-APPLY ( --- )
+  RR-N @ 0 ?DO
+    RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
+    ELSE
+      RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
+        DROP ." rill: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
+      THEN
+      DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP
+    THEN
+  LOOP ;
+
+\ A pipeline: PL-BEGIN, a PL-STAGE a command (the last with a true
+\ flag), PL-END. Every pipe end is listed, and each child closes them
+\ all once its own are on 0 and 1 - or a reader would never see the end.
+16 CONSTANT PL-MAX
+PL-MAX CELLS BUFFER: PL-PIDS   VARIABLE PL-NP
+PL-MAX 2* 2 + CELLS BUFFER: PL-FDS   VARIABLE PL-NF
+VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
+VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
+: PL-FD+ ( fd --- )   PL-FDS PL-NF @ CELLS + !  1 PL-NF +! ;
+: PL-BEGIN ( capture? --- )
+  0 PL-NP !  0 PL-NF !  -1 PL-PREV !  -1 PL-CAPW !  -1 PL-CAPR !  R-RD-RESET
+  IF  PIPE THROW  DUP PL-CAPW ! PL-FD+  DUP PL-CAPR ! PL-FD+  THEN ;
+: PL-CHILD ( in out --- )
+  DUP -1 <> IF 1 DUP2 DROP ELSE DROP THEN
+  DUP -1 <> IF 0 DUP2 DROP ELSE DROP THEN
+  PL-NF @ 0 ?DO  PL-FDS I CELLS + @ CLOSE-FILE DROP  LOOP
+  R-RD-APPLY ;
+: R-ARGV-L ( l --- argv )   \ a list's items, as texts, a NUL-ended vector, "env" first (a spread, 744)
+  DUP R-LEN DUP RX-N !  2 + CELLS R-ALLOT RX-V !
+  0  RX-V @ RX-N @ 1+ CELLS + !
+  RX-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RX-V @ I 1+ CELLS + !  LOOP DROP
+  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
+: PL-STAGE-V ( argv last? --- )
+  >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
+  R> IF  PL-CAPW @ PL-OUT !
+  ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
+  FORK DUP 0= IF  DROP  PL-IN @ PL-OUT @ PL-CHILD  R-EXECV  THEN
+  PL-PIDS PL-NP @ CELLS + !  1 PL-NP +!  DROP
+  PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
+  PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
+  PL-NEXT @ PL-PREV !  R-RD-RESET ;
+: PL-STAGE ( t1 .. tn n last? --- )   >R R-ARGV R> PL-STAGE-V ;
+: PL-STAGE-L ( argl last? --- )   >R R-ARGV-L R> PL-STAGE-V ;
+: R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
+  >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
+  BEGIN
+    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
+    DUP 65536 R@ READ-SOME DUP 0>
+  WHILE + REPEAT  DROP R> DROP                                ( t end )
+  OVER CELL+ -                                                ( t len )
+  DUP IF  OVER CELL+ OVER + 1- C@ 10 = IF 1- THEN  THEN
+  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
+: PL-END ( --- [t] status )   \ t when captured; the status is the last stage's
+  PL-CAPR @ -1 <> IF
+    PL-CAPW @ CLOSE-FILE DROP  PL-CAPR @ R-READ-ALL  PL-CAPR @ CLOSE-FILE DROP
+  THEN
+  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ WAITPID DROP R-DECODE  LOOP ;
+: R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
+VARIABLE R-STATUS
+\ Ending, and what the script is given (Iteration 744)
+CREATE R-NLB 10 C,
+: R-ERR-TYPE ( t --- )   R-T@ 2 WRITE DROP  R-NLB 1 2 WRITE DROP ;   \ to the err port, a line
+: R-FAIL ( t --- )   R-ERR-TYPE  1 R-STATUS !  -4000 THROW ;        \ fail "message": status 1
+: R-EXIT ( n --- )   R-STATUS !  -4000 THROW ;                        \ exit n
+VARIABLE R-ON-EXIT-XT
+: R-ON-EXIT ( xt --- )   R-ON-EXIT-XT ! ;                             \ on EXIT { }: run when the script ends
+: R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
+: R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
+  DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
+: R-SCRIPT ( --- t )   0 R-ARG ;
+: R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
+: R-ENV ( t --- t )   R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN ;
+: R-DEFAULT ( t1 t2 --- t )   OVER @ IF DROP ELSE NIP THEN ;     \ the first unless it is empty
+: R-CHECK ( status --- )   \ failure stops the script, with the status
+  ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
+
+\ The image boots into R-BOOT: its first argument is the Forth that
+\ tools/rillc.py made of a Rill script, evaluated; the image leaves with
+\ status 0.
+: R-SLURP ( c-addr u --- addr len )   \ a whole file, into the heap
+  R/O OPEN-FILE ABORT" rill: cannot open the program" >R
+  R@ FILE-SIZE THROW DROP  DUP ALLOCATE THROW      ( len buf )
+  DUP ROT R@ READ-FILE THROW                        ( buf len' )
+  R> CLOSE-FILE DROP ;
+: R-BLANKS ( addr len --- addr len )   \ every control character a blank
+  2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
+DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
+: R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
+: R-RUN ( --- )
+  \ Not INCLUDED: the boot word runs before the interpreter has a file
+  \ to read from, and INCLUDED says "Error reading file" there; the
+  \ program is read whole, its line ends made blanks, and EVALUATEd.
+  SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
+  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP R> IF R-COMPILE THEN R-BLANKS EVALUATE ;
+: R-INIT ( --- )
+  \ What WARM and QUIT set before the interpreter reads - a boot word runs
+  \ ahead of both, with the search order the build left (its wordlists'
+  \ addresses from before the save), so EVALUATE there faulted.
+  0 HANDLER !  DECIMAL  2 #ORDER !
+  FORTH-WORDLIST CONTEXT !  FORTH-WORDLIST CONTEXT CELL+ !  FORTH-WORDLIST CURRENT !
+  0 STATE !  TIB SRC !  0 SID !  INCLUDE-BUFFER INCLUDE-POINTER ! ;
+\ ALLOC-BUFFERS first, as the shell's MAIN does: every BUFFER: (pool.4)
+\ points into the heap of the session that built the image, gone at
+\ the next run - shadow.4's LDECL-ADDRS among them, which is why a def
+\ with locals, compiled after the load, wrote through a stale pointer
+\ and faulted (Iteration 737). An error leaves with status 2.
+\ R-RUN's xt kept as an offset (!XT): ['] in a definition compiles the
+\ absolute address, which the save and reload leave pointing at nothing -
+\ the CATCH that faulted at boot (Iteration 737), and why shell.4's
+\ DO-FORTH keeps its EVALUATE the same way.
+VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
+: R-BOOT ( --- )
+  ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
+  0 R-ON-EXIT-XT !
+  R-RUN-XT @XT CATCH ?DUP IF
+    R-RUN-EXIT                                        \ on EXIT runs however the script ends
+    DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
+    ." rill: error " . R-NL  2 SYS-EXIT
+  THEN  R-RUN-EXIT  0 SYS-EXIT ;
