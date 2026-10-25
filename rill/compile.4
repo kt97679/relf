@@ -200,7 +200,7 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
   ?DUP IF  NIP LT-START @ LITS# !                            \ known: the candidate given back
   ELSE  LT-N @ LT-MAX = IF S" too many literal texts" ERR THEN
     LT-START @ LT-N @ CELLS LT-OFF + !  LT-N @ CELLS LT-LEN + !  1 LT-N +!
-    S" CONSTANT" OUT+  S" R-LIT-" OUT-RAW LT-N @ OUT-NUM  10 OUT-C  LT-N @
+    S" R-FIX" OUT+  S" CONSTANT" OUT+  S" R-LIT-" OUT-RAW LT-N @ OUT-NUM  10 OUT-C  LT-N @   \ out of the arena (776)
   THEN                                                       ( n )
   LT-SAVEB @ CUR-B !  LT-SAVEN @ CUR#A !
   S" R-LIT-" OUT-RAW OUT-NUM ;
@@ -517,6 +517,10 @@ VARIABLE DA-DEPTH   16 CONSTANT DA-MAX   DA-MAX CELLS BUFFER: DA-NA   DA-MAX CEL
 : DA-NEXT ( c-addr u --- )   DA-N @ DA-MAX < IF  DA-NL DA-N @ CELLS + !  DA-NA DA-N @ CELLS + !  1 DA-N +!  ELSE 2DROP THEN ;
 : DA-ENTER ( --- )   1 DA-DEPTH +!  DA-N @ 0 ?DO DA-NA I CELLS + @ DA-NL I CELLS + @ DA-MARK LOOP  0 DA-N ! ;
 : DA-LEAVE ( --- )   NM-N @ 0 ?DO NM-DAL I CELLS + @ DA-DEPTH @ = IF -1 NM-DAL I CELLS + ! THEN LOOP  -1 DA-DEPTH +! ;
+VARIABLE IN-EXIT   \ compiling on EXIT's block: no safe point there (776)
+64 CONSTANT GR-MAX   GR-MAX CELLS BUFFER: GR-A   GR-MAX CELLS BUFFER: GR-L   GR-MAX CELLS BUFFER: GR-K   VARIABLE GR-N
+: GR-ADD ( c-addr u kind --- )   \ a top-level for loop's source, registered with the collector (776)
+  GR-N @ GR-MAX < IF  GR-K GR-N @ CELLS + !  GR-L GR-N @ CELLS + !  GR-A GR-N @ CELLS + !  1 GR-N +!  ELSE DROP 2DROP THEN ;
 : SET-KIND ( c-addr u kind --- )   \ rillc.py's scope()[name] = kind: set, or add, in the current scope
   >R 2DUP NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF
      R> SWAP CELLS NM-K + ! 2DROP EXIT THEN THEN
@@ -748,12 +752,12 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
   1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+
 \ [/gene]
   AS-VK @ K-ANY = IF S" K-NUM R-BOX" OUT+ THEN  VAR-REF S" !" OUT+ ;
-: ARG-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
+: ARG-KW-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
   TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
   TK T@ 2DUP S" ," S= >R 2DUP S" =" S= R> OR >R 2DUP S" ==" S= R> OR >R 2DUP S" !=" S= R> OR >R
   2DUP S" <=" S= R> OR >R 2DUP S" >=" S= R> OR >R 2DUP S" +=" S= R> OR >R 2DUP S" -=" S= R> OR >R S" ->" S= R> OR ;
 : ARG-TEXT? ( --- f )   \ ... and true or false: text in an argument (759)
-  ARG-TEXT? IF -1 EXIT THEN  TK K@ T-WORD = IF S" true" CUR-IS? S" false" CUR-IS? OR ELSE 0 THEN ;
+  ARG-KW-TEXT? IF -1 EXIT THEN  TK K@ T-WORD = IF S" true" CUR-IS? S" false" CUR-IS? OR ELSE 0 THEN ;
 : STATEMENT-END? ( --- f )   TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR ;
 : PLUMBED? ( --- f )   \ a redirection or a pipe ahead in the statement
   TK-I @  BEGIN STATEMENT-END? S" ??" CUR-IS? OR 0= WHILE
@@ -941,7 +945,7 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
 : CALL-STMT ( --- )   CALL IF S" DROP" OUT+ THEN ;
 VARIABLE ON-N
 : ON-EXIT ( --- )   \ on EXIT { block }: the block a def of its own, R-EXIT-n, named to R-ON-EXIT
-  1 ON-N +!  TO-DEFS  OUT-POS DEF-START !  S" :" OUT+  S" R-EXIT-" OUT-RAW ON-N @ OUT-NUM  BLOCK  S" ;" OUT+ 10 OUT-C  TO-MAIN
+  1 ON-N +!  TO-DEFS  OUT-POS DEF-START !  S" :" OUT+  S" R-EXIT-" OUT-RAW ON-N @ OUT-NUM  -1 IN-EXIT ! BLOCK 0 IN-EXIT !  S" ;" OUT+ 10 OUT-C  TO-MAIN
   [CHAR] [ OUT-C [CHAR] ' OUT-C [CHAR] ] OUT-C BL OUT-C  S" R-EXIT-" OUT-RAW ON-N @ OUT-NUM  S" R-ON-EXIT" OUT+ ;
 \ continue: a for loop's body holding one at its own level becomes a def
 \ of its own, R-BODY-n - continue is its EXIT, break sets R-BRK - put in
@@ -1012,6 +1016,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
 \ [/gene]
   1 EXPR                                                       ( sk )
   FOR-A @ FOR-AL @ TK-I @ TMP-NAME 2DUP DECLARE                ( sk tmp )
+  IN-DEF @ 0= IF 2DUP 4 PICK K-REC = IF K-REC ELSE K-LIST THEN GR-ADD THEN   \ the collector's root (776)
   2 PICK K-REC = IF ROT DROP
     FOR-A @ FOR-AL @ 2DUP DECLARE K-TEXT BIND-K FOR-K !
     FOR-BL @ IF FOR-B @ FOR-BL @ 2DUP DECLARE K-ANY BIND-K DROP THEN
@@ -1062,6 +1067,10 @@ VARIABLE CD-P
   NEXT-TK OUT-POS CD-P !  ARG-ITEM S" R-CD" OUT+
   S" {" CUR-IS? IF S" R-CWD-PUSH" CD-P @ OUT-INSERT  BLOCK  S" R-CWD-POP" OUT+ THEN ;
 : STATEMENT-IMPL ( --- )
+\ [gene gc]
+  IN-DEF @ 0= STACKMODE @ 0= AND IN-EXIT @ 0= AND IF                 \ a safe point before each top-level statement
+    S" def" CUR-IS? S" on" CUR-IS? OR 0= IF S" R-GC?" OUT+ THEN THEN
+\ [/gene]
   S" if" CUR-IS? IF IF-STMT EXIT THEN
   S" cd" CUR-IS? IF TK 1+ T@ 2DUP S" =" S= >R 2DUP S" (" S= >R S" [" S= R> OR R> OR 0= IF CD-STMT EXIT THEN THEN
   S" while" CUR-IS? IF WHILE-STMT EXIT THEN
@@ -1099,6 +1108,14 @@ VARIABLE CD-P
 NM-MAX CELLS BUFFER: ORDER
 : FIN+ ( c-addr u --- )   FINAL FINAL# @ + SWAP DUP >R MOVE  R> FINAL# +! ;
 : DC-NAME ( i --- c-addr u )   DUP CELLS DC-A + @ SWAP CELLS DC-L + @ ;
+VARIABLE RT-K
+: KIND-NAME ( kind --- c-addr u )
+  DUP K-TEXT = IF DROP S" K-TEXT" EXIT THEN  DUP K-LIST = IF DROP S" K-LIST" EXIT THEN
+  K-REC = IF S" K-REC" ELSE S" K-ANY" THEN ;
+: ROOT-KIND ( c-addr u --- kind | 0 )   \ rillc.py's root_kind: a top-level loop's source, or a script variable of a kind that points
+  GR-N @ 0 ?DO 2DUP GR-A I CELLS + @ GR-L I CELLS + @ COMPARE 0= IF 2DROP GR-K I CELLS + @ UNLOOP EXIT THEN LOOP
+  NM-FIND DUP 0< IF DROP 0 EXIT THEN  CELLS NM-K + @
+  DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR OVER K-ANY = OR 0= IF DROP 0 THEN ;
 : SORT-NAMES ( --- )   \ insertion sort of the declared names, as Python's sorted()
   DC-N @ 0 ?DO I I CELLS ORDER + ! LOOP
   DC-N @ 2 < IF EXIT THEN          \ 0 1 ?DO would run the whole unsigned range: no names, nothing to sort
@@ -1112,7 +1129,7 @@ NM-MAX CELLS BUFFER: ORDER
   0 LT-N !
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
-   0 DA-DEPTH !  0 DA-N !
+   0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !
   TK-ALLOC BUF-ALLOC ;
 : RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
@@ -1122,6 +1139,10 @@ NM-MAX CELLS BUFFER: ORDER
   SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
   SORT-NAMES
   DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
+\ [gene gc]
+  DC-N @ 0 ?DO I CELLS ORDER + @ DC-NAME ROOT-KIND ?DUP IF                \ the collector's roots, in the same order
+    RT-K ! S" R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ S"  " FIN+ RT-K @ KIND-NAME FIN+ S"  R-ROOT" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP   \ not >R: I reads that stack
+\ [/gene]
 \ [gene littext]
   LITS-B @ LITS# @ FIN+
 \ [/gene]

@@ -424,7 +424,18 @@ class Compiler:
         while self.peek()[1] != '}':
             out.append(self.statement()); self.skip_nl()
         self.take('op', '}'); self.da_leave(); return ' '.join(o for o in out if o)
-    def statement(self):
+    RKC = {'text': 'K-TEXT', 'list': 'K-LIST', 'record': 'K-REC', 'any': 'K-ANY'}
+    def statement(self):                 # gene gc (776): a safe point before each statement of the top level
+        v = self.peek()[1]
+        gc = (GENES['gc'] and self.locals is None and not getattr(self, 'stack', None)
+              and not getattr(self, 'in_exit', False) and v not in ('def', 'on'))
+        out = self.statement_inner()
+        return 'R-GC? ' + out if gc and out else ('R-GC?' if gc else out)
+    def root_kind(self, n):              # what a variable registers as, for the collector: None if nothing
+        if n in getattr(self, 'roots', {}): return self.roots[n]
+        k = self.vars.get(n)
+        return k if k in self.RKC else None
+    def statement_inner(self):
         k, v, line = self.peek()[:3]
         start = self.i
         if v == 'if': out = self.if_()
@@ -460,7 +471,8 @@ class Compiler:
             else: c, kd = self.expr(); out = '%s R-EXIT' % self.to_num(c, kd, line)
         elif k == 'word' and v == 'on' and self.peek(1)[1] == 'EXIT':
             self.i += 2; self.on_n = getattr(self, 'on_n', 0) + 1
-            self.defs.append(': R-EXIT-%d %s ;' % (self.on_n, self.block()))
+            self.in_exit = True; body = self.block(); self.in_exit = False          # no safe point in it (776)
+            self.defs.append(': R-EXIT-%d %s ;' % (self.on_n, body))
             out = "['] R-EXIT-%d R-ON-EXIT" % self.on_n
         elif k == 'word' and self.peek(1)[1] == '[' and self.peek(1)[3] == self.peek()[4]:
             name = v; self.i += 2
@@ -708,6 +720,7 @@ class Compiler:
             return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
+        if self.locals is None: self.__dict__.setdefault('roots', {})[tmp] = 'record' if sk == 'record' else 'list'   # 776
         if sk == 'record':                                               # for k, v in a record
             key, val = (a, b) if b else (a, None)
             kk = self.bind(key, 'text'); self.da_next = [key] + ([val] if val else [])
@@ -793,7 +806,9 @@ class Compiler:
             self.lines.append((line, out))
             self.skip_nl()
         return ('\n'.join('VARIABLE R.%s' % n for n in sorted(self.names)) + '\n' +
-                ''.join('%s CONSTANT R-LIT-%d\n' % (c, n) for c, n in self.lits.items()) +
+                (''.join('R.%s %s R-ROOT\n' % (n, self.RKC[self.root_kind(n)]) for n in sorted(self.names) if self.root_kind(n))
+                 if GENES['gc'] else '') +
+                ''.join('%s R-FIX CONSTANT R-LIT-%d\n' % (c, n) for c, n in self.lits.items()) +
                 '\n'.join(self.defs) + '\n: R-MAIN %s ;\nR-MAIN\n' % ' '.join(main))
 
 if __name__ == '__main__':

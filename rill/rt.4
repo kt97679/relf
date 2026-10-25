@@ -8,7 +8,9 @@
 \ and never freed piecemeal: a script's values live until it ends.
 
 VARIABLE R-TOP   VARIABLE R-END
-: R-ARENA-INIT ( --- )   134217728 DUP ALLOCATE THROW DUP R-TOP ! + R-END ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
+VARIABLE R-ARENA0  VARIABLE R-GC-AT  VARIABLE G-STRESS   \ the arena's start; where the next collection is due (776)
+134217728 CONSTANT R-ARENA-SIZE
+: R-ARENA-INIT ( --- )   R-ARENA-SIZE ALLOCATE THROW  DUP R-ARENA0 !  DUP R-TOP !  DUP R-ARENA-SIZE + R-END !  16777216 + R-GC-AT ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
 : R-ALLOT ( n --- addr )
   7 + -8 AND  R-TOP @ SWAP OVER + DUP R-END @ U> IF TRUE ABORT" rill: the arena is full" THEN  R-TOP ! ;   \ the test a branch, its message only when full (768)
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
@@ -183,12 +185,12 @@ VARIABLE RG-S  VARIABLE RG-B
 \ WAITPID, PIPE and DUP2 - nothing of the shell's. A program is found on
 \ PATH by env, one exec more, until the search is written in Forth.
 : R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
-VARIABLE RX-N   VARIABLE RX-V
+VARIABLE RV-N   VARIABLE RV-V
 : R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena, "env" first
-  DUP RX-N !  2 + CELLS R-ALLOT RX-V !
-  0  RX-V @ RX-N @ 1+ CELLS + !
-  RX-N @ 0 ?DO  R-CSTR  RX-V @ RX-N @ I - CELLS + !  LOOP
-  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
+  DUP RV-N !  2 + CELLS R-ALLOT RV-V !
+  0  RV-V @ RV-N @ 1+ CELLS + !
+  RV-N @ 0 ?DO  R-CSTR  RV-V @ RV-N @ I - CELLS + !  LOOP
+  S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
 : R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
 : R-DECODE ( raw --- status )   DUP 127 AND IF 127 AND 128 + ELSE 8 RSHIFT 255 AND THEN ;
 
@@ -231,10 +233,10 @@ VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
   PL-NF @ 0 ?DO  PL-FDS I CELLS + @ CLOSE-FILE DROP  LOOP
   R-RD-APPLY ;
 : R-ARGV-L ( l --- argv )   \ a list's items, as texts, a NUL-ended vector, "env" first (a spread, 744)
-  DUP R-LEN DUP RX-N !  2 + CELLS R-ALLOT RX-V !
-  0  RX-V @ RX-N @ 1+ CELLS + !
-  RX-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RX-V @ I 1+ CELLS + !  LOOP DROP
-  S" env" R-TEXT R-CSTR RX-V @ !  RX-V @ ;
+  DUP R-LEN DUP RV-N !  2 + CELLS R-ALLOT RV-V !
+  0  RV-V @ RV-N @ 1+ CELLS + !
+  RV-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RV-V @ I 1+ CELLS + !  LOOP DROP
+  S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
 : PL-STAGE-V ( argv last? --- )
   >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
   R> IF  PL-CAPW @ PL-OUT !
@@ -347,6 +349,7 @@ DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/co
 VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
 : R-BOOT ( --- )
   ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
+  S" RILL_GC_STRESS" R-TEXT R-ENV @ IF -1 G-STRESS !  0 R-GC-AT ! THEN     \ a collection at every safe point: the tests' (776)
   0 R-ON-EXIT-XT !
   R-RUN-XT @XT CATCH ?DUP IF
     R-RUN-EXIT                                        \ on EXIT runs however the script ends
@@ -503,3 +506,60 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
   ." rill: $" TYPE ."  is not set" R-NL  1 R-STATUS !  -4000 THROW ;
 : R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
+
+\ ---- The collector (Iteration 776) ---------------------------------------
+\ Rill's values live in the arena, which only grew. At a safe point - between two statements of
+\ the script's top level, where no value is held anywhere but in variables - once the arena has
+\ grown past R-GC-AT, everything the registered variables reach is copied into a new arena, and
+\ the old one is freed back to the system. The copy compacts: a list's items array is cut to its
+\ count. The compilers register every variable of the script that can hold a text, a list, a
+\ record or an item, and every top-level loop's source, with its kind (R-ROOT); a literal text
+\ made once (gene littext) is kept outside the arena (R-FIX), as the regex cache's patterns are.
+9 CONSTANT R-ITEM                                     \ an item variable's kind: compile.4's K-ANY
+: R-FIX ( t --- t' )   \ a text copied out of the arena, for good
+  R-T@ DUP CELL+ ALLOCATE THROW >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
+512 CONSTANT G-MAXROOTS
+G-MAXROOTS CELLS BUFFER: G-RV   G-MAXROOTS CELLS BUFFER: G-RK   VARIABLE G-RN
+: R-ROOT ( addr kind --- )
+  G-RN @ G-MAXROOTS < 0= ABORT" rill: too many variables to collect"
+  G-RK G-RN @ CELLS + !  G-RV G-RN @ CELLS + !  1 G-RN +! ;
+VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
+: G-IN? ( a --- f )   DUP G-OLD @ U< 0= SWAP G-END @ U< AND ;
+: G-BIT ( a --- byte-addr mask )   G-OLD @ - 3 RSHIFT  DUP 3 RSHIFT G-BITS @ +  SWAP 7 AND 1 SWAP LSHIFT ;
+: G-FWD? ( a --- f )   G-BIT SWAP C@ AND 0<> ;
+: G-ALLOT ( n --- a )   7 + -8 AND  G-TOP @ SWAP OVER + G-TOP ! ;
+: G-MOVE ( a n --- a' )   \ an object's n bytes into the new arena; the old place forwarded to it
+  DUP G-ALLOT >R  OVER R@ ROT MOVE  R@ OVER !  G-BIT OVER C@ OR SWAP C!  R> ;
+DEFER G-COPY ( a kind --- a' )
+: G-TEXT ( t --- t' )   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN  DUP @ CELL+ G-MOVE ;
+: G-BOX ( b --- b' )   \ an item, and what it holds
+  DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
+  DUP @ >R  2 CELLS G-MOVE  R>
+  DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR IF OVER CELL+ @ SWAP G-COPY OVER CELL+ ! ELSE DROP THEN ;
+: G-LIST ( l --- l' )   \ a list: its header, its items array cut to the count, each item
+  DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
+  3 CELLS G-MOVE
+  DUP @ OVER CELL+ !
+  DUP @ CELLS 8 MAX G-ALLOT
+  OVER 2 CELLS + @ OVER 3 PICK @ CELLS MOVE  OVER 2 CELLS + !
+  DUP @ 0 ?DO  DUP 2 CELLS + @ I CELLS +  DUP @ G-BOX SWAP !  LOOP ;
+: G-REC ( r --- r' )   \ a record: its keys and values, and its hash table as it is (indices, no pointers)
+  DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
+  4 CELLS G-MOVE
+  DUP @ G-LIST OVER !  DUP CELL+ @ G-LIST OVER CELL+ !
+  DUP 2 CELLS + @ IF  DUP 2 CELLS + @  OVER 3 CELLS + @ CELLS  DUP G-ALLOT  DUP >R SWAP MOVE  R> OVER 2 CELLS + !  THEN ;
+: G-COPY-IMPL ( a kind --- a' )
+  DUP K-TEXT = IF DROP G-TEXT EXIT THEN  DUP K-LIST = IF DROP G-LIST EXIT THEN
+  DUP K-REC = IF DROP G-REC EXIT THEN  R-ITEM = IF G-BOX THEN ;
+' G-COPY-IMPL IS G-COPY
+: R-GC ( --- )   \ what the variables reach, copied to a new arena; the old one freed
+  R-ARENA0 @ G-OLD !  R-TOP @ G-END !
+  R-ARENA-SIZE ALLOCATE THROW  DUP G-TOP !  >R
+  R-TOP @ R-ARENA0 @ - 64 / 1+  DUP ALLOCATE THROW  DUP G-BITS !  SWAP ERASE
+  G-RN @ 0 ?DO  G-RV I CELLS + @  DUP @ G-RK I CELLS + @ G-COPY  SWAP !  LOOP
+  CWD-STACK @ ?DUP IF G-LIST CWD-STACK ! THEN
+  G-BITS @ FREE THROW  R-ARENA0 @ FREE THROW
+  R> DUP R-ARENA0 !  R-ARENA-SIZE + R-END !  G-TOP @ R-TOP !
+  R-TOP @ R-ARENA0 @ - 2* 16777216 MAX R-TOP @ + R-END @ MIN R-GC-AT !
+  G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
+: R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN ;   \ a safe point: the compilers put one before each top-level statement

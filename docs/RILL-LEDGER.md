@@ -435,3 +435,12 @@ set; a program that sets it on the path it takes runs as before. Numbers,
 bools and decimals read 0 where unset, as before: their 0 is a value.
 Nothing is rejected at compile time. On the corpus no read needed the check:
 the generated code did not change.
+
+## 776: Rill frees what it no longer needs; literal texts made once
+
+The user asked for memory used efficiently and given back. A copying
+collector runs at safe points between top-level statements, from variables
+the compilers register with their kinds (docs/RILL-MEMORY.md); the old arena
+is freed. And literal texts are made once, outside the arena (gene littext,
+on): 5 % fewer dispatches, and no copy of a literal made at each use - worth
+its 6.8 % more generated Forth, which the score from 752 had weighed alone.

@@ -11,10 +11,11 @@ listcap	4	1,2,4,8,16	runtime	a new list's first capacity, in items
 growth	4	3,4	runtime	a full list grows to capacity * growth / 2 items (4: twice; 3: half again)
 rxcache	32	0,8,32	runtime	compiled regular expressions kept, by their text (746)
 rechash	16	0,16,64	runtime	a record past this many keys finds them through a hash table (0: always by going through its keys) (750)
-littext	0	0,1	compilers	a literal text made once, when the program is read, not each time its code runs (750)
+littext	1	0,1	compilers	a literal text made once, when the program is read, not each time its code runs (750)
 warn	1	0,1	features	warn ..., a line to the err port (747): off, scripts write echo ... out>err (751)
 argdefault	1	0,1	features	arg(n, default) (747): off, scripts write default(arg(n), default) (751)
 truth	1	0,1	features	an empty text, list or record is false in a condition and under not (751): off, scripts write len(x) > 0, x != ""
 echolit	1	0,1	compilers	echo's literal runs typed from the definition, items typed as they come - no texts made, no concatenation (753)
 loopvar	1	0,1	compilers	a counted loop's variable read as I in a body nothing else could see it from, stored once after the loop (753)
 infer	1	0,1	compilers	one kind per variable over its whole scope - the join of its bindings, from a first pass (764-765; docs/RILL-KINDS.md)
+gc	1	0,1	compilers	a collection may run before each top-level statement: the variables registered with their kinds, the arena copied and the old one freed (776)

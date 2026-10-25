@@ -231,7 +231,7 @@ RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS B
   X-MATCH 0 0 RX-EMIT DROP  RX-FILTER RX-LINK
 \ [gene rxcache]
   RXC-N @ RXC-MAX < IF
-    RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!
+    R-FIX RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!   \ the pattern kept out of the arena (776)
   ELSE DROP THEN ;
 \ [/gene]
 \ [gene !rxcache]

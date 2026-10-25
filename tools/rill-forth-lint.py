@@ -43,6 +43,15 @@ runtime = set()
 for g in sorted(glob.glob('rill/*.4')):
     runtime |= set(names(open(g).read()))
 found = 0
+# a name defined twice in the runtime itself, outside the genes' alternatives: the later one hides the
+# earlier from everything after it (776: a VARIABLE R-BASE, hidden by base()'s R-BASE)
+seen = {}
+for f in sorted(srcs):
+    if f.endswith('.fth'): continue
+    plain = re.sub(r'(?ms)^\\ \[gene [^\]]*\]\n.*?^\\ \[/gene\]', '', srcs[f])
+    for n in names(plain):
+        if n in seen: print('%s: %s is defined again - %s has it (the later hides the earlier)' % (f, n, seen[n])); found += 1
+        else: seen[n] = f
 for f, s in srcs.items():
     program = f.endswith('.fth')                             # a program loaded when it runs, not built into the image
     for n in names(s):
