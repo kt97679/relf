@@ -75,6 +75,8 @@ class Compiler:
         if self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
         sc[name] = kind or 'any'; return kind or 'any'
     EKS = ('text', 'number', 'bool', 'decimal', 'list', 'record')
+    RAW = ('text', 'number', 'bool', 'decimal')   # what a tagged list keeps as it is (gene unbox, 767)
+    def unboxed(self, k): return GENES['unbox'] and GENES['elemkinds'] and k in self.RAW
     def skey_of(self, name): return self.current if self.locals is not None and name in self.locals else None
     def ek_known(self, name): return None if self.ekin is None else self.ekin.get((self.skey_of(name), name))
     def ek_add(self, name, k):             # something of kind k put in list variable name (766)
@@ -155,8 +157,11 @@ class Compiler:
                 self.i += 1; ic, ik = self.expr(); self.take('op', ']')
                 fresh = False
                 if kind == 'list':
-                    code = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2]))
-                    kind = ek if GENES['elemkinds'] and ek in self.EKS else 'any'; code = self.from_any(code, kind); ek = None   # 766
+                    if self.unboxed(ek): code, kind = '%s %s %s R-AT-K' % (code, self.to_num(ic, ik, nxt[2]), self.KCODE[ek]), ek   # 767
+                    else:
+                        code = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2]))
+                        kind = ek if GENES['elemkinds'] and ek in self.EKS else 'any'; code = self.from_any(code, kind)   # 766
+                    ek = None
                 elif kind == 'record': code, kind = '%s %s R-GET' % (self.to_text(ic, ik), code), 'any'
                 elif kind == 'any': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
                 else: raise Error('line %d: only a list or a record is indexed' % nxt[2])
@@ -187,10 +192,13 @@ class Compiler:
                 code.append('R.%s @ OVER SWAP R-EXTEND' % tok[1][1:])
                 sek = self.ek_known(tok[1][1:]); unknown = unknown or sek is None; kinds.add(sek); continue
             c, kd = self.term()
-            code.append('%s OVER R-PUSH' % self.box(c, kd)); kinds.add(kd)
+            code.append((c, kd)); kinds.add(kd)
         self.take('op', ']')
         kinds.discard(None)                                              # the items' join: a new list (766)
         self.ek = None if unknown or not kinds else kinds.pop() if len(kinds) == 1 else 'any'; self.fresh = True
+        raw = self.unboxed(self.ek)
+        code = [x if isinstance(x, str) else ('%s OVER %s R-PUSH-K' % (x[0], self.KCODE[x[1]])) if raw
+                else '%s OVER R-PUSH' % self.box(*x) for x in code]
         return ' '.join(code), 'list'
     def comprehension(self, j):
         start = self.i; self.i = j + 1                            # for x in src [if cond]
@@ -204,12 +212,13 @@ class Compiler:
         tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
         nk = self.bind(name, ike if not second else 'number' if sk == 'list' else 'text')
         sk2 = self.bind(second, ike if sk == 'list' else 'any') if second else None
-        itk = from_ = self.from_any('', sk2 if second else nk) if sk == 'list' else ''
+        ivk = sk2 if second else nk
+        itk = ((' %s R-AT-K' % self.KCODE[ivk]) if self.unboxed(ivk) and ike == ivk else ' R-AT' + self.from_any('', ivk)) if sk == 'list' else ' R-AT'
         cond = None
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, elk = self.expr(); self.i = after
-        item = '%s OVER R-PUSH' % self.box(ec, elk)
+        item = ('%s OVER %s R-PUSH-K' % (ec, self.KCODE[elk])) if self.unboxed(elk) else '%s OVER R-PUSH' % self.box(ec, elk)
         body = '%s IF %s THEN' % (cond, item) if cond else item
         self.ek, self.fresh = (elk if elk in self.EKS else 'any'), True
         if second and sk == 'record':                                   # the key a text, or its box where $name is an item (764)
@@ -218,9 +227,9 @@ class Compiler:
                                                            name, tmp, second, body)), 'list'
         self.ek, self.fresh = (elk if elk in self.EKS else 'any'), True       # a new list of its expression's kind (766)
         if second:
-            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I R-AT%s R.%s ! %s LOOP' %
+            return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO I%s R.%s ! R.%s @ I%s R.%s ! %s LOOP' %
                     (sc, tmp, tmp, '' if nk == 'number' else ' K-NUM R-BOX', name, tmp, itk, second, body)), 'list'
-        return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT%s R.%s ! %s LOOP' %
+        return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I%s R.%s ! %s LOOP' %
                 (sc, tmp, tmp, tmp, itk, name, body)), 'list'
     def literal_record(self):
         code = ['R-NEW-RECORD']
@@ -283,6 +292,9 @@ class Compiler:
         self.take('op', ')')
         if name == 'push' and len(args) == 2: self.ek_add(self.plainvar(*args[0]), args[1][1])        # 766
         if name == 'extend' and len(args) == 2: self.ek_add(self.plainvar(*args[0]), eks[1] if args[1][1] == 'list' else 'any')
+        if name == 'push' and len(args) == 2 and eks[0] == args[1][1] and self.unboxed(eks[0]):
+            self.ek, self.fresh = None, False                                  # 767
+            return '%s %s %s R-PUSH-K' % (args[1][0], args[0][0], self.KCODE[eks[0]]), None
         lib = self.library(name, args, line)
         if lib:
             code, kind = lib
@@ -723,8 +735,9 @@ class Compiler:
         ik = self.bind(item, ike)
         seti = ''
         if idx: seti = 'I%s R.%s ! ' % ('' if self.bind(idx, 'number') == 'number' else ' K-NUM R-BOX', idx)
-        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT%s R.%s ! %s LOOP'
-               % (sc, tmp, tmp, seti, tmp, self.from_any('', ik), item, self.par_wrap(self.loop_body(), par)))
+        out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I%s R.%s ! %s LOOP'
+               % (sc, tmp, tmp, seti, tmp, (' %s R-AT-K' % self.KCODE[ik]) if self.unboxed(ik) and ike == ik else ' R-AT' + self.from_any('', ik),
+                  item, self.par_wrap(self.loop_body(), par)))
         return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
     def if_(self):
         self.take('kw', 'if'); c = self.cond()

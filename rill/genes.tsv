@@ -19,3 +19,4 @@ echolit	1	0,1	compilers	echo's literal runs typed from the definition, items typ
 loopvar	1	0,1	compilers	a counted loop's variable read as I in a body nothing else could see it from, stored once after the loop (753)
 infer	1	0,1	compilers	one kind per variable over its whole scope - the join of its bindings, from a first pass (764-765; docs/RILL-KINDS.md)
 elemkinds	0	0,1	compilers	a list variable's element kind, the join of every item put in it, found with the kinds of gene infer (766; docs/RILL-KINDS.md)
+unbox	0	0,1	runtime	a list of one kind keeps its items as they are, no box each: R-PUSH-K, R-AT-K; any other kind put in boxes them all (767)

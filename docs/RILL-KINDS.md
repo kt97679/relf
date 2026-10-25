@@ -182,3 +182,42 @@ none. The boxes are the cost. So the gene stays off, and its Forth half
 waits for the step that needs it: lists of a known element kind storing
 their items as they are, unboxed - phase 4's storage, brought forward,
 measured through the search like the rest.
+
+## Step 4 - unboxed lists, measured; both genes taken out (Iteration 767)
+
+Gene `unbox` in the runtime: a fourth cell on every list, its tag - 0,
+its items boxes; a kind, every item a value of that kind kept as it is.
+A list takes a tag at its first R-PUSH-K; anything of another kind put in
+boxes all its items first (R-DEMOTE). The generic words box and unbox at
+the edge, so all code stays correct whatever it knows; the library's text
+lists (words, lines, split, all, match, $args) are built tagged. Typed
+code from the Python compiler: R-AT-K for an item of a list whose element
+kind is known (as it is when the tag agrees, converted when not),
+R-PUSH-K into one, typed pushes in literals and comprehensions.
+
+Correct: with unbox off both compilers compile everything as before; on,
+every test and all three pilots print what they should.
+
+Measured, three ways, interleaved, seven runs each (best / median ms):
+
+| | all off | elemkinds | elemkinds + unbox |
+|---|---:|---:|---:|
+| dead-words, 21 dead | 134 / 165 | 135 / 170 | 145 / 186 |
+| native-by-source | 454 / 508 | 442 / 480 | 466 / 521 |
+| tests/rill/library (each word 3,000 times) | 19 / 20 | 20 / 20 | 21 / 22 |
+
+Unboxed lists are slower, not faster. Where a list's element kind is
+known the read is a little cheaper; everywhere it is not - a def's
+parameter, R-JOIN, R-IN, sort, a record's field - a tagged list's item
+is boxed anew on every read, and every push and read pays the tag's test.
+In this runtime, interpreted on the VM, the boxes were not the cost they
+looked.
+
+By the search's rule - a gene that buys nothing goes (752: boxsmall,
+rxanchor) - elemkinds and unbox are both taken out. Their code is in the
+history: commit "Iteration 767: ... measured" holds both. `infer` stays:
+it buys soundness, which is not on the scale.
+
+What phase 4 should start from instead: a profile - which runtime words
+the dispatches go to, on the pilots - before any more guessing. Twice now
+(766, 767) a cost that looked certain was not there.
