@@ -230,6 +230,9 @@ class Compiler:
             need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
         if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
         if name == 'arg': need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'            # 744
+        if name == 'match': need(2); return '%s %s R-MATCH' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'   # 746
+        if name == 'all': need(2); return '%s %s R-ALL' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
+        if name == 'sub': need(3); return '%s %s %s R-SUB' % (self.to_text(*a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'text'
         if name == 'env': need(1); return '%s R-ENV' % self.to_text(*a[0]), 'text'
         if name == 'default': need(2); return '%s %s R-DEFAULT' % (self.to_text(*a[0]), self.to_text(*a[1])), 'text'
         return None

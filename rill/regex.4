@@ -1,0 +1,205 @@
+\ rill/regex.4 - regular expressions for Rill's match, all and sub (Iteration 746).
+\
+\ A pattern is compiled to a small backtracking program - the classic
+\ instructions CHAR, ANY, CLASS, SPLIT, JMP, SAVE, MATCH, BOL, EOL - and
+\ run by RX-RUN, recursive on SPLIT and SAVE. What the scripts use, as
+\ Python's re does it: literals, . (not a line end), \s \S \d \D \w \W,
+\ [classes] with ranges and ^, ( ) and (?: ), |, * + ? and their lazy
+\ forms, ^ and $ (the end, or before a last line end), escaped
+\ punctuation, \n \t. tools/regex-diff.py holds it against Python's re.
+\ A compiled pattern is kept, by its text, for the next call (32 kept).
+
+1 CONSTANT X-CHAR  2 CONSTANT X-ANY  3 CONSTANT X-CLASS  4 CONSTANT X-SPLIT
+5 CONSTANT X-JMP   6 CONSTANT X-SAVE 7 CONSTANT X-MATCH  8 CONSTANT X-BOL  9 CONSTANT X-EOL
+VARIABLE RX-PROG  VARIABLE RX-N  VARIABLE RX-NG          \ the program being made, its length, its groups
+VARIABLE RX-P  VARIABLE RX-PN  VARIABLE RX-I             \ the pattern, its length, the place in it
+1024 CONSTANT RX-MAX
+: RX-ERR ( c-addr u --- )   ." rill: in a pattern: " TYPE R-NL  -4005 THROW ;
+: RX-AT ( index --- addr )   3 * CELLS RX-PROG @ + ;
+: RX-EMIT ( op x y --- index )
+  RX-N @ RX-MAX = IF S" too long" RX-ERR THEN
+  RX-N @ RX-AT  DUP >R 2 CELLS + !  R@ CELL+ !  R> !  RX-N @  1 RX-N +! ;
+: RX-X! ( value index --- )   RX-AT CELL+ ! ;
+: RX-Y! ( value index --- )   RX-AT 2 CELLS + ! ;
+: RX-C ( --- c )   RX-P @ RX-I @ + C@ ;                  \ the pattern's character here
+: RX-END? ( --- f )   RX-I @ RX-PN @ < 0= ;
+: RX-C@ ( i --- c )   RX-P @ + C@ ;
+
+\ classes: 32 bytes, a bit a character
+: BIT+ ( c set --- )   OVER 3 RSHIFT + DUP C@ ROT 7 AND 1 SWAP LSHIFT OR SWAP C! ;
+: BIT? ( c set --- f )   OVER 3 RSHIFT + C@ SWAP 7 AND RSHIFT 1 AND ;
+: SET-NEW ( --- set )   32 ALLOCATE THROW DUP 32 ERASE ;
+VARIABLE SR-SET   \ not R@: inside DO it is the loop's (the lint's catch, 746)
+: SET-RANGE ( lo hi set --- )   SR-SET ! 1+ SWAP ?DO I SR-SET @ BIT+ LOOP ;
+: SET-INVERT ( set --- )   32 0 DO DUP I + DUP C@ INVERT SWAP C! LOOP DROP ;
+VARIABLE SE-TMP
+: SET-ESC ( c set --- f )   \ \s \d \w and their capitals into set; false if c is none of them
+  OVER [CHAR] s = IF NIP >R 9 13 R@ SET-RANGE 32 R> BIT+ -1 EXIT THEN
+  OVER [CHAR] d = IF NIP >R [CHAR] 0 [CHAR] 9 R> SET-RANGE -1 EXIT THEN
+  OVER [CHAR] w = IF NIP >R [CHAR] a [CHAR] z R@ SET-RANGE [CHAR] A [CHAR] Z R@ SET-RANGE
+    [CHAR] 0 [CHAR] 9 R@ SET-RANGE [CHAR] _ R> BIT+ -1 EXIT THEN
+  OVER [CHAR] S = 2 PICK [CHAR] D = OR 2 PICK [CHAR] W = OR IF      \ \S \D \W: the small one's set, inverted, added
+    SET-NEW SE-TMP !  SWAP 32 OR SE-TMP @ RECURSE DROP  SE-TMP @ SET-INVERT
+    32 0 DO DUP I + C@ SE-TMP @ I + C@ OR OVER I + C! LOOP DROP SE-TMP @ FREE THROW -1 EXIT THEN
+  2DROP 0 ;
+: ESC-CHAR ( c --- c' )   DUP [CHAR] n = IF DROP 10 EXIT THEN  DUP [CHAR] t = IF DROP 9 EXIT THEN ;
+: RX-CLASS ( --- set )   \ [ ... ], the [ taken
+  SET-NEW  RX-C [CHAR] ^ = DUP IF 1 RX-I +! THEN >R               ( set ) ( R: negated? )
+  RX-C [CHAR] ] = IF [CHAR] ] OVER BIT+ 1 RX-I +! THEN            \ a ] first is itself
+  BEGIN RX-END? IF S" an unclosed [" RX-ERR THEN RX-C [CHAR] ] <> WHILE
+    RX-C [CHAR] \ = IF 1 RX-I +! RX-C OVER SET-ESC 0= IF RX-C ESC-CHAR OVER BIT+ THEN 1 RX-I +!
+    ELSE RX-C  1 RX-I +!
+      RX-C [CHAR] - = RX-I @ 1+ RX-PN @ < AND IF RX-I @ 1+ RX-C@ [CHAR] ] <> IF
+        1 RX-I +! RX-C 1 RX-I +! 2 PICK SET-RANGE ELSE OVER BIT+ THEN
+      ELSE OVER BIT+ THEN
+    THEN
+  REPEAT 1 RX-I +!  R> IF DUP SET-INVERT THEN ;
+
+\ the parser: alternatives, sequences, repeats, atoms
+DEFER RX-ALT
+: RX-SKIP-CLASS ( i --- i' )   \ past a [ ... ] starting at i
+  1+ DUP RX-PN @ < IF DUP RX-C@ [CHAR] ^ = IF 1+ THEN THEN
+  DUP RX-PN @ < IF DUP RX-C@ [CHAR] ] = IF 1+ THEN THEN
+  BEGIN DUP RX-PN @ < IF DUP RX-C@ [CHAR] ] <> ELSE 0 THEN WHILE
+    DUP RX-C@ [CHAR] \ = IF 1+ THEN 1+ REPEAT  1+ ;
+: RX-ATOM-END ( i --- i' )   \ past the atom starting at i
+  DUP RX-C@
+  DUP [CHAR] \ = IF DROP 2 + EXIT THEN
+  DUP [CHAR] [ = IF DROP RX-SKIP-CLASS EXIT THEN
+  [CHAR] ( = IF 1+ 1                                              ( i depth )
+    BEGIN OVER RX-PN @ < OVER AND WHILE
+      OVER RX-C@ DUP [CHAR] \ = IF DROP SWAP 1+ SWAP ELSE
+      DUP [CHAR] [ = IF DROP SWAP RX-SKIP-CLASS 1- SWAP ELSE
+      DUP [CHAR] ( = IF DROP 1+ ELSE [CHAR] ) = IF 1- THEN THEN THEN THEN
+      SWAP 1+ SWAP
+    REPEAT DROP EXIT THEN
+  1+ ;
+: RX-HAS-ALT? ( --- f )   \ a | at this level ahead, before this group closes
+  RX-I @
+  BEGIN DUP RX-PN @ < WHILE
+    DUP RX-C@ DUP [CHAR] | = IF 2DROP -1 EXIT THEN
+    [CHAR] ) = IF DROP 0 EXIT THEN
+    RX-ATOM-END
+  REPEAT DROP 0 ;
+: RX-ATOM ( --- )
+  RX-C  1 RX-I +!
+  DUP [CHAR] . = IF DROP X-ANY 0 0 RX-EMIT DROP EXIT THEN
+  DUP [CHAR] ^ = IF DROP X-BOL 0 0 RX-EMIT DROP EXIT THEN
+  DUP [CHAR] $ = IF DROP X-EOL 0 0 RX-EMIT DROP EXIT THEN
+  DUP [CHAR] [ = IF DROP RX-CLASS X-CLASS SWAP 0 RX-EMIT DROP EXIT THEN
+  DUP [CHAR] \ = IF DROP RX-END? IF S" a \ at the end" RX-ERR THEN
+    RX-C 1 RX-I +!  SET-NEW 2DUP SET-ESC IF NIP X-CLASS SWAP 0 RX-EMIT DROP EXIT THEN
+    FREE THROW ESC-CHAR X-CHAR SWAP 0 RX-EMIT DROP EXIT THEN
+  DUP [CHAR] ( = IF DROP
+    RX-C [CHAR] ? = RX-I @ 1+ RX-PN @ < AND IF RX-I @ 1+ RX-C@ [CHAR] : = IF
+      2 RX-I +! RX-ALT  RX-C [CHAR] ) <> IF S" a ( not closed" RX-ERR THEN 1 RX-I +! EXIT THEN THEN
+    1 RX-NG +!  RX-NG @ >R  X-SAVE R@ 2* 0 RX-EMIT DROP
+    RX-ALT  RX-END? IF S" a ( not closed" RX-ERR THEN RX-C [CHAR] ) <> IF S" a ( not closed" RX-ERR THEN 1 RX-I +!
+    X-SAVE R> 2* 1+ 0 RX-EMIT DROP EXIT THEN
+  X-CHAR SWAP 0 RX-EMIT DROP ;
+: RX-SWAP-SPLIT ( split --- )   \ its two ways the other way round: a lazy repeat
+  DUP RX-AT CELL+ @  OVER RX-AT 2 CELLS + @  2 PICK RX-X!  SWAP RX-Y! ;
+: RX-REPEAT ( --- )   \ an atom and its * + ? - lazy with a ? after; decided before the atom is made
+  RX-I @ RX-ATOM-END
+  DUP RX-PN @ < IF DUP RX-C@ ELSE 0 THEN                          ( end q )
+  DUP [CHAR] * = OVER [CHAR] + = OR OVER [CHAR] ? = OR 0= IF 2DROP RX-ATOM EXIT THEN
+  SWAP 1+ DUP RX-PN @ < IF RX-C@ [CHAR] ? = ELSE DROP 0 THEN      ( q lazy )
+  OVER [CHAR] + = IF                                              \ L1: e  SPLIT L1, next
+    RX-N @  RX-ATOM  1 RX-I +!
+    X-SPLIT SWAP RX-N @ 1+ RX-EMIT                                ( q lazy split )
+  ELSE                                                            \ SPLIT L1, out  L1: e  [JMP back]  out:
+    X-SPLIT RX-N @ 1+ 0 RX-EMIT
+    RX-ATOM  1 RX-I +!
+    2 PICK [CHAR] * = IF X-JMP OVER 0 RX-EMIT DROP THEN
+    RX-N @ OVER RX-Y!
+  THEN
+  SWAP IF 1 RX-I +! RX-SWAP-SPLIT ELSE DROP THEN  DROP ;
+: RX-CONCAT ( --- )   BEGIN RX-END? 0= IF RX-C DUP [CHAR] | <> SWAP [CHAR] ) <> AND ELSE 0 THEN WHILE RX-REPEAT REPEAT ;
+: RX-ALT-IMPL ( --- )
+  RX-HAS-ALT? 0= IF RX-CONCAT EXIT THEN
+  0                                                               ( jumps... n )
+  BEGIN RX-HAS-ALT? WHILE
+    X-SPLIT RX-N @ 1+ 0 RX-EMIT >R  RX-CONCAT
+    X-JMP 0 0 RX-EMIT SWAP 1+                                     ( jumps... jmp n+1 ) \ the jump kept under the count
+    RX-N @ R> RX-Y!  1 RX-I +!                                    \ the | taken
+  REPEAT
+  RX-CONCAT
+  0 ?DO RX-N @ SWAP RX-X! LOOP ;
+' RX-ALT-IMPL IS RX-ALT
+
+\ the matcher
+VARIABLE RX-T  VARIABLE RX-TN  VARIABLE RX-ENDAT  VARIABLE RX-START  VARIABLE RX-NOEMPTY
+20 CONSTANT RX-SLOTS   RX-SLOTS CELLS BUFFER: RX-SAVED              \ each group's start and end
+DEFER RX-RUN ( pc sp --- f )
+: RX-NEXT ( pc sp --- pc+1 sp+1 0 )   1+ SWAP 1+ SWAP 0 ;
+: RX-FAIL ( pc sp --- 0 -1 )   2DROP 0 -1 ;
+: RX-STEP ( pc sp --- pc' sp' 0 | f -1 )   \ one instruction: on, or the answer
+  OVER RX-AT @
+  DUP X-CHAR = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
+    DUP RX-T @ + C@  2 PICK RX-AT CELL+ @ = IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
+  DUP X-ANY = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
+    DUP RX-T @ + C@ 10 <> IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
+  DUP X-CLASS = IF DROP  DUP RX-TN @ < 0= IF RX-FAIL EXIT THEN
+    DUP RX-T @ + C@  2 PICK RX-AT CELL+ @ BIT? IF RX-NEXT ELSE RX-FAIL THEN EXIT THEN
+  DUP X-MATCH = IF DROP  RX-NOEMPTY @ IF DUP RX-START @ = IF RX-FAIL EXIT THEN THEN   \ an empty match refused here
+    RX-ENDAT ! DROP -1 -1 EXIT THEN
+  DUP X-JMP = IF DROP SWAP RX-AT CELL+ @ SWAP 0 EXIT THEN
+  DUP X-SPLIT = IF DROP  OVER RX-AT CELL+ @ OVER RX-RUN IF 2DROP -1 -1 EXIT THEN
+    SWAP RX-AT 2 CELLS + @ SWAP 0 EXIT THEN
+  DUP X-SAVE = IF DROP
+    OVER RX-AT CELL+ @ CELLS RX-SAVED +  DUP @ >R  2DUP !  >R  SWAP 1+ SWAP RX-RUN
+    R> R> SWAP ROT IF 2DROP -1 -1 EXIT THEN  !  0 -1 EXIT THEN
+  DUP X-BOL = IF DROP DUP 0= IF SWAP 1+ SWAP 0 ELSE RX-FAIL THEN EXIT THEN
+  X-EOL = IF  DUP RX-TN @ =  OVER 1+ RX-TN @ =  2 PICK RX-T @ + C@ 10 = AND OR
+    IF SWAP 1+ SWAP 0 ELSE RX-FAIL THEN EXIT THEN
+  RX-FAIL ;
+: RX-RUN-IMPL ( pc sp --- f )   BEGIN RX-STEP UNTIL ;
+' RX-RUN-IMPL IS RX-RUN
+: RX-AT-POS ( start --- f )   \ a match starting just here
+  DUP RX-START !  RX-SAVED RX-SLOTS CELLS 255 FILL                  \ every group unmatched (-1)
+  0 OVER RX-RUN IF RX-SAVED ! RX-ENDAT @ RX-SAVED CELL+ ! -1 EXIT THEN  DROP 0 ;
+: RX-SEARCH ( start --- f )   \ the first match at start or after: its bounds in RX-SAVED's first two cells
+  0 RX-NOEMPTY !
+  BEGIN DUP RX-TN @ > 0= WHILE  DUP RX-AT-POS IF DROP -1 EXIT THEN  1+  REPEAT DROP 0 ;
+: RX-SEARCH-AFTER ( start empty? --- f )   \ the next match, as sre goes on: after an empty match at
+  \ start, a match there must take something - then the search goes on from start + 1
+  IF -1 RX-NOEMPTY !  DUP RX-AT-POS 0 RX-NOEMPTY ! IF DROP -1 EXIT THEN 1+ THEN  RX-SEARCH ;
+
+\ patterns made, kept by their text
+32 CONSTANT RXC-MAX
+RXC-MAX CELLS BUFFER: RXC-PAT   RXC-MAX CELLS BUFFER: RXC-PROG   RXC-MAX CELLS BUFFER: RXC-NG   VARIABLE RXC-N
+: RX-COMPILE ( pat --- )   \ RX-PROG and RX-NG for the pattern, made or found
+  RXC-N @ 0 ?DO
+    DUP R-T@ I CELLS RXC-PAT + @ R-T@ COMPARE 0= IF
+      DROP I CELLS RXC-PROG + @ RX-PROG !  I CELLS RXC-NG + @ RX-NG !  UNLOOP EXIT THEN
+  LOOP
+  RX-MAX 3 * CELLS ALLOCATE THROW RX-PROG !  0 RX-N !  0 RX-NG !  0 RX-I !
+  DUP R-T@ RX-PN ! RX-P !
+  RX-ALT  RX-END? 0= IF S" a ) with no (" RX-ERR THEN
+  X-MATCH 0 0 RX-EMIT DROP
+  RXC-N @ RXC-MAX < IF
+    RXC-N @ CELLS RXC-PAT + !  RX-PROG @ RXC-N @ CELLS RXC-PROG + !  RX-NG @ RXC-N @ CELLS RXC-NG + !  1 RXC-N +!
+  ELSE DROP THEN ;
+: RX-TEXT! ( t --- )   R-T@ RX-TN ! RX-T ! ;
+: RX-SLICE ( from to --- t )   OVER - SWAP RX-T @ + SWAP R-TEXT ;
+: RX-GROUP ( k --- t )   \ a group's text, empty when it did not take part
+  2* CELLS RX-SAVED + DUP @ DUP 0< IF 2DROP 0 0 R-TEXT EXIT THEN  SWAP CELL+ @ RX-SLICE ;
+: R-MATCH ( t pat --- l )   \ match(text, pattern): [whole, group 1, ...], or [] - found anywhere, as re.search
+  RX-COMPILE RX-TEXT!  R-NEW-LIST
+  0 RX-SEARCH IF  RX-NG @ 1+ 0 DO I RX-GROUP K-TEXT R-BOX OVER R-PUSH LOOP  THEN ;
+: RX-ITEM ( --- t )   RX-NG @ IF 1 ELSE 0 THEN RX-GROUP ;             \ all(): group 1, or the whole match
+VARIABLE RX-POS
+VARIABLE RX-WASEMPTY
+: RX-NEXT-MATCH ( --- f )   RX-POS @ RX-TN @ > IF 0 EXIT THEN  RX-POS @ RX-WASEMPTY @ RX-SEARCH-AFTER ;
+: RX-ADVANCE ( --- )   RX-SAVED CELL+ @ DUP RX-POS !  RX-SAVED @ = RX-WASEMPTY ! ;
+: R-ALL ( t pat --- l )   \ all(text, pattern): every match, as re.findall
+  RX-COMPILE RX-TEXT!  R-NEW-LIST  0 RX-POS !  0 RX-WASEMPTY !
+  BEGIN RX-NEXT-MATCH WHILE  RX-ITEM K-TEXT R-BOX OVER R-PUSH  RX-ADVANCE  REPEAT ;
+: R-SUB ( t pat repl --- t2 )   \ sub(text, pattern, replacement): every match replaced, as re.sub
+  >R RX-COMPILE RX-TEXT!  0 RX-POS !  0 RX-WASEMPTY !  0           ( n )  ( R: repl )
+  BEGIN RX-NEXT-MATCH WHILE
+    RX-POS @ RX-SAVED @ RX-SLICE SWAP 1+  R@ SWAP 1+               \ the text before, the replacement
+    RX-ADVANCE
+  REPEAT
+  RX-POS @ RX-TN @ < IF RX-POS @ RX-TN @ RX-SLICE SWAP 1+ THEN
+  R> DROP  DUP 0= IF DROP 0 0 R-TEXT EXIT THEN  R-CONCAT ;

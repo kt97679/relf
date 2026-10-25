@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.." || exit 2
 engine=${1:-./relf64} kernel=${2:-forth/kernel64.img} out=${3:-kernel64-rill.img}
 tmp=$out.tmp.$$
 {
-    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 rill/rt.4 rill/compile.4; do
+    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 rill/rt.4 rill/regex.4 rill/compile.4; do
         printf 'S" %s" INCLUDED\n' "$f"
     done
     printf "' R-BOOT SET-BOOT\nS\" %s\" SAVE-SYSTEM\nBYE\n" "$tmp"

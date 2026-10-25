@@ -1,0 +1,10 @@
+# match, all, sub (746) - the expected output is Python's re's
+l = "   1234 FOO-BAR  12 3 4 5 6 7"
+m = match($l, '^\s+(\d+)\s+(\S+)\s+(\d+) (\d+)')
+echo {len($m)} groups: $m[1] $m[2] $m[3]
+if (len(match("abc", '\d')) == 0) { echo no digit }
+echo {join(all(": FOO 1 VARIABLE BAR CONSTANT BAZ", '(?:^|\s)(?::|VARIABLE|CONSTANT)\s+(\S+)'), ",")}
+s = sub('code \ a comment', '\\ .*$|\\$', "")
+echo "[$s]"
+echo {sub(sub("x ( a b ) y", '\( [^)]*\)', ""), '\s+', " ")}
+# a raw string keeps its backslash; in "..." a backslash takes the next character as itself
