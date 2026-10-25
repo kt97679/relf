@@ -13,6 +13,10 @@ VARIABLE R-TOP   VARIABLE R-END
   ALIGNED R-TOP @ SWAP OVER + DUP R-END @ U> ABORT" rill: the arena is full" R-TOP ! ;
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
 : R-T@ ( t --- c-addr u )   DUP CELL+ SWAP @ ;
+VARIABLE RB-T
+: R-BYTES ( b1 .. bn n --- t )   \ a text from n bytes on the stack: literals with " or a line end
+  DUP CELL+ R-ALLOT RB-T !  DUP RB-T @ !
+  BEGIN DUP WHILE  1-  SWAP OVER RB-T @ CELL+ + C!  REPEAT DROP  RB-T @ ;
 : R-NUM ( n --- t )   DUP ABS 0 <# #S ROT SIGN #> R-TEXT ;
 VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : R-CONCAT ( t1 .. tn n --- t )   \ n texts joined, the deepest first
@@ -144,3 +148,82 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed: its status
     ." rill: error " . R-NL  2 SYS-EXIT
   THEN  0 SYS-EXIT ;
+
+\ ---- Lists and records (stage 2, Iteration 739) -------------------------
+\ An item of a list or a field of a record is a box: two cells, its kind
+\ and its value - the one place values of different kinds meet (Part 5).
+\ A list is [count][capacity][items], the items a cell array of boxes; a
+\ record the same with a key array beside it, each key a text. Both grow
+\ by a new array twice the size, the old one left in the arena.
+: /STRING ( c-addr u n --- c-addr' u' )   TUCK - >R + R> ;   \ not in the kernel
+1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC
+VARIABLE RL   VARIABLE RJ-SEP
+: R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;
+: R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
+: R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-NL  -4001 THROW ;
+: R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
+: R-ANY>TEXT ( box --- t )
+  R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
+  DUP K-NUM = IF DROP R-NUM EXIT THEN
+  K-BOOL = IF IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
+  S" (list or record)" R-TEXT ;
+: R-NEW-LIST ( --- l )   3 CELLS R-ALLOT  0 OVER !  4 OVER CELL+ !  4 CELLS R-ALLOT OVER 2 CELLS + ! ;
+: R-LEN ( l --- n )   @ ;
+: R-ITEMS ( l --- a )   2 CELLS + @ ;
+: R-GROW ( l --- )   \ room for one more item
+  DUP @ OVER CELL+ @ < IF DROP EXIT THEN
+  DUP CELL+ @ 2* DUP CELLS R-ALLOT              ( l cap2 a2 )
+  >R OVER R-ITEMS R@ 3 PICK @ CELLS MOVE         \ the items copied
+  OVER CELL+ !  R> SWAP 2 CELLS + ! ;
+: R-PUSH ( box l --- )   DUP R-GROW  DUP >R  R-ITEMS R@ @ CELLS + !  1 R> +! ;
+: R-AT ( l i --- box )
+  OVER @ OVER U> 0= IF ." rill: index " . ." past a list of " @ . R-NL -4002 THROW THEN
+  CELLS SWAP R-ITEMS + @ ;
+: R-SET ( box l i --- )
+  OVER @ OVER U> 0= IF ." rill: index " . ." past a list" R-NL -4002 THROW THEN
+  CELLS SWAP R-ITEMS + ! ;
+: R-SHIFT ( l --- box )   \ the first item, out
+  DUP @ 0= IF ." rill: shift of an empty list" R-NL -4002 THROW THEN
+  DUP R-ITEMS @ >R  DUP R-ITEMS DUP CELL+ SWAP 2 PICK @ 1- CELLS MOVE  -1 SWAP +!  R> ;
+: R-EXTEND ( l m --- )   DUP @ 0 ?DO  DUP I R-AT 2 PICK R-PUSH  LOOP 2DROP ;
+: R-SLICE ( l a b --- l2 )   \ items a up to (not with) b
+  \ The new list in a variable, not on the return stack: inside DO, R@
+  \ is the loop's index - R-JOIN, R-SLICE and R-RANGE faulted on it.
+  R-NEW-LIST RL !  2 PICK @ MIN  SWAP  ?DO  DUP I R-AT RL @ R-PUSH  LOOP DROP  RL @ ;
+: R-BOX= ( box1 box2 --- f )
+  R-UNBOX ROT R-UNBOX ROT OVER <> IF 2DROP DROP 0 EXIT THEN    ( v2 v1 kind )
+  K-TEXT = IF R-T= ELSE = THEN ;
+: R-IN ( box l --- f )   0 SWAP DUP @ 0 ?DO  DUP I R-AT 3 PICK R-BOX= IF NIP -1 SWAP LEAVE THEN  LOOP DROP NIP ;
+\ records
+VARIABLE RK
+: R-NEW-RECORD ( --- r )   4 CELLS R-ALLOT  R-NEW-LIST OVER !  R-NEW-LIST OVER CELL+ ! ;
+: R-KEYS ( r --- l )   @ ;
+: R-VALS ( r --- l )   CELL+ @ ;
+: R-FIND ( key r --- i | -1 )   \ key a text
+  RK !  -1  RK @ R-KEYS DUP @ 0 ?DO  DUP I R-AT R-UNBOX DROP 3 PICK R-T= IF NIP I SWAP LEAVE THEN  LOOP DROP NIP ;
+: R-PUT ( box key r --- )
+  2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R> R-VALS R-PUSH  EXIT  THEN
+  ROT DROP SWAP R-VALS SWAP R-SET ;
+: R-GET ( key r --- box )
+  2DUP R-FIND DUP 0< IF DROP DROP ." rill: no field " R-TYPE R-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
+: R-HAS ( key r --- f )   R-FIND 0< 0= ;
+\ texts and lists
+: R-SPLIT-WS ( t --- l )   \ the words of a text
+  R-NEW-LIST >R  R-T@
+  BEGIN  BEGIN DUP WHILE OVER C@ 33 < WHILE 1 /STRING REPEAT THEN  DUP WHILE
+    OVER >R  BEGIN DUP WHILE OVER C@ 32 > WHILE 1 /STRING REPEAT THEN
+    R> 2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
+  REPEAT 2DROP R> ;
+: R-LINES ( t --- l )   \ its lines; a last empty one not counted
+  R-NEW-LIST >R  R-T@
+  BEGIN DUP WHILE
+    2DUP 10 SCAN  2SWAP DROP                       ( a2 u2 a )   \ a2: at the LF, or the end
+    2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
+    DUP IF 1 /STRING THEN
+  REPEAT 2DROP R> ;
+: R-JOIN ( l sep --- t )   \ the items as texts, sep between
+  RJ-SEP !  0 SWAP  DUP @ 0 ?DO
+    I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT R-ANY>TEXT  ROT 1+ ROT
+  LOOP DROP R-CONCAT ;
+: R-RANGE ( a b --- l )   R-NEW-LIST RL !  1+ SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
+: R-NUMBER ( t --- n )   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN  >NUMBER NIP IF ." rill: not a number" R-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;

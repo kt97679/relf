@@ -763,6 +763,7 @@ do not trust the absence of a line below.
 - 736 — stage 1 begun: Rill's image (15 KB), rill/rt.4, prototype compiler tools/rillc.py; defs with locals still fault at boot
 - 737 — Rill runs: defs (ALLOC-BUFFERS, xt by offset), commands via FORK/EXECVE; fib 1.33x, loop 1.22x of hand-written Forth
 - 738 — Rill: pipelines, $(...), redirections and ports; pure defs keep parameters on the stack - fib level with hand-written Forth
+- 739 — Rill stage 2: lists and records (boxed items), comprehensions, for over lists/records/ranges, the list and text library
 
 ### Not tied to an iteration
 

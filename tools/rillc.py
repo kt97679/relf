@@ -22,10 +22,10 @@ TOKEN = re.compile(r'''
 
  | (?P<str>"(?:[^"\\]|\\.)*") | (?P<raw>'[^']*')
  | (?P<var>\$[A-Za-z_][A-Za-z0-9_]*)
- | (?P<op>\$\(|==|!=|<=|>=|>>|\+=|-=|->|\?\?|[<>=(){},;|])
- | (?P<word>[^\s"'$(){},;<>=]+)
+ | (?P<op>\$\(|==|!=|<=|>=|>>|\+=|-=|->|\?\?|[<>=(){},;|\[\]])
+ | (?P<word>[^\s"'$(){},;<>=\[\]]+)
 ''', re.X)
-KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in'}
+KEYWORDS = {'if', 'else', 'while', 'def', 'return', 'and', 'or', 'not', 'for', 'in', 'break'}
 
 def tokenize(src):
     toks, line = [], 1
@@ -64,23 +64,31 @@ class Compiler:
         raise Error('line %d: $%s is not set' % (line, name))
 
     # expressions, by precedence climbing: each returns (forth, kind)
-    PREC = {'or': 1, 'and': 2, '==': 3, '!=': 3, '<': 3, '<=': 3, '>': 3, '>=': 3, '+': 4, '-': 4, '*': 5, '/': 5, '%': 5}
+    PREC = {'or': 1, 'and': 2, 'in': 3, 'not in': 3, '==': 3, '!=': 3, '<': 3, '<=': 3, '>': 3, '>=': 3, '+': 4, '-': 4, '*': 5, '/': 5, '%': 5}
     def expr(self, minp=1):
         code, kind = self.unary()
         while True:
             op = self.peek()[1]
+            if op == 'not' and self.peek(1)[1] == 'in': op = 'not in'
             if op not in self.PREC or self.peek()[0] not in ('op', 'kw', 'word') or self.PREC[op] < minp: return code, kind
-            self.i += 1
+            self.i += 2 if op == 'not in' else 1
             rcode, rkind = self.expr(self.PREC[op] + 1)
             code, kind = self.binop(op, code, kind, rcode, rkind)
     def binop(self, op, a, ak, b, bk):
         line = self.peek()[2]
         if op in ('and', 'or'):
             return '%s %s %s' % (a, b, op.upper()), 'bool'
-        if op in ('==', '!=') and ak == 'text' and bk == 'text':
-            return '%s %s R-T=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
-        if ak != 'number' or bk != 'number':
-            raise Error('line %d: %s needs numbers, has %s and %s' % (line, op, ak, bk))
+        if op in ('in', 'not in'):
+            neg = ' 0=' if op == 'not in' else ''
+            if bk == 'record': return '%s %s R-HAS%s' % (self.to_text(a, ak), b, neg), 'bool'
+            if bk == 'list': return '%s %s R-IN%s' % (self.box(a, ak), b, neg), 'bool'
+            raise Error('line %d: in needs a list or a record' % line)
+        if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
+            return '%s %s R-T=%s' % (self.to_text(a, ak), self.to_text(b, bk), '' if op == '==' else ' 0='), 'bool'
+        if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk == ak and ak != 'any':
+            raise Error('line %d: comparing lists or records is not in stage 2' % line)
+        a, b = self.to_num(a, ak, line), self.to_num(b, bk, line)
+        ak = bk = 'number'
         if getattr(self, 'stack', None): self.depth -= 1
         kind = 'number' if op in '+-*/%' else 'bool'
         short = {('+', '1'): '1+', ('-', '1'): '1-', ('>', '0'): '0>', ('<', '0'): '0<', ('==', '0'): '0=', ('!=', '0'): '0<>'}
@@ -93,8 +101,68 @@ class Compiler:
         if tok[1] == '-' and tok[0] == 'word': self.i += 1; c, k = self.unary(); return c + ' NEGATE', 'number'
         return self.term()
     def term(self):
+        code, kind = self.term0()
+        while True:                                   # $x[i] and $x.f, touching what they follow
+            nxt, prev = self.peek(), self.t[self.i - 1]
+            if nxt[1] == '[' and nxt[3] == prev[4]:
+                self.i += 1; ic, ik = self.expr(); self.take('op', ']')
+                if kind == 'list': code, kind = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
+                elif kind == 'record': code, kind = '%s %s R-GET' % (self.to_text(ic, ik), code), 'any'
+                elif kind == 'any': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
+                else: raise Error('line %d: only a list or a record is indexed' % nxt[2])
+            elif nxt[0] == 'word' and nxt[1].startswith('.') and nxt[3] == prev[4] and kind in ('record', 'any'):
+                self.i += 1
+                for f in nxt[1][1:].split('.'):
+                    code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
+                    code, kind = 'S" %s" R-TEXT %s R-GET' % (f, code), 'any'
+            else:
+                return code, kind
+    def literal_list(self):
+        """[ items ] or [expr for x in src if cond]; the [ taken."""
+        j, depth = self.i, 0
+        while not (depth == 0 and self.t[j][1] == ']'):          # a comprehension? a for at this level
+            if self.t[j][1] in ('[', '(', '{'): depth += 1
+            elif self.t[j][1] in (']', ')', '}'): depth -= 1
+            elif depth == 0 and self.t[j][1] == 'for': return self.comprehension(j)
+            j += 1
+        code = ['R-NEW-LIST']
+        while self.peek()[1] != ']':
+            if self.peek()[0] == 'var' and False: pass
+            c, kd = self.term()
+            code.append('%s OVER R-PUSH' % self.box(c, kd))
+        self.take('op', ']'); return ' '.join(code), 'list'
+    def comprehension(self, j):
+        start = self.i; self.i = j + 1                            # for x in src [if cond]
+        name = self.take('word')[1]; self.take('kw', 'in')
+        sc, sk = self.expr()
+        if sk != 'list': raise Error('line %d: for needs a list' % self.peek()[2])
+        tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
+        self.scope()[name] = 'any'
+        cond = None
+        if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr()
+        end = self.i; self.take('op', ']'); after = self.i
+        self.i = start; ec, ek = self.expr(); self.i = after
+        item = '%s OVER R-PUSH' % self.box(ec, ek)
+        body = '%s IF %s THEN' % (cond, item) if cond else item
+        return ('R-NEW-LIST %s R.%s ! R.%s @ R-LEN 0 ?DO R.%s @ I R-AT R.%s ! %s LOOP' %
+                (sc, tmp, tmp, tmp, name, body)), 'list'
+    def literal_record(self):
+        code = ['R-NEW-RECORD']
+        while self.peek()[1] != '}':
+            k = self.take()
+            if k[0] == 'word' and k[1].endswith(':'): key = k[1][:-1]
+            elif k[0] in ('raw', 'str') and self.peek()[1] == ':': key = k[1][1:-1]; self.i += 1
+            else: raise Error('line %d: a record field is name: value' % k[2])
+            c, kd = self.expr()
+            code.append('%s %s 2 PICK R-PUT' % (self.box(c, kd), self.lit_text(key)))
+            if self.peek()[1] == ',': self.i += 1
+            self.skip_nl()
+        self.take('op', '}'); return ' '.join(code), 'record'
+    def term0(self):
         tok = self.take()
         k, v, line = tok[:3]
+        if v == '[': return self.literal_list()
+        if v == '{': self.skip_nl(); return self.literal_record()
         if k == 'word' and re.fullmatch(r'-?\d+', v):
             if getattr(self, 'stack', None): self.depth += 1
             return v, 'number'
@@ -119,14 +187,39 @@ class Compiler:
             args.append(self.expr())
             if self.peek()[1] == ',': self.i += 1
         self.take('op', ')')
-        if name == 'len':
-            return '%s @' % args[0][0], 'number'
+        lib = self.library(name, args, line)
+        if lib: return lib
         if name not in self.funcs: raise Error('line %d: %s() is not defined (a def comes before its use)' % (line, name))
         params, kind = self.funcs[name]
         if len(args) != len(params): raise Error('line %d: %s() takes %d arguments' % (line, name, len(params)))
+        if name not in getattr(self, 'pure_defs', set()):
+            args = [(self.box(c, k), 'any') for c, k in args]          # a def's parameters are boxes
         word = 'RECURSE' if name == getattr(self, 'current', None) else 'R:%s' % name   # Forth hides a word until its ;
         if getattr(self, 'stack', None): self.depth += (1 if kind else 0) - len(args)
         return ' '.join(a[0] for a in args) + ' ' + word, kind
+    def library(self, name, args, line):
+        a = args
+        def need(n, *kinds):
+            if len(a) != n: raise Error('line %d: %s() takes %d arguments' % (line, name, n))
+        if name == 'len':
+            need(1); c, k = a[0]
+            if k == 'any': return '%s R-UNBOX DROP @' % c, 'number'
+            if k == 'record': return '%s R-KEYS @' % c, 'number'
+            return '%s @' % c, 'number'                            # a text's or a list's count
+        if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
+        if name == 'join': need(2); return '%s %s R-JOIN' % (a[0][0], self.to_text(*a[1])), 'text'
+        if name == 'range': need(2); return '%s %s R-RANGE' % (self.to_num(*a[0], line), self.to_num(*a[1], line)), 'list'
+        if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
+        if name == 'text': need(1); return self.to_text(*a[0]), 'text'
+        if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), a[0][0]), None
+        if name == 'extend': need(2); return '%s %s R-EXTEND' % (a[0][0], a[1][0]), None
+        if name == 'shift': need(1); return '%s R-SHIFT' % a[0][0], 'any'
+        if name == 'first': need(1); return '%s 0 R-AT' % a[0][0], 'any'
+        if name == 'slice':
+            if len(a) == 2: return '%s %s OVER R-LEN R-SLICE' % (a[0][0], self.to_num(*a[1], line)), 'list'
+            need(3); return '%s %s %s R-SLICE' % (a[0][0], self.to_num(*a[1], line), self.to_num(*a[2], line)), 'list'
+        if name == 'keys': need(1); return '%s R-KEYS' % a[0][0], 'list'
+        return None
     def lit(self, s):
         return 'S" %s" R-TEXT' % s if '"' not in s else self.bytes_lit(s)
     def bytes_lit(self, s):
@@ -149,7 +242,13 @@ class Compiler:
                 if lit: parts.append(self.lit_text(lit)); lit = ''
                 if m:
                     name = m.group(1); i += m.end()
-                    parts.append(self.to_text('R.%s @' % name, self.kind_of(name, line)))
+                    code, kind = 'R.%s @' % name, self.kind_of(name, line)
+                    while kind in ('record', 'any'):                  # "$host.name": a field, in a string too
+                        f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
+                        if not f: break
+                        code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
+                        code, kind = 'S" %s" R-TEXT %s R-GET' % (f.group(1), code), 'any'; i += f.end()
+                    parts.append(self.to_text(code, kind))
                 else:
                     depth, j = 1, i + 1
                     while depth: depth += {'{': 1, '}': -1}.get(body[j], 0); j += 1
@@ -163,8 +262,18 @@ class Compiler:
     def lit_text(self, s):
         if '"' in s or '\n' in s or '\t' in s: return self.bytes_lit(s)
         return 'S" %s" R-TEXT' % s
+    KCODE = {'number': 'K-NUM', 'text': 'K-TEXT', 'bool': 'K-BOOL', 'list': 'K-LIST', 'record': 'K-REC'}
     def to_text(self, code, kind):
-        return code if kind == 'text' else code + ' R-NUM'
+        if kind == 'text': return code
+        if kind == 'any': return code + ' R-ANY>TEXT'
+        if kind == 'list': return code + ' S"  " R-TEXT R-JOIN'          # a list as text: its items, a blank between
+        return code + ' R-NUM'
+    def to_num(self, code, kind, line):
+        if kind in ('number', 'bool'): return code
+        if kind == 'any': return code + ' R-ANY>NUM'
+        raise Error('line %d: a number is needed here, not a %s' % (line, kind))
+    def box(self, code, kind):
+        return code if kind == 'any' else '%s %s R-BOX' % (code, self.KCODE[kind])
 
     # statements
     def block(self):
@@ -186,28 +295,30 @@ class Compiler:
                 c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
             out = '%s EXIT' % c
         elif v == 'def': out = self.def_(); return ''
+        elif v == 'for': out = self.for_()
+        elif v == 'break': self.i += 1; out = 'LEAVE'
+        elif k == 'word' and self.peek(1)[1] == '[' and self.peek(1)[3] == self.peek()[4]:
+            name = v; self.i += 2
+            ic, ik = self.expr(); self.take('op', ']'); self.take('op', '=')
+            c, kd = self.expr(); ck = self.kind_of(name, line)
+            if ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
+            elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
+            else: raise Error('line %d: $%s is not a list or a record' % (line, name))
         elif k == 'word' and self.peek(1)[1] in ('=', '+=', '-='):
             name = v; self.i += 1; op = self.take()[1]
             c, kd = self.expr()
             sc = self.scope()
             if op != '=':
-                if self.kind_of(name, line) != 'number' or kd != 'number': raise Error('line %d: %s needs numbers' % (line, op))
+                if self.kind_of(name, line) != 'number': raise Error('line %d: %s needs a number to change' % (line, op))
                 c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, 'number', c, kd)
             elif name in sc and sc[name] != kd:
                 raise Error('line %d: $%s is %s; it cannot become %s' % (line, name, sc[name], kd))
             sc[name] = kd; self.names.add(name)
             out = '%s R.%s !' % (c, name)
         elif k == 'word' and v == 'echo' and not self.plumbed():
-            self.i += 1; parts = []
-            while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in (';', '}'):
-                if self.peek()[1] == '{':
-                    self.i += 1; c, kd = self.expr(); self.take('op', '}')
-                elif self.peek()[0] == 'kw':
-                    c, kd = self.lit(self.take()[1]), 'text'
-                else:
-                    c, kd = self.term()
-                parts.append(self.to_text(c, kd) + ' R-TYPE')
-            out = ' SPACE '.join(parts) + (' R-NL' if parts else 'R-NL')
+            self.i += 1
+            parts, _ = self.args((';', '}'))
+            out = ' SPACE '.join(p + ' R-TYPE' for p in parts) + (' R-NL' if parts else 'R-NL')
         elif k == 'word' and self.peek(1)[1] == '(':
             self.i += 1; c, kd = self.call(v, line); out = c + ('' if kd is None else ' DROP')
         elif k in ('word', 'str', 'raw', 'var'):
@@ -237,22 +348,32 @@ class Compiler:
             self.i += 1; self.skip_nl(); stages.append(self.stage())
         body = ' '.join('%s %s PL-STAGE' % (s, '-1' if k == len(stages) - 1 else '0') for k, s in enumerate(stages))
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
-    def stage(self):
+    def arg_item(self):
+        tok = self.peek()
+        if tok[1] == '{':
+            self.i += 1; c, kd = self.expr(); self.take('op', '}')
+        elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->'):
+            c, kd = self.lit(self.take()[1]), 'text'              # a keyword, an operator: plain text in an argument
+        else:
+            c, kd = self.term()
+        return self.to_text(c, kd)
+    def args(self, stop):
+        """The arguments to the end of the statement; items touching each
+        other join into one, as sh's words do (RILL-LEDGER.md 732)."""
         parts, redirs = [], []
-        stop = (';', '}', ')', '??', '|')
         while self.peek()[0] not in ('nl', 'eof') and self.peek()[1] not in stop:
             tok, nxt = self.peek(), self.peek(1)
-            if tok[0] == 'word' and tok[1] in self.PORTS and nxt[1] in ('>', '>>') and nxt[3] == tok[4]:
+            if stop and tok[0] == 'word' and tok[1] in self.PORTS and nxt[1] in ('>', '>>') and nxt[3] == tok[4]:
                 self.i += 1; redirs.append(self.redirect(tok[1])); continue
-            if tok[1] in ('>', '>>', '<'):
+            if stop and tok[1] in ('>', '>>', '<') and '|' in stop:
                 redirs.append(self.redirect('in' if tok[1] == '<' else 'out')); continue
-            if tok[1] == '{':
-                self.i += 1; c, kd = self.expr(); self.take('op', '}')
-            elif tok[0] == 'kw':
-                c, kd = self.lit(self.take()[1]), 'text'          # a keyword is a plain word as an argument
-            else:
-                c, kd = self.term()
-            parts.append(self.to_text(c, kd))
+            touching = parts and tok[3] == self.t[self.i - 1][4]
+            c = self.arg_item()
+            if touching: parts[-1] = '%s %s 2 R-CONCAT' % (parts[-1], c)
+            else: parts.append(c)
+        return parts, redirs
+    def stage(self):
+        parts, redirs = self.args((';', '}', ')', '??', '|'))
         return ' '.join(redirs + parts) + ' %d' % len(parts)
     def redirect(self, port):
         op = self.take()[1]
@@ -265,11 +386,39 @@ class Compiler:
         return code + (' 1 2 R-RD-DUP' if port == 'all' else '')
     def cond(self):
         self.take('op', '(')
-        if self.peek()[0] == 'word' and self.peek(1)[1] != '(':
+        second = self.peek(1)
+        if self.peek()[0] == 'word' and second[1] != '(' and not (second[0] in ('kw', 'op') and second[1] in
+                ('in', 'not', 'and', 'or', '==', '!=', '<', '>', '<=', '>=')) and second[1] not in self.PREC:
             c = self.command() + ' 0='                           # a run: its success
         else:
             c, kd = self.expr()
         self.take('op', ')'); return c
+    def for_(self):
+        self.take('kw', 'for'); a = self.take('word')[1]; b = None
+        if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
+        self.take('kw', 'in'); line = self.peek()[2]
+        if self.peek()[1] == 'range' and self.peek(1)[1] == '(':        # a counted loop, no list made
+            self.i += 2; lo, lk = self.expr(); self.take('op', ','); hi, hk = self.expr(); self.take('op', ')')
+            if b: raise Error('line %d: for i, x needs a list' % line)
+            self.scope()[a] = 'number'; self.names.add(a)
+            return '%s 1+ %s ?DO I R.%s ! %s LOOP' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), a, self.block())
+        sc, sk = self.expr()
+        tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
+        if sk == 'record':                                               # for k, v in a record
+            key, val = (a, b) if b else (a, None)
+            self.scope()[key] = 'text'
+            if val: self.scope()[val] = 'any'; self.names.add(val)
+            setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
+            return ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT R-ANY>TEXT R.%s ! %s%s LOOP'
+                    % (sc, tmp, tmp, tmp, key, setv, self.block()))
+        if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
+        if sk == 'any': sc += ' R-UNBOX DROP'
+        idx, item = (a, b) if b else (None, a)
+        self.scope()[item] = 'any'; self.names.add(item)
+        seti = ''
+        if idx: self.scope()[idx] = 'number'; self.names.add(idx); seti = 'I R.%s ! ' % idx
+        return ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP'
+                % (sc, tmp, tmp, seti, tmp, item, self.block()))
     def if_(self):
         self.take('kw', 'if'); c = self.cond()
         if getattr(self, 'stack', None): self.depth -= 1               # IF takes the flag
@@ -306,6 +455,7 @@ class Compiler:
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
         self.funcs[name] = (params, kind); self.current = name
         if self.pure(params):
+            self.pure_defs = getattr(self, 'pure_defs', set()) | {name}
             self.stack, self.depth = params, 0
             body = self.block()
             self.stack = None
@@ -313,7 +463,7 @@ class Compiler:
             body = re.sub(r' DUP NIP\b', '', ' ' + body + tail).strip()
             self.defs.append(': R:%s %s ;' % (name, body)); self.current = None
             return
-        outer = self.locals; self.locals = {p: 'number' for p in params}
+        outer = self.locals; self.locals = {p: 'any' for p in params}
         self.names.update(params)
         body = self.block()
         scratch = [n for n in self.locals if n not in params]
