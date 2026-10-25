@@ -380,3 +380,14 @@ and the text is never what was meant where a variable has the name. In a
 command's arguments a bare word is still its text: `echo made` prints
 made. One test had used a field's name that a variable also had
 (`sort-by(..., v, ...)`); it says `"v"` now.
+
+## 765: a variable has one kind over its whole scope
+
+Rill's variables no longer change kind at a binding. Each has the join of
+everything it is bound to in its scope - the script's, or a def's: one
+kind when every binding agrees, an item when they differ - found by a
+first pass of the compiler (gene infer, on). Before, a kind followed the
+source's order, and a loop's next round could read a value with the kind
+of a binding it had not met yet (tests/rill/backedge.rill: a box read as
+a text). Reused names - `a` an argument here, a field there - are items
+now, as Python treats every name.

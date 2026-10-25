@@ -116,3 +116,30 @@ Measured on the corpus (tests/rill and examples/rill, 22 scripts):
 
 Step 2, the Forth compiler's half, is next: the same two passes, then the
 gene on by default and tests/rill/infer/ among the tests.
+
+## Step 2 - the Forth compiler; the gene on by default (Iteration 765)
+
+rill/compile.4 the same, in [gene infer] blocks: a table of inferred kinds
+(scope, name, kind) kept between the passes; BIND-K, the Forth for
+rillc.py's bind, at every binding SET-KIND made before; the assignment
+binding freely in the first pass; a def's parameters recorded as items,
+and its locals preloaded in the second pass in the first pass's order -
+the order its SHADOW{ } lists them in, which the oracle compares; the
+script's variables preloaded at the start; RILL>FORTH two RILL-PASSes. Two
+orders changed to rillc.py's, with the gene off as on: a list loop binds
+its item before its index, a comprehension binds its first name once.
+
+Checked: the gene off, tests/rill and the oracle as before. On: tests/rill
+all pass compiled in the image; both compilers make the same Forth for
+all 20 scripts of the corpus that compile (the oracle's 14 and the
+examples); every pilot prints what its Python original prints -
+dead-words' three cases and its IS lines, native-by-source,
+native-ab-layouts in the stand-in tree; and tests/rill/backedge.rill
+prints `x is hello`, `x is 2` compiled by the image itself.
+
+So the gene is on by default, and backedge.rill is among the tests.
+Costs: the image 1,149 bytes larger (51,143); a compile two passes, which
+on the corpus's largest script is lost in the noise of starting Python.
+The search counts both; no score can buy back an unsound kind.
+
+Next, step 3: element kinds for lists, joined the same way.

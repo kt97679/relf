@@ -504,6 +504,36 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   >R 2DUP NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF
      R> SWAP CELLS NM-K + ! 2DROP EXIT THEN THEN
   DROP R> IN-DEF @ NM-ADD ;
+\ [gene infer]
+\ gene infer (764): two passes, as rillc.py's - the first records every binding's kind per variable
+\ (the script's, or a def's own), two kinds joining to an item; the second starts each scope with them
+1024 CONSTANT IK-MAX
+IK-MAX CELLS BUFFER: IK-SA  IK-MAX CELLS BUFFER: IK-SL  IK-MAX CELLS BUFFER: IK-NA  IK-MAX CELLS BUFFER: IK-NL
+IK-MAX CELLS BUFFER: IK-K   VARIABLE IK-N  VARIABLE INFER  VARIABLE FIXED
+VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being compiled; a scope's key
+: SCOPE-KEY ( --- c-addr u )   IN-DEF @ IF SK-A @ SK-L @ ELSE 0 0 THEN ;
+: IK-SCOPE? ( i --- f )   DUP CELLS IK-SA + @ SWAP CELLS IK-SL + @ IKS-A @ IKS-L @ COMPARE 0= ;
+: IK-FIND ( c-addr u --- i | -1 )   \ the current scope's entry for the name
+  SCOPE-KEY IKS-L ! IKS-A !
+  IK-N @ 0 ?DO  I IK-SCOPE? IF 2DUP I CELLS IK-NA + @ I CELLS IK-NL + @ COMPARE 0= IF 2DROP I UNLOOP EXIT THEN THEN  LOOP
+  2DROP -1 ;
+: IK-RECORD ( c-addr u kind --- )   \ a binding's kind joined into its variable's entry
+  >R 2DUP IK-FIND DUP 0< 0= IF NIP NIP CELLS IK-K + DUP @ R> <> IF K-ANY SWAP ! ELSE DROP THEN EXIT THEN
+  DROP IK-N @ IK-MAX < 0= IF S" too many variables to infer" ERR THEN
+  IK-N @ CELLS IK-NL + !  IK-N @ CELLS IK-NA + !  SCOPE-KEY IK-N @ CELLS IK-SL + !  IK-N @ CELLS IK-SA + !
+  R> IK-N @ CELLS IK-K + !  1 IK-N +! ;
+: IK-PRELOAD ( --- )   \ the second pass: the current scope starts with each variable's joined kind
+  SCOPE-KEY IKS-L ! IKS-A !
+  IK-N @ 0 ?DO  I IK-SCOPE? IF I CELLS IK-NA + @ I CELLS IK-NL + @ 2DUP DECLARE I CELLS IK-K + @ SET-KIND THEN  LOOP ;
+: BIND-K ( c-addr u kind --- kind' )   \ rillc.py's bind: recorded in the first pass, the joined kind in the second
+  INFER @ IF >R 2DUP R@ IK-RECORD R> ELSE
+  FIXED @ IF >R 2DUP IK-FIND DUP 0< IF DROP R> ELSE R> DROP CELLS IK-K + @ THEN THEN THEN
+  DUP >R SET-KIND R> ;
+\ [/gene]
+\ [gene !infer]
+: BIND-K ( c-addr u kind --- kind' )   DUP >R SET-KIND R> ;
+\ [/gene]
+VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
@@ -526,17 +556,16 @@ VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK
   CM-SK @ K-ANY = IF S" R-UNBOX DROP" OUT+ K-LIST CM-SK ! THEN     \ an item holding a list - a def's parameter (758)
   CM-SK @ K-LIST <> CM-SK @ K-REC <> AND  CM-SK @ K-REC = CM-2L @ 0= AND OR IF S" for needs a list" ERR THEN
   2DUP 4 PICK TMP-NAME 2DUP DECLARE                        ( j name tmp )
-  2OVER DECLARE  2OVER K-ANY SET-KIND
-  CM-2L @ IF CM-2A @ CM-2L @ 2DUP DECLARE K-ANY SET-KIND
-    2OVER CM-SK @ K-LIST = IF K-NUM ELSE K-TEXT THEN SET-KIND THEN
+  2OVER DECLARE  2OVER CM-2L @ IF CM-SK @ K-LIST = IF K-NUM ELSE K-TEXT THEN ELSE K-ANY THEN BIND-K FOR-K !
+  CM-2L @ IF CM-2A @ CM-2L @ 2DUP DECLARE K-ANY BIND-K DROP THEN
   2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @" OUT+
   CM-SK @ K-REC = IF S" R-KEYS" OUT+ THEN  S" R-LEN" OUT+ S" 0" OUT+ S" ?DO" OUT+
   CM-2L @ 0= IF  VAR-OUT S" @" OUT+ S" I" OUT+ S" R-AT" OUT+ VAR-OUT S" !" OUT+
   ELSE CM-SK @ K-REC = IF
-    2DUP VAR-OUT S" @" OUT+ S" R-KEYS I R-AT R-ANY>TEXT" OUT+ 2OVER VAR-OUT S" !" OUT+
+    2DUP VAR-OUT S" @" OUT+ S" R-KEYS I R-AT" OUT+ FOR-K @ K-TEXT = IF S" R-ANY>TEXT" OUT+ THEN 2OVER VAR-OUT S" !" OUT+
     VAR-OUT S" @" OUT+ S" R-VALS I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
   ELSE
-    S" I" OUT+ 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
+    S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN 2OVER VAR-OUT S" !" OUT+  VAR-OUT S" @" OUT+ S" I R-AT" OUT+ CM-2A @ CM-2L @ VAR-OUT S" !" OUT+  2DROP
   THEN THEN  DROP
   0 CM-COND !  S" if" CUR-IS? IF NEXT-TK 1 EXPR DROP S" IF" OUT+ -1 CM-COND ! THEN
   CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
@@ -669,6 +698,9 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
 : ASSIGN ( --- )
   TK T@ NEXT-TK  TK T@ NEXT-TK                                   ( name op )
   2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR
+\ [gene infer]
+    INFER @ IF AS-A @ AS-L @ 2DUP DECLARE ROT BIND-K DROP  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
+\ [/gene]
     AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ ELSE DROP 0 THEN ELSE DROP 0 THEN
     DUP K-ANY = 2 PICK K-ANY <> AND IF DROP BOX K-ANY ELSE                 \ an item takes any value, boxed (754)
     DUP K-TEXT = 2 PICK K-ANY = AND IF DROP TO-TEXT K-TEXT ELSE            \ a text or a number variable given an item (758)
@@ -781,6 +813,11 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 \ [/gene]
     DROP -1 IN-DEF !  NM-N @ DEF-NM0 !
     PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ 2DUP DECLARE K-ANY -1 NM-ADD LOOP
+\ [gene infer]
+    DEF-NAME-A @ SK-A !  DEF-NAME-L @ SK-L !
+    INFER @ IF PRM-N @ 0 ?DO I CELLS PRM-A + @ I CELLS PRM-L + @ K-ANY IK-RECORD LOOP THEN
+    FIXED @ IF IK-PRELOAD THEN
+\ [/gene]
     BLOCK  DEF-HEAD DEF-START @ OUT-INSERT
     NM-DROP-LOCALS 0 IN-DEF !
   THEN
@@ -919,34 +956,34 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM  S" ," EXPECT
     OUT-POS  1 EXPR TO-NUM  S" )" EXPECT  FOR-P @ SEG>POS          \ hi moved before lo
 \ [gene loopvar]
-    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
     R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
       S" 2DUP SWAP 1+ SWAP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
       0 PAR-BODY  0 LV-L !
-      S" LOOP OVER > IF DROP ELSE" OUT+  VAR-OUT S" ! THEN" OUT+  R> DROP EXIT
+      S" LOOP OVER > IF DROP ELSE" OUT+  FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN  VAR-OUT S" ! THEN" OUT+  R> DROP EXIT
     THEN THEN
 \ [/gene]
     S" 1+" FOR-P @ SG-LEN @ + OUT-INSERT
-    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND
-    S" ?DO" OUT+ S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
+    S" ?DO" OUT+ S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ PAR-BODY S" LOOP" OUT+
     R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
 \ [/gene]
   1 EXPR                                                       ( sk )
   FOR-A @ FOR-AL @ TK-I @ TMP-NAME 2DUP DECLARE                ( sk tmp )
   2 PICK K-REC = IF ROT DROP
-    FOR-A @ FOR-AL @ 2DUP DECLARE K-TEXT SET-KIND
-    FOR-BL @ IF FOR-B @ FOR-BL @ 2DUP DECLARE K-ANY SET-KIND THEN
+    FOR-A @ FOR-AL @ 2DUP DECLARE K-TEXT BIND-K FOR-K !
+    FOR-BL @ IF FOR-B @ FOR-BL @ 2DUP DECLARE K-ANY BIND-K DROP THEN
     2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-KEYS R-LEN 0 ?DO" OUT+
-    2DUP VAR-OUT S" @ R-KEYS I R-AT R-ANY>TEXT" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+
+    2DUP VAR-OUT S" @ R-KEYS I R-AT" OUT+ FOR-K @ K-TEXT = IF S" R-ANY>TEXT" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+
     FOR-BL @ IF 2DUP VAR-OUT S" @ R-VALS I R-AT" OUT+ FOR-B @ FOR-BL @ VAR-OUT S" !" OUT+ THEN
     2DROP R@ PAR-BODY S" LOOP" OUT+  R> IF S" R-PAR-END" OUT+ THEN EXIT
   THEN
   ROT DUP K-ANY = IF DROP S" R-UNBOX DROP" OUT+ ELSE K-LIST <> IF S" for needs a list or a record" ERR THEN THEN
-  FOR-BL @ IF FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM SET-KIND  FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN
-  2DUP DECLARE K-ANY SET-KIND
+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN 2DUP DECLARE K-ANY BIND-K DROP      \ the item, then the index: rillc.py's order
+  FOR-BL @ IF FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K ! THEN
   2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-LEN 0 ?DO" OUT+
-  FOR-BL @ IF S" I" OUT+ FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
+  FOR-BL @ IF S" I" OUT+ FOR-K @ K-NUM <> IF S" K-NUM R-BOX" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
   VAR-OUT S" @ I R-AT" OUT+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN VAR-OUT S" !" OUT+
   R@ PAR-BODY S" LOOP" OUT+  R> IF S" R-PAR-END" OUT+ THEN ;
 \ x[i] = v: rillc.py puts the value first, then the container, then the index
@@ -1016,8 +1053,11 @@ NM-MAX CELLS BUFFER: ORDER
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
   TK-ALLOC BUF-ALLOC ;
-: RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
+: RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN
+\ [gene infer]
+  FIXED @ IF IK-PRELOAD THEN
+\ [/gene]
   SKIP-NL BEGIN TK K@ T-EOF <> WHILE STATEMENT SKIP-NL REPEAT
   SORT-NAMES
   DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
@@ -1028,6 +1068,13 @@ NM-MAX CELLS BUFFER: ORDER
   S" : R-MAIN " FIN+ MAIN-B @ MAIN# @ FIN+ S" ;" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! S" R-MAIN" FIN+
   10 FINAL FINAL# @ + C! 1 FINAL# +!
   FINAL FINAL# @ ;
+\ [gene infer]
+: RILL>FORTH ( c-addr u --- c-addr2 u2 )   \ two passes: the kinds, then the code (764)
+  0 IK-N !  -1 INFER !  0 FIXED !  2DUP RILL-PASS 2DROP  0 INFER !  -1 FIXED !  RILL-PASS  0 FIXED ! ;
+\ [/gene]
+\ [gene !infer]
+: RILL>FORTH ( c-addr u --- c-addr2 u2 )   RILL-PASS ;
+\ [/gene]
 : .RILL ( c-addr u --- )   \ a script file's Forth, printed: tests/rill/oracle
   R-SLURP RILL>FORTH TYPE ;
 ' RILL>FORTH IS R-COMPILE   \ the image compiles a .rill itself (Iteration 741)

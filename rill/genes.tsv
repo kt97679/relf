@@ -17,4 +17,4 @@ argdefault	1	0,1	features	arg(n, default) (747): off, scripts write default(arg(
 truth	1	0,1	features	an empty text, list or record is false in a condition and under not (751): off, scripts write len(x) > 0, x != ""
 echolit	1	0,1	compilers	echo's literal runs typed from the definition, items typed as they come - no texts made, no concatenation (753)
 loopvar	1	0,1	compilers	a counted loop's variable read as I in a body nothing else could see it from, stored once after the loop (753)
-infer	0	0,1	compilers	one kind per variable over its whole scope - the join of its bindings, from a first pass (764; docs/RILL-KINDS.md)
+infer	1	0,1	compilers	one kind per variable over its whole scope - the join of its bindings, from a first pass (764-765; docs/RILL-KINDS.md)
