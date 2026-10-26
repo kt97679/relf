@@ -667,7 +667,7 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
     S" ," CUR-IS? IF NEXT-TK ELSE                                 \ [a, b, c] as well as [a b c] (758)
     TK SPREAD-WORD? IF                                          \ [@refs more]: a spread (744)
       TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" OVER SWAP R-EXTEND" OUT+
-    ELSE TERM BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN THEN
+    ELSE 1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN THEN           \ an item: an expression (796)
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
 VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
@@ -729,7 +729,9 @@ DEFER TRUTH-D   \ TRUTH, defined below (782)
 ' TRUTH IS TRUTH-D
 : UNARY ( --- kind )
   S" not" CUR-IS? IF NEXT-TK RECURSE TRUTH S" 0=" OUT+ K-BOOL EXIT THEN
-  TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE DROP S" NEGATE" OUT+ K-NUM EXIT THEN
+  TK K@ T-WORD = S" -" CUR-IS? AND IF NEXT-TK RECURSE                \ a number's, a decimal's, an item's own kind (796)
+    DUP K-DEC = IF DROP S" NEGATE" OUT+ K-DEC EXIT THEN  DUP K-ANY = IF DROP S" R-ANY-NEG" OUT+ K-ANY EXIT THEN
+    TO-NUM S" NEGATE" OUT+ K-NUM EXIT THEN
   TERM ;
 \ [gene short]
 : SHORT-FORM ( opi --- c-addr u | 0 0 )   \ the right side a lone 1 or 0, and a one-word form for it

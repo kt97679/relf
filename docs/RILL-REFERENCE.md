@@ -97,7 +97,12 @@ stop early, as Python's.
   text, `contains(text, part)`.
 - `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`,
   `$r.k`: a record's field; chains `$m[1][0]`, `$r.a.b`.
-- `[1 2 3]` or `[1, 2, 3]`; `[@xs more]` spreads a list in; `{a: 1, 'b c': 2}`.
+- `[1 2 3]` or `[1, 2, 3]`: each item an expression, spaces or commas
+  between - `[$x - 1, $x * 2]`, `[$x - 1 $x + 1]` (an item ends where no
+  operator goes on); a sign glued to a number is part of it, `[1 -2]` two
+  items; an operator meant as text is quoted, `['-' u8]`. `[@xs more]`
+  spreads a list in; `{a: 1, 'b c': 2}`.
+- `-x` keeps the kind: a number's, a decimal's, an item's.
 - Comprehensions: `[expr for x in list if cond]`, `[expr for i, x in list]`,
   `[expr for k, v in record]`; the `if` takes truth as an `if` does.
 - `name(args)` calls a function or the library.

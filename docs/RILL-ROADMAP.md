@@ -422,3 +422,16 @@ redirections; the last-stage status had hidden it. PL-BEGIN now puts the
 outer pipeline aside (in the C heap) and PL-END puts it back - named as it
 runs, since a BUFFER:'s memory comes at boot, not from the build.
 tests/rill/pipefail.rill; code.rill's `exit 3 | cat` now 3 (sh says 0).
+
+## Iteration 796: a list's items are expressions
+
+`[$x - 1]` was three items ($x, "-", 1) and commas did not help
+(`[($x - 1), $x * 2]` gave 4,5,*,2): items were single terms. Now each item
+is an expression, in both compilers, spaces or commas between - an item
+ends where no operator goes on, so `[1 2 3]`, `[a b c]` and `[--flag value]`
+read as before; `[1 -2]` is still two items (a glued sign is the number's).
+An operator meant as text is quoted: gen-opcodes' `[- u8 ...]` became
+`['-' u8 ...]` (compiling the same as before). On the way, unary minus: in
+rillc.py it called a decimal a number and negated a text silently; now `-x`
+keeps a number's and a decimal's kind, an item's through R-ANY-NEG, and a
+text is a compile error. tests/rill/listexpr.rill.

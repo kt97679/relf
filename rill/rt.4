@@ -725,6 +725,7 @@ VARIABLE AR-OP
 : R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
 : R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
 : R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-ANY-NEG ( box --- box )   R-NUM-OR-DEC IF NEGATE K-DEC ELSE NEGATE K-NUM THEN R-BOX ;   \ - item: its kind kept (796)
 : R-SUM ( l --- box )   \ sum(list): a decimal among them, a decimal (794: they were taken as whole numbers)
   0 K-NUM R-BOX SWAP  DUP R-LEN 0 ?DO DUP I R-AT ROT SWAP 0 R-ARITH-AA SWAP LOOP DROP ;
 

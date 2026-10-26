@@ -229,7 +229,11 @@ class Compiler:
     def unary(self):
         tok = self.peek()
         if tok[1] == 'not': self.i += 1; c, k = self.unary(); return self.truth(c, k) + ' 0=', 'bool'
-        if tok[1] == '-' and tok[0] == 'word': self.i += 1; c, k = self.unary(); return c + ' NEGATE', 'number'
+        if tok[1] == '-' and tok[0] == 'word':                         # a number's, a decimal's, an item's own kind (796)
+            self.i += 1; c, k = self.unary()
+            if k == 'decimal': return c + ' NEGATE', 'decimal'
+            if k == 'any': return c + ' R-ANY-NEG', 'any'
+            return self.to_num(c, k, tok[2]) + ' NEGATE', 'number'
         return self.term()
     def term(self):
         code, kind = self.term0()
@@ -263,7 +267,7 @@ class Compiler:
             if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
                 self.i += 1
                 code.append('%s OVER SWAP R-EXTEND' % self.spread_code(tok[1][1:], tok[2])); continue
-            c, kd = self.term()
+            c, kd = self.expr()                                         # an item: an expression, spaces or commas between (796)
             code.append('%s OVER R-PUSH' % self.box(c, kd))
         self.take('op', ']'); return ' '.join(code), 'list'
     def comprehension(self, j):

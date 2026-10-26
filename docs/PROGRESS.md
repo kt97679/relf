@@ -820,6 +820,7 @@ do not trust the absence of a line below.
 - 793 — review bugs: records and nested lists as text, a def inside a def, escapes
 - 794 — overflow and division by zero are errors naming the line, not wrapped numbers; sum() of decimals
 - 795 — a pipeline fails when a stage fails (pipefail, SIGPIPE excused); pipelines nest inside arguments
+- 796 — a list's items are expressions; unary minus keeps its operand's kind
 
 ### Not tied to an iteration
 
