@@ -7,7 +7,7 @@ from the shell given, which is how the expectations were taken from dash;
 a case whose expectation this shell cannot meet yet is listed in
 KNOWN-DIVERGENT so the suite stays green and the gap stays visible.
 """
-import os, sys, time
+import os, shutil, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_session import Session
 from cases import CASES
@@ -18,7 +18,7 @@ DIVERGENT = os.path.join(HERE, 'KNOWN-DIVERGENT')
 
 DEFAULT_ENV = {'PS1': '$ ', 'PS2': '> '}   # so any shell prompts alike
 
-def run_case(shell, steps, env, raw=False):
+def _run_case(shell, steps, env, raw=False, cwd='/tmp'):
     env = dict(DEFAULT_ENV, **(env or {}))
     # RELF_PS1/RELF_PS2 beside PS1/PS2: where /bin/sh is bash - Gentoo,
     # Arch, Fedora - bash clears PS1 and PS2 before exec'ing the engine
@@ -30,7 +30,7 @@ def run_case(shell, steps, env, raw=False):
         if k in env:
             env['RELF_' + k] = env[k]
     argv = shell if isinstance(shell, list) else [shell]
-    s = Session(argv, env=env)
+    s = Session(argv, env=env, cwd=cwd)
     s.prompts_from_env(env)
     if not s.wait_prompt():
         s.close(); return None
@@ -52,6 +52,17 @@ def run_case(shell, steps, env, raw=False):
     s.drain()
     s.close()
     return s.raw() if raw else s.transcript(env)
+
+def run_case(shell, steps, env, raw=False):
+    """Each case in an empty directory of its own, removed after: in the
+    shared /tmp an empty file named e matched edit-combining-left's
+    [e\u0301x] as a glob, and the case failed on every engine (Iteration
+    804). A case's outcome must not depend on what else is in /tmp."""
+    d = tempfile.mkdtemp(prefix='relf-interactive-')
+    try:
+        return _run_case(shell, steps, env, raw, d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
 
 def known_divergent():
     if not os.path.exists(DIVERGENT): return {}
