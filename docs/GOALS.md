@@ -254,6 +254,8 @@ the account of what each gained and cost.
      function, texts as bytes, no background jobs, no JSON, no default
      arguments. (805-808 closed the rest of this list - return, `(ready)`,
      echo, a comprehension's variables: RILL-ROADMAP.md.)
+   What next (809): a Rill fuzzer, needing no decision; the length rule and
+   which gaps to build wait on QUESTIONS.md Q35.
    Checks: `sh tests/rill/run` (83), `sh tests/rill/oracle` (50 the same),
    both again with RILL_GC_STRESS=1.
 

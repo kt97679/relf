@@ -833,6 +833,7 @@ do not trust the absence of a line below.
 - 806 — make lint clean again: two R: notes made \ comments, two comments reworded, the lint passes a word called before ;
 - 807 — Rill: echo is Rill's however it runs; a spread stage with a capture crashed the image's compiler; echo $(a) | b refused; keys gone (A34)
 - 808 — Rill: a comprehension's variables are its own (they overwrote and blocked the script's names)
+- 809 — GOALS.md 15 assessed: QUESTIONS.md Q35 (the length rule; who Rill is for); a Rill fuzzer next
 
 ### Not tied to an iteration
 

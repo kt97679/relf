@@ -15,10 +15,11 @@ same iteration.
 1. *(Q2, Q3 and Q4, which blocked the assembly engine's Milestone 1,
    were answered at 516.)*
 2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
-3. **Before any Rill implementation begins** - the design waits on
-   these; no code does: **Q7** (text blocks), **Q8** (the other open
-   points), **Q10** (structured values across processes), **Q11** (the
-   default lifetime of a job).
+3. **Rill's features that wait on these** (Rill itself exists since 736;
+   809 corrected this line): **Q35** (the length rule; who Rill is for),
+   then **Q10** (JSON, values across processes) and **Q11** (jobs and
+   their lifetime) as Q35 (b) decides; **Q7** (text blocks), **Q8** (the
+   prompt's questions, the name).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
    speed). *(Q14 was answered at 523.)*
@@ -33,6 +34,38 @@ same iteration.
    source for both. N1 may begin.)*
 
 ## Open
+
+**Q35. Rill after 805-808: the length rule, and who Rill is for (809)**
+GOALS.md 15's open items, assessed at 809 (the reply had the detail):
+(a) *The length rule.* 726: a rewrite is never longer than its original.
+By tools/rill-audit.py's own count, at 798 three rewrites were longer
+(run-utf8 +26.9%, dead-words +9.0%, native-by-source +5.0%) and the eight
+together 8.4% shorter; now six are (make-bundle +0.8%, intrfuzz-stress
++3.8%, pack-results +4.0% tipped over by the one-way review) and the eight
+2.8% shorter. The review cost 1,374 characters across them (+6.1%);
+native-by-source most (+17 points: upper() gone, its names gathered and
+upper-cased by one tr rather than a process a word). Options: (1) 726 per
+script - conveniences come back, against 799; (2) the eight judged
+together - shorter in total, as now; (3) per script within a tolerance
+(say 5%), each excess named with its reason.
+*Recommendation*: (2), with (3)'s record for any script past 5% (run-utf8
+is a shell test harness - the shell's own ground).
+(b) *Who Rill is for.* For this repository's tools, none of the remaining
+gaps is needed: the eight rewrites use no JSON, run things side by side
+once (sh -c with & and wait), recover from failure with ?? (8 uses),
+code() (3) and (test ...) (5), and take defaults only for script
+arguments (at($args, i, d), 7); their Python originals used try once and
+one default argument. For scripts in general, JSON matters most (Q10: a
+reader and a writer in the runtime, one library name each in the
+compilers), then jobs (Q11); try and default arguments would be second
+ways (?? and conditions; at()) and stay out.
+*Recommendation*: decide (b). Meanwhile, needing no decision: a Rill
+fuzzer - mutated tests and rewrites, reporting engine crashes, hangs and
+the two compilers disagreeing; 805-808 found two crashes, three refusals
+and several silent wrong results, every one by accident. Texts as bytes
+and no collection inside a function were decided already (RILL-REFERENCE.md
+"on purpose"; 791-792, the user's choice) and stay unless a script hits them.
+*Blocks*: the length rule's verdicts (a); which gaps get built (b).
 
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
