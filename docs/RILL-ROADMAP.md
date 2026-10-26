@@ -449,3 +449,21 @@ rill/genes.tsv, its line on stderr; RILL_HOME, RILL_ENGINE, RILL_IMAGE look
 elsewhere. Not top-level `rill`: rill/ is the sources' directory.
 tests/rill/run checks a #! script through PATH (its arguments, its status
 3), -c through a link, --forth.
+
+## Iteration 798: the everyday functions the review missed
+
+- `+` joins two lists (a new list) and two texts - a text and an item too,
+  and two items holding texts or lists at run time (R-ARITH-AA). A text and
+  a number keep the old reading (the text as a number).
+- `pop(l)`: the last item, taken out. `delete(x, key)`: a record's field (its
+  hash table, if it has one, made again - the slots counted the old places)
+  or a list's item, negative from the end; as Python's `del`.
+- `find(x, part)`: a part's first place in a text (bytes) or an item's index
+  in a list; -1 when not there.
+- `sort-by(rows, field)` and `sort-by(rows, field, desc)`: a list of records
+  by a field, stable, its values compared as sort() compares (the old
+  sort-by(record, field, order) stays). sort() of records is an error that
+  says so (it sorted them by address), and a number and a decimal sort by
+  value (they sorted by kind: [2 1.5 1 3] gave 1 2 3 1.5).
+- `part in text` and `not in`, as Python's.
+tests/rill/everyday.rill against Python.

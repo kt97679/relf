@@ -190,7 +190,11 @@ class Compiler:
             if bk == 'record': return '%s %s R-HAS%s' % (self.to_text(a, ak), b, neg), 'bool'
             if bk == 'list': return '%s %s R-IN%s' % (self.box(a, ak), b, neg), 'bool'
             if bk == 'any': return '%s %s R-IN-ANY%s' % (self.box(a, ak), b, neg), 'bool'      # 758
-            raise Error('line %d: in needs a list or a record' % line)
+            if bk == 'text': return '%s %s SWAP R-CONTAINS%s' % (self.to_text(a, ak), b, neg), 'bool'   # a part of a text (798)
+            raise Error('line %d: in needs a list, a record or a text' % line)
+        if op == '+' and ak == 'list' and bk == 'list': return '%s %s R-LIST-CAT' % (a, b), 'list'     # two lists joined (798)
+        if op == '+' and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):     # two texts joined (798)
+            return '%s %s 2 R-CONCAT' % (self.to_text(a, ak), self.to_text(b, bk)), 'text'
         if op in ('==', '!=') and ak == 'any' and bk == 'any':                        # two items (758)
             return '%s %s R-BOX=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
@@ -441,7 +445,23 @@ class Compiler:
             if a[0][1] == 'list': return '%s %s %s R-AT-OR-L' % (a[0][0], self.to_num(*a[1], line), self.box(*a[2])), 'any'
             if a[0][1] == 'any': return '%s %s %s R-AT-OR-ANY' % (a[0][0], self.box(*a[1]), self.box(*a[2])), 'any'
             return '%s %s %s R-AT-OR' % (a[0][0], self.to_text(*a[1]), self.box(*a[2])), 'any'
-        if name == 'sort-by': need(3); return '%s %s %s R-SORT-BY' % (cont(a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'record'
+        if name == 'sort-by':                                          # a list's records by a field (798); a record's entries
+            if len(a) == 2: a = a + [(self.lit_text('asc'), 'text')]
+            need(3)
+            if a[0][1] == 'list': return '%s %s %s R-SORT-BY-L' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'list'
+            if a[0][1] == 'any': return '%s %s %s R-SORT-BY-ANY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'any'
+            return '%s %s %s R-SORT-BY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'record'
+        if name == 'pop': need(1); return '%s R-POP' % cont(a[0]), 'any'                              # 798
+        if name == 'delete':                                                                          # 798
+            need(2)
+            if a[0][1] == 'list': return '%s %s R-DEL-L' % (a[0][0], self.to_num(*a[1], line)), None
+            if a[0][1] == 'any': return '%s %s R-DEL-ANY' % (a[0][0], self.box(*a[1])), None
+            return '%s %s R-DEL-R' % (a[0][0], self.to_text(*a[1])), None
+        if name == 'find':                                                                            # 798
+            need(2)
+            if a[0][1] == 'list': return '%s %s R-FIND-L' % (a[0][0], self.box(*a[1])), 'number'
+            if a[0][1] == 'any': return '%s %s R-FIND-ANY' % (a[0][0], self.box(*a[1])), 'number'
+            return '%s %s R-FIND-T' % (self.to_text(*a[0]), self.to_text(*a[1])), 'number'
         if name == 'arg':                                              # 744; arg(n, default) 747
             if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
             need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'

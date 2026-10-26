@@ -542,8 +542,14 @@ VARIABLE SB-R  VARIABLE SB-F  VARIABLE SB-DESC  VARIABLE SB-IX  VARIABLE SB-N
 ' R-DEC>TEXT IS R-DEC>TEXT-HOOK
 
 \ ---- What the second pilot needs (Iteration 758) ---------------------------
+: RC-NUMISH? ( kind --- f )   DUP K-NUM = SWAP K-DEC = OR ;
+: RC-DEC ( box --- d )   R-UNBOX K-NUM = IF R-N>D THEN ;
 : R-CMP ( b1 b2 --- n )   \ Python's order: numbers by value, texts by bytes, lists item by item, then length
-  OVER @ OVER @ 2DUP <> IF > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN DROP
+  OVER @ OVER @ 2DUP <> IF
+    2DUP RC-NUMISH? SWAP RC-NUMISH? AND IF 2DROP RC-DEC SWAP RC-DEC SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN EXIT THEN   \ 1 and 1.5 by value (798)
+    > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN
+  DUP K-REC = IF ." rill: records have no order - sort-by(list, field) puts them in a field's order" R-ERR-NL -4001 THROW THEN   \ 798
+  DROP
   DUP K-TEXT = IF DROP CELL+ @ R-T@ ROT CELL+ @ R-T@ 2SWAP COMPARE EXIT THEN
   K-LIST = IF  CELL+ @ SWAP CELL+ @ SWAP
     OVER R-LEN OVER R-LEN MIN 0 ?DO
@@ -571,16 +577,19 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
   BEGIN 2DUP SP-FIND DUP 0< 0= WHILE
     >R OVER R@ R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  R> SP-U @ + /STRING
   REPEAT DROP  R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  SP-L @ ;
-: R-IN-ANY ( box cbox --- f )   \ in, the container an item: a record's keys or a list's items
-  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-HAS ELSE R-IN THEN ;
 : R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-PUT ELSE SWAP R-ANY>NUM R-SET THEN ;
 : R-BOOL>TEXT ( f --- t )   IF S" true" ELSE S" false" THEN R-TEXT ;   \ a bool as text (759)
 
 \ ---- What the third pilot needs (Iteration 760) ----------------------------
+: R-FIND-T ( t s --- n )   \ find(text, part): where it first stands, in bytes, or -1 (798)
+  R-T@ SP-U ! SP-A !  R-T@ SP-FIND ;
 : R-CONTAINS ( t s --- f )   \ contains(text, part)
   R-T@ SP-U ! SP-A !  R-T@ SP-FIND 0< 0= ;
 VARIABLE RP-NEW
+: R-IN-ANY ( box cbox --- f )   \ in, the container an item: a record's keys, a list's items, a text's parts (798)
+  R-UNBOX DUP K-REC = IF DROP SWAP R-ANY>TEXT SWAP R-HAS EXIT THEN
+  K-TEXT = IF SWAP R-ANY>TEXT R-CONTAINS EXIT THEN  R-IN ;
 : R-REPLACE ( t old new --- t2 )   \ replace(text, old, new): every old made new
   RP-NEW !  R-SPLIT  RP-NEW @ R-JOIN ;
 : R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000
@@ -725,7 +734,46 @@ VARIABLE AR-OP
   THEN ;
 : R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
 : R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
-: R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-LIST-CAT ( l1 l2 --- l )   >R R-NEW-LIST TUCK SWAP R-EXTEND DUP R> R-EXTEND ;   \ l1 + l2: a new list (798)
+: R-ARITH-AA ( box box op --- box )
+  DUP 0= IF >R  OVER R-UNBOX NIP OVER R-UNBOX NIP                  \ +: two texts joined, two lists joined (798)
+    2DUP K-TEXT = SWAP K-TEXT = AND IF 2DROP R> DROP SWAP R-ANY>TEXT SWAP R-ANY>TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
+    K-LIST = SWAP K-LIST = AND IF R> DROP R-UNBOX DROP SWAP R-UNBOX DROP SWAP R-LIST-CAT K-LIST R-BOX EXIT THEN
+    R> THEN
+  >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-POP ( l --- box )   \ pop(list): the last item, out (798)
+  DUP @ 0= IF ." rill: pop of an empty list" R-ERR-NL -4002 THROW THEN  DUP @ 1- 2DUP R-AT >R SWAP ! R> ;
+: R-DEL-L ( l i --- )   \ delete(list, i): the item at i out, negative from the end (798)
+  DUP 0< IF OVER @ + THEN
+  DUP 0< OVER 3 PICK @ < 0= OR IF ." rill: delete: no item " . ." in a list of " @ . R-ERR-NL -4002 THROW THEN
+  >R  DUP R-ITEMS R@ 1+ CELLS +  OVER R-ITEMS R@ CELLS +  2 PICK @ R@ - 1- CELLS MOVE  R> DROP  -1 SWAP +! ;
+: R-DEL-R ( r key --- )   \ delete(record, key): its field out (798)
+  2DUP SWAP R-FIND DUP 0< IF DROP NIP ." rill: no field " R-T@ TYPE R-ERR-NL -4002 THROW THEN
+  NIP  OVER R-KEYS OVER R-DEL-L  OVER R-VALS SWAP R-DEL-L
+\ [gene rechash]
+  DUP RH-TABLE IF DUP RH-CAP RH-BUILD ELSE DROP THEN      \ the table's slots counted the old places: made again
+\ [/gene]
+\ [gene !rechash]
+  DROP
+\ [/gene]
+  ;
+: R-DEL-ANY ( box kbox --- )   SWAP R-UNBOX K-REC = IF SWAP R-ANY>TEXT R-DEL-R ELSE SWAP R-ANY>NUM R-DEL-L THEN ;
+: R-FIND-L ( l box --- n )   \ find(list, x): x's first index, or -1 (798)
+  SWAP DUP @ 0 ?DO DUP I R-AT 2 PICK R-BOX= IF 2DROP I UNLOOP EXIT THEN LOOP 2DROP -1 ;
+: R-FIND-ANY ( box xbox --- n )   SWAP R-UNBOX K-LIST = IF SWAP R-FIND-L ELSE SWAP R-ANY>TEXT R-FIND-T THEN ;
+VARIABLE SBL-F  VARIABLE SBL-D
+: SBL-KEY ( box --- box )   R-UNBOX DROP SBL-F @ SWAP R-GET ;
+: SBL-CMP ( b1 b2 --- n )   SBL-KEY SWAP SBL-KEY SWAP R-CMP  SBL-D @ IF NEGATE THEN ;
+: R-SORT-BY-L ( l field order --- l2 )   \ sort-by(list, field, asc|desc): its records by that field, stable (798)
+  S" desc" R-TEXT R-T= SBL-D !  SBL-F !
+  R-NEW-LIST SRT !  DUP R-LEN 0 ?DO DUP I R-AT SRT @ R-PUSH LOOP DROP
+  SRT @ R-LEN 1 MAX 1 ?DO
+    SRT @ I R-AT  I
+    BEGIN DUP 0> IF OVER SRT @ 2 PICK 1- R-AT SBL-CMP 0< ELSE 0 THEN WHILE
+      SRT @ OVER 1- R-AT SRT @ 2 PICK R-SET 1-
+    REPEAT  SRT @ SWAP R-SET
+  LOOP SRT @ ;
+: R-SORT-BY-ANY ( box field order --- box )   ROT R-UNBOX K-LIST = IF ROT ROT R-SORT-BY-L K-LIST ELSE ROT ROT R-SORT-BY K-REC THEN R-BOX ;
 : R-ANY-NEG ( box --- box )   R-NUM-OR-DEC IF NEGATE K-DEC ELSE NEGATE K-NUM THEN R-BOX ;   \ - item: its kind kept (796)
 : R-SUM ( l --- box )   \ sum(list): a decimal among them, a decimal (794: they were taken as whole numbers)
   0 K-NUM R-BOX SWAP  DUP R-LEN 0 ?DO DUP I R-AT ROT SWAP 0 R-ARITH-AA SWAP LOOP DROP ;

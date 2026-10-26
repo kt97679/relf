@@ -822,6 +822,7 @@ do not trust the absence of a line below.
 - 795 — a pipeline fails when a stage fails (pipefail, SIGPIPE excused); pipelines nest inside arguments
 - 796 — a list's items are expressions; unary minus keeps its operand's kind
 - 797 — bin/rill: #!/usr/bin/env rill scripts run as commands; -c, --forth; the image rebuilt when stale
+- 798 — + joins lists and texts; pop, delete, find, sort-by on lists, in on texts; sort() of numbers and decimals by value
 
 ### Not tied to an iteration
 

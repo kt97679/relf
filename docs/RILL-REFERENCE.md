@@ -105,8 +105,9 @@ stop early, as Python's.
   bytes (Python's order for UTF-8); lists and records by what they hold, as
   Python's `==`; two items by their kinds when the script runs. A text and a
   number cannot be put in order: an error.
-- `x in list`, `k in record` (a field's name); `not in`. For a part of a
-  text, `contains(text, part)`.
+- `x in list`, `k in record` (a field's name), `part in text`; `not in`.
+- `+` joins two lists (a new list) and two texts (a text and an item too):
+  `$name + ".log"`, `$a + [3 4]`.
 - `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`,
   `$r.k`: a record's field; chains `$m[1][0]`, `$r.a.b`.
 - `[1 2 3]` or `[1, 2, 3]`: each item an expression, spaces or commas
@@ -188,10 +189,12 @@ function runs a program, found on PATH:
 | `range(...)` | as Python's: 1 to 3 arguments, up to the end, not with it |
 | `number(t)`, `text(x)`, `decimal(t)` | conversions; `number` reads `0x` hex too |
 | `push(l, x)`, `extend(l, l2)` | append an item, a list's items |
-| `shift(l)`, `first(l)` | the first item, taken out or left in |
+| `shift(l)`, `first(l)`, `pop(l)` | the first item taken out or left in; the last taken out |
+| `delete(x, key)` | a record's field, or a list's item (negative from the end), taken out - as `del` |
+| `find(x, part)` | where a part first stands in a text (bytes), or an item's index in a list; -1 when not there |
 | `keys(r)`, `values(r)` | a record's fields, its values |
-| `sort(l)` | a sorted copy, Python's order, stable |
-| `sort-by(r, field, order)` | a record's entries by their values' field; order `asc` or `desc` |
+| `sort(l)` | a sorted copy, Python's order, stable; records have none - sort-by |
+| `sort-by(rows, field)`, `sort-by(rows, field, desc)` | a list of records by a field, stable (a record: its entries by their values' field) |
 | `slice(x, a, b)` | part of a list, a text, a record |
 | `at(x, key, default)` | a record's field or a list's item (negative from the end), else the default |
 | `sum(l)`, `max(l)`, `min(l)`, `max(a, b)`, `min(a, b)` | as Python's: a decimal among them, a decimal |
