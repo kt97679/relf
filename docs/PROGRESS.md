@@ -840,6 +840,7 @@ do not trust the absence of a line below.
 - 813 — Rill: jobs - spawn, wait, stopped with the script; INT/TERM end a wait at once (action 3); two checks' blind spots found
 - 814 — next steps weighed: a def that only computes takes numbers (purestack refuses a list); deep recursion ends in the engine's error
 - 815 — Rill: a def that only computes takes numbers only when its body uses them so; range(n) in one gave 0
+- 816 — a Rill fuzzer (tools/rill-fuzz.py): its first run, 3 CRASH (input ending inside a statement) and 2 DIFFER
 
 ### Not tied to an iteration
 

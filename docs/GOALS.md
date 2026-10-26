@@ -249,9 +249,13 @@ the account of what each gained and cost.
    shell and script language, minimal and simple; the rewrites judged
    together for length (tools/rill-audit.py; a rewrite past 5 % longer names
    its reason in examples/rill/MANIFEST.tsv). Open:
-   - a Rill fuzzer - mutated tests and rewrites; engine crashes, hangs, the
-     two compilers disagreeing - needing no decision (805-808 found two
-     crashes and three refusals by accident);
+   - **the fuzzer's findings** (tools/rill-fuzz.py, 816; seed 816, 2,996
+     mutants in 200 s), most severe first: CRASH - input that ends inside a
+     statement makes the image's compiler fault (`while` alone, `x = [1, 2`,
+     `def f() }`) and rillc.py raise IndexError (`x = [1, 2`, `def f() }`,
+     `x = (`): token scanners run past the last token; DIFFER - two mutants
+     the compilers disagree on, to shrink and explain. Run it after any
+     change to either compiler;
    - **deep recursion ends in the engine's error**: a recursive def runs
      5,000 levels, and at 20,000 stops with `relf: return stack overflow or
      data stack underflow` / `rill: error -5`, no line - a Rill message with
