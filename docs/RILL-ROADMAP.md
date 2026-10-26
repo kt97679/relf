@@ -780,3 +780,14 @@ build; decimal-text.rill gained a line. The image: 75,411 bytes to 75,723.
 tests/rill/deep.rill, deep-locals.rill, errors-at-run.rill (through
 bin/rill -c). Found writing the last: the messages go to stdout (GOALS.md
 15). The image: 75,723 bytes to 76,051.
+
+## Iteration 820: spawn at work - intrfuzz-stress
+
+The one rewrite that ran jobs side by side did it through `sh -c '... &
+... wait'` (since par for went, 799). Now its jobs are Rill's: `ps =
+[spawn((timeout 600 python3 tools/intrfuzz.py 20 {seed($r, $j)} ./$sh all>
+"$tmp/out.$j")) for j in range(1, $jobs + 1)]`, then `wait($p)` for each.
+Both compilers give the same Forth; one round of two jobs on the three
+shells - 120 cases - 0 failures. intrfuzz-stress is shorter than its
+original now (1,184 characters against 1,199, from +3.8 %); the eight
+together 3.1 % shorter.

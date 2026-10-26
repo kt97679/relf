@@ -255,8 +255,6 @@ the account of what each gained and cost.
    - **Rill's run-time errors go to stdout** (found at 818): `."` writes
      them, so `x = $(a-rill-script)` takes an error message as its value; a
      message to the err port (fd 2), as the shell's are, would end that.
-   - spawn where a rewrite runs jobs side by side - intrfuzz-stress, through
-     `sh -c` with & and wait: the feature's evidence, and a shorter script.
    (815 fixed what 814 found: a def that only computes is compiled with its
    parameters as numbers only when its body uses them so - and range(n) of a
    parameter, which had read its own 0 as n, is no longer such a body.)

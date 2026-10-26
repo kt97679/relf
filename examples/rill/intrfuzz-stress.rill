@@ -17,8 +17,8 @@ def stress() {
         if (not (test -x ./$sh)) { echo "$sh: not built, skipped"; continue }
         runs = 0; bad = 0
             for r in range(1, $rounds + 1) {
-                seeds = [seed($r, $j) for j in range(1, $jobs + 1)]   # the jobs side by side: sh's & and wait (par for before, 799)
-                sh -c 'b=$1 d=$2; shift 2; n=0; for s; do n=$((n + 1)); timeout 600 python3 tools/intrfuzz.py 20 "$s" "$b" > "$d/out.$n" 2>&1 & done; wait' sh ./$sh $tmp @seeds
+                ps = [spawn((timeout 600 python3 tools/intrfuzz.py 20 {seed($r, $j)} ./$sh all> "$tmp/out.$j")) for j in range(1, $jobs + 1)]
+                for p in $ps { wait($p) }                    # the jobs side by side (819; sh -c with & and wait from 799)
                 for j in range(1, $jobs + 1) {
                     runs = $runs + 1
                     f = $(sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p' "$tmp/out.$j")
