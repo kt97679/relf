@@ -60,8 +60,8 @@ for f in $files {
 }
 if (MAIN in $current) { push($roots, $current[MAIN]) }
 lastis = {}
-for e in $islines { lastis[$e.y] = $e }
-for li, e in $lastis { push($nodes[$e.y].refs, $e.x) }
+for e in $islines { lastis[$e[y]] = $e }
+for li, e in $lastis { push($nodes[$e[y]][refs], $e[x]) }
 
 reach = {}; parent = {}; todo = $roots
 for r in $todo { parent[$r] = -1 }
@@ -69,16 +69,16 @@ while (len($todo) > 0) {
     n = pop($todo, 0)
     if ($n not in $reach) {
         reach[$n] = true
-        for r in $nodes[$n].refs { if ($r not in $reach and $r not in $parent) { parent[$r] = $n; push($todo, $r) } }
+        for r in $nodes[$n][refs] { if ($r not in $reach and $r not in $parent) { parent[$r] = $n; push($todo, $r) } }
     }
 }
 
 if ($why != "") {
     for k, nd in $nodes {
-        if ($nd.name == $why) {
+        if ($nd[name] == $why) {
             chain = []; n = $k
             while ($n != -1 and $n in $parent and len($chain) < 40) {
-                push($chain, "{$nodes[$n].name}@{$nodes[$n].file}:{$nodes[$n].first + 1}"); n = $parent[$n]
+                push($chain, "{$nodes[$n][name]}@{$nodes[$n][file]}:{$nodes[$n][first] + 1}"); n = $parent[$n]
             }
             mark = ""; if ($k not in $parent) { mark = "  (unreachable)" }
             echo "{join($chain, ' <- ')}$mark"
@@ -86,10 +86,10 @@ if ($why != "") {
     }
     exit 0
 }
-dead = sort([[$nd.file, $nd.first, $nd.name] for k, nd in $nodes if $k not in $reach])
+dead = sort([[$nd[file], $nd[first], $nd[name]] for k, nd in $nodes if $k not in $reach])
 for d in $dead { echo "{$d[0]}:{$d[1] + 1}: {$d[2]}" }
-deadis = [$e for e in $islines if $e.y not in $reach or $lastis[$e.y].line != $e.line or $lastis[$e.y].file != $e.file]
-for e in $deadis { echo "$e.file:{$e.line + 1}: IS line  {$nodes[$e.x].name} -> {$nodes[$e.y].name}" }
+deadis = [$e for e in $islines if $e[y] not in $reach or $lastis[$e[y]][line] != $e[line] or $lastis[$e[y]][file] != $e[file]]
+for e in $deadis { echo "{$e[file]}:{$e[line] + 1}: IS line  {$nodes[$e[x]][name]} -> {$nodes[$e[y]][name]}" }
 echo "{len($dead)} unreachable definitions, {len($deadis)} dead IS lines, {len($reach)} reachable" out>err
 
 if ($delete) {
@@ -97,13 +97,13 @@ if ($delete) {
     for f in $files { kill[$f] = {} }
     for k, nd in $nodes {
         if ($k not in $reach) {
-            a = $nd.first
-            while ($a > 0 and starts(trim($lines[$nd.file][$a - 1]), '\')) { a = $a - 1 }
-            kl = $kill[$nd.file]
-            for ln in range($a, $nd.last + 1) { kl[$ln] = true }
+            a = $nd[first]
+            while ($a > 0 and starts(trim($lines[$nd[file]][$a - 1]), '\')) { a = $a - 1 }
+            kl = $kill[$nd[file]]
+            for ln in range($a, $nd[last] + 1) { kl[$ln] = true }
         }
     }
-    for e in $deadis { kl = $kill[$e.file]; kl[$e.line] = true }
+    for e in $deadis { kl = $kill[$e[file]]; kl[$e[line]] = true }
     for f in $files {
         out = []; blank = false
         for k, l in $lines[$f] {

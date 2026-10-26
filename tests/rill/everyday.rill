@@ -20,11 +20,11 @@ echo {find("hello", "l")} {find("hello", "z")} {find([10 20 30], 20)} {find([10 
 echo {"ell" in "hello"} {"xyz" in "hello"} {"ell" not in "hello"}
 rows = [{n: "c", v: 3} {n: "a", v: 1} {n: "b", v: 2} {n: "d", v: 1}]
 s = sort-by($rows, v)
-echo {join([$x.n for x in $s], " ")}
+echo {join([$x[n] for x in $s], " ")}
 d = sort-by($rows, n, desc)
-echo {join([$x.n for x in $d], " ")}
+echo {join([$x[n] for x in $d], " ")}
 echo {join(sort([2 1.5 1 3]), " ")}
 big = {}
 for i in range(20) { big["k{$i}"] = $i }
 pop($big, k3)
-echo {len(keys($big))} $big.k19 {"k3" in $big} {"k4" in $big}
+echo {len(keys($big))} $big[k19] {"k3" in $big} {"k4" in $big}

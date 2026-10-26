@@ -56,13 +56,14 @@ writes them - `[1 2]`, `{a: 1, name: "x"}`, texts in them quoted.
 
 - `"..."`: `\n`, `\t`, `\r`, `\uXXXX` (UTF-8), and a backslash before a mark
   (`\"`, `\\`, `\{`, `\$`) is the mark; any other letter after a backslash is an
-  error. `$name` and `$name.field` put a
+  error. `$name` puts a
   variable in; `{expression}` puts an expression in; `$(command)` puts a
   command's output in. Inside `{...}` and `$(...)` a `"..."` is a string of its
   own: `"{join($l, ", ")}"`. A `{` always starts an expression: a literal
   brace is `\{`, or goes in single quotes.
-- `$x.f` in a string: a record's field `f`; if `x` holds anything else, its
-  text followed by `.f` - `"$name.log"` is the shell's reading.
+- After `$name` in a string comes text, as the shell reads it: `"$name.log"`
+  is the name and then `.log`. A field goes in braces, `"{$r[name]}"`; `"$r.f"`
+  with a record `r` is an error that says so.
 - `'...'`: raw - nothing escaped, nothing put in. Regular expressions are
   usually written so.
 - A bare word that is not a variable is its own text: `case.sh`, `--check`.
@@ -108,8 +109,9 @@ stop early, as Python's.
 - `x in list`, `k in record` (a field's name), `part in text`; `not in`.
 - `+` adds numbers only. Texts join in a string, `"$name.log"`, `"{$a}{$b}"`;
   lists in a list, `[@a @b]`.
-- `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`,
-  `$r.k`: a record's field; chains `$m[1][0]`, `$r.a.b`.
+- `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`: a
+  record's field (`k` a bare word, a string, or `$name` for a field named by a
+  variable); chains `$m[1][0]`, `$r[a][b]`. One way: there is no `$r.k`.
 - `[1 2 3]` or `[1, 2, 3]`: each item an expression, spaces or commas
   between - `[$x - 1, $x * 2]`, `[$x - 1 $x + 1]` (an item ends where no
   operator goes on); a sign glued to a number is part of it, `[1 -2]` two

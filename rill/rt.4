@@ -586,6 +586,8 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 1 63 LSHIFT CONSTANT R-NONE   \ a number of the script's that may be read before it is set holds this until it is (785)
 : R-UNSET ( c-addr u --- )   \ a variable read where it may not be set, and it is not (772) - Python's NameError
   ." rill: $" TYPE ."  is not set" R-ERR-NL  1 R-STATUS !  -4000 THROW ;
+: R-ITEM-ANY ( box n --- box )   >R R-UNBOX K-LIST <> IF ." rill: an index on something not a list" R-ERR-NL -4002 THROW THEN R> R-AT ;   \ $x[i], x an item: checked (801)
+: R-FIELD-ANY ( t box --- box )   R-UNBOX K-REC <> IF ." rill: a field of something not a record" R-ERR-NL -4002 THROW THEN R-GET ;   \ $x[f], x an item: no key boxed (801)
 : R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
   R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
 
@@ -646,11 +648,6 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
   OVER R-T@ NIP 0= IF NIP EXIT THEN  DUP R-T@ NIP 0= IF DROP EXIT THEN
   S"  " R-TEXT DUP R-T@ DROP 10 SWAP C!  SWAP 3 R-CONCAT ;
 
-: R-DOT ( box name --- box )   \ "$x.f" with x an item: a record's field; anything else, its text then .f - as the shell reads "$x.f" (787)
-  OVER R-UNBOX NIP K-REC = IF SWAP R-UNBOX DROP R-GET EXIT THEN
-  >R R-ANY>TEXT S" ." R-TEXT R> 3 R-CONCAT K-TEXT R-BOX ;
-
-\ ---- Arithmetic and order on items (Iteration 790): a decimal in either side, decimals; else numbers, as Python's ----
 : R-NUM-OR-DEC ( box --- v dec? )   DUP R-UNBOX NIP K-DEC = IF R-UNBOX DROP -1 ELSE R-ANY>NUM 0 THEN ;
 : R-CMP-AN ( box n --- v1 v2 )   >R R-NUM-OR-DEC IF R> R-N>D ELSE R> THEN ;      \ an item against a number, on one scale
 : R-CMP-NA ( n box --- v1 v2 )   R-NUM-OR-DEC IF SWAP R-N>D SWAP THEN ;

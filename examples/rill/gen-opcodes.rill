@@ -9,7 +9,7 @@ for l in lines(read($tab)) {
     }
 }
 def byname n -> record {   # the opcode named n, or {} (782: a loop that returns)
-    for x in $ops { if ($x.name == $n and $x.kind != escaped) { return $x } }
+    for x in $ops { if ($x[name] == $n and $x[kind] != escaped) { return $x } }
     return {}
 }
 
@@ -24,9 +24,9 @@ def wrap items -> text {
 }
 
 def generate {
-    d = ["&&$x.lab" for x in $ops if $x.kind == direct]
-    e = ["&&$x.lab" for x in $ops if $x.kind == escaped]
-    o = ["[$x.raw] = &&$x.lab" for x in $ops if $x.kind not in [direct escaped]]
+    d = ["&&{$x[lab]}" for x in $ops if $x[kind] == direct]
+    e = ["&&{$x[lab]}" for x in $ops if $x[kind] == escaped]
+    o = ["[{$x[raw]}] = &&{$x[lab]}" for x in $ops if $x[kind] not in [direct escaped]]
     echo "/*  engine/cv8-ops.h - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh."
     echo " *  Do not edit: change engine/opcodes.tab and run make. The engine's"
     echo " *  dispatch tables - the direct primitives in order, the escaped"
@@ -35,7 +35,7 @@ def generate {
     echo "#define CV8_OPS_DIRECT \\"; echo {wrap($d)}
     echo "#define CV8_OPS_ESCAPED \\"; echo {wrap($e)}
     echo "#define CV8_OPS_OTHER \\"; echo {wrap($o)}
-    echo "#define OPC_BRANCH8 {byname(BRANCH8).raw}   /* the loop opcodes step over it */"
+    echo "#define OPC_BRANCH8 {byname(BRANCH8)[raw]}   /* the loop opcodes step over it */"
 }
 
 def rows items {
@@ -46,7 +46,7 @@ def rows items {
 
 def forth-ops {
     op = {}; esc = []
-    for x in $ops { if ($x.kind == escaped) { push($esc, $x.lab) } else { op[$x.num] = $x.lab } }
+    for x in $ops { if ($x[kind] == escaped) { push($esc, $x[lab]) } else { op[$x[num]] = $x[lab] } }
     echo '\ engine/relfasm-ops.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh'
     echo "\\ --forth-ops; do not edit. The engine's two dispatch tables."
     echo "8 ALIGN,"; echo "dispatch256 L:"
@@ -60,7 +60,7 @@ def forth-ops {
 def forth-consts {
     echo '\ engine/relfasm-consts.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh'
     echo '\ --forth-consts; do not edit.'
-    echo "{byname(BRANCH8).num} CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it"
+    echo "{byname(BRANCH8)[num]} CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it"
 }
 
 mode = at($args, 0, "")
@@ -71,13 +71,13 @@ if ($mode != --check) { generate; exit 0 }
 bad = []
 nd = 0; ne = 0
 for x in $ops {
-    if ($x.kind == direct) { if ($x.num != $nd) { push($bad, "direct $x.name is not at $nd") }; nd = $nd + 1 }
-    if ($x.kind == escaped) { if ($x.num != $ne) { push($bad, "selector $x.name is not $ne") }; ne = $ne + 1 }
-    if ($x.kind == synth and $x.name == LIT32 and $x.num != $nd) { push($bad, "LIT32 is not at the direct count $nd") }
-    if ($x.kind != escaped and $x.fmt not in ['-' u8 i8 u16 i32 u64 b8 b16 slot sel data]) { push($bad, "$x.name has no known operand format (\"$x.fmt\")") }
+    if ($x[kind] == direct) { if ($x[num] != $nd) { push($bad, "direct {$x[name]} is not at $nd") }; nd = $nd + 1 }
+    if ($x[kind] == escaped) { if ($x[num] != $ne) { push($bad, "selector {$x[name]} is not $ne") }; ne = $ne + 1 }
+    if ($x[kind] == synth and $x[name] == LIT32 and $x[num] != $nd) { push($bad, "LIT32 is not at the direct count $nd") }
+    if ($x[kind] != escaped and $x[fmt] not in ['-' u8 i8 u16 i32 u64 b8 b16 slot sel data]) { push($bad, "{$x[name]} has no known operand format (\"{$x[fmt]}\")") }
 }
 k4 = lines(read("$dir/forth/kernel.4"))
-tabnames = [$x.name for x in $ops if $x.kind in [direct escaped]]
+tabnames = [$x[name] for x in $ops if $x[kind] in [direct escaped]]
 knames = [words($l)[1] for l in $k4 if match($l, '^PRIMITIVE[ \t]')]
 if ($tabnames != $knames) {
     push($bad, "forth/kernel.4's PRIMITIVE lines differ from engine/opcodes.tab's direct and escaped rows:")
@@ -90,8 +90,8 @@ kdirect = 0
 for l in $k4 { if (starts($l, ESCAPED)) { break }; if (match($l, '^PRIMITIVE[ \t]')) { kdirect = $kdirect + 1 } }
 if ($kdirect != $nd) { push($bad, "forth/kernel.4 has $kdirect primitives before ESCAPED, engine/opcodes.tab $nd direct ones") }
 for x in $ops {
-    if ($x.kind == tiny and not (grep -q "^$x.num OPCODE $x.name[ \t]" "$dir/forth/kernel.4")) {
-        push($bad, "forth/kernel.4 does not declare `$x.num OPCODE $x.name`, as engine/opcodes.tab has it")
+    if ($x[kind] == tiny and not (grep -q "^{$x[num]} OPCODE {$x[name]}[ \t]" "$dir/forth/kernel.4")) {
+        push($bad, "forth/kernel.4 does not declare `{$x[num]} OPCODE {$x[name]}`, as engine/opcodes.tab has it")
     }
 }
 for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANCH] [cross.4 0BRANCH-OP ?BRANCH]
@@ -101,7 +101,7 @@ for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANC
           [shadow.4 LZERO-OP LZERO]] {
     x = byname($c[2])
     if (len(keys($x)) == 0) { push($bad, "engine/opcodes.tab has no opcode {$c[2]}"); continue }
-    if (not (grep -qE "^[ \t]*$x.num CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { push($bad, "forth/{$c[0]}'s {$c[1]} is not $x.num ({$c[2]} in engine/opcodes.tab)") }
+    if (not (grep -qE "^[ \t]*{$x[num]} CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { push($bad, "forth/{$c[0]}'s {$c[1]} is not {$x[num]} ({$c[2]} in engine/opcodes.tab)") }
 }
 if (not (generate | cmp -s - "$dir/engine/cv8-ops.h")) { push($bad, "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make") }
 for m in $bad { echo "gen-opcodes: $m" out>err }

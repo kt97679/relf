@@ -102,12 +102,12 @@ def apply-bundle -> record {
 }
 
 if (not (git rev-parse --git-dir all> /dev/null)) { echo "pack-results: not a git checkout" out>err; exit 1 }
-if (not $opts.apply) { applied = "not looked for (--no-apply)" }
+if (not $opts[apply]) { applied = "not looked for (--no-apply)" }
 else if (env(PACK_REEXEC) != "") { applied = "{default(env(PACK_APPLIED), '?')}; this script changed with it, and ran again" }
 else {
     r = apply-bundle()
-    applied = $r.applied
-    if ($r.changed) {
+    applied = $r["applied"]
+    if ($r[changed]) {
         echo "== $self changed with the bundle: running the new one ==" out>err
         exit code((env PACK_REEXEC=1 PACK_APPLIED=$applied rill $self @args))
     }
@@ -129,7 +129,7 @@ for r in glob("bench-report-*.txt") {
     if (new-report($r)) { cp $r "$stage/reports/"; note("report not in bench/reports/ yet, packed: $r") }
     else { note("report already in bench/reports/: $r") }
 }
-if ($opts.clean) {
+if ($opts[clean]) {
     echo "== clean ==" out>err
     untracked = lines($(git clean -ndx | sed -n 's/^Would remove //p'))
     write("$stage/untracked.txt", lines-text($untracked))
@@ -154,7 +154,7 @@ if ($opts.clean) {
     write("$stage/untracked.txt", lines-text($untracked))
     note("clean: skipped (--no-clean); untracked paths: {len($untracked)} (untracked.txt)")
 }
-if ($opts.bench) {
+if ($opts[bench]) {
     report = "$(pwd)/bench-report-$host-$utc.txt"
     echo "   (tools/bench-report.sh: about ten minutes)" out>err
     step("bench", "env REPORT=$report sh tools/bench-report.sh")
@@ -165,14 +165,14 @@ if ($opts.bench) {
 }
 if (test -x ./relfsh-native) {
     step("native-written", "python3 tools/native-written.py ./relfsh-native")
-    if ($opts.profile) {
+    if ($opts[profile]) {
         wl = $(mktemp -d)
         for f in glob("tests/bench-vm/*.sh") { write("$wl/$(basename $f)", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
         for w in [fn arith str realistic] { step("profile-$w", "python3 tools/native-prof.py ./relfsh-native '$wl/$w.sh'") }
         rm -rf $wl
     }
 } else { note("no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile") }
-if ($opts.verify) {
+if ($opts[verify]) {
     echo "   (tests/verify: some minutes)" out>err
     step("verify", "sh tests/verify")
     note("verify's lines other than ok, and its last line:")

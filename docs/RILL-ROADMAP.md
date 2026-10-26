@@ -512,3 +512,25 @@ had two blanks before "(line n)". Spreads take an item holding a list
   through R-INDEX-ANY. (Still open: a number on an item holding a record,
   `$r[a][0]`, is not checked.)
 - The image: 69,641 bytes to 68,401.
+
+## Iteration 801: one way each - a field is $r[f] (step 3 of 4)
+
+- `$r.f`, `$r.a.b`, `$x[i].f`, `at(...).f`: gone for `$r[f]`, `$r[a][b]`,
+  `$x[i][f]`, `at(...)[f]` - brackets index lists and records alike. A
+  compile error says so.
+- In a string `"$x.f"` is x and then the text `.f`, the shell's reading,
+  for every kind; a field is `"{$r[f]}"`. `"$r.f"` with a record r is a
+  compile error, so an old script does not change its output silently.
+  R-DOT (787), which decided for an item when the script ran, is gone.
+- 142 field reads rewritten at the offsets the compiler itself logged (a
+  copy of rillc.py that reported each field it compiled, with its kinds
+  settled). Four of them were items holding texts - "$name.log", "$w.sh",
+  "$f.bak" - where R-DOT gave text: put back by hand. A key that is also a
+  variable's name is quoted: `$o["delete"]`.
+- The image: 68,401 bytes to 68,193.
+- An item read by a text key, `$x[name]` (a loop's record), goes through
+  R-FIELD-ANY: no key boxed, as `$x.name` was (R-INDEX-ANY boxed it, an
+  allocation a read); by a number, R-ITEM-ANY. Both check what the item
+  holds: `$r[a][0]` on a record, open since 800, is an error, not a read of
+  the record's insides. 300,000 reads: 95 ms with `$r.n` (800), 97 ms now;
+  gen-opcodes --check 99 ms to 104 ms.

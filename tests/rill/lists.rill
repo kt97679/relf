@@ -14,7 +14,7 @@ echo {len($w)} words, last {$w[3]}, joined {join($w, "+")}
 if (fox in $w) { echo has fox }
 if (cat not in $w) { echo no cat }
 host = {name: relf, port: 8080, 'S"': quote}
-echo "$host.name:$host.port"
+echo "{$host[name]}:{$host[port]}"
 host[port] = 9090
 echo port now {$host[port]} and {$host['S"']}
 for k, v in $host { echo field $k = $v }

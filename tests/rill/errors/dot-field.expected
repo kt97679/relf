@@ -1,0 +1,1 @@
+a field is read as $r[f], not $r.f

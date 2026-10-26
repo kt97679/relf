@@ -337,7 +337,6 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
 \ [gene !echolit]
 : SUB-ECHO-OFF ( --- 0 )   0 ;   : SUB-ECHO-ON ( x --- )   DROP ;
 \ [/gene]
-VARIABLE FLD-POS
 : CAPTURE ( --- )   \ $( cmd [?? cmd] ... ): its output, then its status - ?? runs the next if one fails, as the shell's || (787)
   -1 COMMAND-HOOK
   BEGIN S" ??" CUR-IS? WHILE NEXT-TK S" DUP IF DROP" OUT+ -1 COMMAND-HOOK S" >R R-CAP-JOIN R> THEN" OUT+ REPEAT ;
@@ -400,13 +399,9 @@ VARIABLE FLD-POS
     ELSE 2 PICK 1+ C@ NAME-START? 0= IF LIT-C 1 /STRING ELSE DROP
       PIECE-START  1 /STRING  OVER >R  BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
       R> 2 PICK OVER - OUT-POS >R READ-VAR                     ( c-addr u kind )  ( R: the var's code )
-      BEGIN DUP DUP K-REC = SWAP K-ANY = OR 3 PICK 1 > AND IF 2 PICK C@ [CHAR] . = 3 PICK 1+ C@ NAME-START? AND ELSE 0 THEN
-      WHILE                                                    \ "$host.name": a field - of an item, as R-DOT reads it (787)
-        >R  1 /STRING  OVER >R
-        BEGIN DUP IF OVER C@ NAME-CHAR? ELSE 0 THEN WHILE 1 /STRING REPEAT
-        R> 2 PICK OVER -
-        R> K-ANY = IF LIT-TEXT S" R-DOT" OUT+ ELSE OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+ THEN  K-ANY
-      REPEAT R> DROP
+      DUP K-REC = 2 PICK 1 > AND IF 2 PICK C@ [CHAR] . = 3 PICK 1+ C@ NAME-START? AND IF   \ "$r.f" gone: one way, {$r[f]} (801)
+        S" a field in a string is written {$r[f]}" ERR THEN THEN
+      R> DROP
       TO-TEXT  PIECE-END  THEN THEN
     ELSE DUP [CHAR] { = IF DROP
       PIECE-START  1 /STRING  OVER >R  [CHAR] } SN-NEST 0= IF R> DROP S" a { in a string is not closed" ERR THEN   \ 789
@@ -548,30 +543,22 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN
     IA-NOW @ 0= IF TK T@ NM-FIND 0< 0= IF BARE-ERR THEN THEN  TK T@ NEXT-TK TEXT-LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
-: SPLIT-DOT ( c-addr u --- rest-a rest-u field-a field-u )   \ a.b.c: a, and b.c
-  2DUP [CHAR] . SCAN  2SWAP DROP 2 PICK OVER -  2SWAP DUP IF 1 /STRING THEN 2SWAP ;
-VARIABLE TM-KP   \ where an item's index starts (800)
-: TERM ( --- kind )   \ TERM0, then $x[i] and $r.f touching it
+: TERM ( --- kind )   \ TERM0, then $x[i] touching it
   OUT-POS >R  TERM0
   BEGIN
     S" [" CUR-IS? TK TOK-AT TK 1- TOK-END = AND IF
       NEXT-TK
       DUP K-LIST = IF DROP 1 EXPR TO-NUM S" R-AT" OUT+ ELSE
-      DUP K-ANY = IF DROP OUT-POS DUP TM-KP ! 1 EXPR                         \ ( keystart kind )
-        DUP K-NUM = IF 2DROP S" R-UNBOX DROP" TM-KP @ OUT-INSERT S" R-AT" OUT+   \ a number: a list's item, the fast way
-        ELSE BOX R@ SEG>POS S" R-INDEX-ANY" OUT+ THEN ELSE                     \ else a record's field or a list's item, as it holds (800)
+      DUP K-ANY = IF DROP OUT-POS 1 EXPR                                     \ ( keystart kind )
+        DUP K-NUM = IF 2DROP S" R-ITEM-ANY" OUT+ ELSE                          \ a number: a list's item, checked (801)
+        DUP K-TEXT = IF DROP R@ SEG>POS S" R-FIELD-ANY" OUT+ ELSE              \ a text: a record's field, no key boxed (801)
+        BOX R@ SEG>POS S" R-INDEX-ANY" OUT+ THEN THEN ELSE                     \ else either, as it holds (800)
       K-REC = IF OUT-POS 1 EXPR TO-TEXT R@ SEG>POS S" R-GET" OUT+ ELSE
       S" only a list or a record is indexed" ERR THEN THEN THEN
       S" ]" EXPECT K-ANY 0
     ELSE TK K@ T-WORD = TK T@ DROP C@ [CHAR] . = AND TK TOK-AT TK 1- TOK-END = AND
-      OVER DUP K-REC = SWAP K-ANY = OR AND IF
-      TK T@ 1 /STRING NEXT-TK                               ( kind fields )
-      BEGIN DUP WHILE
-        SPLIT-DOT                                           ( kind rest field )
-        4 PICK K-ANY = IF S" R-UNBOX DROP" OUT+ THEN
-        OUT-POS FLD-POS ! LIT-TEXT FLD-POS @ R@ SEG>POS S" R-GET" OUT+   \ the key in front of the term
-        ROT DROP K-ANY -ROT
-      REPEAT 2DROP 0
+      OVER DUP K-REC = SWAP K-ANY = OR AND IF                    \ one way: $r[f] (801)
+      S" a field is read as $r[f], not $r.f" ERR
     ELSE -1 THEN THEN
   UNTIL R> DROP ;
 : SPREAD-WORD? ( i --- f )   \ @name

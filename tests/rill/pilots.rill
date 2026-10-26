@@ -13,20 +13,20 @@ def doubled xs -> list { return [$x * 2 for x in $xs] }
 echo {join(doubled([1 2 3]), ",")}
 # -= and += on a variable holding an item that is a number
 r = {first: 5}
-num = $r.first
+num = $r[first]
 num = $num - 2
 echo num $num
 # values, sort of lists in Python's tuple order, items as containers
 rs = {p: [b 2], q: [a 9], s: [b 1]}
 for e in sort([$v for k, v in $rs]) { echo {$e[0]}:{$e[1]} }
 nodes = [{refs: []}]
-push($nodes[0].refs, 7)
-echo refs {len($nodes[0].refs)} {7 in $nodes[0].refs}
+push($nodes[0][refs], 7)
+echo refs {len($nodes[0][refs])} {7 in $nodes[0][refs]}
 kill = {f: {}}
 kl = $kill[f]
 kl[3] = true
 echo kill {3 in $kill[f]} {4 in $kill[f]}
-echo same {$nodes[0].refs[0] == $nodes[0].refs[0]}
+echo same {$nodes[0][refs][0] == $nodes[0][refs][0]}
 # native-ab-layouts: a geometric mean by awk (log and exp are awk's, 799); min and max of a list; cd and back
 def gm xs -> decimal {
     return decimal($(printf '%s\n' @xs | awk '{s += log($1)} END {printf "%.6f", exp(s / NR)}'))

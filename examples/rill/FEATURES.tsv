@@ -41,7 +41,7 @@ starts ends trim join sort	adopted	732	\b(starts|ends|trim|join|sort)\(
 push slice	adopted	732	\b(push|slice)\(
 path functions dir base abs (dirname basename realpath)	removed	799	(?<![\w-])(dir|base)\(
 adjacent items join into one argument	adopted	732	[A-Za-z0-9_./-]\$\(
-decimals: fixed point, 6 places; log exp min max round	adopted	733	\b(decimal|log|exp|min|max|round)\(|\b\d+\.\d+\b
+decimals: fixed point, 6 places; min max	adopted	733	\b(decimal|min|max)\(|\b\d+\.\d+\b
 regular expressions: match all sub	adopted	733	\b(match|all|sub)\(
 slicing syntax x[a:b]	open	731	\$\w+\[[^\]\n]*:
 conditions without parentheses	rejected	732	(^|[{;]\s*|\belse\s+)(if|while)\s+[^(\s]
@@ -66,7 +66,7 @@ an empty text or list is false in a condition	adopted	752	-
 options(...) for an argument loop	open	747	-
 def f x -> kind = expr	open	747	-
 m[k] ?= v	open	747	-
-$x[i].f in a string without { }	open	747	-
+$x[i].f in a string without { } (one way: {$x[i][f]})	rejected	801	-
 x = if (c) a else b	open	747	-
 {k: v for x in src}	open	747	-
 the library for Python-born scripts (754): read write starts ends upper lower trim base, slice of texts and records, at(r, k, default), sum max min, sort-by (stable), decimals (fixed point, six places), [e for k, v in src], an item variable takes any value boxed	built	754	-
@@ -74,3 +74,4 @@ first text contains values extend shift delete log exp format, two-value max min
 echo ... out>err: a line to the err port, in-process	adopted	799	echo [^\n]*out>err
 pop(x, key): a list's item or a record's field, out	adopted	799	\bpop\(
 + on lists and texts ([@a @b]; "$a$b")	removed	800	-
+$r.f and "$r.f" ($r[f]; {$r[f]} in a string - "$name.log" is text, as the shell's)	removed	801	-

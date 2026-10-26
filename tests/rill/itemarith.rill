@@ -8,9 +8,9 @@ r = {a: 0.25, n: 3}
 r[a] = $r[a] + 2
 r[n] = $r[n] + 1
 r[n] = $r[n] - 0.5
-echo $r.a $r.n
+echo $r[a] $r[n]
 totals = {}
 for w in ["x" "y" "x"] { if ($w in $totals) { totals[$w] = $totals[$w] + 1.5 } else { totals[$w] = 1 } }
-echo $totals.x $totals.y
+echo $totals[x] $totals[y]
 k = $l[1] + 1
 echo {$k * 10}

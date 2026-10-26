@@ -248,14 +248,12 @@ class Compiler:
                 self.i += 1; ic, ik = self.expr(); self.take('op', ']')
                 if kind == 'list': code, kind = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
                 elif kind == 'record': code, kind = '%s %s R-GET' % (self.to_text(ic, ik), code), 'any'
-                elif kind == 'any' and ik == 'number': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, ic), 'any'   # a list's item, the fast way
-                elif kind == 'any': code, kind = '%s %s R-INDEX-ANY' % (self.box(ic, ik), code), 'any'      # a record's field or a list's item, as it holds (800)
+                elif kind == 'any' and ik == 'number': code, kind = '%s %s R-ITEM-ANY' % (code, ic), 'any'      # a list's item, checked (801)
+                elif kind == 'any' and ik == 'text': code, kind = '%s %s R-FIELD-ANY' % (ic, code), 'any'       # a record's field, no key boxed (801)
+                elif kind == 'any': code, kind = '%s %s R-INDEX-ANY' % (self.box(ic, ik), code), 'any'      # either, as it holds (800)
                 else: raise Error('line %d: only a list or a record is indexed' % nxt[2])
-            elif nxt[0] == 'word' and nxt[1].startswith('.') and nxt[3] == prev[4] and kind in ('record', 'any'):
-                self.i += 1
-                for f in nxt[1][1:].split('.'):
-                    code = ('%s R-UNBOX DROP' % code) if kind == 'any' else code
-                    code, kind = '%s %s R-GET' % (self.lit_text(f), code), 'any'      # a field's name a literal, shared too (750)
+            elif nxt[0] == 'word' and nxt[1].startswith('.') and nxt[3] == prev[4] and kind in ('record', 'any'):   # one way: $r[f] (801)
+                raise Error('line %d: a field is read as $r[f], not $r.f' % nxt[2])
             else:
                 return code, kind
     def literal_list(self):
@@ -485,12 +483,8 @@ class Compiler:
                 if m:
                     name = m.group(1); i += m.end()
                     code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) else self.read_var(name, line)
-                    while kind in ('record', 'any'):                  # "$host.name": a field, in a string too
-                        f = re.match(r'\.([A-Za-z_][A-Za-z0-9_]*)', body[i:])
-                        if not f: break
-                        if kind == 'any': code = '%s %s R-DOT' % (code, self.lit_text(f.group(1)))    # an item: R-DOT decides (787)
-                        else: code = '%s %s R-GET' % (self.lit_text(f.group(1)), code)
-                        kind = 'any'; i += f.end()
+                    if kind == 'record' and re.match(r'\.[A-Za-z_]', body[i:]):     # "$r.f" gone: one way, {$r[f]} (801)
+                        raise Error('line %d: a field in a string is written {$r[f]}' % line)
                     parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
                 else:
                     j = scan_nested(body, i + 1, '}')                       # strings in it skipped whole (789)

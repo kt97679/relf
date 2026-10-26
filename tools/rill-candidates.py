@@ -30,7 +30,7 @@ CANDIDATES = [
         (r'(\w+) = \{\}\n(\s*)for (\w+) in (' + POST + r') \{ \1\[\$\3\] = ([^{}\n]+) \}', r'\1 = {$\3: \5 for \3 in \4}')]),
     ('options(...): flags and values read from $args', 30, [   # dead-words' argument loop, as one call
         (r'delete = "--delete" in \$args\nwhy = ""; files = \[\]\nfor i, a in \$args \{\n.*\n.*\n\}',
-         r'o = options([--delete], [--why]); delete = $o.delete; why = $o.why; files = $o.rest')]),
+         r'o = options([--delete], [--why]); delete = $o["delete"]; why = $o["why"]; files = $o[rest]')]),
     ('m[k] ?= v - set a field only when it is missing', 14, [  # native-by-source's accumulations
         (r'(\w+)\[([^\]]+)\] = add-to\(at\(\$\1, ([^,]+), (\{bytes: 0, n: 0, cls: \[0 0 0 0 0 0\]\})\), \$v\)',
          r'\1[\2] ?= $zero; \1[\2] = add-to($\1[\2], $v)')]),

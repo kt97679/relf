@@ -1,0 +1,3 @@
+# a field in a string is {$r[f]}: "$r.a" would be the record and then .a (801)
+r = {a: 1}
+echo "value: $r.a"
