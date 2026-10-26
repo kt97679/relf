@@ -255,9 +255,6 @@ the account of what each gained and cost.
    - **Rill's run-time errors go to stdout** (found at 818): `."` writes
      them, so `x = $(a-rill-script)` takes an error message as its value; a
      message to the err port (fd 2), as the shell's are, would end that.
-   - **Rill is not in make verify**: tests/verify has no Rill rows, so a
-     kernel or engine change could break Rill unseen; its suite and oracle
-     as verify rows (prompts/09 for the new baseline lines);
    - spawn where a rewrite runs jobs side by side - intrfuzz-stress, through
      `sh -c` with & and wait: the feature's evidence, and a shorter script.
    (815 fixed what 814 found: a def that only computes is compiled with its
@@ -267,7 +264,7 @@ the account of what each gained and cost.
    image since 804: 68,857 bytes to 74,803 - JSON 3.2 KB, jobs 1.0 KB, the
    rest the fixes' code and messages: the price of general, to watch.)
    Checks: `sh tests/rill/run` (99), `sh tests/rill/oracle` (59 the same),
-   both again with RILL_GC_STRESS=1.
+   both again with RILL_GC_STRESS=1 - and, since 819, both in make verify.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
    and its added items (prompts/SYNC.md lists them, and how to merge):

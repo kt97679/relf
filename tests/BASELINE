@@ -96,6 +96,10 @@ progress:0600-0699 1657887899 171074
 progress:0700-0799 2451783456 113215
 rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
+rill:failed 0
+rill:oracle-different 0
+rill:oracle-same 59
+rill:passed 99
 shell:4byte 1
 shell:8byte 1
 shell:assertions 1128
