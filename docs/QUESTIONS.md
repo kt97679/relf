@@ -50,9 +50,14 @@ rewrite of compile.4 that leaves the oracle nothing to compare; (2) an
 interpreter would be no smaller and several times slower; (3) scripts compiled
 once and cached, run in an image of the runtime alone, would run in about 40 KB
 - 44 % of today's - with the compiler and editor kept for the prompt; (4) Q39's
-options. *Recommendation*: (3) if a script's running size is what matters, with
-Q39's (1) for the prompt's image; (1) only as a redesign chosen for its own sake;
-not (2). *Blocks*: nothing.
+options. 828, asked for bytecode directly (docs/RILL-SIZE.md, "Bytecode directly"):
+a 177-line script starts in about half the time (15 ms of its 28 are EVALUATE),
+the image saves only some 3-6 KB, the text's five out-of-order places need
+restructuring, and the oracle becomes outputs only - the kernel has no
+decompiler. *Recommendation*: (3) if a script's running size is what matters, with
+Q39's (1) for the prompt's image; bytecode directly if start-up time is the goal,
+staged behind a gene with an output-comparing oracle built first; not (2).
+*Blocks*: nothing.
 
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell

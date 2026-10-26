@@ -71,7 +71,7 @@ then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL jobs: stdin [$jin],
 rm -rf $jt
 # the prompt (824): a session's lines on stdin, rill with no script - its output, then its status
 for p in tests/rill/prompt/*.in; do
-    { timeout 30 ./relf64 kernel64-rill.img < "$p" 2>&1; echo "status $?"; } > /tmp/rill-prompt.$$
+    { (ulimit -v 400000 2>/dev/null; timeout 30 ./relf64 kernel64-rill.img < "$p" 2>&1); echo "status $?"; } > /tmp/rill-prompt.$$   # in 400 MB (828)
     if cmp -s /tmp/rill-prompt.$$ "${p%.in}.expected"; then pass=$((pass + 1))
     else fail=$((fail + 1)); echo "FAIL $p"; diff "${p%.in}.expected" /tmp/rill-prompt.$$ | head -5; fi
 done

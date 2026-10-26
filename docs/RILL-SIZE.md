@@ -71,3 +71,27 @@ small because BASIC is.
    compiler kept for the prompt and for a first run. To settle: where the cache lives, and that
    `$script` names the script, not its compiled copy.
 4. **Smaller as it is**: Q39's options.
+
+### Bytecode directly, without the Forth between (828)
+
+Asked next. Possible: the compiler would lay down CV8 code itself - `COMPILE,` for a call,
+`LITERAL` for a number, branches resolved as IF and THEN resolve them - in place of the text it
+writes now for EVALUATE to read again. Measured on pack-results.rill (177 lines): compiled to
+text in 13.1 ms; the text (28,460 bytes) EVALUATEd in another 15 ms. A large script would start
+in about half the time, and each compile would not need its 2.25 MB of text buffers.
+
+The image would save less than it seems: the Forth text is some 3.5 KB of the compiler, but code
+made directly still names every runtime word it calls - an execution token kept for each, where
+the text kept its name - and the runtime's 4 KB of headers could go only if nothing read
+generated Forth any more (`rill --forth`, a cached compile, the prompt's R-MAIN). Some 3-6 KB in
+all. The work is in five places where the text is made out of order, which code laid down in
+order cannot do as it is: a def's locals header, written after its body; a stage's redirections,
+before its words; literal texts and VARIABLEs, at the program's top; loop bodies hoisted into
+words of their own; defs put off to the second pass. And the oracle - rillc.py's Forth against the
+image's, word for word, 61 programs - has no Forth on the image's side to compare: the kernel has
+no decompiler. It would compare outputs instead, as the fuzzer could.
+
+Found on the way: the prompt kept every line's text buffers and token tables, and a string's own
+tables in any compile - some 5.5 MB of address space a line (21 MB resident at 400 lines). Made
+once and reused now, and a string's freed: flat, 2 MB, at 1,600 lines (tests/rill/prompt/
+many-lines.in, in 400 MB). And an error code not Rill's own is said at the prompt as R-BOOT says it.

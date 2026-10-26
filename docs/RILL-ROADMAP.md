@@ -872,3 +872,15 @@ recalled and added to, a variable kept, TAB, a line that goes on, ^C,
 regex.4 or compile.4 is redefined by the editor (the build's
 `Redefining:` lines as before). The image: 79,117 bytes to 91,526 -
 12.4 KB, the editor and its width tables.
+
+## Iteration 828: the prompt's memory - made once, not every line; bytecode weighed
+
+Found while weighing bytecode for the user: RILL-INIT, run at both passes of every compile, made
+new text buffers (2.25 MB) and token tables (512 KB) each time, and a string's own token tables
+(SUB-COMMAND, SUB-EXPR) were never freed - one compile per script hid it; the prompt compiles
+every line, and grew some 5.5 MB of address space a line (21 MB resident at 400 lines). Now made
+once and used again (BUF-ALLOC, TK-ALLOC at RILL-INIT), a string's freed when done (TK-FREE):
+2 MB, flat, at 1,600 lines. tests/rill/prompt/many-lines.in runs 300 lines with the prompt
+sessions now in 400 MB of address space - 825's compiler fails it. And RL-CAUGHT says an error
+code not Rill's own as R-BOOT does (it was silent: with memory gone, every line failed unsaid).
+The bytecode question: docs/RILL-SIZE.md and Q40.

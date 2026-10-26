@@ -17,6 +17,8 @@ VARIABLE RS-SRC   VARIABLE SRC#   VARIABLE CUR-LINE
 : TK-ALLOC ( --- )
   TK-MAX CELLS ALLOCATE THROW TK-KIND !  TK-MAX CELLS ALLOCATE THROW TK-AT !
   TK-MAX CELLS ALLOCATE THROW TK-LEN !   TK-MAX CELLS ALLOCATE THROW TK-LINE ! ;
+: TK-FREE ( --- )   \ a string's own tables, done with (828: each was kept, half a megabyte, for good)
+  TK-KIND @ FREE DROP  TK-AT @ FREE DROP  TK-LEN @ FREE DROP  TK-LINE @ FREE DROP ;
 : TK+ ( kind at len --- )
   TK-N @ TK-MAX = ABORT" rill: the script has too many tokens"
   TK-N @ CELLS TK-LEN @ + !  TK-N @ CELLS TK-AT @ + !  TK-N @ CELLS TK-KIND @ + !
@@ -169,9 +171,10 @@ VARIABLE MAIN-B  VARIABLE MAIN#  VARIABLE DEFS-B  VARIABLE DEFS#  VARIABLE CUR-B
 \ [gene littext]
 VARIABLE LITS-B  VARIABLE LITS#      \ literal texts made once (gene littext, 750)
 \ [/gene]
-: BUF-ALLOC ( --- )   1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B !  0 MAIN# !  0 DEFS# !
+: BUF-ALLOC ( --- )   \ made once and used again: the prompt compiles every line, twice (828)
+  MAIN-B @ 0= IF 1048576 ALLOCATE THROW MAIN-B !  1048576 ALLOCATE THROW DEFS-B ! THEN  0 MAIN# !  0 DEFS# !
 \ [gene littext]
-  262144 ALLOCATE THROW LITS-B !  0 LITS# !
+  LITS-B @ 0= IF 262144 ALLOCATE THROW LITS-B ! THEN  0 LITS# !
 \ [/gene]
   ;
 : TO-MAIN ( --- )   MAIN-B CUR-B !  MAIN# CUR#A ! ;
@@ -403,10 +406,10 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
   TK-LINE0 ! ;
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
   SUB-L ! SUB-A !  SUB-ENTER >R  NPARTS @ LIT# @  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
-  CAPTURE S" R-CHECK" OUT+  SUB-ECHO-ON  RESTORE-TK  LIT# ! NPARTS !  R> TK-LINE0 ! ;   \ the string's own count kept (789)
+  CAPTURE S" R-CHECK" OUT+  SUB-ECHO-ON  TK-FREE RESTORE-TK  LIT# ! NPARTS !  R> TK-LINE0 ! ;   \ the string's own count kept (789)
 : SUB-EXPR ( c-addr u --- kind )   \ an expression in a string's {...}: tokenized apart, then read
   SUB-L ! SUB-A !  SUB-ENTER >R  NPARTS @ LIT# @  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
-  1 EXPR >R  SUB-ECHO-ON  RESTORE-TK  LIT# ! NPARTS !  R> R> TK-LINE0 ! ;   \ the string's own count kept (789)
+  1 EXPR >R  SUB-ECHO-ON  TK-FREE RESTORE-TK  LIT# ! NPARTS !  R> R> TK-LINE0 ! ;   \ the string's own count kept (789)
 \ [gene echolit]
 4096 BUFFER: EL-BUF  VARIABLE EL#      \ echo's literal run (753)
 : EL+ ( c-addr u --- )   EL-BUF EL# @ + SWAP DUP EL# +! MOVE ;
@@ -1457,7 +1460,7 @@ NM-MAX CELLS BUFFER: SS-A   NM-MAX CELLS BUFFER: SS-L   VARIABLE SS-N   VARIABLE
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !  0 BLK-N !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
-  TK-ALLOC BUF-ALLOC
+  TK-KIND @ 0= IF TK-ALLOC THEN  BUF-ALLOC                    \ the script's tables: made once (828)
   REPL? @ IF  SS-N @ 0 ?DO I CELLS SS-A + @ I CELLS SS-L + @ K-ANY 0 NM-ADD LOOP  SS-DF @ DF-N !  THEN ;   \ the session (824)
 : ON-EXIT-AHEAD? ( --- f )   \ on EXIT, or a spawn (813): the safe points poll for INT and TERM
   TK-N @ 1- 0 ?DO  I T@ S" on" S= I 1+ T@ S" EXIT" S= AND  I T@ S" spawn" S= I 1+ T@ S" (" S= AND  OR IF -1 UNLOOP EXIT THEN  LOOP 0 ;
@@ -1532,6 +1535,7 @@ VARIABLE RL-KEPT   \ the real stdout while a line's words are defined: the kerne
 VARIABLE RL-RUN-XT   ' RL-RUN RL-RUN-XT !XT
 : RL-CAUGHT ( code --- )   \ a line ended by an error, said already, or by INT: the prompt goes on - exit ends it
   0 PL-DEPTH !  0 STATE !
+  DUP -4100 -3999 WITHIN 0= IF R-ERR> ." rill: error " DUP . R-NL R-OUT-BACK THEN   \ not Rill's own: said, as R-BOOT does (828)
   DUP -4000 = R-EXITED @ AND R-SIGGED @ 0= AND IF THROW THEN  0 R-SIGGED !  0 R-EXITED !  DROP ;
 : R-REPL ( --- )
   -1 REPL? !  0 SS-N !  0 SS-DF !  0 ISATTY RL-TTY !  RL-MAX ALLOCATE THROW RL-BUF !  R-SIG-CATCH
