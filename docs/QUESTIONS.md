@@ -34,6 +34,38 @@ same iteration.
 
 ## Open
 
+**Q37. Rill: speed - a phase 4, or not now? (822)** Where it stands,
+measured at 822 (best of five or three, this one-CPU machine): startup
+with the script compiled about 1-2 ms (dash 1, Python 12); a million
+additions 27 ms (Python 96, dash about 1,600); dead-words over the
+shell's eight source files, lists, records and texts, 136 ms (Python
+58); compiling the 176-line pack-results 21 ms, paid on every run.
+Phase 4's list (RILL-ROADMAP.md), untouched since 775: typed lists (no
+box an item), regular expressions compiled to Forth, temporaries
+released (the arena frees nothing between collections), Rill on the
+native kernel (waiting on GOALS.md 12). *Options*: (1) not now - Rill is
+at sh's speed or better everywhere and at Python's on numbers; (2) one
+measured round - profile dead-words (tools/rill-profile.py) and fix
+its top costs, each a dispatch count before and after, as 768 and 775
+did; (3) a phase - typed lists, compiled patterns. *Recommendation*: (2)
+when a script is slow in practice; (3) weighed as A33 weighed code size
+against speed (+50 % code for +5 % not worth it): minimal first.
+*Blocks*: nothing.
+
+**Q38. Rill: a prompt of its own? (822; Q8's prompt points)** Rill runs
+scripts (`rill script`, `rill -c 'code'`); typing commands is relfsh's,
+the POSIX shell. A Rill prompt was 503's picture - `ls -la` typed works,
+`&` at the prompt, a softer failure rule there than in scripts. What it
+takes: the compiler works on whole programs (two passes; a variable's
+kind joined over the whole script), so a line at a time - each line's
+variables kept for the next - is a real change to both compilers; then
+line editing (relfsh's editor), and job control if `&` comes back.
+*Options*: (1) none - Rill for scripts, relfsh for typing; (2) a plain
+read-eval loop - a statement at a time, variables kept, an error said
+and the loop going on; (3) Rill as the interactive shell. *Recommendation*:
+(1), minimal and simple (A35): one language for each job. *Blocks*:
+Q8's prompt points.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come
@@ -53,12 +85,18 @@ You asked for pros and cons, especially with several levels of
 indentation: SHELL-LANGUAGE.md, "Text blocks", sets out four designs
 with a nested example of each.
 *Recommendation*: the closing delimiter whose indentation is the
-margin (design C there).
+margin (design C there). *At 822*: a string already spans lines, but
+its source indentation is its text - a usage message written inside a
+def prints its later lines indented; C would end that in the tokenizer,
+one rule in each compiler.
 
 **Q8. Rill's other open questions (503).** Records at the prompt
 (JSON on a marked port?); a softer failure rule at the prompt than in
 scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
-Rill", says why; it is easy to change.
+Rill", says why; it is easy to change. *At 822*: the kernel in Forth is
+how Rill was built (it compiles to Forth in the image, 736 on); JSON is
+read where the script says, from-json (A36); the prompt's points are
+Q38's. Left here: the name.
 
 **Q12. Forth plugins in image form? (516)** The user's thought: load
 compiled extensions, not source. What it takes: a plugin compiled

@@ -252,6 +252,9 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
+   - the user's to decide (822): text blocks (QUESTIONS.md Q7), speed
+     (Q37), a prompt of Rill's own (Q38) - each with options and a
+     recommendation;
    (815 fixed what 814 found: a def that only computes is compiled with its
    parameters as numbers only when its body uses them so - and range(n) of a
    parameter, which had read its own 0 as n, is no longer such a body.)
