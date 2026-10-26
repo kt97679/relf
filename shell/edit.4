@@ -134,14 +134,14 @@ VARIABLE ED-COL   \ the cursor's column, counted from the prompt's start (574)
 
 : ED-BACKSPACE ( --- )   \ the whole character before the cursor (575)
   ED-POS @ 0= IF EXIT THEN
-  ED-POS @ DUP ED-PREV TUCK - >R             ( start )  ( R: its bytes )
+  ED-POS @ DUP ED-PREV TUCK - >R             ( start )  \ R: its bytes
   ED-BUF ED-POS @ +  OVER ED-BUF +           ( start src dst )
   ED-LEN @ ED-POS @ - MOVE
   ED-POS !  R> NEGATE ED-LEN +! ;
 
 : ED-DELETE ( --- )   \ the character under the cursor - all its bytes (575)
   ED-POS @ ED-LEN @ < 0= IF EXIT THEN
-  ED-POS @ ED-NEXT ED-POS @ - >R             ( )  ( R: its bytes )
+  ED-POS @ ED-NEXT ED-POS @ - >R             ( )  \ R: its bytes
   ED-BUF ED-POS @ + R@ +  ED-BUF ED-POS @ +  ( src dst )
   ED-LEN @ ED-POS @ - R@ - MOVE
   R> NEGATE ED-LEN +! ;
@@ -762,7 +762,7 @@ VARIABLE ED-PAT-U
 
 : ED-REVERSE ( c-addr u --- )   \ the bytes reversed in place (723)
   BEGIN DUP 1 > WHILE
-    OVER DUP C@ >R                 ( a u a )      ( R: the first byte )
+    OVER DUP C@ >R                 ( a u a )      \ R: the first byte
     OVER + 1- DUP C@               ( a u a+u-1 the-last )
     3 PICK C!                      ( a u a+u-1 )  \ the last to the front
     R> SWAP C!                     ( a u )        \ the first to the back

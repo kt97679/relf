@@ -400,7 +400,7 @@ VARIABLE R0 ( --- a-addr)
 \ and a branch to the loop's exit.
    R> R> R> 2DROP >R ;
 
-68 OPCODE (LOOP)  ( --- )               \ runtime part of LOOP
+68 OPCODE (LOOP)  ( --- )               \ LOOP's runtime part
 \ Add 1 to the counter; at the limit, drop the parameters and step over
 \ the branch back, else fall into it. An opcode since Iteration 530.
 \ cross.4's LOOP emits it directly (LOOP-OP): a forward reference would
@@ -1569,7 +1569,7 @@ VARIABLE STATE ( --- a-addr)
 \ 5 bytes -1,520 bytes of shell, 3 and 5 -1,728 but fn and arith up 4 %,
 \ 5 and 8 +1,960, 3 and 6 -1,648 with every workload inside the noise
 \ in two runs: kept. A fourth instruction paid for itself only in bytes.
-3 CONSTANT INL-MAXI    \ at most this many instructions before the EXIT
+3 CONSTANT INL-MAXI    \ at most this many instructions, the EXIT not counted
 6 CONSTANT INL-MAXB    \ and at most this many bytes
 
 : INLINE-LEN ( xt --- u )   \ a small straight body's bytes before its EXIT, or 0

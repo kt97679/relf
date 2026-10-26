@@ -13,7 +13,8 @@ import re, sys
 # Only the mistake itself: a stack note like "R: was-start" left after a
 # closing paren. Ordinary code after a stack comment - `: FOO ( a --- b )
 # SWAP ;` - is how every definition is written and is not flagged.
-BAD = re.compile(r'\([^)\n]*\)[^\\\n]*?\b([A-Za-z]{1,3}:)(?:\s|$)')
+# `X: ;` is a word called at a definition's end (native.4's `: T: ( "name" --- ) N: ;`), not a note (806).
+BAD = re.compile(r'\([^)\n]*\)[^\\\n]*?\b([A-Za-z]{1,3}:)(?:\s|$)(?!\s*;)')
 def check(path):
     bad = []
     for n, line in enumerate(open(path), 1):
