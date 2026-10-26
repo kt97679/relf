@@ -11,8 +11,9 @@ VARIABLE R-TOP   VARIABLE R-END
 VARIABLE R-ARENA0  VARIABLE R-GC-AT  VARIABLE G-STRESS   \ the arena's start; where the next collection is due (776)
 134217728 CONSTANT R-ARENA-SIZE
 : R-ARENA-INIT ( --- )   R-ARENA-SIZE ALLOCATE THROW  DUP R-ARENA0 !  DUP R-TOP !  DUP R-ARENA-SIZE + R-END !  16777216 + R-GC-AT ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
+DEFER R-FULL   \ the arena full: R-FULL-IMPL below says why, and where (791)
 : R-ALLOT ( n --- addr )
-  7 + -8 AND  R-TOP @ SWAP OVER + DUP R-END @ U> IF TRUE ABORT" rill: the arena is full" THEN  R-TOP ! ;   \ the test a branch, its message only when full (768)
+  7 + -8 AND  R-TOP @ SWAP OVER + DUP R-END @ U> IF R-FULL THEN  R-TOP ! ;   \ the test a branch, its message only when full (768)
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
 : R-T@ ( t --- c-addr u )   DUP CELL+ SWAP @ ;
 VARIABLE RB-T
@@ -62,6 +63,10 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 : R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
   R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
+: R-FULL-IMPL ( --- )   \ (791) the arena (128 MB) full: memory is collected between the script's top-level statements only
+  ." rill: out of memory - 128 MB in use since the last collection, which happens between the script's top-level statements, not inside a function"
+  R-ERR-NL  -4006 THROW ;
+' R-FULL-IMPL IS R-FULL
 
 : R-KIND-ERR ( --- )   ." rill: a value of the wrong kind" R-ERR-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
@@ -311,13 +316,13 @@ VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
 : R-READ-KEEP ( fd --- t )   \ to its end, one text, as it is (read(), 754)
   >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
   BEGIN
-    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
+    DUP 65536 + R-END @ U> IF R-FULL THEN
     DUP 65536 R@ READ-SOME DUP 0>
   WHILE + REPEAT  DROP R> DROP  OVER CELL+ -  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
 : R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
   >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
   BEGIN
-    DUP 65536 + R-END @ U> ABORT" rill: the arena is full"
+    DUP 65536 + R-END @ U> IF R-FULL THEN
     DUP 65536 R@ READ-SOME DUP 0>
   WHILE + REPEAT  DROP R> DROP                                ( t end )
   OVER CELL+ -                                                ( t len )

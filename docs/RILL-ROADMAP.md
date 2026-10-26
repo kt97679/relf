@@ -330,3 +330,23 @@ Cost: dead-words over shell/*.4 113 -> 118 ms, native-by-source 229 -> 238
 (best of three), both outputs as before. Found on the way: an item += 0.5 in
 the image's compiler truncated the decimal. tests/rill/itemarith.rill as
 Python.
+
+## Iteration 791: out of memory inside a function, said plainly
+
+The collector runs only at the safe points between the script's top-level
+statements (776): there, nothing but the registered variables can point
+into the arena. Inside a function two more things can - the outer values its
+locals shadow (saved as it runs), and the caller's half-evaluated expression
+on the data stack - and the collector knows neither. So a function that loops
+long, making garbage, fills the 128 MB arena: before, `rill: the arena is
+full`, then R-MAIN and error -2; now `rill: out of memory - 128 MB in use since
+the last collection, which happens between the script's top-level
+statements, not inside a function (line 3)`, status 2. The workaround: keep
+the long loop at the top level and call the function from it - each of its
+rounds is a safe point.
+
+Collection inside functions is a design decision, not a fix: it needs a
+precise record of the active functions' locals and of their shadowed outer
+values, and call sites compiled so that no arena pointer waits on the data
+stack across a call (or the collector to pin what a stack word might point
+to). Left for the user to choose.

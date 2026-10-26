@@ -815,6 +815,7 @@ do not trust the absence of a line below.
 - 788 — run-utf8 in Rill says what tests/shell/run-utf8 says; phase 5's three rewrites all run
 - 789 — double quotes inside a string's {...} and $(...); the image's string reader re-entrant
 - 790 — items holding decimals in arithmetic and comparison, as Python's floats
+- 791 — out of memory inside a long function: a plain message naming the line; collection inside functions left as a design choice
 
 ### Not tied to an iteration
 
