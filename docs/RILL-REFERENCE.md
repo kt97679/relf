@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 824; the design
+CV8 engine. This document says what Rill is as of Iteration 825; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -37,7 +37,11 @@ keeps calling the old). A line with a bracket, a string or a text block
 left open goes on to the next (`...> `); an error is said and the prompt
 comes back; a failed command ends its line only; `exit` or the end of
 the input ends the prompt, with that status. With a terminal it prompts
-`rill> `; without one, lines are read as they come - `rill < session`.
+`rill> ` and lines are edited with relfsh's line editor (825): the arrows,
+^A ^E ^K ^U ^W, the session's history (up and down, ^R to search), TAB to
+complete a file or a program on PATH; ^C drops the line being typed, ^D at
+an empty line ends the prompt. Without a terminal, lines are read as they
+come - `rill < session`.
 
 ## Lines, words, comments
 

@@ -252,8 +252,8 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - **an interactive prompt** (QUESTIONS.md A38, the work now; 824 made the
-     prompt - lines read plainly - and line editing with history is next): to see if
+   - **an interactive prompt** (QUESTIONS.md A38; built - 824 the prompt, 825
+     relfsh's editor at it: the user's to try as a shell now): to see if
      Rill can be the shell people type into - line editing and history,
      relfsh's editor (shell/edit.4) reused if it can be; the compiler
      works on whole programs, so a line at a time keeping its variables is
@@ -278,7 +278,7 @@ the account of what each gained and cost.
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
    image since 804: 68,857 bytes to 76,291 at 821 - JSON 3.2 KB, jobs 1.0
    KB, the rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (104), `sh tests/rill/oracle` (61 the same),
+   Checks: `sh tests/rill/run` (108), `sh tests/rill/oracle` (61 the same),
    both again with RILL_GC_STRESS=1 - and, since 819, both in make verify.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

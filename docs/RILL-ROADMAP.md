@@ -851,3 +851,24 @@ above. The fuzzer (seed 824) found the image's compiler took `def ,(who)`
 - older than 824; DEF-STMT wants a word now (errors/def-name.rill).
 Design, not a bug: a bracket left open takes the following lines with
 it, as Python's prompt does. The image: 77,408 bytes to 79,117.
+
+## Iteration 825: the prompt's line editor - relfsh's (QUESTIONS.md A38, part 2)
+
+At a terminal the prompt reads its lines with shell/edit.4, loaded into
+Rill's image as it is: the arrows and the usual control keys, the
+session's history and ^R, TAB completion. What edit.4 takes from
+shell/shell.4 - 20 words - rill/edit-shim.4 gives a Rill meaning: the
+prompt `rill> ` and `...> `, completion with no aliases, functions or
+builtins (files, directories and the programs on PATH still complete,
+PATH from the environment), a line of 4,096 bytes, the small helpers
+copied. The characters' widths it measures with are shell.4's own
+section, cut out by tools/build-rill-image.sh (and the build fails if it
+is not found) - one source for both. ^C at the editor drops a half-typed
+input, a line that went on included; ^D at an empty line ends the prompt.
+tests/rill/prompt-probe.py drives it on a pseudo-terminal (tests/
+interactive's Session): a line edited with the arrows, the history
+recalled and added to, a variable kept, TAB, a line that goes on, ^C,
+^D's status 0 - every check failing on 824's image. No word of rt.4,
+regex.4 or compile.4 is redefined by the editor (the build's
+`Redefining:` lines as before). The image: 79,117 bytes to 91,526 -
+12.4 KB, the editor and its width tables.

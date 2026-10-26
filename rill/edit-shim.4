@@ -1,0 +1,22 @@
+\ rill/edit-shim.4 - what relfsh's line editor, shell/edit.4, takes from shell/shell.4, with a Rill meaning
+\ (Iteration 825, QUESTIONS.md A38). shell/edit.4 loads after this as it is; the characters' widths it
+\ measures with are shell.4's own section ("Characters' widths on screen"), cut out by
+\ tools/build-rill-image.sh - one source for both. The prompt is Rill's; completion has no aliases,
+\ functions or builtins to offer (files, directories and the programs on PATH it still completes).
+4096 CONSTANT LINE-MAX                     \ a line typed at the prompt: the editor's buffer (relfsh: 256)
+: ERR-TYPE ( c-addr u --- )   2 WRITE-FILE DROP ;
+: STR= ( c-addr1 u1 c-addr2 u2 --- f )   COMPARE 0= ;
+24 BUFFER: SHIM-NUM
+: N>STR ( n --- c-addr )   \ a number as a C string: shell.4's, with its own buffer
+  S>D TUCK DABS <# #S ROT SIGN #>  23 MIN DUP >R SHIM-NUM SWAP MOVE  0 SHIM-NUM R@ + C!  R> DROP SHIM-NUM ;
+: CSTR," ( "text<quote>" --- )   [CHAR] " PARSE  DUP >R HERE SWAP MOVE  R> ALLOT 0 C, ;
+: LOOKUP-VAR ( name --- value | 0 )   GETENV ;   \ a shell variable, for completion's PATH: the environment's
+VARIABLE INT-SEEN?
+DEFER HIST-NEXT-CALL                        \ edit.4 sets it
+VARIABLE ALIAS-COUNT   : ALIAS-NAME-SLOT ( i --- addr )   DROP 0 ;
+VARIABLE FUNC-COUNT    : FUNC-NAME-SLOT ( i --- addr )    DROP 0 ;
+VARIABLE BUILTIN-LIST  : BI-ENTRY-NAME ( entry --- c-addr ) DROP 0 ;
+VARIABLE PS1-WIDTH   VARIABLE PS2-WIDTH
+: SH-PROMPT-PREPARE ( --- )   6 PS1-WIDTH !  5 PS2-WIDTH ! ;
+: SH-PROMPT1 ( --- )   S" rill> " ERR-TYPE ;
+: SH-PROMPT2 ( --- )   S" ...> " ERR-TYPE ;   \ a line that goes on: a bracket, a string or a text block open

@@ -1514,7 +1514,6 @@ VARIABLE RL-BUF  VARIABLE RL#  VARIABLE RL-TTY  VARIABLE RO-D  VARIABLE RO-Q  VA
       125 OF -1 RO-D +! ENDOF  93 OF -1 RO-D +! ENDOF  41 OF -1 RO-D +! ENDOF
     ENDCASE 1+ THEN THEN THEN
   REPEAT DROP  RO-D @ 0> RO-Q @ 0<> OR RO-B @ OR ;
-: RL-PROMPT ( --- )   RL-TTY @ IF RL# @ IF S" ...> " ELSE S" rill> " THEN 2 WRITE-FILE DROP THEN ;
 : RL-READ ( --- f )   \ a line onto the input; 0 at its end
   RL-BUF @ RL# @ +  RL-MAX RL# @ - 1-  0 READ-LINE  IF 2DROP 0 EXIT THEN
   0= IF DROP 0 EXIT THEN  RL# +!  10 RL-BUF @ RL# @ + C!  1 RL# +!  -1 ;
@@ -1523,6 +1522,11 @@ VARIABLE RL-KEPT   \ the real stdout while a line's words are defined: the kerne
 : RL-QUIET ( --- )   PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN RL-KEPT !
   S" /dev/null" W/O OPEN-FILE IF DROP EXIT THEN  DUP 1 DUP2 DROP  CLOSE-FILE DROP ;
 : RL-LOUD ( --- )   RL-KEPT @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  RL-KEPT @ CLOSE-FILE DROP  0 RL-KEPT ! ;
+: RL-EDIT ( --- f )   \ at a terminal (825): a line from relfsh's editor - its keys, history and completion
+  RL# @ 0= CMD-START? !  0 TERM-RAW DROP  ED-LINE  0 TERM-RESTORE DROP   ( c-addr u flag )
+  0= IF 2DROP 0 EXIT THEN
+  ED-DONE @ 2 = IF 2DROP 0 RL# ! -1 EXIT THEN                 \ ^C: what was typed so far dropped
+  RL-MAX RL# @ - 2 - MIN  RL-BUF @ RL# @ + SWAP DUP >R MOVE  R> RL# +!  10 RL-BUF @ RL# @ + C!  1 RL# +!  -1 ;
 : RL-RUN ( --- )   \ the line's Forth ends `R-MAIN` and a blank: its definitions quietly, then that call
   RL-BUF @ RL# @ RILL>FORTH  SS-KEEP  R-BLANKS  7 -  RL-QUIET EVALUATE RL-LOUD  S" R-MAIN" EVALUATE ;
 VARIABLE RL-RUN-XT   ' RL-RUN RL-RUN-XT !XT
@@ -1532,7 +1536,7 @@ VARIABLE RL-RUN-XT   ' RL-RUN RL-RUN-XT !XT
 : R-REPL ( --- )
   -1 REPL? !  0 SS-N !  0 SS-DF !  0 ISATTY RL-TTY !  RL-MAX ALLOCATE THROW RL-BUF !  R-SIG-CATCH
   BEGIN  0 RL# !
-    BEGIN RL-PROMPT RL-READ 0= IF RL# @ 0= IF EXIT THEN -1 ELSE RL-OPEN? 0= THEN  R-SIGNAL DROP UNTIL
+    BEGIN RL-TTY @ IF RL-EDIT ELSE RL-READ THEN 0= IF RL# @ 0= IF EXIT THEN -1 ELSE RL-OPEN? 0= THEN  R-SIGNAL DROP UNTIL
     RL-RUN-XT @XT CATCH  R-OUT-BACK RL-LOUD  ?DUP IF RL-CAUGHT THEN
   AGAIN ;
 ' R-REPL IS R-REPL-D

@@ -849,6 +849,7 @@ do not trust the absence of a line below.
 - 822 — the decisions left explained, measured: text blocks (Q7), speed (Q37), a Rill prompt (Q38)
 - 823 — Rill: text blocks (A7, design C); speed left (A37); an interactive prompt next (A38)
 - 824 — Rill: the prompt, lines read plainly - variables and defs kept from line to line (A38, part 1)
+- 825 — Rill: the prompt edits its lines with relfsh's editor - history, ^R, TAB (A38, part 2)
 
 ### Not tied to an iteration
 
