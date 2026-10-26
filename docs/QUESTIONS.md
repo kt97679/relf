@@ -34,6 +34,14 @@ same iteration.
 
 ## Open
 
+**Q39. Rill's image: which of the size options? (826)** The image is 91,526
+bytes, 70 % of relfsh's; docs/RILL-SIZE.md has where it goes (the compiler 43 %,
+the runtime 22 %, the editor and its tables 13 %, the shared base 16 %) and six
+options with their bytes. *Recommendation*: (1) two images now - 12.3 KB off
+the script image, nothing slower or lost; (4) the dead words with it; (3) and
+(2) as measured follow-ups; (5) only if size comes to matter more than a
+change to the kernel every image shares. *Blocks*: nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

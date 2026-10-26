@@ -252,6 +252,9 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
+   - **the image's size** (826, at the user's asking): docs/RILL-SIZE.md and
+     tools/rill-size.py - the compiler 43 %, the runtime 22 %, the editor 13 %;
+     six options, the user's to choose: QUESTIONS.md Q39;
    - **an interactive prompt** (QUESTIONS.md A38; built - 824 the prompt, 825
      relfsh's editor at it: the user's to try as a shell now): to see if
      Rill can be the shell people type into - line editing and history,
