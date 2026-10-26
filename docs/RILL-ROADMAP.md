@@ -714,3 +714,22 @@ weighing it: decimal("1e3") gives 1.0.
   job died anyway. Output into files now, TERM straight to relf64, and a
   three-second limit after it.
 - The image: 73,790 bytes to 74,803.
+
+## Iteration 815: a def that only computes takes numbers only when it uses them so
+
+Gene purestack (749) keeps the parameters of a def that only computes on
+the data stack, as numbers, and converts every argument to a number. The
+test for "only computes" looked at the body's shape alone, so `def size(l)
+-> number { return len($l) }` was such a def, and `size([1, 2, 3])` was
+refused in both compilers ("a number is needed here"); an item holding a
+list failed at run time, a def returning its list did not compile. Now
+(pure() and PURE?) the body must also use its parameters as numbers: the
+def names no kind or a number's or a bool's; no `[` `]` or `:` (an index,
+a list, a record); no parameter the container of `in`, or inside a
+library call but abs - a def's own name counting as a def, so fib keeps
+the stack. Writing the test found an older wrong result: range(n) pushes
+its 0 before n, and in stack mode n was read as that 0 - `len(range($n))`
+and `sum(range($n))` gave 0 on 814; range is no longer allowed around a
+parameter there. tests/rill/pure-params.rill against Python: refused on
+814 by both compilers, the range case 0 0 there; passes. No existing
+program's Forth changed (73 compared). The image: 74,803 bytes to 75,411.

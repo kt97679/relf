@@ -984,11 +984,24 @@ class Compiler:
             return '%s IF %s ELSE %s THEN' % (c, then, other)
         self.i = save
         return '%s IF %s THEN' % (c, then)
-    def pure(self, params):
+    NUMLIB = ('abs',)                            # the library function a number goes into as a number (815) -
+                                                 # not range: range(n) pushes its 0 before n, and in stack mode n was read as the 0
+    def in_lib_call(self, calls):
+        """Is the innermost call around (calls: a call's name, or '' for a grouping) a library
+        function but abs? A def's - this one's too, for its recursion - is not."""
+        named = [c for c in calls if c]
+        return bool(named) and named[-1] not in self.funcs and named[-1] not in self.NUMLIB
+    def pure(self, params, kind=None):
         """Does the body ahead only compute - no assignment, string, command,
         echo or loop? Then its parameters stay on the data stack (Iteration
-        738): read with DUP, OVER or PICK, dropped under the result by NIP."""
-        j, depth = self.i, 0
+        738): read with DUP, OVER or PICK, dropped under the result by NIP.
+        They are numbers there, so since 815 the body must use them as numbers
+        only: the def names no kind or a number's or a bool's; no [ ] or : (an
+        index, a list, a record); no parameter the container of `in` or inside
+        a library call but abs. `def size(l) -> number { return
+        len($l) }` was taken for pure, and a list given to it refused."""
+        if kind not in (None, 'number', 'bool'): return False
+        j, depth, calls = self.i, 0, []
         while True:
             k, v = self.t[j][0], self.t[j][1]
             if v == '{': depth += 1
@@ -998,10 +1011,15 @@ class Compiler:
             elif k in ('str', 'raw') or v in ('=', '+=', '-=', '$(', 'while', 'for', '|', '>>', '??') and k != 'word':
                 # < and > are comparisons here: with no command in the body, nothing is redirected
                 return False
+            elif v in ('[', ']', ':'): return False
             elif k == 'var' and v[1:] not in params: return False
+            elif k == 'var' and self.t[j - 1][1] == 'in': return False                # the container of in
+            elif k == 'var' and self.in_lib_call(calls): return False                 # an argument of a library call
             elif k == 'word' and not re.fullmatch(r'-?\d+', v) and v not in self.PREC and v != '-' and self.t[j + 1][1] != '(':
                 return False                                     # a command, echo, a bare word
             elif v in ('=', '+=', '-='): return False
+            if v == '(': calls.append(self.t[j - 1][1] if self.t[j - 1][0] == 'word' else '')   # a call's name, or a grouping
+            elif v == ')' and calls: calls.pop()
             j += 1
     def skip_block(self):                 # past the block ahead, its { the current token
         depth = 0
@@ -1028,7 +1046,7 @@ class Compiler:
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
         self.funcs[name] = (params, kind); self.current = name
-        if GENES['purestack'] and self.pure(params):                    # gene purestack (749)
+        if GENES['purestack'] and self.pure(params, kind):              # gene purestack (749)
             self.pure_defs = getattr(self, 'pure_defs', set()) | {name}
             self.stack, self.depth = params, 0
             body = self.block()

@@ -839,6 +839,7 @@ do not trust the absence of a line below.
 - 812 — jobs designed from the runtime: spawn is PL-END split in two; stopped after R-RUN-EXIT; signals caught as on EXIT's
 - 813 — Rill: jobs - spawn, wait, stopped with the script; INT/TERM end a wait at once (action 3); two checks' blind spots found
 - 814 — next steps weighed: a def that only computes takes numbers (purestack refuses a list); deep recursion ends in the engine's error
+- 815 — Rill: a def that only computes takes numbers only when its body uses them so; range(n) in one gave 0
 
 ### Not tied to an iteration
 

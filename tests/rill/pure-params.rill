@@ -1,0 +1,19 @@
+# a def that only computes keeps its parameters on the stack as numbers (749) - since 815 only when its
+# body uses them as numbers: these were taken for such defs, and a list given to them refused; and
+# range(n) of a parameter read its own 0 as n (span and total gave 0)
+def size(l) -> number { return len($l) }
+echo {size([1, 2, 3])}
+for r in [[1, 2], [3]] { echo {size($r)} }
+def same(l) -> list { return $l }
+echo {same([1, 2])}
+def first(l) -> number { return $l[0] }
+echo {first([7, 8])}
+def has(l, x) -> bool { return $x in $l }
+echo {has([1, 2], 2)} {has([1, 2], 5)}
+def fib(n) -> number {
+    if ($n < 2) { return $n }
+    return fib($n - 1) + fib($n - 2)
+}
+def span(n) -> number { return len(range($n)) }
+def total(n) -> number { return sum(range($n)) }
+echo {fib(15)} {span(4)} {total(4)}

@@ -926,15 +926,31 @@ VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
 : WORD-OK? ( j --- f )   DUP T@ NUMBER-TEXT? OVER PREC-OF 0<> OR OVER T@ S" -" S= OR SWAP 1+ S" (" TK-IS? OR ;
 \ [/gene]
 \ [gene purestack]
+\ its parameters are numbers on the stack, so the body uses them as numbers only (815, rillc.py's pure()):
+\ no [ ] or : (an index, a list, a record), none the container of in, none inside a library call but
+\ abs (range(n) pushes its 0 before n: n was read as the 0) - a def's, this one's included, is not one. PC-T: the open parentheses, innermost last:
+\ a call's name token, or -1 for a grouping.
+CREATE PC-T 32 CELLS ALLOT  VARIABLE PC-N
+: PC-PUSH ( x --- )   PC-N @ 32 < IF PC-T PC-N @ CELLS + !  1 PC-N +! ELSE DROP THEN ;
+: PC-NAMED ( --- i | -1 )   PC-N @ BEGIN DUP WHILE 1- DUP CELLS PC-T + @ DUP 0< 0= IF NIP EXIT THEN DROP REPEAT DROP -1 ;
+: LIB-CALL? ( i --- f )   \ the call named by token i: a library function but abs
+  T@ 2DUP DF-FIND 0< 0= >R  2DUP DF-CUR @ CELLS DF-A + @  DF-CUR @ CELLS DF-L + @ S= R> OR >R
+  S" abs" S= R> OR 0= ;
+: PURE-KIND? ( kind --- f )   DUP 0= OVER K-NUM = OR SWAP K-BOOL = OR ;
 : PURE? ( --- f )   \ rillc.py's pure(): the body ahead only computes
-  TK-I @ 0
+  0 PC-N !  TK-I @ 0
   BEGIN
     OVER T@ S" {" S= IF 1+ ELSE
     OVER T@ S" }" S= IF 1- DUP 0= IF 2DROP -1 EXIT THEN ELSE
     OVER K@ DUP T-STR = SWAP T-RAW = OR IF 2DROP 0 EXIT THEN
     OVER K@ T-WORD <> IF OVER BAD-OP? IF 2DROP 0 EXIT THEN THEN
-    OVER K@ T-VAR = IF OVER T@ 1 /STRING PARAM-AT 0< IF 2DROP 0 EXIT THEN THEN
+    OVER T@ 2DUP S" [" S= >R 2DUP S" ]" S= >R S" :" S= R> OR R> OR IF 2DROP 0 EXIT THEN
+    OVER K@ T-VAR = IF OVER T@ 1 /STRING PARAM-AT 0< IF 2DROP 0 EXIT THEN
+      OVER 1- T@ S" in" S= IF 2DROP 0 EXIT THEN
+      PC-NAMED DUP 0< IF DROP ELSE LIB-CALL? IF 2DROP 0 EXIT THEN THEN THEN
     OVER K@ T-WORD = IF OVER WORD-OK? 0= IF 2DROP 0 EXIT THEN THEN
+    OVER T@ S" (" S= IF OVER 1- K@ T-WORD = IF OVER 1- ELSE -1 THEN PC-PUSH THEN
+    OVER T@ S" )" S= IF PC-N @ IF -1 PC-N +! THEN THEN
     THEN THEN
     SWAP 1+ SWAP
   AGAIN ;
@@ -980,7 +996,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !
   PRM-N @ DF-N @ CELLS DF-P + !  DUP DF-N @ CELLS DF-K + !
 \ [gene purestack]
-  -1 STACKMODE !  PURE?
+  -1 STACKMODE !  DUP PURE-KIND? IF PURE? ELSE 0 THEN
 \ [/gene]
 \ [gene !purestack]
   0

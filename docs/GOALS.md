@@ -252,12 +252,6 @@ the account of what each gained and cost.
    - a Rill fuzzer - mutated tests and rewrites; engine crashes, hangs, the
      two compilers disagreeing - needing no decision (805-808 found two
      crashes and three refusals by accident);
-   - **a def that only computes takes numbers** (found at 814): `def size(l)
-     -> number { return len($l) }`, called with a list, is refused in both
-     compilers - "a number is needed here". Gene purestack (749) keeps such
-     a def's parameters on the data stack as numbers; a list or a record
-     passed to one cannot compile. (`$r[name]` escapes: its bare word makes
-     the body impure.) A common shape refused: first.
    - **deep recursion ends in the engine's error**: a recursive def runs
      5,000 levels, and at 20,000 stops with `relf: return stack overflow or
      data stack underflow` / `rill: error -5`, no line - a Rill message with
@@ -267,10 +261,13 @@ the account of what each gained and cost.
      as verify rows (prompts/09 for the new baseline lines);
    - spawn where a rewrite runs jobs side by side - intrfuzz-stress, through
      `sh -c` with & and wait: the feature's evidence, and a shorter script.
+   (815 fixed what 814 found: a def that only computes is compiled with its
+   parameters as numbers only when its body uses them so - and range(n) of a
+   parameter, which had read its own 0 as n, is no longer such a body.)
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
    image since 804: 68,857 bytes to 74,803 - JSON 3.2 KB, jobs 1.0 KB, the
    rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (88), `sh tests/rill/oracle` (54 the same),
+   Checks: `sh tests/rill/run` (89), `sh tests/rill/oracle` (55 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
