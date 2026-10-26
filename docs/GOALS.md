@@ -245,17 +245,17 @@ the account of what each gained and cost.
 15. **Rill**, the work now (the language: RILL-REFERENCE.md; how it got
    here: RILL-ROADMAP.md). The user's rule since 799: one way for each
    operation, and what a common command does well left to the command -
-   799-802 took out the duplicates. Open:
-   - six rewrites are now longer than the scripts they replace
-     (tools/rill-audit.py), the price of fewer conveniences, against the
-     726 rule "never longer" - the review's third section therefore removed
-     only `keys` (QUESTIONS.md A34, 807);
-   - from the review at 793, unchanged: no `try`, no collection inside a
-     function, texts as bytes, no background jobs, no JSON, no default
-     arguments. (805-808 closed the rest of this list - return, `(ready)`,
-     echo, a comprehension's variables: RILL-ROADMAP.md.)
-   What next (809): a Rill fuzzer, needing no decision; the length rule and
-   which gaps to build wait on QUESTIONS.md Q35.
+   799-802 took out the duplicates. Since 810 (QUESTIONS.md A35): a general
+   shell and script language, minimal and simple; the rewrites judged
+   together for length (tools/rill-audit.py; a rewrite past 5 % longer names
+   its reason in examples/rill/MANIFEST.tsv). Open:
+   - a Rill fuzzer - mutated tests and rewrites; engine crashes, hangs, the
+     two compilers disagreeing - needing no decision (805-808 found two
+     crashes and three refusals by accident);
+   - the balance, QUESTIONS.md Q36, awaiting the user: JSON in (from-json,
+     json), then jobs (spawn, wait); the rest out or later, each named;
+   - `decimal("1e3")` gives 1.0, silently - stops at the e (found at 810);
+     to go with Q36's JSON reader, one rule for both.
    Checks: `sh tests/rill/run` (83), `sh tests/rill/oracle` (50 the same),
    both again with RILL_GC_STRESS=1.
 

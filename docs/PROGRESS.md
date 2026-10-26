@@ -834,6 +834,7 @@ do not trust the absence of a line below.
 - 807 — Rill: echo is Rill's however it runs; a spread stage with a capture crashed the image's compiler; echo $(a) | b refused; keys gone (A34)
 - 808 — Rill: a comprehension's variables are its own (they overwrote and blocked the script's names)
 - 809 — GOALS.md 15 assessed: QUESTIONS.md Q35 (the length rule; who Rill is for); a Rill fuzzer next
+- 810 — the length rule (A35): the rewrites judged together, reasons past 5 %; Rill general and minimal: the balance proposed, Q36
 
 ### Not tied to an iteration
 

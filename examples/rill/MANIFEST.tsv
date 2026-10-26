@@ -1,9 +1,10 @@
-# examples/rill/MANIFEST.tsv - each rewrite and its original, for tools/rill-audit.py (Iteration 732)
+# examples/rill/MANIFEST.tsv - each rewrite and its original, for tools/rill-audit.py (Iteration 732);
+# a fourth column, why a rewrite more than 5 % longer than its original is (the length rule of 810)
 tools/make-bundle.sh	examples/rill/make-bundle.rill	shell
 tools/native-ab-layouts.py	examples/rill/native-ab-layouts.rill	python
 tools/intrfuzz-stress.sh	examples/rill/intrfuzz-stress.rill	shell
-tests/shell/run-utf8	examples/rill/run-utf8.rill	shell
-tools/dead-words.py	examples/rill/dead-words.rill	python
+tests/shell/run-utf8	examples/rill/run-utf8.rill	shell	it carries what lib.sh gives the original - an assertion and the report - since a Rill script is one file, with no load
+tools/dead-words.py	examples/rill/dead-words.rill	python	Python-born: a $ before every variable read, where Python reads names bare (a bare word is text in Rill, 727)
 tools/gen-opcodes.sh	examples/rill/gen-opcodes.rill	shell
 tools/pack-results.sh	examples/rill/pack-results.rill	shell
-tools/size-research/native-by-source.py	examples/rill/native-by-source.rill	python
+tools/size-research/native-by-source.py	examples/rill/native-by-source.rill	python	Python-born: a $ before every variable read (727); and upper() gone (799), its names gathered and upper-cased by one tr, not a process a word

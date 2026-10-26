@@ -11,7 +11,12 @@ examples/rill/MANIFEST.tsv (each rewrite and its original), and prints:
 - AUDIT lines: an adopted feature no rewrite uses any more; an open or
   rejected one that a rewrite uses all the same;
 - every rewrite's length against its original (tools/rill-measure.py's
-  count), a LONGER line for each that is.
+  count), and the rewrites together against their originals together.
+
+The length rule since 810 (QUESTIONS.md A35, replacing 726's "never
+longer" per script): the rewrites together are not longer, in lines or in
+characters; one rewrite more than 5 % longer than its original names its
+reason in MANIFEST.tsv's fourth column. A LONGER line is either broken.
 
 Exit status 1 if there is an AUDIT or a LONGER line, so a Rill
 iteration sees it. Run it at the end of every Rill iteration.
@@ -36,7 +41,7 @@ def rows(path):
 feats = list(rows('examples/rill/FEATURES.tsv'))
 manifest = list(rows('examples/rill/MANIFEST.tsv'))
 sources = {}
-for orig, rew, kind in manifest:
+for orig, rew, kind, *_ in manifest:
     sources[os.path.basename(rew)] = '\n'.join(rm.code_shell(open(rew, encoding='utf-8').read()))
 ol = [l.split('|||')[1].strip() for l in open('examples/rill/oneliners.txt', encoding='utf-8') if '|||' in l and not l.startswith('#')]
 sources['oneliners'] = '\n'.join(ol)
@@ -113,9 +118,20 @@ for f, src in sources.items():
 print('the rule of 734: %d violations; %d changes through a parameter' % (violations, through_params))
 problems += violations
 print()
-for orig, rew, kind in manifest:
+TOL = 5.0                                       # per cent, the rule of 810 (above)
+row = '%-28s %-6s %4d lines %6d chars | Rill %4d lines %6d chars | chars %+6.1f %% | %s'
+ta = tb = tc = td = 0
+for orig, rew, kind, *why in manifest:
     (a, b), (c, d) = rm.measure(orig), rm.measure(rew)
-    verdict = 'ok' if c <= a and d <= b else 'LONGER'
-    print('%-28s %-6s %4d lines %6d chars | Rill %4d lines %6d chars | chars %+6.1f %% | %s' % (orig, kind, a, b, c, d, 100.0 * (d - b) / b, verdict))
-    problems += verdict != 'ok'
+    ta, tb, tc, td = ta + a, tb + b, tc + c, td + d
+    over = max(100.0 * (c - a) / a, 100.0 * (d - b) / b)
+    reason = why[0].strip() if why else ''
+    if c <= a and d <= b: verdict = 'ok'
+    elif over <= TOL: verdict = 'longer, within %g %%' % TOL
+    elif reason: verdict = 'longer: ' + reason
+    else: verdict = 'LONGER by %.1f %%, past %g %% with no reason in MANIFEST.tsv' % (over, TOL); problems += 1
+    print(row % (orig, kind, a, b, c, d, 100.0 * (d - b) / b, verdict))
+total = 'ok' if tc <= ta and td <= tb else 'LONGER, the rewrites together'
+print(row % ('the %d together' % len(manifest), '', ta, tb, tc, td, 100.0 * (td - tb) / tb, total))
+problems += total != 'ok'
 sys.exit(1 if problems else 0)

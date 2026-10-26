@@ -16,9 +16,8 @@ same iteration.
    were answered at 516.)*
 2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
 3. **Rill's features that wait on these** (Rill itself exists since 736;
-   809 corrected this line): **Q35** (the length rule; who Rill is for),
-   then **Q10** (JSON, values across processes) and **Q11** (jobs and
-   their lifetime) as Q35 (b) decides; **Q7** (text blocks), **Q8** (the
+   809 corrected this line): **Q36** (the balance: JSON, then jobs - Q10
+   and Q11 as Q36 settles them); **Q7** (text blocks), **Q8** (the
    prompt's questions, the name).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
@@ -35,37 +34,45 @@ same iteration.
 
 ## Open
 
-**Q35. Rill after 805-808: the length rule, and who Rill is for (809)**
-GOALS.md 15's open items, assessed at 809 (the reply had the detail):
-(a) *The length rule.* 726: a rewrite is never longer than its original.
-By tools/rill-audit.py's own count, at 798 three rewrites were longer
-(run-utf8 +26.9%, dead-words +9.0%, native-by-source +5.0%) and the eight
-together 8.4% shorter; now six are (make-bundle +0.8%, intrfuzz-stress
-+3.8%, pack-results +4.0% tipped over by the one-way review) and the eight
-2.8% shorter. The review cost 1,374 characters across them (+6.1%);
-native-by-source most (+17 points: upper() gone, its names gathered and
-upper-cased by one tr rather than a process a word). Options: (1) 726 per
-script - conveniences come back, against 799; (2) the eight judged
-together - shorter in total, as now; (3) per script within a tolerance
-(say 5%), each excess named with its reason.
-*Recommendation*: (2), with (3)'s record for any script past 5% (run-utf8
-is a shell test harness - the shell's own ground).
-(b) *Who Rill is for.* For this repository's tools, none of the remaining
-gaps is needed: the eight rewrites use no JSON, run things side by side
-once (sh -c with & and wait), recover from failure with ?? (8 uses),
-code() (3) and (test ...) (5), and take defaults only for script
-arguments (at($args, i, d), 7); their Python originals used try once and
-one default argument. For scripts in general, JSON matters most (Q10: a
-reader and a writer in the runtime, one library name each in the
-compilers), then jobs (Q11); try and default arguments would be second
-ways (?? and conditions; at()) and stay out.
-*Recommendation*: decide (b). Meanwhile, needing no decision: a Rill
-fuzzer - mutated tests and rewrites, reporting engine crashes, hangs and
-the two compilers disagreeing; 805-808 found two crashes, three refusals
-and several silent wrong results, every one by accident. Texts as bytes
-and no collection inside a function were decided already (RILL-REFERENCE.md
-"on purpose"; 791-792, the user's choice) and stay unless a script hits them.
-*Blocks*: the length rule's verdicts (a); which gaps get built (b).
+**Q36. Rill, general and minimal: the balance (810)**
+The user, A35: a general shell and script language, minimal and simple -
+"let's see if we can find reasonable balance". Proposed, as a filter and
+what it lets in:
+(1) *The filter.* The language does what commands cannot: hold values
+(lists, records), decide and repeat, name and reuse (def), and turn text
+into values and back. Commands do the rest, one way each (799). A feature
+joins when a real script needs it - this repository's or a general one -
+and no existing way does it (732); each is measured (the image's bytes,
+both compilers, the reference) and kept in FEATURES.tsv; the rewrites
+together stay shorter (A35).
+(2) *In: JSON.* The bridge from tools' structured output to Rill's values,
+which no command can give a script: `from-json(t)` reads, `json(x)`
+writes - Q10's option (1), explicit, not the automatic export of 516
+(by the script's use, a value crosses only where the script says). A
+writer is mostly R-SHOW with every key quoted; a reader is a recursive
+descent in the runtime; one library name each in both compilers; tested
+against Python's json module. Estimated, not measured: 2-3 KB of the
+image. Two details: JSON's `null` (Rill has none) reads as an empty text -
+one rule, false as the shell's unset is, and `json()` never writes null;
+a number reads as decimal() reads it - an integer a number, a fraction or
+an exponent a decimal of six places, past the range the overflow error.
+(3) *In, after JSON: jobs, minimal.* `spawn((cmd args))` starts one and
+returns it, `wait($job)` gives its status, `kill` stays the command; a
+job not waited for is stopped when the script ends (Q11's recommendation:
+no orphan by accident). A script that starts a server, tests it and stops
+it cannot be written with commands alone - `sh -c` gives no handle.
+(4) *Out - one way exists:* try (?? , a condition, on EXIT); default
+arguments (pass them; at() for $args); options() (a loop with case);
+`x = if ...` (an if); `{k: v for ...}` (a loop); `x[a:b]` (slice());
+`def f() -> k = expr` (return); `m[k] ?= v` (if not in); load (a script
+is one file).
+(5) *Later, on evidence:* text blocks (Q7) - strings span lines already;
+the indentation question waits for a script that needs it.
+(6) *Kept as decided:* texts as bytes; no collection inside a function.
+Found while weighing (2): `decimal("1e3")` gives 1.0 - it stops at the e
+and drops the rest, silently; decimal() truncates past six places. The
+reader and decimal() get one rule, (2)'s.
+*Recommendation*: confirm (1)-(6); then JSON, then jobs. *Blocks*: both.
 
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
@@ -172,6 +179,38 @@ escapes, as bash's does. *Recommendation*: keep them all.
 
 
 ## Answered
+
+**Q35. Rill after 805-808: the length rule, and who Rill is for (809; answered A35)**
+GOALS.md 15's open items, assessed at 809 (the reply had the detail):
+(a) *The length rule.* 726: a rewrite is never longer than its original.
+By tools/rill-audit.py's own count, at 798 three rewrites were longer
+(run-utf8 +26.9%, dead-words +9.0%, native-by-source +5.0%) and the eight
+together 8.4% shorter; now six are (make-bundle +0.8%, intrfuzz-stress
++3.8%, pack-results +4.0% tipped over by the one-way review) and the eight
+2.8% shorter. The review cost 1,374 characters across them (+6.1%);
+native-by-source most (+17 points: upper() gone, its names gathered and
+upper-cased by one tr rather than a process a word). Options: (1) 726 per
+script - conveniences come back, against 799; (2) the eight judged
+together - shorter in total, as now; (3) per script within a tolerance
+(say 5%), each excess named with its reason.
+*Recommendation*: (2), with (3)'s record for any script past 5% (run-utf8
+is a shell test harness - the shell's own ground).
+(b) *Who Rill is for.* For this repository's tools, none of the remaining
+gaps is needed: the eight rewrites use no JSON, run things side by side
+once (sh -c with & and wait), recover from failure with ?? (8 uses),
+code() (3) and (test ...) (5), and take defaults only for script
+arguments (at($args, i, d), 7); their Python originals used try once and
+one default argument. For scripts in general, JSON matters most (Q10: a
+reader and a writer in the runtime, one library name each in the
+compilers), then jobs (Q11); try and default arguments would be second
+ways (?? and conditions; at()) and stay out.
+*Recommendation*: decide (b). Meanwhile, needing no decision: a Rill
+fuzzer - mutated tests and rewrites, reporting engine crashes, hangs and
+the two compilers disagreeing; 805-808 found two crashes, three refusals
+and several silent wrong results, every one by accident. Texts as bytes
+and no collection inside a function were decided already (RILL-REFERENCE.md
+"on purpose"; 791-792, the user's choice) and stay unless a script hits them.
+*Blocks*: the length rule's verdicts (a); which gaps get built (b).
 
 **Q34. Rill: which conveniences go, of those one line of other features
 replaces? (799; written here at 805; answered A34)** The duplication review's third
@@ -547,4 +586,13 @@ Done at 807: `keys()` removed ("keys() is not defined", as `values` at
 799; its count is `len($r)`, its list `[$k for k, v in $r]`), its four
 uses rewritten; starts, ends, trim, default, sum, `for i, x` and
 comprehensions kept. Reversible: the user can still choose otherwise.
+
+**A35. Rill: the length rule, and who Rill is for (Q35; 809 -> 810).** The
+user: "length rule: do as you suggested" - done at 810: tools/rill-audit.py
+judges the rewrites together (not longer in lines or characters), and one
+rewrite more than 5 % longer names its reason in MANIFEST.tsv (run-utf8,
+dead-words and native-by-source do). "who rill is for: I want rill to be
+general shell/script language. But I also want it to be minimal and
+simple. Let's see if we can find reasonable balance" - the balance
+proposed as Q36.
 

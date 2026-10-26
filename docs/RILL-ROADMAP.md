@@ -643,3 +643,20 @@ the `]` is "not set" (807 gave its last item). 14 programs compile
 differently: the comprehensions' own variables declared and rooted, and
 intrfuzz-stress's loop `j`, once merged with a comprehension's `j`, a
 number now rather than an item. The image: 70,017 bytes to 70,558.
+
+## Iteration 810: the length rule; Rill general and minimal (QUESTIONS.md A35, Q36)
+
+The user's answers to Q35. The length rule: 726's "never longer" per
+script gives way to the rewrites judged together - not longer in lines or
+characters - and a rewrite more than 5 % longer than its original naming
+its reason in MANIFEST.tsv's fourth column; tools/rill-audit.py enforces
+both (broken twice on purpose: a reason removed, the total made longer -
+status 1 each). Today: the eight together 678 lines and 24,599 characters,
+Rill 542 and 23,898 (-2.8 %); three past 5 %, each for a reason - run-utf8
+carries what lib.sh gives the shell script (a Rill script is one file),
+dead-words and native-by-source are Python-born (a $ before every read;
+native-by-source also gathers its names for one tr since upper() went).
+Who Rill is for: a general shell and script language, minimal and simple -
+the balance proposed as Q36 (a filter; JSON in, then minimal jobs; the
+rest out, each with its one way, or later on evidence). Found while
+weighing it: decimal("1e3") gives 1.0.
