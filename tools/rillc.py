@@ -144,13 +144,21 @@ class Compiler:
         if self.infer is not None: self.infer.setdefault((self.skey(), name), set()).add(kind)
         elif self.fixed is not None and (self.skey(), name) in self.fixed: kind = self.fixed[(self.skey(), name)]
         sc[name] = kind; return kind
+    def cname(self, name):
+        """A comprehension's variables are its own, as Python 3's (808): inside it each name is
+        name.cJ, J its for's token - innermost first; outside, the name is the script's again."""
+        for src, own in reversed(getattr(self, 'cmr', [])):
+            if src == name: return own
+        return name
     def spread_code(self, name, line):    # @name: its items - the script's arguments for @args, unless it set its own (786)
+        name = self.cname(name)
         if name == 'args' and name not in self.vars and (self.locals is None or name not in self.locals): return 'R-ARGS'
         k = self.kind_of(name, line)
         if k == 'any': return 'R.%s @ R-AS-LIST' % name                        # an item: its list, checked (799)
         if k != 'list': raise Error('line %d: @%s is not a list' % (line, name))
         return 'R.%s @' % name
     def read_var(self, name, line):       # $name, in an expression or a string - the image's READ-VAR (785)
+        name = self.cname(name)
         if name in ('args', 'script') and name not in self.vars and (self.locals is None or name not in self.locals):
             return ('R-ARGS', 'list') if name == 'args' else ('R-SCRIPT', 'text')       # 744
         kv = self.kind_of(name, line, forward=True)
@@ -287,7 +295,11 @@ class Compiler:
         if sk == 'any': sc, sk = sc + ' R-UNBOX DROP', 'list'          # an item holding a list - a def's parameter (758)
         if sk not in ('list', 'record') or (sk == 'record' and not second):
             raise Error('line %d: for needs a list' % self.peek()[2])
-        tmp = '%s.src%d' % (name, j); self.names.update([name, tmp])
+        tmp = '%s.src%d' % (name, j)
+        self.cmr = getattr(self, 'cmr', []); before = len(self.cmr)          # its names its own from here (808)
+        name, src = '%s.c%d' % (name, j), name; self.cmr.append((src, name))
+        if second: second, src2 = '%s.c%d' % (second, j), second; self.cmr.append((src2, second))
+        self.names.update([name, tmp])
         nk = self.bind(name, 'any' if not second else 'number' if sk == 'list' else 'text')
         if second: self.bind(second, 'any')
         cond = None
@@ -295,7 +307,7 @@ class Compiler:
         if self.peek()[1] == 'if': self.i += 1; cond, ck = self.expr(); cond = self.truth(cond, ck)   # as an if's (782)
         end = self.i; self.take('op', ']'); after = self.i
         self.i = start; ec, ek = self.expr(); self.i = after
-        self.da_leave()
+        self.da_leave(); del self.cmr[before:]
         item = '%s OVER R-PUSH' % self.box(ec, ek)
         body = '%s IF %s THEN' % (cond, item) if cond else item
         if second and sk == 'record':                                   # the key a text, or its box where $name is an item (764)
@@ -342,7 +354,7 @@ class Compiler:
             at = self.depth + len(self.stack) - 1 - self.stack.index(v[1:])
             self.depth += 1
             return {0: 'DUP', 1: 'OVER'}.get(at, '%d PICK' % at), 'number'
-        if k == 'var' and v[1:] == getattr(self, 'loopvar', None): return 'I', 'number'      # gene loopvar (753)
+        if k == 'var' and v[1:] == getattr(self, 'loopvar', None) and self.cname(v[1:]) == v[1:]: return 'I', 'number'   # gene loopvar (753)
         if k == 'var': return self.read_var(v[1:], line)
         if v == '$(':
             c = self.capture(); self.take('op', ')')
@@ -356,7 +368,7 @@ class Compiler:
             c, kd = self.expr(); self.take('op', ')'); return c, kd
         if k == 'word' and self.peek()[1] == '(':
             return self.call(v, line)
-        if k == 'word' and not in_arg and (v in self.vars or (self.locals is not None and v in self.locals)):
+        if k == 'word' and not in_arg and (v in self.vars or (self.locals is not None and v in self.locals) or self.cname(v) != v):
             raise Error('line %d: %s is a variable - $%s, or "%s" for the text' % (line, v, v, v))   # a slip of the $ rule (762)
         if k == 'word': return self.lit(v), 'text'
         raise Error('line %d: unexpected %r' % (line, v))
@@ -490,7 +502,7 @@ class Compiler:
                 if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
                 if m:
                     name = m.group(1); i += m.end()
-                    code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) else self.read_var(name, line)
+                    code, kind = ('I', 'number') if name == getattr(self, 'loopvar', None) and self.cname(name) == name else self.read_var(name, line)
                     if kind == 'record' and re.match(r'\.[A-Za-z_]', body[i:]):     # "$r.f" gone: one way, {$r[f]} (801)
                         raise Error('line %d: a field in a string is written {$r[f]}' % line)
                     parts.append(self.to_text(code, kind)); pieces.append(('code', parts[-1]))
@@ -802,7 +814,7 @@ class Compiler:
     def run_variable(self):
         """( name ) runs a program; a variable of that name means its $ was left out (805)."""
         tok = self.peek()
-        if self.peek(1)[1] == ')' and tok[1] not in self.funcs and (tok[1] in self.vars or (self.locals is not None and tok[1] in self.locals)):
+        if self.peek(1)[1] == ')' and tok[1] not in self.funcs and (tok[1] in self.vars or (self.locals is not None and tok[1] in self.locals) or self.cname(tok[1]) != tok[1]):
             raise Error('line %d: %s is a variable: ($%s) for its truth, (env %s) for a program of that name' % (tok[2], tok[1], tok[1], tok[1]))
     def echo_options(self):
         """echo -n, -e, -E: options this echo does not take (805). In-process, -n was printed as a word;

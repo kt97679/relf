@@ -620,3 +620,26 @@ segmentation fault in the image's, `y|@xs|` from rillc.py's; capture-pipe
 refused by both) and passes. One line of echo.rill, an echo stage inside
 an echo stage's words, passed on 806 too: a guard for the saved form.
 The image: 69,689 bytes to 70,017.
+
+## Iteration 808: a comprehension's variables are its own
+
+A comprehension bound its variables in the script (or the def) around it,
+as a `for` statement does: `[$k for k, c in $r]` made `c` a variable, so a
+bare-word field `$x[a][c]` further down was refused (807 met it), a script
+variable of the same name was overwritten (`k = 5` gave `b` after a
+comprehension over a record's fields; `y = "keep"` gave its last item),
+and the name could be read after the `]` (its last item). Now each is the
+comprehension's own, as Python 3's: inside it, name is name.cJ (J its
+for's token, as the source's name.srcJ), found innermost first
+(rillc.py's cname, compile.4's CNAME and CM-RENAME); its source list is
+still read outside it, and after the `]` the name is the script's again.
+A counted loop's index gives way to a comprehension's own name of the
+same (term0 and string() checked the loop first). tests/rill/
+comprehension-scope.rill against Python: the refusal, the overwritten
+number and text failed on 807 - each its own program - and pass; nested
+comprehensions of one name, a counted loop's `i`, a def's own `w` passed
+on 807 too and are guards. errors/comprehension-var-after.rill: `$q` after
+the `]` is "not set" (807 gave its last item). 14 programs compile
+differently: the comprehensions' own variables declared and rooted, and
+intrfuzz-stress's loop `j`, once merged with a comprehension's `j`, a
+number now rather than an item. The image: 70,017 bytes to 70,558.

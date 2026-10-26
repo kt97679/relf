@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 805; the design
+CV8 engine. This document says what Rill is as of Iteration 808; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -120,7 +120,10 @@ stop early, as Python's.
   end of each.
 - `-x` keeps the kind: a number's, a decimal's, an item's.
 - Comprehensions: `[expr for x in list if cond]`, `[expr for i, x in list]`,
-  `[expr for k, v in record]`; the `if` takes truth as an `if` does.
+  `[expr for k, v in record]`; the `if` takes truth as an `if` does. Their
+  variables are their own, as Python 3's: a script variable of the same name
+  is neither read nor changed, and after the `]` the name is the script's
+  again (`$x` there is an error if nothing else sets it).
 - `name(args)` calls a function or the library.
 - `(command args)` in a condition is true when the command succeeds;
   `(true)` and `(false)` alone are the values, not the programs. `(name)`

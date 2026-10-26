@@ -250,18 +250,11 @@ the account of what each gained and cost.
      (tools/rill-audit.py), the price of fewer conveniences, against the
      726 rule "never longer" - the review's third section therefore removed
      only `keys` (QUESTIONS.md A34, 807);
-   - **a comprehension's variables are the script's** (found at 807):
-     after `[$k for k, c in $r]`, a bare-word field `$x[a][c]` further down
-     is an error, as any bare word naming a variable is. Python scopes them
-     to the comprehension; doing the same would end the clash. (807 also
-     made echo Rill's however it runs - piped, redirected, captured - and
-     fixed what that work found: a crash, a refusal, a spread misread.)
    - from the review at 793, unchanged: no `try`, no collection inside a
      function, texts as bytes, no background jobs, no JSON, no default
-     arguments. (805: a bare `return` works, in a def that names no kind;
-     a value from one was left on the stack - 32,768 calls crashed the
-     engine - and is an error; so is `(ready)` with `ready` a variable.)
-   Checks: `sh tests/rill/run` (81), `sh tests/rill/oracle` (49 the same),
+     arguments. (805-808 closed the rest of this list - return, `(ready)`,
+     echo, a comprehension's variables: RILL-ROADMAP.md.)
+   Checks: `sh tests/rill/run` (83), `sh tests/rill/oracle` (50 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

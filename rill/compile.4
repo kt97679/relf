@@ -304,7 +304,18 @@ NI-MAX CELLS BUFFER: NI-A  NI-MAX CELLS BUFFER: NI-L  VARIABLE NI-N
 : NI-ADD ( c-addr u --- )
   2DUP NI-HAS? IF 2DROP EXIT THEN  NI-N @ NI-MAX < 0= IF S" too many numbers read before they are set" ERR THEN
   NI-N @ CELLS NI-L + !  NI-N @ CELLS NI-A + !  1 NI-N +! ;
+\ a comprehension's variables are its own (808), as Python 3's: inside it each name is name.cJ, J
+\ its for's token - innermost first; outside, the name is the script's again (rillc.py's cname)
+16 CONSTANT CMR-MAX
+CMR-MAX CELLS BUFFER: CMR-SA  CMR-MAX CELLS BUFFER: CMR-SL  CMR-MAX CELLS BUFFER: CMR-IA  CMR-MAX CELLS BUFFER: CMR-IL
+VARIABLE CMR-N
+: CNAME ( c-addr u --- c-addr' u' )
+  CMR-N @ BEGIN DUP WHILE 1-
+    >R 2DUP R@ CELLS CMR-SA + @ R@ CELLS CMR-SL + @ COMPARE 0= IF 2DROP R@ CELLS CMR-IA + @ R> CELLS CMR-IL + @ EXIT THEN R>
+  REPEAT DROP ;
+: CRENAMED? ( c-addr u --- f )   OVER >R CNAME DROP R> <> ;
 : READ-VAR ( c-addr u --- kind )   \ $name, without its $
+  CNAME
 \ [gene loopvar]
   LV-L @ IF 2DUP LV-A @ LV-L @ COMPARE 0= IF 2DROP S" I" OUT+ K-NUM EXIT THEN THEN
 \ [/gene]
@@ -525,7 +536,7 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable - $" TK T@ TYPE ." , or " 34 EMIT TK T@ TYPE 34 EMIT ."  for the text"
   R-NL -4100 THROW ;
 : RUN-VAR? ( --- )   \ ( name ) runs a program; a variable of that name means its $ was left out (805)
-  TK 1+ S" )" TK-IS? 0= IF EXIT THEN  TK T@ DF-FIND 0< 0= IF EXIT THEN  TK T@ NM-FIND 0< IF EXIT THEN
+  TK 1+ S" )" TK-IS? 0= IF EXIT THEN  TK T@ DF-FIND 0< 0= IF EXIT THEN  TK T@ NM-FIND 0< TK T@ CRENAMED? 0= AND IF EXIT THEN
   ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable: ($" TK T@ TYPE ." ) for its truth, (env " TK T@ TYPE
   ." ) for a program of that name" R-NL -4100 THROW ;
 : TERM0 ( --- kind )
@@ -544,7 +555,7 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   S" [" CUR-IS? IF NEXT-TK LIST-LIT EXIT THEN
   S" {" CUR-IS? IF NEXT-TK SKIP-NL-HOOK RECORD-LIT EXIT THEN
   TK K@ T-WORD = IF TK 1+ S" (" TK-IS? IF CALL EXIT THEN
-    IA-NOW @ 0= IF TK T@ NM-FIND 0< 0= IF BARE-ERR THEN THEN  TK T@ NEXT-TK TEXT-LIT K-TEXT EXIT THEN
+    IA-NOW @ 0= IF TK T@ NM-FIND 0< 0= TK T@ CRENAMED? OR IF BARE-ERR THEN THEN  TK T@ NEXT-TK TEXT-LIT K-TEXT EXIT THEN
   S" unexpected token" ERR ;
 : TERM ( --- kind )   \ TERM0, then $x[i] touching it
   OUT-POS >R  TERM0
@@ -575,6 +586,13 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   R> 0 <# #S #> TMPN TMPN# @ + SWAP DUP >R MOVE R> TMPN# +!
   \ a copy of its own: the tables keep the address, and TMPN is made again for the next
   TMPN# @ ALLOCATE THROW  TMPN OVER TMPN# @ MOVE  TMPN# @ ;
+: CM-RENAME ( c-addr u j --- c-addr2 u2 )   \ a comprehension's name made its own, name.cJ, and kept in CMR (808)
+  >R  CMR-N @ CMR-MAX < 0= IF S" comprehensions nested too deep" ERR THEN
+  2DUP CMR-N @ CELLS CMR-SL + !  CMR-N @ CELLS CMR-SA + !
+  DUP TMPN# !  TMPN SWAP MOVE  S" .c" TMPN TMPN# @ + SWAP MOVE  2 TMPN# +!
+  R> 0 <# #S #> TMPN TMPN# @ + SWAP DUP >R MOVE R> TMPN# +!
+  TMPN# @ ALLOCATE THROW  TMPN OVER TMPN# @ MOVE  TMPN# @
+  2DUP CMR-N @ CELLS CMR-IL + !  CMR-N @ CELLS CMR-IA + !  1 CMR-N +! ;
 \ certainly set (772), as rillc.py's da_*: a name set in a block is certainly set in it and in the blocks
 \ within, from there on; leaving the block forgets it unless it was set before. Names to set as a block
 \ opens (a loop's, a def's parameters) wait in DA-NEXT.
@@ -627,6 +645,7 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
   DUP K-NUM = IF DROP EXIT THEN  K-DEC = IF S" R-N>D" ELSE S" K-NUM R-BOX" THEN OUT+ ;
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : SPREAD-OUT ( c-addr u --- )   \ @name's items: rillc.py's spread_code - the script's arguments for @args, unless it set its own (786)
+  CNAME
   2DUP NM-FIND 0< IF 2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ EXIT THEN THEN
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
   CELLS NM-K + @ DUP K-ANY = IF DROP VAR-OUT S" @ R-AS-LIST" OUT+ EXIT THEN   \ an item: its list, checked (799)
@@ -645,6 +664,7 @@ VARIABLE CM-COND
 VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
 DEFER TRUTH-D   \ TRUTH, defined below (782)
 : COMPREHENSION ( j --- kind )   \ [expr for x in src if cond] - or for k, v in a record, for i, x in a list (754)
+  CMR-N @ SWAP                                             \ the renames before it, back when it ends (808)
   TK-I @ >R  DUP 1+ TK-I !                                 ( j )  ( R: the expr's start )
   TK T@ NEXT-TK                                            ( j name )
   0 CM-2L !  S" ," CUR-IS? IF NEXT-TK TK T@ CM-2L ! CM-2A ! NEXT-TK THEN
@@ -653,6 +673,8 @@ DEFER TRUTH-D   \ TRUTH, defined below (782)
   CM-SK @ K-ANY = IF S" R-UNBOX DROP" OUT+ K-LIST CM-SK ! THEN     \ an item holding a list - a def's parameter (758)
   CM-SK @ K-LIST <> CM-SK @ K-REC <> AND  CM-SK @ K-REC = CM-2L @ 0= AND OR IF S" for needs a list" ERR THEN
   2DUP 4 PICK TMP-NAME 2DUP DECLARE                        ( j name tmp )
+  2SWAP 4 PICK CM-RENAME 2SWAP                             \ its names its own from here (808)
+  CM-2L @ IF CM-2A @ CM-2L @ 6 PICK CM-RENAME CM-2L ! CM-2A ! THEN
   2OVER CM-NL ! CM-NA !                                    \ the name kept for the certainly-set marks (772)
   2OVER DECLARE  2OVER CM-2L @ IF CM-SK @ K-LIST = IF K-NUM ELSE K-TEXT THEN ELSE K-ANY THEN BIND-K FOR-K !
   CM-2L @ IF CM-2A @ CM-2L @ 2DUP DECLARE K-ANY BIND-K DROP THEN
@@ -670,7 +692,7 @@ DEFER TRUTH-D   \ TRUTH, defined below (782)
   CM-COND @ >R  S" ]" EXPECT  TK-I @                       ( after )  ( R: start cond )
   R> R> TK-I ! >R                                          ( after )  ( R: cond )
   1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+  DA-LEAVE
-  R> IF S" THEN" OUT+ THEN  S" LOOP" OUT+  TK-I !  K-LIST ;
+  R> IF S" THEN" OUT+ THEN  S" LOOP" OUT+  TK-I !  CMR-N !  K-LIST ;
 : LIST-LIT-IMPL ( --- kind )   \ the [ taken: a comprehension if a for stands at this level
   TK-I @ 0                                                 ( j depth )
   BEGIN OVER T@ S" ]" S= OVER 0= AND 0= WHILE
@@ -1343,7 +1365,7 @@ VARIABLE RT-K
 \ [gene littext]
   0 LT-N !
 \ [/gene]
-   0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
+   0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
   TK-ALLOC BUF-ALLOC ;
 : ON-EXIT-AHEAD? ( --- f )   TK-N @ 1- 0 ?DO I T@ S" on" S= I 1+ T@ S" EXIT" S= AND IF -1 UNLOOP EXIT THEN LOOP 0 ;
