@@ -188,6 +188,7 @@ VARIABLE LITS-B  VARIABLE LITS#      \ literal texts made once (gene littext, 75
 NM-MAX CELLS BUFFER: NM-A  NM-MAX CELLS BUFFER: NM-L  NM-MAX CELLS BUFFER: NM-K  NM-MAX CELLS BUFFER: NM-LOC
 NM-MAX CELLS BUFFER: NM-DAL   \ certainly set (772): the block depth a name was set at on this path; -1 not certainly
 VARIABLE NM-N   VARIABLE IN-DEF
+VARIABLE REPL?   \ the prompt's mode (824); 0, a script
 VARIABLE NF-R   \ not the return stack: inside DO, R@ is the loop's index (739's lesson, again)
 : NM-FIND ( c-addr u --- i | -1 )   \ the def's local first, then the script's
   -1 NF-R !  NM-N @ 0 ?DO
@@ -304,6 +305,7 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
 64 CELLS BUFFER: DF-A  64 CELLS BUFFER: DF-L  64 CELLS BUFFER: DF-P
 64 CELLS BUFFER: DF-K  64 CELLS BUFFER: DF-PURE  VARIABLE DF-N  VARIABLE DF-CUR
 : DF-FIND ( c-addr u --- i | -1 )
+  REPL? @ IF -1 -ROT DF-N @ BEGIN DUP WHILE 1- >R 2DUP DF-A R@ CELLS + @ DF-L R@ CELLS + @ S= IF ROT DROP R> -ROT 2DROP EXIT THEN R> REPEAT DROP 2DROP EXIT THEN   \ the prompt: newest first, a def defined again found (824)
   -1 -ROT DF-N @ 0 ?DO 2DUP DF-A I CELLS + @ DF-L I CELLS + @ S= IF ROT DROP I -ROT LEAVE THEN LOOP 2DROP ;
 
 : NOT-YET ( --- )   S" not in the Forth compiler yet (rillc.py has it)" ERR ;
@@ -684,12 +686,13 @@ VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being c
   SCOPE-KEY IKS-L ! IKS-A !
   IK-N @ 0 ?DO  I IK-SCOPE? IF I CELLS IK-NA + @ I CELLS IK-NL + @ 2DUP DECLARE I CELLS IK-K + @ SET-KIND THEN  LOOP ;
 : BIND-K ( c-addr u kind --- kind' )   \ rillc.py's bind: recorded in the first pass, the joined kind in the second
+  REPL? @ IN-DEF @ 0= AND IF DROP K-ANY THEN                       \ at the prompt a global is an item (824)
   INFER @ IF >R 2DUP R@ IK-RECORD R> ELSE
   FIXED @ IF >R 2DUP IK-FIND DUP 0< IF DROP R> ELSE R> DROP CELLS IK-K + @ THEN THEN THEN
   DUP >R SET-KIND R> ;
 \ [/gene]
 \ [gene !infer]
-: BIND-K ( c-addr u kind --- kind' )   DUP >R SET-KIND R> ;
+: BIND-K ( c-addr u kind --- kind' )   REPL? @ IN-DEF @ 0= AND IF DROP K-ANY THEN  DUP >R SET-KIND R> ;
 \ [/gene]
 VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : NUM-INTO ( k --- )   \ a count or an index stored in a variable of kind k (771)
@@ -1030,7 +1033,8 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   0 BEGIN S" {" CUR-IS? IF 1+ THEN  S" }" CUR-IS? IF 1- DUP 0= IF DROP NEXT-TK EXIT THEN THEN  NEXT-TK AGAIN ;
 : DEF-STMT ( --- )
   TK-I @ PD-START !
-  NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !
+  NEXT-TK  TK K@ T-WORD <> IF R-ERR> ." rillc: line " TK L@ . ." : expected word, found " TK T@ TYPE R-NL -4100 THROW THEN   \ (824: `def ,` was taken)
+  TK T@ DEF-NAME-L ! DEF-NAME-A !
   IN-DEF @ IF R-ERR> ." rillc: line " TK L@ . ." : a def inside a def - define " DEF-NAME-A @ DEF-NAME-L @ TYPE ."  at the top level" R-NL -4100 THROW THEN   \ 793
   NEXT-TK  0 PRM-N !                                                 \ def f(a, b): as it is called, one way (802)
   S" (" CUR-IS? TK TOK-AT TK 1- TOK-END = AND 0= IF S" a def's parameters go in parentheses: def f(a, b)" ERR THEN  NEXT-TK
@@ -1434,6 +1438,18 @@ VARIABLE RT-K
     I BEGIN DUP 0> IF DUP CELLS ORDER + @ DC-NAME 2 PICK 1- CELLS ORDER + @ DC-NAME COMPARE 0< ELSE 0 THEN
     WHILE DUP CELLS ORDER + @ OVER 1- CELLS ORDER + @ 2 PICK CELLS ORDER + ! OVER 1- CELLS ORDER + ! 1- REPEAT DROP
   LOOP ;
+\ The prompt's session (824, QUESTIONS.md A38): its globals - items, which each line binds as it likes -
+\ and its defs outlive a line. Each pass of a line starts from them (RILL-INIT); a line's new ones join
+\ once it compiles (SS-KEEP), their names copied to the heap, since a line's text goes. Their VARIABLEs,
+\ roots and markers are not made again: the old ones hold the values, and earlier lines' defs read them.
+NM-MAX CELLS BUFFER: SS-A   NM-MAX CELLS BUFFER: SS-L   VARIABLE SS-N   VARIABLE SS-DF
+: SS-HAS? ( c-addr u --- f )   SS-N @ 0 ?DO 2DUP I CELLS SS-A + @ I CELLS SS-L + @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN LOOP 2DROP 0 ;
+: HEAP$ ( c-addr u --- c-addr2 u )   DUP ALLOCATE THROW SWAP >R 2DUP R@ MOVE NIP R> ;
+: DC-NEW? ( i --- f )   REPL? @ 0= IF DROP -1 EXIT THEN  DC-NAME SS-HAS? 0= ;   \ a declared name the session lacks
+: SS-KEEP ( --- )   \ a line compiled: its new globals and defs join the session
+  DC-N @ 0 ?DO I DC-NAME 2DUP SS-HAS? IF 2DROP ELSE
+    SS-N @ NM-MAX < IF HEAP$ SS-N @ CELLS SS-L + ! SS-N @ CELLS SS-A + ! 1 SS-N +! ELSE 2DROP THEN THEN LOOP
+  DF-N @ SS-DF @ ?DO I CELLS DF-A + @ I CELLS DF-L + @ HEAP$ I CELLS DF-L + ! I CELLS DF-A + ! LOOP  DF-N @ SS-DF ! ;
 : RILL-INIT ( --- )
   0 NM-N !  0 DC-N !  0 DF-N !  0 PRM-N !  0 ON-N !
 \ [gene littext]
@@ -1441,11 +1457,12 @@ VARIABLE RT-K
 \ [/gene]
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !  0 BLK-N !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
-  TK-ALLOC BUF-ALLOC ;
+  TK-ALLOC BUF-ALLOC
+  REPL? @ IF  SS-N @ 0 ?DO I CELLS SS-A + @ I CELLS SS-L + @ K-ANY 0 NM-ADD LOOP  SS-DF @ DF-N !  THEN ;   \ the session (824)
 : ON-EXIT-AHEAD? ( --- f )   \ on EXIT, or a spawn (813): the safe points poll for INT and TERM
   TK-N @ 1- 0 ?DO  I T@ S" on" S= I 1+ T@ S" EXIT" S= AND  I T@ S" spawn" S= I 1+ T@ S" (" S= AND  OR IF -1 UNLOOP EXIT THEN  LOOP 0 ;
 : RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
-  RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN  ON-EXIT-AHEAD? HAS-ON-EXIT !
+  RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN  ON-EXIT-AHEAD? REPL? @ OR HAS-ON-EXIT !   \ at the prompt ^C is polled for (824)
 \ [gene infer]
   FIXED @ IF IK-PRELOAD THEN
 \ [/gene]
@@ -1454,12 +1471,12 @@ VARIABLE RT-K
   INFER @ IF -1 PD-NOW !  PD-N @ 0 ?DO I CELLS PD-T + @ TK-I ! STATEMENT LOOP  0 PD-NOW ! THEN   \ the defs' bodies, the first pass's last (785)
 \ [/gene]
   SORT-NAMES
-  DC-N @ 0 ?DO S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! LOOP
+  DC-N @ 0 ?DO I CELLS ORDER + @ DC-NEW? IF S" VARIABLE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP
 \ [gene gc]
-  DC-N @ 0 ?DO I CELLS ORDER + @ DC-NAME ROOT-KIND ?DUP IF                \ the collector's roots, in the same order
+  DC-N @ 0 ?DO I CELLS ORDER + @ DUP DC-NEW? IF DC-NAME ROOT-KIND ELSE DROP 0 THEN ?DUP IF   \ the collector's roots, in the same order
     RT-K ! S" R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ S"  " FIN+ RT-K @ KIND-NAME FIN+ S"  R-ROOT" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP   \ not >R: I reads that stack
 \ [/gene]
-  DC-N @ 0 ?DO I CELLS ORDER + @ DC-NAME NI-HAS? IF                      \ R-NONE until set (785), in the same order
+  DC-N @ 0 ?DO I CELLS ORDER + @ DUP DC-NEW? IF DC-NAME NI-HAS? ELSE DROP 0 THEN IF   \ R-NONE until set (785), in the same order
     S" R-NONE R." FIN+ I CELLS ORDER + @ DC-NAME FIN+ S"  !" FIN+ 10 FINAL FINAL# @ + C! 1 FINAL# +! THEN LOOP
 \ [gene littext]
   LITS-B @ LITS# @ FIN+
@@ -1475,6 +1492,50 @@ VARIABLE RT-K
 \ [gene !infer]
 : RILL>FORTH ( c-addr u --- c-addr2 u2 )   RILL-PASS ;
 \ [/gene]
+\ The prompt (824, QUESTIONS.md A38): `rill` with no script. A line - more while a bracket, a string or a
+\ text block is open - is compiled, its new names kept (SS-KEEP), and run; an error is said and the prompt
+\ comes back; INT ends the line running, as a shell's ^C does; exit, or the input's end, ends the prompt.
+\ Without a terminal there is no prompt: lines are read as they come - the tests' way. (The editor: 825.)
+65536 CONSTANT RL-MAX
+VARIABLE RL-BUF  VARIABLE RL#  VARIABLE RL-TTY  VARIABLE RO-D  VARIABLE RO-Q  VARIABLE RO-B
+: RL@ ( i --- c )   DUP RL# @ < IF RL-BUF @ + C@ ELSE DROP 0 THEN ;
+: RL-QQQ? ( i --- f )   DUP RL@ 34 = OVER 1+ RL@ 34 = AND SWAP 2 + RL@ 34 = AND ;
+: RL-OPEN? ( --- f )   \ a bracket, a "...", a '...' or a text block left open at the input's end
+  0 RO-D !  0 RO-Q !  0 RO-B !  0
+  BEGIN DUP RL# @ < WHILE
+    RO-B @ IF DUP RL-QQQ? IF 0 RO-B ! 3 + ELSE 1+ THEN ELSE
+    RO-Q @ IF DUP RL@ DUP 92 = RO-Q @ 34 = AND IF DROP 2 + ELSE RO-Q @ = IF 0 RO-Q ! THEN 1+ THEN ELSE
+    DUP RL-QQQ? IF -1 RO-B ! 3 + ELSE
+    DUP RL@ CASE
+      34 OF 34 RO-Q ! ENDOF   39 OF 39 RO-Q ! ENDOF
+      35 OF DUP 0= IF -1 ELSE DUP 1- RL@ DUP 32 = OVER 9 = OR SWAP 10 = OR THEN       \ # after a blank: to the line's end
+            IF BEGIN DUP 1+ RL@ DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT THEN ENDOF
+      123 OF 1 RO-D +! ENDOF   91 OF 1 RO-D +! ENDOF   40 OF 1 RO-D +! ENDOF
+      125 OF -1 RO-D +! ENDOF  93 OF -1 RO-D +! ENDOF  41 OF -1 RO-D +! ENDOF
+    ENDCASE 1+ THEN THEN THEN
+  REPEAT DROP  RO-D @ 0> RO-Q @ 0<> OR RO-B @ OR ;
+: RL-PROMPT ( --- )   RL-TTY @ IF RL# @ IF S" ...> " ELSE S" rill> " THEN 2 WRITE-FILE DROP THEN ;
+: RL-READ ( --- f )   \ a line onto the input; 0 at its end
+  RL-BUF @ RL# @ +  RL-MAX RL# @ - 1-  0 READ-LINE  IF 2DROP 0 EXIT THEN
+  0= IF DROP 0 EXIT THEN  RL# +!  10 RL-BUF @ RL# @ + C!  1 RL# +!  -1 ;
+VARIABLE RL-KEPT   \ the real stdout while a line's words are defined: the kernel says `Redefining:` of R-MAIN,
+                   \ every line's, and has no switch for it - its definitions are made with fd 1 on /dev/null
+: RL-QUIET ( --- )   PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN RL-KEPT !
+  S" /dev/null" W/O OPEN-FILE IF DROP EXIT THEN  DUP 1 DUP2 DROP  CLOSE-FILE DROP ;
+: RL-LOUD ( --- )   RL-KEPT @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  RL-KEPT @ CLOSE-FILE DROP  0 RL-KEPT ! ;
+: RL-RUN ( --- )   \ the line's Forth ends `R-MAIN` and a blank: its definitions quietly, then that call
+  RL-BUF @ RL# @ RILL>FORTH  SS-KEEP  R-BLANKS  7 -  RL-QUIET EVALUATE RL-LOUD  S" R-MAIN" EVALUATE ;
+VARIABLE RL-RUN-XT   ' RL-RUN RL-RUN-XT !XT
+: RL-CAUGHT ( code --- )   \ a line ended by an error, said already, or by INT: the prompt goes on - exit ends it
+  0 PL-DEPTH !  0 STATE !
+  DUP -4000 = R-EXITED @ AND R-SIGGED @ 0= AND IF THROW THEN  0 R-SIGGED !  0 R-EXITED !  DROP ;
+: R-REPL ( --- )
+  -1 REPL? !  0 SS-N !  0 SS-DF !  0 ISATTY RL-TTY !  RL-MAX ALLOCATE THROW RL-BUF !  R-SIG-CATCH
+  BEGIN  0 RL# !
+    BEGIN RL-PROMPT RL-READ 0= IF RL# @ 0= IF EXIT THEN -1 ELSE RL-OPEN? 0= THEN  R-SIGNAL DROP UNTIL
+    RL-RUN-XT @XT CATCH  R-OUT-BACK RL-LOUD  ?DUP IF RL-CAUGHT THEN
+  AGAIN ;
+' R-REPL IS R-REPL-D
 : .RILL ( c-addr u --- )   \ a script file's Forth, printed: tests/rill/oracle
   R-SLURP RILL>FORTH TYPE ;
 ' RILL>FORTH IS R-COMPILE   \ the image compiles a .rill itself (Iteration 741)

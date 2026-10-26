@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 823; the design
+CV8 engine. This document says what Rill is as of Iteration 824; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -26,6 +26,18 @@ compiler written in Forth. The script is compiled whole, then run.
 tools/rillc.py is the same compiler written in Python; the two produce the
 same Forth (tests/rill/oracle checks it), and `python3 tools/rillc.py
 script.rill` prints that Forth.
+
+## The prompt
+
+`rill` with no script reads Rill a line at a time (824): each line is
+compiled and run, and its variables and defs are there for the next - a
+variable at the prompt is an item, so a line may bind it to any kind; a
+def defined again is the new one from then on (code already compiled
+keeps calling the old). A line with a bracket, a string or a text block
+left open goes on to the next (`...> `); an error is said and the prompt
+comes back; a failed command ends its line only; `exit` or the end of
+the input ends the prompt, with that status. With a terminal it prompts
+`rill> `; without one, lines are read as they come - `rill < session`.
 
 ## Lines, words, comments
 

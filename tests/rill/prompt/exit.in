@@ -1,0 +1,8 @@
+# exit ends the prompt with its status; a failed command, or an error, does not (824)
+false
+echo "a failed command, and on"
+echo {max([])}
+echo "an error, and on"
+x = 2
+exit $x + 2
+echo not reached

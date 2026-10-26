@@ -1,0 +1,14 @@
+rillc: line 1 : unexpected token
+a compile error, and on: 2
+rill: division by zero (line 1)
+rill: $y is not set (line 1)
+2
+12
+26
+2 one+two
+0 1 4 9
+CAPTURED
+a
+job: 7
+2 two CAPTURED
+status 0

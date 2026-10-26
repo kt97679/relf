@@ -2,6 +2,7 @@
 # rill script.rill [args...]    run a Rill script; one starting #!/usr/bin/env rill runs as itself
 # rill -c 'code' [args...]       run a line or two of Rill
 # rill --forth script.rill       the Forth the script compiles to
+# rill                           the prompt: Rill a line at a time (824)
 #
 # bin/rill (Iteration 797): put bin/ on PATH, or link bin/rill into a directory
 # that is - a link is followed back here. The engine and the image are this
@@ -15,8 +16,8 @@ done
 top=${RILL_HOME:-$(cd "$(dirname "$self")/.." && pwd)}
 engine=${RILL_ENGINE:-$top/relf64}
 image=${RILL_IMAGE:-$top/kernel64-rill.img}
-usage() { echo "usage: rill script [args...] | rill -c 'code' [args...] | rill --forth script" >&2; exit 2; }
-case $1 in -h|--help) sed -n '2,4s/^# \{0,1\}//p' "$self"; exit 0 ;; '') usage ;; esac
+usage() { echo "usage: rill [script [args...] | -c 'code' [args...] | --forth script]" >&2; exit 2; }
+case $1 in -h|--help) sed -n '2,5s/^# \{0,1\}//p' "$self"; exit 0 ;; esac   # no arguments: the prompt (824)
 [ -x "$engine" ] || { echo "rill: no engine at $engine - build it: make relf64, in $top" >&2; exit 2; }
 if [ -z "$RILL_IMAGE" ]; then
     stale=

@@ -829,3 +829,25 @@ header is one text block now - its output byte for byte the committed
 engine/cv8-ops.h, the rewrite 18 % shorter than the shell script, the
 eight 4.0 % together. tests/rill/text-block.rill and three error programs.
 The image: 76,291 bytes to 77,408.
+
+## Iteration 824: the prompt (QUESTIONS.md A38, part 1 - lines read plainly)
+
+`rill` with no script (bin/rill too) reads Rill a line at a time, more
+while a bracket, a string or a text block is open (RL-OPEN?); each input
+is compiled and run under CATCH. The compiler's prompt mode (REPL?, the
+image's alone): a session table of globals and defs that each pass of a
+line starts from (RILL-INIT), joined by a line's new ones once it
+compiles (SS-KEEP, names copied to the heap since a line's text goes); a
+global is an item (BIND-K), so a line may bind it to any kind; the
+session's VARIABLEs, roots and markers are not made again (DC-NEW?);
+DF-FIND newest first, so a def defined again is the one found; the safe
+points poll for ^C. Each line's definitions are made with fd 1 on
+/dev/null - the kernel says `Redefining: R-MAIN` for every line and has
+no switch - then R-MAIN is called. Found while building, both now
+guarded by tests/rill/prompt: errors that throw -4000 (a command failed,
+$x not set) ended the prompt as `exit` does - R-EXIT now marks exit
+(R-EXITED), and INT or TERM mark themselves (R-SIGGED); and the noise
+above. The fuzzer (seed 824) found the image's compiler took `def ,(who)`
+- older than 824; DEF-STMT wants a word now (errors/def-name.rill).
+Design, not a bug: a bracket left open takes the following lines with
+it, as Python's prompt does. The image: 77,408 bytes to 79,117.

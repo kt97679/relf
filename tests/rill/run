@@ -69,6 +69,13 @@ gone "$jsp" || { kill "$jsp" 2>/dev/null; jsp="$jsp still running"; }
 if [ "$jin" = /dev/null ] && [ "$jend" -gt 0 ] 2>/dev/null && [ "$jst" = 143 ] && [ -z "$jlate" ] && [ "$jsp" -gt 0 ] 2>/dev/null && [ -z "$(sed -n 2p $jt/sig.out)" ]
 then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL jobs: stdin [$jin], end [$jend], signal status $jst$jlate [$jsp] [$(sed -n 2p $jt/sig.out)]"; fi
 rm -rf $jt
+# the prompt (824): a session's lines on stdin, rill with no script - its output, then its status
+for p in tests/rill/prompt/*.in; do
+    { timeout 30 ./relf64 kernel64-rill.img < "$p" 2>&1; echo "status $?"; } > /tmp/rill-prompt.$$
+    if cmp -s /tmp/rill-prompt.$$ "${p%.in}.expected"; then pass=$((pass + 1))
+    else fail=$((fail + 1)); echo "FAIL $p"; diff "${p%.in}.expected" /tmp/rill-prompt.$$ | head -5; fi
+done
+rm -f /tmp/rill-prompt.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

@@ -252,7 +252,8 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - **an interactive prompt** (QUESTIONS.md A38, the work now): to see if
+   - **an interactive prompt** (QUESTIONS.md A38, the work now; 824 made the
+     prompt - lines read plainly - and line editing with history is next): to see if
      Rill can be the shell people type into - line editing and history,
      relfsh's editor (shell/edit.4) reused if it can be; the compiler
      works on whole programs, so a line at a time keeping its variables is

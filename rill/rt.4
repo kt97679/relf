@@ -398,7 +398,10 @@ VARIABLE R-STATUS
 \ Ending, and what the script is given (Iteration 744)
 CREATE R-NLB 10 C,
 : R-ERR-TYPE ( t --- )   R-T@ 2 WRITE DROP  R-NLB 1 2 WRITE DROP ;   \ to the err port, a line
-: R-EXIT ( n --- )   R-STATUS !  -4000 THROW ;                        \ exit n
+VARIABLE R-EXITED   \ `exit` ran: the prompt ends - an error's -4000 (a command failed, $x not set) does not (824)
+VARIABLE R-SIGGED   \ ended by INT or TERM, not by exit: at the prompt, the line ends and the prompt goes on (824)
+: R-EXIT ( n --- )   -1 R-EXITED !  R-STATUS !  -4000 THROW ;            \ exit n
+: R-SIG-EXIT ( sig --- )   -1 R-SIGGED !  128 + R-EXIT ;
 VARIABLE R-ON-EXIT-XT
 \ A script with on EXIT runs it when INT or TERM stops it too, and exits 128 + the signal, as the shell's
 \ trap would (786): from the block's registration INT and TERM are caught, and its safe points poll.
@@ -432,8 +435,8 @@ JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS
   \ caught without SA_RESTART while it waits (the engine's action 3), or waitpid resumes after the handler
   \ and the wait goes on - with action 2 the check passed only because timeout signalled the job too
   2 3 SIGNAL-ACTION DROP  15 3 SIGNAL-ACTION DROP
-  SIGNALS-PENDING ?DUP IF NIP R-SIG-CATCH 128 + R-EXIT THEN
-  DUP WAITPID IF  SIGNALS-PENDING ?DUP IF NIP NIP R-SIG-CATCH 128 + R-EXIT THEN  THEN
+  SIGNALS-PENDING ?DUP IF NIP R-SIG-CATCH R-SIG-EXIT THEN
+  DUP WAITPID IF  SIGNALS-PENDING ?DUP IF NIP NIP R-SIG-CATCH R-SIG-EXIT THEN  THEN
   NIP R-SIG-CATCH  0 SIG-CNT ! ;
 : R-JOB-WAIT ( job --- status )   \ wait(job): its stages waited for; its status as PL-END makes it
   JB-FIND DUP 0< IF DROP R-ERR> ." rill: wait: no such job" R-ERR-NL -4004 THROW THEN
@@ -489,13 +492,14 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
 : R-BLANKS ( addr len --- addr len )   \ every control character a blank
   2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
 DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
+DEFER R-REPL-D   \ the prompt, `rill` with no script (824): rill/compile.4 sets it
 : R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
 : R-SHEBANG? ( c-addr u --- f )   2 < IF DROP 0 EXIT THEN  2 S" #!" COMPARE 0= ;   \ a script that starts #!: Rill, whatever its name (797)
 : R-RUN ( --- )
   \ Not INCLUDED: the boot word runs before the interpreter has a file
   \ to read from, and INCLUDED says "Error reading file" there; the
   \ program is read whole, its line ends made blanks, and EVALUATEd.
-  SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
+  SYS-ARGC 1 < IF R-REPL-D EXIT THEN                         \ no script: the prompt (824)
   0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP 2DUP R-SHEBANG? R> OR IF R-COMPILE THEN R-BLANKS EVALUATE ;
 : R-INIT ( --- )
   \ What WARM and QUIT set before the interpreter reads - a boot word runs
@@ -1059,4 +1063,4 @@ DEFER G-COPY ( a kind --- a' )
 : R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN ;   \ a safe point: the compilers put one before each top-level statement
 \ SIGNALS-PENDING scans every flag (~27 ns): looked at every 1024th safe point, and at the first after each command
 : R-GC?S ( --- )   \ a script with on EXIT: a signal caught, then exit 128 + it (786)
-  R-GC?  -1 SIG-CNT +!  SIG-CNT @ 0< IF 1023 SIG-CNT !  R-SIGNAL ?DUP IF 128 + R-EXIT THEN THEN ;
+  R-GC?  -1 SIG-CNT +!  SIG-CNT @ 0< IF 1023 SIG-CNT !  R-SIGNAL ?DUP IF R-SIG-EXIT THEN THEN ;
