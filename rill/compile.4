@@ -453,6 +453,10 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
      S" R-PUSH" OUT+ 0 -1 EXIT THEN
   2DUP S" glob" S= IF 2DROP ARG TO-TEXT S" R-GLOB" OUT+ K-LIST -1 EXIT THEN   \ 786
+  2DUP S" spawn" S= IF 2DROP                                     \ spawn((cmd args)): a job, its last stage's pid (813)
+    S" (" CUR-IS? IF NEXT-TK RUN-COND?-D ELSE 0 THEN
+    0= IF S" spawn() takes a command in ( ): spawn((cmd args))" ERR THEN
+    2 COMMAND-HOOK S" )" EXPECT K-NUM -1 EXIT THEN
   2DUP S" code" S= IF 2DROP                                      \ code((cmd args)): its status, a number (786)
     S" (" CUR-IS? IF NEXT-TK TK T@ 2DUP S" true" S= >R S" false" S= R> OR IF -1 ELSE RUN-COND?-D THEN ELSE 0 THEN   \ code((true)): the program
     0= IF S" code() takes a command in ( ): code((cmd args))" ERR THEN
@@ -488,6 +492,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      TO-TEXT ARG TO-TEXT S" R-FIND-T" THEN THEN OUT+ K-NUM -1 EXIT THEN
   2DUP S" decimal" S= IF 2DROP ARG TO-TEXT S" R-TEXT>DEC" OUT+ K-DEC -1 EXIT THEN
   2DUP S" json" S= IF 2DROP ARG BOX S" R-JSON" OUT+ K-TEXT -1 EXIT THEN                     \ JSON (811, A36)
+  2DUP S" wait" S= IF 2DROP ARG TO-NUM S" R-JOB-WAIT" OUT+ K-NUM -1 EXIT THEN                 \ jobs (813)
   2DUP S" from-json" S= IF 2DROP ARG TO-TEXT S" R-FROM-JSON" OUT+ K-ANY -1 EXIT THEN
   2DUP S" replace" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-REPLACE" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" max" S= >R 2DUP S" min" S= R> OR IF                       \ of a list: an item (760; of two values no more, 799)
@@ -1109,14 +1114,15 @@ VARIABLE ECHO-ST   \ this stage is echo: Rill's, run in a child, its words a lis
   SP-FORM @ IF S" R-NEW-LIST" OUT+ THEN  0
   BEGIN STAGE-END? 0= WHILE STAGE-ITEM REPEAT
   SP-FINISH  SP-FORM @  R> IF DROP 2 THEN ;                     \ form 2: echo (807)
-: COMMAND ( capture? --- )   \ a pipeline; its status - or, captured, its output and then its status
+: COMMAND ( mode --- )   \ a pipeline; its status - or, captured (-1), its output and then its status; spawned (2), a job
   SP-FORM @ >R  SP-PEND @ >R                    \ a stage's, when this one runs inside its words: $(...) (807)
-  IF S" -1" ELSE S" 0" THEN OUT+ S" PL-BEGIN" OUT+
+  DUP >R  DUP 2 = IF DROP S" 0" OUT+ S" PL-BEGIN" OUT+ S" PL-NULL-IN" OUT+ ELSE
+  IF S" -1" ELSE S" 0" THEN OUT+ S" PL-BEGIN" OUT+ THEN
   BEGIN STAGE SWAP OVER IF DROP ELSE OUT-NUM THEN
     S" |" CUR-IS? IF S" 0" ELSE S" -1" THEN OUT+
     DUP 1 = IF DROP S" PL-STAGE-X" ELSE DUP 2 = IF DROP S" PL-ECHO" ELSE IF S" PL-STAGE-L" ELSE S" PL-STAGE" THEN THEN THEN OUT+
     S" |" CUR-IS? WHILE NEXT-TK SKIP-NL REPEAT
-  S" PL-END" OUT+  R> SP-PEND !  R> SP-FORM ! ;
+  R> 2 = IF S" PL-SPAWN" ELSE S" PL-END" THEN OUT+  R> SP-PEND !  R> SP-FORM ! ;
 ' COMMAND IS COMMAND-HOOK
 : COMMAND-STMT ( --- )
   0 COMMAND
@@ -1370,7 +1376,8 @@ VARIABLE RT-K
    0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
   TK-ALLOC BUF-ALLOC ;
-: ON-EXIT-AHEAD? ( --- f )   TK-N @ 1- 0 ?DO I T@ S" on" S= I 1+ T@ S" EXIT" S= AND IF -1 UNLOOP EXIT THEN LOOP 0 ;
+: ON-EXIT-AHEAD? ( --- f )   \ on EXIT, or a spawn (813): the safe points poll for INT and TERM
+  TK-N @ 1- 0 ?DO  I T@ S" on" S= I 1+ T@ S" EXIT" S= AND  I T@ S" spawn" S= I 1+ T@ S" (" S= AND  OR IF -1 UNLOOP EXIT THEN  LOOP 0 ;
 : RILL-PASS ( c-addr u --- c-addr2 u2 )   \ a Rill script's text, its Forth
   RILL-INIT TOKENIZE 0 TK-I !  TO-MAIN  ON-EXIT-AHEAD? HAS-ON-EXIT !
 \ [gene infer]

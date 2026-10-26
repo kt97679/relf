@@ -16,8 +16,8 @@ same iteration.
    were answered at 516.)*
 2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
 3. **Rill's features that wait on these** (Rill itself exists since 736;
-   809 corrected this line): Q36 answered (A36): JSON built at 811, jobs
-   next - Q10 and Q11 settled by it; **Q7** (text blocks), **Q8** (the
+   809 corrected this line): Q36 answered (A36) and built - JSON at 811,
+   jobs at 813 - Q10 and Q11 with it; **Q7** (text blocks), **Q8** (the
    prompt's questions, the name).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
@@ -59,39 +59,6 @@ margin (design C there).
 (JSON on a marked port?); a softer failure rule at the prompt than in
 scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
 Rill", says why; it is easy to change.
-
-**Q10. Rill: how structured values cross a process boundary (515, 516).**
-*Refined at 516, from the user's proposal*: JSON in the environment,
-recognised - but by the script's use, not the value's content: every
-value arrives as text; a list or record exports as JSON automatically;
-a structural operation on text (`$CFG.host`, iterating, spreading)
-decodes it there, an error if it is not JSON; scalars are never
-converted, so `VERSION=1.0` stays `1.0`. SHELL-LANGUAGE.md Part 4 shows
-why detection by content misfires (the "Norway problem").
-*Recommendation now*: that. The earlier options follow.
-The environment is `NAME=VALUE` strings for every program, most not
-Rill. Options, argued in SHELL-LANGUAGE.md Part 4: (1) only text is
-exported, and a structure crosses by explicit encoding
-(`export CFG = json($cfg)`, `from-json($CFG)` on the other side);
-(2) automatic, with a marker variable recording each export's kind -
-seamless, but stale when anything in between changes the value, and
-it re-reads text unasked; (3) lists tied to a separator, as zsh's
-`PATH`. For Rill-to-Rill calls, a value port (descriptor 3, JSON) that
-carries a script's `return` value back to its caller.
-*Recommendation*: (1), JSON as the standard codec, plus value ports
-for Rill-to-Rill calls; never functions in the environment (bash's
-exported functions were Shellshock).
-
-**Q11. Rill: the default lifetime of a job (515).**
-`par` covers fork-join work; a server started for a test run, a
-coprocess, and a daemon need jobs as values (`spawn`, `kill`, `wait`,
-ports to talk through). What happens to a job its script never waited
-for: it runs on, orphaned (as in sh); it is stopped when the script
-ends; or it is stopped when the block that started it ends.
-*Recommendation*: stopped when the script ends, by default - no orphan
-is an accident; `with` binds a job to a block; `detach` lets one
-outlive the script; at the interactive prompt, jobs live as long as the
-shell, as in sh.
 
 **Q12. Forth plugins in image form? (516)** The user's thought: load
 compiled extensions, not source. What it takes: a plugin compiled
@@ -139,6 +106,39 @@ escapes, as bash's does. *Recommendation*: keep them all.
 
 
 ## Answered
+
+**Q11. Rill: the default lifetime of a job (515; answered by A36: stopped when the script ends, 813).**
+`par` covers fork-join work; a server started for a test run, a
+coprocess, and a daemon need jobs as values (`spawn`, `kill`, `wait`,
+ports to talk through). What happens to a job its script never waited
+for: it runs on, orphaned (as in sh); it is stopped when the script
+ends; or it is stopped when the block that started it ends.
+*Recommendation*: stopped when the script ends, by default - no orphan
+is an accident; `with` binds a job to a block; `detach` lets one
+outlive the script; at the interactive prompt, jobs live as long as the
+shell, as in sh.
+
+**Q10. Rill: how structured values cross a process boundary (515, 516; answered by A36: from-json and json, explicit, 811).**
+*Refined at 516, from the user's proposal*: JSON in the environment,
+recognised - but by the script's use, not the value's content: every
+value arrives as text; a list or record exports as JSON automatically;
+a structural operation on text (`$CFG.host`, iterating, spreading)
+decodes it there, an error if it is not JSON; scalars are never
+converted, so `VERSION=1.0` stays `1.0`. SHELL-LANGUAGE.md Part 4 shows
+why detection by content misfires (the "Norway problem").
+*Recommendation now*: that. The earlier options follow.
+The environment is `NAME=VALUE` strings for every program, most not
+Rill. Options, argued in SHELL-LANGUAGE.md Part 4: (1) only text is
+exported, and a structure crosses by explicit encoding
+(`export CFG = json($cfg)`, `from-json($CFG)` on the other side);
+(2) automatic, with a marker variable recording each export's kind -
+seamless, but stale when anything in between changes the value, and
+it re-reads text unasked; (3) lists tied to a separator, as zsh's
+`PATH`. For Rill-to-Rill calls, a value port (descriptor 3, JSON) that
+carries a script's `return` value back to its caller.
+*Recommendation*: (1), JSON as the standard codec, plus value ports
+for Rill-to-Rill calls; never functions in the environment (bash's
+exported functions were Shellshock).
 
 **Q36. Rill, general and minimal: the balance (810; answered A36)**
 The user, A35: a general shell and script language, minimal and simple -

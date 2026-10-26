@@ -685,3 +685,32 @@ weighing it: decimal("1e3") gives 1.0.
 - One library name each in both compilers; memcheck's json case; two
   one-liners (jq -r, a printf of JSON) as the feature's evidence.
 - The image: 70,558 bytes to 73,790 - 3,232, past Q36's estimate of 2-3 KB.
+
+## Iteration 813: jobs - spawn, wait, stopped with the script (QUESTIONS.md A36)
+
+- `spawn((cmd args))` starts a pipeline as a statement would (PL-BEGIN,
+  the stages) but ends with PL-SPAWN, not PL-END: the stages' pids kept in
+  a job table (16 jobs, compact, so a BUFFER:'s first bytes never count),
+  the last stage's pid returned. Its stdin is /dev/null unless redirected
+  (PL-NULL-IN), as POSIX has it for `&`. `wait(job)` is PL-END's loop for
+  those pids - the same pipefail status, SIGPIPE before the last excused -
+  and forgets the job; an unknown or waited job is `rill: wait: no such job
+  (line N)`. `kill $job` stays the command.
+- Every ending goes through R-BOOT's R-RUN-EXIT; after it R-JOBS-STOP sends
+  TERM to every stage of every job not waited for (init reaps them).
+- INT and TERM: a script that spawns catches them as one with on EXIT does
+  (R-SIG-CATCH at a spawn; both compilers poll at safe points, R-GC?S,
+  when a spawn appears). While waiting for a job, the signals are caught
+  without SA_RESTART (the engine's action 3) and a signal ends the script
+  at once - 143 - its jobs with it; with action 2 waitpid resumed after the
+  handler and the wait went on.
+- Checks: tests/rill/jobs.rill (two jobs side by side - one waits for a
+  file the other makes, so spawn must return at once; statuses; a pipeline;
+  pipefail; a second wait), and three in tests/rill/run: a job's stdin,
+  a job left at the end, TERM during a wait - each broken on purpose and
+  failing. Two of those first passed broken: the script's output went into
+  $(...), so the job left running held the pipe and the check waited for
+  it; and TERM went through timeout, which signals the whole group, so the
+  job died anyway. Output into files now, TERM straight to relf64, and a
+  three-second limit after it.
+- The image: 73,790 bytes to 74,803.

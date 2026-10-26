@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 811; the design
+CV8 engine. This document says what Rill is as of Iteration 813; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -219,6 +219,8 @@ function runs a program, found on PATH:
 | `env(name)` | the environment (the script's arguments: `$args`, from `$args[0]`; its path: `$script`) |
 | `default(t, other)` | `t`, or `other` when `t` is empty |
 | `code((cmd))` | a command's status, a number |
+| `spawn((cmd))` | a pipeline started and not waited for - a job: its last stage's pid, a number; its stdin `/dev/null` unless redirected. A job not waited for gets TERM when the script ends; `kill $job` is the command |
+| `wait(job)` | waits for a job's stages: its status, as the pipeline's would be (an unknown job, or one waited for, an error) |
 
 Standard commands do the rest, one way each: `printf` formats, `date +%s`
 is the clock, `tr a-z A-Z` changes case, `basename`, `dirname` and
@@ -239,9 +241,11 @@ the whole text at once (`lines($(tr a-z A-Z < file))`), or keep it in Rill
 
 ## Signals
 
-A script with an `on EXIT` block catches INT and TERM: the block runs and the
-script exits 128 + the signal (130, 143), as the shell's trap would. A
-script without one is stopped at once by them, as any program.
+A script with an `on EXIT` block, or one that spawns jobs, catches INT and
+TERM: the block runs, the jobs get TERM, and the script exits 128 + the
+signal (130, 143), as the shell's trap would - at once while it waits for a
+job, at the next statement of the top level otherwise. A script with
+neither is stopped at once by them, as any program.
 
 ## Memory
 

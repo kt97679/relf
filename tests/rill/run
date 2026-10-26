@@ -48,6 +48,27 @@ ln -s "$PWD/bin/rill" $lt/rill-link
 lo=$(PATH="$PWD/bin:$PATH" $lt/greet a "b c"; echo "status $?"; $lt/rill-link -c 'echo {6 * 7} $args' x; bin/rill --forth $lt/greet | grep -c R-MAIN)
 if [ "$lo" = "$(printf '2 args: a,b c\nstatus 3\n42 x\n2')" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL bin/rill:"; echo "$lo"; fi
 rm -rf $lt
+# jobs (813): a job's stdin is /dev/null; a job not waited for gets TERM when the script ends; INT or
+# TERM while the script waits for one ends it at once, 143, its job with it. Gone: no process, or a
+# zombie. Output into files, not $(...): a job left running holds a pipe open, and the check waited
+# for it; TERM straight to relf64, not through timeout, which sends it to the whole group (813).
+gone() { s=$(ps -o stat= -p "$1" 2>/dev/null); [ -z "$s" ] || [ "${s#Z}" != "$s" ]; }
+jt=$(mktemp -d); jlate=
+printf 'j = spawn((readlink /proc/self/fd/0 out> %s/in))\nwait($j)\n' "$jt" > $jt/in.rill
+printf 'j = spawn((sleep 30))\necho $j\n' > $jt/end.rill
+printf 'j = spawn((sleep 30))\necho $j\nwait($j)\necho not reached\n' > $jt/sig.rill
+timeout 20 ./relf64 kernel64-rill.img $jt/in.rill < tests/rill/jobs.rill > /dev/null 2>&1; jin=$(cat $jt/in 2>/dev/null)
+./relf64 kernel64-rill.img $jt/end.rill < /dev/null > $jt/end.out 2>&1; jend=$(head -1 $jt/end.out); sleep 0.3
+gone "$jend" || { kill "$jend" 2>/dev/null; jend="$jend still running"; }
+./relf64 kernel64-rill.img $jt/sig.rill < /dev/null > $jt/sig.out 2>&1 & jp=$!
+n=0; while [ ! -s $jt/sig.out ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+kill -TERM $jp; n=0; while kill -0 $jp 2>/dev/null && [ $n -lt 30 ]; do sleep 0.1; n=$((n + 1)); done
+kill -0 $jp 2>/dev/null && { kill -KILL $jp; jlate=' - still waiting 3 s after TERM'; }
+wait $jp; jst=$?; jsp=$(head -1 $jt/sig.out); sleep 0.3
+gone "$jsp" || { kill "$jsp" 2>/dev/null; jsp="$jsp still running"; }
+if [ "$jin" = /dev/null ] && [ "$jend" -gt 0 ] 2>/dev/null && [ "$jst" = 143 ] && [ -z "$jlate" ] && [ "$jsp" -gt 0 ] 2>/dev/null && [ -z "$(sed -n 2p $jt/sig.out)" ]
+then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL jobs: stdin [$jin], end [$jend], signal status $jst$jlate [$jsp] [$(sed -n 2p $jt/sig.out)]"; fi
+rm -rf $jt
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

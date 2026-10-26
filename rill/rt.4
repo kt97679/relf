@@ -392,6 +392,45 @@ VARIABLE R-ON-EXIT-XT
 : R-SIG-CATCH ( --- )   2 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP ;
 : R-ON-EXIT ( xt --- )   R-ON-EXIT-XT !  R-SIG-CATCH ;                \ on EXIT { }: run when the script ends
 : R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
+\ Jobs (Iteration 813, QUESTIONS.md A36): spawn((cmd)) starts a pipeline and does not wait - its stdin
+\ /dev/null unless redirected, as POSIX has it for & - and returns its last stage's pid; wait(job)
+\ waits for its stages and gives the pipeline's status, as PL-END makes it; a job not waited for gets
+\ TERM when the script ends (R-BOOT, after on EXIT), not waited for in turn - init reaps it. A script
+\ that spawns catches INT and TERM, so that it ends through R-BOOT and its jobs with it. The table
+\ is compact - JB-N entries, the last moved into a freed one - so a BUFFER:'s first bytes never count.
+16 CONSTANT JB-MAX
+JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS BUFFER: JB-PIDS   VARIABLE JB-N
+: JB-PID ( slot i --- addr )   SWAP PL-MAX * + CELLS JB-PIDS + ;
+: PL-NULL-IN ( --- )   \ spawn's begin: a slot free, and /dev/null the first stage's stdin
+  JB-N @ JB-MAX < 0= IF ." rill: spawn: 16 jobs not waited for already" R-ERR-NL -4004 THROW THEN
+  S" /dev/null" R/O OPEN-FILE THROW  DUP PL-PREV ! PL-FD+ ;
+: PL-SPAWN ( --- job )   \ the pipeline started, not waited for: its pids kept, its last returned
+  PL-NP @ 0 ?DO  PL-PIDS I CELLS + @  JB-N @ I JB-PID !  LOOP
+  PL-NP @  JB-N @ CELLS JB-NP + !
+  PL-PIDS PL-NP @ 1- CELLS + @  DUP JB-N @ CELLS JB-KEY + !  1 JB-N +!
+  R-SIG-CATCH
+  -1 PL-DEPTH +!  PL-DEPTH @ IF PL-RESTORE THEN ;
+: JB-FIND ( job --- slot | -1 )   JB-N @ 0 ?DO DUP I CELLS JB-KEY + @ = IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
+: JB-DROP ( slot --- )   \ its place taken by the last job
+  -1 JB-N +!  JB-N @ OVER = IF DROP EXIT THEN
+  JB-N @ CELLS JB-KEY + @  OVER CELLS JB-KEY + !   JB-N @ CELLS JB-NP + @  OVER CELLS JB-NP + !
+  PL-MAX 0 DO  JB-N @ I JB-PID @  OVER I JB-PID !  LOOP  DROP ;
+: R-WAIT-JOB ( pid --- raw )   \ as R-WAIT; but INT or TERM while waiting for a job ends the script now:
+  \ caught without SA_RESTART while it waits (the engine's action 3), or waitpid resumes after the handler
+  \ and the wait goes on - with action 2 the check passed only because timeout signalled the job too
+  2 3 SIGNAL-ACTION DROP  15 3 SIGNAL-ACTION DROP
+  SIGNALS-PENDING ?DUP IF NIP R-SIG-CATCH 128 + R-EXIT THEN
+  DUP WAITPID IF  SIGNALS-PENDING ?DUP IF NIP NIP R-SIG-CATCH 128 + R-EXIT THEN  THEN
+  NIP R-SIG-CATCH  0 SIG-CNT ! ;
+: R-JOB-WAIT ( job --- status )   \ wait(job): its stages waited for; its status as PL-END makes it
+  JB-FIND DUP 0< IF DROP ." rill: wait: no such job" R-ERR-NL -4004 THROW THEN
+  0  OVER CELLS JB-NP + @ 0 ?DO
+    OVER I JB-PID @ R-WAIT-JOB R-DECODE
+    DUP 141 =  I 3 PICK CELLS JB-NP + @ 1- <  AND IF DROP 0 THEN      \ stopped by SIGPIPE before the last stage
+    ?DUP IF NIP THEN
+  LOOP  SWAP JB-DROP ;
+: R-JOBS-STOP ( --- )   \ the script ending: TERM to every stage of every job not waited for
+  JB-N @ 0 ?DO  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ 15 KILL DROP  LOOP  LOOP  0 JB-N ! ;
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
 : R-SCRIPT ( --- t )   0 R-ARG ;
@@ -466,12 +505,13 @@ VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
   ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
   S" RILL_GC_STRESS" R-TEXT R-ENV @ IF -1 G-STRESS !  0 R-GC-AT ! THEN     \ a collection at every safe point: the tests' (776)
   0 R-ON-EXIT-XT !
+  0 JB-N !
   R-RUN-XT @XT CATCH ?DUP IF
-    R-RUN-EXIT                                        \ on EXIT runs however the script ends
+    R-RUN-EXIT  R-JOBS-STOP                           \ on EXIT runs however the script ends; then its jobs stop (813)
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
     DUP -4100 -4000 WITHIN IF  DROP 2 SYS-EXIT  THEN    \ Rill's own errors: their message said already, with the line (781)
     ." rill: error " . R-NL  2 SYS-EXIT
-  THEN  R-RUN-EXIT  R-ON-EXIT-XT @ IF R-SIGNAL ?DUP IF 128 + SYS-EXIT THEN THEN  0 SYS-EXIT ;   \ a signal at the very end: 128 + it (786)
+  THEN  R-RUN-EXIT  R-JOBS-STOP  R-ON-EXIT-XT @ IF R-SIGNAL ?DUP IF 128 + SYS-EXIT THEN THEN  0 SYS-EXIT ;   \ a signal at the very end: 128 + it (786)
 
 \ ---- The library for the Python-born scripts (Iteration 754) ----------------
 \ Texts, files, records sorted and sliced, and decimals: fixed point, six

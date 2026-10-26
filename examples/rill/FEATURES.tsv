@@ -83,3 +83,4 @@ def f a b: parameters bare (def f(a, b))	removed	802	-
 echo -n, -e, -E (printf for no newline; escapes in a string)	rejected	805	\becho\s+-[neE]+\b
 keys(r) ([$k for k, v in $r]; its count len($r))	removed	807	(?<![\w-])keys\(
 json(x), from-json(t): JSON written and read (A36)	adopted	811	(?<![\w-])(from-)?json\(
+spawn((cmd)), wait(job): jobs, stopped when the script ends (A36)	adopted	813	(?<![\w-])(spawn|wait)\(

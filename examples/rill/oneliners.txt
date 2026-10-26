@@ -13,3 +13,4 @@ n=$(ls | wc -l); echo "$n files" ||| echo "{len(*)} files"
 ps aux | awk '$3 > 50 {print $2}' | xargs kill ||| ps aux | awk '$3 > 50 {print $2}' | xargs kill
 jq -r .version package.json ||| echo {from-json(read(package.json))[version]}
 printf '{"name":"%s","n":%d}\n' "$name" "$n" ||| echo {json({name: $name, n: $n})}
+server & pid=$!; ./run-tests; kill $pid ||| j = spawn((server)); run-tests; kill $j

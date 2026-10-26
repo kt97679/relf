@@ -79,7 +79,8 @@ def tokenize(src):
 class Compiler:
     def __init__(self, src):
         self.t = tokenize(src); self.i = 0; self.src = src
-        self.has_on_exit = any(self.t[j][1] == 'on' and self.t[j + 1][1] == 'EXIT' for j in range(len(self.t) - 1))   # 786
+        self.has_on_exit = any((self.t[j][1] == 'on' and self.t[j + 1][1] == 'EXIT') or (self.t[j][1] == 'spawn' and self.t[j + 1][1] == '(')
+                               for j in range(len(self.t) - 1))   # 786; a spawn too (813): INT and TERM end the script, its jobs with it
         self.none_init = set()  # the script's numbers read where they may not be set: R-NONE until they are (785) - one set, shared with sub-compilers
         self.vars = {}          # script variable -> kind
         self.funcs = {}         # name -> (params, kind)
@@ -374,6 +375,11 @@ class Compiler:
         raise Error('line %d: unexpected %r' % (line, v))
     def call(self, name, line):
         self.take('op', '('); args = []
+        if name == 'spawn':                                            # spawn((cmd args)): a job, its last stage's pid (813)
+            if self.peek()[1] == '(': self.i += 1
+            if self.t[self.i - 1][1] != '(' or self.t[self.i - 2][1] != '(' or not self.run_ahead():
+                raise Error('line %d: spawn() takes a command in ( ): spawn((cmd args))' % line)
+            c = self.command('spawn'); self.take('op', ')'); self.take('op', ')'); return c, 'number'
         if name == 'code':                                             # code((cmd args)): its status, a number (786)
             if self.peek()[1] == '(': self.i += 1
             if self.t[self.i - 1][1] != '(' or self.t[self.i - 2][1] != '(' or not (self.peek()[1] in ('true', 'false') or self.run_ahead()):
@@ -443,6 +449,7 @@ class Compiler:
             return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
         if name == 'decimal': need(1); return '%s R-TEXT>DEC' % self.to_text(*a[0]), 'decimal'
         if name == 'json': need(1); return '%s R-JSON' % self.box(*a[0]), 'text'                 # JSON (811, A36)
+        if name == 'wait': need(1); return '%s R-JOB-WAIT' % self.to_num(a[0][0], a[0][1], line), 'number'   # jobs (813)
         if name == 'from-json': need(1); return '%s R-FROM-JSON' % self.to_text(*a[0]), 'any'
         if name == 'replace': need(3); return '%s %s %s R-REPLACE' % tuple(self.to_text(*x) for x in a), 'text'
         if name == 'at':                                                # a record's field; a list's item (782); or the default
@@ -719,6 +726,7 @@ class Compiler:
         word = {False: 'PL-STAGE', True: 'PL-STAGE-L', 'X': 'PL-STAGE-X', 'E': 'PL-ECHO'}
         body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', word[s[1]])
                         for k, s in enumerate(stages))
+        if capture == 'spawn': return '0 PL-BEGIN PL-NULL-IN %s PL-SPAWN' % body          # 813
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
     def echo_typed(self):
         """Gene echolit (753): echo's items typed as they come - a literal run (words, raw texts, the
