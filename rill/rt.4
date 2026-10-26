@@ -312,7 +312,24 @@ PL-MAX 2* 2 + CELLS BUFFER: PL-FDS   VARIABLE PL-NF
 VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
 VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
 : PL-FD+ ( fd --- )   PL-FDS PL-NF @ CELLS + !  1 PL-NF +! ;
+\ A stage's argument can run a pipeline of its own - $(...) or code((...)) in it (795): the pipeline being made
+\ is put aside, in the C heap, while that one runs, and back when it ends - its pids, pipe ends, redirections.
+VARIABLE PL-DEPTH   VARIABLE PL-SAVED
+15 CONSTANT PL-NPARTS
+: PL-PART ( i --- addr cells )   \ named as it runs: a BUFFER: has its memory from ALLOC-BUFFERS at boot, not from the build
+  CASE  0 OF PL-PIDS PL-MAX ENDOF  1 OF PL-FDS PL-MAX 2* 2 + ENDOF  2 OF RR-T RR-MAX ENDOF  3 OF RR-M RR-MAX ENDOF  4 OF RR-F RR-MAX ENDOF
+        5 OF PL-NP 1 ENDOF  6 OF PL-NF 1 ENDOF  7 OF PL-PREV 1 ENDOF  8 OF PL-CAPW 1 ENDOF  9 OF PL-CAPR 1 ENDOF
+        10 OF PL-IN 1 ENDOF  11 OF PL-OUT 1 ENDOF  12 OF PL-NEXT 1 ENDOF  13 OF PL-OWN 1 ENDOF  14 OF RR-N 1 ENDOF
+  ENDCASE ;
+: PL-STATE-CELLS ( --- n )   0 PL-NPARTS 0 DO I PL-PART NIP + LOOP 1+ ;
+: PL-SAVE ( --- )
+  PL-STATE-CELLS CELLS ALLOCATE THROW  PL-SAVED @ OVER !  DUP PL-SAVED !  CELL+
+  PL-NPARTS 0 DO  I PL-PART >R  OVER R@ CELLS MOVE  R> CELLS +  LOOP DROP ;
+: PL-RESTORE ( --- )
+  PL-SAVED @ DUP @ PL-SAVED !  DUP >R CELL+
+  PL-NPARTS 0 DO  I PL-PART >R  OVER SWAP R@ CELLS MOVE  R> CELLS +  LOOP DROP  R> FREE DROP ;
 : PL-BEGIN ( capture? --- )
+  PL-DEPTH @ IF PL-SAVE THEN  1 PL-DEPTH +!                 \ inside another's arguments: that one put aside (795)
   0 PL-NP !  0 PL-NF !  -1 PL-PREV !  -1 PL-CAPW !  -1 PL-CAPR !  R-RD-RESET
   IF  PIPE THROW  DUP PL-CAPW ! PL-FD+  DUP PL-CAPR ! PL-FD+  THEN ;
 : PL-CHILD ( in out --- )
@@ -351,11 +368,16 @@ VARIABLE PL-IN  VARIABLE PL-OUT  VARIABLE PL-NEXT  VARIABLE PL-OWN
   OVER CELL+ -                                                ( t len )
   DUP IF  OVER CELL+ OVER + 1- C@ 10 = IF 1- THEN  THEN
   OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
-: PL-END ( --- [t] status )   \ t when captured; the status is the last stage's
+: PL-END ( --- [t] status )   \ t when captured; the status: the rightmost stage that failed, as bash's pipefail (795)
   PL-CAPR @ -1 <> IF
     PL-CAPW @ CLOSE-FILE DROP  PL-CAPR @ R-READ-ALL  PL-CAPR @ CLOSE-FILE DROP
   THEN
-  0  PL-NP @ 0 ?DO  DROP  PL-PIDS I CELLS + @ R-WAIT R-DECODE  LOOP ;
+  0  PL-NP @ 0 ?DO
+    PL-PIDS I CELLS + @ R-WAIT R-DECODE
+    DUP 141 = I PL-NP @ 1- < AND IF DROP 0 THEN      \ a stage its reader stopped reading (SIGPIPE): not a failure
+    ?DUP IF NIP THEN
+  LOOP
+  -1 PL-DEPTH +!  PL-DEPTH @ IF PL-RESTORE THEN ;            \ the pipeline put aside, back (795)
 : R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
 VARIABLE R-STATUS
 \ Ending, and what the script is given (Iteration 744)

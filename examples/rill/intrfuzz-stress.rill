@@ -24,7 +24,7 @@ def stress {
                     if ($f != "0") {
                         bad += 1
                         echo "--- $sh, round $r, seed {seed($r, $j)}: {default($f, 'no summary (timed out?)')} failures"
-                        grep -A14 '^FAIL' "$tmp/out.$j" | head -45
+                        grep -A14 '^FAIL' "$tmp/out.$j" | head -45 ?? true   # no FAIL line (a timeout): grep says 1 (795)
                     }
                 }
             }
@@ -32,5 +32,5 @@ def stress {
     }
 }
 
-stress err>out | tee $out
+stress err>out | tee $out ?? true                      # the report either way (795: a pipeline fails as its stages do)
 echo "report: $out"

@@ -150,6 +150,10 @@ function runs a program, found on PATH:
 - A command that fails stops the script with its status - unless it is a
   condition `(cmd)`, its status is taken with `code((cmd))`, or it is followed
   by `?? statement`, which runs when it fails (`rm stale.lock ?? true`).
+- A pipeline fails when any stage fails: its status is the rightmost stage
+  that failed (bash's pipefail). A stage stopped because its reader stopped
+  (SIGPIPE, as in `yes | head -1`) is not a failure. Where a stage may say
+  "nothing" - `grep` finding nothing is 1 - write `?? true`.
 - `$(cmd)`: its output as a text, its last newline off; a failing one stops
   the script, unless `$(a ?? b)`: `a`'s output, or - `a` failing - `b`'s
   after it, as the shell's `$(a || b)`.

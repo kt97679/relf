@@ -1,0 +1,10 @@
+# a stage failing anywhere fails the pipeline - its status the rightmost failure, as bash's pipefail;
+# a stage stopped because its reader stopped (SIGPIPE) is not a failure (795)
+echo {code((false | cat))} {code((true | false))} {code((sh -c 'exit 3' | sh -c 'exit 4'))} {code((sh -c 'exit 3' | cat))} {code((true | true))}
+echo {code((yes | head -1))}
+x = $(printf 'a\nb\n' | grep zzz | wc -l ?? true)
+echo "count [$x]"
+if (printf 'a\n' | grep -q a) { echo found }
+if (not (printf 'a\n' | grep zzz | cat)) { echo "not found, said by the pipeline" }
+false | cat
+echo never

@@ -404,3 +404,21 @@ native-by-source 254 -> 263 (best of three), outputs the same. A name clash
 the lint caught first: R-SUB is regex.4's sub(), so subtraction is R-MINUS.
 tests/rill/overflow-add, overflow-mul, overflow-dec, zero-div;
 errors/big-number, errors/big-decimal.
+
+## Iteration 795: a pipeline fails when a stage fails
+
+A pipeline's status was its last stage's: `false | cat` succeeded, so the one
+place where shell scripts lose errors lost them in Rill too. Now its status is
+the rightmost stage that failed, or 0 - bash's pipefail - with one exception:
+an earlier stage stopped because its reader stopped (SIGPIPE: `yes | head -1`)
+is not a failure. `cmd | other ?? true` accepts a failure as before, and
+`code((a | b))` reads the status. Scripts where a stage may say "nothing"
+(grep finding nothing: 1) need `?? true` there now - run-utf8, pack-results
+(--verify) and intrfuzz-stress got it.
+Found on the way, older: a pipeline run inside another's arguments
+(`echo {code((a | b))}` - echo, an external command there, its argument a
+pipeline) overwrote the outer one's state - its pids, pipe ends,
+redirections; the last-stage status had hidden it. PL-BEGIN now puts the
+outer pipeline aside (in the C heap) and PL-END puts it back - named as it
+runs, since a BUFFER:'s memory comes at boot, not from the build.
+tests/rill/pipefail.rill; code.rill's `exit 3 | cat` now 3 (sh says 0).

@@ -819,6 +819,7 @@ do not trust the absence of a line below.
 - 792 — docs/RILL-REFERENCE.md: Rill as it is, one document
 - 793 — review bugs: records and nested lists as text, a def inside a def, escapes
 - 794 — overflow and division by zero are errors naming the line, not wrapped numbers; sum() of decimals
+- 795 — a pipeline fails when a stage fails (pipefail, SIGPIPE excused); pipelines nest inside arguments
 
 ### Not tied to an iteration
 

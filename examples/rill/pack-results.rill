@@ -174,7 +174,7 @@ if ($opts.verify) {
     warn "   (tests/verify: some minutes)"
     step("verify", "sh tests/verify")
     note("verify's lines other than ok, and its last line:")
-    grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum
+    grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum ?? true   # nothing left: grep says 1 (795)
 }
 note("checkout after - each line should be explained (prompts/07):")
 git status --porcelain | sed 's/^/    /' >> $sum
