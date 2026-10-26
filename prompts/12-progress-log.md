@@ -76,7 +76,10 @@ up with the truth.
    the past and grows; the goals file is the present and should shrink
    as things are done - stale "where things stand" snapshots belong in
    the log or an archive, not in the file people read to decide what
-   to do next.
+   to do next. Give the present exactly one home and let every other
+   document point to it: in forth-vm-evolution the goals file kept 770
+   lines of "where things stand" and "next", the newest 166 iterations
+   old, beside a handoff file that was current - two presents, one wrong.
 
 7. **Keep the log readable as it grows: an entry point and volumes.**
    One small file holds the rules, the index and the list of volumes;
@@ -92,6 +95,12 @@ up with the truth.
    whichever volume holds it. The current volume should be small enough
    to read whole at the start of a session; the closed ones are for
    searching.
+
+8. **Write each fact once, and keep the entry short.** The detail and its
+   evidence live in their own document; the entry says what, the numbers
+   and the files in a few lines, and points there; an index line is one
+   sentence. A fact written in four places costs four times and drifts in
+   three (prompt 29).
 
 ## Artifact required
 

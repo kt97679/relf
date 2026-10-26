@@ -823,6 +823,11 @@ do not trust the absence of a line below.
 - 796 — a list's items are expressions; unary minus keeps its operand's kind
 - 797 — bin/rill: #!/usr/bin/env rill scripts run as commands; -c, --forth; the image rebuilt when stale
 - 798 — + joins lists and texts; pop, delete, find, sort-by on lists, in on texts; sort() of numbers and decimals by value
+- 799 — one way each, the library: duplicates and what commands do removed; pop(x, key); echo ... out>err in-process
+- 800 — one way each, the operators: += and -= gone; + adds numbers only
+- 801 — one way each, a field is $r[f]; "$name.log" is text; items read by key without boxing
+- 802 — one way each, the syntax: commas in lists and records, def name(a, b), named output ports
+- 803 — prompts/ synced with forth-vm-evolution's copy (its 15-21 here 23-29, prompts/SYNC.md); the log's gap closed; the handoff
 
 ### Not tied to an iteration
 
@@ -842,4 +847,5 @@ do not trust the absence of a line below.
 | `docs/progress/0400-0499.md` | 400-499 | closed |
 | `docs/progress/0500-0599.md` | 500-599 | closed |
 | `docs/progress/0600-0699.md` | 600-699 | closed |
-| `docs/progress/0700-0799.md` | 700- | **current** |
+| `docs/progress/0700-0799.md` | 700-799 | closed |
+| `docs/progress/0800-0899.md` | 800- | **current** |

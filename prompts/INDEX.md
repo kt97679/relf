@@ -23,12 +23,12 @@ fetched lazily when their trigger conditions are met.
 |---|---|---|
 | `01-problem-framing` | produce the first numbers of a comparison, benchmark or optimisation | the cost model and metric are already fixed and stated |
 | `02-escape-recall` | **name any candidate** approach, architecture or algorithm for a "which is best" question | the user fixed the candidate set, or the task is to implement one named thing |
-| `03-audit-tooling` | report a measured number produced by tooling you wrote, *or* report a result that agrees with what you expected | no figure came from your own tooling |
+| `03-audit-tooling` | report a measured number produced by tooling you wrote, *or* report a result that agrees with what you expected, *or* credit a result to an option you switched on | no figure came from your own tooling |
 | `04-expert-review` | publish a technical write-up whose claims have settled | the claims are still moving |
 | `05-reader-review` | publish, after `04` has passed | the claims are still moving |
 | `06-handling-review` | act on any review feedback | never skip |
-| `07-git-handoff` | end a session, or hand work to another machine | the work leaves no artifact |
-| `08-run-it-elsewhere` | call a suite, build or benchmark green | the environment ships with the product |
+| `07-git-handoff` | end a session or hand work to another machine - or end any turn that changed the repository: a session can end without warning | the work leaves no artifact |
+| `08-run-it-elsewhere` | call a suite, build or benchmark green, *or* hand over a script that runs on someone else's machine - above all one that moves or deletes files, needs privileges there, or sends results back | the environment ships with the product |
 | `09-baseline-discipline` | re-record a recorded value that changed | nothing is recorded - then ask why not |
 | `10-price-before-refactor` | restructure something that works, on the strength of a profile | the change is required for correctness |
 | `11-report-from-elsewhere` | write output someone on another machine will paste back, or read one | the reader has the machine |
@@ -43,6 +43,13 @@ fetched lazily when their trigger conditions are met.
 | `20-noise-floor-first` | call one build faster or slower than another | the difference is many times any spread seen between builds of one program |
 | `21-race-needs-its-conditions` | explain, clear or close an intermittent failure, above all one seen on another machine | it reproduces on demand where you are |
 | `22-restated-claim` | confirm, or build on, a conclusion of yours that someone has restated | it was measured here and the restatement says no more |
+| `23-checks-that-can-fail` | call a check, test or suite green, rely on a check you just added, or report "all checks pass" | the check was shown to fail on a broken input since it last changed |
+| `24-premortem` | start a plan of more than a day, above all one meant to prove a claim | the plan is one step whose failure is cheap and visible |
+| `25-variants-as-data` | add one more variant (a machine, a backend, a gene) by editing several places | there will only ever be two |
+| `26-does-it-generalize` | call the winners of a long search or optimisation better - selected on fixed benchmarks, on one machine | the workloads are the product's own, on the machine it ships on |
+| `27-address-by-name` | edit or read one part of a structured document by script or pattern - a list item, a table row, a column | the document is regenerated from data each time |
+| `28-ask-other-models` | settle a challenge alone that turns on knowledge outside the repository, a fresh reading of code, a field's methods, or a search for prior art - weigh it in one line at every challenge | a measurement, build or test here answers it faster and surer |
+| `29-spend-tokens-where-they-buy-results` | start a session, write a record, report or reply, read a pasted input, or ask other models - in work that runs over many sessions | a one-off question in a fresh session |
 
 ## The one that is hardest to self-apply
 
@@ -71,6 +78,12 @@ that spent it all on reading; `19`, with a template script beside it,
 from the round trips through the user's laptop; `20`-`22` from that
 compiler's size work and its A/Bs, a race chased on a machine that could
 not produce it, and a remedy confirmed because the user restated it.
+`23`-`29` came back from forth-vm-evolution, an evolutionary search over
+interpreter designs that kept a copy of this library: checks that can
+fail, a premortem and variants as data, from an article on AI-built
+Oberon systems and that project's own failures; then held-out tests for
+what a long search found, addressing parts of a document by name, asking
+other models, and spending tokens where they buy results.
 They are about work that
 OUTLIVES a session and software that runs somewhere other than where it
 was written. That family's failures are cheaper to hit and easier to

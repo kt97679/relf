@@ -23,6 +23,9 @@ what the output carried, not by how hard the bug was.
 - A step failed under `set -e` inside `output=$(...)`, which exits
   before the next line can read the status, so the log ended after the
   last passing step and said nothing at all.
+- `counters: s6 on kernel exited 2` - perf's own message, which named the
+  missing package, had been captured and dropped. A second round to ask
+  for it.
 
 The one report that resolved in a single round contained the assertion
 name, the expected value and the actual value. It was fixed in ten
@@ -48,22 +51,30 @@ When writing output someone will send back:
    Capture the status locally (`|| status=$?`) and print what you have.
 6. **Grep for failures precisely.** `error` matches `no errors`;
    `FAIL` matches `FAILED: 0`.
+7. **Send everything in one archive, logs included.** Results and every
+   log the run wrote, made even when a step failed: then the evidence is
+   already there, and nobody chooses which file to send.
 
 When reading one:
 
-7. **The actual value usually names the cause.** A default where a
+8. **The actual value usually names the cause.** A default where a
    custom value was expected means it never arrived. A right answer one
    line down means something else wrote to the same stream.
-8. **Reproduce before fixing**, even for a machine you do not have: a
+9. **Reproduce before fixing**, even for a machine you do not have: a
    changed shebang, a forced environment variable, an artificial load.
    If the reproduction gives the reporter's exact numbers, the fix can
    be verified without them.
-9. **Keep it.** A report whose figures you will cite goes into the
+10. **Keep it.** A report whose figures you will cite goes into the
    repository as it came, named by machine and time: a figure copied
    from a report nobody kept cannot be checked or re-read. In a shell
    project every speed claim for its native compiler came from reports
    on a second machine, and none was committed - the next session was
    given the previous report's figures in a message.
+
+11. **A report pasted back has a size budget.** Whoever reads it reads all
+   of it, and every later step reads it again: send the summary and the
+   lines that matter - a `du` table, the failing lines and their
+   neighbours - not the whole listing or log (prompt 29).
 
 ## Artifact required
 

@@ -242,6 +242,28 @@ the account of what each gained and cost.
    points - Devanagari's vowel signs among them). Nine scripts' cases
    match bash's readline; four are in the interactive suite.
 
+15. **Rill**, the work now (the language: RILL-REFERENCE.md; how it got
+   here: RILL-ROADMAP.md). The user's rule since 799: one way for each
+   operation, and what a common command does well left to the command -
+   799-802 took out the duplicates. Open:
+   - the review's third section, the user's call: what one line of other
+     features replaces - starts, ends, trim, default, keys, sum, for i, x,
+     comprehensions;
+   - a bare `return` just before `}` is refused; the built-in `echo`
+     prints `-n` as a word;
+   - six rewrites are now longer than the scripts they replace
+     (tools/rill-audit.py), the price of fewer conveniences - against the
+     726 rule "never longer", so weigh it with the third section;
+   - from the review at 793, unchanged: no `try`, no collection inside a
+     function, texts as bytes, no background jobs, no JSON, no default
+     arguments, `if (ready)` running a program named ready.
+   Checks: `sh tests/rill/run` (71), `sh tests/rill/oracle` (45 the same),
+   both again with RILL_GC_STRESS=1.
+
+16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
+   and its added items (prompts/SYNC.md lists them, and how to merge):
+   to carry there when that project next syncs.
+
 ## The second end state, reached (Iteration 548)
 
 GOALS.md item 6, "the assembly engine, self-hosted": relf assembles the
