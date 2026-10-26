@@ -1,0 +1,6 @@
+# a redirection after a capture among a command's words (817): the image's compiler put it inside the
+# capture's pipeline - its place kept in RD-POS, which the capture's own stage set again
+f = "/tmp/rill-capture-redirect-817"
+printf '%s|' $(echo a) $(echo b) out> $f
+echo "file: [{read($f)}]"
+rm -f $f

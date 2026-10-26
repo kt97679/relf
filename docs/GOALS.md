@@ -249,13 +249,9 @@ the account of what each gained and cost.
    shell and script language, minimal and simple; the rewrites judged
    together for length (tools/rill-audit.py; a rewrite past 5 % longer names
    its reason in examples/rill/MANIFEST.tsv). Open:
-   - **the fuzzer's findings** (tools/rill-fuzz.py, 816; seed 816, 2,996
-     mutants in 200 s), most severe first: CRASH - input that ends inside a
-     statement makes the image's compiler fault (`while` alone, `x = [1, 2`,
-     `def f() }`) and rillc.py raise IndexError (`x = [1, 2`, `def f() }`,
-     `x = (`): token scanners run past the last token; DIFFER - two mutants
-     the compilers disagree on, to shrink and explain. Run it after any
-     change to either compiler;
+   - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
+     either compiler; 817 fixed its seven findings from two runs of seed 816
+     (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
    - **deep recursion ends in the engine's error**: a recursive def runs
      5,000 levels, and at 20,000 stops with `relf: return stack overflow or
      data stack underflow` / `rill: error -5`, no line - a Rill message with
@@ -271,7 +267,7 @@ the account of what each gained and cost.
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
    image since 804: 68,857 bytes to 74,803 - JSON 3.2 KB, jobs 1.0 KB, the
    rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (89), `sh tests/rill/oracle` (55 the same),
+   Checks: `sh tests/rill/run` (96), `sh tests/rill/oracle` (56 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

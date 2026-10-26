@@ -76,9 +76,19 @@ def tokenize(src):
     toks.append(('eof', '', line, len(src), len(src)))
     return toks
 
+class Tokens(list):
+    """The tokens, the last the end's. Past the last, the end again; far past it, a scan that never
+    met what it looked for - a `[` or `{` not closed, a statement cut off: a compile error, not an
+    IndexError (816: tools/rill-fuzz.py found three)."""
+    def __getitem__(self, i):
+        if isinstance(i, int) and i >= len(self):
+            if i > len(self) + 1023: raise Error('line %d: the program ends inside a statement' % list.__getitem__(self, -1)[2])
+            return list.__getitem__(self, -1)
+        return list.__getitem__(self, i)
+
 class Compiler:
     def __init__(self, src):
-        self.t = tokenize(src); self.i = 0; self.src = src
+        self.t = Tokens(tokenize(src)); self.i = 0; self.src = src
         self.has_on_exit = any((self.t[j][1] == 'on' and self.t[j + 1][1] == 'EXIT') or (self.t[j][1] == 'spawn' and self.t[j + 1][1] == '(')
                                for j in range(len(self.t) - 1))   # 786; a spawn too (813): INT and TERM end the script, its jobs with it
         self.none_init = set()  # the script's numbers read where they may not be set: R-NONE until they are (785) - one set, shared with sub-compilers
@@ -289,8 +299,8 @@ class Compiler:
         self.take('op', ']'); return ' '.join(code), 'list'
     def comprehension(self, j):
         start = self.i; self.i = j + 1                            # for x in src [if cond]
-        name = self.take('word')[1]; second = None
-        if self.peek()[1] == ',': self.i += 1; second = self.take('word')[1]     # [e for k, v in src] (754)
+        name = self.for_name(); second = None                                  # a name (817)
+        if self.peek()[1] == ',': self.i += 1; second = self.for_name()          # [e for k, v in src] (754)
         self.take('kw', 'in')
         sc, sk = self.expr()
         if sk == 'any': sc, sk = sc + ' R-UNBOX DROP', 'list'          # an item holding a list - a def's parameter (758)
@@ -489,7 +499,7 @@ class Compiler:
     def bytes_lit(self, s):
         return ' '.join('%d' % b for b in s.encode()) + ' %d R-BYTES' % len(s.encode())
     def sub_tokens(self, text, first):    # a string's {...} or $(...), its tokens on the script's lines (786)
-        return [(k, v, ln + first - 1, s, e) for (k, v, ln, s, e) in tokenize(text)]
+        return Tokens((k, v, ln + first - 1, s, e) for (k, v, ln, s, e) in tokenize(text))
     def string(self, body, line, typed=False):
         parts, pieces, i, lit = [], [], 0, ''   # pieces: ('lit', text) or ('code', code) - for echolit (753)
         while i < len(body):
@@ -671,7 +681,7 @@ class Compiler:
         elif k == 'word' and v == 'echo' and self.echo_err() is not None:   # echo ... out>err: one line to the err port, in-process (799)
             end = self.echo_err()
             sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
-            sub.t = self.t[self.i + 1:end] + [('eof', '', line, 0, 0)]; sub.i = 0
+            sub.t = Tokens(self.t[self.i + 1:end] + [('eof', '', line, 0, 0)]); sub.i = 0
             parts, _ = sub.args((';', '}')); self.i = end + 3
             if not parts: out = '0 0 R-TEXT R-ERR-TYPE'
             else: out = ' S"  " R-TEXT '.join(parts) + ' %d R-CONCAT R-ERR-TYPE' % (2 * len(parts) - 1)
@@ -895,6 +905,7 @@ class Compiler:
             k, v = self.t[j][0], self.t[j][1]
             if v == '{': stack.append('loop' if pending else 'block'); pending = False
             elif v == '}':
+                if not stack: return False                     # a } before any { (817: the fuzzer's IndexError)
                 stack.pop()
                 if not stack: return False
             elif v in ('for', 'while') and k == 'kw': pending = True
@@ -930,9 +941,13 @@ class Compiler:
             elif v == ',' and depth == 0: n += 1
             j += 1
         return n
+    def for_name(self):                   # a for's variable: a name (817: `for {` and `for 5` were taken, the first by the image alone)
+        tok = self.peek()
+        if tok[0] != 'word' or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', tok[1]): raise Error('line %d: a for takes a name: for x in ...' % tok[2])
+        self.i += 1; return tok[1]
     def for_(self):
-        self.take('kw', 'for'); a = self.take('word')[1]; b = None
-        if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
+        self.take('kw', 'for'); a = self.for_name(); b = None
+        if self.peek()[1] == ',': self.i += 1; b = self.for_name()
         self.take('kw', 'in'); line = self.peek()[2]
         if GENES['rangeloop'] and self.peek()[1] == 'range' and self.peek(1)[1] == '(' and self.range_commas() < 2:   # a counted loop
             self.i += 2; lo, lk = self.expr()                          # range(b) or range(a, b): a step goes the list's way (770)

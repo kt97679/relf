@@ -1,0 +1,2 @@
+# a for takes a name (817): the image took `for {`, and both took `for 5`
+for { in [1] { echo x }

@@ -733,3 +733,28 @@ and `sum(range($n))` gave 0 on 814; range is no longer allowed around a
 parameter there. tests/rill/pure-params.rill against Python: refused on
 814 by both compilers, the range case 0 0 there; passes. No existing
 program's Forth changed (73 compared). The image: 74,803 bytes to 75,411.
+
+## Iteration 817: what the fuzzer found (seed 816, two runs)
+
+- **Crashes on input that ends inside a statement**: a lone `while`, an
+  unclosed `[`, `def f() }` faulted the image's compiler (`relf: invalid
+  memory address`), and rillc.py raised IndexError on the last two and on
+  `x = (`: token scanners ran past the last token. Both compilers now read
+  the end's token for any index past the end, and a scan more than 1,024
+  past it - one that never found its `]` or `}` - is a compile error, `the
+  program ends inside a statement` (Tokens; TK-CLAMP in K@ T@ L@ TOK-AT
+  TOK-END); `for` at the end is reported at line 1, not 0. The image's
+  while checks its `(` before it looks ahead, as rillc.py did. A `}`
+  before any `{` no longer pops an empty stack in has_continue.
+- **A silent wrong result in the image's compiler**: a redirection after a
+  capture among a command's words went into the capture's pipeline -
+  `printf '%s|' $(echo a) $(echo b) out> $f` printed `a||` and wrote `b`
+  to the file. Its place, RD-POS, was set again by the capture's stage;
+  COMMAND keeps it now, as 807 made it keep SP-FORM and SP-PEND.
+- **Names**: `for {` was taken by the image's compiler, `for 5` and a
+  comprehension's `{` by both: a for or a comprehension takes a name, or
+  `a for takes a name: for x in ...`.
+- **A decimal's leading zeros**: `09223372036854.775807` was too big for
+  the image's compiler, which counted the zero as a digit; both read it now.
+Seven error programs and capture-redirect.rill, each failing on 816's
+build; decimal-text.rill gained a line. The image: 75,411 bytes to 75,723.
