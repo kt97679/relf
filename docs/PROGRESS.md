@@ -816,6 +816,7 @@ do not trust the absence of a line below.
 - 789 — double quotes inside a string's {...} and $(...); the image's string reader re-entrant
 - 790 — items holding decimals in arithmetic and comparison, as Python's floats
 - 791 — out of memory inside a long function: a plain message naming the line; collection inside functions left as a design choice
+- 792 — docs/RILL-REFERENCE.md: Rill as it is, one document
 
 ### Not tied to an iteration
 

@@ -350,3 +350,14 @@ precise record of the active functions' locals and of their shadowed outer
 values, and call sites compiled so that no arena pointer waits on the data
 stack across a call (or the collector to pin what a stack word might point
 to). Left for the user to choose.
+
+## Phase 6 (Iteration 792): one reference
+
+docs/RILL-REFERENCE.md says what Rill is now - running a script, values,
+texts, variables and scope, expressions, statements, commands, the library,
+errors, signals, memory, and the differences from Python kept on purpose. Its
+uncertain claims were run before it was written down (len counts bytes; for
+over a record gives its keys; else if; cd blocks come back; max and min of
+two); one did not hold (`in` on texts - contains() does that) and is not
+claimed. Collection inside functions stays as it is (the user's choice of
+the three in 791: documented, with the workaround).
