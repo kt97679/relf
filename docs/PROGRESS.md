@@ -851,6 +851,7 @@ do not trust the absence of a line below.
 - 824 — Rill: the prompt, lines read plainly - variables and defs kept from line to line (A38, part 1)
 - 825 — Rill: the prompt edits its lines with relfsh's editor - history, ^R, TAB (A38, part 2)
 - 826 — Rill's image audited: the compiler 43 %, the runtime 22 %, the editor 13 %; six options (Q39)
+- 827 — alternatives to Rill's compiler weighed: Forth-style, interpreter, cached compile (Q40)
 
 ### Not tied to an iteration
 

@@ -42,6 +42,18 @@ the script image, nothing slower or lost; (4) the dead words with it; (3) and
 (2) as measured follow-ups; (5) only if size comes to matter more than a
 change to the kernel every image shares. *Blocks*: nothing.
 
+**Q40. Rill: the compiler - rewritten, replaced, or moved out? (826)** Asked
+whether Rill could be done as BASIC is in Forth. docs/RILL-SIZE.md, "Alternatives
+to the compiler", measures it: (1) a compiler in Forth's own manner, keywords as
+words and code compiled directly, would save some 6-9 KB and compile faster, as a
+rewrite of compile.4 that leaves the oracle nothing to compare; (2) an
+interpreter would be no smaller and several times slower; (3) scripts compiled
+once and cached, run in an image of the runtime alone, would run in about 40 KB
+- 44 % of today's - with the compiler and editor kept for the prompt; (4) Q39's
+options. *Recommendation*: (3) if a script's running size is what matters, with
+Q39's (1) for the prompt's image; (1) only as a redesign chosen for its own sake;
+not (2). *Blocks*: nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

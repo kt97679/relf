@@ -38,3 +38,36 @@ runtime words nothing uses: LM-K, R-EXEC, RC-D, RC-HI, RC-LO.
    stripped and relinked), and the kernel is every image's.
 6. Not recommended: shorter error messages (3.9 KB - their clarity is the point); an image without
    its compiler (43 %) - the prompt and `rill script.rill` need it.
+
+## Alternatives to the compiler (QUESTIONS.md Q40)
+
+Asked at 826: BASIC has been written in Forth - can Rill do the same? Forth BASICs come in two
+kinds. An interpreter keeps the program as tokens and runs them through a dispatcher each time. A
+compiler in Forth's own manner makes each keyword a Forth word that, when met, reads what follows
+and compiles code at once - `COMPILE,` and `LITERAL` - so there is no text written and read back,
+and the dictionary does the dispatch. This kernel's interpreter has no hook for a word it does not
+know (`WORD FIND ... NUMBER? 0= ABORT" Undefined word"`), so Rill would run its own read loop and use
+the dictionary for its keywords and library names.
+
+compile.4 by part: the tokens 2.9 KB; the output text and tables 1.0 KB; expressions 16.3 KB;
+statements, defs and the program 17.8 KB; the prompt 1.0 KB. Inside them, the Forth written or
+compared is about 4.9 KB and the messages 3.7 KB. What Rill's grammar asks for - precedence,
+strings with {expr} and $(...), lists and records, comprehensions, commands and their ports,
+defs with kinds, text blocks - is the 34 KB of parts 3 and 4, however it is written; a BASIC is
+small because BASIC is.
+
+1. **Compiling in Forth's manner** - keywords as words, code compiled directly, nothing EVALUATEd:
+   the output machinery (1 KB), most of the Forth text (some 3.5 KB of the 4.9), part of the
+   tokenizer, and the runtime's names (most of its 4 KB of headers, since generated code would no
+   longer look them up) - some 6-9 KB, and compiling faster. A rewrite of compile.4; and the oracle,
+   rillc.py's Forth against the image's word for word, has nothing to compare - its 61 programs'
+   evidence would rest on their outputs.
+2. **An interpreter** in place of the compiler, as relfsh's tree.4 is: no smaller - the parser
+   stays, an evaluator replaces the code selection - and several times slower in a loop, where Rill
+   now outruns Python.
+3. **The compiler out of the image a script runs in**: `rill --forth` already writes a script's
+   Forth, and the image runs a .4 itself - so a script compiled once (kept by its text's hash and the
+   image's) runs in an image of the runtime alone: about 40 KB, 44 % of today's, the editor and the
+   compiler kept for the prompt and for a first run. To settle: where the cache lives, and that
+   `$script` names the script, not its compiled copy.
+4. **Smaller as it is**: Q39's options.
