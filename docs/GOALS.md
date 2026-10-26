@@ -252,8 +252,17 @@ the account of what each gained and cost.
    - a Rill fuzzer - mutated tests and rewrites; engine crashes, hangs, the
      two compilers disagreeing - needing no decision (805-808 found two
      crashes and three refusals by accident);
-   - jobs, minimal (QUESTIONS.md A36, Q36 (3)): `spawn((cmd))` and
-     `wait($job)`, a job not waited for stopped when the script ends - next.
+   - jobs, minimal (QUESTIONS.md A36, Q36 (3)) - next. The design, from the
+     runtime (812): `spawn((cmd))` starts the pipeline as PL-BEGIN and the
+     stages do, its stdin /dev/null unless redirected (POSIX's for `&`),
+     and returns the last stage's pid, its pids kept in a job table;
+     `wait($job)` is PL-END's loop for those pids - the same pipefail
+     status - and forgets the job (an unknown one an error); `kill $job`
+     the command. Every ending goes through R-BOOT's R-RUN-EXIT: after it,
+     the jobs left get TERM and are reaped. INT and TERM: a script that
+     spawns catches them as one with on EXIT does - R-SIG-CATCH at its
+     first spawn, and both compilers polling at safe points (R-GC?S) as
+     for on EXIT - or its jobs outlive it.
      (811 built Q36's JSON - from-json, json - and gave decimal() its
      reader: "1e3" had given 1.0, "-2.5e-1" -3.0271, "1.5x" 2.22.)
    Checks: `sh tests/rill/run` (86), `sh tests/rill/oracle` (53 the same),

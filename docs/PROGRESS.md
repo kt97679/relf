@@ -836,6 +836,7 @@ do not trust the absence of a line below.
 - 809 — GOALS.md 15 assessed: QUESTIONS.md Q35 (the length rule; who Rill is for); a Rill fuzzer next
 - 810 — the length rule (A35): the rewrites judged together, reasons past 5 %; Rill general and minimal: the balance proposed, Q36
 - 811 — Rill: JSON - from-json, json (A36); decimal() reads its text whole ("1e3" was 1.0, "1.5x" 2.22)
+- 812 — jobs designed from the runtime: spawn is PL-END split in two; stopped after R-RUN-EXIT; signals caught as on EXIT's
 
 ### Not tied to an iteration
 
