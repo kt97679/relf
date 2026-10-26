@@ -831,6 +831,7 @@ do not trust the absence of a line below.
 - 804 — tests/verify green again: interactive cases each in an empty directory (a stray /tmp/e matched a glob); 778 recorded in the baseline
 - 805 — Rill: a value returned from a def that names no kind crashed the stack; a bare return; echo -n and (ready) errors; Q34; prompts 23-29's titles
 - 806 — make lint clean again: two R: notes made \ comments, two comments reworded, the lint passes a word called before ;
+- 807 — Rill: echo is Rill's however it runs; a spread stage with a capture crashed the image's compiler; echo $(a) | b refused; keys gone (A34)
 
 ### Not tied to an iteration
 

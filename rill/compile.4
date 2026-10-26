@@ -447,7 +447,6 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
     0= IF S" code() takes a command in ( ): code((cmd args))" ERR THEN
     0 COMMAND-HOOK S" )" EXPECT K-NUM -1 EXIT THEN
   2DUP S" setenv" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SETENV" OUT+ 0 -1 EXIT THEN   \ 783
-  2DUP S" keys" S= IF 2DROP ARG CONT S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" sort" S= IF 2DROP ARG CONT S" R-SORT" OUT+ K-LIST -1 EXIT THEN
   2DUP S" split" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SPLIT" OUT+ K-LIST -1 EXIT THEN
   2DUP S" match" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-MATCH" OUT+ K-LIST -1 EXIT THEN   \ 746
@@ -869,8 +868,8 @@ VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
   ARG-KW-TEXT? IF -1 EXIT THEN  TK K@ T-WORD = IF S" true" CUR-IS? S" false" CUR-IS? OR ELSE 0 THEN ;
 : STATEMENT-END? ( --- f )   TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR ;
 : OP-IS? ( c-addr u --- f )   TK K@ T-OP = >R CUR-IS? R> AND ;
-: NEST+ ( depth --- depth' )   \ the bracket depth after the current token (799)
-  S" (" OP-IS? S" [" OP-IS? OR S" {" OP-IS? OR IF 1+ EXIT THEN
+: NEST+ ( depth --- depth' )   \ the bracket depth after the current token (799; $( too, 807)
+  S" (" OP-IS? S" [" OP-IS? OR S" {" OP-IS? OR S" $(" OP-IS? OR IF 1+ EXIT THEN
   S" )" OP-IS? S" ]" OP-IS? OR S" }" OP-IS? OR IF 1- THEN ;
 : STMT-OVER? ( depth --- f )   \ the statement being scanned ends here: a ; } or ?? counts outside brackets (799)
   TK K@ T-NL = TK K@ T-EOF = OR IF DROP -1 EXIT THEN
@@ -1009,6 +1008,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   THEN
   R> RD-POS @ SEG>POS  SG-LEN @ RD-POS +! ;
 : ARG-ITEM ( --- )   \ one item of an argument list, as text
+  TK SPREAD-WORD? IF TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" R-WORDS>TEXT" OUT+ EXIT THEN   \ echo's @name: its items, a blank between (807)
   S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
   ARG-TEXT? IF TK T@ NEXT-TK TEXT-LIT K-TEXT ELSE -1 IN-ARG ! TERM THEN THEN  TO-TEXT ;
 VARIABLE EE-END   \ the out of an echo's closing out>err (799)
@@ -1041,14 +1041,17 @@ VARIABLE EE-END   \ the out of an echo's closing out>err (799)
     TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK  -1 ECHO-MODE !  STRING-LIT DROP  0 ECHO-MODE ! ELSE
     TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK EL+ ELSE
     ARG-TEXT? IF TK T@ NEXT-TK EL+ ELSE
-    TK K@ T-WORD = TK 1+ S" (" TK-IS? 0= AND TK T@ NUMBER-TEXT? 0= AND IF TK T@ NEXT-TK EL+ ELSE
+    TK K@ T-WORD = TK 1+ S" (" TK-IS? 0= AND TK T@ NUMBER-TEXT? 0= AND TK SPREAD-WORD? 0= AND IF TK T@ NEXT-TK EL+ ELSE
     EL-FLUSH ARG-ITEM S" R-TYPE" OUT+
     THEN THEN THEN THEN  0
   REPEAT DROP  EL-FLUSH S" R-NL" OUT+ ;
 \ [/gene]
 : STAGE-END? ( --- f )   STATEMENT-END? S" )" CUR-IS? OR S" ??" CUR-IS? OR S" |" CUR-IS? OR ;
 VARIABLE SP-FORM  VARIABLE SP-PEND
-: SPREAD-AHEAD? ( --- f )   TK-I @ BEGIN STAGE-END? 0= WHILE TK SPREAD-WORD? IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT TK-I ! 0 ;
+: SPREAD-AHEAD? ( --- f )   \ a spread ahead in the stage, outside brackets (744; a capture's ) ended it, 807)
+  TK-I @ 0  BEGIN DUP IF TK K@ DUP T-NL <> SWAP T-EOF <> AND ELSE STAGE-END? 0= THEN WHILE
+    DUP 0= TK SPREAD-WORD? AND IF DROP TK-I ! -1 EXIT THEN  NEST+ NEXT-TK REPEAT
+  DROP TK-I ! 0 ;
 : SP-FINISH ( --- )   \ a list-form stage's pending word, boxed and pushed
   SP-FORM @ SP-PEND @ AND IF S" K-TEXT R-BOX OVER R-PUSH" OUT+ THEN  0 SP-PEND ! ;   \ list form only
 : STAGE-ITEM ( n --- n' )   \ one word, a redirection, or (in a list-form stage) a spread
@@ -1067,8 +1070,9 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
   TK 1+ T@ DUP 2 < IF 2DROP EXIT THEN  OVER C@ [CHAR] - <> IF 2DROP EXIT THEN
   1 /STRING BEGIN DUP WHILE OVER C@ DUP [CHAR] n = OVER [CHAR] e = OR SWAP [CHAR] E = OR 0= IF 2DROP EXIT THEN 1 /STRING REPEAT 2DROP
   NEXT-TK S" echo takes no options - printf '%s' ... prints without a newline" ERR ;
+VARIABLE ECHO-ST   \ this stage is echo: Rill's, run in a child, its words a list (807)
 : STAGE ( --- n form )   \ one command of a pipeline: its redirections first, then its words
-  S" echo" CUR-IS? TK K@ T-WORD = AND IF ECHO-OPTS THEN         \ echo as a program: piped, captured (805)
+  S" echo" CUR-IS? TK K@ T-WORD = AND TK T@ DF-FIND 0< AND DUP ECHO-ST ! IF ECHO-OPTS THEN   \ piped, redirected, captured (805)
   \ form: 0 words, -1 a list of them (a spread), 1 a def run as the stage (745)
   OUT-POS RD-POS !
   TK K@ T-WORD = TK T@ DF-FIND 0< 0= AND TK 1+ S" (" TK-IS? 0= AND IF
@@ -1077,17 +1081,18 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
     IF ." rillc: line " TK L@ . ." : " 2DUP TYPE ."  is a def: call it as " TYPE ." (...) - as a command it takes no arguments" R-NL -4100 THROW THEN   \ 779
     [CHAR] [ OUT-C [CHAR] ' OUT-C [CHAR] ] OUT-C BL OUT-C  S" R:" OUT-RAW OUT+  0 1 EXIT
   THEN
-  SPREAD-AHEAD? SP-FORM !  0 SP-PEND !
+  SPREAD-AHEAD? ECHO-ST @ OR SP-FORM !  0 SP-PEND !  ECHO-ST @ >R
   SP-FORM @ IF S" R-NEW-LIST" OUT+ THEN  0
   BEGIN STAGE-END? 0= WHILE STAGE-ITEM REPEAT
-  SP-FINISH  SP-FORM @ ;
+  SP-FINISH  SP-FORM @  R> IF DROP 2 THEN ;                     \ form 2: echo (807)
 : COMMAND ( capture? --- )   \ a pipeline; its status - or, captured, its output and then its status
+  SP-FORM @ >R  SP-PEND @ >R                    \ a stage's, when this one runs inside its words: $(...) (807)
   IF S" -1" ELSE S" 0" THEN OUT+ S" PL-BEGIN" OUT+
   BEGIN STAGE SWAP OVER IF DROP ELSE OUT-NUM THEN
     S" |" CUR-IS? IF S" 0" ELSE S" -1" THEN OUT+
-    DUP 1 = IF DROP S" PL-STAGE-X" ELSE IF S" PL-STAGE-L" ELSE S" PL-STAGE" THEN THEN OUT+
+    DUP 1 = IF DROP S" PL-STAGE-X" ELSE DUP 2 = IF DROP S" PL-ECHO" ELSE IF S" PL-STAGE-L" ELSE S" PL-STAGE" THEN THEN THEN OUT+
     S" |" CUR-IS? WHILE NEXT-TK SKIP-NL REPEAT
-  S" PL-END" OUT+ ;
+  S" PL-END" OUT+  R> SP-PEND !  R> SP-FORM ! ;
 ' COMMAND IS COMMAND-HOOK
 : COMMAND-STMT ( --- )
   0 COMMAND

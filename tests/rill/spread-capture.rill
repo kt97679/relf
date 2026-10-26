@@ -1,0 +1,7 @@
+# a stage with a spread and a capture among its words (807): the image's compiler took the
+# stage's list form from a global, which the capture's own stage set again - a segmentation fault
+xs = ["a b", "c"]
+printf '%s|' @xs $(echo z) | cat
+echo
+printf '%s|' $(echo y) @xs
+echo

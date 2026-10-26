@@ -142,6 +142,7 @@ stop early, as Python's.
     cd dir    cd dir { ... }        the second goes back after the block
     echo words and "strings"        no options: printf '%s' ... prints without a newline
     echo words out>err              to the error port, without a process
+    echo @list | cmd                piped, redirected or captured: the same echo, in a child
     exit    exit n                  a message and a stop: echo "message" out>err; exit 1
 
 - `case`: the first arm with a pattern that matches runs. Patterns are the
@@ -188,7 +189,7 @@ function runs a program, found on PATH:
 
 | function | what |
 |---|---|
-| `len(x)` | items of a list, fields of a record, bytes of a text |
+| `len(x)` | items of a list, fields of a record, bytes of a text (a record's fields: `[$k for k, v in $r]`, its values `[$v for k, v in $r]`) |
 | `words(t)`, `lines(t)` | a text split at whitespace, at line ends |
 | `split(t, sep)` | pieces between seps, empty ones kept (Python's) |
 | `join(list, sep)` | the items as texts, sep between |
@@ -197,7 +198,6 @@ function runs a program, found on PATH:
 | `push(l, x)` | append an item (a list's items: `l = [@l, @more]`) |
 | `pop(x, key)` | a list's item (negative from the end) or a record's field, taken out and returned: `pop($l, -1)` the last, `pop($l, 0)` the first |
 | `find(x, part)` | where a part first stands in a text (bytes), or an item's index in a list; -1 when not there |
-| `keys(r)` | a record's fields (its values: `[$v for k, v in $r]`) |
 | `sort(l)` | a sorted copy, Python's order, stable; records have none - sort-by |
 | `sort-by(rows, field)`, `sort-by(rows, field, desc)` | a list of records by a field, stable |
 | `slice(x, a, b)` | part of a list, a text, a record |

@@ -1,0 +1,6 @@
+# a capture before a pipe or a closing out>err (807): echo $(...) | cat was refused - the scan for
+# the statement's first pipe did not count $( as a bracket, so the capture's ) left it below zero
+echo $(echo a) | cat
+echo "x" $(echo b | cat) out>err
+n = $(echo 3 | cat)
+echo {number($n) + 1}

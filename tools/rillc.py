@@ -420,7 +420,6 @@ class Compiler:
                 rest = {'R-SLICE': 'OVER R-LEN', 'R-TSLICE': 'OVER @', 'R-RSLICE': 'OVER R-KEYS R-LEN'}[word]
                 return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), rest, word), kd
             need(3); return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
-        if name == 'keys': need(1); return '%s R-KEYS' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0]), 'list'
         if name in ('read', 'trim'):                                        # 754: texts and files
             need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'trim': 'R-TRIM'}[name]), 'text'
         if name == 'write': need(2); return '%s %s R-WRITE' % (self.to_text(*a[0]), self.to_text(*a[1])), None
@@ -680,7 +679,7 @@ class Compiler:
             k, v = self.t[j][0], self.t[j][1]
             if k in ('nl', 'eof') or (depth == 0 and v in (';', '}', '??')): return j, first
             if depth == 0 and first is None and v in ('>', '>>', '<', '|'): first = j
-            if k == 'op' and v in ('(', '[', '{'): depth += 1
+            if k == 'op' and v in ('(', '[', '{', '$('): depth += 1    # $( too (807): echo $(a) | b was refused
             elif k == 'op' and v in (')', ']', '}'): depth -= 1
             j += 1
     def echo_err(self):
@@ -703,7 +702,7 @@ class Compiler:
         stages = [self.stage()]
         while self.peek()[1] == '|':
             self.i += 1; self.skip_nl(); stages.append(self.stage())
-        word = {False: 'PL-STAGE', True: 'PL-STAGE-L', 'X': 'PL-STAGE-X'}
+        word = {False: 'PL-STAGE', True: 'PL-STAGE-L', 'X': 'PL-STAGE-X', 'E': 'PL-ECHO'}
         body = ' '.join('%s %s %s' % (s[0], '-1' if k == len(stages) - 1 else '0', word[s[1]])
                         for k, s in enumerate(stages))
         return '%s PL-BEGIN %s PL-END' % ('-1' if capture else '0', body)
@@ -719,7 +718,7 @@ class Compiler:
             elif tok[0] == 'raw': self.i += 1; pieces.append(('lit', tok[1][1:-1]))
             elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->'):
                 self.i += 1; pieces.append(('lit', tok[1]))
-            elif tok[0] == 'word' and self.peek(1)[1] != '(' and not re.fullmatch(r'-?\d+', tok[1]):
+            elif tok[0] == 'word' and self.peek(1)[1] != '(' and not re.fullmatch(r'-?\d+|@[A-Za-z_][A-Za-z0-9_]*', tok[1]):
                 self.i += 1; pieces.append(('lit', tok[1]))
             else: pieces.append(('code', self.arg_item()))
         out, lit = [], ''
@@ -734,6 +733,8 @@ class Compiler:
         return 'S" %s" TYPE' % s
     def arg_item(self):
         tok = self.peek()
+        if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):   # echo's @name: its items, a blank
+            self.i += 1; return '%s R-WORDS>TEXT' % self.spread_code(tok[1][1:], tok[2])   # between, as words (807)
         if tok[1] == '{':
             self.i += 1; c, kd = self.expr(); self.take('op', '}')
         elif tok[0] == 'kw' or tok[1] in (',', '=', '==', '!=', '<=', '>=', '+=', '-=', '->') or (tok[0] == 'word' and tok[1] in ('true', 'false')):
@@ -766,18 +767,22 @@ class Compiler:
         return parts, redirs
     def stage(self):
         stop = (';', '}', ')', '??', '|')
-        j = self.i                                                   # a spread ahead in the stage? (744)
-        while self.t[j][0] not in ('nl', 'eof') and self.t[j][1] not in stop:
-            if self.t[j][0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', self.t[j][1]): break
+        j, depth = self.i, 0                                         # a spread ahead in the stage, outside brackets?
+        while self.t[j][0] not in ('nl', 'eof') and not (depth == 0 and self.t[j][1] in stop):   # (744; a capture's
+            if depth == 0 and self.t[j][0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', self.t[j][1]): break   # ) ended it, 807)
+            if self.t[j][0] == 'op' and self.t[j][1] in ('(', '[', '{', '$('): depth += 1
+            elif self.t[j][0] == 'op' and self.t[j][1] in (')', ']', '}'): depth -= 1
             j += 1
         spread = self.t[j][0] == 'word' and self.t[j][1].startswith('@')
         tok = self.peek()
-        if tok[0] == 'word' and tok[1] == 'echo': self.echo_options()     # echo as a program: piped, captured (805)
+        echo = tok[0] == 'word' and tok[1] == 'echo' and tok[1] not in self.funcs   # piped, redirected, captured: Rill's echo
+        if echo: self.echo_options()                                     # in a child, its words a list (805, 807)
         if tok[0] == 'word' and tok[1] in self.funcs and self.peek(1)[1] != '(':      # a def as a stage (745)
             self.i += 1; parts, redirs = self.args(stop, False)
             if parts: raise Error('line %d: %s is a def: call it as %s(...) - as a command it takes no arguments' % (tok[2], tok[1], tok[1]))   # 779
             return ' '.join(redirs + ["['] R:%s" % tok[1]]), 'X'
-        parts, redirs = self.args(stop, spread)
+        parts, redirs = self.args(stop, spread or echo)
+        if echo: return ' '.join(redirs + ['R-NEW-LIST'] + parts), 'E'
         if spread: return ' '.join(redirs + ['R-NEW-LIST'] + parts), True
         return ' '.join(redirs + parts) + ' %d' % len(parts), False
     def redirect(self, port):

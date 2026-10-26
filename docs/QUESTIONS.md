@@ -129,8 +129,19 @@ go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
 
+**Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
+Recorded as deliberate, listed so they are not forgotten:
+`return` outside a function inside a loop reports and carries on, as
+bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
+`a`, as bash does (424); the expansion order for special builtins,
+functions and external commands is bash's (484); `echo` processes no
+escapes, as bash's does. *Recommendation*: keep them all.
+
+
+## Answered
+
 **Q34. Rill: which conveniences go, of those one line of other features
-replaces? (799; written here at 805)** The duplication review's third
+replaces? (799; written here at 805; answered A34)** The duplication review's third
 section, left to you at 799 and recorded until 805 only as a line in
 GOALS.md. 799-802 removed the second ways and what commands do well. These
 are not second ways - each is the one way for its operation - but one line
@@ -155,17 +166,6 @@ except `keys` lengthens them further.
 `values`); keep the rest - each is the only way to its operation in Rill,
 and what replaces it is longer or easier to get wrong. *Blocks*: nothing;
 the rewrites' lengths wait on it.
-
-**Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
-Recorded as deliberate, listed so they are not forgotten:
-`return` outside a function inside a loop reports and carries on, as
-bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
-`a`, as bash does (424); the expansion order for special builtins,
-functions and external commands is bash's (484); `echo` processes no
-escapes, as bash's does. *Recommendation*: keep them all.
-
-
-## Answered
 
 **Q33. A native-code back end: the decisions before N1 (608; answered A33)**
 The user, after the ForthHub announcement: a Forth that compiles into
@@ -505,4 +505,13 @@ code size and +5% performance probably not worth it." (d) The exit
 targets stand: Forth benchmarks within 3 times of C at N2, scripts within
 5 times of dash at N3. (e) Both back ends run the same shell sources and
 all the tests. Recorded in docs/NATIVE.md; N1 may begin.
+
+**A34. Rill: the conveniences one line replaces (Q34; 805 -> 807).** The
+user, to the reply that recommended removing `keys` and keeping the rest:
+"please proceed with open action items as you suggested" - read as taking
+the recommendation, which the reply had named as the user's decision.
+Done at 807: `keys()` removed ("keys() is not defined", as `values` at
+799; its count is `len($r)`, its list `[$k for k, v in $r]`), its four
+uses rewritten; starts, ends, trim, default, sum, `for i, x` and
+comprehensions kept. Reversible: the user can still choose otherwise.
 

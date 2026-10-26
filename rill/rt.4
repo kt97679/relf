@@ -222,6 +222,10 @@ DEFER R-SHOW-D   \ R-SHOW, below (793)
   RJ-SEP !  0 SWAP  DUP @ 0 ?DO
     I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT  RJ-SEP @ >R R-ITEM>TEXT R> RJ-SEP !  ROT 1+ ROT   \ an item's own join kept from ours (793)
   LOOP DROP R-CONCAT ;
+: R-WORDS>TEXT ( l --- t )   \ @name in echo's words: each item as a command's argument is (R-ANY>TEXT), a blank between (807)
+  0 SWAP  DUP @ 0 ?DO
+    I IF S"  " R-TEXT ROT 1+ ROT THEN  DUP I R-AT R-ANY>TEXT ROT 1+ ROT
+  LOOP DROP R-CONCAT ;
 : R-RANGE ( a b --- l )   \ range(a, b): a up to, not with, b - Python's (770); empty when b <= a
   R-NEW-LIST RL !  OVER MAX SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
 VARIABLE RG-S  VARIABLE RG-B
@@ -411,6 +415,13 @@ VARIABLE PX-XT
   PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
   PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
   PL-NEXT @ PL-PREV !  R-RD-RESET ;
+\ echo piped, redirected or captured (807): Rill's echo in a child, as a def is a stage - not /bin/echo,
+\ which took -n from a variable and printed a spread that the shell's own echo did not
+VARIABLE PE-L   \ the stage's words, a list, echo first
+: PE-RUN ( --- )   \ the child: the words after echo, a blank between, a newline - no options
+  PE-L @ DUP R-LEN 1 ?DO  I 1 > IF BL EMIT THEN  DUP I R-AT R-ANY>TEXT R-TYPE  LOOP DROP R-NL ;
+VARIABLE PE-XT   ' PE-RUN PE-XT !XT          \ kept as an offset: the image is saved and reloaded
+: PL-ECHO ( argl last? --- )   SWAP PE-L !  PE-XT @XT SWAP PL-STAGE-X ;
 \ par for: each body in a child of its own, all waited for at the end (745)
 VARIABLE R-BRK   \ break, from a loop body made a def of its own by a continue
 VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV the value; each loop passes it on (779)

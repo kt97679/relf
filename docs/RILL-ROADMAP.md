@@ -584,3 +584,39 @@ Both compilers alike; rillc.py's Forth unchanged for all 64 programs that
 compiled before. Six error tests and return.rill, each failing on 804's
 build. The image: 68,857 bytes to 69,689 (the messages naming the def).
 The review's third section is QUESTIONS.md Q34.
+
+## Iteration 807: echo is Rill's however it runs; what that found; keys gone
+
+- **echo, one program.** Piped, redirected (other than a closing out>err)
+  or captured, echo was /bin/echo; in the shell's process, Rill's. They
+  differed on a spread (`echo @xs` printed `@xs`, piped the items), on a
+  `-n` or `-e` from a variable (/bin/echo took them as options) and on a
+  lone `--help` (coreutils' help). Now an echo stage's words are a list,
+  as a spread's are, and PL-ECHO runs Rill's echo in a child, as a def runs
+  as a stage (PL-STAGE-X; its xt kept with !XT - `[']` in a saved
+  definition went stale, and the first try segfaulted). In the process
+  `@name` is its items, each as a command's argument is (R-ANY>TEXT), a
+  blank between (R-WORDS>TEXT). Seven programs compile differently, only
+  where an echo stage became PL-ECHO; their outputs are unchanged.
+- **A crash, from 744's spreads.** The image's compiler kept a stage's
+  list form in globals (SP-FORM, SP-PEND), and a capture among the
+  stage's words compiled a stage of its own and reset them:
+  `printf '%s|' @xs $(echo z) | cat` segfaulted. COMMAND saves and
+  restores them; echo's form comes back on the stack (form 2), not in one.
+- **A spread misread.** The look ahead for a spread stopped at the first
+  `)`, a capture's included, and counted a spread inside a capture for the
+  stage around it: rillc.py printed `y|@xs|` for `printf '%s|' $(echo y)
+  @xs`. Both compilers skip bracketed groups now.
+- **A refusal, from 799.** `echo $(echo a) | cat` was "unexpected '|'" in
+  both compilers: the statement scan (scan_stmt, NEST+) did not count `$(`
+  as a bracket, so the capture's `)` took its depth below zero and the
+  pipe went unseen. It counts `$(` now.
+- **keys() removed** (QUESTIONS.md A34): `len($r)` counts a record's
+  fields, `[$k for k, v in $r]` lists them. Rewriting its uses found that
+  a comprehension's variables are the script's (GOALS.md 15).
+tests/rill/echo.rill, spread-capture.rill, capture-pipe.rill: each failed
+on 806's build (echo through both compilers; spread-capture by a
+segmentation fault in the image's, `y|@xs|` from rillc.py's; capture-pipe
+refused by both) and passes. One line of echo.rill, an echo stage inside
+an echo stage's words, passed on 806 too: a guard for the saved form.
+The image: 69,689 bytes to 70,017.

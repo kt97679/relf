@@ -81,3 +81,4 @@ def f(a, b): parameters as a call takes them	adopted	802	\bdef\s+[\w-]+\(
 def f a b: parameters bare (def f(a, b))	removed	802	-
 > file, >> file (out> file, out>> file: a port named, one way)	removed	802	-
 echo -n, -e, -E (printf for no newline; escapes in a string)	rejected	805	\becho\s+-[neE]+\b
+keys(r) ([$k for k, v in $r]; its count len($r))	removed	807	(?<![\w-])keys\(
