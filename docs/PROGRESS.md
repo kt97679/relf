@@ -842,6 +842,7 @@ do not trust the absence of a line below.
 - 815 — Rill: a def that only computes takes numbers only when its body uses them so; range(n) in one gave 0
 - 816 — a Rill fuzzer (tools/rill-fuzz.py): its first run, 3 CRASH (input ending inside a statement) and 2 DIFFER
 - 817 — Rill: the fuzzer's seven findings fixed - scans past the end; a redirection put into a capture's pipeline; for's name; a decimal's zeros
+- 818 — Rill: recursion too deep and the runtime's ABORTs are Rill errors with a line; found: errors go to stdout
 
 ### Not tied to an iteration
 

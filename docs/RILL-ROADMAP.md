@@ -758,3 +758,25 @@ program's Forth changed (73 compared). The image: 74,803 bytes to 75,411.
   the image's compiler, which counted the zero as a digit; both read it now.
 Seven error programs and capture-redirect.rill, each failing on 816's
 build; decimal-text.rill gained a line. The image: 75,411 bytes to 75,723.
+
+## Iteration 818: a script's own errors, each Rill's with its line
+
+- Recursion past the return stack (a def in stack mode, some 8,000 levels)
+  was the kernel's trap message, `relf: return stack overflow or data stack
+  underflow`, then `rill: error -5` with no line. Rill's image now registers
+  its own trap word (R-TRAP, TRAP-XT! at boot): -5 and -3 are `rill:
+  recursion too deep for the stacks (line N)`, status 2; the engine
+  restarts the VM inside the runaway region, so R-WHERE still reads the
+  frames. Every other trap stays the kernel's TRAPPED.
+- A def with locals saves them on the engine's save stack (4,096 cells):
+  some 2,000 levels of its recursion filled it - shadow.4's `shadow: save
+  stack overflow`, then `rill: error -2`. The cell at image offset 8 names
+  the word the engine calls; Rill's image points it at R-LOCALS-FAILED: the
+  same message, the same line.
+- Four errors were ABORT"s - min and max of an empty list, a range's step 0,
+  split by an empty text (and too many variables to collect): each printed
+  ` R-MAIN` after its message, then `rill: error -2`, no line. R-FAIL: the
+  message, the line, status 2. The two at program load stay ABORT"s.
+tests/rill/deep.rill, deep-locals.rill, errors-at-run.rill (through
+bin/rill -c). Found writing the last: the messages go to stdout (GOALS.md
+15). The image: 75,723 bytes to 76,051.

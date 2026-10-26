@@ -252,10 +252,9 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - **deep recursion ends in the engine's error**: a recursive def runs
-     5,000 levels, and at 20,000 stops with `relf: return stack overflow or
-     data stack underflow` / `rill: error -5`, no line - a Rill message with
-     the line wanted, as 791 gave running out of memory;
+   - **Rill's run-time errors go to stdout** (found at 818): `."` writes
+     them, so `x = $(a-rill-script)` takes an error message as its value; a
+     message to the err port (fd 2), as the shell's are, would end that.
    - **Rill is not in make verify**: tests/verify has no Rill rows, so a
      kernel or engine change could break Rill unseen; its suite and oracle
      as verify rows (prompts/09 for the new baseline lines);
@@ -267,7 +266,7 @@ the account of what each gained and cost.
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
    image since 804: 68,857 bytes to 74,803 - JSON 3.2 KB, jobs 1.0 KB, the
    rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (96), `sh tests/rill/oracle` (56 the same),
+   Checks: `sh tests/rill/run` (99), `sh tests/rill/oracle` (59 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

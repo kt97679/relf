@@ -63,6 +63,8 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 : R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
   R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
+: R-FAIL ( c-addr u --- )   TYPE R-ERR-NL -4004 THROW ;   \ a Rill error: its message, its line, status 2 - not ABORT", which
+                                                            \ added the word it was in, then `rill: error -2`, no line (818)
 : R-.N ( n --- )   DUP ABS 0 <# #S ROT SIGN #> TYPE ;   \ a number, no blank after: before " (line n)" (799)
 \ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
 \ is an error naming the line, not a wrapped number or the engine's trap. 1+ and 1- stay plain: counting cannot get there.
@@ -230,7 +232,7 @@ DEFER R-SHOW-D   \ R-SHOW, below (793)
   R-NEW-LIST RL !  OVER MAX SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
 VARIABLE RG-S  VARIABLE RG-B
 : R-RANGE-STEP ( a b step --- l )   \ range(a, b, step), as Python's: up while below b, or down while above it
-  DUP 0= ABORT" rill: range's step is 0"
+  DUP 0= IF S" rill: range's step is 0" R-FAIL THEN
   RG-S ! RG-B !  R-NEW-LIST RL !
   BEGIN DUP RG-S @ 0> IF RG-B @ < ELSE RG-B @ > THEN WHILE  DUP K-NUM R-BOX RL @ R-PUSH  RG-S @ +  REPEAT
   DROP RL @ ;
@@ -501,11 +503,27 @@ DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/co
 \ the CATCH that faulted at boot (Iteration 737), and why shell.4's
 \ DO-FORTH keeps its EVALUATE the same way.
 VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
+\ A trap in a script (818): a stack's guard page reached - recursion past what the stacks hold - is
+\ Rill's error with its line, not the kernel's `relf: return stack overflow or data stack underflow`
+\ and then `rill: error -5` with none. The engine restarts the VM on fresh stacks inside the runaway
+\ region, so the frames R-WHERE reads are still there. Every other trap stays TRAPPED's.
+: R-TRAP ( n --- )
+  DUP -5 = OVER -3 = OR 0= IF TRAPPED EXIT THEN  DROP
+  ." rill: recursion too deep for the stacks" R-ERR-NL
+  HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 2 SYS-EXIT THEN  -4004 THROW ;
+VARIABLE R-TRAP-XT   ' R-TRAP R-TRAP-XT !XT
+\ A def with locals saves them on the engine's save stack (4096 cells, LSAVE_MAX): some 2,000 levels
+\ of its recursion fill it, and shadow.4's `shadow: save stack overflow` was followed by `rill: error -2`.
+\ The engine calls the word at image offset 8 (shadow.4's LOCALS-FAILED); for Rill's image, this (818).
+: R-LOCALS-FAILED ( n --- )
+  1 = IF ." rill: recursion too deep for the stacks" R-ERR-NL -4004 THROW THEN
+  ." rill: an engine fault - the locals' save stack underflowed" R-ERR-NL -4004 THROW ;
+' R-LOCALS-FAILED START @ -   START @ 8 + !
 : R-BOOT ( --- )
   ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
   S" RILL_GC_STRESS" R-TEXT R-ENV @ IF -1 G-STRESS !  0 R-GC-AT ! THEN     \ a collection at every safe point: the tests' (776)
   0 R-ON-EXIT-XT !
-  0 JB-N !
+  0 JB-N !  R-TRAP-XT @XT TRAP-XT!
   R-RUN-XT @XT CATCH ?DUP IF
     R-RUN-EXIT  R-JOBS-STOP                           \ on EXIT runs however the script ends; then its jobs stop (813)
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
@@ -590,7 +608,7 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
     OVER SP-U @ SP-A @ SP-U @ COMPARE 0= IF DROP R> - EXIT THEN  1 /STRING
   REPEAT 2DROP R> DROP -1 ;
 : R-SPLIT ( t sep --- l )   \ split(text, sep): the pieces between seps, empty ones kept - Python's
-  R-T@ DUP 0= ABORT" rill: split by an empty text" SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
+  R-T@ DUP 0= IF S" rill: split by an empty text" R-FAIL THEN SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
   BEGIN 2DUP SP-FIND DUP 0< 0= WHILE
     >R OVER R@ R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  R> SP-U @ + /STRING
   REPEAT DROP  R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  SP-L @ ;
@@ -641,10 +659,10 @@ VARIABLE NT-INT-XT  ' NT-INT NT-INT-XT !XT   VARIABLE NT-FRAC-XT  ' NT-FRAC NT-F
   R-T@ R-NUMTEXT 0= IF ." rill: not a decimal" R-ERR-NL -4004 THROW THEN  K-NUM = IF R-N>D THEN ;
 VARIABLE LM-K
 : R-LMIN ( l --- box )   \ min(list): its least item, as Python's min
-  DUP R-LEN 0= ABORT" rill: min of an empty list"
+  DUP R-LEN 0= IF S" rill: min of an empty list" R-FAIL THEN
   DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER SWAP R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
 : R-LMAX ( l --- box )   \ max(list): its greatest item
-  DUP R-LEN 0= ABORT" rill: max of an empty list"
+  DUP R-LEN 0= IF S" rill: max of an empty list" R-FAIL THEN
   DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
 : R-CD ( t --- )   \ cd DIR
   DUP R-CSTR CHDIR IF ." rill: cd: cannot change to " R-TYPE R-ERR-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
@@ -986,7 +1004,7 @@ VARIABLE FM-B  VARIABLE FM-N  VARIABLE FM-CAP  VARIABLE FM-C
 512 CONSTANT G-MAXROOTS
 G-MAXROOTS CELLS BUFFER: G-RV   G-MAXROOTS CELLS BUFFER: G-RK   VARIABLE G-RN
 : R-ROOT ( addr kind --- )
-  G-RN @ G-MAXROOTS < 0= ABORT" rill: too many variables to collect"
+  G-RN @ G-MAXROOTS < 0= IF S" rill: too many variables to collect" R-FAIL THEN
   G-RK G-RN @ CELLS + !  G-RV G-RN @ CELLS + !  1 G-RN +! ;
 VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
 : G-IN? ( a --- f )   DUP G-OLD @ U< 0= SWAP G-END @ U< AND ;
