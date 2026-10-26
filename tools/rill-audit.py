@@ -40,6 +40,8 @@ for orig, rew, kind in manifest:
     sources[os.path.basename(rew)] = '\n'.join(rm.code_shell(open(rew, encoding='utf-8').read()))
 ol = [l.split('|||')[1].strip() for l in open('examples/rill/oneliners.txt', encoding='utf-8') if '|||' in l and not l.startswith('#')]
 sources['oneliners'] = '\n'.join(ol)
+for f in sources:   # raw texts hold no Rill: an awk program's s += and log( are not Rill's (799)
+    sources[f] = re.sub(r"'[^'\n]*'", lambda m: "'" + ' ' * (len(m.group(0)) - 2) + "'", sources[f])
 
 problems = 0
 print('%-42s %-9s %-5s %5s  %s' % ('feature', 'status', 'since', 'uses', 'where'))
@@ -54,18 +56,18 @@ for name, status, since, pat in feats:
     print('%-42s %-9s %-5s %5d  %s' % (name[:42], status, since, total, ', '.join('%s %d' % (f.replace('.rill', ''), n) for f, n in sorted(uses.items()))))
     if status == 'adopted' and total == 0 and pat != '-':
         print('AUDIT: adopted, and no rewrite uses it: %s' % name); problems += 1
-    if status in ('open', 'rejected') and total:
+    if status in ('open', 'rejected', 'removed') and total:
         print('AUDIT: %s, and used all the same: %s' % (status, name)); problems += 1
 
 # The rule of 734: a function reads the script's variables and never
-# changes them - no assignment, no index assignment, no push, extend or
-# shift on a script variable, and no local of a script variable's name;
-# nor does a `par for` body. What a function changes it returns. Changes
+# changes them - no assignment, no index assignment, no push or pop on
+# a script variable, and no local of a script variable's name. What a
+# function changes it returns (par for, also held to it, gone in 799). Changes
 # to a container passed in as a parameter are allowed, and counted.
 def blocks(src):
-    """(header, body) of each def and par-for, braces matched outside strings."""
+    """(header, body) of each def, braces matched outside strings."""
     out, i, n = [], 0, len(src)
-    heads = re.compile(r'(?m)^[ \t]*(def\s[^{\n]*|par\s+for\s[^{\n]*)\{')
+    heads = re.compile(r'(?m)^[ \t]*(def\s[^{\n]*)\{')
     for m in heads.finditer(src):
         depth, j, q = 1, m.end(), None
         while j < n and depth:
@@ -80,8 +82,8 @@ def blocks(src):
         out.append((m.group(1), src[m.end():j - 1], m.start(), j))
     return out
 plain = re.compile(r'(?m)(?:^|[{;])\s*(\w+)\s*=(?!=)\s*([^;\n]*)')
-change = re.compile(r'(?m)(?:^|[{;])\s*(\w+)\s*(?:\[[^\]\n]*\]\s*(?:=(?!=)|\+=|-=)|\+=|-=)|\b(?:push|extend|shift)\(\$(\w+)')
-stmtfor = re.compile(r'(?m)(?:^|[{;])\s*(?:par\s+)?for\s+(\w+)(?:\s*,\s*(\w+))?\s+in\b')
+change = re.compile(r'(?m)(?:^|[{;])\s*(\w+)\s*(?:\[[^\]\n]*\]\s*(?:=(?!=)|\+=|-=)|\+=|-=)|\b(?:push|pop)\(\$(\w+)')
+stmtfor = re.compile(r'(?m)(?:^|[{;])\s*for\s+(\w+)(?:\s*,\s*(\w+))?\s+in\b')
 anyfor = re.compile(r'\bfor\s+(\w+)(?:\s*,\s*(\w+))?\s+in\b')
 violations, through_params = 0, 0
 for f, src in sources.items():

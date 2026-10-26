@@ -53,8 +53,6 @@ FEATURES = tuple(n for n, d, v, w in GENES_ROWS if w == 'features')
 TRUTH_RULES = [(r'len\((\$\w+(?:\[[^\[\]]+\]|\.\w+)*)\) > 0', r'\1'), (r'len\((\$\w+(?:\[[^\[\]]+\]|\.\w+)*)\) == 0', r'not \1'),
                (r'(\$\w+(?:\[[^\[\]]+\]|\.\w+)*) != ""', r'\1'), (r'(\$\w+(?:\[[^\[\]]+\]|\.\w+)*) == ""', r'not \1')]
 def written_for(text, g):
-    if not g.get('warn', 1): text = re.sub(r'(?m)^(\s*)warn\b(.*)$', r'\1echo\2 out>err', text)   # a bare warn too
-    if not g.get('argdefault', 1): text = re.sub(r'arg\((\d+), ', r'default(arg(\1), ', text)
     if g.get('truth', 0):
         for pat, r in TRUTH_RULES: text = re.sub(pat, r, text)
     return text

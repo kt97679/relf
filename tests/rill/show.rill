@@ -5,7 +5,7 @@ r = {a: [1 2], b: {c: "three"}, 'two words': 4, d: ""}
 echo $r
 echo "r is $r"
 echo {join([[1 2] {k: "v"} "plain"], " | ")}
-echo {format("%s", $r.b)}
+echo {$r.b}
 item = $l[0]
 echo $item
 echo {join(["quote \" and \\ and tab\t"], "")} {len("caf\u00e9")} "caf\u00e9" {len("a\rb")}

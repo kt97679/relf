@@ -1,6 +1,6 @@
 # fail, exit, on EXIT, the script's arguments, env, default, a spread (744)
 on EXIT { echo "cleaning up" }
-name = default(arg(1), nobody)
+name = at($args, 0, nobody)
 echo "hello $name"
 echo {len($args)} args
 home = env(HOME)
@@ -9,5 +9,5 @@ files = [one two three]
 printf '<%s>\n' @files
 printf '%s=%s\n' first @files
 false ?? echo "false failed"
-fail "stopping here"
+echo "stopping here" out>err; exit 1
 echo not reached

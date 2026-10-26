@@ -1,5 +1,5 @@
-Hello, World HELLO, WORLD hello, world Hello true true
-extend.4 4
+Hello, World Hello true true
+4
 b 20
 d 12
 a 5
@@ -8,6 +8,6 @@ first a
 first c
 total 42 max 7 min 3
 missing 0 present 20
-pct 50.609079 300.0 3.5 2.0
+pct 50.609079 300.0 3.5 2
 1 2
 balanced 3000

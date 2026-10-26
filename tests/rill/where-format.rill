@@ -1,3 +1,0 @@
-# format: too few values, named where (781)
-n = 3
-echo {format("%d of %d", $n)}

@@ -467,3 +467,32 @@ tests/rill/run checks a #! script through PATH (its arguments, its status
   value (they sorted by kind: [2 1.5 1 3] gave 1 2 3 1.5).
 - `part in text` and `not in`, as Python's.
 tests/rill/everyday.rill against Python.
+
+## Iteration 799: one way each - the library (review of duplication, step 1 of 4)
+
+The language has one way to do each thing; what a standard command does
+well, the command does. Removed, with the one way that stays:
+
+- `first(l)`: `$l[0]`. `text(x)`: `"$x"`. `contains(t, p)`: `p in t`.
+  `values(r)`: `[$v for k, v in $r]`. `extend(l, m)`: `l = [@l @m]`, or
+  `push` in a loop. `arg(n)`, `arg(n, d)`: `$args[i]`, `at($args, i, d)`.
+- `shift(l)`, `pop(l)`, `delete(x, key)`: one `pop(x, key)` - a list's item
+  (negative from the end) or a record's field, taken out and returned.
+- `max(a, b)`, `min(a, b)`: `max([$a $b])` (the item itself, as Python's).
+- `sort-by(record, ...)`: sort-by takes a list of records only.
+- `fail "m"`: `echo "m" out>err; exit 1`. `warn m`: `echo m out>err`, now
+  in-process (an echo whose only redirection is a closing out>err).
+- `par for`: `xargs -P`, or `sh -c '... & ... wait'`.
+- By commands: `format` (printf), `now()` (date +%s), `upper`/`lower` (tr),
+  `base`/`dir`/abs of a path (basename, dirname, realpath), `log`/`exp`
+  (awk). Inside a loop of thousands a command costs a process a round:
+  native-by-source uppercases a file at once, one tr, not one a word.
+
+Genes warn and argdefault gone with what they switched. Found on the way
+and fixed: len() of an item holding a record gave an address; a
+redirection after a braced argument was not seen (`echo {...} out>err`),
+and a `>` inside braces was taken for one; a message ending in a number
+had two blanks before "(line n)". Spreads take an item holding a list
+(a def's parameter), checked at run time. The image: 73,605 bytes to
+69,641. Six of the eight rewrites are now longer than their originals
+(tools/rill-audit.py): the price of fewer conveniences.

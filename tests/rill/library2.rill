@@ -1,7 +1,5 @@
 # abs, dir, == on lists and records, at on lists, comprehension filters, [ ] across lines, number of 0x (782) - tests/rill/library2.py
 echo {abs(-7)} {abs(7)} {abs(-2.5)}
-echo {abs("/a/b/../c/./d")} {abs("/")} {abs("/a//b/")} {abs("/x/..")}
-echo {dir("a/b/c")} {dir("c")} {dir("/x")} {dir("/")} {dir("a/")} {dir("a/b/")}
 a = [1 2 [3 4]]
 b = [1 2 [3 4]]
 c = [1 2 [3 5]]

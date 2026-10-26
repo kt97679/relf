@@ -432,42 +432,29 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP S" R-N>D" OUT+ EXIT THEN
   K-ANY = IF S" R-ANY>DEC" OUT+ EXIT THEN  S" needs a number or a decimal" ERR ;
 : LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
-  2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
+  2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-ANY-LEN" OUT+ ELSE
      K-REC = IF S" R-KEYS @" OUT+ ELSE S" @" OUT+ THEN THEN  K-NUM -1 EXIT THEN
   2DUP S" words" S= IF 2DROP ARG TO-TEXT S" R-SPLIT-WS" OUT+ K-LIST -1 EXIT THEN
   2DUP S" lines" S= IF 2DROP ARG TO-TEXT S" R-LINES" OUT+ K-LIST -1 EXIT THEN
-  2DUP S" abs" S= IF 2DROP ARG DUP K-NUM = OVER K-DEC = OR IF S" ABS" OUT+ -1 EXIT THEN  TO-TEXT S" R-ABS" OUT+ K-TEXT -1 EXIT THEN   \ 782
-  2DUP S" dir" S= IF 2DROP ARG TO-TEXT S" R-DIR" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" format" S= IF 2DROP ARG TO-TEXT S" R-NEW-LIST" OUT+                \ format(f, a, ...): % formatting (781)
-     BEGIN S" )" CUR-IS? 0= WHILE ARG BOX S" OVER R-PUSH" OUT+ REPEAT  S" R-FORMAT" OUT+ K-TEXT -1 EXIT THEN
+  2DUP S" abs" S= IF 2DROP ARG DUP K-NUM = OVER K-DEC = OR IF S" ABS" OUT+ -1 EXIT THEN   \ a number's or a decimal's (a path's: realpath, 799)
+     K-ANY = IF S" R-ANY-ABS" OUT+ K-ANY -1 EXIT THEN  S" abs needs a number" ERR THEN
   2DUP S" join" S= IF 2DROP ARG CONT ARG TO-TEXT S" R-JOIN" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" range" S= IF 2DROP OUT-POS LB-POS !  ARG TO-NUM                     \ range(b), (a, b), (a, b, step): Python's (770)
     S" )" CUR-IS? IF S" 0" LB-POS @ OUT-INSERT S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
     ARG TO-NUM  S" )" CUR-IS? IF S" R-RANGE" OUT+ K-LIST -1 EXIT THEN
     ARG TO-NUM  S" R-RANGE-STEP" OUT+ K-LIST -1 EXIT THEN
   2DUP S" number" S= IF 2DROP ARG TO-TEXT S" R-NUMBER" OUT+ K-NUM -1 EXIT THEN
-  2DUP S" text" S= IF 2DROP ARG TO-TEXT K-TEXT -1 EXIT THEN
   2DUP S" push" S= IF 2DROP OUT-POS LB-POS ! ARG CONT  OUT-POS ARG BOX LB-POS @ SEG>POS  \ the item before the list
      S" R-PUSH" OUT+ 0 -1 EXIT THEN
-  2DUP S" extend" S= IF 2DROP ARG CONT ARG CONT S" R-EXTEND" OUT+ 0 -1 EXIT THEN
   2DUP S" glob" S= IF 2DROP ARG TO-TEXT S" R-GLOB" OUT+ K-LIST -1 EXIT THEN   \ 786
-  2DUP S" now" S= IF 2DROP S" R-NOW" OUT+ K-NUM -1 EXIT THEN   \ 783
   2DUP S" code" S= IF 2DROP                                      \ code((cmd args)): its status, a number (786)
     S" (" CUR-IS? IF NEXT-TK TK T@ 2DUP S" true" S= >R S" false" S= R> OR IF -1 ELSE RUN-COND?-D THEN ELSE 0 THEN   \ code((true)): the program
     0= IF S" code() takes a command in ( ): code((cmd args))" ERR THEN
     0 COMMAND-HOOK S" )" EXPECT K-NUM -1 EXIT THEN
   2DUP S" setenv" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SETENV" OUT+ 0 -1 EXIT THEN   \ 783
-  2DUP S" shift" S= IF 2DROP ARG CONT S" R-SHIFT" OUT+ K-ANY -1 EXIT THEN
-  2DUP S" first" S= IF 2DROP ARG CONT S" 0 R-AT" OUT+ K-ANY -1 EXIT THEN
   2DUP S" keys" S= IF 2DROP ARG CONT S" R-KEYS" OUT+ K-LIST -1 EXIT THEN
-  2DUP S" values" S= IF 2DROP ARG CONT S" R-VALS" OUT+ K-LIST -1 EXIT THEN      \ 758
   2DUP S" sort" S= IF 2DROP ARG CONT S" R-SORT" OUT+ K-LIST -1 EXIT THEN
   2DUP S" split" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-SPLIT" OUT+ K-LIST -1 EXIT THEN
-  2DUP S" arg" S= IF 2DROP ARG TO-NUM S" R-ARG" OUT+                             \ 744; arg(n, default) 747
-\ [gene argdefault]
-     S" )" CUR-IS? 0= IF ARG TO-TEXT S" R-DEFAULT" OUT+ THEN
-\ [/gene]
-     K-TEXT -1 EXIT THEN
   2DUP S" match" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-MATCH" OUT+ K-LIST -1 EXIT THEN   \ 746
   2DUP S" all" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ALL" OUT+ K-LIST -1 EXIT THEN
   2DUP S" sub" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-SUB" OUT+ K-TEXT -1 EXIT THEN
@@ -479,10 +466,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      R@ K-TEXT = IF S" R-TSLICE" ELSE R@ K-REC = IF S" R-RSLICE" ELSE S" R-SLICE" THEN THEN OUT+
      R> DUP K-TEXT <> OVER K-REC <> AND IF DROP K-LIST THEN -1 EXIT THEN
   2DUP S" read" S= IF 2DROP ARG TO-TEXT S" R-READ" OUT+ K-TEXT -1 EXIT THEN       \ texts and files (754)
-  2DUP S" upper" S= IF 2DROP ARG TO-TEXT S" R-UPPER" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" lower" S= IF 2DROP ARG TO-TEXT S" R-LOWER" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" trim" S= IF 2DROP ARG TO-TEXT S" R-TRIM" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" base" S= IF 2DROP ARG TO-TEXT S" R-BASE" OUT+ K-TEXT -1 EXIT THEN
   2DUP S" write" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-WRITE" OUT+ 0 -1 EXIT THEN
   2DUP S" starts" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-STARTS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" ends" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ENDS" OUT+ K-BOOL -1 EXIT THEN
@@ -491,30 +475,16 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      DUP K-LIST = IF DROP ARG TO-NUM ARG BOX S" R-AT-OR-L" ELSE
      DUP K-ANY = IF DROP ARG BOX ARG BOX S" R-AT-OR-ANY" ELSE
      DROP ARG TO-TEXT ARG BOX S" R-AT-OR" THEN THEN OUT+ K-ANY -1 EXIT THEN
-  2DUP S" sort-by" S= IF 2DROP ARG >R  ARG TO-TEXT  S" )" CUR-IS? IF S" asc" LIT-TEXT ELSE ARG TO-TEXT THEN   \ a list's records (798)
-     R@ K-LIST = IF S" R-SORT-BY-L" K-LIST ELSE R@ K-ANY = IF S" R-SORT-BY-ANY" K-ANY ELSE S" R-SORT-BY" K-REC THEN THEN
-     >R OUT+ R> R> DROP -1 EXIT THEN
-  2DUP S" pop" S= IF 2DROP ARG CONT S" R-POP" OUT+ K-ANY -1 EXIT THEN   \ 798
-  2DUP S" delete" S= IF 2DROP ARG DUP K-LIST = IF DROP ARG TO-NUM S" R-DEL-L" ELSE DUP K-ANY = IF DROP ARG BOX S" R-DEL-ANY" ELSE
-     DROP ARG TO-TEXT S" R-DEL-R" THEN THEN OUT+ 0 -1 EXIT THEN
+  2DUP S" sort-by" S= IF 2DROP ARG DUP CONT >R  ARG TO-TEXT  S" )" CUR-IS? IF S" asc" LIT-TEXT ELSE ARG TO-TEXT THEN   \ a list's records (798; a record's entries no more, 799)
+     R> K-REC = IF S" sort-by sorts a list of records" ERR THEN  S" R-SORT-BY-L" OUT+ K-LIST -1 EXIT THEN
+  2DUP S" pop" S= IF 2DROP ARG DUP K-LIST = IF DROP ARG TO-NUM S" R-POP-L" ELSE DUP K-ANY = IF DROP ARG BOX S" R-POP-ANY" ELSE   \ pop(x, key) (799)
+     K-REC <> IF S" pop needs a list or a record" ERR THEN  ARG TO-TEXT S" R-POP-R" THEN THEN OUT+ K-ANY -1 EXIT THEN
   2DUP S" find" S= IF 2DROP ARG DUP K-LIST = IF DROP ARG BOX S" R-FIND-L" ELSE DUP K-ANY = IF DROP ARG BOX S" R-FIND-ANY" ELSE
      TO-TEXT ARG TO-TEXT S" R-FIND-T" THEN THEN OUT+ K-NUM -1 EXIT THEN
-  2DUP S" log" S= IF 2DROP ARG TO-DEC S" R-LOG" OUT+ K-DEC -1 EXIT THEN          \ 760
-  2DUP S" exp" S= IF 2DROP ARG TO-DEC S" R-EXP" OUT+ K-DEC -1 EXIT THEN
   2DUP S" decimal" S= IF 2DROP ARG TO-TEXT S" R-TEXT>DEC" OUT+ K-DEC -1 EXIT THEN
-  2DUP S" contains" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-CONTAINS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" replace" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT ARG TO-TEXT S" R-REPLACE" OUT+ K-TEXT -1 EXIT THEN
-  2DUP S" max" S= >R 2DUP S" min" S= R> OR IF                       \ numbers, or decimals if either is one
-     S" max" S= IF S" MAX" ELSE S" MIN" THEN LB-W2 ! LB-W1 !
-     ARG  S" )" CUR-IS? IF CONT LB-W1 @ LB-W2 @ S" MAX" S= IF S" R-LMAX" ELSE S" R-LMIN" THEN OUT+ K-ANY -1 EXIT THEN   \ of a list (760)
-     OUT-POS LB-POS ! ARG                                           ( k1 k2 )
-     2DUP K-DEC = SWAP K-DEC = OR IF
-       OVER K-NUM = IF S" R-N>D" LB-POS @ OUT-INSERT THEN        \ the first made a decimal where it stands
-       DUP K-NUM = IF S" R-N>D" OUT+ THEN  2DROP  LB-W1 @ LB-W2 @ OUT+ K-DEC -1 EXIT
-     THEN
-     OVER K-ANY = IF S" R-ANY>NUM" LB-POS @ OUT-INSERT THEN
-     OVER DUP K-NUM = OVER K-BOOL = OR SWAP K-ANY = OR 0= IF S" a number is needed here" ERR THEN
-     NIP TO-NUM  LB-W1 @ LB-W2 @ OUT+ K-NUM -1 EXIT THEN
+  2DUP S" max" S= >R 2DUP S" min" S= R> OR IF                       \ of a list: an item (760; of two values no more, 799)
+     S" max" S= IF S" R-LMAX" ELSE S" R-LMIN" THEN LB-W2 ! LB-W1 !  ARG CONT  LB-W1 @ LB-W2 @ OUT+ K-ANY -1 EXIT THEN
   2DROP 0 ;
 : DEF-LATER? ( c-addr u --- f )   \ a def of that name further down the script (786)
   TK-N @ 1- 0 ?DO  I K@ T-KW = I T@ S" def" S= AND IF 2DUP I 1+ T@ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN THEN  LOOP 2DROP 0 ;
@@ -666,7 +636,8 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : SPREAD-OUT ( c-addr u --- )   \ @name's items: rillc.py's spread_code - the script's arguments for @args, unless it set its own (786)
   2DUP NM-FIND 0< IF 2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ EXIT THEN THEN
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN
-  CELLS NM-K + @ K-LIST <> IF S" a spread needs a list" ERR THEN
+  CELLS NM-K + @ DUP K-ANY = IF DROP VAR-OUT S" @ R-AS-LIST" OUT+ EXIT THEN   \ an item: its list, checked (799)
+  K-LIST <> IF S" a spread needs a list" ERR THEN
   VAR-OUT S" @" OUT+ ;
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
@@ -843,7 +814,6 @@ CREATE LK 64 CELLS ALLOT  VARIABLE LK-N  VARIABLE LK-BASE
     DUP CELLS LK + @ DUP 2 = IF DROP OVER IF S" NIP NIP UNLOOP" ELSE S" 2DROP UNLOOP" THEN OUT+
     ELSE 1 = IF S" UNLOOP" OUT+ THEN THEN
   REPEAT 2DROP ;
-VARIABLE PAR-FLAG   \ the for being read is a par for
 : SKIP-NL ( --- )   BEGIN TK K@ T-NL = S" ;" CUR-IS? OR WHILE NEXT-TK REPEAT ;
 : BLOCK ( --- )   S" {" EXPECT DA-ENTER SKIP-NL BEGIN S" }" CUR-IS? 0= WHILE STATEMENT SKIP-NL REPEAT NEXT-TK DA-LEAVE ;
 : COND ( --- )   S" (" CUR-IS? 0= IF S" a condition is in ( )" ERR THEN  1 EXPR TRUTH ;
@@ -913,10 +883,18 @@ VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
 : ARG-TEXT? ( --- f )   \ ... and true or false: text in an argument (759)
   ARG-KW-TEXT? IF -1 EXIT THEN  TK K@ T-WORD = IF S" true" CUR-IS? S" false" CUR-IS? OR ELSE 0 THEN ;
 : STATEMENT-END? ( --- f )   TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR ;
-: PLUMBED? ( --- f )   \ a redirection or a pipe ahead in the statement
-  TK-I @  BEGIN STATEMENT-END? S" ??" CUR-IS? OR 0= WHILE
-    S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR S" |" CUR-IS? OR IF TK-I ! -1 EXIT THEN NEXT-TK REPEAT
-  TK-I ! 0 ;
+: OP-IS? ( c-addr u --- f )   TK K@ T-OP = >R CUR-IS? R> AND ;
+: NEST+ ( depth --- depth' )   \ the bracket depth after the current token (799)
+  S" (" OP-IS? S" [" OP-IS? OR S" {" OP-IS? OR IF 1+ EXIT THEN
+  S" )" OP-IS? S" ]" OP-IS? OR S" }" OP-IS? OR IF 1- THEN ;
+: STMT-OVER? ( depth --- f )   \ the statement being scanned ends here: a ; } or ?? counts outside brackets (799)
+  TK K@ T-NL = TK K@ T-EOF = OR IF DROP -1 EXIT THEN
+  0= IF S" ;" CUR-IS? S" }" CUR-IS? OR S" ??" CUR-IS? OR ELSE 0 THEN ;
+: PLUMB? ( --- f )   S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR S" |" CUR-IS? OR ;
+: PLUMBED? ( --- f )   \ a redirection or a pipe ahead in the statement, outside brackets (799)
+  TK-I @ 0  BEGIN DUP STMT-OVER? 0= WHILE
+    DUP 0= IF PLUMB? IF DROP TK-I ! -1 EXIT THEN THEN  NEST+ NEXT-TK REPEAT
+  DROP TK-I ! 0 ;
 : ECHO-STMT ( --- )
   NEXT-TK 0
   BEGIN STATEMENT-END? 0= WHILE
@@ -1042,17 +1020,28 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 : ARG-ITEM ( --- )   \ one item of an argument list, as text
   S" {" CUR-IS? IF NEXT-TK 1 EXPR S" }" EXPECT ELSE
   ARG-TEXT? IF TK T@ NEXT-TK TEXT-LIT K-TEXT ELSE -1 IN-ARG ! TERM THEN THEN  TO-TEXT ;
-\ [gene warn]
-: WARN-STMT ( --- )   \ warn ...: the items with a blank between, one line to the err port (747)
+VARIABLE EE-END   \ the out of an echo's closing out>err (799)
+: ECHO-ERR? ( --- f )   \ the first redirection or pipe of the echo from here, outside brackets, its closing out>err (799)
+  TK-I @ >R  0 EE-END !  0
+  BEGIN DUP STMT-OVER? 0= WHILE
+    DUP 0= IF PLUMB? IF DROP
+      S" >" CUR-IS? TK 1- S" out" TK-IS? AND TK 1+ S" err" TK-IS? AND  TK 1- R@ > AND
+      TK TOK-AT TK 1- TOK-END = AND  TK 1+ TOK-AT TK TOK-END = AND IF
+        TK 1- NEXT-TK NEXT-TK 0 STMT-OVER? IF EE-END ! ELSE DROP THEN THEN
+      R> TK-I !  EE-END @ 0<> EXIT
+    THEN THEN
+    NEST+ NEXT-TK REPEAT
+  DROP R> TK-I ! 0 ;
+: ECHO-ERR ( --- )   \ echo ... out>err: the items with a blank between, one line to the err port (747 as warn; 799)
   NEXT-TK 0
-  BEGIN STATEMENT-END? 0= WHILE
+  BEGIN TK-I @ EE-END @ < WHILE
     DUP IF TK TOK-AT TK 1- TOK-END = ELSE 0 THEN                ( count touching )
     DUP 0= 2 PICK AND IF S"  " OUT-S" THEN
     >R ARG-ITEM R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN
   REPEAT
+  EE-END @ 3 + TK-I !
   DUP 0= IF DROP S" 0 0 R-TEXT R-ERR-TYPE" OUT+ EXIT THEN
   2* 1- OUT-NUM S" R-CONCAT R-ERR-TYPE" OUT+ ;
-\ [/gene]
 \ [gene echolit]
 : ECHO-TYPED ( --- )   \ gene echolit (753): rillc.py's echo_typed
   NEXT-TK  0 EL# !  -1
@@ -1155,7 +1144,6 @@ VARIABLE LB-WHILE   \ set by WHILE-STMT for the LOOP-BODY it calls: break, as co
   R> LK-BASE !  R> R>                                              ( old ret w )
   0= IF DUP IF S" R-BRK @ R-RET @ OR IF 0 R-BRK ! LEAVE THEN" ELSE S" R-BRK @ IF 0 R-BRK ! LEAVE THEN" THEN OUT+ THEN
   -1 HOISTS +!  SWAP HOIST ! ;
-: PAR-BODY ( par? kind --- ret )   SWAP DUP IF S" R-PAR-FORK IF" OUT+ THEN >R  LOOP-BODY  R> IF S" R-PAR-DONE THEN" OUT+ THEN ;
 : AFTER-BODY ( ret --- )   \ after a loop whose body word may return: pass it on, or return it (779)
   0= IF EXIT THEN
   HOISTS @ IF S" R-RET @ IF" OUT+ 0 UNWIND S" EXIT THEN" OUT+ EXIT THEN
@@ -1189,8 +1177,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
 : FOR-STMT ( --- )
   NEXT-TK  TK T@ FOR-AL ! FOR-A !  NEXT-TK  0 FOR-BL !
   S" ," CUR-IS? IF NEXT-TK TK T@ FOR-BL ! FOR-B ! NEXT-TK THEN
-  S" in" EXPECT  PAR-FLAG @ 0 PAR-FLAG ! >R                     \ ( R: par? )
-  R@ IF S" R-PAR-BEGIN" OUT+ THEN
+  S" in" EXPECT
 \ [gene rangeloop]
   S" range" CUR-IS? TK 1+ S" (" TK-IS? AND IF RANGE-COMMAS 2 < ELSE 0 THEN IF   \ hi lo TUCK MAX SWAP ?DO, no list made
     NEXT-TK NEXT-TK  OUT-POS FOR-P !  1 EXPR TO-NUM
@@ -1200,15 +1187,14 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     FOR-A @ FOR-AL @ DA-NEXT
 \ [gene loopvar]
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
-    R@ 0= IF FOR-A @ FOR-AL @ LOOPVAR-OK? IF                      \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
+    FOR-A @ FOR-AL @ LOOPVAR-OK? IF                               \ hi lo 2DUP SWAP 1+ SWAP ?DO ... I ... LOOP, stored once after
       S" 2DUP ?DO" OUT+  FOR-A @ FOR-AL @  2DUP LV-L ! LV-A !       \ the name kept on the stack over the body
-      0 2 PAR-BODY -ROT  0 LV-L !
-      S" LOOP OVER < IF 1-" OUT+  FOR-K @ NUM-INTO  VAR-OUT S" ! ELSE DROP THEN" OUT+  AFTER-BODY  R> DROP EXIT
-    THEN THEN
+      2 LOOP-BODY -ROT  0 LV-L !
+      S" LOOP OVER < IF 1-" OUT+  FOR-K @ NUM-INTO  VAR-OUT S" ! ELSE DROP THEN" OUT+  AFTER-BODY  EXIT
+    THEN
 \ [/gene]
     FOR-A @ FOR-AL @ 2DUP DECLARE K-NUM BIND-K FOR-K !
-    S" ?DO" OUT+ S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY
-    R> IF S" R-PAR-END" OUT+ THEN EXIT
+    S" ?DO" OUT+ S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ 1 LOOP-BODY S" LOOP" OUT+ AFTER-BODY  EXIT
   THEN
 \ [/gene]
   1 EXPR                                                       ( sk )
@@ -1221,7 +1207,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
     2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-KEYS R-LEN 0 ?DO" OUT+
     2DUP VAR-OUT S" @ R-KEYS I R-AT" OUT+ FOR-K @ K-TEXT = IF S" R-ANY>TEXT" OUT+ THEN FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+
     FOR-BL @ IF 2DUP VAR-OUT S" @ R-VALS I R-AT" OUT+ FOR-B @ FOR-BL @ VAR-OUT S" !" OUT+ THEN
-    2DROP R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY  R> IF S" R-PAR-END" OUT+ THEN EXIT
+    2DROP 1 LOOP-BODY S" LOOP" OUT+ AFTER-BODY  EXIT
   THEN
   ROT DUP K-ANY = IF DROP S" R-UNBOX DROP" OUT+ ELSE K-LIST <> IF S" for needs a list or a record" ERR THEN THEN
   FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN 2DUP DECLARE K-ANY BIND-K DROP      \ the item, then the index: rillc.py's order
@@ -1230,7 +1216,7 @@ VARIABLE FOR-A  VARIABLE FOR-AL  VARIABLE FOR-B  VARIABLE FOR-BL  VARIABLE FOR-P
   2DUP VAR-OUT S" !" OUT+ 2DUP VAR-OUT S" @ R-LEN 0 ?DO" OUT+
   FOR-BL @ IF S" I" OUT+ FOR-K @ NUM-INTO FOR-A @ FOR-AL @ VAR-OUT S" !" OUT+ THEN
   VAR-OUT S" @ I R-AT" OUT+  FOR-BL @ IF FOR-B @ FOR-BL @ ELSE FOR-A @ FOR-AL @ THEN VAR-OUT S" !" OUT+
-  R@ 1 PAR-BODY S" LOOP" OUT+ AFTER-BODY  R> IF S" R-PAR-END" OUT+ THEN ;
+  1 LOOP-BODY S" LOOP" OUT+ AFTER-BODY ;
 \ x[i] = v: rillc.py puts the value first, then the container, then the index
 VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIABLE IA-OP  VARIABLE IA-CP
 : IA-INDEX ( --- )   \ the index's code again, its tokens read a second time (774)
@@ -1323,22 +1309,17 @@ VARIABLE CD-P
   S" break" CUR-IS? IF NEXT-TK HOIST @ IF S" -1 R-BRK ! EXIT" ELSE S" LEAVE" THEN OUT+ EXIT THEN
   S" continue" CUR-IS? TK K@ T-WORD = AND IF HOIST @ 0= IF S" continue outside a for loop" ERR THEN
     NEXT-TK S" EXIT" OUT+ EXIT THEN
-  S" par" CUR-IS? TK 1+ S" for" TK-IS? AND IF NEXT-TK -1 PAR-FLAG ! FOR-STMT EXIT THEN
-  S" fail" CUR-IS? TK K@ T-WORD = AND TK 1+ S" (" TK-IS? 0= AND IF NEXT-TK 1 EXPR TO-TEXT S" R-FAIL" OUT+ EXIT THEN
   S" exit" CUR-IS? TK K@ T-WORD = AND TK 1+ S" (" TK-IS? 0= AND IF NEXT-TK
     STATEMENT-END? IF S" 0 R-EXIT" OUT+ ELSE 1 EXPR TO-NUM S" R-EXIT" OUT+ THEN EXIT THEN
   S" on" CUR-IS? TK 1+ S" EXIT" TK-IS? AND IF NEXT-TK NEXT-TK ON-EXIT EXIT THEN
   TK K@ T-WORD = IF
     TK 1+ S" [" TK-IS? TK 1+ TOK-AT TK TOK-END = AND IF INDEX-ASSIGN EXIT THEN
     TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
-\ [gene warn]
-    S" warn" CUR-IS? TK 1+ S" (" TK-IS? 0= AND IF WARN-STMT EXIT THEN
-\ [/gene]
 \ [gene echolit]
-    S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-TYPED EXIT THEN THEN
+    S" echo" CUR-IS? IF ECHO-ERR? IF ECHO-ERR EXIT THEN PLUMBED? 0= IF ECHO-TYPED EXIT THEN THEN
 \ [/gene]
 \ [gene !echolit]
-    S" echo" CUR-IS? IF PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
+    S" echo" CUR-IS? IF ECHO-ERR? IF ECHO-ERR EXIT THEN PLUMBED? 0= IF ECHO-STMT EXIT THEN THEN
 \ [/gene]
     TK 1+ S" (" TK-IS? IF CALL-STMT EXIT THEN
   THEN
@@ -1371,7 +1352,7 @@ VARIABLE RT-K
 \ [gene littext]
   0 LT-N !
 \ [/gene]
-   0 BODY-N !  0 HOIST !  0 HOISTS !  0 PAR-FLAG !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
+   0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
   TK-ALLOC BUF-ALLOC ;
 : ON-EXIT-AHEAD? ( --- f )   TK-N @ 1- 0 ?DO I T@ S" on" S= I 1+ T@ S" EXIT" S= AND IF -1 UNLOOP EXIT THEN LOOP 0 ;

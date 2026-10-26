@@ -20,7 +20,7 @@ echo port now {$host[port]} and {$host['S"']}
 for k, v in $host { echo field $k = $v }
 for n in range(1, 5) { echo n $n }
 first3 = slice($nums, 0, 3)
-echo first three: $first3, shifted {shift($first3)}, left $first3
+echo first three: $first3, shifted {pop($first3, 0)}, left $first3
 lines = lines("a
 b
 c")

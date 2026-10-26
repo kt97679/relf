@@ -1,4 +1,4 @@
-# continue, break in a hoisted body, par for, a def as a pipeline stage (745)
+# continue, break in a hoisted body, a def as a pipeline stage (745)
 for x in [1 2 3 4 5] {
     if ($x == 2) { continue }
     if ($x == 5) { break }
@@ -9,6 +9,6 @@ def numbers {
 }
 numbers | sort
 t = $(mktemp -d)
-par for j in range(1, 4) { echo $j > "$t/out.$j" }
+for j in range(1, 4) { echo $j > "$t/out.$j" }
 for j in range(1, 4) { cat "$t/out.$j" }
 rm -rf $t

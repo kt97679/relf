@@ -28,8 +28,6 @@ CANDIDATES = [
         (r'(\w+) = ("[^"]*"|\'[^\']*\'|\S+); if \(([^{}]+)\) \{ \1 = ([^{};]+) \}', r'\1 = if (\3) \4 else \2')]),
     ('{k: v for x in src} - a record made by a loop', 24, [
         (r'(\w+) = \{\}\n(\s*)for (\w+) in (' + POST + r') \{ \1\[\$\3\] = ([^{}\n]+) \}', r'\1 = {$\3: \5 for \3 in \4}')]),
-    ('warn "..." for echo "..." out>err', 6, [(r'echo (.*) out>err', r'warn \1')]),
-    ('arg(n, default) for default(arg(n), default)', 4, [(r'default\(arg\((\d+)\), ', r'arg(\1, ')]),
     ('options(...): flags and values read from $args', 30, [   # dead-words' argument loop, as one call
         (r'delete = "--delete" in \$args\nwhy = ""; files = \[\]\nfor i, a in \$args \{\n.*\n.*\n\}',
          r'o = options([--delete], [--why]); delete = $o.delete; why = $o.why; files = $o.rest')]),

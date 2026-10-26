@@ -1,5 +1,5 @@
 # examples/rill/gen-opcodes.rill - tools/gen-opcodes.sh in Rill (Iteration 733)
-dir = dir(dir(dir(abs($script))))   # examples/rill/ is two below the top (782)
+dir = $(realpath "$(dirname $script)/../..")   # examples/rill/ is two below the top
 tab = "$dir/engine/opcodes.tab"
 ops = []
 for l in lines(read($tab)) {
@@ -63,9 +63,10 @@ def forth-consts {
     echo "{byname(BRANCH8).num} CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it"
 }
 
-if (arg(1) == --forth-ops) { forth-ops; exit 0 }
-if (arg(1) == --forth-consts) { forth-consts; exit 0 }
-if (arg(1) != --check) { generate; exit 0 }
+mode = at($args, 0, "")
+if ($mode == --forth-ops) { forth-ops; exit 0 }
+if ($mode == --forth-consts) { forth-consts; exit 0 }
+if ($mode != --check) { generate; exit 0 }
 
 bad = []
 nd = 0; ne = 0
@@ -103,6 +104,6 @@ for c in [[cross.4 EXIT-OP EXIT] [cross.4 LIT16-OP LIT] [cross.4 BRANCH-OP BRANC
     if (not (grep -qE "^[ \t]*$x.num CONSTANT {$c[1]}([ \t]|\$)" "$dir/forth/{$c[0]}")) { push($bad, "forth/{$c[0]}'s {$c[1]} is not $x.num ({$c[2]} in engine/opcodes.tab)") }
 }
 if (not (generate | cmp -s - "$dir/engine/cv8-ops.h")) { push($bad, "engine/cv8-ops.h is not what engine/opcodes.tab makes: run make") }
-for m in $bad { warn "gen-opcodes: $m" }
-if (len($bad) > 0) { fail "gen-opcodes: {len($bad)} problem(s)" }
+for m in $bad { echo "gen-opcodes: $m" out>err }
+if (len($bad) > 0) { echo "gen-opcodes: {len($bad)} problem(s)" out>err; exit 1 }
 echo "gen-opcodes: engine/opcodes.tab, forth/kernel.4, forth/cross.4, forth/shadow.4 and engine/cv8-ops.h agree"

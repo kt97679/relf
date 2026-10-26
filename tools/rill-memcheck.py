@@ -18,7 +18,7 @@ LIMIT = 48            # bytes a round: well above the measure's noise, far below
 NOISE = 400 * 1024    # what two peaks can differ by with nothing kept: fewer rounds, a larger limit a round
 
 W = [   # name, body (inside: for i in range(N) { ... }), N
-    ('texts',      't = "item {$i} of many"; u = upper($t); v = replace($u, "ITEM", "x")', 3000),
+    ('texts',      't = "item {$i} of many"; u = trim(" $t "); v = replace($u, "item", "x")', 3000),
     ('lists',      'l = [$i "two" 3]; push($l, $i); m = slice($l, 1, 3); n = len($m)', 3000),
     ('records',    'r = {a: $i, b: "x"}; r[c] = $i; k = keys($r); h = $r.a', 3000),
     ('big-record', 'q = {}; for j in range(20) { q["k{$j}"] = $j }; z = $q.k7', 3000),

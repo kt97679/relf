@@ -146,7 +146,9 @@ class Compiler:
         sc[name] = kind; return kind
     def spread_code(self, name, line):    # @name: its items - the script's arguments for @args, unless it set its own (786)
         if name == 'args' and name not in self.vars and (self.locals is None or name not in self.locals): return 'R-ARGS'
-        if self.kind_of(name, line) != 'list': raise Error('line %d: @%s is not a list' % (line, name))
+        k = self.kind_of(name, line)
+        if k == 'any': return 'R.%s @ R-AS-LIST' % name                        # an item: its list, checked (799)
+        if k != 'list': raise Error('line %d: @%s is not a list' % (line, name))
         return 'R.%s @' % name
     def read_var(self, name, line):       # $name, in an expression or a string - the image's READ-VAR (785)
         if name in ('args', 'script') and name not in self.vars and (self.locals is None or name not in self.locals):
@@ -383,18 +385,15 @@ class Compiler:
             if len(a) != n: raise Error('line %d: %s() takes %d arguments' % (line, name, n))
         if name == 'len':
             need(1); c, k = a[0]
-            if k == 'any': return '%s R-UNBOX DROP @' % c, 'number'
+            if k == 'any': return '%s R-ANY-LEN' % c, 'number'            # a record's fields counted (799)
             if k == 'record': return '%s R-KEYS @' % c, 'number'
             return '%s @' % c, 'number'                            # a text's or a list's count
         if name in ('words', 'lines'): need(1); return '%s %s' % (self.to_text(*a[0]), {'words': 'R-SPLIT-WS', 'lines': 'R-LINES'}[name]), 'list'
-        if name == 'abs':                                               # a number's; a path's, absolute (782)
+        if name == 'abs':                                               # a number's or a decimal's (a path's: realpath, 799)
             need(1)
             if a[0][1] in ('number', 'decimal'): return '%s ABS' % a[0][0], a[0][1]
-            return '%s R-ABS' % self.to_text(*a[0]), 'text'
-        if name == 'dir': need(1); return '%s R-DIR' % self.to_text(*a[0]), 'text'
-        if name == 'format':                                            # format(f, a, ...): % formatting (781)
-            if not a: need(1)
-            return '%s R-NEW-LIST %s R-FORMAT' % (self.to_text(*a[0]), ' '.join('%s OVER R-PUSH' % self.box(*x) for x in a[1:])), 'text'
+            if a[0][1] == 'any': return '%s R-ANY-ABS' % a[0][0], 'any'
+            raise Error('line %d: abs needs a number' % line)
         if name == 'join': need(2); return '%s %s R-JOIN' % (cont(a[0]), self.to_text(*a[1])), 'text'   # an item unboxed (779)
         if name == 'range':                                            # Python's: up to, not with, its end (770)
             if len(a) not in (1, 2, 3): raise Error('line %d: range() takes 1 to 3 arguments' % line)
@@ -403,15 +402,9 @@ class Compiler:
             if len(a) == 2: return '%s %s R-RANGE' % tuple(n), 'list'
             return '%s %s %s R-RANGE-STEP' % tuple(n), 'list'
         if name == 'number': need(1); return '%s R-NUMBER' % self.to_text(*a[0]), 'number'
-        if name == 'text': need(1); return self.to_text(*a[0]), 'text'
         if name == 'glob': need(1); return '%s R-GLOB' % self.to_text(*a[0]), 'list'          # the paths it matches, sorted (786)
-        if name == 'now': need(0); return 'R-NOW', 'number'                    # seconds, the local clock (783)
         if name == 'setenv': need(2); return '%s %s R-SETENV' % (self.to_text(*a[0]), self.to_text(*a[1])), None   # 783
         if name == 'push': need(2); return '%s %s R-PUSH' % (self.box(*a[1]), cont(a[0])), None
-        if name == 'extend': need(2); return '%s %s R-EXTEND' % (cont(a[0]), cont(a[1])), None
-        if name == 'shift': need(1); return '%s R-SHIFT' % cont(a[0]), 'any'
-        if name == 'first': need(1); return '%s 0 R-AT' % cont(a[0]), 'any'
-        if name == 'values': need(1); return '%s R-VALS' % cont(a[0]), 'list'                     # 758
         if name == 'sort': need(1); return '%s R-SORT' % cont(a[0]), 'list'
         if name == 'split': need(2); return '%s %s R-SPLIT' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
         if name == 'slice':                                            # a list's; a text's and a record's (754)
@@ -421,50 +414,38 @@ class Compiler:
                 return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), rest, word), kd
             need(3); return '%s %s %s %s' % (cont(a[0]), self.to_num(*a[1], line), self.to_num(*a[2], line), word), kd
         if name == 'keys': need(1); return '%s R-KEYS' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0]), 'list'
-        if name in ('read', 'upper', 'lower', 'trim', 'base'):              # 754: texts and files
-            need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'upper': 'R-UPPER', 'lower': 'R-LOWER',
-                                                                'trim': 'R-TRIM', 'base': 'R-BASE'}[name]), 'text'
+        if name in ('read', 'trim'):                                        # 754: texts and files
+            need(1); return '%s %s' % (self.to_text(*a[0]), {'read': 'R-READ', 'trim': 'R-TRIM'}[name]), 'text'
         if name == 'write': need(2); return '%s %s R-WRITE' % (self.to_text(*a[0]), self.to_text(*a[1])), None
         if name in ('starts', 'ends'):
             need(2); return '%s %s %s' % (self.to_text(*a[0]), self.to_text(*a[1]), 'R-STARTS' if name == 'starts' else 'R-ENDS'), 'bool'
         if name == 'sum': need(1); return '%s R-SUM' % cont(a[0]), 'any'   # a decimal among them, a decimal (794)
-        dec = lambda c, k: c if k == 'decimal' else c + ' R-N>D' if k == 'number' else c + ' R-ANY>DEC'   # 760
-        if name in ('max', 'min') and len(a) == 1:                     # max(list), min(list): an item (760)
+        if name in ('max', 'min'):                                     # max(list), min(list): an item (760; of two values no more, 799)
+            need(1)
             return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
-        if name == 'log': need(1); return '%s R-LOG' % dec(*a[0]), 'decimal'
-        if name == 'exp': need(1); return '%s R-EXP' % dec(*a[0]), 'decimal'
         if name == 'decimal': need(1); return '%s R-TEXT>DEC' % self.to_text(*a[0]), 'decimal'
-        if name == 'contains': need(2); return '%s %s R-CONTAINS' % (self.to_text(*a[0]), self.to_text(*a[1])), 'bool'
         if name == 'replace': need(3); return '%s %s %s R-REPLACE' % tuple(self.to_text(*x) for x in a), 'text'
-        if name in ('max', 'min'):
-            need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
-            conv = (lambda c, k: c + ' R-N>D' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
-            return '%s %s %s' % (conv(*a[0]), conv(*a[1]), name.upper()), kd
         if name == 'at':                                                # a record's field; a list's item (782); or the default
             need(3)
             if a[0][1] == 'list': return '%s %s %s R-AT-OR-L' % (a[0][0], self.to_num(*a[1], line), self.box(*a[2])), 'any'
             if a[0][1] == 'any': return '%s %s %s R-AT-OR-ANY' % (a[0][0], self.box(*a[1]), self.box(*a[2])), 'any'
             return '%s %s %s R-AT-OR' % (a[0][0], self.to_text(*a[1]), self.box(*a[2])), 'any'
-        if name == 'sort-by':                                          # a list's records by a field (798); a record's entries
+        if name == 'sort-by':                                          # a list's records by a field (798; a record's entries no more, 799)
             if len(a) == 2: a = a + [(self.lit_text('asc'), 'text')]
             need(3)
-            if a[0][1] == 'list': return '%s %s %s R-SORT-BY-L' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'list'
-            if a[0][1] == 'any': return '%s %s %s R-SORT-BY-ANY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'any'
-            return '%s %s %s R-SORT-BY' % (a[0][0], self.to_text(*a[1]), self.to_text(*a[2])), 'record'
-        if name == 'pop': need(1); return '%s R-POP' % cont(a[0]), 'any'                              # 798
-        if name == 'delete':                                                                          # 798
+            if a[0][1] == 'record': raise Error('line %d: sort-by sorts a list of records' % line)
+            return '%s %s %s R-SORT-BY-L' % (cont(a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'list'
+        if name == 'pop':                                               # pop(x, key): a list's item (negative from the end) or a record's field, out (799)
             need(2)
-            if a[0][1] == 'list': return '%s %s R-DEL-L' % (a[0][0], self.to_num(*a[1], line)), None
-            if a[0][1] == 'any': return '%s %s R-DEL-ANY' % (a[0][0], self.box(*a[1])), None
-            return '%s %s R-DEL-R' % (a[0][0], self.to_text(*a[1])), None
+            if a[0][1] == 'list': return '%s %s R-POP-L' % (a[0][0], self.to_num(*a[1], line)), 'any'
+            if a[0][1] == 'any': return '%s %s R-POP-ANY' % (a[0][0], self.box(*a[1])), 'any'
+            if a[0][1] == 'record': return '%s %s R-POP-R' % (a[0][0], self.to_text(*a[1])), 'any'
+            raise Error('line %d: pop needs a list or a record' % line)
         if name == 'find':                                                                            # 798
             need(2)
             if a[0][1] == 'list': return '%s %s R-FIND-L' % (a[0][0], self.box(*a[1])), 'number'
             if a[0][1] == 'any': return '%s %s R-FIND-ANY' % (a[0][0], self.box(*a[1])), 'number'
             return '%s %s R-FIND-T' % (self.to_text(*a[0]), self.to_text(*a[1])), 'number'
-        if name == 'arg':                                              # 744; arg(n, default) 747
-            if len(a) == 2 and GENES['argdefault']: return '%s R-ARG %s R-DEFAULT' % (self.to_num(*a[0], line), self.to_text(*a[1])), 'text'
-            need(1); return '%s R-ARG' % self.to_num(*a[0], line), 'text'
         if name == 'match': need(2); return '%s %s R-MATCH' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'   # 746
         if name == 'all': need(2); return '%s %s R-ALL' % (self.to_text(*a[0]), self.to_text(*a[1])), 'list'
         if name == 'sub': need(3); return '%s %s %s R-SUB' % (self.to_text(*a[0]), self.to_text(*a[1]), self.to_text(*a[2])), 'text'
@@ -602,12 +583,8 @@ class Compiler:
         elif k == 'word' and v == 'continue':
             if not (getattr(self, 'hoists', None) and self.hoists[-1]): raise Error('line %d: continue outside a for loop' % line)
             self.i += 1; out = 'EXIT'
-        elif k == 'word' and v == 'par' and self.peek(1)[1] == 'for':
-            self.i += 1; out = self.for_(par=True)
         elif k == 'word' and v == 'case' and self.peek(1)[1] not in ('(', '=', '+=', '-=', '['):
             out = self.case_()                                                          # 783
-        elif k == 'word' and v == 'fail' and self.peek(1)[1] != '(':
-            self.i += 1; c, kd = self.expr(); out = '%s R-FAIL' % self.to_text(c, kd)       # 744
         elif k == 'word' and v == 'exit' and self.peek(1)[1] != '(':
             self.i += 1
             if self.peek()[0] in ('nl', 'eof') or self.peek()[1] in (';', '}'): out = '0 R-EXIT'
@@ -669,9 +646,11 @@ class Compiler:
             else: sc[name] = kd; self.names.add(name)
             if op == '=': self.da_mark(name)                                 # certainly set from here (772)
             out = '%s R.%s !' % (c, name)
-        elif GENES['warn'] and k == 'word' and v == 'warn' and self.peek(1)[1] != '(':   # warn ...: the err port (747; a gene 751)
-            self.i += 1
-            parts, _ = self.args((';', '}'))
+        elif k == 'word' and v == 'echo' and self.echo_err() is not None:   # echo ... out>err: one line to the err port, in-process (799)
+            end = self.echo_err()
+            sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
+            sub.t = self.t[self.i + 1:end] + [('eof', '', line, 0, 0)]; sub.i = 0
+            parts, _ = sub.args((';', '}')); self.i = end + 3
             if not parts: out = '0 0 R-TEXT R-ERR-TYPE'
             else: out = ' S"  " R-TEXT '.join(parts) + ' %d R-CONCAT R-ERR-TYPE' % (2 * len(parts) - 1)
         elif k == 'word' and v == 'echo' and not self.plumbed():
@@ -691,14 +670,29 @@ class Compiler:
                 out = run + ' R-CHECK'                           # failure stops the script
         else: raise Error('line %d: cannot read %r here' % (line, v))
         return out
+    def scan_stmt(self):
+        """The statement from here, brackets skipped (799): its end, and its
+        first redirection or pipe outside brackets (None if none)."""
+        j, depth, first = self.i, 0, None
+        while True:
+            k, v = self.t[j][0], self.t[j][1]
+            if k in ('nl', 'eof') or (depth == 0 and v in (';', '}', '??')): return j, first
+            if depth == 0 and first is None and v in ('>', '>>', '<', '|'): first = j
+            if k == 'op' and v in ('(', '[', '{'): depth += 1
+            elif k == 'op' and v in (')', ']', '}'): depth -= 1
+            j += 1
+    def echo_err(self):
+        """Is the first redirection or pipe of the echo from here its closing
+        out>err? Then the index of that out."""
+        j, first = self.scan_stmt()
+        if first is None or first != j - 2 or j - 3 <= self.i: return None
+        o, g, e = self.t[j - 3], self.t[j - 2], self.t[j - 1]
+        if (o[1], g[1], e[1]) != ('out', '>', 'err') or g[3] != o[4] or e[3] != g[4]: return None
+        return j - 3
     def plumbed(self):
         """Does the statement from here redirect or pipe? Then echo runs as a
         program, with its ports where the statement puts them."""
-        j = self.i
-        while self.t[j][0] not in ('nl', 'eof') and self.t[j][1] not in (';', '}', '??'):
-            if self.t[j][1] in ('>', '>>', '<', '|'): return True
-            j += 1
-        return False
+        return self.scan_stmt()[1] is not None
     PORTS = {'in': 0, 'out': 1, 'err': 2, 'all': 1}
     MODES = {'>': 'W/O', '>>': 'A/O', '<': 'R/O'}
     def command(self, capture=False):
@@ -821,7 +815,7 @@ class Compiler:
             elif v == '}':
                 depth -= 1
                 if depth == 0: return True
-            elif (k == 'kw' and v in ('for', 'def', 'break')) or (k == 'word' and v in ('continue', 'par', 'EXIT')):   # break a keyword (770)
+            elif (k == 'kw' and v in ('for', 'def', 'break')) or (k == 'word' and v in ('continue', 'EXIT')):   # break a keyword (770)
                 return False
             elif k == 'word' and v == name and self.t[j + 1][1] in ('=', '+=', '-=', '['): return False
             j += 1
@@ -881,8 +875,6 @@ class Compiler:
         b = self.loop_body(kind)
         if isinstance(b, tuple): return b[0], (self.after_body() if b[1] else '')
         return b, ''
-    def par_wrap(self, body, par):
-        return 'R-PAR-FORK IF %s R-PAR-DONE THEN' % body if par else body
     def range_commas(self):               # the commas at range( ... )'s own level: two mean a step
         depth, n, j = 0, 0, self.i + 2
         while self.t[j][0] != 'eof':
@@ -894,7 +886,7 @@ class Compiler:
             elif v == ',' and depth == 0: n += 1
             j += 1
         return n
-    def for_(self, par=False):
+    def for_(self):
         self.take('kw', 'for'); a = self.take('word')[1]; b = None
         if self.peek()[1] == ',': self.i += 1; b = self.take('word')[1]
         self.take('kw', 'in'); line = self.peek()[2]
@@ -906,15 +898,15 @@ class Compiler:
             if b: raise Error('line %d: for i, x needs a list' % line)
             box = self.num_into(self.bind(a, 'number'))                 # an item or a decimal, where $a is bound to others too
             self.da_next = [a]
-            if GENES['loopvar'] and not par and self.loopvar_ok(a):        # gene loopvar (753)
+            if GENES['loopvar'] and self.loopvar_ok(a):        # gene loopvar (753)
                 outer = getattr(self, 'loopvar', None); self.loopvar = a
                 body, after = self.for_body('do2'); self.loopvar = outer
                 return '%s %s TUCK MAX SWAP 2DUP ?DO %s LOOP OVER < IF 1-%s R.%s ! ELSE DROP THEN%s' % (
                     self.to_num(hi, hk, line), self.to_num(lo, lk, line), body, box, a, after)     # the last value kept, as Python
             body, after = self.for_body('do')
             out = '%s %s TUCK MAX SWAP ?DO I%s R.%s ! %s LOOP%s' % (self.to_num(hi, hk, line), self.to_num(lo, lk, line), box, a,
-                                                                 self.par_wrap(body, par), after)
-            return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
+                                                                 body, after)
+            return out
         sc, sk = self.expr()
         tmp = '%s.src%d' % (a, self.i); self.names.update([a, tmp])
         if self.locals is None: self.__dict__.setdefault('roots', {})[tmp] = 'record' if sk == 'record' else 'list'   # 776
@@ -925,8 +917,8 @@ class Compiler:
             setv = ('R.%s @ R-VALS I R-AT R.%s ! ' % (tmp, val)) if val else ''
             body, after = self.for_body('do')
             out = ('%s R.%s ! R.%s @ R-KEYS R-LEN 0 ?DO R.%s @ R-KEYS I R-AT%s R.%s ! %s%s LOOP%s'
-                   % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if kk == 'text' else '', key, setv, self.par_wrap(body, par), after))
-            return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
+                   % (sc, tmp, tmp, tmp, ' R-ANY>TEXT' if kk == 'text' else '', key, setv, body, after))
+            return out
         if sk not in ('list', 'any'): raise Error('line %d: for needs a list or a record' % line)
         if sk == 'any': sc += ' R-UNBOX DROP'
         idx, item = (a, b) if b else (None, a)
@@ -936,8 +928,8 @@ class Compiler:
         if idx: seti = 'I%s R.%s ! ' % (self.num_into(self.bind(idx, 'number')), idx)
         body, after = self.for_body('do')
         out = ('%s R.%s ! R.%s @ R-LEN 0 ?DO %sR.%s @ I R-AT R.%s ! %s LOOP%s'
-               % (sc, tmp, tmp, seti, tmp, item, self.par_wrap(body, par), after))
-        return 'R-PAR-BEGIN %s R-PAR-END' % out if par else out
+               % (sc, tmp, tmp, seti, tmp, item, body, after))
+        return out
     def if_(self):
         self.take('kw', 'if'); c = self.cond()
         if getattr(self, 'stack', None): self.depth -= 1               # IF takes the flag

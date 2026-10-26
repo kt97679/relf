@@ -12,7 +12,7 @@ the all> port	adopted	732	\ball>
 try / else	spec	503	\btry\b
 on EXIT	spec	503	\bon\s+EXIT\b
 par { } block	spec	503	\bpar\s*\{
-par for	adopted	732	\bpar\s+for\b
+par for (xargs -P, or sh's & and wait)	removed	799	\bpar\s+for\b
 load a file	spec	514	\bload\b
 def with -> kind	spec	503	\bdef\b[^{\n]*->
 lists [..] and records {k: v}	spec	503	\[@|\{\s*\w+:
@@ -28,8 +28,8 @@ for i, x in list	adopted	732	\bfor\s+\w+\s*,\s*\w+\s+in\b
 break and continue	adopted	732	\b(break|continue)\b
 {expr} as a command argument	adopted	732	\s\{(\$|[a-z]+\()
 cd DIR { block }	adopted	732	\bcd\s+\S+\s*\{
-fail "message"	adopted	732	\bfail\b
-arg(n)	adopted	732	\barg\(
+fail "message" (echo ... out>err; exit 1)	removed	799	(?:^|[{;]|\?\?)\s*fail\s
+arg(n) ($args[i], at($args, i, default))	removed	799	(?<![\w-])arg\(
 $args	adopted	732	\$args\b
 $script	adopted	732	\$script\b
 env(name)	adopted	732	\benv\(
@@ -37,9 +37,9 @@ default(x, y)	spec	502	\bdefault\(
 number(), code(run)	adopted	732	\b(number|code)\(
 range(a, b)	adopted	732	\brange\(
 text and file functions	adopted	732	\b(read|write|contains|replace|split|words|lines|first|len)\(
-starts ends trim join sort values	adopted	732	\b(starts|ends|trim|join|sort|values)\(
-push extend shift slice	adopted	732	\b(push|extend|shift|slice)\(
-path functions stem ext dir base abs	adopted	732	\b(stem|ext|dir|base|abs)\(
+starts ends trim join sort	adopted	732	\b(starts|ends|trim|join|sort)\(
+push slice	adopted	732	\b(push|slice)\(
+path functions dir base abs (dirname basename realpath)	removed	799	(?<![\w-])(dir|base)\(
 adjacent items join into one argument	adopted	732	[A-Za-z0-9_./-]\$\(
 decimals: fixed point, 6 places; log exp min max round	adopted	733	\b(decimal|log|exp|min|max|round)\(|\b\d+\.\d+\b
 regular expressions: match all sub	adopted	733	\b(match|all|sub)\(
@@ -52,16 +52,16 @@ a def never changes a script variable (checked)	adopted	734	-
 case VALUE { PATTERN... { block } }	adopted	735	(^|[{;])\s*case\s+\$
 a run in command position runs it	adopted	735	\(\(\$\w+\s
 setenv(name, value)	adopted	735	\bsetenv\(
-now(): the clock, in seconds	adopted	735	\bnow\(
-upper lower trim-end	adopted	735	\b(upper|lower|trim-end)\(
+now(): the clock, in seconds ($(date +%s))	removed	799	(?<![\w-])now\(
+upper lower (tr)	removed	799	(?<![\w-])(upper|lower)\(
 sum sort-by	adopted	735	\b(sum|sort-by)\(
 for k, v in record	adopted	735	\bfor\s+\w+\s*,\s*\w+\s+in\s+(\$by|sort-by)
 defs before their use (one pass)	adopted	735	-
 keywords are plain words as arguments	adopted	737	-
 implemented in both compilers (744): fail exit on-EXIT arg $args $script env default @spread	built	744	-
 implemented in both compilers (745): runs as terms, continue, par for, a def as a pipeline stage	built	745	-
-arg(n, default)	adopted	747	arg\(\d+, 
-warn ... (a line to the err port)	adopted	747	^\s*warn 
+arg(n, default)	removed	799	(?<![\w-])arg\(\d+, 
+warn ... (echo ... out>err)	removed	799	(?:^|[{;])\s*warn\s
 an empty text or list is false in a condition	adopted	752	-
 options(...) for an argument loop	open	747	-
 def f x -> kind = expr	open	747	-
@@ -70,3 +70,6 @@ $x[i].f in a string without { }	open	747	-
 x = if (c) a else b	open	747	-
 {k: v for x in src}	open	747	-
 the library for Python-born scripts (754): read write starts ends upper lower trim base, slice of texts and records, at(r, k, default), sum max min, sort-by (stable), decimals (fixed point, six places), [e for k, v in src], an item variable takes any value boxed	built	754	-
+first text contains values extend shift delete log exp format, two-value max min (one way each: $l[0], "$x", in, a comprehension, [@a @b], pop, awk, printf)	removed	799	(?<![\w-])(first|text|contains|values|extend|shift|delete|log|exp|format)\(
+echo ... out>err: a line to the err port, in-process	adopted	799	echo [^\n]*out>err
+pop(x, key): a list's item or a record's field, out	adopted	799	\bpop\(

@@ -37,8 +37,8 @@
 #
 # The body is one function, called on the last line: the shell has read
 # all of it before a bundle can change this file under it.
-self = abs($script)                  # before the cd: $script may be relative (787)
-cd {dir(dir(dir($self)))}               # examples/rill/ is two below the top
+self = $(realpath $script)           # before the cd: $script may be relative (787)
+cd $(realpath "$(dirname $self)/../..")   # examples/rill/ is two below the top
 setenv(LC_ALL, C)
 opts = {clean: true, verify: false, profile: true, bench: true, apply: true}
 for a in $args {
@@ -50,7 +50,7 @@ for a in $args {
         --verify { opts[verify] = true }
         --no-verify { opts[verify] = false }
         -h --help { sed -n '2,/^opts = /s/^# \{0,1\}//p' $self; exit 0 }
-        * { warn "pack-results: unknown argument: $a (--help lists them)"; exit 2 }
+        * { echo "pack-results: unknown argument: $a (--help lists them)" out>err; exit 2 }
     }
 }
 
@@ -61,52 +61,54 @@ def lines-text l -> text {           # each item a line, as a command's output: 
 }
 def note text { echo $text >> "$stage/SUMMARY.txt" }
 def step name cmd -> number {
-    warn "== $name =="
-    t0 = now()
+    echo "== $name ==" out>err
+    t0 = number($(date +%s))
     st = code((sh -c $cmd all> "$stage/$name.log"))   # the command a text, run as the shell script ran it (786)
-    note("step $name: status $st, {now() - $t0} s")
+    t1 = number($(date +%s))
+    note("step $name: status $st, {$t1 - $t0} s")
     return $st
 }
 def new-report path -> bool {
-    held = "bench/reports/{base($path)}"
+    held = "bench/reports/$(basename $path)"
     return not ((git ls-files --error-unmatch $held all> /dev/null) and (cmp -s $path $held))
 }
 def apply-bundle -> record {
     dir = default(env(BUNDLE_DIR), "{env(HOME)}/Downloads")
     best = ""; bestn = -1
     for f in glob("$dir/relf-claude-iter*.bundle") {
-        n = number(default(first(all(base($f), '^relf-claude-iter([0-9]+)-')), "-1"))
-        if ($n > $bestn or ($n == $bestn and base($f) > base($best))) { best = $f; bestn = $n }
+        m = match(sub($f, '^.*/', ''), '^relf-claude-iter([0-9]+)-'); n = -1
+        if ($m) { n = number($m[1]) }
+        if ($n > $bestn or ($n == $bestn and sub($f, '^.*/', '') > sub($best, '^.*/', ''))) { best = $f; bestn = $n }
     }
     if ($best == "") { return {applied: "none in $dir", changed: false} }
-    b = base($best)
-    git bundle verify $best all> /dev/null ?? fail "pack-results: $best: git cannot read it whole - not applied"
+    b = $(basename $best)
+    if (not (git bundle verify $best all> /dev/null)) { echo "pack-results: $best: git cannot read it whole - not applied" out>err; exit 1 }
     new = $(git bundle list-heads $best refs/heads/master | cut -d' ' -f1)
-    if ($new == "") { fail "pack-results: $best has no master - not applied" }
+    if ($new == "") { echo "pack-results: $best has no master - not applied" out>err; exit 1 }
     if (git merge-base --is-ancestor $new HEAD err> /dev/null) { return {applied: "$b: master already has it", changed: false} }
-    if ($(git symbolic-ref -q --short HEAD ?? true) != master) { fail "pack-results: the checkout is not on master - $b not applied" }
+    if ($(git symbolic-ref -q --short HEAD ?? true) != master) { echo "pack-results: the checkout is not on master - $b not applied" out>err; exit 1 }
     if ($(git status --porcelain --untracked-files=no) != "") {
         git status --short --untracked-files=no out>err
-        fail "pack-results: tracked files are changed - $b not applied; commit or stash them, or --no-apply"
+        echo "pack-results: tracked files are changed - $b not applied; commit or stash them, or --no-apply" out>err; exit 1
     }
     old = $(git rev-parse HEAD); before = $(git hash-object $self)
     if (not ((git fetch -q $best master err> /dev/null) and (git merge -q --ff-only FETCH_HEAD all> /dev/null))) {   # 787: no try
-        fail "pack-results: $b does not fast-forward master (master has commits it lacks?) - not applied"
+        echo "pack-results: $b does not fast-forward master (master has commits it lacks?) - not applied" out>err; exit 1
     }
     git fetch -q $best article-2026:article-2026 err> /dev/null ?? true
     applied = "$b applied: $(git rev-parse --short $old) -> $(git rev-parse --short HEAD)"
-    warn "== $applied =="
+    echo "== $applied ==" out>err
     return {applied: $applied, changed: $(git hash-object $self) != $before}
 }
 
-git rev-parse --git-dir all> /dev/null ?? fail "pack-results: not a git checkout"
+if (not (git rev-parse --git-dir all> /dev/null)) { echo "pack-results: not a git checkout" out>err; exit 1 }
 if (not $opts.apply) { applied = "not looked for (--no-apply)" }
 else if (env(PACK_REEXEC) != "") { applied = "{default(env(PACK_APPLIED), '?')}; this script changed with it, and ran again" }
 else {
     r = apply-bundle()
     applied = $r.applied
     if ($r.changed) {
-        warn "== $self changed with the bundle: running the new one =="
+        echo "== $self changed with the bundle: running the new one ==" out>err
         exit code((env PACK_REEXEC=1 PACK_APPLIED=$applied rill $self @args))
     }
 }
@@ -128,7 +130,7 @@ for r in glob("bench-report-*.txt") {
     else { note("report already in bench/reports/: $r") }
 }
 if ($opts.clean) {
-    warn "== clean =="
+    echo "== clean ==" out>err
     untracked = lines($(git clean -ndx | sed -n 's/^Would remove //p'))
     write("$stage/untracked.txt", lines-text($untracked))
     rm -rf .clean-trash.old
@@ -141,7 +143,7 @@ if ($opts.clean) {
             bench-report-*.txt { if (new-report($p)) { note("clean kept: $p"); continue } }
             bench/reports/* relf-results-*.tar.gz *.bundle { note("clean kept: $p"); continue }
         }
-        mkdir -p ".clean-trash/{dir($p)}"
+        mkdir -p ".clean-trash/$(dirname $p)"
         mv ./$p ".clean-trash/{sub($p, '/+$', '')}"; push($cleaned, $p)
     }
     write("$stage/cleaned.txt", join($cleaned, "\n"))
@@ -154,9 +156,9 @@ if ($opts.clean) {
 }
 if ($opts.bench) {
     report = "$(pwd)/bench-report-$host-$utc.txt"
-    warn "   (tools/bench-report.sh: about ten minutes)"
+    echo "   (tools/bench-report.sh: about ten minutes)" out>err
     step("bench", "env REPORT=$report sh tools/bench-report.sh")
-    if (test -f $report) { cp $report "$stage/reports/"; note("this run's report: reports/{base($report)}") }
+    if (test -f $report) { cp $report "$stage/reports/"; note("this run's report: reports/$(basename $report)") }
 } else {
     note("bench: skipped (--no-bench)")
     step("build", "make all relfsh-native")
@@ -165,13 +167,13 @@ if (test -x ./relfsh-native) {
     step("native-written", "python3 tools/native-written.py ./relfsh-native")
     if ($opts.profile) {
         wl = $(mktemp -d)
-        for f in glob("tests/bench-vm/*.sh") { write("$wl/{base($f)}", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
+        for f in glob("tests/bench-vm/*.sh") { write("$wl/$(basename $f)", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
         for w in [fn arith str realistic] { step("profile-$w", "python3 tools/native-prof.py ./relfsh-native '$wl/$w.sh'") }
         rm -rf $wl
     }
 } else { note("no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile") }
 if ($opts.verify) {
-    warn "   (tests/verify: some minutes)"
+    echo "   (tests/verify: some minutes)" out>err
     step("verify", "sh tests/verify")
     note("verify's lines other than ok, and its last line:")
     grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum ?? true   # nothing left: grep says 1 (795)
@@ -180,7 +182,7 @@ note("checkout after - each line should be explained (prompts/07):")
 git status --porcelain | sed 's/^/    /' >> $sum
 failed = all(read($sum), 'step (\S+): status [1-9]')
 if (len($failed) > 0) { note("steps that failed: {join($failed, ' ')}") }
-tar czf $pack -C $stage . ?? fail "pack-results: tar failed; the results were in $stage"
+if (not (tar czf $pack -C $stage .)) { echo "pack-results: tar failed; the results were in $stage" out>err; exit 1 }
 cat $sum
 echo
 if (len($failed) > 0) { echo "steps that failed: {join($failed, ' ')} - their logs are in the pack" }

@@ -14,8 +14,8 @@ def check what want got -> number {   # lib.sh's assert_output_equals: 1 when it
     for l in lines($got) { echo "    $l" }
     return 1
 }
-here = "{dir(dir(dir(abs($script))))}/tests/shell"   # examples/rill/ is two below the top
-sh = abs(env(THIS_SH))
+here = "$(realpath "$(dirname $script)/../..")/tests/shell"   # examples/rill/ is two below the top
+sh = $(realpath {env(THIS_SH)})
 t = $(mktemp -d)
 on EXIT { rm -rf $t }
 cd $t

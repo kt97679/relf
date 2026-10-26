@@ -7,7 +7,7 @@ if ($name) { echo "$name is true" }
 items = []
 if (not $items) { echo empty list is false }
 push($items, one)
-while ($items) { echo took {shift($items)} }
+while ($items) { echo took {pop($items, 0)} }
 host = {}
 if (not $host) { echo empty record is false }
 host[port] = 80

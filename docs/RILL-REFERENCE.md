@@ -114,7 +114,7 @@ stop early, as Python's.
   between - `[$x - 1, $x * 2]`, `[$x - 1 $x + 1]` (an item ends where no
   operator goes on); a sign glued to a number is part of it, `[1 -2]` two
   items; an operator meant as text is quoted, `['-' u8]`. `[@xs more]`
-  spreads a list in; `{a: 1, 'b c': 2}`.
+  spreads a list in (or an item holding one); `{a: 1, 'b c': 2}`.
 - `-x` keeps the kind: a number's, a decimal's, an item's.
 - Comprehensions: `[expr for x in list if cond]`, `[expr for i, x in list]`,
   `[expr for k, v in record]`; the `if` takes truth as an `if` does.
@@ -129,7 +129,6 @@ stop early, as Python's.
     for x in $list { ... }          for i, x in $list { ... }
     for k in $record { ... }        for k, v in $record { ... }
     for i in range(10) { ... }      range(b), range(a, b), range(a, b, step) - up to b, not with it
-    par for x in $list { ... }      each round in a child process, side by side
     break    continue
     x[i] = v    x[i] += v    x[i] -= v    a[i][j] = v
     case $subject { pat1 pat2 { ... } * { ... } }
@@ -137,9 +136,8 @@ stop early, as Python's.
     on EXIT { ... }
     cd dir    cd dir { ... }        the second goes back after the block
     echo words and "strings"
-    warn message                    to the error port
-    fail "message"                  the message to the error port; stop, status 1
-    exit    exit n
+    echo words out>err              to the error port, without a process
+    exit    exit n                  a message and a stop: echo "message" out>err; exit 1
 
 - `case`: the first arm with a pattern that matches runs. Patterns are the
   shell's: `*`, `?`, `[...]` (`!` or `^` to negate, ranges), `\` before a
@@ -148,7 +146,7 @@ stop early, as Python's.
   record) when it returns a value. A function is defined before its use -
   in the file, above its first call. It calls itself freely; two calling
   each other cannot be written. Called one way only: `name(args)`.
-- `on EXIT`: runs however the script ends - its last line, `exit`, `fail`, a
+- `on EXIT`: runs however the script ends - its last line, `exit`, a
   failed command, a run-time error, or INT or TERM (see Signals).
 
 ## Commands
@@ -160,8 +158,8 @@ function runs a program, found on PATH:
     make all relfsh-native
     printf '%s\n' "$name" @rest
 
-- Arguments: bare words, strings, `$x`, `@list` (each item an argument;
-  `@args` the script's own).
+- Arguments: bare words, strings, `$x`, `@list` (each item an argument,
+  of a list or an item holding one; `@args` the script's own).
 - `>` `>>` `<` redirect output, appending output, input; with a port:
   `out> f`, `err> f`, `all> f` (both), `err>> f`; `err>out` joins errors to
   output. Pipelines: `a | b | c`; a function can be a stage (no arguments).
@@ -185,32 +183,36 @@ function runs a program, found on PATH:
 | `words(t)`, `lines(t)` | a text split at whitespace, at line ends |
 | `split(t, sep)` | pieces between seps, empty ones kept (Python's) |
 | `join(list, sep)` | the items as texts, sep between |
-| `format(f, a, ...)` | Python's `%`: `s d i f x X %%`, flags `- 0 +` and space, width, precision |
 | `range(...)` | as Python's: 1 to 3 arguments, up to the end, not with it |
-| `number(t)`, `text(x)`, `decimal(t)` | conversions; `number` reads `0x` hex too |
-| `push(l, x)`, `extend(l, l2)` | append an item, a list's items |
-| `shift(l)`, `first(l)`, `pop(l)` | the first item taken out or left in; the last taken out |
-| `delete(x, key)` | a record's field, or a list's item (negative from the end), taken out - as `del` |
+| `number(t)`, `decimal(t)` | a text read as a number or a decimal; `number` reads `0x` hex too (a value as a text: `"$x"`) |
+| `push(l, x)` | append an item (a list's items: `l = [@l @more]`) |
+| `pop(x, key)` | a list's item (negative from the end) or a record's field, taken out and returned: `pop($l, -1)` the last, `pop($l, 0)` the first |
 | `find(x, part)` | where a part first stands in a text (bytes), or an item's index in a list; -1 when not there |
-| `keys(r)`, `values(r)` | a record's fields, its values |
+| `keys(r)` | a record's fields (its values: `[$v for k, v in $r]`) |
 | `sort(l)` | a sorted copy, Python's order, stable; records have none - sort-by |
-| `sort-by(rows, field)`, `sort-by(rows, field, desc)` | a list of records by a field, stable (a record: its entries by their values' field) |
+| `sort-by(rows, field)`, `sort-by(rows, field, desc)` | a list of records by a field, stable |
 | `slice(x, a, b)` | part of a list, a text, a record |
 | `at(x, key, default)` | a record's field or a list's item (negative from the end), else the default |
-| `sum(l)`, `max(l)`, `min(l)`, `max(a, b)`, `min(a, b)` | as Python's: a decimal among them, a decimal |
-| `abs(x)` | a number's or decimal's absolute value; a path's absolute form (Python's abspath) |
-| `log(x)`, `exp(x)` | natural, as decimals |
-| `contains(t, part)`, `starts(t, p)`, `ends(t, s)` | tests on texts |
-| `replace(t, old, new)`, `upper(t)`, `lower(t)`, `trim(t)` | texts changed |
+| `sum(l)`, `max(l)`, `min(l)` | as Python's: a sum with a decimal among the items is a decimal; max and min give the item itself (of two values: `max([$a $b])`) |
+| `abs(x)` | a number's or decimal's absolute value |
+| `starts(t, p)`, `ends(t, s)` | tests on texts (a part anywhere: `part in t`) |
+| `replace(t, old, new)`, `trim(t)` | texts changed |
 | `match(t, re)` | `[whole, group 1, ...]` of the first match anywhere, or `[]` (re.search) |
 | `all(t, re)` | every match: group 1, or the whole (re.findall) |
 | `sub(t, re, repl)` | every match replaced; `\1`..`\9` the groups, `\\` a backslash (as sed's) |
 | `read(path)`, `write(path, t)` | a file whole |
-| `base(path)`, `dir(path)`, `glob(pattern)` | basename, dirname; matching paths sorted, `[]` for none - wildcards in the last part |
-| `env(name)`, `arg(n)`, `arg(n, default)` | the environment; the script's arguments; also `$args`, `$script` |
+| `glob(pattern)` | matching paths sorted, `[]` for none - wildcards in the last part |
+| `env(name)` | the environment (the script's arguments: `$args`, from `$args[0]`; its path: `$script`) |
 | `default(t, other)` | `t`, or `other` when `t` is empty |
 | `code((cmd))` | a command's status, a number |
-| `now()` | seconds since 1970 by the local clock: for durations |
+
+Standard commands do the rest, one way each: `printf` formats, `date +%s`
+is the clock, `tr a-z A-Z` changes case, `basename`, `dirname` and
+`realpath` take paths apart, `awk` has logarithms and the like, and
+`xargs -P` (or `sh -c '... & ... wait'`) runs commands side by side. A
+command started inside a loop of thousands costs a process each round: do
+the whole text at once (`lines($(tr a-z A-Z < file))`), or keep it in Rill
+(`sub($p, '^.*/', '')` for a basename).
 
 ## Errors and statuses
 
@@ -219,7 +221,7 @@ function runs a program, found on PATH:
 - A run-time error names the line of the statement running, innermost
   first: `rill: index 5 past a list of 3 (line 4)`, status 2. An error in the
   engine itself (a crash) gives only its number.
-- A command that fails: its status. `fail`: 1. `exit n`: n.
+- A command that fails: its status. `exit n`: n.
 
 ## Signals
 
@@ -240,8 +242,7 @@ call the function from it.
 
 - `/` of two whole numbers is integer division, as the shell's.
 - Texts are bytes: compared, sliced and counted as bytes.
-- Decimals are fixed point with six places, exact in decimal; `format`'s `f`
-  rounds an exact tie away from zero (Python rounds the binary float).
+- Decimals are fixed point with six places, exact in decimal.
 - A number variable read before it is set is an error, through a sentinel:
   a script whose number really is -9223372036854775808 would be told it is
   not set.

@@ -3,7 +3,7 @@ l = ["a" "b"]
 echo "{join($l, ", ")}"
 echo "[{join($l, "] [")}]"
 r = {name: "x"}
-echo "{$r["name"]} and {upper("{$r.name}")}"
+echo "{$r["name"]} and {trim("{$r.name}")}"
 echo "{len("a\"b")} {len('it"s')}"
 echo "$(echo "inner quoted")"
 echo "{join(["{1 + 1}", '}{'], "|")}"
