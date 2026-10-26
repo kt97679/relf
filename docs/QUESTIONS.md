@@ -16,8 +16,8 @@ same iteration.
    were answered at 516.)*
 2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
 3. **Rill's features that wait on these** (Rill itself exists since 736;
-   809 corrected this line): **Q36** (the balance: JSON, then jobs - Q10
-   and Q11 as Q36 settles them); **Q7** (text blocks), **Q8** (the
+   809 corrected this line): Q36 answered (A36): JSON built at 811, jobs
+   next - Q10 and Q11 settled by it; **Q7** (text blocks), **Q8** (the
    prompt's questions, the name).
 4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
    on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
@@ -33,46 +33,6 @@ same iteration.
    source for both. N1 may begin.)*
 
 ## Open
-
-**Q36. Rill, general and minimal: the balance (810)**
-The user, A35: a general shell and script language, minimal and simple -
-"let's see if we can find reasonable balance". Proposed, as a filter and
-what it lets in:
-(1) *The filter.* The language does what commands cannot: hold values
-(lists, records), decide and repeat, name and reuse (def), and turn text
-into values and back. Commands do the rest, one way each (799). A feature
-joins when a real script needs it - this repository's or a general one -
-and no existing way does it (732); each is measured (the image's bytes,
-both compilers, the reference) and kept in FEATURES.tsv; the rewrites
-together stay shorter (A35).
-(2) *In: JSON.* The bridge from tools' structured output to Rill's values,
-which no command can give a script: `from-json(t)` reads, `json(x)`
-writes - Q10's option (1), explicit, not the automatic export of 516
-(by the script's use, a value crosses only where the script says). A
-writer is mostly R-SHOW with every key quoted; a reader is a recursive
-descent in the runtime; one library name each in both compilers; tested
-against Python's json module. Estimated, not measured: 2-3 KB of the
-image. Two details: JSON's `null` (Rill has none) reads as an empty text -
-one rule, false as the shell's unset is, and `json()` never writes null;
-a number reads as decimal() reads it - an integer a number, a fraction or
-an exponent a decimal of six places, past the range the overflow error.
-(3) *In, after JSON: jobs, minimal.* `spawn((cmd args))` starts one and
-returns it, `wait($job)` gives its status, `kill` stays the command; a
-job not waited for is stopped when the script ends (Q11's recommendation:
-no orphan by accident). A script that starts a server, tests it and stops
-it cannot be written with commands alone - `sh -c` gives no handle.
-(4) *Out - one way exists:* try (?? , a condition, on EXIT); default
-arguments (pass them; at() for $args); options() (a loop with case);
-`x = if ...` (an if); `{k: v for ...}` (a loop); `x[a:b]` (slice());
-`def f() -> k = expr` (return); `m[k] ?= v` (if not in); load (a script
-is one file).
-(5) *Later, on evidence:* text blocks (Q7) - strings span lines already;
-the indentation question waits for a script that needs it.
-(6) *Kept as decided:* texts as bytes; no collection inside a function.
-Found while weighing (2): `decimal("1e3")` gives 1.0 - it stops at the e
-and drops the rest, silently; decimal() truncates past six places. The
-reader and decimal() get one rule, (2)'s.
-*Recommendation*: confirm (1)-(6); then JSON, then jobs. *Blocks*: both.
 
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
@@ -179,6 +139,46 @@ escapes, as bash's does. *Recommendation*: keep them all.
 
 
 ## Answered
+
+**Q36. Rill, general and minimal: the balance (810; answered A36)**
+The user, A35: a general shell and script language, minimal and simple -
+"let's see if we can find reasonable balance". Proposed, as a filter and
+what it lets in:
+(1) *The filter.* The language does what commands cannot: hold values
+(lists, records), decide and repeat, name and reuse (def), and turn text
+into values and back. Commands do the rest, one way each (799). A feature
+joins when a real script needs it - this repository's or a general one -
+and no existing way does it (732); each is measured (the image's bytes,
+both compilers, the reference) and kept in FEATURES.tsv; the rewrites
+together stay shorter (A35).
+(2) *In: JSON.* The bridge from tools' structured output to Rill's values,
+which no command can give a script: `from-json(t)` reads, `json(x)`
+writes - Q10's option (1), explicit, not the automatic export of 516
+(by the script's use, a value crosses only where the script says). A
+writer is mostly R-SHOW with every key quoted; a reader is a recursive
+descent in the runtime; one library name each in both compilers; tested
+against Python's json module. Estimated, not measured: 2-3 KB of the
+image. Two details: JSON's `null` (Rill has none) reads as an empty text -
+one rule, false as the shell's unset is, and `json()` never writes null;
+a number reads as decimal() reads it - an integer a number, a fraction or
+an exponent a decimal of six places, past the range the overflow error.
+(3) *In, after JSON: jobs, minimal.* `spawn((cmd args))` starts one and
+returns it, `wait($job)` gives its status, `kill` stays the command; a
+job not waited for is stopped when the script ends (Q11's recommendation:
+no orphan by accident). A script that starts a server, tests it and stops
+it cannot be written with commands alone - `sh -c` gives no handle.
+(4) *Out - one way exists:* try (?? , a condition, on EXIT); default
+arguments (pass them; at() for $args); options() (a loop with case);
+`x = if ...` (an if); `{k: v for ...}` (a loop); `x[a:b]` (slice());
+`def f() -> k = expr` (return); `m[k] ?= v` (if not in); load (a script
+is one file).
+(5) *Later, on evidence:* text blocks (Q7) - strings span lines already;
+the indentation question waits for a script that needs it.
+(6) *Kept as decided:* texts as bytes; no collection inside a function.
+Found while weighing (2): `decimal("1e3")` gives 1.0 - it stops at the e
+and drops the rest, silently; decimal() truncates past six places. The
+reader and decimal() get one rule, (2)'s.
+*Recommendation*: confirm (1)-(6); then JSON, then jobs. *Blocks*: both.
 
 **Q35. Rill after 805-808: the length rule, and who Rill is for (809; answered A35)**
 GOALS.md 15's open items, assessed at 809 (the reply had the detail):
@@ -595,4 +595,9 @@ dead-words and native-by-source do). "who rill is for: I want rill to be
 general shell/script language. But I also want it to be minimal and
 simple. Let's see if we can find reasonable balance" - the balance
 proposed as Q36.
+
+**A36. Rill, general and minimal: the balance (Q36; 810 -> 811).** The
+user: "I confirm q36" - (1)-(6) as proposed. JSON built at 811 (from-json,
+json; decimal() on the same number reader, which fixed decimal("1e3") and
+its kin); jobs, minimal, are next.
 

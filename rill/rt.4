@@ -569,14 +569,36 @@ VARIABLE RP-NEW
   K-TEXT = IF SWAP R-ANY>TEXT R-CONTAINS EXIT THEN  R-IN ;
 : R-REPLACE ( t old new --- t2 )   \ replace(text, old, new): every old made new
   RP-NEW !  R-SPLIT  RP-NEW @ R-JOIN ;
-: R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000
-  R-T@ OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
-  2DUP [CHAR] . SCAN                                          ( a u a2 u2 )
-  2SWAP DROP 2 PICK OVER -                                    ( a2 u2 a ulen )
-  0 0 2SWAP >NUMBER 2DROP  0<> OVER 0< OR IF R-OVF THEN  R-N>D   ( a2 u2 whole )   \ checked (794)
-  ROT ROT DUP IF 1 /STRING THEN                                  ( whole fa fu )
-  0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP
-  +  R> IF NEGATE THEN ;
+\ Numbers read from text (811): one reader for decimal() and from-json - a sign, digits, a fraction,
+\ an exponent (-?D*(.D*)?([eE][+-]?D+)?, a digit somewhere). With neither fraction nor exponent a
+\ number, checked; with either a decimal of six places, truncated, checked. decimal() read the digits
+\ before anything it did not know and dropped the rest: "1e3" gave 1.0, "abc" 0.0, " 1.5" 0.5.
+VARIABLE NT-M  VARIABLE NT-E  VARIABLE NT-X  VARIABLE NT-DEC  VARIABLE NT-BIG  VARIABLE NT-DIG
+: NT-D? ( c --- f )   [CHAR] 0 [CHAR] 9 1+ WITHIN ;
+: NT-ROOM? ( d --- f )   NT-M @ 922337203685477580 < IF DROP -1 EXIT THEN  NT-M @ 922337203685477580 = SWAP 7 > 0= AND ;
+: NT-INT ( d --- )   1 NT-DIG +!  DUP NT-ROOM? IF NT-M @ 10 * + NT-M ! ELSE DROP -1 NT-BIG ! 1 NT-E +! THEN ;
+: NT-FRAC ( d --- )   1 NT-DIG +!  DUP NT-ROOM? IF NT-M @ 10 * + NT-M ! -1 NT-E +! ELSE DROP THEN ;   \ past it: truncated
+: NT-DIGITS ( a u xt --- a' u' )   >R  BEGIN DUP IF OVER C@ NT-D? ELSE 0 THEN WHILE OVER C@ [CHAR] 0 - R@ EXECUTE 1 /STRING REPEAT  R> DROP ;
+: NT-EXP ( d --- )   NT-X @ 100000 < IF NT-X @ 10 * + NT-X ! ELSE DROP THEN ;
+VARIABLE NT-INT-XT  ' NT-INT NT-INT-XT !XT   VARIABLE NT-FRAC-XT  ' NT-FRAC NT-FRAC-XT !XT   VARIABLE NT-EXP-XT  ' NT-EXP NT-EXP-XT !XT
+: R-NUMTEXT ( c-addr u --- v kind -1 | 0 )
+  0 NT-M ! 0 NT-E ! 0 NT-X ! 0 NT-DEC ! 0 NT-BIG ! 0 NT-DIG !
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN                         ( a u )  ( R: negative? )
+  NT-INT-XT @XT NT-DIGITS
+  DUP IF OVER C@ [CHAR] . = IF -1 NT-DEC ! 1 /STRING NT-FRAC-XT @XT NT-DIGITS THEN THEN
+  NT-DIG @ 0= IF 2DROP R> DROP 0 EXIT THEN                             \ a digit somewhere
+  DUP IF OVER C@ 32 OR [CHAR] e = IF
+    -1 NT-DEC !  1 /STRING  0 >R                                      ( a u )  ( R: negative? exp-negative? )
+    DUP IF OVER C@ [CHAR] - = IF R> DROP -1 >R 1 /STRING ELSE OVER C@ [CHAR] + = IF 1 /STRING THEN THEN THEN
+    DUP IF OVER C@ NT-D? ELSE 0 THEN 0= IF 2DROP R> R> 2DROP 0 EXIT THEN
+    NT-EXP-XT @XT NT-DIGITS  R> IF NT-X @ NEGATE ELSE NT-X @ THEN NT-E +!  THEN THEN
+  NIP IF R> DROP 0 EXIT THEN                                           \ something after it
+  NT-DEC @ 0= IF  NT-BIG @ IF R-OVF THEN  NT-M @ R> IF NEGATE THEN K-NUM -1 EXIT  THEN
+  NT-E @ 6 +  DUP 0< IF NEGATE NT-M @ SWAP 0 ?DO 10 / LOOP ELSE NT-M @ SWAP 0 ?DO 10 R-MUL LOOP THEN
+  R> IF NEGATE THEN K-DEC -1 ;
+: R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000, "1e3" -> 1000000000
+  R-T@ R-NUMTEXT 0= IF ." rill: not a decimal" R-ERR-NL -4004 THROW THEN  K-NUM = IF R-N>D THEN ;
 VARIABLE LM-K
 : R-LMIN ( l --- box )   \ min(list): its least item, as Python's min
   DUP R-LEN 0= ABORT" rill: min of an empty list"
@@ -757,6 +779,114 @@ VARIABLE SH-B  VARIABLE SH-N  VARIABLE SH-CAP  CREATE SH-C 1 ALLOT
 ' R-SHOW IS R-SHOW-D
 : R-CONT>TEXT ( v kind --- t )   K-LIST = IF S"  " R-TEXT R-JOIN ELSE R-SHOW-REC THEN ;
 ' R-CONT>TEXT IS R-CONT>TEXT-D
+
+\ ---- JSON (Iteration 811, QUESTIONS.md A36): json(x) writes a value, from-json(t) reads one ----
+\ The writer is compact, as Python's json.dumps(x, separators=(',', ':'), ensure_ascii=False): every
+\ key quoted, \" \\ \n \r \t \b \f, other bytes below 32 as \u00XX.
+: J-HEXD ( n --- c )   DUP 10 < IF [CHAR] 0 + ELSE 87 + THEN ;
+: J-TEXT ( t --- t' )
+  0 SH-N !  [CHAR] " SH-CH
+  R-T@ 0 ?DO DUP I + C@ CASE
+      [CHAR] " OF [CHAR] \ SH-CH [CHAR] " SH-CH ENDOF
+      [CHAR] \ OF [CHAR] \ SH-CH [CHAR] \ SH-CH ENDOF
+      10 OF [CHAR] \ SH-CH [CHAR] n SH-CH ENDOF   13 OF [CHAR] \ SH-CH [CHAR] r SH-CH ENDOF
+      9 OF [CHAR] \ SH-CH [CHAR] t SH-CH ENDOF    8 OF [CHAR] \ SH-CH [CHAR] b SH-CH ENDOF
+      12 OF [CHAR] \ SH-CH [CHAR] f SH-CH ENDOF
+      DUP 32 < IF S" \u00" SH-ADD DUP 4 RSHIFT J-HEXD SH-CH DUP 15 AND J-HEXD SH-CH ELSE DUP SH-CH THEN
+    ENDCASE LOOP DROP
+  [CHAR] " SH-CH  SH-B @ SH-N @ R-TEXT ;
+DEFER R-JSON-D
+: J-LIST ( l --- t )   R-NEW-LIST SWAP  DUP @ 0 ?DO DUP I R-AT R-JSON-D K-TEXT R-BOX 2 PICK R-PUSH LOOP DROP
+  S" ," R-TEXT R-JOIN  S" [" R-TEXT SWAP S" ]" R-TEXT 3 R-CONCAT ;
+: J-REC ( r --- t )   R-NEW-LIST SWAP
+  DUP R-KEYS @ 0 ?DO
+    DUP R-KEYS I R-AT R-ANY>TEXT J-TEXT  S" :" R-TEXT  2 PICK R-VALS I R-AT R-JSON-D  3 R-CONCAT
+    K-TEXT R-BOX 2 PICK R-PUSH
+  LOOP DROP
+  S" ," R-TEXT R-JOIN  S" {" R-TEXT SWAP S" }" R-TEXT 3 R-CONCAT ;
+: R-JSON ( box --- t )   \ json(x); numbers, decimals and bools as Rill writes them, which JSON reads
+  DUP R-UNBOX NIP
+  DUP K-TEXT = IF DROP R-ANY>TEXT J-TEXT EXIT THEN
+  DUP K-LIST = IF DROP R-UNBOX DROP J-LIST EXIT THEN
+  K-REC = IF R-UNBOX DROP J-REC EXIT THEN
+  R-ANY>TEXT ;
+' R-JSON IS R-JSON-D
+\ The reader: a recursive descent over the text's bytes - an object a record, an array a list, a
+\ string a text (\uXXXX as UTF-8, a surrogate pair one character), true and false bools, null an
+\ empty text, a number as decimal() reads one (R-NUMTEXT). Nesting past 200 deep is an error.
+VARIABLE JP  VARIABLE JE  VARIABLE JS  VARIABLE JD   \ the place, the end, the start, the depth
+: J-FAIL ( c-addr u --- )   ." rill: from-json: " TYPE ."  at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
+: J-END? ( --- f )   JP @ JE @ U< 0= ;
+: J-C ( --- c )   J-END? IF 0 ELSE JP @ C@ THEN ;
+: J-WS ( --- )   BEGIN J-C DUP 32 = OVER 9 = OR OVER 10 = OR SWAP 13 = OR WHILE 1 JP +! REPEAT ;
+: J-EXPECT ( c --- )   J-WS J-C OVER = IF DROP 1 JP +! EXIT THEN
+  ." rill: from-json: " EMIT ."  expected at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
+: J-WORD ( c-addr u --- )   \ true, false, null: exactly
+  JE @ JP @ - OVER < IF 2DROP S" an unknown word" J-FAIL THEN
+  TUCK JP @ OVER COMPARE IF DROP S" an unknown word" J-FAIL THEN  JP +! ;
+: J-UTF8 ( u --- )   \ a code point as UTF-8, onto the text being made
+  DUP 128 < IF SH-CH EXIT THEN
+  DUP 2048 < IF DUP 6 RSHIFT 192 OR SH-CH 63 AND 128 OR SH-CH EXIT THEN
+  DUP 65536 < IF DUP 12 RSHIFT 224 OR SH-CH DUP 6 RSHIFT 63 AND 128 OR SH-CH 63 AND 128 OR SH-CH EXIT THEN
+  DUP 18 RSHIFT 240 OR SH-CH DUP 12 RSHIFT 63 AND 128 OR SH-CH DUP 6 RSHIFT 63 AND 128 OR SH-CH 63 AND 128 OR SH-CH ;
+: J-HEX4 ( --- u )   \ the four hex digits of a \u
+  JE @ JP @ - 4 < IF S" a short \u escape" J-FAIL THEN
+  0 4 0 DO JP @ I + C@ DUP NT-D? IF [CHAR] 0 - ELSE 32 OR DUP [CHAR] a [CHAR] f 1+ WITHIN IF 87 - ELSE
+    DROP S" a \u escape not in hex" J-FAIL THEN THEN SWAP 16 * + LOOP  4 JP +! ;
+: J-PAIR ( u --- u' )   \ a high surrogate and the low one after it: one character
+  DUP 56320 57344 WITHIN IF S" a lone surrogate" J-FAIL THEN
+  DUP 55296 56320 WITHIN 0= IF EXIT THEN
+  JE @ JP @ - 6 < IF S" a lone surrogate" J-FAIL THEN
+  JP @ C@ [CHAR] \ <> JP @ 1+ C@ [CHAR] u <> OR IF S" a lone surrogate" J-FAIL THEN
+  2 JP +!  J-HEX4  DUP 56320 57344 WITHIN 0= IF S" a lone surrogate" J-FAIL THEN
+  56320 -  SWAP 55296 - 10 LSHIFT +  65536 + ;
+: J-ESCAPE ( --- )   \ after a backslash
+  J-END? IF S" a string not closed" J-FAIL THEN  J-C 1 JP +!
+  CASE
+    [CHAR] " OF [CHAR] " SH-CH ENDOF   [CHAR] \ OF [CHAR] \ SH-CH ENDOF   [CHAR] / OF [CHAR] / SH-CH ENDOF
+    [CHAR] b OF 8 SH-CH ENDOF   [CHAR] f OF 12 SH-CH ENDOF   [CHAR] n OF 10 SH-CH ENDOF
+    [CHAR] r OF 13 SH-CH ENDOF   [CHAR] t OF 9 SH-CH ENDOF
+    [CHAR] u OF J-HEX4 J-PAIR J-UTF8 ENDOF
+    S" a bad escape" J-FAIL
+  ENDCASE ;
+: J-STRING ( --- t )   \ its opening " taken: to the closing one
+  0 SH-N !
+  BEGIN J-END? IF S" a string not closed" J-FAIL THEN  J-C [CHAR] " <> WHILE
+    J-C 32 < IF S" a control character in a string" J-FAIL THEN
+    J-C [CHAR] \ = IF 1 JP +! J-ESCAPE ELSE J-C SH-CH 1 JP +! THEN
+  REPEAT  1 JP +!  SH-B @ SH-N @ R-TEXT ;
+: J-NUMBER ( --- box )   \ the bytes a number may hold, read as decimal() reads them
+  JP @  BEGIN J-C DUP NT-D? OVER [CHAR] - = OR OVER [CHAR] + = OR OVER [CHAR] . = OR SWAP 32 OR [CHAR] e = OR
+    J-END? 0= AND WHILE 1 JP +! REPEAT
+  JP @ OVER - R-NUMTEXT 0= IF S" a bad number" J-FAIL THEN  R-BOX ;
+DEFER J-VALUE-D
+: J-DEEPER ( --- )   1 JD +!  JD @ 200 > IF S" nested past 200 deep" J-FAIL THEN ;
+: J-ARRAY ( --- box )   \ its [ taken
+  J-DEEPER  R-NEW-LIST  J-WS J-C [CHAR] ] = IF 1 JP +! ELSE
+    BEGIN J-VALUE-D OVER R-PUSH  J-WS J-C [CHAR] , = WHILE 1 JP +! REPEAT  [CHAR] ] J-EXPECT THEN
+  -1 JD +!  K-LIST R-BOX ;
+: J-OBJECT ( --- box )   \ its { taken
+  J-DEEPER  R-NEW-RECORD  J-WS J-C [CHAR] } = IF 1 JP +! ELSE
+    BEGIN
+      J-WS J-C [CHAR] " <> IF S" a key, in quotes" J-FAIL THEN  1 JP +! J-STRING    ( r key )
+      [CHAR] : J-EXPECT  J-VALUE-D SWAP 2 PICK R-PUT                               ( r )
+      J-WS J-C [CHAR] , = WHILE 1 JP +! REPEAT  [CHAR] } J-EXPECT THEN
+  -1 JD +!  K-REC R-BOX ;
+: J-VALUE ( --- box )
+  J-WS J-END? IF S" a value expected" J-FAIL THEN
+  J-C CASE
+    [CHAR] { OF 1 JP +! J-OBJECT ENDOF
+    [CHAR] [ OF 1 JP +! J-ARRAY ENDOF
+    [CHAR] " OF 1 JP +! J-STRING K-TEXT R-BOX ENDOF
+    [CHAR] t OF S" true" J-WORD -1 K-BOOL R-BOX ENDOF
+    [CHAR] f OF S" false" J-WORD 0 K-BOOL R-BOX ENDOF
+    [CHAR] n OF S" null" J-WORD 0 0 R-TEXT K-TEXT R-BOX ENDOF
+    DUP [CHAR] - = OVER NT-D? OR 0= IF S" a value expected" J-FAIL THEN  J-NUMBER SWAP
+  ENDCASE ;
+' J-VALUE IS J-VALUE-D
+: R-FROM-JSON ( t --- box )   \ from-json(t)
+  R-T@ OVER + JE !  DUP JS ! JP !  0 JD !
+  J-VALUE  J-WS J-END? 0= IF S" text after the value" J-FAIL THEN ;
 
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before

@@ -835,6 +835,7 @@ do not trust the absence of a line below.
 - 808 — Rill: a comprehension's variables are its own (they overwrote and blocked the script's names)
 - 809 — GOALS.md 15 assessed: QUESTIONS.md Q35 (the length rule; who Rill is for); a Rill fuzzer next
 - 810 — the length rule (A35): the rewrites judged together, reasons past 5 %; Rill general and minimal: the balance proposed, Q36
+- 811 — Rill: JSON - from-json, json (A36); decimal() reads its text whole ("1e3" was 1.0, "1.5x" 2.22)
 
 ### Not tied to an iteration
 

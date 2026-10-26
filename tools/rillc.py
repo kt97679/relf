@@ -442,6 +442,8 @@ class Compiler:
             need(1)
             return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
         if name == 'decimal': need(1); return '%s R-TEXT>DEC' % self.to_text(*a[0]), 'decimal'
+        if name == 'json': need(1); return '%s R-JSON' % self.box(*a[0]), 'text'                 # JSON (811, A36)
+        if name == 'from-json': need(1); return '%s R-FROM-JSON' % self.to_text(*a[0]), 'any'
         if name == 'replace': need(3); return '%s %s %s R-REPLACE' % tuple(self.to_text(*x) for x in a), 'text'
         if name == 'at':                                                # a record's field; a list's item (782); or the default
             need(3)

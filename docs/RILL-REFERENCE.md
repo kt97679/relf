@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 808; the design
+CV8 engine. This document says what Rill is as of Iteration 811; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -197,7 +197,9 @@ function runs a program, found on PATH:
 | `split(t, sep)` | pieces between seps, empty ones kept (Python's) |
 | `join(list, sep)` | the items as texts, sep between |
 | `range(...)` | as Python's: 1 to 3 arguments, up to the end, not with it |
-| `number(t)`, `decimal(t)` | a text read as a number or a decimal; `number` reads `0x` hex too (a value as a text: `"$x"`) |
+| `number(t)`, `decimal(t)` | a text read whole as a number or a decimal, or an error; `number` reads `0x` hex too, `decimal` an exponent (`1e3`); past six places a decimal is truncated (a value as a text: `"$x"`) |
+| `from-json(t)` | a JSON text as a value: an object a record, an array a list, a string a text, true and false bools, `null` an empty text; a number as `decimal()` reads it - an integer a number, a fraction or an exponent a decimal |
+| `json(x)` | a value as JSON, compact (`{"a":[1,2.5]}`); pretty-printing is a command's (`jq .`) |
 | `push(l, x)` | append an item (a list's items: `l = [@l, @more]`) |
 | `pop(x, key)` | a list's item (negative from the end) or a record's field, taken out and returned: `pop($l, -1)` the last, `pop($l, 0)` the first |
 | `find(x, part)` | where a part first stands in a text (bytes), or an item's index in a list; -1 when not there |
@@ -255,6 +257,7 @@ call the function from it.
 - `/` of two whole numbers is integer division, as the shell's.
 - Texts are bytes: compared, sliced and counted as bytes.
 - Decimals are fixed point with six places, exact in decimal.
+- JSON's `null` reads as an empty text (Rill has no None); `json()` never writes it.
 - A number variable read before it is set is an error, through a sentinel:
   a script whose number really is -9223372036854775808 would be told it is
   not set.

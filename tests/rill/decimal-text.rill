@@ -1,0 +1,4 @@
+# decimal() reads its text whole (811): it read the digits before anything it did not know and
+# dropped the rest - "1e3" gave 1.0, "1.5x" 1.5
+echo {decimal("1e3")} {decimal("-2.5e-1")} {decimal("12")} {decimal(".5")} {decimal("0.1234567")} {decimal("7E2")}
+echo {decimal("1.5x")}

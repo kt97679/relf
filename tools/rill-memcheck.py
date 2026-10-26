@@ -28,6 +28,7 @@ W = [   # name, body (inside: for i in range(N) { ... }), N
     ('regex-new',  'g = match("abc", "b{$i}")', 300),       # a new pattern each round: past the cache
     ('sub',        's = sub("a-b-c {$i}", "-", "+")', 3000),
     ('decimals',   'd = 0.5; d = $d + $i * 0.25; e = $d * 2.0', 3000),
+    ('json',       'j = json({a: $i, b: [1, "x\\u00e9"], c: 2.5}); v = from-json($j); h = $v[b][1]', 3000),   # 811
     ('sort',       'o = sort([3, 1, 2, $i])', 3000),
     ('comprehend', 'c = [$x * 2 for x in [1, 2, 3, $i] if $x > 1]', 3000),
     ('def-call',   'y = twice($i)', 3000),

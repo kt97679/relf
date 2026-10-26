@@ -660,3 +660,28 @@ Who Rill is for: a general shell and script language, minimal and simple -
 the balance proposed as Q36 (a filter; JSON in, then minimal jobs; the
 rest out, each with its one way, or later on evidence). Found while
 weighing it: decimal("1e3") gives 1.0.
+
+## Iteration 811: JSON (QUESTIONS.md A36); decimal() reads its text whole
+
+- `from-json(t)`: a recursive descent in the runtime - an object a record
+  (a repeated key keeps its first place, the last value), an array a list,
+  a string a text (\uXXXX as UTF-8, a surrogate pair one character; a lone
+  surrogate, a control character, a bad escape errors), true and false
+  bools, null an empty text, a number by R-NUMTEXT; nesting past 200 deep
+  an error (the return stack is 64 KB). A malformed text is a run-time
+  error naming what and the byte: `rill: from-json: a key, in quotes at
+  byte 8 (line 2)`.
+- `json(x)`: compact, every key quoted, Python's escapes (\u00XX below 32);
+  numbers, decimals and bools as Rill writes them, which JSON reads.
+  tests/rill/from-json.rill against Python's json module with Rill's two
+  rules (null an empty text; six places, truncated): equal, a round trip
+  included.
+- R-NUMTEXT, one number reader for from-json and decimal(): a sign, digits,
+  a fraction, an exponent; the text whole or an error. decimal() had read
+  six characters after the point whatever they were and stopped at any
+  other: on 810 "1e3" gave 1.0, "-2.5e-1" -3.0271, "7E2" 7.0, "1.5x" 2.22
+  (tests/rill/decimal-text.rill fails there, passes here). Its error is
+  `rill: not a decimal (line N)`, status 2, as number()'s.
+- One library name each in both compilers; memcheck's json case; two
+  one-liners (jq -r, a printf of JSON) as the feature's evidence.
+- The image: 70,558 bytes to 73,790 - 3,232, past Q36's estimate of 2-3 KB.

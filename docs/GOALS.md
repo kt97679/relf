@@ -252,11 +252,11 @@ the account of what each gained and cost.
    - a Rill fuzzer - mutated tests and rewrites; engine crashes, hangs, the
      two compilers disagreeing - needing no decision (805-808 found two
      crashes and three refusals by accident);
-   - the balance, QUESTIONS.md Q36, awaiting the user: JSON in (from-json,
-     json), then jobs (spawn, wait); the rest out or later, each named;
-   - `decimal("1e3")` gives 1.0, silently - stops at the e (found at 810);
-     to go with Q36's JSON reader, one rule for both.
-   Checks: `sh tests/rill/run` (83), `sh tests/rill/oracle` (50 the same),
+   - jobs, minimal (QUESTIONS.md A36, Q36 (3)): `spawn((cmd))` and
+     `wait($job)`, a job not waited for stopped when the script ends - next.
+     (811 built Q36's JSON - from-json, json - and gave decimal() its
+     reader: "1e3" had given 1.0, "-2.5e-1" -3.0271, "1.5x" 2.22.)
+   Checks: `sh tests/rill/run` (86), `sh tests/rill/oracle` (53 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
