@@ -1,0 +1,9 @@
+# examples/forth-script/parse-dump.rill - the same, in Rill (829): parse-dump.4 must print what this prints
+words = {}
+on = false
+for l in lines(read("examples/forth-script/dump.txt")) {
+    if (starts($l, "the 3000 largest words")) { on = true; continue }
+    m = match($l, '^\s+(\d+)\s+(\S+)\s+(\d+) (\d+) (\d+) (\d+) (\d+) (\d+)')
+    if ($on and len($m) > 0) { k = $(echo $m[2] | tr a-z A-Z); nums = [number($x) for x in slice($m, 3)]; words[$k] = [number($m[1]), @nums] }
+}
+echo {json($words)}

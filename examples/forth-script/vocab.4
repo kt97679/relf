@@ -1,0 +1,21 @@
+\ examples/forth-script/vocab.4 - a sketch (Iteration 829, the user's idea): a scripting vocabulary on relf's Forth
+\ and Rill's runtime words, no compiler - words, a few of them parsing words. Loaded at run time, not
+\ built into an image (VALUE and TO here keep absolute addresses). docs/FORTH-SCRIPTING.md.
+CREATE UP-BUF 256 ALLOT
+: R-UPPER ( t --- t' )   R-T@ 255 MIN >R  UP-BUF R@ MOVE
+  R@ 0 ?DO UP-BUF I + C@ DUP [CHAR] a [CHAR] z 1+ WITHIN IF 32 - THEN UP-BUF I + C! LOOP  UP-BUF R> R-TEXT ;
+: t"   POSTPONE S" POSTPONE R-TEXT ; IMMEDIATE                      \ t" text"  ( --- t )
+: texts[   POSTPONE DUP POSTPONE R-LEN 0 POSTPONE LITERAL POSTPONE ?DO
+           POSTPONE DUP POSTPONE I POSTPONE R-AT POSTPONE R-ANY>TEXT ; IMMEDIATE   ( l --- l t )
+: ]texts   POSTPONE LOOP POSTPONE DROP ; IMMEDIATE
+16 CONSTANT LB-MAX  CREATE LB LB-MAX CELLS ALLOT  VARIABLE LB#     \ lists being built, innermost last
+: list[ ( --- )   R-NEW-LIST LB# @ CELLS LB + !  1 LB# +! ;
+: ]list ( --- item )   -1 LB# +!  LB# @ CELLS LB + @ K-LIST R-BOX ;
+: i, ( item --- )   LB# @ 1- CELLS LB + @ R-PUSH ;                \ an item onto the list being built
+: #, ( l i --- )   R-AT R-ANY>TEXT R-NUMBER K-NUM R-BOX i, ;        \ text i of l, as a number, onto it
+: $@ ( l i --- t )   R-AT R-ANY>TEXT ;
+: match ( t re --- l )   R-MATCH ;   : empty? ( l --- f )   R-LEN 0= ;   : upper ( t --- t )   R-UPPER ;
+: put ( item key r --- )   R-PUT ;   : record ( --- r )   R-NEW-RECORD ;   : starts? ( t p --- f )   R-STARTS ;
+: read ( path --- t )   R-READ ;   : lines ( t --- l )   R-LINES ;
+: VALUE ( x "name" --- )   CREATE , DOES> @ ;                                   \ a sketch's VALUE and TO
+: TO ( x "name" --- )   ' >BODY STATE @ IF POSTPONE LITERAL POSTPONE ! ELSE ! THEN ; IMMEDIATE

@@ -1,0 +1,6 @@
+preamble 12 x 1 2 3 4 5 6
+the 3000 largest words
+   120  dup  1 2 3 4 5 6
+    64  Swap  7 8 9 10 11 12
+not a word line
+    8  r-at  0 0 1 0 0 2

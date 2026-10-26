@@ -256,6 +256,8 @@ the account of what each gained and cost.
      tools/rill-size.py - the compiler 43 %, the runtime 22 %, the editor 13 %;
      six options, the user's to choose: QUESTIONS.md Q39; and the compiler's
      alternatives - a Forth-style rewrite, an interpreter, a cached compile - Q40;
+   - **a scripting vocabulary on Forth** (829, the user's idea): docs/
+     FORTH-SCRIPTING.md, examples/forth-script/; how far - QUESTIONS.md Q41;
    - **an interactive prompt** (QUESTIONS.md A38; built - 824 the prompt, 825
      relfsh's editor at it: the user's to try as a shell now): to see if
      Rill can be the shell people type into - line editing and history,

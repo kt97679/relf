@@ -82,6 +82,19 @@ if python3 -c 'import pty' 2>/dev/null; then
     else fail=$((fail + 1)); cat /tmp/rill-probe.$$; fi
     rm -f /tmp/rill-probe.$$
 fi
+# the pilots' Forth versions still load (829): 799 took R-UPPER, R-LOG and R-EXP from the runtime and
+# two of them stopped, unseen - each loaded, its last line - MAIN - left out, and nothing undefined
+for f in examples/rill/*.fth; do
+    sed '$d' "$f" > /tmp/rill-fth.$$.4; printf 'S" /tmp/rill-fth.%s.4" INCLUDED\n' $$ > /tmp/rill-fth.$$.run
+    if [ "$(grep -v '^[[:space:]]*$' "$f" | tail -1)" = MAIN ] && ! ./relf64 kernel64-rill.img /tmp/rill-fth.$$.run 2>&1 | grep -q "Undefined word\|rill: error"
+    then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $f: does not load, or does not end MAIN"; fi
+done
+rm -f /tmp/rill-fth.$$.4 /tmp/rill-fth.$$.run
+# the scripting vocabulary's sketch (829): its parse-dump.4 prints what parse-dump.rill prints
+printf 'S" examples/forth-script/vocab.4" INCLUDED  S" examples/forth-script/parse-dump.4" INCLUDED\n' > /tmp/rill-fs.$$.4
+if [ "$(./relf64 kernel64-rill.img /tmp/rill-fs.$$.4 2>&1 | grep -v Redefining | tail -1 | tr -d '\r')" = "$(./relf64 kernel64-rill.img examples/forth-script/parse-dump.rill 2>&1 | tail -1)" ]
+then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL examples/forth-script: parse-dump.4 and parse-dump.rill differ"; fi
+rm -f /tmp/rill-fs.$$.4
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

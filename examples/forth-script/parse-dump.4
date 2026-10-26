@@ -1,0 +1,12 @@
+\ examples/forth-script/parse-dump.4 - native-by-source.fth's first section, the dump read into a record,
+\ in the sketch vocabulary (829): 396 characters of code where the pilot's Forth has 685 and Rill 371.
+0 VALUE words  0 VALUE on  0 VALUE m
+: word-line ( t --- )
+  t" ^\s+(\d+)\s+(\S+)\s+(\d+) (\d+) (\d+) (\d+) (\d+) (\d+)" match TO m   m empty? IF EXIT THEN
+  list[ m 1 #,  9 3 DO m I #, LOOP ]list  m 2 $@ upper  words put ;
+: read-words ( --- )
+  record TO words  0 TO on
+  t" examples/forth-script/dump.txt" read lines texts[
+    DUP t" the 3000 largest words" starts? IF DROP -1 TO on ELSE on IF word-line ELSE DROP THEN THEN
+  ]texts ;
+read-words words K-REC R-BOX R-JSON R-T@ TYPE CR

@@ -99,13 +99,19 @@ VARIABLE ST  VARIABLE STAG  VARIABLE SMADE
 \ the table: per workload, each side's spread over its layouts, and the ratio of their geometric means
 : LJ ( c-addr u width --- )   OVER - 0 MAX >R TYPE R> SPACES ;
 : .DEC3 ( d --- )   500 + 1000 / 0 <# # # # [CHAR] . HOLD #S #> TYPE ;
-VARIABLE SK  VARIABLE VMIN  VARIABLE VMAX  VARIABLE VLOG
+VARIABLE SK  VARIABLE VMIN  VARIABLE VMAX  VARIABLE VXS
+: GM ( l --- d )   \ the geometric mean of a list of texts, by awk - as the Rill version since 799, when R-LOG
+                   \ and R-EXP left the runtime (829); -v for the values and the format: no quotes to make
+  S"  " T R-JOIN >R  S" awk" T  S" -v" T  S" xs=" T R> T+  S" -v" T  S" f=%.6f" T
+  S" BEGIN {n = split(xs, v); for (i = 1; i <= n; i++) s += log(v[i]); printf f, exp(s / n)}" T  6 CAPTURE
+  K-TEXT R-BOX R-ANY>DEC ;
 : SIDE ( pairs --- gm )   \ VMIN and VMAX of the SK-th ratios over a side's layouts; their geometric mean
-  0 VLOG !  -1 1 RSHIFT VMIN !  0 VMAX !
+  R-NEW-LIST VXS !  -1 1 RSHIFT VMIN !  0 VMAX !
   DUP R-LEN 0 ?DO
-    DUP I R-AT R-UNBOX DROP 0 ITEM RATIO @ R-GET R-UNBOX DROP SK @ R-AT R-ANY>DEC
-    DUP VMIN @ MIN VMIN !  DUP VMAX @ MAX VMAX !  R-LOG VLOG +!
-  LOOP  R-LEN VLOG @ SWAP / R-EXP ;
+    DUP I R-AT R-UNBOX DROP 0 ITEM RATIO @ R-GET R-UNBOX DROP SK @ R-AT
+    DUP R-ANY>TEXT K-TEXT R-BOX VXS @ R-PUSH  R-ANY>DEC
+    DUP VMIN @ MIN VMIN !  VMAX @ MAX VMAX !
+  LOOP  DROP  VXS @ GM ;
 : REPORT ( --- )
   ." native A/B over layouts: the checkout against " BASE-REV @ R-TYPE ." , pads " PADS @ S" ," T R-JOIN R-TYPE
   ." , " ROUNDS @ R-TYPE ."  rounds (SCALE=" SCALE @ R-TYPE ." )" R-NL

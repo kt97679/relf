@@ -14,6 +14,10 @@ VARIABLE M  VARIABLE LS  VARIABLE FILE  VARIABLE SECTION
 : LJ ( c-addr u width --- )   OVER - 0 MAX >R TYPE R> SPACES ;
 : RJ ( c-addr u width --- )   OVER - 0 MAX SPACES TYPE ;
 : ITEM ( l i --- t )   R-AT R-ANY>TEXT ;
+CREATE UP-BUF 256 ALLOT
+: UPPER ( t --- t' )   \ a name upper case, as the original's .upper() - R-UPPER left the runtime at 799 (829)
+  R-T@ 255 MIN >R  UP-BUF R@ MOVE
+  R@ 0 ?DO UP-BUF I + C@ DUP [CHAR] a [CHAR] z 1+ WITHIN IF 32 - THEN UP-BUF I + C! LOOP  UP-BUF R> R-TEXT ;
 
 \ 1. each word's bytes and instruction classes, from native-budget.py's dump
 : WORD-LINE ( t --- )   \ a line of the dump into WORDS: [bytes c0 .. c5] under the word's name
@@ -21,7 +25,7 @@ VARIABLE M  VARIABLE LS  VARIABLE FILE  VARIABLE SECTION
   M @ R-LEN 0= IF EXIT THEN
   R-NEW-LIST  M @ 1 ITEM R-NUMBER K-NUM R-BOX OVER R-PUSH
   9 3 DO  M @ I ITEM R-NUMBER K-NUM R-BOX OVER R-PUSH  LOOP
-  K-LIST R-BOX  M @ 2 ITEM R-UPPER  WORDS @ R-PUT ;
+  K-LIST R-BOX  M @ 2 ITEM UPPER  WORDS @ R-PUT ;
 : READ-WORDS ( --- )
   R-NEW-RECORD WORDS !  0 ON !
   S" /tmp/sz/budget-all.txt" R-TEXT R-READ R-LINES
@@ -37,7 +41,7 @@ VARIABLE M  VARIABLE LS  VARIABLE FILE  VARIABLE SECTION
   S" (?:^|\s)(?::|CODE|NCODE|VARIABLE|2VARIABLE|CONSTANT|VALUE|CREATE|DEFER|BUFFER:)\s+(\S+)" R-TEXT R-ALL
   DUP R-LEN 0 ?DO
     R-NEW-LIST FILE @ K-TEXT R-BOX OVER R-PUSH SECTION @ K-TEXT R-BOX OVER R-PUSH K-LIST R-BOX
-    OVER I ITEM R-UPPER  WHERE @ R-PUT
+    OVER I ITEM UPPER  WHERE @ R-PUT
   LOOP DROP ;
 : WALK ( file --- )   \ one source, line by line; three lines on after a header, as the original
   FILE !  S" (start)" R-TEXT SECTION !

@@ -59,6 +59,18 @@ Q39's (1) for the prompt's image; bytecode directly if start-up time is the goal
 staged behind a gene with an output-comparing oracle built first; not (2).
 *Blocks*: nothing.
 
+**Q41. A scripting vocabulary on Forth: how far? (829)** The user's idea -
+grow the language up from the Forth implementation, words instead of a
+compiler. docs/FORTH-SCRIPTING.md: a sketch (examples/forth-script/) brings a
+pilot section from 685 characters of Forth to 396 - Rill's is 371 - with no
+compiler; the stack and variables (a quarter of the pilots' Forth) and
+expressions stay, and errors come late and far from their cause. Three
+questions: (1) who writes these scripts - people who read Forth, or the
+general shell and script users A35 names? (2) beside Rill, or in its place?
+(3) a vocabulary only, or a little syntax too (locals, an infix word)?
+*Recommendation*: beside Rill, for the project's own tools; first one whole
+pilot in the vocabulary, measured by the pilots' protocol. *Blocks*: nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come
