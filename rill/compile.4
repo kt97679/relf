@@ -429,7 +429,7 @@ VARIABLE FLD-POS
 VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
 : CONT ( kind --- )   K-ANY = IF S" R-UNBOX DROP" OUT+ THEN ;   \ an item holding a list or record, unboxed (758)
 : TO-DEC ( kind --- )   \ a value made a decimal (760)
-  DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP S" 1000000 *" OUT+ EXIT THEN
+  DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP S" R-N>D" OUT+ EXIT THEN
   K-ANY = IF S" R-ANY>DEC" OUT+ EXIT THEN  S" needs a number or a decimal" ERR ;
 : LIBRARY ( c-addr u --- kind -1 | 0 )   \ a library function's call, its ( taken; its ) not
   2DUP S" len" S= IF 2DROP ARG  DUP K-ANY = IF DROP S" R-UNBOX DROP @" OUT+ ELSE
@@ -486,7 +486,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   2DUP S" write" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-WRITE" OUT+ 0 -1 EXIT THEN
   2DUP S" starts" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-STARTS" OUT+ K-BOOL -1 EXIT THEN
   2DUP S" ends" S= IF 2DROP ARG TO-TEXT ARG TO-TEXT S" R-ENDS" OUT+ K-BOOL -1 EXIT THEN
-  2DUP S" sum" S= IF 2DROP ARG CONT S" R-SUM" OUT+ K-NUM -1 EXIT THEN
+  2DUP S" sum" S= IF 2DROP ARG CONT S" R-SUM" OUT+ K-ANY -1 EXIT THEN   \ a decimal among them, a decimal (794)
   2DUP S" at" S= IF 2DROP ARG                                    \ a record's field; a list's item (782); or the default
      DUP K-LIST = IF DROP ARG TO-NUM ARG BOX S" R-AT-OR-L" ELSE
      DUP K-ANY = IF DROP ARG BOX ARG BOX S" R-AT-OR-ANY" ELSE
@@ -502,8 +502,8 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
      ARG  S" )" CUR-IS? IF CONT LB-W1 @ LB-W2 @ S" MAX" S= IF S" R-LMAX" ELSE S" R-LMIN" THEN OUT+ K-ANY -1 EXIT THEN   \ of a list (760)
      OUT-POS LB-POS ! ARG                                           ( k1 k2 )
      2DUP K-DEC = SWAP K-DEC = OR IF
-       OVER K-NUM = IF S" 1000000 *" LB-POS @ OUT-INSERT THEN        \ the first made a decimal where it stands
-       DUP K-NUM = IF S" 1000000 *" OUT+ THEN  2DROP  LB-W1 @ LB-W2 @ OUT+ K-DEC -1 EXIT
+       OVER K-NUM = IF S" R-N>D" LB-POS @ OUT-INSERT THEN        \ the first made a decimal where it stands
+       DUP K-NUM = IF S" R-N>D" OUT+ THEN  2DROP  LB-W1 @ LB-W2 @ OUT+ K-DEC -1 EXIT
      THEN
      OVER K-ANY = IF S" R-ANY>NUM" LB-POS @ OUT-INSERT THEN
      OVER DUP K-NUM = OVER K-BOOL = OR SWAP K-ANY = OR 0= IF S" a number is needed here" ERR THEN
@@ -534,6 +534,10 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
     IF 2DROP 0 EXIT THEN 2DROP THEN
   TK 1+ PREC-OF IF 0 EXIT THEN  -1 ;
 ' RUN-COND? IS RUN-COND?-D
+: DIGITS-ABOVE? ( c-addr u limit-a limit-u --- f )   \ a run of digits, its leading zeros off, above the limit's (794)
+  2SWAP BEGIN DUP 1 > IF OVER C@ [CHAR] 0 = ELSE 0 THEN WHILE 1 /STRING REPEAT  2SWAP
+  2 PICK OVER <> IF NIP ROT DROP > EXIT THEN  COMPARE 0> ;
+: NUM-TOO-BIG? ( c-addr u --- f )   OVER C@ [CHAR] - = IF 1 /STRING THEN  S" 9223372036854775807" DIGITS-ABOVE? ;
 : DEC-LIT? ( c-addr u --- n -1 | 0 )   \ -?\d+\.\d+ as a decimal: the number times a million (754)
   OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN                         \ ( R: negative? )
   2DUP [CHAR] . SCAN DUP 0= IF 2DROP 2DROP R> DROP 0 EXIT THEN       ( a u a2 u2 )
@@ -541,6 +545,9 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   R> R> 1 /STRING  2DUP NUMBER-TEXT? 0= IF 2DROP 2DROP R> DROP 0 EXIT THEN   ( a u fa fu )
   0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP   ( a u frac )   \ OVER: fu, 2 PICK: fa (the PICK slip again)
   >R  0 -ROT 0 ?DO DUP I + C@ [CHAR] . = IF LEAVE THEN DUP I + C@ [CHAR] 0 - ROT 10 * + SWAP LOOP DROP
+  TK T@ OVER C@ [CHAR] - = IF 1 /STRING THEN  2DUP [CHAR] . SCAN NIP - NIP 13 >       \ past 9223372036854.775807: too big (794)
+  OVER 9223372036854 > OR  OVER 9223372036854 = R@ 775807 > AND OR
+  IF ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is too big for a decimal (at most 9223372036854.775807)" R-NL -4100 THROW THEN
   1000000 * R> +  R> IF NEGATE THEN -1 ;
 VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its text (762)
 : BARE-ERR ( --- )   \ a bare word that names a variable: a slip of the $ rule, most likely
@@ -551,7 +558,8 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   TK K@ T-WORD = IF S" true" CUR-IS? IF NEXT-TK S" -1" OUT+ K-BOOL EXIT THEN                   \ 759: booleans
     S" false" CUR-IS? IF NEXT-TK S" 0" OUT+ K-BOOL EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ DEC-LIT? IF OUT-NUM NEXT-TK 1 DEPTH+ K-DEC EXIT THEN THEN
-  TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
+  TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ 2DUP NUM-TOO-BIG? IF ." rillc: line " TK L@ . ." : " TYPE ."  is too big for a number (64 bits)" R-NL -4100 THROW THEN
+    OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK TEXT-LIT K-TEXT EXIT THEN
@@ -646,7 +654,7 @@ VARIABLE SK-A  VARIABLE SK-L  VARIABLE IKS-A  VARIABLE IKS-L   \ the def being c
 \ [/gene]
 VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : NUM-INTO ( k --- )   \ a count or an index stored in a variable of kind k (771)
-  DUP K-NUM = IF DROP EXIT THEN  K-DEC = IF S" 1000000 *" ELSE S" K-NUM R-BOX" THEN OUT+ ;
+  DUP K-NUM = IF DROP EXIT THEN  K-DEC = IF S" R-N>D" ELSE S" K-NUM R-BOX" THEN OUT+ ;
 : VAR-OUT ( c-addr u --- )   [CHAR] R OUT-C [CHAR] . OUT-C OUT-RAW BL OUT-C ;
 : SPREAD-OUT ( c-addr u --- )   \ @name's items: rillc.py's spread_code - the script's arguments for @args, unless it set its own (786)
   2DUP NM-FIND 0< IF 2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ EXIT THEN THEN
@@ -769,11 +777,11 @@ VARIABLE BL-POS   VARIABLE BL-K
   R@ T@ S" ==" S= R@ T@ S" !=" S= OR  BL-K @ CONTAINER? AND  OVER CONTAINER? AND IF        \ lists, records: by what they hold (782)
     LEFT-BOX BOX S" R-BOX=" OUT+ R> T@ S" !=" S= IF S" 0=" OUT+ THEN K-BOOL EXIT THEN
   BL-K @ K-DEC = OVER K-DEC = OR  BL-K @ NUMISH? AND  OVER NUMISH? AND IF        \ decimals (754): fixed point, six places
-    BL-K @ K-NUM = IF OUT-POS S" 1000000 *" OUT+ BL-POS @ SEG>POS THEN
+    BL-K @ K-NUM = IF OUT-POS S" R-N>D" OUT+ BL-POS @ SEG>POS THEN
     BL-K @ K-ANY = IF OUT-POS S" R-ANY>DEC" OUT+ BL-POS @ SEG>POS THEN     \ an item holding a decimal too (774)
-    DUP K-NUM = IF S" 1000000 *" OUT+ THEN  K-ANY = IF S" R-ANY>DEC" OUT+ THEN  -1 DEPTH+
-    R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" 1000000 */" ELSE
-    R@ T@ S" /" S= IF S" >R 1000000 R> */" ELSE R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE
+    DUP K-NUM = IF S" R-N>D" OUT+ THEN  K-ANY = IF S" R-ANY>DEC" OUT+ THEN  -1 DEPTH+
+    R@ T@ S" +" S= IF S" R-ADD" ELSE R@ T@ S" -" S= IF S" R-MINUS" ELSE R@ T@ S" *" S= IF S" R-DMUL" ELSE   \ checked (794)
+    R@ T@ S" /" S= IF S" R-DDIV" ELSE R@ T@ S" %" S= IF S" R-MODC" ELSE R@ T@ S" ==" S= IF S" =" ELSE
     R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE R@ T@ S" >" S= IF S" >" ELSE
     R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
     OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-DEC THEN EXIT
@@ -786,8 +794,8 @@ VARIABLE BL-POS   VARIABLE BL-K
       -1 DEPTH+  BL-K @ K-ANY = IF S" R-CMP-AN" ELSE S" R-CMP-NA" THEN OUT+  DROP  R@ T@ CMP-WORD OUT+  R> DROP K-BOOL EXIT THEN
   THEN
   LEFT-NUM TO-NUM  -1 DEPTH+
-  R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" *" ELSE R@ T@ S" /" S= IF S" /" ELSE
-  R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
+  R@ T@ S" +" S= IF S" R-ADD" ELSE R@ T@ S" -" S= IF S" R-MINUS" ELSE R@ T@ S" *" S= IF S" R-MUL" ELSE R@ T@ S" /" S= IF S" R-DIV" ELSE   \ checked (794)
+  R@ T@ S" %" S= IF S" R-MODC" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
   R@ T@ S" >" S= IF S" >" ELSE R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN ;
 : EXPR-IMPL ( minp --- kind )
@@ -857,14 +865,14 @@ VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
     INFER @ IF AS-A @ AS-L @ 2DUP DECLARE ROT BIND-K DROP  AS-A @ AS-L @ DA-MARK  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
 \ [/gene]
     AS-A @ AS-L @ NM-FIND DUP 0< 0= IF DUP CELLS NM-LOC + @ IN-DEF @ = IF CELLS NM-K + @ ELSE DROP 0 THEN ELSE DROP 0 THEN
-    DUP K-DEC = 2 PICK K-NUM = AND IF 2DROP S" 1000000 *" OUT+ K-DEC ELSE   \ a number into a decimal variable (771)
+    DUP K-DEC = 2 PICK K-NUM = AND IF 2DROP S" R-N>D" OUT+ K-DEC ELSE   \ a number into a decimal variable (771)
     DUP K-ANY = 2 PICK K-ANY <> AND IF DROP BOX K-ANY ELSE                 \ an item takes any value, boxed (754)
     DUP K-TEXT = 2 PICK K-ANY = AND IF DROP TO-TEXT K-TEXT ELSE            \ a text or a number variable given an item (758)
     DUP K-NUM = 2 PICK K-ANY = AND IF DROP TO-NUM K-NUM ELSE DROP THEN THEN THEN THEN
     >R AS-A @ AS-L @ R> BIND  AS-A @ AS-L @ DA-MARK  AS-A @ AS-L @ VAR-REF S" !" OUT+ EXIT THEN
   S" +=" S= >R
   2DUP NM-FIND DUP 0< IF S" is not set" ERR THEN CELLS NM-K + @ AS-VK !
-  AS-VK @ K-DEC = IF 2DUP VAR-REF S" @" OUT+ 1 EXPR TO-DEC R> IF S" +" ELSE S" -" THEN OUT+ VAR-REF S" !" OUT+ EXIT THEN   \ 760
+  AS-VK @ K-DEC = IF 2DUP VAR-REF S" @" OUT+ 1 EXPR TO-DEC R> IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+ VAR-REF S" !" OUT+ EXIT THEN   \ 760
   AS-VK @ K-NUM <> AS-VK @ K-ANY <> AND IF S" += and -= need a number to change" ERR THEN
 \ [gene infer]
   INFER @ IF  1 EXPR  DUP K-DEC = AS-VK @ K-NUM = AND IF DROP K-DEC ELSE K-ANY = IF K-ANY ELSE AS-VK @ THEN THEN   \ the first pass: += records its result (771; an item's, 790)
@@ -872,17 +880,17 @@ VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
 \ [/gene]
   AS-VK @ K-ANY = IF                                              \ an item: rillc.py's binop - a decimal in either counts (790)
     2DUP VAR-REF S" @" OUT+  OUT-POS AS-CP !  1 EXPR
-    DUP K-DEC = IF DROP S" R-ANY>DEC" AS-CP @ OUT-INSERT  R> IF S" +" ELSE S" -" THEN OUT+  S" K-DEC R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
+    DUP K-DEC = IF DROP S" R-ANY>DEC" AS-CP @ OUT-INSERT  R> IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+  S" K-DEC R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
     DUP K-NUM = OVER K-ANY = OR IF K-ANY = IF S" R-ARITH-AA" ELSE S" R-ARITH-AN" THEN  R> IF S" 0" ELSE S" 1" THEN OUT+ OUT+  VAR-REF S" !" OUT+ EXIT THEN
-    TO-NUM  S" R-ANY>NUM" AS-CP @ OUT-INSERT  R> IF S" +" ELSE S" -" THEN OUT+  S" K-NUM R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
+    TO-NUM  S" R-ANY>NUM" AS-CP @ OUT-INSERT  R> IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+  S" K-NUM R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
   2DUP VAR-REF S" @" OUT+
 \ [gene short]
   TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
     NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
-  ELSE 1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN THEN
+  ELSE 1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+ THEN THEN
 \ [/gene]
 \ [gene !short]
-  1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
+  1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+ THEN
 \ [/gene]
   VAR-REF S" !" OUT+ ;
 : ARG-KW-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
@@ -1217,10 +1225,10 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIA
 : IA-ARITH ( --- kind )   \ the item there, as read, changed by the value ahead (774; its own word 779)
   OUT-POS IA-CP !                                                    \ where the item's conversion goes
   1 EXPR
-  DUP K-DEC = IF DROP S" R-ANY>DEC" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-DEC EXIT THEN
+  DUP K-DEC = IF DROP S" R-ANY>DEC" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+  K-DEC EXIT THEN
   DUP K-NUM = OVER K-ANY = OR IF                                 \ the item and a number or an item: a decimal in it counts (790)
     K-ANY = IF S" R-ARITH-AA" ELSE S" R-ARITH-AN" THEN  IA-OP @ 1 = IF S" 0" ELSE S" 1" THEN OUT+ OUT+  K-ANY EXIT THEN
-  TO-NUM  S" R-ANY>NUM" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-NUM ;
+  TO-NUM  S" R-ANY>NUM" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" R-ADD" ELSE S" R-MINUS" THEN OUT+  K-NUM ;
 : IA-CHANGE ( --- kind )   \ x[i] += v, -= v: the item there, changed - rillc.py's binop(op, item, any, v) (774)
   IA-K @ K-LIST = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-INDEX S" R-AT" OUT+ ELSE
   IA-K @ K-REC = IF IA-INDEX IA-A @ IA-L @ VAR-OUT S" @" OUT+ S" R-GET" OUT+ ELSE

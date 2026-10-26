@@ -378,3 +378,29 @@ the three in 791: documented, with the workaround).
   `"caf\u00e9"` lost its backslash and printed cafu00e9. A bare word is not a
   string: no escapes there, as in the shell.
 tests/rill/show.rill, errors/bad-escape, errors/nested-def.
+
+## Iteration 794: overflow and division by zero are errors
+
+Arithmetic wrapped silently: 9223372036854775807 + 1 was -9223372036854775808
+(R-NONE, the not-set mark, at that), and a decimal past 9223372036854.775807
+came out as another number (10000000000000.0 * 1000 gave 1864712049423.0...).
+Now, in the runtime (R-ADD, R-MINUS, R-MUL, R-DIV, R-MODC; for decimals
+R-DMUL and R-DDIV in unsigned double cells with exact bounds, floored as */
+was, and R-N>D for a number made a decimal), and from both compilers:
+- + - * past 64 bits, a decimal past 9223372036854.775807, a number made a
+  decimal past it: `rill: a number too big for 64 bits (a decimal: past
+  9223372036854.775807) (line N)`, status 2;
+- / and % by zero: `rill: division by zero (line N)` - it was the engine's
+  trap, without a line;
+- a literal past them: a compile error, in both compilers alike;
+  number() of a text past 64 bits, and exp() past the largest decimal: the
+  run-time error;
+- the runtime's own arithmetic too: R-ARITH (items), comparisons, sum() -
+  which also now gives a decimal when any item is one (it truncated them).
+One exception, on purpose: + 1 and - 1 compile to 1+ and 1- and are not
+checked - counting by one cannot reach 2^63; only a value already at the
+very edge would wrap. Cost: dead-words over shell/*.4 122 -> 130 ms,
+native-by-source 254 -> 263 (best of three), outputs the same. A name clash
+the lint caught first: R-SUB is regex.4's sub(), so subtraction is R-MINUS.
+tests/rill/overflow-add, overflow-mul, overflow-dec, zero-div;
+errors/big-number, errors/big-decimal.

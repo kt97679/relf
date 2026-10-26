@@ -818,6 +818,7 @@ do not trust the absence of a line below.
 - 791 — out of memory inside a long function: a plain message naming the line; collection inside functions left as a design choice
 - 792 — docs/RILL-REFERENCE.md: Rill as it is, one document
 - 793 — review bugs: records and nested lists as text, a def inside a def, escapes
+- 794 — overflow and division by zero are errors naming the line, not wrapped numbers; sum() of decimals
 
 ### Not tied to an iteration
 

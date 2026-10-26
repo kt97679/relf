@@ -1,0 +1,5 @@
+# * past 64 bits (794)
+x = 3037000499
+echo {$x * $x}
+y = $x + 1
+echo {$y * $y}

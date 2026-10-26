@@ -85,6 +85,10 @@ stop early, as Python's.
   `%` the remainder, as the shell's `$((...))`; a decimal on either side
   makes a decimal. An item meets a number or an item at run time: a decimal
   in either, decimal arithmetic; the result is an item.
+- Overflow is an error, not a wrapped number: past 64 bits, or a decimal past
+  9223372036854.775807 - `rill: a number too big ... (line N)`; so is a
+  division by zero. A literal too big is a compile error. One exception:
+  `+ 1` and `- 1` are not checked (counting cannot get there).
 - Comparison: numbers and decimals by value (`1 == 1.0`); texts by their
   bytes (Python's order for UTF-8); lists and records by what they hold, as
   Python's `==`; two items by their kinds when the script runs. A text and a
@@ -169,7 +173,7 @@ function runs a program, found on PATH:
 | `sort-by(r, field, order)` | a record's entries by their values' field; order `asc` or `desc` |
 | `slice(x, a, b)` | part of a list, a text, a record |
 | `at(x, key, default)` | a record's field or a list's item (negative from the end), else the default |
-| `sum(l)`, `max(l)`, `min(l)`, `max(a, b)`, `min(a, b)` | as Python's |
+| `sum(l)`, `max(l)`, `min(l)`, `max(a, b)`, `min(a, b)` | as Python's: a decimal among them, a decimal |
 | `abs(x)` | a number's or decimal's absolute value; a path's absolute form (Python's abspath) |
 | `log(x)`, `exp(x)` | natural, as decimals |
 | `contains(t, part)`, `starts(t, p)`, `ends(t, s)` | tests on texts |

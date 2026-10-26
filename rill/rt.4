@@ -63,6 +63,25 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 : R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
   R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
+\ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
+\ is an error naming the line, not a wrapped number or the engine's trap. 1+ and 1- stay plain: counting cannot get there.
+: R-OVF ( --- )   ." rill: a number too big for 64 bits (a decimal: past 9223372036854.775807)" R-ERR-NL -4008 THROW ;
+: R-ZDIV ( --- )   ." rill: division by zero" R-ERR-NL -4008 THROW ;
+: R-ADD ( a b --- c )   2DUP + >R  R@ XOR SWAP R@ XOR AND 0< IF R> DROP R-OVF THEN R> ;
+: R-MINUS ( a b --- c )   2DUP - >R  OVER XOR  SWAP R@ XOR  AND 0< IF R> DROP R-OVF THEN R> ;
+: R-MUL ( a b --- c )   M*  OVER 0< IF DUP -1 <> ELSE DUP 0<> THEN NIP IF DROP R-OVF THEN ;
+: R-DIV ( a b --- c )   DUP 0= IF R-ZDIV THEN  / ;
+: R-MODC ( a b --- c )   DUP 0= IF R-ZDIV THEN  MOD ;
+: R-N>D ( n --- d )   1000000 R-MUL ;                          \ a number as a decimal
+: R-DMUL ( d1 d2 --- d )   \ d1 * d2 / 10^6, floored as */ - in unsigned double cells, the bound exact
+  2DUP XOR 0< >R  ABS SWAP ABS UM*
+  DUP 1000000 U< 0= IF R> DROP 2DROP R-OVF THEN  1000000 UM/MOD
+  DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
+: R-DDIV ( d1 d2 --- d )   \ d1 * 10^6 / d2, floored as */
+  DUP 0= IF R-ZDIV THEN
+  2DUP XOR 0< >R  ABS >R  ABS 1000000 UM*
+  DUP R@ U< 0= IF R> R> 2DROP 2DROP R-OVF THEN  R> UM/MOD
+  DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
 : R-FULL-IMPL ( --- )   \ (791) the arena (128 MB) full: memory is collected between the script's top-level statements only
   ." rill: out of memory - 128 MB in use since the last collection, which happens between the script's top-level statements, not inside a function"
   R-ERR-NL  -4006 THROW ;
@@ -109,8 +128,8 @@ DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 DEFER R-LIST=-D  DEFER R-REC=-D   \ defined below, with the words they need (782)
 : R-BOX= ( box1 box2 --- f )   \ Python's ==: texts by their bytes, lists and records by what they hold, 1 == 1.0 (782)
   R-UNBOX ROT R-UNBOX                                             ( v2 k2 v1 k1 )
-  DUP K-NUM = 3 PICK K-DEC = AND IF DROP 1000000 * K-DEC THEN
-  DUP K-DEC = 3 PICK K-NUM = AND IF 2SWAP DROP 1000000 * K-DEC 2SWAP THEN
+  DUP K-NUM = 3 PICK K-DEC = AND IF DROP R-N>D K-DEC THEN
+  DUP K-DEC = 3 PICK K-NUM = AND IF 2SWAP DROP R-N>D K-DEC 2SWAP THEN
   ROT OVER <> IF 2DROP DROP 0 EXIT THEN                           ( v2 v1 kind )
   DUP K-TEXT = IF DROP R-T= EXIT THEN
   DUP K-LIST = IF DROP R-LIST=-D EXIT THEN
@@ -220,7 +239,7 @@ CREATE RN-T 40 ALLOT
   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
   DUP 2 > IF OVER C@ [CHAR] 0 = 2 PICK 1+ C@ 32 OR [CHAR] x = AND ELSE 0 THEN
   BASE @ >R  IF 2 /STRING RN-UPPER HEX ELSE DECIMAL THEN  >NUMBER  R> BASE !
-  NIP IF ." rill: not a number" R-ERR-NL -4004 THROW THEN DROP R> IF NEGATE THEN ;
+  NIP IF ." rill: not a number" R-ERR-NL -4004 THROW THEN  0<> OVER 0< OR IF R-OVF THEN  R> IF NEGATE THEN ;   \ past 64 bits (794)
 
 
 \ Commands, pipelines, output captured, ports redirected (stage 1b,
@@ -474,7 +493,6 @@ VARIABLE RS-NEW
   R-AT R> DROP ;
 : R-AT-OR-ANY ( cbox kbox default --- box )   \ at() on an item: a list's item or a record's field (782)
   ROT R-UNBOX K-REC = IF ROT R-ANY>TEXT ROT R-AT-OR ELSE ROT R-ANY>NUM ROT R-AT-OR-L THEN ;
-: R-SUM ( l --- n )   0 SWAP DUP R-LEN 0 ?DO DUP I R-AT R-ANY>NUM ROT + SWAP LOOP DROP ;
 VARIABLE SB-R  VARIABLE SB-F  VARIABLE SB-DESC  VARIABLE SB-IX  VARIABLE SB-N
 : SB-KEY ( i --- n )   SB-R @ R-VALS SWAP R-AT R-UNBOX DROP  SB-F @ SWAP R-GET R-ANY>NUM ;
 : SB-BEFORE? ( i j --- f )   SWAP SB-KEY SWAP SB-KEY  SB-DESC @ IF > ELSE < THEN ;
@@ -546,7 +564,7 @@ VARIABLE RP-NEW
   R-T@ OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
   2DUP [CHAR] . SCAN                                          ( a u a2 u2 )
   2SWAP DROP 2 PICK OVER -                                    ( a2 u2 a ulen )
-  0 0 2SWAP >NUMBER 2DROP DROP 1000000 *                      ( a2 u2 whole )
+  0 0 2SWAP >NUMBER 2DROP  0<> OVER 0< OR IF R-OVF THEN  R-N>D   ( a2 u2 whole )   \ checked (794)
   ROT ROT DUP IF 1 /STRING THEN                                  ( whole fa fu )
   0 6 0 DO 10 * OVER I > IF 2 PICK I + C@ [CHAR] 0 - + THEN LOOP NIP NIP
   +  R> IF NEGATE THEN ;
@@ -561,6 +579,7 @@ VARIABLE RP-NEW
   BEGIN OVER WHILE  2DUP / >R ROT R> + ROT ROT  SWAP 3 PICK 1000000000 */ SWAP 2 +  REPEAT
   2DROP NIP 2*  SWAP R-LN2 * +  DUP 0< IF NEGATE 500 + 1000 / NEGATE ELSE 500 + 1000 / THEN ;
 : R-EXP ( d --- d2 )   \ exp(x), fixed point: x = k ln2 + r, e^r by its series
+  DUP 29852000 > IF R-OVF THEN                                \ e^29.852816 is the largest decimal (794)
   1000 *  DUP R-LN2 2/ + R-LN2 /  OVER R-LN2 2/ NEGATE < IF 1- THEN   ( x k )
   DUP R-LN2 * ROT SWAP -                                      ( k r, at 10^9 )
   1000000000 1000000000 1                                     ( k r sum term n )
@@ -670,20 +689,22 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
 
 \ ---- Arithmetic and order on items (Iteration 790): a decimal in either side, decimals; else numbers, as Python's ----
 : R-NUM-OR-DEC ( box --- v dec? )   DUP R-UNBOX NIP K-DEC = IF R-UNBOX DROP -1 ELSE R-ANY>NUM 0 THEN ;
-: R-CMP-AN ( box n --- v1 v2 )   >R R-NUM-OR-DEC IF R> 1000000 * ELSE R> THEN ;      \ an item against a number, on one scale
-: R-CMP-NA ( n box --- v1 v2 )   R-NUM-OR-DEC IF SWAP 1000000 * SWAP THEN ;
+: R-CMP-AN ( box n --- v1 v2 )   >R R-NUM-OR-DEC IF R> R-N>D ELSE R> THEN ;      \ an item against a number, on one scale
+: R-CMP-NA ( n box --- v1 v2 )   R-NUM-OR-DEC IF SWAP R-N>D SWAP THEN ;
 VARIABLE AR-OP
-: AR-DEC ( v dec? --- d )   0= IF 1000000 * THEN ;
+: AR-DEC ( v dec? --- d )   0= IF R-N>D THEN ;
 : R-ARITH ( v1 dec1 v2 dec2 op --- box )   \ op 0 + 1 - 2 * 3 / 4 %: a decimal if either is one, else a number
   AR-OP !  2 PICK OVER OR IF
     AR-DEC >R AR-DEC R>
-    AR-OP @ CASE 0 OF + ENDOF 1 OF - ENDOF 2 OF 1000000 */ ENDOF 3 OF >R 1000000 R> */ ENDOF >R MOD R> ENDCASE K-DEC R-BOX
+    AR-OP @ CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-DMUL ENDOF 3 OF R-DDIV ENDOF >R R-MODC R> ENDCASE K-DEC R-BOX
   ELSE DROP NIP
-    AR-OP @ CASE 0 OF + ENDOF 1 OF - ENDOF 2 OF * ENDOF 3 OF / ENDOF >R MOD R> ENDCASE K-NUM R-BOX
+    AR-OP @ CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-MUL ENDOF 3 OF R-DIV ENDOF >R R-MODC R> ENDCASE K-NUM R-BOX
   THEN ;
 : R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
 : R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
 : R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-SUM ( l --- box )   \ sum(list): a decimal among them, a decimal (794: they were taken as whole numbers)
+  0 K-NUM R-BOX SWAP  DUP R-LEN 0 ?DO DUP I R-AT ROT SWAP 0 R-ARITH-AA SWAP LOOP DROP ;
 
 \ ---- Showing a value (Iteration 793): a list or a record inside another, and any record, as Rill writes them -
 \ texts quoted, lists [a b], records {k: v, ...}. A list on its own stays its items with a blank between.

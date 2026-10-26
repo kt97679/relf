@@ -137,7 +137,7 @@ class Compiler:
         for k in [k for k, d in self.dal.items() if d == self.da_depth]: self.dal[k] = -1
         self.da_depth -= 1
     def num_into(self, k):                # a loop's count or index stored in a variable of kind k (771)
-        return '' if k == 'number' else ' 1000000 *' if k == 'decimal' else ' K-NUM R-BOX'
+        return '' if k == 'number' else ' R-N>D' if k == 'decimal' else ' K-NUM R-BOX'
     def bind(self, name, kind):
         """A binding of name to a value of kind: the kind the variable has from here (gene infer, 764)."""
         sc = self.scope(); self.names.add(name)
@@ -203,10 +203,10 @@ class Compiler:
         if op in ('==', '!=') and ak in ('list', 'record', 'any') and bk in ('list', 'record', 'any'):   # by what they hold (782)
             return '%s %s R-BOX=%s' % (self.box(a, ak), self.box(b, bk), '' if op == '==' else ' 0='), 'bool'
         if 'decimal' in (ak, bk) and ak in ('number', 'decimal', 'any') and bk in ('number', 'decimal', 'any'):
-            dec = lambda c, k: c + ' 1000000 *' if k == 'number' else (c + ' R-ANY>DEC' if k == 'any' else c)   # an item holding a decimal too (774)
+            dec = lambda c, k: c + ' R-N>D' if k == 'number' else (c + ' R-ANY>DEC' if k == 'any' else c)   # an item holding a decimal too (774)
             a, b = dec(a, ak), dec(b, bk)
             if getattr(self, 'stack', None): self.depth -= 1
-            f = {'+': '+', '-': '-', '*': '1000000 */', '/': '>R 1000000 R> */', '%': 'MOD', '==': '=', '!=': '<>',
+            f = {'+': 'R-ADD', '-': 'R-MINUS', '*': 'R-DMUL', '/': 'R-DDIV', '%': 'R-MODC', '==': '=', '!=': '<>',   # checked (794)
                  '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
             return '%s %s %s' % (a, b, f), ('decimal' if op in '+-*/%' else 'bool')
         if 'any' in (ak, bk) and ak in ('number', 'any') and bk in ('number', 'any'):   # an item: a decimal in it counts (790)
@@ -224,7 +224,7 @@ class Compiler:
         kind = 'number' if op in '+-*/%' else 'bool'
         short = {('+', '1'): '1+', ('-', '1'): '1-', ('>', '0'): '0>', ('<', '0'): '0<', ('==', '0'): '0=', ('!=', '0'): '0<>'}
         if GENES['short'] and (op, b) in short: return '%s %s' % (a, short[(op, b)]), kind      # one word (gene short, 749)
-        forth = {'+': '+', '-': '-', '*': '*', '/': '/', '%': 'MOD', '==': '=', '!=': '<>', '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
+        forth = {'+': 'R-ADD', '-': 'R-MINUS', '*': 'R-MUL', '/': 'R-DIV', '%': 'R-MODC', '==': '=', '!=': '<>', '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]   # checked (794)
         return '%s %s %s' % (a, b, forth), kind
     def unary(self):
         tok = self.peek()
@@ -316,8 +316,10 @@ class Compiler:
         if k == 'word' and v in ('true', 'false'): return ('-1' if v == 'true' else '0'), 'bool'   # 759: booleans
         if k == 'word' and re.fullmatch(r'-?\d+\.\d+', v):               # a decimal (754): fixed point, six places
             whole, frac = v.lstrip('-').split('.'); n = int(whole) * 1000000 + int((frac + '000000')[:6])
+            if n > 2 ** 63 - 1: raise Error('line %d: %s is too big for a decimal (at most 9223372036854.775807)' % (line, v))   # 794
             return str(-n if v.startswith('-') else n), 'decimal'
         if k == 'word' and re.fullmatch(r'-?\d+', v):
+            if abs(int(v)) > 2 ** 63 - 1: raise Error('line %d: %s is too big for a number (64 bits)' % (line, v))   # 794
             if getattr(self, 'stack', None): self.depth += 1
             return v, 'number'
         if k == 'var' and getattr(self, 'stack', None) and v[1:] in self.stack:
@@ -417,8 +419,8 @@ class Compiler:
         if name == 'write': need(2); return '%s %s R-WRITE' % (self.to_text(*a[0]), self.to_text(*a[1])), None
         if name in ('starts', 'ends'):
             need(2); return '%s %s %s' % (self.to_text(*a[0]), self.to_text(*a[1]), 'R-STARTS' if name == 'starts' else 'R-ENDS'), 'bool'
-        if name == 'sum': need(1); return '%s R-SUM' % cont(a[0]), 'number'
-        dec = lambda c, k: c if k == 'decimal' else c + ' 1000000 *' if k == 'number' else c + ' R-ANY>DEC'   # 760
+        if name == 'sum': need(1); return '%s R-SUM' % cont(a[0]), 'any'   # a decimal among them, a decimal (794)
+        dec = lambda c, k: c if k == 'decimal' else c + ' R-N>D' if k == 'number' else c + ' R-ANY>DEC'   # 760
         if name in ('max', 'min') and len(a) == 1:                     # max(list), min(list): an item (760)
             return '%s %s' % (a[0][0] + ' R-UNBOX DROP' if a[0][1] == 'any' else a[0][0], 'R-LMAX' if name == 'max' else 'R-LMIN'), 'any'
         if name == 'log': need(1); return '%s R-LOG' % dec(*a[0]), 'decimal'
@@ -428,7 +430,7 @@ class Compiler:
         if name == 'replace': need(3); return '%s %s %s R-REPLACE' % tuple(self.to_text(*x) for x in a), 'text'
         if name in ('max', 'min'):
             need(2); kd = 'decimal' if 'decimal' in (a[0][1], a[1][1]) else 'number'
-            conv = (lambda c, k: c + ' 1000000 *' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
+            conv = (lambda c, k: c + ' R-N>D' if k == 'number' else c) if kd == 'decimal' else (lambda c, k: self.to_num(c, k, line))
             return '%s %s %s' % (conv(*a[0]), conv(*a[1]), name.upper()), kd
         if name == 'at':                                                # a record's field; a list's item (782); or the default
             need(3)
@@ -634,7 +636,7 @@ class Compiler:
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
                 c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
             elif name in sc and sc[name] == 'decimal' and kd == 'number':
-                c, kd = c + ' 1000000 *', 'decimal'                  # a number into a decimal variable (771)
+                c, kd = c + ' R-N>D', 'decimal'                  # a number into a decimal variable (771)
             elif name in sc and sc[name] == 'any' and kd != 'any':
                 c, kd = self.box(c, kd), 'any'                      # an item takes any value, boxed (754)
             elif name in sc and sc[name] != kd:
