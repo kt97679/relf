@@ -435,3 +435,17 @@ An operator meant as text is quoted: gen-opcodes' `[- u8 ...]` became
 rillc.py it called a decimal a number and negated a text silently; now `-x`
 keeps a number's and a decimal's kind, an item's through R-ANY-NEG, and a
 text is a compile error. tests/rill/listexpr.rill.
+
+## Iteration 797: bin/rill - scripts run as commands
+
+`bin/rill script.rill args` runs a script; with bin/ on PATH (or bin/rill
+linked into a directory on it - the link is followed back) a script that
+starts `#!/usr/bin/env rill` runs as a command, whatever its name: the
+runtime now takes a file whose first line starts #! as Rill, not only a
+*.rill (R-SHEBANG?; no Forth source starts so). `rill -c 'code' args` for a
+line or two, `rill --forth script` for the Forth it compiles to, `rill
+--help`. The image is rebuilt when missing or older than rill/*.4 and
+rill/genes.tsv, its line on stderr; RILL_HOME, RILL_ENGINE, RILL_IMAGE look
+elsewhere. Not top-level `rill`: rill/ is the sources' directory.
+tests/rill/run checks a #! script through PATH (its arguments, its status
+3), -c through a link, --forth.

@@ -440,12 +440,13 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
   2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
 DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
 : R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
+: R-SHEBANG? ( c-addr u --- f )   2 < IF DROP 0 EXIT THEN  2 S" #!" COMPARE 0= ;   \ a script that starts #!: Rill, whatever its name (797)
 : R-RUN ( --- )
   \ Not INCLUDED: the boot word runs before the interpreter has a file
   \ to read from, and INCLUDED says "Error reading file" there; the
   \ program is read whole, its line ends made blanks, and EVALUATEd.
   SYS-ARGC 1 < ABORT" rill: usage: relf64 kernel64-rill.img PROGRAM.4"
-  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP R> IF R-COMPILE THEN R-BLANKS EVALUATE ;
+  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP 2DUP R-SHEBANG? R> OR IF R-COMPILE THEN R-BLANKS EVALUATE ;
 : R-INIT ( --- )
   \ What WARM and QUIT set before the interpreter reads - a boot word runs
   \ ahead of both, with the search order the build left (its wordlists'

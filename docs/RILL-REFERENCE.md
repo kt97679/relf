@@ -7,6 +7,18 @@ notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
 
+    bin/rill script.rill arg1 arg2 ...
+    bin/rill -c 'echo {6 * 7}'          a line or two
+    bin/rill --forth script.rill        the Forth it compiles to
+
+Put `bin/` on PATH, or link `bin/rill` into a directory that is (the link is
+followed back to this checkout); then a script can start
+`#!/usr/bin/env rill`, be made executable, and run as a command - a file
+whose first line starts `#!` is Rill whatever its name. The launcher
+rebuilds the image when it is missing or older than Rill's sources, and
+takes RILL_HOME, RILL_ENGINE and RILL_IMAGE to look elsewhere. Underneath
+it is
+
     ./relf64 kernel64-rill.img script.rill arg1 arg2 ...
 
 The image (built by `sh tools/build-rill-image.sh`) holds the runtime and a

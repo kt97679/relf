@@ -821,6 +821,7 @@ do not trust the absence of a line below.
 - 794 — overflow and division by zero are errors naming the line, not wrapped numbers; sum() of decimals
 - 795 — a pipeline fails when a stage fails (pipefail, SIGPIPE excused); pipelines nest inside arguments
 - 796 — a list's items are expressions; unary minus keeps its operand's kind
+- 797 — bin/rill: #!/usr/bin/env rill scripts run as commands; -c, --forth; the image rebuilt when stale
 
 ### Not tied to an iteration
 

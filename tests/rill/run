@@ -42,6 +42,12 @@ THIS_SH=./relfsh timeout 60 ./relf64 kernel64-rill.img examples/rill/run-utf8.ri
 if [ "$us" = "$ur" ] && cmp -s /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL examples/rill/run-utf8.rill: status $ur, the shell's $us"; diff /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$ | head -5; fi
 rm -f /tmp/rill-u8-sh.$$ /tmp/rill-u8-rl.$$
+# bin/rill (797): a #! script without .rill through PATH, its arguments and status; -c through a link; --forth
+lt=$(mktemp -d); printf '#!/usr/bin/env rill\necho "{len($args)} args: {join($args, ",")}"\nexit 3\n' > $lt/greet; chmod +x $lt/greet
+ln -s "$PWD/bin/rill" $lt/rill-link
+lo=$(PATH="$PWD/bin:$PATH" $lt/greet a "b c"; echo "status $?"; $lt/rill-link -c 'echo {6 * 7} $args' x; bin/rill --forth $lt/greet | grep -c R-MAIN)
+if [ "$lo" = "$(printf '2 args: a,b c\nstatus 3\n42 x\n2')" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL bin/rill:"; echo "$lo"; fi
+rm -rf $lt
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi
