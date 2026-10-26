@@ -1,15 +1,15 @@
 # a[i][j] = v, += v, -= v (779): as Python - tests/rill/chain.py
-m = [[1 2] [3 4]]
+m = [[1, 2], [3, 4]]
 m[1][0] = 9
 m[0][1] = $m[0][1] + 5
 echo {join($m[0], " ")} / {join($m[1], " ")}
-r = {a: {b: 1, c: [1 2 3]}}
+r = {a: {b: 1, c: [1, 2, 3]}}
 r[a][b] = 5
 r[a][c][2] = 30
 r[a][c][0] = $r[a][c][0] - 4
 echo $r[a][b] {join($r[a][c], " ")}
 grid = []
-for i in range(3) { push($grid, [0 0 0]) }
+for i in range(3) { push($grid, [0, 0, 0]) }
 for i in range(3) { for j in range(3) { grid[$i][$j] = $i * 3 + $j } }
 grid[2][2] = $grid[2][2] + 100
 for row in $grid { echo {join($row, ",")} }
@@ -17,7 +17,7 @@ counts = {}
 for w in words("a b a c b a") { counts[$w] = {n: 0} }
 for w in words("a b a c b a") { counts[$w][n] = $counts[$w][n] + 1 }
 for k in sort(keys($counts)) { echo $k {$counts[$k][n]} }
-deep = [[[1 2] [3 4]] [[5 6] [7 8]]]
+deep = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 deep[1][0][1] = 60
 deep[0][1][0] = $deep[0][1][0] + 0.5
 echo {join($deep[1][0], " ")} {join($deep[0][1], " ")}

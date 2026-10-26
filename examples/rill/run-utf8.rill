@@ -5,7 +5,7 @@
 # substitution in it), tests/shell/utf8.expected dash's stdout for each in
 # hex, recorded with LC_ALL=C. A function named é is refused: its status.
 # tests/shell/lib.sh's two helpers are here, not loaded: one file, read whole.
-def check what want got -> number {   # lib.sh's assert_output_equals: 1 when it failed
+def check(what, want, got) -> number {   # lib.sh's assert_output_equals: 1 when it failed
     if ($got == $want) { return 0 }
     echo "FAIL: $what"
     echo "  expected exactly:"

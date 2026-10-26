@@ -1,5 +1,5 @@
 # double quotes inside a string's {...} and $(...): strings of their own (789)
-l = ["a" "b"]
+l = ["a", "b"]
 echo "{join($l, ", ")}"
 echo "[{join($l, "] [")}]"
 r = {name: "x"}

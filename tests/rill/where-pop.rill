@@ -1,3 +1,3 @@
 # a run-time error named where (781): pop past a list's end
-l = [1 2 3]
+l = [1, 2, 3]
 echo {pop($l, 3)}

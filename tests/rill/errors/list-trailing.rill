@@ -1,0 +1,2 @@
+# no comma after the last item (802)
+l = [1, 2,]

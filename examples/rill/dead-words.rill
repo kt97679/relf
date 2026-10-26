@@ -1,8 +1,8 @@
 # examples/rill/dead-words.rill - tools/dead-words.py in Rill (Iteration 731)
-definers = [VARIABLE CONSTANT CREATE DEFER BUFFER: ARGS-BUFFER: VALUE 2VARIABLE]
+definers = [VARIABLE, CONSTANT, CREATE, DEFER, BUFFER:, ARGS-BUFFER:, VALUE, 2VARIABLE]
 closers = {'S"': '"', '."': '"', 'ABORT"': '"', 'C"': '"', '.(': ')'}
 
-def tokens line -> list {
+def tokens(line) -> list {
     out = []; toks = words($line); i = 0
     while ($i < len($toks)) {
         t = $toks[$i]
@@ -31,8 +31,8 @@ nodes = []; current = {}; roots = []; islines = []
 lines = {}
 for f in $files { lines[$f] = split(read($f), "\n") }
 
-def resolve toks -> list { return [$current[$t] for t in $toks if $t in $current] }
-def node name f a b body -> record { return {name: $name, file: $f, first: $a, last: $b, refs: resolve($body)} }
+def resolve(toks) -> list { return [$current[$t] for t in $toks if $t in $current] }
+def node(name, f, a, b, body) -> record { return {name: $name, file: $f, first: $a, last: $b, refs: resolve($body)} }
 
 for f in $files {
     l = $lines[$f]; i = 0

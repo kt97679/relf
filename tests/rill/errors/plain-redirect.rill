@@ -1,0 +1,2 @@
+# output to a named port, one way (802)
+echo hi > /tmp/rill-plain-redirect

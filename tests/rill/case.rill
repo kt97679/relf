@@ -1,5 +1,5 @@
 # case subject { patterns { block } ... }: the shell's patterns, the first arm that matches (783) - tests/rill/case.sh
-for a in ["--no-apply" "-h" "--help" "file.txt" "x" "abc" "a1" "[x]" "" "*" "other"] {
+for a in ["--no-apply", "-h", "--help", "file.txt", "x", "abc", "a1", "[x]", "", "*", "other"] {
     case $a {
         --no-apply { echo "$a: apply off" }
         -h --help { echo "$a: help" }

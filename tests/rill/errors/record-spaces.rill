@@ -1,0 +1,2 @@
+# record fields: commas between, one way (802)
+r = {a: 1 b: 2}

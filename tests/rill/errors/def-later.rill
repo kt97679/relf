@@ -1,9 +1,9 @@
 # a call of a def further down: named, and where (786)
-def is-even n -> bool {
+def is-even(n) -> bool {
     if ($n == 0) { return true }
     return is-odd($n - 1)
 }
-def is-odd n -> bool {
+def is-odd(n) -> bool {
     if ($n == 0) { return false }
     return is-even($n - 1)
 }

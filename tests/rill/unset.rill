@@ -3,7 +3,7 @@
 c = 1
 if ($c > 0) { found = yes }
 echo found $found
-for w in [a b] { last = $w }
+for w in [a, b] { last = $w }
 echo last $last
 l = []
 for x in $l { seen = $x }

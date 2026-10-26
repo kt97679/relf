@@ -4,8 +4,8 @@ n = $(printf 'x\ny\nz\n' | wc -l)
 echo lines: $n
 echo "today has {$(echo 3)} parts and $(echo inline) text"
 t = /tmp/rill-pipes-test.txt
-echo first > $t
-echo second >> $t
+echo first out> $t
+echo second out>> $t
 cat < $t
 ls /nonexistent err> /dev/null ?? echo "ls failed quietly"
 sh -c 'echo to-err 1>&2' err>out | tr a-z A-Z

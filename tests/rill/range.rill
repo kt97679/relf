@@ -14,7 +14,7 @@ echo k $k
 n = 0
 for i in range(1, 11) { n = $n + $i }
 echo sum $n
-l = [a b c]
+l = [a, b, c]
 for i in range(len($l)) { echo $i $l[$i] }
 echo {len(range(100))}
 for m in range(10, 0, -4) { echo m $m }

@@ -1,7 +1,7 @@
-[1 2] 3 x y 2.5 true
-{a: [1 2], b: {c: "three"}, "two words": 4, d: ""}
-r is {a: [1 2], b: {c: "three"}, "two words": 4, d: ""}
-[1 2] | {k: "v"} | plain
+[1, 2] 3 x y 2.5 true
+{a: [1, 2], b: {c: "three"}, "two words": 4, d: ""}
+r is {a: [1, 2], b: {c: "three"}, "two words": 4, d: ""}
+[1, 2] | {k: "v"} | plain
 {c: "three"}
 1 2
 quote " and \ and tab	 5 café 3

@@ -1,14 +1,14 @@
 # parameters in their order (749: a def with locals took two the wrong way round - SHADOW{ a b }
 # gives a the deeper value - and nothing tested it: dist was symmetric, seed's output never shown);
 # a pure def given an item converts it to a number first
-def sub2 a b -> number {
+def sub2(a, b) -> number {
     echo in sub2
     return $a - $b
 }
-def three a b c -> text {
+def three(a, b, c) -> text {
     echo in three
     return "$a-$b-$c"
 }
-def half n -> number { return $n / 2 }
+def half(n) -> number { return $n / 2 }
 echo {sub2(10, 3)} {three(x, y, z)}
-for k in [8 6] { echo {half($k)} }
+for k in [8, 6] { echo {half($k)} }

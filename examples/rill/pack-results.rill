@@ -54,13 +54,13 @@ for a in $args {
     }
 }
 
-def lines-text l -> text {           # each item a line, as a command's output: each line ended (787)
+def lines-text(l) -> text {           # each item a line, as a command's output: each line ended (787)
     if (len($l) == 0) { return "" }
     t = join($l, "\n")
     return "$t\n"
 }
-def note text { echo $text >> "$stage/SUMMARY.txt" }
-def step name cmd -> number {
+def note(text) { echo $text out>> "$stage/SUMMARY.txt" }
+def step(name, cmd) -> number {
     echo "== $name ==" out>err
     t0 = number($(date +%s))
     st = code((sh -c $cmd all> "$stage/$name.log"))   # the command a text, run as the shell script ran it (786)
@@ -68,11 +68,11 @@ def step name cmd -> number {
     note("step $name: status $st, {$t1 - $t0} s")
     return $st
 }
-def new-report path -> bool {
+def new-report(path) -> bool {
     held = "bench/reports/$(basename $path)"
     return not ((git ls-files --error-unmatch $held all> /dev/null) and (cmp -s $path $held))
 }
-def apply-bundle -> record {
+def apply-bundle() -> record {
     dir = default(env(BUNDLE_DIR), "{env(HOME)}/Downloads")
     best = ""; bestn = -1
     for f in glob("$dir/relf-claude-iter*.bundle") {
@@ -123,7 +123,7 @@ note("commit: $(git log -1 --format='%H %s' | cut -c1-120)")
 note("bundle: $applied")
 note("arguments: {default(join($args, ' '), 'none')}; SCALE={default(env(SCALE), '25')} ROUNDS={default(env(ROUNDS), '7')}")
 note("checkout before - tracked files changed (results then are not the commit's):")
-git status --porcelain --untracked-files=no | sed 's/^/    /' >> $sum
+git status --porcelain --untracked-files=no | sed 's/^/    /' out>> $sum
 mkdir -p "$stage/reports"
 for r in glob("bench-report-*.txt") {
     if (new-report($r)) { cp $r "$stage/reports/"; note("report not in bench/reports/ yet, packed: $r") }
@@ -168,7 +168,7 @@ if (test -x ./relfsh-native) {
     if ($opts[profile]) {
         wl = $(mktemp -d)
         for f in glob("tests/bench-vm/*.sh") { write("$wl/$(basename $f)", sub(read($f), '-lt ([0-9]+)', '-lt \100')) }
-        for w in [fn arith str realistic] { step("profile-$w", "python3 tools/native-prof.py ./relfsh-native '$wl/$w.sh'") }
+        for w in [fn, arith, str, realistic] { step("profile-$w", "python3 tools/native-prof.py ./relfsh-native '$wl/$w.sh'") }
         rm -rf $wl
     }
 } else { note("no relfsh-native (not x86-64, or its build failed): no memory decomposition, no profile") }
@@ -176,10 +176,10 @@ if ($opts[verify]) {
     echo "   (tests/verify: some minutes)" out>err
     step("verify", "sh tests/verify")
     note("verify's lines other than ok, and its last line:")
-    grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' >> $sum ?? true   # nothing left: grep says 1 (795)
+    grep -v -e '^ok ' -e '^==' -e '^$' "$stage/verify.log" | sed 's/^/    /' out>> $sum ?? true   # nothing left: grep says 1 (795)
 }
 note("checkout after - each line should be explained (prompts/07):")
-git status --porcelain | sed 's/^/    /' >> $sum
+git status --porcelain | sed 's/^/    /' out>> $sum
 failed = all(read($sum), 'step (\S+): status [1-9]')
 if (len($failed) > 0) { note("steps that failed: {join($failed, ' ')}") }
 if (not (tar czf $pack -C $stage .)) { echo "pack-results: tar failed; the results were in $stage" out>err; exit 1 }

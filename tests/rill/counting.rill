@@ -2,7 +2,7 @@
 counts = {}
 for w in words("a b a c b a") { if ($w in $counts) { counts[$w] = $counts[$w] + 1 } else { counts[$w] = 1 } }
 for k, v in $counts { echo $k $v }
-l = [10 20 30]
+l = [10, 20, 30]
 l[0] = $l[0] + 5
 l[-1] = $l[-1] - 10
 l[1] = $l[1] + 0.5

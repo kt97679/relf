@@ -96,9 +96,9 @@ for f, src in sources.items():
            | set(x for m in stmtfor.finditer(top) for x in m.groups() if x)
     for h, b, s, e in bl:
         isdef = h.startswith('def')
-        params = set(h.split()[2:]) - {'->', 'list', 'text', 'number', 'record', 'decimal', 'run', 'bool', 'status'} if isdef \
+        params = set(x.strip() for x in re.search(r'\(([^)]*)\)', h).group(1).split(',') if x.strip()) if isdef \
                  else set(x for m in anyfor.finditer(h) for x in m.groups() if x)
-        name = ' '.join(h.split()[:2])
+        name = 'def ' + re.match(r'def\s+([\w-]+)', h).group(1) if isdef else ' '.join(h.split()[:2])
         local = set(params) | set(x for m in anyfor.finditer(b) for x in m.groups() if x)
         for m in plain.finditer(b):
             v, rhs = m.group(1), m.group(2)

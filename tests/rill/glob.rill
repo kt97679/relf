@@ -3,7 +3,7 @@ tmp = $(mktemp -d)
 cd $tmp {
     mkdir -p docs sub
     touch a.txt b.txt c.md .hidden.txt docs/one.md docs/two.md docs/three.txt sub/x1 sub/x22
-    for p in ["*.txt" "*" "docs/*.md" "docs/t*" "sub/x?" "[ab]*" ".*" "nomatch*" "a.txt" "missing.txt" "docs/*.none"] {
+    for p in ["*.txt", "*", "docs/*.md", "docs/t*", "sub/x?", "[ab]*", ".*", "nomatch*", "a.txt", "missing.txt", "docs/*.none"] {
         echo "$p: {join(glob($p), ' ')}"
     }
 }

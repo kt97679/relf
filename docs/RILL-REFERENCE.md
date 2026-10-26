@@ -41,16 +41,16 @@ to the end of the line. Blocks are `{ ... }`.
 | decimal | fixed point, six places | `0.25`, `3.14159` |
 | bool | true or false | `true`, `false` |
 | text | bytes, UTF-8 as written | `"..."`, `'...'`, a bare word |
-| list | items in order | `[1 2 3]`, `[1, 2, 3]` |
+| list | items in order | `[1, 2, 3]` |
 | record | named fields, in the order set | `{name: "x", n: 3}` |
 | item | any of these, its kind known when the script runs | a list's or a record's element, a parameter |
 
 Truth: `false`, `0`, an empty text, list or record are false; all else is
 true.
 
-As text (echo, `"$x"`, `join`, `format`'s `%s`): a list is its items with a
-blank between; a list or a record inside another, and any record, as Rill
-writes them - `[1 2]`, `{a: 1, name: "x"}`, texts in them quoted.
+As text (echo, `"$x"`, `join`): a list is its items with a blank between;
+a list or a record inside another, and any record, as Rill writes them -
+`[1, 2]`, `{a: 1, name: "x"}`, texts in them quoted.
 
 ## Texts
 
@@ -108,15 +108,16 @@ stop early, as Python's.
   number cannot be put in order: an error.
 - `x in list`, `k in record` (a field's name), `part in text`; `not in`.
 - `+` adds numbers only. Texts join in a string, `"$name.log"`, `"{$a}{$b}"`;
-  lists in a list, `[@a @b]`.
+  lists in a list, `[@a, @b]`.
 - `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`: a
   record's field (`k` a bare word, a string, or `$name` for a field named by a
   variable); chains `$m[1][0]`, `$r[a][b]`. One way: there is no `$r.k`.
-- `[1 2 3]` or `[1, 2, 3]`: each item an expression, spaces or commas
-  between - `[$x - 1, $x * 2]`, `[$x - 1 $x + 1]` (an item ends where no
-  operator goes on); a sign glued to a number is part of it, `[1 -2]` two
-  items; an operator meant as text is quoted, `['-' u8]`. `[@xs more]`
-  spreads a list in (or an item holding one); `{a: 1, 'b c': 2}`.
+- `[1, 2, 3]`: each item an expression, a comma between them and none after
+  the last - `[$x - 1, $x * 2]`; a sign glued to a number is part of it,
+  `[1, -2]`; an operator meant as text is quoted, `['-', u8]`. `[@xs, more]`
+  spreads a list in (or an item holding one). A record is the same with
+  fields, `{a: 1, 'b c': 2}`. Items may go on several lines, the comma at the
+  end of each.
 - `-x` keeps the kind: a number's, a decimal's, an item's.
 - Comprehensions: `[expr for x in list if cond]`, `[expr for i, x in list]`,
   `[expr for k, v in record]`; the `if` takes truth as an `if` does.
@@ -134,7 +135,7 @@ stop early, as Python's.
     break    continue
     x = v    x[i] = v    a[i][j] = v   x = $x + 1 changes a number: no +=
     case $subject { pat1 pat2 { ... } * { ... } }
-    def name p1 p2 -> kind { ...; return expr }
+    def name(p1, p2) -> kind { ...; return expr }
     on EXIT { ... }
     cd dir    cd dir { ... }        the second goes back after the block
     echo words and "strings"
@@ -144,7 +145,8 @@ stop early, as Python's.
 - `case`: the first arm with a pattern that matches runs. Patterns are the
   shell's: `*`, `?`, `[...]` (`!` or `^` to negate, ranges), `\` before a
   character; a quoted pattern is the text itself; `$x` as a pattern is one.
-- `def`: parameters are items; `-> kind` (number, decimal, text, bool, list,
+- `def`: written as it is called, `def name(a, b)` (no parameters: `def
+  name()`); parameters are items; `-> kind` (number, decimal, text, bool, list,
   record) when it returns a value. A function is defined before its use -
   in the file, above its first call. It calls itself freely; two calling
   each other cannot be written. Called one way only: `name(args)`.
@@ -162,9 +164,9 @@ function runs a program, found on PATH:
 
 - Arguments: bare words, strings, `$x`, `@list` (each item an argument,
   of a list or an item holding one; `@args` the script's own).
-- `>` `>>` `<` redirect output, appending output, input; with a port:
-  `out> f`, `err> f`, `all> f` (both), `err>> f`; `err>out` joins errors to
-  output. Pipelines: `a | b | c`; a function can be a stage (no arguments).
+- A redirection names its port: `out> f`, `out>> f` (appending), `err> f`,
+  `err>> f`, `all> f` (both); `err>out` joins errors to output, `out>err`
+  output to errors; `< f` is the input. A plain `>` is an error. Pipelines: `a | b | c`; a function can be a stage (no arguments).
 - A command that fails stops the script with its status - unless it is a
   condition `(cmd)`, its status is taken with `code((cmd))`, or it is followed
   by `?? statement`, which runs when it fails (`rm stale.lock ?? true`).
@@ -187,7 +189,7 @@ function runs a program, found on PATH:
 | `join(list, sep)` | the items as texts, sep between |
 | `range(...)` | as Python's: 1 to 3 arguments, up to the end, not with it |
 | `number(t)`, `decimal(t)` | a text read as a number or a decimal; `number` reads `0x` hex too (a value as a text: `"$x"`) |
-| `push(l, x)` | append an item (a list's items: `l = [@l @more]`) |
+| `push(l, x)` | append an item (a list's items: `l = [@l, @more]`) |
 | `pop(x, key)` | a list's item (negative from the end) or a record's field, taken out and returned: `pop($l, -1)` the last, `pop($l, 0)` the first |
 | `find(x, part)` | where a part first stands in a text (bytes), or an item's index in a list; -1 when not there |
 | `keys(r)` | a record's fields (its values: `[$v for k, v in $r]`) |
@@ -195,7 +197,7 @@ function runs a program, found on PATH:
 | `sort-by(rows, field)`, `sort-by(rows, field, desc)` | a list of records by a field, stable |
 | `slice(x, a, b)` | part of a list, a text, a record |
 | `at(x, key, default)` | a record's field or a list's item (negative from the end), else the default |
-| `sum(l)`, `max(l)`, `min(l)` | as Python's: a sum with a decimal among the items is a decimal; max and min give the item itself (of two values: `max([$a $b])`) |
+| `sum(l)`, `max(l)`, `min(l)` | as Python's: a sum with a decimal among the items is a decimal; max and min give the item itself (of two values: `max([$a, $b])`) |
 | `abs(x)` | a number's or decimal's absolute value |
 | `starts(t, p)`, `ends(t, s)` | tests on texts (a part anywhere: `part in t`) |
 | `replace(t, old, new)`, `trim(t)` | texts changed |

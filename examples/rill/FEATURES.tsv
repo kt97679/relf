@@ -36,7 +36,7 @@ env(name)	adopted	732	\benv\(
 default(x, y)	spec	502	\bdefault\(
 number(), code(run)	adopted	732	\b(number|code)\(
 range(a, b)	adopted	732	\brange\(
-text and file functions	adopted	732	\b(read|write|contains|replace|split|words|lines|first|len)\(
+text and file functions	adopted	732	\b(read|write|replace|split|words|lines|len)\(
 starts ends trim join sort	adopted	732	\b(starts|ends|trim|join|sort)\(
 push slice	adopted	732	\b(push|slice)\(
 path functions dir base abs (dirname basename realpath)	removed	799	(?<![\w-])(dir|base)\(
@@ -64,7 +64,7 @@ arg(n, default)	removed	799	(?<![\w-])arg\(\d+,
 warn ... (echo ... out>err)	removed	799	(?:^|[{;])\s*warn\s
 an empty text or list is false in a condition	adopted	752	-
 options(...) for an argument loop	open	747	-
-def f x -> kind = expr	open	747	-
+def f(x) -> kind = expr	open	747	-
 m[k] ?= v	open	747	-
 $x[i].f in a string without { } (one way: {$x[i][f]})	rejected	801	-
 x = if (c) a else b	open	747	-
@@ -75,3 +75,8 @@ echo ... out>err: a line to the err port, in-process	adopted	799	echo [^\n]*out>
 pop(x, key): a list's item or a record's field, out	adopted	799	\bpop\(
 + on lists and texts ([@a @b]; "$a$b")	removed	800	-
 $r.f and "$r.f" ($r[f]; {$r[f]} in a string - "$name.log" is text, as the shell's)	removed	801	-
+lists and records: a comma between items, none after the last	adopted	802	\[[^\]\n]*\S, \S|\{\s*\w+:[^}\n]*, 
+list items or record fields with spaces between ([a, b]; {a: 1, b: 2})	removed	802	-
+def f(a, b): parameters as a call takes them	adopted	802	\bdef\s+[\w-]+\(
+def f a b: parameters bare (def f(a, b))	removed	802	-
+> file, >> file (out> file, out>> file: a port named, one way)	removed	802	-

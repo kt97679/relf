@@ -1,6 +1,6 @@
 # a def reads the script's variables when it runs, as Python's - set above it or below (785)
-def greet { echo "hello, $name ({$count} times)" }
-def total -> decimal { return $base + $step * 2 }
+def greet() { echo "hello, $name ({$count} times)" }
+def total() -> decimal { return $base + $step * 2 }
 name = "world"
 count = 2
 greet()
@@ -9,7 +9,7 @@ step = 0.5
 echo {total()}
 count = 3
 greet()
-def show-limit { echo limit is $limit }
+def show-limit() { echo limit is $limit }
 if (len($args) > 5) { limit = 1 }
 for i in range(0) { echo never }
 show-limit()

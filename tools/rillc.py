@@ -266,13 +266,17 @@ class Compiler:
             j += 1
         code = ['R-NEW-LIST']
         while self.peek()[1] != ']':
-            if self.peek()[1] == ',': self.i += 1; continue                # [a, b, c] as well as [a b c] (758)
             tok = self.peek()
-            if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs more]: a spread (744)
+            if tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):    # [@refs, more]: a spread (744)
                 self.i += 1
-                code.append('%s OVER SWAP R-EXTEND' % self.spread_code(tok[1][1:], tok[2])); continue
-            c, kd = self.expr()                                         # an item: an expression, spaces or commas between (796)
-            code.append('%s OVER R-PUSH' % self.box(c, kd))
+                code.append('%s OVER SWAP R-EXTEND' % self.spread_code(tok[1][1:], tok[2]))
+            else:
+                c, kd = self.expr()                                     # an item: an expression (796)
+                code.append('%s OVER R-PUSH' % self.box(c, kd))
+            if self.peek()[1] == ',':                                   # commas between, one way (802)
+                self.i += 1
+                if self.peek()[1] == ']': raise Error('line %d: no comma after the last item' % self.peek()[2])
+            elif self.peek()[1] != ']': raise Error('line %d: items are separated by commas: [a, b]' % self.peek()[2])
         self.take('op', ']'); return ' '.join(code), 'list'
     def comprehension(self, j):
         start = self.i; self.i = j + 1                            # for x in src [if cond]
@@ -312,8 +316,12 @@ class Compiler:
             else: raise Error('line %d: a record field is name: value' % k[2])
             c, kd = self.expr()
             code.append('%s %s 2 PICK R-PUT' % (self.box(c, kd), self.lit_text(key)))
-            if self.peek()[1] == ',': self.i += 1
-            self.skip_nl()
+            if self.peek()[1] == ',':                                   # commas between, one way (802)
+                self.i += 1; self.skip_nl()
+                if self.peek()[1] == '}': raise Error('line %d: no comma after the last field' % self.peek()[2])
+            else:
+                self.skip_nl()
+                if self.peek()[1] != '}': raise Error('line %d: fields are separated by commas: {a: 1, b: 2}' % self.peek()[2])
         self.take('op', '}'); return ' '.join(code), 'record'
     def term0(self):
         in_arg, self.in_arg = getattr(self, 'in_arg', False), False      # a command's argument: a bare word is its text (762)
@@ -730,8 +738,10 @@ class Compiler:
             tok, nxt = self.peek(), self.peek(1)
             if stop and tok[0] == 'word' and tok[1] in self.PORTS and nxt[1] in ('>', '>>') and nxt[3] == tok[4]:
                 self.i += 1; redirs.append(self.redirect(tok[1])); continue
-            if stop and tok[1] in ('>', '>>', '<') and '|' in stop:
-                redirs.append(self.redirect('in' if tok[1] == '<' else 'out')); continue
+            if stop and tok[1] in ('>', '>>') and '|' in stop:             # output to a named port, one way (802)
+                raise Error('line %d: output goes to a port: out> file, out>> file' % tok[2])
+            if stop and tok[1] == '<' and '|' in stop:
+                redirs.append(self.redirect('in')); continue
             if spread and tok[0] == 'word' and re.fullmatch(r'@[A-Za-z_][A-Za-z0-9_]*', tok[1]):
                 self.i += 1; name = tok[1][1:]
                 parts.append('%s OVER SWAP R-EXTEND' % self.spread_code(name, tok[2])); kinds_spread = True
@@ -954,7 +964,16 @@ class Compiler:
         start = self.i
         self.take('kw', 'def'); name = self.take('word')[1]; params = []
         if self.locals is not None: raise Error('line %d: a def inside a def - define %s at the top level' % (self.t[start][2], name))   # 793
-        while self.peek()[0] == 'word': params.append(self.take()[1])
+        if self.peek()[1] != '(' or self.peek()[3] != self.t[self.i - 1][4]:   # def f(a, b): as it is called, one way (802)
+            raise Error("line %d: a def's parameters go in parentheses: def f(a, b)" % self.t[start][2])
+        self.i += 1
+        while self.peek()[1] != ')':
+            params.append(self.take('word')[1])
+            if self.peek()[1] == ',':
+                self.i += 1
+                if self.peek()[1] == ')': raise Error('line %d: no comma after the last parameter' % self.peek()[2])
+            elif self.peek()[1] != ')': raise Error('line %d: parameters are separated by commas: def f(a, b)' % self.peek()[2])
+        self.i += 1
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]
         self.funcs[name] = (params, kind); self.current = name

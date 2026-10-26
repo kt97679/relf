@@ -1,9 +1,9 @@
 # selection workload (749): a def that only computes, called deep - purestack, dupnip, short
-def fib n -> number {
+def fib(n) -> number {
     if ($n < 2) { return $n }
     return fib($n - 1) + fib($n - 2)
 }
-def gcd a b -> number {
+def gcd(a, b) -> number {
     if ($b == 0) { return $a }
     return gcd($b, $a % $b)
 }

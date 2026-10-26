@@ -632,10 +632,11 @@ VARIABLE FOR-K   \ the kind a loop's count, index or key variable was bound to
 : LIST-ITEMS ( --- kind )   \ [ items ], the [ taken
   S" R-NEW-LIST" OUT+
   BEGIN S" ]" CUR-IS? 0= WHILE
-    S" ," CUR-IS? IF NEXT-TK ELSE                                 \ [a, b, c] as well as [a b c] (758)
-    TK SPREAD-WORD? IF                                          \ [@refs more]: a spread (744)
+    TK SPREAD-WORD? IF                                          \ [@refs, more]: a spread (744)
       TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" OVER SWAP R-EXTEND" OUT+
-    ELSE 1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN THEN           \ an item: an expression (796)
+    ELSE 1 EXPR BOX S" OVER" OUT+ S" R-PUSH" OUT+ THEN             \ an item: an expression (796)
+    S" ," CUR-IS? IF NEXT-TK S" ]" CUR-IS? IF S" no comma after the last item" ERR THEN   \ commas between, one way (802)
+    ELSE S" ]" CUR-IS? 0= IF S" items are separated by commas: [a, b]" ERR THEN THEN
   REPEAT NEXT-TK K-LIST ;
 VARIABLE CM-COND
 VARIABLE CM-2A  VARIABLE CM-2L  VARIABLE CM-SK  VARIABLE CM-NA  VARIABLE CM-NL
@@ -684,7 +685,8 @@ DEFER TRUTH-D   \ TRUTH, defined below (782)
     ELSE TK K@ DUP T-RAW = SWAP T-STR = OR TK 1+ S" :" TK-IS? AND IF TK T@ 1 /STRING 1- NEXT-TK NEXT-TK
     ELSE S" a record field is name: value" ERR THEN THEN       ( key )
     1 EXPR BOX  LIT-TEXT  S" 2" OUT+ S" PICK" OUT+ S" R-PUT" OUT+
-    S" ," CUR-IS? IF NEXT-TK THEN  SKIP-NL-HOOK
+    S" ," CUR-IS? IF NEXT-TK SKIP-NL-HOOK S" }" CUR-IS? IF S" no comma after the last field" ERR THEN   \ commas between, one way (802)
+    ELSE SKIP-NL-HOOK S" }" CUR-IS? 0= IF S" fields are separated by commas: {a: 1, b: 2}" ERR THEN THEN
   REPEAT NEXT-TK K-REC ;
 ' RECORD-LIT-IMPL IS RECORD-LIT
 : TRUTH ( kind --- )   \ gene truth (751): an empty text, list or record false - rillc.py's truth()
@@ -922,8 +924,14 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   TK-I @ PD-START !
   NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !
   IN-DEF @ IF ." rillc: line " TK L@ . ." : a def inside a def - define " DEF-NAME-A @ DEF-NAME-L @ TYPE ."  at the top level" R-NL -4100 THROW THEN   \ 793
-  NEXT-TK  0 PRM-N !
-  BEGIN TK K@ T-WORD = WHILE TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK REPEAT
+  NEXT-TK  0 PRM-N !                                                 \ def f(a, b): as it is called, one way (802)
+  S" (" CUR-IS? TK TOK-AT TK 1- TOK-END = AND 0= IF S" a def's parameters go in parentheses: def f(a, b)" ERR THEN  NEXT-TK
+  BEGIN S" )" CUR-IS? 0= WHILE
+    TK K@ T-WORD <> IF S" a parameter is a name" ERR THEN
+    TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK
+    S" ," CUR-IS? IF NEXT-TK S" )" CUR-IS? IF S" no comma after the last parameter" ERR THEN
+    ELSE S" )" CUR-IS? 0= IF S" parameters are separated by commas: def f(a, b)" ERR THEN THEN
+  REPEAT NEXT-TK
   0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
   DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !
   PRM-N @ DF-N @ CELLS DF-P + !  DUP DF-N @ CELLS DF-K + !
@@ -1032,7 +1040,8 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
     SP-FINISH  TK T@ 1 /STRING NEXT-TK SPREAD-OUT S" OVER SWAP R-EXTEND" OUT+ 1+ EXIT THEN
   TK K@ T-WORD = TK PORT-OF 0< 0= AND  TK 1+ S" >" TK-IS? TK 1+ S" >>" TK-IS? OR AND
   TK 1+ TOK-AT TK TOK-END = AND IF  TK PORT-OF NEXT-TK REDIRECT EXIT THEN
-  S" >" CUR-IS? S" >>" CUR-IS? OR S" <" CUR-IS? OR IF  S" <" CUR-IS? IF 0 ELSE 1 THEN REDIRECT EXIT THEN
+  S" <" CUR-IS? IF 0 REDIRECT EXIT THEN
+  S" >" CUR-IS? S" >>" CUR-IS? OR IF S" output goes to a port: out> file, out>> file" ERR THEN   \ one way (802)
   DUP IF TK TOK-AT TK 1- TOK-END = SP-FORM @ IF SP-PEND @ AND THEN ELSE 0 THEN >R
   R@ 0= IF SP-FINISH THEN
   ARG-ITEM  -1 SP-PEND !

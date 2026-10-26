@@ -3,7 +3,7 @@ parts = []; i = 0
 while ($i < 6000) { push($parts, "item-$i"); i = $i + 1 }
 text = join($parts, " ")
 ws = words($text)
-def collatz n steps -> number {
+def collatz(n, steps) -> number {
     if ($n == 1) { return $steps }
     if ($n % 2 == 0) { return collatz($n / 2, $steps + 1) }
     return collatz(3 * $n + 1, $steps + 1)

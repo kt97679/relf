@@ -4,6 +4,6 @@ x = hello
 n = 0
 while ($n < 2) {
     echo x is $x
-    for x in [1 2] { }
+    for x in [1, 2] { }
     n = $n + 1
 }

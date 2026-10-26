@@ -534,3 +534,24 @@ had two blanks before "(line n)". Spreads take an item holding a list
   holds: `$r[a][0]` on a record, open since 800, is an error, not a read of
   the record's insides. 300,000 reads: 95 ms with `$r.n` (800), 97 ms now;
   gen-opcodes --check 99 ms to 104 ms.
+
+## Iteration 802: one way each - the syntax (step 4 of 4)
+
+- Lists and records take a comma between items and none after the last:
+  `[1, 2, 3]`, `{a: 1, b: 2}` (spaces between were the second way, 758 and
+  796). A missing or a trailing comma is a compile error that shows the
+  form. Expression lists now read as calls and records already did.
+- `def name(a, b) -> kind { ... }`: a def is written as it is called
+  (`def name a b` before); `def name()` with none.
+- Output redirections name their port: `out> f`, `out>> f`, `err> f`,
+  `all> f`; a plain `>` or `>>` is a compile error. `< f` stays the input.
+- A list inside a list or a record shows with commas, `[1, [2, 3]]`, so what
+  echo shows is again Rill as written (and Python's).
+- Rewritten from the compiler's own log, as in 801: 281 commas put at the
+  ends of items, 14 redirections given their port; 50 def headers by
+  pattern. Five error tests; the audit reads `def f(a, b)` headers.
+- The image: 68,337 bytes to 68,857 (the separators checked, the messages).
+
+The duplication review is done: 799-802 took out the second ways and the
+conveniences commands give. The image went from 73,605 bytes (798) to
+68,857.

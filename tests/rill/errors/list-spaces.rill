@@ -1,0 +1,2 @@
+# list items: commas between, one way (802)
+l = [1 2 3]

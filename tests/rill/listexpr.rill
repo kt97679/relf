@@ -2,19 +2,19 @@
 x = 5
 l = [$x - 1, $x * 2]
 echo {len($l)} {join($l, ",")}
-m = [$x - 1 $x + 1]
+m = [$x - 1, $x + 1]
 echo {len($m)} {join($m, ",")}
-n = [1 -2 3]
+n = [1, -2, 3]
 echo {len($n)} {join($n, ",")}
-p = [a b c]
+p = [a, b, c]
 echo {join($p, "")}
-q = [--flag value]
+q = [--flag, value]
 echo {join($q, " ")}
 d = 2.5
 echo {- $d} {-$x} {0 - $x}
-w = ['-' '*' u8]
+w = ['-', '*', u8]
 echo {join($w, " ")}
-r = [($x > 3) $x == 5]
+r = [($x > 3), $x == 5]
 echo {join($r, " ")}
 item = $l[0]
 echo {- $item} {[- $item][0] * 2}

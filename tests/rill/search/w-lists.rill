@@ -3,7 +3,7 @@ xs = []; i = 0
 while ($i < 40000) { push($xs, $i * 3); i = $i + 1 }
 small = [$x for x in $xs if $x % 2 == 0]
 groups = []; g = 0
-while ($g < 4000) { push($groups, [$g $g $g]); g = $g + 1 }
+while ($g < 4000) { push($groups, [$g, $g, $g]); g = $g + 1 }
 total = 0
 for x in $small { total = $total + $x }
 for p in $groups { total = $total + len($p) }

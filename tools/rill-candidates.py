@@ -20,7 +20,7 @@ CANDIDATES = [
     ('empty is false: if ($x), not $x for len(...) > 0, == ""', 12, [
         (r'len\((' + POST + r')\) > 0', r'\1'), (r'len\((' + POST + r')\) == 0', r'not \1'),
         (r'(' + POST + r') != ""', r'\1'), (r'(' + POST + r') == ""', r'not \1')]),
-    ('def f x -> kind = expr (one expression, no return)', 10, [
+    ('def f(x) -> kind = expr (one expression, no return)', 10, [
         (r'(def [^{\n]*-> \w+) \{ return (.*) \}$', r'\1 = \2')]),
     ('$x[i] and $x[i].f in a string without { }', 24, [
         (r'\{(\$\w+(?:\[[^\[\]{}]+\]|\.\w+)+)\}', r'\1')]),

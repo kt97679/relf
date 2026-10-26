@@ -5,15 +5,15 @@ out = "bench/reports/intrfuzz-stress-$(hostname)-$(date -u +%Y%m%dT%H%MZ).txt"
 tmp = $(mktemp -d)
 on EXIT { rm -rf $tmp }
 
-def seed r j -> number {
+def seed(r, j) -> number {
     if ($j == 1) { return 598 }
     return 598 + ($r - 1) * $jobs + $j - 1
 }
 
-def stress {
+def stress() {
     echo "intrfuzz stress, $(date -u '+%Y-%m-%d %H:%M UTC'), $(git log --oneline -1 | cut -c1-72)"
     echo "cpu: $(nproc) cores; ROUNDS=$rounds JOBS=$jobs; 20 cases a run"
-    for sh in [relfsh relfshasm64 relfsh-native] {
+    for sh in [relfsh, relfshasm64, relfsh-native] {
         if (not (test -x ./$sh)) { echo "$sh: not built, skipped"; continue }
         runs = 0; bad = 0
             for r in range(1, $rounds + 1) {

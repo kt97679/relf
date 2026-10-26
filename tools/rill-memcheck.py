@@ -19,7 +19,7 @@ NOISE = 400 * 1024    # what two peaks can differ by with nothing kept: fewer ro
 
 W = [   # name, body (inside: for i in range(N) { ... }), N
     ('texts',      't = "item {$i} of many"; u = trim(" $t "); v = replace($u, "item", "x")', 3000),
-    ('lists',      'l = [$i "two" 3]; push($l, $i); m = slice($l, 1, 3); n = len($m)', 3000),
+    ('lists',      'l = [$i, "two", 3]; push($l, $i); m = slice($l, 1, 3); n = len($m)', 3000),
     ('records',    'r = {a: $i, b: "x"}; r[c] = $i; k = keys($r); h = $r[a]', 3000),
     ('big-record', 'q = {}; for j in range(20) { q["k{$j}"] = $j }; z = $q[k7]', 3000),
     ('words',      'w = words("alpha beta gamma {$i}"); s = join($w, "-")', 3000),
@@ -28,12 +28,12 @@ W = [   # name, body (inside: for i in range(N) { ... }), N
     ('regex-new',  'g = match("abc", "b{$i}")', 300),       # a new pattern each round: past the cache
     ('sub',        's = sub("a-b-c {$i}", "-", "+")', 3000),
     ('decimals',   'd = 0.5; d = $d + $i * 0.25; e = $d * 2.0', 3000),
-    ('sort',       'o = sort([3 1 2 $i])', 3000),
-    ('comprehend', 'c = [$x * 2 for x in [1 2 3 $i] if $x > 1]', 3000),
+    ('sort',       'o = sort([3, 1, 2, $i])', 3000),
+    ('comprehend', 'c = [$x * 2 for x in [1, 2, 3, $i] if $x > 1]', 3000),
     ('def-call',   'y = twice($i)', 3000),
     ('capture',    'o = $(echo {$i})', 200),               # forks
 ]
-PRE = 'def twice x -> number { t = $x * 2; return $t }\n'
+PRE = 'def twice(x) -> number { t = $x * 2; return $t }\n'
 
 def peak_kb(prog, n):
     probe = ('import resource, subprocess, sys\n'
