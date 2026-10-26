@@ -4,9 +4,9 @@ hits = 0; subs = ""; i = 0
 while ($i < 1500) {
     line = "  $i FOO-$i  12 3 4 : WORD$i ( a b ) $bs"
     m = match($line, '^\s+(\d+)\s+(\S+)\s+(\d+) (\d+)')
-    if (len($m) > 0) { hits += 1 }
-    hits += len(all($line, '(?:^|\s)(?::|VARIABLE)\s+(\S+)'))
+    if (len($m) > 0) { hits = $hits + 1 }
+    hits = $hits + len(all($line, '(?:^|\s)(?::|VARIABLE)\s+(\S+)'))
     subs = sub(sub($line, '\\ .*$', ""), '\( [^)]*\)', "")
-    i += 1
+    i = $i + 1
 }
 echo regex $hits [$subs]

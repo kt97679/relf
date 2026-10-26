@@ -21,7 +21,7 @@ indexing x[i], x[k] = v	adopted	732	\$\w+(\.\w+)*\[|^\s*\w+\[
 map keys of any scalar	adopted	732	\w\[\$\w+(\.\w+)*\]\s*=
 k in x	adopted	732	\bin\s+\$
 a not in b	adopted	732	\bnot\s+in\b
-x += n, x -= n	adopted	732	\w\s*[-+]=
+x += n, x -= n (x = $x + n; x[i] = $x[i] + n)	removed	800	\w\]?\s*[-+]=
 comprehension [e for x in l]	adopted	732	\[[^\]\n]*\bfor\b[^\]\n]*\bin\b
 comprehension filter [.. if c]	adopted	732	\bfor\b[^\]\n]*\bin\b[^\]\n]*\bif\b[^\]\n]*\]
 for i, x in list	adopted	732	\bfor\s+\w+\s*,\s*\w+\s+in\b
@@ -73,3 +73,4 @@ the library for Python-born scripts (754): read write starts ends upper lower tr
 first text contains values extend shift delete log exp format, two-value max min (one way each: $l[0], "$x", in, a comprehension, [@a @b], pop, awk, printf)	removed	799	(?<![\w-])(first|text|contains|values|extend|shift|delete|log|exp|format)\(
 echo ... out>err: a line to the err port, in-process	adopted	799	echo [^\n]*out>err
 pop(x, key): a list's item or a record's field, out	adopted	799	\bpop\(
++ on lists and texts ([@a @b]; "$a$b")	removed	800	-

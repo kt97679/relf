@@ -194,9 +194,8 @@ class Compiler:
             if bk == 'any': return '%s %s R-IN-ANY%s' % (self.box(a, ak), b, neg), 'bool'      # 758
             if bk == 'text': return '%s %s SWAP R-CONTAINS%s' % (self.to_text(a, ak), b, neg), 'bool'   # a part of a text (798)
             raise Error('line %d: in needs a list, a record or a text' % line)
-        if op == '+' and ak == 'list' and bk == 'list': return '%s %s R-LIST-CAT' % (a, b), 'list'     # two lists joined (798)
-        if op == '+' and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):     # two texts joined (798)
-            return '%s %s 2 R-CONCAT' % (self.to_text(a, ak), self.to_text(b, bk)), 'text'
+        if op == '+' and {ak, bk} & {'text', 'list'}:                               # one way each (800)
+            raise Error('line %d: + adds numbers - texts join in a string, lists as [@a @b]' % line)
         if op in ('==', '!=') and ak == 'any' and bk == 'any':                        # two items (758)
             return '%s %s R-BOX=%s' % (a, b, '' if op == '==' else ' 0='), 'bool'
         if op in ('==', '!=') and 'text' in (ak, bk) and ak in ('text', 'any') and bk in ('text', 'any'):
@@ -249,7 +248,8 @@ class Compiler:
                 self.i += 1; ic, ik = self.expr(); self.take('op', ']')
                 if kind == 'list': code, kind = '%s %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
                 elif kind == 'record': code, kind = '%s %s R-GET' % (self.to_text(ic, ik), code), 'any'
-                elif kind == 'any': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, self.to_num(ic, ik, nxt[2])), 'any'
+                elif kind == 'any' and ik == 'number': code, kind = '%s R-UNBOX DROP %s R-AT' % (code, ic), 'any'   # a list's item, the fast way
+                elif kind == 'any': code, kind = '%s %s R-INDEX-ANY' % (self.box(ic, ik), code), 'any'      # a record's field or a list's item, as it holds (800)
                 else: raise Error('line %d: only a list or a record is indexed' % nxt[2])
             elif nxt[0] == 'word' and nxt[1].startswith('.') and nxt[3] == prev[4] and kind in ('record', 'any'):
                 self.i += 1
@@ -601,7 +601,8 @@ class Compiler:
             while self.peek()[1] == '[' and self.peek()[3] == self.t[self.i - 1][4]:
                 self.i += 1; chain.append((ic, ik)); ic, ik = self.expr(); self.take('op', ']')
             op = self.take()[1]
-            if op not in ('=', '+=', '-='): raise Error('line %d: expected =, += or -=, found %s' % (line, op))
+            if op in ('+=', '-='): raise Error('line %d: += and -= are gone: write x[i] = $x[i] + v' % line)   # one way (800)
+            if op != '=': raise Error('line %d: expected =, found %s' % (line, op))
             c, kd = self.expr(); ck = self.kind_of(name, line)
             if chain:                                             # the container read down the chain, an item
                 jc, jk = chain[0]
@@ -610,15 +611,7 @@ class Compiler:
                 elif ck == 'any': cc = '%s R.%s @ R-INDEX-ANY' % (self.box(jc, jk), name)
                 else: raise Error('line %d: $%s is not a list or a record' % (line, name))
                 for jc, jk in chain[1:]: cc = '%s %s R-INDEX-ANY' % (self.box(jc, jk), cc)
-                if op != '=':
-                    c, kd = self.binop('+' if op == '+=' else '-', '%s %s R-INDEX-ANY' % (self.box(ic, ik), cc), 'any', c, kd)
                 out = '%s %s %s R-ASSIGN-ANY' % (self.box(c, kd), self.box(ic, ik), cc)
-            elif op != '=':                                         # x[i] += v: the item read, changed, put back (774)
-                if ck == 'list': cur = 'R.%s @ %s R-AT' % (name, self.to_num(ic, ik, line))
-                elif ck == 'record': cur = '%s R.%s @ R-GET' % (self.to_text(ic, ik), name)
-                elif ck == 'any': cur = '%s R.%s @ R-INDEX-ANY' % (self.box(ic, ik), name)
-                else: raise Error('line %d: += and -= need a list or a record' % line)
-                c, kd = self.binop('+' if op == '+=' else '-', cur, 'any', c, kd)
             if chain: pass
             elif ck == 'list': out = '%s R.%s @ %s R-SET' % (self.box(c, kd), name, self.to_num(ic, ik, line))
             elif ck == 'record': out = '%s %s R.%s @ R-PUT' % (self.box(c, kd), self.to_text(ic, ik), name)
@@ -626,14 +619,10 @@ class Compiler:
             else: raise Error('line %d: $%s is not a list or a record' % (line, name))
         elif k == 'word' and self.peek(1)[1] in ('=', '+=', '-='):
             name = v; self.i += 1; op = self.take()[1]
+            if op != '=': raise Error('line %d: += and -= are gone: write x = $x + v' % line)   # one way (800)
             c, kd = self.expr()
             sc = self.scope()
-            if op != '=':
-                vk = self.kind_of(name, line)
-                if vk not in ('number', 'any', 'decimal'): raise Error('line %d: %s needs a number to change' % (line, op))
-                c, kd = self.binop('+' if op == '+=' else '-', 'R.%s @' % name, vk, c, kd)
-                if vk == 'any': c, kd = self.box(c, kd), 'any'          # an item holding a number stays an item (758)
-            elif self.infer is not None: pass                                # the first pass: every binding as it comes (764)
+            if self.infer is not None: pass                                # the first pass: every binding as it comes (764)
             elif name in sc and sc[name] in ('text', 'number') and kd == 'any':
                 c, kd = (self.to_text(c, kd), 'text') if sc[name] == 'text' else (self.to_num(c, kd, line), 'number')   # 758
             elif name in sc and sc[name] == 'decimal' and kd == 'number':

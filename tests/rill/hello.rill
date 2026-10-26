@@ -3,7 +3,7 @@ name = world
 echo hello $name "and {2 + 3} more"
 n = 10
 total = 0
-while ($n > 0) { total += $n; n -= 1 }
+while ($n > 0) { total = $total + $n; n = $n - 1 }
 echo sum $total
 def fib n -> number {
     if ($n < 2) { return $n }

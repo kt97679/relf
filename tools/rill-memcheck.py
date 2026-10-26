@@ -27,7 +27,7 @@ W = [   # name, body (inside: for i in range(N) { ... }), N
     ('regex',      'g = match("abc{$i}def", "c([0-9]+)d"); h = all("x1y22z", "[0-9]+")', 3000),
     ('regex-new',  'g = match("abc", "b{$i}")', 300),       # a new pattern each round: past the cache
     ('sub',        's = sub("a-b-c {$i}", "-", "+")', 3000),
-    ('decimals',   'd = 0.5; d += $i * 0.25; e = $d * 2.0', 3000),
+    ('decimals',   'd = 0.5; d = $d + $i * 0.25; e = $d * 2.0', 3000),
     ('sort',       'o = sort([3 1 2 $i])', 3000),
     ('comprehend', 'c = [$x * 2 for x in [1 2 3 $i] if $x > 1]', 3000),
     ('def-call',   'y = twice($i)', 3000),

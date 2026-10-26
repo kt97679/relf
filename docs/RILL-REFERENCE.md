@@ -71,8 +71,8 @@ writes them - `[1 2]`, `{a: 1, name: "x"}`, texts in them quoted.
 ## Variables
 
     x = 1
-    x += 2
-    total -= $cost
+    x = $x + 2                      one way: there is no +=
+    total = $total - $cost
 
 A variable has one kind over its scope, inferred from everything assigned
 to it (a first compiler pass): a number and a decimal join to a decimal, any
@@ -106,8 +106,8 @@ stop early, as Python's.
   Python's `==`; two items by their kinds when the script runs. A text and a
   number cannot be put in order: an error.
 - `x in list`, `k in record` (a field's name), `part in text`; `not in`.
-- `+` joins two lists (a new list) and two texts (a text and an item too):
-  `$name + ".log"`, `$a + [3 4]`.
+- `+` adds numbers only. Texts join in a string, `"$name.log"`, `"{$a}{$b}"`;
+  lists in a list, `[@a @b]`.
 - `$l[i]`: an item of a list, `i` from 0, negative from the end; `$r[k]`,
   `$r.k`: a record's field; chains `$m[1][0]`, `$r.a.b`.
 - `[1 2 3]` or `[1, 2, 3]`: each item an expression, spaces or commas
@@ -130,7 +130,7 @@ stop early, as Python's.
     for k in $record { ... }        for k, v in $record { ... }
     for i in range(10) { ... }      range(b), range(a, b), range(a, b, step) - up to b, not with it
     break    continue
-    x[i] = v    x[i] += v    x[i] -= v    a[i][j] = v
+    x = v    x[i] = v    a[i][j] = v   x = $x + 1 changes a number: no +=
     case $subject { pat1 pat2 { ... } * { ... } }
     def name p1 p2 -> kind { ...; return expr }
     on EXIT { ... }

@@ -14,7 +14,7 @@ echo {join(doubled([1 2 3]), ",")}
 # -= and += on a variable holding an item that is a number
 r = {first: 5}
 num = $r.first
-num -= 2
+num = $num - 2
 echo num $num
 # values, sort of lists in Python's tuple order, items as containers
 rs = {p: [b 2], q: [a 9], s: [b 1]}

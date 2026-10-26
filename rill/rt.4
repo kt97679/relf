@@ -667,13 +667,7 @@ VARIABLE AR-OP
   THEN ;
 : R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
 : R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
-: R-LIST-CAT ( l1 l2 --- l )   >R R-NEW-LIST TUCK SWAP R-EXTEND DUP R> R-EXTEND ;   \ l1 + l2: a new list (798)
-: R-ARITH-AA ( box box op --- box )
-  DUP 0= IF >R  OVER R-UNBOX NIP OVER R-UNBOX NIP                  \ +: two texts joined, two lists joined (798)
-    2DUP K-TEXT = SWAP K-TEXT = AND IF 2DROP R> DROP SWAP R-ANY>TEXT SWAP R-ANY>TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
-    K-LIST = SWAP K-LIST = AND IF R> DROP R-UNBOX DROP SWAP R-UNBOX DROP SWAP R-LIST-CAT K-LIST R-BOX EXIT THEN
-    R> THEN
-  >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
 : R-DEL-L ( l i --- )   \ the item at i (0 to n-1) out
   >R  DUP R-ITEMS R@ 1+ CELLS +  OVER R-ITEMS R@ CELLS +  2 PICK @ R@ - 1- CELLS MOVE  R> DROP  -1 SWAP +! ;
 : R-AS-LIST ( box --- l )   R-UNBOX K-LIST <> IF ." rill: a spread needs a list" R-ERR-NL -4002 THROW THEN ;   \ @name of an item (799)

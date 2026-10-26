@@ -496,3 +496,19 @@ had two blanks before "(line n)". Spreads take an item holding a list
 (a def's parameter), checked at run time. The image: 73,605 bytes to
 69,641. Six of the eight rewrites are now longer than their originals
 (tools/rill-audit.py): the price of fewer conveniences.
+
+## Iteration 800: one way each - the operators (step 2 of 4)
+
+- `x += v`, `x -= v`, `x[i] += v`, `a[i][j] -= v`: gone for `x = $x + v`,
+  `x[i] = $x[i] + v`. A compile error says what to write. Their paths were
+  the most intricate in both compilers (IA-ARITH, IA-CHANGE and the
+  first-pass rules of ASSIGN); 80 uses rewritten, none needing parentheses.
+- `+` on texts and lists (798): gone for interpolation and `[@a @b]`. `+`
+  adds numbers; a text or a list on either side is a compile error that
+  names the one way.
+- Found on the way, fixed: `$r[a][c]` - an item indexed by a text - was
+  read as a list's item ("a number is needed here"); assignment already
+  went through R-INDEX-ANY. A number keeps the fast way, another key goes
+  through R-INDEX-ANY. (Still open: a number on an item holding a record,
+  `$r[a][0]`, is not checked.)
+- The image: 69,641 bytes to 68,401.

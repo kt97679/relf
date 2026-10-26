@@ -1,16 +1,16 @@
 # arithmetic and order on items: a decimal in either side, decimals; else numbers, as Python's (790) - tests/rill/itemarith.py
 l = [1.5 2 7 0.25]
-l[0] += 1
+l[0] = $l[0] + 1
 echo $l[0]
 echo {$l[0] + 1} {$l[0] * 2} {$l[1] + $l[0]} {$l[2] - 1} {$l[2] % 4}
 echo {$l[0] < 3} {$l[1] == 2} {$l[3] > 0} {2 < $l[0]} {$l[0] >= 2.5}
 r = {a: 0.25, n: 3}
-r[a] += 2
-r[n] += 1
-r[n] -= 0.5
+r[a] = $r[a] + 2
+r[n] = $r[n] + 1
+r[n] = $r[n] - 0.5
 echo $r.a $r.n
 totals = {}
-for w in ["x" "y" "x"] { if ($w in $totals) { totals[$w] += 1.5 } else { totals[$w] = 1 } }
+for w in ["x" "y" "x"] { if ($w in $totals) { totals[$w] = $totals[$w] + 1.5 } else { totals[$w] = 1 } }
 echo $totals.x $totals.y
 k = $l[1] + 1
 echo {$k * 10}

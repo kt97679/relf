@@ -6,6 +6,6 @@ false ?? echo guarded
 if (test -d /tmp) { echo "/tmp is a directory" }
 if (test -f /nonexistent) { echo wrong } else { echo "no such file" }
 n = 3
-while (test $n -gt 0) { echo n $n; n -= 1 }
+while (test $n -gt 0) { echo n $n; n = $n - 1 }
 sh -c 'exit 7'
 echo not reached

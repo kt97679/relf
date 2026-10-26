@@ -1,12 +1,12 @@
 # break, continue and return, in and out of loops (779): as Python - tests/rill/flow.py
 n = 0
-while ($n < 10) { n += 1; if ($n == 3) { break } }
+while ($n < 10) { n = $n + 1; if ($n == 3) { break } }
 echo a $n
 s = 0
 n = 0
-while ($n < 6) { n += 1; if ($n == 3) { continue }; s += $n }
+while ($n < 6) { n = $n + 1; if ($n == 3) { continue }; s = $s + $n }
 echo b $s
-for i in range(3) { m = 0; while ($m < 10) { m += 1; if ($m == 2) { break } }; echo c $i $m }
+for i in range(3) { m = 0; while ($m < 10) { m = $m + 1; if ($m == 2) { break } }; echo c $i $m }
 def first-big xs -> number {
     for x in $xs { if ($x > 5) { return $x } }
     return -1
@@ -29,14 +29,14 @@ def pair xs -> text {
 echo g {pair([2 3 4 6])} {pair([1 5])}
 def wloop n -> number {
     i = 0
-    while ($i < $n) { i += 1; if ($i == 4) { return $i * 10 } }
+    while ($i < $n) { i = $i + 1; if ($i == 4) { return $i * 10 } }
     return 0
 }
 echo h {wloop(9)} {wloop(2)}
 def wcont n -> number {
     i = 0
     t = 0
-    while ($i < $n) { i += 1; if ($i % 2 == 0) { continue }; if ($i > 6) { return $t }; t += $i }
+    while ($i < $n) { i = $i + 1; if ($i % 2 == 0) { continue }; if ($i > 6) { return $t }; t = $t + $i }
     return $t
 }
 echo i {wcont(10)} {wcont(4)}
@@ -49,5 +49,5 @@ def deep xs -> text {
 }
 echo j {deep([0 3 7 9])} {deep([1 2])}
 total = 0
-for i in range(5) { j = 0; while (true) { j += 1; if ($j > $i) { break } ; if ($j == 2) { continue }; total += $j } }
+for i in range(5) { j = 0; while (true) { j = $j + 1; if ($j > $i) { break } ; if ($j == 2) { continue }; total = $total + $j } }
 echo k $total

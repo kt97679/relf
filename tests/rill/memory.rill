@@ -1,5 +1,5 @@
 # tests/rill/memory.rill - a loop that makes 2,000,000 short-lived texts and lists: past the 128 MB arena
 # without the collector (776), a few MB with it
 n = 0
-for i in range(2000000) { t = "item {$i}"; l = [$t $t]; n += len($l) }
+for i in range(2000000) { t = "item {$i}"; l = [$t $t]; n = $n + len($l) }
 echo made $n

@@ -71,8 +71,8 @@ if ($mode != --check) { generate; exit 0 }
 bad = []
 nd = 0; ne = 0
 for x in $ops {
-    if ($x.kind == direct) { if ($x.num != $nd) { push($bad, "direct $x.name is not at $nd") }; nd += 1 }
-    if ($x.kind == escaped) { if ($x.num != $ne) { push($bad, "selector $x.name is not $ne") }; ne += 1 }
+    if ($x.kind == direct) { if ($x.num != $nd) { push($bad, "direct $x.name is not at $nd") }; nd = $nd + 1 }
+    if ($x.kind == escaped) { if ($x.num != $ne) { push($bad, "selector $x.name is not $ne") }; ne = $ne + 1 }
     if ($x.kind == synth and $x.name == LIT32 and $x.num != $nd) { push($bad, "LIT32 is not at the direct count $nd") }
     if ($x.kind != escaped and $x.fmt not in ['-' u8 i8 u16 i32 u64 b8 b16 slot sel data]) { push($bad, "$x.name has no known operand format (\"$x.fmt\")") }
 }
@@ -87,7 +87,7 @@ if ($tabnames != $knames) {
     }
 }
 kdirect = 0
-for l in $k4 { if (starts($l, ESCAPED)) { break }; if (match($l, '^PRIMITIVE[ \t]')) { kdirect += 1 } }
+for l in $k4 { if (starts($l, ESCAPED)) { break }; if (match($l, '^PRIMITIVE[ \t]')) { kdirect = $kdirect + 1 } }
 if ($kdirect != $nd) { push($bad, "forth/kernel.4 has $kdirect primitives before ESCAPED, engine/opcodes.tab $nd direct ones") }
 for x in $ops {
     if ($x.kind == tiny and not (grep -q "^$x.num OPCODE $x.name[ \t]" "$dir/forth/kernel.4")) {

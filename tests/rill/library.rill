@@ -16,10 +16,10 @@ echo $idx
 # every library word called many times over: one left on the stack a call shows as an overflow (755)
 n = 0; i = 0
 while ($i < 3000) {
-    if (starts("abc", ab) and ends("abc", bc) and not starts("a", abc) and not ends("a", abc)) { n += 1 }
+    if (starts("abc", ab) and ends("abc", bc) and not starts("a", abc) and not ends("a", abc)) { n = $n + 1 }
     st = trim(slice(" x y ", 0, 4))
     sr = sort-by([{v: 2} {v: 1}], "v", asc); ss = slice($sr, 0, 1); sa = at($byname, z, {v: 0})
     sd = max([1.5 $i]) + min([2 3]) + sum([1 2])
-    i += 1
+    i = $i + 1
 }
 echo balanced $n

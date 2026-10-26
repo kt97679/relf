@@ -13,11 +13,11 @@ for f in $files {
     while ($i < len($ls)) {
         l = $ls[$i]
         if (starts($l, '\ ====') and $i + 2 < len($ls) and starts($ls[$i + 2], '\ ====')) {
-            section = slice(trim(sub($ls[$i + 1], '^[\\ ]*', "")), 0, 60); i += 3
+            section = slice(trim(sub($ls[$i + 1], '^[\\ ]*', "")), 0, 60); i = $i + 3
         } else {
             code = sub(sub($l, '\\ .*$|\\$', ""), '\( [^)]*\)', "")
             for d in all($code, '(?:^|\s)(?::|CODE|NCODE|VARIABLE|2VARIABLE|CONSTANT|VALUE|CREATE|DEFER|BUFFER:)\s+(\S+)') { push($names, $d); push($secs, $section) }
-            i += 1
+            i = $i + 1
         }
     }
     if ($names) {   # the names upper case, one tr for the file (799)

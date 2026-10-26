@@ -12,7 +12,7 @@ for j in range(7, 3) { echo never }
 for k in range(2, 6) { if ($k == 4) { break } }
 echo k $k
 n = 0
-for i in range(1, 11) { n += $i }
+for i in range(1, 11) { n = $n + $i }
 echo sum $n
 l = [a b c]
 for i in range(len($l)) { echo $i $l[$i] }

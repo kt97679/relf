@@ -1,10 +1,12 @@
-# the everyday functions (798): + joins lists and texts; pop, delete, find, sort-by on lists, in on texts - tests/rill/everyday.py
+# the everyday functions (798): lists and texts joined, pop, find, sort-by on lists, in on texts - tests/rill/everyday.py
+# (+ on lists and texts gone, 800: [@a @b] and interpolation, one way each)
 a = [1 2]
-b = $a + [3 4]
+c = [3 4]
+b = [@a @c]
 echo {join($b, ",")} {len($a)}
 name = "build"
-echo {$name + ".log"} {"a" + "b"}
-def tag x -> text { return $x + "!" }
+echo "{$name}.log" "ab"
+def tag x -> text { return "{$x}!" }
 echo {tag("hi")}
 l = [1 2 3 4]
 echo {pop($l, -1)} {join($l, ",")}

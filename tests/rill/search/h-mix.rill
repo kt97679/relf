@@ -7,6 +7,6 @@ while ($i < 1500) {
     toks = words(sub($line, '\\ .*$', ""))
     if ($toks[0] == ":") { names[$toks[1]] = $i }
     for t in slice($toks, 2) { if ($t in $names) { push($refs, $t) } }
-    i += 1
+    i = $i + 1
 }
 echo mix {len($names)} {len($refs)}

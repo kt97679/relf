@@ -26,11 +26,11 @@ failed = 0
 for n, line in lines(read("$here/utf8-cases.txt")) {
     if ($line == HEREDOC) { printf 'cat << EOF\né ü 日本 $(echo ä)\nEOF\n' out> case.sh } else { write(case.sh, "$line\n") }
     got = $(env LC_ALL=C $sh case.sh err> /dev/null < /dev/null | od -An -v -tx1 | tr -d ' \n' ?? true)   # its status is the case's: no matter (795)
-    run += 1
-    failed += check("utf8 case {$n + 1}: $line", $want[$n], $got)
+    run = $run + 1
+    failed = $failed + check("utf8 case {$n + 1}: $line", $want[$n], $got)
 }
 st = code((env LC_ALL=C $sh -c 'é() { echo f; }' err> /dev/null))
-run += 1
-failed += check("utf8: a function named é is a syntax error, status 2", "2", "$st")
+run = $run + 1
+failed = $failed + check("utf8: a function named é is a syntax error, status 2", "2", "$st")
 echo "$run assertions, $failed failed (run-utf8)"
 if ($failed > 0) { exit 1 }

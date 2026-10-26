@@ -1,4 +1,4 @@
 # on EXIT when INT stops a loop that runs no command; status 130 (786) - tests/rill/run sends INT
 on EXIT { echo cleanup ran }
 n = 0
-while (true) { n += 1 }
+while (true) { n = $n + 1 }
