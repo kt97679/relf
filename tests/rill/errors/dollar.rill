@@ -1,2 +1,5 @@
-made = [x]
-return made
+# a bare word naming a variable (762); its return inside a def since 805, where return belongs
+def build() -> list {
+    made = [x]
+    return made
+}

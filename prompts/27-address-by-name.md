@@ -11,7 +11,7 @@ skip-when:
 produces: for each structured edit or read - the name it was found by, the check that the name occurs once, and the changed unit read back with its neighbours
 cost: low
 ---
-# 19 — Find it by its name, then look at what changed
+# 27 — Find it by its name, then look at what changed
 
 **Use it** whenever a script or a search-and-replace edits or reads one part
 of a structured document.

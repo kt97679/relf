@@ -829,6 +829,7 @@ do not trust the absence of a line below.
 - 802 — one way each, the syntax: commas in lists and records, def name(a, b), named output ports
 - 803 — prompts/ synced with forth-vm-evolution's copy (its 15-21 here 23-29, prompts/SYNC.md); the log's gap closed; the handoff
 - 804 — tests/verify green again: interactive cases each in an empty directory (a stray /tmp/e matched a glob); 778 recorded in the baseline
+- 805 — Rill: a value returned from a def that names no kind crashed the stack; a bare return; echo -n and (ready) errors; Q34; prompts 23-29's titles
 
 ### Not tied to an iteration
 

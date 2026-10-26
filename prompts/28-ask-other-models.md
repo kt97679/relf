@@ -12,7 +12,7 @@ skip-when:
 produces: one line weighing the challenge - other models useful or not, and why; when useful, one self-contained prompt per question in results/drafts/ask-<topic>-<iteration>.md for the owner to relay; when answers return, results/drafts/ask-<topic>-answers-<iteration>.md - every claim checked, the answers ranked, what is adopted
 cost: medium - the owner relays; the checking is the work
 ---
-# 20 — Ask other models when they can help, then check every word
+# 28 — Ask other models when they can help, then check every word
 
 **Use it** at every challenge, as a question to answer in one line: would another
 model help here? Most of the time the answer is no - a measurement here settles it.

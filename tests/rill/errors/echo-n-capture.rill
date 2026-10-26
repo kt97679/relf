@@ -1,0 +1,3 @@
+# echo takes no options, in a capture too (805): there /bin/echo ran, and took -n
+x = $(echo -n hi)
+echo "[$x]"

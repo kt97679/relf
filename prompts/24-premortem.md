@@ -10,7 +10,7 @@ skip-when:
 produces: an objections table per reviewer, a ceiling for every claimed gain, the revised plan with its stopping points and its boring-result line
 cost: medium
 ---
-# 16 — Pre-mortem: have the plan attacked before it is built
+# 24 — Pre-mortem: have the plan attacked before it is built
 
 **Use it** before committing days to a plan, above all one meant to prove a
 claim. `04-expert-review` attacks a finished write-up; this attacks the plan

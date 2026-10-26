@@ -10,7 +10,7 @@ skip-when:
 produces: per round, the held-out rank correlation and the designs the selection flatters; per other machine, the rank correlation of the same binaries; the winners' speed as the program grows - or the named reason each is missing
 cost: low per round once built; medium to build
 ---
-# 18 — A search finds what its benchmarks reward, on the machine it ran on
+# 26 — A search finds what its benchmarks reward, on the machine it ran on
 
 **Use it** before trusting what a long optimization found, and every round of
 one that keeps running.

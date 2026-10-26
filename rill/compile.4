@@ -525,6 +525,10 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
 : BARE-ERR ( --- )   \ a bare word that names a variable: a slip of the $ rule, most likely
   ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable - $" TK T@ TYPE ." , or " 34 EMIT TK T@ TYPE 34 EMIT ."  for the text"
   R-NL -4100 THROW ;
+: RUN-VAR? ( --- )   \ ( name ) runs a program; a variable of that name means its $ was left out (805)
+  TK 1+ S" )" TK-IS? 0= IF EXIT THEN  TK T@ DF-FIND 0< 0= IF EXIT THEN  TK T@ NM-FIND 0< IF EXIT THEN
+  ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable: ($" TK T@ TYPE ." ) for its truth, (env " TK T@ TYPE
+  ." ) for a program of that name" R-NL -4100 THROW ;
 : TERM0 ( --- kind )
   IN-ARG @ IA-NOW !  0 IN-ARG !
   TK K@ T-WORD = IF S" true" CUR-IS? IF NEXT-TK S" -1" OUT+ K-BOOL EXIT THEN                   \ 759: booleans
@@ -535,7 +539,7 @@ VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its 
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
   TK K@ T-RAW = IF TK T@ 1 /STRING 1- NEXT-TK TEXT-LIT K-TEXT EXIT THEN
-  S" (" CUR-IS? IF NEXT-TK  RUN-COND? IF 0 COMMAND-HOOK S" 0=" OUT+ S" )" EXPECT K-BOOL EXIT THEN   \ a run is a term (745)
+  S" (" CUR-IS? IF NEXT-TK  RUN-COND? IF RUN-VAR? 0 COMMAND-HOOK S" 0=" OUT+ S" )" EXPECT K-BOOL EXIT THEN   \ a run is a term (745)
     1 EXPR S" )" EXPECT EXIT THEN
   S" $(" CUR-IS? IF NEXT-TK CAPTURE S" )" EXPECT S" R-CHECK" OUT+ K-TEXT EXIT THEN
   S" [" CUR-IS? IF NEXT-TK LIST-LIT EXIT THEN
@@ -818,8 +822,20 @@ CREATE LK 64 CELLS ALLOT  VARIABLE LK-N  VARIABLE LK-BASE
   DUP K-NUM = OVER K-BOOL = OR IF DROP TO-NUM EXIT THEN
   DUP K-TEXT = IF DROP TO-TEXT EXIT THEN
   DROP K-ANY = IF S" R-UNBOX DROP" OUT+ EXIT THEN  S" this returns another kind" ERR ;
-: RETURN-STMT ( --- )
-  NEXT-TK 1 EXPR  DF-CUR @ 0< IF 0 ELSE DF-CUR @ CELLS DF-K + @ THEN CONVERT-TO
+: DEF-WANT ( --- kind )   DF-CUR @ CELLS DF-K + @ ;   \ the kind the def being made returns, 0 none
+: DEF-NAME. ( --- )   DF-CUR @ CELLS DUP DF-A + @ SWAP DF-L + @ TYPE ;
+: RET-ERR ( --- )   ." rillc: line " TK L@ . ." : " DEF-NAME. ;
+: RETURN-STMT ( --- )   \ 805: a def's alone - exit ends a script; a bare one leaves a def that names no kind
+  DF-CUR @ 0< IF S" return outside a def - exit ends the script" ERR THEN
+  NEXT-TK
+  TK K@ T-NL = TK K@ T-EOF = OR S" ;" CUR-IS? OR S" }" CUR-IS? OR IF
+    DEF-WANT IF RET-ERR ."  returns a value - return needs one" R-NL -4100 THROW THEN
+\ [gene purestack]
+    STACKMODE @ IF PRM-N @ 0 ?DO S" DROP" OUT+ LOOP THEN          \ its parameters
+\ [/gene]
+    0 UNWIND  HOISTS @ IF S" -1 R-RET ! EXIT" ELSE S" EXIT" THEN OUT+ EXIT THEN
+  DEF-WANT 0= IF RET-ERR ."  names no kind, so returns no value: def " DEF-NAME. ." (...) -> kind" R-NL -4100 THROW THEN
+  1 EXPR  DEF-WANT CONVERT-TO
 \ [gene purestack]
   STACKMODE @ IF PRM-N @ 0 ?DO S" NIP" OUT+ LOOP -1 DEPTH+ THEN
 \ [/gene]
@@ -945,7 +961,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 \ [gene infer]
   INFER @ PD-NOW @ 0= AND STACKMODE @ 0= AND IF                 \ the first pass: the body once the script's top level is through (785)
     PD-N @ PD-MAX < 0= IF S" too many defs" ERR THEN
-    PD-START @ PD-N @ CELLS PD-T + !  1 PD-N +!  SKIP-BLOCK DROP EXIT THEN       \ the def's kind, kept on the stack below, dropped
+    PD-START @ PD-N @ CELLS PD-T + !  1 PD-N +!  SKIP-BLOCK DROP  -1 DF-CUR ! EXIT THEN   \ its kind dropped; the top level again (805)
 \ [/gene]
   TO-DEFS  OUT-POS DEF-START !
 \ [gene purestack]
@@ -1046,7 +1062,13 @@ VARIABLE SP-FORM  VARIABLE SP-PEND
   R@ 0= IF SP-FINISH THEN
   ARG-ITEM  -1 SP-PEND !
   R> IF S" 2" OUT+ S" R-CONCAT" OUT+ ELSE 1+ THEN ;
+: ECHO-OPTS ( --- )   \ echo -n, -e, -E: options this echo does not take (805) - in-process -n was printed
+  TK 1+ K@ T-WORD = 0= IF EXIT THEN                \ as a word; piped or captured, /bin/echo ran and took it
+  TK 1+ T@ DUP 2 < IF 2DROP EXIT THEN  OVER C@ [CHAR] - <> IF 2DROP EXIT THEN
+  1 /STRING BEGIN DUP WHILE OVER C@ DUP [CHAR] n = OVER [CHAR] e = OR SWAP [CHAR] E = OR 0= IF 2DROP EXIT THEN 1 /STRING REPEAT 2DROP
+  NEXT-TK S" echo takes no options - printf '%s' ... prints without a newline" ERR ;
 : STAGE ( --- n form )   \ one command of a pipeline: its redirections first, then its words
+  S" echo" CUR-IS? TK K@ T-WORD = AND IF ECHO-OPTS THEN         \ echo as a program: piped, captured (805)
   \ form: 0 words, -1 a list of them (a spread), 1 a def run as the stage (745)
   OUT-POS RD-POS !
   TK K@ T-WORD = TK T@ DF-FIND 0< 0= AND TK 1+ S" (" TK-IS? 0= AND IF
@@ -1123,7 +1145,8 @@ VARIABLE LB-WHILE   \ set by WHILE-STMT for the LOOP-BODY it calls: break, as co
 : AFTER-BODY ( ret --- )   \ after a loop whose body word may return: pass it on, or return it (779)
   0= IF EXIT THEN
   HOISTS @ IF S" R-RET @ IF" OUT+ 0 UNWIND S" EXIT THEN" OUT+ EXIT THEN
-  S" R-RET @ IF 0 R-RET !" OUT+ 0 UNWIND S" R-RETV @ EXIT THEN" OUT+ ;
+  S" R-RET @ IF 0 R-RET !" OUT+ 0 UNWIND
+  DF-CUR @ 0< 0= IF DEF-WANT ELSE 0 THEN IF S" R-RETV @" OUT+ THEN S" EXIT THEN" OUT+ ;   \ a def that names no kind returns nothing (805)
 : BODY-BRACE ( --- i )   \ the { that opens the body ahead, past a condition's ( ... )
   0 TK-I @
   BEGIN
@@ -1275,6 +1298,7 @@ VARIABLE CD-P
     STATEMENT-END? IF S" 0 R-EXIT" OUT+ ELSE 1 EXPR TO-NUM S" R-EXIT" OUT+ THEN EXIT THEN
   S" on" CUR-IS? TK 1+ S" EXIT" TK-IS? AND IF NEXT-TK NEXT-TK ON-EXIT EXIT THEN
   TK K@ T-WORD = IF
+    S" echo" CUR-IS? IF ECHO-OPTS THEN                                                \ 805
     TK 1+ S" [" TK-IS? TK 1+ TOK-AT TK TOK-END = AND IF INDEX-ASSIGN EXIT THEN
     TK 1+ S" =" TK-IS? TK 1+ S" +=" TK-IS? OR TK 1+ S" -=" TK-IS? OR IF ASSIGN EXIT THEN
 \ [gene echolit]

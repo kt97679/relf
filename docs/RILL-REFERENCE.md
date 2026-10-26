@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 792; the design
+CV8 engine. This document says what Rill is as of Iteration 805; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -123,7 +123,9 @@ stop early, as Python's.
   `[expr for k, v in record]`; the `if` takes truth as an `if` does.
 - `name(args)` calls a function or the library.
 - `(command args)` in a condition is true when the command succeeds;
-  `(true)` and `(false)` alone are the values, not the programs.
+  `(true)` and `(false)` alone are the values, not the programs. `(name)`
+  alone, where name is a variable, is an error - `($name)` is its truth,
+  `(env name)` runs a program of that name.
 
 ## Statements
 
@@ -138,7 +140,7 @@ stop early, as Python's.
     def name(p1, p2) -> kind { ...; return expr }
     on EXIT { ... }
     cd dir    cd dir { ... }        the second goes back after the block
-    echo words and "strings"
+    echo words and "strings"        no options: printf '%s' ... prints without a newline
     echo words out>err              to the error port, without a process
     exit    exit n                  a message and a stop: echo "message" out>err; exit 1
 
@@ -147,9 +149,12 @@ stop early, as Python's.
   character; a quoted pattern is the text itself; `$x` as a pattern is one.
 - `def`: written as it is called, `def name(a, b)` (no parameters: `def
   name()`); parameters are items; `-> kind` (number, decimal, text, bool, list,
-  record) when it returns a value. A function is defined before its use -
-  in the file, above its first call. It calls itself freely; two calling
-  each other cannot be written. Called one way only: `name(args)`.
+  record) when it returns a value: then every `return` has one. A def without
+  `-> kind` returns nothing - `return` alone leaves it, from anywhere in it.
+  `return` outside a def is an error: `exit` ends a script. A function is
+  defined before its use - in the file, above its first call. It calls itself
+  freely; two calling each other cannot be written. Called one way only:
+  `name(args)`.
 - `on EXIT`: runs however the script ends - its last line, `exit`, a
   failed command, a run-time error, or INT or TERM (see Signals).
 

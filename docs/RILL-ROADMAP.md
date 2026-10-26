@@ -555,3 +555,32 @@ had two blanks before "(line n)". Spreads take an item holding a list
 The duplication review is done: 799-802 took out the second ways and the
 conveniences commands give. The image went from 73,605 bytes (798) to
 68,857.
+
+## Iteration 805: return, echo's options, a run named like a variable
+
+Worked most severe first (prompts/13):
+- **A crash.** A def that names no kind left whatever `return` gave it on
+  the data stack, a cell a call (nothing dropped it at the call): `def g(a)
+  { return $a }` called 200,000 times ended in `relf: data stack overflow`,
+  `rill: error -3`, no line. Now a value comes only from a def that names
+  its kind: `g names no kind, so returns no value: def g(...) -> kind`.
+- **A refusal.** A bare `return` was refused anywhere ("unexpected '\n'").
+  It now leaves a def that names no kind - from an if, a loop, or a loop
+  body made a word of its own (where the def no longer fetches R-RETV,
+  which it would leave behind; tests/rill/return.rill's 40,000 calls pass
+  the data stack's 32,768 cells, and crash with that fetch put back). In
+  stack mode it drops the parameters. In a def that names a kind it is an
+  error; at the top level `return` is one too - exit ends a script.
+  errors/dollar.rill (762) used a top-level `return made`: inside a def now.
+- **Silent wrong results.** `(ready)`, `ready` a variable, ran a program
+  named ready (through env: the else branch, a message on stderr); now an
+  error naming `($ready)` and `(env ready)`. `echo -n x` printed `-n x` in
+  the shell's process, and `echo -n x | cat` ran /bin/echo, which took the
+  option: `-n`, `-e`, `-E` written out are an error in both, and in a
+  capture. Found and left open (GOALS.md 15): echo piped or captured is
+  /bin/echo, so a spread (`echo @xs` prints `@xs`, piped the items), a `-n`
+  from a variable and a lone `--help` still differ.
+Both compilers alike; rillc.py's Forth unchanged for all 64 programs that
+compiled before. Six error tests and return.rill, each failing on 804's
+build. The image: 68,857 bytes to 69,689 (the messages naming the def).
+The review's third section is QUESTIONS.md Q34.

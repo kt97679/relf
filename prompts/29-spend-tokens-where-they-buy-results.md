@@ -10,7 +10,7 @@ skip-when:
 produces: the big sinks named and measured, each cut with its size before and after; records written once
 cost: low - habits, and a measurement before and after
 ---
-# 21 — Spend tokens where they buy results
+# 29 — Spend tokens where they buy results
 
 **Use it** when a project's sessions keep getting heavier: at a session's start, at
 every record, report and reply, when reading what someone pasted, when asking other

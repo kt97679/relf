@@ -80,3 +80,4 @@ list items or record fields with spaces between ([a, b]; {a: 1, b: 2})	removed	8
 def f(a, b): parameters as a call takes them	adopted	802	\bdef\s+[\w-]+\(
 def f a b: parameters bare (def f(a, b))	removed	802	-
 > file, >> file (out> file, out>> file: a port named, one way)	removed	802	-
+echo -n, -e, -E (printf for no newline; escapes in a string)	rejected	805	\becho\s+-[neE]+\b

@@ -11,7 +11,7 @@ skip-when:
 produces: a mutation table - each injected fault, the check expected to catch it, caught or not - and the list of checks that cannot run counted as failures
 cost: low to medium
 ---
-# 15 — A check that has never failed has not been tested
+# 23 — A check that has never failed has not been tested
 
 **Use it** before calling anything green, and whenever a new check is about to
 carry weight.

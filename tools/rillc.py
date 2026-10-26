@@ -351,6 +351,7 @@ class Compiler:
         if k == 'raw': return self.lit(v[1:-1]), 'text'
         if v == '(':
             if self.run_ahead():
+                self.run_variable()
                 c = self.command() + ' 0='; self.take('op', ')'); return c, 'bool'   # a run is a term (745)
             c, kd = self.expr(); self.take('op', ')'); return c, kd
         if k == 'word' and self.peek()[1] == '(':
@@ -557,6 +558,7 @@ class Compiler:
     def statement_inner(self):
         k, v, line = self.peek()[:3]
         start = self.i
+        if k == 'word' and v == 'echo': self.echo_options()                # 805
         if v == 'if': out = self.if_()
         elif k == 'word' and v == 'cd' and self.peek(1)[1] not in ('=', '(', '['):     # cd DIR, cd DIR { ... } (760)
             self.i += 1; r = self.arg_item(); c = self.to_text(*r) if isinstance(r, tuple) else r
@@ -571,8 +573,17 @@ class Compiler:
                 if ret: out += self.after_body()
             else: out = 'BEGIN %s WHILE %s REPEAT' % (c, body)
         elif v == 'return':
-            self.i += 1; c, kd = self.expr()
-            want = self.funcs[self.current][1] if getattr(self, 'current', None) else None
+            cur = getattr(self, 'current', None)                  # 805: a def's alone - exit ends a script
+            if cur is None: raise Error('line %d: return outside a def - exit ends the script' % line)
+            self.i += 1; want = self.funcs[cur][1]
+            if self.peek()[0] in ('nl', 'eof') or self.peek()[1] in (';', '}'):     # a bare return (805)
+                if want: raise Error('line %d: %s returns a value - return needs one' % (line, cur))
+                c = ' DROP' * len(self.stack) if getattr(self, 'stack', None) else ''   # its parameters, in stack mode
+                c += self.unwind(False)
+                return ('%s -1 R-RET ! EXIT' % c if self.in_body() else '%s EXIT' % c).strip()
+            if not want:                                          # its value was left on the stack, a cell a call (805)
+                raise Error('line %d: %s names no kind, so returns no value: def %s(...) -> kind' % (line, cur, cur))
+            c, kd = self.expr()
             c = self.convert(c, kd, want, line)                   # to the def's -> kind (749: a boxed parameter returned)
             if getattr(self, 'stack', None):
                 c += ' NIP' * len(self.stack); self.depth -= 1        # the result, the parameters dropped under it
@@ -761,6 +772,7 @@ class Compiler:
             j += 1
         spread = self.t[j][0] == 'word' and self.t[j][1].startswith('@')
         tok = self.peek()
+        if tok[0] == 'word' and tok[1] == 'echo': self.echo_options()     # echo as a program: piped, captured (805)
         if tok[0] == 'word' and tok[1] in self.funcs and self.peek(1)[1] != '(':      # a def as a stage (745)
             self.i += 1; parts, redirs = self.args(stop, False)
             if parts: raise Error('line %d: %s is a def: call it as %s(...) - as a command it takes no arguments' % (tok[2], tok[1], tok[1]))   # 779
@@ -782,6 +794,17 @@ class Compiler:
         while self.peek()[1] == '??':
             self.i += 1; c = '%s DUP IF DROP %s >R R-CAP-JOIN R> THEN' % (c, self.command(capture=True))
         return c
+    def run_variable(self):
+        """( name ) runs a program; a variable of that name means its $ was left out (805)."""
+        tok = self.peek()
+        if self.peek(1)[1] == ')' and tok[1] not in self.funcs and (tok[1] in self.vars or (self.locals is not None and tok[1] in self.locals)):
+            raise Error('line %d: %s is a variable: ($%s) for its truth, (env %s) for a program of that name' % (tok[2], tok[1], tok[1], tok[1]))
+    def echo_options(self):
+        """echo -n, -e, -E: options this echo does not take (805). In-process, -n was printed as a word;
+        piped or captured, /bin/echo ran and took it - two behaviours for one statement."""
+        nxt = self.peek(1)
+        if nxt[0] == 'word' and re.fullmatch(r'-[neE]+', nxt[1]):
+            raise Error("line %d: echo takes no options - printf '%%s' ... prints without a newline" % nxt[2])
     def run_ahead(self):
         """After a (: a run, unless its second token makes it an expression."""
         second = self.peek(1)
@@ -836,7 +859,8 @@ class Compiler:
             j += 1
     def after_body(self):                 # after a loop whose body word may return: pass it on, or return it
         if self.in_body(): return ' R-RET @ IF%s EXIT THEN' % self.unwind(False)
-        return ' R-RET @ IF 0 R-RET !%s R-RETV @ EXIT THEN' % self.unwind(False)
+        cur = getattr(self, 'current', None)                       # a def that names no kind returns nothing (805)
+        return ' R-RET @ IF 0 R-RET !%s%s EXIT THEN' % (self.unwind(False), ' R-RETV @' if cur and self.funcs[cur][1] else '')
     def has_continue(self, breaks=False):
         """Does the block ahead hold a continue at its own level (not in a loop inside it) - or a break, asked?"""
         j, stack, pending = self.i, [], False

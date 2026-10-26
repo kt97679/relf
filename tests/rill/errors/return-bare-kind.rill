@@ -1,0 +1,6 @@
+# a bare return in a def that names its kind (805)
+def h(a) -> number {
+    if ($a > 1) { return }
+    return $a
+}
+echo {h(1)}

@@ -10,7 +10,7 @@ skip-when:
 produces: the variant's description as one data record, the shared code that reads it, and a test with a fictional extra variant that needs no code change
 cost: medium, once
 ---
-# 17 — The next variant is a row, not a copy
+# 25 — The next variant is a row, not a copy
 
 **Use it** when adding one more variant of anything means touching code in
 several places.

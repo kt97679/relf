@@ -246,18 +246,25 @@ the account of what each gained and cost.
    here: RILL-ROADMAP.md). The user's rule since 799: one way for each
    operation, and what a common command does well left to the command -
    799-802 took out the duplicates. Open:
-   - the review's third section, the user's call: what one line of other
-     features replaces - starts, ends, trim, default, keys, sum, for i, x,
-     comprehensions;
-   - a bare `return` just before `}` is refused; the built-in `echo`
-     prints `-n` as a word;
+   - the review's third section, the user's call: QUESTIONS.md Q34 (805) -
+     what one line of other features replaces: starts, ends, trim, default,
+     keys, sum, for i, x, comprehensions;
    - six rewrites are now longer than the scripts they replace
      (tools/rill-audit.py), the price of fewer conveniences - against the
-     726 rule "never longer", so weigh it with the third section;
+     726 rule "never longer", so weigh it with the third section (Q34);
+   - **echo is two programs** (found at 805): in-process it is Rill's,
+     piped, redirected (other than out>err) or captured it is /bin/echo.
+     They differ on a spread - `echo @xs` prints `@xs`, `echo @xs | cat`
+     the items - on a `-n` from a variable, and on a lone `--help`. The way
+     to one: Rill's echo in a child, as a def runs as a stage (PL-STAGE-X),
+     and `@name` spread in-process. (805 made `echo -n`, `-e`, `-E` written
+     out an error in both: the literal case.)
    - from the review at 793, unchanged: no `try`, no collection inside a
      function, texts as bytes, no background jobs, no JSON, no default
-     arguments, `if (ready)` running a program named ready.
-   Checks: `sh tests/rill/run` (71), `sh tests/rill/oracle` (45 the same),
+     arguments. (805: a bare `return` works, in a def that names no kind;
+     a value from one was left on the stack - 32,768 calls crashed the
+     engine - and is an error; so is `(ready)` with `ready` a variable.)
+   Checks: `sh tests/rill/run` (78), `sh tests/rill/oracle` (46 the same),
    both again with RILL_GC_STRESS=1.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

@@ -22,7 +22,11 @@ what came from there has new numbers here:
 | `11` item 10 (a report's size budget) | item 11 - 10 here is keeping the report |
 | `12` item 7 (each fact once) | item 8 - 7 here is the log in volumes |
 
-The cross-references inside the prompts use the numbers here. In
+The cross-references inside the prompts use the numbers here, and since
+Iteration 805 so do the seven prompts' own titles (`# 23 —` to `# 29 —`;
+803 had left their `# 15 —` to `# 21 —`, the numbers of other prompts
+here). In the next sync a title is ours: their side's change to a title's
+number is not taken. In
 USAGE's table the `14` row joins both sides' rows, and `20`-`22` got the
 rows they lacked.
 

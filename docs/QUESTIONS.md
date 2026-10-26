@@ -129,6 +129,33 @@ go when they are written). *Recommendation*: keep speed as the
 default; a `make relfasm64-small` with both levers, if a size-critical
 build is ever wanted, is a two-line switch.
 
+**Q34. Rill: which conveniences go, of those one line of other features
+replaces? (799; written here at 805)** The duplication review's third
+section, left to you at 799 and recorded until 805 only as a line in
+GOALS.md. 799-802 removed the second ways and what commands do well. These
+are not second ways - each is the one way for its operation - but one line
+of other features could stand in. Uses are in the eight rewrites
+(examples/rill, tools/rill-audit.py's sources), counted at 805:
+
+| feature | uses | one line instead | what that costs |
+|---|---|---|---|
+| `keys($r)` | 1 | `[$k for k, v in $r]` | nothing - as `values` went at 799 |
+| `starts($t, $p)` | 7 | `slice($t, 0, len($p)) == $p` | longer; a regex `^...` needs its text escaped |
+| `ends($t, $s)` | 3 | a `slice` from `len($t) - len($s)` | longer, and easy to get wrong by one |
+| `trim($t)` | 3 | `sub($t, '^[ \t\n]+\|[ \t\n]+$', '')` | a regex for a common need |
+| `default($t, $o)` | 8 | an `if` on its own lines | two lines a use, in pack-results five times |
+| `sum($l)` | 1 | a loop: three lines | longer |
+| `for i, x in $l` | 19 | `for i in range(len($l))` and `x = $l[$i]` | a line and an index read a loop |
+| comprehensions | 8 (+ filters) | a loop and `push` | three lines for one |
+
+Six rewrites are already longer than the scripts they replace (799-802,
+GOALS.md 15), against the 726 rule "never longer"; every removal above
+except `keys` lengthens them further.
+*Recommendation*: remove `keys` (the comprehension is its one way, as for
+`values`); keep the rest - each is the only way to its operation in Rill,
+and what replaces it is longer or easier to get wrong. *Blocks*: nothing;
+the rewrites' lengths wait on it.
+
 **Q9. Divergences kept on purpose - revisit any? (GOALS.md)**
 Recorded as deliberate, listed so they are not forgotten:
 `return` outside a function inside a loop reports and carries on, as
