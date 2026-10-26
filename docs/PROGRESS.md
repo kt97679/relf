@@ -854,6 +854,7 @@ do not trust the absence of a line below.
 - 827 — alternatives to Rill's compiler weighed: Forth-style, interpreter, cached compile (Q40)
 - 828 — Rill: the prompt's memory leak fixed (5.5 MB a line); bytecode directly weighed (Q40)
 - 829 — a scripting vocabulary on Forth weighed (Q41); two pilot Forth versions mended, loaded by the tests
+- 830 — a minimal parser prototype: regular notation over the Forth vocabulary, 12.7 KB (Q42)
 
 ### Not tied to an iteration
 

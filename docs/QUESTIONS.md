@@ -71,6 +71,22 @@ general shell and script users A35 names? (2) beside Rill, or in its place?
 *Recommendation*: beside Rill, for the project's own tools; first one whole
 pilot in the vocabulary, measured by the pilots' protocol. *Blocks*: nothing.
 
+**Q42. The minimal parser: Rill's next form? (830)** The user wants a
+general-purpose scripting language and shell in regular notation (`a = b + c`)
+with a small translation layer. The prototype, examples/forth-script/mini.4
+(docs/FORTH-SCRIPTING.md, "The minimal parser"), does it in 12.7 KB where
+Rill's compiler is 39: the image without its editor 52.8 KB against 79.2, with
+values checked when used - and fib(25) in 78 ms against Rill's 10 and Python's
+25. Questions: (1) make this Rill's design - the compiler replaced by the
+minimal parser, the scripts and tests moved to bare names (`a = b + c`;
+`$name` only in a command line)? (2) speed: tagged small numbers in the
+runtime, or the boxes as they are? (3) of Rill's other features, which to
+carry over first? *Recommendation*: (1) yes, step by step - the minimal
+parser grown feature by feature until Rill's tests and scripts run in it,
+then the compiler removed; (2) tagged numbers once it runs; (3) pipelines,
+`$(...)` and `{expr}` in strings, records, break and continue. *Blocks*:
+nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

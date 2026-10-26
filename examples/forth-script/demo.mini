@@ -1,0 +1,29 @@
+# examples/forth-script/demo.mini - regular notation over the Forth vocabulary (830): mini.4 runs it
+b = 2
+c = 3
+a = b + c * 4
+print(a)
+greeting = "hello"
+print(greeting + ", world")
+def fib(n) {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+print(fib(20))
+squares = []
+for i in range(5) {
+    append(squares, i * i)
+}
+print(squares)
+total = 0
+k = 0
+while k < len(squares) {
+    total = total + squares[k]
+    k = k + 1
+}
+print("total " + str(total))
+if total > 100 { print("big") } elif total > 10 { print("medium") } else { print("small") }
+name = "mini"
+echo hello from $name
+print(status)
+print(not false and 1 < 2)

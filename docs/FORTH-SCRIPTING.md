@@ -54,3 +54,39 @@ from the runtime, and nothing ran them: native-by-source.fth has its own UPPER n
 native-ab-layouts.fth takes its geometric mean from awk, as its Rill version has since 799 (GM:
 1.144714 for 1.5, 0.5, 2.0, as Python's). tests/rill/run loads each examples/rill/*.fth now, its
 closing MAIN left out, and fails on a word undefined.
+
+## The minimal parser (830)
+
+The user, after Q41: a general-purpose scripting language and shell; regular notation, `a = b + c`;
+perhaps a small translation layer with a minimal parser that hides the stack. examples/forth-script/
+mini.4 is that layer as a prototype: 197 lines of Forth over Rill's runtime words. Values carry their
+kinds and are checked when used, as Python's are - so there is no kind inference, no second pass, no
+per-function knowledge: a library function is a word L.name, called by name. A statement is compiled
+to Forth and run, then the next is read, as a shell does. It has expressions with precedence (`or`,
+`and`, `not`, comparisons, `+ -`, `* / %`, unary minus, `x[i]`, calls, lists, strings with escapes);
+assignment, `if`/`elif`/`else`, `while`, `for x in`, `def` with `return` (recursion through RECURSE,
+parameters and what a def sets shadowed); and command lines - a line that is no assignment, call or
+known name runs as a command, `$name` its variables, its status in `status`. demo.mini runs in it, as
+tests/rill/run checks, and the same under RILL_GC_STRESS=1:
+
+    a = b + c * 4                      def fib(n) {
+    print(greeting + ", world")            if n < 2 { return n }
+    for i in range(5) {                    return fib(n - 1) + fib(n - 2)
+        append(squares, i * i)         }
+    }                                  echo hello from $name
+
+| | image (no editor) | fib(25) |
+|---|---:|---:|
+| Rill: its compiler | 79.2 KB | 10 ms |
+| the runtime and mini.4 | 52.8 KB | 78 ms |
+| the runtime alone | 40.1 KB | |
+| Python | | 25 ms |
+
+The parser is 12.7 KB, a third of the compiler's 39. The price is speed where numbers are many: every
+number is a box on the heap, made and dropped, so fib runs eight times Rill's time and three times
+Python's. Tagged small numbers - a number told by its low bit, never boxed - would win most of that
+back: a change to the runtime, not to the parser. Not in the prototype, each a matter of the parser's
+growing, the runtime having them already: decimals, records, pipelines and redirections, `$(...)`,
+`{expr}` in strings, text blocks, comprehensions, break and continue, line numbers in errors at run
+time (compile errors have them). Writing it, three stack slips of the author's own, found by running:
+the case for a parser that keeps them from a script's writer. QUESTIONS.md Q42.

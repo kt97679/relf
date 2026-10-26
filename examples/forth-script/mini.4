@@ -1,0 +1,219 @@
+\ examples/forth-script/mini.4 - a minimal parser over the Forth vocabulary (Iteration 830, a prototype)
+\ The user's direction (830): a general-purpose scripting language and shell in regular notation -
+\ a = b + c - with a small translation layer that hides the stack. Values carry their kinds, looked at
+\ when used, as Python's do; library functions are Forth words called by name; a statement is compiled
+\ and run, then the next, as a shell's are. Loaded at run time into Rill's image, whose runtime words
+\ (rill/rt.4) it uses; docs/FORTH-SCRIPTING.md. Run: S" mini.4" INCLUDED  S" x.mini" MINI-FILE
+
+\ ---- values: Rill's items, none is 0
+: D-NUM ( n --- item )   K-NUM R-BOX ;
+: D-BOOL ( f --- item )   0<> K-BOOL R-BOX ;
+: D-KIND ( item --- kind )   DUP IF @ THEN ;
+: D-ERR ( c-addr u --- )   R-FAIL ;
+: D>N ( item --- n )   DUP D-KIND K-NUM <> IF S" mini: a number was wanted" D-ERR THEN CELL+ @ ;
+: D2N ( a b --- n1 n2 )   SWAP D>N SWAP D>N ;
+: D-TEXT ( item --- t )   ?DUP IF R-ANY>TEXT ELSE S" none" R-TEXT THEN ;
+: D-LIST ( item --- l )   DUP D-KIND K-LIST <> IF S" mini: a list was wanted" D-ERR THEN CELL+ @ ;
+: D+ ( a b --- c )   \ numbers add, texts join
+  OVER D-KIND K-TEXT = OVER D-KIND K-TEXT = AND IF SWAP D-TEXT SWAP D-TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
+  D2N + D-NUM ;
+: D- ( a b --- c )   D2N - D-NUM ;
+: D* ( a b --- c )   D2N * D-NUM ;
+: D0? ( n --- n )   DUP 0= IF S" mini: division by zero" D-ERR THEN ;
+: D/ ( a b --- c )   D2N D0? / D-NUM ;
+: D% ( a b --- c )   D2N D0? MOD D-NUM ;
+: D-NEG ( a --- c )   D>N NEGATE D-NUM ;
+: D-TRUE? ( item --- f )   \ none, 0, false, "" and [] are false
+  ?DUP 0= IF 0 EXIT THEN  R-UNBOX
+  DUP K-TEXT = IF DROP R-T@ NIP 0<> EXIT THEN  DUP K-LIST = IF DROP R-LEN 0<> EXIT THEN
+  K-REC = IF DROP -1 EXIT THEN  0<> ;
+: D-CMP ( a b --- n )   \ numbers by value, texts by their bytes
+  OVER D-KIND K-TEXT = IF D-TEXT R-T@ ROT D-TEXT R-T@ 2SWAP COMPARE EXIT THEN  D2N - ;
+: D< ( a b --- c )   D-CMP 0< D-BOOL ;      : D> ( a b --- c )   D-CMP 0> D-BOOL ;
+: D<= ( a b --- c )   D-CMP 0> 0= D-BOOL ;  : D>= ( a b --- c )   D-CMP 0< 0= D-BOOL ;
+: D== ( a b --- c )
+  OVER D-KIND OVER D-KIND <> IF 2DROP 0 D-BOOL EXIT THEN
+  OVER D-KIND K-TEXT = IF D-CMP 0= D-BOOL EXIT THEN
+  OVER D-KIND DUP K-NUM = SWAP K-BOOL = OR IF CELL+ @ SWAP CELL+ @ = D-BOOL EXIT THEN  = D-BOOL ;
+: D!= ( a b --- c )   D== D-TRUE? 0= D-BOOL ;
+: D-AT ( a i --- item )   D>N SWAP D-LIST SWAP R-AT ;
+
+\ ---- the library: words named L.f taking and giving items, LA.f their number of arguments
+: L.print ( x --- none )   D-TEXT R-TYPE R-NL 0 ;                    1 CONSTANT LA.print
+: L.str ( x --- t )   D-TEXT K-TEXT R-BOX ;                            1 CONSTANT LA.str
+: L.int ( x --- n )   D-TEXT R-NUMBER D-NUM ;                          1 CONSTANT LA.int
+: L.len ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-T@ NIP ELSE D-LIST R-LEN THEN D-NUM ;   1 CONSTANT LA.len
+: L.range ( n --- l )   D>N 0 SWAP R-RANGE K-LIST R-BOX ;               1 CONSTANT LA.range
+: L.append ( l x --- none )   SWAP D-LIST R-PUSH 0 ;                   2 CONSTANT LA.append
+VARIABLE V.status   V.status R-ITEM R-ROOT                             \ the last command's status
+: D-RUN ( t1 .. tn n --- )   >R 0 PL-BEGIN R> -1 PL-STAGE PL-END D-NUM V.status ! ;
+
+\ ---- tokens, read one ahead from the script's text
+VARIABLE SRC  VARIABLE SRC#  VARIABLE POS  VARIABLE LINE  VARIABLE TK  VARIABLE TA  VARIABLE TL  VARIABLE TLINE
+1 CONSTANT T-NAME  2 CONSTANT T-NUM  3 CONSTANT T-STR  4 CONSTANT T-OP  5 CONSTANT T-NL  6 CONSTANT T-EOF
+: CH ( i --- c )   DUP SRC# @ < IF SRC @ + C@ ELSE DROP 0 THEN ;
+: C@P ( --- c )   POS @ CH ;
+: ALPHA? ( c --- f )   DUP [CHAR] a [CHAR] z 1+ WITHIN OVER [CHAR] A [CHAR] Z 1+ WITHIN OR SWAP [CHAR] _ = OR ;
+: DIGIT? ( c --- f )   [CHAR] 0 [CHAR] 9 1+ WITHIN ;
+: TK-END ( --- )   SRC @ POS @ + TA @ - TL ! ;
+: NEXT ( --- )
+  BEGIN C@P DUP BL = SWAP 9 = OR WHILE 1 POS +! REPEAT
+  C@P [CHAR] # = IF BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT THEN
+  SRC @ POS @ + TA !  0 TL !  LINE @ 1+ TLINE !                 \ the token's own line, for an error
+  POS @ SRC# @ < 0= IF T-EOF TK ! EXIT THEN
+  C@P 10 = IF T-NL TK ! 1 POS +! 1 LINE +! TK-END EXIT THEN
+  C@P DIGIT? IF T-NUM TK ! BEGIN C@P DIGIT? WHILE 1 POS +! REPEAT TK-END EXIT THEN
+  C@P ALPHA? IF T-NAME TK ! BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT TK-END EXIT THEN
+  C@P [CHAR] " = IF T-STR TK ! 1 POS +! SRC @ POS @ + TA !
+    BEGIN C@P DUP [CHAR] " <> SWAP 0<> AND WHILE C@P [CHAR] \ = IF 1 POS +! THEN 1 POS +! REPEAT
+    TK-END 1 POS +! EXIT THEN
+  T-OP TK !  C@P 1 POS +!
+  DUP [CHAR] = = OVER [CHAR] ! = OR OVER [CHAR] < = OR SWAP [CHAR] > = OR  C@P [CHAR] = = AND IF 1 POS +! THEN  TK-END ;
+: PEEK ( n --- c )   POS @ BEGIN DUP CH DUP BL = SWAP 9 = OR WHILE 1+ REPEAT + CH ;   \ past blanks, the nth
+: .N ( n --- )   S>D TUCK DABS <# #S ROT SIGN #> TYPE ;
+: IS? ( c-addr u --- f )   TA @ TL @ COMPARE 0= TK @ T-STR <> AND ;
+: ERR ( c-addr u --- )   R-ERR> ." mini: line " TLINE @ .N ." : " TYPE R-NL -4100 THROW ;
+: ERR-NAME ( c-addr u msg u --- )   R-ERR> ." mini: line " TLINE @ .N ." : " 2SWAP TYPE SPACE TYPE R-NL -4100 THROW ;
+: EXPECT ( c-addr u --- )   2DUP IS? IF 2DROP NEXT EXIT THEN
+  R-ERR> ." mini: line " TLINE @ .N ." : expected " TYPE ."  but found " TA @ TL @ TYPE R-NL -4100 THROW ;
+: SKIP-NL ( --- )   BEGIN TK @ T-NL = WHILE NEXT REPEAT ;
+
+\ ---- the Forth made: OUT a statement's (or a def's body), FIN the whole to EVALUATE
+65536 CONSTANT BUF-MAX   VARIABLE OUT  VARIABLE OUT#  VARIABLE FIN  VARIABLE FIN#
+BUF-MAX ALLOCATE THROW OUT !   BUF-MAX ALLOCATE THROW FIN !
+: O+ ( c-addr u --- )   DUP OUT# @ + 2 + BUF-MAX > IF S" mini: a statement too long" D-ERR THEN
+  >R OUT @ OUT# @ + R@ MOVE R> OUT# +!  BL OUT @ OUT# @ + C!  1 OUT# +! ;
+: F+ ( c-addr u --- )   DUP FIN# @ + 2 + BUF-MAX > IF S" mini: a statement too long" D-ERR THEN
+  >R FIN @ FIN# @ + R@ MOVE R> FIN# +!  BL FIN @ FIN# @ + C!  1 FIN# +! ;
+: N$ ( n --- c-addr u )   S>D TUCK DABS <# #S ROT SIGN #> ;
+: O# ( n --- )   N$ O+ ;
+CREATE NB 64 ALLOT  CREATE CB 66 ALLOT
+: NAME$ ( c-addr u prefix u --- c-addr2 u2 )   DUP >R NB SWAP MOVE  R@ NB + SWAP DUP >R MOVE  NB R> R> + ;
+: FIND$ ( c-addr u --- xt | 0 )   DUP CB C! CB 1+ SWAP MOVE  CB FIND 0= IF DROP 0 THEN ;
+CREATE DECL 128 ALLOT  VARIABLE DECL#
+: D$ ( c-addr u --- )   >R DECL DECL# @ + R@ MOVE R> DECL# +! ;
+: VAR ( c-addr u --- )   \ the variable V.name, made if new - an item the collector sees
+  2DUP S" V." NAME$ FIND$ IF 2DROP EXIT THEN
+  0 DECL# !  S" VARIABLE V." D$ 2DUP D$  S"  V." D$ D$  S"  R-ITEM R-ROOT" D$  DECL DECL# @ EVALUATE ;
+
+\ ---- a def's names: its parameters first, then what it sets - shadowed, so a call has its own
+64 CONSTANT LN-MAX  CREATE LN-T LN-MAX 32 * ALLOT  VARIABLE LN#
+VARIABLE IN-DEF  VARIABLE DEF-A  VARIABLE DEF-L  VARIABLE DEF-P  VARIABLE DEPTH  VARIABLE LOOPS  VARIABLE FOR#
+: LN@ ( i --- c-addr u )   32 * LN-T + COUNT ;
+: LN-HAS? ( c-addr u --- f )   LN# @ 0 ?DO 2DUP I LN@ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN LOOP 2DROP 0 ;
+: LOC ( c-addr u --- )   IN-DEF @ 0= IF 2DROP EXIT THEN  2DUP LN-HAS? IF 2DROP EXIT THEN
+  LN# @ LN-MAX < 0= IF S" too many names in one def" ERR THEN
+  31 MIN DUP LN# @ 32 * LN-T + C!  LN# @ 32 * LN-T + 1+ SWAP MOVE  1 LN# +! ;
+CREATE HB 16 ALLOT
+: HIDDEN ( --- c-addr u )   1 FOR# +!  FOR# @ 0 <# #S [CHAR] ~ HOLD #>  DUP >R HB SWAP MOVE HB R> ;
+
+\ ---- expressions: each part's Forth after its operands' - postfix, made in the order read
+DEFER EXPR
+CREATE SB 4096 ALLOT  VARIABLE SB#
+: STR-LIT ( --- )   \ its escapes made, kept outside the collector's arena; its address compiled
+  0 SB# !  0 BEGIN DUP TL @ < WHILE
+    TA @ OVER + C@ DUP [CHAR] \ = IF DROP 1+ TA @ OVER + C@ CASE [CHAR] n OF 10 ENDOF [CHAR] t OF 9 ENDOF DUP ENDCASE THEN
+    SB# @ 4095 < IF SB SB# @ + C! 1 SB# +! ELSE DROP THEN  1+
+  REPEAT DROP  SB SB# @ R-TEXT R-FIX O# S" K-TEXT R-BOX" O+ ;
+: ARGS ( --- n )   S" (" EXPECT  0  S" )" IS? IF NEXT EXIT THEN
+  BEGIN EXPR 1+  S" ," IS? WHILE NEXT REPEAT  S" )" EXPECT ;
+: ARITY ( n m c-addr u --- )   2SWAP <> IF S" takes another number of arguments" ERR-NAME THEN 2DROP ;
+: CALL ( c-addr u --- )   \ name(args): the def being made (RECURSE), a def, or the library's word
+  ARGS >R
+  IN-DEF @ IF 2DUP DEF-A @ DEF-L @ COMPARE 0= IF R> DEF-P @ 2OVER ARITY 2DROP S" RECURSE" O+ EXIT THEN THEN
+  2DUP S" A." NAME$ FIND$ ?DUP IF EXECUTE R> SWAP 2OVER ARITY S" F." NAME$ O+ EXIT THEN
+  2DUP S" LA." NAME$ FIND$ ?DUP IF EXECUTE R> SWAP 2OVER ARITY S" L." NAME$ O+ EXIT THEN
+  R> DROP S" is not defined" ERR-NAME ;
+: VAR-READ ( c-addr u --- )
+  2DUP S" V." NAME$ FIND$ 0= IF IN-DEF @ IF 2DUP VAR ELSE S" is not defined" ERR-NAME THEN THEN
+  S" V." NAME$ O+ S" @" O+ ;
+: PRIMARY ( --- )
+  TK @ T-NUM = IF 0 0 TA @ TL @ >NUMBER 2DROP DROP O# S" D-NUM" O+ NEXT EXIT THEN
+  TK @ T-STR = IF STR-LIT NEXT EXIT THEN
+  TK @ T-NAME = IF
+    S" true" IS? IF NEXT -1 O# S" D-BOOL" O+ EXIT THEN  S" false" IS? IF NEXT 0 O# S" D-BOOL" O+ EXIT THEN
+    S" none" IS? IF NEXT 0 O# EXIT THEN
+    TA @ TL @ NEXT  S" (" IS? IF CALL ELSE VAR-READ THEN EXIT THEN
+  S" (" IS? IF NEXT EXPR S" )" EXPECT EXIT THEN
+  S" [" IS? IF NEXT S" R-NEW-LIST" O+  S" ]" IS? 0= IF BEGIN EXPR S" OVER R-PUSH" O+ S" ," IS? WHILE NEXT REPEAT THEN
+    S" ]" EXPECT S" K-LIST R-BOX" O+ EXIT THEN
+  S" a value" S" was expected" ERR-NAME ;
+: POSTFIX ( --- )   PRIMARY  BEGIN S" [" IS? WHILE NEXT EXPR S" ]" EXPECT S" D-AT" O+ REPEAT ;
+: UNARY ( --- )   S" -" IS? IF NEXT RECURSE S" D-NEG" O+ EXIT THEN  POSTFIX ;
+: MULS ( --- )   UNARY BEGIN
+  S" *" IS? IF NEXT UNARY S" D*" O+ ELSE  S" /" IS? IF NEXT UNARY S" D/" O+ ELSE
+  S" %" IS? IF NEXT UNARY S" D%" O+ ELSE EXIT THEN THEN THEN AGAIN ;
+: ADDS ( --- )   MULS BEGIN
+  S" +" IS? IF NEXT MULS S" D+" O+ ELSE  S" -" IS? IF NEXT MULS S" D-" O+ ELSE EXIT THEN THEN AGAIN ;
+: CMPS ( --- )   ADDS
+  S" ==" IS? IF NEXT ADDS S" D==" O+ EXIT THEN  S" !=" IS? IF NEXT ADDS S" D!=" O+ EXIT THEN
+  S" <=" IS? IF NEXT ADDS S" D<=" O+ EXIT THEN  S" >=" IS? IF NEXT ADDS S" D>=" O+ EXIT THEN
+  S" <" IS? IF NEXT ADDS S" D<" O+ EXIT THEN    S" >" IS? IF NEXT ADDS S" D>" O+ EXIT THEN ;
+: NOTS ( --- )   S" not" IS? IF NEXT RECURSE S" D-TRUE? 0= D-BOOL" O+ EXIT THEN  CMPS ;
+: ANDS ( --- )   NOTS BEGIN S" and" IS? WHILE NEXT S" DUP D-TRUE? IF DROP" O+ NOTS S" THEN" O+ REPEAT ;
+: ORS ( --- )   ANDS BEGIN S" or" IS? WHILE NEXT S" DUP D-TRUE? 0= IF DROP" O+ ANDS S" THEN" O+ REPEAT ;
+' ORS IS EXPR
+
+\ ---- statements
+DEFER STMT
+: BLOCK ( --- )   S" {" EXPECT SKIP-NL  1 DEPTH +!
+  BEGIN S" }" IS? 0= WHILE TK @ T-EOF = IF S" }" S" is missing" ERR-NAME THEN STMT SKIP-NL REPEAT  NEXT  -1 DEPTH +! ;
+: COND ( --- )   EXPR S" D-TRUE? IF" O+ ;
+: IF-STMT ( --- )   NEXT COND BLOCK  1
+  BEGIN S" elif" IS? WHILE NEXT S" ELSE" O+ COND BLOCK 1+ REPEAT
+  S" else" IS? IF NEXT S" ELSE" O+ BLOCK THEN  0 ?DO S" THEN" O+ LOOP ;
+: WHILE-STMT ( --- )   NEXT S" BEGIN" O+ EXPR S" D-TRUE? WHILE" O+ BLOCK S" REPEAT" O+ ;
+: FOR-STMT ( --- )   \ for x in list { }: the list kept in a variable of its own, the collector's to see
+  NEXT TK @ T-NAME <> IF S" for" S" wants a name" ERR-NAME THEN  TA @ TL @ 2DUP VAR 2DUP LOC NEXT  S" in" EXPECT
+  EXPR  HIDDEN 2DUP VAR 2DUP LOC  2DUP S" V." NAME$ O+ S" !" O+
+  2DUP S" V." NAME$ O+ S" @ D-LIST R-LEN 0 ?DO" O+  S" V." NAME$ O+ S" @ D-LIST I R-AT" O+
+  S" V." NAME$ O+ S" !" O+  1 LOOPS +!  BLOCK  -1 LOOPS +!  S" LOOP" O+ ;
+: RETURN-STMT ( --- )   IN-DEF @ 0= IF S" return" S" is only for a def" ERR-NAME THEN  NEXT
+  TK @ T-NL = S" }" IS? OR IF 0 O# ELSE EXPR THEN  LOOPS @ 0 ?DO S" UNLOOP" O+ LOOP  S" EXIT" O+ ;
+: DEF-STMT ( --- )   \ def name(params) { }: the word F.name, its names shadowed; A.name its arity
+  DEPTH @ IN-DEF @ OR IF S" def" S" is only for the top level" ERR-NAME THEN
+  NEXT TK @ T-NAME <> IF S" def" S" wants a name" ERR-NAME THEN  TA @ TL @ DEF-L ! DEF-A !  NEXT
+  S" (" EXPECT  0 DEF-P !  0 LN#  !  -1 IN-DEF !
+  S" )" IS? 0= IF BEGIN TK @ T-NAME <> IF S" a parameter" S" is a name" ERR-NAME THEN
+    TA @ TL @ 2DUP VAR LOC  1 DEF-P +!  NEXT  S" ," IS? WHILE NEXT REPEAT THEN
+  S" )" EXPECT  0 OUT# !  0 LOOPS !  BLOCK  0 IN-DEF !
+  0 FIN# !  S" :" F+  DEF-A @ DEF-L @ S" F." NAME$ F+
+  LN# @ IF S" SHADOW{" F+  LN# @ 0 ?DO I DEF-P @ = IF S" |" F+ THEN I LN@ S" V." NAME$ F+ LOOP
+    LN# @ DEF-P @ = IF S" |" F+ THEN  S" }" F+ THEN
+  OUT @ OUT# @ F+  S" 0 ;" F+  DEF-P @ N$ F+  S" CONSTANT" F+  DEF-A @ DEF-L @ S" A." NAME$ F+
+  FIN @ FIN# @ EVALUATE  0 OUT# ! ;
+: ASSIGN ( --- )   TA @ TL @ 2DUP VAR 2DUP LOC  NEXT S" =" EXPECT  EXPR  S" V." NAME$ O+ S" !" O+ ;
+: KNOWN? ( c-addr u --- f )   2DUP S" V." NAME$ FIND$ IF 2DROP -1 EXIT THEN
+  2DUP S" A." NAME$ FIND$ IF 2DROP -1 EXIT THEN  S" LA." NAME$ FIND$ 0<> ;
+: COMMAND ( --- )   \ the rest of the line, a command: its words texts, $name a variable's; run, status set
+  0  TA @ SRC @ - POS !
+  BEGIN BEGIN C@P BL = WHILE 1 POS +! REPEAT  C@P DUP 10 <> SWAP 0<> AND WHILE
+    SRC @ POS @ +  BEGIN C@P DUP BL <> OVER 10 <> AND SWAP 0<> AND WHILE 1 POS +! REPEAT
+    SRC @ POS @ + OVER -                                                ( n c-addr u )
+    OVER C@ [CHAR] $ = IF 1 /STRING VAR-READ S" D-TEXT" O+ ELSE R-TEXT R-FIX O# THEN  1+
+  REPEAT  O# S" D-RUN" O+  NEXT ;
+: STATEMENT ( --- )
+  TK @ T-NL = TK @ T-EOF = OR IF EXIT THEN
+  IN-DEF @ 0= IF S" R-GC?" O+ THEN                   \ a safe point, as Rill's: none inside a def
+  S" if" IS? IF IF-STMT EXIT THEN        S" while" IS? IF WHILE-STMT EXIT THEN
+  S" for" IS? IF FOR-STMT EXIT THEN      S" def" IS? IF DEF-STMT EXIT THEN
+  S" return" IS? IF RETURN-STMT EXIT THEN
+  TK @ T-NAME = IF
+    0 PEEK [CHAR] = = 1 PEEK [CHAR] = <> AND IF ASSIGN EXIT THEN
+    0 PEEK [CHAR] ( <> 0 PEEK [CHAR] [ <> AND  TA @ TL @ KNOWN? 0= AND IF COMMAND EXIT THEN
+  THEN  EXPR S" DROP" O+ ;
+' STATEMENT IS STMT
+
+\ ---- a script: each statement made into a word of its own, and run, before the next is read
+VARIABLE ST#  CREATE SN 24 ALLOT  VARIABLE SN#
+: STMT-NAME ( --- c-addr u )   ST# @ 0 <# [CHAR] ) HOLD #S [CHAR] S HOLD [CHAR] ( HOLD #>  DUP SN# ! SN SWAP MOVE  SN SN# @ ;
+: RUN-STMT ( --- )   OUT# @ 0= IF EXIT THEN  1 ST# +!
+  0 FIN# !  S" :" F+  STMT-NAME F+  OUT @ OUT# @ F+  S" ;" F+  SN SN# @ F+  FIN @ FIN# @ EVALUATE ;
+: MINI ( c-addr u --- )   \ a script's text, kept where it is while it runs
+  SRC# ! SRC !  0 POS !  0 LINE !  0 IN-DEF !  0 DEPTH !  NEXT
+  BEGIN SKIP-NL TK @ T-EOF <> WHILE
+    0 OUT# !  0 LOOPS !  STMT
+    TK @ T-NL <> TK @ T-EOF <> AND IF S" the line goes on" ERR THEN
+    RUN-STMT
+  REPEAT ;
+: MINI-FILE ( c-addr u --- )   R-TEXT R-READ R-FIX R-T@ MINI ;   \ the text out of the arena: a statement collects
