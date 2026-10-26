@@ -24,7 +24,7 @@ VARIABLE RS-SRC   VARIABLE SRC#   VARIABLE CUR-LINE
 : TK-CLAMP ( i --- i' )   \ past the last token (the end's), the end again; far past it, a scan that never met
   DUP 0< IF DROP 0 EXIT THEN                 \ what it looked for: an error, not a read of whatever lies there -
   DUP TK-N @ 1- > 0= IF EXIT THEN             \ a lone `while` faulted this compiler (816, tools/rill-fuzz.py)
-  TK-N @ 1023 + > IF ." rillc: line " TK-N @ 1- CELLS TK-LINE @ + @ . ." : the program ends inside a statement" R-NL -4100 THROW THEN
+  TK-N @ 1023 + > IF R-ERR> ." rillc: line " TK-N @ 1- CELLS TK-LINE @ + @ . ." : the program ends inside a statement" R-NL -4100 THROW THEN
   TK-N @ 1- ;
 : K@ ( i --- kind )   TK-CLAMP CELLS TK-KIND @ + @ ;
 : T@ ( i --- c-addr u )   TK-CLAMP DUP CELLS TK-AT @ + @ RS-SRC @ +  SWAP CELLS TK-LEN @ + @ ;
@@ -180,8 +180,8 @@ NM-MAX CELLS BUFFER: DC-A  NM-MAX CELLS BUFFER: DC-L  VARIABLE DC-N
 : CUR-IS? ( c-addr u --- f )   TK -ROT TK-IS? ;
 : EXPECT ( c-addr u --- )
   2DUP CUR-IS? IF 2DROP NEXT-TK EXIT THEN
-  ." rillc: line " TK L@ . ." : expected " TYPE ." , found " TK T@ TYPE R-NL -4100 THROW ;
-: ERR ( c-addr u --- )   ." rillc: line " TK L@ . ." : " TYPE R-NL -4100 THROW ;
+  R-ERR> ." rillc: line " TK L@ . ." : expected " TYPE ." , found " TK T@ TYPE R-NL -4100 THROW ;
+: ERR ( c-addr u --- )   R-ERR> ." rillc: line " TK L@ . ." : " TYPE R-NL -4100 THROW ;
 
 \ ---- Part 3: expressions (Iteration 740) --------------------------------
 VARIABLE STACKMODE   VARIABLE SM-DEPTH
@@ -334,7 +334,7 @@ VARIABLE CMR-N
     2DUP S" args" S= IF 2DROP S" R-ARGS" OUT+ K-LIST EXIT THEN
     2DUP S" script" S= IF 2DROP S" R-SCRIPT" OUT+ K-TEXT EXIT THEN THEN
   2DUP NM-FIND DUP 0< IF
-    DROP S" is not set" 2SWAP ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
+    DROP S" is not set" 2SWAP R-ERR> ." rillc: line " TK 1- L@ . ." : $" TYPE SPACE TYPE R-NL -4100 THROW THEN
   >R  2DUP [CHAR] R OUT-C [CHAR] . OUT-C  OUT-RAW BL OUT-C  S" @" OUT+                     ( a u )  ( R: i )
   NM-K R@ CELLS + @ DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR SWAP K-ANY = OR  NM-DAL R@ CELLS + @ 0< AND IF
     S" DUP 0= IF" OUT+  [CHAR] S OUT-C 34 OUT-C BL OUT-C OUT-RAW 34 OUT-C BL OUT-C  S" R-UNSET THEN" OUT+   \ maybe not set (772)
@@ -400,7 +400,7 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
   DUP [CHAR] n = IF DROP 10 LIT-C 1 /STRING EXIT THEN
   DUP [CHAR] t = IF DROP 9 LIT-C 1 /STRING EXIT THEN
   DUP [CHAR] r = IF DROP 13 LIT-C 1 /STRING EXIT THEN
-  DUP SH-ALNUM? IF ." rillc: line " TK L@ . ." : \" EMIT ."  is no escape - \n \t \r \uXXXX, or \ before a mark" R-NL -4100 THROW THEN
+  DUP SH-ALNUM? IF R-ERR> ." rillc: line " TK L@ . ." : \" EMIT ."  is no escape - \n \t \r \uXXXX, or \ before a mark" R-NL -4100 THROW THEN
   LIT-C 1 /STRING ;
 : STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}, $( ... )
   \ In the loop the stack is ( c-addr u c ): the next character is 2 PICK 1+ C@,
@@ -509,7 +509,7 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   TK T@ NEXT-TK  S" (" EXPECT
   2DUP LIBRARY IF >R 2DROP R> S" )" EXPECT EXIT THEN          \ the kind, not the name, left
   2DUP DF-FIND DUP 0< IF DROP                                    \ named, and whether it is further down (786)
-    ." rillc: line " TK L@ . ." : " 2DUP TYPE ." () is "
+    R-ERR> ." rillc: line " TK L@ . ." : " 2DUP TYPE ." () is "
     DEF-LATER? IF ." defined further down: a def comes before its use" ELSE ." not defined" THEN R-NL -4100 THROW THEN
   >R 2DROP 0
   BEGIN S" )" CUR-IS? 0= WHILE
@@ -542,22 +542,22 @@ VARIABLE LB-POS  VARIABLE LB-W1  VARIABLE LB-W2
   TK T@ OVER C@ [CHAR] - = IF 1 /STRING THEN  BEGIN DUP 1 > IF OVER C@ [CHAR] 0 = ELSE 0 THEN WHILE 1 /STRING REPEAT   \ leading zeros off (817)
   2DUP [CHAR] . SCAN NIP - NIP 13 >                                                     \ past 9223372036854.775807: too big (794)
   OVER 9223372036854 > OR  OVER 9223372036854 = R@ 775807 > AND OR
-  IF ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is too big for a decimal (at most 9223372036854.775807)" R-NL -4100 THROW THEN
+  IF R-ERR> ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is too big for a decimal (at most 9223372036854.775807)" R-NL -4100 THROW THEN
   1000000 * R> +  R> IF NEGATE THEN -1 ;
 VARIABLE IN-ARG  VARIABLE IA-NOW   \ a command's argument: its bare word is its text (762)
 : BARE-ERR ( --- )   \ a bare word that names a variable: a slip of the $ rule, most likely
-  ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable - $" TK T@ TYPE ." , or " 34 EMIT TK T@ TYPE 34 EMIT ."  for the text"
+  R-ERR> ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable - $" TK T@ TYPE ." , or " 34 EMIT TK T@ TYPE 34 EMIT ."  for the text"
   R-NL -4100 THROW ;
 : RUN-VAR? ( --- )   \ ( name ) runs a program; a variable of that name means its $ was left out (805)
   TK 1+ S" )" TK-IS? 0= IF EXIT THEN  TK T@ DF-FIND 0< 0= IF EXIT THEN  TK T@ NM-FIND 0< TK T@ CRENAMED? 0= AND IF EXIT THEN
-  ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable: ($" TK T@ TYPE ." ) for its truth, (env " TK T@ TYPE
+  R-ERR> ." rillc: line " TK L@ . ." : " TK T@ TYPE ."  is a variable: ($" TK T@ TYPE ." ) for its truth, (env " TK T@ TYPE
   ." ) for a program of that name" R-NL -4100 THROW ;
 : TERM0 ( --- kind )
   IN-ARG @ IA-NOW !  0 IN-ARG !
   TK K@ T-WORD = IF S" true" CUR-IS? IF NEXT-TK S" -1" OUT+ K-BOOL EXIT THEN                   \ 759: booleans
     S" false" CUR-IS? IF NEXT-TK S" 0" OUT+ K-BOOL EXIT THEN THEN
   TK K@ T-WORD = IF TK T@ DEC-LIT? IF OUT-NUM NEXT-TK 1 DEPTH+ K-DEC EXIT THEN THEN
-  TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ 2DUP NUM-TOO-BIG? IF ." rillc: line " TK L@ . ." : " TYPE ."  is too big for a number (64 bits)" R-NL -4100 THROW THEN
+  TK K@ T-WORD = IF TK T@ NUMBER-TEXT? IF TK T@ 2DUP NUM-TOO-BIG? IF R-ERR> ." rillc: line " TK L@ . ." : " TYPE ."  is too big for a number (64 bits)" R-NL -4100 THROW THEN
     OUT+ NEXT-TK 1 DEPTH+ K-NUM EXIT THEN THEN
   TK K@ T-VAR = IF TK T@ 1 /STRING NEXT-TK READ-VAR EXIT THEN
   TK K@ T-STR = IF TK T@ 1 /STRING 1- NEXT-TK STRING-LIT EXIT THEN
@@ -862,7 +862,7 @@ CREATE LK 64 CELLS ALLOT  VARIABLE LK-N  VARIABLE LK-BASE
   DROP K-ANY = IF S" R-UNBOX DROP" OUT+ EXIT THEN  S" this returns another kind" ERR ;
 : DEF-WANT ( --- kind )   DF-CUR @ CELLS DF-K + @ ;   \ the kind the def being made returns, 0 none
 : DEF-NAME. ( --- )   DF-CUR @ CELLS DUP DF-A + @ SWAP DF-L + @ TYPE ;
-: RET-ERR ( --- )   ." rillc: line " TK L@ . ." : " DEF-NAME. ;
+: RET-ERR ( --- )   R-ERR> ." rillc: line " TK L@ . ." : " DEF-NAME. ;
 : RETURN-STMT ( --- )   \ 805: a def's alone - exit ends a script; a bare one leaves a def that names no kind
   DF-CUR @ 0< IF S" return outside a def - exit ends the script" ERR THEN
   NEXT-TK
@@ -993,7 +993,7 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
 : DEF-STMT ( --- )
   TK-I @ PD-START !
   NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !
-  IN-DEF @ IF ." rillc: line " TK L@ . ." : a def inside a def - define " DEF-NAME-A @ DEF-NAME-L @ TYPE ."  at the top level" R-NL -4100 THROW THEN   \ 793
+  IN-DEF @ IF R-ERR> ." rillc: line " TK L@ . ." : a def inside a def - define " DEF-NAME-A @ DEF-NAME-L @ TYPE ."  at the top level" R-NL -4100 THROW THEN   \ 793
   NEXT-TK  0 PRM-N !                                                 \ def f(a, b): as it is called, one way (802)
   S" (" CUR-IS? TK TOK-AT TK 1- TOK-END = AND 0= IF S" a def's parameters go in parentheses: def f(a, b)" ERR THEN  NEXT-TK
   BEGIN S" )" CUR-IS? 0= WHILE
@@ -1133,7 +1133,7 @@ VARIABLE ECHO-ST   \ this stage is echo: Rill's, run in a child, its words a lis
   TK K@ T-WORD = TK T@ DF-FIND 0< 0= AND TK 1+ S" (" TK-IS? 0= AND IF
     TK T@ NEXT-TK  0 SP-FORM ! 0 SP-PEND !  0
     BEGIN STAGE-END? 0= WHILE STAGE-ITEM REPEAT
-    IF ." rillc: line " TK L@ . ." : " 2DUP TYPE ."  is a def: call it as " TYPE ." (...) - as a command it takes no arguments" R-NL -4100 THROW THEN   \ 779
+    IF R-ERR> ." rillc: line " TK L@ . ." : " 2DUP TYPE ."  is a def: call it as " TYPE ." (...) - as a command it takes no arguments" R-NL -4100 THROW THEN   \ 779
     [CHAR] [ OUT-C [CHAR] ' OUT-C [CHAR] ] OUT-C BL OUT-C  S" R:" OUT-RAW OUT+  0 1 EXIT
   THEN
   SPREAD-AHEAD? ECHO-ST @ OR SP-FORM !  0 SP-PEND !  ECHO-ST @ >R

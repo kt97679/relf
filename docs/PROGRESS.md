@@ -845,6 +845,7 @@ do not trust the absence of a line below.
 - 818 — Rill: recursion too deep and the runtime's ABORTs are Rill errors with a line; found: errors go to stdout
 - 819 — Rill in make verify: its suite and oracle as four rows (99, 0, 59, 0)
 - 820 — spawn at work in intrfuzz-stress (now shorter than its original); 819's 98 and 1 corrected to 97 and 2
+- 821 — Rill: its errors go to the err port, not into a capture of the script's output
 
 ### Not tied to an iteration
 

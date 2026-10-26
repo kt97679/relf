@@ -14,7 +14,7 @@
 VARIABLE RX-PROG  VARIABLE RX-N  VARIABLE RX-NG          \ the program being made, its length, its groups
 VARIABLE RX-P  VARIABLE RX-PN  VARIABLE RX-I             \ the pattern, its length, the place in it
 1024 CONSTANT RX-MAX
-: RX-ERR ( c-addr u --- )   ." rill: in a pattern: " TYPE R-ERR-NL  -4005 THROW ;
+: RX-ERR ( c-addr u --- )   R-ERR> ." rill: in a pattern: " TYPE R-ERR-NL  -4005 THROW ;
 : RX-AT ( index --- addr )   3 * CELLS RX-PROG @ + ;
 : RX-EMIT ( op x y --- index )
   RX-N @ RX-MAX 1- = IF S" too long" RX-ERR THEN          \ the last slot holds the start filter (769)

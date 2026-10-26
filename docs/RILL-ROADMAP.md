@@ -791,3 +791,21 @@ Both compilers give the same Forth; one round of two jobs on the three
 shells - 120 cases - 0 failures. intrfuzz-stress is shorter than its
 original now (1,184 characters against 1,199, from +3.8 %); the eight
 together 3.1 % shorter.
+
+## Iteration 821: Rill's errors go to the err port
+
+Every message Rill writes when a script fails - the runtime's 31, the
+pattern compiler's, the image's compiler's 13 - went to stdout, so `x =
+$(a-script)` took an error as its value. Now each starts with R-ERR>: the
+engine's output buffer flushed (the WRITE primitive flushes first; a
+write of nothing does it - WRITE-FILE, which writes nothing for nothing,
+did not, and the first try sent all to stdout at the exit's flush), the
+real stdout kept on a close-on-exec fd, fd 1 pointed at fd 2 - so the
+whole message, its line included, goes there, after whatever the script
+wrote before it. R-BOOT puts stdout back before on EXIT runs (R-OUT-BACK).
+tests/rill/errors-stderr.rill (through bin/rill -c): captures hold only
+output, the message still follows `out` when both are taken, a compile
+error leaves stdout empty, on EXIT after an error writes to stdout - on
+820 every capture held the message. The baseline's two Rill rows moved
+with the new test: rill:passed 99 to 100, rill:oracle-same 59 to 60.
+The image: 76,051 bytes to 76,291.

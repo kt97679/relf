@@ -1,0 +1,7 @@
+rill: min of an empty list (line 1)
+stdout only: [out]
+both: [out
+rill: min of an empty list (line 1)]
+rillc: line 1 : unexpected token
+a compile error, stdout only: []
+on EXIT after an error, stdout: [cleanup]

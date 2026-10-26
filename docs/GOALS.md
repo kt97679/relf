@@ -252,16 +252,13 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - **Rill's run-time errors go to stdout** (found at 818): `."` writes
-     them, so `x = $(a-rill-script)` takes an error message as its value; a
-     message to the err port (fd 2), as the shell's are, would end that.
    (815 fixed what 814 found: a def that only computes is compiled with its
    parameters as numbers only when its body uses them so - and range(n) of a
    parameter, which had read its own 0 as n, is no longer such a body.)
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
-   image since 804: 68,857 bytes to 74,803 - JSON 3.2 KB, jobs 1.0 KB, the
-   rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (99), `sh tests/rill/oracle` (59 the same),
+   image since 804: 68,857 bytes to 76,291 at 821 - JSON 3.2 KB, jobs 1.0
+   KB, the rest the fixes' code and messages: the price of general, to watch.)
+   Checks: `sh tests/rill/run` (100), `sh tests/rill/oracle` (60 the same),
    both again with RILL_GC_STRESS=1 - and, since 819, both in make verify.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
