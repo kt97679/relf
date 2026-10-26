@@ -814,6 +814,7 @@ do not trust the absence of a line below.
 - 787 — pack-results in Rill says what the shell script says; $(a ?? b); "$x.f" safe on items; sub() group references
 - 788 — run-utf8 in Rill says what tests/shell/run-utf8 says; phase 5's three rewrites all run
 - 789 — double quotes inside a string's {...} and $(...); the image's string reader re-entrant
+- 790 — items holding decimals in arithmetic and comparison, as Python's floats
 
 ### Not tied to an iteration
 

@@ -209,6 +209,15 @@ class Compiler:
             f = {'+': '+', '-': '-', '*': '1000000 */', '/': '>R 1000000 R> */', '%': 'MOD', '==': '=', '!=': '<>',
                  '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]
             return '%s %s %s' % (a, b, f), ('decimal' if op in '+-*/%' else 'bool')
+        if 'any' in (ak, bk) and ak in ('number', 'any') and bk in ('number', 'any'):   # an item: a decimal in it counts (790)
+            if op in ('+', '-', '*', '/', '%'):
+                if getattr(self, 'stack', None): self.depth -= 1
+                return '%s %s %d %s' % (a, b, '+-*/%'.index(op),
+                                        'R-ARITH-AA' if ak == bk else 'R-ARITH-AN' if ak == 'any' else 'R-ARITH-NA'), 'any'
+            if ak != bk:
+                if getattr(self, 'stack', None): self.depth -= 1
+                return '%s %s %s %s' % (a, b, 'R-CMP-AN' if ak == 'any' else 'R-CMP-NA',
+                                        {'==': '=', '!=': '<>', '<': '<', '>': '>', '<=': '> 0=', '>=': '< 0='}[op]), 'bool'
         a, b = self.to_num(a, ak, line), self.to_num(b, bk, line)
         ak = bk = 'number'
         if getattr(self, 'stack', None): self.depth -= 1

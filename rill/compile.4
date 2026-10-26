@@ -719,6 +719,12 @@ VARIABLE BL-POS   VARIABLE BL-K
 : LEFT-TEXT ( --- )   OUT-POS BL-K @ TO-TEXT  BL-POS @ SEG>POS ;      \ to_text(left), at lpos
 : LEFT-NUM ( --- )    OUT-POS BL-K @ TO-NUM   BL-POS @ SEG>POS ;
 : LEFT-BOX ( --- )    OUT-POS BL-K @ BOX      BL-POS @ SEG>POS ;
+: ARITH-OP ( c-addr u --- n )   \ + - * / %: 0 .. 4; anything else -1 (790)
+  2DUP S" +" S= IF 2DROP 0 EXIT THEN  2DUP S" -" S= IF 2DROP 1 EXIT THEN  2DUP S" *" S= IF 2DROP 2 EXIT THEN
+  2DUP S" /" S= IF 2DROP 3 EXIT THEN  S" %" S= IF 4 ELSE -1 THEN ;
+: CMP-WORD ( c-addr u --- c-addr' u' )   \ a comparison's Forth: == =, != <>, <= > 0=, >= < 0=; < and > themselves
+  2DUP S" ==" S= IF 2DROP S" =" EXIT THEN  2DUP S" !=" S= IF 2DROP S" <>" EXIT THEN
+  2DUP S" <=" S= IF 2DROP S" > 0=" EXIT THEN  2DUP S" >=" S= IF 2DROP S" < 0=" EXIT THEN ;
 : ORDER-OP ( c-addr u --- n )   \ < <= > >=: 1 2 3 4; anything else 0 (786)
   2DUP S" <" S= IF 2DROP 1 EXIT THEN  2DUP S" <=" S= IF 2DROP 2 EXIT THEN
   2DUP S" >" S= IF 2DROP 3 EXIT THEN  S" >=" S= IF 4 EXIT THEN  0 ;
@@ -755,6 +761,13 @@ VARIABLE BL-POS   VARIABLE BL-K
     R@ T@ S" <=" S= IF S" > 0=" ELSE S" < 0=" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
     OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-DEC THEN EXIT
   THEN
+  BL-K @ K-ANY = OVER K-ANY = OR  BL-K @ DUP K-NUM = SWAP K-ANY = OR AND  OVER DUP K-NUM = SWAP K-ANY = OR AND IF   \ an item: a decimal in it counts (790)
+    R@ T@ ARITH-OP DUP 0< 0= IF
+      -1 DEPTH+  OUT-NUM  BL-K @ OVER = IF S" R-ARITH-AA" ELSE BL-K @ K-ANY = IF S" R-ARITH-AN" ELSE S" R-ARITH-NA" THEN THEN OUT+
+      DROP R> DROP K-ANY EXIT THEN
+    DROP BL-K @ OVER <> IF
+      -1 DEPTH+  BL-K @ K-ANY = IF S" R-CMP-AN" ELSE S" R-CMP-NA" THEN OUT+  DROP  R@ T@ CMP-WORD OUT+  R> DROP K-BOOL EXIT THEN
+  THEN
   LEFT-NUM TO-NUM  -1 DEPTH+
   R@ T@ S" +" S= IF S" +" ELSE R@ T@ S" -" S= IF S" -" ELSE R@ T@ S" *" S= IF S" *" ELSE R@ T@ S" /" S= IF S" /" ELSE
   R@ T@ S" %" S= IF S" MOD" ELSE R@ T@ S" ==" S= IF S" =" ELSE R@ T@ S" !=" S= IF S" <>" ELSE R@ T@ S" <" S= IF S" <" ELSE
@@ -769,7 +782,7 @@ VARIABLE BL-POS   VARIABLE BL-K
       R> PREC-OF 1+ EXPR DROP  S" THEN" OUT+  K-BOOL
     ELSE
 \ [gene short]
-    R@ SHORT-FORM  2 PICK K-DEC = IF 2DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
+    R@ SHORT-FORM  2 PICK DUP K-DEC = SWAP K-ANY = OR IF 2DROP 0 0 THEN  DUP IF  NEXT-TK  ROT TO-NUM  OUT+  R> PREC-OF 4 < IF K-BOOL ELSE K-NUM THEN   \ the left side a number first, as rillc.py's binop()
     ELSE 2DROP  OUT-POS  R@ PREC-OF 1+ EXPR  R> BINOP  THEN
 \ [/gene]
 \ [gene !short]
@@ -818,7 +831,8 @@ VARIABLE PAR-FLAG   \ the for being read is a par for
   >R 2DUP NM-FIND DUP 0< 0= IF  DUP CELLS NM-LOC + @ IN-DEF @ = IF
       CELLS NM-K + @ R> <> IF S" a variable cannot change its kind" ERR THEN 2DROP EXIT THEN THEN
   DROP 2DUP DECLARE R> IN-DEF @ NM-ADD ;
-VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
+VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-CP   \ where an item variable's conversion goes in += (790)
+VARIABLE AS-VK   \ the name being assigned (the kernel has no 2>R), its kind
 : ASSIGN ( --- )
   TK T@ NEXT-TK  TK T@ NEXT-TK                                   ( name op )
   2DUP S" =" S= IF 2DROP AS-L ! AS-A !  1 EXPR
@@ -836,19 +850,24 @@ VARIABLE AS-A  VARIABLE AS-L  VARIABLE AS-VK   \ the name being assigned (the ke
   AS-VK @ K-DEC = IF 2DUP VAR-REF S" @" OUT+ 1 EXPR TO-DEC R> IF S" +" ELSE S" -" THEN OUT+ VAR-REF S" !" OUT+ EXIT THEN   \ 760
   AS-VK @ K-NUM <> AS-VK @ K-ANY <> AND IF S" += and -= need a number to change" ERR THEN
 \ [gene infer]
-  INFER @ IF  1 EXPR  AS-VK @ K-NUM = SWAP K-DEC = AND IF K-DEC ELSE AS-VK @ THEN   \ the first pass: += records its result (771)
+  INFER @ IF  1 EXPR  DUP K-DEC = AS-VK @ K-NUM = AND IF DROP K-DEC ELSE K-ANY = IF K-ANY ELSE AS-VK @ THEN THEN   \ the first pass: += records its result (771; an item's, 790)
     BIND-K DROP  R> DROP EXIT THEN
 \ [/gene]
-  2DUP VAR-REF S" @" OUT+  AS-VK @ K-ANY = IF S" R-ANY>NUM" OUT+ THEN   \ an item holding a number (758)
+  AS-VK @ K-ANY = IF                                              \ an item: rillc.py's binop - a decimal in either counts (790)
+    2DUP VAR-REF S" @" OUT+  OUT-POS AS-CP !  1 EXPR
+    DUP K-DEC = IF DROP S" R-ANY>DEC" AS-CP @ OUT-INSERT  R> IF S" +" ELSE S" -" THEN OUT+  S" K-DEC R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
+    DUP K-NUM = OVER K-ANY = OR IF K-ANY = IF S" R-ARITH-AA" ELSE S" R-ARITH-AN" THEN  R> IF S" 0" ELSE S" 1" THEN OUT+ OUT+  VAR-REF S" !" OUT+ EXIT THEN
+    TO-NUM  S" R-ANY>NUM" AS-CP @ OUT-INSERT  R> IF S" +" ELSE S" -" THEN OUT+  S" K-NUM R-BOX" OUT+  VAR-REF S" !" OUT+ EXIT THEN
+  2DUP VAR-REF S" @" OUT+
 \ [gene short]
   TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
     NEXT-TK R> IF S" 1+" ELSE S" 1-" THEN OUT+
-  ELSE 1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
+  ELSE 1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN THEN
 \ [/gene]
 \ [gene !short]
-  1 EXPR TO-NUM R> IF S" +" ELSE S" -" THEN OUT+
+  1 EXPR DUP K-ANY = IF DROP R> IF S" 0" ELSE S" 1" THEN OUT+ S" R-ARITH-NA" OUT+ ELSE TO-NUM R> IF S" +" ELSE S" -" THEN OUT+ THEN
 \ [/gene]
-  AS-VK @ K-ANY = IF S" K-NUM R-BOX" OUT+ THEN  VAR-REF S" !" OUT+ ;
+  VAR-REF S" !" OUT+ ;
 : ARG-KW-TEXT? ( --- f )   \ a keyword or an operator that is plain text in an argument
   TK K@ T-KW = IF -1 EXIT THEN  TK K@ T-OP <> IF 0 EXIT THEN
   TK T@ 2DUP S" ," S= >R 2DUP S" =" S= R> OR >R 2DUP S" ==" S= R> OR >R 2DUP S" !=" S= R> OR >R
@@ -1178,12 +1197,10 @@ VARIABLE IA-A  VARIABLE IA-L  VARIABLE IA-P  VARIABLE IA-K  VARIABLE IA-T  VARIA
   TK-I @ >R  IA-T @ TK-I !  1 EXPR  IA-K @ K-LIST = IF TO-NUM ELSE IA-K @ K-ANY = IF BOX ELSE TO-TEXT THEN THEN  R> TK-I ! ;
 : IA-ARITH ( --- kind )   \ the item there, as read, changed by the value ahead (774; its own word 779)
   OUT-POS IA-CP !                                                    \ where the item's conversion goes
-\ [gene short]
-  TK K@ T-WORD = TK T@ S" 1" S= AND TK 1+ PREC-OF 0= AND IF
-    NEXT-TK  S" R-ANY>NUM" OUT+  IA-OP @ 1 = IF S" 1+" ELSE S" 1-" THEN OUT+  K-NUM EXIT THEN
-\ [/gene]
   1 EXPR
   DUP K-DEC = IF DROP S" R-ANY>DEC" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-DEC EXIT THEN
+  DUP K-NUM = OVER K-ANY = OR IF                                 \ the item and a number or an item: a decimal in it counts (790)
+    K-ANY = IF S" R-ARITH-AA" ELSE S" R-ARITH-AN" THEN  IA-OP @ 1 = IF S" 0" ELSE S" 1" THEN OUT+ OUT+  K-ANY EXIT THEN
   TO-NUM  S" R-ANY>NUM" IA-CP @ OUT-INSERT  IA-OP @ 1 = IF S" +" ELSE S" -" THEN OUT+  K-NUM ;
 : IA-CHANGE ( --- kind )   \ x[i] += v, -= v: the item there, changed - rillc.py's binop(op, item, any, v) (774)
   IA-K @ K-LIST = IF IA-A @ IA-L @ VAR-OUT S" @" OUT+ IA-INDEX S" R-AT" OUT+ ELSE

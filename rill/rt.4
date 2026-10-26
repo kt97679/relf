@@ -659,6 +659,23 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
   OVER R-UNBOX NIP K-REC = IF SWAP R-UNBOX DROP R-GET EXIT THEN
   >R R-ANY>TEXT S" ." R-TEXT R> 3 R-CONCAT K-TEXT R-BOX ;
 
+\ ---- Arithmetic and order on items (Iteration 790): a decimal in either side, decimals; else numbers, as Python's ----
+: R-NUM-OR-DEC ( box --- v dec? )   DUP R-UNBOX NIP K-DEC = IF R-UNBOX DROP -1 ELSE R-ANY>NUM 0 THEN ;
+: R-CMP-AN ( box n --- v1 v2 )   >R R-NUM-OR-DEC IF R> 1000000 * ELSE R> THEN ;      \ an item against a number, on one scale
+: R-CMP-NA ( n box --- v1 v2 )   R-NUM-OR-DEC IF SWAP 1000000 * SWAP THEN ;
+VARIABLE AR-OP
+: AR-DEC ( v dec? --- d )   0= IF 1000000 * THEN ;
+: R-ARITH ( v1 dec1 v2 dec2 op --- box )   \ op 0 + 1 - 2 * 3 / 4 %: a decimal if either is one, else a number
+  AR-OP !  2 PICK OVER OR IF
+    AR-DEC >R AR-DEC R>
+    AR-OP @ CASE 0 OF + ENDOF 1 OF - ENDOF 2 OF 1000000 */ ENDOF 3 OF >R 1000000 R> */ ENDOF >R MOD R> ENDCASE K-DEC R-BOX
+  ELSE DROP NIP
+    AR-OP @ CASE 0 OF + ENDOF 1 OF - ENDOF 2 OF * ENDOF 3 OF / ENDOF >R MOD R> ENDCASE K-NUM R-BOX
+  THEN ;
+: R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
+: R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
+: R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before
 \ it as written; a name starting with . only for a pattern that does; . and .. never. No wildcard:

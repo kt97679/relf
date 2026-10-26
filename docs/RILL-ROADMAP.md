@@ -308,3 +308,25 @@ use single quotes, is now only for a { or a $( never closed. On the way:
 A literal { in a double-quoted string is still an interpolation: '...' it.
 tests/rill/nested.rill; errors/quote-in-braces (an unclosed { now),
 errors/line-after-string.
+
+## Iteration 790: arithmetic and order on items with decimals in them
+
+An item holding a decimal now takes part in arithmetic and comparison as
+Python's float does: `l[0] += 1`, `$l[0] * 2`, `$r.a + $r.b`, `$l[0] < 2`
+all failed with "a value of the wrong kind" - an item next to a number was
+read as a whole number (R-ANY>NUM). Now, when an item meets a number or an
+item (not a decimal - that path was already right):
+- + - * / %: R-ARITH decides at run time - a decimal on either side, the
+  decimal operation; else the whole-number one - and its result is an item.
+  So an accumulator given items (`total += $x`) becomes an item, as the first
+  pass joins its kinds; x[i] += v and a variable's += take the same road.
+- == != < <= > >= against a number: R-CMP-AN / R-CMP-NA put both on one scale
+  first; the result stays a plain truth value, nothing boxed.
+- the short forms (1+, 0= ...) are not used on an item, as rillc.py's binop
+  checks them only after this.
+One difference kept on purpose: / of two whole numbers is still the integer
+division (7 / 2 is 3, as the shell's $((7/2))); Python 3 would say 3.5.
+Cost: dead-words over shell/*.4 113 -> 118 ms, native-by-source 229 -> 238
+(best of three), both outputs as before. Found on the way: an item += 0.5 in
+the image's compiler truncated the decimal. tests/rill/itemarith.rill as
+Python.
