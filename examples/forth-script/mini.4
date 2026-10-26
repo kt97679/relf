@@ -5,36 +5,43 @@
 \ and run, then the next, as a shell's are. Loaded at run time into Rill's image, whose runtime words
 \ (rill/rt.4) it uses; docs/FORTH-SCRIPTING.md. Run: S" mini.4" INCLUDED  S" x.mini" MINI-FILE
 
-\ ---- values: Rill's items, none is 0
-: D-NUM ( n --- item )   K-NUM R-BOX ;
-: D-BOOL ( f --- item )   0<> K-BOOL R-BOX ;
-: D-KIND ( item --- kind )   DUP IF @ THEN ;
+\ ---- values: Rill's items, none is 0 - and a number told by its low bit, 2n+1, never boxed (831): the
+\ arithmetic of two such is one instruction or two; a number goes into a list, or to the runtime's words, boxed
+: D-NUM ( n --- item )   2* 1+ ;
+CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the arena: made once, never moved
+: D-BOOL ( f --- item )   IF TRUE-BOX ELSE FALSE-BOX THEN ;
+: D-KIND ( item --- kind )   DUP 1 AND IF DROP K-NUM EXIT THEN  DUP IF @ THEN ;
 : D-ERR ( c-addr u --- )   R-FAIL ;
-: D>N ( item --- n )   DUP D-KIND K-NUM <> IF S" mini: a number was wanted" D-ERR THEN CELL+ @ ;
+: D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN  DUP D-KIND K-NUM <> IF S" mini: a number was wanted" D-ERR THEN CELL+ @ ;
 : D2N ( a b --- n1 n2 )   SWAP D>N SWAP D>N ;
-: D-TEXT ( item --- t )   ?DUP IF R-ANY>TEXT ELSE S" none" R-TEXT THEN ;
+: D-BOXED ( item --- box )   DUP 1 AND IF 2/ K-NUM R-BOX THEN ;
+: D-TEXT ( item --- t )   ?DUP IF D-BOXED R-ANY>TEXT ELSE S" none" R-TEXT THEN ;
 : D-LIST ( item --- l )   DUP D-KIND K-LIST <> IF S" mini: a list was wanted" D-ERR THEN CELL+ @ ;
-: D+ ( a b --- c )   \ numbers add, texts join
+: BOTH# ( a b --- a b f )   2DUP AND 1 AND ;                       \ both numbers, tagged
+: D+ ( a b --- c )   BOTH# IF + 1- EXIT THEN                          \ numbers add, texts join
   OVER D-KIND K-TEXT = OVER D-KIND K-TEXT = AND IF SWAP D-TEXT SWAP D-TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
   D2N + D-NUM ;
-: D- ( a b --- c )   D2N - D-NUM ;
-: D* ( a b --- c )   D2N * D-NUM ;
+: D- ( a b --- c )   BOTH# IF - 1+ EXIT THEN  D2N - D-NUM ;
+: D* ( a b --- c )   BOTH# IF >R 2/ R> 1- * 1+ EXIT THEN  D2N * D-NUM ;
 : D0? ( n --- n )   DUP 0= IF S" mini: division by zero" D-ERR THEN ;
 : D/ ( a b --- c )   D2N D0? / D-NUM ;
 : D% ( a b --- c )   D2N D0? MOD D-NUM ;
 : D-NEG ( a --- c )   D>N NEGATE D-NUM ;
 : D-TRUE? ( item --- f )   \ none, 0, false, "" and [] are false
-  ?DUP 0= IF 0 EXIT THEN  R-UNBOX
+  ?DUP 0= IF 0 EXIT THEN  DUP 1 AND IF 1 <> EXIT THEN  R-UNBOX
   DUP K-TEXT = IF DROP R-T@ NIP 0<> EXIT THEN  DUP K-LIST = IF DROP R-LEN 0<> EXIT THEN
   K-REC = IF DROP -1 EXIT THEN  0<> ;
 : D-CMP ( a b --- n )   \ numbers by value, texts by their bytes
+  BOTH# IF - EXIT THEN
   OVER D-KIND K-TEXT = IF D-TEXT R-T@ ROT D-TEXT R-T@ 2SWAP COMPARE EXIT THEN  D2N - ;
 : D< ( a b --- c )   D-CMP 0< D-BOOL ;      : D> ( a b --- c )   D-CMP 0> D-BOOL ;
 : D<= ( a b --- c )   D-CMP 0> 0= D-BOOL ;  : D>= ( a b --- c )   D-CMP 0< 0= D-BOOL ;
 : D== ( a b --- c )
+  BOTH# IF = D-BOOL EXIT THEN
   OVER D-KIND OVER D-KIND <> IF 2DROP 0 D-BOOL EXIT THEN
   OVER D-KIND K-TEXT = IF D-CMP 0= D-BOOL EXIT THEN
-  OVER D-KIND DUP K-NUM = SWAP K-BOOL = OR IF CELL+ @ SWAP CELL+ @ = D-BOOL EXIT THEN  = D-BOOL ;
+  OVER D-KIND K-NUM = IF D2N = D-BOOL EXIT THEN
+  OVER D-KIND K-BOOL = IF CELL+ @ SWAP CELL+ @ = D-BOOL EXIT THEN  = D-BOOL ;
 : D!= ( a b --- c )   D== D-TRUE? 0= D-BOOL ;
 : D-AT ( a i --- item )   D>N SWAP D-LIST SWAP R-AT ;
 
@@ -44,7 +51,7 @@
 : L.int ( x --- n )   D-TEXT R-NUMBER D-NUM ;                          1 CONSTANT LA.int
 : L.len ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-T@ NIP ELSE D-LIST R-LEN THEN D-NUM ;   1 CONSTANT LA.len
 : L.range ( n --- l )   D>N 0 SWAP R-RANGE K-LIST R-BOX ;               1 CONSTANT LA.range
-: L.append ( l x --- none )   SWAP D-LIST R-PUSH 0 ;                   2 CONSTANT LA.append
+: L.append ( l x --- none )   D-BOXED SWAP D-LIST R-PUSH 0 ;                   2 CONSTANT LA.append
 VARIABLE V.status   V.status R-ITEM R-ROOT                             \ the last command's status
 : D-RUN ( t1 .. tn n --- )   >R 0 PL-BEGIN R> -1 PL-STAGE PL-END D-NUM V.status ! ;
 
@@ -128,14 +135,14 @@ CREATE SB 4096 ALLOT  VARIABLE SB#
   2DUP S" V." NAME$ FIND$ 0= IF IN-DEF @ IF 2DUP VAR ELSE S" is not defined" ERR-NAME THEN THEN
   S" V." NAME$ O+ S" @" O+ ;
 : PRIMARY ( --- )
-  TK @ T-NUM = IF 0 0 TA @ TL @ >NUMBER 2DROP DROP O# S" D-NUM" O+ NEXT EXIT THEN
+  TK @ T-NUM = IF 0 0 TA @ TL @ >NUMBER 2DROP DROP 2* 1+ O# NEXT EXIT THEN     \ tagged where it is made
   TK @ T-STR = IF STR-LIT NEXT EXIT THEN
   TK @ T-NAME = IF
     S" true" IS? IF NEXT -1 O# S" D-BOOL" O+ EXIT THEN  S" false" IS? IF NEXT 0 O# S" D-BOOL" O+ EXIT THEN
     S" none" IS? IF NEXT 0 O# EXIT THEN
     TA @ TL @ NEXT  S" (" IS? IF CALL ELSE VAR-READ THEN EXIT THEN
   S" (" IS? IF NEXT EXPR S" )" EXPECT EXIT THEN
-  S" [" IS? IF NEXT S" R-NEW-LIST" O+  S" ]" IS? 0= IF BEGIN EXPR S" OVER R-PUSH" O+ S" ," IS? WHILE NEXT REPEAT THEN
+  S" [" IS? IF NEXT S" R-NEW-LIST" O+  S" ]" IS? 0= IF BEGIN EXPR S" D-BOXED OVER R-PUSH" O+ S" ," IS? WHILE NEXT REPEAT THEN
     S" ]" EXPECT S" K-LIST R-BOX" O+ EXIT THEN
   S" a value" S" was expected" ERR-NAME ;
 : POSTFIX ( --- )   PRIMARY  BEGIN S" [" IS? WHILE NEXT EXPR S" ]" EXPECT S" D-AT" O+ REPEAT ;
@@ -165,6 +172,9 @@ DEFER STMT
 : WHILE-STMT ( --- )   NEXT S" BEGIN" O+ EXPR S" D-TRUE? WHILE" O+ BLOCK S" REPEAT" O+ ;
 : FOR-STMT ( --- )   \ for x in list { }: the list kept in a variable of its own, the collector's to see
   NEXT TK @ T-NAME <> IF S" for" S" wants a name" ERR-NAME THEN  TA @ TL @ 2DUP VAR 2DUP LOC NEXT  S" in" EXPECT
+  S" range" IS? 0 PEEK [CHAR] ( = AND IF                     \ for i in range(n): counted, no list made (831)
+    NEXT S" (" EXPECT EXPR S" )" EXPECT  S" D>N 0 ?DO I D-NUM" O+  S" V." NAME$ O+ S" !" O+
+    1 LOOPS +!  BLOCK  -1 LOOPS +!  S" LOOP" O+ EXIT THEN
   EXPR  HIDDEN 2DUP VAR 2DUP LOC  2DUP S" V." NAME$ O+ S" !" O+
   2DUP S" V." NAME$ O+ S" @ D-LIST R-LEN 0 ?DO" O+  S" V." NAME$ O+ S" @ D-LIST I R-AT" O+
   S" V." NAME$ O+ S" !" O+  1 LOOPS +!  BLOCK  -1 LOOPS +!  S" LOOP" O+ ;

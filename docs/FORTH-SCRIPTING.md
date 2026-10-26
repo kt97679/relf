@@ -90,3 +90,30 @@ growing, the runtime having them already: decimals, records, pipelines and redir
 `{expr}` in strings, text blocks, comprehensions, break and continue, line numbers in errors at run
 time (compile errors have them). Writing it, three stack slips of the author's own, found by running:
 the case for a parser that keeps them from a script's writer. QUESTIONS.md Q42.
+
+## Bytecode, and speed (831)
+
+Asked: can the minimal parser make bytecode itself, and be as fast as Rill? Bytecode directly is
+possible, and simpler here than in Rill's compiler - mini's Forth comes in order - but it changes how
+fast a script starts, not how fast it runs: EVALUATE makes the same CV8 code a direct compiler would.
+Running speed is a matter of values. Measured, best of five:
+
+| | fib(25) | 300,000 additions in a loop |
+|---|---:|---:|
+| mini, 830: numbers boxed | 78 ms | 66 ms |
+| mini, 831: numbers tagged, `for i in range(n)` counted | 25 ms | 19 ms |
+| Rill | 7 ms | 10 ms |
+| Rill without its purestack gene | 43 ms | |
+| Python | 18 ms | 31 ms |
+
+A number is 2n+1 now - its low bit tells it, as in Lisp's and OCaml's runtimes - and two such add in
+an instruction or two, with nothing made; a number goes into a list, or to the runtime's words, boxed.
+true and false are two boxes made once. `for i in range(n)` is a counted loop, no list made - Rill's
+rangeloop gene. The collector leaves an odd value alone (G-BOX: boxes are aligned, never odd). It all
+cost the parser 328 bytes: the runtime and mini.4, 53,119.
+
+What the table shows of Rill: its speed is a few targeted choices, not its typing in general - without
+purestack, which runs a def of numbers on the stack, its fib takes 43 ms, the parameter an item and
+every result boxed. So mini can be as fast as Rill where it ports those choices: tagged numbers and
+counted loops done; a def of numbers on the stack next (Rill's purestack, some 1.4 KB of its compiler);
+the loop's last factor of two is a safe point at every statement and a tag looked at on every add.

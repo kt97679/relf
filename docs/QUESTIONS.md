@@ -79,13 +79,16 @@ Rill's compiler is 39: the image without its editor 52.8 KB against 79.2, with
 values checked when used - and fib(25) in 78 ms against Rill's 10 and Python's
 25. Questions: (1) make this Rill's design - the compiler replaced by the
 minimal parser, the scripts and tests moved to bare names (`a = b + c`;
-`$name` only in a command line)? (2) speed: tagged small numbers in the
-runtime, or the boxes as they are? (3) of Rill's other features, which to
-carry over first? *Recommendation*: (1) yes, step by step - the minimal
-parser grown feature by feature until Rill's tests and scripts run in it,
-then the compiler removed; (2) tagged numbers once it runs; (3) pipelines,
-`$(...)` and `{expr}` in strings, records, break and continue. *Blocks*:
-nothing.
+`$name` only in a command line)? (2) speed - answered by measuring at 831,
+asked whether it can be as fast as Rill: numbers tagged (2n+1) and counted
+`for i in range(n)` took fib(25) from 78 ms to 25 and a 300,000-add loop from
+66 to 19 (Rill 7 and 10, Python 18 and 31); Rill's speed is its purestack and
+rangeloop genes, which the parser can carry over - the first next. (3) of
+Rill's other features, which to carry over first? *Recommendation*: (1) yes,
+step by step - the minimal parser grown feature by feature until Rill's tests
+and scripts run in it, then the compiler removed; (2) defs of numbers on the
+stack next; (3) pipelines, `$(...)` and `{expr}` in strings, records, break
+and continue. *Blocks*: nothing.
 
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell

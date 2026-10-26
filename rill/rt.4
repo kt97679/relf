@@ -1031,6 +1031,7 @@ VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
 DEFER G-COPY ( a kind --- a' )
 : G-TEXT ( t --- t' )   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN  DUP @ CELL+ G-MOVE ;
 : G-BOX ( b --- b' )   \ an item, and what it holds
+  DUP 1 AND IF EXIT THEN                           \ odd, never a box: a tagged number (examples/forth-script, 831)
   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
   DUP @ >R  2 CELLS G-MOVE  R>
   DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR IF OVER CELL+ @ SWAP G-COPY OVER CELL+ ! ELSE DROP THEN ;
