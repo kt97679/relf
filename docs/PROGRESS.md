@@ -847,6 +847,7 @@ do not trust the absence of a line below.
 - 820 — spawn at work in intrfuzz-stress (now shorter than its original); 819's 98 and 1 corrected to 97 and 2
 - 821 — Rill: its errors go to the err port, not into a capture of the script's output
 - 822 — the decisions left explained, measured: text blocks (Q7), speed (Q37), a Rill prompt (Q38)
+- 823 — Rill: text blocks (A7, design C); speed left (A37); an interactive prompt next (A38)
 
 ### Not tied to an iteration
 

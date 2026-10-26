@@ -2,7 +2,7 @@
 
 Rill is the scripting language of this repository: Python's expressions and
 values, the shell's commands and pipelines, compiled to Forth and run by the
-CV8 engine. This document says what Rill is as of Iteration 813; the design
+CV8 engine. This document says what Rill is as of Iteration 823; the design
 notes are in docs/SHELL-LANGUAGE.md, the history in docs/RILL-ROADMAP.md.
 
 ## Running a script
@@ -66,6 +66,18 @@ a list or a record inside another, and any record, as Rill writes them -
   with a record `r` is an error that says so.
 - `'...'`: raw - nothing escaped, nothing put in. Regular expressions are
   usually written so.
+- A text block (823) is a `"..."` over lines whose indentation is the
+  code's: `"""` ends its line; the lines after it, up to one holding only
+  `"""`, are the text, with that closing `"""`'s indentation taken off
+  each - a line may go deeper, none less. Escapes, `$name`, `{expr}` and
+  `$(...)` as in `"..."`; no newline after the last line.
+
+      def usage(name) {
+          echo """
+              usage: $name [-v] FILE
+                -v    say more
+              """
+      }
 - A bare word that is not a variable is its own text: `case.sh`, `--check`.
   A bare word naming a variable is an error: write `$x`, or `"x"` for the text.
 

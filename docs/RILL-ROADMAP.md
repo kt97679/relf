@@ -809,3 +809,23 @@ error leaves stdout empty, on EXIT after an error writes to stdout - on
 820 every capture held the message. The baseline's two Rill rows moved
 with the new test: rill:passed 99 to 100, rill:oracle-same 59 to 60.
 The image: 76,051 bytes to 76,291.
+
+## Iteration 823: text blocks (QUESTIONS.md A7, design C)
+
+`"""` ends its line; the lines after it, to one holding only `"""`, are the
+text, the closing `"""`'s indentation taken off each (Swift's and Java's
+rule): a line may go deeper, none less; a string's escapes and $name,
+{expr}, $(...); no newline after the last line. rillc.py's tokenizer
+makes it a "..." token of the dedented text, on its first line, touching
+nothing (-1, -1). The image's tokenizer (SCAN-BLOCK) builds the same text
+as a copy in the heap and points the token at it - T@ adds RS-SRC to any
+offset, so whatever reads a string reads the copy - and SUB-ENTER finds a
+{...}'s line in a copy (BLK-OF). Three errors, the same in both: `a text
+block starts on the line after its """`, `has no closing """`, `a line of
+a text block is indented less than its closing """`. Found and fixed:
+rillc.py made its tokenizer's errors before its try, so they came out as
+Python tracebacks (the tokenizer had raised none before). gen-opcodes'
+header is one text block now - its output byte for byte the committed
+engine/cv8-ops.h, the rewrite 18 % shorter than the shell script, the
+eight 4.0 % together. tests/rill/text-block.rill and three error programs.
+The image: 76,291 bytes to 77,408.

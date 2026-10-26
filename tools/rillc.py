@@ -56,9 +56,33 @@ def scan_str(s, i):                         # just past the "..." at i: its {...
         i += 1
     return len(s)
 
+def text_block(src, pos, line):
+    """A text block (823, QUESTIONS.md A7): its \"\"\" ends a line; the lines after it, to one holding
+    only \"\"\", are its text, that closing \"\"\"'s indentation taken off each - Swift's and Java's
+    rule. The text is a string's (escapes, $name, {expr}), on the line after the opening; no newline
+    after its last line. Its token touches nothing: (-1, -1), as the image's copy of it does not."""
+    nl = src.find('\n', pos + 3)
+    if nl < 0 or src[pos + 3:nl].strip(' \t'): raise Error('line %d: a text block starts on the line after its \"\"\"' % line)
+    lines, i, k = [], nl + 1, line + 1
+    while True:
+        if i >= len(src): raise Error('line %d: a text block has no closing \"\"\"' % line)
+        e = src.find('\n', i); e = len(src) if e < 0 else e
+        ln = src[i:e]; body = ln.lstrip(' \t')
+        if body.startswith('\"\"\"'): margin = ln[:len(ln) - len(body)]; end = i + len(margin) + 3; break
+        lines.append((k, ln)); i = e + 1; k += 1
+    out = []
+    for n, ln in lines:
+        if ln.startswith(margin): out.append(ln[len(margin):])
+        elif not ln.strip(' \t'): out.append('')
+        else: raise Error('line %d: a line of a text block is indented less than its closing \"\"\"' % n)
+    return '"' + '\n'.join(out) + '"', end
+
 def tokenize(src):
     toks, line, sq, pos = [], 1, 0, 0
     while pos < len(src):
+        if src.startswith('\"\"\"', pos):                           # a text block (823)
+            v, end = text_block(src, pos, line)
+            toks.append(('str', v, line + 1, -1, -1)); line += src[pos:end].count('\n'); pos = end; continue
         if src[pos] == '"':                                       # a string, as scan_str finds its end (789)
             end = scan_str(src, pos); v = src[pos:end]
             toks.append(('str', v, line, pos, end)); line += v.count('\n'); pos = end; continue
@@ -1108,8 +1132,8 @@ class Compiler:
 
 if __name__ == '__main__':
     src = open(sys.argv[1], encoding='utf-8').read()
-    c = Compiler(src)
     try:
+        c = Compiler(src)                                     # inside: the tokenizer's errors are messages too (823)
         if GENES['infer']:                                    # gene infer (764): a first pass for the kinds, the second for the code
             c.infer = {}; c.program()
             fixed = {key: (ks.pop() if len(ks) == 1 else 'decimal' if ks == {'number', 'decimal'} else 'any')

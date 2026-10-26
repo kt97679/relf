@@ -1,0 +1,12 @@
+usage: tool [-v] FILE
+  -v    say more
+FILE    the input, 4 letters in "name"
+[one
+
+  two]
+empty: [] 0
+a	tab, a quote """ kept
+NESTED 1
+tabbed
+  deeper
+rill: division by zero (line 35)

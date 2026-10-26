@@ -252,16 +252,32 @@ the account of what each gained and cost.
    - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
      either compiler; 817 fixed its seven findings from two runs of seed 816
      (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - the user's to decide (822): text blocks (QUESTIONS.md Q7), speed
-     (Q37), a prompt of Rill's own (Q38) - each with options and a
-     recommendation;
+   - **an interactive prompt** (QUESTIONS.md A38, the work now): to see if
+     Rill can be the shell people type into - line editing and history,
+     relfsh's editor (shell/edit.4) reused if it can be; the compiler
+     works on whole programs, so a line at a time keeping its variables is
+     the first question. The design, from reading (823): shell/edit.4
+     (860 lines; its entry ED-LINE returns a line and a flag) loads as it is
+     after a shim, rill/edit-shim.4, giving the 21 words it takes from
+     shell.4 a Rill meaning - completion's aliases, functions and builtins
+     none (files and paths still complete), the prompt `rill> ` and its
+     continuation, CHAR-COLS, STR=, N>STR and the like copied; shell/ itself
+     untouched, so the shell's images do not move. The loop: a line - more
+     while a bracket is open - compiled and run under CATCH, an error said
+     and the prompt back, ^C ending the line or the statement running. A
+     line's variables for the next: a prompt mode in compile.4 alone (the
+     prompt is the image's) - globals items, kept declared and set from line
+     to line, defs kept. Tests: stdin not a terminal reads plain lines (the
+     same loop, no editing); a pseudo-terminal case for editing and history.
+     (A7: text blocks built at 823; A37: speed left until a script is slow.
+     And the user's rule: a regression test for every bug found.)
    (815 fixed what 814 found: a def that only computes is compiled with its
    parameters as numbers only when its body uses them so - and range(n) of a
    parameter, which had read its own 0 as n, is no longer such a body.)
    (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
    image since 804: 68,857 bytes to 76,291 at 821 - JSON 3.2 KB, jobs 1.0
    KB, the rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (100), `sh tests/rill/oracle` (60 the same),
+   Checks: `sh tests/rill/run` (104), `sh tests/rill/oracle` (61 the same),
    both again with RILL_GC_STRESS=1 - and, since 819, both in make verify.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22

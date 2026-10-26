@@ -27,15 +27,21 @@ def generate() {
     d = ["&&{$x[lab]}" for x in $ops if $x[kind] == direct]
     e = ["&&{$x[lab]}" for x in $ops if $x[kind] == escaped]
     o = ["[{$x[raw]}] = &&{$x[lab]}" for x in $ops if $x[kind] not in [direct, escaped]]
-    echo "/*  engine/cv8-ops.h - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh."
-    echo " *  Do not edit: change engine/opcodes.tab and run make. The engine's"
-    echo " *  dispatch tables - the direct primitives in order, the escaped"
-    echo " *  ones in order, every other opcode at its number (CV8.md 2.2).  */"
-    echo "#define NDIRECT {len($d)}"; echo "#define NESC    {len($e)}"
-    echo "#define CV8_OPS_DIRECT \\"; echo {wrap($d)}
-    echo "#define CV8_OPS_ESCAPED \\"; echo {wrap($e)}
-    echo "#define CV8_OPS_OTHER \\"; echo {wrap($o)}
-    echo "#define OPC_BRANCH8 {byname(BRANCH8)[raw]}   /* the loop opcodes step over it */"
+    echo """
+        /*  engine/cv8-ops.h - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh.
+         *  Do not edit: change engine/opcodes.tab and run make. The engine's
+         *  dispatch tables - the direct primitives in order, the escaped
+         *  ones in order, every other opcode at its number (CV8.md 2.2).  */
+        #define NDIRECT {len($d)}
+        #define NESC    {len($e)}
+        #define CV8_OPS_DIRECT \\
+        {wrap($d)}
+        #define CV8_OPS_ESCAPED \\
+        {wrap($e)}
+        #define CV8_OPS_OTHER \\
+        {wrap($o)}
+        #define OPC_BRANCH8 {byname(BRANCH8)[raw]}   /* the loop opcodes step over it */
+        """                                                     # a text block (823)
 }
 
 def rows(items) {

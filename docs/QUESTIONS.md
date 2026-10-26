@@ -34,38 +34,6 @@ same iteration.
 
 ## Open
 
-**Q37. Rill: speed - a phase 4, or not now? (822)** Where it stands,
-measured at 822 (best of five or three, this one-CPU machine): startup
-with the script compiled about 1-2 ms (dash 1, Python 12); a million
-additions 27 ms (Python 96, dash about 1,600); dead-words over the
-shell's eight source files, lists, records and texts, 136 ms (Python
-58); compiling the 176-line pack-results 21 ms, paid on every run.
-Phase 4's list (RILL-ROADMAP.md), untouched since 775: typed lists (no
-box an item), regular expressions compiled to Forth, temporaries
-released (the arena frees nothing between collections), Rill on the
-native kernel (waiting on GOALS.md 12). *Options*: (1) not now - Rill is
-at sh's speed or better everywhere and at Python's on numbers; (2) one
-measured round - profile dead-words (tools/rill-profile.py) and fix
-its top costs, each a dispatch count before and after, as 768 and 775
-did; (3) a phase - typed lists, compiled patterns. *Recommendation*: (2)
-when a script is slow in practice; (3) weighed as A33 weighed code size
-against speed (+50 % code for +5 % not worth it): minimal first.
-*Blocks*: nothing.
-
-**Q38. Rill: a prompt of its own? (822; Q8's prompt points)** Rill runs
-scripts (`rill script`, `rill -c 'code'`); typing commands is relfsh's,
-the POSIX shell. A Rill prompt was 503's picture - `ls -la` typed works,
-`&` at the prompt, a softer failure rule there than in scripts. What it
-takes: the compiler works on whole programs (two passes; a variable's
-kind joined over the whole script), so a line at a time - each line's
-variables kept for the next - is a real change to both compilers; then
-line editing (relfsh's editor), and job control if `&` comes back.
-*Options*: (1) none - Rill for scripts, relfsh for typing; (2) a plain
-read-eval loop - a statement at a time, variables kept, an error said
-and the loop going on; (3) Rill as the interactive shell. *Recommendation*:
-(1), minimal and simple (A35): one language for each job. *Blocks*:
-Q8's prompt points.
-
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come
@@ -79,16 +47,6 @@ parameter field that four past defects came from (FORTH-STYLE.md 12);
 (d) none.
 *Recommendation*: (a) if size matters to you - it is the only lever
 at both widths; I would leave (b) and (c). *Blocks*: nothing.
-
-**Q7. Rill's text blocks: indentation, or a delimiter? (503, 514)**
-You asked for pros and cons, especially with several levels of
-indentation: SHELL-LANGUAGE.md, "Text blocks", sets out four designs
-with a nested example of each.
-*Recommendation*: the closing delimiter whose indentation is the
-margin (design C there). *At 822*: a string already spans lines, but
-its source indentation is its text - a usage message written inside a
-def prints its later lines indented; C would end that in the tokenizer,
-one rule in each compiler.
 
 **Q8. Rill's other open questions (503).** Records at the prompt
 (JSON on a marked port?); a softer failure rule at the prompt than in
@@ -144,6 +102,48 @@ escapes, as bash's does. *Recommendation*: keep them all.
 
 
 ## Answered
+
+**Q7. Rill's text blocks: indentation, or a delimiter? (503, 514; answered A7)**
+You asked for pros and cons, especially with several levels of
+indentation: SHELL-LANGUAGE.md, "Text blocks", sets out four designs
+with a nested example of each.
+*Recommendation*: the closing delimiter whose indentation is the
+margin (design C there). *At 822*: a string already spans lines, but
+its source indentation is its text - a usage message written inside a
+def prints its later lines indented; C would end that in the tokenizer,
+one rule in each compiler.
+
+**Q37. Rill: speed - a phase 4, or not now? (822; answered A37)** Where it stands,
+measured at 822 (best of five or three, this one-CPU machine): startup
+with the script compiled about 1-2 ms (dash 1, Python 12); a million
+additions 27 ms (Python 96, dash about 1,600); dead-words over the
+shell's eight source files, lists, records and texts, 136 ms (Python
+58); compiling the 176-line pack-results 21 ms, paid on every run.
+Phase 4's list (RILL-ROADMAP.md), untouched since 775: typed lists (no
+box an item), regular expressions compiled to Forth, temporaries
+released (the arena frees nothing between collections), Rill on the
+native kernel (waiting on GOALS.md 12). *Options*: (1) not now - Rill is
+at sh's speed or better everywhere and at Python's on numbers; (2) one
+measured round - profile dead-words (tools/rill-profile.py) and fix
+its top costs, each a dispatch count before and after, as 768 and 775
+did; (3) a phase - typed lists, compiled patterns. *Recommendation*: (2)
+when a script is slow in practice; (3) weighed as A33 weighed code size
+against speed (+50 % code for +5 % not worth it): minimal first.
+*Blocks*: nothing.
+
+**Q38. Rill: a prompt of its own? (822; Q8's prompt points; answered A38)** Rill runs
+scripts (`rill script`, `rill -c 'code'`); typing commands is relfsh's,
+the POSIX shell. A Rill prompt was 503's picture - `ls -la` typed works,
+`&` at the prompt, a softer failure rule there than in scripts. What it
+takes: the compiler works on whole programs (two passes; a variable's
+kind joined over the whole script), so a line at a time - each line's
+variables kept for the next - is a real change to both compilers; then
+line editing (relfsh's editor), and job control if `&` comes back.
+*Options*: (1) none - Rill for scripts, relfsh for typing; (2) a plain
+read-eval loop - a statement at a time, variables kept, an error said
+and the loop going on; (3) Rill as the interactive shell. *Recommendation*:
+(1), minimal and simple (A35): one language for each job. *Blocks*:
+Q8's prompt points.
 
 **Q11. Rill: the default lifetime of a job (515; answered by A36: stopped when the script ends, 813).**
 `par` covers fork-join work; a server started for a test run, a
@@ -638,4 +638,14 @@ proposed as Q36.
 user: "I confirm q36" - (1)-(6) as proposed. JSON built at 811 (from-json,
 json; decimal() on the same number reader, which fixed decimal("1e3") and
 its kin); jobs, minimal, are next.
+
+**A7, A37, A38. Rill: text blocks, speed, a prompt (Q7, Q37, Q38; 822 -> 823).**
+The user: "1. I agree with option C" - text blocks with the closing
+delimiter's indentation as the margin, built at 823. "2. I agree with `do
+nothing` for now" - no speed work until a script is slow in practice.
+"3. I want to see if rill can be used as interactive shell so please
+implement interactive prompt with line editing and history. I wonder if we
+can reuse what was done for relfsh." - the work after 823, relfsh's line
+editor the first thing to try. And: "don't forget to add regression tests
+each time bug is discovered".
 

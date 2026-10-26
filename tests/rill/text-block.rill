@@ -1,0 +1,35 @@
+# text blocks (823, QUESTIONS.md A7): a """ ends its line; the lines after it, to one holding only
+# """, are the text - the closing """'s indentation taken off each; a string's escapes and $name, {expr}
+def usage(name) {
+    echo """
+        usage: $name [-v] FILE
+          -v    say more
+        FILE    the input, {len($name)} letters in "name"
+        """
+}
+usage("tool")
+x = """
+    one
+
+      two
+    """
+echo "[$x]"
+e = """
+    """
+echo "empty: [$e] {len($e)}"
+echo """
+    a\ttab, a quote \""" kept
+    """
+for i in range(2) {
+    if ($i == 1) {
+        echo """
+            nested {$i}
+            """ | tr a-z A-Z
+    }
+}
+t = """
+	tabbed
+	  deeper
+	"""
+echo $t
+echo {1 / 0}

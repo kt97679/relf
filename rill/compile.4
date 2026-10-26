@@ -90,6 +90,41 @@ DEFER SN-STR-D
 : SCAN-STR ( --- )   \ "...", as SN-STR finds its end (789); the token on the line it starts, the lines after it counted
   POS @ RS-SRC @ +  SRC# @ POS @ -  SN-STR DROP  RS-SRC @ -
   T-STR POS @ ROT DUP >R OVER - TK+  POS @ R@ NL-COUNT CUR-LINE +!  R> POS ! ;
+\ a text block (823, QUESTIONS.md A7) - rillc.py's text_block: its """ ends a line; the lines after it, to one
+\ holding only """, are its text, the closing """'s indentation taken off each. Kept as a copy, quotes around
+\ it, in the heap: its token's offset points there (T@ adds RS-SRC to any offset), so whatever reads a string
+\ reads the copy, and it touches no token. BLK-*: each copy and its first line, for SUB-ENTER's lines.
+64 CONSTANT BLK-MAX
+BLK-MAX CELLS BUFFER: BLK-A   BLK-MAX CELLS BUFFER: BLK-L   BLK-MAX CELLS BUFFER: BLK-LN   VARIABLE BLK-N
+: BLK-ERR ( c-addr u line --- )   R-ERR> ." rillc: line " . ." : " TYPE 34 EMIT 34 EMIT 34 EMIT R-NL -4100 THROW ;
+: BLANKS> ( i --- j )   BEGIN DUP AT-END? 0= IF DUP SRC-C@ DUP 32 = SWAP 9 = OR ELSE 0 THEN WHILE 1+ REPEAT ;
+: EOL> ( i --- j )   BEGIN DUP AT-END? 0= IF DUP SRC-C@ 10 <> ELSE 0 THEN WHILE 1+ REPEAT ;
+: QQQ? ( i --- f )   DUP 3 + SRC# @ > IF DROP 0 EXIT THEN  DUP SRC-C@ 34 = OVER 1+ SRC-C@ 34 = AND SWAP 2 + SRC-C@ 34 = AND ;
+VARIABLE BK-LN  VARIABLE BK-C  VARIABLE BK-M  VARIABLE BK-B  VARIABLE BK-#
+: BK-CH ( c --- )   BK-B @ BK-# @ + C!  1 BK-# +! ;
+: BK+ ( c-addr u --- )   BK-B @ BK-# @ + SWAP DUP BK-# +! MOVE ;
+: SCAN-BLOCK ( --- )   \ POS at its opening """
+  CUR-LINE @ BK-LN !
+  POS @ 3 + BLANKS>  DUP AT-END? IF -1 ELSE DUP SRC-C@ 10 <> THEN
+  IF DROP S" a text block starts on the line after its " BK-LN @ BLK-ERR THEN
+  1+ DUP                                                   ( first L )
+  BEGIN DUP BLANKS> QQQ? 0= WHILE                          \ to the closing line: blanks, then """
+    EOL> DUP AT-END? IF 2DROP S" a text block has no closing " BK-LN @ BLK-ERR THEN  1+
+  REPEAT
+  DUP BLANKS> OVER - BK-M !  DUP BK-C !                    \ the margin: the closing line's blanks
+  OVER - 2 + ALLOCATE THROW BK-B !  0 BK-# !  34 BK-CH     ( first )
+  DUP >R  BK-LN @ 1+ SWAP                                  ( n L )  ( R: first )
+  BEGIN DUP BK-C @ < WHILE
+    DUP R@ <> IF 10 BK-CH THEN
+    DUP EOL>                                               ( n L e )
+    OVER BK-M @ + OVER > 0= IF OVER RS-SRC @ + BK-M @  BK-C @ RS-SRC @ + BK-M @ COMPARE 0= ELSE 0 THEN
+    IF 2DUP SWAP BK-M @ + TUCK - SWAP RS-SRC @ + SWAP BK+
+    ELSE OVER BLANKS> OVER < IF 2DROP S" a line of a text block is indented less than its closing " ROT BLK-ERR THEN THEN
+    NIP 1+ SWAP 1+ SWAP
+  REPEAT  2DROP R> DROP  34 BK-CH
+  BK-LN @ 1+ CUR-LINE !  T-STR BK-B @ RS-SRC @ - BK-# @ TK+
+  BLK-N @ BLK-MAX < IF BK-B @ BLK-N @ CELLS BLK-A + !  BK-# @ BLK-N @ CELLS BLK-L + !  BK-LN @ 1+ BLK-N @ CELLS BLK-LN + !  1 BLK-N +! THEN
+  BK-C @ BK-M @ + 3 +  BK-LN @ OVER POS @ SWAP NL-COUNT + CUR-LINE !  POS ! ;
 : SCAN-RAW ( --- )   \ '...', nothing escaped
   POS @ 1+  BEGIN DUP AT-END? IF 0 ELSE DUP SRC-C@ [CHAR] ' <> THEN WHILE 1+ REPEAT
   DUP AT-END? 0= IF 1+ THEN  T-RAW POS @ ROT DUP >R OVER - TK+  POS @ R@ NL-COUNT CUR-LINE +!  R> POS ! ;   \ its lines counted (789)
@@ -108,7 +143,7 @@ VARIABLE SQ-DEPTH   \ the [ open: a newline inside them is no token, as Python's
   DUP 10 = IF DROP T-NL POS @ 1 TK+  1 CUR-LINE +!  1 POS +! EXIT THEN
   DUP 33 < IF DROP 1 POS +! EXIT THEN
   DUP [CHAR] # = IF DROP SKIP-COMMENT EXIT THEN
-  DUP [CHAR] " = IF DROP SCAN-STR EXIT THEN
+  DUP [CHAR] " = IF DROP POS @ QQQ? IF SCAN-BLOCK ELSE SCAN-STR THEN EXIT THEN   \ a text block (823)
   DUP [CHAR] ' = IF DROP SCAN-RAW EXIT THEN
   DUP [CHAR] $ = IF  POS @ 1+ AT-END? 0= IF POS @ 1+ SRC-C@ NAME-START? IF DROP SCAN-VAR EXIT THEN THEN  THEN
   POS @ OP2? IF DROP T-OP POS @ 2 TK+  2 POS +! EXIT THEN
@@ -357,9 +392,12 @@ VARIABLE ECHO-MODE  VARIABLE ECHO-SAVED   \ a string read for echo; one inside i
   -1 COMMAND-HOOK
   BEGIN S" ??" CUR-IS? WHILE NEXT-TK S" DUP IF DROP" OUT+ -1 COMMAND-HOOK S" >R R-CAP-JOIN R> THEN" OUT+ REPEAT ;
 4096 BUFFER: LITBUF  VARIABLE LIT#  VARIABLE NPARTS
+: BLK-OF ( a --- i | -1 )   BLK-N @ 0 ?DO DUP I CELLS BLK-A + @ DUP I CELLS BLK-L + @ + WITHIN IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
 : SUB-ENTER ( --- old )   \ the sub-text's first line: its own text's, and the newlines before it there (786)
   TK-LINE0 @ DUP
-  SUB-A @ RS-SRC @ U< 0= SUB-A @ RS-SRC @ SRC# @ + U< AND IF SUB-A @ RS-SRC @ ?DO I C@ 10 = IF 1+ THEN LOOP THEN
+  SUB-A @ RS-SRC @ U< 0= SUB-A @ RS-SRC @ SRC# @ + U< AND IF SUB-A @ RS-SRC @ ?DO I C@ 10 = IF 1+ THEN LOOP
+  ELSE SUB-A @ BLK-OF DUP 0< IF DROP ELSE                 \ in a text block's copy: its first line, and its newlines (823)
+    NIP DUP CELLS BLK-LN + @ SWAP CELLS BLK-A + @  SUB-A @ SWAP ?DO I C@ 10 = IF 1+ THEN LOOP THEN THEN
   TK-LINE0 ! ;
 : SUB-COMMAND ( c-addr u --- )   \ a capture in a string, $( ... ): tokenized apart, then read
   SUB-L ! SUB-A !  SUB-ENTER >R  NPARTS @ LIT# @  SAVE-TK  TK-ALLOC SUB-A @ SUB-L @ TOKENIZE 0 TK-I !  SUB-ECHO-OFF
@@ -1401,7 +1439,7 @@ VARIABLE RT-K
 \ [gene littext]
   0 LT-N !
 \ [/gene]
-   0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !
+   0 BODY-N !  0 HOIST !  0 HOISTS !  0 IN-DEF !  0 STACKMODE !  -1 DF-CUR !  0 SM-DEPTH !  0 FINAL# !  0 CMR-N !  0 BLK-N !
    0 DA-DEPTH !  0 DA-N !  0 IN-EXIT !  0 GR-N !  0 NI-N !  0 PD-N !  0 PD-NOW !  1 TK-LINE0 !
   TK-ALLOC BUF-ALLOC ;
 : ON-EXIT-AHEAD? ( --- f )   \ on EXIT, or a spawn (813): the safe points poll for INT and TERM
