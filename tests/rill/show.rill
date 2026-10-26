@@ -1,0 +1,12 @@
+# how values show (793): a list on its own its items; a list or record inside another, and any record, as Rill writes them
+l = [[1 2] 3 "x y" 2.5 true]
+echo $l
+r = {a: [1 2], b: {c: "three"}, 'two words': 4, d: ""}
+echo $r
+echo "r is $r"
+echo {join([[1 2] {k: "v"} "plain"], " | ")}
+echo {format("%s", $r.b)}
+item = $l[0]
+echo $item
+echo {join(["quote \" and \\ and tab\t"], "")} {len("caf\u00e9")} "caf\u00e9" {len("a\rb")}
+echo {[{n: 1} {n: 2}]}

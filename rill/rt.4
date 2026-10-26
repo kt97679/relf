@@ -74,12 +74,13 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 : R-ANY>BOOL ( box --- f )   \ an item as a condition (751): an empty text, list or record false
   R-UNBOX  DUP K-TEXT = OVER K-LIST = OR IF DROP @ 0<> EXIT THEN  K-REC = IF @ @ 0<> EXIT THEN  0<> ;
 \ [/gene]
+DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 : R-ANY>TEXT ( box --- t )
   R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
   DUP K-DEC = IF DROP R-DEC>TEXT-HOOK EXIT THEN                \ 754: decimals, defined later
   DUP K-NUM = IF DROP R-NUM EXIT THEN
-  K-BOOL = IF IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
-  S" (list or record)" R-TEXT ;
+  DUP K-BOOL = IF DROP IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
+  R-CONT>TEXT-D ;                                              \ a list or a record (793: it left the value under its text)
 : R-NEW-LIST ( --- l )   3 CELLS R-ALLOT  0 OVER !  G-LISTCAP OVER CELL+ !  G-LISTCAP CELLS R-ALLOT OVER 2 CELLS + ! ;   \ genes 749
 : R-LEN ( l --- n )   @ ;
 : R-ITEMS ( l --- a )   2 CELLS + @ ;
@@ -197,9 +198,12 @@ VARIABLE SW-END
     2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
     DUP IF 1 /STRING THEN
   REPEAT 2DROP R> ;
+DEFER R-SHOW-D   \ R-SHOW, below (793)
+: R-ITEM>TEXT ( box --- t )   \ an item among others: a list or a record in it as Rill writes them (793)
+  DUP R-UNBOX NIP DUP K-LIST = SWAP K-REC = OR IF R-SHOW-D ELSE R-ANY>TEXT THEN ;
 : R-JOIN ( l sep --- t )   \ the items as texts, sep between
   RJ-SEP !  0 SWAP  DUP @ 0 ?DO
-    I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT R-ANY>TEXT  ROT 1+ ROT
+    I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT  RJ-SEP @ >R R-ITEM>TEXT R> RJ-SEP !  ROT 1+ ROT   \ an item's own join kept from ours (793)
   LOOP DROP R-CONCAT ;
 : R-RANGE ( a b --- l )   \ range(a, b): a up to, not with, b - Python's (770); empty when b <= a
   R-NEW-LIST RL !  OVER MAX SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
@@ -680,6 +684,48 @@ VARIABLE AR-OP
 : R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
 : R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
 : R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+
+\ ---- Showing a value (Iteration 793): a list or a record inside another, and any record, as Rill writes them -
+\ texts quoted, lists [a b], records {k: v, ...}. A list on its own stays its items with a blank between.
+VARIABLE SH-B  VARIABLE SH-N  VARIABLE SH-CAP  CREATE SH-C 1 ALLOT
+: SH-ROOM ( u --- )   SH-N @ + DUP SH-CAP @ > 0= IF DROP EXIT THEN  2* 256 MAX DUP SH-CAP !  SH-B @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW SH-B ! ;
+: SH-ADD ( a u --- )   DUP SH-ROOM  TUCK SH-B @ SH-N @ + SWAP MOVE  SH-N +! ;
+: SH-CH ( c --- )   SH-C C!  SH-C 1 SH-ADD ;
+: R-SHOW-TEXT ( t --- t' )   \ "...": \ before " and \, \n and \t for line ends and tabs
+  0 SH-N !  [CHAR] " SH-CH
+  R-T@ 0 ?DO DUP I + C@ CASE
+      [CHAR] " OF [CHAR] \ SH-CH [CHAR] " SH-CH ENDOF
+      [CHAR] \ OF [CHAR] \ SH-CH [CHAR] \ SH-CH ENDOF
+      10 OF [CHAR] \ SH-CH [CHAR] n SH-CH ENDOF
+      9 OF [CHAR] \ SH-CH [CHAR] t SH-CH ENDOF
+      DUP SH-CH
+    ENDCASE LOOP DROP
+  [CHAR] " SH-CH  SH-B @ SH-N @ R-TEXT ;
+: SH-NC? ( c --- f )   DUP [CHAR] _ = OVER [CHAR] - = OR OVER [CHAR] 0 [CHAR] 9 1+ WITHIN OR SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR ;
+: SH-NAME? ( a u --- f )   \ a field name written bare: a letter or _ first, then letters, digits, _ and -
+  DUP 0= IF 2DROP 0 EXIT THEN
+  OVER C@ DUP [CHAR] _ = SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR 0= IF 2DROP 0 EXIT THEN
+  0 ?DO DUP I + C@ SH-NC? 0= IF DROP 0 UNLOOP EXIT THEN LOOP DROP -1 ;
+: R-SHOW-KEY ( t --- t' )   DUP R-T@ SH-NAME? IF EXIT THEN  R-SHOW-TEXT ;
+: R-SHOW-LIST ( l --- t )   \ [a b c]
+  R-NEW-LIST SWAP  DUP @ 0 ?DO DUP I R-AT R-SHOW-D K-TEXT R-BOX 2 PICK R-PUSH LOOP DROP
+  S"  " R-TEXT R-JOIN  S" [" R-TEXT SWAP S" ]" R-TEXT 3 R-CONCAT ;
+: R-SHOW-REC ( r --- t )   \ {k: v, ...}
+  R-NEW-LIST SWAP
+  DUP R-KEYS @ 0 ?DO
+    DUP R-KEYS I R-AT R-ANY>TEXT R-SHOW-KEY  S" : " R-TEXT  2 PICK R-VALS I R-AT R-SHOW-D  3 R-CONCAT
+    K-TEXT R-BOX 2 PICK R-PUSH
+  LOOP DROP
+  S" , " R-TEXT R-JOIN  S" {" R-TEXT SWAP S" }" R-TEXT 3 R-CONCAT ;
+: R-SHOW ( box --- t )   \ a value as Rill writes it
+  DUP R-UNBOX NIP
+  DUP K-TEXT = IF DROP R-ANY>TEXT R-SHOW-TEXT EXIT THEN
+  DUP K-LIST = IF DROP R-UNBOX DROP R-SHOW-LIST EXIT THEN
+  K-REC = IF R-UNBOX DROP R-SHOW-REC EXIT THEN
+  R-ANY>TEXT ;
+' R-SHOW IS R-SHOW-D
+: R-CONT>TEXT ( v kind --- t )   K-LIST = IF S"  " R-TEXT R-JOIN ELSE R-SHOW-REC THEN ;
+' R-CONT>TEXT IS R-CONT>TEXT-D
 
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before

@@ -36,13 +36,19 @@ to the end of the line. Blocks are `{ ... }`.
 Truth: `false`, `0`, an empty text, list or record are false; all else is
 true.
 
+As text (echo, `"$x"`, `join`, `format`'s `%s`): a list is its items with a
+blank between; a list or a record inside another, and any record, as Rill
+writes them - `[1 2]`, `{a: 1, name: "x"}`, texts in them quoted.
+
 ## Texts
 
-- `"..."`: `\n`, `\t`, `\\`, `\"` escaped; `$name` and `$name.field` put a
+- `"..."`: `\n`, `\t`, `\r`, `\uXXXX` (UTF-8), and a backslash before a mark
+  (`\"`, `\\`, `\{`, `\$`) is the mark; any other letter after a backslash is an
+  error. `$name` and `$name.field` put a
   variable in; `{expression}` puts an expression in; `$(command)` puts a
   command's output in. Inside `{...}` and `$(...)` a `"..."` is a string of its
   own: `"{join($l, ", ")}"`. A `{` always starts an expression: a literal
-  brace goes in single quotes.
+  brace is `\{`, or goes in single quotes.
 - `$x.f` in a string: a record's field `f`; if `x` holds anything else, its
   text followed by `.f` - `"$name.log"` is the shell's reading.
 - `'...'`: raw - nothing escaped, nothing put in. Regular expressions are

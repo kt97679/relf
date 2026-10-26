@@ -817,6 +817,7 @@ do not trust the absence of a line below.
 - 790 — items holding decimals in arithmetic and comparison, as Python's floats
 - 791 — out of memory inside a long function: a plain message naming the line; collection inside functions left as a design choice
 - 792 — docs/RILL-REFERENCE.md: Rill as it is, one document
+- 793 — review bugs: records and nested lists as text, a def inside a def, escapes
 
 ### Not tied to an iteration
 

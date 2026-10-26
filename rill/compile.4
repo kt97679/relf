@@ -214,7 +214,7 @@ VARIABLE SG-FROM  VARIABLE SG-POS  VARIABLE SG-LEN  VARIABLE RD-POS
   [CHAR] S OUT-C  34 OUT-C  BL OUT-C  OUT-RAW  34 OUT-C  BL OUT-C  S" R-TEXT" OUT+ ;
 VARIABLE HS-Q
 : HAS-SPECIAL? ( c-addr u quote-only? --- f )   \ a quote - or a line end or a tab, unless quote-only
-  HS-Q !  0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = SWAP 9 = OR HS-Q @ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP ;
+  HS-Q !  0 -ROT 0 ?DO  DUP I + C@ DUP 34 = SWAP DUP 10 = OVER 9 = OR SWAP 13 = OR HS-Q @ 0= AND OR IF NIP -1 SWAP LEAVE THEN  LOOP DROP ;   \ 13 too (793)
 : OUT-BYTES ( c-addr u --- )   DUP >R 0 ?DO DUP I + C@ OUT-NUM LOOP DROP R> OUT-NUM S" R-BYTES" OUT+ ;
 : LIT-CODE ( c-addr u quote-only? --- )   >R 2DUP R> HAS-SPECIAL? IF OUT-BYTES ELSE OUT-S" THEN ;
 \ [gene littext]
@@ -248,7 +248,9 @@ VARIABLE LT-SAVEB  VARIABLE LT-SAVEN  VARIABLE LT-START
   DUP K-TEXT = IF DROP EXIT THEN  DUP K-ANY = IF DROP S" R-ANY>TEXT" OUT+ EXIT THEN
   DUP K-LIST = IF DROP S"  " OUT-S" S" R-JOIN" OUT+ EXIT THEN
   DUP K-DEC = IF DROP S" R-DEC>TEXT" OUT+ EXIT THEN                   \ a decimal (754)
+  DUP K-REC = IF DROP S" R-SHOW-REC" OUT+ EXIT THEN                   \ {k: v, ...}, not its address (793)
   K-BOOL = IF S" R-BOOL>TEXT" OUT+ EXIT THEN  S" R-NUM" OUT+ ;          \ true or false (759)
+: SH-ALNUM? ( c --- f )   DUP [CHAR] 0 [CHAR] 9 1+ WITHIN SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR ;
 : TO-NUM ( kind --- )   DUP K-NUM = OVER K-BOOL = OR IF DROP EXIT THEN
   DUP K-DEC = IF DROP S" 1000000 /" OUT+ EXIT THEN                  \ a decimal's whole part (754)
   K-ANY = IF S" R-ANY>NUM" OUT+ EXIT THEN  S" a number is needed here" ERR ;
@@ -370,13 +372,28 @@ VARIABLE FLD-POS
 : PIECE-END ( --- )   1 NPARTS +! ;
 \ [/gene]
 : LIT-C ( c --- )   LITBUF LIT# @ + C!  1 LIT# +! ;
+: HEX-DIGIT ( c --- n )   DUP [CHAR] 0 [CHAR] 9 1+ WITHIN IF [CHAR] 0 - EXIT THEN  32 OR DUP [CHAR] a [CHAR] f 1+ WITHIN IF [CHAR] a - 10 + EXIT THEN  DROP -1 ;
+: UTF8-C ( cp --- )   \ a code point's UTF-8 bytes into the literal
+  DUP 128 < IF LIT-C EXIT THEN
+  DUP 2048 < IF DUP 6 RSHIFT 192 OR LIT-C 63 AND 128 OR LIT-C EXIT THEN
+  DUP 12 RSHIFT 224 OR LIT-C  DUP 6 RSHIFT 63 AND 128 OR LIT-C  63 AND 128 OR LIT-C ;
+: ESC-U? ( a u --- cp -1 | 0 )   \ a u at an escape's u: four hex digits after it
+  DUP 5 < IF 2DROP 0 EXIT THEN  DROP 1+ 0 SWAP
+  4 0 DO DUP I + C@ HEX-DIGIT DUP 0< IF 2DROP DROP UNLOOP 0 EXIT THEN ROT 16 * + SWAP LOOP DROP -1 ;
+: ESCAPE-C ( a u c --- a' u' )   \ the character after a backslash (793): \n \t \r \uXXXX; \ before a mark, the mark; else an error
+  DUP [CHAR] u = IF DROP 2DUP ESC-U? IF UTF8-C 5 /STRING EXIT THEN [CHAR] u THEN
+  DUP [CHAR] n = IF DROP 10 LIT-C 1 /STRING EXIT THEN
+  DUP [CHAR] t = IF DROP 9 LIT-C 1 /STRING EXIT THEN
+  DUP [CHAR] r = IF DROP 13 LIT-C 1 /STRING EXIT THEN
+  DUP SH-ALNUM? IF ." rillc: line " TK L@ . ." : \" EMIT ."  is no escape - \n \t \r \uXXXX, or \ before a mark" R-NL -4100 THROW THEN
+  LIT-C 1 /STRING ;
 : STRING-LIT ( c-addr u --- kind )   \ between the quotes: literal runs, $name, {expr}, $( ... )
   \ In the loop the stack is ( c-addr u c ): the next character is 2 PICK 1+ C@,
   \ the length OVER - 742 found OVER 1+ C@ there, reading at an address made of the length.
   0 LIT# !  0 NPARTS !
   BEGIN DUP WHILE
     OVER C@  DUP [CHAR] \ = OVER 1 > AND IF DROP
-      1 /STRING OVER C@ DUP [CHAR] n = IF DROP 10 ELSE DUP [CHAR] t = IF DROP 9 THEN THEN LIT-C 1 /STRING
+      1 /STRING  OVER C@ ESCAPE-C
     ELSE DUP [CHAR] $ = OVER 1 > AND IF  2 PICK 1+ C@ [CHAR] ( = IF DROP          \ $( ... ): a capture
       PIECE-START  2 /STRING  OVER >R  [CHAR] ) SN-NEST 0= IF R> DROP S" a $( in a string is not closed" ERR THEN   \ 789
       R> 2 PICK OVER - 1- SUB-COMMAND  PIECE-END
@@ -937,7 +954,9 @@ VARIABLE DEF-START   VARIABLE DEF-NAME-A  VARIABLE DEF-NAME-L   VARIABLE DEF-NM0
   0 BEGIN S" {" CUR-IS? IF 1+ THEN  S" }" CUR-IS? IF 1- DUP 0= IF DROP NEXT-TK EXIT THEN THEN  NEXT-TK AGAIN ;
 : DEF-STMT ( --- )
   TK-I @ PD-START !
-  NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !  NEXT-TK  0 PRM-N !
+  NEXT-TK  TK T@ DEF-NAME-L ! DEF-NAME-A !
+  IN-DEF @ IF ." rillc: line " TK L@ . ." : a def inside a def - define " DEF-NAME-A @ DEF-NAME-L @ TYPE ."  at the top level" R-NL -4100 THROW THEN   \ 793
+  NEXT-TK  0 PRM-N !
   BEGIN TK K@ T-WORD = WHILE TK T@ PRM-N @ CELLS PRM-L + ! PRM-N @ CELLS PRM-A + ! 1 PRM-N +! NEXT-TK REPEAT
   0  S" ->" CUR-IS? IF NEXT-TK DROP TK T@ KIND-WORD NEXT-TK THEN            ( kind )
   DF-N @ DF-CUR !  DEF-NAME-A @ DF-N @ CELLS DF-A + !  DEF-NAME-L @ DF-N @ CELLS DF-L + !

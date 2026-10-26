@@ -1,0 +1,2 @@
+# an escape that is none (793)
+echo "caf\q"

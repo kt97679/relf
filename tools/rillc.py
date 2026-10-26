@@ -460,8 +460,11 @@ class Compiler:
         parts, pieces, i, lit = [], [], 0, ''   # pieces: ('lit', text) or ('code', code) - for echolit (753)
         while i < len(body):
             c = body[i]
-            if c == '\\' and i + 1 < len(body):
-                lit += {'n': '\n', 't': '\t'}.get(body[i + 1], body[i + 1]); i += 2; continue
+            if c == '\\' and i + 1 < len(body):                    # \n \t \r \uXXXX; \ before a mark, the mark (793)
+                e = body[i + 1]
+                if e == 'u' and re.fullmatch(r'[0-9a-fA-F]{4}', body[i + 2:i + 6]): lit += chr(int(body[i + 2:i + 6], 16)); i += 6; continue
+                if e.isalnum() and e not in 'ntr': raise Error('line %d: \\%s is no escape - \\n \\t \\r \\uXXXX, or \\ before a mark' % (line, e))
+                lit += {'n': '\n', 't': '\t', 'r': '\r'}.get(e, e); i += 2; continue
             if body.startswith('$(', i):
                 if lit: parts.append(self.lit_text(lit) if not typed else ''); pieces.append(('lit', lit)); lit = ''
                 j = scan_nested(body, i + 2, ')')                       # strings in it skipped whole (789)
@@ -494,7 +497,7 @@ class Compiler:
         if lit or not parts: parts.append(self.lit_text(lit))
         return parts[0] if len(parts) == 1 else '%s %d R-CONCAT' % (' '.join(parts), len(parts))
     def lit_text(self, s):
-        if '"' in s or '\n' in s or '\t' in s: return self.shared(self.bytes_lit(s))
+        if '"' in s or '\n' in s or '\t' in s or '\r' in s: return self.shared(self.bytes_lit(s))
         return self.shared('S" %s" R-TEXT' % s)
     KCODE = {'number': 'K-NUM', 'text': 'K-TEXT', 'bool': 'K-BOOL', 'list': 'K-LIST', 'record': 'K-REC', 'decimal': 'K-DEC'}
     def to_text(self, code, kind):
@@ -503,6 +506,7 @@ class Compiler:
         if kind == 'list': return code + ' S"  " R-TEXT R-JOIN'          # a list as text: its items, a blank between
         if kind == 'decimal': return code + ' R-DEC>TEXT'                 # 754
         if kind == 'bool': return code + ' R-BOOL>TEXT'                   # 759: true or false
+        if kind == 'record': return code + ' R-SHOW-REC'                  # 793: {k: v, ...}, not its address
         return code + ' R-NUM'
     def to_num(self, code, kind, line):
         if kind in ('number', 'bool'): return code
@@ -948,6 +952,7 @@ class Compiler:
     def def_(self):
         start = self.i
         self.take('kw', 'def'); name = self.take('word')[1]; params = []
+        if self.locals is not None: raise Error('line %d: a def inside a def - define %s at the top level' % (self.t[start][2], name))   # 793
         while self.peek()[0] == 'word': params.append(self.take()[1])
         kind = None
         if self.peek()[1] == '->': self.i += 1; kind = self.take('word')[1]

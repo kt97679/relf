@@ -361,3 +361,20 @@ over a record gives its keys; else if; cd blocks come back; max and min of
 two); one did not hold (`in` on texts - contains() does that) and is not
 claimed. Collection inside functions stays as it is (the user's choice of
 the three in 791: documented, with the workaround).
+
+## Iteration 793: three bugs from the review
+
+- A record as text was its address (`echo $r` printed 140312999620808), and a
+  list holding a list or a record broke the stack (R-ANY>TEXT left the value
+  under its text: "index 2 past a list of 2"). Now a list on its own is still
+  its items with a blank between; a list or a record inside another, and any
+  record, show as Rill writes them - `[1 2]`, `{a: 1, name: "x"}`, texts in
+  them quoted (R-SHOW). R-JOIN keeps its separator across an item's own join
+  (a record inside a list turned " | " into ", ").
+- A def inside a def: `a def inside a def - define inner at the top level`,
+  not the engine's "Undefined word R:outer".
+- Escapes: \n \t \r and \uXXXX (as UTF-8); a backslash before a mark, the
+  mark; any other letter or digit after one is an error (`\q is no escape`) -
+  `"caf\u00e9"` lost its backslash and printed cafu00e9. A bare word is not a
+  string: no escapes there, as in the shell.
+tests/rill/show.rill, errors/bad-escape, errors/nested-def.
