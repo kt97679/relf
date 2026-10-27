@@ -114,6 +114,15 @@ its place? *Recommendation*: (1) yes - the examples carried over one by one,
 the length rule kept; (2) next; (3) after; (4) only if Rill stays.
 *Blocks*: nothing.
 
+**A45. Rill 2: smaller first (835 -> 836).** The user: "proceed" - the
+recommendation's first: the characters' widths at 3 bytes a bound (836),
+the wide table's 8-byte cells too, one halving search for both tables
+(CP-RANGE?, CP-IN? and CP-ZW? gone): 1,321 bytes off shell.4's section -
+relfsh's images 130,348 to 129,028 and 121,408 to 120,596, Rill's 91,795 to
+90,475, Rill 2's 71,458 to 70,130. Every code point's width the same before
+and after (all 1,114,112: 7,393 none, 923,734 one, 182,985 two, one hash);
+the tables checked ascending. Stack mode and TAB stay open in Q45.
+
 **Q45. Rill 2: smaller and faster - which next? (835)** (1) Stack mode for
 defs of numbers (docs/RILL2.md, "Stack mode"): fib 18 ms to about Rill's 8, some
 1-1.5 KB. (2) The characters' widths at 3 bytes a bound, not 4: 0.9 KB off both

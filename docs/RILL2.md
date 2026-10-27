@@ -83,13 +83,14 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (835, its prompt) | 71,458 | 31,104: rill2.4 21.6 KB, its prompt 0.9, editor 8.6 | 18 ms | 12 ms | 233 ms |
-| Rill | 91,795 | 51,441: compiler 39.1 KB, editor 12.3 | 8 ms | 10 ms | 229 ms |
+| Rill 2 (836) | 70,130 | 29,776: rill2.4 21.6 KB, its prompt 0.9, editor 7.3 | 18 ms | 12 ms | 233 ms |
+| Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 8 ms | 10 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
 
 Both images share 40,354 bytes: the kernel, the Forth libraries, the runtime and the regex engine;
-the editor's character widths (4.1 KB) both have too. Rill 2's image is 22 % smaller, prompt and all;
+the editor's character widths (2.8 KB since 836: 3 bytes a bound, not 4, one search for both
+tables) both have too. Rill 2's image is 22 % smaller, prompt and all;
 its language less than half Rill's compiler. Rill runs fib faster by its purestack gene (below); the
 rest is level, and commands cost what the process costs.
 

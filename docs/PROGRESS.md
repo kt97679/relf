@@ -860,6 +860,7 @@ do not trust the absence of a line below.
 - 833 — the prototype's syntax shown (tour.mini); # comments end a command line
 - 834 — Rill 2: the prototype named and mended, 61 KB against Rill's 92; commands run directly (Q44)
 - 835 — Rill 2's prompt (editing, history; no TAB, 3.3 KB saved) and lists' functions; 71 KB against Rill's 92
+- 836 — the characters' widths at 3 bytes a bound: 1,321 bytes off relfsh, Rill and Rill 2 alike (A45)
 
 ### Not tied to an iteration
 

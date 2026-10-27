@@ -11,9 +11,9 @@ python3 tools/rill-genes.py --forth > "$tmp.genes.4" || exit 1
 python3 tools/rill-genes.py --source "$tmp.src" || exit 1
 # the prompt's line editor (835): relfsh's shell/edit.4 without its TAB completion - that section cut out, as
 # the characters' widths are cut out of shell.4 - after rill2/edit-shim.4; then rill2 and its prompt
-awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /WIDE-CHARS #WIDE-CHARS CP-IN\? IF 2 ELSE 1 THEN ;/ {exit}' shell/shell.4 > "$tmp.widths.4"
+awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /^: CHAR-COLS/ {c = 1} c && / ;$/ {exit}' shell/shell.4 > "$tmp.widths.4"
 awk '/^\\ ---- completion: TAB ----/ {skip = 1} /^\\ ---- reverse incremental history search/ {skip = 0} !skip {print}' shell/edit.4 > "$tmp.edit.4"
-if ! grep -q '^: CHAR-COLS' "$tmp.widths.4" || grep -q '^: CMP-' "$tmp.edit.4" || ! grep -q '^: ED-LINE' "$tmp.edit.4"; then
+if ! grep -q '^: CHAR-COLS' "$tmp.widths.4" || [ "$(wc -l < "$tmp.widths.4")" -ge 300 ] || grep -q '^: CMP-' "$tmp.edit.4" || ! grep -q '^: ED-LINE' "$tmp.edit.4"; then
     echo "build-rill2-image: shell.4's widths or edit.4's completion section not found" >&2; rm -rf "$tmp.genes.4" "$tmp.src" "$tmp.widths.4" "$tmp.edit.4"; exit 1
 fi
 {

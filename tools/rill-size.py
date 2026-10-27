@@ -19,8 +19,8 @@ genes = os.path.join(tmp, 'genes.4'); src = os.path.join(tmp, 'src'); widths = o
 subprocess.run(['python3', 'tools/rill-genes.py', '--forth'], stdout=open(genes, 'w'), check=True)
 subprocess.run(['python3', 'tools/rill-genes.py', '--source', src], check=True)
 text = open('shell/shell.4', encoding='utf-8').read()
-a = text.index("\\ Characters' widths on screen"); b = text.index('WIDE-CHARS #WIDE-CHARS CP-IN? IF 2 ELSE 1 THEN ;', a)
-open(widths, 'w', encoding='utf-8').write(text[a:text.index('\n', b) + 1])
+a = text.index("\\ Characters' widths on screen"); b = text.index(' ;\n', text.index('\n: CHAR-COLS', a))   # its last line (836)
+open(widths, 'w', encoding='utf-8').write(text[a:b + 3])
 files = ['forth/extend.4', 'forth/safety.4', 'forth/pool.4', 'forth/shadow.4', 'forth/save-system.4', genes,
          src + '/rt.4', src + '/regex.4', widths, 'rill/edit-shim.4', 'shell/edit.4', src + '/compile.4']
 names = ['kernel, shared', 'genes', 'rt.4', 'regex.4', 'widths', 'edit-shim', 'edit.4', 'compile.4']

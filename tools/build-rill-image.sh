@@ -12,8 +12,8 @@ python3 tools/rill-genes.py --forth > "$tmp.genes.4" || exit 1     # the genome:
 python3 tools/rill-genes.py --source "$tmp.src" || exit 1           # its sources: [gene] blocks kept or cut (751)
 # the prompt's line editor (825): relfsh's shell/edit.4 as it is, after rill/edit-shim.4 and the
 # characters' widths it measures with - shell.4's section, cut out here so that there is one source
-awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /WIDE-CHARS #WIDE-CHARS CP-IN\? IF 2 ELSE 1 THEN ;/ {exit}' shell/shell.4 > "$tmp.widths.4"
-grep -q '^: CHAR-COLS' "$tmp.widths.4" || { echo "build-rill-image: shell/shell.4's widths section not found" >&2; rm -rf "$tmp.genes.4" "$tmp.src" "$tmp.widths.4"; exit 1; }
+awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /^: CHAR-COLS/ {c = 1} c && / ;$/ {exit}' shell/shell.4 > "$tmp.widths.4"
+grep -q '^: CHAR-COLS' "$tmp.widths.4" && [ "$(wc -l < "$tmp.widths.4")" -lt 300 ] || { echo "build-rill-image: shell/shell.4's widths section not found" >&2; rm -rf "$tmp.genes.4" "$tmp.src" "$tmp.widths.4"; exit 1; }
 {
     for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 "$tmp.genes.4" "$tmp.src/rt.4" "$tmp.src/regex.4" "$tmp.widths.4" rill/edit-shim.4 shell/edit.4 "$tmp.src/compile.4"; do
         printf 'S" %s" INCLUDED\n' "$f"
