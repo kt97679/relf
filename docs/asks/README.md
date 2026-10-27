@@ -22,8 +22,12 @@ need not be sent.
 - **847 - the users round, back.** Five answers (Gemini, Grok, Qwen, DeepSeek, ChatGPT) to the
   845 version, every claim checked: `ask-rill-syntax-users-answers-845.md`. Five mistakes that
   would run wrongly became refusals, A.2 (R12-R16). The question is answered - `-846` need not go.
-- **Next to send:** `ask-rill-syntax-grammar-847.md` - the brief on A.2 (rules R1-R16); it
-  replaces the 845 and 846 grammar prompts. Prior art adds least now.
+- **848 - the grammar round, back.** Four answers (Gemini, DeepSeek, ChatGPT, Qwen), every claim
+  checked: `ask-rill-syntax-grammar-answers-847.md`. One parser shape agreed; six gaps measured on
+  rill2 and filled, A.3 (R17-R22); and a wrong premise found - rill2 does not run `$(...)` inside a
+  command's words.
+- **Nothing more to send.** Review, users and grammar are answered; prior art would add least.
+  What is left is the owner's: Q46.
 
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question

@@ -215,6 +215,19 @@ other text in a word or string (`"$s.file"`); and, made explicit, a command run 
 the one with no mistake left that runs wrongly. Rules R1-R16 in
 `docs/asks/ask-rill-syntax-grammar-847.md`.
 
+## A.3 - after the grammar round (848)
+
+Four models wrote grammars for A.2 (`docs/asks/ask-rill-syntax-grammar-answers-847.md`). They
+agree on the shape - a recursive descent reading characters, one parser for commands and one for
+expressions chosen by the first token, adjacency kept - and their gaps, measured on today's rill2,
+became six more rules: operators in rill2's order (Python's; comparisons not chained; no `**`);
+a statement starting with `{` a record, and spaces before `[` or `(` free inside an expression;
+record keys names or quoted strings; `@(...)` split at newlines; which errors come before running
+(all that the text decides) and which when the line runs (missing programs, values of the wrong
+kind, unset environment names); captures nesting through quotes. Checking them found a premise of
+the prompts wrong: rill2 runs `$(...)` in code only, and passes it through as text inside a
+command's words - to mend.
+
 ## What it would take
 
 In rill2, whose runtime stays: the tokenizer reads `$name` in code, `@name`, `?(`; strings drop

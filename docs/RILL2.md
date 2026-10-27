@@ -225,6 +225,11 @@ A command inside a one-line block takes the closing brace as a word: `if true { 
 "line 3: } is missing"; on separate lines it runs, and Rill runs the one-liner. Found checking
 the premises of docs/asks/.
 
+A capture inside a command's words passes through as text, quoted or not: `echo "today $(echo x)"`
+prints `today $(echo x)`, and `mkdir backup-$(date +%F)` would make a directory of that name. Rill
+and dash substitute it. Captures work in code (`n = int($(wc -l < $f))`). Found checking the
+grammar answers (848); worse than the one-line block - silent.
+
 ## Not yet
 
 TAB completion at the prompt (left out on purpose: 3.3 KB). QUESTIONS.md Q45.

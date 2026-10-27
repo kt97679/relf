@@ -12,3 +12,7 @@
 | 847 | users-845 | Qwen | `for f in $(ls *.log)` looping once (U2); a command run from a list, `@cmd` (U3) | `[` "works by accident" - it works by design; B's `print(n)` uncheckable | the most useful |
 | 847 | users-845 | DeepSeek | `"$s.file"` with a record (U6), though it called it refused | `[ -n "$x" ]` as dangerous (it works); `print(f"{x}")` and `for f in *.log` (both refused by A) | useful, with care |
 | 847 | users-845 | ChatGPT | `"hello {name}"` printing its braces (U1); a test plan (U5) | links are manuals, not evidence | useful |
+| 848 | grammar-847 | Gemini | nothing the others lack | `and`/`or` swapped; `?` and `@` as operators; `?(...)` read as a capture; `print "..."` as a call; R13's hint `@ls` | the least useful |
+| 848 | grammar-847 | DeepSeek | a statement starting with `{` (G2); `$x [0]` in code (G3); `@cmd` empty (G6); the static/run-time split | `a$b` called ambiguous - R3 decides it | the most useful |
+| 848 | grammar-847 | ChatGPT | precedence unspecified (G1); `@(...)`'s lines (G5); nested captures (G7 - which found rill2's bug); record keys (G8) | "R10 does not say when the environment is read" - it does | useful |
+| 848 | grammar-847 | Qwen | the static/run-time split, compactly | a grammar against R3 (`{}` no word) and R15 (`@$x`); misparses | useful, with care |
