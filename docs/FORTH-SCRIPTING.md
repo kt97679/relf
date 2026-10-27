@@ -117,3 +117,56 @@ purestack, which runs a def of numbers on the stack, its fib takes 43 ms, the pa
 every result boxed. So mini can be as fast as Rill where it ports those choices: tagged numbers and
 counted loops done; a def of numbers on the stack next (Rill's purestack, some 1.4 KB of its compiler);
 the loop's last factor of two is a safe point at every statement and a tag looked at on every add.
+
+## The syntax, how friendly; the shell, what it costs (832)
+
+Asked: how friendly is the prototype's syntax, should it be better and at what cost; and what do
+pipes, redirections and processes add? Each suspicion was run, not argued:
+
+| tried | what happened |
+|---|---|
+| `def f(x)` calls `g()`, which reads a global x | g sees f's x - scope dynamic, where Python's is lexical |
+| `ls = 1`, then `ls -l /tmp` | `ls - l`: "l is not defined" - a variable hides a command |
+| `prnt "hi"` (a typo) | run as a command: env's "No such file or directory" |
+| `else` on the line after `}` | both branches ran, `else` run as a command - fixed (below) |
+| `x = (1 +` newline `2)` | an error: a line may not go on inside brackets |
+| `a * b`, b a text | "a number was wanted" - no line, no operator |
+| an error on line 3 | lines 1 and 2 had run - a statement runs as soon as it is read |
+| `"n is {n}"` | printed as it is: no interpolation |
+
+The `else` one ran the wrong code without a word, so it is mended now: else and elif may follow
+their block on the lines after it, a stray one is an error (layout.mini, run by tests/rill/run).
+The rest, and what each would cost the parser - all decided when a script is compiled, none slower
+when it runs (all-but-free: Rill's R-MARK table gives lines to errors at run time for nothing):
+
+1. a script read whole before it runs, the prompt still a line at a time - some 0.1 KB;
+2. lines that go on inside ( [ - 0.1 KB;
+3. a def's names its own (lexical scope) - 0.1 KB, and no slower;
+4. commands told plainly: a first word that names nothing is checked against PATH when compiled, so
+   a typo is an error, not a command; `!ls` when a variable hides one - 0.2 KB;
+5. `{expr}` in strings - 0.4 KB;
+6. errors with their line and their operator at run time - 0.1 KB;
+7. break and continue, `+=`, records, slices, decimals, print of several - some 1.2 KB.
+
+Some 2.3 KB in all: the image without the editor about 57 KB, against Rill's 79.
+
+The shell, measured. Pipes, redirections (`> >> < 2>`), quotes, `$( )` and `&` are in mini.4 now
+(demo.mini): 1,960 bytes of parser - Rill's compiler gives its command syntax 1,980 - and nothing new
+in the runtime, which has had pipelines, redirections, jobs and signals all along. Running them:
+
+| | 300 runs of true | 100 three-stage pipelines |
+|---|---:|---:|
+| mini | 477 ms | 546 ms |
+| Rill | 456 ms | 514 ms |
+| dash | 201 ms | 224 ms |
+| Python, subprocess | 268 ms | |
+
+mini and Rill are one runtime, and the same. dash is twice as fast because the runtime runs every
+command as `/usr/bin/env cmd args` - a second exec, for env to search PATH: in dash, 300 runs
+through env take 434 ms, 194 directly. Searching PATH in the runtime, one exec (execvp's way):
+some 20 lines of rill/rt.4, and every command and pipeline twice as fast, for Rill and mini alike.
+
+Found on the way, in Rill: the scope test run in Rill prints `@C`. A def's parameter is the
+variable of the global with its name - shadowed for the call, as mini's - so a def reading that
+global during the call reads the parameter; and where their kinds differ, one is read as the other:
+garbage. The next fix - QUESTIONS.md Q43, GOALS.md 15.

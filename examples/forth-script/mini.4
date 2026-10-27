@@ -53,7 +53,8 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : L.range ( n --- l )   D>N 0 SWAP R-RANGE K-LIST R-BOX ;               1 CONSTANT LA.range
 : L.append ( l x --- none )   D-BOXED SWAP D-LIST R-PUSH 0 ;                   2 CONSTANT LA.append
 VARIABLE V.status   V.status R-ITEM R-ROOT                             \ the last command's status
-: D-RUN ( t1 .. tn n --- )   >R 0 PL-BEGIN R> -1 PL-STAGE PL-END D-NUM V.status ! ;
+VARIABLE V.job      V.job R-ITEM R-ROOT                                \ the last command put in the background
+: L.wait ( job --- status )   D>N R-JOB-WAIT D-NUM ;                   1 CONSTANT LA.wait
 
 \ ---- tokens, read one ahead from the script's text
 VARIABLE SRC  VARIABLE SRC#  VARIABLE POS  VARIABLE LINE  VARIABLE TK  VARIABLE TA  VARIABLE TL  VARIABLE TLINE
@@ -115,7 +116,7 @@ CREATE HB 16 ALLOT
 : HIDDEN ( --- c-addr u )   1 FOR# +!  FOR# @ 0 <# #S [CHAR] ~ HOLD #>  DUP >R HB SWAP MOVE HB R> ;
 
 \ ---- expressions: each part's Forth after its operands' - postfix, made in the order read
-DEFER EXPR
+DEFER EXPR   DEFER M-CAPTURE-D                 \ $( ): mini's, not the image compiler's CAPTURE
 CREATE SB 4096 ALLOT  VARIABLE SB#
 : STR-LIT ( --- )   \ its escapes made, kept outside the collector's arena; its address compiled
   0 SB# !  0 BEGIN DUP TL @ < WHILE
@@ -142,6 +143,7 @@ CREATE SB 4096 ALLOT  VARIABLE SB#
     S" none" IS? IF NEXT 0 O# EXIT THEN
     TA @ TL @ NEXT  S" (" IS? IF CALL ELSE VAR-READ THEN EXIT THEN
   S" (" IS? IF NEXT EXPR S" )" EXPECT EXIT THEN
+  S" $" IS? C@P [CHAR] ( = AND IF M-CAPTURE-D EXIT THEN
   S" [" IS? IF NEXT S" R-NEW-LIST" O+  S" ]" IS? 0= IF BEGIN EXPR S" D-BOXED OVER R-PUSH" O+ S" ," IS? WHILE NEXT REPEAT THEN
     S" ]" EXPECT S" K-LIST R-BOX" O+ EXIT THEN
   S" a value" S" was expected" ERR-NAME ;
@@ -166,8 +168,12 @@ DEFER STMT
 : BLOCK ( --- )   S" {" EXPECT SKIP-NL  1 DEPTH +!
   BEGIN S" }" IS? 0= WHILE TK @ T-EOF = IF S" }" S" is missing" ERR-NAME THEN STMT SKIP-NL REPEAT  NEXT  -1 DEPTH +! ;
 : COND ( --- )   EXPR S" D-TRUE? IF" O+ ;
+: SAVE-TK ( --- x1 .. x6 )   POS @ LINE @ TK @ TA @ TL @ TLINE @ ;
+: BACK-TK ( x1 .. x6 --- )   TLINE ! TL ! TA ! TK ! LINE ! POS ! ;
+: ELSE-NEXT? ( --- f )   \ else or elif after the block, on its line or a line after (832: a lone else ran as a command)
+  SAVE-TK SKIP-NL  S" else" IS? S" elif" IS? OR IF 2DROP 2DROP 2DROP -1 EXIT THEN  BACK-TK 0 ;
 : IF-STMT ( --- )   NEXT COND BLOCK  1
-  BEGIN S" elif" IS? WHILE NEXT S" ELSE" O+ COND BLOCK 1+ REPEAT
+  BEGIN ELSE-NEXT? DROP S" elif" IS? WHILE NEXT S" ELSE" O+ COND BLOCK 1+ REPEAT
   S" else" IS? IF NEXT S" ELSE" O+ BLOCK THEN  0 ?DO S" THEN" O+ LOOP ;
 : WHILE-STMT ( --- )   NEXT S" BEGIN" O+ EXPR S" D-TRUE? WHILE" O+ BLOCK S" REPEAT" O+ ;
 : FOR-STMT ( --- )   \ for x in list { }: the list kept in a variable of its own, the collector's to see
@@ -195,19 +201,49 @@ DEFER STMT
 : ASSIGN ( --- )   TA @ TL @ 2DUP VAR 2DUP LOC  NEXT S" =" EXPECT  EXPR  S" V." NAME$ O+ S" !" O+ ;
 : KNOWN? ( c-addr u --- f )   2DUP S" V." NAME$ FIND$ IF 2DROP -1 EXIT THEN
   2DUP S" A." NAME$ FIND$ IF 2DROP -1 EXIT THEN  S" LA." NAME$ FIND$ 0<> ;
-: COMMAND ( --- )   \ the rest of the line, a command: its words texts, $name a variable's; run, status set
-  0  TA @ SRC @ - POS !
-  BEGIN BEGIN C@P BL = WHILE 1 POS +! REPEAT  C@P DUP 10 <> SWAP 0<> AND WHILE
-    SRC @ POS @ +  BEGIN C@P DUP BL <> OVER 10 <> AND SWAP 0<> AND WHILE 1 POS +! REPEAT
-    SRC @ POS @ + OVER -                                                ( n c-addr u )
-    OVER C@ [CHAR] $ = IF 1 /STRING VAR-READ S" D-TEXT" O+ ELSE R-TEXT R-FIX O# THEN  1+
-  REPEAT  O# S" D-RUN" O+  NEXT ;
+\ ---- command lines (832): stages joined by |; > >> < 2> and a path; quotes keep blanks in a word; $name
+\ alone a variable's text; & at the end, to the background (its job in job); $( ) in an expression, its
+\ output. Rill's runtime runs them - PL-BEGIN, PL-STAGE, R-RD-FILE, PL-END, PL-SPAWN; a failure sets
+\ status and goes on, as a shell's does.
+VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#
+: SKIP-BL ( --- )   BEGIN C@P DUP BL = SWAP 9 = OR WHILE 1 POS +! REPEAT ;
+: CMD-STOP? ( c --- f )   DUP 10 = OVER 0= OR OVER BL = OR OVER 9 = OR OVER [CHAR] | = OR OVER [CHAR] > = OR
+  OVER [CHAR] < = OR OVER [CHAR] & = OR SWAP CMD-CLOSE @ = OR ;
+: CMD-WORD ( --- c-addr u var? )   \ a word: $name alone a variable; else its characters, quotes taken off
+  C@P [CHAR] $ = POS @ 1+ CH ALPHA? AND IF 1 POS +! SRC @ POS @ +
+    BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER - -1 EXIT THEN
+  0 CW# !  BEGIN C@P CMD-STOP? 0= WHILE
+    C@P DUP [CHAR] ' = SWAP [CHAR] " = OR IF C@P 1 POS +!
+      BEGIN C@P OVER <> C@P 0<> AND WHILE C@P CW CW# @ + C! 1 CW# +! 1 POS +! REPEAT DROP 1 POS +!
+    ELSE C@P CW CW# @ + C! 1 CW# +! 1 POS +! THEN
+  REPEAT  CW CW# @ 0 ;
+: CMD-ARG ( c-addr u var? --- )   IF VAR-READ S" D-TEXT" O+ ELSE R-TEXT R-FIX O# THEN ;
+: REDIR ( mode u --- )   SKIP-BL CMD-WORD CMD-ARG O+ S" R-RD-FILE" O+ ;
+: STAGE ( --- n )   \ a stage's words, its redirections among them; how many words
+  0 BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND OVER [CHAR] & <> AND SWAP CMD-CLOSE @ <> AND WHILE
+    C@P [CHAR] > = IF 1 POS +! C@P [CHAR] > = IF 1 POS +! S" A/O 1" ELSE S" W/O 1" THEN REDIR ELSE
+    C@P [CHAR] < = IF 1 POS +! S" R/O 0" REDIR ELSE
+    C@P [CHAR] 2 = POS @ 1+ CH [CHAR] > = AND IF 2 POS +! S" W/O 2" REDIR ELSE
+    CMD-WORD CMD-ARG 1+ THEN THEN THEN
+  REPEAT ;
+: STAGES ( --- )   BEGIN STAGE O#  C@P [CHAR] | = WHILE 1 POS +! S" 0 PL-STAGE" O+ REPEAT  S" -1 PL-STAGE" O+ ;
+: LINE-BG? ( --- f )   \ the line ends with &
+  POS @ BEGIN DUP CH DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT
+  BEGIN 1- DUP POS @ < IF DROP 0 EXIT THEN DUP CH BL > UNTIL  CH [CHAR] & = ;
+: COMMAND ( --- )   TA @ SRC @ - POS !  10 CMD-CLOSE !  LINE-BG? >R
+  0 O# S" PL-BEGIN" O+  R@ IF S" PL-NULL-IN" O+ THEN  STAGES
+  R> IF 1 POS +! S" PL-SPAWN D-NUM V.job !" O+ ELSE S" PL-END D-NUM V.status !" O+ THEN  NEXT ;
+: M-CAPTURE ( --- )   \ $( ... ): its output, a text; its status in status
+  1 POS +!  [CHAR] ) CMD-CLOSE !  -1 O# S" PL-BEGIN" O+  STAGES  S" PL-END D-NUM V.status ! K-TEXT R-BOX" O+
+  C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
+' M-CAPTURE IS M-CAPTURE-D
 : STATEMENT ( --- )
   TK @ T-NL = TK @ T-EOF = OR IF EXIT THEN
   IN-DEF @ 0= IF S" R-GC?" O+ THEN                   \ a safe point, as Rill's: none inside a def
   S" if" IS? IF IF-STMT EXIT THEN        S" while" IS? IF WHILE-STMT EXIT THEN
   S" for" IS? IF FOR-STMT EXIT THEN      S" def" IS? IF DEF-STMT EXIT THEN
   S" return" IS? IF RETURN-STMT EXIT THEN
+  S" else" IS? S" elif" IS? OR IF TA @ TL @ S" has no if before it" ERR-NAME THEN
   TK @ T-NAME = IF
     0 PEEK [CHAR] = = 1 PEEK [CHAR] = <> AND IF ASSIGN EXIT THEN
     0 PEEK [CHAR] ( <> 0 PEEK [CHAR] [ <> AND  TA @ TL @ KNOWN? 0= AND IF COMMAND EXIT THEN

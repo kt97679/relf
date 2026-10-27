@@ -856,6 +856,7 @@ do not trust the absence of a line below.
 - 829 — a scripting vocabulary on Forth weighed (Q41); two pilot Forth versions mended, loaded by the tests
 - 830 — a minimal parser prototype: regular notation over the Forth vocabulary, 12.7 KB (Q42)
 - 831 — the minimal parser's speed: tagged numbers and counted loops, fib 78 -> 25 ms (Rill 7, Python 18)
+- 832 — the prototype's syntax evaluated, its shell measured; a Rill scope bug found (Q43)
 
 ### Not tied to an iteration
 

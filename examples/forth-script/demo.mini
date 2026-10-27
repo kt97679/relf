@@ -27,3 +27,11 @@ name = "mini"
 echo hello from $name
 print(status)
 print(not false and 1 < 2)
+printf "b\na\n" | sort | head -1 > /tmp/mini-demo.txt
+cat < /tmp/mini-demo.txt
+sh -c "echo oops >&2; exit 3" 2> /tmp/mini-demo.err
+print(status)
+shout = $(echo hi | tr a-z A-Z)
+print(shout + "!")
+sleep 0 &
+print(wait(job))

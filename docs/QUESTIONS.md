@@ -90,6 +90,19 @@ and scripts run in it, then the compiler removed; (2) defs of numbers on the
 stack next; (3) pipelines, `$(...)` and `{expr}` in strings, records, break
 and continue. *Blocks*: nothing.
 
+**Q43. The prototype's syntax, and the shell: what next? (832)**
+docs/FORTH-SCRIPTING.md, "The syntax, how friendly": eight things tried, one
+mended (else on its own line ran both branches); seven improvements priced at
+some 2.3 KB of parser and nothing at run time. The shell: pipes,
+redirections, quotes, $( ) and & cost 1,960 bytes of parser; each command
+costs what Rill's does, twice dash's, the runtime execing through env. And a
+Rill bug: a def's parameter is the global of its name, so a def called
+meanwhile reads the parameter - garbage where the kinds differ. Questions:
+(1) the seven improvements, all? (2) commands through env: search PATH in the
+runtime instead? *Recommendation*: fix Rill's scope first (a def's names its
+own, both compilers, the oracle with them); (2) yes, it halves every
+command's cost; (1) all, in the order listed. *Blocks*: nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

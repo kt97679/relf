@@ -95,10 +95,12 @@ printf 'S" examples/forth-script/vocab.4" INCLUDED  S" examples/forth-script/par
 if [ "$(./relf64 kernel64-rill.img /tmp/rill-fs.$$.4 2>&1 | grep -v Redefining | tail -1 | tr -d '\r')" = "$(./relf64 kernel64-rill.img examples/forth-script/parse-dump.rill 2>&1 | tail -1)" ]
 then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL examples/forth-script: parse-dump.4 and parse-dump.rill differ"; fi
 rm -f /tmp/rill-fs.$$.4
-# the minimal parser's prototype (830): demo.mini in regular notation, its output as demo.expected
-printf 'S" examples/forth-script/mini.4" INCLUDED  S" examples/forth-script/demo.mini" MINI-FILE\n' > /tmp/rill-mini.$$.4
-if ./relf64 kernel64-rill.img /tmp/rill-mini.$$.4 2>&1 | grep -v Redefining | cmp -s - examples/forth-script/demo.expected
-then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL examples/forth-script/demo.mini: not demo.expected"; fi
+# the minimal parser's prototype (830): each examples/forth-script/*.mini, its output as its .expected
+for m in examples/forth-script/*.mini; do
+    printf 'S" examples/forth-script/mini.4" INCLUDED  S" %s" MINI-FILE\n' "$m" > /tmp/rill-mini.$$.4
+    if ./relf64 kernel64-rill.img /tmp/rill-mini.$$.4 2>&1 | grep -v Redefining | cmp -s - "${m%.mini}.expected"
+    then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $m: not ${m%.mini}.expected"; fi
+done
 rm -f /tmp/rill-mini.$$.4
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
