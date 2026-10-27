@@ -78,6 +78,12 @@ Before a session, and at each record, report, input and question:
    cost of the finished task - the human's time included - not by one call's
    tokens. Measure before and after; never add claimed savings up - they
    overlap.
+
+9. A sequence of steps that recurs - in every routine run, every session, or
+   typed by hand a second time with more to come - becomes a script, tested
+   like any change. The script does the mechanics; the judgment stays with
+   the session, marked by TODO lines the script leaves. A one-off analysis
+   keeps its script beside its result, but is not made into a general tool.
 ```
 
 ## Artifact required

@@ -6,7 +6,18 @@ changed since. Both sides go on adding prompts, so a sync is a three-way
 merge with the last synced versions as the base - never one side copied
 over the other: each has prompts the other lacks.
 
-## Last sync: Iteration 803, from forth-vm-evolution 7da6566 (its Iteration 543)
+## Last sync: Iteration 844, from forth-vm-evolution 45903e4 (its Iteration 555)
+
+One change there since 7da6566: its Iteration 552 (33c4f5e), `21` item 9 -
+a sequence of steps that recurs becomes a script, tested like any change,
+the judgment left to the session in TODO lines; a one-off analysis keeps
+its script beside its result. Here it is `29` item 9: `git merge-file`
+against 7da6566's `21`, no conflict, our title and renumbered references
+kept. Its UPSTREAM still dates from e96185a - nothing of ours has gone
+there since, so the list below stands. Every `prompt NN`, `prompt NN, item
+M` and `` `NN` `` resolves (100 checked).
+
+## Iteration 803's sync, from forth-vm-evolution 7da6566 (its Iteration 543)
 
 Base e96185a. Carried here: every change its UPSTREAM lists (its
 Iterations 19 to 543) - 03, 07, 08, 10, 11 and 12 changed, INDEX, README
@@ -40,8 +51,8 @@ INDEX, README and USAGE rows for them.
 
 ## The next sync
 
-Base: forth-vm-evolution 7da6566's `prompts/` for their side, this
-commit's for ours. A file changed on one side is taken; one changed on
+Base: forth-vm-evolution 45903e4's `prompts/` for their side, Iteration
+844's for ours. A file changed on one side is taken; one changed on
 both is merged (`git merge-file`), its items renumbered after ours; a new
 prompt takes the next free number here. Check that every `prompt NN`,
 `prompt NN, item M` and `` `NN` `` still resolves, and update this file.
