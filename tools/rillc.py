@@ -554,7 +554,11 @@ class Compiler:
                     if j is None: raise Error('line %d: a { in a string is not closed' % line)
                     sub = Compiler.__new__(Compiler); sub.__dict__ = dict(self.__dict__)
                     sub.t = self.sub_tokens(body[i + 1:j - 1], line + body[:i + 1].count('\n')); sub.i = 0
-                    c2, k2 = sub.expr(); parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j
+                    c2, k2 = sub.expr()
+                    while sub.peek()[0] == 'nl': sub.i += 1
+                    if sub.peek()[0] != 'eof':                              # all of it one expression: else ignored, silently, till 843
+                        raise Error('line %d: a { in a string holds one expression - \\{ is the character' % sub.peek()[2])
+                    parts.append(self.to_text(c2, k2)); pieces.append(('code', parts[-1])); i = j
                 continue
             lit += c; i += 1
         if typed: return pieces + [('lit', lit)]

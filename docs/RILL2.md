@@ -216,7 +216,8 @@ compiler declares BUFFER:s, made at start. As BUFFER:s now: 76,421 bytes to 68,8
 place in variables, and the outer string ended where the inner one did - the rest lost, silently.
 STR-LIT keeps its own across the expression now, any depth deep (`tests/rill2/strings.r2`).
 Found by the syntax study (docs/SYNTAX-STUDY.md), which also found Rill printing `JSON-ish: \` for
-`echo "JSON-ish: {\"a\": 1}"` - Rill's to mend next.
+`echo "JSON-ish: {\"a\": 1}"` - its compilers read the first expression in the braces and dropped the
+rest; both refuse it since 843 (`tests/rill/errors/brace-junk.rill`).
 
 ## Not yet
 

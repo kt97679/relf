@@ -1,0 +1,2 @@
+# a string's { } holding more than one expression: the rest was ignored, silently, till 843 - \{ is the character
+echo "JSON-ish: {\"a\": 1}"

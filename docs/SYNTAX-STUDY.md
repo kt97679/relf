@@ -70,7 +70,7 @@ Probes run on both (842):
 |---|---|---|
 | `ls = 5` then `ls -l /tmp` (L1) | runs ls | "l is not defined" - read as `ls - l` |
 | a branch never taken names `dnf`, absent here (L7) | runs | the whole script refused: "dnf is not a variable, a def or a command" |
-| a string holding `{"a": 1}` (L6) | prints `JSON-ish: \` - **wrong, silently** | an error: `{` interpolates in every string |
+| a string holding `{"a": 1}` (L6) | printed `JSON-ish: \` - **wrong, silently**; an error since 843 | an error: `{` interpolates in every string |
 | `"x {s["lines"]} y"` (L6) | - | printed `x 3`, the rest **lost silently** - mended in 842 |
 | `x = dri`, a mistyped name (L4) | the text "dri", silently | an error |
 | reading a variable | `$x` in code and commands | `x` in code, `$x` in commands - the mixing asked about |

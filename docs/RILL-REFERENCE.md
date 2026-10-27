@@ -75,8 +75,9 @@ a list or a record inside another, and any record, as Rill writes them -
   error. `$name` puts a
   variable in; `{expression}` puts an expression in; `$(command)` puts a
   command's output in. Inside `{...}` and `$(...)` a `"..."` is a string of its
-  own: `"{join($l, ", ")}"`. A `{` always starts an expression: a literal
-  brace is `\{`, or goes in single quotes.
+  own: `"{join($l, ", ")}"`. A `{` always starts an expression, and
+  the braces hold that one expression and no more - more is an error (843);
+  a literal brace is `\{`, or goes in single quotes.
 - After `$name` in a string comes text, as the shell reads it: `"$name.log"`
   is the name and then `.log`. A field goes in braces, `"{$r[name]}"`; `"$r.f"`
   with a record `r` is an error that says so.
