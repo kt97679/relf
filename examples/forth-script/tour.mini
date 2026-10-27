@@ -1,0 +1,49 @@
+# examples/forth-script/tour.mini - every construct of the minimal parser's prototype (832), run by tests/rill/run
+# a comment runs to the end of its line
+n = 7                              # numbers (whole), assigned with =
+s = "tab\there, quote \" done"     # strings in double quotes; \n \t \" \\
+l = [1, 2, n * 2]                  # lists
+print(s)
+print(n + 2 * 3)                   # + - * / %, the usual precedence
+print((n + 2) * 3)
+print(l[2])                        # an item by its index, from 0
+print("n is " + str(n))            # + joins two texts; str() makes one
+print(n > 5 and not (n == 9))      # == != < <= > >=, and, or, not
+print(none)                        # true, false, none
+
+def fact(k) {                      # a def: params, a block in { }, return
+    if k < 2 { return 1 }
+    return k * fact(k - 1)
+}
+print(fact(10))
+
+if n < 5 {
+    print("small")
+}
+elif n < 10 {                      # elif and else: on the } line or the next
+    print("medium")
+}
+else {
+    print("large")
+}
+
+i = 0
+while i < 3 { i = i + 1 }          # while
+print(i)
+for x in l { print(x) }            # for over a list
+total = 0
+for k in range(5) { total = total + k }   # range(n): a counted loop
+print(total)
+append(l, 99)
+print(len(l))
+
+echo plain words, and $n         # a line that is not an expression: a command
+printf '%s|%s\n' 'single quotes' "double quotes"
+printf "b\na\n" | sort | head -1 > /tmp/mini-tour.txt   # pipes, > >> < 2>
+cat < /tmp/mini-tour.txt
+sh -c "exit 4" 2> /dev/null
+print(status)                      # the last command's status
+word = $(echo shout | tr a-z A-Z)  # $( ): a command's output, as a text
+print(word)
+sleep 0 &                          # & : in the background, its job in job
+print(wait(job))

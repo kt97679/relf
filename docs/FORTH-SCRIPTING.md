@@ -170,3 +170,10 @@ Found on the way, in Rill: the scope test run in Rill prints `@C`. A def's param
 variable of the global with its name - shadowed for the call, as mini's - so a def reading that
 global during the call reads the parameter; and where their kinds differ, one is read as the other:
 garbage. The next fix - QUESTIONS.md Q43, GOALS.md 15.
+
+## The syntax as it is (833)
+
+examples/forth-script/tour.mini uses every construct, and tests/rill/run checks its output - the
+reference for the prototype's syntax. Writing it found a bug, mended: a command line took its comment
+as words (and the comment's > and < as redirections); a # starting a word, outside quotes, ends a
+command now, as in sh (commands.mini).

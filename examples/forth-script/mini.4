@@ -205,14 +205,20 @@ DEFER STMT
 \ alone a variable's text; & at the end, to the background (its job in job); $( ) in an expression, its
 \ output. Rill's runtime runs them - PL-BEGIN, PL-STAGE, R-RD-FILE, PL-END, PL-SPAWN; a failure sets
 \ status and goes on, as a shell's does.
-VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#
+VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#  VARIABLE CMD-END  VARIABLE CQ
+: CMD-EOL ( --- end )   \ where a command's text ends: its line's end, or a # starting a word outside quotes (832)
+  0 CQ !  POS @  BEGIN DUP CH DUP 10 <> SWAP 0<> AND WHILE
+    DUP CH  CQ @ IF CQ @ = IF 0 CQ ! THEN ELSE
+      DUP [CHAR] ' = OVER [CHAR] " = OR IF CQ ! ELSE
+      [CHAR] # = IF DUP 1- CH DUP BL = SWAP 9 = OR IF EXIT THEN THEN THEN THEN  1+
+  REPEAT ;
 : SKIP-BL ( --- )   BEGIN C@P DUP BL = SWAP 9 = OR WHILE 1 POS +! REPEAT ;
 : CMD-STOP? ( c --- f )   DUP 10 = OVER 0= OR OVER BL = OR OVER 9 = OR OVER [CHAR] | = OR OVER [CHAR] > = OR
   OVER [CHAR] < = OR OVER [CHAR] & = OR SWAP CMD-CLOSE @ = OR ;
 : CMD-WORD ( --- c-addr u var? )   \ a word: $name alone a variable; else its characters, quotes taken off
   C@P [CHAR] $ = POS @ 1+ CH ALPHA? AND IF 1 POS +! SRC @ POS @ +
     BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER - -1 EXIT THEN
-  0 CW# !  BEGIN C@P CMD-STOP? 0= WHILE
+  0 CW# !  BEGIN C@P CMD-STOP? 0= POS @ CMD-END @ < AND WHILE
     C@P DUP [CHAR] ' = SWAP [CHAR] " = OR IF C@P 1 POS +!
       BEGIN C@P OVER <> C@P 0<> AND WHILE C@P CW CW# @ + C! 1 CW# +! 1 POS +! REPEAT DROP 1 POS +!
     ELSE C@P CW CW# @ + C! 1 CW# +! 1 POS +! THEN
@@ -220,21 +226,22 @@ VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#
 : CMD-ARG ( c-addr u var? --- )   IF VAR-READ S" D-TEXT" O+ ELSE R-TEXT R-FIX O# THEN ;
 : REDIR ( mode u --- )   SKIP-BL CMD-WORD CMD-ARG O+ S" R-RD-FILE" O+ ;
 : STAGE ( --- n )   \ a stage's words, its redirections among them; how many words
-  0 BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND OVER [CHAR] & <> AND SWAP CMD-CLOSE @ <> AND WHILE
+  0 BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND OVER [CHAR] & <> AND SWAP CMD-CLOSE @ <> AND
+    POS @ CMD-END @ < AND WHILE
     C@P [CHAR] > = IF 1 POS +! C@P [CHAR] > = IF 1 POS +! S" A/O 1" ELSE S" W/O 1" THEN REDIR ELSE
     C@P [CHAR] < = IF 1 POS +! S" R/O 0" REDIR ELSE
     C@P [CHAR] 2 = POS @ 1+ CH [CHAR] > = AND IF 2 POS +! S" W/O 2" REDIR ELSE
     CMD-WORD CMD-ARG 1+ THEN THEN THEN
   REPEAT ;
 : STAGES ( --- )   BEGIN STAGE O#  C@P [CHAR] | = WHILE 1 POS +! S" 0 PL-STAGE" O+ REPEAT  S" -1 PL-STAGE" O+ ;
-: LINE-BG? ( --- f )   \ the line ends with &
-  POS @ BEGIN DUP CH DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT
-  BEGIN 1- DUP POS @ < IF DROP 0 EXIT THEN DUP CH BL > UNTIL  CH [CHAR] & = ;
-: COMMAND ( --- )   TA @ SRC @ - POS !  10 CMD-CLOSE !  LINE-BG? >R
+: LINE-BG? ( --- f )   \ the command ends with &
+  CMD-END @  BEGIN 1- DUP POS @ < IF DROP 0 EXIT THEN DUP CH BL > UNTIL  CH [CHAR] & = ;
+: COMMAND ( --- )   TA @ SRC @ - POS !  10 CMD-CLOSE !  CMD-EOL CMD-END !  LINE-BG? >R
   0 O# S" PL-BEGIN" O+  R@ IF S" PL-NULL-IN" O+ THEN  STAGES
-  R> IF 1 POS +! S" PL-SPAWN D-NUM V.job !" O+ ELSE S" PL-END D-NUM V.status !" O+ THEN  NEXT ;
+  R> IF S" PL-SPAWN D-NUM V.job !" O+ ELSE S" PL-END D-NUM V.status !" O+ THEN
+  BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;      \ past a comment, to the line's end
 : M-CAPTURE ( --- )   \ $( ... ): its output, a text; its status in status
-  1 POS +!  [CHAR] ) CMD-CLOSE !  -1 O# S" PL-BEGIN" O+  STAGES  S" PL-END D-NUM V.status ! K-TEXT R-BOX" O+
+  1 POS +!  [CHAR] ) CMD-CLOSE !  SRC# @ CMD-END !  -1 O# S" PL-BEGIN" O+  STAGES  S" PL-END D-NUM V.status ! K-TEXT R-BOX" O+
   C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
 ' M-CAPTURE IS M-CAPTURE-D
 : STATEMENT ( --- )

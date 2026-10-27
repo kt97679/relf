@@ -1,0 +1,9 @@
+# command lines and their comments (832): a # starting a word, outside quotes, ends the command -
+# the comments here were words, and their > and < redirections, and the & no longer the last word
+echo plain words, and a comment     # not echoed
+echo "a quoted # stays" 'and # this'
+printf "b\na\n" | sort | head -1 > /tmp/mini-commands.txt   # > >> < 2> in a comment: not redirections
+cat < /tmp/mini-commands.txt # and here
+sleep 0 &                           # & then a comment: still to the background
+print(wait(job))
+echo done#not-a-comment
