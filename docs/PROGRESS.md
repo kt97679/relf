@@ -858,6 +858,7 @@ do not trust the absence of a line below.
 - 831 — the minimal parser's speed: tagged numbers and counted loops, fib 78 -> 25 ms (Rill 7, Python 18)
 - 832 — the prototype's syntax evaluated, its shell measured; a Rill scope bug found (Q43)
 - 833 — the prototype's syntax shown (tour.mini); # comments end a command line
+- 834 — Rill 2: the prototype named and mended, 61 KB against Rill's 92; commands run directly (Q44)
 
 ### Not tied to an iteration
 

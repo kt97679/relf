@@ -177,3 +177,8 @@ examples/forth-script/tour.mini uses every construct, and tests/rill/run checks 
 reference for the prototype's syntax. Writing it found a bug, mended: a command line took its comment
 as words (and the comment's > and < as redirections); a # starting a word, outside quotes, ends a
 command now, as in sh (commands.mini).
+
+## Rill 2 (834)
+
+The user named the prototype Rill 2 and asked for the issues mended: docs/RILL2.md says the language,
+rill2/rill2.4 is it, tests/rill2 checks it. examples/forth-script keeps the 829 sketch only.

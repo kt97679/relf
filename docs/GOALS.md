@@ -258,6 +258,8 @@ the account of what each gained and cost.
      alternatives - a Forth-style rewrite, an interpreter, a cached compile - Q40;
    - **a scripting vocabulary on Forth** (829, the user's idea): docs/
      FORTH-SCRIPTING.md, examples/forth-script/; how far - QUESTIONS.md Q41;
+   - **Rill 2** (834, the user's: the prototype named, its issues mended):
+     docs/RILL2.md, rill2/rill2.4, bin/rill2, tests/rill2 - what next: Q44;
    - **a bug, next to fix** (found at 832): a def's parameter is the variable
      of the global with its name, shadowed for the call - so a def called
      meanwhile reads the parameter, and where the kinds differ reads garbage

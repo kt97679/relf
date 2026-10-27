@@ -103,6 +103,17 @@ runtime instead? *Recommendation*: fix Rill's scope first (a def's names its
 own, both compilers, the oracle with them); (2) yes, it halves every
 command's cost; (1) all, in the order listed. *Blocks*: nothing.
 
+**Q44. Rill 2: what next? (834)** The prototype is Rill 2 now (docs/RILL2.md):
+the issues of 832 mended, its tour checked, an image of 61,155 bytes against
+Rill's 91,795 - its own part 20.8 KB against Rill's compiler and editor's 51.4.
+Questions: (1) Rill 2 the language from here - Rill's compiler, its 61 oracle
+programs and its examples carried over or retired? (2) its prompt: relfsh's
+editor, as Rill's, 12.3 KB? (3) defs of numbers on the stack (fib 18 ms to
+Rill's 8)? (4) Rill's scope bug (832): mend it in Rill, or let Rill 2 take
+its place? *Recommendation*: (1) yes - the examples carried over one by one,
+the length rule kept; (2) next; (3) after; (4) only if Rill stays.
+*Blocks*: nothing.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

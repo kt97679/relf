@@ -95,13 +95,16 @@ printf 'S" examples/forth-script/vocab.4" INCLUDED  S" examples/forth-script/par
 if [ "$(./relf64 kernel64-rill.img /tmp/rill-fs.$$.4 2>&1 | grep -v Redefining | tail -1 | tr -d '\r')" = "$(./relf64 kernel64-rill.img examples/forth-script/parse-dump.rill 2>&1 | tail -1)" ]
 then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL examples/forth-script: parse-dump.4 and parse-dump.rill differ"; fi
 rm -f /tmp/rill-fs.$$.4
-# the minimal parser's prototype (830): each examples/forth-script/*.mini, its output as its .expected
-for m in examples/forth-script/*.mini; do
-    printf 'S" examples/forth-script/mini.4" INCLUDED  S" %s" MINI-FILE\n' "$m" > /tmp/rill-mini.$$.4
-    if ./relf64 kernel64-rill.img /tmp/rill-mini.$$.4 2>&1 | grep -v Redefining | cmp -s - "${m%.mini}.expected"
-    then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $m: not ${m%.mini}.expected"; fi
-done
-rm -f /tmp/rill-mini.$$.4
+# Rill 2 (834, docs/RILL2.md): its image built, then each tests/rill2/*.r2 and errors/*.r2 run in it -
+# its output, then its status, as its .expected has them
+if sh tools/build-rill2-image.sh ./relf64 forth/kernel64.img /tmp/rill2.$$.img > /dev/null 2>&1; then
+    for t in tests/rill2/*.r2 tests/rill2/errors/*.r2; do
+        { RILL2_TOUR=set timeout 30 ./relf64 /tmp/rill2.$$.img "$t" 2>&1; echo "status $?"; } > /tmp/rill2-out.$$
+        if cmp -s /tmp/rill2-out.$$ "${t%.r2}.expected"; then pass=$((pass + 1))
+        else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.r2}.expected" /tmp/rill2-out.$$ | head -5; fi
+    done
+else fail=$((fail + 1)); echo "FAIL tools/build-rill2-image.sh"; fi
+rm -f /tmp/rill2.$$.img /tmp/rill2-out.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

@@ -287,7 +287,10 @@ VARIABLE RV-N   VARIABLE RV-V
   RV-N @ 0 ?DO  R-CSTR  RV-V @ RV-N @ SE-N @ + I - CELLS + !  LOOP
   SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
   S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
-: R-EXECV ( argv --- )   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;
+DEFER R-WHICH-D ( t --- t2 | 0 )   \ R-WHICH, defined once R-ENV and R-SPLIT are
+: R-EXECV ( argv --- )   \ (834) with no setenv names, the command itself, found on PATH: one exec, not env's two
+  SE-N @ 0= IF  DUP CELL+ @ ?DUP IF DUP CSTRLEN R-TEXT R-WHICH-D ?DUP IF R-CSTR OVER CELL+ SWAP EXECVE DROP THEN THEN  THEN
+  S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;   \ else env: it sets the names, and says what it cannot find
 VARIABLE SIG-SEEN   VARIABLE SIG-CNT   \ a signal taken while waiting; safe points till the next look (786)
 : R-SIGNAL ( --- signo | 0 )   SIG-SEEN @ ?DUP IF 0 SIG-SEEN ! ELSE SIGNALS-PENDING THEN ;
 : R-WAIT ( pid --- raw )   \ WAITPID - again when a caught signal cut it short, the signal kept for the next safe point (786)
@@ -493,7 +496,9 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
   2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
 DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a .rill's text to Forth: rill/compile.4 sets it
 DEFER R-REPL-D   \ the prompt, `rill` with no script (824): rill/compile.4 sets it
-: R-RILL? ( c-addr u --- f )   DUP 5 < IF 2DROP 0 EXIT THEN  + 5 - 5 S" .rill" COMPARE 0= ;
+DEFER R-SUFFIX ( --- c-addr u )   \ a script's ending: .rill - rill2's image makes it .r2 (834)
+: R-SUFFIX-RILL ( --- c-addr u )   S" .rill" ;   ' R-SUFFIX-RILL IS R-SUFFIX
+: R-RILL? ( c-addr u --- f )   R-SUFFIX SWAP >R >R  DUP R@ < IF 2DROP R> R> 2DROP 0 EXIT THEN  + R@ -  R@ R> R> SWAP COMPARE 0= ;
 : R-SHEBANG? ( c-addr u --- f )   2 < IF DROP 0 EXIT THEN  2 S" #!" COMPARE 0= ;   \ a script that starts #!: Rill, whatever its name (797)
 : R-RUN ( --- )
   \ Not INCLUDED: the boot word runs before the interpreter has a file
@@ -679,6 +684,13 @@ VARIABLE LM-K
 : R-LMAX ( l --- box )   \ max(list): its greatest item
   DUP R-LEN 0= IF S" rill: max of an empty list" R-FAIL THEN
   DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
+: R-WHICH ( t --- t2 | 0 )   \ a command's file: itself if it has a /; else the first on PATH that opens (834)
+  DUP R-T@ [CHAR] / SCAN NIP IF EXIT THEN
+  S" PATH" R-TEXT R-ENV  S" :" R-TEXT R-SPLIT
+  DUP R-LEN 0 ?DO  DUP I R-AT R-ANY>TEXT  S" /" R-TEXT  3 PICK  3 R-CONCAT
+    DUP R-T@ R/O OPEN-FILE 0= IF CLOSE-FILE DROP NIP NIP UNLOOP EXIT THEN  DROP DROP
+  LOOP  2DROP 0 ;
+' R-WHICH IS R-WHICH-D
 : R-CD ( t --- )   \ cd DIR
   DUP R-CSTR CHDIR IF R-ERR> ." rill: cd: cannot change to " R-TYPE R-ERR-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
 VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
