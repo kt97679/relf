@@ -190,6 +190,19 @@ shell's own convention, which Rill uses: bind bare (`total = 0`, `for f in`), re
 form for reading, but a name seen two ways, and bare words in code then need a lookup (Rill's
 "a bare word naming a variable") to catch the forgotten `$`.
 
+## A.1 - after a first review (846)
+
+Five models reviewed A (docs/asks/); every claim was checked against the rules as sent, bash and
+dash, and today's builds (`docs/asks/ask-rill-syntax-answers-845.md`). Ten holes held, and A.1
+fills them: `NAME=value` before a command is its environment; a def is called only as `name(...)`,
+so `$( )` keeps one form with no silent case; `$name[` in a word or string is an error offering
+bash's `${name[key]}` - `$base[0].txt` means `file[0].txt` to bash; a `$` before no name is text and
+`$1`-`$9` are the script's arguments; `@` spreads in code too; braces are characters, a lone `{`
+ending a header's command and a lone `}` a block's; an unbound `$NAME` in capitals reads the
+environment and is an error when unset; the prompt shows an expression's value; a `(` in a word is
+an error with hints; `$(...)` drops every trailing newline. Rules R1-R11 in
+`docs/asks/ask-rill-syntax-grammar-846.md`.
+
 ## What it would take
 
 In rill2, whose runtime stays: the tokenizer reads `$name` in code, `@name`, `?(`; strings drop
