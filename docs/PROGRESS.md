@@ -873,6 +873,7 @@ do not trust the absence of a line below.
 - 846 — the review's five answers checked: three for A, ten holes filled as A.1; the grammar and users prompts rebuilt on it
 - 847 — the users round's five answers checked: five silent mistakes become refusals, A.2; the grammar prompt rebuilt on it
 - 848 — the grammar round's four answers checked: one parser shape, A.3; found: rill2 passes $(...) in a command's words through as text
+- 849 — the minimal cut, A.4: eleven rules where A.3 had twenty-two (docs/SYNTAX-STUDY.md)
 
 ### Not tied to an iteration
 

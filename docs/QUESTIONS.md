@@ -151,7 +151,9 @@ four prompts in docs/asks/ (a review, users, a grammar, prior art). The review
 back (846): five models, three for A; ten holes held, filled as A.1
 (docs/asks/ask-rill-syntax-answers-845.md). The users round (847): no mistake
 left that runs wrongly under A once five more are refused - A.2. The grammar round
-(848): one parser shape agreed; six gaps measured and filled - A.3.
+(848): one parser shape agreed; six gaps measured and filled - A.3. At the owner's
+asking for minimalism (849): A.4, the minimal cut - eleven rules in place of twenty-two;
+*recommended* now, over A.3.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

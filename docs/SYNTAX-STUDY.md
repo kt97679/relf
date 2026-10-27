@@ -228,6 +228,70 @@ kind, unset environment names); captures nesting through quotes. Checking them f
 the prompts wrong: rill2 runs `$(...)` in code only, and passes it through as text inside a
 command's words - to mend.
 
+## A.4 - the minimal cut (849)
+
+Three rounds grew A to twenty-two rules, many of them patches for holes that other features made.
+The owner's aim is minimalism - the fewest rules that keep the lessons. Eleven do:
+
+1. **A variable is always `$name`** - assigned, read, a parameter, a loop variable. A bare word is
+   never a variable.
+2. **The first token decides**, nothing looked up: a keyword starts its statement; `$`, a number,
+   a quote, `[`, `{`, `(`, `-`, `not` or `name(` start code; anything else - `@` included - starts
+   a command. A missing program fails when its line runs.
+3. **Code is rill2's expressions** - Python's operators and their order. Text in code is quoted; a
+   bare word is an error, but for keywords, a call's name and a record's keys.
+4. **Functions are called only as `name(...)`**, defs and library alike; a function's name where a
+   command goes is an error. Commands are programs and the command builtins (`cd`, `exit`,
+   `command`).
+5. **One way to substitute, in words and strings**: `$` takes one value, `@` spreads a list (in
+   words only); after either comes a name with its indexes (`$s[file]`, `@cfg[hosts]`), or `{name}`
+   to delimit (`${base}s`, `${x}[0]` for a literal bracket - ShellCheck's own advice), or `( ... )`:
+   a command's output with its trailing newlines dropped (with `@`, its lines), or - when rule 2
+   reads code inside - a value. `$1`-`$9` are the script's arguments; any other `$` is text.
+6. **Values are never split or globbed**; globs come from a word's own characters (`$dir/*.log`);
+   a `.` after a name is text (`$f.bak`); braces are characters, but a word that is just `{` or `}`
+   opens or closes a block. A list or record put into a word or string with `$` is an error when it
+   runs - `@x` spreads it, `json($x)` shows it.
+7. **Strings**: `"..."` substitutes as rule 5 says, `$` only; `'...'` substitutes nothing.
+8. **`for $x in` takes code**: a list, record or range - `glob("*.log")`, `$stats`,
+   `lines($(ps))`, `range(10)`. Iterating text is an error, as in rill2 today.
+9. **`if` and `while` take a command (its status) or code (its truth)** - rule 2 again.
+10. **The environment**: `NAME=value cmd` for one command; an unbound `$NAME` in capitals reads the
+    environment and is an error when unset; `setenv(...)` writes. A lowercase name must be bound in
+    the script, so its typo fails before running.
+11. **At the prompt, a statement of code shows its value.**
+
+Dropped, each with what does its work: `?(cmd)` - an `if` per test, or `&&` in a command header;
+`@` in code - `[1] + $rest`; word lists after `for` (and R13) - `glob()` and `lines()`;
+`${name[key]}` as the only indexing in words, and its error - `$x[k]` indexes everywhere (ShellCheck
+SC1087 calls bash's other reading of `$x[` a likely bug, and asks `${x}[` for it); R12's `{name}`
+check - braces are characters, and the converter rewrites rill2's `{x}`; builtins callable both
+ways, and rill2's `!cmd` - nothing is left to choose between. R14, R18-R22 need no rule: they fall
+out of rules 2, 3 and 5. Accepted knowingly, two quiet cases: `$base[0].txt` meant literally (an
+error in ShellCheck), and `"{name}"` from Python's habit (Python without its `f` prints it too).
+
+The same task:
+
+    $cfg = {logdir: "/var/log/app", limit: 2}
+    $stats = []
+    for $f in glob("$cfg[logdir]/*.log") {
+        $n = int($(wc -l < $f))
+        $errs = int($(grep -c ERROR $f))
+        $stats += [{file: $f, lines: $n, errors: $errs}]
+    }
+    for $s in sort_by($stats, "lines") {
+        echo "$s[file]: $s[lines] lines"
+    }
+    $big = [$s[file] for $s in $stats if $s[lines] > $cfg[limit]]
+    if len($big) > 0 {
+        tar czf old.tgz @big
+    }
+
+In rill2: the PATH check (CMD-CHECK, 186 bytes), the name lookup in STATEMENT and `!word` go; the
+`{...}` handling in strings (STR-LIT, 343) and words (W-TEXT, 397) gives way to one `$` routine the
+two share; `$name` in code, the capitals' fallback, the brace words and the prompt's display come.
+About even, likely smaller - and rill2's two bugs of 845 and 848 go with it.
+
 ## What it would take
 
 In rill2, whose runtime stays: the tokenizer reads `$name` in code, `@name`, `?(`; strings drop
