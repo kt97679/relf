@@ -122,9 +122,10 @@ Precedence, lowest first: `or`; `and`; `in`, `not in`, `==`, `!=`, `<`,
 `<=`, `>`, `>=`; `+`, `-`; `*`, `/`, `%`. Unary `-` and `not`. `and` and `or`
 stop early, as Python's.
 
-- Arithmetic: number with number is a number - `/` is integer division and
-  `%` the remainder, as the shell's `$((...))`; a decimal on either side
-  makes a decimal. An item meets a number or an item at run time: a decimal
+- Arithmetic: number with number is a number - `/` divides rounding down and
+  `%` is that division's remainder, as Python's `//` and `%`: `-7 / 2` is -4
+  and `-7 % 2` is 1 (the shell's `$((...))` says -3 and -1; this said "as the
+  shell's" until 838); a decimal on either side makes a decimal. An item meets a number or an item at run time: a decimal
   in either, decimal arithmetic; the result is an item.
 - Overflow is an error, not a wrapped number: past 64 bits, or a decimal past
   9223372036854.775807 - `rill: a number too big ... (line N)`; so is a

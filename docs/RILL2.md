@@ -118,6 +118,39 @@ Adds and subtracts now look at the overflow, a multiply takes the fast way only 
 comparison no longer subtracts; a number past 62 bits is boxed, past 64 an error with its line
 (tests/rill2/numbers.r2, errors/overflow.r2).
 
+## Rill and Rill 2 side by side (838)
+
+The same program in each - tests/rill2/compare/side.rill and side.r2, 541 and 542 bytes - prints
+the same lines, and tests/rill/run checks it. Where they differ:
+
+| | Rill | Rill 2 |
+|---|---|---|
+| a variable read | `$x`; a bare word is a text (`files = [a.txt, b.txt]`) | `x`; texts quoted |
+| into a string | `"$name {$x * 2}"` | `"{name} {x * 2}"` |
+| a condition | `if ($x > 1) { }`, `else if` | `if x > 1 { }`, `elif` |
+| adding to | `x = $x + 1` (one way) | `x += 1`, `-= *= /= %=` |
+| a def | `def f(a) -> number { }` - its kind said | `def f(a) { }` |
+| kinds | inferred when compiled; a mismatch found before it runs | looked at when used |
+| a failed command | stops the script, unless `?? statement`, `(cmd)` or `code((cmd))` | sets `status`; the script goes on |
+| ports | `out> err> all> out>> err>> err>out out>err <` | `> >> 2> <` |
+| a job | `j = spawn((cmd))`, `wait($j)` | `cmd &`, `wait(job)` |
+| echo | Rill's own, no process | /bin/echo; `print()` its own |
+| a list into words | `@list`, `@args` | - |
+| scope | a def's parameter shadows the global of its name for the call (the bug of 832) | lexical |
+| a def | above its first call | anywhere: called before it is defined too |
+| the prompt | the editor with TAB completion | the editor, no TAB |
+
+Only Rill: comprehensions `[$x * 2 for x in $l if $x > 1]`; text blocks `"""`; `case` with the
+shell's patterns; `on EXIT`; `cd dir { }`; `for i, x in` and `for k, v in`; `range(a, b, step)`;
+`setenv`, `glob`, `code`, `default`, `at`, `find`, `sum`, `max`, `min`, `abs`, `replace`, `all`,
+`slice`, `sort-by`, `number`; a function as a pipeline's stage; `$script`; two compilers whose Forth
+the oracle compares, and a fuzzer. Only Rill 2: `+=` and the rest; `print` of several; `insert`,
+`extend`, `values`, `has`, `index` (Rill's `find`), `str`, `int`; slices as `x[a:b]`; lists joined
+by `+`; `!cmd`; a typo a command caught on PATH before it runs; defs called before they are defined.
+Both: numbers checked at 64 bits, decimals, Python's division (`-7 / 2` is -4), texts, lists,
+records, `in`, regular expressions, JSON, `$(...)`, pipes, `cd`, the prompt with its editor and
+history, the same runtime and collector.
+
 ## Not yet
 
 A list spread into a command's words (Rill's `@list`); setenv; on EXIT; comprehensions; text blocks;

@@ -862,6 +862,7 @@ do not trust the absence of a line below.
 - 835 — Rill 2's prompt (editing, history; no TAB, 3.3 KB saved) and lists' functions; 71 KB against Rill's 92
 - 836 — the characters' widths at 3 bytes a bound: 1,321 bytes off relfsh, Rill and Rill 2 alike (A45)
 - 837 — Rill 2's stack mode (fib 18 -> 11 ms, Rill's 9); numbers past 62 bits no longer wrap
+- 838 — Rill and Rill 2 compared, one program in each; Rill's reference on division corrected
 
 ### Not tied to an iteration
 

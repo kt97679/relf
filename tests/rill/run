@@ -108,6 +108,12 @@ if sh tools/build-rill2-image.sh ./relf64 forth/kernel64.img /tmp/rill2.$$.img >
         if cmp -s /tmp/rill2-out.$$ "${t%.r2}.expected"; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t, RILL2_STACK=0"; diff "${t%.r2}.expected" /tmp/rill2-out.$$ | head -5; fi
     done
+    for t in tests/rill2/compare/side.rill tests/rill2/compare/side.r2; do   # Rill and Rill 2: one program each, one output (838)
+        case $t in *.rill) img=kernel64-rill.img ;; *) img=/tmp/rill2.$$.img ;; esac
+        { timeout 30 ./relf64 "$img" "$t" 2>&1; echo "status $?"; } > /tmp/rill2-out.$$
+        if cmp -s /tmp/rill2-out.$$ tests/rill2/compare/side.expected; then pass=$((pass + 1))
+        else fail=$((fail + 1)); echo "FAIL $t"; diff tests/rill2/compare/side.expected /tmp/rill2-out.$$ | head -5; fi
+    done
     for t in tests/rill2/prompt/*.in; do                                # the prompt, piped (835)
         { (ulimit -v 400000 2>/dev/null; timeout 30 ./relf64 /tmp/rill2.$$.img < "$t" 2>&1); echo "status $?"; } > /tmp/rill2-out.$$
         if cmp -s /tmp/rill2-out.$$ "${t%.in}.expected"; then pass=$((pass + 1))
