@@ -21,3 +21,8 @@
 | 852 | command-model-review-851 | DeepSeek | `[` read right as an error; kinds borrowed from A.4; closures' lifetime | "3 3 3" (2 2 2); an Elvish claim not confirmed | useful |
 | 852 | command-model-review-851 | ChatGPT | the missing basics (comments, escapes, continuation, export, value input, `if`'s boundary); identity, equality, printing; the three contracts | `PATH /tmp` as a command | the most useful |
 | 852 | command-model-review-851 | Qwen | `continue`, never named; a split count for `words` | an unchecked link | useful |
+| 853 | command-model-objects-852 | Gemini | a method copied by `merge` keeps the parent's `self` (O1), plainly | "Elvish pioneered"; Nushell's cycles; a search URL as a document; `this` as explicit | useful, with care |
+| 853 | command-model-objects-852 | Grok | accurate prior art (TclOO `my`, Snit's delegation, Lua `__call`, Io) | none found | useful |
+| 853 | command-model-objects-852 | DeepSeek | Red's rebinding on copy; PowerShell's JSON depth 2 - both checked true | `this` as "explicitly passed"; no links | useful |
+| 853 | command-model-objects-852 | ChatGPT | the object contract with sources; `merge` shallow; existence is not need | none found | the most useful |
+| 853 | command-model-objects-852 | Qwen | runnable checks for each claim | regrets marked documented without documents | the least useful |

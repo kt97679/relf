@@ -48,8 +48,7 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
 3. A substitution's result is a value and is never read again: never split, never globbed. Globs
    come from a word's own characters.
 4. `'...'` is text; `"..."` substitutes as rule 2 does, `$` only.
-5. `[ ... ]` is a list whose elements are words, `[a b $x]`; `[key: value ...]` a map. Nesting is
-   free.
+5. `[ ... ]` is a list whose elements are words, `[a b $x]`; `[key: value ...]` a map, `[:]` an empty one (853). Nesting is free.
 6. `{ ... }` is a block - code handed to a command, which runs it: `if`, `while`, `for`, `each`
    and `def` are commands that take blocks. `{|a b| ... }` names a block's arguments.
 7. `(( ... ))` is arithmetic and comparison, infix - the one place with an expression grammar,
@@ -60,7 +59,7 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    prompt's question). A failing command, in a capture too, keeps its output and sets `status`;
    under `strict` it stops the script unless tested by `if`, `!`, `&&` or `||` (852).
 9. `var name value` creates a variable in the current scope; `set name value` assigns an existing
-   one, an error if there is none. A bare word is text, so `var` and `set` receive the name: no
+   one, an error if there is none, and `set name[key] value` an element (853). A bare word is text, so `var` and `set` receive the name: no
    special form. Scope is lexical, and a loop's variable is a fresh one each iteration, so a block
    made in a loop keeps that iteration's value - Go's rule since 1.22 (852). The environment is
    where some variables start, and those pass on to programs; `export name` passes one the script
@@ -76,7 +75,12 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
 12. Values have kinds: number, text, boolean, none, list, map, block. A bare word that reads as a
     number is a number, and `true` and `false` are booleans; quoted, they are text. A program's
     output is text. `(( ))` takes numbers, and text that reads exactly as a number; anything else
-    is an error. `to-json` writes each kind as JSON has it (852).
+    is an error (852). Lists and maps are mutable and held by reference: two variables can hold
+    one map, and a change through either shows through both; `same $a $b` tells whether they do,
+    `eq` compares content, blocks by identity. Each value has a printed form for `echo` and
+    strings - a list or map in its literal syntax, a block as `<block>`; given to a program as one
+    argument, a list, map or block is an error that says `@` or `to-json`. `to-json` writes data at
+    any depth, never truncating; a block or a cycle in it is an error that says where (853).
 13. `#` at a word's start begins a comment; `\` escapes in bare words and in `"..."`; a line goes on
     after `|`, `&&` and `||`, and inside an open `[`, `{` or `(`. A command that takes blocks takes
     them as its last words - `if cond... {..} else {..}` - so `if ! nc -z $h $p { ... }` runs
@@ -185,6 +189,29 @@ only rule objects need.
 852: the review's five answers agree these three pieces suffice for everyday scripts. What users
 would miss first: delegation, and an implicit `self` or a method syntax; then defined identity,
 equality and printing of maps and blocks. The objects prompt asks for the evidence on each.
+
+853, after objects' prior art (docs/asks/ask-command-model-objects-answers-852.md): the inheritance
+above breaks as soon as a method calls another through `self`. A block copied by `merge` still sees
+the map it was made with, so an inherited `greet` calling `$self[speak]` reaches the parent's
+`speak`, never the child's. Rebol and Red copy too, but rebind a copied object's functions to the
+copy; a closure cannot be rebound. The draft's answer needs no rule - a constructor fills a map it
+is given, so every method, inherited or not, closes over the same map:
+
+    def animal {|self name|
+        set self[speak] { echo "$name makes a sound" }
+        set self[greet] { echo hello; $self[speak] }
+    }
+    def dog {|self name|
+        animal $self $name
+        set self[speak] { echo "$name barks" }
+    }
+    var d [:]
+    dog $d rex
+    $d[greet]                             # hello, then: rex barks
+
+It rests on maps held by reference (rule 12). `merge` stays, for data: it copies the top level, and
+nested values stay shared. Delegation (a `proto:` key) and an implicit receiver wait for real
+scripts to ask for them - as three of the five answers, the most careful among them, advise.
 
 ## The six tasks (851)
 
@@ -332,11 +359,11 @@ none of.
 
 ## Open
 
-The names (`def` or `fn`, `put` or `emit`); the map's spelling; `try`; delegation, an implicit
-`self`, and identity, equality and printing for objects; how function stages stream. Asked of
-other models: the review, answered and checked (852,
-docs/asks/ask-command-model-review-answers-851.md); objects' prior art and the runtime
-(docs/asks/ask-command-model-*-852.md).
+The names (`def` or `fn`, `put` or `emit`); the map's spelling; `try`; delegation and an implicit
+receiver, if real scripts ask for them; how function stages stream. Asked of other models: the
+review (852) and objects' prior art (853), answered and checked -
+docs/asks/ask-command-model-review-answers-851.md, docs/asks/ask-command-model-objects-answers-852.md;
+the runtime (docs/asks/ask-command-model-runtime-853.md).
 
 ## Sources
 

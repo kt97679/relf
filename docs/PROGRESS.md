@@ -877,6 +877,7 @@ do not trust the absence of a line below.
 - 850 — the command model, a draft (docs/COMMAND-MODEL.md); the shell's weak points from OOP built on it, measured
 - 851 — the command model worked further: objects, the six tasks, nine gaps, a size estimate, against A.4; three prompts out
 - 852 — the command model's review checked: C.1, thirteen rules; the objects and runtime prompts rebuilt on it
+- 853 — objects' prior art checked: C.2, the object contract; inheritance by filling a given map; the runtime prompt rebuilt
 
 ### Not tied to an iteration
 

@@ -158,7 +158,8 @@ docs/COMMAND-MODEL.md, a draft: a function is a command, arguments and streams c
 values; a base for further development, not yet weighed against A.4. Worked further
 (851): objects (rule 11), the six tasks, nine gaps, a size estimate - about even - and a
 side-by-side with A.4; three prompts out to other models. The review back (852): the
-direction stands, its contracts settled as C.1 - thirteen rules.
+direction stands, its contracts settled as C.1 - thirteen rules. Objects back (853): the
+object contract as C.2; inheritance by filling a given map; delegation deferred.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

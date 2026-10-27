@@ -44,9 +44,11 @@ each claim checked, nothing adopted unchecked.
 
 - **852 - the review, back.** Five answers (Gemini, Grok, DeepSeek, ChatGPT, Qwen), every claim
   checked: `ask-command-model-review-answers-851.md`. Nine findings held, adopted as C.1.
-- **Next to send:** `ask-command-model-objects-852.md`, then `ask-command-model-runtime-852.md` -
-  the same questions on the C.1 draft, each with what the review settled; they replace the 851
-  versions of those two.
+- **853 - objects, back.** Five answers (Gemini, Grok, DeepSeek, ChatGPT, Qwen), every claim
+  checked: `ask-command-model-objects-answers-852.md`. The object contract adopted as C.2; the
+  inheritance flaw answered by a convention; delegation and a receiver deferred.
+- **Next to send:** `ask-command-model-runtime-853.md` - the runtime question on the C.2 draft,
+  with cycles by design; it replaces the 851 and 852 versions.
 
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question
