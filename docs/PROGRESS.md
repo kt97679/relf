@@ -875,6 +875,7 @@ do not trust the absence of a line below.
 - 848 — the grammar round's four answers checked: one parser shape, A.3; found: rill2 passes $(...) in a command's words through as text
 - 849 — the minimal cut, A.4: eleven rules where A.3 had twenty-two (docs/SYNTAX-STUDY.md)
 - 850 — the command model, a draft (docs/COMMAND-MODEL.md); the shell's weak points from OOP built on it, measured
+- 851 — the command model worked further: objects, the six tasks, nine gaps, a size estimate, against A.4; three prompts out
 
 ### Not tied to an iteration
 

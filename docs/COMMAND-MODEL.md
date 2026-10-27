@@ -55,20 +55,23 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    bash's own form (in an ordinary word `*` globs and `>` redirects). `$(( ... ))` gives its value.
 8. Pipes, redirections, `&&`, `||` and `&` work as in the shell, for functions and programs alike.
    A pipe between functions carries values; between programs, bytes; at a boundary, lines.
-9. `set name value` assigns - a bare word is text, so `set` receives the name: no special form.
-   Scope is lexical. The environment is where some variables start; reading an unset variable is
+9. `var name value` creates a variable in the current scope; `set name value` assigns an existing
+   one, an error if there is none (851: closures make the two differ - G5). A bare word is text,
+   so `var` and `set` receive the name: no special form. Scope is lexical. The environment is where some variables start; reading an unset variable is
    an error when it happens.
 10. `def name {|a b| ... }` defines a function. `put` writes values, `echo` writes text, `return`
     ends with a status.
+11. A command's first word may be a value (851): a block runs, the other words its arguments;
+    text names a command, as `$EDITOR file` does in sh; anything else is an error. See Objects.
 
-Ten rules and the arithmetic grammar, against A.4's eleven rules and a whole expression grammar
+Eleven rules and the arithmetic grammar, against A.4's eleven rules and a whole expression grammar
 (operators, calls, comprehensions, records).
 
 ## A sketch - one possible spelling
 
-    set stats []
+    var stats []
     for f $logdir/*.log {
-        set n $(wc -l < $f)
+        var n $(wc -l < $f)
         append stats [file: $f  lines: $n]
     }
     sort-by lines $stats | each {|s| echo "$s[file]: $s[lines] lines" }
@@ -109,12 +112,185 @@ VMs, suggested in the discussion before this draft, would bring both back. Funct
 stages run in the same process - stages one after another with their values buffered (no
 streaming, enough for most scripts), or as coroutines.
 
-## Objects without object syntax
+## Objects (851)
 
-If blocks are values (W7) and maps hold anything (W5), a map of data and blocks is an object: a
-prototype object, with no class syntax - as Lua and early JavaScript have it. What it would need is
-a value as a command's first word, so that `$dog[bark] loud` runs the block in the map - Tcl allows
-it (`$myDog bark`), Elvish too. Open.
+Worked out at the owner's asking - still a draft. Three pieces, and only the third is a rule:
+
+- **Blocks are values that close over the variables they use** - by reference, so a block can
+  change them. New in rill2: today a def is no value (`f = sq` is "sq is not defined") and defs do
+  not nest ("def is only for the top level").
+- **Maps hold any value**, blocks included.
+- **Rule 11: a command's first word may be a value.** A block runs, with the other words as its
+  arguments; text names a command, as `$EDITOR file` does in sh - and `if $verbose`, which runs
+  `true` or `false`; anything else is an error.
+
+A counter - its state a variable its blocks close over:
+
+    def counter {|start|
+        var n $start
+        put [inc: { set n $(( $n + 1 )) }  get: { put $n }]
+    }
+    var c $(counter 5)
+    $c[inc]
+    $c[inc]
+    echo $($c[get])                       # 7
+
+Methods with arguments, one calling another through a captured `self`:
+
+    def account {|owner|
+        var balance 0
+        var self [
+            deposit: {|amount| set balance $(( $balance + $amount )) }
+            twice:   {|amount| $self[deposit] $amount; $self[deposit] $amount }
+            report:  { echo "$owner has $balance" }
+        ]
+        put $self
+    }
+    var a $(account ada)
+    $a[twice] 50
+    $a[report]                            # ada has 100
+
+Inheritance by copying - one map merged over another:
+
+    def animal {|name| put [name: $name  speak: { echo "$name makes a sound" }] }
+    def dog {|name| put $(merge $(animal $name) [speak: { echo "$name barks" }]) }
+    var d $(dog rex)
+    $d[speak]                             # rex barks
+
+No `class`, `new`, `this` or method-call syntax: methods are closures, `self` is a variable like
+any other, a subclass is a merge. Merging copies; delegation - a `proto:` key consulted when a key
+is missing, as Lua's metatables and JavaScript's prototypes do - is open. So is whether a method
+should receive its map implicitly (Lua's `obj:m()`); here it does not, which keeps rule 11 the
+only rule objects need.
+
+## The six tasks (851)
+
+The users prompt's six tasks, written in the draft. Not run - nothing is built.
+
+1. Lines and errors in each `*.log` counted, kept as records, printed sorted, the big ones archived:
+
+        var cfg [logdir: /var/log/app  limit: 2]
+        var stats []
+        for f $cfg[logdir]/*.log {
+            var n $(wc -l < $f)
+            var errs $(grep -c ERROR $f)
+            append stats [file: $f  lines: $n  errors: $errs]
+        }
+        sort-by lines $stats | each {|s| echo "$s[file]: $s[lines] lines, $s[errors] errors" }
+        var big [ @(for s @stats { if (( $s[lines] > $cfg[limit] )) { put $s[file] } }) ]
+        if (( $(count $big) > 0 )) { tar czf old.tgz @big }
+
+2. Servers from a JSON config checked with `nc -z`, the failures printed as JSON:
+
+        var cfg $(from-json < config.json)
+        var fails []
+        for s @cfg[servers] {
+            if ! nc -z $s[host] $s[port] { append fails $s }
+        }
+        to-json $fails
+
+3. `*.jpeg` renamed to `*.jpg`, clashes numbered:
+
+        for f *.jpeg {
+            var base $(basename $f .jpeg)
+            var dest $base.jpg
+            var i 1
+            while test -e $dest {
+                set dest $base-$i.jpg
+                set i $(( $i + 1 ))
+            }
+            mv $f $dest
+        }
+
+4. `ps` output as records, those over 100 MB, sorted:
+
+        var procs []
+        for line @(ps -eo pid,rss,comm | tail -n +2) {
+            var p [ @(words $line) ]
+            if (( $p[1] > 102400 )) { append procs [pid: $p[0]  rss: $p[1]  comm: $p[2]] }
+        }
+        sort-by rss $procs | each {|r| echo "$r[pid] $r[rss] $r[comm]" }
+
+5. A command tried up to five times, the sleep doubling:
+
+        var delay 1
+        for i @(range 5) {
+            if mycmd { break }
+            sleep $delay
+            set delay $(( $delay * 2 ))
+        }
+
+6. A program's arguments built from conditions:
+
+        var args []
+        if $verbose { append args -v }
+        if test -n $out { append args --out $out }
+        append args @inputs
+        myprog @args
+
+Tasks 3, 5 and 6 read as the shell does; 1, 2 and 4 are where values earn their place - records,
+JSON, a list kept and sorted. A comprehension is a loop's outputs captured:
+`[ @(for ... { put ... }) ]`.
+
+## Gaps found writing them (851)
+
+| | gap | where | the draft's leaning |
+|---|---|---|---|
+| G1 | how many values a capture gives | 1, 4 | `$( )` exactly one - a program's text is one; a function putting several is an error that says `@( )`, which gives each |
+| G2 | streams or lists from library commands (`words`, `sort-by`, `range`) | 4 | streams, `[ @( ) ]` making a list - one convention for all |
+| G3 | a failing program in a capture: `grep -c ERROR` prints 0 and exits 1 when nothing matches (measured), and `strict` would stop | 1 | open |
+| G4 | `break` and `return` inside blocks: a `break` in an `if` block inside a `for` must leave the `for`; a `return` in an `each` block - the block's, or the def's? | 5 | `break` leaves the nearest loop, through blocks; `return` the nearest def - open |
+| G5 | creating and assigning differ once blocks close over variables | objects | `var` creates, `set` assigns (an error if nothing to assign) - rule 9 amended |
+| G6 | a value as the first word | 6, objects | rule 11 |
+| G7 | `if ! nc ...` | 2 | `!` is a command that runs the rest and inverts its status, as `time` runs the rest - no syntax |
+| G8 | text or kinds: `if $verbose` wants text naming `true`; `to-json` wants 12 told from "12" | 2, 6 | open |
+| G9 | `ps` command names hold blanks, and `words` splits at every blank | 4 | the library's (a split with a count), not syntax |
+
+## The parser, estimated (851)
+
+rill2's language part measured by concern - 21,294 bytes in 375 words - and what the command model
+would do with each part. Estimates; nothing is built.
+
+| part | rill2 today | the command model |
+|---|---:|---|
+| statements and defs | 3,208 | ~2,000 - `if`, `while`, `for`, `def` become commands that take blocks, still compiled inline; `=`, `+=` and index assignment become `var`, `set`, `append` |
+| expressions | 3,115 | ~1,400 - only `(( ))`, arithmetic and comparison: no calls, literals or comprehensions |
+| Forth text: buffers, words made | 2,958 | the same |
+| commands: stages, ports, captures | 2,661 | the same, and functions as stages |
+| library wrappers | 1,833 | the same, called as commands |
+| values checked when used | 1,634 | the same |
+| names, scopes, declarations | 1,469 | the same, and closures' captured variables |
+| tokenizer | 967 | about the same - words, quotes, `$`, `@`, brackets |
+| the prompt | 871 | the same |
+| stack mode | 717 | gone - no numeric defs |
+| strings | 496 | about the same - `$` only |
+| static data, errors, other | 1,365 | the same |
+| new: blocks as closures | - | ~1,500-2,500 |
+| new: value output, value captures, function pipelines in the process | - | ~800-1,500 |
+| new: lists and maps of words, rule 11 | - | ~600-1,000 |
+| total | 21,294 | ~20,000-23,000 |
+
+About even. What moves is where the complexity lives: the syntax shrinks to one statement form and
+one small expression grammar, and the runtime grows by closures and value streams, which rill2 has
+none of.
+
+## Against A.4 (851)
+
+| | A.4 (docs/SYNTAX-STUDY.md) | the command model |
+|---|---|---|
+| rules | 11, and an expression grammar - Python's operators, calls, comprehensions, records | 11, and `(( ))` |
+| a line is | code or a command, by its first token | a command; its first word looked up only to choose what runs |
+| variables | `$x = 1`; `$x` everywhere | `var x 1`, `set x 2`; `$x` to read |
+| functions | `f($x)` returns a value | commands: `put` outputs values, `$( )` captures them |
+| data to programs | `@x` spreads | the same |
+| pipes | programs, and defs as stages | functions and programs alike, values between functions |
+| objects | records of data, no methods | maps of closures: `$obj[method] args` |
+| control flow | keywords | commands that take blocks |
+| reads as | Python with commands | the shell with values |
+| size | about rill2's, likely less | about rill2's |
+| new runtime | none | closures, value streams |
+| rill2's scripts | converted by a script | rewritten |
+| risks | a Python-like language with a shell bolted on - the owner's own doubt | stray output in results (`put` and `echo` kept apart); blocks' `return`; what closures cost |
 
 ## What it costs
 
@@ -128,10 +304,10 @@ it (`$myDog bark`), Elvish too. Open.
 
 ## Open
 
-The names (`def` or `fn`, `put` or `emit`, `set` or `var`); the map's spelling; whether numbers
-are a kind of their own or text read as numbers; `try`; a value as a command's first word; whether
-function stages stream. Next, when taken up: the six tasks of the users prompt written in this
-model, the parser's size estimated, and a side-by-side with A.4.
+The names (`def` or `fn`, `put` or `emit`); the map's spelling; G1-G4 and G8 above - whether
+numbers are a kind of their own among them; `try`; delegation for objects; whether function stages
+stream. Asked of other models since 851: a review, objects' prior art, and the runtime
+(docs/asks/ask-command-model-*-851.md).
 
 ## Sources
 

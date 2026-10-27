@@ -155,7 +155,9 @@ left that runs wrongly under A once five more are refused - A.2. The grammar rou
 asking for minimalism (849): A.4, the minimal cut - eleven rules in place of twenty-two;
 *recommended* now, over A.3. And (850) option C, the command model -
 docs/COMMAND-MODEL.md, a draft: a function is a command, arguments and streams carry
-values; a base for further development, not yet weighed against A.4.
+values; a base for further development, not yet weighed against A.4. Worked further
+(851): objects (rule 11), the six tasks, nine gaps, a size estimate - about even - and a
+side-by-side with A.4; three prompts out to other models.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

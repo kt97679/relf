@@ -29,6 +29,19 @@ need not be sent.
 - **Nothing more to send.** Review, users and grammar are answered; prior art would add least.
   What is left is the owner's: Q46.
 
+## The command model (851)
+
+Three prompts on `docs/COMMAND-MODEL.md` - a draft - each carrying the whole draft:
+
+| prompt | asks | suits |
+|---|---|---|
+| `ask-command-model-review-851.md` | an adversarial review, worst first; how to decide gaps G1-G9; what to borrow from A.4; what objects users would miss | the strongest reasoning model at hand, in its slow mode; two makers if possible |
+| `ask-command-model-objects-851.md` | objects in Tcl, Elvish, Lua, JavaScript, Io, Rebol, PowerShell, Nushell: what was essential, what regretted; `self`; copying or delegation; what scripting with objects needs; closures' pitfalls - each claim linked | a model with web search or a deep-research mode |
+| `ask-command-model-runtime-851.md` | closures, value pipelines in one process, mixed pipelines without deadlock, `break` through blocks - in a small single-threaded Forth VM | a strong coding model, slow mode |
+
+Suggested order: review, objects, runtime. Answers come back as before - pasted one at a time,
+each claim checked, nothing adopted unchecked.
+
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question
 is answered, and logs it in `model-usefulness.md` here. Before anything is used, every claim is
