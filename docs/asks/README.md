@@ -42,6 +42,12 @@ Three prompts on `docs/COMMAND-MODEL.md` - a draft - each carrying the whole dra
 Suggested order: review, objects, runtime. Answers come back as before - pasted one at a time,
 each claim checked, nothing adopted unchecked.
 
+- **852 - the review, back.** Five answers (Gemini, Grok, DeepSeek, ChatGPT, Qwen), every claim
+  checked: `ask-command-model-review-answers-851.md`. Nine findings held, adopted as C.1.
+- **Next to send:** `ask-command-model-objects-852.md`, then `ask-command-model-runtime-852.md` -
+  the same questions on the C.1 draft, each with what the review settled; they replace the 851
+  versions of those two.
+
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question
 is answered, and logs it in `model-usefulness.md` here. Before anything is used, every claim is

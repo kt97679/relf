@@ -41,9 +41,10 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    first word names what runs - a function, a builtin, or a program, looked up when it runs; the
    rest are its arguments.
 2. A bare word is text. `$name` is a variable's value; `$name[key]` an element of it, any depth;
-   `${name}` delimits; `@name` and `@name[key]` spread a list into several arguments; `$(cmd)` is a
-   command's output - a function's values, or a program's text with its trailing newlines dropped;
-   `@(cmd)` the same as several arguments (a program's lines).
+   `${name}` delimits; `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
+   exactly one value - a function's single value, or a program's text with its trailing newlines
+   dropped; `@(cmd)` is several - a function's values, a program's lines. A capture takes value
+   output only: a function's `echo` text is never captured, it goes on to the byte output (852).
 3. A substitution's result is a value and is never read again: never split, never globbed. Globs
    come from a word's own characters.
 4. `'...'` is text; `"..."` substitutes as rule 2 does, `$` only.
@@ -55,16 +56,34 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    bash's own form (in an ordinary word `*` globs and `>` redirects). `$(( ... ))` gives its value.
 8. Pipes, redirections, `&&`, `||` and `&` work as in the shell, for functions and programs alike.
    A pipe between functions carries values; between programs, bytes; at a boundary, lines.
+   Function stages stream - an endless generator must not hang a pipeline (852; how is the runtime
+   prompt's question). A failing command, in a capture too, keeps its output and sets `status`;
+   under `strict` it stops the script unless tested by `if`, `!`, `&&` or `||` (852).
 9. `var name value` creates a variable in the current scope; `set name value` assigns an existing
-   one, an error if there is none (851: closures make the two differ - G5). A bare word is text,
-   so `var` and `set` receive the name: no special form. Scope is lexical. The environment is where some variables start; reading an unset variable is
-   an error when it happens.
-10. `def name {|a b| ... }` defines a function. `put` writes values, `echo` writes text, `return`
-    ends with a status.
-11. A command's first word may be a value (851): a block runs, the other words its arguments;
-    text names a command, as `$EDITOR file` does in sh; anything else is an error. See Objects.
+   one, an error if there is none. A bare word is text, so `var` and `set` receive the name: no
+   special form. Scope is lexical, and a loop's variable is a fresh one each iteration, so a block
+   made in a loop keeps that iteration's value - Go's rule since 1.22 (852). The environment is
+   where some variables start, and those pass on to programs; `export name` passes one the script
+   made. Reading an unset variable is an error when it happens.
+10. `def name {|a b| ... }` defines a function: its arguments are its words, its value input is
+    read with `each` or `read`. `put` writes values, `echo` writes text. `return` ends the nearest
+    `def`, from inside any blocks; `break` and `continue` the nearest loop, the same way; run from
+    a block that outlived its loop or def, they are an error (852).
+11. A command's first word may be a value: a block runs, the other words its arguments; a boolean
+    gives its status, as in `if $verbose`; text names a command, as `$EDITOR file` does in sh;
+    anything else is an error - a list among them, whose error says `test`: `[` is never the test
+    command (852).
+12. Values have kinds: number, text, boolean, none, list, map, block. A bare word that reads as a
+    number is a number, and `true` and `false` are booleans; quoted, they are text. A program's
+    output is text. `(( ))` takes numbers, and text that reads exactly as a number; anything else
+    is an error. `to-json` writes each kind as JSON has it (852).
+13. `#` at a word's start begins a comment; `\` escapes in bare words and in `"..."`; a line goes on
+    after `|`, `&&` and `||`, and inside an open `[`, `{` or `(`. A command that takes blocks takes
+    them as its last words - `if cond... {..} else {..}` - so `if ! nc -z $h $p { ... }` runs
+    `! nc -z $h $p` (852).
 
-Eleven rules and the arithmetic grammar, against A.4's eleven rules and a whole expression grammar
+Thirteen rules (852: the review added kinds and lines) and the arithmetic grammar, against A.4's
+eleven rules and a whole expression grammar
 (operators, calls, comprehensions, records).
 
 ## A sketch - one possible spelling
@@ -163,6 +182,10 @@ is missing, as Lua's metatables and JavaScript's prototypes do - is open. So is 
 should receive its map implicitly (Lua's `obj:m()`); here it does not, which keeps rule 11 the
 only rule objects need.
 
+852: the review's five answers agree these three pieces suffice for everyday scripts. What users
+would miss first: delegation, and an implicit `self` or a method syntax; then defined identity,
+equality and printing of maps and blocks. The objects prompt asks for the evidence on each.
+
 ## The six tasks (851)
 
 The users prompt's six tasks, written in the draft. Not run - nothing is built.
@@ -246,6 +269,11 @@ JSON, a list kept and sorted. A comprehension is a loop's outputs captured:
 | G8 | text or kinds: `if $verbose` wants text naming `true`; `to-json` wants 12 told from "12" | 2, 6 | open |
 | G9 | `ps` command names hold blanks, and `words` splits at every blank | 4 | the library's (a split with a count), not syntax |
 
+852: the review decided G1, G2, G4-G7 and G9 as the draft leaned; G3 and G8 as rules 8 and 12 now
+say; and it found what the gaps missed - captures taking `echo`, loop variables in blocks, an
+endless generator, and the basics: comments, escapes, continued lines, `export`, `continue`
+(docs/asks/ask-command-model-review-answers-851.md).
+
 ## The parser, estimated (851)
 
 rill2's language part measured by concern - 21,294 bytes in 375 words - and what the command model
@@ -304,10 +332,11 @@ none of.
 
 ## Open
 
-The names (`def` or `fn`, `put` or `emit`); the map's spelling; G1-G4 and G8 above - whether
-numbers are a kind of their own among them; `try`; delegation for objects; whether function stages
-stream. Asked of other models since 851: a review, objects' prior art, and the runtime
-(docs/asks/ask-command-model-*-851.md).
+The names (`def` or `fn`, `put` or `emit`); the map's spelling; `try`; delegation, an implicit
+`self`, and identity, equality and printing for objects; how function stages stream. Asked of
+other models: the review, answered and checked (852,
+docs/asks/ask-command-model-review-answers-851.md); objects' prior art and the runtime
+(docs/asks/ask-command-model-*-852.md).
 
 ## Sources
 

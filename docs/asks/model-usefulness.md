@@ -16,3 +16,8 @@
 | 848 | grammar-847 | DeepSeek | a statement starting with `{` (G2); `$x [0]` in code (G3); `@cmd` empty (G6); the static/run-time split | `a$b` called ambiguous - R3 decides it | the most useful |
 | 848 | grammar-847 | ChatGPT | precedence unspecified (G1); `@(...)`'s lines (G5); nested captures (G7 - which found rill2's bug); record keys (G8) | "R10 does not say when the environment is read" - it does | useful |
 | 848 | grammar-847 | Qwen | the static/run-time split, compactly | a grammar against R3 (`{}` no word) and R15 (`@$x`); misparses | useful, with care |
+| 852 | command-model-review-851 | Gemini | nothing the others lack | rule numbers wrong; `[ -d ]` called silent (an error); `$obj[method] $obj` (no object is passed) | the least useful |
+| 852 | command-model-review-851 | Grok | G3 decided as most did; streaming wanted | a computed key as a finding (its fix is the rule); "non-empty is true" against rule 11 | useful |
+| 852 | command-model-review-851 | DeepSeek | `[` read right as an error; kinds borrowed from A.4; closures' lifetime | "3 3 3" (2 2 2); an Elvish claim not confirmed | useful |
+| 852 | command-model-review-851 | ChatGPT | the missing basics (comments, escapes, continuation, export, value input, `if`'s boundary); identity, equality, printing; the three contracts | `PATH /tmp` as a command | the most useful |
+| 852 | command-model-review-851 | Qwen | `continue`, never named; a split count for `words` | an unchecked link | useful |

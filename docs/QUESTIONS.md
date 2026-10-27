@@ -157,7 +157,8 @@ asking for minimalism (849): A.4, the minimal cut - eleven rules in place of twe
 docs/COMMAND-MODEL.md, a draft: a function is a command, arguments and streams carry
 values; a base for further development, not yet weighed against A.4. Worked further
 (851): objects (rule 11), the six tasks, nine gaps, a size estimate - about even - and a
-side-by-side with A.4; three prompts out to other models.
+side-by-side with A.4; three prompts out to other models. The review back (852): the
+direction stands, its contracts settled as C.1 - thirteen rules.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

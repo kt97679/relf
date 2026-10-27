@@ -876,6 +876,7 @@ do not trust the absence of a line below.
 - 849 — the minimal cut, A.4: eleven rules where A.3 had twenty-two (docs/SYNTAX-STUDY.md)
 - 850 — the command model, a draft (docs/COMMAND-MODEL.md); the shell's weak points from OOP built on it, measured
 - 851 — the command model worked further: objects, the six tasks, nine gaps, a size estimate, against A.4; three prompts out
+- 852 — the command model's review checked: C.1, thirteen rules; the objects and runtime prompts rebuilt on it
 
 ### Not tied to an iteration
 
