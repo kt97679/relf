@@ -17,8 +17,10 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-KIND ( item --- kind )   DUP 1 AND IF DROP K-NUM EXIT THEN  DUP IF @ THEN ;
 : D-ERR ( c-addr u --- )   R-FAIL ;
 : D-BOXED ( item --- box )   DUP 1 AND IF 2/ K-NUM R-BOX THEN ;
-: D-ITEM ( box --- item )   DUP IF DUP @ K-NUM = IF CELL+ @ D-NUM THEN THEN ;   \ a number boxed, tagged
+: D-ITEM ( box --- item )   \ a number boxed, tagged - if it fits: past 62 bits it stays boxed (837)
+  DUP IF DUP @ K-NUM = IF DUP CELL+ @ DUP 2* 2/ = IF CELL+ @ 2* 1+ THEN THEN THEN ;
 : FIXED-BOX ( v kind --- box )   2 CELLS ALLOCATE THROW >R  R@ !  R@ CELL+ !  R> ;
+: N>ITEM-D ( n --- item )   DUP 2* 2/ OVER = IF 2* 1+ ELSE K-NUM R-BOX THEN ;   \ tagged if it fits, else boxed
 : D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN
   DUP D-KIND K-NUM <> IF S" rill2: a whole number was wanted" D-ERR THEN CELL+ @ ;
 : D2N ( a b --- n1 n2 )   SWAP D>N SWAP D>N ;
@@ -29,12 +31,14 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-SEQ ( item --- l )   DUP D-KIND K-REC = IF D-REC R-KEYS EXIT THEN  D-LIST ;   \ what for walks
 : BOTH# ( a b --- a b f )   2DUP AND 1 AND ;
 : D-ARITH ( a b op --- c )   >R D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;   \ decimals, and the checks
-: D+ ( a b --- c )   BOTH# IF + 1- EXIT THEN
+: D+ ( a b --- c )   \ two tagged: one add, the overflow looked at - past 62 bits the checked way (837)
+  BOTH# IF 2DUP 2DUP + 1- TUCK XOR >R XOR R> AND 0< IF 0 D-ARITH EXIT THEN + 1- EXIT THEN
   OVER D-KIND K-TEXT = OVER D-KIND K-TEXT = AND IF SWAP D-TEXT SWAP D-TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
   OVER D-KIND K-LIST = OVER D-KIND K-LIST = AND IF >R D-LIST DUP R-LEN 0 SWAP R-SLICE DUP R> D-LIST R-EXTEND K-LIST R-BOX EXIT THEN
   0 D-ARITH ;   \ two lists: a new one, both's items
-: D- ( a b --- c )   BOTH# IF - 1+ EXIT THEN  1 D-ARITH ;
-: D* ( a b --- c )   BOTH# IF >R 2/ R> 1- * 1+ EXIT THEN  2 D-ARITH ;
+: D- ( a b --- c )   BOTH# IF 2DUP 2DUP - 1+ 2 PICK XOR >R XOR R> AND 0< IF 1 D-ARITH EXIT THEN - 1+ EXIT THEN  1 D-ARITH ;
+: SMALL? ( a --- f )   2147483648 + 4294967296 U< ;               \ tagged, under 2^30 either way
+: D* ( a b --- c )   BOTH# IF OVER SMALL? OVER SMALL? AND IF >R 2/ R> 1- * 1+ EXIT THEN THEN  2 D-ARITH ;
 : D/ ( a b --- c )   3 D-ARITH ;
 : D% ( a b --- c )   4 D-ARITH ;
 : D-NEG ( a --- c )   1 SWAP D- ;
@@ -42,7 +46,7 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   ?DUP 0= IF 0 EXIT THEN  DUP 1 AND IF 1 <> EXIT THEN  R-UNBOX
   DUP K-TEXT = IF DROP R-T@ NIP 0<> EXIT THEN  DUP K-LIST = IF DROP R-LEN 0<> EXIT THEN
   K-REC = IF R-KEYS R-LEN 0<> EXIT THEN  0<> ;
-: D-CMP ( a b --- n )   BOTH# IF - EXIT THEN
+: D-CMP ( a b --- n )   BOTH# IF 2DUP > >R < R> - EXIT THEN          \ no subtraction: no overflow
   OVER 0= OVER 0= OR IF S" rill2: none has no order" D-ERR THEN  D-BOXED SWAP D-BOXED SWAP R-ANY-CMP ;
 : D< ( a b --- c )   D-CMP 0< D-BOOL ;      : D> ( a b --- c )   D-CMP 0> D-BOOL ;
 : D<= ( a b --- c )   D-CMP 0> 0= D-BOOL ;  : D>= ( a b --- c )   D-CMP 0< 0= D-BOOL ;
@@ -76,7 +80,7 @@ VARIABLE BRK  VARIABLE RETF  VARIABLE RETV                        \ a loop's bre
 
 \ ---- the library: L.name, LA.name its arguments (-2: one or two, their count passed)
 : L.str ( x --- t )   D-STR ;                                                      1 CONSTANT LA.str
-: L.int ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-NUMBER D-NUM EXIT THEN  D-BOXED R-ANY>DEC 1000000 / D-NUM ;   1 CONSTANT LA.int
+: L.int ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-NUMBER N>ITEM-D EXIT THEN  D-BOXED R-ANY>DEC 1000000 / D-NUM ;   1 CONSTANT LA.int
 : L.decimal ( x --- d )   D-BOXED R-ANY>DEC K-DEC R-BOX ;                          1 CONSTANT LA.decimal
 : L.len ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-T@ NIP D-NUM EXIT THEN  D-SEQ R-LEN D-NUM ;   1 CONSTANT LA.len
 : L.range ( a [b] n --- l )   1 = IF D>N 0 SWAP ELSE D2N THEN R-RANGE K-LIST R-BOX ;   -2 CONSTANT LA.range
@@ -200,7 +204,22 @@ CREATE LPFX 16 ALLOT  VARIABLE LPFX#
 : TARGET ( c-addr u --- c-addr2 u2 )   \ a name set here: a def's own, or the script's - made if new
   IN-DEF @ IF 2DUP LOC  LPFX LPFX# @ NAME$ 2DUP 0 MAKE-VAR EXIT THEN
   S" V." NAME$ 2DUP -1 MAKE-VAR ;
+\ ---- stack mode (837): a def whose parameters are whole numbers it only does arithmetic on, compares, and
+\ passes to itself or another such def - if, elif, else and return its only statements, the last a return
+\ with a value - is made twice: FS.name keeps the numbers raw on Forth's stack - no variable, no kinds looked
+\ at - and G.name is the def as any other's; F.name looks at its arguments once, whole numbers to FS.name,
+\ anything else to G.name. EK, an expression's kind as it is read: 1 a number, 2 a truth.
+VARIABLE RAW?  VARIABLE PURE?  VARIABLE SDEPTH  VARIABLE LASTRET  VARIABLE STACK-OFF  VARIABLE EK
+: IMPURE ( --- )   0 PURE? ! ;
+: +D ( n --- )   SDEPTH +! ;
+: NUM2 ( k1 --- )   1 = EK @ 1 = AND 0= IF IMPURE THEN  1 EK ! ;       \ both operands numbers: a number
+: N>ITEM ( n --- item )   N>ITEM-D ;
+: PARAM# ( c-addr u --- k | -1 )   \ a parameter of the def being made: its place, the first 0
+  IN-DEF @ 0= IF 2DROP -1 EXIT THEN  DEF-P @ 0 ?DO 2DUP I LN@ COMPARE 0= IF 2DROP I UNLOOP EXIT THEN LOOP 2DROP -1 ;
 : VAR-READ ( c-addr u --- )
+  RAW? @ IF PARAM# DEF-P @ 1- SWAP - SDEPTH @ +                        \ stack mode: its place on the stack
+    DUP 0= IF DROP S" DUP" ELSE DUP 1 = IF DROP S" OVER" ELSE O# S" PICK" THEN THEN O+ 1 +D EXIT THEN
+  2DUP PARAM# 0< IF IMPURE THEN  1 EK !
   IN-DEF @ IF 2DUP LN-HAS? IF LPFX LPFX# @ NAME$ O+ S" @" O+ EXIT THEN THEN
   2DUP S" V." NAME$ FIND$ 0= IF IN-DEF @ IF 2DUP S" V." NAME$ -1 MAKE-VAR ELSE S" is not defined" ERR-NAME THEN THEN
   S" V." NAME$ O+ S" @" O+ ;
@@ -225,16 +244,19 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
     ELSE SB+ 1 SP-I +! THEN THEN
   REPEAT  SB# @ SP-N @ 0= OR IF SP-TEXT THEN ;
 : ARGS ( --- n )   S" (" EXPECT 1 PD +! SKIP-NL  0  S" )" IS? IF NEXT -1 PD +! EXIT THEN
-  BEGIN EXPR 1+ SKIP-NL S" ," IS? WHILE NEXT SKIP-NL REPEAT  S" )" EXPECT -1 PD +! ;
+  BEGIN EXPR EK @ 1 <> IF IMPURE THEN 1+ SKIP-NL S" ," IS? WHILE NEXT SKIP-NL REPEAT  S" )" EXPECT -1 PD +! ;
 : PRINT-ARGS ( --- )   \ print(a, b, ...): each as text, a blank between, a line's end; none
   S" (" EXPECT 1 PD +! SKIP-NL  S" )" IS? 0= IF 0 BEGIN DUP IF S" SPACE" O+ THEN EXPR S" D-TEXT R-TYPE" O+ 1+
     SKIP-NL S" ," IS? WHILE NEXT SKIP-NL REPEAT DROP THEN  S" )" EXPECT -1 PD +!  S" R-NL 0" O+ ;
 : ARITY ( arity n c-addr u --- )   2OVER <> IF R-ERR> ." rill2: line " TLINE @ .N ." : " TYPE ."  takes " SWAP .N
   ."  argument(s), not " .N R-NL -4100 THROW THEN  2DROP 2DROP ;
 : CALL ( c-addr u --- )   \ name(args): itself (RECURSE), a def made, one to come (FD.), or the library's
-  2DUP S" print" COMPARE 0= IF 2DROP PRINT-ARGS EXIT THEN
-  ARGS >R
-  IN-DEF @ BODY-D @ 0= AND IF 2DUP DEF-A @ DEF-L @ COMPARE 0= IF DEF-P @ R> 2OVER ARITY 2DROP S" RECURSE" O+ EXIT THEN THEN
+  2DUP S" print" COMPARE 0= IF IMPURE 2DROP PRINT-ARGS EXIT THEN
+  RAW? @ 0= IF 2DUP DEF-A @ DEF-L @ COMPARE IF 2DUP S" FS." NAME$ FIND$ 0= IF IMPURE THEN THEN THEN   \ itself, or a def of numbers
+  ARGS >R  1 EK !
+  IN-DEF @ BODY-D @ 0= AND IF 2DUP DEF-A @ DEF-L @ COMPARE 0= IF DEF-P @ R> 2OVER ARITY 2DROP S" RECURSE" O+
+    RAW? @ IF 1 DEF-P @ - +D THEN EXIT THEN THEN
+  RAW? @ IF S" FS." NAME$ O+  1 R> - +D EXIT THEN                       \ stack mode: the other def's raw word
   2DUP S" A." NAME$ FIND$ ?DUP IF EXECUTE R> 2OVER ARITY
     2DUP S" F." NAME$ FIND$ IF S" F." NAME$ ELSE S" FD." NAME$ THEN O+ EXIT THEN
   2DUP S" LA." NAME$ FIND$ ?DUP IF EXECUTE
@@ -245,43 +267,50 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
   TK @ T-NAME = TK @ T-STR = OR TK @ T-RAW = OR 0= IF S" a key" S" was expected" ERR-NAME THEN
   TA @ TL @ R-TEXT R-FIX O#  NEXT ;
 : PRIMARY ( --- )
-  TK @ T-NUM = IF 0 0 TA @ TL @ >NUMBER 2DROP DROP 2* 1+ O# NEXT EXIT THEN      \ tagged where it is made
-  TK @ T-DEC = IF TA @ TL @ R-TEXT R-TEXT>DEC K-DEC FIXED-BOX O# NEXT EXIT THEN
-  TK @ T-STR = IF STR-LIT NEXT EXIT THEN
-  TK @ T-RAW = IF TA @ TL @ R-TEXT R-FIX K-TEXT FIXED-BOX O# NEXT EXIT THEN
+  TK @ T-NUM = IF 0 0 TA @ TL @ >NUMBER 2DROP DROP RAW? @ IF O# 1 +D ELSE
+    DUP 2* 2/ OVER = IF 2* 1+ ELSE K-NUM FIXED-BOX THEN O# THEN 1 EK ! NEXT EXIT THEN   \ tagged, or past 62 bits boxed
+  TK @ T-DEC = IF IMPURE TA @ TL @ R-TEXT R-TEXT>DEC K-DEC FIXED-BOX O# NEXT EXIT THEN
+  TK @ T-STR = IF IMPURE STR-LIT NEXT EXIT THEN
+  TK @ T-RAW = IF IMPURE TA @ TL @ R-TEXT R-FIX K-TEXT FIXED-BOX O# NEXT EXIT THEN
   TK @ T-NAME = IF
-    S" true" IS? IF NEXT S" TRUE-BOX" O+ EXIT THEN  S" false" IS? IF NEXT S" FALSE-BOX" O+ EXIT THEN
-    S" none" IS? IF NEXT 0 O# EXIT THEN
+    S" true" IS? IF IMPURE NEXT S" TRUE-BOX" O+ EXIT THEN  S" false" IS? IF IMPURE NEXT S" FALSE-BOX" O+ EXIT THEN
+    S" none" IS? IF IMPURE NEXT 0 O# EXIT THEN
     TA @ TL @ NEXT  S" (" IS? IF CALL ELSE VAR-READ THEN EXIT THEN
   S" (" IS? IF NEXT 1 PD +! SKIP-NL EXPR SKIP-NL S" )" EXPECT -1 PD +! EXIT THEN
-  S" [" IS? IF NEXT 1 PD +! SKIP-NL S" R-NEW-LIST" O+
+  S" [" IS? IF IMPURE NEXT 1 PD +! SKIP-NL S" R-NEW-LIST" O+
     S" ]" IS? 0= IF BEGIN EXPR S" D-BOXED OVER R-PUSH" O+ SKIP-NL S" ," IS? WHILE NEXT SKIP-NL REPEAT THEN
     S" ]" EXPECT -1 PD +! S" K-LIST R-BOX" O+ EXIT THEN
-  S" {" IS? IF NEXT 1 PD +! SKIP-NL S" R-NEW-RECORD" O+
+  S" {" IS? IF IMPURE NEXT 1 PD +! SKIP-NL S" R-NEW-RECORD" O+
     S" }" IS? 0= IF BEGIN SKIP-NL KEY-LIT S" :" EXPECT SKIP-NL EXPR S" D-BOXED SWAP 2 PICK R-PUT" O+
       SKIP-NL S" ," IS? WHILE NEXT REPEAT THEN
     SKIP-NL S" }" EXPECT -1 PD +! S" K-REC R-BOX" O+ EXIT THEN
-  S" $" IS? C@P [CHAR] ( = AND IF R2-CAPTURE-D EXIT THEN
+  S" $" IS? C@P [CHAR] ( = AND IF IMPURE R2-CAPTURE-D EXIT THEN
   S" a value" S" was expected" ERR-NAME ;
-: POSTFIX ( --- )   PRIMARY  BEGIN ?NL S" [" IS? WHILE NEXT 1 PD +! SKIP-NL
+: POSTFIX ( --- )   PRIMARY  BEGIN ?NL S" [" IS? WHILE IMPURE NEXT 1 PD +! SKIP-NL
     S" :" IS? IF 0 O# ELSE EXPR SKIP-NL THEN
     S" :" IS? IF NEXT SKIP-NL S" ]" IS? IF 0 O# ELSE EXPR SKIP-NL THEN S" ]" EXPECT S" D-SLICE" O+
     ELSE S" ]" EXPECT S" D-AT" O+ THEN  -1 PD +!  REPEAT ;
-: UNARY ( --- )   S" -" IS? IF NEXT RECURSE S" D-NEG" O+ EXIT THEN  POSTFIX ;
+: UNARY ( --- )   S" -" IS? IF NEXT RECURSE EK @ 1 <> IF IMPURE THEN RAW? @ IF S" NEGATE" ELSE S" D-NEG" THEN O+ EXIT THEN  POSTFIX ;
+: BIN ( k1 c-addr u raw u --- )   \ an operator, after both operands: its word - in stack mode the raw one
+  RAW? @ IF 2SWAP 2DROP -1 +D ELSE 2DROP THEN O+  NUM2 ;
 : MULS ( --- )   UNARY BEGIN ?NL
-  S" *" IS? IF NEXT SKIP-NL UNARY S" D*" O+ ELSE  S" /" IS? IF NEXT SKIP-NL UNARY S" D/" O+ ELSE
-  S" %" IS? IF NEXT SKIP-NL UNARY S" D%" O+ ELSE EXIT THEN THEN THEN AGAIN ;
+  S" *" IS? IF EK @ NEXT SKIP-NL UNARY S" D*" S" R-MUL" BIN ELSE  S" /" IS? IF EK @ NEXT SKIP-NL UNARY S" D/" S" R-DIV" BIN ELSE
+  S" %" IS? IF EK @ NEXT SKIP-NL UNARY S" D%" S" R-MODC" BIN ELSE EXIT THEN THEN THEN AGAIN ;
 : ADDS ( --- )   MULS BEGIN ?NL
-  S" +" IS? IF NEXT SKIP-NL MULS S" D+" O+ ELSE  S" -" IS? IF NEXT SKIP-NL MULS S" D-" O+ ELSE EXIT THEN THEN AGAIN ;
-: CMP-OP ( --- c-addr u | 0 )   \ a comparison here: its word
-  S" in" IS? IF S" D-IN" EXIT THEN                                     \ in and not in (835)
-  S" not" IS? 0 PEEK [CHAR] i = AND 1 PEEK [CHAR] n = AND 2 PEEK DUP ALPHA? SWAP DIGIT? OR 0= AND IF NEXT S" D-IN D-TRUE? 0= D-BOOL" EXIT THEN
-  S" ==" IS? IF S" D==" EXIT THEN  S" !=" IS? IF S" D!=" EXIT THEN  S" <=" IS? IF S" D<=" EXIT THEN
-  S" >=" IS? IF S" D>=" EXIT THEN  S" <" IS? IF S" D<" EXIT THEN  S" >" IS? IF S" D>" EXIT THEN  0 ;
-: CMPS ( --- )   ADDS ?NL CMP-OP ?DUP IF NEXT SKIP-NL ADDS O+ THEN ;
-: NOTS ( --- )   S" not" IS? IF NEXT RECURSE S" D-TRUE? 0= D-BOOL" O+ EXIT THEN  CMPS ;
-: ANDS ( --- )   NOTS BEGIN ?NL S" and" IS? WHILE NEXT SKIP-NL S" DUP D-TRUE? IF DROP" O+ NOTS S" THEN" O+ REPEAT ;
-: ORS ( --- )   ANDS BEGIN ?NL S" or" IS? WHILE NEXT SKIP-NL S" DUP D-TRUE? 0= IF DROP" O+ ANDS S" THEN" O+ REPEAT ;
+  S" +" IS? IF EK @ NEXT SKIP-NL MULS S" D+" S" R-ADD" BIN ELSE  S" -" IS? IF EK @ NEXT SKIP-NL MULS S" D-" S" R-MINUS" BIN ELSE EXIT THEN THEN AGAIN ;
+: RAWSEL ( c-addr u raw u --- c-addr' u' )   RAW? @ IF 2SWAP THEN 2DROP ;
+: CMP-OP ( --- c-addr u | 0 )   \ a comparison here: its word - in stack mode the raw one
+  S" in" IS? IF IMPURE S" D-IN" EXIT THEN                              \ in and not in (835)
+  S" not" IS? 0 PEEK [CHAR] i = AND 1 PEEK [CHAR] n = AND 2 PEEK DUP ALPHA? SWAP DIGIT? OR 0= AND IF IMPURE NEXT S" D-IN D-TRUE? 0= D-BOOL" EXIT THEN
+  S" ==" IS? IF S" D==" S" =" RAWSEL EXIT THEN  S" !=" IS? IF S" D!=" S" <>" RAWSEL EXIT THEN
+  S" <=" IS? IF S" D<=" S" > 0=" RAWSEL EXIT THEN  S" >=" IS? IF S" D>=" S" < 0=" RAWSEL EXIT THEN
+  S" <" IS? IF S" D<" S" <" RAWSEL EXIT THEN  S" >" IS? IF S" D>" S" >" RAWSEL EXIT THEN  0 ;
+: CMPS ( --- )   ADDS ?NL CMP-OP ?DUP IF EK @ >R NEXT SKIP-NL ADDS O+ R> NUM2 2 EK !  RAW? @ IF -1 +D THEN THEN ;
+: NOTS ( --- )   S" not" IS? IF NEXT RECURSE RAW? @ IF S" 0=" ELSE S" D-TRUE? 0= D-BOOL" THEN O+ 2 EK ! EXIT THEN  CMPS ;
+: ANDS ( --- )   NOTS BEGIN ?NL S" and" IS? WHILE EK @ >R NEXT SKIP-NL
+    RAW? @ IF S" DUP IF DROP" O+ -1 +D ELSE S" DUP D-TRUE? IF DROP" O+ THEN  NOTS S" THEN" O+  R> EK @ <> IF IMPURE THEN REPEAT ;
+: ORS ( --- )   ANDS BEGIN ?NL S" or" IS? WHILE EK @ >R NEXT SKIP-NL
+    RAW? @ IF S" DUP 0= IF DROP" O+ -1 +D ELSE S" DUP D-TRUE? 0= IF DROP" O+ THEN  ANDS S" THEN" O+  R> EK @ <> IF IMPURE THEN REPEAT ;
 ' ORS IS EXPR
 
 \ ---- command lines: stages joined by |; > >> < 2> and a path; quotes keep blanks in a word; $name alone
@@ -338,7 +367,7 @@ VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#  VARIABLE CMD-END  VARIA
 DEFER STMT
 : BLOCK ( --- )   S" {" EXPECT SKIP-NL  1 DEPTH +!
   BEGIN S" }" IS? 0= WHILE TK @ T-EOF = IF S" }" S" is missing" ERR-NAME THEN STMT SKIP-NL REPEAT  NEXT  -1 DEPTH +! ;
-: COND ( --- )   EXPR S" D-TRUE? IF" O+ ;
+: COND ( --- )   0 SDEPTH !  EXPR RAW? @ IF S" IF" -1 +D ELSE S" D-TRUE? IF" THEN O+ ;   \ at a statement's depth
 : ELSE-NEXT? ( --- f )   SAVE-TK SKIP-NL  S" else" IS? S" elif" IS? OR IF 2DROP 2DROP 2DROP -1 EXIT THEN  BACK-TK 0 ;
 : IF-STMT ( --- )   NEXT COND BLOCK  1
   BEGIN ELSE-NEXT? DROP S" elif" IS? WHILE NEXT S" ELSE" O+ COND BLOCK 1+ REPEAT
@@ -364,23 +393,37 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
 : BREAK-STMT ( --- )   BODY-D @ 0= IF S" break" S" is only for a loop" ERR-NAME THEN  NEXT S" -1 BRK ! EXIT" O+ ;
 : CONTINUE-STMT ( --- )   BODY-D @ 0= IF S" continue" S" is only for a loop" ERR-NAME THEN  NEXT S" EXIT" O+ ;
 : RETURN-STMT ( --- )   IN-DEF @ 0= IF S" return" S" is only for a def" ERR-NAME THEN  NEXT
-  TK @ T-NL = S" }" IS? OR IF 0 O# ELSE EXPR THEN
+  TK @ T-NL = S" }" IS? OR IF IMPURE 0 O# ELSE EXPR EK @ 1 <> IF IMPURE THEN THEN
+  DEPTH @ 1 = IF -1 LASTRET ! THEN
+  RAW? @ IF DEF-P @ 1 = OC @ 3 > AND IF OB OC @ + 4 - 4 S" DUP " COMPARE 0= IF -4 OC +! S" EXIT" O+ 0 SDEPTH ! EXIT THEN THEN
+    DEF-P @ 0 ?DO S" NIP" O+ LOOP S" EXIT" O+ 0 SDEPTH ! EXIT THEN     \ stack mode: the parameters dropped
   BODY-D @ IF S" RETV ! -1 RETF ! EXIT" O+ ELSE S" EXIT" O+ THEN ;
-: DEF-STMT ( --- )   \ def name(params) { }: F.name; FD.name, made by the first look, set to it
+: EMIT-DEF ( prefix u --- )   \ the def's word under that prefix, as any def's: its names shadowed, set ones none
+  >R >R  0 FIN# !  S" :" F+  DEF-A @ DEF-L @ R> R> NAME$ F+
+  LN# @ IF S" SHADOW{" F+  LN# @ 0 ?DO I DEF-P @ = IF S" |" F+ THEN I LN@ LPFX LPFX# @ NAME$ F+ LOOP
+    LN# @ DEF-P @ = IF S" |" F+ THEN  S" }" F+ THEN
+  LN# @ DEF-P @ ?DO S" 0" F+ I LN@ LPFX LPFX# @ NAME$ F+ S" !" F+ LOOP      \ what it sets: none at the start
+  OB OC @ F+  S" 0 ;" F+  -1 OD +! ;
+: WRAP ( --- )   \ F.name of a def of numbers: whole numbers to FS.name, anything else to G.name (837)
+  S" :" F+ DEF-A @ DEF-L @ S" F." NAME$ F+
+  DEF-P @ CASE 1 OF S" DUP 1 AND IF 2/" ENDOF 2 OF S" 2DUP AND 1 AND IF 2/ SWAP 2/ SWAP" ENDOF
+    S" 2DUP AND 3 PICK AND 1 AND IF 2/ ROT 2/ ROT 2/ ROT" ROT ENDCASE F+
+  DEF-A @ DEF-L @ S" FS." NAME$ F+ S" N>ITEM ELSE" F+ DEF-A @ DEF-L @ S" G." NAME$ F+ S" THEN ;" F+ ;
+: DEF-STMT ( --- )   \ def name(params) { }: F.name - a def of numbers F.name, G.name and FS.name; FD.name set
   DEPTH @ IN-DEF @ OR IF S" def" S" is only for the top level" ERR-NAME THEN
   NEXT TK @ T-NAME <> IF S" def" S" wants a name" ERR-NAME THEN  TA @ TL @ DEF-L ! DEF-A !  NEXT
   1 DEF# +!  DEF# @ 0 <# [CHAR] . HOLD #S [CHAR] L HOLD #> DUP LPFX# ! LPFX SWAP MOVE
   S" (" EXPECT  0 DEF-P !  0 LN# !  -1 IN-DEF !
   S" )" IS? 0= IF BEGIN TK @ T-NAME <> IF S" a parameter" S" is a name" ERR-NAME THEN
     TA @ TL @ TARGET 2DROP  1 DEF-P +!  NEXT  S" ," IS? WHILE NEXT REPEAT THEN
-  S" )" EXPECT  O-PUSH  BLOCK  0 IN-DEF !
-  0 FIN# !  S" :" F+  DEF-A @ DEF-L @ S" F." NAME$ F+
-  LN# @ IF S" SHADOW{" F+  LN# @ 0 ?DO I DEF-P @ = IF S" |" F+ THEN I LN@ LPFX LPFX# @ NAME$ F+ LOOP
-    LN# @ DEF-P @ = IF S" |" F+ THEN  S" }" F+ THEN
-  LN# @ DEF-P @ ?DO S" 0" F+ I LN@ LPFX LPFX# @ NAME$ F+ S" !" F+ LOOP      \ what it sets: none at the start
-  OB OC @ F+  S" 0 ;" F+  -1 OD +!
+  S" )" EXPECT  -1 PURE? !  0 LASTRET !  SAVE-TK  O-PUSH  BLOCK
+  PURE? @ LASTRET @ AND DEF-P @ 1 4 WITHIN AND STACK-OFF @ 0= AND IF
+    S" G." EMIT-DEF  QUIET FIN @ FIN# @ EVALUATE LOUD                  \ the def as any other's, G.name
+    BACK-TK  -1 RAW? !  O-PUSH  BLOCK  0 RAW? !                         \ its body read again, in stack mode
+    0 FIN# !  S" :" F+ DEF-A @ DEF-L @ S" FS." NAME$ F+  OB OC @ F+  S" ;" F+  -1 OD +!  WRAP
+  ELSE 2DROP 2DROP 2DROP  S" F." EMIT-DEF THEN
   DEF-A @ DEF-L @ S" FD." NAME$ FIND$ IF S" ' " F+ DEF-A @ DEF-L @ S" F." NAME$ F+ S" IS" F+ DEF-A @ DEF-L @ S" FD." NAME$ F+ THEN
-  QUIET FIN @ FIN# @ EVALUATE LOUD ;
+  0 IN-DEF !  QUIET FIN @ FIN# @ EVALUATE LOUD ;
 : ITEM-SET? ( --- f )   \ the statement so far ends in an item's fetch: x[i] = v sets it instead
   OC @ 5 < IF 0 EXIT THEN  OB OC @ + 5 - 5 S" D-AT " COMPARE 0= ;
 : OP-WORD ( c --- c-addr u )   CASE [CHAR] + OF S" D+" ENDOF [CHAR] - OF S" D-" ENDOF [CHAR] * OF S" D*" ENDOF
@@ -399,6 +442,7 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
 : STATEMENT ( --- )
   TK @ T-NL = TK @ T-EOF = OR IF EXIT THEN
   S" [" O+ TLINE @ O# S" R-MARK ]" O+                          \ the line, for an error when it runs
+  IN-DEF @ IF DEPTH @ 1 = IF 0 LASTRET ! THEN  S" if" IS? S" return" IS? OR 0= IF IMPURE THEN  0 SDEPTH ! THEN
   IN-DEF @ 0= IF R2-PROMPT? @ IF S" R-GC?S" ELSE S" R-GC?" THEN O+ THEN   \ a safe point: at the prompt ^C looked for
   S" if" IS? IF IF-STMT EXIT THEN        S" while" IS? IF WHILE-STMT EXIT THEN
   S" for" IS? IF FOR-STMT EXIT THEN      S" def" IS? IF DEF-STMT EXIT THEN
@@ -448,6 +492,7 @@ VARIABLE ST#  CREATE SN 24 ALLOT  VARIABLE SN#  VARIABLE XTS  VARIABLE XT#  VARI
   0 FIN# !  S" :" F+  STMT-NAME F+  OB OC @ F+  S" ;" F+  FIN @ FIN# @ EVALUATE  SN SN# @ FIND$ XT+ ;
 : R2-SCRIPT ( c-addr u --- )   \ a script's text, kept where it is while it runs
   SRC# ! SRC !  0 POS !  0 LINE !  0 IN-DEF !  0 DEPTH !  0 BODY-D !  0 PD !  0 OD !  O-NEW  0 XT# !
+  S" RILL2_STACK" R-TEXT R-ENV R-T@ S" 0" COMPARE 0= STACK-OFF !       \ RILL2_STACK=0: no stack mode (837)
   R2-INITED @ 0= IF V.status R-ITEM R-ROOT  V.job R-ITEM R-ROOT  0 D-NUM V.status !  -1 R2-INITED ! THEN
   PRE-DEFS  NEXT
   BEGIN SKIP-NL TK @ T-EOF <> WHILE

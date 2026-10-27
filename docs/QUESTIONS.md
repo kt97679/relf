@@ -130,6 +130,9 @@ Rill 2's image and relfsh's (shell.4's section is theirs, and the editor's);
 checked by every code point's width before and after. (3) TAB completion at
 Rill 2's prompt: back in, 3.3 KB, or a smaller one of its own. *Recommendation*:
 (2) first, cheap and exact; (1) when speed asks; (3) left out. *Blocks*: nothing.
+*Since*: (2) done at 836 (A45); (1) at 837, the user's second "proceed" - fib(25)
+18 ms to 11, Rill's 9 (docs/RILL2.md, "Stack mode"), and found on the way: numbers
+past 62 bits wrapped silently since 831, mended. (3) open.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

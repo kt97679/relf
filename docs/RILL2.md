@@ -1,4 +1,4 @@
-# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions)
+# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions; 837 stack mode)
 
 `bin/rill2 script.r2 [args...]` (a script starting `#!/usr/bin/env rill2` runs as itself); `bin/rill2`
 alone, the prompt.
@@ -8,7 +8,7 @@ the error scripts in tests/rill2/errors and the rest. It grew from the minimal p
 
 ## Values
 
-Whole numbers; decimals (`2.5`); texts - `"..."` with `\n \t \" \\ \{` and `{expr}` inside, `'...'`
+Whole numbers - 64 bits, past which an error says so (837); decimals (`2.5`); texts - `"..."` with `\n \t \" \\ \{` and `{expr}` inside, `'...'`
 as written; lists `[a, b]`; records `{name: "ada", "born": 1815}`, a key a name or a string; `true`,
 `false`, `none`. none, 0, false, "", [] and {} are false. A list or a record holds any value - other
 lists and records too, as deep as wanted: `grid[1][0] = 5`, `rec["c"]["e"] = [1, {f: 2}]`. A list prints as Rill prints one: its items
@@ -83,35 +83,42 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (836) | 70,130 | 29,776: rill2.4 21.6 KB, its prompt 0.9, editor 7.3 | 18 ms | 12 ms | 233 ms |
-| Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 8 ms | 10 ms | 229 ms |
+| Rill 2 (837) | 71,770 | 31,416: rill2.4 23.2 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
+| Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 9 ms | 12 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
 
 Both images share 40,354 bytes: the kernel, the Forth libraries, the runtime and the regex engine;
 the editor's character widths (2.8 KB since 836: 3 bytes a bound, not 4, one search for both
 tables) both have too. Rill 2's image is 22 % smaller, prompt and all;
-its language less than half Rill's compiler. Rill runs fib faster by its purestack gene (below); the
-rest is level, and commands cost what the process costs.
+its language less than half Rill's compiler. fib runs on the stack in both (below); a loop of adds
+costs Rill 2 its numbers' checks - tagged, and looked at for overflow - and commands cost what the
+process costs.
 
-## Stack mode - what Rill's purestack gene does
+## Stack mode (837)
 
-A def whose parameters are used only as numbers - in arithmetic, comparisons, and calls to itself -
-can keep them on Forth's data stack: no variable, nothing saved and restored around each call, no
-kinds looked at. For the same `fib`, Rill makes, with it and without, and Rill 2 makes:
+A def whose parameters are whole numbers it only does arithmetic on, compares, and passes to itself
+or to another such def - `if`, `elif`, `else` and `return` its only statements, a truth used only to
+decide an `if`, and its last statement a `return` with a value - is made twice: `FS.name` keeps the
+numbers raw on Forth's data stack, where Rill's purestack gene keeps them - no variable, nothing saved
+around a call, no kinds looked at - and `G.name` is the def as any other's. `F.name` looks at its
+arguments once: whole numbers go to `FS.name`, anything else - `fib(2.5)` - to `G.name`, so nothing a
+script sees changes. The arithmetic is Rill's checked words, and a result past 62 bits comes back
+boxed. For fib:
 
-    : R:fib  DUP 2 < IF EXIT THEN  DUP 1- RECURSE  OVER 2 R-MINUS RECURSE  R-ADD NIP EXIT ;
-    : R:fib  SHADOW{ R.n | }  R.n @ 2 R-CMP-AN < IF R.n @ R-ANY>NUM EXIT THEN
-             R.n @ 1 1 R-ARITH-AN RECURSE  R.n @ 2 1 R-ARITH-AN RECURSE R-ADD EXIT ;
-    : F.fib  SHADOW{ L1.n | }  L1.n @ 5 D< D-TRUE? IF L1.n @ EXIT THEN
-             L1.n @ 3 D- RECURSE  L1.n @ 5 D- RECURSE D+ EXIT 0 ;
+    : FS.fib  DUP 2 < IF EXIT THEN  DUP 1 R-MINUS RECURSE  OVER 2 R-MINUS RECURSE  R-ADD NIP EXIT ;
+    : F.fib   DUP 1 AND IF 2/ FS.fib N>ITEM ELSE G.fib THEN ;
 
-8 ms, 43 ms and 18 ms for fib(25). Rill knows `n` is a number from its kinds. Rill 2 would have to
-see it in the def - only numbers, its own calls and literals - and check the arguments once on entry,
-falling back to the def as it is when one is not a whole number: a second way of making a def's code,
-some 1-1.5 KB. QUESTIONS.md Q45.
+Rill's purestack makes `: R:fib DUP 2 < IF EXIT THEN DUP 1- RECURSE OVER 2 R-MINUS RECURSE R-ADD NIP
+EXIT ;`. fib(25): 11 ms, Rill's 9; without stack mode 30. `RILL2_STACK=0` turns it off, and
+tests/rill/run runs every tests/rill2/*.r2 both ways against one expected output. Some 1.2 KB.
+
+Numbers past 62 bits (837): the tagged arithmetic of 831 wrapped silently - 2^62-1 + 1 was -2^62.
+Adds and subtracts now look at the overflow, a multiply takes the fast way only under 2^30, a
+comparison no longer subtracts; a number past 62 bits is boxed, past 64 an error with its line
+(tests/rill2/numbers.r2, errors/overflow.r2).
 
 ## Not yet
 
 A list spread into a command's words (Rill's `@list`); setenv; on EXIT; comprehensions; text blocks;
-TAB completion at the prompt; defs of numbers on the stack. QUESTIONS.md Q45.
+TAB completion at the prompt. QUESTIONS.md Q45.
