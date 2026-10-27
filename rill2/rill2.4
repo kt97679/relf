@@ -196,9 +196,9 @@ VARIABLE SD
 VARIABLE PD                                                    \ brackets open: a line goes on inside them
 : ?NL ( --- )   PD @ IF SKIP-NL THEN ;
 
-\ ---- the Forth made: a buffer for each word being made - a statement, a def, a loop's body - and FIN
+\ ---- the Forth made (buffers BUFFER:s since 841 - made at start, not 8 KB of zeros in the image): a buffer for each word being made - a statement, a def, a loop's body - and FIN
 65536 CONSTANT BUF-MAX   8 CONSTANT OD-MAX
-CREATE OBUF OD-MAX CELLS ALLOT   CREATE OCNT OD-MAX CELLS ALLOT   VARIABLE OD   OBUF OD-MAX CELLS ERASE
+OD-MAX CELLS BUFFER: OBUF   OD-MAX CELLS BUFFER: OCNT   VARIABLE OD                                \ BUFFER: space starts zeroed (841)
 VARIABLE FIN  VARIABLE FIN#                                    \ made at run time, the first time
 : OB ( --- addr )   OD @ CELLS OBUF + @ ;
 : OC ( --- addr )   OD @ CELLS OCNT + ;
@@ -211,7 +211,7 @@ VARIABLE FIN  VARIABLE FIN#                                    \ made at run tim
   >R FIN @ FIN# @ + R@ MOVE R> FIN# +!  BL FIN @ FIN# @ + C!  1 FIN# +! ;
 : N$ ( n --- c-addr u )   S>D TUCK DABS <# #S ROT SIGN #> ;
 : O# ( n --- )   N$ O+ ;
-CREATE NB 64 ALLOT  CREATE CB 66 ALLOT  CREATE DECL 128 ALLOT  VARIABLE DECL#
+64 BUFFER: NB  66 BUFFER: CB  128 BUFFER: DECL  VARIABLE DECL#
 : NAME$ ( c-addr u prefix u --- c-addr2 u2 )   DUP >R NB SWAP MOVE  R@ NB + SWAP DUP >R MOVE  NB R> R> + ;
 : FIND$ ( c-addr u --- xt | 0 )   DUP CB C! CB 1+ SWAP MOVE  CB FIND 0= IF DROP 0 THEN ;
 : D$ ( c-addr u --- )   >R DECL DECL# @ + R@ MOVE R> DECL# +! ;
@@ -220,9 +220,9 @@ CREATE NB 64 ALLOT  CREATE CB 66 ALLOT  CREATE DECL 128 ALLOT  VARIABLE DECL#
   0 DECL# !  S" VARIABLE " D$ 2DUP D$  R> IF S"  " D$ D$ S"  R-ITEM R-ROOT" D$ ELSE 2DROP THEN  DECL DECL# @ EVALUATE ;
 
 \ ---- names: a def's own (its parameters first, then what it sets), or the script's
-64 CONSTANT LN-MAX  CREATE LN-T LN-MAX 32 * ALLOT  VARIABLE LN#
+64 CONSTANT LN-MAX  LN-MAX 32 * BUFFER: LN-T  VARIABLE LN#
 VARIABLE IN-DEF  VARIABLE DEF-A  VARIABLE DEF-L  VARIABLE DEF-P  VARIABLE DEF#  VARIABLE DEPTH  VARIABLE BODY-D
-CREATE LPFX 16 ALLOT  VARIABLE LPFX#
+16 BUFFER: LPFX  VARIABLE LPFX#
 : LN@ ( i --- c-addr u )   32 * LN-T + COUNT ;
 : LN-HAS? ( c-addr u --- f )   LN# @ 0 ?DO 2DUP I LN@ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN LOOP 2DROP 0 ;
 : LOC ( c-addr u --- )   2DUP LN-HAS? IF 2DROP EXIT THEN  LN# @ LN-MAX < 0= IF S" too many names in one def" ERR THEN
@@ -231,8 +231,8 @@ CREATE LPFX 16 ALLOT  VARIABLE LPFX#
   IN-DEF @ IF 2DUP LOC  LPFX LPFX# @ NAME$ 2DUP 0 MAKE-VAR EXIT THEN
   S" V." NAME$ 2DUP -1 MAKE-VAR ;
 \ ---- comprehensions' variables (839): [elem for x in seq if cond] - x the comprehension's own, ~N
-4 CONSTANT CV-MAX  CREATE CVS-A CV-MAX CELLS ALLOT  CREATE CVS-L CV-MAX CELLS ALLOT  CREATE CVS-N CV-MAX CELLS ALLOT
-VARIABLE CV#  CREATE CVB 40 ALLOT  VARIABLE CVB#
+4 CONSTANT CV-MAX  CV-MAX CELLS BUFFER: CVS-A  CV-MAX CELLS BUFFER: CVS-L  CV-MAX CELLS BUFFER: CVS-N
+VARIABLE CV#  40 BUFFER: CVB  VARIABLE CVB#
 : CV-REF ( n --- c-addr u )   \ its Forth name: ~n, a def's own or the script's
   0 <# #S [CHAR] ~ HOLD #> DUP CVB# ! CVB SWAP MOVE  CVB CVB# @ IN-DEF @ IF LPFX LPFX# @ ELSE S" V." THEN NAME$ ;
 : CV-FIND ( c-addr u --- n | 0 )   \ a comprehension's variable of that name, the innermost: its number
@@ -258,15 +258,15 @@ VARIABLE RAW?  VARIABLE PURE?  VARIABLE SDEPTH  VARIABLE LASTRET  VARIABLE STACK
   IN-DEF @ IF 2DUP LN-HAS? IF LPFX LPFX# @ NAME$ O+ S" @" O+ EXIT THEN THEN
   2DUP S" V." NAME$ FIND$ 0= IF IN-DEF @ IF 2DUP S" V." NAME$ -1 MAKE-VAR ELSE S" is not defined" ERR-NAME THEN THEN
   S" V." NAME$ O+ S" @" O+ ;
-CREATE HB 16 ALLOT  VARIABLE FOR#
+16 BUFFER: HB  VARIABLE FOR#
 : HIDDEN ( --- c-addr u )   1 FOR# +!  FOR# @ 0 <# #S [CHAR] ~ HOLD #>  DUP >R HB SWAP MOVE HB R> ;
-CREATE HV 40 ALLOT  VARIABLE HV#
+40 BUFFER: HV  VARIABLE HV#
 : HV! ( c-addr u --- )   DUP HV# ! HV SWAP MOVE ;
 : HV@ ( --- c-addr u )   HV HV# @ ;
 
 \ ---- expressions: each part's Forth after its operands'
 DEFER EXPR   DEFER R2-CAPTURE-D   DEFER STMT
-CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-N  VARIABLE SOL
+4096 BUFFER: SB  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-N  VARIABLE SOL
 : SB+ ( c --- )   SB# @ 4095 < IF SB SB# @ + C! 1 SB# +! ELSE DROP THEN ;
 : SP-TEXT ( --- )   SB SB# @ R-TEXT R-FIX K-TEXT FIXED-BOX O#  SP-N @ IF S" D+" O+ THEN  1 SP-N +!  0 SB# ! ;
 : STR-LIT ( --- )   \ "...": its escapes made; {expr} the expression's text; the parts joined
@@ -382,7 +382,7 @@ VARIABLE CS-I  VARIABLE CS-D
 \ ---- command lines: stages joined by |; > >> < 2> and a path; quotes keep blanks in a word; $name alone
 \ a variable's text; & at the end, to the background (its job in job); a # starting a word, a comment;
 \ $( ) in an expression, its output. A failure sets status and goes on, as a shell's does.
-VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#  VARIABLE CMD-END  VARIABLE CQ
+VARIABLE CMD-CLOSE   1024 BUFFER: CW  VARIABLE CW#  VARIABLE CMD-END  VARIABLE CQ
 : CMD-EOL ( --- end )   \ where a command's text ends: its line's end, or a # starting a word outside quotes
   0 CQ !  POS @  BEGIN DUP CH DUP 10 <> SWAP 0<> AND WHILE
     CQ @ 0= OVER CH [CHAR] ? = AND OVER 1+ CH [CHAR] ? = AND IF EXIT THEN    \ ?? (839)
@@ -466,7 +466,7 @@ VARIABLE WP#                                                            \ a word
 : IF-STMT ( --- )   NEXT COND BLOCK  1
   BEGIN ELSE-NEXT? DROP S" elif" IS? WHILE NEXT S" ELSE" O+ COND BLOCK 1+ REPEAT
   S" else" IS? IF NEXT S" ELSE" O+ BLOCK THEN  0 ?DO S" THEN" O+ LOOP ;
-VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
+VARIABLE BW#  24 BUFFER: BWN  VARIABLE BWN#
 : BODY ( --- )   \ a loop's block, a word of its own: made, and its call put here
   O-PUSH  1 BODY-D +!  BLOCK  -1 BODY-D +!
   1 BW# +!  BW# @ 0 <# [CHAR] ) HOLD #S [CHAR] B HOLD [CHAR] ( HOLD #>  DUP BWN# ! BWN SWAP MOVE
@@ -613,7 +613,7 @@ VARIABLE P-I  VARIABLE PN-A  VARIABLE PN-L  VARIABLE P-COMMAS  VARIABLE P-ANY
   REPEAT DROP ;
 
 \ ---- a script: read whole - its statements made, each a word - and then run in turn
-VARIABLE ST#  CREATE SN 24 ALLOT  VARIABLE SN#  VARIABLE XTS  VARIABLE XT#  VARIABLE XT-MAX
+VARIABLE ST#  24 BUFFER: SN  VARIABLE SN#  VARIABLE XTS  VARIABLE XT#  VARIABLE XT-MAX
 : STMT-NAME ( --- c-addr u )   ST# @ 0 <# [CHAR] ) HOLD #S [CHAR] S HOLD [CHAR] ( HOLD #>  DUP SN# ! SN SWAP MOVE  SN SN# @ ;
 : XT+ ( xt --- )   XT# @ XT-MAX @ = IF XT-MAX @ 2* 256 MAX DUP XT-MAX !  CELLS XTS @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW XTS ! THEN
   XTS @ XT# @ CELLS + !  1 XT# +! ;

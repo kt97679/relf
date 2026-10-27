@@ -94,7 +94,7 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (840) | 76,421 | 36,067: rill2.4 27.8 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
+| Rill 2 (841) | 68,888 | 28,534: rill2.4 20.3 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
 | Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 9 ms | 12 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
@@ -178,6 +178,37 @@ built after each step:
 71,770 bytes to 76,421: Rill's image is 90,475. tests/rill2/gaps.r2 and pipes.r2 use each, with stack
 mode and without; errors/strict.r2 the stop, errors/def-stage.r2 a def's stage with words. A def as
 a stage is rillc.py's in Rill - the image's compiler says "not in the Forth compiler yet".
+
+## Why Rill's image is bigger - not its syntax (841)
+
+At the user's asking, measured: each image walked word by word, Rill's compiler built with its genes
+off, the message texts counted. Rill 90,475 bytes, Rill 2 68,888; both share 40,354 (the kernel, the
+Forth libraries, the runtime, the regex engine) and the characters' widths (2,788). The rest:
+
+| | Rill | Rill 2 | Rill more by |
+|---|---:|---:|---:|
+| the line editor and its shim: TAB completion, Rill's alone | 8,187 | 4,483 | 3,704 |
+| the language: compiler, prompt and all | 39,150 | 21,270 | 17,880 |
+
+Of those 17.9 KB, Rill's compiler spends on what Rill 2 does not do, or does when a script runs:
+
+| what | bytes, about | measured how |
+|---|---:|---|
+| optimizations Rill 2 has no twin of (echolit, littext, loopvar, rechash, rxcache, short, truth, dupnip, infer) | 4,300 | all genes off: 5,600, less Rill 2's stack mode, counted loops, lines, safe points |
+| kinds known when compiling: inference, typed code chosen per kind, conversions - Rill 2 looks at kinds when it runs, its D- words and L. wrappers 3,467 | 4,500 | the kind words 2,716, and the per-kind choices in LIBRARY (2,466) and the expressions |
+| messages: compile-time checks that explain (kinds, one way each, a bare word naming a variable, not set) | 3,100 | prose in the compiler 4,268 against Rill 2's 1,180 |
+| a whole program's Forth as text: two passes, out of order (headers after bodies, hoisted loops), declarations ordered and literals numbered as rillc.py has them - the oracle's word-for-word | 1,900 | the text and ordering words, RILL-PASS, SORT-NAMES |
+| lexical extras: \uXXXX, 0x numbers, an exponent's decimal, UTF-8 checked | 1,200 | DEC-LIT?, ESC-U?, UTF8-C, HEX-DIGIT and kin |
+| the prompt's session table and its mode | 600 | Rill's 1,445 against Rill 2's 875 |
+| the rest: statements and expressions written for the above | 2,300 | |
+
+The syntax itself - `$x`, bare words as texts, ports, `-> kind` - is a small part, perhaps a kilobyte:
+the two grammars and tokenizers are of a size. Rill is bigger for what it does before a script runs:
+it types it, optimizes it, explains its mistakes, and writes the Forth its other compiler writes.
+
+Found on the way, and mended: Rill 2 kept its compile-time buffers - a 4 KB string buffer, a 2 KB
+names table, 17 in all - as CREATE ... ALLOT, 8,056 bytes of zeros in the image, where Rill's
+compiler declares BUFFER:s, made at start. As BUFFER:s now: 76,421 bytes to 68,888, starting faster.
 
 ## Not yet
 

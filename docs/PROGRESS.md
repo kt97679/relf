@@ -865,6 +865,7 @@ do not trust the absence of a line below.
 - 838 — Rill and Rill 2 compared, one program in each; Rill's reference on division corrected
 - 839 — Rill's gaps closed in Rill 2: 4,011 bytes in five steps, each counted; 75,781 against Rill's 90,475
 - 840 — Rill 2: a def as a pipeline stage and $(a ?? b) - Rill's last gaps, 640 bytes; 76,421 bytes
+- 841 — why Rill's image is bigger (kinds, optimizations, messages, oracle parity - not syntax); Rill 2 68,888
 
 ### Not tied to an iteration
 
