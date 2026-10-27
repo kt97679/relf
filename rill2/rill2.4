@@ -83,21 +83,22 @@ VARIABLE BRK  VARIABLE RETF  VARIABLE RETV                        \ a loop's bre
 : L.int ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-NUMBER N>ITEM-D EXIT THEN  D-BOXED R-ANY>DEC 1000000 / D-NUM ;   1 CONSTANT LA.int
 : L.decimal ( x --- d )   D-BOXED R-ANY>DEC K-DEC R-BOX ;                          1 CONSTANT LA.decimal
 : L.len ( x --- n )   DUP D-KIND K-TEXT = IF D-TEXT R-T@ NIP D-NUM EXIT THEN  D-SEQ R-LEN D-NUM ;   1 CONSTANT LA.len
-: L.range ( a [b] n --- l )   1 = IF D>N 0 SWAP ELSE D2N THEN R-RANGE K-LIST R-BOX ;   -2 CONSTANT LA.range
+: L.range ( a [b [step]] n --- l )   DUP 3 = IF DROP D>N >R D2N R> R-RANGE-STEP K-LIST R-BOX EXIT THEN
+  1 = IF D>N 0 SWAP ELSE D2N THEN R-RANGE K-LIST R-BOX ;                   -13 CONSTANT LA.range
 : L.append ( l x --- none )   D-BOXED SWAP D-LIST R-PUSH 0 ;                    2 CONSTANT LA.append
 : L.keys ( r --- l )   D-REC R-KEYS DUP R-LEN 0 SWAP R-SLICE K-LIST R-BOX ;       1 CONSTANT LA.keys
 : L.values ( r --- l )   D-REC R-VALS DUP R-LEN 0 SWAP R-SLICE K-LIST R-BOX ;     1 CONSTANT LA.values
 : L.pop ( x [k] n --- item )   \ pop(l): the last item; pop(l, i), pop(r, key): taken out and returned (835)
-  1 = IF -1 D-NUM THEN  D-BOXED R-POP-ANY D-ITEM ;                              -2 CONSTANT LA.pop
+  1 = IF -1 D-NUM THEN  D-BOXED R-POP-ANY D-ITEM ;                              -9 CONSTANT LA.pop
 VARIABLE IL  VARIABLE II
 : L.insert ( l i x --- none )   \ x put before item i (negative from the end)
   D-BOXED >R  D>N >R  D-LIST IL !  R> IL @ R-LEN D-IDX 0 MAX IL @ R-LEN MIN II !
   R@ IL @ R-PUSH  IL @ R-LEN 1- BEGIN DUP II @ > WHILE IL @ OVER 1- R-AT IL @ 2 PICK R-SET 1- REPEAT DROP
   R> IL @ II @ R-SET  0 ;                                                        3 CONSTANT LA.insert
 : L.extend ( l m --- none )   D-LIST SWAP D-LIST SWAP R-EXTEND 0 ;              2 CONSTANT LA.extend
-: L.index ( l x --- n )   \ x's first place in l, or -1
-  SWAP D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP I D-NUM UNLOOP EXIT THEN LOOP  2DROP -1 D-NUM ;
-                                                                                  2 CONSTANT LA.index
+: L.index ( x part --- n )   \ a part's place in a text, an item's in a list; -1 if not there (839: texts too)
+  D-BOXED SWAP D-BOXED SWAP R-FIND-ANY D-NUM ;                                     2 CONSTANT LA.index
+: L.script ( --- t )   R-SCRIPT K-TEXT R-BOX ;                                    0 CONSTANT LA.script
 : L.has ( r k --- f )   D-TEXT SWAP D-REC R-HAS D-BOOL ;                         2 CONSTANT LA.has
 : L.read ( path --- t )   D-TEXT R-READ K-TEXT R-BOX ;                            1 CONSTANT LA.read
 : L.write ( path t --- none )   D-TEXT SWAP D-TEXT SWAP R-WRITE 0 ;              2 CONSTANT LA.write
@@ -118,7 +119,22 @@ VARIABLE IL  VARIABLE II
 : L.args ( --- l )   R-ARGS K-LIST R-BOX ;                                       0 CONSTANT LA.args
 : L.exit ( n --- )   D>N R-EXIT ;                                                1 CONSTANT LA.exit
 : L.wait ( job --- status )   D>N R-JOB-WAIT D-NUM ;                            1 CONSTANT LA.wait
+\ (839) Rill's library, the rest of it: an LA.name below 0 is -(least + 4 * most) arguments, the count passed
+: L.sum ( l --- x )   D-LIST R-SUM D-ITEM ;                                         1 CONSTANT LA.sum
+: L.max ( l --- x )   D-LIST R-LMAX D-ITEM ;                                        1 CONSTANT LA.max
+: L.min ( l --- x )   D-LIST R-LMIN D-ITEM ;                                        1 CONSTANT LA.min
+: L.abs ( x --- x )   D-BOXED R-ANY-ABS D-ITEM ;                                    1 CONSTANT LA.abs
+: L.sort_by ( rows field [order] n --- l )   \ records by a field, "desc" the largest first
+  3 = IF D-TEXT ELSE S" asc" R-TEXT THEN >R D-TEXT >R D-LIST R> R> R-SORT-BY-L K-LIST R-BOX ;   -14 CONSTANT LA.sort_by
+: L.glob ( pattern --- l )   D-TEXT R-GLOB K-LIST R-BOX ;                          1 CONSTANT LA.glob
+: L.replace ( t old new --- t )   D-TEXT ROT D-TEXT ROT D-TEXT ROT R-REPLACE K-TEXT R-BOX ;   3 CONSTANT LA.replace
+: L.findall ( t re --- l )   D-TEXT SWAP D-TEXT SWAP R-ALL K-LIST R-BOX ;            2 CONSTANT LA.findall
+: L.setenv ( name value --- none )   D-TEXT SWAP D-TEXT SWAP R-SETENV 0 ;          2 CONSTANT LA.setenv
+: L.get ( x key default --- item )   \ a record's field or a list's item, or the default
+  D-BOXED >R D-BOXED R> R-AT-OR-ANY D-ITEM ;                                       3 CONSTANT LA.get
 VARIABLE V.status   VARIABLE V.job                                      \ the last command's status, job
+VARIABLE STRICT                                                         \ strict(true): a failed command stops it
+: L.strict ( f --- none )   D-TRUE? STRICT ! 0 ;                                1 CONSTANT LA.strict
 VARIABLE R2-PROMPT?   VARIABLE R2-INITED   VARIABLE QUIET-FD               \ (835) the prompt's; once; see QUIET
 : QUIET ( --- )   \ a def defined again: the kernel says `Redefining:` and has no switch - fd 1 on /dev/null
   PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN QUIET-FD !
@@ -128,7 +144,7 @@ VARIABLE R2-PROMPT?   VARIABLE R2-INITED   VARIABLE QUIET-FD               \ (83
 \ ---- tokens, read one ahead from the script's text
 VARIABLE SRC  VARIABLE SRC#  VARIABLE POS  VARIABLE LINE  VARIABLE TK  VARIABLE TA  VARIABLE TL  VARIABLE TLINE
 1 CONSTANT T-NAME  2 CONSTANT T-NUM  3 CONSTANT T-STR  4 CONSTANT T-OP  5 CONSTANT T-NL  6 CONSTANT T-EOF
-7 CONSTANT T-DEC   8 CONSTANT T-RAW
+7 CONSTANT T-DEC   8 CONSTANT T-RAW   VARIABLE DEDENT                  \ a text block's indentation (839)
 : CH ( i --- c )   DUP SRC# @ < IF SRC @ + C@ ELSE DROP 0 THEN ;
 : C@P ( --- c )   POS @ CH ;
 : ALPHA? ( c --- f )   DUP [CHAR] a [CHAR] z 1+ WITHIN OVER [CHAR] A [CHAR] Z 1+ WITHIN OR SWAP [CHAR] _ = OR ;
@@ -140,6 +156,15 @@ VARIABLE SD
     C@P [CHAR] \ = IF 1 POS +! ELSE  C@P [CHAR] { = IF 1 SD +! ELSE
     C@P [CHAR] } = SD @ 0> AND IF -1 SD +! THEN THEN THEN
     C@P 10 = IF 1 LINE +! THEN  1 POS +!  REPEAT ;
+: TEXT-BLOCK ( --- )   \ """ ending its line: the lines up to one starting """ - less that one's indentation (839)
+  T-STR TK !  3 POS +!  BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  1 POS +!  1 LINE +!
+  SRC @ POS @ + TA !
+  BEGIN POS @ SRC# @ < WHILE
+    POS @ BEGIN DUP CH BL = WHILE 1+ REPEAT                       ( first non-blank of this line )
+    DUP CH [CHAR] " = OVER 1+ CH [CHAR] " = AND OVER 2 + CH [CHAR] " = AND IF        \ the code goes on after it: """)
+      DUP POS @ - DEDENT !  SRC @ POS @ + 1- TA @ - 0 MAX TL !  3 + POS ! EXIT THEN  DROP
+    BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  1 POS +!  1 LINE +!
+  REPEAT  R-ERR> ." rill2: line " TLINE @ R-.N ." : a text block's closing three quotes are missing" R-NL -4100 THROW ;
 : OP2? ( c --- f )   \ a first character = may follow: == != <= >= += -= *= /= %=
   DUP [CHAR] = = OVER [CHAR] ! = OR OVER [CHAR] < = OR OVER [CHAR] > = OR OVER [CHAR] + = OR
   OVER [CHAR] - = OR OVER [CHAR] * = OR OVER [CHAR] / = OR SWAP [CHAR] % = OR ;
@@ -153,7 +178,8 @@ VARIABLE SD
     C@P [CHAR] . = POS @ 1+ CH DIGIT? AND IF T-DEC TK ! 1 POS +! BEGIN C@P DIGIT? WHILE 1 POS +! REPEAT THEN
     TK-END EXIT THEN
   C@P ALPHA? IF T-NAME TK ! BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT TK-END EXIT THEN
-  C@P [CHAR] " = IF T-STR TK ! 1 POS +! SRC @ POS @ + TA ! SCAN-STR TK-END 1 POS +! EXIT THEN
+  C@P [CHAR] " = POS @ 1+ CH [CHAR] " = AND POS @ 2 + CH [CHAR] " = AND IF TEXT-BLOCK EXIT THEN
+  C@P [CHAR] " = IF T-STR TK ! 0 DEDENT ! 1 POS +! SRC @ POS @ + TA ! SCAN-STR TK-END 1 POS +! EXIT THEN
   C@P [CHAR] ' = IF T-RAW TK ! 1 POS +! SRC @ POS @ + TA !
     BEGIN C@P DUP [CHAR] ' <> SWAP 0<> AND WHILE C@P 10 = IF 1 LINE +! THEN 1 POS +! REPEAT TK-END 1 POS +! EXIT THEN
   T-OP TK !  C@P 1 POS +!  OP2? C@P [CHAR] = = AND IF 1 POS +! THEN  TK-END ;
@@ -204,6 +230,14 @@ CREATE LPFX 16 ALLOT  VARIABLE LPFX#
 : TARGET ( c-addr u --- c-addr2 u2 )   \ a name set here: a def's own, or the script's - made if new
   IN-DEF @ IF 2DUP LOC  LPFX LPFX# @ NAME$ 2DUP 0 MAKE-VAR EXIT THEN
   S" V." NAME$ 2DUP -1 MAKE-VAR ;
+\ ---- comprehensions' variables (839): [elem for x in seq if cond] - x the comprehension's own, ~N
+4 CONSTANT CV-MAX  CREATE CVS-A CV-MAX CELLS ALLOT  CREATE CVS-L CV-MAX CELLS ALLOT  CREATE CVS-N CV-MAX CELLS ALLOT
+VARIABLE CV#  CREATE CVB 40 ALLOT  VARIABLE CVB#
+: CV-REF ( n --- c-addr u )   \ its Forth name: ~n, a def's own or the script's
+  0 <# #S [CHAR] ~ HOLD #> DUP CVB# ! CVB SWAP MOVE  CVB CVB# @ IN-DEF @ IF LPFX LPFX# @ ELSE S" V." THEN NAME$ ;
+: CV-FIND ( c-addr u --- n | 0 )   \ a comprehension's variable of that name, the innermost: its number
+  CV# @ BEGIN DUP WHILE 1- >R 2DUP R@ CELLS CVS-A + @ R@ CELLS CVS-L + @ COMPARE 0= IF 2DROP R> CELLS CVS-N + @ EXIT THEN
+    R> REPEAT DROP 2DROP 0 ;
 \ ---- stack mode (837): a def whose parameters are whole numbers it only does arithmetic on, compares, and
 \ passes to itself or another such def - if, elif, else and return its only statements, the last a return
 \ with a value - is made twice: FS.name keeps the numbers raw on Forth's stack - no variable, no kinds looked
@@ -217,6 +251,7 @@ VARIABLE RAW?  VARIABLE PURE?  VARIABLE SDEPTH  VARIABLE LASTRET  VARIABLE STACK
 : PARAM# ( c-addr u --- k | -1 )   \ a parameter of the def being made: its place, the first 0
   IN-DEF @ 0= IF 2DROP -1 EXIT THEN  DEF-P @ 0 ?DO 2DUP I LN@ COMPARE 0= IF 2DROP I UNLOOP EXIT THEN LOOP 2DROP -1 ;
 : VAR-READ ( c-addr u --- )
+  2DUP CV-FIND ?DUP IF NIP NIP CV-REF O+ S" @" O+ 1 EK ! EXIT THEN    \ a comprehension's variable
   RAW? @ IF PARAM# DEF-P @ 1- SWAP - SDEPTH @ +                        \ stack mode: its place on the stack
     DUP 0= IF DROP S" DUP" ELSE DUP 1 = IF DROP S" OVER" ELSE O# S" PICK" THEN THEN O+ 1 +D EXIT THEN
   2DUP PARAM# 0< IF IMPURE THEN  1 EK !
@@ -230,13 +265,15 @@ CREATE HV 40 ALLOT  VARIABLE HV#
 : HV@ ( --- c-addr u )   HV HV# @ ;
 
 \ ---- expressions: each part's Forth after its operands'
-DEFER EXPR   DEFER R2-CAPTURE-D
-CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-N
+DEFER EXPR   DEFER R2-CAPTURE-D   DEFER STMT
+CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-N  VARIABLE SOL
 : SB+ ( c --- )   SB# @ 4095 < IF SB SB# @ + C! 1 SB# +! ELSE DROP THEN ;
 : SP-TEXT ( --- )   SB SB# @ R-TEXT R-FIX K-TEXT FIXED-BOX O#  SP-N @ IF S" D+" O+ THEN  1 SP-N +!  0 SB# ! ;
 : STR-LIT ( --- )   \ "...": its escapes made; {expr} the expression's text; the parts joined
-  0 SB# !  0 SP-N !  TA @ SRC @ - SP-I !  TA @ TL @ + SRC @ - SP-END !
-  BEGIN SP-I @ SP-END @ < WHILE  SP-I @ CH
+  0 SB# !  0 SP-N !  TA @ SRC @ - SP-I !  TA @ TL @ + SRC @ - SP-END !  -1 SOL !
+  BEGIN SP-I @ SP-END @ < WHILE
+    SOL @ IF DEDENT @ 0 ?DO SP-I @ CH BL = IF 1 SP-I +! THEN LOOP 0 SOL ! THEN   \ a block's line: less its indent
+    SP-I @ CH  DUP 10 = IF -1 SOL ! THEN
     DUP [CHAR] \ = IF DROP 1 SP-I +! SP-I @ CH CASE [CHAR] n OF 10 ENDOF [CHAR] t OF 9 ENDOF DUP ENDCASE SB+ 1 SP-I +! ELSE
     DUP [CHAR] { = IF DROP  SB# @ SP-N @ 0= OR IF SP-TEXT THEN
       SAVE-TK  SP-I @ 1+ POS !  NEXT  EXPR  S" }" IS? 0= IF S" } closing {" S" was expected in the string" ERR-NAME THEN
@@ -260,9 +297,38 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
   2DUP S" A." NAME$ FIND$ ?DUP IF EXECUTE R> 2OVER ARITY
     2DUP S" F." NAME$ FIND$ IF S" F." NAME$ ELSE S" FD." NAME$ THEN O+ EXIT THEN
   2DUP S" LA." NAME$ FIND$ ?DUP IF EXECUTE
-    DUP 0< IF DROP R@ 1 3 WITHIN 0= IF S" takes 1 or 2 arguments" ERR-NAME THEN R> O#   \ -2: its count passed
+    DUP 0< IF NEGATE DUP 3 AND SWAP 2 RSHIFT 1+ R@ ROT ROT WITHIN 0= IF S" takes another number of arguments" ERR-NAME THEN R> O#
     ELSE R> 2OVER ARITY THEN  S" L." NAME$ O+ EXIT THEN
   R> DROP S" is not defined" ERR-NAME ;
+VARIABLE CS-I  VARIABLE CS-D
+: CS-WORD? ( c-addr u --- f )   \ that word at CS-I, blanks around it
+  DUP CS-I @ + SRC# @ < 0= IF 2DROP 0 EXIT THEN
+  CS-I @ 1- CH DUP BL = SWAP 9 = OR 0= IF 2DROP 0 EXIT THEN  DUP CS-I @ + CH DUP BL = SWAP 9 = OR 0= IF 2DROP 0 EXIT THEN
+  SRC @ CS-I @ + OVER COMPARE 0= ;
+: COMP-SCAN ( --- c-addr u -1 | 0 )   \ a for at the brackets' own depth: a comprehension, its variable's name
+  TA @ SRC @ -  TK @ T-STR = TK @ T-RAW = OR IF 1- THEN  CS-I !  0 CS-D !          \ a string: from its quote
+  BEGIN CS-I @ CH ?DUP WHILE
+    DUP [CHAR] " = OVER [CHAR] ' = OR IF 1 CS-I +!
+      BEGIN CS-I @ CH DUP 0<> SWAP 2 PICK <> AND WHILE CS-I @ CH [CHAR] \ = IF 1 CS-I +! THEN 1 CS-I +! REPEAT DROP
+    ELSE DUP [CHAR] [ = OVER [CHAR] ( = OR SWAP [CHAR] { = OR IF 1 CS-D +! ELSE
+      CS-I @ CH DUP [CHAR] ] = OVER [CHAR] ) = OR SWAP [CHAR] } = OR IF CS-D @ 0= IF 0 EXIT THEN -1 CS-D +! ELSE
+      CS-D @ 0= S" for" CS-WORD? AND IF
+        CS-I @ 3 + BEGIN DUP CH BL = WHILE 1+ REPEAT  DUP SRC @ +  SWAP
+        BEGIN DUP CH DUP ALPHA? SWAP DIGIT? OR WHILE 1+ REPEAT  SRC @ + OVER -  -1 EXIT THEN
+    THEN THEN THEN  1 CS-I +!
+  REPEAT 0 ;
+: COMPREHENSION ( c-addr u --- )   \ [elem for x in seq if cond] (839): elem read first, its code put in the loop
+  CV# @ CV-MAX < 0= IF S" comprehensions nested too deep" ERR THEN
+  CV# @ CELLS CVS-L + !  CV# @ CELLS CVS-A + !  1 FOR# +!  FOR# @ CV# @ CELLS CVS-N + !
+  FOR# @ CV-REF 2DROP  CVB CVB# @ TARGET 2DROP  1 CV# +!           \ its variable, made: ~N
+  S" R-NEW-LIST" O+
+  O-PUSH EXPR  OC @ DUP ALLOCATE THROW  OB OVER 3 PICK MOVE SWAP  -1 OD +!          ( elem's Forth, kept )
+  SKIP-NL S" for" EXPECT NEXT SKIP-NL S" in" EXPECT
+  -1 CV# +!  EXPR  1 CV# +!                                        \ the sequence: read outside the comprehension
+  S" D-SEQ DUP R-LEN 0 ?DO DUP I R-AT D-ITEM" O+  CV# @ 1- CELLS CVS-N + @ CV-REF O+ S" !" O+
+  SKIP-NL S" if" IS? IF NEXT EXPR S" D-TRUE? IF" O+ -1 ELSE 0 THEN >R
+  2DUP O+  DROP FREE THROW  S" D-BOXED 2 PICK R-PUSH" O+  R> IF S" THEN" O+ THEN
+  S" LOOP DROP K-LIST R-BOX" O+  SKIP-NL S" ]" EXPECT  -1 PD +!  -1 CV# +! ;
 : KEY-LIT ( --- )   \ a record's key: a name or a string, a fixed text
   TK @ T-NAME = TK @ T-STR = OR TK @ T-RAW = OR 0= IF S" a key" S" was expected" ERR-NAME THEN
   TA @ TL @ R-TEXT R-FIX O#  NEXT ;
@@ -277,7 +343,7 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
     S" none" IS? IF IMPURE NEXT 0 O# EXIT THEN
     TA @ TL @ NEXT  S" (" IS? IF CALL ELSE VAR-READ THEN EXIT THEN
   S" (" IS? IF NEXT 1 PD +! SKIP-NL EXPR SKIP-NL S" )" EXPECT -1 PD +! EXIT THEN
-  S" [" IS? IF IMPURE NEXT 1 PD +! SKIP-NL S" R-NEW-LIST" O+
+  S" [" IS? IF IMPURE NEXT 1 PD +! SKIP-NL  COMP-SCAN IF COMPREHENSION EXIT THEN  S" R-NEW-LIST" O+
     S" ]" IS? 0= IF BEGIN EXPR S" D-BOXED OVER R-PUSH" O+ SKIP-NL S" ," IS? WHILE NEXT SKIP-NL REPEAT THEN
     S" ]" EXPECT -1 PD +! S" K-LIST R-BOX" O+ EXIT THEN
   S" {" IS? IF IMPURE NEXT 1 PD +! SKIP-NL S" R-NEW-RECORD" O+
@@ -319,52 +385,70 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
 VARIABLE CMD-CLOSE   CREATE CW 1024 ALLOT  VARIABLE CW#  VARIABLE CMD-END  VARIABLE CQ
 : CMD-EOL ( --- end )   \ where a command's text ends: its line's end, or a # starting a word outside quotes
   0 CQ !  POS @  BEGIN DUP CH DUP 10 <> SWAP 0<> AND WHILE
+    CQ @ 0= OVER CH [CHAR] ? = AND OVER 1+ CH [CHAR] ? = AND IF EXIT THEN    \ ?? (839)
     DUP CH  CQ @ IF CQ @ = IF 0 CQ ! THEN ELSE
       DUP [CHAR] ' = OVER [CHAR] " = OR IF CQ ! ELSE
       [CHAR] # = IF DUP 1- CH DUP BL = SWAP 9 = OR IF EXIT THEN THEN THEN THEN  1+
   REPEAT ;
 : SKIP-BL ( --- )   BEGIN C@P DUP BL = SWAP 9 = OR WHILE 1 POS +! REPEAT ;
+: AT? ( c-addr u --- f )   DUP POS @ + SRC# @ > IF 2DROP 0 EXIT THEN  SRC @ POS @ + OVER COMPARE 0= ;   \ the text here
 : CMD-STOP? ( c --- f )   DUP 10 = OVER 0= OR OVER BL = OR OVER 9 = OR OVER [CHAR] | = OR OVER [CHAR] > = OR
   OVER [CHAR] < = OR OVER [CHAR] & = OR SWAP CMD-CLOSE @ = OR ;
-: CMD-WORD ( --- c-addr u var? )   \ a word: $name alone a variable; else its characters, quotes taken off
-  C@P [CHAR] $ = POS @ 1+ CH ALPHA? AND IF 1 POS +! SRC @ POS @ +
-    BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER - -1 EXIT THEN
-  0 CW# !  BEGIN C@P CMD-STOP? 0= POS @ CMD-END @ < AND WHILE
-    C@P DUP [CHAR] ' = SWAP [CHAR] " = OR IF C@P 1 POS +!
-      BEGIN C@P OVER <> C@P 0<> AND WHILE C@P CW CW# @ + C! 1 CW# +! 1 POS +! REPEAT DROP 1 POS +!
-    ELSE C@P CW CW# @ + C! 1 CW# +! 1 POS +! THEN
-  REPEAT  CW CW# @ 0 ;
-: CMD-ARG ( c-addr u var? --- )   IF VAR-READ S" D-TEXT" O+ ELSE R-TEXT R-FIX O# THEN ;
-: REDIR ( mode u --- )   SKIP-BL CMD-WORD CMD-ARG O+ S" R-RD-FILE" O+ ;
-: STAGE ( --- n )   \ a stage's words, its redirections among them; how many words
-  0 BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND OVER [CHAR] & <> AND SWAP CMD-CLOSE @ <> AND
-    POS @ CMD-END @ < AND WHILE
-    C@P [CHAR] > = IF 1 POS +! C@P [CHAR] > = IF 1 POS +! S" A/O 1" ELSE S" W/O 1" THEN REDIR ELSE
-    C@P [CHAR] < = IF 1 POS +! S" R/O 0" REDIR ELSE
-    C@P [CHAR] 2 = POS @ 1+ CH [CHAR] > = AND IF 2 POS +! S" W/O 2" REDIR ELSE
-    CMD-WORD CMD-ARG 1+ THEN THEN THEN
+: CW+ ( c --- )   CW# @ 1023 < IF CW CW# @ + C! 1 CW# +! ELSE DROP THEN ;
+VARIABLE WP#                                                            \ a word's parts (839)
+: W-FLUSH ( --- )   CW# @ IF CW CW# @ R-TEXT R-FIX O#  1 WP# +!  0 CW# ! THEN ;   \ its characters so far, a part
+: W-EXPR ( --- )   W-FLUSH  NEXT EXPR  S" }" IS? 0= IF S" }" S" was expected" ERR-NAME THEN  S" D-TEXT" O+  1 WP# +! ;
+: W-VAR ( --- )   W-FLUSH  1 POS +!  SRC @ POS @ +  BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT
+  SRC @ POS @ + OVER -  VAR-READ S" D-TEXT" O+  1 WP# +! ;
+: $NAME? ( --- f )   C@P [CHAR] $ = POS @ 1+ CH ALPHA? AND ;
+: W-TEXT ( --- )   \ a word: its characters, $name and {expr} - '...' as written, "..." with $ and { } - one text
+  0 WP# !  0 CW# !
+  BEGIN C@P CMD-STOP? 0= POS @ CMD-END @ < AND S" ??" AT? 0= AND WHILE
+    C@P [CHAR] ' = IF 1 POS +! BEGIN C@P DUP [CHAR] ' <> SWAP 0<> AND WHILE C@P CW+ 1 POS +! REPEAT 1 POS +! ELSE
+    C@P [CHAR] " = IF 1 POS +! BEGIN C@P DUP [CHAR] " <> SWAP 0<> AND WHILE        \ "...": \ escapes " \ $ { only, as sh's
+        C@P [CHAR] \ = IF POS @ 1+ CH DUP [CHAR] " = OVER [CHAR] \ = OR OVER [CHAR] $ = OR SWAP [CHAR] { = OR IF 1 POS +! THEN
+          C@P CW+ 1 POS +! ELSE  C@P [CHAR] { = IF 1 POS +! W-EXPR ELSE
+        $NAME? IF W-VAR ELSE C@P CW+ 1 POS +! THEN THEN THEN  REPEAT 1 POS +! ELSE
+    C@P [CHAR] \ = IF 1 POS +! C@P CW+ 1 POS +! ELSE  C@P [CHAR] { = IF 1 POS +! W-EXPR ELSE
+    $NAME? IF W-VAR ELSE C@P CW+ 1 POS +! THEN THEN THEN THEN THEN
+  REPEAT  W-FLUSH
+  WP# @ 0= IF S" 0 0 R-TEXT" O+ EXIT THEN  WP# @ 1 > IF WP# @ O# S" R-CONCAT" O+ THEN ;
+: REDIR ( mode u --- )   SKIP-BL W-TEXT O+ S" R-RD-FILE" O+ ;
+: SPREAD ( --- )   \ @name: a list's items, each a word of its own; @args the script's arguments
+  1 POS +!  SRC @ POS @ +  BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER -
+  2DUP S" args" COMPARE 0= IF 2DUP S" V." NAME$ FIND$ 0= IF 2DROP S" L.args" O+ ELSE VAR-READ THEN ELSE VAR-READ THEN
+  S" D-LIST OVER SWAP R-EXTEND" O+ ;
+: STAGE ( --- )   \ a stage's words onto a list, its redirections among them
+  S" R-NEW-LIST" O+
+  BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND SWAP CMD-CLOSE @ <> AND POS @ CMD-END @ < AND
+    S" ??" AT? 0= AND  C@P [CHAR] & = S" &>" AT? 0= AND 0= AND WHILE
+    S" 2>&1" AT? IF 4 POS +! S" 1 2 R-RD-DUP" O+ ELSE  S" 1>&2" AT? IF 4 POS +! S" 2 1 R-RD-DUP" O+ ELSE
+    S" >&2" AT? IF 3 POS +! S" 2 1 R-RD-DUP" O+ ELSE  S" &>" AT? IF 2 POS +! S" W/O 1" REDIR S" 1 2 R-RD-DUP" O+ ELSE
+    S" 2>>" AT? IF 3 POS +! S" A/O 2" REDIR ELSE  S" 2>" AT? IF 2 POS +! S" W/O 2" REDIR ELSE
+    S" >>" AT? IF 2 POS +! S" A/O 1" REDIR ELSE  S" >" AT? IF 1 POS +! S" W/O 1" REDIR ELSE
+    S" <" AT? IF 1 POS +! S" R/O 0" REDIR ELSE
+    C@P [CHAR] @ = POS @ 1+ CH ALPHA? AND IF SPREAD ELSE  W-TEXT S" K-TEXT R-BOX OVER R-PUSH" O+
+    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
   REPEAT ;
-: STAGES ( --- )   BEGIN STAGE O#  C@P [CHAR] | = WHILE 1 POS +! S" 0 PL-STAGE" O+ REPEAT  S" -1 PL-STAGE" O+ ;
+: STAGES ( --- )   BEGIN STAGE  C@P [CHAR] | = WHILE 1 POS +! S" 0 PL-STAGE-L" O+ REPEAT  S" -1 PL-STAGE-L" O+ ;
 : LINE-BG? ( --- f )   CMD-END @  BEGIN 1- DUP POS @ < IF DROP 0 EXIT THEN DUP CH BL > UNTIL  CH [CHAR] & = ;
 : CMD-CHECK ( --- )   \ the first word, when it is written out: a command on PATH - a typo is an error, not a run
-  SKIP-BL  C@P [CHAR] $ = IF EXIT THEN  SAVE-TK CMD-WORD DROP 2DUP R-TEXT R-WHICH IF 2DROP BACK-TK EXIT THEN
-  S" is not a variable, a def or a command" ERR-NAME ;
+  SKIP-BL  C@P DUP [CHAR] $ = OVER [CHAR] { = OR OVER [CHAR] @ = OR OVER [CHAR] ' = OR SWAP [CHAR] " = OR IF EXIT THEN
+  SRC @ POS @ +  POS @ >R  BEGIN C@P CMD-STOP? 0= WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER -  R> POS !
+  2DUP R-TEXT R-WHICH IF 2DROP EXIT THEN  S" is not a variable, a def or a command" ERR-NAME ;
 : COMMAND ( --- )   \ POS at the command's first word
   10 CMD-CLOSE !  CMD-EOL CMD-END !  CMD-CHECK  LINE-BG? >R
   0 O# S" PL-BEGIN" O+  R@ IF S" PL-NULL-IN" O+ THEN  STAGES
-  R> IF S" PL-SPAWN D-NUM V.job !" O+ ELSE S" PL-END D-NUM V.status !" O+ THEN
+  R> IF S" PL-SPAWN D-NUM V.job !" O+ ELSE  S" PL-END DUP D-NUM V.status !" O+
+    SKIP-BL S" ??" AT? IF 2 POS +! NEXT S" IF" O+ STMT S" THEN" O+ EXIT THEN      \ cmd ?? statement: run if it fails
+    S" STRICT @ IF R-CHECK ELSE DROP THEN" O+ THEN
   BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;
 : R2-CAPTURE ( --- )   \ $( ... ): its output, a text; its status in status
   1 POS +!  [CHAR] ) CMD-CLOSE !  SRC# @ CMD-END !  -1 O# S" PL-BEGIN" O+  STAGES
-  S" PL-END D-NUM V.status ! K-TEXT R-BOX" O+  C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
+  S" PL-END DUP D-NUM V.status ! STRICT @ IF R-CHECK ELSE DROP THEN K-TEXT R-BOX" O+  C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
 ' R2-CAPTURE IS R2-CAPTURE-D
-: CD-STMT ( --- )   \ cd DIR, or cd alone: HOME
-  TA @ TL @ + SRC @ - POS !  10 CMD-CLOSE !  CMD-EOL CMD-END !  SKIP-BL
-  POS @ CMD-END @ < IF CMD-WORD CMD-ARG ELSE S" HOME" R-TEXT R-FIX O# S" R-ENV" O+ THEN
-  S" R-CD 1 V.status !" O+  BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;
 
 \ ---- statements
-DEFER STMT
 : BLOCK ( --- )   S" {" EXPECT SKIP-NL  1 DEPTH +!
   BEGIN S" }" IS? 0= WHILE TK @ T-EOF = IF S" }" S" is missing" ERR-NAME THEN STMT SKIP-NL REPEAT  NEXT  -1 DEPTH +! ;
 : COND ( --- )   0 SDEPTH !  EXPR RAW? @ IF S" IF" -1 +D ELSE S" D-TRUE? IF" THEN O+ ;   \ at a statement's depth
@@ -382,14 +466,31 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
     BODY-D @ IF S" EXIT" O+ ELSE S" RETV @ 0 RETF ! EXIT" O+ THEN  S" THEN" O+ THEN
   IF S" BRK @ IF 0 BRK ! LEAVE THEN" O+ ELSE S" BRK @ DUP IF 0 BRK ! THEN" O+ THEN ;
 : WHILE-STMT ( --- )   NEXT S" BEGIN" O+ EXPR S" D-TRUE? IF" O+ BODY 0 AFTER-BODY S" ELSE -1 THEN UNTIL" O+ ;
-: FOR-STMT ( --- )   \ for x in a list, a record's keys, or range(n), range(a, b) - counted, no list made
-  NEXT TK @ T-NAME <> IF S" for" S" wants a name" ERR-NAME THEN  TA @ TL @ NEXT  S" in" EXPECT
-  S" range" IS? 0 PEEK [CHAR] ( = AND IF NEXT ARGS
-    DUP 1 = IF DROP S" D>N 0 ?DO" O+ ELSE 2 = IF S" D2N SWAP ?DO" O+ ELSE S" range" S" takes 1 or 2 arguments" ERR-NAME THEN THEN
-    S" I D-NUM" O+ TARGET O+ S" !" O+  BODY -1 AFTER-BODY S" LOOP" O+ EXIT THEN
-  EXPR  HIDDEN TARGET HV!  HV@ O+ S" !" O+
-  HV@ O+ S" @ D-SEQ R-LEN 0 ?DO" O+  HV@ O+ S" @ D-SEQ I R-AT D-ITEM" O+  TARGET O+ S" !" O+
+: FOR-SEQ ( a1 u1 a2 u2|0 0 --- )   \ the sequence made: walked, x - or i, x and k, v (839) - set each round
+  HIDDEN TARGET HV!  HV@ O+ S" !" O+  HV@ O+ S" @ D-SEQ R-LEN 0 ?DO" O+
+  DUP IF
+    HV@ O+ S" @ D-KIND K-REC = IF" O+  HV@ O+ S" @ D-REC R-KEYS I R-AT D-ITEM" O+ 2OVER TARGET O+ S" !" O+
+      HV@ O+ S" @ D-REC R-VALS I R-AT D-ITEM" O+ 2DUP TARGET O+ S" !" O+
+    S" ELSE I D-NUM" O+ 2OVER TARGET O+ S" !" O+  HV@ O+ S" @ D-LIST I R-AT D-ITEM" O+ TARGET O+ S" !" O+ S" THEN" O+ 2DROP
+  ELSE 2DROP  HV@ O+ S" @ D-SEQ I R-AT D-ITEM" O+  TARGET O+ S" !" O+ THEN
   BODY -1 AFTER-BODY S" LOOP" O+ ;
+: FOR-STMT ( --- )   \ for x in a list or a record's keys; for i, x and k, v; range(..) counted, no list made
+  NEXT TK @ T-NAME <> IF S" for" S" wants a name" ERR-NAME THEN  TA @ TL @ NEXT
+  S" ," IS? IF NEXT TK @ T-NAME <> IF S" for" S" wants a name" ERR-NAME THEN TA @ TL @ NEXT ELSE 0 0 THEN
+  S" in" EXPECT
+  DUP 0= S" range" IS? AND 0 PEEK [CHAR] ( = AND IF 2DROP NEXT ARGS
+    DUP 1 4 WITHIN 0= IF S" range" S" takes 1 to 3 arguments" ERR-NAME THEN
+    DUP 3 = IF DROP S" D>N >R D2N R> R-RANGE-STEP K-LIST R-BOX" O+ 0 0 FOR-SEQ EXIT THEN   \ a step: its list
+    1 = IF S" D>N 0 ?DO" O+ ELSE S" D2N SWAP ?DO" O+ THEN
+    S" I D-NUM" O+ TARGET O+ S" !" O+  BODY -1 AFTER-BODY S" LOOP" O+ EXIT THEN
+  EXPR FOR-SEQ ;
+: CASE-STMT ( --- )   \ case x { "p1" "p2" { } "*" { } }: the first arm with a shell pattern x's text matches (839)
+  NEXT EXPR S" D-STR" O+  1 FOR# +! FOR# @  DUP CV-REF 2DROP CVB CVB# @ TARGET O+ S" !" O+
+  SKIP-NL S" {" EXPECT SKIP-NL  0
+  BEGIN S" }" IS? 0= WHILE  TK @ T-EOF = IF S" }" S" is missing" ERR-NAME THEN
+    0 BEGIN S" {" IS? 0= WHILE  2 PICK CV-REF O+ S" @ D-TEXT" O+ EXPR S" D-TEXT R-GLOB?" O+ IF S" OR" O+ THEN -1 REPEAT DROP
+    S" IF" O+ BLOCK S" ELSE" O+ 1+ SKIP-NL
+  REPEAT NEXT  0 ?DO S" THEN" O+ LOOP DROP ;
 : BREAK-STMT ( --- )   BODY-D @ 0= IF S" break" S" is only for a loop" ERR-NAME THEN  NEXT S" -1 BRK ! EXIT" O+ ;
 : CONTINUE-STMT ( --- )   BODY-D @ 0= IF S" continue" S" is only for a loop" ERR-NAME THEN  NEXT S" EXIT" O+ ;
 : RETURN-STMT ( --- )   IN-DEF @ 0= IF S" return" S" is only for a def" ERR-NAME THEN  NEXT
@@ -439,14 +540,23 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
   IN-DEF @ IF 2DUP LN-HAS? IF 2DROP -1 EXIT THEN THEN
   2DUP S" V." NAME$ FIND$ IF 2DROP -1 EXIT THEN  2DUP S" A." NAME$ FIND$ IF 2DROP -1 EXIT THEN
   2DUP S" print" COMPARE 0= IF 2DROP -1 EXIT THEN  S" LA." NAME$ FIND$ 0<> ;
+: CD-STMT ( --- )   \ cd DIR; cd alone, HOME; cd DIR { }, DIR for the block and then back (839)
+  TA @ TL @ + SRC @ - POS !  10 CMD-CLOSE !  CMD-EOL CMD-END !  SKIP-BL
+  C@P [CHAR] { = POS @ CMD-END @ < 0= OR IF S" HOME" R-TEXT R-FIX O# S" R-ENV" O+ ELSE W-TEXT THEN
+  SKIP-BL C@P [CHAR] { = IF S" R-CWD-PUSH R-CD 1 V.status !" O+ NEXT BLOCK S" R-CWD-POP" O+ EXIT THEN
+  S" R-CD 1 V.status !" O+  BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;
+: AT-NEXT? ( c-addr u --- f )   \ the word after this token is that
+  POS @ >R SKIP-BL AT? R> POS ! ;
 : STATEMENT ( --- )
   TK @ T-NL = TK @ T-EOF = OR IF EXIT THEN
   S" [" O+ TLINE @ O# S" R-MARK ]" O+                          \ the line, for an error when it runs
   IN-DEF @ IF DEPTH @ 1 = IF 0 LASTRET ! THEN  S" if" IS? S" return" IS? OR 0= IF IMPURE THEN  0 SDEPTH ! THEN
-  IN-DEF @ 0= IF R2-PROMPT? @ IF S" R-GC?S" ELSE S" R-GC?" THEN O+ THEN   \ a safe point: at the prompt ^C looked for
+  IN-DEF @ 0= IF S" R-GC?S" O+ THEN                            \ a safe point, and INT or TERM looked for
   S" if" IS? IF IF-STMT EXIT THEN        S" while" IS? IF WHILE-STMT EXIT THEN
   S" for" IS? IF FOR-STMT EXIT THEN      S" def" IS? IF DEF-STMT EXIT THEN
+  S" case" IS? IF CASE-STMT EXIT THEN
   S" return" IS? IF RETURN-STMT EXIT THEN
+  S" on" IS? S" EXIT" AT-NEXT? AND IF NEXT NEXT S" [']" O+ BODY S" R-ON-EXIT" O+ EXIT THEN   \ on EXIT { }: run at the end (839)
   S" break" IS? IF BREAK-STMT EXIT THEN  S" continue" IS? IF CONTINUE-STMT EXIT THEN
   S" else" IS? S" elif" IS? OR IF TA @ TL @ S" has no if before it" ERR-NAME THEN
   S" !" IS? IF COMMAND EXIT THEN                                \ !word: a command, whatever word it is
@@ -491,7 +601,7 @@ VARIABLE ST#  CREATE SN 24 ALLOT  VARIABLE SN#  VARIABLE XTS  VARIABLE XT#  VARI
 : MAKE-STMT ( --- )   OC @ 0= IF EXIT THEN  1 ST# +!
   0 FIN# !  S" :" F+  STMT-NAME F+  OB OC @ F+  S" ;" F+  FIN @ FIN# @ EVALUATE  SN SN# @ FIND$ XT+ ;
 : R2-SCRIPT ( c-addr u --- )   \ a script's text, kept where it is while it runs
-  SRC# ! SRC !  0 POS !  0 LINE !  0 IN-DEF !  0 DEPTH !  0 BODY-D !  0 PD !  0 OD !  O-NEW  0 XT# !
+  SRC# ! SRC !  0 POS !  0 LINE !  0 IN-DEF !  0 DEPTH !  0 BODY-D !  0 PD !  0 OD !  O-NEW  0 XT# !  0 CV# !
   S" RILL2_STACK" R-TEXT R-ENV R-T@ S" 0" COMPARE 0= STACK-OFF !       \ RILL2_STACK=0: no stack mode (837)
   R2-INITED @ 0= IF V.status R-ITEM R-ROOT  V.job R-ITEM R-ROOT  0 D-NUM V.status !  -1 R2-INITED ! THEN
   PRE-DEFS  NEXT

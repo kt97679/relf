@@ -114,6 +114,16 @@ write("/tmp/rill2-tour.txt", "one\ntwo\n")
 print(lines(read("/tmp/rill2-tour.txt")))
 print(env("RILL2_TOUR"), args())
 
+# --- more (839): comprehensions, text blocks, case, two-variable loops
+squares = [k * k for k in range(5) if k % 2 == 0]
+print(squares)
+print("""
+    a text block: {len(squares)} squares,
+      its indentation the closing quotes'
+    """)
+for key, val in {a: 1, b: 2} { print(key, val) }
+case "notes.txt" { "*.txt" "*.md" { print("a text file") } "*" { print("something else") } }
+
 # --- the shell
 echo plain words, and $n           # a line that is no assignment, call or name: a command
 printf '%s|%s\n' 'single quotes' "double quotes"
@@ -126,6 +136,12 @@ word = $(echo shout | tr a-z A-Z)  # $( ): a command's output
 print(word, status)
 sleep 0 &                          # & : to the background, its job in job
 print(wait(job))
+files = ["a b", "c"]
+printf '<%s>' @files               # @: a list's items, each an argument
+echo
+echo "sum: {sum(squares)}"         # {expr} and $name in a command's words too
+sh -c "echo oops >&2" 2>&1 | tr a-z A-Z   # 2>&1, >&2, &>, 2>>
+false ?? print("false failed")     # ?? statement: run when the command fails; strict(true): any other stops it
 ls = "a variable"
 !ls /tmp > /dev/null               # !: a command, though ls names a variable
 print(status)

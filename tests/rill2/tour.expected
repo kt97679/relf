@@ -40,6 +40,12 @@ key=val key val a#b#
 {"a":[1,2.5,"x"]} 2
 one two
 set 
+0 4 16
+a text block: 3 squares,
+  its indentation the closing quotes'
+a 1
+b 2
+a text file
 plain words, and 16
 single quotes|double quotes
 a
@@ -47,6 +53,10 @@ appended
 4
 SHOUT 0
 0
+<a b><c>
+sum: 20
+OOPS
+false failed
 0
 /tmp
 status 0

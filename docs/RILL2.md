@@ -1,4 +1,4 @@
-# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions; 837 stack mode)
+# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions; 837 stack mode; 839 Rill's gaps closed)
 
 `bin/rill2 script.r2 [args...]` (a script starting `#!/usr/bin/env rill2` runs as itself); `bin/rill2`
 alone, the prompt.
@@ -10,14 +10,17 @@ the error scripts in tests/rill2/errors and the rest. It grew from the minimal p
 
 Whole numbers - 64 bits, past which an error says so (837); decimals (`2.5`); texts - `"..."` with `\n \t \" \\ \{` and `{expr}` inside, `'...'`
 as written; lists `[a, b]`; records `{name: "ada", "born": 1815}`, a key a name or a string; `true`,
-`false`, `none`. none, 0, false, "", [] and {} are false. A list or a record holds any value - other
+`false`, `none`. A text block (839): `"""` ending a line, the lines after it up to one starting
+`"""`, that line's indentation taken off each - `{expr}` and escapes as in `"..."`, and the code goes
+on after the closing quotes: `print("""` ... `""")`. none, 0, false, "", [] and {} are false. A list or a record holds any value - other
 lists and records too, as deep as wanted: `grid[1][0] = 5`, `rec["c"]["e"] = [1, {f: 2}]`. A list prints as Rill prints one: its items
 joined by blanks, a list inside it in brackets.
 
 ## Expressions
 
 From the loosest: `or`, `and`, `not`, comparisons (`== != < <= > >=`, `in`, `not in`), `+ -`, `* / %`, unary `-`,
-then `x[i]`, `x[a:b]` and calls `f(a, b)`. `+` adds numbers, or joins two texts or two lists into a new
+then `x[i]`, `x[a:b]` and calls `f(a, b)`. `[e for x in seq if cond]` (839): a list made of e for each x -
+x the comprehension's own, as Python 3's; nested ones too. `+` adds numbers, or joins two texts or two lists into a new
 one; `x in c` is a list's item, a record's key or a text's part; `/` of two whole
 numbers is whole; a decimal and a number make a decimal. An index counts from 0, or from the end when
 negative; a slice leaves out either bound; a record's value is `r["key"]`. A line goes on inside
@@ -25,7 +28,9 @@ brackets, and after an operator.
 
 ## Statements
 
-`x = e`; `x += e` (`-= *= /= %=`); `x[i] = e`, `x[i] += e`, `grid[1][0] = e`. `if c { } elif c { }
+`x = e`; `x += e` (`-= *= /= %=`); `x[i] = e`, `x[i] += e`, `grid[1][0] = e`. `for i, x in list`,
+`for k, v in record`, `range(a, b, step)` (839). `case x { "*.txt" "*.md" { } "*" { } }`: the first
+arm with a shell pattern x's text matches. `on EXIT { }`: run however the script ends. `if c { } elif c { }
 else { }` - else and elif on the `}` line or the lines after. `while c { }`. `for x in list { }`, a
 record's keys, `range(n)`, `range(a, b)` (counted: no list made). `break`, `continue`. `def name(a, b)
 { }` with `return e` (none without). `#` to the line's end is a comment.
@@ -40,17 +45,23 @@ set reads the script's. A def may be called before it is defined in the script.
 
 A line that is no assignment, no call and no known name runs as a command: its words, `$name` a
 variable's text, quotes keeping blanks in a word, `|` between stages, `> >> < 2>` and a path, `&` at
-the end to the background (its job in `job`), `#` starting a word a comment. `$(command)` in an
+the end to the background (its job in `job`), `#` starting a word a comment. Since 839 a word joins
+`$name` and `{expr}` with its characters, in `"..."` too (`'...'` as written); `@list` gives a list's
+items, each an argument, `@args` the script's; `2>&1`, `>&2`, `&> f`, `2>> f`. `$(command)` in an
 expression is its output. `status` is the last command's status: a failed command does not stop the
-script. A command's name is looked for on PATH when the script is read, so a typo is an error, not a
-run; `!word ...` runs a command a variable hides. `cd dir` (and `cd` alone: HOME) is built in.
+script - `cmd ?? statement` runs the statement when it fails, and after `strict(true)` any other
+failed command stops the script with its status, as Rill's do. A command's name is looked for on PATH when the script is read, so a typo is an error, not a
+run; `!word ...` runs a command a variable hides. `cd dir` (and `cd` alone: HOME) is built in; `cd dir { }`
+goes back after the block.
 
 ## Library
 
 `print(a, b, ...)`, `str int decimal len range`; lists: `append(l, x)`, `insert(l, i, x)`, `extend(l, m)`,
 `pop(l)` (the last), `pop(l, i)`, `index(l, x)` (-1 if not there); records: `keys values has`, `pop(r, key)` -
 taking an item or a field out is pop, which gives it back; `read write lines words split join
-trim starts ends contains`, `match sub` (regular expressions), `sort json from_json env args exit wait`.
+trim starts ends contains replace`, `match sub findall` (regular expressions), `sort json from_json env
+args exit wait`; since 839 `sum max min abs sort_by(rows, "field"[, "desc"]) glob setenv script`,
+`get(x, key, default)` (Rill's `at`), `index` of a part in a text too, `strict(true)`.
 
 ## Errors
 
@@ -83,7 +94,7 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (837) | 71,770 | 31,416: rill2.4 23.2 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
+| Rill 2 (839) | 75,781 | 35,427: rill2.4 27.2 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
 | Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 9 ms | 12 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
@@ -132,7 +143,7 @@ the same lines, and tests/rill/run checks it. Where they differ:
 | a def | `def f(a) -> number { }` - its kind said | `def f(a) { }` |
 | kinds | inferred when compiled; a mismatch found before it runs | looked at when used |
 | a failed command | stops the script, unless `?? statement`, `(cmd)` or `code((cmd))` | sets `status`; the script goes on |
-| ports | `out> err> all> out>> err>> err>out out>err <` | `> >> 2> <` |
+| ports | `out> err> all> out>> err>> err>out out>err <` | `> >> 2> 2>> 2>&1 >&2 &> <` |
 | a job | `j = spawn((cmd))`, `wait($j)` | `cmd &`, `wait(job)` |
 | echo | Rill's own, no process | /bin/echo; `print()` its own |
 | a list into words | `@list`, `@args` | - |
@@ -140,18 +151,33 @@ the same lines, and tests/rill/run checks it. Where they differ:
 | a def | above its first call | anywhere: called before it is defined too |
 | the prompt | the editor with TAB completion | the editor, no TAB |
 
-Only Rill: comprehensions `[$x * 2 for x in $l if $x > 1]`; text blocks `"""`; `case` with the
-shell's patterns; `on EXIT`; `cd dir { }`; `for i, x in` and `for k, v in`; `range(a, b, step)`;
-`setenv`, `glob`, `code`, `default`, `at`, `find`, `sum`, `max`, `min`, `abs`, `replace`, `all`,
-`slice`, `sort-by`, `number`; a function as a pipeline's stage; `$script`; two compilers whose Forth
-the oracle compares, and a fuzzer. Only Rill 2: `+=` and the rest; `print` of several; `insert`,
-`extend`, `values`, `has`, `index` (Rill's `find`), `str`, `int`; slices as `x[a:b]`; lists joined
-by `+`; `!cmd`; a typo a command caught on PATH before it runs; defs called before they are defined.
-Both: numbers checked at 64 bits, decimals, Python's division (`-7 / 2` is -4), texts, lists,
+Only Rill, since 839: a function as a pipeline's stage; `code((cmd))` and `$(a ?? b)` (Rill 2 has
+`status` and `cmd ?? statement`); TAB completion at the prompt; two compilers whose Forth the oracle
+compares, and a fuzzer. Only Rill 2: `+=` and the rest; `print` of several; `insert`, `extend`,
+`values`, `has`, `str`, `int`, `get`; slices as `x[a:b]`; lists joined by `+`; `!cmd`; a typo a
+command caught on PATH before it runs; defs called before they are defined; `strict(true)` - and its
+defaults: a failed command goes on, as the shell's. Both: numbers checked at 64 bits, decimals, Python's division (`-7 / 2` is -4), texts, lists,
 records, `in`, regular expressions, JSON, `$(...)`, pipes, `cd`, the prompt with its editor and
 history, the same runtime and collector.
 
+## Rill's gaps closed, and what each cost (839)
+
+At the user's asking: the gaps of 838's comparison, each measured as it went in - the image's bytes,
+built after each step:
+
+| gap | bytes |
+|---|---:|
+| the library: `sum max min abs sort_by glob replace findall setenv get`, `range` with a step | 424 |
+| commands: `@list`, `@args`; `$name` and `{expr}` in a word; `2>&1 >&2 &> 2>>`; `??`, `strict(true)` | 1,099 |
+| text blocks; `on EXIT` (INT and TERM looked for at every safe point) | 504 |
+| comprehensions, nested ones too | 1,232 |
+| `for i, x` and `for k, v`; `range` with a step in a for; `case`; `cd dir { }`; `index` of a text; `script()` | 728 |
+| a backslash in "..." in a command, as sh's | 24 |
+| all | 4,011 |
+
+71,770 bytes to 75,781: Rill's image is 90,475. tests/rill2/gaps.r2 uses each, with stack mode and
+without; errors/strict.r2 the stop.
+
 ## Not yet
 
-A list spread into a command's words (Rill's `@list`); setenv; on EXIT; comprehensions; text blocks;
-TAB completion at the prompt. QUESTIONS.md Q45.
+A function as a pipeline's stage; `$(a ?? b)`; TAB completion at the prompt. QUESTIONS.md Q45.
