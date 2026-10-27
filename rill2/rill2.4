@@ -31,7 +31,8 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-ARITH ( a b op --- c )   >R D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;   \ decimals, and the checks
 : D+ ( a b --- c )   BOTH# IF + 1- EXIT THEN
   OVER D-KIND K-TEXT = OVER D-KIND K-TEXT = AND IF SWAP D-TEXT SWAP D-TEXT 2 R-CONCAT K-TEXT R-BOX EXIT THEN
-  0 D-ARITH ;
+  OVER D-KIND K-LIST = OVER D-KIND K-LIST = AND IF >R D-LIST DUP R-LEN 0 SWAP R-SLICE DUP R> D-LIST R-EXTEND K-LIST R-BOX EXIT THEN
+  0 D-ARITH ;   \ two lists: a new one, both's items
 : D- ( a b --- c )   BOTH# IF - 1+ EXIT THEN  1 D-ARITH ;
 : D* ( a b --- c )   BOTH# IF >R 2/ R> 1- * 1+ EXIT THEN  2 D-ARITH ;
 : D/ ( a b --- c )   3 D-ARITH ;
@@ -53,6 +54,10 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND DUP K-BOOL = SWAP K-REC = OR IF CELL+ @ SWAP CELL+ @ = D-BOOL EXIT THEN
   D-BOXED SWAP D-BOXED SWAP R-CMP 0= D-BOOL ;
 : D!= ( a b --- c )   D== D-TRUE? 0= D-BOOL ;
+: D-IN ( x c --- f )   \ x in c: a list's item, a record's key, a text's part (835)
+  DUP D-KIND K-REC = IF D-REC SWAP D-TEXT SWAP R-HAS D-BOOL EXIT THEN
+  DUP D-KIND K-TEXT = IF D-TEXT SWAP D-TEXT R-CONTAINS D-BOOL EXIT THEN
+  D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP TRUE-BOX UNLOOP EXIT THEN LOOP  2DROP FALSE-BOX ;
 : D-IDX ( n len --- n' )   OVER 0< IF + ELSE DROP THEN ;          \ a negative index from the end
 : D-AT ( a i --- item )   \ a list's item, a text's character, a record's value
   OVER D-KIND K-REC = IF D-TEXT SWAP D-REC R-GET D-ITEM EXIT THEN
@@ -77,6 +82,18 @@ VARIABLE BRK  VARIABLE RETF  VARIABLE RETV                        \ a loop's bre
 : L.range ( a [b] n --- l )   1 = IF D>N 0 SWAP ELSE D2N THEN R-RANGE K-LIST R-BOX ;   -2 CONSTANT LA.range
 : L.append ( l x --- none )   D-BOXED SWAP D-LIST R-PUSH 0 ;                    2 CONSTANT LA.append
 : L.keys ( r --- l )   D-REC R-KEYS DUP R-LEN 0 SWAP R-SLICE K-LIST R-BOX ;       1 CONSTANT LA.keys
+: L.values ( r --- l )   D-REC R-VALS DUP R-LEN 0 SWAP R-SLICE K-LIST R-BOX ;     1 CONSTANT LA.values
+: L.pop ( x [k] n --- item )   \ pop(l): the last item; pop(l, i), pop(r, key): taken out and returned (835)
+  1 = IF -1 D-NUM THEN  D-BOXED R-POP-ANY D-ITEM ;                              -2 CONSTANT LA.pop
+VARIABLE IL  VARIABLE II
+: L.insert ( l i x --- none )   \ x put before item i (negative from the end)
+  D-BOXED >R  D>N >R  D-LIST IL !  R> IL @ R-LEN D-IDX 0 MAX IL @ R-LEN MIN II !
+  R@ IL @ R-PUSH  IL @ R-LEN 1- BEGIN DUP II @ > WHILE IL @ OVER 1- R-AT IL @ 2 PICK R-SET 1- REPEAT DROP
+  R> IL @ II @ R-SET  0 ;                                                        3 CONSTANT LA.insert
+: L.extend ( l m --- none )   D-LIST SWAP D-LIST SWAP R-EXTEND 0 ;              2 CONSTANT LA.extend
+: L.index ( l x --- n )   \ x's first place in l, or -1
+  SWAP D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP I D-NUM UNLOOP EXIT THEN LOOP  2DROP -1 D-NUM ;
+                                                                                  2 CONSTANT LA.index
 : L.has ( r k --- f )   D-TEXT SWAP D-REC R-HAS D-BOOL ;                         2 CONSTANT LA.has
 : L.read ( path --- t )   D-TEXT R-READ K-TEXT R-BOX ;                            1 CONSTANT LA.read
 : L.write ( path t --- none )   D-TEXT SWAP D-TEXT SWAP R-WRITE 0 ;              2 CONSTANT LA.write
@@ -98,6 +115,11 @@ VARIABLE BRK  VARIABLE RETF  VARIABLE RETV                        \ a loop's bre
 : L.exit ( n --- )   D>N R-EXIT ;                                                1 CONSTANT LA.exit
 : L.wait ( job --- status )   D>N R-JOB-WAIT D-NUM ;                            1 CONSTANT LA.wait
 VARIABLE V.status   VARIABLE V.job                                      \ the last command's status, job
+VARIABLE R2-PROMPT?   VARIABLE R2-INITED   VARIABLE QUIET-FD               \ (835) the prompt's; once; see QUIET
+: QUIET ( --- )   \ a def defined again: the kernel says `Redefining:` and has no switch - fd 1 on /dev/null
+  PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN QUIET-FD !
+  S" /dev/null" W/O OPEN-FILE IF DROP EXIT THEN  DUP 1 DUP2 DROP  CLOSE-FILE DROP ;
+: LOUD ( --- )   QUIET-FD @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  QUIET-FD @ CLOSE-FILE DROP  0 QUIET-FD ! ;
 
 \ ---- tokens, read one ahead from the script's text
 VARIABLE SRC  VARIABLE SRC#  VARIABLE POS  VARIABLE LINE  VARIABLE TK  VARIABLE TA  VARIABLE TL  VARIABLE TLINE
@@ -252,6 +274,8 @@ CREATE SB 4096 ALLOT  VARIABLE SB#  VARIABLE SP-I  VARIABLE SP-END  VARIABLE SP-
 : ADDS ( --- )   MULS BEGIN ?NL
   S" +" IS? IF NEXT SKIP-NL MULS S" D+" O+ ELSE  S" -" IS? IF NEXT SKIP-NL MULS S" D-" O+ ELSE EXIT THEN THEN AGAIN ;
 : CMP-OP ( --- c-addr u | 0 )   \ a comparison here: its word
+  S" in" IS? IF S" D-IN" EXIT THEN                                     \ in and not in (835)
+  S" not" IS? 0 PEEK [CHAR] i = AND 1 PEEK [CHAR] n = AND 2 PEEK DUP ALPHA? SWAP DIGIT? OR 0= AND IF NEXT S" D-IN D-TRUE? 0= D-BOOL" EXIT THEN
   S" ==" IS? IF S" D==" EXIT THEN  S" !=" IS? IF S" D!=" EXIT THEN  S" <=" IS? IF S" D<=" EXIT THEN
   S" >=" IS? IF S" D>=" EXIT THEN  S" <" IS? IF S" D<" EXIT THEN  S" >" IS? IF S" D>" EXIT THEN  0 ;
 : CMPS ( --- )   ADDS ?NL CMP-OP ?DUP IF NEXT SKIP-NL ADDS O+ THEN ;
@@ -356,7 +380,7 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
   LN# @ DEF-P @ ?DO S" 0" F+ I LN@ LPFX LPFX# @ NAME$ F+ S" !" F+ LOOP      \ what it sets: none at the start
   OB OC @ F+  S" 0 ;" F+  -1 OD +!
   DEF-A @ DEF-L @ S" FD." NAME$ FIND$ IF S" ' " F+ DEF-A @ DEF-L @ S" F." NAME$ F+ S" IS" F+ DEF-A @ DEF-L @ S" FD." NAME$ F+ THEN
-  FIN @ FIN# @ EVALUATE ;
+  QUIET FIN @ FIN# @ EVALUATE LOUD ;
 : ITEM-SET? ( --- f )   \ the statement so far ends in an item's fetch: x[i] = v sets it instead
   OC @ 5 < IF 0 EXIT THEN  OB OC @ + 5 - 5 S" D-AT " COMPARE 0= ;
 : OP-WORD ( c --- c-addr u )   CASE [CHAR] + OF S" D+" ENDOF [CHAR] - OF S" D-" ENDOF [CHAR] * OF S" D*" ENDOF
@@ -375,7 +399,7 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
 : STATEMENT ( --- )
   TK @ T-NL = TK @ T-EOF = OR IF EXIT THEN
   S" [" O+ TLINE @ O# S" R-MARK ]" O+                          \ the line, for an error when it runs
-  IN-DEF @ 0= IF S" R-GC?" O+ THEN                              \ a safe point, as Rill's: none in a def
+  IN-DEF @ 0= IF R2-PROMPT? @ IF S" R-GC?S" ELSE S" R-GC?" THEN O+ THEN   \ a safe point: at the prompt ^C looked for
   S" if" IS? IF IF-STMT EXIT THEN        S" while" IS? IF WHILE-STMT EXIT THEN
   S" for" IS? IF FOR-STMT EXIT THEN      S" def" IS? IF DEF-STMT EXIT THEN
   S" return" IS? IF RETURN-STMT EXIT THEN
@@ -424,7 +448,7 @@ VARIABLE ST#  CREATE SN 24 ALLOT  VARIABLE SN#  VARIABLE XTS  VARIABLE XT#  VARI
   0 FIN# !  S" :" F+  STMT-NAME F+  OB OC @ F+  S" ;" F+  FIN @ FIN# @ EVALUATE  SN SN# @ FIND$ XT+ ;
 : R2-SCRIPT ( c-addr u --- )   \ a script's text, kept where it is while it runs
   SRC# ! SRC !  0 POS !  0 LINE !  0 IN-DEF !  0 DEPTH !  0 BODY-D !  0 PD !  0 OD !  O-NEW  0 XT# !
-  V.status R-ITEM R-ROOT  V.job R-ITEM R-ROOT  0 D-NUM V.status !
+  R2-INITED @ 0= IF V.status R-ITEM R-ROOT  V.job R-ITEM R-ROOT  0 D-NUM V.status !  -1 R2-INITED ! THEN
   PRE-DEFS  NEXT
   BEGIN SKIP-NL TK @ T-EOF <> WHILE
     0 OC !  STMT  TK @ T-NL <> TK @ T-EOF <> AND IF S" the line goes on" ERR THEN  MAKE-STMT

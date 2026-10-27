@@ -103,6 +103,15 @@ if sh tools/build-rill2-image.sh ./relf64 forth/kernel64.img /tmp/rill2.$$.img >
         if cmp -s /tmp/rill2-out.$$ "${t%.r2}.expected"; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.r2}.expected" /tmp/rill2-out.$$ | head -5; fi
     done
+    for t in tests/rill2/prompt/*.in; do                                # the prompt, piped (835)
+        { (ulimit -v 400000 2>/dev/null; timeout 30 ./relf64 /tmp/rill2.$$.img < "$t" 2>&1); echo "status $?"; } > /tmp/rill2-out.$$
+        if cmp -s /tmp/rill2-out.$$ "${t%.in}.expected"; then pass=$((pass + 1))
+        else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.in}.expected" /tmp/rill2-out.$$ | head -5; fi
+    done
+    if python3 -c 'import pty' 2>/dev/null; then                         # and at a terminal (835)
+        if timeout 60 python3 tests/rill2/prompt-probe.py /tmp/rill2.$$.img > /tmp/rill2-out.$$ 2>&1; then pass=$((pass + 1))
+        else fail=$((fail + 1)); cat /tmp/rill2-out.$$; fi
+    fi
 else fail=$((fail + 1)); echo "FAIL tools/build-rill2-image.sh"; fi
 rm -f /tmp/rill2.$$.img /tmp/rill2-out.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds

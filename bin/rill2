@@ -9,7 +9,7 @@ while [ -h "$self" ]; do
 done
 root=$(cd "$(dirname "$self")/.." && pwd) || exit 2
 img=$root/kernel64-rill2.img
-for src in "$root/rill2/rill2.4" "$root/rill/rt.4" "$root/rill/regex.4"; do
+for src in "$root/rill2/rill2.4" "$root/rill2/prompt.4" "$root/rill2/edit-shim.4" "$root/rill/rt.4" "$root/rill/regex.4" "$root/shell/edit.4"; do
     if [ ! "$img" -nt "$src" ]; then
         sh "$root/tools/build-rill2-image.sh" "$root/relf64" "$root/forth/kernel64.img" "$img" > /dev/null || exit 2
         break

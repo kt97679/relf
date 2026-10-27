@@ -114,6 +114,26 @@ its place? *Recommendation*: (1) yes - the examples carried over one by one,
 the length rule kept; (2) next; (3) after; (4) only if Rill stays.
 *Blocks*: nothing.
 
+**Q45. Rill 2: smaller and faster - which next? (835)** (1) Stack mode for
+defs of numbers (docs/RILL2.md, "Stack mode"): fib 18 ms to about Rill's 8, some
+1-1.5 KB. (2) The characters' widths at 3 bytes a bound, not 4: 0.9 KB off both
+Rill 2's image and relfsh's (shell.4's section is theirs, and the editor's);
+checked by every code point's width before and after. (3) TAB completion at
+Rill 2's prompt: back in, 3.3 KB, or a smaller one of its own. *Recommendation*:
+(2) first, cheap and exact; (1) when speed asks; (3) left out. *Blocks*: nothing.
+
+**A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
+yet"; "add prompt with line editing and history, see if it can be refactored
+and optimized for smaller code size" - done at 835: rill2/prompt.4, 920 bytes,
+no session table (a rill2 input is a script of its own; its names are the
+dictionary's); relfsh's editor without its TAB completion, cut out by the
+build, and a shim of 239 bytes for Rill's 526 - the editor 8.6 KB against
+Rill's 12.3; "what exactly is stack mode" - docs/RILL2.md, "Stack mode", Q45;
+"let's put rill fixes on the backburner" - GOALS.md 15 says so. And asked: no
+list functions but append? - pop, insert, extend, index, values, `in`, lists
+joined by + (835); delete from a list or a record - pop; lists and records
+hold lists and records - yes, as deep as wanted.
+
 **Q1. The space audit: which, if any? (509)**
 `tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
 image and 23.1% of the 32-bit; full cells holding offsets or sizes come

@@ -1,0 +1,13 @@
+\ rill2/edit-shim.4 - what relfsh's line editor takes from shell/shell.4, for Rill 2's prompt (Iteration 835).
+\ tools/build-rill2-image.sh loads shell/edit.4 after this without its TAB completion (its section cut out:
+\ 3.3 KB), so only what the rest of the editor uses is here; TAB does nothing. The characters' widths are
+\ shell.4's own section, cut out by the build as for Rill's image.
+4096 CONSTANT LINE-MAX
+: ERR-TYPE ( c-addr u --- )   2 WRITE-FILE DROP ;
+VARIABLE INT-SEEN?
+DEFER HIST-NEXT-CALL                                     \ edit.4 sets it
+: ED-COMPLETE ( --- ) ;                                  \ TAB: the completion section is not loaded
+VARIABLE PS1-WIDTH   VARIABLE PS2-WIDTH
+: SH-PROMPT-PREPARE ( --- )   7 PS1-WIDTH !  5 PS2-WIDTH ! ;
+: SH-PROMPT1 ( --- )   S" rill2> " ERR-TYPE ;
+: SH-PROMPT2 ( --- )   S" ...> " ERR-TYPE ;

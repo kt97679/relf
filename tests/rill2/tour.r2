@@ -84,6 +84,22 @@ def count() {
 }
 print(count(), i)                      # i here is the script's
 
+# --- lists and records: either holds lists and records
+l2 = [3, 1, 2]
+append(l2, 4)                          # at the end
+insert(l2, 0, 9)                       # before item 0
+print(l2)
+last = pop(l2)                         # the last, taken out
+first = pop(l2, 0)                     # item 0, taken out
+print(last, first, l2)
+extend(l2, [7, 8])
+print(l2 + [0], 2 in l2, 5 not in l2, index(l2, 2), index(l2, 5))
+rec = {a: 1, b: [1, 2], c: {d: "deep"}}
+gone = pop(rec, "a")                   # a record's field, taken out
+print(gone, "a" in rec, keys(rec), values(rec)[0], rec["c"]["d"], rec["b"][1])
+rec["c"]["e"] = [1, {f: 2}]
+print(json(rec), "ell" in "hello")
+
 # --- library
 print(str(42) + "!", int("12") + 1, int(3.9), decimal("1.25") + 1)
 print(len("hello"), len(l), len(p), keys(p), has(p, "name"))

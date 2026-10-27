@@ -1,0 +1,37 @@
+\ rill2/prompt.4 - Rill 2's prompt (Iteration 835): rill2 with no script. A line - more while a bracket or a
+\ string is open, or the line ends in an operator - is read and run as a script of its own: its variables and
+\ defs are the dictionary's, so they outlive it with no table kept. At a terminal relfsh's line editor reads
+\ it (keys, history, ^R; no TAB); without one, lines as they come. An error is said and the prompt comes back;
+\ ^C ends what runs; exit() or the input's end ends the prompt, with that status.
+65536 CONSTANT RL-MAX   VARIABLE RL-BUF  VARIABLE RL#  VARIABLE RL-TTY  VARIABLE RO-D  VARIABLE RO-Q
+: RL@ ( i --- c )   DUP RL# @ < IF RL-BUF @ + C@ ELSE DROP 0 THEN ;
+: RL-OPEN? ( --- f )   \ a bracket or a string open at the input's end, or its last character an operator
+  0 RO-D !  0 RO-Q !  0  BEGIN DUP RL# @ < WHILE
+    RO-Q @ IF DUP RL@ DUP 92 = RO-Q @ 34 = AND IF DROP 1+ ELSE RO-Q @ = IF 0 RO-Q ! THEN THEN ELSE
+    DUP RL@ CASE  34 OF 34 RO-Q ! ENDOF  39 OF 39 RO-Q ! ENDOF
+      35 OF BEGIN DUP 1+ RL@ DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT ENDOF
+      123 OF 1 RO-D +! ENDOF  91 OF 1 RO-D +! ENDOF  40 OF 1 RO-D +! ENDOF
+      125 OF -1 RO-D +! ENDOF  93 OF -1 RO-D +! ENDOF  41 OF -1 RO-D +! ENDOF  ENDCASE THEN  1+
+  REPEAT DROP  RO-D @ 0> RO-Q @ 0<> OR IF -1 EXIT THEN
+  RL# @ BEGIN 1- DUP 0< IF DROP 0 EXIT THEN DUP RL@ BL > UNTIL  RL@                ( the last character )
+  DUP [CHAR] + = OVER [CHAR] - = OR OVER [CHAR] * = OR OVER [CHAR] / = OR OVER [CHAR] % = OR
+  OVER [CHAR] = = OR OVER [CHAR] < = OR OVER [CHAR] > = OR SWAP [CHAR] , = OR ;
+: RL-ADD ( c-addr u --- )   RL-MAX RL# @ - 2 - MIN  RL-BUF @ RL# @ + SWAP DUP >R MOVE  R> RL# +!  10 RL-BUF @ RL# @ + C!  1 RL# +! ;
+: RL-READ ( --- f )   \ a line, from no terminal
+  RL-BUF @ RL# @ +  RL-MAX RL# @ - 1-  0 READ-LINE  IF 2DROP 0 EXIT THEN  0= IF DROP 0 EXIT THEN
+  RL# +!  10 RL-BUF @ RL# @ + C!  1 RL# +!  -1 ;
+: RL-EDIT ( --- f )   \ a line from the editor; ^C drops what was typed so far
+  RL# @ 0= CMD-START? !  0 TERM-RAW DROP  ED-LINE  0 TERM-RESTORE DROP
+  0= IF 2DROP 0 EXIT THEN  ED-DONE @ 2 = IF 2DROP 0 RL# ! -1 EXIT THEN  RL-ADD -1 ;
+: RL-RUN ( --- )   RL-BUF @ RL# @ R2-SCRIPT ;
+VARIABLE RL-RUN-XT   ' RL-RUN RL-RUN-XT !XT
+: RL-CAUGHT ( code --- )   \ said already - or not Rill's, said here; exit ends the prompt, the rest does not
+  0 PL-DEPTH !  0 STATE !  0 OD !  0 IN-DEF !  0 BODY-D !  0 DEPTH !  0 PD !  LOUD
+  DUP -4100 -3999 WITHIN 0= IF R-ERR> ." rill2: error " DUP . R-NL R-OUT-BACK THEN
+  DUP -4000 = R-EXITED @ AND R-SIGGED @ 0= AND IF THROW THEN  0 R-SIGGED !  0 R-EXITED !  DROP ;
+: R2-REPL ( --- )
+  -1 R2-PROMPT? !  0 ISATTY RL-TTY !  RL-MAX ALLOCATE THROW RL-BUF !  R-SIG-CATCH
+  BEGIN 0 RL# !
+    BEGIN RL-TTY @ IF RL-EDIT ELSE RL-READ THEN 0= IF RL# @ 0= IF EXIT THEN -1 ELSE RL-OPEN? 0= THEN  R-SIGNAL DROP UNTIL
+    RL-RUN-XT @XT CATCH  R-OUT-BACK  ?DUP IF RL-CAUGHT THEN
+  AGAIN ;
