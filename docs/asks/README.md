@@ -47,8 +47,10 @@ each claim checked, nothing adopted unchecked.
 - **853 - objects, back.** Five answers (Gemini, Grok, DeepSeek, ChatGPT, Qwen), every claim
   checked: `ask-command-model-objects-answers-852.md`. The object contract adopted as C.2; the
   inheritance flaw answered by a convention; delegation and a receiver deferred.
-- **Next to send:** `ask-command-model-runtime-853.md` - the runtime question on the C.2 draft,
-  with cycles by design; it replaces the 851 and 852 versions.
+- **854 - the runtime, back.** Six answers (ChatGPT, DeepSeek, Grok, Gemini, Qwen twice), every
+  claim checked, and relf's own premises checked in its source:
+  `ask-command-model-runtime-answers-853.md`. Adopted as the runtime plan.
+- **Nothing more to send** on the command model: what is open now, a prototype will settle.
 
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question

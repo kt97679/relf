@@ -878,6 +878,7 @@ do not trust the absence of a line below.
 - 851 — the command model worked further: objects, the six tasks, nine gaps, a size estimate, against A.4; three prompts out
 - 852 — the command model's review checked: C.1, thirteen rules; the objects and runtime prompts rebuilt on it
 - 853 — objects' prior art checked: C.2, the object contract; inheritance by filling a given map; the runtime prompt rebuilt
+- 854 — the runtime answers checked, relf's premises in its source: the runtime plan; the collector's safe points its largest piece
 
 ### Not tied to an iteration
 

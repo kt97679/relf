@@ -347,6 +347,37 @@ none of.
 | rill2's scripts | converted by a script | rewritten |
 | risks | a Python-like language with a shell bolted on - the owner's own doubt | stray output in results (`put` and `echo` kept apart); blocks' `return`; what closures cost |
 
+## The runtime plan (854)
+
+From the runtime answers, checked (docs/asks/ask-command-model-runtime-answers-853.md), and from
+relf's own source, which no answer could see:
+
+- **Closures**: a variable a block captures lives in a box - Lua's upvalues; the rest stay where
+  rill2 keeps them. A block is its code and its boxes.
+- **The collector** traces - rill2's copies what its roots reach, forwarding as it goes (rt.4,
+  Iteration 776) - so the object convention's cycles are reclaimed. But it runs only between
+  top-level statements, its roots a table of registered variables: boxes, blocks, value queues
+  and coroutine stacks must become roots it knows, and safe points must come inside loops and
+  stages - an endless pipeline never reaches the top level. It moves objects, so at a safe point
+  no value may sit on a Forth stack unseen. This is the plan's largest piece.
+- **Function stages** are coroutines: each its own data and return stacks (the kernel has `SP@ SP!
+  RP@ RP!`) and its own exception handler, values passed through bounded queues.
+- **Programs in a pipeline**: only they fork; their pipes are non-blocking and served by one poll
+  loop (the engine has `poll`); standard error is drained too; SIGPIPE is ignored, and EPIPE ends
+  the stage that writes - `yes | head -1` quietly.
+- **`break`, `continue`, `return`** carry the identity of the loop or def they leave; a stale one
+  is an error. A bare code would let a block that outlived its loop, run inside another loop,
+  break that one.
+- **Rule 11**: a name known when compiling is called directly; a value goes through one dispatch
+  on its kind - a block runs, a boolean gives its status, text names a command.
+
+The prototype, in this order, each step with its test: blocks, boxes and the collector's new roots
+and safe points (a cycle reclaimed, a counter surviving collections); value and byte output kept
+apart, and captures; `break`, `continue` and `return` with identities (a stale block refused);
+coroutine stages and bounded queues (an endless generator into a stage that stops early);
+programs in pipelines through poll (a stream larger than a pipe, a slow consumer, a program
+writing much to standard error); then dispatch and allocation measured.
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,
@@ -360,10 +391,9 @@ none of.
 ## Open
 
 The names (`def` or `fn`, `put` or `emit`); the map's spelling; `try`; delegation and an implicit
-receiver, if real scripts ask for them; how function stages stream. Asked of other models: the
-review (852) and objects' prior art (853), answered and checked -
-docs/asks/ask-command-model-review-answers-851.md, docs/asks/ask-command-model-objects-answers-852.md;
-the runtime (docs/asks/ask-command-model-runtime-853.md).
+receiver, if real scripts ask for them. Asked of other models, answered and checked: the review
+(852), objects (853), the runtime (854) - docs/asks/. Nothing is left to ask before a prototype;
+what is open now, scripts written in one will settle.
 
 ## Sources
 

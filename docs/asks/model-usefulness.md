@@ -26,3 +26,8 @@
 | 853 | command-model-objects-852 | DeepSeek | Red's rebinding on copy; PowerShell's JSON depth 2 - both checked true | `this` as "explicitly passed"; no links | useful |
 | 853 | command-model-objects-852 | ChatGPT | the object contract with sources; `merge` shallow; existence is not need | none found | the most useful |
 | 853 | command-model-objects-852 | Qwen | runnable checks for each claim | regrets marked documented without documents | the least useful |
+| 854 | command-model-runtime-853 | ChatGPT | control records with identity - stale blocks; the poll loop draining stderr; an order to build in | none found | the most useful |
+| 854 | command-model-runtime-853 | DeepSeek | boxed cells (Ertl and Paysan); a handler per coroutine; SIGPIPE | references not checked | useful |
+| 854 | command-model-runtime-853 | Grok | boxes; Forth's PAUSE-style multitasker as the coroutine model | a stale block's `break` "reaches the top level" - it breaks the loop it runs in | useful, with care |
+| 854 | command-model-runtime-853 | Gemini | pull thunks as an alternative | thunks need resumable producers it passes over; "zero-cost" CATCH | the least useful |
+| 854 | command-model-runtime-853 | Qwen (two answers) | the second: upvalues, generation IDs, O_NONBLOCK and select | the first: frames, the stale block wrong, checks not in the draft's syntax; the second: `return $x` | the two disagree; the second useful |
