@@ -146,7 +146,8 @@ same, binding bare as the shell and Rill do (`total = 0`, read `$total`). (B)
 YSH's two modes: bare names in code, `$` in commands, the boundary in the syntax.
 (C) rill2 as it is. *Recommendation*: (A) - one rule for a variable, nothing
 guessed; in rill2, whose runtime stays; two or three turns, size about even.
-*Blocks*: the syntax work, till chosen.
+*Blocks*: the syntax work, till chosen. Out with other models since 845:
+four prompts in docs/asks/ (a review, users, a grammar, prior art).
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

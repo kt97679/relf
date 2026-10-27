@@ -869,6 +869,7 @@ do not trust the absence of a line below.
 - 842 — a syntax study: one sigil, syntax decides (Q46, docs/SYNTAX-STUDY.md); a string's lost text mended
 - 843 — Rill: a string's { } holding more than one expression an error in both compilers, not garbage
 - 844 — prompts/ synced with forth-vm-evolution (45903e4): its 21 item 9, here 29 item 9
+- 845 — Rill's syntax: four prompts for other models (docs/asks/), every premise probed first; found: rill2's one-line block
 
 ### Not tied to an iteration
 

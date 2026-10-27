@@ -219,6 +219,12 @@ Found by the syntax study (docs/SYNTAX-STUDY.md), which also found Rill printing
 `echo "JSON-ish: {\"a\": 1}"` - its compilers read the first expression in the braces and dropped the
 rest; both refuse it since 843 (`tests/rill/errors/brace-junk.rill`).
 
+## Found, to mend (845)
+
+A command inside a one-line block takes the closing brace as a word: `if true { echo hi }` is
+"line 3: } is missing"; on separate lines it runs, and Rill runs the one-liner. Found checking
+the premises of docs/asks/.
+
 ## Not yet
 
 TAB completion at the prompt (left out on purpose: 3.3 KB). QUESTIONS.md Q45.
