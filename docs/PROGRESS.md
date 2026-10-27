@@ -864,6 +864,7 @@ do not trust the absence of a line below.
 - 837 — Rill 2's stack mode (fib 18 -> 11 ms, Rill's 9); numbers past 62 bits no longer wrap
 - 838 — Rill and Rill 2 compared, one program in each; Rill's reference on division corrected
 - 839 — Rill's gaps closed in Rill 2: 4,011 bytes in five steps, each counted; 75,781 against Rill's 90,475
+- 840 — Rill 2: a def as a pipeline stage and $(a ?? b) - Rill's last gaps, 640 bytes; 76,421 bytes
 
 ### Not tied to an iteration
 

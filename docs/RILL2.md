@@ -1,4 +1,4 @@
-# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions; 837 stack mode; 839 Rill's gaps closed)
+# Rill 2 - a scripting language and shell in regular notation (Iteration 834; 835 its prompt and lists' functions; 837 stack mode; 839-840 Rill's gaps closed)
 
 `bin/rill2 script.r2 [args...]` (a script starting `#!/usr/bin/env rill2` runs as itself); `bin/rill2`
 alone, the prompt.
@@ -94,7 +94,7 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (839) | 75,781 | 35,427: rill2.4 27.2 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
+| Rill 2 (840) | 76,421 | 36,067: rill2.4 27.8 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
 | Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 9 ms | 12 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
@@ -151,9 +151,8 @@ the same lines, and tests/rill/run checks it. Where they differ:
 | a def | above its first call | anywhere: called before it is defined too |
 | the prompt | the editor with TAB completion | the editor, no TAB |
 
-Only Rill, since 839: a function as a pipeline's stage; `code((cmd))` and `$(a ?? b)` (Rill 2 has
-`status` and `cmd ?? statement`); TAB completion at the prompt; two compilers whose Forth the oracle
-compares, and a fuzzer. Only Rill 2: `+=` and the rest; `print` of several; `insert`, `extend`,
+Only Rill, since 840: `code((cmd))` (Rill 2 has `status`); TAB completion at the prompt; two
+compilers whose Forth the oracle compares, and a fuzzer. Only Rill 2: `+=` and the rest; `print` of several; `insert`, `extend`,
 `values`, `has`, `str`, `int`, `get`; slices as `x[a:b]`; lists joined by `+`; `!cmd`; a typo a
 command caught on PATH before it runs; defs called before they are defined; `strict(true)` - and its
 defaults: a failed command goes on, as the shell's. Both: numbers checked at 64 bits, decimals, Python's division (`-7 / 2` is -4), texts, lists,
@@ -173,11 +172,13 @@ built after each step:
 | comprehensions, nested ones too | 1,232 |
 | `for i, x` and `for k, v`; `range` with a step in a for; `case`; `cd dir { }`; `index` of a text; `script()` | 728 |
 | a backslash in "..." in a command, as sh's | 24 |
-| all | 4,011 |
+| 840: a def as a pipeline's stage, `gen() \| sort` - first, last or between; `$(a ?? b)` | 640 |
+| all | 4,651 |
 
-71,770 bytes to 75,781: Rill's image is 90,475. tests/rill2/gaps.r2 uses each, with stack mode and
-without; errors/strict.r2 the stop.
+71,770 bytes to 76,421: Rill's image is 90,475. tests/rill2/gaps.r2 and pipes.r2 use each, with stack
+mode and without; errors/strict.r2 the stop, errors/def-stage.r2 a def's stage with words. A def as
+a stage is rillc.py's in Rill - the image's compiler says "not in the Forth compiler yet".
 
 ## Not yet
 
-A function as a pipeline's stage; `$(a ?? b)`; TAB completion at the prompt. QUESTIONS.md Q45.
+TAB completion at the prompt (left out on purpose: 3.3 KB). QUESTIONS.md Q45.

@@ -418,7 +418,14 @@ VARIABLE WP#                                                            \ a word
   1 POS +!  SRC @ POS @ +  BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER -
   2DUP S" args" COMPARE 0= IF 2DUP S" V." NAME$ FIND$ 0= IF 2DROP S" L.args" O+ ELSE VAR-READ THEN ELSE VAR-READ THEN
   S" D-LIST OVER SWAP R-EXTEND" O+ ;
-: STAGE ( --- )   \ a stage's words onto a list, its redirections among them
+: DEF-STAGE? ( --- f )   \ a def's name and () - a stage of its own, run in a child (840)
+  POS @ >R  BEGIN C@P DUP ALPHA? SWAP DIGIT? OR WHILE 1 POS +! REPEAT
+  POS @ R@ - DUP 0= IF DROP R> POS ! 0 EXIT THEN  S" ()" AT? 0= IF DROP R> POS ! 0 EXIT THEN
+  SRC @ R@ + SWAP 2DUP S" A." NAME$ FIND$ 0= IF 2DROP R> POS ! 0 EXIT THEN  R> DROP
+  2 POS +!  S" [']" O+  2DUP S" F." NAME$ FIND$ IF S" F." ELSE S" FD." THEN NAME$ O+  -1 ;
+: STAGE ( --- def? )   \ a stage's words onto a list, its redirections among them - or a def's
+  SKIP-BL DEF-STAGE? IF SKIP-BL C@P DUP 10 = OVER 0= OR OVER [CHAR] | = OR OVER [CHAR] & = OR OVER [CHAR] ? = OR
+    OVER [CHAR] # = OR SWAP CMD-CLOSE @ = OR 0= IF S" a def's stage takes no words or redirections" ERR THEN -1 EXIT THEN
   S" R-NEW-LIST" O+
   BEGIN SKIP-BL C@P DUP 10 <> OVER 0<> AND OVER [CHAR] | <> AND SWAP CMD-CLOSE @ <> AND POS @ CMD-END @ < AND
     S" ??" AT? 0= AND  C@P [CHAR] & = S" &>" AT? 0= AND 0= AND WHILE
@@ -429,12 +436,14 @@ VARIABLE WP#                                                            \ a word
     S" <" AT? IF 1 POS +! S" R/O 0" REDIR ELSE
     C@P [CHAR] @ = POS @ 1+ CH ALPHA? AND IF SPREAD ELSE  W-TEXT S" K-TEXT R-BOX OVER R-PUSH" O+
     THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-  REPEAT ;
-: STAGES ( --- )   BEGIN STAGE  C@P [CHAR] | = WHILE 1 POS +! S" 0 PL-STAGE-L" O+ REPEAT  S" -1 PL-STAGE-L" O+ ;
+  REPEAT 0 ;
+: STAGE-END ( def? last? --- )   IF S" -1" ELSE S" 0" THEN O+  IF S" PL-STAGE-X" ELSE S" PL-STAGE-L" THEN O+ ;
+: STAGES ( --- )   BEGIN STAGE  SKIP-BL C@P [CHAR] | = WHILE 1 POS +! 0 STAGE-END REPEAT  -1 STAGE-END ;
 : LINE-BG? ( --- f )   CMD-END @  BEGIN 1- DUP POS @ < IF DROP 0 EXIT THEN DUP CH BL > UNTIL  CH [CHAR] & = ;
 : CMD-CHECK ( --- )   \ the first word, when it is written out: a command on PATH - a typo is an error, not a run
   SKIP-BL  C@P DUP [CHAR] $ = OVER [CHAR] { = OR OVER [CHAR] @ = OR OVER [CHAR] ' = OR SWAP [CHAR] " = OR IF EXIT THEN
   SRC @ POS @ +  POS @ >R  BEGIN C@P CMD-STOP? 0= WHILE 1 POS +! REPEAT  SRC @ POS @ + OVER -  R> POS !
+  2DUP + 2 - 2 S" ()" COMPARE 0= OVER 2 > AND IF 2DUP 2 - S" A." NAME$ FIND$ IF 2DROP EXIT THEN THEN   \ name(): a def's stage (840)
   2DUP R-TEXT R-WHICH IF 2DROP EXIT THEN  S" is not a variable, a def or a command" ERR-NAME ;
 : COMMAND ( --- )   \ POS at the command's first word
   10 CMD-CLOSE !  CMD-EOL CMD-END !  CMD-CHECK  LINE-BG? >R
@@ -443,9 +452,10 @@ VARIABLE WP#                                                            \ a word
     SKIP-BL S" ??" AT? IF 2 POS +! NEXT S" IF" O+ STMT S" THEN" O+ EXIT THEN      \ cmd ?? statement: run if it fails
     S" STRICT @ IF R-CHECK ELSE DROP THEN" O+ THEN
   BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;
-: R2-CAPTURE ( --- )   \ $( ... ): its output, a text; its status in status
-  1 POS +!  [CHAR] ) CMD-CLOSE !  SRC# @ CMD-END !  -1 O# S" PL-BEGIN" O+  STAGES
-  S" PL-END DUP D-NUM V.status ! STRICT @ IF R-CHECK ELSE DROP THEN K-TEXT R-BOX" O+  C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
+: R2-CAPTURE ( --- )   \ $( ... ): its output, a text; its status in status; $(a ?? b): a failing, b's after it (840)
+  1 POS +!  [CHAR] ) CMD-CLOSE !  SRC# @ CMD-END !  -1 O# S" PL-BEGIN" O+  STAGES  S" PL-END" O+
+  SKIP-BL S" ??" AT? IF 2 POS +! S" DUP IF DROP -1 PL-BEGIN" O+ STAGES S" PL-END >R R-CAP-JOIN R> THEN" O+ THEN
+  S" DUP D-NUM V.status ! STRICT @ IF R-CHECK ELSE DROP THEN K-TEXT R-BOX" O+  C@P [CHAR] ) = IF 1 POS +! THEN  NEXT ;
 ' R2-CAPTURE IS R2-CAPTURE-D
 
 \ ---- statements
@@ -545,6 +555,14 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
   C@P [CHAR] { = POS @ CMD-END @ < 0= OR IF S" HOME" R-TEXT R-FIX O# S" R-ENV" O+ ELSE W-TEXT THEN
   SKIP-BL C@P [CHAR] { = IF S" R-CWD-PUSH R-CD 1 V.status !" O+ NEXT BLOCK S" R-CWD-POP" O+ EXIT THEN
   S" R-CD 1 V.status !" O+  BEGIN C@P DUP 10 <> SWAP 0<> AND WHILE 1 POS +! REPEAT  NEXT ;
+: PIPE-LATER? ( --- f )   \ a | later on the line, outside quotes and brackets: a pipeline
+  POS @ 0 0  BEGIN 2 PICK CH DUP 10 <> OVER 0<> AND WHILE                        ( i depth q c )
+    OVER IF OVER = IF DROP 0 THEN ELSE
+      DUP [CHAR] " = OVER [CHAR] ' = OR IF NIP ELSE
+      DUP [CHAR] ( = OVER [CHAR] [ = OR IF DROP SWAP 1+ SWAP ELSE
+      DUP [CHAR] ) = OVER [CHAR] ] = OR IF DROP SWAP 1- SWAP ELSE
+      [CHAR] | = 2 PICK 0= AND IF 2DROP DROP -1 EXIT THEN THEN THEN THEN THEN
+    ROT 1+ ROT ROT  REPEAT  DROP 2DROP DROP 0 ;
 : AT-NEXT? ( c-addr u --- f )   \ the word after this token is that
   POS @ >R SKIP-BL AT? R> POS ! ;
 : STATEMENT ( --- )
@@ -563,6 +581,7 @@ VARIABLE BW#  CREATE BWN 24 ALLOT  VARIABLE BWN#
   TK @ T-NAME = IF
     S" cd" IS? 0 PEEK DUP [CHAR] = <> SWAP [CHAR] ( <> AND AND IF CD-STMT EXIT THEN
     0 PEEK [CHAR] = = 1 PEEK [CHAR] = <> AND IF ASSIGN EXIT THEN
+    0 PEEK [CHAR] ( = TA @ TL @ S" A." NAME$ FIND$ 0<> AND PIPE-LATER? AND IF TA @ SRC @ - POS ! COMMAND EXIT THEN   \ (840)
     0 PEEK OP2? 0 PEEK [CHAR] = <> AND 1 PEEK [CHAR] = = AND IF ASSIGN EXIT THEN
     0 PEEK [CHAR] ( <> 0 PEEK [CHAR] [ <> AND
     TA @ TL @ KNOWN? 0= AND
