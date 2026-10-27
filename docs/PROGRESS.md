@@ -871,6 +871,7 @@ do not trust the absence of a line below.
 - 844 — prompts/ synced with forth-vm-evolution (45903e4): its 21 item 9, here 29 item 9
 - 845 — Rill's syntax: four prompts for other models (docs/asks/), every premise probed first; found: rill2's one-line block
 - 846 — the review's five answers checked: three for A, ten holes filled as A.1; the grammar and users prompts rebuilt on it
+- 847 — the users round's five answers checked: five silent mistakes become refusals, A.2; the grammar prompt rebuilt on it
 
 ### Not tied to an iteration
 

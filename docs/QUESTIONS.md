@@ -149,7 +149,8 @@ guessed; in rill2, whose runtime stays; two or three turns, size about even.
 *Blocks*: the syntax work, till chosen. Out with other models since 845:
 four prompts in docs/asks/ (a review, users, a grammar, prior art). The review
 back (846): five models, three for A; ten holes held, filled as A.1
-(docs/asks/ask-rill-syntax-answers-845.md).
+(docs/asks/ask-rill-syntax-answers-845.md). The users round (847): no mistake
+left that runs wrongly under A once five more are refused - A.2.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

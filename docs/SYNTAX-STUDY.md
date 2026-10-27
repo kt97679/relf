@@ -203,6 +203,18 @@ environment and is an error when unset; the prompt shows an expression's value; 
 an error with hints; `$(...)` drops every trailing newline. Rules R1-R11 in
 `docs/asks/ask-rill-syntax-grammar-846.md`.
 
+## A.2 - after the users round (847)
+
+Five models wrote six tasks in A, A′, B, bash and Python and predicted a bash user's and a Python
+user's first mistakes (`docs/asks/ask-rill-syntax-users-answers-845.md`). Checked, the mistakes
+that would run wrongly under A became five more refusals: a `{name}` in a string when `$name` is
+bound (rill2 interpolates it today - A would print the braces); a `for` over one `$(...)` (the
+shells split it, A would loop once); `@` only before a name, a call or `(`; a list or record beside
+other text in a word or string (`"$s.file"`); and, made explicit, a command run from a list,
+`@cmd`. Readability as they scored it: A′ a little easier for bash users, B for Python users; A
+the one with no mistake left that runs wrongly. Rules R1-R16 in
+`docs/asks/ask-rill-syntax-grammar-847.md`.
+
 ## What it would take
 
 In rill2, whose runtime stays: the tokenizer reads `$name` in code, `@name`, `?(`; strings drop

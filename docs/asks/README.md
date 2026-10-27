@@ -19,9 +19,11 @@ need not be sent.
 - **846 - the review, back.** Five answers (DeepSeek, ChatGPT, Gemini, Grok, Qwen), every claim
   checked: `ask-rill-syntax-answers-845.md`, the ledger `model-usefulness.md`. Three picked A; ten
   holes held, filled as A.1.
-- **Next to send:** `ask-rill-syntax-grammar-846.md` and `ask-rill-syntax-users-846.md` - the
-  same questions with the brief on A.1 (rules R1-R11), so the grammar checked is the amended one.
-  They replace the 845 versions of those two. Prior art adds least now.
+- **847 - the users round, back.** Five answers (Gemini, Grok, Qwen, DeepSeek, ChatGPT) to the
+  845 version, every claim checked: `ask-rill-syntax-users-answers-845.md`. Five mistakes that
+  would run wrongly became refusals, A.2 (R12-R16). The question is answered - `-846` need not go.
+- **Next to send:** `ask-rill-syntax-grammar-847.md` - the brief on A.2 (rules R1-R16); it
+  replaces the 845 and 846 grammar prompts. Prior art adds least now.
 
 **Bringing answers back.** Paste them one at a time, saying which model wrote each. For each,
 Claude says what it adds that the earlier ones did not, what is wrong, and whether the question
