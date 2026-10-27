@@ -134,6 +134,20 @@ Rill 2's prompt: back in, 3.3 KB, or a smaller one of its own. *Recommendation*:
 18 ms to 11, Rill's 9 (docs/RILL2.md, "Stack mode"), and found on the way: numbers
 past 62 bits wrapped silently since 831, mended. (3) open.
 
+**Q46. One syntax for shell and language - which? (842)** The user: mixing
+`var` and `$var` is inconsistent and confusing; how do other shells join a shell
+and a real language? docs/SYNTAX-STUDY.md: four ways others take (one sigil
+everywhere; two modes by syntax; two modes by name lookup; commands quoted in a
+language), seven lessons, Rill and rill2 probed against them. (A) One sigil,
+syntax decides: every variable `$name`, bound or read; a statement's first token
+says command or code; `$(...)` for commands and expressions both, `@` spreads,
+`?(...)` for success; text quoted in code; `{}` no longer interpolates. (A') The
+same, binding bare as the shell and Rill do (`total = 0`, read `$total`). (B)
+YSH's two modes: bare names in code, `$` in commands, the boundary in the syntax.
+(C) rill2 as it is. *Recommendation*: (A) - one rule for a variable, nothing
+guessed; in rill2, whose runtime stays; two or three turns, size about even.
+*Blocks*: the syntax work, till chosen.
+
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored
 and optimized for smaller code size" - done at 835: rill2/prompt.4, 920 bytes,

@@ -276,7 +276,9 @@ DEFER EXPR   DEFER R2-CAPTURE-D   DEFER STMT
     SP-I @ CH  DUP 10 = IF -1 SOL ! THEN
     DUP [CHAR] \ = IF DROP 1 SP-I +! SP-I @ CH CASE [CHAR] n OF 10 ENDOF [CHAR] t OF 9 ENDOF DUP ENDCASE SB+ 1 SP-I +! ELSE
     DUP [CHAR] { = IF DROP  SB# @ SP-N @ 0= OR IF SP-TEXT THEN
+      SP-END @ >R  SP-N @ >R  SOL @ >R          \ a string inside the expression runs STR-LIT too: ours kept (842)
       SAVE-TK  SP-I @ 1+ POS !  NEXT  EXPR  S" }" IS? 0= IF S" } closing {" S" was expected in the string" ERR-NAME THEN
+      R> SOL !  R> SP-N !  R> SP-END !
       POS @ >R  BACK-TK  R> SP-I !  S" D-STR D+" O+  1 SP-N +!
     ELSE SB+ 1 SP-I +! THEN THEN
   REPEAT  SB# @ SP-N @ 0= OR IF SP-TEXT THEN ;

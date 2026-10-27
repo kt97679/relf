@@ -94,7 +94,7 @@ and run directly - one exec, not /usr/bin/env's two, which halved every command'
 
 | | image | the language's part | fib(25) | 300,000 adds | 300 commands |
 |---|---:|---:|---:|---:|---:|
-| Rill 2 (841) | 68,888 | 28,534: rill2.4 20.3 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
+| Rill 2 (842) | 68,912 | 28,558: rill2.4 20.3 KB, its prompt 0.9, editor 7.3 | 11 ms | 17 ms | 233 ms |
 | Rill (836) | 90,475 | 50,121: compiler 39.1 KB, editor 11.0 | 9 ms | 12 ms | 229 ms |
 | Python | | | 18 ms | 29 ms | 254 ms |
 | dash | | | | | 198 ms |
@@ -209,6 +209,14 @@ it types it, optimizes it, explains its mistakes, and writes the Forth its other
 Found on the way, and mended: Rill 2 kept its compile-time buffers - a 4 KB string buffer, a 2 KB
 names table, 17 in all - as CREATE ... ALLOT, 8,056 bytes of zeros in the image, where Rill's
 compiler declares BUFFER:s, made at start. As BUFFER:s now: 76,421 bytes to 68,888, starting faster.
+
+## Strings inside a string's { } (842)
+
+`"x {s["lines"]} y"` printed `x 3`: a string inside the braces ran STR-LIT again, which kept its
+place in variables, and the outer string ended where the inner one did - the rest lost, silently.
+STR-LIT keeps its own across the expression now, any depth deep (`tests/rill2/strings.r2`).
+Found by the syntax study (docs/SYNTAX-STUDY.md), which also found Rill printing `JSON-ish: \` for
+`echo "JSON-ish: {\"a\": 1}"` - Rill's to mend next.
 
 ## Not yet
 

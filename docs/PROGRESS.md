@@ -866,6 +866,7 @@ do not trust the absence of a line below.
 - 839 — Rill's gaps closed in Rill 2: 4,011 bytes in five steps, each counted; 75,781 against Rill's 90,475
 - 840 — Rill 2: a def as a pipeline stage and $(a ?? b) - Rill's last gaps, 640 bytes; 76,421 bytes
 - 841 — why Rill's image is bigger (kinds, optimizations, messages, oracle parity - not syntax); Rill 2 68,888
+- 842 — a syntax study: one sigil, syntax decides (Q46, docs/SYNTAX-STUDY.md); a string's lost text mended
 
 ### Not tied to an iteration
 
