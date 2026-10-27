@@ -1042,11 +1042,17 @@ VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
   DUP G-ALLOT >R  OVER R@ ROT MOVE  R@ OVER !  G-BIT OVER C@ OR SWAP C!  R> ;
 DEFER G-COPY ( a kind --- a' )
 : G-TEXT ( t --- t' )   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN  DUP @ CELL+ G-MOVE ;
+: G-PTR-KIND-IMPL ( kind --- f )   DUP K-TEXT = OVER K-LIST = OR SWAP K-REC = OR ;
+DEFER G-PTR-KIND? ( kind --- f )   \ a kind whose value points into the arena - a runtime may add its own (855)
+' G-PTR-KIND-IMPL IS G-PTR-KIND?
+: G-MORE-NONE ( --- ) ;
+DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may add its own (855)
+' G-MORE-NONE IS G-MORE
 : G-BOX ( b --- b' )   \ an item, and what it holds
   DUP 1 AND IF EXIT THEN                           \ odd, never a box: a tagged number (examples/forth-script, 831)
   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
   DUP @ >R  2 CELLS G-MOVE  R>
-  DUP K-TEXT = OVER K-LIST = OR OVER K-REC = OR IF OVER CELL+ @ SWAP G-COPY OVER CELL+ ! ELSE DROP THEN ;
+  DUP G-PTR-KIND? IF OVER CELL+ @ SWAP G-COPY OVER CELL+ ! ELSE DROP THEN ;
 : G-LIST ( l --- l' )   \ a list: its header, its items array cut to the count, each item
   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN
   3 CELLS G-MOVE
@@ -1067,7 +1073,7 @@ DEFER G-COPY ( a kind --- a' )
   R-ARENA0 @ G-OLD !  R-TOP @ G-END !
   R-ARENA-SIZE ALLOCATE THROW  DUP G-TOP !  >R
   R-TOP @ R-ARENA0 @ - 64 / 1+  DUP ALLOCATE THROW  DUP G-BITS !  SWAP ERASE
-  G-RN @ 0 ?DO  G-RV I CELLS + @  DUP @ G-RK I CELLS + @ G-COPY  SWAP !  LOOP
+  G-RN @ 0 ?DO  G-RV I CELLS + @  DUP @ G-RK I CELLS + @ G-COPY  SWAP !  LOOP  G-MORE
   CWD-STACK @ ?DUP IF G-LIST CWD-STACK ! THEN
   G-BITS @ FREE THROW  R-ARENA0 @ FREE THROW
   R> DUP R-ARENA0 !  R-ARENA-SIZE + R-END !  G-TOP @ R-TOP !

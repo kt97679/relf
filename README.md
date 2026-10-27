@@ -107,6 +107,7 @@ expansion are byte-based, as in the C locale.
     bench/      speed against C, Go, Python, Ruby, gforth, pforth
     examples/   the shell extended from inside, with `forth`: builtins,
                 a prompt hook, network servers; fib.4
+    cm/         the command model's prototype: its runtime so far (docs/COMMAND-MODEL.md, 855)
     docs/       every document but this one
     prompts/    reusable prompts for this kind of work (INDEX.md)
 

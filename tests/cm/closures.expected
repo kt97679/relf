@@ -1,0 +1,5 @@
+two counters, two n's: 7 101 
+a collection inside a block: 8 
+a cycle kept, itself after two collections: -1 
+collections ran: -1 the arena after them under 1 MB: -1 
+and the counters still count: 9 101 

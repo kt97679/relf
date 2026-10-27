@@ -378,6 +378,35 @@ coroutine stages and bounded queues (an endless generator into a stage that stop
 programs in pipelines through poll (a stream larger than a pipe, a slow consumer, a program
 writing much to standard error); then dispatch and allocation measured.
 
+## The prototype (855-)
+
+**Step 1 (855): blocks, upvalues, and the collector's new roots** - `cm/rt-cm.4`, driven from Forth by
+`tests/cm/closures.4`; no front end yet, each test word being what a compiler would make of the line
+in its comment. Built on rill2's runtime:
+
+- **Frames the collector sees.** `FRAME`/`UNFRAME` push and pop a def's slots on a stack of items,
+  the frame below saved as an odd number the collector passes by; `LS@`/`LS!` read and write a slot.
+  rill2 keeps a def's locals in static variables the collector never sees - why it collects only
+  between top-level statements; in frames, a safe point inside a def is safe once its values are in
+  slots, not on a Forth stack.
+- **Upvalues** (kind 8): one cell holding an item, shared by the frame's slot and the blocks that
+  captured it - `UPV-NEW`, `UPV@`, `UPV!`.
+- **Blocks** (kind 7): `[xt][n][capture 0..n-1]`; `BLK-NEW` makes one, `BLK-CALL` runs one - rule 11's
+  block - with its captures at hand through `E@`, the blocks running kept where the collector sees
+  them.
+- **The collector**: rt.4 gains two hooks, their defaults as before - `G-PTR-KIND?`, the kinds whose
+  value points into the arena, and `G-MORE`, roots beyond the registered variables. `cm/rt-cm.4`
+  adds blocks and upvalues to both, and the frames' slots and the running blocks as roots.
+
+The test, the draft's own examples: two counters made by separate calls keep two `n`s (7 and 101),
+with a collection inside the constructor while its frame held the half-made map; a collection inside
+a running block (8); a cycle - a map, a block, an upvalue, the map - kept through two collections
+and still itself; 200,000 such cycles made and dropped, the arena under 1 MB after them; the counters
+still counting. rill2's image 68,912 -> 69,008 bytes for the hooks.
+
+Next: step 2 - value output and byte output kept apart, and captures of values - and then a front
+end small enough to write the tests in the draft's syntax.
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,
