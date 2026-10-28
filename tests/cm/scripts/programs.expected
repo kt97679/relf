@@ -1,0 +1,16 @@
+start
+ONE
+TWO
+hello world
+lines: [x y z] count: 3
+[end]
+to a file
+more
+the file is there
+not a directory
+after false
+after true
+ls failed: 2
+a missing program: 127
+cm: a list, map or block given to a program - @ spreads a list, to-json writes one
+status 2

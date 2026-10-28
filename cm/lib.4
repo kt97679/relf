@@ -49,3 +49,23 @@
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
   DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= STATUS ! EXIT THEN
   S" cm: a value that is no block or boolean as a command - programs come later" R-FAIL ;
+
+\ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
+: ARG-TEXTS ( args --- l )   \ numbers, texts and booleans; a list, map or block is an error (rule 12)
+  DUP #ARGS 0 ?DO  DUP I ARGN D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
+    IF S" cm: a list, map or block given to a program - @ spreads a list, to-json writes one" R-FAIL THEN  LOOP
+  CELL+ @ ;
+: RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
+: PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
+: PIPE-END ( --- )   PL-END STATUS ! ;
+: TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
+  BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = ELSE 0 THEN  WHILE  -1 OVER +!  REPEAT ;
+: PIPE-TEXT ( --- item )   PL-END STATUS !  TRIM-NLS K-TEXT R-BOX ;
+: NL-AT ( c-addr u --- i )   \ the first newline's place, or u
+  TUCK 0 ?DO  DUP I + C@ 10 = IF 2DROP I UNLOOP EXIT THEN  LOOP  DROP ;
+: PIPE-LINES ( --- list )   \ @( ): a program's lines, each a text
+  PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT                                  ( list c-addr u )
+  BEGIN DUP WHILE
+    2DUP NL-AT  >R  OVER R@ TXT  3 PICK SWAP ARG DROP                    ( list c-addr u )  ( R: i )
+    R> 1+ OVER MIN  TUCK - >R + R>                                      ( list c-addr' u' )
+  REPEAT 2DROP ;

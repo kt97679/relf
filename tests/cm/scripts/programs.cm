@@ -1,0 +1,23 @@
+# programs: run, piped, captured, redirected, tested - looked up when they run
+echo start
+printf '%s\n' one two | tr a-z A-Z
+var who $(printf world)
+echo hello $who
+var lines [@(printf 'x\ny\nz\n')]
+echo lines: $lines count: $(count $lines)
+var trail $(printf 'end\n\n\n')
+echo "[$trail]"
+printf 'to a file\n' > /tmp/cm-859.txt
+printf 'more\n' >> /tmp/cm-859.txt
+cat < /tmp/cm-859.txt
+if test -f /tmp/cm-859.txt { echo the file is there }
+if ! test -d /tmp/cm-859.txt { echo not a directory }
+false || echo after false
+true && echo after true
+ls /no/such/dir 2> /dev/null || echo ls failed: $status
+rm /tmp/cm-859.txt
+nosuchprogram-859 2> /dev/null
+echo a missing program: $status
+var l [a b]
+printf '%s\n' $l
+echo not reached

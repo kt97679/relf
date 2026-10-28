@@ -11,7 +11,10 @@ while, def, break, continue, return, count, range, merge; a value as the first w
 of text, numbers, true and false, "..." with $ in it, '...', $name and $name[key], ${name}, $( ) and
 @( ), $(( )) and (( )), @name, [lists], [maps: v], [:], and {blocks} with |params|. Every variable
 lives in an upvalue - boxed - so blocks capture by reference and a loop's variable is fresh each
-iteration. Not yet: programs, pipes, redirections; a def seeing the script's variables.
+iteration. Programs (859): a command whose first word is no builtin, def or value, looked up when it runs;
+pipes of programs, redirections, && and ||; $( ) and @( ) of programs their text and lines; any
+command's status as a condition; $status. Not yet: functions in pipelines; a def seeing the
+script's variables.
 """
 import re, sys
 
@@ -21,6 +24,8 @@ class CmError(Exception):
 BUILTIN = {'var', 'set', 'put', 'echo', 'append', 'if', 'for', 'while', 'def', 'break', 'continue',
            'return', 'count', 'range', 'merge', 'true', 'false'}
 NAME0, NAMEC = re.compile(r'[A-Za-z_]'), re.compile(r'[A-Za-z0-9_]')
+REDIRS = {'>': ('W/O', 1), '>>': ('A/O', 1), '<': ('R/O', 0), '2>': ('W/O', 2), '2>>': ('A/O', 2), '&>': ('W/O', 1)}
+DUPS = {'2>&1': '1 2 R-RD-DUP', '>&2': '2 1 R-RD-DUP', '1>&2': '2 1 R-RD-DUP'}
 
 # ---------------------------------------------------------------- reading
 class Reader:
@@ -241,6 +246,7 @@ class Gen:
         return '%d E@' % self.cap_index(frame, v, line)
     def read(self, name, scope, frame, line):
         v = scope.find(name)
+        if v is None and name == 'status': return 'STATUS @ D-NUM'               # the last command's (859)
         if v is None: self.err(line, 'no variable $%s - var makes one' % name)
         return self.ref(v, frame, line) + (' UPV@' if v.boxed else '')
 
@@ -260,7 +266,10 @@ class Gen:
             code = self.piece(p[1][0], scope, frame, line) + ' D-STR'
             for q in p[1][1:]: code += ' ' + self.piece(q, scope, frame, line) + ' JOIN'
             return code
-        if k == 'cap': return "['] %s CAPTURE ONE" % self.capture_word(p[1], scope, frame)
+        if k == 'cap':
+            pc = self.program_capture(p[1])
+            if pc: return self.pipeline(pc[1], True, scope, frame, pc[0]) + ' PIPE-TEXT'   # a program's text (859)
+            return "['] %s CAPTURE ONE" % self.capture_word(p[1], scope, frame)
         if k == 'ar': return self.arith(p[1], scope, frame, p[2])
         if k == 'list': return self.args(p[1], scope, frame, line)
         if k == 'map':
@@ -280,8 +289,10 @@ class Gen:
         for w in words:
             if len(w) == 1 and w[0][0] == 'spread':
                 inner = w[0][1]
-                lst = ("['] %s CAPTURE" % self.capture_word(inner[1], scope, frame)) if inner[0] == 'cap' \
-                    else self.piece(inner, scope, frame, line)
+                pc = self.program_capture(inner[1]) if inner[0] == 'cap' else None
+                if pc: lst = self.pipeline(pc[1], True, scope, frame, pc[0]) + ' PIPE-LINES'   # its lines (859)
+                elif inner[0] == 'cap': lst = "['] %s CAPTURE" % self.capture_word(inner[1], scope, frame)
+                else: lst = self.piece(inner, scope, frame, line)
                 code += ' ' + lst + ' ARG@'
             else:
                 code += ' ' + self.word(w, scope, frame, line) + ' ARG'
@@ -366,10 +377,57 @@ class Gen:
         if words and bare(words[0], '!'): return self.flag(words[1:], scope, frame, line) + ' 0='
         if len(words) == 1 and words[0][0][0] != 't':
             return self.word(words[0], scope, frame, line) + ' D-TRUE?'
-        if words and bare(words[0]) and words[0][0][1] in self.defs:
-            return self.cmd(line, words, scope, frame) + ' STATUS @ 0='
-        self.err(line, 'a condition: (( )), a value, ! and one of them, or a def called')
-    def cmd(self, line, words, scope, frame):
+        if not words: self.err(line, 'a condition was expected')
+        return self.cmd(line, words, scope, frame) + ' STATUS @ 0='       # a command's status (859)
+    def split_on(self, words, ops):
+        parts, cur, seps = [], [], []
+        for w in words:
+            if bare(w) and w[0][1] in ops: parts.append(cur); seps.append(w[0][1]); cur = []
+            else: cur.append(w)
+        parts.append(cur)
+        return parts, seps
+    def is_program(self, words):
+        return bare(words[0]) and words[0][0][1] not in BUILTIN and words[0][0][1] not in self.defs
+    def program_capture(self, cmds):                       # one command, a pipeline of programs: (line, stages)
+        if len(cmds) != 1: return None
+        line, words = cmds[0]
+        if len(self.split_on(words, ('&&', '||'))[0]) != 1: return None
+        stages = self.split_on(words, ('|',))[0]
+        return (line, stages) if all(st and self.is_program(st) for st in stages) else None
+    def stage(self, words, last, scope, frame, line):
+        code, args, i = [], [], 0
+        while i < len(words):
+            w = words[i]; t = w[0][1] if bare(w) else None
+            if t in REDIRS:
+                if i + 1 >= len(words): self.err(line, '%s wants a file' % t)
+                mode, fd = REDIRS[t]
+                code.append('%s %s %d RD-FILE' % (self.word(words[i + 1], scope, frame, line), mode, fd)); i += 2
+                if t == '&>': code.append('1 2 R-RD-DUP')
+                continue
+            if t in DUPS: code.append(DUPS[t]); i += 1; continue
+            args.append(w); i += 1
+        if not args: self.err(line, 'a stage with no program')
+        return ' '.join(code + ['%s %d PSTAGE' % (self.args(args, scope, frame, line), -1 if last else 0)])
+    def pipeline(self, stages, capture, scope, frame, line):
+        for st in stages:
+            if not st: self.err(line, 'an empty stage in a pipeline')
+            if not self.is_program(st):
+                self.err(line, 'a function in a pipeline - that comes with step 4; programs only (859)')
+        return '%d PL-BEGIN %s' % (1 if capture else 0,
+            ' '.join(self.stage(st, i == len(stages) - 1, scope, frame, line) for i, st in enumerate(stages)))
+    def cmd(self, line, words, scope, frame):              # a && b || c, as sh chains them (859)
+        parts, seps = self.split_on(words, ('&&', '||'))
+        if any(not p for p in parts): self.err(line, '&& and || stand between commands')
+        code = self.segment(line, parts[0], scope, frame)
+        for op, part in zip(seps, parts[1:]):
+            code += '\n  STATUS @ %sIF %s THEN' % ('0= ' if op == '&&' else '', self.segment(line, part, scope, frame))
+        return code
+    def segment(self, line, words, scope, frame):          # a | b | c: programs; one command: anything
+        stages = self.split_on(words, ('|',))[0]
+        if len(stages) > 1 or self.is_program(words):
+            return self.pipeline(stages, False, scope, frame, line) + ' PIPE-END'
+        return self.single(line, words, scope, frame)
+    def single(self, line, words, scope, frame):
         head = words[0]
         name = head[0][1] if bare(head) else None
         rest = words[1:]
@@ -418,7 +476,7 @@ class Gen:
             return '%s %d CM.D.%s# @ [\'] CM.D.%s DEF-CALL' % (self.args(rest, scope, frame, line), self.defs[name], name, name)
         if name is None:                                    # rule 11: a value as the first word
             return '%s %s CALL-VALUE' % (self.args(rest, scope, frame, line), self.word(head, scope, frame, line))
-        self.err(line, '%s: no such command - programs come later (v0)' % name)
+        self.err(line, '%s: no such command' % name)
     def inline(self, blk, scope, frame, line):
         if blk[0][0] != 'blk' or blk[0][1]: self.err(line, 'a block with no parameters was expected')
         return self.body(blk[0][2], Scope(frame, scope), frame)

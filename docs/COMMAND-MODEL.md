@@ -455,7 +455,15 @@ map `animal` filled, its inherited `greet` reaching the override (`hello`, `rex 
 continue and return through block values, the labeled outer break, `while`, a stale break refused;
 the printed forms, captures, `echo` not captured, `@( )`, `merge`, `append` with a spread.
 
-Next: programs and pipes - step 5's poll loop - then step 4, function stages streaming.
+**Programs (859).** A command whose first word is no builtin, def or value is a program, looked up when
+it runs - a missing one is status 127, not a refusal. Pipelines of programs, redirections (`>`, `>>`,
+`<`, `2>`, `2>>`, `&>`, `2>&1`), `&&` and `||` as sh chains them; `$( )` of a program its text, every
+trailing newline dropped, `@( )` its lines; any command's status as a condition; `$status`. A list,
+map or block given to a program is an error (rule 12). Built on rt.4's pipeline runtime - the one
+rill2 uses - with cm/lib.4's `PSTAGE` turning an argument list into texts. `tests/cm/scripts/programs.cm`.
+
+Next: step 4 - function stages in pipelines, streaming - and with it step 5's poll loop for pipelines
+that mix functions and programs.
 
 ## What it costs
 
