@@ -150,6 +150,10 @@ if sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm.$$.img > /dev/
     done
 else fail=$((fail + 1)); echo "FAIL tools/build-cm-image.sh"; fi
 rm -f /tmp/rill2.$$.img /tmp/cm.$$.img /tmp/rill2-out.$$
+# the syntax features' table (864): its rules fit every system it names, and name only its values
+if python3 tools/syntax-space.py 1000 > /tmp/rill-syntax.$$ 2>&1; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL tools/syntax-space.py"; grep -v '^genomes\|^a uniform\|has .* values' /tmp/rill-syntax.$$ | head -5; fi
+rm -f /tmp/rill-syntax.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds
 if python3 tools/rill-memcheck.py --check > /tmp/rill-memcheck.out 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL rill-memcheck"; grep -E "KEPT|fails" /tmp/rill-memcheck.out; fi

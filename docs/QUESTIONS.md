@@ -169,6 +169,8 @@ The aim restated (861): smaller than relfsh - function stages buffered, no corou
 Built (862): pipelines with functions in them.
 The front end in Forth (863): cm/cmc.4 makes cmc.py's Forth word for word; in its own image the
 command model's language is 19,112 bytes against rill2's 21,294, no prompt or library yet - on size, a draw.
+Syntax as genes (864, docs/SYNTAX-GENES.md): 33 systems split into 23 axes - a search over them could draw
+the trade-offs of size, length and hazards, gated by the same Forth; readability, and so the choice, stays the owner's.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored
