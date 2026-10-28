@@ -14,7 +14,7 @@ LS-MAX CELLS BUFFER: LS   VARIABLE LS#   VARIABLE FP
 : FRAME ( n --- )
   LS# @ OVER + 1+ LS-MAX > IF S" cm: frames too deep" R-FAIL THEN
   FP @ 2* 1+  LS LS# @ CELLS + !  1 LS# +!  LS# @ FP !
-  0 ?DO  0 LS LS# @ CELLS + !  1 LS# +!  LOOP ;
+  LS LS# @ CELLS + OVER CELLS ERASE  LS# +! ;               \ the n slots cleared at once (867)
 : UNFRAME ( --- )   FP @ 1- DUP LS# !  CELLS LS + @ 2/ FP ! ;
 : LS@ ( i --- item )   FP @ + CELLS LS + @ ;
 : LS! ( item i --- )   FP @ + CELLS LS + ! ;

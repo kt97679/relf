@@ -3,24 +3,22 @@
 
 The programs: side (tests/rill2/compare/side.rill and side.r2, 838; tests/cm/scripts/side.cm), loop and
 calls (tests/cm/compare/) - each in the three languages, one output each. Builds the images - Rill's,
-Rill 2's, the command model's with its front end resident and with it as an overlay loaded per script
-(tools/build-cm-image.sh, CM_FRONT=overlay) - and prints: each image's bytes; each program's text,
+Rill 2's, the command model's (tools/build-cm-image.sh) - and prints: each image's bytes; each program's text,
 its non-blank characters and blank-separated words, comment lines left out; and its time to run,
 compiling included - ROUNDS rounds (9 unless given), the images taking turns within a round so drift
-falls on all alike, the median and the range, in ms. Each run's output is checked against the
-program's .expected first; a wrong one is reported and not timed.
+falls on all alike, the median and the range, in ms; and, the same every run, its dispatches on CV8's
+counting engine (tools/rill-profile.py's, built once here - 866). Each run's output is checked against
+the program's .expected first; a wrong one is reported and not timed.
 """
-import os, re, statistics, subprocess, sys, tempfile, time
+import array, os, re, statistics, subprocess, sys, tempfile, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 ROUNDS = int(sys.argv[1]) if len(sys.argv) > 1 else 9
 tmp = tempfile.mkdtemp(prefix='cm-compare.')
 IMAGES = [('Rill', 'kernel64-rill.img', ['sh', 'tools/build-rill-image.sh'], {}),
           ('Rill 2', tmp + '/rill2.img', ['sh', 'tools/build-rill2-image.sh', './relf64', 'forth/kernel64.img', tmp + '/rill2.img'], {}),
-          ('cm', tmp + '/cm.img', ['sh', 'tools/build-cm-image.sh', './relf64', 'forth/kernel64.img', tmp + '/cm.img'], {}),
-          ('cm, overlay', tmp + '/cm-lean.img', ['sh', 'tools/build-cm-image.sh', './relf64', 'forth/kernel64.img', tmp + '/cm-lean.img'],
-           {'CM_FRONT': 'overlay'})]
-SUFFIX = {'Rill': '.rill', 'Rill 2': '.r2', 'cm': '.cm', 'cm, overlay': '.cm'}
+          ('cm', tmp + '/cm.img', ['sh', 'tools/build-cm-image.sh', './relf64', 'forth/kernel64.img', tmp + '/cm.img'], {})]
+SUFFIX = {'Rill': '.rill', 'Rill 2': '.r2', 'cm': '.cm'}
 PROGRAMS = {'side': {'.rill': 'tests/rill2/compare/side.rill', '.r2': 'tests/rill2/compare/side.r2',
                      '.cm': 'tests/cm/scripts/side.cm', 'expected': 'tests/rill2/compare/side.expected'},
             'loop': {s: 'tests/cm/compare/loop' + s for s in ('.rill', '.r2', '.cm')} | {'expected': 'tests/cm/compare/loop.expected'},
@@ -36,6 +34,30 @@ def run(img, prog):
     p = subprocess.run(['timeout', '120', './relf64', img, prog], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        stdin=subprocess.DEVNULL)
     return time.perf_counter() - t0, p.stdout.decode('utf-8', 'replace').replace('\r', '') + 'status %d\n' % p.returncode
+
+def counting_engine(work):
+    """cv8.c with every dispatch counted into a shared file - rill-profile.py's two patches."""
+    counts, slots = os.path.join(work, 'counts.bin'), 1 << 18
+    src = open('engine/cv8.c').read()
+    for old, new in (('#define PROF(k)\n#define PROFIP(a)\n#define PROFDUMP',
+                      '#include <sys/mman.h>\nstatic unsigned int *prof_map;\nstatic UNS64 prof_base;\n'
+                      '#define PROF(k)\n#define PROFIP(a) (prof_map[((a) - prof_base) & 0x3FFFF]++)\n#define PROFDUMP'),
+                     ('    NEXT();\ndo_call:',
+                      '    prof_base = cbase;\n    { int fd = open("%s", O_RDWR);\n      prof_map = mmap(0, %d * sizeof(unsigned int),\n'
+                      '                      PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);\n      close(fd); }\n    NEXT();\ndo_call:'
+                      % (counts, slots))):
+        if src.count(old) != 1: sys.exit('cm-compare: cv8.c has changed - %r' % old[:40])
+        src = src.replace(old, new)
+    open(os.path.join(work, 'prof.c'), 'w').write(src)
+    engine = os.path.join(work, 'relf-count')
+    subprocess.run(['cc', '-O2', '-I', 'engine', '-o', engine, os.path.join(work, 'prof.c')], check=True)
+    return engine, counts, slots
+
+def dispatches(engine, counts, slots, img, prog):
+    open(counts, 'wb').write(bytes(slots * 4))
+    r = subprocess.run([engine, img, prog], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    c = array.array('I'); c.frombytes(open(counts, 'rb').read())
+    return sum(c) if r.returncode == 0 else None
 
 def main():
     for name, img, cmd, env in IMAGES:
@@ -62,6 +84,11 @@ def main():
     for prog in PROGRAMS:
         print('  %-6s ' % prog + '   '.join('%s %.1f (%.1f-%.1f)' % (n, statistics.median(t), min(t), max(t))
                                            for (p, n), t in times.items() if p == prog))
+    engine, counts, slots = counting_engine(tmp)
+    print('\ndispatches (the same every run):')
+    for prog in PROGRAMS:
+        print('  %-6s ' % prog + '   '.join('%s %s' % (n, format(dispatches(engine, counts, slots, img, PROGRAMS[prog][SUFFIX[n]]) or 0, ','))
+                                           for n, img, _, _ in IMAGES))
     subprocess.run(['rm', '-rf', tmp])
     return 1 if bad else 0
 

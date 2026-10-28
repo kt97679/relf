@@ -376,6 +376,13 @@ parameters on the stack and counts its loops. The genes stay off by default - C.
 cmc.py makes and cm-diff compares - and taking them is the owner's choice of bytes against speed:
 d1 is 40 bytes for 14% of a call.
 
+## Decided (867)
+
+The owner handed the choice over with the criteria - smallest binary and image, good speed, short
+scripts, a consistent and friendly syntax, one way to do each thing. The command model is the
+language; the syntax genes stay at C.2's forms, the design genes d1-d3 are adopted as the one way the
+Forth is made, and the genes' alternatives and tools are retired (docs/COMMAND-MODEL.md, "One way").
+
 ## Sources
 
 Duff, "Rc - The Plan 9 Shell" (plan9.io/sys/doc/rc.html); Haahr and Rakitzis, "Es: A shell with

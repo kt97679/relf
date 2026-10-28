@@ -173,6 +173,9 @@ Syntax as genes (864, docs/SYNTAX-GENES.md): 33 systems split into 23 axes - a s
 the trade-offs of size, length and hazards, gated by the same Forth; readability, and so the choice, stays the owner's.
 The first experiment (865): 16 genomes of four syntax choices - 280 bytes apart at most, C.2 the smallest; against
 Rill and Rill 2 the command model is smaller and slower, by design not syntax. Syntax decides neither size nor speed.
+*Decided (867)*, the owner having handed it over with the criteria - smallest binary and image, good speed,
+short scripts, consistent and friendly syntax, exactly one way to do each thing: the command model (C.2).
+docs/COMMAND-MODEL.md, "One way".
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

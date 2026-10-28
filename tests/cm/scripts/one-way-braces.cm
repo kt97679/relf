@@ -1,0 +1,3 @@
+# one way to read a variable (867): $name - ${name} is an error, not a $ and a text
+var x 1
+echo ${x}

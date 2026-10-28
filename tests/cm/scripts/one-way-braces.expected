@@ -1,0 +1,2 @@
+cm: line 3: $name reads a variable - ${name} is not this language's
+status 2

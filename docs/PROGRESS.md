@@ -890,6 +890,7 @@ do not trust the absence of a line below.
 - 864 — syntax as genes: 33 shells and languages split into 23 axes (docs/SYNTAX-GENES.md); the space measured; a search can draw a front, not choose
 - 865 — 16 syntax genomes built and gated: 280 bytes at most; the front end as an overlay, 18.7% off; against Rill and Rill 2, smaller and slower
 - 866 — design genes: loops test transfers only on a throw, put without a list, plain loops, capture analysis; loop -26%, calls -24% in dispatches
+- 867 — the language decided at the owner's delegation: the command model, one way to do each thing - one front end, second ways cut
 
 ### Not tied to an iteration
 

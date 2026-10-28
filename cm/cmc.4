@@ -75,31 +75,18 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
   NAME-P N-VR N,
   BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
     GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
-: DOLLAR-P ( --- )   \ after a $: (( )), ( ), {name}, a name - or the $ itself, a text
+: DOLLAR-P ( --- )   \ after a $: (( )), ( ), a name - or the $ itself, a text (867: no ${name} - one way)
   CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P EXIT THEN
     GET DROP 0 0 N-CP N,  [CHAR] ) DUP CMDS  N) EXIT THEN
-  CUR [CHAR] { = IF  GET DROP HERE-IN
-    BEGIN CUR [CHAR] } <> WHILE CUR 0= IF S" } missing" P-ERR THEN GET DROP REPEAT
-    HERE-IN OVER - N-VR N, N)  GET DROP EXIT THEN
+  CUR [CHAR] { = IF S" $name reads a variable - ${name} is not this language's" P-ERR THEN
   CUR NAME0? IF VAR-P EXIT THEN
   S" $" N-TX N, ;
-\ [gene s8]
-: BRACE-P ( --- )   \ {...} in a quoted text: a name, a capture (cmd) or ((arithmetic)) - its $ left out (rill2's braces)
-  CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P ELSE GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N) THEN
-  ELSE CUR NAME0? 0= IF S" { in a text holds a name, ( ) or (( ))" P-ERR THEN VAR-P THEN
-  GET [CHAR] } <> IF S" } missing in a text" P-ERR THEN ;
-\ [/gene]
-: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n and \t in them - and $s, or {s} (s8)
+: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
   0 0 N-QU N,  T0
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
-\ [gene !s8]
     ELSE [CHAR] $ = IF GET DROP T) DOLLAR-P T0 ELSE GET T, THEN THEN
-\ [/gene]
-\ [gene s8]
-    ELSE [CHAR] { = IF GET DROP T) BRACE-P T0 ELSE GET T, THEN THEN
-\ [/gene]
   REPEAT DROP GET DROP T) N) ;
 : OPR, ( n --- )   HERE-IN OVER N-OP N,  0 ?DO GET DROP LOOP ;      \ an operator of n characters, a leaf
 : OPR2? ( --- f )   0  12 0 DO  S" ==!=<=>=&&||" DROP I +  DUP C@ CUR =  SWAP 1+ C@ 1 PK =  AND OR  2 +LOOP ;
@@ -135,15 +122,8 @@ VARIABLE BARE                                      \ the word read so far: plain
       BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT
       GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ELSE              \ '' too: a text, if empty
     CUR [CHAR] $ = IF GET DROP T) 0 BARE ! DOLLAR-P T0 ELSE
-    CUR [CHAR] \ = IF GET DROP GET ?DUP IF T, THEN 0 BARE ! ELSE
-\ [gene s7]
-    CUR [CHAR] ( = IF GET DROP T) 0 BARE ! 0 0 N-CP N, [CHAR] ) DUP CMDS N) T0 ELSE      \ (cmd): fish's, Elvish's
-    GET T, THEN
-\ [/gene]
-\ [gene !s7]
-    GET T,
-\ [/gene]
-    THEN THEN THEN THEN
+    GET T,                                                  \ \ too (867): quotes are the one way to escape
+    THEN THEN THEN
   REPEAT DROP T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
   BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN DROP ;
@@ -174,7 +154,7 @@ VARIABLE BARE                                      \ the word read so far: plain
   0 0 N-WRD N,
   CUR [CHAR] [ = IF DROP GET DROP LIST-P N) EXIT THEN
   CUR [CHAR] { = IF DROP GET DROP BLOCK-P N) EXIT THEN
-  CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF DROP GET GET 2DROP ARITH-P N) EXIT THEN
+  CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF S" arithmetic is $(( ))" P-ERR THEN     \ one way (867)
   CUR [CHAR] @ = IF DROP GET DROP 0 0 N-SP N,
     CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N)
     ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) EXIT THEN
@@ -285,7 +265,6 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
   >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
 VARIABLE AP                                        \ the next of (( ))'s nodes
 : AOP? ( c-addr u --- f )   AP @ @ N-OP = IF AP @ @A AP @ @B COMPARE 0= ELSE 2DROP 0 THEN ;
-\ [gene !s9]
 : A-TAKE ( --- c-addr u )   S" D" S| AP @ @A AP @ @B CAT  AP @ N+ AP ! ;   \ the operator taken: D and it
 DEFER A-OR ( --- c-addr u )
 : A-PRIM ( --- c-addr u )
@@ -306,36 +285,9 @@ DEFER A-OR ( --- c-addr u )
   BEGIN S" ||" AOP? WHILE AP @ N+ AP !  S" D-TRUE? IF TRUE-BOX ELSE" ++ A-AND ++ S" D-TRUE? D-BOOL THEN" ++ REPEAT ;
 ' A-OR' IS A-OR
 : ARITH ( ar --- c-addr u )   AP @ >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
-\ [/gene]
-\ [gene s9]
-: P-END? ( --- f )   AP @ @ 0= S" )" AOP? OR ;            \ prefix: (( + $n 1 )), (( * (+ $a 1) 2 )) - no precedence
-: P-COMBINE ( c-addr u c-addr2 u2 op u3 --- c-addr4 u4 )   \ two operands' Forth and the operator's
-  2DUP S" &&" COMPARE 0= IF 2DROP 2SWAP S" D-TRUE? IF" ++ 2SWAP ++ S" D-TRUE? D-BOOL ELSE FALSE-BOX THEN" ++ EXIT THEN
-  2DUP S" ||" COMPARE 0= IF 2DROP 2SWAP S" D-TRUE? IF TRUE-BOX ELSE" ++ 2SWAP ++ S" D-TRUE? D-BOOL THEN" ++ EXIT THEN
-  >R >R ++ S" D" S| R> R> CAT ++ ;
-DEFER P-EXPR ( --- c-addr u )
-: P-OP ( --- c-addr u )   \ an operator, then its operands up to ) or the end: - and ! alone negate
-  AP @ @ N-OP <> IF S" (( )): an operator first" G-ERR THEN
-  AP @ DUP @A SWAP @B  AP @ N+ AP !
-  P-END? IF S" (( )): an operator with nothing after it" G-ERR THEN
-  P-EXPR 2SWAP
-  P-END? IF  2DUP S" -" COMPARE 0= IF 2DROP S" D-NEG" ++ EXIT THEN
-    S" !" COMPARE 0= IF S" D-TRUE? 0= D-BOOL" ++ EXIT THEN  S" (( )): two operands or more" G-ERR THEN
-  BEGIN P-END? 0= WHILE  >R >R  P-EXPR  R> R> 2DUP >R >R  P-COMBINE  R> R>  REPEAT 2DROP ;
-: P-EXPR' ( --- c-addr u )   \ a number, a $value, or ( operator operands )
-  AP @ DUP @ 0= IF S" (( )) ends too soon" G-ERR THEN
-  DUP @ N-OP = IF  DUP @A OVER @B S" (" COMPARE IF S" (( )): an operator where a value goes" G-ERR THEN
-    DROP AP @ N+ AP !  P-OP  S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
-  DUP NSKIP AP !  DUP @ N-NM = IF @A #$ S" D-NUM" ++ EXIT THEN  PIECE ;
-' P-EXPR' IS P-EXPR
-: ARITH ( ar --- c-addr u )   \ an operator first, or a value alone
-  AP @ >R  N+ AP !  AP @ @ N-OP = S" (" AOP? 0= AND IF P-OP ELSE P-EXPR THEN
-  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
-\ [/gene]
 : MAP-CODE ( mp --- c-addr u )
   S" R-NEW-RECORD K-REC R-BOX" ROT N+
   BEGIN DUP @ WHILE  >R S" DUP" ++ R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++  R> NSKIP REPEAT DROP ;
-\ [gene d3]
 VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block refers to: those variables boxed (866)
 : CAPS+ ( c-addr u --- )   CAPS# @ CAPS-MAX = IF TOO-BIG THEN  CAPS @ CAPS# @ 2* CELLS + TUCK CELL+ ! !  1 CAPS# +! ;
 : CAPTURED? ( c-addr u --- f )
@@ -364,24 +316,12 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   0 0 ROT BEGIN DUP @ N-TX = WHILE
     DUP @A OVER @B 2DUP CAPTURED? DUP >R DECLARE DROP
     R> IF ROT 1 3 PICK LSHIFT OR ROT ROT THEN  SWAP 1+ SWAP  N+ REPEAT  NIP SWAP ;
-\ [/gene]
 : BLOCK-CODE ( bk --- c-addr u )   \ a block: a word with a frame of its own - made, with its captures
   FR @ >R  2 NEW-FRAME FR !  SCOPE(
-\ [gene !d3]
-  DUP N+ BEGIN DUP @ N-TX = WHILE DUP @A OVER @B -1 DECLARE DROP N+ REPEAT
-  S" B" FRESH 2SWAP BODY-CODE
-\ [/gene]
-\ [gene d3]
   DUP N+ PARAMS >R
   S" B" FRESH 2SWAP BODY-CODE
-\ [/gene]
   ROT @A >R  2OVER S" :" 2SWAP ++  FR @ CELL+ @ #++ S" FRAME" ++
-\ [gene !d3]
-  R> ?DUP IF #$ S" BLK-BIND" ++ ELSE S" DROP" THEN ++  2SWAP ++ S" UNFRAME ;" ++ OUT+
-\ [/gene]
-\ [gene d3]
   R> ?DUP IF #$ R> #++ S" BIND-M" ++ ELSE R> DROP S" DROP" THEN ++  2SWAP ++ S" UNFRAME ;" ++ OUT+
-\ [/gene]
   FR @ )SCOPE R> FR !
   0 0 2 PICK 2 CELLS + @ 0 ?DO  2 PICK 3 I + CELLS + @ REF ++  LOOP
   ROT 2 CELLS + @ #++ S" [']" ++ 2SWAP ++ S" BLK-NEW" ++ ;
@@ -422,30 +362,17 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
     INLINE 2SWAP S" ELSE" ++ 2SWAP ++ S" THEN" ++ ROT DROP EXIT THEN
   DUP S" elif" BARE= IF NSKIP 3 PICK RECURSE 2SWAP S" ELSE" ++ 2SWAP ++ S" THEN" ++ ROT DROP EXIT THEN
   S" after if's block: else or elif" G-ERR ;
-\ [gene d2]
-: PLAIN? ( w --- f )   \ a loop's body with no break, no continue and no block in it: run plain (866)
+: LOOP-PLAIN? ( w --- f )   \ a loop's body with no break, no continue and no block in it: run plain (866)
   N+ DUP NSKIP SWAP N+
   BEGIN 2DUP <> WHILE
     DUP @ N-BK = IF 2DROP 0 EXIT THEN
     DUP @ N-WRD = IF DUP S" break" BARE= OVER S" continue" BARE= OR IF 2DROP 0 EXIT THEN THEN
   N+ REPEAT 2DROP -1 ;
-\ [/gene]
 : LOOP-BODY ( w c-addr u --- c-addr2 u2 id v )   \ a loop's body, a word of its own: its name, the slots of
   SCOPE(  S" %loop" 0 DECLARE V-SLOT >R            \ the loop's number and of its variable - fresh each time
-\ [gene !d3]
-  DUP IF -1 DECLARE V-SLOT ELSE 2DROP 0 THEN >R
-  S" L" FRESH  R@ IF R@ #$ S" LS@ UPV-NEW" ++ R@ #++ S" LS!" ++ ELSE 0 0 THEN
-\ [/gene]
-\ [gene d3]
   DUP IF 2DUP CAPTURED? DECLARE V-SLOT ELSE 2DROP 0 THEN >R
   S" L" FRESH  R@ SC @ CELL+ @ 5 CELLS + @ AND IF R@ #$ S" LS@ UPV-NEW" ++ R@ #++ S" LS!" ++ ELSE 0 0 THEN
-\ [/gene]
-\ [gene !d2]
-  4 PICK N+ N+ BODY-CODE ++  2OVER 2SWAP DEF-WORD  ROT DROP  R> R> SWAP  )SCOPE ;
-\ [/gene]
-\ [gene d2]
-  4 PICK N+ N+ BODY-CODE ++  2OVER 2SWAP DEF-WORD  ROT PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
-\ [/gene]
+  4 PICK N+ N+ BODY-CODE ++  2OVER 2SWAP DEF-WORD  ROT LOOP-PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
 : FOR-CMD ( from to --- c-addr u )   \ for name words... { body }
   OVER BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
   FR @ F-SLOT >R  OVER SWAP LAST-W
@@ -453,16 +380,12 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   3 PICK NSKIP DUP NSKIP 4 PICK = SWAP N+ @ N-SP <> AND IF S" FOR-ONE" ++ THEN
   R@ #++ S" LS!" ++  R@ #++
   2SWAP SWAP BARE$ LOOP-BODY
-\ [gene d2]
   OVER 0= IF NIP 4 ROLL 4 ROLL ROT #++ S" [']" ++ 2SWAP ++ S" C-FOR-PLAIN" ++ R> DROP EXIT THEN
-\ [/gene]
   5 ROLL 5 ROLL ROT #++ ROT #++ S" [']" ++ 2SWAP ++ S" C-FOR" ++  R> DROP ;
 : WHILE-CMD ( from to --- c-addr u )   \ while condition { body }
   S" W" FRESH 2SWAP OVER SWAP LAST-W  TUCK FLAG ROT >R  2OVER 2SWAP DEF-WORD  R>
   0 0 LOOP-BODY DROP
-\ [gene d2]
   ?DUP 0= IF  >R >R S" BEGIN" 2SWAP ++ S" WHILE" ++ R> R> ++ S" REPEAT" ++ EXIT THEN   \ plain: compiled in place
-\ [/gene]
   #$ S" [']" ++  5 ROLL 5 ROLL ++ S" [']" ++ 2SWAP ++ S" C-WHILE" ++ ;
 : DEF-ERR ( --- )   S" def name { ... }" G-ERR ;
 : DEF-CMD ( from to --- c-addr u )   \ def name { |params| ... }: CM.D.name, a deferred word - its frame of its own
@@ -470,41 +393,18 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   OVER SWAP TWO? 0= IF DEF-ERR THEN  DUP BARE? 0= IF DEF-ERR THEN
   DUP NSKIP N+ DUP @ N-BK <> IF DEF-ERR THEN
   SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP
-\ [gene !d3]
-  N+ BEGIN DUP @ N-TX = WHILE DUP @A OVER @B -1 DECLARE DROP N+ REPEAT  BODY-CODE
-\ [/gene]
-\ [gene d3]
   N+ PARAMS >R  BODY-CODE
-\ [/gene]
   2OVER S" : CM.D." 2SWAP CAT S" -IMPL" CAT 2SWAP ++ S" ;" ++
   S" ' CM.D." ++ 2OVER CAT S" -IMPL IS CM.D." CAT 2OVER CAT
-\ [gene !d3]
-  FR @ CELL+ @ 1- #++ S" CM.D." ++ 2SWAP CAT S" # !" CAT OUT+
-\ [/gene]
-\ [gene d3]
   FR @ CELL+ @ 1- #++ S" CM.D." ++ 2OVER CAT S" # !" CAT  R> #++ S" CM.D." ++ 2SWAP CAT S" % !" CAT OUT+
-\ [/gene]
   R> SC ! R> FR !  0 0 ;
 : NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
-\ [gene !s2]
 : BIND ( from to --- name value )   \ var name value, set name value: their two words
   2DUP TWO? 0= IF S" var name value, set name value" G-ERR THEN  DROP DUP NSKIP ;
-\ [/gene]
-\ [gene s2]
-: B-ERR ( --- )   S" var name = value, set name = value" G-ERR ;
-: BIND ( from to --- name value )   \ var name = value, set name = value (Elvish, YSH, Nushell, Ion)
-  2DUP = IF B-ERR THEN  >R DUP NSKIP DUP R@ = IF B-ERR THEN
-  DUP S" =" BARE= 0= IF B-ERR THEN  NSKIP DUP R@ = IF B-ERR THEN  DUP NSKIP R> <> IF B-ERR THEN ;
-\ [/gene]
 : VAR-CMD ( from to --- c-addr u )   \ var name value
   BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN  WORD-CODE ROT BARE$
   2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
-\ [gene !d3]
-  -1 DECLARE V-SLOT >R S" UPV-NEW" ++ R> #++ S" LS!" ++ ;
-\ [/gene]
-\ [gene d3]
   2DUP CAPTURED? DUP >R DECLARE V-SLOT R> IF >R S" UPV-NEW" ++ R> THEN #++ S" LS!" ++ ;
-\ [/gene]
 : SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
 : KEYS? ( c-addr u --- f )   \ [k][k]...: none empty
   BEGIN DUP WHILE
@@ -519,13 +419,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   BIND OVER BARE? 0= IF S" set: a name first" G-ERR THEN  WORD-CODE ROT BARE$
   2DUP [CHAR] [ CHAR-AT >R  OVER R@ NAME? 0= IF SET-ERR THEN  2DUP R@ /STRING KEYS? 0= IF SET-ERR THEN
   OVER R@ FIND-VAR ?DUP 0= IF  S" set: no variable" S| 2OVER DROP R@ ++ S" - var makes one" ++ G-ERR THEN
-\ [gene !d3]
-  OVER R@ = IF  >R 2DROP R> REF ++ S" UPV!" ++  R> DROP EXIT THEN
-\ [/gene]
-\ [gene d3]
   OVER R@ = IF  >R 2DROP R>  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ ELSE
     DUP 3 CELLS + @ FR @ <> IF S" cm: an unboxed variable set from a block" G-ERR THEN  V-SLOT #++ S" LS!" ++ THEN  R> DROP EXIT THEN
-\ [/gene]
   DROP OVER R@ READ$ 2SWAP R> /STRING
   BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
     DUP WHILE  >R >R ++ S" CM-AT" ++ R> R>  REPEAT
@@ -536,13 +431,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
   S" var" NAMED? IF 2DROP VAR-CMD EXIT THEN
   S" set" NAMED? IF 2DROP SET-CMD EXIT THEN
-\ [gene !d1]
-  S" put" NAMED? IF 2DROP ARGS-CODE S" PUTS" ++ EXIT THEN
-\ [/gene]
-\ [gene d1]
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE S" PUT" ++ EXIT THEN THEN
     ARGS-CODE S" PUTS" ++ EXIT THEN                         \ put one value: PUT it, no list made (866)
-\ [/gene]
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ EXIT THEN
   2DUP S" count range merge each has" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER BARE? 0= IF APPEND-ERR THEN
@@ -560,12 +450,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
     S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
   S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
   2DUP DEF-FIND ?DUP IF >R 2SWAP ARGS-CODE R> 2 CELLS + @ #++
-\ [gene !d3]
-    S" CM.D." ++ 2OVER CAT S" # @ ['] CM.D." CAT 2SWAP CAT S" DEF-CALL" ++ EXIT THEN
-\ [/gene]
-\ [gene d3]
     S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT S" DEF-CALL-M" ++ EXIT THEN
-\ [/gene]
   S" : no such command" CAT G-ERR ;
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end
@@ -645,13 +530,8 @@ VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0
   ND0 @  0 0 CMDS N)
   DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF @A >R BARE$ R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
   DEFS# @ 0 ?DO  DEFS @ I 3 * CELLS + DUP @ SWAP CELL+ @
-\ [gene !d3]
-    S" DEFER CM.D." 2OVER CAT S" VARIABLE CM.D." ++ 2SWAP CAT S" #" CAT OUT+  LOOP
-\ [/gene]
-\ [gene d3]
     S" DEFER CM.D." 2OVER CAT S" VARIABLE CM.D." ++ 2OVER CAT S" #" CAT S" VARIABLE CM.D." ++ 2SWAP CAT S" %" CAT OUT+  LOOP
   SCAN-CAPS
-\ [/gene]
   0 NEW-FRAME FR !  SCOPE(  S" %def" 0 0 VAR+ DROP
   0 0 ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE ?DUP IF S" R-GC?" 2SWAP ++ ++ ELSE DROP THEN  R> NSKIP REPEAT DROP
   S" : CM.MAIN" 2SWAP ++ S" ;" ++ OUT+  FR @ CELL+ @ 1- #$ S" ' CM.MAIN DEF-RUN" ++ OUT+

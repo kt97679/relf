@@ -1,8 +1,10 @@
-# The command model - a draft (850)
+# The command model (850; the language since 867)
 
-**Status: a draft.** A potential base for further development, captured at the owner's asking
-after the A.4 discussion - not a decision. Its rules, names and spellings are all open. Q46 stays
-open; this is its option C.
+**Status: the language (867).** Drafted at 850 as Q46's option C, a base for further development; at
+867, the owner having handed the choice over, chosen over A.4 by the owner's criteria - the smallest
+binary and image, good speed, short scripts, a consistent and friendly syntax, and exactly one way to
+do each thing - for the reasons in "One way" below. The rules here are the language's; where a rule
+below says more than one way, "One way" says which is left.
 
 ## The idea
 
@@ -41,7 +43,7 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    first word names what runs - a function, a builtin, or a program, looked up when it runs; the
    rest are its arguments.
 2. A bare word is text. `$name` is a variable's value; `$name[key]` an element of it, any depth;
-   `${name}` delimits; `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
+   (867: no `${name}` - `$name` the one way); `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
    exactly one value - a function's single value, or a program's text with its trailing newlines
    dropped; `@(cmd)` is several - a function's values, a program's lines. A capture takes value
    output only: a function's `echo` text is never captured, it goes on to the byte output (852).
@@ -51,8 +53,9 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
 5. `[ ... ]` is a list whose elements are words, `[a b $x]`; `[key: value ...]` a map, `[:]` an empty one (853). Nesting is free.
 6. `{ ... }` is a block - code handed to a command, which runs it: `if`, `while`, `for`, `each`
    and `def` are commands that take blocks. `{|a b| ... }` names a block's arguments.
-7. `(( ... ))` is arithmetic and comparison, infix - the one place with an expression grammar,
-   bash's own form (in an ordinary word `*` globs and `>` redirects). `$(( ... ))` gives its value.
+7. `$(( ... ))` is arithmetic and comparison, infix - the one place with an expression grammar,
+   bash's own form (in an ordinary word `*` globs and `>` redirects); its value is a value like any
+   other, `if $(( $n > 2 ))` too (867: a bare `(( ))` is an error - one way).
 8. Pipes, redirections, `&&`, `||` and `&` work as in the shell, for functions and programs alike.
    A pipe between functions carries values; between programs, bytes; at a boundary, lines.
    Function stages stream - an endless generator must not hang a pipeline (852; how is the runtime
@@ -81,7 +84,8 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
     strings - a list or map in its literal syntax, a block as `<block>`; given to a program as one
     argument, a list, map or block is an error that says `@` or `to-json`. `to-json` writes data at
     any depth, never truncating; a block or a cycle in it is an error that says where (853).
-13. `#` at a word's start begins a comment; `\` escapes in bare words and in `"..."`; a line goes on
+13. `#` at a word's start begins a comment; `\` escapes in `"..."` only - in a bare word it is itself,
+    as in rc, and quotes are the one way to escape (867); a line goes on
     after `|`, `&&` and `||`, and inside an open `[`, `{` or `(`. A command that takes blocks takes
     them as its last words - `if cond... {..} else {..}` - so `if ! nc -z $h $p { ... }` runs
     `! nc -z $h $p` (852).
@@ -542,6 +546,33 @@ loops now test for break and continue only when their body threw (adopted), and 
 default - `put` of one value without a list, plain loops where no transfer can come, capture analysis
 (a variable no block value refers to kept unboxed) - bring `loop` to 1.15 times Rill 2's dispatches
 and `calls` to 3.4 times (docs/SYNTAX-GENES.md).
+
+## One way (867)
+
+The owner asked for exactly one way to do each thing, and handed the choice over. What was decided,
+each from what was measured (docs/SYNTAX-GENES.md):
+
+- **The language is the command model, not A.4.** On size the two are even and the command model a
+  little smaller (its image 68,288 bytes against Rill 2's 69,008); it has one form of statement - words,
+  the first choosing what runs - where A.4 has two, code and commands, chosen by the first token, and two
+  ways to call (`f(x)` and `f x`); its scripts are longer (7-60%) and its calls slower (3.3 times Rill
+  2's dispatches), which design can work on, as 866 began to.
+- **The syntax genes stay at C.2's forms:** `var x v`, `$(cmd)`, `"$x"`, infix `$(( ))` - each the
+  smallest, and `(cmd)` would have kept `$(cmd)` beside it in quotes, two ways.
+- **The design genes are the one way the Forth is made:** `put` of one value without a list, plain
+  loops where no transfer can come, capture analysis. Their alternatives are gone from cm/cmc.4.
+- **Three second ways cut:** `${name}` (an error that says `$name`), a bare `(( ))` (an error that says
+  `$(( ))` - not a program named `((` that quietly fails), `\` escaping in bare words (now itself, as rc
+  has it; quotes escape).
+- **One front end:** cm/cmc.4. tools/cmc.py, the Python prototype it was checked against word for word
+  (863), is retired, with the tools of the genes' experiments; the scripts' outputs check the one left.
+- **The front end stays in the image.** As an overlay (865) the image was 18.7% smaller, but the front
+  end beside it is 32 KB of source against 12.7 KB compiled - more on disk in all - and every script
+  started three times slower.
+
+Still to come, one way each: a prompt, a library, Rill's and Rill 2's retirement once the command
+model has both (one language), and the rest of a call's cost - its arguments in a list, a capture's list
+for its one value.
 
 ## What it costs
 

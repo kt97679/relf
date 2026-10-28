@@ -98,7 +98,7 @@ def cm_names(text):
     blocks = re.findall(r'(?ms)^\\ \[gene [^\]]*\]\n(.*?)^\\ \[/gene\]', text)
     plain = re.sub(r'(?ms)^\\ \[gene [^\]]*\]\n.*?^\\ \[/gene\]', '', text)
     own = names(plain)
-    return own + sorted({n for b in blocks for n in names(b)} - set(own))
+    return own + sorted({n for b in blocks for n in names(b)})      # once each - but beside its own words too (867)
 for f in sorted(x for x in srcs if x.startswith('cm/')):
     for n in cm_names(srcs[f]):
         if n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
