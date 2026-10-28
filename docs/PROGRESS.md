@@ -885,6 +885,7 @@ do not trust the absence of a line below.
 - 858 — a front end, tools/cmc.py: the draft's examples run as written (tests/cm/scripts/)
 - 859 — programs in the prototype: pipelines, redirections, && and ||, captures of programs, $status; step 4 designed
 - 861 — the aim restated, smaller than relfsh: coroutines and the engine primitive set aside, function stages buffered
+- 862 — pipelines with functions in them, buffered (cm/pipe.4); the runtime 4684 bytes
 
 ### Not tied to an iteration
 

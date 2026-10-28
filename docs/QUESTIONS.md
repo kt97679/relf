@@ -166,6 +166,7 @@ The prototype begun (855): blocks, upvalues and the collector's new roots, teste
 continue and return by identity. A front end (858): tools/cmc.py - the draft's examples run as written.
 Programs (859): pipelines, redirections, captures, statuses.
 The aim restated (861): smaller than relfsh - function stages buffered, no coroutines.
+Built (862): pipelines with functions in them.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

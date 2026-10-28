@@ -22,7 +22,7 @@ class CmError(Exception):
     pass
 
 BUILTIN = {'var', 'set', 'put', 'echo', 'append', 'if', 'for', 'while', 'def', 'break', 'continue',
-           'return', 'count', 'range', 'merge', 'true', 'false'}
+           'return', 'count', 'range', 'merge', 'true', 'false', 'each'}
 NAME0, NAMEC = re.compile(r'[A-Za-z_]'), re.compile(r'[A-Za-z0-9_]')
 REDIRS = {'>': ('W/O', 1), '>>': ('A/O', 1), '<': ('R/O', 0), '2>': ('W/O', 2), '2>>': ('A/O', 2), '&>': ('W/O', 1)}
 DUPS = {'2>&1': '1 2 R-RD-DUP', '>&2': '2 1 R-RD-DUP', '1>&2': '2 1 R-RD-DUP'}
@@ -268,7 +268,7 @@ class Gen:
             return code
         if k == 'cap':
             pc = self.program_capture(p[1])
-            if pc: return self.pipeline(pc[1], True, scope, frame, pc[0]) + ' PIPE-TEXT'   # a program's text (859)
+            if pc: return self.pipeline(pc[1], True, scope, frame, pc[0], 'PIPE-TEXT')   # a program's text (859, 862)
             return "['] %s CAPTURE ONE" % self.capture_word(p[1], scope, frame)
         if k == 'ar': return self.arith(p[1], scope, frame, p[2])
         if k == 'list': return self.args(p[1], scope, frame, line)
@@ -290,7 +290,7 @@ class Gen:
             if len(w) == 1 and w[0][0] == 'spread':
                 inner = w[0][1]
                 pc = self.program_capture(inner[1]) if inner[0] == 'cap' else None
-                if pc: lst = self.pipeline(pc[1], True, scope, frame, pc[0]) + ' PIPE-LINES'   # its lines (859)
+                if pc: lst = self.pipeline(pc[1], True, scope, frame, pc[0], 'PIPE-LINES')   # its lines (859, 862)
                 elif inner[0] == 'cap': lst = "['] %s CAPTURE" % self.capture_word(inner[1], scope, frame)
                 else: lst = self.piece(inner, scope, frame, line)
                 code += ' ' + lst + ' ARG@'
@@ -388,12 +388,12 @@ class Gen:
         return parts, seps
     def is_program(self, words):
         return bare(words[0]) and words[0][0][1] not in BUILTIN and words[0][0][1] not in self.defs
-    def program_capture(self, cmds):                       # one command, a pipeline of programs: (line, stages)
+    def program_capture(self, cmds):                       # one command, a pipeline ending in a program: (line, stages)
         if len(cmds) != 1: return None
         line, words = cmds[0]
         if len(self.split_on(words, ('&&', '||'))[0]) != 1: return None
         stages = self.split_on(words, ('|',))[0]
-        return (line, stages) if all(st and self.is_program(st) for st in stages) else None
+        return (line, stages) if all(stages) and self.is_program(stages[-1]) else None
     def stage(self, words, last, scope, frame, line):
         code, args, i = [], [], 0
         while i < len(words):
@@ -408,13 +408,33 @@ class Gen:
             args.append(w); i += 1
         if not args: self.err(line, 'a stage with no program')
         return ' '.join(code + ['%s %d PSTAGE' % (self.args(args, scope, frame, line), -1 if last else 0)])
-    def pipeline(self, stages, capture, scope, frame, line):
+    def pipeline(self, stages, capture, scope, frame, line, end=None):
+        """A pipeline: programs side by side an OS pipeline; a function stage buffered (862). end: the
+        last stage's - None for a program run (status), 'PIPE-TEXT' or 'PIPE-LINES' for a capture."""
+        if any(not st for st in stages): self.err(line, 'an empty stage in a pipeline')
+        segs = []
         for st in stages:
-            if not st: self.err(line, 'an empty stage in a pipeline')
-            if not self.is_program(st):
-                self.err(line, 'a function in a pipeline - that comes with step 4; programs only (859)')
-        return '%d PL-BEGIN %s' % (1 if capture else 0,
-            ' '.join(self.stage(st, i == len(stages) - 1, scope, frame, line) for i, st in enumerate(stages)))
+            if self.is_program(st) and segs and segs[-1][0] == 'p': segs[-1][1].append(st)
+            else: segs.append(('p' if self.is_program(st) else 'f', [st] if self.is_program(st) else st))
+        code, state = [], None                              # what the stack holds for the next: None, a list, a path
+        for k, (kind, body) in enumerate(segs):
+            last, nxt = k == len(segs) - 1, (segs[k + 1][0] if k + 1 < len(segs) else None)
+            if kind == 'f':
+                w = self.fresh('S')
+                self.out.append(': %s ( --- )\n  %s ;' % (w, self.single(line, body, Scope(frame, scope), frame)))
+                inp = 'ARGL ' if state is None else ''
+                if last: code.append("%s['] %s FN-RUN" % (inp, w)); state = None
+                elif nxt == 'p': code.append("%s['] %s FN>FILE" % (inp, w)); state = 'path'
+                else: code.append("%s['] %s FN-LIST" % (inp, w)); state = 'list'
+            else:
+                cap = (not last) or end is not None
+                pre = 'DUP R/O 0 RD-FILE ' if state == 'path' else ''
+                stg = ' '.join(self.stage(st, i == len(body) - 1, scope, frame, line) for i, st in enumerate(body))
+                fin = 'PIPE-LINES' if not last else (end or 'PIPE-END')
+                c = '%d PL-BEGIN %s%s %s' % (1 if cap else 0, pre, stg, fin)
+                if state == 'path': c += ' DEL-PATH' if fin == 'PIPE-END' else ' SWAP DEL-PATH'
+                code.append(c); state = 'list' if not last else None
+        return ' '.join(code)
     def cmd(self, line, words, scope, frame):              # a && b || c, as sh chains them (859)
         parts, seps = self.split_on(words, ('&&', '||'))
         if any(not p for p in parts): self.err(line, '&& and || stand between commands')
@@ -425,7 +445,7 @@ class Gen:
     def segment(self, line, words, scope, frame):          # a | b | c: programs; one command: anything
         stages = self.split_on(words, ('|',))[0]
         if len(stages) > 1 or self.is_program(words):
-            return self.pipeline(stages, False, scope, frame, line) + ' PIPE-END'
+            return self.pipeline(stages, False, scope, frame, line)
         return self.single(line, words, scope, frame)
     def single(self, line, words, scope, frame):
         head = words[0]
@@ -450,7 +470,7 @@ class Gen:
             return '%s %s %s D-SET' % (code, self.word(kw[-1], scope, frame, line), value)
         if name in ('put', 'echo'):
             return '%s %s' % (self.args(rest, scope, frame, line), 'PUTS' if name == 'put' else 'ECHO')
-        if name in ('count', 'range', 'merge'):
+        if name in ('count', 'range', 'merge', 'each'):
             return '%s %s-OF' % (self.args(rest, scope, frame, line), name.upper())
         if name == 'append':
             if not rest or not bare(rest[0]): self.err(line, 'append name values')
@@ -537,7 +557,7 @@ def compile_cm(src):
     for line, words in cmds:                                # a safe point before each of the script's own
         c = g.cmd(line, words, s, main)
         if c: lines.append('R-GC?  ' + c)
-    out = ['S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED  S" cm/ctl.4" INCLUDED  S" cm/lib.4" INCLUDED']
+    out = ['S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED  S" cm/ctl.4" INCLUDED  S" cm/lib.4" INCLUDED  S" cm/pipe.4" INCLUDED']
     out += ['DEFER CM.D.%s  VARIABLE CM.D.%s#' % (d, d) for d in g.defs]
     out += g.out
     out.append(': CM.MAIN ( --- )\n  %s ;' % '\n  '.join(lines))

@@ -486,6 +486,15 @@ The price: a function stage does not stream - an endless function generator in a
 hang, as the first review warned. Programs are untouched by it. Reviews asked for streaming; the
 owner's aim decides against what it costs.
 
+Built (862): `cm/pipe.4` - a function's input stack, `each`, a function stage run to a list
+(`FN-LIST`), to the output it is in (`FN-RUN`), or into a temporary file for the programs after it
+(`FN>FILE`: standard output pointed at the file the way rt.4's error path points it at fd 2, values
+printed into it as at the terminal), each putting everything back on a failure; `cmc.py` groups
+programs side by side into one OS pipeline and buffers at each function's edge. `tests/cm/scripts/
+pipes.cm`: function to function to function, `echo` into a program, a function's values into `sort`,
+programs into a function, function to program to function, captures of mixed pipelines, a block as a
+stage keeping its side effects - no temporary file left. The runtime, all of it, 4684 bytes loaded.
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,

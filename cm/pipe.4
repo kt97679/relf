@@ -1,0 +1,34 @@
+\ cm/pipe.4 - the command model's runtime, step 4 decided for size (862): pipelines with functions
+\ in them, buffered - docs/COMMAND-MODEL.md, "Step 4, decided for size". Loaded after cm/lib.4.
+\ A function stage runs to its end in the shell's process, keeping its side effects; its input is a
+\ list, read with each. Its values go on as a list to a function after it; to a program after it, its
+\ output - values as lines, echo's text with them, in order - goes to a temporary file the program
+\ reads. A program before a function is read whole, its lines the function's input.
+
+64 CONSTANT IN-MAX
+IN-MAX CELLS BUFFER: INS   VARIABLE IN#
+: INPUT ( --- list )   IN# @ IF INS IN# @ 1- CELLS + @ ELSE ARGL THEN ;
+: IN-PUSH ( list --- )
+  IN# @ IN-MAX < 0= IF S" cm: pipelines too deep" R-FAIL THEN  INS IN# @ CELLS + !  1 IN# +! ;
+: EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input
+  DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT
+  DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;
+: FN-RUN ( list xt --- )   \ a function stage, its values to the output it is in
+  SWAP IN-PUSH  CATCH  -1 IN# +!  THROW ;
+VARIABLE XT-CAPTURE  ' CAPTURE XT-CAPTURE !XT      \ !XT and @XT: an xt that survives a saved image (742)
+VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
+: FN-LIST ( list xt --- list' )   \ a function stage, its values a list for the function after it
+  SWAP IN-PUSH  XT-CAPTURE @XT CATCH  -1 IN# +!  THROW ;
+VARIABLE TMP#
+: TMP-PATH ( --- text )   1 TMP# +!  S" /tmp/cm" TXT GETPID D-NUM JOIN S" ." TXT JOIN TMP# @ D-NUM JOIN ;
+: PATH$ ( text --- c-addr u )   CELL+ @ R-T@ ;
+: DEL-PATH ( text --- )   PATH$ DELETE-FILE DROP ;
+: FN>FILE ( list xt --- path )   \ a function stage before a program: its output into a temporary file
+  TMP-PATH >R
+  R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list xt fid )
+  PAD 0 1 WRITE DROP  1 10 DUP-FROM  OVER 1 DUP2 DROP                          ( list xt fid kept )
+  0 SINKS SINK# @ CELLS + !  1 SINK# +!            \ its values printed, as at the terminal: into the file
+  2SWAP XT-FN-RUN @XT CATCH  DUP IF >R 2DROP R> THEN                               ( fid kept code )
+  -1 SINK# +!  PAD 0 1 WRITE DROP  OVER 1 DUP2 DROP  SWAP CLOSE-FILE DROP      ( fid code )
+  R-OUT-KEPT @ ?DUP IF CLOSE-FILE DROP 0 R-OUT-KEPT ! THEN   \ an error told inside: its keeping undone
+  SWAP CLOSE-FILE DROP  R> SWAP ?DUP IF OVER DEL-PATH NIP THROW THEN ;

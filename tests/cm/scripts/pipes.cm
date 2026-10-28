@@ -1,0 +1,17 @@
+# pipelines with functions in them, buffered: programs side by side still an OS pipeline
+def double { each {|x| put $(( $x * 2 )) } }
+def show { each {|x| echo got $x } }
+range 3 | double | show
+echo hello | tr a-z A-Z
+def three { put one; put two; put three }
+three | sort
+printf 'b\na\nc\n' | sort | show
+three | tr a-z A-Z | show
+var sorted [@(printf 'z\ny\n' | sort)]
+echo sorted: $sorted
+var n $(three | wc -l)
+echo three lines: $n
+var seen 0
+var counting { each {|x| set seen $(( $seen + 1 )) } }
+three | $counting
+echo the stage ran in the shell, its side effects kept: $seen
