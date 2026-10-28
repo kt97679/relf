@@ -107,3 +107,4 @@ native-os.4
 relfsh-native
 native-kernel.map
 kernel64-rill2.img
+kernel64-cm.img

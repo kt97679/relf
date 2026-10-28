@@ -1,0 +1,502 @@
+\ cm/cmc.4 - the command model's front end in Forth (863): a script in the draft's syntax
+\ (docs/COMMAND-MODEL.md) made into Forth for cm's runtime - the Forth tools/cmc.py makes of it,
+\ word for word - so that its size, inside rill2's image, can be set against rill2's language part
+\ (Q46). Loaded after cm/rt-cm.4, out.4, ctl.4, lib.4 and pipe.4.
+\
+\ Two passes over the script's text. The first parses it into a tree kept flat: nodes of three
+\ cells - a kind and two cells of its own - in an array; a kind of 1-15 opens a node whose children
+\ follow it up to a node of kind 0, and 16 and on are leaves. The second makes each command's Forth
+\ from the nodes, as cmc.py's Gen does; where cmc.py looks at a whole list of words, it looks ahead
+\ by skipping over nodes. The Forth is made as strings joined by blanks, in a heap of their own.
+\ The words a command needs - a block's, a capture's, a loop body's - go to the output as they are
+\ made, the script's own commands last, in CM.MAIN; the output is EVALUATEd.
+
+\ ---- memory: areas allocated for each script, by its length - the last script's freed
+VARIABLE ND0  VARIABLE NDP  VARIABLE NDE           \ the nodes: start, top, end
+VARIABLE TX0  VARIABLE TXP  VARIABLE TXE  VARIABLE TXS   \ the texts read; TXS where the one being read starts
+VARIABLE CH0  VARIABLE CHP  VARIABLE CHE           \ the strings made
+VARIABLE RH0  VARIABLE RHP  VARIABLE RHE           \ frames, scopes and variables
+VARIABLE OU0  VARIABLE OUP  VARIABLE OUE           \ the output
+: AREA ( u v-start v-top v-end --- )
+  >R >R >R  R@ @ ?DUP IF FREE DROP THEN  DUP ALLOCATE THROW  DUP R> !  DUP R> !  + R> ! ;
+
+\ ---- errors: the line, the message, status 2 - as rill2's own
+VARIABLE IN-LINE  VARIABLE LN                      \ the line read; the line of the command being made
+: CM-ERR ( c-addr u line --- )   R-ERR> ." cm: line " R-.N ." : " TYPE R-NL -4100 THROW ;
+: P-ERR ( c-addr u --- )   IN-LINE @ CM-ERR ;
+: G-ERR ( c-addr u --- )   LN @ CM-ERR ;
+: TOO-BIG ( --- )   S" cm: the script is too big" R-FAIL ;
+
+\ ---- strings: made at the heap's top, joined - one ending at the top grows where it is
+: ROOM ( u --- )   CHP @ + CHE @ > IF TOO-BIG THEN ;
+: S| ( c-addr u --- c-addr2 u )   DUP ROOM  >R CHP @ R@ MOVE  CHP @ R@  R> CHP +! ;
+: CAT ( c-addr1 u1 c-addr2 u2 --- c-addr u )
+  DUP 0= IF 2DROP EXIT THEN  2SWAP DUP 0= IF 2DROP EXIT THEN
+  2DUP + CHP @ <> IF S| THEN  2SWAP S| NIP + ;
+: ++ ( c-addr1 u1 c-addr2 u2 --- c-addr u )   \ joined by a blank
+  DUP 0= IF 2DROP EXIT THEN  2SWAP DUP 0= IF 2DROP EXIT THEN  S"  " CAT 2SWAP CAT ;
+: #$ ( n --- c-addr u )   S>D TUCK DABS <# #S ROT SIGN #> S| ;
+: #++ ( c-addr u n --- c-addr2 u2 )   #$ ++ ;
+
+\ ---- the tree
+0 CONSTANT N-END   1 CONSTANT N-CMD  2 CONSTANT N-WRD  3 CONSTANT N-QU  4 CONSTANT N-VR  5 CONSTANT N-CP
+6 CONSTANT N-AR    7 CONSTANT N-LS   8 CONSTANT N-MP   9 CONSTANT N-BK  10 CONSTANT N-SP
+16 CONSTANT N-TX  17 CONSTANT N-NM  18 CONSTANT N-BO  19 CONSTANT N-OP
+: N, ( a b kind --- )   NDP @ NDE @ = IF TOO-BIG THEN
+  NDP @ !  NDP @ 2 CELLS + !  NDP @ CELL+ !  3 CELLS NDP +! ;
+: N) ( --- )   0 0 N-END N, ;
+: N+ ( node --- node' )   3 CELLS + ;
+: @A ( node --- a )   CELL+ @ ;
+: @B ( node --- b )   2 CELLS + @ ;
+: NSKIP ( node --- node' )   \ past a node and its children
+  0 BEGIN OVER @ DUP 1 16 WITHIN IF DROP 1+ ELSE 0= IF 1- THEN THEN  SWAP N+ SWAP  DUP 0= UNTIL DROP ;
+
+\ ---- reading: the first pass, as cmc.py's parse_ functions
+VARIABLE IN-TEXT  VARIABLE IN-LEN  VARIABLE IN-POS           \ the text, its length, where reading is
+: PK ( k --- c )   IN-POS @ + DUP IN-LEN @ < IF IN-TEXT @ + C@ ELSE DROP 0 THEN ;   \ the character k ahead; 0 past the end
+: CUR ( --- c )   0 PK ;
+: GET ( --- c )   CUR  DUP 10 = IF 1 IN-LINE +! THEN  1 IN-POS +! ;
+: HERE-IN ( --- c-addr )   IN-TEXT @ IN-POS @ + ;
+: BLANK? ( c nl? --- f )   OVER 10 = AND  OVER BL = OR  OVER 9 = OR  SWAP 13 = OR ;
+: DIG? ( c --- f )   [CHAR] 0 [CHAR] 9 1+ WITHIN ;
+: NAME0? ( c --- f )   DUP [CHAR] _ = SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR ;
+: NAMEC? ( c --- f )   DUP NAME0? SWAP DIG? OR ;
+: SKIP-WS ( nl? --- )   \ blanks - and line ends, if nl? - and comments: # at a word's start to the line's end
+  BEGIN  BEGIN CUR OVER BLANK? WHILE GET DROP REPEAT
+    CUR [CHAR] # <> IF DROP EXIT THEN
+    BEGIN CUR DUP 10 <> SWAP 0<> AND WHILE GET DROP REPEAT
+  DUP 0= UNTIL DROP ;
+: T0 ( --- )   TXP @ TXS ! ;                         \ a text begun, where the texts end
+: T, ( c --- )   TXP @ C!  1 TXP +! ;
+: T) ( --- )   TXP @ TXS @ - ?DUP IF TXS @ SWAP N-TX N, THEN  T0 ;   \ the text read, a leaf - if any
+DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( --- )
+: NAME-P ( --- c-addr u )   HERE-IN  BEGIN CUR NAMEC? WHILE GET DROP REPEAT  HERE-IN OVER - ;
+: VAR-P ( --- )   \ name[key]...: a N-VR, its keys words
+  NAME-P N-VR N,
+  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
+    GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
+: DOLLAR-P ( --- )   \ after a $: (( )), ( ), {name}, a name - or the $ itself, a text
+  CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P EXIT THEN
+    GET DROP 0 0 N-CP N,  [CHAR] ) DUP CMDS  N) EXIT THEN
+  CUR [CHAR] { = IF  GET DROP HERE-IN
+    BEGIN CUR [CHAR] } <> WHILE CUR 0= IF S" } missing" P-ERR THEN GET DROP REPEAT
+    HERE-IN OVER - N-VR N, N)  GET DROP EXIT THEN
+  CUR NAME0? IF VAR-P EXIT THEN
+  S" $" N-TX N, ;
+: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n and \t in them - and $s
+  0 0 N-QU N,  T0
+  BEGIN CUR DUP [CHAR] " <> WHILE
+    DUP 0= IF S" a closing quote is missing" P-ERR THEN
+    DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
+    ELSE [CHAR] $ = IF GET DROP T) DOLLAR-P T0 ELSE GET T, THEN THEN
+  REPEAT DROP GET DROP T) N) ;
+: OPR, ( n --- )   HERE-IN OVER N-OP N,  0 ?DO GET DROP LOOP ;      \ an operator of n characters, a leaf
+: OPR2? ( --- f )   0  12 0 DO  S" ==!=<=>=&&||" DROP I +  DUP C@ CUR =  SWAP 1+ C@ 1 PK =  AND OR  2 +LOOP ;
+: ONE-OF? ( c c-addr u --- f )   0 SWAP 0 ?DO  OVER I + C@ 3 PICK = OR  LOOP NIP NIP ;
+: ARITH-P' ( --- )   \ (( )): numbers, $values and operators in a N-AR - ended by )) outside any ( )
+  IN-LINE @ 0 N-AR N,  0
+  BEGIN  BEGIN CUR -1 BLANK? WHILE GET DROP REPEAT
+    CUR 0= IF S" )) missing" P-ERR THEN
+    CUR [CHAR] ) = OVER 0= AND  1 PK [CHAR] ) = AND IF DROP GET GET 2DROP N) EXIT THEN
+    CUR DIG? IF  0 BEGIN CUR DIG? WHILE 10 * GET [CHAR] 0 - + REPEAT  0 N-NM N,
+    ELSE CUR [CHAR] $ = IF GET DROP DOLLAR-P
+    ELSE OPR2? IF 2 OPR,
+    ELSE CUR S" +-*/%<>()!" ONE-OF? IF  CUR [CHAR] ( = IF 1+ THEN  CUR [CHAR] ) = IF 1- THEN  1 OPR,
+    ELSE S" (( )) holds numbers, $values and operators" P-ERR THEN THEN THEN THEN
+  AGAIN ;
+' ARITH-P' IS ARITH-P
+VARIABLE BARE                                      \ the word read so far: plain text, nothing quoted
+: WORD-END? ( c closer --- f )   OVER = SWAP  DUP 0= OVER [CHAR] ; = OR  SWAP -1 BLANK? OR  OR ;
+: NUM? ( c-addr u --- n f )   \ the text -?[0-9]+: its value and true
+  OVER C@ [CHAR] - = >R  R@ IF 1 /STRING THEN  R> ROT ROT
+  DUP 0= IF DROP 2DROP 0 0 EXIT THEN
+  0 SWAP 0 DO  OVER I + C@ DUP DIG? 0= IF DROP 2DROP DROP 0 0 UNLOOP EXIT THEN  [CHAR] 0 - SWAP 10 * +  LOOP
+  NIP SWAP IF NEGATE THEN -1 ;
+: LITERAL? ( tx --- )   \ a plain word alone: a number, true or false
+  DUP @A OVER @B NUM? IF OVER CELL+ ! N-NM SWAP ! EXIT THEN DROP
+  DUP @A OVER @B 2DUP S" true" COMPARE 0= IF 2DROP -1 ELSE S" false" COMPARE IF DROP EXIT THEN 0 THEN
+  OVER CELL+ ! N-BO SWAP ! ;
+: PIECES-P ( closer --- )   \ a word's texts, '...', "..." and $...: up to a blank, a ; or the closer
+  -1 BARE !  NDP @ SWAP T0
+  BEGIN CUR OVER WORD-END? 0= WHILE
+    CUR [CHAR] " = IF GET DROP T) 0 BARE ! QUOTED-P T0 ELSE
+    CUR [CHAR] ' = IF GET DROP T) 0 BARE !
+      BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT
+      GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ELSE              \ '' too: a text, if empty
+    CUR [CHAR] $ = IF GET DROP T) 0 BARE ! DOLLAR-P T0 ELSE
+    CUR [CHAR] \ = IF GET DROP GET ?DUP IF T, THEN 0 BARE ! ELSE
+    GET T, THEN THEN THEN THEN
+  REPEAT DROP T)
+  DUP NDP @ = IF S" a word was expected" P-ERR THEN
+  BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN DROP ;
+: MAP-KEY? ( w --- f )   \ a map's key: a text alone, ending in : after something
+  N+ DUP @ N-TX = OVER N+ @ 0= AND 0= IF DROP 0 EXIT THEN
+  DUP @B 1 > SWAP DUP @A SWAP @B + 1- C@ [CHAR] : = AND ;
+: COLON? ( w --- f )   \ [:]'s word
+  N+ DUP @ N-TX = OVER N+ @ 0= AND 0= IF DROP 0 EXIT THEN  DUP @B 1 = SWAP @A C@ [CHAR] : = AND ;
+: MAP-ERR ( --- )   S" a map: key: value, each key a word ending in :" P-ERR ;
+: MAP? ( ls --- )   \ the list read: [:] or [key: value ...] - a map, its keys without their :
+  DUP N+ DUP @ 0= IF 2DROP EXIT THEN
+  DUP NSKIP @ 0= OVER COLON? AND IF DROP N-MP OVER ! N+ NDP ! N) EXIT THEN
+  DUP MAP-KEY? 0= IF 2DROP EXIT THEN  N-MP ROT !
+  BEGIN DUP @ WHILE  DUP MAP-KEY? 0= IF MAP-ERR THEN  -1 OVER N+ 2 CELLS + +!  NSKIP
+    DUP @ 0= IF MAP-ERR THEN  NSKIP  REPEAT DROP ;
+: LIST-P ( --- )   \ [ ... ]: a N-LS of its words - or a map
+  NDP @  0 0 N-LS N,
+  BEGIN -1 SKIP-WS CUR [CHAR] ] <> WHILE CUR 0= IF S" ] missing" P-ERR THEN [CHAR] ] WORD-P REPEAT
+  GET DROP N)  MAP? ;
+: BLOCK-P ( --- )   \ { |a b| ... }: a N-BK - its parameters' names as leaves, then its commands
+  NDP @ 0 0 N-BK N,  0 SKIP-WS
+  CUR [CHAR] | = IF GET DROP
+    BEGIN 0 SKIP-WS CUR [CHAR] | <> WHILE
+      CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
+      NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
+  DROP [CHAR] } 0 CMDS N) ;
+: WORD-P' ( closer --- )   \ one word: a N-WRD of its pieces
+  0 0 N-WRD N,
+  CUR [CHAR] [ = IF DROP GET DROP LIST-P N) EXIT THEN
+  CUR [CHAR] { = IF DROP GET DROP BLOCK-P N) EXIT THEN
+  CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF DROP GET GET 2DROP ARITH-P N) EXIT THEN
+  CUR [CHAR] @ = IF DROP GET DROP 0 0 N-SP N,
+    CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N)
+    ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) EXIT THEN
+  PIECES-P N) ;
+' WORD-P' IS WORD-P
+: CMDS' ( close closer --- )   \ commands up to close - 0, the text's end - each a N-CMD of its words
+  0 BEGIN  0 SKIP-WS CUR
+    DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP EXIT THEN
+    DUP 4 PICK = IF DROP GET DROP  IF N) THEN 2DROP EXIT THEN
+    DUP 10 = SWAP [CHAR] ; = OR IF GET DROP  IF N) THEN 0
+    ELSE DUP 0= IF IN-LINE @ 0 N-CMD N, DROP -1 THEN  OVER WORD-P THEN
+  AGAIN ;
+' CMDS' IS CMDS
+
+\ ---- making Forth: the second pass, as cmc.py's Gen - frames, scopes and variables as records, cleared
+: RC ( n --- addr )   CELLS RHP @ OVER + RHE @ > IF TOO-BIG THEN  RHP @ SWAP 2DUP ERASE RHP +! ;
+32 CONSTANT CAP-MAX
+VARIABLE FR  VARIABLE SC                           \ the frame and the scope being made
+: NEW-FRAME ( kind --- f )   CAP-MAX 3 + RC  TUCK !  1 OVER CELL+ ! ;   \ [kind: 0 main, 1 def, 2 block][slots][captures][them]
+: F-SLOT ( f --- n )   CELL+ DUP @  1 ROT +! ;
+: SCOPE( ( --- )   2 RC  SC @ OVER !  SC ! ;      \ [parent][variables]
+: )SCOPE ( --- )   SC @ @ SC ! ;
+: VAR+ ( c-addr u slot boxed --- v )   \ [next][name][length][frame][slot][boxed], in this scope and frame
+  6 RC >R  R@ 5 CELLS + !  R@ 4 CELLS + !  R@ 2 CELLS + !  R@ CELL+ !  FR @ R@ 3 CELLS + !
+  SC @ CELL+ DUP @ R@ !  R@ SWAP !  R> ;
+: DECLARE ( c-addr u boxed --- v )   FR @ F-SLOT SWAP VAR+ ;
+: V-SLOT ( v --- n )   4 CELLS + @ ;
+: FIND-VAR ( c-addr u --- v | 0 )
+  SC @ BEGIN ?DUP WHILE  DUP CELL+ @
+    BEGIN ?DUP WHILE  >R 2 PICK 2 PICK R@ CELL+ @ R@ 2 CELLS + @ COMPARE 0= IF DROP 2DROP R> EXIT THEN  R> @ REPEAT
+  @ REPEAT 2DROP 0 ;
+: CAP-INDEX ( v --- i )   \ v's place in this block's captures - added if new
+  FR @ @ 2 <> IF  S" $" S| ROT DUP CELL+ @ SWAP 2 CELLS + @ CAT
+    S" : a def sees only its parameters and its own variables (v0)" CAT G-ERR THEN
+  FR @ 2 CELLS + @ 0 ?DO  FR @ 3 I + CELLS + @ OVER = IF DROP I UNLOOP EXIT THEN  LOOP
+  FR @ 2 CELLS + @ CAP-MAX = IF S" a block captures too many variables" G-ERR THEN
+  FR @ 2 CELLS + @ TUCK 3 + CELLS FR @ + !  1 FR @ 2 CELLS + +! ;
+: REF ( v --- c-addr u )   \ v's cell - its value, unboxed: in this frame's slots, or this block's captures
+  DUP 3 CELLS + @ FR @ = IF V-SLOT #$ S" LS@" ++ EXIT THEN  CAP-INDEX #$ S" E@" ++ ;
+: READ$ ( c-addr u --- c-addr2 u2 )   \ $name
+  2DUP FIND-VAR ?DUP IF NIP NIP DUP REF ROT 5 CELLS + @ IF S" UPV@" ++ THEN EXIT THEN
+  2DUP S" status" COMPARE 0= IF 2DROP S" STATUS @ D-NUM" EXIT THEN
+  S" no variable $" S| 2SWAP CAT S" - var makes one" ++ G-ERR ;
+64 CONSTANT DEF-MAX
+VARIABLE DEFS  VARIABLE DEFS#                       \ the script's defs: [name][length][parameters] each
+: DEF-FIND ( c-addr u --- entry | 0 )
+  DEFS# @ 0 ?DO  2DUP DEFS @ I 3 * CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP DEFS @ I 3 * CELLS + UNLOOP EXIT THEN  LOOP
+  2DROP 0 ;
+: DEF-ADD ( c-addr u n --- )
+  >R 2DUP DEF-FIND ?DUP IF NIP NIP R> SWAP 2 CELLS + ! EXIT THEN
+  DEFS# @ DEF-MAX = IF S" too many defs" G-ERR THEN
+  DEFS @ DEFS# @ 3 * CELLS +  TUCK CELL+ !  TUCK !  R> SWAP 2 CELLS + !  1 DEFS# +! ;
+: OUT+ ( c-addr u --- )   \ to the output, a blank after it
+  DUP OUP @ + 1+ OUE @ > IF TOO-BIG THEN  OUP @ SWAP DUP >R MOVE  R> OUP +!  BL OUP @ C!  1 OUP +! ;
+: DEF-WORD ( c-addr u c-addr2 u2 --- )   2SWAP S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ OUT+ ;   \ : name body ;
+VARIABLE CC-N
+: FRESH ( c-addr u --- c-addr2 u2 )   1 CC-N +!  S" CM." S| 2SWAP CAT CC-N @ #$ CAT ;   \ CM.B1, CM.C2 ...
+: C+ ( c-addr u c --- c-addr u+1 )   >R 2DUP + CHP @ <> IF S| THEN  1 ROOM  R> CHP @ C!  1 CHP +!  1+ ;
+: PLAIN? ( c-addr u --- f )   \ no " and nothing past printable ASCII: S" holds it
+  -1 ROT ROT 0 ?DO  DUP I + C@  DUP 32 127 WITHIN SWAP [CHAR] " <> AND  ROT AND SWAP  LOOP DROP ;
+: TEXT-CODE ( c-addr u --- c-addr2 u2 )   \ S" text" TXT - or its bytes and CHARS>TXT
+  2DUP PLAIN? IF  S" S" S| 34 C+ BL C+ 2SWAP CAT 34 C+ S" TXT" ++ EXIT THEN
+  TUCK 0 0 2SWAP OVER + SWAP ?DO  I C@ #++  LOOP  ROT #++ S" CHARS>TXT" ++ ;
+: UPPER ( c-addr u --- c-addr2 u )   S| 2DUP OVER + SWAP ?DO I C@ [CHAR] a [CHAR] z 1+ WITHIN IF I C@ 32 - I C! THEN LOOP ;
+
+\ ---- words and their kinds
+: WORDS-END ( w --- end )   BEGIN DUP @ WHILE NSKIP REPEAT ;
+: BARE? ( w --- f )   N+ DUP @ N-TX = SWAP N+ @ 0= AND ;     \ a word that is one text
+: BARE$ ( w --- c-addr u )   N+ DUP @A SWAP @B ;
+: BARE= ( w c-addr u --- f )   ROT DUP BARE? IF BARE$ COMPARE 0= ELSE DROP 2DROP 0 THEN ;
+: CHAR-AT ( c-addr u c --- k )   \ where c first is, or u
+  >R 0 BEGIN 2DUP > WHILE 2 PICK OVER + C@ R@ = IF NIP NIP R> DROP EXIT THEN 1+ REPEAT NIP NIP R> DROP ;
+: IN-LIST? ( c-addr u list u2 --- f )   \ the text one of the list's words
+  BEGIN DUP 0> WHILE
+    2DUP BL CHAR-AT >R  2OVER 3 PICK R@ COMPARE 0= IF R> DROP 2DROP 2DROP -1 EXIT THEN  R> 1+ /STRING
+  REPEAT 2DROP 2DROP 0 ;
+: PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
+  DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each" IN-LIST?
+  >R DEF-FIND R> OR 0= ;
+: TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
+: TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
+: TO-BLOCK ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP N+ @ N-BK = IF NIP EXIT THEN NSKIP REPEAT DROP ;
+: LAST-W ( from to --- w )   >R BEGIN DUP NSKIP R@ <> WHILE NSKIP REPEAT R> DROP ;
+: LAST-STAGE ( from to --- w )   SWAP BEGIN 2DUP SWAP TO-PIPE DUP 3 PICK = IF DROP NIP EXIT THEN NIP NSKIP AGAIN ;
+: TWO? ( from to --- f )   2DUP = IF 2DROP 0 EXIT THEN  SWAP NSKIP 2DUP = IF 2DROP 0 EXIT THEN  NSKIP = ;
+: NAMED? ( c-addr u c-addr2 u2 --- c-addr u f )   2OVER COMPARE 0= ;
+
+\ ---- values
+DEFER PIECE ( p --- c-addr u )   DEFER BODY-CODE ( cmd --- c-addr u )   DEFER CMD-RANGE ( from to --- c-addr u )
+DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
+: PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
+  DUP PIECE S" D-STR" ++ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE ++ S" JOIN" ++ R> NSKIP REPEAT DROP ;
+: WORD-CODE ( w --- c-addr u )   N+ DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
+: PROG-CAP? ( cp --- f )   \ $( ) of one command, a pipeline ending in a program
+  N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
+  N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
+  2DUP LAST-STAGE TUCK = IF 2DROP 0 EXIT THEN  NIP PROGRAM? ;
+: PIPE-CAP ( cp c-addr u --- c-addr2 u2 )   \ that pipeline, ended so (859, 862)
+  LN @ >R  ROT N+ DUP @A LN !  N+ DUP WORDS-END 2SWAP PIPELINE  R> LN ! ;
+: CAPTURE-WORD ( cp --- c-addr u )   \ a word of its own for the capture's commands: its name
+  S" C" FRESH ROT SCOPE( N+ BODY-CODE )SCOPE 2OVER 2SWAP DEF-WORD ;
+: SPREAD-CODE ( p --- c-addr u )   \ what @ spreads: a list
+  DUP @ N-CP = IF DUP PROG-CAP? IF S" PIPE-LINES" PIPE-CAP EXIT THEN
+    CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE" ++ EXIT THEN  PIECE ;
+: ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ ELSE WORD-CODE S" ARG" ++ THEN ;
+: ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
+  >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
+VARIABLE AP                                        \ the next of (( ))'s nodes
+: AOP? ( c-addr u --- f )   AP @ @ N-OP = IF AP @ @A AP @ @B COMPARE 0= ELSE 2DROP 0 THEN ;
+: A-TAKE ( --- c-addr u )   S" D" S| AP @ @A AP @ @B CAT  AP @ N+ AP ! ;   \ the operator taken: D and it
+DEFER A-OR ( --- c-addr u )
+: A-PRIM ( --- c-addr u )
+  AP @ DUP @ 0= IF S" (( )) ends too soon" G-ERR THEN  DUP NSKIP AP !
+  DUP @ N-NM = IF @A #$ S" D-NUM" ++ EXIT THEN
+  DUP @ N-OP <> IF PIECE EXIT THEN
+  DUP @A OVER @B S" (" COMPARE 0= IF DROP A-OR S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
+  DUP @A OVER @B S" -" COMPARE 0= IF DROP RECURSE S" D-NEG" ++ EXIT THEN
+  DUP @A OVER @B S" !" COMPARE 0= IF DROP RECURSE S" D-TRUE? 0= D-BOOL" ++ EXIT THEN
+  S" in (( )):" S| ROT DUP @A SWAP @B ++ S" where a value goes" ++ G-ERR ;
+: A-MUL ( --- c-addr u )   A-PRIM  BEGIN S" *" AOP? S" /" AOP? OR S" %" AOP? OR WHILE A-TAKE A-PRIM 2SWAP ++ ++ REPEAT ;
+: A-ADD ( --- c-addr u )   A-MUL  BEGIN S" +" AOP? S" -" AOP? OR WHILE A-TAKE A-MUL 2SWAP ++ ++ REPEAT ;
+: A-CMP ( --- c-addr u )   A-ADD
+  S" ==" AOP? S" !=" AOP? OR S" <" AOP? OR S" <=" AOP? OR S" >" AOP? OR S" >=" AOP? OR IF A-TAKE A-ADD 2SWAP ++ ++ THEN ;
+: A-AND ( --- c-addr u )   A-CMP
+  BEGIN S" &&" AOP? WHILE AP @ N+ AP !  S" D-TRUE? IF" ++ A-CMP ++ S" D-TRUE? D-BOOL ELSE FALSE-BOX THEN" ++ REPEAT ;
+: A-OR' ( --- c-addr u )   A-AND
+  BEGIN S" ||" AOP? WHILE AP @ N+ AP !  S" D-TRUE? IF TRUE-BOX ELSE" ++ A-AND ++ S" D-TRUE? D-BOOL THEN" ++ REPEAT ;
+' A-OR' IS A-OR
+: ARITH ( ar --- c-addr u )   AP @ >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
+: MAP-CODE ( mp --- c-addr u )
+  S" R-NEW-RECORD K-REC R-BOX" ROT N+
+  BEGIN DUP @ WHILE  >R S" DUP" ++ R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++  R> NSKIP REPEAT DROP ;
+: BLOCK-CODE ( bk --- c-addr u )   \ a block: a word with a frame of its own - made, with its captures
+  FR @ >R  2 NEW-FRAME FR !  SCOPE(
+  DUP N+ BEGIN DUP @ N-TX = WHILE DUP @A OVER @B -1 DECLARE DROP N+ REPEAT
+  S" B" FRESH 2SWAP BODY-CODE
+  ROT @A >R  2OVER S" :" 2SWAP ++  FR @ CELL+ @ #++ S" FRAME" ++
+  R> ?DUP IF #$ S" BLK-BIND" ++ ELSE S" DROP" THEN ++  2SWAP ++ S" UNFRAME ;" ++ OUT+
+  FR @ )SCOPE R> FR !
+  0 0 2 PICK 2 CELLS + @ 0 ?DO  2 PICK 3 I + CELLS + @ REF ++  LOOP
+  ROT 2 CELLS + @ #++ S" [']" ++ 2SWAP ++ S" BLK-NEW" ++ ;
+: PIECE' ( p --- c-addr u )
+  DUP @ CASE
+    N-TX OF DUP @A SWAP @B TEXT-CODE ENDOF
+    N-NM OF @A DUP #$ ROT  1 61 LSHIFT DUP NEGATE 1+ SWAP WITHIN IF S" D-NUM" ELSE S" N>ITEM-D" THEN ++ ENDOF
+    N-BO OF @A IF S" TRUE-BOX" ELSE S" FALSE-BOX" THEN ENDOF
+    N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" D-AT" ++ R> NSKIP REPEAT DROP ENDOF
+    N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
+    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE ONE" ++ THEN ENDOF
+    N-AR OF ARITH ENDOF
+    N-LS OF N+ DUP WORDS-END ARGS-CODE ENDOF
+    N-MP OF MAP-CODE ENDOF
+    N-BK OF BLOCK-CODE ENDOF
+    S" @ spreads into a command's words or a list - not here" G-ERR
+  ENDCASE ;
+' PIECE' IS PIECE
+: CMD-CODE ( cmd --- c-addr u )   DUP @A LN !  N+ DUP WORDS-END CMD-RANGE ;
+: BODY-CODE' ( cmd --- c-addr u )   \ each command's Forth, to the END
+  LN @ >R  0 0 ROT BEGIN DUP @ WHILE DUP >R CMD-CODE ++ R> NSKIP REPEAT DROP  R> LN ! ;
+' BODY-CODE' IS BODY-CODE
+
+\ ---- commands
+: FLAG ( from to --- c-addr u )   \ a condition: ! ..., a value alone, or a command's status (859)
+  2DUP = IF S" a condition was expected" G-ERR THEN
+  OVER S" !" BARE= IF SWAP NSKIP SWAP RECURSE S" 0=" ++ EXIT THEN
+  OVER NSKIP OVER = 2 PICK N+ @ N-TX <> AND IF DROP WORD-CODE S" D-TRUE?" ++ EXIT THEN
+  CMD-RANGE S" STATUS @ 0=" ++ ;
+: INLINE ( w --- c-addr u )   \ a block with no parameters, its commands made in place
+  N+ DUP @ N-BK <> OVER @A OR IF S" a block with no parameters was expected" G-ERR THEN  SCOPE( N+ BODY-CODE )SCOPE ;
+: ELSE-ERR ( --- )   S" else { ... }" G-ERR ;
+: IF-CMD ( from to --- c-addr u )
+  2DUP TO-BLOCK 2DUP = IF S" if condition { ... }" G-ERR THEN
+  ROT OVER FLAG S" IF" ++ 2 PICK INLINE ++  ROT NSKIP
+  DUP 4 PICK = IF DROP ROT DROP S" THEN" ++ EXIT THEN
+  DUP S" else" BARE= IF NSKIP DUP 4 PICK = IF ELSE-ERR THEN  DUP NSKIP 4 PICK <> IF ELSE-ERR THEN
+    INLINE 2SWAP S" ELSE" ++ 2SWAP ++ S" THEN" ++ ROT DROP EXIT THEN
+  DUP S" elif" BARE= IF NSKIP 3 PICK RECURSE 2SWAP S" ELSE" ++ 2SWAP ++ S" THEN" ++ ROT DROP EXIT THEN
+  S" after if's block: else or elif" G-ERR ;
+: LOOP-BODY-CODE ( w c-addr u --- c-addr2 u2 id v )   \ a loop's body, a word of its own: its name, the slots of
+  SCOPE(  S" %loop" 0 DECLARE V-SLOT >R            \ the loop's number and of its variable - fresh each time
+  DUP IF -1 DECLARE V-SLOT ELSE 2DROP 0 THEN >R
+  S" L" FRESH  R@ IF R@ #$ S" LS@ UPV-NEW" ++ R@ #++ S" LS!" ++ ELSE 0 0 THEN
+  4 PICK N+ N+ BODY-CODE ++  2OVER 2SWAP DEF-WORD  ROT DROP  R> R> SWAP  )SCOPE ;
+: FOR-CMD ( from to --- c-addr u )   \ for name words... { body }
+  OVER BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
+  FR @ F-SLOT >R  OVER SWAP LAST-W
+  OVER NSKIP OVER ARGS-CODE
+  3 PICK NSKIP DUP NSKIP 4 PICK = SWAP N+ @ N-SP <> AND IF S" FOR-ONE" ++ THEN
+  R@ #++ S" LS!" ++  R@ #++
+  2SWAP SWAP BARE$ LOOP-BODY-CODE
+  5 ROLL 5 ROLL ROT #++ ROT #++ S" [']" ++ 2SWAP ++ S" C-FOR" ++  R> DROP ;
+: WHILE-CMD ( from to --- c-addr u )   \ while condition { body }
+  S" W" FRESH 2SWAP OVER SWAP LAST-W  TUCK FLAG ROT >R  2OVER 2SWAP DEF-WORD  R>
+  0 0 LOOP-BODY-CODE DROP #$ S" [']" ++  5 ROLL 5 ROLL ++ S" [']" ++ 2SWAP ++ S" C-WHILE" ++ ;
+: DEF-ERR ( --- )   S" def name { ... }" G-ERR ;
+: DEF-CMD ( from to --- c-addr u )   \ def name { |params| ... }: CM.D.name, a deferred word - its frame of its own
+  FR @ @ SC @ @ OR IF S" def is for the script's top level (v0)" G-ERR THEN
+  OVER SWAP TWO? 0= IF DEF-ERR THEN  DUP BARE? 0= IF DEF-ERR THEN
+  DUP NSKIP N+ DUP @ N-BK <> IF DEF-ERR THEN
+  SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP
+  N+ BEGIN DUP @ N-TX = WHILE DUP @A OVER @B -1 DECLARE DROP N+ REPEAT  BODY-CODE
+  2OVER S" : CM.D." 2SWAP CAT S" -IMPL" CAT 2SWAP ++ S" ;" ++
+  S" ' CM.D." ++ 2OVER CAT S" -IMPL IS CM.D." CAT 2OVER CAT
+  FR @ CELL+ @ 1- #++ S" CM.D." ++ 2SWAP CAT S" # !" CAT OUT+
+  R> SC ! R> FR !  0 0 ;
+: NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
+: VAR-CMD ( from to --- c-addr u )   \ var name value
+  2DUP TWO? 0= IF S" var name value" G-ERR THEN  DROP DUP BARE? 0= IF S" var name value" G-ERR THEN
+  DUP NSKIP WORD-CODE ROT BARE$
+  2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
+  -1 DECLARE V-SLOT >R S" UPV-NEW" ++ R> #++ S" LS!" ++ ;
+: SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
+: KEYS? ( c-addr u --- f )   \ [k][k]...: none empty
+  BEGIN DUP WHILE
+    OVER C@ [CHAR] [ <> IF 2DROP 0 EXIT THEN  1 /STRING
+    2DUP [CHAR] ] CHAR-AT  DUP 0= OVER 3 PICK = OR IF DROP 2DROP 0 EXIT THEN  1+ /STRING
+  REPEAT 2DROP -1 ;
+: KEY-WORD ( c-addr u --- w )   \ one of set's keys, read as a word
+  IN-TEXT @ >R IN-LEN @ >R IN-POS @ >R IN-LINE @ >R
+  IN-LEN ! IN-TEXT ! 0 IN-POS !  LN @ IN-LINE !  NDP @  0 WORD-P
+  R> IN-LINE ! R> IN-POS ! R> IN-LEN ! R> IN-TEXT ! ;
+: SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value
+  2DUP TWO? 0= IF S" set name value" G-ERR THEN  DROP DUP BARE? 0= IF S" set name value" G-ERR THEN
+  DUP NSKIP WORD-CODE ROT BARE$
+  2DUP [CHAR] [ CHAR-AT >R  OVER R@ NAME? 0= IF SET-ERR THEN  2DUP R@ /STRING KEYS? 0= IF SET-ERR THEN
+  OVER R@ FIND-VAR ?DUP 0= IF  S" set: no variable" S| 2OVER DROP R@ ++ S" - var makes one" ++ G-ERR THEN
+  OVER R@ = IF  >R 2DROP R> REF ++ S" UPV!" ++  R> DROP EXIT THEN
+  DROP OVER R@ READ$ 2SWAP R> /STRING
+  BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
+    DUP WHILE  >R >R ++ S" D-AT" ++ R> R>  REPEAT
+  2DROP ++ 2SWAP ++ S" D-SET" ++ ;
+: APPEND-ERR ( --- )   S" append name values" G-ERR ;
+: SINGLE ( from to --- c-addr u )   \ one command, not a program's
+  OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
+  OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
+  S" var" NAMED? IF 2DROP VAR-CMD EXIT THEN
+  S" set" NAMED? IF 2DROP SET-CMD EXIT THEN
+  S" put" NAMED? IF 2DROP ARGS-CODE S" PUTS" ++ EXIT THEN
+  S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ EXIT THEN
+  2DUP S" count range merge each" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN
+  S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER BARE? 0= IF APPEND-ERR THEN
+    OVER BARE$ READ$ 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ EXIT THEN
+  S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN
+  S" false" NAMED? IF 2DROP 2DROP S" 1 STATUS !" EXIT THEN
+  2DUP S" break continue" IN-LIST? IF 2SWAP 2DROP  S" %loop" FIND-VAR ?DUP 0= IF S" outside a loop" ++ G-ERR THEN
+    REF 2SWAP UPPER ++ EXIT THEN
+  S" return" NAMED? IF 2DROP 2DUP = IF 2DROP S" 0" ELSE DROP WORD-CODE S" D>N" ++ THEN
+    S" %def" FIND-VAR REF ++ S" RETURN" ++ EXIT THEN
+  S" if" NAMED? IF 2DROP IF-CMD EXIT THEN
+  2DUP S" for while" IN-LIST? IF
+    2OVER 2DUP = IF 2DROP 0 ELSE LAST-W N+ DUP @ N-BK = SWAP @A 0= AND THEN
+    0= IF S" ... { body } - a block with no parameters" ++ G-ERR THEN
+    S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
+  S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
+  2DUP DEF-FIND ?DUP IF >R 2SWAP ARGS-CODE R> 2 CELLS + @ #++
+    S" CM.D." ++ 2OVER CAT S" # @ ['] CM.D." CAT 2SWAP CAT S" DEF-CALL" ++ EXIT THEN
+  S" : no such command" CAT G-ERR ;
+
+\ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end
+VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0, 1 list, 2 path][code][its length][a segment's end][last?]
+: PL@ ( i --- x )   CELLS PL @ + @ ;
+: PL! ( x i --- )   CELLS PL @ + ! ;
+: PL+ ( c-addr u --- )   4 PL@ 5 PL@ 2SWAP ++ 5 PL! 4 PL! ;
+: RD-OP ( w --- c-addr u n )   \ a redirection's Forth after its file's, n 1 - a dup's, n 0 - or n -1, neither
+  DUP BARE? 0= IF DROP 0 0 -1 EXIT THEN  BARE$
+  S" >" NAMED? IF 2DROP S" W/O 1 RD-FILE" 1 EXIT THEN
+  S" >>" NAMED? IF 2DROP S" A/O 1 RD-FILE" 1 EXIT THEN
+  S" <" NAMED? IF 2DROP S" R/O 0 RD-FILE" 1 EXIT THEN
+  S" 2>" NAMED? IF 2DROP S" W/O 2 RD-FILE" 1 EXIT THEN
+  S" 2>>" NAMED? IF 2DROP S" A/O 2 RD-FILE" 1 EXIT THEN
+  S" &>" NAMED? IF 2DROP S" W/O 1 RD-FILE 1 2 R-RD-DUP" 1 EXIT THEN
+  S" 2>&1" NAMED? IF 2DROP S" 1 2 R-RD-DUP" 0 EXIT THEN
+  2DUP S" >&2 1>&2" IN-LIST? IF 2DROP S" 2 1 R-RD-DUP" 0 EXIT THEN
+  2DROP 0 0 -1 ;
+: STAGE-CODE ( from to last? --- )   \ a program's stage: its redirections, then its words - to the pipeline's code
+  >R  2DUP SWAP
+  BEGIN 2DUP <> WHILE
+    DUP RD-OP DUP 0< IF DROP 2DROP NSKIP ELSE
+      IF >R >R NSKIP DUP 2 PICK = IF S" a redirection wants a file" G-ERR THEN
+        DUP WORD-CODE PL+ R> R> PL+ NSKIP
+      ELSE PL+ NSKIP THEN THEN
+  REPEAT 2DROP
+  S" ARGL" PL+  0 ROT ROT SWAP
+  BEGIN 2DUP <> WHILE
+    DUP RD-OP DUP 0< IF DROP 2DROP DUP ARG-CODE PL+ NSKIP ROT 1+ ROT ROT
+    ELSE NIP NIP IF NSKIP THEN NSKIP THEN
+  REPEAT 2DROP  0= IF S" a stage with no program" G-ERR THEN
+  R> IF S" -1 PSTAGE" ELSE S" 0 PSTAGE" THEN PL+ ;
+: SEG-END ( s --- e last? )   \ programs' segment's end: the | before a function's stage, or the pipeline's end
+  BEGIN DUP 0 PL@ TO-PIPE DUP 0 PL@ = IF NIP -1 EXIT THEN  DUP NSKIP PROGRAM? 0= IF NIP 0 EXIT THEN  NSKIP NIP AGAIN ;
+: PROG-SEG ( cur --- cur' )
+  DUP SEG-END 7 PL! 6 PL!
+  7 PL@ 0= 2 PL@ OR IF S" 1 PL-BEGIN" ELSE S" 0 PL-BEGIN" THEN PL+
+  3 PL@ 2 = IF S" DUP R/O 0 RD-FILE" PL+ THEN
+  BEGIN DUP 0 PL@ TO-PIPE TUCK DUP 6 PL@ = STAGE-CODE  DUP 6 PL@ <> WHILE NSKIP REPEAT DROP
+  7 PL@ IF 2 PL@ IF 1 PL@ 2 PL@ ELSE S" PIPE-END" THEN ELSE S" PIPE-LINES" THEN
+  2DUP PL+  S" PIPE-END" COMPARE  3 PL@ 2 = IF IF S" SWAP DEL-PATH" ELSE S" DEL-PATH" THEN PL+ ELSE DROP THEN
+  7 PL@ 0= 1 AND 3 PL!  6 PL@ 7 PL@ 0= IF NSKIP THEN ;
+: FN-SEG ( cur --- cur' )
+  DUP 0 PL@ TO-PIPE DUP 6 PL!  S" S" FRESH 2SWAP SCOPE( SINGLE )SCOPE 2OVER 2SWAP DEF-WORD
+  3 PL@ IF 0 0 ELSE S" ARGL" THEN S" [']" ++ 2SWAP ++
+  6 PL@ 0 PL@ = IF S" FN-RUN" 0 ELSE 6 PL@ NSKIP PROGRAM? IF S" FN>FILE" 2 ELSE S" FN-LIST" 1 THEN THEN
+  3 PL! ++ PL+  6 PL@ DUP 0 PL@ <> IF NSKIP THEN ;
+: STAGES-OK ( from to --- )
+  SWAP BEGIN 2DUP SWAP TO-PIPE TUCK = IF S" an empty stage in a pipeline" G-ERR THEN  2DUP <> WHILE NSKIP REPEAT 2DROP ;
+: PIPELINE' ( from to c-addr u --- c-addr2 u2 )   \ c-addr u how it ends: 0 0 a run, its status; PIPE-TEXT, PIPE-LINES a capture
+  2OVER STAGES-OK
+  PL @ >R  8 RC PL !  2 PL! 1 PL! 0 PL!
+  BEGIN DUP 0 PL@ <> WHILE DUP PROGRAM? IF PROG-SEG ELSE FN-SEG THEN REPEAT DROP
+  4 PL@ 5 PL@  R> PL ! ;
+' PIPELINE' IS PIPELINE
+: SEGMENT ( from to --- c-addr u )   \ a | b | c, or a program: a pipeline; else one command
+  2DUP TO-PIPE OVER <> 2 PICK PROGRAM? OR IF 0 0 PIPELINE ELSE SINGLE THEN ;
+: ERR-ANDOR ( --- )   S" && and || stand between commands" G-ERR ;
+: CMD-RANGE' ( from to --- c-addr u )   \ a && b || c, as sh chains them (859)
+  TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  SEGMENT
+  BEGIN 3 PICK 3 PICK <> WHILE
+    2 PICK S" &&" BARE= IF S" STATUS @ 0= IF" ELSE S" STATUS @ IF" THEN ++
+    ROT NSKIP DUP 4 PICK TO-ANDOR 2DUP = IF ERR-ANDOR THEN  DUP >R SEGMENT ++ S" THEN" ++ R> ROT ROT
+  REPEAT  2SWAP 2DROP ;
+' CMD-RANGE' IS CMD-RANGE
+
+\ ---- a script
+: DEF-LINE? ( cmd --- w bk -1 | 0 )   \ def name { ... }, exactly
+  N+ DUP S" def" BARE= 0= IF DROP 0 EXIT THEN  NSKIP DUP @ 0= IF DROP 0 EXIT THEN  DUP BARE? 0= IF DROP 0 EXIT THEN
+  DUP NSKIP DUP @ 0= IF 2DROP 0 EXIT THEN  DUP NSKIP @ IF 2DROP 0 EXIT THEN
+  N+ DUP @ N-BK <> IF 2DROP 0 EXIT THEN  -1 ;
+: CM-COMPILE ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
+  DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE !  NIP
+  DUP 6 * 64 + 3 * CELLS ND0 NDP NDE AREA   DUP 2* 64 + TX0 TXP TXE AREA
+  DUP 64 * 65536 + CH0 CHP CHE AREA   DUP 64 * 65536 + OU0 OUP OUE AREA   16 * 4096 + CELLS RH0 RHP RHE AREA
+  0 CC-N !  0 DEFS# !  DEF-MAX 3 * RC DEFS !  0 PL !  0 AP !  0 FR !  0 SC !
+  ND0 @  0 0 CMDS N)
+  DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF @A >R BARE$ R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
+  DEFS# @ 0 ?DO  DEFS @ I 3 * CELLS + DUP @ SWAP CELL+ @
+    S" DEFER CM.D." 2OVER CAT S" VARIABLE CM.D." ++ 2SWAP CAT S" #" CAT OUT+  LOOP
+  0 NEW-FRAME FR !  SCOPE(  S" %def" 0 0 VAR+ DROP
+  0 0 ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE ?DUP IF S" R-GC?" 2SWAP ++ ++ ELSE DROP THEN  R> NSKIP REPEAT DROP
+  S" : CM.MAIN" 2SWAP ++ S" ;" ++ OUT+  FR @ CELL+ @ 1- #$ S" ' CM.MAIN DEF-RUN" ++ OUT+
+  OU0 @ OUP @ OVER - ;
+: CM-RUN ( c-addr u --- )   R-SLURP CM-COMPILE EVALUATE ;      \ a script by its path: read, made Forth, run
+: CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE CR ;      \ the Forth made of it

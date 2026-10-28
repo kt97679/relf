@@ -886,6 +886,7 @@ do not trust the absence of a line below.
 - 859 — programs in the prototype: pipelines, redirections, && and ||, captures of programs, $status; step 4 designed
 - 861 — the aim restated, smaller than relfsh: coroutines and the engine primitive set aside, function stages buffered
 - 862 — pipelines with functions in them, buffered (cm/pipe.4); the runtime 4684 bytes
+- 863 — the front end in Forth (cm/cmc.4); the command model in its own image, 66,845 bytes against rill2's 69,008: on size, Q46 a draw
 
 ### Not tied to an iteration
 

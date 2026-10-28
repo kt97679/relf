@@ -495,6 +495,37 @@ pipes.cm`: function to function to function, `echo` into a program, a function's
 programs into a function, function to program to function, captures of mixed pipelines, a block as a
 stage keeping its side effects - no temporary file left. The runtime, all of it, 4684 bytes loaded.
 
+**The front end in Forth (863): `cm/cmc.4`.** The number 861 left open - what an in-image front end
+costs - measured. `cm/cmc.4` is `cmc.py` ported construct by construct, 206 words: a first pass parses
+the script into a flat tree (nodes of three cells - a kind and two of its own - in an array, an opening
+node's children up to an end node), a second makes each command's Forth from it as `cmc.py`'s `Gen`
+does, looking ahead by skipping nodes where `cmc.py` looks at a whole list. The Forth is made as
+strings in a heap of their own and EVALUATEd; nothing in it is kept by an absolute address, so it can
+be saved in an image. `tools/cm-diff.py` compares the two front ends' Forth token by token: for every
+script in `tests/cm/scripts/` it is the same. `tools/build-cm-image.sh` builds `kernel64-cm.img` -
+rill2's image with its language part replaced: of `rill2/rill2.4` only its values (up to its library,
+the words cm's runtime and the Forth made use), then cm's runtime and `cm/cmc.4`, a `.cm` script read,
+made Forth and run: `./relf64 kernel64-cm.img script.cm`. The scripts run in it as they do through
+`cmc.py`, with `RILL_GC_STRESS=1` too.
+
+Measured as rill2's language part was - the dictionary's growth as each file loads, which gives
+`rill2/rill2.4` 20,375 bytes and `rill2/prompt.4` 919, the 21,294 of 851:
+
+| | rill2 | the command model |
+|---|---:|---:|
+| values (`rill2.4` up to its library) | 1,694 | 1,694, the same words |
+| the rest of the language | 18,681 (`rill2.4`'s compiler and library) | 17,418: runtime 4,727, front end 12,691 |
+| the prompt | 919 | none yet |
+| the language, all | 21,294 | 19,112 |
+| the image | 69,008 | 66,845 |
+
+The command model's image is 2,163 bytes smaller, and has no prompt yet and no library - rill2's
+library wrappers alone were 1,833 bytes in 851's measure. Like for like, about even, as 851 estimated;
+not the 60-64 KB 861 projected, which assumed a front end of a few kilobytes: it is 12.7 KB. The
+image is 52% of relfsh's. A port that makes `cmc.py`'s Forth word for word, not one written for size:
+206 words, their names 1,137 characters; one pass instead of two, and shorter names, would cut it -
+and rill2's compiler could be cut the same way. On size, Q46 is a draw.
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,
