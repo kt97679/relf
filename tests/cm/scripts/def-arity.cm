@@ -1,0 +1,4 @@
+# a def called with the wrong number of arguments: the list path, its runtime error (868)
+def sq {|n| put $(( $n * $n )) }
+echo $(sq 3)
+echo $(sq 3 4)

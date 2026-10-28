@@ -332,7 +332,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
     N-BO OF @A IF S" TRUE-BOX" ELSE S" FALSE-BOX" THEN ENDOF
     N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ENDOF
     N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
-    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE ONE" ++ THEN ENDOF
+    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE1" ++ THEN ENDOF
     N-AR OF ARITH ENDOF
     N-LS OF N+ DUP WORDS-END ARGS-CODE ENDOF
     N-MP OF MAP-CODE ENDOF
@@ -425,6 +425,10 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
     DUP WHILE  >R >R ++ S" CM-AT" ++ R> R>  REPEAT
   2DROP ++ 2SWAP ++ S" CM-SET" ++ ;
+: PLAIN-ARGS? ( from to k --- f )   \ k words, none an @ spread: a def's arguments go on the stack
+  >R BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP R> DROP 0 EXIT THEN  R> 1- >R  SWAP NSKIP SWAP  REPEAT 2DROP R> 0= ;
+: STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
+  >R >R 0 0  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE ++ REPEAT  R> R> 2DROP ;
 : APPEND-ERR ( --- )   S" append name values" G-ERR ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
@@ -449,8 +453,10 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
     0= IF S" ... { body } - a block with no parameters" ++ G-ERR THEN
     S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
   S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
-  2DUP DEF-FIND ?DUP IF >R 2SWAP ARGS-CODE R> 2 CELLS + @ #++
-    S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT S" DEF-CALL-M" ++ EXIT THEN
+  2DUP DEF-FIND ?DUP IF >R 2SWAP                    \ a def: its arguments on the stack when they are its k words, no @ (868)
+    2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R> 2 CELLS + @ SWAP >R #++
+    S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT
+    R> IF S" DEF-CALL-S" ELSE S" DEF-CALL-M" THEN ++ EXIT THEN
   S" : no such command" CAT G-ERR ;
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end

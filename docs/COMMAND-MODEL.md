@@ -570,9 +570,10 @@ each from what was measured (docs/SYNTAX-GENES.md):
   end beside it is 32 KB of source against 12.7 KB compiled - more on disk in all - and every script
   started three times slower.
 
-Still to come, one way each: a prompt, a library, Rill's and Rill 2's retirement once the command
-model has both (one language), and the rest of a call's cost - its arguments in a list, a capture's list
-for its one value.
+A call's two lists went at 868: a def called with exactly its words gets them on the stack, and `$( )`
+of a function keeps its one value in the sink's own cell - `calls` 30% fewer dispatches, 2.3 times Rill
+2's. Still to come, one way each: a prompt, a library, and Rill's and Rill 2's retirement once the
+command model has both (one language).
 
 ## What it costs
 

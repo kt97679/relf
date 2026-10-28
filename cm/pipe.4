@@ -27,7 +27,7 @@ VARIABLE TMP#
   TMP-PATH >R
   R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list xt fid )
   PAD 0 1 WRITE DROP  1 10 DUP-FROM  OVER 1 DUP2 DROP                          ( list xt fid kept )
-  0 SINKS SINK# @ CELLS + !  1 SINK# +!            \ its values printed, as at the terminal: into the file
+  0 SINKS SINK# @ CELLS + !  0 SKINDS SINK# @ CELLS + !  1 SINK# +!     \ its values printed, as at the terminal: into the file
   2SWAP XT-FN-RUN @XT CATCH  DUP IF >R 2DROP R> THEN                               ( fid kept code )
   -1 SINK# +!  PAD 0 1 WRITE DROP  OVER 1 DUP2 DROP  SWAP CLOSE-FILE DROP      ( fid code )
   R-OUT-KEPT @ ?DUP IF CLOSE-FILE DROP 0 R-OUT-KEPT ! THEN   \ an error told inside: its keeping undone

@@ -1,0 +1,4 @@
+# $( ) of a function that puts nothing (868: a one-value capture, no list)
+def none { echo said, not put }
+var x $(none)
+echo never

@@ -54,6 +54,9 @@
 : BIND-M ( args k mask --- )   \ slots 1..k from the arguments - in an upvalue where mask's bit is set (866, gene d3)
   ROT ROT  OVER #ARGS OVER <> IF S" cm: a call with the wrong number of arguments" R-FAIL THEN
   0 ?DO  DUP I ARGN  2 PICK 1 I LSHIFT AND IF UPV-NEW THEN  I 1+ LS!  LOOP 2DROP ;
+: BIND-S ( a1 .. ak k mask --- )   \ slots k..1 from the stack's top down - in an upvalue where mask's bit is set (868)
+  SWAP BEGIN ?DUP WHILE  >R  DUP 1 R@ 1- LSHIFT AND IF SWAP UPV-NEW ELSE SWAP THEN  R@ LS!  R> 1-  REPEAT DROP ;
+: DEF-CALL-S ( a1 .. ak k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-S  R> DEF-TAIL ;
 : DEF-CALL-M ( args k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-M  R> DEF-TAIL ;
 : CALL-VALUE ( args item --- )   \ rule 11: a value as a command's first word
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN

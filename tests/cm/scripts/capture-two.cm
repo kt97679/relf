@@ -1,0 +1,4 @@
+# $( ) of a function that puts two values: an error at the second (868)
+def two { put 1; echo between; put 2; echo after }
+var x $(two)
+echo never

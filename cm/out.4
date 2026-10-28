@@ -33,12 +33,22 @@ DEFER SHOW ( item --- )
 \ ---- value output: a stack of sinks - each a capture's list; none, the terminal ----
 64 CONSTANT SINK-MAX
 SINK-MAX CELLS BUFFER: SINKS   VARIABLE SINK#
+SINK-MAX CELLS BUFFER: SKINDS                  \ each sink's kind (868): 0 a list; 1 one value wanted, 2 got - in SINKS
 : SINK ( --- list-item | 0 )   SINK# @ IF SINKS SINK# @ 1- CELLS + @ ELSE 0 THEN ;
-: PUT ( item --- )   SINK ?DUP IF CELL+ @ R-PUSH EXIT THEN  SHOW CR ;
+: PUT ( item --- )
+  SINK# @ 0= IF SHOW CR EXIT THEN
+  SINK# @ 1- CELLS  DUP SKINDS + @ ?DUP 0= IF SINKS + @ ?DUP IF CELL+ @ R-PUSH ELSE SHOW CR THEN EXIT THEN   \ 0: printed
+  1 = IF 2 OVER SKINDS + !  SINKS + ! EXIT THEN
+  2DROP S" cm: $( ) got several values - @( ) takes them all" R-FAIL ;
 : CAPTURE ( i*x xt --- j*x list-item )   \ run xt, the values it puts captured - not its bytes
   SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN
-  R-NEW-LIST K-LIST R-BOX  SINKS SINK# @ CELLS + !  1 SINK# +!
+  R-NEW-LIST K-LIST R-BOX  SINKS SINK# @ CELLS + !  0 SKINDS SINK# @ CELLS + !  1 SINK# +!
   CATCH  SINK SWAP  -1 SINK# +!  THROW ;
+: CAPTURE1 ( i*x xt --- j*x item )   \ $( ) of a function: its one value, kept in the sink's own cell - no list (868)
+  SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN
+  0 SINKS SINK# @ CELLS + !  1 SKINDS SINK# @ CELLS + !  1 SINK# +!
+  CATCH  SINK# @ 1- CELLS DUP SINKS + @ SWAP SKINDS + @  -1 SINK# +!  ROT THROW
+  1 = IF DROP S" cm: $( ) got no value" R-FAIL THEN ;
 : ONE ( list-item --- item )   \ $( ): exactly one value
   CELL+ @  DUP @ 1 = IF R-ITEMS @ EXIT THEN
   @ IF S" cm: $( ) got several values - @( ) takes them all" ELSE S" cm: $( ) got no value" THEN R-FAIL ;
