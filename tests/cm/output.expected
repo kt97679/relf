@@ -1,0 +1,18 @@
+the printed form:
+42
+hello world
+[a "b c" [1 2]]
+[name: ada  tags: [x y]]
+[:]
+<block>
+the captured value is the value put: -1 
+a capture of noisy, its echo first: 
+noise
+the value: 7 
+@ of three: [1 2 3]
+$ of three, caught: cm: $( ) got several values - @( ) takes them all
+-4004 
+$ of outer: [1 2 3]
+collected inside a capture: [kept after]
+a failure inside a capture: cm: boom
+-4004 sinks left: 0 

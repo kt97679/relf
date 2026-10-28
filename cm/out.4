@@ -1,0 +1,48 @@
+\ cm/out.4 - the command model's runtime, step 2 of its prototype (856): value output and byte
+\ output kept apart, captures, and the printed form - docs/COMMAND-MODEL.md, rules 2 and 12.
+\ Loaded after cm/rt-cm.4. `put` sends a value to the innermost capture, or prints it at the
+\ terminal; `echo`'s bytes go to the byte output and are never captured.
+
+\ ---- the printed form: lists [a b], maps [k: v  k2: v2], [:] when empty, blocks <block> ----
+DEFER SHOW ( item --- )
+: QUOTE? ( c-addr u --- f )   \ a text that would not read back as one word
+  DUP 0= IF 2DROP -1 EXIT THEN
+  0 ?DO  DUP I + C@  DUP 33 < OVER [CHAR] [ = OR OVER [CHAR] ] = OR OVER [CHAR] { = OR
+         OVER [CHAR] } = OR OVER [CHAR] " = OR SWAP [CHAR] $ = OR
+         IF DROP -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
+: SHOW-QUOTED ( c-addr u --- )   [CHAR] " EMIT
+  0 ?DO  DUP I + C@  DUP [CHAR] " = OVER 92 = OR IF 92 EMIT THEN  EMIT  LOOP DROP  [CHAR] " EMIT ;
+: SHOW-IN ( item --- )   \ an element: a text quoted when it must be
+  DUP 0<> IF DUP D-KIND K-TEXT = IF CELL+ @ R-T@ 2DUP QUOTE? IF SHOW-QUOTED ELSE TYPE THEN EXIT THEN THEN
+  SHOW ;
+: SHOW-LIST ( l --- )   [CHAR] [ EMIT
+  DUP @ 0 ?DO  I IF SPACE THEN  DUP R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP  [CHAR] ] EMIT ;
+: SHOW-MAP ( r --- )   DUP @ @ 0= IF DROP ." [:]" EXIT THEN  [CHAR] [ EMIT
+  DUP @ @ 0 ?DO  I IF 2 SPACES THEN
+    DUP @ R-ITEMS I CELLS + @ SHOW-IN  ." : "  DUP CELL+ @ R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP
+  [CHAR] ] EMIT ;
+: SHOW-IMPL ( item --- )
+  DUP 0= IF DROP ." none" EXIT THEN
+  DUP D-KIND  DUP K-LIST = IF DROP CELL+ @ SHOW-LIST EXIT THEN
+  DUP K-REC = IF DROP CELL+ @ SHOW-MAP EXIT THEN
+  DUP K-BLOCK = IF 2DROP ." <block>" EXIT THEN
+  K-UPV = IF UPV@ RECURSE EXIT THEN
+  D-TEXT R-T@ TYPE ;
+' SHOW-IMPL IS SHOW
+
+\ ---- value output: a stack of sinks - each a capture's list; none, the terminal ----
+64 CONSTANT SINK-MAX
+SINK-MAX CELLS BUFFER: SINKS   VARIABLE SINK#
+: SINK ( --- list-item | 0 )   SINK# @ IF SINKS SINK# @ 1- CELLS + @ ELSE 0 THEN ;
+: PUT ( item --- )   SINK ?DUP IF CELL+ @ R-PUSH EXIT THEN  SHOW CR ;
+: CAPTURE ( i*x xt --- j*x list-item )   \ run xt, the values it puts captured - not its bytes
+  SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN
+  R-NEW-LIST K-LIST R-BOX  SINKS SINK# @ CELLS + !  1 SINK# +!
+  CATCH  SINK SWAP  -1 SINK# +!  THROW ;
+: ONE ( list-item --- item )   \ $( ): exactly one value
+  CELL+ @  DUP @ 1 = IF R-ITEMS @ EXIT THEN
+  @ IF S" cm: $( ) got several values - @( ) takes them all" ELSE S" cm: $( ) got no value" THEN R-FAIL ;
+
+\ ---- the collector: the captures' lists too ----
+: G-MORE-OUT ( --- )   G-MORE-CM  SINK# @ 0 ?DO  SINKS I CELLS + DUP @ G-BOX SWAP !  LOOP ;
+' G-MORE-OUT IS G-MORE

@@ -880,6 +880,7 @@ do not trust the absence of a line below.
 - 853 — objects' prior art checked: C.2, the object contract; inheritance by filling a given map; the runtime prompt rebuilt
 - 854 — the runtime answers checked, relf's premises in its source: the runtime plan; the collector's safe points its largest piece
 - 855 — the command model's prototype, step 1: frames the collector sees, upvalues, blocks (cm/rt-cm.4); cycles reclaimed
+- 856 — step 2: value output and byte output apart, captures, the printed form (cm/out.4)
 
 ### Not tied to an iteration
 

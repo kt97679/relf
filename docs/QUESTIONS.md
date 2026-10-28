@@ -161,7 +161,8 @@ side-by-side with A.4; three prompts out to other models. The review back (852):
 direction stands, its contracts settled as C.1 - thirteen rules. Objects back (853): the
 object contract as C.2; inheritance by filling a given map; delegation deferred. The runtime
 back (854): a plan, the collector's safe points its largest piece; nothing left to ask.
-The prototype begun (855): blocks, upvalues and the collector's new roots, tested.
+The prototype begun (855): blocks, upvalues and the collector's new roots, tested. Step 2
+(856): value and byte output apart, captures, the printed form.
 
 **A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
 yet"; "add prompt with line editing and history, see if it can be refactored

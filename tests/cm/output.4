@@ -1,0 +1,41 @@
+\ tests/cm/output.4 - the command model's prototype, step 2 (856): values put and captured, bytes
+\ echoed and never captured, the printed form. Each word is what a compiler would make of its comment.
+S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED
+: T$ ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
+: L+ ( list-item v --- list-item )   OVER CELL+ @ R-PUSH ;
+: NEW-L ( --- list-item )   R-NEW-LIST K-LIST R-BOX ;
+: NEW-M ( --- map-item )   R-NEW-RECORD K-REC R-BOX ;
+
+.( the printed form:) CR
+42 D-NUM PUT                                                        \ put 42
+S" hello world" T$ PUT                                              \ put "hello world"
+NEW-L S" a" T$ L+  S" b c" T$ L+  NEW-L 1 D-NUM L+ 2 D-NUM L+ L+  PUT   \ put [a "b c" [1 2]]
+NEW-M DUP S" name" T$ S" ada" T$ D-SET  DUP S" tags" T$ NEW-L S" x" T$ L+ S" y" T$ L+ D-SET  PUT  \ put [name: ada  tags: [x y]]
+NEW-M PUT                                                           \ put [:]
+0 ' NOOP BLK-NEW PUT                                                \ put { }
+
+\ def one-list { put [1 2] } - $(one-list) is that list itself
+VARIABLE KEPT  KEPT R-ITEM R-ROOT  NEW-L 1 D-NUM L+ 2 D-NUM L+ KEPT !
+: ONE-LIST ( --- )   KEPT @ PUT ;
+.( the captured value is the value put: ) ' ONE-LIST CAPTURE ONE KEPT @ = . CR
+
+\ def noisy { echo noise; put 7 } - echo's bytes are not captured
+: NOISY ( --- )   ." noise" CR  7 D-NUM PUT ;
+.( a capture of noisy, its echo first: ) CR ' NOISY CAPTURE ONE .( the value: ) D>N . CR
+
+\ def three { put 1; put 2; put 3 } - @(three) takes them all; $(three) is an error
+: THREE ( --- )   1 D-NUM PUT  2 D-NUM PUT  3 D-NUM PUT ;
+.( @ of three: ) ' THREE CAPTURE PUT
+.( $ of three, caught: ) ' THREE CAPTURE ' ONE CATCH . DROP CR
+
+\ def outer { put [@(three)] } - captures nest
+: OUTER ( --- )   ['] THREE CAPTURE PUT ;
+.( $ of outer: ) ' OUTER CAPTURE ONE PUT
+
+\ a collection inside a capture: what it has caught so far survives
+: COLLECTING ( --- )   S" kept" T$ PUT  R-GC  S" after" T$ PUT  R-GC ;
+.( collected inside a capture: ) ' COLLECTING CAPTURE PUT
+
+\ a failure inside a capture: the capture is undone, the sinks as they were
+: FAILING ( --- )   1 D-NUM PUT  S" cm: boom" R-FAIL ;
+.( a failure inside a capture: ) ' FAILING ' CAPTURE CATCH .  .( sinks left: ) SINK# @ . CR

@@ -404,8 +404,24 @@ a running block (8); a cycle - a map, a block, an upvalue, the map - kept throug
 and still itself; 200,000 such cycles made and dropped, the arena under 1 MB after them; the counters
 still counting. rill2's image 68,912 -> 69,008 bytes for the hooks.
 
-Next: step 2 - value output and byte output kept apart, and captures of values - and then a front
-end small enough to write the tests in the draft's syntax.
+**Step 2 (856): value output and byte output kept apart; captures; the printed form** - `cm/out.4`,
+tested by `tests/cm/output.4`:
+
+- **Sinks.** `PUT` sends a value to the innermost capture's list, or - none open - prints it at the
+  terminal; `echo`'s bytes go to the byte output and are never captured (rule 2).
+- **Captures.** `CAPTURE` runs a function with a new list as its sink, under CATCH, so a failure
+  inside leaves the sinks as they were; `ONE` is `$( )` - exactly one value, else an error naming
+  `@( )`; the list itself is `@( )`.
+- **The printed form** (rule 12): `[a "b c" [1 2]]` - a text quoted only when it would not read back
+  as one word - `[name: ada  tags: [x y]]`, `[:]`, `<block>`.
+- **The collector** sees the captures' lists.
+
+The test: the printed forms above; a capture's value is the very value put; `echo` inside a capture
+printed, the value 7 captured; `@( )` of three values, `$( )` of them an error; nested captures; a
+collection inside a capture keeping what it caught; a failure inside one leaving no sink behind.
+
+Next: step 3 - `break`, `continue` and `return` carrying their target's identity - and a front end
+small enough to write the tests in the draft's syntax.
 
 ## What it costs
 
