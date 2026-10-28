@@ -884,6 +884,7 @@ do not trust the absence of a line below.
 - 857 — step 3: break, continue, return by identity (cm/ctl.4); the lint guards ['] and '
 - 858 — a front end, tools/cmc.py: the draft's examples run as written (tests/cm/scripts/)
 - 859 — programs in the prototype: pipelines, redirections, && and ||, captures of programs, $status; step 4 designed
+- 861 — the aim restated, smaller than relfsh: coroutines and the engine primitive set aside, function stages buffered
 
 ### Not tied to an iteration
 

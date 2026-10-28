@@ -462,24 +462,29 @@ trailing newline dropped, `@( )` its lines; any command's status as a condition;
 map or block given to a program is an error (rule 12). Built on rt.4's pipeline runtime - the one
 rill2 uses - with cm/lib.4's `PSTAGE` turning an argument list into texts. `tests/cm/scripts/programs.cm`.
 
-**Step 4, designed (859): function stages as coroutines - what the engine asks of them.** Read in
-engine/cv8.c: the VM's 4 MB holds the return stack in its top 64 KB and the data stack in the 256 KB
-below, each with a guard page at its floor (Iteration 586); the inner loop checks `dsp < dsp_limit`
-and `rp < rp_limit` against those floors - addresses fixed at start and copied into constants on
-entry. The kernel has `SP!` and `RP!`, `S0` and `R0`, and one `HANDLER` for CATCH. So:
+**The aim, restated by the owner (861): smaller than relfsh.** Rill and rill2 are attempts at a shell
+and scripting language smaller than relfsh, the POSIX shell this VM already has - not another POSIX
+shell. Measured: relfsh's image 129,028 bytes; rill2's 69,008, its language part 21,294; the command
+model's runtime so far (rt-cm.4 834, out.4 782, ctl.4 918, lib.4 1,544 bytes loaded) about 4 KB. With
+rill2's language part replaced by that runtime and an in-image compiler for a far smaller syntax,
+the command model would come to roughly 60-64 KB - half of relfsh - if nothing heavy is added.
 
-- A coroutine's stacks must lie inside the two regions: anywhere else, the first push is an
-  "overflow". Each stage gets a segment of each, carved from the regions' bottoms.
-- Carved segments alone would let a stage that overflows its own run silently into its
-  neighbour's - the corruption Iteration 151 ended. So the engine gains one primitive that switches
-  a stage's stack pointers and its limits together, the inner loop reading the limits afresh: an
-  overflow of a segment is then caught as any overflow is. In both engines - cv8.c and the native
-  one.
-- A switch saves and restores `SP`, `RP`, `S0`, `R0` and `HANDLER`; values crossing between stages go
-  through bounded queues the collector sees; a stage's frames stay on cm's own frame stack, so
-  each coroutine keeps a frame-stack segment too.
+**Step 4, decided for size (861): function stages buffered, not streamed.** Designed first as
+coroutines - each stage its own stack segments, guard pages between them, a new engine primitive
+(MPROTECT) in both engines and the kernels rebuilt: built and working (859-860), and set aside,
+because the shared kernel and engines - relfsh's too - are no place for the command model's needs,
+and a coroutine engine is the opposite of small. Instead:
 
-Then step 5's poll loop, for pipelines that mix functions and programs.
+- Programs next to each other are an OS pipeline, streaming among themselves, as now.
+- A function stage runs to its end in the shell's process, keeping its side effects; its values go to
+  the next function as a list, read with `each`.
+- A function before a program writes to a temporary file - its values as lines, its `echo` text with
+  them, in order - and the program reads the file: no pipe to fill, no deadlock, no poll loop.
+- A program before a function is read whole, its lines the function's input.
+
+The price: a function stage does not stream - an endless function generator in a pipeline would
+hang, as the first review warned. Programs are untouched by it. Reviews asked for streaming; the
+owner's aim decides against what it costs.
 
 ## What it costs
 
