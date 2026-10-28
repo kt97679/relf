@@ -1,0 +1,9 @@
+# cm/genes.tsv - the command model's syntax genes (Iteration 865, docs/SYNTAX-GENES.md's first experiment)
+# Each a choice between two concrete syntaxes for one tree: cm/cmc.4 holds both, between
+# \ [gene NAME] and \ [gene !NAME] ... \ [/gene], and tools/cm-genes.py keeps one; tools/cm-render.py
+# prints a script in either. CM_GENES (name=value,...) overrides a default. 0 is C.2, as written.
+# name	default	values	axis	what
+s2	0	0,1	S2	binding: var x v (C.2) - or var x = v (Elvish, YSH, Nushell, Ion)
+s7	0	0,1	S7	capture in a word: $(cmd) (sh, YSH, C.2) - or (cmd) (fish, Elvish, Nushell); $(cmd) stays in quotes and (( ))
+s8	0	0,1	S8	in a quoted text: $x, $(cmd), $((e)) (sh, C.2) - or {x}, {(cmd)}, {((e))} (rill2, Rill), $ then plain
+s9	0	0,1	S9	(( )): infix with precedence (sh, C.2) - or prefix, (( + $n 1 )), no precedence to parse (no system)

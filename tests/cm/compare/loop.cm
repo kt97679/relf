@@ -1,0 +1,8 @@
+# a loop of arithmetic in Rill, Rill 2 and the command model (865): the sum of i * i below 1000000
+var s 0
+var i 0
+while (( $i < 1000000 )) {
+    set s $(( $s + $i * $i ))
+    set i $(( $i + 1 ))
+}
+echo $s

@@ -149,7 +149,18 @@ if sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm.$$.img > /dev/
         else fail=$((fail + 1)); echo "FAIL $t, in kernel64-cm.img"; diff "${t%.cm}.expected" /tmp/rill2-out.$$ | head -5; fi
     done
 else fail=$((fail + 1)); echo "FAIL tools/build-cm-image.sh"; fi
-rm -f /tmp/rill2.$$.img /tmp/cm.$$.img /tmp/rill2-out.$$
+if CM_FRONT=overlay sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm-lean.$$.img > /dev/null 2>&1; then   # the front end as an overlay (865)
+    ok=1
+    for t in tests/cm/scripts/*.cm; do
+        { timeout 60 ./relf64 /tmp/cm-lean.$$.img "$t" 2>&1; echo "status $?"; } | tr -d '\r' > /tmp/rill2-out.$$
+        cmp -s /tmp/rill2-out.$$ "${t%.cm}.expected" || { ok=0; echo "FAIL $t, the front end an overlay"; diff "${t%.cm}.expected" /tmp/rill2-out.$$ | head -5; }
+    done
+    if [ $ok = 1 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+else fail=$((fail + 1)); echo "FAIL tools/build-cm-image.sh, CM_FRONT=overlay"; fi
+# the syntax genes (865): every genome's front end makes, of each script rendered in its syntax, cmc.py's Forth, and runs it
+if python3 tools/cm-syntax-search.py > /tmp/rill2-out.$$ 2>&1; then pass=$((pass + 1))
+else fail=$((fail + 1)); echo "FAIL tools/cm-syntax-search.py"; grep -v ' ok$' /tmp/rill2-out.$$ | head -5; fi
+rm -f /tmp/rill2.$$.img /tmp/cm.$$.img /tmp/cm-lean.$$.img /tmp/cm-lean.$$.img.front.4 /tmp/rill2-out.$$
 # the syntax features' table (864): its rules fit every system it names, and name only its values
 if python3 tools/syntax-space.py 1000 > /tmp/rill-syntax.$$ 2>&1; then pass=$((pass + 1))
 else fail=$((fail + 1)); echo "FAIL tools/syntax-space.py"; grep -v '^genomes\|^a uniform\|has .* values' /tmp/rill-syntax.$$ | head -5; fi

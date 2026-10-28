@@ -888,6 +888,7 @@ do not trust the absence of a line below.
 - 862 — pipelines with functions in them, buffered (cm/pipe.4); the runtime 4684 bytes
 - 863 — the front end in Forth (cm/cmc.4); the command model in its own image, 66,845 bytes against rill2's 69,008: on size, Q46 a draw
 - 864 — syntax as genes: 33 shells and languages split into 23 axes (docs/SYNTAX-GENES.md); the space measured; a search can draw a front, not choose
+- 865 — 16 syntax genomes built and gated: 280 bytes at most; the front end as an overlay, 18.7% off; against Rill and Rill 2, smaller and slower
 
 ### Not tied to an iteration
 

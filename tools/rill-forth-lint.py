@@ -93,8 +93,14 @@ for g in ['rill/rt.4', 'rill/regex.4'] + sorted(glob.glob('rill2/*.4')):
 cm_defined = set(image2)                                            # what cm's files may use: rill2's image and cm (858: -ROT)
 for g in glob.glob('cm/*.4'): cm_defined |= {m.upper() for m in re.findall(r'(?m)(?:^|\s):\s+(\S+)', open(g).read())}
 cm_seen = {}
+def cm_names(text):
+    """A cm file's names, each once: a gene's alternatives define the same word each way (865)."""
+    blocks = re.findall(r'(?ms)^\\ \[gene [^\]]*\]\n(.*?)^\\ \[/gene\]', text)
+    plain = re.sub(r'(?ms)^\\ \[gene [^\]]*\]\n.*?^\\ \[/gene\]', '', text)
+    own = names(plain)
+    return own + sorted({n for b in blocks for n in names(b)} - set(own))
 for f in sorted(x for x in srcs if x.startswith('cm/')):
-    for n in names(srcs[f]):
+    for n in cm_names(srcs[f]):
         if n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
         elif n in cm_seen: print('%s: %s is defined again - %s has it' % (f, n, cm_seen[n])); found += 1
         else: cm_seen[n] = f

@@ -22,7 +22,7 @@ class CmError(Exception):
     pass
 
 BUILTIN = {'var', 'set', 'put', 'echo', 'append', 'if', 'for', 'while', 'def', 'break', 'continue',
-           'return', 'count', 'range', 'merge', 'true', 'false', 'each'}
+           'return', 'count', 'range', 'merge', 'true', 'false', 'each', 'has'}
 NAME0, NAMEC = re.compile(r'[A-Za-z_]'), re.compile(r'[A-Za-z0-9_]')
 REDIRS = {'>': ('W/O', 1), '>>': ('A/O', 1), '<': ('R/O', 0), '2>': ('W/O', 2), '2>>': ('A/O', 2), '&>': ('W/O', 1)}
 DUPS = {'2>&1': '1 2 R-RD-DUP', '>&2': '2 1 R-RD-DUP', '1>&2': '2 1 R-RD-DUP'}
@@ -259,7 +259,7 @@ class Gen:
         if k == 'b': return 'TRUE-BOX' if p[1] else 'FALSE-BOX'
         if k == 'v':
             code = self.read(p[1], scope, frame, line)
-            for key in p[2]: code += ' ' + self.word(key, scope, frame, line) + ' D-AT'
+            for key in p[2]: code += ' ' + self.word(key, scope, frame, line) + ' CM-AT'
             return code
         if k == 'q':
             if not p[1]: return 'S" " TXT'
@@ -466,11 +466,11 @@ class Gen:
             if not keys: return '%s %s UPV!' % (value, self.ref(v, frame, line))
             code = self.read(m.group(1), scope, frame, line)
             kw = [parse_word(Reader(k, line), set()) for k in keys]
-            for k in kw[:-1]: code += ' %s D-AT' % self.word(k, scope, frame, line)
-            return '%s %s %s D-SET' % (code, self.word(kw[-1], scope, frame, line), value)
+            for k in kw[:-1]: code += ' %s CM-AT' % self.word(k, scope, frame, line)
+            return '%s %s %s CM-SET' % (code, self.word(kw[-1], scope, frame, line), value)
         if name in ('put', 'echo'):
             return '%s %s' % (self.args(rest, scope, frame, line), 'PUTS' if name == 'put' else 'ECHO')
-        if name in ('count', 'range', 'merge', 'each'):
+        if name in ('count', 'range', 'merge', 'each', 'has'):
             return '%s %s-OF' % (self.args(rest, scope, frame, line), name.upper())
         if name == 'append':
             if not rest or not bare(rest[0]): self.err(line, 'append name values')

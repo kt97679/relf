@@ -1,0 +1,9 @@
+# a def called 200000 times in Rill, Rill 2 and the command model (865): the sum of sq(i) below 200000
+def sq(n) { return n * n }
+t = 0
+i = 0
+while i < 200000 {
+    t = t + sq(i)
+    i = i + 1
+}
+print(t)

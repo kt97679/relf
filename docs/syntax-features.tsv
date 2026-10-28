@@ -30,7 +30,7 @@ value	S1	stack	Forth cosh Joy	-	no variable needed: values on a stack
 axis	S2	binding		-	how a variable gets a value
 value	S2	name-eq	sh rc	relfsh	x=v, no blanks
 value	S2	set-word	Tcl fish	-	set x v
-value	S2	keyword-eq	Elvish Nushell YSH Ion Lua	-	var x = v / let x = v
+value	S2	keyword-eq	Elvish Nushell YSH Ion Lua	cm	cm's gene s2 (865)var x = v / let x = v
 value	S2	sigil-eq	PowerShell murex	-	$x = v
 value	S2	bare-eq	Rill xonsh-python	rill2	x = v
 value	S2	keyword-word	C.2	cm	var x v; set x v
@@ -58,12 +58,12 @@ value	S6	at-braces	PowerShell	-	@{k=v}
 value	S6	brackets-colon	C.2	cm	[k: v], [:]
 axis	S7	capture		-	how a command's output becomes a value
 value	S7	dollar-paren	sh YSH Ion C.2	relfsh rill2 cm	$(cmd)
-value	S7	paren	fish Elvish Nushell	-	(cmd)
+value	S7	paren	fish Elvish Nushell	cm	cm's gene s7 (865)(cmd)
 value	S7	backquote-brace	rc es	-	`{cmd}
 value	S7	value-and-list	YSH Ion C.2	cm	$(cmd) one value, @(cmd) its lines or values
 axis	S8	interpolation		-	values inside a quoted text
 value	S8	in-double-quotes	sh fish PowerShell Ion C.2	relfsh cm	"a $x b"
-value	S8	braces-expression	Rill Python-f	rill2	"a {x + 1} b"
+value	S8	braces-expression	Rill Python-f	rill2 cm	cm's gene s8 (865)"a {x + 1} b"
 value	S8	prefixed-strings	Nushell	-	$"a (expr) b"
 value	S8	none-concatenate	rc es Elvish	-	no interpolation: a^$x^b, or words side by side
 axis	S9	expressions		-	where infix arithmetic and comparison are
@@ -73,6 +73,7 @@ value	S9	in-a-mode	YSH PowerShell Nushell	-	infix where the syntax says expressi
 value	S9	everywhere	Rill xonsh-python Lua	rill2	
 value	S9	postfix	Forth cosh	-	1 2 +
 value	S9	prefix-lists	scsh Rash Closh	-	(+ 1 2)
+value	S9	prefix-brackets	-	cm	(( + $n 1 )): prefix inside (( )) - cm's gene s9 (865), no precedence to parse
 axis	S10	parameters		-	how a function names its parameters
 value	S10	positional	sh fish	relfsh	$1 $2 / $argv
 value	S10	after-name	es Ion Tcl	-	fn name a b { }
@@ -123,7 +124,7 @@ value	V7	quotations	cosh Joy Factor	-
 axis	F1	front-end		-	where the script is made into code
 value	F1	resident	sh rc fish Elvish Nushell rill2	rill2 cm	the parser in the running image
 value	F1	ahead	Rill execline	-	compiled before it runs; the image holds no parser (Rill's rillc.py; execlineb leaves)
-value	F1	overlay	-	-	the parser loaded only to compile, a prompt loading it on demand
+value	F1	overlay	-	cm	the parser loaded only to compile: CM_FRONT=overlay (865)
 rule	excludes	S1=dollar-in-commands	S9=arith-brackets	bare names in expressions need an expression mode
 rule	requires	S1=dollar-in-commands	S12=syntax-modes|lookup-parses	
 rule	requires	S1=bare-everywhere	S12=marked-commands|lookup-parses	a bare word is a name, so a command must be marked or guessed

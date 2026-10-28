@@ -4,7 +4,7 @@
 features, and use the features for genetic programming - to find the syntax and design that give the
 smallest binary and the best performance.
 
-**The short answer.** The split works: 33 systems, 23 independent choices ("axes"), 95 ways of making
+**The short answer** (864; the first experiment's results, 865, below). The split works: 33 systems, 23 independent choices ("axes"), 95 ways of making
 them, 26 rules for which ways cannot go together - `docs/syntax-features.tsv`, checked by
 `tools/syntax-space.py`, which every system in it passes. A search over it is possible in this
 repository, with a strong, cheap gate (below), but only after each feature's alternatives are written
@@ -236,6 +236,101 @@ S8 (interpolation, or none), S9 (`(( ))`, or a `math` command), S2 (`var x v`, o
 ones; measured in bytes, tokens and hazards. And, apart from syntax, F1: the image with and without
 its front end resident, with a prompt that loads it. The question it answers first is the one this
 document cannot: whether syntax genes move the bytes enough to be worth a search at all.
+
+## The first experiment, run (865)
+
+**Built.** Four genes in `cm/genes.tsv`, each a second concrete syntax for the same tree, written into
+`cm/cmc.4` between `\ [gene NAME]` lines; `tools/cm-genes.py` keeps one alternative of each, so a
+genome's image holds its own front end and no other.
+
+| gene | 0 - C.2, as written | 1 | who uses 1 |
+|---|---|---|---|
+| s2 binding | `var x v`, `set x v` | `var x = v`, `set x = v` | Elvish, YSH, Nushell, Ion |
+| s7 capture in a word | `$(cmd)` | `(cmd)`; `$(cmd)` stays in quotes and `(( ))` | fish, Elvish, Nushell |
+| s8 a value in a quoted text | `"a $x $(cmd) $((e))"` | `"a {x} {(cmd)} {((e))}"`, `$` plain | rill2, Rill |
+| s9 arithmetic | `(( $n + 1 ))`, infix, precedence | `(( + $n 1 ))`, prefix | none: what the precedence parser costs |
+
+S8's 1 is rill2's braces rather than no interpolation at all, and s7's keeps `$(cmd)` in quotes as fish
+3.4 does: either way round, a string with a value in it would have parsed into another tree, the
+Forth would have differed, and the gate below could not have told a right rendering from a wrong one.
+`tools/cm-render.py` prints cmc.py's tree in any genome's syntax, escaping only what that syntax makes
+special in that place; `tools/cm-syntax-search.py` enumerates all 16 genomes. The corpus is the eight
+scripts in `tests/cm/scripts`: the six of 855-862, `side.cm` - the program `tests/rill2/compare/`
+keeps in Rill and Rill 2 (838), the same output - and `syntax.cm`, written for this, the four genes'
+constructs with their awkward cases.
+
+**Gates, both passed by all 16 genomes on all 8 scripts:** the genome's front end makes of the rendered
+script the Forth cmc.py makes of the original, token for token; and the rendered script prints the
+original's expected output in the genome's image. tests/rill/run runs the whole experiment as one check.
+
+**Measured** - image bytes; the rendered scripts' non-blank characters and blank-separated words; escapes,
+the characters a writer had to escape or quote because the syntax made them special:
+
+| genome s2 s7 s8 s9 | image bytes | characters | words | escapes |
+|---|---:|---:|---:|---:|
+| 0 0 0 0 (C.2) | 67,013 | 2,931 | 892 | 11 |
+| 0 1 0 0 | 67,061 | 2,913 | 892 | 11 |
+| 0 0 1 0 | 67,181 | 2,938 | 892 | 10 |
+| 0 0 0 1 | 67,021 | 2,954 | 896 | 11 |
+| 1 0 0 0 | 67,069 | 2,983 | 944 | 11 |
+| 1 1 1 1 | 67,293 | 2,995 | 948 | 10 |
+
+The genes' effects add exactly; the other ten genomes are the sums (`tools/cm-syntax-search.py`
+prints them all). Each gene alone: s2 +56 bytes, +52 characters, +52 words; s7 +48 bytes, -18
+characters; s8 +168 bytes, +7 characters, one escape fewer; s9 +8 bytes, +23 characters, +4 words.
+The front end itself, measured as before: 12,699 bytes as C.2 (the runtime 4,887 - 865's `has`, and
+indexing a list), 12,755 / 12,747 / 12,867 / 12,707 with each gene.
+
+**What it says.** At this grain syntax is not where the bytes are: the most any genome moves is 280
+bytes, 0.4% of the image, and every alternative is larger than C.2's choice, because it adds a check
+(s2), a branch (s7) or a parser beside one that must stay (s8: `$` still reads values in words). Prefix
+arithmetic costs what infix with precedence does, 8 bytes more: in Forth, precedence climbing is a few
+small words, and the tokenizer and the tree are shared. Characters move 3% at most, words 6%. So the four axes are
+choices of taste - s7 shortest, s8 fewest escapes - and a search over such axes would sort them by
+length and escapes, not by size.
+
+**F1, the front end not resident** (`CM_FRONT=overlay`): the image holds a stub of a few words, the
+front end lies beside it as a Forth source and is loaded when a script runs. 54,510 bytes against
+67,013 - 18.7% smaller - every script runs as before (tests/rill/run checks them), and each run starts
+13.6 ms later: `side` takes 21.0 ms against 7.4. The one gene in the table that moves the size.
+
+## Against Rill and Rill 2 (865)
+
+`tools/cm-compare.py`: the same three programs in each language - `side` (838's), `loop` (the sum of
+i * i below 1,000,000, a while loop) and `calls` (a def squaring, called 200,000 times) - in
+`tests/cm/compare/`, each output checked before it is timed; 9 rounds, the images taking turns.
+
+| | Rill | Rill 2 | the command model | its front end an overlay |
+|---|---:|---:|---:|---:|
+| image bytes | 90,667 | 69,008 | 67,013 | 54,510 |
+| the language in the image | 39,241 (compile.4) | 21,294 (rill2.4, prompt.4) | 19,280 (values, runtime, front end) | 6,796 |
+| side: characters / words | 335 / 110 | 345 / 101 | 370 / 133 | |
+| loop | 47 / 26 | 42 / 25 | 67 / 32 | |
+| calls | 76 / 34 | 62 / 31 | 91 / 41 | |
+| side, ms (median, range) | 10.1 (9.6-10.9) | 9.7 (9.1-10.5) | 7.4 (7.1-7.7) | 21.0 (20.0-23.5) |
+| loop, ms | 75.5 (72.6-81.1) | 188.7 (178.3-207.1) | 268.8 (245.6-311.6) | 281.7 |
+| calls, ms | 18.8 (18.2-19.6) | 45.4 (43.7-46.8) | 213.5 (202.1-237.4) | 222.7 |
+
+All three share Rill's runtime, regex engine and character widths (43,238 bytes); Rill's line editor
+keeps its TAB completion (8,188 bytes with its shim, against 4,476). The ranges are a tenth of the
+medians or less; the differences below are many times that.
+
+- **Size:** the command model is 2.0 KB smaller than Rill 2 and 23.7 KB smaller than Rill, and 14.5
+  KB smaller than Rill 2 with its front end an overlay. It has no prompt and a small library yet.
+- **Text:** its programs are longer - on `side` 7% more characters than Rill 2's and 10% more than
+  Rill's, on `loop` and `calls` 20-60%: `var` and `set`, `$` on every read, `$(( ))` around arithmetic. The genes above close little of it.
+- **Speed:** short scripts start fastest in it (a smaller image, a simpler compile). But a loop runs
+  1.4 times as long as in Rill 2 and 3.6 times as in Rill, and calls 4.7 and 11 times: a def returns
+  through a capture - a list made per call - with a frame and an activation per call, every variable
+  is boxed (no capture analysis yet), and a safe point comes before every statement. Rill keeps a pure
+  def's parameters on the stack (738) and counts its loops (739).
+
+**So, for the smallest binary and the best performance:** syntax decides neither. The size is decided
+by whether the front end is resident (F1) and by what the product carries; the speed by design - in
+the command model, how a def returns and which variables are boxed. Those are the next genes: capture
+analysis (box only what a block captures), a def's one value returned without a capture, a safe
+point per loop iteration rather than per statement - each with two forms, measured on `loop` and
+`calls` by dispatches. The syntax - C.2 or A.4 - stays the owner's.
 
 ## Sources
 

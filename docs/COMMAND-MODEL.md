@@ -526,6 +526,17 @@ image is 52% of relfsh's. A port that makes `cmc.py`'s Forth word for word, not 
 206 words, their names 1,137 characters; one pass instead of two, and shorter names, would cut it -
 and rill2's compiler could be cut the same way. On size, Q46 is a draw.
 
+**Syntax genes and the comparison (865).** Four of the syntax's choices made genes of `cm/cmc.4`
+(`cm/genes.tsv`: `var x = v`, `(cmd)`, `"{x}"`, prefix arithmetic) and all 16 genomes built and gated -
+the same Forth as cmc.py from each script rendered in each syntax: the most any moves the image is 280
+bytes, and C.2's choice is the smallest on every axis. With the front end loaded beside the image
+instead of in it (`CM_FRONT=overlay`) the image is 54,510 bytes, 18.7% less, each script starting 13.6 ms
+later. Against Rill and Rill 2 on the same programs: 2.0 KB smaller than Rill 2, its programs longer,
+a loop 1.4 times as slow and calls 4.7 times - a def returns through a capture, every variable is
+boxed, a safe point comes before every statement (docs/SYNTAX-GENES.md). Found running Rill 2's
+program in it: indexing a list faulted - a list keeps its items as they are, and rill2's D-AT and
+D-SET unbox a list's - so `CM-AT` and `CM-SET` (cm/lib.4); and `has`, for `in`.
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,

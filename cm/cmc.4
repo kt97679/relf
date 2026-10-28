@@ -83,12 +83,23 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
     HERE-IN OVER - N-VR N, N)  GET DROP EXIT THEN
   CUR NAME0? IF VAR-P EXIT THEN
   S" $" N-TX N, ;
-: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n and \t in them - and $s
+\ [gene s8]
+: BRACE-P ( --- )   \ {...} in a quoted text: a name, a capture (cmd) or ((arithmetic)) - its $ left out (rill2's braces)
+  CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P ELSE GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N) THEN
+  ELSE CUR NAME0? 0= IF S" { in a text holds a name, ( ) or (( ))" P-ERR THEN VAR-P THEN
+  GET [CHAR] } <> IF S" } missing in a text" P-ERR THEN ;
+\ [/gene]
+: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n and \t in them - and $s, or {s} (s8)
   0 0 N-QU N,  T0
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
+\ [gene !s8]
     ELSE [CHAR] $ = IF GET DROP T) DOLLAR-P T0 ELSE GET T, THEN THEN
+\ [/gene]
+\ [gene s8]
+    ELSE [CHAR] { = IF GET DROP T) BRACE-P T0 ELSE GET T, THEN THEN
+\ [/gene]
   REPEAT DROP GET DROP T) N) ;
 : OPR, ( n --- )   HERE-IN OVER N-OP N,  0 ?DO GET DROP LOOP ;      \ an operator of n characters, a leaf
 : OPR2? ( --- f )   0  12 0 DO  S" ==!=<=>=&&||" DROP I +  DUP C@ CUR =  SWAP 1+ C@ 1 PK =  AND OR  2 +LOOP ;
@@ -125,7 +136,14 @@ VARIABLE BARE                                      \ the word read so far: plain
       GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ELSE              \ '' too: a text, if empty
     CUR [CHAR] $ = IF GET DROP T) 0 BARE ! DOLLAR-P T0 ELSE
     CUR [CHAR] \ = IF GET DROP GET ?DUP IF T, THEN 0 BARE ! ELSE
-    GET T, THEN THEN THEN THEN
+\ [gene s7]
+    CUR [CHAR] ( = IF GET DROP T) 0 BARE ! 0 0 N-CP N, [CHAR] ) DUP CMDS N) T0 ELSE      \ (cmd): fish's, Elvish's
+    GET T, THEN
+\ [/gene]
+\ [gene !s7]
+    GET T,
+\ [/gene]
+    THEN THEN THEN THEN
   REPEAT DROP T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
   BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN DROP ;
@@ -235,7 +253,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -267,6 +285,7 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
   >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
 VARIABLE AP                                        \ the next of (( ))'s nodes
 : AOP? ( c-addr u --- f )   AP @ @ N-OP = IF AP @ @A AP @ @B COMPARE 0= ELSE 2DROP 0 THEN ;
+\ [gene !s9]
 : A-TAKE ( --- c-addr u )   S" D" S| AP @ @A AP @ @B CAT  AP @ N+ AP ! ;   \ the operator taken: D and it
 DEFER A-OR ( --- c-addr u )
 : A-PRIM ( --- c-addr u )
@@ -287,6 +306,32 @@ DEFER A-OR ( --- c-addr u )
   BEGIN S" ||" AOP? WHILE AP @ N+ AP !  S" D-TRUE? IF TRUE-BOX ELSE" ++ A-AND ++ S" D-TRUE? D-BOOL THEN" ++ REPEAT ;
 ' A-OR' IS A-OR
 : ARITH ( ar --- c-addr u )   AP @ >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
+\ [/gene]
+\ [gene s9]
+: P-END? ( --- f )   AP @ @ 0= S" )" AOP? OR ;            \ prefix: (( + $n 1 )), (( * (+ $a 1) 2 )) - no precedence
+: P-COMBINE ( c-addr u c-addr2 u2 op u3 --- c-addr4 u4 )   \ two operands' Forth and the operator's
+  2DUP S" &&" COMPARE 0= IF 2DROP 2SWAP S" D-TRUE? IF" ++ 2SWAP ++ S" D-TRUE? D-BOOL ELSE FALSE-BOX THEN" ++ EXIT THEN
+  2DUP S" ||" COMPARE 0= IF 2DROP 2SWAP S" D-TRUE? IF TRUE-BOX ELSE" ++ 2SWAP ++ S" D-TRUE? D-BOOL THEN" ++ EXIT THEN
+  >R >R ++ S" D" S| R> R> CAT ++ ;
+DEFER P-EXPR ( --- c-addr u )
+: P-OP ( --- c-addr u )   \ an operator, then its operands up to ) or the end: - and ! alone negate
+  AP @ @ N-OP <> IF S" (( )): an operator first" G-ERR THEN
+  AP @ DUP @A SWAP @B  AP @ N+ AP !
+  P-END? IF S" (( )): an operator with nothing after it" G-ERR THEN
+  P-EXPR 2SWAP
+  P-END? IF  2DUP S" -" COMPARE 0= IF 2DROP S" D-NEG" ++ EXIT THEN
+    S" !" COMPARE 0= IF S" D-TRUE? 0= D-BOOL" ++ EXIT THEN  S" (( )): two operands or more" G-ERR THEN
+  BEGIN P-END? 0= WHILE  >R >R  P-EXPR  R> R> 2DUP >R >R  P-COMBINE  R> R>  REPEAT 2DROP ;
+: P-EXPR' ( --- c-addr u )   \ a number, a $value, or ( operator operands )
+  AP @ DUP @ 0= IF S" (( )) ends too soon" G-ERR THEN
+  DUP @ N-OP = IF  DUP @A OVER @B S" (" COMPARE IF S" (( )): an operator where a value goes" G-ERR THEN
+    DROP AP @ N+ AP !  P-OP  S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
+  DUP NSKIP AP !  DUP @ N-NM = IF @A #$ S" D-NUM" ++ EXIT THEN  PIECE ;
+' P-EXPR' IS P-EXPR
+: ARITH ( ar --- c-addr u )   \ an operator first, or a value alone
+  AP @ >R  N+ AP !  AP @ @ N-OP = S" (" AOP? 0= AND IF P-OP ELSE P-EXPR THEN
+  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
+\ [/gene]
 : MAP-CODE ( mp --- c-addr u )
   S" R-NEW-RECORD K-REC R-BOX" ROT N+
   BEGIN DUP @ WHILE  >R S" DUP" ++ R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++  R> NSKIP REPEAT DROP ;
@@ -304,7 +349,7 @@ DEFER A-OR ( --- c-addr u )
     N-TX OF DUP @A SWAP @B TEXT-CODE ENDOF
     N-NM OF @A DUP #$ ROT  1 61 LSHIFT DUP NEGATE 1+ SWAP WITHIN IF S" D-NUM" ELSE S" N>ITEM-D" THEN ++ ENDOF
     N-BO OF @A IF S" TRUE-BOX" ELSE S" FALSE-BOX" THEN ENDOF
-    N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" D-AT" ++ R> NSKIP REPEAT DROP ENDOF
+    N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ENDOF
     N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
     N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE ONE" ++ THEN ENDOF
     N-AR OF ARITH ENDOF
@@ -364,9 +409,18 @@ DEFER A-OR ( --- c-addr u )
   FR @ CELL+ @ 1- #++ S" CM.D." ++ 2SWAP CAT S" # !" CAT OUT+
   R> SC ! R> FR !  0 0 ;
 : NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
+\ [gene !s2]
+: BIND ( from to --- name value )   \ var name value, set name value: their two words
+  2DUP TWO? 0= IF S" var name value, set name value" G-ERR THEN  DROP DUP NSKIP ;
+\ [/gene]
+\ [gene s2]
+: B-ERR ( --- )   S" var name = value, set name = value" G-ERR ;
+: BIND ( from to --- name value )   \ var name = value, set name = value (Elvish, YSH, Nushell, Ion)
+  2DUP = IF B-ERR THEN  >R DUP NSKIP DUP R@ = IF B-ERR THEN
+  DUP S" =" BARE= 0= IF B-ERR THEN  NSKIP DUP R@ = IF B-ERR THEN  DUP NSKIP R> <> IF B-ERR THEN ;
+\ [/gene]
 : VAR-CMD ( from to --- c-addr u )   \ var name value
-  2DUP TWO? 0= IF S" var name value" G-ERR THEN  DROP DUP BARE? 0= IF S" var name value" G-ERR THEN
-  DUP NSKIP WORD-CODE ROT BARE$
+  BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN  WORD-CODE ROT BARE$
   2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
   -1 DECLARE V-SLOT >R S" UPV-NEW" ++ R> #++ S" LS!" ++ ;
 : SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
@@ -380,15 +434,14 @@ DEFER A-OR ( --- c-addr u )
   IN-LEN ! IN-TEXT ! 0 IN-POS !  LN @ IN-LINE !  NDP @  0 WORD-P
   R> IN-LINE ! R> IN-POS ! R> IN-LEN ! R> IN-TEXT ! ;
 : SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value
-  2DUP TWO? 0= IF S" set name value" G-ERR THEN  DROP DUP BARE? 0= IF S" set name value" G-ERR THEN
-  DUP NSKIP WORD-CODE ROT BARE$
+  BIND OVER BARE? 0= IF S" set: a name first" G-ERR THEN  WORD-CODE ROT BARE$
   2DUP [CHAR] [ CHAR-AT >R  OVER R@ NAME? 0= IF SET-ERR THEN  2DUP R@ /STRING KEYS? 0= IF SET-ERR THEN
   OVER R@ FIND-VAR ?DUP 0= IF  S" set: no variable" S| 2OVER DROP R@ ++ S" - var makes one" ++ G-ERR THEN
   OVER R@ = IF  >R 2DROP R> REF ++ S" UPV!" ++  R> DROP EXIT THEN
   DROP OVER R@ READ$ 2SWAP R> /STRING
   BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
-    DUP WHILE  >R >R ++ S" D-AT" ++ R> R>  REPEAT
-  2DROP ++ 2SWAP ++ S" D-SET" ++ ;
+    DUP WHILE  >R >R ++ S" CM-AT" ++ R> R>  REPEAT
+  2DROP ++ 2SWAP ++ S" CM-SET" ++ ;
 : APPEND-ERR ( --- )   S" append name values" G-ERR ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
@@ -397,7 +450,7 @@ DEFER A-OR ( --- c-addr u )
   S" set" NAMED? IF 2DROP SET-CMD EXIT THEN
   S" put" NAMED? IF 2DROP ARGS-CODE S" PUTS" ++ EXIT THEN
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ EXIT THEN
-  2DUP S" count range merge each" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN
+  2DUP S" count range merge each has" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER BARE? 0= IF APPEND-ERR THEN
     OVER BARE$ READ$ 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ EXIT THEN
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN

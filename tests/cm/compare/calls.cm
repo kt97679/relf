@@ -1,0 +1,9 @@
+# a def called 200000 times in Rill, Rill 2 and the command model (865): the sum of sq(i) below 200000
+def sq {|n| put $(( $n * $n )) }
+var t 0
+var i 0
+while (( $i < 200000 )) {
+    set t $(( $t + $(sq $i) ))
+    set i $(( $i + 1 ))
+}
+echo $t

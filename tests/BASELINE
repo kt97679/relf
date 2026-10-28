@@ -99,7 +99,7 @@ rebuild:kernel64-shell.img reproduces
 rill:failed 0
 rill:oracle-different 0
 rill:oracle-same 61
-rill:passed 162
+rill:passed 168
 shell:4byte 1
 shell:8byte 1
 shell:assertions 1128

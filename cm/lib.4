@@ -30,6 +30,12 @@
   2 0 DO  DUP I ARGN  DUP D-KIND K-REC <> IF S" cm: merge takes maps" R-FAIL THEN
     CELL+ @  DUP @ @ 0 ?DO  DUP @ R-ITEMS I CELLS + @  OVER CELL+ @ R-ITEMS I CELLS + @
       4 PICK ROT ROT D-SET  LOOP DROP  LOOP DROP PUT ;
+\ ---- an element of a list or a map (865): a list keeps its items as they are - not boxed, as rill2's
+\ D-AT and D-SET take a list's - so $l[0] read a number as a box and faulted; a map's go through D-SET
+: CM-AT ( c k --- item )   OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
+: CM-SET ( c k v --- )   2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
+: HAS-OF ( args --- )   \ has $m key, has $l value: true if the map has the key, the list the value (865)
+  DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN PUT ;
 : FOR-ONE ( args --- args )   \ for x $l: one value, a list - @ spreads it
   DUP #ARGS 1 = IF DUP 0 ARGN D-KIND K-LIST = IF S" cm: for over one list - @ spreads it" R-FAIL THEN THEN ;
 
