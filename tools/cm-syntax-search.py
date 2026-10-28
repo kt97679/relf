@@ -30,7 +30,7 @@ def run(args):
     return p.stdout.decode('utf-8', 'replace').replace('\r', ''), p.returncode   # text mode made \r a line end
 
 def main():
-    names = [l.split('\t')[0] for l in open('cm/genes.tsv') if l.strip() and not l.startswith('#')]
+    names = [l.split('\t')[0] for l in open('cm/genes.tsv') if l.startswith('s')]     # the syntax genes; d genes at 0
     scripts = sorted(glob.glob('tests/cm/scripts/*.cm'))
     canon = {s: canonical(s) for s in scripts}
     tmp = tempfile.mkdtemp(prefix='cm-syntax.')

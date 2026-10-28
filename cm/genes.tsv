@@ -2,8 +2,13 @@
 # Each a choice between two concrete syntaxes for one tree: cm/cmc.4 holds both, between
 # \ [gene NAME] and \ [gene !NAME] ... \ [/gene], and tools/cm-genes.py keeps one; tools/cm-render.py
 # prints a script in either. CM_GENES (name=value,...) overrides a default. 0 is C.2, as written.
+# s genes change the syntax (each genome's Forth must be cmc.py's, tools/cm-syntax-search.py); d genes the
+# Forth made (each genome must run the scripts as expected, tools/cm-design-search.py).
 # name	default	values	axis	what
 s2	0	0,1	S2	binding: var x v (C.2) - or var x = v (Elvish, YSH, Nushell, Ion)
 s7	0	0,1	S7	capture in a word: $(cmd) (sh, YSH, C.2) - or (cmd) (fish, Elvish, Nushell); $(cmd) stays in quotes and (( ))
 s8	0	0,1	S8	in a quoted text: $x, $(cmd), $((e)) (sh, C.2) - or {x}, {(cmd)}, {((e))} (rill2, Rill), $ then plain
 s9	0	0,1	S9	(( )): infix with precedence (sh, C.2) - or prefix, (( + $n 1 )), no precedence to parse (no system)
+d1	0	0,1	design	put of one value: PUT it - or a list of one made, then PUTS (0, 863)
+d2	0	0,1	design	a loop whose body holds no break, continue or block: BEGIN cond WHILE body REPEAT, or C-FOR-PLAIN - or every loop through C-WHILE and C-FOR, an activation and a CATCH a turn (0)
+d3	0	0,1	design	a variable no block refers to kept in its slot as it is - or every variable in an upvalue (0): capture analysis, by name

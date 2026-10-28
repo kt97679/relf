@@ -537,6 +537,12 @@ boxed, a safe point comes before every statement (docs/SYNTAX-GENES.md). Found r
 program in it: indexing a list faulted - a list keeps its items as they are, and rill2's D-AT and
 D-SET unbox a list's - so `CM-AT` and `CM-SET` (cm/lib.4); and `has`, for `in`.
 
+**Design genes (866).** Measured by dispatches, the command model's loop and call costs taken apart:
+loops now test for break and continue only when their body threw (adopted), and three genes, off by
+default - `put` of one value without a list, plain loops where no transfer can come, capture analysis
+(a variable no block value refers to kept unboxed) - bring `loop` to 1.15 times Rill 2's dispatches
+and `calls` to 3.4 times (docs/SYNTAX-GENES.md).
+
 ## What it costs
 
 - It reads as a shell, not as Python: `set x 5`, prefix commands, no infix outside `(( ))`,

@@ -36,10 +36,10 @@ VARIABLE T-TARGET
   >R  ACT-PUSH D-NUM SWAP LS!  0                                  ( src elem i )  ( R: xt )
   BEGIN  2 PICK LS@ D-LIST @ OVER >  WHILE
     2 PICK LS@ D-LIST R-ITEMS OVER CELLS + @  2 PICK LS!
-    R@ CATCH
-    DUP T-BREAK MINE? IF DROP 2DROP DROP R> DROP ACT-POP EXIT THEN
-    DUP T-CONTINUE MINE? IF DROP 0 THEN
-    ?DUP IF >R 2DROP DROP R> R> DROP ACT-POP THROW THEN
+    R@ CATCH  ?DUP IF                                              \ a throw: break, continue or other (866: tested
+      DUP T-BREAK MINE? IF DROP 2DROP DROP R> DROP ACT-POP EXIT THEN    \ only when there is one)
+      DUP T-CONTINUE MINE? 0= IF >R 2DROP DROP R> R> DROP ACT-POP THROW THEN  DROP
+    THEN
     1+
   REPEAT  2DROP DROP R> DROP ACT-POP ;
 
@@ -55,8 +55,15 @@ VARIABLE T-TARGET
 : C-WHILE ( id cond-xt body-xt --- )
   >R >R  ACT-PUSH D-NUM SWAP LS!                                   ( R: body cond )
   BEGIN  R@ EXECUTE  WHILE
-    R> R@ SWAP >R  CATCH
-    DUP T-BREAK MINE? IF DROP R> R> 2DROP ACT-POP EXIT THEN
-    DUP T-CONTINUE MINE? IF DROP 0 THEN
-    ?DUP IF R> R> 2DROP ACT-POP THROW THEN
+    R> R@ SWAP >R  CATCH  ?DUP IF
+      DUP T-BREAK MINE? IF DROP R> R> 2DROP ACT-POP EXIT THEN
+      DUP T-CONTINUE MINE? 0= IF R> R> 2DROP ACT-POP THROW THEN  DROP
+    THEN
   REPEAT  R> R> 2DROP ACT-POP ;
+
+\ for, its body holding no break, no continue and no block (866, gene d2): no activation, no CATCH -
+\ a throw from inside goes on up, and nothing of the loop's is left to put back
+: C-FOR-PLAIN ( src elem xt --- )
+  >R 0 BEGIN  2 PICK LS@ D-LIST @ OVER >  WHILE
+    2 PICK LS@ D-LIST R-ITEMS OVER CELLS + @  2 PICK LS!  R@ EXECUTE  1+
+  REPEAT  2DROP DROP R> DROP ;

@@ -332,6 +332,50 @@ analysis (box only what a block captures), a def's one value returned without a 
 point per loop iteration rather than per statement - each with two forms, measured on `loop` and
 `calls` by dispatches. The syntax - C.2 or A.4 - stays the owner's.
 
+## Design genes: the speed (866)
+
+865 found the command model's slowness in its design. Profiled first (tools/rill-profile.py on the
+command model's image, by dispatches - the same count every run): `loop` took 292 dispatches an
+iteration against Rill 2's 189 - the slots read through `LS@` (49), and a `CATCH` with two transfer
+checks every turn of the loop (58); `calls` took about 1,000 a call against Rill 2's 226 - a third of
+it allocating: an argument list, a list for `put`'s one value, a capture's list, an upvalue for the
+parameter, a frame.
+
+**Adopted outright** - cm/ctl.4's loops test for break and continue only when the body threw: the
+same behaviour, `loop` 292.2 to 258.2 million dispatches (-11.6%), `calls` 200.9 to 194.1 (-3.4%).
+
+**Three genes** (cm/genes.tsv, `d`), each a second way the front end makes Forth, with what it needs
+in the runtime added beside the old words; the gate is what the scripts do, since the Forth is no longer
+cmc.py's: every genome's image must run the eight scripts as expected. `tools/cm-design-search.py`
+builds all 8 genomes and counts the benchmarks' dispatches on CV8's counting engine:
+
+| gene | what | image | `loop` | `calls` |
+|---|---|---:|---:|---:|
+| d1 | `put` of one value: `PUT` it, no list made | +40 | 0 | -13.7% |
+| d2 | a loop whose body holds no break, continue or block: `BEGIN cond WHILE body REPEAT`, or `C-FOR-PLAIN` - no activation, no CATCH | +200 | -7.7% | -2.1% |
+| d3 | capture analysis: a variable no block value refers to kept in its slot as it is, not in an upvalue; a def's and a block's parameters bound by a mask | +859 | -8.1% | -5.5% |
+| all three | | +1,099 | -15.9% | -21.2% |
+
+All 8 genomes pass. d3's first version saved nothing and cost 2% on `calls`: it took every `{ }` for a
+value that captures, and a loop's or an `if`'s body is a `{ }` too - so every variable was boxed still,
+and the masks were extra work. Only blocks that become values capture; the bodies of `if`, `elif`,
+`else`, `for`, `while` and `def` are marked first and passed over.
+
+**Where it leaves the command model**, dispatches (millions):
+
+| | Rill | Rill 2 | the command model, 865 | adopted fast path | and d1, d2, d3 |
+|---|---:|---:|---:|---:|---:|
+| `loop` | 71.2 | 189.3 | 292.2 | 258.2 | 217.2 |
+| `calls` | 15.4 | 45.2 | 200.9 | 194.1 | 152.9 |
+
+A loop now costs 1.15 times Rill 2's, from 1.54; a call 3.4 times, from 4.4. What is left in a call is
+allocation and bookkeeping the model asks for - an argument list, a capture's list for the value
+returned, a frame, an activation and two CATCHes - each a candidate gene: arguments on the stack for a
+def of known arity, a one-value capture without a list. Rill stays far ahead: it keeps a pure def's
+parameters on the stack and counts its loops. The genes stay off by default - C.2's Forth is what
+cmc.py makes and cm-diff compares - and taking them is the owner's choice of bytes against speed:
+d1 is 40 bytes for 14% of a call.
+
 ## Sources
 
 Duff, "Rc - The Plan 9 Shell" (plan9.io/sys/doc/rc.html); Haahr and Rakitzis, "Es: A shell with
