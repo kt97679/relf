@@ -420,8 +420,27 @@ The test: the printed forms above; a capture's value is the very value put; `ech
 printed, the value 7 captured; `@( )` of three values, `$( )` of them an error; nested captures; a
 collection inside a capture keeping what it caught; a failure inside one leaving no sink behind.
 
-Next: step 3 - `break`, `continue` and `return` carrying their target's identity - and a front end
-small enough to write the tests in the draft's syntax.
+**Step 3 (857): `break`, `continue` and `return`, each to its own loop or def** - `cm/ctl.4`, tested
+by `tests/cm/control.4`:
+
+- **Activations.** Each run of a loop or def gets a number of its own, kept on a stack of the live
+  ones; a block captures its loop's or def's number like any value. A transfer names its target: a
+  block that outlived its loop finds the number gone - an error, never the break of whichever loop
+  is running then.
+- **`C-FOR`** runs a loop body per element, the list, the element and the loop's number in the def's
+  frame - the body takes nothing from the stack, so a collection inside it finds every value in a
+  slot; **`DEF-RUN`** runs a def, slot 0 its number, and puts the frame and the activations back
+  whatever a throw from deep inside left. Every construct puts back what it pushed before it passes
+  a throw on.
+
+The test: break and continue through a block; return through a loop and a block; a stale `{ break }`
+run inside another loop - an error, and that loop goes to its end; a block made in an outer loop,
+called from the inner, breaking the outer - a labeled break by identity, no syntax for it;
+recursion, each return to its own activation, a collection at every level; an error through a
+block, a loop and a def, every stack as it was after.
+
+Next: a front end small enough to write these tests in the draft's syntax; then step 4, function
+stages streaming.
 
 ## What it costs
 

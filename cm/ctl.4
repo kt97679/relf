@@ -1,0 +1,52 @@
+\ cm/ctl.4 - the command model's runtime, step 3 of its prototype (857): break, continue and
+\ return, each carrying the identity of the loop or def it leaves - docs/COMMAND-MODEL.md, rule 10
+\ and the runtime plan. Loaded after cm/rt-cm.4 and cm/out.4.
+\
+\ Each run of a loop or def is an activation with a number of its own; CTLS holds the live ones,
+\ innermost last. A transfer names its target's number - a block captures it like any value - so
+\ a block that outlived its loop or def finds the number gone: an error, never the break of
+\ whichever loop happens to be running. Each construct puts back what it pushed before it passes
+\ a throw on, so a throw that reaches a loop or def finds the stacks as that construct left them.
+
+VARIABLE ACTS   VARIABLE STATUS
+256 CONSTANT CTL-MAX
+CTL-MAX CELLS BUFFER: CTLS   VARIABLE CTL#
+: ACT-PUSH ( --- id )
+  CTL# @ CTL-MAX < 0= IF S" cm: loops and defs too deep" R-FAIL THEN
+  1 ACTS +!  ACTS @  DUP CTLS CTL# @ CELLS + !  1 CTL# +! ;
+: ACT-POP ( --- )   -1 CTL# +! ;
+: ACT-TOP ( --- id )   CTLS CTL# @ 1- CELLS + @ ;
+: LIVE? ( id --- f )   CTL# @ 0 ?DO  CTLS I CELLS + @ OVER = IF DROP -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
+-4101 CONSTANT T-BREAK   -4102 CONSTANT T-CONTINUE   -4103 CONSTANT T-RETURN
+VARIABLE T-TARGET
+: TRANSFER ( id code --- )   \ to the live activation numbered id; none live - an error
+  OVER LIVE? 0= IF NIP  CASE  T-BREAK OF S" cm: break - its loop has ended" ENDOF
+                              T-CONTINUE OF S" cm: continue - its loop has ended" ENDOF
+                              S" cm: return - its def has ended" ROT  ENDCASE  R-FAIL THEN
+  SWAP T-TARGET !  THROW ;
+: BREAK ( id-item --- )   D>N T-BREAK TRANSFER ;
+: CONTINUE ( id-item --- )   D>N T-CONTINUE TRANSFER ;
+: RETURN ( status id-item --- )   D>N SWAP STATUS !  T-RETURN TRANSFER ;
+: MINE? ( code t-code --- f )   = T-TARGET @ ACT-TOP = AND ;
+
+\ for x @list { body }: the list, the element and the loop's number in slots of the def's frame;
+\ the body takes nothing from the stack and leaves nothing, so a collection inside it finds every
+\ value in a slot.
+: C-FOR ( src elem id xt --- )
+  >R  ACT-PUSH D-NUM SWAP LS!  0                                  ( src elem i )  ( R: xt )
+  BEGIN  2 PICK LS@ D-LIST @ OVER >  WHILE
+    2 PICK LS@ D-LIST R-ITEMS OVER CELLS + @  2 PICK LS!
+    R@ CATCH
+    DUP T-BREAK MINE? IF DROP 2DROP DROP R> DROP ACT-POP EXIT THEN
+    DUP T-CONTINUE MINE? IF DROP 0 THEN
+    ?DUP IF >R 2DROP DROP R> R> DROP ACT-POP THROW THEN
+    1+
+  REPEAT  2DROP DROP R> DROP ACT-POP ;
+
+\ a def run: its frame - slot 0 its activation's number, slots 1..n its own - and its return; the
+\ frame and the activations put back whatever a throw from deep inside left.
+: DEF-RUN ( n xt --- )
+  SWAP 1+ FRAME  ACT-PUSH D-NUM 0 LS!  FP @ >R  CTL# @ >R
+  CATCH  R> CTL# !  R> FP !
+  0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
+  ACT-POP UNFRAME  THROW ;

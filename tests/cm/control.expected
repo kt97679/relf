@@ -1,0 +1,9 @@
+break through a block: 0 after
+continue through a block: 0 2 after
+return through a loop and a block: 0 back
+a stale break inside another loop: 0 1 cm: break - its loop has ended
+-4004 2 k went on to the end
+an inner loop breaking the outer: 1 0 1 1 after
+recursion, each return to its own activation: 1 2 3 
+an error through a block, a loop and a def: cm: boom
+-4004 the stacks after it - frames, activations, blocks, sinks: 0 0 0 0 

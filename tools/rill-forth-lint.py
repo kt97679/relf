@@ -15,12 +15,21 @@ mechanical guard. Checked in every colon definition of rill/*.4:
   with !XT and fetch it with @XT;
 - words the kernel does not have, unless rill/ defines them (740-741:
   2>R, 2R@, 2R>; -ROT and /STRING rill/ defines).
+- ['], [CHAR] or ." outside a definition, where they leave nothing or
+  print nothing, and ' inside one, where it parses its word when the
+  definition runs (855, 856, 857: cm's tests, three times).
+
+Also cm/*.4, the command model's runtime, and tests/cm/*.4 - programs,
+loaded when they run, like a .fth: they may use ['] in a definition,
+may repeat each other's helpers, and may not take a name rill2's image
+or cm's runtime has (855: L! and KEY).
 
 Exit status 1 on any finding.
 """
 import glob, re, sys
 MISSING = {'2>R', '2R@', '2R>', '-ROT', '/STRING', ',"'}
-files = sys.argv[1:] or sorted(glob.glob('rill/*.4'))
+files = sys.argv[1:] or sorted(glob.glob('rill/*.4') + glob.glob('cm/*.4') + glob.glob('tests/cm/*.4'))
+def is_program(f): return f.endswith('.fth') or f.startswith('tests/')
 defined = set()
 srcs = {f: open(f).read() for f in files}
 for s in srcs.values():
@@ -40,20 +49,55 @@ def names(text):
     return [m.upper() for m in re.findall(DEFINER, '\n'.join(lines))]
 kernel = set(names(open('forth/kernel.4').read()))           # the image's own words (762)
 runtime = set()
-for g in sorted(glob.glob('rill/*.4')):
+for g in sorted(glob.glob('rill/*.4') + glob.glob('rill2/*.4') + glob.glob('cm/*.4')):
     runtime |= set(names(open(g).read()))
+def ticks(f, s):
+    """['], [CHAR] or ." outside a definition, ' inside one - read token by token, a word's argument
+    (the name after ' or POSTPONE, the character after CHAR) never taken for a word itself."""
+    s = re.sub(r'(?m)(^|\s)\.\(\s[^)]*\)', ' ', s)                       # a .( text ) printed as it is read
+    n, inside, name, arg = 0, False, None, False
+    for w in words(s):
+        u = w.upper()
+        if arg:
+            arg = False
+            if inside and name is None: name = w                        # a colon's name, its argument
+            continue
+        if u in ("'", "[']", 'CHAR', '[CHAR]', 'POSTPONE', '[COMPILE]'):
+            if inside and u == "'":
+                print("%s: %s: ' in a definition parses its word when the definition runs - ['] takes it now" % (f, name)); n += 1
+            elif not inside and u in ("[']", '[CHAR]'):
+                print("%s: %s outside a definition leaves nothing on the stack - %s there" % (f, w, u[1:-1])); n += 1
+            arg = True
+        elif u == '."' and not inside:
+            print('%s: ." outside a definition prints nothing - .( ) there' % f); n += 1
+        elif u == ':': inside, name, arg = True, None, True
+        elif u == ':NONAME': inside, name = True, ':NONAME'
+        elif u == ';': inside = False
+        elif inside and name is None: name = w
+    return n
 found = 0
 # a name defined twice in the runtime itself, outside the genes' alternatives: the later one hides the
 # earlier from everything after it (776: a VARIABLE R-BASE, hidden by base()'s R-BASE)
 seen = {}
 for f in sorted(srcs):
-    if f.endswith('.fth'): continue
+    if is_program(f) or f.startswith('cm/'): continue
     plain = re.sub(r'(?ms)^\\ \[gene [^\]]*\]\n.*?^\\ \[/gene\]', '', srcs[f])
     for n in names(plain):
         if n in seen: print('%s: %s is defined again - %s has it (the later hides the earlier)' % (f, n, seen[n])); found += 1
         else: seen[n] = f
+# cm's runtime is loaded on rill2's image: a name of its own that the image has, or another cm file has,
+# hides one (855) - Rill's compiler, in another image, is no matter
+image2 = set()
+for g in ['rill/rt.4', 'rill/regex.4'] + sorted(glob.glob('rill2/*.4')):
+    image2 |= set(names(open(g).read()))
+cm_seen = {}
+for f in sorted(x for x in srcs if x.startswith('cm/')):
+    for n in names(srcs[f]):
+        if n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
+        elif n in cm_seen: print('%s: %s is defined again - %s has it' % (f, n, cm_seen[n])); found += 1
+        else: cm_seen[n] = f
 for f, s in srcs.items():
-    program = f.endswith('.fth')                             # a program loaded when it runs, not built into the image
+    program = is_program(f)                                  # a program loaded when it runs, not built into the image
     for n in names(s):
         if n in kernel or (program and n in runtime):
             print('%s: %s is defined again - the %s has it ("Redefining" in the output)' % (f, n, 'kernel' if n in kernel else 'runtime')); found += 1
@@ -73,5 +117,6 @@ for f, s in srcs.items():
                 print("%s: %s: ['] in a definition - an absolute address, stale after the image is saved" % (f, name)); found += 1
             elif u in MISSING and u not in defined:
                 print('%s: %s: %s is not in the kernel' % (f, name, u)); found += 1
+    found += ticks(f, s)
 print('rill-forth-lint: %d findings in %d files' % (found, len(files)))
 sys.exit(1 if found else 0)

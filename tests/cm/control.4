@@ -1,0 +1,58 @@
+\ tests/cm/control.4 - the command model's prototype, step 3 (857): break, continue and return
+\ through blocks, each to its own loop or def. Each word is what a compiler would make of its comment.
+S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED  S" cm/ctl.4" INCLUDED
+: L+ ( list-item v --- list-item )   OVER CELL+ @ R-PUSH ;
+: NEW-L ( --- list-item )   R-NEW-LIST K-LIST R-BOX ;
+: 0-1-2 ( --- list-item )   NEW-L 0 D-NUM L+ 1 D-NUM L+ 2 D-NUM L+ ;
+: I. ( --- )   2 LS@ D>N . ;
+\ a def's frame here: slot 0 its number (DEF-RUN), 1 the list, 2 the element, 3 the loop's number
+
+\ def f { for i [0 1 2] { if (( $i == 1 )) { break }; echo $i }; echo after }
+: BREAK-BLK ( --- )   0 E@ BREAK ;                                  \ { break }: its loop's number captured
+: F-BODY ( --- )   2 LS@ D>N 1 = IF 3 LS@ 1 ['] BREAK-BLK BLK-NEW BLK-CALL THEN  I. ;
+: F ( --- )   0-1-2 1 LS!  1 2 3 ['] F-BODY C-FOR  ." after" ;
+.( break through a block: ) 3 ' F DEF-RUN CR
+
+\ def c { for i [0 1 2] { if (( $i == 1 )) { continue }; echo $i }; echo after }
+: CONT-BLK ( --- )   0 E@ CONTINUE ;
+: C-BODY ( --- )   2 LS@ D>N 1 = IF 3 LS@ 1 ['] CONT-BLK BLK-NEW BLK-CALL THEN  I. ;
+: C ( --- )   0-1-2 1 LS!  1 2 3 ['] C-BODY C-FOR  ." after" ;
+.( continue through a block: ) 3 ' C DEF-RUN CR
+
+\ def g { for i [0 1 2] { if (( $i == 1 )) { return }; echo $i }; echo unreachable }; g; echo back
+: RET-BLK ( --- )   0 0 E@ RETURN ;                                 \ { return }: its def's number captured
+: G-BODY ( --- )   2 LS@ D>N 1 = IF 0 LS@ 1 ['] RET-BLK BLK-NEW BLK-CALL THEN  I. ;
+: G ( --- )   0-1-2 1 LS!  1 2 3 ['] G-BODY C-FOR  ." unreachable" ;
+.( return through a loop and a block: ) 3 ' G DEF-RUN .( back) CR
+
+\ def h { for i [0] { set stale { break } } } - the block outlives h's loop; then another loop runs it:
+\ an error, and that loop goes on
+VARIABLE STALE  STALE R-ITEM R-ROOT
+: H-BODY ( --- )   3 LS@ 1 ['] BREAK-BLK BLK-NEW STALE ! ;
+: H ( --- )   NEW-L 0 D-NUM L+ 1 LS!  1 2 3 ['] H-BODY C-FOR ;
+3 ' H DEF-RUN
+: K-BODY ( --- )   I.  2 LS@ D>N 1 = IF STALE @ ['] BLK-CALL CATCH ?DUP IF . DROP THEN THEN ;
+: K ( --- )   0-1-2 1 LS!  1 2 3 ['] K-BODY C-FOR  ." k went on to the end" ;
+.( a stale break inside another loop: ) 3 ' K DEF-RUN CR
+
+\ for a [1 2] { var out { break }; for b [0 1 2] { if (( $b == 2 )) { $out }; echo $a $b } }; echo after
+\ - the block made in the outer loop breaks the outer loop: labeled break by identity
+\ frame: 0 number, 1 a's list, 2 a, 3 a's loop, 4 b's list, 5 b, 6 b's loop, 7 out
+: INNER-BODY ( --- )   5 LS@ D>N 2 = IF 7 LS@ BLK-CALL THEN  2 LS@ D>N . 5 LS@ D>N . ;
+: OUTER-BODY ( --- )   3 LS@ 1 ['] BREAK-BLK BLK-NEW 7 LS!  0-1-2 4 LS!  4 5 6 ['] INNER-BODY C-FOR ;
+: NEST ( --- )   NEW-L 1 D-NUM L+ 2 D-NUM L+ 1 LS!  1 2 3 ['] OUTER-BODY C-FOR  ." after" ;
+.( an inner loop breaking the outer: ) 7 ' NEST DEF-RUN CR
+
+\ def r {|n| if (( $n == 0 )) { return }; r $(( $n - 1 )); echo $n }; r 3 - each return its own
+VARIABLE N  VARIABLE R-XT
+: R-BODY ( --- )   N @ 0= IF 0 0 LS@ 1 ['] RET-BLK BLK-NEW BLK-CALL THEN
+  N @ D-NUM 1 LS!  -1 N +!  R-GC  1 R-XT @ DEF-RUN  1 LS@ D>N . ;
+' R-BODY R-XT !
+.( recursion, each return to its own activation: ) 3 N !  1 ' R-BODY DEF-RUN CR
+
+\ an error passing through a block, a loop and a def: every stack as it was
+: BOOM-BLK ( --- )   S" cm: boom" R-FAIL ;
+: E-BODY ( --- )   0 ['] BOOM-BLK BLK-NEW BLK-CALL ;
+: E ( --- )   0-1-2 1 LS!  1 2 3 ['] E-BODY C-FOR ;
+.( an error through a block, a loop and a def: ) 3 ' E ' DEF-RUN CATCH . 2DROP
+.( the stacks after it - frames, activations, blocks, sinks: ) LS# @ . CTL# @ . ENV# @ . SINK# @ . CR
