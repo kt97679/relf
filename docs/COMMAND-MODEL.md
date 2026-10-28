@@ -462,8 +462,24 @@ trailing newline dropped, `@( )` its lines; any command's status as a condition;
 map or block given to a program is an error (rule 12). Built on rt.4's pipeline runtime - the one
 rill2 uses - with cm/lib.4's `PSTAGE` turning an argument list into texts. `tests/cm/scripts/programs.cm`.
 
-Next: step 4 - function stages in pipelines, streaming - and with it step 5's poll loop for pipelines
-that mix functions and programs.
+**Step 4, designed (859): function stages as coroutines - what the engine asks of them.** Read in
+engine/cv8.c: the VM's 4 MB holds the return stack in its top 64 KB and the data stack in the 256 KB
+below, each with a guard page at its floor (Iteration 586); the inner loop checks `dsp < dsp_limit`
+and `rp < rp_limit` against those floors - addresses fixed at start and copied into constants on
+entry. The kernel has `SP!` and `RP!`, `S0` and `R0`, and one `HANDLER` for CATCH. So:
+
+- A coroutine's stacks must lie inside the two regions: anywhere else, the first push is an
+  "overflow". Each stage gets a segment of each, carved from the regions' bottoms.
+- Carved segments alone would let a stage that overflows its own run silently into its
+  neighbour's - the corruption Iteration 151 ended. So the engine gains one primitive that switches
+  a stage's stack pointers and its limits together, the inner loop reading the limits afresh: an
+  overflow of a segment is then caught as any overflow is. In both engines - cv8.c and the native
+  one.
+- A switch saves and restores `SP`, `RP`, `S0`, `R0` and `HANDLER`; values crossing between stages go
+  through bounded queues the collector sees; a stage's frames stay on cm's own frame stack, so
+  each coroutine keeps a frame-stack segment too.
+
+Then step 5's poll loop, for pipelines that mix functions and programs.
 
 ## What it costs
 
