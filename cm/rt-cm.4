@@ -38,7 +38,9 @@ ENV-MAX CELLS BUFFER: ENVS   VARIABLE ENV#
   DUP D-KIND K-BLOCK <> IF S" cm: not a block" R-FAIL THEN
   CELL+ @  ENV# @ ENV-MAX < 0= IF S" cm: blocks too deep" R-FAIL THEN
   DUP ENVS ENV# @ CELLS + !  1 ENV# +!
-  @ CATCH  -1 ENV# +!  THROW ;
+  LS# @ >R  FP @ >R  @ CATCH  R> R> ROT                    \ a block with a frame of its own (858):
+  ?DUP IF  >R  LS# !  FP !  -1 ENV# +!  R> THROW  THEN      \ a throw through it puts the frames back
+  2DROP  -1 ENV# +! ;
 
 \ ---- the collector: the two new kinds, and the new roots ----
 : G-UPV ( u --- u' )   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN

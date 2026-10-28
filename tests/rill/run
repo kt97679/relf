@@ -130,6 +130,15 @@ if sh tools/build-rill2-image.sh ./relf64 forth/kernel64.img /tmp/rill2.$$.img >
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.4}.expected" /tmp/rill2-out.$$ | head -5; fi
     done
     rm -f /tmp/cm-run.$$.4
+    for t in tests/cm/scripts/*.cm; do                                  # its front end (858): scripts in the draft's syntax, compiled by tools/cmc.py
+        if python3 tools/cmc.py "$t" > /tmp/cm-script.$$.4 2> /tmp/rill2-out.$$; then
+            printf 'S" /tmp/cm-script.%s.4" INCLUDED\n' $$ > /tmp/cm-run.$$.4
+            { timeout 60 ./relf64 /tmp/rill2.$$.img /tmp/cm-run.$$.4 2>&1; echo "status $?"; } | tr -d '\r' > /tmp/rill2-out.$$
+        fi
+        if cmp -s /tmp/rill2-out.$$ "${t%.cm}.expected"; then pass=$((pass + 1))
+        else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.cm}.expected" /tmp/rill2-out.$$ | head -5; fi
+    done
+    rm -f /tmp/cm-script.$$.4 /tmp/cm-run.$$.4
 else fail=$((fail + 1)); echo "FAIL tools/build-rill2-image.sh"; fi
 rm -f /tmp/rill2.$$.img /tmp/rill2-out.$$
 # memory kept for good, by any feature of the runtime (778): each in a loop at N and 10 N rounds

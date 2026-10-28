@@ -882,6 +882,7 @@ do not trust the absence of a line below.
 - 855 — the command model's prototype, step 1: frames the collector sees, upvalues, blocks (cm/rt-cm.4); cycles reclaimed
 - 856 — step 2: value output and byte output apart, captures, the printed form (cm/out.4)
 - 857 — step 3: break, continue, return by identity (cm/ctl.4); the lint guards ['] and '
+- 858 — a front end, tools/cmc.py: the draft's examples run as written (tests/cm/scripts/)
 
 ### Not tied to an iteration
 

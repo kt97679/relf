@@ -1,0 +1,45 @@
+# break, continue and return through blocks, each to its own loop or def
+def f {
+    for i 0 1 2 {
+        var b { break }
+        if (( $i == 1 )) { $b }
+        echo f $i
+    }
+    echo f after
+}
+f
+def g {
+    for i 0 1 2 {
+        if (( $i == 1 )) { continue }
+        echo g $i
+    }
+    var r { return }
+    for i 0 1 2 {
+        if (( $i == 2 )) { $r }
+        echo g again $i
+    }
+    echo unreachable
+}
+g
+# a block made in the outer loop breaks the outer loop from the inner: a labeled break by identity
+for a 1 2 {
+    var out { break }
+    for b 1 2 3 {
+        if (( $b == 2 )) { $out }
+        echo $a $b
+    }
+}
+var n 0
+while (( $n < 3 )) {
+    set n $(( $n + 1 ))
+    if (( $n == 2 )) { continue }
+    echo while $n
+}
+# a block that outlived its loop, run inside another loop: an error, not that loop's break
+var stale none
+for i 0 { set stale { break } }
+for i 0 1 2 {
+    echo last $i
+    if (( $i == 1 )) { $stale }
+}
+echo not reached

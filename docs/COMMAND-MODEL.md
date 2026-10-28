@@ -439,8 +439,23 @@ called from the inner, breaking the outer - a labeled break by identity, no synt
 recursion, each return to its own activation, a collection at every level; an error through a
 block, a loop and a def, every stack as it was after.
 
-Next: a front end small enough to write these tests in the draft's syntax; then step 4, function
-stages streaming.
+**The front end (858): `tools/cmc.py`**, a prototype compiler - a `.cm` script in the draft's syntax to
+Forth for cm's runtime, as `rillc.py` came before Rill's in-image compiler; the in-image one comes
+once the syntax settles. v0: `var`, `set` (and `set name[key]`), `put`, `echo`, `append`, `if`/`elif`/
+`else`, `for`, `while`, `def`, `break`, `continue`, `return`, `count`, `range`, `merge`; rule 11; texts,
+numbers, booleans, `"..."` with `$` in it, `$name[key]`, `$( )`, `@( )`, `$(( ))`, `(( ))`, `@name`,
+lists, maps, blocks with `|params|`. Every variable lives in an upvalue - boxed, no capture analysis
+yet - so blocks capture by reference and a loop's variable is fresh each iteration; a block is a
+word with a frame of its own, a def a deferred word; a safe point before each of the script's own
+statements. Not yet: programs, pipes, redirections; a def seeing the script's variables.
+
+The draft's own examples, as written, run - `tests/cm/scripts/`: the counter (`two counters: 7 101`);
+the account whose methods call each other through a captured `self` (`ada has 100`); `dog` filling a
+map `animal` filled, its inherited `greet` reaching the override (`hello`, `rex barks`); break,
+continue and return through block values, the labeled outer break, `while`, a stale break refused;
+the printed forms, captures, `echo` not captured, `@( )`, `merge`, `append` with a spread.
+
+Next: programs and pipes - step 5's poll loop - then step 4, function stages streaming.
 
 ## What it costs
 

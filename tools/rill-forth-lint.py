@@ -90,6 +90,8 @@ for f in sorted(srcs):
 image2 = set()
 for g in ['rill/rt.4', 'rill/regex.4'] + sorted(glob.glob('rill2/*.4')):
     image2 |= set(names(open(g).read()))
+cm_defined = set(image2)                                            # what cm's files may use: rill2's image and cm (858: -ROT)
+for g in glob.glob('cm/*.4'): cm_defined |= {m.upper() for m in re.findall(r'(?m)(?:^|\s):\s+(\S+)', open(g).read())}
 cm_seen = {}
 for f in sorted(x for x in srcs if x.startswith('cm/')):
     for n in names(srcs[f]):
@@ -115,7 +117,7 @@ for f, s in srcs.items():
                 elif u == 'R>': loops[-1] -= 1
             elif u == "[']" and not program:
                 print("%s: %s: ['] in a definition - an absolute address, stale after the image is saved" % (f, name)); found += 1
-            elif u in MISSING and u not in defined:
+            elif u in MISSING and u not in (cm_defined if f.startswith(('cm/', 'tests/cm/')) else defined):
                 print('%s: %s: %s is not in the kernel' % (f, name, u)); found += 1
     found += ticks(f, s)
 print('rill-forth-lint: %d findings in %d files' % (found, len(files)))

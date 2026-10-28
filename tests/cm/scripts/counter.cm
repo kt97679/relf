@@ -1,0 +1,11 @@
+# closures: two counters made by separate calls keep two n's - the draft's example, as written
+def counter {|start|
+    var n $start
+    put [inc: { set n $(( $n + 1 )) }  get: { put $n }]
+}
+var c1 $(counter 5)
+var c2 $(counter 100)
+$c1[inc]
+$c1[inc]
+$c2[inc]
+echo two counters: $($c1[get]) $($c2[get])

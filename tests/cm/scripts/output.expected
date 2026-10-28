@@ -1,0 +1,12 @@
+42
+hello world
+[a "b c" [1 2]]
+[name: ada  tags: [x y]]
+[:]
+<block>
+all: [1 2 3] count: 3
+noise
+seven: 7
+[a: 1  b: 3  c: 4]
+[1 2 3 1 2 3]
+status 0

@@ -50,3 +50,13 @@ VARIABLE T-TARGET
   CATCH  R> CTL# !  R> FP !
   0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
   ACT-POP UNFRAME  THROW ;
+
+\ while cond { body } (858): the loop's number in a slot; cond-xt leaves a flag
+: C-WHILE ( id cond-xt body-xt --- )
+  >R >R  ACT-PUSH D-NUM SWAP LS!                                   ( R: body cond )
+  BEGIN  R@ EXECUTE  WHILE
+    R> R@ SWAP >R  CATCH
+    DUP T-BREAK MINE? IF DROP R> R> 2DROP ACT-POP EXIT THEN
+    DUP T-CONTINUE MINE? IF DROP 0 THEN
+    ?DUP IF R> R> 2DROP ACT-POP THROW THEN
+  REPEAT  R> R> 2DROP ACT-POP ;
