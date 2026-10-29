@@ -1,0 +1,7 @@
+# a line goes on after |, && and || (rule 13, 869)
+printf 'b\na\n' |
+  sort
+false ||
+  echo "after ||"
+true &&
+  echo "after &&"

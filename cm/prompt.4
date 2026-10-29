@@ -1,0 +1,41 @@
+\ cm/prompt.4 - the command model's prompt (869): kernel64-cm.img with no script. A line - more while a
+\ bracket or a quote is open, or the line ends in |, && or || - is compiled and run in one session: what
+\ one line declares and defines the next sees (cm/cmc.4's SESSION - the session's own variables boxed,
+\ since a later line's block may capture them). At a terminal relfsh's line editor reads it (keys,
+\ history, ^R; no TAB); without one, lines as they come. An error is said and the prompt comes back; ^C
+\ ends what runs; the input's end ends the prompt, with the last status. Rill 2's prompt (835), as cm.
+65536 CONSTANT CL-MAX   VARIABLE CL-BUF  VARIABLE CL#  VARIABLE CL-TTY  VARIABLE CL-D  VARIABLE CL-Q
+: CL@ ( i --- c )   DUP CL# @ < IF CL-BUF @ + C@ ELSE DROP 0 THEN ;
+: CL-OPEN? ( --- f )   \ a bracket or a quote open at the input's end, or its last word |, && or ||
+  0 CL-D !  0 CL-Q !  0  BEGIN DUP CL# @ < WHILE
+    CL-Q @ IF DUP CL@ DUP 92 = CL-Q @ 34 = AND IF DROP 1+ ELSE CL-Q @ = IF 0 CL-Q ! THEN THEN ELSE
+    DUP CL@ CASE  34 OF 34 CL-Q ! ENDOF  39 OF 39 CL-Q ! ENDOF
+      35 OF BEGIN DUP 1+ CL@ DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT ENDOF
+      123 OF 1 CL-D +! ENDOF  91 OF 1 CL-D +! ENDOF  40 OF 1 CL-D +! ENDOF
+      125 OF -1 CL-D +! ENDOF  93 OF -1 CL-D +! ENDOF  41 OF -1 CL-D +! ENDOF  ENDCASE THEN  1+
+  REPEAT DROP  CL-D @ 0> CL-Q @ 0<> OR IF -1 EXIT THEN
+  CL# @ BEGIN 1- DUP 0< IF DROP 0 EXIT THEN DUP CL@ BL > UNTIL
+  DUP CL@ [CHAR] | = IF DROP -1 EXIT THEN  DUP CL@ [CHAR] & = SWAP 1- CL@ [CHAR] & = AND ;
+: CL-ADD ( c-addr u --- )   CL-MAX CL# @ - 2 - MIN  CL-BUF @ CL# @ + SWAP DUP >R MOVE  R> CL# +!  10 CL-BUF @ CL# @ + C!  1 CL# +! ;
+: CL-READ ( --- f )   \ a line, from no terminal
+  CL-BUF @ CL# @ +  CL-MAX CL# @ - 1-  0 READ-LINE  IF 2DROP 0 EXIT THEN  0= IF DROP 0 EXIT THEN
+  CL# +!  10 CL-BUF @ CL# @ + C!  1 CL# +!  -1 ;
+: CL-EDIT ( --- f )   \ a line from the editor; ^C drops what was typed so far
+  CL# @ 0= CMD-START? !  0 TERM-RAW DROP  ED-LINE  0 TERM-RESTORE DROP
+  0= IF 2DROP 0 EXIT THEN  ED-DONE @ 2 = IF 2DROP 0 CL# ! -1 EXIT THEN  CL-ADD -1 ;
+VARIABLE CL-FP  VARIABLE CL-LS#  VARIABLE CL-CTL#           \ the session's frame and activations, as it began
+: CL-RUN ( --- )   CL-BUF @ CL# @ CM-COMPILE R-BLANKS EVALUATE ;
+VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
+: CL-BACK ( --- )   \ after an error: the session's frame and nothing deeper, nothing captured, nothing compiling
+  CL-FP @ FP !  CL-LS# @ LS# !  CL-CTL# @ CTL# !  0 SINK# !  0 IN# !  0 ENV# !  0 STATE !  R-OUT-BACK ;
+: CL-CAUGHT ( code --- )   \ said already, if cm's or the runtime's; else said here
+  DUP -4100 -3999 WITHIN 0= IF R-ERR> ." cm: error " DUP . R-NL R-OUT-BACK THEN  DROP  0 R-SIGGED !  CL-BACK ;
+: CM-REPL ( --- )
+  -1 SESSION !  0 ISATTY CL-TTY !  CL-MAX ALLOCATE THROW CL-BUF !  R-SIG-CATCH
+  SESSION-SLOTS 1+ FRAME  ACT-PUSH D-NUM 0 LS!  FP @ CL-FP !  LS# @ CL-LS# !  CTL# @ CL-CTL# !
+  BEGIN 0 CL# !
+    BEGIN CL-TTY @ IF CL-EDIT ELSE CL-READ THEN
+      0= IF CL# @ 0= IF CM-END EXIT THEN -1 ELSE CL-OPEN? 0= THEN
+      R-SIGNAL DROP UNTIL
+    CL-RUN-XT @XT CATCH  R-OUT-BACK  ?DUP IF CL-CAUGHT THEN
+  AGAIN ;

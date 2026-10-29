@@ -60,7 +60,7 @@
 : DEF-CALL-M ( args k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-M  R> DEF-TAIL ;
 : CALL-VALUE ( args item --- )   \ rule 11: a value as a command's first word
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
-  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= STATUS ! EXIT THEN
+  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN     \ false: status 1, not -1 (869)
   S" cm: a value that is no block or boolean as a command - programs come later" R-FAIL ;
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts

@@ -572,8 +572,11 @@ each from what was measured (docs/SYNTAX-GENES.md):
 
 A call's two lists went at 868: a def called with exactly its words gets them on the stack, and `$( )`
 of a function keeps its one value in the sink's own cell - `calls` 30% fewer dispatches, 2.3 times Rill
-2's. Still to come, one way each: a prompt, a library, and Rill's and Rill 2's retirement once the
-command model has both (one language).
+2's. The prompt came at 869 (cm/prompt.4): one session across lines, its variables boxed, an error said
+and the prompt going on. With it two rules made true that the prototype had not: every command sets a
+status - a builtin, an `if` taking no branch and a loop 0, `false` 1 - so `&&` and `||` see the command
+before them, and a script ends with its last status; and a line goes on after `|`, `&&` and `||`.
+Still to come, one way each: a library, and Rill's and Rill 2's retirement (one language).
 
 ## What it costs
 

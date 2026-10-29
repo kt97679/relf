@@ -1,0 +1,10 @@
+# every command sets a status (869): a builtin 0 - after a failure, && sees the builtin, not the failure
+false
+echo a && echo b
+false
+var x 1 && echo after var
+false
+if false { echo no }
+echo if with no branch taken: $status
+true
+false || echo or after false

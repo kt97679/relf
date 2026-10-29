@@ -1,0 +1,15 @@
+1
+4
+from a block: 5
+i 1
+i 2
+3
+A
+env: 'nosuchprogram_cm_869': No such file or directory
+after a failure: 127
+[a b c]
+cm: line 1: $name reads a variable - ${name} is not this language's
+the prompt goes on: 5
+8
+2
+status 1

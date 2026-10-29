@@ -45,6 +45,7 @@ VARIABLE T-TARGET
 
 \ a def run: its frame - slot 0 its activation's number, slots 1..n its own - and its return; the
 \ frame and the activations put back whatever a throw from deep inside left.
+: CM-END ( --- )   STATUS @ ?DUP IF R-STATUS ! -4000 THROW THEN ;   \ a script, a session: ending with the last status (869)
 : DEF-RUN ( n xt --- )
   SWAP 1+ FRAME  ACT-PUSH D-NUM 0 LS!  FP @ >R  CTL# @ >R
   CATCH  R> CTL# !  R> FP !

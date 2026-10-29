@@ -892,6 +892,7 @@ do not trust the absence of a line below.
 - 866 — design genes: loops test transfers only on a throw, put without a list, plain loops, capture analysis; loop -26%, calls -24% in dispatches
 - 867 — the language decided at the owner's delegation: the command model, one way to do each thing - one front end, second ways cut
 - 868 — a call's arguments on the stack, its one value without a list: calls -30%, 2.3 times Rill 2's; slots inline tried, no gain in time
+- 869 — the command model's prompt, one session across lines; every command sets a status; a line goes on after | && ||
 
 ### Not tied to an iteration
 
