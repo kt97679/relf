@@ -345,6 +345,15 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : GPIECE ( p --- c-addr u )   DUP @ N-TX = IF PIECE ELSE PIECE S" GLOB-ESC" ++ THEN ;   \ a $'s, a quote's: no wildcards
 : GLOB-CODE ( w --- c-addr u )   \ a glob's pattern: its unquoted texts as they are, the rest escaped (881)
   N+ DUP GPIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
+: MANY-CAP? ( cp --- w | 0 )   \ $( ) of one command whose last stage is split, range, keys or each (893):
+  \ their values come one by one, as many as the data has - $(split $line ,) worked on a line of one field
+  \ and failed on two. Said when the script is read; a def's puts are still counted as it runs (888)
+  N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
+  N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
+  2DUP LAST-STAGE TUCK = IF DROP 0 EXIT THEN  NIP
+  DUP BARE? 0= IF DROP 0 EXIT THEN  DUP BARE$ S" split range keys each" IN-LIST? 0= IF DROP 0 THEN ;
+: MANY-ERR ( w --- )   BARE$  S" $(" S| 2OVER CAT S"  ...) can give several values, one by one - [@(" CAT
+  2OVER CAT S"  ...)] for a list, @(" CAT 2SWAP CAT S"  ...) for words" CAT G-ERR ;
 : PROG-CAP? ( cp --- f )   \ $( ) of one command, a pipeline ending in a program
   N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
   N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
@@ -428,7 +437,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
     N-BO OF @A IF S" TRUE-BOX" ELSE S" FALSE-BOX" THEN ENDOF
     N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ENDOF
     N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
-    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE DUP NO-TRANSFER? >R CAPTURE-WORD S" [']" 2SWAP ++
+    N-CP OF DUP MANY-CAP? ?DUP IF MANY-ERR THEN  DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE DUP NO-TRANSFER? >R CAPTURE-WORD S" [']" 2SWAP ++
       R> IF S" CAPTURE1-P" ELSE S" CAPTURE1" THEN ++ THEN ENDOF
     N-AR OF ARITH ENDOF
     N-LS OF N+ DUP WORDS-END ARGS-CODE ENDOF

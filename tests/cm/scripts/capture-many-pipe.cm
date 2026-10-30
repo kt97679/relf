@@ -1,0 +1,4 @@
+# the same for a pipeline's last stage: its values are the capture's
+def two { put a b }
+echo before
+echo $(two | each {|x| put $x })

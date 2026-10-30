@@ -658,6 +658,12 @@ text's length, a list's or a command's words, captures and activations nested, j
 variables, 64 defs and 255-character texts had been the limits). Recursion is bounded by the engine's
 64 KB return stack, said as "recursion too deep for the stacks": about 2,500 calls deep, 1,000 through
 `$( )`, 700 in a def with `return`. A pipeline holds 64 programs, a command 32 redirections.
+At 893 `$( )` around `split`, `range`, `keys` or `each` - one command, or a pipeline's last stage - is an
+error when the script is read, naming `[@(split ...)]` and `@(split ...)`: their values come one by one, as
+many as the data has, so `$(split $line ,)` worked on a line of one field and failed on two. The owner
+called it what it is - an inconsistency, `$( )` meaning one value for functions and the whole text for
+programs, with the count of a function's values known only as it runs - to be revisited (893's entry has
+the two ideas).
 Still to come: a smaller front end.
 
 ## What it costs

@@ -916,6 +916,7 @@ do not trust the absence of a line below.
 - 890 — `source file`: a script read into another when it is read, each file's lines its own in errors; seven script tests and a prompt's
 - 891 — sizes without a most: variables (some 65 had been too big), defs (64), captures, recursion's stacks, texts past 255, long def names; two memory faults (pipelines past 16, redirections past 8)
 - 892 — the owner's decision: the return stack, and so recursion's depth, as it is
+- 893 — $( ) around split, range, keys or each an error when read; the inconsistency behind it, two ideas to revisit
 
 ### Not tied to an iteration
 
