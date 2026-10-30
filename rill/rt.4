@@ -837,8 +837,7 @@ DEFER J-VALUE-D
 
 
 \ ---- glob (Iteration 786) -------------------------------------------------
-\ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before
-\ it as written; a name starting with . only for a pattern that does; . and .. never. No wildcard:
+\ glob(pattern): the paths it matches, sorted - * ? [...] in any part (in the last only, 786-879); a name starting with . only for a pattern that does; . and .. never. No wildcard:
 \ the path itself, if it is there. None: an empty list, as Python's.
 : GB-WILD? ( a u --- f )   0 ?DO DUP I + C@ DUP [CHAR] * = OVER [CHAR] ? = OR SWAP [CHAR] [ = OR IF DROP -1 UNLOOP EXIT THEN LOOP DROP 0 ;
 : GB-SPLIT ( t --- dir comp )   \ the pattern's directory ("" for none, "/" for the root) and its last part
@@ -862,7 +861,9 @@ VARIABLE GB-DIR  VARIABLE GB-COMP  VARIABLE GB-OUT  VARIABLE GB-P
   R-NEW-LIST SWAP
   DUP R-T@ NIP 0= IF DROP EXIT THEN
   DUP R-T@ GB-WILD? 0= IF DUP R-CSTR FILE-KIND IF K-TEXT R-BOX OVER R-PUSH ELSE DROP THEN EXIT THEN
-  GB-SPLIT 2 PICK GB-LIST  R-SORT ;
+  GB-SPLIT  OVER R-T@ GB-WILD? IF                   \ wildcards before the last / too (880): each directory they match
+    >R RECURSE R>  OVER R-LEN 0 ?DO  OVER I R-AT R-ANY>TEXT  OVER 4 PICK GB-LIST  LOOP 2DROP
+  ELSE 2 PICK GB-LIST THEN  R-SORT ;
 
 \ ---- now (Iteration 783) --------------------------------------------------
 

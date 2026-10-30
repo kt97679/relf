@@ -1,0 +1,8 @@
+# a glob's wildcards in any part of the path (880; in its last part only before): each directory they match
+rm -rf /tmp/cm-880
+mkdir -p /tmp/cm-880/a1/x /tmp/cm-880/a2/x /tmp/cm-880/b/x /tmp/cm-880/.h/x
+touch /tmp/cm-880/a1/x/f.txt /tmp/cm-880/a2/x/g.txt /tmp/cm-880/b/x/h.txt /tmp/cm-880/.h/x/i.txt /tmp/cm-880/a2/x/j.md
+echo /tmp/cm-880/a*/x/*.txt
+echo /tmp/cm-880/*/x/*.txt
+echo /tmp/cm-880/?2/*/*
+rm -rf /tmp/cm-880

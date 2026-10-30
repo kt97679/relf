@@ -617,7 +617,8 @@ At 879 texts became UTF-8 in what counts: `count $t` and `$t[i]` count character
 script is read, not when it runs: a def given the wrong number of words (with no `@` among them) - "sq
 wants 1, given 2" - and a variable declared twice in one scope ("x is declared here already - set
 changes it"; at the prompt, where lines are run again, allowed).
-Still to come: a smaller front end; globs with wildcards before the last `/`.
+At 880 a glob's wildcards may stand in any part of a path - `src/*/*.c` - not only its last.
+Still to come: a smaller front end.
 
 ## What it costs
 
