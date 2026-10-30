@@ -536,11 +536,13 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
   >R >R 0 0 TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE SEQ+ REPEAT  R> R> 2DROP ;
 : APPEND-ERR ( --- )   S" append name values - name a list's variable, name[key] too" G-ERR ;
+: CAP-IN? ( from to --- f )   \ a $( ) or @( ) among these words: var's and set's status theirs, as sh's x=$(cmd) (897)
+  SWAP BEGIN 2DUP <> WHILE  DUP @ N-CP = IF 2DROP -1 EXIT THEN  N+ REPEAT 2DROP 0 ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
-  S" var" NAMED? IF 2DROP VAR-CMD OK$ EXIT THEN
-  S" set" NAMED? IF 2DROP SET-CMD OK$ EXIT THEN
+  S" var" NAMED? IF 2DROP 2DUP CAP-IN? >R VAR-CMD R> 0= IF OK$ THEN EXIT THEN   \ status: its value's capture's (897)
+  S" set" NAMED? IF 2DROP 2DUP CAP-IN? >R SET-CMD R> 0= IF OK$ THEN EXIT THEN
   S" read" NAMED? IF 2DROP READ-CMD EXIT THEN                   \ READ-LINE sets the status (886)
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE S" PUT" ++ OK$ EXIT THEN THEN
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)

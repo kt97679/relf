@@ -49,6 +49,8 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    value, an error for none or several). `@(cmd)` is values - a function's, a program's lines - spread
    where they stand; `[@(cmd)]` a list, and `var x @(cmd)` (or set's) the one value, an error for
    none or several (896). `has` gives a status, as `match` does: `if has $m $k { }`.
+   `var` and `set` give the status of the last `$( )` or `@( )` in their value, 0 with none, as sh's
+   `x=$(cmd)` (897).
 3. A substitution's result is a value and is never read again: never split, never globbed. Globs
    come from a word's own characters.
 4. `'...'` is text; `"..."` substitutes as rule 2 does, `$` only.
