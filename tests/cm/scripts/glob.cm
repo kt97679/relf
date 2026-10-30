@@ -1,0 +1,15 @@
+# globbing (872): an unquoted word with * or ? among a command's words is the paths it matches, sorted - a name
+# starting with . only for a pattern that does; none an error. Quoted, or as var's value, it is itself.
+rm -rf /tmp/cm-872
+mkdir /tmp/cm-872
+touch /tmp/cm-872/b.txt /tmp/cm-872/a.txt /tmp/cm-872/c.log /tmp/cm-872/.hidden.txt
+echo /tmp/cm-872/*.txt
+echo "/tmp/cm-872/*.txt"
+var logs [/tmp/cm-872/*.log]
+echo $(count $logs) $logs
+for f /tmp/cm-872/?.txt { echo file $f }
+var p /tmp/cm-872/*.txt
+echo $p
+rm -rf /tmp/cm-872
+ls /tmp/cm-872/*.md
+echo never

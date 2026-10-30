@@ -583,7 +583,11 @@ each part or key, `join sep items...` one text; with `has`, `count`, `range`, `m
 reads the environment, `set env[NAME] v` sets it for programs; `$args` is the script's arguments. At 871
 Rill and Rill 2 were retired - one language: the image is the command model's own (66,338 bytes: Rill's
 regex engine, which nothing of the command model used, left out), `bin/cm` runs it, `tests/cm/run` checks
-it. Still to come: a smaller front end, and a call's remaining cost.
+it. Globbing came at 872, as rule 7 said and the prototype had not done: an unquoted word with `*` or `?`
+among a command's words - a program's, a builtin's, a list's - is the paths it matches, sorted (a name
+starting with `.` only for a pattern that does, as the shell's); none an error that names the pattern, as
+zsh and fish have it - one way: quote a pattern to pass it as it is. As var's value it stays itself.
+Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs
 

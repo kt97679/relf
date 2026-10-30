@@ -117,6 +117,7 @@ VARIABLE BARE                                      \ the word read so far: plain
   DUP @A OVER @B NUM? IF OVER CELL+ ! N-NM SWAP ! EXIT THEN DROP
   DUP @A OVER @B 2DUP S" true" COMPARE 0= IF 2DROP -1 ELSE S" false" COMPARE IF DROP EXIT THEN 0 THEN
   OVER CELL+ ! N-BO SWAP ! ;
+: GLOBBY? ( c-addr u --- f )   0 ROT ROT 0 ?DO DUP I + C@ DUP [CHAR] * = SWAP [CHAR] ? = OR ROT OR SWAP LOOP DROP ;
 : PIECES-P ( closer --- )   \ a word's texts, '...', "..." and $...: up to a blank, a ; or the closer
   -1 BARE !  NDP @ SWAP T0
   BEGIN CUR OVER WORD-END? 0= WHILE
@@ -129,7 +130,7 @@ VARIABLE BARE                                      \ the word read so far: plain
     THEN THEN THEN
   REPEAT DROP T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
-  BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN DROP ;
+  BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? DUP @ N-TX = IF DUP @A OVER @B GLOBBY? IF 1 OVER 3 CELLS - CELL+ ! THEN THEN THEN THEN DROP ;
 : MAP-KEY? ( w --- f )   \ a map's key: a text alone, ending in : after something
   N+ DUP @ N-TX = OVER N+ @ 0= AND 0= IF DROP 0 EXIT THEN
   DUP @B 1 > SWAP DUP @A SWAP @B + 1- C@ [CHAR] : = AND ;
@@ -266,7 +267,8 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : SPREAD-CODE ( p --- c-addr u )   \ what @ spreads: a list
   DUP @ N-CP = IF DUP PROG-CAP? IF S" PIPE-LINES" PIPE-CAP EXIT THEN
     CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE" ++ EXIT THEN  PIECE ;
-: ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ ELSE WORD-CODE S" ARG" ++ THEN ;
+: ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ EXIT THEN
+  DUP @A IF BARE$ TEXT-CODE S" GLOB ARG@" ++ EXIT THEN  WORD-CODE S" ARG" ++ ;   \ a word with * or ?: its paths (872)
 : ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
   >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
 VARIABLE AP                                        \ the next of (( ))'s nodes

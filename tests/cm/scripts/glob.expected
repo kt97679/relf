@@ -1,0 +1,8 @@
+/tmp/cm-872/a.txt /tmp/cm-872/b.txt
+/tmp/cm-872/*.txt
+1 [/tmp/cm-872/c.log]
+file /tmp/cm-872/a.txt
+file /tmp/cm-872/b.txt
+/tmp/cm-872/*.txt
+cm: no file matches /tmp/cm-872/*.md
+status 2
