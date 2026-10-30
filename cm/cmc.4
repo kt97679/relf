@@ -124,18 +124,19 @@ VARIABLE BARE                                      \ the word read so far: plain
   DUP @A OVER @B NUM? IF OVER CELL+ ! N-NM SWAP ! EXIT THEN DROP
   DUP @A OVER @B 2DUP S" true" COMPARE 0= IF 2DROP -1 ELSE S" false" COMPARE IF DROP EXIT THEN 0 THEN
   OVER CELL+ ! N-BO SWAP ! ;
-: GLOBBY? ( c-addr u --- f )   0 ROT ROT 0 ?DO DUP I + C@ DUP [CHAR] * = SWAP [CHAR] ? = OR ROT OR SWAP LOOP DROP ;
+VARIABLE GLOBW                                     \ an unquoted * or ? read in the word: a glob (872; with $s, 881)
 : PIECES-P ( closer --- )   \ a word's texts, '...', "..." and $...: up to a blank, a ; or the closer
-  -1 BARE !  NDP @ SWAP T0
+  GLOBW @ >R  0 GLOBW !  -1 BARE !  NDP @ SWAP T0
   BEGIN CUR OVER WORD-END? 0= WHILE
     CUR [CHAR] " = IF GET DROP T) 0 BARE ! QUOTED-P T0 ELSE
-    CUR [CHAR] ' = IF GET DROP T) 0 BARE ! SQUOTE-P ELSE
+    CUR [CHAR] ' = IF GET DROP T) 0 BARE ! 0 0 N-QU N, SQUOTE-P N) ELSE     \ quoted: a N-QU, a glob's text kept apart
     CUR [CHAR] $ = IF GET DROP T) 0 BARE ! DOLLAR-P T0 ELSE
-    GET T,                                                  \ \ too (867): quotes are the one way to escape
+    GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
     THEN THEN THEN
   REPEAT DROP T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
-  BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? DUP @ N-TX = IF DUP @A OVER @B GLOBBY? IF 1 OVER 3 CELLS - CELL+ ! THEN THEN THEN THEN DROP ;
+  BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN
+  GLOBW @ IF 1 OVER 3 CELLS - CELL+ ! THEN  DROP  R> GLOBW ! ;
 : MAP-KEY? ( w --- f )   \ a map's key: a text alone, ending in : after something
   N+ DUP @ N-TX = OVER N+ @ 0= AND 0= IF DROP 0 EXIT THEN
   DUP @B 1 > SWAP DUP @A SWAP @B + 1- C@ [CHAR] : = AND ;
@@ -170,6 +171,10 @@ VARIABLE BARE                                      \ the word read so far: plain
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
+: SET-FIRST? ( last --- f )   DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP S" set" BARE= AND ;
+: SET-TARGET-P ( closer --- )   \ set's target, after the command's first word set: read as after a $ (881)
+  CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
+  CUR R> WORD-END? 0= IF S" set: a name, or name[key]" P-ERR THEN ;
 : CMDS' ( close closer --- )   \ commands up to close - 0, the text's end - each a N-CMD of its words; the
   0 BEGIN  0 SKIP-WS CUR       \ third cell: 0, or the command's last word so far
     DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP EXIT THEN
@@ -177,7 +182,7 @@ VARIABLE BARE                                      \ the word read so far: plain
     DUP 10 = 2 PICK 0<> AND IF OVER GOES-ON? ELSE 0 THEN
     IF DROP GET DROP                                       \ after |, && or ||: the line goes on (rule 13, 869)
     ELSE DUP 10 = SWAP [CHAR] ; = OR IF GET DROP  IF N) THEN 0
-    ELSE DUP 0= IF IN-LINE @ 0 N-CMD N, THEN DROP  NDP @ OVER WORD-P THEN THEN
+    ELSE DUP 0= IF IN-LINE @ 0 N-CMD N, THEN SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN THEN THEN
   AGAIN ;
 ' CMDS' IS CMDS
 
@@ -261,6 +266,9 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
   DUP PIECE S" D-STR" ++ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE ++ S" JOIN" ++ R> NSKIP REPEAT DROP ;
 : WORD-CODE ( w --- c-addr u )   N+ DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
+: GPIECE ( p --- c-addr u )   DUP @ N-TX = IF PIECE ELSE PIECE S" GLOB-ESC" ++ THEN ;   \ a $'s, a quote's: no wildcards
+: GLOB-CODE ( w --- c-addr u )   \ a glob's pattern: its unquoted texts as they are, the rest escaped (881)
+  N+ DUP GPIECE S" D-STR" ++ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE ++ S" JOIN" ++ R> NSKIP REPEAT DROP ;
 : PROG-CAP? ( cp --- f )   \ $( ) of one command, a pipeline ending in a program
   N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
   N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
@@ -273,7 +281,7 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
   DUP @ N-CP = IF DUP PROG-CAP? IF S" PIPE-LINES" PIPE-CAP EXIT THEN
     CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE" ++ EXIT THEN  PIECE ;
 : ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ EXIT THEN
-  DUP @A IF BARE$ TEXT-CODE S" GLOB ARG@" ++ EXIT THEN  WORD-CODE S" ARG" ++ ;   \ a word with * or ?: its paths (872)
+  DUP @A IF GLOB-CODE S" GLOB ARG@" ++ EXIT THEN  WORD-CODE S" ARG" ++ ;   \ a word with * or ?: its paths (872)
 : ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
   >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
 VARIABLE AP                                        \ the next of (( ))'s nodes
@@ -308,16 +316,12 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   SESSION @ FR @ MAIN-FR @ = AND IF 2DROP -1 EXIT THEN
   CAPS# @ 0 ?DO  2DUP CAPS @ I 2* CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN  LOOP 2DROP 0 ;
 : NAME-LEN ( c-addr u --- k )   0 BEGIN 2DUP > IF 2 PICK OVER + C@ NAMEC? ELSE 0 THEN WHILE 1+ REPEAT NIP NIP ;
-: DOLLARS+ ( c-addr u --- )   \ each $name in a text: set's keys are read when they are made
-  BEGIN DUP WHILE
-    OVER C@ [CHAR] $ = IF 1 /STRING 2DUP NAME-LEN ?DUP IF >R OVER R@ CAPS+ R> /STRING THEN ELSE 1 /STRING THEN
-  REPEAT 2DROP ;
-: SCAN-BLOCK ( bk --- )   \ $names, set's and append's names in a block's code
+: SCAN-BLOCK ( bk --- )   \ $names (set's targets too, 881) and append's names in a block's code
   DUP NSKIP SWAP N+
   BEGIN 2DUP <> WHILE
     DUP @ N-VR = IF DUP @A OVER @B CAPS+ THEN
-    DUP @ N-CMD = IF DUP N+ DUP S" set" BARE= OVER S" append" BARE= OR IF
-      NSKIP DUP @ N-WRD = IF DUP BARE? IF DUP BARE$ 2DUP [CHAR] [ CHAR-AT NIP CAPS+  DUP BARE$ DOLLARS+ THEN THEN THEN DROP THEN
+    DUP @ N-CMD = IF DUP N+ DUP S" append" BARE= IF                 \ set's target is a N-VR (881)
+      NSKIP DUP @ N-WRD = IF DUP BARE? IF DUP BARE$ CAPS+ THEN THEN THEN DROP THEN
   N+ REPEAT 2DROP ;
 : MARK ( w --- )   N+ DUP @ N-BK = IF 1 SWAP 2 CELLS + ! ELSE DROP THEN ;   \ a body made in place, or in its own frame
 : MARK-CMD ( cmd --- )   \ if's, elif's and else's bodies, a loop's, a def's: no value, nothing captured
@@ -428,26 +432,17 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   2DUP IN-SCOPE? SESSION @ 0= AND IF S| S" is declared here already - set changes it" ++ G-ERR THEN   \ (879)
   2DUP CAPTURED? DUP >R DECLARE V-SLOT R> IF >R S" UPV-NEW" ++ R> THEN #++ S" LS!" ++ ;
 : SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
-: KEYS? ( c-addr u --- f )   \ [k][k]...: none empty
-  BEGIN DUP WHILE
-    OVER C@ [CHAR] [ <> IF 2DROP 0 EXIT THEN  1 /STRING
-    2DUP [CHAR] ] CHAR-AT  DUP 0= OVER 3 PICK = OR IF DROP 2DROP 0 EXIT THEN  1+ /STRING
-  REPEAT 2DROP -1 ;
-: KEY-WORD ( c-addr u --- w )   \ one of set's keys, read as a word
-  IN-TEXT @ >R IN-LEN @ >R IN-POS @ >R IN-LINE @ >R
-  IN-LEN ! IN-TEXT ! 0 IN-POS !  LN @ IN-LINE !  NDP @  0 WORD-P
-  R> IN-LINE ! R> IN-POS ! R> IN-LEN ! R> IN-TEXT ! ;
-: SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value
-  BIND OVER BARE? 0= IF S" set: a name first" G-ERR THEN  WORD-CODE ROT BARE$
-  2DUP [CHAR] [ CHAR-AT >R  OVER R@ NAME? 0= IF SET-ERR THEN  2DUP R@ /STRING KEYS? 0= IF SET-ERR THEN
-  OVER R@ FIND-VAR ?DUP 0= IF  OVER R@ S" env" COMPARE 0= 2 PICK R@ <> AND IF -1 ELSE      \ set env[NAME] v (870)
-    S" set: no variable" S| 2OVER DROP R@ ++ S" - var makes one" ++ G-ERR THEN THEN
-  OVER R@ = IF  >R 2DROP R>  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ ELSE
-    DUP 3 CELLS + @ FR @ <> IF S" cm: an unboxed variable set from a block" G-ERR THEN  V-SLOT #++ S" LS!" ++ THEN  R> DROP EXIT THEN
-  DROP OVER R@ READ$ 2SWAP R> /STRING
-  BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
-    DUP WHILE  >R >R ++ S" CM-AT" ++ R> R>  REPEAT
-  2DROP ++ 2SWAP ++ S" CM-SET" ++ ;
+: SET-KEYS ( vc vu vr --- c-addr u )   \ name[k1]..[kn] value: name's value through k1..kn-1, kn, the value, CM-SET
+  DUP @A OVER @B READ$  ROT N+                                    \ (READ$: no such variable an error; env, $env's)
+  BEGIN DUP NSKIP @ WHILE  DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT
+  WORD-CODE ++  2SWAP ++ S" CM-SET" ++ ;
+: SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value - its target read as $'s are,
+  BIND  OVER N+ DUP @ N-VR = OVER NSKIP @ 0= AND 0= IF SET-ERR THEN      \ so a key any word: $k too (881)
+  ROT DROP  SWAP WORD-CODE ROT                                                  ( vc vu vr )
+  DUP N+ @ IF SET-KEYS EXIT THEN
+  DUP @A SWAP @B  2DUP FIND-VAR ?DUP 0= IF S" set: no variable" S| 2SWAP ++ S" - var makes one" ++ G-ERR THEN
+  NIP NIP  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ EXIT THEN
+  DUP 3 CELLS + @ FR @ <> IF S" cm: an unboxed variable set from a block" G-ERR THEN  V-SLOT #++ S" LS!" ++ ;
 : ARITY-CHECK ( c-addr u from to k --- c-addr u )   \ a def given its words, none an @: their count checked here (879)
   >R  0 ROT ROT SWAP BEGIN 2DUP <> WHILE  DUP N+ @ N-SP = IF 2DROP DROP R> DROP EXIT THEN  ROT 1+ ROT ROT NSKIP REPEAT 2DROP
   DUP R@ = IF DROP R> DROP EXIT THEN
@@ -601,5 +596,4 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
     S" M" FRESH 2SWAP 2OVER S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ 2SWAP ++ OUT+     \ run in the session's frame
   ELSE  S" : CM.MAIN" 2SWAP ++ S" ;" ++ OUT+  FR @ CELL+ @ 1- #$ S" ' CM.MAIN DEF-RUN CM-END" ++ OUT+  THEN
   OU0 @ OUP @ OVER - ;
-: CM-RUN ( c-addr u --- )   R-SLURP CM-COMPILE EVALUATE ;      \ a script by its path: read, made Forth, run
-: CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE CR ;      \ the Forth made of it
+: CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE CR ;      \ the Forth made of a script: S" x.cm" CM-SHOW

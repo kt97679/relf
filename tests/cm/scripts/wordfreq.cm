@@ -1,0 +1,15 @@
+# a whole script, as one would write it (881): the most common words in a directory's .txt files - it found
+# set's keys could not be $s, a glob could not have one, and a capture of nothing crashed
+var dir /tmp/cm-wordfreq
+rm -rf $dir
+mkdir $dir
+printf 'the cat and the dog\nThe end\n' > $dir/a.txt
+printf 'a dog, a cat; the bird\n' > $dir/b.txt
+var counts [:]
+for f $dir/*.txt {
+    for w @(tr -cs 'A-Za-z' '\n' < $f | tr 'A-Z' 'a-z') {
+        if $(has $counts $w) { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 }
+    }
+}
+for k @(keys $counts) { echo $counts[$k] $k } | sort -k1,1rn -k2 | head -4
+rm -rf $dir

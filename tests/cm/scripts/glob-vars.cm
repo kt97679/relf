@@ -1,0 +1,11 @@
+# a glob with $s (881): its unquoted * and ? are wildcards, a value's and a quote's matched as they are
+rm -rf /tmp/cm-881
+mkdir -p /tmp/cm-881/d
+touch /tmp/cm-881/d/a.txt /tmp/cm-881/d/b.txt '/tmp/cm-881/d/*.txt'
+var dir /tmp/cm-881/d
+echo $dir/?.txt
+var star "*"
+echo $dir/$star.txt
+echo $dir/'*'.txt
+for f "$dir"/*.txt { echo each: $f }
+rm -rf /tmp/cm-881

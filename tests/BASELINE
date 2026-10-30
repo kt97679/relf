@@ -10,7 +10,7 @@ asm:shell 1
 asm:shell-image reproduces
 bundle:pullable 1
 cm:failed 0
-cm:passed 41
+cm:passed 45
 core:4byte 1
 core:8byte 1
 core:okmarkers 2136

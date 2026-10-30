@@ -55,6 +55,12 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
   K-TEXT R-BOX PUT DROP ;
 : KEYS-OF ( args --- )   \ keys $map: each key put
   DUP #ARGS 1 <> IF S" cm: keys takes one map" R-FAIL THEN  0 ARGN D-REC R-KEYS  DUP R-LEN 0 ?DO DUP I R-AT PUT LOOP DROP ;
+4096 BUFFER: GE-BUF
+: GLOB-ESC ( item --- text )   \ a value in a glob's pattern: its * ? [ and \ escaped, matched as they are (881)
+  D-STR CELL+ @ R-T@  DUP 2* 4096 > IF S" cm: a value in a glob too long" R-FAIL THEN
+  0 ROT ROT OVER + SWAP ?DO
+    I C@ DUP [CHAR] * = OVER [CHAR] ? = OR OVER [CHAR] [ = OR SWAP [CHAR] \ = OR IF [CHAR] \ OVER GE-BUF + C! 1+ THEN
+    I C@ OVER GE-BUF + C! 1+  LOOP  GE-BUF SWAP R-TEXT K-TEXT R-BOX ;
 : GLOB ( text --- list )   \ an unquoted word with * or ?, an argument: the paths it matches, sorted - none an error (872)
   DUP D-TEXT R-GLOB DUP R-LEN 0= IF DROP R-ERR> ." cm: no file matches " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW THEN
   NIP K-LIST R-BOX ;
@@ -100,13 +106,6 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
   FP @ >R  CTL# @ >R  CATCH  R> CTL# !  R> FP !
   0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
   ACT-POP UNFRAME  THROW ;
-: DEF-CALL ( args k n xt --- )   \ slot 0 its number, slots 1..k its parameters, each in an upvalue
-  >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!                                        ( args k ) ( R: xt )
-  OVER #ARGS OVER <> IF S" cm: a def called with the wrong number of arguments" R-FAIL THEN
-  0 ?DO  DUP I ARGN UPV-NEW  I 1+ LS!  LOOP DROP  R> DEF-TAIL ;
-: BLK-BIND ( args k --- )   \ a block's parameters from its arguments, each in an upvalue
-  OVER #ARGS OVER <> IF S" cm: a block called with the wrong number of arguments" R-FAIL THEN
-  0 ?DO  DUP I ARGN UPV-NEW  I 1+ LS!  LOOP DROP ;
 : BIND-M ( args k mask --- )   \ slots 1..k from the arguments - in an upvalue where mask's bit is set (866, gene d3)
   ROT ROT  OVER #ARGS OVER <> IF S" cm: a call with the wrong number of arguments" R-FAIL THEN
   0 ?DO  DUP I ARGN  2 PICK 1 I LSHIFT AND IF UPV-NEW THEN  I 1+ LS!  LOOP 2DROP ;
@@ -130,7 +129,8 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
 : PIPE-END ( --- )   PL-END STATUS ! ;
 : TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
-  BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = ELSE 0 THEN  WHILE  -1 OVER +!  REPEAT ;
+  BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = THEN  WHILE  -1 OVER +!  REPEAT ;   \ an empty text: its 0 the flag (881:
+\ it was left under one, so a capture of nothing - $(printf "") - made a broken value and the next use crashed)
 : PIPE-TEXT ( --- item )   PL-END STATUS !  TRIM-NLS K-TEXT R-BOX ;
 : NL-AT ( c-addr u --- i )   \ the first newline's place, or u
   TUCK 0 ?DO  DUP I + C@ 10 = IF 2DROP I UNLOOP EXIT THEN  LOOP  DROP ;

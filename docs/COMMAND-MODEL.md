@@ -618,6 +618,11 @@ script is read, not when it runs: a def given the wrong number of words (with no
 wants 1, given 2" - and a variable declared twice in one scope ("x is declared here already - set
 changes it"; at the prompt, where lines are run again, allowed).
 At 880 a glob's wildcards may stand in any part of a path - `src/*/*.c` - not only its last.
+At 881, from a whole script written as one would (tests/cm/scripts/wordfreq.cm): set's target is read as
+`$`'s is, so a key may be any word - `set counts[$w] 1`, `set l[$i] x` - where it had to be literal; a word
+with `$`s globs too - `$dir/*.txt` - its unquoted `*` and `?` wildcards, a value's and a quote's matched
+as they are; and a capture of no output, which had left a broken value that crashed the next use, is
+an empty text (an empty list for `@( )`).
 Still to come: a smaller front end.
 
 ## What it costs
