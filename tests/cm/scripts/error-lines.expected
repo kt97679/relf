@@ -1,0 +1,5 @@
+5
+a
+b
+cm: $(( )) takes numbers, not the text ten (line 3)
+status 2

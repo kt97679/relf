@@ -24,8 +24,10 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND K-TEXT <> IF DROP 0 EXIT THEN  D-TEXT R-T@  OVER C@ [CHAR] - = IF 1 /STRING THEN
   DUP 0= IF NIP EXIT THEN  -1 ROT ROT 0 ?DO  DUP I + C@ [CHAR] 0 [CHAR] 9 1+ WITHIN ROT AND SWAP  LOOP DROP ;
 : D-NUMERIC ( item --- item' )   DUP NUMERIC? IF D-TEXT R-NUMBER N>ITEM-D THEN ;   \ "41" in $(( )): 41, as the shell's
+: D-NOT-NUM ( text --- )   \ the text named (887): "a text that reads as none" said not which
+  R-ERR> ." cm: $(( )) takes numbers, not the text " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW ;
 : D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP
-  OVER D-KIND K-TEXT = OVER D-KIND K-TEXT = OR IF S" cm: $(( )) takes numbers - a text that reads as none" D-ERR THEN
+  OVER D-KIND K-TEXT = IF DROP D-NOT-NUM THEN  DUP D-KIND K-TEXT = IF D-NOT-NUM THEN
   D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;
 : D+ ( a b --- c )   \ two tagged: one add, the overflow looked at - past 62 bits the checked way (837)
   BOTH# IF 2DUP 2DUP + 1- TUCK XOR >R XOR R> AND 0< IF 0 D-ARITH EXIT THEN + 1- EXIT THEN

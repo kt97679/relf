@@ -1,0 +1,11 @@
+# a whole script (887): commands dispatched through a map of blocks, written over several lines
+var log []
+var actions [
+    start: {|arg| append log "started $arg" }
+    stop:  {|arg| append log "stopped $arg" }
+    show:  {|arg| for l @log { echo - $l } }
+]
+for cmd [start web] [start db] [stop web] [restart db] [show x] {
+    var name $cmd[0]
+    if $(has $actions $name) { $actions[$name] $cmd[1] } else { echo unknown command: $name }
+}

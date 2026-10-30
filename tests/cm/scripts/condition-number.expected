@@ -1,2 +1,2 @@
-cm: a condition is a command, true or false - $(( )) makes one of a number
+cm: a condition is a command, true or false - $(( )) makes one of a number (line 3)
 status 2

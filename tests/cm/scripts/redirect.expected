@@ -5,6 +5,6 @@ done
 inner
 outer
 said on stderr, here on stdout
-cm: cannot open /no/such/dir/f
+cm: cannot open /no/such/dir/f (line 13)
 status 1, stdout as it was
 status 0

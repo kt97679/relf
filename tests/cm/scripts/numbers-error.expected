@@ -1,2 +1,2 @@
-cm: $(( )) takes numbers - a text that reads as none
+cm: $(( )) takes numbers, not the text abc (line 3)
 status 2

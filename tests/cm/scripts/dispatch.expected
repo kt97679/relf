@@ -1,0 +1,5 @@
+unknown command: restart
+- started web
+- started db
+- stopped web
+status 0

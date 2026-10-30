@@ -4,5 +4,5 @@
 file /tmp/cm-872/a.txt
 file /tmp/cm-872/b.txt
 /tmp/cm-872/*.txt
-cm: no file matches /tmp/cm-872/*.md
+cm: no file matches /tmp/cm-872/*.md (line 14)
 status 2

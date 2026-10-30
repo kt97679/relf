@@ -363,7 +363,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
     S" @ spreads into a command's words or a list - not here" G-ERR
   ENDCASE ;
 ' PIECE' IS PIECE
-: CMD-CODE ( cmd --- c-addr u )   DUP @A LN !  N+ DUP WORDS-END CMD-RANGE ;
+: CMD-CODE ( cmd --- c-addr u )   \ its code after [ line R-MARK ]: an error in it says its line (887)
+  DUP @A LN !  S" [" LN @ #++ S" R-MARK ]" ++  ROT N+ DUP WORDS-END CMD-RANGE ++ ;
 : BODY-CODE' ( cmd --- c-addr u )   \ each command's Forth, to the END
   LN @ >R  0 0 ROT BEGIN DUP @ WHILE DUP >R CMD-CODE ++ R> NSKIP REPEAT DROP  R> LN ! ;
 ' BODY-CODE' IS BODY-CODE

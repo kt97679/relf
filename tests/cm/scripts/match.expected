@@ -3,5 +3,5 @@ notes.md is md or csv
 data.csv is md or csv
 a?c matches abc
 b* does not
-cm: match takes a text and one pattern - quote the pattern, or it is globbed
+cm: match takes a text and one pattern - quote the pattern, or it is globbed (line 7)
 status 2

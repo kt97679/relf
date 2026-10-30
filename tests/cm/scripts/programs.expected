@@ -12,5 +12,5 @@ after false
 after true
 ls failed: 2
 a missing program: 127
-cm: a list, map or block given to a program - @ spreads a list, to-json writes one
+cm: a list, map or block given to a program - @ spreads a list's items (line 22)
 status 2

@@ -1,5 +1,5 @@
 /tmp
-cm: cd: cannot change to /no/such/dir
+cm: cd: cannot change to /no/such/dir (line 4)
 cd failed: 1
 /
 status 3

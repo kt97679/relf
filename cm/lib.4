@@ -134,7 +134,7 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)
   ARGL SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  DUP D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
-    IF S" cm: a list, map or block given to a program - @ spreads a list, to-json writes one" R-FAIL THEN
+    IF S" cm: a list, map or block given to a program - @ spreads a list's items" R-FAIL THEN
     D-STR  ROT SWAP ARG SWAP  LOOP DROP  CELL+ @ ;   \ a number given as it was (870: head -n 1 faulted)
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;

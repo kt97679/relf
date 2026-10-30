@@ -56,6 +56,10 @@ VARIABLE RL   VARIABLE RJ-SEP
 \ above the first mark, below HERE. The table lives in the C heap. Gene lines.
 VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 
+: R-MARK ( n --- )   \ between [ and ], as a statement is compiled (back at 887: the command model's too)
+  MK-N @ MK-CAP @ = IF
+    MK-CAP @ 2* 256 MAX DUP MK-CAP !  2* CELLS  MK-A @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW MK-A ! THEN
+  HERE  MK-A @ MK-N @ 2* CELLS + 2!  1 MK-N +! ;
 : MK-LINE ( a --- n )   \ the line whose code holds a; 0: not the script's code
   MK-N @ 0= IF DROP 0 EXIT THEN
   DUP MK-A @ @ U< IF DROP 0 EXIT THEN
