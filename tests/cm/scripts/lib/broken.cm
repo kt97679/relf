@@ -1,0 +1,3 @@
+# a read-time error in a sourced file says its file and line
+echo @5
+echo after

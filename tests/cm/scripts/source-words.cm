@@ -1,0 +1,2 @@
+# source takes one file name
+source lib/more.cm lib/bad.cm

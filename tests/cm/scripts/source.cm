@@ -1,0 +1,9 @@
+# source (890): a file read in place of the line, when the script is read - its defs and variables the
+# script's own; a def in it sees the script's variables declared before the source line; the path is
+# relative to the file that sources it, so lib/greet.cm's `source more.cm` is lib/more.cm
+var greeting hello
+source lib/greet.cm
+greet world
+echo $(twice 21)
+echo $shared
+more

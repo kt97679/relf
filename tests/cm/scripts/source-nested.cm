@@ -1,0 +1,2 @@
+# source is for the script's top level, as def is
+if true { source lib/more.cm }

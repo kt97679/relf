@@ -76,8 +76,10 @@ VARIABLE R-OUT-KEPT                       \ the real stdout while an error is to
   PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN  R-OUT-KEPT !  2 1 DUP2 DROP ;
 : R-OUT-BACK ( --- )
   R-OUT-KEPT @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  R-OUT-KEPT @ CLOSE-FILE DROP  0 R-OUT-KEPT ! ;
+DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a sourced one's (890)
+: R-LINE-N. ( n --- )   ." line " 0 <# #S #> TYPE ;   ' R-LINE-N. IS R-LINE.
 : R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
-  R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
+  R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (" R-LINE. ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
 : R-FAIL ( c-addr u --- )   R-ERR> TYPE R-ERR-NL -4004 THROW ;   \ a Rill error: its message, its line, status 2 - not ABORT", which
                                                             \ added the word it was in, then `cm: error -2`, no line (818)

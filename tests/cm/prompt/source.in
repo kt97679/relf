@@ -1,0 +1,7 @@
+source tests/cm/scripts/lib/more.cm
+more
+var greeting hi
+source tests/cm/scripts/lib/greet.cm
+greet you
+source nowhere.cm
+echo still here

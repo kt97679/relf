@@ -1,0 +1,2 @@
+cm: tests/cm/scripts/lib/broken.cm line 2: @ spreads a name or a ( ) - not this
+status 2

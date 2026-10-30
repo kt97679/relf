@@ -1,0 +1,1 @@
+def more { echo more, from lib/more.cm }

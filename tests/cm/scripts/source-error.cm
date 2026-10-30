@@ -1,0 +1,4 @@
+# a runtime error inside a sourced def says the sourced file's line; the script's own lines are as before
+source lib/bad.cm
+echo $(pick 1)
+echo $(pick 2)

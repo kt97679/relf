@@ -647,6 +647,12 @@ At 887 a runtime error says its line - `cm: index 2 past a list of 2 (line 4)` -
 when a script is read had said one: each command's code is marked with its line as it is compiled
 (Rill's R-MARK, 781 - nothing at run time), and the error finds the innermost mark under it on the
 return stack; in a def, the def's line. And `$(( ))` given a text names it: "not the text ten".
+At 890 `source file` - one script read into another, where the line stands, when the script is read:
+at the top level only, as `def`; the path relative to the file that sources it; its defs and variables
+the script's own, a def in it seeing the script's variables declared before the source line. Each file
+has lines of its own, so an error in one says `lib.cm line 3`, read-time or runtime, and the script's
+own say `line 3` as before. A file sourced twice is an error naming the line of the first - no cycles,
+no def made twice; one that cannot be read, an error at the source line.
 Still to come: a smaller front end.
 
 ## What it costs

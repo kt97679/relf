@@ -1,0 +1,5 @@
+# sourced by source.cm and source-error.cm: a library, not a test (tests/cm/run runs scripts/*.cm only)
+def greet {|who| echo $greeting $who }
+def twice {|n| put $(( $n * 2 )) }
+var shared 'from the library'
+source more.cm

@@ -1,0 +1,3 @@
+b
+cm: index 2 past a list of 2 (tests/cm/scripts/lib/bad.cm line 4)
+status 2

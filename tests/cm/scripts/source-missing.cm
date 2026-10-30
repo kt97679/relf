@@ -1,0 +1,3 @@
+# a file that cannot be read: an error when the script is read, at the source line
+echo never
+source lib/none.cm

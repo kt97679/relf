@@ -1,0 +1,3 @@
+# a file sourced a second time is an error, naming the line of the first: no cycles, no def made twice
+source lib/more.cm
+source lib/more.cm
