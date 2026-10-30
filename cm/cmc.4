@@ -526,7 +526,7 @@ VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0
   7 PL@ 0= 1 AND 3 PL!  6 PL@ 7 PL@ 0= IF NSKIP THEN ;
 : FN-SEG ( cur --- cur' )
   DUP 0 PL@ TO-PIPE DUP 6 PL!  S" S" FRESH 2SWAP SCOPE( SINGLE )SCOPE 2OVER 2SWAP DEF-WORD
-  3 PL@ IF 0 0 ELSE S" ARGL" THEN S" [']" ++ 2SWAP ++
+  3 PL@ IF 0 0 ELSE S" 0" THEN S" [']" ++ 2SWAP ++          \ the first stage: no input, stdin as it is (882)
   6 PL@ 0 PL@ = IF S" FN-RUN" 0 ELSE 6 PL@ NSKIP PROGRAM? IF S" FN>FILE" 2 ELSE S" FN-LIST" 1 THEN THEN
   3 PL! ++ PL+  6 PL@ DUP 0 PL@ <> IF NSKIP THEN ;
 : STAGES-OK ( from to --- )
@@ -596,4 +596,4 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
     S" M" FRESH 2SWAP 2OVER S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ 2SWAP ++ OUT+     \ run in the session's frame
   ELSE  S" : CM.MAIN" 2SWAP ++ S" ;" ++ OUT+  FR @ CELL+ @ 1- #$ S" ' CM.MAIN DEF-RUN CM-END" ++ OUT+  THEN
   OU0 @ OUP @ OVER - ;
-: CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE CR ;      \ the Forth made of a script: S" x.cm" CM-SHOW
+: CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE R-NL ;      \ the Forth made of a script: S" x.cm" CM-SHOW

@@ -1,0 +1,16 @@
+# a whole script (882): every file under a directory, by a def that calls itself, their sizes summed
+var top /tmp/cm-882-walk
+rm -rf $top
+mkdir -p $top/a/b $top/c
+printf 12345 > $top/a/one
+printf 123 > $top/a/b/two
+printf 1234567 > $top/c/three
+def walk {|dir| for f $dir/* { if test -d $f { walk $f } else { put $f } } }
+var total 0
+for f @(walk $top) {
+    var size $(wc -c < $f)
+    echo $size $f
+    set total $(( $total + $size ))
+}
+echo total $total
+rm -rf $top

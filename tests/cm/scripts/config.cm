@@ -1,0 +1,24 @@
+# a whole script (882): a config file of key=value lines into a map - it found echo ended lines with a
+# carriage return too, and a def after a pipe's | could not read the stage before it: tr in it waited
+var file /tmp/cm-882.conf
+printf '# settings\nname=relf\n\nport = 8080\n  debug=yes\n' > $file
+var conf [:]
+for line @(cat $file) {
+    var t $(echo $line | sed 's/^ *//; s/ *$//')
+    if match $t '' { continue }
+    if match $t '#*' { continue }
+    var kv [@(split $t =)]
+    var k $(echo $kv[0] | sed 's/ *$//')
+    var v $(echo $kv[1] | sed 's/^ *//')
+    set conf[$k] $v
+}
+echo $conf
+echo port plus one: $(( $conf[port] + 1 ))
+def shout { tr a-z A-Z }
+echo $conf[name] | shout
+rm $file
+var tries 0
+while true {
+    set tries $(( $tries + 1 ))
+    if $(( $tries == 3 )) { echo succeeded on try $tries; break }
+}

@@ -13,16 +13,37 @@ IN-MAX CELLS BUFFER: INS   VARIABLE IN#
 : EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input
   DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT
   DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;
-: FN-RUN ( list xt --- )   \ a function stage, its values to the output it is in
-  SWAP IN-PUSH  CATCH  -1 IN# +!  THROW ;
-VARIABLE XT-CAPTURE  ' CAPTURE XT-CAPTURE !XT      \ !XT and @XT: an xt that survives a saved image (742)
-VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
-: FN-LIST ( list xt --- list' )   \ a function stage, its values a list for the function after it
-  SWAP IN-PUSH  XT-CAPTURE @XT CATCH  -1 IN# +!  THROW ;
 VARIABLE TMP#
 : TMP-PATH ( --- text )   1 TMP# +!  S" /tmp/cm" TXT GETPID D-NUM JOIN S" ." TXT JOIN TMP# @ D-NUM JOIN ;
 : PATH$ ( text --- c-addr u )   CELL+ @ R-T@ ;
 : DEL-PATH ( text --- )   PATH$ DELETE-FILE DROP ;
+\ A function's stage after another (882): its input, a list, is its stdin too while it runs - its lines in
+\ a temporary file - so a program in it reads them, as `cmd | f` does in sh; each reads the list. The
+\ first stage's input is 0: none, stdin as it was.
+CREATE LF1 10 C,
+: IN-FILE ( list --- path )   \ the input's lines in a temporary file
+  TMP-PATH >R  R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list fid )
+  OVER #ARGS 0 ?DO  OVER I ARGN D-STR CELL+ @ R-T@ 2 PICK WRITE-FILE DROP  LF1 1 2 PICK WRITE-FILE DROP  LOOP
+  CLOSE-FILE DROP DROP R> ;
+: STAGE-IN ( list|0 --- list' saved path | list' 0 0 )   \ the stage's stdin from its input, the old one kept
+  ?DUP 0= IF ARGL 0 0 EXIT THEN
+  DUP IN-FILE  DUP PATH$ R/O OPEN-FILE IF S" cm: cannot read a temporary file" R-FAIL THEN   ( list path fid )
+  PAD 0 1 WRITE DROP  0 10 DUP-FROM  OVER 0 DUP2 DROP  SWAP CLOSE-FILE DROP  SWAP ;        ( list saved path )
+: STAGE-OUT ( saved path --- )   ?DUP IF  OVER 0 DUP2 DROP  SWAP CLOSE-FILE DROP  DEL-PATH  ELSE DROP THEN ;
+: FN-RUN ( list|0 xt --- )   \ a function stage, its values to the output it is in
+  SWAP STAGE-IN >R >R  IN-PUSH  CATCH  -1 IN# +!  R> R> STAGE-OUT  THROW ;
+VARIABLE XT-CAPTURE  ' CAPTURE XT-CAPTURE !XT      \ !XT and @XT: an xt that survives a saved image (742)
+VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
+: OUT-TO ( path --- kept fid )   \ stdout to a new file at path, the old one kept
+  PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN
+  PAD 0 1 WRITE DROP  1 10 DUP-FROM  OVER 1 DUP2 DROP  SWAP ;
+: OUT-BACK ( kept fid --- )   PAD 0 1 WRITE DROP  CLOSE-FILE DROP  DUP 1 DUP2 DROP  CLOSE-FILE DROP ;
+: FN-LIST ( list|0 xt --- list' )   \ a function stage before another function: its values a list for it, and
+  TMP-PATH DUP >R OUT-TO >R >R                     \ after them the lines it prints - echo's, its programs' (882)
+  SWAP STAGE-IN >R >R  IN-PUSH  XT-CAPTURE @XT CATCH  -1 IN# +!  R> R> STAGE-OUT
+  R> R> OUT-BACK
+  ?DUP IF NIP R> DEL-PATH THROW THEN
+  R@ PATH$ R-SLURP 2DUP >R >R LINES+  R> R> DROP FREE DROP  R> DEL-PATH ;
 : FN>FILE ( list xt --- path )   \ a function stage before a program: its output into a temporary file
   TMP-PATH >R
   R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list xt fid )

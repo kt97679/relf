@@ -905,6 +905,7 @@ do not trust the absence of a line below.
 - 879 — texts counted and indexed as UTF-8; a def's word count and a variable declared twice found when read
 - 880 — globs with wildcards in any part of a path
 - 881 — from a whole script: set's keys any words, globs with $s, a capture of nothing no longer crashes
+- 882 — four more whole scripts: echo writes LF, not CR LF; a function after a | reads its input on stdin
 
 ### Not tied to an iteration
 

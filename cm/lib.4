@@ -16,7 +16,7 @@
 : ARGN ( list i --- item )   SWAP CELL+ @ R-ITEMS SWAP CELLS + @ ;
 
 \ ---- the builtins ----
-: ECHO ( args --- )   DUP #ARGS 0 ?DO  I IF SPACE THEN  DUP I ARGN SHOW  LOOP DROP CR ;
+: ECHO ( args --- )   DUP #ARGS 0 ?DO  I IF SPACE THEN  DUP I ARGN SHOW  LOOP DROP R-NL ;   \ a newline, no carriage return (882): files and pipes get lines
 : PUTS ( args --- )   DUP #ARGS 0 ?DO  DUP I ARGN PUT  LOOP DROP ;
 : APPEND ( list args --- )   SWAP D-LIST SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  2 PICK R-PUSH  LOOP 2DROP ;
 : COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes one value" R-FAIL THEN  0 ARGN
@@ -134,9 +134,9 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : PIPE-TEXT ( --- item )   PL-END STATUS !  TRIM-NLS K-TEXT R-BOX ;
 : NL-AT ( c-addr u --- i )   \ the first newline's place, or u
   TUCK 0 ?DO  DUP I + C@ 10 = IF 2DROP I UNLOOP EXIT THEN  LOOP  DROP ;
-: PIPE-LINES ( --- list )   \ @( ): a program's lines, each a text
-  PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT                                  ( list c-addr u )
+: LINES+ ( list c-addr u --- list )   \ each line of the text, a text, onto the list
   BEGIN DUP WHILE
     2DUP NL-AT  >R  OVER R@ TXT  3 PICK SWAP ARG DROP                    ( list c-addr u )  ( R: i )
     R> 1+ OVER MIN  TUCK - >R + R>                                      ( list c-addr' u' )
   REPEAT 2DROP ;
+: PIPE-LINES ( --- list )   PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ @( ): a program's lines, each a text

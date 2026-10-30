@@ -36,8 +36,8 @@ SINK-MAX CELLS BUFFER: SINKS   VARIABLE SINK#
 SINK-MAX CELLS BUFFER: SKINDS                  \ each sink's kind (868): 0 a list; 1 one value wanted, 2 got - in SINKS
 : SINK ( --- list-item | 0 )   SINK# @ IF SINKS SINK# @ 1- CELLS + @ ELSE 0 THEN ;
 : PUT ( item --- )
-  SINK# @ 0= IF SHOW CR EXIT THEN
-  SINK# @ 1- CELLS  DUP SKINDS + @ ?DUP 0= IF SINKS + @ ?DUP IF CELL+ @ R-PUSH ELSE SHOW CR THEN EXIT THEN   \ 0: printed
+  SINK# @ 0= IF SHOW R-NL EXIT THEN
+  SINK# @ 1- CELLS  DUP SKINDS + @ ?DUP 0= IF SINKS + @ ?DUP IF CELL+ @ R-PUSH ELSE SHOW R-NL THEN EXIT THEN   \ 0: printed
   1 = IF 2 OVER SKINDS + !  SINKS + ! EXIT THEN
   2DROP S" cm: $( ) got several values - @( ) takes them all" R-FAIL ;
 : CAPTURE ( i*x xt --- j*x list-item )   \ run xt, the values it puts captured - not its bytes

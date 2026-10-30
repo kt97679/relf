@@ -485,6 +485,10 @@ and a coroutine engine is the opposite of small. Instead:
 - A function before a program writes to a temporary file - its values as lines, its `echo` text with
   them, in order - and the program reads the file: no pipe to fill, no deadlock, no poll loop.
 - A program before a function is read whole, its lines the function's input.
+- (882) A function's stage after another has its input as its stdin too, the lines in a temporary
+  file, so a program in it reads them as in sh (`echo x | f`, f's `tr` reading x); and a function
+  before another function passes on what it prints - echo's text, its programs' - as lines after its
+  values.
 
 The price: a function stage does not stream - an endless function generator in a pipeline would
 hang, as the first review warned. Programs are untouched by it. Reviews asked for streaming; the
@@ -623,6 +627,9 @@ At 881, from a whole script written as one would (tests/cm/scripts/wordfreq.cm):
 with `$`s globs too - `$dir/*.txt` - its unquoted `*` and `?` wildcards, a value's and a quote's matched
 as they are; and a capture of no output, which had left a broken value that crashed the next use, is
 an empty text (an empty list for `@( )`).
+At 882 four more whole scripts (a config reader, a CSV summary, a backup rotation, a recursive walk):
+echo and put at the terminal wrote CR LF - the kernel's CR - so `echo x > f` made a line `x\r` that grep
+-x and sort saw; LF now. And `echo x | f`, where f runs `tr`, hung: f's tr read the terminal (above).
 Still to come: a smaller front end.
 
 ## What it costs
